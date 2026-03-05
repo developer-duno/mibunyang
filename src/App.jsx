@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { UNSOLD } from "@/constants/unsold";
 import { CITY_TIER } from "@/constants/regions";
 import { calcAll } from "@/scoring/engine";
 import { C, catCol, catBg, gr } from "@/theme";
@@ -17,6 +16,8 @@ import { useFavorites } from "@/hooks/useFavorites";
 import { useDetailModal } from "@/hooks/useDetailModal";
 import { useConsult } from "@/hooks/useConsult";
 import { useExpertMode } from "@/hooks/useExpertMode";
+import { useKosisData } from "@/hooks/useKosisData";
+import { useKakaoData } from "@/hooks/useKakaoData";
 
 export default function App() {
   const [profile, setProfile] = useState("live");
@@ -31,19 +32,20 @@ export default function App() {
   const { compIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
+  const { apartments: kosisApartments, kosisLoading } = useKosisData();
+  const { apartments, kakaoLoading } = useKakaoData(kosisApartments);
 
   // 5 useMemo
-  // TODO(API): UNSOLD → apartments (async fetch). 의존성 배열에 apartments 추가 필수.
   const guOptions = useMemo(() => {
     if (filterRegion === "전체") {
-      const gus = new Set(UNSOLD.map(a => a.gu));
+      const gus = new Set(apartments.map(a => a.gu));
       return ["전체", ...gus];
     }
-    const regionGus = new Set(UNSOLD.filter(a => a.region === filterRegion).map(a => a.gu));
+    const regionGus = new Set(apartments.filter(a => a.region === filterRegion).map(a => a.gu));
     return ["전체", ...regionGus];
-  }, [filterRegion]);
+  }, [filterRegion, apartments]);
 
-  const scored = useMemo(() => UNSOLD.map(a => ({ apt: a, res: calcAll(a, profile) })), [profile]);
+  const scored = useMemo(() => apartments.map(a => ({ apt: a, res: calcAll(a, profile) })), [apartments, profile]);
   const filtered = useMemo(() => {
     let list = scored;
     if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
@@ -55,9 +57,9 @@ export default function App() {
   const pw = PROFILES[profile].w;
 
   const regionOptions = useMemo(() => {
-    const rs = new Set(UNSOLD.map(a => a.region));
+    const rs = new Set(apartments.map(a => a.region));
     return ["전체", ...rs];
-  }, []);
+  }, [apartments]);
 
   const containerMaxWidth = expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults") ? 1200 : 520;
 
@@ -107,7 +109,7 @@ export default function App() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div>
               <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: -.5 }}>전국 미분양 비교 엔진</h1>
-              <p style={{ margin: "2px 0 0", fontSize: 12, opacity: .75, fontWeight: 500 }}>전국 {UNSOLD.length}개 단지 · 6개 항목 · 34+ 지표</p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, opacity: .75, fontWeight: 500 }}>전국 {apartments.length}개 단지 · 6개 항목 · 34+ 지표</p>
             </div>
             <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 10px", fontSize: 11, fontWeight: 600 }}>v3.0</div>
           </div>
@@ -127,6 +129,12 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {(kosisLoading || kakaoLoading) && (
+        <div style={{ textAlign: "center", padding: "6px", fontSize: 11, color: C.muted }}>
+          {kosisLoading ? "통계 데이터 로딩 중..." : "인프라 데이터 로딩 중..."}
+        </div>
+      )}
 
       {/* 가중치 */}
       <div style={{ padding: "10px 16px 0" }}>
@@ -305,7 +313,7 @@ export default function App() {
             </div>
           ) : (
             consult.submittedConsults.map((c, i) => {
-              const aptNames = c.interestedApts.map(id => { const found = UNSOLD.find(a => a.id === id); return found ? found.name : id; });
+              const aptNames = c.interestedApts.map(id => { const found = apartments.find(a => a.id === id); return found ? found.name : id; });
               return (
                 <div key={c.id} style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>

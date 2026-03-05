@@ -1,7 +1,7 @@
 export const UNSOLD = [
   // ── 서울 ──
   {
-    id: "s1", name: "래미안 원펜타스", dong: "반포동", gu: "서초구", region: "서울",
+    id: "s1", name: "래미안 원펜타스", dong: "반포동", gu: "서초구", region: "서울", lat: 37.5038, lng: 126.9939,
     area: 84, price: 135000, pp: 5313, floors: "35~42층", maxFloor: 42,
     units: 641, unsold: 12, builder: "삼성물산", completion: "2026-12",
     subwayDist: 250, busRoutes: 30, icDist: 4, ktxDist: 15,
@@ -22,7 +22,7 @@ export const UNSOLD = [
   },
   // ── 경기 ──
   {
-    id: "g1", name: "화성 동탄 자이", dong: "동탄동", gu: "화성시", region: "경기",
+    id: "g1", name: "화성 동탄 자이", dong: "동탄동", gu: "화성시", region: "경기", lat: 37.1912, lng: 127.0909,
     area: 84, price: 62000, pp: 2441, floors: "25~35층", maxFloor: 35,
     units: 2300, unsold: 120, builder: "GS건설", completion: "2026-06",
     subwayDist: 800, busRoutes: 15, icDist: 2.5, ktxDist: 5,
@@ -43,7 +43,7 @@ export const UNSOLD = [
   },
   // ── 부산 ──
   {
-    id: "b1", name: "해운대 엘시티 더샵", dong: "우동", gu: "해운대구", region: "부산",
+    id: "b1", name: "해운대 엘시티 더샵", dong: "우동", gu: "해운대구", region: "부산", lat: 35.1610, lng: 129.1684,
     area: 84, price: 72000, pp: 2835, floors: "30~50층", maxFloor: 50,
     units: 980, unsold: 35, builder: "포스코이앤씨", completion: "2026-08",
     subwayDist: 400, busRoutes: 20, icDist: 3, ktxDist: 25,
@@ -64,7 +64,7 @@ export const UNSOLD = [
   },
   // ── 대전 ──
   {
-    id: "d1", name: "유성 더샵 포레나", dong: "봉명동", gu: "유성구", region: "대전",
+    id: "d1", name: "유성 더샵 포레나", dong: "봉명동", gu: "유성구", region: "대전", lat: 36.3549, lng: 127.3459,
     area: 84, price: 42000, pp: 1653, floors: "15~25층", maxFloor: 25,
     units: 850, unsold: 47, builder: "포스코이앤씨", completion: "2026-03",
     subwayDist: 650, busRoutes: 12, icDist: 3.5, ktxDist: 8,
@@ -84,7 +84,7 @@ export const UNSOLD = [
     benefits: ["중도금 무이자", "시스템에어컨 무상", "분양가 5% 할인"],
   },
   {
-    id: "d2", name: "둔산 푸르지오 시티", dong: "둔산동", gu: "서구", region: "대전",
+    id: "d2", name: "둔산 푸르지오 시티", dong: "둔산동", gu: "서구", region: "대전", lat: 36.3525, lng: 127.3858,
     area: 84, price: 48000, pp: 1890, floors: "20~35층", maxFloor: 35,
     units: 1200, unsold: 23, builder: "대우건설", completion: "2026-06",
     subwayDist: 380, busRoutes: 22, icDist: 5, ktxDist: 12,
@@ -105,7 +105,7 @@ export const UNSOLD = [
   },
   // ── 대구 ──
   {
-    id: "dg1", name: "수성 힐스테이트", dong: "범어동", gu: "수성구", region: "대구",
+    id: "dg1", name: "수성 힐스테이트", dong: "범어동", gu: "수성구", region: "대구", lat: 35.8566, lng: 128.6370,
     area: 84, price: 55000, pp: 2165, floors: "20~35층", maxFloor: 35,
     units: 750, unsold: 40, builder: "현대건설", completion: "2026-05",
     subwayDist: 350, busRoutes: 18, icDist: 5, ktxDist: 10,
@@ -126,7 +126,7 @@ export const UNSOLD = [
   },
   // ── 광주 ──
   {
-    id: "gj1", name: "광주 첨단 e편한세상", dong: "월계동", gu: "광산구", region: "광주",
+    id: "gj1", name: "광주 첨단 e편한세상", dong: "월계동", gu: "광산구", region: "광주", lat: 35.2146, lng: 126.8360,
     area: 84, price: 35000, pp: 1378, floors: "15~25층", maxFloor: 25,
     units: 600, unsold: 80, builder: "DL이앤씨", completion: "2026-02",
     subwayDist: 500, busRoutes: 14, icDist: 3, ktxDist: 20,
@@ -147,7 +147,7 @@ export const UNSOLD = [
   },
   // ── 세종 ──
   {
-    id: "sj1", name: "세종 국회의사당 근처 포레나", dong: "나성동", gu: "세종시", region: "세종",
+    id: "sj1", name: "세종 국회의사당 근처 포레나", dong: "나성동", gu: "세종시", region: "세종", lat: 36.4891, lng: 127.2640,
     area: 84, price: 47000, pp: 1850, floors: "20~30층", maxFloor: 30,
     units: 1100, unsold: 55, builder: "한화건설", completion: "2026-04",
     subwayDist: 9999, busRoutes: 10, icDist: 2, ktxDist: 30,
@@ -168,7 +168,7 @@ export const UNSOLD = [
   },
   // ── 충남 천안 ──
   {
-    id: "cn1", name: "천안 불당 아이파크", dong: "불당동", gu: "천안시", region: "충남",
+    id: "cn1", name: "천안 불당 아이파크", dong: "불당동", gu: "천안시", region: "충남", lat: 36.8085, lng: 127.1093,
     area: 84, price: 45000, pp: 1772, floors: "20~30층", maxFloor: 30,
     units: 900, unsold: 60, builder: "HDC현대산업개발", completion: "2026-07",
     subwayDist: 1200, busRoutes: 10, icDist: 2, ktxDist: 3,
@@ -189,7 +189,7 @@ export const UNSOLD = [
   },
   // ── 경남 창원 ──
   {
-    id: "gn1", name: "창원 중앙 푸르지오", dong: "중앙동", gu: "창원시", region: "경남",
+    id: "gn1", name: "창원 중앙 푸르지오", dong: "중앙동", gu: "창원시", region: "경남", lat: 35.2211, lng: 128.6737,
     area: 84, price: 38000, pp: 1496, floors: "15~25층", maxFloor: 25,
     units: 700, unsold: 95, builder: "대우건설", completion: "2025-11",
     subwayDist: 9999, busRoutes: 16, icDist: 3, ktxDist: 8,
@@ -210,7 +210,7 @@ export const UNSOLD = [
   },
   // ── 강원 춘천 ──
   {
-    id: "gw1", name: "춘천 후평 데시앙", dong: "후평동", gu: "춘천시", region: "강원",
+    id: "gw1", name: "춘천 후평 데시앙", dong: "후평동", gu: "춘천시", region: "강원", lat: 37.8860, lng: 127.7455,
     area: 84, price: 32000, pp: 1260, floors: "15~20층", maxFloor: 20,
     units: 450, unsold: 110, builder: "태영건설", completion: "2025-10",
     subwayDist: 2500, busRoutes: 8, icDist: 4, ktxDist: 2,
@@ -231,7 +231,7 @@ export const UNSOLD = [
   },
   // ── 제주 ──
   {
-    id: "jj1", name: "제주 노형 롯데캐슬", dong: "노형동", gu: "제주시", region: "제주",
+    id: "jj1", name: "제주 노형 롯데캐슬", dong: "노형동", gu: "제주시", region: "제주", lat: 33.4831, lng: 126.4772,
     area: 84, price: 40000, pp: 1575, floors: "15~20층", maxFloor: 20,
     units: 350, unsold: 75, builder: "롯데건설", completion: "2026-01",
     subwayDist: 9999, busRoutes: 8, icDist: 5, ktxDist: 9999,
