@@ -1,0 +1,428 @@
+# 미분양 비교 엔진 v3.0 — 아키텍처 가이드
+
+> 주니어 개발자가 코드를 빠르게 이해하기 위한 실행 흐름 + 핵심 로직 문서.
+
+---
+
+## 1. 한눈에 보는 구조 (5개 레이어)
+
+```
+src/
+├── constants/          데이터 레이어 (상수, 샘플 데이터)
+│   ├── brands.js       BRAND_TIER(16), AGE_PREMIUM(7), LAYOUT_SCORE, NOXIOUS_PENALTY
+│   ├── profiles.js     PROFILES(5개 사용자 프로필)
+│   ├── regions.js      CITY_TIER(5등급), REGIONS(17개 시도)
+│   ├── unsold.js       UNSOLD[](12개 샘플 단지) ← API 교체 예정
+│   └── fieldMeta.js    FIELD_META(69필드), FIELD_SECTIONS(6섹션)
+│
+├── scoring/            스코어링 엔진
+│   └── engine.js       getAgeCoeff, getAreaAdj, score{6개}, calcAll
+│
+├── theme/              테마/색상
+│   └── index.js        C(팔레트), catCol, catBg, gr(등급함수)
+│
+├── components/         소비자 UI (모바일 우선, 520px)
+│   ├── primitives.jsx  Bar, ScoreBadge, Radar (프리미티브, memo)
+│   ├── CatPanel.jsx    카테고리 상세 패널
+│   ├── AptCard.jsx     단지 카드
+│   ├── CompareSheet.jsx 비교 테이블
+│   ├── DetailModal.jsx 상세 바텀시트
+│   ├── ConsultForm.jsx 상담 신청 폼
+│   └── expert/         전문가 UI (PC 우선, 1200px)
+│       ├── ExpertDashboard.jsx   (오케스트레이터)
+│       ├── ExpertSidebar.jsx     (검색/필터/단지목록)
+│       ├── ExpertAptHeader.jsx   (단지 상단 요약)
+│       ├── ExpertFieldTable.jsx  (69필드 테이블)
+│       ├── ExpertScoreBreakdown.jsx (산출 내역)
+│       ├── ExpertScoreSummary.jsx   (가중치 합계)
+│       ├── ExpertUnitPlaceholder.jsx (동/호수)
+│       └── ExpertDataCompleteness.jsx (완성도)
+│
+├── hooks/              커스텀 훅 (상태 관리)
+│   ├── useToast.js         토스트 알림
+│   ├── useFilterSort.js    지역 필터 + 정렬
+│   ├── useComparison.js    비교 기능
+│   ├── useFavorites.js     관심매물 (localStorage)
+│   ├── useDetailModal.js   상세 모달
+│   ├── useConsult.js       상담 신청
+│   └── useExpertMode.js    전문가 모드
+│
+└── App.jsx             오케스트레이터 (훅 조합 + 렌더)
+```
+
+### 의존성 방향 (단방향, 순환 참조 없음)
+
+```
+constants → scoring → theme → components → hooks → App
+     ↓                   ↓          ↓
+     └───────────────────┘──────────┘  (상수/테마는 어디서든 import 가능)
+```
+
+---
+
+## 2. 데이터 흐름 (핵심!)
+
+```
+사용자 조작                    React 상태              useMemo 연쇄              UI 렌더
+──────────                    ──────────              ──────────              ──────────
+
+프로필 버튼 클릭 ──→ profile ──→ scored ─────────────→ AptCard 12개 재채점
+                                   │
+지역 버튼 클릭 ──→ filterRegion ──→ │ ──→ guOptions ──→ 구 버튼 목록 갱신
+                  filterGu ───────→ │
+정렬 버튼 클릭 ──→ sortKey ────────→ filtered ────────→ AptCard 순서 변경
+                                                         │
+비교 추가 클릭 ──→ compIds ────────→ compItems ──────→ CompareSheet 테이블
+                                                         │
+비교 보기 클릭 ──→ showCompOpen ──→ showComp(파생) ──→ CompareSheet 표시/숨김
+```
+
+### 핵심 useMemo 체인 (App.jsx)
+
+```js
+// 1단계: 전체 12개 단지 채점 (프로필이 바뀔 때만 재계산)
+const scored = useMemo(() =>
+  UNSOLD.map(a => ({ apt: a, ...calcAll(a, profile) })),
+  [profile]
+);
+
+// 2단계: 지역 필터 + 정렬 적용
+const filtered = useMemo(() =>
+  scored.filter(지역조건).sort(정렬조건),
+  [scored, filterRegion, filterGu, sortKey]
+);
+
+// 3단계: 비교 대상 추출
+const compItems = useMemo(() =>
+  compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean),
+  [compIds, scored]
+);
+```
+
+---
+
+## 3. 스코어링 파이프라인
+
+파일: `src/scoring/engine.js`
+
+### calcAll(apt, profile) → 6개 함수 호출 → 가중치 합산
+
+```
+calcAll(apt, "live")
+│
+├── scorePrice(apt)      가격 매력도
+│   ├── 적정가 괴리도 (30%) = (fairPrice - 분양가) / fairPrice * 100
+│   ├── 전세가율 (20%)
+│   ├── PIR 소득비 (15%)
+│   ├── PSR 매매비 (25%)    ← Math.min(psrSc, 100) 클램핑 필수!
+│   └── 데이터 신뢰도 (10%)
+│
+├── scoreLocation(apt)   입지/생활권
+│   ├── 교통 (30%)         ← CITY_TIER별 지하철/버스/IC/KTX 가중치 자동 보정
+│   ├── 학군 (25%)         ← apt.schoolScore ?? 50 (nullish coalescing)
+│   ├── 생활인프라 (20%)    ← 8개 항목 (병원/마트/편의점/공원/카페/문화/은행/약국)
+│   ├── 자연환경 (10%)
+│   └── 혐오시설 (15%)
+│
+├── scoreProduct(apt)    상품성
+│   └── 9개 항목 합산 / maxPossible(100) * 100
+│       (브랜드20 + 세대수15 + 주차15 + 용적률10 + 에너지10 + 전용률10 + 평면10 + 내진5 + 구조5)
+│
+├── scoreBenefit(apt)    혜택
+│   └── totalWon(만원) = 할인액 + 중도금이자절감 + 옵션무상 + 발코니 + 캐시백
+│       → rate = totalWon / price * 100
+│       → 점수 = min(rate / 25 * 100, 100)
+│
+├── scoreRisk(apt)       안전도
+│   └── 7개 위험요소 가중 합산 → safety = 100 - 총리스크
+│       (미분양률20% + 거래량15% + 대출15% + 시공사신용20% + 규제10% + 공급량10% + 시장환경10%)
+│
+└── scoreFuture(apt)     미래가치
+    ├── 교통개발 (40%)    ← "기존"=100, "계획/착공/공사중/추진/확정"=거리비례
+    ├── 도시개발 (30%)    ← 80점(신도시/재건축/혁신 등) / 50점(관광/산단/공항 등) / 30점(기타)
+    └── 인구/산업 (30%)
+
+최종 = sum(카테고리점수 * PROFILES[profile].w[카테고리] / 100)
+     = price*20 + location*40 + product*20 + benefit*5 + risk*10 + future*5  (live 기준)
+```
+
+### 적정가(fairPrice) 계산 공식
+
+```
+fairPrice = 주변중위가(nearbyMedian) * 연식계수(ageCoeff) * 면적보정(areaAdj) * 브랜드보정(brandAdj)
+
+- ageCoeff: 신축=1.03, 1년=1.05, 5년=1.10, ... 25년+=1.55 (미래 완공=1.0)
+- areaAdj: 60㎡미만=1.08, 60~84=1.0, 85~114=0.97, 115+=0.94
+- brandAdj: 1군Super=1.05, 1군=1.02, 2군=0.99, 기타=0.98
+```
+
+---
+
+## 4. 상태 관리 맵
+
+### App.jsx 직접 관리 상태 (2개)
+
+```
+State       타입      초기값     변경 트리거
+─────       ────      ──────     ──────────
+profile     string    "live"     프로필 버튼 클릭
+tab         string    "list"     탭 버튼 / 하단 네비
+```
+
+### 커스텀 훅별 상태
+
+| 훅 | 상태 | 파생값 |
+|----|------|--------|
+| useToast | toast | — |
+| useFilterSort | filterRegion, filterGu, sortKey | — |
+| useComparison | compIds, showCompOpen | showComp (파생) |
+| useFavorites | favoriteIds | — |
+| useDetailModal | detailAptId | — |
+| useConsult | consultForm, consultSubmitted, submittedConsults | — |
+| useExpertMode | expertPw, expertLoggedIn, expertExpandedApt | — |
+
+### 교차 관심사 해결
+
+```js
+// App.jsx에서 훅 간 연결
+const { handleRegionChange, handleGuChange } = useFilterSort({
+  onFilterChange: () => detail.setDetailAptId(null)  // 필터 변경 → 상세 닫기
+});
+
+const handleExpertLogin = () => {
+  if (expert.handleExpertLogin()) setTab("expert");   // 로그인 성공 → 탭 전환
+};
+
+const handleExpertLogout = () => {
+  expert.handleExpertLogout(() => {                    // 로그아웃 → 탭+비교 리셋
+    setTab("list"); setShowCompOpen(false);
+  });
+};
+```
+
+---
+
+## 5. 컴포넌트 트리
+
+### 소비자 모드 (모바일 우선, maxWidth: 520px)
+
+```
+App
+├── 헤더 (인디고 그라데이션, 프로필 버튼 5개)
+│
+├── [소비자 모드]
+│   ├── [tab === "list"]
+│   │   ├── 시/도 + 구/군 2단 드롭다운
+│   │   ├── 정렬 태그 버튼 (5종)
+│   │   ├── 비교 토글 버튼 (compIds >= 2일 때)
+│   │   ├── CompareSheet (memo) ← showComp일 때
+│   │   ├── 빈 상태 안내 (filtered.length === 0일 때)
+│   │   └── AptCard (memo) * filtered.length
+│   │       ├── ScoreBadge (memo) ← 원형 점수 배지
+│   │       ├── Bar (memo) * 3 ← 상위 카테고리 미니 바
+│   │       └── 3버튼 (상세보기/관심매물/비교추가)
+│   │
+│   ├── [tab === "consult"]
+│   │   └── ConsultForm (memo) ← 상담 신청 폼
+│   │
+│   ├── [tab === "info"]
+│   │   └── 엔진 정보 + 전문가 로그인 링크
+│   │
+│   └── DetailModal (memo) ← 바텀시트 상세 팝업 (z-index:300)
+│       ├── ScoreBadge (80px)
+│       ├── Radar (memo) + 핵심지표
+│       ├── CatPanel (memo) * 6
+│       └── 관심매물/비교추가 버튼
+│
+├── [전문가 모드] (PC 우선, maxWidth: 1200px)
+│   ├── [tab === "expert"]
+│   │   └── ExpertDashboard (memo)
+│   │       ├── ExpertSidebar (검색/필터/정렬 + 단지 목록, 280px)
+│   │       └── 메인 콘텐츠 영역
+│   │           ├── ExpertAptHeader (단지명/위치/점수/Radar)
+│   │           ├── ExpertFieldTable (memo) * 6섹션 (2컬럼 CSS Grid)
+│   │           │   └── FIELD_META 기반 69개 필드 렌더
+│   │           ├── ExpertUnitPlaceholder (동/호수 안내)
+│   │           ├── ExpertScoreBreakdown (6카테고리 산출 내역)
+│   │           │   └── 적정가 계산 과정 인라인 표시
+│   │           ├── ExpertScoreSummary (가중치 합계 표)
+│   │           └── ExpertDataCompleteness (완성도 % 바)
+│   │
+│   └── [tab === "expertConsults"]
+│       └── 상담 요청 목록
+│
+├── Toast (role="status", z-index:200)
+└── <nav> 하단 네비 (4개 버튼, z-index:100)
+    ├── 소비자: 목록/비교/상담/정보
+    └── 전문가: 대시보드/상담목록/소비자뷰/로그아웃
+```
+
+### memo() 컴포넌트 Props
+
+| 컴포넌트 | 파일 | Props |
+|----------|------|-------|
+| Bar | primitives.jsx | value, color, h |
+| ScoreBadge | primitives.jsx | score, size |
+| Radar | primitives.jsx | data, size |
+| CatPanel | CatPanel.jsx | cat, k |
+| AptCard | AptCard.jsx | apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights |
+| CompareSheet | CompareSheet.jsx | items |
+| ConsultForm | ConsultForm.jsx | scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast |
+| DetailModal | DetailModal.jsx | item, onClose, isComp, onComp, isFav, onFav |
+| ExpertFieldTable | expert/ | fields, apt |
+| ExpertScoreBreakdown | expert/ | res, apt |
+| ExpertScoreSummary | expert/ | res, profile |
+| ExpertUnitPlaceholder | expert/ | apt |
+| ExpertDataCompleteness | expert/ | apt |
+| ExpertSidebar | expert/ | scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort |
+| ExpertAptHeader | expert/ | item |
+| ExpertDashboard | expert/ | scored, profile, setProfile, expandedApt, setExpandedApt |
+
+---
+
+## 6. 등급 시스템
+
+파일: `src/theme/index.js` — `gr()` 함수
+
+| 점수 | 등급 | 색상 | 의미 |
+|------|------|------|------|
+| 90~100 | S | 파랑 (#2563EB) | 최우수 |
+| 80~89 | A | 초록 (#16A34A) | 우수 |
+| 70~79 | B+ | 틸그린 (#059669) | 양호 |
+| 60~69 | B | 주황 (#D97706) | 보통 |
+| 50~59 | C | 오렌지 (#EA580C) | 미흡 |
+| ~49 | D | 빨강 (#DC2626) | 부적합 |
+
+### 카테고리별 색상
+
+파일: `src/theme/index.js` — `catCol`, `catBg`
+
+| 카테고리 | 키 | 색상 | 이모지 |
+|----------|-----|------|--------|
+| 가격 매력도 | price | green | 💰 |
+| 입지/생활권 | location | blue | 📍 |
+| 상품성 | product | purple | 🏗 |
+| 혜택 | benefit | amber | 🎁 |
+| 안전도 | risk | red | 🛡 |
+| 미래가치 | future | cyan | 🚀 |
+
+---
+
+## 7. 주요 상수 참조
+
+### BRAND_TIER (constants/brands.js)
+
+| 등급 | 건설사 | 점수 | 보정계수 |
+|------|--------|------|---------|
+| 1군Super | 현대건설, 삼성물산, GS건설 | 20 | 1.05 |
+| 1군 | 롯데, 대우, HDC, 포스코, DL | 15 | 1.02 |
+| 2군 | 호반, 태영, KCC, 금호 | 10 | 0.99 |
+| 기타 | 미등록 빌더 | 5 | 0.98 |
+
+### CITY_TIER (constants/regions.js)
+
+| 등급 | 도시 | 지하철 | 버스 | IC | KTX |
+|------|------|--------|------|-----|------|
+| S | 서울 | 1.0 | 0.6 | 0.3 | 0.3 |
+| A | 부산/대구/광주/대전 | 0.9 | 0.7 | 0.4 | 0.4 |
+| B | 경기/세종 | 0.7 | 0.8 | 0.6 | 0.5 |
+| C | 충남/경남 등 | 0.3 | 0.9 | 0.8 | 0.7 |
+| D | 군 | 0.1 | 1.0 | 1.0 | 0.9 |
+
+### PROFILES 가중치 (constants/profiles.js)
+
+| 프로필 | 가격 | 입지 | 상품 | 혜택 | 안전 | 미래 |
+|--------|------|------|------|------|------|------|
+| 실거주 | 20 | 40 | 20 | 5 | 10 | 5 |
+| 투자 | 30 | 10 | 15 | 10 | 25 | 10 |
+| 신혼부부 | 15 | 30 | 30 | 10 | 10 | 5 |
+| 자녀교육 | 15 | 45 | 20 | 10 | 5 | 5 |
+| 은퇴 | 20 | 35 | 25 | 15 | 5 | 0 |
+
+---
+
+## 8. 전문가 페이지 아키텍처
+
+### PC-First 레이아웃 (1200px+)
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  HEADER (인디고 그라데이션) + 프로필 선택 + 인쇄 버튼           │
+├──────────────┬─────────────────────────────────────────────────┤
+│  SIDEBAR     │  MAIN CONTENT (스크롤)                          │
+│  280px       │                                                 │
+│  ┌────────┐  │  ┌── ExpertAptHeader ──────────────────────┐    │
+│  │ 검색   │  │  │ 단지명 | 지역 | 면적 | 가격 | 시공사    │    │
+│  │ 지역 ▾ │  │  │ ScoreBadge(80) + Radar(140)             │    │
+│  │ 정렬 ▾ │  │  └────────────────────────────────────────┘    │
+│  ├────────┤  │                                                 │
+│  │ 단지1  │  │  ┌── 2컬럼 CSS Grid (FIELD_SECTIONS) ────────┐ │
+│  │ 단지2  │  │  │ [개요 15필드]     [가격/시장 14필드]       │ │
+│  │ 단지3  │  │  │ [입지/교통 19필드] [상품성 7필드]          │ │
+│  │ ...    │  │  │ [혜택/할인 10필드] [미래가치 4필드]        │ │
+│  └────────┘  │  └────────────────────────────────────────────┘ │
+│              │                                                 │
+│              │  ExpertUnitPlaceholder (동/호수)                 │
+│              │  ExpertScoreBreakdown (6카테고리 산출 내역)      │
+│              │  ExpertScoreSummary (가중치 합계)                │
+│              │  ExpertDataCompleteness (완성도)                 │
+├──────────────┴─────────────────────────────────────────────────┤
+│  하단 네비 (전문가 모드)                                        │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### FIELD_META 시스템 (constants/fieldMeta.js)
+
+모든 69개 필드의 메타데이터를 정의하는 상수:
+
+```js
+FIELD_META = {
+  필드키: {
+    label: "표시 라벨",           // 한국어 이름
+    fmt: (v, apt) => "포맷팅",    // 값 → 표시 문자열 변환
+    isDefault: v => boolean       // 센티널/기본값 감지 (데이터 완성도 계산)
+  }
+}
+```
+
+FIELD_SECTIONS는 6개 섹션으로 필드키를 그룹화:
+1. 단지 개요 (15필드) — id, name, region, gu, area, price, pp, ...
+2. 가격/시장 (14필드) — nearbyMedian, jeonseRate, pir, psr, ...
+3. 입지/교통/환경 (19필드) — subwayDist, busRoutes, schoolScore, ...
+4. 상품성/건축 (7필드) — parkingRatio, floorAreaRatio, energyGrade, ...
+5. 혜택/할인 (10필드) — discountPct, loanFree, optionFree, ...
+6. 미래가치 (4필드) — transitDev, devDist, cityDev, industryDev
+
+### ExpertScoreBreakdown 적정가 인라인 계산
+
+`calcAll()` 수정 없이, 기존 `res.cats[k].subs[]`에서 서브점수를 읽고,
+적정가 중간값만 인라인으로 재계산:
+
+```js
+const ageCoeff = getAgeCoeff(apt.completion);
+const areaAdj = getAreaAdj(apt.area);
+const brand = BRAND_TIER[apt.builder] || { adj: 1.0 };
+const fairPrice = apt.nearbyMedian * ageCoeff * areaAdj * brand.adj;
+const dev = apt.nearbyMedian > 0 ? (fairPrice - apt.price) / fairPrice * 100 : 0;
+```
+
+catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
+
+---
+
+## 9. 수정 시 체크리스트
+
+코드를 수정한 후 아래 12개 항목을 반드시 확인하세요:
+
+- [ ] 가중치 합계가 100% (또는 1.00)인가?
+- [ ] 새로 추가한 서브스코어에 Math.min(..., 100) 클램핑이 있는가?
+- [ ] Hook 순서: useState → useRef → useCallback → useMemo → useEffect 유지되는가?
+- [ ] useMemo 의존성 배열에 누락된 변수가 없는가?
+- [ ] memo() 래핑이 유지되는가? (소비자 8개 + 전문가 8개 = 16개 컴포넌트)
+- [ ] 새 onClick 핸들러가 useCallback으로 안정화되어 있는가?
+- [ ] null/undefined 가드에 `??`를 사용했는가? (`||` 아닌지 확인)
+- [ ] 폰트 크기가 10px 이상인가?
+- [ ] ARIA 속성(role, aria-pressed, aria-selected 등)이 유지되는가?
+- [ ] 서버 호출(fetch/axios)을 추가했다면 로딩/에러 상태를 처리했는가?
+- [ ] 전문가 필드 표시에 FIELD_META 포맷터를 사용했는가? (하드코딩 금지)
+- [ ] ExpertDashboard의 catKeys가 `Object.keys(res.cats)`로 동적 추출되는가?
