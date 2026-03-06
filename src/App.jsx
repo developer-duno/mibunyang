@@ -16,10 +16,7 @@ import { useFavorites } from "@/hooks/useFavorites";
 import { useDetailModal } from "@/hooks/useDetailModal";
 import { useConsult } from "@/hooks/useConsult";
 import { useExpertMode } from "@/hooks/useExpertMode";
-import { useApplyHomeData } from "@/hooks/useApplyHomeData";
-import { useKosisData } from "@/hooks/useKosisData";
-import { useKakaoData } from "@/hooks/useKakaoData";
-import { useEducationData } from "@/hooks/useEducationData";
+import { useApartmentData } from "@/hooks/useApartmentData";
 
 export default function App() {
   const [profile, setProfile] = useState("live");
@@ -34,10 +31,7 @@ export default function App() {
   const { compIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
-  const { apartments: baseApartments, applyHomeLoading } = useApplyHomeData();
-  const { apartments: kosisApartments, kosisLoading } = useKosisData(baseApartments);
-  const { apartments: kakaoApartments, kakaoLoading } = useKakaoData(kosisApartments);
-  const { apartments, educationLoading } = useEducationData(kakaoApartments);
+  const { apartments, loading: dataLoading } = useApartmentData();
 
   // 5 useMemo
   const guOptions = useMemo(() => {
@@ -134,9 +128,9 @@ export default function App() {
         </div>
       </div>
 
-      {(applyHomeLoading || kosisLoading || kakaoLoading || educationLoading) && (
+      {dataLoading && (
         <div style={{ textAlign: "center", padding: "6px", fontSize: 11, color: C.muted }}>
-          {applyHomeLoading ? "미분양 데이터 로딩 중..." : kosisLoading ? "통계 데이터 로딩 중..." : kakaoLoading ? "인프라 데이터 로딩 중..." : "학군 데이터 로딩 중..."}
+          데이터 로딩 중...
         </div>
       )}
 

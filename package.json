@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "collect": "node scripts/collect-data.mjs",
+    "prebuild": "node scripts/collect-data.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

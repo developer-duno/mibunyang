@@ -1,0 +1,12 @@
+name: Daily Data Refresh
+on:
+  schedule:
+    - cron: '0 18 * * *' # UTC 18:00 = KST 03:00
+  workflow_dispatch: # 수동 트리거
+
+jobs:
+  trigger-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy
+        run: curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
