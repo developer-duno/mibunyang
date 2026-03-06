@@ -720,7 +720,7 @@ async function phase7_realtrade(apartments) {
       } catch { /* continue */ }
     }
 
-    // 전월세 - Dev API 시도 (403이면 스킵)
+    // 전월세 (전세만 필터, 월세=0인 항목)
     for (const month of months) {
       try {
         const url = `https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent?serviceKey=${DATA_GO_KEY}&LAWD_CD=${lawdCd}&DEAL_YMD=${month}&pageNo=1&numOfRows=1000`;
