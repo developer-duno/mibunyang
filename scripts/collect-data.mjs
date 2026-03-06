@@ -31,6 +31,7 @@ const KAKAO_KEY = process.env.KAKAO_KEY;
 const KOSIS_KEY = process.env.KOSIS_KEY;
 const NEIS_KEY = process.env.NEIS_KEY;
 const DART_KEY = process.env.DART_KEY;
+const DATA_GO_KEY = process.env.DATA_GO_KEY;
 
 const meta = { fetchedAt: null, count: 0, phases: {}, errors: [] };
 
@@ -284,9 +285,66 @@ async function phase2_kosis(apartments) {
       }
     }
 
+    // 인구증감률 조회 (시도별 인구, orgId=101, tblId=DT_1B040A01)
+    const popGrowthMap = {};
+    try {
+      const popParams = new URLSearchParams({
+        method: "getList", apiKey: KOSIS_KEY, itmId: "T2", format: "json", jsonVD: "Y",
+        prdSe: "A", startPrdDe: startYear, endPrdDe: latestYear, orgId: "101", tblId: "DT_1B040A01",
+        objL1: "ALL", objL2: " ",
+      });
+      const popRes = await fetch(`https://kosis.kr/openapi/Param/statisticsParameterData.do?${popParams}`);
+      if (popRes.ok) {
+        const popData = await popRes.json();
+        const popRows = Array.isArray(popData) ? popData : [];
+        const popByRegionYear = {};
+        for (const row of popRows) {
+          const region = KOSIS_REGION_MAP[row.C1_NM];
+          if (!region) continue;
+          const val = parseFloat(row.DT);
+          if (isNaN(val)) continue;
+          if (!popByRegionYear[region]) popByRegionYear[region] = {};
+          popByRegionYear[region][row.PRD_DE] = val;
+        }
+        for (const [region, years] of Object.entries(popByRegionYear)) {
+          const sortedYears = Object.keys(years).sort();
+          if (sortedYears.length >= 2) {
+            const prev = years[sortedYears[sortedYears.length - 2]];
+            const curr = years[sortedYears[sortedYears.length - 1]];
+            if (prev > 0) popGrowthMap[region] = Math.round((curr - prev) / prev * 1000) / 10;
+          }
+        }
+        log(`  인구증감: ${Object.keys(popGrowthMap).length}개 지역`);
+      }
+    } catch (e) { logError("kosis-pop", e.message); }
+
+    // 평균소득 조회 (시도별 가구소득, orgId=101, tblId=DT_1YL15001E)
+    const incomeMap = {};
+    try {
+      const incParams = new URLSearchParams({
+        method: "getList", apiKey: KOSIS_KEY, itmId: "ALL", format: "json", jsonVD: "Y",
+        prdSe: "A", startPrdDe: latestYear, endPrdDe: latestYear, orgId: "101", tblId: "DT_1YL15001E",
+        objL1: "ALL", objL2: " ",
+      });
+      const incRes = await fetch(`https://kosis.kr/openapi/Param/statisticsParameterData.do?${incParams}`);
+      if (incRes.ok) {
+        const incData = await incRes.json();
+        const incRows = Array.isArray(incData) ? incData : [];
+        for (const row of incRows) {
+          const region = KOSIS_REGION_MAP[row.C1_NM];
+          if (!region) continue;
+          const val = parseFloat(row.DT);
+          if (!isNaN(val) && val > 0) incomeMap[region] = val;
+        }
+        log(`  평균소득: ${Object.keys(incomeMap).length}개 지역`);
+      }
+    } catch (e) { logError("kosis-income", e.message); }
+
     apartments = apartments.map(a => ({
       ...a,
       _regionalUnsold: unsoldMap[a.region] ?? null,
+      popGrowth: popGrowthMap[a.region] ?? null,
+      _avgIncome: incomeMap[a.region] ?? null,
     }));
     log(`  KOSIS 지역 매핑: ${Object.keys(unsoldMap).length}개 지역`);
     meta.phases.kosis = { ok: true };
@@ -516,6 +574,238 @@ async function phase5_dart(apartments) {
 }
 
 // ============================================================
+// Phase 6: 교통 거리 (버스, IC, KTX)
+// ============================================================
+async function phase6_transport(apartments) {
+  if (!KAKAO_KEY) { log("Phase 6: KAKAO_KEY 없음, 건너뜀"); meta.phases.transport = { ok: false, reason: "no key" }; return apartments; }
+  log("Phase 6: 교통 거리 조회...");
+  const withCoords = apartments.filter(a => a.lat && a.lng);
+  if (withCoords.length === 0) { log("  좌표 있는 아파트 없음"); meta.phases.transport = { ok: false, reason: "no coords" }; return apartments; }
+
+  const h = { Authorization: `KakaoAK ${KAKAO_KEY}` };
+  const base = "https://dapi.kakao.com/v2/local/search/keyword.json";
+  let enriched = 0;
+
+  for (let i = 0; i < withCoords.length; i += 5) {
+    const batch = withCoords.slice(i, i + 5);
+    const results = await Promise.allSettled(batch.map(async (apt) => {
+      const [busRes, icRes, ktxRes] = await Promise.all([
+        fetch(`${base}?query=${encodeURIComponent("버스정류장")}&x=${apt.lng}&y=${apt.lat}&radius=500&size=15`, { headers: h })
+          .then(r => r.ok ? r.json() : { meta: { total_count: 0 } })
+          .then(d => d.meta?.total_count ?? 0)
+          .catch(() => 0),
+        fetch(`${base}?query=${encodeURIComponent("고속도로IC")}&x=${apt.lng}&y=${apt.lat}&radius=20000&sort=distance&size=1`, { headers: h })
+          .then(r => r.ok ? r.json() : { documents: [] })
+          .then(d => d.documents?.[0] ? Math.round(parseFloat(d.documents[0].distance) / 100) / 10 : 99)
+          .catch(() => 99),
+        fetch(`${base}?query=${encodeURIComponent("KTX")}&x=${apt.lng}&y=${apt.lat}&radius=30000&sort=distance&size=1`, { headers: h })
+          .then(r => r.ok ? r.json() : { documents: [] })
+          .then(d => d.documents?.[0] ? Math.round(parseFloat(d.documents[0].distance) / 100) / 10 : 99)
+          .catch(() => 99),
+      ]);
+      return { id: apt.id, busRoutes: busRes, icDist: icRes, ktxDist: ktxRes };
+    }));
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        const idx = apartments.findIndex(a => a.id === r.value.id);
+        if (idx >= 0) {
+          apartments[idx] = { ...apartments[idx], busRoutes: r.value.busRoutes, icDist: r.value.icDist, ktxDist: r.value.ktxDist };
+          enriched++;
+        }
+      }
+    }
+    if (i % 50 === 0 && i > 0) log(`  교통 진행: ${i}/${withCoords.length}`);
+  }
+  log(`  교통 보강: ${enriched}건`);
+  meta.phases.transport = { ok: true, enriched };
+  return apartments;
+}
+
+// ============================================================
+// Phase 7: 국토부 실거래가 (nearbyMedian, jeonseRate, recentTrades6m, pir)
+// ============================================================
+
+// 시도 → 법정동코드 앞 2자리 매핑
+const REGION_LAWD_PREFIX = {
+  "서울": "11", "부산": "26", "대구": "27", "인천": "28",
+  "광주": "29", "대전": "30", "울산": "31", "세종": "36",
+  "경기": "41", "강원": "42", "충북": "43", "충남": "44",
+  "전북": "45", "전남": "46", "경북": "47", "경남": "48", "제주": "50",
+};
+
+// 구/군 → 법정동코드 5자리 매핑 (주요 지역)
+const GU_LAWD_MAP = {
+  // 서울
+  "종로구": "11110", "중구": "11140", "용산구": "11170", "성동구": "11200", "광진구": "11215",
+  "동대문구": "11230", "중랑구": "11260", "성북구": "11290", "강북구": "11305", "도봉구": "11320",
+  "노원구": "11350", "은평구": "11380", "서대문구": "11410", "마포구": "11440", "양천구": "11470",
+  "강서구": "11500", "구로구": "11530", "금천구": "11545", "영등포구": "11560", "동작구": "11590",
+  "관악구": "11620", "서초구": "11650", "강남구": "11680", "송파구": "11710", "강동구": "11740",
+  // 부산
+  "중구": "26110", "서구": "26140", "동구": "26170", "영도구": "26200", "부산진구": "26230",
+  "동래구": "26260", "남구": "26290", "북구": "26320", "해운대구": "26350", "사하구": "26380",
+  "금정구": "26410", "강서구": "26440", "연제구": "26470", "수영구": "26500", "사상구": "26530",
+  "기장군": "26710",
+  // 인천
+  "중구": "28110", "동구": "28120", "미추홀구": "28177", "연수구": "28185", "남동구": "28200",
+  "부평구": "28237", "계양구": "28245", "서구": "28260", "강화군": "28710", "옹진군": "28720",
+  // 경기 주요
+  "수원시": "41110", "성남시": "41130", "의정부시": "41150", "안양시": "41170", "부천시": "41190",
+  "광명시": "41210", "평택시": "41220", "동두천시": "41250", "안산시": "41270", "고양시": "41280",
+  "과천시": "41290", "구리시": "41310", "남양주시": "41360", "오산시": "41370", "시흥시": "41390",
+  "군포시": "41410", "의왕시": "41430", "하남시": "41450", "용인시": "41460", "파주시": "41480",
+  "이천시": "41500", "안성시": "41550", "김포시": "41570", "화성시": "41590", "광주시": "41610",
+  "양주시": "41630", "포천시": "41650", "여주시": "41670",
+  // 대구
+  "중구": "27110", "동구": "27140", "서구": "27170", "남구": "27200", "북구": "27230",
+  "수성구": "27260", "달서구": "27290", "달성군": "27710",
+  // 대전
+  "동구": "30110", "중구": "30140", "서구": "30170", "유성구": "30200", "대덕구": "30230",
+  // 광주
+  "동구": "29110", "서구": "29140", "남구": "29155", "북구": "29170", "광산구": "29200",
+  // 울산
+  "중구": "31110", "남구": "31140", "동구": "31170", "북구": "31200", "울주군": "31710",
+  // 세종
+  "세종시": "36110",
+};
+
+async function phase7_realtrade(apartments) {
+  if (!DATA_GO_KEY) { log("Phase 7: DATA_GO_KEY 없음, 건너뜀"); meta.phases.realtrade = { ok: false, reason: "no key" }; return apartments; }
+  log("Phase 7: 실거래가 조회...");
+
+  // 아파트들의 고유 (region, gu) 조합 추출
+  const regionGuPairs = [...new Set(apartments.map(a => `${a.region}|${a.gu}`))].map(s => {
+    const [region, gu] = s.split("|");
+    return { region, gu };
+  }).filter(rg => rg.region && rg.gu);
+
+  // 법정동코드 매핑
+  function getLawdCd(region, gu) {
+    // 구/군 이름으로 직접 매핑 시도
+    if (GU_LAWD_MAP[gu]) return GU_LAWD_MAP[gu];
+    // 시 이름 시도 (경기도 등)
+    const shortGu = gu.replace(/시$|군$|구$/, "");
+    for (const [name, code] of Object.entries(GU_LAWD_MAP)) {
+      if (name.includes(shortGu)) return code;
+    }
+    // 시도 코드 + 000 (시도 전체)
+    const prefix = REGION_LAWD_PREFIX[region];
+    return prefix ? prefix + "000" : null;
+  }
+
+  // 최근 6개월 YYYYMM 생성
+  const months = [];
+  const now = new Date();
+  for (let m = 1; m <= 6; m++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
+    months.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  // 지역별 실거래 데이터 수집
+  const tradeData = {}; // { "region|gu": { trades: [{price, area}], rentPrices: [] } }
+  let apiCalls = 0;
+
+  for (const rg of regionGuPairs) {
+    const lawdCd = getLawdCd(rg.region, rg.gu);
+    if (!lawdCd) continue;
+    const key = `${rg.region}|${rg.gu}`;
+    if (tradeData[key]) continue;
+    tradeData[key] = { trades: [], rentPrices: [] };
+
+    // 매매 실거래가
+    for (const month of months) {
+      try {
+        const url = `http://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=${encodeURIComponent(DATA_GO_KEY)}&LAWD_CD=${lawdCd}&DEAL_YMD=${month}&pageNo=1&numOfRows=1000&type=json`;
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const json = await res.json();
+        const items = json.response?.body?.items?.item;
+        if (!items) continue;
+        const list = Array.isArray(items) ? items : [items];
+        for (const item of list) {
+          const price = parseInt(String(item.dealAmount || item["거래금액"] || "0").replace(/,/g, "").trim());
+          const area = parseFloat(item.excluUseAr || item["전용면적"] || 0);
+          if (price > 0 && area > 0) tradeData[key].trades.push({ price, area });
+        }
+        apiCalls++;
+      } catch { /* continue */ }
+    }
+
+    // 전월세 (전세만)
+    for (const month of months) {
+      try {
+        const url = `http://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent?serviceKey=${encodeURIComponent(DATA_GO_KEY)}&LAWD_CD=${lawdCd}&DEAL_YMD=${month}&pageNo=1&numOfRows=1000&type=json`;
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const json = await res.json();
+        const items = json.response?.body?.items?.item;
+        if (!items) continue;
+        const list = Array.isArray(items) ? items : [items];
+        for (const item of list) {
+          const deposit = parseInt(String(item.deposit || item["보증금액"] || "0").replace(/,/g, "").trim());
+          const monthlyRent = parseInt(String(item.monthlyRent || item["월세금액"] || "0").replace(/,/g, "").trim());
+          const area = parseFloat(item.excluUseAr || item["전용면적"] || 0);
+          if (deposit > 0 && monthlyRent === 0 && area > 0) tradeData[key].rentPrices.push({ deposit, area });
+        }
+        apiCalls++;
+      } catch { /* continue */ }
+    }
+
+    if (apiCalls % 100 === 0 && apiCalls > 0) log(`  실거래 API 호출: ${apiCalls}건`);
+  }
+  log(`  실거래 API 총 호출: ${apiCalls}건, ${Object.keys(tradeData).length}개 지역`);
+
+  // 아파트별 필드 계산
+  let enriched = 0;
+  apartments = apartments.map(a => {
+    const key = `${a.region}|${a.gu}`;
+    const td = tradeData[key];
+    if (!td || td.trades.length === 0) return a;
+
+    // 유사 면적 거래 필터 (±20㎡)
+    const aptArea = a.area || 84;
+    const similarTrades = td.trades.filter(t => Math.abs(t.area - aptArea) <= 20);
+    const tradesToUse = similarTrades.length >= 5 ? similarTrades : td.trades;
+
+    // nearbyMedian: 매매가 중앙값 (만원)
+    const sortedPrices = tradesToUse.map(t => t.price).sort((x, y) => x - y);
+    const nearbyMedian = sortedPrices[Math.floor(sortedPrices.length / 2)];
+
+    // recentTrades6m: 6개월 거래 건수
+    const recentTrades6m = td.trades.length;
+
+    // jeonseRate: 전세가율 (전세 중앙값 / 매매 중앙값 × 100)
+    let jeonseRate = null;
+    const similarRents = td.rentPrices.filter(t => Math.abs(t.area - aptArea) <= 20);
+    const rentsToUse = similarRents.length >= 3 ? similarRents : td.rentPrices;
+    if (rentsToUse.length > 0 && nearbyMedian > 0) {
+      const sortedRents = rentsToUse.map(t => t.deposit).sort((x, y) => x - y);
+      const medianRent = sortedRents[Math.floor(sortedRents.length / 2)];
+      jeonseRate = Math.round(medianRent / nearbyMedian * 100);
+    }
+
+    // pir: 분양가 / 지역 평균소득
+    let pir = null;
+    if (a.price && a._avgIncome && a._avgIncome > 0) {
+      pir = Math.round(a.price / (a._avgIncome / 10000) * 10) / 10; // 만원 기준
+    }
+
+    enriched++;
+    return {
+      ...a,
+      nearbyMedian: nearbyMedian ?? null,
+      recentTrades6m: recentTrades6m ?? null,
+      jeonseRate: jeonseRate ?? null,
+      pir: pir ?? null,
+    };
+  });
+
+  log(`  실거래 보강: ${enriched}건`);
+  meta.phases.realtrade = { ok: true, enriched, apiCalls };
+  return apartments;
+}
+
+// ============================================================
 // Main
 // ============================================================
 async function main() {
@@ -532,11 +822,13 @@ async function main() {
     process.exit(1);
   }
 
-  // Phase 2~5: 선택 (실패해도 계속)
+  // Phase 2~7: 선택 (실패해도 계속)
   apartments = await phase2_kosis(apartments);
   apartments = await phase3_kakao(apartments);
   apartments = await phase4_neis(apartments);
   apartments = await phase5_dart(apartments);
+  apartments = await phase6_transport(apartments);
+  apartments = await phase7_realtrade(apartments);
 
   // JSON 출력
   const outDir = resolve(ROOT, "public/data");
@@ -545,6 +837,9 @@ async function main() {
   const fetchedAt = new Date().toISOString();
   meta.fetchedAt = fetchedAt;
   meta.count = apartments.length;
+
+  // 내부 필드 제거
+  apartments = apartments.map(({ _regionalUnsold, _avgIncome, ...rest }) => rest);
 
   const output = { ok: true, data: apartments, count: apartments.length, fetchedAt };
   writeFileSync(resolve(outDir, "apartments.json"), JSON.stringify(output));
