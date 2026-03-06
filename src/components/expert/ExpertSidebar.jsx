@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, gr } from "@/theme";
 
-export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort }) {
+export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort, isMobile, onClose }) {
   const regions = useMemo(() => ["전체", ...new Set(scored.map(x => x.apt.region))], [scored]);
   const filtered = useMemo(() => {
     let list = scored;
@@ -14,7 +14,16 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
   }, [scored, search, regionFilter, sort]);
 
   return (
-    <div style={{ width: 280, flexShrink: 0, background: C.card, borderRight: `1px solid ${C.border}`, height: "100%", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+    <div style={{ width: isMobile ? "85vw" : 280, maxWidth: isMobile ? 320 : "none", flexShrink: 0, background: C.card, borderRight: `1px solid ${C.border}`, height: "100%", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+      {isMobile && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 12px 0" }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: C.text }}>단지 목록</span>
+          <button onClick={onClose} aria-label="사이드바 닫기" style={{
+            background: "none", border: "none", fontSize: 20, color: C.muted, cursor: "pointer",
+            minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center"
+          }}>&times;</button>
+        </div>
+      )}
       <div style={{ padding: "12px 12px 8px" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="단지명/지역 검색..." aria-label="단지 검색"
           style={{ width: "100%", padding: "8px 10px", fontSize: 12, border: `1px solid ${C.border}`, borderRadius: 6, outline: "none", boxSizing: "border-box" }} />
