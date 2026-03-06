@@ -127,18 +127,38 @@ async function phase1_applyhome() {
     `${APPLYHOME_BASE}/getAPTLttotPblancDetail`,
   ];
 
-  let items = null;
+  let items = [];
   let usedEndpoint = null;
   for (const ep of endpoints) {
     try {
-      const url = `${ep}?page=1&perPage=100&returnType=JSON&serviceKey=${encodeURIComponent(APPLYHOME_KEY)}`;
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const json = await res.json();
-      if (json.data?.length > 0) { items = json.data; usedEndpoint = ep; break; }
+      // 첫 페이지로 전체 건수 확인
+      const firstUrl = `${ep}?page=1&perPage=1000&returnType=JSON&serviceKey=${encodeURIComponent(APPLYHOME_KEY)}`;
+      const firstRes = await fetch(firstUrl);
+      if (!firstRes.ok) continue;
+      const firstJson = await firstRes.json();
+      if (!firstJson.data?.length) continue;
+      items = firstJson.data;
+      usedEndpoint = ep;
+      const totalCount = firstJson.matchCount || firstJson.totalCount || 0;
+      // 추가 페이지 fetch
+      if (totalCount > 1000) {
+        const totalPages = Math.ceil(totalCount / 1000);
+        for (let page = 2; page <= totalPages; page++) {
+          try {
+            const url = `${ep}?page=${page}&perPage=1000&returnType=JSON&serviceKey=${encodeURIComponent(APPLYHOME_KEY)}`;
+            const res = await fetch(url);
+            if (!res.ok) break;
+            const json = await res.json();
+            if (!json.data?.length) break;
+            items = items.concat(json.data);
+          } catch { break; }
+        }
+      }
+      log(`  총 ${totalCount}건 중 ${items.length}건 수신`);
+      break;
     } catch { continue; }
   }
-  if (!items) throw new Error("청약홈 API에서 데이터를 가져올 수 없습니다");
+  if (!items.length) throw new Error("청약홈 API에서 데이터를 가져올 수 없습니다");
 
   const isRemndr = usedEndpoint.includes("getRemndr");
   let apartments = items.map((item, i) => mapItem(item, i, isRemndr)).filter(a => a.region && a.name);
