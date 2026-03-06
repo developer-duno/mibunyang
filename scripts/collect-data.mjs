@@ -247,10 +247,11 @@ const KOSIS_REGION_MAP = {
   "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
   "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
   "울산광역시": "울산", "세종특별자치시": "세종",
-  "경기도": "경기", "강원도": "강원",
+  "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원",
   "충청북도": "충북", "충청남도": "충남",
-  "전라북도": "전북", "전라남도": "전남",
-  "경상북도": "경북", "경상남도": "경남", "제주도": "제주",
+  "전라북도": "전북", "전북특별자치도": "전북", "전라남도": "전남",
+  "경상북도": "경북", "경상남도": "경남",
+  "제주도": "제주", "제주특별자치도": "제주",
 };
 
 async function phase2_kosis(apartments) {
@@ -285,60 +286,46 @@ async function phase2_kosis(apartments) {
       }
     }
 
-    // 인구증감률 조회 (시도별 인구, orgId=101, tblId=DT_1B040A01)
+    // 인구증감률 조회 (인구동향 DT_1B8000G 월간 - 자연증가율 천명당)
     const popGrowthMap = {};
     try {
+      const now = new Date();
+      const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const startMonth = `${now.getFullYear() - 1}01`;
       const popParams = new URLSearchParams({
-        method: "getList", apiKey: KOSIS_KEY, itmId: "T2", format: "json", jsonVD: "Y",
-        prdSe: "A", startPrdDe: startYear, endPrdDe: latestYear, orgId: "101", tblId: "DT_1B040A01",
-        objL1: "ALL", objL2: " ",
+        method: "getList", apiKey: KOSIS_KEY, itmId: "ALL", format: "json", jsonVD: "Y",
+        prdSe: "M", startPrdDe: startMonth, endPrdDe: endMonth,
+        orgId: "101", tblId: "DT_1B8000G",
+        objL1: "ALL", objL2: "ALL",
       });
       const popRes = await fetch(`https://kosis.kr/openapi/Param/statisticsParameterData.do?${popParams}`);
       if (popRes.ok) {
         const popData = await popRes.json();
         const popRows = Array.isArray(popData) ? popData : [];
-        const popByRegionYear = {};
+        // 자연증가율(천명당) 직접 사용 - 최신 연도 평균
+        const rateByRegion = {};
         for (const row of popRows) {
+          if (row.C2_NM !== "자연증가율(천명당)") continue;
+          if (row.C1_NM === "전국") continue;
           const region = KOSIS_REGION_MAP[row.C1_NM];
           if (!region) continue;
           const val = parseFloat(row.DT);
           if (isNaN(val)) continue;
-          if (!popByRegionYear[region]) popByRegionYear[region] = {};
-          popByRegionYear[region][row.PRD_DE] = val;
+          if (!rateByRegion[region]) rateByRegion[region] = [];
+          rateByRegion[region].push(val);
         }
-        for (const [region, years] of Object.entries(popByRegionYear)) {
-          const sortedYears = Object.keys(years).sort();
-          if (sortedYears.length >= 2) {
-            const prev = years[sortedYears[sortedYears.length - 2]];
-            const curr = years[sortedYears[sortedYears.length - 1]];
-            if (prev > 0) popGrowthMap[region] = Math.round((curr - prev) / prev * 1000) / 10;
-          }
+        for (const [region, vals] of Object.entries(rateByRegion)) {
+          // 월별 자연증가율 평균 → popGrowth (‰ → % 변환: /10)
+          const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+          popGrowthMap[region] = Math.round(avg * 10) / 10; // 천명당 → 그대로 사용 (scoring에서 ‰ 기준)
         }
         log(`  인구증감: ${Object.keys(popGrowthMap).length}개 지역`);
       }
     } catch (e) { logError("kosis-pop", e.message); }
 
-    // 평균소득 조회 (시도별 가구소득, orgId=101, tblId=DT_1YL15001E)
+    // 평균소득 - KOSIS에서 적절한 테이블을 찾지 못함, 향후 추가
     const incomeMap = {};
-    try {
-      const incParams = new URLSearchParams({
-        method: "getList", apiKey: KOSIS_KEY, itmId: "ALL", format: "json", jsonVD: "Y",
-        prdSe: "A", startPrdDe: latestYear, endPrdDe: latestYear, orgId: "101", tblId: "DT_1YL15001E",
-        objL1: "ALL", objL2: " ",
-      });
-      const incRes = await fetch(`https://kosis.kr/openapi/Param/statisticsParameterData.do?${incParams}`);
-      if (incRes.ok) {
-        const incData = await incRes.json();
-        const incRows = Array.isArray(incData) ? incData : [];
-        for (const row of incRows) {
-          const region = KOSIS_REGION_MAP[row.C1_NM];
-          if (!region) continue;
-          const val = parseFloat(row.DT);
-          if (!isNaN(val) && val > 0) incomeMap[region] = val;
-        }
-        log(`  평균소득: ${Object.keys(incomeMap).length}개 지역`);
-      }
-    } catch (e) { logError("kosis-income", e.message); }
+    log(`  평균소득: KOSIS 테이블 미확인, 건너뜀`);
 
     apartments = apartments.map(a => ({
       ...a,
@@ -712,39 +699,40 @@ async function phase7_realtrade(apartments) {
     if (tradeData[key]) continue;
     tradeData[key] = { trades: [], rentPrices: [] };
 
-    // 매매 실거래가
+    // 매매 실거래가 (일반 API - XML 응답)
     for (const month of months) {
       try {
-        const url = `http://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=${encodeURIComponent(DATA_GO_KEY)}&LAWD_CD=${lawdCd}&DEAL_YMD=${month}&pageNo=1&numOfRows=1000&type=json`;
+        const url = `https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?serviceKey=${DATA_GO_KEY}&LAWD_CD=${lawdCd}&DEAL_YMD=${month}&pageNo=1&numOfRows=1000`;
         const res = await fetch(url);
-        if (!res.ok) continue;
-        const json = await res.json();
-        const items = json.response?.body?.items?.item;
-        if (!items) continue;
-        const list = Array.isArray(items) ? items : [items];
-        for (const item of list) {
-          const price = parseInt(String(item.dealAmount || item["거래금액"] || "0").replace(/,/g, "").trim());
-          const area = parseFloat(item.excluUseAr || item["전용면적"] || 0);
+        if (!res.ok) {
+          if (apiCalls === 0) log(`  매매 API ${res.status}: ${lawdCd}/${month}`);
+          continue;
+        }
+        const text = await res.text();
+        const matches = [...text.matchAll(/<item>[\s\S]*?<\/item>/g)];
+        for (const m of matches) {
+          const getTag = (tag) => { const r = m[0].match(new RegExp(`<${tag}>([^<]*)</${tag}>`)); return r ? r[1].trim() : ""; };
+          const price = parseInt((getTag("dealAmount") || "0").replace(/,/g, ""));
+          const area = parseFloat(getTag("excluUseAr") || "0");
           if (price > 0 && area > 0) tradeData[key].trades.push({ price, area });
         }
         apiCalls++;
       } catch { /* continue */ }
     }
 
-    // 전월세 (전세만)
+    // 전월세 - Dev API 시도 (403이면 스킵)
     for (const month of months) {
       try {
-        const url = `http://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent?serviceKey=${encodeURIComponent(DATA_GO_KEY)}&LAWD_CD=${lawdCd}&DEAL_YMD=${month}&pageNo=1&numOfRows=1000&type=json`;
+        const url = `https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent?serviceKey=${DATA_GO_KEY}&LAWD_CD=${lawdCd}&DEAL_YMD=${month}&pageNo=1&numOfRows=1000`;
         const res = await fetch(url);
         if (!res.ok) continue;
-        const json = await res.json();
-        const items = json.response?.body?.items?.item;
-        if (!items) continue;
-        const list = Array.isArray(items) ? items : [items];
-        for (const item of list) {
-          const deposit = parseInt(String(item.deposit || item["보증금액"] || "0").replace(/,/g, "").trim());
-          const monthlyRent = parseInt(String(item.monthlyRent || item["월세금액"] || "0").replace(/,/g, "").trim());
-          const area = parseFloat(item.excluUseAr || item["전용면적"] || 0);
+        const text = await res.text();
+        const matches = [...text.matchAll(/<item>[\s\S]*?<\/item>/g)];
+        for (const m of matches) {
+          const getTag = (tag) => { const r = m[0].match(new RegExp(`<${tag}>([^<]*)</${tag}>`)); return r ? r[1].trim() : ""; };
+          const deposit = parseInt((getTag("deposit") || "0").replace(/,/g, ""));
+          const monthlyRent = parseInt((getTag("monthlyRent") || "0").replace(/,/g, ""));
+          const area = parseFloat(getTag("excluUseAr") || "0");
           if (deposit > 0 && monthlyRent === 0 && area > 0) tradeData[key].rentPrices.push({ deposit, area });
         }
         apiCalls++;
