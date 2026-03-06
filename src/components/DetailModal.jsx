@@ -16,8 +16,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
   return (
     <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, zIndex: 300, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
-      <div style={{ background: C.card, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 520, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 -8px 30px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
-        <div style={{ flexShrink: 0, padding: "12px 16px 0" }}>
+      <div style={{ background: C.card, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 520, maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 -8px 30px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
+        <div style={{ flexShrink: 0, padding: "12px 16px 0", borderBottom: `1px solid ${C.border}`, background: C.card }}>
           <div onClick={onClose} style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: "0 auto 12px", cursor: "pointer" }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div>
