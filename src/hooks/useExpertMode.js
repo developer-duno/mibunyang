@@ -2,11 +2,12 @@ import { useState, useCallback } from "react";
 
 export function useExpertMode(showToast) {
   const [expertPw, setExpertPw] = useState("");
-  const [expertLoggedIn, setExpertLoggedIn] = useState(false);
+  const [expertLoggedIn, setExpertLoggedIn] = useState(() => sessionStorage.getItem("expertLoggedIn") === "true");
   const [expertExpandedApt, setExpertExpandedApt] = useState(null);
   const handleExpertLogin = useCallback(() => {
     if (expertPw === "expert2024") {
       setExpertLoggedIn(true);
+      sessionStorage.setItem("expertLoggedIn", "true");
       setExpertPw("");
       showToast("전문가 모드로 전환되었습니다");
       return true;
@@ -16,6 +17,7 @@ export function useExpertMode(showToast) {
   }, [expertPw, showToast]);
   const handleExpertLogout = useCallback((onLogout) => {
     setExpertLoggedIn(false);
+    sessionStorage.removeItem("expertLoggedIn");
     setExpertExpandedApt(null);
     setExpertPw("");
     onLogout?.();

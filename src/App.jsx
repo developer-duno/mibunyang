@@ -20,7 +20,7 @@ import { useApartmentData } from "@/hooks/useApartmentData";
 
 export default function App() {
   const [profile, setProfile] = useState("live");
-  const [tab, setTab] = useState("list");
+  const [tab, setTab] = useState(() => sessionStorage.getItem("expertLoggedIn") === "true" ? "expert" : "list");
 
   // 7 custom hooks
   const { toast, showToast } = useToast();
