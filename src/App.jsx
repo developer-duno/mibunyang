@@ -97,9 +97,9 @@ export default function App() {
     }
   };
 
-  const handleExpertLogout = () => {
+  const handleExpertLogout = useCallback(() => {
     expert.handleExpertLogout(() => { setTab("list"); setShowCompOpen(false); });
-  };
+  }, [expert.handleExpertLogout, setShowCompOpen]);
 
   const handleNavClick = useCallback((k) => {
     if (k === "logout") return handleExpertLogout();
@@ -121,7 +121,7 @@ export default function App() {
       }
     }
     setTab(k);
-  }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen, consult, budgetMin, budgetMax]);
+  }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen, consult.consultSubmitted, consult.setConsultSubmitted, consult.setConsultForm, budgetMin, budgetMax]);
 
   // verify 실패 시 admin 상태 동기화 (양방향)
   useEffect(() => {

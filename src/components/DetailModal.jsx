@@ -115,28 +115,33 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           </div>
         )}
 
-        {(apt.nearbySchools ?? []).length > 0 && (
-          <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>학군 정보</span>
-              {apt.schoolGrade && <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: apt.schoolGrade === "최우수" ? C.greenLight : apt.schoolGrade === "우수" ? C.blueLight : C.slate100, color: apt.schoolGrade === "최우수" ? C.green : apt.schoolGrade === "우수" ? C.blue : C.muted }}>{apt.schoolGrade}</span>}
+        {(apt.nearbySchools ?? []).length > 0 && (() => {
+          const schools = apt.nearbySchools;
+          const hasFounded = schools.some(s => s.founded);
+          const hasClasses = schools.some(s => s.classes);
+          return (
+            <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>학군 정보</span>
+                {apt.schoolGrade && <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: apt.schoolGrade === "최우수" ? C.greenLight : apt.schoolGrade === "우수" ? C.blueLight : C.slate100, color: apt.schoolGrade === "최우수" ? C.green : apt.schoolGrade === "우수" ? C.blue : C.muted }}>{apt.schoolGrade}</span>}
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>
+                  <th style={thStyle}>학교명</th><th style={thStyle}>구분</th><th style={{ ...thStyle, textAlign: "right" }}>도보거리</th>{hasFounded && <th style={thStyle}>설립</th>}{hasClasses && <th style={{ ...thStyle, textAlign: "right" }}>학급수</th>}
+                </tr></thead>
+                <tbody>{schools.map((s, i) => (
+                  <tr key={i}>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{s.name}</td>
+                    <td style={tdStyle}>{s.type}</td>
+                    <td style={{ ...tdStyle, textAlign: "right", color: s.distance <= 500 ? C.green : s.distance <= 1000 ? C.blue : C.muted }}>{s.distance >= 1000 ? `${(s.distance / 1000).toFixed(1)}km` : `${s.distance}m`}</td>
+                    {hasFounded && <td style={tdStyle}>{s.founded || "-"}</td>}
+                    {hasClasses && <td style={{ ...tdStyle, textAlign: "right" }}>{s.classes ? `${s.classes}학급` : "-"}</td>}
+                  </tr>
+                ))}</tbody>
+              </table>
             </div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr>
-                <th style={thStyle}>학교명</th><th style={thStyle}>구분</th><th style={{ ...thStyle, textAlign: "right" }}>도보거리</th>{(apt.nearbySchools ?? []).some(s => s.founded) && <th style={thStyle}>설립</th>}{(apt.nearbySchools ?? []).some(s => s.classes) && <th style={{ ...thStyle, textAlign: "right" }}>학급수</th>}
-              </tr></thead>
-              <tbody>{(apt.nearbySchools ?? []).map((s, i) => (
-                <tr key={i}>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>{s.name}</td>
-                  <td style={tdStyle}>{s.type}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: s.distance <= 500 ? C.green : s.distance <= 1000 ? C.blue : C.muted }}>{s.distance >= 1000 ? `${(s.distance / 1000).toFixed(1)}km` : `${s.distance}m`}</td>
-                  {(apt.nearbySchools ?? []).some(x => x.founded) && <td style={tdStyle}>{s.founded || "-"}</td>}
-                  {(apt.nearbySchools ?? []).some(x => x.classes) && <td style={{ ...tdStyle, textAlign: "right" }}>{s.classes ? `${s.classes}학급` : "-"}</td>}
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        )}
+          );
+        })()}
 
         {(() => {
           const rates = LTV_RATES[zone];
@@ -181,7 +186,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
                       <td style={{ ...tdStyle, fontWeight: 600 }}>{r.area}㎡</td>
                       <td style={tdStyle}>{fmtPrice(r.min)}</td>
                       <td style={tdStyle}>{r.rentAvg ? fmtPrice(r.rentAvg) : "-"}</td>
-                      <td style={{ ...tdStyle, color: r.gap != null ? (r.gap > 0 ? C.red : C.green) : C.muted }}>{r.gap != null ? (r.gap > 0 ? "+" : "-") + fmtPrice(Math.abs(r.gap)) : "-"}</td>
+                      <td style={{ ...tdStyle, color: r.gap != null ? (r.gap > 0 ? C.red : C.green) : C.muted }}>{r.gap != null ? (r.gap === 0 ? "0만" : (r.gap > 0 ? "+" : "-") + fmtPrice(Math.abs(r.gap))) : "-"}</td>
                       <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: C.blue }}>{fmtPrice(r.ltv)}</td>
                     </tr>
                   ))}</tbody>
