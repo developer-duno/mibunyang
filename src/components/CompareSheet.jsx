@@ -1,12 +1,16 @@
 import { memo } from "react";
 import { C, catCol, gr } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
-
-const fmtPrice = (v) => v >= 10000 ? `${(v / 10000).toFixed(1)}억` : v > 0 ? `${v.toLocaleString()}만` : "-";
+import { fmtPrice } from "@/lib/format";
 
 export const CompareSheet = memo(function CompareSheet({ items, onShare }) {
   if (items.length < 2) return null;
   const cats = Object.keys(items[0].res.cats);
+  const zoneData = items.map(it => {
+    const z = getZone(it.apt.region, it.apt.gu);
+    const ltv = calcLTV(it.apt.price, z);
+    return { zone: z, ltv, needCash: it.apt.price - ltv };
+  });
   return (
     <div style={{ background: C.card, border: `1.5px solid ${C.blueBorder}`, borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -50,21 +54,21 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare }) {
             </tr>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
               <td style={{ padding: "8px 6px", color: C.sub, fontSize: 11 }}>규제현황</td>
-              {items.map((it, i) => { const z = getZone(it.apt.region, it.apt.gu); return (
-                <td key={i} style={{ textAlign: "center", padding: "8px 6px", fontWeight: 600, color: z === "normal" ? C.green : C.red }}>{ZONE_TYPE[z]}</td>
-              ); })}
+              {zoneData.map((d, i) => (
+                <td key={i} style={{ textAlign: "center", padding: "8px 6px", fontWeight: 600, color: d.zone === "normal" ? C.green : C.red }}>{ZONE_TYPE[d.zone]}</td>
+              ))}
             </tr>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
               <td style={{ padding: "8px 6px", color: C.sub, fontSize: 11 }}>LTV한도</td>
-              {items.map((it, i) => { const ltv = calcLTV(it.apt.price, getZone(it.apt.region, it.apt.gu)); return (
-                <td key={i} style={{ textAlign: "center", padding: "8px 6px", fontWeight: 600, color: C.blue }}>{fmtPrice(ltv)}</td>
-              ); })}
+              {zoneData.map((d, i) => (
+                <td key={i} style={{ textAlign: "center", padding: "8px 6px", fontWeight: 600, color: C.blue }}>{fmtPrice(d.ltv)}</td>
+              ))}
             </tr>
             <tr>
               <td style={{ padding: "8px 6px", color: C.sub, fontSize: 11 }}>필요자본</td>
-              {items.map((it, i) => { const z = getZone(it.apt.region, it.apt.gu); const need = it.apt.price - calcLTV(it.apt.price, z); return (
-                <td key={i} style={{ textAlign: "center", padding: "8px 6px", fontWeight: 700, color: C.red }}>{fmtPrice(need)}</td>
-              ); })}
+              {zoneData.map((d, i) => (
+                <td key={i} style={{ textAlign: "center", padding: "8px 6px", fontWeight: 700, color: C.red }}>{fmtPrice(d.needCash)}</td>
+              ))}
             </tr>
           </tbody>
         </table>

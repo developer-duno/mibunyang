@@ -3,8 +3,7 @@ import { C, catCol, catBg, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE, LTV_RATES } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
 import { CatPanel } from "./CatPanel";
-
-const fmtPrice = (v) => v >= 10000 ? `${(v / 10000).toFixed(1)}억` : v > 0 ? `${v.toLocaleString()}만` : "-";
+import { fmtPrice } from "@/lib/format";
 const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
 const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
