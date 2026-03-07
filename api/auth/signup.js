@@ -22,8 +22,8 @@ export default async function handler(req, res) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ ok: false, error: "올바른 이메일 형식이 아닙니다" });
   }
-  if (password.length < 8) {
-    return res.status(400).json({ ok: false, error: "비밀번호는 8자 이상이어야 합니다" });
+  if (password.length < 8 || password.length > 128) {
+    return res.status(400).json({ ok: false, error: "비밀번호는 8자 이상 128자 이하여야 합니다" });
   }
   if (name.length > 50 || (affiliation && affiliation.length > 100)) {
     return res.status(400).json({ ok: false, error: "입력값이 너무 깁니다" });

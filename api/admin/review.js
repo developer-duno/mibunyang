@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   }
 
   const { email, action, note } = req.body || {};
-  if (!email || !["approve", "reject"].includes(action)) {
+  if (!email || typeof email !== "string" || !["approve", "reject"].includes(action)) {
     return res.status(400).json({ ok: false, error: "이메일과 승인/거부 액션이 필요합니다" });
   }
 

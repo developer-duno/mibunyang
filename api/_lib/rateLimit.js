@@ -14,7 +14,7 @@ export async function checkRateLimit(req, endpoint) {
     }
     return { limited: false };
   } catch {
-    // rate limit 체크 실패 시 요청 허용 (가용성 우선)
-    return { limited: false };
+    // Redis 장애 시 fail-close (보안 우선)
+    return { limited: true, retryAfter: WINDOW_SEC };
   }
 }
