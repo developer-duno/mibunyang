@@ -20,7 +20,7 @@ import { useApartmentData } from "@/hooks/useApartmentData";
 
 export default function App() {
   const [profile, setProfile] = useState("live");
-  const [tab, setTab] = useState(() => sessionStorage.getItem("expertLoggedIn") === "true" ? "expert" : "list");
+  const [tab, setTab] = useState(() => sessionStorage.getItem("expertToken") ? "expert" : "list");
 
   // 7 custom hooks
   const { toast, showToast } = useToast();
@@ -62,8 +62,8 @@ export default function App() {
   const containerMaxWidth = expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults") ? 1200 : 520;
 
   // handleExpertLogin wrapper (setTab is in App scope)
-  const handleExpertLogin = () => {
-    if (expert.handleExpertLogin()) {
+  const handleExpertLogin = async () => {
+    if (await expert.handleExpertLogin()) {
       setTab("expert");
     }
   };
@@ -270,28 +270,84 @@ export default function App() {
       ) : tab === "expertLogin" ? (
         <div style={{ padding: "0 16px" }}>
           <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>전문가 전용 페이지</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>파트너 전문가 전용 대시보드입니다</div>
-            <div style={{ fontSize: 11, color: C.muted, background: C.slate100, borderRadius: 6, padding: "8px 12px", marginBottom: 20 }}>
-              * 데모 버전 — 비밀번호: expert2024
+            <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+              {expert.authMode === "login" ? "전문가 로그인" : "전문가 회원가입"}
             </div>
-            <form onSubmit={e => { e.preventDefault(); handleExpertLogin(); }}>
-              <div style={{ marginBottom: 16 }}>
-                <label htmlFor="expert-pw" style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6, display: "block" }}>비밀번호</label>
-                <input id="expert-pw" type="password" autoComplete="current-password" value={expert.expertPw} onChange={e => expert.setExpertPw(e.target.value)}
-                  placeholder="비밀번호 입력" style={{
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>
+              {expert.authMode === "login" ? "파트너 전문가 전용 대시보드입니다" : "전문가 계정을 생성합니다"}
+            </div>
+
+            {expert.authError && (
+              <div style={{ fontSize: 12, color: C.red, background: C.redLight, borderRadius: 6, padding: "8px 12px", marginBottom: 16 }}>
+                {expert.authError}
+              </div>
+            )}
+
+            <form onSubmit={e => {
+              e.preventDefault();
+              if (expert.authMode === "login") handleExpertLogin();
+              else expert.handleExpertSignup();
+            }}>
+              <div style={{ marginBottom: 12 }}>
+                <label htmlFor="expert-email" style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" }}>이메일</label>
+                <input id="expert-email" type="email" autoComplete="email" value={expert.authForm.email}
+                  onChange={e => expert.setAuthForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="이메일 입력" style={{
                     width: "100%", padding: "10px 12px", fontSize: 13, border: `1px solid ${C.border}`, borderRadius: 6,
-                    background: C.white, color: C.text, boxSizing: "border-box", minHeight: 42, textAlign: "center"
+                    background: C.white, color: C.text, boxSizing: "border-box", minHeight: 42
                   }} />
               </div>
-              <button type="submit" style={{
-                width: "100%", padding: "12px", fontSize: 14, fontWeight: 800, color: C.white, background: C.indigo,
-                border: "none", borderRadius: 6, cursor: "pointer", minHeight: 44, marginBottom: 12
-              }}>로그인</button>
+              <div style={{ marginBottom: 12 }}>
+                <label htmlFor="expert-pw" style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" }}>비밀번호{expert.authMode === "signup" ? " (8자 이상)" : ""}</label>
+                <input id="expert-pw" type="password" autoComplete={expert.authMode === "login" ? "current-password" : "new-password"}
+                  value={expert.authForm.password}
+                  onChange={e => expert.setAuthForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder="비밀번호 입력" style={{
+                    width: "100%", padding: "10px 12px", fontSize: 13, border: `1px solid ${C.border}`, borderRadius: 6,
+                    background: C.white, color: C.text, boxSizing: "border-box", minHeight: 42
+                  }} />
+              </div>
+
+              {expert.authMode === "signup" && (
+                <>
+                  <div style={{ marginBottom: 12 }}>
+                    <label htmlFor="expert-name" style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" }}>이름</label>
+                    <input id="expert-name" type="text" autoComplete="name" value={expert.authForm.name}
+                      onChange={e => expert.setAuthForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="이름 입력" style={{
+                        width: "100%", padding: "10px 12px", fontSize: 13, border: `1px solid ${C.border}`, borderRadius: 6,
+                        background: C.white, color: C.text, boxSizing: "border-box", minHeight: 42
+                      }} />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label htmlFor="expert-affil" style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" }}>소속 (선택)</label>
+                    <input id="expert-affil" type="text" autoComplete="organization" value={expert.authForm.affiliation}
+                      onChange={e => expert.setAuthForm(f => ({ ...f, affiliation: e.target.value }))}
+                      placeholder="부동산 사무소명 등" style={{
+                        width: "100%", padding: "10px 12px", fontSize: 13, border: `1px solid ${C.border}`, borderRadius: 6,
+                        background: C.white, color: C.text, boxSizing: "border-box", minHeight: 42
+                      }} />
+                  </div>
+                </>
+              )}
+
+              <button type="submit" disabled={expert.authLoading} style={{
+                width: "100%", padding: "12px", fontSize: 14, fontWeight: 800, color: C.white,
+                background: expert.authLoading ? C.muted : C.indigo,
+                border: "none", borderRadius: 6, cursor: expert.authLoading ? "default" : "pointer",
+                minHeight: 44, marginBottom: 12, transition: "background .15s"
+              }}>{expert.authLoading ? "처리 중..." : expert.authMode === "login" ? "로그인" : "회원가입"}</button>
             </form>
-            <button onClick={() => setTab("info")} style={{
-              background: "transparent", border: "none", color: C.muted, fontSize: 12, cursor: "pointer"
-            }}>돌아가기</button>
+
+            <button onClick={() => { expert.setAuthMode(expert.authMode === "login" ? "signup" : "login"); expert.setAuthForm({ email: "", password: "", name: "", affiliation: "" }); }} style={{
+              background: "transparent", border: "none", color: C.indigo, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 8
+            }}>{expert.authMode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}</button>
+
+            <div>
+              <button onClick={() => setTab("info")} style={{
+                background: "transparent", border: "none", color: C.muted, fontSize: 12, cursor: "pointer"
+              }}>돌아가기</button>
+            </div>
           </div>
         </div>
       ) : tab === "expert" ? (
