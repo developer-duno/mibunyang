@@ -263,11 +263,10 @@ export function scoreFuture(apt) {
   };
 }
 
-export function calcAll(apt, profile) {
+export function calcCats(apt) {
   const a = sanitize(apt);
-  const w = PROFILES[profile]?.w || PROFILES.live.w;
   const safe = (fn) => { try { return fn(); } catch { return { total: 0, subs: [] }; } };
-  const cats = {
+  return {
     price: { ...safe(() => scorePrice(a)), label: "가격 매력도", key: "price" },
     location: { ...safe(() => scoreLocation(a)), label: "입지·생활권", key: "location" },
     product: { ...safe(() => scoreProduct(a)), label: "상품성", key: "product" },
@@ -275,6 +274,11 @@ export function calcAll(apt, profile) {
     risk: { ...safe(() => scoreRisk(a)), label: "안전도", key: "risk" },
     future: { ...safe(() => scoreFuture(a)), label: "미래가치", key: "future" },
   };
+}
+
+export function calcAll(apt, profile) {
+  const w = PROFILES[profile]?.w || PROFILES.live.w;
+  const cats = calcCats(apt);
   const total = Object.keys(cats).reduce((s, k) => s + cats[k].total * w[k] / 100, 0);
   return { total: Math.round(Math.min(total, 100)), cats, weights: w };
 }

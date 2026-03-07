@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
-import { calcAll } from "@/scoring/engine";
+import { calcCats } from "@/scoring/engine";
 import { C, catCol, catBg, gr } from "@/theme";
 import { Bar, ScoreBadge } from "@/components/primitives";
 import { AptCard } from "@/components/AptCard";
@@ -54,13 +54,14 @@ export default function App() {
     return ["전체", ...regionGus];
   }, [filterRegion, apartments]);
 
-  const scoredCache = useMemo(() => new Map(), [apartments]);
+  const catsCache = useMemo(() => apartments.map(a => ({ apt: a, cats: calcCats(a) })), [apartments]);
   const scored = useMemo(() => {
-    if (scoredCache.has(profile)) return scoredCache.get(profile);
-    const result = apartments.map(a => ({ apt: a, res: calcAll(a, profile) }));
-    scoredCache.set(profile, result);
-    return result;
-  }, [apartments, profile, scoredCache]);
+    const w = PROFILES[profile].w;
+    return catsCache.map(({ apt, cats }) => {
+      const total = Math.round(Math.min(Object.keys(cats).reduce((s, k) => s + cats[k].total * w[k] / 100, 0), 100));
+      return { apt, res: { total, cats, weights: w } };
+    });
+  }, [catsCache, profile]);
   const filtered = useMemo(() => {
     let list = scored;
     if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
@@ -252,39 +253,39 @@ export default function App() {
               )}
             </div>
 
-            <div data-no-print style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
+            <div data-no-print style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               <select value={filterRegion} onChange={e => handleRegionChange(e.target.value)} aria-label="시/도 선택" style={{
-                flex: 1, padding: "6px 22px 6px 8px", fontSize: 12, fontWeight: filterRegion !== "전체" ? 700 : 500,
+                flex: "1 1 45%", padding: "7px 28px 7px 12px", fontSize: 13, fontWeight: filterRegion !== "전체" ? 700 : 500,
                 border: filterRegion !== "전체" ? `1.5px solid ${C.indigo}` : "none", borderRadius: 6, background: C.slate100,
-                color: filterRegion !== "전체" ? C.indigo : C.slate600, cursor: "pointer", minHeight: 36,
+                color: filterRegion !== "전체" ? C.indigo : C.slate600, cursor: "pointer", minHeight: 38,
                 WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center"
               }}>
                 {regionOptions.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
               <select value={filterGu} onChange={e => handleGuChange(e.target.value)} aria-label="구/군 선택" disabled={filterRegion === "전체" || guOptions.length <= 1} style={{
-                flex: 1, padding: "6px 22px 6px 8px", fontSize: 12, fontWeight: filterGu !== "전체" ? 700 : 500,
+                flex: "1 1 45%", padding: "7px 28px 7px 12px", fontSize: 13, fontWeight: filterGu !== "전체" ? 700 : 500,
                 border: filterGu !== "전체" ? `1.5px solid ${C.indigo}` : "none", borderRadius: 6,
                 background: (filterRegion === "전체" || guOptions.length <= 1) ? "#E2E8F0" : C.slate100,
                 color: (filterRegion === "전체" || guOptions.length <= 1) ? "#94A3B8" : filterGu !== "전체" ? C.indigo : C.slate600,
-                cursor: (filterRegion === "전체" || guOptions.length <= 1) ? "default" : "pointer", minHeight: 36,
+                cursor: (filterRegion === "전체" || guOptions.length <= 1) ? "default" : "pointer", minHeight: 38,
                 WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center"
               }}>
                 {guOptions.map(g2 => <option key={g2} value={g2}>{g2}</option>)}
               </select>
               <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => handleBudgetMinChange(e.target.value)} placeholder="최소(억)" aria-label="최소 예산(억)"
-                style={{ flex: 1, minWidth: 0, padding: "6px 8px", fontSize: 12, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 36, boxSizing: "border-box", background: C.slate100 }} />
-              <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>~</span>
+                style={{ flex: "1 1 30%", minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 38, boxSizing: "border-box", background: C.slate100 }} />
+              <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>~</span>
               <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMax} onChange={e => handleBudgetMaxChange(e.target.value)} placeholder="최대(억)" aria-label="최대 예산(억)"
-                style={{ flex: 1, minWidth: 0, padding: "6px 8px", fontSize: 12, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 36, boxSizing: "border-box", background: C.slate100 }} />
-              <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>억</span>
+                style={{ flex: "1 1 30%", minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 38, boxSizing: "border-box", background: C.slate100 }} />
+              <span style={{ fontSize: 12, color: C.muted, flexShrink: 0 }}>억</span>
               {(budgetMin || budgetMax) && (
                 <button onClick={handleBudgetReset} aria-label="예산 초기화" style={{
-                  background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 6px", fontSize: 11, color: C.muted,
-                  cursor: "pointer", minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                  background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", fontSize: 12, color: C.muted,
+                  cursor: "pointer", minWidth: 38, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
                 }}>✕</button>
               )}
             </div>
