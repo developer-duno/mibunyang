@@ -16,7 +16,7 @@ const SPECIALTY_BADGE = {
   "기타": { color: C.muted, bg: C.slate100 },
 };
 
-export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout }) {
+export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert }) {
   return (
     <div style={{ padding: "0 16px" }}>
       {/* Header */}
@@ -25,10 +25,18 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout }) 
           <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>전문가 신청 관리</div>
           <div style={{ fontSize: 11, color: C.muted }}>{admin.users.length}건</div>
         </div>
-        <button onClick={() => admin.handleAdminLogout(onLogout)} style={{
-          background: C.redLight, color: C.red, border: `1px solid #FECACA`, borderRadius: 6,
-          padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer"
-        }}>로그아웃</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          {onSwitchToExpert && (
+            <button onClick={onSwitchToExpert} style={{
+              background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 6,
+              padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+            }}>전문가 보기</button>
+          )}
+          <button onClick={() => admin.handleAdminLogout(onLogout)} style={{
+            background: C.redLight, color: C.red, border: `1px solid #FECACA`, borderRadius: 6,
+            padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+          }}>로그아웃</button>
+        </div>
       </div>
 
       {/* Status Tabs */}

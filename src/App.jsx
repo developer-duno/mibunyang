@@ -438,10 +438,11 @@ export default function App() {
         </div>
       ) : tab === "expert" ? (
         <ExpertDashboard scored={scored} profile={profile} setProfile={setProfile}
-          expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt} />
+          expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt}
+          onSwitchToAdmin={admin.adminLoggedIn ? () => setTab("admin") : undefined} />
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
-          <AdminDashboard admin={admin} onLogout={() => setTab("info")} />
+          <AdminDashboard admin={admin} onLogout={() => setTab("info")} onSwitchToExpert={() => setTab("expert")} />
         ) : null
       ) : tab === "expertConsults" ? (
         <div style={{ padding: "0 16px" }}>

@@ -12,7 +12,7 @@ import { ExpertAptHeader } from "./ExpertAptHeader";
 
 const SEC_COLOR = { "가격": C.green, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan };
 
-export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, setProfile, expandedApt, setExpandedApt }) {
+export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, setProfile, expandedApt, setExpandedApt, onSwitchToAdmin }) {
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState("전체");
   const [sort, setSort] = useState("total");
@@ -81,10 +81,16 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
               }}>{p.icon} {p.name}</button>
             ))}
           </div>
-          <button onClick={() => window.print()} data-no-print aria-label="현재 페이지 인쇄" style={{
-            background: C.indigo, color: C.white, border: "none", borderRadius: 4, padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer",
-            flexShrink: 0
-          }}>인쇄</button>
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            {onSwitchToAdmin && (
+              <button onClick={onSwitchToAdmin} data-no-print style={{
+                background: C.white, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 4, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+              }}>관리</button>
+            )}
+            <button onClick={() => window.print()} data-no-print aria-label="현재 페이지 인쇄" style={{
+              background: C.indigo, color: C.white, border: "none", borderRadius: 4, padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+            }}>인쇄</button>
+          </div>
         </div>
 
         {selectedItem ? (
