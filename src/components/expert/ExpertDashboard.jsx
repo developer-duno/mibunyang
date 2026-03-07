@@ -46,7 +46,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
 
       {/* 사이드바 */}
       {isMobile ? (
-        <div style={{
+        <div data-sidebar style={{
           position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 200,
           transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
           transition: "transform .3s ease"
@@ -56,13 +56,15 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
             sort={sort} setSort={setSort} isMobile onClose={() => setSidebarOpen(false)} />
         </div>
       ) : (
-        <ExpertSidebar scored={scored} selectedId={selectedId} onSelect={handleSelect}
-          search={search} setSearch={setSearch} regionFilter={regionFilter} setRegionFilter={setRegionFilter}
-          sort={sort} setSort={setSort} />
+        <div data-sidebar>
+          <ExpertSidebar scored={scored} selectedId={selectedId} onSelect={handleSelect}
+            search={search} setSearch={setSearch} regionFilter={regionFilter} setRegionFilter={setRegionFilter}
+            sort={sort} setSort={setSort} />
+        </div>
       )}
 
-      <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 14px" : "16px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 4 }}>
+      <div data-print-content style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 14px" : "16px 20px" }}>
+        <div data-no-print style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 4 }}>
           {isMobile && (
             <button onClick={() => setSidebarOpen(true)} aria-label="단지 목록 열기" style={{
               background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6,

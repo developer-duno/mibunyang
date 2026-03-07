@@ -95,7 +95,7 @@ export default function App() {
     if (!expert.expertLoggedIn) return;
     const style = document.createElement("style");
     style.id = "expert-print-styles";
-    style.textContent = `@media print { nav[aria-label] { display: none !important; } [data-no-print] { display: none !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
+    style.textContent = `@media print { nav[aria-label] { display: none !important; } [data-no-print] { display: none !important; } [data-sidebar] { display: none !important; } [data-print-content] { flex: none !important; width: 100% !important; overflow: visible !important; height: auto !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
     document.head.appendChild(style);
     return () => { const el = document.getElementById("expert-print-styles"); if (el) el.remove(); };
   }, [expert.expertLoggedIn]);
