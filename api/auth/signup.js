@@ -1,11 +1,17 @@
 import { kv } from "@vercel/kv";
 import { hashPassword } from "../_lib/auth.js";
+import { checkRateLimit } from "../_lib/rateLimit.js";
 
 const SPECIALTIES = ["부동산 중개", "분양 컨설팅", "감정평가", "건축/설계", "기타"];
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  const { limited, retryAfter } = await checkRateLimit(req, "signup");
+  if (limited) {
+    return res.status(429).json({ ok: false, error: `요청이 너무 많습니다. ${retryAfter}초 후 다시 시도해주세요.` });
   }
 
   const { email, password, name, affiliation, phone, specialty, license, experience, bio } = req.body || {};

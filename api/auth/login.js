@@ -1,9 +1,15 @@
 import { kv } from "@vercel/kv";
-import { verifyPassword, createToken } from "../_lib/auth.js";
+import { verifyPassword, hashPassword, createToken } from "../_lib/auth.js";
+import { checkRateLimit } from "../_lib/rateLimit.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  const { limited, retryAfter } = await checkRateLimit(req, "login");
+  if (limited) {
+    return res.status(429).json({ ok: false, error: `요청이 너무 많습니다. ${retryAfter}초 후 다시 시도해주세요.` });
   }
 
   const { email, password } = req.body || {};
@@ -27,6 +33,12 @@ export default async function handler(req, res) {
     const valid = verifyPassword(password, user.passwordHash, user.salt);
     if (!valid) {
       return res.status(401).json({ ok: false, error: "이메일 또는 비밀번호가 일치하지 않습니다" });
+    }
+
+    // 레거시 SHA-256 → PBKDF2 자동 마이그레이션
+    if (user.passwordHash.length === 64) {
+      const { hash, salt } = hashPassword(password);
+      await kv.set(`user:${email.toLowerCase().trim()}`, { ...user, passwordHash: hash, salt });
     }
 
     const isAdmin = process.env.ADMIN_EMAIL &&
