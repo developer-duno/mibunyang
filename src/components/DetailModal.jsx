@@ -11,6 +11,8 @@ const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1
 export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare }) {
   if (!item) return null;
   const { apt, res } = item;
+  const zone = getZone(apt.region, apt.gu);
+  const zoneName = ZONE_TYPE[zone];
   const radarData = Object.entries(res.cats).map(([k, c]) => ({ l: SHORT_LABEL[c.label] || c.label, v: c.total }));
 
   useEffect(() => {
@@ -47,6 +49,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               { l: "적정가 괴리", v: `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`, c: Number(res.cats.price.deviation) > 0 ? C.green : C.red },
               { l: "전세가율", v: `${apt.jeonseRate}%` },
               { l: "미분양률", v: `${apt.unsoldRate}%`, c: apt.unsoldRate > 15 ? C.red : C.green },
+              { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
+              { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
               { l: "입주", v: apt.completion },
             ].map((r, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
@@ -131,38 +135,55 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           </div>
         )}
 
-        {(apt.priceByArea ?? []).length > 0 && (() => {
-          const zone = getZone(apt.region, apt.gu);
-          const zoneName = ZONE_TYPE[zone];
+        {(() => {
           const rates = LTV_RATES[zone];
           const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
-          const rows = (apt.priceByArea ?? []).map(p => {
+          const ltvBase = calcLTV(apt.price, zone);
+          const needCash = apt.price - ltvBase;
+          const hasDetail = (apt.priceByArea ?? []).length > 0;
+          const rows = hasDetail ? (apt.priceByArea ?? []).map(p => {
             const rent = (apt.rentByArea ?? []).find(r => r.area === p.area);
             const gap = rent ? p.min - rent.avg : null;
             const ltv = calcLTV(p.min, zone);
             return { area: p.area, min: p.min, rentAvg: rent?.avg, gap, ltv };
-          });
+          }) : [];
           return (
             <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>매매/대출 분석</span>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: zone === "normal" ? C.greenLight : zone === "overheated" ? C.amberLight : C.redLight, color: zoneColor }}>{zoneName}</span>
               </div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>LTV: 9억 이하 {Math.round(rates.under9 * 100)}% / 초과분 {Math.round(rates.over9 * 100)}% (무주택자 기준)</div>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>
-                  <th style={thStyle}>면적</th><th style={thStyle}>최저매매</th><th style={thStyle}>전세평균</th><th style={thStyle}>갭투자액</th><th style={{ ...thStyle, textAlign: "right" }}>LTV한도</th>
-                </tr></thead>
-                <tbody>{rows.map((r, i) => (
-                  <tr key={i}>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{r.area}㎡</td>
-                    <td style={tdStyle}>{fmtPrice(r.min)}</td>
-                    <td style={tdStyle}>{r.rentAvg ? fmtPrice(r.rentAvg) : "-"}</td>
-                    <td style={{ ...tdStyle, color: r.gap != null ? (r.gap > 0 ? C.red : C.green) : C.muted }}>{r.gap != null ? fmtPrice(Math.abs(r.gap)) : "-"}</td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: C.blue }}>{fmtPrice(r.ltv)}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>LTV: 9억 이하 {Math.round(rates.under9 * 100)}% / 초과분 {Math.round(rates.over9 * 100)}% (무주택자 기준)</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: hasDetail ? 10 : 0 }}>
+                <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>분양가</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>{fmtPrice(apt.price)}</div>
+                </div>
+                <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>LTV 대출한도</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.blue }}>{fmtPrice(ltvBase)}</div>
+                </div>
+                <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>필요 자기자본</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.red }}>{fmtPrice(needCash)}</div>
+                </div>
+              </div>
+              {hasDetail && (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr>
+                    <th style={thStyle}>면적</th><th style={thStyle}>최저매매</th><th style={thStyle}>전세평균</th><th style={thStyle}>갭투자액</th><th style={{ ...thStyle, textAlign: "right" }}>LTV한도</th>
+                  </tr></thead>
+                  <tbody>{rows.map((r, i) => (
+                    <tr key={i}>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{r.area}㎡</td>
+                      <td style={tdStyle}>{fmtPrice(r.min)}</td>
+                      <td style={tdStyle}>{r.rentAvg ? fmtPrice(r.rentAvg) : "-"}</td>
+                      <td style={{ ...tdStyle, color: r.gap != null ? (r.gap > 0 ? C.red : C.green) : C.muted }}>{r.gap != null ? (r.gap > 0 ? "+" : "-") + fmtPrice(Math.abs(r.gap)) : "-"}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: C.blue }}>{fmtPrice(r.ltv)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
             </div>
           );
         })()}
