@@ -9,16 +9,17 @@ const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px
 const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
 export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare }) {
+  useEffect(() => {
+    if (!item) return;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, [!!item]);
+
   if (!item) return null;
   const { apt, res } = item;
   const zone = getZone(apt.region, apt.gu);
   const zoneName = ZONE_TYPE[zone];
   const radarData = Object.entries(res.cats).map(([k, c]) => ({ l: SHORT_LABEL[c.label] || c.label, v: c.total }));
-
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
-  }, []);
 
   return (
     <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, zIndex: 300, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
@@ -47,7 +48,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               { l: "지역", v: `${apt.region} ${apt.gu}`, c: C.blue },
               { l: "분양가", v: `${apt.price.toLocaleString()}만` },
               { l: "적정가 괴리", v: `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`, c: Number(res.cats.price.deviation) > 0 ? C.green : C.red },
-              { l: "전세가율", v: `${apt.jeonseRate}%` },
+              { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
               { l: "미분양률", v: `${apt.unsoldRate}%`, c: apt.unsoldRate > 15 ? C.red : C.green },
               { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
               { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
