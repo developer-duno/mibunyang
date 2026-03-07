@@ -78,7 +78,7 @@ export function useShare(showToast) {
 
   useEffect(() => {
     if (KAKAO_JS_KEY && window.Kakao && !window.Kakao.isInitialized()) {
-      window.Kakao.init(KAKAO_JS_KEY);
+      try { window.Kakao.init(KAKAO_JS_KEY); } catch { /* SDK init 실패 무시 */ }
     }
   }, []);
 

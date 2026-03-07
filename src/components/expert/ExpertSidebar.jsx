@@ -2,10 +2,10 @@ import { memo, useMemo } from "react";
 import { C, gr } from "@/theme";
 
 export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort, isMobile, onClose }) {
-  const regions = useMemo(() => ["전체", ...new Set(scored.map(x => x.apt.region))], [scored]);
+  const regions = useMemo(() => ["전체", ...new Set(scored.map(x => x.apt.region).filter(Boolean))], [scored]);
   const filtered = useMemo(() => {
     let list = scored;
-    if (search) list = list.filter(x => x.apt.name.includes(search) || x.apt.gu.includes(search) || x.apt.region.includes(search));
+    if (search) list = list.filter(x => x.apt.name.includes(search) || (x.apt.gu ?? "").includes(search) || (x.apt.region ?? "").includes(search));
     if (regionFilter !== "전체") list = list.filter(x => x.apt.region === regionFilter);
     if (sort === "total") list = [...list].sort((a, b) => b.res.total - a.res.total);
     else if (sort === "price") list = [...list].sort((a, b) => a.apt.price - b.apt.price);
