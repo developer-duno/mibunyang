@@ -18,8 +18,9 @@ export const ZONE_MAP = {};
 
 export function getZone(region, gu) {
   // region이 "경기,서울,인천" 같은 복합값일 수 있음 → 첫 번째 값 사용
-  const r = (region ?? "").split(",")[0].trim();
-  const g = (gu ?? "").trim();
+  // NFC 정규화: engine.js sanitize()와 동일하게 처리 (macOS NFD 한글 대응)
+  const r = (region ?? "").split(",")[0].trim().normalize("NFC");
+  const g = (gu ?? "").trim().normalize("NFC");
   return ZONE_MAP[`${r}:${g}`] || ZONE_MAP[r] || "normal";
 }
 
