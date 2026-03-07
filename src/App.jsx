@@ -21,6 +21,7 @@ import { useExpertMode } from "@/hooks/useExpertMode";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
+import { ShareSheet } from "@/components/ShareSheet";
 
 export default function App() {
   const [profile, setProfile] = useState("live");
@@ -40,7 +41,7 @@ export default function App() {
   const expert = useExpertMode(showToast);
   const admin = useAdminMode(showToast);
   const { apartments, loading: dataLoading, error: dataError } = useApartmentData();
-  const { share } = useShare(showToast);
+  const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, shareData, isMobile } = useShare(showToast);
 
   // 5 useMemo
   const guOptions = useMemo(() => {
@@ -155,21 +156,21 @@ export default function App() {
   const handleShareDetail = useCallback((aptId) => {
     const item = scored.find(x => x.apt.id === aptId);
     if (!item) return;
-    share({
+    openShareSheet({
       title: `${item.apt.name} - 미분양 분석`,
       text: `${item.apt.name} ${item.res.total}점 · ${(item.apt.price / 10000).toFixed(1)}억`,
       url: `${window.location.origin}/?detail=${aptId}&profile=${profile}`
     });
-  }, [scored, profile, share]);
+  }, [scored, profile, openShareSheet]);
 
   const handleShareCompare = useCallback(() => {
     if (compIds.length < 2) return;
-    share({
+    openShareSheet({
       title: `미분양 ${compIds.length}개 단지 비교`,
       text: compItems.map(x => x.apt.name).join(" vs "),
       url: `${window.location.origin}/?compare=${compIds.join(",")}&profile=${profile}`
     });
-  }, [compIds, compItems, profile, share]);
+  }, [compIds, compItems, profile, openShareSheet]);
 
   return (
     <div style={{ background: C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", color: C.text, paddingBottom: 70, transition: "max-width .3s" }}>
@@ -571,6 +572,8 @@ export default function App() {
       })()}
 
       {/* 토스트 */}
+      <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} />
+
       {toast && (
         <div role="status" aria-live="polite" style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", background: C.text, color: C.white, padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 200, boxShadow: "0 4px 16px rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{toast}</div>
       )}
