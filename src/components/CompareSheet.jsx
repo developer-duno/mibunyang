@@ -1,12 +1,18 @@
 import { memo } from "react";
 import { C, catCol, gr } from "@/theme";
 
-export const CompareSheet = memo(function CompareSheet({ items }) {
+export const CompareSheet = memo(function CompareSheet({ items, onShare }) {
   if (items.length < 2) return null;
   const cats = Object.keys(items[0].res.cats);
   return (
     <div style={{ background: C.card, border: `1.5px solid ${C.blueBorder}`, borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
-      <div style={{ fontSize: 15, fontWeight: 800, color: C.blue, marginBottom: 10 }}>비교 분석</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.blue }}>비교 분석</div>
+        {onShare && <button onClick={onShare} aria-label="비교 결과 공유하기" style={{
+          background: C.slate100, color: C.slate600, border: "1.5px solid transparent", borderRadius: 6,
+          padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", minHeight: 36, transition: "all .15s"
+        }}>공유</button>}
+      </div>
       <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 320 }}>
           <thead>

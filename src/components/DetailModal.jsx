@@ -3,7 +3,7 @@ import { C, catCol, catBg, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Radar } from "./primitives";
 import { CatPanel } from "./CatPanel";
 
-export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav }) {
+export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare }) {
   if (!item) return null;
   const { apt, res } = item;
   const g = gr(res.total);
@@ -73,6 +73,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             flex: 1, background: isComp ? C.indigo : "transparent", color: isComp ? C.white : C.indigo,
             border: `1.5px solid ${C.indigo}`, borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>{isComp ? "비교 중" : "비교 추가"}</button>
+          {onShare && <button onClick={() => onShare(apt.id)} aria-label="이 단지 공유하기" style={{
+            flex: 1, background: C.slate100, color: C.slate600,
+            border: "1.5px solid transparent", borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
+          }}>공유</button>}
         </div>
 
         {Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} />)}

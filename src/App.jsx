@@ -20,6 +20,7 @@ import { useConsult } from "@/hooks/useConsult";
 import { useExpertMode } from "@/hooks/useExpertMode";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
+import { useShare } from "@/hooks/useShare";
 
 export default function App() {
   const [profile, setProfile] = useState("live");
@@ -34,11 +35,12 @@ export default function App() {
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
   const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset } = useFilterSort({ onFilterChange: closeDetail });
-  const { compIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
+  const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
   const admin = useAdminMode(showToast);
   const { apartments, loading: dataLoading, error: dataError } = useApartmentData();
+  const { share } = useShare(showToast);
 
   // 5 useMemo
   const guOptions = useMemo(() => {
@@ -134,6 +136,40 @@ export default function App() {
     document.head.appendChild(style);
     return () => { const el = document.getElementById("expert-print-styles"); if (el) el.remove(); };
   }, [expert.expertLoggedIn]);
+
+  // URL 딥링크 복원 (공유 URL로 접근 시)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const detailId = params.get("detail");
+    const compareStr = params.get("compare");
+    const profileParam = params.get("profile");
+    if (profileParam && PROFILES[profileParam]) setProfile(profileParam);
+    if (detailId) detail.setDetailAptId(detailId);
+    if (compareStr) {
+      const ids = compareStr.split(",").filter(Boolean).slice(0, 4);
+      if (ids.length >= 2) { setCompIds(ids); setShowCompOpen(true); }
+    }
+    if (detailId || compareStr) window.history.replaceState(null, "", window.location.pathname);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleShareDetail = useCallback((aptId) => {
+    const item = scored.find(x => x.apt.id === aptId);
+    if (!item) return;
+    share({
+      title: `${item.apt.name} - 미분양 분석`,
+      text: `${item.apt.name} ${item.res.total}점 · ${(item.apt.price / 10000).toFixed(1)}억`,
+      url: `${window.location.origin}/?detail=${aptId}&profile=${profile}`
+    });
+  }, [scored, profile, share]);
+
+  const handleShareCompare = useCallback(() => {
+    if (compIds.length < 2) return;
+    share({
+      title: `미분양 ${compIds.length}개 단지 비교`,
+      text: compItems.map(x => x.apt.name).join(" vs "),
+      url: `${window.location.origin}/?compare=${compIds.join(",")}&profile=${profile}`
+    });
+  }, [compIds, compItems, profile, share]);
 
   return (
     <div style={{ background: C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", color: C.text, paddingBottom: 70, transition: "max-width .3s" }}>
@@ -258,7 +294,7 @@ export default function App() {
             }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
           )}
 
-          {showComp && <CompareSheet items={compItems} />}
+          {showComp && <CompareSheet items={compItems} onShare={handleShareCompare} />}
 
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 6, padding: "0 2px" }}>
             {filtered.length}개 단지 · {PROFILES[profile].name} 모드{filterRegion !== "전체" ? ` · ${filterRegion}` : " · 전국"}{(budgetMin || budgetMax) ? ` · 예산 ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
@@ -530,7 +566,8 @@ export default function App() {
         if (!item) return null;
         return <DetailModal item={item} onClose={detail.handleCloseDetail}
           isComp={compIds.includes(detail.detailAptId)} onComp={toggleComp}
-          isFav={favoriteIds.includes(detail.detailAptId)} onFav={toggleFavorite} />;
+          isFav={favoriteIds.includes(detail.detailAptId)} onFav={toggleFavorite}
+          onShare={handleShareDetail} />;
       })()}
 
       {/* 토스트 */}

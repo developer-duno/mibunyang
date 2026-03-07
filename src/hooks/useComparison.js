@@ -13,5 +13,5 @@ export function useComparison(showToast) {
       return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
     });
   }, [showToast]);
-  return { compIds, showComp, showCompOpen, setShowCompOpen, toggleComp };
+  return { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp };
 }
