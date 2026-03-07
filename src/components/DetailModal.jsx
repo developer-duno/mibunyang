@@ -1,16 +1,16 @@
 import { memo, useEffect } from "react";
-import { C, catCol, catBg, gr, SHORT_LABEL } from "@/theme";
+import { C, catCol, catBg, SHORT_LABEL } from "@/theme";
+import { getZone, calcLTV, ZONE_TYPE, LTV_RATES } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
 import { CatPanel } from "./CatPanel";
 
-const fmtPrice = (v) => v >= 10000 ? `${(v / 10000).toFixed(1)}억` : `${v.toLocaleString()}만`;
+const fmtPrice = (v) => v >= 10000 ? `${(v / 10000).toFixed(1)}억` : v > 0 ? `${v.toLocaleString()}만` : "-";
 const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
 const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
 export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare }) {
   if (!item) return null;
   const { apt, res } = item;
-  const g = gr(res.total);
   const radarData = Object.entries(res.cats).map(([k, c]) => ({ l: SHORT_LABEL[c.label] || c.label, v: c.total }));
 
   useEffect(() => {
@@ -116,19 +116,67 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
-                <th style={thStyle}>학교명</th><th style={thStyle}>구분</th><th style={{ ...thStyle, textAlign: "right" }}>도보거리</th>{(apt.nearbySchools ?? []).some(s => s.classes) && <th style={{ ...thStyle, textAlign: "right" }}>학급수</th>}
+                <th style={thStyle}>학교명</th><th style={thStyle}>구분</th><th style={{ ...thStyle, textAlign: "right" }}>도보거리</th>{(apt.nearbySchools ?? []).some(s => s.founded) && <th style={thStyle}>설립</th>}{(apt.nearbySchools ?? []).some(s => s.classes) && <th style={{ ...thStyle, textAlign: "right" }}>학급수</th>}
               </tr></thead>
               <tbody>{(apt.nearbySchools ?? []).map((s, i) => (
                 <tr key={i}>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>{s.name}</td>
                   <td style={tdStyle}>{s.type}</td>
                   <td style={{ ...tdStyle, textAlign: "right", color: s.distance <= 500 ? C.green : s.distance <= 1000 ? C.blue : C.muted }}>{s.distance >= 1000 ? `${(s.distance / 1000).toFixed(1)}km` : `${s.distance}m`}</td>
+                  {(apt.nearbySchools ?? []).some(x => x.founded) && <td style={tdStyle}>{s.founded || "-"}</td>}
                   {(apt.nearbySchools ?? []).some(x => x.classes) && <td style={{ ...tdStyle, textAlign: "right" }}>{s.classes ? `${s.classes}학급` : "-"}</td>}
                 </tr>
               ))}</tbody>
             </table>
           </div>
         )}
+
+        {(apt.priceByArea ?? []).length > 0 && (() => {
+          const zone = getZone(apt.region, apt.gu);
+          const zoneName = ZONE_TYPE[zone];
+          const rates = LTV_RATES[zone];
+          const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
+          const rows = (apt.priceByArea ?? []).map(p => {
+            const rent = (apt.rentByArea ?? []).find(r => r.area === p.area);
+            const gap = rent ? p.min - rent.avg : null;
+            const ltv = calcLTV(p.min, zone);
+            return { area: p.area, min: p.min, rentAvg: rent?.avg, gap, ltv };
+          });
+          return (
+            <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>매매/대출 분석</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: zone === "normal" ? C.greenLight : zone === "overheated" ? C.amberLight : C.redLight, color: zoneColor }}>{zoneName}</span>
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>LTV: 9억 이하 {Math.round(rates.under9 * 100)}% / 초과분 {Math.round(rates.over9 * 100)}% (무주택자 기준)</div>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>
+                  <th style={thStyle}>면적</th><th style={thStyle}>최저매매</th><th style={thStyle}>전세평균</th><th style={thStyle}>갭투자액</th><th style={{ ...thStyle, textAlign: "right" }}>LTV한도</th>
+                </tr></thead>
+                <tbody>{rows.map((r, i) => (
+                  <tr key={i}>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{r.area}㎡</td>
+                    <td style={tdStyle}>{fmtPrice(r.min)}</td>
+                    <td style={tdStyle}>{r.rentAvg ? fmtPrice(r.rentAvg) : "-"}</td>
+                    <td style={{ ...tdStyle, color: r.gap != null ? (r.gap > 0 ? C.red : C.green) : C.muted }}>{r.gap != null ? fmtPrice(Math.abs(r.gap)) : "-"}</td>
+                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: C.blue }}>{fmtPrice(r.ltv)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          );
+        })()}
+
+        <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>관련 법률/규정 안내</div>
+          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+            <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>LTV (담보인정비율)</strong> — 투기과열지구 40%/20%, 조정대상지역 50%/30%, 비규제지역 70%/60% (9억 초과분 차등 적용)</div>
+            <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>DSR (총부채원리금상환비율)</strong> — 전 금융권 40% 적용. 연소득 대비 모든 대출의 원리금 상환액 비율 제한</div>
+            <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>디딤돌대출</strong> — 무주택 서민 대상, 연소득 6천만원 이하, 최대 2.5억(생애최초 3억), 금리 2.15~3.00%</div>
+            <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하, 최대 3.6억, 고정금리</div>
+            <div style={{ color: C.red, fontSize: 11, fontWeight: 600, marginTop: 8 }}>본 정보는 참고용이며 실제 대출 조건은 금융기관에 확인하세요. 규제지역 지정·해제는 수시 변경될 수 있습니다.</div>
+          </div>
+        </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <button onClick={() => onFav(apt.id)} style={{

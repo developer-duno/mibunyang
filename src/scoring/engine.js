@@ -1,6 +1,7 @@
 import { BRAND_TIER, AGE_PREMIUM, LAYOUT_SCORE, NOXIOUS_PENALTY } from "@/constants/brands";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import { PROFILES } from "@/constants/profiles";
+import { getZone } from "@/constants/regulations";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
 const TRANSIT_ACTIVE = ["기존"];
@@ -224,7 +225,8 @@ export function scoreRisk(apt) {
   let loanSc = (apt.dsr40pass ? 15 : 50) + (apt.loanFree ? 0 : 15);
   let finSc = (apt.hugGuarantee ? 0 : 40) + ({ AA: 0, "AA-": 5, "A+": 10, A: 15, "A-": 20, BBB: 35, BB: 60 }[apt.builderCreditGrade] || 30) + (apt.builderDebtRatio > 200 ? 20 : apt.builderDebtRatio > 150 ? 10 : 0);
   finSc = Math.min(finSc, 100);
-  let regSc = apt.isRegulated ? 60 : 10;
+  const zone = getZone(apt.region, apt.gu);
+  let regSc = zone !== "normal" ? 60 : 10;
   let supSc = apt.supplyRatio < 50 ? 5 : apt.supplyRatio <= 100 ? 25 : apt.supplyRatio <= 130 ? 50 : 75;
   let mktSc = apt.popGrowth > 0 ? 15 : apt.popGrowth === 0 ? 30 : 50;
   const risk = unsoldSc * 0.20 + liqSc * 0.15 + loanSc * 0.15 + finSc * 0.20 + regSc * 0.10 + supSc * 0.10 + mktSc * 0.10;
@@ -236,7 +238,7 @@ export function scoreRisk(apt) {
       { name: "거래량", score: 100 - liqSc, info: `6개월 ${apt.recentTrades6m}건` },
       { name: "대출/잔금", score: 100 - loanSc, info: apt.dsr40pass ? "DSR통과" : "주의" },
       { name: "시공사 재무", score: 100 - Math.round(finSc), info: apt.builderCreditGrade },
-      { name: "규제", score: 100 - regSc, info: apt.isRegulated ? "규제지역" : "비규제" },
+      { name: "규제", score: 100 - regSc, info: zone !== "normal" ? "규제지역" : "비규제" },
       { name: "공급량", score: 100 - supSc, info: `${apt.supplyRatio}%` },
       { name: "시장환경", score: 100 - mktSc, info: `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` },
     ],
