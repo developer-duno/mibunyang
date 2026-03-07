@@ -1,13 +1,14 @@
 # 미분양 아파트 비교 엔진 v3.0
 
-> React 18 모듈형 SPA. 서버/DB 없음. 6개 카테고리 34+ 지표 AHP/헤도닉 스코어링 엔진.
+> React 18 모듈형 SPA + Vercel Serverless Functions. 6개 카테고리 34+ 지표 AHP/헤도닉 스코어링 엔진.
 
 ## 기술 스택
 
 - React 18 (useState, useMemo, useCallback, useRef, useEffect, memo)
 - Vite + `@/` 경로 별칭 (vite.config.js)
-- 외부 라이브러리 없음 (React만 import)
-- 서버/DB/API 호출 없음 (fetch 0건, process.env 0건)
+- Vercel Serverless Functions (`api/` 디렉토리)
+- Vercel KV (Upstash Redis) — `@vercel/kv`
+- 인증: SHA-256 + salt 해싱, HMAC-SHA256 JWT 토큰
 
 ## 파일 구조
 
@@ -32,15 +33,18 @@ src/
 │   ├── CompareSheet.jsx
 │   ├── DetailModal.jsx
 │   ├── ConsultForm.jsx
-│   └── expert/
-│       ├── ExpertFieldTable.jsx
-│       ├── ExpertScoreBreakdown.jsx
-│       ├── ExpertScoreSummary.jsx
-│       ├── ExpertUnitPlaceholder.jsx
-│       ├── ExpertDataCompleteness.jsx
-│       ├── ExpertSidebar.jsx
-│       ├── ExpertAptHeader.jsx
-│       └── ExpertDashboard.jsx
+│   ├── expert/
+│   │   ├── ExpertFieldTable.jsx
+│   │   ├── ExpertScoreBreakdown.jsx
+│   │   ├── ExpertScoreSummary.jsx
+│   │   ├── ExpertUnitPlaceholder.jsx
+│   │   ├── ExpertDataCompleteness.jsx
+│   │   ├── ExpertSidebar.jsx
+│   │   ├── ExpertAptHeader.jsx
+│   │   └── ExpertDashboard.jsx
+│   └── admin/
+│       ├── AdminLogin.jsx
+│       └── AdminDashboard.jsx
 ├── hooks/
 │   ├── useToast.js
 │   ├── useFilterSort.js
@@ -48,7 +52,20 @@ src/
 │   ├── useFavorites.js
 │   ├── useDetailModal.js
 │   ├── useConsult.js
-│   └── useExpertMode.js
+│   ├── useExpertMode.js
+│   └── useAdminMode.js
+api/
+├── _lib/
+│   ├── auth.js                       (hashPassword, verifyPassword, createToken, verifyToken)
+│   └── adminAuth.js                  (verifyAdminToken)
+├── auth/
+│   ├── signup.js                     (전문가 가입 — status:pending)
+│   ├── login.js                      (로그인 — status 기반 접근제어)
+│   └── verify.js                     (토큰 검증)
+└── admin/
+    ├── login.js                      (관리자 로그인 — ADMIN_SECRET)
+    ├── users.js                      (사용자 목록 조회)
+    └── review.js                     (승인/거부)
 ```
 
 ### 의존성 방향 (단방향, 순환 참조 없음)
@@ -88,11 +105,11 @@ constants → scoring → theme → components → hooks → App
 
 App.jsx 내부:
 ```
-useState (2개: profile, tab) → 커스텀 훅 7개 → useMemo (5개) → useEffect (1개: 인쇄 CSS)
+useState (2개: profile, tab) → 커스텀 훅 9개 → useMemo (5개) → useEffect (1개: 인쇄 CSS)
 ```
 
 각 커스텀 훅 내부에서 자체적으로 useState → useRef → useCallback → useEffect 순서 보장.
-총계: useState(16) → useRef(3) → useCallback(10) → useMemo(5) → useEffect(4)
+총계: useState(25) → useRef(3) → useCallback(15) → useMemo(5) → useEffect(6)
 
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 
@@ -106,10 +123,11 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 | compItems | [compIds, scored] | 2개 전부 필수 |
 | regionOptions | [] | UNSOLD는 상수라 빈 배열 |
 
-### 5. memo() 16개 컴포넌트
+### 5. memo() 18개 컴포넌트
 
 소비자 8개: Bar, ScoreBadge, Radar, CatPanel, AptCard, CompareSheet, ConsultForm, DetailModal
 전문가 8개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard
+관리자 2개: AdminLogin, AdminDashboard
 
 반드시 `memo(function Name(...) { ... })` 패턴 유지.
 memo 효과를 위해 `onToggle` 등 콜백은 `useCallback`으로 안정화 필수.

@@ -23,6 +23,14 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, error: "이메일 또는 비밀번호가 일치하지 않습니다" });
     }
 
+    const status = user.status ?? "approved";
+    if (status === "pending") {
+      return res.status(403).json({ ok: false, error: "관리자 승인 대기중입니다. 승인 후 이용 가능합니다.", statusCode: "PENDING" });
+    }
+    if (status === "rejected") {
+      return res.status(403).json({ ok: false, error: "가입 신청이 거부되었습니다. 관리자에게 문의해주세요.", statusCode: "REJECTED" });
+    }
+
     const token = createToken({ email: user.email, name: user.name });
     res.json({
       ok: true,
