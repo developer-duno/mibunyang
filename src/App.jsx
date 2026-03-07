@@ -21,6 +21,7 @@ import { useExpertMode } from "@/hooks/useExpertMode";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
+import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
 
 export default function App() {
@@ -35,7 +36,7 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites();
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange } = useFilterSort({ onFilterChange: closeDetail });
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
@@ -66,9 +67,10 @@ export default function App() {
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
     if (budgetMin !== "") list = list.filter(x => x.apt.price >= Number(budgetMin) * 10000);
     if (budgetMax !== "") list = list.filter(x => x.apt.price <= Number(budgetMax) * 10000);
+    if (searchText) list = list.filter(x => matchSearch(x.apt.name, searchText) || matchSearch(x.apt.builder ?? "", searchText) || matchSearch(x.apt.gu ?? "", searchText) || matchSearch(x.apt.region ?? "", searchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
     return [...list].sort(sorters[sortKey] || sorters.total);
-  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax]);
+  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, searchText]);
   const compItems = useMemo(() => compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean), [compIds, scored]);
   const pw = useMemo(() => PROFILES[profile].w, [profile]);
 
@@ -235,6 +237,21 @@ export default function App() {
         <div style={{ padding: "0 16px" }}>
           <div style={{ background: C.card, borderRadius: 12, padding: "12px 14px", border: `1px solid ${C.border}`, marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
 
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <input type="text" value={searchText} onChange={e => handleSearchChange(e.target.value)} placeholder="단지명, 건설사, 지역 검색 (초성 가능)" aria-label="단지 검색" style={{
+                width: "100%", padding: "9px 36px 9px 12px", fontSize: 13,
+                border: searchText ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+                borderRadius: 8, background: C.slate100, color: C.text,
+                outline: "none", minHeight: 38, boxSizing: "border-box"
+              }} />
+              {searchText && (
+                <button onClick={() => handleSearchChange("")} aria-label="검색어 지우기" style={{
+                  position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                  background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 16, padding: 4
+                }}>✕</button>
+              )}
+            </div>
+
             <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
               <select value={filterRegion} onChange={e => handleRegionChange(e.target.value)} aria-label="시/도 선택" style={{
                 flex: 1, padding: "7px 28px 7px 12px", fontSize: 13, fontWeight: filterRegion !== "전체" ? 700 : 500,
@@ -298,7 +315,7 @@ export default function App() {
           {showComp && <CompareSheet items={compItems} onShare={handleShareCompare} />}
 
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 6, padding: "0 2px" }}>
-            {filtered.length}개 단지 · {PROFILES[profile].name} 모드{filterRegion !== "전체" ? ` · ${filterRegion}` : " · 전국"}{(budgetMin || budgetMax) ? ` · 예산 ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
+            {filtered.length}개 단지 · {PROFILES[profile].name} 모드{filterRegion !== "전체" ? ` · ${filterRegion}` : " · 전국"}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · 예산 ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
             {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
               <span style={{ color: C.red, fontWeight: 700 }}> · 최소가 최대보다 큽니다</span>
             )}
@@ -306,8 +323,8 @@ export default function App() {
 
           {filtered.length === 0 && (
             <div style={{ textAlign: "center", padding: "48px 24px", color: C.muted }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{(budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 지역에 미분양 단지가 없습니다"}</div>
-              <div style={{ fontSize: 12 }}>{(budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "다른 지역을 선택하거나 '전체'로 변경해주세요"}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{searchText ? `"${searchText}" 검색 결과가 없습니다` : (budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 지역에 미분양 단지가 없습니다"}</div>
+              <div style={{ fontSize: 12 }}>{searchText ? "단지명, 건설사, 지역명으로 검색해보세요" : (budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "다른 지역을 선택하거나 '전체'로 변경해주세요"}</div>
             </div>
           )}
 
