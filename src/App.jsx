@@ -218,15 +218,15 @@ export default function App() {
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: C.slate600, flexShrink: 0 }}>내 예산</span>
               <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => handleBudgetMinChange(e.target.value)} placeholder="최소" aria-label="최소 예산(억)"
-                style={{ flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 36, boxSizing: "border-box", background: C.slate100 }} />
+                style={{ flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 38, boxSizing: "border-box", background: C.slate100 }} />
               <span style={{ fontSize: 11, color: C.muted }}>~</span>
               <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMax} onChange={e => handleBudgetMaxChange(e.target.value)} placeholder="최대" aria-label="최대 예산(억)"
-                style={{ flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 36, boxSizing: "border-box", background: C.slate100 }} />
+                style={{ flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 38, boxSizing: "border-box", background: C.slate100 }} />
               <span style={{ fontSize: 12, color: C.muted, flexShrink: 0 }}>억</span>
               {(budgetMin || budgetMax) && (
                 <button onClick={handleBudgetReset} aria-label="예산 초기화" style={{
                   background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", fontSize: 12, color: C.muted,
-                  cursor: "pointer", minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                  cursor: "pointer", minWidth: 38, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
                 }}>✕</button>
               )}
             </div>
@@ -254,12 +254,15 @@ export default function App() {
 
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 6, padding: "0 2px" }}>
             {filtered.length}개 단지 · {PROFILES[profile].name} 모드{filterRegion !== "전체" ? ` · ${filterRegion}` : " · 전국"}{(budgetMin || budgetMax) ? ` · 예산 ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
+            {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
+              <span style={{ color: C.red, fontWeight: 700 }}> · 최소가 최대보다 큽니다</span>
+            )}
           </div>
 
           {filtered.length === 0 && (
             <div style={{ textAlign: "center", padding: "48px 24px", color: C.muted }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>해당 지역에 미분양 단지가 없습니다</div>
-              <div style={{ fontSize: 12 }}>다른 지역을 선택하거나 '전체'로 변경해주세요</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{(budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 지역에 미분양 단지가 없습니다"}</div>
+              <div style={{ fontSize: 12 }}>{(budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "다른 지역을 선택하거나 '전체'로 변경해주세요"}</div>
             </div>
           )}
 
