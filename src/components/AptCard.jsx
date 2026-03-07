@@ -46,6 +46,23 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             <span style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit.rate}%)</span>
           </div>
         )}
+
+        {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || (apt.noxious || []).length > 0 || (apt.builderCreditGrade && !["AAA","AA+","AA","AA-","A+","A","A-"].includes(apt.builderCreditGrade))) && (
+          <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {apt.completion && (
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.blueLight, color: C.blue, fontWeight: 600 }}>입주 {apt.completion}</span>
+            )}
+            {(apt.unsoldRate ?? 0) >= 30 && (
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.redLight, color: C.red, fontWeight: 600 }}>미분양 {apt.unsoldRate}%</span>
+            )}
+            {apt.builderCreditGrade && !["AAA","AA+","AA","AA-","A+","A","A-"].includes(apt.builderCreditGrade) && (
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.redLight, color: C.red, fontWeight: 600 }}>시공사 {apt.builderCreditGrade}</span>
+            )}
+            {(apt.noxious || []).length > 0 && (
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.redLight, color: C.red, fontWeight: 600 }}>혐오시설 {apt.noxious.length}건</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "0 16px 12px" }}>

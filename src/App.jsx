@@ -33,7 +33,7 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites();
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset } = useFilterSort({ onFilterChange: closeDetail });
   const { compIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
@@ -61,9 +61,11 @@ export default function App() {
     let list = scored;
     if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
+    if (budgetMin !== "") list = list.filter(x => x.apt.price >= Number(budgetMin) * 10000);
+    if (budgetMax !== "") list = list.filter(x => x.apt.price <= Number(budgetMax) * 10000);
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
     return [...list].sort(sorters[sortKey] || sorters.total);
-  }, [scored, filterRegion, filterGu, sortKey]);
+  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax]);
   const compItems = useMemo(() => compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean), [compIds, scored]);
   const pw = useMemo(() => PROFILES[profile].w, [profile]);
 
@@ -213,6 +215,22 @@ export default function App() {
               </select>
             </div>
 
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.slate600, flexShrink: 0 }}>내 예산</span>
+              <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => handleBudgetMinChange(e.target.value)} placeholder="최소" aria-label="최소 예산(억)"
+                style={{ flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 36, boxSizing: "border-box", background: C.slate100 }} />
+              <span style={{ fontSize: 11, color: C.muted }}>~</span>
+              <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMax} onChange={e => handleBudgetMaxChange(e.target.value)} placeholder="최대" aria-label="최대 예산(억)"
+                style={{ flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 36, boxSizing: "border-box", background: C.slate100 }} />
+              <span style={{ fontSize: 12, color: C.muted, flexShrink: 0 }}>억</span>
+              {(budgetMin || budgetMax) && (
+                <button onClick={handleBudgetReset} aria-label="예산 초기화" style={{
+                  background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", fontSize: 12, color: C.muted,
+                  cursor: "pointer", minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                }}>✕</button>
+              )}
+            </div>
+
             <div style={{ display: "flex", gap: 4 }}>
               {[{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }].map(s => (
                 <button key={s.k} onClick={() => setSortKey(s.k)} style={{
@@ -235,7 +253,7 @@ export default function App() {
           {showComp && <CompareSheet items={compItems} />}
 
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 6, padding: "0 2px" }}>
-            {filtered.length}개 단지 · {PROFILES[profile].name} 모드{filterRegion !== "전체" ? ` · ${filterRegion}` : " · 전국"}
+            {filtered.length}개 단지 · {PROFILES[profile].name} 모드{filterRegion !== "전체" ? ` · ${filterRegion}` : " · 전국"}{(budgetMin || budgetMax) ? ` · 예산 ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
           </div>
 
           {filtered.length === 0 && (
