@@ -102,12 +102,20 @@ export default function App() {
       if (compIds.length < 2) { showToast("카드에서 2개 이상 선택해주세요"); setTab("list"); return; }
       setShowCompOpen(true); setTab("list"); return;
     }
-    if (k === "consult" && consult.consultSubmitted) {
-      consult.setConsultSubmitted(false);
-      consult.setConsultForm({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
+    if (k === "consult") {
+      if (consult.consultSubmitted) {
+        consult.setConsultSubmitted(false);
+        consult.setConsultForm({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
+      } else {
+        consult.setConsultForm(prev => ({
+          ...prev,
+          budgetMin: prev.budgetMin || (budgetMin ? String(Number(budgetMin) * 10000) : ""),
+          budgetMax: prev.budgetMax || (budgetMax ? String(Number(budgetMax) * 10000) : ""),
+        }));
+      }
     }
     setTab(k);
-  }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen, consult]);
+  }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen, consult, budgetMin, budgetMax]);
 
   // verify 실패 시 admin 상태 동기화 (양방향)
   useEffect(() => {
@@ -215,7 +223,7 @@ export default function App() {
               </select>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <div data-no-print style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: C.slate600, flexShrink: 0 }}>내 예산</span>
               <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => handleBudgetMinChange(e.target.value)} placeholder="최소" aria-label="최소 예산(억)"
                 style={{ flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 38, boxSizing: "border-box", background: C.slate100 }} />
