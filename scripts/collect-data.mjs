@@ -806,8 +806,15 @@ async function main() {
     apartments = await phase1_applyhome();
   } catch (e) {
     logError("applyhome", e.message);
-    console.error("Phase 1 실패 - 빌드 중단");
-    process.exit(1);
+    const cachedPath = resolve(ROOT, "public/data/apartments.json");
+    if (existsSync(cachedPath)) {
+      log("Phase 1 실패 - 캐시된 데이터 사용");
+      const cached = JSON.parse(readFileSync(cachedPath, "utf8"));
+      apartments = cached.data || [];
+    } else {
+      log("Phase 1 실패 - 캐시 없음, 빈 데이터로 진행");
+      apartments = [];
+    }
   }
 
   // Phase 2~7: 선택 (실패해도 계속)
