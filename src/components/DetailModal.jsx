@@ -12,8 +12,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   useEffect(() => {
     if (!item) return;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
-  }, [!!item]);
+    const handleEsc = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handleEsc);
+    return () => { document.body.style.overflow = ""; document.removeEventListener("keydown", handleEsc); };
+  }, [!!item, onClose]);
 
   if (!item) return null;
   const { apt, res } = item;
