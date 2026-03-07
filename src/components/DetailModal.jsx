@@ -3,6 +3,10 @@ import { C, catCol, catBg, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Radar } from "./primitives";
 import { CatPanel } from "./CatPanel";
 
+const fmtPrice = (v) => v >= 10000 ? `${(v / 10000).toFixed(1)}억` : `${v.toLocaleString()}만`;
+const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
+const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
+
 export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare }) {
   if (!item) return null;
   const { apt, res } = item;
@@ -61,6 +65,68 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
                 <span key={i} style={{ fontSize: 11, color: C.amber, background: C.white, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.amberBorder}` }}>{b}</span>
               ))}
             </div>
+          </div>
+        )}
+
+        {(apt.priceByArea ?? []).length > 0 && (
+          <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>매매 시세 (최근 6개월)</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr>
+                <th style={thStyle}>면적</th><th style={thStyle}>하한</th><th style={thStyle}>평균</th><th style={thStyle}>상한</th><th style={{ ...thStyle, textAlign: "right" }}>건수</th>
+              </tr></thead>
+              <tbody>{(apt.priceByArea ?? []).map((p, i) => (
+                <tr key={i}>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>{p.area}㎡</td>
+                  <td style={tdStyle}>{fmtPrice(p.min)}</td>
+                  <td style={{ ...tdStyle, fontWeight: 700, color: C.blue }}>{fmtPrice(p.avg)}</td>
+                  <td style={tdStyle}>{fmtPrice(p.max)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: C.muted }}>{p.count}건</td>
+                </tr>
+              ))}</tbody>
+            </table>
+            {(apt.rentByArea ?? []).length > 0 && (<>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: "12px 0 8px" }}>전세 시세 / 전세가율</div>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>
+                  <th style={thStyle}>면적</th><th style={thStyle}>하한</th><th style={thStyle}>평균</th><th style={thStyle}>상한</th><th style={{ ...thStyle, textAlign: "right" }}>전세가율</th>
+                </tr></thead>
+                <tbody>{(apt.rentByArea ?? []).map((r, i) => {
+                  const j = (apt.jeonseByArea ?? []).find(x => x.area === r.area);
+                  return (
+                    <tr key={i}>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{r.area}㎡</td>
+                      <td style={tdStyle}>{fmtPrice(r.min)}</td>
+                      <td style={{ ...tdStyle, fontWeight: 700, color: C.green }}>{fmtPrice(r.avg)}</td>
+                      <td style={tdStyle}>{fmtPrice(r.max)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: j?.rate >= 70 ? C.green : C.amber }}>{j?.rate ? `${j.rate}%` : "-"}</td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            </>)}
+          </div>
+        )}
+
+        {(apt.nearbySchools ?? []).length > 0 && (
+          <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>학군 정보</span>
+              {apt.schoolGrade && <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: apt.schoolGrade === "최우수" ? C.greenLight : apt.schoolGrade === "우수" ? C.blueLight : C.slate100, color: apt.schoolGrade === "최우수" ? C.green : apt.schoolGrade === "우수" ? C.blue : C.muted }}>{apt.schoolGrade}</span>}
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr>
+                <th style={thStyle}>학교명</th><th style={thStyle}>구분</th><th style={{ ...thStyle, textAlign: "right" }}>도보거리</th>{(apt.nearbySchools ?? []).some(s => s.classes) && <th style={{ ...thStyle, textAlign: "right" }}>학급수</th>}
+              </tr></thead>
+              <tbody>{(apt.nearbySchools ?? []).map((s, i) => (
+                <tr key={i}>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>{s.name}</td>
+                  <td style={tdStyle}>{s.type}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: s.distance <= 500 ? C.green : s.distance <= 1000 ? C.blue : C.muted }}>{s.distance >= 1000 ? `${(s.distance / 1000).toFixed(1)}km` : `${s.distance}m`}</td>
+                  {(apt.nearbySchools ?? []).some(x => x.classes) && <td style={{ ...tdStyle, textAlign: "right" }}>{s.classes ? `${s.classes}학급` : "-"}</td>}
+                </tr>
+              ))}</tbody>
+            </table>
           </div>
         )}
 

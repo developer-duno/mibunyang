@@ -421,7 +421,7 @@ async function phase4_neis(apartments) {
         const info = json.schoolInfo;
         if (!info?.[1]?.row) break;
         for (const s of info[1].row) {
-          schools.push({ name: s.SCHUL_NM, type: s.SCHUL_KND_SC_NM, address: s.ORG_RDNMA || "" });
+          schools.push({ name: s.SCHUL_NM, type: s.SCHUL_KND_SC_NM, address: s.ORG_RDNMA || "", code: s.SD_SCHUL_CODE, officeCode: code, founded: s.FOND_SC_NM || "" });
         }
         const total = info[0]?.head?.[0]?.list_total_count ?? 0;
         if (page * 1000 >= total) break;
@@ -446,8 +446,12 @@ async function phase4_neis(apartments) {
             ["초등학교", "중학교", "고등학교"].map(kw =>
               fetch(`${base}?query=${encodeURIComponent(kw)}&x=${apt.lng}&y=${apt.lat}&radius=2000&sort=distance&size=15`, { headers: h })
                 .then(r => r.ok ? r.json() : { meta: { total_count: 0 }, documents: [] })
-                .then(d => ({ count: d.meta?.total_count ?? 0, nearest: d.documents?.[0] ? Math.round(parseFloat(d.documents[0].distance)) : null }))
-                .catch(() => ({ count: 0, nearest: null }))
+                .then(d => ({
+                  count: d.meta?.total_count ?? 0,
+                  nearest: d.documents?.[0] ? Math.round(parseFloat(d.documents[0].distance)) : null,
+                  docs: (d.documents ?? []).slice(0, 3),
+                }))
+                .catch(() => ({ count: 0, nearest: null, docs: [] }))
             )
           );
           let score = 0;
@@ -460,13 +464,18 @@ async function phase4_neis(apartments) {
           else if (high.count > 0) score += 8;
           score += Math.round(Math.min(elem.count + middle.count + high.count, 15) * 1.5);
           score = Math.min(score, 100);
-          return { id: apt.id, schoolScore: score, schoolGrade: score >= 85 ? "최우수" : score >= 70 ? "우수" : score >= 50 ? "보통" : "미흡" };
+          const nearbySchools = [
+            ...elem.docs.map(d => ({ name: d.place_name, type: "초등", distance: Math.round(parseFloat(d.distance)), address: d.road_address_name || d.address_name || "" })),
+            ...middle.docs.map(d => ({ name: d.place_name, type: "중학교", distance: Math.round(parseFloat(d.distance)), address: d.road_address_name || d.address_name || "" })),
+            ...high.docs.map(d => ({ name: d.place_name, type: "고등", distance: Math.round(parseFloat(d.distance)), address: d.road_address_name || d.address_name || "" })),
+          ].sort((a, b) => a.distance - b.distance);
+          return { id: apt.id, schoolScore: score, schoolGrade: score >= 85 ? "최우수" : score >= 70 ? "우수" : score >= 50 ? "보통" : "미흡", nearbySchools };
         }));
         logRejected("school", results);
         for (const r of results) {
           if (r.status === "fulfilled") {
             const idx = apartments.findIndex(a => a.id === r.value.id);
-            if (idx >= 0) { apartments[idx] = { ...apartments[idx], schoolScore: r.value.schoolScore, schoolGrade: r.value.schoolGrade }; enriched++; }
+            if (idx >= 0) { apartments[idx] = { ...apartments[idx], schoolScore: r.value.schoolScore, schoolGrade: r.value.schoolGrade, nearbySchools: r.value.nearbySchools }; enriched++; }
           }
         }
       }
@@ -488,7 +497,47 @@ async function phase4_neis(apartments) {
     }
 
     log(`  학군 보강: ${enriched}건`);
-    meta.phases.neis = { ok: true, enriched };
+
+    // 학생수/학급수 enrichment (NEIS classInfo API)
+    const currentYear = new Date().getFullYear().toString();
+    const schoolCache = new Map(); // "officeCode|schoolCode" → {students, classes}
+    let schoolEnriched = 0;
+    for (const apt of apartments) {
+      if (!apt.nearbySchools || apt.nearbySchools.length === 0) continue;
+      for (const ns of apt.nearbySchools) {
+        // regionSchools에서 학교코드 매칭 (이름 일치)
+        const allSchools = regionSchools[apt.region] || [];
+        const matched = allSchools.find(s => s.name === ns.name);
+        if (!matched || !matched.code) continue;
+        const cacheKey = `${matched.officeCode}|${matched.code}`;
+        if (schoolCache.has(cacheKey)) {
+          const cached = schoolCache.get(cacheKey);
+          ns.students = cached.students;
+          ns.classes = cached.classes;
+          ns.perClass = cached.perClass;
+          ns.founded = matched.founded;
+          continue;
+        }
+        try {
+          const url = `https://open.neis.go.kr/hub/classInfo?KEY=${NEIS_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${matched.officeCode}&SD_SCHUL_CODE=${matched.code}&AY=${currentYear}&pSize=100`;
+          const res = await fetch(url);
+          if (res.ok) {
+            const json = await res.json();
+            const rows = json.classInfo?.[1]?.row ?? [];
+            const classes = rows.length;
+            // 학생수는 classInfo에 없으므로 학급수만 저장
+            const result = { students: null, classes, perClass: null };
+            schoolCache.set(cacheKey, result);
+            ns.classes = classes;
+            ns.founded = matched.founded;
+            schoolEnriched++;
+          }
+        } catch { /* continue */ }
+      }
+    }
+    log(`  학교 상세 보강: ${schoolEnriched}건 (캐시: ${schoolCache.size}개)`);
+
+    meta.phases.neis = { ok: true, enriched, schoolEnriched };
   } catch (e) { logError("neis", e.message); meta.phases.neis = { ok: false, reason: e.message }; }
   return apartments;
 }
@@ -788,6 +837,40 @@ async function phase7_realtrade(apartments) {
       pir = Math.round(a.price / (a._avgIncome / 10000) * 10) / 10; // 만원 기준
     }
 
+    // 면적별 매매 시세 그룹핑
+    const tradeGroups = {};
+    for (const t of td.trades) {
+      const bucket = Math.round(t.area);
+      if (!tradeGroups[bucket]) tradeGroups[bucket] = [];
+      tradeGroups[bucket].push(t.price);
+    }
+    const priceByArea = Object.entries(tradeGroups)
+      .filter(([, prices]) => prices.length >= 2)
+      .map(([area, prices]) => {
+        prices.sort((x, y) => x - y);
+        return { area: Number(area), min: prices[0], avg: Math.round(prices.reduce((s, p) => s + p, 0) / prices.length), max: prices[prices.length - 1], count: prices.length };
+      }).sort((x, y) => x.area - y.area);
+
+    // 면적별 전세 시세 그룹핑
+    const rentGroups = {};
+    for (const t of td.rentPrices) {
+      const bucket = Math.round(t.area);
+      if (!rentGroups[bucket]) rentGroups[bucket] = [];
+      rentGroups[bucket].push(t.deposit);
+    }
+    const rentByArea = Object.entries(rentGroups)
+      .filter(([, deps]) => deps.length >= 2)
+      .map(([area, deps]) => {
+        deps.sort((x, y) => x - y);
+        return { area: Number(area), min: deps[0], avg: Math.round(deps.reduce((s, d) => s + d, 0) / deps.length), max: deps[deps.length - 1], count: deps.length };
+      }).sort((x, y) => x.area - y.area);
+
+    // 면적별 전세가율
+    const jeonseByArea = priceByArea.map(p => {
+      const rent = rentByArea.find(r => Math.abs(r.area - p.area) <= 5);
+      return { area: p.area, rate: rent && p.avg > 0 ? Math.round(rent.avg / p.avg * 100) : null };
+    }).filter(j => j.rate != null);
+
     enriched++;
     return {
       ...a,
@@ -795,6 +878,9 @@ async function phase7_realtrade(apartments) {
       recentTrades6m: recentTrades6m ?? null,
       jeonseRate: jeonseRate ?? null,
       pir: pir ?? null,
+      priceByArea: priceByArea.length > 0 ? priceByArea : null,
+      rentByArea: rentByArea.length > 0 ? rentByArea : null,
+      jeonseByArea: jeonseByArea.length > 0 ? jeonseByArea : null,
     };
   });
 
