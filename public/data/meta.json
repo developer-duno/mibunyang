@@ -1,0 +1,35 @@
+{
+  "fetchedAt": "2026-03-06T05:25:10.173Z",
+  "count": 1479,
+  "phases": {
+    "applyhome": {
+      "ok": true,
+      "count": 1479
+    },
+    "kosis": {
+      "ok": true
+    },
+    "kakao": {
+      "ok": true,
+      "enriched": 718
+    },
+    "neis": {
+      "ok": true,
+      "enriched": 1479
+    },
+    "dart": {
+      "ok": true,
+      "builders": 5
+    },
+    "transport": {
+      "ok": true,
+      "enriched": 718
+    },
+    "realtrade": {
+      "ok": true,
+      "enriched": 976,
+      "apiCalls": 990
+    }
+  },
+  "errors": []
+}

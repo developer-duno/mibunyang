@@ -9,5 +9,4 @@ Thumbs.db
 
 .vercel
 tmp/
-public/data/
 vercel-dev.log
