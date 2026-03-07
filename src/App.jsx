@@ -100,6 +100,14 @@ export default function App() {
     setTab(k);
   }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen, consult]);
 
+  // verify 실패 시 admin 상태 동기화
+  useEffect(() => {
+    if (!expert.expertLoggedIn && admin.adminLoggedIn) {
+      admin.setAdminLoggedIn(false);
+      setTab("list");
+    }
+  }, [expert.expertLoggedIn, admin.adminLoggedIn, admin.setAdminLoggedIn]);
+
   // print CSS useEffect
   useEffect(() => {
     if (!expert.expertLoggedIn) return;
