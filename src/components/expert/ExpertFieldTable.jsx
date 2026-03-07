@@ -10,13 +10,14 @@ export const ExpertFieldTable = memo(function ExpertFieldTable({ apt, fields, ti
         {fields.map(fk => {
           const meta = FIELD_META[fk];
           if (!meta || meta.hidden) return null;
-          const raw = apt[fk];
+          const raw = apt[fk] ?? null;
           const val = meta.fmt ? meta.fmt(raw, apt) : (raw ?? "—");
           const isDef = meta.isDefault && meta.isDefault(raw);
+          const isMissing = raw == null && val === "—";
           return (
             <div key={fk} style={{ display: "flex", justifyContent: "space-between", padding: "6px 8px", borderBottom: `1px solid ${C.bg}`, fontSize: 12 }}>
               <span style={{ color: C.muted, flexShrink: 0 }}>{meta.label}</span>
-              <span style={{ fontWeight: 600, color: isDef ? C.amber : C.text, textAlign: "right", marginLeft: 8 }}>{String(val)}{isDef ? " ⚠" : ""}</span>
+              <span style={{ fontWeight: 600, color: isMissing ? C.muted : isDef ? C.amber : C.text, textAlign: "right", marginLeft: 8, fontStyle: isMissing ? "italic" : "normal" }}>{String(val)}{isDef ? " ⚠" : ""}</span>
             </div>
           );
         })}

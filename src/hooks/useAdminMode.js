@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 export function useAdminMode(showToast) {
   const [adminLoggedIn, setAdminLoggedIn] = useState(() =>
@@ -8,14 +8,19 @@ export function useAdminMode(showToast) {
   const [users, setUsers] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState("pending");
   const [reviewLoading, setReviewLoading] = useState(null);
+  const abortRef = useRef(null);
 
   const fetchUsers = useCallback(async (status) => {
     const token = sessionStorage.getItem("expertToken");
     if (!token) return;
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setAdminLoading(true);
     try {
       const res = await fetch(`/api/admin/users?status=${status || "pending"}`, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
       const data = await res.json();
       if (data.ok) {
@@ -28,8 +33,8 @@ export function useAdminMode(showToast) {
           showToast("관리자 세션이 만료되었습니다");
         }
       }
-    } catch {
-      showToast("서버 연결에 실패했습니다");
+    } catch (err) {
+      if (err.name !== "AbortError") showToast("서버 연결에 실패했습니다");
     } finally {
       setAdminLoading(false);
     }
@@ -72,7 +77,7 @@ export function useAdminMode(showToast) {
     if (adminLoggedIn) {
       fetchUsers(selectedStatus);
     }
-  }, [adminLoggedIn, selectedStatus, fetchUsers]);
+  }, [adminLoggedIn, selectedStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     adminLoggedIn, setAdminLoggedIn,

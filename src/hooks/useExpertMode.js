@@ -38,11 +38,11 @@ export function useExpertMode(showToast) {
       }
       setAuthError(data.error || "로그인 실패");
       showToast(data.error || "로그인 실패");
-      return false;
+      return { ok: false };
     } catch {
       setAuthError("서버 연결 실패");
       showToast("서버 연결에 실패했습니다");
-      return false;
+      return { ok: false };
     } finally {
       setAuthLoading(false);
     }
@@ -91,25 +91,37 @@ export function useExpertMode(showToast) {
   }, [showToast]);
 
   useEffect(() => {
-    const token = sessionStorage.getItem("expertToken");
-    if (!token) return;
-    fetch("/api/auth/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (!data.ok) {
+    let cancelled = false;
+    const verify = () => {
+      const token = sessionStorage.getItem("expertToken");
+      if (!token) return;
+      fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (cancelled) return;
+          if (!data.ok) {
+            setExpertLoggedIn(false);
+            sessionStorage.removeItem("expertToken");
+            sessionStorage.removeItem("userRole");
+          } else {
+            setAuthUser(data.user);
+            if (data.role) sessionStorage.setItem("userRole", data.role);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
           setExpertLoggedIn(false);
           sessionStorage.removeItem("expertToken");
           sessionStorage.removeItem("userRole");
-        } else {
-          setAuthUser(data.user);
-          if (data.role) sessionStorage.setItem("userRole", data.role);
-        }
-      })
-      .catch(() => {});
+        });
+    };
+    verify();
+    const id = setInterval(verify, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
 
   return {

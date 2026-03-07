@@ -23,20 +23,39 @@ export default async function handler(req, res) {
     }
 
     const newStatus = action === "approve" ? "approved" : "rejected";
-    const oldStatus = user.status || "pending";
+    const oldStatus = user.status ?? "pending";
 
-    await kv.set(key, {
+    const emailNorm = email.toLowerCase().trim();
+    const updatedUser = {
       ...user,
       status: newStatus,
       reviewedAt: new Date().toISOString(),
       reviewNote: (note || "").trim() || null,
-    });
+    };
 
-    const emailNorm = email.toLowerCase().trim();
-    if (oldStatus && oldStatus !== newStatus) {
-      await kv.srem(`users:${oldStatus}`, emailNorm);
+    // 집합 먼저 업데이트 (실패 시 해시 변경 없이 안전)
+    try {
+      await kv.sadd(`users:${newStatus}`, emailNorm);
+      if (oldStatus !== newStatus) {
+        await kv.srem(`users:${oldStatus}`, emailNorm);
+      }
+    } catch (setErr) {
+      // sadd 성공 후 srem 실패 시 복원
+      try { await kv.srem(`users:${newStatus}`, emailNorm); } catch { /* best-effort */ }
+      throw setErr;
     }
-    await kv.sadd(`users:${newStatus}`, emailNorm);
+
+    // 집합 성공 후 해시 업데이트
+    try {
+      await kv.set(key, updatedUser);
+    } catch (hashErr) {
+      // 해시 업데이트 실패 시 집합 복원
+      try {
+        await kv.srem(`users:${newStatus}`, emailNorm);
+        if (oldStatus !== newStatus) await kv.sadd(`users:${oldStatus}`, emailNorm);
+      } catch { /* best-effort */ }
+      throw hashErr;
+    }
 
     res.json({ ok: true, message: action === "approve" ? "승인되었습니다" : "거부되었습니다" });
   } catch (err) {

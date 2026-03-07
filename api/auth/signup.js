@@ -65,7 +65,12 @@ export default async function handler(req, res) {
       salt,
       createdAt: new Date().toISOString(),
     });
-    await kv.sadd("users:pending", emailNorm);
+    try {
+      await kv.sadd("users:pending", emailNorm);
+    } catch (saddErr) {
+      try { await kv.del(key); } catch { /* del 실패 시에도 상위 에러 전파 */ }
+      throw saddErr;
+    }
 
     res.json({ ok: true, message: "가입 신청이 완료되었습니다. 관리자 승인 후 이용 가능합니다." });
   } catch (err) {

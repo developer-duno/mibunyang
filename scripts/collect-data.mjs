@@ -37,6 +37,11 @@ const meta = { fetchedAt: null, count: 0, phases: {}, errors: [] };
 
 function log(msg) { console.log(`[collect] ${msg}`); }
 function logError(phase, msg) { console.error(`[collect:${phase}] ERROR: ${msg}`); meta.errors.push({ phase, msg }); }
+function logRejected(phase, results) {
+  results.forEach((r, i) => {
+    if (r.status === "rejected") console.warn(`[collect:${phase}] rejected[${i}]: ${r.reason}`);
+  });
+}
 
 // ============================================================
 // brands.js 로직 인라인
@@ -222,6 +227,7 @@ async function phase1_applyhome() {
             .catch(() => ({ lat: null, lng: null }));
         })
       );
+      logRejected("geocode", results);
       batch.forEach((a, j) => {
         const r = results[j];
         if (r.status === "fulfilled" && r.value.lat) {
@@ -371,6 +377,7 @@ async function phase3_kakao(apartments) {
   for (let i = 0; i < withCoords.length; i += 5) {
     const batch = withCoords.slice(i, i + 5);
     const results = await Promise.allSettled(batch.map(a => fetchInfra(a)));
+    logRejected("infra", results);
     for (let j = 0; j < batch.length; j++) {
       if (results[j].status === "fulfilled") {
         const idx = apartments.findIndex(a => a.id === batch[j].id);
@@ -455,6 +462,7 @@ async function phase4_neis(apartments) {
           score = Math.min(score, 100);
           return { id: apt.id, schoolScore: score, schoolGrade: score >= 85 ? "최우수" : score >= 70 ? "우수" : score >= 50 ? "보통" : "미흡" };
         }));
+        logRejected("school", results);
         for (const r of results) {
           if (r.status === "fulfilled") {
             const idx = apartments.findIndex(a => a.id === r.value.id);
@@ -542,6 +550,7 @@ async function phase5_dart(apartments) {
         }
         return { name, debtRatio: null };
       }));
+      logRejected("dart", results);
       for (const r of results) {
         if (r.status === "fulfilled" && r.value.debtRatio != null) {
           financials[r.value.name] = { debtRatio: r.value.debtRatio, creditGrade: estimateCreditGrade(r.value.debtRatio) };
@@ -592,6 +601,7 @@ async function phase6_transport(apartments) {
       ]);
       return { id: apt.id, busRoutes: busRes, icDist: icRes, ktxDist: ktxRes };
     }));
+    logRejected("transport", results);
     for (const r of results) {
       if (r.status === "fulfilled") {
         const idx = apartments.findIndex(a => a.id === r.value.id);
@@ -824,6 +834,30 @@ async function main() {
   apartments = await phase5_dart(apartments);
   apartments = await phase6_transport(apartments);
   apartments = await phase7_realtrade(apartments);
+
+  // Phase 8: 파생 필드 계산
+  log("Phase 8: 파생 필드 계산...");
+  apartments = apartments.map(a => {
+    // psr: 분양가 / 주변 중위가
+    const psr = (a.price && a.nearbyMedian && a.nearbyMedian > 0)
+      ? Math.round(a.price / a.nearbyMedian * 100) / 100 : null;
+
+    // pir: avgIncome 없으면 추정소득으로 계산
+    let pir = a.pir;
+    if (pir == null && a.price) {
+      const estIncome = 6000; // 한국 가구 평균소득 ~6000만원
+      pir = Math.round(a.price / estIncome * 10) / 10;
+    }
+
+    // dataReliability: 핵심 필드 채움 비율
+    const reliabilityFields = ["nearbyMedian", "jeonseRate", "subwayDist", "schoolScore",
+      "hospital", "busRoutes", "builderDebtRatio", "recentTrades6m", "popGrowth"];
+    const filledCount = reliabilityFields.filter(f => a[f] != null).length;
+    const dataReliability = Math.round(filledCount / reliabilityFields.length * 100);
+
+    return { ...a, psr, pir, dataReliability };
+  });
+  log("  파생 필드 계산 완료");
 
   // JSON 출력
   const outDir = resolve(ROOT, "public/data");

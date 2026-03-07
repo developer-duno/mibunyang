@@ -37,7 +37,7 @@ export default function App() {
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
   const admin = useAdminMode(showToast);
-  const { apartments, loading: dataLoading } = useApartmentData();
+  const { apartments, loading: dataLoading, error: dataError } = useApartmentData();
 
   // 5 useMemo
   const guOptions = useMemo(() => {
@@ -58,7 +58,7 @@ export default function App() {
     return [...list].sort(sorters[sortKey] || sorters.total);
   }, [scored, filterRegion, filterGu, sortKey]);
   const compItems = useMemo(() => compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean), [compIds, scored]);
-  const pw = PROFILES[profile].w;
+  const pw = useMemo(() => PROFILES[profile].w, [profile]);
 
   const regionOptions = useMemo(() => {
     const rs = new Set(apartments.map(a => a.region));
@@ -100,13 +100,13 @@ export default function App() {
     setTab(k);
   }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen, consult]);
 
-  // verify 실패 시 admin 상태 동기화
+  // verify 실패 시 admin 상태 동기화 (양방향)
   useEffect(() => {
     if (!expert.expertLoggedIn && admin.adminLoggedIn) {
       admin.setAdminLoggedIn(false);
-      setTab("list");
+      if (tab === "admin" || tab === "expert") setTab("list");
     }
-  }, [expert.expertLoggedIn, admin.adminLoggedIn, admin.setAdminLoggedIn]);
+  }, [expert.expertLoggedIn, admin.adminLoggedIn, admin.setAdminLoggedIn, tab]);
 
   // print CSS useEffect
   useEffect(() => {
@@ -153,6 +153,11 @@ export default function App() {
       {dataLoading && (
         <div style={{ textAlign: "center", padding: "6px", fontSize: 11, color: C.muted }}>
           데이터 로딩 중...
+        </div>
+      )}
+      {dataError && (
+        <div style={{ textAlign: "center", padding: "8px 16px", fontSize: 12, color: "#991B1B", background: "#FEF2F2", borderRadius: 8, margin: "8px 16px 0" }}>
+          데이터 로딩 실패: {dataError}
         </div>
       )}
 

@@ -103,11 +103,11 @@ constants → scoring → theme → components → hooks → App
 
 App.jsx 내부:
 ```
-useState (2개: profile, tab) → 커스텀 훅 9개 → useMemo (5개) → useEffect (1개: 인쇄 CSS)
+useState (2개: profile, tab) → 커스텀 훅 9개 → useMemo (6개: guOptions, scored, filtered, compItems, pw, regionOptions) → useEffect (2개: admin 동기화, 인쇄 CSS)
 ```
 
 각 커스텀 훅 내부에서 자체적으로 useState → useRef → useCallback → useEffect 순서 보장.
-총계: useState(23) → useRef(3) → useCallback(14) → useMemo(5) → useEffect(6)
+총계: useState(~30) → useRef(1: useToast) → useCallback(16) → useMemo(10) → useEffect(~18)
 
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 
@@ -115,11 +115,12 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 
 | useMemo | 의존성 | 절대 누락 금지 |
 |---------|--------|--------------|
-| guOptions | [filterRegion] | UNSOLD는 상수라 제외 |
-| scored | [profile] | UNSOLD는 상수라 제외 |
+| guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
+| scored | [apartments, profile] | apartments 의존 필수 |
 | filtered | [scored, filterRegion, filterGu, sortKey] | 4개 전부 필수 |
 | compItems | [compIds, scored] | 2개 전부 필수 |
-| regionOptions | [] | UNSOLD는 상수라 빈 배열 |
+| pw | [profile] | PROFILES[profile].w 참조 안정화 |
+| regionOptions | [apartments] | apartments 의존 필수 |
 
 ### 5. memo() 17개 컴포넌트
 

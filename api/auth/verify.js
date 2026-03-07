@@ -1,3 +1,4 @@
+import { kv } from "@vercel/kv";
 import { verifyToken } from "../_lib/auth.js";
 
 export default async function handler(req, res) {
@@ -13,6 +14,19 @@ export default async function handler(req, res) {
   const payload = verifyToken(token);
   if (!payload) {
     return res.json({ ok: false });
+  }
+
+  const isAdmin = payload.role === "admin";
+
+  if (!isAdmin) {
+    try {
+      const user = await kv.get(`user:${payload.email}`);
+      if (!user || user.status === "rejected" || user.status === "pending") {
+        return res.json({ ok: false, reason: "revoked" });
+      }
+    } catch {
+      return res.json({ ok: false, reason: "db_error" });
+    }
   }
 
   res.json({

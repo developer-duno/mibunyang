@@ -49,7 +49,9 @@ function sanitize(apt) {
 
 export function getAgeCoeff(completion) {
   if (!completion) return 1.05;
-  const comp = new Date(completion);
+  const parts = completion.toString().split("-");
+  const comp = parts.length >= 2 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2] || 1)) : new Date(completion);
+  if (isNaN(comp.getTime())) return 1.05;
   if (comp.getTime() > Date.now()) return 1.0;
   const yrs = Math.max(0, (Date.now() - comp.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
   const found = AGE_PREMIUM.find(a => yrs >= a.min && yrs < a.max);
@@ -70,8 +72,24 @@ export function scorePrice(apt) {
   const ageCoeff = getAgeCoeff(apt.completion);
   const areaAdj = getAreaAdj(apt.area);
   const fairPrice = apt.nearbyMedian * ageCoeff * areaAdj * b.adj;
-  const dev = fairPrice > 0 ? ((fairPrice - apt.price) / fairPrice) * 100 : 0;
+  if (fairPrice <= 0) {
+    const devSc = 30;
+    const jrSc = 50; const pirSc = 50; const psrSc = 50;
+    const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + Math.min(apt.dataReliability, 100) * 0.10;
+    return {
+      total: Math.round(Math.min(total, 100)), fairPrice: 0, deviation: "0.0",
+      subs: [
+        { name: "적정가 괴리도", score: devSc, info: "데이터 부재" },
+        { name: "전세가율", score: Math.round(jrSc), info: `${apt.jeonseRate}%` },
+        { name: "PIR", score: Math.round(pirSc), info: `${apt.pir}배` },
+        { name: "PSR", score: Math.round(psrSc), info: `${(apt.psr * 100).toFixed(0)}%` },
+        { name: "데이터 신뢰도", score: Math.min(apt.dataReliability, 100), info: `${apt.dataReliability}%` },
+      ],
+    };
+  }
+  const dev = ((fairPrice - apt.price) / fairPrice) * 100;
   let devSc = dev >= 20 ? 97 : dev >= 10 ? 75 + (dev - 10) / 10 * 20 : dev >= 5 ? 55 + (dev - 5) / 5 * 20 : dev >= 0 ? 35 + dev / 5 * 20 : Math.max(0, 35 + dev * 4);
+  devSc = Math.max(0, Math.min(devSc, 100));
 
   let jrSc; const jr = apt.jeonseRate;
   if (jr >= 70 && jr <= 80) jrSc = 80 + (1 - Math.abs(jr - 75) / 5) * 20;

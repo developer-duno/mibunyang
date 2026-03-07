@@ -26,6 +26,13 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  useEffect(() => {
+    if (!sidebarOpen || !isMobile) return;
+    const onKey = (e) => { if (e.key === "Escape") setSidebarOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidebarOpen, isMobile]);
+
   const selectedId = expandedApt || (scored.length > 0 ? scored[0].apt.id : null);
   const selectedItem = useMemo(() => scored.find(x => x.apt.id === selectedId), [scored, selectedId]);
 
@@ -97,7 +104,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
           <>
             <ExpertAptHeader apt={selectedItem.apt} res={selectedItem.res} profile={profile} />
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "0 12px" }}>
               {FIELD_SECTIONS.map(sec => (
                 <ExpertFieldTable key={sec.key} apt={selectedItem.apt} fields={sec.fields} title={sec.label}
                   color={SEC_COLOR[sec.key] || C.indigo} />
