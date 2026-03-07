@@ -15,5 +15,9 @@ export default async function handler(req, res) {
     return res.json({ ok: false });
   }
 
-  res.json({ ok: true, user: { email: payload.email, name: payload.name } });
+  res.json({
+    ok: true,
+    user: { email: payload.email, name: payload.name },
+    ...(payload.role && { role: payload.role }),
+  });
 }

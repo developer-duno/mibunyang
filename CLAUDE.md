@@ -43,7 +43,6 @@ src/
 │   │   ├── ExpertAptHeader.jsx
 │   │   └── ExpertDashboard.jsx
 │   └── admin/
-│       ├── AdminLogin.jsx
 │       └── AdminDashboard.jsx
 ├── hooks/
 │   ├── useToast.js
@@ -63,7 +62,6 @@ api/
 │   ├── login.js                      (로그인 — status 기반 접근제어)
 │   └── verify.js                     (토큰 검증)
 └── admin/
-    ├── login.js                      (관리자 로그인 — ADMIN_SECRET)
     ├── users.js                      (사용자 목록 조회)
     └── review.js                     (승인/거부)
 ```
@@ -109,7 +107,7 @@ useState (2개: profile, tab) → 커스텀 훅 9개 → useMemo (5개) → useE
 ```
 
 각 커스텀 훅 내부에서 자체적으로 useState → useRef → useCallback → useEffect 순서 보장.
-총계: useState(25) → useRef(3) → useCallback(15) → useMemo(5) → useEffect(6)
+총계: useState(23) → useRef(3) → useCallback(14) → useMemo(5) → useEffect(6)
 
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 
@@ -123,11 +121,11 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 | compItems | [compIds, scored] | 2개 전부 필수 |
 | regionOptions | [] | UNSOLD는 상수라 빈 배열 |
 
-### 5. memo() 18개 컴포넌트
+### 5. memo() 17개 컴포넌트
 
 소비자 8개: Bar, ScoreBadge, Radar, CatPanel, AptCard, CompareSheet, ConsultForm, DetailModal
 전문가 8개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard
-관리자 2개: AdminLogin, AdminDashboard
+관리자 1개: AdminDashboard
 
 반드시 `memo(function Name(...) { ... })` 패턴 유지.
 memo 효과를 위해 `onToggle` 등 콜백은 `useCallback`으로 안정화 필수.

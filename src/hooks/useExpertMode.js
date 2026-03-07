@@ -29,7 +29,7 @@ export function useExpertMode(showToast) {
         setAuthUser(data.user);
         setAuthForm({ ...EMPTY_FORM });
         showToast("전문가 모드로 전환되었습니다");
-        return true;
+        return { ok: true, role: data.role || "expert" };
       }
       if (data.statusCode === "PENDING") {
         setAuthStatus("pending");
@@ -80,6 +80,7 @@ export function useExpertMode(showToast) {
   const handleExpertLogout = useCallback((onLogout) => {
     setExpertLoggedIn(false);
     sessionStorage.removeItem("expertToken");
+    sessionStorage.removeItem("userRole");
     setExpertExpandedApt(null);
     setAuthUser(null);
     setAuthForm({ ...EMPTY_FORM });
@@ -102,8 +103,10 @@ export function useExpertMode(showToast) {
         if (!data.ok) {
           setExpertLoggedIn(false);
           sessionStorage.removeItem("expertToken");
+          sessionStorage.removeItem("userRole");
         } else {
           setAuthUser(data.user);
+          if (data.role) sessionStorage.setItem("userRole", data.role);
         }
       })
       .catch(() => {});

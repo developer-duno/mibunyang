@@ -9,7 +9,6 @@ import { CompareSheet } from "@/components/CompareSheet";
 import { DetailModal } from "@/components/DetailModal";
 import { ConsultForm } from "@/components/ConsultForm";
 import { ExpertDashboard } from "@/components/expert/ExpertDashboard";
-import { AdminLogin } from "@/components/admin/AdminLogin";
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
@@ -23,7 +22,10 @@ import { useApartmentData } from "@/hooks/useApartmentData";
 
 export default function App() {
   const [profile, setProfile] = useState("live");
-  const [tab, setTab] = useState(() => sessionStorage.getItem("expertToken") ? "expert" : "list");
+  const [tab, setTab] = useState(() => {
+    if (!sessionStorage.getItem("expertToken")) return "list";
+    return sessionStorage.getItem("userRole") === "admin" ? "admin" : "expert";
+  });
 
   // 7 custom hooks
   const { toast, showToast } = useToast();
@@ -67,8 +69,16 @@ export default function App() {
 
   // handleExpertLogin wrapper (setTab is in App scope)
   const handleExpertLogin = async () => {
-    if (await expert.handleExpertLogin()) {
-      setTab("expert");
+    const result = await expert.handleExpertLogin();
+    if (result?.ok) {
+      if (result.role === "admin") {
+        sessionStorage.setItem("userRole", "admin");
+        admin.setAdminLoggedIn(true);
+        setTab("admin");
+      } else {
+        sessionStorage.setItem("userRole", "expert");
+        setTab("expert");
+      }
     }
   };
 
@@ -266,11 +276,6 @@ export default function App() {
                 }}>전문가 로그인</button>
               </div>
             )}
-            <div style={{ textAlign: "center", marginTop: 16 }}>
-              <button onClick={() => setTab("adminLogin")} style={{
-                background: "transparent", border: "none", color: C.muted, fontSize: 11, cursor: "pointer", opacity: 0.5
-              }}>관리자</button>
-            </div>
           </div>
         </div>
       ) : tab === "consult" ? (
@@ -426,14 +431,10 @@ export default function App() {
       ) : tab === "expert" ? (
         <ExpertDashboard scored={scored} profile={profile} setProfile={setProfile}
           expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt} />
-      ) : tab === "adminLogin" ? (
-        <AdminLogin admin={admin} onBack={() => setTab("info")} onSuccess={() => setTab("admin")} />
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <AdminDashboard admin={admin} onLogout={() => setTab("info")} />
-        ) : (
-          <AdminLogin admin={admin} onBack={() => setTab("info")} onSuccess={() => setTab("admin")} />
-        )
+        ) : null
       ) : tab === "expertConsults" ? (
         <div style={{ padding: "0 16px" }}>
           <div style={{ background: C.indigoLight, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

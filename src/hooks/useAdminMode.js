@@ -1,16 +1,16 @@
 import { useState, useCallback, useEffect } from "react";
 
 export function useAdminMode(showToast) {
-  const [adminLoggedIn, setAdminLoggedIn] = useState(() => !!sessionStorage.getItem("adminToken"));
-  const [adminSecret, setAdminSecret] = useState("");
+  const [adminLoggedIn, setAdminLoggedIn] = useState(() =>
+    sessionStorage.getItem("userRole") === "admin" && !!sessionStorage.getItem("expertToken")
+  );
   const [adminLoading, setAdminLoading] = useState(false);
-  const [adminError, setAdminError] = useState("");
   const [users, setUsers] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState("pending");
   const [reviewLoading, setReviewLoading] = useState(null);
 
   const fetchUsers = useCallback(async (status) => {
-    const token = sessionStorage.getItem("adminToken");
+    const token = sessionStorage.getItem("expertToken");
     if (!token) return;
     setAdminLoading(true);
     try {
@@ -23,7 +23,8 @@ export function useAdminMode(showToast) {
       } else {
         if (res.status === 401) {
           setAdminLoggedIn(false);
-          sessionStorage.removeItem("adminToken");
+          sessionStorage.removeItem("expertToken");
+          sessionStorage.removeItem("userRole");
           showToast("관리자 세션이 만료되었습니다");
         }
       }
@@ -34,35 +35,8 @@ export function useAdminMode(showToast) {
     }
   }, [showToast]);
 
-  const handleAdminLogin = useCallback(async () => {
-    setAdminLoading(true);
-    setAdminError("");
-    try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: adminSecret }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        sessionStorage.setItem("adminToken", data.token);
-        setAdminLoggedIn(true);
-        setAdminSecret("");
-        showToast("관리자 모드로 전환되었습니다");
-        return true;
-      }
-      setAdminError(data.error || "로그인 실패");
-      return false;
-    } catch {
-      setAdminError("서버 연결 실패");
-      return false;
-    } finally {
-      setAdminLoading(false);
-    }
-  }, [adminSecret, showToast]);
-
   const handleReview = useCallback(async (email, action, note) => {
-    const token = sessionStorage.getItem("adminToken");
+    const token = sessionStorage.getItem("expertToken");
     if (!token) return;
     setReviewLoading(email);
     try {
@@ -87,10 +61,9 @@ export function useAdminMode(showToast) {
 
   const handleAdminLogout = useCallback((onLogout) => {
     setAdminLoggedIn(false);
-    sessionStorage.removeItem("adminToken");
+    sessionStorage.removeItem("expertToken");
+    sessionStorage.removeItem("userRole");
     setUsers([]);
-    setAdminSecret("");
-    setAdminError("");
     onLogout?.();
     showToast("관리자 로그아웃");
   }, [showToast]);
@@ -102,9 +75,9 @@ export function useAdminMode(showToast) {
   }, [adminLoggedIn, selectedStatus, fetchUsers]);
 
   return {
-    adminLoggedIn, adminSecret, setAdminSecret,
-    adminLoading, adminError, reviewLoading,
+    adminLoggedIn, setAdminLoggedIn,
+    adminLoading, reviewLoading,
     users, selectedStatus, setSelectedStatus,
-    handleAdminLogin, handleAdminLogout, handleReview, fetchUsers,
+    handleAdminLogout, handleReview, fetchUsers,
   };
 }
