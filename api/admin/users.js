@@ -24,7 +24,7 @@ export default async function handler(req, res) {
         kv.smembers("users:approved"),
         kv.smembers("users:rejected"),
       ]);
-      emails = [...(p || []), ...(a || []), ...(r || [])];
+      emails = [...new Set([...(p || []), ...(a || []), ...(r || [])])];
     } else {
       emails = (await kv.smembers(`users:${status}`)) || [];
     }

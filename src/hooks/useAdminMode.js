@@ -79,6 +79,10 @@ export function useAdminMode(showToast) {
     }
   }, [adminLoggedIn, selectedStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    return () => { if (abortRef.current) abortRef.current.abort(); };
+  }, []);
+
   return {
     adminLoggedIn, setAdminLoggedIn,
     adminLoading, reviewLoading,
