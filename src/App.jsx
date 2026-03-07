@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
 import { calcAll } from "@/scoring/engine";
@@ -8,8 +8,9 @@ import { AptCard } from "@/components/AptCard";
 import { CompareSheet } from "@/components/CompareSheet";
 import { DetailModal } from "@/components/DetailModal";
 import { ConsultForm } from "@/components/ConsultForm";
-import { ExpertDashboard } from "@/components/expert/ExpertDashboard";
-import { AdminDashboard } from "@/components/admin/AdminDashboard";
+
+const ExpertDashboard = lazy(() => import("@/components/expert/ExpertDashboard").then(m => ({ default: m.ExpertDashboard })));
+const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
 import { useComparison } from "@/hooks/useComparison";
@@ -49,7 +50,13 @@ export default function App() {
     return ["전체", ...regionGus];
   }, [filterRegion, apartments]);
 
-  const scored = useMemo(() => apartments.map(a => ({ apt: a, res: calcAll(a, profile) })), [apartments, profile]);
+  const scoredCache = useMemo(() => new Map(), [apartments]);
+  const scored = useMemo(() => {
+    if (scoredCache.has(profile)) return scoredCache.get(profile);
+    const result = apartments.map(a => ({ apt: a, res: calcAll(a, profile) }));
+    scoredCache.set(profile, result);
+    return result;
+  }, [apartments, profile, scoredCache]);
   const filtered = useMemo(() => {
     let list = scored;
     if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
@@ -442,12 +449,16 @@ export default function App() {
           </div>
         </div>
       ) : tab === "expert" ? (
-        <ExpertDashboard scored={scored} profile={profile} setProfile={setProfile}
-          expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt}
-          onSwitchToAdmin={admin.adminLoggedIn ? () => setTab("admin") : undefined} />
+        <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>대시보드 로딩 중...</div>}>
+          <ExpertDashboard scored={scored} profile={profile} setProfile={setProfile}
+            expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt}
+            onSwitchToAdmin={admin.adminLoggedIn ? () => setTab("admin") : undefined} />
+        </Suspense>
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
-          <AdminDashboard admin={admin} onLogout={() => setTab("info")} onSwitchToExpert={() => setTab("expert")} />
+          <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>관리자 패널 로딩 중...</div>}>
+            <AdminDashboard admin={admin} onLogout={() => setTab("info")} onSwitchToExpert={() => setTab("expert")} />
+          </Suspense>
         ) : null
       ) : tab === "expertConsults" ? (
         <div style={{ padding: "0 16px" }}>

@@ -5,6 +5,25 @@ import path from "path";
 export default defineConfig({
   plugins: [react()],
   resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          expert: [
+            "./src/components/expert/ExpertDashboard.jsx",
+            "./src/components/expert/ExpertFieldTable.jsx",
+            "./src/components/expert/ExpertScoreBreakdown.jsx",
+            "./src/components/expert/ExpertScoreSummary.jsx",
+            "./src/components/expert/ExpertUnitPlaceholder.jsx",
+            "./src/components/expert/ExpertDataCompleteness.jsx",
+            "./src/components/expert/ExpertSidebar.jsx",
+            "./src/components/expert/ExpertAptHeader.jsx",
+          ],
+          admin: ["./src/components/admin/AdminDashboard.jsx"],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       "/api": {

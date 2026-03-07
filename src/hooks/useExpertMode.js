@@ -120,8 +120,10 @@ export function useExpertMode(showToast) {
         });
     };
     verify();
-    const id = setInterval(verify, 5 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
+    const id = setInterval(verify, 15 * 60 * 1000);
+    const onVisibility = () => { if (document.visibilityState === "visible") verify(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { cancelled = true; clearInterval(id); document.removeEventListener("visibilitychange", onVisibility); };
   }, []);
 
   return {
