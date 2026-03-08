@@ -1,9 +1,16 @@
 import { kv } from "@vercel/kv";
 import { verifyToken } from "../_lib/auth.js";
+import { checkRateLimit } from "../_lib/rateLimit.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  const { limited, retryAfter } = await checkRateLimit(req, "verify");
+  if (limited) {
+    res.setHeader("Retry-After", String(retryAfter));
+    return res.status(429).json({ ok: false, error: `요청이 너무 많습니다. ${retryAfter}초 후 다시 시도해주세요.` });
   }
 
   const { token } = req.body || {};

@@ -5,7 +5,8 @@ const WINDOW_SEC = 300; // 5분
 
 export async function checkRateLimit(req, endpoint) {
   try {
-    const ip = (req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "unknown").split(",")[0].trim();
+    const fwd = req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "unknown";
+    const ip = fwd.split(",").pop().trim();
     const key = `rl:${ip}:${endpoint}`;
     const count = await kv.incr(key);
     if (count === 1) await kv.expire(key, WINDOW_SEC);

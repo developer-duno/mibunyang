@@ -11,6 +11,7 @@ export default async function handler(req, res) {
 
   const { limited, retryAfter } = await checkRateLimit(req, "signup");
   if (limited) {
+    res.setHeader("Retry-After", String(retryAfter));
     return res.status(429).json({ ok: false, error: `요청이 너무 많습니다. ${retryAfter}초 후 다시 시도해주세요.` });
   }
 

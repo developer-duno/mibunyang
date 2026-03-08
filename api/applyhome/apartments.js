@@ -190,15 +190,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // debug: 직접 API 테스트
-    if (req.query.debug === "1") {
-      const testUrl = `${APPLYHOME_BASE}/getRemndrLttotPblancDetail?page=1&perPage=2&returnType=JSON&serviceKey=${encodeURIComponent(apiKey)}`;
-      const testRes = await fetch(testUrl);
-      const testText = await testRes.text();
-      res.json({ keyLen: apiKey.length, status: testRes.status, body: testText.substring(0, 500) });
-      return;
-    }
-
     const result = await tryFetchApartments(apiKey);
 
     if (!result || !result.items?.length) {
