@@ -224,86 +224,78 @@ export default function App() {
         </div>
       )}
 
-      {/* 가중치 */}
-      <div style={{ padding: "10px 16px 0" }}>
-        <div style={{ background: C.card, borderRadius: 12, padding: "10px 16px", border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{PROFILES[profile].name}</span>
-            <span style={{ fontSize: 11, color: C.muted }}>· {PROFILES[profile].desc}</span>
-          </div>
-          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "center" }}>
-            {Object.entries(pw).map(([k]) => {
-              const nm = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
-              return <span key={k} style={{ fontSize: 11, fontWeight: 700, color: catCol[k], background: catBg[k], padding: "3px 8px", borderRadius: 4 }}>{nm[k]} {pw[k]}%</span>;
-            })}
-          </div>
-        </div>
-      </div>
-
       {tab === "list" ? (
         <div style={{ padding: "0 16px" }}>
-          <div style={{ background: C.card, borderRadius: 12, padding: "12px 14px", border: `1px solid ${C.border}`, marginBottom: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-
-            <div style={{ position: "relative", marginBottom: 8 }}>
-              <input type="text" value={searchText} onChange={e => handleSearchChange(e.target.value)} placeholder="단지명, 건설사, 지역 검색 (초성 가능)" aria-label="단지 검색" style={{
-                width: "100%", padding: "9px 36px 9px 12px", fontSize: 13,
-                border: searchText ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-                borderRadius: 8, background: C.slate100, color: C.text,
-                outline: "none", minHeight: 38, boxSizing: "border-box"
-              }} />
-              {searchText && (
-                <button onClick={() => handleSearchChange("")} aria-label="검색어 지우기" style={{
-                  position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                  background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 16, padding: 4
-                }}>✕</button>
-              )}
+          {/* 검색 + 필터 통합 컴팩트 바 */}
+          <div data-no-print style={{ background: C.card, borderRadius: 10, padding: "8px 10px", border: `1px solid ${C.border}`, margin: "8px 0 6px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+            {/* 1행: 검색 입력 */}
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+              <div style={{ position: "relative", flex: 1 }}>
+                <input type="text" value={searchText} onChange={e => handleSearchChange(e.target.value)} placeholder="단지명, 건설사, 지역 검색" aria-label="단지 검색" style={{
+                  width: "100%", padding: "6px 30px 6px 10px", fontSize: 12,
+                  border: searchText ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+                  borderRadius: 6, background: C.slate100, color: C.text,
+                  outline: "none", height: 32, boxSizing: "border-box"
+                }} />
+                {searchText && (
+                  <button onClick={() => handleSearchChange("")} aria-label="검색어 지우기" style={{
+                    position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14, padding: 2
+                  }}>✕</button>
+                )}
+              </div>
             </div>
-
-            <div data-no-print style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-              <select value={filterRegion} onChange={e => handleRegionChange(e.target.value)} aria-label="시/도 선택" style={{
-                flex: "1 1 45%", padding: "7px 28px 7px 12px", fontSize: 13, fontWeight: filterRegion !== "전체" ? 700 : 500,
-                border: filterRegion !== "전체" ? `1.5px solid ${C.indigo}` : "none", borderRadius: 6, background: C.slate100,
-                color: filterRegion !== "전체" ? C.indigo : C.slate600, cursor: "pointer", minHeight: 38,
+            {/* 2행: 지역 + 예산 + 초기화 */}
+            <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
+              <select value={filterRegion} onChange={e => handleRegionChange(e.target.value)} aria-label="시/도" style={{
+                flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11, fontWeight: filterRegion !== "전체" ? 700 : 500,
+                border: filterRegion !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, background: C.slate100,
+                color: filterRegion !== "전체" ? C.indigo : C.slate600, cursor: "pointer", height: 30,
                 WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center"
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
               }}>
                 {regionOptions.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <select value={filterGu} onChange={e => handleGuChange(e.target.value)} aria-label="구/군 선택" disabled={filterRegion === "전체" || guOptions.length <= 1} style={{
-                flex: "1 1 45%", padding: "7px 28px 7px 12px", fontSize: 13, fontWeight: filterGu !== "전체" ? 700 : 500,
-                border: filterGu !== "전체" ? `1.5px solid ${C.indigo}` : "none", borderRadius: 6,
+              <select value={filterGu} onChange={e => handleGuChange(e.target.value)} aria-label="구/군" disabled={filterRegion === "전체" || guOptions.length <= 1} style={{
+                flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11, fontWeight: filterGu !== "전체" ? 700 : 500,
+                border: filterGu !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5,
                 background: (filterRegion === "전체" || guOptions.length <= 1) ? "#E2E8F0" : C.slate100,
                 color: (filterRegion === "전체" || guOptions.length <= 1) ? "#94A3B8" : filterGu !== "전체" ? C.indigo : C.slate600,
-                cursor: (filterRegion === "전체" || guOptions.length <= 1) ? "default" : "pointer", minHeight: 38,
+                cursor: (filterRegion === "전체" || guOptions.length <= 1) ? "default" : "pointer", height: 30,
                 WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center"
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
               }}>
                 {guOptions.map(g2 => <option key={g2} value={g2}>{g2}</option>)}
               </select>
               <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => handleBudgetMinChange(e.target.value)} placeholder="최소(억)" aria-label="최소 예산(억)"
-                style={{ flex: "1 1 30%", minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 38, boxSizing: "border-box", background: C.slate100 }} />
-              <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>~</span>
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 30, boxSizing: "border-box", background: C.slate100 }} />
+              <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>~</span>
               <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMax} onChange={e => handleBudgetMaxChange(e.target.value)} placeholder="최대(억)" aria-label="최대 예산(억)"
-                style={{ flex: "1 1 30%", minWidth: 0, padding: "7px 10px", fontSize: 13, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6, outline: "none", minHeight: 38, boxSizing: "border-box", background: C.slate100 }} />
-              <span style={{ fontSize: 12, color: C.muted, flexShrink: 0 }}>억</span>
-              {(budgetMin || budgetMax) && (
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 30, boxSizing: "border-box", background: C.slate100 }} />
+              <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>억</span>
+              {(budgetMin || budgetMax) ? (
                 <button onClick={handleBudgetReset} aria-label="예산 초기화" style={{
-                  background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", fontSize: 12, color: C.muted,
-                  cursor: "pointer", minWidth: 38, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                  background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: 11, color: C.muted,
+                  cursor: "pointer", height: 30, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
                 }}>✕</button>
-              )}
+              ) : null}
             </div>
-
-            <div style={{ display: "flex", gap: 4 }}>
+            {/* 3행: 정렬 + 가중치 뱃지 */}
+            <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
               {[{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }].map(s => (
                 <button key={s.k} onClick={() => setSortKey(s.k)} style={{
                   flex: 1, background: sortKey === s.k ? s.bg : s.pas, color: sortKey === s.k ? s.ac : C.slate600,
-                  border: sortKey === s.k ? `1.5px solid ${s.ac}` : "1.5px solid transparent", borderRadius: 6, padding: "7px 8px", minHeight: 36,
-                  fontSize: 12, fontWeight: sortKey === s.k ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all .15s", textAlign: "center"
+                  border: sortKey === s.k ? `1.5px solid ${s.ac}` : "1.5px solid transparent", borderRadius: 5, padding: "4px 0", height: 28,
+                  fontSize: 11, fontWeight: sortKey === s.k ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all .15s", textAlign: "center"
                 }}>{s.l}</button>
               ))}
+              <div style={{ width: 1, height: 20, background: C.border, flexShrink: 0, margin: "0 2px" }} />
+              {Object.entries(pw).map(([k]) => {
+                const nm = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
+                return <span key={k} style={{ fontSize: 9, fontWeight: 700, color: catCol[k], background: catBg[k], padding: "2px 4px", borderRadius: 3, whiteSpace: "nowrap" }}>{nm[k]}{pw[k]}</span>;
+              })}
             </div>
           </div>
 
@@ -317,10 +309,10 @@ export default function App() {
 
           {showComp && <CompareSheet items={compItems} onShare={handleShareCompare} />}
 
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 6, padding: "0 2px" }}>
-            {filtered.length}개 단지 · {PROFILES[profile].name} 모드{filterRegion !== "전체" ? ` · ${filterRegion}` : " · 전국"}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · 예산 ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px" }}>
+            {filtered.length}개 단지 · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
             {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
-              <span style={{ color: C.red, fontWeight: 700 }}> · 최소가 최대보다 큽니다</span>
+              <span style={{ color: C.red, fontWeight: 700 }}> (최소&gt;최대)</span>
             )}
           </div>
 
