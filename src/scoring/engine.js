@@ -13,32 +13,33 @@ const matchAny = (str, keywords) => keywords.some(k => str.includes(k));
 // --- null 안전 레이어 (Bug-2 + API-2) ---
 function sanitize(apt) {
   const str = (v, fallback = "") => (v ?? fallback).toString().trim().normalize("NFC");
+  const num = (v, fallback) => { const n = Number(v); return (v == null || Number.isNaN(n)) ? fallback : n; };
   return {
     ...apt,
     // 위험 필드 → 비관적 기본값
-    pir: apt.pir ?? 10, psr: apt.psr ?? 1.5,
-    unsoldRate: apt.unsoldRate ?? 50, recentTrades6m: apt.recentTrades6m ?? 0,
-    builderDebtRatio: apt.builderDebtRatio ?? 250, supplyRatio: apt.supplyRatio ?? 150,
-    popGrowth: apt.popGrowth ?? -1, dataReliability: apt.dataReliability ?? 30,
+    pir: num(apt.pir, 10), psr: num(apt.psr, 1.5),
+    unsoldRate: num(apt.unsoldRate, 50), recentTrades6m: num(apt.recentTrades6m, 0),
+    builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, 150),
+    popGrowth: num(apt.popGrowth, -1), dataReliability: num(apt.dataReliability, 30),
     // 가격/시장 필드
-    jeonseRate: apt.jeonseRate ?? 40, nearbyMedian: apt.nearbyMedian ?? 0,
-    price: apt.price ?? 0, area: apt.area ?? 84,
+    jeonseRate: num(apt.jeonseRate, 40), nearbyMedian: num(apt.nearbyMedian, 0),
+    price: num(apt.price, 0), area: num(apt.area, 84),
     // 교통 필드
-    subwayDist: apt.subwayDist ?? 9999, busRoutes: apt.busRoutes ?? 0,
-    icDist: apt.icDist ?? 99, ktxDist: apt.ktxDist ?? 99,
-    // 인프라 필드 (Bug-1)
-    noise: apt.noise ?? 75,
-    hospital: apt.hospital ?? 0, mart: apt.mart ?? 0, conv: apt.conv ?? 0,
-    park: apt.park ?? 0, cafe: apt.cafe ?? 0, culture: apt.culture ?? 0,
-    bank: apt.bank ?? 0, pharmacy: apt.pharmacy ?? 0,
+    subwayDist: num(apt.subwayDist, 9999), busRoutes: num(apt.busRoutes, 0),
+    icDist: num(apt.icDist, 99), ktxDist: num(apt.ktxDist, 99),
+    // 인프라 필드
+    noise: num(apt.noise, 75),
+    hospital: num(apt.hospital, 0), mart: num(apt.mart, 0), conv: num(apt.conv, 0),
+    park: num(apt.park, 0), cafe: num(apt.cafe, 0), culture: num(apt.culture, 0),
+    bank: num(apt.bank, 0), pharmacy: num(apt.pharmacy, 0),
     // 혜택 필드 → 0
-    discountPct: apt.discountPct ?? 0, loanFreePct: apt.loanFreePct ?? 0,
-    optionValue: apt.optionValue ?? 0, balconyValue: apt.balconyValue ?? 0,
-    cashback: apt.cashback ?? 0,
+    discountPct: num(apt.discountPct, 0), loanFreePct: num(apt.loanFreePct, 0),
+    optionValue: num(apt.optionValue, 0), balconyValue: num(apt.balconyValue, 0),
+    cashback: num(apt.cashback, 0),
     // 상품성 필드
-    units: apt.units ?? 0, parkingRatio: apt.parkingRatio ?? 0.5,
-    floorAreaRatio: apt.floorAreaRatio ?? 300, exclusiveRatio: apt.exclusiveRatio ?? 60,
-    maxFloor: apt.maxFloor ?? 10,
+    units: num(apt.units, 0), parkingRatio: num(apt.parkingRatio, 0.5),
+    floorAreaRatio: num(apt.floorAreaRatio, 300), exclusiveRatio: num(apt.exclusiveRatio, 60),
+    maxFloor: num(apt.maxFloor, 10),
     // 한글 문자열 NFC 정규화 (API-2)
     region: str(apt.region), gu: str(apt.gu),
     builder: str(apt.builder, "기타"),

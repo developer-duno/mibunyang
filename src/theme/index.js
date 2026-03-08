@@ -19,7 +19,7 @@ export const SHORT_LABEL = { "입지·생활권": "입지", "가격 매력도": 
 export function gr(s) {
   if (s >= 90) return { l: "S", c: C.blue, bg: C.blueLight };
   if (s >= 80) return { l: "A", c: C.green, bg: C.greenLight };
-  if (s >= 70) return { l: "B+", c: "#059669", bg: "#ECFDF5" };
+  if (s >= 70) return { l: "B+", c: "#047857", bg: "#ECFDF5" };
   if (s >= 60) return { l: "B", c: C.amber, bg: C.amberLight };
   if (s >= 50) return { l: "C", c: "#EA580C", bg: "#FFF7ED" };
   return { l: "D", c: C.red, bg: C.redLight };
