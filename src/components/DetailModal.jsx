@@ -1,14 +1,33 @@
 import { memo, useState, useEffect } from "react";
 import { C, catCol, catBg, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE, LTV_RATES } from "@/constants/regulations";
-import { ScoreBadge, Radar } from "./primitives";
+import { ScoreBadge, Radar, Bar } from "./primitives";
 import { CatPanel } from "./CatPanel";
 import { fmtPrice } from "@/lib/format";
+import { FIELD_META } from "@/constants/fieldMeta";
 const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
 const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
+const DATA_SECTIONS = [
+  { title: "단지 기본정보", fields: ["dong", "units", "unsold", "unsoldRate", "pp", "completion", "builder", "dataReliability"] },
+  { title: "생활인프라 (반경 1km)", fields: ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"] },
+  { title: "교통 상세", fields: ["subwayDist", "busRoutes", "icDist", "ktxDist"] },
+  { title: "시장/투자 지표", fields: ["recentTrades6m", "nearbyMedian", "pir", "psr", "popGrowth"] },
+];
+
+function dataValueColor(field, value) {
+  if (value == null) return C.muted;
+  if (field === "unsoldRate") return value > 15 ? C.red : value <= 5 ? C.green : C.text;
+  if (field === "subwayDist") return value <= 500 ? C.green : value <= 1000 ? C.blue : C.text;
+  if (field === "popGrowth") return value > 0 ? C.green : value < 0 ? C.red : C.text;
+  if (field === "dataReliability") return value >= 80 ? C.green : value >= 50 ? C.amber : C.red;
+  if (["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"].includes(field)) return value === 0 ? C.muted : C.text;
+  return C.text;
+}
+
 export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC }) {
   const [showLegal, setShowLegal] = useState(false);
+  const [showData, setShowData] = useState(false);
   useEffect(() => {
     if (!item) return;
     document.body.style.overflow = "hidden";
@@ -215,6 +234,59 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>디딤돌대출</strong> — 무주택 서민 대상, 연소득 6천만원 이하, 최대 2.5억(생애최초 3억), 금리 2.15~3.00%</div>
               <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하, 최대 3.6억, 고정금리</div>
               <div style={{ color: C.red, fontSize: 11, fontWeight: 600, marginTop: 8 }}>본 정보는 참고용이며 실제 대출 조건은 금융기관에 확인하세요. 규제지역 지정·해제는 수시 변경될 수 있습니다.</div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+          <div
+            onClick={() => setShowData(v => !v)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={showData}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowData(v => !v); } }}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>공공데이터 상세</span>
+            <span style={{ fontSize: 12, color: C.muted, transition: "transform .2s", transform: showData ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>
+          </div>
+          {showData && (
+            <div style={{ marginTop: 8 }}>
+              {DATA_SECTIONS.map((section, si) => {
+                const hasAny = section.fields.some(f => apt[f] != null);
+                return (
+                  <div key={si} style={{ marginTop: si > 0 ? 12 : 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 4, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>{section.title}</div>
+                    {hasAny ? section.fields.map(f => {
+                      const meta = FIELD_META[f];
+                      if (!meta) return null;
+                      const val = apt[f];
+                      if (f === "dataReliability" && val != null) {
+                        return (
+                          <div key={f} style={{ padding: "4px 0" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                              <span style={{ fontSize: 12, color: C.muted }}>{meta.label}</span>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: dataValueColor(f, val) }}>{meta.fmt(val)}</span>
+                            </div>
+                            <Bar value={val} color={dataValueColor(f, val)} h={4} />
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={f} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
+                          <span style={{ fontSize: 12, color: C.muted }}>{meta.label}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: dataValueColor(f, val) }}>{meta.fmt(val)}</span>
+                        </div>
+                      );
+                    }) : (
+                      <div style={{ fontSize: 11, color: C.muted, padding: "6px 0" }}>데이터 수집 중...</div>
+                    )}
+                  </div>
+                );
+              })}
+              <div style={{ fontSize: 10, color: C.muted, marginTop: 10, lineHeight: 1.5 }}>
+                출처: 청약홈(국토교통부) · 카카오 로컬 API · KOSIS(통계청) · 국토부 실거래가 · NEIS(교육부)
+              </div>
             </div>
           )}
         </div>

@@ -149,8 +149,8 @@ function mapItem(item, idx, isRemndr) {
   }
 
   const units = parseInt(item.TOT_SUPLY_HSHLDCO || 0, 10) || 0;
-  // 잔여세대 엔드포인트: 전체가 미분양 (잔여)
-  const unsold = isRemndr ? units : (parseInt(item.REMNDR_HSHLDCO || 0, 10) || 0);
+  const remndr = parseInt(item.REMNDR_HSHLDCO || 0, 10) || 0;
+  const unsold = isRemndr ? (remndr > 0 ? remndr : units) : remndr;
   const builder = resolveBuilder(item.CNSTRCT_ENTRPS_NM || item.BSNS_MBY_NM || null);
   const completion = item.MVN_PREARNGE_YM || null;
   const manageNo = item.HOUSE_MANAGE_NO || String(idx);

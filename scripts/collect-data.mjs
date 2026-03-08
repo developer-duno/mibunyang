@@ -116,7 +116,8 @@ function mapItem(item, idx, isRemndr) {
     else if (areaCode && AREA_CODE_REGION[areaCode]) region = AREA_CODE_REGION[areaCode];
   }
   const units = parseInt(item.TOT_SUPLY_HSHLDCO || 0, 10) || 0;
-  const unsold = isRemndr ? units : (parseInt(item.REMNDR_HSHLDCO || 0, 10) || 0);
+  const remndr = parseInt(item.REMNDR_HSHLDCO || 0, 10) || 0;
+  const unsold = isRemndr ? (remndr > 0 ? remndr : units) : remndr;
   return {
     id: `ah-${item.HOUSE_MANAGE_NO || String(idx)}`,
     name, dong, gu, region,
