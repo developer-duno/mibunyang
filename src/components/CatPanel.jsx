@@ -94,7 +94,7 @@ export const CatPanel = memo(function CatPanel({ cat, k }) {
             const interp = sc?.interpret?.(s.score);
             const sc2 = scoreColor(s.score, k, s.name);
             return (
-              <div key={i} style={{ padding: "6px 0", borderBottom: i < cat.subs.length - 1 ? `1px solid ${C.border}` : "none" }}>
+              <div key={s.name} style={{ padding: "6px 0", borderBottom: i < cat.subs.length - 1 ? `1px solid ${C.border}` : "none" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{s.name}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: col }}>{s.info}</span>

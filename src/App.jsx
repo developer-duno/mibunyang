@@ -86,7 +86,7 @@ export default function App() {
   const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isPC ? 960 : 520;
 
   // handleExpertLogin wrapper (setTab is in App scope)
-  const handleExpertLogin = async () => {
+  const handleExpertLogin = useCallback(async () => {
     const result = await expert.handleExpertLogin();
     if (result?.ok) {
       if (result.role === "admin") {
@@ -98,7 +98,7 @@ export default function App() {
         setTab("expert");
       }
     }
-  };
+  }, [expert.handleExpertLogin, admin.setAdminLoggedIn]);
 
   const handleExpertLogout = useCallback(() => {
     expert.handleExpertLogout(() => { setTab("list"); setShowCompOpen(false); });
