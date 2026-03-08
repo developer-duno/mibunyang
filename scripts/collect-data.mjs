@@ -90,12 +90,18 @@ const VALID_REGIONS = ["서울","부산","대구","인천","광주","대전","�
 
 const APPLYHOME_BASE = "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1";
 
+function isValidGu(s) {
+  return s && /[가-힣]/.test(s) && /(구|군|시|생활권)$/.test(s);
+}
+
 function parseAddress(addr) {
   if (!addr) return { region: null, gu: null, dong: null };
   const parts = addr.trim().split(/\s+/);
   const regionFull = parts[0] || "";
   const region = REGION_MAP[regionFull] ?? regionFull.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "");
-  return { region, gu: parts[1] || null, dong: parts[2] || null };
+  const gu = parts[1] || null;
+  const dong = parts[2] || null;
+  return { region, gu: isValidGu(gu) ? gu : null, dong: isValidGu(gu) ? dong : null };
 }
 
 function mapItem(item, idx, isRemndr) {
