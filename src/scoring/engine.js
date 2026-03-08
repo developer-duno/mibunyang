@@ -40,6 +40,7 @@ function sanitize(apt) {
     units: num(apt.units, 0), parkingRatio: num(apt.parkingRatio, 0.5),
     floorAreaRatio: num(apt.floorAreaRatio, 300), exclusiveRatio: num(apt.exclusiveRatio, 60),
     maxFloor: num(apt.maxFloor, 10),
+    devDist: num(apt.devDist, 99),
     // 한글 문자열 NFC 정규화 (API-2)
     region: str(apt.region), gu: str(apt.gu),
     builder: str(apt.builder, "기타"),

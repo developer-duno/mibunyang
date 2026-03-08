@@ -7,14 +7,11 @@ export function useConsult(showToast, favoriteIds) {
     try { return JSON.parse(localStorage.getItem("mibunyang_consults") || "[]"); } catch { return []; }
   });
   const handleConsultSubmit = useCallback(() => {
-    setConsultForm(current => {
-      const entry = { ...current, interestedApts: [...favoriteIds], submittedAt: new Date().toISOString(), id: Date.now().toString() };
-      setSubmittedConsults(prev => [...prev, entry]);
-      setConsultSubmitted(true);
-      showToast("상담 신청이 완료되었습니다");
-      return current;
-    });
-  }, [showToast, favoriteIds]);
+    const entry = { ...consultForm, interestedApts: [...favoriteIds], submittedAt: new Date().toISOString(), id: Date.now().toString() };
+    setSubmittedConsults(prev => [...prev, entry]);
+    setConsultSubmitted(true);
+    showToast("상담 신청이 완료되었습니다");
+  }, [showToast, favoriteIds, consultForm]);
   useEffect(() => { try { localStorage.setItem("mibunyang_consults", JSON.stringify(submittedConsults)); } catch {} }, [submittedConsults]);
   return { consultForm, setConsultForm, consultSubmitted, setConsultSubmitted, submittedConsults, handleConsultSubmit };
 }

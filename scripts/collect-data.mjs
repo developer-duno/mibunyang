@@ -213,7 +213,11 @@ async function phase1_applyhome() {
       const area = areaMatch ? parseFloat(areaMatch[1]) : a.area;
       const price = parseInt(mainType.LTTOT_TOP_AMOUNT || 0) || a.price;
       enriched++;
-      return { ...a, area, price, pp: price && area ? Math.round(price / area * 3.3058) : null };
+      const totalUnits = units.reduce((sum, u) =>
+        sum + (parseInt(u.SUPLY_HSHLDCO || 0) + parseInt(u.SPSPLY_HSHLDCO || 0)), 0);
+      const finalUnits = totalUnits > 0 ? totalUnits : a.units;
+      const unsoldRate = finalUnits > 0 ? Math.round(a.unsold / finalUnits * 1000) / 10 : a.unsoldRate;
+      return { ...a, area, price, units: finalUnits, unsoldRate, pp: price && area ? Math.round(price / area * 3.3058) : null };
     });
     log(`  주택형별 보강: ${enriched}건`);
   } catch (e) { logError("applyhome-mdl", e.message); }
@@ -911,9 +915,14 @@ async function main() {
     logError("applyhome", e.message);
     const cachedPath = resolve(ROOT, "public/data/apartments.json");
     if (existsSync(cachedPath)) {
-      log("Phase 1 실패 - 캐시된 데이터 사용");
-      const cached = JSON.parse(readFileSync(cachedPath, "utf8"));
-      apartments = cached.data || [];
+      try {
+        log("Phase 1 실패 - 캐시된 데이터 사용");
+        const cached = JSON.parse(readFileSync(cachedPath, "utf8"));
+        apartments = cached.data || [];
+      } catch (parseErr) {
+        logError("cache-parse", parseErr.message);
+        apartments = [];
+      }
     } else {
       log("Phase 1 실패 - 캐시 없음, 빈 데이터로 진행");
       apartments = [];
@@ -974,4 +983,4 @@ async function main() {
   }
 }
 
-main().catch(e => { console.error("수집 스크립트 치명적 오류:", e); process.exit(1); });
+main().catch(e => { console.error("수집 스크립트 치명적 오류:", e); });

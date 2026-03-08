@@ -18,7 +18,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
               <span style={{ fontSize: 11, fontWeight: 800, color: C.white, background: g.c, padding: "3px 8px", borderRadius: 4, flexShrink: 0 }}>{rank}위</span>
-              <span style={{ fontSize: 15, fontWeight: 800, color: C.text, letterSpacing: -.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{apt.name}</span>
+              <span title={apt.name} style={{ fontSize: 15, fontWeight: 800, color: C.text, letterSpacing: -.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{apt.name}</span>
             </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {[regionTag, `${apt.area}㎡`, `${(apt.price / 10000).toFixed(1)}억`, apt.builder].map((t, i) => (
