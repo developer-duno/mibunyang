@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   if (!email || !password || typeof email !== "string" || typeof password !== "string") {
     return res.status(400).json({ ok: false, error: "이메일과 비밀번호를 입력해주세요" });
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email) || email.length > 254) {
     return res.status(400).json({ ok: false, error: "올바른 이메일 형식이 아닙니다" });
   }
   if (password.length < 8 || password.length > 128) {

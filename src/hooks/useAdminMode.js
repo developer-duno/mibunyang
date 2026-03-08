@@ -77,7 +77,7 @@ export function useAdminMode(showToast) {
     if (adminLoggedIn) {
       fetchUsers(selectedStatus);
     }
-  }, [adminLoggedIn, selectedStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [adminLoggedIn, selectedStatus, fetchUsers]);
 
   useEffect(() => {
     return () => { if (abortRef.current) abortRef.current.abort(); };

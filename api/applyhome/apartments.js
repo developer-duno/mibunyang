@@ -101,12 +101,12 @@ async function tryFetchApartments(apiKey) {
   for (const endpoint of APPLYHOME_ENDPOINTS) {
     try {
       const url = `${endpoint}?page=1&perPage=100&returnType=JSON&serviceKey=${encodeURIComponent(apiKey)}`;
-      console.log("[apartments] trying:", endpoint, "keyLen:", apiKey?.length);
+      if (process.env.NODE_ENV !== "production") console.log("[apartments] trying:", endpoint, "keyLen:", apiKey?.length);
       const res = await fetch(url);
-      console.log("[apartments] status:", res.status);
+      if (process.env.NODE_ENV !== "production") console.log("[apartments] status:", res.status);
       if (!res.ok) continue;
       const json = await res.json();
-      console.log("[apartments] dataLen:", json.data?.length, "currentCount:", json.currentCount);
+      if (process.env.NODE_ENV !== "production") console.log("[apartments] dataLen:", json.data?.length, "currentCount:", json.currentCount);
 
       // odcloud 응답 형식: { currentCount, data: [...], ... }
       if (json.data && Array.isArray(json.data) && json.data.length > 0) {
