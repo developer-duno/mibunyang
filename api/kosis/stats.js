@@ -116,6 +116,6 @@ export default async function handler(req, res) {
     res.json({ ok: true, data, fetchedAt: new Date().toISOString() });
   } catch (err) {
     console.error("KOSIS API error:", err.message);
-    res.status(502).json({ ok: false, error: err.message });
+    res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
 }

@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
 export function useAdminMode(showToast) {
-  const [adminLoggedIn, setAdminLoggedIn] = useState(() =>
-    sessionStorage.getItem("userRole") === "admin" && !!sessionStorage.getItem("expertToken")
-  );
+  const [adminLoggedIn, setAdminLoggedIn] = useState(() => {
+    try { return sessionStorage.getItem("userRole") === "admin" && !!sessionStorage.getItem("expertToken"); } catch { return false; }
+  });
   const [adminLoading, setAdminLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState("pending");

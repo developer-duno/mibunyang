@@ -117,7 +117,7 @@ export default async function handler(req, res) {
     // 1. 고유 지역 추출 → NEIS 학교 목록 조회 (fallback용)
     const regions = [...new Set(apartments.map(a => a.region).filter(Boolean))];
     const regionSchools = {};
-    await Promise.all(
+    await Promise.allSettled(
       regions.map(async (region) => {
         const code = EDU_OFFICE_CODE[region];
         if (!code) return;
@@ -152,6 +152,6 @@ export default async function handler(req, res) {
     res.json({ ok: true, data: results, fetchedAt: new Date().toISOString() });
   } catch (err) {
     console.error("Education API error:", err.message);
-    res.status(502).json({ ok: false, error: err.message });
+    res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
 }

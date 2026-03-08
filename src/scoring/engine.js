@@ -282,6 +282,9 @@ export function calcCats(apt) {
 export function calcAll(apt, profile) {
   const w = PROFILES[profile]?.w || PROFILES.live.w;
   const cats = calcCats(apt);
-  const total = Object.keys(cats).reduce((s, k) => s + cats[k].total * w[k] / 100, 0);
+  const total = Object.keys(cats).reduce((s, k) => {
+    const ct = cats[k].total;
+    return s + (Number.isFinite(ct) ? ct * w[k] / 100 : 0);
+  }, 0);
   return { total: Math.round(Math.min(total, 100)), cats, weights: w };
 }

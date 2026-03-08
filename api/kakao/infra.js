@@ -44,19 +44,22 @@ async function searchSubway(apiKey, lat, lng) {
 }
 
 async function fetchAllForApartment(apiKey, apt) {
-  const [hospital, mart, conv, cafe, culture, bank, pharmacy, park, subwayDist] =
-    await Promise.all([
-      searchCategory(apiKey, apt.lat, apt.lng, "HP8"),
-      searchCategory(apiKey, apt.lat, apt.lng, "MT1"),
-      searchCategory(apiKey, apt.lat, apt.lng, "CS2"),
-      searchCategory(apiKey, apt.lat, apt.lng, "CE7"),
-      searchCategory(apiKey, apt.lat, apt.lng, "CT1"),
-      searchCategory(apiKey, apt.lat, apt.lng, "BK9"),
-      searchCategory(apiKey, apt.lat, apt.lng, "PM9"),
-      searchPark(apiKey, apt.lat, apt.lng),
-      searchSubway(apiKey, apt.lat, apt.lng),
-    ]);
-  return { hospital, mart, conv, cafe, culture, bank, pharmacy, park, subwayDist };
+  const keys = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park", "subwayDist"];
+  const defaults = [0, 0, 0, 0, 0, 0, 0, 0, 9999];
+  const results = await Promise.allSettled([
+    searchCategory(apiKey, apt.lat, apt.lng, "HP8"),
+    searchCategory(apiKey, apt.lat, apt.lng, "MT1"),
+    searchCategory(apiKey, apt.lat, apt.lng, "CS2"),
+    searchCategory(apiKey, apt.lat, apt.lng, "CE7"),
+    searchCategory(apiKey, apt.lat, apt.lng, "CT1"),
+    searchCategory(apiKey, apt.lat, apt.lng, "BK9"),
+    searchCategory(apiKey, apt.lat, apt.lng, "PM9"),
+    searchPark(apiKey, apt.lat, apt.lng),
+    searchSubway(apiKey, apt.lat, apt.lng),
+  ]);
+  const out = {};
+  results.forEach((r, i) => { out[keys[i]] = r.status === "fulfilled" ? r.value : defaults[i]; });
+  return out;
 }
 
 export default async function handler(req, res) {
@@ -89,6 +92,6 @@ export default async function handler(req, res) {
     res.json({ ok: true, data: results, fetchedAt: new Date().toISOString() });
   } catch (err) {
     console.error("Kakao API error:", err.message);
-    res.status(502).json({ ok: false, error: err.message });
+    res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
 }

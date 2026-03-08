@@ -8,7 +8,7 @@ export function useExpertMode(showToast) {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authStatus, setAuthStatus] = useState(null);
-  const [expertLoggedIn, setExpertLoggedIn] = useState(() => !!sessionStorage.getItem("expertToken"));
+  const [expertLoggedIn, setExpertLoggedIn] = useState(() => { try { return !!sessionStorage.getItem("expertToken"); } catch { return false; } });
   const [authUser, setAuthUser] = useState(null);
   const [expertExpandedApt, setExpertExpandedApt] = useState(null);
 
@@ -22,6 +22,11 @@ export function useExpertMode(showToast) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: authForm.email, password: authForm.password }),
       });
+      if (res.status === 429) {
+        setAuthError("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+        showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+        return { ok: false };
+      }
       const data = await res.json();
       if (data.ok) {
         sessionStorage.setItem("expertToken", data.token);
@@ -58,6 +63,11 @@ export function useExpertMode(showToast) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(authForm),
       });
+      if (res.status === 429) {
+        setAuthError("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+        showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+        return false;
+      }
       const data = await res.json();
       if (data.ok) {
         showToast("가입 신청 완료! 관리자 승인 후 이용 가능합니다");
@@ -101,7 +111,7 @@ export function useExpertMode(showToast) {
         body: JSON.stringify({ token }),
       })
         .then(r => {
-          if (r.status === 429) return null; // rate limit — skip, don't logout
+          if (r.status === 429 || r.status >= 500) return null; // rate limit or server error — skip, don't logout
           return r.json();
         })
         .then(data => {
@@ -110,16 +120,14 @@ export function useExpertMode(showToast) {
             setExpertLoggedIn(false);
             sessionStorage.removeItem("expertToken");
             sessionStorage.removeItem("userRole");
+            showToast("세션이 만료되었습니다. 다시 로그인해주세요.");
           } else {
             setAuthUser(data.user);
             if (data.role) sessionStorage.setItem("userRole", data.role);
           }
         })
         .catch(() => {
-          if (cancelled) return;
-          setExpertLoggedIn(false);
-          sessionStorage.removeItem("expertToken");
-          sessionStorage.removeItem("userRole");
+          // 네트워크 일시 장애 시 로그아웃하지 않음 (다음 verify 주기에 재시도)
         });
     };
     verify();
@@ -127,7 +135,7 @@ export function useExpertMode(showToast) {
     const onVisibility = () => { if (document.visibilityState === "visible") verify(); };
     document.addEventListener("visibilitychange", onVisibility);
     return () => { cancelled = true; clearInterval(id); document.removeEventListener("visibilitychange", onVisibility); };
-  }, []);
+  }, [showToast]);
 
   return {
     authMode, setAuthMode,
