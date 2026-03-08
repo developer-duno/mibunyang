@@ -155,10 +155,10 @@ export function scoreLocation(apt) {
   return {
     total: Math.round(Math.min(Math.max(total, 0), 100)),
     subs: [
-      { name: "교통", score: Math.round(transport), info: `지하철 ${apt.subwayDist > 9000 ? "없음" : apt.subwayDist + "m"}` },
+      { name: "교통", score: Math.round(transport), info: [apt.subwayDist > 9000 ? "지하철 없음" : `지하철 ${apt.subwayDist}m`, `버스 ${apt.busRoutes}개`, apt.icDist < 90 ? `IC ${apt.icDist}km` : null, apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km` : null].filter(Boolean).join(" · ") },
       { name: "학군", score: Math.round(school), info: apt.schoolGrade },
-      { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart}` },
-      { name: "자연환경", score: Math.round(env), info: `${apt.view}조망 ${apt.noise}dB` },
+      { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy}` },
+      { name: "자연환경", score: Math.round(env), info: `${apt.view || "미확인"}조망 ${apt.noise}dB` },
       { name: "혐오시설", score: Math.round(noxSafe), info: (apt.noxious || []).length ? (apt.noxious || []).join(",") : "없음" },
     ],
   };
