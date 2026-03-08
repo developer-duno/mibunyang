@@ -70,7 +70,7 @@ export function useAdminMode(showToast) {
     sessionStorage.removeItem("userRole");
     setUsers([]);
     onLogout?.();
-    showToast("관리자 로그아웃");
+    showToast("로그아웃되었습니다");
   }, [showToast]);
 
   useEffect(() => {
