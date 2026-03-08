@@ -171,7 +171,7 @@ export function scoreProduct(apt) {
   if (!brand && import.meta.env.DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
   const b = brand || { score: 5, tier: "기타" };
   const brandSc = b.score;
-  let unitSc = apt.units >= 1500 ? 15 : apt.units >= 1000 ? 13 : apt.units >= 700 ? 10 : apt.units >= 400 ? 7 : 4;
+  let unitSc = apt.units <= 1 ? 8 : apt.units >= 1500 ? 15 : apt.units >= 1000 ? 13 : apt.units >= 700 ? 10 : apt.units >= 400 ? 7 : 4;
   if (apt.hasPool) unitSc = Math.min(unitSc + 3, 15);
   let parkSc = apt.parkingRatio >= 1.5 ? 15 : apt.parkingRatio >= 1.3 ? 12 : apt.parkingRatio >= 1.1 ? 8 : 5;
   let farSc = apt.floorAreaRatio <= 200 ? 10 : apt.floorAreaRatio <= 250 ? 7 : 3;
@@ -187,7 +187,7 @@ export function scoreProduct(apt) {
     total,
     subs: [
       { name: "브랜드", score: brandSc, info: b.tier || "기타" },
-      { name: "세대수", score: unitSc, info: `${(apt.units ?? 0).toLocaleString()}세대` },
+      { name: "세대수", score: unitSc, info: apt.units <= 1 ? "정보 없음 (중립)" : `${(apt.units ?? 0).toLocaleString()}세대` },
       { name: "주차", score: parkSc, info: `${apt.parkingRatio}대/세대` },
       { name: "용적률", score: farSc, info: `${apt.floorAreaRatio}%` },
       { name: "에너지", score: energySc, info: `${apt.energyGrade}등급` },
@@ -222,7 +222,7 @@ export function scoreBenefit(apt) {
 }
 
 export function scoreRisk(apt) {
-  let unsoldSc = apt.unsoldRate <= 5 ? 10 : apt.unsoldRate <= 15 ? 25 : apt.unsoldRate <= 30 ? 45 : apt.unsoldRate <= 50 ? 70 : 90;
+  let unsoldSc = apt.units <= 1 ? 40 : apt.unsoldRate <= 5 ? 10 : apt.unsoldRate <= 15 ? 25 : apt.unsoldRate <= 30 ? 45 : apt.unsoldRate <= 50 ? 70 : 90;
   let liqSc = apt.recentTrades6m >= 30 ? 5 : apt.recentTrades6m >= 15 ? 20 : apt.recentTrades6m >= 5 ? 45 : 80;
   let loanSc = (apt.dsr40pass ? 15 : 50) + (apt.loanFree ? 0 : 15);
   let finSc = (apt.hugGuarantee ? 0 : 40) + ({ AA: 0, "AA-": 5, "A+": 10, A: 15, "A-": 20, BBB: 35, BB: 60 }[apt.builderCreditGrade] || 30) + (apt.builderDebtRatio > 200 ? 20 : apt.builderDebtRatio > 150 ? 10 : 0);
@@ -236,7 +236,7 @@ export function scoreRisk(apt) {
   return {
     total: safety, riskRaw: Math.round(risk),
     subs: [
-      { name: "미분양률", score: 100 - unsoldSc, info: `${apt.unsoldRate}%` },
+      { name: "미분양률", score: 100 - unsoldSc, info: apt.units <= 1 ? "세대수 미확인 (중립)" : `${apt.unsoldRate}%` },
       { name: "거래량", score: 100 - liqSc, info: `6개월 ${apt.recentTrades6m}건` },
       { name: "대출/잔금", score: 100 - loanSc, info: apt.dsr40pass ? "DSR통과" : "주의" },
       { name: "시공사 재무", score: 100 - Math.round(finSc), info: apt.builderCreditGrade },

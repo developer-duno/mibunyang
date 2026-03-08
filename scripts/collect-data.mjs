@@ -127,6 +127,8 @@ function mapItem(item, idx, isRemndr) {
     unsoldRate: units > 0 ? Math.round(unsold / units * 1000) / 10 : null,
     builder: resolveBuilder(item.CNSTRCT_ENTRPS_NM || item.BSNS_MBY_NM || null),
     completion: item.MVN_PREARNGE_YM || null,
+    heating: item.HEAT_MTHD_NM || null,
+    announcementUrl: item.PRESNTN_DTLS_URL || null,
     _sourceAddr: addr,
   };
 }
@@ -371,15 +373,31 @@ async function phase3_kakao(apartments) {
   async function fetchInfra(apt) {
     const h = { Authorization: `KakaoAK ${KAKAO_KEY}` };
     const base = "https://dapi.kakao.com/v2/local";
+    // size=3으로 변경: count + 거리 + 시설명 추출
+    const parseCat = d => ({
+      count: d.meta?.total_count ?? 0,
+      nearest: d.documents?.[0] ? { name: d.documents[0].place_name, dist: Math.round(parseFloat(d.documents[0].distance || 0)) } : null,
+      top3: (d.documents || []).slice(0, 3).map(doc => ({ name: doc.place_name, dist: Math.round(parseFloat(doc.distance || 0)) })),
+    });
     const results = await Promise.allSettled([
-      ...CATS.map(code => fetch(`${base}/search/category.json?category_group_code=${code}&x=${apt.lng}&y=${apt.lat}&radius=1000&size=1`, { headers: h }).then(r => r.ok ? r.json() : { meta: { total_count: 0 } }).then(d => d.meta?.total_count ?? 0)),
-      fetch(`${base}/search/keyword.json?query=${encodeURIComponent("공원")}&x=${apt.lng}&y=${apt.lat}&radius=1000&size=1`, { headers: h }).then(r => r.ok ? r.json() : { meta: { total_count: 0 } }).then(d => d.meta?.total_count ?? 0),
+      ...CATS.map(code => fetch(`${base}/search/category.json?category_group_code=${code}&x=${apt.lng}&y=${apt.lat}&radius=1000&sort=distance&size=3`, { headers: h }).then(r => r.ok ? r.json() : { meta: { total_count: 0 }, documents: [] }).then(parseCat)),
+      fetch(`${base}/search/keyword.json?query=${encodeURIComponent("공원")}&x=${apt.lng}&y=${apt.lat}&radius=1000&sort=distance&size=3`, { headers: h }).then(r => r.ok ? r.json() : { meta: { total_count: 0 }, documents: [] }).then(parseCat),
       fetch(`${base}/search/category.json?category_group_code=SW8&x=${apt.lng}&y=${apt.lat}&radius=5000&sort=distance&size=1`, { headers: h }).then(r => r.ok ? r.json() : { documents: [] }).then(d => d.documents?.length ? Math.round(parseFloat(d.documents[0].distance)) : 9999),
     ]);
     const infra = {};
-    CAT_NAMES.forEach((name, i) => { infra[name] = results[i].status === "fulfilled" ? results[i].value : 0; });
-    infra.park = results[7].status === "fulfilled" ? results[7].value : 0;
+    const nearbyFacilities = [];
+    CAT_NAMES.forEach((name, i) => {
+      const r = results[i].status === "fulfilled" ? results[i].value : { count: 0, nearest: null, top3: [] };
+      infra[name] = r.count;
+      infra[`${name}Dist`] = r.nearest?.dist ?? null;
+      if (r.nearest) nearbyFacilities.push({ type: name, name: r.nearest.name, dist: r.nearest.dist });
+    });
+    const parkR = results[7].status === "fulfilled" ? results[7].value : { count: 0, nearest: null, top3: [] };
+    infra.park = parkR.count;
+    infra.parkDist = parkR.nearest?.dist ?? null;
+    if (parkR.nearest) nearbyFacilities.push({ type: "park", name: parkR.nearest.name, dist: parkR.nearest.dist });
     infra.subwayDist = results[8].status === "fulfilled" ? results[8].value : 9999;
+    infra.nearbyFacilities = nearbyFacilities.sort((a, b) => a.dist - b.dist);
     return infra;
   }
 
@@ -432,7 +450,7 @@ async function phase4_neis(apartments) {
         const info = json.schoolInfo;
         if (!info?.[1]?.row) break;
         for (const s of info[1].row) {
-          schools.push({ name: s.SCHUL_NM, type: s.SCHUL_KND_SC_NM, address: s.ORG_RDNMA || "", code: s.SD_SCHUL_CODE, officeCode: code, founded: s.FOND_SC_NM || "" });
+          schools.push({ name: s.SCHUL_NM, type: s.SCHUL_KND_SC_NM, address: s.ORG_RDNMA || "", code: s.SD_SCHUL_CODE, officeCode: code, founded: s.FOND_SC_NM || "", foundedYear: s.FOND_YMD ? parseInt(s.FOND_YMD.substring(0, 4)) || null : null, highSchoolType: s.HS_SC_NM || null });
         }
         const total = info[0]?.head?.[0]?.list_total_count ?? 0;
         if (page * 1000 >= total) break;
@@ -527,6 +545,8 @@ async function phase4_neis(apartments) {
           ns.classes = cached.classes;
           ns.perClass = cached.perClass;
           ns.founded = matched.founded;
+          ns.foundedYear = matched.foundedYear;
+          if (matched.highSchoolType) ns.highSchoolType = matched.highSchoolType;
           continue;
         }
         try {
@@ -541,6 +561,8 @@ async function phase4_neis(apartments) {
             schoolCache.set(cacheKey, result);
             ns.classes = classes;
             ns.founded = matched.founded;
+            ns.foundedYear = matched.foundedYear;
+            if (matched.highSchoolType) ns.highSchoolType = matched.highSchoolType;
             schoolEnriched++;
           }
         } catch { /* continue */ }
@@ -784,7 +806,9 @@ async function phase7_realtrade(apartments) {
           const getTag = (tag) => { const r = m[0].match(new RegExp(`<${tag}>([^<]*)</${tag}>`)); return r ? r[1].trim() : ""; };
           const price = parseInt((getTag("dealAmount") || "0").replace(/,/g, ""));
           const area = parseFloat(getTag("excluUseAr") || "0");
-          if (price > 0 && area > 0) tradeData[key].trades.push({ price, area });
+          const floor = parseInt(getTag("floor") || "0") || null;
+          const buildYear = parseInt(getTag("buildYear") || "0") || null;
+          if (price > 0 && area > 0) tradeData[key].trades.push({ price, area, floor, buildYear });
         }
         apiCalls++;
       } catch { /* continue */ }
@@ -882,6 +906,30 @@ async function phase7_realtrade(apartments) {
       return { area: p.area, rate: rent && p.avg > 0 ? Math.round(rent.avg / p.avg * 100) : null };
     }).filter(j => j.rate != null);
 
+    // 층수 분석
+    const floors = tradesToUse.map(t => t.floor).filter(f => f && f > 0);
+    const avgFloor = floors.length > 0 ? Math.round(floors.reduce((s, f) => s + f, 0) / floors.length) : null;
+    const floorRange = floors.length > 0 ? `${Math.min(...floors)}~${Math.max(...floors)}` : null;
+
+    // 층별 가격 (저/중/고)
+    const floorTrades = tradesToUse.filter(t => t.floor && t.floor > 0);
+    let priceByFloor = null;
+    if (floorTrades.length >= 5) {
+      const groups = { "저층(1-5)": [], "중층(6-15)": [], "고층(16+)": [] };
+      for (const t of floorTrades) {
+        if (t.floor <= 5) groups["저층(1-5)"].push(t.price);
+        else if (t.floor <= 15) groups["중층(6-15)"].push(t.price);
+        else groups["고층(16+)"].push(t.price);
+      }
+      priceByFloor = Object.entries(groups)
+        .filter(([, ps]) => ps.length > 0)
+        .map(([group, ps]) => ({ group, avg: Math.round(ps.reduce((s, p) => s + p, 0) / ps.length), count: ps.length }));
+    }
+
+    // 주변 평균 건축년도
+    const buildYears = td.trades.map(t => t.buildYear).filter(y => y && y > 1970);
+    const nearbyBuildYear = buildYears.length > 0 ? Math.round(buildYears.reduce((s, y) => s + y, 0) / buildYears.length) : null;
+
     enriched++;
     return {
       ...a,
@@ -892,6 +940,7 @@ async function phase7_realtrade(apartments) {
       priceByArea: priceByArea.length > 0 ? priceByArea : null,
       rentByArea: rentByArea.length > 0 ? rentByArea : null,
       jeonseByArea: jeonseByArea.length > 0 ? jeonseByArea : null,
+      avgFloor, floorRange, priceByFloor, nearbyBuildYear,
     };
   });
 
@@ -928,6 +977,26 @@ async function main() {
       apartments = [];
     }
   }
+
+  // Phase 1.5: 네이버 세대수 보정 적용
+  try {
+    const naverPath = resolve(ROOT, "public/data/naver-units.json");
+    if (existsSync(naverPath)) {
+      const naver = JSON.parse(readFileSync(naverPath, "utf8"));
+      const corrections = naver.corrections || {};
+      let corrected = 0;
+      apartments = apartments.map(a => {
+        const fix = corrections[a.id];
+        if (fix && fix.units > 1 && (a.units || 0) <= 1) {
+          const unsoldRate = fix.units > 0 ? Math.round(a.unsold / fix.units * 1000) / 10 : a.unsoldRate;
+          corrected++;
+          return { ...a, units: fix.units, unsoldRate, unitSource: "naver" };
+        }
+        return a;
+      });
+      log(`  네이버 보정: ${corrected}건 (총 ${Object.keys(corrections).length}건 보유)`);
+    }
+  } catch (e) { logError("naver-correction", e.message); }
 
   // Phase 2~7: 선택 (실패해도 계속)
   apartments = await phase2_kosis(apartments);

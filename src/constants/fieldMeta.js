@@ -15,11 +15,12 @@ export const FIELD_META = {
   pp: { label: "평당가", section: "개요", unit: "만원", fmt: v => nk(v ?? 0, "만원") },
   floors: { label: "층수 범위", section: "개요", fmt: v => v ?? "—" },
   maxFloor: { label: "최고층", section: "개요", unit: "층", fmt: v => n(v, "층") },
-  units: { label: "총세대수", section: "개요", unit: "세대", fmt: v => nk(v ?? 0, "세대") },
+  units: { label: "총세대수", section: "개요", unit: "세대", fmt: v => (v != null && v > 1) ? nk(v, "세대") : "정보 없음" },
   unsold: { label: "미분양 세대", section: "개요", unit: "세대", fmt: v => nk(v ?? 0, "세대") },
   builder: { label: "시공사", section: "개요", fmt: (v) => { if (!v) return "—"; const b = BRAND_TIER[v]; return b ? `${v} (${b.tier})` : `${v} (기타)`; } },
   completion: { label: "입주예정", section: "개요", fmt: v => v || "미정" },
   layout: { label: "평면구조", section: "개요", fmt: (v) => { if (!v) return "—"; const sc = LAYOUT_SCORE[v]; return sc ? `${v} (${sc}점)` : v; } },
+  heating: { label: "난방방식", section: "개요", fmt: v => v ?? "—" },
   heroColor: { label: "테마 색상", section: "개요", fmt: v => v ?? "—", hidden: true },
   // ── 섹션2: 가격/시장 ──
   nearbyMedian: { label: "주변 중위가", section: "가격", unit: "만원", fmt: v => nk(v ?? 0, "만원") },
@@ -36,6 +37,9 @@ export const FIELD_META = {
   isRegulated: { label: "규제지역", section: "가격", fmt: v => v ? "예" : "아니오" },
   dsr40pass: { label: "DSR 40% 통과", section: "가격", fmt: v => v === true ? "통과" : v === false ? "미통과" : "—" },
   popGrowth: { label: "인구증감률", section: "가격", unit: "%", fmt: v => v != null ? `${v > 0 ? "+" : ""}${v}%` : "—" },
+  nearbyBuildYear: { label: "주변 평균 건축", section: "가격", fmt: v => v != null ? `${v}년` : "—" },
+  avgFloor: { label: "거래 평균 층수", section: "가격", unit: "층", fmt: v => v != null ? `${v}층` : "—" },
+  floorRange: { label: "거래 층수 범위", section: "가격", fmt: v => v ?? "—" },
   // ── 섹션3: 입지/교통/교육/환경 ──
   subwayDist: { label: "지하철 거리", section: "입지", unit: "m", fmt: v => v == null ? "—" : v >= 9000 ? "없음(9999)" : `${v}m`, isDefault: v => v === 9999 },
   busRoutes: { label: "버스 노선", section: "입지", unit: "개", fmt: v => n(v, "개") },
@@ -51,6 +55,10 @@ export const FIELD_META = {
   culture: { label: "문화시설", section: "입지", unit: "개", fmt: v => n(v, "개") },
   bank: { label: "은행", section: "입지", unit: "개", fmt: v => n(v, "개") },
   pharmacy: { label: "약국", section: "입지", unit: "개", fmt: v => n(v, "개") },
+  hospitalDist: { label: "병원 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "—" },
+  martDist: { label: "마트 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "—" },
+  convDist: { label: "편의점 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "—" },
+  parkDist: { label: "공원 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "—" },
   view: { label: "조망", section: "입지", fmt: v => v ?? "—" },
   sunlight: { label: "일조", section: "입지", fmt: v => v ?? "—" },
   noise: { label: "소음", section: "입지", unit: "dB", fmt: v => n(v, "dB") },
@@ -82,9 +90,9 @@ export const FIELD_META = {
 };
 
 export const FIELD_SECTIONS = [
-  { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout"] },
-  { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","unsoldRate","recentTrades6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth"] },
-  { key: "입지", label: "입지/교통/교육/환경", fields: ["subwayDist","busRoutes","icDist","ktxDist","schoolScore","schoolGrade","hospital","mart","conv","park","cafe","culture","bank","pharmacy","view","sunlight","noise","noxious"] },
+  { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout","heating"] },
+  { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","unsoldRate","recentTrades6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth","nearbyBuildYear","avgFloor","floorRange"] },
+  { key: "입지", label: "입지/교통/교육/환경", fields: ["subwayDist","busRoutes","icDist","ktxDist","schoolScore","schoolGrade","hospital","hospitalDist","mart","martDist","conv","convDist","park","parkDist","cafe","culture","bank","pharmacy","view","sunlight","noise","noxious"] },
   { key: "상품성", label: "상품성/건축", fields: ["parkingRatio","floorAreaRatio","energyGrade","greenBldg","quakeDesign","exclusiveRatio","hasPool"] },
   { key: "혜택", label: "혜택/할인", fields: ["discountPct","loanFree","loanFreePct","optionFree","optionValue","balconyFree","balconyValue","cashback","contractDiscount","benefits"] },
   { key: "미래", label: "미래가치", fields: ["transitDev","devDist","cityDev","industryDev"] },

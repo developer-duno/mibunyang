@@ -9,10 +9,10 @@ const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px
 const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
 const DATA_SECTIONS = [
-  { title: "단지 기본정보", fields: ["dong", "units", "unsold", "unsoldRate", "pp", "completion", "builder", "dataReliability"] },
-  { title: "생활인프라 (반경 1km)", fields: ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"] },
+  { title: "단지 기본정보", fields: ["dong", "units", "unsold", "unsoldRate", "pp", "completion", "builder", "heating", "dataReliability"] },
+  { title: "생활인프라 (반경 1km)", fields: ["hospital", "hospitalDist", "mart", "martDist", "conv", "convDist", "cafe", "culture", "bank", "pharmacy", "park", "parkDist"] },
   { title: "교통 상세", fields: ["subwayDist", "busRoutes", "icDist", "ktxDist"] },
-  { title: "시장/투자 지표", fields: ["recentTrades6m", "nearbyMedian", "pir", "psr", "popGrowth"] },
+  { title: "시장/투자 지표", fields: ["recentTrades6m", "nearbyMedian", "pir", "psr", "popGrowth", "nearbyBuildYear", "avgFloor", "floorRange"] },
 ];
 
 function dataValueColor(field, value) {
@@ -70,7 +70,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               { l: "분양가", v: `${apt.price.toLocaleString()}만` },
               { l: "적정가 괴리", v: `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`, c: Number(res.cats.price.deviation) > 0 ? C.green : C.red },
               { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
-              { l: "미분양률", v: `${apt.unsoldRate}%`, c: apt.unsoldRate > 15 ? C.red : C.green },
+              { l: "미분양률", v: (apt.units != null && apt.units > 1) ? `${apt.unsoldRate}%` : "산정 불가", c: (apt.units != null && apt.units > 1) ? (apt.unsoldRate > 15 ? C.red : C.green) : C.muted },
               { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
               { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
               { l: "입주", v: apt.completion },
@@ -151,7 +151,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
                 <tbody>{schools.map((s, i) => (
                   <tr key={i}>
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{s.name}</td>
-                    <td style={tdStyle}>{s.type}</td>
+                    <td style={tdStyle}>{s.highSchoolType ? `${s.type}(${s.highSchoolType})` : s.type}</td>
                     <td style={{ ...tdStyle, textAlign: "right", color: s.distance <= 500 ? C.green : s.distance <= 1000 ? C.blue : C.muted }}>{s.distance >= 1000 ? `${(s.distance / 1000).toFixed(1)}km` : `${s.distance}m`}</td>
                     {hasFounded && <td style={tdStyle}>{s.founded || "-"}</td>}
                     {hasClasses && <td style={{ ...tdStyle, textAlign: "right" }}>{s.classes ? `${s.classes}학급` : "-"}</td>}
@@ -284,6 +284,33 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
                   </div>
                 );
               })}
+              {(apt.nearbyFacilities ?? []).length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 4, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>주변 편의시설 상세</div>
+                  {apt.nearbyFacilities.slice(0, 8).map((f, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
+                      <span style={{ fontSize: 11, color: C.muted }}>{f.name}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: f.dist <= 300 ? C.green : f.dist <= 700 ? C.blue : C.text }}>{f.dist}m</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(apt.priceByFloor ?? []).length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 4, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>층별 매매가 (주변 실거래)</div>
+                  {apt.priceByFloor.map((p, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
+                      <span style={{ fontSize: 11, color: C.muted }}>{p.group}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: C.text }}>{fmtPrice(p.avg)} ({p.count}건)</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {apt.announcementUrl && (
+                <div style={{ marginTop: 12 }}>
+                  <a href={apt.announcementUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: C.blue, fontWeight: 600, textDecoration: "underline" }}>모집공고 원문 보기</a>
+                </div>
+              )}
               <div style={{ fontSize: 10, color: C.muted, marginTop: 10, lineHeight: 1.5 }}>
                 출처: 청약홈(국토교통부) · 카카오 로컬 API · KOSIS(통계청) · 국토부 실거래가 · NEIS(교육부)
               </div>
