@@ -62,7 +62,10 @@ async function fetchUnitDetails(apiKey, manageNoSet, isRemndr) {
     const area = areaMatch ? parseFloat(areaMatch[1]) : null;
     // 분양가: LTTOT_TOP_AMOUNT (만원 단위)
     const price = parseInt(mainType.LTTOT_TOP_AMOUNT || 0) || null;
-    details[no] = { area, price };
+    // 총세대수: 모든 주택형의 (일반공급 + 특별공급) 합계
+    const totalUnits = units.reduce((sum, u) =>
+      sum + (parseInt(u.SUPLY_HSHLDCO || 0) + parseInt(u.SPSPLY_HSHLDCO || 0)), 0);
+    details[no] = { area, price, totalUnits };
   }
   return details;
 }
@@ -216,10 +219,14 @@ export default async function handler(req, res) {
         if (!detail) return a;
         const area = detail.area ?? a.area;
         const price = detail.price ?? a.price;
+        const units = detail.totalUnits > 0 ? detail.totalUnits : a.units;
+        const unsoldRate = units > 0 ? Math.round(a.unsold / units * 1000) / 10 : a.unsoldRate;
         return {
           ...a,
           area,
           price,
+          units,
+          unsoldRate,
           pp: price && area ? Math.round(price / area * 3.3058) : null,
         };
       });
