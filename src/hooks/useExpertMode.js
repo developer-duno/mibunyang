@@ -100,9 +100,12 @@ export function useExpertMode(showToast) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       })
-        .then(r => r.json())
+        .then(r => {
+          if (r.status === 429) return null; // rate limit — skip, don't logout
+          return r.json();
+        })
         .then(data => {
-          if (cancelled) return;
+          if (cancelled || !data) return;
           if (!data.ok) {
             setExpertLoggedIn(false);
             sessionStorage.removeItem("expertToken");

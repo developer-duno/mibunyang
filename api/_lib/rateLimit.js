@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 
-const MAX_ATTEMPTS = 5;
+const LIMITS = { login: 5, signup: 5, verify: 20 };
+const DEFAULT_MAX = 5;
 const WINDOW_SEC = 300; // 5분
 
 export async function checkRateLimit(req, endpoint) {
@@ -10,7 +11,8 @@ export async function checkRateLimit(req, endpoint) {
     const key = `rl:${ip}:${endpoint}`;
     const count = await kv.incr(key);
     if (count === 1) await kv.expire(key, WINDOW_SEC);
-    if (count > MAX_ATTEMPTS) {
+    const max = LIMITS[endpoint] || DEFAULT_MAX;
+    if (count > max) {
       return { limited: true, retryAfter: WINDOW_SEC };
     }
     return { limited: false };
