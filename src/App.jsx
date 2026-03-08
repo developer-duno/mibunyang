@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from "react
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
 import { calcCats } from "@/scoring/engine";
-import { C, catCol, catBg, gr } from "@/theme";
+import { C, catCol, catBg } from "@/theme";
 import { Bar, ScoreBadge } from "@/components/primitives";
 import { AptCard } from "@/components/AptCard";
 import { CompareSheet } from "@/components/CompareSheet";
@@ -138,15 +138,14 @@ export default function App() {
     }
   }, [expert.expertLoggedIn, admin.adminLoggedIn, admin.setAdminLoggedIn, tab]);
 
-  // print CSS useEffect
+  // print CSS useEffect (모든 모드에서 적용)
   useEffect(() => {
-    if (!expert.expertLoggedIn) return;
     const style = document.createElement("style");
-    style.id = "expert-print-styles";
+    style.id = "print-styles";
     style.textContent = `@media print { nav[aria-label] { display: none !important; } [data-no-print] { display: none !important; } [data-sidebar] { display: none !important; } [data-print-content] { flex: none !important; width: 100% !important; overflow: visible !important; height: auto !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
     document.head.appendChild(style);
-    return () => { const el = document.getElementById("expert-print-styles"); if (el) el.remove(); };
-  }, [expert.expertLoggedIn]);
+    return () => { const el = document.getElementById("print-styles"); if (el) el.remove(); };
+  }, []);
 
   // URL 딥링크 복원 (공유 URL로 접근 시)
   useEffect(() => {
@@ -600,7 +599,7 @@ export default function App() {
       <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} isPC={isPC} />
 
       {toast && (
-        <div role="status" aria-live="polite" style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", background: C.text, color: C.white, padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 400, boxShadow: "0 4px 16px rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{toast}</div>
+        <div role="status" aria-live="polite" data-no-print style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", background: C.text, color: C.white, padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 400, boxShadow: "0 4px 16px rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{toast}</div>
       )}
 
       {/* 하단 네비 */}

@@ -118,9 +118,9 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
           <textarea id="consult-msg" placeholder="궁금한 점이나 요청 사항을 적어주세요" value={form.message} onChange={e => updateField("message", e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
         </div>
 
-        <button onClick={handleSubmit} style={{
-          width: "100%", padding: "14px", fontSize: 14, fontWeight: 800, color: C.white, background: C.indigo,
-          border: "none", borderRadius: 6, cursor: "pointer", minHeight: 48
+        <button onClick={handleSubmit} disabled={submitted} style={{
+          width: "100%", padding: "14px", fontSize: 14, fontWeight: 800, color: C.white, background: submitted ? C.muted : C.indigo,
+          border: "none", borderRadius: 6, cursor: submitted ? "default" : "pointer", minHeight: 48
         }}>상담 신청하기</button>
       </div>
     </div>
