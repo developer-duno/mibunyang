@@ -102,7 +102,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
 
         {selectedItem ? (
           <>
-            <ExpertAptHeader apt={selectedItem.apt} res={selectedItem.res} profile={profile} />
+            <ExpertAptHeader apt={selectedItem.apt} res={selectedItem.res} />
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "0 12px" }}>
               {FIELD_SECTIONS.map(sec => (

@@ -1,11 +1,10 @@
 import { memo } from "react";
-import { C, gr, SHORT_LABEL } from "@/theme";
+import { C, SHORT_LABEL } from "@/theme";
 import { BRAND_TIER } from "@/constants/brands";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import { ScoreBadge, Radar } from "@/components/primitives";
 
-export const ExpertAptHeader = memo(function ExpertAptHeader({ apt, res, profile }) {
-  const g2 = gr(res.total);
+export const ExpertAptHeader = memo(function ExpertAptHeader({ apt, res }) {
   const b = BRAND_TIER[apt.builder];
   const tier = REGIONS[apt.region]?.tier || "C";
   const cityLabel = CITY_TIER[tier]?.label || tier;

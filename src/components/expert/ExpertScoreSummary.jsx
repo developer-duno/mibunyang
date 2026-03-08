@@ -4,6 +4,7 @@ import { PROFILES } from "@/constants/profiles";
 
 export const ExpertScoreSummary = memo(function ExpertScoreSummary({ res, profile }) {
   const w = PROFILES[profile]?.w || PROFILES.live.w;
+  const g = gr(res.total);
   const catKeys = Object.keys(res.cats);
   return (
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, marginBottom: 12 }}>
@@ -34,7 +35,7 @@ export const ExpertScoreSummary = memo(function ExpertScoreSummary({ res, profil
             <td style={{ padding: "8px 4px", fontWeight: 800, color: C.text }}>합계</td>
             <td />
             <td style={{ textAlign: "center", padding: "8px 4px", fontWeight: 700 }}>100%</td>
-            <td style={{ textAlign: "right", padding: "8px 4px", fontWeight: 800, fontSize: 14, color: gr(res.total).c }}>{res.total}점 ({gr(res.total).l})</td>
+            <td style={{ textAlign: "right", padding: "8px 4px", fontWeight: 800, fontSize: 14, color: g.c }}>{res.total}점 ({g.l})</td>
           </tr>
         </tbody>
       </table>
