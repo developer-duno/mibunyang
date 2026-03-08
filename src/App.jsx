@@ -104,6 +104,10 @@ export default function App() {
     expert.handleExpertLogout(() => { setTab("list"); setShowCompOpen(false); });
   }, [expert.handleExpertLogout, setShowCompOpen]);
 
+  const switchToAdmin = useCallback(() => setTab("admin"), []);
+  const switchToExpert = useCallback(() => setTab("expert"), []);
+  const switchToInfo = useCallback(() => setTab("info"), []);
+
   const handleNavClick = useCallback((k) => {
     if (k === "logout") return handleExpertLogout();
     if (k === "list") { setTab("list"); setShowCompOpen(false); return; }
@@ -539,12 +543,12 @@ export default function App() {
         <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>대시보드 로딩 중...</div>}>
           <ExpertDashboard scored={scored} profile={profile} setProfile={setProfile}
             expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt}
-            onSwitchToAdmin={admin.adminLoggedIn ? () => setTab("admin") : undefined} />
+            onSwitchToAdmin={admin.adminLoggedIn ? switchToAdmin : undefined} />
         </Suspense>
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>관리자 패널 로딩 중...</div>}>
-            <AdminDashboard admin={admin} onLogout={() => setTab("info")} onSwitchToExpert={() => setTab("expert")} />
+            <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} />
           </Suspense>
         ) : null
       ) : tab === "expertConsults" ? (

@@ -1,7 +1,14 @@
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { C } from "@/theme";
 
 export const ShareSheet = memo(function ShareSheet({ open, onKakao, onSMS, onCopy, onClose, isMobile, isPC }) {
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const btnBase = { width: "100%", border: "none", borderRadius: 12, padding: "14px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", minHeight: 48, display: "flex", alignItems: "center", gap: 10, transition: "all .15s" };

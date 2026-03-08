@@ -85,7 +85,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
                 padding: "6px 10px", fontSize: 11, fontWeight: profile === k ? 700 : 500,
                 background: profile === k ? C.indigoLight : C.slate100, color: profile === k ? C.indigo : C.slate600,
                 border: profile === k ? `1.5px solid ${C.indigo}` : "1.5px solid transparent", borderRadius: 4, cursor: "pointer"
-              }}>{p.icon} {p.name}</button>
+              }}>{p.name}</button>
             ))}
           </div>
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>

@@ -82,11 +82,11 @@ constants → scoring → theme → components → hooks → App
 
 | 위치 | 항목 | 합계 |
 |------|------|------|
-| profiles.js PROFILES.live | price(40)+location(20)+product(20)+benefit(10)+risk(5)+future(5) | **100** |
-| profiles.js PROFILES.invest | 15+10+30+25+10+10 | **100** |
-| profiles.js PROFILES.newlywed | 30+15+30+10+10+5 | **100** |
-| profiles.js PROFILES.edu | 45+20+15+10+5+5 | **100** |
-| profiles.js PROFILES.retire | 35+25+20+15+5+0 | **100** |
+| profiles.js PROFILES.live | location(40)+product(20)+price(20)+risk(10)+benefit(5)+future(5) | **100** |
+| profiles.js PROFILES.invest | location(15)+product(10)+price(30)+risk(25)+benefit(10)+future(10) | **100** |
+| profiles.js PROFILES.newlywed | location(30)+product(15)+price(30)+risk(10)+benefit(10)+future(5) | **100** |
+| profiles.js PROFILES.edu | location(45)+product(20)+price(15)+risk(10)+benefit(5)+future(5) | **100** |
+| profiles.js PROFILES.retire | location(35)+product(25)+price(20)+risk(15)+benefit(5)+future(0) | **100** |
 | engine.js scorePrice 내부 | 0.30+0.20+0.15+0.25+0.10 | **1.00** |
 | engine.js scoreLocation 내부 | 0.30+0.25+0.20+0.10+0.15 | **1.00** |
 | engine.js infra 서브가중치 | 0.20+0.10+0.05+0.15+0.15+0.15+0.05+0.15 | **1.00** |

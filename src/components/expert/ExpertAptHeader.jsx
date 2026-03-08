@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { C, gr } from "@/theme";
+import { C, gr, SHORT_LABEL } from "@/theme";
 import { BRAND_TIER } from "@/constants/brands";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import { ScoreBadge, Radar } from "@/components/primitives";
@@ -23,7 +23,7 @@ export const ExpertAptHeader = memo(function ExpertAptHeader({ apt, res, profile
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
           <ScoreBadge score={res.total} size={80} />
-          <div style={{ flexShrink: 0 }}><Radar data={Object.keys(res.cats).map(k => ({ l: res.cats[k].label.replace("입지·생활권","입지").replace("가격 매력도","가격").replace("혜택·할인","혜택").replace("미래가치","미래").replace("안전도","안전"), v: res.cats[k].total }))} size={140} /></div>
+          <div style={{ flexShrink: 0 }}><Radar data={Object.keys(res.cats).map(k => ({ l: SHORT_LABEL[res.cats[k].label] || res.cats[k].label, v: res.cats[k].total }))} size={140} /></div>
         </div>
       </div>
     </div>
