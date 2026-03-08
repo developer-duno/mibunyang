@@ -1,4 +1,4 @@
-import { memo, useEffect } from "react";
+import { memo, useState, useEffect } from "react";
 import { C, catCol, catBg, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE, LTV_RATES } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
@@ -7,7 +7,8 @@ import { fmtPrice } from "@/lib/format";
 const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
 const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
-export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare }) {
+export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC }) {
+  const [showLegal, setShowLegal] = useState(false);
   useEffect(() => {
     if (!item) return;
     document.body.style.overflow = "hidden";
@@ -23,8 +24,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   const radarData = Object.entries(res.cats).map(([k, c]) => ({ l: SHORT_LABEL[c.label] || c.label, v: c.total }));
 
   return (
-    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, zIndex: 300, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
-      <div style={{ background: C.card, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 520, maxHeight: "90dvh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 -8px 30px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, zIndex: 300, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isPC ? "center" : "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ background: C.card, borderRadius: isPC ? 20 : "20px 20px 0 0", width: "100%", maxWidth: isPC ? 640 : 520, maxHeight: isPC ? "85dvh" : "90dvh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: isPC ? "0 8px 40px rgba(0,0,0,0.2)" : "0 -8px 30px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
         <div style={{ flexShrink: 0, padding: "12px 16px 0", borderBottom: `1px solid ${C.border}`, background: C.card }}>
           <div onClick={onClose} style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: "0 auto 12px", cursor: "pointer" }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -196,14 +197,26 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         })()}
 
         <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>관련 법률/규정 안내</div>
-          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-            <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>LTV (담보인정비율)</strong> — 투기과열지구 40%/20%, 조정대상지역 50%/30%, 비규제지역 70%/60% (9억 초과분 차등 적용)</div>
-            <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>DSR (총부채원리금상환비율)</strong> — 전 금융권 40% 적용. 연소득 대비 모든 대출의 원리금 상환액 비율 제한</div>
-            <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>디딤돌대출</strong> — 무주택 서민 대상, 연소득 6천만원 이하, 최대 2.5억(생애최초 3억), 금리 2.15~3.00%</div>
-            <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하, 최대 3.6억, 고정금리</div>
-            <div style={{ color: C.red, fontSize: 11, fontWeight: 600, marginTop: 8 }}>본 정보는 참고용이며 실제 대출 조건은 금융기관에 확인하세요. 규제지역 지정·해제는 수시 변경될 수 있습니다.</div>
+          <div
+            onClick={() => setShowLegal(v => !v)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={showLegal}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowLegal(v => !v); } }}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>관련 법률/규정 안내</span>
+            <span style={{ fontSize: 12, color: C.muted, transition: "transform .2s", transform: showLegal ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>
           </div>
+          {showLegal && (
+            <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6, marginTop: 8 }}>
+              <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>LTV (담보인정비율)</strong> — 투기과열지구 40%/20%, 조정대상지역 50%/30%, 비규제지역 70%/60% (9억 초과분 차등 적용)</div>
+              <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>DSR (총부채원리금상환비율)</strong> — 전 금융권 40% 적용. 연소득 대비 모든 대출의 원리금 상환액 비율 제한</div>
+              <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>디딤돌대출</strong> — 무주택 서민 대상, 연소득 6천만원 이하, 최대 2.5억(생애최초 3억), 금리 2.15~3.00%</div>
+              <div style={{ marginBottom: 6 }}><strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하, 최대 3.6억, 고정금리</div>
+              <div style={{ color: C.red, fontSize: 11, fontWeight: 600, marginTop: 8 }}>본 정보는 참고용이며 실제 대출 조건은 금융기관에 확인하세요. 규제지역 지정·해제는 수시 변경될 수 있습니다.</div>
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>

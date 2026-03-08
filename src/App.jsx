@@ -21,6 +21,7 @@ import { useExpertMode } from "@/hooks/useExpertMode";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
+import { useResponsive } from "@/hooks/useResponsive";
 import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
 
@@ -30,6 +31,8 @@ export default function App() {
     if (!sessionStorage.getItem("expertToken")) return "list";
     return sessionStorage.getItem("userRole") === "admin" ? "admin" : "expert";
   });
+
+  const { isPC } = useResponsive();
 
   // 7 custom hooks
   const { toast, showToast } = useToast();
@@ -80,7 +83,7 @@ export default function App() {
     return ["전체", ...rs];
   }, [apartments]);
 
-  const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : 520;
+  const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isPC ? 960 : 520;
 
   // handleExpertLogin wrapper (setTab is in App scope)
   const handleExpertLogin = async () => {
@@ -325,16 +328,18 @@ export default function App() {
             </div>
           )}
 
-          {filtered.map((item, idx) => (
-            <AptCard key={item.apt.id} apt={item.apt} res={item.res} rank={idx + 1}
-              onDetail={detail.handleOpenDetail}
-              isComp={compIds.includes(item.apt.id)} onComp={toggleComp}
-              isFav={favoriteIds.includes(item.apt.id)} onFav={toggleFavorite}
-              profileWeights={pw} />
-          ))}
+          <div style={isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 12px" } : undefined}>
+            {filtered.map((item, idx) => (
+              <AptCard key={item.apt.id} apt={item.apt} res={item.res} rank={idx + 1}
+                onDetail={detail.handleOpenDetail}
+                isComp={compIds.includes(item.apt.id)} onComp={toggleComp}
+                isFav={favoriteIds.includes(item.apt.id)} onFav={toggleFavorite}
+                profileWeights={pw} />
+            ))}
+          </div>
         </div>
       ) : tab === "info" ? (
-        <div style={{ padding: "0 16px" }}>
+        <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
           <div style={{ background: C.card, borderRadius: 12, padding: 14, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 10 }}>스코어링 엔진 구조</div>
             {[
@@ -379,10 +384,12 @@ export default function App() {
           </div>
         </div>
       ) : tab === "consult" ? (
-        <ConsultForm scored={scored} favoriteIds={favoriteIds} setFavoriteIds={setFavoriteIds} form={consult.consultForm} setForm={consult.setConsultForm}
-          onSubmit={consult.handleConsultSubmit} submitted={consult.consultSubmitted} showToast={showToast} />
+        <div style={{ maxWidth: 640, margin: "0 auto" }}>
+          <ConsultForm scored={scored} favoriteIds={favoriteIds} setFavoriteIds={setFavoriteIds} form={consult.consultForm} setForm={consult.setConsultForm}
+            onSubmit={consult.handleConsultSubmit} submitted={consult.consultSubmitted} showToast={showToast} />
+        </div>
       ) : tab === "expertLogin" ? (
-        <div style={{ padding: "0 16px" }}>
+        <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
           <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>
               {expert.authMode === "login" ? "전문가 로그인" : "전문가 회원가입"}
@@ -582,11 +589,11 @@ export default function App() {
         return <DetailModal item={item} onClose={detail.handleCloseDetail}
           isComp={compIds.includes(detail.detailAptId)} onComp={toggleComp}
           isFav={favoriteIds.includes(detail.detailAptId)} onFav={toggleFavorite}
-          onShare={handleShareDetail} />;
+          onShare={handleShareDetail} isPC={isPC} />;
       })()}
 
       {/* 토스트 */}
-      <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} />
+      <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} isPC={isPC} />
 
       {toast && (
         <div role="status" aria-live="polite" style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", background: C.text, color: C.white, padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 400, boxShadow: "0 4px 16px rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{toast}</div>

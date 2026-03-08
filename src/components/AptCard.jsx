@@ -41,6 +41,14 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           ))}
         </div>
 
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+          {res.cats.price.subs[0].info !== "데이터 부재" && (
+            <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>적정가 {res.cats.price.subs[0].info}</span>
+          )}
+          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>{res.cats.location.subs[0].info}</span>
+          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>안전 {gr(res.cats.risk.total).l}등급</span>
+        </div>
+
         {benefitWon > 0 && (
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 8, padding: "8px 12px" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit.rate}%)</span>
