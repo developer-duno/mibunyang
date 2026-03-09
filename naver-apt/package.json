@@ -1,0 +1,12 @@
+{
+  "name": "naver-apt-crawler",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "네이버 부동산 주변 아파트 크롤러 — 미분양 단지 주변 시세/매물 수집",
+  "scripts": {
+    "crawl": "node src/crawl.mjs",
+    "crawl:dry": "node src/crawl.mjs --dry-run",
+    "crawl:limit": "node src/crawl.mjs --limit=5"
+  },
+  "dependencies": {}
+}
