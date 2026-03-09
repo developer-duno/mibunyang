@@ -27,6 +27,7 @@ const cache = new Map();
 let dynamicInterval = MIN_INTERVAL;
 let consecutiveSuccess = 0;
 let sessionCookies = "";
+let sessionCookieExpiry = 0;  // Fix 8: 세션 쿠키 TTL
 
 // ── 헤더 ─────────────────────────────────────────────────────
 function baseHeaders() {
@@ -73,6 +74,9 @@ function getCached(key) {
     cache.delete(key);
     return null;
   }
+  // Fix 9: LRU — 접근 시 삭제 후 재삽입 (Map은 삽입순 유지)
+  cache.delete(key);
+  cache.set(key, entry);
   return entry.data;
 }
 
@@ -86,13 +90,16 @@ function setCached(key, data) {
 
 // ── 세션 초기화 (쿠키 획득) ──────────────────────────────────
 async function initSession() {
-  if (sessionCookies) return;
+  if (sessionCookies && Date.now() < sessionCookieExpiry) return;  // Fix 8: TTL 기반 갱신
   try {
     await throttle();
     const res = await fetch(`${NAVER_BASE}/`, { headers: baseHeaders(), signal: AbortSignal.timeout(FETCH_TIMEOUT) });
     const cookies = res.headers.getSetCookie?.() || [];
     sessionCookies = cookies.map(c => c.split(";")[0]).join("; ");
-    if (sessionCookies) console.log("  🍪 세션 쿠키 획득 완료");
+    if (sessionCookies) {
+      sessionCookieExpiry = Date.now() + 23 * 3_600_000;  // Fix 8: 23시간 TTL
+      console.log("  🍪 세션 쿠키 획득 완료");
+    }
   } catch (err) {
     console.warn(`  ⚠ 세션 초기화 실패 (무시): ${err.message}`);
   }
@@ -152,6 +159,7 @@ async function fetchWithRetry(url, headers, retries = MAX_RETRIES, useCache = tr
         consecutiveSuccess = 0;
         console.warn(`  ⚠ 429 Rate Limit — 쓰로틀 증가: ${dynamicInterval}ms`);
         jwtToken = null;
+        jwtPromise = null;  // Fix 6: 429 시 뮤텍스도 초기화
         await sleep(RETRY_DELAYS[attempt] || 10000);
         continue;
       }
@@ -316,6 +324,13 @@ export function parseNaverPrice(str) {
         : (parseInt(afterCheon) || 0);
       return eok + cheon + remainder;
     }
+    // Fix 7: "3억5백" → 30500 ("천" 없이 "백"만 있는 경우)
+    if (rest.includes("백")) {
+      const baekMatch = rest.match(/(\d+)\s*백/);
+      const baek = (parseInt(baekMatch?.[1]) || 0) * 100;
+      const afterBaek = rest.replace(/\d+\s*백/, "");
+      return eok + baek + (parseInt(afterBaek) || 0);
+    }
     return eok + (parseInt(rest) || 0);
   }
   if (s.includes("천")) {
@@ -331,7 +346,9 @@ export function parseNaverPrice(str) {
 }
 
 export function calcPP(price, areaM2) {
-  if (!price || !areaM2 || areaM2 <= 0) return 0;
+  // Fix 10: null/undefined → null, price=0 → 0, 정상 → 계산
+  if (price == null || areaM2 == null || areaM2 <= 0) return null;
+  if (price === 0) return 0;
   return Math.round(price / (areaM2 / M2_TO_PYEONG));
 }
 

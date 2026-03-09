@@ -8,5 +8,7 @@
     "crawl:dry": "node src/crawl.mjs --dry-run",
     "crawl:limit": "node src/crawl.mjs --limit=5"
   },
-  "dependencies": {}
+  "dependencies": {
+    "dotenv": "^17.3.1"
+  }
 }

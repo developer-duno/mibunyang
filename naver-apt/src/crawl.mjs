@@ -15,6 +15,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { config as loadEnv } from "dotenv";
 import {
   searchComplexes,
   getComplexDetail,
@@ -32,19 +33,22 @@ const OUTPUT_DIR = resolve(PROJECT_ROOT, "output");
 const OUTPUT_FILE = resolve(OUTPUT_DIR, "nearby-trends.json");
 const HISTORY_FILE = resolve(OUTPUT_DIR, "article-history.json");
 
-// ── 설정 상수 ──────────────────────────────────────────────
+// ── 환경변수 로드 (.env 파일 선택사항) ──────────────────────
+loadEnv({ path: resolve(PROJECT_ROOT, ".env") });
+
+// ── 설정 상수 (환경변수 우선, 기본값 fallback) ──────────────
 const CONFIG = {
-  NEARBY_RADIUS_KM: 3,           // 주변 단지 검색 반경
-  MAX_NEARBY_COMPLEXES: 20,      // 단지당 최대 주변 단지 수
-  SEARCH_MAX_PAGES: 5,           // 네이버 검색 최대 페이지
-  ARTICLES_MAX_PAGES: 3,         // 매물 목록 최대 페이지
-  PRICE_HISTORY_YEARS: 5,        // 시세 이력 조회 기간
-  MAX_ARTICLES_PER_TYPE: 50,     // 타입별 저장 매물 수
-  MAX_ERRORS_SAVED: 50,          // 저장할 최근 에러 수
-  SKIP_IF_WITHIN_MS: 24 * 60 * 60 * 1000,  // 24시간 이내 수집 스킵
-  CHECKPOINT_INTERVAL: 5,        // N건마다 중간 저장
-  AREA_BUCKET_SIZE: 5,           // 면적 그룹핑 단위 (㎡)
-  FLOOR_TIERS: { low: 5, mid: 15 },  // 층수 구분 (저/중/고)
+  NEARBY_RADIUS_KM: Number(process.env.NEARBY_RADIUS_KM) || 3,
+  MAX_NEARBY_COMPLEXES: Number(process.env.MAX_NEARBY_COMPLEXES) || 20,
+  SEARCH_MAX_PAGES: Number(process.env.SEARCH_MAX_PAGES) || 5,
+  ARTICLES_MAX_PAGES: Number(process.env.ARTICLES_MAX_PAGES) || 3,
+  PRICE_HISTORY_YEARS: Number(process.env.PRICE_HISTORY_YEARS) || 5,
+  MAX_ARTICLES_PER_TYPE: Number(process.env.MAX_ARTICLES_PER_TYPE) || 50,
+  MAX_ERRORS_SAVED: 50,
+  SKIP_IF_WITHIN_MS: (Number(process.env.SKIP_IF_WITHIN_HOURS) || 24) * 3_600_000,
+  CHECKPOINT_INTERVAL: Number(process.env.CHECKPOINT_INTERVAL) || 5,
+  AREA_BUCKET_SIZE: 5,
+  FLOOR_TIERS: { low: 5, mid: 15 },
 };
 
 // ── 거래유형 분류 맵 ──────────────────────────────────────
@@ -128,7 +132,11 @@ function classifyTradeType(tradeTypeName) {
   for (const { keyword, key } of TRADE_CLASSIFIERS) {
     if (tradeTypeName.includes(keyword)) return key;
   }
-  return tradeTypeName ? "sell" : null; // 미분류 → 매매 fallback, 빈 값 → null
+  if (tradeTypeName) {
+    console.warn(`    ⚠ 미분류 거래유형 "${tradeTypeName}" → 매매 fallback`);  // Fix 4
+    return "sell";
+  }
+  return null;
 }
 
 // ── 매물 → 정리된 객체 변환 ─────────────────────────────────
@@ -147,7 +155,7 @@ function parseArticle(art, complexNo) {
     rentPrice,
     supplyArea,
     exclusiveArea,
-    pp: calcPP(price, exclusiveArea),
+    pp: exclusiveArea > 0 ? calcPP(price, exclusiveArea) : null,  // Fix 2
     floorInfo: art.floorInfo || art.flrInfo || "",
     direction: art.direction || "",
     confirmDate: art.articleConfirmYmd || art.atclCfmYmd || "",
@@ -436,10 +444,8 @@ async function crawl() {
       trends[apt.id] = await processApartment(apt, nearbyComplexes, errors);
 
       // Phase 4: 매물 이력 추적
-      const currentArticleNos = new Set();
       for (const type of ["sell", "jeonse", "wolse"]) {
         for (const art of trends[apt.id].articles[type]) {
-          currentArticleNos.add(art.articleNo);
           const status = trackArticle(art.articleNo, art, articleHistory);
           if (status === "new") historyStats.newListings++;
           if (status === "changed") historyStats.priceChanges++;
@@ -496,7 +502,8 @@ function calculateStats(articles, pricesArr, complexInfos) {
   if (jeonsePrices.length > 0 && median > 0) {
     jeonsePrices.sort((a, b) => a - b);
     const jMedian = calcMedian(jeonsePrices);
-    jeonseRate = Math.round(jMedian / median * 100);
+    // Fix 3: jMedian=0이면 전세가율 계산 무의미
+    jeonseRate = jMedian > 0 ? Math.round(jMedian / median * 100) : null;
   }
 
   // 면적별 그룹핑
@@ -705,7 +712,25 @@ function deactivateMissing(history, currentArticleNos) {
   return deactivated;
 }
 
+// Fix 1: 이력 프루닝 — 90일 초과 비활성 항목 삭제 + priceHistory 50건 제한
+function pruneHistory(history) {
+  const cutoff = Date.now() - 90 * 24 * 3_600_000;
+  let pruned = 0;
+  for (const [no, art] of Object.entries(history)) {
+    if (!art.isActive && new Date(art.lastSeen).getTime() < cutoff) {
+      delete history[no];
+      pruned++;
+      continue;
+    }
+    if (art.priceHistory && art.priceHistory.length > 50) {
+      art.priceHistory = art.priceHistory.slice(-50);
+    }
+  }
+  if (pruned > 0) console.log(`  🧹 이력 프루닝: ${pruned}건 삭제 (90일 초과 비활성)`);
+}
+
 function saveArticleHistory(history, stats) {
+  pruneHistory(history);  // Fix 1: 저장 전 프루닝
   try {
     if (!existsSync(OUTPUT_DIR)) mkdirSync(OUTPUT_DIR, { recursive: true });
     const tmpFile = HISTORY_FILE + ".tmp";
