@@ -6,7 +6,9 @@
   "scripts": {
     "crawl": "node src/crawl.mjs",
     "crawl:dry": "node src/crawl.mjs --dry-run",
-    "crawl:limit": "node src/crawl.mjs --limit=5"
+    "crawl:limit": "node src/crawl.mjs --limit=5",
+    "merge": "node src/merge.mjs",
+    "merge:dry": "node src/merge.mjs --dry-run"
   },
   "dependencies": {
     "dotenv": "^17.3.1"
