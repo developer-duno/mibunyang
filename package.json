@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "vite",
     "collect": "node scripts/collect-data.mjs",
+    "migrate": "node scripts/migrate-to-supabase.mjs",
+    "migrate:dry": "node scripts/migrate-to-supabase.mjs --dry-run",
     "prebuild": "node scripts/collect-data.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
     "@vercel/kv": "^2.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

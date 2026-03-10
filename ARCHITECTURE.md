@@ -1,53 +1,61 @@
 # 미분양 비교 엔진 v3.0 — 아키텍처 가이드
 
 > 주니어 개발자가 코드를 빠르게 이해하기 위한 실행 흐름 + 핵심 로직 문서.
+> AI 규칙은 CLAUDE.md 및 서브디렉토리 CLAUDE.md 참조.
 
 ---
 
-## 1. 한눈에 보는 구조 (5개 레이어)
+## 1. 한눈에 보는 구조
 
 ```
 src/
-├── constants/          데이터 레이어 (상수, 샘플 데이터)
-│   ├── brands.js       BRAND_TIER(16), AGE_PREMIUM(7), LAYOUT_SCORE, NOXIOUS_PENALTY
-│   ├── profiles.js     PROFILES(5개 사용자 프로필)
-│   ├── regions.js      CITY_TIER(5등급), REGIONS(17개 시도)
-│   ├── unsold.js       UNSOLD[](12개 샘플 단지) ← API 교체 예정
-│   └── fieldMeta.js    FIELD_META(69필드), FIELD_SECTIONS(6섹션)
-│
-├── scoring/            스코어링 엔진
-│   └── engine.js       getAgeCoeff, getAreaAdj, score{6개}, calcAll
-│
-├── theme/              테마/색상
-│   └── index.js        C(팔레트), catCol, catBg, gr(등급함수)
-│
-├── components/         소비자 UI (모바일 우선, 520px)
-│   ├── primitives.jsx  Bar, ScoreBadge, Radar (프리미티브, memo)
-│   ├── CatPanel.jsx    카테고리 상세 패널
-│   ├── AptCard.jsx     단지 카드
-│   ├── CompareSheet.jsx 비교 테이블
-│   ├── DetailModal.jsx 상세 바텀시트
-│   ├── ConsultForm.jsx 상담 신청 폼
-│   └── expert/         전문가 UI (PC 우선, 1200px)
-│       ├── ExpertDashboard.jsx   (오케스트레이터)
-│       ├── ExpertSidebar.jsx     (검색/필터/단지목록)
-│       ├── ExpertAptHeader.jsx   (단지 상단 요약)
-│       ├── ExpertFieldTable.jsx  (69필드 테이블)
-│       ├── ExpertScoreBreakdown.jsx (산출 내역)
-│       ├── ExpertScoreSummary.jsx   (가중치 합계)
-│       ├── ExpertUnitPlaceholder.jsx (동/호수)
-│       └── ExpertDataCompleteness.jsx (완성도)
-│
-├── hooks/              커스텀 훅 (상태 관리)
-│   ├── useToast.js         토스트 알림
-│   ├── useFilterSort.js    지역 필터 + 정렬
-│   ├── useComparison.js    비교 기능
-│   ├── useFavorites.js     관심매물 (localStorage)
-│   ├── useDetailModal.js   상세 모달
-│   ├── useConsult.js       상담 신청
-│   └── useExpertMode.js    전문가 모드
-│
-└── App.jsx             오케스트레이터 (훅 조합 + 렌더)
+├── constants/              데이터 레이어 (상수)
+│   ├── brands.js           BRAND_TIER(16), AGE_PREMIUM(7), LAYOUT_SCORE
+│   ├── profiles.js         PROFILES(5개 사용자 프로필)
+│   ├── regions.js          CITY_TIER(5등급), REGIONS(17개 시도)
+│   ├── unsold.js           UNSOLD[] — 빈 배열 (레거시)
+│   └── fieldMeta.js        FIELD_META(69필드), FIELD_SECTIONS(6섹션)
+├── scoring/
+│   └── engine.js           score{6개}, calcAll — 규칙: scoring/CLAUDE.md
+├── theme/
+│   └── index.js            C(팔레트), catCol, catBg, gr(등급함수)
+├── components/             규칙: components/CLAUDE.md
+│   ├── primitives.jsx      Bar, ScoreBadge, Radar (memo)
+│   ├── AptCard.jsx / CatPanel.jsx / CompareSheet.jsx
+│   ├── DetailModal.jsx / ConsultForm.jsx / ShareSheet.jsx
+│   ├── expert/             전문가 UI (PC 우선, 1200px)
+│   └── admin/              관리자 UI
+├── hooks/
+│   ├── useApartmentData.js ★ 데이터 로딩 진입점
+│   ├── useFilterSort.js / useComparison.js / useFavorites.js
+│   └── useExpertMode.js / useAdminMode.js / useToast.js
+├── services/
+│   ├── staticDataApi.js    ★ Supabase API 또는 JSON 폴백
+│   ├── applyhomeApi.js / kakaoApi.js / neisApi.js / kosisApi.js / dartApi.js
+│   └── (lib/) chosung.js / format.js
+└── App.jsx                 오케스트레이터 (훅 조합 + 렌더)
+
+api/                        Vercel Serverless — 규칙: api/CLAUDE.md
+├── _lib/                   auth.js, adminAuth.js, supabase.js
+├── supabase/apartments.js  ★ 9개 테이블 JOIN → 평탄 형태 반환
+├── auth/ + admin/          전문가/관리자 인증
+└── applyhome/ kakao/ neis/ kosis/ dart/
+
+scripts/
+├── collect-data.mjs        빌드 시 데이터 수집 (1,065줄, 8 Phase)
+├── migrate-to-supabase.mjs apartments.json → Supabase 마이그레이션
+├── naver-units.py          네이버 세대수 보정
+└── collectors/
+    ├── _shared.mjs         공유 유틸 (loadEnv, upsertBatch, fetchWithRetry)
+    └── naver-listings.mjs  ★ 네이버 인근 매물 수집
+
+supabase/
+└── schema.sql              13개 테이블 + VIEW + RLS + 트리거
+
+.github/workflows/
+├── daily-deploy.yml        매일 빌드+배포
+├── naver-units.yml         매일 KST 02:00 세대수 보정
+└── collect-naver-listings.yml  매일 KST 04:00 네이버 매물 수집
 ```
 
 ### 의존성 방향 (단방향, 순환 참조 없음)
@@ -62,11 +70,32 @@ constants → scoring → theme → components → hooks → App
 
 ## 2. 데이터 흐름 (핵심!)
 
+### 데이터 소스 아키텍처
+
+```
+GitHub Actions (일/주/월 스케줄)
+  ├── collect-data.mjs ─── 청약홈/카카오/KOSIS/NEIS/DART/국토부
+  │                         ↓
+  │                    public/data/apartments.json (787KB, 1,481건)
+  │                         ↓
+  ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (13개 테이블)
+  │                                    ↓
+  ├── naver-listings.mjs ────────→ naver_complexes + naver_articles
+  │                                    ↓
+  └── naver-units.py ────────────→ 세대수 보정 JSON
+
+프론트엔드 로딩:
+  VITE_USE_SUPABASE=true  → /api/supabase/apartments (Supabase VIEW)
+  VITE_USE_SUPABASE=false → /data/apartments.json (정적 JSON 폴백)
+```
+
+### React 상태 흐름
+
 ```
 사용자 조작                    React 상태              useMemo 연쇄              UI 렌더
 ──────────                    ──────────              ──────────              ──────────
 
-프로필 버튼 클릭 ──→ profile ──→ scored ─────────────→ AptCard 12개 재채점
+프로필 버튼 클릭 ──→ profile ──→ scored ─────────────→ AptCard 1,481개 재채점
                                    │
 지역 버튼 클릭 ──→ filterRegion ──→ │ ──→ guOptions ──→ 구 버튼 목록 갱신
                   filterGu ───────→ │
@@ -80,10 +109,10 @@ constants → scoring → theme → components → hooks → App
 ### 핵심 useMemo 체인 (App.jsx)
 
 ```js
-// 1단계: 전체 12개 단지 채점 (프로필이 바뀔 때만 재계산)
+// 1단계: 전체 아파트 채점 (apartments 또는 프로필이 바뀔 때 재계산)
 const scored = useMemo(() =>
-  UNSOLD.map(a => ({ apt: a, ...calcAll(a, profile) })),
-  [profile]
+  apartments.map(a => ({ apt: a, ...calcAll(a, profile) })),
+  [apartments, profile]
 );
 
 // 2단계: 지역 필터 + 정렬 적용
@@ -412,17 +441,73 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 
 ## 9. 수정 시 체크리스트
 
-코드를 수정한 후 아래 12개 항목을 반드시 확인하세요:
+코드를 수정한 후 확인 (상세 규칙은 각 디렉토리 CLAUDE.md 참조):
 
-- [ ] 가중치 합계가 100% (또는 1.00)인가?
-- [ ] 새로 추가한 서브스코어에 Math.min(..., 100) 클램핑이 있는가?
-- [ ] Hook 순서: useState → useRef → useCallback → useMemo → useEffect 유지되는가?
-- [ ] useMemo 의존성 배열에 누락된 변수가 없는가?
-- [ ] memo() 래핑이 유지되는가? (소비자 8개 + 전문가 8개 = 16개 컴포넌트)
-- [ ] 새 onClick 핸들러가 useCallback으로 안정화되어 있는가?
-- [ ] null/undefined 가드에 `??`를 사용했는가? (`||` 아닌지 확인)
-- [ ] 폰트 크기가 10px 이상인가?
-- [ ] ARIA 속성(role, aria-pressed, aria-selected 등)이 유지되는가?
-- [ ] 서버 호출(fetch/axios)을 추가했다면 로딩/에러 상태를 처리했는가?
-- [ ] 전문가 필드 표시에 FIELD_META 포맷터를 사용했는가? (하드코딩 금지)
-- [ ] ExpertDashboard의 catKeys가 `Object.keys(res.cats)`로 동적 추출되는가?
+- [ ] 가중치 합계 100%? → `src/scoring/CLAUDE.md`
+- [ ] 클램핑 Math.min(..., 100)? → `src/scoring/CLAUDE.md`
+- [ ] Hook 순서 유지? → `CLAUDE.md` (Critical Rule #2)
+- [ ] useMemo 의존성 누락 없음? → `CLAUDE.md` (Critical Rule #3)
+- [ ] memo() + useCallback 유지? → `src/components/CLAUDE.md`
+- [ ] null 가드에 `??` 사용? → `src/scoring/CLAUDE.md`
+- [ ] 접근성 (ARIA, 폰트, 터치)? → `src/components/CLAUDE.md`
+- [ ] API null → sanitize 처리? → `api/CLAUDE.md`
+
+---
+
+## 10. DB 아키텍처 (Supabase PostgreSQL)
+
+### 테이블 관계도
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    미분양 아파트 데이터                        │
+│                                                              │
+│  apartments (1,500행) ─────────────────────────────────────  │
+│       │ id (PK)                                              │
+│       ├──→ prices (시계열, 분양가)                             │
+│       ├──→ unsold_history (시계열, 미분양 추이)                │
+│       ├──→ infra (주간, 카카오 인프라)                        │
+│       ├──→ schools (주간, NEIS 학군)                          │
+│       ├──→ transport (주간, 교통)                             │
+│       ├──→ trade_stats (실거래 통계 캐시)                     │
+│       └──→ builders (월간, 건설사 재무) ← builder name FK     │
+│                                                              │
+│  regions (시계열, 지역 통계)                                  │
+│  trades (시계열, 실거래가 원본)                                │
+│                                                              │
+│  apartments_flat (VIEW) ← 9개 테이블 JOIN → 평탄 38필드      │
+├──────────────────────────────────────────────────────────────┤
+│                    네이버 인근 시세 데이터                     │
+│                                                              │
+│  naver_complexes ──→ naver_articles (매물, 소프트 삭제)       │
+│                  └──→ naver_price_history (시세 이력)         │
+│                                                              │
+│  nearby_apartment_ids (JSONB) ← apartments.id 참조           │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 데이터 갱신 스케줄
+
+| 테이블 | 갱신 주기 | 소스 | 스크립트 |
+|--------|----------|------|---------|
+| apartments, prices | 매일 | 청약홈 API | collect-data.mjs Phase 1 |
+| infra | 주 1회 | 카카오 API | collect-data.mjs Phase 3 |
+| schools | 주 1회 | NEIS API | collect-data.mjs Phase 4 |
+| transport | 주 1회 | 카카오 API | collect-data.mjs Phase 6 |
+| builders | 월 1회 | DART API | collect-data.mjs Phase 5 |
+| regions | 월 1회 | KOSIS API | collect-data.mjs Phase 2 |
+| trades, trade_stats | 매일 | 국토부 API | collect-data.mjs Phase 7 |
+| naver_complexes | 매일 | 네이버 부동산 | naver-listings.mjs |
+| naver_articles | 매일 | 네이버 부동산 | naver-listings.mjs |
+
+### 네이버 데이터 활용
+
+네이버 매물 데이터는 미분양 아파트 분석을 강화:
+
+| 지표 | 기존 소스 | 네이버 추가 후 |
+|------|----------|--------------|
+| nearbyMedian | 국토부 실거래가 (월 1회) | + 네이버 호가 중위값 (매일) |
+| jeonseRate | 국토부 전세 데이터 | + 네이버 전세/매매 비율 (매일) |
+| psr | 주변시세 대비 분양가 | 네이버 호가 기반 실시간 PSR |
+| 매물 수 | 없음 | 인근 활성 매물 건수 (수요/공급) |
+| 평당가 추이 | 없음 | 네이버 호가 변동 추적 |

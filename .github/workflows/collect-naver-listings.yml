@@ -1,0 +1,50 @@
+name: Naver Listings Collection
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # UTC 19:00 = KST 04:00 (매일)
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: '아파트 제한 수 (0=전체)'
+        required: false
+        default: '0'
+      dry_run:
+        description: 'Dry run (데이터 수집만, DB 미저장)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: data-collection
+  cancel-in-progress: false
+
+jobs:
+  collect-listings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Collect Naver listings
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ "${{ inputs.limit }}" != "0" ] && [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit=${{ inputs.limit }}"
+          fi
+          node scripts/collectors/naver-listings.mjs $ARGS
