@@ -11,7 +11,7 @@ export function useApartmentData() {
 
     fetchStaticApartments()
       .then(({ data }) => {
-        if (!cancelled) setApartments(data);
+        if (!cancelled) { setApartments(data); setError(null); }
       })
       .catch((err) => {
         if (!cancelled) setError(err.message);

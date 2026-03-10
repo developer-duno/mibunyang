@@ -10,7 +10,7 @@ import { ExpertDataCompleteness } from "./ExpertDataCompleteness";
 import { ExpertSidebar } from "./ExpertSidebar";
 import { ExpertAptHeader } from "./ExpertAptHeader";
 
-const SEC_COLOR = { "가격": C.green, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan };
+const SEC_COLOR = { "가격": C.green, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan, "교차검증": "#6366F1" };
 
 export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, setProfile, expandedApt, setExpandedApt, onSwitchToAdmin }) {
   const [search, setSearch] = useState("");

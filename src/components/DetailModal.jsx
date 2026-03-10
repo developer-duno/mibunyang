@@ -13,6 +13,7 @@ const DATA_SECTIONS = [
   { title: "생활인프라 (반경 1km)", fields: ["hospital", "hospitalDist", "mart", "martDist", "conv", "convDist", "cafe", "culture", "bank", "pharmacy", "park", "parkDist"] },
   { title: "교통 상세", fields: ["subwayDist", "busRoutes", "icDist", "ktxDist"] },
   { title: "시장/투자 지표", fields: ["recentTrades6m", "nearbyMedian", "pir", "psr", "popGrowth", "nearbyBuildYear", "avgFloor", "floorRange"] },
+  { title: "네이버 교차검증", fields: ["naverNearbyMedian", "naverJeonseRate", "naverSellCount", "naverJeonseCount", "naverWolseCount", "naverSchoolWalkMin", "naverNearbyCount", "naverFetchedAt"] },
 ];
 
 function dataValueColor(field, value) {

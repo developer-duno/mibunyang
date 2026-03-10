@@ -3,7 +3,6 @@ import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
 import { calcCats } from "@/scoring/engine";
 import { C, catCol, catBg } from "@/theme";
-import { Bar, ScoreBadge } from "@/components/primitives";
 import { AptCard } from "@/components/AptCard";
 import { CompareSheet } from "@/components/CompareSheet";
 import { DetailModal } from "@/components/DetailModal";

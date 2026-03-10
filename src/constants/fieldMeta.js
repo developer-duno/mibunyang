@@ -82,7 +82,19 @@ export const FIELD_META = {
   cashback: { label: "캐시백", section: "혜택", unit: "만원", fmt: v => nk(v ?? 0, "만원"), isDefault: v => v === 0 },
   contractDiscount: { label: "계약금 할인", section: "혜택", fmt: v => v ? "있음" : "없음" },
   benefits: { label: "혜택 목록", section: "혜택", fmt: v => (v || []).length ? (v || []).join(", ") : "없음" },
-  // ── 섹션6: 미래가치 ──
+  // ── 섹션6: 네이버 교차검증 ──
+  naverNearbyMedian: { label: "네이버 주변 중위가", section: "교차검증", unit: "만원", fmt: v => v != null ? nk(v, "만원") : "미수집" },
+  naverNearbyAvg: { label: "네이버 주변 평균가", section: "교차검증", unit: "만원", fmt: v => v != null ? nk(v, "만원") : "미수집" },
+  naverJeonseRate: { label: "네이버 전세가율", section: "교차검증", unit: "%", fmt: v => v != null ? n(v, "%") : "미수집" },
+  naverSellCount: { label: "매매 매물", section: "교차검증", unit: "건", fmt: v => v != null ? n(v, "건") : "미수집" },
+  naverJeonseCount: { label: "전세 매물", section: "교차검증", unit: "건", fmt: v => v != null ? n(v, "건") : "미수집" },
+  naverWolseCount: { label: "월세 매물", section: "교차검증", unit: "건", fmt: v => v != null ? n(v, "건") : "미수집" },
+  naverBuildYear: { label: "네이버 평균 건축연도", section: "교차검증", fmt: v => v != null ? `${v}년` : "미수집" },
+  naverAvgFloor: { label: "네이버 평균 층수", section: "교차검증", unit: "층", fmt: v => v != null ? `${v}층` : "미수집" },
+  naverSchoolWalkMin: { label: "최근접 초등 도보", section: "교차검증", unit: "분", fmt: v => v != null ? n(v, "분") : "미수집" },
+  naverNearbyCount: { label: "주변 단지 수", section: "교차검증", unit: "개", fmt: v => v != null ? n(v, "개") : "미수집" },
+  naverFetchedAt: { label: "수집 시점", section: "교차검증", fmt: v => v ? new Date(v).toLocaleDateString("ko-KR") : "미수집" },
+  // ── 섹션7: 미래가치 ──
   transitDev: { label: "교통 개발", section: "미래", fmt: v => v || "없음" },
   devDist: { label: "개발지 거리", section: "미래", unit: "km", fmt: v => v == null ? "—" : v >= 90 ? "없음" : `${v}km`, isDefault: v => v === 99 },
   cityDev: { label: "도시 개발", section: "미래", fmt: v => v || "없음" },
@@ -96,4 +108,5 @@ export const FIELD_SECTIONS = [
   { key: "상품성", label: "상품성/건축", fields: ["parkingRatio","floorAreaRatio","energyGrade","greenBldg","quakeDesign","exclusiveRatio","hasPool"] },
   { key: "혜택", label: "혜택/할인", fields: ["discountPct","loanFree","loanFreePct","optionFree","optionValue","balconyFree","balconyValue","cashback","contractDiscount","benefits"] },
   { key: "미래", label: "미래가치", fields: ["transitDev","devDist","cityDev","industryDev"] },
+  { key: "교차검증", label: "네이버 교차검증", fields: ["naverNearbyMedian","naverNearbyAvg","naverJeonseRate","naverSellCount","naverJeonseCount","naverWolseCount","naverBuildYear","naverAvgFloor","naverSchoolWalkMin","naverNearbyCount","naverFetchedAt"] },
 ];
