@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { createClient } from "@supabase/supabase-js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -950,6 +951,122 @@ async function phase7_realtrade(apartments) {
 }
 
 // ============================================================
+// Phase 9: 네이버 교차검증 (Supabase → naver* 필드 병합)
+// ============================================================
+async function phase9_naver(apartments) {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    log("Phase 9: Supabase 환경변수 없음 — 네이버 교차검증 생략");
+    meta.phases.naver = { ok: false, reason: "no_env" };
+    return apartments;
+  }
+
+  log("Phase 9: 네이버 교차검증...");
+
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // 1. naver_complexes 조회
+    const { data: complexes, error: cErr } = await supabase
+      .from("naver_complexes")
+      .select("complex_no, nearby_apartment_ids, use_approve_ymd, high_floor");
+
+    if (cErr) throw new Error(`naver_complexes 조회 실패: ${cErr.message}`);
+    if (!complexes || complexes.length === 0) {
+      log("  네이버 단지 데이터 없음 — 스킵");
+      meta.phases.naver = { ok: true, enriched: 0, reason: "no_data" };
+      return apartments;
+    }
+
+    // 2. naver_articles 활성 매물 조회
+    const { data: articles, error: aErr } = await supabase
+      .from("naver_articles")
+      .select("complex_no, trade_type, price, exclusive_area, floor_info")
+      .eq("is_active", true);
+
+    if (aErr) throw new Error(`naver_articles 조회 실패: ${aErr.message}`);
+
+    // 3. aptId → complexNo[] 매핑
+    const aptComplexMap = new Map();
+    for (const c of complexes) {
+      for (const aptId of (c.nearby_apartment_ids || [])) {
+        if (!aptComplexMap.has(aptId)) aptComplexMap.set(aptId, new Set());
+        aptComplexMap.get(aptId).add(c.complex_no);
+      }
+    }
+
+    // 4. complexNo → articles 그룹핑
+    const complexArticlesMap = new Map();
+    for (const art of (articles || [])) {
+      if (!complexArticlesMap.has(art.complex_no)) complexArticlesMap.set(art.complex_no, []);
+      complexArticlesMap.get(art.complex_no).push(art);
+    }
+
+    // 5. complexNo → complex 메타 조회용
+    const complexMap = new Map(complexes.map(c => [c.complex_no, c]));
+
+    const median = (arr) => arr.length ? arr[Math.floor(arr.length / 2)] : null;
+    const avg = (arr) => arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : null;
+
+    // 6. 아파트별 통계 계산 + 병합
+    let enriched = 0;
+    const now = new Date().toISOString();
+
+    for (const apt of apartments) {
+      const cNos = aptComplexMap.get(apt.id);
+      if (!cNos || cNos.size === 0) continue;
+
+      // 인근 단지의 모든 매물 수집
+      const allArts = [];
+      for (const cno of cNos) {
+        allArts.push(...(complexArticlesMap.get(cno) || []));
+      }
+      if (allArts.length === 0) continue;
+
+      const sells = allArts.filter(a => a.trade_type === "매매");
+      const jeonses = allArts.filter(a => a.trade_type === "전세");
+      const wolses = allArts.filter(a => a.trade_type === "월세");
+
+      const sellPrices = sells.map(a => a.price).filter(Boolean).sort((a, b) => a - b);
+      const jeonsePrices = jeonses.map(a => a.price).filter(Boolean).sort((a, b) => a - b);
+
+      const sellMedian = median(sellPrices);
+      const jeonseMedian = median(jeonsePrices);
+
+      // 인근 단지 메타 (건축연도, 층수)
+      const nearbyComplexes = [...cNos].map(cno => complexMap.get(cno)).filter(Boolean);
+      const buildYears = nearbyComplexes
+        .map(c => c.use_approve_ymd ? parseInt(c.use_approve_ymd.slice(0, 4)) : null)
+        .filter(y => y && y > 1970);
+      const floors = nearbyComplexes.map(c => c.high_floor).filter(Boolean);
+
+      apt.naverNearbyMedian = sellMedian;
+      apt.naverNearbyAvg = avg(sellPrices);
+      apt.naverJeonseRate = (sellMedian && jeonseMedian) ? Math.round(jeonseMedian / sellMedian * 100) : null;
+      apt.naverSellCount = sells.length;
+      apt.naverJeonseCount = jeonses.length;
+      apt.naverWolseCount = wolses.length;
+      apt.naverBuildYear = avg(buildYears);
+      apt.naverAvgFloor = floors.length ? Math.round(floors.reduce((s, v) => s + v, 0) / floors.length * 10) / 10 : null;
+      apt.naverSchoolWalkMin = apt.naverSchoolWalkMin ?? null; // 기존 값 유지
+      apt.naverNearbyCount = cNos.size;
+      apt.naverFetchedAt = now;
+      enriched++;
+    }
+
+    log(`  네이버 교차검증: ${enriched}건 보강 (단지: ${complexes.length}, 매물: ${(articles || []).length})`);
+    meta.phases.naver = { ok: true, enriched, complexes: complexes.length, articles: (articles || []).length };
+  } catch (e) {
+    logError("naver", e.message);
+    meta.phases.naver = { ok: false, error: e.message };
+  }
+
+  return apartments;
+}
+
+// ============================================================
 // Main
 // ============================================================
 async function main() {
@@ -1029,6 +1146,9 @@ async function main() {
     return { ...a, psr, pir, dataReliability };
   });
   log("  파생 필드 계산 완료");
+
+  // Phase 9: 네이버 교차검증
+  apartments = await phase9_naver(apartments);
 
   // JSON 출력
   const outDir = resolve(ROOT, "public/data");

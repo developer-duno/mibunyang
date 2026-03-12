@@ -251,7 +251,7 @@ CREATE TABLE IF NOT EXISTS naver_articles (
 
 -- ============================================================
 -- 13. naver_price_history (네이버 시세 이력 — 시계열)
--- TODO: 입력 로직 미구현. 향후 naver-listings.mjs에서 평형별 시세 수집 시 활성화 예정.
+-- 입력: naver-listings.mjs Phase 6에서 매매(A1)+전세(B1) 5년치 수집
 -- ============================================================
 CREATE TABLE IF NOT EXISTS naver_price_history (
   id SERIAL PRIMARY KEY,
