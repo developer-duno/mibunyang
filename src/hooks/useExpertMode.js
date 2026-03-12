@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 const EMPTY_FORM = { email: "", password: "", name: "", affiliation: "", phone: "", specialty: "", license: "", experience: "", bio: "" };
 
@@ -12,7 +12,11 @@ export function useExpertMode(showToast) {
   const [authUser, setAuthUser] = useState(null);
   const [expertExpandedApt, setExpertExpandedApt] = useState(null);
 
+  const authFormRef = useRef(authForm);
+  authFormRef.current = authForm;
+
   const handleExpertLogin = useCallback(async () => {
+    const form = authFormRef.current;
     setAuthLoading(true);
     setAuthError("");
     setAuthStatus(null);
@@ -20,7 +24,7 @@ export function useExpertMode(showToast) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: authForm.email, password: authForm.password }),
+        body: JSON.stringify({ email: form.email, password: form.password }),
       });
       if (res.status === 429) {
         setAuthError("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
@@ -51,9 +55,10 @@ export function useExpertMode(showToast) {
     } finally {
       setAuthLoading(false);
     }
-  }, [authForm.email, authForm.password, showToast]);
+  }, [showToast]);
 
   const handleExpertSignup = useCallback(async () => {
+    const form = authFormRef.current;
     setAuthLoading(true);
     setAuthError("");
     setAuthStatus(null);
@@ -61,7 +66,7 @@ export function useExpertMode(showToast) {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(authForm),
+        body: JSON.stringify(form),
       });
       if (res.status === 429) {
         setAuthError("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
@@ -85,7 +90,7 @@ export function useExpertMode(showToast) {
     } finally {
       setAuthLoading(false);
     }
-  }, [authForm, showToast]);
+  }, [showToast]);
 
   const handleExpertLogout = useCallback((onLogout) => {
     setExpertLoggedIn(false);

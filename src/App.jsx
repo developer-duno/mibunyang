@@ -1,13 +1,13 @@
-import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
 import { calcCats } from "@/scoring/engine";
 import { C, catCol, catBg } from "@/theme";
 import { AptCard } from "@/components/AptCard";
-import { CompareSheet } from "@/components/CompareSheet";
-import { DetailModal } from "@/components/DetailModal";
-import { ConsultForm } from "@/components/ConsultForm";
 
+const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
+const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));
+const ConsultForm = lazy(() => import("@/components/ConsultForm").then(m => ({ default: m.ConsultForm })));
 const ExpertDashboard = lazy(() => import("@/components/expert/ExpertDashboard").then(m => ({ default: m.ExpertDashboard })));
 const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 import { useToast } from "@/hooks/useToast";
@@ -107,6 +107,11 @@ export default function App() {
   const switchToExpert = useCallback(() => setTab("expert"), []);
   const switchToInfo = useCallback(() => setTab("info"), []);
 
+  const consultRef = useRef(consult);
+  consultRef.current = consult;
+  const budgetRef = useRef({ budgetMin, budgetMax });
+  budgetRef.current = { budgetMin, budgetMax };
+
   const handleNavClick = useCallback((k) => {
     if (k === "logout") return handleExpertLogout();
     if (k === "list") { setTab("list"); setShowCompOpen(false); return; }
@@ -115,19 +120,21 @@ export default function App() {
       setShowCompOpen(true); setTab("list"); return;
     }
     if (k === "consult") {
-      if (consult.consultSubmitted) {
-        consult.setConsultSubmitted(false);
-        consult.setConsultForm({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
+      const c = consultRef.current;
+      const b = budgetRef.current;
+      if (c.consultSubmitted) {
+        c.setConsultSubmitted(false);
+        c.setConsultForm({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
       } else {
-        consult.setConsultForm(prev => ({
+        c.setConsultForm(prev => ({
           ...prev,
-          budgetMin: prev.budgetMin || (budgetMin ? String(Number(budgetMin) * 10000) : ""),
-          budgetMax: prev.budgetMax || (budgetMax ? String(Number(budgetMax) * 10000) : ""),
+          budgetMin: prev.budgetMin || (b.budgetMin ? String(Number(b.budgetMin) * 10000) : ""),
+          budgetMax: prev.budgetMax || (b.budgetMax ? String(Number(b.budgetMax) * 10000) : ""),
         }));
       }
     }
     setTab(k);
-  }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen, consult.consultSubmitted, consult.setConsultSubmitted, consult.setConsultForm, budgetMin, budgetMax]);
+  }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen]);
 
   // verify 실패 시 admin 상태 동기화 (양방향)
   useEffect(() => {
@@ -306,7 +313,7 @@ export default function App() {
             }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
           )}
 
-          {showComp && <CompareSheet items={compItems} onShare={handleShareCompare} />}
+          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} /></Suspense>}
 
           <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px" }}>
             {filtered.length}개 단지 · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
@@ -379,8 +386,10 @@ export default function App() {
         </div>
       ) : tab === "consult" ? (
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
-          <ConsultForm scored={scored} favoriteIds={favoriteIds} setFavoriteIds={setFavoriteIds} form={consult.consultForm} setForm={consult.setConsultForm}
-            onSubmit={consult.handleConsultSubmit} submitted={consult.consultSubmitted} showToast={showToast} />
+          <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}>
+            <ConsultForm scored={scored} favoriteIds={favoriteIds} setFavoriteIds={setFavoriteIds} form={consult.consultForm} setForm={consult.setConsultForm}
+              onSubmit={consult.handleConsultSubmit} submitted={consult.consultSubmitted} showToast={showToast} />
+          </Suspense>
         </div>
       ) : tab === "expertLogin" ? (
         <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
@@ -580,10 +589,10 @@ export default function App() {
       {detail.detailAptId && (() => {
         const item = scored.find(x => x.apt.id === detail.detailAptId);
         if (!item) return null;
-        return <DetailModal item={item} onClose={detail.handleCloseDetail}
+        return <Suspense fallback={null}><DetailModal item={item} onClose={detail.handleCloseDetail}
           isComp={compIds.includes(detail.detailAptId)} onComp={toggleComp}
           isFav={favoriteIds.includes(detail.detailAptId)} onFav={toggleFavorite}
-          onShare={handleShareDetail} isPC={isPC} />;
+          onShare={handleShareDetail} isPC={isPC} /></Suspense>;
       })()}
 
       {/* 토스트 */}
