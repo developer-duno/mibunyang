@@ -945,7 +945,9 @@ async function phase7_realtrade(apartments) {
     };
   });
 
-  log(`  실거래 보강: ${enriched}건`);
+  const withPrice = apartments.filter(a => a.priceByArea?.length > 0).length;
+  const withRent = apartments.filter(a => a.rentByArea?.length > 0).length;
+  log(`  실거래 보강: ${enriched}건, priceByArea: ${withPrice}건, rentByArea: ${withRent}건`);
   meta.phases.realtrade = { ok: true, enriched, apiCalls };
   return apartments;
 }

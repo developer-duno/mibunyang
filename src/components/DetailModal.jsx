@@ -95,34 +95,49 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           </div>
         )}
 
-        {(apt.priceByArea ?? []).length > 0 && (
+        {(apt.priceByArea ?? []).length > 0 && (() => {
+          const allSell = apt.priceByArea ?? [];
+          const allRent = apt.rentByArea ?? [];
+          const totalCount = allSell.reduce((s, p) => s + p.count, 0);
+          const similar = allSell.filter(p => Math.abs(p.area - apt.area) <= 30);
+          const sellRows = similar.length >= 3 ? similar : allSell;
+          const isFiltered = sellRows.length < allSell.length;
+          const similarRent = allRent.filter(r => Math.abs(r.area - apt.area) <= 30);
+          const rentRows = similarRent.length >= 3 ? similarRent : allRent;
+          return (
           <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>매매 시세 (최근 6개월)</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>인근 매매 시세 (최근 6개월)</div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>총 {totalCount}건{isFiltered ? ` · ${apt.area}㎡ 기준 ±30㎡ 필터` : " · 전체 면적"}</div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <th style={thStyle}>면적</th><th style={thStyle}>하한</th><th style={thStyle}>평균</th><th style={thStyle}>상한</th><th style={{ ...thStyle, textAlign: "right" }}>건수</th>
               </tr></thead>
-              <tbody>{(apt.priceByArea ?? []).map((p, i) => (
-                <tr key={i}>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>{p.area}㎡</td>
+              <tbody>{sellRows.map((p, i) => {
+                const isSimilar = Math.abs(p.area - apt.area) <= 10;
+                return (
+                <tr key={i} style={{ background: isSimilar ? C.indigoLight : "transparent" }}>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>{isSimilar ? "★ " : ""}{p.area}㎡</td>
                   <td style={tdStyle}>{fmtPrice(p.min)}</td>
                   <td style={{ ...tdStyle, fontWeight: 700, color: C.blue }}>{fmtPrice(p.avg)}</td>
                   <td style={tdStyle}>{fmtPrice(p.max)}</td>
                   <td style={{ ...tdStyle, textAlign: "right", color: C.muted }}>{p.count}건</td>
                 </tr>
-              ))}</tbody>
+                );
+              })}</tbody>
             </table>
-            {(apt.rentByArea ?? []).length > 0 && (<>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: "12px 0 8px" }}>전세 시세 / 전세가율</div>
+            {rentRows.length > 0 && (<>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: "12px 0 2px" }}>인근 전세 시세 / 전세가율</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>{isFiltered ? `${apt.area}㎡ 기준 ±30㎡ 필터` : "전체 면적"}</div>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead><tr>
                   <th style={thStyle}>면적</th><th style={thStyle}>하한</th><th style={thStyle}>평균</th><th style={thStyle}>상한</th><th style={{ ...thStyle, textAlign: "right" }}>전세가율</th>
                 </tr></thead>
-                <tbody>{(apt.rentByArea ?? []).map((r, i) => {
+                <tbody>{rentRows.map((r, i) => {
                   const j = (apt.jeonseByArea ?? []).find(x => x.area === r.area);
+                  const isSimilar = Math.abs(r.area - apt.area) <= 10;
                   return (
-                    <tr key={i}>
-                      <td style={{ ...tdStyle, fontWeight: 600 }}>{r.area}㎡</td>
+                    <tr key={i} style={{ background: isSimilar ? C.greenLight : "transparent" }}>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{isSimilar ? "★ " : ""}{r.area}㎡</td>
                       <td style={tdStyle}>{fmtPrice(r.min)}</td>
                       <td style={{ ...tdStyle, fontWeight: 700, color: C.green }}>{fmtPrice(r.avg)}</td>
                       <td style={tdStyle}>{fmtPrice(r.max)}</td>
@@ -133,7 +148,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               </table>
             </>)}
           </div>
-        )}
+          );
+        })()}
 
         {(apt.nearbySchools ?? []).length > 0 && (() => {
           const schools = apt.nearbySchools;
