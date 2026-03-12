@@ -64,21 +64,28 @@ def rate_limit():
 
 
 def ensure_jwt(complex_id="100"):
-    """JWT 토큰 추출 (네이버 부동산 페이지에서)"""
+    """JWT 토큰 추출 (네이버 부동산 페이지에서, 최대 3회 재시도)"""
     global _jwt_token, _jwt_token_time
     if _jwt_token and (time.time() - _jwt_token_time) < 2400:  # 40분
         return _jwt_token
-    rate_limit()
-    try:
-        r = session.get(f"{NAVER_LAND_BASE}/complexes/{complex_id}")
-        match = re.search(JWT_TOKEN_PATTERN, r.text)
-        if match:
-            _jwt_token = match.group(1)
-            _jwt_token_time = time.time()
-            log("JWT 토큰 갱신 완료")
-            return _jwt_token
-    except Exception as e:
-        log(f"JWT 토큰 추출 실패: {e}")
+    fallback_ids = [complex_id, "217", "1"]
+    for attempt, cid in enumerate(fallback_ids):
+        rate_limit()
+        try:
+            r = session.get(f"{NAVER_LAND_BASE}/complexes/{cid}", timeout=60)
+            match = re.search(JWT_TOKEN_PATTERN, r.text)
+            if match:
+                _jwt_token = match.group(1)
+                _jwt_token_time = time.time()
+                log("JWT 토큰 갱신 완료")
+                return _jwt_token
+            log(f"JWT 토큰 패턴 미매칭 (complex={cid}, status={r.status_code})")
+        except Exception as e:
+            log(f"JWT 토큰 추출 실패 (시도 {attempt+1}/3): {e}")
+        if attempt < len(fallback_ids) - 1:
+            delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else 10
+            log(f"  {delay}초 후 재시도...")
+            time.sleep(delay)
     return None
 
 

@@ -9,4 +9,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Vercel Deploy
-        run: curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
+        run: |
+          if [ -z "$HOOK_URL" ]; then
+            echo "::error::VERCEL_DEPLOY_HOOK secret is not set"
+            exit 1
+          fi
+          curl -sf -X POST "$HOOK_URL" -o /dev/null && echo "Deploy triggered successfully" || {
+            echo "::error::Deploy hook request failed"
+            exit 1
+          }
+        env:
+          HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK }}

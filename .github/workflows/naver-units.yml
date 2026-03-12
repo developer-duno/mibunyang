@@ -4,6 +4,9 @@ on:
     - cron: '0 17 * * *' # UTC 17:00 = KST 02:00 (daily-deploy 1시간 전)
   workflow_dispatch: # 수동 실행
 
+permissions:
+  contents: write
+
 jobs:
   correct-units:
     runs-on: ubuntu-latest
@@ -19,6 +22,7 @@ jobs:
 
       - name: Run Naver units correction
         run: python scripts/naver-units.py
+        continue-on-error: true
 
       - name: Commit & Push
         run: |
