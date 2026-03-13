@@ -20,6 +20,7 @@ import { useExpertMode } from "@/hooks/useExpertMode";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
+import { useUserLocation } from "@/hooks/useUserLocation";
 import { useResponsive } from "@/hooks/useResponsive";
 import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
@@ -36,12 +37,13 @@ export default function App() {
 
   const { isPC } = useResponsive();
 
-  // 7 custom hooks
+  // 8 custom hooks
   const { toast, showToast } = useToast();
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites();
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, applyDetectedRegion } = useFilterSort({ onFilterChange: closeDetail });
+  const userLocation = useUserLocation();
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
@@ -86,6 +88,15 @@ export default function App() {
     const rs = new Set(apartments.map(a => a.region));
     return ["전체", ...rs];
   }, [apartments]);
+
+  // 위치 감지 → 자동 지역 필터 적용
+  const locationAppliedRef = useRef(false);
+  useEffect(() => {
+    if (locationAppliedRef.current || userLocation.loading || !userLocation.region) return;
+    if (regionOptions.length <= 1) return; // 아파트 데이터 미로드
+    locationAppliedRef.current = true;
+    applyDetectedRegion(userLocation.region, regionOptions);
+  }, [userLocation.loading, userLocation.region, regionOptions, applyDetectedRegion]);
 
   const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isPC ? 960 : 520;
 
@@ -320,10 +331,15 @@ export default function App() {
 
           {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} /></Suspense>}
 
-          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px" }}>
-            {filtered.length}개 단지 · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span>{filtered.length}개 단지 · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>
             {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
-              <span style={{ color: C.red, fontWeight: 700 }}> (최소&gt;최대)</span>
+              <span style={{ color: C.red, fontWeight: 700 }}>(최소&gt;최대)</span>
+            )}
+            {userLocation.region && !userLocation.loading && (
+              <span style={{ fontSize: 10, color: C.blue, background: C.blueLight, padding: "1px 6px", borderRadius: 10, fontWeight: 600, whiteSpace: "nowrap" }}>
+                {userLocation.method === "gps" ? "\uD83D\uDCCD" : "\uD83C\uDF10"} {userLocation.region}{userLocation.gu ? ` ${userLocation.gu}` : ""}
+              </span>
             )}
           </div>
 

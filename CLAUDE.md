@@ -41,7 +41,7 @@ constants → scoring → theme → components → hooks → App
 
 App.jsx 내부:
 ```
-useState (3개) + useTransition (1개) → useCallback → 커스텀 훅 11개 → useMemo (8개) → useEffect (4개) → useCallback/useRef
+useState (3개) + useTransition (1개) → useCallback → 커스텀 훅 12개 → useMemo (8개) → useEffect (4개) → useRef → useEffect → useCallback/useRef
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
