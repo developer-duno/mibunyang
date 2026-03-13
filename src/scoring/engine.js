@@ -190,10 +190,10 @@ export function scoreProduct(apt) {
       { name: "세대수", score: unitSc, info: apt.units <= 1 ? "정보 없음 (중립)" : `${(apt.units ?? 0).toLocaleString()}세대` },
       { name: "주차", score: parkSc, info: `${apt.parkingRatio}대/세대` },
       { name: "용적률", score: farSc, info: `${apt.floorAreaRatio}%` },
-      { name: "에너지", score: energySc, info: `${apt.energyGrade}등급` },
+      { name: "에너지", score: energySc, info: apt.energyGrade != null ? `${apt.energyGrade}등급` : "정보 없음" },
       { name: "전용률", score: exclSc, info: `${apt.exclusiveRatio}%` },
       { name: "평면", score: layoutSc, info: apt.layout },
-      { name: "내진", score: quakeSc, info: apt.quakeDesign ? "O" : "X" },
+      { name: "내진", score: quakeSc, info: apt.quakeDesign ? "O" : "정보 없음" },
       { name: "구조", score: structSc, info: `최고 ${apt.maxFloor}층` },
     ],
   };
