@@ -59,7 +59,7 @@ export const FIELD_META = {
   convDist: { label: "편의점 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "—" },
   parkDist: { label: "공원 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "—" },
   view: { label: "조망", section: "입지", fmt: v => v ?? "—" },
-  sunlight: { label: "일조", section: "입지", fmt: v => v ?? "—", isDefault: v => !v },
+  sunlight: { label: "일조", section: "입지", fmt: v => v ?? "—" },
   noise: { label: "소음", section: "입지", unit: "dB", fmt: v => n(v, "dB") },
   noxious: { label: "혐오시설", section: "입지", fmt: v => (v || []).length ? (v || []).join(", ") : "없음" },
   // ── 섹션4: 상품성/건축 ──

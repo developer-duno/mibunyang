@@ -105,6 +105,7 @@ function sanitize(row) {
     sunlight: row.sunlight ?? null,
     noise: row.noise ?? null,
     noxious: row.noxious ?? [],
+    noxiousDist: row.noxiousDist ?? null,
     // 분양가
     area: row.area ?? 0,
     price: row.price ?? 0,
@@ -118,6 +119,13 @@ function sanitize(row) {
     culture: row.culture ?? 0,
     bank: row.bank ?? 0,
     pharmacy: row.pharmacy ?? 0,
+    martDist: row.martDist ?? null,
+    convDist: row.convDist ?? null,
+    parkDist: row.parkDist ?? null,
+    cafeDist: row.cafeDist ?? null,
+    cultureDist: row.cultureDist ?? null,
+    bankDist: row.bankDist ?? null,
+    pharmacyDist: row.pharmacyDist ?? null,
     park: row.park ?? 0,
     subwayDist: row.subwayDist ?? 9999,
     nearbyFacilities: row.nearbyFacilities ?? [],
@@ -134,6 +142,7 @@ function sanitize(row) {
     builderCreditGrade: row.builderCreditGrade ?? null,
     // 지역
     popGrowth: row.popGrowth ?? null,
+    netMigration: row.netMigration ?? null,
     supplyRatio: row.supplyRatio ?? 150,
     // 실거래 (위험 필드 → 비관적 기본값)
     nearbyMedian: row.nearbyMedian ?? null,
@@ -149,7 +158,6 @@ function sanitize(row) {
     rentByArea: row.rentByArea ?? [],
     jeonseByArea: row.jeonseByArea ?? [],
     priceByFloor: row.priceByFloor ?? [],
-    // UI (AptCard 그래디언트)
     // 메타
     dataReliability: row.dataReliability ?? 30,
     // 네이버 교차검증 (null 허용 — 미수집 시 null)
