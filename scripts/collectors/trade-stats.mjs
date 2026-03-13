@@ -66,7 +66,21 @@ async function main() {
 
   // 1. 데이터 로드
   log("load", "아파트 데이터 조회...");
-  const apartments = await fetchAll("apartments_flat", "id,name,region,gu,price,area");
+  // apartments 테이블 직접 조회 (apartments_flat VIEW RLS 이슈 우회)
+  const rawApts = await fetchAll("apartments", "id,name,region,gu");
+  // prices 테이블에서 최신 분양가 조회
+  const rawPrices = await fetchAll("prices", "apartment_id,area,price,recorded_at");
+  // 아파트별 최신 가격 매핑
+  const priceMap = {};
+  for (const p of rawPrices) {
+    const prev = priceMap[p.apartment_id];
+    if (!prev || p.recorded_at > prev.recorded_at) priceMap[p.apartment_id] = p;
+  }
+  const apartments = rawApts.map(a => ({
+    ...a,
+    price: priceMap[a.id]?.price ?? null,
+    area: priceMap[a.id]?.area ?? null,
+  }));
   log("load", `아파트 ${apartments.length}건`);
 
   if (!apartments.length) {

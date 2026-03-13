@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS apartments (
   sunlight TEXT,
   noise REAL,
   noxious JSONB,                          -- ["소각장", "고압선"]
+  noxious_dist REAL,                      -- 최근접 혐오시설 거리 (m)
   -- 네이버 교차검증
   naver_nearby_median INTEGER,            -- 주변 중위가 (만원)
   naver_nearby_avg INTEGER,               -- 주변 평균가 (만원)
@@ -175,6 +176,7 @@ CREATE TABLE IF NOT EXISTS regions (
   pop_growth REAL,
   avg_income INTEGER,
   supply_ratio REAL,
+  net_migration INTEGER,
   jeonse_rate REAL,
   avg_price INTEGER,
   recorded_at DATE NOT NULL DEFAULT CURRENT_DATE
@@ -389,7 +391,7 @@ WITH latest_prices AS (
 ),
 latest_regions AS (
   SELECT DISTINCT ON (region)
-    region, pop_growth, supply_ratio
+    region, pop_growth, supply_ratio, net_migration
   FROM regions
   WHERE gu IS NULL
   ORDER BY region, recorded_at DESC
@@ -440,6 +442,7 @@ SELECT
   a.sunlight,
   a.noise,
   a.noxious,
+  a.noxious_dist AS "noxiousDist",
   -- 최신 분양가 (prices 테이블에서)
   p.area,
   p.price,
@@ -455,6 +458,13 @@ SELECT
   i.park,
   i.subway_dist AS "subwayDist",
   i.hospital_dist AS "hospitalDist",
+  i.mart_dist AS "martDist",
+  i.conv_dist AS "convDist",
+  i.cafe_dist AS "cafeDist",
+  i.culture_dist AS "cultureDist",
+  i.bank_dist AS "bankDist",
+  i.pharmacy_dist AS "pharmacyDist",
+  i.park_dist AS "parkDist",
   i.nearby_facilities AS "nearbyFacilities",
   -- 학군
   sc.school_score AS "schoolScore",
@@ -471,6 +481,7 @@ SELECT
   -- 지역
   r.pop_growth AS "popGrowth",
   r.supply_ratio AS "supplyRatio",
+  r.net_migration AS "netMigration",
   -- 실거래 통계
   ts.nearby_median AS "nearbyMedian",
   ts.recent_trades_6m AS "recentTrades6m",
