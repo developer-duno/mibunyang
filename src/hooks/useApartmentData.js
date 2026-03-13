@@ -33,13 +33,13 @@ export function useApartmentData() {
     }
   }, []);
 
+  const retry = useCallback(() => { load(); }, [load]);
+
   useEffect(() => {
     const ac = new AbortController();
     load(ac.signal);
     return () => ac.abort();
   }, [load]);
-
-  const retry = useCallback(() => { load(); }, [load]);
 
   return { apartments, loading, error, retry };
 }

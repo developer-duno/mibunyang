@@ -478,17 +478,19 @@ SELECT
   a.naver_school_walk_min AS "naverSchoolWalkMin",
   a.naver_nearby_count AS "naverNearbyCount",
   a.naver_fetched_at AS "naverFetchedAt",
-  -- 데이터 완성도 (계산)
+  -- 데이터 완성도 (계산, 합계 100)
   GREATEST(0, LEAST(100, (
-    (CASE WHEN p.price IS NOT NULL THEN 15 ELSE 0 END) +
-    (CASE WHEN i.hospital IS NOT NULL THEN 12 ELSE 0 END) +
-    (CASE WHEN sc.school_score IS NOT NULL THEN 12 ELSE 0 END) +
-    (CASE WHEN t.bus_routes IS NOT NULL THEN 10 ELSE 0 END) +
-    (CASE WHEN b.debt_ratio IS NOT NULL THEN 8 ELSE 0 END) +
-    (CASE WHEN r.pop_growth IS NOT NULL THEN 8 ELSE 0 END) +
-    (CASE WHEN ts.nearby_median IS NOT NULL THEN 15 ELSE 0 END) +
-    (CASE WHEN ts.jeonse_rate IS NOT NULL THEN 10 ELSE 0 END) +
-    (CASE WHEN a.units > 1 THEN 10 ELSE 0 END)
+    (CASE WHEN p.price IS NOT NULL THEN 13 ELSE 0 END) +
+    (CASE WHEN i.hospital IS NOT NULL THEN 11 ELSE 0 END) +
+    (CASE WHEN sc.school_score IS NOT NULL THEN 11 ELSE 0 END) +
+    (CASE WHEN t.bus_routes IS NOT NULL THEN 9 ELSE 0 END) +
+    (CASE WHEN b.debt_ratio IS NOT NULL THEN 7 ELSE 0 END) +
+    (CASE WHEN r.pop_growth IS NOT NULL THEN 7 ELSE 0 END) +
+    (CASE WHEN ts.nearby_median IS NOT NULL THEN 13 ELSE 0 END) +
+    (CASE WHEN ts.jeonse_rate IS NOT NULL THEN 9 ELSE 0 END) +
+    (CASE WHEN a.units > 1 THEN 10 ELSE 0 END) +
+    (CASE WHEN a.view IS NOT NULL THEN 5 ELSE 0 END) +
+    (CASE WHEN a.noise IS NOT NULL THEN 5 ELSE 0 END)
   ))) AS "dataReliability"
 FROM apartments a
 LEFT JOIN latest_prices p ON p.apartment_id = a.id

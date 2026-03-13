@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
-import { calcCats } from "@/scoring/engine";
+import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { C, catCol, catBg } from "@/theme";
 import { AptCard } from "@/components/AptCard";
 
@@ -63,7 +63,11 @@ export default function App() {
     return ["전체", ...regionGus];
   }, [filterRegion, apartments]);
 
-  const catsCache = useMemo(() => apartments.map(a => ({ apt: a, cats: calcCats(a) })), [apartments]);
+  const catsCache = useMemo(() => {
+    const regionMedians = computeRegionalMedians(apartments);
+    const ctx = { regionMedians };
+    return apartments.map(a => ({ apt: a, cats: calcCats(a, ctx) }));
+  }, [apartments]);
   const scored = useMemo(() => {
     const w = PROFILES[profile].w;
     return catsCache.map(({ apt, cats }) => {

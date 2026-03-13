@@ -117,7 +117,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {(apt.priceByArea ?? []).length > 0 && (() => {
           const allSell = apt.priceByArea ?? [];
           const allRent = apt.rentByArea ?? [];
-          const totalCount = allSell.reduce((s, p) => s + p.count, 0);
+          const totalCount = allSell.reduce((s, p) => s + (p.count ?? 0), 0);
           const narrow = allSell.filter(p => Math.abs(p.area - apt.area) <= 10);
           const sellRows = narrow.length >= 3 ? narrow : allSell.filter(p => Math.abs(p.area - apt.area) <= 20);
           const isFiltered = sellRows.length < allSell.length;

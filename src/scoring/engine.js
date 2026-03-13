@@ -14,15 +14,15 @@ const CITY_MID = ["재생", "리모델링", "관광", "산업단지", "공항", 
 const matchAny = (str, keywords) => keywords.some(k => str.includes(k));
 
 // --- null 안전 레이어 (Bug-2 + API-2) ---
-function sanitize(apt) {
+function sanitize(apt, rm) {
   const str = (v, fallback = "") => (v ?? fallback).toString().trim().normalize("NFC");
   const num = (v, fallback) => { const n = Number(v); return (v == null || Number.isNaN(n)) ? fallback : n; };
   return {
     ...apt,
-    // 위험 필드 → 비관적 기본값
-    pir: num(apt.pir, 10), psr: num(apt.psr, 1.5),
-    unsoldRate: num(apt.unsoldRate, 50), recentTrades6m: num(apt.recentTrades6m, 0),
-    builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, 150),
+    // 위험 필드 → 지역 중위값 우선, 없으면 비관적 기본값
+    pir: num(apt.pir, rm?.pir ?? 10), psr: num(apt.psr, rm?.psr ?? 1.5),
+    unsoldRate: num(apt.unsoldRate, rm?.unsoldRate ?? 50), recentTrades6m: num(apt.recentTrades6m, 0),
+    builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, rm?.supplyRatio ?? 150),
     popGrowth: apt.popGrowth != null ? num(apt.popGrowth, null) : null,
     netMigration: apt.netMigration != null ? num(apt.netMigration, null) : null,
     dataReliability: num(apt.dataReliability, 30),
@@ -156,6 +156,8 @@ export function scoreLocation(apt) {
   let noiseSc = apt.noise <= 50 ? 30 : apt.noise <= 60 ? 22 : apt.noise <= 65 ? 15 : apt.noise <= 70 ? 8 : 0;
   const env = viewSc + sunSc + noiseSc;
   let noxPen = (apt.noxious || []).reduce((s, n) => s + (NOXIOUS_PENALTY[n] || 0), 0);
+  // 거리 기반 감점 완화: noxiousDist >= 500m이면 감점 반감
+  if (apt.noxiousDist != null && apt.noxiousDist >= 500) noxPen = noxPen * 0.5;
   noxPen = Math.max(noxPen, -15);
   const noxSafe = Math.max(0, 100 + noxPen / 15 * 100);
   const total = transport * 0.30 + school * 0.25 + infra * 0.20 + env * 0.10 + noxSafe * 0.15;
@@ -269,7 +271,7 @@ export function scoreFuture(apt) {
     : matchAny(apt.cityDev, CITY_HIGH) ? 80
     : matchAny(apt.cityDev, CITY_MID) ? 50 : 30;
 
-  // 인구/산업 (기본 30%) — 한국 현실 기반 7단계
+  // 인구 (기본 30%) — 한국 현실 기반 7단계
   let popSc = apt.popGrowth == null ? 35
     : apt.popGrowth >= 1.0 ? 95
     : apt.popGrowth >= 0.5 ? 80
@@ -278,33 +280,66 @@ export function scoreFuture(apt) {
     : apt.popGrowth >= -0.8 ? 35
     : apt.popGrowth >= -2.0 ? 20
     : 10;
-  if (apt.industryDev && apt.industryDev.length > 0) popSc = Math.min(popSc + 20, 100);
   if (apt.netMigration != null && apt.netMigration > 0) popSc = Math.min(popSc + 10, 100);
   if (apt.netMigration != null && apt.netMigration <= -5000) popSc = Math.max(popSc - 5, 0);
 
-  // 동적 가중치: 데이터 부재 시 인구/산업에 가중치 집중 (합계 항상 1.00)
+  // 산업개발 (4번째 축)
+  const indDev = apt.industryDev;
+  const hasInd = indDev && (Array.isArray(indDev) ? indDev.length > 0 : String(indDev).trim().length > 0);
+  let indSc = 0;
+  if (hasInd) {
+    const indStr = Array.isArray(indDev) ? indDev.join(" ") : String(indDev);
+    indSc = matchAny(indStr, CITY_HIGH) ? 80 : matchAny(indStr, CITY_MID) ? 55 : 35;
+  }
+
+  // 동적 가중치: 데이터 부재 시 인구에 가중치 집중 (합계 항상 1.00)
   const hasTr = trSc > 0;
   const hasCity = citySc > 0;
-  let wTr, wCity, wPop;
-  if (hasTr && hasCity)       { wTr = 0.40; wCity = 0.30; wPop = 0.30; }
-  else if (hasTr && !hasCity) { wTr = 0.55; wCity = 0;    wPop = 0.45; }
-  else if (!hasTr && hasCity) { wTr = 0;    wCity = 0.45;  wPop = 0.55; }
-  else                        { wTr = 0;    wCity = 0;     wPop = 1.00; }
+  let wTr, wCity, wPop, wInd;
+  if (hasTr && hasCity && hasInd)        { wTr = 0.30; wCity = 0.25; wPop = 0.25; wInd = 0.20; }
+  else if (hasTr && hasCity && !hasInd)  { wTr = 0.40; wCity = 0.30; wPop = 0.30; wInd = 0; }
+  else if (hasTr && !hasCity && hasInd)  { wTr = 0.40; wCity = 0;    wPop = 0.30; wInd = 0.30; }
+  else if (hasTr && !hasCity && !hasInd) { wTr = 0.55; wCity = 0;    wPop = 0.45; wInd = 0; }
+  else if (!hasTr && hasCity && hasInd)  { wTr = 0;    wCity = 0.35; wPop = 0.35; wInd = 0.30; }
+  else if (!hasTr && hasCity && !hasInd) { wTr = 0;    wCity = 0.45; wPop = 0.55; wInd = 0; }
+  else if (!hasTr && !hasCity && hasInd) { wTr = 0;    wCity = 0;    wPop = 0.60; wInd = 0.40; }
+  else                                   { wTr = 0;    wCity = 0;    wPop = 1.00; wInd = 0; }
 
-  const total = trSc * wTr + citySc * wCity + popSc * wPop;
+  const total = trSc * wTr + citySc * wCity + popSc * wPop + indSc * wInd;
   const pg = apt.popGrowth;
   return {
     total: Math.round(Math.min(total, 100)),
     subs: [
       { name: "교통개발", score: Math.round(trSc), info: apt.transitDev || "없음" },
       { name: "도시개발", score: Math.round(citySc), info: apt.cityDev || "없음" },
-      { name: "인구/산업", score: Math.round(popSc), info: pg != null ? `${pg > 0 ? "+" : ""}${pg}%` : "정보 없음" },
+      { name: "인구", score: Math.round(popSc), info: pg != null ? `${pg > 0 ? "+" : ""}${pg}%` : "정보 없음" },
+      { name: "산업개발", score: Math.round(indSc), info: hasInd ? (Array.isArray(indDev) ? indDev.join(", ") : String(indDev)) : "없음" },
     ],
   };
 }
 
-export function calcCats(apt) {
-  const a = sanitize(apt);
+// --- 지역 중위값 계산 (Phase 3-1) ---
+export function computeRegionalMedians(apartments) {
+  const groups = {};
+  for (const apt of apartments) {
+    const r = apt.region || "기타";
+    if (!groups[r]) groups[r] = { pir: [], psr: [], unsoldRate: [], supplyRatio: [] };
+    if (apt.pir != null && Number.isFinite(Number(apt.pir))) groups[r].pir.push(Number(apt.pir));
+    if (apt.psr != null && Number.isFinite(Number(apt.psr))) groups[r].psr.push(Number(apt.psr));
+    if (apt.unsoldRate != null && Number.isFinite(Number(apt.unsoldRate))) groups[r].unsoldRate.push(Number(apt.unsoldRate));
+    if (apt.supplyRatio != null && Number.isFinite(Number(apt.supplyRatio))) groups[r].supplyRatio.push(Number(apt.supplyRatio));
+  }
+  const median = (arr) => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const result = {};
+  for (const [r, g] of Object.entries(groups)) {
+    result[r] = { pir: median(g.pir), psr: median(g.psr), unsoldRate: median(g.unsoldRate), supplyRatio: median(g.supplyRatio) };
+  }
+  return result;
+}
+
+export function calcCats(apt, ctx) {
+  const rm = ctx?.regionMedians?.[apt.region];
+  const a = sanitize(apt, rm);
   const safe = (fn) => { try { return fn(); } catch { return { total: 0, subs: [] }; } };
   return {
     price: { ...safe(() => scorePrice(a)), label: "가격 매력도", key: "price" },
@@ -316,9 +351,9 @@ export function calcCats(apt) {
   };
 }
 
-export function calcAll(apt, profile) {
+export function calcAll(apt, profile, ctx) {
   const w = PROFILES[profile]?.w || PROFILES.live.w;
-  const cats = calcCats(apt);
+  const cats = calcCats(apt, ctx);
   const total = Object.keys(cats).reduce((s, k) => {
     const ct = cats[k].total;
     return s + (Number.isFinite(ct) ? ct * w[k] / 100 : 0);
