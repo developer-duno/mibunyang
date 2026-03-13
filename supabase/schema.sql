@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS regions (
   pop_growth REAL,
   avg_income INTEGER,
   supply_ratio REAL,
+  net_migration INTEGER,
   jeonse_rate REAL,
   avg_price INTEGER,
   recorded_at DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -376,7 +377,7 @@ WITH latest_prices AS (
 ),
 latest_regions AS (
   SELECT DISTINCT ON (region)
-    region, pop_growth, supply_ratio
+    region, pop_growth, supply_ratio, net_migration
   FROM regions
   WHERE gu IS NULL
   ORDER BY region, recorded_at DESC
@@ -458,6 +459,7 @@ SELECT
   -- 지역
   r.pop_growth AS "popGrowth",
   r.supply_ratio AS "supplyRatio",
+  r.net_migration AS "netMigration",
   -- 실거래 통계
   ts.nearby_median AS "nearbyMedian",
   ts.recent_trades_6m AS "recentTrades6m",

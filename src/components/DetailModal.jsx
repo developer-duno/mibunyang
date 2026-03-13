@@ -9,11 +9,30 @@ const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px
 const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
 const DATA_SECTIONS = [
-  { title: "단지 기본정보", fields: ["dong", "units", "unsold", "unsoldRate", "pp", "completion", "builder", "heating", "dataReliability"] },
-  { title: "생활인프라 (반경 1km)", fields: ["hospital", "hospitalDist", "mart", "martDist", "conv", "convDist", "cafe", "culture", "bank", "pharmacy", "park", "parkDist"] },
-  { title: "교통 상세", fields: ["subwayDist", "busRoutes", "icDist", "ktxDist"] },
-  { title: "시장/투자 지표", fields: ["recentTrades6m", "nearbyMedian", "pir", "psr", "popGrowth", "nearbyBuildYear", "avgFloor", "floorRange"] },
-  { title: "네이버 교차검증", fields: ["naverNearbyMedian", "naverJeonseRate", "naverSellCount", "naverJeonseCount", "naverWolseCount", "naverSchoolWalkMin", "naverNearbyCount", "naverFetchedAt"] },
+  {
+    title: "단지 기본정보",
+    highlight: ["unsoldRate", "pp", "completion", "dataReliability"],
+    grid: ["dong", "units", "unsold", "builder", "heating"],
+  },
+  {
+    title: "생활인프라 (반경 1km)",
+    pairs: [
+      ["hospital", "hospitalDist"], ["mart", "martDist"], ["conv", "convDist"],
+      ["park", "parkDist"], ["pharmacy", null], ["cafe", null],
+      ["culture", null], ["bank", null],
+    ],
+  },
+  { title: "교통 상세", grid: ["subwayDist", "busRoutes", "icDist", "ktxDist"] },
+  {
+    title: "시장/투자 지표",
+    highlight: ["pir", "psr", "popGrowth"],
+    grid: ["recentTrades6m", "nearbyMedian", "nearbyBuildYear", "avgFloor", "floorRange"],
+  },
+  {
+    title: "네이버 교차검증",
+    grid: ["naverNearbyMedian", "naverJeonseRate", "naverSellCount", "naverJeonseCount",
+           "naverWolseCount", "naverSchoolWalkMin", "naverNearbyCount", "naverFetchedAt"],
+  },
 ];
 
 function dataValueColor(field, value) {
@@ -273,32 +292,66 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           {showData && (
             <div style={{ marginTop: 8 }}>
               {DATA_SECTIONS.map((section, si) => {
-                const hasAny = section.fields.some(f => apt[f] != null);
+                const allFields = [...(section.highlight || []), ...(section.grid || []), ...(section.pairs || []).flat().filter(Boolean)];
+                const hasAny = allFields.some(f => apt[f] != null);
                 return (
                   <div key={si} style={{ marginTop: si > 0 ? 12 : 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 4, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>{section.title}</div>
-                    {hasAny ? section.fields.map(f => {
-                      const meta = FIELD_META[f];
-                      if (!meta) return null;
-                      const val = apt[f];
-                      if (f === "dataReliability" && val != null) {
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 6, paddingBottom: 4, paddingLeft: 6, borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.indigo}` }}>{section.title}</div>
+                    {hasAny ? (<>
+                      {section.highlight && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: section.grid ? 6 : 0 }}>
+                          {section.highlight.map(f => {
+                            const meta = FIELD_META[f];
+                            if (!meta) return null;
+                            const val = apt[f];
+                            return (
+                              <div key={f} style={{ flex: "1 1 calc(50% - 4px)", minWidth: 100, background: C.slate100, borderRadius: 8, padding: "8px 10px" }}>
+                                <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>{meta.label}</div>
+                                <div style={{ fontSize: 14, fontWeight: 800, color: dataValueColor(f, val) }}>{meta.fmt(val)}</div>
+                                {f === "dataReliability" && val != null && <Bar value={val} color={dataValueColor(f, val)} h={4} />}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {section.pairs && (() => {
+                        const sorted = [...section.pairs].sort((a, b) => ((apt[b[0]] ?? 0) > 0 ? 1 : 0) - ((apt[a[0]] ?? 0) > 0 ? 1 : 0));
                         return (
-                          <div key={f} style={{ padding: "4px 0" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-                              <span style={{ fontSize: 12, color: C.muted }}>{meta.label}</span>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: dataValueColor(f, val) }}>{meta.fmt(val)}</span>
-                            </div>
-                            <Bar value={val} color={dataValueColor(f, val)} h={4} />
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
+                            {sorted.map(([countF, distF]) => {
+                              const meta = FIELD_META[countF];
+                              if (!meta) return null;
+                              const count = apt[countF] ?? 0;
+                              const dist = distF ? apt[distF] : null;
+                              const dimmed = count === 0;
+                              return (
+                                <div key={countF} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", opacity: dimmed ? 0.4 : 1 }}>
+                                  <span style={{ fontSize: 11, color: C.muted }}>{meta.label}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: dimmed ? C.muted : C.text }}>
+                                    {count}{meta.unit ?? ""}{dist != null ? ` (${dist}m)` : ""}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         );
-                      }
-                      return (
-                        <div key={f} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
-                          <span style={{ fontSize: 12, color: C.muted }}>{meta.label}</span>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: dataValueColor(f, val) }}>{meta.fmt(val)}</span>
+                      })()}
+                      {section.grid && (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
+                          {section.grid.map(f => {
+                            const meta = FIELD_META[f];
+                            if (!meta) return null;
+                            const val = apt[f];
+                            return (
+                              <div key={f} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
+                                <span style={{ fontSize: 11, color: C.muted }}>{meta.label}</span>
+                                <span style={{ fontSize: 11, fontWeight: 600, color: dataValueColor(f, val) }}>{meta.fmt(val)}</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    }) : (
+                      )}
+                    </>) : (
                       <div style={{ fontSize: 11, color: C.muted, padding: "6px 0" }}>데이터 수집 중...</div>
                     )}
                   </div>

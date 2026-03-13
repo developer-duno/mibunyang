@@ -23,7 +23,9 @@ function sanitize(apt) {
     pir: num(apt.pir, 10), psr: num(apt.psr, 1.5),
     unsoldRate: num(apt.unsoldRate, 50), recentTrades6m: num(apt.recentTrades6m, 0),
     builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, 150),
-    popGrowth: apt.popGrowth != null ? num(apt.popGrowth, null) : null, dataReliability: num(apt.dataReliability, 30),
+    popGrowth: apt.popGrowth != null ? num(apt.popGrowth, null) : null,
+    netMigration: apt.netMigration != null ? num(apt.netMigration, null) : null,
+    dataReliability: num(apt.dataReliability, 30),
     // 가격/시장 필드
     jeonseRate: num(apt.jeonseRate, 40), nearbyMedian: num(apt.nearbyMedian, 0),
     price: num(apt.price, 0), area: num(apt.area, 84),
@@ -277,6 +279,8 @@ export function scoreFuture(apt) {
     : apt.popGrowth >= -2.0 ? 20
     : 10;
   if (apt.industryDev && apt.industryDev.length > 0) popSc = Math.min(popSc + 20, 100);
+  if (apt.netMigration != null && apt.netMigration > 0) popSc = Math.min(popSc + 10, 100);
+  if (apt.netMigration != null && apt.netMigration <= -5000) popSc = Math.max(popSc - 5, 0);
 
   // 동적 가중치: 데이터 부재 시 인구/산업에 가중치 집중 (합계 항상 1.00)
   const hasTr = trSc > 0;

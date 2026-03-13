@@ -12,6 +12,8 @@
 - GitHub Actions — 데이터 수집 (일/주/월 스케줄)
   - `collect-naver-listings.yml` — 네이버 매물 수집 (매일)
   - `collect-population.yml` — 행안부 인구 증감률 수집 (매월 5일)
+  - `collect-housing-permits.yml` — 국토부 주택 인허가 공급비율 수집 (매월 10일)
+  - `collect-migration.yml` — 행안부 전입/전출 순이동 수집 (매월 15일)
   - `naver-units.yml` — 네이버 세대수 수집
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
@@ -70,7 +72,8 @@ const showComp = showCompOpen && compIds.length >= 2;
 |--------|------|
 | `SUPABASE_URL` | Supabase 프로젝트 URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service_role 키 (쓰기용) |
-| `MOIS_POP_KEY` | 행안부 주민등록 인구 API 키 (data.go.kr) |
+| `MOIS_POP_KEY` | 행안부 주민등록 인구/전입전출 API 키 (data.go.kr) |
+| `MOLIT_KEY` | 국토부 주택 인허가 API 키 (data.go.kr) |
 
 ### 6. UNSOLD[] → Supabase 전환
 
