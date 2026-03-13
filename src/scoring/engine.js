@@ -52,6 +52,14 @@ function sanitize(apt, rm) {
     transitDev: str(apt.transitDev), cityDev: str(apt.cityDev),
     view: str(apt.view), sunlight: str(apt.sunlight),
     schoolGrade: str(apt.schoolGrade),
+    // 원본 null 여부 플래그 (표시용)
+    _noView: apt.view == null || apt.view === "",
+    _noNoise: apt.noise == null,
+    _noBus: apt.busRoutes == null,
+    _noParking: apt.parkingRatio == null,
+    _noFar: apt.floorAreaRatio == null,
+    _noExcl: apt.exclusiveRatio == null,
+    _noFloor: apt.maxFloor == null,
   };
 }
 
@@ -164,10 +172,10 @@ export function scoreLocation(apt) {
   return {
     total: Math.round(Math.min(Math.max(total, 0), 100)),
     subs: [
-      { name: "교통", score: Math.round(transport), info: [apt.subwayDist > 9000 ? "지하철 없음" : `지하철 ${apt.subwayDist}m`, `버스 ${apt.busRoutes}개`, apt.icDist < 90 ? `IC ${apt.icDist}km` : null, apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km` : null].filter(Boolean).join(" · ") },
+      { name: "교통", score: Math.round(transport), info: [apt.subwayDist > 9000 ? "지하철 없음" : `지하철 ${apt.subwayDist}m`, apt._noBus ? "버스 정보 없음" : `버스 ${apt.busRoutes}개`, apt.icDist < 90 ? `IC ${apt.icDist}km` : null, apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km` : null].filter(Boolean).join(" · ") },
       { name: "학군", score: Math.round(school), info: apt.schoolGrade },
       { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy}` },
-      { name: "자연환경", score: Math.round(env), info: `${apt.view || "미확인"}조망 ${apt.noise}dB` },
+      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noNoise ? "" : ` ${apt.noise}dB`}` },
       { name: "혐오시설", score: Math.round(noxSafe), info: (apt.noxious || []).length ? (apt.noxious || []).join(",") : "없음" },
     ],
   };
@@ -195,13 +203,13 @@ export function scoreProduct(apt) {
     subs: [
       { name: "브랜드", score: brandSc, info: b.tier || "기타" },
       { name: "세대수", score: unitSc, info: apt.units <= 1 ? "정보 없음 (중립)" : `${(apt.units ?? 0).toLocaleString()}세대` },
-      { name: "주차", score: parkSc, info: `${apt.parkingRatio}대/세대` },
-      { name: "용적률", score: farSc, info: `${apt.floorAreaRatio}%` },
+      { name: "주차", score: parkSc, info: apt._noParking ? "정보 없음" : `${apt.parkingRatio}대/세대` },
+      { name: "용적률", score: farSc, info: apt._noFar ? "정보 없음" : `${apt.floorAreaRatio}%` },
       { name: "에너지", score: energySc, info: apt.energyGrade != null ? `${apt.energyGrade}등급` : "정보 없음" },
-      { name: "전용률", score: exclSc, info: `${apt.exclusiveRatio}%` },
+      { name: "전용률", score: exclSc, info: apt._noExcl ? "정보 없음" : `${apt.exclusiveRatio}%` },
       { name: "평면", score: layoutSc, info: apt.layout },
       { name: "내진", score: quakeSc, info: apt.quakeDesign ? "O" : "정보 없음" },
-      { name: "구조", score: structSc, info: `최고 ${apt.maxFloor}층` },
+      { name: "구조", score: structSc, info: apt._noFloor ? "정보 없음" : `최고 ${apt.maxFloor}층` },
     ],
   };
 }
