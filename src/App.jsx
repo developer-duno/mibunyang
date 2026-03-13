@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
 import { calcCats } from "@/scoring/engine";
@@ -25,7 +25,10 @@ import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
 
 export default function App() {
-  const [profile, setProfile] = useState("live");
+  const [profile, setProfileRaw] = useState("live");
+  const [isPending, startTransition] = useTransition();
+  const setProfile = useCallback((k) => startTransition(() => setProfileRaw(k)), [startTransition]);
+  const [visibleCount, setVisibleCount] = useState(30);
   const [tab, setTab] = useState(() => {
     if (!sessionStorage.getItem("expertToken")) return "list";
     return sessionStorage.getItem("userRole") === "admin" ? "admin" : "expert";
@@ -74,6 +77,8 @@ export default function App() {
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
     return [...list].sort(sorters[sortKey] || sorters.total);
   }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, searchText]);
+  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, searchText]);
+  const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const compItems = useMemo(() => compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean), [compIds, scored]);
   const pw = useMemo(() => PROFILES[profile].w, [profile]);
 
@@ -329,8 +334,8 @@ export default function App() {
             </div>
           )}
 
-          <div style={isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 12px" } : undefined}>
-            {filtered.map((item, idx) => (
+          <div style={{ ...(isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 12px" } : {}), ...(isPending ? { opacity: 0.6, pointerEvents: "none", transition: "opacity 0.15s" } : {}) }}>
+            {visible.map((item, idx) => (
               <AptCard key={item.apt.id} apt={item.apt} res={item.res} rank={idx + 1}
                 onDetail={detail.handleOpenDetail}
                 isComp={compIds.includes(item.apt.id)} onComp={toggleComp}
@@ -338,6 +343,13 @@ export default function App() {
                 profileWeights={pw} />
             ))}
           </div>
+          {visibleCount < filtered.length && (
+            <div style={{ textAlign: "center", padding: "16px 0 24px" }}>
+              <button onClick={() => setVisibleCount(v => v + 30)} style={{ padding: "10px 32px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                더 보기 ({filtered.length - visibleCount}개 남음)
+              </button>
+            </div>
+          )}
         </div>
       ) : tab === "info" ? (
         <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>

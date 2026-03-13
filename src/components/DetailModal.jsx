@@ -99,21 +99,21 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           const allSell = apt.priceByArea ?? [];
           const allRent = apt.rentByArea ?? [];
           const totalCount = allSell.reduce((s, p) => s + p.count, 0);
-          const similar = allSell.filter(p => Math.abs(p.area - apt.area) <= 30);
-          const sellRows = similar.length >= 3 ? similar : allSell;
+          const narrow = allSell.filter(p => Math.abs(p.area - apt.area) <= 10);
+          const sellRows = narrow.length >= 3 ? narrow : allSell.filter(p => Math.abs(p.area - apt.area) <= 20);
           const isFiltered = sellRows.length < allSell.length;
-          const similarRent = allRent.filter(r => Math.abs(r.area - apt.area) <= 30);
-          const rentRows = similarRent.length >= 3 ? similarRent : allRent;
+          const narrowRent = allRent.filter(r => Math.abs(r.area - apt.area) <= 10);
+          const rentRows = narrowRent.length >= 3 ? narrowRent : allRent.filter(r => Math.abs(r.area - apt.area) <= 20);
           return (
           <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>인근 매매 시세 (최근 6개월)</div>
-            <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>총 {totalCount}건{isFiltered ? ` · ${apt.area}㎡ 기준 ±30㎡ 필터` : " · 전체 면적"}</div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>총 {totalCount}건{isFiltered ? ` · ${apt.area}㎡ 기준 ±${narrow.length >= 3 ? 10 : 20}㎡ 필터` : " · 전체 면적"}</div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <th style={thStyle}>면적</th><th style={thStyle}>하한</th><th style={thStyle}>평균</th><th style={thStyle}>상한</th><th style={{ ...thStyle, textAlign: "right" }}>건수</th>
               </tr></thead>
               <tbody>{sellRows.map((p, i) => {
-                const isSimilar = Math.abs(p.area - apt.area) <= 10;
+                const isSimilar = Math.abs(p.area - apt.area) <= 5;
                 return (
                 <tr key={i} style={{ background: isSimilar ? C.indigoLight : "transparent" }}>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>{isSimilar ? "★ " : ""}{p.area}㎡</td>
@@ -127,14 +127,14 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             </table>
             {rentRows.length > 0 && (<>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: "12px 0 2px" }}>인근 전세 시세 / 전세가율</div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>{isFiltered ? `${apt.area}㎡ 기준 ±30㎡ 필터` : "전체 면적"}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>{isFiltered ? `${apt.area}㎡ 기준 ±${narrowRent.length >= 3 ? 10 : 20}㎡ 필터` : "전체 면적"}</div>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead><tr>
                   <th style={thStyle}>면적</th><th style={thStyle}>하한</th><th style={thStyle}>평균</th><th style={thStyle}>상한</th><th style={{ ...thStyle, textAlign: "right" }}>전세가율</th>
                 </tr></thead>
                 <tbody>{rentRows.map((r, i) => {
                   const j = (apt.jeonseByArea ?? []).find(x => x.area === r.area);
-                  const isSimilar = Math.abs(r.area - apt.area) <= 10;
+                  const isSimilar = Math.abs(r.area - apt.area) <= 5;
                   return (
                     <tr key={i} style={{ background: isSimilar ? C.greenLight : "transparent" }}>
                       <td style={{ ...tdStyle, fontWeight: 600 }}>{isSimilar ? "★ " : ""}{r.area}㎡</td>
@@ -184,8 +184,11 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
           const ltvBase = calcLTV(apt.price, zone);
           const needCash = apt.price - ltvBase;
-          const hasDetail = (apt.priceByArea ?? []).length > 0;
-          const rows = hasDetail ? (apt.priceByArea ?? []).map(p => {
+          const allLoan = (apt.priceByArea ?? []);
+          const narrowLoan = allLoan.filter(p => Math.abs(p.area - apt.area) <= 10);
+          const loanSrc = narrowLoan.length >= 3 ? narrowLoan : allLoan.filter(p => Math.abs(p.area - apt.area) <= 20);
+          const hasDetail = loanSrc.length > 0;
+          const rows = hasDetail ? loanSrc.map(p => {
             const rent = (apt.rentByArea ?? []).find(r => r.area === p.area);
             const gap = rent ? p.min - rent.avg : null;
             const ltv = calcLTV(p.min, zone);
