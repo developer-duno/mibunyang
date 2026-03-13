@@ -445,6 +445,13 @@ SELECT
   i.park,
   i.subway_dist AS "subwayDist",
   i.hospital_dist AS "hospitalDist",
+  i.mart_dist AS "martDist",
+  i.conv_dist AS "convDist",
+  i.cafe_dist AS "cafeDist",
+  i.culture_dist AS "cultureDist",
+  i.bank_dist AS "bankDist",
+  i.pharmacy_dist AS "pharmacyDist",
+  i.park_dist AS "parkDist",
   i.nearby_facilities AS "nearbyFacilities",
   -- 학군
   sc.school_score AS "schoolScore",

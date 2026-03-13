@@ -1,0 +1,36 @@
+name: DART 시공사 재무 수집
+
+on:
+  schedule:
+    - cron: "0 3 1 * *" # 매월 1일 12:00 KST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "미리보기만 (DB 미반영)"
+        required: false
+        default: "false"
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Collect DART builder financials
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DART_KEY: ${{ secrets.DART_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          node scripts/collectors/dart-builders.mjs $ARGS

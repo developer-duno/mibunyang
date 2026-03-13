@@ -151,6 +151,7 @@ async function main() {
   // 3. 각 아파트별 통계 산출
   log("calc", "아파트별 거래 통계 계산...");
   const results = [];
+  const dsrUpdates = [];
   let processed = 0;
 
   for (const apt of apartments) {
@@ -273,6 +274,20 @@ async function main() {
     );
     const recentTrades6m = recent6m.length || null;
 
+    // ── dsr40pass (DSR 40% 통과 여부) ──────────────────────────
+    // 70% LTV, 30년 원리금균등, 금리 4% 가정
+    let dsr40pass = null;
+    if (pir != null && pir > 0 && aptPrice != null && aptPrice > 0) {
+      const loanAmount = aptPrice * 0.7; // 만원
+      const monthlyRate = 0.04 / 12;
+      const months = 30 * 12;
+      const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+      const annualPayment = monthlyPayment * 12;
+      const annualIncome = aptPrice / pir;
+      const dsr = (annualPayment / annualIncome) * 100;
+      dsr40pass = dsr <= 40;
+    }
+
     // 모든 값이 null이면 스킵
     if (
       nearbyMedian == null &&
@@ -294,6 +309,10 @@ async function main() {
       updated_at: new Date().toISOString(),
     });
 
+    if (dsr40pass != null) {
+      dsrUpdates.push({ id: apt.id, dsr40pass });
+    }
+
     processed++;
     if (processed % 100 === 0) {
       log("calc", `${processed}/${apartments.length}건 처리...`);
@@ -314,6 +333,7 @@ async function main() {
   log("summary", `psr: ${withPsr.length}건 (평균 ${withPsr.length ? (withPsr.reduce((s, r) => s + r.psr, 0) / withPsr.length).toFixed(2) : "N/A"})`);
   log("summary", `jeonse_rate: ${withJeonse.length}건 (평균 ${withJeonse.length ? (withJeonse.reduce((s, r) => s + r.jeonse_rate, 0) / withJeonse.length).toFixed(1) : "N/A"}%)`);
   log("summary", `recent_trades_6m: ${withTrades.length}건`);
+  log("summary", `dsr40pass: ${dsrUpdates.filter(d => d.dsr40pass).length}통과 / ${dsrUpdates.filter(d => !d.dsr40pass).length}미통과 (총 ${dsrUpdates.length}건)`);
 
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
@@ -367,6 +387,19 @@ async function main() {
   }
 
   log("done", `trade_stats 테이블 ${upserted}/${results.length}건 upsert 완료`);
+
+  // 6. DSR 40% 통과 여부 → apartments 테이블 업데이트
+  if (dsrUpdates.length > 0) {
+    let dsrOk = 0;
+    for (const { id, dsr40pass } of dsrUpdates) {
+      const { error: e } = await sb
+        .from("apartments")
+        .update({ dsr40pass })
+        .eq("id", id);
+      if (!e) dsrOk++;
+    }
+    log("done", `apartments.dsr40pass ${dsrOk}/${dsrUpdates.length}건 업데이트 완료`);
+  }
 }
 
 main().catch((err) => {

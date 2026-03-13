@@ -2,7 +2,7 @@ import { memo } from "react";
 import { C } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
 
-export const ExpertFieldTable = memo(function ExpertFieldTable({ apt, fields, title, color }) {
+export const ExpertFieldTable = memo(function ExpertFieldTable({ apt, fields, title, color, exclude }) {
   return (
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 800, color: color || C.indigo, marginBottom: 10, borderBottom: `2px solid ${color || C.indigo}`, paddingBottom: 6 }}>{title}</div>
@@ -10,6 +10,7 @@ export const ExpertFieldTable = memo(function ExpertFieldTable({ apt, fields, ti
         {fields.map(fk => {
           const meta = FIELD_META[fk];
           if (!meta || meta.hidden) return null;
+          if (exclude?.includes(fk)) return null;
           const raw = apt[fk] ?? null;
           const val = meta.fmt ? meta.fmt(raw, apt) : (raw ?? "—");
           const isDef = meta.isDefault && meta.isDefault(raw);

@@ -104,16 +104,22 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
           <>
             <ExpertAptHeader apt={selectedItem.apt} res={selectedItem.res} />
 
+            <ExpertScoreBreakdown apt={selectedItem.apt} res={selectedItem.res} profile={profile} />
+            <ExpertScoreSummary res={selectedItem.res} profile={profile} />
+
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "0 12px" }}>
-              {FIELD_SECTIONS.map(sec => (
-                <ExpertFieldTable key={sec.key} apt={selectedItem.apt} fields={sec.fields} title={sec.label}
-                  color={SEC_COLOR[sec.key] || C.indigo} />
-              ))}
+              {FIELD_SECTIONS.map(sec => {
+                const excl = sec.key === "가격" ? ["nearbyMedian","jeonseRate","pir","psr","dataReliability"]
+                  : sec.key === "입지" ? ["subwayDist","busRoutes","icDist","ktxDist","schoolScore","schoolGrade","hospital","mart","conv","park","cafe","culture","bank","pharmacy","view","sunlight","noise","noxious"]
+                  : undefined;
+                return (
+                  <ExpertFieldTable key={sec.key} apt={selectedItem.apt} fields={sec.fields} title={sec.label}
+                    color={SEC_COLOR[sec.key] || C.indigo} exclude={excl} />
+                );
+              })}
             </div>
 
             <ExpertUnitPlaceholder apt={selectedItem.apt} />
-            <ExpertScoreBreakdown apt={selectedItem.apt} res={selectedItem.res} profile={profile} />
-            <ExpertScoreSummary res={selectedItem.res} profile={profile} />
             <ExpertDataCompleteness apt={selectedItem.apt} />
           </>
         ) : (
