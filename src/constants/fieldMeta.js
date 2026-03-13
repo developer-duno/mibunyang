@@ -21,7 +21,6 @@ export const FIELD_META = {
   completion: { label: "입주예정", section: "개요", fmt: v => v || "미정" },
   layout: { label: "평면구조", section: "개요", fmt: (v) => { if (!v) return "—"; const sc = LAYOUT_SCORE[v]; return sc ? `${v} (${sc}점)` : v; } },
   heating: { label: "난방방식", section: "개요", fmt: v => v ?? "—" },
-  heroColor: { label: "테마 색상", section: "개요", fmt: v => v ?? "—", hidden: true },
   // ── 섹션2: 가격/시장 ──
   nearbyMedian: { label: "주변 중위가", section: "가격", unit: "만원", fmt: v => nk(v ?? 0, "만원") },
   jeonseRate: { label: "전세가율", section: "가격", unit: "%", fmt: v => n(v, "%") },
@@ -60,7 +59,7 @@ export const FIELD_META = {
   convDist: { label: "편의점 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "—" },
   parkDist: { label: "공원 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "—" },
   view: { label: "조망", section: "입지", fmt: v => v ?? "—" },
-  sunlight: { label: "일조", section: "입지", fmt: v => v ?? "—" },
+  sunlight: { label: "일조", section: "입지", fmt: v => v ?? "—", isDefault: v => !v },
   noise: { label: "소음", section: "입지", unit: "dB", fmt: v => n(v, "dB") },
   noxious: { label: "혐오시설", section: "입지", fmt: v => (v || []).length ? (v || []).join(", ") : "없음" },
   // ── 섹션4: 상품성/건축 ──

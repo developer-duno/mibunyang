@@ -150,7 +150,6 @@ function sanitize(row) {
     jeonseByArea: row.jeonseByArea ?? [],
     priceByFloor: row.priceByFloor ?? [],
     // UI (AptCard 그래디언트)
-    heroColor: row.heroColor ?? null,
     // 메타
     dataReliability: row.dataReliability ?? 30,
     // 네이버 교차검증 (null 허용 — 미수집 시 null)

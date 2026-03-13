@@ -12,7 +12,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
       background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`, borderRadius: 14, overflow: "hidden", marginBottom: 12,
       boxShadow: "0 1px 4px rgba(0,0,0,0.04)", transition: "all .25s ease"
     }}>
-      <div style={{ height: 4, background: `linear-gradient(90deg,${apt.heroColor ?? C.blue},${apt.heroColor ?? C.blue}88)` }} />
+      <div style={{ height: 4, background: `linear-gradient(90deg,${g.c},${g.c}88)` }} />
       <div style={{ padding: "14px 16px", cursor: "pointer" }} onClick={() => onDetail(apt.id)} tabIndex={0} role="button" onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDetail(apt.id); } }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ flex: 1, minWidth: 0 }}>

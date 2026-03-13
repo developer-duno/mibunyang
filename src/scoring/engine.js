@@ -60,6 +60,7 @@ function sanitize(apt, rm) {
     _noFar: apt.floorAreaRatio == null,
     _noExcl: apt.exclusiveRatio == null,
     _noFloor: apt.maxFloor == null,
+    _noSunlight: apt.sunlight == null || apt.sunlight === "",
   };
 }
 
@@ -160,7 +161,7 @@ export function scoreLocation(apt) {
   const infra = infraItems.reduce((s, i) => s + Math.min(i.v / i.m, 1) * i.w * 100, 0);
 
   let viewSc = apt.view === "블루" ? 40 : apt.view === "그린" ? 30 : apt.view === "천공" ? 20 : 0;
-  let sunSc = apt.sunlight === "우수" ? 30 : apt.sunlight === "양호" ? 22 : 15;
+  let sunSc = apt._noSunlight ? 22 : apt.sunlight === "우수" ? 30 : apt.sunlight === "양호" ? 22 : 15;
   let noiseSc = apt.noise <= 50 ? 30 : apt.noise <= 60 ? 22 : apt.noise <= 65 ? 15 : apt.noise <= 70 ? 8 : 0;
   const env = viewSc + sunSc + noiseSc;
   let noxPen = (apt.noxious || []).reduce((s, n) => s + (NOXIOUS_PENALTY[n] || 0), 0);
@@ -175,7 +176,7 @@ export function scoreLocation(apt) {
       { name: "교통", score: Math.round(transport), info: [apt.subwayDist > 9000 ? "지하철 없음" : `지하철 ${apt.subwayDist}m`, apt._noBus ? "버스 정보 없음" : `버스 ${apt.busRoutes}개`, apt.icDist < 90 ? `IC ${apt.icDist}km` : null, apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km` : null].filter(Boolean).join(" · ") },
       { name: "학군", score: Math.round(school), info: apt.schoolGrade },
       { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy}` },
-      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noNoise ? "" : ` ${apt.noise}dB`}` },
+      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise && apt._noSunlight ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${apt.sunlight}`}${apt._noNoise ? "" : ` ${apt.noise}dB`}` },
       { name: "혐오시설", score: Math.round(noxSafe), info: (apt.noxious || []).length ? (apt.noxious || []).join(",") : "없음" },
     ],
   };
