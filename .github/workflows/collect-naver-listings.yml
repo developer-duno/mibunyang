@@ -1,8 +1,8 @@
 name: Naver Listings Collection
 
 on:
-  # schedule:
-  #   - cron: '0 19 * * *' # UTC 19:00 = KST 04:00 — Supabase 설정 후 활성화
+  schedule:
+    - cron: '0 19 * * *' # UTC 19:00 = KST 04:00
   workflow_dispatch:
     inputs:
       limit:

@@ -177,9 +177,9 @@ CREATE TABLE IF NOT EXISTS regions (
   supply_ratio REAL,
   jeonse_rate REAL,
   avg_price INTEGER,
-  recorded_at DATE NOT NULL DEFAULT CURRENT_DATE,
-  UNIQUE(region, COALESCE(gu, ''), recorded_at)
+  recorded_at DATE NOT NULL DEFAULT CURRENT_DATE
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_regions_unique ON regions(region, COALESCE(gu, ''), recorded_at);
 
 -- 10. trade_stats (아파트별 실거래 통계 — 캐시 테이블)
 CREATE TABLE IF NOT EXISTS trade_stats (
@@ -264,9 +264,9 @@ CREATE TABLE IF NOT EXISTS naver_price_history (
   lease_price_upper INTEGER,              -- 전세 상한
   lease_price_lower INTEGER,              -- 전세 하한
   base_month TEXT,                        -- YYYYMM
-  recorded_at DATE DEFAULT CURRENT_DATE,
-  UNIQUE(complex_no, trade_type, COALESCE(area_no, ''), base_month)
+  recorded_at DATE DEFAULT CURRENT_DATE
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_naver_price_history_unique ON naver_price_history(complex_no, trade_type, COALESCE(area_no, ''), base_month);
 
 -- ============================================================
 -- INDEXES
@@ -333,6 +333,13 @@ ALTER TABLE naver_complexes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE naver_articles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE naver_price_history ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public read" ON naver_complexes;
+DROP POLICY IF EXISTS "Public read" ON naver_articles;
+DROP POLICY IF EXISTS "Public read" ON naver_price_history;
+DROP POLICY IF EXISTS "Service write" ON naver_complexes;
+DROP POLICY IF EXISTS "Service write" ON naver_articles;
+DROP POLICY IF EXISTS "Service write" ON naver_price_history;
+
 CREATE POLICY "Public read" ON naver_complexes FOR SELECT USING (true);
 CREATE POLICY "Public read" ON naver_articles FOR SELECT USING (true);
 CREATE POLICY "Public read" ON naver_price_history FOR SELECT USING (true);
@@ -351,16 +358,22 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_apartments_updated ON apartments;
 CREATE TRIGGER trg_apartments_updated BEFORE UPDATE ON apartments
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS trg_infra_updated ON infra;
 CREATE TRIGGER trg_infra_updated BEFORE UPDATE ON infra
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS trg_schools_updated ON schools;
 CREATE TRIGGER trg_schools_updated BEFORE UPDATE ON schools
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS trg_transport_updated ON transport;
 CREATE TRIGGER trg_transport_updated BEFORE UPDATE ON transport
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS trg_builders_updated ON builders;
 CREATE TRIGGER trg_builders_updated BEFORE UPDATE ON builders
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS trg_trade_stats_updated ON trade_stats;
 CREATE TRIGGER trg_trade_stats_updated BEFORE UPDATE ON trade_stats
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
