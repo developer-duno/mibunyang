@@ -107,16 +107,19 @@ export function useExpertMode(showToast) {
 
   useEffect(() => {
     let cancelled = false;
+    let abortCtrl = null;
     const verify = () => {
       const token = sessionStorage.getItem("expertToken");
       if (!token) return;
+      abortCtrl = new AbortController();
       fetch("/api/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
+        signal: abortCtrl.signal,
       })
         .then(r => {
-          if (r.status === 429 || r.status >= 500) return null; // rate limit or server error — skip, don't logout
+          if (r.status === 429 || r.status >= 500) return null;
           return r.json();
         })
         .then(data => {
@@ -131,7 +134,8 @@ export function useExpertMode(showToast) {
             if (data.role) sessionStorage.setItem("userRole", data.role);
           }
         })
-        .catch(() => {
+        .catch(err => {
+          if (err.name === "AbortError") return;
           // 네트워크 일시 장애 시 로그아웃하지 않음 (다음 verify 주기에 재시도)
         });
     };
@@ -139,7 +143,7 @@ export function useExpertMode(showToast) {
     const id = setInterval(verify, 15 * 60 * 1000);
     const onVisibility = () => { if (document.visibilityState === "visible") verify(); };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => { cancelled = true; clearInterval(id); document.removeEventListener("visibilitychange", onVisibility); };
+    return () => { cancelled = true; abortCtrl?.abort(); clearInterval(id); document.removeEventListener("visibilitychange", onVisibility); };
   }, [showToast]);
 
   return {

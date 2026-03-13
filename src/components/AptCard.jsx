@@ -42,10 +42,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         </div>
 
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
-          {res.cats.price.subs[0].info !== "데이터 부재" && (
+          {res.cats.price.subs[0]?.info && res.cats.price.subs[0].info !== "데이터 부재" && (
             <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>적정가 {res.cats.price.subs[0].info}</span>
           )}
-          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>{res.cats.location.subs[0].info}</span>
+          {res.cats.location.subs[0]?.info && <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>{res.cats.location.subs[0].info}</span>}
           <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>안전 {gr(res.cats.risk.total).l}등급</span>
         </div>
 

@@ -7,6 +7,10 @@ export function useConsult(showToast, favoriteIds) {
     try { return JSON.parse(localStorage.getItem("mibunyang_consults") || "[]"); } catch { return []; }
   });
   const handleConsultSubmit = useCallback(() => {
+    if (!consultForm.name?.trim() || !consultForm.phone?.trim()) {
+      showToast("이름과 연락처를 입력해주세요");
+      return;
+    }
     const entry = { ...consultForm, interestedApts: [...favoriteIds], submittedAt: new Date().toISOString(), id: Date.now().toString() };
     setSubmittedConsults(prev => [...prev, entry]);
     setConsultSubmitted(true);

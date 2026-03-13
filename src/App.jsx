@@ -48,7 +48,7 @@ export default function App() {
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
   const admin = useAdminMode(showToast);
-  const { apartments, loading: dataLoading, error: dataError } = useApartmentData();
+  const { apartments, loading: dataLoading, error: dataError, retry: retryData } = useApartmentData();
   const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, shareData, isMobile } = useShare(showToast);
 
   // 5 useMemo
@@ -73,8 +73,12 @@ export default function App() {
     let list = scored;
     if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
-    if (budgetMin !== "") list = list.filter(x => x.apt.price >= Number(budgetMin) * 10000);
-    if (budgetMax !== "") list = list.filter(x => x.apt.price <= Number(budgetMax) * 10000);
+    const bMin = budgetMin !== "" ? Number(budgetMin) : null;
+    const bMax = budgetMax !== "" ? Number(budgetMax) : null;
+    const effectiveMin = (bMin != null && bMax != null && bMin > bMax) ? bMax : bMin;
+    const effectiveMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
+    if (effectiveMin != null) list = list.filter(x => x.apt.price >= effectiveMin * 10000);
+    if (effectiveMax != null) list = list.filter(x => x.apt.price <= effectiveMax * 10000);
     if (searchText) list = list.filter(x => matchSearch(x.apt.name, searchText) || matchSearch(x.apt.builder ?? "", searchText) || matchSearch(x.apt.gu ?? "", searchText) || matchSearch(x.apt.region ?? "", searchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
     return [...list].sort(sorters[sortKey] || sorters.total);
@@ -243,6 +247,7 @@ export default function App() {
       {dataError && (
         <div style={{ textAlign: "center", padding: "8px 16px", fontSize: 12, color: "#991B1B", background: "#FEF2F2", borderRadius: 8, margin: "8px 16px 0" }}>
           데이터 로딩 실패: {dataError}
+          <button onClick={retryData} style={{ marginLeft: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: C.white, background: C.blue, border: "none", borderRadius: 4, cursor: "pointer" }}>다시 시도</button>
         </div>
       )}
 
