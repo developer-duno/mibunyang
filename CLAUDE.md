@@ -36,7 +36,7 @@ constants → scoring → theme → components → hooks → App
 
 App.jsx 내부:
 ```
-useState (4개: profile, useTransition, visibleCount, tab) → 커스텀 훅 11개 → useMemo (7개) → useEffect (4개)
+useState (3개) + useTransition (1개) → useCallback → 커스텀 훅 11개 → useMemo (8개) → useEffect (4개) → useCallback/useRef
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
@@ -46,8 +46,10 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 | useMemo | 의존성 | 절대 누락 금지 |
 |---------|--------|--------------|
 | guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
-| scored | [apartments, profile] | apartments 의존 필수 |
-| filtered | [scored, filterRegion, filterGu, sortKey] | 4개 전부 필수 |
+| catsCache | [apartments] | apartments 의존 필수 |
+| scored | [catsCache, profile] | catsCache는 apartments 간접 의존 |
+| filtered | [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, searchText] | 7개 전부 필수 |
+| visible | [filtered, visibleCount] | 페이지네이션용 |
 | compItems | [compIds, scored] | 2개 전부 필수 |
 | pw | [profile] | PROFILES[profile].w 참조 안정화 |
 | regionOptions | [apartments] | apartments 의존 필수 |
