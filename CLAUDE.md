@@ -36,7 +36,7 @@ constants → scoring → theme → components → hooks → App
 
 App.jsx 내부:
 ```
-useState (2개: profile, tab) → 커스텀 훅 9개 → useMemo (6개) → useEffect (2개)
+useState (4개: profile, useTransition, visibleCount, tab) → 커스텀 훅 11개 → useMemo (7개) → useEffect (4개)
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
@@ -64,6 +64,28 @@ const showComp = showCompOpen && compIds.length >= 2;
 `src/constants/unsold.js`의 UNSOLD 배열은 빈 배열 (레거시).
 실제 데이터: `VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.
 참조: `src/services/staticDataApi.js`, `src/hooks/useApartmentData.js`.
+
+---
+
+## 작업 완료 후 필수 프로세스
+
+### 5가지 교차검증 (병렬 에이전트)
+
+작업 완료 후, **커밋 전** 반드시 5개 에이전트를 **동시에** 실행하여 교차검증:
+
+| # | 에이전트 | 검증 항목 | 주요 체크 |
+|---|---------|----------|----------|
+| 1 | **빌드 검증** | `npx vite build` 성공 여부 | 빌드 에러, import 누락, 번들 크기 |
+| 2 | **스코어링 무결성** | 가중치 합계 = 100, 클램핑 0~100 | PROFILES 5개, engine.js 내부 가중치, Math.min/max |
+| 3 | **null 안전성** | null/undefined 가드 누락 탐지 | `?.`, `?? 0`, `|| []` 패턴, toLocaleString·toFixed 등 |
+| 4 | **Hook 규칙** | React Rules of Hooks 준수 | 호출 순서, 의존성 배열, 조건부 호출 없음 |
+| 5 | **보안 점검** | XSS, CSP, 인젝션, 민감정보 노출 | CSP 헤더, env 키 노출, innerHTML, dangerouslySetInnerHTML |
+
+검증 결과에서 문제 발견 시 수정 후 재검증. 모두 통과하면 커밋+푸시.
+
+### 커밋+푸시
+
+모든 교차검증 통과 후 반드시 `git commit` + `git push` 수행. 별도 요청 없이도 자동 실행.
 
 ---
 
