@@ -21,7 +21,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               <span title={apt.name} style={{ fontSize: 15, fontWeight: 800, color: C.text, letterSpacing: -.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{apt.name}</span>
             </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {[regionTag, `${apt.area}㎡`, `${(apt.price / 10000).toFixed(1)}억`, apt.builder].map((t, i) => (
+              {[regionTag, `${apt.area}㎡`, `${((apt.price ?? 0) / 10000).toFixed(1)}억`, apt.builder].map((t, i) => (
                 <span key={i} style={{ fontSize: 11, color: i === 0 ? C.blue : C.sub, background: i === 0 ? C.blueLight : C.bg, padding: "3px 8px", borderRadius: 4, fontWeight: i === 0 ? 700 : 400 }}>{t}</span>
               ))}
             </div>

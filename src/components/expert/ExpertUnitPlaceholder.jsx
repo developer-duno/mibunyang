@@ -2,7 +2,7 @@ import { memo } from "react";
 import { C } from "@/theme";
 
 export const ExpertUnitPlaceholder = memo(function ExpertUnitPlaceholder({ apt }) {
-  const unsoldRate = apt.units > 0 ? (apt.unsold / apt.units * 100).toFixed(1) : "0";
+  const unsoldRate = apt.units > 0 ? ((apt.unsold ?? 0) / apt.units * 100).toFixed(1) : "0";
   return (
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 800, color: C.purple, marginBottom: 10, borderBottom: `2px solid ${C.purple}`, paddingBottom: 6 }}>동/호수 현황</div>
