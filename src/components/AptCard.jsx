@@ -4,7 +4,7 @@ import { ScoreBadge, Bar } from "./primitives";
 
 export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights }) {
   const g = gr(res.total);
-  const benefitWon = res.cats.benefit.totalWon;
+  const benefitWon = res.cats.benefit?.totalWon ?? 0;
   const regionTag = `${apt.region} ${apt.gu}`;
 
   return (
@@ -51,7 +51,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
 
         {benefitWon > 0 && (
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 8, padding: "8px 12px" }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit.rate}%)</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit?.rate ?? 0}%)</span>
           </div>
         )}
 
@@ -67,7 +67,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.redLight, color: C.red, fontWeight: 600 }}>시공사 {apt.builderCreditGrade}</span>
             )}
             {(apt.noxious || []).length > 0 && (
-              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.redLight, color: C.red, fontWeight: 600 }}>혐오시설 {apt.noxious.length}건</span>
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.redLight, color: C.red, fontWeight: 600 }}>혐오시설 {(apt.noxious || []).length}건</span>
             )}
           </div>
         )}

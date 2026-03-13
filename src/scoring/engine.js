@@ -348,7 +348,7 @@ export function computeRegionalMedians(apartments) {
 export function calcCats(apt, ctx) {
   const rm = ctx?.regionMedians?.[apt.region];
   const a = sanitize(apt, rm);
-  const safe = (fn) => { try { return fn(); } catch { return { total: 0, subs: [] }; } };
+  const safe = (fn) => { try { return fn(); } catch { return { total: 0, subs: [], totalWon: 0, rate: 0, deviation: 0, fairPrice: 0, riskRaw: 0 }; } };
   return {
     price: { ...safe(() => scorePrice(a)), label: "가격 매력도", key: "price" },
     location: { ...safe(() => scoreLocation(a)), label: "입지·생활권", key: "location" },
