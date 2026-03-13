@@ -171,7 +171,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         })()}
 
         {(apt.nearbySchools ?? []).length > 0 && (() => {
-          const schools = apt.nearbySchools;
+          const schools = apt.nearbySchools ?? [];
           const hasFounded = schools.some(s => s.founded);
           const hasClasses = schools.some(s => s.classes);
           return (
@@ -360,7 +360,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               {(apt.nearbyFacilities ?? []).length > 0 && (
                 <div style={{ marginTop: 12 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 4, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>주변 편의시설 상세</div>
-                  {apt.nearbyFacilities.slice(0, 8).map((f, i) => (
+                  {(apt.nearbyFacilities ?? []).slice(0, 8).map((f, i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
                       <span style={{ fontSize: 11, color: C.muted }}>{f.name}</span>
                       <span style={{ fontSize: 11, fontWeight: 600, color: f.dist <= 300 ? C.green : f.dist <= 700 ? C.blue : C.text }}>{f.dist}m</span>
