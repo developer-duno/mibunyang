@@ -10,6 +10,9 @@
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (일/주/월 스케줄)
+  - `collect-naver-listings.yml` — 네이버 매물 수집 (매일)
+  - `collect-population.yml` — 행안부 인구 증감률 수집 (매월 5일)
+  - `naver-units.yml` — 네이버 세대수 수집
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
 
@@ -61,7 +64,15 @@ const showComp = showCompOpen && compIds.length >= 2;
 ```
 별도 useState가 아닌 **파생 값**. useEffect로 동기화하지 말 것.
 
-### 5. UNSOLD[] → Supabase 전환
+### 5. GitHub Secrets
+
+| 시크릿 | 용도 |
+|--------|------|
+| `SUPABASE_URL` | Supabase 프로젝트 URL |
+| `SUPABASE_SERVICE_KEY` | Supabase service_role 키 (쓰기용) |
+| `MOIS_POP_KEY` | 행안부 주민등록 인구 API 키 (data.go.kr) |
+
+### 6. UNSOLD[] → Supabase 전환
 
 `src/constants/unsold.js`의 UNSOLD 배열은 빈 배열 (레거시).
 실제 데이터: `VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.

@@ -4,10 +4,13 @@ import { PROFILES } from "@/constants/profiles";
 import { getZone } from "@/constants/regulations";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
-const TRANSIT_ACTIVE = ["기존"];
-const TRANSIT_PLANNED = ["계획", "착공", "공사중", "추진", "확정"];
-const CITY_HIGH = ["테크노", "주거타운", "신도시", "신도심", "복합도시", "재건축", "혁신"];
-const CITY_MID = ["재생", "리모델링", "관광", "산업단지", "공항", "특구", "메디컬"];
+const TRANSIT_ACTIVE = ["기존", "운행중", "개통"];
+const TRANSIT_PLANNED = ["계획", "착공", "공사중", "추진", "확정", "예정", "인가"];
+const TRANSIT_HIGH = ["GTX", "KTX역", "SRT", "지하철연장", "신설역", "광역급행", "BRT", "트램", "경전철", "도시철도"];
+const CITY_HIGH = ["테크노", "주거타운", "신도시", "신도심", "복합도시", "재건축", "혁신",
+                   "스마트시티", "자족도시", "행정중심", "경제자유구역", "국가산단"];
+const CITY_MID = ["재생", "리모델링", "관광", "산업단지", "공항", "특구", "메디컬",
+                  "역세권개발", "도시정비", "택지개발", "물류단지", "연구단지"];
 const matchAny = (str, keywords) => keywords.some(k => str.includes(k));
 
 // --- null 안전 레이어 (Bug-2 + API-2) ---
@@ -20,7 +23,7 @@ function sanitize(apt) {
     pir: num(apt.pir, 10), psr: num(apt.psr, 1.5),
     unsoldRate: num(apt.unsoldRate, 50), recentTrades6m: num(apt.recentTrades6m, 0),
     builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, 150),
-    popGrowth: num(apt.popGrowth, -1), dataReliability: num(apt.dataReliability, 30),
+    popGrowth: apt.popGrowth != null ? num(apt.popGrowth, null) : null, dataReliability: num(apt.dataReliability, 30),
     // 가격/시장 필드
     jeonseRate: num(apt.jeonseRate, 40), nearbyMedian: num(apt.nearbyMedian, 0),
     price: num(apt.price, 0), area: num(apt.area, 84),
@@ -230,7 +233,12 @@ export function scoreRisk(apt) {
   const zone = getZone(apt.region, apt.gu);
   let regSc = zone !== "normal" ? 60 : 10;
   let supSc = apt.supplyRatio < 50 ? 5 : apt.supplyRatio <= 100 ? 25 : apt.supplyRatio <= 130 ? 50 : 75;
-  let mktSc = apt.popGrowth > 0 ? 15 : apt.popGrowth === 0 ? 30 : 50;
+  let mktSc = apt.popGrowth == null ? 35
+    : apt.popGrowth >= 0.5 ? 10
+    : apt.popGrowth >= 0 ? 20
+    : apt.popGrowth >= -0.3 ? 30
+    : apt.popGrowth >= -0.8 ? 45
+    : 60;
   const risk = unsoldSc * 0.20 + liqSc * 0.15 + loanSc * 0.15 + finSc * 0.20 + regSc * 0.10 + supSc * 0.10 + mktSc * 0.10;
   const safety = Math.round(Math.max(0, Math.min(100, 100 - risk)));
   return {
@@ -242,27 +250,51 @@ export function scoreRisk(apt) {
       { name: "시공사 재무", score: 100 - Math.round(finSc), info: apt.builderCreditGrade },
       { name: "규제", score: 100 - regSc, info: zone !== "normal" ? "규제지역" : "비규제" },
       { name: "공급량", score: 100 - supSc, info: `${apt.supplyRatio}%` },
-      { name: "시장환경", score: 100 - mktSc, info: `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` },
+      { name: "시장환경", score: 100 - mktSc, info: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` : "정보 없음" },
     ],
   };
 }
 
 export function scoreFuture(apt) {
+  // 교통개발 (기본 40%)
   let trSc = (!apt.transitDev || apt.transitDev === "없음") ? 0
     : matchAny(apt.transitDev, TRANSIT_ACTIVE) ? (apt.devDist <= 1 ? 100 : apt.devDist <= 2 ? 70 : 40)
     : matchAny(apt.transitDev, TRANSIT_PLANNED) ? (apt.devDist <= 1 ? 60 : apt.devDist <= 3 ? 40 : 20) : 10;
+  if (trSc > 0 && matchAny(apt.transitDev, TRANSIT_HIGH)) trSc = Math.min(Math.round(trSc * 1.2), 100);
+
+  // 도시개발 (기본 30%)
   let citySc = (!apt.cityDev || apt.cityDev === "") ? 0
     : matchAny(apt.cityDev, CITY_HIGH) ? 80
     : matchAny(apt.cityDev, CITY_MID) ? 50 : 30;
-  let popSc = apt.popGrowth >= 1.0 ? 90 : apt.popGrowth >= 0.5 ? 70 : apt.popGrowth > 0 ? 50 : apt.popGrowth === 0 ? 30 : 10;
+
+  // 인구/산업 (기본 30%) — 한국 현실 기반 7단계
+  let popSc = apt.popGrowth == null ? 35
+    : apt.popGrowth >= 1.0 ? 95
+    : apt.popGrowth >= 0.5 ? 80
+    : apt.popGrowth >= 0 ? 65
+    : apt.popGrowth >= -0.3 ? 50
+    : apt.popGrowth >= -0.8 ? 35
+    : apt.popGrowth >= -2.0 ? 20
+    : 10;
   if (apt.industryDev && apt.industryDev.length > 0) popSc = Math.min(popSc + 20, 100);
-  const total = trSc * 0.40 + citySc * 0.30 + popSc * 0.30;
+
+  // 동적 가중치: 데이터 부재 시 인구/산업에 가중치 집중 (합계 항상 1.00)
+  const hasTr = trSc > 0;
+  const hasCity = citySc > 0;
+  let wTr, wCity, wPop;
+  if (hasTr && hasCity)       { wTr = 0.40; wCity = 0.30; wPop = 0.30; }
+  else if (hasTr && !hasCity) { wTr = 0.55; wCity = 0;    wPop = 0.45; }
+  else if (!hasTr && hasCity) { wTr = 0;    wCity = 0.45;  wPop = 0.55; }
+  else                        { wTr = 0;    wCity = 0;     wPop = 1.00; }
+
+  const total = trSc * wTr + citySc * wCity + popSc * wPop;
+  const pg = apt.popGrowth;
   return {
     total: Math.round(Math.min(total, 100)),
     subs: [
       { name: "교통개발", score: Math.round(trSc), info: apt.transitDev || "없음" },
       { name: "도시개발", score: Math.round(citySc), info: apt.cityDev || "없음" },
-      { name: "인구/산업", score: Math.round(popSc), info: `${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` },
+      { name: "인구/산업", score: Math.round(popSc), info: pg != null ? `${pg > 0 ? "+" : ""}${pg}%` : "정보 없음" },
     ],
   };
 }

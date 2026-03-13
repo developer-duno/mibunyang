@@ -1,0 +1,156 @@
+/**
+ * 교통/도시개발 시드 데이터 → 아파트 매칭
+ *
+ * 사용법:
+ *   node scripts/collectors/transit-match.mjs          (Supabase 업데이트)
+ *   node scripts/collectors/transit-match.mjs --dry-run (미리보기만)
+ *   node scripts/collectors/transit-match.mjs --json    (apartments.json 직접 업데이트)
+ */
+import { readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { loadEnv, getSupabase, log, logError, ROOT } from "./_shared.mjs";
+
+loadEnv();
+
+// ── Haversine 거리 (km) ─────────────────────────────────────
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ── 메인 ─────────────────────────────────────────────────────
+async function main() {
+  const dryRun = process.argv.includes("--dry-run");
+  const jsonMode = process.argv.includes("--json");
+
+  // 1. 시드 데이터 로드
+  const transitData = JSON.parse(readFileSync(resolve(ROOT, "public/data/transit-dev.json"), "utf8"));
+  const cityData = JSON.parse(readFileSync(resolve(ROOT, "public/data/city-dev.json"), "utf8"));
+
+  // 2. 아파트 데이터 로드
+  let apartments;
+  if (jsonMode) {
+    const jsonPath = resolve(ROOT, "public/data/apartments.json");
+    apartments = JSON.parse(readFileSync(jsonPath, "utf8"));
+    log("load", `apartments.json: ${apartments.length}건`);
+  } else {
+    const sb = getSupabase();
+    const { data, error } = await sb.from("apartments").select("id, name, lat, lng, region, gu, transit_dev, dev_dist, city_dev, industry_dev");
+    if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
+    apartments = data;
+    log("load", `Supabase apartments: ${apartments.length}건`);
+  }
+
+  // 3. 교통 역사 목록 평탄화
+  const stations = [];
+  for (const proj of transitData.projects) {
+    for (const st of proj.stations) {
+      stations.push({ ...st, project: proj.name, type: proj.type, status: proj.status });
+    }
+  }
+  log("transit", `${stations.length}개 역사 로드 (${transitData.projects.length}개 노선)`);
+
+  // 4. 도시개발 목록
+  const devs = cityData.developments;
+  log("city", `${devs.length}개 개발 프로젝트 로드`);
+
+  // 5. 각 아파트에 대해 매칭
+  const updates = [];
+  let matchedTransit = 0, matchedCity = 0;
+
+  for (const apt of apartments) {
+    const lat = jsonMode ? apt.lat : apt.lat;
+    const lng = jsonMode ? apt.lng : apt.lng;
+    if (!lat || !lng) continue;
+
+    // 교통 매칭 — 5km 이내 가장 가까운 역
+    let bestStation = null;
+    let bestDist = Infinity;
+    for (const st of stations) {
+      const dist = haversine(lat, lng, st.lat, st.lng);
+      if (dist < bestDist && dist <= 5) {
+        bestDist = dist;
+        bestStation = st;
+      }
+    }
+
+    // 도시개발 매칭 — radius 이내 가장 가까운 프로젝트
+    let bestDev = null;
+    let bestDevDist = Infinity;
+    for (const dev of devs) {
+      const dist = haversine(lat, lng, dev.lat, dev.lng);
+      const radius = dev.radius || 5;
+      if (dist < bestDevDist && dist <= radius) {
+        bestDevDist = dist;
+        bestDev = dev;
+      }
+    }
+
+    const transitDev = bestStation ? `${bestStation.project} ${bestStation.name}역 ${bestStation.status}` : null;
+    const devDist = bestStation ? Math.round(bestDist * 10) / 10 : null;
+    const cityDev = bestDev ? `${bestDev.name} (${bestDev.type})` : null;
+
+    if (transitDev) matchedTransit++;
+    if (cityDev) matchedCity++;
+
+    if (transitDev || cityDev) {
+      const id = jsonMode ? apt.id : apt.id;
+      const update = { id };
+      if (transitDev) {
+        update.transit_dev = transitDev;
+        update.dev_dist = devDist;
+      }
+      if (cityDev) {
+        update.city_dev = cityDev;
+      }
+      updates.push(update);
+    }
+  }
+
+  log("match", `교통 매칭: ${matchedTransit}/${apartments.length}건, 도시개발 매칭: ${matchedCity}/${apartments.length}건`);
+
+  if (dryRun) {
+    log("dry-run", "미리보기 모드 — 업데이트 생략");
+    for (const u of updates.slice(0, 20)) {
+      const apt = apartments.find(a => a.id === u.id);
+      console.log(`  ${apt?.name || u.id}: transit=${u.transit_dev || "-"}, dist=${u.dev_dist || "-"}km, city=${u.city_dev || "-"}`);
+    }
+    if (updates.length > 20) console.log(`  ... 외 ${updates.length - 20}건`);
+    return;
+  }
+
+  // 6. 업데이트
+  if (jsonMode) {
+    // apartments.json 직접 업데이트
+    const aptMap = new Map(apartments.map(a => [a.id, a]));
+    for (const u of updates) {
+      const apt = aptMap.get(u.id);
+      if (!apt) continue;
+      if (u.transit_dev) { apt.transitDev = u.transit_dev; apt.devDist = u.dev_dist; }
+      if (u.city_dev) apt.cityDev = u.city_dev;
+    }
+    const jsonPath = resolve(ROOT, "public/data/apartments.json");
+    writeFileSync(jsonPath, JSON.stringify([...aptMap.values()], null, 2), "utf8");
+    log("json", `apartments.json 업데이트 완료 (${updates.length}건)`);
+  } else {
+    // Supabase 배치 업데이트
+    const sb = getSupabase();
+    let ok = 0;
+    for (const u of updates) {
+      const row = {};
+      if (u.transit_dev) { row.transit_dev = u.transit_dev; row.dev_dist = u.dev_dist; }
+      if (u.city_dev) row.city_dev = u.city_dev;
+      const { error } = await sb.from("apartments").update(row).eq("id", u.id);
+      if (error) logError("upsert", `${u.id}: ${error.message}`);
+      else ok++;
+    }
+    log("supabase", `${ok}/${updates.length}건 업데이트`);
+  }
+}
+
+main().catch(err => { logError("main", err.message); process.exit(1); });

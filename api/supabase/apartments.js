@@ -133,7 +133,7 @@ function sanitize(row) {
     builderDebtRatio: row.builderDebtRatio ?? 250,
     builderCreditGrade: row.builderCreditGrade ?? null,
     // 지역
-    popGrowth: row.popGrowth ?? -1,
+    popGrowth: row.popGrowth ?? null,
     supplyRatio: row.supplyRatio ?? 150,
     // 실거래 (위험 필드 → 비관적 기본값)
     nearbyMedian: row.nearbyMedian ?? null,

@@ -1,0 +1,158 @@
+{
+  "lastUpdated": "2026-03-14",
+  "projects": [
+    {
+      "name": "GTX-A",
+      "type": "GTX",
+      "status": "공사중",
+      "stations": [
+        {"name": "운정", "region": "경기", "gu": "파주시", "lat": 37.7143, "lng": 126.7436, "expectedYear": 2025},
+        {"name": "킨텍스", "region": "경기", "gu": "고양시", "lat": 37.6682, "lng": 126.7450, "expectedYear": 2025},
+        {"name": "대곡", "region": "경기", "gu": "고양시", "lat": 37.6531, "lng": 126.8976, "expectedYear": 2025},
+        {"name": "연신내", "region": "서울", "gu": "은평구", "lat": 37.6192, "lng": 126.9210, "expectedYear": 2025},
+        {"name": "서울역", "region": "서울", "gu": "용산구", "lat": 37.5547, "lng": 126.9706, "expectedYear": 2025},
+        {"name": "삼성", "region": "서울", "gu": "강남구", "lat": 37.5088, "lng": 127.0632, "expectedYear": 2025},
+        {"name": "수서", "region": "서울", "gu": "강남구", "lat": 37.4872, "lng": 127.1018, "expectedYear": 2025},
+        {"name": "성남", "region": "경기", "gu": "성남시", "lat": 37.4137, "lng": 127.1268, "expectedYear": 2025},
+        {"name": "용인", "region": "경기", "gu": "용인시", "lat": 37.3232, "lng": 127.1072, "expectedYear": 2025},
+        {"name": "동탄", "region": "경기", "gu": "화성시", "lat": 37.2005, "lng": 127.0962, "expectedYear": 2025}
+      ]
+    },
+    {
+      "name": "GTX-B",
+      "type": "GTX",
+      "status": "착공",
+      "stations": [
+        {"name": "송도", "region": "인천", "gu": "연수구", "lat": 37.3830, "lng": 126.6570, "expectedYear": 2030},
+        {"name": "인천시청", "region": "인천", "gu": "남동구", "lat": 37.4420, "lng": 126.7033, "expectedYear": 2030},
+        {"name": "부천", "region": "경기", "gu": "부천시", "lat": 37.4832, "lng": 126.7836, "expectedYear": 2030},
+        {"name": "신도림", "region": "서울", "gu": "구로구", "lat": 37.5088, "lng": 126.8912, "expectedYear": 2030},
+        {"name": "여의도", "region": "서울", "gu": "영등포구", "lat": 37.5216, "lng": 126.9243, "expectedYear": 2030},
+        {"name": "용산", "region": "서울", "gu": "용산구", "lat": 37.5299, "lng": 126.9644, "expectedYear": 2030},
+        {"name": "서울역", "region": "서울", "gu": "중구", "lat": 37.5563, "lng": 126.9723, "expectedYear": 2030},
+        {"name": "청량리", "region": "서울", "gu": "동대문구", "lat": 37.5804, "lng": 127.0469, "expectedYear": 2030},
+        {"name": "망우", "region": "서울", "gu": "중랑구", "lat": 37.5987, "lng": 127.0927, "expectedYear": 2030},
+        {"name": "마석", "region": "경기", "gu": "남양주시", "lat": 37.6504, "lng": 127.2080, "expectedYear": 2030}
+      ]
+    },
+    {
+      "name": "GTX-C",
+      "type": "GTX",
+      "status": "착공",
+      "stations": [
+        {"name": "양주", "region": "경기", "gu": "양주시", "lat": 37.8200, "lng": 127.0458, "expectedYear": 2032},
+        {"name": "덕정", "region": "경기", "gu": "양주시", "lat": 37.7782, "lng": 127.0639, "expectedYear": 2032},
+        {"name": "의정부", "region": "경기", "gu": "의정부시", "lat": 37.7381, "lng": 127.0458, "expectedYear": 2032},
+        {"name": "창동", "region": "서울", "gu": "도봉구", "lat": 37.6533, "lng": 127.0471, "expectedYear": 2032},
+        {"name": "광운대", "region": "서울", "gu": "노원구", "lat": 37.6240, "lng": 127.0624, "expectedYear": 2032},
+        {"name": "청량리", "region": "서울", "gu": "동대문구", "lat": 37.5804, "lng": 127.0469, "expectedYear": 2032},
+        {"name": "삼성", "region": "서울", "gu": "강남구", "lat": 37.5088, "lng": 127.0632, "expectedYear": 2032},
+        {"name": "양재", "region": "서울", "gu": "서초구", "lat": 37.4842, "lng": 127.0345, "expectedYear": 2032},
+        {"name": "과천", "region": "경기", "gu": "과천시", "lat": 37.4290, "lng": 126.9881, "expectedYear": 2032},
+        {"name": "금정", "region": "경기", "gu": "군포시", "lat": 37.3713, "lng": 126.9451, "expectedYear": 2032},
+        {"name": "수원", "region": "경기", "gu": "수원시", "lat": 37.2663, "lng": 127.0000, "expectedYear": 2032}
+      ]
+    },
+    {
+      "name": "신안산선",
+      "type": "도시철도",
+      "status": "공사중",
+      "stations": [
+        {"name": "여의도", "region": "서울", "gu": "영등포구", "lat": 37.5216, "lng": 126.9243, "expectedYear": 2026},
+        {"name": "시흥대야", "region": "경기", "gu": "시흥시", "lat": 37.4418, "lng": 126.7912, "expectedYear": 2026},
+        {"name": "안산중앙", "region": "경기", "gu": "안산시", "lat": 37.3184, "lng": 126.8279, "expectedYear": 2026},
+        {"name": "한양대에리카", "region": "경기", "gu": "안산시", "lat": 37.2970, "lng": 126.8350, "expectedYear": 2026}
+      ]
+    },
+    {
+      "name": "위례신사선",
+      "type": "경전철",
+      "status": "착공",
+      "stations": [
+        {"name": "신사", "region": "서울", "gu": "강남구", "lat": 37.5165, "lng": 127.0203, "expectedYear": 2029},
+        {"name": "잠실", "region": "서울", "gu": "송파구", "lat": 37.5133, "lng": 127.1001, "expectedYear": 2029},
+        {"name": "위례", "region": "경기", "gu": "성남시", "lat": 37.4750, "lng": 127.1450, "expectedYear": 2029}
+      ]
+    },
+    {
+      "name": "인덕원동탄선",
+      "type": "도시철도",
+      "status": "착공",
+      "stations": [
+        {"name": "인덕원", "region": "경기", "gu": "안양시", "lat": 37.3870, "lng": 126.9845, "expectedYear": 2029},
+        {"name": "수원", "region": "경기", "gu": "수원시", "lat": 37.2657, "lng": 127.0000, "expectedYear": 2029},
+        {"name": "동탄", "region": "경기", "gu": "화성시", "lat": 37.2005, "lng": 127.0600, "expectedYear": 2029}
+      ]
+    },
+    {
+      "name": "월곶판교선",
+      "type": "도시철도",
+      "status": "추진",
+      "stations": [
+        {"name": "월곶", "region": "경기", "gu": "시흥시", "lat": 37.3782, "lng": 126.7324, "expectedYear": 2031},
+        {"name": "인덕원", "region": "경기", "gu": "안양시", "lat": 37.3870, "lng": 126.9845, "expectedYear": 2031},
+        {"name": "판교", "region": "경기", "gu": "성남시", "lat": 37.3948, "lng": 127.1112, "expectedYear": 2031}
+      ]
+    },
+    {
+      "name": "대장홍대선",
+      "type": "도시철도",
+      "status": "추진",
+      "stations": [
+        {"name": "대장", "region": "경기", "gu": "부천시", "lat": 37.4970, "lng": 126.7925, "expectedYear": 2032},
+        {"name": "홍대입구", "region": "서울", "gu": "마포구", "lat": 37.5571, "lng": 126.9236, "expectedYear": 2032}
+      ]
+    },
+    {
+      "name": "서울2호선연장(위례)",
+      "type": "지하철연장",
+      "status": "추진",
+      "stations": [
+        {"name": "위례", "region": "경기", "gu": "성남시", "lat": 37.4750, "lng": 127.1450, "expectedYear": 2030}
+      ]
+    },
+    {
+      "name": "부산2호선연장",
+      "type": "지하철연장",
+      "status": "추진",
+      "stations": [
+        {"name": "기장", "region": "부산", "gu": "기장군", "lat": 35.2445, "lng": 129.2213, "expectedYear": 2030}
+      ]
+    },
+    {
+      "name": "대구엑스코선",
+      "type": "경전철",
+      "status": "착공",
+      "stations": [
+        {"name": "수성못", "region": "대구", "gu": "수성구", "lat": 35.8282, "lng": 128.6175, "expectedYear": 2028},
+        {"name": "엑스코", "region": "대구", "gu": "북구", "lat": 35.9075, "lng": 128.6137, "expectedYear": 2028}
+      ]
+    },
+    {
+      "name": "광주2호선",
+      "type": "도시철도",
+      "status": "공사중",
+      "stations": [
+        {"name": "백운광장", "region": "광주", "gu": "남구", "lat": 35.1386, "lng": 126.9026, "expectedYear": 2026},
+        {"name": "효천", "region": "광주", "gu": "남구", "lat": 35.1180, "lng": 126.8975, "expectedYear": 2026}
+      ]
+    },
+    {
+      "name": "대전2호선(트램)",
+      "type": "트램",
+      "status": "착공",
+      "stations": [
+        {"name": "판암", "region": "대전", "gu": "동구", "lat": 36.3200, "lng": 127.4570, "expectedYear": 2028},
+        {"name": "대전시청", "region": "대전", "gu": "서구", "lat": 36.3505, "lng": 127.3848, "expectedYear": 2028}
+      ]
+    },
+    {
+      "name": "김포경전철 연장",
+      "type": "경전철",
+      "status": "추진",
+      "stations": [
+        {"name": "김포공항", "region": "서울", "gu": "강서구", "lat": 37.5623, "lng": 126.8012, "expectedYear": 2030}
+      ]
+    }
+  ]
+}
