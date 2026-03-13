@@ -51,7 +51,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div>
               <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{apt.name}</div>
-              <div style={{ fontSize: 12, color: C.muted }}>{apt.region} {apt.gu} · {apt.area}㎡ · {(apt.price / 10000).toFixed(1)}억</div>
+              <div style={{ fontSize: 12, color: C.muted }}>{apt.region} {apt.gu} · {apt.area}㎡ · {((apt.price ?? 0) / 10000).toFixed(1)}억</div>
             </div>
             <button onClick={onClose} aria-label="닫기" style={{ background: C.slate100, border: "none", borderRadius: "50%", width: 44, height: 44, fontSize: 18, cursor: "pointer", color: C.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
           </div>
@@ -68,7 +68,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }}>핵심 지표</div>
             {[
               { l: "지역", v: `${apt.region} ${apt.gu}`, c: C.blue },
-              { l: "분양가", v: `${apt.price.toLocaleString()}만` },
+              { l: "분양가", v: `${(apt.price ?? 0).toLocaleString()}만` },
               { l: "적정가 괴리", v: `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`, c: Number(res.cats.price.deviation) > 0 ? C.green : C.red },
               { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
               { l: "미분양률", v: (apt.units != null && apt.units > 1) ? `${apt.unsoldRate}%` : "산정 불가", c: (apt.units != null && apt.units > 1) ? (apt.unsoldRate > 15 ? C.red : C.green) : C.muted },
