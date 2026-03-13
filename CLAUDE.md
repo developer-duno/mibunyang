@@ -75,6 +75,7 @@ const showComp = showCompOpen && compIds.length >= 2;
 | `SUPABASE_SERVICE_KEY` | Supabase service_role 키 (쓰기용) |
 | `MOIS_POP_KEY` | 행안부 주민등록 인구/전입전출 API 키 (data.go.kr) |
 | `MOLIT_KEY` | 국토부 주택 인허가 + 공동주택 기본정보 API 키 (data.go.kr) |
+| `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경 수집 + 역지오코딩) |
 
 ### 6. units 보정 파이프라인
 

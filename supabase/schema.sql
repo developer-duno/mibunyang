@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS apartments (
   sunlight TEXT,
   noise REAL,
   noxious JSONB,                          -- ["소각장", "고압선"]
+  noxious_dist REAL,                      -- 최근접 혐오시설 거리 (m)
   -- 네이버 교차검증
   naver_nearby_median INTEGER,            -- 주변 중위가 (만원)
   naver_nearby_avg INTEGER,               -- 주변 평균가 (만원)
@@ -428,6 +429,7 @@ SELECT
   a.sunlight,
   a.noise,
   a.noxious,
+  a.noxious_dist AS "noxiousDist",
   -- 최신 분양가 (prices 테이블에서)
   p.area,
   p.price,
