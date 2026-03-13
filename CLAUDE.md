@@ -14,7 +14,8 @@
   - `collect-population.yml` — 행안부 인구 증감률 수집 (매월 5일)
   - `collect-housing-permits.yml` — 국토부 주택 인허가 공급비율 수집 (매월 10일)
   - `collect-migration.yml` — 행안부 전입/전출 순이동 수집 (매월 15일)
-  - `naver-units.yml` — 네이버 세대수 수집
+  - `collect-molit-units.yml` — 국토부 공동주택 총세대수 보정 (매월 1일/15일)
+  - `naver-units.yml` — 네이버 세대수 2차 보정 (매일, Node.js)
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
 
@@ -73,9 +74,19 @@ const showComp = showCompOpen && compIds.length >= 2;
 | `SUPABASE_URL` | Supabase 프로젝트 URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service_role 키 (쓰기용) |
 | `MOIS_POP_KEY` | 행안부 주민등록 인구/전입전출 API 키 (data.go.kr) |
-| `MOLIT_KEY` | 국토부 주택 인허가 API 키 (data.go.kr) |
+| `MOLIT_KEY` | 국토부 주택 인허가 + 공동주택 기본정보 API 키 (data.go.kr) |
 
-### 6. UNSOLD[] → Supabase 전환
+### 6. units 보정 파이프라인
+
+`apartments.unit_source` 필드로 세대수 출처 추적:
+- `"applyhome"` — 청약홈 API (기본, 부정확할 수 있음)
+- `"molit"` — 국토부 공동주택 기본정보 API (1차 보정, 매월)
+- `"naver"` — 네이버 부동산 totalHouseholdCount (2차 보정, 매일)
+
+보정 대상: `units <= 1` 또는 `unsold_rate >= 100%`인 단지.
+보정 시 `unsold_rate`도 재계산: `ROUND(unsold / new_units * 100, 1)`.
+
+### 7. UNSOLD[] → Supabase 전환
 
 `src/constants/unsold.js`의 UNSOLD 배열은 빈 배열 (레거시).
 실제 데이터: `VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.

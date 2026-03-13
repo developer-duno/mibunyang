@@ -1,7 +1,7 @@
-name: Naver Units Correction
+name: Collect MOLIT Units
 on:
   schedule:
-    - cron: '0 17 * * *' # UTC 17:00 = KST 02:00 (daily-deploy 1시간 전)
+    - cron: '0 18 1,15 * *' # 매월 1일, 15일 KST 03:00
   workflow_dispatch: # 수동 실행
 
 concurrency:
@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  correct-units:
+  collect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,16 +22,18 @@ jobs:
 
       - name: Validate secrets
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+          if [ -z "$MOLIT_KEY" ] || [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
             echo "::error::Required secrets missing"
             exit 1
           fi
         env:
+          MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
-      - name: Run Naver units correction
+      - name: Run MOLIT units correction
         env:
+          MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: node scripts/collectors/naver-units.mjs
+        run: node scripts/collectors/molit-units.mjs
