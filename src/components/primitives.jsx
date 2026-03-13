@@ -1,7 +1,8 @@
 import { memo } from "react";
 import { C, gr } from "@/theme";
 
-export const Bar = memo(function Bar({ value, color = C.blue, h = 5 }) {
+export const Bar = memo(function Bar({ value: _v, color = C.blue, h = 5 }) {
+  const value = _v ?? 0;
   return (
     <div role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100} style={{ background: "#ECEEF4", borderRadius: 99, height: h, width: "100%", overflow: "hidden" }}>
       <div style={{ width: `${Math.max(0, Math.min(value, 100))}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${color}90,${color})`, transition: "width .5s ease" }} />
@@ -9,7 +10,8 @@ export const Bar = memo(function Bar({ value, color = C.blue, h = 5 }) {
   );
 });
 
-export const ScoreBadge = memo(function ScoreBadge({ score, size = 54 }) {
+export const ScoreBadge = memo(function ScoreBadge({ score: _sc, size = 54 }) {
+  const score = _sc ?? 0;
   const g = gr(score), r = size / 2 - 3.5, circ = 2 * Math.PI * r, off = circ * (1 - score / 100);
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }} role="img" aria-label={`점수: ${score}점 (${g.l}등급)`}>
@@ -25,8 +27,11 @@ export const ScoreBadge = memo(function ScoreBadge({ score, size = 54 }) {
   );
 });
 
-export const Radar = memo(function Radar({ data, size = 130 }) {
-  const n = data.length, cx = size / 2, cy = size / 2, r = size * .36, step = 2 * Math.PI / n;
+export const Radar = memo(function Radar({ data: _data, size = 130 }) {
+  const data = _data || [];
+  const n = data.length;
+  if (n === 0) return null;
+  const cx = size / 2, cy = size / 2, r = size * .36, step = 2 * Math.PI / n;
   const poly = ratio => data.map((_, i) => { const a = -Math.PI / 2 + i * step; return `${cx + Math.cos(a) * r * ratio},${cy + Math.sin(a) * r * ratio}`; }).join(" ");
   const dp = data.map((d, i) => { const a = -Math.PI / 2 + i * step; return `${cx + Math.cos(a) * r * d.v / 100},${cy + Math.sin(a) * r * d.v / 100}`; }).join(" ");
   return (

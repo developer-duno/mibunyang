@@ -8,7 +8,7 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
     if (search) list = list.filter(x => (x.apt.name ?? "").includes(search) || (x.apt.gu ?? "").includes(search) || (x.apt.region ?? "").includes(search));
     if (regionFilter !== "전체") list = list.filter(x => x.apt.region === regionFilter);
     if (sort === "total") list = [...list].sort((a, b) => b.res.total - a.res.total);
-    else if (sort === "price") list = [...list].sort((a, b) => a.apt.price - b.apt.price);
+    else if (sort === "price") list = [...list].sort((a, b) => (a.apt.price ?? 0) - (b.apt.price ?? 0));
     else if (sort === "priceScore") list = [...list].sort((a, b) => b.res.cats.price.total - a.res.cats.price.total);
     return list;
   }, [scored, search, regionFilter, sort]);
@@ -53,7 +53,7 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
               <span style={{ fontSize: 10, color: C.muted, fontWeight: 700, width: 20 }}>{idx + 1}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: selected ? 800 : 600, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{apt.name}</div>
-                <div style={{ fontSize: 10, color: C.muted }}>{apt.region} {apt.gu} · {apt.area}㎡</div>
+                <div style={{ fontSize: 10, color: C.muted }}>{apt.region} {apt.gu ?? ""} · {apt.area ?? ""}㎡</div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: g2.c }}>{res.total}</div>

@@ -13,10 +13,10 @@ export const ExpertAptHeader = memo(function ExpertAptHeader({ apt, res }) {
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 280 }}>
           <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{apt.name}</div>
-          <div style={{ fontSize: 13, color: C.sub, marginBottom: 8 }}>{apt.region} {apt.gu} {apt.dong} · 도시등급 {cityLabel}</div>
+          <div style={{ fontSize: 13, color: C.sub, marginBottom: 8 }}>{apt.region} {apt.gu} {apt.dong ?? ""} · 도시등급 {cityLabel}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            {[`${apt.area}㎡`, `${((apt.price ?? 0) / 10000).toFixed(1)}억`, `${apt.builder}${b ? ` (${b.tier})` : ""}`, apt.completion].map(tag => (
-              <span key={tag} style={{ padding: "4px 10px", background: C.bg, borderRadius: 4, fontSize: 11, color: C.sub, fontWeight: 600 }}>{tag}</span>
+            {[`${apt.area ?? ""}㎡`, `${((apt.price ?? 0) / 10000).toFixed(1)}억`, `${apt.builder ?? ""}${b ? ` (${b.tier})` : ""}`, apt.completion].filter(Boolean).map((tag, i) => (
+              <span key={i} style={{ padding: "4px 10px", background: C.bg, borderRadius: 4, fontSize: 11, color: C.sub, fontWeight: 600 }}>{tag}</span>
             ))}
           </div>
         </div>

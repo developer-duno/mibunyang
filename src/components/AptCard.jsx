@@ -5,14 +5,14 @@ import { ScoreBadge, Bar } from "./primitives";
 export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights }) {
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
-  const regionTag = `${apt.region} ${apt.gu}`;
+  const regionTag = `${apt.region ?? ""} ${apt.gu ?? ""}`.trim();
 
   return (
     <div style={{
       background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`, borderRadius: 14, overflow: "hidden", marginBottom: 12,
       boxShadow: "0 1px 4px rgba(0,0,0,0.04)", transition: "all .25s ease"
     }}>
-      <div style={{ height: 4, background: `linear-gradient(90deg,${apt.heroColor},${apt.heroColor}88)` }} />
+      <div style={{ height: 4, background: `linear-gradient(90deg,${apt.heroColor ?? C.blue},${apt.heroColor ?? C.blue}88)` }} />
       <div style={{ padding: "14px 16px", cursor: "pointer" }} onClick={() => onDetail(apt.id)} tabIndex={0} role="button" onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDetail(apt.id); } }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -21,7 +21,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               <span title={apt.name} style={{ fontSize: 15, fontWeight: 800, color: C.text, letterSpacing: -.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{apt.name}</span>
             </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {[regionTag, `${apt.area}㎡`, `${((apt.price ?? 0) / 10000).toFixed(1)}억`, apt.builder].map((t, i) => (
+              {[regionTag, `${apt.area ?? ""}㎡`, `${((apt.price ?? 0) / 10000).toFixed(1)}억`, apt.builder ?? ""].filter(Boolean).map((t, i) => (
                 <span key={i} style={{ fontSize: 11, color: i === 0 ? C.blue : C.sub, background: i === 0 ? C.blueLight : C.bg, padding: "3px 8px", borderRadius: 4, fontWeight: i === 0 ? 700 : 400 }}>{t}</span>
               ))}
             </div>
@@ -46,7 +46,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>적정가 {res.cats.price.subs[0].info}</span>
           )}
           {res.cats.location.subs[0]?.info && <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>{res.cats.location.subs[0].info}</span>}
-          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>안전 {gr(res.cats.risk.total).l}등급</span>
+          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub }}>안전 {gr(res.cats.risk?.total ?? 0).l}등급</span>
         </div>
 
         {benefitWon > 0 && (
