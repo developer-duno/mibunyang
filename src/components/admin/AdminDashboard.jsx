@@ -1,5 +1,6 @@
-import { memo } from "react";
-import { C } from "@/theme";
+import { memo, useState, useCallback } from "react";
+import { C, catCol, catBg } from "@/theme";
+import { PROFILES } from "@/constants/profiles";
 
 const STATUS_TABS = [
   { key: "pending", label: "대기중", color: "#92400E", bg: "#FFFBEB" },
@@ -16,14 +17,173 @@ const SPECIALTY_BADGE = {
   "기타": { color: C.muted, bg: C.slate100 },
 };
 
-export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert }) {
+const CAT_LABELS = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
+const CAT_KEYS = ["location", "product", "price", "risk", "benefit", "future"];
+
+function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights }) {
+  const [editingProfile, setEditingProfile] = useState(null);
+  const [draft, setDraft] = useState({});
+
+  const startEdit = useCallback((pKey) => {
+    const current = customWeights[pKey] ?? PROFILES[pKey].w;
+    setDraft({ ...current });
+    setEditingProfile(pKey);
+  }, [customWeights]);
+
+  const cancelEdit = useCallback(() => { setEditingProfile(null); setDraft({}); }, []);
+
+  const handleChange = useCallback((catKey, val) => {
+    const n = val === "" ? 0 : parseInt(val, 10);
+    if (isNaN(n) || n < 0 || n > 100) return;
+    setDraft(prev => ({ ...prev, [catKey]: n }));
+  }, []);
+
+  const sum = CAT_KEYS.reduce((s, k) => s + (draft[k] ?? 0), 0);
+
+  const handleSave = useCallback(() => {
+    if (sum !== 100) return;
+    const next = { ...customWeights, [editingProfile]: { ...draft } };
+    saveCustomWeights(next);
+    setEditingProfile(null);
+    setDraft({});
+  }, [sum, editingProfile, draft, customWeights, saveCustomWeights]);
+
+  const handleReset = useCallback((pKey) => {
+    const next = { ...customWeights };
+    delete next[pKey];
+    saveCustomWeights(next);
+    if (editingProfile === pKey) { setEditingProfile(null); setDraft({}); }
+  }, [customWeights, saveCustomWeights, editingProfile]);
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 12 }}>가중치 관리</div>
+
+      {/* Profile tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        {Object.entries(PROFILES).map(([pKey, p]) => {
+          const active = profile === pKey;
+          const isCustom = !!customWeights[pKey];
+          return (
+            <button key={pKey} onClick={() => setProfile(pKey)} style={{
+              padding: "6px 14px", fontSize: 12, fontWeight: active ? 700 : 500,
+              background: active ? C.indigoLight : C.white, color: active ? C.indigo : C.muted,
+              border: active ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+              borderRadius: 6, cursor: "pointer", transition: "all .15s", position: "relative"
+            }}>
+              {p.name}
+              {isCustom && <span style={{ position: "absolute", top: -3, right: -3, width: 7, height: 7, borderRadius: "50%", background: C.amber }} />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Weight table for all profiles */}
+      <div style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+        {/* Header */}
+        <div style={{ display: "grid", gridTemplateColumns: "80px repeat(6, 1fr) 120px", gap: 0, background: C.slate100, padding: "8px 12px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>프로필</div>
+          {CAT_KEYS.map(k => (
+            <div key={k} style={{ fontSize: 11, fontWeight: 700, color: catCol[k], textAlign: "center" }}>{CAT_LABELS[k]}</div>
+          ))}
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textAlign: "center" }}>작업</div>
+        </div>
+
+        {/* Rows */}
+        {Object.entries(PROFILES).map(([pKey, p]) => {
+          const isEditing = editingProfile === pKey;
+          const w = customWeights[pKey] ?? p.w;
+          const isCustom = !!customWeights[pKey];
+          const isActive = profile === pKey;
+
+          return (
+            <div key={pKey} style={{
+              display: "grid", gridTemplateColumns: "80px repeat(6, 1fr) 120px", gap: 0,
+              padding: "10px 12px", borderTop: `1px solid ${C.border}`,
+              background: isActive ? C.indigoLight + "40" : C.white
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, display: "flex", alignItems: "center" }}>
+                {p.name}
+                {isCustom && <span style={{ fontSize: 9, color: C.amber, marginLeft: 4 }}>수정됨</span>}
+              </div>
+
+              {CAT_KEYS.map(k => (
+                <div key={k} style={{ textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      min={0} max={100}
+                      value={draft[k] ?? 0}
+                      onChange={e => handleChange(k, e.target.value)}
+                      style={{
+                        width: 44, textAlign: "center", fontSize: 12, fontWeight: 700,
+                        padding: "4px 2px", border: `1.5px solid ${catCol[k]}`, borderRadius: 4,
+                        color: catCol[k], background: catBg[k], outline: "none"
+                      }}
+                    />
+                  ) : (
+                    <span style={{
+                      fontSize: 12, fontWeight: 600, color: catCol[k],
+                      background: catBg[k], padding: "3px 8px", borderRadius: 4, minWidth: 32
+                    }}>{w[k]}</span>
+                  )}
+                </div>
+              ))}
+
+              <div style={{ display: "flex", gap: 4, alignItems: "center", justifyContent: "center" }}>
+                {isEditing ? (
+                  <>
+                    <button onClick={handleSave} disabled={sum !== 100} style={{
+                      fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 4, cursor: sum === 100 ? "pointer" : "default",
+                      background: sum === 100 ? C.green : C.slate100, color: sum === 100 ? C.white : C.muted,
+                      border: "none", opacity: sum === 100 ? 1 : 0.5
+                    }}>저장</button>
+                    <button onClick={cancelEdit} style={{
+                      fontSize: 11, fontWeight: 600, padding: "4px 8px", borderRadius: 4, cursor: "pointer",
+                      background: C.white, color: C.muted, border: `1px solid ${C.border}`
+                    }}>취소</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => startEdit(pKey)} style={{
+                      fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 4, cursor: "pointer",
+                      background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`
+                    }}>편집</button>
+                    {isCustom && (
+                      <button onClick={() => handleReset(pKey)} style={{
+                        fontSize: 11, fontWeight: 600, padding: "4px 8px", borderRadius: 4, cursor: "pointer",
+                        background: C.white, color: C.muted, border: `1px solid ${C.border}`
+                      }}>초기화</button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Sum validation message */}
+      {editingProfile && (
+        <div style={{
+          marginTop: 8, fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 6,
+          background: sum === 100 ? C.greenLight : C.redLight,
+          color: sum === 100 ? C.green : C.red
+        }}>
+          합계: {sum}% {sum === 100 ? "— 저장 가능" : `— 100%가 되어야 합니다 (${sum > 100 ? `${sum - 100}% 초과` : `${100 - sum}% 부족`})`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights }) {
   return (
     <div style={{ padding: "0 16px" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>전문가 신청 관리</div>
-          <div style={{ fontSize: 11, color: C.muted }}>{admin.users.length}건</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>관리자 대시보드</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {onSwitchToExpert && (
@@ -37,6 +197,15 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
             padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer"
           }}>로그아웃</button>
         </div>
+      </div>
+
+      {/* Weight Editor Section */}
+      <WeightEditor profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} />
+
+      {/* Expert Applications Section */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>전문가 신청 관리</div>
+        <div style={{ fontSize: 11, color: C.muted }}>{admin.users.length}건</div>
       </div>
 
       {/* Status Tabs */}

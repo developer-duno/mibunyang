@@ -1,5 +1,5 @@
 import { memo, useState, useEffect } from "react";
-import { C, catCol, catBg, SHORT_LABEL } from "@/theme";
+import { C, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE, LTV_RATES } from "@/constants/regulations";
 import { ScoreBadge, Radar, Bar } from "./primitives";
 import { CatPanel } from "./CatPanel";
@@ -408,16 +408,6 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         {Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} />)}
 
-        <div style={{ background: C.bg, borderRadius: 10, padding: "8px 10px", marginTop: 6 }}>
-          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>가중치 산출 내역</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-            {Object.entries(res.cats).map(([k, c]) => (
-              <span key={k} style={{ fontSize: 11, color: catCol[k], background: catBg[k], padding: "3px 8px", borderRadius: 4, fontWeight: 600 }}>
-                {SHORT_LABEL[c.label] || c.label} {c.total}×{res.weights[k]}%={Math.round(c.total * res.weights[k] / 100)}
-              </span>
-            ))}
-          </div>
-        </div>
         </div>
       </div>
     </div>

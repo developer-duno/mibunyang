@@ -42,7 +42,7 @@ constants → scoring → theme → components → hooks → App
 
 App.jsx 내부:
 ```
-useState (3개) + useTransition (1개) → useCallback → 커스텀 훅 12개 → useMemo (8개) → useEffect (4개) → useRef → useEffect → useCallback/useRef
+useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 12개 → useMemo (8개) → useEffect (4개) → useRef → useEffect → useCallback/useRef
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
@@ -53,11 +53,11 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 |---------|--------|--------------|
 | guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
 | catsCache | [apartments] | apartments 의존 필수 |
-| scored | [catsCache, profile] | catsCache는 apartments 간접 의존 |
+| scored | [catsCache, profile, customWeights] | catsCache는 apartments 간접 의존 |
 | filtered | [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, searchText] | 7개 전부 필수 |
 | visible | [filtered, visibleCount] | 페이지네이션용 |
 | compItems | [compIds, scored] | 2개 전부 필수 |
-| pw | [profile] | PROFILES[profile].w 참조 안정화 |
+| pw | [profile, customWeights] | customWeights 우선, PROFILES[profile].w 폴백 |
 | regionOptions | [apartments] | apartments 의존 필수 |
 
 ### 4. showComp는 파생 상태

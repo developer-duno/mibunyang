@@ -31,6 +31,13 @@ export default function App() {
   });
   const [isPending, startTransition] = useTransition();
   const setProfile = useCallback((k) => { startTransition(() => setProfileRaw(k)); try { localStorage.setItem("mibunyang_profile", k); } catch {} }, [startTransition]);
+  const [customWeights, setCustomWeights] = useState(() => {
+    try { const v = localStorage.getItem("mibunyang_customWeights"); return v ? JSON.parse(v) : {}; } catch { return {}; }
+  });
+  const saveCustomWeights = useCallback((cw) => {
+    setCustomWeights(cw);
+    try { localStorage.setItem("mibunyang_customWeights", JSON.stringify(cw)); } catch {}
+  }, []);
   const [visibleCount, setVisibleCount] = useState(30);
   const [tab, setTab] = useState(() => {
     if (!sessionStorage.getItem("expertToken")) return "list";
@@ -69,12 +76,13 @@ export default function App() {
     return apartments.map(a => ({ apt: a, cats: calcCats(a, ctx) }));
   }, [apartments]);
   const scored = useMemo(() => {
-    const w = PROFILES[profile].w;
+    const raw = customWeights[profile];
+    const w = (raw && typeof raw === "object" && Object.keys(PROFILES[profile].w).every(k => typeof raw[k] === "number")) ? raw : PROFILES[profile].w;
     return catsCache.map(({ apt, cats }) => {
-      const total = Math.round(Math.min(Object.keys(cats).reduce((s, k) => s + cats[k].total * w[k] / 100, 0), 100));
+      const total = Math.round(Math.min(Object.keys(cats).reduce((s, k) => s + cats[k].total * (w[k] ?? 0) / 100, 0), 100));
       return { apt, res: { total, cats, weights: w } };
     });
-  }, [catsCache, profile]);
+  }, [catsCache, profile, customWeights]);
   const filtered = useMemo(() => {
     let list = scored;
     if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
@@ -92,7 +100,7 @@ export default function App() {
   useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, searchText]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const compItems = useMemo(() => compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean), [compIds, scored]);
-  const pw = useMemo(() => PROFILES[profile].w, [profile]);
+  const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
 
   const regionOptions = useMemo(() => {
     const rs = new Set(apartments.map(a => a.region));
@@ -600,7 +608,7 @@ export default function App() {
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>관리자 패널 로딩 중...</div>}>
-            <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} />
+            <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} />
           </Suspense>
         ) : null
       ) : tab === "expertConsults" ? (
