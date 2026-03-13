@@ -11,11 +11,19 @@
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (일/주/월 스케줄)
   - `collect-naver-listings.yml` — 네이버 매물 수집 (매일)
+  - `naver-units.yml` — 네이버 세대수 2차 보정 (매일, Node.js)
   - `collect-population.yml` — 행안부 인구 증감률 수집 (매월 5일)
   - `collect-housing-permits.yml` — 국토부 주택 인허가 공급비율 수집 (매월 10일)
   - `collect-migration.yml` — 행안부 전입/전출 순이동 수집 (매월 15일)
   - `collect-molit-units.yml` — 국토부 공동주택 총세대수 보정 (매월 1일/15일)
-  - `naver-units.yml` — 네이버 세대수 2차 보정 (매일, Node.js)
+  - `collect-building-info.yml` — 국토부 건축물 상세정보 수집 (매월 10일)
+  - `collect-infra.yml` — Kakao Places 인프라 수집 (매월 1일)
+  - `collect-transport.yml` — Kakao Places 교통 수집 (매월 1일)
+  - `collect-schools.yml` — Kakao Places 학교 수집 (매월 1일)
+  - `collect-trade-stats.yml` — 거래 통계 산출 (매주 일요일)
+  - `calc-exclusive-ratio.yml` — 전용률 계산 (매주 일요일)
+  - `collect-dart-builders.yml` — DART 시공사 재무 수집 (매월 1일)
+  - `collect-noise.yml` — 소음 추정 수집 (매월 1일)
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
 
@@ -42,7 +50,7 @@ constants → scoring → theme → components → hooks → App
 
 App.jsx 내부:
 ```
-useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 12개 → useMemo (8개) → useEffect (4개) → useRef → useEffect → useCallback/useRef
+useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 12개 → useMemo (8개) → useEffect (5개) → useRef → useEffect → useCallback/useRef
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
@@ -75,7 +83,8 @@ const showComp = showCompOpen && compIds.length >= 2;
 | `SUPABASE_SERVICE_KEY` | Supabase service_role 키 (쓰기용) |
 | `MOIS_POP_KEY` | 행안부 주민등록 인구/전입전출 API 키 (data.go.kr) |
 | `MOLIT_KEY` | 국토부 주택 인허가 + 공동주택 기본정보 API 키 (data.go.kr) |
-| `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경 수집 + 역지오코딩) |
+| `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경/소음 수집 + 역지오코딩) |
+| `DART_KEY` | DART 전자공시 API 키 (시공사 재무 수집) |
 
 ### 6. units 보정 파이프라인
 
