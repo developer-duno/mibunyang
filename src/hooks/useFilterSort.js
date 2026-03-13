@@ -3,7 +3,10 @@ import { useState, useCallback, useRef } from "react";
 export function useFilterSort({ onFilterChange }) {
   const [filterRegion, setFilterRegion] = useState("전체");
   const [filterGu, setFilterGu] = useState("전체");
-  const [sortKey, setSortKey] = useState("total");
+  const [sortKey, setSortKeyRaw] = useState(() => {
+    try { const v = localStorage.getItem("mibunyang_sort"); return v && ["total","price","priceScore","location","safe"].includes(v) ? v : "total"; } catch { return "total"; }
+  });
+  const setSortKey = useCallback((k) => { setSortKeyRaw(k); try { localStorage.setItem("mibunyang_sort", k); } catch {} }, []);
   const [budgetMin, setBudgetMin] = useState("");
   const [budgetMax, setBudgetMax] = useState("");
   const [searchText, setSearchText] = useState("");

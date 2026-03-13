@@ -26,9 +26,11 @@ import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
 
 export default function App() {
-  const [profile, setProfileRaw] = useState("live");
+  const [profile, setProfileRaw] = useState(() => {
+    try { const v = localStorage.getItem("mibunyang_profile"); return v && PROFILES[v] ? v : "live"; } catch { return "live"; }
+  });
   const [isPending, startTransition] = useTransition();
-  const setProfile = useCallback((k) => startTransition(() => setProfileRaw(k)), [startTransition]);
+  const setProfile = useCallback((k) => { startTransition(() => setProfileRaw(k)); try { localStorage.setItem("mibunyang_profile", k); } catch {} }, [startTransition]);
   const [visibleCount, setVisibleCount] = useState(30);
   const [tab, setTab] = useState(() => {
     if (!sessionStorage.getItem("expertToken")) return "list";
@@ -193,7 +195,7 @@ export default function App() {
     if (!item) return;
     openShareSheet({
       title: `${item.apt.name} - 미분양 분석`,
-      text: `${item.apt.name} ${item.res.total}점 · ${(item.apt.price / 10000).toFixed(1)}억`,
+      text: `${item.apt.name} ${item.res.total}점 · ${((item.apt.price ?? 0) / 10000).toFixed(1)}억`,
       url: `${window.location.origin}/?detail=${aptId}&profile=${profile}`
     });
   }, [scored, profile, openShareSheet]);
@@ -284,7 +286,7 @@ export default function App() {
               }}>
                 {regionOptions.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <select value={filterGu} onChange={e => handleGuChange(e.target.value)} aria-label="구/군" disabled={filterRegion === "전체" || guOptions.length <= 1} style={{
+              <select value={filterRegion === "전체" ? "" : filterGu} onChange={e => handleGuChange(e.target.value)} aria-label="구/군" disabled={filterRegion === "전체" || guOptions.length <= 1} style={{
                 flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11, fontWeight: filterGu !== "전체" ? 700 : 500,
                 border: filterGu !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5,
                 background: (filterRegion === "전체" || guOptions.length <= 1) ? "#E2E8F0" : C.slate100,
@@ -294,6 +296,7 @@ export default function App() {
                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
                 backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
               }}>
+                {filterRegion === "전체" && <option value="">지역 먼저 선택</option>}
                 {guOptions.map(g2 => <option key={g2} value={g2}>{g2}</option>)}
               </select>
               <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => handleBudgetMinChange(e.target.value)} placeholder="최소(억)" aria-label="최소 예산(억)"
@@ -311,13 +314,25 @@ export default function App() {
             </div>
             {/* 3행: 정렬 + 가중치 뱃지 */}
             <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-              {[{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }].map(s => (
+              {isPC ? [{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }].map(s => (
                 <button key={s.k} onClick={() => setSortKey(s.k)} style={{
                   flex: 1, background: sortKey === s.k ? s.bg : s.pas, color: sortKey === s.k ? s.ac : C.slate600,
                   border: sortKey === s.k ? `1.5px solid ${s.ac}` : "1.5px solid transparent", borderRadius: 5, padding: "4px 0", height: 28,
                   fontSize: 11, fontWeight: sortKey === s.k ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all .15s", textAlign: "center"
                 }}>{s.l}</button>
-              ))}
+              )) : (
+                <select value={sortKey} onChange={e => setSortKey(e.target.value)} aria-label="정렬 기준" style={{
+                  flex: "0 0 auto", padding: "4px 24px 4px 8px", fontSize: 11, fontWeight: 700, height: 28,
+                  border: `1.5px solid ${C.indigo}`, borderRadius: 5, background: C.indigoLight, color: C.indigo,
+                  cursor: "pointer", WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%234F46E5' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
+                }}>
+                  {[{ k: "total", l: "종합순" }, { k: "price", l: "저가순" }, { k: "priceScore", l: "가격매력순" }, { k: "location", l: "입지순" }, { k: "safe", l: "안전순" }].map(s => (
+                    <option key={s.k} value={s.k}>{s.l}</option>
+                  ))}
+                </select>
+              )}
               <div style={{ width: 1, height: 20, background: C.border, flexShrink: 0, margin: "0 2px" }} />
               {Object.entries(pw).map(([k]) => {
                 const nm = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
@@ -348,10 +363,11 @@ export default function App() {
             )}
           </div>
 
-          {filtered.length === 0 && (
+          {filtered.length === 0 && !dataLoading && (
             <div style={{ textAlign: "center", padding: "48px 24px", color: C.muted }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{searchText ? `"${searchText}" 검색 결과가 없습니다` : (budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 지역에 미분양 단지가 없습니다"}</div>
-              <div style={{ fontSize: 12 }}>{searchText ? "단지명, 건설사, 지역명으로 검색해보세요" : (budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "다른 지역을 선택하거나 '전체'로 변경해주세요"}</div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>{searchText ? "\uD83D\uDD0D" : (budgetMin || budgetMax) ? "\uD83D\uDCB0" : "\uD83D\uDDFA\uFE0F"}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: C.text }}>{searchText ? `"${searchText}" 검색 결과가 없습니다` : (budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 지역에 미분양 단지가 없습니다"}</div>
+              <div style={{ fontSize: 12, lineHeight: 1.6 }}>{searchText ? "단지명, 건설사, 지역명으로 검색해보세요" : (budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "다른 지역을 선택하거나 '전체'로 변경해주세요"}</div>
             </div>
           )}
 
