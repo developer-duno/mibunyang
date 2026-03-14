@@ -1,0 +1,54 @@
+name: Layout Estimation
+
+on:
+  schedule:
+    - cron: '0 23 * * 0' # 매주 일요일 UTC 23:00 = KST 월요일 08:00
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (미리보기만, DB 미저장)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: data-collection
+  cancel-in-progress: false
+
+jobs:
+  calc-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY secret 필요"
+            exit 1
+          fi
+          echo "Secrets validated"
+
+      - name: Estimate layout types
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          node scripts/collectors/calc-layout.mjs $ARGS

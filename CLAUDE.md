@@ -24,6 +24,7 @@
   - `calc-exclusive-ratio.yml` — 전용률 계산 (매주 일요일)
   - `collect-dart-builders.yml` — DART 시공사 재무 수집 (매월 1일)
   - `collect-noise.yml` — 소음 추정 수집 (매월 1일)
+  - `calc-layout.yml` — 평면구조 추정 (매주 일요일)
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
 
@@ -142,3 +143,19 @@ const showComp = showCompOpen && compIds.length >= 2;
 - 프론트↔백엔드 타입 일관성
 - 보안: XSS, Injection, 인증 우회 없을 것
 - 수정 시 말로 설명 말고 코드로 직접 반영할 것
+
+# 테스트 규칙
+
+## 새 기능 추가 시
+- 기능 코드와 함께 테스트 코드도 반드시 작성
+- 최소: 정상 케이스 1개 + 에러 케이스 1개
+
+## 테스트 코드 작성 기준
+- 파일명: [대상].test.ts 또는 [대상].spec.ts
+- 한국어 주석으로 "이 테스트가 뭘 검증하는지" 설명
+- 테스트 데이터는 하드코딩 말고 팩토리 함수 사용
+
+## 테스트 실행
+- 전체: npm run test
+- 특정 파일: npm run test -- --grep "파일명"
+- E2E: npm run test:e2e
