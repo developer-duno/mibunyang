@@ -58,8 +58,22 @@ async function ipLocation(clientIp) {
   return { regionName: json.regionName, city: json.city, lat: json.lat, lon: json.lon };
 }
 
+// 허용 Origin (Vercel 프리뷰 + 프로덕션)
+const ALLOWED_ORIGINS = [
+  /^https:\/\/mibunyang[.-].*\.vercel\.app$/,
+  /^https?:\/\/localhost(:\d+)?$/,
+];
+
+function getAllowedOrigin(req) {
+  const origin = req.headers.origin || "";
+  if (ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
+  if (process.env.VERCEL_URL && origin === `https://${process.env.VERCEL_URL}`) return origin;
+  return null;
+}
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const allowedOrigin = getAllowedOrigin(req);
+  if (allowedOrigin) res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
 
   const apiKey = process.env.KAKAO_KEY;
@@ -71,9 +85,14 @@ export default async function handler(req, res) {
   const { lat, lng } = req.query;
 
   try {
-    // 1. GPS 좌표가 있으면 Kakao 역지오코딩
+    // 1. GPS 좌표가 있으면 Kakao 역지오코딩 (범위 검증 포함)
     if (lat && lng) {
-      const result = await kakaoRegion(apiKey, parseFloat(lat), parseFloat(lng));
+      const fLat = parseFloat(lat);
+      const fLng = parseFloat(lng);
+      if (!Number.isFinite(fLat) || !Number.isFinite(fLng) || fLat < -90 || fLat > 90 || fLng < -180 || fLng > 180) {
+        return res.status(400).json({ ok: false, error: "잘못된 좌표 범위입니다" });
+      }
+      const result = await kakaoRegion(apiKey, fLat, fLng);
       if (result?.region) {
         res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=600");
         res.json({ ok: true, ...result, method: "gps" });

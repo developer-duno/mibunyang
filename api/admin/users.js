@@ -33,7 +33,7 @@ export default async function handler(req, res) {
       return res.json({ ok: true, users: [] });
     }
 
-    const users = await Promise.all(
+    const results = await Promise.allSettled(
       emails.map(async (email) => {
         const user = await kv.get(`user:${email}`);
         if (!user) return null;
@@ -41,8 +41,9 @@ export default async function handler(req, res) {
         return safe;
       })
     );
+    const users = results.filter(r => r.status === "fulfilled" && r.value).map(r => r.value);
 
-    const sorted = users.filter(Boolean).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const sorted = users.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.json({ ok: true, users: sorted });
   } catch (err) {
     console.error("[admin/users] error:", err.message);

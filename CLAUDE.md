@@ -96,11 +96,11 @@ const showComp = showCompOpen && compIds.length >= 2;
 보정 대상: `units <= 1` 또는 `unsold_rate >= 100%`인 단지.
 보정 시 `unsold_rate`도 재계산: `ROUND(unsold / new_units * 100, 1)`.
 
-### 7. UNSOLD[] → Supabase 전환
+### 7. 데이터 소스
 
-`src/constants/unsold.js`의 UNSOLD 배열은 빈 배열 (레거시).
 실제 데이터: `VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.
 참조: `src/services/staticDataApi.js`, `src/hooks/useApartmentData.js`.
+(레거시 `unsold.js` 및 미사용 API 스텁 5종 삭제 완료)
 
 ---
 

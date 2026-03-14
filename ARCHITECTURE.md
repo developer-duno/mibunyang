@@ -13,7 +13,6 @@ src/
 │   ├── brands.js           BRAND_TIER(16), AGE_PREMIUM(7), LAYOUT_SCORE
 │   ├── profiles.js         PROFILES(5개 사용자 프로필)
 │   ├── regions.js          CITY_TIER(5등급), REGIONS(17개 시도)
-│   ├── unsold.js           UNSOLD[] — 빈 배열 (레거시)
 │   └── fieldMeta.js        FIELD_META(69필드), FIELD_SECTIONS(6섹션)
 ├── scoring/
 │   └── engine.js           score{6개}, calcAll — 규칙: scoring/CLAUDE.md
