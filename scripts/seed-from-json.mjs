@@ -56,7 +56,7 @@ async function main() {
       builder: d.builder || null,
       units: d.units ?? 0,
       unsold: d.unsold ?? 0,
-      unsold_rate: d.unsoldRate ?? null,
+      unsold_rate: (d.units ?? 0) <= 1 ? null : (d.unsoldRate ?? null),
       completion: d.completion || null,
       updated_at: now,
     });

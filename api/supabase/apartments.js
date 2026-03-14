@@ -80,7 +80,7 @@ function sanitize(row) {
     layout: row.layout ?? null,
     units: row.units ?? 0,
     unsold: row.unsold ?? 0,
-    unsoldRate: row.unsoldRate ?? 50,
+    unsoldRate: (row.units ?? 0) <= 1 ? null : (row.unsoldRate ?? 50),
     completion: row.completion ?? "",
     heating: row.heating ?? null,
     maxFloor: row.maxFloor ?? null,
