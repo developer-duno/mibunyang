@@ -9,8 +9,11 @@ export async function checkRateLimit(req, endpoint) {
     const fwd = req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "unknown";
     const ip = fwd.split(",").pop().trim();
     const key = `rl:${ip}:${endpoint}`;
-    const count = await kv.incr(key);
-    if (count === 1) await kv.expire(key, WINDOW_SEC);
+    const p = kv.pipeline();
+    p.incr(key);
+    p.expire(key, WINDOW_SEC);
+    const results = await p.exec();
+    const count = results[0];
     const max = LIMITS[endpoint] || DEFAULT_MAX;
     if (count > max) {
       return { limited: true, retryAfter: WINDOW_SEC };

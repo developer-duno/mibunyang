@@ -102,7 +102,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
 
       <div style={S.btnRow}>
         <button onClick={() => onDetail(apt.id)} style={dynStyles.detailBtn}>상세보기</button>
-        <button onClick={e => { e.stopPropagation(); onFav(apt.id); }} style={dynStyles.favBtn}>{isFav ? "관심 등록" : "관심매물"}</button>
+        <button onClick={e => { e.stopPropagation(); onFav(apt.id); }} style={dynStyles.favBtn}>{isFav ? "관심 해제" : "관심매물"}</button>
         <button onClick={e => { e.stopPropagation(); onComp(apt.id); }} style={dynStyles.compBtn}>{isComp ? "비교 중" : "비교"}</button>
       </div>
     </div>

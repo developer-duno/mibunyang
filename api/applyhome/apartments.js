@@ -51,8 +51,8 @@ async function fetchUnitDetails(apiKey, manageNoSet, isRemndr) {
   // 대표 타입 선정 및 면적/분양가 추출
   for (const [no, units] of Object.entries(grouped)) {
     const mainType = units.reduce((a, b) =>
-      (parseInt(b.SUPLY_HSHLDCO || 0) + parseInt(b.SPSPLY_HSHLDCO || 0)) >
-      (parseInt(a.SUPLY_HSHLDCO || 0) + parseInt(a.SPSPLY_HSHLDCO || 0))
+      (parseInt(b.SUPLY_HSHLDCO || 0, 10) + parseInt(b.SPSPLY_HSHLDCO || 0, 10)) >
+      (parseInt(a.SUPLY_HSHLDCO || 0, 10) + parseInt(a.SPSPLY_HSHLDCO || 0, 10))
         ? b
         : a
     );
@@ -61,10 +61,10 @@ async function fetchUnitDetails(apiKey, manageNoSet, isRemndr) {
     const areaMatch = houseTy.match(/(\d+\.?\d*)/);
     const area = areaMatch ? parseFloat(areaMatch[1]) : null;
     // 분양가: LTTOT_TOP_AMOUNT (만원 단위)
-    const price = parseInt(mainType.LTTOT_TOP_AMOUNT || 0) || null;
+    const price = parseInt(mainType.LTTOT_TOP_AMOUNT || 0, 10) || null;
     // 총세대수: 모든 주택형의 (일반공급 + 특별공급) 합계
     const totalUnits = units.reduce((sum, u) =>
-      sum + (parseInt(u.SUPLY_HSHLDCO || 0) + parseInt(u.SPSPLY_HSHLDCO || 0)), 0);
+      sum + (parseInt(u.SUPLY_HSHLDCO || 0, 10) + parseInt(u.SPSPLY_HSHLDCO || 0, 10)), 0);
     details[no] = { area, price, totalUnits };
   }
   return details;

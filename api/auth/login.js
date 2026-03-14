@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 import { verifyPassword, hashPassword, createToken } from "../_lib/auth.js";
 import { checkRateLimit } from "../_lib/rateLimit.js";
+import crypto from "crypto";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -42,8 +43,14 @@ export default async function handler(req, res) {
       await kv.set(`user:${email.toLowerCase().trim()}`, { ...user, passwordHash: hash, salt });
     }
 
-    const isAdmin = process.env.ADMIN_EMAIL &&
-      user.email === process.env.ADMIN_EMAIL.toLowerCase().trim();
+    const isAdmin = (() => {
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (!adminEmail) return false;
+      const a = Buffer.from(user.email);
+      const b = Buffer.from(adminEmail.toLowerCase().trim());
+      if (a.length !== b.length) return false;
+      try { return crypto.timingSafeEqual(a, b); } catch { return false; }
+    })();
 
     if (!isAdmin) {
       const status = user.status ?? "approved";

@@ -58,7 +58,7 @@ export default function App() {
   const expert = useExpertMode(showToast);
   const admin = useAdminMode(showToast);
   const { apartments, loading: dataLoading, error: dataError, retry: retryData } = useApartmentData();
-  const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, shareData, isMobile } = useShare(showToast);
+  const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, isMobile } = useShare(showToast);
 
   // 5 useMemo
   const guOptions = useMemo(() => {

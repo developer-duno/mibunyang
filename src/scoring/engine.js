@@ -2,6 +2,24 @@ import { BRAND_TIER, AGE_PREMIUM, LAYOUT_SCORE, NOXIOUS_PENALTY } from "@/consta
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import { PROFILES } from "@/constants/profiles";
 import { getZone } from "@/constants/regulations";
+import {
+  tierMax, tierMin,
+  SUBWAY_DIST_TIERS, FULL_BUS_ROUTES, IC_DIST_TIERS, KTX_DIST_TIERS,
+  INFRA_CONFIG, VIEW_SCORES, SUNLIGHT_SCORES, SUNLIGHT_DEFAULT, SUNLIGHT_NO_DATA,
+  NOISE_TIERS, NOXIOUS_DIST_THRESHOLD, NOXIOUS_REDUCTION, NOXIOUS_PEN_CAP,
+  UNIT_TIERS, UNIT_UNKNOWN_SCORE, UNIT_SMALL_SCORE,
+  PARKING_TIERS, PARKING_LOW_SCORE, FAR_TIERS, FAR_HIGH_SCORE,
+  ENERGY_SCORES, ENERGY_DEFAULT, GREEN_BLDG_SCORES,
+  EXCL_RATIO_TIERS, EXCL_LOW_SCORE, FLOOR_TIERS, FLOOR_LOW_SCORE, PRODUCT_MAX,
+  UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE, UNSOLD_UNKNOWN_SCORE,
+  LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE,
+  CREDIT_GRADE_SCORES, CREDIT_DEFAULT,
+  SUPPLY_RATIO_TIERS, SUPPLY_HIGH_SCORE,
+  POP_RISK_TIERS, POP_RISK_HIGH, POP_RISK_NULL,
+  POP_FUTURE_TIERS, POP_FUTURE_LOW, POP_FUTURE_NULL,
+  INTEREST_RATE, LOAN_TERM_MULT, BENEFIT_FULL_RATE,
+  AREA_ADJ_TIERS, AREA_ADJ_LARGE,
+} from "@/constants/scoringTiers";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
 const TRANSIT_ACTIVE = ["기존", "운행중", "개통"];
@@ -135,10 +153,10 @@ export function scoreLocation(apt) {
   if (!tier && import.meta.env.DEV) console.warn(`[scoring] Unknown region: "${apt.region}"`);
   const ct = CITY_TIER[tier] || CITY_TIER.C;
 
-  let rawSub = apt.subwayDist <= 300 ? 25 : apt.subwayDist <= 500 ? 21 : apt.subwayDist <= 700 ? 16 : apt.subwayDist <= 1000 ? 11 : apt.subwayDist <= 1500 ? 6 : 0;
-  let rawBus = Math.min(apt.busRoutes / 15, 1) * 30;
-  let rawIc = apt.icDist <= 2 ? 20 : apt.icDist <= 5 ? 14 : apt.icDist <= 10 ? 8 : 0;
-  let rawKtx = apt.ktxDist <= 5 ? 20 : apt.ktxDist <= 10 ? 12 : apt.ktxDist <= 15 ? 6 : 0;
+  let rawSub = tierMax(apt.subwayDist, SUBWAY_DIST_TIERS, 0);
+  let rawBus = Math.min(apt.busRoutes / FULL_BUS_ROUTES, 1) * 30;
+  let rawIc = tierMax(apt.icDist, IC_DIST_TIERS, 0);
+  let rawKtx = tierMax(apt.ktxDist, KTX_DIST_TIERS, 0);
 
   const subSc = rawSub * ct.subwayW;
   const busSc = rawBus * ct.busW;
@@ -149,26 +167,17 @@ export function scoreLocation(apt) {
 
   const school = apt.schoolScore ?? 50;
 
-  const infraItems = [
-    { v: apt.hospital, m: 5, w: .20 },
-    { v: apt.mart, m: 3, w: .10 },
-    { v: apt.conv, m: 10, w: .05 },
-    { v: apt.park, m: 4, w: .15 },
-    { v: apt.cafe, m: 20, w: .15 },
-    { v: apt.culture, m: 3, w: .15 },
-    { v: apt.bank, m: 4, w: .05 },
-    { v: apt.pharmacy, m: 4, w: .15 },
-  ];
+  const infraItems = INFRA_CONFIG.map(cfg => ({ v: apt[cfg.key], m: cfg.max, w: cfg.weight }));
   const infra = infraItems.reduce((s, i) => s + Math.min(i.v / i.m, 1) * i.w * 100, 0);
 
-  let viewSc = apt.view === "블루" ? 40 : apt.view === "그린" ? 30 : apt.view === "천공" ? 20 : 0;
-  let sunSc = apt._noSunlight ? 22 : apt.sunlight === "우수" ? 30 : apt.sunlight === "양호" ? 22 : 15;
-  let noiseSc = apt.noise <= 50 ? 30 : apt.noise <= 60 ? 22 : apt.noise <= 65 ? 15 : apt.noise <= 70 ? 8 : 0;
+  let viewSc = VIEW_SCORES[apt.view] || 0;
+  let sunSc = apt._noSunlight ? SUNLIGHT_NO_DATA : (SUNLIGHT_SCORES[apt.sunlight] ?? SUNLIGHT_DEFAULT);
+  let noiseSc = tierMax(apt.noise, NOISE_TIERS, 0);
   const env = viewSc + sunSc + noiseSc;
   let noxPen = (apt.noxious || []).reduce((s, n) => s + (NOXIOUS_PENALTY[n] || 0), 0);
   // 거리 기반 감점 완화: noxiousDist >= 500m이면 감점 반감
-  if (apt.noxiousDist != null && apt.noxiousDist >= 500) noxPen = noxPen * 0.5;
-  noxPen = Math.max(noxPen, -15);
+  if (apt.noxiousDist != null && apt.noxiousDist >= NOXIOUS_DIST_THRESHOLD) noxPen = noxPen * NOXIOUS_REDUCTION;
+  noxPen = Math.max(noxPen, NOXIOUS_PEN_CAP);
   const noxSafe = Math.max(0, 100 + noxPen / 15 * 100);
   const total = transport * 0.30 + school * 0.25 + infra * 0.20 + env * 0.10 + noxSafe * 0.15;
   return {
@@ -188,17 +197,17 @@ export function scoreProduct(apt) {
   if (!brand && import.meta.env.DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
   const b = brand || { score: 5, tier: "기타" };
   const brandSc = b.score;
-  let unitSc = apt.units <= 1 ? 8 : apt.units >= 1500 ? 15 : apt.units >= 1000 ? 13 : apt.units >= 700 ? 10 : apt.units >= 400 ? 7 : 4;
+  let unitSc = apt.units <= 1 ? UNIT_UNKNOWN_SCORE : tierMin(apt.units, UNIT_TIERS, UNIT_SMALL_SCORE);
   if (apt.hasPool) unitSc = Math.min(unitSc + 3, 15);
-  let parkSc = apt.parkingRatio >= 1.5 ? 15 : apt.parkingRatio >= 1.3 ? 12 : apt.parkingRatio >= 1.1 ? 8 : 5;
-  let farSc = apt.floorAreaRatio <= 200 ? 10 : apt.floorAreaRatio <= 250 ? 7 : 3;
-  let energySc = (apt.energyGrade === 1 ? 7 : apt.energyGrade === 2 ? 5 : 3) + (apt.greenBldg === "최우수" ? 3 : apt.greenBldg === "우수" ? 2 : 0);
-  let exclSc = apt.exclusiveRatio >= 80 ? 10 : apt.exclusiveRatio >= 77 ? 8 : apt.exclusiveRatio >= 74 ? 6 : 4;
+  let parkSc = tierMin(apt.parkingRatio, PARKING_TIERS, PARKING_LOW_SCORE);
+  let farSc = tierMax(apt.floorAreaRatio, FAR_TIERS, FAR_HIGH_SCORE);
+  let energySc = (ENERGY_SCORES[apt.energyGrade] ?? ENERGY_DEFAULT) + (GREEN_BLDG_SCORES[apt.greenBldg] || 0);
+  let exclSc = tierMin(apt.exclusiveRatio, EXCL_RATIO_TIERS, EXCL_LOW_SCORE);
   const layoutSc = LAYOUT_SCORE[apt.layout] || 3;
   const quakeSc = apt.quakeDesign ? 5 : 0;
-  let structSc = apt.maxFloor >= 35 ? 5 : apt.maxFloor >= 25 ? 4 : apt.maxFloor >= 15 ? 3 : 2;
+  let structSc = tierMin(apt.maxFloor, FLOOR_TIERS, FLOOR_LOW_SCORE);
   const rawTotal = brandSc + unitSc + parkSc + farSc + energySc + exclSc + layoutSc + quakeSc + structSc;
-  const maxPossible = 20 + 15 + 15 + 10 + 10 + 10 + 10 + 5 + 5;
+  const maxPossible = Object.values(PRODUCT_MAX).reduce((a, b) => a + b, 0);
   const total = Math.round(Math.min(rawTotal / maxPossible * 100, 100));
   return {
     total,
@@ -217,14 +226,14 @@ export function scoreProduct(apt) {
 }
 
 export function scoreBenefit(apt) {
-  const loanVal = apt.loanFree ? Math.round(apt.price * (apt.loanFreePct / 100) * 0.045 * 1.5) : 0;
+  const loanVal = apt.loanFree ? Math.round(apt.price * (apt.loanFreePct / 100) * INTEREST_RATE * LOAN_TERM_MULT) : 0;
   const discVal = Math.round(apt.price * apt.discountPct / 100);
   const optVal = apt.optionFree ? apt.optionValue : 0;
   const balVal = apt.balconyFree ? apt.balconyValue : 0;
   const cashVal = apt.cashback;
   const totalWon = discVal + loanVal + optVal + balVal + cashVal;
   const rate = apt.price > 0 ? (totalWon / apt.price) * 100 : 0;
-  const sc = Math.min(Math.round(rate / 25 * 100), 100);
+  const sc = Math.min(Math.round(rate / BENEFIT_FULL_RATE * 100), 100);
   const itemScore = (v) => totalWon > 0 ? Math.round(sc * v / totalWon) : 0;
   return {
     total: sc, totalWon, rate: rate.toFixed(1),
@@ -239,14 +248,14 @@ export function scoreBenefit(apt) {
 }
 
 export function scoreRisk(apt) {
-  let unsoldSc = apt.units <= 1 ? 40 : apt.unsoldRate <= 5 ? 10 : apt.unsoldRate <= 15 ? 25 : apt.unsoldRate <= 30 ? 45 : apt.unsoldRate <= 50 ? 70 : 90;
-  let liqSc = apt.recentTrades6m >= 30 ? 5 : apt.recentTrades6m >= 15 ? 20 : apt.recentTrades6m >= 5 ? 45 : 80;
+  let unsoldSc = apt.units <= 1 ? UNSOLD_UNKNOWN_SCORE : tierMax(apt.unsoldRate, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE);
+  let liqSc = tierMin(apt.recentTrades6m, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE);
   let loanSc = (apt.dsr40pass ? 15 : 50) + (apt.loanFree ? 0 : 15);
-  let finSc = (apt.hugGuarantee ? 0 : 40) + ({ AA: 0, "AA-": 5, "A+": 10, A: 15, "A-": 20, BBB: 35, BB: 60 }[apt.builderCreditGrade] || 30) + (apt.builderDebtRatio > 200 ? 20 : apt.builderDebtRatio > 150 ? 10 : 0);
+  let finSc = (apt.hugGuarantee ? 0 : 40) + (CREDIT_GRADE_SCORES[apt.builderCreditGrade] ?? CREDIT_DEFAULT) + (apt.builderDebtRatio > 200 ? 20 : apt.builderDebtRatio > 150 ? 10 : 0);
   finSc = Math.min(finSc, 100);
   const zone = getZone(apt.region, apt.gu);
   let regSc = zone !== "normal" ? 60 : 10;
-  let supSc = apt.supplyRatio < 50 ? 5 : apt.supplyRatio <= 100 ? 25 : apt.supplyRatio <= 130 ? 50 : 75;
+  let supSc = tierMax(apt.supplyRatio, SUPPLY_RATIO_TIERS, SUPPLY_HIGH_SCORE);
   let mktSc = apt.popGrowth == null ? 35
     : apt.popGrowth >= 0.5 ? 10
     : apt.popGrowth >= 0 ? 20
