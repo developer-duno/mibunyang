@@ -191,6 +191,10 @@ CREATE TABLE IF NOT EXISTS trade_stats (
   jeonse_rate REAL,                       -- 전세가율 (%)
   pir REAL,                               -- 소득대비 가격비율
   psr REAL,                               -- 주변시세 대비 분양가 비율
+  price_by_area JSONB DEFAULT '[]',       -- 면적별 매매 시세 배열
+  rent_by_area JSONB DEFAULT '[]',        -- 면적별 전세 시세 배열
+  jeonse_by_area JSONB DEFAULT '[]',      -- 면적별 전세가율 배열
+  price_by_floor JSONB DEFAULT '[]',      -- 층수별 매매 시세 배열
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -475,6 +479,11 @@ SELECT
   ts.jeonse_rate AS "jeonseRate",
   ts.pir,
   ts.psr,
+  -- 시세 배열 (DetailModal 시세 테이블용)
+  ts.price_by_area AS "priceByArea",
+  ts.rent_by_area AS "rentByArea",
+  ts.jeonse_by_area AS "jeonseByArea",
+  ts.price_by_floor AS "priceByFloor",
   -- 네이버 교차검증
   a.naver_nearby_median AS "naverNearbyMedian",
   a.naver_nearby_avg AS "naverNearbyAvg",
@@ -489,17 +498,15 @@ SELECT
   a.naver_fetched_at AS "naverFetchedAt",
   -- 데이터 완성도 (계산, 합계 100)
   GREATEST(0, LEAST(100, (
-    (CASE WHEN p.price IS NOT NULL THEN 13 ELSE 0 END) +
-    (CASE WHEN i.hospital IS NOT NULL THEN 11 ELSE 0 END) +
-    (CASE WHEN sc.school_score IS NOT NULL THEN 11 ELSE 0 END) +
-    (CASE WHEN t.bus_routes IS NOT NULL THEN 9 ELSE 0 END) +
-    (CASE WHEN b.debt_ratio IS NOT NULL THEN 7 ELSE 0 END) +
-    (CASE WHEN r.pop_growth IS NOT NULL THEN 7 ELSE 0 END) +
-    (CASE WHEN ts.nearby_median IS NOT NULL THEN 13 ELSE 0 END) +
-    (CASE WHEN ts.jeonse_rate IS NOT NULL THEN 9 ELSE 0 END) +
-    (CASE WHEN a.units > 1 THEN 10 ELSE 0 END) +
-    (CASE WHEN a.view IS NOT NULL THEN 5 ELSE 0 END) +
-    (CASE WHEN a.noise IS NOT NULL THEN 5 ELSE 0 END)
+    (CASE WHEN p.price IS NOT NULL THEN 15 ELSE 0 END) +
+    (CASE WHEN i.hospital IS NOT NULL THEN 12 ELSE 0 END) +
+    (CASE WHEN sc.school_score IS NOT NULL THEN 12 ELSE 0 END) +
+    (CASE WHEN t.bus_routes IS NOT NULL THEN 10 ELSE 0 END) +
+    (CASE WHEN b.debt_ratio IS NOT NULL THEN 8 ELSE 0 END) +
+    (CASE WHEN r.pop_growth IS NOT NULL THEN 8 ELSE 0 END) +
+    (CASE WHEN ts.nearby_median IS NOT NULL THEN 15 ELSE 0 END) +
+    (CASE WHEN ts.jeonse_rate IS NOT NULL THEN 10 ELSE 0 END) +
+    (CASE WHEN a.units > 1 THEN 10 ELSE 0 END)
   ))) AS "dataReliability"
 FROM apartments a
 LEFT JOIN latest_prices p ON p.apartment_id = a.id

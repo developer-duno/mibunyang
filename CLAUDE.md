@@ -133,3 +133,12 @@ const showComp = showCompOpen && compIds.length >= 2;
 | useExpertMode.handleExpertLogin() | `true`/`false` 반환 | App에서 `if (success) setTab("expert")` |
 | useExpertMode.handleExpertLogout(onLogout) | 콜백 파라미터 | App에서 `() => { setTab("list"); setShowCompOpen(false); }` 전달 |
 | useFilterSort({ onFilterChange }) | 콜백 옵션 | App에서 `() => setDetailAptId(null)` 전달 |
+
+# 코드 리뷰 기준 (모든 코드 수정 시 적용)
+
+## 필수 체크 항목
+- 페이지·컴포넌트 간 연동 무결성
+- 클린 코드 & SOLID 원칙 준수
+- 프론트↔백엔드 타입 일관성
+- 보안: XSS, Injection, 인증 우회 없을 것
+- 수정 시 말로 설명 말고 코드로 직접 반영할 것

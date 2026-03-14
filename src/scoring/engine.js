@@ -76,6 +76,7 @@ export function getAgeCoeff(completion) {
 }
 
 export function getAreaAdj(area) {
+  if (!area || area <= 0) return 1.0;  // 면적 미등록 = 중립
   if (area < 60) return 1.08;
   if (area < 85) return 1.0;
   if (area < 115) return 0.97;

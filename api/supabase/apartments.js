@@ -61,6 +61,14 @@ export default async function handler(req, res) {
  */
 function sanitize(row) {
   return {
+    // 추정값 추적 플래그 (ExpertDataCompleteness에서 사용)
+    _fallbackPir: row.pir == null,
+    _fallbackPsr: row.psr == null,
+    _fallbackJeonseRate: row.jeonseRate == null,
+    _fallbackSupplyRatio: row.supplyRatio == null,
+    _fallbackUnsoldRate: row.unsoldRate == null,
+    _fallbackBuilderDebt: row.builderDebtRatio == null,
+    _fallbackDataReliability: row.dataReliability == null,
     id: row.id,
     name: row.name,
     dong: row.dong ?? "",

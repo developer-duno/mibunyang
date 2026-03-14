@@ -4,18 +4,20 @@ import { FIELD_META } from "@/constants/fieldMeta";
 
 export const ExpertDataCompleteness = memo(function ExpertDataCompleteness({ apt }) {
   const allFields = Object.keys(FIELD_META).filter(k => !FIELD_META[k].hidden);
-  let filled = 0, defaults = 0, missing = 0;
+  let filled = 0, estimated = 0, defaults = 0, missing = 0;
+  const estimatedFields = [];
   const defaultFields = [];
   const missingFields = [];
   allFields.forEach(k => {
     const meta = FIELD_META[k];
     const v = apt[k];
     if (v === undefined || v === null || v === "") { missing++; missingFields.push(meta.label); }
+    else if (meta.isEstimated && meta.isEstimated(v, apt)) { estimated++; estimatedFields.push(meta.label); }
     else if (meta.isDefault && meta.isDefault(v)) { defaults++; defaultFields.push(`${meta.label} (${meta.fmt ? meta.fmt(v, apt) : v})`); }
     else { filled++; }
   });
   const total = allFields.length;
-  const pct = Math.round((filled / total) * 100);
+  const pct = Math.round(((filled + estimated * 0.5) / total) * 100);
   return (
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 800, color: C.cyan, marginBottom: 10, borderBottom: `2px solid ${C.cyan}`, paddingBottom: 6 }}>데이터 완성도</div>
@@ -25,7 +27,10 @@ export const ExpertDataCompleteness = memo(function ExpertDataCompleteness({ apt
         </div>
         <span style={{ fontSize: 14, fontWeight: 800, color: pct >= 80 ? C.green : pct >= 50 ? C.amber : C.red }}>{pct}%</span>
       </div>
-      <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>실제 데이터: <b>{filled}</b>개 | 기본값/센티널: <b style={{ color: C.amber }}>{defaults}</b>개 | 미등록: <b style={{ color: C.red }}>{missing}</b>개 / 총 {total}개</div>
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>실제 데이터: <b>{filled}</b>개 | 지역추정: <b style={{ color: C.blue }}>{estimated}</b>개 | 기본값: <b style={{ color: C.amber }}>{defaults}</b>개 | 미등록: <b style={{ color: C.red }}>{missing}</b>개 / 총 {total}개</div>
+      {estimatedFields.length > 0 && (
+        <div style={{ fontSize: 10, color: C.blue, marginTop: 4 }}>지역추정 필드: {estimatedFields.join(", ")}</div>
+      )}
       {defaultFields.length > 0 && (
         <div style={{ fontSize: 10, color: C.amber, marginTop: 4 }}>기본값 필드: {defaultFields.join(", ")}</div>
       )}
