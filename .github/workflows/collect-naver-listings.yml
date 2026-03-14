@@ -60,3 +60,15 @@ jobs:
             ARGS="$ARGS --limit=${{ inputs.limit }}"
           fi
           node scripts/collectors/naver-listings.mjs $ARGS
+
+      - name: Sync naver complex data to apartments
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/collectors/sync-naver-complex.mjs
+
+      - name: Calculate exclusive ratio
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/collectors/calc-exclusive-ratio.mjs
