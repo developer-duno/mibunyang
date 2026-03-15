@@ -2,7 +2,7 @@ import { memo } from "react";
 import { C } from "@/theme";
 
 export const ExpertUnitPlaceholder = memo(function ExpertUnitPlaceholder({ apt }) {
-  const unsoldRate = apt.units > 0 ? ((apt.unsold ?? 0) / apt.units * 100).toFixed(1) : "0";
+  const unsoldRate = apt.unsoldRate != null ? Number(apt.unsoldRate).toFixed(1) : (apt.units > 0 && apt.unsold != null ? (apt.unsold / apt.units * 100).toFixed(1) : null);
   return (
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 800, color: C.purple, marginBottom: 10, borderBottom: `2px solid ${C.purple}`, paddingBottom: 6 }}>동/호수 현황</div>
@@ -13,11 +13,11 @@ export const ExpertUnitPlaceholder = memo(function ExpertUnitPlaceholder({ apt }
         </div>
         <div style={{ textAlign: "center", padding: 10, background: C.redLight, borderRadius: 6 }}>
           <div style={{ fontSize: 11, color: C.muted }}>미분양</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.red }}>{(apt.unsold ?? 0).toLocaleString("ko-KR")}</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.red }}>{apt.unsold != null ? apt.unsold.toLocaleString("ko-KR") : "—"}</div>
         </div>
         <div style={{ textAlign: "center", padding: 10, background: C.amberLight, borderRadius: 6 }}>
           <div style={{ fontSize: 11, color: C.muted }}>미분양률</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.amber }}>{unsoldRate}%</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.amber }}>{unsoldRate != null ? `${unsoldRate}%` : "—"}</div>
         </div>
       </div>
       <div style={{ padding: 12, background: C.bg, borderRadius: 6, textAlign: "center" }}>

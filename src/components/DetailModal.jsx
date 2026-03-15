@@ -90,7 +90,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               { l: "분양가", v: `${(apt.price ?? 0).toLocaleString()}만` },
               { l: "적정가 괴리", v: `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`, c: Number(res.cats.price.deviation) > 0 ? C.green : C.red },
               { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
-              { l: "미분양률", v: (apt.units != null && apt.units > 1) ? `${apt.unsoldRate}%` : "산정 불가", c: (apt.units != null && apt.units > 1) ? (apt.unsoldRate > 15 ? C.red : C.green) : C.muted },
+              { l: "미분양률", v: (apt.units != null && apt.units > 1) ? (apt.unsoldRate != null ? `${apt.unsoldRate}%` : "—") : "산정 불가", c: (apt.units != null && apt.units > 1 && apt.unsoldRate != null) ? (apt.unsoldRate > 15 ? C.red : C.green) : C.muted },
               { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
               { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
               { l: "입주", v: apt.completion },
