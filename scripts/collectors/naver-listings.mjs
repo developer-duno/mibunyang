@@ -275,6 +275,30 @@ function calcPricePerPyeong(price, areaM2) {
 
 // ── 데이터 변환 (Python from_dict 포트) ────────────────────
 
+/** 단지 데이터에서 수영장 유무 감지 */
+function detectPool(data) {
+  // 구조화된 시설 정보 확인
+  const facilityStr = JSON.stringify(
+    data.facilityInfo ?? data.complexFacility ?? data.communityFacilityInfo ?? ""
+  ).toLowerCase();
+  if (facilityStr.includes("수영") || facilityStr.includes("pool")) return true;
+
+  // 사진 카테고리에서 확인
+  const photos = data.photos ?? data.complexPhotoList ?? [];
+  for (const p of photos) {
+    const cat = (p.smallCategoryName ?? p.categoryName ?? "").toLowerCase();
+    if (cat.includes("수영") || cat.includes("pool")) return true;
+  }
+
+  // 태그/설명에서 확인
+  const desc = JSON.stringify(
+    data.tagList ?? data.detailDescription ?? data.complexFeatureDescription ?? ""
+  ).toLowerCase();
+  if (desc.includes("수영장") || desc.includes("swimming pool")) return true;
+
+  return null; // 확인 불가 → null (not false)
+}
+
 /** API 응답 → naver_complexes 행 */
 function toComplexRow(data, nearbyAptIds = []) {
   return {
@@ -296,6 +320,7 @@ function toComplexRow(data, nearbyAptIds = []) {
     min_supply_area: data.minSupplyArea ? parseFloat(data.minSupplyArea) : null,
     max_supply_area: data.maxSupplyArea ? parseFloat(data.maxSupplyArea) : null,
     nearby_apartment_ids: nearbyAptIds.length > 0 ? nearbyAptIds : null,
+    has_pool: detectPool(data),
     last_crawled_at: new Date().toISOString(),
   };
 }

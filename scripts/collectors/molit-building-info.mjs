@@ -1,5 +1,5 @@
 /**
- * 국토부 공동주택 기본정보 → 건물 상세 (용적률, 주차, 최고층, 에너지, 내진) 수집기
+ * 국토부 공동주택 기본정보 → 건물 상세 (주차, 최고층, 에너지, 내진, 녹색건축) 수집기
  *
  * API: 국토교통부_공동주택 단지 목록제공 서비스 (data.go.kr #15058453)
  *   - getLnmBasicList: 시도/시군구별 단지 목록
@@ -137,11 +137,21 @@ function extractBuildingInfo(detail) {
   // 최고층
   const highFloor = safeInt(detail.kaptTopFloor) || safeInt(detail.hoCnt);
 
+  // 녹색건축 인증등급
+  const greenStr = detail.kaptdGreenGrade ?? detail.kaptGreenGrade ?? null;
+  let green_bldg = null;
+  if (greenStr != null) {
+    const s = String(greenStr);
+    if (s.includes("최우수") || s === "1") green_bldg = "최우수";
+    else if (s.includes("우수") || s === "2") green_bldg = "우수";
+  }
+
   return {
     parking_ratio: parkingRatio,
     max_floor: highFloor,
     energy_grade: energyGrade,
     quake_design: quakeDesign,
+    green_bldg,
   };
 }
 
@@ -153,6 +163,7 @@ async function updateBuilding(sb, aptId, info, dryRun) {
   if (info.max_floor != null) row.max_floor = info.max_floor;
   if (info.energy_grade != null) row.energy_grade = info.energy_grade;
   if (info.quake_design != null) row.quake_design = info.quake_design;
+  if (info.green_bldg != null) row.green_bldg = info.green_bldg;
 
   if (Object.keys(row).length === 0) return false;
 
@@ -184,13 +195,13 @@ async function main() {
     .select("id, name, region, gu, address, parking_ratio, max_floor, energy_grade, quake_design");
 
   if (!force) {
-    // parking_ratio와 max_floor이 둘 다 null인 것만 대상
-    query = query.is("energy_grade", null);
+    // 4개 상품성 필드 중 하나라도 null이면 재수집 대상
+    query = query.or("energy_grade.is.null,parking_ratio.is.null,max_floor.is.null,quake_design.is.null");
   }
 
   const { data: targets, error } = await query;
   if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
-  log(PHASE, `대상: ${targets.length}건 ${force ? "(전체 재수집)" : "(energy_grade null)"}`);
+  log(PHASE, `대상: ${targets.length}건 ${force ? "(전체 재수집)" : "(상품성 필드 null 포함)"}`);
 
   if (!targets.length) { log(PHASE, "대상 없음, 종료"); return; }
 

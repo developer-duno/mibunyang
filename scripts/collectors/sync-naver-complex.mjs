@@ -1,7 +1,7 @@
 /**
  * 네이버 단지 데이터 → apartments 동기화
  *
- * naver_complexes 테이블에 수집된 용적률, 주차대수, 최고층 등을
+ * naver_complexes 테이블에 수집된 용적률, 주차대수, 최고층, 수영장 등을
  * apartments 테이블로 동기화합니다.
  *
  * 사용법:
@@ -23,7 +23,7 @@ async function main() {
   // 1. naver_complexes에서 유용한 필드가 있는 데이터 조회
   const { data: complexes, error: cErr } = await sb
     .from("naver_complexes")
-    .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_households, high_floor, nearby_apartment_ids");
+    .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_households, high_floor, has_pool, nearby_apartment_ids");
 
   if (cErr) throw new Error(`naver_complexes 조회 실패: ${cErr.message}`);
   log(PHASE, `naver_complexes: ${complexes.length}건`);
@@ -31,7 +31,7 @@ async function main() {
   // 2. apartments 조회
   const { data: apartments, error: aErr } = await sb
     .from("apartments")
-    .select("id, name, floor_area_ratio, parking_ratio, max_floor");
+    .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool");
 
   if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
   log(PHASE, `apartments: ${apartments.length}건`);
@@ -78,6 +78,11 @@ async function main() {
       // 최고층
       if (apt.max_floor == null && cpx.high_floor != null) {
         row.max_floor = cpx.high_floor;
+      }
+
+      // 수영장
+      if (apt.has_pool == null && cpx.has_pool === true) {
+        row.has_pool = true;
       }
 
       if (Object.keys(row).length === 0) { skipped++; continue; }
