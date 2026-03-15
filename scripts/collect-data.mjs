@@ -118,14 +118,14 @@ function mapItem(item, idx, isRemndr) {
   }
   const units = parseInt(item.TOT_SUPLY_HSHLDCO || 0, 10) || 0;
   const remndr = parseInt(item.REMNDR_HSHLDCO || 0, 10) || 0;
-  const unsold = remndr;
+  const unsold = remndr > 0 ? remndr : null;
   return {
     id: `ah-${item.HOUSE_MANAGE_NO || String(idx)}`,
     name, dong, gu, region,
     lat: null, lng: null,
     area: 84, price: null, pp: null,
     units, unsold,
-    unsoldRate: units > 0 ? Math.round(unsold / units * 1000) / 10 : null,
+    unsoldRate: (unsold != null && units > 0) ? Math.round(unsold / units * 1000) / 10 : null,
     builder: resolveBuilder(item.CNSTRCT_ENTRPS_NM || item.BSNS_MBY_NM || null),
     completion: item.MVN_PREARNGE_YM || null,
     heating: item.HEAT_MTHD_NM || null,
@@ -175,6 +175,15 @@ async function phase1_applyhome() {
     } catch { continue; }
   }
   if (!items.length) throw new Error("청약홈 API에서 데이터를 가져올 수 없습니다");
+
+  // [DEBUG] API 응답 필드 전수 확인 (첫 항목)
+  log(`  사용된 엔드포인트: ${usedEndpoint}`);
+  if (items.length > 0) {
+    log(`  [DEBUG] 첫 번째 항목 전체 필드:
+${JSON.stringify(items[0], null, 2)}`);
+    const remndrValues = items.map(it => parseInt(it.REMNDR_HSHLDCO || 0, 10)).filter(v => v > 0);
+    log(`  [DEBUG] REMNDR_HSHLDCO > 0인 항목: ${remndrValues.length}/${items.length}건`);
+  }
 
   const isRemndr = usedEndpoint.includes("getRemndr");
   let apartments = items.map((item, i) => mapItem(item, i, isRemndr)).filter(a => a.region && a.name);
