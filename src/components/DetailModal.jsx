@@ -90,10 +90,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               { l: "분양가", v: fmtPrice(apt.price) },
               { l: "적정가 괴리", v: `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`, c: Number(res.cats.price.deviation) > 0 ? C.green : C.red },
               { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
-              { l: "미분양률", v: apt.unsoldRate != null ? `${apt.unsoldRate}%` : (apt.units != null && apt.units > 1 ? "—" : "산정 불가"), c: apt.unsoldRate != null ? (apt.unsoldRate > 15 ? C.red : C.green) : C.muted },
+              { l: "미분양률", v: apt.unsoldRate != null ? `${apt.unsoldRate}%` : "—", c: apt.unsoldRate != null ? (apt.unsoldRate > 15 ? C.red : C.green) : C.muted },
               { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
               { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
-              { l: "입주", v: apt.completion },
+              { l: "입주", v: fmtCompletion(apt.completion) },
             ].map((r, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
                 <span style={{ fontSize: 12, color: C.muted }}>{r.l}</span>
