@@ -46,7 +46,7 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare }) {
             ); })}
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
               <td style={{ padding: "8px 6px", color: C.sub, fontSize: 11 }}>분양가</td>
-              {items.map(it => <td key={it.apt.id} style={{ textAlign: "center", padding: "8px 6px", fontWeight: 600, color: C.text }}>{((it.apt.price ?? 0) / 10000).toFixed(1)}억</td>)}
+              {items.map(it => <td key={it.apt.id} style={{ textAlign: "center", padding: "8px 6px", fontWeight: 600, color: C.text }}>{fmtPrice(it.apt.price)}</td>)}
             </tr>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
               <td style={{ padding: "8px 6px", color: C.sub, fontSize: 11 }}>총혜택</td>

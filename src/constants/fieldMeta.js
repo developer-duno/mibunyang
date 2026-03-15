@@ -1,4 +1,5 @@
 import { BRAND_TIER, LAYOUT_SCORE } from "./brands";
+import { fmtPrice } from "@/lib/format";
 
 const n = (v, unit, fallback = "—") => v != null ? `${v}${unit}` : fallback;
 const nk = (v, unit) => v != null ? `${v.toLocaleString("ko-KR")}${unit}` : "—";
@@ -11,7 +12,7 @@ export const FIELD_META = {
   gu: { label: "구/시", section: "개요", fmt: v => v ?? "—" },
   region: { label: "시/도", section: "개요", fmt: v => v ?? "—" },
   area: { label: "전용면적", section: "개요", unit: "㎡", fmt: v => n(v, "㎡") },
-  price: { label: "분양가", section: "개요", unit: "만원", fmt: v => nk(v ?? 0, "만원") },
+  price: { label: "분양가", section: "개요", unit: "만원", fmt: v => fmtPrice(v) },
   pp: { label: "평당가", section: "개요", unit: "만원", fmt: v => nk(v ?? 0, "만원") },
   floors: { label: "층수 범위", section: "개요", fmt: v => v ?? "—" },
   maxFloor: { label: "최고층", section: "개요", unit: "층", fmt: v => n(v, "층") },

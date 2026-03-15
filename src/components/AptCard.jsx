@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
+import { fmtPrice, fmtCompletion } from "@/lib/format";
 
 /* ── 정적 스타일 (모듈 레벨 — 렌더마다 재생성 방지) ── */
 const S = {
@@ -48,7 +49,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               <span title={apt.name} style={{ ...S.nameText, color: C.text }}>{apt.name}</span>
             </div>
             <div style={S.tagRow}>
-              {[regionTag, `${apt.area ?? ""}㎡`, `${((apt.price ?? 0) / 10000).toFixed(1)}억`, apt.builder ?? ""].filter(Boolean).map((t, i) => (
+              {[regionTag, `${apt.area ?? ""}㎡`, fmtPrice(apt.price), apt.builder ?? ""].filter(Boolean).map((t, i) => (
                 <span key={i} style={{ fontSize: 11, color: i === 0 ? C.blue : C.sub, background: i === 0 ? C.blueLight : C.bg, padding: "3px 8px", borderRadius: 4, fontWeight: i === 0 ? 700 : 400 }}>{t}</span>
               ))}
             </div>
@@ -85,7 +86,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || (apt.noxious || []).length > 0 || (apt.builderCreditGrade && !["AAA","AA+","AA","AA-","A+","A","A-"].includes(apt.builderCreditGrade))) && (
           <div style={S.alertRow}>
             {apt.completion && (
-              <span style={{ ...S.alertTag, background: C.blueLight, color: C.blue }}>입주 {apt.completion}</span>
+              <span style={{ ...S.alertTag, background: C.blueLight, color: C.blue }}>입주 {fmtCompletion(apt.completion)}</span>
             )}
             {(apt.unsoldRate ?? 0) >= 30 && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {apt.unsoldRate}%</span>

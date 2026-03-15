@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { C, SHORT_LABEL } from "@/theme";
 import { BRAND_TIER } from "@/constants/brands";
+import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import { ScoreBadge, Radar } from "@/components/primitives";
 
@@ -15,7 +16,7 @@ export const ExpertAptHeader = memo(function ExpertAptHeader({ apt, res }) {
           <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{apt.name}</div>
           <div style={{ fontSize: 13, color: C.sub, marginBottom: 8 }}>{apt.region} {apt.gu} {apt.dong ?? ""} · 도시등급 {cityLabel}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            {[`${apt.area ?? ""}㎡`, `${((apt.price ?? 0) / 10000).toFixed(1)}억`, `${apt.builder ?? ""}${b ? ` (${b.tier})` : ""}`, apt.completion].filter(Boolean).map((tag, i) => (
+            {[`${apt.area ?? ""}㎡`, fmtPrice(apt.price), `${apt.builder ?? ""}${b ? ` (${b.tier})` : ""}`, apt.completion ? fmtCompletion(apt.completion) : null].filter(Boolean).map((tag, i) => (
               <span key={i} style={{ padding: "4px 10px", background: C.bg, borderRadius: 4, fontSize: 11, color: C.sub, fontWeight: 600 }}>{tag}</span>
             ))}
           </div>

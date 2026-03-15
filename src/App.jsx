@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy,
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
+import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { C, catCol, catBg } from "@/theme";
 import { AptCard } from "@/components/AptCard";
 
@@ -207,7 +208,7 @@ export default function App() {
     if (!item) return;
     openShareSheet({
       title: `${item.apt.name} - 미분양 분석`,
-      text: `${item.apt.name} ${item.res.total}점 · ${((item.apt.price ?? 0) / 10000).toFixed(1)}억`,
+      text: `${item.apt.name} ${item.res.total}점 · ${fmtPrice(item.apt.price)}`,
       url: `${window.location.origin}/?detail=${aptId}&profile=${profile}`
     });
   }, [scored, profile, openShareSheet]);
