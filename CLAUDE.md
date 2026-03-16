@@ -10,8 +10,11 @@
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (일/주/월 스케줄)
-  - `collect-naver-listings.yml` — 네이버 매물 수집 (매일)
+  - `collect-naver-listings.yml` — 네이버 후처리만 (sync + 전용률 계산, 매일)
   - `naver-units.yml` — 네이버 세대수 2차 보정 (매일, Node.js)
+- **로컬 전용 수집** (GitHub Actions 불가 — 네이버 데이터센터 IP 차단)
+  - `scripts/run-naver-local.sh` — 네이버 매물+시세 수집 → Supabase 업로드
+  - `scripts/collectors/naver-listings.mjs` — 실제 수집 로직
   - `collect-population.yml` — 행안부 인구 증감률 수집 (매월 5일)
   - `collect-housing-permits.yml` — 국토부 주택 인허가 공급비율 수집 (매월 10일)
   - `collect-migration.yml` — 행안부 전입/전출 순이동 수집 (매월 15일)
@@ -104,6 +107,25 @@ const showComp = showCompOpen && compIds.length >= 2;
 실제 데이터: `VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.
 참조: `src/services/staticDataApi.js`, `src/hooks/useApartmentData.js`.
 (레거시 `unsold.js` 및 미사용 API 스텁 5종 삭제 완료)
+
+### 8. 네이버 부동산 수집 — 로컬 전용 룰
+
+**네이버 수집은 반드시 로컬(한국 IP)에서 실행한다. GitHub Actions에서 실행 불가.**
+
+| 구분 | 방식 | 설명 |
+|------|------|------|
+| 네이버 수집 | 로컬 전용 | `bash scripts/run-naver-local.sh` — 한국 IP 필수 |
+| 후처리(sync+calc) | GitHub Actions | `collect-naver-listings.yml` — 매일 자동 |
+| 기타 수집기 | GitHub Actions | 공공 API이므로 IP 제한 없음 |
+
+**이유**: 네이버 부동산 API는 데이터센터 IP(미국 GitHub Actions)를 네트워크 레벨에서 차단. TLS 핑거프린트 우회도 불가.
+
+**로컬 실행 절차**:
+1. `.env.local`에 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` 설정
+2. `bash scripts/run-naver-local.sh` 실행 (수집 → sync → 전용률 계산)
+3. 수집 완료 후 Supabase에 자동 업로드됨 (별도 push 불필요)
+
+**수집 주기**: 주 1~2회 수동 실행 권장 (일일 실행 시 rate limit 주의)
 
 ---
 
