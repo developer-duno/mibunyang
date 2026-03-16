@@ -1,5 +1,5 @@
 import { BRAND_TIER, LAYOUT_SCORE } from "./brands";
-import { fmtPrice } from "@/lib/format";
+import { fmtPrice, fmtCompletion } from "@/lib/format";
 
 const n = (v, unit, fallback = "—") => v != null ? `${v}${unit}` : fallback;
 const nk = (v, unit) => v != null ? `${v.toLocaleString("ko-KR")}${unit}` : "—";
@@ -17,9 +17,9 @@ export const FIELD_META = {
   floors: { label: "층수 범위", section: "개요", fmt: v => v ?? "—" },
   maxFloor: { label: "최고층", section: "개요", unit: "층", fmt: v => n(v, "층") },
   units: { label: "총세대수", section: "개요", unit: "세대", fmt: v => (v != null && v > 1) ? nk(v, "세대") : "정보 없음" },
-  unsold: { label: "미분양 세대", section: "개요", unit: "세대", fmt: v => nk(v ?? 0, "세대") },
+  unsold: { label: "미분양 세대", section: "개요", unit: "세대", fmt: v => (v != null && v > 0) ? nk(v, "세대") : "—" },
   builder: { label: "시공사", section: "개요", fmt: (v) => { if (!v) return "—"; const b = BRAND_TIER[v]; return b ? `${v} (${b.tier})` : `${v} (기타)`; } },
-  completion: { label: "입주예정", section: "개요", fmt: v => v || "미정" },
+  completion: { label: "입주예정", section: "개요", fmt: v => fmtCompletion(v) },
   layout: { label: "평면구조", section: "개요", fmt: (v) => { if (!v) return "—"; const sc = LAYOUT_SCORE[v]; return sc ? `${v} (${sc}점)` : v; } },
   heating: { label: "난방방식", section: "개요", fmt: v => v ?? "—" },
   // ── 섹션2: 가격/시장 ──

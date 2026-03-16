@@ -79,8 +79,10 @@ function sanitize(row) {
     builder: row.builder ?? "",
     layout: row.layout ?? null,
     units: row.units ?? 0,
-    unsold: row.unsold ?? 0,
-    unsoldRate: (row.units ?? 0) <= 1 ? null : (row.unsoldRate ?? 50),
+    unsold: (row.unsold != null && (row.units ?? 0) > 1 && row.unsold >= (row.units ?? 0)) ? null : (row.unsold ?? null),
+    unsoldRate: (row.units ?? 0) <= 1 ? null
+      : (row.unsold != null && row.unsold >= (row.units ?? 0)) ? null
+      : (row.unsoldRate ?? 50),
     completion: row.completion ?? "",
     heating: row.heating ?? null,
     maxFloor: row.maxFloor ?? null,

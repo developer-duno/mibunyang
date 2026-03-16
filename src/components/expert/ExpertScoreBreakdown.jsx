@@ -3,6 +3,7 @@ import { C, catCol } from "@/theme";
 import { BRAND_TIER } from "@/constants/brands";
 import { PROFILES } from "@/constants/profiles";
 import { getAgeCoeff, getAreaAdj } from "@/scoring/engine";
+import { fmtCompletion } from "@/lib/format";
 
 export const ExpertScoreBreakdown = memo(function ExpertScoreBreakdown({ apt, res, profile }) {
   const w = PROFILES[profile]?.w || PROFILES.live.w;
@@ -20,7 +21,7 @@ export const ExpertScoreBreakdown = memo(function ExpertScoreBreakdown({ apt, re
         <div style={{ fontSize: 13, fontWeight: 800, color: C.green, marginBottom: 10, borderBottom: `2px solid ${C.green}`, paddingBottom: 6 }}>적정가 산출 과정</div>
         <div style={{ fontSize: 12, lineHeight: 1.8, color: C.sub }}>
           <div>주변중위가: <b style={{ color: C.text }}>{(apt.nearbyMedian ?? 0).toLocaleString("ko-KR")}만원</b></div>
-          <div>× 연식계수: <b style={{ color: C.text }}>{ageCoeff.toFixed(2)}</b> (입주: {apt.completion ?? "미정"})</div>
+          <div>× 연식계수: <b style={{ color: C.text }}>{ageCoeff.toFixed(2)}</b> (입주: {fmtCompletion(apt.completion)})</div>
           <div>× 면적보정: <b style={{ color: C.text }}>{areaAdj.toFixed(2)}</b> ({apt.area ?? ""}㎡)</div>
           <div>× 브랜드보정: <b style={{ color: C.text }}>{brand.adj.toFixed(2)}</b> ({apt.builder})</div>
           <div style={{ marginTop: 6, padding: "8px 10px", background: fairPrice > apt.price ? C.greenLight : C.redLight, borderRadius: 6, fontWeight: 700, color: fairPrice > apt.price ? C.green : C.red }}>
