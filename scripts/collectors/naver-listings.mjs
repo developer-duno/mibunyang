@@ -17,9 +17,15 @@
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
+import { execFileSync } from "child_process";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, upsertBatch, log, logError, today } from "./_shared.mjs";
 
 loadEnv();
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROXY_SCRIPT = resolve(__dirname, "naver-fetch-proxy.py");
 
 // ── 상수 (Python constants.py 포트) ────────────────────────
 const NAVER_BASE = "https://new.land.naver.com";
@@ -28,12 +34,8 @@ const NAVER_COMPLEX_API = `${NAVER_BASE}/api/complexes`;
 const NAVER_ARTICLES_API = `${NAVER_BASE}/api/articles/complex`;
 const NAVER_ARTICLE_DETAIL_API = `${NAVER_BASE}/api/articles`;
 
-const JWT_TOKEN_PATTERN = /"token":"(eyJ[A-Za-z0-9._-]+)"/;
-const JWT_LIFETIME = 3000 * 1000; // 50분 (ms)
 const MIN_INTERVAL = 1000;        // 요청 간 최소 1초
 const PAGE_DELAY = 1500;          // 페이지 간 1.5초
-const MAX_RETRIES = 5;
-const RETRY_DELAYS = [3000, 5000, 10000, 15000, 20000];
 const CACHE_TTL = 600000;         // 캐시 10분
 const MAX_CACHE_SIZE = 500;       // 캐시 최대 항목 수
 
@@ -46,23 +48,9 @@ const enrichDetail = args.includes("--enrich");
 const limitArg = args.find(a => a.startsWith("--limit="));
 const aptLimit = limitArg ? parseInt(limitArg.replace("--limit=", ""), 10) : 0;
 
-// ── NaverEstateAPI (Python NaverEstateAPI 클래스 포트) ──────
-let jwtToken = null;
-let jwtTokenTime = 0;
+// ── 요청 제어 ───────────────────────────────────────────
 let lastRequestTime = 0;
 const cache = new Map();
-
-const HEADERS = {
-  "Accept": "application/json, text/plain, */*",
-  "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24"',
-  "sec-ch-ua-mobile": "?0",
-  "sec-ch-ua-platform": '"Windows"',
-  "sec-fetch-dest": "empty",
-  "sec-fetch-mode": "cors",
-  "sec-fetch-site": "same-origin",
-};
 
 /** Rate limiting — 최소 간격 보장 */
 async function throttle() {
@@ -97,54 +85,11 @@ function setCached(key, data) {
   cache.set(key, { time: Date.now(), data });
 }
 
-/** JWT 토큰 추출 (Python _ensure_jwt 포트) */
-async function ensureJwt(complexId) {
-  // 유효한 토큰 있으면 재사용
-  if (jwtToken && (Date.now() - jwtTokenTime) < JWT_LIFETIME) {
-    return jwtToken;
-  }
-
-  const targetId = complexId || "217";  // 기본 단지 ID (은마아파트)
-  const url = `${NAVER_BASE}/complexes/${targetId}`;
-
-  await throttle();
-  const res = await fetch(url, {
-    headers: { ...HEADERS, "Accept": "text/html" },
-  });
-
-  if (!res.ok) {
-    throw new Error(`JWT 페이지 로드 실패: ${res.status}`);
-  }
-
-  const html = await res.text();
-  const match = html.match(JWT_TOKEN_PATTERN);
-  if (!match) {
-    // 대체 패턴 시도
-    const altPatterns = [
-      /token\s*[:=]\s*["'](eyJ[A-Za-z0-9._-]+)["']/,
-      /"accessToken"\s*:\s*"(eyJ[A-Za-z0-9._-]+)"/,
-      /Bearer\s+(eyJ[A-Za-z0-9._-]+)/,
-    ];
-    for (const pat of altPatterns) {
-      const m = html.match(pat);
-      if (m) {
-        jwtToken = m[1];
-        jwtTokenTime = Date.now();
-        log("jwt", `대체 패턴으로 토큰 획득 (${jwtToken.slice(0, 20)}...)`);
-        return jwtToken;
-      }
-    }
-    throw new Error("JWT 토큰 추출 실패 — HTML에서 토큰을 찾을 수 없음");
-  }
-
-  jwtToken = match[1];
-  jwtTokenTime = Date.now();
-  log("jwt", `토큰 획득 (${jwtToken.slice(0, 20)}...)`);
-  return jwtToken;
-}
-
-/** HTTP 요청 + 재시도 (Python _request_with_retry 포트) */
-async function requestWithRetry(url, params = {}, needAuth = false, refererComplexId = null) {
+/**
+ * Python curl_cffi 프록시를 통한 HTTP 요청
+ * Chrome TLS 핑거프린트로 네이버 봇 탐지 우회
+ */
+function fetchViaProxy(url, params = {}, needAuth = false, refererComplexId = null) {
   const qs = new URLSearchParams(params).toString();
   const fullUrl = qs ? `${url}?${qs}` : url;
   const cacheKey = fullUrl;
@@ -152,54 +97,39 @@ async function requestWithRetry(url, params = {}, needAuth = false, refererCompl
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  for (let i = 0; i < MAX_RETRIES; i++) {
+  const pyArgs = [PROXY_SCRIPT, fullUrl];
+  if (needAuth) pyArgs.push("--auth");
+  if (refererComplexId) pyArgs.push(`--complex-id=${refererComplexId}`);
+
+  const stdout = execFileSync("python3", pyArgs, {
+    encoding: "utf8",
+    timeout: 60000,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+
+  const data = JSON.parse(stdout);
+  setCached(cacheKey, data);
+  return data;
+}
+
+/** HTTP 요청 + 재시도 (Python 프록시 사용) */
+async function requestWithRetry(url, params = {}, needAuth = false, refererComplexId = null) {
+  const maxRetries = 5;
+  const delays = [3000, 5000, 10000, 15000, 20000];
+
+  for (let i = 0; i < maxRetries; i++) {
     try {
       await throttle();
-
-      const headers = { ...HEADERS };
-      if (needAuth) {
-        const token = await ensureJwt(refererComplexId);
-        headers["Authorization"] = `Bearer ${token}`;
-        if (refererComplexId) {
-          headers["Referer"] = `${NAVER_BASE}/complexes/${refererComplexId}`;
-        }
-      }
-
-      const res = await fetch(fullUrl, {
-        headers,
-        signal: AbortSignal.timeout(60000),
-      });
-
-      if (res.status === 429) {
-        log("rate", `429 Rate Limit — ${RETRY_DELAYS[i]}ms 대기 후 재시도`);
-        jwtToken = null; // 세션 리셋
-        await sleep(RETRY_DELAYS[i]);
-        continue;
-      }
-
-      if (res.status === 401 || res.status === 403) {
-        log("auth", `${res.status} — JWT 재발급 후 재시도`);
-        jwtToken = null;
-        await sleep(RETRY_DELAYS[i]);
-        continue;
-      }
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      setCached(cacheKey, data);
-      return data;
+      return fetchViaProxy(url, params, needAuth, refererComplexId);
     } catch (err) {
-      if (i === MAX_RETRIES - 1) throw err;
-      log("retry", `${i + 1}/${MAX_RETRIES} 실패: ${err.message} — ${RETRY_DELAYS[i]}ms 대기`);
-      await sleep(RETRY_DELAYS[i]);
+      if (i === maxRetries - 1) throw err;
+      log("retry", `${i + 1}/${maxRetries} 실패: ${err.message} — ${delays[i]}ms 대기`);
+      await sleep(delays[i]);
     }
   }
 }
 
-// ── API 함수들 (Python 메서드 포트) ────────────────────────
+// ── API 함수들 ─────────────────────────────────────────────
 
 /** 키워드 검색 → 단지 목록 */
 async function searchByKeyword(keyword, page = 1) {
