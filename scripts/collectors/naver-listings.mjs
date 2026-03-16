@@ -17,7 +17,8 @@
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { execFileSync } from "child_process";
+import { spawn } from "child_process";
+import { createInterface } from "readline";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, upsertBatch, log, logError, today } from "./_shared.mjs";
@@ -86,41 +87,94 @@ function setCached(key, data) {
 }
 
 /**
- * Python curl_cffi 프록시를 통한 HTTP 요청
- * Chrome TLS 핑거프린트로 네이버 봇 탐지 우회
+ * Python curl_cffi 프록시 프로세스 (장수명 배치 모드)
+ * 한 번 띄우고 stdin/stdout JSONL로 통신 — 매 요청마다 subprocess 생성 오버헤드 제거
  */
+let proxyProcess = null;
+let proxyRl = null;
+let pendingResolve = null;
+
+function startProxy() {
+  if (proxyProcess) return;
+  proxyProcess = spawn("python3", [PROXY_SCRIPT, "--batch"], {
+    stdio: ["pipe", "pipe", "inherit"],  // stderr → 콘솔
+  });
+  proxyRl = createInterface({ input: proxyProcess.stdout });
+  proxyRl.on("line", (line) => {
+    if (pendingResolve) {
+      const resolve = pendingResolve;
+      pendingResolve = null;
+      try {
+        resolve(JSON.parse(line));
+      } catch (e) {
+        resolve({ ok: false, error: `JSON parse error: ${e.message}` });
+      }
+    }
+  });
+  proxyProcess.on("exit", (code) => {
+    log("proxy", `Python 프록시 종료 (code=${code})`);
+    proxyProcess = null;
+    if (pendingResolve) {
+      pendingResolve({ ok: false, error: "Proxy process exited" });
+      pendingResolve = null;
+    }
+  });
+  log("proxy", "Python curl_cffi 프록시 시작");
+}
+
+function stopProxy() {
+  if (proxyProcess) {
+    proxyProcess.stdin.end();
+    proxyProcess = null;
+  }
+}
+
 function fetchViaProxy(url, params = {}, needAuth = false, refererComplexId = null) {
   const qs = new URLSearchParams(params).toString();
   const fullUrl = qs ? `${url}?${qs}` : url;
   const cacheKey = fullUrl;
 
   const cached = getCached(cacheKey);
-  if (cached) return cached;
+  if (cached) return Promise.resolve(cached);
 
-  const pyArgs = [PROXY_SCRIPT, fullUrl];
-  if (needAuth) pyArgs.push("--auth");
-  if (refererComplexId) pyArgs.push(`--complex-id=${refererComplexId}`);
+  startProxy();
 
-  const stdout = execFileSync("python3", pyArgs, {
-    encoding: "utf8",
-    timeout: 60000,
-    maxBuffer: 10 * 1024 * 1024,
+  return new Promise((resolve, reject) => {
+    const req = JSON.stringify({
+      url: fullUrl,
+      auth: needAuth,
+      complex_id: refererComplexId,
+    });
+
+    const timeout = setTimeout(() => {
+      pendingResolve = null;
+      reject(new Error("Proxy request timeout (120s)"));
+    }, 120000);
+
+    pendingResolve = (result) => {
+      clearTimeout(timeout);
+      if (result.ok) {
+        setCached(cacheKey, result.data);
+        resolve(result.data);
+      } else {
+        reject(new Error(result.error || "Proxy error"));
+      }
+    };
+
+    proxyProcess.stdin.write(req + "
+");
   });
-
-  const data = JSON.parse(stdout);
-  setCached(cacheKey, data);
-  return data;
 }
 
 /** HTTP 요청 + 재시도 (Python 프록시 사용) */
 async function requestWithRetry(url, params = {}, needAuth = false, refererComplexId = null) {
-  const maxRetries = 5;
-  const delays = [3000, 5000, 10000, 15000, 20000];
+  const maxRetries = 3;
+  const delays = [5000, 10000, 20000];
 
   for (let i = 0; i < maxRetries; i++) {
     try {
       await throttle();
-      return fetchViaProxy(url, params, needAuth, refererComplexId);
+      return await fetchViaProxy(url, params, needAuth, refererComplexId);
     } catch (err) {
       if (i === maxRetries - 1) throw err;
       log("retry", `${i + 1}/${maxRetries} 실패: ${err.message} — ${delays[i]}ms 대기`);
