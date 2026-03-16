@@ -41,10 +41,31 @@ async function main() {
   // 1. naver_complexes에서 유용한 필드가 있는 데이터 조회
   const { data: complexes, error: cErr } = await sb
     .from("naver_complexes")
-    .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_households, high_floor, has_pool, heating_type, nearby_apartment_ids");
+    .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_households, high_floor, has_pool, nearby_apartment_ids");
 
   if (cErr) throw new Error(`naver_complexes 조회 실패: ${cErr.message}`);
   log(PHASE, `naver_complexes: ${complexes.length}건`);
+
+  // 1-b. naver_articles에서 complex_no별 최다 빈도 heating_type 집계
+  const { data: heatingRows, error: hErr } = await sb
+    .from("naver_articles")
+    .select("complex_no, heating_type")
+    .not("heating_type", "is", null);
+
+  if (hErr) logError(PHASE, `naver_articles heating 조회 실패: ${hErr.message}`);
+
+  const heatingByComplex = {};
+  if (heatingRows) {
+    const freq = {};
+    for (const r of heatingRows) {
+      if (!freq[r.complex_no]) freq[r.complex_no] = {};
+      freq[r.complex_no][r.heating_type] = (freq[r.complex_no][r.heating_type] || 0) + 1;
+    }
+    for (const [cno, types] of Object.entries(freq)) {
+      heatingByComplex[cno] = Object.entries(types).sort((a, b) => b[1] - a[1])[0][0];
+    }
+  }
+  log(PHASE, `heating_type 집계: ${Object.keys(heatingByComplex).length}개 단지`);
 
   // 2. apartments 조회
   const { data: apartments, error: aErr } = await sb
@@ -84,9 +105,9 @@ async function main() {
         row.has_pool = true;
       }
 
-      // 난방방식
-      if (apt.heating == null && cpx.heating_type != null) {
-        row.heating = cpx.heating_type;
+      // 난방방식 (naver_articles에서 집계)
+      if (apt.heating == null && heatingByComplex[cpx.complex_no]) {
+        row.heating = heatingByComplex[cpx.complex_no];
       }
 
       if (Object.keys(row).length === 0) { skipped++; continue; }
