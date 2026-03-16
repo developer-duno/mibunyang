@@ -28,9 +28,8 @@ export default async function handler(req, res) {
 
     if (region) query = query.eq("region", region);
     if (gu) query = query.eq("gu", gu);
-    if (req.query.limit || req.query.offset) {
-      query = query.range(safeOffset, safeOffset + safeLimit - 1);
-    }
+    // Supabase 기본 1000행 제한 해제 — 항상 range 설정
+    query = query.range(safeOffset, safeOffset + safeLimit - 1);
 
     const { data, error, count } = await query;
 
