@@ -287,11 +287,17 @@ async function phase2_kosis(apartments) {
   if (!KOSIS_KEY) { log("Phase 2: KOSIS_KEY 없음, 건너뜀"); meta.phases.kosis = { ok: false, reason: "no key" }; return apartments; }
   log("Phase 2: KOSIS 통계 조회...");
   try {
-    const latestYear = String(new Date().getFullYear() - 1);
-    const startYear = String(Number(latestYear) - 1);
+    // ── 2-A: 시군구별 미분양 현황 (DT_1YL202001E, 월별) ──
+    const now = new Date();
+    const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    const startMonth = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, "0")}`;
+
     const params = new URLSearchParams({
-      method: "getList", apiKey: KOSIS_KEY, itmId: "ALL", format: "json", jsonVD: "Y",
-      prdSe: "A", startPrdDe: startYear, endPrdDe: latestYear, orgId: "116", tblId: "DT_MLTM_2086",
+      method: "getList", apiKey: KOSIS_KEY, format: "json", jsonVD: "Y",
+      prdSe: "M", startPrdDe: startMonth, endPrdDe: endMonth,
+      orgId: "101", tblId: "DT_1YL202001E",
+      itmId: "13103871087T1",
       objL1: "ALL", objL2: "ALL",
     });
     const res = await fetch(`https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`);
@@ -299,31 +305,84 @@ async function phase2_kosis(apartments) {
     const data = await res.json();
     if (data.err) throw new Error(data.errMsg || data.err);
     const rows = Array.isArray(data) ? data : [];
+    log(`  미분양 KOSIS 응답: ${rows.length}건 (${startMonth}~${endMonth})`);
 
-    const unsoldMap = {};
-    const latest = {};
+    // 시군구별 최신 월 미분양 집계: { region: { gu: count } }
+    const unsoldByRegionGu = {};
+    const latestPeriod = {};
     for (const row of rows) {
-      if (row.C1_NM !== "시도별미분양현황") continue;
-      const region = KOSIS_REGION_MAP[row.C2_NM];
+      const region = KOSIS_REGION_MAP[row.C1_NM];
       if (!region) continue;
+      const gu = row.C2_NM || "_total";
       const period = row.PRD_DE;
-      const value = parseFloat(row.DT);
+      const value = parseInt(row.DT, 10);
       if (isNaN(value)) continue;
-      if (!latest[region] || period > latest[region]) {
-        latest[region] = period;
-        unsoldMap[region] = value;
+      const key = `${region}::${gu}`;
+      if (!latestPeriod[key] || period > latestPeriod[key]) {
+        latestPeriod[key] = period;
+        if (!unsoldByRegionGu[region]) unsoldByRegionGu[region] = {};
+        unsoldByRegionGu[region][gu] = value;
       }
     }
 
-    // 인구증감률 조회 (인구동향 DT_1B8000G 월간 - 자연증가율 천명당)
+    // 시도별 합계
+    const regionTotals = {};
+    for (const [region, guMap] of Object.entries(unsoldByRegionGu)) {
+      if (guMap["소계"] != null) regionTotals[region] = guMap["소계"];
+      else if (guMap["_total"] != null) regionTotals[region] = guMap["_total"];
+      else regionTotals[region] = Object.values(guMap).reduce((s, v) => s + v, 0);
+    }
+    log(`  시군구별 미분양: ${Object.keys(unsoldByRegionGu).length}개 시도, ${Object.values(unsoldByRegionGu).reduce((s, m) => s + Object.keys(m).length, 0)}개 시군구`);
+
+    // 시군구별 총 분양세대수 (비례배분용)
+    const unitsByGu = {};
+    for (const a of apartments) {
+      if (!a.region || !a.gu || !a.units || a.units <= 1) continue;
+      const key = `${a.region}::${a.gu}`;
+      unitsByGu[key] = (unitsByGu[key] || 0) + a.units;
+    }
+
+    // 미분양 추정: 비례배분 (확인된 값 우선)
+    let kosisEstimated = 0;
+    apartments = apartments.map(a => {
+      const guMap = unsoldByRegionGu[a.region];
+      const guUnsold = guMap?.[a.gu] ?? regionTotals[a.region] ?? null;
+
+      // 이미 확인된 unsold 있으면 유지
+      if (a.unsold != null && a.unsold > 0) {
+        return { ...a, _regionalUnsold: guUnsold };
+      }
+      // 세대수 부족하면 추정 불가
+      if (!a.region || !a.gu || !a.units || a.units <= 1 || guUnsold == null || guUnsold <= 0) {
+        return { ...a, _regionalUnsold: guUnsold };
+      }
+      // 비례배분: 시군구 미분양 × (단지 세대수 / 시군구 총 세대수)
+      const guKey = `${a.region}::${a.gu}`;
+      const totalUnitsInGu = unitsByGu[guKey] || a.units;
+      const estimated = Math.round(guUnsold * (a.units / totalUnitsInGu));
+      if (estimated <= 0) return { ...a, _regionalUnsold: guUnsold };
+      const unsoldRate = Math.round(estimated / a.units * 1000) / 10;
+      if (unsoldRate > 100) return { ...a, _regionalUnsold: guUnsold };
+
+      kosisEstimated++;
+      return {
+        ...a,
+        unsold: estimated,
+        unsoldRate,
+        _regionalUnsold: guUnsold,
+        _kosisEstimated: true,
+      };
+    });
+    log(`  KOSIS 비례배분 미분양 추정: ${kosisEstimated}건`);
+
+    // ── 2-B: 인구증감률 (DT_1B8000G, 월별) ──
     const popGrowthMap = {};
     try {
-      const now = new Date();
-      const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const startMonth = `${now.getFullYear() - 1}01`;
+      const popEndMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const popStartMonth = `${now.getFullYear() - 1}01`;
       const popParams = new URLSearchParams({
         method: "getList", apiKey: KOSIS_KEY, itmId: "ALL", format: "json", jsonVD: "Y",
-        prdSe: "M", startPrdDe: startMonth, endPrdDe: endMonth,
+        prdSe: "M", startPrdDe: popStartMonth, endPrdDe: popEndMonth,
         orgId: "101", tblId: "DT_1B8000G",
         objL1: "ALL", objL2: "ALL",
       });
@@ -331,7 +390,6 @@ async function phase2_kosis(apartments) {
       if (popRes.ok) {
         const popData = await popRes.json();
         const popRows = Array.isArray(popData) ? popData : [];
-        // 자연증가율(천명당) 직접 사용 - 최신 연도 평균
         const rateByRegion = {};
         for (const row of popRows) {
           if (row.C2_NM !== "자연증가율(천명당)") continue;
@@ -344,30 +402,22 @@ async function phase2_kosis(apartments) {
           rateByRegion[region].push(val);
         }
         for (const [region, vals] of Object.entries(rateByRegion)) {
-          // 월별 자연증가율 평균 → popGrowth (‰ → % 변환: /10)
           const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
-          popGrowthMap[region] = Math.round(avg * 10) / 10; // 천명당 → 그대로 사용 (scoring에서 ‰ 기준)
+          popGrowthMap[region] = Math.round(avg * 10) / 10;
         }
         log(`  인구증감: ${Object.keys(popGrowthMap).length}개 지역`);
       }
     } catch (e) { logError("kosis-pop", e.message); }
 
-    // 평균소득 - KOSIS에서 적절한 테이블을 찾지 못함, 향후 추가
-    const incomeMap = {};
-    log(`  평균소득: KOSIS 테이블 미확인, 건너뜀`);
-
     apartments = apartments.map(a => ({
       ...a,
-      _regionalUnsold: unsoldMap[a.region] ?? null,
-      popGrowth: popGrowthMap[a.region] ?? null,
-      _avgIncome: incomeMap[a.region] ?? null,
+      popGrowth: popGrowthMap[a.region] ?? a.popGrowth ?? null,
     }));
-    log(`  KOSIS 지역 매핑: ${Object.keys(unsoldMap).length}개 지역`);
+    log(`  KOSIS 지역 매핑: ${Object.keys(regionTotals).length}개 지역`);
     meta.phases.kosis = { ok: true };
   } catch (e) { logError("kosis", e.message); meta.phases.kosis = { ok: false, reason: e.message }; }
   return apartments;
 }
-
 // ============================================================
 // Phase 3: 카카오 인프라
 // ============================================================
@@ -1170,7 +1220,7 @@ async function main() {
   meta.count = apartments.length;
 
   // 내부 필드 제거
-  apartments = apartments.map(({ _regionalUnsold, _avgIncome, ...rest }) => rest);
+  apartments = apartments.map(({ _regionalUnsold, _avgIncome, _kosisEstimated, ...rest }) => rest);
 
   const output = { ok: true, data: apartments, count: apartments.length, fetchedAt };
   writeFileSync(resolve(outDir, "apartments.json"), JSON.stringify(output));

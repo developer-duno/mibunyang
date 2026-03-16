@@ -25,6 +25,7 @@
   - `collect-dart-builders.yml` — DART 시공사 재무 수집 (매월 1일)
   - `collect-noise.yml` — 소음 추정 수집 (매월 1일)
   - `calc-layout.yml` — 평면구조 추정 (매주 일요일)
+  - `collect-unsold-kosis.yml` — KOSIS 시군구별 미분양 수집 (매월 1일)
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
 
@@ -86,6 +87,7 @@ const showComp = showCompOpen && compIds.length >= 2;
 | `MOLIT_KEY` | 국토부 주택 인허가 + 공동주택 기본정보 API 키 (data.go.kr) |
 | `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경/소음 수집 + 역지오코딩) |
 | `DART_KEY` | DART 전자공시 API 키 (시공사 재무 수집) |
+| `KOSIS_KEY` | KOSIS 국가통계포털 API 키 (미분양 수집) |
 
 ### 6. units 보정 파이프라인
 
