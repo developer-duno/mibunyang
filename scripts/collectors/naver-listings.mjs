@@ -17,16 +17,9 @@
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { spawn } from "child_process";
-import { createInterface } from "readline";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, upsertBatch, log, logError, today } from "./_shared.mjs";
 
 loadEnv();
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROXY_SCRIPT = resolve(__dirname, "naver-fetch-proxy.py");
 
 // ── 상수 (Python constants.py 포트) ────────────────────────
 const NAVER_BASE = "https://new.land.naver.com";
@@ -35,8 +28,12 @@ const NAVER_COMPLEX_API = `${NAVER_BASE}/api/complexes`;
 const NAVER_ARTICLES_API = `${NAVER_BASE}/api/articles/complex`;
 const NAVER_ARTICLE_DETAIL_API = `${NAVER_BASE}/api/articles`;
 
+const JWT_TOKEN_PATTERN = /"token":"(eyJ[A-Za-z0-9._-]+)"/;
+const JWT_LIFETIME = 3000 * 1000; // 50분 (ms)
 const MIN_INTERVAL = 1000;        // 요청 간 최소 1초
 const PAGE_DELAY = 1500;          // 페이지 간 1.5초
+const MAX_RETRIES = 5;
+const RETRY_DELAYS = [3000, 5000, 10000, 15000, 20000];
 const CACHE_TTL = 600000;         // 캐시 10분
 const MAX_CACHE_SIZE = 500;       // 캐시 최대 항목 수
 
@@ -49,9 +46,23 @@ const enrichDetail = args.includes("--enrich");
 const limitArg = args.find(a => a.startsWith("--limit="));
 const aptLimit = limitArg ? parseInt(limitArg.replace("--limit=", ""), 10) : 0;
 
-// ── 요청 제어 ───────────────────────────────────────────
+// ── NaverEstateAPI (Python NaverEstateAPI 클래스 포트) ──────
+let jwtToken = null;
+let jwtTokenTime = 0;
 let lastRequestTime = 0;
 const cache = new Map();
+
+const HEADERS = {
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "sec-fetch-dest": "empty",
+  "sec-fetch-mode": "cors",
+  "sec-fetch-site": "same-origin",
+};
 
 /** Rate limiting — 최소 간격 보장 */
 async function throttle() {
@@ -86,103 +97,109 @@ function setCached(key, data) {
   cache.set(key, { time: Date.now(), data });
 }
 
-/**
- * Python curl_cffi 프록시 프로세스 (장수명 배치 모드)
- * 한 번 띄우고 stdin/stdout JSONL로 통신 — 매 요청마다 subprocess 생성 오버헤드 제거
- */
-let proxyProcess = null;
-let proxyRl = null;
-let pendingResolve = null;
+/** JWT 토큰 추출 (Python _ensure_jwt 포트) */
+async function ensureJwt(complexId) {
+  // 유효한 토큰 있으면 재사용
+  if (jwtToken && (Date.now() - jwtTokenTime) < JWT_LIFETIME) {
+    return jwtToken;
+  }
 
-function startProxy() {
-  if (proxyProcess) return;
-  proxyProcess = spawn("python3", [PROXY_SCRIPT, "--batch"], {
-    stdio: ["pipe", "pipe", "inherit"],  // stderr → 콘솔
+  const targetId = complexId || "217";  // 기본 단지 ID (은마아파트)
+  const url = `${NAVER_BASE}/complexes/${targetId}`;
+
+  await throttle();
+  const res = await fetch(url, {
+    headers: { ...HEADERS, "Accept": "text/html" },
   });
-  proxyRl = createInterface({ input: proxyProcess.stdout });
-  proxyRl.on("line", (line) => {
-    if (pendingResolve) {
-      const resolve = pendingResolve;
-      pendingResolve = null;
-      try {
-        resolve(JSON.parse(line));
-      } catch (e) {
-        resolve({ ok: false, error: `JSON parse error: ${e.message}` });
+
+  if (!res.ok) {
+    throw new Error(`JWT 페이지 로드 실패: ${res.status}`);
+  }
+
+  const html = await res.text();
+  const match = html.match(JWT_TOKEN_PATTERN);
+  if (!match) {
+    // 대체 패턴 시도
+    const altPatterns = [
+      /token\s*[:=]\s*["'](eyJ[A-Za-z0-9._-]+)["']/,
+      /"accessToken"\s*:\s*"(eyJ[A-Za-z0-9._-]+)"/,
+      /Bearer\s+(eyJ[A-Za-z0-9._-]+)/,
+    ];
+    for (const pat of altPatterns) {
+      const m = html.match(pat);
+      if (m) {
+        jwtToken = m[1];
+        jwtTokenTime = Date.now();
+        log("jwt", `대체 패턴으로 토큰 획득 (${jwtToken.slice(0, 20)}...)`);
+        return jwtToken;
       }
     }
-  });
-  proxyProcess.on("exit", (code) => {
-    log("proxy", `Python 프록시 종료 (code=${code})`);
-    proxyProcess = null;
-    if (pendingResolve) {
-      pendingResolve({ ok: false, error: "Proxy process exited" });
-      pendingResolve = null;
-    }
-  });
-  log("proxy", "Python curl_cffi 프록시 시작");
-}
-
-function stopProxy() {
-  if (proxyProcess) {
-    proxyProcess.stdin.end();
-    proxyProcess = null;
+    throw new Error("JWT 토큰 추출 실패 — HTML에서 토큰을 찾을 수 없음");
   }
+
+  jwtToken = match[1];
+  jwtTokenTime = Date.now();
+  log("jwt", `토큰 획득 (${jwtToken.slice(0, 20)}...)`);
+  return jwtToken;
 }
 
-function fetchViaProxy(url, params = {}, needAuth = false, refererComplexId = null) {
+/** HTTP 요청 + 재시도 (Python _request_with_retry 포트) */
+async function requestWithRetry(url, params = {}, needAuth = false, refererComplexId = null) {
   const qs = new URLSearchParams(params).toString();
   const fullUrl = qs ? `${url}?${qs}` : url;
   const cacheKey = fullUrl;
 
   const cached = getCached(cacheKey);
-  if (cached) return Promise.resolve(cached);
+  if (cached) return cached;
 
-  startProxy();
-
-  return new Promise((resolve, reject) => {
-    const req = JSON.stringify({
-      url: fullUrl,
-      auth: needAuth,
-      complex_id: refererComplexId,
-    });
-
-    const timeout = setTimeout(() => {
-      pendingResolve = null;
-      reject(new Error("Proxy request timeout (120s)"));
-    }, 120000);
-
-    pendingResolve = (result) => {
-      clearTimeout(timeout);
-      if (result.ok) {
-        setCached(cacheKey, result.data);
-        resolve(result.data);
-      } else {
-        reject(new Error(result.error || "Proxy error"));
-      }
-    };
-
-    proxyProcess.stdin.write(req + "\n");
-  });
-}
-
-/** HTTP 요청 + 재시도 (Python 프록시 사용) */
-async function requestWithRetry(url, params = {}, needAuth = false, refererComplexId = null) {
-  const maxRetries = 3;
-  const delays = [5000, 10000, 20000];
-
-  for (let i = 0; i < maxRetries; i++) {
+  for (let i = 0; i < MAX_RETRIES; i++) {
     try {
       await throttle();
-      return await fetchViaProxy(url, params, needAuth, refererComplexId);
+
+      const headers = { ...HEADERS };
+      if (needAuth) {
+        const token = await ensureJwt(refererComplexId);
+        headers["Authorization"] = `Bearer ${token}`;
+        if (refererComplexId) {
+          headers["Referer"] = `${NAVER_BASE}/complexes/${refererComplexId}`;
+        }
+      }
+
+      const res = await fetch(fullUrl, {
+        headers,
+        signal: AbortSignal.timeout(60000),
+      });
+
+      if (res.status === 429) {
+        log("rate", `429 Rate Limit — ${RETRY_DELAYS[i]}ms 대기 후 재시도`);
+        jwtToken = null; // 세션 리셋
+        await sleep(RETRY_DELAYS[i]);
+        continue;
+      }
+
+      if (res.status === 401 || res.status === 403) {
+        log("auth", `${res.status} — JWT 재발급 후 재시도`);
+        jwtToken = null;
+        await sleep(RETRY_DELAYS[i]);
+        continue;
+      }
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      setCached(cacheKey, data);
+      return data;
     } catch (err) {
-      if (i === maxRetries - 1) throw err;
-      log("retry", `${i + 1}/${maxRetries} 실패: ${err.message} — ${delays[i]}ms 대기`);
-      await sleep(delays[i]);
+      if (i === MAX_RETRIES - 1) throw err;
+      log("retry", `${i + 1}/${MAX_RETRIES} 실패: ${err.message} — ${RETRY_DELAYS[i]}ms 대기`);
+      await sleep(RETRY_DELAYS[i]);
     }
   }
 }
 
-// ── API 함수들 ─────────────────────────────────────────────
+// ── API 함수들 (Python 메서드 포트) ────────────────────────
 
 /** 키워드 검색 → 단지 목록 */
 async function searchByKeyword(keyword, page = 1) {
