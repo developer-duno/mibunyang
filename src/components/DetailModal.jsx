@@ -188,7 +188,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
                   <tr key={i}>
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{s.name}</td>
                     <td style={tdStyle}>{s.highSchoolType ? `${s.type}(${s.highSchoolType})` : s.type}</td>
-                    <td style={{ ...tdStyle, textAlign: "right", color: s.distance <= 500 ? C.green : s.distance <= 1000 ? C.blue : C.muted }}>{s.distance >= 1000 ? `${(s.distance / 1000).toFixed(1)}km` : `${s.distance}m`}</td>
+                    <td style={{ ...tdStyle, textAlign: "right", color: s.distance != null && s.distance <= 500 ? C.green : s.distance != null && s.distance <= 1000 ? C.blue : C.muted }}>{s.distance == null ? "—" : s.distance >= 1000 ? `${(s.distance / 1000).toFixed(1)}km` : `${s.distance}m`}</td>
                     {hasFounded && <td style={tdStyle}>{s.founded || "-"}</td>}
                     {hasClasses && <td style={{ ...tdStyle, textAlign: "right" }}>{s.classes ? `${s.classes}학급` : "-"}</td>}
                   </tr>
