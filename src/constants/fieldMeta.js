@@ -23,7 +23,7 @@ export const FIELD_META = {
   layout: { label: "평면구조", section: "개요", fmt: (v) => { if (!v) return "—"; const sc = LAYOUT_SCORE[v]; return sc ? `${v} (${sc}점)` : v; } },
   heating: { label: "난방방식", section: "개요", fmt: v => v ?? "—" },
   // ── 섹션2: 가격/시장 ──
-  nearbyMedian: { label: "주변 중위가", section: "가격", unit: "만원", fmt: v => nk(v ?? 0, "만원") },
+  nearbyMedian: { label: "주변 아파트 시세", section: "가격", unit: "만원", fmt: v => nk(v ?? 0, "만원") },
   jeonseRate: { label: "전세가율", section: "가격", unit: "%", fmt: v => n(v, "%"), isEstimated: (v, apt) => apt?._fallbackJeonseRate },
   pir: { label: "PIR (소득대비)", section: "가격", unit: "배", fmt: v => n(v, "배"), isEstimated: (v, apt) => apt?._fallbackPir },
   psr: { label: "PSR (주변대비)", section: "가격", fmt: v => typeof v === "number" ? v.toFixed(2) : "—", isEstimated: (v, apt) => apt?._fallbackPsr },
