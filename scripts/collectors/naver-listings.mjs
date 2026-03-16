@@ -161,8 +161,7 @@ function fetchViaProxy(url, params = {}, needAuth = false, refererComplexId = nu
       }
     };
 
-    proxyProcess.stdin.write(req + "
-");
+    proxyProcess.stdin.write(req + "\n");
   });
 }
 
