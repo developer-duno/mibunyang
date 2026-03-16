@@ -60,6 +60,7 @@ jobs:
             ARGS="$ARGS --limit=${{ inputs.limit }}"
           fi
           node scripts/collectors/naver-listings.mjs $ARGS
+        continue-on-error: true
 
       - name: Sync naver complex data to apartments
         env:
