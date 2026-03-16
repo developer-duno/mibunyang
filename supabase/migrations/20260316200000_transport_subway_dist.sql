@@ -5,7 +5,8 @@
 ALTER TABLE transport ADD COLUMN IF NOT EXISTS subway_dist REAL;
 
 -- 2. apartments_flat VIEW 재생성 (subway_dist COALESCE 적용)
-CREATE OR REPLACE VIEW apartments_flat AS
+DROP VIEW IF EXISTS apartments_flat;
+CREATE VIEW apartments_flat AS
 WITH latest_prices AS (
   SELECT DISTINCT ON (apartment_id)
     apartment_id, area, price, pp

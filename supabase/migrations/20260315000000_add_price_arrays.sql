@@ -8,7 +8,8 @@ ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS jeonse_by_area JSONB DEFAULT '[
 ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS price_by_floor JSONB DEFAULT '[]';
 
 -- 2. apartments_flat VIEW 재생성 (4개 시세 배열 필드 포함)
-CREATE OR REPLACE VIEW apartments_flat AS
+DROP VIEW IF EXISTS apartments_flat;
+CREATE VIEW apartments_flat AS
 WITH latest_prices AS (
   SELECT DISTINCT ON (apartment_id)
     apartment_id, area, price, pp

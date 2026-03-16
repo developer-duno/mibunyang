@@ -8,7 +8,8 @@ ALTER TABLE apartments ADD COLUMN IF NOT EXISTS noxious_dist REAL;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS net_migration INTEGER;
 
 -- 3. apartments_flat VIEW 재생성 (누락 필드 포함)
-CREATE OR REPLACE VIEW apartments_flat AS
+DROP VIEW IF EXISTS apartments_flat;
+CREATE VIEW apartments_flat AS
 WITH latest_prices AS (
   SELECT DISTINCT ON (apartment_id)
     apartment_id, area, price, pp
