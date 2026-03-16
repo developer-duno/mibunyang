@@ -1,7 +1,7 @@
 /**
  * 교통 접근성 수집기 — Kakao Places 기반
  *
- * 버스정류장(500m), 고속도로IC(20km), KTX(50km) 검색
+ * 지하철(SW8, 10km), 버스정류장(1km), 고속도로IC(30km), KTX(80km) 검색
  *
  * 사용법:
  *   node scripts/collectors/transport-tago.mjs              (Supabase UPDATE)
@@ -22,6 +22,26 @@ async function searchKakao(lat, lng, keyword, radius) {
   return data.documents || [];
 }
 
+async function searchKakaoCategory(lat, lng, categoryCode, radius) {
+  const url = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=${categoryCode}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
+  const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
+  const data = await res.json();
+  return data.documents || [];
+}
+
+/** KTX역 결과 필터: place_name이 "역"으로 끝나거나 category에 "기차"/"철도" 포함 */
+function isValidStation(doc) {
+  const name = doc.place_name || "";
+  const cat = doc.category_name || "";
+  return name.endsWith("역") || cat.includes("기차") || cat.includes("철도");
+}
+
+/** IC 결과 필터: place_name에 "IC" 또는 "나들목" 또는 "인터체인지" 포함 */
+function isValidIC(doc) {
+  const name = doc.place_name || "";
+  return name.includes("IC") || name.includes("나들목") || name.includes("인터체인지");
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -38,25 +58,33 @@ async function main() {
   for (let i = 0; i < targets.length; i++) {
     const apt = targets[i];
     try {
-      // 버스정류장 500m
-      const busStops = await searchKakao(apt.lat, apt.lng, "버스정류장", 500);
+      // 지하철역 (SW8 카테고리, 10km)
+      const subways = await searchKakaoCategory(apt.lat, apt.lng, "SW8", 10000);
+      const subwayDist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : 9999;
       await sleep(100);
 
-      // 고속도로 IC 20km
-      const ics = await searchKakao(apt.lat, apt.lng, "고속도로IC", 20000);
+      // 버스 정류장 (키워드 "정류장", 1km)
+      const busStops = await searchKakao(apt.lat, apt.lng, "정류장", 1000);
       await sleep(100);
 
-      // KTX역 50km
-      const ktxs = await searchKakao(apt.lat, apt.lng, "KTX", 50000);
+      // 고속도로 IC (키워드 + 필터, 30km)
+      const icResults = await searchKakao(apt.lat, apt.lng, "IC 나들목", 30000);
+      const validICs = icResults.filter(isValidIC);
       await sleep(100);
 
-      // 유니크 정류장명
+      // KTX역 (키워드 + 필터, 80km)
+      const ktxResults = await searchKakao(apt.lat, apt.lng, "KTX역", 80000);
+      const validKTX = ktxResults.filter(isValidStation);
+      await sleep(100);
+
+      // 결과 계산
       const uniqueBus = new Set(busStops.map(d => d.place_name)).size;
-      const icDist = ics.length > 0 ? Math.round(Number(ics[0].distance) / 1000 * 10) / 10 : 99;
-      const ktxDist = ktxs.length > 0 ? Math.round(Number(ktxs[0].distance) / 1000 * 10) / 10 : 99;
+      const icDist = validICs.length > 0 ? Math.round(Number(validICs[0].distance) / 1000 * 10) / 10 : 99;
+      const ktxDist = validKTX.length > 0 ? Math.round(Number(validKTX[0].distance) / 1000 * 10) / 10 : 99;
 
       const row = {
         apartment_id: apt.id,
+        subway_dist: subwayDist,
         bus_routes: uniqueBus,
         ic_dist: icDist,
         ktx_dist: ktxDist,
@@ -64,7 +92,7 @@ async function main() {
       };
 
       if (dryRun) {
-        log(PHASE, `  [DRY] ${apt.name}: 버스${uniqueBus} IC${icDist}km KTX${ktxDist}km`);
+        log(PHASE, `  [DRY] ${apt.name}: 지하철${subwayDist}m 버스${uniqueBus} IC${icDist}km KTX${ktxDist}km`);
         updated++;
         continue;
       }
@@ -81,7 +109,8 @@ async function main() {
     if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated})`);
   }
 
-  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
+  log(PHASE, `
+=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

@@ -33,6 +33,13 @@ async function searchKakao(lat, lng, keyword, radius) {
   return data.documents || [];
 }
 
+async function searchKakaoCategory(lat, lng, categoryCode, radius) {
+  const url = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=${categoryCode}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=5`;
+  const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
+  const data = await res.json();
+  return data.documents || [];
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -58,8 +65,8 @@ async function main() {
         await sleep(80);
       }
 
-      // 지하철역 검색
-      const subways = await searchKakao(apt.lat, apt.lng, "지하철역", 5000);
+      // 지하철역 검색 (SW8 카테고리, 반경 10km)
+      const subways = await searchKakaoCategory(apt.lat, apt.lng, "SW8", 10000);
       row.subway_dist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : 9999;
       await sleep(80);
 
