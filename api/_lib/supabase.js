@@ -22,3 +22,22 @@ export function getSupabase() {
 
   return _client;
 }
+
+/**
+ * Supabase 클라이언트 (서버사이드, mibunyang 스키마 전용)
+ */
+let _mibuyangClient = null;
+
+export function getMibuyangSupabase() {
+  if (_mibuyangClient) return _mibuyangClient;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL, SUPABASE_SERVICE_KEY 환경변수 필요");
+  }
+  _mibuyangClient = createClient(url, key, {
+    db: { schema: 'mibunyang' },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  return _mibuyangClient;
+}

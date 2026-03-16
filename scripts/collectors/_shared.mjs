@@ -39,6 +39,20 @@ export function getSupabase() {
   return _supabase;
 }
 
+// ── Supabase 클라이언트 (mibunyang 스키마 전용) ─────────────
+let _supabaseMibunyang = null;
+export function getMibuyangSupabase() {
+  if (_supabaseMibunyang) return _supabaseMibunyang;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) throw new Error("SUPABASE_URL + SUPABASE_SERVICE_KEY 필요");
+  _supabaseMibunyang = createClient(url, key, {
+    db: { schema: 'mibunyang' },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  return _supabaseMibunyang;
+}
+
 // ── 로깅 ───────────────────────────────────────────────────
 export function log(phase, msg) {
   console.log(`[${phase}] ${msg}`);
@@ -49,9 +63,9 @@ export function logError(phase, msg) {
 }
 
 // ── 배치 upsert ────────────────────────────────────────────
-export async function upsertBatch(table, rows, conflictCol, batchSize = 500) {
+export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb = null) {
   if (!rows.length) return 0;
-  const sb = getSupabase();
+  sb = sb ?? getSupabase();
   let inserted = 0;
 
   for (let i = 0; i < rows.length; i += batchSize) {

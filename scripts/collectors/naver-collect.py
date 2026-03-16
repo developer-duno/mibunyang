@@ -192,13 +192,12 @@ def main():
                 rt=c.get("realEstateTypeCode","")
                 if rt and rt not in("APT","ABYG","JGC","PRE"):continue
                 cpxs.append({"complex_no":cn,"complex_name":c.get("complexName",""),
-                    "real_estate_type":rt or None,
-                    "lat":float(c["latitude"]) if c.get("latitude") else None,
-                    "lng":float(c["longitude"]) if c.get("longitude") else None,
-                    "total_households":c.get("totalHouseholdCount") or c.get("householdCount"),
+                    "real_estate_type_code":rt or None,
+                    "latitude":float(c["latitude"]) if c.get("latitude") else None,
+                    "longitude":float(c["longitude"]) if c.get("longitude") else None,
+                    "total_household_count":c.get("totalHouseholdCount") or c.get("householdCount"),
                     "use_approve_ymd":c.get("completionYearMonth"),
                     "construction_company":c.get("constructionCompanyName"),
-                    "nearby_apartment_ids":nids,
                     "last_crawled_at":datetime.now().isoformat()})
             log(f"  -> {len(markers)} 마커, {nc} 신규")
         except Exception as e:log(f"  실패:{e}")
@@ -221,12 +220,12 @@ def main():
                     an=str(x["articleNo"]);sa.add(an)
                     pr=pp(x.get("dealOrWarrantPrc"));a2=float(x["area2"]) if x.get("area2") else None
                     ppp=round(pr/(a2/M2P)) if pr and a2 and a2>0 else None
-                    arts.append({"article_no":an,"complex_no":cn,"trade_type":x.get("tradeTypeName",""),
-                        "price":pr or None,"rent_price":pp(x.get("rentPrc")) or None,
-                        "supply_area":float(x["area1"]) if x.get("area1") else None,
-                        "exclusive_area":a2,"pp":ppp,"floor_info":x.get("floorInfo"),
+                    arts.append({"article_no":an,"complex_no":cn,"trade_type_name":x.get("tradeTypeName",""),
+                        "numeric_price":pr or None,"numeric_rent_price":pp(x.get("rentPrc")) or None,
+                        "area1_m2":float(x["area1"]) if x.get("area1") else None,
+                        "area2_m2":a2,"price_per_pyeong":ppp,"floor_info":x.get("floorInfo"),
                         "direction":x.get("direction"),"is_active":True,
-                        "last_seen_at":datetime.now().isoformat(),"recorded_at":date.today().isoformat()})
+                        "last_seen_at":datetime.now().isoformat()})
                 if not d.get("isMoreData"):break
                 pg+=1;time.sleep(1.5)
             if arts:ub("naver_articles",arts,"article_no");ta+=len(arts)
@@ -250,24 +249,22 @@ def main():
                 for it in items:
                     bm=str(it.get("baseYearMonthDay") or it.get("baseYearMonth") or "")
                     if not bm:continue
+                    up=it.get("dealUpperPriceLimit") or it.get("dealUpperPrice") or it.get("leaseUpperPriceLimit") or it.get("leaseUpperPrice")
+                    lo=it.get("dealLowPriceLimit") or it.get("dealLowerPrice") or it.get("leaseLowPriceLimit") or it.get("leaseLowerPrice")
+                    avg=round((up+lo)/2) if up and lo else up or lo
                     rows.append({"complex_no":cn,"trade_type":tt,
                         "area_no":area_no,
-                        "deal_price_upper":it.get("dealUpperPriceLimit") or it.get("dealUpperPrice"),
-                        "deal_price_lower":it.get("dealLowPriceLimit") or it.get("dealLowerPrice"),
-                        "lease_price_upper":it.get("leaseUpperPriceLimit") or it.get("leaseUpperPrice"),
-                        "lease_price_lower":it.get("leaseLowPriceLimit") or it.get("leaseLowerPrice"),
-                        "base_month":bm[:6],"recorded_at":date.today().isoformat()})
+                        "price_upper":up,"price_lower":lo,"price_avg":avg,
+                        "base_month":bm[:8].ljust(8,"0")})
             if rows:
-                # delete+insert (unique constraint 없음)
-                try:SB.update("naver_price_history",{},{f"complex_no=eq.{cn}"})  # dummy - 삭제 대신
+                # delete+insert for complex_price_history
+                try:
+                    hdr={**SB_HEADERS,"Prefer":"return=minimal"}
+                    hx.delete(f"{SB_REST}/complex_price_history?complex_no=eq.{cn}",headers=hdr)
                 except:pass
                 try:
                     hdr={**SB_HEADERS,"Prefer":"return=minimal"}
-                    hx.delete(f"{SB_REST}/naver_price_history?complex_no=eq.{cn}",headers=hdr)
-                except:pass
-                try:
-                    hdr={**SB_HEADERS,"Prefer":"return=minimal"}
-                    hx.post(f"{SB_REST}/naver_price_history",headers=hdr,json=rows)
+                    hx.post(f"{SB_REST}/complex_price_history",headers=hdr,json=rows)
                     tp+=len(rows)
                 except Exception as ie:log(f"  price insert:{ie}")
         except Exception as e:log(f"  {cn}:{e}")

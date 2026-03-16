@@ -11,13 +11,13 @@
  *
  * 수집 흐름 (4단계):
  *   1. Supabase apartments 테이블에서 미분양 아파트 좌표 조회
- *   2. 각 좌표 주변 네이버 단지 검색 → naver_complexes에 upsert
- *   3. 단지별 매물 수집 → naver_articles에 upsert + 소프트 삭제
+ *   2. 각 좌표 주변 네이버 단지 검색 → complexes에 upsert
+ *   3. 단지별 매물 수집 → articles에 upsert + 소프트 삭제
  *   4. 단지별 시세 이력 수집 → naver_price_history에 upsert (매매+전세)
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, upsertBatch, log, logError, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, upsertBatch, log, logError, today } from "./_shared.mjs";
 
 loadEnv();
 
@@ -299,33 +299,29 @@ function detectPool(data) {
   return null; // 확인 불가 → null (not false)
 }
 
-/** API 응답 → naver_complexes 행 */
-function toComplexRow(data, nearbyAptIds = []) {
+/** API 응답 → complexes 행 */
+function toComplexRow(data) {
   return {
     complex_no: String(data.complexNo || data.complexNumber),
     complex_name: data.complexName || data.name || "",
-    real_estate_type: data.realEstateTypeCode || null,
-    region: null,  // 별도 매핑 필요
-    gu: null,
-    dong: null,
-    lat: data.latitude ? parseFloat(data.latitude) : null,
-    lng: data.longitude ? parseFloat(data.longitude) : null,
-    total_households: data.totalHouseholdCount ?? data.householdCount ?? null,
+    real_estate_type_code: data.realEstateTypeCode || null,
+    latitude: data.latitude ? parseFloat(data.latitude) : null,
+    longitude: data.longitude ? parseFloat(data.longitude) : null,
+    total_household_count: data.totalHouseholdCount ?? data.householdCount ?? null,
     use_approve_ymd: data.useApproveYmd ?? null,
     construction_company: data.constructionCompanyName ?? null,
     floor_area_ratio: data.floorAreaRatio ? parseFloat(data.floorAreaRatio) : null,
     total_parking_count: data.totalParkingCount ?? null,
     high_floor: data.highFloor ?? null,
     low_floor: data.lowFloor ?? null,
-    min_supply_area: data.minSupplyArea ? parseFloat(data.minSupplyArea) : null,
-    max_supply_area: data.maxSupplyArea ? parseFloat(data.maxSupplyArea) : null,
-    nearby_apartment_ids: nearbyAptIds.length > 0 ? nearbyAptIds : null,
+    min_supply_area_m2: data.minSupplyArea ? parseFloat(data.minSupplyArea) : null,
+    max_supply_area_m2: data.maxSupplyArea ? parseFloat(data.maxSupplyArea) : null,
     has_pool: detectPool(data),
     last_crawled_at: new Date().toISOString(),
   };
 }
 
-/** API 응답 → naver_articles 행 */
+/** API 응답 → articles 행 */
 function toArticleRow(data, complexNo) {
   const price = parseNaverPrice(data.dealOrWarrantPrc);
   const rentPrice = parseNaverPrice(data.rentPrc);
@@ -337,18 +333,18 @@ function toArticleRow(data, complexNo) {
   return {
     article_no: String(data.articleNo),
     complex_no: String(complexNo),
-    trade_type: data.tradeTypeName || "",
-    price: price || null,
-    rent_price: rentPrice || null,
-    supply_area: area1,
-    exclusive_area: area2,
-    pp: calcPricePerPyeong(price, area2),
+    trade_type_name: data.tradeTypeName || "",
+    numeric_price: price || null,
+    numeric_rent_price: rentPrice || null,
+    area1_m2: area1,
+    area2_m2: area2,
+    price_per_pyeong: calcPricePerPyeong(price, area2),
     floor_info: data.floorInfo ?? null,
     building_name: data.buildingName ?? null,
     direction: data.direction ?? null,
     room_count: null,         // 상세 API에서
     bathroom_count: null,     // 상세 API에서
-    maintenance_cost: null,   // 상세 API에서
+    numeric_maintenance_cost: null,   // 상세 API에서
     move_in_date: null,       // 상세 API에서
     heating_type: null,       // 상세 API에서
     use_approve_ymd: null,    // 상세 API에서
@@ -357,7 +353,6 @@ function toArticleRow(data, complexNo) {
     is_active: true,
     article_confirm_ymd: data.articleConfirmYmd ?? null,
     last_seen_at: new Date().toISOString(),
-    recorded_at: today(),
   };
 }
 
@@ -402,7 +397,7 @@ function enrichArticleFromDetail(row, detail) {
   if (d.maintenanceCost?.costsByDate?.length > 0) {
     const commonPrice = d.maintenanceCost.costsByDate[0].commonPrice;
     if (commonPrice) {
-      row.maintenance_cost = Math.round(parseInt(commonPrice) / 10000);
+      row.numeric_maintenance_cost = Math.round(parseInt(commonPrice) / 10000);
     }
   }
 
@@ -420,7 +415,8 @@ async function main() {
 
   // 1. Supabase에서 미분양 아파트 좌표 조회
   const sb = getSupabase();
-  const { data: apartments, error: aptErr } = await sb
+  const sbMibunyang = getMibuyangSupabase();
+  const { data: apartments, error: aptErr } = await sbMibunyang
     .from("apartments")
     .select("id, name, region, gu, dong, lat, lng")
     .not("lat", "is", null)
@@ -456,7 +452,6 @@ async function main() {
   // 3. 지역별 단지 검색
   for (const [regionKey, apts] of regionGroups) {
     log(phase, `🔎 검색: "${regionKey}" (${apts.length}건)`);
-    const nearbyAptIds = apts.map(a => a.id);
 
     try {
       // 키워드 검색으로 단지 찾기
@@ -476,7 +471,7 @@ async function main() {
           const type = complex.realEstateTypeCode;
           if (type && !["APT", "ABYG", "JGC", "PRE"].includes(type)) continue;
 
-          allComplexRows.push(toComplexRow(complex, nearbyAptIds));
+          allComplexRows.push(toComplexRow(complex));
         }
 
         hasMore = result.isMoreData === true;
@@ -514,7 +509,7 @@ async function main() {
   }
 
   // 4. 단지 upsert
-  await upsertBatch("naver_complexes", allComplexRows, "complex_no");
+  await upsertBatch("complexes", allComplexRows, "complex_no", 500, getMibuyangSupabase());
 
   // 5. 단지별 매물 수집 (스트리밍 upsert — 메모리 효율)
   let totalArticles = 0;
@@ -562,20 +557,25 @@ async function main() {
 
       // 단지별 즉시 upsert (메모리 해제)
       if (complexArticles.length > 0) {
-        await upsertBatch("naver_articles", complexArticles, "article_no");
+        await upsertBatch("articles", complexArticles, "article_no", 500, getMibuyangSupabase());
       }
 
       // 소프트 삭제: 이전에 있었지만 이번에 안 보이는 매물
       if (seenArticles.size > 0) {
-        const { error: deactivateErr } = await sb
-          .from("naver_articles")
-          .update({ is_active: false, last_seen_at: new Date().toISOString() })
-          .eq("complex_no", complexRow.complex_no)
-          .eq("is_active", true)
-          .not("article_no", "in", `(${[...seenArticles].join(",")})`);
+        const seenList = [...seenArticles];
+        const BATCH_SIZE = 500;
+        for (let i = 0; i < seenList.length; i += BATCH_SIZE) {
+          const batch = seenList.slice(i, i + BATCH_SIZE);
+          const { error: deactivateErr } = await sbMibunyang
+            .from("articles")
+            .update({ is_active: false, last_seen_at: new Date().toISOString() })
+            .eq("complex_no", complexRow.complex_no)
+            .eq("is_active", true)
+            .not("article_no", "in", `(${batch.join(",")})`);
 
-        if (deactivateErr) {
-          logError(phase, `소프트 삭제 실패 ${complexRow.complex_no}: ${deactivateErr.message}`);
+          if (deactivateErr) {
+            logError(phase, `소프트 삭제 실패 ${complexRow.complex_no}: ${deactivateErr.message}`);
+          }
         }
       }
     } catch (err) {
@@ -604,7 +604,7 @@ async function main() {
         rows.push(...parsed);
       }
       if (rows.length > 0) {
-        await upsertBatch("naver_price_history", rows, "complex_no,trade_type,area_no,base_month");
+        await upsertBatch("naver_price_history", rows, "complex_no,trade_type,area_no,base_month", 500, getMibuyangSupabase());
         totalPriceRows += rows.length;
       }
     } catch (err) {
@@ -615,14 +615,14 @@ async function main() {
   log(phase, `📈 시세 이력 ${totalPriceRows}건 수집`);
 
   // 7. 통계 요약
-  const { count: complexTotal } = await sb
-    .from("naver_complexes")
+  const { count: complexTotal } = await sbMibunyang
+    .from("complexes")
     .select("*", { count: "exact", head: true });
-  const { count: articleTotal } = await sb
-    .from("naver_articles")
+  const { count: articleTotal } = await sbMibunyang
+    .from("articles")
     .select("*", { count: "exact", head: true })
     .eq("is_active", true);
-  const { count: priceHistoryTotal } = await sb
+  const { count: priceHistoryTotal } = await getMibuyangSupabase()
     .from("naver_price_history")
     .select("*", { count: "exact", head: true });
 

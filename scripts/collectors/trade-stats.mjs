@@ -1,7 +1,7 @@
 /**
  * 거래 통계 산출 — PIR, PSR, 전세가율, 인근 시세 중위값
  *
- * 기존 Supabase 데이터(apartments, trades, regions, naver_complexes, naver_articles)에서
+ * 기존 Supabase 데이터(apartments, trades, regions, complexes, articles)에서
  * 파생 지표를 계산하여 trade_stats 테이블에 upsert.
  *
  * 사용법:
@@ -12,7 +12,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY  — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError } from "./_shared.mjs";
 
 loadEnv();
 
@@ -36,8 +36,8 @@ function monthsAgo(n) {
 }
 
 // ── Supabase 전체 조회 (1000건 페이징) ─────────────────────────
-async function fetchAll(table, select, filters = {}) {
-  const sb = getSupabase();
+async function fetchAll(table, select, filters = {}, sb = null) {
+  sb = sb ?? getSupabase();
   const rows = [];
   const PAGE = 1000;
   let from = 0;
@@ -65,11 +65,13 @@ async function main() {
   const cutoff6m = monthsAgo(6);
 
   // 1. 데이터 로드
+  const sbMibunyang = getMibuyangSupabase();
+
   log("load", "아파트 데이터 조회...");
   // apartments 테이블 직접 조회 (apartments_flat VIEW RLS 이슈 우회)
-  const rawApts = await fetchAll("apartments", "id,name,region,gu");
+  const rawApts = await fetchAll("apartments", "id,name,region,gu", {}, sbMibunyang);
   // prices 테이블에서 최신 분양가 조회
-  const rawPrices = await fetchAll("prices", "apartment_id,area,price,recorded_at");
+  const rawPrices = await fetchAll("prices", "apartment_id,area,price,recorded_at", {}, sbMibunyang);
   // 아파트별 최신 가격 매핑
   const priceMap = {};
   for (const p of rawPrices) {
@@ -91,36 +93,36 @@ async function main() {
   log("load", "거래 데이터 조회...");
   let trades = [];
   try {
-    trades = await fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type");
+    trades = await fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang);
     log("load", `거래 ${trades.length}건`);
-  } catch {
+  } catch (err) {
     log("load", "trades 테이블 없음 또는 빈 테이블 — naver 데이터로 대체");
   }
 
   log("load", "지역 소득 데이터 조회...");
   let regions = [];
   try {
-    regions = await fetchAll("regions", "region,gu,avg_income");
+    regions = await fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang);
     log("load", `지역 ${regions.length}건`);
-  } catch {
+  } catch (err) {
     log("load", "regions 테이블 소득 데이터 없음 — 전국 중위 소득 사용");
   }
 
   log("load", "네이버 매물 데이터 조회...");
   let naverArticles = [];
   try {
-    naverArticles = await fetchAll("naver_articles", "complex_no,trade_type,price,area,created_at");
+    naverArticles = await fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2,created_at", { is_active: true }, sbMibunyang);
     log("load", `네이버 매물 ${naverArticles.length}건`);
-  } catch {
-    log("load", "naver_articles 테이블 없음");
+  } catch (err) {
+    log("load", "articles 테이블 없음");
   }
 
   let naverComplexes = [];
   try {
-    naverComplexes = await fetchAll("naver_complexes", "complex_no,region,gu,use_approve_ymd,nearby_apartment_ids");
+    naverComplexes = await fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang);
     log("load", `네이버 단지 ${naverComplexes.length}건`);
-  } catch {
-    log("load", "naver_complexes 테이블 없음");
+  } catch (err) {
+    log("load", "complexes 테이블 없음");
   }
 
   // 2. 인덱스 구축
@@ -143,13 +145,9 @@ async function main() {
   }
 
   // 네이버 단지 → 아파트 매핑, 단지별 구 정보
-  const complexToApt = new Map();
   const complexGuMap = new Map();
   for (const nc of naverComplexes) {
-    for (const aid of (nc.nearby_apartment_ids || [])) {
-      complexToApt.set(nc.complex_no, aid);
-    }
-    if (nc.region && nc.gu) complexGuMap.set(nc.complex_no, { region: nc.region, gu: nc.gu });
+    if (nc.sido && nc.sigungu) complexGuMap.set(nc.complex_no, { region: nc.sido, gu: nc.sigungu });
   }
 
   // 네이버 매물 그룹: "region:gu" → articles[]
@@ -185,16 +183,16 @@ async function main() {
     if (recent12m.length >= 3) {
       nearbyMedian = median(recent12m.map((t) => t.price));
     } else {
-      // trades 부족 시 naver_articles 대체
+      // trades 부족 시 articles 대체
       const guNaver = naverByGu.get(key) || [];
       const naverSale = guNaver.filter(
         (a) =>
-          a.price != null &&
-          (a.trade_type === "매매" || a.trade_type === "sale" || !a.trade_type) &&
+          a.numeric_price != null &&
+          (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name) &&
           (!a.created_at || a.created_at >= cutoff12m)
       );
       if (naverSale.length >= 1) {
-        nearbyMedian = median(naverSale.map((a) => a.price));
+        nearbyMedian = median(naverSale.map((a) => a.numeric_price));
       }
     }
 
@@ -213,22 +211,22 @@ async function main() {
           jeonseRate = Math.round((jeonseMedian / saleMedian) * 1000) / 10;
         }
       } else {
-        // naver_articles 대체
+        // articles 대체
         const guNaver = naverByGu.get(key) || [];
         const naverJeonse = guNaver.filter(
           (a) =>
-            a.price != null &&
-            (a.trade_type === "전세" || a.trade_type === "lease") &&
+            a.numeric_price != null &&
+            (a.trade_type_name === "전세" || a.trade_type_name === "lease") &&
             (!a.created_at || a.created_at >= cutoff12m)
         );
         const naverSale = guNaver.filter(
           (a) =>
-            a.price != null &&
-            (a.trade_type === "매매" || a.trade_type === "sale" || !a.trade_type) &&
+            a.numeric_price != null &&
+            (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name) &&
             (!a.created_at || a.created_at >= cutoff12m)
         );
-        const jMedian = naverJeonse.length >= 1 ? median(naverJeonse.map((a) => a.price)) : null;
-        const sMedian = naverSale.length >= 1 ? median(naverSale.map((a) => a.price)) : nearbyMedian;
+        const jMedian = naverJeonse.length >= 1 ? median(naverJeonse.map((a) => a.numeric_price)) : null;
+        const sMedian = naverSale.length >= 1 ? median(naverSale.map((a) => a.numeric_price)) : nearbyMedian;
         if (jMedian != null && sMedian && sMedian > 0) {
           jeonseRate = Math.round((jMedian / sMedian) * 1000) / 10;
         }
@@ -266,14 +264,14 @@ async function main() {
         const guNaver = naverByGu.get(key) || [];
         const naverWithArea = guNaver.filter(
           (a) =>
-            a.price != null &&
-            a.area &&
-            a.area > 0 &&
-            (a.trade_type === "매매" || a.trade_type === "sale" || !a.trade_type) &&
+            a.numeric_price != null &&
+            a.area2_m2 &&
+            a.area2_m2 > 0 &&
+            (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name) &&
             (!a.created_at || a.created_at >= cutoff12m)
         );
         if (naverWithArea.length >= 1) {
-          nearbyPerM2 = median(naverWithArea.map((a) => a.price / a.area));
+          nearbyPerM2 = median(naverWithArea.map((a) => a.numeric_price / a.area2_m2));
         }
       }
 
@@ -472,13 +470,13 @@ async function main() {
     return;
   }
 
-  const sb = getSupabase();
+  const sbMibunyang2 = getMibuyangSupabase();
   const BATCH = 500;
   let upserted = 0;
 
   for (let i = 0; i < results.length; i += BATCH) {
     const batch = results.slice(i, i + BATCH);
-    const { error } = await sb
+    const { error } = await sbMibunyang2
       .from("trade_stats")
       .upsert(batch, { onConflict: "apartment_id", ignoreDuplicates: false });
 
@@ -486,7 +484,7 @@ async function main() {
       logError("upsert", `배치 ${i}~${i + batch.length}: ${error.message}`);
       // 개별 재시도
       for (const row of batch) {
-        const { error: e2 } = await sb
+        const { error: e2 } = await sbMibunyang2
           .from("trade_stats")
           .upsert([row], { onConflict: "apartment_id", ignoreDuplicates: false });
         if (!e2) upserted++;
@@ -502,7 +500,7 @@ async function main() {
   if (dsrUpdates.length > 0) {
     let dsrOk = 0;
     for (const { id, dsr40pass } of dsrUpdates) {
-      const { error: e } = await sb
+      const { error: e } = await sbMibunyang2
         .from("apartments")
         .update({ dsr40pass })
         .eq("id", id);
