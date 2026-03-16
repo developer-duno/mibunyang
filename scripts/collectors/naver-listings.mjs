@@ -32,8 +32,8 @@ const JWT_TOKEN_PATTERN = /"token":"(eyJ[A-Za-z0-9._-]+)"/;
 const JWT_LIFETIME = 3000 * 1000; // 50분 (ms)
 const MIN_INTERVAL = 1000;        // 요청 간 최소 1초
 const PAGE_DELAY = 1500;          // 페이지 간 1.5초
-const MAX_RETRIES = 3;
-const RETRY_DELAYS = [3000, 5000, 10000];
+const MAX_RETRIES = 5;
+const RETRY_DELAYS = [3000, 5000, 10000, 15000, 20000];
 const CACHE_TTL = 600000;         // 캐시 10분
 const MAX_CACHE_SIZE = 500;       // 캐시 최대 항목 수
 
@@ -167,7 +167,7 @@ async function requestWithRetry(url, params = {}, needAuth = false, refererCompl
 
       const res = await fetch(fullUrl, {
         headers,
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       });
 
       if (res.status === 429) {

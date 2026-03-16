@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     // null → 기본값 정리 (기존 JSON과 호환)
     const cleaned = (data || []).map(sanitize);
 
-    res.setHeader("Cache-Control", "public, s-maxage=600, stale-while-revalidate=1200");
+    res.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
     return res.status(200).json({
       ok: true,
       data: cleaned,
