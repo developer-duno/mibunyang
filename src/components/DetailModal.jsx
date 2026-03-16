@@ -304,9 +304,11 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
                             const meta = FIELD_META[f];
                             if (!meta) return null;
                             const val = apt[f];
+                            const desc = { pir: "연소득 대비 분양가 비율. 낮을수록 부담 적음", psr: "주변 시세 대비 분양가 비율. 1 미만이면 저평가", popGrowth: "해당 지역 인구 증감률. 양수면 유입 지역", unsoldRate: "총 세대 중 미분양 비율. 낮을수록 인기", dataReliability: "핵심 데이터 수집 완성도" }[f];
                             return (
                               <div key={f} style={{ flex: "1 1 calc(50% - 4px)", minWidth: 100, background: C.slate100, borderRadius: 8, padding: "8px 10px" }}>
                                 <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>{meta.label}</div>
+                                {desc && <div style={{ fontSize: 9, color: C.muted, opacity: 0.7, marginBottom: 2 }}>{desc}</div>}
                                 <div style={{ fontSize: 14, fontWeight: 800, color: dataValueColor(f, val) }}>{meta.fmt(val)}</div>
                                 {f === "dataReliability" && val != null && <Bar value={val} color={dataValueColor(f, val)} h={4} />}
                               </div>
