@@ -23,7 +23,7 @@ export const FIELD_META = {
   layout: { label: "평면구조", section: "개요", fmt: (v) => { if (!v) return "—"; const sc = LAYOUT_SCORE[v]; return sc ? `${v} (${sc}점)` : v; } },
   heating: { label: "난방방식", section: "개요", fmt: v => v ?? "—" },
   // ── 섹션2: 가격/시장 ──
-  nearbyMedian: { label: "주변 아파트 시세", section: "가격", unit: "만원", fmt: v => v ? nk(v, "만원") : "미수집" },
+  nearbyMedian: { label: "주변 아파트 시세", section: "가격", unit: "만원", fmt: v => v ? nk(v, "만원") : "미수집", isEstimated: (v, apt) => apt?._fallbackNearbyMedian },
   jeonseRate: { label: "전세가율", section: "가격", unit: "%", fmt: v => n(v, "%"), isEstimated: (v, apt) => apt?._fallbackJeonseRate },
   pir: { label: "PIR (소득대비)", section: "가격", unit: "배", fmt: v => n(v, "배"), isEstimated: (v, apt) => apt?._fallbackPir },
   psr: { label: "PSR (주변대비)", section: "가격", fmt: v => typeof v === "number" ? v.toFixed(2) : "—", isEstimated: (v, apt) => apt?._fallbackPsr },
@@ -37,9 +37,9 @@ export const FIELD_META = {
   isRegulated: { label: "규제지역", section: "가격", fmt: v => v ? "예" : "아니오" },
   dsr40pass: { label: "DSR 40% 통과", section: "가격", fmt: v => v === true ? "통과" : v === false ? "미통과" : "—" },
   popGrowth: { label: "인구증감률", section: "가격", unit: "%", fmt: v => v != null ? `${v > 0 ? "+" : ""}${v}%` : "—" },
-  nearbyBuildYear: { label: "주변 평균 건축", section: "가격", fmt: v => v != null ? `${v}년` : "—" },
-  avgFloor: { label: "거래 평균 층수", section: "가격", unit: "층", fmt: v => v != null ? `${v}층` : "—" },
-  floorRange: { label: "거래 층수 범위", section: "가격", fmt: v => v ?? "—" },
+  nearbyBuildYear: { label: "주변 평균 건축연도", section: "가격", fmt: v => v != null ? `${v}년` : "미수집", isEstimated: (v, apt) => apt?._fallbackNearbyBuildYear },
+  avgFloor: { label: "평균 거래 층수", section: "가격", unit: "층", fmt: v => v != null ? `${v}층` : "미수집", isEstimated: (v, apt) => apt?._fallbackAvgFloor },
+  floorRange: { label: "거래 층수 범위", section: "가격", fmt: v => v ?? "미수집" },
   // ── 섹션3: 입지/교통/교육/환경 ──
   subwayDist: { label: "지하철 거리", section: "입지", unit: "m", fmt: v => v == null ? "—" : v >= 9000 ? "없음(9999)" : `${v}m`, isDefault: v => v === 9999 },
   busRoutes: { label: "버스 노선", section: "입지", unit: "개", fmt: v => n(v, "개") },
