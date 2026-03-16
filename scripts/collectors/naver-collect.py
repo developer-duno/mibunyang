@@ -257,7 +257,19 @@ def main():
                         "lease_price_upper":it.get("leaseUpperPriceLimit") or it.get("leaseUpperPrice"),
                         "lease_price_lower":it.get("leaseLowPriceLimit") or it.get("leaseLowerPrice"),
                         "base_month":bm[:6],"recorded_at":date.today().isoformat()})
-            if rows:ub("naver_price_history",rows,"complex_no,trade_type,area_no,base_month");tp+=len(rows)
+            if rows:
+                # delete+insert (unique constraint 없음)
+                try:SB.update("naver_price_history",{},{f"complex_no=eq.{cn}"})  # dummy - 삭제 대신
+                except:pass
+                try:
+                    hdr={**SB_HEADERS,"Prefer":"return=minimal"}
+                    hx.delete(f"{SB_REST}/naver_price_history?complex_no=eq.{cn}",headers=hdr)
+                except:pass
+                try:
+                    hdr={**SB_HEADERS,"Prefer":"return=minimal"}
+                    hx.post(f"{SB_REST}/naver_price_history",headers=hdr,json=rows)
+                    tp+=len(rows)
+                except Exception as ie:log(f"  price insert:{ie}")
         except Exception as e:log(f"  {cn}:{e}")
     log(f"시세 {tp}건")
     log("완료!")
