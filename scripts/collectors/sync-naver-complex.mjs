@@ -62,7 +62,8 @@ async function main() {
       freq[r.complex_no][r.heating_type] = (freq[r.complex_no][r.heating_type] || 0) + 1;
     }
     for (const [cno, types] of Object.entries(freq)) {
-      heatingByComplex[cno] = Object.entries(types).sort((a, b) => b[1] - a[1])[0][0];
+      const sorted = Object.entries(types).sort((a, b) => b[1] - a[1]);
+      if (sorted.length > 0) heatingByComplex[cno] = sorted[0][0];
     }
   }
   log(PHASE, `heating_type 집계: ${Object.keys(heatingByComplex).length}개 단지`);
