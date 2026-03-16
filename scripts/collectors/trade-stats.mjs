@@ -117,7 +117,7 @@ async function main() {
 
   let naverComplexes = [];
   try {
-    naverComplexes = await fetchAll("naver_complexes", "complex_no,region,gu,nearby_apartment_ids");
+    naverComplexes = await fetchAll("naver_complexes", "complex_no,region,gu,use_approve_ymd,nearby_apartment_ids");
     log("load", `네이버 단지 ${naverComplexes.length}건`);
   } catch {
     log("load", "naver_complexes 테이블 없음");
@@ -369,6 +369,28 @@ async function main() {
         count: prices.length,
       }));
 
+    // ── avgFloor / floorRange (거래 층수 통계) ─────────────────
+    const floors = floorTrades.map(t => t.floor);
+    const avgFloor = floors.length > 0
+      ? Math.round(floors.reduce((s, f) => s + f, 0) / floors.length)
+      : null;
+    const floorRange = floors.length > 0
+      ? `${Math.min(...floors)}~${Math.max(...floors)}`
+      : null;
+
+    // ── nearbyBuildYear (인근 평균 건축연도) ────────────────────
+    let nearbyBuildYear = null;
+    const guComplexes = naverComplexes.filter(nc => {
+      const gi = complexGuMap.get(nc.complex_no);
+      return gi && gi.region === apt.region && gi.gu === apt.gu;
+    });
+    const buildYears = guComplexes
+      .map(nc => nc.use_approve_ymd ? parseInt(nc.use_approve_ymd.slice(0, 4), 10) : NaN)
+      .filter(y => !isNaN(y) && y > 1970);
+    if (buildYears.length > 0) {
+      nearbyBuildYear = Math.round(buildYears.reduce((s, y) => s + y, 0) / buildYears.length);
+    }
+
     // 모든 값이 null이면 스킵
     if (
       nearbyMedian == null &&
@@ -391,6 +413,9 @@ async function main() {
       rent_by_area: rentByArea.length > 0 ? rentByArea : [],
       jeonse_by_area: jeonseByArea.length > 0 ? jeonseByArea : [],
       price_by_floor: priceByFloor.length > 0 ? priceByFloor : [],
+      avg_floor: avgFloor,
+      floor_range: floorRange,
+      nearby_build_year: nearbyBuildYear,
       updated_at: new Date().toISOString(),
     });
 
