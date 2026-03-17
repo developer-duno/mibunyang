@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from "react";
 export function useConsult(showToast, favoriteIds) {
   const [consultForm, setConsultForm] = useState({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
   const [consultSubmitted, setConsultSubmitted] = useState(false);
+  // TODO(structure): submittedConsults는 localStorage 저장만 되고 App에서 미조회 — 서버 전송 로직 추가 필요 (⚠️-2)
   const [submittedConsults, setSubmittedConsults] = useState(() => {
     try { return JSON.parse(localStorage.getItem("mibunyang_consults") || "[]"); } catch { return []; }
   });

@@ -93,6 +93,8 @@ export const LIQUIDITY_TIERS = [
 ];
 export const LIQUIDITY_LOW_SCORE = 80;
 export const CREDIT_GRADE_SCORES = { AA: 0, "AA-": 5, "A+": 10, A: 15, "A-": 20, BBB: 35, BB: 60 };
+/** 안전 등급 목록 (AptCard 경고 태그 판정용) */
+export const SAFE_CREDIT_GRADES = ["AAA", "AA+", "AA", "AA-", "A+", "A", "A-"];
 export const CREDIT_DEFAULT = 30;
 export const SUPPLY_RATIO_TIERS = [
   { max: 50, score: 5 }, { max: 100, score: 25 }, { max: 130, score: 50 },
@@ -115,6 +117,19 @@ export const POP_FUTURE_TIERS = [
 ];
 export const POP_FUTURE_LOW = 10;
 export const POP_FUTURE_NULL = 35;
+
+// === Price: 데이터 부재 시 기본값 ===
+export const PRICE_NO_DATA_DEFAULTS = { dev: 30, jr: 50, pir: 50, psr: 50 };
+
+// === Price: 괴리도 점수 임계값 ===
+export const DEV_SCORE_TIERS = [
+  { min: 20, score: 97 },
+  { min: 10, base: 75, range: 20, span: 10 },
+  { min: 5, base: 55, range: 20, span: 5 },
+  { min: 0, base: 35, range: 20, span: 5 },
+];
+export const DEV_SCORE_NEGATIVE_MULT = 4;
+export const DEV_SCORE_BASE = 35;
 
 // === Benefit ===
 export const INTEREST_RATE = 0.045;      // 중도금 대출 추정 금리 4.5%

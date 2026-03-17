@@ -57,6 +57,7 @@ export function useExpertMode(showToast) {
     }
   }, [showToast]);
 
+  // TODO(structure): handleExpertSignup 함수 정의되었으나 UI 미구현 — 회원가입 페이지 추가 시 연결 필요 (⚠️-1)
   const handleExpertSignup = useCallback(async () => {
     const form = authFormRef.current;
     setAuthLoading(true);

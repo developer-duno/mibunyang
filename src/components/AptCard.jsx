@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { C, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
+import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 
 /* ── 정적 스타일 (모듈 레벨 — 렌더마다 재생성 방지) ── */
 const S = {
@@ -26,6 +27,7 @@ const S = {
 export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights }) {
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
+    const noxCount = (apt.noxious || []).length;
   const regionTag = `${apt.region ?? ""} ${apt.gu ?? ""}`.trim();
 
   // 상태 의존 스타일만 useMemo로 계산
@@ -83,7 +85,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           </div>
         )}
 
-        {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || (apt.noxious || []).length > 0 || (apt.builderCreditGrade && !["AAA","AA+","AA","AA-","A+","A","A-"].includes(apt.builderCreditGrade))) && (
+        {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || noxCount > 0 || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade))) && (
           <div style={S.alertRow}>
             {apt.completion && (
               <span style={{ ...S.alertTag, background: C.blueLight, color: C.blue }}>입주 {fmtCompletion(apt.completion)}</span>
@@ -91,11 +93,11 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             {(apt.unsoldRate ?? 0) >= 30 && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {apt.unsoldRate}%</span>
             )}
-            {apt.builderCreditGrade && !["AAA","AA+","AA","AA-","A+","A","A-"].includes(apt.builderCreditGrade) && (
+            {apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade) && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>시공사 {apt.builderCreditGrade}</span>
             )}
-            {(apt.noxious || []).length > 0 && (
-              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>혐오시설 {(apt.noxious || []).length}건</span>
+            {noxCount > 0 && (
+              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>혐오시설 {noxCount}건</span>
             )}
           </div>
         )}

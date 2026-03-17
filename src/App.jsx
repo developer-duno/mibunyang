@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy,
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
-import { fmtPrice, fmtCompletion } from "@/lib/format";
+import { fmtPrice } from "@/lib/format";
 import { C, catCol, catBg } from "@/theme";
 import { AptCard } from "@/components/AptCard";
 
@@ -209,6 +209,7 @@ export default function App() {
     if (detailId || compareStr) window.history.replaceState(null, "", window.location.pathname);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // TODO(perf): handleShareDetail이 scored에 의존 → scored 변경시 500+ AptCard memo 무효화. scoredRef 패턴 권장 (⚠️-3)
   const handleShareDetail = useCallback((aptId) => {
     const item = scored.find(x => x.apt.id === aptId);
     if (!item) return;
@@ -368,7 +369,7 @@ export default function App() {
             }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
           )}
 
-          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} /></Suspense>}
+          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} /></Suspense>}
 
           <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
             <span>{filtered.length}개 단지{dataFreshnessText ? ` · ${dataFreshnessText}` : ""} · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>

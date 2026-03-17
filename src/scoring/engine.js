@@ -19,6 +19,7 @@ import {
   POP_FUTURE_TIERS, POP_FUTURE_LOW, POP_FUTURE_NULL,
   INTEREST_RATE, LOAN_TERM_MULT, BENEFIT_FULL_RATE,
   AREA_ADJ_TIERS, AREA_ADJ_LARGE,
+  PRICE_NO_DATA_DEFAULTS, DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
 } from "@/constants/scoringTiers";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
@@ -109,8 +110,8 @@ export function scorePrice(apt) {
   const areaAdj = getAreaAdj(apt.area);
   const fairPrice = apt.nearbyMedian * ageCoeff * areaAdj * b.adj;
   if (fairPrice <= 0) {
-    const devSc = 30;
-    const jrSc = 50; const pirSc = 50; const psrSc = 50;
+    const devSc = PRICE_NO_DATA_DEFAULTS.dev;
+    const jrSc = PRICE_NO_DATA_DEFAULTS.jr; const pirSc = PRICE_NO_DATA_DEFAULTS.pir; const psrSc = PRICE_NO_DATA_DEFAULTS.psr;
     const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + Math.min(apt.dataReliability, 100) * 0.10;
     return {
       total: Math.round(Math.min(total, 100)), fairPrice: 0, deviation: "0.0",
@@ -124,7 +125,7 @@ export function scorePrice(apt) {
     };
   }
   const dev = ((fairPrice - apt.price) / fairPrice) * 100;
-  let devSc = dev >= 20 ? 97 : dev >= 10 ? 75 + (dev - 10) / 10 * 20 : dev >= 5 ? 55 + (dev - 5) / 5 * 20 : dev >= 0 ? 35 + dev / 5 * 20 : Math.max(0, 35 + dev * 4);
+  let devSc = dev >= DEV_SCORE_TIERS[0].min ? DEV_SCORE_TIERS[0].score : dev >= DEV_SCORE_TIERS[1].min ? DEV_SCORE_TIERS[1].base + (dev - DEV_SCORE_TIERS[1].min) / DEV_SCORE_TIERS[1].span * DEV_SCORE_TIERS[1].range : dev >= DEV_SCORE_TIERS[2].min ? DEV_SCORE_TIERS[2].base + (dev - DEV_SCORE_TIERS[2].min) / DEV_SCORE_TIERS[2].span * DEV_SCORE_TIERS[2].range : dev >= DEV_SCORE_TIERS[3].min ? DEV_SCORE_TIERS[3].base + dev / DEV_SCORE_TIERS[3].span * DEV_SCORE_TIERS[3].range : Math.max(0, DEV_SCORE_BASE + dev * DEV_SCORE_NEGATIVE_MULT);
   devSc = Math.max(0, Math.min(devSc, 100));
 
   let jrSc; const jr = apt.jeonseRate;
