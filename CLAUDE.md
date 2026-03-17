@@ -116,6 +116,7 @@ useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
+**TDZ 방지**: 커스텀 훅 호출 시 매개변수가 반드시 해당 훅 호출 **이전에** 정의되어야 함. Vite production 빌드에서 const 재배열로 TDZ 에러 발생 (2eaac74).
 
 ### 3. useMemo 의존성 배열 (App.jsx)
 
