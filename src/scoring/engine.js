@@ -19,6 +19,7 @@ import {
   POP_FUTURE_TIERS, POP_FUTURE_LOW, POP_FUTURE_NULL,
   INTEREST_RATE, LOAN_TERM_MULT, BENEFIT_FULL_RATE,
   AREA_ADJ_TIERS, AREA_ADJ_LARGE,
+  FUTURE_WEIGHT_MAP,
   PRICE_NO_DATA_DEFAULTS, DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
 } from "@/constants/scoringTiers";
 
@@ -315,18 +316,9 @@ export function scoreFuture(apt) {
   // 동적 가중치: 데이터 부재 시 인구에 가중치 집중 (합계 항상 1.00)
   const hasTr = trSc > 0;
   const hasCity = citySc > 0;
-  let wTr, wCity, wPop, wInd;
-  // TODO(quality): scoreFuture 동적 가중치 8분기 if/else -> lookup table 정리 권장 (Q-4)
-  if (hasTr && hasCity && hasInd)        { wTr = 0.30; wCity = 0.25; wPop = 0.25; wInd = 0.20; }
-  else if (hasTr && hasCity && !hasInd)  { wTr = 0.40; wCity = 0.30; wPop = 0.30; wInd = 0; }
-  else if (hasTr && !hasCity && hasInd)  { wTr = 0.40; wCity = 0;    wPop = 0.30; wInd = 0.30; }
-  else if (hasTr && !hasCity && !hasInd) { wTr = 0.55; wCity = 0;    wPop = 0.45; wInd = 0; }
-  else if (!hasTr && hasCity && hasInd)  { wTr = 0;    wCity = 0.35; wPop = 0.35; wInd = 0.30; }
-  else if (!hasTr && hasCity && !hasInd) { wTr = 0;    wCity = 0.45; wPop = 0.55; wInd = 0; }
-  else if (!hasTr && !hasCity && hasInd) { wTr = 0;    wCity = 0;    wPop = 0.60; wInd = 0.40; }
-  else                                   { wTr = 0;    wCity = 0;    wPop = 1.00; wInd = 0; }
+  const fw = FUTURE_WEIGHT_MAP[`${+hasTr},${+hasCity},${+hasInd}`];
 
-  const total = trSc * wTr + citySc * wCity + popSc * wPop + indSc * wInd;
+  const total = trSc * fw.tr + citySc * fw.city + popSc * fw.pop + indSc * fw.ind;
   const pg = apt.popGrowth;
   return {
     total: Math.round(Math.min(total, 100)),

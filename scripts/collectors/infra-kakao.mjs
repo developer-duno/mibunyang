@@ -1,4 +1,3 @@
-// TODO(scalability): Kakao API 병렬 호출 시 Semaphore(10) 패턴으로 초당 50건 제한 권장 (SC-2)
 /**
  * 인프라 시설 수집기 — Kakao Places 기반
  *
@@ -15,6 +14,19 @@ loadEnv();
 const PHASE = "infra";
 const KAKAO_KEY = process.env.KAKAO_KEY;
 if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
+
+// Semaphore: 동시 실행 수 제한 (SC-2 — Kakao API 초당 50건 제한 대응)
+function createSemaphore(max) {
+  let running = 0;
+  const queue = [];
+  return async (fn) => {
+    if (running >= max) await new Promise(r => queue.push(r));
+    running++;
+    try { return await fn(); }
+    finally { running--; if (queue.length) queue.shift()(); }
+  };
+}
+const sem = createSemaphore(5); // 동시 5건 (Kakao 초당 50건 중 안전 마진)
 
 const CATEGORIES = [
   { key: "hospital", keyword: "병원", radius: 1000 },
@@ -54,8 +66,7 @@ async function main() {
 
   let updated = 0, skipped = 0;
 
-  for (let i = 0; i < targets.length; i++) {
-    const apt = targets[i];
+  const processApt = async (apt, i) => sem(async () => {
     try {
       const row = { apartment_id: apt.id, updated_at: new Date().toISOString() };
 
@@ -63,18 +74,18 @@ async function main() {
         const results = await searchKakao(apt.lat, apt.lng, cat.keyword, cat.radius);
         row[cat.key] = results.length;
         row[`${cat.key}_dist`] = results.length > 0 ? Math.round(Number(results[0].distance)) : null;
-        await sleep(80);
+        await sleep(120);
       }
 
       // 지하철역 검색 (SW8 카테고리, 반경 10km)
       const subways = await searchKakaoCategory(apt.lat, apt.lng, "SW8", 10000);
       row.subway_dist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : 9999;
-      await sleep(80);
+      await sleep(120);
 
       if (dryRun) {
         log(PHASE, `  [DRY] ${apt.name}: 병원${row.hospital} 마트${row.mart} 편의점${row.conv} 지하철${row.subway_dist}m`);
         updated++;
-        continue;
+        return;
       }
 
       const { error: uErr } = await sb.from("infra").upsert([row], { onConflict: "apartment_id" });
@@ -86,6 +97,13 @@ async function main() {
     }
 
     if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated})`);
+  });
+
+  // 배치 단위 병렬 실행 (동시 5건)
+  const BATCH = 30;
+  for (let b = 0; b < targets.length; b += BATCH) {
+    const batch = targets.slice(b, b + BATCH);
+    await Promise.all(batch.map((apt, j) => processApt(apt, b + j)));
   }
 
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);

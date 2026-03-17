@@ -26,6 +26,7 @@ import { useUserLocation } from "@/hooks/useUserLocation";
 import { useResponsive } from "@/hooks/useResponsive";
 import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 export default function App() {
   const [profile, setProfileRaw] = useState(() => {
@@ -47,6 +48,7 @@ export default function App() {
   });
 
   const { isPC } = useResponsive();
+  const debouncedSearchText = useDebouncedValue(searchText, 300);
 
   // 8 custom hooks
   const { toast, showToast } = useToast();
@@ -95,15 +97,14 @@ export default function App() {
     const effectiveMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
     if (effectiveMin != null) list = list.filter(x => x.apt.price >= effectiveMin * 10000);
     if (effectiveMax != null) list = list.filter(x => x.apt.price <= effectiveMax * 10000);
-    // TODO(perf): searchText에 300ms debounce 추가 권장 (P-2)
-    if (searchText) list = list.filter(x => matchSearch(x.apt.name, searchText) || matchSearch(x.apt.builder ?? "", searchText) || matchSearch(x.apt.gu ?? "", searchText) || matchSearch(x.apt.region ?? "", searchText));
+    if (debouncedSearchText) list = list.filter(x => matchSearch(x.apt.name, debouncedSearchText) || matchSearch(x.apt.builder ?? "", debouncedSearchText) || matchSearch(x.apt.gu ?? "", debouncedSearchText) || matchSearch(x.apt.region ?? "", debouncedSearchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
     return [...list].sort(sorters[sortKey] || sorters.total);
-  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, searchText]);
+  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText]);
   useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, searchText]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  // TODO(perf): scored.find() O(n) -> Map 자료구조로 O(1) 조회 (P-3)
-  const compItems = useMemo(() => compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean), [compIds, scored]);
+  const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
+  const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
   const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
 
   const regionOptions = useMemo(() => {
@@ -209,16 +210,17 @@ export default function App() {
     if (detailId || compareStr) window.history.replaceState(null, "", window.location.pathname);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // TODO(perf): handleShareDetail이 scored에 의존 → scored 변경시 500+ AptCard memo 무효화. scoredRef 패턴 권장 (⚠️-3)
+  const scoredMapRef = useRef(scoredMap);
+  useEffect(() => { scoredMapRef.current = scoredMap; }, [scoredMap]);
   const handleShareDetail = useCallback((aptId) => {
-    const item = scored.find(x => x.apt.id === aptId);
+    const item = scoredMapRef.current.get(aptId);
     if (!item) return;
     openShareSheet({
       title: `${item.apt.name} - 미분양 분석`,
       text: `${item.apt.name} ${item.res.total}점 · ${fmtPrice(item.apt.price)}`,
       url: `${window.location.origin}/?detail=${aptId}&profile=${profile}`
     });
-  }, [scored, profile, openShareSheet]);
+  }, [profile, openShareSheet]);
 
   const handleShareCompare = useCallback(() => {
     if (compIds.length < 2) return;

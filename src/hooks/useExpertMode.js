@@ -13,7 +13,9 @@ export function useExpertMode(showToast) {
   const [expertExpandedApt, setExpertExpandedApt] = useState(null);
 
   const authFormRef = useRef(authForm);
+  const showToastRef = useRef(showToast);
   authFormRef.current = authForm;
+  showToastRef.current = showToast;
 
   const handleExpertLogin = useCallback(async () => {
     const form = authFormRef.current;
@@ -55,7 +57,7 @@ export function useExpertMode(showToast) {
     } finally {
       setAuthLoading(false);
     }
-  }, [showToast]);
+  }, []); // showToastRef 사용으로 showToast 의존성 제거 (P-4)
 
   // TODO(structure): handleExpertSignup 함수 정의되었으나 UI 미구현 — 회원가입 페이지 추가 시 연결 필요 (⚠️-1)
   const handleExpertSignup = useCallback(async () => {
@@ -106,7 +108,7 @@ export function useExpertMode(showToast) {
     showToast("로그아웃되었습니다");
   }, [showToast]);
 
-  // TODO(perf): showToast를 useRef로 분리하여 탭 전환시 verify 재실행 방지 (P-4)
+  
 
 
   useEffect(() => {
@@ -132,7 +134,7 @@ export function useExpertMode(showToast) {
             setExpertLoggedIn(false);
             sessionStorage.removeItem("expertToken");
             sessionStorage.removeItem("userRole");
-            showToast("세션이 만료되었습니다. 다시 로그인해주세요.");
+            showToastRef.current("세션이 만료되었습니다. 다시 로그인해주세요.");
           } else {
             setAuthUser(data.user);
             if (data.role) sessionStorage.setItem("userRole", data.role);

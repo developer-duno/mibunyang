@@ -118,9 +118,24 @@ export const POP_FUTURE_TIERS = [
 export const POP_FUTURE_LOW = 10;
 export const POP_FUTURE_NULL = 35;
 
+// === Future: 동적 가중치 룩업 테이블 (Q-4) ===
+// 키: "${hasTr},${hasCity},${hasInd}" (1=있음, 0=없음) → 합계 항상 1.00
+export const FUTURE_WEIGHT_MAP = {
+  "1,1,1": { tr: 0.30, city: 0.25, pop: 0.25, ind: 0.20 },
+  "1,1,0": { tr: 0.40, city: 0.30, pop: 0.30, ind: 0 },
+  "1,0,1": { tr: 0.40, city: 0, pop: 0.30, ind: 0.30 },
+  "1,0,0": { tr: 0.55, city: 0, pop: 0.45, ind: 0 },
+  "0,1,1": { tr: 0, city: 0.35, pop: 0.35, ind: 0.30 },
+  "0,1,0": { tr: 0, city: 0.45, pop: 0.55, ind: 0 },
+  "0,0,1": { tr: 0, city: 0, pop: 0.60, ind: 0.40 },
+  "0,0,0": { tr: 0, city: 0, pop: 1.00, ind: 0 },
+};
+
 // === Price: 데이터 부재 시 기본값 ===
 export const PRICE_NO_DATA_DEFAULTS = { dev: 30, jr: 50, pir: 50, psr: 50 };
 
+// === Future: 동적 가중치 룩업 테이블 (Q-4) ===
+// 키: "${hasTr},${hasCity},${hasInd}" (1=있음, 0=없음) → 합계 항상 1.00
 // === Price: 괴리도 점수 임계값 ===
 export const DEV_SCORE_TIERS = [
   { min: 20, score: 97 },

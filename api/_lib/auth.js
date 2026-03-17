@@ -26,13 +26,13 @@ function getSecret() {
   return secret;
 }
 
-export function createToken(payload) {
+export function createToken(payload, { ttl } = {}) {
   const secret = getSecret();
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const body = Buffer.from(JSON.stringify({
     ...payload,
     iat: Date.now(),
-    exp: Date.now() + 86400000, // TODO(security): 관리자 토큰은 1h TTL 권장, 폐기 블랙리스트 고려 (S-6)
+    exp: Date.now() + (ttl || 86400000), // 기본 24h, admin은 1h
   })).toString("base64url");
   const sig = crypto.createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${sig}`;
