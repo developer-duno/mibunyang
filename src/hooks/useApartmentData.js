@@ -8,15 +8,17 @@ export function useApartmentData() {
   const [apartments, setApartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [dataUpdatedAt, setDataUpdatedAt] = useState(null);
 
   const load = useCallback(async (signal) => {
     setLoading(true);
     setError(null);
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const { data } = await fetchStaticApartments();
+        const { data, dataUpdatedAt: updAt } = await fetchStaticApartments();
         if (signal?.aborted) return;
         setApartments(data);
+        setDataUpdatedAt(updAt ?? null);
         setError(null);
         setLoading(false);
         return;
@@ -41,5 +43,5 @@ export function useApartmentData() {
     return () => ac.abort();
   }, [load]);
 
-  return { apartments, loading, error, retry };
+  return { apartments, loading, error, retry, dataUpdatedAt };
 }

@@ -41,12 +41,23 @@ export default async function handler(req, res) {
     // null → 기본값 정리 (기존 JSON과 호환)
     const cleaned = (data || []).map(sanitize);
 
+    // 데이터 최신성: 가장 최근 updated_at
+    const { data: latestRow } = await supabase
+      .from("apartments")
+      .select("updated_at")
+      .not("updated_at", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .single();
+    const dataUpdatedAt = latestRow?.updated_at ?? null;
+
     res.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
     return res.status(200).json({
       ok: true,
       data: cleaned,
       count: count ?? cleaned.length,
       fetchedAt: new Date().toISOString(),
+      dataUpdatedAt,
     });
   } catch (err) {
     console.error("API error:", err);

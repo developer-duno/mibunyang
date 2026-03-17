@@ -86,63 +86,16 @@ async function main() {
   // 1. 데이터 로드
   const sbMibunyang = getMibuyangSupabase();
 
-  log("load", "아파트 데이터 조회...");
-  // apartments 테이블 직접 조회 (apartments_flat VIEW RLS 이슈 우회)
-  const rawApts = await fetchAll("apartments", "id,name,region,gu", {}, sbMibunyang);
-  // prices 테이블에서 최신 분양가 조회
-  const rawPrices = await fetchAll("prices", "apartment_id,area,price,recorded_at", {}, sbMibunyang);
-  // 아파트별 최신 가격 매핑
-  const priceMap = {};
-  for (const p of rawPrices) {
-    const prev = priceMap[p.apartment_id];
-    if (!prev || p.recorded_at > prev.recorded_at) priceMap[p.apartment_id] = p;
-  }
-  const apartments = rawApts.map(a => ({
-    ...a,
-    price: priceMap[a.id]?.price ?? null,
-    area: priceMap[a.id]?.area ?? null,
-  }));
-  log("load", `아파트 ${apartments.length}건`);
-
-  if (!apartments.length) {
-    logError("load", "아파트 데이터가 비어있습니다.");
-    process.exit(1);
-  }
-
-  log("load", "거래 데이터 조회...");
-  let trades = [];
-  try {
-    trades = await fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang);
-    log("load", `거래 ${trades.length}건`);
-  } catch (err) {
-    log("load", "trades 테이블 없음 또는 빈 테이블 — naver 데이터로 대체");
-  }
-
-  log("load", "지역 소득 데이터 조회...");
-  let regions = [];
-  try {
-    regions = await fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang);
-    log("load", `지역 ${regions.length}건`);
-  } catch (err) {
-    log("load", "regions 테이블 소득 데이터 없음 — 전국 중위 소득 사용");
-  }
-
-  log("load", "네이버 매물 데이터 조회...");
-  let naverArticles = [];
-  try {
-    naverArticles = await fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2,created_at", { is_active: true }, sbMibunyang);
-    log("load", `네이버 매물 ${naverArticles.length}건`);
-  } catch (err) {
-    log("load", "articles 테이블 없음");
-  }
-
-  let naverComplexes = [];
-  try {
-    naverComplexes = await fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang);
-    log("load", `네이버 단지 ${naverComplexes.length}건`);
-  } catch (err) {
-    log("load", "complexes 테이블 없음");
-  }
+  log("load", "데이터 병렬 조회...");
+  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes] = await Promise.all([
+    fetchAll("apartments", "id,name,region,gu", {}, sbMibunyang),
+    fetchAll("prices", "apartment_id,area,price,recorded_at", {}, sbMibunyang),
+    fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang).catch(() => []),
+    fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang).catch(() => []),
+    fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2,created_at", { is_active: true }, sbMibunyang).catch(() => []),
+    fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang).catch(() => []),
+  ]);
+  log("load", `아파트 ${rawApts.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 지역 ${regions.length}건, 매물 ${naverArticles.length}건, 단지 ${naverComplexes.length}건`)
 
   // 2. 인덱스 구축
   // 지역 소득 맵: "region:gu" → avg_income

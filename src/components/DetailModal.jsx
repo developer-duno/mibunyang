@@ -127,6 +127,29 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>인근 매매 시세 (최근 6개월)</div>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>총 {totalCount}건{isFiltered ? ` · ${apt.area}㎡ 기준 ±${narrow.length >= 3 ? 10 : 20}㎡ 필터` : " · 전체 면적"}</div>
+            {sellRows.length > 1 && (() => {
+              const globalMax = Math.max(...sellRows.map(p => p.max));
+              return (
+              <div style={{ marginBottom: 10 }}>
+                {sellRows.map((p, i) => {
+                  const isSimilar = Math.abs(p.area - apt.area) <= 5;
+                  const minPct = globalMax > 0 ? (p.min / globalMax) * 100 : 0;
+                  const maxPct = globalMax > 0 ? (p.max / globalMax) * 100 : 0;
+                  const avgPct = globalMax > 0 ? (p.avg / globalMax) * 100 : 0;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, fontSize: 11 }}>
+                      <span style={{ width: 42, textAlign: "right", fontWeight: isSimilar ? 700 : 400, color: isSimilar ? C.blue : C.muted, flexShrink: 0 }}>{p.area}㎡</span>
+                      <div style={{ flex: 1, height: 14, background: C.slate100, borderRadius: 4, position: "relative", overflow: "hidden" }}>
+                        <div style={{ position: "absolute", left: `${minPct}%`, width: `${Math.max(maxPct - minPct, 1)}%`, height: "100%", background: isSimilar ? C.blue + "40" : C.slate200, borderRadius: 4 }} />
+                        <div style={{ position: "absolute", left: `${avgPct}%`, width: 3, height: "100%", background: isSimilar ? C.blue : C.muted, borderRadius: 2, transform: "translateX(-1px)" }} />
+                      </div>
+                      <span style={{ width: 60, textAlign: "right", fontWeight: isSimilar ? 700 : 400, color: isSimilar ? C.blue : C.text, flexShrink: 0 }}>{fmtPrice(p.avg)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              );
+            })()}
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <th style={thStyle}>면적</th><th style={thStyle}>하한</th><th style={thStyle}>평균</th><th style={thStyle}>상한</th><th style={{ ...thStyle, textAlign: "right" }}>건수</th>

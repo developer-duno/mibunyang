@@ -58,7 +58,7 @@ export default function App() {
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
   const admin = useAdminMode(showToast);
-  const { apartments, loading: dataLoading, error: dataError, retry: retryData } = useApartmentData();
+  const { apartments, loading: dataLoading, error: dataError, retry: retryData, dataUpdatedAt } = useApartmentData();
   const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, isMobile } = useShare(showToast);
 
   // 5 useMemo
@@ -107,6 +107,9 @@ export default function App() {
     const rs = new Set(apartments.map(a => a.region));
     return ["전체", ...rs];
   }, [apartments]);
+
+  // 데이터 최신성 텍스트 (ISO 날짜 표시)
+  const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;
 
   // 위치 감지 → 자동 지역 필터 적용
   const locationAppliedRef = useRef(false);
@@ -365,7 +368,7 @@ export default function App() {
           {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} /></Suspense>}
 
           <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            <span>{filtered.length}개 단지 · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>
+            <span>{filtered.length}개 단지{dataFreshnessText ? ` · ${dataFreshnessText}` : ""} · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>
             {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
               <span style={{ color: C.red, fontWeight: 700 }}>(최소&gt;최대)</span>
             )}
