@@ -19,6 +19,19 @@ jobs:
           node -e "
           const { createClient } = require('@supabase/supabase-js');
           const fs = require('fs');
+          const path = require('path');
+
+          async function execSQL(sb, sql, label) {
+            console.log('> ' + label);
+            const { error } = await sb.rpc('exec_sql', { sql });
+            if (error) {
+              console.log('  rpc failed:', error.message);
+              console.log('  — apply manually via Supabase Dashboard SQL Editor');
+              return false;
+            }
+            console.log('  OK');
+            return true;
+          }
 
           async function main() {
             const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
@@ -26,38 +39,24 @@ jobs:
               db: { schema: 'public' }
             });
 
-            // 1. noxious_dist 컬럼 존재 여부 확인
-            const { error: noxErr } = await sb.from('apartments').select('noxious_dist').limit(1);
-            if (noxErr && noxErr.message.includes('does not exist')) {
-              console.log('Adding noxious_dist column...');
-              const { error } = await sb.rpc('exec_sql', {
-                sql: 'ALTER TABLE apartments ADD COLUMN IF NOT EXISTS noxious_dist REAL'
-              });
-              if (error) console.log('noxious_dist via rpc failed:', error.message, '— apply manually via Dashboard');
-              else console.log('noxious_dist column added');
-            } else {
-              console.log('noxious_dist column already exists');
-            }
+            // -- 20260318000000_fix_indexes.sql --
+            console.log('\n=== 인덱스 버그 수정 + VIEW 최적화 ===\n');
 
-            // 2. net_migration 컬럼 존재 여부 확인
-            const { error: migErr } = await sb.from('regions').select('net_migration').limit(1);
-            if (migErr && migErr.message.includes('does not exist')) {
-              console.log('Adding net_migration column...');
-              const { error } = await sb.rpc('exec_sql', {
-                sql: 'ALTER TABLE regions ADD COLUMN IF NOT EXISTS net_migration INTEGER'
-              });
-              if (error) console.log('net_migration via rpc failed:', error.message, '— apply manually via Dashboard');
-              else console.log('net_migration column added');
-            } else {
-              console.log('net_migration column already exists');
-            }
+            await execSQL(sb, 'DROP INDEX IF EXISTS idx_complexes_location', 'Drop idx_complexes_location (buggy)');
+            await execSQL(sb, 'CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(lat, lng)', 'Create idx_complexes_location (fixed)');
 
-            // 3. apartments_flat VIEW 상태 확인
+            await execSQL(sb, 'DROP INDEX IF EXISTS idx_articles_complex', 'Drop idx_articles_complex (buggy)');
+            await execSQL(sb, 'CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type, is_active)', 'Create idx_articles_complex (fixed)');
+
+            await execSQL(sb, 'CREATE INDEX IF NOT EXISTS idx_regions_sido_latest ON regions(region, recorded_at DESC) WHERE gu IS NULL', 'Create idx_regions_sido_latest (SC-1)');
+
+            // -- VIEW 상태 확인 --
+            console.log('\n=== VIEW 상태 확인 ===\n');
             const { data, error: viewErr, count } = await sb.from('apartments_flat').select('id', { count: 'exact', head: true });
             console.log('apartments_flat VIEW:', viewErr ? 'ERROR: ' + viewErr.message : 'count=' + count);
 
-            console.log('\nDone. If rpc failed, apply the migration SQL manually via Supabase Dashboard SQL Editor:');
-            console.log('File: supabase/migrations/20260314000000_add_missing_columns.sql');
+            console.log('\nDone. If rpc failed, apply manually:');
+            console.log('File: supabase/migrations/20260318000000_fix_indexes.sql');
           }
           main().catch(e => { console.error(e); process.exit(1); });
           "
