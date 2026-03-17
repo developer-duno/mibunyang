@@ -3,9 +3,7 @@ import { C } from "@/theme";
 import { AptCard } from "@/components/AptCard";
 import { PROFILES } from "@/constants/profiles";
 
-const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
-
-/** 아파트 카드 그리드 + 빈 결과 + 더 보기 + 비교 시트 */
+/** 아파트 카드 그리드 + 빈 결과 + 더 보기 */
 export const AptListSection = memo(function AptListSection({
   visible, filteredLength, visibleCount, onLoadMore,
   onDetail, onFav, onComp, favoriteIds, compIds,
@@ -13,19 +11,9 @@ export const AptListSection = memo(function AptListSection({
   searchText, budgetMin, budgetMax, filterRegion,
   dataLoading, dataFreshnessText,
   userLocation,
-
 }) {
   return (
     <>
-      {compIds.length >= 2 && (
-        <button onClick={() => { const wasOpen = showComp; setShowCompOpen(!showCompOpen); if (wasOpen) window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{
-          width: "100%", background: showComp ? C.indigo : "transparent", color: showComp ? C.white : C.indigo,
-          border: `1.5px solid ${C.indigo}`, borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700,
-          cursor: "pointer", marginBottom: 10, transition: "all .2s"
-        }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
-      )}
-    
-      {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={onShareCompare} onClose={() => setShowCompOpen(false)} /></Suspense>}
     
       <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
         <span>{filteredLength}개 단지{dataFreshnessText ? ` · ${dataFreshnessText}` : ""} · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>
