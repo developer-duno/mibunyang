@@ -1,7 +1,6 @@
-// TODO(quality): App.jsx 691줄 SRP 위반 — 필터/정렬/네비/모달 로직을 서브컴포넌트로 분리 권장 (Q-2)
+// TODO(quality): App.jsx SRP 개선 진행 중 — InfoPage, BottomNav 분리 완료, 추가 분리 가능 (Q-2)
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { CITY_TIER } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
 import { C, catCol, catBg } from "@/theme";
@@ -26,6 +25,8 @@ import { useUserLocation } from "@/hooks/useUserLocation";
 import { useResponsive } from "@/hooks/useResponsive";
 import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
+import { InfoPage } from "@/components/sections/InfoPage";
+import { BottomNav } from "@/components/sections/BottomNav";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 export default function App() {
@@ -411,50 +412,7 @@ export default function App() {
           )}
         </div>
       ) : tab === "info" ? (
-        <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
-          <div style={{ background: C.card, borderRadius: 12, padding: 14, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 10 }}>스코어링 엔진 구조</div>
-            {[
-              { title: "가격 매력도", desc: "적정가괴리도(신축프리미엄·면적·브랜드 보정) + 전세가율 + PIR(소득대비) + PSR(분양가/시세) + 데이터신뢰도" },
-              { title: "입지·생활권", desc: "교통접근성(도시등급별 보정: 특별시↔군 지하철·버스·IC·KTX 가중치 자동 조정) + 학군 + 생활인프라(8개 카테고리) + 환경 + 혐오시설" },
-              { title: "상품성", desc: "브랜드티어(4단계) + 세대수 + 주차비 + 용적률 + 에너지등급 + 전용률 + 평면구조 + 내진설계 + 구조(층수)" },
-              { title: "혜택·할인", desc: "원화환산(분양가할인 + 중도금무이자 + 옵션무상 + 발코니확장 + 캐시백) ÷ 분양가" },
-              { title: "안전도", desc: "미분양률 + 거래량 + 대출/잔금(DSR) + 시공사재무(DART) + 규제 + 공급파이프라인 + 시장환경" },
-              { title: "미래가치", desc: "교통개발(GTX·KTX·광역철도) + 도시개발 + 인구/산업유입" },
-            ].map((item, i) => (
-              <div key={i} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.title}</div>
-                <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.6, marginTop: 2 }}>{item.desc}</div>
-              </div>
-            ))}
-
-            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 10, paddingTop: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.blue, marginBottom: 6 }}>도시등급별 교통 보정 (NEW)</div>
-              <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.6 }}>
-                {Object.entries(CITY_TIER).map(([k, v]) =>
-                  `${v.label}(${k}): 지하철×${v.subwayW} 버스×${v.busW} IC×${v.icW} KTX×${v.ktxW}`
-                ).join(" | ")}
-              </div>
-            </div>
-
-            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 10, paddingTop: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>학술 기반</div>
-              <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.6 }}>
-                AHP 계층분석법(황규성·장형진 2016) · 헤도닉 가격모형 · 한국부동산원 공시가격 조사체계 · 국토연구원 GTX 영향 분석(2024) · 하자심사분쟁조정위 데이터
-              </div>
-            </div>
-
-            {!expert.expertLoggedIn && (
-              <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, padding: 16, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>파트너 전문가 전용</div>
-                <button onClick={() => setTab("expertLogin")} style={{
-                  width: "100%", background: C.indigoLight, border: `1.5px solid ${C.indigo}`, color: C.indigo, fontSize: 13, fontWeight: 700,
-                  cursor: "pointer", padding: "12px", borderRadius: 6, minHeight: 44
-                }}>전문가 로그인</button>
-              </div>
-            )}
-          </div>
-        </div>
+        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} />
       ) : tab === "consult" ? (
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}>
@@ -674,24 +632,7 @@ export default function App() {
       )}
 
       {/* 하단 네비 */}
-      <nav aria-label="메인 내비게이션" data-no-print style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: containerMaxWidth, background: expert.expertLoggedIn ? C.indigoLight : C.white, borderTop: `1px solid ${expert.expertLoggedIn ? C.indigo + "30" : C.border}`, padding: "8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px", display: "flex", justifyContent: "space-around", zIndex: 100, boxShadow: "0 -2px 10px rgba(0,0,0,0.05)", transition: "max-width .3s" }}>
-        {(expert.expertLoggedIn
-          ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "로그아웃", k: "logout" }]
-          : [{ l: "목록", k: "list" }, { l: "비교", k: "compare" }, { l: "상담", k: "consult" }, { l: "정보", k: "info" }]
-        ).map(n => {
-          const isActive = n.k === "compare" ? (showComp && tab === "list") : (tab === n.k && !(n.k === "list" && showComp));
-          const activeColor = expert.expertLoggedIn ? C.indigo : C.blue;
-          return (
-            <button key={n.k} aria-current={(!["compare", "logout"].includes(n.k) && tab === n.k) ? "page" : undefined} onClick={() => handleNavClick(n.k)} style={{
-              background: isActive ? (expert.expertLoggedIn ? C.indigo + "14" : C.blueLight) : "transparent",
-              border: "none", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-              color: isActive ? activeColor : C.muted, padding: "10px 14px", minHeight: 48, transition: "all .2s"
-            }}>
-              <span style={{ fontSize: 13, fontWeight: isActive ? 800 : 600, letterSpacing: -0.2 }}>{n.l}</span>
-            </button>
-          );
-        })}
-      </nav>
+      <BottomNav tab={tab} expertLoggedIn={expert.expertLoggedIn} showComp={showComp} onNavClick={handleNavClick} containerMaxWidth={containerMaxWidth} />
     </div>
   );
 }
