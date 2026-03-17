@@ -13,7 +13,8 @@
   - `collect-naver-listings.yml` — 네이버 후처리만 (sync + 전용률 계산, 매일)
   - `naver-units.yml` — 네이버 세대수 2차 보정 (매일, Node.js)
 - **로컬 전용 수집** (GitHub Actions 불가 — 네이버 데이터센터 IP 차단)
-  - `scripts/run-naver-local.sh` — 네이버 매물+시세 수집 → Supabase 업로드
+  - `scripts/run-naver-local.bat` — Windows 스케줄러 자동 실행 (주 2회 월/목)
+  - `scripts/run-naver-local.sh` — 네이버 매물+시세 수집 (수동 실행용)
   - `scripts/collectors/naver-listings.mjs` — 실제 수집 로직
   - `collect-population.yml` — 행안부 인구 증감률 수집 (매월 5일)
   - `collect-housing-permits.yml` — 국토부 주택 인허가 공급비율 수집 (매월 10일)
@@ -29,7 +30,6 @@
   - `collect-noise.yml` — 소음 추정 수집 (매월 1일)
   - `calc-layout.yml` — 평면구조 추정 (매주 일요일)
   - `collect-unsold-kosis.yml` — KOSIS 시군구별 미분양 수집 (매월 1일)
-  - `collect-naver-tunnel.yml` — 네이버 수집 (CF Tunnel 경유, 주 2회)
   - `collect-trades.yml` — 국토부 실거래 수집 (매월 1/15일)
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
@@ -93,7 +93,6 @@ const showComp = showCompOpen && compIds.length >= 2;
 | `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경/소음 수집 + 역지오코딩) |
 | `DART_KEY` | DART 전자공시 API 키 (시공사 재무 수집) |
 | `KOSIS_KEY` | KOSIS 국가통계포털 API 키 (미분양 수집) |
-| `NAVER_PROXY` | Cloudflare Tunnel SOCKS5 프록시 URL (네이버 수집 우회) |
 
 ### 6. units 보정 파이프라인
 
@@ -111,26 +110,27 @@ const showComp = showCompOpen && compIds.length >= 2;
 참조: `src/services/staticDataApi.js`, `src/hooks/useApartmentData.js`.
 (레거시 `unsold.js` 및 미사용 API 스텁 5종 삭제 완료)
 
-### 8. 네이버 부동산 수집 — 로컬 전용 룰
+### 8. 네이버 부동산 수집 — 로컬 자동화
 
-**네이버 수집은 한국 IP가 필요. 로컬 실행 또는 Cloudflare Tunnel 경유 GitHub Actions 가능.**
+**네이버 수집은 한국 IP가 필요. Windows 작업 스케줄러로 로컬 PC에서 자동 실행.**
 
 | 구분 | 방식 | 설명 |
 |------|------|------|
-| 네이버 수집 (로컬) | 로컬 | `bash scripts/run-naver-local.sh` — 한국 IP 필수 |
-| 네이버 수집 (자동) | GitHub Actions | `collect-naver-tunnel.yml` — CF Tunnel 프록시 경유 |
+| 네이버 수집 (자동) | Windows 스케줄러 | `scripts/run-naver-local.bat` — 주 2회 (월/목 06:00) |
+| 네이버 수집 (수동) | 로컬 | `bash scripts/run-naver-local.sh` |
 | 후처리(sync+calc) | GitHub Actions | `collect-naver-listings.yml` — 매일 자동 |
 | 기타 수집기 | GitHub Actions | 공공 API이므로 IP 제한 없음 |
 
-**이유**: 네이버 부동산 API는 데이터센터 IP를 차단. Cloudflare Tunnel로 로컬 PC(한국 IP)를 프록시로 사용하여 우회 가능.
+**이유**: 네이버 부동산 API는 데이터센터 IP(GitHub Actions)를 차단.
 
-**로컬 실행 절차**:
-1. `.env.local`에 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` 설정
-2. `bash scripts/run-naver-local.sh` 실행 (수집 → sync → 전용률 계산)
-3. 수집 완료 후 Supabase에 자동 업로드됨 (별도 push 불필요)
+**자동 수집 (Windows 작업 스케줄러)**:
+- 작업명: `MibunyangNaverCollect`
+- 스케줄: 매주 월/목 오전 6시
+- 스크립트: `scripts/run-naver-local.bat`
+- 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-naver-task.ps1`
+- 수동 트리거: `schtasks /run /tn MibunyangNaverCollect`
 
-**수집 주기**: 주 1~2회 수동 실행 권장 (일일 실행 시 rate limit 주의)
-
+**수동 실행**: `bash scripts/run-naver-local.sh`
 ---
 
 ## 작업 완료 후 필수 프로세스
