@@ -195,6 +195,9 @@ CREATE TABLE IF NOT EXISTS trade_stats (
   rent_by_area JSONB DEFAULT '[]',        -- 면적별 전세 시세 배열
   jeonse_by_area JSONB DEFAULT '[]',      -- 면적별 전세가율 배열
   price_by_floor JSONB DEFAULT '[]',      -- 층수별 매매 시세 배열
+  avg_floor INTEGER,
+  floor_range TEXT,
+  nearby_build_year INTEGER,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -289,8 +292,9 @@ CREATE INDEX IF NOT EXISTS idx_trades_month ON trades(deal_month);
 CREATE INDEX IF NOT EXISTS idx_regions_region ON regions(region);
 CREATE INDEX IF NOT EXISTS idx_regions_latest ON regions(region, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_prices_latest ON prices(apartment_id, recorded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(latitude, longitude);
-CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type_name, is_active);
+CREATE INDEX IF NOT EXISTS idx_regions_sido_latest ON regions(region, recorded_at DESC) WHERE gu IS NULL;
+CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(lat, lng);
+CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type, is_active);
 CREATE INDEX IF NOT EXISTS idx_articles_active ON articles(is_active) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_complex_price_history ON complex_price_history(complex_no, trade_type);
 
