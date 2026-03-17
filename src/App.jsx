@@ -1,12 +1,10 @@
-// TODO(quality): App.jsx SRP 개선 진행 중 — InfoPage, BottomNav, HeaderSection, ExpertLoginForm 분리 완료 (Q-2)
+// App.jsx SRP 분리 완료 — InfoPage, BottomNav, HeaderSection, ExpertLoginForm, SearchFilterBar, AptListSection
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
 import { C, catCol, catBg } from "@/theme";
-import { AptCard } from "@/components/AptCard";
 
-const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
 const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));
 const ConsultForm = lazy(() => import("@/components/ConsultForm").then(m => ({ default: m.ConsultForm })));
 const ExpertDashboard = lazy(() => import("@/components/expert/ExpertDashboard").then(m => ({ default: m.ExpertDashboard })));
@@ -29,6 +27,8 @@ import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
 import { HeaderSection } from "@/components/sections/HeaderSection";
 import { ExpertLoginForm } from "@/components/sections/ExpertLoginForm";
+import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
+import { AptListSection } from "@/components/sections/AptListSection";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 export default function App() {
@@ -253,138 +253,25 @@ export default function App() {
 
       {tab === "list" ? (
         <div style={{ padding: "0 16px" }}>
-          {/* 검색 + 필터 통합 컴팩트 바 */}
-          <div data-no-print style={{ background: C.card, borderRadius: 10, padding: "8px 10px", border: `1px solid ${C.border}`, margin: "8px 0 6px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-            {/* 1행: 검색 입력 */}
-            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-              <div style={{ position: "relative", flex: 1 }}>
-                <input type="text" value={searchText} onChange={e => handleSearchChange(e.target.value)} placeholder="단지명, 건설사, 지역 검색" aria-label="단지 검색" style={{
-                  width: "100%", padding: "6px 30px 6px 10px", fontSize: 12,
-                  border: searchText ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-                  borderRadius: 6, background: C.slate100, color: C.text,
-                  outline: "none", height: 32, boxSizing: "border-box"
-                }} />
-                {searchText && (
-                  <button onClick={() => handleSearchChange("")} aria-label="검색어 지우기" style={{
-                    position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
-                    background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14, padding: 2
-                  }}>✕</button>
-                )}
-              </div>
-            </div>
-            {/* 2행: 지역 + 예산 + 초기화 */}
-            <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
-              <select value={filterRegion} onChange={e => handleRegionChange(e.target.value)} aria-label="시/도" style={{
-                flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11, fontWeight: filterRegion !== "전체" ? 700 : 500,
-                border: filterRegion !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, background: C.slate100,
-                color: filterRegion !== "전체" ? C.indigo : C.slate600, cursor: "pointer", height: 30,
-                WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
-              }}>
-                {regionOptions.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-              <select value={filterRegion === "전체" ? "" : filterGu} onChange={e => handleGuChange(e.target.value)} aria-label="구/군" disabled={filterRegion === "전체" || guOptions.length <= 1} style={{
-                flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11, fontWeight: filterGu !== "전체" ? 700 : 500,
-                border: filterGu !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5,
-                background: (filterRegion === "전체" || guOptions.length <= 1) ? "#E2E8F0" : C.slate100,
-                color: (filterRegion === "전체" || guOptions.length <= 1) ? "#94A3B8" : filterGu !== "전체" ? C.indigo : C.slate600,
-                cursor: (filterRegion === "전체" || guOptions.length <= 1) ? "default" : "pointer", height: 30,
-                WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
-              }}>
-                {filterRegion === "전체" && <option value="">지역 먼저 선택</option>}
-                {guOptions.map(g2 => <option key={g2} value={g2}>{g2}</option>)}
-              </select>
-              <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => handleBudgetMinChange(e.target.value)} placeholder="최소(억)" aria-label="최소 예산(억)"
-                style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 30, boxSizing: "border-box", background: C.slate100 }} />
-              <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>~</span>
-              <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMax} onChange={e => handleBudgetMaxChange(e.target.value)} placeholder="최대(억)" aria-label="최대 예산(억)"
-                style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 30, boxSizing: "border-box", background: C.slate100 }} />
-              <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>억</span>
-              {(budgetMin || budgetMax) ? (
-                <button onClick={handleBudgetReset} aria-label="예산 초기화" style={{
-                  background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: 11, color: C.muted,
-                  cursor: "pointer", height: 30, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
-                }}>✕</button>
-              ) : null}
-            </div>
-            {/* 3행: 정렬 + 가중치 뱃지 */}
-            <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-              {isPC ? [{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }].map(s => (
-                <button key={s.k} onClick={() => setSortKey(s.k)} style={{
-                  flex: 1, background: sortKey === s.k ? s.bg : s.pas, color: sortKey === s.k ? s.ac : C.slate600,
-                  border: sortKey === s.k ? `1.5px solid ${s.ac}` : "1.5px solid transparent", borderRadius: 5, padding: "4px 0", height: 28,
-                  fontSize: 11, fontWeight: sortKey === s.k ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all .15s", textAlign: "center"
-                }}>{s.l}</button>
-              )) : (
-                <select value={sortKey} onChange={e => setSortKey(e.target.value)} aria-label="정렬 기준" style={{
-                  flex: "0 0 auto", padding: "4px 24px 4px 8px", fontSize: 11, fontWeight: 700, height: 28,
-                  border: `1.5px solid ${C.indigo}`, borderRadius: 5, background: C.indigoLight, color: C.indigo,
-                  cursor: "pointer", WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%234F46E5' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
-                }}>
-                  {[{ k: "total", l: "종합순" }, { k: "price", l: "저가순" }, { k: "priceScore", l: "가격매력순" }, { k: "location", l: "입지순" }, { k: "safe", l: "안전순" }].map(s => (
-                    <option key={s.k} value={s.k}>{s.l}</option>
-                  ))}
-                </select>
-              )}
-              <div style={{ width: 1, height: 20, background: C.border, flexShrink: 0, margin: "0 2px" }} />
-              {Object.entries(pw).map(([k]) => {
-                const nm = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
-                return <span key={k} style={{ fontSize: 9, fontWeight: 700, color: catCol[k], background: catBg[k], padding: "2px 4px", borderRadius: 3, whiteSpace: "nowrap" }}>{nm[k]}{pw[k]}</span>;
-              })}
-            </div>
-          </div>
+          <SearchFilterBar
+            searchText={searchText} onSearchChange={handleSearchChange}
+            filterRegion={filterRegion} onRegionChange={handleRegionChange} regionOptions={regionOptions}
+            filterGu={filterGu} onGuChange={handleGuChange} guOptions={guOptions}
+            budgetMin={budgetMin} onBudgetMinChange={handleBudgetMinChange} budgetMax={budgetMax} onBudgetMaxChange={handleBudgetMaxChange} onBudgetReset={handleBudgetReset}
+            sortKey={sortKey} onSortChange={setSortKey}
+            pw={pw} catCol={catCol} catBg={catBg}
+            isPC={isPC}
+          />
 
-          {compIds.length >= 2 && (
-            <button onClick={() => { const wasOpen = showComp; setShowCompOpen(!showCompOpen); if (wasOpen) window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{
-              width: "100%", background: showComp ? C.indigo : "transparent", color: showComp ? C.white : C.indigo,
-              border: `1.5px solid ${C.indigo}`, borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700,
-              cursor: "pointer", marginBottom: 10, transition: "all .2s"
-            }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
-          )}
-
-          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} /></Suspense>}
-
-          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            <span>{filtered.length}개 단지{dataFreshnessText ? ` · ${dataFreshnessText}` : ""} · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>
-            {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
-              <span style={{ color: C.red, fontWeight: 700 }}>(최소&gt;최대)</span>
-            )}
-            {userLocation.region && !userLocation.loading && (
-              <span style={{ fontSize: 10, color: C.blue, background: C.blueLight, padding: "1px 6px", borderRadius: 10, fontWeight: 600, whiteSpace: "nowrap" }}>
-                {userLocation.method === "gps" ? "\uD83D\uDCCD" : "\uD83C\uDF10"} {userLocation.region}{userLocation.gu ? ` ${userLocation.gu}` : ""}
-              </span>
-            )}
-          </div>
-
-          {filtered.length === 0 && !dataLoading && (
-            <div style={{ textAlign: "center", padding: "48px 24px", color: C.muted }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>{searchText ? "\uD83D\uDD0D" : (budgetMin || budgetMax) ? "\uD83D\uDCB0" : "\uD83D\uDDFA\uFE0F"}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: C.text }}>{searchText ? `"${searchText}" 검색 결과가 없습니다` : (budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 지역에 미분양 단지가 없습니다"}</div>
-              <div style={{ fontSize: 12, lineHeight: 1.6 }}>{searchText ? "단지명, 건설사, 지역명으로 검색해보세요" : (budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "다른 지역을 선택하거나 '전체'로 변경해주세요"}</div>
-            </div>
-          )}
-
-          <div style={{ ...(isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 12px" } : {}), ...(isPending ? { opacity: 0.6, pointerEvents: "none", transition: "opacity 0.15s" } : {}) }}>
-            {visible.map((item, idx) => (
-              <AptCard key={item.apt.id} apt={item.apt} res={item.res} rank={idx + 1}
-                onDetail={detail.handleOpenDetail}
-                isComp={compIds.includes(item.apt.id)} onComp={toggleComp}
-                isFav={favoriteIds.includes(item.apt.id)} onFav={toggleFavorite}
-                profileWeights={pw} />
-            ))}
-          </div>
-          {visibleCount < filtered.length && (
-            <div style={{ textAlign: "center", padding: "16px 0 24px" }}>
-              <button onClick={() => setVisibleCount(v => v + 30)} style={{ padding: "10px 32px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                더 보기 ({filtered.length - visibleCount}개 남음)
-              </button>
-            </div>
-          )}
+          <AptListSection
+            visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => setVisibleCount(v => v + 30)}
+            onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} compIds={compIds}
+            pw={pw} profile={profile} isPC={isPC} isPending={isPending}
+            searchText={searchText} budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
+            dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
+            userLocation={userLocation}
+            showComp={showComp} showCompOpen={showCompOpen} setShowCompOpen={setShowCompOpen} compItems={compItems} onShareCompare={handleShareCompare}
+          />
         </div>
       ) : tab === "info" ? (
         <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} />
