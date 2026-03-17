@@ -29,6 +29,8 @@
   - `collect-noise.yml` — 소음 추정 수집 (매월 1일)
   - `calc-layout.yml` — 평면구조 추정 (매주 일요일)
   - `collect-unsold-kosis.yml` — KOSIS 시군구별 미분양 수집 (매월 1일)
+  - `collect-naver-tunnel.yml` — 네이버 수집 (CF Tunnel 경유, 주 2회)
+  - `collect-trades.yml` — 국토부 실거래 수집 (매월 1/15일)
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
 
@@ -91,6 +93,7 @@ const showComp = showCompOpen && compIds.length >= 2;
 | `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경/소음 수집 + 역지오코딩) |
 | `DART_KEY` | DART 전자공시 API 키 (시공사 재무 수집) |
 | `KOSIS_KEY` | KOSIS 국가통계포털 API 키 (미분양 수집) |
+| `NAVER_PROXY` | Cloudflare Tunnel SOCKS5 프록시 URL (네이버 수집 우회) |
 
 ### 6. units 보정 파이프라인
 
@@ -110,15 +113,16 @@ const showComp = showCompOpen && compIds.length >= 2;
 
 ### 8. 네이버 부동산 수집 — 로컬 전용 룰
 
-**네이버 수집은 반드시 로컬(한국 IP)에서 실행한다. GitHub Actions에서 실행 불가.**
+**네이버 수집은 한국 IP가 필요. 로컬 실행 또는 Cloudflare Tunnel 경유 GitHub Actions 가능.**
 
 | 구분 | 방식 | 설명 |
 |------|------|------|
-| 네이버 수집 | 로컬 전용 | `bash scripts/run-naver-local.sh` — 한국 IP 필수 |
+| 네이버 수집 (로컬) | 로컬 | `bash scripts/run-naver-local.sh` — 한국 IP 필수 |
+| 네이버 수집 (자동) | GitHub Actions | `collect-naver-tunnel.yml` — CF Tunnel 프록시 경유 |
 | 후처리(sync+calc) | GitHub Actions | `collect-naver-listings.yml` — 매일 자동 |
 | 기타 수집기 | GitHub Actions | 공공 API이므로 IP 제한 없음 |
 
-**이유**: 네이버 부동산 API는 데이터센터 IP(미국 GitHub Actions)를 네트워크 레벨에서 차단. TLS 핑거프린트 우회도 불가.
+**이유**: 네이버 부동산 API는 데이터센터 IP를 차단. Cloudflare Tunnel로 로컬 PC(한국 IP)를 프록시로 사용하여 우회 가능.
 
 **로컬 실행 절차**:
 1. `.env.local`에 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` 설정

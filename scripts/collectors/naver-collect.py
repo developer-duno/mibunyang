@@ -51,7 +51,7 @@ sb=SB
 NV="https://new.land.naver.com"
 JPAT=r'"token":"(eyJ[A-Za-z0-9._-]+)"'
 M2P=3.3058
-ss=cffi_requests.Session(impersonate="chrome")
+ss=None  # main()에서 proxy 포함 초기화
 _jt=None;_jtt=0;_lr=0
 REGION_CORTAR={
     "서울":"1100000000","경기":"4100000000","인천":"2800000000",
@@ -148,7 +148,15 @@ def main():
     pa=argparse.ArgumentParser()
     pa.add_argument("--limit",type=int,default=0)
     pa.add_argument("--dry-run",action="store_true")
+    pa.add_argument("--proxy",type=str,default="")
     a=pa.parse_args()
+    global ss
+    proxy_url=a.proxy or os.environ.get("NAVER_PROXY","")
+    if proxy_url:
+        ss=cffi_requests.Session(impersonate="chrome",proxies={"https":proxy_url,"http":proxy_url})
+        log(f"Proxy: {proxy_url}")
+    else:
+        ss=cffi_requests.Session(impersonate="chrome")
     apts=SB.select("apartments","id,name,region,gu,dong,lat,lng",["lat=not.is.null","lng=not.is.null"])
     tgt=apts[:a.limit] if a.limit>0 else apts
     log(f"미분양 {len(tgt)}건 (전체 {len(apts)})")
