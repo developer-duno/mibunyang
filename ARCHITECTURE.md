@@ -46,7 +46,7 @@ scripts/
 ├── naver-units.py          네이버 세대수 보정
 └── collectors/
     ├── _shared.mjs         공유 유틸 (loadEnv, upsertBatch, fetchWithRetry)
-    └── naver-listings.mjs  ★ 네이버 인근 매물 수집
+    └── naver-collect.py  ★ 네이버 인근 매물 수집
 
 supabase/
 └── schema.sql              13개 테이블 + VIEW + RLS + 트리거
@@ -79,7 +79,7 @@ GitHub Actions (일/주/월 스케줄)
   │                         ↓
   ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (13개 테이블)
   │                                    ↓
-  ├── naver-listings.mjs ────────→ naver_complexes + naver_articles
+  ├── naver-collect.py ──────────→ complexes + articles + complex_price_history
   │                                    ↓
   └── naver-units.py ────────────→ 세대수 보정 JSON
 
@@ -478,8 +478,8 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 ├──────────────────────────────────────────────────────────────┤
 │                    네이버 인근 시세 데이터                     │
 │                                                              │
-│  naver_complexes ──→ naver_articles (매물, 소프트 삭제)       │
-│                  └──→ naver_price_history (시세 이력)         │
+│  complexes ──→ articles (매물, 소프트 삭제)       │
+│                  └──→ complex_price_history (시세 이력)         │
 │                                                              │
 │  nearby_apartment_ids (JSONB) ← apartments.id 참조           │
 └──────────────────────────────────────────────────────────────┘
@@ -495,9 +495,11 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 | transport | 주 1회 | 카카오 API | collect-data.mjs Phase 6 |
 | builders | 월 1회 | DART API | collect-data.mjs Phase 5 |
 | regions | 월 1회 | KOSIS API | collect-data.mjs Phase 2 |
-| trades, trade_stats | 매일 | 국토부 API | collect-data.mjs Phase 7 |
-| naver_complexes | 매일 | 네이버 부동산 | naver-listings.mjs |
-| naver_articles | 매일 | 네이버 부동산 | naver-listings.mjs |
+| trades | 매월 1/15일 | 국토부 API | collect-trades.mjs |
+| trade_stats | 매주 일요일 | trades 기반 | trade-stats.mjs |
+| complexes | 로컬 수집 | 네이버 부동산 | naver-collect.py |
+| articles | 로컬 수집 | 네이버 부동산 | naver-collect.py |
+| complex_price_history | 로컬 수집 | 네이버 부동산 | naver-collect.py |
 
 ### 네이버 데이터 활용
 

@@ -199,9 +199,9 @@ CREATE TABLE IF NOT EXISTS trade_stats (
 );
 
 -- ============================================================
--- 11. naver_complexes (네이버 인근 단지 — 매일 갱신)
+-- 11. complexes (네이버 인근 단지 — 로컬 수집)
 -- ============================================================
-CREATE TABLE IF NOT EXISTS naver_complexes (
+CREATE TABLE IF NOT EXISTS complexes (
   complex_no TEXT PRIMARY KEY,
   complex_name TEXT NOT NULL,
   real_estate_type TEXT,                  -- APT/ABYG/JGC/PRE
@@ -226,11 +226,11 @@ CREATE TABLE IF NOT EXISTS naver_complexes (
 );
 
 -- ============================================================
--- 12. naver_articles (네이버 매물 — 매일 갱신, 시계열)
+-- 12. articles (네이버 매물 — 로컬 수집)
 -- ============================================================
-CREATE TABLE IF NOT EXISTS naver_articles (
+CREATE TABLE IF NOT EXISTS articles (
   article_no TEXT PRIMARY KEY,
-  complex_no TEXT NOT NULL REFERENCES naver_complexes(complex_no) ON DELETE CASCADE,
+  complex_no TEXT NOT NULL REFERENCES complexes(complex_no) ON DELETE CASCADE,
   trade_type TEXT NOT NULL,               -- 매매/전세/월세
   price INTEGER,                          -- 만원
   rent_price INTEGER,                     -- 월세액 만원
@@ -256,12 +256,12 @@ CREATE TABLE IF NOT EXISTS naver_articles (
 );
 
 -- ============================================================
--- 13. naver_price_history (네이버 시세 이력 — 시계열)
--- 입력: naver-listings.mjs Phase 6에서 매매(A1)+전세(B1) 5년치 수집
+-- 13. complex_price_history (네이버 시세 이력 — 로컬 수집)
+-- 입력: naver-collect.py에서 매매(A1)+전세(B1) 5년치 수집
 -- ============================================================
-CREATE TABLE IF NOT EXISTS naver_price_history (
+CREATE TABLE IF NOT EXISTS complex_price_history (
   id SERIAL PRIMARY KEY,
-  complex_no TEXT NOT NULL REFERENCES naver_complexes(complex_no) ON DELETE CASCADE,
+  complex_no TEXT NOT NULL REFERENCES complexes(complex_no) ON DELETE CASCADE,
   trade_type TEXT NOT NULL,               -- A1=매매, B1=전세, B2=월세
   area_no TEXT,                           -- 평형 번호
   deal_price_upper INTEGER,               -- 매매 상한 만원
@@ -289,12 +289,10 @@ CREATE INDEX IF NOT EXISTS idx_trades_month ON trades(deal_month);
 CREATE INDEX IF NOT EXISTS idx_regions_region ON regions(region);
 CREATE INDEX IF NOT EXISTS idx_regions_latest ON regions(region, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_prices_latest ON prices(apartment_id, recorded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_naver_complexes_region ON naver_complexes(region, gu);
-CREATE INDEX IF NOT EXISTS idx_naver_complexes_location ON naver_complexes(lat, lng);
-CREATE INDEX IF NOT EXISTS idx_naver_articles_complex ON naver_articles(complex_no, trade_type, is_active);
-CREATE INDEX IF NOT EXISTS idx_naver_articles_recorded ON naver_articles(recorded_at);
-CREATE INDEX IF NOT EXISTS idx_naver_articles_active ON naver_articles(is_active) WHERE is_active = TRUE;
-CREATE INDEX IF NOT EXISTS idx_naver_price_history_complex ON naver_price_history(complex_no, trade_type);
+CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type_name, is_active);
+CREATE INDEX IF NOT EXISTS idx_articles_active ON articles(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_complex_price_history ON complex_price_history(complex_no, trade_type);
 
 -- ============================================================
 -- ROW LEVEL SECURITY (RLS)
@@ -335,16 +333,16 @@ CREATE POLICY "Service write" ON builders FOR ALL USING (auth.role() = 'service_
 CREATE POLICY "Service write" ON regions FOR ALL USING (auth.role() = 'service_role');
 CREATE POLICY "Service write" ON trade_stats FOR ALL USING (auth.role() = 'service_role');
 
-ALTER TABLE naver_complexes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE naver_articles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE naver_price_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE complexes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE complex_price_history ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Public read" ON naver_complexes FOR SELECT USING (true);
-CREATE POLICY "Public read" ON naver_articles FOR SELECT USING (true);
-CREATE POLICY "Public read" ON naver_price_history FOR SELECT USING (true);
-CREATE POLICY "Service write" ON naver_complexes FOR ALL USING (auth.role() = 'service_role');
-CREATE POLICY "Service write" ON naver_articles FOR ALL USING (auth.role() = 'service_role');
-CREATE POLICY "Service write" ON naver_price_history FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Public read" ON complexes FOR SELECT USING (true);
+CREATE POLICY "Public read" ON articles FOR SELECT USING (true);
+CREATE POLICY "Public read" ON complex_price_history FOR SELECT USING (true);
+CREATE POLICY "Service write" ON complexes FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service write" ON articles FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service write" ON complex_price_history FOR ALL USING (auth.role() = 'service_role');
 
 -- ============================================================
 -- updated_at 자동 갱신 트리거

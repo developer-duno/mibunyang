@@ -36,7 +36,7 @@ export function getMibuyangSupabase() {
     throw new Error("SUPABASE_URL, SUPABASE_SERVICE_KEY 환경변수 필요");
   }
   _mibuyangClient = createClient(url, key, {
-    db: { schema: 'mibunyang' },
+    db: { schema: 'public' },
     auth: { autoRefreshToken: false, persistSession: false },
   });
   return _mibuyangClient;
