@@ -3,6 +3,7 @@
  *
  * Phase 1: complexes → apartments (용적률, 주차, 최고층, 수영장)
  * Phase 2: articles → apartments (매물 수 집계 → 미분양 추정)
+ * Phase 3: 시세/통계 → apartments (중위가, 전세가율, 건축연도, 층수, 주변단지수)
  *
  * 사용법:
  *   node scripts/collectors/sync-naver-complex.mjs              (Supabase UPDATE)
@@ -32,6 +33,64 @@ function matchApartments(cpx, aptList, complexLinksMap) {
   return matched;
 }
 
+/** 중앙값 계산 */
+function median(arr) {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 0 ? Math.round((s[mid - 1] + s[mid]) / 2) : s[mid];
+}
+
+/** floor_info "3/15" → 3 파싱 */
+function parseFloor(fi) {
+  if (!fi) return null;
+  const first = String(fi).split("/")[0].trim();
+  const KOR = { "저": 3, "중": 8, "고": 20 };
+  if (KOR[first]) return KOR[first];
+  const n = parseInt(first);
+  return (n > 0 && n < 200) ? n : null;
+}
+
+/** Spatial grid index (0.02deg ~ 2km cells) */
+function buildSpatialGrid(allComplexes, cellSize = 0.02) {
+  const grid = {};
+  for (const cpx of allComplexes) {
+    if (!cpx.latitude || !cpx.longitude) continue;
+    const key = Math.floor(cpx.latitude / cellSize) + "," + Math.floor(cpx.longitude / cellSize);
+    if (!grid[key]) grid[key] = [];
+    grid[key].push(cpx);
+  }
+  return { grid, cellSize };
+}
+
+/** Find nearby complexes within radius using grid */
+function findNearbyComplexes(apt, spatialGrid, radiusKm = 2) {
+  if (!apt.lat || !apt.lng) return [];
+  const { grid, cellSize } = spatialGrid;
+  const R = 6371;
+  const toRad = d => d * Math.PI / 180;
+  const cellRadius = Math.ceil(radiusKm / (cellSize * 111));
+  const cr = Math.floor(apt.lat / cellSize);
+  const cc = Math.floor(apt.lng / cellSize);
+  const results = [];
+  for (let dr = -cellRadius; dr <= cellRadius; dr++) {
+    for (let dc = -cellRadius; dc <= cellRadius; dc++) {
+      const cell = grid[(cr + dr) + "," + (cc + dc)];
+      if (!cell) continue;
+      for (const cpx of cell) {
+        const dLat = toRad(cpx.latitude - apt.lat);
+        const dLon = toRad(cpx.longitude - apt.lng);
+        const a = Math.sin(dLat/2)**2 + Math.cos(toRad(apt.lat)) * Math.cos(toRad(cpx.latitude)) * Math.sin(dLon/2)**2;
+        const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        if (dist <= radiusKm) results.push(cpx.complex_no);
+      }
+    }
+  }
+  return results;
+}
+
+
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -39,13 +98,19 @@ async function main() {
   const sb = getSupabase();
   const sbMibunyang = getMibuyangSupabase();
 
-  // 1. complexes에서 유용한 필드가 있는 데이터 조회
-  const { data: complexes, error: cErr } = await sbMibunyang
-    .from("complexes")
-    .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool")
-    .range(0, 9999);
-
-  if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
+  // 1. naver_complexes에서 유용한 필드가 있는 데이터 조회
+  // naver_complexes 페이지네이션 (1000행 제한 우회)
+  const complexes = [];
+  const PAGE = 1000;
+  for (let off = 0; ; off += PAGE) {
+    const { data: page, error: cErr } = await sbMibunyang
+      .from("naver_complexes")
+      .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude")
+      .range(off, off + PAGE - 1);
+    if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
+    complexes.push(...page);
+    if (page.length < PAGE) break;
+  }
   log(PHASE, `complexes: ${complexes.length}건`);
 
   // 1-b. articles에서 complex_no별 최다 빈도 heating_type 집계
@@ -228,6 +293,147 @@ async function main() {
       log(PHASE, `Phase 2 완료: 매물수 기반 갱신 ${unsoldUpdated}건`);
     }
   }
+
+  const spatialGrid = buildSpatialGrid(complexes);
+  log(PHASE, `공간 그리드: ${Object.keys(spatialGrid.grid).length}개 셀`);
+
+  // ── Phase 3: 시세/통계 → naver_* 필드 동기화 ──
+  log(PHASE, "\n── Phase 3: 시세/통계 → naver_* 필드 동기화 ──");
+
+  // 3-a. complex_price_history 조회 (최근 데이터)
+  const { data: priceRows, error: prErr } = await sbMibunyang
+    .from("complex_price_history")
+    .select("complex_no, trade_type, price_avg")
+    .range(0, 99999);
+
+  if (prErr) logError(PHASE, `price_history 조회 실패: ${prErr.message}`);
+
+  // price_avg를 complex_no + trade_type별로 그룹핑
+  const priceByComplex = {};
+  if (priceRows) {
+    for (const r of priceRows) {
+      if (!r.price_avg || r.price_avg <= 0) continue;
+      if (!priceByComplex[r.complex_no]) priceByComplex[r.complex_no] = { A1: [], B1: [] };
+      if (r.trade_type === "A1") priceByComplex[r.complex_no].A1.push(r.price_avg);
+      else if (r.trade_type === "B1") priceByComplex[r.complex_no].B1.push(r.price_avg);
+    }
+  }
+  log(PHASE, `시세 데이터: ${Object.keys(priceByComplex).length}개 단지`);
+
+  // 3-b. articles floor_info 조회
+  const { data: floorRows, error: flErr } = await sbMibunyang
+    .from("articles")
+    .select("complex_no, floor_info")
+    .eq("is_active", true)
+    .not("floor_info", "is", null)
+    .range(0, 99999);
+
+  if (flErr) logError(PHASE, `articles floor 조회 실패: ${flErr.message}`);
+
+  const floorByComplex = {};
+  if (floorRows) {
+    for (const r of floorRows) {
+      const f = parseFloor(r.floor_info);
+      if (f == null) continue;
+      if (!floorByComplex[r.complex_no]) floorByComplex[r.complex_no] = [];
+      floorByComplex[r.complex_no].push(f);
+    }
+  }
+  log(PHASE, `층수 데이터: ${Object.keys(floorByComplex).length}개 단지`);
+
+  // 3-c. apartments 재조회 (naver_* 필드)
+  const { data: aptsForNaver, error: aErr3 } = await sbMibunyang
+    .from("apartments")
+    .select("id, name, lat, lng, naver_nearby_median, naver_nearby_avg, naver_jeonse_rate, naver_build_year, naver_avg_floor, naver_nearby_count, naver_fetched_at")
+    .range(0, 9999);
+
+  if (aErr3) {
+    logError(PHASE, `apartments 재조회 실패: ${aErr3.message}`);
+  } else {
+    let naverUpdated = 0;
+    const seen = new Set();
+
+    for (const apt of aptsForNaver) {
+      if (seen.has(apt.id)) continue;
+      seen.add(apt.id);
+
+      // 이 아파트 반경 2km 인근 단지 찾기
+      const allCnos = findNearbyComplexes(apt, spatialGrid, 2);
+      if (allCnos.length === 0) continue;
+
+      const row = {};
+
+        // 매매 시세 (A1) 중위/평균
+        const salePrices = [];
+        for (const cno of allCnos) {
+          if (priceByComplex[cno]?.A1) salePrices.push(...priceByComplex[cno].A1);
+        }
+        if (salePrices.length > 0) {
+          row.naver_nearby_median = median(salePrices);
+          row.naver_nearby_avg = Math.round(salePrices.reduce((a, b) => a + b, 0) / salePrices.length);
+        }
+
+        // 전세 시세 (B1) → 전세가율
+        const jeonPrices = [];
+        for (const cno of allCnos) {
+          if (priceByComplex[cno]?.B1) jeonPrices.push(...priceByComplex[cno].B1);
+        }
+        if (jeonPrices.length > 0 && salePrices.length > 0) {
+          const saleMedian = median(salePrices);
+          const jeonMedian = median(jeonPrices);
+          if (saleMedian > 0) {
+            row.naver_jeonse_rate = Math.round(jeonMedian / saleMedian * 1000) / 10;
+          }
+        }
+
+        // 건축연도
+        const years = [];
+        for (const cno of allCnos) {
+          const c = complexes.find(x => x.complex_no === cno);
+          if (c?.use_approve_ymd) {
+            const y = parseInt(String(c.use_approve_ymd).slice(0, 4));
+            if (y > 1970 && y < 2040) years.push(y);
+          }
+        }
+        if (years.length > 0) {
+          row.naver_build_year = Math.round(years.reduce((a, b) => a + b, 0) / years.length);
+        }
+
+        // 평균 층수
+        const floors = [];
+        for (const cno of allCnos) {
+          if (floorByComplex[cno]) floors.push(...floorByComplex[cno]);
+        }
+        if (floors.length > 0) {
+          row.naver_avg_floor = Math.round(floors.reduce((a, b) => a + b, 0) / floors.length * 10) / 10;
+        }
+
+        // 주변 단지 수
+        row.naver_nearby_count = allCnos.length;
+        row.naver_fetched_at = new Date().toISOString();
+
+        // naver_nearby_count + naver_fetched_at만 있으면 스킵
+        if (Object.keys(row).length <= 2) continue;
+
+        row.updated_at = new Date().toISOString();
+
+        if (dryRun) {
+          log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`);
+          naverUpdated++;
+          continue;
+        }
+
+        const { error } = await sbMibunyang.from("apartments").update(row).eq("id", apt.id);
+        if (error) {
+          logError(PHASE, `  ${apt.name} naver UPDATE 실패: ${error.message}`);
+        } else {
+          naverUpdated++;
+        }
+      }
+
+    log(PHASE, `Phase 3 완료: 시세/통계 갱신 ${naverUpdated}건`);
+  }
+
 
   log(PHASE, "\n=== 전체 동기화 완료 ===");
 }

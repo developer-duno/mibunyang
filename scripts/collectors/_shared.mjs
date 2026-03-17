@@ -39,7 +39,7 @@ export function getSupabase() {
   return _supabase;
 }
 
-// ── Supabase 클라이언트 (mibunyang 스키마 전용) ─────────────
+// ── Supabase 클라이언트 (public 스키마 — naver-estate-web 공유) ─────────────
 let _supabaseMibunyang = null;
 export function getMibuyangSupabase() {
   if (_supabaseMibunyang) return _supabaseMibunyang;
@@ -47,7 +47,7 @@ export function getMibuyangSupabase() {
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) throw new Error("SUPABASE_URL + SUPABASE_SERVICE_KEY 필요");
   _supabaseMibunyang = createClient(url, key, {
-    db: { schema: 'mibunyang' },
+    db: { schema: 'public' },
     auth: { autoRefreshToken: false, persistSession: false },
   });
   return _supabaseMibunyang;
