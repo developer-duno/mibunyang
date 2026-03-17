@@ -13,7 +13,7 @@
  *   1. Supabase apartments 테이블에서 미분양 아파트 좌표 조회
  *   2. 각 좌표 주변 네이버 단지 검색 → complexes에 upsert
  *   3. 단지별 매물 수집 → articles에 upsert + 소프트 삭제
- *   4. 단지별 시세 이력 수집 → naver_price_history에 upsert (매매+전세)
+ *   4. 단지별 시세 이력 수집 → complex_price_history에 upsert (매매+전세)
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
@@ -356,7 +356,7 @@ function toArticleRow(data, complexNo) {
   };
 }
 
-/** API 시세 응답 → naver_price_history 행 배열 */
+/** API 시세 응답 → complex_price_history 행 배열 */
 function toPriceHistoryRows(data, complexNo, tradeType) {
   // 응답 구조 탐색: 다양한 경로에서 월별 시세 배열 추출
   const items = data?.realEstatePrice?.monthlyPrices
@@ -604,7 +604,7 @@ async function main() {
         rows.push(...parsed);
       }
       if (rows.length > 0) {
-        await upsertBatch("naver_price_history", rows, "complex_no,trade_type,area_no,base_month", 500, getMibuyangSupabase());
+        await upsertBatch("complex_price_history", rows, "complex_no,trade_type,area_no,base_month", 500, getMibuyangSupabase());
         totalPriceRows += rows.length;
       }
     } catch (err) {
@@ -623,7 +623,7 @@ async function main() {
     .select("*", { count: "exact", head: true })
     .eq("is_active", true);
   const { count: priceHistoryTotal } = await getMibuyangSupabase()
-    .from("naver_price_history")
+    .from("complex_price_history")
     .select("*", { count: "exact", head: true });
 
   log(phase, `\n✅ 수집 완료`);

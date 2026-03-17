@@ -117,7 +117,7 @@ function extractBuildingInfo(detail) {
   const totalArea = safeFloat(detail.kaptTarea); // 연면적 (㎡)
   const siteArea = safeFloat(detail.kaptDongCnt); // 건폐율로 대신 사용 가능
   // API에서 용적률을 직접 제공하지 않으므로, kaptMpArea 기반 계산은 불안정
-  // 대신 naver_complexes에서 가져온 것을 우선 사용하고, 여기선 최고층/주차/에너지만 수집
+  // 대신 complexes에서 가져온 것을 우선 사용하고, 여기선 최고층/주차/에너지만 수집
 
   // 에너지 효율 등급
   const energyStr = detail.kaptdEcnt ?? detail.codeEcas ?? null;

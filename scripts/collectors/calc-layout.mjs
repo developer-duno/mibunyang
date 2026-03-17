@@ -86,33 +86,33 @@ async function main() {
 
   if (!apts.length) { log(PHASE, "대상 없음, 종료"); return; }
 
-  // 2. naver_complexes 조회
+  // 2. complexes 조회
   const { data: complexes, error: cErr } = await sb
-    .from("naver_complexes")
-    .select("complex_no, complex_name, high_floor, total_households, nearby_apartment_ids");
-  if (cErr) throw new Error(`naver_complexes 조회 실패: ${cErr.message}`);
-  log(PHASE, `naver_complexes: ${complexes.length}건`);
+    .from("complexes")
+    .select("complex_no, complex_name, high_floor, total_household_count");
+  if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
+  log(PHASE, `complexes: ${complexes.length}건`);
 
-  // 3. naver_articles에서 전용면적 조회 (active 매물만)
+  // 3. articles에서 전용면적 조회 (active 매물만)
   const { data: articles, error: artErr } = await sb
-    .from("naver_articles")
-    .select("complex_no, exclusive_area")
+    .from("articles")
+    .select("complex_no, area2_m2")
     .eq("is_active", true)
-    .not("exclusive_area", "is", null);
-  if (artErr) throw new Error(`naver_articles 조회 실패: ${artErr.message}`);
-  log(PHASE, `naver_articles (with area): ${articles.length}건`);
+    .not("area2_m2", "is", null);
+  if (artErr) throw new Error(`articles 조회 실패: ${artErr.message}`);
+  log(PHASE, `articles (with area): ${articles.length}건`);
 
   // 4. complex_no별 전용면적 그룹핑
   const areaByComplex = new Map();
   for (const art of articles) {
     if (!areaByComplex.has(art.complex_no)) areaByComplex.set(art.complex_no, []);
-    areaByComplex.get(art.complex_no).push(art.exclusive_area);
+    areaByComplex.get(art.complex_no).push(art.area2_m2);
   }
 
-  // 5. apartment_id → complex 역색인 (nearby_apartment_ids 기반)
+  // 5. apartment_id → complex 역색인 ( 기반)
   const aptToComplexes = new Map();
   for (const cpx of complexes) {
-    const nearbyIds = cpx.nearby_apartment_ids || [];
+    const nearbyIds = cpx. || [];
     for (const aptId of nearbyIds) {
       if (!aptToComplexes.has(aptId)) aptToComplexes.set(aptId, []);
       aptToComplexes.get(aptId).push(cpx);
@@ -123,7 +123,7 @@ async function main() {
   let updated = 0, skipped = 0;
 
   for (const apt of apts) {
-    // 매칭: nearby_apartment_ids 우선, 이름 유사도 폴백
+    // 매칭:  우선, 이름 유사도 폴백
     let matchedComplexes = aptToComplexes.get(apt.id) || [];
 
     if (matchedComplexes.length === 0) {
@@ -161,8 +161,8 @@ async function main() {
         if (cpx.high_floor >= TOWER_HIGH_FLOOR) typeScore += 1;
         if (cpx.high_floor < PLATE_LOW_FLOOR) typeScore -= 1;
       }
-      if (cpx.total_households > 0 && cpx.high_floor > 0) {
-        const density = cpx.total_households / cpx.high_floor;
+      if (cpx.total_household_count > 0 && cpx.high_floor > 0) {
+        const density = cpx.total_household_count / cpx.high_floor;
         if (density <= TOWER_LOW_DENSITY) typeScore += 1;
         if (density >= PLATE_HIGH_DENSITY) typeScore -= 1;
       }

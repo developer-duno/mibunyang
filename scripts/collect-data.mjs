@@ -1029,25 +1029,25 @@ async function phase9_naver(apartments) {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // 1. naver_complexes 조회
+    // 1. complexes 조회
     const { data: complexes, error: cErr } = await supabase
-      .from("naver_complexes")
+      .from("complexes")
       .select("complex_no, nearby_apartment_ids, use_approve_ymd, high_floor");
 
-    if (cErr) throw new Error(`naver_complexes 조회 실패: ${cErr.message}`);
+    if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
     if (!complexes || complexes.length === 0) {
       log("  네이버 단지 데이터 없음 — 스킵");
       meta.phases.naver = { ok: true, enriched: 0, reason: "no_data" };
       return apartments;
     }
 
-    // 2. naver_articles 활성 매물 조회
+    // 2. articles 활성 매물 조회
     const { data: articles, error: aErr } = await supabase
-      .from("naver_articles")
+      .from("articles")
       .select("complex_no, trade_type, price, exclusive_area, floor_info")
       .eq("is_active", true);
 
-    if (aErr) throw new Error(`naver_articles 조회 실패: ${aErr.message}`);
+    if (aErr) throw new Error(`articles 조회 실패: ${aErr.message}`);
 
     // 3. aptId → complexNo[] 매핑
     const aptComplexMap = new Map();

@@ -205,7 +205,7 @@ def main():
     if a.dry_run:
         if cpxs:log(json.dumps(cpxs[0],ensure_ascii=False,indent=2)[:500])
         log("dry-run");return
-    ub("naver_complexes",cpxs,"complex_no")
+    ub("complexes",cpxs,"complex_no")
     ta=0
     for i,cx in enumerate(cpxs):
         if(i+1)%50==0:log(f"  {i+1}/{len(cpxs)}, {ta}매물")
@@ -228,9 +228,9 @@ def main():
                         "last_seen_at":datetime.now().isoformat()})
                 if not d.get("isMoreData"):break
                 pg+=1;time.sleep(1.5)
-            if arts:ub("naver_articles",arts,"article_no");ta+=len(arts)
+            if arts:ub("articles",arts,"article_no");ta+=len(arts)
             if sa:
-                try:SB.update("naver_articles",{"is_active":False},[f"complex_no=eq.{cn}","is_active=eq.true",f"article_no=not.in.({chr(44).join(sa)})"])
+                try:SB.update("articles",{"is_active":False},[f"complex_no=eq.{cn}","is_active=eq.true",f"article_no=not.in.({chr(44).join(sa)})"])
                 except:pass
         except Exception as e:log(f"  {cn}:{e}")
     log(f"매물 {ta}건")

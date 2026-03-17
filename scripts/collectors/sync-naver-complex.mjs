@@ -98,13 +98,13 @@ async function main() {
   const sb = getSupabase();
   const sbMibunyang = getMibuyangSupabase();
 
-  // 1. naver_complexes에서 유용한 필드가 있는 데이터 조회
-  // naver_complexes 페이지네이션 (1000행 제한 우회)
+  // 1. complexes에서 유용한 필드가 있는 데이터 조회
+  // complexes 페이지네이션 (1000행 제한 우회)
   const complexes = [];
   const PAGE = 1000;
   for (let off = 0; ; off += PAGE) {
     const { data: page, error: cErr } = await sbMibunyang
-      .from("naver_complexes")
+      .from("complexes")
       .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude")
       .range(off, off + PAGE - 1);
     if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
