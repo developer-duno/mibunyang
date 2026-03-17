@@ -52,7 +52,6 @@ export default function App() {
   });
 
   const { isPC } = useResponsive();
-  const debouncedSearchText = useDebouncedValue(searchText, 300);
 
   // 8 custom hooks
   const { toast, showToast } = useToast();
@@ -60,6 +59,7 @@ export default function App() {
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
   const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, applyDetectedRegion } = useFilterSort({ onFilterChange: closeDetail });
+  const debouncedSearchText = useDebouncedValue(searchText, 300);
   const userLocation = useUserLocation();
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
