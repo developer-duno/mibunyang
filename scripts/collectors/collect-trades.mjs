@@ -101,7 +101,7 @@ function getTag(item, tag) {
 async function fetchApi(url, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(30000), headers: { "User-Agent": "Mozilla/5.0" } });
       if (res.ok) return await res.text();
       if (res.status === 429) { await sleep((i + 1) * 3000); continue; }
       if (i === retries - 1) throw new Error("HTTP " + res.status);
