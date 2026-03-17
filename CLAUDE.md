@@ -9,7 +9,7 @@
 - Supabase (PostgreSQL) — 데이터베이스 (13개 테이블 + apartments_flat VIEW)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel KV (Upstash Redis) — 인증 세션
-- GitHub Actions — 데이터 수집 (23개 워크플로우)
+- GitHub Actions — 데이터 수집 (24개 워크플로우)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC)
 
 ## GitHub Actions 워크플로우
@@ -20,6 +20,11 @@
 | `collect-naver-listings.yml` | 네이버 후처리 (sync + 전용률 계산) |
 | `naver-units.yml` | 네이버 세대수 2차 보정 |
 | `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00) |
+
+### CI/CD
+| 워크플로우 | 설명 |
+|-----------|------|
+| `ci.yml` | CI 파이프라인 (린트 + 테스트 + 빌드, push/PR 트리거) |
 
 ### 매주
 | 워크플로우 | 설명 |
