@@ -1,3 +1,4 @@
+// TODO(quality): App.jsx 691줄 SRP 위반 — 필터/정렬/네비/모달 로직을 서브컴포넌트로 분리 권장 (Q-2)
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { CITY_TIER } from "@/constants/regions";
@@ -94,12 +95,14 @@ export default function App() {
     const effectiveMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
     if (effectiveMin != null) list = list.filter(x => x.apt.price >= effectiveMin * 10000);
     if (effectiveMax != null) list = list.filter(x => x.apt.price <= effectiveMax * 10000);
+    // TODO(perf): searchText에 300ms debounce 추가 권장 (P-2)
     if (searchText) list = list.filter(x => matchSearch(x.apt.name, searchText) || matchSearch(x.apt.builder ?? "", searchText) || matchSearch(x.apt.gu ?? "", searchText) || matchSearch(x.apt.region ?? "", searchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
     return [...list].sort(sorters[sortKey] || sorters.total);
   }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, searchText]);
   useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, searchText]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  // TODO(perf): scored.find() O(n) -> Map 자료구조로 O(1) 조회 (P-3)
   const compItems = useMemo(() => compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean), [compIds, scored]);
   const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
 

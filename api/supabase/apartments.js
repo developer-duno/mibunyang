@@ -1,3 +1,4 @@
+// TODO(scalability): apartments_flat VIEW에 prices(apartment_id, recorded_at DESC) 인덱스 추가 권장 (SC-1)
 /**
  * GET /api/supabase/apartments
  *

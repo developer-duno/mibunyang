@@ -3,6 +3,7 @@ import { verifyPassword, hashPassword, createToken } from "../_lib/auth.js";
 import { checkRateLimit } from "../_lib/rateLimit.js";
 import crypto from "crypto";
 
+// TODO(security): CORS Access-Control-Allow-Origin 명시적 설정 권장 (S-5)
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });

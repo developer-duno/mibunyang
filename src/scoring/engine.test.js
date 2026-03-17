@@ -1,8 +1,39 @@
 import { describe, it, expect } from 'vitest';
 import { PROFILES } from '@/constants/profiles';
-import { getAgeCoeff, getAreaAdj } from './engine';
+import {
+  getAgeCoeff, getAreaAdj,
+  scorePrice, scoreLocation, scoreProduct,
+  scoreBenefit, scoreRisk, scoreFuture,
+  computeRegionalMedians, calcCats, calcAll,
+} from './engine';
 
-// 가중치 합계 = 100% 검증 (Critical Rule #1)
+// --- 팩토리 함수: 테스트용 아파트 데이터 생성 ---
+function makeApt(overrides = {}) {
+  return {
+    id: 1, name: "테스트아파트", region: "경기", gu: "수원시",
+    builder: "현대건설", completion: "2025-06-01",
+    price: 50000, area: 84, pp: 595,
+    nearbyMedian: 55000, jeonseRate: 70, pir: 5, psr: 0.9,
+    dataReliability: 80,
+    subwayDist: 500, busRoutes: 10, icDist: 5, ktxDist: 15,
+    schoolScore: 70, schoolGrade: "B+",
+    hospital: 3, mart: 2, conv: 5, park: 2, cafe: 10, culture: 2, bank: 2, pharmacy: 3,
+    view: "그린", sunlight: "양호", noise: 55, noxious: [], noxiousDist: null,
+    units: 1000, parkingRatio: 1.3, floorAreaRatio: 220, exclusiveRatio: 78,
+    maxFloor: 25, energyGrade: 2, greenBldg: null, hasPool: false,
+    layout: "4베이판상", quakeDesign: true,
+    discountPct: 5, loanFree: true, loanFreePct: 60,
+    optionFree: true, optionValue: 500, balconyFree: true, balconyValue: 800,
+    cashback: 200,
+    unsoldRate: 15, recentTrades6m: 20, dsr40pass: true, hugGuarantee: true,
+    builderCreditGrade: "AA", builderDebtRatio: 100, supplyRatio: 100,
+    popGrowth: 0.3, netMigration: 500,
+    transitDev: "GTX-C 착공", devDist: 1, cityDev: "신도시", industryDev: "테크노밸리",
+    ...overrides,
+  };
+}
+
+// 가중치 합계 = 100%
 describe('프로필 가중치 합계', () => {
   Object.entries(PROFILES).forEach(([key, profile]) => {
     it(key + ' 프로필 가중치 합계 = 100', () => {
@@ -10,11 +41,9 @@ describe('프로필 가중치 합계', () => {
       expect(sum).toBe(100);
     });
   });
-
   it('프로필이 5개 존재한다', () => {
     expect(Object.keys(PROFILES).length).toBe(5);
   });
-
   it('모든 프로필에 6개 카테고리가 있다', () => {
     const cats = ['location', 'product', 'price', 'risk', 'benefit', 'future'];
     Object.entries(PROFILES).forEach(([key, profile]) => {
@@ -26,33 +55,228 @@ describe('프로필 가중치 합계', () => {
   });
 });
 
-// 연식 계수 테스트
 describe('getAgeCoeff', () => {
-  it('미래 입주일은 1.0', () => {
-    expect(getAgeCoeff('2030-01-01')).toBe(1.0);
-  });
-
-  it('null은 1.05 (기본값)', () => {
-    expect(getAgeCoeff(null)).toBe(1.05);
-  });
-
-  it('유효하지 않은 값은 1.05', () => {
-    expect(getAgeCoeff('invalid')).toBe(1.05);
+  it('미래 입주일은 1.0', () => { expect(getAgeCoeff('2030-01-01')).toBe(1.0); });
+  it('null은 1.05', () => { expect(getAgeCoeff(null)).toBe(1.05); });
+  it('유효하지 않은 값은 1.05', () => { expect(getAgeCoeff('invalid')).toBe(1.05); });
+  it('1년 미만 = 1.03', () => {
+    const d = new Date(); d.setMonth(d.getMonth() - 3);
+    expect(getAgeCoeff(d.toISOString().slice(0, 10))).toBe(1.03);
   });
 });
 
-// 면적 보정 테스트
 describe('getAreaAdj', () => {
-  it('소형 (60m2 미만) = 1.08', () => {
-    expect(getAreaAdj(50)).toBe(1.08);
-  });
+  it('소형 (60m2 미만) = 1.08', () => { expect(getAreaAdj(50)).toBe(1.08); });
+  it('중형 (60~85m2) = 1.0', () => { expect(getAreaAdj(84)).toBe(1.0); });
+  it('대형 (85~115m2) = 0.97', () => { expect(getAreaAdj(100)).toBe(0.97); });
+  it('초대형 (115m2+) = 0.94', () => { expect(getAreaAdj(120)).toBe(0.94); });
+  it('null/0 = 1.0', () => { expect(getAreaAdj(null)).toBe(1.0); expect(getAreaAdj(0)).toBe(1.0); });
+});
 
-  it('중형 (60~85m2) = 1.0', () => {
-    expect(getAreaAdj(84)).toBe(1.0);
+describe('scorePrice', () => {
+  it('정상 데이터에서 0~100 범위', () => {
+    const r = scorePrice(makeApt());
+    expect(r.total).toBeGreaterThanOrEqual(0);
+    expect(r.total).toBeLessThanOrEqual(100);
+    expect(r.subs).toHaveLength(5);
+    expect(r.fairPrice).toBeGreaterThan(0);
   });
+  it('nearbyMedian=0이면 fairPrice=0', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: 0 }));
+    expect(r.fairPrice).toBe(0);
+    expect(r.subs[0].info).toBe("데이터 부재");
+  });
+  it('분양가 < 적정가 -> 높은 점수', () => {
+    expect(scorePrice(makeApt({ price: 30000, nearbyMedian: 55000 })).total).toBeGreaterThan(70);
+  });
+  it('분양가 > 적정가 -> 낮은 점수', () => {
+    expect(scorePrice(makeApt({ price: 80000, nearbyMedian: 40000 })).total).toBeLessThan(60);
+  });
+  it('PIR <= 3 -> PIR 서브스코어 100', () => {
+    expect(scorePrice(makeApt({ pir: 2 })).subs.find(s => s.name === "PIR").score).toBe(100);
+  });
+  it('전세가율 75%에서 최대', () => {
+    expect(scorePrice(makeApt({ jeonseRate: 75 })).subs.find(s => s.name === "전세가율").score).toBeGreaterThanOrEqual(95);
+  });
+  it('PSR 점수 100 초과 불가 (클램핑)', () => {
+    expect(scorePrice(makeApt({ psr: 0.5 })).subs.find(s => s.name === "PSR").score).toBeLessThanOrEqual(100);
+  });
+});
 
-  it('null/0 = 1.0 (중립)', () => {
-    expect(getAreaAdj(null)).toBe(1.0);
-    expect(getAreaAdj(0)).toBe(1.0);
+describe('scoreLocation', () => {
+  it('정상 데이터 0~100', () => {
+    const r = scoreLocation(makeApt());
+    expect(r.total).toBeGreaterThanOrEqual(0);
+    expect(r.total).toBeLessThanOrEqual(100);
+    expect(r.subs).toHaveLength(5);
+  });
+  it('교통 미약 -> 교통 점수 낮음', () => {
+    const r = scoreLocation(makeApt({ subwayDist: 9999, busRoutes: 0, icDist: 99, ktxDist: 99 }));
+    expect(r.subs.find(s => s.name === "교통").score).toBeLessThan(30);
+  });
+  it('혐오시설 500m 이상이면 감점 반감', () => {
+    const close = scoreLocation(makeApt({ noxious: ["소각장"], noxiousDist: 300 }));
+    const far = scoreLocation(makeApt({ noxious: ["소각장"], noxiousDist: 600 }));
+    expect(far.subs.find(s => s.name === "혐오시설").score)
+      .toBeGreaterThan(close.subs.find(s => s.name === "혐오시설").score);
+  });
+  it('미등록 지역도 에러 없이 계산', () => {
+    expect(scoreLocation(makeApt({ region: "미등록" })).total).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('scoreProduct', () => {
+  it('정상 데이터 0~100', () => {
+    const r = scoreProduct(makeApt());
+    expect(r.total).toBeGreaterThanOrEqual(0);
+    expect(r.total).toBeLessThanOrEqual(100);
+    expect(r.subs).toHaveLength(9);
+  });
+  it('1군Super 브랜드 = 20점', () => {
+    expect(scoreProduct(makeApt({ builder: "현대건설" })).subs.find(s => s.name === "브랜드").score).toBe(20);
+  });
+  it('미등록 시공사 = 5점', () => {
+    expect(scoreProduct(makeApt({ builder: "무명건설" })).subs.find(s => s.name === "브랜드").score).toBe(5);
+  });
+  it('세대수 <= 1 -> 중립(8)', () => {
+    expect(scoreProduct(makeApt({ units: 1 })).subs.find(s => s.name === "세대수").score).toBe(8);
+  });
+  it('수영장 보너스 +3', () => {
+    const pool = scoreProduct(makeApt({ hasPool: true })).subs.find(s => s.name === "세대수").score;
+    const noPool = scoreProduct(makeApt({ hasPool: false })).subs.find(s => s.name === "세대수").score;
+    expect(pool).toBe(Math.min(noPool + 3, 15));
+  });
+  it('내진설계 5점/0점', () => {
+    expect(scoreProduct(makeApt({ quakeDesign: true })).subs.find(s => s.name === "내진").score).toBe(5);
+    expect(scoreProduct(makeApt({ quakeDesign: false })).subs.find(s => s.name === "내진").score).toBe(0);
+  });
+});
+
+describe('scoreBenefit', () => {
+  it('혜택 없음 = 0점', () => {
+    const r = scoreBenefit(makeApt({ discountPct: 0, loanFree: false, optionFree: false, balconyFree: false, cashback: 0 }));
+    expect(r.total).toBe(0);
+    expect(r.totalWon).toBe(0);
+  });
+  it('총혜택율 25% 이상 = 100점', () => {
+    expect(scoreBenefit(makeApt({ discountPct: 25, loanFree: false, optionFree: false, balconyFree: false, cashback: 0 })).total).toBe(100);
+  });
+  it('정상 혜택 totalWon > 0', () => {
+    const r = scoreBenefit(makeApt());
+    expect(r.totalWon).toBeGreaterThan(0);
+    expect(r.subs).toHaveLength(5);
+  });
+  it('price=0 -> 0점', () => {
+    expect(scoreBenefit(makeApt({ price: 0 })).total).toBe(0);
+  });
+});
+
+describe('scoreRisk', () => {
+  it('정상 데이터 0~100', () => {
+    const r = scoreRisk(makeApt());
+    expect(r.total).toBeGreaterThanOrEqual(0);
+    expect(r.total).toBeLessThanOrEqual(100);
+    expect(r.subs).toHaveLength(7);
+  });
+  it('미분양률 낮음 -> 안전 점수 높음', () => {
+    expect(scoreRisk(makeApt({ unsoldRate: 5 })).total).toBeGreaterThan(scoreRisk(makeApt({ unsoldRate: 50 })).total);
+  });
+  it('세대수 <= 1 -> 미분양률 중립', () => {
+    expect(scoreRisk(makeApt({ units: 1 })).subs.find(s => s.name === "미분양률").info).toContain("미확인");
+  });
+  it('HUG+AA -> 시공사 재무 위험 낮음', () => {
+    const r = scoreRisk(makeApt({ hugGuarantee: true, builderCreditGrade: "AA", builderDebtRatio: 80 }));
+    expect(r.subs.find(s => s.name === "시공사 재무").score).toBeGreaterThanOrEqual(90);
+  });
+  it('인구 급감 -> 시장환경 위험', () => {
+    expect(scoreRisk(makeApt({ popGrowth: 1.0 })).total).toBeGreaterThan(scoreRisk(makeApt({ popGrowth: -1.0 })).total);
+  });
+});
+
+describe('scoreFuture', () => {
+  it('모든 개발 정보 0~100', () => {
+    const r = scoreFuture(makeApt());
+    expect(r.total).toBeGreaterThanOrEqual(0);
+    expect(r.total).toBeLessThanOrEqual(100);
+    expect(r.subs).toHaveLength(4);
+  });
+  it('교통/도시/산업 없으면 인구 가중치 100%', () => {
+    const r = scoreFuture(makeApt({ transitDev: "없음", cityDev: "", industryDev: null, popGrowth: 0.5, netMigration: null }));
+    expect(r.total).toBe(80);
+  });
+  it('GTX 고가치 교통 1.2x 보너스', () => {
+    const normal = scoreFuture(makeApt({ transitDev: "일반 착공", devDist: 1 })).subs.find(s => s.name === "교통개발").score;
+    const gtx = scoreFuture(makeApt({ transitDev: "GTX-C 착공", devDist: 1 })).subs.find(s => s.name === "교통개발").score;
+    expect(gtx).toBeGreaterThan(normal);
+  });
+  it('순유입 -> 인구 +10', () => {
+    const base = scoreFuture(makeApt({ popGrowth: 0, netMigration: null })).subs.find(s => s.name === "인구").score;
+    const inflow = scoreFuture(makeApt({ popGrowth: 0, netMigration: 1000 })).subs.find(s => s.name === "인구").score;
+    expect(inflow).toBe(base + 10);
+  });
+  it('대규모 유출 -> 인구 -5', () => {
+    const base = scoreFuture(makeApt({ popGrowth: 0, netMigration: null })).subs.find(s => s.name === "인구").score;
+    const out = scoreFuture(makeApt({ popGrowth: 0, netMigration: -6000 })).subs.find(s => s.name === "인구").score;
+    expect(out).toBe(base - 5);
+  });
+});
+
+describe('computeRegionalMedians', () => {
+  it('지역별 중위값 계산', () => {
+    const apts = [
+      { region: "경기", pir: 5, psr: 0.8, unsoldRate: 10, supplyRatio: 100 },
+      { region: "경기", pir: 7, psr: 1.2, unsoldRate: 30, supplyRatio: 120 },
+      { region: "경기", pir: 9, psr: 1.0, unsoldRate: 20, supplyRatio: 110 },
+    ];
+    const m = computeRegionalMedians(apts);
+    expect(m["경기"].pir).toBe(7);
+    expect(m["경기"].psr).toBe(1.0);
+  });
+  it('빈 배열 -> 빈 객체', () => { expect(computeRegionalMedians([])).toEqual({}); });
+  it('null 필드 제외', () => {
+    const apts = [
+      { region: "경기", pir: null, psr: 0.8, unsoldRate: null, supplyRatio: 100 },
+      { region: "경기", pir: 5, psr: null, unsoldRate: 20, supplyRatio: null },
+    ];
+    const m = computeRegionalMedians(apts);
+    expect(m["경기"].pir).toBe(5);
+    expect(m["경기"].psr).toBe(0.8);
+  });
+});
+
+describe('calcCats', () => {
+  it('6개 카테고리 반환', () => {
+    const cats = calcCats(makeApt(), {});
+    expect(Object.keys(cats)).toEqual(expect.arrayContaining(['price', 'location', 'product', 'benefit', 'risk', 'future']));
+  });
+  it('모든 카테고리 0~100', () => {
+    Object.values(calcCats(makeApt(), {})).forEach(c => {
+      expect(c.total).toBeGreaterThanOrEqual(0);
+      expect(c.total).toBeLessThanOrEqual(100);
+    });
+  });
+  it('대부분 null인 아파트도 에러 없이 계산', () => {
+    Object.values(calcCats({ id: 99, name: "널단지", region: "경기", builder: null, price: null }, {})).forEach(c => {
+      expect(c.total).toBeGreaterThanOrEqual(0);
+      expect(c.total).toBeLessThanOrEqual(100);
+    });
+  });
+});
+
+describe('calcAll', () => {
+  it('모든 프로필에서 0~100', () => {
+    Object.keys(PROFILES).forEach(p => {
+      const r = calcAll(makeApt(), p, {});
+      expect(r.total).toBeGreaterThanOrEqual(0);
+      expect(r.total).toBeLessThanOrEqual(100);
+    });
+  });
+  it('다른 프로필은 다른 가중치', () => {
+    const live = calcAll(makeApt(), 'live', {});
+    const invest = calcAll(makeApt(), 'invest', {});
+    expect(live.weights).not.toEqual(invest.weights);
+  });
+  it('미등록 프로필은 live 폴백', () => {
+    expect(calcAll(makeApt(), 'nonexistent', {}).weights).toEqual(PROFILES.live.w);
   });
 });

@@ -1,3 +1,4 @@
+// TODO(quality): DetailModal.jsx 440줄 — 시세테이블/차트/상세정보 서브컴포넌트 분리 권장 (Q-3)
 import { memo, useState, useEffect } from "react";
 import { C, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE, LTV_RATES } from "@/constants/regulations";

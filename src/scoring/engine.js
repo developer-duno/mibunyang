@@ -315,6 +315,7 @@ export function scoreFuture(apt) {
   const hasTr = trSc > 0;
   const hasCity = citySc > 0;
   let wTr, wCity, wPop, wInd;
+  // TODO(quality): scoreFuture 동적 가중치 8분기 if/else -> lookup table 정리 권장 (Q-4)
   if (hasTr && hasCity && hasInd)        { wTr = 0.30; wCity = 0.25; wPop = 0.25; wInd = 0.20; }
   else if (hasTr && hasCity && !hasInd)  { wTr = 0.40; wCity = 0.30; wPop = 0.30; wInd = 0; }
   else if (hasTr && !hasCity && hasInd)  { wTr = 0.40; wCity = 0;    wPop = 0.30; wInd = 0.30; }

@@ -105,6 +105,9 @@ export function useExpertMode(showToast) {
     showToast("로그아웃되었습니다");
   }, [showToast]);
 
+  // TODO(perf): showToast를 useRef로 분리하여 탭 전환시 verify 재실행 방지 (P-4)
+
+
   useEffect(() => {
     let cancelled = false;
     let abortCtrl = null;

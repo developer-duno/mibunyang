@@ -1,3 +1,4 @@
+// TODO(scalability): Kakao API 병렬 호출 시 Semaphore(10) 패턴으로 초당 50건 제한 권장 (SC-2)
 /**
  * 인프라 시설 수집기 — Kakao Places 기반
  *
