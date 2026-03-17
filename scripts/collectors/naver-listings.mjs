@@ -13,7 +13,7 @@
  *   1. Supabase apartments 테이블에서 미분양 아파트 좌표 조회
  *   2. 각 좌표 주변 네이버 단지 검색 → complexes에 upsert
  *   3. 단지별 매물 수집 → articles에 upsert + 소프트 삭제
- *   4. 단지별 시세 이력 수집 → complex_price_history에 upsert (매매+전세)
+ *   (시세 이력은 naver-estate-web에서 관리)
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
@@ -230,21 +230,7 @@ async function getComplexDetail(complexId) {
   return requestWithRetry(`${NAVER_COMPLEX_API}/${complexId}`, {}, true, complexId);
 }
 
-/** 단지 시세 이력 조회 (Python get_complex_prices 포트) */
-async function getComplexPrices(complexId, tradeType = "A1", areaNo = null) {
-  const params = {
-    complexNo: complexId,
-    tradeType,           // A1=매매, B1=전세, B2=월세
-    year: "5",
-    priceChartChange: "true",
-    type: "table",
-  };
-  if (areaNo != null) {
-    params.areaNo = String(areaNo);
-    params.areaChange = "true";
-  }
-  return requestWithRetry(`${NAVER_COMPLEX_API}/${complexId}/prices`, params, true, complexId);
-}
+
 
 // ── 가격 파싱 (Python _parse_price_str 포트) ───────────────
 
@@ -356,31 +342,6 @@ function toArticleRow(data, complexNo) {
   };
 }
 
-/** API 시세 응답 → complex_price_history 행 배열 */
-function toPriceHistoryRows(data, complexNo, tradeType) {
-  // 응답 구조 탐색: 다양한 경로에서 월별 시세 배열 추출
-  const items = data?.realEstatePrice?.monthlyPrices
-    || data?.monthlyPrices
-    || data?.priceChartList
-    || data?.prices
-    || [];
-  if (!Array.isArray(items)) return [];
-
-  return items
-    .filter(item => item.baseYearMonth || item.baseMonth)
-    .map(item => ({
-      complex_no: complexNo,
-      trade_type: tradeType,
-      area_no: item.areaNo != null ? String(item.areaNo) : null,
-      deal_price_upper: item.dealUpperPrice ?? item.dealUpperPriceLimit ?? null,
-      deal_price_lower: item.dealLowerPrice ?? item.dealLowPriceLimit ?? null,
-      deal_price_avg: item.dealAveragePrice ?? null,
-      lease_price_upper: item.leaseUpperPrice ?? item.leaseUpperPriceLimit ?? null,
-      lease_price_lower: item.leaseLowerPrice ?? item.leaseLowPriceLimit ?? null,
-      base_month: String(item.baseYearMonth || item.baseMonth).slice(0, 6),
-      recorded_at: today(),
-    }));
-}
 
 /** 상세 API로 매물 보강 (Python update_from_detail 포트) */
 function enrichArticleFromDetail(row, detail) {
@@ -490,19 +451,6 @@ async function main() {
     if (allComplexRows.length > 0) {
       console.log(JSON.stringify(allComplexRows[0], null, 2));
     }
-    // 시세 API 샘플 테스트
-    if (allComplexRows.length > 0) {
-      log(phase, "\n── 샘플 시세 (매매) ──");
-      try {
-        const sample = await getComplexPrices(allComplexRows[0].complex_no, "A1");
-        console.log(JSON.stringify(sample, null, 2).slice(0, 2000));
-        const rows = toPriceHistoryRows(sample, allComplexRows[0].complex_no, "A1");
-        log(phase, `  파싱 결과: ${rows.length}건`);
-        if (rows.length > 0) console.log(JSON.stringify(rows[0], null, 2));
-      } catch (e) {
-        log(phase, `시세 샘플 실패: ${e.message}`);
-      }
-    }
 
     log(phase, "\n🔍 dry-run: DB 쓰기 생략");
     process.exit(0);
@@ -585,35 +533,6 @@ async function main() {
 
   log(phase, `📋 매물 ${totalArticles}건 수집 완료`);
 
-  // 6. 단지별 시세 이력 수집
-  log(phase, `\n📈 시세 이력 수집 시작...`);
-  let totalPriceRows = 0;
-  let priceComplexCount = 0;
-
-  for (const complexRow of allComplexRows) {
-    priceComplexCount++;
-    if (priceComplexCount % 50 === 0) {
-      log(phase, `  시세 진행: ${priceComplexCount}/${allComplexRows.length}, ${totalPriceRows}건`);
-    }
-
-    try {
-      const rows = [];
-      for (const tradeType of ["A1", "B1"]) {  // 매매 + 전세
-        const result = await getComplexPrices(complexRow.complex_no, tradeType);
-        const parsed = toPriceHistoryRows(result, complexRow.complex_no, tradeType);
-        rows.push(...parsed);
-      }
-      if (rows.length > 0) {
-        await upsertBatch("complex_price_history", rows, "complex_no,trade_type,area_no,base_month", 500, getMibuyangSupabase());
-        totalPriceRows += rows.length;
-      }
-    } catch (err) {
-      logError(phase, `시세 수집 실패 ${complexRow.complex_no}: ${err.message}`);
-    }
-  }
-
-  log(phase, `📈 시세 이력 ${totalPriceRows}건 수집`);
-
   // 7. 통계 요약
   const { count: complexTotal } = await sbMibunyang
     .from("complexes")
@@ -622,14 +541,10 @@ async function main() {
     .from("articles")
     .select("*", { count: "exact", head: true })
     .eq("is_active", true);
-  const { count: priceHistoryTotal } = await getMibuyangSupabase()
-    .from("complex_price_history")
-    .select("*", { count: "exact", head: true });
-
   log(phase, `\n✅ 수집 완료`);
   log(phase, `  단지: ${allComplexRows.length}건 신규/갱신 (전체: ${complexTotal})`);
   log(phase, `  매물: ${totalArticles}건 신규/갱신 (활성: ${articleTotal})`);
-  log(phase, `  시세이력: ${totalPriceRows}건 신규/갱신 (전체: ${priceHistoryTotal})`);
+
 }
 
 main().catch(err => {
