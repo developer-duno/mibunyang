@@ -20,7 +20,7 @@ export default defineConfig({
             "./src/components/expert/ExpertAptHeader.jsx",
           ],
           admin: ["./src/components/admin/AdminDashboard.jsx"],
-          detail: ["./src/components/DetailModal.jsx", "./src/components/CatPanel.jsx"],
+          detail: ["./src/components/DetailModal.jsx", "./src/components/CatPanel.jsx", "./src/components/detail/PriceTable.jsx", "./src/components/detail/SchoolInfo.jsx", "./src/components/detail/LoanAnalysis.jsx", "./src/components/detail/DataSections.jsx"],
           consult: ["./src/components/ConsultForm.jsx"],
           compare: ["./src/components/CompareSheet.jsx"],
         },
