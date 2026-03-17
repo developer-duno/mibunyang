@@ -2,9 +2,11 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 17개 컴포넌트
+## memo() 27개 컴포넌트
 
 소비자 8개: Bar, ScoreBadge, Radar, CatPanel, AptCard, CompareSheet, ConsultForm, DetailModal
+섹션 6개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav
+상세 4개 (DetailModal에서 분리): PriceTable, SchoolInfo, LoanAnalysis, DataSections
 전문가 8개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard
 관리자 1개: AdminDashboard
 

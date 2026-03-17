@@ -71,6 +71,28 @@
 constants → scoring → theme → components → hooks → App
 ```
 
+## 컴포넌트 구조
+
+### App.jsx (355줄) — Hook + useMemo + 콜백 + 탭 라우팅만 담당
+분리된 섹션 컴포넌트 (`src/components/sections/`):
+| 컴포넌트 | 줄 | 역할 |
+|---------|-----|------|
+| HeaderSection | 35 | 프로필 선택 + 헤더 |
+| SearchFilterBar | 100 | 검색/필터/정렬 |
+| AptListSection | 69 | 카드 그리드 + 비교 |
+| ExpertLoginForm | 157 | 전문가 로그인/회원가입 |
+| InfoPage | 58 | 스코어링 엔진 설명 |
+| BottomNav | 35 | 하단 네비게이션 |
+
+### DetailModal.jsx (107줄) — 모달 컨테이너만 담당
+분리된 상세 컴포넌트 (`src/components/detail/`):
+| 컴포넌트 | 줄 | 역할 |
+|---------|-----|------|
+| PriceTable | 88 | 인근 매매/전세 시세 |
+| SchoolInfo | 36 | 학군 정보 |
+| LoanAnalysis | 93 | LTV/DSR/갭투자 분석 |
+| DataSections | 164 | 공공데이터 5개 섹션 |
+
 ## 서브디렉토리 규칙 파일
 
 스코어링/컴포넌트/API 관련 상세 규칙은 해당 디렉토리의 CLAUDE.md에 분리:
@@ -90,7 +112,7 @@ constants → scoring → theme → components → hooks → App
 
 App.jsx 내부:
 ```
-useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 12개 → useMemo (8개) → useEffect (5개) → useRef → useEffect → useCallback/useRef
+useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 13개 (useDebouncedValue 포함) → useMemo (9개: scoredMap 추가) → useEffect (7개) → useRef → useCallback
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
@@ -102,9 +124,10 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 | guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
 | catsCache | [apartments] | apartments 의존 필수 |
 | scored | [catsCache, profile, customWeights] | catsCache는 apartments 간접 의존 |
-| filtered | [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, searchText] | 7개 전부 필수 |
+| filtered | [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText] | 7개 필수 (P-2: debounce 적용) |
 | visible | [filtered, visibleCount] | 페이지네이션용 |
-| compItems | [compIds, scored] | 2개 전부 필수 |
+| scoredMap | [scored] | Map 자료구조 (P-3: O(1) 조회) |
+| compItems | [compIds, scoredMap] | scoredMap.get() 사용 |
 | pw | [profile, customWeights] | customWeights 우선, PROFILES[profile].w 폴백 |
 | regionOptions | [apartments] | apartments 의존 필수 |
 
@@ -155,6 +178,7 @@ filtered → visible (페이지네이션)
 ```
 
 `calcCats(apt, ctx)`는 regionMedians 컨텍스트를 받아 6개 카테고리 점수 반환.
+`scoreFuture`는 `FUTURE_WEIGHT_MAP` 룩업 테이블로 동적 가중치 결정 (Q-4).
 `calcAll(apt, profile, ctx)`는 가중합산 총점 + 카테고리 점수 반환.
 
 ### 9. 네이버 부동산 수집 — 로컬 자동화
