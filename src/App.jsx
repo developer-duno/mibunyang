@@ -5,6 +5,7 @@ import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
 import { C, catCol, catBg } from "@/theme";
 
+const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
 const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));
 const ConsultForm = lazy(() => import("@/components/ConsultForm").then(m => ({ default: m.ConsultForm })));
 const ExpertDashboard = lazy(() => import("@/components/expert/ExpertDashboard").then(m => ({ default: m.ExpertDashboard })));
@@ -263,6 +264,14 @@ export default function App() {
             isPC={isPC}
           />
 
+          {compIds.length >= 2 && (
+            <button onClick={() => { const wasOpen = showComp; setShowCompOpen(!showCompOpen); if (wasOpen) window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{
+              width: "100%", background: showComp ? C.indigo : "transparent", color: showComp ? C.white : C.indigo,
+              border: `1.5px solid ${C.indigo}`, borderRadius: 8, padding: "12px", fontSize: 13, fontWeight: 700,
+              cursor: "pointer", marginBottom: 10, transition: "all .2s"
+            }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
+          )}
+          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} /></Suspense>}
           <AptListSection
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => setVisibleCount(v => v + 30)}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} compIds={compIds}
@@ -270,7 +279,7 @@ export default function App() {
             searchText={searchText} budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
             userLocation={userLocation}
-            showComp={showComp} showCompOpen={showCompOpen} setShowCompOpen={setShowCompOpen} compItems={compItems} onShareCompare={handleShareCompare}
+
           />
         </div>
       ) : tab === "info" ? (

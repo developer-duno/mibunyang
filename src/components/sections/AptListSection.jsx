@@ -1,4 +1,4 @@
-import { memo, lazy, Suspense } from "react";
+import { memo } from "react";
 import { C } from "@/theme";
 import { AptCard } from "@/components/AptCard";
 import { PROFILES } from "@/constants/profiles";
@@ -13,7 +13,7 @@ export const AptListSection = memo(function AptListSection({
   searchText, budgetMin, budgetMax, filterRegion,
   dataLoading, dataFreshnessText,
   userLocation,
-  showComp, showCompOpen, setShowCompOpen, compItems, onShareCompare,
+
 }) {
   return (
     <>
