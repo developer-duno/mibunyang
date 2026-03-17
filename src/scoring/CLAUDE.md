@@ -2,6 +2,16 @@
 
 > `engine.js` 수정 시 반드시 이 규칙을 따를 것.
 
+## 함수 시그니처
+
+| 함수 | 시그니처 | 반환 |
+|------|---------|------|
+| `calcCats(apt, ctx)` | ctx = { regionMedians } | 6개 카테고리 { total, subs[] } |
+| `calcAll(apt, profile, ctx)` | profile 가중치 적용 | { total, cats, weights } |
+| `computeRegionalMedians(apts)` | 전체 아파트 배열 | 지역별 중위값 객체 |
+
+**ctx 파라미터**: App.jsx에서 `computeRegionalMedians(apartments)`로 생성하여 전달.
+
 ## 가중치 합계 = 100% (또는 1.00)
 
 수정 시 반드시 합계를 검증할 것. 한 곳이라도 틀리면 전체 점수가 왜곡됨.
@@ -27,8 +37,8 @@
 
 ## 새 카테고리 추가 시
 
-1. `engine.js`에 `scoreNewCategory(apt)` 함수 작성 (반환: `{ total, subs[] }`)
-2. `calcAll()` 내 호출 추가
+1. `engine.js`에 `scoreNewCategory(apt, ctx)` 함수 작성 (반환: `{ total, subs[] }`)
+2. `calcCats()` 내 호출 추가
 3. `src/constants/profiles.js` — **PROFILES 5개 전부** 가중치 재조정 (합계 100 유지)
 4. `src/theme/index.js` — catCol, catBg에 새 색상 추가
 5. CompareSheet, CatPanel, Radar에 키 추가

@@ -25,7 +25,7 @@ API에서 null 반환 시 **위험 단지가 안전하게 표시됨**. `sanitize
 
 - 읽기: `SUPABASE_ANON_KEY` (Vercel 환경변수) — `api/_lib/supabase.js`
 - 쓰기: `SUPABASE_SERVICE_KEY` (GitHub Secrets만) — `scripts/collectors/_shared.mjs`
-- `apartments_flat` VIEW를 통해 9개 테이블 JOIN → 평탄 형태 반환
+- `apartments_flat` VIEW를 통해 13개 테이블 JOIN → 평탄 형태 반환
 - RLS 활성: anon = 읽기만, service_role = 읽기+쓰기
 - API 응답 형식: `{ ok: true, data: [...], count: N, fetchedAt: "..." }` (기존 JSON과 동일)
 
@@ -40,7 +40,7 @@ API에서 null 반환 시 **위험 단지가 안전하게 표시됨**. `sanitize
 
 ## 네이버 부동산 API 연동 규칙
 
-참조 구현: `D:/cursor/네이버 아파트/web/shared/naver_api.py`
+참조 구현: `scripts/collectors/naver-collect.py` (Python, curl_cffi)`
 Node.js 포트: `scripts/collectors/naver-listings.mjs`
 
 ### API 엔드포인트

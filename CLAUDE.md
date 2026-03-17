@@ -6,31 +6,59 @@
 ## 기술 스택
 
 - React 18 + Vite + `@/` 경로 별칭 — 프론트엔드
-- Supabase (PostgreSQL) — 데이터베이스 (9개 테이블 + apartments_flat VIEW)
+- Supabase (PostgreSQL) — 데이터베이스 (13개 테이블 + apartments_flat VIEW)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel KV (Upstash Redis) — 인증 세션
-- GitHub Actions — 데이터 수집 (일/주/월 스케줄)
-  - `collect-naver-listings.yml` — 네이버 후처리만 (sync + 전용률 계산, 매일)
-  - `naver-units.yml` — 네이버 세대수 2차 보정 (매일, Node.js)
-- **로컬 전용 수집** (GitHub Actions 불가 — 네이버 데이터센터 IP 차단)
-  - `scripts/run-naver-local.bat` — Windows 스케줄러 자동 실행 (주 2회 월/목)
-  - `scripts/run-naver-local.sh` — 네이버 매물+시세 수집 (수동 실행용)
-  - `scripts/collectors/naver-listings.mjs` — 실제 수집 로직
-  - `collect-population.yml` — 행안부 인구 증감률 수집 (매월 5일)
-  - `collect-housing-permits.yml` — 국토부 주택 인허가 공급비율 수집 (매월 10일)
-  - `collect-migration.yml` — 행안부 전입/전출 순이동 수집 (매월 15일)
-  - `collect-molit-units.yml` — 국토부 공동주택 총세대수 보정 (매월 1일/15일)
-  - `collect-building-info.yml` — 국토부 건축물 상세정보 수집 (매월 10일)
-  - `collect-infra.yml` — Kakao Places 인프라 수집 (매월 1일)
-  - `collect-transport.yml` — Kakao Places 교통 수집 (매월 1일)
-  - `collect-schools.yml` — Kakao Places 학교 수집 (매월 1일)
-  - `collect-trade-stats.yml` — 거래 통계 산출 (매주 일요일)
-  - `calc-exclusive-ratio.yml` — 전용률 계산 (매주 일요일)
-  - `collect-dart-builders.yml` — DART 시공사 재무 수집 (매월 1일)
-  - `collect-noise.yml` — 소음 추정 수집 (매월 1일)
-  - `calc-layout.yml` — 평면구조 추정 (매주 일요일)
-  - `collect-unsold-kosis.yml` — KOSIS 시군구별 미분양 수집 (매월 1일)
-  - `collect-trades.yml` — 국토부 실거래 수집 (매월 1/15일)
+- GitHub Actions — 데이터 수집 (23개 워크플로우)
+- Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC)
+
+## GitHub Actions 워크플로우
+
+### 매일
+| 워크플로우 | 설명 |
+|-----------|------|
+| `collect-naver-listings.yml` | 네이버 후처리 (sync + 전용률 계산) |
+| `naver-units.yml` | 네이버 세대수 2차 보정 |
+| `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00) |
+
+### 매주
+| 워크플로우 | 설명 |
+|-----------|------|
+| `collect-trade-stats.yml` | 거래 통계 산출 (일요일) |
+| `calc-exclusive-ratio.yml` | 전용률 계산 (일요일) |
+| `calc-layout.yml` | 평면구조 추정 (일요일) |
+
+### 매월
+| 워크플로우 | 설명 |
+|-----------|------|
+| `collect-trades.yml` | 국토부 실거래 수집 (1/15일) |
+| `collect-molit-units.yml` | 국토부 공동주택 총세대수 보정 (1/15일) |
+| `collect-population.yml` | 행안부 인구 증감률 (5일) |
+| `collect-housing-permits.yml` | 국토부 주택 인허가 공급비율 (10일) |
+| `collect-building-info.yml` | 국토부 건축물 상세정보 (10일) |
+| `collect-migration.yml` | 행안부 전입/전출 순이동 (15일) |
+| `collect-infra.yml` | Kakao Places 인프라 (1일) |
+| `collect-transport.yml` | Kakao Places 교통 (1일) |
+| `collect-schools.yml` | NEIS 학교 (1일) |
+| `collect-dart-builders.yml` | DART 시공사 재무 (1일) |
+| `collect-noise.yml` | 소음 추정 (1일) |
+| `collect-environment.yml` | 환경/혐오시설 (1일) |
+| `collect-noxious.yml` | 혐오시설 거리 (1일) |
+| `collect-industry.yml` | 산업단지 매칭 (1일) |
+| `collect-unsold-kosis.yml` | KOSIS 시군구별 미분양 (1일) |
+
+### 유틸리티
+| 워크플로우 | 설명 |
+|-----------|------|
+| `apply-migration.yml` | Supabase 마이그레이션 적용 |
+| `seed-data.yml` | 초기 데이터 시딩 |
+
+### 로컬 전용 (네이버)
+| 스크립트 | 설명 |
+|---------|------|
+| `scripts/run-naver-local.bat` | Windows 스케줄러 자동 실행 (주 2회 월/목 06:00) |
+| `scripts/run-naver-local.sh` | 수동 실행용 (bash) |
+| `scripts/collectors/naver-collect.py` | Python 수집 로직 (curl_cffi) |
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
 
@@ -89,7 +117,7 @@ const showComp = showCompOpen && compIds.length >= 2;
 | `SUPABASE_URL` | Supabase 프로젝트 URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service_role 키 (쓰기용) |
 | `MOIS_POP_KEY` | 행안부 주민등록 인구/전입전출 API 키 (data.go.kr) |
-| `MOLIT_KEY` | 국토부 주택 인허가 + 공동주택 기본정보 API 키 (data.go.kr) |
+| `MOLIT_KEY` | 국토부 실거래 + 주택인허가 + 공동주택 기본정보 API 키 (data.go.kr) |
 | `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경/소음 수집 + 역지오코딩) |
 | `DART_KEY` | DART 전자공시 API 키 (시공사 재무 수집) |
 | `KOSIS_KEY` | KOSIS 국가통계포털 API 키 (미분양 수집) |
@@ -106,11 +134,25 @@ const showComp = showCompOpen && compIds.length >= 2;
 
 ### 7. 데이터 소스
 
-실제 데이터: `VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.
+`VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.
 참조: `src/services/staticDataApi.js`, `src/hooks/useApartmentData.js`.
-(레거시 `unsold.js` 및 미사용 API 스텁 5종 삭제 완료)
 
-### 8. 네이버 부동산 수집 — 로컬 자동화
+### 8. 스코어링 파이프라인
+
+```
+apartments (API 데이터)
+  ↓ [apartments 변경 시]
+catsCache = apartments.map(a => calcCats(a, { regionMedians }))
+  ↓ [profile, customWeights 변경 시]
+scored = catsCache.map(c => { total = 가중합산; return { apt, res } })
+  ↓ [필터/정렬 변경 시]
+filtered → visible (페이지네이션)
+```
+
+`calcCats(apt, ctx)`는 regionMedians 컨텍스트를 받아 6개 카테고리 점수 반환.
+`calcAll(apt, profile, ctx)`는 가중합산 총점 + 카테고리 점수 반환.
+
+### 9. 네이버 부동산 수집 — 로컬 자동화
 
 **네이버 수집은 한국 IP가 필요. Windows 작업 스케줄러로 로컬 PC에서 자동 실행.**
 
@@ -131,6 +173,26 @@ const showComp = showCompOpen && compIds.length >= 2;
 - 수동 트리거: `schtasks /run /tn MibunyangNaverCollect`
 
 **수동 실행**: `bash scripts/run-naver-local.sh`
+
+### 10. Supabase 테이블 (13개 + 1 VIEW)
+
+| 테이블 | 설명 | 주요 수집기 |
+|--------|------|-----------|
+| apartments | 미분양 아파트 핵심 데이터 | 청약홈 API |
+| prices | 분양가 이력 (시계열) | 청약홈 API |
+| unsold_history | 미분양 추이 (시계열) | 청약홈 API |
+| trades | 실거래가 (매매/전세) | collect-trades.mjs |
+| trade_stats | 거래 통계 캐시 | trade-stats.mjs |
+| infra | 주변 인프라 (병원, 마트 등) | infra-kakao.mjs |
+| schools | 학교 정보 | schools-neis.mjs |
+| transport | 교통 정보 | transport-tago.mjs |
+| builders | 건설사 재무 | dart-builders.mjs |
+| regions | 지역 통계 (인구, 이동) | population.mjs, migration.mjs |
+| complexes | 네이버 단지 정보 | naver-collect.py |
+| articles | 네이버 매물 정보 | naver-collect.py |
+| complex_price_history | 네이버 시세 이력 | naver-collect.py |
+| **apartments_flat** (VIEW) | 13개 테이블 JOIN 평탄화 | — |
+
 ---
 
 ## 작업 완료 후 필수 프로세스
