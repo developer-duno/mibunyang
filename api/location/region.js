@@ -49,8 +49,8 @@ async function kakaoRegion(apiKey, lat, lng) {
 
 // IP 기반 위치 추정 (무료 API)
 async function ipLocation(clientIp) {
-  // ip-api.com은 비상업 무료 (HTTP only, Vercel 서버에서 호출)
-  const url = `http://ip-api.com/json/${clientIp}?fields=status,regionName,city,lat,lon&lang=ko`;
+  // ipapi.co HTTPS 무료 티어 (일 1000건, Vercel 서버에서 호출)
+  const url = `https://ipapi.co/${clientIp}/json/`;
   const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   if (!res.ok) return null;
   const json = await res.json();
@@ -78,7 +78,7 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.KAKAO_KEY;
   if (!apiKey) {
-    res.status(500).json({ ok: false, error: "KAKAO_KEY not configured" });
+    res.status(500).json({ ok: false, error: "위치 서비스 설정 오류" });
     return;
   }
 

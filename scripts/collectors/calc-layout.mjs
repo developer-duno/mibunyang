@@ -89,7 +89,7 @@ async function main() {
   // 2. complexes 조회
   const { data: complexes, error: cErr } = await sb
     .from("complexes")
-    .select("complex_no, complex_name, high_floor, total_household_count");
+    .select("complex_no, complex_name, high_floor, total_household_count, nearby_apartment_ids");
   if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
   log(PHASE, `complexes: ${complexes.length}건`);
 
@@ -112,7 +112,7 @@ async function main() {
   // 5. apartment_id → complex 역색인 ( 기반)
   const aptToComplexes = new Map();
   for (const cpx of complexes) {
-    const nearbyIds = cpx. || [];
+    const nearbyIds = cpx.nearby_apartment_ids || [];
     for (const aptId of nearbyIds) {
       if (!aptToComplexes.has(aptId)) aptToComplexes.set(aptId, []);
       aptToComplexes.get(aptId).push(cpx);

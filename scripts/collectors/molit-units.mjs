@@ -89,16 +89,30 @@ async function getTargets(sb) {
 
 // ── 2. 시도/시군구별 단지 목록 조회 ──────────────────────────
 async function fetchAptList(siDo, siGunGu) {
-  const params = { numOfRows: "500", pageNo: "1", siDo };
-  if (siGunGu) params.siGunGu = siGunGu;
+  const allItems = [];
+  let pageNo = 1;
 
-  const json = await apiCall("getLnmBasicList", params);
-  const body = json?.response?.body;
-  if (!body || body.totalCount === 0) return [];
+  while (true) {
+    const params = { numOfRows: "500", pageNo: String(pageNo), siDo };
+    if (siGunGu) params.siGunGu = siGunGu;
 
-  const items = body.items?.item;
-  if (!items) return [];
-  return Array.isArray(items) ? items : [items];
+    const json = await apiCall("getLnmBasicList", params);
+    const body = json?.response?.body;
+    if (!body || body.totalCount === 0) break;
+
+    const items = body.items?.item;
+    if (!items) break;
+    const page = Array.isArray(items) ? items : [items];
+    allItems.push(...page);
+
+    const totalCount = parseInt(body.totalCount, 10) || 0;
+    if (allItems.length >= totalCount || page.length < 500) break;
+
+    pageNo++;
+    await sleep(REQUEST_DELAY);
+  }
+
+  return allItems;
 }
 
 // ── 3. 단지 상세 조회 (세대수) ──────────────────────────────

@@ -278,6 +278,17 @@ async function main() {
       failed++;
       continue;
     }
+    // 회귀 방지: 신규값이 미분양수보다 작거나 기존 의미 있는 값보다 작으면 건너뛰
+    if (t.unsold != null && total < t.unsold) {
+      log(PHASE, `  → 건너뛰: 총세대수(${total}) < 미분양(${t.unsold})`);
+      failed++;
+      continue;
+    }
+    if (t.units > 1 && total < t.units) {
+      log(PHASE, `  → 건너뛰: 신규(${total}) < 기존(${t.units}), 품질 하락 방지`);
+      failed++;
+      continue;
+    }
 
     log(PHASE, `  → 총세대수: ${total}`);
 

@@ -59,6 +59,25 @@ async function fetchAll(table, select, filters = {}, sb = null) {
 }
 
 // ── 메인 ─────────────────────────────────────────────────────
+/** 거래 배열 → 면적별 min/avg/max/count 통계 */
+function groupByArea(trades) {
+  const groups = new Map();
+  for (const t of trades) {
+    const bucket = Math.round(t.area / 5) * 5;
+    if (!groups.has(bucket)) groups.set(bucket, []);
+    groups.get(bucket).push(t.price);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([area, prices]) => ({
+      area,
+      min: Math.min(...prices),
+      avg: Math.round(prices.reduce((s, p) => s + p, 0) / prices.length),
+      max: Math.max(...prices),
+      count: prices.length,
+    }));
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const cutoff12m = monthsAgo(12);
@@ -302,42 +321,13 @@ async function main() {
 
     // ── 시세 배열 (DetailModal 시세 테이블용) ─────────────────────
     // 면적별 매매 시세
-    const sellTrades = recent12m.filter(t => t.price > 0 && t.area > 0);
-    const areaGroups = new Map();
-    for (const t of sellTrades) {
-      const bucket = Math.round(t.area / 5) * 5; // 5㎡ 단위 반올림
-      if (!areaGroups.has(bucket)) areaGroups.set(bucket, []);
-      areaGroups.get(bucket).push(t.price);
-    }
-    const priceByArea = [...areaGroups.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([area, prices]) => ({
-        area,
-        min: Math.min(...prices),
-        avg: Math.round(prices.reduce((s, p) => s + p, 0) / prices.length),
-        max: Math.max(...prices),
-        count: prices.length,
-      }));
+    const priceByArea = groupByArea(recent12m.filter(t => t.price > 0 && t.area > 0));
 
     // 면적별 전세 시세
     const jeonse12m = guTrades.filter(
       t => t.deal_month >= cutoff12m && t.trade_type === "전세" && t.price > 0 && t.area > 0
     );
-    const rentGroups = new Map();
-    for (const t of jeonse12m) {
-      const bucket = Math.round(t.area / 5) * 5;
-      if (!rentGroups.has(bucket)) rentGroups.set(bucket, []);
-      rentGroups.get(bucket).push(t.price);
-    }
-    const rentByArea = [...rentGroups.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([area, prices]) => ({
-        area,
-        min: Math.min(...prices),
-        avg: Math.round(prices.reduce((s, p) => s + p, 0) / prices.length),
-        max: Math.max(...prices),
-        count: prices.length,
-      }));
+    const rentByArea = groupByArea(jeonse12m);
 
     // 면적별 전세가율 (매매/전세 매칭)
     const jeonseByArea = priceByArea

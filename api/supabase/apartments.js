@@ -35,7 +35,7 @@ export default async function handler(req, res) {
 
     if (error) {
       console.error("Supabase query error:", error);
-      return res.status(500).json({ ok: false, error: error.message });
+      return res.status(500).json({ ok: false, error: "데이터 조회 중 오류가 발생했습니다" });
     }
 
     // null → 기본값 정리 (기존 JSON과 호환)
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("API error:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
 }
 
@@ -157,10 +157,10 @@ function sanitize(row) {
     netMigration: row.netMigration ?? null,
     supplyRatio: row.supplyRatio ?? 150,
     // 실거래 (위험 필드 → 비관적 기본값)
-    nearbyMedian: row.nearbyMedian || row.naverNearbyMedian || null,
+    nearbyMedian: row.nearbyMedian ?? row.naverNearbyMedian ?? null,
     recentTrades6m: row.recentTrades6m ?? 0,
-    nearbyBuildYear: row.nearbyBuildYear || row.naverBuildYear || null,
-    avgFloor: row.avgFloor || row.naverAvgFloor || null,
+    nearbyBuildYear: row.nearbyBuildYear ?? row.naverBuildYear ?? null,
+    avgFloor: row.avgFloor ?? row.naverAvgFloor ?? null,
     floorRange: row.floorRange ?? null,
     jeonseRate: row.jeonseRate ?? 40,
     pir: row.pir ?? 10,
