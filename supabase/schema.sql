@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS apartments (
   gu TEXT,
   dong TEXT,
   address TEXT,
-  lat DOUBLE PRECISION,
-  lng DOUBLE PRECISION,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
   builder TEXT,
   units INTEGER,
   unsold INTEGER,
@@ -234,7 +234,7 @@ CREATE TABLE IF NOT EXISTS complexes (
 CREATE TABLE IF NOT EXISTS articles (
   article_no TEXT PRIMARY KEY,
   complex_no TEXT NOT NULL REFERENCES complexes(complex_no) ON DELETE CASCADE,
-  trade_type TEXT NOT NULL,               -- 매매/전세/월세
+  trade_type_name TEXT NOT NULL,           -- 매매/전세/월세
   price INTEGER,                          -- 만원
   rent_price INTEGER,                     -- 월세액 만원
   supply_area REAL,                       -- 공급면적 m²
@@ -293,8 +293,8 @@ CREATE INDEX IF NOT EXISTS idx_regions_region ON regions(region);
 CREATE INDEX IF NOT EXISTS idx_regions_latest ON regions(region, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_prices_latest ON prices(apartment_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_regions_sido_latest ON regions(region, recorded_at DESC) WHERE gu IS NULL;
-CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(lat, lng);
-CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type, is_active);
+CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type_name, is_active);
 CREATE INDEX IF NOT EXISTS idx_articles_active ON articles(is_active) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_complex_price_history ON complex_price_history(complex_no, trade_type);
 

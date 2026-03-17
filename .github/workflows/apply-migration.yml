@@ -20,40 +20,18 @@ jobs:
           node --input-type=module -e "
           import { createClient } from '@supabase/supabase-js';
 
-          async function execSQL(sb, sql, label) {
-            console.log('> ' + label);
-            const { error } = await sb.rpc('exec_sql', { sql });
-            if (error) {
-              console.log('  rpc failed:', error.message);
-              console.log('  -- apply manually via Supabase Dashboard SQL Editor');
-              return false;
-            }
-            console.log('  OK');
-            return true;
-          }
-
           async function main() {
             const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
               auth: { autoRefreshToken: false, persistSession: false },
               db: { schema: 'public' }
             });
 
-            console.log('\n=== 20260318: Fix indexes + VIEW optimization ===\n');
-
-            await execSQL(sb, 'DROP INDEX IF EXISTS idx_complexes_location', 'Drop idx_complexes_location (buggy)');
-            await execSQL(sb, 'CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(lat, lng)', 'Create idx_complexes_location (fixed)');
-
-            await execSQL(sb, 'DROP INDEX IF EXISTS idx_articles_complex', 'Drop idx_articles_complex (buggy)');
-            await execSQL(sb, 'CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type, is_active)', 'Create idx_articles_complex (fixed)');
-
-            await execSQL(sb, 'CREATE INDEX IF NOT EXISTS idx_regions_sido_latest ON regions(region, recorded_at DESC) WHERE gu IS NULL', 'Create idx_regions_sido_latest (SC-1)');
-
-            console.log('\n=== VIEW status check ===\n');
+            // VIEW 상태 확인
             const { error: viewErr, count } = await sb.from('apartments_flat').select('id', { count: 'exact', head: true });
             console.log('apartments_flat VIEW:', viewErr ? 'ERROR: ' + viewErr.message : 'count=' + count);
 
-            console.log('\nDone. If rpc failed, run SQL manually from:');
-            console.log('supabase/migrations/20260318000000_fix_indexes.sql');
+            console.log('\nNote: DDL (CREATE INDEX) requires Supabase Dashboard SQL Editor.');
+            console.log('File: supabase/migrations/20260318000000_fix_indexes.sql');
           }
           main().catch(e => { console.error(e); process.exit(1); });
           "
