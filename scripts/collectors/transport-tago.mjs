@@ -100,7 +100,7 @@ async function main() {
 
   let targets = withCoords;
   if (!forceAll) {
-    const { data: collected } = await sb.from("transport").select("apartment_id").not("bus_routes", "is", null);
+    const { data: collected } = await sb.from("transport").select("apartment_id").not("subway_name", "is", null);
     const doneSet = new Set((collected || []).map(r => r.apartment_id));
     targets = withCoords.filter(a => !doneSet.has(a.id));
     log(PHASE, `전체 ${withCoords.length}건 중 수집완료 ${doneSet.size}건 → 미수집 ${targets.length}건`);

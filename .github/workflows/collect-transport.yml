@@ -10,6 +10,11 @@ on:
         required: false
         type: boolean
         default: false
+      force:
+        description: '전체 재수집 (증분 스킵 무시)'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: data-collection
@@ -52,6 +57,9 @@ jobs:
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            ARGS="--dry-run"
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ "${{ inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
           fi
           node scripts/collectors/transport-tago.mjs $ARGS
