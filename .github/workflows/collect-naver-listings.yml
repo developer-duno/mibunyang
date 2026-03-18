@@ -48,6 +48,13 @@ jobs:
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
         run: node scripts/collectors/geocode-missing.mjs
 
+      - name: Reverse geocode addresses
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+        run: node scripts/collectors/reverse-geocode.mjs
+
       - name: Calculate exclusive ratio
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

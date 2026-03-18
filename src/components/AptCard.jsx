@@ -28,7 +28,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = (apt.noxious || []).length;
-  const regionTag = `${apt.region ?? ""} ${apt.gu ?? ""}`.trim();
+  const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
 
   // 상태 의존 스타일만 useMemo로 계산
   const dynStyles = useMemo(() => ({

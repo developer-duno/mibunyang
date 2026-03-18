@@ -32,7 +32,9 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div>
               <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{apt.name}</div>
-              <div style={{ fontSize: 12, color: C.muted }}>{apt.region} {apt.gu} · {apt.area}㎡ · {fmtPrice(apt.price)}</div>
+              <div style={{ fontSize: 12, color: C.muted }}>{[apt.region, apt.gu, apt.dong].filter(Boolean).join(" ")} · {apt.area}㎡ · {fmtPrice(apt.price)}</div>
+              {apt.address && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{apt.address}{apt.district ? ` (${apt.district})` : ""}</div>}
+              {apt.roadAddress && <div style={{ fontSize: 11, color: C.muted }}>{apt.roadAddress}</div>}
             </div>
             <button onClick={onClose} aria-label="닫기" style={{ background: C.slate100, border: "none", borderRadius: "50%", width: 44, height: 44, fontSize: 18, cursor: "pointer", color: C.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
           </div>
@@ -48,7 +50,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }}>핵심 지표</div>
             {[
-              { l: "지역", v: `${apt.region} ${apt.gu}`, c: C.blue },
+              { l: "지역", v: [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "), c: C.blue },
               { l: "분양가", v: fmtPrice(apt.price) },
               { l: "적정가 괴리", v: `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`, c: Number(res.cats.price.deviation) > 0 ? C.green : C.red },
               { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },

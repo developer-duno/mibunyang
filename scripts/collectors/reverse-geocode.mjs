@@ -1,0 +1,148 @@
+/**
+ * 역지오코딩 수집기 — Kakao 좌표→주소 변환
+ *
+ * 좌표가 있는 단지의 region/gu/dong/address/road_address를 정확한 값으로 갱신
+ * 기존 dong에 "구역"/"지구"/"뉴타운" 등이 있으면 district 필드로 이동
+ *
+ * 사용법:
+ *   node scripts/collectors/reverse-geocode.mjs              (Supabase UPDATE)
+ *   node scripts/collectors/reverse-geocode.mjs --dry-run    (미리보기만)
+ *   node scripts/collectors/reverse-geocode.mjs --force      (이미 주소 있어도 재수행)
+ */
+import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+
+loadEnv();
+
+const PHASE = "reverse-geocode";
+const KAKAO_KEY = process.env.KAKAO_KEY;
+if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
+
+const DISTRICT_PATTERNS = /지구|구역|뉴타운|택지|단지|블록|BL$/;
+
+/** Kakao 역지오코딩: 좌표→행정구역 */
+async function reverseGeocode(lat, lng) {
+  const url = `https://dapi.kakao.com/v2/local/geo/coord2regioncode.json?x=${lng}&y=${lat}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const docs = data.documents || [];
+  // H=행정동, B=법정동
+  const admin = docs.find(d => d.region_type === "H");
+  const legal = docs.find(d => d.region_type === "B");
+  return { admin, legal };
+}
+
+/** Kakao 좌표→도로명주소 */
+async function coordToAddress(lat, lng) {
+  const url = `https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lng}&y=${lat}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const doc = data.documents?.[0];
+  if (!doc) return null;
+  return {
+    address: doc.address?.address_name || null,
+    roadAddress: doc.road_address?.address_name || null,
+  };
+}
+
+async function main() {
+  const dryRun = process.argv.includes("--dry-run");
+  const force = process.argv.includes("--force");
+  if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
+
+  const sb = getSupabase();
+
+  // 좌표 있는 단지 조회 (address가 없거나 --force)
+  let query = sb.from("apartments").select("id, name, dong, gu, region, lat, lng, address");
+  if (!force) query = query.is("address", null);
+  query = query.not("lat", "is", null).not("lng", "is", null);
+  const { data: apts, error } = await query;
+  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+
+  log(PHASE, `대상: ${apts.length}건`);
+  if (apts.length === 0) { log(PHASE, "모든 단지에 주소 있음"); return; }
+
+  let updated = 0, failed = 0;
+
+  for (let i = 0; i < apts.length; i++) {
+    const apt = apts[i];
+    try {
+      // 역지오코딩
+      const geo = await reverseGeocode(apt.lat, apt.lng);
+      await sleep(80);
+      const addr = await coordToAddress(apt.lat, apt.lng);
+      await sleep(80);
+
+      if (!geo?.admin) { failed++; continue; }
+
+      const admin = geo.admin;
+      let region = admin.region_1depth_name;
+      let gu = admin.region_2depth_name || null;
+      let dong = admin.region_3depth_name || null;
+
+      // 세종특별자치시: gu가 없음
+      if (region === "세종특별자치시") {
+        region = "세종";
+        gu = null;
+      }
+
+      // region 정규화 (예: "충청북도" → "충북")
+      region = normalizeRegion(region);
+
+      // 기존 dong에 특수 지역명이 있으면 district로 이동
+      let district = null;
+      if (apt.dong && DISTRICT_PATTERNS.test(apt.dong)) {
+        district = apt.dong;
+      }
+
+      const updates = {
+        region,
+        gu,
+        dong,
+        address: addr?.address || null,
+        road_address: addr?.roadAddress || null,
+      };
+      if (district) updates.district = district;
+
+      if (dryRun) {
+        log(PHASE, `  [DRY] ${apt.name}: ${region} ${gu || ""} ${dong || ""} | ${addr?.address || "?"} | ${addr?.roadAddress || "?"}`);
+      } else {
+        const { error: uErr } = await sb.from("apartments").update(updates).eq("id", apt.id);
+        if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); failed++; continue; }
+      }
+      updated++;
+    } catch (err) {
+      logError(PHASE, `${apt.name}: ${err.message}`);
+      failed++;
+    }
+
+    if ((i + 1) % 100 === 0) log(PHASE, `진행: ${i + 1}/${apts.length} (갱신 ${updated})`);
+  }
+
+  log(PHASE, `\n=== 완료: 갱신 ${updated}, 실패 ${failed} / 전체 ${apts.length} ===`);
+}
+
+/** 시도명 정규화 */
+function normalizeRegion(name) {
+  const map = {
+    "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
+    "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
+    "울산광역시": "울산", "세종특별자치시": "세종",
+    "경기도": "경기", "강원특별자치도": "강원", "강원도": "강원",
+    "충청북도": "충북", "충청남도": "충남",
+    "전라북도": "전북", "전북특별자치도": "전북",
+    "전라남도": "전남",
+    "경상북도": "경북", "경상남도": "경남",
+    "제주특별자치도": "제주",
+  };
+  return map[name] || name;
+}
+
+main().catch(err => { logError(PHASE, err.message); process.exit(1); });

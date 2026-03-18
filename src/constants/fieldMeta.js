@@ -22,6 +22,9 @@ export const FIELD_META = {
   completion: { label: "입주예정", section: "개요", fmt: v => fmtCompletion(v) },
   layout: { label: "평면구조", section: "개요", fmt: (v) => { if (!v) return "—"; const sc = LAYOUT_SCORE[v]; return sc ? `${v} (${sc}점)` : v; } },
   heating: { label: "난방방식", section: "개요", fmt: v => v ?? "—" },
+  address: { label: "지번 주소", section: "개요", fmt: v => v || "—" },
+  roadAddress: { label: "도로명 주소", section: "개요", fmt: v => v || "—" },
+  district: { label: "개발구역", section: "개요", fmt: v => v || "—" },
   // ── 섹션2: 가격/시장 ──
   nearbyMedian: { label: "주변 아파트 시세", section: "가격", unit: "만원", fmt: v => v ? nk(v, "만원") : "미수집", isEstimated: (v, apt) => apt?._fallbackNearbyMedian },
   jeonseRate: { label: "전세가율", section: "가격", unit: "%", fmt: v => n(v, "%"), isEstimated: (v, apt) => apt?._fallbackJeonseRate },
@@ -105,7 +108,7 @@ export const FIELD_META = {
 };
 
 export const FIELD_SECTIONS = [
-  { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout","heating"] },
+  { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","address","roadAddress","district","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout","heating"] },
   { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","unsoldRate","recentTrades6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth","nearbyBuildYear","avgFloor","floorRange"] },
   { key: "입지", label: "입지/교통/교육/환경", fields: ["subwayDist","subwayName","subwayLines","busRoutes","busStopNames","icDist","ktxDist","schoolScore","schoolGrade","hospital","hospitalDist","mart","martDist","conv","convDist","park","parkDist","cafe","culture","bank","pharmacy","view","sunlight","noise","noxious"] },
   { key: "상품성", label: "상품성/건축", fields: ["parkingRatio","floorAreaRatio","energyGrade","greenBldg","quakeDesign","exclusiveRatio","hasPool"] },
