@@ -1,0 +1,3 @@
+api/**/*.test.js
+api/**/*.test.mjs
+api/**/*.spec.js
