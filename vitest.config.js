@@ -8,10 +8,11 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.test.{js,jsx}', 'api/**/*.test.{js,jsx}'],
+    include: ['src/**/*.test.{js,jsx}', 'api/**/*.test.{js,jsx}', 'scripts/**/*.test.{js,mjs}'],
     setupFiles: ['./src/__tests__/setup.js'],
     environmentMatchGlobs: [
       ['api/**/*.test.{js,jsx}', 'node'],
+      ['scripts/**/*.test.{js,mjs}', 'node'],
     ],
     coverage: {
       provider: 'v8',

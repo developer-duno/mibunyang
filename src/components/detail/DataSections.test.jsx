@@ -103,6 +103,30 @@ describe("DataSections", () => {
     expect(screen.getByText("200m")).toBeTruthy();
   });
 
+  // 교통 상세 필드 표시 — subwayName, subwayLines, busStopNames
+  it("교통 상세 섹션에 지하철역명/노선/버스정류장이 표시된다", () => {
+    const apt = makeApt({
+      subwayName: "강남역", subwayLines: "2호선,신분당선",
+      busStopNames: "강남역사거리,역삼동주민센터,삼성중앙역",
+    });
+    render(<DataSections apt={apt} />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    expect(screen.getByText("강남역")).toBeTruthy();
+    expect(screen.getByText("2호선,신분당선")).toBeTruthy();
+    // busStopNames: 콤마 분리 후 최대 5개, 쉼표+공백으로 join
+    expect(screen.getByText("강남역사거리, 역삼동주민센터, 삼성중앙역")).toBeTruthy();
+  });
+
+  // 교통 상세 필드 null → "—" 표시
+  it("교통 상세 필드가 null이면 '—'을 표시한다", () => {
+    const apt = makeApt({ subwayName: null, subwayLines: null, busStopNames: null });
+    render(<DataSections apt={apt} />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    // "—" 표시 (fieldMeta fmt 기본값)
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(3);
+  });
+
   // announcementUrl이 있으면 링크 표시
   it("announcementUrl이 있으면 모집공고 링크를 표시한다", () => {
     const apt = makeApt({ announcementUrl: "https://example.com" });

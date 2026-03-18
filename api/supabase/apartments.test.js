@@ -228,6 +228,33 @@ describe('sanitize (null → 기본값)', () => {
     expect(d._fallbackPsr).toBe(true);
   });
 
+  // 교통 상세 필드: subwayName, subwayLines, busStopNames가 sanitize에 포함되는지 검증
+  it('교통 상세 필드가 API 응답에 포함된다 (subwayName, subwayLines, busStopNames)', async () => {
+    const row = {
+      id: 1, name: 'Test', region: '경기',
+      subwayName: '강남역', subwayLines: '2호선,신분당선', busStopNames: '강남역사거리,역삼동주민센터',
+    };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.subwayName).toBe('강남역');
+    expect(d.subwayLines).toBe('2호선,신분당선');
+    expect(d.busStopNames).toBe('강남역사거리,역삼동주민센터');
+  });
+
+  // 교통 상세 필드 null → null 기본값 (비관적이 아닌 nullable)
+  it('교통 상세 필드 null → null 반환', async () => {
+    const row = { id: 1, name: 'Test', region: '경기' };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.subwayName).toBeNull();
+    expect(d.subwayLines).toBeNull();
+    expect(d.busStopNames).toBeNull();
+  });
+
   // 네이버 폴백: nearbyMedian이 null이면 naverNearbyMedian 사용
   it('nearbyMedian null 시 naverNearbyMedian으로 폴백한다', async () => {
     const row = { id: 1, name: 'Test', region: '경기', nearbyMedian: null, naverNearbyMedian: 50000 };

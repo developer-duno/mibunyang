@@ -10,7 +10,7 @@ export function makeApt(overrides = {}) {
     price: 50000, area: 84, pp: 595,
     nearbyMedian: 55000, jeonseRate: 70, pir: 5, psr: 0.9,
     dataReliability: 80,
-    subwayDist: 500, busRoutes: 10, icDist: 5, ktxDist: 15,
+    subwayDist: 500, subwayName: "영통역", subwayLines: "1호선", busRoutes: 10, busStopNames: "영통역입구,삼성아파트", icDist: 5, ktxDist: 15,
     schoolScore: 70, schoolGrade: "B+",
     hospital: 3, mart: 2, conv: 5, park: 2, cafe: 10, culture: 2, bank: 2, pharmacy: 3,
     view: "그린", sunlight: "양호", noise: 55, noxious: [], noxiousDist: null,
