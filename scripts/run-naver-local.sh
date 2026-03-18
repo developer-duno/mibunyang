@@ -23,7 +23,11 @@ echo "=== 2/3 네이버→아파트 동기화 ==="
 node scripts/collectors/sync-naver-complex.mjs
 
 echo ""
-echo "=== 3/3 전용률 계산 ==="
+echo "=== 3/3 네이버 세대수 보정 ==="
+node scripts/collectors/naver-units.mjs "$@"
+
+echo ""
+echo "=== 4/4 전용률 계산 ==="
 node scripts/collectors/calc-exclusive-ratio.mjs
 
 echo ""

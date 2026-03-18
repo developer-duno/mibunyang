@@ -1,8 +1,9 @@
 name: Naver Units Correction
+# ⚠️ 네이버 API는 한국 IP 필요 — GitHub Actions(해외 IP)에서 JWT 차단됨
+# 로컬 실행: bash scripts/run-naver-local.sh
+# 또는: node scripts/collectors/naver-units.mjs
 on:
-  schedule:
-    - cron: '0 17 * * *' # UTC 17:00 = KST 02:00 (daily-deploy 1시간 전)
-  workflow_dispatch: # 수동 실행
+  workflow_dispatch: # 수동 전용 (스케줄 비활성화)
 
 concurrency:
   group: data-collection
