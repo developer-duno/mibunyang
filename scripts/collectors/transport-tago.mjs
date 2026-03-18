@@ -1,8 +1,8 @@
 /**
- * 교통 접근성 수집기 — Kakao Places 기반
+ * 교통 접근성 수집기 — Kakao Places + TAGO 대중교통 API
  *
- * 지하철(SW8, 10km), 버스정류장(BK9, 1.5km), 고속도로IC(30km), KTX(80km) 검색
- * 지하철 역명/노선, 버스 정류장명도 수집
+ * 지하철(Kakao SW8, 10km), 버스(TAGO 좌표기반, 1km),
+ * 고속도로IC(Kakao, 30km), KTX(Kakao, 80km)
  *
  * 사용법:
  *   node scripts/collectors/transport-tago.mjs              (Supabase UPDATE)
@@ -14,9 +14,11 @@ loadEnv();
 
 const PHASE = "transport";
 const KAKAO_KEY = process.env.KAKAO_KEY;
+const TAGO_KEY = process.env.TAGO_KEY;
 if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
+if (!TAGO_KEY) log(PHASE, "⚠️ TAGO_KEY 없음 — 버스 정류장 수집 건너뜀");
 
-const RADIUS = { SUBWAY: 10000, BUS: 1500, IC: 30000, KTX: 80000 };
+const RADIUS = { SUBWAY: 10000, IC: 30000, KTX: 80000 };
 const DEFAULT_SUBWAY_DIST = 9999;
 const DEFAULT_IC_DIST = 99;
 const DEFAULT_KTX_DIST = 99;
@@ -35,14 +37,26 @@ async function searchKakaoCategory(lat, lng, categoryCode, radius) {
   return data.documents || [];
 }
 
-/** KTX역 결과 필터: place_name이 "역"으로 끝나거나 category에 "기차"/"철도" 포함 */
+/** TAGO API: 좌표 기반 근처 버스 정류장 조회 */
+async function searchBusStopsTago(lat, lng) {
+  if (!TAGO_KEY) return [];
+  const url = `http://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=${encodeURIComponent(TAGO_KEY)}&gpsLati=${lat}&gpsLong=${lng}&_type=json&numOfRows=15`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const items = data?.response?.body?.items?.item;
+  if (!items) return [];
+  return Array.isArray(items) ? items : [items];
+}
+
+/** KTX역 결과 필터 */
 function isValidStation(doc) {
   const name = doc.place_name || "";
   const cat = doc.category_name || "";
   return name.endsWith("역") || cat.includes("기차") || cat.includes("철도");
 }
 
-/** IC 결과 필터: place_name에 "IC" 또는 "나들목" 또는 "인터체인지" 포함 */
+/** IC 결과 필터 */
 function isValidIC(doc) {
   const name = doc.place_name || "";
   return name.includes("IC") || name.includes("나들목") || name.includes("인터체인지");
@@ -51,9 +65,7 @@ function isValidIC(doc) {
 /** 가장 가까운 지하철역의 역명 추출 */
 function extractSubwayName(doc) {
   if (!doc) return null;
-  // place_name 예: "강남역 2호선", "서울역 1호선", "판교역"
   const name = doc.place_name || "";
-  // "역" 뒤의 노선 정보 제거 후 역명만 추출
   const match = name.match(/^(.+?역)/);
   return match ? match[1] : name;
 }
@@ -65,11 +77,9 @@ function extractSubwayLines(subways, stationName) {
   const lines = new Set();
   for (const s of subways) {
     if (!(s.place_name || "").includes(baseName)) continue;
-    // category_name 예: "교통,지하철,수도권 2호선" 또는 "교통,지하철,신분당선"
     const cat = s.category_name || "";
     const lineMatch = cat.match(/(\d+호선|[가-힣]+선)$/);
     if (lineMatch) lines.add(lineMatch[1]);
-    // place_name에서도 추출: "강남역 2호선"
     const nameMatch = (s.place_name || "").match(/(\d+호선|[가-힣]+선)$/);
     if (nameMatch) lines.add(nameMatch[1]);
   }
@@ -92,45 +102,43 @@ async function main() {
   for (let i = 0; i < targets.length; i++) {
     const apt = targets[i];
     try {
-      // 각 API 호출을 개별 try-catch로 감싸서 부분 실패 허용
       let subways = [], busStops = [], validICs = [], validKTX = [];
 
-      // 지하철역 (SW8 카테고리)
+      // 지하철역 (Kakao SW8 카테고리)
       try {
         subways = await searchKakaoCategory(apt.lat, apt.lng, "SW8", RADIUS.SUBWAY);
-      } catch (e) { /* 지하철 검색 실패 시 빈 배열 유지 */ }
+      } catch (e) { /* 빈 배열 유지 */ }
       await sleep(100);
 
-      // 버스 정류장 (키워드 검색, 1.5km)
+      // 버스 정류장 (TAGO 좌표기반 API)
       try {
-        busStops = await searchKakao(apt.lat, apt.lng, "버스정류장", RADIUS.BUS);
-        // 결과가 적으면 "정류장" 키워드로 재시도
-        if (busStops.length === 0) {
-          busStops = await searchKakao(apt.lat, apt.lng, "정류장", RADIUS.BUS);
-        }
-      } catch (e) { /* 버스 검색 실패 시 빈 배열 유지 */ }
+        busStops = await searchBusStopsTago(apt.lat, apt.lng);
+      } catch (e) { /* 빈 배열 유지 */ }
       await sleep(100);
 
-      // 고속도로 IC (키워드 + 필터)
+      // 고속도로 IC (Kakao 키워드)
       try {
         const icResults = await searchKakao(apt.lat, apt.lng, "IC 나들목", RADIUS.IC);
         validICs = icResults.filter(isValidIC);
-      } catch (e) { /* IC 검색 실패 시 빈 배열 유지 */ }
+      } catch (e) { /* 빈 배열 유지 */ }
       await sleep(100);
 
-      // KTX역 (키워드 + 필터)
+      // KTX역 (Kakao 키워드)
       try {
         const ktxResults = await searchKakao(apt.lat, apt.lng, "KTX역", RADIUS.KTX);
         validKTX = ktxResults.filter(isValidStation);
-      } catch (e) { /* KTX 검색 실패 시 빈 배열 유지 */ }
+      } catch (e) { /* 빈 배열 유지 */ }
       await sleep(100);
 
       // 결과 계산
       const subwayDist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : DEFAULT_SUBWAY_DIST;
       const subwayName = extractSubwayName(subways[0]);
       const subwayLines = extractSubwayLines(subways, subwayName);
-      const busStopNames = [...new Set(busStops.map(d => d.place_name))];
+
+      // TAGO 버스 정류장: nodenm(정류장명) 기준 고유 개수
+      const busStopNames = [...new Set(busStops.map(d => d.nodenm).filter(Boolean))];
       const uniqueBus = busStopNames.length;
+
       const icDist = validICs.length > 0 ? Math.round(Number(validICs[0].distance) / 1000 * 10) / 10 : DEFAULT_IC_DIST;
       const ktxDist = validKTX.length > 0 ? Math.round(Number(validKTX[0].distance) / 1000 * 10) / 10 : DEFAULT_KTX_DIST;
 
@@ -147,7 +155,7 @@ async function main() {
       };
 
       if (dryRun) {
-        log(PHASE, `  [DRY] ${apt.name}: 지하철${subwayDist}m(${subwayName || "없음"}, ${subwayLines || "노선없음"}) 버스${uniqueBus}(${busStopNames.slice(0, 3).join("·")}) IC${icDist}km KTX${ktxDist}km`);
+        log(PHASE, `  [DRY] ${apt.name}: 지하철${subwayDist}m(${subwayName || "없음"},${subwayLines || "?"}) 버스${uniqueBus}(${busStopNames.slice(0, 3).join("·")}) IC${icDist}km KTX${ktxDist}km`);
         updated++;
         continue;
       }
@@ -164,8 +172,7 @@ async function main() {
     if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated})`);
   }
 
-  log(PHASE, `
-=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
+  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

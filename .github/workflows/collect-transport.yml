@@ -48,6 +48,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+          TAGO_KEY: ${{ secrets.TAGO_KEY }}
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then

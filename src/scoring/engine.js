@@ -187,7 +187,7 @@ export function scoreLocation(apt) {
     subs: [
       { name: "교통", score: Math.round(transport), info: [
         apt.subwayDist > 9000 ? "지하철 없음" : `지하철 ${apt.subwayDist}m${apt.subwayLines ? `(${apt.subwayLines})` : ""}`,
-        apt._noBus || apt.busRoutes === 0 ? null : `버스 ${apt.busRoutes}개`,
+        apt._noBus ? null : `버스 ${apt.busRoutes}개`,
         apt.icDist < 90 ? `IC ${apt.icDist}km` : null,
         apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km` : null,
       ].filter(Boolean).join(" · ") },
