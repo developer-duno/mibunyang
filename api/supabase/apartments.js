@@ -199,6 +199,9 @@ function sanitize(row) {
     busRoutes: row.busRoutes ?? 0,
     icDist: row.icDist ?? 99,
     ktxDist: row.ktxDist ?? 99,
+    subwayName: row.subwayName ?? null,
+    subwayLines: row.subwayLines ?? null,
+    busStopNames: row.busStopNames ?? null,
     // 건설사
     builderDebtRatio: row.builderDebtRatio ?? 250,
     builderCreditGrade: row.builderCreditGrade ?? null,
