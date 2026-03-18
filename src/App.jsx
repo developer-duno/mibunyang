@@ -152,6 +152,10 @@ export default function App() {
   const switchToAdmin = useCallback(() => setTab("admin"), []);
   const switchToExpert = useCallback(() => setTab("expert"), []);
   const switchToInfo = useCallback(() => setTab("info"), []);
+  const handleExpertView = useCallback((aptId) => {
+    expert.setExpertExpandedApt(aptId);
+    setTab("expert");
+  }, [expert.setExpertExpandedApt]);
 
   const consultRef = useRef(consult);
   consultRef.current = consult;
@@ -279,7 +283,7 @@ export default function App() {
             searchText={searchText} budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
             userLocation={userLocation}
-
+            onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}
           />
         </div>
       ) : tab === "info" ? (

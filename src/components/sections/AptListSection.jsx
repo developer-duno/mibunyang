@@ -10,7 +10,7 @@ export const AptListSection = memo(function AptListSection({
   pw, profile, isPC, isPending,
   searchText, budgetMin, budgetMax, filterRegion,
   dataLoading, dataFreshnessText,
-  userLocation,
+  userLocation, onExpertView,
 }) {
   return (
     <>
@@ -41,7 +41,7 @@ export const AptListSection = memo(function AptListSection({
             onDetail={onDetail}
             isComp={compIds.includes(item.apt.id)} onComp={onComp}
             isFav={favoriteIds.includes(item.apt.id)} onFav={onFav}
-            profileWeights={pw} />
+            profileWeights={pw} onExpertView={onExpertView} />
         ))}
       </div>
       {visibleCount < filteredLength && (

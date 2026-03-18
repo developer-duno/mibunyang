@@ -24,7 +24,7 @@ const S = {
   alertTag: { fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600 },
 };
 
-export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights }) {
+export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView }) {
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = (apt.noxious || []).length;
@@ -107,6 +107,9 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         <button onClick={() => onDetail(apt.id)} style={dynStyles.detailBtn}>상세보기</button>
         <button onClick={e => { e.stopPropagation(); onFav(apt.id); }} style={dynStyles.favBtn}>{isFav ? "관심 해제" : "관심매물"}</button>
         <button onClick={e => { e.stopPropagation(); onComp(apt.id); }} style={dynStyles.compBtn}>{isComp ? "비교 중" : "비교"}</button>
+        {onExpertView && (
+          <button onClick={e => { e.stopPropagation(); onExpertView(apt.id); }} style={{ ...S.btnBase, background: C.indigo, color: C.white, border: "1.5px solid transparent", fontWeight: 700 }}>전문가보기</button>
+        )}
       </div>
     </div>
   );
@@ -116,5 +119,6 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   prev.rank === next.rank &&
   prev.isComp === next.isComp &&
   prev.isFav === next.isFav &&
-  prev.profileWeights === next.profileWeights
+  prev.profileWeights === next.profileWeights &&
+  !!prev.onExpertView === !!next.onExpertView
 );
