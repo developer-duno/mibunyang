@@ -89,7 +89,7 @@ function extractSubwayLines(subways, stationName) {
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const forceAll = process.argv.includes("--force");
-  const maxTago = Number(process.argv.find(a => a.startsWith("--limit="))?.split("=")[1]) || 900;
+  const maxTago = Number(process.argv.find(a => a.startsWith("--limit="))?.split("=")[1]) || 10000;
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
