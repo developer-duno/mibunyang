@@ -70,14 +70,42 @@ async function main() {
       // 단지명에서 괄호 내용 제거 (검색 정확도 향상)
       const cleanName = apt.name.replace(/\(.*?\)/g, "").trim();
 
+      // region에 콤마가 있으면 단지명 기반으로 정확한 지역 선택
+      let region = apt.region;
+      const dbUpdates = {};
+      if (region && region.includes(",")) {
+        const candidates = region.split(",").map(s => s.trim());
+        const matched = candidates.find(r => apt.name.includes(r));
+        region = matched || candidates[0];
+        dbUpdates.region = region;
+        log(PHASE, `  region 수정: "${apt.region}" → "${region}" (${apt.name})`);
+      }
+
+      // gu가 주소가 아닌 값(번지, 블록 등)이면 단지명에서 추출
+      let gu = apt.gu;
+      if (gu && (/^\d+/.test(gu) || /BL$|블록$|지구$|구역$/.test(gu))) {
+        // 단지명에서 "XX시" 또는 "XX구" 추출
+        const guMatch = apt.name.match(/([가-힣]+[시구군])\s/);
+        if (guMatch) {
+          gu = guMatch[1];
+          dbUpdates.gu = gu;
+          log(PHASE, `  gu 수정: "${apt.gu}" → "${gu}" (${apt.name})`);
+        }
+      }
+
+      // DB 수정 적용
+      if (!dryRun && Object.keys(dbUpdates).length > 0) {
+        await sb.from("apartments").update(dbUpdates).eq("id", apt.id);
+      }
+
       // 1차: 주소 검색 (region + gu + dong)
-      const addr = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
+      const addr = [region, gu, apt.dong].filter(Boolean).join(" ");
       let result = addr ? await geocode(addr) : null;
       await sleep(100);
 
       // 2차: 키워드 검색 (region + gu + 단지명)
       if (!result) {
-        const keyword = [apt.region, apt.gu, cleanName].filter(Boolean).join(" ");
+        const keyword = [region, gu, cleanName].filter(Boolean).join(" ");
         result = await geocodeKeyword(keyword);
         await sleep(100);
       }
@@ -89,8 +117,8 @@ async function main() {
       }
 
       // 4차: region + gu만으로 주소 검색 (택지지구/블록 등으로 실패한 경우)
-      if (!result && apt.region && apt.gu) {
-        result = await geocode(`${apt.region} ${apt.gu}`);
+      if (!result && region && gu) {
+        result = await geocode(`${region} ${gu}`);
         await sleep(100);
       }
 
