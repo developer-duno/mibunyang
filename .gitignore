@@ -2,11 +2,23 @@ node_modules/
 dist/
 .claude/
 .env
-.env.local
+.env.*
 *.local
 .DS_Store
 Thumbs.db
 
 .vercel
 tmp/
-vercel-dev.log
+*.log
+
+# Supabase CLI 캐시
+supabase/.temp/
+
+# 임시 스크립트
+_tmp_*
+
+# 바이너리/데이터
+*.xlsx
+
+# 네이버 크롤러 별도 프로젝트
+naver-apt/
