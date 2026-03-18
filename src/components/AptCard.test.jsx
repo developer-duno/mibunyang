@@ -52,7 +52,7 @@ describe("AptCard", () => {
   // 지역 태그 표시
   it("지역 태그가 표시됨", () => {
     render(<AptCard {...makeProps()} />);
-    expect(screen.getByText("경기 수원시")).toBeInTheDocument();
+    expect(screen.getByText("경기 수원시 영통동")).toBeInTheDocument();
   });
 
   // 상세보기 버튼 클릭

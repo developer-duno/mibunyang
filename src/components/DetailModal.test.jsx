@@ -141,6 +141,6 @@ describe("DetailModal", () => {
   it("핵심 지표 영역에 지역, 분양가 등 표시", () => {
     render(<DetailModal {...makeProps()} />);
     expect(screen.getByText("핵심 지표")).toBeInTheDocument();
-    expect(screen.getByText("경기 수원시")).toBeInTheDocument();
+    expect(screen.getByText("경기 수원시 영통동")).toBeInTheDocument();
   });
 });
