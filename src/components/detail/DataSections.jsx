@@ -18,7 +18,7 @@ const DATA_SECTIONS = [
       ["culture", null], ["bank", null],
     ],
   },
-  { title: "교통 상세", grid: ["subwayDist", "busRoutes", "icDist", "ktxDist"] },
+  { title: "교통 상세", grid: ["subwayDist", "subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"] },
   {
     title: "시장/투자 지표",
     highlight: ["pir", "psr", "popGrowth"],

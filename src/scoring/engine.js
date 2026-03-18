@@ -185,7 +185,12 @@ export function scoreLocation(apt) {
   return {
     total: Math.round(Math.min(Math.max(total, 0), 100)),
     subs: [
-      { name: "교통", score: Math.round(transport), info: [apt.subwayDist > 9000 ? "지하철 없음" : `지하철 ${apt.subwayDist}m`, apt._noBus ? "버스 정보 없음" : `버스 ${apt.busRoutes}개`, apt.icDist < 90 ? `IC ${apt.icDist}km` : null, apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km` : null].filter(Boolean).join(" · ") },
+      { name: "교통", score: Math.round(transport), info: [
+        apt.subwayDist > 9000 ? "지하철 없음" : `지하철 ${apt.subwayDist}m${apt.subwayLines ? `(${apt.subwayLines})` : ""}`,
+        apt._noBus ? "버스 정보 없음" : `버스 ${apt.busRoutes}개`,
+        apt.icDist < 90 ? `IC ${apt.icDist}km` : null,
+        apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km` : null,
+      ].filter(Boolean).join(" · ") },
       { name: "학군", score: Math.round(school), info: apt.schoolGrade },
       { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy}` },
       { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise && apt._noSunlight ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${apt.sunlight}`}${apt._noNoise ? "" : ` ${apt.noise}dB`}` },
