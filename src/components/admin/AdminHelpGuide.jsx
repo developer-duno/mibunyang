@@ -36,7 +36,7 @@ export const AdminHelpGuide = memo(function AdminHelpGuide({ open, onClose }) {
         <div style={desc}>
           <div style={item}><span style={label}>프로필별 편집</span> — 5개 프로필(실거주/투자/신혼/교육/은퇴)의 6개 카테고리 가중치를 개별 조정할 수 있습니다.</div>
           <div style={item}><span style={label}>합계 100% 규칙</span> — 6개 카테고리 가중치의 합은 반드시 100%여야 합니다. 합이 100%가 아니면 저장 버튼이 비활성화되고 경고가 표시됩니다.</div>
-          <div style={item}><span style={label}>실시간 미리보기</span> — 가중치를 변경하면 하단에 상위 5개 단지의 점수 변화를 실시간으로 미리볼 수 있습니다. '카테고리 점수 x 가중치% = 기여도' 산식이 표시됩니다.</div>
+          <div style={item}><span style={label}>실시간 미리보기</span> — 가중치를 변경하면 하단에 상위 5개 단지의 점수 변화를 실시간으로 미리볼 수 있습니다. &apos;카테고리 점수 x 가중치% = 기여도&apos; 산식이 표시됩니다.</div>
           <div style={item}><span style={label}>초기화</span> — 리셋 버튼으로 기본 가중치로 되돌릴 수 있습니다. 커스텀 가중치가 적용된 프로필은 점(dot) 표시로 구분됩니다.</div>
         </div>
       </div>
@@ -44,7 +44,7 @@ export const AdminHelpGuide = memo(function AdminHelpGuide({ open, onClose }) {
       <div style={card}>
         <div style={title}>기타</div>
         <div style={desc}>
-          <div style={item}><span style={label}>전문가 보기</span> — '전문가 보기' 버튼으로 전문가 대시보드로 돌아가 단지 분석을 확인할 수 있습니다.</div>
+          <div style={item}><span style={label}>전문가 보기</span> — &apos;전문가 보기&apos; 버튼으로 전문가 대시보드로 돌아가 단지 분석을 확인할 수 있습니다.</div>
           <div style={item}><span style={label}>데이터 수집 주기</span> — 미분양 현황: 매일 / 실거래: 매월 / 인프라·학교·교통: 매월 / 네이버 시세: 주 2회. 자동 수집되며 별도 관리가 필요 없습니다.</div>
         </div>
       </div>

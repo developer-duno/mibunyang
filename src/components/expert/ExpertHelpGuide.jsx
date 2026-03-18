@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import { C } from "@/theme";
 
 const card = { background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 10 };
@@ -65,8 +65,8 @@ export const ExpertHelpGuide = memo(function ExpertHelpGuide({ open, onClose }) 
       <div style={card}>
         <div style={title}>기타 기능</div>
         <div style={desc}>
-          <div style={item}><span style={label}>상담 목록</span> — 하단 '상담목록' 탭에서 소비자가 신청한 상담 요청을 확인할 수 있습니다. 이름, 연락처, 관심 단지, 예산, 상담 유형 등이 표시됩니다.</div>
-          <div style={item}><span style={label}>소비자뷰</span> — 하단 '소비자뷰' 탭으로 소비자가 보는 화면을 그대로 확인할 수 있습니다. 고객 상담 시 동일 화면을 참고하세요.</div>
+          <div style={item}><span style={label}>상담 목록</span> — 하단 &apos;상담목록&apos; 탭에서 소비자가 신청한 상담 요청을 확인할 수 있습니다. 이름, 연락처, 관심 단지, 예산, 상담 유형 등이 표시됩니다.</div>
+          <div style={item}><span style={label}>소비자뷰</span> — 하단 &apos;소비자뷰&apos; 탭으로 소비자가 보는 화면을 그대로 확인할 수 있습니다. 고객 상담 시 동일 화면을 참고하세요.</div>
           <div style={item}><span style={label}>인쇄</span> — 우측 상단 인쇄 버튼으로 현재 분석 결과를 PDF/종이로 출력할 수 있습니다. 사이드바와 네비게이션은 인쇄에서 자동 제외됩니다.</div>
         </div>
       </div>
