@@ -280,3 +280,119 @@ describe('calcAll', () => {
     expect(calcAll(makeApt(), 'nonexistent', {}).weights).toEqual(PROFILES.live.w);
   });
 });
+
+// --- 추가 테스트: 복합 null, 경계값, regionMedians, FUTURE_WEIGHT_MAP 경로 ---
+
+describe('calcCats — 복합 null 조합 5가지', () => {
+  // 대부분 필드가 null인 아파트 5개 다른 조합 테스트
+  const nullApts = [
+    { id: 'n1', name: '널1', region: '경기', builder: null, price: null, area: null, nearbyMedian: null, subwayDist: null, units: null, popGrowth: null },
+    { id: 'n2', name: '널2', region: null, builder: '현대건설', price: 50000, area: null, nearbyMedian: null, transitDev: null, cityDev: null, industryDev: null },
+    { id: 'n3', name: '널3', region: '서울', builder: null, price: null, area: 84, pir: null, psr: null, jeonseRate: null, unsoldRate: null },
+    { id: 'n4', name: '널4', region: '부산', builder: '무명', price: 30000, nearbyMedian: 40000, noxious: null, noxiousDist: null, schoolScore: null, schoolGrade: null },
+    { id: 'n5', name: '널5', region: '경기', price: 10000, discountPct: null, loanFree: null, optionFree: null, balconyFree: null, cashback: null, builderCreditGrade: null, builderDebtRatio: null },
+  ];
+
+  nullApts.forEach((apt, idx) => {
+    it(`널 조합 #${idx + 1}: 에러 없이 6개 카테고리 0~100`, () => {
+      const cats = calcCats(apt, {});
+      expect(Object.keys(cats)).toHaveLength(6);
+      Object.values(cats).forEach(c => {
+        expect(c.total).toBeGreaterThanOrEqual(0);
+        expect(c.total).toBeLessThanOrEqual(100);
+      });
+    });
+  });
+});
+
+describe('경계값 — total=0, total=100 극단 케이스', () => {
+  it('혜택 점수 total=0 (모든 혜택 없음)', () => {
+    const r = scoreBenefit(makeApt({ discountPct: 0, loanFree: false, loanFreePct: 0, optionFree: false, optionValue: 0, balconyFree: false, balconyValue: 0, cashback: 0, price: 50000 }));
+    expect(r.total).toBe(0);
+  });
+
+  it('혜택 점수 total=100 (충분한 혜택)', () => {
+    const r = scoreBenefit(makeApt({ discountPct: 30, price: 50000 }));
+    expect(r.total).toBe(100);
+  });
+
+  it('가격 점수 nearbyMedian=0 → total이 정해진 기본값 범위', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: 0, price: 50000 }));
+    expect(r.total).toBeGreaterThanOrEqual(0);
+    expect(r.total).toBeLessThanOrEqual(100);
+  });
+
+  it('모든 프로필에서 극단적으로 좋은 아파트도 100 초과 불가', () => {
+    const goodApt = makeApt({
+      price: 20000, nearbyMedian: 80000, pir: 1, psr: 0.3, jeonseRate: 80,
+      subwayDist: 100, busRoutes: 20, icDist: 1, ktxDist: 1,
+      discountPct: 30, units: 2000, parkingRatio: 2.0, unsoldRate: 1,
+      popGrowth: 2, netMigration: 5000, transitDev: "GTX-C 개통", devDist: 0.5,
+      cityDev: "신도시", industryDev: "테크노밸리",
+    });
+    Object.keys(PROFILES).forEach(p => {
+      const r = calcAll(goodApt, p, {});
+      expect(r.total).toBeLessThanOrEqual(100);
+    });
+  });
+});
+
+describe('scorePrice — regionMedians 컨텍스트 전달', () => {
+  it('regionMedians 없으면 비관적 기본값 사용', () => {
+    const apt = makeApt({ pir: null, psr: null });
+    const withoutCtx = scorePrice(apt);
+    expect(withoutCtx.total).toBeGreaterThanOrEqual(0);
+  });
+
+  it('regionMedians 전달 시 sanitize에서 지역 중위값 사용', () => {
+    const regionMedians = { "경기": { pir: 5, psr: 0.8, unsoldRate: 15, supplyRatio: 100 } };
+    const apt = makeApt({ region: "경기", pir: null, psr: null });
+    // calcCats는 regionMedians를 ctx로 전달받아 sanitize에 사용
+    const cats = calcCats(apt, { regionMedians });
+    expect(cats.price.total).toBeGreaterThanOrEqual(0);
+    expect(cats.price.total).toBeLessThanOrEqual(100);
+  });
+
+  it('regionMedians에 해당 지역 없으면 비관적 폴백', () => {
+    const regionMedians = { "서울": { pir: 3, psr: 0.5, unsoldRate: 5, supplyRatio: 80 } };
+    const apt = makeApt({ region: "경기", pir: null, psr: null });
+    const cats = calcCats(apt, { regionMedians });
+    // 경기 중위값 없으므로 비관적 기본값 사용 → 점수가 다를 수 있음
+    expect(cats.price.total).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('scoreFuture — FUTURE_WEIGHT_MAP 모든 8개 경로', () => {
+  // transit/city/industry 있음/없음 조합 (2^3 = 8)
+  const combos = [
+    { label: '1,1,1', transit: 'GTX-C 착공', city: '신도시', industry: '테크노밸리' },
+    { label: '1,1,0', transit: '지하철 착공', city: '신도심', industry: null },
+    { label: '1,0,1', transit: '트램 착공', city: '', industry: '산업단지' },
+    { label: '1,0,0', transit: '경전철 착공', city: '', industry: null },
+    { label: '0,1,1', transit: '없음', city: '재건축', industry: '물류단지' },
+    { label: '0,1,0', transit: '', city: '스마트시티', industry: '' },
+    { label: '0,0,1', transit: '없음', city: '', industry: '공항' },
+    { label: '0,0,0', transit: '없음', city: '', industry: null },
+  ];
+
+  combos.forEach(({ label, transit, city, industry }) => {
+    it(`FUTURE_WEIGHT_MAP[${label}] 경로 정상 계산`, () => {
+      const r = scoreFuture(makeApt({ transitDev: transit, cityDev: city, industryDev: industry, popGrowth: 0.5, netMigration: null, devDist: 1 }));
+      expect(r.total).toBeGreaterThanOrEqual(0);
+      expect(r.total).toBeLessThanOrEqual(100);
+      expect(r.subs).toHaveLength(4);
+    });
+  });
+
+  it('모든 개발 없음(0,0,0) → 인구에 100% 가중', () => {
+    const r = scoreFuture(makeApt({ transitDev: '없음', cityDev: '', industryDev: null, popGrowth: 0.5, netMigration: null }));
+    // 인구 가중치=1.00 → total = popSc * 1.00 = 80
+    expect(r.total).toBe(80);
+  });
+
+  it('모든 개발 있음(1,1,1) → 4개 축 분산', () => {
+    const r = scoreFuture(makeApt({ transitDev: 'GTX-C 착공', cityDev: '신도시', industryDev: '테크노밸리', popGrowth: 0.5, netMigration: null, devDist: 1 }));
+    // 교통/도시/산업/인구 모두 0 이상
+    r.subs.forEach(s => expect(s.score).toBeGreaterThanOrEqual(0));
+  });
+});

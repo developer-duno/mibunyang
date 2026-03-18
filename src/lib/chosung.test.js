@@ -39,3 +39,48 @@ describe('matchSearch', () => {
     expect(matchSearch('힐스테이트', 'ㄹㄷ')).toBe(false);
   });
 });
+
+// --- 추가 테스트 ---
+
+describe('getChosung — 특수문자/영숫자/빈문자열/긴문자열', () => {
+  it('특수문자 입력 → 그대로 반환', () => {
+    expect(getChosung('!@#$%^&*()')).toBe('!@#$%^&*()');
+    expect(getChosung('아파트-1차')).toBe('ㅇㅍㅌ-1ㅊ');
+  });
+
+  it('영숫자 혼합 → 영숫자는 그대로', () => {
+    expect(getChosung('ABC아파트123')).toBe('ABCㅇㅍㅌ123');
+    expect(getChosung('SK뷰')).toBe('SKㅂ');
+  });
+
+  it('빈 문자열 → 빈 문자열', () => {
+    expect(getChosung('')).toBe('');
+  });
+
+  it('매우 긴 문자열 (100자) → 에러 없이 처리', () => {
+    const longStr = '아'.repeat(100);
+    const result = getChosung(longStr);
+    expect(result).toBe('ㅇ'.repeat(100));
+    expect(result).toHaveLength(100);
+  });
+
+  it('공백 포함 문자열', () => {
+    expect(getChosung('힐 스 테 이 트')).toBe('ㅎ ㅅ ㅌ ㅇ ㅌ');
+  });
+});
+
+describe('matchSearch — 추가 케이스', () => {
+  it('undefined 쿼리는 항상 true', () => {
+    expect(matchSearch('아파트', undefined)).toBe(true);
+  });
+
+  it('초성이 아닌 한글 자모 혼합 → 부분 문자열 매칭', () => {
+    // 'ㅎ스' 는 순수 초성이 아니므로 부분 문자열 매칭 시도
+    expect(matchSearch('힐스테이트', 'ㅎ스')).toBe(false);
+  });
+
+  it('숫자만으로 검색', () => {
+    expect(matchSearch('힐스테이트 2차', '2')).toBe(true);
+    expect(matchSearch('힐스테이트 2차', '3')).toBe(false);
+  });
+});
