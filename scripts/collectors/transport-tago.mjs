@@ -92,28 +92,43 @@ async function main() {
   for (let i = 0; i < targets.length; i++) {
     const apt = targets[i];
     try {
+      // 각 API 호출을 개별 try-catch로 감싸서 부분 실패 허용
+      let subways = [], busStops = [], validICs = [], validKTX = [];
+
       // 지하철역 (SW8 카테고리)
-      const subways = await searchKakaoCategory(apt.lat, apt.lng, "SW8", RADIUS.SUBWAY);
-      const subwayDist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : DEFAULT_SUBWAY_DIST;
-      const subwayName = extractSubwayName(subways[0]);
-      const subwayLines = extractSubwayLines(subways, subwayName);
+      try {
+        subways = await searchKakaoCategory(apt.lat, apt.lng, "SW8", RADIUS.SUBWAY);
+      } catch (e) { /* 지하철 검색 실패 시 빈 배열 유지 */ }
       await sleep(100);
 
-      // 버스 정류장 (BK9 카테고리 — 키워드 검색보다 안정적)
-      const busStops = await searchKakaoCategory(apt.lat, apt.lng, "BK9", RADIUS.BUS);
+      // 버스 정류장 (키워드 검색, 1.5km)
+      try {
+        busStops = await searchKakao(apt.lat, apt.lng, "버스정류장", RADIUS.BUS);
+        // 결과가 적으면 "정류장" 키워드로 재시도
+        if (busStops.length === 0) {
+          busStops = await searchKakao(apt.lat, apt.lng, "정류장", RADIUS.BUS);
+        }
+      } catch (e) { /* 버스 검색 실패 시 빈 배열 유지 */ }
       await sleep(100);
 
       // 고속도로 IC (키워드 + 필터)
-      const icResults = await searchKakao(apt.lat, apt.lng, "IC 나들목", RADIUS.IC);
-      const validICs = icResults.filter(isValidIC);
+      try {
+        const icResults = await searchKakao(apt.lat, apt.lng, "IC 나들목", RADIUS.IC);
+        validICs = icResults.filter(isValidIC);
+      } catch (e) { /* IC 검색 실패 시 빈 배열 유지 */ }
       await sleep(100);
 
       // KTX역 (키워드 + 필터)
-      const ktxResults = await searchKakao(apt.lat, apt.lng, "KTX역", RADIUS.KTX);
-      const validKTX = ktxResults.filter(isValidStation);
+      try {
+        const ktxResults = await searchKakao(apt.lat, apt.lng, "KTX역", RADIUS.KTX);
+        validKTX = ktxResults.filter(isValidStation);
+      } catch (e) { /* KTX 검색 실패 시 빈 배열 유지 */ }
       await sleep(100);
 
       // 결과 계산
+      const subwayDist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : DEFAULT_SUBWAY_DIST;
+      const subwayName = extractSubwayName(subways[0]);
+      const subwayLines = extractSubwayLines(subways, subwayName);
       const busStopNames = [...new Set(busStops.map(d => d.place_name))];
       const uniqueBus = busStopNames.length;
       const icDist = validICs.length > 0 ? Math.round(Number(validICs[0].distance) / 1000 * 10) / 10 : DEFAULT_IC_DIST;
