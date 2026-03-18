@@ -93,14 +93,14 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
-  const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng");
+  const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng").limit(10000);
   if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
 
   const withCoords = (apts || []).filter(a => a.lat && a.lng);
 
   let targets = withCoords;
   if (!forceAll) {
-    const { data: collected } = await sb.from("transport").select("apartment_id").not("subway_name", "is", null);
+    const { data: collected } = await sb.from("transport").select("apartment_id").not("subway_name", "is", null).limit(10000);
     const doneSet = new Set((collected || []).map(r => r.apartment_id));
     targets = withCoords.filter(a => !doneSet.has(a.id));
     log(PHASE, `전체 ${withCoords.length}건 중 수집완료 ${doneSet.size}건 → 미수집 ${targets.length}건`);

@@ -51,7 +51,7 @@ async function main() {
     log("load", `apartments.json: ${apartments.length}건`);
   } else {
     const sb = getSupabase();
-    const { data, error } = await sb.from("apartments").select("id, name, lat, lng, industry_dev");
+    const { data, error } = await sb.from("apartments").select("id, name, lat, lng, industry_dev").limit(10000);
     if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
     apartments = data;
     log("load", `Supabase apartments: ${apartments.length}건`);

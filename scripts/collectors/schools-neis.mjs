@@ -52,7 +52,7 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
-  const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng");
+  const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng").limit(10000);
   if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
 
   const targets = apts.filter(a => a.lat && a.lng);

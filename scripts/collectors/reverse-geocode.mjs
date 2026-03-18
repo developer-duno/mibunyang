@@ -60,7 +60,7 @@ async function main() {
   const sb = getSupabase();
 
   // 좌표 있는 단지 조회 (address가 없거나 --force)
-  let query = sb.from("apartments").select("id, name, dong, gu, region, lat, lng, address");
+  let query = sb.from("apartments").select("id, name, dong, gu, region, lat, lng, address").limit(10000);
   if (!force) query = query.is("address", null);
   query = query.not("lat", "is", null).not("lng", "is", null);
   const { data: apts, error } = await query;
