@@ -1,6 +1,11 @@
 name: Apply DB Migration
 on:
   workflow_dispatch:
+    inputs:
+      migration_file:
+        description: '마이그레이션 파일명 (비워두면 최신 파일 자동 선택)'
+        required: false
+        default: ''
 
 jobs:
   apply-migration:
@@ -12,13 +17,16 @@ jobs:
           node-version: 20
       - name: Install supabase-js
         run: npm install @supabase/supabase-js@2
-      - name: Apply migration
+      - name: Check migration status
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MIGRATION_FILE: ${{ github.event.inputs.migration_file }}
         run: |
           node --input-type=module -e "
           import { createClient } from '@supabase/supabase-js';
+          import { readFileSync, readdirSync } from 'fs';
+          import { join } from 'path';
 
           async function main() {
             const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
@@ -26,12 +34,39 @@ jobs:
               db: { schema: 'public' }
             });
 
+            // 마이그레이션 파일 결정
+            const dir = 'supabase/migrations';
+            let fileName = process.env.MIGRATION_FILE;
+            if (!fileName) {
+              const files = readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
+              fileName = files[files.length - 1];
+            }
+            const filePath = join(dir, fileName);
+            const sql = readFileSync(filePath, 'utf8');
+            console.log('=== 마이그레이션 파일:', fileName, '===');
+
             // VIEW 상태 확인
             const { error: viewErr, count } = await sb.from('apartments_flat').select('id', { count: 'exact', head: true });
-            console.log('apartments_flat VIEW:', viewErr ? 'ERROR: ' + viewErr.message : 'count=' + count);
+            console.log('apartments_flat VIEW:', viewErr ? 'ERROR: ' + viewErr.message : count + '건 정상');
 
-            console.log('\nNote: DDL (CREATE INDEX) requires Supabase Dashboard SQL Editor.');
-            console.log('File: supabase/migrations/20260318000000_fix_indexes.sql');
+            // transport 새 컬럼 확인
+            const { data, error: tErr } = await sb.from('transport').select('subway_name,subway_lines,bus_stop_names').limit(1);
+            if (tErr && tErr.message.includes('column')) {
+              console.log('');
+              console.log('⚠️  새 컬럼이 아직 적용되지 않았습니다.');
+              console.log('Supabase Dashboard → SQL Editor에서 아래 SQL을 실행해주세요:');
+              console.log('');
+              console.log('--- SQL 시작 ---');
+              console.log(sql);
+              console.log(\"NOTIFY pgrst, 'reload schema';\");
+              console.log('--- SQL 끝 ---');
+              process.exit(1);
+            } else if (tErr) {
+              console.log('transport 조회 에러:', tErr.message);
+            } else {
+              console.log('transport 새 컬럼: ✅ 정상 (subway_name, subway_lines, bus_stop_names)');
+              console.log('샘플:', JSON.stringify(data));
+            }
           }
           main().catch(e => { console.error(e); process.exit(1); });
           "
