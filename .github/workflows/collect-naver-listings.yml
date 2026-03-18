@@ -12,7 +12,7 @@ concurrency:
 jobs:
   post-process:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -60,3 +60,28 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/collectors/calc-exclusive-ratio.mjs
+
+      - name: Collect transport (incremental)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+          TAGO_KEY: ${{ secrets.TAGO_KEY }}
+        run: node scripts/collectors/transport-tago.mjs
+
+      - name: Collect infra (incremental)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+        run: node scripts/collectors/infra-kakao.mjs
+
+      - name: Collect schools (incremental)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+        run: node scripts/collectors/schools-neis.mjs
