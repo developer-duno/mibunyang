@@ -36,3 +36,25 @@
 - 스코어링 중간 계산 과정 투명하게 표시
 - 동/호수 섹션 포함 (현재 플레이스홀더, 향후 관리자 페이지에서 입력)
 - catKeys는 `Object.keys(res.cats)` 동적 추출 (하드코딩 금지)
+
+## 컴포넌트 구조
+
+### App.jsx (355줄) — Hook + useMemo + 콜백 + 탭 라우팅만 담당
+분리된 섹션 컴포넌트 (`src/components/sections/`):
+| 컴포넌트 | 줄 | 역할 |
+|---------|-----|------|
+| HeaderSection | 35 | 프로필 선택 + 헤더 |
+| SearchFilterBar | 100 | 검색/필터/정렬 |
+| AptListSection | 69 | 카드 그리드 + 비교 |
+| ExpertLoginForm | 157 | 전문가 로그인/회원가입 |
+| InfoPage | 58 | 스코어링 엔진 설명 |
+| BottomNav | 35 | 하단 네비게이션 |
+
+### DetailModal.jsx (107줄) — 모달 컨테이너만 담당
+분리된 상세 컴포넌트 (`src/components/detail/`):
+| 컴포넌트 | 줄 | 역할 |
+|---------|-----|------|
+| PriceTable | 88 | 인근 매매/전세 시세 |
+| SchoolInfo | 36 | 학군 정보 |
+| LoanAnalysis | 93 | LTV/DSR/갭투자 분석 |
+| DataSections | 164 | 공공데이터 5개 섹션 |

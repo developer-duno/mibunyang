@@ -12,216 +12,27 @@
 - GitHub Actions — 데이터 수집 (24개 워크플로우)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC)
 
-## GitHub Actions 워크플로우
-
-### 매일
-| 워크플로우 | 설명 |
-|-----------|------|
-| `collect-naver-listings.yml` | 네이버 후처리 (sync + 전용률 계산) |
-| `naver-units.yml` | 네이버 세대수 2차 보정 |
-| `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00) |
-
-### CI/CD
-| 워크플로우 | 설명 |
-|-----------|------|
-| `ci.yml` | CI 파이프라인 (린트 + 테스트 + 빌드, push/PR 트리거) |
-
-### 매주
-| 워크플로우 | 설명 |
-|-----------|------|
-| `collect-trade-stats.yml` | 거래 통계 산출 (일요일) |
-| `calc-exclusive-ratio.yml` | 전용률 계산 (일요일) |
-| `calc-layout.yml` | 평면구조 추정 (일요일) |
-
-### 매월
-| 워크플로우 | 설명 |
-|-----------|------|
-| `collect-trades.yml` | 국토부 실거래 수집 (1/15일) |
-| `collect-molit-units.yml` | 국토부 공동주택 총세대수 보정 (1/15일) |
-| `collect-population.yml` | 행안부 인구 증감률 (5일) |
-| `collect-housing-permits.yml` | 국토부 주택 인허가 공급비율 (10일) |
-| `collect-building-info.yml` | 국토부 건축물 상세정보 (10일) |
-| `collect-migration.yml` | 행안부 전입/전출 순이동 (15일) |
-| `collect-infra.yml` | Kakao Places 인프라 (1일) |
-| `collect-transport.yml` | Kakao Places 교통 (1일) |
-| `collect-schools.yml` | NEIS 학교 (1일) |
-| `collect-dart-builders.yml` | DART 시공사 재무 (1일) |
-| `collect-noise.yml` | 소음 추정 (1일) |
-| `collect-environment.yml` | 환경/혐오시설 (1일) |
-| `collect-noxious.yml` | 혐오시설 거리 (1일) |
-| `collect-industry.yml` | 산업단지 매칭 (1일) |
-| `collect-unsold-kosis.yml` | KOSIS 시군구별 미분양 (1일) |
-
-### 유틸리티
-| 워크플로우 | 설명 |
-|-----------|------|
-| `apply-migration.yml` | Supabase 마이그레이션 적용 |
-| `seed-data.yml` | 초기 데이터 시딩 |
-
-### 로컬 전용 (네이버)
-| 스크립트 | 설명 |
-|---------|------|
-| `scripts/run-naver-local.bat` | Windows 스케줄러 자동 실행 (주 2회 월/목 06:00) |
-| `scripts/run-naver-local.sh` | 수동 실행용 (bash) |
-| `scripts/collectors/naver-collect.py` | Python 수집 로직 (curl_cffi) |
-
 ## 의존성 방향 (단방향, 순환 참조 없음)
 
 ```
 constants → scoring → theme → components → hooks → App
 ```
 
-## 컴포넌트 구조
-
-### App.jsx (355줄) — Hook + useMemo + 콜백 + 탭 라우팅만 담당
-분리된 섹션 컴포넌트 (`src/components/sections/`):
-| 컴포넌트 | 줄 | 역할 |
-|---------|-----|------|
-| HeaderSection | 35 | 프로필 선택 + 헤더 |
-| SearchFilterBar | 100 | 검색/필터/정렬 |
-| AptListSection | 69 | 카드 그리드 + 비교 |
-| ExpertLoginForm | 157 | 전문가 로그인/회원가입 |
-| InfoPage | 58 | 스코어링 엔진 설명 |
-| BottomNav | 35 | 하단 네비게이션 |
-
-### DetailModal.jsx (107줄) — 모달 컨테이너만 담당
-분리된 상세 컴포넌트 (`src/components/detail/`):
-| 컴포넌트 | 줄 | 역할 |
-|---------|-----|------|
-| PriceTable | 88 | 인근 매매/전세 시세 |
-| SchoolInfo | 36 | 학군 정보 |
-| LoanAnalysis | 93 | LTV/DSR/갭투자 분석 |
-| DataSections | 164 | 공공데이터 5개 섹션 |
-
 ## 서브디렉토리 규칙 파일
 
-스코어링/컴포넌트/API 관련 상세 규칙은 해당 디렉토리의 CLAUDE.md에 분리:
-- `src/scoring/CLAUDE.md` — 가중치 합계, 클램핑, null 처리, 키워드 그룹
-- `src/components/CLAUDE.md` — memo, 접근성, 크로스브라우저, 전문가 페이지
+각 도메인별 상세 규칙은 해당 디렉토리의 CLAUDE.md에 분리:
+- `src/scoring/CLAUDE.md` — 가중치 합계, 클램핑, null 처리, 키워드 그룹, 스코어링 파이프라인
+- `src/components/CLAUDE.md` — memo, 접근성, 크로스브라우저, 전문가 페이지, 컴포넌트 구조
+- `src/hooks/CLAUDE.md` — Hook 호출 순서, useMemo 의존성, 파생 상태, 교차 관심사 패턴
 - `api/CLAUDE.md` — null 함정, 한글, Supabase 연동, 인증
+- `scripts/CLAUDE.md` — units 보정 파이프라인, 네이버 로컬 자동화
+- `.github/workflows/CLAUDE.md` — 워크플로우 목록, GitHub Secrets
+- `supabase/CLAUDE.md` — 테이블 스키마 (13개 + VIEW)
 
----
-
-## Critical Rules (공통)
-
-### 1. 가중치 합계 = 100%
-
-모든 프로필(5개)과 엔진 내부 가중치 합계 불변. 상세 테이블은 `src/scoring/CLAUDE.md` 참조.
-
-### 2. Hook 호출 순서
-
-App.jsx 내부:
-```
-useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 13개 (useDebouncedValue 포함) → useMemo (9개: scoredMap 추가) → useEffect (7개) → useRef → useCallback
-```
-각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
-React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
-**TDZ 방지**: 커스텀 훅 호출 시 매개변수가 반드시 해당 훅 호출 **이전에** 정의되어야 함. Vite production 빌드에서 const 재배열로 TDZ 에러 발생 (2eaac74).
-
-### 3. useMemo 의존성 배열 (App.jsx)
-
-| useMemo | 의존성 | 절대 누락 금지 |
-|---------|--------|--------------|
-| guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
-| catsCache | [apartments] | apartments 의존 필수 |
-| scored | [catsCache, profile, customWeights] | catsCache는 apartments 간접 의존 |
-| filtered | [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText] | 7개 필수 (P-2: debounce 적용) |
-| visible | [filtered, visibleCount] | 페이지네이션용 |
-| scoredMap | [scored] | Map 자료구조 (P-3: O(1) 조회) |
-| compItems | [compIds, scoredMap] | scoredMap.get() 사용 |
-| pw | [profile, customWeights] | customWeights 우선, PROFILES[profile].w 폴백 |
-| regionOptions | [apartments] | apartments 의존 필수 |
-
-### 4. showComp는 파생 상태
-
-```js
-const showComp = showCompOpen && compIds.length >= 2;
-```
-별도 useState가 아닌 **파생 값**. useEffect로 동기화하지 말 것.
-
-### 5. GitHub Secrets
-
-| 시크릿 | 용도 |
-|--------|------|
-| `SUPABASE_URL` | Supabase 프로젝트 URL |
-| `SUPABASE_SERVICE_KEY` | Supabase service_role 키 (쓰기용) |
-| `MOIS_POP_KEY` | 행안부 주민등록 인구/전입전출 API 키 (data.go.kr) |
-| `MOLIT_KEY` | 국토부 실거래 + 주택인허가 + 공동주택 기본정보 API 키 (data.go.kr) |
-| `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경/소음 수집 + 역지오코딩) |
-| `DART_KEY` | DART 전자공시 API 키 (시공사 재무 수집) |
-| `KOSIS_KEY` | KOSIS 국가통계포털 API 키 (미분양 수집) |
-
-### 6. units 보정 파이프라인
-
-`apartments.unit_source` 필드로 세대수 출처 추적:
-- `"applyhome"` — 청약홈 API (기본, 부정확할 수 있음)
-- `"molit"` — 국토부 공동주택 기본정보 API (1차 보정, 매월)
-- `"naver"` — 네이버 부동산 totalHouseholdCount (2차 보정, 매일)
-
-보정 대상: `units <= 1` 또는 `unsold_rate >= 100%`인 단지.
-보정 시 `unsold_rate`도 재계산: `ROUND(unsold / new_units * 100, 1)`.
-
-### 7. 데이터 소스
+## 데이터 소스
 
 `VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.
 참조: `src/services/staticDataApi.js`, `src/hooks/useApartmentData.js`.
-
-### 8. 스코어링 파이프라인
-
-```
-apartments (API 데이터)
-  ↓ [apartments 변경 시]
-catsCache = apartments.map(a => calcCats(a, { regionMedians }))
-  ↓ [profile, customWeights 변경 시]
-scored = catsCache.map(c => { total = 가중합산; return { apt, res } })
-  ↓ [필터/정렬 변경 시]
-filtered → visible (페이지네이션)
-```
-
-`calcCats(apt, ctx)`는 regionMedians 컨텍스트를 받아 6개 카테고리 점수 반환.
-`scoreFuture`는 `FUTURE_WEIGHT_MAP` 룩업 테이블로 동적 가중치 결정 (Q-4).
-`calcAll(apt, profile, ctx)`는 가중합산 총점 + 카테고리 점수 반환.
-
-### 9. 네이버 부동산 수집 — 로컬 자동화
-
-**네이버 수집은 한국 IP가 필요. Windows 작업 스케줄러로 로컬 PC에서 자동 실행.**
-
-| 구분 | 방식 | 설명 |
-|------|------|------|
-| 네이버 수집 (자동) | Windows 스케줄러 | `scripts/run-naver-local.bat` — 주 2회 (월/목 06:00) |
-| 네이버 수집 (수동) | 로컬 | `bash scripts/run-naver-local.sh` |
-| 후처리(sync+calc) | GitHub Actions | `collect-naver-listings.yml` — 매일 자동 |
-| 기타 수집기 | GitHub Actions | 공공 API이므로 IP 제한 없음 |
-
-**이유**: 네이버 부동산 API는 데이터센터 IP(GitHub Actions)를 차단.
-
-**자동 수집 (Windows 작업 스케줄러)**:
-- 작업명: `MibunyangNaverCollect`
-- 스케줄: 매주 월/목 오전 6시
-- 스크립트: `scripts/run-naver-local.bat`
-- 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-naver-task.ps1`
-- 수동 트리거: `schtasks /run /tn MibunyangNaverCollect`
-
-**수동 실행**: `bash scripts/run-naver-local.sh`
-
-### 10. Supabase 테이블 (13개 + 1 VIEW)
-
-| 테이블 | 설명 | 주요 수집기 |
-|--------|------|-----------|
-| apartments | 미분양 아파트 핵심 데이터 | 청약홈 API |
-| prices | 분양가 이력 (시계열) | 청약홈 API |
-| unsold_history | 미분양 추이 (시계열) | 청약홈 API |
-| trades | 실거래가 (매매/전세) | collect-trades.mjs |
-| trade_stats | 거래 통계 캐시 | trade-stats.mjs |
-| infra | 주변 인프라 (병원, 마트 등) | infra-kakao.mjs |
-| schools | 학교 정보 | schools-neis.mjs |
-| transport | 교통 정보 | transport-tago.mjs |
-| builders | 건설사 재무 | dart-builders.mjs |
-| regions | 지역 통계 (인구, 이동) | population.mjs, migration.mjs |
-| complexes | 네이버 단지 정보 | naver-collect.py |
-| articles | 네이버 매물 정보 | naver-collect.py |
-| complex_price_history | 네이버 시세 이력 | naver-collect.py |
-| **apartments_flat** (VIEW) | 13개 테이블 JOIN 평탄화 | — |
 
 ---
 
@@ -247,14 +58,6 @@ filtered → visible (페이지네이션)
 
 ---
 
-## 교차 관심사 해결 패턴
-
-| 훅 | 패턴 | 설명 |
-|----|------|------|
-| useExpertMode.handleExpertLogin() | `true`/`false` 반환 | App에서 `if (success) setTab("expert")` |
-| useExpertMode.handleExpertLogout(onLogout) | 콜백 파라미터 | App에서 `() => { setTab("list"); setShowCompOpen(false); }` 전달 |
-| useFilterSort({ onFilterChange }) | 콜백 옵션 | App에서 `() => setDetailAptId(null)` 전달 |
-
 # 코드 리뷰 기준 (모든 코드 수정 시 적용)
 
 ## 필수 체크 항목
@@ -279,3 +82,14 @@ filtered → visible (페이지네이션)
 - 전체: npm run test
 - 특정 파일: npm run test -- --grep "파일명"
 - E2E: npm run test:e2e
+
+# 플랜 모드 규칙
+
+## /plan 실행 시 자동 적용
+- 계획 제시 후 바로 실행하지 말 것
+- 아래 3가지를 스스로 점검한 후 계획에 포함:
+  1. 수정 대상 파일을 import하는 다른 파일 목록
+  2. DB/API 변경이 다른 페이지에 미치는 영향
+  3. 실행 순서의 의존 관계
+- 계획에 "영향받는 파일" 섹션을 반드시 포함할 것
+- 한 번에 5개 파일 이상 수정하는 계획이면 단계를 나눌 것

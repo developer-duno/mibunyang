@@ -103,6 +103,22 @@ popSc에 가산/감산. 인구 증감률과 별개로 실제 전입/전출 데�
 | 순이동 ≤ -5000 (대규모 유출) | popSc - 5 | Math.max(0) |
 | 순이동 null 또는 -5000~0 | 변경 없음 | — |
 
+## 스코어링 파이프라인 (App.jsx에서의 흐름)
+
+```
+apartments (API 데이터)
+  ↓ [apartments 변경 시]
+catsCache = apartments.map(a => calcCats(a, { regionMedians }))
+  ↓ [profile, customWeights 변경 시]
+scored = catsCache.map(c => { total = 가중합산; return { apt, res } })
+  ↓ [필터/정렬 변경 시]
+filtered → visible (페이지네이션)
+```
+
+`calcCats(apt, ctx)`는 regionMedians 컨텍스트를 받아 6개 카테고리 점수 반환.
+`scoreFuture`는 `FUTURE_WEIGHT_MAP` 룩업 테이블로 동적 가중치 결정 (Q-4).
+`calcAll(apt, profile, ctx)`는 가중합산 총점 + 카테고리 점수 반환.
+
 ## null/undefined 처리
 
 - `??` (nullish coalescing) 사용: `apt.schoolScore ?? 50` — falsy-zero(0)도 정상 처리
