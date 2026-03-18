@@ -41,7 +41,7 @@ async function searchKakaoCategory(lat, lng, categoryCode, radius) {
 async function searchBusStopsTago(lat, lng) {
   if (!TAGO_KEY) return [];
   const url = `http://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=${encodeURIComponent(TAGO_KEY)}&gpsLati=${lat}&gpsLong=${lng}&_type=json&numOfRows=15`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  const res = await fetchWithRetry(url, { signal: AbortSignal.timeout(15000) }, 3);
   if (!res.ok) return [];
   const data = await res.json();
   const items = data?.response?.body?.items?.item;
@@ -88,16 +88,26 @@ function extractSubwayLines(subways, stationName) {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  const forceAll = process.argv.includes("--force");
+  const maxTago = Number(process.argv.find(a => a.startsWith("--limit="))?.split("=")[1]) || 900;
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
   const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng");
   if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
 
-  const targets = apts.filter(a => a.lat && a.lng);
-  log(PHASE, `대상: ${targets.length}건 (좌표 있음)`);
+  const withCoords = (apts || []).filter(a => a.lat && a.lng);
 
-  let updated = 0, skipped = 0;
+  let targets = withCoords;
+  if (!forceAll) {
+    const { data: collected } = await sb.from("transport").select("apartment_id").not("bus_routes", "is", null);
+    const doneSet = new Set((collected || []).map(r => r.apartment_id));
+    targets = withCoords.filter(a => !doneSet.has(a.id));
+    log(PHASE, `전체 ${withCoords.length}건 중 수집완료 ${doneSet.size}건 → 미수집 ${targets.length}건`);
+  }
+  log(PHASE, `대상: ${targets.length}건, TAGO 일일 상한: ${maxTago}건`);
+
+  let updated = 0, skipped = 0, tagoCallCount = 0;
 
   for (let i = 0; i < targets.length; i++) {
     const apt = targets[i];
@@ -110,9 +120,15 @@ async function main() {
       } catch (e) { /* 빈 배열 유지 */ }
       await sleep(100);
 
-      // 버스 정류장 (TAGO 좌표기반 API)
+      // 버스 정류장 (TAGO 좌표기반 API — 일일 상한 제어)
       try {
-        busStops = await searchBusStopsTago(apt.lat, apt.lng);
+        if (tagoCallCount < maxTago) {
+          busStops = await searchBusStopsTago(apt.lat, apt.lng);
+          tagoCallCount++;
+        } else if (tagoCallCount === maxTago) {
+          log(PHASE, `⚠️ TAGO 일일 상한 ${maxTago}건 도달 — 버스 수집 중단`);
+          tagoCallCount++;
+        }
       } catch (e) { /* 빈 배열 유지 */ }
       await sleep(100);
 
@@ -172,7 +188,7 @@ async function main() {
     if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated})`);
   }
 
-  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
+  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped}, TAGO 호출 ${tagoCallCount > maxTago ? maxTago : tagoCallCount}건 ===`);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

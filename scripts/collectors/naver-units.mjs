@@ -26,9 +26,9 @@ const NAVER_COMPLEX_API = `${NAVER_BASE}/api/complexes`;
 
 const JWT_PATTERN = /"token":"(eyJ[A-Za-z0-9._-]+)"/;
 const JWT_LIFETIME = 40 * 60 * 1000; // 40분
-const MIN_INTERVAL = 1500;           // 요청 간 최소 1.5초
+const MIN_INTERVAL = 3000;           // 요청 간 최소 3초 (네이버 Rate Limit 대응)
 const MAX_RETRIES = 3;
-const RETRY_DELAYS = [3000, 5000, 10000];
+const RETRY_DELAYS = [5000, 10000, 20000];
 
 // ── 세션 상태 ────────────────────────────────────────────────
 let jwtToken = null;
