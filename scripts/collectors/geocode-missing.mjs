@@ -88,6 +88,21 @@ async function main() {
         await sleep(100);
       }
 
+      // 4차: region + gu만으로 주소 검색 (택지지구/블록 등으로 실패한 경우)
+      if (!result && apt.region && apt.gu) {
+        result = await geocode(`${apt.region} ${apt.gu}`);
+        await sleep(100);
+      }
+
+      // 5차: 단지명에서 지역명 추출하여 키워드 검색
+      if (!result) {
+        const shortName = cleanName.replace(/\d+블[록럭]?/g, "").replace(/[A-Z]\d+/g, "").trim();
+        if (shortName !== cleanName) {
+          result = await geocodeKeyword(shortName);
+          await sleep(100);
+        }
+      }
+
       if (result) {
         if (dryRun) {
           log(PHASE, `  [DRY] ${apt.name}: ${result.lat}, ${result.lng}`);

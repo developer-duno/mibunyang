@@ -41,6 +41,13 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/collectors/sync-naver-complex.mjs
 
+      - name: Geocode missing coordinates
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+        run: node scripts/collectors/geocode-missing.mjs
+
       - name: Calculate exclusive ratio
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
