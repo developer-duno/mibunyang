@@ -26,7 +26,7 @@ describe("HeaderSection", () => {
   it("5개 프로필 버튼이 렌더링됨", () => {
     render(<HeaderSection {...defaultProps} />);
     const buttons = screen.getAllByRole("button");
-    expect(buttons).toHaveLength(5);
+    expect(buttons).toHaveLength(6); // 5개 프로필 + 도움말 버튼
     expect(screen.getByText("실거주")).toBeInTheDocument();
     expect(screen.getByText("투자")).toBeInTheDocument();
     expect(screen.getByText("신혼부부")).toBeInTheDocument();

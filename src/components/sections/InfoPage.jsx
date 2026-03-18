@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { CITY_TIER } from "@/constants/regions";
 import { C } from "@/theme";
 
 const cardStyle = { background: C.card, borderRadius: 12, padding: 14, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", marginBottom: 12 };
@@ -37,11 +36,9 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
         ))}
 
         <div style={divider}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.blue, marginBottom: 6 }}>도시등급별 교통 보정 (NEW)</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.blue, marginBottom: 6 }}>도시등급별 교통 보정</div>
           <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.6 }}>
-            {Object.entries(CITY_TIER).map(([k, v]) =>
-              `${v.label}(${k}): 지하철×${v.subwayW} 버스×${v.busW} IC×${v.icW} KTX×${v.ktxW}`
-            ).join(" | ")}
+            특별시(S) · 광역시(A) · 특례시(B) · 일반시(C) · 군(D) 등급별로 지하철·버스·IC·KTX 가중치가 자동 조정됩니다.
           </div>
         </div>
 
