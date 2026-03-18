@@ -78,9 +78,10 @@ async function main() {
 
   // 1. layout이 없는 아파트 조회
   const { data: apts, error: aErr } = await sb
-    .from("apartments")
+    .from("apartments_flat")
     .select("id, name, area")
-    .is("layout", null);
+    .is("layout", null)
+    .limit(10000);
   if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
   log(PHASE, `대상: ${apts.length}건 (layout null)`);
 
