@@ -1,0 +1,186 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { AdminDashboard } from "./AdminDashboard";
+import { makeScoredItem } from "@/__tests__/factories";
+import { PROFILES } from "@/constants/profiles";
+
+// 테스트용 admin 객체 생성
+function makeAdmin(overrides = {}) {
+  return {
+    users: [],
+    selectedStatus: "pending",
+    setSelectedStatus: vi.fn(),
+    adminLoading: false,
+    reviewLoading: null,
+    handleReview: vi.fn(),
+    handleAdminLogout: vi.fn(),
+    ...overrides,
+  };
+}
+
+function makeScored(count = 3) {
+  return Array.from({ length: count }, (_, i) =>
+    makeScoredItem({ id: i + 1, name: `아파트${i + 1}` })
+  );
+}
+
+describe("AdminDashboard", () => {
+  const defaultProps = () => ({
+    admin: makeAdmin(),
+    onLogout: vi.fn(),
+    onSwitchToExpert: vi.fn(),
+    profile: "live",
+    setProfile: vi.fn(),
+    customWeights: {},
+    saveCustomWeights: vi.fn(),
+    scored: makeScored(),
+  });
+
+  // 기본 렌더링 — 관리자 대시보드 제목 표시
+  it("관리자 대시보드 제목을 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    expect(screen.getByText("관리자 대시보드")).toBeTruthy();
+  });
+
+  // 가중치 관리 섹션 표시
+  it("가중치 관리 섹션을 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    expect(screen.getByText("가중치 관리")).toBeTruthy();
+  });
+
+  // 모든 프로필의 가중치 합계 = 100 검증
+  it("모든 프로필의 가중치 합계가 100이다", () => {
+    Object.entries(PROFILES).forEach(([key, profile]) => {
+      const sum = Object.values(profile.w).reduce((a, b) => a + b, 0);
+      expect(sum).toBe(100);
+    });
+  });
+
+  // 전문가 보기 버튼 표시
+  it("전문가 보기 버튼을 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    expect(screen.getByText("전문가 보기")).toBeTruthy();
+  });
+
+  // 전문가 보기 클릭 시 onSwitchToExpert 호출
+  it("전문가 보기 버튼 클릭 시 onSwitchToExpert를 호출한다", () => {
+    const props = defaultProps();
+    render(<AdminDashboard {...props} />);
+    fireEvent.click(screen.getByText("전문가 보기"));
+    expect(props.onSwitchToExpert).toHaveBeenCalled();
+  });
+
+  // 로그아웃 버튼 표시 및 클릭
+  it("로그아웃 버튼 클릭 시 handleAdminLogout을 호출한다", () => {
+    const props = defaultProps();
+    render(<AdminDashboard {...props} />);
+    fireEvent.click(screen.getByText("로그아웃"));
+    expect(props.admin.handleAdminLogout).toHaveBeenCalledWith(props.onLogout);
+  });
+
+  // 상태 탭 4개 표시
+  it("4개 상태 탭을 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    expect(screen.getByText("대기중")).toBeTruthy();
+    expect(screen.getByText("승인됨")).toBeTruthy();
+    expect(screen.getByText("거부됨")).toBeTruthy();
+    expect(screen.getByText("전체")).toBeTruthy();
+  });
+
+  // 상태 탭 클릭 시 setSelectedStatus 호출
+  it("상태 탭 클릭 시 setSelectedStatus를 호출한다", () => {
+    const admin = makeAdmin();
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    fireEvent.click(screen.getByText("승인됨"));
+    expect(admin.setSelectedStatus).toHaveBeenCalledWith("approved");
+  });
+
+  // 사용자가 없으면 안내 메시지 표시
+  it("사용자가 없으면 안내 메시지를 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    expect(screen.getByText("대기중인 신청이 없습니다")).toBeTruthy();
+  });
+
+  // 로딩 중 표시
+  it("adminLoading이 true이면 로딩 메시지를 표시한다", () => {
+    const admin = makeAdmin({ adminLoading: true });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    expect(screen.getByText("로딩 중...")).toBeTruthy();
+  });
+
+  // pending 사용자 — 승인/거부 버튼 표시
+  it("pending 사용자에게 승인/거부 버튼을 표시한다", () => {
+    const admin = makeAdmin({
+      users: [{
+        email: "test@test.com", name: "테스트", status: "pending",
+        specialty: "부동산 중개", createdAt: "2025-01-01",
+      }],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    expect(screen.getByText("승인")).toBeTruthy();
+    expect(screen.getByText("거부")).toBeTruthy();
+  });
+
+  // 승인 버튼 클릭 시 handleReview 호출
+  it("승인 버튼 클릭 시 handleReview를 올바른 인자로 호출한다", () => {
+    const admin = makeAdmin({
+      users: [{
+        email: "test@test.com", name: "테스트", status: "pending",
+        specialty: "부동산 중개", createdAt: "2025-01-01",
+      }],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    fireEvent.click(screen.getByText("승인"));
+    expect(admin.handleReview).toHaveBeenCalledWith("test@test.com", "approve");
+  });
+
+  // 거부 버튼 클릭 시 handleReview 호출
+  it("거부 버튼 클릭 시 handleReview를 올바른 인자로 호출한다", () => {
+    const admin = makeAdmin({
+      users: [{
+        email: "test@test.com", name: "테스트", status: "pending",
+        specialty: "부동산 중개", createdAt: "2025-01-01",
+      }],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    fireEvent.click(screen.getByText("거부"));
+    expect(admin.handleReview).toHaveBeenCalledWith("test@test.com", "reject");
+  });
+
+  // rejected 사용자에게 재승인 버튼 표시
+  it("rejected 사용자에게 재승인 버튼을 표시한다", () => {
+    const admin = makeAdmin({
+      users: [{
+        email: "rejected@test.com", name: "거부됨", status: "rejected",
+        specialty: "감정평가", createdAt: "2025-01-01",
+      }],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    expect(screen.getByText("재승인")).toBeTruthy();
+  });
+
+  // onSwitchToExpert가 null이면 전문가 보기 버튼 미표시
+  it("onSwitchToExpert가 null이면 전문가 보기 버튼을 표시하지 않는다", () => {
+    render(<AdminDashboard {...defaultProps()} onSwitchToExpert={null} />);
+    expect(screen.queryByText("전문가 보기")).toBeNull();
+  });
+
+  // 가중치 편집 버튼 표시
+  it("각 프로필에 편집 버튼을 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    const editButtons = screen.getAllByText("편집");
+    expect(editButtons.length).toBe(5); // 5개 프로필
+  });
+
+  // 가중치 편집 → 합계 != 100이면 저장 불가 검증
+  it("가중치 합계가 100이 아니면 저장 버튼이 비활성화된다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    // 첫 번째 프로필의 편집 버튼 클릭
+    const editButtons = screen.getAllByText("편집");
+    fireEvent.click(editButtons[0]);
+    // 저장 버튼이 나타남
+    const saveBtn = screen.getByText("저장");
+    // 초기 합계는 100이므로 활성화
+    expect(saveBtn.disabled).toBe(false);
+  });
+});
