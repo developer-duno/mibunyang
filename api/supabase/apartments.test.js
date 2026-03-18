@@ -1,10 +1,10 @@
 // @vitest-environment node
 /**
- * supabase/apartments.js 테스트 — sanitize 함수 null 기본값, 필터링, 캐시 헤더
+ * supabase/apartments.js 테스트 — sanitize 함수 null 기본값, 필터링, 캐시 헤더, 배치 페이지네이션
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Supabase 모킹
+// Supabase 모킹 — 배치 페이지네이션을 위해 range 호출마다 다른 결과 반환 가능
 const mockQuery = {
   select: vi.fn().mockReturnThis(),
   eq: vi.fn().mockReturnThis(),
@@ -93,8 +93,8 @@ describe('handler', () => {
     expect(mockQuery.eq).toHaveBeenCalledWith('gu', '화성시');
   });
 
-  // 정상: limit/offset 안전 처리
-  it('limit/offset 파라미터를 안전하게 처리한다', async () => {
+  // 정상: 명시적 limit/offset → 단일 쿼리 경로
+  it('limit/offset 파라미터를 안전하게 처리한다 (단일 쿼리)', async () => {
     mockQuery.range.mockResolvedValue({ data: [], error: null, count: 0 });
     const res = makeRes();
     await handler(makeReq({ limit: '50', offset: '10' }), res);
@@ -107,6 +107,50 @@ describe('handler', () => {
     const res = makeRes();
     await handler(makeReq({ limit: '-5' }), res);
     expect(mockQuery.range).toHaveBeenCalledWith(0, 0); // min(max(1, -5), 10000) = 1, range(0, 0)
+  });
+
+  // 배치 페이지네이션: 1000개 이하 → 단일 배치
+  it('1000개 이하 데이터는 단일 배치로 반환한다', async () => {
+    const rows = Array.from({ length: 800 }, (_, i) => ({ id: i + 1, name: `apt${i}`, region: '경기' }));
+    mockQuery.range.mockResolvedValueOnce({ data: rows, error: null, count: 800 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    // range는 첫 배치만 호출 (0, 999)
+    expect(mockQuery.range).toHaveBeenCalledTimes(1);
+    expect(mockQuery.range).toHaveBeenCalledWith(0, 999);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.length).toBe(800);
+    expect(res.json.mock.calls[0][0].count).toBe(800);
+  });
+
+  // 배치 페이지네이션: 1500개 → 2배치
+  it('1000개 초과 데이터는 배치 페이지네이션으로 전체를 반환한다', async () => {
+    const batch1 = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1, name: `apt${i}`, region: '경기' }));
+    const batch2 = Array.from({ length: 500 }, (_, i) => ({ id: i + 1001, name: `apt${i + 1000}`, region: '경기' }));
+    mockQuery.range
+      .mockResolvedValueOnce({ data: batch1, error: null, count: 1500 }) // 첫 배치 (count 포함)
+      .mockResolvedValueOnce({ data: batch2, error: null }); // 두 번째 배치
+    const res = makeRes();
+    await handler(makeReq(), res);
+    expect(mockQuery.range).toHaveBeenCalledTimes(2);
+    expect(mockQuery.range).toHaveBeenNthCalledWith(1, 0, 999);
+    expect(mockQuery.range).toHaveBeenNthCalledWith(2, 1000, 1999);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.length).toBe(1500);
+    expect(res.json.mock.calls[0][0].count).toBe(1500);
+  });
+
+  // 배치 에러 시 부분 데이터 반환 (graceful degradation)
+  it('배치 에러 시 첫 배치 데이터만이라도 반환한다', async () => {
+    const batch1 = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1, name: `apt${i}`, region: '경기' }));
+    mockQuery.range
+      .mockResolvedValueOnce({ data: batch1, error: null, count: 1500 })
+      .mockResolvedValueOnce({ data: null, error: { message: 'timeout' } });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    // 첫 배치 1000개는 반환
+    expect(res.json.mock.calls[0][0].data.length).toBe(1000);
   });
 });
 

@@ -13,6 +13,16 @@
  */
 import { getSupabase } from "../_lib/supabase.js";
 
+const BATCH_SIZE = 1000;
+
+/** 필터 적용된 새 쿼리 객체 생성 (배치마다 새로 빌드 필요) */
+function buildQuery(supabase, region, gu, withCount) {
+  let q = supabase.from("apartments_flat").select("*", withCount ? { count: "exact" } : {});
+  if (region) q = q.eq("region", region);
+  if (gu) q = q.eq("gu", gu);
+  return q;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -21,26 +31,54 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabase();
     const { region, gu } = req.query;
-    const safeLimit = Math.max(1, Math.min(parseInt(req.query.limit || "10000", 10) || 10000, 10000));
-    const safeOffset = Math.max(0, parseInt(req.query.offset || "0", 10) || 0);
+    const hasExplicitPagination = req.query.limit || req.query.offset;
 
-    // apartments_flat 뷰 사용 (스키마에서 정의)
-    let query = supabase.from("apartments_flat").select("*", { count: "exact" });
+    let allData;
+    let totalCount;
 
-    if (region) query = query.eq("region", region);
-    if (gu) query = query.eq("gu", gu);
-    // Supabase 기본 1000행 제한 해제 — 항상 range 설정
-    query = query.range(safeOffset, safeOffset + safeLimit - 1);
+    if (hasExplicitPagination) {
+      // 명시적 limit/offset → 기존 단일 쿼리 (하위 호환)
+      const safeLimit = Math.max(1, Math.min(parseInt(req.query.limit || "10000", 10) || 10000, 10000));
+      const safeOffset = Math.max(0, parseInt(req.query.offset || "0", 10) || 0);
+      let query = buildQuery(supabase, region, gu, true);
+      query = query.range(safeOffset, safeOffset + safeLimit - 1);
+      const { data, error, count } = await query;
+      if (error) {
+        console.error("Supabase query error:", error);
+        return res.status(500).json({ ok: false, error: "데이터 조회 중 오류가 발생했습니다" });
+      }
+      allData = data || [];
+      totalCount = count;
+    } else {
+      // 기본: 배치 페이지네이션으로 전체 데이터 조회 (PostgREST max_rows=1000 우회)
+      const firstQuery = buildQuery(supabase, region, gu, true).range(0, BATCH_SIZE - 1);
+      const { data: firstBatch, error, count } = await firstQuery;
+      if (error) {
+        console.error("Supabase query error:", error);
+        return res.status(500).json({ ok: false, error: "데이터 조회 중 오류가 발생했습니다" });
+      }
+      allData = firstBatch || [];
+      totalCount = count;
 
-    const { data, error, count } = await query;
-
-    if (error) {
-      console.error("Supabase query error:", error);
-      return res.status(500).json({ ok: false, error: "데이터 조회 중 오류가 발생했습니다" });
+      // 추가 배치 필요 시 순차 요청
+      if (count && count > BATCH_SIZE) {
+        const remaining = Math.ceil((count - BATCH_SIZE) / BATCH_SIZE);
+        for (let i = 1; i <= remaining; i++) {
+          const offset = i * BATCH_SIZE;
+          const batchQuery = buildQuery(supabase, region, gu, false).range(offset, offset + BATCH_SIZE - 1);
+          const { data: batch, error: batchError } = await batchQuery;
+          if (batchError) {
+            console.error(`Batch ${i} error:`, batchError);
+            break;
+          }
+          if (batch) allData = allData.concat(batch);
+          if (!batch || batch.length < BATCH_SIZE) break;
+        }
+      }
     }
 
     // null → 기본값 정리 (기존 JSON과 호환)
-    const cleaned = (data || []).map(sanitize);
+    const cleaned = allData.map(sanitize);
 
     // 데이터 최신성: 가장 최근 updated_at
     const { data: latestRow } = await supabase
@@ -56,7 +94,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       data: cleaned,
-      count: count ?? cleaned.length,
+      count: totalCount ?? cleaned.length,
       fetchedAt: new Date().toISOString(),
       dataUpdatedAt,
     });
