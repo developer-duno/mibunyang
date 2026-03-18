@@ -9,6 +9,7 @@ import { ExpertUnitPlaceholder } from "./ExpertUnitPlaceholder";
 import { ExpertDataCompleteness } from "./ExpertDataCompleteness";
 import { ExpertSidebar } from "./ExpertSidebar";
 import { ExpertAptHeader } from "./ExpertAptHeader";
+import { ExpertHelpGuide } from "./ExpertHelpGuide";
 
 const SEC_COLOR = { "가격": C.green, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan, "교차검증": "#6366F1" };
 
@@ -18,6 +19,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const [sort, setSort] = useState("total");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -89,6 +91,10 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
             ))}
           </div>
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            <button onClick={() => setHelpOpen(v => !v)} data-no-print style={{
+              background: helpOpen ? C.indigo : C.white, color: helpOpen ? C.white : C.indigo,
+              border: `1px solid ${C.indigo}`, borderRadius: 4, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+            }}>도움말</button>
             {onSwitchToAdmin && (
               <button onClick={onSwitchToAdmin} data-no-print style={{
                 background: C.white, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 4, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer"
@@ -99,6 +105,8 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
             }}>인쇄</button>
           </div>
         </div>
+
+        <ExpertHelpGuide open={helpOpen} onClose={() => setHelpOpen(false)} />
 
         {selectedItem ? (
           <>

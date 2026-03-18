@@ -1,6 +1,7 @@
 import { memo, useState, useCallback, useMemo } from "react";
 import { C, catCol, catBg } from "@/theme";
 import { PROFILES } from "@/constants/profiles";
+import { AdminHelpGuide } from "./AdminHelpGuide";
 
 const STATUS_TABS = [
   { key: "pending", label: "대기중", color: "#92400E", bg: "#FFFBEB" },
@@ -246,6 +247,8 @@ function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, s
 }
 
 export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights, scored }) {
+  const [helpOpen, setHelpOpen] = useState(false);
+
   return (
     <div style={{ padding: "0 16px" }}>
       {/* Header */}
@@ -254,6 +257,11 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
           <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>관리자 대시보드</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={() => setHelpOpen(v => !v)} style={{
+            background: helpOpen ? C.purple : C.purpleLight, color: helpOpen ? C.white : C.purple,
+            border: `1px solid ${C.purple}`, borderRadius: 6,
+            padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+          }}>도움말</button>
           {onSwitchToExpert && (
             <button onClick={onSwitchToExpert} style={{
               background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 6,
@@ -266,6 +274,8 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
           }}>로그아웃</button>
         </div>
       </div>
+
+      <AdminHelpGuide open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {/* Weight Editor Section */}
       <WeightEditor profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} />
