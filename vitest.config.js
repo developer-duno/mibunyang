@@ -8,8 +8,11 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.test.{js,jsx}'],
+    include: ['src/**/*.test.{js,jsx}', 'api/**/*.test.{js,jsx}'],
     setupFiles: ['./src/__tests__/setup.js'],
+    environmentMatchGlobs: [
+      ['api/**/*.test.{js,jsx}', 'node'],
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary'],
