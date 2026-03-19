@@ -226,8 +226,20 @@ async function main() {
 
   if (!rows.length) { log(PHASE, "수집된 데이터 없음"); return; }
 
+  // 배치 내 중복 키 제거 (ON CONFLICT DO UPDATE 동일 행 2회 방지)
+  const CONFLICT_COLS = "region,gu,deal_month,area,price,floor,trade_type";
+  const dedup = new Map();
+  for (const r of rows) {
+    const key = [r.region, r.gu, r.deal_month, r.area, r.price, r.floor, r.trade_type].join("|");
+    dedup.set(key, r);
+  }
+  const uniqueRows = [...dedup.values()];
+  if (uniqueRows.length < rows.length) {
+    log(PHASE, `중복 제거: ${rows.length}건 → ${uniqueRows.length}건 (-${rows.length - uniqueRows.length}건)`);
+  }
+
   log(PHASE, "trades 테이블 저장 중 (upsert)...");
-  const inserted = await upsertBatch("trades", rows, "region,gu,deal_month,area,price,floor,trade_type", 500, sb);
+  const inserted = await upsertBatch("trades", uniqueRows, CONFLICT_COLS, 500, sb);
   log(PHASE, "trades 테이블 " + inserted + "/" + rows.length + "건 저장 완료");
 }
 
