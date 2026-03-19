@@ -21,6 +21,7 @@ import {
   AREA_ADJ_TIERS, AREA_ADJ_LARGE,
   FUTURE_WEIGHT_MAP,
   PRICE_NO_DATA_DEFAULTS, DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
+  DIRECTION_BONUS,
 } from "@/constants/scoringTiers";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
@@ -72,6 +73,10 @@ function sanitize(apt, rm) {
     transitDev: str(apt.transitDev), cityDev: str(apt.cityDev),
     view: str(apt.view), sunlight: str(apt.sunlight),
     schoolGrade: str(apt.schoolGrade),
+    // 관리비/방향 (Phase 4 수집 데이터)
+    avgMaintenanceCost: num(apt.avgMaintenanceCost, 0),
+    primaryDirection: str(apt.primaryDirection, ""),
+    _regionAvgMaint: num(rm?.maint, 0),
     // 원본 null 여부 플래그 (표시용)
     _noView: apt.view == null || apt.view === "",
     _noNoise: apt.noise == null,
@@ -174,6 +179,9 @@ export function scoreLocation(apt) {
 
   let viewSc = VIEW_SCORES[apt.view] || 0;
   let sunSc = apt._noSunlight ? SUNLIGHT_NO_DATA : (SUNLIGHT_SCORES[apt.sunlight] ?? SUNLIGHT_DEFAULT);
+  // 방향 보정: 일조 점수에 방향 보너스 가산 (남향 최대 +8)
+  const dirBonus = apt.primaryDirection ? (DIRECTION_BONUS[apt.primaryDirection] ?? 0) : 0;
+  sunSc = Math.min(sunSc + dirBonus, 38); // 일조+방향 상한 38 (기존 최대 30 + 보너스 8)
   let noiseSc = tierMax(apt.noise, NOISE_TIERS, 0);
   const env = viewSc + sunSc + noiseSc;
   let noxPen = (apt.noxious || []).reduce((s, n) => s + (NOXIOUS_PENALTY[n] || 0), 0);
@@ -238,7 +246,11 @@ export function scoreBenefit(apt) {
   const optVal = apt.optionFree ? apt.optionValue : 0;
   const balVal = apt.balconyFree ? apt.balconyValue : 0;
   const cashVal = apt.cashback;
-  const totalWon = discVal + loanVal + optVal + balVal + cashVal;
+  // 관리비 절감액: 지역 평균보다 낮으면 연간 절감액을 혜택에 합산 (만원 단위)
+  const maintSave = apt._regionAvgMaint > 0 && apt.avgMaintenanceCost > 0
+    ? Math.max(0, Math.round((apt._regionAvgMaint - apt.avgMaintenanceCost) * apt.area * 12 / 10000))
+    : 0;
+  const totalWon = discVal + loanVal + optVal + balVal + cashVal + maintSave;
   const rate = apt.price > 0 ? (totalWon / apt.price) * 100 : 0;
   const sc = Math.min(Math.round(rate / BENEFIT_FULL_RATE * 100), 100);
   const itemScore = (v) => totalWon > 0 ? Math.round(sc * v / totalWon) : 0;
@@ -250,6 +262,7 @@ export function scoreBenefit(apt) {
       { name: "옵션 무상", score: itemScore(optVal), info: optVal > 0 ? `${optVal.toLocaleString()}만` : "-" },
       { name: "발코니 확장", score: itemScore(balVal), info: balVal > 0 ? `${balVal.toLocaleString()}만` : "-" },
       { name: "캐시백", score: itemScore(cashVal), info: cashVal > 0 ? `${cashVal}만` : "-" },
+      { name: "관리비 절감", score: itemScore(maintSave), info: maintSave > 0 ? `연 ~${maintSave.toLocaleString()}만` : "-" },
     ],
   };
 }
@@ -341,16 +354,17 @@ export function computeRegionalMedians(apartments) {
   const groups = {};
   for (const apt of apartments) {
     const r = apt.region || "기타";
-    if (!groups[r]) groups[r] = { pir: [], psr: [], unsoldRate: [], supplyRatio: [] };
+    if (!groups[r]) groups[r] = { pir: [], psr: [], unsoldRate: [], supplyRatio: [], maint: [] };
     if (apt.pir != null && Number.isFinite(Number(apt.pir))) groups[r].pir.push(Number(apt.pir));
     if (apt.psr != null && Number.isFinite(Number(apt.psr))) groups[r].psr.push(Number(apt.psr));
     if (apt.unsoldRate != null && Number.isFinite(Number(apt.unsoldRate))) groups[r].unsoldRate.push(Number(apt.unsoldRate));
     if (apt.supplyRatio != null && Number.isFinite(Number(apt.supplyRatio))) groups[r].supplyRatio.push(Number(apt.supplyRatio));
+    if (apt.avgMaintenanceCost != null && apt.avgMaintenanceCost > 0) groups[r].maint.push(Number(apt.avgMaintenanceCost));
   }
   const median = (arr) => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
   const result = {};
   for (const [r, g] of Object.entries(groups)) {
-    result[r] = { pir: median(g.pir), psr: median(g.psr), unsoldRate: median(g.unsoldRate), supplyRatio: median(g.supplyRatio) };
+    result[r] = { pir: median(g.pir), psr: median(g.psr), unsoldRate: median(g.unsoldRate), supplyRatio: median(g.supplyRatio), maint: median(g.maint) };
   }
   return result;
 }
