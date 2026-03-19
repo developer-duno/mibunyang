@@ -18,7 +18,7 @@ concurrency:
 jobs:
   fill-all:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 330
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -117,11 +117,31 @@ jobs:
         continue-on-error: true
         run: node scripts/collectors/migration.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
-      # ── Phase 5: 실거래 (순서 중요: trades → stats) ────
-      - name: "16a/16 실거래 수집 (collect-trades)"
+  # ── Phase 5: 실거래 (별도 job — 단독으로도 5시간+ 소요) ──
+  fill-trades:
+    needs: fill-all
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: "16a 실거래 수집 (collect-trades)"
         continue-on-error: true
         run: node scripts/collectors/collect-trades.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
-      - name: "16b/16 거래통계 산출 (trade-stats)"
+      - name: "16b 거래통계 산출 (trade-stats)"
         continue-on-error: true
         run: node scripts/collectors/trade-stats.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
