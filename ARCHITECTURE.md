@@ -13,7 +13,7 @@ src/
 │   ├── brands.js           BRAND_TIER(16), AGE_PREMIUM(7), LAYOUT_SCORE
 │   ├── profiles.js         PROFILES(5개 사용자 프로필)
 │   ├── regions.js          CITY_TIER(5등급), REGIONS(17개 시도)
-│   └── fieldMeta.js        FIELD_META(69필드), FIELD_SECTIONS(6섹션)
+│   └── fieldMeta.js        FIELD_META(95필드), FIELD_SECTIONS(8섹션)
 ├── scoring/
 │   └── engine.js           score{6개}, calcAll — 규칙: scoring/CLAUDE.md
 ├── theme/
@@ -49,7 +49,7 @@ scripts/
     └── naver-collect.py  ★ 네이버 인근 매물 수집
 
 supabase/
-└── schema.sql              13개 테이블 + VIEW + RLS + 트리거
+└── schema.sql              14개 테이블 + VIEW + RLS + 트리거
 
 .github/workflows/
 ├── daily-deploy.yml        매일 빌드+배포
@@ -108,22 +108,33 @@ GitHub Actions (일/주/월 스케줄)
 ### 핵심 useMemo 체인 (App.jsx)
 
 ```js
-// 1단계: 전체 아파트 채점 (apartments 또는 프로필이 바뀔 때 재계산)
+// 1단계: 전체 아파트 카테고리 채점 (apartments 변경 시 재계산, 지역 중위값 컨텍스트 포함)
+const catsCache = useMemo(() => {
+  const regionMedians = computeRegionalMedians(apartments);
+  return apartments.map(a => ({ apt: a, cats: calcCats(a, { regionMedians }) }));
+}, [apartments]);
+
+// 2단계: 프로필 가중치 적용 → 총점 계산
 const scored = useMemo(() =>
-  apartments.map(a => ({ apt: a, ...calcAll(a, profile) })),
-  [apartments, profile]
+  catsCache.map(({ apt, cats }) => {
+    const total = Math.round(Math.min(Object.keys(cats).reduce(
+      (s, k) => s + cats[k].total * (w[k] ?? 0) / 100, 0), 100));
+    return { apt, res: { total, cats, weights: w } };
+  }),
+  [catsCache, profile, customWeights]
 );
 
-// 2단계: 지역 필터 + 정렬 적용
+// 3단계: 지역 필터 + 예산 + 검색 + 정렬
 const filtered = useMemo(() =>
-  scored.filter(지역조건).sort(정렬조건),
-  [scored, filterRegion, filterGu, sortKey]
+  scored.filter(지역+예산+검색조건).sort(정렬조건),
+  [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText]
 );
 
-// 3단계: 비교 대상 추출
+// 4단계: 비교 대상 추출 (O(1) Map 조회)
+const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
 const compItems = useMemo(() =>
-  compIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean),
-  [compIds, scored]
+  compIds.map(id => scoredMap.get(id)).filter(Boolean),
+  [compIds, scoredMap]
 );
 ```
 
@@ -157,7 +168,7 @@ calcAll(apt, "live")
 │       (브랜드20 + 세대수15 + 주차15 + 용적률10 + 에너지10 + 전용률10 + 평면10 + 내진5 + 구조5)
 │
 ├── scoreBenefit(apt)    혜택
-│   └── totalWon(만원) = 할인액 + 중도금이자절감 + 옵션무상 + 발코니 + 캐시백
+│   └── totalWon(만원) = 할인액 + 중도금이자절감 + 옵션무상 + 발코니 + 캐시백 + 관리비절감
 │       → rate = totalWon / price * 100
 │       → 점수 = min(rate / 25 * 100, 100)
 │
@@ -188,13 +199,16 @@ fairPrice = 주변중위가(nearbyMedian) * 연식계수(ageCoeff) * 면적보�
 
 ## 4. 상태 관리 맵
 
-### App.jsx 직접 관리 상태 (2개)
+### App.jsx 직접 관리 상태 (4개 + useTransition)
 
 ```
-State       타입      초기값     변경 트리거
-─────       ────      ──────     ──────────
-profile     string    "live"     프로필 버튼 클릭
-tab         string    "list"     탭 버튼 / 하단 네비
+State            타입      초기값        변경 트리거
+─────            ────      ──────        ──────────
+profile          string    "live"        프로필 버튼 클릭
+customWeights    object    {}            사용자 가중치 커스텀
+visibleCount     number    30            무한스크롤 / 필터 변경 시 리셋
+tab              string    "list"        탭 버튼 / 하단 네비
+isPending        boolean   (transition)  useTransition — 프로필 전환 시
 ```
 
 ### 커스텀 훅별 상태
@@ -206,7 +220,7 @@ tab         string    "list"     탭 버튼 / 하단 네비
 | useComparison | compIds, showCompOpen | showComp (파생) |
 | useFavorites | favoriteIds | — |
 | useDetailModal | detailAptId | — |
-| useConsult | consultForm, consultSubmitted, submittedConsults | — |
+| useConsult | consultForm, consultSubmitted, submitting, submittedConsults | fetchConsults(token) |
 | useExpertMode | expertPw, expertLoggedIn, expertExpandedApt | — |
 
 ### 교차 관심사 해결
@@ -268,8 +282,8 @@ App
 │   │       ├── ExpertSidebar (검색/필터/정렬 + 단지 목록, 280px)
 │   │       └── 메인 콘텐츠 영역
 │   │           ├── ExpertAptHeader (단지명/위치/점수/Radar)
-│   │           ├── ExpertFieldTable (memo) * 6섹션 (2컬럼 CSS Grid)
-│   │           │   └── FIELD_META 기반 69개 필드 렌더
+│   │           ├── ExpertFieldTable (memo) * 8섹션 (2컬럼 CSS Grid)
+│   │           │   └── FIELD_META 기반 95개 필드 렌더
 │   │           ├── ExpertUnitPlaceholder (동/호수 안내)
 │   │           ├── ExpertScoreBreakdown (6카테고리 산출 내역)
 │   │           │   └── 적정가 계산 과정 인라인 표시
@@ -362,10 +376,10 @@ App
 | 프로필 | 가격 | 입지 | 상품 | 혜택 | 안전 | 미래 |
 |--------|------|------|------|------|------|------|
 | 실거주 | 20 | 40 | 20 | 5 | 10 | 5 |
-| 투자 | 30 | 10 | 15 | 10 | 25 | 10 |
-| 신혼부부 | 15 | 30 | 30 | 10 | 10 | 5 |
-| 자녀교육 | 15 | 45 | 20 | 10 | 5 | 5 |
-| 은퇴 | 20 | 35 | 25 | 15 | 5 | 0 |
+| 투자 | 30 | 15 | 10 | 10 | 25 | 10 |
+| 신혼부부 | 30 | 30 | 15 | 10 | 10 | 5 |
+| 자녀교육 | 15 | 45 | 20 | 5 | 10 | 5 |
+| 은퇴 | 20 | 35 | 25 | 5 | 15 | 0 |
 
 ---
 
@@ -401,7 +415,7 @@ App
 
 ### FIELD_META 시스템 (constants/fieldMeta.js)
 
-모든 69개 필드의 메타데이터를 정의하는 상수:
+모든 95개 필드의 메타데이터를 정의하는 상수:
 
 ```js
 FIELD_META = {
@@ -413,13 +427,15 @@ FIELD_META = {
 }
 ```
 
-FIELD_SECTIONS는 6개 섹션으로 필드키를 그룹화:
-1. 단지 개요 (15필드) — id, name, region, gu, area, price, pp, ...
-2. 가격/시장 (14필드) — nearbyMedian, jeonseRate, pir, psr, ...
-3. 입지/교통/환경 (19필드) — subwayDist, busRoutes, schoolScore, ...
-4. 상품성/건축 (7필드) — parkingRatio, floorAreaRatio, energyGrade, ...
-5. 혜택/할인 (10필드) — discountPct, loanFree, optionFree, ...
-6. 미래가치 (4필드) — transitDev, devDist, cityDev, industryDev
+FIELD_SECTIONS는 8개 섹션으로 필드키를 그룹화:
+1. 단지 개요 (21필드) — id, name, region, area, price, pp, avgMaintenanceCost, primaryDirection, ...
+2. 가격/시장 지표 (8필드) — nearbyMedian, jeonseRate, pir, psr, dataReliability, ...
+3. 안전도/리스크 (9필드) — unsoldRate, recentTrades6m, supplyRatio, builderCreditGrade, ...
+4. 입지/교통/교육/환경 (25필드) — subwayDist, busRoutes, schoolScore, hospital, view, ...
+5. 상품성/건축 (7필드) — parkingRatio, floorAreaRatio, energyGrade, ...
+6. 혜택/할인 (10필드) — discountPct, loanFree, optionFree, ...
+7. 미래가치 (4필드) — transitDev, devDist, cityDev, industryDev
+8. 네이버 교차검증 (11필드) — naverNearbyMedian, naverJeonseRate, naverSellCount, ...
 
 ### ExpertScoreBreakdown 적정가 인라인 계산
 
@@ -474,7 +490,7 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 │  regions (시계열, 지역 통계)                                  │
 │  trades (시계열, 실거래가 원본)                                │
 │                                                              │
-│  apartments_flat (VIEW) ← 9개 테이블 JOIN → 평탄 38필드      │
+│  apartments_flat (VIEW) ← 7개 테이블 JOIN → 평탄 95+필드     │
 ├──────────────────────────────────────────────────────────────┤
 │                    네이버 인근 시세 데이터                     │
 │                                                              │
@@ -482,6 +498,10 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 │                  └──→ complex_price_history (시세 이력)         │
 │                                                              │
 │  nearby_apartment_ids (JSONB) ← apartments.id 참조           │
+├──────────────────────────────────────────────────────────────┤
+│                    상담 신청 데이터                            │
+│                                                              │
+│  consults (상담 신청, RLS: anon INSERT+SELECT)               │
 └──────────────────────────────────────────────────────────────┘
 ```
 

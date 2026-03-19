@@ -2,7 +2,7 @@
 
 > 스키마/마이그레이션 수정 시 반드시 이 규칙을 따를 것.
 
-## 테이블 (13개 + 1 VIEW)
+## 테이블 (14개 + 1 VIEW)
 
 | 테이블 | 설명 | 주요 수집기 |
 |--------|------|-----------|
@@ -19,4 +19,5 @@
 | complexes | 네이버 단지 정보 | naver-collect.py |
 | articles | 네이버 매물 정보 | naver-collect.py |
 | complex_price_history | 네이버 시세 이력 | naver-collect.py |
-| **apartments_flat** (VIEW) | 13개 테이블 JOIN 평탄화 | — |
+| consults | 상담 신청 | api/consults.js |
+| **apartments_flat** (VIEW) | 7개 테이블 JOIN 평탄화 | — |
