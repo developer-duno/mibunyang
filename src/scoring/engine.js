@@ -21,7 +21,7 @@ import {
   AREA_ADJ_TIERS, AREA_ADJ_LARGE,
   FUTURE_WEIGHT_MAP,
   PRICE_NO_DATA_DEFAULTS, DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
-  DIRECTION_BONUS,
+  DIRECTION_BONUS, SUNLIGHT_DIRECTION_MAX, WON_TO_MANWON,
 } from "@/constants/scoringTiers";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
@@ -181,7 +181,7 @@ export function scoreLocation(apt) {
   let sunSc = apt._noSunlight ? SUNLIGHT_NO_DATA : (SUNLIGHT_SCORES[apt.sunlight] ?? SUNLIGHT_DEFAULT);
   // 방향 보정: 일조 점수에 방향 보너스 가산 (남향 최대 +8)
   const dirBonus = apt.primaryDirection ? (DIRECTION_BONUS[apt.primaryDirection] ?? 0) : 0;
-  sunSc = Math.min(sunSc + dirBonus, 38); // 일조+방향 상한 38 (기존 최대 30 + 보너스 8)
+  sunSc = Math.min(sunSc + dirBonus, SUNLIGHT_DIRECTION_MAX);
   let noiseSc = tierMax(apt.noise, NOISE_TIERS, 0);
   const env = viewSc + sunSc + noiseSc;
   let noxPen = (apt.noxious || []).reduce((s, n) => s + (NOXIOUS_PENALTY[n] || 0), 0);
@@ -248,7 +248,7 @@ export function scoreBenefit(apt) {
   const cashVal = apt.cashback;
   // 관리비 절감액: 지역 평균보다 낮으면 연간 절감액을 혜택에 합산 (만원 단위)
   const maintSave = apt._regionAvgMaint > 0 && apt.avgMaintenanceCost > 0
-    ? Math.max(0, Math.round((apt._regionAvgMaint - apt.avgMaintenanceCost) * apt.area * 12 / 10000))
+    ? Math.max(0, Math.round((apt._regionAvgMaint - apt.avgMaintenanceCost) * apt.area * 12 / WON_TO_MANWON))
     : 0;
   const totalWon = discVal + loanVal + optVal + balVal + cashVal + maintSave;
   const rate = apt.price > 0 ? (totalWon / apt.price) * 100 : 0;

@@ -49,6 +49,8 @@ export const SUNLIGHT_DEFAULT = 15;
 export const SUNLIGHT_NO_DATA = 22;
 // 방향별 일조 보정 보너스 (환경 서브스코어 내 가산)
 export const DIRECTION_BONUS = { "남향": 8, "남동향": 6, "남서향": 6, "동향": 3, "서향": 2, "동남향": 6, "서남향": 6, "북동향": 1, "북서향": 1, "북향": 0 };
+export const SUNLIGHT_DIRECTION_MAX = 38; // 일조(30) + 방향 보너스(8) 상한
+export const WON_TO_MANWON = 10000;       // 원 → 만원 변환
 export const NOISE_TIERS = [
   { max: 50, score: 30 }, { max: 60, score: 22 }, { max: 65, score: 15 }, { max: 70, score: 8 },
 ];
