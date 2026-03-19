@@ -9,7 +9,7 @@
 - Supabase (PostgreSQL) — 데이터베이스 (13개 테이블 + apartments_flat VIEW)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel KV (Upstash Redis) — 인증 세션
-- GitHub Actions — 데이터 수집 (24개 워크플로우)
+- GitHub Actions — 데이터 수집 (27개 워크플로우)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC)
 
 ## 의존성 방향 (단방향, 순환 참조 없음)

@@ -48,6 +48,8 @@
 | `apply-migration.yml` | Supabase 마이그레이션 적용 |
 | `seed-data.yml` | 초기 데이터 시딩 |
 | `fill-missing-data.yml` | 빈 데이터 일괄 수집 (16개 수집기 순차 실행) |
+| `geocode-missing.yml` | 좌표 누락 단지 지오코딩 |
+| `reverse-geocode.yml` | 좌표 → 주소 역지오코딩 |
 
 ### 로컬 전용 (네이버)
 | 스크립트 | 설명 |

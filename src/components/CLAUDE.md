@@ -2,13 +2,13 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 27개 컴포넌트
+## memo() 30개 컴포넌트
 
-소비자 8개: Bar, ScoreBadge, Radar, CatPanel, AptCard, CompareSheet, ConsultForm, DetailModal
+소비자 9개: Bar, ScoreBadge, Radar, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal
 섹션 6개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav
 상세 4개 (DetailModal에서 분리): PriceTable, SchoolInfo, LoanAnalysis, DataSections
-전문가 8개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard
-관리자 1개: AdminDashboard
+전문가 9개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide
+관리자 2개: AdminDashboard, AdminHelpGuide
 
 - 반드시 `memo(function Name(...) { ... })` 패턴 유지
 - memo 효과를 위해 `onToggle` 등 콜백은 `useCallback`으로 안정화 필수
@@ -32,14 +32,14 @@
 
 - PC 버전 우선 (maxWidth: 1200px+, 2컬럼 그리드)
 - 소비자 모드 = 모바일 우선 (maxWidth: 520px)
-- 모든 69개 필드 개별 표시 필수
+- 모든 95개 필드 개별 표시 필수
 - 스코어링 중간 계산 과정 투명하게 표시
 - 동/호수 섹션 포함 (현재 플레이스홀더, 향후 관리자 페이지에서 입력)
 - catKeys는 `Object.keys(res.cats)` 동적 추출 (하드코딩 금지)
 
 ## 컴포넌트 구조
 
-### App.jsx (355줄) — Hook + useMemo + 콜백 + 탭 라우팅만 담당
+### App.jsx (368줄) — Hook + useMemo + 콜백 + 탭 라우팅만 담당
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
@@ -57,4 +57,4 @@
 | PriceTable | 88 | 인근 매매/전세 시세 |
 | SchoolInfo | 36 | 학군 정보 |
 | LoanAnalysis | 93 | LTV/DSR/갭투자 분석 |
-| DataSections | 164 | 공공데이터 5개 섹션 |
+| DataSections | 168 | 공공데이터 5개 섹션 |

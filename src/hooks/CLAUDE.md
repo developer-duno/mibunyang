@@ -6,7 +6,7 @@
 
 App.jsx 내부:
 ```
-useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 13개 (useDebouncedValue 포함) → useMemo (9개: scoredMap 추가) → useEffect (7개) → useRef → useCallback
+useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 13개 (useDebouncedValue 포함) → useMemo (9개: scoredMap 추가) → useEffect (6개) → useRef → useCallback
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
