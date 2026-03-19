@@ -12,8 +12,11 @@ CREATE TABLE IF NOT EXISTS consults (
   submitted_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- RLS: anon = INSERT+SELECT (API 레벨에서 JWT 인증), service_role = 전체
+-- RLS: anon = INSERT만 (상담 접수), service_role = 전체 (조회·관리)
 ALTER TABLE consults ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS consults_anon_insert ON consults;
 CREATE POLICY consults_anon_insert ON consults FOR INSERT TO anon WITH CHECK (true);
-CREATE POLICY consults_anon_select ON consults FOR SELECT TO anon USING (true);
+DROP POLICY IF EXISTS consults_anon_select ON consults;
+-- anon SELECT 제거: PII(이름, 전화번호) 보호. 조회는 service_role 전용.
+DROP POLICY IF EXISTS consults_service ON consults;
 CREATE POLICY consults_service ON consults FOR ALL TO service_role USING (true);

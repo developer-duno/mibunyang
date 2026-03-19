@@ -1,4 +1,4 @@
-import { getSupabase } from "./_lib/supabase.js";
+import { getSupabase, getMibuyangSupabase } from "./_lib/supabase.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 import { verifyToken } from "./_lib/auth.js";
 import { handleCors } from "./_lib/cors.js";
@@ -78,7 +78,7 @@ async function handleGet(req, res) {
   }
 
   try {
-    const sb = getSupabase();
+    const sb = getMibuyangSupabase();
     const { data, error, count } = await sb
       .from("consults")
       .select("*", { count: "exact" })
