@@ -218,6 +218,14 @@ export default function App() {
     if (detailId || compareStr) window.history.replaceState(null, "", window.location.pathname);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 전문가 로그인 시 상담 목록 서버 조회
+  useEffect(() => {
+    if (expert.expertLoggedIn && tab === "expertConsults") {
+      const token = sessionStorage.getItem("expertToken");
+      if (token) consult.fetchConsults(token);
+    }
+  }, [expert.expertLoggedIn, tab, consult.fetchConsults]);
+
   const scoredMapRef = useRef(scoredMap);
   useEffect(() => { scoredMapRef.current = scoredMap; }, [scoredMap]);
   const handleShareDetail = useCallback((aptId) => {
@@ -331,7 +339,7 @@ export default function App() {
                     <span style={{ fontSize: 10, color: C.muted }}>{new Date(c.submittedAt).toLocaleString("ko-KR")}</span>
                   </div>
                   <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.8 }}>
-                    <div>연락처: {c.phone}{c.contactMethod ? ` (${c.contactMethod})` : ""}</div>
+                    <div>연락처: {c.phone}</div>
                     <div>상담유형: {c.consultType}</div>
                     <div>관심단지: {aptNames.join(", ")}</div>
                     {(c.budgetMin || c.budgetMax) && <div>예산: {c.budgetMin || "?"} ~ {c.budgetMax || "?"}만원</div>}
