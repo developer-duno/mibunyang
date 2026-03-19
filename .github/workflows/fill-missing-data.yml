@@ -71,9 +71,17 @@ jobs:
         continue-on-error: true
         run: node scripts/collectors/calc-layout.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
-      - name: "5/16 산업단지 매칭 (industry-match)"
+      - name: "5/18 산업단지 매칭 (industry-match)"
         continue-on-error: true
         run: node scripts/collectors/industry-match.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
+
+      - name: "5a/18 층수 범위 계산 (calc-floors)"
+        continue-on-error: true
+        run: node scripts/collectors/calc-floors.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
+
+      - name: "5b/18 규제지역 적용 (regulation-seed)"
+        continue-on-error: true
+        run: node scripts/collectors/regulation-seed.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
       # ── Phase 3: Kakao API ──────────────────────────────
       - name: "6/16 교통 수집 (transport-tago)"

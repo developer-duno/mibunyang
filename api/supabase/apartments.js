@@ -130,6 +130,7 @@ function sanitize(row) {
     lng: row.lng ?? null,
     builder: row.builder ?? "",
     layout: row.layout ?? null,
+    floors: row.floors ?? null,
     units: row.units ?? 0,
     unsold: (row.unsold != null && (row.units ?? 0) > 1 && row.unsold >= (row.units ?? 0)) ? null : (row.unsold ?? null),
     unsoldRate: (row.units ?? 0) <= 1 ? null
@@ -219,6 +220,7 @@ function sanitize(row) {
     pir: row.pir ?? 10,
     psr: row.psr ?? 1.5,
     // 규제/보증 (engine.js scoreRisk에서 사용)
+    isRegulated: row.isRegulated ?? false,
     dsr40pass: row.dsr40pass ?? false,
     hugGuarantee: row.hugGuarantee ?? false,
     // 시세 배열 (DetailModal 시세 테이블에서 사용)
