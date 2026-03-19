@@ -78,8 +78,8 @@ describe('FIELD_META', () => {
 });
 
 describe('FIELD_SECTIONS', () => {
-  it('7개 섹션 존재', () => {
-    expect(FIELD_SECTIONS).toHaveLength(7);
+  it('8개 섹션 존재', () => {
+    expect(FIELD_SECTIONS).toHaveLength(8);
   });
 
   FIELD_SECTIONS.forEach((section) => {

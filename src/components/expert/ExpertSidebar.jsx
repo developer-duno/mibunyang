@@ -10,6 +10,8 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
     if (sort === "total") list = [...list].sort((a, b) => b.res.total - a.res.total);
     else if (sort === "price") list = [...list].sort((a, b) => (a.apt.price ?? 0) - (b.apt.price ?? 0));
     else if (sort === "priceScore") list = [...list].sort((a, b) => b.res.cats.price.total - a.res.cats.price.total);
+    else if (sort === "location") list = [...list].sort((a, b) => b.res.cats.location.total - a.res.cats.location.total);
+    else if (sort === "safe") list = [...list].sort((a, b) => b.res.cats.risk.total - a.res.cats.risk.total);
     return list;
   }, [scored, search, regionFilter, sort]);
 
@@ -53,6 +55,8 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
             <option value="total">종합순</option>
             <option value="price">저가순</option>
             <option value="priceScore">가격매력순</option>
+            <option value="location">입지순</option>
+            <option value="safe">안전순</option>
           </select>
         </div>
       </div>

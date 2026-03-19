@@ -11,7 +11,7 @@ import { ExpertSidebar } from "./ExpertSidebar";
 import { ExpertAptHeader } from "./ExpertAptHeader";
 import { ExpertHelpGuide } from "./ExpertHelpGuide";
 
-const SEC_COLOR = { "가격": C.green, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan, "교차검증": "#6366F1" };
+const SEC_COLOR = { "가격": C.green, "안전": C.red, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan, "교차검증": "#6366F1" };
 
 export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, setProfile, expandedApt, setExpandedApt, onSwitchToAdmin }) {
   const [search, setSearch] = useState("");
@@ -122,7 +122,8 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "0 12px" }}>
               {FIELD_SECTIONS.map(sec => {
                 const excl = sec.key === "가격" ? ["nearbyMedian","jeonseRate","pir","psr","dataReliability"]
-                  : sec.key === "입지" ? ["subwayDist","busRoutes","icDist","ktxDist","schoolScore","schoolGrade","hospital","mart","conv","park","cafe","culture","bank","pharmacy","view","sunlight","noise","noxious"]
+                  : sec.key === "입지" ? ["hospital","conv","cafe","culture","bank","pharmacy"]
+                  : sec.key === "안전" ? ["unsoldRate","recentTrades6m","supplyRatio","popGrowth"]
                   : undefined;
                 return (
                   <ExpertFieldTable key={sec.key} apt={selectedItem.apt} fields={sec.fields} title={sec.label}
