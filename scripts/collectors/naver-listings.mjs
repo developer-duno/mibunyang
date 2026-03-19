@@ -512,6 +512,7 @@ async function main() {
       if (seenArticles.size > 0) {
         const seenList = [...seenArticles];
         const BATCH_SIZE = 500;
+        let deactivateFails = 0;
         for (let i = 0; i < seenList.length; i += BATCH_SIZE) {
           const batch = seenList.slice(i, i + BATCH_SIZE);
           const { error: deactivateErr } = await sbMibunyang
@@ -522,8 +523,22 @@ async function main() {
             .not("article_no", "in", `(${batch.join(",")})`);
 
           if (deactivateErr) {
-            logError(phase, `소프트 삭제 실패 ${complexRow.complex_no}: ${deactivateErr.message}`);
+            // 1회 재시도
+            await sleep(1000);
+            const { error: retryErr } = await sbMibunyang
+              .from("articles")
+              .update({ is_active: false, last_seen_at: new Date().toISOString() })
+              .eq("complex_no", complexRow.complex_no)
+              .eq("is_active", true)
+              .not("article_no", "in", `(${batch.join(",")})`);
+            if (retryErr) {
+              deactivateFails++;
+              logError(phase, `소프트 삭제 실패 (재시도 포함) ${complexRow.complex_no}: ${retryErr.message}`);
+            }
           }
+        }
+        if (deactivateFails > 0) {
+          logError(phase, `⚠️ ${complexRow.complex_no}: 소프트 삭제 ${deactivateFails}건 최종 실패`);
         }
       }
     } catch (err) {

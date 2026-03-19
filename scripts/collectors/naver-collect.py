@@ -110,15 +110,20 @@ def pp(s):
     return int(re.sub(r"\D","",s) or "0")
 def ub(tbl,rows,conf,bs=500):
     if not rows:return 0
-    t=0
+    t=0;fail=0
     for i in range(0,len(rows),bs):
         b=rows[i:i+bs]
         try:SB.upsert(tbl,b,conf);t+=len(b)
-        except:
+        except Exception as be:
+            log(f"  배치 {i}~{i+len(b)} 실패: {be}, 개별 재시도")
             for r in b:
                 try:SB.upsert(tbl,[r],conf);t+=1
-                except:pass
-    log(f"  {tbl}:{t}/{len(rows)}");return t
+                except Exception as re:
+                    fail+=1
+                    log(f"  개별 실패 ({tbl}): {re}")
+    if fail:log(f"  {tbl}: {t}/{len(rows)} 성공, {fail}건 실패")
+    else:log(f"  {tbl}:{t}/{len(rows)}")
+    return t
 
 def get_gu_cortars(city_cortar):
     d=ag(f"{NV}/api/regions/list",{"cortarNo":city_cortar})
@@ -239,7 +244,11 @@ def main():
             if arts:ub("articles",arts,"article_no");ta+=len(arts)
             if sa:
                 try:SB.update("articles",{"is_active":False},[f"complex_no=eq.{cn}","is_active=eq.true",f"article_no=not.in.({chr(44).join(sa)})"])
-                except:pass
+                except Exception as de:
+                    log(f"  소프트삭제 실패 {cn}, 재시도: {de}")
+                    time.sleep(1)
+                    try:SB.update("articles",{"is_active":False},[f"complex_no=eq.{cn}","is_active=eq.true",f"article_no=not.in.({chr(44).join(sa)})"])
+                    except Exception as de2:log(f"  소프트삭제 최종실패 {cn}: {de2}")
         except Exception as e:log(f"  {cn}:{e}")
     log(f"매물 {ta}건")
     log("시세...")
@@ -265,16 +274,8 @@ def main():
                         "price_upper":up,"price_lower":lo,"price_avg":avg,
                         "base_month":bm[:8].ljust(8,"0")})
             if rows:
-                # delete+insert for complex_price_history
-                try:
-                    hdr={**SB_HEADERS,"Prefer":"return=minimal"}
-                    hx.delete(f"{SB_REST}/complex_price_history?complex_no=eq.{cn}",headers=hdr)
-                except:pass
-                try:
-                    hdr={**SB_HEADERS,"Prefer":"return=minimal"}
-                    hx.post(f"{SB_REST}/complex_price_history",headers=hdr,json=rows)
-                    tp+=len(rows)
-                except Exception as ie:log(f"  price insert:{ie}")
+                # upsert 방식 (DELETE+INSERT 대신 — INSERT 실패 시 데이터 손실 방지)
+                tp+=ub("complex_price_history",rows,"complex_no,trade_type,area_no,base_month")
         except Exception as e:log(f"  {cn}:{e}")
     log(f"시세 {tp}건")
     log("완료!")
