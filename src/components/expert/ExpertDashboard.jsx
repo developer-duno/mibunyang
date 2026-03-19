@@ -18,6 +18,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const [regionFilter, setRegionFilter] = useState("전체");
   const [sort, setSort] = useState("total");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -40,6 +41,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
 
   const handleSelect = (id) => {
     setExpandedApt(id);
+    setSearchOpen(false);
     if (isMobile) setSidebarOpen(false);
   };
 
@@ -62,13 +64,15 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
         }}>
           <ExpertSidebar scored={scored} selectedId={selectedId} onSelect={handleSelect}
             search={search} setSearch={setSearch} regionFilter={regionFilter} setRegionFilter={setRegionFilter}
-            sort={sort} setSort={setSort} isMobile onClose={() => setSidebarOpen(false)} />
+            sort={sort} setSort={setSort} isMobile onClose={() => setSidebarOpen(false)}
+            searchOpen={searchOpen} setSearchOpen={setSearchOpen} />
         </div>
       ) : (
         <div data-sidebar>
           <ExpertSidebar scored={scored} selectedId={selectedId} onSelect={handleSelect}
             search={search} setSearch={setSearch} regionFilter={regionFilter} setRegionFilter={setRegionFilter}
-            sort={sort} setSort={setSort} />
+            sort={sort} setSort={setSort}
+            searchOpen={searchOpen} setSearchOpen={setSearchOpen} />
         </div>
       )}
 
