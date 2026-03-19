@@ -164,7 +164,7 @@ describe('scoreBenefit', () => {
   it('정상 혜택 totalWon > 0', () => {
     const r = scoreBenefit(makeApt());
     expect(r.totalWon).toBeGreaterThan(0);
-    expect(r.subs).toHaveLength(5);
+    expect(r.subs).toHaveLength(6);
   });
   it('price=0 -> 0점', () => {
     expect(scoreBenefit(makeApt({ price: 0 })).total).toBe(0);
