@@ -9,8 +9,22 @@ export const ExpertLoginForm = memo(function ExpertLoginForm({ expert, onLogin, 
   return (
         <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
           <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>
-              {expert.authMode === "login" ? "전문가 로그인" : "전문가 회원가입"}
+            <div role="tablist" style={{ display: "flex", borderBottom: `2px solid ${C.border}`, marginBottom: 16 }}>
+              {[{ key: "login", label: "로그인" }, { key: "signup", label: "회원가입" }].map(tab => {
+                const active = expert.authMode === tab.key;
+                return (
+                  <button key={tab.key} role="tab" aria-selected={active} type="button"
+                    onClick={() => { expert.setAuthMode(tab.key); expert.setAuthForm({ email: "", password: "", name: "", affiliation: "", phone: "", specialty: "", license: "", experience: "", bio: "" }); }}
+                    style={{
+                      flex: 1, padding: "12px 0", fontSize: 14, fontWeight: active ? 800 : 600,
+                      color: active ? C.indigo : C.muted, background: "transparent", border: "none",
+                      borderBottom: active ? `2px solid ${C.indigo}` : "2px solid transparent",
+                      marginBottom: -2, minHeight: 44, cursor: "pointer", transition: "color .15s, border-color .15s"
+                    }}>
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>
               {expert.authMode === "login" ? "파트너 전문가 전용 대시보드입니다" : "전문가 계정을 생성합니다"}
@@ -141,10 +155,6 @@ export const ExpertLoginForm = memo(function ExpertLoginForm({ expert, onLogin, 
                 minHeight: 44, marginBottom: 12, transition: "background .15s"
               }}>{expert.authLoading ? "처리 중..." : expert.authMode === "login" ? "로그인" : "회원가입"}</button>
             </form>
-
-            <button onClick={() => { expert.setAuthMode(expert.authMode === "login" ? "signup" : "login"); expert.setAuthForm({ email: "", password: "", name: "", affiliation: "", phone: "", specialty: "", license: "", experience: "", bio: "" }); }} style={{
-              background: "transparent", border: "none", color: C.indigo, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 8
-            }}>{expert.authMode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}</button>
 
             <div>
               <button onClick={onBack} style={{
