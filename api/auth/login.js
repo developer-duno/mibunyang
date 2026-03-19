@@ -1,28 +1,11 @@
 import { kv } from "@vercel/kv";
 import { verifyPassword, hashPassword, createToken } from "../_lib/auth.js";
 import { checkRateLimit } from "../_lib/rateLimit.js";
+import { handleCors } from "../_lib/cors.js";
 import crypto from "crypto";
 
-// CORS 허용 Origin (프로덕션 + Vercel 프리뷰 + 로컬)
-const ALLOWED_ORIGINS = [
-  /^https:\/\/mibunyang[.-].*\.vercel\.app$/,
-  /^https?:\/\/localhost(:\d+)?$/,
-];
-function getAllowedOrigin(req) {
-  const origin = req.headers.origin || "";
-  if (ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
-  if (process.env.VERCEL_URL && origin === `https://${process.env.VERCEL_URL}`) return origin;
-  return null;
-}
-
 export default async function handler(req, res) {
-  const allowedOrigin = getAllowedOrigin(req);
-  if (allowedOrigin) res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-  if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    return res.status(204).end();
-  }
+  if (handleCors(req, res, { methods: "POST, OPTIONS" })) return;
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }

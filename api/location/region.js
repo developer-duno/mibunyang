@@ -7,6 +7,8 @@
  * 응답: { ok: true, region: "경기", gu: "화성시", method: "gps"|"ip" }
  */
 
+import { handleCors } from "../_lib/cors.js";
+
 const KAKAO_BASE = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json";
 
 // 시도 풀네임 → 약칭
@@ -58,23 +60,8 @@ async function ipLocation(clientIp) {
   return { regionName: json.regionName, city: json.city, lat: json.lat, lon: json.lon };
 }
 
-// 허용 Origin (Vercel 프리뷰 + 프로덕션)
-const ALLOWED_ORIGINS = [
-  /^https:\/\/mibunyang[.-].*\.vercel\.app$/,
-  /^https?:\/\/localhost(:\d+)?$/,
-];
-
-function getAllowedOrigin(req) {
-  const origin = req.headers.origin || "";
-  if (ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
-  if (process.env.VERCEL_URL && origin === `https://${process.env.VERCEL_URL}`) return origin;
-  return null;
-}
-
 export default async function handler(req, res) {
-  const allowedOrigin = getAllowedOrigin(req);
-  if (allowedOrigin) res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-  if (req.method === "OPTIONS") { res.status(204).end(); return; }
+  if (handleCors(req, res, { methods: "GET, OPTIONS" })) return;
 
   const apiKey = process.env.KAKAO_KEY;
   if (!apiKey) {

@@ -1,29 +1,13 @@
 import { getSupabase } from "./_lib/supabase.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 import { verifyToken } from "./_lib/auth.js";
-
-const ALLOWED_ORIGINS = [
-  /^https:\/\/mibunyang[.-].*\.vercel\.app$/,
-  /^https?:\/\/localhost(:\d+)?$/,
-];
-function getAllowedOrigin(req) {
-  const origin = req.headers.origin || "";
-  if (ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
-  if (process.env.VERCEL_URL && origin === `https://${process.env.VERCEL_URL}`) return origin;
-  return null;
-}
+import { handleCors } from "./_lib/cors.js";
 
 const VALID_CONSULT_TYPES = ["방문상담", "전화상담", "온라인상담"];
 const PHONE_REGEX = /^[\d\-]{8,20}$/;
 
 export default async function handler(req, res) {
-  const allowedOrigin = getAllowedOrigin(req);
-  if (allowedOrigin) res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-  if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    return res.status(204).end();
-  }
+  if (handleCors(req, res, { methods: "GET, POST, OPTIONS" })) return;
 
   if (req.method === "POST") return handlePost(req, res);
   if (req.method === "GET") return handleGet(req, res);
