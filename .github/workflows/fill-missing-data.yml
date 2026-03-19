@@ -15,30 +15,23 @@ concurrency:
   group: data-collection
   cancel-in-progress: false
 
+# ── Phase 1: 좌표 확보 (순차 — reverse-geocode는 geocode 이후) ──
 jobs:
-  fill-all:
+  phase1-coords:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 30
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
       KAKAO_REST_KEY: ${{ secrets.KAKAO_KEY }}
-      TAGO_KEY: ${{ secrets.TAGO_KEY }}
-      MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
-      MOIS_POP_KEY: ${{ secrets.MOIS_POP_KEY }}
-      DART_KEY: ${{ secrets.DART_KEY }}
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
       - name: Validate secrets
         run: |
@@ -46,88 +39,120 @@ jobs:
             echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY 필요"
             exit 1
           fi
-          echo "✅ Supabase secrets OK"
-          [ -n "$KAKAO_KEY" ] && echo "✅ KAKAO_KEY OK" || echo "⚠️ KAKAO_KEY 없음"
-          [ -n "$TAGO_KEY" ] && echo "✅ TAGO_KEY OK" || echo "⚠️ TAGO_KEY 없음"
-          [ -n "$MOLIT_KEY" ] && echo "✅ MOLIT_KEY OK" || echo "⚠️ MOLIT_KEY 없음"
-          [ -n "$MOIS_POP_KEY" ] && echo "✅ MOIS_POP_KEY OK" || echo "⚠️ MOIS_POP_KEY 없음"
-          [ -n "$DART_KEY" ] && echo "✅ DART_KEY OK" || echo "⚠️ DART_KEY 없음"
 
-      # ── Phase 1: 좌표 확보 ──────────────────────────────
       - name: "1/16 좌표 확보 (geocode-missing)"
+        id: geocode
         continue-on-error: true
         run: node scripts/collectors/geocode-missing.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
       - name: "2/16 주소 확보 (reverse-geocode)"
+        id: reverse
         continue-on-error: true
         run: node scripts/collectors/reverse-geocode.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
-      # ── Phase 2: 순수 계산 (외부 API 없음) ──────────────
-      - name: "3/16 전용률 계산 (calc-exclusive-ratio)"
-        continue-on-error: true
-        run: node scripts/collectors/calc-exclusive-ratio.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
+      - name: "Phase 1 결과 확인"
+        if: always()
+        run: |
+          FAILS=0
+          [ "${{ steps.geocode.outcome }}" = "failure" ] && FAILS=$((FAILS+1)) && echo "❌ geocode-missing 실패"
+          [ "${{ steps.reverse.outcome }}" = "failure" ] && FAILS=$((FAILS+1)) && echo "❌ reverse-geocode 실패"
+          echo "Phase 1: ${FAILS}건 실패"
+          [ $FAILS -gt 0 ] && echo "::warning::Phase 1에서 ${FAILS}건 실패"
 
-      - name: "4/16 평면구조 추정 (calc-layout)"
-        continue-on-error: true
-        run: node scripts/collectors/calc-layout.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
+  # ── Phase 2: 순수 계산 (병렬, 외부 API 없음) ──────────────
+  phase2-calc:
+    needs: phase1-coords
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - { name: "전용률 계산", cmd: "calc-exclusive-ratio" }
+          - { name: "평면구조 추정", cmd: "calc-layout" }
+          - { name: "층수 계산", cmd: "calc-floors" }
+          - { name: "산업단지 매칭", cmd: "industry-match" }
+          - { name: "규제지역 적용", cmd: "regulation-seed" }
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: "${{ matrix.script.name }}"
+        run: node scripts/collectors/${{ matrix.script.cmd }}.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
-      - name: "5/18 산업단지 매칭 (industry-match)"
-        continue-on-error: true
-        run: node scripts/collectors/industry-match.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
+  # ── Phase 3: Kakao/외부 API (병렬, 좌표 필요) ─────────────
+  phase3-external:
+    needs: phase1-coords
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - { name: "교통 수집", cmd: "transport-tago", extra_env: "TAGO_KEY" }
+          - { name: "인프라 수집", cmd: "infra-kakao", extra_env: "KAKAO_KEY" }
+          - { name: "학교 수집", cmd: "schools-neis", extra_env: "" }
+          - { name: "환경 수집", cmd: "environment", extra_env: "KAKAO_KEY" }
+          - { name: "소음 추정", cmd: "noise-estimate", extra_env: "" }
+          - { name: "혐오시설 수집", cmd: "noxious", extra_env: "KAKAO_KEY" }
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+      KAKAO_REST_KEY: ${{ secrets.KAKAO_KEY }}
+      TAGO_KEY: ${{ secrets.TAGO_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: "${{ matrix.script.name }}"
+        run: node scripts/collectors/${{ matrix.script.cmd }}.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
-      - name: "5a/18 층수 범위 계산 (calc-floors)"
-        continue-on-error: true
-        run: node scripts/collectors/calc-floors.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "5b/18 규제지역 적용 (regulation-seed)"
-        continue-on-error: true
-        run: node scripts/collectors/regulation-seed.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      # ── Phase 3: Kakao API ──────────────────────────────
-      - name: "6/16 교통 수집 (transport-tago)"
-        continue-on-error: true
-        run: node scripts/collectors/transport-tago.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "7/16 인프라 수집 (infra-kakao)"
-        continue-on-error: true
-        run: node scripts/collectors/infra-kakao.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "8/16 학교 수집 (schools-neis)"
-        continue-on-error: true
-        run: node scripts/collectors/schools-neis.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "9/16 환경 수집 (environment)"
-        continue-on-error: true
-        run: node scripts/collectors/environment.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "10/16 소음 추정 (noise-estimate)"
-        continue-on-error: true
-        run: node scripts/collectors/noise-estimate.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "11/16 혐오시설 수집 (noxious)"
-        continue-on-error: true
-        run: node scripts/collectors/noxious.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      # ── Phase 4: 외부 API (MOLIT, DART, MOIS) ──────────
-      - name: "12/16 시공사 재무 (dart-builders)"
-        continue-on-error: true
-        run: node scripts/collectors/dart-builders.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "13/16 건축물 상세 (molit-building-info)"
-        continue-on-error: true
-        run: node scripts/collectors/molit-building-info.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "14/16 인구 증감률 (population)"
-        continue-on-error: true
-        run: node scripts/collectors/population.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
-
-      - name: "15/16 전입출 순이동 (migration)"
-        continue-on-error: true
-        run: node scripts/collectors/migration.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
+  # ── Phase 4: 독립 외부 API (좌표 불필요, 병렬) ────────────
+  phase4-independent:
+    needs: phase1-coords
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - { name: "시공사 재무", cmd: "dart-builders" }
+          - { name: "건축물 상세", cmd: "molit-building-info" }
+          - { name: "인구 증감률", cmd: "population" }
+          - { name: "전입출 순이동", cmd: "migration" }
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
+      MOIS_POP_KEY: ${{ secrets.MOIS_POP_KEY }}
+      DART_KEY: ${{ secrets.DART_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: "${{ matrix.script.name }}"
+        run: node scripts/collectors/${{ matrix.script.cmd }}.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
   # ── Phase 5: 실거래 (별도 job — 단독으로도 5시간+ 소요) ──
   fill-trades:
-    needs: fill-all
+    needs: [phase1-coords, phase2-calc, phase3-external, phase4-independent]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
@@ -137,19 +162,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+      - run: npm ci
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: "16a 실거래 수집 (collect-trades)"
+      - name: "실거래 수집 (collect-trades)"
+        id: trades
         continue-on-error: true
         run: node scripts/collectors/collect-trades.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
-      - name: "16b 거래통계 산출 (trade-stats)"
+      - name: "거래통계 산출 (trade-stats)"
+        id: stats
         continue-on-error: true
         run: node scripts/collectors/trade-stats.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
+
+      - name: "Phase 5 결과 확인"
+        if: always()
+        run: |
+          FAILS=0
+          [ "${{ steps.trades.outcome }}" = "failure" ] && FAILS=$((FAILS+1)) && echo "❌ collect-trades 실패"
+          [ "${{ steps.stats.outcome }}" = "failure" ] && FAILS=$((FAILS+1)) && echo "❌ trade-stats 실패"
+          echo "Phase 5: ${FAILS}건 실패"
+          [ $FAILS -gt 0 ] && exit 1

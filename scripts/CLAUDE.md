@@ -33,3 +33,17 @@
 - 수동 트리거: `schtasks /run /tn MibunyangNaverCollect`
 
 **수동 실행**: `bash scripts/run-naver-local.sh`
+
+## API Rate Limit 정리
+
+| API | 수집기 | MIN_INTERVAL | MAX_RETRIES | 429 처리 | 근거 |
+|-----|--------|-------------|------------|---------|------|
+| 네이버 부동산 | naver-collect.py | 1초 | 3회 | JWT 리셋 + 5×(i+1)초 대기 | 비공식 API, 429 빈번 |
+| 네이버 부동산 | naver-listings.mjs | 1초 | 5회 | JWT 리셋 + [3,5,10,15,20]초 | 위와 동일 API |
+| 네이버 부동산 | naver-units.mjs | 3초 | 3회 | JWT 리셋 + [5,10,20]초 | 검색 API는 더 민감 |
+| data.go.kr | molit-units, molit-building-info | 0.4초 | 3회 | (i+1)×2초 | 공공 API 초당 10건 제한 |
+| data.go.kr | housing-permits | fetchWithRetry 사용 | 3회 | 지수 백오프 | 공공 API |
+| data.go.kr | population, migration | fetchWithRetry 사용 | 3회 | 지수 백오프 | 공공 API |
+| Kakao Places | infra-kakao | 동시 5개 세마포어 | fetchWithRetry | 지수 백오프 | Kakao 초당 50건 |
+| DART | dart-builders | fetchWithRetry 사용 | 3회 | 지수 백오프 | DART 분당 100건 |
+| _shared.mjs | fetchWithRetry (공통) | — | 기본 3회 | Retry-After 헤더 → 지수 백오프 | 429/500/503 구분 |
