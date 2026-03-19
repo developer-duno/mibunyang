@@ -30,11 +30,11 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   }, []);
 
   useEffect(() => {
-    if (!sidebarOpen || !isMobile) return;
+    if (!sidebarOpen) return;
     const onKey = (e) => { if (e.key === "Escape") setSidebarOpen(false); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sidebarOpen, isMobile]);
+  }, [sidebarOpen]);
 
   const selectedId = expandedApt || (scored.length > 0 ? scored[0].apt.id : null);
   const selectedItem = useMemo(() => scored.find(x => x.apt.id === selectedId), [scored, selectedId]);
@@ -42,49 +42,38 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const handleSelect = (id) => {
     setExpandedApt(id);
     setSearchOpen(false);
-    if (isMobile) setSidebarOpen(false);
+    setSidebarOpen(false);
   };
 
   return (
     <div style={{ display: "flex", height: "calc(100dvh - 100px)", position: "relative" }}>
-      {/* 모바일: 오버레이 백드롭 */}
-      {isMobile && sidebarOpen && (
+      {/* 오버레이 백드롭 */}
+      {sidebarOpen && (
         <div onClick={() => setSidebarOpen(false)} style={{
           position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
-          background: "rgba(0,0,0,0.5)", zIndex: 199
+          background: "rgba(0,0,0,0.4)", zIndex: 199
         }} />
       )}
 
-      {/* 사이드바 */}
-      {isMobile ? (
-        <div data-sidebar style={{
-          position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 200,
-          transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
-          transition: "transform .3s ease"
-        }}>
-          <ExpertSidebar scored={scored} selectedId={selectedId} onSelect={handleSelect}
-            search={search} setSearch={setSearch} regionFilter={regionFilter} setRegionFilter={setRegionFilter}
-            sort={sort} setSort={setSort} isMobile onClose={() => setSidebarOpen(false)}
-            searchOpen={searchOpen} setSearchOpen={setSearchOpen} />
-        </div>
-      ) : (
-        <div data-sidebar>
-          <ExpertSidebar scored={scored} selectedId={selectedId} onSelect={handleSelect}
-            search={search} setSearch={setSearch} regionFilter={regionFilter} setRegionFilter={setRegionFilter}
-            sort={sort} setSort={setSort}
-            searchOpen={searchOpen} setSearchOpen={setSearchOpen} />
-        </div>
-      )}
+      {/* 사이드바 (PC/모바일 통합 오버레이) */}
+      <div data-sidebar style={{
+        position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 200,
+        transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
+        transition: "transform .3s ease"
+      }}>
+        <ExpertSidebar scored={scored} selectedId={selectedId} onSelect={handleSelect}
+          search={search} setSearch={setSearch} regionFilter={regionFilter} setRegionFilter={setRegionFilter}
+          sort={sort} setSort={setSort} isMobile={isMobile} onClose={() => setSidebarOpen(false)}
+          searchOpen={searchOpen} setSearchOpen={setSearchOpen} />
+      </div>
 
       <div data-print-content style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 14px" : "16px 20px" }}>
         <div data-no-print style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 4 }}>
-          {isMobile && (
-            <button onClick={() => setSidebarOpen(true)} aria-label="단지 목록 열기" style={{
-              background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6,
-              padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer",
-              color: C.text, minHeight: 44, whiteSpace: "nowrap", flexShrink: 0
-            }}>&#9776; 목록</button>
-          )}
+          <button onClick={() => setSidebarOpen(true)} aria-label="단지 목록 열기" style={{
+            background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6,
+            padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            color: C.text, minHeight: 44, whiteSpace: "nowrap", flexShrink: 0
+          }}>&#9776; 목록</button>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
             {Object.entries(PROFILES).map(([k, p]) => (
               <button key={k} onClick={() => setProfile(k)} aria-pressed={profile === k} style={{
