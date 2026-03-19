@@ -8,7 +8,7 @@ const DATA_SECTIONS = [
   {
     title: "단지 기본정보",
     highlight: ["unsoldRate", "pp", "completion", "dataReliability"],
-    grid: ["dong", "address", "roadAddress", "district", "units", "unsold", "builder", "heating"],
+    grid: ["dong", "address", "roadAddress", "district", "units", "unsold", "builder", "heating", "avgMaintenanceCost", "primaryDirection"],
   },
   {
     title: "생활인프라 (반경 1km)",
@@ -38,6 +38,10 @@ function dataValueColor(field, value) {
   if (field === "popGrowth") return value > 0 ? C.green : value < 0 ? C.red : C.text;
   if (field === "dataReliability") return value >= 80 ? C.green : value >= 50 ? C.amber : C.red;
   if (["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"].includes(field)) return value === 0 ? C.muted : C.text;
+  if (field === "primaryDirection") {
+    if (!value) return C.muted;
+    return value.includes("남") ? C.green : value.includes("북") ? C.red : C.text;
+  }
   return C.text;
 }
 

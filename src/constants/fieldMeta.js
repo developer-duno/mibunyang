@@ -25,6 +25,8 @@ export const FIELD_META = {
   address: { label: "지번 주소", section: "개요", fmt: v => v || "—" },
   roadAddress: { label: "도로명 주소", section: "개요", fmt: v => v || "—" },
   district: { label: "개발구역", section: "개요", fmt: v => v || "—" },
+  avgMaintenanceCost: { label: "평균 관리비", section: "개요", unit: "만원/㎡", fmt: v => v != null && v > 0 ? `${v.toLocaleString("ko-KR")}만원` : "미수집" },
+  primaryDirection: { label: "대표 향", section: "개요", fmt: v => v || "미수집" },
   // ── 섹션2: 가격/시장 ──
   nearbyMedian: { label: "주변 아파트 시세", section: "가격", unit: "만원", fmt: v => v ? nk(v, "만원") : "미수집", isEstimated: (v, apt) => apt?._fallbackNearbyMedian },
   jeonseRate: { label: "전세가율", section: "가격", unit: "%", fmt: v => n(v, "%"), isEstimated: (v, apt) => apt?._fallbackJeonseRate },
@@ -108,7 +110,7 @@ export const FIELD_META = {
 };
 
 export const FIELD_SECTIONS = [
-  { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","address","roadAddress","district","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout","heating"] },
+  { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","address","roadAddress","district","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout","heating","avgMaintenanceCost","primaryDirection"] },
   { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","nearbyBuildYear","avgFloor","floorRange"] },
   { key: "안전", label: "안전도/리스크", fields: ["unsoldRate","recentTrades6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth"] },
   { key: "입지", label: "입지/교통/교육/환경", fields: ["subwayDist","subwayName","subwayLines","busRoutes","busStopNames","icDist","ktxDist","schoolScore","schoolGrade","hospital","hospitalDist","mart","martDist","conv","convDist","park","parkDist","cafe","culture","bank","pharmacy","view","sunlight","noise","noxious"] },
