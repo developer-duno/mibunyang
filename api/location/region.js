@@ -56,8 +56,13 @@ async function ipLocation(clientIp) {
   const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   if (!res.ok) return null;
   const json = await res.json();
-  if (json.status !== "success") return null;
-  return { regionName: json.regionName, city: json.city, lat: json.lat, lon: json.lon };
+  if (json.error) return null;
+  return {
+    regionName: json.region,
+    city: json.city,
+    lat: json.latitude ?? null,
+    lon: json.longitude ?? null,
+  };
 }
 
 export default async function handler(req, res) {
@@ -103,11 +108,13 @@ export default async function handler(req, res) {
     }
 
     // IP로 얻은 좌표로 Kakao 역지오코딩 (정확한 시도/시군구 추출)
-    const kakaoResult = await kakaoRegion(apiKey, ipResult.lat, ipResult.lon);
-    if (kakaoResult?.region) {
-      res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=600");
-      res.json({ ok: true, ...kakaoResult, method: "ip" });
-      return;
+    if (ipResult.lat != null && ipResult.lon != null) {
+      const kakaoResult = await kakaoRegion(apiKey, ipResult.lat, ipResult.lon);
+      if (kakaoResult?.region) {
+        res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=600");
+        res.json({ ok: true, ...kakaoResult, method: "ip" });
+        return;
+      }
     }
 
     // Kakao 실패 시 IP 결과의 regionName 직접 매핑

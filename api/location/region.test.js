@@ -102,7 +102,7 @@ describe('location/region handler', () => {
     // Kakao 역지오코딩 실패 (documents 빈 배열)
     mockFetch
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ documents: [] }) }) // GPS Kakao 실패
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ status: 'success', regionName: '경기도', city: '수원시', lat: 37.26, lon: 127.03 }) }) // ipapi
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ region: '경기도', city: '수원시', latitude: 37.26, longitude: 127.03 }) }) // ipapi
       .mockResolvedValueOnce(kakaoOk('경기도', '수원시')); // IP좌표 Kakao
     const res = makeRes();
     await handler(makeReq({ lat: '37.2', lng: '127.0' }, { 'x-forwarded-for': '203.0.113.1' }), res);
