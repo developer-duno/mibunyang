@@ -2,9 +2,7 @@ import { memo, useState } from "react";
 import { C } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE, LTV_RATES } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
-
-const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
-const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
+import { thStyle, tdStyle } from "./tableStyles";
 
 export const LoanAnalysis = memo(function LoanAnalysis({ apt }) {
   const [showLegal, setShowLegal] = useState(false);

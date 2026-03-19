@@ -4,16 +4,28 @@ import { checkRateLimit } from "../_lib/rateLimit.js";
 
 const SPECIALTIES = ["부동산 중개", "분양 컨설팅", "감정평가", "건축/설계", "기타"];
 
+// CORS 허용 Origin (프로덕션 + Vercel 프리뷰 + 로컬)
+const ALLOWED_ORIGINS = [
+  /^https:\/\/mibunyang[.-].*\.vercel\.app$/,
+  /^https?:\/\/localhost(:\d+)?$/,
+];
+function getAllowedOrigin(req) {
+  const origin = req.headers.origin || "";
+  if (ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
+  if (process.env.VERCEL_URL && origin === `https://${process.env.VERCEL_URL}`) return origin;
+  return null;
+}
+
 export default async function handler(req, res) {
+  const allowedOrigin = getAllowedOrigin(req);
+  if (allowedOrigin) res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
   // CORS preflight
   if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     res.setHeader("Access-Control-Max-Age", "86400");
     return res.status(204).end();
   }
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
