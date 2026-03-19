@@ -57,14 +57,20 @@ async function handlePost(req, res) {
     return res.status(400).json({ ok: false, error: "관심 단지 목록이 올바르지 않습니다" });
   }
 
+  const parsedMin = budgetMin ? parseInt(budgetMin, 10) || null : null;
+  const parsedMax = budgetMax ? parseInt(budgetMax, 10) || null : null;
+  if (parsedMin != null && parsedMax != null && parsedMin > parsedMax) {
+    return res.status(400).json({ ok: false, error: "예산 범위가 올바르지 않습니다" });
+  }
+
   try {
     const sb = getSupabase();
     const { error } = await sb.from("consults").insert({
       name: name.trim(),
       phone: phone.trim(),
       interested_apts: interestedApts.map(String).slice(0, 20),
-      budget_min: budgetMin ? parseInt(budgetMin, 10) || null : null,
-      budget_max: budgetMax ? parseInt(budgetMax, 10) || null : null,
+      budget_min: parsedMin,
+      budget_max: parsedMax,
       consult_type: consultType || "방문상담",
       message: typeof message === "string" ? message.trim().slice(0, 500) : null,
     });

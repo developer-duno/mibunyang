@@ -20,15 +20,17 @@ export function useConsult(showToast, favoriteIds) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry),
       });
-      const json = await res.json();
+      let json;
+      try { json = await res.json(); } catch { throw new Error("서버 응답 오류"); }
       if (!json.ok) throw new Error(json.error || "서버 오류");
       setConsultSubmitted(true);
       showToast("상담 신청이 완료되었습니다");
     } catch (err) {
       // API 실패 시 localStorage 폴백
       const fallback = { ...entry, submittedAt: new Date().toISOString(), id: Date.now().toString() };
-      setSubmittedConsults(prev => [...prev, fallback]);
-      try { localStorage.setItem("mibunyang_consults", JSON.stringify([...submittedConsults, fallback])); } catch {}
+      const updated = [...submittedConsults, fallback];
+      setSubmittedConsults(updated);
+      try { localStorage.setItem("mibunyang_consults", JSON.stringify(updated)); } catch {}
       setConsultSubmitted(true);
       showToast("상담 신청이 저장되었습니다 (오프라인)");
     } finally {
