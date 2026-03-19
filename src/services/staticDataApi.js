@@ -13,7 +13,7 @@ export async function fetchStaticApartments() {
     try {
       return await fetchFromSupabase();
     } catch (err) {
-      console.warn("Supabase 실패, 정적 JSON 폴백:", err.message);
+      if (import.meta.env.DEV) console.warn("Supabase 실패, 정적 JSON 폴백:", err.message);
       return await fetchFromJson();
     }
   }
