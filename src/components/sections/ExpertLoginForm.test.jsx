@@ -27,10 +27,10 @@ function makeProps(overrides = {}) {
 }
 
 describe("ExpertLoginForm", () => {
-  // 로그인 모드 기본 렌더링
-  it("로그인 모드에서 제목이 '전문가 로그인'", () => {
+  // 로그인 모드 기본 렌더링 — 탭 UI 사용
+  it("로그인 모드에서 '로그인' 탭이 활성화", () => {
     render(<ExpertLoginForm {...makeProps()} />);
-    expect(screen.getByText("전문가 로그인")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "로그인", selected: true })).toBeInTheDocument();
     expect(screen.getByText("파트너 전문가 전용 대시보드입니다")).toBeInTheDocument();
   });
 
@@ -45,7 +45,7 @@ describe("ExpertLoginForm", () => {
   it("로그인 모드에서 폼 제출 시 onLogin 호출", () => {
     const onLogin = vi.fn();
     render(<ExpertLoginForm {...makeProps({ onLogin })} />);
-    fireEvent.submit(screen.getByText("로그인").closest("form"));
+    fireEvent.submit(screen.getByRole("button", { name: "로그인" }).closest("form"));
     expect(onLogin).toHaveBeenCalledTimes(1);
   });
 
@@ -53,7 +53,7 @@ describe("ExpertLoginForm", () => {
   it("회원가입 모드에서 추가 필드 표시", () => {
     const expert = makeExpert({ authMode: "signup" });
     render(<ExpertLoginForm {...makeProps({ expert })} />);
-    expect(screen.getByText("전문가 회원가입")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "회원가입", selected: true })).toBeInTheDocument();
     expect(screen.getByLabelText("이름")).toBeInTheDocument();
     expect(screen.getByLabelText("연락처")).toBeInTheDocument();
     expect(screen.getByLabelText("전문 분야")).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe("ExpertLoginForm", () => {
     const handleExpertSignup = vi.fn();
     const expert = makeExpert({ authMode: "signup", handleExpertSignup });
     render(<ExpertLoginForm {...makeProps({ expert })} />);
-    fireEvent.submit(screen.getByText("회원가입").closest("form"));
+    fireEvent.submit(screen.getByRole("button", { name: "회원가입" }).closest("form"));
     expect(handleExpertSignup).toHaveBeenCalledTimes(1);
   });
 
@@ -105,16 +105,24 @@ describe("ExpertLoginForm", () => {
     expect(screen.getByText("승인 거부")).toBeInTheDocument();
   });
 
-  // 모드 전환 버튼
-  it("로그인 모드에서 '계정이 없으신가요? 회원가입' 버튼 표시", () => {
-    render(<ExpertLoginForm {...makeProps()} />);
-    expect(screen.getByText("계정이 없으신가요? 회원가입")).toBeInTheDocument();
+  // 탭 전환 — 로그인 모드에서 회원가입 탭 클릭
+  it("로그인 모드에서 회원가입 탭 클릭 시 setAuthMode 호출", () => {
+    const expert = makeExpert();
+    render(<ExpertLoginForm {...makeProps({ expert })} />);
+    const signupTab = screen.getByRole("tab", { name: "회원가입" });
+    expect(signupTab).toBeInTheDocument();
+    fireEvent.click(signupTab);
+    expect(expert.setAuthMode).toHaveBeenCalledWith("signup");
   });
 
-  it("회원가입 모드에서 '이미 계정이 있으신가요? 로그인' 버튼 표시", () => {
+  // 탭 전환 — 회원가입 모드에서 로그인 탭 클릭
+  it("회원가입 모드에서 로그인 탭 클릭 시 setAuthMode 호출", () => {
     const expert = makeExpert({ authMode: "signup" });
     render(<ExpertLoginForm {...makeProps({ expert })} />);
-    expect(screen.getByText("이미 계정이 있으신가요? 로그인")).toBeInTheDocument();
+    const loginTab = screen.getByRole("tab", { name: "로그인" });
+    expect(loginTab).toBeInTheDocument();
+    fireEvent.click(loginTab);
+    expect(expert.setAuthMode).toHaveBeenCalledWith("login");
   });
 
   // 돌아가기 버튼
