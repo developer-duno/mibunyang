@@ -10,7 +10,7 @@
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY, MOLIT_KEY
  */
 import {
-  loadEnv, getMibuyangSupabase, log, logError, sleep, upsertBatch,
+  loadEnv, getMibuyangSupabase, log, logError, sleep, upsertBatch, createReporter,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -241,6 +241,11 @@ async function main() {
   log(PHASE, "trades 테이블 저장 중 (upsert)...");
   const inserted = await upsertBatch("trades", uniqueRows, CONFLICT_COLS, 500, sb);
   log(PHASE, "trades 테이블 " + inserted + "/" + rows.length + "건 저장 완료");
+
+  const rpt = createReporter(PHASE);
+  rpt.success(inserted);
+  rpt.fail(uniqueRows.length - inserted);
+  rpt.summary();
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

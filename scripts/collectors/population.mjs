@@ -12,7 +12,7 @@
  *   SUPABASE_URL     — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, upsertBatch, log, logError, REGION_MAP, VALID_REGIONS, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, REGION_MAP, VALID_REGIONS, today } from "./_shared.mjs";
 
 loadEnv();
 
@@ -196,8 +196,12 @@ async function main() {
   }
 
   // 5. Supabase upsert
+  const rpt = createReporter("population");
   const inserted = await upsertBatch("regions", rows, "region,gu,recorded_at");
+  rpt.success(inserted);
+  rpt.fail(rows.length - inserted);
   log("done", `regions 테이블 ${inserted}건 upsert 완료 (${today()})`);
+  rpt.summary();
 }
 
 main().catch(err => { logError("main", err.message); process.exit(1); });

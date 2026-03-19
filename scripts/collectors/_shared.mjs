@@ -192,3 +192,20 @@ export function sleep(ms) {
 export function today() {
   return new Date().toISOString().slice(0, 10);
 }
+
+// ── 수집 리포터 ─────────────────────────────────────────────
+export function createReporter(phase) {
+  const startTime = Date.now();
+  let ok = 0, fail = 0, skip = 0;
+  return {
+    success(n = 1) { ok += n; },
+    fail(n = 1) { fail += n; },
+    skip(n = 1) { skip += n; },
+    summary() {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const total = ok + fail + skip;
+      log(phase, `[완료] ${elapsed}초 | 성공 ${ok} | 실패 ${fail} | 스킵 ${skip} | 총 ${total}건`);
+      return { elapsed, ok, fail, skip, total };
+    },
+  };
+}

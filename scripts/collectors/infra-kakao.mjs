@@ -7,7 +7,7 @@
  *   node scripts/collectors/infra-kakao.mjs              (Supabase UPDATE)
  *   node scripts/collectors/infra-kakao.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter } from "./_shared.mjs";
 
 loadEnv();
 
@@ -106,7 +106,10 @@ async function main() {
     await Promise.all(batch.map((apt, j) => processApt(apt, b + j)));
   }
 
-  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
+  const rpt = createReporter(PHASE);
+  rpt.success(updated);
+  rpt.skip(skipped);
+  rpt.summary();
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });
