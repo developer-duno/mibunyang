@@ -12,7 +12,7 @@
  *   SUPABASE_URL        — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, VALID_REGIONS, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, VALID_REGIONS, today } from "./_shared.mjs";
 
 loadEnv();
 
@@ -37,11 +37,8 @@ async function fetchPermits(sigunguCd, year) {
   });
 
   const url = `${BASE_URL}?${params}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-  if (!res.ok) {
-    if (res.status === 500 || res.status === 503) return []; // API 서버 오류 시 건너뛰기
-    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-  }
+  const res = await fetchWithRetry(url, {}, 3);
+  if (!res || !res.ok) return [];
 
   const json = await res.json();
   const body = json?.response?.body;

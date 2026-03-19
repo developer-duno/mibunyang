@@ -77,12 +77,15 @@ export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb 
     if (error) {
       logError(table, `배치 ${i}~${i + batch.length}: ${error.message}`);
       // 개별 재시도
+      let retryOk = 0, retryFail = 0;
       for (const row of batch) {
         const { error: e2 } = await sb
           .from(table)
           .upsert([row], { onConflict: conflictCol, ignoreDuplicates: false });
-        if (!e2) inserted++;
+        if (!e2) { inserted++; retryOk++; }
+        else retryFail++;
       }
+      log(table, `  개별 재시도: ${retryOk}/${batch.length} 성공, ${retryFail}건 실패`);
     } else {
       inserted += batch.length;
     }
@@ -93,20 +96,30 @@ export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb 
 }
 
 // ── API 호출 (재시도 포함) ──────────────────────────────────
+// 시그니처 유지: fetchWithRetry(url, options?, retries?)
 export async function fetchWithRetry(url, options = {}, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
       const res = await fetch(url, { ...options, signal: AbortSignal.timeout(30000) });
       if (res.ok) return res;
+
       if (res.status === 429) {
-        // Rate limit — 대기 후 재시도
-        await new Promise(r => setTimeout(r, (i + 1) * 2000));
+        // Rate limit — Retry-After 헤더 우선, 없으면 지수 백오프
+        const retryAfter = parseInt(res.headers.get("Retry-After") || "0", 10);
+        const delay = retryAfter > 0 ? retryAfter * 1000 : (i + 1) ** 2 * 1000;
+        await new Promise(r => setTimeout(r, delay));
         continue;
       }
+      if (res.status === 500 || res.status === 503) {
+        // 서버 에러 — 지수 백오프 후 재시도
+        await new Promise(r => setTimeout(r, (i + 1) ** 2 * 1000));
+        continue;
+      }
+      // 4xx (429 제외) — 재시도 의미 없음
       if (i === retries - 1) throw new Error(`HTTP ${res.status}`);
     } catch (err) {
       if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, (i + 1) * 1000));
+      await new Promise(r => setTimeout(r, (i + 1) ** 2 * 1000));
     }
   }
 }

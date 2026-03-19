@@ -17,6 +17,12 @@ import { loadEnv, getSupabase, log, logError, stringSimilarity, sleep } from "./
 
 loadEnv();
 
+// ── 환경변수 검증 ───────────────────────────────────────────
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+  logError("init", "SUPABASE_URL + SUPABASE_SERVICE_KEY 환경변수 필요");
+  process.exit(1);
+}
+
 const PHASE = "naver-units";
 
 // ── 네이버 부동산 상수 ──────────────────────────────────────

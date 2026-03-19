@@ -21,6 +21,12 @@ import { loadEnv, getSupabase, getMibuyangSupabase, upsertBatch, log, logError, 
 
 loadEnv();
 
+// ── 환경변수 검증 ───────────────────────────────────────────
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+  logError("init", "SUPABASE_URL + SUPABASE_SERVICE_KEY 환경변수 필요");
+  process.exit(1);
+}
+
 // ── 상수 (Python constants.py 포트) ────────────────────────
 const NAVER_BASE = "https://new.land.naver.com";
 const NAVER_SEARCH_API = `${NAVER_BASE}/api/search`;
