@@ -4,6 +4,7 @@
  * Phase 1: complexes → apartments (용적률, 주차, 최고층, 수영장)
  * Phase 2: articles → apartments (매물 수 집계 → 미분양 추정)
  * Phase 3: 시세/통계 → apartments (중위가, 전세가율, 건축연도, 층수, 주변단지수)
+ * Phase 4: articles 집계 → apartments (평균 관리비, 대표 방향)
  *
  * 사용법:
  *   node scripts/collectors/sync-naver-complex.mjs              (Supabase UPDATE)
@@ -434,6 +435,76 @@ async function main() {
     log(PHASE, `Phase 3 완료: 시세/통계 갱신 ${naverUpdated}건`);
   }
 
+  // ── Phase 4: articles 집계 → apartments (관리비, 방향) ──────
+  {
+    log(PHASE, "\n── Phase 4: 관리비/방향 집계 ──");
+
+    // complex_no → apartment_id 매핑이 이미 Phase 2에서 구축됨
+    // articles에서 complex_no별 관리비 평균, 방향 최빈값 집계
+    const { data: articleStats, error: asErr } = await sbMibunyang
+      .from("articles")
+      .select("complex_no, numeric_maintenance_cost, direction")
+      .eq("is_active", true);
+
+    if (asErr) {
+      logError(PHASE, `articles 조회 실패: ${asErr.message}`);
+    } else {
+      // complex_no별 집계
+      const complexAgg = {};
+      for (const art of (articleStats || [])) {
+        const cn = art.complex_no;
+        if (!complexAgg[cn]) complexAgg[cn] = { costs: [], dirs: {} };
+        if (art.numeric_maintenance_cost != null && art.numeric_maintenance_cost > 0) {
+          complexAgg[cn].costs.push(art.numeric_maintenance_cost);
+        }
+        if (art.direction) {
+          complexAgg[cn].dirs[art.direction] = (complexAgg[cn].dirs[art.direction] || 0) + 1;
+        }
+      }
+
+      let phase4Updated = 0;
+      for (const apt of apartments) {
+        // apt에 매칭된 complex_no 찾기 (complexLinksMap 또는 이름 매칭)
+        let matchedCn = null;
+        for (const [cn, ids] of complexLinksMap.entries()) {
+          if (ids.includes(apt.id)) { matchedCn = cn; break; }
+        }
+        if (!matchedCn) continue;
+
+        const agg = complexAgg[matchedCn];
+        if (!agg) continue;
+
+        const row = {};
+        // 관리비: null 비율 80% 이상이면 스킵
+        if (agg.costs.length > 0) {
+          row.avg_maintenance_cost = Math.round(agg.costs.reduce((a, b) => a + b, 0) / agg.costs.length);
+        }
+        // 방향: 최빈값
+        const dirEntries = Object.entries(agg.dirs);
+        if (dirEntries.length > 0) {
+          dirEntries.sort((a, b) => b[1] - a[1]);
+          row.primary_direction = dirEntries[0][0];
+        }
+
+        if (Object.keys(row).length === 0) continue;
+
+        if (dryRun) {
+          log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`);
+          phase4Updated++;
+          continue;
+        }
+
+        const { error } = await sbMibunyang.from("apartments").update(row).eq("id", apt.id);
+        if (error) {
+          logError(PHASE, `  ${apt.name} Phase4 UPDATE 실패: ${error.message}`);
+        } else {
+          phase4Updated++;
+        }
+      }
+
+      log(PHASE, `Phase 4 완료: 관리비/방향 갱신 ${phase4Updated}건`);
+    }
+  }
 
   log(PHASE, "\n=== 전체 동기화 완료 ===");
 }
