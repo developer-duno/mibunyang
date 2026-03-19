@@ -141,7 +141,7 @@ async function main() {
     .range(0, 49999);
 
   if (clErr) {
-    logError(PHASE, `complex_links 조회 실패: ${clErr.message}`);
+    log(PHASE, `complex_links 미사용 (이름 유사도 매칭으로 폴백)`);
   } else if (complexLinks) {
     for (const cl of complexLinks) {
       if (!complexLinksMap.has(cl.complex_no)) complexLinksMap.set(cl.complex_no, []);

@@ -15,16 +15,22 @@ if [ -f .env.local ]; then
   export $(grep -v '^#' .env.local | xargs)
 fi
 
-echo "=== 1/3 네이버 매물 수집 ==="
-node scripts/collectors/naver-listings.mjs "$@"
+echo "=== 1/4 네이버 매물 수집 (Python curl_cffi) ==="
+python3 scripts/collectors/naver-collect.py "$@"
+
+# --dry-run이면 수집만 하고 후처리 건너뜀
+if echo "$@" | grep -q "\-\-dry-run"; then
+  echo "dry-run 모드 — 후처리 생략"
+  exit 0
+fi
 
 echo ""
-echo "=== 2/3 네이버→아파트 동기화 ==="
+echo "=== 2/4 네이버→아파트 동기화 ==="
 node scripts/collectors/sync-naver-complex.mjs
 
 echo ""
-echo "=== 3/3 네이버 세대수 보정 ==="
-node scripts/collectors/naver-units.mjs "$@"
+echo "=== 3/4 네이버 세대수 보정 ==="
+node scripts/collectors/naver-units.mjs
 
 echo ""
 echo "=== 4/4 전용률 계산 ==="
