@@ -17,7 +17,6 @@ loadEnv();
 
 const PHASE = "trades";
 const API_KEY = process.env.MOLIT_KEY;
-if (!API_KEY) { logError(PHASE, "MOLIT_KEY 환경변수 필요"); process.exit(1); }
 
 const REGION_LAWD_PREFIX = {
   "서울": "11", "부산": "26", "대구": "27", "인천": "28",
@@ -113,6 +112,7 @@ async function fetchApi(url, retries = 3) {
 }
 
 async function main() {
+  if (!API_KEY) { logError(PHASE, "MOLIT_KEY 환경변수 필요"); process.exit(1); }
   const dryRun = process.argv.includes("--dry-run");
   const monthsArg = process.argv.find(a => a.startsWith("--months="));
   const monthCount = monthsArg ? parseInt(monthsArg.split("=")[1], 10) : 6;
@@ -248,4 +248,9 @@ async function main() {
   rpt.summary();
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+// CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+
+// 테스트용 순수 함수 export
+export { getLawdCd, extractItems, getTag };

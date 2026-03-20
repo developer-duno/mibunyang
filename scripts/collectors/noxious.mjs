@@ -158,4 +158,9 @@ async function main() {
   }
 }
 
-main().catch(err => { logError("main", err.message); process.exit(1); });
+// CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+
+// 테스트용 순수 함수 export
+export { haversineM };

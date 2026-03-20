@@ -17,10 +17,6 @@ import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, REGIO
 loadEnv();
 
 const API_KEY = process.env.MOIS_POP_KEY;
-if (!API_KEY) {
-  logError("init", "MOIS_POP_KEY 환경변수 필요 (data.go.kr 인증키)");
-  process.exit(1);
-}
 
 const BASE_URL = "https://apis.data.go.kr/1741000/juminsu/getJuminsuList";
 
@@ -86,6 +82,7 @@ function parseGu(adminNm) {
 
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
+  if (!API_KEY) { logError("init", "MOIS_POP_KEY 환경변수 필요 (data.go.kr 인증키)"); process.exit(1); }
   const dryRun = process.argv.includes("--dry-run");
 
   // 현재 연월, 전년 동월
@@ -204,4 +201,9 @@ async function main() {
   rpt.summary();
 }
 
-main().catch(err => { logError("main", err.message); process.exit(1); });
+// CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+
+// 테스트용 순수 함수 export
+export { resolveRegion, parseGu };
