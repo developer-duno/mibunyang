@@ -1,9 +1,9 @@
 /**
  * 국토부 공동주택 기본정보 → 총세대수(units) 보정 수집기
  *
- * API: 국토교통부_공동주택 단지 목록제공 서비스 (data.go.kr #15058453)
- *   - getLnmBasicList: 시도/시군구별 단지 목록 (kaptCode, kaptName)
- *   - getAphusBassInfo: 단지 상세 (kaptdaCnt = 세대수)
+ * API: 국토교통부 공동주택 서비스
+ *   - AptListService3 (#15057332): 시도별 단지 목록 (kaptCode, kaptName)
+ *   - AptBasisInfoServiceV4: 단지 기본 정보 (getAphusBassInfoV4 — kaptdaCnt = 세대수)
  *
  * 사용법:
  *   node scripts/collectors/molit-units.mjs              (Supabase apartments 직접 UPDATE)
@@ -25,25 +25,23 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const API_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoService1";
+const API_LIST_BASE = "https://apis.data.go.kr/1613000/AptListService3";
+const API_DETAIL_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoServiceV4";
 const MIN_SIMILARITY = 0.5; // 이름 유사도 최소 기준
 const REQUEST_DELAY = 400;  // ms — API 레이트리밋 방지
 
-// ── 시도 풀네임 매핑 (API 요청용) ────────────────────────────
-const REGION_FULL = {
-  "서울": "서울특별시", "부산": "부산광역시", "대구": "대구광역시",
-  "인천": "인천광역시", "광주": "광주광역시", "대전": "대전광역시",
-  "울산": "울산광역시", "세종": "세종특별자치시",
-  "경기": "경기도", "강원": "강원특별자치도",
-  "충북": "충청북도", "충남": "충청남도",
-  "전북": "전북특별자치도", "전남": "전라남도",
-  "경북": "경상북도", "경남": "경상남도", "제주": "제주특별자치도",
+// 시도 약칭 → 시도 코드 (법정동 코드 앞 2자리)
+const SIDO_CODE = {
+  "서울": "11", "부산": "26", "대구": "27", "인천": "28",
+  "광주": "29", "대전": "30", "울산": "31", "세종": "36",
+  "경기": "41", "강원": "42", "충북": "43", "충남": "44",
+  "전북": "45", "전남": "46", "경북": "47", "경남": "48", "제주": "50",
 };
 
 // ── API 호출 (재시도 포함) ───────────────────────────────────
-async function apiCall(endpoint, params) {
+async function apiCall(baseUrl, endpoint, params) {
   const qs = new URLSearchParams({ serviceKey: API_KEY, type: "json", ...params });
-  const url = `${API_BASE}/${endpoint}?${qs}`;
+  const url = `${baseUrl}/${endpoint}?${qs}`;
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -87,22 +85,21 @@ async function getTargets(sb) {
   return data ?? [];
 }
 
-// ── 2. 시도/시군구별 단지 목록 조회 ──────────────────────────
-async function fetchAptList(siDo, siGunGu) {
+// ── 2. 시도별 단지 목록 조회 (V3: AptListService3) ────────────
+async function fetchAptList(sidoCode) {
   const allItems = [];
   let pageNo = 1;
 
   while (true) {
-    const params = { numOfRows: "500", pageNo: String(pageNo), siDo };
-    if (siGunGu) params.siGunGu = siGunGu;
-
-    const json = await apiCall("getLnmBasicList", params);
+    const params = { numOfRows: "500", pageNo: String(pageNo), sidoCode };
+    const json = await apiCall(API_LIST_BASE, "getSidoAptList3", params);
     const body = json?.response?.body;
     if (!body || body.totalCount === 0) break;
 
-    const items = body.items?.item;
-    if (!items) break;
-    const page = Array.isArray(items) ? items : [items];
+    // V3: body.items가 바로 배열 (V1에서는 body.items.item이었음)
+    const rawItems = Array.isArray(body.items) ? body.items : body.items?.item;
+    if (!rawItems) break;
+    const page = Array.isArray(rawItems) ? rawItems : [rawItems];
     allItems.push(...page);
 
     const totalCount = parseInt(body.totalCount, 10) || 0;
@@ -115,9 +112,9 @@ async function fetchAptList(siDo, siGunGu) {
   return allItems;
 }
 
-// ── 3. 단지 상세 조회 (세대수) ──────────────────────────────
+// ── 3. 단지 기본 조회 (V4: getAphusBassInfoV4) ──────────────
 async function fetchAptDetail(kaptCode) {
-  const json = await apiCall("getAphusBassInfo", { kaptCode });
+  const json = await apiCall(API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode });
   const body = json?.response?.body;
   return body?.item ?? body?.items?.item ?? null;
 }
@@ -196,30 +193,29 @@ async function main() {
     return;
   }
 
-  // 2. 시도/시군구별로 그룹핑 (API 호출 최소화)
+  // 2. 시도별로 그룹핑 (API 호출 최소화 — V3는 시도 코드 기반)
   const groups = {};
   for (const t of targets) {
-    const siDo = REGION_FULL[t.region];
-    if (!siDo) {
-      logError(PHASE, `  ${t.name}: 시도 매핑 없음 (region=${t.region})`);
+    const sidoCode = SIDO_CODE[t.region];
+    if (!sidoCode) {
+      logError(PHASE, `  ${t.name}: 시도코드 매핑 없음 (region=${t.region})`);
       continue;
     }
-    const key = `${siDo}|${t.gu || ""}`;
-    if (!groups[key]) groups[key] = { siDo, siGunGu: t.gu || null, targets: [] };
-    groups[key].targets.push(t);
+    if (!groups[t.region]) groups[t.region] = { sidoCode, targets: [] };
+    groups[t.region].targets.push(t);
   }
 
-  // 3. 그룹별로 API 조회 + 매칭
+  // 3. 시도별 API 조회 + 매칭
   let corrected = 0;
   let failed = 0;
   let skipped = 0;
 
-  for (const [key, group] of Object.entries(groups)) {
-    log(PHASE, `\n--- ${group.siDo} ${group.siGunGu || "(전체)"} (${group.targets.length}건) ---`);
+  for (const [region, group] of Object.entries(groups)) {
+    log(PHASE, `\n--- ${region} (${group.sidoCode}) ${group.targets.length}건 ---`);
 
     let aptList;
     try {
-      aptList = await fetchAptList(group.siDo, group.siGunGu);
+      aptList = await fetchAptList(group.sidoCode);
       log(PHASE, `  API 단지 목록: ${aptList.length}건`);
     } catch (err) {
       logError(PHASE, `  API 조회 실패: ${err.message}`);

@@ -1,9 +1,10 @@
 /**
  * 국토부 공동주택 기본정보 → 건물 상세 (주차, 최고층, 에너지, 내진, 녹색건축) 수집기
  *
- * API: 국토교통부_공동주택 단지 목록제공 서비스 (data.go.kr #15058453)
- *   - getLnmBasicList: 시도/시군구별 단지 목록
- *   - getAphusBassInfo: 단지 상세 (건축면적, 세대수, 주차, 에너지 등)
+ * API: 국토교통부 공동주택 서비스
+ *   - AptListService3 (#15057332): 시도별 단지 목록
+ *   - AptBasisInfoServiceV4: 단지 기본 정보 (getAphusBassInfoV4)
+ *   - AptBasisInfoServiceV4: 단지 상세 정보 (getAphusDtlInfoV4) — 주차, 에너지, 내진 등
  *
  * 사용법:
  *   node scripts/collectors/molit-building-info.mjs              (Supabase UPDATE)
@@ -24,24 +25,23 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const API_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoService1";
+const API_LIST_BASE = "https://apis.data.go.kr/1613000/AptListService3";
+const API_DETAIL_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoServiceV4";
 const MIN_SIMILARITY = 0.5;
 const REQUEST_DELAY = 400;
 
-const REGION_FULL = {
-  "서울": "서울특별시", "부산": "부산광역시", "대구": "대구광역시",
-  "인천": "인천광역시", "광주": "광주광역시", "대전": "대전광역시",
-  "울산": "울산광역시", "세종": "세종특별자치시",
-  "경기": "경기도", "강원": "강원특별자치도",
-  "충북": "충청북도", "충남": "충청남도",
-  "전북": "전북특별자치도", "전남": "전라남도",
-  "경북": "경상북도", "경남": "경상남도", "제주": "제주특별자치도",
+// 시도 약칭 → 시도 코드 (법정동 코드 앞 2자리)
+const SIDO_CODE = {
+  "서울": "11", "부산": "26", "대구": "27", "인천": "28",
+  "광주": "29", "대전": "30", "울산": "31", "세종": "36",
+  "경기": "41", "강원": "42", "충북": "43", "충남": "44",
+  "전북": "45", "전남": "46", "경북": "47", "경남": "48", "제주": "50",
 };
 
 // ── API 호출 ────────────────────────────────────────────────
-async function apiCall(endpoint, params) {
+async function apiCall(baseUrl, endpoint, params) {
   const qs = new URLSearchParams({ serviceKey: API_KEY, type: "json", ...params });
-  const url = `${API_BASE}/${endpoint}?${qs}`;
+  const url = `${baseUrl}/${endpoint}?${qs}`;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
@@ -61,23 +61,32 @@ async function apiCall(endpoint, params) {
   }
 }
 
-// ── 단지 목록 조회 ──────────────────────────────────────────
-async function fetchAptList(siDo, siGunGu) {
-  const params = { numOfRows: "500", pageNo: "1", siDo };
-  if (siGunGu) params.siGunGu = siGunGu;
-  const json = await apiCall("getLnmBasicList", params);
+// ── 단지 목록 조회 (V3: AptListService3) ─────────────────────
+async function fetchAptList(sidoCode) {
+  const params = { numOfRows: "500", pageNo: "1", sidoCode };
+  const json = await apiCall(API_LIST_BASE, "getSidoAptList3", params);
   const body = json?.response?.body;
   if (!body || body.totalCount === 0) return [];
-  const items = body.items?.item;
+  // V3: body.items가 바로 배열 (V1에서는 body.items.item이었음)
+  const items = Array.isArray(body.items) ? body.items : body.items?.item;
   if (!items) return [];
   return Array.isArray(items) ? items : [items];
 }
 
-// ── 단지 상세 조회 ──────────────────────────────────────────
+// ── 단지 기본+상세 조회 (V4: 두 엔드포인트 병합) ─────────────
 async function fetchAptDetail(kaptCode) {
-  const json = await apiCall("getAphusBassInfo", { kaptCode });
-  const body = json?.response?.body;
-  return body?.item ?? body?.items?.item ?? null;
+  // 기본 정보 (세대수, 최고층 등)
+  const bassJson = await apiCall(API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode });
+  const bass = bassJson?.response?.body?.item ?? null;
+
+  await sleep(REQUEST_DELAY);
+
+  // 상세 정보 (주차, 에너지, 구조 등)
+  const dtlJson = await apiCall(API_DETAIL_BASE, "getAphusDtlInfoV4", { kaptCode });
+  const dtl = dtlJson?.response?.body?.item ?? null;
+
+  if (!bass && !dtl) return null;
+  return { ...bass, ...dtl }; // 두 응답 병합
 }
 
 // ── 이름 매칭 ───────────────────────────────────────────────
@@ -101,50 +110,35 @@ function findBestMatch(targetName, targetGu, aptList) {
   return best;
 }
 
-// ── 상세 필드 추출 ──────────────────────────────────────────
+// ── 상세 필드 추출 (V4 응답 기준) ────────────────────────────
 function extractBuildingInfo(detail) {
   const safeInt = (v) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
-  const safeFloat = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
 
-  // 주차대수 / 세대수 = 주차비율
-  const totalParking = safeInt(detail.kaptdPcnt);
+  // 주차: V4에서 kaptdPcnt(지상) + kaptdPcntu(지하) 합산
+  const groundParking = safeInt(detail.kaptdPcnt) || 0;
+  const underParking = safeInt(detail.kaptdPcntu) || 0;
+  const totalParking = groundParking + underParking;
   const totalHouseholds = safeInt(detail.kaptdaCnt);
-  const parkingRatio = (totalParking && totalHouseholds && totalHouseholds > 0)
+  const parkingRatio = (totalParking > 0 && totalHouseholds && totalHouseholds > 0)
     ? Math.round((totalParking / totalHouseholds) * 100) / 100
     : null;
 
-  // 용적률 = 연면적 / 대지면적 * 100
-  const totalArea = safeFloat(detail.kaptTarea); // 연면적 (㎡)
-  const siteArea = safeFloat(detail.kaptDongCnt); // 건폐율로 대신 사용 가능
-  // API에서 용적률을 직접 제공하지 않으므로, kaptMpArea 기반 계산은 불안정
-  // 대신 complexes에서 가져온 것을 우선 사용하고, 여기선 최고층/주차/에너지만 수집
-
-  // 에너지 효율 등급
-  const energyStr = detail.kaptdEcnt ?? detail.codeEcas ?? null;
+  // 에너지 효율 등급: V4에서 kaptdEcnt(Dtl) 또는 kaptdEcntp(Bass)
+  const energyStr = detail.kaptdEcnt ?? detail.kaptdEcntp ?? null;
   let energyGrade = null;
   if (energyStr != null) {
     const n = safeInt(energyStr);
     if (n && n >= 1 && n <= 7) energyGrade = n;
   }
 
-  // 내진설계 여부
-  const quakeStr = detail.kaptdEtrm ?? null;
-  let quakeDesign = null;
-  if (quakeStr != null) {
-    quakeDesign = quakeStr === "Y" || quakeStr === "1" || quakeStr.includes("적용");
-  }
+  // 최고층: V4에서 ktownFlrNo가 실제 최고층 (kaptTopFloor는 지상 시작층)
+  const highFloor = safeInt(detail.ktownFlrNo) || safeInt(detail.kaptTopFloor) || safeInt(detail.hoCnt);
 
-  // 최고층
-  const highFloor = safeInt(detail.kaptTopFloor) || safeInt(detail.hoCnt);
+  // 내진설계: V4 Dtl에서 필드 사라짐 — null 유지 (기존 데이터 보존)
+  const quakeDesign = null;
 
-  // 녹색건축 인증등급
-  const greenStr = detail.kaptdGreenGrade ?? detail.kaptGreenGrade ?? null;
-  let green_bldg = null;
-  if (greenStr != null) {
-    const s = String(greenStr);
-    if (s.includes("최우수") || s === "1") green_bldg = "최우수";
-    else if (s.includes("우수") || s === "2") green_bldg = "우수";
-  }
+  // 녹색건축: V4 Dtl에서 필드 사라짐 — null 유지 (기존 데이터 보존)
+  const green_bldg = null;
 
   return {
     parking_ratio: parkingRatio,
@@ -217,68 +211,59 @@ async function main() {
 
   // 3. 지역별 API 호출 → 매칭 → 상세 조회
   for (const [region, regionTargets] of Object.entries(regionGroups)) {
-    const siDo = REGION_FULL[region];
-    if (!siDo) { log(PHASE, `  ${region}: 매핑 없음, 건너뜀`); skipped += regionTargets.length; continue; }
+    const sidoCode = SIDO_CODE[region];
+    if (!sidoCode) { log(PHASE, `  ${region}: 시도코드 매핑 없음, 건너뜀`); skipped += regionTargets.length; continue; }
 
-    // 구별 그룹핑
-    const guGroups = {};
-    for (const t of regionTargets) {
-      const g = t.gu || "_전체";
-      if (!guGroups[g]) guGroups[g] = [];
-      guGroups[g].push(t);
+    log(PHASE, `\n${region} (${sidoCode}): ${regionTargets.length}건`);
+
+    let aptList;
+    try {
+      aptList = await fetchAptList(sidoCode);
+      await sleep(REQUEST_DELAY);
+    } catch (err) {
+      logError(PHASE, `  목록 조회 실패: ${err.message}`);
+      failed += regionTargets.length;
+      continue;
     }
 
-    for (const [gu, guTargets] of Object.entries(guGroups)) {
-      log(PHASE, `\n${region} ${gu}: ${guTargets.length}건`);
+    if (!aptList.length) {
+      log(PHASE, `  API 목록 0건`);
+      skipped += regionTargets.length;
+      continue;
+    }
 
-      let aptList;
+    log(PHASE, `  API 목록: ${aptList.length}건`);
+
+    for (const target of regionTargets) {
+      const match = findBestMatch(target.name, target.gu, aptList);
+      if (!match) {
+        skipped++;
+        continue;
+      }
+
+      const kaptCode = match.kaptCode;
+      if (!kaptCode) { skipped++; continue; }
+
       try {
-        aptList = await fetchAptList(siDo, gu === "_전체" ? null : gu);
         await sleep(REQUEST_DELAY);
+        const detail = await fetchAptDetail(kaptCode);
+        if (!detail) { log(PHASE, `    ${target.name}: 상세 조회 실패`); failed++; continue; }
+
+        const info = extractBuildingInfo(detail);
+        log(PHASE, `    ${target.name}: parking=${info.parking_ratio}, floor=${info.max_floor}, energy=${info.energy_grade}, quake=${info.quake_design}`);
+
+        const ok = await updateBuilding(sb, target.id, info, dryRun);
+        if (ok) updated++;
+        else skipped++;
       } catch (err) {
-        logError(PHASE, `  목록 조회 실패: ${err.message}`);
-        failed += guTargets.length;
-        continue;
-      }
-
-      if (!aptList.length) {
-        log(PHASE, `  API 목록 0건`);
-        skipped += guTargets.length;
-        continue;
-      }
-
-      log(PHASE, `  API 목록: ${aptList.length}건`);
-
-      for (const target of guTargets) {
-        const match = findBestMatch(target.name, target.gu, aptList);
-        if (!match) {
-          skipped++;
-          continue;
-        }
-
-        const kaptCode = match.kaptCode || match.as1;
-        if (!kaptCode) { skipped++; continue; }
-
-        try {
-          await sleep(REQUEST_DELAY);
-          const detail = await fetchAptDetail(kaptCode);
-          if (!detail) { log(PHASE, `    ${target.name}: 상세 조회 실패`); failed++; continue; }
-
-          const info = extractBuildingInfo(detail);
-          log(PHASE, `    ${target.name}: parking=${info.parking_ratio}, floor=${info.max_floor}, energy=${info.energy_grade}, quake=${info.quake_design}`);
-
-          const ok = await updateBuilding(sb, target.id, info, dryRun);
-          if (ok) updated++;
-          else skipped++;
-        } catch (err) {
-          logError(PHASE, `    ${target.name}: ${err.message}`);
-          failed++;
-        }
+        logError(PHASE, `    ${target.name}: ${err.message}`);
+        failed++;
       }
     }
   }
 
   log(PHASE, `\n=== 완료 ===`);
+
   log(PHASE, `갱신: ${updated}, 건너뜀: ${skipped}, 실패: ${failed}`);
 }
 
