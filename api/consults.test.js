@@ -58,6 +58,22 @@ function makeBody(overrides = {}) {
   };
 }
 
+/** POST 요청 팩토리 — 반복 인라인 제거 */
+function makePostReq(bodyOverrides = {}) {
+  return { method: "POST", headers: {}, body: makeBody(bodyOverrides) };
+}
+
+/** snake_case DB 응답 팩토리 — GET 테스트용 */
+function makeConsultRow(overrides = {}) {
+  return {
+    id: 1, name: "홍길동", phone: "010-1234-5678",
+    interested_apts: ["apt-1"], budget_min: 30000, budget_max: 50000,
+    consult_type: "방문상담", message: "테스트",
+    status: "pending", submitted_at: "2026-03-20T00:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("consults handler", () => {
   // CORS 위임 확인
   it("OPTIONS 시 handleCors가 처리하고 즉시 반환한다", async () => {
@@ -71,37 +87,37 @@ describe("consults handler", () => {
   // --- POST 검증 에러 ---
   it("POST: 이름 미입력 시 400을 반환한다", async () => {
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody({ name: "" }) }, res);
+    await handler(makePostReq({ name: "" }), res);
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
   it("POST: 이름 50자 초과 시 400을 반환한다", async () => {
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody({ name: "가".repeat(51) }) }, res);
+    await handler(makePostReq({ name: "가".repeat(51) }), res);
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
   it("POST: 잘못된 연락처 형식은 400을 반환한다", async () => {
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody({ phone: "abc" }) }, res);
+    await handler(makePostReq({ phone: "abc" }), res);
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
   it("POST: 잘못된 상담 유형은 400을 반환한다", async () => {
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody({ consultType: "직접방문" }) }, res);
+    await handler(makePostReq({ consultType: "직접방문" }), res);
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
   it("POST: interestedApts가 배열이 아니면 400을 반환한다", async () => {
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody({ interestedApts: "apt-1" }) }, res);
+    await handler(makePostReq({ interestedApts: "apt-1" }), res);
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
   it("POST: 예산 최소값이 최대값보다 크면 400을 반환한다", async () => {
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody({ budgetMin: "50000", budgetMax: "30000" }) }, res);
+    await handler(makePostReq({ budgetMin: "50000", budgetMax: "30000" }), res);
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
@@ -109,7 +125,7 @@ describe("consults handler", () => {
   it("POST: 레이트 리밋 초과 시 429를 반환한다", async () => {
     checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody() }, res);
+    await handler(makePostReq(), res);
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.setHeader).toHaveBeenCalledWith("Retry-After", "300");
   });
@@ -117,7 +133,7 @@ describe("consults handler", () => {
   // --- POST 성공/에러 ---
   it("POST: 정상 상담 신청 시 201을 반환한다", async () => {
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody() }, res);
+    await handler(makePostReq(), res);
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith({ ok: true });
   });
@@ -125,7 +141,7 @@ describe("consults handler", () => {
   it("POST: Supabase 저장 실패 시 500을 반환한다", async () => {
     mockInsert.mockResolvedValueOnce({ error: new Error("DB error") });
     const res = makeRes();
-    await handler({ method: "POST", headers: {}, body: makeBody() }, res);
+    await handler(makePostReq(), res);
     expect(res.status).toHaveBeenCalledWith(500);
   });
 
@@ -147,7 +163,7 @@ describe("consults handler", () => {
     verifyToken.mockReturnValueOnce({ email: "expert@test.com" });
     // snake_case DB 응답 목
     mockLimit.mockResolvedValueOnce({
-      data: [{ id: 1, name: "홍길동", phone: "010-1234-5678", interested_apts: ["apt-1"], budget_min: 30000, budget_max: 50000, consult_type: "방문상담", message: "테스트", status: "pending", submitted_at: "2026-03-20T00:00:00Z" }],
+      data: [makeConsultRow()],
       error: null,
       count: 1,
     });

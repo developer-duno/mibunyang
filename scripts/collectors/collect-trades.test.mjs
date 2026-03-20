@@ -12,27 +12,27 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const { getLawdCd, extractItems, getTag } = await import("./collect-trades.mjs");
 
 describe("getLawdCd", () => {
-  // 정상 매핑 — 시군구 직접 조회
-  it("서울 강남구의 법정동코드를 반환한다", () => {
-    const code = getLawdCd("서울", "강남구");
-    expect(code).toBeTruthy();
-    expect(typeof code).toBe("string");
+  // 정상 매핑 — REGION_GU_OVERRIDE 경유 (동명이구)
+  it("서울 강남구 → 11680", () => {
+    expect(getLawdCd("서울", "강남구")).toBe("11680");
   });
 
-  // 경기도 시군구
-  it("경기 화성시의 법정동코드를 반환한다", () => {
-    const code = getLawdCd("경기", "화성시");
-    expect(code).toBeTruthy();
+  // 경기도 시군구 — GU_LAWD_MAP 직접 조회
+  it("경기 화성시 → 41590", () => {
+    expect(getLawdCd("경기", "화성시")).toBe("41590");
   });
 
-  // 존재하지 않는 지역 → 시도 prefix 또는 null
-  it("존재하지 않는 시군구는 시도 코드 또는 null을 반환한다", () => {
-    const code = getLawdCd("서울", "없는구");
-    // 서울 시도 prefix("11") + "000" 또는 매핑된 값
-    expect(code === null || typeof code === "string").toBe(true);
+  // 동명이구 처리 — 부산 해운대구 (override 테이블)
+  it("부산 해운대구 → 26350", () => {
+    expect(getLawdCd("부산", "해운대구")).toBe("26350");
   });
 
-  // 완전 미지 지역
+  // 존재하지 않는 시군구 → 시도 prefix + "000" fallback
+  it("서울의 미지 구는 시도 코드 '11000'을 반환한다", () => {
+    expect(getLawdCd("서울", "없는구")).toBe("11000");
+  });
+
+  // 완전 미지 지역 → null
   it("존재하지 않는 시도는 null을 반환한다", () => {
     expect(getLawdCd("미지시도", "미지구")).toBeNull();
   });
