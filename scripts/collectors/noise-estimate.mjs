@@ -24,10 +24,10 @@ loadEnv();
 // ── 소음 추정 로직 ───────────────────────────────────────────────
 function estimateNoise(roadDistM) {
   if (roadDistM == null) return null;
-  if (roadDistM <= 50) return "높음";
-  if (roadDistM <= 100) return "보통";
-  if (roadDistM <= 200) return "낮음";
-  return "매우 낮음";
+  if (roadDistM <= 50) return 70;   // 높음 (65+ dB)
+  if (roadDistM <= 100) return 60;  // 보통 (55-65 dB)
+  if (roadDistM <= 200) return 50;  // 낮음 (45-55 dB)
+  return 40;                        // 매우 낮음 (<45 dB)
 }
 
 // ── Kakao 키워드 검색 (도로 시설) ────────────────────────────────

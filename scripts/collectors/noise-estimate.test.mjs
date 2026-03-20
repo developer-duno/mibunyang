@@ -12,32 +12,32 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const { estimateNoise } = await import("./noise-estimate.mjs");
 
 describe("estimateNoise", () => {
-  // 50m 이내 → 높음
-  it("50m 이내이면 '높음'을 반환한다", () => {
-    expect(estimateNoise(30)).toBe("높음");
+  // 50m 이내 → 70dB (높음)
+  it("50m 이내이면 70(dB)을 반환한다", () => {
+    expect(estimateNoise(30)).toBe(70);
   });
 
-  // 정확히 50m → 높음 (경계값 포함)
-  it("정확히 50m이면 '높음'을 반환한다", () => {
-    expect(estimateNoise(50)).toBe("높음");
+  // 정확히 50m → 70dB (경계값 포함)
+  it("정확히 50m이면 70(dB)을 반환한다", () => {
+    expect(estimateNoise(50)).toBe(70);
   });
 
-  // 51~100m → 보통
-  it("51~100m이면 '보통'을 반환한다", () => {
-    expect(estimateNoise(51)).toBe("보통");
-    expect(estimateNoise(100)).toBe("보통");
+  // 51~100m → 60dB (보통)
+  it("51~100m이면 60(dB)을 반환한다", () => {
+    expect(estimateNoise(51)).toBe(60);
+    expect(estimateNoise(100)).toBe(60);
   });
 
-  // 101~200m → 낮음
-  it("101~200m이면 '낮음'을 반환한다", () => {
-    expect(estimateNoise(101)).toBe("낮음");
-    expect(estimateNoise(200)).toBe("낮음");
+  // 101~200m → 50dB (낮음)
+  it("101~200m이면 50(dB)을 반환한다", () => {
+    expect(estimateNoise(101)).toBe(50);
+    expect(estimateNoise(200)).toBe(50);
   });
 
-  // 200m 초과 → 매우 낮음
-  it("200m 초과이면 '매우 낮음'을 반환한다", () => {
-    expect(estimateNoise(201)).toBe("매우 낮음");
-    expect(estimateNoise(500)).toBe("매우 낮음");
+  // 200m 초과 → 40dB (매우 낮음)
+  it("200m 초과이면 40(dB)을 반환한다", () => {
+    expect(estimateNoise(201)).toBe(40);
+    expect(estimateNoise(500)).toBe(40);
   });
 
   // null → null
