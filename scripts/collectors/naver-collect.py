@@ -63,6 +63,24 @@ REGION_CORTAR={
     "전남":"4600000000","제주":"5000000000",
 }
 def log(m):print(f"[naver] {m}")
+def _safe_float(v):
+    """문자열/숫자 → float 변환. 실패 시 None."""
+    if v is None:return None
+    try:return float(str(v).replace("%","").strip())
+    except(ValueError,TypeError):return None
+def _extract_json_obj(html,key):
+    """HTML에서 key에 해당하는 JSON 객체를 brace-balanced 방식으로 추출."""
+    pat=re.search(rf'"{key}"\s*:\s*\{{',html)
+    if not pat:return None
+    start=pat.end()-1
+    depth=0
+    for i in range(start,min(start+10000,len(html))):
+        if html[i]=="{":depth+=1
+        elif html[i]=="}":depth-=1
+        if depth==0:
+            try:return json.loads(html[start:i+1])
+            except json.JSONDecodeError:return None
+    return None
 def thr(s=1.0):
     global _lr
     d=time.time()-_lr
@@ -81,15 +99,18 @@ def ejwt(cid=None):
     # 단지 상세 추출 (같은 HTML에서, 추가 API 호출 없음)
     if cid:
         try:
-            dm=re.search(r'"complexDetail"\s*:\s*(\{[^}]+\})',r.text)
-            if dm:
-                d=json.loads(dm.group(1))
+            d=_extract_json_obj(r.text,"complexDetail")
+            if d:
                 COMPLEX_DETAILS[str(cid)]={
                     "earthquake_design":d.get("earthquakeDesignApplied"),
                     "entrance_type":d.get("entranceTypeName"),
                     "heat_method":d.get("heatMethodTypeName"),
+                    "heat_fuel":d.get("heatFuelTypeName"),
+                    "corridor_type":d.get("corridorTypeName"),
+                    "building_coverage_ratio":_safe_float(d.get("buildingCoverageRatio")),
                 }
-        except:pass
+        except Exception as e:
+            log(f"  complexDetail parse fail (cid={cid}): {e}")
     return _jt
 
 def ag(url,params=None,cid=None):
@@ -298,7 +319,7 @@ def main():
             row={k:v for k,v in det.items() if v is not None}
             if not row:continue
             try:sb.update("complexes",row,[f"complex_no=eq.{cn}"]);du+=1
-            except:pass
+            except Exception as e:log(f"  complexes update fail ({cn}): {e}")
         log(f"상세 {du}/{len(COMPLEX_DETAILS)}건")
     elif COMPLEX_DETAILS:
         log(f"[DRY-RUN] 상세 {len(COMPLEX_DETAILS)}건 수집됨")
