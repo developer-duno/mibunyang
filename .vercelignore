@@ -1,3 +1,11 @@
 api/**/*.test.js
 api/**/*.test.mjs
 api/**/*.spec.js
+
+# 수집기 전용 API — GitHub Actions에서만 사용 (프론트엔드 미호출)
+# Vercel Hobby 12 Serverless Functions 제한 대응
+api/dart/
+api/kakao/
+api/kosis/
+api/neis/
+api/applyhome/
