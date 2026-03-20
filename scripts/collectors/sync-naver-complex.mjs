@@ -106,7 +106,7 @@ async function main() {
   for (let off = 0; ; off += PAGE) {
     const { data: page, error: cErr } = await sbMibunyang
       .from("complexes")
-      .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, earthquake_design, heat_fuel, corridor_type, building_coverage_ratio")
+      .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, heat_fuel, corridor_type, building_coverage_ratio")
       .range(off, off + PAGE - 1);
     if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
     complexes.push(...page);
@@ -210,11 +210,6 @@ async function main() {
       // 난방방식 (articles에서 집계)
       if (apt.heating == null && heatingByComplex[cpx.complex_no]) {
         row.heating = heatingByComplex[cpx.complex_no];
-      }
-
-      // 내진: complexes.earthquake_design → apartments.quake_design
-      if (apt.quake_design == null && cpx.earthquake_design != null) {
-        row.quake_design = cpx.earthquake_design;
       }
 
       // 난방연료

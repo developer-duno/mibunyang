@@ -9,7 +9,7 @@
  *   node scripts/collectors/calc-layout.mjs              (Supabase UPDATE)
  *   node scripts/collectors/calc-layout.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, stringSimilarity } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity } from "./_shared.mjs";
 
 loadEnv();
 
@@ -75,6 +75,7 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
+  const sbMibunyang = getMibuyangSupabase();
 
   // 1. layout이 없는 아파트 조회
   const { data: apts, error: aErr } = await sb
@@ -90,7 +91,7 @@ async function main() {
   // 2. complexes 조회
   const { data: complexes, error: cErr } = await sb
     .from("complexes")
-    .select("complex_no, complex_name, high_floor, total_household_count, nearby_apartment_ids");
+    .select("complex_no, complex_name, high_floor, total_household_count");
   if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
   log(PHASE, `complexes: ${complexes.length}건`);
 
@@ -110,14 +111,24 @@ async function main() {
     areaByComplex.get(art.complex_no).push(art.area2_m2);
   }
 
-  // 5. apartment_id → complex 역색인 ( 기반)
+  // 5. apartment_id → complex 역색인 (complex_links 테이블 기반)
   const aptToComplexes = new Map();
-  for (const cpx of complexes) {
-    const nearbyIds = cpx.nearby_apartment_ids || [];
-    for (const aptId of nearbyIds) {
-      if (!aptToComplexes.has(aptId)) aptToComplexes.set(aptId, []);
-      aptToComplexes.get(aptId).push(cpx);
+  const { data: complexLinks, error: clErr } = await sbMibunyang
+    .from("complex_links")
+    .select("complex_no, apartment_id")
+    .range(0, 49999);
+
+  if (clErr) {
+    log(PHASE, `complex_links 조회 실패, 이름 유사도 매칭만 사용: ${clErr.message}`);
+  } else if (complexLinks) {
+    const complexMap = new Map(complexes.map(c => [c.complex_no, c]));
+    for (const cl of complexLinks) {
+      const cpx = complexMap.get(cl.complex_no);
+      if (!cpx) continue;
+      if (!aptToComplexes.has(cl.apartment_id)) aptToComplexes.set(cl.apartment_id, []);
+      aptToComplexes.get(cl.apartment_id).push(cpx);
     }
+    log(PHASE, `complex_links: ${aptToComplexes.size}개 아파트 매핑`);
   }
 
   // 6. 각 아파트에 대해 layout 추정

@@ -57,7 +57,9 @@ jobs:
           [ "${{ steps.geocode.outcome }}" = "failure" ] && FAILS=$((FAILS+1)) && echo "❌ geocode-missing 실패"
           [ "${{ steps.reverse.outcome }}" = "failure" ] && FAILS=$((FAILS+1)) && echo "❌ reverse-geocode 실패"
           echo "Phase 1: ${FAILS}건 실패"
-          [ $FAILS -gt 0 ] && echo "::warning::Phase 1에서 ${FAILS}건 실패"
+          if [ $FAILS -gt 0 ]; then
+            echo "::warning::Phase 1에서 ${FAILS}건 실패"
+          fi
 
   # ── Phase 2: 순수 계산 (병렬, 외부 API 없음) ──────────────
   phase2-calc:
