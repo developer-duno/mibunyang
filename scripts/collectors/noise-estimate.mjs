@@ -127,10 +127,11 @@ async function main() {
 
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
-    const grouped = { "높음": 0, "보통": 0, "낮음": 0, "매우 낮음": 0 };
-    for (const r of results) grouped[r.noise]++;
+    const grouped = { 70: 0, 60: 0, 50: 0, 40: 0 };
+    const labels = { 70: "높음(70dB)", 60: "보통(60dB)", 50: "낮음(50dB)", 40: "매우낮음(40dB)" };
+    for (const r of results) if (grouped[r.noise] != null) grouped[r.noise]++;
     for (const [k, v] of Object.entries(grouped)) {
-      console.log(`  ${k}: ${v}건`);
+      console.log(`  ${labels[k]}: ${v}건`);
     }
     return;
   }

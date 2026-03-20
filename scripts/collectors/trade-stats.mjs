@@ -89,18 +89,29 @@ async function main() {
   log("load", "데이터 병렬 조회...");
   const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
   const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory] = await Promise.all([
-    fetchAll("apartments", "id,name,region,gu,price,area,naver_jeonse_rate", {}, sbMibunyang),
+    fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate", {}, sbMibunyang),
     fetchAll("prices", "apartment_id,area,price,recorded_at", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang).catch(() => []),
     fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang).catch(() => []),
     fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2,created_at", { is_active: true }, sbMibunyang).catch(() => []),
     fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang).catch(() => []),
-    fetchAll("complex_price_history", "complex_no,trade_type,deal_price_avg,base_month", { trade_type: "A1" }, sbMibunyang)
-      .then(rows => rows.filter(r => r.deal_price_avg != null && r.base_month >= cutoff12mYM))
+    fetchAll("complex_price_history", "complex_no,trade_type,price_avg,base_month", { trade_type: "A1" }, sbMibunyang)
+      .then(rows => rows.filter(r => r.price_avg != null && r.base_month >= cutoff12mYM))
       .catch(() => []),
   ]);
-  const apartments = rawApts;
-  log("load", `아파트 ${apartments.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 지역 ${regions.length}건, 매물 ${naverArticles.length}건, 단지 ${naverComplexes.length}건, 시세이력 ${priceHistory.length}건`)
+  // rawPrices에서 아파트별 최신 가격·면적 매핑 (apartments 테이블에 price/area 컬럼 없음)
+  const latestPriceMap = new Map();
+  for (const p of rawPrices) {
+    const prev = latestPriceMap.get(p.apartment_id);
+    if (!prev || (p.recorded_at && (!prev.recorded_at || p.recorded_at > prev.recorded_at))) {
+      latestPriceMap.set(p.apartment_id, p);
+    }
+  }
+  const apartments = rawApts.map(a => {
+    const lp = latestPriceMap.get(a.id);
+    return { ...a, price: lp?.price ?? null, area: lp?.area ?? null };
+  });
+  log("load", `아파트 ${apartments.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 지역 ${regions.length}건, 매물 ${naverArticles.length}건, 단지 ${naverComplexes.length}건, 시세이력 ${priceHistory.length}건`);
 
   // 2. 인덱스 구축
   // 지역 소득 맵: "region:gu" → avg_income
@@ -137,14 +148,14 @@ async function main() {
     naverByGu.get(key).push(a);
   }
 
-  // 시세 이력 그룹: "region:gu" → deal_price_avg[]
+  // 시세 이력 그룹: "region:gu" → price_avg[]
   const historyByGu = new Map();
   for (const h of priceHistory) {
     const guInfo = complexGuMap.get(h.complex_no);
-    if (!guInfo || h.deal_price_avg == null) continue;
+    if (!guInfo || h.price_avg == null) continue;
     const key = `${guInfo.region}:${guInfo.gu}`;
     if (!historyByGu.has(key)) historyByGu.set(key, []);
-    historyByGu.get(key).push(h.deal_price_avg);
+    historyByGu.get(key).push(h.price_avg);
   }
 
   // 3. 각 아파트별 통계 산출

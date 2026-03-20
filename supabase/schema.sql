@@ -275,11 +275,9 @@ CREATE TABLE IF NOT EXISTS complex_price_history (
   complex_no TEXT NOT NULL REFERENCES complexes(complex_no) ON DELETE CASCADE,
   trade_type TEXT NOT NULL,               -- A1=매매, B1=전세, B2=월세
   area_no TEXT,                           -- 평형 번호
-  deal_price_upper INTEGER,               -- 매매 상한 만원
-  deal_price_lower INTEGER,               -- 매매 하한 만원
-  deal_price_avg INTEGER,                 -- 매매 평균 만원
-  lease_price_upper INTEGER,              -- 전세 상한
-  lease_price_lower INTEGER,              -- 전세 하한
+  price_upper INTEGER,                    -- 매매 상한 만원 (실제 DB 컬럼명)
+  price_lower INTEGER,                    -- 매매 하한 만원
+  price_avg INTEGER,                      -- 매매 평균 만원
   base_month TEXT,                        -- YYYYMM
   recorded_at DATE DEFAULT CURRENT_DATE,
   UNIQUE(complex_no, trade_type, COALESCE(area_no, ''), base_month)
