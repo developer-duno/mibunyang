@@ -255,6 +255,41 @@ describe('sanitize (null → 기본값)', () => {
     expect(d.busStopNames).toBeNull();
   });
 
+  // 신규 필드 5건 (address, roadAddress, district, avgMaintenanceCost, primaryDirection)
+  it('신규 5개 필드가 값 있을 때 정상 통과한다', async () => {
+    const row = {
+      id: 1, name: 'Test', region: '경기',
+      address: '경기도 화성시 동탄면 123',
+      roadAddress: '경기도 화성시 동탄대로 456',
+      district: '동탄2신도시',
+      avgMaintenanceCost: 15000,
+      primaryDirection: '남향',
+    };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.address).toBe('경기도 화성시 동탄면 123');
+    expect(d.roadAddress).toBe('경기도 화성시 동탄대로 456');
+    expect(d.district).toBe('동탄2신도시');
+    expect(d.avgMaintenanceCost).toBe(15000);
+    expect(d.primaryDirection).toBe('남향');
+  });
+
+  // 신규 5개 필드 null → null 기본값
+  it('신규 5개 필드 null → null 반환', async () => {
+    const row = { id: 1, name: 'Test', region: '경기' };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.address).toBeNull();
+    expect(d.roadAddress).toBeNull();
+    expect(d.district).toBeNull();
+    expect(d.avgMaintenanceCost).toBeNull();
+    expect(d.primaryDirection).toBeNull();
+  });
+
   // 네이버 폴백: nearbyMedian이 null이면 naverNearbyMedian 사용
   it('nearbyMedian null 시 naverNearbyMedian으로 폴백한다', async () => {
     const row = { id: 1, name: 'Test', region: '경기', nearbyMedian: null, naverNearbyMedian: 50000 };

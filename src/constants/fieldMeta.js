@@ -25,7 +25,7 @@ export const FIELD_META = {
   address: { label: "지번 주소", section: "개요", fmt: v => v || "—" },
   roadAddress: { label: "도로명 주소", section: "개요", fmt: v => v || "—" },
   district: { label: "개발구역", section: "개요", fmt: v => v || "—" },
-  avgMaintenanceCost: { label: "평균 관리비", section: "개요", unit: "만원/㎡", fmt: v => v != null && v > 0 ? `${v.toLocaleString("ko-KR")}만원` : "미수집" },
+  avgMaintenanceCost: { label: "평균 관리비", section: "개요", unit: "만원", fmt: v => v != null && v > 0 ? `${v.toLocaleString("ko-KR")}만원` : "미수집" },
   primaryDirection: { label: "대표 향", section: "개요", fmt: v => v || "미수집" },
   // ── 섹션2: 가격/시장 ──
   nearbyMedian: { label: "주변 아파트 시세", section: "가격", unit: "만원", fmt: v => v ? nk(v, "만원") : "미수집", isEstimated: (v, apt) => apt?._fallbackNearbyMedian },
