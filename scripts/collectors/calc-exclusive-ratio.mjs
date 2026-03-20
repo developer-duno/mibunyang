@@ -29,13 +29,20 @@ async function main() {
 
   if (!apts.length) { log(PHASE, "대상 없음, 종료"); return; }
 
-  // prices 테이블에서 area, supply_area 조회
+  // prices 테이블에서 area, supply_area 조회 (PostgREST URL ~8KB 제한 대비 150개 단위 청크)
   const aptIds = apts.map(a => a.id);
-  const { data: prices, error: pErr } = await sb
-    .from("prices")
-    .select("apartment_id, area, supply_area")
-    .in("apartment_id", aptIds);
-  if (pErr) throw new Error(`prices 조회 실패: ${pErr.message}`);
+  const CHUNK = 150; // UUID 36자 × 150 ≈ 5.4KB, PostgREST URL 제한 내 안전 마진
+  const prices = [];
+  for (let i = 0; i < aptIds.length; i += CHUNK) {
+    const chunk = aptIds.slice(i, i + CHUNK);
+    const { data, error: pErr } = await sb
+      .from("prices")
+      .select("apartment_id, area, supply_area")
+      .in("apartment_id", chunk);
+    if (pErr) throw new Error(`prices 조회 실패 (chunk ${Math.floor(i / CHUNK) + 1}): ${pErr.message}`);
+    prices.push(...(data || []));
+  }
+  log(PHASE, `prices ${prices.length}건 조회 (${Math.ceil(aptIds.length / CHUNK)} 청크)`);
 
   // 아파트별 최신 가격 레코드
   const priceMap = {};
