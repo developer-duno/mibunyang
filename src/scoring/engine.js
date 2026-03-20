@@ -122,11 +122,11 @@ export function scorePrice(apt) {
     return {
       total: Math.round(Math.min(total, 100)), fairPrice: 0, deviation: "0.0",
       subs: [
-        { name: "적정가 괴리도", score: devSc, info: "데이터 부재" },
-        { name: "전세가율", score: Math.round(jrSc), info: `${apt.jeonseRate}%` },
-        { name: "PIR", score: Math.round(pirSc), info: `${apt.pir}배` },
-        { name: "PSR", score: Math.round(psrSc), info: `${(apt.psr * 100).toFixed(0)}%` },
-        { name: "데이터 신뢰도", score: Math.min(apt.dataReliability, 100), info: `${apt.dataReliability}%` },
+        { name: "적정가 괴리도", score: devSc, info: "데이터 부재", detail: "주변 시세 없음 — 적정가 산출 불가" },
+        { name: "전세가율", score: Math.round(jrSc), info: `${apt.jeonseRate}%`, detail: `${apt.jeonseRate}% (적정 70~80%, 위험 40%↓)` },
+        { name: "PIR", score: Math.round(pirSc), info: `${apt.pir}배`, detail: `${apt.pir}배 (우수 3↓, 양호 5↓, 보통 7↓)` },
+        { name: "PSR", score: Math.round(psrSc), info: `${(apt.psr * 100).toFixed(0)}%`, detail: `${(apt.psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓)` },
+        { name: "데이터 신뢰도", score: Math.min(apt.dataReliability, 100), info: `${apt.dataReliability}%`, detail: `${apt.dataReliability}% (80%↑신뢰, 30%↓추정)` },
       ],
     };
   }
@@ -146,11 +146,11 @@ export function scorePrice(apt) {
   return {
     total: Math.round(Math.min(total, 100)), fairPrice: Math.round(fairPrice), deviation: dev.toFixed(1),
     subs: [
-      { name: "적정가 괴리도", score: Math.round(devSc), info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%` },
-      { name: "전세가율", score: Math.round(jrSc), info: `${jr}%` },
-      { name: "PIR", score: Math.round(pirSc), info: `${apt.pir}배` },
-      { name: "PSR", score: Math.round(psrSc), info: `${(apt.psr * 100).toFixed(0)}%` },
-      { name: "데이터 신뢰도", score: Math.min(apt.dataReliability, 100), info: `${apt.dataReliability}%` },
+      { name: "적정가 괴리도", score: Math.round(devSc), info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`, detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (±5% 적정, ±10~20% 주의, 20%↑ 과대)` },
+      { name: "전세가율", score: Math.round(jrSc), info: `${jr}%`, detail: `${jr}% (적정 70~80%, 위험 40%↓, 과열 90%↑)` },
+      { name: "PIR", score: Math.round(pirSc), info: `${apt.pir}배`, detail: `${apt.pir}배 (우수 3↓, 양호 5↓, 보통 7↓, 부담 7↑)` },
+      { name: "PSR", score: Math.round(psrSc), info: `${(apt.psr * 100).toFixed(0)}%`, detail: `${(apt.psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓, 고평가 100%↑)` },
+      { name: "데이터 신뢰도", score: Math.min(apt.dataReliability, 100), info: `${apt.dataReliability}%`, detail: `${apt.dataReliability}% (80%↑신뢰, 50%↑보통, 30%↓추정)` },
     ],
   };
 }
@@ -198,11 +198,16 @@ export function scoreLocation(apt) {
         apt._noBus ? null : `버스 ${apt.busRoutes}개`,
         apt.icDist < 90 ? `IC ${apt.icDist}km` : null,
         apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km` : null,
+      ].filter(Boolean).join(" · "), detail: [
+        apt.subwayDist > 9000 ? "지하철 없음" : `지하철 ${apt.subwayDist}m${apt.subwayLines ? `(${apt.subwayLines})` : ""} ${apt.subwayDist <= 300 ? "역세권" : apt.subwayDist <= 500 ? "도보권" : apt.subwayDist <= 700 ? "양호" : apt.subwayDist <= 1000 ? "보통" : "원거리"}`,
+        apt._noBus ? "버스 미수집" : `버스 ${apt.busRoutes}개/15`,
+        apt.icDist < 90 ? `IC ${apt.icDist}km ${apt.icDist <= 2 ? "우수" : apt.icDist <= 5 ? "양호" : "보통"}` : "IC 원거리",
+        apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km ${apt.ktxDist <= 5 ? "우수" : apt.ktxDist <= 10 ? "양호" : "보통"}` : null,
       ].filter(Boolean).join(" · ") },
-      { name: "학군", score: Math.round(school), info: apt.schoolGrade },
-      { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy}` },
-      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise && apt._noSunlight ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${apt.sunlight}`}${apt._noNoise ? "" : ` ${apt.noise}dB`}` },
-      { name: "혐오시설", score: Math.round(noxSafe), info: (apt.noxious || []).length ? (apt.noxious || []).join(",") : "없음" },
+      { name: "학군", score: Math.round(school), info: apt.schoolGrade, detail: `${apt.schoolGrade || "미수집"} (A=100, B=80, C=60, D=40점)` },
+      { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy}`, detail: `병원${apt.hospital}/5(1km) 마트${apt.mart}/3(1km) 편의점${apt.conv}/10(500m) 공원${apt.park}/4(1km) 약국${apt.pharmacy}/4(500m)` },
+      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise && apt._noSunlight ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${apt.sunlight}`}${apt._noNoise ? "" : ` ${apt.noise}dB`}`, detail: `조망:${apt.view || "미확인"}(블루40 그린30 천공20점) 일조:${apt.sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${apt.noise}dB`}(50↓우수 60↓양호)` },
+      { name: "혐오시설", score: Math.round(noxSafe), info: (apt.noxious || []).length ? (apt.noxious || []).join(",") : "없음", detail: (apt.noxious || []).length ? `${(apt.noxious || []).join(",")} (500m↑ 감점 반감, 하한 -15점)` : "없음 (감점 0)" },
     ],
   };
 }
@@ -227,15 +232,15 @@ export function scoreProduct(apt) {
   return {
     total,
     subs: [
-      { name: "브랜드", score: brandSc, info: b.tier || "기타" },
-      { name: "세대수", score: unitSc, info: apt.units <= 1 ? "정보 없음 (중립)" : `${(apt.units ?? 0).toLocaleString()}세대` },
-      { name: "주차", score: parkSc, info: apt._noParking ? "정보 없음" : `${apt.parkingRatio}대/세대` },
-      { name: "용적률", score: farSc, info: apt._noFar ? "정보 없음" : `${apt.floorAreaRatio}%` },
-      { name: "에너지", score: energySc, info: apt.energyGrade != null ? `${apt.energyGrade}등급` : "정보 없음" },
-      { name: "전용률", score: exclSc, info: apt._noExcl ? "정보 없음" : `${apt.exclusiveRatio}%` },
-      { name: "평면", score: layoutSc, info: apt.layout || "정보 없음" },
-      { name: "내진", score: quakeSc, info: apt.quakeDesign ? "O" : "정보 없음" },
-      { name: "구조", score: structSc, info: apt._noFloor ? "정보 없음" : `최고 ${apt.maxFloor}층` },
+      { name: "브랜드", score: brandSc, info: b.tier || "기타", detail: `${b.tier || "기타"} (1군 20점, 2군 15점, 3군 10점, 기타 5점)` },
+      { name: "세대수", score: unitSc, info: apt.units <= 1 ? "정보 없음 (중립)" : `${(apt.units ?? 0).toLocaleString()}세대`, detail: apt.units <= 1 ? "미확인 (중립 8점)" : `${(apt.units ?? 0).toLocaleString()}세대 (대단지 1500↑, 중대형 700↑, 중형 400↑)` },
+      { name: "주차", score: parkSc, info: apt._noParking ? "정보 없음" : `${apt.parkingRatio}대/세대`, detail: apt._noParking ? "미수집 (기준: 1.5↑우수, 1.3↑양호, 1.1↑보통)" : `${apt.parkingRatio}대/세대 (우수 1.5↑, 양호 1.3↑, 보통 1.1↑)` },
+      { name: "용적률", score: farSc, info: apt._noFar ? "정보 없음" : `${apt.floorAreaRatio}%`, detail: apt._noFar ? "미수집 (기준: 200%↓쾌적, 250%↓보통)" : `${apt.floorAreaRatio}% (쾌적 200%↓, 보통 250%↓, 밀집 250%↑)` },
+      { name: "에너지", score: energySc, info: apt.energyGrade != null ? `${apt.energyGrade}등급` : "정보 없음", detail: apt.energyGrade != null ? `${apt.energyGrade}등급 (1등급 7점, 2등급 5점, 기본 3점)` : "미수집 (기준: 1등급 최고 7점, 2등급 5점)" },
+      { name: "전용률", score: exclSc, info: apt._noExcl ? "정보 없음" : `${apt.exclusiveRatio}%`, detail: apt._noExcl ? "미수집 (기준: 80%↑우수, 77%↑양호, 74%↑보통)" : `${apt.exclusiveRatio}% (우수 80%↑, 양호 77%↑, 보통 74%↑)` },
+      { name: "평면", score: layoutSc, info: apt.layout || "정보 없음", detail: apt.layout ? `${apt.layout} (판상형>혼합형>타워형)` : "미수집 (판상형>혼합형>타워형)" },
+      { name: "내진", score: quakeSc, info: apt.quakeDesign ? "적용" : "정보 없음", detail: apt.quakeDesign ? "적용 (5점)" : "미적용 또는 미수집 (0점)" },
+      { name: "구조", score: structSc, info: apt._noFloor ? "정보 없음" : `최고 ${apt.maxFloor}층`, detail: apt._noFloor ? "미수집 (기준: 35층↑고층, 25층↑중고층, 15층↑중층)" : `최고 ${apt.maxFloor}층 (고층 35↑, 중고층 25↑, 중층 15↑)` },
     ],
   };
 }
@@ -257,12 +262,12 @@ export function scoreBenefit(apt) {
   return {
     total: sc, totalWon, rate: rate.toFixed(1),
     subs: [
-      { name: "분양가 할인", score: itemScore(discVal), info: discVal > 0 ? `${discVal.toLocaleString()}만` : "-" },
-      { name: "중도금 무이자", score: itemScore(loanVal), info: loanVal > 0 ? `~${loanVal.toLocaleString()}만` : "-" },
-      { name: "옵션 무상", score: itemScore(optVal), info: optVal > 0 ? `${optVal.toLocaleString()}만` : "-" },
-      { name: "발코니 확장", score: itemScore(balVal), info: balVal > 0 ? `${balVal.toLocaleString()}만` : "-" },
-      { name: "캐시백", score: itemScore(cashVal), info: cashVal > 0 ? `${cashVal}만` : "-" },
-      { name: "관리비 절감", score: itemScore(maintSave), info: maintSave > 0 ? `연 ~${maintSave.toLocaleString()}만` : "-" },
+      { name: "분양가 할인", score: itemScore(discVal), info: discVal > 0 ? `${discVal.toLocaleString()}만` : "-", detail: discVal > 0 ? `${discVal.toLocaleString()}만원 (분양가의 ${apt.discountPct}% 할인)` : "할인 없음" },
+      { name: "중도금 무이자", score: itemScore(loanVal), info: loanVal > 0 ? `~${loanVal.toLocaleString()}만` : "-", detail: loanVal > 0 ? `~${loanVal.toLocaleString()}만원 (무이자율 ${apt.loanFreePct}% × 금리 4.5% × 1.5년)` : "무이자 없음" },
+      { name: "옵션 무상", score: itemScore(optVal), info: optVal > 0 ? `${optVal.toLocaleString()}만` : "-", detail: optVal > 0 ? `${optVal.toLocaleString()}만원 (주방/바닥재/조명 등)` : "옵션 무상 없음" },
+      { name: "발코니 확장", score: itemScore(balVal), info: balVal > 0 ? `${balVal.toLocaleString()}만` : "-", detail: balVal > 0 ? `${balVal.toLocaleString()}만원 (발코니 개방/확장 비용)` : "발코니 무상 없음" },
+      { name: "캐시백", score: itemScore(cashVal), info: cashVal > 0 ? `${cashVal}만` : "-", detail: cashVal > 0 ? `${cashVal}만원 (계약 시 현금 지급)` : "캐시백 없음" },
+      { name: "관리비 절감", score: itemScore(maintSave), info: maintSave > 0 ? `연 ~${maintSave.toLocaleString()}만` : "-", detail: maintSave > 0 ? `연 ~${maintSave.toLocaleString()}만원 (지역 평균 대비 절감액 × 면적 × 12개월)` : "관리비 비교 불가" },
     ],
   };
 }
@@ -287,13 +292,13 @@ export function scoreRisk(apt) {
   return {
     total: safety, riskRaw: Math.round(risk),
     subs: [
-      { name: "미분양률", score: 100 - unsoldSc, info: apt.units <= 1 ? "세대수 미확인 (중립)" : `${apt.unsoldRate}%` },
-      { name: "거래량", score: 100 - liqSc, info: `6개월 ${apt.recentTrades6m}건` },
-      { name: "대출/잔금", score: 100 - loanSc, info: apt.dsr40pass ? "DSR통과" : "주의" },
-      { name: "시공사 재무", score: 100 - Math.round(finSc), info: apt.builderCreditGrade || "정보 없음" },
-      { name: "규제", score: 100 - regSc, info: zone !== "normal" ? "규제지역" : "비규제" },
-      { name: "공급량", score: 100 - supSc, info: `${apt.supplyRatio}%` },
-      { name: "시장환경", score: 100 - mktSc, info: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` : "정보 없음" },
+      { name: "미분양률", score: 100 - unsoldSc, info: apt.units <= 1 ? "세대수 미확인 (중립)" : `${apt.unsoldRate}%`, detail: apt.units <= 1 ? "세대수 미확인 (중립 40점)" : `${apt.unsoldRate}% (안전 5%↓, 주의 15~30%, 위험 50%↑)` },
+      { name: "거래량", score: 100 - liqSc, info: `6개월 ${apt.recentTrades6m}건`, detail: `6개월 ${apt.recentTrades6m}건 (활발 30↑, 보통 15↑, 부진 5↓)` },
+      { name: "대출/잔금", score: 100 - loanSc, info: apt.dsr40pass ? "DSR통과" : "주의", detail: apt.dsr40pass ? "DSR 40% 통과 (자금조달 양호)" : "DSR 미통과 (대출 곤란 주의)" },
+      { name: "시공사 재무", score: 100 - Math.round(finSc), info: apt.builderCreditGrade || "정보 없음", detail: `${apt.builderCreditGrade || "미확인"} (AA↑안전, A보통, BBB↓주의, 부채율 ${apt.builderDebtRatio}%)` },
+      { name: "규제", score: 100 - regSc, info: zone !== "normal" ? "규제지역" : "비규제", detail: zone !== "normal" ? "규제지역 (매매·대출 제약)" : "비규제 (거래 자유)" },
+      { name: "공급량", score: 100 - supSc, info: `${apt.supplyRatio}%`, detail: `${apt.supplyRatio}% (부족 50%↓, 적정 100%↓, 과잉 130%↑)` },
+      { name: "시장환경", score: 100 - mktSc, info: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` : "정보 없음", detail: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}% (성장 +1%↑, 안정 0%↑, 감소 -0.8%↓)` : "인구 데이터 없음 (중립 35점)" },
     ],
   };
 }
@@ -341,10 +346,10 @@ export function scoreFuture(apt) {
   return {
     total: Math.round(Math.min(total, 100)),
     subs: [
-      { name: "교통개발", score: Math.round(trSc), info: apt.transitDev || "없음" },
-      { name: "도시개발", score: Math.round(citySc), info: apt.cityDev || "없음" },
-      { name: "인구", score: Math.round(popSc), info: pg != null ? `${pg > 0 ? "+" : ""}${pg}%` : "정보 없음" },
-      { name: "산업개발", score: Math.round(indSc), info: hasInd ? (Array.isArray(indDev) ? indDev.join(", ") : String(indDev)) : "없음" },
+      { name: "교통개발", score: Math.round(trSc), info: apt.transitDev || "없음", detail: apt.transitDev ? `${apt.transitDev} (GTX/KTX역 ×1.2배, 1km내 100점, 2km 70점)` : "교통개발 없음 (0점)" },
+      { name: "도시개발", score: Math.round(citySc), info: apt.cityDev || "없음", detail: apt.cityDev ? `${apt.cityDev} (신도시/테크노 80점, 재생/특구 50점, 기타 30점)` : "도시개발 없음 (0점)" },
+      { name: "인구", score: Math.round(popSc), info: pg != null ? `${pg > 0 ? "+" : ""}${pg}%` : "정보 없음", detail: pg != null ? `${pg > 0 ? "+" : ""}${pg}% (성장 +1%↑=95점, 안정 0%↑=65점, 감소 -2%↓=10점)` : "데이터 없음 (기본 35점)" },
+      { name: "산업개발", score: Math.round(indSc), info: hasInd ? (Array.isArray(indDev) ? indDev.join(", ") : String(indDev)) : "없음", detail: hasInd ? `${Array.isArray(indDev) ? indDev.join(", ") : String(indDev)} (국가산단 80점, 산업단지 55점, 기타 35점)` : "산업개발 없음 (0점)" },
     ],
   };
 }

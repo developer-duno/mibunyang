@@ -45,18 +45,18 @@ export const ExpertScoreBreakdown = memo(function ExpertScoreBreakdown({ apt, re
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
-                <tr style={{ borderBottom: `2px solid ${catCol[k]}30` }}>
-                  <th style={{ textAlign: "left", padding: "6px 4px", color: C.muted, fontWeight: 600 }}>서브항목</th>
-                  <th style={{ textAlign: "center", padding: "6px 4px", color: C.muted, fontWeight: 600 }}>정보</th>
-                  <th style={{ textAlign: "right", padding: "6px 4px", color: C.muted, fontWeight: 600 }}>점수</th>
+                <tr style={{ borderBottom: `2px solid ${catCol[k]}` }}>
+                  <th style={{ textAlign: "left", padding: "8px 6px", color: C.text, fontWeight: 700 }}>서브항목</th>
+                  <th style={{ textAlign: "center", padding: "8px 6px", color: C.text, fontWeight: 700 }}>정보 · 기준</th>
+                  <th style={{ textAlign: "right", padding: "8px 6px", color: C.text, fontWeight: 700 }}>점수</th>
                 </tr>
               </thead>
               <tbody>
                 {(cat.subs || []).map((sub, si) => (
-                  <tr key={si} style={{ borderBottom: `1px solid ${C.bg}` }}>
-                    <td style={{ padding: "5px 4px", color: C.sub }}>{sub.name}</td>
-                    <td style={{ padding: "5px 4px", textAlign: "center", color: C.muted, fontSize: 10 }}>{sub.info}</td>
-                    <td style={{ padding: "5px 4px", textAlign: "right", fontWeight: 700, color: catCol[k] }}>{sub.score}</td>
+                  <tr key={si} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "8px 6px", color: C.sub, fontWeight: 600, whiteSpace: "nowrap" }}>{sub.name}</td>
+                    <td style={{ padding: "8px 6px", textAlign: "left", color: C.sub, fontSize: 11, wordBreak: "break-word", lineHeight: 1.5 }}>{sub.detail || sub.info}</td>
+                    <td style={{ padding: "8px 6px", textAlign: "right", fontWeight: 700, color: sub.score >= 70 ? C.green : sub.score >= 40 ? catCol[k] : C.red, whiteSpace: "nowrap" }}>{sub.score}</td>
                   </tr>
                 ))}
               </tbody>

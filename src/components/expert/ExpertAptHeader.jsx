@@ -16,7 +16,15 @@ export const ExpertAptHeader = memo(function ExpertAptHeader({ apt, res }) {
           <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{apt.name}</div>
           <div style={{ fontSize: 13, color: C.sub, marginBottom: 8 }}>{apt.region} {apt.gu} {apt.dong ?? ""} · 도시등급 {cityLabel}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            {[`${apt.area ?? ""}㎡`, fmtPrice(apt.price), `${apt.builder ?? ""}${b ? ` (${b.tier})` : ""}`, apt.completion ? fmtCompletion(apt.completion) : null].filter(Boolean).map((tag, i) => (
+            {[
+              `${apt.area ?? ""}㎡`,
+              fmtPrice(apt.price),
+              apt.pp > 0 ? `평당 ${apt.pp.toLocaleString("ko-KR")}만` : null,
+              `${apt.builder ?? ""}${b ? ` (${b.tier})` : ""}`,
+              apt.completion ? fmtCompletion(apt.completion) : null,
+              apt.units > 1 ? `${apt.units.toLocaleString()}세대${apt.unsold > 0 ? ` (미분양 ${apt.unsold})` : ""}` : null,
+              apt.discountPct > 0 ? `할인 ${apt.discountPct}%` : null,
+            ].filter(Boolean).map((tag, i) => (
               <span key={i} style={{ padding: "4px 10px", background: C.bg, borderRadius: 4, fontSize: 11, color: C.sub, fontWeight: 600 }}>{tag}</span>
             ))}
           </div>
