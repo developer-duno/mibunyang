@@ -361,7 +361,7 @@ async function main() {
   // 3-a. complex_price_history 조회 (최근 데이터)
   const { data: priceRows, error: prErr } = await sbMibunyang
     .from("complex_price_history")
-    .select("complex_no, trade_type, deal_price_avg")
+    .select("complex_no, trade_type, price_avg")
     .range(0, 99999);
 
   if (prErr) logError(PHASE, `price_history 조회 실패: ${prErr.message}`);
@@ -370,10 +370,10 @@ async function main() {
   const priceByComplex = {};
   if (priceRows) {
     for (const r of priceRows) {
-      if (!r.deal_price_avg || r.deal_price_avg <= 0) continue;
+      if (!r.price_avg || r.price_avg <= 0) continue;
       if (!priceByComplex[r.complex_no]) priceByComplex[r.complex_no] = { A1: [], B1: [] };
-      if (r.trade_type === "A1") priceByComplex[r.complex_no].A1.push(r.deal_price_avg);
-      else if (r.trade_type === "B1") priceByComplex[r.complex_no].B1.push(r.deal_price_avg);
+      if (r.trade_type === "A1") priceByComplex[r.complex_no].A1.push(r.price_avg);
+      else if (r.trade_type === "B1") priceByComplex[r.complex_no].B1.push(r.price_avg);
     }
   }
   log(PHASE, `시세 데이터: ${Object.keys(priceByComplex).length}개 단지`);
