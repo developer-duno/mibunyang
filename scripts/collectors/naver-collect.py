@@ -53,6 +53,7 @@ JPAT=r'"token":"(eyJ[A-Za-z0-9._-]+)"'
 M2P=3.3058
 ss=None  # main()에서 proxy 포함 초기화
 _jt=None;_jtt=0;_lr=0
+COMPLEX_DETAILS={}  # ejwt()에서 파싱한 단지 상세 캐시
 REGION_CORTAR={
     "서울":"1100000000","경기":"4100000000","인천":"2800000000",
     "부산":"2600000000","대전":"3000000000","대구":"2700000000",
@@ -77,6 +78,18 @@ def ejwt(cid=None):
     if not m:raise RuntimeError("JWT fail")
     _jt=m.group(1);_jtt=time.time()
     log(f"JWT ({_jt[:20]}...)")
+    # 단지 상세 추출 (같은 HTML에서, 추가 API 호출 없음)
+    if cid:
+        try:
+            dm=re.search(r'"complexDetail"\s*:\s*(\{[^}]+\})',r.text)
+            if dm:
+                d=json.loads(dm.group(1))
+                COMPLEX_DETAILS[str(cid)]={
+                    "earthquake_design":d.get("earthquakeDesignApplied"),
+                    "entrance_type":d.get("entranceTypeName"),
+                    "heat_method":d.get("heatMethodTypeName"),
+                }
+        except:pass
     return _jt
 
 def ag(url,params=None,cid=None):
@@ -278,6 +291,17 @@ def main():
                 tp+=ub("complex_price_history",rows,"complex_no,trade_type,area_no,base_month")
         except Exception as e:log(f"  {cn}:{e}")
     log(f"시세 {tp}건")
+    # 단지 상세 정보 (ejwt에서 수집) → complexes UPDATE
+    if COMPLEX_DETAILS and not a.dry_run:
+        du=0
+        for cn,det in COMPLEX_DETAILS.items():
+            row={k:v for k,v in det.items() if v is not None}
+            if not row:continue
+            try:sb.update("complexes",row,[f"complex_no=eq.{cn}"]);du+=1
+            except:pass
+        log(f"상세 {du}/{len(COMPLEX_DETAILS)}건")
+    elif COMPLEX_DETAILS:
+        log(f"[DRY-RUN] 상세 {len(COMPLEX_DETAILS)}건 수집됨")
     log("완료!")
 
 if __name__=="__main__":
