@@ -14,7 +14,11 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, stringSimilarity, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+import {
+  SIDO_CODE, API_DETAIL_BASE, MIN_SIMILARITY, REQUEST_DELAY,
+  molitApiCall, fetchSidoAptList, findBestMatch,
+} from "./_molit-api.mjs";
 
 loadEnv();
 
@@ -23,55 +27,6 @@ const API_KEY = process.env.MOLIT_KEY;
 if (!API_KEY) {
   logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
   process.exit(1);
-}
-
-const API_LIST_BASE = "https://apis.data.go.kr/1613000/AptListService3";
-const API_DETAIL_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoServiceV4";
-const MIN_SIMILARITY = 0.5; // 이름 유사도 최소 기준
-const REQUEST_DELAY = 400;  // ms — API 레이트리밋 방지
-
-// 시도 약칭 → 시도 코드 (법정동 코드 앞 2자리)
-const SIDO_CODE = {
-  "서울": "11", "부산": "26", "대구": "27", "인천": "28",
-  "광주": "29", "대전": "30", "울산": "31", "세종": "36",
-  "경기": "41", "강원": "42", "충북": "43", "충남": "44",
-  "전북": "45", "전남": "46", "경북": "47", "경남": "48", "제주": "50",
-};
-
-// ── API 호출 (재시도 포함) ───────────────────────────────────
-async function apiCall(baseUrl, endpoint, params) {
-  const qs = new URLSearchParams({ serviceKey: API_KEY, type: "json", ...params });
-  const url = `${baseUrl}/${endpoint}?${qs}`;
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-      if (res.status === 429) {
-        await sleep((attempt + 1) * 2000);
-        continue;
-      }
-      if (res.status === 500 || res.status === 503) {
-        log(PHASE, `  API ${res.status} (시도 ${attempt + 1}/3)`);
-        await sleep((attempt + 1) * 1000);
-        continue;
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const text = await res.text();
-      // data.go.kr sometimes returns XML error even with type=json
-      if (text.startsWith("<?xml") || text.startsWith("<")) {
-        if (text.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
-          throw new Error("API 키 미등록 — data.go.kr에서 공동주택 기본정보 서비스 신청 필요");
-        }
-        throw new Error(`XML 응답: ${text.slice(0, 200)}`);
-      }
-
-      return JSON.parse(text);
-    } catch (err) {
-      if (attempt === 2) throw err;
-      await sleep((attempt + 1) * 1000);
-    }
-  }
 }
 
 // ── 1. Supabase에서 보정 대상 조회 ──────────────────────────
@@ -85,71 +40,14 @@ async function getTargets(sb) {
   return data ?? [];
 }
 
-// ── 2. 시도별 단지 목록 조회 (V3: AptListService3) ────────────
-async function fetchAptList(sidoCode) {
-  const allItems = [];
-  let pageNo = 1;
-
-  while (true) {
-    const params = { numOfRows: "500", pageNo: String(pageNo), sidoCode };
-    const json = await apiCall(API_LIST_BASE, "getSidoAptList3", params);
-    const body = json?.response?.body;
-    if (!body || body.totalCount === 0) break;
-
-    // V3: body.items가 바로 배열 (V1에서는 body.items.item이었음)
-    const rawItems = Array.isArray(body.items) ? body.items : body.items?.item;
-    if (!rawItems) break;
-    const page = Array.isArray(rawItems) ? rawItems : [rawItems];
-    allItems.push(...page);
-
-    const totalCount = parseInt(body.totalCount, 10) || 0;
-    if (allItems.length >= totalCount || page.length < 500) break;
-
-    pageNo++;
-    await sleep(REQUEST_DELAY);
-  }
-
-  return allItems;
-}
-
-// ── 3. 단지 기본 조회 (V4: getAphusBassInfoV4) ──────────────
+// ── 2. 단지 기본 조회 (V4: getAphusBassInfoV4) ──────────────
 async function fetchAptDetail(kaptCode) {
-  const json = await apiCall(API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode });
+  const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY);
   const body = json?.response?.body;
   return body?.item ?? body?.items?.item ?? null;
 }
 
-// ── 4. 이름 매칭 ────────────────────────────────────────────
-function cleanName(name) {
-  // 괄호 내용 제거, 공백 정리
-  return (name || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
-}
-
-function findBestMatch(targetName, targetGu, aptList) {
-  const cleaned = cleanName(targetName);
-  let best = null;
-  let bestScore = 0;
-
-  for (const apt of aptList) {
-    const kaptName = apt.kaptName || apt.as3 || "";
-    let score = stringSimilarity(cleaned, cleanName(kaptName));
-
-    // 주소에 구 이름이 포함되면 보너스
-    if (targetGu) {
-      const addr = (apt.as1 || "") + (apt.as2 || "") + (apt.as3 || "");
-      if (addr.includes(targetGu)) score += 0.15;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = { ...apt, matchScore: Math.round(score * 100) / 100 };
-    }
-  }
-
-  return bestScore >= MIN_SIMILARITY ? best : null;
-}
-
-// ── 5. 보정 적용 ────────────────────────────────────────────
+// ── 3. 보정 적용 ────────────────────────────────────────────
 async function updateUnits(sb, aptId, newUnits, unsold, dryRun) {
   const unsoldRate = newUnits > 0 && unsold != null
     ? Math.round((unsold / newUnits) * 1000) / 10
@@ -215,7 +113,7 @@ async function main() {
 
     let aptList;
     try {
-      aptList = await fetchAptList(group.sidoCode);
+      aptList = await fetchSidoAptList(PHASE, group.sidoCode, API_KEY);
       log(PHASE, `  API 단지 목록: ${aptList.length}건`);
     } catch (err) {
       logError(PHASE, `  API 조회 실패: ${err.message}`);
@@ -235,7 +133,9 @@ async function main() {
       log(PHASE, `  [${target.id}] ${target.name}`);
 
       // 이름 매칭
-      const match = findBestMatch(target.name, target.gu, aptList);
+      const match = findBestMatch(target.name, target.gu, aptList, {
+        guField: "address", guBonus: 0.15, attachScore: true,
+      });
       if (!match) {
         log(PHASE, `    → 매칭 실패 (유사도 < ${MIN_SIMILARITY})`);
         failed++;

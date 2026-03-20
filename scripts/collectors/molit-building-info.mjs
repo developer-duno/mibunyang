@@ -14,7 +14,11 @@
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, stringSimilarity, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+import {
+  SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
+  molitApiCall, fetchSidoAptList, findBestMatch,
+} from "./_molit-api.mjs";
 
 loadEnv();
 
@@ -25,111 +29,22 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const API_LIST_BASE = "https://apis.data.go.kr/1613000/AptListService3";
-const API_DETAIL_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoServiceV4";
-const MIN_SIMILARITY = 0.5;
-const REQUEST_DELAY = 400;
-
-// 시도 약칭 → 시도 코드 (법정동 코드 앞 2자리)
-const SIDO_CODE = {
-  "서울": "11", "부산": "26", "대구": "27", "인천": "28",
-  "광주": "29", "대전": "30", "울산": "31", "세종": "36",
-  "경기": "41", "강원": "42", "충북": "43", "충남": "44",
-  "전북": "45", "전남": "46", "경북": "47", "경남": "48", "제주": "50",
-};
-
-// ── API 호출 ────────────────────────────────────────────────
-async function apiCall(baseUrl, endpoint, params) {
-  const qs = new URLSearchParams({ serviceKey: API_KEY, type: "json", ...params });
-  const url = `${baseUrl}/${endpoint}?${qs}`;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-      if (res.status === 429) { await sleep((attempt + 1) * 2000); continue; }
-      if (res.status === 500 || res.status === 503) {
-        log(PHASE, `  API ${res.status} (시도 ${attempt + 1}/3)`);
-        await sleep((attempt + 1) * 1000);
-        continue;
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      if (text.startsWith("<?xml") || text.startsWith("<")) {
-        if (text.includes("SERVICE_KEY_IS_NOT_REGISTERED"))
-          throw new Error("API 키 미등록 — data.go.kr에서 서비스 신청 필요");
-        throw new Error(`XML 응답: ${text.slice(0, 200)}`);
-      }
-      return JSON.parse(text);
-    } catch (err) {
-      if (attempt === 2) throw err;
-      await sleep((attempt + 1) * 1000);
-    }
-  }
-}
-
-// ── 단지 목록 조회 (V3: AptListService3 — 페이지네이션) ──────
-async function fetchAptList(sidoCode) {
-  const allItems = [];
-  let pageNo = 1;
-
-  while (true) {
-    const params = { numOfRows: "500", pageNo: String(pageNo), sidoCode };
-    const json = await apiCall(API_LIST_BASE, "getSidoAptList3", params);
-    const body = json?.response?.body;
-    if (!body || body.totalCount === 0) break;
-
-    // V3: body.items가 바로 배열 (V1에서는 body.items.item이었음)
-    const rawItems = Array.isArray(body.items) ? body.items : body.items?.item;
-    if (!rawItems) break;
-    const page = Array.isArray(rawItems) ? rawItems : [rawItems];
-    allItems.push(...page);
-
-    const totalCount = parseInt(body.totalCount, 10) || 0;
-    if (allItems.length >= totalCount || page.length < 500) break;
-
-    pageNo++;
-    await sleep(REQUEST_DELAY);
-  }
-
-  return allItems;
-}
-
 // ── 단지 기본+상세 조회 (V4: 두 엔드포인트 병합) ─────────────
 async function fetchAptDetail(kaptCode) {
   // 기본 정보 (세대수, 최고층 등)
-  const bassJson = await apiCall(API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode });
+  const bassJson = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY);
   const bassBody = bassJson?.response?.body;
   const bass = bassBody?.item ?? bassBody?.items?.item ?? null;
 
   await sleep(REQUEST_DELAY);
 
   // 상세 정보 (주차, 에너지, 구조 등)
-  const dtlJson = await apiCall(API_DETAIL_BASE, "getAphusDtlInfoV4", { kaptCode });
+  const dtlJson = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusDtlInfoV4", { kaptCode }, API_KEY);
   const dtlBody = dtlJson?.response?.body;
   const dtl = dtlBody?.item ?? dtlBody?.items?.item ?? null;
 
   if (!bass && !dtl) return null;
   return { ...bass, ...dtl }; // 두 응답 병합
-}
-
-// ── 이름 매칭 ───────────────────────────────────────────────
-function cleanName(name) {
-  return (name || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
-}
-
-function findBestMatch(targetName, targetGu, aptList) {
-  const cleaned = cleanName(targetName);
-  let best = null;
-  let bestScore = 0;
-  for (const apt of aptList) {
-    const kaptName = apt.kaptName || apt.as3 || "";
-    let score = stringSimilarity(cleaned, cleanName(kaptName));
-    if (targetGu && kaptName.includes(targetGu)) score += 0.1;
-    if (score > bestScore && score >= MIN_SIMILARITY) {
-      bestScore = score;
-      best = apt;
-    }
-  }
-  return best;
 }
 
 // ── 상세 필드 추출 (V4 응답 기준) ────────────────────────────
@@ -215,8 +130,9 @@ async function main() {
     query = query.or("energy_grade.is.null,parking_ratio.is.null,max_floor.is.null,quake_design.is.null");
   }
 
-  const { data: targets, error } = await query;
+  const { data, error } = await query;
   if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  const targets = data ?? [];
   log(PHASE, `대상: ${targets.length}건 ${force ? "(전체 재수집)" : "(상품성 필드 null 포함)"}`);
 
   if (!targets.length) { log(PHASE, "대상 없음, 종료"); return; }
@@ -240,7 +156,7 @@ async function main() {
 
     let aptList;
     try {
-      aptList = await fetchAptList(sidoCode);
+      aptList = await fetchSidoAptList(PHASE, sidoCode, API_KEY);
       await sleep(REQUEST_DELAY);
     } catch (err) {
       logError(PHASE, `  목록 조회 실패: ${err.message}`);
@@ -257,7 +173,9 @@ async function main() {
     log(PHASE, `  API 목록: ${aptList.length}건`);
 
     for (const target of regionTargets) {
-      const match = findBestMatch(target.name, target.gu, aptList);
+      const match = findBestMatch(target.name, target.gu, aptList, {
+        guField: "kaptName", guBonus: 0.1, attachScore: false,
+      });
       if (!match) {
         skipped++;
         continue;
