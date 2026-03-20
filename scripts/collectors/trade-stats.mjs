@@ -87,16 +87,20 @@ async function main() {
   const sbMibunyang = getMibuyangSupabase();
 
   log("load", "데이터 병렬 조회...");
-  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes] = await Promise.all([
-    fetchAll("apartments", "id,name,region,gu", {}, sbMibunyang),
+  const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
+  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory] = await Promise.all([
+    fetchAll("apartments", "id,name,region,gu,price,area,naver_jeonse_rate", {}, sbMibunyang),
     fetchAll("prices", "apartment_id,area,price,recorded_at", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang).catch(() => []),
     fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang).catch(() => []),
     fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2,created_at", { is_active: true }, sbMibunyang).catch(() => []),
     fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang).catch(() => []),
+    fetchAll("complex_price_history", "complex_no,trade_type,deal_price_avg,base_month", { trade_type: "A1" }, sbMibunyang)
+      .then(rows => rows.filter(r => r.deal_price_avg != null && r.base_month >= cutoff12mYM))
+      .catch(() => []),
   ]);
   const apartments = rawApts;
-  log("load", `아파트 ${apartments.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 지역 ${regions.length}건, 매물 ${naverArticles.length}건, 단지 ${naverComplexes.length}건`)
+  log("load", `아파트 ${apartments.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 지역 ${regions.length}건, 매물 ${naverArticles.length}건, 단지 ${naverComplexes.length}건, 시세이력 ${priceHistory.length}건`)
 
   // 2. 인덱스 구축
   // 지역 소득 맵: "region:gu" → avg_income
@@ -133,6 +137,16 @@ async function main() {
     naverByGu.get(key).push(a);
   }
 
+  // 시세 이력 그룹: "region:gu" → deal_price_avg[]
+  const historyByGu = new Map();
+  for (const h of priceHistory) {
+    const guInfo = complexGuMap.get(h.complex_no);
+    if (!guInfo || h.deal_price_avg == null) continue;
+    const key = `${guInfo.region}:${guInfo.gu}`;
+    if (!historyByGu.has(key)) historyByGu.set(key, []);
+    historyByGu.get(key).push(h.deal_price_avg);
+  }
+
   // 3. 각 아파트별 통계 산출
   log("calc", "아파트별 거래 통계 계산...");
   const results = [];
@@ -148,15 +162,18 @@ async function main() {
 
     // ── nearby_median (인근 시세 중위값) ───────────────────────
     let nearbyMedian = null;
+    let medianSource = null;
     const guTrades = tradesByGu.get(key) || [];
     const recent12m = guTrades.filter(
       (t) => t.deal_month >= cutoff12m && (t.trade_type === "매매" || !t.trade_type)
     );
 
+    // 1단계: 실거래 데이터 (매매 3건+)
     if (recent12m.length >= 3) {
       nearbyMedian = median(recent12m.map((t) => t.price));
+      medianSource = "trades";
     } else {
-      // trades 부족 시 articles 대체
+      // 2단계: 네이버 매물 호가 (articles)
       const guNaver = naverByGu.get(key) || [];
       const naverSale = guNaver.filter(
         (a) =>
@@ -166,6 +183,16 @@ async function main() {
       );
       if (naverSale.length >= 1) {
         nearbyMedian = median(naverSale.map((a) => a.numeric_price));
+        medianSource = "articles";
+      }
+    }
+
+    // 3단계: 네이버 시세 이력 (complex_price_history)
+    if (nearbyMedian == null) {
+      const guHistory = historyByGu.get(key) || [];
+      if (guHistory.length >= 1) {
+        nearbyMedian = median(guHistory);
+        medianSource = "history";
       }
     }
 
@@ -204,6 +231,11 @@ async function main() {
           jeonseRate = Math.round((jMedian / sMedian) * 1000) / 10;
         }
       }
+    }
+
+    // 네이버 전세가율 fallback
+    if (jeonseRate == null && apt.naver_jeonse_rate != null) {
+      jeonseRate = apt.naver_jeonse_rate;
     }
 
     // ── pir (Price to Income Ratio, 연) ──────────────────────
@@ -347,6 +379,7 @@ async function main() {
     results.push({
       apartment_id: apt.id,
       nearby_median: nearbyMedian,
+      _medianSource: medianSource,
       recent_trades_6m: recentTrades6m,
       jeonse_rate: jeonseRate,
       pir,
@@ -380,7 +413,10 @@ async function main() {
   const withJeonse = results.filter((r) => r.jeonse_rate != null);
   const withTrades = results.filter((r) => r.recent_trades_6m != null);
 
-  log("summary", `nearby_median: ${withMedian.length}건`);
+  const fromTrades = results.filter(r => r._medianSource === "trades").length;
+  const fromArticles = results.filter(r => r._medianSource === "articles").length;
+  const fromHistory = results.filter(r => r._medianSource === "history").length;
+  log("summary", `nearby_median: ${withMedian.length}건 (실거래 ${fromTrades}, 매물 ${fromArticles}, 시세이력 ${fromHistory})`);
   log("summary", `pir: ${withPir.length}건 (평균 ${withPir.length ? (withPir.reduce((s, r) => s + r.pir, 0) / withPir.length).toFixed(1) : "N/A"}년)`);
   log("summary", `psr: ${withPsr.length}건 (평균 ${withPsr.length ? (withPsr.reduce((s, r) => s + r.psr, 0) / withPsr.length).toFixed(2) : "N/A"})`);
   log("summary", `jeonse_rate: ${withJeonse.length}건 (평균 ${withJeonse.length ? (withJeonse.reduce((s, r) => s + r.jeonse_rate, 0) / withJeonse.length).toFixed(1) : "N/A"}%)`);
@@ -419,7 +455,7 @@ async function main() {
   let upserted = 0;
 
   for (let i = 0; i < results.length; i += BATCH) {
-    const batch = results.slice(i, i + BATCH);
+    const batch = results.slice(i, i + BATCH).map(({ _medianSource, ...row }) => row);
     const { error } = await sbMibunyang2
       .from("trade_stats")
       .upsert(batch, { onConflict: "apartment_id", ignoreDuplicates: false });
