@@ -222,13 +222,12 @@ async function main() {
         }
       }
 
-      // 조망: building_name 키워드 추출
+      // 조망: building_name 키워드 → VIEW_SCORES 키 ("블루"/"그린") 매칭
       if (apt.view == null || apt.view === "") {
         const names = (articlesByComplex[cpx.complex_no] || [])
           .map(a => a.building_name).filter(Boolean).join(" ");
-        if (/한강|낙동강|강변|리버/.test(names)) row.view = "리버뷰";
-        else if (/산|봉|마운틴/.test(names)) row.view = "마운틴뷰";
-        else if (/공원|파크/.test(names)) row.view = "공원조망";
+        if (/한강|낙동강|강변|리버|바다|해변|호수/.test(names)) row.view = "블루";
+        else if (/산|봉|마운틴|공원|파크|숲/.test(names)) row.view = "그린";
       }
 
       // 일조: 남향 비율 기반 추정
