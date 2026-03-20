@@ -18,7 +18,6 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const [regionFilter, setRegionFilter] = useState("전체");
   const [sort, setSort] = useState("total");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -41,7 +40,6 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
 
   const handleSelect = (id) => {
     setExpandedApt(id);
-    setSearchOpen(false);
     setSidebarOpen(false);
   };
 
@@ -63,8 +61,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
       }}>
         <ExpertSidebar scored={scored} selectedId={selectedId} onSelect={handleSelect}
           search={search} setSearch={setSearch} regionFilter={regionFilter} setRegionFilter={setRegionFilter}
-          sort={sort} setSort={setSort} isMobile={isMobile} onClose={() => setSidebarOpen(false)}
-          searchOpen={searchOpen} setSearchOpen={setSearchOpen} />
+          sort={sort} setSort={setSort} isMobile={isMobile} onClose={() => setSidebarOpen(false)} />
       </div>
 
       <div data-print-content style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 14px" : "16px 20px" }}>

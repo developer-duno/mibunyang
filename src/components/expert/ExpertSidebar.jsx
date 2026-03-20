@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, gr } from "@/theme";
 
-export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort, isMobile, onClose, searchOpen, setSearchOpen }) {
+export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort, isMobile, onClose }) {
   const regions = useMemo(() => ["전체", ...new Set(scored.map(x => x.apt.region).filter(Boolean))], [scored]);
   const filtered = useMemo(() => {
     let list = scored;
@@ -26,21 +26,7 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
           }}>&times;</button>
         </div>
       )}
-      <button onClick={() => setSearchOpen(v => !v)} aria-expanded={searchOpen} style={{
-        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "10px 12px", background: searchOpen ? C.indigoLight : C.slate100,
-        border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", transition: "background .15s"
-      }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: search ? C.indigo : C.text }}>
-          {search ? `검색: "${search}"` : "단지 검색"}
-          {(regionFilter !== "전체") && ` · ${regionFilter}`}
-        </span>
-        <span style={{ fontSize: 10, color: C.muted, transition: "transform .2s", transform: searchOpen ? "rotate(180deg)" : "none" }}>▾</span>
-      </button>
-      <div style={{
-        maxHeight: searchOpen ? 100 : 0, overflow: "hidden",
-        transition: "max-height .25s ease", borderBottom: searchOpen ? `1px solid ${C.border}` : "none"
-      }}>
+      <div style={{ borderBottom: `1px solid ${C.border}` }}>
         <div style={{ padding: "8px 12px 4px" }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="단지명/지역 검색..." aria-label="단지 검색"
             style={{ width: "100%", padding: "8px 10px", fontSize: 12, border: `1px solid ${C.border}`, borderRadius: 6, outline: "none", boxSizing: "border-box" }} />

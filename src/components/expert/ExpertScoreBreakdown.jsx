@@ -47,7 +47,7 @@ export const ExpertScoreBreakdown = memo(function ExpertScoreBreakdown({ apt, re
               <thead>
                 <tr style={{ borderBottom: `2px solid ${catCol[k]}` }}>
                   <th style={{ textAlign: "left", padding: "8px 6px", color: C.text, fontWeight: 700 }}>서브항목</th>
-                  <th style={{ textAlign: "center", padding: "8px 6px", color: C.text, fontWeight: 700 }}>정보 · 기준</th>
+                  <th style={{ textAlign: "left", padding: "8px 6px", color: C.text, fontWeight: 700 }}>정보 · 기준</th>
                   <th style={{ textAlign: "right", padding: "8px 6px", color: C.text, fontWeight: 700 }}>점수</th>
                 </tr>
               </thead>
