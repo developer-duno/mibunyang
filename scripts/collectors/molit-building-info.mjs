@@ -46,6 +46,11 @@ async function apiCall(baseUrl, endpoint, params) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
       if (res.status === 429) { await sleep((attempt + 1) * 2000); continue; }
+      if (res.status === 500 || res.status === 503) {
+        log(PHASE, `  API ${res.status} (시도 ${attempt + 1}/3)`);
+        await sleep((attempt + 1) * 1000);
+        continue;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
       if (text.startsWith("<?xml") || text.startsWith("<")) {
@@ -92,13 +97,15 @@ async function fetchAptList(sidoCode) {
 async function fetchAptDetail(kaptCode) {
   // 기본 정보 (세대수, 최고층 등)
   const bassJson = await apiCall(API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode });
-  const bass = bassJson?.response?.body?.item ?? null;
+  const bassBody = bassJson?.response?.body;
+  const bass = bassBody?.item ?? bassBody?.items?.item ?? null;
 
   await sleep(REQUEST_DELAY);
 
   // 상세 정보 (주차, 에너지, 구조 등)
   const dtlJson = await apiCall(API_DETAIL_BASE, "getAphusDtlInfoV4", { kaptCode });
-  const dtl = dtlJson?.response?.body?.item ?? null;
+  const dtlBody = dtlJson?.response?.body;
+  const dtl = dtlBody?.item ?? dtlBody?.items?.item ?? null;
 
   if (!bass && !dtl) return null;
   return { ...bass, ...dtl }; // 두 응답 병합
@@ -146,8 +153,8 @@ function extractBuildingInfo(detail) {
     if (n && n >= 1 && n <= 7) energyGrade = n;
   }
 
-  // 최고층: V4에서 ktownFlrNo가 실제 최고층 (kaptTopFloor는 지상 시작층)
-  const highFloor = safeInt(detail.ktownFlrNo) || safeInt(detail.kaptTopFloor) || safeInt(detail.hoCnt);
+  // 최고층: V4에서 ktownFlrNo가 실제 최고층
+  const highFloor = safeInt(detail.ktownFlrNo) || null;
 
   // 내진설계: V4 Dtl에서 필드 사라짐 — null 유지 (기존 데이터 보존)
   const quakeDesign = null;
