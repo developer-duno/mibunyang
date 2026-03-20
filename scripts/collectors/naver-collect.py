@@ -219,10 +219,11 @@ def main():
         lats=[a["lat"] for a in aps if a.get("lat")]
         lngs=[a["lng"] for a in aps if a.get("lng")]
         if not lats or not lngs:continue
+        if not gu:continue
         cortar=gu_cache.get((region,gu))
         if not cortar:
             for (rn,gn),cn in gu_cache.items():
-                if rn==region and (gn in gu or gu in gn):
+                if rn==region and gn and (gn in gu or gu in gn):
                     cortar=cn;break
         if not cortar:cortar=REGION_CORTAR.get(region)
         if not cortar:
