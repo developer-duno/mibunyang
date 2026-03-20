@@ -79,6 +79,9 @@ export const FIELD_META = {
   quakeDesign: { label: "내진설계", section: "상품성", fmt: v => v ? "적용" : "미적용" },
   exclusiveRatio: { label: "전용률", section: "상품성", unit: "%", fmt: v => n(v, "%") },
   hasPool: { label: "수영장", section: "상품성", fmt: v => v ? "있음" : "없음" },
+  heatFuel: { label: "난방연료", section: "상품성", fmt: v => v || "미수집" },
+  corridorType: { label: "복도유형", section: "상품성", fmt: v => v || "미수집" },
+  buildingCoverageRatio: { label: "건폐율", section: "상품성", unit: "%", fmt: v => n(v, "%") },
   // ── 섹션5: 혜택/할인 ──
   discountPct: { label: "할인율", section: "혜택", unit: "%", fmt: v => n(v ?? 0, "%"), isDefault: v => v === 0 },
   loanFree: { label: "무이자 대출", section: "혜택", fmt: v => v ? "있음" : "없음" },
@@ -114,7 +117,7 @@ export const FIELD_SECTIONS = [
   { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","nearbyBuildYear","avgFloor","floorRange"] },
   { key: "안전", label: "안전도/리스크", fields: ["unsoldRate","recentTrades6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth"] },
   { key: "입지", label: "입지/교통/교육/환경", fields: ["subwayDist","subwayName","subwayLines","busRoutes","busStopNames","icDist","ktxDist","schoolScore","schoolGrade","hospital","hospitalDist","mart","martDist","conv","convDist","park","parkDist","cafe","culture","bank","pharmacy","view","sunlight","noise","noxious"] },
-  { key: "상품성", label: "상품성/건축", fields: ["parkingRatio","floorAreaRatio","energyGrade","greenBldg","quakeDesign","exclusiveRatio","hasPool"] },
+  { key: "상품성", label: "상품성/건축", fields: ["parkingRatio","floorAreaRatio","energyGrade","greenBldg","quakeDesign","exclusiveRatio","hasPool","heatFuel","corridorType","buildingCoverageRatio"] },
   { key: "혜택", label: "혜택/할인", fields: ["discountPct","loanFree","loanFreePct","optionFree","optionValue","balconyFree","balconyValue","cashback","contractDiscount","benefits"] },
   { key: "미래", label: "미래가치", fields: ["transitDev","devDist","cityDev","industryDev"] },
   { key: "교차검증", label: "네이버 교차검증", fields: ["naverNearbyMedian","naverNearbyAvg","naverJeonseRate","naverSellCount","naverJeonseCount","naverWolseCount","naverBuildYear","naverAvgFloor","naverSchoolWalkMin","naverNearbyCount","naverFetchedAt"] },

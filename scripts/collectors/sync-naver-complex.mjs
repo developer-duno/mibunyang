@@ -106,7 +106,7 @@ async function main() {
   for (let off = 0; ; off += PAGE) {
     const { data: page, error: cErr } = await sbMibunyang
       .from("complexes")
-      .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, earthquake_design")
+      .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, earthquake_design, heat_fuel, corridor_type, building_coverage_ratio")
       .range(off, off + PAGE - 1);
     if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
     complexes.push(...page);
@@ -156,7 +156,7 @@ async function main() {
   // 2. apartments 조회
   const { data: apartments, error: aErr } = await sbMibunyang
     .from("apartments")
-    .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight")
+    .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio")
     .range(0, 9999);
 
   if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
@@ -215,6 +215,21 @@ async function main() {
       // 내진: complexes.earthquake_design → apartments.quake_design
       if (apt.quake_design == null && cpx.earthquake_design != null) {
         row.quake_design = cpx.earthquake_design;
+      }
+
+      // 난방연료
+      if (apt.heat_fuel == null && cpx.heat_fuel != null) {
+        row.heat_fuel = cpx.heat_fuel;
+      }
+
+      // 복도유형
+      if (apt.corridor_type == null && cpx.corridor_type != null) {
+        row.corridor_type = cpx.corridor_type;
+      }
+
+      // 건폐율
+      if (apt.building_coverage_ratio == null && cpx.building_coverage_ratio != null) {
+        row.building_coverage_ratio = cpx.building_coverage_ratio;
       }
 
       // 전용률: articles area1(공급)/area2(전용) 비율
