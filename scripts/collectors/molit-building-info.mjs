@@ -61,16 +61,31 @@ async function apiCall(baseUrl, endpoint, params) {
   }
 }
 
-// ── 단지 목록 조회 (V3: AptListService3) ─────────────────────
+// ── 단지 목록 조회 (V3: AptListService3 — 페이지네이션) ──────
 async function fetchAptList(sidoCode) {
-  const params = { numOfRows: "500", pageNo: "1", sidoCode };
-  const json = await apiCall(API_LIST_BASE, "getSidoAptList3", params);
-  const body = json?.response?.body;
-  if (!body || body.totalCount === 0) return [];
-  // V3: body.items가 바로 배열 (V1에서는 body.items.item이었음)
-  const items = Array.isArray(body.items) ? body.items : body.items?.item;
-  if (!items) return [];
-  return Array.isArray(items) ? items : [items];
+  const allItems = [];
+  let pageNo = 1;
+
+  while (true) {
+    const params = { numOfRows: "500", pageNo: String(pageNo), sidoCode };
+    const json = await apiCall(API_LIST_BASE, "getSidoAptList3", params);
+    const body = json?.response?.body;
+    if (!body || body.totalCount === 0) break;
+
+    // V3: body.items가 바로 배열 (V1에서는 body.items.item이었음)
+    const rawItems = Array.isArray(body.items) ? body.items : body.items?.item;
+    if (!rawItems) break;
+    const page = Array.isArray(rawItems) ? rawItems : [rawItems];
+    allItems.push(...page);
+
+    const totalCount = parseInt(body.totalCount, 10) || 0;
+    if (allItems.length >= totalCount || page.length < 500) break;
+
+    pageNo++;
+    await sleep(REQUEST_DELAY);
+  }
+
+  return allItems;
 }
 
 // ── 단지 기본+상세 조회 (V4: 두 엔드포인트 병합) ─────────────
