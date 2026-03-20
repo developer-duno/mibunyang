@@ -18,37 +18,54 @@ loadEnv();
 
 const API_KEY = process.env.MOIS_POP_KEY;
 
-const BASE_URL = "https://apis.data.go.kr/1741000/juminsu/getJuminsuList";
+// 신 API: 행정안전부_법정동별 주민등록 인구 및 세대현황 (#15108071)
+const BASE_URL = "https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus";
 
-// ── 인구 데이터 조회 ────────────────────────────────────────
+// 전국 17 시도 법정동코드 (10자리)
+const SIDO_CODES = [
+  "1100000000","2600000000","2700000000","2800000000","2900000000",
+  "3000000000","3100000000","3600000000","4100000000","4200000000",
+  "4300000000","4400000000","4500000000","4600000000","4700000000",
+  "4800000000","5000000000",
+];
+
+// ── 인구 데이터 조회 (17 시도별 순회) ─────────────────────────
 async function fetchPopulation(year, month) {
-  const params = new URLSearchParams({
-    serviceKey: API_KEY,
-    pageNo: "1",
-    numOfRows: "500",
-    type: "json",
-    regSeCd: "2", // 시군구
-    srchFrmnYear: String(year),
-    srchFrmnMonth: String(month).padStart(2, "0"),
-    srchToYear: String(year),
-    srchToMonth: String(month).padStart(2, "0"),
-  });
+  const ym = `${year}${String(month).padStart(2, "0")}`;
+  log("fetch", `${year}년 ${month}월 인구 데이터 조회 (17 시도)...`);
 
-  const url = `${BASE_URL}?${params}`;
-  log("fetch", `${year}년 ${month}월 인구 데이터 조회...`);
+  const allItems = [];
+  for (const stdgCd of SIDO_CODES) {
+    try {
+      const params = new URLSearchParams({
+        serviceKey: API_KEY,
+        stdgCd,
+        srchFrYm: ym,
+        srchToYm: ym,
+        type: "json",
+        numOfRows: "100",
+        pageNo: "1",
+        lv: "2",       // 시군구 레벨
+        regSeCd: "1",   // 전체
+      });
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const res = await fetch(`${BASE_URL}?${params}`, { signal: AbortSignal.timeout(30000) });
+      if (!res.ok) { log("fetch", `  ${stdgCd}: HTTP ${res.status} — skip`); continue; }
 
-  const json = await res.json();
-  const items = json?.StatsJuminsuSearch?.item;
-  if (!items || !Array.isArray(items)) {
-    log("fetch", `${year}년 ${month}월: 데이터 없음`);
-    return [];
+      const json = await res.json();
+      const items = json?.Response?.items?.item;
+      if (items && Array.isArray(items)) {
+        allItems.push(...items);
+      }
+    } catch (e) {
+      log("fetch", `  ${stdgCd}: ${e.message} — skip`);
+    }
+    // data.go.kr rate limit 대비 150ms 딜레이
+    await new Promise(r => setTimeout(r, 150));
   }
 
-  log("fetch", `${year}년 ${month}월: ${items.length}건`);
-  return items;
+  log("fetch", `${year}년 ${month}월: ${allItems.length}건`);
+  return allItems;
 }
 
 // ── 시도명 → 약칭 변환 ──────────────────────────────────────
@@ -109,10 +126,11 @@ async function main() {
   // 2. 전년도 데이터 맵 생성 (시군구명 → 인구)
   const prevMap = new Map();
   for (const item of prevItems) {
-    const parsed = parseGu(item.admNm || item.adminNm || "");
+    const adminNm = [item.ctpvNm, item.sggNm].filter(Boolean).join(" ") || item.admNm || "";
+    const parsed = parseGu(adminNm);
     if (parsed) {
       const key = `${parsed.region}:${parsed.gu}`;
-      const pop = parseInt(String(item.totPpltn || item.population || "0").replace(/,/g, ""), 10);
+      const pop = parseInt(String(item.totNmprCnt || item.totPpltn || "0").replace(/,/g, ""), 10);
       if (pop > 0) prevMap.set(key, pop);
     }
   }
@@ -120,11 +138,12 @@ async function main() {
   // 3. 증감률 계산
   const rows = [];
   for (const item of curItems) {
-    const parsed = parseGu(item.admNm || item.adminNm || "");
+    const adminNm = [item.ctpvNm, item.sggNm].filter(Boolean).join(" ") || item.admNm || "";
+    const parsed = parseGu(adminNm);
     if (!parsed) continue;
 
     const key = `${parsed.region}:${parsed.gu}`;
-    const curPop = parseInt(String(item.totPpltn || item.population || "0").replace(/,/g, ""), 10);
+    const curPop = parseInt(String(item.totNmprCnt || item.totPpltn || "0").replace(/,/g, ""), 10);
     const prevPop = prevMap.get(key);
 
     if (!curPop || !prevPop) continue;
@@ -154,7 +173,7 @@ async function main() {
     if (agg.prevPop > 0) {
       rows.push({
         region,
-        gu: null,
+        gu: null,  // 시도 단위 집계 (gu 없음)
         pop_growth: Math.round(((agg.curPop - agg.prevPop) / agg.prevPop) * 100 * 10) / 10,
         supply_ratio: null,
         population: agg.curPop,
@@ -192,12 +211,33 @@ async function main() {
     return;
   }
 
-  // 5. Supabase upsert
+  // 5. Supabase upsert (COALESCE 인덱스 호환 — 개별 delete+insert)
+  const sb = getSupabase();
   const rpt = createReporter("population");
-  const inserted = await upsertBatch("regions", rows, "region,gu,recorded_at");
-  rpt.success(inserted);
-  rpt.fail(rows.length - inserted);
-  log("done", `regions 테이블 ${inserted}건 upsert 완료 (${today()})`);
+  let inserted = 0;
+  for (const row of rows) {
+    // 기존 행 삭제 (region + gu + recorded_at 매칭)
+    let q = sb.from("regions").delete().eq("region", row.region).eq("recorded_at", row.recorded_at);
+    if (row.gu) q = q.eq("gu", row.gu);
+    else q = q.is("gu", null);
+    const { error: delErr } = await q;
+    if (delErr) {
+      logError("regions", `DELETE 실패 ${row.region} ${row.gu || '(시도)'}: ${delErr.message}`);
+      continue;
+    }
+
+    // 새 행 삽입
+    const insertRow = { ...row };
+    const { error } = await sb.from("regions").insert([insertRow]);
+    if (error) {
+      logError("regions", `${row.region} ${row.gu || '(시도)'}: ${error.message}`);
+      rpt.fail(1);
+    } else {
+      inserted++;
+      rpt.success(1);
+    }
+  }
+  log("done", `regions 테이블 ${inserted}/${rows.length}건 저장 완료 (${today()})`);
   rpt.summary();
 }
 
