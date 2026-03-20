@@ -156,11 +156,26 @@ async function main() {
   // 2. apartments 조회
   const { data: apartments, error: aErr } = await sbMibunyang
     .from("apartments")
-    .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating")
+    .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight")
     .range(0, 9999);
 
   if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
   log(PHASE, `apartments: ${apartments.length}건`);
+
+  // articles area/direction 조회 (전용률 + 조망/일조 계산용)
+  const { data: areaRows, error: arErr } = await sbMibunyang
+    .from("articles")
+    .select("complex_no, area1_m2, area2_m2, direction, building_name")
+    .eq("is_active", true)
+    .range(0, 99999);
+  if (arErr) logError(PHASE, `articles area 조회 실패: ${arErr.message}`);
+
+  const articlesByComplex = {};
+  for (const r of (areaRows || [])) {
+    if (!articlesByComplex[r.complex_no]) articlesByComplex[r.complex_no] = [];
+    articlesByComplex[r.complex_no].push(r);
+  }
+  log(PHASE, `articles area/direction: ${(areaRows || []).length}건`);
 
   // ── Phase 1: 단지정보 동기화 ──
   let updated = 0, skipped = 0;
@@ -195,6 +210,34 @@ async function main() {
       // 난방방식 (articles에서 집계)
       if (apt.heating == null && heatingByComplex[cpx.complex_no]) {
         row.heating = heatingByComplex[cpx.complex_no];
+      }
+
+      // 전용률: articles area1(공급)/area2(전용) 비율
+      if (apt.exclusive_ratio == null) {
+        const withArea = (articlesByComplex[cpx.complex_no] || [])
+          .filter(a => a.area1_m2 > 0 && a.area2_m2 > 0);
+        if (withArea.length >= 1) {
+          const ratios = withArea.map(a => (a.area2_m2 / a.area1_m2) * 100);
+          row.exclusive_ratio = Math.round(median(ratios) * 10) / 10;
+        }
+      }
+
+      // 조망: building_name 키워드 추출
+      if (apt.view == null || apt.view === "") {
+        const names = (articlesByComplex[cpx.complex_no] || [])
+          .map(a => a.building_name).filter(Boolean).join(" ");
+        if (/한강|낙동강|강변|리버/.test(names)) row.view = "리버뷰";
+        else if (/산|봉|마운틴/.test(names)) row.view = "마운틴뷰";
+        else if (/공원|파크/.test(names)) row.view = "공원조망";
+      }
+
+      // 일조: 남향 비율 기반 추정
+      if (apt.sunlight == null || apt.sunlight === "") {
+        const arts = (articlesByComplex[cpx.complex_no] || []).filter(a => a.direction);
+        const southCount = arts.filter(a => /남/.test(a.direction)).length;
+        if (arts.length > 0 && southCount / arts.length >= 0.5) {
+          row.sunlight = "양호";
+        }
       }
 
       if (Object.keys(row).length === 0) { skipped++; continue; }
@@ -304,7 +347,7 @@ async function main() {
   // 3-a. complex_price_history 조회 (최근 데이터)
   const { data: priceRows, error: prErr } = await sbMibunyang
     .from("complex_price_history")
-    .select("complex_no, trade_type, price_avg")
+    .select("complex_no, trade_type, deal_price_avg")
     .range(0, 99999);
 
   if (prErr) logError(PHASE, `price_history 조회 실패: ${prErr.message}`);
@@ -313,10 +356,10 @@ async function main() {
   const priceByComplex = {};
   if (priceRows) {
     for (const r of priceRows) {
-      if (!r.price_avg || r.price_avg <= 0) continue;
+      if (!r.deal_price_avg || r.deal_price_avg <= 0) continue;
       if (!priceByComplex[r.complex_no]) priceByComplex[r.complex_no] = { A1: [], B1: [] };
-      if (r.trade_type === "A1") priceByComplex[r.complex_no].A1.push(r.price_avg);
-      else if (r.trade_type === "B1") priceByComplex[r.complex_no].B1.push(r.price_avg);
+      if (r.trade_type === "A1") priceByComplex[r.complex_no].A1.push(r.deal_price_avg);
+      else if (r.trade_type === "B1") priceByComplex[r.complex_no].B1.push(r.deal_price_avg);
     }
   }
   log(PHASE, `시세 데이터: ${Object.keys(priceByComplex).length}개 단지`);

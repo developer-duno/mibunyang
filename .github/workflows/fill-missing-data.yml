@@ -69,6 +69,7 @@ jobs:
       fail-fast: false
       matrix:
         script:
+          - { name: "네이버 동기화", cmd: "sync-naver-complex" }
           - { name: "전용률 계산", cmd: "calc-exclusive-ratio" }
           - { name: "평면구조 추정", cmd: "calc-layout" }
           - { name: "층수 계산", cmd: "calc-floors" }
