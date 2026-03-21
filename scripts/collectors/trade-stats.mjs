@@ -465,13 +465,12 @@ async function main() {
     return;
   }
 
-  const sbMibunyang2 = getMibuyangSupabase();
   const BATCH = 500;
   let upserted = 0;
 
   for (let i = 0; i < results.length; i += BATCH) {
     const batch = results.slice(i, i + BATCH).map(({ _medianSource, ...row }) => row);
-    const { error } = await sbMibunyang2
+    const { error } = await sbMibunyang
       .from("trade_stats")
       .upsert(batch, { onConflict: "apartment_id", ignoreDuplicates: false });
 
@@ -479,7 +478,7 @@ async function main() {
       logError("upsert", `배치 ${i}~${i + batch.length}: ${error.message}`);
       // 개별 재시도
       for (const row of batch) {
-        const { error: e2 } = await sbMibunyang2
+        const { error: e2 } = await sbMibunyang
           .from("trade_stats")
           .upsert([row], { onConflict: "apartment_id", ignoreDuplicates: false });
         if (!e2) upserted++;
@@ -495,7 +494,7 @@ async function main() {
   if (dsrUpdates.length > 0) {
     let dsrOk = 0;
     for (const { id, dsr40pass } of dsrUpdates) {
-      const { error: e } = await sbMibunyang2
+      const { error: e } = await sbMibunyang
         .from("apartments")
         .update({ dsr40pass })
         .eq("id", id);

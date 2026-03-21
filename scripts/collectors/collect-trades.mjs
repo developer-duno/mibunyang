@@ -156,14 +156,14 @@ async function main() {
     if (!lawdCd) { log(PHASE, "  " + rg.region + " " + rg.gu + ": 법정동코드 없음"); continue; }
 
     // 매매 실거래 (AptTradeDev — 폴백: 기존 RTMSDataSvcAptTrade)
-    let usedFallback = false;
+    let regionFallback = false;
     for (const month of months) {
       try {
         let url = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
         let xml = await fetchApi(url);
         if (xml && xml.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
           if (!fallbackUsed) log(PHASE, "AptTradeDev 미등록 — 기존 API 폴백");
-          usedFallback = true;
+          regionFallback = true;
           fallbackUsed = true;
           url = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
           xml = await fetchApi(url);
@@ -180,7 +180,7 @@ async function main() {
           if (seen.has(key)) continue;
           seen.add(key);
           const row = { region: rg.region, gu: rg.gu, dong, deal_month: month, area: Math.round(area * 100) / 100, price, floor, build_year: buildYear, trade_type: "sale", deposit: null };
-          if (!usedFallback) {
+          if (!regionFallback) {
             row.apt_name = getTag(item, "aptNm") || null;
             row.dealing_type = getTag(item, "dealingGbn") || null;
             const cd = getTag(item, "cdealDay");
