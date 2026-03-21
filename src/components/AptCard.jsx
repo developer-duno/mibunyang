@@ -113,12 +113,4 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
       </div>
     </div>
   );
-}, (prev, next) =>
-  prev.apt.id === next.apt.id &&
-  prev.res.total === next.res.total &&
-  prev.rank === next.rank &&
-  prev.isComp === next.isComp &&
-  prev.isFav === next.isFav &&
-  prev.profileWeights === next.profileWeights &&
-  !!prev.onExpertView === !!next.onExpertView
-);
+});
