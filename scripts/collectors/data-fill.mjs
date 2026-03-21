@@ -18,18 +18,17 @@ import { promisify } from "util";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, log, logError } from "./_shared.mjs";
-import { computeAudit } from "./data-audit.mjs";
+import { computeAudit, fetchAllFromView } from "./data-audit.mjs";
 
 loadEnv();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const execFileAsync = promisify(execFile);
 const PHASE = "data-fill";
-const BATCH_SIZE = 1000;
 const COLLECTOR_TIMEOUT = 900_000; // 15분
 
 // ── 수집기 매핑 (Phase 순서대로 정의) ────────────────────────
-const COLLECTORS = [
+export const COLLECTORS = [
   // Phase 1: 기반 데이터
   { category: "building",  phase: 1, scripts: ["molit-building-info.mjs"], args: ["--force"], envKeys: ["MOLIT_KEY"] },
   { category: "builders",  phase: 1, scripts: ["dart-builders.mjs"],       args: [],          envKeys: ["DART_KEY"] },
@@ -44,7 +43,7 @@ const COLLECTORS = [
 ];
 
 // 스킵 카테고리
-const SKIP_CATEGORIES = new Set(["naver", "future", "core", "price", "risk", "benefits"]);
+export const SKIP_CATEGORIES = new Set(["naver", "future", "core", "price", "risk", "benefits"]);
 
 // ── 수집기 실행 ──────────────────────────────────────────────
 async function runCollector(script, extraArgs, dryRun) {
@@ -67,28 +66,6 @@ async function runCollector(script, extraArgs, dryRun) {
     logError(PHASE, `  ${script} 실패 (code: ${code}): ${err.message?.slice(0, 200)}`);
     return { ok: false, error: err.message };
   }
-}
-
-// ── 감사 데이터 조회 ─────────────────────────────────────────
-async function fetchAuditData(sb) {
-  const allRows = [];
-  const { data: firstBatch, error, count } = await sb
-    .from("apartments_flat").select("*", { count: "exact" }).range(0, BATCH_SIZE - 1);
-  if (error) throw new Error(`apartments_flat 조회 실패: ${error.message}`);
-  allRows.push(...(firstBatch || []));
-
-  if (count && count > BATCH_SIZE) {
-    const remaining = Math.ceil((count - BATCH_SIZE) / BATCH_SIZE);
-    for (let i = 1; i <= remaining; i++) {
-      const offset = i * BATCH_SIZE;
-      const { data: batch, error: bErr } = await sb
-        .from("apartments_flat").select("*").range(offset, offset + BATCH_SIZE - 1);
-      if (bErr) { logError(PHASE, `배치 ${i} 실패: ${bErr.message}`); break; }
-      if (batch) allRows.push(...batch);
-      if (!batch || batch.length < BATCH_SIZE) break;
-    }
-  }
-  return allRows;
 }
 
 // ── env 사전 검증 ────────────────────────────────────────────
@@ -118,7 +95,7 @@ async function main() {
 
   // 1. Before 감사
   log(PHASE, "\n[Before] 감사 데이터 조회 중...");
-  const beforeRows = await fetchAuditData(sb);
+  const beforeRows = await fetchAllFromView(sb, null);
   if (beforeRows.length === 0) { log(PHASE, "아파트 데이터 없음, 종료"); return; }
   const before = computeAudit(beforeRows);
   log(PHASE, `아파트 ${before.total}건, 평균 신뢰도 ${before.avgReliability}%\n`);
@@ -177,7 +154,7 @@ async function main() {
   // 4. After 감사 (dry-run이 아닌 경우만)
   if (!flags.dryRun) {
     log(PHASE, "\n[After] 감사 데이터 재조회 중...");
-    const afterRows = await fetchAuditData(sb);
+    const afterRows = await fetchAllFromView(sb, null);
     const after = computeAudit(afterRows);
 
     // 델타 테이블

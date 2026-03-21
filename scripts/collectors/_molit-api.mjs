@@ -15,6 +15,12 @@ export const API_DETAIL_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoServ
 export const MIN_SIMILARITY = 0.5;
 export const REQUEST_DELAY = 400; // ms — API 레이트리밋 방지
 
+// API 재시도 정책 (scripts/CLAUDE.md § API Rate Limit 참조)
+const MOLIT_MAX_RETRIES = 3;
+const MOLIT_TIMEOUT_MS = 30000;        // 30초
+const MOLIT_BACKOFF_429_MS = 2000;     // 429 Rate Limit: (i+1)×2초
+const MOLIT_BACKOFF_5XX_MS = 1000;     // 5XX 서버에러: (i+1)×1초
+
 // 시도 약칭 → 시도 코드 (법정동 코드 앞 2자리)
 export const SIDO_CODE = {
   "서울": "11", "부산": "26", "대구": "27", "인천": "28",
@@ -29,16 +35,16 @@ export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey) {
   const qs = new URLSearchParams({ serviceKey: apiKey, type: "json", ...params });
   const url = `${baseUrl}/${endpoint}?${qs}`;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < MOLIT_MAX_RETRIES; attempt++) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(MOLIT_TIMEOUT_MS) });
       if (res.status === 429) {
-        await sleep((attempt + 1) * 2000);
+        await sleep((attempt + 1) * MOLIT_BACKOFF_429_MS);
         continue;
       }
       if (res.status === 500 || res.status === 503) {
-        log(phase, `  API ${res.status} (시도 ${attempt + 1}/3)`);
-        await sleep((attempt + 1) * 1000);
+        log(phase, `  API ${res.status} (시도 ${attempt + 1}/${MOLIT_MAX_RETRIES})`);
+        await sleep((attempt + 1) * MOLIT_BACKOFF_5XX_MS);
         continue;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -54,8 +60,8 @@ export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey) {
 
       return JSON.parse(text);
     } catch (err) {
-      if (attempt === 2) throw err;
-      await sleep((attempt + 1) * 1000);
+      if (attempt === MOLIT_MAX_RETRIES - 1) throw err;
+      await sleep((attempt + 1) * MOLIT_BACKOFF_5XX_MS);
     }
   }
 }

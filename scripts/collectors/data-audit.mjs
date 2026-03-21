@@ -56,7 +56,7 @@ export const AUDIT_FIELDS = {
   },
   transport: {
     collector: "transport-tago",
-    fields: ["busRoutes", "icDist", "ktxDist", "subwayName", "subwayLines", "busStopNames"],
+    fields: ["subwayDist", "busRoutes", "icDist", "ktxDist", "subwayName", "subwayLines", "busStopNames"],
   },
   schools: {
     collector: "schools-neis",
@@ -186,9 +186,13 @@ const GREEN = "\x1b[32m";
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
 
+// 콘솔 리포트 커버리지 임계값
+const RATE_EXCELLENT = 80; // % — 녹색 (우수)
+const RATE_WARNING = 50;   // % — 노랑 (양호)
+
 function colorByRate(rate) {
-  if (rate >= 80) return GREEN;
-  if (rate >= 50) return YELLOW;
+  if (rate >= RATE_EXCELLENT) return GREEN;
+  if (rate >= RATE_WARNING) return YELLOW;
   return RED;
 }
 
@@ -239,7 +243,7 @@ function printReport(audit) {
 }
 
 // ── 배치 페이지네이션 (PostgREST 1000행 제한 우회) ───────────
-async function fetchAllFromView(sb, regionFilter) {
+export async function fetchAllFromView(sb, regionFilter) {
   const allRows = [];
 
   let query = sb.from("apartments_flat").select("*", { count: "exact" });

@@ -25,7 +25,7 @@ function createFullRow(overrides = {}) {
     hospital: 3, mart: 2, conv: 5, cafe: 8, culture: 1, bank: 4, pharmacy: 3, park: 2,
     hospitalDist: 300, martDist: 200, convDist: 100, cafeDist: 150, cultureDist: 800,
     bankDist: 250, pharmacyDist: 180, parkDist: 400, nearbyFacilities: ["스타벅스"],
-    busRoutes: 12, icDist: 5, ktxDist: 30, subwayName: "역삼역", subwayLines: ["2호선"], busStopNames: ["역삼동"],
+    subwayDist: 500, busRoutes: 12, icDist: 5, ktxDist: 30, subwayName: "역삼역", subwayLines: ["2호선"], busStopNames: ["역삼동"],
     schoolScore: 72, schoolGrade: "A", nearbySchools: [{ name: "역삼초" }],
     builderDebtRatio: 180, builderCreditGrade: "A+", hugGuarantee: true,
     popGrowth: 1.2, supplyRatio: 95, netMigration: 500,
