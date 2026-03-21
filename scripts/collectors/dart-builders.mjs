@@ -247,6 +247,21 @@ async function main() {
   }
 
   log("done", `builders 테이블 ${upserted}/${results.length}건 upsert 완료`);
+
+  // 5. 아파트 원본 builder명으로 alias 행 추가
+  // apartments.builder가 "(주)금성백조건설"이면 builders에도 동일 이름으로 upsert
+  let aliasCount = 0;
+  for (const [resolved, original] of targetMap.entries()) {
+    if (resolved === original) continue; // 이름 동일하면 스킵
+    const row = results.find(r => r.name === resolved);
+    if (!row) continue; // 재무 데이터 없는 시공사 스킵
+    const aliasRow = { ...row, name: original };
+    const { error } = await sb
+      .from("builders")
+      .upsert([aliasRow], { onConflict: "name", ignoreDuplicates: false });
+    if (!error) aliasCount++;
+  }
+  if (aliasCount > 0) log("done", `alias 행 ${aliasCount}건 추가 (아파트 원본명)`);
 }
 
 main().catch((err) => {
