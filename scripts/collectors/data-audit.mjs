@@ -96,6 +96,7 @@ export const AUDIT_FIELDS = {
   },
 };
 
+
 // ── null 판정 ────────────────────────────────────────────────
 export function isFieldNull(field, value) {
   // 영구 미수집 필드
@@ -242,37 +243,166 @@ function printReport(audit) {
   log(PHASE, "");
 }
 
-// ── 배치 페이지네이션 (PostgREST 1000행 제한 우회) ───────────
-export async function fetchAllFromView(sb, regionFilter) {
+// ── 테이블별 개별 쿼리 + 메모리 merge (VIEW 타임아웃 방지) ──
+async function fetchAllFromTable(sb, table, columns, filterCol, filterVal) {
   const allRows = [];
-
-  let query = sb.from("apartments_flat").select("*", { count: "exact" });
-  if (regionFilter) query = query.eq("region", regionFilter);
+  let query = sb.from(table).select(columns, { count: "exact" });
+  if (filterCol && filterVal) query = query.eq(filterCol, filterVal);
   query = query.range(0, BATCH_SIZE - 1);
 
-  const { data: firstBatch, error, count } = await query;
-  if (error) throw new Error(`apartments_flat 조회 실패: ${error.message}`);
-  allRows.push(...(firstBatch || []));
+  const { data: first, error, count } = await query;
+  if (error) throw new Error(`${table} 조회 실패: ${error.message}`);
+  allRows.push(...(first || []));
 
   if (count && count > BATCH_SIZE) {
-    const remaining = Math.ceil((count - BATCH_SIZE) / BATCH_SIZE);
-    for (let i = 1; i <= remaining; i++) {
+    for (let i = 1; i * BATCH_SIZE < count; i++) {
       const offset = i * BATCH_SIZE;
-      let batchQuery = sb.from("apartments_flat").select("*");
-      if (regionFilter) batchQuery = batchQuery.eq("region", regionFilter);
-      batchQuery = batchQuery.range(offset, offset + BATCH_SIZE - 1);
-
-      const { data: batch, error: batchError } = await batchQuery;
-      if (batchError) {
-        logError(PHASE, `배치 ${i} 조회 실패: ${batchError.message}`);
-        break;
-      }
+      let q = sb.from(table).select(columns);
+      if (filterCol && filterVal) q = q.eq(filterCol, filterVal);
+      q = q.range(offset, offset + BATCH_SIZE - 1);
+      const { data: batch, error: bErr } = await q;
+      if (bErr) { logError(PHASE, `${table} 배치 ${i} 실패: ${bErr.message}`); break; }
       if (batch) allRows.push(...batch);
       if (!batch || batch.length < BATCH_SIZE) break;
     }
   }
-
   return allRows;
+}
+
+// apartments 컬럼 (core + building + risk + benefits + naver + environment + future)
+const APT_COLS = "id,name,region,gu,dong,address,road_address,district,lat,lng,builder,units,completion,layout," +
+  "max_floor,parking_ratio,floor_area_ratio,exclusive_ratio,energy_grade,heating,floors,has_pool," +
+  "is_regulated,dsr40pass," +
+  "discount_pct,loan_free,balcony_free,cashback,benefits," +
+  "view,sunlight,noise,noxious,noxious_dist," +
+  "transit_dev,dev_dist,city_dev,industry_dev," +
+  "naver_nearby_median,naver_nearby_avg,naver_jeonse_rate,naver_sell_count,naver_jeonse_count," +
+  "naver_wolse_count,naver_build_year,naver_avg_floor,naver_school_walk_min,naver_nearby_count";
+
+// snake_case → camelCase 변환
+function toCamel(row) {
+  const map = {
+    road_address: "roadAddress", max_floor: "maxFloor", parking_ratio: "parkingRatio",
+    floor_area_ratio: "floorAreaRatio", exclusive_ratio: "exclusiveRatio",
+    energy_grade: "energyGrade", has_pool: "hasPool", is_regulated: "isRegulated",
+    discount_pct: "discountPct", loan_free: "loanFree", balcony_free: "balconyFree",
+    noxious_dist: "noxiousDist", transit_dev: "transitDev", dev_dist: "devDist",
+    city_dev: "cityDev", industry_dev: "industryDev",
+    naver_nearby_median: "naverNearbyMedian", naver_nearby_avg: "naverNearbyAvg",
+    naver_jeonse_rate: "naverJeonseRate", naver_sell_count: "naverSellCount",
+    naver_jeonse_count: "naverJeonseCount", naver_wolse_count: "naverWolseCount",
+    naver_build_year: "naverBuildYear", naver_avg_floor: "naverAvgFloor",
+    naver_school_walk_min: "naverSchoolWalkMin", naver_nearby_count: "naverNearbyCount",
+  };
+  const out = {};
+  for (const [k, v] of Object.entries(row)) out[map[k] || k] = v;
+  return out;
+}
+
+// 관련 테이블 merge (apartment_id 또는 name 기준)
+function mergeRelated(aptRows, relatedRows, joinKey, targetKey, colMap) {
+  const lookup = new Map();
+  for (const r of relatedRows) lookup.set(r[joinKey], r);
+  for (const apt of aptRows) {
+    const rel = lookup.get(apt[targetKey]);
+    if (!rel) continue;
+    for (const [src, dst] of Object.entries(colMap)) apt[dst] = rel[src];
+  }
+}
+
+export async function fetchAllFromView(sb, regionFilter) {
+  // 1. apartments 메인 테이블
+  log(PHASE, "  apartments 테이블 조회...");
+  const rawApts = await fetchAllFromTable(sb, "apartments", APT_COLS, regionFilter ? "region" : null, regionFilter);
+  const apts = rawApts.map(toCamel);
+  log(PHASE, `  apartments: ${apts.length}건`);
+
+  const aptIds = apts.map(a => a.id);
+  if (aptIds.length === 0) return apts;
+
+  // 2~7. 관련 테이블 병렬 쿼리
+  log(PHASE, "  관련 테이블 6개 병렬 조회...");
+  const [infra, schools, transport, builders, regions, tradeStats] = await Promise.all([
+    fetchAllFromTable(sb, "infra", "apartment_id,hospital,mart,conv,cafe,culture,bank,pharmacy,park,hospital_dist,mart_dist,conv_dist,cafe_dist,culture_dist,bank_dist,pharmacy_dist,park_dist,subway_dist,nearby_facilities", null, null),
+    fetchAllFromTable(sb, "schools", "apartment_id,school_score,school_grade,nearby_schools", null, null),
+    fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
+    fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
+    fetchAllFromTable(sb, "regions", "region,pop_growth,supply_ratio,net_migration", null, null),
+    fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor", null, null),
+  ]);
+
+  // merge infra
+  mergeRelated(apts, infra, "apartment_id", "id", {
+    hospital: "hospital", mart: "mart", conv: "conv", cafe: "cafe",
+    culture: "culture", bank: "bank", pharmacy: "pharmacy", park: "park",
+    hospital_dist: "hospitalDist", mart_dist: "martDist", conv_dist: "convDist",
+    cafe_dist: "cafeDist", culture_dist: "cultureDist", bank_dist: "bankDist",
+    pharmacy_dist: "pharmacyDist", park_dist: "parkDist", subway_dist: "subwayDist",
+    nearby_facilities: "nearbyFacilities",
+  });
+
+  // merge schools
+  mergeRelated(apts, schools, "apartment_id", "id", {
+    school_score: "schoolScore", school_grade: "schoolGrade", nearby_schools: "nearbySchools",
+  });
+
+  // merge transport (subwayDist: transport 우선, 없으면 infra에서 이미 설정됨)
+  for (const t of transport) {
+    const apt = apts.find(a => a.id === t.apartment_id);
+    if (!apt) continue;
+    if (t.subway_dist != null) apt.subwayDist = t.subway_dist;
+    apt.busRoutes = t.bus_routes;
+    apt.icDist = t.ic_dist;
+    apt.ktxDist = t.ktx_dist;
+    apt.subwayName = t.subway_name;
+    apt.subwayLines = t.subway_lines;
+    apt.busStopNames = t.bus_stop_names;
+  }
+
+  // merge builders (join by name)
+  mergeRelated(apts, builders, "name", "builder", {
+    debt_ratio: "builderDebtRatio", credit_grade: "builderCreditGrade", hug_guarantee: "hugGuarantee",
+  });
+
+  // merge regions (join by region, gu IS NULL = 시도 레벨)
+  const regionLookup = new Map();
+  for (const r of regions) {
+    if (!regionLookup.has(r.region)) regionLookup.set(r.region, r);
+  }
+  for (const apt of apts) {
+    const r = regionLookup.get(apt.region);
+    if (!r) continue;
+    apt.popGrowth = r.pop_growth;
+    apt.supplyRatio = r.supply_ratio;
+    apt.netMigration = r.net_migration;
+  }
+
+  // merge trade_stats
+  mergeRelated(apts, tradeStats, "apartment_id", "id", {
+    nearby_median: "nearbyMedian", recent_trades_6m: "recentTrades6m",
+    jeonse_rate: "jeonseRate", pir: "pir", psr: "psr",
+    avg_floor: "avgFloor", nearby_build_year: "nearbyBuildYear", floor_range: "floorRange",
+    price_by_area: "priceByArea", rent_by_area: "rentByArea",
+    jeonse_by_area: "jeonseByArea", price_by_floor: "priceByFloor",
+  });
+
+  // dataReliability 계산 (VIEW의 SQL 로직 재현)
+  for (const apt of apts) {
+    apt.dataReliability = Math.max(0, Math.min(100,
+      (apt.nearbyMedian != null ? 15 : 0) +
+      (apt.hospital != null ? 12 : 0) +
+      (apt.schoolScore != null ? 12 : 0) +
+      (apt.busRoutes != null ? 10 : 0) +
+      (apt.builderDebtRatio != null ? 8 : 0) +
+      (apt.popGrowth != null ? 8 : 0) +
+      (apt.nearbyMedian != null ? 15 : 0) +
+      (apt.jeonseRate != null ? 10 : 0) +
+      (apt.units > 1 ? 10 : 0)
+    ));
+  }
+
+  log(PHASE, `  merge 완료: ${apts.length}건`);
+  return apts;
 }
 
 // ── CLI 인자 파싱 ────────────────────────────────────────────
