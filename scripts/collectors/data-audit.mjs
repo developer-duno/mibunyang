@@ -320,9 +320,10 @@ export async function fetchAllFromView(sb, regionFilter) {
   const aptIds = apts.map(a => a.id);
   if (aptIds.length === 0) return apts;
 
-  // 2~7. 관련 테이블 병렬 쿼리
-  log(PHASE, "  관련 테이블 6개 병렬 조회...");
-  const [infra, schools, transport, builders, regions, tradeStats] = await Promise.all([
+  // 2~8. 관련 테이블 병렬 쿼리
+  log(PHASE, "  관련 테이블 7개 병렬 조회...");
+  const [prices, infra, schools, transport, builders, regions, tradeStats] = await Promise.all([
+    fetchAllFromTable(sb, "prices", "apartment_id,area,price,pp", null, null),
     fetchAllFromTable(sb, "infra", "apartment_id,hospital,mart,conv,cafe,culture,bank,pharmacy,park,hospital_dist,mart_dist,conv_dist,cafe_dist,culture_dist,bank_dist,pharmacy_dist,park_dist,subway_dist,nearby_facilities", null, null),
     fetchAllFromTable(sb, "schools", "apartment_id,school_score,school_grade,nearby_schools", null, null),
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
@@ -330,6 +331,19 @@ export async function fetchAllFromView(sb, regionFilter) {
     fetchAllFromTable(sb, "regions", "region,pop_growth,supply_ratio,net_migration", null, null),
     fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor", null, null),
   ]);
+
+  // merge prices (latest per apartment — prices 테이블은 시계열, 최신 1건만)
+  const latestPrices = new Map();
+  for (const p of prices) {
+    if (!latestPrices.has(p.apartment_id)) latestPrices.set(p.apartment_id, p);
+  }
+  for (const apt of apts) {
+    const p = latestPrices.get(apt.id);
+    if (!p) continue;
+    apt.area = p.area;
+    apt.price = p.price;
+    apt.pp = p.pp;
+  }
 
   // merge infra
   mergeRelated(apts, infra, "apartment_id", "id", {
