@@ -36,7 +36,7 @@ function monthsAgo(n) {
 }
 
 // ── Supabase 전체 조회 (1000건 페이징) ─────────────────────────
-async function fetchAll(table, select, filters = {}, sb = null) {
+async function fetchAll(table, select, filters = {}, sb = null, rangeFilters = []) {
   sb = sb ?? getSupabase();
   const rows = [];
   const PAGE = 1000;
@@ -46,6 +46,9 @@ async function fetchAll(table, select, filters = {}, sb = null) {
     let q = sb.from(table).select(select).range(from, from + PAGE - 1);
     for (const [col, val] of Object.entries(filters)) {
       q = q.eq(col, val);
+    }
+    for (const { col, op, val } of rangeFilters) {
+      q = q[op](col, val);
     }
     const { data, error } = await q;
     if (error) throw new Error(`${table} 조회 실패: ${error.message}`);
@@ -88,15 +91,18 @@ async function main() {
 
   log("load", "데이터 병렬 조회...");
   const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
+  const cutoff6mYM = cutoff6m.replace(/-/g, "").slice(0, 6);
   const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory] = await Promise.all([
     fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate", {}, sbMibunyang),
     fetchAll("prices", "apartment_id,area,price,recorded_at", {}, sbMibunyang),
-    fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang).catch(() => []),
+    fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang,
+      [{ col: "deal_month", op: "gte", val: cutoff12mYM }]).catch(() => []),
     fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang).catch(() => []),
-    fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2,created_at", { is_active: true }, sbMibunyang).catch(() => []),
+    fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2", { is_active: true }, sbMibunyang).catch(() => []),
     fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang).catch(() => []),
-    fetchAll("complex_price_history", "complex_no,trade_type,price_avg,base_month", { trade_type: "A1" }, sbMibunyang)
-      .then(rows => rows.filter(r => r.price_avg != null && r.base_month >= cutoff12mYM))
+    fetchAll("complex_price_history", "complex_no,trade_type,price_avg,base_month", { trade_type: "A1" }, sbMibunyang,
+      [{ col: "base_month", op: "gte", val: cutoff12mYM }])
+      .then(rows => rows.filter(r => r.price_avg != null))
       .catch(() => []),
   ]);
   // rawPrices에서 아파트별 최신 가격·면적 매핑 (apartments 테이블에 price/area 컬럼 없음)
@@ -175,8 +181,9 @@ async function main() {
     let nearbyMedian = null;
     let medianSource = null;
     const guTrades = tradesByGu.get(key) || [];
+    // trades는 서버사이드에서 12개월 필터링 완료 — 거래유형만 필터
     const recent12m = guTrades.filter(
-      (t) => t.deal_month >= cutoff12m && (t.trade_type === "매매" || !t.trade_type)
+      (t) => t.trade_type === "sale" || t.trade_type === "매매" || !t.trade_type
     );
 
     // 1단계: 실거래 데이터 (매매 3건+)
@@ -189,8 +196,7 @@ async function main() {
       const naverSale = guNaver.filter(
         (a) =>
           a.numeric_price != null &&
-          (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name) &&
-          (!a.created_at || a.created_at >= cutoff12m)
+          (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name)
       );
       if (naverSale.length >= 1) {
         nearbyMedian = median(naverSale.map((a) => a.numeric_price));
@@ -210,9 +216,9 @@ async function main() {
     // ── jeonse_rate (전세가율 %) ──────────────────────────────
     let jeonseRate = null;
     if (aptPrice && aptPrice > 0) {
-      // 거래 데이터에서 전세 중위
+      // 거래 데이터에서 전세 중위 (서버사이드 12개월 필터 적용됨)
       const jeonse12m = guTrades.filter(
-        (t) => t.deal_month >= cutoff12m && t.trade_type === "전세"
+        (t) => t.trade_type === "jeonse" || t.trade_type === "전세"
       );
 
       if (jeonse12m.length >= 3) {
@@ -227,14 +233,12 @@ async function main() {
         const naverJeonse = guNaver.filter(
           (a) =>
             a.numeric_price != null &&
-            (a.trade_type_name === "전세" || a.trade_type_name === "lease") &&
-            (!a.created_at || a.created_at >= cutoff12m)
+            (a.trade_type_name === "전세" || a.trade_type_name === "lease")
         );
         const naverSale = guNaver.filter(
           (a) =>
             a.numeric_price != null &&
-            (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name) &&
-            (!a.created_at || a.created_at >= cutoff12m)
+            (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name)
         );
         const jMedian = naverJeonse.length >= 1 ? median(naverJeonse.map((a) => a.numeric_price)) : null;
         const sMedian = naverSale.length >= 1 ? median(naverSale.map((a) => a.numeric_price)) : nearbyMedian;
@@ -283,8 +287,7 @@ async function main() {
             a.numeric_price != null &&
             a.area2_m2 &&
             a.area2_m2 > 0 &&
-            (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name) &&
-            (!a.created_at || a.created_at >= cutoff12m)
+            (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name)
         );
         if (naverWithArea.length >= 1) {
           nearbyPerM2 = median(naverWithArea.map((a) => a.numeric_price / a.area2_m2));
@@ -298,7 +301,7 @@ async function main() {
 
     // ── recent_trades_6m (최근 6개월 거래 건수) ──────────────
     const recent6m = guTrades.filter(
-      (t) => t.deal_month >= cutoff6m && (t.trade_type === "매매" || !t.trade_type)
+      (t) => t.deal_month >= cutoff6mYM && (t.trade_type === "sale" || t.trade_type === "매매" || !t.trade_type)
     );
     const recentTrades6m = recent6m.length || null;
 
@@ -320,11 +323,11 @@ async function main() {
     // 면적별 매매 시세
     const priceByArea = groupByArea(recent12m.filter(t => t.price > 0 && t.area > 0));
 
-    // 면적별 전세 시세
-    const jeonse12m = guTrades.filter(
-      t => t.deal_month >= cutoff12m && t.trade_type === "전세" && t.price > 0 && t.area > 0
+    // 면적별 전세 시세 (서버사이드 12개월 필터 적용됨)
+    const jeonseAll = guTrades.filter(
+      t => (t.trade_type === "jeonse" || t.trade_type === "전세") && t.price > 0 && t.area > 0
     );
-    const rentByArea = groupByArea(jeonse12m);
+    const rentByArea = groupByArea(jeonseAll);
 
     // 면적별 전세가율 (매매/전세 매칭)
     const jeonseByArea = priceByArea
