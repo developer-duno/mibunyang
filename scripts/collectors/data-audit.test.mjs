@@ -1,0 +1,159 @@
+/**
+ * data-audit.mjs 테스트 — null 판정, 감사 계산 검증
+ */
+import { describe, it, expect, vi } from "vitest";
+
+// Supabase 연결 방지
+vi.mock("./_shared.mjs", async (importOriginal) => {
+  const orig = await importOriginal();
+  return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
+});
+
+const { isFieldNull, computeAudit, AUDIT_FIELDS } = await import("./data-audit.mjs");
+
+// 팩토리: 모든 필드가 채워진 아파트 행
+function createFullRow(overrides = {}) {
+  return {
+    id: "ah-100", name: "테스트아파트", region: "서울", gu: "강남구", dong: "역삼동",
+    address: "서울시 강남구", roadAddress: "테헤란로 1", district: "역삼1", lat: 37.5, lng: 127.0,
+    builder: "삼성물산", units: 500, completion: "202601", layout: "3룸",
+    area: 84, price: 50000, pp: 1800,
+    maxFloor: 25, parkingRatio: 1.2, floorAreaRatio: 250, exclusiveRatio: 78,
+    energyGrade: 2, heating: "지역난방", floors: "15-25", hasPool: false,
+    isRegulated: false, dsr40pass: true,
+    discountPct: 5, loanFree: true, balconyFree: true, cashback: 500, benefits: ["발코니무료"],
+    hospital: 3, mart: 2, conv: 5, cafe: 8, culture: 1, bank: 4, pharmacy: 3, park: 2,
+    hospitalDist: 300, martDist: 200, convDist: 100, cafeDist: 150, cultureDist: 800,
+    bankDist: 250, pharmacyDist: 180, parkDist: 400, nearbyFacilities: ["스타벅스"],
+    busRoutes: 12, icDist: 5, ktxDist: 30, subwayName: "역삼역", subwayLines: ["2호선"], busStopNames: ["역삼동"],
+    schoolScore: 72, schoolGrade: "A", nearbySchools: [{ name: "역삼초" }],
+    builderDebtRatio: 180, builderCreditGrade: "A+", hugGuarantee: true,
+    popGrowth: 1.2, supplyRatio: 95, netMigration: 500,
+    nearbyMedian: 45000, recentTrades6m: 15, jeonseRate: 62, pir: 8.5, psr: 0.9,
+    avgFloor: 12, nearbyBuildYear: 2018, floorRange: "3-25",
+    priceByArea: [{ area: 84, price: 50000 }], rentByArea: [{ area: 84, rent: 3000 }],
+    jeonseByArea: [{ area: 84, jeonse: 30000 }], priceByFloor: [{ floor: 10, price: 50000 }],
+    naverNearbyMedian: 44000, naverNearbyAvg: 45000, naverJeonseRate: 60,
+    naverSellCount: 5, naverJeonseCount: 3, naverWolseCount: 2,
+    naverBuildYear: 2018, naverAvgFloor: 11, naverSchoolWalkMin: 8, naverNearbyCount: 20,
+    view: "한강뷰", sunlight: "남향", noise: 45, noxious: ["고압선"], noxiousDist: 500,
+    transitDev: "GTX-A", devDist: 2.5, cityDev: "마곡지구", industryDev: "판교테크노밸리",
+    dataReliability: 85,
+    ...overrides,
+  };
+}
+
+// ── isFieldNull 테스트 ───────────────────────────────────────
+describe("isFieldNull", () => {
+  // 이 테스트가 검증하는 것: 기본 null/undefined 판정
+  it("null/undefined → true", () => {
+    expect(isFieldNull("name", null)).toBe(true);
+    expect(isFieldNull("name", undefined)).toBe(true);
+  });
+
+  // 이 테스트가 검증하는 것: 정상 값은 false
+  it("채워진 값 → false", () => {
+    expect(isFieldNull("name", "테스트")).toBe(false);
+    expect(isFieldNull("price", 50000)).toBe(false);
+    expect(isFieldNull("isRegulated", false)).toBe(false);
+  });
+
+  // 이 테스트가 검증하는 것: 빈 배열 = null
+  it("빈 배열 → true, 채워진 배열 → false", () => {
+    expect(isFieldNull("benefits", [])).toBe(true);
+    expect(isFieldNull("benefits", ["발코니무료"])).toBe(false);
+    expect(isFieldNull("noxious", [])).toBe(true);
+    expect(isFieldNull("priceByArea", [])).toBe(true);
+    expect(isFieldNull("priceByArea", [{ area: 84 }])).toBe(false);
+  });
+
+  // 이 테스트가 검증하는 것: COALESCE 기본값 마스킹
+  it("COALESCE 기본값 → true", () => {
+    expect(isFieldNull("subwayDist", 9999)).toBe(true);
+    expect(isFieldNull("icDist", 99)).toBe(true);
+    expect(isFieldNull("ktxDist", 99)).toBe(true);
+  });
+
+  // 이 테스트가 검증하는 것: 실제 값은 기본값이 아님
+  it("COALESCE 필드에 실제 값 → false", () => {
+    expect(isFieldNull("subwayDist", 500)).toBe(false);
+    expect(isFieldNull("icDist", 3)).toBe(false);
+  });
+
+  // 이 테스트가 검증하는 것: units 특수 케이스
+  it("units <= 1 → true, units > 1 → false", () => {
+    expect(isFieldNull("units", 0)).toBe(true);
+    expect(isFieldNull("units", 1)).toBe(true);
+    expect(isFieldNull("units", 500)).toBe(false);
+  });
+
+  // 이 테스트가 검증하는 것: 영구 미수집 필드
+  it("영구 미수집 필드 (quakeDesign, greenBldg) → 항상 true", () => {
+    expect(isFieldNull("quakeDesign", true)).toBe(true);
+    expect(isFieldNull("greenBldg", "녹색1등급")).toBe(true);
+  });
+});
+
+// ── computeAudit 테스트 ──────────────────────────────────────
+describe("computeAudit", () => {
+  // 이 테스트가 검증하는 것: 빈 입력 처리
+  it("빈 배열 → total=0, 카테고리 비어있음", () => {
+    const audit = computeAudit([]);
+    expect(audit.total).toBe(0);
+    expect(Object.keys(audit.categories)).toHaveLength(0);
+  });
+
+  // 이 테스트가 검증하는 것: 정상 데이터 감사 계산
+  it("전체 필드 채워진 행 → 높은 커버리지", () => {
+    const rows = [createFullRow(), createFullRow({ region: "부산" })];
+    const audit = computeAudit(rows);
+
+    expect(audit.total).toBe(2);
+    expect(audit.avgReliability).toBe(85);
+
+    // core 카테고리: 모든 필드 채움
+    expect(audit.categories.core.rate).toBe(100);
+    expect(audit.categories.price.rate).toBe(100);
+    expect(audit.categories.building.rate).toBe(100);
+
+    // 지역별
+    expect(audit.regions["서울"].apartments).toBe(1);
+    expect(audit.regions["부산"].apartments).toBe(1);
+  });
+
+  // 이 테스트가 검증하는 것: null 필드가 있는 행의 감사
+  it("일부 null 필드 → 커버리지 반영", () => {
+    const row = createFullRow({
+      energyGrade: null,
+      parkingRatio: null,
+      naverNearbyMedian: null,
+      naverJeonseRate: null,
+      benefits: [],
+    });
+    const audit = computeAudit([row]);
+
+    // building: 8개 중 2개 null → 75%
+    expect(audit.categories.building.rate).toBe(75);
+
+    // 필드별 상세
+    expect(audit.fields["building.energyGrade"].missing).toBe(1);
+    expect(audit.fields["building.parkingRatio"].missing).toBe(1);
+    expect(audit.fields["building.maxFloor"].filled).toBe(1);
+  });
+});
+
+// ── AUDIT_FIELDS 구조 테스트 ─────────────────────────────────
+describe("AUDIT_FIELDS", () => {
+  // 이 테스트가 검증하는 것: 14개 카테고리 정의
+  it("14개 카테고리 존재", () => {
+    expect(Object.keys(AUDIT_FIELDS)).toHaveLength(14);
+  });
+
+  // 이 테스트가 검증하는 것: 각 카테고리에 collector와 fields 존재
+  it("모든 카테고리에 collector + fields 존재", () => {
+    for (const [cat, def] of Object.entries(AUDIT_FIELDS)) {
+      expect(def.collector, `${cat}.collector 누락`).toBeTruthy();
+      expect(def.fields.length, `${cat}.fields 비어있음`).toBeGreaterThan(0);
+    }
+  });
+});
