@@ -82,3 +82,47 @@ describe("getTag", () => {
     expect(getTag(item2, "거래금액")).toBe("50000");
   });
 });
+
+describe("AptTradeDev XML 파싱", () => {
+  // AptTradeDev API 응답의 신규 필드 파싱 검증
+  const devItem = `<item><aptNm>현대비젼21</aptNm><dealAmount>40,000</dealAmount><excluUseAr>33.1</excluUseAr><floor>24</floor><buildYear>1999</buildYear><umdNm>도곡동</umdNm><dealingGbn>직거래</dealingGbn><cdealDay> </cdealDay><buyerGbn>개인</buyerGbn><slerGbn>개인</slerGbn><dealDay>19</dealDay></item>`;
+
+  it("aptNm(아파트명)을 추출한다", () => {
+    expect(getTag(devItem, "aptNm")).toBe("현대비젼21");
+  });
+
+  it("dealingGbn(거래유형)을 추출한다", () => {
+    expect(getTag(devItem, "dealingGbn")).toBe("직거래");
+  });
+
+  it("cdealDay(해제일) 공백은 빈 문자열로 반환된다", () => {
+    // cdealDay가 공백이면 trim 후 빈 문자열 → cancel_date는 null 처리
+    expect(getTag(devItem, "cdealDay")).toBe("");
+  });
+
+  it("cdealDay(해제일)에 값이 있으면 추출한다", () => {
+    const cancelItem = `<item><cdealDay>26.03.20</cdealDay></item>`;
+    expect(getTag(cancelItem, "cdealDay")).toBe("26.03.20");
+  });
+
+  it("기존 필드(dealAmount, excluUseAr, floor)는 동일하게 파싱된다", () => {
+    expect(getTag(devItem, "dealAmount")).toBe("40,000");
+    expect(getTag(devItem, "excluUseAr")).toBe("33.1");
+    expect(getTag(devItem, "floor")).toBe("24");
+  });
+});
+
+describe("SilvTrade XML 파싱", () => {
+  // 분양권전매 API 응답 파싱 검증
+  const silvItem = `<item><aptNm>동탄역 롯데캐슬</aptNm><dealAmount>55,000</dealAmount><excluUseAr>84.99</excluUseAr><floor>15</floor><buildYear>2024</buildYear><umdNm>오산동</umdNm></item>`;
+
+  it("분양권전매 aptNm 추출", () => {
+    expect(getTag(silvItem, "aptNm")).toBe("동탄역 롯데캐슬");
+  });
+
+  it("분양권전매 기본 필드 파싱", () => {
+    expect(getTag(silvItem, "dealAmount")).toBe("55,000");
+    expect(getTag(silvItem, "excluUseAr")).toBe("84.99");
+    expect(getTag(silvItem, "floor")).toBe("15");
+  });
+});

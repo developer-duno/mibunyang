@@ -148,17 +148,26 @@ async function main() {
 
   const rows = [];
   let apiCalls = 0;
+  let fallbackUsed = false;
   const seen = new Set();
 
   for (const rg of regionGuPairs) {
     const lawdCd = getLawdCd(rg.region, rg.gu);
     if (!lawdCd) { log(PHASE, "  " + rg.region + " " + rg.gu + ": 법정동코드 없음"); continue; }
 
-    // 매매 실거래
+    // 매매 실거래 (AptTradeDev — 폴백: 기존 RTMSDataSvcAptTrade)
+    let usedFallback = false;
     for (const month of months) {
       try {
-        const url = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
-        const xml = await fetchApi(url);
+        let url = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
+        let xml = await fetchApi(url);
+        if (xml && xml.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
+          if (!fallbackUsed) log(PHASE, "AptTradeDev 미등록 — 기존 API 폴백");
+          usedFallback = true;
+          fallbackUsed = true;
+          url = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
+          xml = await fetchApi(url);
+        }
         if (!xml) continue;
         for (const item of extractItems(xml)) {
           const price = parseInt((getTag(item, "dealAmount") || "0").replace(/,/g, ""));
@@ -170,11 +179,18 @@ async function main() {
           const key = rg.region + "|" + rg.gu + "|" + month + "|" + area + "|" + price + "|" + floor + "|sale";
           if (seen.has(key)) continue;
           seen.add(key);
-          rows.push({ region: rg.region, gu: rg.gu, dong, deal_month: month, area: Math.round(area * 100) / 100, price, floor, build_year: buildYear, trade_type: "sale", deposit: null });
+          const row = { region: rg.region, gu: rg.gu, dong, deal_month: month, area: Math.round(area * 100) / 100, price, floor, build_year: buildYear, trade_type: "sale", deposit: null };
+          if (!usedFallback) {
+            row.apt_name = getTag(item, "aptNm") || null;
+            row.dealing_type = getTag(item, "dealingGbn") || null;
+            const cd = getTag(item, "cdealDay");
+            row.cancel_date = (cd && cd.trim()) ? cd.trim() : null;
+          }
+          rows.push(row);
         }
         apiCalls++;
       } catch (err) {
-        if (apiCalls === 0) logError(PHASE, "매매 API 실패 " + lawdCd + "/" + month + ": " + err.message);
+        logError(PHASE, "매매 API 실패 " + lawdCd + "/" + month + ": " + err.message);
       }
       await sleep(200);
     }
@@ -200,7 +216,37 @@ async function main() {
         }
         apiCalls++;
       } catch (err) {
-        if (apiCalls === 0) logError(PHASE, "전세 API 실패: " + err.message);
+        logError(PHASE, "전세 API 실패 " + lawdCd + "/" + month + ": " + err.message);
+      }
+      await sleep(200);
+    }
+
+    // 분양권전매 (SilvTrade — 축적 목적)
+    for (const month of months) {
+      try {
+        const url = "https://apis.data.go.kr/1613000/RTMSDataSvcSilvTrade/getRTMSDataSvcSilvTrade?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
+        const xml = await fetchApi(url);
+        if (!xml || xml.includes("SERVICE_KEY_IS_NOT_REGISTERED")) continue;
+        for (const item of extractItems(xml)) {
+          const price = parseInt((getTag(item, "dealAmount") || "0").replace(/,/g, ""));
+          const area = parseFloat(getTag(item, "excluUseAr") || "0");
+          const floor = parseInt(getTag(item, "floor") || "0") || null;
+          const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
+          const dong = getTag(item, "umdNm") || null;
+          if (price <= 0 || area <= 0) continue;
+          const key = rg.region + "|" + rg.gu + "|" + month + "|" + area + "|" + price + "|" + floor + "|presale";
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push({
+            region: rg.region, gu: rg.gu, dong, deal_month: month,
+            area: Math.round(area * 100) / 100, price, floor, build_year: buildYear,
+            trade_type: "presale", deposit: null,
+            apt_name: getTag(item, "aptNm") || null,
+          });
+        }
+        apiCalls++;
+      } catch (err) {
+        logError(PHASE, "분양권 API 실패 " + lawdCd + "/" + month + ": " + err.message);
       }
       await sleep(200);
     }
@@ -210,8 +256,9 @@ async function main() {
 
   const saleCount = rows.filter(r => r.trade_type === "sale").length;
   const jeonseCount = rows.filter(r => r.trade_type === "jeonse").length;
-  log(PHASE, "API 총 " + apiCalls + "건 호출");
-  log(PHASE, "수집 완료: 매매 " + saleCount + "건 + 전세 " + jeonseCount + "건 = 총 " + rows.length + "건");
+  const presaleCount = rows.filter(r => r.trade_type === "presale").length;
+  log(PHASE, "API 총 " + apiCalls + "건 호출" + (fallbackUsed ? " (매매: 기존 API 폴백)" : " (매매: AptTradeDev)"));
+  log(PHASE, "수집 완료: 매매 " + saleCount + "건 + 전세 " + jeonseCount + "건 + 분양권 " + presaleCount + "건 = 총 " + rows.length + "건");
 
   if (dryRun) {
     if (rows.length > 0) {
