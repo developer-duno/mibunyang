@@ -105,6 +105,16 @@ export const SUPPLY_RATIO_TIERS = [
 ];
 export const SUPPLY_HIGH_SCORE = 75;
 
+// scoreRisk cancelRatio6m (계약해제율: 낮을수록 안전 → 낮은 위험점수)
+export const CANCEL_RATIO_TIERS = [
+  { max: 3, score: 10 },
+  { max: 8, score: 25 },
+  { max: 15, score: 45 },
+  { max: 25, score: 65 },
+];
+export const CANCEL_RATIO_HIGH_SCORE = 85;
+export const CANCEL_RATIO_NULL_SCORE = 35;
+
 // scoreRisk popGrowth (위험 관점: 높으면 안전 → 낮은 위험점수)
 export const POP_RISK_TIERS = [
   { min: 0.5, score: 10 }, { min: 0, score: 20 },

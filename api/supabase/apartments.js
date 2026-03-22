@@ -121,6 +121,7 @@ function sanitize(row) {
     _fallbackNearbyMedian: row.nearbyMedian == null && row.naverNearbyMedian != null,
     _fallbackNearbyBuildYear: row.nearbyBuildYear == null && row.naverBuildYear != null,
     _fallbackAvgFloor: row.avgFloor == null && row.naverAvgFloor != null,
+    _fallbackCancelRatio6m: row.cancelRatio6m == null,
     id: row.id,
     name: row.name,
     dong: row.dong ?? "",
@@ -227,6 +228,7 @@ function sanitize(row) {
     jeonseRate: row.jeonseRate ?? 40,
     pir: row.pir ?? 10,
     psr: row.psr ?? 1.5,
+    cancelRatio6m: row.cancelRatio6m ?? null,
     // 규제/보증 (engine.js scoreRisk에서 사용)
     isRegulated: row.isRegulated ?? false,
     dsr40pass: row.dsr40pass ?? false,

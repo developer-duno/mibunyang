@@ -27,7 +27,7 @@ function makeApt(overrides = {}) {
     cashback: 200,
     unsoldRate: 15, recentTrades6m: 20, dsr40pass: true, hugGuarantee: true,
     builderCreditGrade: "AA", builderDebtRatio: 100, supplyRatio: 100,
-    popGrowth: 0.3, netMigration: 500,
+    popGrowth: 0.3, netMigration: 500, cancelRatio6m: 5,
     transitDev: "GTX-C 착공", devDist: 1, cityDev: "신도시", industryDev: "테크노밸리",
     ...overrides,
   };
@@ -176,7 +176,7 @@ describe('scoreRisk', () => {
     const r = scoreRisk(makeApt());
     expect(r.total).toBeGreaterThanOrEqual(0);
     expect(r.total).toBeLessThanOrEqual(100);
-    expect(r.subs).toHaveLength(7);
+    expect(r.subs).toHaveLength(8);
   });
   it('미분양률 낮음 -> 안전 점수 높음', () => {
     expect(scoreRisk(makeApt({ unsoldRate: 5 })).total).toBeGreaterThan(scoreRisk(makeApt({ unsoldRate: 50 })).total);
@@ -190,6 +190,14 @@ describe('scoreRisk', () => {
   });
   it('인구 급감 -> 시장환경 위험', () => {
     expect(scoreRisk(makeApt({ popGrowth: 1.0 })).total).toBeGreaterThan(scoreRisk(makeApt({ popGrowth: -1.0 })).total);
+  });
+  // 계약해제율 테스트
+  it('cancelRatio6m null -> 중립 65점', () => {
+    const r = scoreRisk(makeApt({ cancelRatio6m: null }));
+    expect(r.subs.find(s => s.name === "계약해제율").score).toBe(65);
+  });
+  it('cancelRatio6m 낮음 -> 안전 점수 높음', () => {
+    expect(scoreRisk(makeApt({ cancelRatio6m: 2 })).total).toBeGreaterThan(scoreRisk(makeApt({ cancelRatio6m: 30 })).total);
   });
 });
 

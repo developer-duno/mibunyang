@@ -16,6 +16,7 @@ import {
   LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE,
   CREDIT_GRADE_SCORES, CREDIT_DEFAULT,
   SUPPLY_RATIO_TIERS, SUPPLY_HIGH_SCORE,
+  CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE, CANCEL_RATIO_NULL_SCORE,
   POP_RISK_TIERS, POP_RISK_HIGH, POP_RISK_NULL,
   POP_FUTURE_TIERS, POP_FUTURE_LOW, POP_FUTURE_NULL,
   INTEREST_RATE, LOAN_TERM_MULT, BENEFIT_FULL_RATE,
@@ -43,7 +44,7 @@ function sanitize(apt, rm) {
     ...apt,
     // 위험 필드 → 지역 중위값 우선, 없으면 비관적 기본값
     pir: num(apt.pir, rm?.pir ?? 10), psr: num(apt.psr, rm?.psr ?? 1.5),
-    unsoldRate: num(apt.unsoldRate, rm?.unsoldRate ?? 50), recentTrades6m: num(apt.recentTrades6m, 0),
+    unsoldRate: num(apt.unsoldRate, rm?.unsoldRate ?? 50), recentTrades6m: num(apt.recentTrades6m, 0), cancelRatio6m: num(apt.cancelRatio6m, null),
     builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, rm?.supplyRatio ?? 150),
     popGrowth: apt.popGrowth != null ? num(apt.popGrowth, null) : null,
     netMigration: apt.netMigration != null ? num(apt.netMigration, null) : null,
@@ -289,7 +290,9 @@ export function scoreRisk(apt) {
     : apt.popGrowth >= -0.3 ? 30
     : apt.popGrowth >= -0.8 ? 45
     : 60;
-  const risk = unsoldSc * 0.20 + liqSc * 0.15 + loanSc * 0.15 + finSc * 0.20 + regSc * 0.10 + supSc * 0.10 + mktSc * 0.10;
+  let cancelSc = apt.cancelRatio6m == null ? CANCEL_RATIO_NULL_SCORE
+    : tierMax(apt.cancelRatio6m, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE);
+  const risk = unsoldSc * 0.20 + liqSc * 0.15 + loanSc * 0.15 + finSc * 0.20 + regSc * 0.08 + supSc * 0.10 + mktSc * 0.07 + cancelSc * 0.05;
   const safety = Math.round(Math.max(0, Math.min(100, 100 - risk)));
   return {
     total: safety, riskRaw: Math.round(risk),
@@ -301,6 +304,7 @@ export function scoreRisk(apt) {
       { name: "규제", score: 100 - regSc, info: zone !== "normal" ? "규제지역" : "비규제", detail: zone !== "normal" ? "규제지역 (매매·대출 제약)" : "비규제 (거래 자유)" },
       { name: "공급량", score: 100 - supSc, info: `${apt.supplyRatio}%`, detail: `${apt.supplyRatio}% (부족 50%↓, 적정 100%↓, 과잉 130%↑)` },
       { name: "시장환경", score: 100 - mktSc, info: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` : "정보 없음", detail: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}% (성장 +1%↑, 안정 0%↑, 감소 -0.8%↓)` : "인구 데이터 없음 (중립 35점)" },
+      { name: "계약해제율", score: 100 - cancelSc, info: apt.cancelRatio6m != null ? `${apt.cancelRatio6m}%` : "정보 없음", detail: apt.cancelRatio6m != null ? `${apt.cancelRatio6m}% (안전 3%↓, 주의 8~15%, 위험 25%↑)` : "계약해제율 데이터 없음 (중립 35점)" },
     ],
   };
 }

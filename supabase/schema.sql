@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS trade_stats (
   avg_floor INTEGER,
   floor_range TEXT,
   nearby_build_year INTEGER,
+  cancel_ratio_6m REAL,                   -- 6개월 매매 해제비율 (%)
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -498,6 +499,7 @@ SELECT
   ts.avg_floor AS "avgFloor",
   ts.floor_range AS "floorRange",
   ts.nearby_build_year AS "nearbyBuildYear",
+  ts.cancel_ratio_6m AS "cancelRatio6m",
   -- 시세 배열 (DetailModal 시세 테이블용)
   ts.price_by_area AS "priceByArea",
   ts.rent_by_area AS "rentByArea",

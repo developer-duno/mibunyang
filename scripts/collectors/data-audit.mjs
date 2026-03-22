@@ -76,6 +76,7 @@ export const AUDIT_FIELDS = {
       "nearbyMedian", "recentTrades6m", "jeonseRate", "pir", "psr",
       "avgFloor", "nearbyBuildYear", "floorRange",
       "priceByArea", "rentByArea", "jeonseByArea", "priceByFloor",
+      "cancelRatio6m",
     ],
   },
   naver: {
@@ -329,7 +330,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
     fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
     fetchAllFromTable(sb, "regions", "region,pop_growth,supply_ratio,net_migration", null, null),
-    fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor", null, null),
+    fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m", null, null),
   ]);
 
   // merge prices (latest per apartment — prices 테이블은 시계열, 최신 1건만)
@@ -398,6 +399,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     avg_floor: "avgFloor", nearby_build_year: "nearbyBuildYear", floor_range: "floorRange",
     price_by_area: "priceByArea", rent_by_area: "rentByArea",
     jeonse_by_area: "jeonseByArea", price_by_floor: "priceByFloor",
+    cancel_ratio_6m: "cancelRatio6m",
   });
 
   // dataReliability 계산 (VIEW의 SQL 로직 재현)

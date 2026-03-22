@@ -61,6 +61,27 @@ async function fetchAll(table, select, filters = {}, sb = null, rangeFilters = [
   return rows;
 }
 
+// ── 해제 거래 조회 (fetchAll은 NOT IS NULL 미지원 → 별도 함수) ──
+async function fetchCancelledTrades(sb, cutoff) {
+  const rows = [];
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await sb
+      .from("trades")
+      .select("region,gu,deal_month,trade_type")
+      .gte("deal_month", cutoff)
+      .not("cancel_date", "is", null)
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`해제거래 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return rows;
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
 /** 거래 배열 → 면적별 min/avg/max/count 통계 */
 function groupByArea(trades) {
@@ -92,7 +113,7 @@ async function main() {
   log("load", "데이터 병렬 조회...");
   const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
   const cutoff6mYM = cutoff6m.replace(/-/g, "").slice(0, 6);
-  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory] = await Promise.all([
+  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory, cancelledTrades] = await Promise.all([
     fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate", {}, sbMibunyang),
     fetchAll("prices", "apartment_id,area,price,recorded_at", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang,
@@ -105,6 +126,8 @@ async function main() {
       [{ col: "base_month", op: "gte", val: cutoff12mYM }])
       .then(rows => rows.filter(r => r.price_avg != null))
       .catch(() => []),
+    // 해제 거래 (cancel_date IS NOT NULL, 6개월)
+    fetchCancelledTrades(sbMibunyang, cutoff6mYM).catch(() => []),
   ]);
   // rawPrices에서 아파트별 최신 가격·면적 매핑 (apartments 테이블에 price/area 컬럼 없음)
   const latestPriceMap = new Map();
@@ -118,7 +141,7 @@ async function main() {
     const lp = latestPriceMap.get(a.id);
     return { ...a, price: lp?.price ?? null, area: lp?.area ?? null };
   });
-  log("load", `아파트 ${apartments.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 지역 ${regions.length}건, 매물 ${naverArticles.length}건, 단지 ${naverComplexes.length}건, 시세이력 ${priceHistory.length}건`);
+  log("load", `아파트 ${apartments.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 해제거래 ${cancelledTrades.length}건, 지역 ${regions.length}건, 매물 ${naverArticles.length}건, 단지 ${naverComplexes.length}건, 시세이력 ${priceHistory.length}건`);
 
   // 2. 인덱스 구축
   // 지역 소득 맵: "region:gu" → avg_income
@@ -163,6 +186,15 @@ async function main() {
     const key = `${guInfo.region}:${guInfo.gu}`;
     if (!historyByGu.has(key)) historyByGu.set(key, []);
     historyByGu.get(key).push(h.price_avg);
+  }
+
+  // 해제 거래 그룹: "region:gu" → 해제 건수 (매매만)
+  const cancelByGu = new Map();
+  for (const t of cancelledTrades) {
+    if (!t.region || !t.gu) continue;
+    if (t.trade_type !== "sale" && t.trade_type !== "매매" && t.trade_type != null) continue;
+    const key = `${t.region}:${t.gu}`;
+    cancelByGu.set(key, (cancelByGu.get(key) || 0) + 1);
   }
 
   // 3. 각 아파트별 통계 산출
@@ -306,6 +338,14 @@ async function main() {
     );
     const recentTrades6m = recent6m.length || null;
 
+    // ── cancel_ratio_6m (6개월 매매 해제비율 %) ────────────────
+    let cancelRatio6m = null;
+    const cancelCount = cancelByGu.get(key) || 0;
+    const totalSale6m = recent6m.length + cancelCount;
+    if (totalSale6m >= 3) {
+      cancelRatio6m = Math.round((cancelCount / totalSale6m) * 1000) / 10;
+    }
+
     // ── dsr40pass (DSR 40% 통과 여부) ──────────────────────────
     // 70% LTV, 30년 원리금균등, 금리 4% 가정
     let dsr40pass = null;
@@ -386,7 +426,8 @@ async function main() {
       jeonseRate == null &&
       pir == null &&
       psr == null &&
-      recentTrades6m == null
+      recentTrades6m == null &&
+      cancelRatio6m == null
     ) {
       continue;
     }
@@ -406,6 +447,7 @@ async function main() {
       avg_floor: avgFloor,
       floor_range: floorRange,
       nearby_build_year: nearbyBuildYear,
+      cancel_ratio_6m: cancelRatio6m,
       updated_at: new Date().toISOString(),
     });
 
@@ -427,6 +469,7 @@ async function main() {
   const withPsr = results.filter((r) => r.psr != null);
   const withJeonse = results.filter((r) => r.jeonse_rate != null);
   const withTrades = results.filter((r) => r.recent_trades_6m != null);
+  const withCancel = results.filter((r) => r.cancel_ratio_6m != null);
 
   const fromTrades = results.filter(r => r._medianSource === "trades").length;
   const fromArticles = results.filter(r => r._medianSource === "articles").length;
@@ -436,6 +479,7 @@ async function main() {
   log("summary", `psr: ${withPsr.length}건 (평균 ${withPsr.length ? (withPsr.reduce((s, r) => s + r.psr, 0) / withPsr.length).toFixed(2) : "N/A"})`);
   log("summary", `jeonse_rate: ${withJeonse.length}건 (평균 ${withJeonse.length ? (withJeonse.reduce((s, r) => s + r.jeonse_rate, 0) / withJeonse.length).toFixed(1) : "N/A"}%)`);
   log("summary", `recent_trades_6m: ${withTrades.length}건`);
+  log("summary", `cancel_ratio_6m: ${withCancel.length}건 (평균 ${withCancel.length ? (withCancel.reduce((s, r) => s + r.cancel_ratio_6m, 0) / withCancel.length).toFixed(1) : "N/A"}%)`);
   log("summary", `dsr40pass: ${dsrUpdates.filter(d => d.dsr40pass).length}통과 / ${dsrUpdates.filter(d => !d.dsr40pass).length}미통과 (총 ${dsrUpdates.length}건)`);
 
   if (dryRun) {
