@@ -16,6 +16,10 @@ supabase/.temp/
 
 # 임시 스크립트
 _tmp_*
+backup_*.json
+check_*.mjs
+detailed_*.mjs
+test-debug*
 
 # 바이너리/데이터
 *.xlsx
