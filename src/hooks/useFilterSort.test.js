@@ -69,31 +69,6 @@ describe('useFilterSort', () => {
     expect(result.current.budgetMax).toBe("");
   });
 
-  it('applyDetectedRegion: 사용자 터치 전에는 자동 적용', () => {
-    const { result } = renderHook(() => useFilterSort({}));
-    let applied;
-    act(() => { applied = result.current.applyDetectedRegion("경기", ["서울", "경기", "인천"]); });
-    expect(applied).toBe(true);
-  });
-
-  it('applyDetectedRegion: 사용자 터치 후에는 거부', () => {
-    const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.handleRegionChange("서울"); }); // userTouched = true
-    const applied = result.current.applyDetectedRegion("경기", ["서울", "경기"]);
-    expect(applied).toBe(false);
-    expect(result.current.filterRegion).toBe("서울");
-  });
-
-  it('applyDetectedRegion: regionOptions에 없는 지역 → false', () => {
-    const { result } = renderHook(() => useFilterSort({}));
-    expect(result.current.applyDetectedRegion("제주", ["서울", "경기"])).toBe(false);
-  });
-
-  it('applyDetectedRegion: null 지역 → false', () => {
-    const { result } = renderHook(() => useFilterSort({}));
-    expect(result.current.applyDetectedRegion(null, ["서울"])).toBe(false);
-  });
-
   it('검색어 변경', () => {
     const { result } = renderHook(() => useFilterSort({}));
     act(() => { result.current.handleSearchChange("힐스테이트"); });

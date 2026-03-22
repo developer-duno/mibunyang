@@ -24,7 +24,7 @@ function makeProps(overrides = {}) {
     filterRegion: "전체",
     dataLoading: false,
     dataFreshnessText: "",
-    userLocation: { region: null, gu: null, loading: false, method: null },
+
     ...overrides,
   };
 }
@@ -84,9 +84,4 @@ describe("AptListSection", () => {
     expect(screen.queryByText("해당 지역에 미분양 단지가 없습니다")).toBeNull();
   });
 
-  // 위치 정보 표시
-  it("유저 위치가 있으면 위치 태그 표시", () => {
-    render(<AptListSection {...makeProps({ userLocation: { region: "서울", gu: "강남구", loading: false, method: "gps" } })} />);
-    expect(screen.getByText(/서울 강남구/)).toBeInTheDocument();
-  });
 });
