@@ -105,7 +105,11 @@ export default function App() {
   }, [catsCache, profile, customWeights]);
   const filtered = useMemo(() => {
     let list = scored;
-    if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
+    if (filterRegion !== "전체") {
+      const before = list.length;
+      list = list.filter(x => x.apt.region === filterRegion);
+      console.log(`[filter] region="${filterRegion}" ${before}→${list.length}건`);
+    }
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
     const bMin = budgetMin !== "" ? Number(budgetMin) : null;
     const bMax = budgetMax !== "" ? Number(budgetMax) : null;
