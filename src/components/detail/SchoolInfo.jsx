@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, useMemo } from "react";
 import { C } from "@/theme";
 
 const fmtDist = (d) => d == null ? "—" : d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${d}m`;
@@ -8,22 +8,13 @@ const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1
 
 export const SchoolInfo = memo(function SchoolInfo({ apt }) {
   const schools = apt.nearbySchools ?? [];
-  if (schools.length === 0) return null;
-
   const [expanded, setExpanded] = useState(false);
-
-  // 초/중/고 각 가장 가까운 학교 1개씩
   const types = ["초", "중", "고"];
-  const nearest = types.map(t => schools.filter(s => s.type === t).sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999))[0]).filter(Boolean);
-
-  // 유형별 개수 (1km 이내)
-  const counts = types.map(t => {
-    const within = schools.filter(s => s.type === t && s.distance != null && s.distance <= 1000);
-    return within.length > 0 ? `${t} ${within.length}` : null;
-  }).filter(Boolean);
-
+  const nearest = useMemo(() => types.map(t => schools.filter(s => s.type === t).sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999))[0]).filter(Boolean), [schools]);
+  const counts = useMemo(() => types.map(t => { const w = schools.filter(s => s.type === t && s.distance != null && s.distance <= 1000); return w.length > 0 ? `${t} ${w.length}` : null; }).filter(Boolean), [schools]);
   const hasFounded = schools.some(s => s.founded);
   const hasClasses = schools.some(s => s.classes);
+  if (schools.length === 0) return null;
 
   return (
     <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
@@ -44,7 +35,7 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }) {
       ))}
 
       {schools.length > nearest.length && (
-        <button onClick={() => setExpanded(!expanded)} style={{ width: "100%", background: "none", border: "none", padding: "8px 0 2px", fontSize: 11, color: C.blue, cursor: "pointer", fontWeight: 600 }}>
+        <button onClick={() => setExpanded(!expanded)} aria-expanded={expanded} style={{ width: "100%", background: "none", border: "none", padding: "8px 0 2px", fontSize: 11, color: C.blue, cursor: "pointer", fontWeight: 600 }}>
           {expanded ? "접기" : `전체 ${schools.length}개 학교 보기`}
         </button>
       )}
@@ -54,7 +45,7 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }) {
           <thead><tr>
             <th style={thStyle}>학교명</th><th style={thStyle}>구분</th><th style={{ ...thStyle, textAlign: "right" }}>도보거리</th>{hasFounded && <th style={thStyle}>설립</th>}{hasClasses && <th style={{ ...thStyle, textAlign: "right" }}>학급수</th>}
           </tr></thead>
-          <tbody>{schools.map((s, i) => (
+          <tbody>{[...schools].sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999)).map((s, i) => (
             <tr key={i}>
               <td style={{ ...tdStyle, fontWeight: 600 }}>{s.name}</td>
               <td style={tdStyle}>{s.highSchoolType ? `${s.type}(${s.highSchoolType})` : s.type}</td>
