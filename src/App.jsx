@@ -106,9 +106,7 @@ export default function App() {
   const filtered = useMemo(() => {
     let list = scored;
     if (filterRegion !== "전체") {
-      const before = list.length;
       list = list.filter(x => x.apt.region === filterRegion);
-      console.log(`[filter] region="${filterRegion}" ${before}→${list.length}건`);
     }
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
     const bMin = budgetMin !== "" ? Number(budgetMin) : null;
@@ -292,7 +290,7 @@ export default function App() {
             }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
           )}
           {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} /></Suspense>}
-          <AptListSection
+          <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => setVisibleCount(v => v + 30)}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} compIds={compIds}
             pw={pw} profile={profile} isPC={isPC} isPending={isPending}
