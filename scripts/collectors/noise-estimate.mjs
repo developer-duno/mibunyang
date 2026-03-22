@@ -30,32 +30,43 @@ function estimateNoise(roadDistM) {
   return 40;                        // 매우 낮음 (<45 dB)
 }
 
+// ── 도로명 주소 파싱으로 소음 추정 (API 호출 불필요) ─────────────
+function estimateNoiseFromAddress(roadAddress) {
+  if (!roadAddress) return null;
+  // "대로" → 왕복 4차선 이상, 교통량 많음 → 50m 수준
+  if (roadAddress.includes("대로")) return 100;
+  // "로" → 왕복 2차선, 보통 교통량 → 150m 수준
+  if (/\d+로\b/.test(roadAddress) || roadAddress.includes("번로")) return 150;
+  // "길" → 이면도로, 교통량 적음 → 250m 수준
+  if (roadAddress.includes("길")) return 300;
+  return null;
+}
+
 // ── Kakao 키워드 검색 (도로 시설) ────────────────────────────────
 async function findNearestRoad(kakaoKey, lat, lng) {
-  // 카테고리: 도로 관련 — "교통,수송" 카테고리의 도로
-  // Kakao에서 주요 도로를 직접 검색하기 어려우므로,
-  // 주요 교차로/IC/대로 키워드로 근접도 추정
-  const categories = ["SW8"]; // SW8 = 지하철역 (도로 근접도 대리 지표)
-  const url = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=${categories[0]}&x=${lng}&y=${lat}&radius=500&sort=distance&size=1`;
-
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `KakaoAK ${kakaoKey}` },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    if (json.documents && json.documents.length > 0) {
-      return parseFloat(json.documents[0].distance) || null;
+  // 1단계: "도로" 키워드 검색 (반경 1km)
+  const keywords = ["대로", "도로", "고속도로"];
+  for (const keyword of keywords) {
+    const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=1000&sort=distance&size=1`;
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `KakaoAK ${kakaoKey}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json.documents && json.documents.length > 0) {
+        return parseFloat(json.documents[0].distance) || null;
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
-  // 폴백: 키워드 "대로" 검색
-  const url2 = `https://dapi.kakao.com/v2/local/search/keyword.json?query=대로&x=${lng}&y=${lat}&radius=300&sort=distance&size=1`;
+  // 2단계: 지하철역(SW8) 폴백 (반경 1km)
+  const url = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=SW8&x=${lng}&y=${lat}&radius=1000&sort=distance&size=1`;
   try {
-    const res = await fetch(url2, {
+    const res = await fetch(url, {
       headers: { Authorization: `KakaoAK ${kakaoKey}` },
       signal: AbortSignal.timeout(10000),
     });
@@ -83,10 +94,10 @@ async function main() {
 
   const sb = getSupabase();
 
-  // noise가 null인 아파트만 대상
+  // noise가 null인 아파트만 대상 (road_address도 가져옴)
   const { data: apts, error } = await sb
     .from("apartments")
-    .select("id,name,lat,lng,noise")
+    .select("id,name,lat,lng,noise,road_address")
     .is("noise", null)
     .not("lat", "is", null)
     .not("lng", "is", null);
@@ -107,16 +118,26 @@ async function main() {
 
   for (let i = 0; i < apts.length; i++) {
     const apt = apts[i];
-    const dist = await findNearestRoad(kakaoKey, apt.lat, apt.lng);
+
+    // 1단계: road_address 파싱 (API 호출 없이 즉시 추정)
+    const addrDist = estimateNoiseFromAddress(apt.road_address);
+    let dist = addrDist;
+    let source = "address";
+
+    // 2단계: 주소 파싱 실패 시 Kakao API 폴백
+    if (dist == null) {
+      dist = await findNearestRoad(kakaoKey, apt.lat, apt.lng);
+      source = "kakao";
+      // Rate limit: Kakao API 호출 시만 200ms 간격
+      if (i < apts.length - 1) await sleep(200);
+    }
+
     const noise = estimateNoise(dist);
 
     if (noise) {
-      results.push({ id: apt.id, name: apt.name, noise, dist });
-      log("noise", `${apt.name}: ${dist != null ? `${Math.round(dist)}m` : "?"} → ${noise}`);
+      results.push({ id: apt.id, name: apt.name, noise, dist, source });
+      log("noise", `${apt.name}: ${dist != null ? `${Math.round(dist)}m` : "?"} → ${noise} (${source})`);
     }
-
-    // Rate limit: 요청 간 200ms 간격
-    if (i < apts.length - 1) await sleep(200);
 
     if ((i + 1) % 50 === 0) {
       log("progress", `${i + 1}/${apts.length}건 처리...`);
@@ -133,6 +154,9 @@ async function main() {
     for (const [k, v] of Object.entries(grouped)) {
       console.log(`  ${labels[k]}: ${v}건`);
     }
+    const fromAddr = results.filter(r => r.source === "address").length;
+    const fromKakao = results.filter(r => r.source === "kakao").length;
+    console.log(`  소스: 주소파싱 ${fromAddr}건, Kakao API ${fromKakao}건`);
     return;
   }
 
@@ -159,4 +183,4 @@ const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replac
 if (isCLI) main().catch((err) => { logError("main", err.message); process.exit(1); });
 
 // 테스트용 순수 함수 export
-export { estimateNoise };
+export { estimateNoise, estimateNoiseFromAddress };

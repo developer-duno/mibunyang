@@ -9,7 +9,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { estimateNoise } = await import("./noise-estimate.mjs");
+const { estimateNoise, estimateNoiseFromAddress } = await import("./noise-estimate.mjs");
 
 describe("estimateNoise", () => {
   // 50m 이내 → 70dB (높음)
@@ -43,5 +43,24 @@ describe("estimateNoise", () => {
   // null → null
   it("null 입력 시 null을 반환한다", () => {
     expect(estimateNoise(null)).toBeNull();
+  });
+});
+
+// 도로명 주소 파싱 기반 소음 추정
+describe("estimateNoiseFromAddress", () => {
+  it("'대로' 포함 주소 → 100m (도로 근접)", () => {
+    expect(estimateNoiseFromAddress("경기도 화성시 동탄대로 123")).toBe(100);
+  });
+  it("'로' 포함 주소 → 150m (보통 도로)", () => {
+    expect(estimateNoiseFromAddress("서울시 강남구 테헤란로 123")).toBe(150);
+  });
+  it("'길' 포함 주소 → 300m (이면도로)", () => {
+    expect(estimateNoiseFromAddress("경기도 수원시 매탄길 45")).toBe(300);
+  });
+  it("null 주소 → null", () => {
+    expect(estimateNoiseFromAddress(null)).toBeNull();
+  });
+  it("도로명 없는 주소 → null", () => {
+    expect(estimateNoiseFromAddress("경기도 화성시 123")).toBeNull();
   });
 });
