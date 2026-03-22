@@ -10,7 +10,7 @@ export const AptListSection = memo(function AptListSection({
   pw, profile, isPC, isPending,
   searchText, budgetMin, budgetMax, filterRegion,
   dataLoading, dataFreshnessText,
-  userLocation, onExpertView,
+  onExpertView,
 }) {
   return (
     <>
@@ -20,11 +20,7 @@ export const AptListSection = memo(function AptListSection({
         {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
           <span style={{ color: C.red, fontWeight: 700 }}>(최소&gt;최대)</span>
         )}
-        {userLocation.region && !userLocation.loading && (
-          <span style={{ fontSize: 10, color: C.blue, background: C.blueLight, padding: "1px 6px", borderRadius: 10, fontWeight: 600, whiteSpace: "nowrap" }}>
-            {userLocation.method === "gps" ? "\uD83D\uDCCD" : "\uD83C\uDF10"} {userLocation.region}{userLocation.gu ? ` ${userLocation.gu}` : ""}
-          </span>
-        )}
+
       </div>
     
       {filteredLength === 0 && !dataLoading && (

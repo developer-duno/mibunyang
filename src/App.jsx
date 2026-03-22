@@ -20,7 +20,7 @@ import { useExpertMode } from "@/hooks/useExpertMode";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
-import { useUserLocation } from "@/hooks/useUserLocation";
+
 import { useResponsive } from "@/hooks/useResponsive";
 import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
@@ -58,9 +58,9 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites();
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, applyDetectedRegion } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange } = useFilterSort({ onFilterChange: closeDetail });
   const debouncedSearchText = useDebouncedValue(searchText, 300);
-  const userLocation = useUserLocation();
+
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
@@ -131,14 +131,6 @@ export default function App() {
   // 데이터 최신성 텍스트 (ISO 날짜 표시)
   const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;
 
-  // 위치 감지 → 자동 지역 필터 적용
-  const locationAppliedRef = useRef(false);
-  useEffect(() => {
-    if (locationAppliedRef.current || userLocation.loading || !userLocation.region) return;
-    if (regionOptions.length <= 1) return; // 아파트 데이터 미로드
-    locationAppliedRef.current = true;
-    applyDetectedRegion(userLocation.region, regionOptions);
-  }, [userLocation.loading, userLocation.region, regionOptions, applyDetectedRegion]);
 
   const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isPC ? 960 : 520;
 
@@ -302,7 +294,7 @@ export default function App() {
             pw={pw} profile={profile} isPC={isPC} isPending={isPending}
             searchText={searchText} budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
-            userLocation={userLocation}
+
             onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}
           />
         </div>
