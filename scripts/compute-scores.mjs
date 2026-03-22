@@ -49,6 +49,7 @@ async function main() {
     const { data, error } = await sb
       .from("apartments_flat")
       .select("*")
+      .order("id")
       .range(offset, offset + BATCH_SIZE - 1);
 
     if (error) {
@@ -116,19 +117,32 @@ async function main() {
   } else {
     log("compute-scores", `${rows.length}건 DB UPDATE 중...`);
     let updated = 0, failed = 0;
-    const BATCH = 50;
+    const BATCH = 10;
     for (let i = 0; i < rows.length; i += BATCH) {
       const batch = rows.slice(i, i + BATCH);
       const promises = batch.map(row =>
-        sb.from("apartments").update({ cats_cache: row.cats_cache }).eq("id", row.id)
+        sb.from("apartments")
+          .update({ cats_cache: row.cats_cache })
+          .eq("id", row.id)
+          .select("id")
       );
       const results = await Promise.all(promises);
-      for (const { error } of results) {
-        if (error) { failed++; } else { updated++; }
+      for (const { data, error } of results) {
+        if (error) {
+          logError("compute-scores", `UPDATE 실패: ${error.message}`);
+          failed++;
+        } else if (!data || data.length === 0) {
+          failed++; // RLS에 의해 행이 업데이트되지 않음
+        } else {
+          updated++;
+        }
       }
       if ((i + BATCH) % 500 === 0 || i + BATCH >= rows.length) {
-        log("compute-scores", `  진행: ${Math.min(i + BATCH, rows.length)}/${rows.length}`);
+        log("compute-scores", `  진행: ${Math.min(i + BATCH, rows.length)}/${rows.length} (성공 ${updated}, 실패 ${failed})`);
       }
+    }
+    if (failed > 0) {
+      logError("compute-scores", `${failed}건 UPDATE 실패 — RLS 정책 또는 ID 불일치 확인 필요`);
     }
     log("compute-scores", `DB UPDATE 완료: ${updated}/${rows.length}건 (실패 ${failed}건)`);
   }
