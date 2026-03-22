@@ -17,7 +17,7 @@ const BATCH_SIZE = 1000;
 
 /** 필터 적용된 새 쿼리 객체 생성 (배치마다 새로 빌드 필요) */
 function buildQuery(supabase, region, gu, withCount) {
-  let q = supabase.from("apartments_flat").select("*", withCount ? { count: "exact" } : {});
+  let q = supabase.from("apartments_flat").select("*", withCount ? { count: "exact" } : {}).order("id");
   if (region) q = q.eq("region", region);
   if (gu) q = q.eq("gu", gu);
   return q;
