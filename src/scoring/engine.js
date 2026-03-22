@@ -71,7 +71,7 @@ function sanitize(apt, rm) {
     // 한글 문자열 NFC 정규화 (API-2)
     region: str(apt.region), gu: str(apt.gu),
     builder: str(apt.builder, "기타"),
-    transitDev: str(apt.transitDev), cityDev: str(apt.cityDev),
+    transitDev: str(apt.transitDev), cityDev: str(apt.cityDev), industryDev: str(apt.industryDev),
     view: str(apt.view), sunlight: str(apt.sunlight),
     schoolGrade: str(apt.schoolGrade),
     // 관리비/방향 (Phase 4 수집 데이터)
