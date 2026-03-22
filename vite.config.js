@@ -8,8 +8,9 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        target: "https://www.xn--hg3bi2ac4o1ig57cnoa.com",
         changeOrigin: true,
+        secure: true,
       },
     },
   },
