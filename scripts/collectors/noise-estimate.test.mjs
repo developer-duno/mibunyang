@@ -54,11 +54,23 @@ describe("estimateNoiseFromAddress", () => {
   it("'로' 포함 주소 → 150m (보통 도로)", () => {
     expect(estimateNoiseFromAddress("서울시 강남구 테헤란로 123")).toBe(150);
   });
+  it("텍스트 도로명 '세종로' → 150m", () => {
+    expect(estimateNoiseFromAddress("서울시 종로구 세종로 1")).toBe(150);
+  });
+  it("'종로구 + 길' 주소 → 구명 오매칭 없이 300m", () => {
+    expect(estimateNoiseFromAddress("서울시 종로구 돈화문길 123")).toBe(300);
+  });
+  it("'대로' 우선순위 — 150이 아닌 100 반환", () => {
+    expect(estimateNoiseFromAddress("서울시 서초구 강남대로 456")).toBe(100);
+  });
   it("'길' 포함 주소 → 300m (이면도로)", () => {
     expect(estimateNoiseFromAddress("경기도 수원시 매탄길 45")).toBe(300);
   });
   it("null 주소 → null", () => {
     expect(estimateNoiseFromAddress(null)).toBeNull();
+  });
+  it("빈 문자열 → null", () => {
+    expect(estimateNoiseFromAddress("")).toBeNull();
   });
   it("도로명 없는 주소 → null", () => {
     expect(estimateNoiseFromAddress("경기도 화성시 123")).toBeNull();

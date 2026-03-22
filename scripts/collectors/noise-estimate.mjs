@@ -36,7 +36,7 @@ function estimateNoiseFromAddress(roadAddress) {
   // "대로" → 왕복 4차선 이상, 교통량 많음 → 50m 수준
   if (roadAddress.includes("대로")) return 100;
   // "로" → 왕복 2차선, 보통 교통량 → 150m 수준
-  if (/\d+로\b/.test(roadAddress) || roadAddress.includes("번로")) return 150;
+  if (/로(?:\s|$)/.test(roadAddress)) return 150;
   // "길" → 이면도로, 교통량 적음 → 250m 수준
   if (roadAddress.includes("길")) return 300;
   return null;
