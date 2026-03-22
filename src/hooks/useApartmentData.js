@@ -17,7 +17,8 @@ export function useApartmentData() {
       try {
         const { data, dataUpdatedAt: updAt } = await fetchStaticApartments();
         if (signal?.aborted) return;
-        setApartments(data);
+        const normalized = data.map(a => a.region && a.region.includes(",") ? { ...a, region: a.region.split(",")[0].trim() } : a);
+        setApartments(normalized);
         setDataUpdatedAt(updAt ?? null);
         setError(null);
         setLoading(false);

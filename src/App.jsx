@@ -71,11 +71,11 @@ export default function App() {
   // 5 useMemo
   const guOptions = useMemo(() => {
     if (filterRegion === "전체") {
-      const gus = new Set(apartments.map(a => a.gu));
-      return ["전체", ...gus];
+      const gus = new Set(apartments.map(a => a.gu).filter(Boolean));
+      return ["전체", ...[...gus].sort()];
     }
-    const regionGus = new Set(apartments.filter(a => a.region === filterRegion).map(a => a.gu));
-    return ["전체", ...regionGus];
+    const regionGus = new Set(apartments.filter(a => a.region === filterRegion).map(a => a.gu).filter(Boolean));
+    return ["전체", ...[...regionGus].sort()];
   }, [filterRegion, apartments]);
 
   const catsCache = useMemo(() => {
@@ -126,8 +126,8 @@ export default function App() {
   const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
 
   const regionOptions = useMemo(() => {
-    const rs = new Set(apartments.map(a => a.region));
-    return ["전체", ...rs];
+    const rs = new Set(apartments.map(a => a.region).filter(Boolean));
+    return ["전체", ...[...rs].sort()];
   }, [apartments]);
 
   // 데이터 최신성 텍스트 (ISO 날짜 표시)
