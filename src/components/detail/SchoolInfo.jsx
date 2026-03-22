@@ -14,9 +14,8 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }) {
   const counts = useMemo(() => types.map(t => { const w = schools.filter(s => s.type === t && s.distance != null && s.distance <= 1000); return w.length > 0 ? `${t} ${w.length}` : null; }).filter(Boolean), [schools]);
   const hasFounded = schools.some(s => s.founded);
   const hasClasses = schools.some(s => s.classes);
-  if (schools.length === 0) return null;
 
-  return (
+  return schools.length === 0 ? null : (
     <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>학군 정보</span>
