@@ -9,7 +9,7 @@
  *   프론트엔드 calcCats() 355,440 ops → 0 ops (서버 캐시 사용)
  */
 import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter } from "./collectors/_shared.mjs";
-import { computeRegionalMedians, calcCats } from "@/scoring/engine";
+import { computeRegionalMedians, calcCats } from "@/scoring/engine.js";
 
 // ── 설정 ─────────────────────────────────────────────────────
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -114,9 +114,23 @@ async function main() {
       }
     }
   } else {
-    log("compute-scores", `${rows.length}건 DB 업서트 중...`);
-    const inserted = await upsertBatch("apartments", rows, "id", 500, sb);
-    log("compute-scores", `DB 업서트 완료: ${inserted}/${rows.length}건`);
+    log("compute-scores", `${rows.length}건 DB UPDATE 중...`);
+    let updated = 0, failed = 0;
+    const BATCH = 50;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const promises = batch.map(row =>
+        sb.from("apartments").update({ cats_cache: row.cats_cache }).eq("id", row.id)
+      );
+      const results = await Promise.all(promises);
+      for (const { error } of results) {
+        if (error) { failed++; } else { updated++; }
+      }
+      if ((i + BATCH) % 500 === 0 || i + BATCH >= rows.length) {
+        log("compute-scores", `  진행: ${Math.min(i + BATCH, rows.length)}/${rows.length}`);
+      }
+    }
+    log("compute-scores", `DB UPDATE 완료: ${updated}/${rows.length}건 (실패 ${failed}건)`);
   }
 
   reporter.summary();
