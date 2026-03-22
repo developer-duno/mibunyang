@@ -260,7 +260,7 @@ export function scoreBenefit(apt) {
   const sc = Math.min(Math.round(rate / BENEFIT_FULL_RATE * 100), 100);
   const itemScore = (v) => totalWon > 0 ? Math.round(sc * v / totalWon) : 0;
   return {
-    total: sc, totalWon, rate: rate.toFixed(1),
+    total: sc, totalWon, rate: Math.min(rate, 9999).toFixed(1),
     subs: [
       { name: "분양가 할인", score: itemScore(discVal), info: discVal > 0 ? `${discVal.toLocaleString()}만` : "-", detail: discVal > 0 ? `${discVal.toLocaleString()}만원 (분양가의 ${apt.discountPct}% 할인)` : "할인 없음" },
       { name: "중도금 무이자", score: itemScore(loanVal), info: loanVal > 0 ? `~${loanVal.toLocaleString()}만` : "-", detail: loanVal > 0 ? `~${loanVal.toLocaleString()}만원 (무이자율 ${apt.loanFreePct}% × 금리 4.5% × 1.5년)` : "무이자 없음" },

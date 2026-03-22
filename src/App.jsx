@@ -79,9 +79,21 @@ export default function App() {
   }, [filterRegion, apartments]);
 
   const catsCache = useMemo(() => {
-    const regionMedians = computeRegionalMedians(apartments);
-    const ctx = { regionMedians };
-    return apartments.map(a => ({ apt: a, cats: calcCats(a, ctx) }));
+    const needsFallback = apartments.some(a => !a.catsCache?.price);
+    const ctx = needsFallback ? { regionMedians: computeRegionalMedians(apartments) } : null;
+
+    if (import.meta.env.DEV && needsFallback) {
+      const missing = apartments.filter(a => !a.catsCache?.price).length;
+      console.warn(`[catsCache] ${missing}/${apartments.length} 폴백 (catsCache 누락)`);
+      if (missing === apartments.length && apartments.length > 0) {
+        console.error("[catsCache] 전체 폴백! API가 catsCache를 반환하지 않음 — 필드명 확인 필요");
+      }
+    }
+
+    return apartments.map(a => ({
+      apt: a,
+      cats: (a.catsCache && a.catsCache.price) ? a.catsCache : calcCats(a, ctx),
+    }));
   }, [apartments]);
   const scored = useMemo(() => {
     const raw = customWeights[profile];
@@ -105,7 +117,7 @@ export default function App() {
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
     return [...list].sort(sorters[sortKey] || sorters.total);
   }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText]);
-  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, searchText]);
+  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);

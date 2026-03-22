@@ -250,5 +250,7 @@ function sanitize(row) {
     naverSchoolWalkMin: row.naverSchoolWalkMin ?? null,
     naverNearbyCount: row.naverNearbyCount ?? null,
     naverFetchedAt: row.naverFetchedAt ?? null,
+    // 사전 스코어링 캐시 (JSONB → PostgREST 자동 파싱)
+    catsCache: row.catsCache ?? null,
   };
 }
