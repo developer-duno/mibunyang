@@ -1,4 +1,5 @@
 import { BRAND_TIER, AGE_PREMIUM, LAYOUT_SCORE, NOXIOUS_PENALTY } from "@/constants/brands";
+const IS_DEV = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import { PROFILES } from "@/constants/profiles";
 import { getZone } from "@/constants/regulations";
@@ -110,7 +111,7 @@ export function getAreaAdj(area) {
 
 export function scorePrice(apt) {
   const brand = BRAND_TIER[apt.builder];
-  if (!brand && import.meta.env.DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
+  if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
   const b = brand || { adj: 1.0 };
   const ageCoeff = getAgeCoeff(apt.completion);
   const areaAdj = getAreaAdj(apt.area);
@@ -157,7 +158,7 @@ export function scorePrice(apt) {
 
 export function scoreLocation(apt) {
   const tier = REGIONS[apt.region]?.tier;
-  if (!tier && import.meta.env.DEV) console.warn(`[scoring] Unknown region: "${apt.region}"`);
+  if (!tier && IS_DEV) console.warn(`[scoring] Unknown region: "${apt.region}"`);
   const ct = CITY_TIER[tier] || CITY_TIER.C;
 
   let rawSub = tierMax(apt.subwayDist, SUBWAY_DIST_TIERS, 0);
@@ -214,7 +215,7 @@ export function scoreLocation(apt) {
 
 export function scoreProduct(apt) {
   const brand = BRAND_TIER[apt.builder];
-  if (!brand && import.meta.env.DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
+  if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
   const b = brand || { score: 5, tier: "기타" };
   const brandSc = b.score;
   let unitSc = apt.units <= 1 ? UNIT_UNKNOWN_SCORE : tierMin(apt.units, UNIT_TIERS, UNIT_SMALL_SCORE);
@@ -259,8 +260,9 @@ export function scoreBenefit(apt) {
   const rate = apt.price > 0 ? (totalWon / apt.price) * 100 : 0;
   const sc = Math.min(Math.round(rate / BENEFIT_FULL_RATE * 100), 100);
   const itemScore = (v) => totalWon > 0 ? Math.round(sc * v / totalWon) : 0;
+  const noData = discVal === 0 && loanVal === 0 && optVal === 0 && balVal === 0 && cashVal === 0 && maintSave === 0;
   return {
-    total: sc, totalWon, rate: Math.min(rate, 9999).toFixed(1),
+    total: sc, totalWon, rate: Math.min(rate, 9999).toFixed(1), noData,
     subs: [
       { name: "분양가 할인", score: itemScore(discVal), info: discVal > 0 ? `${discVal.toLocaleString()}만` : "-", detail: discVal > 0 ? `${discVal.toLocaleString()}만원 (분양가의 ${apt.discountPct}% 할인)` : "할인 없음" },
       { name: "중도금 무이자", score: itemScore(loanVal), info: loanVal > 0 ? `~${loanVal.toLocaleString()}만` : "-", detail: loanVal > 0 ? `~${loanVal.toLocaleString()}만원 (무이자율 ${apt.loanFreePct}% × 금리 4.5% × 1.5년)` : "무이자 없음" },
@@ -377,7 +379,7 @@ export function computeRegionalMedians(apartments) {
 export function calcCats(apt, ctx) {
   const rm = ctx?.regionMedians?.[apt.region];
   const a = sanitize(apt, rm);
-  const safe = (fn) => { try { return fn(); } catch { return { total: 0, subs: [], totalWon: 0, rate: 0, deviation: 0, fairPrice: 0, riskRaw: 0 }; } };
+  const safe = (fn) => { try { return fn(); } catch (e) { console.error("[scoring] safe() caught:", e?.message ?? e); return { total: 0, subs: [], totalWon: 0, rate: 0, deviation: 0, fairPrice: 0, riskRaw: 0 }; } };
   return {
     price: { ...safe(() => scorePrice(a)), label: "가격 매력도", key: "price" },
     location: { ...safe(() => scoreLocation(a)), label: "입지·생활권", key: "location" },

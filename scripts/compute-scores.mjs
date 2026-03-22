@@ -24,6 +24,7 @@ function validateCats(cats) {
     typeof cats[k].total === "number" &&
     !Number.isNaN(cats[k].total) &&
     Array.isArray(cats[k].subs) &&
+    cats[k].subs.length > 0 &&
     typeof cats[k].label === "string"
   );
 }

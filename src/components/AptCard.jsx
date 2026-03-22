@@ -79,9 +79,13 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           <span style={S.infoTag}>안전 {gr(res.cats.risk?.total ?? 0).l}등급</span>
         </div>
 
-        {benefitWon > 0 && (
+        {benefitWon > 0 ? (
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 8, padding: "8px 12px" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit?.rate ?? 0}%)</span>
+          </div>
+        ) : res.cats.benefit?.noData && (
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, background: C.slate100, borderRadius: 8, padding: "6px 12px" }}>
+            <span style={{ fontSize: 11, color: C.muted }}>혜택 데이터 미수집</span>
           </div>
         )}
 
