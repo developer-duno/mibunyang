@@ -10,7 +10,7 @@
 | prices | 분양가 이력 (시계열) | 청약홈 API |
 | unsold_history | 미분양 추이 (시계열) | 청약홈 API |
 | trades | 실거래가 (매매/전세) | collect-trades.mjs |
-| trade_stats | 거래 통계 캐시 | trade-stats.mjs |
+| trade_stats | 거래 통계 캐시 (cancel_ratio_6m 포함) | trade-stats.mjs |
 | infra | 주변 인프라 (병원, 마트 등) | infra-kakao.mjs |
 | schools | 학교 정보 | schools-neis.mjs |
 | transport | 교통 정보 | transport-tago.mjs |

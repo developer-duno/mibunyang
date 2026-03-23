@@ -34,6 +34,24 @@
 
 **수동 실행**: `bash scripts/run-naver-local.sh`
 
+## 네이버 수집 후처리 파이프라인
+
+naver-collect.py 완료 후 자동 실행되는 4단계:
+
+```bash
+bash scripts/post-naver-collect.sh
+```
+
+| 단계 | 스크립트 | 역할 |
+|------|---------|------|
+| 1 | sync-naver-complex.mjs | 22개 네이버 필드 → apartments 동기화 |
+| 2 | naver-units.mjs | 세대수(units) 2차 보정 |
+| 3 | collect-unsold-kosis.mjs | KOSIS 미분양률 비례배분 |
+| 4 | compute-scores.mjs | cats_cache 사전 스코어링 갱신 |
+
+- `watch-and-run.sh` — naver-collect.py 프로세스 종료 감시 → post-naver-collect.sh 자동 실행
+- **compute-scores.mjs**는 `@/` 경로 별칭 사용 → 반드시 `node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs`로 실행
+
 ## API Rate Limit 정리
 
 | API | 수집기 | MIN_INTERVAL | MAX_RETRIES | 429 처리 | 근거 |

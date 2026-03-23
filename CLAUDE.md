@@ -1,6 +1,6 @@
 # 미분양 아파트 비교 엔진 v3.0
 
-> React 18 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 34+ 지표 AHP 스코어링.
+> React 18 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 37+ 지표 AHP 스코어링.
 > 상세 아키텍처는 ARCHITECTURE.md 참조.
 
 ## 기술 스택
@@ -25,7 +25,7 @@ constants → scoring → theme → components → hooks → App
 - `src/components/CLAUDE.md` — memo, 접근성, 크로스브라우저, 전문가 페이지, 컴포넌트 구조
 - `src/hooks/CLAUDE.md` — Hook 호출 순서, useMemo 의존성, 파생 상태, 교차 관심사 패턴
 - `api/CLAUDE.md` — null 함정, 한글, Supabase 연동, 인증
-- `scripts/CLAUDE.md` — units 보정 파이프라인, 네이버 로컬 자동화
+- `scripts/CLAUDE.md` — units 보정 파이프라인, 네이버 로컬 자동화, 후처리 파이프라인
 - `.github/workflows/CLAUDE.md` — 워크플로우 목록, GitHub Secrets
 - `supabase/CLAUDE.md` — 테이블 스키마 (13개 + VIEW)
 
