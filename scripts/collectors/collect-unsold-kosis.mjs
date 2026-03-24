@@ -35,26 +35,23 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 최근 2개월 조회 (최신 데이터가 1~2개월 지연될 수 있음)
+  // 연간 데이터 조회 (국토부 DT_MLTM_2086은 연간만 제공, 12월 기준)
   const now = new Date();
-  const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-  const startMonth = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, "0")}`;
 
-  log(PHASE, `KOSIS 미분양 조회: ${startMonth} ~ ${endMonth}`);
+  log(PHASE, `KOSIS 미분양 조회: ${now.getFullYear() - 1} ~ ${now.getFullYear()}`);
 
   // KOSIS API 호출
   const params = new URLSearchParams({
     method: "getList",
     apiKey: KOSIS_KEY,
-    orgId: "101",
-    tblId: "DT_1YL202001E",
-    itmId: "13103871087T1",
+    orgId: "116",          // 국토교통부 (기존 통계청 101 → 폐기)
+    tblId: "DT_MLTM_2086", // 미분양현황_종합 (기존 DT_1YL202001E → 폐기)
+    itmId: "ALL",
     objL1: "ALL",
     objL2: "ALL",
-    prdSe: "M",
-    startPrdDe: startMonth,
-    endPrdDe: endMonth,
+    prdSe: "Y",                                  // 연간 데이터 (월간 미제공)
+    startPrdDe: String(now.getFullYear() - 1),   // 전년
+    endPrdDe: String(now.getFullYear()),          // 올해
     format: "json",
     jsonVD: "Y",
   });
@@ -92,10 +89,13 @@ async function main() {
   const latestPeriod = {};
 
   for (const row of rows) {
-    const region = REGION_MAP[row.C1_NM];
+    // DT_MLTM_2086 구조: C1_NM="시도별미분양현황", C2_NM="서울특별시" (시도명)
+    // 시도별 데이터만 추출 (부문별/규모별 제외)
+    if (row.C1_NM !== "시도별미분양현황") continue;
+    const region = REGION_MAP[row.C2_NM];
     if (!region) continue;
 
-    const gu = row.C2_NM || "_total";
+    const gu = "_total"; // 이 테이블은 시도 단위만 제공 (시군구 없음)
     const period = row.PRD_DE;
     const value = parseInt(row.DT, 10);
     if (isNaN(value)) continue;
