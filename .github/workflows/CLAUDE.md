@@ -26,8 +26,8 @@
 ### 매월
 | 워크플로우 | 설명 |
 |-----------|------|
-| `collect-trades.yml` | 국토부 실거래 수집 (1/15일) |
-| `collect-molit-units.yml` | 국토부 공동주택 총세대수 보정 (1/15일) |
+| `collect-trades.yml` | 국토부 실거래 수집 (6일 — 5일 갱신 후) |
+| `collect-molit-units.yml` | 국토부 공동주택 총세대수 보정 (6일) |
 | `collect-population.yml` | 행안부 인구 증감률 (5일) |
 | `collect-housing-permits.yml` | 국토부 주택 인허가 공급비율 (10일) |
 | `collect-building-info.yml` | 국토부 건축물 상세정보 (10일) |
@@ -35,7 +35,7 @@
 | `collect-infra.yml` | Kakao Places 인프라 (1일) |
 | `collect-transport.yml` | Kakao Places 교통 (1일) |
 | `collect-schools.yml` | NEIS 학교 (1일) |
-| `collect-dart-builders.yml` | DART 시공사 재무 (1일) |
+| `collect-dart-builders.yml` | DART 시공사 재무 (분기별: 1,4,7,10월 15일) |
 | `collect-noise.yml` | 소음 추정 (1일) |
 | `collect-environment.yml` | 환경/혐오시설 (1일) |
 | `collect-noxious.yml` | 혐오시설 거리 (1일) |

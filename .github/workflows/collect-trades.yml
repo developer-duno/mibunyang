@@ -2,7 +2,7 @@ name: Collect Trades (국토부 실거래)
 
 on:
   schedule:
-    - cron: '0 20 1,15 * *' # 매월 1일, 15일 UTC 20:00 = KST 05:00
+    - cron: '0 20 6 * *' # 매월 6일 UTC 20:00 = KST 05:00 (실거래 데이터 매월 5일 갱신)
   workflow_dispatch:
     inputs:
       dry_run:

@@ -2,7 +2,7 @@ name: DART 시공사 재무 수집
 
 on:
   schedule:
-    - cron: "0 3 1 * *" # 매월 1일 12:00 KST
+    - cron: "0 3 15 1,4,7,10 *" # 분기별 (1,4,7,10월 15일) 12:00 KST — DART 분기 공시 주기에 맞춤
   workflow_dispatch:
     inputs:
       dry_run:

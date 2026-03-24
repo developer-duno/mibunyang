@@ -1,7 +1,7 @@
 name: Collect MOLIT Units
 on:
   schedule:
-    - cron: '0 18 1,15 * *' # 매월 1일, 15일 KST 03:00
+    - cron: '0 18 6 * *' # 매월 6일 KST 03:00 (실거래 데이터 매월 5일 갱신)
   workflow_dispatch: # 수동 실행
 
 concurrency:
