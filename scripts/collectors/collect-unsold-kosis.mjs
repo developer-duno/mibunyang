@@ -17,7 +17,14 @@ const PHASE = "kosis-unsold";
 const KOSIS_KEY = process.env.KOSIS_KEY;
 
 // 시도 매핑: KOSIS 시도명 → DB region 코드
+// DT_MLTM_2082는 약칭("서울"), DT_MLTM_2086은 정식명("서울특별시") 사용
 const REGION_MAP = {
+  // 약칭 (DT_MLTM_2082 시군구별)
+  "서울": "서울", "부산": "부산", "대구": "대구", "인천": "인천",
+  "광주": "광주", "대전": "대전", "울산": "울산", "세종": "세종",
+  "경기": "경기", "강원": "강원", "충북": "충북", "충남": "충남",
+  "전북": "전북", "전남": "전남", "경북": "경북", "경남": "경남", "제주": "제주",
+  // 정식명 (호환)
   "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
   "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
   "울산광역시": "울산", "세종특별자치시": "세종", "경기도": "경기",
@@ -35,23 +42,26 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 연간 데이터 조회 (국토부 DT_MLTM_2086은 연간만 제공, 12월 기준)
+  // 월간 데이터 조회 (DT_MLTM_2082 시군구별 미분양, 1~2개월 지연)
   const now = new Date();
+  const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const startMonth = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, "0")}`;
 
-  log(PHASE, `KOSIS 미분양 조회: ${now.getFullYear() - 1} ~ ${now.getFullYear()}`);
+  log(PHASE, `KOSIS 미분양 조회: ${startMonth} ~ ${endMonth}`);
 
   // KOSIS API 호출
   const params = new URLSearchParams({
     method: "getList",
     apiKey: KOSIS_KEY,
-    orgId: "116",          // 국토교통부 (기존 통계청 101 → 폐기)
-    tblId: "DT_MLTM_2086", // 미분양현황_종합 (기존 DT_1YL202001E → 폐기)
+    orgId: "116",           // 국토교통부
+    tblId: "DT_MLTM_2082",  // 시·군·구별 미분양현황 (월간, 시군구 단위)
     itmId: "ALL",
     objL1: "ALL",
     objL2: "ALL",
-    prdSe: "Y",                                  // 연간 데이터 (월간 미제공)
-    startPrdDe: String(now.getFullYear() - 1),   // 전년
-    endPrdDe: String(now.getFullYear()),          // 올해
+    prdSe: "M",                                   // 월간 데이터
+    startPrdDe: startMonth,
+    endPrdDe: endMonth,
     format: "json",
     jsonVD: "Y",
   });
@@ -89,13 +99,11 @@ async function main() {
   const latestPeriod = {};
 
   for (const row of rows) {
-    // DT_MLTM_2086 구조: C1_NM="시도별미분양현황", C2_NM="서울특별시" (시도명)
-    // 시도별 데이터만 추출 (부문별/규모별 제외)
-    if (row.C1_NM !== "시도별미분양현황") continue;
-    const region = REGION_MAP[row.C2_NM];
+    // DT_MLTM_2082 구조: C1_NM="서울" (시도), C2_NM="강남구" (시군구) 또는 "계" (합계)
+    const region = REGION_MAP[row.C1_NM];
     if (!region) continue;
 
-    const gu = "_total"; // 이 테이블은 시도 단위만 제공 (시군구 없음)
+    const gu = row.C2_NM === "계" ? "_total" : row.C2_NM;
     const period = row.PRD_DE;
     const value = parseInt(row.DT, 10);
     if (isNaN(value)) continue;
@@ -155,7 +163,6 @@ async function main() {
 
       const { error } = await sb.from("regions").update({
         regional_unsold: unsoldValue,
-        updated_at: new Date().toISOString(),
       }).eq("id", reg.id);
 
       if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
