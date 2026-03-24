@@ -59,9 +59,23 @@ async function main() {
     jsonVD: "Y",
   });
 
-  const res = await fetch(`https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`);
-  if (!res.ok) throw new Error(`KOSIS HTTP ${res.status}`);
-  const data = await res.json();
+  // Node.js v24 내장 fetch(undici)가 KOSIS 서버와 TLS 호환 실패 (ECONNRESET)
+  // → Node.js https 모듈로 직접 호출
+  const https = await import("node:https");
+  const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
+  const data = await new Promise((resolve, reject) => {
+    const req = https.request(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      if (res.statusCode !== 200) return reject(new Error(`KOSIS HTTP ${res.statusCode}`));
+      let body = "";
+      res.on("data", (c) => (body += c));
+      res.on("end", () => {
+        try { resolve(JSON.parse(body)); } catch { reject(new Error("KOSIS JSON 파싱 실패")); }
+      });
+    });
+    req.on("error", reject);
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error("KOSIS 타임아웃")); });
+    req.end();
+  });
   if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
 
   const rows = Array.isArray(data) ? data : [];
