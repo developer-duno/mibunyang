@@ -46,6 +46,12 @@ export const FIELD_META = {
   avgFloor: { label: "평균 거래 층수", section: "가격", unit: "층", fmt: v => v != null ? `${v}층` : "미수집", isEstimated: (v, apt) => apt?._fallbackAvgFloor },
   floorRange: { label: "거래 층수 범위", section: "가격", fmt: v => v ?? "미수집" },
   cancelRatio6m: { label: "계약해제율", section: "안전", unit: "%", fmt: v => v != null ? `${v}%` : "미수집", isEstimated: (v, apt) => apt?._fallbackCancelRatio6m },
+  // ── 지역 시장 통계 (KOSIS HUG) ──
+  priceIndex: { label: "분양가격지수", section: "가격", unit: "2014=100", fmt: v => v != null ? v.toFixed(1) : "미수집" },
+  avgPriceSqm: { label: "㎡당 평균분양가", section: "가격", unit: "천원/㎡", fmt: v => v != null ? nk(v, "천원") : "미수집" },
+  newSupply: { label: "신규 분양세대수", section: "안전", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집" },
+  initialSaleRate: { label: "초기분양률", section: "안전", unit: "%", fmt: v => v != null ? `${v}%` : "미수집" },
+  landCostRatio: { label: "대지비 비율", section: "가격", unit: "%", fmt: v => v != null ? `${v}%` : "미수집" },
   // ── 섹션3: 입지/교통/교육/환경 ──
   subwayDist: { label: "지하철 거리", section: "입지", unit: "m", fmt: v => v == null ? "—" : v >= 9000 ? "없음(9999)" : `${v}m`, isDefault: v => v === 9999 },
   busRoutes: { label: "버스 노선", section: "입지", unit: "개", fmt: v => n(v, "개") },
@@ -115,8 +121,8 @@ export const FIELD_META = {
 
 export const FIELD_SECTIONS = [
   { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","address","roadAddress","district","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout","heating","avgMaintenanceCost","primaryDirection"] },
-  { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","nearbyBuildYear","avgFloor","floorRange"] },
-  { key: "안전", label: "안전도/리스크", fields: ["unsoldRate","recentTrades6m","cancelRatio6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth"] },
+  { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","nearbyBuildYear","avgFloor","floorRange","priceIndex","avgPriceSqm","landCostRatio"] },
+  { key: "안전", label: "안전도/리스크", fields: ["unsoldRate","recentTrades6m","cancelRatio6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth","newSupply","initialSaleRate"] },
   { key: "입지", label: "입지/교통/교육/환경", fields: ["subwayDist","subwayName","subwayLines","busRoutes","busStopNames","icDist","ktxDist","schoolScore","schoolGrade","hospital","hospitalDist","mart","martDist","conv","convDist","park","parkDist","cafe","culture","bank","pharmacy","view","sunlight","noise","noxious"] },
   { key: "상품성", label: "상품성/건축", fields: ["parkingRatio","floorAreaRatio","energyGrade","greenBldg","quakeDesign","exclusiveRatio","hasPool","heatFuel","corridorType","buildingCoverageRatio"] },
   { key: "혜택", label: "혜택/할인", fields: ["discountPct","loanFree","loanFreePct","optionFree","optionValue","balconyFree","balconyValue","cashback","contractDiscount","benefits"] },

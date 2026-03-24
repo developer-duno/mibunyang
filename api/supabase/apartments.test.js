@@ -300,4 +300,32 @@ describe('sanitize (null → 기본값)', () => {
     expect(d.nearbyMedian).toBe(50000);
     expect(d._fallbackNearbyMedian).toBe(true);
   });
+
+  // KOSIS 시장 통계 5개 필드 — 정보성 ?? null
+  it('KOSIS 시장 통계 필드가 값 전달 및 null 기본값 동작', async () => {
+    const row = { id: 1, name: 'Test', region: '경기', priceIndex: 232.0, avgPriceSqm: 7312, newSupply: 3279, initialSaleRate: 80.1, landCostRatio: 40 };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    // 값이 있을 때 그대로 전달
+    expect(d.priceIndex).toBe(232.0);
+    expect(d.avgPriceSqm).toBe(7312);
+    expect(d.newSupply).toBe(3279);
+    expect(d.initialSaleRate).toBe(80.1);
+    expect(d.landCostRatio).toBe(40);
+  });
+
+  it('KOSIS 시장 통계 null → null 기본값', async () => {
+    const row = { id: 1, name: 'Test', region: '경기' };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.priceIndex).toBeNull();
+    expect(d.avgPriceSqm).toBeNull();
+    expect(d.newSupply).toBeNull();
+    expect(d.initialSaleRate).toBeNull();
+    expect(d.landCostRatio).toBeNull();
+  });
 });

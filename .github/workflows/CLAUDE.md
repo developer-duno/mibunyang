@@ -41,6 +41,7 @@
 | `collect-noxious.yml` | 혐오시설 거리 (1일) |
 | `collect-industry.yml` | 산업단지 매칭 (1일) |
 | `collect-unsold-kosis.yml` | KOSIS 시군구별 미분양 (1일) |
+| `collect-market-stats.yml` | KOSIS HUG 시장통계 5개 지표 (5일) |
 
 ### 유틸리티
 | 워크플로우 | 설명 |

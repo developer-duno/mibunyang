@@ -64,4 +64,5 @@ bash scripts/post-naver-collect.sh
 | data.go.kr | population, migration | fetchWithRetry 사용 | 3회 | 지수 백오프 | 공공 API |
 | Kakao Places | infra-kakao | 동시 5개 세마포어 | fetchWithRetry | 지수 백오프 | Kakao 초당 50건 |
 | DART | dart-builders | fetchWithRetry 사용 | 3회 | 지수 백오프 | DART 분당 100건 |
+| KOSIS | collect-market-stats | 1초 (지표 간) | node:https | 타임아웃 30초 | HUG orgId=414, TLS 호환 |
 | _shared.mjs | fetchWithRetry (공통) | — | 기본 3회 | Retry-After 헤더 → 지수 백오프 | 429/500/503 구분 |

@@ -154,7 +154,6 @@ async function main() {
       region: parsed.region,
       gu: parsed.gu,
       pop_growth: Math.round(growthRate * 10) / 10, // 소수점 1자리
-      supply_ratio: null, // 공급량은 별도 수집
       population: curPop,
       recorded_at: `${curYear}-${String(curMonth).padStart(2, "0")}-01`,
     });
@@ -175,7 +174,6 @@ async function main() {
         region,
         gu: null,  // 시도 단위 집계 (gu 없음)
         pop_growth: Math.round(((agg.curPop - agg.prevPop) / agg.prevPop) * 100 * 10) / 10,
-        supply_ratio: null,
         population: agg.curPop,
         recorded_at: `${curYear}-${String(curMonth).padStart(2, "0")}-01`,
       });
@@ -211,33 +209,46 @@ async function main() {
     return;
   }
 
-  // 5. Supabase upsert (COALESCE 인덱스 호환 — 개별 delete+insert)
+  // 5. Supabase 저장 (Approach C: UPDATE 소유 컬럼만 + conditional INSERT)
+  // population.mjs는 pop_growth, population만 소유. 다른 수집기 컬럼은 보존.
   const sb = getSupabase();
   const rpt = createReporter("population");
-  let inserted = 0;
+  let saved = 0;
   for (const row of rows) {
-    // 기존 행 삭제 (region + gu + recorded_at 매칭)
-    let q = sb.from("regions").delete().eq("region", row.region).eq("recorded_at", row.recorded_at);
+    // population 소유 컬럼만 업데이트 (다른 수집기 컬럼 보존)
+    let q = sb.from("regions")
+      .update({ pop_growth: row.pop_growth, population: row.population })
+      .eq("region", row.region)
+      .eq("recorded_at", row.recorded_at);
     if (row.gu) q = q.eq("gu", row.gu);
     else q = q.is("gu", null);
-    const { error: delErr } = await q;
-    if (delErr) {
-      logError("regions", `DELETE 실패 ${row.region} ${row.gu || '(시도)'}: ${delErr.message}`);
+
+    const { data: updated, error: updErr } = await q.select("id");
+    if (updErr) {
+      logError("regions", `UPDATE 실패 ${row.region} ${row.gu || '(시도)'}: ${updErr.message}`);
+      rpt.fail(1);
       continue;
     }
 
-    // 새 행 삽입
-    const insertRow = { ...row };
-    const { error } = await sb.from("regions").insert([insertRow]);
-    if (error) {
-      logError("regions", `${row.region} ${row.gu || '(시도)'}: ${error.message}`);
-      rpt.fail(1);
-    } else {
-      inserted++;
-      rpt.success(1);
+    if (!updated || updated.length === 0) {
+      // 행이 없으면 새로 생성 (supply_ratio 등 미소유 컬럼은 생략 → DB default null)
+      const { error: insErr } = await sb.from("regions").insert([{
+        region: row.region,
+        gu: row.gu,
+        pop_growth: row.pop_growth,
+        population: row.population,
+        recorded_at: row.recorded_at,
+      }]);
+      if (insErr) {
+        logError("regions", `INSERT 실패 ${row.region} ${row.gu || '(시도)'}: ${insErr.message}`);
+        rpt.fail(1);
+        continue;
+      }
     }
+    saved++;
+    rpt.success(1);
   }
-  log("done", `regions 테이블 ${inserted}/${rows.length}건 저장 완료 (${today()})`);
+  log("done", `regions 테이블 ${saved}/${rows.length}건 저장 완료 (${today()})`);
   rpt.summary();
 }
 

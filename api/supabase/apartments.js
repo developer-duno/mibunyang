@@ -219,6 +219,12 @@ function sanitize(row) {
     popGrowth: row.popGrowth ?? null,
     netMigration: row.netMigration ?? null,
     supplyRatio: row.supplyRatio ?? 150,
+    // 지역 시장 통계 (KOSIS HUG — 정보성, null 허용)
+    priceIndex: row.priceIndex ?? null,
+    avgPriceSqm: row.avgPriceSqm ?? null,
+    newSupply: row.newSupply ?? null,
+    initialSaleRate: row.initialSaleRate ?? null,
+    landCostRatio: row.landCostRatio ?? null,
     // 실거래 (위험 필드 → 비관적 기본값)
     nearbyMedian: row.nearbyMedian ?? row.naverNearbyMedian ?? null,
     recentTrades6m: row.recentTrades6m ?? 0,
