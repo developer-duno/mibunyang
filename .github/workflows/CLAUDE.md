@@ -42,6 +42,7 @@
 | `collect-industry.yml` | 산업단지 매칭 (1일) |
 | `collect-unsold-kosis.yml` | KOSIS 시군구별 미분양 (1일) |
 | `collect-market-stats.yml` | KOSIS HUG 시장통계 5개 지표 (5일) |
+| `collect-maintenance.yml` | 국토부 공동주택 관리비 (15일) |
 
 ### 유틸리티
 | 워크플로우 | 설명 |
