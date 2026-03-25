@@ -218,33 +218,23 @@ async function main() {
       }
       await sleep(REQUEST_DELAY);
 
-      // 2. 난방연료 gap-fill (null일 때만 쓰기, --force 우회)
-      if (force || apt.heat_fuel == null) {
-        const heatFuel = await fetchHeatFuel(apt.bjd_code, apt.lot_main, apt.lot_sub);
-        if (heatFuel != null) {
-          if (apt.heat_fuel != null && !force) {
-            // 기존 값 보존 (gap-fill 전용)
-          } else {
-            row.heat_fuel = heatFuel;
-            if (apt.heat_fuel != null) log(PHASE, `  [변경] ${apt.id} heat_fuel: ${apt.heat_fuel} → ${heatFuel}`);
-          }
-        }
-      }
-      await sleep(REQUEST_DELAY);
+      // 2. 난방연료 gap-fill — 비활성화 (getHpMgmCoopTpOulnInfo는 BldEngyHubService에 없음, 별도 구독 필요)
+      // TODO: HpPermitService 또는 별도 건축허가 API 구독 후 활성화
+      // if (force || apt.heat_fuel == null) {
+      //   const heatFuel = await fetchHeatFuel(apt.bjd_code, apt.lot_main, apt.lot_sub);
+      //   if (heatFuel != null && (apt.heat_fuel == null || force)) {
+      //     row.heat_fuel = heatFuel;
+      //   }
+      // }
 
-      // 3. 내진설계 실데이터 (null일 때만 쓰기, --force 우회)
-      if (force || apt.quake_design == null) {
-        const quake = await fetchQuakeDesign(apt.bjd_code, apt.lot_main, apt.lot_sub);
-        if (quake != null) {
-          if (apt.quake_design != null && !force) {
-            // 기존 값 보존
-          } else {
-            row.quake_design = quake;
-            if (apt.quake_design != null) log(PHASE, `  [변경] ${apt.id} quake_design: ${apt.quake_design} → ${quake}`);
-          }
-        }
-      }
-      await sleep(REQUEST_DELAY);
+      // 3. 내진설계 실데이터 — 비활성화 (getHpBasisOulnInfo는 BldEngyHubService에 없음, 별도 구독 필요)
+      // TODO: HpPermitService 또는 별도 건축허가 API 구독 후 활성화
+      // if (force || apt.quake_design == null) {
+      //   const quake = await fetchQuakeDesign(apt.bjd_code, apt.lot_main, apt.lot_sub);
+      //   if (quake != null && (apt.quake_design == null || force)) {
+      //     row.quake_design = quake;
+      //   }
+      // }
 
       // DB 업데이트
       if (Object.keys(row).length === 0) { rpt.skip(1); continue; }
