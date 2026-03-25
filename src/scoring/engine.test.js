@@ -176,7 +176,7 @@ describe('scoreRisk', () => {
     const r = scoreRisk(makeApt());
     expect(r.total).toBeGreaterThanOrEqual(0);
     expect(r.total).toBeLessThanOrEqual(100);
-    expect(r.subs).toHaveLength(8);
+    expect(r.subs).toHaveLength(9);
   });
   it('미분양률 낮음 -> 안전 점수 높음', () => {
     expect(scoreRisk(makeApt({ unsoldRate: 5 })).total).toBeGreaterThan(scoreRisk(makeApt({ unsoldRate: 50 })).total);

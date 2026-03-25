@@ -286,11 +286,13 @@ export function scoreRisk(apt) {
   let regSc = zone !== "normal" ? 60 : 10;
   let supSc = tierMax(apt.supplyRatio, SUPPLY_RATIO_TIERS, SUPPLY_HIGH_SCORE);
   let mktSc = apt.popGrowth == null ? 35
-    : apt.popGrowth >= 0.5 ? 10
-    : apt.popGrowth >= 0 ? 20
-    : apt.popGrowth >= -0.3 ? 30
-    : apt.popGrowth >= -0.8 ? 45
-    : 60;
+    : apt.popGrowth >= 1.0 ? 5
+    : apt.popGrowth >= 0.5 ? 20
+    : apt.popGrowth >= 0 ? 35
+    : apt.popGrowth >= -0.3 ? 50
+    : apt.popGrowth >= -0.8 ? 65
+    : apt.popGrowth >= -2.0 ? 80
+    : 90;
   let cancelSc = apt.cancelRatio6m == null ? CANCEL_RATIO_NULL_SCORE
     : tierMax(apt.cancelRatio6m, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE);
   // 경쟁률: 미달(음수) → 위험, 높을수록 안전. 완충 구간 포함 (rate=0 절벽 방지)
