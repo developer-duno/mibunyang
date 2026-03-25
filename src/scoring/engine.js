@@ -45,6 +45,7 @@ function sanitize(apt, rm) {
     // 위험 필드 → 지역 중위값 우선, 없으면 비관적 기본값
     pir: num(apt.pir, rm?.pir ?? 10), psr: num(apt.psr, rm?.psr ?? 1.5),
     unsoldRate: num(apt.unsoldRate, rm?.unsoldRate ?? 50), recentTrades6m: num(apt.recentTrades6m, 0), cancelRatio6m: num(apt.cancelRatio6m, null),
+    competitionRate: num(apt.competitionRate, null),
     builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, rm?.supplyRatio ?? 150),
     popGrowth: apt.popGrowth != null ? num(apt.popGrowth, null) : null,
     netMigration: apt.netMigration != null ? num(apt.netMigration, null) : null,
@@ -292,12 +293,22 @@ export function scoreRisk(apt) {
     : 60;
   let cancelSc = apt.cancelRatio6m == null ? CANCEL_RATIO_NULL_SCORE
     : tierMax(apt.cancelRatio6m, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE);
-  const risk = unsoldSc * 0.20 + liqSc * 0.15 + loanSc * 0.15 + finSc * 0.20 + regSc * 0.08 + supSc * 0.10 + mktSc * 0.07 + cancelSc * 0.05;
+  // 경쟁률: 미달(음수) → 위험, 높을수록 안전. 완충 구간 포함 (rate=0 절벽 방지)
+  let compSc = apt.competitionRate == null ? 40
+    : apt.competitionRate >= 10 ? 5
+    : apt.competitionRate >= 3 ? 15
+    : apt.competitionRate >= 1 ? 30
+    : apt.competitionRate >= 0.5 ? 45
+    : apt.competitionRate >= 0 ? 55
+    : apt.competitionRate >= -0.5 ? 70
+    : 85;
+  const risk = unsoldSc * 0.15 + liqSc * 0.15 + loanSc * 0.15 + finSc * 0.18 + regSc * 0.05 + supSc * 0.10 + mktSc * 0.07 + cancelSc * 0.05 + compSc * 0.10;
   const safety = Math.round(Math.max(0, Math.min(100, 100 - risk)));
   return {
     total: safety, riskRaw: Math.round(risk),
     subs: [
       { name: "미분양률", score: 100 - unsoldSc, info: apt.units <= 1 ? "세대수 미확인 (중립)" : `${apt.unsoldRate}%`, detail: apt.units <= 1 ? "세대수 미확인 (중립 40점)" : `${apt.unsoldRate}% (안전 5%↓, 주의 15~30%, 위험 50%↑)` },
+      { name: "경쟁률", score: 100 - compSc, info: apt.competitionRate != null ? (apt.competitionRate < 0 ? `미달 ${(Math.abs(apt.competitionRate) * 100).toFixed(0)}%` : `${apt.competitionRate.toFixed(1)}:1`) : "정보 없음", detail: apt.competitionRate != null ? (apt.competitionRate < 0 ? `미달 ${(Math.abs(apt.competitionRate) * 100).toFixed(0)}% (신청부족)` : `${apt.competitionRate.toFixed(1)}:1 (인기 10↑, 적정 3↑, 약 1↑, 미달 0↓)`) : "경쟁률 데이터 없음 (중립 40점)" },
       { name: "거래량", score: 100 - liqSc, info: `6개월 ${apt.recentTrades6m}건`, detail: `6개월 ${apt.recentTrades6m}건 (활발 30↑, 보통 15↑, 부진 5↓)` },
       { name: "대출/잔금", score: 100 - loanSc, info: apt.dsr40pass ? "DSR통과" : "주의", detail: apt.dsr40pass ? "DSR 40% 통과 (자금조달 양호)" : "DSR 미통과 (대출 곤란 주의)" },
       { name: "시공사 재무", score: 100 - Math.round(finSc), info: apt.builderCreditGrade || "정보 없음", detail: `${apt.builderCreditGrade || "미확인"} (AA↑안전, A보통, BBB↓주의, 부채율 ${apt.builderDebtRatio}%)` },

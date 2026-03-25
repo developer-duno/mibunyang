@@ -16,6 +16,7 @@
 | transport | 교통 정보 | transport-tago.mjs |
 | builders | 건설사 재무 | dart-builders.mjs |
 | regions | 지역 통계 (인구, 이동, 시장지표 5개) | population.mjs, migration.mjs, collect-market-stats.mjs |
+| (apartments 컬럼) | 청약 경쟁률 3개 (competition_rate/supply/applicants) | collect-applyhome.mjs |
 | complexes | 네이버 단지 정보 | naver-collect.py |
 | articles | 네이버 매물 정보 | naver-collect.py |
 | complex_price_history | 네이버 시세 이력 | naver-collect.py |

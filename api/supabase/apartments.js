@@ -225,6 +225,10 @@ function sanitize(row) {
     newSupply: row.newSupply ?? null,
     initialSaleRate: row.initialSaleRate ?? null,
     landCostRatio: row.landCostRatio ?? null,
+    // 청약 경쟁률
+    competitionRate: row.competitionRate ?? null,
+    competitionSupply: row.competitionSupply ?? null,
+    competitionApplicants: row.competitionApplicants ?? null,
     // 실거래 (위험 필드 → 비관적 기본값)
     nearbyMedian: row.nearbyMedian ?? row.naverNearbyMedian ?? null,
     recentTrades6m: row.recentTrades6m ?? 0,

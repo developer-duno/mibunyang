@@ -67,4 +67,5 @@ bash scripts/post-naver-collect.sh
 | KOSIS | collect-market-stats | 1초 (지표 간) | node:https | 타임아웃 30초 | HUG orgId=414, TLS 호환 |
 | data.go.kr | collect-maintenance | 0.4초 | 3회 | (i+1)×2초 | 관리비 5항목×단지, kaptCode 매칭 |
 | (로컬 계산) | calc-school-walk | — | — | — | schools.nearby_schools → 초등 도보 시간 |
+| odcloud.kr | collect-applyhome | — | — | — | 청약홈 잔여세대 경쟁률 (주간) |
 | _shared.mjs | fetchWithRetry (공통) | — | 기본 3회 | Retry-After 헤더 → 지수 백오프 | 429/500/503 구분 |
