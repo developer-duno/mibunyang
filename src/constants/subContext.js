@@ -1,6 +1,6 @@
 // 소비자용 서브지표 해석 매핑 테이블
 // 엔진(engine.js) 수정 없이 표현 계층에서만 활용
-// 각 키는 engine.js subs[].name과 정확히 일치해야 함 (34개)
+// 각 키는 engine.js subs[].name과 정확히 일치해야 함 (36개)
 
 export const SUB_CONTEXT = {
   price: {
@@ -92,6 +92,7 @@ export const SUB_CONTEXT = {
     "옵션 무상": { interpret: null, benchmark: null },
     "발코니 확장": { interpret: null, benchmark: null },
     "캐시백": { interpret: null, benchmark: null },
+    "관리비 절감": { interpret: null, benchmark: null },
   },
   risk: {
     "미분양률": {
@@ -140,9 +141,13 @@ export const SUB_CONTEXT = {
       interpret: (sc) => sc >= 70 ? "대규모 개발" : sc >= 40 ? "중규모 개발" : "개발 계획 없음",
       benchmark: "신도시/테크노밸리급",
     },
-    "인구/산업": {
+    "인구": {
       interpret: (sc) => sc >= 70 ? "인구 유입 활발" : sc >= 40 ? "인구 보합" : "인구 유출 주의",
       benchmark: "인구 증가율 +0.5%+",
+    },
+    "산업개발": {
+      interpret: (sc) => sc >= 70 ? "산업 유입 활발" : sc >= 40 ? "산업 보통" : "산업 호재 없음",
+      benchmark: "국가산단/테크노밸리급",
     },
   },
 };

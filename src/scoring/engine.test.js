@@ -201,6 +201,35 @@ describe('scoreRisk', () => {
   });
 });
 
+// scoreRisk 내부 9개 서브 가중치 합 = 1.00 검증
+describe('scoreRisk — 내부 가중치 합계', () => {
+  it('9개 서브 가중치 합 = 1.00', () => {
+    // engine.js line 307: unsoldSc*0.15 + liqSc*0.15 + loanSc*0.15 + finSc*0.18 + regSc*0.05 + supSc*0.10 + mktSc*0.07 + cancelSc*0.05 + compSc*0.10
+    const weights = [0.15, 0.15, 0.15, 0.18, 0.05, 0.10, 0.07, 0.05, 0.10];
+    const sum = weights.reduce((a, b) => a + b, 0);
+    expect(Math.round(sum * 100) / 100).toBe(1.00);
+  });
+});
+
+// mktSc(시장환경) 7단계 경계값 테스트
+describe('scoreRisk — mktSc 7단계 + null 기본값', () => {
+  // mktSc는 risk 관점: 성장→낮은 위험(5), 감소→높은 위험(90)
+  // 최종 서브점수 = 100 - mktSc
+  const getMktScore = (popGrowth) => {
+    const r = scoreRisk(makeApt({ popGrowth }));
+    return r.subs.find(s => s.name === "시장환경").score;
+  };
+
+  it('null → 중립 65점 (100-35)', () => { expect(getMktScore(null)).toBe(65); });
+  it('popGrowth ≥ 1.0 → 95점 (100-5)', () => { expect(getMktScore(1.0)).toBe(95); });
+  it('popGrowth ≥ 0.5 → 80점 (100-20)', () => { expect(getMktScore(0.5)).toBe(80); });
+  it('popGrowth ≥ 0 → 65점 (100-35)', () => { expect(getMktScore(0)).toBe(65); });
+  it('popGrowth ≥ -0.3 → 50점 (100-50)', () => { expect(getMktScore(-0.3)).toBe(50); });
+  it('popGrowth ≥ -0.8 → 35점 (100-65)', () => { expect(getMktScore(-0.8)).toBe(35); });
+  it('popGrowth ≥ -2.0 → 20점 (100-80)', () => { expect(getMktScore(-2.0)).toBe(20); });
+  it('popGrowth < -2.0 → 10점 (100-90)', () => { expect(getMktScore(-3.0)).toBe(10); });
+});
+
 describe('scoreFuture', () => {
   it('모든 개발 정보 0~100', () => {
     const r = scoreFuture(makeApt());

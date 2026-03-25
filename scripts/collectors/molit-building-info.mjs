@@ -71,11 +71,7 @@ function extractBuildingInfo(detail) {
   // 최고층: V4에서 ktownFlrNo가 실제 최고층
   const highFloor = safeInt(detail.ktownFlrNo) || null;
 
-  // 내진설계: V4 Dtl에서 필드 사라짐 — null 유지 (기존 데이터 보존)
-  const quakeDesign = null;
-
-  // 녹색건축: V4 Dtl에서 필드 사라짐 — null 유지 (기존 데이터 보존)
-  const green_bldg = null;
+  // 내진설계/녹색건축: V4 API에서 필드 제거됨 — 별도 추론(calc-quake-design)으로 처리
 
   // 난방방식: Bass에서 codeHeatNm (예: "개별난방", "지역난방", "중앙난방")
   const heating = detail.codeHeatNm || null;
@@ -87,8 +83,6 @@ function extractBuildingInfo(detail) {
     parking_ratio: parkingRatio,
     max_floor: highFloor,
     energy_grade: energyGrade,
-    quake_design: quakeDesign,
-    green_bldg,
     heating,
     corridor_type,
   };
@@ -101,8 +95,6 @@ async function updateBuilding(sb, aptId, info, dryRun) {
   if (info.parking_ratio != null) row.parking_ratio = info.parking_ratio;
   if (info.max_floor != null) row.max_floor = info.max_floor;
   if (info.energy_grade != null) row.energy_grade = info.energy_grade;
-  if (info.quake_design != null) row.quake_design = info.quake_design;
-  if (info.green_bldg != null) row.green_bldg = info.green_bldg;
   if (info.heating != null) row.heating = info.heating;
   if (info.corridor_type != null) row.corridor_type = info.corridor_type;
 
@@ -133,11 +125,11 @@ async function main() {
 
   // 1. 대상 아파트 조회 (건물 상세 미수집)
   let query = sb.from("apartments")
-    .select("id, name, region, gu, address, parking_ratio, max_floor, energy_grade, quake_design");
+    .select("id, name, region, gu, address, parking_ratio, max_floor, energy_grade");
 
   if (!force) {
     // 4개 상품성 필드 중 하나라도 null이면 재수집 대상
-    query = query.or("energy_grade.is.null,parking_ratio.is.null,max_floor.is.null,quake_design.is.null");
+    query = query.or("energy_grade.is.null,parking_ratio.is.null,max_floor.is.null");
   }
 
   const { data, error } = await query;
@@ -200,7 +192,7 @@ async function main() {
         if (!detail) { log(PHASE, `    ${target.name}: 상세 조회 실패`); failed++; continue; }
 
         const info = extractBuildingInfo(detail);
-        log(PHASE, `    ${target.name}: parking=${info.parking_ratio}, floor=${info.max_floor}, energy=${info.energy_grade}, quake=${info.quake_design}`);
+        log(PHASE, `    ${target.name}: parking=${info.parking_ratio}, floor=${info.max_floor}, energy=${info.energy_grade}`);
 
         const ok = await updateBuilding(sb, target.id, info, dryRun);
         if (ok) updated++;

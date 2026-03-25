@@ -1,7 +1,8 @@
 -- ============================================================
 -- 미분양 아파트 비교 엔진 v3.0 — Supabase 스키마
--- 9개 테이블: apartments, prices, unsold_history, trades,
---            infra, schools, transport, builders, regions
+-- 14개 테이블 + 1 VIEW: apartments, prices, unsold_history, trades,
+--            trade_stats, infra, schools, transport, builders, regions,
+--            complexes, articles, complex_price_history, consults
 -- ============================================================
 
 -- 1. apartments (정적 데이터, ~1,500행)
@@ -36,6 +37,19 @@ CREATE TABLE IF NOT EXISTS apartments (
   dsr40pass BOOLEAN,                     -- DSR 40% 통과 여부
   announcement_url TEXT,
   unit_source TEXT,                       -- "naver" | "applyhome"
+  avg_maintenance_cost INTEGER,          -- 관리비 (원/m²)
+  primary_direction TEXT,                -- 주방향 (남향/동향 등)
+  earthquake_design BOOLEAN,             -- 내진설계 여부 (추론 기반)
+  entrance_type TEXT,                    -- 현관구조 (계단식/복도식)
+  heat_method TEXT,                      -- 난방방식 (개별/지역/중앙)
+  heat_fuel TEXT,                        -- 난방연료 (도시가스/지역난방)
+  corridor_type TEXT,                    -- 복도유형 (복도식/계단식/혼합식)
+  building_coverage_ratio NUMERIC,       -- 건폐율 (%)
+  cats_cache JSONB,                      -- 서버 사전 스코어링 캐시
+  scores_computed_at TIMESTAMPTZ,        -- 스코어 계산 시점
+  competition_rate REAL,                 -- 청약 경쟁률
+  competition_supply INTEGER,            -- 공급 세대수
+  competition_applicants INTEGER,        -- 신청자 수
   -- 혜택
   discount_pct REAL,
   loan_free BOOLEAN,
@@ -114,6 +128,9 @@ CREATE TABLE IF NOT EXISTS trades (
   build_year INTEGER,
   trade_type TEXT DEFAULT 'sale',         -- 'sale' | 'jeonse'
   deposit INTEGER,
+  apt_name TEXT,                         -- 아파트명
+  cancel_date TEXT,                      -- 해제일
+  dealing_type TEXT,                     -- 거래유형 (중개/직거래)
   recorded_at DATE NOT NULL DEFAULT CURRENT_DATE
 );
 
@@ -236,6 +253,12 @@ CREATE TABLE IF NOT EXISTS complexes (
   low_floor INTEGER,
   min_supply_area REAL,
   max_supply_area REAL,
+  earthquake_design BOOLEAN,             -- 내진설계 여부
+  entrance_type TEXT,                    -- 현관구조
+  heat_method TEXT,                      -- 난방방식
+  heat_fuel TEXT,                        -- 난방연료
+  corridor_type TEXT,                    -- 복도유형
+  building_coverage_ratio NUMERIC,       -- 건폐율
   -- 어떤 미분양 아파트 근처인지 추적
   nearby_apartment_ids JSONB,            -- ["ah-xxx", "ah-yyy"]
   last_crawled_at TIMESTAMPTZ,
@@ -290,6 +313,22 @@ CREATE TABLE IF NOT EXISTS complex_price_history (
 );
 
 -- ============================================================
+-- 14. consults (상담 신청)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS consults (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  interested_apts TEXT[] DEFAULT '{}',
+  budget_min INTEGER,
+  budget_max INTEGER,
+  consult_type TEXT DEFAULT '방문상담',
+  message TEXT,
+  status TEXT DEFAULT 'pending',
+  submitted_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
 -- INDEXES
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_apartments_region ON apartments(region);
@@ -309,6 +348,7 @@ CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(latitude, longitu
 CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type_name, is_active);
 CREATE INDEX IF NOT EXISTS idx_articles_active ON articles(is_active) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_complex_price_history ON complex_price_history(complex_no, trade_type);
+CREATE INDEX IF NOT EXISTS idx_trades_cancel ON trades(region, deal_month) WHERE cancel_date IS NOT NULL;
 
 -- ============================================================
 -- ROW LEVEL SECURITY (RLS)
@@ -359,6 +399,10 @@ CREATE POLICY "Public read" ON complex_price_history FOR SELECT USING (true);
 CREATE POLICY "Service write" ON complexes FOR ALL USING (auth.role() = 'service_role');
 CREATE POLICY "Service write" ON articles FOR ALL USING (auth.role() = 'service_role');
 CREATE POLICY "Service write" ON complex_price_history FOR ALL USING (auth.role() = 'service_role');
+
+ALTER TABLE consults ENABLE ROW LEVEL SECURITY;
+CREATE POLICY consults_anon_insert ON consults FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY consults_service ON consults FOR ALL TO service_role USING (true);
 
 -- ============================================================
 -- updated_at 자동 갱신 트리거
@@ -432,6 +476,16 @@ SELECT
   a.address,
   a.road_address AS "roadAddress",
   a.district,
+  a.avg_maintenance_cost AS "avgMaintenanceCost",
+  a.primary_direction AS "primaryDirection",
+  a.heat_fuel AS "heatFuel",
+  a.corridor_type AS "corridorType",
+  a.building_coverage_ratio AS "buildingCoverageRatio",
+  a.cats_cache AS "catsCache",
+  a.scores_computed_at AS "scoresComputedAt",
+  a.competition_rate AS "competitionRate",
+  a.competition_supply AS "competitionSupply",
+  a.competition_applicants AS "competitionApplicants",
   -- 혜택
   a.discount_pct AS "discountPct",
   a.loan_free AS "loanFree",
