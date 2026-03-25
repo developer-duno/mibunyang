@@ -77,12 +77,20 @@ function extractBuildingInfo(detail) {
   // 녹색건축: V4 Dtl에서 필드 사라짐 — null 유지 (기존 데이터 보존)
   const green_bldg = null;
 
+  // 난방방식: Bass에서 codeHeatNm (예: "개별난방", "지역난방", "중앙난방")
+  const heating = detail.codeHeatNm || null;
+
+  // 복도유형: Bass에서 codeHallNm (예: "복도식", "계단식", "혼합식")
+  const corridor_type = detail.codeHallNm || null;
+
   return {
     parking_ratio: parkingRatio,
     max_floor: highFloor,
     energy_grade: energyGrade,
     quake_design: quakeDesign,
     green_bldg,
+    heating,
+    corridor_type,
   };
 }
 
@@ -95,6 +103,8 @@ async function updateBuilding(sb, aptId, info, dryRun) {
   if (info.energy_grade != null) row.energy_grade = info.energy_grade;
   if (info.quake_design != null) row.quake_design = info.quake_design;
   if (info.green_bldg != null) row.green_bldg = info.green_bldg;
+  if (info.heating != null) row.heating = info.heating;
+  if (info.corridor_type != null) row.corridor_type = info.corridor_type;
 
   if (Object.keys(row).length === 0) return false;
 
