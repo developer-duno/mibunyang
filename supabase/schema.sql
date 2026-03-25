@@ -187,6 +187,11 @@ CREATE TABLE IF NOT EXISTS regions (
   net_migration INTEGER,
   jeonse_rate REAL,
   avg_price INTEGER,
+  price_index REAL,
+  avg_price_sqm REAL,
+  new_supply INTEGER,
+  initial_sale_rate REAL,
+  land_cost_ratio REAL,
   recorded_at DATE NOT NULL DEFAULT CURRENT_DATE,
   UNIQUE(region, COALESCE(gu, ''), recorded_at)
 );
@@ -391,7 +396,8 @@ WITH latest_prices AS (
 ),
 latest_regions AS (
   SELECT DISTINCT ON (region)
-    region, pop_growth, supply_ratio, net_migration
+    region, pop_growth, supply_ratio, net_migration,
+    price_index, avg_price_sqm, new_supply, initial_sale_rate, land_cost_ratio
   FROM regions
   WHERE gu IS NULL
   ORDER BY region, recorded_at DESC
@@ -490,6 +496,12 @@ SELECT
   r.pop_growth AS "popGrowth",
   r.supply_ratio AS "supplyRatio",
   r.net_migration AS "netMigration",
+  -- 지역 시장 통계 (KOSIS HUG)
+  r.price_index AS "priceIndex",
+  r.avg_price_sqm AS "avgPriceSqm",
+  r.new_supply AS "newSupply",
+  r.initial_sale_rate AS "initialSaleRate",
+  r.land_cost_ratio AS "landCostRatio",
   -- 실거래 통계
   ts.nearby_median AS "nearbyMedian",
   ts.recent_trades_6m AS "recentTrades6m",
