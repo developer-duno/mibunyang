@@ -12,7 +12,7 @@
  *   SUPABASE_URL     — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, REGION_MAP, VALID_REGIONS, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today } from "./_shared.mjs";
 
 loadEnv();
 

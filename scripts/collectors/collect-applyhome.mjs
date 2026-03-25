@@ -25,25 +25,6 @@ if (!API_KEY) {
 
 const BASE_URL = "https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1/getRemndrLttotPblancCmpet";
 
-// ── 경쟁률 파싱 ──────────────────────────────────────────────
-// "(△18)" → 미달 (supply 대비 비율로 음수 반환)
-// "5.00" → 5.0
-// "1,245.00" → 1245.0
-function parseRate(str, supply) {
-  if (!str || typeof str !== "string") return null;
-
-  // 미달 케이스: "(△N)" → 음수 비율
-  const deficit = str.match(/△(\d+)/);
-  if (deficit) {
-    const shortfall = parseInt(deficit[1], 10);
-    return supply > 0 ? -(shortfall / supply) : -1;
-  }
-
-  // 경쟁률: "1,245.00" → 1245.0
-  const num = parseFloat(str.replace(/,/g, ""));
-  return isNaN(num) ? null : num;
-}
-
 // ── API 페이지네이션 (odcloud: page/perPage) ─────────────────
 async function fetchAllPages() {
   const allRows = [];
@@ -86,7 +67,6 @@ function aggregateByApartment(rows) {
 
   const result = {};
   for (const [no, items] of Object.entries(groups)) {
-    let totalWeighted = 0;
     let totalSupply = 0;
     let totalApplicants = 0;
 
@@ -163,6 +143,7 @@ async function main() {
   }
 
   log(PHASE, `매칭: ${matched}/${aptNos.length}건`);
+  rpt.summary();
   log(PHASE, "\n=== 완료 ===");
 }
 

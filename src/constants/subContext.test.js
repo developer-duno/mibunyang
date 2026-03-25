@@ -51,7 +51,7 @@ describe('SUB_CONTEXT', () => {
   it('location: 5개 서브', () => { expect(Object.keys(SUB_CONTEXT.location)).toHaveLength(5); });
   it('product: 9개 서브', () => { expect(Object.keys(SUB_CONTEXT.product)).toHaveLength(9); });
   it('benefit: 5개 서브', () => { expect(Object.keys(SUB_CONTEXT.benefit)).toHaveLength(5); });
-  it('risk: 8개 서브', () => { expect(Object.keys(SUB_CONTEXT.risk)).toHaveLength(8); });
+  it('risk: 9개 서브', () => { expect(Object.keys(SUB_CONTEXT.risk)).toHaveLength(9); });
 
   // interpret 3단계 검증 (높음/보통/낮음)
   it('price.적정가 괴리도: 70→높음, 40→보통, 30→낮음', () => {

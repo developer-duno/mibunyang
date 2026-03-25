@@ -122,6 +122,10 @@ export const SUB_CONTEXT = {
       interpret: (sc) => sc >= 70 ? "시장 호조" : sc >= 40 ? "시장 보합" : "시장 침체 주의",
       benchmark: "인구 증가 지역",
     },
+    "경쟁률": {
+      interpret: (sc) => sc >= 70 ? "청약 인기" : sc >= 40 ? "경쟁 보통" : "미달 주의",
+      benchmark: "3:1 이상 인기",
+    },
     "계약해제율": {
       interpret: (sc) => sc >= 70 ? "계약 해제 적음" : sc >= 40 ? "해제율 보통" : "계약 해제 주의",
       benchmark: "3% 이하 안전",

@@ -178,6 +178,7 @@ async function main() {
     }
   }
 
+  rpt.summary();
   log(PHASE, "\n=== 완료 ===");
 }
 
