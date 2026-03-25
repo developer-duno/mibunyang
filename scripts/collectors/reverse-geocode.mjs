@@ -1,8 +1,10 @@
 /**
  * 역지오코딩 수집기 — Kakao 좌표→주소 변환
  *
- * 좌표가 있는 단지의 region/gu/dong/address/road_address를 정확한 값으로 갱신
+ * 좌표가 있는 단지의 region/gu/dong/address/road_address + bjd_code/lot 정보 갱신
  * 기존 dong에 "구역"/"지구"/"뉴타운" 등이 있으면 district 필드로 이동
+ * bjd_code: 법정동코드 10자리 (건축HUB API 조회용)
+ * lot_main/lot_sub: 지번 본번/부번 (건축HUB API 조회용)
  *
  * 사용법:
  *   node scripts/collectors/reverse-geocode.mjs              (Supabase UPDATE)
@@ -46,9 +48,13 @@ async function coordToAddress(lat, lng) {
   const data = await res.json();
   const doc = data.documents?.[0];
   if (!doc) return null;
+  const mainNo = doc.address?.main_address_no;
+  const subNo = doc.address?.sub_address_no;
   return {
     address: doc.address?.address_name || null,
     roadAddress: doc.road_address?.address_name || null,
+    lotMain: mainNo ? parseInt(mainNo, 10) || null : null,
+    lotSub: subNo && subNo !== "" && subNo !== "0" ? parseInt(subNo, 10) : 0,
   };
 }
 
@@ -102,17 +108,24 @@ async function main() {
         district = apt.dong;
       }
 
+      // 법정동코드 (건축HUB API 조회에 필요)
+      const bjdCode = geo?.legal?.code ?? null;
+      if (!bjdCode) log(PHASE, `  ⚠ ${apt.name}: 법정동코드 없음 (좌표 정밀도 부족)`);
+
       const updates = {
         region,
         gu,
         dong,
         address: addr?.address || null,
         road_address: addr?.roadAddress || null,
+        bjd_code: bjdCode,
+        lot_main: addr?.lotMain ?? null,
+        lot_sub: addr?.lotSub ?? 0,
       };
       if (district) updates.district = district;
 
       if (dryRun) {
-        log(PHASE, `  [DRY] ${apt.name}: ${region} ${gu || ""} ${dong || ""} | ${addr?.address || "?"} | ${addr?.roadAddress || "?"}`);
+        log(PHASE, `  [DRY] ${apt.name}: ${region} ${gu || ""} ${dong || ""} | ${addr?.address || "?"} | bjd=${bjdCode} lot=${addr?.lotMain}-${addr?.lotSub}`);
       } else {
         const { error: uErr } = await sb.from("apartments").update(updates).eq("id", apt.id);
         if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); failed++; continue; }
