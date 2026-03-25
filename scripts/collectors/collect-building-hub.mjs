@@ -32,7 +32,7 @@
  *   reverse-geocode.mjs --force 실행 후 bjd_code가 채워져 있어야 함
  */
 import { loadEnv, getSupabase, log, logError, sleep, createReporter } from "./_shared.mjs";
-import { molitApiCall, REQUEST_DELAY } from "./_molit-api.mjs";
+import { REQUEST_DELAY } from "./_molit-api.mjs";
 
 loadEnv();
 
@@ -43,8 +43,27 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const ENERGY_BASE = "https://apis.data.go.kr/1613000/BldEngyHubService";
-const PERMIT_BASE = "https://apis.data.go.kr/1613000/HpPermitService";
+const API_BASE = "https://apis.data.go.kr/1613000/BldEngyHubService";
+
+// data.go.kr는 빈 결과 시 type=json이어도 XML 반환 → 별도 처리 필요
+async function hubApiCall(endpoint, params) {
+  const qs = new URLSearchParams({ serviceKey: API_KEY, type: "json", ...params });
+  const url = `${API_BASE}/${endpoint}?${qs}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  // XML 빈 결과 감지: resultCode=00 + totalCount=0 → 정상 빈 응답
+  if (text.startsWith("<?xml") || text.startsWith("<")) {
+    if (text.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
+      throw new Error("API 키 미등록 — data.go.kr에서 서비스 신청 필요");
+    }
+    if (text.includes("<totalCount>0</totalCount>")) {
+      return { response: { body: { items: [], totalCount: 0 } } };
+    }
+    throw new Error(`XML 응답: ${text.slice(0, 200)}`);
+  }
+  return JSON.parse(text);
+}
 
 // ── 지번 파라미터 구성 ──────────────────────────────────────
 function makeLotParams(bjdCode, lotMain, lotSub) {
@@ -62,7 +81,7 @@ async function fetchEnergy(bjdCode, lotMain, lotSub, useYm) {
   let elec = null, gas = null;
 
   try {
-    const elecJson = await molitApiCall(PHASE, ENERGY_BASE, "getBeElctyUsgInfo", params, API_KEY);
+    const elecJson = await hubApiCall("getBeElctyUsgInfo", params);
     const elecItems = elecJson?.response?.body?.items ?? [];
     const items = Array.isArray(elecItems) ? elecItems : (elecItems.item ? [].concat(elecItems.item) : []);
     if (items.length > 0) {
@@ -77,7 +96,7 @@ async function fetchEnergy(bjdCode, lotMain, lotSub, useYm) {
   await sleep(REQUEST_DELAY);
 
   try {
-    const gasJson = await molitApiCall(PHASE, ENERGY_BASE, "getBeGasUsgInfo", params, API_KEY);
+    const gasJson = await hubApiCall("getBeGasUsgInfo", params);
     const gasItems = gasJson?.response?.body?.items ?? [];
     const items = Array.isArray(gasItems) ? gasItems : (gasItems.item ? [].concat(gasItems.item) : []);
     if (items.length > 0) {
@@ -95,7 +114,7 @@ async function fetchEnergy(bjdCode, lotMain, lotSub, useYm) {
 async function fetchHeatFuel(bjdCode, lotMain, lotSub) {
   const params = { ...makeLotParams(bjdCode, lotMain, lotSub), numOfRows: "10", pageNo: "1" };
   try {
-    const json = await molitApiCall(PHASE, PERMIT_BASE, "getHpMgmCoopTpOulnInfo", params, API_KEY);
+    const json = await hubApiCall("getHpMgmCoopTpOulnInfo", params);
     const items = json?.response?.body?.items ?? [];
     const arr = Array.isArray(items) ? items : (items.item ? [].concat(items.item) : []);
     if (arr.length === 0) return null;
@@ -117,7 +136,7 @@ async function fetchHeatFuel(bjdCode, lotMain, lotSub) {
 async function fetchQuakeDesign(bjdCode, lotMain, lotSub) {
   const params = { ...makeLotParams(bjdCode, lotMain, lotSub), numOfRows: "10", pageNo: "1" };
   try {
-    const json = await molitApiCall(PHASE, PERMIT_BASE, "getHpBasisOulnInfo", params, API_KEY);
+    const json = await hubApiCall("getHpBasisOulnInfo", params);
     const items = json?.response?.body?.items ?? [];
     const arr = Array.isArray(items) ? items : (items.item ? [].concat(items.item) : []);
     if (arr.length === 0) return null;
