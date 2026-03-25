@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS apartments (
   competition_rate REAL,                 -- 청약 경쟁률
   competition_supply INTEGER,            -- 공급 세대수
   competition_applicants INTEGER,        -- 신청자 수
+  bjd_code TEXT,                         -- 법정동코드 10자리 (Kakao reverse-geocode)
+  lot_main INTEGER,                      -- 지번 본번
+  lot_sub INTEGER,                       -- 지번 부번
+  elec_usage_kwh REAL,                   -- 월 전기사용량 kWh (건축HUB)
+  gas_usage_mj REAL,                     -- 월 가스사용량 MJ (건축HUB)
+  energy_collected_at TIMESTAMPTZ,       -- 에너지 수집 시점
   -- 혜택
   discount_pct REAL,
   loan_free BOOLEAN,
@@ -486,6 +492,9 @@ SELECT
   a.competition_rate AS "competitionRate",
   a.competition_supply AS "competitionSupply",
   a.competition_applicants AS "competitionApplicants",
+  a.elec_usage_kwh AS "elecUsageKwh",
+  a.gas_usage_mj AS "gasUsageMj",
+  a.energy_collected_at AS "energyCollectedAt",
   -- 혜택
   a.discount_pct AS "discountPct",
   a.loan_free AS "loanFree",
