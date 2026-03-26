@@ -8,7 +8,7 @@ const DATA_SECTIONS = [
   {
     title: "단지 기본정보",
     highlight: ["unsoldRate", "pp", "completion", "dataReliability"],
-    grid: ["dong", "address", "roadAddress", "district", "units", "unsold", "builder", "heating", "avgMaintenanceCost", "primaryDirection"],
+    grid: ["dong", "address", "roadAddress", "district", "units", "unsold", "builder", "heating", "heatFuel", "avgMaintenanceCost", "primaryDirection"],
   },
   {
     title: "생활인프라 (반경 1km)",

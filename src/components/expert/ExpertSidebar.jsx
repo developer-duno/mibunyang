@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import { C, gr } from "@/theme";
+import { EXPERT_SORT_OPTIONS } from "@/constants/sortOptions";
 
 export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort, isMobile, onClose }) {
   const regions = useMemo(() => ["전체", ...[...new Set(scored.map(x => x.apt.region).filter(Boolean))].sort()], [scored]);
@@ -38,11 +39,9 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
           </select>
           <select value={sort} onChange={e => setSort(e.target.value)} aria-label="정렬 기준"
             style={{ flex: 1, padding: "6px 8px", fontSize: 11, border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: "pointer" }}>
-            <option value="total">종합순</option>
-            <option value="price">저가순</option>
-            <option value="priceScore">가격매력순</option>
-            <option value="location">입지순</option>
-            <option value="safe">안전순</option>
+            {EXPERT_SORT_OPTIONS.map(s => (
+              <option key={s.key} value={s.key}>{s.mobileLabel}</option>
+            ))}
           </select>
         </div>
       </div>

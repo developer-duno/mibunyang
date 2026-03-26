@@ -61,7 +61,7 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites();
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL } = useFilterSort({ onFilterChange: closeDetail });
   const debouncedSearchText = useDebouncedValue(searchText, 300);
 
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
@@ -113,8 +113,10 @@ export default function App() {
       list = list.filter(x => x.apt.region === filterRegion);
     }
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
-    const bMin = budgetMin !== "" ? Number(budgetMin) : null;
-    const bMax = budgetMax !== "" ? Number(budgetMax) : null;
+    const bMinRaw = budgetMin !== "" ? Number(budgetMin) : null;
+    const bMaxRaw = budgetMax !== "" ? Number(budgetMax) : null;
+    const bMin = bMinRaw != null && Number.isFinite(bMinRaw) ? bMinRaw : null;
+    const bMax = bMaxRaw != null && Number.isFinite(bMaxRaw) ? bMaxRaw : null;
     const effectiveMin = (bMin != null && bMax != null && bMin > bMax) ? bMax : bMin;
     const effectiveMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
     if (effectiveMin != null) list = list.filter(x => x.apt.price >= effectiveMin * 10000);
@@ -128,7 +130,7 @@ export default function App() {
       else if (moveInFilter === "미입주") list = list.filter(x => x.apt.completion && x.apt.completion < NOW_YM && (x.apt.unsoldRate ?? 0) > 0);
       else if (moveInFilter === "입주완료") list = list.filter(x => x.apt.completion && x.apt.completion < NOW_YM && (x.apt.unsoldRate ?? 0) === 0);
     }
-    if (minScore) list = list.filter(x => x.res.total >= Number(minScore));
+    if (minScore) { const ms = Number(minScore); if (Number.isFinite(ms)) list = list.filter(x => x.res.total >= ms); }
     if (builderTier !== "전체") {
       list = list.filter(x => {
         const b = resolveBuilder(x.apt.builder);
@@ -250,7 +252,13 @@ export default function App() {
       const ids = compareStr.split(",").filter(Boolean).slice(0, 4);
       if (ids.length >= 2) { setCompIds(ids); setShowCompOpen(true); }
     }
-    if (detailId || compareStr) window.history.replaceState(null, "", window.location.pathname);
+    if (detailId || compareStr) {
+      const cleanParams = new URLSearchParams(window.location.search);
+      cleanParams.delete("detail");
+      cleanParams.delete("compare");
+      const remaining = cleanParams.toString();
+      try { window.history.replaceState(null, "", remaining ? `?${remaining}` : window.location.pathname); } catch {}
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 전문가 로그인 시 상담 목록 서버 조회
@@ -266,21 +274,35 @@ export default function App() {
   const handleShareDetail = useCallback((aptId) => {
     const item = scoredMapRef.current.get(aptId);
     if (!item) return;
+    const base = getShareURL();
+    const sep = base.includes("?") ? "&" : "?";
     openShareSheet({
       title: `${item.apt.name} - 미분양 분석`,
       text: `${item.apt.name} ${item.res.total}점 · ${fmtPrice(item.apt.price)}`,
-      url: `${window.location.origin}/?detail=${aptId}&profile=${profile}`
+      url: `${base}${sep}detail=${aptId}&profile=${profile}`
     });
-  }, [profile, openShareSheet]);
+  }, [profile, openShareSheet, getShareURL]);
 
   const handleShareCompare = useCallback(() => {
     if (compIds.length < 2) return;
+    const base = getShareURL();
+    const sep = base.includes("?") ? "&" : "?";
     openShareSheet({
       title: `미분양 ${compIds.length}개 단지 비교`,
       text: compItems.map(x => x.apt.name).join(" vs "),
-      url: `${window.location.origin}/?compare=${compIds.join(",")}&profile=${profile}`
+      url: `${base}${sep}compare=${compIds.join(",")}&profile=${profile}`
     });
-  }, [compIds, compItems, profile, openShareSheet]);
+  }, [compIds, compItems, profile, openShareSheet, getShareURL]);
+
+  /** 현재 필터 조건만 공유 */
+  const handleShareFilters = useCallback(() => {
+    const activeFilters = [filterRegion !== "전체" && filterRegion, budgetMin && `${budgetMin}~${budgetMax || "∞"}억`, minScore && `${minScore}점+`, builderTier !== "전체" && builderTier].filter(Boolean).join(" · ");
+    openShareSheet({
+      title: "미분양 필터 공유",
+      text: activeFilters || "전체 조건",
+      url: getShareURL()
+    });
+  }, [filterRegion, budgetMin, budgetMax, minScore, builderTier, openShareSheet, getShareURL]);
 
   return (
     <div style={{ background: C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", color: C.text, paddingBottom: 70, transition: "max-width .3s" }}>
@@ -319,6 +341,7 @@ export default function App() {
             filterCollapsed={filterCollapsed} onToggleCollapsed={toggleFilterCollapsed}
             activeFilterCount={activeFilterCount}
             filteredLength={filtered.length} scoredLength={scored.length}
+            onShareFilters={handleShareFilters}
           />
 
           {compIds.length >= 2 && (

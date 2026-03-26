@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { C } from "@/theme";
+import { SORT_OPTIONS } from "@/constants/sortOptions";
 
 /* ── 공유 스타일 상수 (DRY) ── */
 const selectArrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`;
@@ -27,6 +28,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   benefitOnly, onToggleBenefitOnly,
   filterCollapsed, onToggleCollapsed, activeFilterCount,
   filteredLength, scoredLength,
+  onShareFilters,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
   return (
@@ -77,6 +79,13 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           </div>
         )}
         {filteredLength != null && <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>{scoredLength}개 중 <strong style={{ color: C.indigo }}>{filteredLength}</strong>개</span>}
+        {activeFilterCount > 0 && onShareFilters && (
+          <button onClick={onShareFilters} aria-label="필터 조건 공유" style={{
+            flexShrink: 0, height: 22, padding: "0 6px", fontSize: 10, fontWeight: 600,
+            background: C.slate100, color: C.slate600, border: `1px solid ${C.border}`, borderRadius: 4,
+            cursor: "pointer", display: "flex", alignItems: "center", gap: 2
+          }}>🔗 공유</button>
+        )}
       </div>
       {!filterCollapsed && <>
       {/* 2행: 지역 + 예산 + 초기화 */}
@@ -125,12 +134,12 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       )}
       {/* 3행: 정렬 + 가중치 뱃지 */}
       <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-        {isPC ? [{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }, { k: "benefit", l: "혜택순", ac: "#7C3AED", bg: "#EDE9FE", pas: "#F5F3FF" }, { k: "newest", l: "최신순", ac: C.slate600, bg: C.slate100, pas: "#F8FAFC" }].map(s => (
-          <button key={s.k} onClick={() => onSortChange(s.k)} style={{
-            flex: 1, background: sortKey === s.k ? s.bg : s.pas, color: sortKey === s.k ? s.ac : C.slate600,
-            border: sortKey === s.k ? `1.5px solid ${s.ac}` : "1.5px solid transparent", borderRadius: 5, padding: "4px 0", height: 28,
-            fontSize: 11, fontWeight: sortKey === s.k ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all .15s", textAlign: "center"
-          }}>{s.l}</button>
+        {isPC ? SORT_OPTIONS.map(s => (
+          <button key={s.key} onClick={() => onSortChange(s.key)} style={{
+            flex: 1, background: sortKey === s.key ? s.bg : s.pas, color: sortKey === s.key ? s.ac : C.slate600,
+            border: sortKey === s.key ? `1.5px solid ${s.ac}` : "1.5px solid transparent", borderRadius: 5, padding: "4px 0", height: 28,
+            fontSize: 11, fontWeight: sortKey === s.key ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all .15s", textAlign: "center"
+          }}>{s.pcLabel}</button>
         )) : (
           <select value={sortKey} onChange={e => onSortChange(e.target.value)} aria-label="정렬 기준" style={{
             flex: "0 0 auto", padding: "4px 24px 4px 8px", fontSize: 11, fontWeight: 700, height: 28,
@@ -139,8 +148,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%234F46E5' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
             backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
           }}>
-            {[{ k: "total", l: "종합순" }, { k: "price", l: "저가순" }, { k: "priceScore", l: "가격매력순" }, { k: "location", l: "입지순" }, { k: "safe", l: "안전순" }, { k: "benefit", l: "혜택순" }, { k: "newest", l: "최신순" }].map(s => (
-              <option key={s.k} value={s.k}>{s.l}</option>
+            {SORT_OPTIONS.map(s => (
+              <option key={s.key} value={s.key}>{s.mobileLabel}</option>
             ))}
           </select>
         )}
