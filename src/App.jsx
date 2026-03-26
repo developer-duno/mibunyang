@@ -1,6 +1,7 @@
 // App.jsx SRP 분리 완료 — InfoPage, BottomNav, HeaderSection, ExpertLoginForm, SearchFilterBar, AptListSection
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
+import { REGIONS } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
 import { C, catCol, catBg } from "@/theme";
@@ -132,7 +133,8 @@ export default function App() {
 
   const regionOptions = useMemo(() => {
     const rs = new Set(apartments.map(a => a.region).filter(Boolean));
-    return ["전체", ...[...rs].sort()];
+    const order = Object.keys(REGIONS);
+    return ["전체", ...order.filter(r => rs.has(r)), ...[...rs].filter(r => !order.includes(r)).sort()];
   }, [apartments]);
 
   // 데이터 최신성 텍스트 (ISO 날짜 표시)
