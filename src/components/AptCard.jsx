@@ -28,6 +28,9 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = (apt.noxious || []).length;
+    const completionPast = apt.completion
+      ? apt.completion < `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`
+      : false;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
 
   // 상태 의존 스타일만 useMemo로 계산
@@ -92,7 +95,12 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || noxCount > 0 || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade))) && (
           <div style={S.alertRow}>
             {apt.completion && (
-              <span style={{ ...S.alertTag, background: C.blueLight, color: C.blue }}>입주 {fmtCompletion(apt.completion)}</span>
+              <span style={{ ...S.alertTag,
+                background: completionPast ? C.amberLight : C.blueLight,
+                color: completionPast ? C.amber : C.blue
+              }}>
+                {completionPast ? `미입주 (준공 ${fmtCompletion(apt.completion)})` : `입주예정 ${fmtCompletion(apt.completion)}`}
+              </span>
             )}
             {(apt.unsoldRate ?? 0) >= 30 && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {apt.unsoldRate}%</span>
