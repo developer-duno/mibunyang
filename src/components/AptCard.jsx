@@ -43,13 +43,13 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
 
   // 상태 의존 스타일만 useMemo로 계산
   const dynStyles = useMemo(() => ({
-    wrapper: { ...S.wrapper, background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}` },
+    wrapper: { ...S.wrapper, background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`, ...(moveInDone ? { opacity: 0.55 } : {}) },
     bar: { height: 4, background: `linear-gradient(90deg,${g.c},${g.c}88)` },
     rank: { fontSize: 11, fontWeight: 800, color: C.white, background: g.c, padding: "3px 8px", borderRadius: 4, flexShrink: 0 },
     detailBtn: { ...S.btnBase, background: C.slate100, color: C.slate600, border: "1.5px solid transparent", fontWeight: 600 },
     favBtn: { ...S.btnBase, background: isFav ? C.redLight : C.slate100, color: isFav ? C.red : C.muted, border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent", fontWeight: isFav ? 700 : 600 },
     compBtn: { ...S.btnBase, background: isComp ? C.indigo : "transparent", color: isComp ? C.white : C.indigo, border: `1.5px solid ${C.indigo}`, fontWeight: 700 },
-  }), [isComp, isFav, g.c]);
+  }), [isComp, isFav, g.c, moveInDone]);
 
   return (
     <div style={dynStyles.wrapper}>
@@ -88,6 +88,8 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           )}
           {res.cats.location.subs[0]?.info && <span style={S.infoTag}>{res.cats.location.subs[0].info}</span>}
           <span style={S.infoTag}>안전 {gr(res.cats.risk?.total ?? 0).l}등급</span>
+          {(apt.discountPct ?? 0) > 0 && <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>할인 {apt.discountPct}%</span>}
+          {res.cats.price?.deviation != null && Number(res.cats.price.deviation) < 0 && <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>주변대비 {res.cats.price.deviation}%</span>}
         </div>
 
         {benefitWon > 0 ? (

@@ -7,6 +7,7 @@ const selectBase = { WebkitAppearance: "none", MozAppearance: "none", appearance
 const numInput = (val, h = 30) => ({ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: val ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: h, boxSizing: "border-box", background: C.slate100 });
 const resetBtn = (h = 30) => ({ background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: 11, color: C.muted, cursor: "pointer", height: h, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 });
 const tilde = { fontSize: 10, color: C.muted, flexShrink: 0 };
+const chipStyle = { fontSize: 10, padding: "2px 6px", borderRadius: 10, background: C.indigoLight, color: C.indigo, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
 
 /** 검색 + 필터 + 정렬 + 가중치 뱃지 통합 바 */
 export const SearchFilterBar = memo(function SearchFilterBar({
@@ -57,8 +58,20 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           cursor: "pointer", display: "flex", alignItems: "center", gap: 2, transition: "all .15s"
         }}>{filterCollapsed ? "▼" : "▲"}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}</button>
       </div>
-      {/* 결과 건수 */}
-      {filteredLength != null && <div style={{ fontSize: 10, color: C.muted, marginBottom: filterCollapsed ? 0 : 6, textAlign: "right" }}>{scoredLength}개 중 <strong style={{ color: C.indigo }}>{filteredLength}</strong>개</div>}
+      {/* 결과 건수 + 활성 필터 태그 칩 */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: filterCollapsed ? 0 : 6 }}>
+        {activeFilterCount > 0 && (
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap", flex: 1 }}>
+            {showFavOnly && <span onClick={onToggleFavOnly} style={chipStyle}>관심 ✕</span>}
+            {filterRegion !== "전체" && <span onClick={() => onRegionChange("전체")} style={chipStyle}>{filterRegion} ✕</span>}
+            {(budgetMin || budgetMax) && <span onClick={onBudgetReset} style={chipStyle}>{budgetMin || "0"}~{budgetMax || "∞"}억 ✕</span>}
+            {(areaMin || areaMax) && <span onClick={() => { onAreaMinChange(""); onAreaMaxChange(""); }} style={chipStyle}>면적 {areaMin || "0"}~{areaMax || "∞"}㎡ ✕</span>}
+            {(unitsMin || unitsMax) && <span onClick={() => { onUnitsMinChange(""); onUnitsMaxChange(""); }} style={chipStyle}>세대 {unitsMin || "0"}~{unitsMax || "∞"} ✕</span>}
+            {moveInFilter !== "전체" && <span onClick={() => onMoveInChange("전체")} style={chipStyle}>{moveInFilter} ✕</span>}
+          </div>
+        )}
+        {filteredLength != null && <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>{scoredLength}개 중 <strong style={{ color: C.indigo }}>{filteredLength}</strong>개</span>}
+      </div>
       {!filterCollapsed && <>
       {/* 2행: 지역 + 예산 + 초기화 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
@@ -92,9 +105,21 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           <button onClick={onBudgetReset} aria-label="예산 초기화" style={resetBtn()}>✕</button>
         ) : null}
       </div>
+      {/* 예산 프리셋 */}
+      {!budgetMin && !budgetMax && (
+        <div style={{ display: "flex", gap: 3, marginBottom: 6 }}>
+          {[3, 5, 7, 10].map(v => (
+            <button key={v} onClick={() => { onBudgetMinChange(""); onBudgetMaxChange(String(v)); }} style={{
+              flex: 1, fontSize: 10, fontWeight: 600, padding: "3px 0", height: 24,
+              background: C.slate100, color: C.slate600, border: `1px solid ${C.border}`,
+              borderRadius: 4, cursor: "pointer", transition: "all .15s"
+            }}>{v}억 이하</button>
+          ))}
+        </div>
+      )}
       {/* 3행: 정렬 + 가중치 뱃지 */}
       <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-        {isPC ? [{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }, { k: "benefit", l: "혜택순", ac: "#7C3AED", bg: "#EDE9FE", pas: "#F5F3FF" }].map(s => (
+        {isPC ? [{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }, { k: "benefit", l: "혜택순", ac: "#7C3AED", bg: "#EDE9FE", pas: "#F5F3FF" }, { k: "newest", l: "최신순", ac: C.slate600, bg: C.slate100, pas: "#F8FAFC" }].map(s => (
           <button key={s.k} onClick={() => onSortChange(s.k)} style={{
             flex: 1, background: sortKey === s.k ? s.bg : s.pas, color: sortKey === s.k ? s.ac : C.slate600,
             border: sortKey === s.k ? `1.5px solid ${s.ac}` : "1.5px solid transparent", borderRadius: 5, padding: "4px 0", height: 28,
@@ -108,7 +133,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%234F46E5' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
             backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
           }}>
-            {[{ k: "total", l: "종합순" }, { k: "price", l: "저가순" }, { k: "priceScore", l: "가격매력순" }, { k: "location", l: "입지순" }, { k: "safe", l: "안전순" }, { k: "benefit", l: "혜택순" }].map(s => (
+            {[{ k: "total", l: "종합순" }, { k: "price", l: "저가순" }, { k: "priceScore", l: "가격매력순" }, { k: "location", l: "입지순" }, { k: "safe", l: "안전순" }, { k: "benefit", l: "혜택순" }, { k: "newest", l: "최신순" }].map(s => (
               <option key={s.k} value={s.k}>{s.l}</option>
             ))}
           </select>
