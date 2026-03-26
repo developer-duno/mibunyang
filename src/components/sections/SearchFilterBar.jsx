@@ -107,8 +107,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         )}
         {filteredLength != null && <span style={{
           fontSize: 11, fontWeight: 700, flexShrink: 0, padding: "2px 8px", borderRadius: 10,
-          color: filteredLength === 0 ? "#991B1B" : C.indigo,
-          background: filteredLength === 0 ? "#FEF2F2" : C.indigoLight,
+          color: filteredLength === 0 ? C.red : C.indigo,
+          background: filteredLength === 0 ? C.redLight : C.indigoLight,
           transition: "all 0.2s"
         }}>{filteredLength} / {scoredLength}개</span>}
         {activeFilterCount > 0 && onResetAll && (
@@ -130,7 +130,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       {/* 2행: 지역 + 예산 + 초기화 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
         <select value={filterRegion} onChange={e => onRegionChange(e.target.value)} aria-label="시/도" style={{
-          ...selectBase, flex: "0 0 auto", minWidth: 80, width: "auto", padding: "4px 20px 4px 8px", fontSize: 11,
+          ...selectBase, flex: "0 0 auto", minWidth: 80, width: "auto", maxWidth: 130, padding: "4px 20px 4px 8px", fontSize: 11,
           fontWeight: filterRegion !== "전체" ? 700 : 500,
           border: filterRegion !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
           borderRadius: 5, background: C.slate100,
@@ -140,7 +140,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         </select>
         {(() => { const guDisabled = filterRegion === "전체" || guOptions.length <= 1; return (
           <select value={filterRegion === "전체" ? "" : filterGu} onChange={e => onGuChange(e.target.value)} aria-label="구/군" disabled={guDisabled} style={{
-            ...selectBase, flex: "0 0 auto", minWidth: 80, width: "auto", padding: "4px 20px 4px 8px", fontSize: 11,
+            ...selectBase, flex: "0 0 auto", minWidth: 80, width: "auto", maxWidth: 130, padding: "4px 20px 4px 8px", fontSize: 11,
             fontWeight: filterGu !== "전체" ? 700 : 500,
             border: filterGu !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5,
             background: guDisabled ? "#E2E8F0" : C.slate100,
