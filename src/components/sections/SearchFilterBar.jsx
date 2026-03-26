@@ -32,6 +32,9 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onShareFilters,
   onResetAll,
   onApplyPreset,
+  customPresets, onSavePreset, onDeletePreset,
+  filterHistory, onApplyHistory, onClearHistory,
+  onUndo, onRedo, canUndo, canRedo,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
   return (
@@ -65,6 +68,18 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           border: activeFilterCount > 0 ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6,
           cursor: "pointer", display: "flex", alignItems: "center", gap: 2, transition: "all .15s"
         }}>{filterCollapsed ? "▼" : "▲"}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}</button>
+        {(canUndo || canRedo) && <>
+          <button onClick={onUndo} disabled={!canUndo} aria-label="필터 되돌리기" style={{
+            flexShrink: 0, height: 32, width: 32, fontSize: 13, background: canUndo ? C.slate100 : "#F1F5F9",
+            color: canUndo ? C.slate600 : "#CBD5E1", border: `1px solid ${canUndo ? C.border : "#E2E8F0"}`,
+            borderRadius: 6, cursor: canUndo ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center"
+          }}>↩</button>
+          <button onClick={onRedo} disabled={!canRedo} aria-label="필터 다시실행" style={{
+            flexShrink: 0, height: 32, width: 32, fontSize: 13, background: canRedo ? C.slate100 : "#F1F5F9",
+            color: canRedo ? C.slate600 : "#CBD5E1", border: `1px solid ${canRedo ? C.border : "#E2E8F0"}`,
+            borderRadius: 6, cursor: canRedo ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center"
+          }}>↪</button>
+        </>}
       </div>
       {/* 결과 건수 + 활성 필터 태그 칩 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: filterCollapsed ? 0 : 6 }}>
@@ -143,16 +158,53 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           ))}
         </div>
       )}
-      {/* 프리셋 버튼 */}
+      {/* 프리셋 버튼 (기본 + 커스텀) */}
       {activeFilterCount === 0 && onApplyPreset && (
-        <div style={{ display: "flex", gap: 3, marginBottom: 6 }}>
+        <div style={{ display: "flex", gap: 3, marginBottom: 6, flexWrap: "wrap" }}>
           {FILTER_PRESETS.map(p => (
             <button key={p.key} onClick={() => onApplyPreset(p.values)} title={p.desc} style={{
-              flex: 1, fontSize: 10, fontWeight: 600, padding: "3px 0", height: 24,
+              flex: "1 0 auto", fontSize: 10, fontWeight: 600, padding: "3px 6px", height: 24,
               background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`,
               borderRadius: 4, cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap"
             }}>{p.label}</button>
           ))}
+          {customPresets?.map(p => (
+            <span key={p.key} style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+              <button onClick={() => onApplyPreset(p.values)} title={p.desc} style={{
+                fontSize: 10, fontWeight: 600, padding: "3px 6px", height: 24,
+                background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
+                borderRadius: "4px 0 0 4px", cursor: "pointer", whiteSpace: "nowrap"
+              }}>{p.label}</button>
+              <button onClick={() => onDeletePreset?.(p.key)} aria-label={`${p.label} 삭제`} style={{
+                fontSize: 9, padding: "3px 4px", height: 24, background: C.greenLight, color: C.green,
+                border: `1px solid ${C.green}`, borderLeft: "none", borderRadius: "0 4px 4px 0", cursor: "pointer"
+              }}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* 프리셋 저장 버튼 (필터 활성 시) */}
+      {activeFilterCount > 0 && onSavePreset && (
+        <div style={{ display: "flex", gap: 3, marginBottom: 6, alignItems: "center" }}>
+          <button onClick={() => { const n = prompt("프리셋 이름 (12자 이내)"); if (n) onSavePreset(n); }} aria-label="현재 필터를 프리셋으로 저장" style={{
+            fontSize: 10, fontWeight: 600, padding: "3px 8px", height: 24,
+            background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
+            borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap"
+          }}>+ 프리셋 저장</button>
+          {filterHistory?.length > 0 && (
+            <select onChange={e => { const i = Number(e.target.value); if (filterHistory[i]) { onApplyHistory(filterHistory[i]); e.target.value = ""; } }} defaultValue="" aria-label="필터 히스토리" style={{
+              ...selectBase, flex: 1, fontSize: 10, height: 24, padding: "2px 20px 2px 6px",
+              border: `1px solid ${C.border}`, borderRadius: 4, background: C.slate100, color: C.slate600, cursor: "pointer"
+            }}>
+              <option value="" disabled>히스토리 ({filterHistory.length})</option>
+              {filterHistory.map((h, i) => (
+                <option key={h.sig} value={i}>필터 {h.count}개 · {new Date(h.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</option>
+              ))}
+            </select>
+          )}
+          {filterHistory?.length > 0 && onClearHistory && (
+            <button onClick={onClearHistory} aria-label="히스토리 삭제" style={{ ...resetBtn(24), fontSize: 9 }}>지우기</button>
+          )}
         </div>
       )}
       {/* 3행: 정렬 + 가중치 뱃지 */}
