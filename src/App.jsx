@@ -151,8 +151,8 @@ export default function App() {
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
   const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
   const activeFilterCount = useMemo(() =>
-    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly].filter(Boolean).length,
-    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]
+    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly, searchText].filter(Boolean).length,
+    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchText]
   );
 
   const regionOptions = useMemo(() => {
@@ -296,13 +296,23 @@ export default function App() {
 
   /** 현재 필터 조건만 공유 */
   const handleShareFilters = useCallback(() => {
-    const activeFilters = [filterRegion !== "전체" && filterRegion, budgetMin && `${budgetMin}~${budgetMax || "∞"}억`, minScore && `${minScore}점+`, builderTier !== "전체" && builderTier].filter(Boolean).join(" · ");
+    const activeFilters = [
+      filterRegion !== "전체" && filterRegion,
+      budgetMin && `${budgetMin}~${budgetMax || "∞"}억`,
+      (areaMin || areaMax) && `면적 ${areaMin || "0"}~${areaMax || "∞"}㎡`,
+      (unitsMin || unitsMax) && `세대 ${unitsMin || "0"}~${unitsMax || "∞"}`,
+      moveInFilter !== "전체" && moveInFilter,
+      minScore && `${minScore}점+`,
+      builderTier !== "전체" && builderTier,
+      benefitOnly && "혜택",
+      searchText && `"${searchText}"`,
+    ].filter(Boolean).join(" · ");
     openShareSheet({
       title: "미분양 필터 공유",
       text: activeFilters || "전체 조건",
       url: getShareURL()
     });
-  }, [filterRegion, budgetMin, budgetMax, minScore, builderTier, openShareSheet, getShareURL]);
+  }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchText, openShareSheet, getShareURL]);
 
   return (
     <div style={{ background: C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", color: C.text, paddingBottom: 70, transition: "max-width .3s" }}>

@@ -79,6 +79,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             {minScore && <span onClick={() => onMinScoreChange("")} style={chipStyle}>{minScore}점+ ✕</span>}
             {builderTier !== "전체" && <span onClick={() => onBuilderTierChange("전체")} style={chipStyle}>{builderTier} ✕</span>}
             {benefitOnly && <span onClick={onToggleBenefitOnly} style={chipStyle}>혜택 ✕</span>}
+            {searchText && <span onClick={() => onSearchChange("")} style={chipStyle}>{searchText.length > 10 ? searchText.slice(0, 10) + "…" : searchText} ✕</span>}
           </div>
         )}
         {filteredLength != null && <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>{scoredLength}개 중 <strong style={{ color: C.indigo }}>{filteredLength}</strong>개</span>}
