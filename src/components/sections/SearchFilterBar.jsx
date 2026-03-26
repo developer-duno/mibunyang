@@ -10,10 +10,14 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   sortKey, onSortChange,
   pw, catCol, catBg,
   isPC,
+  showFavOnly, onToggleFavOnly, favCount,
+  areaMin, onAreaMinChange, areaMax, onAreaMaxChange,
+  unitsMin, onUnitsMinChange, unitsMax, onUnitsMaxChange, onAreaUnitsReset,
 }) {
+  const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
   return (
     <div data-no-print style={{ background: C.card, borderRadius: 10, padding: "8px 10px", border: `1px solid ${C.border}`, margin: "8px 0 6px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-      {/* 1행: 검색 입력 */}
+      {/* 1행: 검색 입력 + 관심 토글 */}
       <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
         <div style={{ position: "relative", flex: 1 }}>
           <input type="text" value={searchText} onChange={e => onSearchChange(e.target.value)} placeholder="단지명, 건설사, 지역 검색" aria-label="단지 검색" style={{
@@ -29,6 +33,12 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             }}>✕</button>
           )}
         </div>
+        <button onClick={onToggleFavOnly} aria-label="관심매물만 보기" style={{
+          flexShrink: 0, height: 32, padding: "0 10px", fontSize: 11, fontWeight: showFavOnly ? 700 : 500,
+          background: showFavOnly ? C.redLight : C.slate100, color: showFavOnly ? C.red : C.slate600,
+          border: showFavOnly ? `1.5px solid ${C.red}` : `1px solid ${C.border}`, borderRadius: 6,
+          cursor: "pointer", display: "flex", alignItems: "center", gap: 3, transition: "all .15s"
+        }}>{showFavOnly ? "\u2665" : "\u2661"}{favCount > 0 ? ` ${favCount}` : ""}</button>
       </div>
       {/* 2행: 지역 + 예산 + 초기화 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
@@ -94,6 +104,29 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           const nm = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
           return <span key={k} style={{ fontSize: 9, fontWeight: 700, color: catCol[k], background: catBg[k], padding: "2px 4px", borderRadius: 3, whiteSpace: "nowrap" }}>{nm[k]}{pw[k]}</span>;
         })}
+      </div>
+      {/* 4행: 면적 + 세대수 필터 */}
+      <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 6 }}>
+        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>면적</span>
+        <input type="number" inputMode="numeric" min="0" value={areaMin} onChange={e => onAreaMinChange(e.target.value)} placeholder="최소" aria-label="최소 면적(㎡)"
+          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: areaMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 28, boxSizing: "border-box", background: C.slate100 }} />
+        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>~</span>
+        <input type="number" inputMode="numeric" min="0" value={areaMax} onChange={e => onAreaMaxChange(e.target.value)} placeholder="최대" aria-label="최대 면적(㎡)"
+          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: areaMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 28, boxSizing: "border-box", background: C.slate100 }} />
+        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>㎡</span>
+        <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
+        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>세대</span>
+        <input type="number" inputMode="numeric" min="0" value={unitsMin} onChange={e => onUnitsMinChange(e.target.value)} placeholder="최소" aria-label="최소 세대수"
+          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: unitsMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 28, boxSizing: "border-box", background: C.slate100 }} />
+        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>~</span>
+        <input type="number" inputMode="numeric" min="0" value={unitsMax} onChange={e => onUnitsMaxChange(e.target.value)} placeholder="최대" aria-label="최대 세대수"
+          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: unitsMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 28, boxSizing: "border-box", background: C.slate100 }} />
+        {hasAreaUnits && (
+          <button onClick={onAreaUnitsReset} aria-label="면적/세대 초기화" style={{
+            background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: 11, color: C.muted,
+            cursor: "pointer", height: 28, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+          }}>✕</button>
+        )}
       </div>
     </div>
   );

@@ -58,7 +58,7 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites();
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset } = useFilterSort({ onFilterChange: closeDetail });
   const debouncedSearchText = useDebouncedValue(searchText, 300);
 
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
@@ -105,6 +105,7 @@ export default function App() {
   }, [catsCache, profile, customWeights]);
   const filtered = useMemo(() => {
     let list = scored;
+    if (showFavOnly) list = list.filter(x => favoriteIds.includes(x.apt.id));
     if (filterRegion !== "전체") {
       list = list.filter(x => x.apt.region === filterRegion);
     }
@@ -115,11 +116,15 @@ export default function App() {
     const effectiveMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
     if (effectiveMin != null) list = list.filter(x => x.apt.price >= effectiveMin * 10000);
     if (effectiveMax != null) list = list.filter(x => x.apt.price <= effectiveMax * 10000);
+    if (areaMin) list = list.filter(x => (x.apt.area ?? 0) >= Number(areaMin));
+    if (areaMax) list = list.filter(x => (x.apt.area ?? Infinity) <= Number(areaMax));
+    if (unitsMin) list = list.filter(x => (x.apt.units ?? 0) >= Number(unitsMin));
+    if (unitsMax) list = list.filter(x => (x.apt.units ?? Infinity) <= Number(unitsMax));
     if (debouncedSearchText) list = list.filter(x => matchSearch(x.apt.name, debouncedSearchText) || matchSearch(x.apt.builder ?? "", debouncedSearchText) || matchSearch(x.apt.gu ?? "", debouncedSearchText) || matchSearch(x.apt.region ?? "", debouncedSearchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
     return [...list].sort(sorters[sortKey] || sorters.total);
-  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText]);
-  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey]);
+  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText, showFavOnly, favoriteIds, areaMin, areaMax, unitsMin, unitsMax]);
+  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey, budgetMin, budgetMax, showFavOnly, areaMin, areaMax, unitsMin, unitsMax]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
@@ -280,6 +285,9 @@ export default function App() {
             sortKey={sortKey} onSortChange={setSortKey}
             pw={pw} catCol={catCol} catBg={catBg}
             isPC={isPC}
+            showFavOnly={showFavOnly} onToggleFavOnly={toggleFavOnly} favCount={favoriteIds.length}
+            areaMin={areaMin} onAreaMinChange={handleAreaMinChange} areaMax={areaMax} onAreaMaxChange={handleAreaMaxChange}
+            unitsMin={unitsMin} onUnitsMinChange={handleUnitsMinChange} unitsMax={unitsMax} onUnitsMaxChange={handleUnitsMaxChange} onAreaUnitsReset={handleAreaUnitsReset}
           />
 
           {compIds.length >= 2 && (
