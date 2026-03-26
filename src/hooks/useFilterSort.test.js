@@ -90,6 +90,72 @@ describe('useFilterSort', () => {
   });
 });
 
+describe("전체 초기화 + 프리셋", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+    mockLocationSearch("");
+  });
+
+  it("handleResetAll — 모든 필터 기본값 복귀", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.handleRegionChange("서울");
+      result.current.handleBudgetMinChange("3");
+      result.current.handleMinScoreChange("50");
+      result.current.handleBuilderTierChange("1군");
+      result.current.toggleBenefitOnly();
+      result.current.handleAreaMinChange("60");
+      result.current.handleUnitsMinChange("500");
+      result.current.handleMoveInChange("입주예정");
+      result.current.handleSearchChange("힐스테이트");
+    });
+    act(() => { result.current.handleResetAll(); });
+    expect(result.current.filterRegion).toBe("전체");
+    expect(result.current.filterGu).toBe("전체");
+    expect(result.current.sortKey).toBe("total");
+    expect(result.current.budgetMin).toBe("");
+    expect(result.current.minScore).toBe("");
+    expect(result.current.builderTier).toBe("전체");
+    expect(result.current.benefitOnly).toBe(false);
+    expect(result.current.areaMin).toBe("");
+    expect(result.current.unitsMin).toBe("");
+    expect(result.current.moveInFilter).toBe("전체");
+    expect(result.current.searchText).toBe("");
+  });
+
+  it("handleResetAll 시 onFilterChange 콜백 호출", () => {
+    const onFilterChange = vi.fn();
+    const { result } = renderHook(() => useFilterSort({ onFilterChange }));
+    act(() => { result.current.handleResetAll(); });
+    expect(onFilterChange).toHaveBeenCalled();
+  });
+
+  it("applyPreset — 프리셋 값 적용", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.applyPreset({ budgetMax: "5", areaMin: "60", areaMax: "85", benefitOnly: true, sortKey: "benefit" });
+    });
+    expect(result.current.budgetMax).toBe("5");
+    expect(result.current.areaMin).toBe("60");
+    expect(result.current.areaMax).toBe("85");
+    expect(result.current.benefitOnly).toBe(true);
+    expect(result.current.sortKey).toBe("benefit");
+    // 미지정 필드는 기본값
+    expect(result.current.budgetMin).toBe("");
+    expect(result.current.builderTier).toBe("전체");
+  });
+
+  it("applyPreset — 기존 필터 초기화 후 적용", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => { result.current.handleRegionChange("서울"); });
+    act(() => { result.current.applyPreset({ minScore: "70", builderTier: "1군" }); });
+    expect(result.current.filterRegion).toBe("전체");
+    expect(result.current.minScore).toBe("70");
+    expect(result.current.builderTier).toBe("1군");
+  });
+});
+
 describe("URL 필터 역직렬화 (Phase 1)", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -161,5 +227,69 @@ describe("URL 필터 역직렬화 (Phase 1)", () => {
     expect(result.current.budgetMin).toBe("");
     expect(result.current.sortKey).toBe("total");
     expect(result.current.minScore).toBe("");
+  });
+});
+
+describe("URL 필터 역직렬화 (Phase 2)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("URL에서 areaMin/Max, unitsMin/Max 읽기", () => {
+    mockLocationSearch("?amin=60&amax=85&umin=500&umax=2000");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.areaMin).toBe("60");
+    expect(result.current.areaMax).toBe("85");
+    expect(result.current.unitsMin).toBe("500");
+    expect(result.current.unitsMax).toBe("2000");
+  });
+
+  it("URL에서 moveInFilter 읽기", () => {
+    mockLocationSearch("?movein=입주예정");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.moveInFilter).toBe("입주예정");
+  });
+
+  it("잘못된 moveInFilter → 기본값 폴백", () => {
+    mockLocationSearch("?movein=잘못된값");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.moveInFilter).toBe("전체");
+  });
+
+  it("URL에서 searchText 읽기 (q 파라미터)", () => {
+    mockLocationSearch("?q=힐스테이트");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.searchText).toBe("힐스테이트");
+  });
+
+  it("searchText 50자 초과 → 50자 절삭", () => {
+    const longText = "가".repeat(60);
+    mockLocationSearch(`?q=${encodeURIComponent(longText)}`);
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.searchText.length).toBe(50);
+  });
+
+  it("빈 searchText → 기본값", () => {
+    mockLocationSearch("?q=");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.searchText).toBe("");
+  });
+
+  it("Phase 1 + Phase 2 복합 URL", () => {
+    mockLocationSearch("?region=서울&sort=benefit&bmax=5&amin=60&movein=입주예정&q=힐스");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.filterRegion).toBe("서울");
+    expect(result.current.sortKey).toBe("benefit");
+    expect(result.current.budgetMax).toBe("5");
+    expect(result.current.areaMin).toBe("60");
+    expect(result.current.moveInFilter).toBe("입주예정");
+    expect(result.current.searchText).toBe("힐스");
+  });
+
+  it("NaN areaMin → 기본값 폴백", () => {
+    mockLocationSearch("?amin=abc");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.areaMin).toBe("");
   });
 });

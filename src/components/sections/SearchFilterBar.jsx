@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { C } from "@/theme";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
+import { FILTER_PRESETS } from "@/constants/filterPresets";
 
 /* ── 공유 스타일 상수 (DRY) ── */
 const selectArrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`;
@@ -29,6 +30,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterCollapsed, onToggleCollapsed, activeFilterCount,
   filteredLength, scoredLength,
   onShareFilters,
+  onResetAll,
+  onApplyPreset,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
   return (
@@ -79,6 +82,13 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           </div>
         )}
         {filteredLength != null && <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>{scoredLength}개 중 <strong style={{ color: C.indigo }}>{filteredLength}</strong>개</span>}
+        {activeFilterCount > 0 && onResetAll && (
+          <button onClick={onResetAll} aria-label="전체 필터 초기화" style={{
+            flexShrink: 0, height: 22, padding: "0 6px", fontSize: 10, fontWeight: 600,
+            background: C.redLight, color: C.red, border: `1px solid ${C.red}`, borderRadius: 4,
+            cursor: "pointer", display: "flex", alignItems: "center", gap: 2
+          }}>초기화</button>
+        )}
         {activeFilterCount > 0 && onShareFilters && (
           <button onClick={onShareFilters} aria-label="필터 조건 공유" style={{
             flexShrink: 0, height: 22, padding: "0 6px", fontSize: 10, fontWeight: 600,
@@ -129,6 +139,18 @@ export const SearchFilterBar = memo(function SearchFilterBar({
               background: C.slate100, color: C.slate600, border: `1px solid ${C.border}`,
               borderRadius: 4, cursor: "pointer", transition: "all .15s"
             }}>{v}억 이하</button>
+          ))}
+        </div>
+      )}
+      {/* 프리셋 버튼 */}
+      {activeFilterCount === 0 && onApplyPreset && (
+        <div style={{ display: "flex", gap: 3, marginBottom: 6 }}>
+          {FILTER_PRESETS.map(p => (
+            <button key={p.key} onClick={() => onApplyPreset(p.values)} title={p.desc} style={{
+              flex: 1, fontSize: 10, fontWeight: 600, padding: "3px 0", height: 24,
+              background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`,
+              borderRadius: 4, cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap"
+            }}>{p.label}</button>
           ))}
         </div>
       )}
