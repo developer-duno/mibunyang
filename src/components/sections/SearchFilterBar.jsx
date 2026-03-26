@@ -3,6 +3,14 @@ import { C } from "@/theme";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
 import { FILTER_PRESETS } from "@/constants/filterPresets";
 
+/* ── 배지 pulse 애니메이션 (SSR-safe) ── */
+const BADGE_ANIM = "badge-pulse";
+if (typeof document !== "undefined" && !document.getElementById(BADGE_ANIM)) {
+  const s = document.createElement("style"); s.id = BADGE_ANIM;
+  s.textContent = `@keyframes ${BADGE_ANIM}{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}`;
+  document.head.appendChild(s);
+}
+
 /* ── 공유 스타일 상수 (DRY) ── */
 const selectArrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`;
 const selectBase = { WebkitAppearance: "none", MozAppearance: "none", appearance: "none", backgroundImage: selectArrow, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
@@ -105,11 +113,11 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             {searchText && <span onClick={() => onSearchChange("")} style={chipStyle}>{searchText.length > 10 ? searchText.slice(0, 10) + "…" : searchText} ✕</span>}
           </div>
         )}
-        {filteredLength != null && <span style={{
+        {filteredLength != null && <span key={filteredLength} style={{
           fontSize: 11, fontWeight: 700, flexShrink: 0, padding: "2px 8px", borderRadius: 10,
           color: filteredLength === 0 ? C.red : C.indigo,
           background: filteredLength === 0 ? C.redLight : C.indigoLight,
-          transition: "all 0.2s"
+          animation: `${BADGE_ANIM} 0.3s ease-out`
         }}>{filteredLength} / {scoredLength}개</span>}
         {activeFilterCount > 0 && onResetAll && (
           <button onClick={onResetAll} aria-label="전체 필터 초기화" style={{
