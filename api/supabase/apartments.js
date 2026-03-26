@@ -262,6 +262,10 @@ function sanitize(row) {
     naverSchoolWalkMin: row.naverSchoolWalkMin ?? null,
     naverNearbyCount: row.naverNearbyCount ?? null,
     naverFetchedAt: row.naverFetchedAt ?? null,
+    // 건축HUB 에너지 (null 허용 — 미수집 시 null)
+    elecUsageKwh: row.elecUsageKwh ?? null,
+    gasUsageMj: row.gasUsageMj ?? null,
+    energyCollectedAt: row.energyCollectedAt ?? null,
     // 사전 스코어링 캐시 (JSONB → PostgREST 자동 파싱)
     catsCache: row.catsCache ?? null,
   };

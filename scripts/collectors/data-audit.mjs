@@ -36,7 +36,7 @@ export const AUDIT_FIELDS = {
   },
   building: {
     collector: "molit-building-info",
-    fields: ["maxFloor", "parkingRatio", "floorAreaRatio", "exclusiveRatio", "energyGrade", "heating", "floors", "hasPool"],
+    fields: ["maxFloor", "parkingRatio", "floorAreaRatio", "exclusiveRatio", "energyGrade", "heating", "corridorType", "heatFuel", "avgMaintenanceCost", "primaryDirection", "floors", "hasPool"],
   },
   risk: {
     collector: "applyhome",
@@ -68,7 +68,7 @@ export const AUDIT_FIELDS = {
   },
   regions: {
     collector: "population+migration+housing",
-    fields: ["popGrowth", "supplyRatio", "netMigration"],
+    fields: ["popGrowth", "supplyRatio", "netMigration", "priceIndex", "avgPriceSqm", "newSupply", "initialSaleRate", "landCostRatio"],
   },
   trade_stats: {
     collector: "trade-stats",
@@ -94,6 +94,14 @@ export const AUDIT_FIELDS = {
   future: {
     collector: "manual",
     fields: ["transitDev", "devDist", "cityDev", "industryDev"],
+  },
+  energy: {
+    collector: "collect-building-hub",
+    fields: ["elecUsageKwh", "gasUsageMj", "energyCollectedAt"],
+  },
+  competition: {
+    collector: "collect-applyhome",
+    fields: ["competitionRate", "competitionSupply", "competitionApplicants"],
   },
 };
 
