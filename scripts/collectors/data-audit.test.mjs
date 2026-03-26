@@ -3,11 +3,15 @@
  */
 import { describe, it, expect, vi } from "vitest";
 
-// Supabase 연결 방지
-vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
-  return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
-});
+// Supabase 연결 방지 — importOriginal 없이 필요한 것만 re-export
+vi.mock("./_shared.mjs", () => ({
+  loadEnv: vi.fn(),
+  getSupabase: vi.fn(),
+  log: vi.fn(),
+  logError: vi.fn(),
+  sleep: vi.fn(),
+  createReporter: vi.fn(() => ({ success: vi.fn(), fail: vi.fn(), skip: vi.fn(), summary: vi.fn() })),
+}));
 
 const { isFieldNull, computeAudit, AUDIT_FIELDS } = await import("./data-audit.mjs");
 
