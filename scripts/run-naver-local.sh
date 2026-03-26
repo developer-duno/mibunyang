@@ -15,7 +15,7 @@ if [ -f .env.local ]; then
   export $(grep -v '^#' .env.local | xargs)
 fi
 
-echo "=== 1/4 네이버 매물 수집 (Python curl_cffi) ==="
+echo "=== 1/5 네이버 매물 수집 (Python curl_cffi) ==="
 python3 scripts/collectors/naver-collect.py "$@"
 
 # --dry-run이면 수집만 하고 후처리 건너뜀
@@ -25,16 +25,20 @@ if echo "$@" | grep -q "\-\-dry-run"; then
 fi
 
 echo ""
-echo "=== 2/4 네이버→아파트 동기화 ==="
+echo "=== 2/5 네이버→아파트 동기화 ==="
 node scripts/collectors/sync-naver-complex.mjs
 
 echo ""
-echo "=== 3/4 네이버 세대수 보정 ==="
+echo "=== 3/5 네이버 세대수 보정 ==="
 node scripts/collectors/naver-units.mjs
 
 echo ""
-echo "=== 4/4 전용률 계산 ==="
+echo "=== 4/5 전용률 계산 ==="
 node scripts/collectors/calc-exclusive-ratio.mjs
+
+echo ""
+echo "=== 5/5 스코어 재계산 ==="
+node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs || echo "WARNING: compute-scores.mjs 실패 (비필수)"
 
 echo ""
 echo "✅ 네이버 수집 파이프라인 완료"
