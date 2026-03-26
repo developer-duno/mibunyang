@@ -45,24 +45,41 @@ if (!API_KEY) {
 
 const API_BASE = "https://apis.data.go.kr/1613000/BldEngyHubService";
 
-// data.go.kr는 빈 결과 시 type=json이어도 XML 반환 → 별도 처리 필요
+// BldEngyHubService는 type=json이어도 항상 XML 반환 → XML 파싱 필수
 async function hubApiCall(endpoint, params) {
   const qs = new URLSearchParams({ serviceKey: API_KEY, type: "json", ...params });
   const url = `${API_BASE}/${endpoint}?${qs}`;
   const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
-  // XML 빈 결과 감지: resultCode=00 + totalCount=0 → 정상 빈 응답
-  if (text.startsWith("<?xml") || text.startsWith("<")) {
-    if (text.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
-      throw new Error("API 키 미등록 — data.go.kr에서 서비스 신청 필요");
-    }
-    if (text.includes("<totalCount>0</totalCount>")) {
-      return { response: { body: { items: [], totalCount: 0 } } };
-    }
-    throw new Error(`XML 응답: ${text.slice(0, 200)}`);
+
+  // JSON 응답인 경우 (일부 엔드포인트)
+  if (text.startsWith("{")) return JSON.parse(text);
+
+  // XML 에러 체크
+  if (text.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
+    throw new Error("API 키 미등록 — data.go.kr에서 서비스 신청 필요");
   }
-  return JSON.parse(text);
+
+  // XML 빈 결과
+  if (text.includes("<totalCount>0</totalCount>") || !text.includes("<item>")) {
+    return { response: { body: { items: [], totalCount: 0 } } };
+  }
+
+  // XML → 간이 파싱 (item 태그 추출)
+  const items = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+  while ((match = itemRegex.exec(text)) !== null) {
+    const obj = {};
+    const fieldRegex = /<(\w+)>([^<]*)<\/\1>/g;
+    let fm;
+    while ((fm = fieldRegex.exec(match[1])) !== null) {
+      obj[fm[1]] = fm[2];
+    }
+    items.push(obj);
+  }
+  return { response: { body: { items, totalCount: items.length } } };
 }
 
 // ── 지번 파라미터 구성 ──────────────────────────────────────
