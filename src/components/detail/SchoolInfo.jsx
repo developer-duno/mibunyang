@@ -6,8 +6,11 @@ const distColor = (d) => d != null && d <= 500 ? C.green : d != null && d <= 100
 const thStyle = { fontSize: 11, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
 const tdStyle = { fontSize: 12, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
+const EXCLUDE_SUFFIX = ["행정실", "교장실", "교무실", "상담실", "교차로", "체육관", "기숙사", "테니스장", "공영주차장", "백주년기념관", "로봇관", "정약용체육관"];
+const isSchool = (name) => !EXCLUDE_SUFFIX.some(suf => name.includes(suf));
+
 export const SchoolInfo = memo(function SchoolInfo({ apt }) {
-  const schools = apt.nearbySchools ?? [];
+  const schools = (apt.nearbySchools ?? []).filter(s => isSchool(s.name));
   const [expanded, setExpanded] = useState(false);
   const types = ["초", "중", "고"];
   const nearest = useMemo(() => types.map(t => schools.filter(s => s.type === t).sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999))[0]).filter(Boolean), [schools]);

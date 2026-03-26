@@ -214,8 +214,8 @@ function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, s
                     <span style={{ fontSize: 11, fontWeight: 700, color: catCol[k], minWidth: 32 }}>{CAT_LABELS[k] || k}</span>
                     <div style={{ flex: 1, height: 20, background: C.slate100, borderRadius: 4, position: "relative", overflow: "hidden" }}>
                       <div style={{
-                        width: `${c.total}%`, height: "100%", background: catBg[k], borderRadius: 4,
-                        transition: "width .3s"
+                        width: `${Math.min(contribution * 2, 100)}%`, height: "100%", background: catBg[k], borderRadius: 4,
+                        transition: "width .3s", opacity: w === 0 ? 0.3 : 1
                       }} />
                       <span style={{ position: "absolute", left: 6, top: 2, fontSize: 10, fontWeight: 700, color: catCol[k] }}>
                         {c.total}점
