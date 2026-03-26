@@ -59,7 +59,7 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites();
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed } = useFilterSort({ onFilterChange: closeDetail });
   const debouncedSearchText = useDebouncedValue(searchText, 300);
 
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
@@ -121,11 +121,17 @@ export default function App() {
     if (areaMax) list = list.filter(x => (x.apt.area ?? Infinity) <= Number(areaMax));
     if (unitsMin) list = list.filter(x => (x.apt.units ?? 0) >= Number(unitsMin));
     if (unitsMax) list = list.filter(x => (x.apt.units ?? Infinity) <= Number(unitsMax));
+    if (moveInFilter !== "전체") {
+      const nowYm = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+      if (moveInFilter === "입주예정") list = list.filter(x => x.apt.completion && x.apt.completion >= nowYm);
+      else if (moveInFilter === "미입주") list = list.filter(x => x.apt.completion && x.apt.completion < nowYm && (x.apt.unsoldRate ?? 0) > 0);
+      else if (moveInFilter === "입주완료") list = list.filter(x => x.apt.completion && x.apt.completion < nowYm && (x.apt.unsoldRate ?? 0) === 0);
+    }
     if (debouncedSearchText) list = list.filter(x => matchSearch(x.apt.name, debouncedSearchText) || matchSearch(x.apt.builder ?? "", debouncedSearchText) || matchSearch(x.apt.gu ?? "", debouncedSearchText) || matchSearch(x.apt.region ?? "", debouncedSearchText));
-    const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total };
+    const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total, benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0) };
     return [...list].sort(sorters[sortKey] || sorters.total);
-  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText, showFavOnly, favoriteIds, areaMin, areaMax, unitsMin, unitsMax]);
-  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey, budgetMin, budgetMax, showFavOnly, areaMin, areaMax, unitsMin, unitsMax]);
+  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText, showFavOnly, favoriteIds, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
+  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey, budgetMin, budgetMax, showFavOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
@@ -290,6 +296,10 @@ export default function App() {
             showFavOnly={showFavOnly} onToggleFavOnly={toggleFavOnly} favCount={favoriteIds.length}
             areaMin={areaMin} onAreaMinChange={handleAreaMinChange} areaMax={areaMax} onAreaMaxChange={handleAreaMaxChange}
             unitsMin={unitsMin} onUnitsMinChange={handleUnitsMinChange} unitsMax={unitsMax} onUnitsMaxChange={handleUnitsMaxChange} onAreaUnitsReset={handleAreaUnitsReset}
+            moveInFilter={moveInFilter} onMoveInChange={handleMoveInChange}
+            filterCollapsed={filterCollapsed} onToggleCollapsed={toggleFilterCollapsed}
+            activeFilterCount={[showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", searchText].filter(Boolean).length}
+            filteredLength={filtered.length} scoredLength={scored.length}
           />
 
           {compIds.length >= 2 && (

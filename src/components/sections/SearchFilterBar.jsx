@@ -20,11 +20,14 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   showFavOnly, onToggleFavOnly, favCount,
   areaMin, onAreaMinChange, areaMax, onAreaMaxChange,
   unitsMin, onUnitsMinChange, unitsMax, onUnitsMaxChange, onAreaUnitsReset,
+  moveInFilter, onMoveInChange,
+  filterCollapsed, onToggleCollapsed, activeFilterCount,
+  filteredLength, scoredLength,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
   return (
     <div data-no-print style={{ background: C.card, borderRadius: 10, padding: "8px 10px", border: `1px solid ${C.border}`, margin: "8px 0 6px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-      {/* 1행: 검색 입력 + 관심 토글 */}
+      {/* 1행: 검색 + 관심 토글 + 결과 건수 + 접기 */}
       <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
         <div style={{ position: "relative", flex: 1 }}>
           <input type="text" value={searchText} onChange={e => onSearchChange(e.target.value)} placeholder="단지명, 건설사, 지역 검색" aria-label="단지 검색" style={{
@@ -46,7 +49,17 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           border: showFavOnly ? `1.5px solid ${C.red}` : `1px solid ${C.border}`, borderRadius: 6,
           cursor: "pointer", display: "flex", alignItems: "center", gap: 3, transition: "all .15s"
         }}>{showFavOnly ? "\u2665" : "\u2661"}{favCount > 0 ? ` ${favCount}` : ""}</button>
+        <button onClick={onToggleCollapsed} aria-label="필터 접기/펼치기" style={{
+          flexShrink: 0, height: 32, padding: "0 8px", fontSize: 11, fontWeight: 600,
+          background: activeFilterCount > 0 ? C.indigoLight : C.slate100,
+          color: activeFilterCount > 0 ? C.indigo : C.slate600,
+          border: activeFilterCount > 0 ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6,
+          cursor: "pointer", display: "flex", alignItems: "center", gap: 2, transition: "all .15s"
+        }}>{filterCollapsed ? "▼" : "▲"}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}</button>
       </div>
+      {/* 결과 건수 */}
+      {filteredLength != null && <div style={{ fontSize: 10, color: C.muted, marginBottom: filterCollapsed ? 0 : 6, textAlign: "right" }}>{scoredLength}개 중 <strong style={{ color: C.indigo }}>{filteredLength}</strong>개</div>}
+      {!filterCollapsed && <>
       {/* 2행: 지역 + 예산 + 초기화 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
         <select value={filterRegion} onChange={e => onRegionChange(e.target.value)} aria-label="시/도" style={{
@@ -81,7 +94,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       </div>
       {/* 3행: 정렬 + 가중치 뱃지 */}
       <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-        {isPC ? [{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }].map(s => (
+        {isPC ? [{ k: "total", l: "종합", ac: C.indigo, bg: C.indigoLight, pas: "#F0EEFF" }, { k: "price", l: "저가순", ac: C.amber, bg: C.amberLight, pas: "#FFFBEB" }, { k: "priceScore", l: "가격매력", ac: C.green, bg: C.greenLight, pas: "#EDFCF2" }, { k: "location", l: "입지", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" }, { k: "safe", l: "안전", ac: C.red, bg: C.redLight, pas: "#FEF2F2" }, { k: "benefit", l: "혜택순", ac: "#7C3AED", bg: "#EDE9FE", pas: "#F5F3FF" }].map(s => (
           <button key={s.k} onClick={() => onSortChange(s.k)} style={{
             flex: 1, background: sortKey === s.k ? s.bg : s.pas, color: sortKey === s.k ? s.ac : C.slate600,
             border: sortKey === s.k ? `1.5px solid ${s.ac}` : "1.5px solid transparent", borderRadius: 5, padding: "4px 0", height: 28,
@@ -95,7 +108,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%234F46E5' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
             backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
           }}>
-            {[{ k: "total", l: "종합순" }, { k: "price", l: "저가순" }, { k: "priceScore", l: "가격매력순" }, { k: "location", l: "입지순" }, { k: "safe", l: "안전순" }].map(s => (
+            {[{ k: "total", l: "종합순" }, { k: "price", l: "저가순" }, { k: "priceScore", l: "가격매력순" }, { k: "location", l: "입지순" }, { k: "safe", l: "안전순" }, { k: "benefit", l: "혜택순" }].map(s => (
               <option key={s.k} value={s.k}>{s.l}</option>
             ))}
           </select>
@@ -118,10 +131,20 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         <input type="number" inputMode="numeric" min="0" value={unitsMin} onChange={e => onUnitsMinChange(e.target.value)} placeholder="최소" aria-label="최소 세대수" style={numInput(unitsMin, 28)} />
         <span style={tilde}>~</span>
         <input type="number" inputMode="numeric" min="0" value={unitsMax} onChange={e => onUnitsMaxChange(e.target.value)} placeholder="최대" aria-label="최대 세대수" style={numInput(unitsMax, 28)} />
-        {hasAreaUnits && (
-          <button onClick={onAreaUnitsReset} aria-label="면적/세대 초기화" style={resetBtn(28)}>✕</button>
+        <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
+        <select value={moveInFilter} onChange={e => onMoveInChange(e.target.value)} aria-label="입주 상태" style={{
+          ...selectBase, flex: "0 0 auto", padding: "4px 20px 4px 6px", fontSize: 11, height: 28, borderRadius: 5,
+          fontWeight: moveInFilter !== "전체" ? 700 : 500,
+          border: moveInFilter !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+          background: C.slate100, color: moveInFilter !== "전체" ? C.indigo : C.slate600, cursor: "pointer",
+        }}>
+          {["전체", "입주예정", "미입주", "입주완료"].map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        {(hasAreaUnits || moveInFilter !== "전체") && (
+          <button onClick={() => { onAreaUnitsReset(); onMoveInChange("전체"); }} aria-label="면적/세대/입주 초기화" style={resetBtn(28)}>✕</button>
         )}
       </div>
+      </>}
     </div>
   );
 });

@@ -4,7 +4,7 @@ export function useFilterSort({ onFilterChange }) {
   const [filterRegion, setFilterRegion] = useState("전체");
   const [filterGu, setFilterGu] = useState("전체");
   const [sortKey, setSortKeyRaw] = useState(() => {
-    try { const v = localStorage.getItem("mibunyang_sort"); return v && ["total","price","priceScore","location","safe"].includes(v) ? v : "total"; } catch { return "total"; }
+    try { const v = localStorage.getItem("mibunyang_sort"); return v && ["total","price","priceScore","location","safe","benefit"].includes(v) ? v : "total"; } catch { return "total"; }
   });
   const setSortKey = useCallback((k) => { setSortKeyRaw(k); try { localStorage.setItem("mibunyang_sort", k); } catch {} }, []);
   const [budgetMin, setBudgetMin] = useState("");
@@ -15,6 +15,10 @@ export function useFilterSort({ onFilterChange }) {
   const [areaMax, setAreaMax] = useState("");
   const [unitsMin, setUnitsMin] = useState("");
   const [unitsMax, setUnitsMax] = useState("");
+  const [moveInFilter, setMoveInFilter] = useState("전체");
+  const [filterCollapsed, setFilterCollapsed] = useState(false);
+  const handleMoveInChange = useCallback((val) => { setMoveInFilter(val); onFilterChange?.(); }, [onFilterChange]);
+  const toggleFilterCollapsed = useCallback(() => setFilterCollapsed(p => !p), []);
   const handleRegionChange = useCallback((r) => { setFilterRegion(r); setFilterGu("전체"); onFilterChange?.(); }, [onFilterChange]);
   const handleGuChange = useCallback((g) => { setFilterGu(g); onFilterChange?.(); }, [onFilterChange]);
   const handleBudgetMinChange = useCallback((val) => { setBudgetMin(val); onFilterChange?.(); }, [onFilterChange]);
@@ -27,5 +31,5 @@ export function useFilterSort({ onFilterChange }) {
   const handleUnitsMinChange = useCallback((val) => { setUnitsMin(val); onFilterChange?.(); }, [onFilterChange]);
   const handleUnitsMaxChange = useCallback((val) => { setUnitsMax(val); onFilterChange?.(); }, [onFilterChange]);
   const handleAreaUnitsReset = useCallback(() => { setAreaMin(""); setAreaMax(""); setUnitsMin(""); setUnitsMax(""); onFilterChange?.(); }, [onFilterChange]);
-  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset };
+  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed };
 }
