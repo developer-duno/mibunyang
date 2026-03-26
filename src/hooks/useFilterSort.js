@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { VALID_SORT_KEYS } from "@/constants/sortOptions";
 
 const LS_CUSTOM_PRESETS = "mibunyang_custom_presets";
@@ -221,9 +221,12 @@ export function useFilterSort({ onFilterChange }) {
     });
   }, []);
 
-  // URL 동기화 시 히스토리에도 저장
+  // URL 동기화 시 히스토리에도 저장 (isHistoryInitial: 초기 로드 방지, skipHistory: undo/redo 오염 방지)
+  const isHistoryInitial = useRef(true);
+  const skipHistory = useRef(false);
   useEffect(() => {
-    if (isInitialLoad.current) return;
+    if (isHistoryInitial.current) { isHistoryInitial.current = false; return; }
+    if (skipHistory.current) { skipHistory.current = false; return; }
     const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText };
     const timer = setTimeout(() => saveToHistory(state), 500);
     return () => clearTimeout(timer);
@@ -265,6 +268,7 @@ export function useFilterSort({ onFilterChange }) {
 
   const applySnapshot = useCallback((snap) => {
     skipUndo.current = true;
+    skipHistory.current = true;
     for (const [stateKey] of FILTER_URL_MAP) {
       if (stateKey in snap) SETTERS[stateKey]?.(snap[stateKey]);
     }
