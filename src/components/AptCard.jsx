@@ -126,7 +126,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         <button onClick={e => { e.stopPropagation(); onFav(apt.id); }} style={dynStyles.favBtn}>{isFav ? "관심 해제" : "관심매물"}</button>
         <button onClick={e => { e.stopPropagation(); onComp(apt.id); }} style={dynStyles.compBtn}>{isComp ? "비교 중" : "비교"}</button>
         {onExpertView && (
-          <button onClick={e => { e.stopPropagation(); onExpertView(apt.id); }} style={{ ...S.btnBase, background: C.indigo, color: C.white, border: "1.5px solid transparent", fontWeight: 700 }}>전문가보기</button>
+          <button onClick={e => { e.stopPropagation(); onExpertView(apt.id); }} style={{ ...S.btnBase, background: C.indigo, color: C.white, border: "1.5px solid transparent", fontWeight: 700 }}>전문가</button>
         )}
       </div>
     </div>
