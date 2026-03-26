@@ -32,22 +32,36 @@ function parseNumParam(str, max = Infinity) {
   return String(Math.max(0, Math.min(max, n)));
 }
 
+/* ── 파서/직렬화 전략 맵 (OCP: 새 타입 추가 시 여기만 수정) ── */
+const PARSERS = {
+  string:      (raw, defaultVal) => raw || defaultVal,
+  sortKey:     (raw, defaultVal) => VALID_SORT_KEYS.has(raw) ? raw : defaultVal,
+  num:         (raw) => { const v = parseNumParam(raw); return v !== "" ? v : undefined; },
+  numClamp100: (raw) => { const v = parseNumParam(raw, 100); return v !== "" ? v : undefined; },
+  tier:        (raw, defaultVal) => VALID_TIERS.has(raw) ? raw : defaultVal,
+  moveIn:      (raw, defaultVal) => VALID_MOVEIN.has(raw) ? raw : defaultVal,
+  text50:      (raw) => { const t = (raw || "").slice(0, 50).trim(); return t || undefined; },
+  bool:        (raw) => raw === "1",
+};
+
+const SERIALIZERS = {
+  bool: (val, urlKey, params) => { if (val) params.set(urlKey, "1"); else params.delete(urlKey); },
+  _default: (val, urlKey, params, defaultVal) => {
+    if (val === defaultVal || val === "" || val == null) params.delete(urlKey);
+    else params.set(urlKey, val);
+  },
+};
+
 /** URL 쿼리스트링에서 필터 초기값 읽기 */
 function deserializeFromURL() {
   try {
     const params = new URLSearchParams(window.location.search);
     const result = {};
-    for (const [stateKey, urlKey, defaultVal, parser] of FILTER_URL_MAP) {
+    for (const [stateKey, urlKey, defaultVal, parserName] of FILTER_URL_MAP) {
       const raw = params.get(urlKey);
       if (raw == null) continue;
-      if (parser === "string") { result[stateKey] = raw || defaultVal; }
-      else if (parser === "sortKey") { result[stateKey] = VALID_SORT_KEYS.has(raw) ? raw : defaultVal; }
-      else if (parser === "num") { const v = parseNumParam(raw); if (v !== "") result[stateKey] = v; }
-      else if (parser === "numClamp100") { const v = parseNumParam(raw, 100); if (v !== "") result[stateKey] = v; }
-      else if (parser === "tier") { result[stateKey] = VALID_TIERS.has(raw) ? raw : defaultVal; }
-      else if (parser === "moveIn") { result[stateKey] = VALID_MOVEIN.has(raw) ? raw : defaultVal; }
-      else if (parser === "text50") { const t = (raw || "").slice(0, 50).trim(); if (t) result[stateKey] = t; }
-      else if (parser === "bool") { result[stateKey] = raw === "1"; }
+      const val = PARSERS[parserName]?.(raw, defaultVal);
+      if (val !== undefined) result[stateKey] = val;
     }
     return Object.keys(result).length > 0 ? result : null;
   } catch { return null; }
@@ -56,16 +70,9 @@ function deserializeFromURL() {
 /** 필터 상태를 URL 쿼리스트링으로 직렬화 (비기본값만) */
 function serializeToURL(state) {
   const params = new URLSearchParams(window.location.search);
-  // 기존 딥링크 파라미터 보존 (detail, compare, profile)
-  for (const [stateKey, urlKey, defaultVal, parser] of FILTER_URL_MAP) {
+  for (const [stateKey, urlKey, defaultVal, parserName] of FILTER_URL_MAP) {
     const val = state[stateKey];
-    if (parser === "bool") {
-      if (val) params.set(urlKey, "1"); else params.delete(urlKey);
-    } else if (val === defaultVal || val === "" || val == null) {
-      params.delete(urlKey);
-    } else {
-      params.set(urlKey, val);
-    }
+    (SERIALIZERS[parserName] || SERIALIZERS._default)(val, urlKey, params, defaultVal);
   }
   const search = params.toString();
   return search ? `?${search}` : window.location.pathname;
@@ -131,29 +138,31 @@ export function useFilterSort({ onFilterChange }) {
   const handleUnitsMaxChange = useCallback((val) => { setUnitsMax(val); onFilterChange?.(); }, [onFilterChange]);
   const handleAreaUnitsReset = useCallback(() => { setAreaMin(""); setAreaMax(""); setUnitsMin(""); setUnitsMax(""); onFilterChange?.(); }, [onFilterChange]);
 
-  /** 전체 필터 초기화 */
-  const handleResetAll = useCallback(() => {
-    setFilterRegion("전체"); setFilterGu("전체"); setSortKeyRaw("total");
-    setBudgetMin(""); setBudgetMax(""); setMinScore("");
-    setBuilderTier("전체"); setBenefitOnly(false);
-    setAreaMin(""); setAreaMax(""); setUnitsMin(""); setUnitsMax("");
-    setMoveInFilter("전체"); setSearchText(""); setShowFavOnly(false);
-    try { localStorage.setItem("mibunyang_sort", "total"); } catch {}
+  // setter 맵 — FILTER_URL_MAP stateKey → React setter (DRY: 새 필터 추가 시 여기에도 추가)
+  const SETTERS = {
+    filterRegion: setFilterRegion, filterGu: setFilterGu, sortKey: setSortKeyRaw,
+    budgetMin: setBudgetMin, budgetMax: setBudgetMax, minScore: setMinScore,
+    builderTier: setBuilderTier, benefitOnly: setBenefitOnly,
+    areaMin: setAreaMin, areaMax: setAreaMax, unitsMin: setUnitsMin, unitsMax: setUnitsMax,
+    moveInFilter: setMoveInFilter, searchText: setSearchText,
+  };
+
+  /** 공통 필터 리셋 — overrides로 프리셋 값 덮어쓰기 */
+  const resetFilters = useCallback((overrides = {}) => {
+    for (const [stateKey, , defaultVal] of FILTER_URL_MAP) {
+      const val = stateKey in overrides ? overrides[stateKey] : defaultVal;
+      SETTERS[stateKey]?.(val);
+    }
+    setShowFavOnly(false);
+    const sk = overrides.sortKey || "total";
+    try { localStorage.setItem("mibunyang_sort", sk); } catch {}
     onFilterChange?.();
   }, [onFilterChange]);
 
+  /** 전체 필터 초기화 */
+  const handleResetAll = useCallback(() => resetFilters(), [resetFilters]);
   /** 프리셋 적용 — 초기화 후 프리셋 값만 덮어쓰기 */
-  const applyPreset = useCallback((preset) => {
-    setFilterRegion("전체"); setFilterGu("전체"); setSortKeyRaw(preset.sortKey || "total");
-    setBudgetMin(preset.budgetMin ?? ""); setBudgetMax(preset.budgetMax ?? "");
-    setMinScore(preset.minScore ?? ""); setBuilderTier(preset.builderTier ?? "전체");
-    setBenefitOnly(preset.benefitOnly ?? false);
-    setAreaMin(preset.areaMin ?? ""); setAreaMax(preset.areaMax ?? "");
-    setUnitsMin(preset.unitsMin ?? ""); setUnitsMax(preset.unitsMax ?? "");
-    setMoveInFilter(preset.moveInFilter ?? "전체"); setSearchText(""); setShowFavOnly(false);
-    try { localStorage.setItem("mibunyang_sort", preset.sortKey || "total"); } catch {}
-    onFilterChange?.();
-  }, [onFilterChange]);
+  const applyPreset = useCallback((preset) => resetFilters(preset), [resetFilters]);
 
   /** 현재 필터 상태의 공유 URL 생성 (debounce 무관, 즉시) */
   const getShareURL = useCallback(() => {
