@@ -136,7 +136,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           borderRadius: 5, background: C.slate100,
           color: filterRegion !== "전체" ? C.indigo : C.slate600, cursor: "pointer", height: 30,
         }}>
-          {regionOptions.map(r => <option key={r} value={r}>{r === "전체" ? "전체" : `${r} (${filterOptionCounts?.regionCounts?.[r] ?? 0})`}</option>)}
+          {regionOptions.map(r => { const c = filterOptionCounts?.regionCounts?.[r] ?? 0; return <option key={r} value={r} disabled={r !== "전체" && c === 0}>{r === "전체" ? "전체" : `${r} (${c})`}</option>; })}
         </select>
         {(() => { const guDisabled = filterRegion === "전체" || guOptions.length <= 1; return (
           <select value={filterRegion === "전체" ? "" : filterGu} onChange={e => onGuChange(e.target.value)} aria-label="구/군" disabled={guDisabled} style={{
@@ -148,7 +148,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             cursor: guDisabled ? "default" : "pointer", height: 30,
           }}>
             {filterRegion === "전체" && <option value="">지역 먼저 선택</option>}
-            {guOptions.map(g2 => <option key={g2} value={g2}>{g2 === "전체" ? "전체" : `${g2} (${filterOptionCounts?.guCounts?.[g2] ?? 0})`}</option>)}
+            {guOptions.map(g2 => { const c = filterOptionCounts?.guCounts?.[g2] ?? 0; return <option key={g2} value={g2} disabled={g2 !== "전체" && c === 0}>{g2 === "전체" ? "전체" : `${g2} (${c})`}</option>; })}
           </select>
         ); })()}
         <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => onBudgetMinChange(e.target.value)} placeholder="최소(억)" aria-label="최소 예산(억)" style={numInput(budgetMin)} />
@@ -277,7 +277,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           border: moveInFilter !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
           background: C.slate100, color: moveInFilter !== "전체" ? C.indigo : C.slate600, cursor: "pointer",
         }}>
-          {["전체", "입주예정", "미입주", "입주완료"].map(v => <option key={v} value={v}>{v === "전체" ? "전체" : `${v} (${filterOptionCounts?.moveInCounts?.[v] ?? 0})`}</option>)}
+          {["전체", "입주예정", "미입주", "입주완료"].map(v => { const c = filterOptionCounts?.moveInCounts?.[v] ?? 0; return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? "전체" : `${v} (${c})`}</option>; })}
         </select>
         {(hasAreaUnits || moveInFilter !== "전체") && (
           <button onClick={() => { onAreaUnitsReset(); onMoveInChange("전체"); }} aria-label="면적/세대/입주 초기화" style={resetBtn(28)}>✕</button>
@@ -295,7 +295,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
           background: C.slate100, color: builderTier !== "전체" ? C.indigo : C.slate600, cursor: "pointer",
         }}>
-          {["전체", "1군", "2군", "기타"].map(v => <option key={v} value={v}>{v === "전체" ? "전체" : `${v} (${filterOptionCounts?.tierCounts?.[v] ?? 0})`}</option>)}
+          {["전체", "1군", "2군", "기타"].map(v => { const c = filterOptionCounts?.tierCounts?.[v] ?? 0; return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? "전체" : `${v} (${c})`}</option>; })}
         </select>
         <button onClick={onToggleBenefitOnly} aria-label="혜택 있는 매물만" style={{
           flexShrink: 0, height: 28, padding: "0 8px", fontSize: 10, fontWeight: benefitOnly ? 700 : 500,
