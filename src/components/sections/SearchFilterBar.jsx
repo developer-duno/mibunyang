@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState, useRef, useCallback } from "react";
 import { C } from "@/theme";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
 import { FILTER_PRESETS } from "@/constants/filterPresets";
@@ -37,6 +37,13 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onUndo, onRedo, canUndo, canRedo,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
+  const [showPresetInput, setShowPresetInput] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [historyKey, setHistoryKey] = useState(0);
+  const presetInputRef = useRef(null);
+  const handlePresetSave = useCallback(() => {
+    if (presetName.trim() && onSavePreset) { onSavePreset(presetName); setPresetName(""); setShowPresetInput(false); }
+  }, [presetName, onSavePreset]);
   return (
     <div data-no-print style={{ background: C.card, borderRadius: 10, padding: "8px 10px", border: `1px solid ${C.border}`, margin: "8px 0 6px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
       {/* 1행: 검색 + 관심 토글 + 결과 건수 + 접기 */}
@@ -186,13 +193,24 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       {/* 프리셋 저장 버튼 (필터 활성 시) */}
       {activeFilterCount > 0 && onSavePreset && (
         <div style={{ display: "flex", gap: 3, marginBottom: 6, alignItems: "center" }}>
-          <button onClick={() => { const n = prompt("프리셋 이름 (12자 이내)"); if (n) onSavePreset(n); }} aria-label="현재 필터를 프리셋으로 저장" style={{
-            fontSize: 10, fontWeight: 600, padding: "3px 8px", height: 24,
-            background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
-            borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap"
-          }}>+ 프리셋 저장</button>
+          {showPresetInput ? (
+            <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+              <input ref={presetInputRef} type="text" value={presetName} onChange={e => setPresetName(e.target.value)}
+                maxLength={12} placeholder="이름 (12자)" autoFocus
+                onKeyDown={e => { if (e.key === "Enter") handlePresetSave(); if (e.key === "Escape") { setShowPresetInput(false); setPresetName(""); } }}
+                style={{ width: 80, fontSize: 10, height: 24, padding: "2px 6px", border: `1px solid ${C.green}`, borderRadius: 4, outline: "none", background: C.greenLight }} />
+              <button onClick={handlePresetSave} style={{ fontSize: 10, fontWeight: 600, padding: "3px 6px", height: 24, background: C.green, color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>저장</button>
+              <button onClick={() => { setShowPresetInput(false); setPresetName(""); }} style={{ fontSize: 10, padding: "3px 4px", height: 24, background: C.slate100, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 4, cursor: "pointer" }}>취소</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowPresetInput(true)} aria-label="현재 필터를 프리셋으로 저장" style={{
+              fontSize: 10, fontWeight: 600, padding: "3px 8px", height: 24,
+              background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
+              borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap"
+            }}>+ 프리셋 저장</button>
+          )}
           {filterHistory?.length > 0 && (
-            <select onChange={e => { const i = Number(e.target.value); if (filterHistory[i]) { onApplyHistory(filterHistory[i]); e.target.value = ""; } }} defaultValue="" aria-label="필터 히스토리" style={{
+            <select key={historyKey} onChange={e => { const i = Number(e.target.value); if (filterHistory[i]) { onApplyHistory?.(filterHistory[i]); setHistoryKey(k => k + 1); } }} defaultValue="" aria-label="필터 히스토리" style={{
               ...selectBase, flex: 1, fontSize: 10, height: 24, padding: "2px 20px 2px 6px",
               border: `1px solid ${C.border}`, borderRadius: 4, background: C.slate100, color: C.slate600, cursor: "pointer"
             }}>
