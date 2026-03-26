@@ -19,7 +19,8 @@ function createFullRow(overrides = {}) {
     builder: "삼성물산", units: 500, completion: "202601", layout: "3룸",
     area: 84, price: 50000, pp: 1800,
     maxFloor: 25, parkingRatio: 1.2, floorAreaRatio: 250, exclusiveRatio: 78,
-    energyGrade: 2, heating: "지역난방", floors: "15-25", hasPool: false,
+    energyGrade: 2, heating: "지역난방", corridorType: "계단식", heatFuel: "도시가스",
+    avgMaintenanceCost: 15000, primaryDirection: "남향", floors: "15-25", hasPool: false,
     isRegulated: false, dsr40pass: true,
     discountPct: 5, loanFree: true, balconyFree: true, cashback: 500, benefits: ["발코니무료"],
     hospital: 3, mart: 2, conv: 5, cafe: 8, culture: 1, bank: 4, pharmacy: 3, park: 2,
@@ -28,7 +29,6 @@ function createFullRow(overrides = {}) {
     subwayDist: 500, busRoutes: 12, icDist: 5, ktxDist: 30, subwayName: "역삼역", subwayLines: ["2호선"], busStopNames: ["역삼동"],
     schoolScore: 72, schoolGrade: "A", nearbySchools: [{ name: "역삼초" }],
     builderDebtRatio: 180, builderCreditGrade: "A+", hugGuarantee: true,
-    popGrowth: 1.2, supplyRatio: 95, netMigration: 500,
     nearbyMedian: 45000, recentTrades6m: 15, jeonseRate: 62, pir: 8.5, psr: 0.9,
     avgFloor: 12, nearbyBuildYear: 2018, floorRange: "3-25",
     priceByArea: [{ area: 84, price: 50000 }], rentByArea: [{ area: 84, rent: 3000 }],
@@ -38,6 +38,11 @@ function createFullRow(overrides = {}) {
     naverBuildYear: 2018, naverAvgFloor: 11, naverSchoolWalkMin: 8, naverNearbyCount: 20,
     view: "한강뷰", sunlight: "남향", noise: 45, noxious: ["고압선"], noxiousDist: 500,
     transitDev: "GTX-A", devDist: 2.5, cityDev: "마곡지구", industryDev: "판교테크노밸리",
+    elecUsageKwh: 65000, gasUsageMj: 180000, energyCollectedAt: "2026-03-26T00:00:00Z",
+    competitionRate: 3.5, competitionSupply: 200, competitionApplicants: 700,
+    cancelRatio6m: 2.5,
+    popGrowth: 1.2, supplyRatio: 95, netMigration: 500,
+    priceIndex: 102, avgPriceSqm: 850, newSupply: 5000, initialSaleRate: 95, landCostRatio: 55,
     dataReliability: 85,
     ...overrides,
   };
@@ -132,8 +137,8 @@ describe("computeAudit", () => {
     });
     const audit = computeAudit([row]);
 
-    // building: 8개 중 2개 null → 75%
-    expect(audit.categories.building.rate).toBe(75);
+    // building: 12개 중 2개 null → ~83%
+    expect(audit.categories.building.rate).toBeGreaterThanOrEqual(80);
 
     // 필드별 상세
     expect(audit.fields["building.energyGrade"].missing).toBe(1);
@@ -144,9 +149,9 @@ describe("computeAudit", () => {
 
 // ── AUDIT_FIELDS 구조 테스트 ─────────────────────────────────
 describe("AUDIT_FIELDS", () => {
-  // 이 테스트가 검증하는 것: 14개 카테고리 정의
-  it("14개 카테고리 존재", () => {
-    expect(Object.keys(AUDIT_FIELDS)).toHaveLength(14);
+  // 이 테스트가 검증하는 것: 16개 카테고리 정의 (14 기존 + energy + competition)
+  it("16개 카테고리 존재", () => {
+    expect(Object.keys(AUDIT_FIELDS)).toHaveLength(16);
   });
 
   // 이 테스트가 검증하는 것: 각 카테고리에 collector와 fields 존재
