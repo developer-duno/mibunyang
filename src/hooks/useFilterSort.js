@@ -17,8 +17,14 @@ export function useFilterSort({ onFilterChange }) {
   const [unitsMax, setUnitsMax] = useState("");
   const [moveInFilter, setMoveInFilter] = useState("전체");
   const [filterCollapsed, setFilterCollapsed] = useState(false);
+  const [minScore, setMinScore] = useState("");
+  const [builderTier, setBuilderTier] = useState("전체");
+  const [benefitOnly, setBenefitOnly] = useState(false);
   const handleMoveInChange = useCallback((val) => { setMoveInFilter(val); onFilterChange?.(); }, [onFilterChange]);
   const toggleFilterCollapsed = useCallback(() => setFilterCollapsed(p => !p), []);
+  const handleMinScoreChange = useCallback((val) => { setMinScore(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleBuilderTierChange = useCallback((val) => { setBuilderTier(val); onFilterChange?.(); }, [onFilterChange]);
+  const toggleBenefitOnly = useCallback(() => { setBenefitOnly(p => !p); onFilterChange?.(); }, [onFilterChange]);
   const handleRegionChange = useCallback((r) => { setFilterRegion(r); setFilterGu("전체"); onFilterChange?.(); }, [onFilterChange]);
   const handleGuChange = useCallback((g) => { setFilterGu(g); onFilterChange?.(); }, [onFilterChange]);
   const handleBudgetMinChange = useCallback((val) => { setBudgetMin(val); onFilterChange?.(); }, [onFilterChange]);
@@ -31,5 +37,5 @@ export function useFilterSort({ onFilterChange }) {
   const handleUnitsMinChange = useCallback((val) => { setUnitsMin(val); onFilterChange?.(); }, [onFilterChange]);
   const handleUnitsMaxChange = useCallback((val) => { setUnitsMax(val); onFilterChange?.(); }, [onFilterChange]);
   const handleAreaUnitsReset = useCallback(() => { setAreaMin(""); setAreaMax(""); setUnitsMin(""); setUnitsMax(""); onFilterChange?.(); }, [onFilterChange]);
-  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed };
+  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly };
 }

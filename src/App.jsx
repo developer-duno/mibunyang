@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { REGIONS } from "@/constants/regions";
+import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
 import { NOW_YM } from "@/components/AptCard";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
@@ -60,7 +61,7 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites();
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly } = useFilterSort({ onFilterChange: closeDetail });
   const debouncedSearchText = useDebouncedValue(searchText, 300);
 
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
@@ -127,18 +128,29 @@ export default function App() {
       else if (moveInFilter === "미입주") list = list.filter(x => x.apt.completion && x.apt.completion < NOW_YM && (x.apt.unsoldRate ?? 0) > 0);
       else if (moveInFilter === "입주완료") list = list.filter(x => x.apt.completion && x.apt.completion < NOW_YM && (x.apt.unsoldRate ?? 0) === 0);
     }
+    if (minScore) list = list.filter(x => x.res.total >= Number(minScore));
+    if (builderTier !== "전체") {
+      list = list.filter(x => {
+        const b = resolveBuilder(x.apt.builder);
+        const t = BRAND_TIER[b]?.tier;
+        if (builderTier === "1군") return t === "1군Super" || t === "1군";
+        if (builderTier === "2군") return t === "2군";
+        return !t || t === "3군";
+      });
+    }
+    if (benefitOnly) list = list.filter(x => (x.res.cats.benefit?.totalWon ?? 0) > 0);
     if (debouncedSearchText) list = list.filter(x => matchSearch(x.apt.name, debouncedSearchText) || matchSearch(x.apt.builder ?? "", debouncedSearchText) || matchSearch(x.apt.gu ?? "", debouncedSearchText) || matchSearch(x.apt.region ?? "", debouncedSearchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total, benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0), newest: (a, b) => (b.apt.updatedAt ?? "").localeCompare(a.apt.updatedAt ?? "") };
     return [...list].sort(sorters[sortKey] || sorters.total);
-  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText, showFavOnly, favoriteIds, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
-  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey, budgetMin, budgetMax, showFavOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
+  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText, showFavOnly, favoriteIds, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]);
+  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey, budgetMin, budgetMax, showFavOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
   const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
   const activeFilterCount = useMemo(() =>
-    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체"].filter(Boolean).length,
-    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]
+    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly].filter(Boolean).length,
+    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]
   );
 
   const regionOptions = useMemo(() => {
@@ -301,6 +313,9 @@ export default function App() {
             areaMin={areaMin} onAreaMinChange={handleAreaMinChange} areaMax={areaMax} onAreaMaxChange={handleAreaMaxChange}
             unitsMin={unitsMin} onUnitsMinChange={handleUnitsMinChange} unitsMax={unitsMax} onUnitsMaxChange={handleUnitsMaxChange} onAreaUnitsReset={handleAreaUnitsReset}
             moveInFilter={moveInFilter} onMoveInChange={handleMoveInChange}
+            minScore={minScore} onMinScoreChange={handleMinScoreChange}
+            builderTier={builderTier} onBuilderTierChange={handleBuilderTierChange}
+            benefitOnly={benefitOnly} onToggleBenefitOnly={toggleBenefitOnly}
             filterCollapsed={filterCollapsed} onToggleCollapsed={toggleFilterCollapsed}
             activeFilterCount={activeFilterCount}
             filteredLength={filtered.length} scoredLength={scored.length}

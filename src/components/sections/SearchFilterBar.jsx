@@ -22,6 +22,9 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   areaMin, onAreaMinChange, areaMax, onAreaMaxChange,
   unitsMin, onUnitsMinChange, unitsMax, onUnitsMaxChange, onAreaUnitsReset,
   moveInFilter, onMoveInChange,
+  minScore, onMinScoreChange,
+  builderTier, onBuilderTierChange,
+  benefitOnly, onToggleBenefitOnly,
   filterCollapsed, onToggleCollapsed, activeFilterCount,
   filteredLength, scoredLength,
 }) {
@@ -68,6 +71,9 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             {(areaMin || areaMax) && <span onClick={() => { onAreaMinChange(""); onAreaMaxChange(""); }} style={chipStyle}>면적 {areaMin || "0"}~{areaMax || "∞"}㎡ ✕</span>}
             {(unitsMin || unitsMax) && <span onClick={() => { onUnitsMinChange(""); onUnitsMaxChange(""); }} style={chipStyle}>세대 {unitsMin || "0"}~{unitsMax || "∞"} ✕</span>}
             {moveInFilter !== "전체" && <span onClick={() => onMoveInChange("전체")} style={chipStyle}>{moveInFilter} ✕</span>}
+            {minScore && <span onClick={() => onMinScoreChange("")} style={chipStyle}>{minScore}점+ ✕</span>}
+            {builderTier !== "전체" && <span onClick={() => onBuilderTierChange("전체")} style={chipStyle}>{builderTier} ✕</span>}
+            {benefitOnly && <span onClick={onToggleBenefitOnly} style={chipStyle}>혜택 ✕</span>}
           </div>
         )}
         {filteredLength != null && <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>{scoredLength}개 중 <strong style={{ color: C.indigo }}>{filteredLength}</strong>개</span>}
@@ -167,6 +173,30 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         </select>
         {(hasAreaUnits || moveInFilter !== "전체") && (
           <button onClick={() => { onAreaUnitsReset(); onMoveInChange("전체"); }} aria-label="면적/세대/입주 초기화" style={resetBtn(28)}>✕</button>
+        )}
+      </div>
+      {/* 5행: 종합점수 최소 + 시공사 + 혜택 토글 */}
+      <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 6 }}>
+        <span style={tilde}>최소</span>
+        <input type="number" inputMode="numeric" min="0" max="100" value={minScore} onChange={e => onMinScoreChange(e.target.value)} placeholder="점수" aria-label="최소 종합점수" style={{ ...numInput(minScore, 28), maxWidth: 52 }} />
+        <span style={tilde}>점</span>
+        <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
+        <select value={builderTier} onChange={e => onBuilderTierChange(e.target.value)} aria-label="시공사 등급" style={{
+          ...selectBase, flex: "0 0 auto", padding: "4px 20px 4px 6px", fontSize: 11, height: 28, borderRadius: 5,
+          fontWeight: builderTier !== "전체" ? 700 : 500,
+          border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+          background: C.slate100, color: builderTier !== "전체" ? C.indigo : C.slate600, cursor: "pointer",
+        }}>
+          {["전체", "1군", "2군", "기타"].map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <button onClick={onToggleBenefitOnly} aria-label="혜택 있는 매물만" style={{
+          flexShrink: 0, height: 28, padding: "0 8px", fontSize: 10, fontWeight: benefitOnly ? 700 : 500,
+          background: benefitOnly ? C.amberLight : C.slate100, color: benefitOnly ? C.amber : C.slate600,
+          border: benefitOnly ? `1.5px solid ${C.amber}` : `1px solid ${C.border}`, borderRadius: 5,
+          cursor: "pointer", transition: "all .15s"
+        }}>혜택</button>
+        {(minScore || builderTier !== "전체" || benefitOnly) && (
+          <button onClick={() => { onMinScoreChange(""); onBuilderTierChange("전체"); if (benefitOnly) onToggleBenefitOnly(); }} aria-label="점수/시공사/혜택 초기화" style={resetBtn(28)}>✕</button>
         )}
       </div>
       </>}
