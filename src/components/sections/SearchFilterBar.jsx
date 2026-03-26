@@ -1,6 +1,13 @@
 import { memo } from "react";
 import { C } from "@/theme";
 
+/* ── 공유 스타일 상수 (DRY) ── */
+const selectArrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`;
+const selectBase = { WebkitAppearance: "none", MozAppearance: "none", appearance: "none", backgroundImage: selectArrow, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
+const numInput = (val, h = 30) => ({ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: val ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: h, boxSizing: "border-box", background: C.slate100 });
+const resetBtn = (h = 30) => ({ background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: 11, color: C.muted, cursor: "pointer", height: h, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 });
+const tilde = { fontSize: 10, color: C.muted, flexShrink: 0 };
+
 /** 검색 + 필터 + 정렬 + 가중치 뱃지 통합 바 */
 export const SearchFilterBar = memo(function SearchFilterBar({
   searchText, onSearchChange,
@@ -43,39 +50,33 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       {/* 2행: 지역 + 예산 + 초기화 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
         <select value={filterRegion} onChange={e => onRegionChange(e.target.value)} aria-label="시/도" style={{
-          flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11, fontWeight: filterRegion !== "전체" ? 700 : 500,
-          border: filterRegion !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, background: C.slate100,
+          ...selectBase, flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11,
+          fontWeight: filterRegion !== "전체" ? 700 : 500,
+          border: filterRegion !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+          borderRadius: 5, background: C.slate100,
           color: filterRegion !== "전체" ? C.indigo : C.slate600, cursor: "pointer", height: 30,
-          WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
         }}>
           {regionOptions.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
-        <select value={filterRegion === "전체" ? "" : filterGu} onChange={e => onGuChange(e.target.value)} aria-label="구/군" disabled={filterRegion === "전체" || guOptions.length <= 1} style={{
-          flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11, fontWeight: filterGu !== "전체" ? 700 : 500,
-          border: filterGu !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5,
-          background: (filterRegion === "전체" || guOptions.length <= 1) ? "#E2E8F0" : C.slate100,
-          color: (filterRegion === "전체" || guOptions.length <= 1) ? "#94A3B8" : filterGu !== "전체" ? C.indigo : C.slate600,
-          cursor: (filterRegion === "전체" || guOptions.length <= 1) ? "default" : "pointer", height: 30,
-          WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236B7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center"
-        }}>
-          {filterRegion === "전체" && <option value="">지역 먼저 선택</option>}
-          {guOptions.map(g2 => <option key={g2} value={g2}>{g2}</option>)}
-        </select>
-        <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => onBudgetMinChange(e.target.value)} placeholder="최소(억)" aria-label="최소 예산(억)"
-          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: budgetMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 30, boxSizing: "border-box", background: C.slate100 }} />
-        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>~</span>
-        <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMax} onChange={e => onBudgetMaxChange(e.target.value)} placeholder="최대(억)" aria-label="최대 예산(억)"
-          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: budgetMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 30, boxSizing: "border-box", background: C.slate100 }} />
-        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>억</span>
+        {(() => { const guDisabled = filterRegion === "전체" || guOptions.length <= 1; return (
+          <select value={filterRegion === "전체" ? "" : filterGu} onChange={e => onGuChange(e.target.value)} aria-label="구/군" disabled={guDisabled} style={{
+            ...selectBase, flex: "0 0 auto", width: 80, padding: "4px 20px 4px 8px", fontSize: 11,
+            fontWeight: filterGu !== "전체" ? 700 : 500,
+            border: filterGu !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5,
+            background: guDisabled ? "#E2E8F0" : C.slate100,
+            color: guDisabled ? "#94A3B8" : filterGu !== "전체" ? C.indigo : C.slate600,
+            cursor: guDisabled ? "default" : "pointer", height: 30,
+          }}>
+            {filterRegion === "전체" && <option value="">지역 먼저 선택</option>}
+            {guOptions.map(g2 => <option key={g2} value={g2}>{g2}</option>)}
+          </select>
+        ); })()}
+        <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => onBudgetMinChange(e.target.value)} placeholder="최소(억)" aria-label="최소 예산(억)" style={numInput(budgetMin)} />
+        <span style={tilde}>~</span>
+        <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMax} onChange={e => onBudgetMaxChange(e.target.value)} placeholder="최대(억)" aria-label="최대 예산(억)" style={numInput(budgetMax)} />
+        <span style={tilde}>억</span>
         {(budgetMin || budgetMax) ? (
-          <button onClick={onBudgetReset} aria-label="예산 초기화" style={{
-            background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: 11, color: C.muted,
-            cursor: "pointer", height: 30, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
-          }}>✕</button>
+          <button onClick={onBudgetReset} aria-label="예산 초기화" style={resetBtn()}>✕</button>
         ) : null}
       </div>
       {/* 3행: 정렬 + 가중치 뱃지 */}
@@ -107,25 +108,18 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       </div>
       {/* 4행: 면적 + 세대수 필터 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 6 }}>
-        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>면적</span>
-        <input type="number" inputMode="numeric" min="0" value={areaMin} onChange={e => onAreaMinChange(e.target.value)} placeholder="최소" aria-label="최소 면적(㎡)"
-          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: areaMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 28, boxSizing: "border-box", background: C.slate100 }} />
-        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>~</span>
-        <input type="number" inputMode="numeric" min="0" value={areaMax} onChange={e => onAreaMaxChange(e.target.value)} placeholder="최대" aria-label="최대 면적(㎡)"
-          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: areaMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 28, boxSizing: "border-box", background: C.slate100 }} />
-        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>㎡</span>
+        <span style={tilde}>면적</span>
+        <input type="number" inputMode="numeric" min="0" value={areaMin} onChange={e => onAreaMinChange(e.target.value)} placeholder="최소" aria-label="최소 면적(㎡)" style={numInput(areaMin, 28)} />
+        <span style={tilde}>~</span>
+        <input type="number" inputMode="numeric" min="0" value={areaMax} onChange={e => onAreaMaxChange(e.target.value)} placeholder="최대" aria-label="최대 면적(㎡)" style={numInput(areaMax, 28)} />
+        <span style={tilde}>㎡</span>
         <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
-        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>세대</span>
-        <input type="number" inputMode="numeric" min="0" value={unitsMin} onChange={e => onUnitsMinChange(e.target.value)} placeholder="최소" aria-label="최소 세대수"
-          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: unitsMin ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 28, boxSizing: "border-box", background: C.slate100 }} />
-        <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>~</span>
-        <input type="number" inputMode="numeric" min="0" value={unitsMax} onChange={e => onUnitsMaxChange(e.target.value)} placeholder="최대" aria-label="최대 세대수"
-          style={{ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: unitsMax ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: 28, boxSizing: "border-box", background: C.slate100 }} />
+        <span style={tilde}>세대</span>
+        <input type="number" inputMode="numeric" min="0" value={unitsMin} onChange={e => onUnitsMinChange(e.target.value)} placeholder="최소" aria-label="최소 세대수" style={numInput(unitsMin, 28)} />
+        <span style={tilde}>~</span>
+        <input type="number" inputMode="numeric" min="0" value={unitsMax} onChange={e => onUnitsMaxChange(e.target.value)} placeholder="최대" aria-label="최대 세대수" style={numInput(unitsMax, 28)} />
         {hasAreaUnits && (
-          <button onClick={onAreaUnitsReset} aria-label="면적/세대 초기화" style={{
-            background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: 11, color: C.muted,
-            cursor: "pointer", height: 28, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
-          }}>✕</button>
+          <button onClick={onAreaUnitsReset} aria-label="면적/세대 초기화" style={resetBtn(28)}>✕</button>
         )}
       </div>
     </div>

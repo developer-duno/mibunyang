@@ -4,7 +4,16 @@ import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 
-/* ── 정적 스타일 (모듈 레벨 — 렌더마다 재생성 방지) ── */
+/* ── 모듈 레벨 상수 (렌더마다 재생성 방지) ── */
+const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+
+function completionBadge(completion, moveInDone, completionPast) {
+  if (moveInDone) return { bg: C.greenLight, color: C.green, text: `입주완료 ${fmtCompletion(completion)}` };
+  if (completionPast) return { bg: C.amberLight, color: C.amber, text: `미입주 (준공 ${fmtCompletion(completion)})` };
+  return { bg: C.blueLight, color: C.blue, text: `입주예정 ${fmtCompletion(completion)}` };
+}
+
+/* ── 정적 스타일 ── */
 const S = {
   wrapper: { borderRadius: 14, overflow: "hidden", marginBottom: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", transition: "all .25s ease" },
   body: { padding: "14px 16px", cursor: "pointer" },
@@ -28,9 +37,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = (apt.noxious || []).length;
-    const completionPast = apt.completion
-      ? apt.completion < `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`
-      : false;
+    const completionPast = apt.completion ? apt.completion < NOW_YM : false;
     const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
 
@@ -95,14 +102,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
 
         {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || noxCount > 0 || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade))) && (
           <div style={S.alertRow}>
-            {apt.completion && (
-              <span style={{ ...S.alertTag,
-                background: moveInDone ? C.greenLight : completionPast ? C.amberLight : C.blueLight,
-                color: moveInDone ? C.green : completionPast ? C.amber : C.blue
-              }}>
-                {moveInDone ? `입주완료 ${fmtCompletion(apt.completion)}` : completionPast ? `미입주 (준공 ${fmtCompletion(apt.completion)})` : `입주예정 ${fmtCompletion(apt.completion)}`}
-              </span>
-            )}
+            {apt.completion && (() => {
+              const b = completionBadge(apt.completion, moveInDone, completionPast);
+              return <span style={{ ...S.alertTag, background: b.bg, color: b.color }}>{b.text}</span>;
+            })()}
             {(apt.unsoldRate ?? 0) >= 30 && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {apt.unsoldRate}%</span>
             )}
