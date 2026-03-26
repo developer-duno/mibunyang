@@ -35,6 +35,21 @@ import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
 import { AptListSection } from "@/components/sections/AptListSection";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
+/* ── 분류 헬퍼 (filterOptionCounts + filtered 공용) ── */
+function classifyMoveIn(apt) {
+  if (!apt.completion) return null;
+  if (apt.completion >= NOW_YM) return "입주예정";
+  if ((apt.unsoldRate ?? 0) > 0) return "미입주";
+  return "입주완료";
+}
+function classifyTier(apt) {
+  const b = resolveBuilder(apt.builder);
+  const t = BRAND_TIER[b]?.tier;
+  if (t === "1군Super" || t === "1군") return "1군";
+  if (t === "2군") return "2군";
+  return "기타";
+}
+
 export default function App() {
   const [profile, setProfileRaw] = useState(() => {
     try { const v = localStorage.getItem("mibunyang_profile"); return v && PROFILES[v] ? v : "live"; } catch { return "live"; }
@@ -125,21 +140,9 @@ export default function App() {
     if (areaMax) list = list.filter(x => (x.apt.area ?? Infinity) <= Number(areaMax));
     if (unitsMin) list = list.filter(x => (x.apt.units ?? 0) >= Number(unitsMin));
     if (unitsMax) list = list.filter(x => (x.apt.units ?? Infinity) <= Number(unitsMax));
-    if (moveInFilter !== "전체") {
-      if (moveInFilter === "입주예정") list = list.filter(x => x.apt.completion && x.apt.completion >= NOW_YM);
-      else if (moveInFilter === "미입주") list = list.filter(x => x.apt.completion && x.apt.completion < NOW_YM && (x.apt.unsoldRate ?? 0) > 0);
-      else if (moveInFilter === "입주완료") list = list.filter(x => x.apt.completion && x.apt.completion < NOW_YM && (x.apt.unsoldRate ?? 0) === 0);
-    }
+    if (moveInFilter !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === moveInFilter);
     if (minScore) { const ms = Number(minScore); if (Number.isFinite(ms)) list = list.filter(x => x.res.total >= ms); }
-    if (builderTier !== "전체") {
-      list = list.filter(x => {
-        const b = resolveBuilder(x.apt.builder);
-        const t = BRAND_TIER[b]?.tier;
-        if (builderTier === "1군") return t === "1군Super" || t === "1군";
-        if (builderTier === "2군") return t === "2군";
-        return !t || t === "3군";
-      });
-    }
+    if (builderTier !== "전체") list = list.filter(x => classifyTier(x.apt) === builderTier);
     if (benefitOnly) list = list.filter(x => (x.res.cats.benefit?.totalWon ?? 0) > 0);
     if (debouncedSearchText) list = list.filter(x => matchSearch(x.apt.name, debouncedSearchText) || matchSearch(x.apt.builder ?? "", debouncedSearchText) || matchSearch(x.apt.gu ?? "", debouncedSearchText) || matchSearch(x.apt.region ?? "", debouncedSearchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total, benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0), newest: (a, b) => (b.apt.updatedAt ?? "").localeCompare(a.apt.updatedAt ?? "") };
@@ -160,6 +163,24 @@ export default function App() {
     const order = Object.keys(REGIONS);
     return ["전체", ...order.filter(r => rs.has(r)), ...[...rs].filter(r => !order.includes(r)).sort()];
   }, [apartments]);
+
+  const filterOptionCounts = useMemo(() => {
+    if (!scored.length) return null;
+    const regionCounts = Object.create(null);
+    const guCounts = Object.create(null);
+    const moveInCounts = { "입주예정": 0, "미입주": 0, "입주완료": 0 };
+    const tierCounts = { "1군": 0, "2군": 0, "기타": 0 };
+    for (const { apt } of scored) {
+      if (apt.region) regionCounts[apt.region] = (regionCounts[apt.region] || 0) + 1;
+      if (filterRegion === "전체" || apt.region === filterRegion) {
+        if (apt.gu) guCounts[apt.gu] = (guCounts[apt.gu] || 0) + 1;
+      }
+      const mi = classifyMoveIn(apt);
+      if (mi) moveInCounts[mi]++;
+      tierCounts[classifyTier(apt)]++;
+    }
+    return { regionCounts, guCounts, moveInCounts, tierCounts };
+  }, [scored, filterRegion]);
 
   // 데이터 최신성 텍스트 (ISO 날짜 표시)
   const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;
@@ -357,6 +378,7 @@ export default function App() {
             customPresets={customPresets} onSavePreset={saveCustomPreset} onDeletePreset={deleteCustomPreset}
             filterHistory={filterHistory} onApplyHistory={applyHistory} onClearHistory={clearHistory}
             onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
+            filterOptionCounts={filterOptionCounts}
           />
 
           {compIds.length >= 2 && (
