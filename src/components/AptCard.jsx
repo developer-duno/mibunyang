@@ -5,7 +5,7 @@ import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 
 /* ── 모듈 레벨 상수 (렌더마다 재생성 방지) ── */
-const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+export const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
 function completionBadge(completion, moveInDone, completionPast) {
   if (moveInDone) return { bg: C.greenLight, color: C.green, text: `입주완료 ${fmtCompletion(completion)}` };

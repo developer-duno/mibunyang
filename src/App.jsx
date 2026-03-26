@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { REGIONS } from "@/constants/regions";
+import { NOW_YM } from "@/components/AptCard";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
 import { C, catCol, catBg } from "@/theme";
@@ -122,10 +123,9 @@ export default function App() {
     if (unitsMin) list = list.filter(x => (x.apt.units ?? 0) >= Number(unitsMin));
     if (unitsMax) list = list.filter(x => (x.apt.units ?? Infinity) <= Number(unitsMax));
     if (moveInFilter !== "전체") {
-      const nowYm = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-      if (moveInFilter === "입주예정") list = list.filter(x => x.apt.completion && x.apt.completion >= nowYm);
-      else if (moveInFilter === "미입주") list = list.filter(x => x.apt.completion && x.apt.completion < nowYm && (x.apt.unsoldRate ?? 0) > 0);
-      else if (moveInFilter === "입주완료") list = list.filter(x => x.apt.completion && x.apt.completion < nowYm && (x.apt.unsoldRate ?? 0) === 0);
+      if (moveInFilter === "입주예정") list = list.filter(x => x.apt.completion && x.apt.completion >= NOW_YM);
+      else if (moveInFilter === "미입주") list = list.filter(x => x.apt.completion && x.apt.completion < NOW_YM && (x.apt.unsoldRate ?? 0) > 0);
+      else if (moveInFilter === "입주완료") list = list.filter(x => x.apt.completion && x.apt.completion < NOW_YM && (x.apt.unsoldRate ?? 0) === 0);
     }
     if (debouncedSearchText) list = list.filter(x => matchSearch(x.apt.name, debouncedSearchText) || matchSearch(x.apt.builder ?? "", debouncedSearchText) || matchSearch(x.apt.gu ?? "", debouncedSearchText) || matchSearch(x.apt.region ?? "", debouncedSearchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total, benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0) };
@@ -136,6 +136,10 @@ export default function App() {
   const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
   const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
+  const activeFilterCount = useMemo(() =>
+    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체"].filter(Boolean).length,
+    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]
+  );
 
   const regionOptions = useMemo(() => {
     const rs = new Set(apartments.map(a => a.region).filter(Boolean));
@@ -298,7 +302,7 @@ export default function App() {
             unitsMin={unitsMin} onUnitsMinChange={handleUnitsMinChange} unitsMax={unitsMax} onUnitsMaxChange={handleUnitsMaxChange} onAreaUnitsReset={handleAreaUnitsReset}
             moveInFilter={moveInFilter} onMoveInChange={handleMoveInChange}
             filterCollapsed={filterCollapsed} onToggleCollapsed={toggleFilterCollapsed}
-            activeFilterCount={[showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", searchText].filter(Boolean).length}
+            activeFilterCount={activeFilterCount}
             filteredLength={filtered.length} scoredLength={scored.length}
           />
 
