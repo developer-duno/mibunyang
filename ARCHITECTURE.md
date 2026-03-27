@@ -17,7 +17,7 @@ src/
 ├── scoring/
 │   └── engine.js           score{6개}, calcAll — 규칙: scoring/CLAUDE.md
 ├── theme/
-│   └── index.js            C(팔레트), catCol, catBg, gr(등급함수)
+│   └── index.js            C(팔레트+shadowSm/Md), catCol, catBg, gr(등급함수)
 ├── components/             규칙: components/CLAUDE.md
 │   ├── primitives.jsx      Bar, ScoreBadge, LineChart, Radar (memo)
 │   ├── AptCard.jsx / CatPanel.jsx / CompareSheet.jsx (PNG/PDF 내보내기)
@@ -29,6 +29,7 @@ src/
 │   └── admin/              관리자 UI
 ├── hooks/
 │   ├── useApartmentData.js ★ 데이터 로딩 진입점 (dedupApartments 적용)
+│   ├── useResponsive.js    isPC(768+) + isDesktop(1024+) + 150ms 디바운스
 │   ├── useFilterSort.js / useComparison.js / useFavorites.js (객체 기반)
 │   ├── usePriceHistory.js / useUnsoldHistory.js  (시계열 API 페칭)
 │   └── useExpertMode.js / useAdminMode.js / useToast.js
@@ -42,7 +43,7 @@ src/
 ├── services/
 │   ├── staticDataApi.js    ★ Supabase API 또는 JSON 폴백
 │   ├── applyhomeApi.js / kakaoApi.js / neisApi.js / kosisApi.js / dartApi.js
-└── App.jsx                 오케스트레이터 (훅 조합 + 렌더 + SORTERS 모듈 상수)
+└── App.jsx                 오케스트레이터 (훅 조합 + 렌더 + SORTERS 모듈 상수 + isDesktop prop 스레딩)
 
 api/                        Vercel Serverless — 규칙: api/CLAUDE.md
 ├── _lib/                   auth.js, adminAuth.js, supabase.js

@@ -7,6 +7,7 @@
 App.jsx 내부:
 ```
 useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 12개 (useToast, useFavorites(showToast), useDetailModal, useFilterSort, useDebouncedValue, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare, useResponsive) → useMemo (13개: baseFilterArgs, activeFilterCount, filterOptionCounts 포함) → useEffect (6개) → useRef → useCallback
+**useResponsive 위치**: line 69 (모든 useState 이후, useMemo 이전) → `{ isPC, isDesktop }` 반환 → isDesktop은 line 176+ JSX에서만 사용 (TDZ 안전)
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
@@ -81,3 +82,16 @@ useFavorites(showToast)
 ```
 v1(배열) → v2(객체) 자동 마이그레이션 + `mibunyang_fav_backup` 백업.
 **세션21**: memo/tags UI 제거됨 — App.jsx에서 `favoritesObj` 미사용 (내부 저장 구조만 유지).
+
+## useResponsive 구조 (세션25 — 데스크톱 UI Phase1)
+
+```
+useResponsive()
+  ├── width: useState(window.innerWidth)
+  ├── useEffect: resize 리스너 + 150ms 디바운스 (setTimeout)
+  ├── cleanup: clearTimeout + removeEventListener
+  └── return { isPC: width >= 768, isDesktop: width >= 1024 }
+```
+- **디바운스 150ms**: resize 이벤트 초당 60~120회 → 6~7회로 감소
+- **isDesktop prop 전달**: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection → AptCard
+- **isPC 하위 호환**: 기존 isPC 로직 100% 유지, isDesktop은 추가 분기

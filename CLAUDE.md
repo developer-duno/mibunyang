@@ -10,11 +10,25 @@
 - `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters)
 - `@/lib/dedup.js` — 아파트 중복 제거 + siblingIds 생성 (dedupApartments)
 - `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
+- `@/theme/index.js` — 디자인 토큰 (C 팔레트 + shadowSm/shadowMd + catCol + gr 등급함수)
+- `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
 - Supabase (PostgreSQL) — 데이터베이스 (14개 테이블 + apartments_flat VIEW)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (27개 워크플로우)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC)
+
+## 반응형 레이아웃
+
+| 브레이크포인트 | 플래그 | 컨테이너 | 카드 그리드 | 네비게이션 |
+|--------------|-------|---------|-----------|----------|
+| <768px | 모바일 | 520px | 1컬럼 | 하단 BottomNav |
+| 768~1023px | isPC | 960px | 2컬럼 | 하단 BottomNav |
+| 1024px+ | isDesktop | 1200px | 3컬럼 | 상단 고정 바 (HeaderSection) |
+
+- `useResponsive()` → `{ isPC, isDesktop }` (150ms resize 디바운스)
+- 모바일 100% 유지, 데스크톱은 `isDesktop` 조건 분기로 격리
+- 롤백: useResponsive에서 `isDesktop: false` 고정 시 즉시 복원
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
 

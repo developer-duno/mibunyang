@@ -28,10 +28,18 @@
 - SVG 텍스트: `dy="0.35em"` 사용 (`dominantBaseline` 금지 — Firefox <128)
 - iOS Safe Area: 하단 네비 + Toast에 `env(safe-area-inset-bottom)` 필수
 
+## 반응형 레이아웃 규칙 (세션25 데스크톱 UI Phase1)
+
+- `isDesktop` (1024px+): 1200px 컨테이너, 3컬럼 카드, 고정 상단 바, BottomNav 숨김
+- `isPC` (768px+): 960px 컨테이너, 2컬럼 카드, 하단 BottomNav
+- 모바일 (<768px): 520px 컨테이너, 1컬럼, 하단 BottomNav
+- isDesktop prop 전달: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection → AptCard
+- 모든 데스크톱 변경은 `isDesktop` 조건 분기로 격리 (모바일 불변)
+
 ## 전문가 페이지 규칙
 
 - PC 버전 우선 (maxWidth: 1200px+, 2컬럼 그리드)
-- 소비자 모드 = 모바일 우선 (maxWidth: 520px)
+- 소비자 모드 = 데스크톱 1200px / 태블릿 960px / 모바일 520px
 - 모든 95개 필드 개별 표시 필수
 - 스코어링 중간 계산 과정 투명하게 표시
 - 동/호수 섹션 포함 (현재 플레이스홀더, 향후 관리자 페이지에서 입력)
@@ -39,16 +47,16 @@
 
 ## 컴포넌트 구조
 
-### App.jsx (~509줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수 + dedup useEffect + 사업자 푸터
+### App.jsx (~510줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수 + dedup useEffect + isDesktop prop 스레딩 + 사업자 푸터
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
-| HeaderSection | 132 | 프로필 선택 + 헤더 |
-| SearchFilterBar | 321 | 검색/필터/정렬/프리셋/카운트 배지 |
-| AptListSection | 53 | 카드 그리드 + 비교 (favoriteIds만 전달) |
+| HeaderSection | 164 | 데스크톱: 고정 상단 바(프로필탭+네비) / 모바일: 블루 그라디언트 + HelpModal 공용 |
+| SearchFilterBar | 321 | 검색/필터/정렬/프리셋/카운트 배지 (isDesktop 입력 확대) |
+| AptListSection | 53 | 카드 그리드 (isDesktop 3컬럼 / isPC 2컬럼) + isDesktop→AptCard 전달 |
 | ExpertLoginForm | 167 | 전문가 로그인/회원가입 |
 | InfoPage | 267 | 스코어링 엔진 설명 (10섹션 + FAQ 10건) |
-| BottomNav | 35 | 하단 네비게이션 |
+| BottomNav | 36 | 하단 네비게이션 (isDesktop → return null) |
 | MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
@@ -79,6 +87,8 @@
 - 3초 auto-dismiss (useEffect + setTimeout + cleanup)
 - 범위 가드: `activeDot != null && activeDot < data.length`
 
-### AptCard
+### AptCard (136줄)
+- `isDesktop` prop: 데스크톱 시 shadowMd, fontSize 16, padding 확대
 - `isFav` prop으로 관심매물 하이라이트 (border 색상)
 - `moveInDone` (준공 + 미분양 0%) → opacity 0.55 흐릿 표시
+- `dynStyles.body`, `dynStyles.nameText` — isDesktop 조건 분기 (useMemo 내부)
