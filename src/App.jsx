@@ -24,7 +24,6 @@ import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
 
 import { useResponsive } from "@/hooks/useResponsive";
-import { matchSearch } from "@/lib/chosung";
 import { ShareSheet } from "@/components/ShareSheet";
 import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
@@ -34,7 +33,8 @@ import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
 import { AptListSection } from "@/components/sections/AptListSection";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
-import { classifyMoveIn, classifyTier } from "@/lib/classify";
+import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
+import { applyBaseFilters } from "@/lib/filterEngine";
 
 export default function App() {
   const [profile, setProfileRaw] = useState(() => {
@@ -107,33 +107,20 @@ export default function App() {
       return { apt, res: { total, cats, weights: w } };
     });
   }, [catsCache, profile, customWeights]);
+  const baseFilterArgs = useMemo(() => ({
+    showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax,
+    unitsMin, unitsMax, minScore, benefitOnly, searchText: debouncedSearchText,
+  }), [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText]);
+
   const filtered = useMemo(() => {
-    let list = scored;
-    if (showFavOnly) list = list.filter(x => favoriteIds.includes(x.apt.id));
-    if (filterRegion !== "전체") {
-      list = list.filter(x => x.apt.region === filterRegion);
-    }
+    let list = applyBaseFilters(scored, baseFilterArgs);
+    if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
-    const bMinRaw = budgetMin !== "" ? Number(budgetMin) : null;
-    const bMaxRaw = budgetMax !== "" ? Number(budgetMax) : null;
-    const bMin = bMinRaw != null && Number.isFinite(bMinRaw) ? bMinRaw : null;
-    const bMax = bMaxRaw != null && Number.isFinite(bMaxRaw) ? bMaxRaw : null;
-    const effectiveMin = (bMin != null && bMax != null && bMin > bMax) ? bMax : bMin;
-    const effectiveMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
-    if (effectiveMin != null) list = list.filter(x => x.apt.price >= effectiveMin * 10000);
-    if (effectiveMax != null) list = list.filter(x => x.apt.price <= effectiveMax * 10000);
-    if (areaMin) list = list.filter(x => (x.apt.area ?? 0) >= Number(areaMin));
-    if (areaMax) list = list.filter(x => (x.apt.area ?? Infinity) <= Number(areaMax));
-    if (unitsMin) list = list.filter(x => (x.apt.units ?? 0) >= Number(unitsMin));
-    if (unitsMax) list = list.filter(x => (x.apt.units ?? Infinity) <= Number(unitsMax));
     if (moveInFilter !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === moveInFilter);
-    if (minScore) { const ms = Number(minScore); if (Number.isFinite(ms)) list = list.filter(x => x.res.total >= ms); }
     if (builderTier !== "전체") list = list.filter(x => classifyTier(x.apt) === builderTier);
-    if (benefitOnly) list = list.filter(x => (x.res.cats.benefit?.totalWon ?? 0) > 0);
-    if (debouncedSearchText) list = list.filter(x => matchSearch(x.apt.name, debouncedSearchText) || matchSearch(x.apt.builder ?? "", debouncedSearchText) || matchSearch(x.apt.gu ?? "", debouncedSearchText) || matchSearch(x.apt.region ?? "", debouncedSearchText));
     const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total, benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0), newest: (a, b) => (b.apt.updatedAt ?? "").localeCompare(a.apt.updatedAt ?? "") };
     return [...list].sort(sorters[sortKey] || sorters.total);
-  }, [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText, showFavOnly, favoriteIds, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]);
+  }, [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier]);
   useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey, budgetMin, budgetMax, showFavOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
@@ -152,42 +139,25 @@ export default function App() {
 
   const filterOptionCounts = useMemo(() => {
     if (!scored.length) return null;
-    // Step 1: 공통 필터 (비-드롭다운) 적용 → base
-    let base = scored;
-    if (showFavOnly) base = base.filter(x => favoriteIds.includes(x.apt.id));
-    const bMinRaw = budgetMin !== "" ? Number(budgetMin) : null;
-    const bMaxRaw = budgetMax !== "" ? Number(budgetMax) : null;
-    const bMin = bMinRaw != null && Number.isFinite(bMinRaw) ? bMinRaw : null;
-    const bMax = bMaxRaw != null && Number.isFinite(bMaxRaw) ? bMaxRaw : null;
-    const eMin = (bMin != null && bMax != null && bMin > bMax) ? bMax : bMin;
-    const eMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
-    if (eMin != null) base = base.filter(x => x.apt.price >= eMin * 10000);
-    if (eMax != null) base = base.filter(x => x.apt.price <= eMax * 10000);
-    if (areaMin) base = base.filter(x => (x.apt.area ?? 0) >= Number(areaMin));
-    if (areaMax) base = base.filter(x => (x.apt.area ?? Infinity) <= Number(areaMax));
-    if (unitsMin) base = base.filter(x => (x.apt.units ?? 0) >= Number(unitsMin));
-    if (unitsMax) base = base.filter(x => (x.apt.units ?? Infinity) <= Number(unitsMax));
-    if (minScore) { const ms = Number(minScore); if (Number.isFinite(ms)) base = base.filter(x => x.res.total >= ms); }
-    if (benefitOnly) base = base.filter(x => (x.res.cats.benefit?.totalWon ?? 0) > 0);
-    if (debouncedSearchText) base = base.filter(x => matchSearch(x.apt.name, debouncedSearchText) || matchSearch(x.apt.builder ?? "", debouncedSearchText) || matchSearch(x.apt.gu ?? "", debouncedSearchText) || matchSearch(x.apt.region ?? "", debouncedSearchText));
-    // Step 2: 드롭다운별 leave-one-out
+    const base = applyBaseFilters(scored, baseFilterArgs);
+    // 드롭다운별 leave-one-out
     const withRegion = filterRegion !== "전체" ? base.filter(x => x.apt.region === filterRegion) : base;
     const withRegionGu = filterGu !== "전체" ? withRegion.filter(x => x.apt.gu === filterGu) : withRegion;
     const forRegion = (moveInFilter !== "전체" ? base.filter(x => classifyMoveIn(x.apt) === moveInFilter) : base).filter(x => builderTier === "전체" || classifyTier(x.apt) === builderTier);
     const forGu = filterRegion !== "전체" ? forRegion.filter(x => x.apt.region === filterRegion) : forRegion;
     const forMoveIn = builderTier !== "전체" ? withRegionGu.filter(x => classifyTier(x.apt) === builderTier) : withRegionGu;
     const forTier = moveInFilter !== "전체" ? withRegionGu.filter(x => classifyMoveIn(x.apt) === moveInFilter) : withRegionGu;
-    // Step 3: 카운트
+    // 카운트
     const regionCounts = Object.create(null);
     for (const { apt } of forRegion) if (apt.region) regionCounts[apt.region] = (regionCounts[apt.region] || 0) + 1;
     const guCounts = Object.create(null);
     for (const { apt } of forGu) if (apt.gu) guCounts[apt.gu] = (guCounts[apt.gu] || 0) + 1;
-    const moveInCounts = { "입주예정": 0, "미입주": 0, "입주완료": 0 };
+    const moveInCounts = Object.fromEntries(MOVEIN_VALUES.map(v => [v, 0]));
     for (const { apt } of forMoveIn) { const mi = classifyMoveIn(apt); if (mi) moveInCounts[mi]++; }
-    const tierCounts = { "1군": 0, "2군": 0, "기타": 0 };
+    const tierCounts = Object.fromEntries(TIER_VALUES.map(v => [v, 0]));
     for (const { apt } of forTier) tierCounts[classifyTier(apt)]++;
     return { regionCounts, guCounts, moveInCounts, tierCounts };
-  }, [scored, filterRegion, filterGu, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, debouncedSearchText, showFavOnly, favoriteIds]);
+  }, [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier]);
 
   // 데이터 최신성 텍스트 (ISO 날짜 표시)
   const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { VALID_SORT_KEYS } from "@/constants/sortOptions";
+import { MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 
 const LS_CUSTOM_PRESETS = "mibunyang_custom_presets";
 const LS_FILTER_HISTORY = "mibunyang_filter_history";
@@ -26,8 +27,8 @@ const FILTER_URL_MAP = [
   ["searchText", "q", "", "text50"],
 ];
 
-const VALID_TIERS = new Set(["전체", "1군", "2군", "기타"]);
-const VALID_MOVEIN = new Set(["전체", "입주예정", "미입주", "입주완료"]);
+const VALID_TIERS = new Set(["전체", ...TIER_VALUES]);
+const VALID_MOVEIN = new Set(["전체", ...MOVEIN_VALUES]);
 
 /** 숫자 파라미터 파싱 — isFinite + 하한 0 클램핑 */
 function parseNumParam(str, max = Infinity) {

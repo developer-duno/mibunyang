@@ -1,0 +1,111 @@
+import { describe, it, expect } from "vitest";
+import { applyBaseFilters } from "@/lib/filterEngine";
+
+/* ── 테스트 데이터 팩토리 ── */
+function makeItem(aptOverrides = {}, resOverrides = {}) {
+  return {
+    apt: { id: "t1", name: "테스트아파트", region: "서울", gu: "강남구", price: 50000, area: 84, units: 500, builder: "현대건설", ...aptOverrides },
+    res: { total: 75, cats: { benefit: { totalWon: 0 } }, ...resOverrides },
+  };
+}
+
+const DEFAULT_FILTER = {
+  showFavOnly: false, favoriteIds: [],
+  budgetMin: "", budgetMax: "",
+  areaMin: "", areaMax: "",
+  unitsMin: "", unitsMax: "",
+  minScore: "", benefitOnly: false, searchText: "",
+};
+
+describe("applyBaseFilters", () => {
+  // 정상: 필터 없이 전체 반환
+  it("필터 없으면 전체 반환", () => {
+    const items = [makeItem(), makeItem({ id: "t2" })];
+    expect(applyBaseFilters(items, DEFAULT_FILTER)).toHaveLength(2);
+  });
+
+  // 예산 필터: 최소/최대 (만원 → 원 변환)
+  it("budgetMin 필터 적용", () => {
+    const items = [makeItem({ price: 30000 }), makeItem({ id: "t2", price: 60000 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, budgetMin: "4" });
+    // 4억 = 40000만원, price >= 40000
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  it("budgetMax 필터 적용", () => {
+    const items = [makeItem({ price: 30000 }), makeItem({ id: "t2", price: 60000 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, budgetMax: "4" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t1");
+  });
+
+  // 예산 역전 시 자동 스왑
+  it("budgetMin > budgetMax이면 자동 스왑", () => {
+    const items = [makeItem({ price: 30000 }), makeItem({ id: "t2", price: 50000 }), makeItem({ id: "t3", price: 70000 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, budgetMin: "6", budgetMax: "4" });
+    // 스왑: effectiveMin=4, effectiveMax=6 → 40000 <= price <= 60000
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  // 면적 필터
+  it("areaMin/areaMax 필터 적용", () => {
+    const items = [makeItem({ area: 59 }), makeItem({ id: "t2", area: 84 }), makeItem({ id: "t3", area: 120 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, areaMin: "60", areaMax: "100" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  // 세대수 필터
+  it("unitsMin 필터 적용", () => {
+    const items = [makeItem({ units: 200 }), makeItem({ id: "t2", units: 1000 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, unitsMin: "500" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  // 최소 점수 필터
+  it("minScore 필터 적용", () => {
+    const items = [makeItem({}, { total: 60 }), makeItem({ id: "t2" }, { total: 80 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, minScore: "70" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  // 혜택 필터
+  it("benefitOnly 필터 적용", () => {
+    const items = [makeItem(), makeItem({ id: "t2" }, { cats: { benefit: { totalWon: 500 } } })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, benefitOnly: true });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  // 즐겨찾기 필터
+  it("showFavOnly 필터 적용", () => {
+    const items = [makeItem(), makeItem({ id: "t2" })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, showFavOnly: true, favoriteIds: ["t2"] });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  // 검색어 필터 (이름 매칭)
+  it("searchText 필터 — 이름 매칭", () => {
+    const items = [makeItem({ name: "힐스테이트" }), makeItem({ id: "t2", name: "래미안" })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, searchText: "래미안" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  // 빈 배열 입력
+  it("빈 배열 입력 시 빈 배열 반환", () => {
+    expect(applyBaseFilters([], DEFAULT_FILTER)).toHaveLength(0);
+  });
+
+  // null 안전: area/units null
+  it("area null이면 areaMin 필터에서 0으로 취급", () => {
+    const items = [makeItem({ area: null })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, areaMin: "60" });
+    expect(result).toHaveLength(0);
+  });
+});
