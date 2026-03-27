@@ -103,6 +103,14 @@ describe('useFavorites', () => {
     expect(result.current.favoriteIds).toEqual(["apt-100", "apt-200"]);
   });
 
+  it('setFavoriteIds 함수 인자 — 콜백으로 필터링', () => {
+    const { result } = renderHook(() => useFavorites(vi.fn()));
+    act(() => { result.current.setFavoriteIds(["apt-1", "apt-2", "apt-3"]); });
+    expect(result.current.favoriteIds).toHaveLength(3);
+    act(() => { result.current.setFavoriteIds(prev => prev.filter(id => id !== "apt-2")); });
+    expect(result.current.favoriteIds).toEqual(["apt-1", "apt-3"]);
+  });
+
   it('quota exceeded 시 showToast 호출', () => {
     const showToast = vi.fn();
     const origSet = Storage.prototype.setItem;

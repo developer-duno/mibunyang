@@ -33,12 +33,23 @@ export function useFavorites(showToast) {
     });
   }, []);
 
-  // setFavoriteIds — 하위 호환 래퍼 (배열을 받아서 객체로 변환)
-  const setFavoriteIds = useCallback((ids) => {
-    if (Array.isArray(ids)) {
+  // setFavoriteIds — 하위 호환 래퍼 (배열 또는 함수 인자 지원)
+  const setFavoriteIds = useCallback((idsOrFn) => {
+    if (typeof idsOrFn === "function") {
+      setFavoritesObj(prev => {
+        const prevIds = Object.keys(prev);
+        const nextIds = idsOrFn(prevIds);
+        if (!Array.isArray(nextIds)) return prev;
+        const next = {};
+        for (const id of nextIds) {
+          next[id] = prev[id] || { memo: "", tags: [], addedAt: new Date().toISOString() };
+        }
+        return next;
+      });
+    } else if (Array.isArray(idsOrFn)) {
       setFavoritesObj(prev => {
         const next = {};
-        for (const id of ids) {
+        for (const id of idsOrFn) {
           next[id] = prev[id] || { memo: "", tags: [], addedAt: new Date().toISOString() };
         }
         return next;
