@@ -438,7 +438,21 @@ CREATE TRIGGER trg_trade_stats_updated BEFORE UPDATE ON trade_stats
 -- VIEW: 평탄화된 아파트 데이터 (기존 JSON과 동일 형태)
 -- ============================================================
 CREATE OR REPLACE VIEW apartments_flat AS
-WITH latest_prices AS (
+WITH dedup_ranked AS (
+  SELECT *,
+    ROW_NUMBER() OVER (
+      PARTITION BY regexp_replace(name, '\([^)]*\)$', ''),
+                   region,
+                   COALESCE(gu, ''),
+                   COALESCE(dong, '')
+      ORDER BY id DESC
+    ) AS _dedup_rank
+  FROM apartments
+),
+deduped AS (
+  SELECT * FROM dedup_ranked WHERE _dedup_rank = 1
+),
+latest_prices AS (
   SELECT DISTINCT ON (apartment_id)
     apartment_id, area, price, pp
   FROM prices
@@ -605,7 +619,7 @@ SELECT
     (CASE WHEN ts.jeonse_rate IS NOT NULL THEN 10 ELSE 0 END) +
     (CASE WHEN a.units > 1 THEN 10 ELSE 0 END)
   ))) AS "dataReliability"
-FROM apartments a
+FROM deduped a
 LEFT JOIN latest_prices p ON p.apartment_id = a.id
 LEFT JOIN infra i ON i.apartment_id = a.id
 LEFT JOIN schools sc ON sc.apartment_id = a.id
