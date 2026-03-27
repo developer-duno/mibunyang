@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { VALID_SORT_KEYS } from "@/constants/sortOptions";
 import { MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 
@@ -25,6 +25,13 @@ const FILTER_URL_MAP = [
   ["unitsMax", "umax", "", "num"],
   ["moveInFilter", "movein", "전체", "moveIn"],
   ["searchText", "q", "", "text50"],
+  // Phase B: 카테고리별 최소 점수
+  ["min_price", "cprice", "", "numClamp100"],
+  ["min_location", "cloc", "", "numClamp100"],
+  ["min_product", "cprod", "", "numClamp100"],
+  ["min_benefit", "cbenefit", "", "numClamp100"],
+  ["min_risk", "crisk", "", "numClamp100"],
+  ["min_future", "cfuture", "", "numClamp100"],
 ];
 
 const VALID_TIERS = new Set(["전체", ...TIER_VALUES]);
@@ -108,12 +115,19 @@ export function useFilterSort({ onFilterChange }) {
   const [minScore, setMinScore] = useState(() => urlInit.current?.minScore ?? "");
   const [builderTier, setBuilderTier] = useState(() => urlInit.current?.builderTier ?? "전체");
   const [benefitOnly, setBenefitOnly] = useState(() => urlInit.current?.benefitOnly ?? false);
+  // 카테고리별 최소 점수
+  const [min_price, setMinPrice] = useState(() => urlInit.current?.min_price ?? "");
+  const [min_location, setMinLocation] = useState(() => urlInit.current?.min_location ?? "");
+  const [min_product, setMinProduct] = useState(() => urlInit.current?.min_product ?? "");
+  const [min_benefit, setMinBenefit] = useState(() => urlInit.current?.min_benefit ?? "");
+  const [min_risk, setMinRisk] = useState(() => urlInit.current?.min_risk ?? "");
+  const [min_future, setMinFuture] = useState(() => urlInit.current?.min_future ?? "");
 
   // URL 동기화 (debounce 300ms, replaceState)
   const isInitialLoad = useRef(true);
   useEffect(() => {
     if (isInitialLoad.current) { isInitialLoad.current = false; return; }
-    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText };
+    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future };
     const timer = setTimeout(() => {
       try {
         const newUrl = serializeToURL(state);
@@ -124,7 +138,7 @@ export function useFilterSort({ onFilterChange }) {
       } catch { /* iframe/cross-origin 환경에서 무시 */ }
     }, 300);
     return () => clearTimeout(timer);
-  }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText]);
+  }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future]);
 
   const handleMoveInChange = useCallback((val) => { setMoveInFilter(val); onFilterChange?.(); }, [onFilterChange]);
   const toggleFilterCollapsed = useCallback(() => setFilterCollapsed(p => !p), []);
@@ -143,6 +157,14 @@ export function useFilterSort({ onFilterChange }) {
   const handleUnitsMinChange = useCallback((val) => { setUnitsMin(val); onFilterChange?.(); }, [onFilterChange]);
   const handleUnitsMaxChange = useCallback((val) => { setUnitsMax(val); onFilterChange?.(); }, [onFilterChange]);
   const handleAreaUnitsReset = useCallback(() => { setAreaMin(""); setAreaMax(""); setUnitsMin(""); setUnitsMax(""); onFilterChange?.(); }, [onFilterChange]);
+  const handleCatMinChange = useCallback((catKey, val) => {
+    const setter = { price: setMinPrice, location: setMinLocation, product: setMinProduct, benefit: setMinBenefit, risk: setMinRisk, future: setMinFuture }[catKey];
+    if (setter) { setter(val); onFilterChange?.(); }
+  }, [onFilterChange]);
+  const handleCatMinReset = useCallback(() => {
+    setMinPrice(""); setMinLocation(""); setMinProduct(""); setMinBenefit(""); setMinRisk(""); setMinFuture(""); onFilterChange?.();
+  }, [onFilterChange]);
+  const catMinScores = useMemo(() => ({ min_price, min_location, min_product, min_benefit, min_risk, min_future }), [min_price, min_location, min_product, min_benefit, min_risk, min_future]);
 
   // setter 맵 — FILTER_URL_MAP stateKey → React setter (DRY: 새 필터 추가 시 여기에도 추가)
   const SETTERS = {
@@ -151,6 +173,8 @@ export function useFilterSort({ onFilterChange }) {
     builderTier: setBuilderTier, benefitOnly: setBenefitOnly,
     areaMin: setAreaMin, areaMax: setAreaMax, unitsMin: setUnitsMin, unitsMax: setUnitsMax,
     moveInFilter: setMoveInFilter, searchText: setSearchText,
+    min_price: setMinPrice, min_location: setMinLocation, min_product: setMinProduct,
+    min_benefit: setMinBenefit, min_risk: setMinRisk, min_future: setMinFuture,
   };
 
   /** 공통 필터 리셋 — overrides로 프리셋 값 덮어쓰기 */
@@ -172,10 +196,10 @@ export function useFilterSort({ onFilterChange }) {
 
   /** 현재 필터 상태의 공유 URL 생성 (debounce 무관, 즉시) */
   const getShareURL = useCallback(() => {
-    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText };
+    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future };
     const search = serializeToURL(state);
     return `${window.location.origin}${window.location.pathname}${search.startsWith("?") ? search : ""}`;
-  }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText]);
+  }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future]);
 
   /* ── 커스텀 프리셋 저장/삭제 (localStorage) ── */
   const [customPresets, setCustomPresets] = useState(() => {
@@ -186,14 +210,14 @@ export function useFilterSort({ onFilterChange }) {
     if (!name?.trim()) return;
     const values = {};
     for (const [stateKey, , defaultVal] of FILTER_URL_MAP) {
-      const cur = SETTERS[stateKey] ? { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText }[stateKey] : undefined;
+      const cur = SETTERS[stateKey] ? { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future }[stateKey] : undefined;
       if (cur !== defaultVal && cur !== "" && cur != null && cur !== false) values[stateKey] = cur;
     }
     const preset = { key: `custom_${Date.now()}`, label: name.trim().slice(0, 12), desc: "사용자 프리셋", values, custom: true };
     const next = [...customPresets.filter(p => p.label !== preset.label), preset].slice(-10);
     setCustomPresets(next);
     try { localStorage.setItem(LS_CUSTOM_PRESETS, JSON.stringify(next)); } catch {}
-  }, [customPresets, filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText]);
+  }, [customPresets, filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future]);
 
   const deleteCustomPreset = useCallback((key) => {
     const next = customPresets.filter(p => p.key !== key);
@@ -228,7 +252,7 @@ export function useFilterSort({ onFilterChange }) {
   useEffect(() => {
     if (isHistoryInitial.current) { isHistoryInitial.current = false; return; }
     if (skipHistory.current) { skipHistory.current = false; return; }
-    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText };
+    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future };
     const timer = setTimeout(() => saveToHistory(state), 500);
     return () => clearTimeout(timer);
   }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, saveToHistory]);
@@ -250,7 +274,8 @@ export function useFilterSort({ onFilterChange }) {
   const getCurrentSnapshot = useCallback(() => ({
     filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly,
     areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, showFavOnly,
-  }), [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, showFavOnly]);
+    min_price, min_location, min_product, min_benefit, min_risk, min_future,
+  }), [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, showFavOnly, min_price, min_location, min_product, min_benefit, min_risk, min_future]);
 
   // 필터 변경 시 undo 스택에 이전 상태 푸시
   const prevSnapshot = useRef(null);
@@ -296,5 +321,5 @@ export function useFilterSort({ onFilterChange }) {
     applySnapshot(next);
   }, [getCurrentSnapshot, applySnapshot]);
 
-  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo };
+  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, catMinScores, handleCatMinChange, handleCatMinReset };
 }

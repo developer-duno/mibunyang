@@ -57,17 +57,23 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose
           <tbody>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
               <td style={{ padding: "10px 6px", fontWeight: 700, color: C.text }}>종합</td>
-              {items.map(it => { const g2 = gr(it.res.total); const isMax = it.res.total === Math.max(...items.map(x => x.res.total)); return (
+              {items.map(it => { const g2 = gr(it.res.total); const isMax = it.res.total === Math.max(...items.map(x => x.res.total)); const v = Math.max(0, Math.min(it.res.total ?? 0, 100)); return (
                 <td key={it.apt.id} style={{ textAlign: "center", padding: "10px 6px" }}>
                   <span style={{ fontSize: 22, fontWeight: 800, color: g2.c }}>{it.res.total}</span>
                   {isMax && <span style={{ fontSize: 11, fontWeight: 700, color: C.blue, display: "block", background: C.blueLight, borderRadius: 4, padding: "1px 6px", marginTop: 2 }}>최고</span>}
+                  <div style={{ background: "#ECEEF4", borderRadius: 99, height: 5, width: "100%", overflow: "hidden", marginTop: 4 }}><div style={{ width: `${v}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${g2.c}90,${g2.c})`, transition: "width .5s ease" }} /></div>
                 </td>
               ); })}
             </tr>
             {cats.map((k, idx) => { const scores = items.map(it => it.res.cats[k].total); const mx = Math.max(...scores); return (
               <tr key={k} style={{ borderBottom: `1px solid ${C.border}`, background: idx % 2 === 1 ? "#FAFBFD" : "transparent" }}>
                 <td style={{ padding: "8px 6px", color: C.sub, fontSize: 11 }}>{items[0].res.cats[k].label.split("·")[0]}</td>
-                {scores.map((s, i) => <td key={items[i].apt.id} style={{ textAlign: "center", padding: "8px 6px" }}><span style={{ fontWeight: 700, color: s === mx ? catCol[k] : C.muted }}>{s}</span></td>)}
+                {scores.map((s, i) => { const sv = Math.max(0, Math.min(s ?? 0, 100)); const col = catCol[k] || C.blue; return (
+                  <td key={items[i].apt.id} style={{ textAlign: "center", padding: "8px 6px" }}>
+                    <span style={{ fontWeight: 700, color: s === mx ? col : C.muted }}>{s}</span>
+                    <div style={{ background: "#ECEEF4", borderRadius: 99, height: 4, width: "100%", overflow: "hidden", marginTop: 3 }}><div style={{ width: `${sv}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${col}90,${col})`, transition: "width .5s ease" }} /></div>
+                  </td>
+                ); })}
               </tr>
             ); })}
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>

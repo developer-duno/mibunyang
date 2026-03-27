@@ -108,4 +108,47 @@ describe("applyBaseFilters", () => {
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, areaMin: "60" });
     expect(result).toHaveLength(0);
   });
+
+  // --- 카테고리별 최소 점수 필터 테스트 ---
+
+  function makeCatItem(id, catScores) {
+    const cats = {};
+    for (const [k, v] of Object.entries(catScores)) {
+      cats[k] = { total: v, label: k, subs: [] };
+    }
+    return { apt: { id, name: `apt-${id}`, region: "서울", gu: "강남구", price: 50000, area: 84, units: 500 }, res: { total: 75, cats } };
+  }
+
+  it("단일 카테고리 min 필터 — location 70 이상", () => {
+    const items = [
+      makeCatItem("a1", { price: 60, location: 80, product: 50, benefit: 40, risk: 70, future: 60 }),
+      makeCatItem("a2", { price: 70, location: 50, product: 60, benefit: 50, risk: 80, future: 70 }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, min_location: "70" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("a1");
+  });
+
+  it("복수 카테고리 AND 필터 — location 70+ AND price 60+", () => {
+    const items = [
+      makeCatItem("a1", { price: 60, location: 80, product: 50, benefit: 40, risk: 70, future: 60 }),
+      makeCatItem("a2", { price: 50, location: 90, product: 60, benefit: 50, risk: 80, future: 70 }),
+      makeCatItem("a3", { price: 80, location: 50, product: 60, benefit: 50, risk: 80, future: 70 }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, min_location: "70", min_price: "60" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("a1");
+  });
+
+  it("min=0 → 전체 통과", () => {
+    const items = [makeCatItem("a1", { price: 0, location: 0, product: 0, benefit: 0, risk: 0, future: 0 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, min_price: "0" });
+    expect(result).toHaveLength(1);
+  });
+
+  it("cats 필드 null인 경우 → 0으로 취급", () => {
+    const item = { apt: { id: "n1", name: "test", region: "서울", gu: "강남구", price: 50000, area: 84, units: 500 }, res: { total: 75, cats: { price: null, location: { total: 80, subs: [] } } } };
+    const result = applyBaseFilters([item], { ...DEFAULT_FILTER, min_price: "50" });
+    expect(result).toHaveLength(0);
+  });
 });

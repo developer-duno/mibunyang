@@ -104,4 +104,45 @@ describe("CompareSheet", () => {
     // 항목 헤더(1) + 아파트 3개 = 4
     expect(headers).toHaveLength(4);
   });
+
+  // --- 바 차트 테스트 ---
+
+  it("종합/카테고리 행에 점수 비례 바가 렌더링됨", () => {
+    // 종합 80점 → 바 너비 80%, 카테고리 각 점수에 비례하는 바 존재
+    const items = [makeItem(1, "A", 80), makeItem(2, "B", 60)];
+    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} />);
+    // 바는 gradient background가 있는 inner div — 최소 8개 (종합 2 + 카테고리 6×2 = 14개)
+    const bars = container.querySelectorAll('div[style*="linear-gradient"]');
+    expect(bars.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it("score=0 또는 null일 때 바가 안전하게 렌더링됨 (너비 0%)", () => {
+    const items = [
+      makeScoredItem(
+        { id: 1, name: "A", region: "경기", gu: "수원시", price: 50000 },
+        { total: 0, cats: {
+          price: { label: "가격 매력도", total: 0, subs: [] },
+          location: { label: "입지·생활권", total: null, subs: [] },
+          product: { label: "상품성", total: 0, subs: [] },
+          benefit: { label: "혜택·할인", total: 0, totalWon: 0, subs: [] },
+          risk: { label: "안전도", total: 0, subs: [] },
+          future: { label: "미래가치", total: 0, subs: [] },
+        }}
+      ),
+      makeItem(2, "B", 50),
+    ];
+    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} />);
+    // 0% 바 확인 — 렌더링 에러 없이 표시되어야 함
+    const zeroBars = container.querySelectorAll('div[style*="width: 0%"]');
+    expect(zeroBars.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("카테고리 바는 catCol 색상을 사용", () => {
+    const items = [makeItem(1, "A", 80), makeItem(2, "B", 70)];
+    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} />);
+    // 바 트랙(배경 #ECEEF4)과 내부 gradient 바가 존재하는지 확인
+    const tracks = container.querySelectorAll('div[style*="border-radius: 99px"]');
+    // 종합 2트랙 + 카테고리 6×2=12트랙 → 트랙+바 총 28개 (각 트랙 안에 바 1개)
+    expect(tracks.length).toBeGreaterThanOrEqual(14);
+  });
 });

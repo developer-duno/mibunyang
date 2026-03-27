@@ -44,6 +44,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterHistory, onApplyHistory, onClearHistory,
   onUndo, onRedo, canUndo, canRedo,
   filterOptionCounts,
+  catMinScores, onCatMinChange, onCatMinReset,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
   const prevLenRef = useRef(filteredLength);
@@ -321,6 +322,37 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           <button onClick={() => { onMinScoreChange(""); onBuilderTierChange("전체"); if (benefitOnly) onToggleBenefitOnly(); }} aria-label="점수/시공사/혜택 초기화" style={resetBtn(28)}>✕</button>
         )}
       </div>
+      {/* 6행: 카테고리별 최소 점수 (접이식) */}
+      {catMinScores && (() => {
+        const CAT_UI = [
+          { key: "price", label: "가격", fKey: "min_price" },
+          { key: "location", label: "입지", fKey: "min_location" },
+          { key: "product", label: "상품", fKey: "min_product" },
+          { key: "benefit", label: "혜택", fKey: "min_benefit" },
+          { key: "risk", label: "안전", fKey: "min_risk" },
+          { key: "future", label: "미래", fKey: "min_future" },
+        ];
+        const hasCatFilter = Object.values(catMinScores).some(Boolean);
+        return (
+          <div style={{ marginTop: 6 }}>
+            <button onClick={() => {}} aria-label="카테고리 점수 필터 토글" style={{ background: "transparent", border: "none", padding: 0, fontSize: 11, color: hasCatFilter ? C.indigo : C.muted, fontWeight: 600, cursor: "pointer", marginBottom: 4 }}>
+              ▸ 카테고리별 최소 점수 {hasCatFilter ? `(${Object.values(catMinScores).filter(Boolean).length})` : ""}
+            </button>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
+              {CAT_UI.map(({ key, label, fKey }) => (
+                <div key={key} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: catCol?.[key] || C.muted, minWidth: 22 }}>{label}</span>
+                  <input type="number" inputMode="numeric" min="0" max="100"
+                    value={catMinScores[fKey] ?? ""} onChange={e => onCatMinChange?.(key, e.target.value)}
+                    placeholder="0" aria-label={`${label} 최소 점수`}
+                    style={{ ...numInput(catMinScores[fKey], 26), maxWidth: 48, fontSize: 10 }} />
+                </div>
+              ))}
+            </div>
+            {hasCatFilter && <button onClick={onCatMinReset} aria-label="카테고리 점수 초기화" style={{ ...resetBtn(24), marginTop: 4, fontSize: 10 }}>카테고리 초기화</button>}
+          </div>
+        );
+      })()}
       </>}
     </div>
   );

@@ -34,6 +34,16 @@ export function applyBaseFilters(list, f) {
   // 최소 점수
   if (f.minScore) { const ms = Number(f.minScore); if (Number.isFinite(ms)) out = out.filter(x => x.res.total >= ms); }
 
+  // 카테고리별 최소 점수 (AND 로직)
+  const CAT_KEYS = ["price", "location", "product", "benefit", "risk", "future"];
+  for (const ck of CAT_KEYS) {
+    const key = `min_${ck}`;
+    if (f[key]) {
+      const mv = Number(f[key]);
+      if (Number.isFinite(mv)) out = out.filter(x => (x.res.cats[ck]?.total ?? 0) >= mv);
+    }
+  }
+
   // 혜택 유무
   if (f.benefitOnly) out = out.filter(x => (x.res.cats.benefit?.totalWon ?? 0) > 0);
 
