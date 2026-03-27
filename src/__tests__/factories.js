@@ -23,6 +23,7 @@ export function makeApt(overrides = {}) {
     unsoldRate: 15, recentTrades6m: 20, dsr40pass: true, hugGuarantee: true,
     builderCreditGrade: "AA", builderDebtRatio: 100, supplyRatio: 100,
     popGrowth: 0.3, netMigration: 500,
+    avgMaintenanceCost: 0, _regionAvgMaint: 0,
     transitDev: "GTX-C 착공", devDist: 1, cityDev: "신도시", industryDev: "테크노밸리",
     lat: 37.2636, lng: 127.0286,
     ...overrides,

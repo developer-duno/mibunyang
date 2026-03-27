@@ -20,7 +20,7 @@ import {
   INTEREST_RATE, LOAN_TERM_MULT, BENEFIT_FULL_RATE,
   FUTURE_WEIGHT_MAP,
   PRICE_NO_DATA_DEFAULTS, DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
-  DIRECTION_BONUS, SUNLIGHT_DIRECTION_MAX, WON_TO_MANWON,
+  DIRECTION_BONUS, SUNLIGHT_DIRECTION_MAX,
 } from "@/constants/scoringTiers";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
@@ -251,9 +251,9 @@ export function scoreBenefit(apt) {
   const optVal = apt.optionFree ? apt.optionValue : 0;
   const balVal = apt.balconyFree ? apt.balconyValue : 0;
   const cashVal = apt.cashback;
-  // 관리비 절감액: 지역 평균보다 낮으면 연간 절감액을 혜택에 합산 (만원 단위)
+  // 관리비 절감액: 지역 평균보다 낮으면 연간 절감액을 혜택에 합산 (만원/세대/월 단위)
   const maintSave = apt._regionAvgMaint > 0 && apt.avgMaintenanceCost > 0
-    ? Math.max(0, Math.round((apt._regionAvgMaint - apt.avgMaintenanceCost) * apt.area * 12 / WON_TO_MANWON))
+    ? Math.max(0, Math.round((apt._regionAvgMaint - apt.avgMaintenanceCost) * 12))
     : 0;
   const totalWon = discVal + loanVal + optVal + balVal + cashVal + maintSave;
   const rate = apt.price > 0 ? (totalWon / apt.price) * 100 : 0;

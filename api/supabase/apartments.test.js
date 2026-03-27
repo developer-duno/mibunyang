@@ -262,7 +262,7 @@ describe('sanitize (null → 기본값)', () => {
       address: '경기도 화성시 동탄면 123',
       roadAddress: '경기도 화성시 동탄대로 456',
       district: '동탄2신도시',
-      avgMaintenanceCost: 15000,
+      avgMaintenanceCost: 15,
       primaryDirection: '남향',
     };
     mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
@@ -272,7 +272,7 @@ describe('sanitize (null → 기본값)', () => {
     expect(d.address).toBe('경기도 화성시 동탄면 123');
     expect(d.roadAddress).toBe('경기도 화성시 동탄대로 456');
     expect(d.district).toBe('동탄2신도시');
-    expect(d.avgMaintenanceCost).toBe(15000);
+    expect(d.avgMaintenanceCost).toBe(15);
     expect(d.primaryDirection).toBe('남향');
   });
 

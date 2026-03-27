@@ -169,6 +169,23 @@ describe('scoreBenefit', () => {
   it('price=0 -> 0점', () => {
     expect(scoreBenefit(makeApt({ price: 0 })).total).toBe(0);
   });
+
+  // 관리비 절감 테스트 — 만원 단위, 면적 미곱셈
+  it('관리비 절감 — 지역 평균보다 낮으면 연간 절감액 합산', () => {
+    const apt = makeApt({ avgMaintenanceCost: 15, _regionAvgMaint: 20, discountPct: 0, loanFree: false, optionFree: false, balconyFree: false, cashback: 0 });
+    const r = scoreBenefit(apt);
+    // (20 - 15) × 12 = 60 만원
+    expect(r.subs[5].name).toBe("관리비 절감");
+    expect(r.subs[5].info).toContain("60");
+    expect(r.totalWon).toBe(60);
+  });
+
+  it('관리비 절감 — 아파트가 지역 평균보다 비싸면 0', () => {
+    const apt = makeApt({ avgMaintenanceCost: 25, _regionAvgMaint: 20, discountPct: 0, loanFree: false, optionFree: false, balconyFree: false, cashback: 0 });
+    const r = scoreBenefit(apt);
+    expect(r.subs[5].info).toBe("-");
+    expect(r.totalWon).toBe(0);
+  });
 });
 
 describe('scoreRisk', () => {

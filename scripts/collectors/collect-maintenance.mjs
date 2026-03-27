@@ -155,11 +155,11 @@ async function main() {
         if (totalCost == null || totalCost <= 0) { rpt.skip(1); continue; }
         if (!totalHouseholds) { rpt.skip(1); continue; }
 
-        // 세대당 관리비 = 전체 관리비 / 총 세대수
-        const perUnit = Math.round(totalCost / totalHouseholds);
+        // 세대당 관리비 (만원) = 전체 관리비(원) / 총 세대수 / 10000
+        const perUnit = Math.round(totalCost / totalHouseholds / 10000);
 
         if (dryRun) {
-          log(PHASE, `  [DRY-RUN] ${target.name}: ${perUnit.toLocaleString("ko-KR")}원/세대 (총 ${totalCost.toLocaleString("ko-KR")}원 ÷ ${totalHouseholds}세대)`);
+          log(PHASE, `  [DRY-RUN] ${target.name}: ${perUnit}만원/세대 (총 ${totalCost.toLocaleString("ko-KR")}원 ÷ ${totalHouseholds}세대)`);
           rpt.success(1);
           continue;
         }
