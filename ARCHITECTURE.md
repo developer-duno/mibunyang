@@ -20,19 +20,27 @@ src/
 │   └── index.js            C(팔레트), catCol, catBg, gr(등급함수)
 ├── components/             규칙: components/CLAUDE.md
 │   ├── primitives.jsx      Bar, ScoreBadge, Radar (memo)
-│   ├── AptCard.jsx / CatPanel.jsx / CompareSheet.jsx
+│   ├── AptCard.jsx / CatPanel.jsx / CompareSheet.jsx (PNG/PDF 내보내기)
 │   ├── DetailModal.jsx / ConsultForm.jsx / ShareSheet.jsx
+│   ├── sections/
+│   │   ├── MapView.jsx     Kakao Map 지도 뷰 (동적 SDK 로드, 가격 라벨 마커, 현위치)
+│   │   └── InfraOverlay.jsx 인프라 카테고리 토글 (지하철/병원/마트/학교)
 │   ├── expert/             전문가 UI (PC 우선, 1200px)
 │   └── admin/              관리자 UI
 ├── hooks/
 │   ├── useApartmentData.js ★ 데이터 로딩 진입점
 │   ├── useFilterSort.js / useComparison.js / useFavorites.js
 │   └── useExpertMode.js / useAdminMode.js / useToast.js
+├── lib/
+│   ├── classify.js         입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
+│   ├── filterEngine.js     공통 base 필터 (applyBaseFilters, MANWON_PER_EUK)
+│   ├── exportPdf.js        비교 결과 PNG/PDF 내보내기 (dynamic import)
+│   ├── chosung.js          초성 검색 (matchSearch)
+│   └── format.js           가격/날짜 포맷 (fmtPrice, fmtCompletion)
 ├── services/
 │   ├── staticDataApi.js    ★ Supabase API 또는 JSON 폴백
 │   ├── applyhomeApi.js / kakaoApi.js / neisApi.js / kosisApi.js / dartApi.js
-│   └── (lib/) chosung.js / format.js
-└── App.jsx                 오케스트레이터 (훅 조합 + 렌더)
+└── App.jsx                 오케스트레이터 (훅 조합 + 렌더 + SORTERS 모듈 상수)
 
 api/                        Vercel Serverless — 규칙: api/CLAUDE.md
 ├── _lib/                   auth.js, adminAuth.js, supabase.js
@@ -124,11 +132,24 @@ const scored = useMemo(() =>
   [catsCache, profile, customWeights]
 );
 
-// 3단계: 지역 필터 + 예산 + 검색 + 정렬
-const filtered = useMemo(() =>
-  scored.filter(지역+예산+검색조건).sort(정렬조건),
-  [scored, filterRegion, filterGu, sortKey, budgetMin, budgetMax, debouncedSearchText]
-);
+// 2.5단계: base 필터 인자 메모이제이션 (leave-one-out 패턴용)
+const baseFilterArgs = useMemo(() => ({
+  showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax,
+  unitsMin, unitsMax, minScore, benefitOnly, searchText: debouncedSearchText,
+}), [11개 의존성]);
+
+// 3단계: base 필터 → 드롭다운 필터 → SORTERS 정렬
+const filtered = useMemo(() => {
+  let list = applyBaseFilters(scored, baseFilterArgs);  // filterEngine.js
+  // region, gu, moveIn, builderTier 드롭다운 필터 적용
+  return [...list].sort(SORTERS[sortKey] || SORTERS.total);  // 모듈 레벨 상수
+}, [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier]);
+
+// 3.5단계: 드롭다운별 leave-one-out 카운트 (필터 옵션 비활성화용)
+const filterOptionCounts = useMemo(() => {
+  const base = applyBaseFilters(scored, baseFilterArgs);
+  // 각 드롭다운만 제외하고 카운트 → {regionCounts, guCounts, moveInCounts, tierCounts}
+}, [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier]);
 
 // 4단계: 비교 대상 추출 (O(1) Map 조회)
 const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
@@ -265,6 +286,13 @@ App
 │   │       ├── Bar (memo) * 3 ← 상위 카테고리 미니 바
 │   │       └── 3버튼 (상세보기/관심매물/비교추가)
 │   │
+│   ├── [tab === "map"]
+│   │   └── MapView (memo, lazy) ← Kakao Map 지도 뷰
+│   │       ├── InfraOverlay (memo) ← 인프라 토글 (지하철/병원/마트/학교)
+│   │       ├── 현위치 버튼 (geolocation API)
+│   │       ├── 가격 라벨 마커 (buildMarkerSvg, 점수+가격 배지)
+│   │       └── 선택 아파트 정보 카드
+│   │
 │   ├── [tab === "consult"]
 │   │   └── ConsultForm (memo) ← 상담 신청 폼
 │   │
@@ -309,7 +337,9 @@ App
 | Radar | primitives.jsx | data, size |
 | CatPanel | CatPanel.jsx | cat, k |
 | AptCard | AptCard.jsx | apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights |
-| CompareSheet | CompareSheet.jsx | items |
+| CompareSheet | CompareSheet.jsx | items, onShare, onClose (+ PNG/PDF 내보내기 내장) |
+| MapView | sections/MapView.jsx | filtered, onDetail, isPC |
+| InfraOverlay | sections/InfraOverlay.jsx | mapInstance, ready |
 | ConsultForm | ConsultForm.jsx | scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast |
 | DetailModal | DetailModal.jsx | item, onClose, isComp, onComp, isFav, onFav |
 | ExpertFieldTable | expert/ | fields, apt |

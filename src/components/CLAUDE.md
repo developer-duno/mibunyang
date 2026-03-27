@@ -2,10 +2,10 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 30개 컴포넌트
+## memo() 32개 컴포넌트
 
 소비자 9개: Bar, ScoreBadge, Radar, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal
-섹션 6개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav
+섹션 8개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay
 상세 4개 (DetailModal에서 분리): PriceTable, SchoolInfo, LoanAnalysis, DataSections
 전문가 9개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide
 관리자 2개: AdminDashboard, AdminHelpGuide
@@ -39,16 +39,18 @@
 
 ## 컴포넌트 구조
 
-### App.jsx (368줄) — Hook + useMemo + 콜백 + 탭 라우팅만 담당
+### App.jsx (478줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
 | HeaderSection | 35 | 프로필 선택 + 헤더 |
-| SearchFilterBar | 100 | 검색/필터/정렬 |
+| SearchFilterBar | 327 | 검색/필터/정렬/프리셋/카운트 배지 |
 | AptListSection | 69 | 카드 그리드 + 비교 |
 | ExpertLoginForm | 157 | 전문가 로그인/회원가입 |
 | InfoPage | 58 | 스코어링 엔진 설명 |
 | BottomNav | 35 | 하단 네비게이션 |
+| MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라) |
+| InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
 ### DetailModal.jsx (107줄) — 모달 컨테이너만 담당
 분리된 상세 컴포넌트 (`src/components/detail/`):
