@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { fetchStaticApartments } from "@/services/staticDataApi";
+import { dedupApartments } from "@/lib/dedup";
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [2000, 4000];
@@ -19,8 +20,8 @@ export function useApartmentData() {
         if (signal?.aborted) return;
         const normalized = data.map(a => a.region && a.region.includes(",") ? { ...a, region: a.region.split(",")[0].trim() } : a);
         const seen = new Set();
-        const deduped = normalized.filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true; });
-        setApartments(deduped);
+        const idDeduped = normalized.filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true; });
+        setApartments(dedupApartments(idDeduped));
         setDataUpdatedAt(updAt ?? null);
         setError(null);
         setLoading(false);

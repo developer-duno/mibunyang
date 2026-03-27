@@ -286,6 +286,22 @@ export default function App() {
     }
   }, [expert.expertLoggedIn, tab, consult.fetchConsults]);
 
+  // dedup 후 localStorage에 남은 무효 ID 정리
+  useEffect(() => {
+    if (dataLoading || dataError || !apartments.length) return;
+    const validIds = new Set(apartments.map(a => a.id));
+    setFavoriteIds(ids => {
+      const next = ids.filter(id => validIds.has(id));
+      if (next.length === ids.length) return ids;
+      if (ids.length - next.length > 0) showToast(`데이터 변경으로 관심매물 ${ids.length - next.length}개가 정리되었습니다`);
+      return next;
+    });
+    setCompIds(ids => {
+      const next = ids.filter(id => validIds.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [apartments, dataLoading, dataError, setFavoriteIds, setCompIds, showToast]);
+
   const scoredMapRef = useRef(scoredMap);
   useEffect(() => { scoredMapRef.current = scoredMap; }, [scoredMap]);
   const handleShareDetail = useCallback((aptId) => {
