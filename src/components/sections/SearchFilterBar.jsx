@@ -46,6 +46,9 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterOptionCounts,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
+  const prevLenRef = useRef(filteredLength);
+  const delta = filteredLength != null && prevLenRef.current != null && prevLenRef.current !== filteredLength ? filteredLength - prevLenRef.current : null;
+  if (filteredLength != null && filteredLength !== prevLenRef.current) prevLenRef.current = filteredLength;
   const [showPresetInput, setShowPresetInput] = useState(false);
   const [presetName, setPresetName] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
@@ -118,7 +121,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           color: filteredLength === 0 ? C.red : C.indigo,
           background: filteredLength === 0 ? C.redLight : C.indigoLight,
           animation: `${BADGE_ANIM} 0.3s ease-out`
-        }}>{filteredLength} / {scoredLength}개</span>}
+        }}>{filteredLength} / {scoredLength}개{delta != null && <span style={{
+          fontSize: 9, marginLeft: 3, fontWeight: 600,
+          color: delta > 0 ? "#16A34A" : C.red
+        }}>{delta > 0 ? "+" : ""}{delta}</span>}</span>}
         {activeFilterCount > 0 && onResetAll && (
           <button onClick={onResetAll} aria-label="전체 필터 초기화" style={{
             flexShrink: 0, height: 22, padding: "0 6px", fontSize: 10, fontWeight: 600,
