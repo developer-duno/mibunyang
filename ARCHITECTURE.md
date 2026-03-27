@@ -28,7 +28,7 @@ src/
 │   ├── expert/             전문가 UI (PC 우선, 1200px)
 │   └── admin/              관리자 UI
 ├── hooks/
-│   ├── useApartmentData.js ★ 데이터 로딩 진입점
+│   ├── useApartmentData.js ★ 데이터 로딩 진입점 (dedupApartments 적용)
 │   ├── useFilterSort.js / useComparison.js / useFavorites.js (객체 기반)
 │   ├── usePriceHistory.js / useUnsoldHistory.js  (시계열 API 페칭)
 │   └── useExpertMode.js / useAdminMode.js / useToast.js
@@ -37,6 +37,7 @@ src/
 │   ├── filterEngine.js     공통 base 필터 (applyBaseFilters, MANWON_PER_EUK)
 │   ├── exportPdf.js        비교 결과 PNG/PDF 내보내기 (dynamic import)
 │   ├── chosung.js          초성 검색 (matchSearch)
+│   ├── dedup.js            아파트 중복 제거 순수 함수 (dedupApartments)
 │   └── format.js           가격/날짜 포맷 (fmtPrice, fmtCompletion)
 ├── services/
 │   ├── staticDataApi.js    ★ Supabase API 또는 JSON 폴백

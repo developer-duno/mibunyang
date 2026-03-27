@@ -23,7 +23,7 @@
 | articles | 네이버 매물 정보 | naver-collect.py |
 | complex_price_history | 네이버 시세 이력 | naver-collect.py |
 | consults | 상담 신청 | api/consults.js |
-| **apartments_flat** (VIEW) | 7개 테이블 JOIN 평탄화 | — |
+| **apartments_flat** (VIEW) | dedup CTE + 7개 테이블 JOIN 평탄화 | — |
 
 ## 시계열 테이블 스키마
 

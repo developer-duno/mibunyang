@@ -39,7 +39,7 @@
 
 ## 컴포넌트 구조
 
-### App.jsx (~487줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수
+### App.jsx (~509줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수 + dedup useEffect + 사업자 푸터
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
