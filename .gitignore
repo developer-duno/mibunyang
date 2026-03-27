@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .claude/
+.claude-memory/
 .env
 .env.*
 *.local
