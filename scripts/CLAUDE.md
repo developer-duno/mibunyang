@@ -59,6 +59,7 @@ bash scripts/post-naver-collect.sh
 | 네이버 부동산 | naver-collect.py | 1초 | 3회 | JWT 리셋 + 5×(i+1)초 대기 | 비공식 API, 429 빈번 |
 | 네이버 부동산 | naver-listings.mjs | 1초 | 5회 | JWT 리셋 + [3,5,10,15,20]초 | 위와 동일 API |
 | 네이버 부동산 | naver-units.mjs | 3초 | 3회 | JWT 리셋 + [5,10,20]초 | 검색 API는 더 민감 |
+| 네이버 분양 | naver-presale.mjs | 2초 | 3회 | JWT 리셋 + [5,10,20]초 | pre.land.naver.com, 한국 IP 필수 |
 | data.go.kr | molit-units, molit-building-info | 0.4초 | 3회 | (i+1)×2초 | 공공 API 초당 10건 제한 |
 | data.go.kr | housing-permits | fetchWithRetry 사용 | 3회 | 지수 백오프 | 공공 API |
 | data.go.kr | population, migration | fetchWithRetry 사용 | 3회 | 지수 백오프 | 공공 API |
