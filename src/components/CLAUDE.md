@@ -52,13 +52,13 @@
 | MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
-### DetailModal.jsx — 모달 컨테이너 + 상담 CTA
+### DetailModal.jsx (126줄) — 모달 컨테이너 + 재공고 뱃지 + 상담 CTA
 분리된 상세 컴포넌트 (`src/components/detail/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
 | PriceTable | 86 | 인근 매매/전세 시세 |
-| **PriceChart** | 44 | 분양가 추이 SVG 라인 차트 (usePriceHistory + siblingIds) |
-| **UnsoldChart** | 46 | 미분양 추이 SVG 라인 차트 (useUnsoldHistory + siblingIds) |
+| **PriceChart** | 43 | 분양가 추이 SVG 라인 차트 (usePriceHistory + siblingIds) |
+| **UnsoldChart** | 45 | 미분양 추이 SVG 라인 차트 (useUnsoldHistory + siblingIds) |
 | SchoolInfo | 63 | 학군 정보 |
 | LoanAnalysis | 91 | LTV/DSR/갭투자 분석 |
 | DataSections | 168 | 공공데이터 5개 섹션 |

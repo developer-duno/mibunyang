@@ -8,6 +8,7 @@
 - React 18 + Vite + `@/` 경로 별칭 — 프론트엔드
 - `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 - `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters)
+- `@/lib/dedup.js` — 아파트 중복 제거 + siblingIds 생성 (dedupApartments)
 - `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
 - Supabase (PostgreSQL) — 데이터베이스 (14개 테이블 + apartments_flat VIEW)
 - Vercel Serverless Functions (`api/`) — API 레이어
