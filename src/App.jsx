@@ -348,7 +348,7 @@ export default function App() {
   }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchText, openShareSheet, getShareURL]);
 
   return (
-    <div style={{ background: isDesktop ? C.white : C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", fontSize: isDesktop ? 14 : 13, color: C.text, paddingBottom: isDesktop ? 24 : 70, paddingTop: isDesktop ? 60 : 0, transition: "max-width .3s" }}>
+    <div style={{ background: isDesktop ? C.white : C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", fontSize: isDesktop ? 14 : 13, color: C.text, paddingBottom: isDesktop ? 24 : 70, paddingTop: isDesktop ? 64 : 0, transition: "max-width .3s" }}>
 
       <HeaderSection profile={profile} onProfileChange={setProfile} apartmentCount={apartments.length}
         isDesktop={isDesktop} tab={tab} onNavClick={handleNavClick} showComp={showComp} compCount={compIds.length} expertLoggedIn={expert.expertLoggedIn} containerMaxWidth={containerMaxWidth} />
@@ -404,7 +404,7 @@ export default function App() {
               cursor: "pointer", marginBottom: 10, transition: "all .2s"
             }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
           )}
-          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} /></Suspense>}
+          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} /></Suspense>}
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => setVisibleCount(v => v + 30)}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} compIds={compIds}
@@ -418,7 +418,7 @@ export default function App() {
       ) : tab === "map" ? (
         <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>지도 로딩 중...</div>}>
-            <MapView filtered={filtered} onDetail={detail.handleOpenDetail} isPC={isPC} />
+            <MapView filtered={filtered} onDetail={detail.handleOpenDetail} isPC={isPC} isDesktop={isDesktop} />
           </Suspense>
         </div>
       ) : tab === "info" ? (
@@ -486,7 +486,7 @@ export default function App() {
         return <Suspense fallback={null}><DetailModal item={item} onClose={detail.handleCloseDetail}
           isComp={compIds.includes(detail.detailAptId)} onComp={toggleComp}
           isFav={favoriteIds.includes(detail.detailAptId)} onFav={toggleFavorite}
-          onShare={handleShareDetail} isPC={isPC}
+          onShare={handleShareDetail} isPC={isPC} isDesktop={isDesktop}
           onConsult={handleConsultFromDetail} /></Suspense>;
       })()}
 

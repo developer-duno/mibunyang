@@ -28,7 +28,7 @@ const S = {
   infoRow: { display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 },
   infoTag: { fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub },
   alertRow: { marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" },
-  btnRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "0 16px 12px" },
+  btnRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 },
   btnBase: { borderRadius: 6, padding: "8px 12px", fontSize: 12, cursor: "pointer", flex: 1, minHeight: 36, transition: "all .15s" },
   alertTag: { fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600 },
 };
@@ -43,7 +43,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
 
   // 상태 의존 스타일만 useMemo로 계산
   const dynStyles = useMemo(() => ({
-    wrapper: { ...S.wrapper, background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`, ...(moveInDone ? { opacity: 0.55 } : {}), ...(isDesktop ? { boxShadow: C.shadowMd } : {}) },
+    wrapper: { ...S.wrapper, background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`, ...(moveInDone ? { opacity: 0.55 } : {}), ...(isDesktop ? { boxShadow: C.shadowMd, borderRadius: 16 } : {}) },
     body: { ...S.body, ...(isDesktop ? { padding: "16px 20px" } : {}) },
     nameText: { ...S.nameText, ...(isDesktop ? { fontSize: 16 } : {}) },
     bar: { height: 4, background: `linear-gradient(90deg,${g.c},${g.c}88)` },
@@ -72,7 +72,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           <ScoreBadge score={res.total} size={56} />
         </div>
 
-        <div style={S.grid}>
+        <div style={isDesktop ? { ...S.grid, gap: "10px 14px" } : S.grid}>
           {Object.entries(res.cats).sort((a, b) => (profileWeights[b[0]] || 0) - (profileWeights[a[0]] || 0)).slice(0, 3).map(([k, c]) => (
             <div key={k}>
               <div style={S.catHeader}>
@@ -123,7 +123,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         )}
       </div>
 
-      <div style={S.btnRow}>
+      <div style={isDesktop ? { ...S.btnRow, padding: "0 20px 14px" } : { ...S.btnRow, padding: "0 16px 12px" }}>
         <button onClick={() => onDetail(apt.id)} style={dynStyles.detailBtn}>상세보기</button>
         <button onClick={e => { e.stopPropagation(); onFav(apt.id); }} style={dynStyles.favBtn}>{isFav ? "관심 해제" : "관심매물"}</button>
         <button onClick={e => { e.stopPropagation(); onComp(apt.id); }} style={dynStyles.compBtn}>{isComp ? "비교 중" : "비교"}</button>

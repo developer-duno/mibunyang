@@ -31,7 +31,7 @@ export const AptListSection = memo(function AptListSection({
         </div>
       )}
     
-      <div style={{ ...(isDesktop ? { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" } : isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 12px" } : {}), ...(isPending ? { opacity: 0.6, pointerEvents: "none", transition: "opacity 0.15s" } : {}) }}>
+      <div style={{ ...(isDesktop ? { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" } : isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 16px" } : {}), ...(isPending ? { opacity: 0.6, pointerEvents: "none", transition: "opacity 0.15s" } : {}) }}>
         {visible.map((item, idx) => (
           <AptCard key={item.apt.id} apt={item.apt} res={item.res} rank={idx + 1}
             onDetail={onDetail}

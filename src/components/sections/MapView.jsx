@@ -57,7 +57,7 @@ function loadKakaoMapSdk() {
  *   onDetail: (id) => void — 상세 모달 열기
  *   isPC: boolean
  */
-export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
+export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const clustererRef = useRef(null);
@@ -171,7 +171,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
   }, [ready]);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)", borderRadius: 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
+    <div style={{ position: "relative", width: "100%", height: isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)", borderRadius: isDesktop ? 12 : 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
       {error && (
         <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.9)", zIndex: 20 }}>

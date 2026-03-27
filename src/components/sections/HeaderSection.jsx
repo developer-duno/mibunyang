@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { C } from "@/theme";
+import { IconHelp } from "@/components/icons";
 
 /** 도움말 모달 (데스크톱/모바일 공용) */
 function HelpModal({ onClose }) {
@@ -72,10 +73,10 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
   if (isDesktop) {
     return (
       <>
-        <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: containerMaxWidth, background: C.white, borderBottom: `1px solid ${C.border}`, padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 50, boxShadow: C.shadowSm, transition: "max-width .3s" }}>
+        <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: containerMaxWidth, background: C.white, borderBottom: `1px solid ${C.border}`, padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 50, boxShadow: C.shadowSm, transition: "max-width .3s" }}>
           {/* 좌측: 로고 */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-            <h1 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: C.blue, letterSpacing: -0.5, whiteSpace: "nowrap" }}>미분양 비교</h1>
+            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.blue, letterSpacing: -0.5, whiteSpace: "nowrap" }}>미분양 비교</h1>
             <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{apartmentCount}개 단지</span>
           </div>
 
@@ -85,7 +86,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
               <button key={k} onClick={() => onProfileChange(k)} aria-pressed={profile === k} style={{
                 background: "none", border: "none", borderBottom: profile === k ? `2px solid ${C.blue}` : "2px solid transparent",
                 color: profile === k ? C.blue : C.sub, fontSize: 13, fontWeight: profile === k ? 700 : 500,
-                padding: "16px 10px", cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap"
+                padding: "18px 12px", cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap"
               }}>{p.name}</button>
             ))}
           </div>
@@ -97,7 +98,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
               return (
                 <button key={n.k} aria-current={(!["compare", "logout"].includes(n.k) && tab === n.k) ? "page" : undefined} onClick={() => onNavClick(n.k)} style={{
                   background: isActive ? C.blueLight : "transparent", color: isActive ? C.blue : C.muted,
-                  border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: isActive ? 700 : 500,
+                  border: "none", borderRadius: 6, padding: "7px 14px", fontSize: 13, fontWeight: isActive ? 700 : 500,
                   cursor: "pointer", transition: "all .15s", minHeight: 36, whiteSpace: "nowrap"
                 }}>{n.l}{n.k === "compare" && compCount >= 2 ? `(${compCount})` : ""}</button>
               );
@@ -107,10 +108,10 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
             )}
             <button onClick={toggleHelp} aria-label="도움말" style={{
               background: helpOpen ? C.blueLight : C.slate100, color: helpOpen ? C.blue : C.muted,
-              border: "none", borderRadius: 6, width: 32, height: 32, minHeight: 36,
-              fontSize: 14, fontWeight: 800, cursor: "pointer", transition: "all .15s",
+              border: "none", borderRadius: 6, width: 36, height: 36, minHeight: 36,
+              cursor: "pointer", transition: "all .15s",
               display: "flex", alignItems: "center", justifyContent: "center"
-            }}>?</button>
+            }}><IconHelp size={18} /></button>
           </div>
         </div>
 

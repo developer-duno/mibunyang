@@ -10,7 +10,7 @@ const btnStyle = {
   cursor: "pointer", minHeight: 36, transition: "all .15s",
 };
 
-export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose, profile }) {
+export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose, profile, isDesktop }) {
   const tableRef = useRef(null);
   const exportingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
@@ -44,9 +44,9 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose
 
   const expBtnStyle = { ...btnStyle, cursor: exporting ? "wait" : "pointer", opacity: exporting ? 0.5 : 1 };
   return (
-    <div style={{ background: C.card, border: `1.5px solid ${C.blueBorder}`, borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+    <div style={{ background: C.card, border: `1.5px solid ${C.blueBorder}`, borderRadius: 16, padding: isDesktop ? 20 : 14, marginBottom: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 6, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: C.blue }}>비교 분석</div>
+        <div style={{ fontSize: isDesktop ? 17 : 15, fontWeight: 800, color: C.blue }}>비교 분석</div>
         <div style={{ display: "flex", gap: 4 }}>
           <button onClick={() => handleExport("png")} disabled={exporting} aria-label="이미지 내보내기" style={expBtnStyle}>{exporting ? "..." : "PNG"}</button>
           <button onClick={() => handleExport("pdf")} disabled={exporting} aria-label="PDF 내보내기" style={expBtnStyle}>{exporting ? "..." : "PDF"}</button>
@@ -60,31 +60,31 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose
         <span style={{ fontSize: 11, color: C.muted }}>({best.res.total}점 · {topCatLabel} {topCat[1].total}점)</span>
       </div>
       <div ref={tableRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 320 }}>
-          <thead>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isDesktop ? 13 : 12, minWidth: isDesktop ? 480 : 320 }}>
+          <thead style={isDesktop ? { position: "sticky", top: 0, background: C.card, zIndex: 1 } : undefined}>
             <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-              <th style={{ textAlign: "left", padding: "8px 6px", color: C.muted, fontWeight: 600, fontSize: 12 }}>항목</th>
-              {items.map(it => <th key={it.apt.id} style={{ textAlign: "center", padding: "8px 6px", color: C.text, fontWeight: 700, fontSize: 12 }}>{it.apt.name.split(" ").pop()}<br/><span style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>{it.apt.region}</span></th>)}
+              <th style={{ textAlign: "left", padding: isDesktop ? "10px 10px" : "8px 6px", color: C.muted, fontWeight: 600, fontSize: isDesktop ? 13 : 12 }}>항목</th>
+              {items.map(it => <th key={it.apt.id} style={{ textAlign: "center", padding: isDesktop ? "10px 10px" : "8px 6px", color: C.text, fontWeight: 700, fontSize: isDesktop ? 13 : 12 }}>{it.apt.name.split(" ").pop()}<br/><span style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>{it.apt.region}</span></th>)}
             </tr>
           </thead>
           <tbody>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              <td style={{ padding: "10px 6px", fontWeight: 700, color: C.text }}>종합</td>
+              <td style={{ padding: isDesktop ? "12px 10px" : "10px 6px", fontWeight: 700, color: C.text }}>종합</td>
               {items.map(it => { const g2 = gr(it.res.total); const isMax = it.res.total === Math.max(...items.map(x => x.res.total)); const v = Math.max(0, Math.min(it.res.total ?? 0, 100)); return (
-                <td key={it.apt.id} style={{ textAlign: "center", padding: "10px 6px" }}>
-                  <span style={{ fontSize: 22, fontWeight: 800, color: g2.c }}>{it.res.total}</span>
+                <td key={it.apt.id} style={{ textAlign: "center", padding: isDesktop ? "12px 10px" : "10px 6px" }}>
+                  <span style={{ fontSize: isDesktop ? 26 : 22, fontWeight: 800, color: g2.c }}>{it.res.total}</span>
                   {isMax && <span style={{ fontSize: 11, fontWeight: 700, color: C.blue, display: "block", background: C.blueLight, borderRadius: 4, padding: "1px 6px", marginTop: 2 }}>최고</span>}
-                  <div style={{ background: "#ECEEF4", borderRadius: 99, height: 5, width: "100%", overflow: "hidden", marginTop: 4 }}><div style={{ width: `${v}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${g2.c}90,${g2.c})`, transition: "width .5s ease" }} /></div>
+                  <div style={{ background: "#ECEEF4", borderRadius: 99, height: isDesktop ? 6 : 5, width: "100%", overflow: "hidden", marginTop: 4 }}><div style={{ width: `${v}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${g2.c}90,${g2.c})`, transition: "width .5s ease" }} /></div>
                 </td>
               ); })}
             </tr>
             {cats.map((k, idx) => { const scores = items.map(it => it.res.cats[k].total); const mx = Math.max(...scores); return (
               <tr key={k} style={{ borderBottom: `1px solid ${C.border}`, background: idx % 2 === 1 ? "#FAFBFD" : "transparent" }}>
-                <td style={{ padding: "8px 6px", color: C.sub, fontSize: 11 }}>{items[0].res.cats[k].label.split("·")[0]}</td>
+                <td style={{ padding: isDesktop ? "10px 10px" : "8px 6px", color: C.sub, fontSize: 11 }}>{items[0].res.cats[k].label.split("·")[0]}</td>
                 {scores.map((s, i) => { const sv = Math.max(0, Math.min(s ?? 0, 100)); const col = catCol[k] || C.blue; return (
-                  <td key={items[i].apt.id} style={{ textAlign: "center", padding: "8px 6px" }}>
+                  <td key={items[i].apt.id} style={{ textAlign: "center", padding: isDesktop ? "10px 10px" : "8px 6px" }}>
                     <span style={{ fontWeight: 700, color: s === mx ? col : C.muted }}>{s}</span>
-                    <div style={{ background: "#ECEEF4", borderRadius: 99, height: 4, width: "100%", overflow: "hidden", marginTop: 3 }}><div style={{ width: `${sv}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${col}90,${col})`, transition: "width .5s ease" }} /></div>
+                    <div style={{ background: "#ECEEF4", borderRadius: 99, height: isDesktop ? 5 : 4, width: "100%", overflow: "hidden", marginTop: 3 }}><div style={{ width: `${sv}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${col}90,${col})`, transition: "width .5s ease" }} /></div>
                   </td>
                 ); })}
               </tr>
