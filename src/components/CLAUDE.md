@@ -2,11 +2,11 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 32개 컴포넌트
+## memo() 35개 컴포넌트
 
-소비자 9개: Bar, ScoreBadge, Radar, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal
+소비자 10개: Bar, ScoreBadge, Radar, **LineChart**, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal
 섹션 8개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay
-상세 4개 (DetailModal에서 분리): PriceTable, SchoolInfo, LoanAnalysis, DataSections
+상세 6개 (DetailModal에서 분리): PriceTable, **PriceChart**, **UnsoldChart**, SchoolInfo, LoanAnalysis, DataSections
 전문가 9개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide
 관리자 2개: AdminDashboard, AdminHelpGuide
 
@@ -39,7 +39,7 @@
 
 ## 컴포넌트 구조
 
-### App.jsx (478줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수
+### App.jsx (~490줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
@@ -52,11 +52,21 @@
 | MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
-### DetailModal.jsx (107줄) — 모달 컨테이너만 담당
+### DetailModal.jsx (~140줄) — 모달 컨테이너 + 메모/태그 UI
 분리된 상세 컴포넌트 (`src/components/detail/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
 | PriceTable | 88 | 인근 매매/전세 시세 |
+| **PriceChart** | 45 | 분양가 추이 SVG 라인 차트 (usePriceHistory) |
+| **UnsoldChart** | 45 | 미분양 추이 SVG 라인 차트 (useUnsoldHistory) |
 | SchoolInfo | 36 | 학군 정보 |
 | LoanAnalysis | 93 | LTV/DSR/갭투자 분석 |
 | DataSections | 168 | 공공데이터 5개 섹션 |
+
+### primitives.jsx — 재사용 SVG 프리미티브 (memo)
+| 컴포넌트 | 역할 |
+|---------|------|
+| Bar | 수평 프로그레스 바 (gradient, borderRadius) |
+| ScoreBadge | 원형 점수 인디케이터 (SVG circle) |
+| **LineChart** | 시계열 SVG 라인 차트 (다중 라인, 그리드, 툴팁) |
+| Radar | 6점 레이더 차트 (polygon) |

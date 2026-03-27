@@ -24,3 +24,23 @@
 | complex_price_history | 네이버 시세 이력 | naver-collect.py |
 | consults | 상담 신청 | api/consults.js |
 | **apartments_flat** (VIEW) | 7개 테이블 JOIN 평탄화 | — |
+
+## 시계열 테이블 스키마
+
+### prices (분양가 이력)
+```
+id SERIAL PK, apartment_id TEXT FK, area REAL, supply_area REAL,
+price INTEGER (만원), pp INTEGER (평당가), house_type TEXT,
+supply_count INTEGER, recorded_at DATE
+UNIQUE(apartment_id, house_type, recorded_at)
+인덱스: idx_prices_apartment, idx_prices_latest(apartment_id, recorded_at DESC)
+```
+
+### unsold_history (미분양 추이)
+```
+id SERIAL PK, apartment_id TEXT FK, base_month TEXT ("202603"),
+unsold_count INTEGER, post_completion_unsold INTEGER, change INTEGER,
+recorded_at DATE
+UNIQUE(apartment_id, base_month)
+인덱스: idx_unsold_apartment, idx_unsold_month
+```

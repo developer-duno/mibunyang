@@ -19,7 +19,7 @@ src/
 ├── theme/
 │   └── index.js            C(팔레트), catCol, catBg, gr(등급함수)
 ├── components/             규칙: components/CLAUDE.md
-│   ├── primitives.jsx      Bar, ScoreBadge, Radar (memo)
+│   ├── primitives.jsx      Bar, ScoreBadge, LineChart, Radar (memo)
 │   ├── AptCard.jsx / CatPanel.jsx / CompareSheet.jsx (PNG/PDF 내보내기)
 │   ├── DetailModal.jsx / ConsultForm.jsx / ShareSheet.jsx
 │   ├── sections/
@@ -29,7 +29,8 @@ src/
 │   └── admin/              관리자 UI
 ├── hooks/
 │   ├── useApartmentData.js ★ 데이터 로딩 진입점
-│   ├── useFilterSort.js / useComparison.js / useFavorites.js
+│   ├── useFilterSort.js / useComparison.js / useFavorites.js (객체+메모+태그)
+│   ├── usePriceHistory.js / useUnsoldHistory.js  (시계열 API 페칭)
 │   └── useExpertMode.js / useAdminMode.js / useToast.js
 ├── lib/
 │   ├── classify.js         입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
@@ -45,6 +46,8 @@ src/
 api/                        Vercel Serverless — 규칙: api/CLAUDE.md
 ├── _lib/                   auth.js, adminAuth.js, supabase.js
 ├── supabase/apartments.js  ★ 9개 테이블 JOIN → 평탄 형태 반환
+├── supabase/prices.js      분양가 시계열 API (apartment_id 필수)
+├── supabase/unsold-history.js  미분양 추이 시계열 API
 ├── auth/ + admin/          전문가/관리자 인증
 └── applyhome/ kakao/ neis/ kosis/ dart/
 
@@ -136,7 +139,8 @@ const scored = useMemo(() =>
 const baseFilterArgs = useMemo(() => ({
   showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax,
   unitsMin, unitsMax, minScore, benefitOnly, searchText: debouncedSearchText,
-}), [11개 의존성]);
+  ...catMinScores,  // 카테고리별 최소 점수 6개 (min_price, min_location 등)
+}), [12개 의존성]);
 
 // 3단계: base 필터 → 드롭다운 필터 → SORTERS 정렬
 const filtered = useMemo(() => {

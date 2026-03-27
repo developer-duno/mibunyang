@@ -29,6 +29,18 @@ API에서 null 반환 시 **위험 단지가 안전하게 표시됨**. `sanitize
 - RLS 활성: anon = 읽기만, service_role = 읽기+쓰기
 - API 응답 형식: `{ ok: true, data: [...], count: N, fetchedAt: "..." }` (기존 JSON과 동일)
 
+## 시계열 API 엔드포인트 (세션19 추가)
+
+| 엔드포인트 | 테이블 | 파라미터 | 캐싱 |
+|-----------|--------|---------|------|
+| `GET /api/supabase/prices` | prices | `apartment_id` (필수) | s-maxage=3600 |
+| `GET /api/supabase/unsold-history` | unsold_history | `apartment_id` (필수) | s-maxage=3600 |
+
+- 입력 검증: `apartment_id` 필수, trim() 적용
+- 에러 응답: `{ ok: false, error: "메시지" }` (400/500)
+- 정렬: prices → `recorded_at ASC`, unsold_history → `base_month ASC`
+- RLS: 두 테이블 모두 "Public read" 정책 (인증 불필요)
+
 ## 인증 시스템
 
 - SHA-256 + salt 해싱 (`api/_lib/auth.js`)

@@ -6,7 +6,7 @@
 
 App.jsx 내부:
 ```
-useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 12개 (useToast, useFavorites, useDetailModal, useFilterSort, useDebouncedValue, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare, useResponsive) → useMemo (12개: baseFilterArgs, activeFilterCount, filterOptionCounts 포함) → useEffect (6개) → useRef → useCallback
+useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 12개 (useToast, useFavorites(showToast), useDetailModal, useFilterSort, useDebouncedValue, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare, useResponsive) → useMemo (13개: baseFilterArgs, activeFilterCount, filterOptionCounts 포함) → useEffect (6개) → useRef → useCallback
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
@@ -19,13 +19,13 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 | guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
 | catsCache | [apartments] | apartments 의존 필수 |
 | scored | [catsCache, profile, customWeights] | catsCache는 apartments 간접 의존 |
-| baseFilterArgs | [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText] | base 필터 상태 묶음 (11개) |
+| baseFilterArgs | [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText, catMinScores] | base 필터 상태 묶음 (12개, catMinScores는 useMemo 참조) |
 | filtered | [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier] | SORTERS 모듈 레벨 상수 사용 |
 | visible | [filtered, visibleCount] | 페이지네이션용 |
 | scoredMap | [scored] | Map 자료구조 (P-3: O(1) 조회) |
 | compItems | [compIds, scoredMap] | scoredMap.get() 사용 |
 | pw | [profile, customWeights] | customWeights 우선, PROFILES[profile].w 폴백 |
-| activeFilterCount | [showFavOnly, filterRegion, budgetMin, ...13개] | 활성 필터 개수 배지 |
+| activeFilterCount | [showFavOnly, filterRegion, budgetMin, ...13개, catMinScores] | 활성 필터 개수 배지 (카테고리 min 포함) |
 | regionOptions | [apartments] | apartments 의존 필수 |
 | filterOptionCounts | [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier] | leave-one-out 드롭다운 카운트 |
 
@@ -43,3 +43,32 @@ const showComp = showCompOpen && compIds.length >= 2;
 | useExpertMode.handleExpertLogin() | `true`/`false` 반환 | App에서 `if (success) setTab("expert")` |
 | useExpertMode.handleExpertLogout(onLogout) | 콜백 파라미터 | App에서 `() => { setTab("list"); setShowCompOpen(false); }` 전달 |
 | useFilterSort({ onFilterChange }) | 콜백 옵션 | App에서 `() => setDetailAptId(null)` 전달 |
+
+## 세션19 추가 훅
+
+| 훅 | 역할 | 패턴 |
+|----|------|------|
+| usePriceHistory(apartmentId) | 분양가 시계열 API 페칭 | AbortController + retry |
+| useUnsoldHistory(apartmentId) | 미분양 추이 API 페칭 | AbortController + retry |
+
+## useFavorites 구조 (v2 — 객체 기반)
+
+```
+useFavorites(showToast)
+  ├── favoritesObj: { [id]: { memo, tags, addedAt } }  // 내부 상태 (객체)
+  ├── favoriteIds: Object.keys(favoritesObj)            // 파생 배열 (하위 호환)
+  ├── toggleFavorite(id)
+  ├── setMemo(id, text)     // 100자 제한
+  ├── toggleTag(id, tag)    // FAV_TAGS 화이트리스트
+  └── setFavoriteIds(ids)   // 하위 호환 래퍼 (배열→객체 변환)
+```
+v1(배열) → v2(객체) 자동 마이그레이션 + `mibunyang_fav_backup` 백업.
+
+## useFilterSort 카테고리 필터 (catMinScores)
+
+```
+catMinScores = useMemo({ min_price, min_location, min_product, min_benefit, min_risk, min_future })
+handleCatMinChange(catKey, val)  // 단일 핸들러
+handleCatMinReset()              // 전체 초기화
+URL 파라미터: cprice, cloc, cprod, cbenefit, crisk, cfuture
+```
