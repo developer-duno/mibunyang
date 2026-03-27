@@ -4,7 +4,7 @@ import { PROFILES } from "@/constants/profiles";
 import { REGIONS } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
-import { C, catCol, catBg } from "@/theme";
+import { C } from "@/theme";
 
 const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
 const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));

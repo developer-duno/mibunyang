@@ -59,14 +59,14 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
       <div style={cardStyle}>
         <div style={titleStyle}>검색과 필터</div>
         {[
-          { title: "검색", desc: "단지명, 건설사, 지역명을 입력하세요. 초성 검색도 지원합니다(예: 'ㅎㄴ' → 한남, 'ㄷㅇ' → 동탄). 검색어 우측 X 버튼으로 초기화할 수 있습니다." },
+          { title: "검색", desc: "단지명, 건설사, 지역명을 입력하세요. 초성 검색도 지원합니다(예: &apos;ㅎㄴ&apos; → 한남, &apos;ㄷㅇ&apos; → 동탄). 검색어 우측 X 버튼으로 초기화할 수 있습니다." },
           { title: "지역 필터", desc: "시/도 → 시군구 순서로 지역을 좁힙니다. 각 드롭다운에 해당 조건의 단지 수가 표시되어, 빈 지역을 미리 확인할 수 있습니다." },
           { title: "예산 필터", desc: "최소~최대 금액을 억 단위로 입력합니다. 역전 입력(최소 > 최대)도 자동 보정됩니다. 3억/5억/7억/10억 프리셋 버튼으로 빠르게 설정 가능합니다." },
           { title: "면적·세대수", desc: "전용면적(㎡)과 세대수 범위를 설정할 수 있습니다. 대단지(1000세대+)나 소형(60㎡ 이하)을 빠르게 필터링하세요." },
           { title: "입주 상태", desc: "입주예정, 미입주, 입주완료 중 선택합니다. 즉시 입주 가능한 단지나 향후 입주 예정 단지를 구분하여 볼 수 있습니다." },
           { title: "시공사 등급", desc: "1군(현대, 삼성, GS 등), 2군, 기타로 구분됩니다. 시공사 브랜드를 기준으로 필터링할 수 있습니다." },
-          { title: "최소 점수", desc: "종합점수 기준 필터입니다. 예: '70' 입력 시 70점 이상 단지만 표시됩니다." },
-          { title: "혜택 필터", desc: "'혜택' 버튼을 켜면 분양가 할인, 무이자 등 혜택이 있는 단지만 표시됩니다." },
+          { title: "최소 점수", desc: "종합점수 기준 필터입니다. 예: &apos;70&apos; 입력 시 70점 이상 단지만 표시됩니다." },
+          { title: "혜택 필터", desc: "&apos;혜택&apos; 버튼을 켜면 분양가 할인, 무이자 등 혜택이 있는 단지만 표시됩니다." },
         ].map((item, i) => (
           <div key={i} style={guideItem}>
             <div style={guideTitle}>{item.title}</div>
@@ -78,7 +78,7 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
           <div style={guideTitle}>필터 프리셋 (1클릭 설정)</div>
           <div style={guideDesc}>
             필터가 없을 때 프리셋 버튼이 표시됩니다. 신혼부부(5억 이하 + 소형 + 혜택), 투자용(60점+ + 입주예정), 안전우선(1군 + 70점+), 3억 이하, 대단지(1000세대+) 5가지를 제공합니다.
-            자주 쓰는 필터 조합은 '프리셋 저장' 버튼으로 직접 저장할 수도 있습니다(최대 10개).
+            자주 쓰는 필터 조합은 &apos;프리셋 저장&apos; 버튼으로 직접 저장할 수도 있습니다(최대 10개).
           </div>
         </div>
 
@@ -93,7 +93,7 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
         <div style={divider}>
           <div style={guideTitle}>필터 공유</div>
           <div style={guideDesc}>
-            활성 필터가 있을 때 '공유' 버튼으로 현재 필터 조건을 URL로 공유할 수 있습니다.
+            활성 필터가 있을 때 &apos;공유&apos; 버튼으로 현재 필터 조건을 URL로 공유할 수 있습니다.
             상대방이 링크를 열면 동일한 필터가 자동 적용됩니다.
           </div>
         </div>
@@ -136,23 +136,23 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
         <div style={divider}>
           <div style={guideTitle}>상세 분석 모달</div>
           <div style={guideDesc}>
-            카드의 '상세보기' 버튼을 누르면 모달이 열립니다. 레이더 차트, 핵심 지표 8개, 혜택 상세, 인근 시세(매매/전세),
+            카드의 &apos;상세보기&apos; 버튼을 누르면 모달이 열립니다. 레이더 차트, 핵심 지표 8개, 혜택 상세, 인근 시세(매매/전세),
             분양가 추이 차트, 미분양 추이 차트, 학군 정보, 대출 분석(LTV/DSR/갭투자), 공공데이터 5개 섹션을 확인할 수 있습니다.
-            모달 하단의 '이 매물 상담하기' 버튼으로 바로 상담 신청이 가능합니다.
+            모달 하단의 &apos;이 매물 상담하기&apos; 버튼으로 바로 상담 신청이 가능합니다.
           </div>
         </div>
 
         <div style={divider}>
           <div style={guideTitle}>비교 기능 (최대 4개)</div>
           <div style={guideDesc}>
-            카드의 '비교' 버튼을 눌러 2~4개 단지를 선택하세요. 선택 후 목록 상단의 '비교 보기' 버튼을 누르면
+            카드의 &apos;비교&apos; 버튼을 눌러 2~4개 단지를 선택하세요. 선택 후 목록 상단의 &apos;비교 보기&apos; 버튼을 누르면
             종합점수, 6개 카테고리, 분양가, 혜택, 규제현황, LTV한도, 필요자본을 나란히 비교하는 테이블이 표시됩니다.
             현재 프로필 기준 추천 단지도 한 줄로 요약됩니다.
             비교 결과는 PNG/PDF로 내보내거나 공유할 수 있습니다.
           </div>
           <div style={tipBox}>
             <div style={tipText}>
-              비교 목록은 브라우저에 자동 저장됩니다. 다음 방문 시 이전 비교가 복원되며, '비교 탭에서 확인' 안내가 표시됩니다.
+              비교 목록은 브라우저에 자동 저장됩니다. 다음 방문 시 이전 비교가 복원되며, &apos;비교 탭에서 확인&apos; 안내가 표시됩니다.
             </div>
           </div>
         </div>
@@ -162,7 +162,7 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
       <div style={cardStyle}>
         <div style={titleStyle}>관심매물</div>
         {[
-          { title: "관심매물 등록", desc: "카드의 '관심매물' 버튼 또는 상세 모달의 하트 버튼으로 등록합니다. 등록된 단지는 브라우저에 저장되어 다음 방문에도 유지됩니다." },
+          { title: "관심매물 등록", desc: "카드의 &apos;관심매물&apos; 버튼 또는 상세 모달의 하트 버튼으로 등록합니다. 등록된 단지는 브라우저에 저장되어 다음 방문에도 유지됩니다." },
           { title: "관심매물만 보기", desc: "검색 바 옆 하트 버튼을 누르면 관심매물만 필터링됩니다. 옆에 등록된 관심매물 수가 표시됩니다." },
         ].map((item, i) => (
           <div key={i} style={guideItem}>
@@ -176,7 +176,7 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
       <div style={cardStyle}>
         <div style={titleStyle}>지도 뷰</div>
         <div style={guideDesc}>
-          하단 네비게이션의 '지도' 탭을 누르면 카카오맵 기반 지도 뷰로 전환됩니다.
+          하단 네비게이션의 &apos;지도&apos; 탭을 누르면 카카오맵 기반 지도 뷰로 전환됩니다.
           점수별 색상 마커로 단지 위치를 확인하고, 마커를 터치하면 단지 정보가 표시됩니다.
           줌 레벨에 따라 자동 클러스터링되며, 현위치 버튼으로 내 위치 주변 단지를 확인할 수 있습니다.
           인프라 토글(지하철/병원/마트/학교)로 주변 시설도 함께 볼 수 있습니다.
@@ -187,9 +187,9 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
       <div style={cardStyle}>
         <div style={titleStyle}>상담 신청</div>
         <div style={guideDesc}>
-          하단 '상담' 탭에서 이름, 연락처, 관심 단지, 예산 범위, 상담 유형(방문상담/전화상담/온라인상담)을 입력하고 신청하세요.
+          하단 &apos;상담&apos; 탭에서 이름, 연락처, 관심 단지, 예산 범위, 상담 유형(방문상담/전화상담/온라인상담)을 입력하고 신청하세요.
           관심매물로 등록한 단지가 자동으로 관심 단지 목록에 추가됩니다.
-          상세 분석 모달에서 '이 매물 상담하기' 버튼을 눌러도 해당 단지가 포함된 상담 신청으로 바로 이동합니다.
+          상세 분석 모달에서 &apos;이 매물 상담하기&apos; 버튼을 눌러도 해당 단지가 포함된 상담 신청으로 바로 이동합니다.
         </div>
       </div>
 
@@ -237,7 +237,7 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
           { q: "적정가 괴리도란?", a: "인근 단지 실거래 중위가에 신축 프리미엄, 면적 차이, 브랜드 보정을 적용한 '적정 추정가'와 실제 분양가의 차이(%)입니다. 양수(+)면 시세 대비 저렴, 음수(-)면 시세 대비 비싼 것입니다." },
           { q: "데이터가 비어있는 단지가 있어요", a: "일부 단지는 공공데이터 미등록 또는 수집 지연으로 일부 지표가 비어있을 수 있습니다. 이 경우 지역 평균 또는 보수적 기본값으로 대체하여 점수를 산출합니다. 데이터신뢰도 점수에 반영됩니다." },
           { q: "즐겨찾기·비교 목록은 어디에 저장되나요?", a: "브라우저의 로컬 저장소(localStorage)에 저장됩니다. 같은 브라우저에서는 유지되지만, 다른 브라우저나 시크릿 모드에서는 초기화됩니다. 비교 목록은 탭 간에도 동기화됩니다." },
-          { q: "필터 조건을 공유할 수 있나요?", a: "네, 필터 활성 상태에서 '공유' 버튼을 누르면 현재 필터가 URL에 포함된 링크가 생성됩니다. 카카오톡, 문자, 링크 복사로 공유할 수 있습니다." },
+          { q: "필터 조건을 공유할 수 있나요?", a: "네, 필터 활성 상태에서 &apos;공유&apos; 버튼을 누르면 현재 필터가 URL에 포함된 링크가 생성됩니다. 카카오톡, 문자, 링크 복사로 공유할 수 있습니다." },
           { q: "비교 결과를 저장하려면?", a: "비교 분석 패널에서 PNG(이미지) 또는 PDF 버튼을 눌러 내보낼 수 있습니다. 공유 버튼으로 비교 링크를 보낼 수도 있습니다." },
           { q: "혜택 금액은 어떻게 계산되나요?", a: "분양가 할인(%), 중도금 무이자(금리 4.5% 기준 이자 절감액), 옵션 무상, 발코니 확장, 캐시백, 관리비 절감(지역 평균 대비 연간)을 모두 만원 단위로 합산합니다." },
         ].map((item, i) => (
