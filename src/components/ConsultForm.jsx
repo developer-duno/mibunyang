@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { C } from "@/theme";
+import { IconClose } from "./icons";
 
 export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast }) {
   if (submitted) {
@@ -75,7 +76,7 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
                 <div key={item.apt.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: `1px solid ${C.border}`, background: C.indigoLight }}>
                   <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: C.text }}>{item.apt.name}</span>
                   <span style={{ fontSize: 11, color: C.muted }}>{item.apt.region} · {item.res.total}점</span>
-                  <button onClick={() => setFavoriteIds(p => p.filter(x => x !== item.apt.id))} style={{ background: "none", border: "none", fontSize: 14, color: C.muted, cursor: "pointer", padding: "2px 4px" }}>✕</button>
+                  <button onClick={() => setFavoriteIds(p => p.filter(x => x !== item.apt.id))} aria-label="관심단지 제거" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}><IconClose size={14} /></button>
                 </div>
               ))}
             </div>

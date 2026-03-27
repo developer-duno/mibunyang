@@ -2,6 +2,7 @@ import { memo, useState, useRef, useCallback } from "react";
 import { C } from "@/theme";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
 import { FILTER_PRESETS } from "@/constants/filterPresets";
+import { IconClose, IconHeart, IconHeartFilled, IconChevronDown } from "@/components/icons";
 
 /* ── 배지 pulse 애니메이션 (SSR-safe) ── */
 const BADGE_ANIM = "badge-pulse";
@@ -69,8 +70,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           {searchText && (
             <button onClick={() => onSearchChange("")} aria-label="검색어 지우기" style={{
               position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
-              background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14, padding: 2
-            }}>✕</button>
+              background: "none", border: "none", cursor: "pointer", color: C.muted, padding: 2, display: "flex", alignItems: "center"
+            }}><IconClose size={14} /></button>
           )}
         </div>
         <button onClick={onToggleFavOnly} aria-label="관심매물만 보기" style={{
@@ -78,14 +79,14 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           background: showFavOnly ? C.redLight : C.slate100, color: showFavOnly ? C.red : C.slate600,
           border: showFavOnly ? `1.5px solid ${C.red}` : `1px solid ${C.border}`, borderRadius: 6,
           cursor: "pointer", display: "flex", alignItems: "center", gap: 3, transition: "all .15s"
-        }}>{showFavOnly ? "\u2665" : "\u2661"}{favCount > 0 ? ` ${favCount}` : ""}</button>
+        }}>{showFavOnly ? <IconHeartFilled size={13} /> : <IconHeart size={13} />}{favCount > 0 ? ` ${favCount}` : ""}</button>
         <button onClick={onToggleCollapsed} aria-label="필터 접기/펼치기" style={{
           flexShrink: 0, height: 32, padding: "0 8px", fontSize: 11, fontWeight: 600,
           background: activeFilterCount > 0 ? C.indigoLight : C.slate100,
           color: activeFilterCount > 0 ? C.indigo : C.slate600,
           border: activeFilterCount > 0 ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 6,
           cursor: "pointer", display: "flex", alignItems: "center", gap: 2, transition: "all .15s"
-        }}>{filterCollapsed ? "▼" : "▲"}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}</button>
+        }}><span style={{ display: "inline-flex", transform: filterCollapsed ? "none" : "rotate(180deg)", transition: "transform .2s" }}><IconChevronDown size={13} /></span>{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}</button>
         {(canUndo || canRedo) && <>
           <button onClick={onUndo} disabled={!canUndo} aria-label="필터 되돌리기" style={{
             flexShrink: 0, height: 32, width: 32, fontSize: 13, background: canUndo ? C.slate100 : "#F1F5F9",
@@ -169,7 +170,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMax} onChange={e => onBudgetMaxChange(e.target.value)} placeholder="최대(억)" aria-label="최대 예산(억)" style={numInput(budgetMax)} />
         <span style={tilde}>억</span>
         {(budgetMin || budgetMax) ? (
-          <button onClick={onBudgetReset} aria-label="예산 초기화" style={resetBtn()}>✕</button>
+          <button onClick={onBudgetReset} aria-label="예산 초기화" style={resetBtn()}><IconClose size={12} /></button>
         ) : null}
       </div>
       {/* 예산 프리셋 */}
@@ -288,7 +289,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           {["전체", "입주예정", "미입주", "입주완료"].map(v => { const c = filterOptionCounts?.moveInCounts?.[v] ?? 0; const total = v === "전체" ? Object.values(filterOptionCounts?.moveInCounts ?? {}).reduce((s, n) => s + n, 0) : 0; return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}</option>; })}
         </select>
         {(hasAreaUnits || moveInFilter !== "전체") && (
-          <button onClick={() => { onAreaUnitsReset(); onMoveInChange("전체"); }} aria-label="면적/세대/입주 초기화" style={resetBtn(28)}>✕</button>
+          <button onClick={() => { onAreaUnitsReset(); onMoveInChange("전체"); }} aria-label="면적/세대/입주 초기화" style={resetBtn(28)}><IconClose size={12} /></button>
         )}
       </div>
       {/* 5행: 종합점수 최소 + 시공사 + 혜택 토글 */}
@@ -312,7 +313,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           cursor: "pointer", transition: "all .15s"
         }}>혜택</button>
         {(minScore || builderTier !== "전체" || benefitOnly) && (
-          <button onClick={() => { onMinScoreChange(""); onBuilderTierChange("전체"); if (benefitOnly) onToggleBenefitOnly(); }} aria-label="점수/시공사/혜택 초기화" style={resetBtn(28)}>✕</button>
+          <button onClick={() => { onMinScoreChange(""); onBuilderTierChange("전체"); if (benefitOnly) onToggleBenefitOnly(); }} aria-label="점수/시공사/혜택 초기화" style={resetBtn(28)}><IconClose size={12} /></button>
         )}
       </div>
       </>}

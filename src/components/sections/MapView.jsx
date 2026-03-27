@@ -1,7 +1,7 @@
 import { memo, useRef, useEffect, useState, useCallback } from "react";
-import { C } from "@/theme";
-import { gr } from "@/theme";
+import { C, gr } from "@/theme";
 import { InfraOverlay } from "./InfraOverlay";
+import { IconClose } from "@/components/icons";
 
 const KAKAO_MAP_KEY = import.meta.env.VITE_KAKAO_JS_KEY || "";
 
@@ -208,7 +208,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
             <div style={{ fontSize: 9, color: C.muted }}>종합점수</div>
           </div>
           <button onClick={handleInfoClick} style={{ flexShrink: 0, padding: "8px 12px", fontSize: 11, fontWeight: 700, background: C.indigo, color: C.white, border: "none", borderRadius: 6, cursor: "pointer" }}>상세</button>
-          <button onClick={() => setSelected(null)} style={{ position: "absolute", top: 6, right: 8, background: "none", border: "none", fontSize: 14, color: C.muted, cursor: "pointer" }}>✕</button>
+          <button onClick={() => setSelected(null)} aria-label="닫기" style={{ position: "absolute", top: 6, right: 8, background: "none", border: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center" }}><IconClose size={14} /></button>
         </div>
       )}
     </div>
