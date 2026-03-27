@@ -15,7 +15,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
   const clustererRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [markerCount, setMarkerCount] = useState(0);
+  const [markerCount, setMarkerCount] = useState(null);
 
   // Kakao Maps SDK 로드 확인 + 지도 초기화
   useEffect(() => {
@@ -94,7 +94,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
       {/* 필터 결과 수 오버레이 */}
       <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: C.indigo, boxShadow: "0 1px 4px rgba(0,0,0,0.12)", zIndex: 10 }}>
-        {markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
+        {markerCount == null ? `${filtered.length}개 단지` : markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
       </div>
       {/* 선택된 아파트 정보 카드 */}
       {selected && (
