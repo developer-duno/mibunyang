@@ -103,31 +103,6 @@ describe('useFavorites', () => {
     expect(result.current.favoriteIds).toEqual(["apt-100", "apt-200"]);
   });
 
-  // --- 메모/태그 테스트 ---
-
-  it('메모 설정 — 100자 제한', () => {
-    const { result } = renderHook(() => useFavorites(vi.fn()));
-    act(() => { result.current.toggleFavorite("apt-1"); });
-    act(() => { result.current.setMemo("apt-1", "a".repeat(150)); });
-    expect(result.current.favoritesObj["apt-1"].memo).toHaveLength(100);
-  });
-
-  it('태그 토글', () => {
-    const { result } = renderHook(() => useFavorites(vi.fn()));
-    act(() => { result.current.toggleFavorite("apt-1"); });
-    act(() => { result.current.toggleTag("apt-1", "투자용"); });
-    expect(result.current.favoritesObj["apt-1"].tags).toEqual(["투자용"]);
-    act(() => { result.current.toggleTag("apt-1", "투자용"); });
-    expect(result.current.favoritesObj["apt-1"].tags).toEqual([]);
-  });
-
-  it('유효하지 않은 태그는 무시', () => {
-    const { result } = renderHook(() => useFavorites(vi.fn()));
-    act(() => { result.current.toggleFavorite("apt-1"); });
-    act(() => { result.current.toggleTag("apt-1", "무효태그"); });
-    expect(result.current.favoritesObj["apt-1"].tags).toEqual([]);
-  });
-
   it('quota exceeded 시 showToast 호출', () => {
     const showToast = vi.fn();
     const origSet = Storage.prototype.setItem;

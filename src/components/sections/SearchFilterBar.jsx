@@ -44,8 +44,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterHistory, onApplyHistory, onClearHistory,
   onUndo, onRedo, canUndo, canRedo,
   filterOptionCounts,
-  catMinScores, onCatMinChange, onCatMinReset,
-  selectedTags, onToggleTagFilter, onResetTagFilter, favTags,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
   const prevLenRef = useRef(filteredLength);
@@ -102,26 +100,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           }}>↪</button>
         </>}
       </div>
-      {/* 태그 필터 (관심매물 모드에서만 표시) */}
-      {showFavOnly && favTags?.length > 0 && (
-        <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
-          <span style={{ fontSize: 10, color: C.muted, flexShrink: 0, fontWeight: 600 }}>태그</span>
-          {favTags.map(tag => {
-            const active = selectedTags?.includes(tag);
-            return <button key={tag} onClick={() => onToggleTagFilter?.(tag)} style={{
-              fontSize: 10, padding: "2px 8px", borderRadius: 10,
-              border: active ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-              background: active ? C.indigoLight : "transparent",
-              color: active ? C.indigo : C.muted,
-              fontWeight: active ? 700 : 500,
-              cursor: "pointer", transition: "all .15s",
-            }}>{tag}</button>;
-          })}
-          {selectedTags?.length > 0 && (
-            <button onClick={onResetTagFilter} aria-label="태그 필터 초기화" style={{ ...resetBtn(22), fontSize: 9 }}>✕</button>
-          )}
-        </div>
-      )}
       {/* 결과 건수 + 활성 필터 태그 칩 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: filterCollapsed ? 0 : 6 }}>
         {activeFilterCount > 0 && (
@@ -136,7 +114,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             {builderTier !== "전체" && <span onClick={() => onBuilderTierChange("전체")} style={chipStyle}>{builderTier} ✕</span>}
             {benefitOnly && <span onClick={onToggleBenefitOnly} style={chipStyle}>혜택 ✕</span>}
             {searchText && <span onClick={() => onSearchChange("")} style={chipStyle}>{searchText.length > 10 ? searchText.slice(0, 10) + "…" : searchText} ✕</span>}
-            {selectedTags?.map(tag => <span key={tag} onClick={() => onToggleTagFilter?.(tag)} style={chipStyle}>{tag} ✕</span>)}
           </div>
         )}
         {filteredLength != null && <span key={filteredLength} style={{
@@ -344,37 +321,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           <button onClick={() => { onMinScoreChange(""); onBuilderTierChange("전체"); if (benefitOnly) onToggleBenefitOnly(); }} aria-label="점수/시공사/혜택 초기화" style={resetBtn(28)}>✕</button>
         )}
       </div>
-      {/* 6행: 카테고리별 최소 점수 (접이식) */}
-      {catMinScores && (() => {
-        const CAT_UI = [
-          { key: "price", label: "가격", fKey: "min_price" },
-          { key: "location", label: "입지", fKey: "min_location" },
-          { key: "product", label: "상품", fKey: "min_product" },
-          { key: "benefit", label: "혜택", fKey: "min_benefit" },
-          { key: "risk", label: "안전", fKey: "min_risk" },
-          { key: "future", label: "미래", fKey: "min_future" },
-        ];
-        const hasCatFilter = Object.values(catMinScores).some(Boolean);
-        return (
-          <div style={{ marginTop: 6 }}>
-            <button onClick={() => {}} aria-label="카테고리 점수 필터 토글" style={{ background: "transparent", border: "none", padding: 0, fontSize: 11, color: hasCatFilter ? C.indigo : C.muted, fontWeight: 600, cursor: "pointer", marginBottom: 4 }}>
-              ▸ 카테고리별 최소 점수 {hasCatFilter ? `(${Object.values(catMinScores).filter(Boolean).length})` : ""}
-            </button>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
-              {CAT_UI.map(({ key, label, fKey }) => (
-                <div key={key} style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: catCol?.[key] || C.muted, minWidth: 22 }}>{label}</span>
-                  <input type="number" inputMode="numeric" min="0" max="100"
-                    value={catMinScores[fKey] ?? ""} onChange={e => onCatMinChange?.(key, e.target.value)}
-                    placeholder="0" aria-label={`${label} 최소 점수`}
-                    style={{ ...numInput(catMinScores[fKey], 26), maxWidth: 48, fontSize: 10 }} />
-                </div>
-              ))}
-            </div>
-            {hasCatFilter && <button onClick={onCatMinReset} aria-label="카테고리 점수 초기화" style={{ ...resetBtn(24), marginTop: 4, fontSize: 10 }}>카테고리 초기화</button>}
-          </div>
-        );
-      })()}
       </>}
     </div>
   );

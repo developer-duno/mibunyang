@@ -14,13 +14,6 @@ const MANWON_PER_EUK = 10000;
 export function applyBaseFilters(list, f) {
   let out = list;
   if (f.showFavOnly) out = out.filter(x => f.favoriteIds.includes(x.apt.id));
-  // 태그 필터 (OR 로직: 선택된 태그 중 하나라도 포함)
-  if (f.selectedTags?.length > 0 && f.favoritesObj) {
-    out = out.filter(x => {
-      const tags = f.favoritesObj[x.apt.id]?.tags || [];
-      return f.selectedTags.some(t => tags.includes(t));
-    });
-  }
 
   // 예산 범위 (역전 시 자동 스왑)
   const bMinRaw = f.budgetMin !== "" ? Number(f.budgetMin) : null;
@@ -40,16 +33,6 @@ export function applyBaseFilters(list, f) {
 
   // 최소 점수
   if (f.minScore) { const ms = Number(f.minScore); if (Number.isFinite(ms)) out = out.filter(x => x.res.total >= ms); }
-
-  // 카테고리별 최소 점수 (AND 로직)
-  const CAT_KEYS = ["price", "location", "product", "benefit", "risk", "future"];
-  for (const ck of CAT_KEYS) {
-    const key = `min_${ck}`;
-    if (f[key]) {
-      const mv = Number(f[key]);
-      if (Number.isFinite(mv)) out = out.filter(x => (x.res.cats[ck]?.total ?? 0) >= mv);
-    }
-  }
 
   // 혜택 유무
   if (f.benefitOnly) out = out.filter(x => (x.res.cats.benefit?.totalWon ?? 0) > 0);

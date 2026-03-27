@@ -11,7 +11,7 @@ import { DataSections } from "./detail/DataSections";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 
-export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, favMeta, onSetMemo, onToggleTag, favTags, onConsult }) {
+export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, onConsult }) {
   useEffect(() => {
     if (!item) return;
     document.body.style.overflow = "hidden";
@@ -111,32 +111,6 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             border: "1.5px solid transparent", borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>공유</button>}
         </div>
-
-        {isFav && favMeta && onSetMemo && (
-          <div style={{ marginBottom: 12, padding: 10, background: C.slate100, borderRadius: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: C.sub, marginBottom: 6 }}>메모 · 태그</div>
-            <textarea
-              value={favMeta.memo || ""}
-              onChange={e => onSetMemo(apt.id, e.target.value)}
-              maxLength={100}
-              placeholder="메모를 입력하세요 (100자)"
-              style={{ width: "100%", minHeight: 48, padding: 6, fontSize: 12, border: `1px solid ${C.border}`, borderRadius: 6, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }}
-            />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {(favTags || []).map(tag => {
-                  const active = (favMeta.tags || []).includes(tag);
-                  return <button key={tag} onClick={() => onToggleTag?.(apt.id, tag)} style={{
-                    fontSize: 10, padding: "2px 8px", borderRadius: 10, border: active ? `1px solid ${C.indigo}` : `1px solid ${C.border}`,
-                    background: active ? C.indigoLight : "transparent", color: active ? C.indigo : C.muted,
-                    fontWeight: active ? 700 : 500, cursor: "pointer", transition: "all .15s",
-                  }}>{tag}</button>;
-                })}
-              </div>
-              <span style={{ fontSize: 10, color: C.muted }}>{(favMeta.memo || "").length}/100</span>
-            </div>
-          </div>
-        )}
 
         {Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} />)}
 

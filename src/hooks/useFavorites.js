@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 
 const STORAGE_KEY = "mibunyang_fav";
 const BACKUP_KEY = "mibunyang_fav_backup";
-const FAV_TAGS = ["투자용", "실거주", "재검토", "가격매력", "입지우수"];
 
 /** v1(배열) → v2(객체) 자동 마이그레이션 */
 function loadFavorites() {
@@ -31,24 +30,6 @@ export function useFavorites(showToast) {
         return next;
       }
       return { ...prev, [id]: { memo: "", tags: [], addedAt: new Date().toISOString() } };
-    });
-  }, []);
-
-  const setMemo = useCallback((id, memo) => {
-    const trimmed = (memo || "").slice(0, 100);
-    setFavoritesObj(prev => {
-      if (!(id in prev)) return prev;
-      return { ...prev, [id]: { ...prev[id], memo: trimmed } };
-    });
-  }, []);
-
-  const toggleTag = useCallback((id, tag) => {
-    if (!FAV_TAGS.includes(tag)) return;
-    setFavoritesObj(prev => {
-      if (!(id in prev)) return prev;
-      const tags = prev[id].tags || [];
-      const next = tags.includes(tag) ? tags.filter(t => t !== tag) : [...tags, tag];
-      return { ...prev, [id]: { ...prev[id], tags: next } };
     });
   }, []);
 
@@ -88,5 +69,5 @@ export function useFavorites(showToast) {
     return () => window.removeEventListener("storage", h);
   }, []);
 
-  return { favoriteIds, setFavoriteIds, toggleFavorite, favoritesObj, setMemo, toggleTag, FAV_TAGS };
+  return { favoriteIds, setFavoriteIds, toggleFavorite, favoritesObj };
 }
