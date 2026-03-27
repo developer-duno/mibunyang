@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { Bar, ScoreBadge, Radar } from "./primitives";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import { Bar, ScoreBadge, Radar, LineChart } from "./primitives";
 
 describe("Bar", () => {
   // null/undefined value는 0으로 폴백
@@ -94,5 +94,78 @@ describe("Radar", () => {
     const { container } = render(<Radar data={data} size={200} />);
     const svg = container.querySelector("svg");
     expect(svg.getAttribute("width")).toBe("200");
+  });
+});
+
+describe("LineChart", () => {
+  const chartData = [
+    { x: "1월", y: 100, label: "1월: 100" },
+    { x: "2월", y: 120, label: "2월: 120" },
+    { x: "3월", y: 110, label: "3월: 110" },
+  ];
+
+  // 데이터 부족 시 메시지 표시
+  it("데이터 1개 이하면 '데이터가 부족합니다' 메시지", () => {
+    render(<LineChart data={[{ x: "1월", y: 100 }]} />);
+    expect(screen.getByText("데이터가 부족합니다")).toBeInTheDocument();
+  });
+
+  // 정상 렌더링
+  it("데이터 2개 이상이면 SVG 차트 렌더링", () => {
+    const { container } = render(<LineChart data={chartData} yLabel="테스트 차트" />);
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+    expect(svg.getAttribute("aria-label")).toBe("테스트 차트");
+  });
+
+  // title 요소 유지 (접근성)
+  it("각 데이터 포인트에 title 요소 존재 (접근성)", () => {
+    const { container } = render(<LineChart data={chartData} />);
+    const titles = container.querySelectorAll("circle title");
+    expect(titles.length).toBe(chartData.length);
+    expect(titles[0].textContent).toBe("1월: 100");
+  });
+
+  // 투명 hit area circle 존재
+  it("투명 hit area circle이 데이터 수만큼 존재", () => {
+    const { container } = render(<LineChart data={chartData} />);
+    const hitAreas = container.querySelectorAll('circle[data-index]');
+    expect(hitAreas.length).toBe(chartData.length);
+  });
+
+  // 클릭으로 툴팁 표시 — 활성 dot(r=5) + 툴팁 text(fontWeight=600) 확인
+  it("hit area 클릭 시 툴팁 표시", () => {
+    const { container } = render(<LineChart data={chartData} />);
+    const hitArea = container.querySelector('circle[data-index="1"]');
+    fireEvent.click(hitArea);
+    // 활성 dot: r=5, stroke=white
+    const activeDot = container.querySelector('circle[r="5"]');
+    expect(activeDot).toBeInTheDocument();
+    // 툴팁 text: fontWeight 600
+    const tooltipText = container.querySelector("text[font-weight='600']");
+    expect(tooltipText).toBeInTheDocument();
+    expect(tooltipText.textContent).toBe("2월: 120");
+  });
+
+  // 같은 포인트 재클릭 시 토글 (dismiss)
+  it("같은 포인트 재클릭 시 툴팁 dismiss", () => {
+    const { container } = render(<LineChart data={chartData} />);
+    const hitArea = container.querySelector('circle[data-index="0"]');
+    fireEvent.click(hitArea);
+    expect(container.querySelector('circle[r="5"]')).toBeInTheDocument();
+    fireEvent.click(hitArea);
+    expect(container.querySelector('circle[r="5"]')).toBeNull();
+  });
+
+  // 3초 후 자동 dismiss
+  it("3초 후 자동 dismiss", () => {
+    vi.useFakeTimers();
+    const { container } = render(<LineChart data={chartData} />);
+    const hitArea = container.querySelector('circle[data-index="1"]');
+    fireEvent.click(hitArea);
+    expect(container.querySelector('circle[r="5"]')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(container.querySelector('circle[r="5"]')).toBeNull();
+    vi.useRealTimers();
   });
 });

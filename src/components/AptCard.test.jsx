@@ -146,4 +146,33 @@ describe("AptCard", () => {
     fireEvent.keyDown(body, { key: "Enter" });
     expect(onDetail).toHaveBeenCalledWith(1);
   });
+
+  // --- 메모/태그 배지 테스트 ---
+
+  it("favMeta 없으면 메모/태그 배지 미표시", () => {
+    render(<AptCard {...makeProps({ isFav: true })} />);
+    expect(screen.queryByText("투자용")).toBeNull();
+  });
+
+  it("isFav=true + 메모 있으면 메모 텍스트 표시", () => {
+    render(<AptCard {...makeProps({ isFav: true, favMeta: { memo: "투자용 매물", tags: [], addedAt: "" } })} />);
+    expect(screen.getByText("투자용 매물")).toBeInTheDocument();
+  });
+
+  it("isFav=true + 태그 있으면 태그 pill 표시", () => {
+    render(<AptCard {...makeProps({ isFav: true, favMeta: { memo: "", tags: ["가격매력", "입지우수"], addedAt: "" } })} />);
+    expect(screen.getByText("가격매력")).toBeInTheDocument();
+    expect(screen.getByText("입지우수")).toBeInTheDocument();
+  });
+
+  it("isFav=false이면 favMeta 있어도 배지 미표시", () => {
+    render(<AptCard {...makeProps({ isFav: false, favMeta: { memo: "테스트", tags: ["투자용"], addedAt: "" } })} />);
+    expect(screen.queryByText("투자용")).toBeNull();
+  });
+
+  it("공백 메모는 배지 미표시", () => {
+    render(<AptCard {...makeProps({ isFav: true, favMeta: { memo: "   ", tags: [], addedAt: "" } })} />);
+    // 빈 메모+빈 태그 → favRow 자체 미렌더
+    expect(screen.queryByText(/^\s+$/)).toBeNull();
+  });
 });

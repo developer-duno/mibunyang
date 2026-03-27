@@ -28,12 +28,15 @@ const S = {
   infoRow: { display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 },
   infoTag: { fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub },
   alertRow: { marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" },
+  favRow: { display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4, alignItems: "center" },
+  memoBadge: { fontSize: 10, color: C.indigo, background: C.indigoLight, padding: "2px 8px", borderRadius: 4, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  favTag: { fontSize: 10, padding: "2px 7px", borderRadius: 10, border: `1px solid ${C.indigo}`, background: C.indigoLight, color: C.indigo, fontWeight: 600 },
   btnRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "0 16px 12px" },
   btnBase: { borderRadius: 6, padding: "8px 12px", fontSize: 12, cursor: "pointer", flex: 1, minHeight: 36, transition: "all .15s" },
   alertTag: { fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600 },
 };
 
-export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView }) {
+export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, favMeta, profileWeights, onExpertView }) {
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = (apt.noxious || []).length;
@@ -66,6 +69,12 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
                 <span key={i} style={{ fontSize: 11, color: i === 0 ? C.blue : C.sub, background: i === 0 ? C.blueLight : C.bg, padding: "3px 8px", borderRadius: 4, fontWeight: i === 0 ? 700 : 400 }}>{t}</span>
               ))}
             </div>
+            {isFav && (favMeta?.memo?.trim() || favMeta?.tags?.length > 0) && (
+              <div style={S.favRow}>
+                {favMeta.memo?.trim() && <span style={S.memoBadge}>{favMeta.memo.trim()}</span>}
+                {favMeta.tags?.map(tag => <span key={tag} style={S.favTag}>{tag}</span>)}
+              </div>
+            )}
           </div>
           <ScoreBadge score={res.total} size={56} />
         </div>

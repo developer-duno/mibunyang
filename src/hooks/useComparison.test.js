@@ -90,6 +90,21 @@ describe('useComparison', () => {
     expect(result.current.compIds).toEqual([]);
   });
 
+  // --- 복원 토스트 테스트 ---
+
+  it('localStorage에 비교 데이터 있으면 복원 토스트 표시', () => {
+    localStorage.setItem('mibunyang_comp', JSON.stringify([1, 2, 3]));
+    const showToast = vi.fn();
+    renderHook(() => useComparison(showToast));
+    expect(showToast).toHaveBeenCalledWith('이전 비교 3개 복원됨');
+  });
+
+  it('localStorage 비어있으면 복원 토스트 미표시', () => {
+    const showToast = vi.fn();
+    renderHook(() => useComparison(showToast));
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
   it('quota exceeded 시 showToast 호출', () => {
     const showToast = vi.fn();
     // localStorage.setItem을 QuotaExceededError로 모킹
