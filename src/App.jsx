@@ -480,6 +480,12 @@ export default function App() {
         <div role="status" aria-live="polite" data-no-print style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", background: C.text, color: C.white, padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 400, boxShadow: "0 4px 16px rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{toast}</div>
       )}
 
+      {/* 사업자 정보 */}
+      <footer data-no-print style={{ textAlign: "center", padding: "16px 12px 72px", fontSize: 9, color: C.muted, lineHeight: 1.6, letterSpacing: -0.2 }}>
+        이로움기획 | 대표 김상원 | 사업자등록번호 267-02-01775<br />
+        대전광역시 유성구 구암동 606-11 201호
+      </footer>
+
       {/* 하단 네비 */}
       <BottomNav tab={tab} expertLoggedIn={expert.expertLoggedIn} showComp={showComp} onNavClick={handleNavClick} containerMaxWidth={containerMaxWidth} />
     </div>
