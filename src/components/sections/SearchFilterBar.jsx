@@ -26,7 +26,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterGu, onGuChange, guOptions,
   budgetMin, onBudgetMinChange, budgetMax, onBudgetMaxChange, onBudgetReset,
   sortKey, onSortChange,
-  pw, catCol, catBg,
   isPC,
   showFavOnly, onToggleFavOnly, favCount,
   areaMin, onAreaMinChange, areaMax, onAreaMaxChange,
@@ -266,11 +265,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             ))}
           </select>
         )}
-        <div style={{ width: 1, height: 20, background: C.border, flexShrink: 0, margin: "0 2px" }} />
-        {Object.entries(pw).map(([k]) => {
-          const nm = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
-          return <span key={k} style={{ fontSize: 9, fontWeight: 700, color: catCol[k], background: catBg[k], padding: "2px 4px", borderRadius: 3, whiteSpace: "nowrap" }}>{nm[k]}{pw[k]}</span>;
-        })}
       </div>
       {/* 4행: 면적 + 세대수 필터 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 6 }}>

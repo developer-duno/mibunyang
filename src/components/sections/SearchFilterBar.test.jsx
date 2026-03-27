@@ -108,13 +108,6 @@ describe("SearchFilterBar", () => {
     expect(screen.getByLabelText("정렬 기준")).toBeInTheDocument();
   });
 
-  // 가중치 뱃지 표시
-  it("가중치 뱃지 6개 표시", () => {
-    render(<SearchFilterBar {...makeProps()} />);
-    expect(screen.getByText(/입지40/)).toBeInTheDocument();
-    expect(screen.getByText(/가격20/)).toBeInTheDocument();
-  });
-
   // 결과 카운트 배지 표시
   it("filteredLength/scoredLength 배지 표시", () => {
     render(<SearchFilterBar {...makeProps({ filteredLength: 45, scoredLength: 200 })} />);

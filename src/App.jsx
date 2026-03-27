@@ -356,7 +356,6 @@ export default function App() {
             filterGu={filterGu} onGuChange={handleGuChange} guOptions={guOptions}
             budgetMin={budgetMin} onBudgetMinChange={handleBudgetMinChange} budgetMax={budgetMax} onBudgetMaxChange={handleBudgetMaxChange} onBudgetReset={handleBudgetReset}
             sortKey={sortKey} onSortChange={setSortKey}
-            pw={pw} catCol={catCol} catBg={catBg}
             isPC={isPC}
             showFavOnly={showFavOnly} onToggleFavOnly={toggleFavOnly} favCount={favoriteIds.length}
             areaMin={areaMin} onAreaMinChange={handleAreaMinChange} areaMax={areaMax} onAreaMaxChange={handleAreaMaxChange}
