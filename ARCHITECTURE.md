@@ -29,7 +29,7 @@ src/
 │   └── admin/              관리자 UI
 ├── hooks/
 │   ├── useApartmentData.js ★ 데이터 로딩 진입점
-│   ├── useFilterSort.js / useComparison.js / useFavorites.js (객체+메모+태그)
+│   ├── useFilterSort.js / useComparison.js / useFavorites.js (객체 기반)
 │   ├── usePriceHistory.js / useUnsoldHistory.js  (시계열 API 페칭)
 │   └── useExpertMode.js / useAdminMode.js / useToast.js
 ├── lib/
@@ -244,7 +244,7 @@ isPending        boolean   (transition)  useTransition — 프로필 전환 시
 | useToast | toast | — |
 | useFilterSort | filterRegion, filterGu, sortKey | — |
 | useComparison | compIds, showCompOpen | showComp (파생), MAX_COMPARE=4 export, 복원 토스트 |
-| useFavorites | favoritesObj (객체) | favoriteIds (파생 배열), setMemo, toggleTag |
+| useFavorites | favoritesObj (객체) | favoriteIds (파생 배열), setFavoriteIds, toggleFavorite |
 | useDetailModal | detailAptId | — |
 | useConsult | consultForm, consultSubmitted, submitting, submittedConsults | fetchConsults(token) |
 | useExpertMode | expertPw, expertLoggedIn, expertExpandedApt | — |
@@ -281,13 +281,13 @@ App
 ├── [소비자 모드]
 │   ├── [tab === "list"]
 │   │   ├── 시/도 + 구/군 2단 드롭다운
-│   │   ├── 정렬 태그 버튼 (5종)
+│   │   ├── 정렬 버튼 (7종)
 │   │   ├── 비교 토글 버튼 (compIds >= 2일 때)
 │   │   ├── CompareSheet (memo) ← showComp일 때
 │   │   ├── 빈 상태 안내 (filtered.length === 0일 때)
 │   │   └── AptCard (memo) * filtered.length
 │   │       ├── ScoreBadge (memo) ← 원형 점수 배지
-│   │       ├── 관심매물 배지 (favMeta: 메모 truncated + 태그 pill)
+│   │       ├── 관심매물 하이라이트 (isFav → border 색상)
 │   │       ├── Bar (memo) * 3 ← 상위 카테고리 미니 바
 │   │       └── 3버튼 (상세보기/관심매물/비교추가)
 │   │
@@ -302,12 +302,12 @@ App
 │   │   └── ConsultForm (memo) ← 상담 신청 폼
 │   │
 │   ├── [tab === "info"]
-│   │   └── 엔진 정보 + 전문가 로그인 링크
+│   │   └── InfoPage (10섹션 + FAQ 10건) + 전문가 로그인 링크
 │   │
 │   └── DetailModal (memo) ← 바텀시트 상세 팝업 (z-index:300)
 │       ├── ScoreBadge (80px)
 │       ├── Radar (memo) + 핵심지표
-│       ├── 메모·태그 편집 (isFav && favMeta, textarea + pill 토글)
+│       ├── 상담 CTA 버튼 ("이 매물 상담하기")
 │       ├── CatPanel (memo) * 6
 │       ├── PriceChart (memo) ← 분양가 추이 LineChart (터치 툴팁)
 │       ├── UnsoldChart (memo) ← 미분양 추이 LineChart (2선 + 터치 툴팁)
@@ -345,21 +345,21 @@ App
 | ScoreBadge | primitives.jsx | score, size |
 | Radar | primitives.jsx | data, size |
 | CatPanel | CatPanel.jsx | cat, k |
-| AptCard | AptCard.jsx | apt, res, rank, onDetail, isComp, onComp, isFav, onFav, favMeta, profileWeights |
-| CompareSheet | CompareSheet.jsx | items, onShare, onClose (+ PNG/PDF 내보내기 내장) |
+| AptCard | AptCard.jsx | apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView |
+| CompareSheet | CompareSheet.jsx | items, onShare, onClose, profile (+ PNG/PDF 내보내기 내장) |
 | MapView | sections/MapView.jsx | filtered, onDetail, isPC |
 | InfraOverlay | sections/InfraOverlay.jsx | mapInstance, ready |
 | ConsultForm | ConsultForm.jsx | scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast |
-| DetailModal | DetailModal.jsx | item, onClose, isComp, onComp, isFav, onFav, favMeta, onSetMemo, onToggleTag, favTags |
+| DetailModal | DetailModal.jsx | item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, onConsult |
 | LineChart | primitives.jsx | data, color, height, secondaryData, secondaryColor, yLabel, xLabel (+ 내부 activeDot 터치 인터랙션) |
-| ExpertFieldTable | expert/ | fields, apt |
-| ExpertScoreBreakdown | expert/ | res, apt |
+| ExpertFieldTable | expert/ | apt, fields, title, color, exclude |
+| ExpertScoreBreakdown | expert/ | apt, res, profile |
 | ExpertScoreSummary | expert/ | res, profile |
 | ExpertUnitPlaceholder | expert/ | apt |
 | ExpertDataCompleteness | expert/ | apt |
-| ExpertSidebar | expert/ | scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort |
-| ExpertAptHeader | expert/ | item |
-| ExpertDashboard | expert/ | scored, profile, setProfile, expandedApt, setExpandedApt |
+| ExpertSidebar | expert/ | scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort, isMobile, onClose |
+| ExpertAptHeader | expert/ | apt, res |
+| ExpertDashboard | expert/ | scored, profile, setProfile, expandedApt, setExpandedApt, onSwitchToAdmin |
 
 ---
 

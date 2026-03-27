@@ -59,7 +59,6 @@ export function useExpertMode(showToast) {
     }
   }, []); // showToastRef 사용으로 showToast 의존성 제거 (P-4)
 
-  // TODO(structure): handleExpertSignup 함수 정의되었으나 UI 미구현 — 회원가입 페이지 추가 시 연결 필요 (⚠️-1)
   const handleExpertSignup = useCallback(async () => {
     const form = authFormRef.current;
     setAuthLoading(true);
