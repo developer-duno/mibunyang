@@ -2,8 +2,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { REGIONS } from "@/constants/regions";
-import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
-import { NOW_YM } from "@/components/AptCard";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
 import { C, catCol, catBg } from "@/theme";
@@ -35,20 +33,7 @@ import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
 import { AptListSection } from "@/components/sections/AptListSection";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
-/* ── 분류 헬퍼 (filterOptionCounts + filtered 공용) ── */
-function classifyMoveIn(apt) {
-  if (!apt.completion) return null;
-  if (apt.completion >= NOW_YM) return "입주예정";
-  if ((apt.unsoldRate ?? 0) > 0) return "미입주";
-  return "입주완료";
-}
-function classifyTier(apt) {
-  const b = resolveBuilder(apt.builder);
-  const t = BRAND_TIER[b]?.tier;
-  if (t === "1군Super" || t === "1군") return "1군";
-  if (t === "2군") return "2군";
-  return "기타";
-}
+import { classifyMoveIn, classifyTier } from "@/lib/classify";
 
 export default function App() {
   const [profile, setProfileRaw] = useState(() => {

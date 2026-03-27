@@ -114,4 +114,44 @@ describe("SearchFilterBar", () => {
     expect(screen.getByText(/입지40/)).toBeInTheDocument();
     expect(screen.getByText(/가격20/)).toBeInTheDocument();
   });
+
+  // 결과 카운트 배지 표시
+  it("filteredLength/scoredLength 배지 표시", () => {
+    render(<SearchFilterBar {...makeProps({ filteredLength: 45, scoredLength: 200 })} />);
+    expect(screen.getByText(/45 \/ 200개/)).toBeInTheDocument();
+  });
+
+  // 결과 0건 시 빨간색 배지
+  it("filteredLength===0이면 배지 렌더링 (0건 표시)", () => {
+    render(<SearchFilterBar {...makeProps({ filteredLength: 0, scoredLength: 200 })} />);
+    expect(screen.getByText(/0 \/ 200개/)).toBeInTheDocument();
+  });
+
+  // 드롭다운 옵션 카운트 표시 (region)
+  it("시/도 드롭다운에 옵션별 건수 표시", () => {
+    const counts = { regionCounts: { "서울": 100, "경기": 50 }, guCounts: {}, moveInCounts: { "입주예정": 0, "미입주": 0, "입주완료": 0 }, tierCounts: { "1군": 0, "2군": 0, "기타": 0 } };
+    render(<SearchFilterBar {...makeProps({ filterOptionCounts: counts })} />);
+    const regionSelect = screen.getByLabelText("시/도");
+    expect(regionSelect).toBeInTheDocument();
+    // "서울 (100)" 옵션이 존재하는지 확인
+    const options = regionSelect.querySelectorAll("option");
+    const seoulOpt = [...options].find(o => o.textContent.includes("서울"));
+    expect(seoulOpt?.textContent).toBe("서울 (100)");
+  });
+
+  // 0건 옵션 disabled
+  it("0건 옵션이 disabled 처리됨", () => {
+    const counts = { regionCounts: { "서울": 100, "경기": 0 }, guCounts: {}, moveInCounts: { "입주예정": 0, "미입주": 0, "입주완료": 0 }, tierCounts: { "1군": 0, "2군": 0, "기타": 0 } };
+    render(<SearchFilterBar {...makeProps({ filterOptionCounts: counts })} />);
+    const regionSelect = screen.getByLabelText("시/도");
+    const options = regionSelect.querySelectorAll("option");
+    const gyeonggiOpt = [...options].find(o => o.textContent.includes("경기"));
+    expect(gyeonggiOpt?.disabled).toBe(true);
+  });
+
+  // filterOptionCounts null일 때 (로딩 중) 크래시 없음
+  it("filterOptionCounts null이어도 크래시 없이 렌더링", () => {
+    render(<SearchFilterBar {...makeProps({ filterOptionCounts: null, filteredLength: 10, scoredLength: 100 })} />);
+    expect(screen.getByLabelText("시/도")).toBeInTheDocument();
+  });
 });
