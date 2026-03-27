@@ -24,6 +24,7 @@ function makeProps(overrides = {}) {
     catCol,
     catBg,
     isPC: false,
+    isDesktop: false,
     ...overrides,
   };
 }

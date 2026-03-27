@@ -7,7 +7,7 @@ import { PROFILES } from "@/constants/profiles";
 export const AptListSection = memo(function AptListSection({
   visible, filteredLength, visibleCount, onLoadMore,
   onDetail, onFav, onComp, favoriteIds, compIds,
-  pw, profile, isPC, isPending,
+  pw, profile, isPC, isDesktop, isPending,
   searchText, budgetMin, budgetMax, filterRegion,
   dataLoading, dataFreshnessText,
   onExpertView,
@@ -15,7 +15,7 @@ export const AptListSection = memo(function AptListSection({
   return (
     <>
     
-      <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, padding: "0 2px", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+      <div style={{ fontSize: isDesktop ? 13 : 11, color: C.muted, marginBottom: isDesktop ? 8 : 4, padding: "0 2px", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
         <span>{filteredLength}개 단지{dataFreshnessText ? ` · ${dataFreshnessText}` : ""} · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>
         {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
           <span style={{ color: C.red, fontWeight: 700 }}>(최소&gt;최대)</span>
@@ -31,18 +31,18 @@ export const AptListSection = memo(function AptListSection({
         </div>
       )}
     
-      <div style={{ ...(isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 12px" } : {}), ...(isPending ? { opacity: 0.6, pointerEvents: "none", transition: "opacity 0.15s" } : {}) }}>
+      <div style={{ ...(isDesktop ? { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" } : isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 12px" } : {}), ...(isPending ? { opacity: 0.6, pointerEvents: "none", transition: "opacity 0.15s" } : {}) }}>
         {visible.map((item, idx) => (
           <AptCard key={item.apt.id} apt={item.apt} res={item.res} rank={idx + 1}
             onDetail={onDetail}
             isComp={compIds.includes(item.apt.id)} onComp={onComp}
             isFav={favoriteIds.includes(item.apt.id)} onFav={onFav}
-            profileWeights={pw} onExpertView={onExpertView} />
+            profileWeights={pw} onExpertView={onExpertView} isDesktop={isDesktop} />
         ))}
       </div>
       {visibleCount < filteredLength && (
         <div style={{ textAlign: "center", padding: "16px 0 24px" }}>
-          <button onClick={() => onLoadMore()} style={{ padding: "10px 32px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <button onClick={() => onLoadMore()} style={{ padding: isDesktop ? "12px 40px" : "10px 32px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, fontSize: isDesktop ? 14 : 13, fontWeight: 600, cursor: "pointer" }}>
             더 보기 ({filteredLength - visibleCount}개 남음)
           </button>
         </div>

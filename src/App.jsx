@@ -66,7 +66,7 @@ export default function App() {
     return sessionStorage.getItem("userRole") === "admin" ? "admin" : "expert";
   });
 
-  const { isPC } = useResponsive();
+  const { isPC, isDesktop } = useResponsive();
 
   // 8 custom hooks
   const { toast, showToast } = useToast();
@@ -173,7 +173,7 @@ export default function App() {
   const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;
 
 
-  const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isPC ? 960 : 520;
+  const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
 
   // handleExpertLogin wrapper (setTab is in App scope)
   const handleExpertLogin = useCallback(async () => {
@@ -348,9 +348,10 @@ export default function App() {
   }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchText, openShareSheet, getShareURL]);
 
   return (
-    <div style={{ background: C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", color: C.text, paddingBottom: 70, transition: "max-width .3s" }}>
+    <div style={{ background: isDesktop ? C.white : C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", fontSize: isDesktop ? 14 : 13, color: C.text, paddingBottom: isDesktop ? 24 : 70, paddingTop: isDesktop ? 60 : 0, transition: "max-width .3s" }}>
 
-      <HeaderSection profile={profile} onProfileChange={setProfile} apartmentCount={apartments.length} />
+      <HeaderSection profile={profile} onProfileChange={setProfile} apartmentCount={apartments.length}
+        isDesktop={isDesktop} tab={tab} onNavClick={handleNavClick} showComp={showComp} compCount={compIds.length} expertLoggedIn={expert.expertLoggedIn} containerMaxWidth={containerMaxWidth} />
 
       {dataLoading && (
         <div style={{ textAlign: "center", padding: "6px", fontSize: 11, color: C.muted }}>
@@ -365,14 +366,14 @@ export default function App() {
       )}
 
       {(tab === "list" || tab === "map") && (
-        <div style={{ padding: "0 16px" }}>
+        <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           <SearchFilterBar
             searchText={searchText} onSearchChange={handleSearchChange}
             filterRegion={filterRegion} onRegionChange={handleRegionChange} regionOptions={regionOptions}
             filterGu={filterGu} onGuChange={handleGuChange} guOptions={guOptions}
             budgetMin={budgetMin} onBudgetMinChange={handleBudgetMinChange} budgetMax={budgetMax} onBudgetMaxChange={handleBudgetMaxChange} onBudgetReset={handleBudgetReset}
             sortKey={sortKey} onSortChange={setSortKey}
-            isPC={isPC}
+            isPC={isPC} isDesktop={isDesktop}
             showFavOnly={showFavOnly} onToggleFavOnly={toggleFavOnly} favCount={favoriteIds.length}
             areaMin={areaMin} onAreaMinChange={handleAreaMinChange} areaMax={areaMax} onAreaMaxChange={handleAreaMaxChange}
             unitsMin={unitsMin} onUnitsMinChange={handleUnitsMinChange} unitsMax={unitsMax} onUnitsMaxChange={handleUnitsMaxChange} onAreaUnitsReset={handleAreaUnitsReset}
@@ -395,7 +396,7 @@ export default function App() {
       )}
 
       {tab === "list" ? (
-        <div style={{ padding: "0 16px" }}>
+        <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           {compIds.length >= 2 && (
             <button onClick={() => { const wasOpen = showComp; setShowCompOpen(!showCompOpen); if (wasOpen) window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{
               width: "100%", background: showComp ? C.indigo : "transparent", color: showComp ? C.white : C.indigo,
@@ -407,7 +408,7 @@ export default function App() {
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => setVisibleCount(v => v + 30)}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} compIds={compIds}
-            pw={pw} profile={profile} isPC={isPC} isPending={isPending}
+            pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending}
             searchText={searchText} budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
 
@@ -415,7 +416,7 @@ export default function App() {
           />
         </div>
       ) : tab === "map" ? (
-        <div style={{ padding: "0 16px" }}>
+        <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>지도 로딩 중...</div>}>
             <MapView filtered={filtered} onDetail={detail.handleOpenDetail} isPC={isPC} />
           </Suspense>
@@ -493,17 +494,17 @@ export default function App() {
       <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} isPC={isPC} />
 
       {toast && (
-        <div role="status" aria-live="polite" data-no-print style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", background: C.text, color: C.white, padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 400, boxShadow: "0 4px 16px rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{toast}</div>
+        <div role="status" aria-live="polite" data-no-print style={{ position: "fixed", bottom: isDesktop ? "24px" : "calc(76px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", background: C.text, color: C.white, padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 400, boxShadow: "0 4px 16px rgba(0,0,0,0.25)", whiteSpace: "nowrap" }}>{toast}</div>
       )}
 
       {/* 사업자 정보 */}
-      <footer data-no-print style={{ textAlign: "center", padding: "16px 12px 72px", fontSize: 9, color: C.muted, lineHeight: 1.6, letterSpacing: -0.2 }}>
+      <footer data-no-print style={{ textAlign: "center", padding: isDesktop ? "16px 12px 24px" : "16px 12px 72px", fontSize: 9, color: C.muted, lineHeight: 1.6, letterSpacing: -0.2 }}>
         이로움기획 | 대표 김상원 | 사업자등록번호 267-02-01775<br />
         대전광역시 유성구 구암동 606-11 201호
       </footer>
 
       {/* 하단 네비 */}
-      <BottomNav tab={tab} expertLoggedIn={expert.expertLoggedIn} showComp={showComp} onNavClick={handleNavClick} containerMaxWidth={containerMaxWidth} />
+      <BottomNav tab={tab} expertLoggedIn={expert.expertLoggedIn} showComp={showComp} onNavClick={handleNavClick} containerMaxWidth={containerMaxWidth} isDesktop={isDesktop} />
     </div>
   );
 }

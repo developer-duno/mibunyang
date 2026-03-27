@@ -2,6 +2,38 @@ import { memo, useState, useCallback } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { C } from "@/theme";
 
+/** 도움말 모달 (데스크톱/모바일 공용) */
+function HelpModal({ onClose }) {
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.5)", zIndex: 500 }} />
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "calc(100% - 32px)", maxWidth: 480, maxHeight: "80dvh", background: C.white, borderRadius: 16, zIndex: 501, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>도움말</span>
+          <button onClick={onClose} aria-label="닫기" style={{ background: C.slate100, border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 700, color: C.muted, cursor: "pointer", minHeight: 36 }}>닫기</button>
+        </div>
+        <div style={{ overflowY: "auto", padding: "12px 16px 20px" }}>
+          {HELP_SECTIONS.map((sec, si) => (
+            <div key={si} style={{ marginBottom: si < HELP_SECTIONS.length - 1 ? 16 : 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: si === 0 ? C.blue : si === 1 ? C.green : C.amber, marginBottom: 8, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>{sec.title}</div>
+              {sec.items.map((item, i) => (
+                <div key={i} style={{ marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{item.t}</span>
+                  <span style={{ fontSize: 11, color: C.sub, marginLeft: 6 }}>{item.d}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>도시등급별 교통 보정: 특별시(S) · 광역시(A) · 특례시(B) · 일반시(C) · 군(D) 등급에 따라 지하철·버스·IC·KTX 가중치가 자동 조정됩니다.</div>
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>학술 기반: AHP 계층분석법 · 헤도닉 가격모형 · 국토연구원 GTX 분석(2024)</div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 const HELP_SECTIONS = [
   { title: "스코어링 엔진 (6개 카테고리 · 34+ 지표)", items: [
     { t: "가격 매력도", d: "적정가 괴리도(신축프리미엄·면적·브랜드 보정) + 전세가율 + PIR + PSR + 데이터신뢰도" },
@@ -26,14 +58,69 @@ const HELP_SECTIONS = [
 ];
 
 /**
- * 헤더 섹션 — 프로필 선택 버튼 5개, 단지 수, v3.0 뱃지, 도움말 팝업
- * Props: profile, onProfileChange, apartmentCount
+ * 헤더 섹션 — 데스크톱: 고정 상단 바 + 네비 / 모바일: 블루 그라디언트
  */
-export const HeaderSection = memo(function HeaderSection({ profile, onProfileChange, apartmentCount }) {
+export const HeaderSection = memo(function HeaderSection({ profile, onProfileChange, apartmentCount, isDesktop, tab, onNavClick, showComp, compCount, expertLoggedIn, containerMaxWidth }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
 
+  const navItems = expertLoggedIn
+    ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }]
+    : [{ l: "목록", k: "list" }, { l: "지도", k: "map" }, { l: "비교", k: "compare" }, { l: "상담", k: "consult" }, { l: "정보", k: "info" }];
+
+  if (isDesktop) {
+    return (
+      <>
+        <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: containerMaxWidth, background: C.white, borderBottom: `1px solid ${C.border}`, padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 50, boxShadow: C.shadowSm, transition: "max-width .3s" }}>
+          {/* 좌측: 로고 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+            <h1 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: C.blue, letterSpacing: -0.5, whiteSpace: "nowrap" }}>미분양 비교</h1>
+            <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{apartmentCount}개 단지</span>
+          </div>
+
+          {/* 중앙: 프로필 탭 */}
+          <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+            {Object.entries(PROFILES).map(([k, p]) => (
+              <button key={k} onClick={() => onProfileChange(k)} aria-pressed={profile === k} style={{
+                background: "none", border: "none", borderBottom: profile === k ? `2px solid ${C.blue}` : "2px solid transparent",
+                color: profile === k ? C.blue : C.sub, fontSize: 13, fontWeight: profile === k ? 700 : 500,
+                padding: "16px 10px", cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap"
+              }}>{p.name}</button>
+            ))}
+          </div>
+
+          {/* 우측: 네비 + 도움말 */}
+          <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+            {navItems.map(n => {
+              const isActive = n.k === "compare" ? (showComp && tab === "list") : (tab === n.k && !(n.k === "list" && showComp));
+              return (
+                <button key={n.k} aria-current={(!["compare", "logout"].includes(n.k) && tab === n.k) ? "page" : undefined} onClick={() => onNavClick(n.k)} style={{
+                  background: isActive ? C.blueLight : "transparent", color: isActive ? C.blue : C.muted,
+                  border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: isActive ? 700 : 500,
+                  cursor: "pointer", transition: "all .15s", minHeight: 36, whiteSpace: "nowrap"
+                }}>{n.l}{n.k === "compare" && compCount >= 2 ? `(${compCount})` : ""}</button>
+              );
+            })}
+            {expertLoggedIn && (
+              <button onClick={() => onNavClick("logout")} style={{ background: "none", border: "none", color: C.muted, fontSize: 11, fontWeight: 500, padding: "6px 8px", cursor: "pointer", minHeight: 36 }}>로그아웃</button>
+            )}
+            <button onClick={toggleHelp} aria-label="도움말" style={{
+              background: helpOpen ? C.blueLight : C.slate100, color: helpOpen ? C.blue : C.muted,
+              border: "none", borderRadius: 6, width: 32, height: 32, minHeight: 36,
+              fontSize: 14, fontWeight: 800, cursor: "pointer", transition: "all .15s",
+              display: "flex", alignItems: "center", justifyContent: "center"
+            }}>?</button>
+          </div>
+        </div>
+
+        {/* 도움말 모달 — 데스크톱 */}
+        {helpOpen && <HelpModal onClose={closeHelp} />}
+      </>
+    );
+  }
+
+  /* ── 모바일: 기존 블루 그라디언트 ── */
   return (
     <div style={{ background: "linear-gradient(135deg,#2563EB 0%,#1E40AF 100%)", padding: "16px 16px 16px", borderRadius: "0 0 24px 24px", color: C.white, position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
@@ -71,62 +158,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
         </div>
       </div>
 
-      {/* 도움말 팝업 모달 */}
-      {helpOpen && (
-        <>
-          <div onClick={closeHelp} style={{
-            position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
-            background: "rgba(0,0,0,0.5)", zIndex: 500
-          }} />
-          <div style={{
-            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-            width: "calc(100% - 32px)", maxWidth: 480, maxHeight: "80dvh",
-            background: C.white, borderRadius: 16, zIndex: 501,
-            boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden",
-            display: "flex", flexDirection: "column"
-          }}>
-            {/* 모달 헤더 */}
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "14px 16px", borderBottom: `1px solid ${C.border}`, flexShrink: 0
-            }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>도움말</span>
-              <button onClick={closeHelp} aria-label="닫기" style={{
-                background: C.slate100, border: "none", borderRadius: 6,
-                padding: "6px 12px", fontSize: 12, fontWeight: 700,
-                color: C.muted, cursor: "pointer", minHeight: 36
-              }}>닫기</button>
-            </div>
-
-            {/* 모달 내용 */}
-            <div style={{ overflowY: "auto", padding: "12px 16px 20px" }}>
-              {HELP_SECTIONS.map((sec, si) => (
-                <div key={si} style={{ marginBottom: si < HELP_SECTIONS.length - 1 ? 16 : 0 }}>
-                  <div style={{
-                    fontSize: 13, fontWeight: 800, color: si === 0 ? C.blue : si === 1 ? C.green : C.amber,
-                    marginBottom: 8, paddingBottom: 4, borderBottom: `1px solid ${C.border}`
-                  }}>{sec.title}</div>
-                  {sec.items.map((item, i) => (
-                    <div key={i} style={{ marginBottom: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{item.t}</span>
-                      <span style={{ fontSize: 11, color: C.sub, marginLeft: 6 }}>{item.d}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-
-              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-                  도시등급별 교통 보정: 특별시(S) · 광역시(A) · 특례시(B) · 일반시(C) · 군(D) 등급에 따라 지하철·버스·IC·KTX 가중치가 자동 조정됩니다.
-                </div>
-                <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
-                  학술 기반: AHP 계층분석법 · 헤도닉 가격모형 · 국토연구원 GTX 분석(2024)
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      {helpOpen && <HelpModal onClose={closeHelp} />}
     </div>
   );
 });

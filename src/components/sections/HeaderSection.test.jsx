@@ -7,19 +7,44 @@ describe("HeaderSection", () => {
     profile: "live",
     onProfileChange: vi.fn(),
     apartmentCount: 42,
+    isDesktop: false,
+    tab: "list",
+    onNavClick: vi.fn(),
+    showComp: false,
+    compCount: 0,
+    expertLoggedIn: false,
+    containerMaxWidth: 520,
   };
 
-  // 타이틀과 단지 수 표시
-  it("헤더 타이틀과 단지 수를 표시", () => {
+  // 모바일: 타이틀과 단지 수 표시
+  it("모바일: 헤더 타이틀과 단지 수를 표시", () => {
     render(<HeaderSection {...defaultProps} />);
     expect(screen.getByText("전국 미분양 비교 엔진")).toBeInTheDocument();
     expect(screen.getByText(/42개 단지/)).toBeInTheDocument();
   });
 
-  // v3.0 뱃지
-  it("v3.0 뱃지가 표시됨", () => {
+  // 모바일: v3.0 뱃지
+  it("모바일: v3.0 뱃지가 표시됨", () => {
     render(<HeaderSection {...defaultProps} />);
     expect(screen.getByText("v3.0")).toBeInTheDocument();
+  });
+
+  // 데스크톱: 상단 바 렌더링
+  it("데스크톱: 고정 상단 바에 로고와 네비 표시", () => {
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
+    expect(screen.getByText("미분양 비교")).toBeInTheDocument();
+    expect(screen.getByText(/42개 단지/)).toBeInTheDocument();
+    expect(screen.getByText("목록")).toBeInTheDocument();
+    expect(screen.getByText("지도")).toBeInTheDocument();
+    expect(screen.getByText("상담")).toBeInTheDocument();
+    expect(screen.getByText("정보")).toBeInTheDocument();
+  });
+
+  // 데스크톱: 모바일 그라디언트 표시 안 함
+  it("데스크톱: 모바일 전용 타이틀 미표시", () => {
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
+    expect(screen.queryByText("전국 미분양 비교 엔진")).not.toBeInTheDocument();
+    expect(screen.queryByText("v3.0")).not.toBeInTheDocument();
   });
 
   // 프로필 버튼 5개 렌더링

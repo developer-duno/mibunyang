@@ -17,6 +17,7 @@ function makeProps(overrides = {}) {
     pw: { location: 40, product: 20, price: 20, risk: 10, benefit: 5, future: 5 },
     profile: "live",
     isPC: false,
+    isDesktop: false,
     isPending: false,
     searchText: "",
     budgetMin: "",

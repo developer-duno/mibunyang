@@ -26,7 +26,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterGu, onGuChange, guOptions,
   budgetMin, onBudgetMinChange, budgetMax, onBudgetMaxChange, onBudgetReset,
   sortKey, onSortChange,
-  isPC,
+  isPC, isDesktop,
   showFavOnly, onToggleFavOnly, favCount,
   areaMin, onAreaMinChange, areaMax, onAreaMaxChange,
   unitsMin, onUnitsMinChange, unitsMax, onUnitsMaxChange, onAreaUnitsReset,
@@ -56,15 +56,15 @@ export const SearchFilterBar = memo(function SearchFilterBar({
     if (presetName.trim() && onSavePreset) { onSavePreset(presetName); setPresetName(""); setShowPresetInput(false); }
   }, [presetName, onSavePreset]);
   return (
-    <div data-no-print style={{ background: C.card, borderRadius: 10, padding: "8px 10px", border: `1px solid ${C.border}`, margin: "8px 0 6px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+    <div data-no-print style={{ background: C.card, borderRadius: isDesktop ? 12 : 10, padding: isDesktop ? "12px 16px" : "8px 10px", border: `1px solid ${C.border}`, margin: isDesktop ? "12px 0 10px" : "8px 0 6px", boxShadow: C.shadowSm }}>
       {/* 1행: 검색 + 관심 토글 + 결과 건수 + 접기 */}
-      <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+      <div style={{ display: "flex", gap: isDesktop ? 8 : 6, alignItems: "center", marginBottom: isDesktop ? 8 : 6 }}>
         <div style={{ position: "relative", flex: 1 }}>
           <input type="text" value={searchText} onChange={e => onSearchChange(e.target.value)} placeholder="단지명, 건설사, 지역 검색" aria-label="단지 검색" style={{
-            width: "100%", padding: "6px 30px 6px 10px", fontSize: 12,
+            width: "100%", padding: isDesktop ? "8px 30px 8px 14px" : "6px 30px 6px 10px", fontSize: isDesktop ? 14 : 12,
             border: searchText ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-            borderRadius: 6, background: C.slate100, color: C.text,
-            outline: "none", height: 32, boxSizing: "border-box"
+            borderRadius: isDesktop ? 8 : 6, background: C.slate100, color: C.text,
+            outline: "none", height: isDesktop ? 40 : 32, boxSizing: "border-box"
           }} />
           {searchText && (
             <button onClick={() => onSearchChange("")} aria-label="검색어 지우기" style={{

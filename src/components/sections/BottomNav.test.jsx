@@ -9,13 +9,26 @@ function makeProps(overrides = {}) {
     showComp: false,
     onNavClick: vi.fn(),
     containerMaxWidth: 520,
+    isDesktop: false,
     ...overrides,
   };
 }
 
 describe("BottomNav", () => {
-  // 일반 사용자 — 4개 네비 항목
-  it("일반 사용자는 목록/비교/상담/정보 4개 항목 표시", () => {
+  // 데스크톱에서 숨김 (return null)
+  it("데스크톱(isDesktop=true)에서 렌더링하지 않음", () => {
+    const { container } = render(<BottomNav {...makeProps({ isDesktop: true })} />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  // 모바일에서 정상 렌더
+  it("모바일(isDesktop=false)에서 nav 렌더링", () => {
+    render(<BottomNav {...makeProps({ isDesktop: false })} />);
+    expect(screen.getByLabelText("메인 내비게이션")).toBeInTheDocument();
+  });
+
+  // 일반 사용자 — 4개 네비 항목 (기존 + 지도 = 5개)
+  it("일반 사용자는 목록/비교/상담/정보 표시", () => {
     render(<BottomNav {...makeProps()} />);
     expect(screen.getByText("목록")).toBeInTheDocument();
     expect(screen.getByText("비교")).toBeInTheDocument();

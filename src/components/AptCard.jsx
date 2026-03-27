@@ -33,7 +33,7 @@ const S = {
   alertTag: { fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600 },
 };
 
-export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView }) {
+export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop }) {
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = (apt.noxious || []).length;
@@ -43,23 +43,25 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
 
   // 상태 의존 스타일만 useMemo로 계산
   const dynStyles = useMemo(() => ({
-    wrapper: { ...S.wrapper, background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`, ...(moveInDone ? { opacity: 0.55 } : {}) },
+    wrapper: { ...S.wrapper, background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`, ...(moveInDone ? { opacity: 0.55 } : {}), ...(isDesktop ? { boxShadow: C.shadowMd } : {}) },
+    body: { ...S.body, ...(isDesktop ? { padding: "16px 20px" } : {}) },
+    nameText: { ...S.nameText, ...(isDesktop ? { fontSize: 16 } : {}) },
     bar: { height: 4, background: `linear-gradient(90deg,${g.c},${g.c}88)` },
     rank: { fontSize: 11, fontWeight: 800, color: C.white, background: g.c, padding: "3px 8px", borderRadius: 4, flexShrink: 0 },
     detailBtn: { ...S.btnBase, background: C.slate100, color: C.slate600, border: "1.5px solid transparent", fontWeight: 600 },
     favBtn: { ...S.btnBase, background: isFav ? C.redLight : C.slate100, color: isFav ? C.red : C.muted, border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent", fontWeight: isFav ? 700 : 600 },
     compBtn: { ...S.btnBase, background: isComp ? C.indigo : "transparent", color: isComp ? C.white : C.indigo, border: `1.5px solid ${C.indigo}`, fontWeight: 700 },
-  }), [isComp, isFav, g.c, moveInDone]);
+  }), [isComp, isFav, g.c, moveInDone, isDesktop]);
 
   return (
     <div style={dynStyles.wrapper}>
       <div style={dynStyles.bar} />
-      <div style={S.body} onClick={() => onDetail(apt.id)} tabIndex={0} role="button" onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDetail(apt.id); } }}>
+      <div style={dynStyles.body || S.body} onClick={() => onDetail(apt.id)} tabIndex={0} role="button" onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDetail(apt.id); } }}>
         <div style={S.header}>
           <div style={S.nameWrap}>
             <div style={S.nameRow}>
               <span style={dynStyles.rank}>{rank}위</span>
-              <span title={apt.name} style={{ ...S.nameText, color: C.text }}>{apt.name}</span>
+              <span title={apt.name} style={{ ...dynStyles.nameText, color: C.text }}>{apt.name}</span>
             </div>
             <div style={S.tagRow}>
               {[regionTag, `${apt.area ?? ""}㎡`, fmtPrice(apt.price), apt.builder ?? ""].filter(Boolean).map((t, i) => (

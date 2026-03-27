@@ -6,9 +6,13 @@ describe('C (색상 팔레트)', () => {
     expect(Object.keys(C).length).toBeGreaterThanOrEqual(20);
   });
 
-  it('모든 값이 # 헥스 코드', () => {
-    Object.values(C).forEach((color) => {
-      expect(color).toMatch(/^#[0-9A-Fa-f]{6}$/);
+  it('색상 값이 # 헥스 코드, shadow 값이 문자열', () => {
+    Object.entries(C).forEach(([key, val]) => {
+      if (key.startsWith("shadow")) {
+        expect(typeof val).toBe("string");
+      } else {
+        expect(val).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      }
     });
   });
 

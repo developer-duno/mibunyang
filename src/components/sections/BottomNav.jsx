@@ -10,7 +10,8 @@ import { C } from "@/theme";
  *   onNavClick: (key: string) => void - 네비 버튼 클릭 핸들러
  *   containerMaxWidth: number - 컨테이너 최대 너비
  */
-export const BottomNav = memo(function BottomNav({ tab, expertLoggedIn, showComp, onNavClick, containerMaxWidth }) {
+export const BottomNav = memo(function BottomNav({ tab, expertLoggedIn, showComp, onNavClick, containerMaxWidth, isDesktop }) {
+  if (isDesktop) return null;
   const navItems = expertLoggedIn
     ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "로그아웃", k: "logout" }]
     : [{ l: "목록", k: "list" }, { l: "지도", k: "map" }, { l: "비교", k: "compare" }, { l: "상담", k: "consult" }, { l: "정보", k: "info" }];

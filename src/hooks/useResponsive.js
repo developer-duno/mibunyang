@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 
 export function useResponsive() {
-  const [isPC, setIsPC] = useState(() => window.innerWidth >= 768);
+  const [width, setWidth] = useState(() => window.innerWidth);
   useEffect(() => {
-    const check = () => setIsPC(window.innerWidth >= 768);
+    let timeout;
+    const check = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setWidth(window.innerWidth), 150);
+    };
     window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
+    return () => { clearTimeout(timeout); window.removeEventListener("resize", check); };
   }, []);
-  return { isPC };
+  return { isPC: width >= 768, isDesktop: width >= 1024 };
 }

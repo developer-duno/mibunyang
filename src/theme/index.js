@@ -9,6 +9,8 @@ export const C = {
   cyan: "#0891B2", cyanLight: "#ECFEFF", cyanBorder: "#A5F3FC",
   indigo: "#4338CA", indigoLight: "#EEF2FF",
   slate100: "#F1F5F9", slate600: "#475569",
+  shadowSm: "0 1px 3px rgba(0,0,0,0.06)",
+  shadowMd: "0 2px 8px rgba(0,0,0,0.08)",
 };
 
 export const catCol = { price: C.green, location: C.blue, product: C.purple, benefit: C.amber, risk: C.red, future: C.cyan };
