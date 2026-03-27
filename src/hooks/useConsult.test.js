@@ -70,7 +70,9 @@ describe('useConsult', () => {
     await act(async () => { await result.current.handleConsultSubmit(); });
     expect(result.current.consultSubmitted).toBe(true);
     expect(result.current.submittedConsults).toHaveLength(1);
-    expect(result.current.submittedConsults[0].name).toBe("김철수");
+    // 마스킹된 이름/전화 확인 (localStorage 폴백에만 적용)
+    expect(result.current.submittedConsults[0].name).toBe("김**");
+    expect(result.current.submittedConsults[0].phone).toBe("010-****-0000");
     expect(showToast).toHaveBeenCalledWith("상담 신청이 저장되었습니다 (오프라인)");
     const stored = JSON.parse(localStorage.getItem("mibunyang_consults"));
     expect(stored).toHaveLength(1);

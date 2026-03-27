@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { maskName, maskPhone } from "@/lib/format";
 
 export function useConsult(showToast, favoriteIds) {
   const [consultForm, setConsultForm] = useState({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
@@ -26,8 +27,8 @@ export function useConsult(showToast, favoriteIds) {
       setConsultSubmitted(true);
       showToast("상담 신청이 완료되었습니다");
     } catch (err) {
-      // API 실패 시 localStorage 폴백
-      const fallback = { ...entry, submittedAt: new Date().toISOString(), id: Date.now().toString() };
+      // API 실패 시 localStorage 폴백 (개인정보 마스킹)
+      const fallback = { ...entry, name: maskName(entry.name), phone: maskPhone(entry.phone), submittedAt: new Date().toISOString(), id: Date.now().toString() };
       const updated = [...submittedConsults, fallback];
       setSubmittedConsults(updated);
       try { localStorage.setItem("mibunyang_consults", JSON.stringify(updated)); } catch {}

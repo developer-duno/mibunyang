@@ -257,7 +257,7 @@ export function scoreBenefit(apt) {
     : 0;
   const totalWon = discVal + loanVal + optVal + balVal + cashVal + maintSave;
   const rate = apt.price > 0 ? (totalWon / apt.price) * 100 : 0;
-  const sc = Math.min(Math.round(rate / BENEFIT_FULL_RATE * 100), 100);
+  const sc = Math.max(0, Math.min(Math.round(rate / BENEFIT_FULL_RATE * 100), 100));
   const itemScore = (v) => totalWon > 0 ? Math.round(sc * v / totalWon) : 0;
   const noData = discVal === 0 && loanVal === 0 && optVal === 0 && balVal === 0 && cashVal === 0 && maintSave === 0;
   return {

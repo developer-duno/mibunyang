@@ -156,7 +156,10 @@ async function main() {
         if (!totalHouseholds) { rpt.skip(1); continue; }
 
         // 세대당 관리비 (만원) = 전체 관리비(원) / 총 세대수 / 10000
-        const perUnit = Math.round(totalCost / totalHouseholds / 10000);
+        const MAINT_CAP = 500; // 만원/세대/월 상한 (이상치 필터링)
+        const rawPerUnit = Math.round(totalCost / totalHouseholds / 10000);
+        if (rawPerUnit > MAINT_CAP) log(PHASE, `  [WARN] ${target.name}: 관리비 ${rawPerUnit}만원 > 상한(${MAINT_CAP}만원) — 클램핑됨`);
+        const perUnit = Math.min(Math.max(0, rawPerUnit), MAINT_CAP);
 
         if (dryRun) {
           log(PHASE, `  [DRY-RUN] ${target.name}: ${perUnit}만원/세대 (총 ${totalCost.toLocaleString("ko-KR")}원 ÷ ${totalHouseholds}세대)`);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmtPrice, fmtCompletion } from './format';
+import { fmtPrice, fmtCompletion, maskName, maskPhone } from './format';
 
 // 가격 포맷팅 테스트
 describe('fmtPrice', () => {
@@ -89,5 +89,45 @@ describe('fmtCompletion — 추가 edge cases', () => {
   });
   it('숫자 0 → -', () => {
     expect(fmtCompletion(0)).toBe('-');
+  });
+});
+
+// --- 이름 마스킹 테스트 ---
+describe('maskName', () => {
+  it('정상: 3자 이름 → 첫글자 + **', () => {
+    expect(maskName("홍길동")).toBe("홍**");
+  });
+  it('2자 이름', () => {
+    expect(maskName("이준")).toBe("이*");
+  });
+  it('1자 이름', () => {
+    expect(maskName("김")).toBe("김");
+  });
+  it('null/undefined → 빈 문자열', () => {
+    expect(maskName(null)).toBe("");
+    expect(maskName(undefined)).toBe("");
+  });
+  it('빈 문자열 → 빈 문자열', () => {
+    expect(maskName("")).toBe("");
+  });
+  it('숫자 등 비문자열 → 빈 문자열', () => {
+    expect(maskName(123)).toBe("");
+  });
+});
+
+// --- 전화번호 마스킹 테스트 ---
+describe('maskPhone', () => {
+  it('정상: 하이픈 포함', () => {
+    expect(maskPhone("010-1234-5678")).toBe("010-****-5678");
+  });
+  it('하이픈 없이', () => {
+    expect(maskPhone("01012345678")).toBe("010-****-5678");
+  });
+  it('8자리 이하 → 원본 반환', () => {
+    expect(maskPhone("1234567")).toBe("1234567");
+  });
+  it('null/undefined → 빈 문자열', () => {
+    expect(maskPhone(null)).toBe("");
+    expect(maskPhone(undefined)).toBe("");
   });
 });
