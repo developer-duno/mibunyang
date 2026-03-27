@@ -18,7 +18,7 @@
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
 - Vercel KV (Upstash Redis) — 인증 세션
-- GitHub Actions — 데이터 수집 (27개 워크플로우)
+- GitHub Actions — 데이터 수집 (31개 워크플로우)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC)
 
 ## 반응형 레이아웃

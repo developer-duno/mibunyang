@@ -44,6 +44,7 @@
 | `collect-market-stats.yml` | KOSIS HUG 시장통계 5개 지표 (5일) |
 | `collect-maintenance.yml` | 국토부 공동주택 관리비 (15일) |
 | `collect-building-hub.yml` | 건축HUB 에너지+인허가 4엔드포인트 (15일) |
+| `collect-applyhome.yml` | 청약홈 잔여세대 경쟁률 (주간) |
 
 ### 유틸리티
 | 워크플로우 | 설명 |
@@ -72,3 +73,4 @@
 | `KAKAO_KEY` | Kakao REST API 키 (혐오시설/환경/소음 수집 + 역지오코딩) |
 | `DART_KEY` | DART 전자공시 API 키 (시공사 재무 수집) |
 | `KOSIS_KEY` | KOSIS 국가통계포털 API 키 (미분양 수집) |
+| `TAGO_KEY` | TAGO 대중교통 API 키 (버스정류장 수집, data.go.kr) |

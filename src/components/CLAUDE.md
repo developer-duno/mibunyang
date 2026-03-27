@@ -49,7 +49,7 @@
 
 ## 컴포넌트 구조
 
-### App.jsx (~510줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수 + dedup useEffect + isDesktop prop 스레딩 + 사업자 푸터
+### App.jsx (~512줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수 + dedup useEffect + isDesktop prop 스레딩 + trackEvent 이벤트 계측 + 사업자 푸터
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|

@@ -45,7 +45,7 @@ src/
 ├── services/
 │   ├── staticDataApi.js    ★ Supabase API 또는 JSON 폴백
 │   ├── applyhomeApi.js / kakaoApi.js / neisApi.js / kosisApi.js / dartApi.js
-└── App.jsx                 오케스트레이터 (훅 조합 + 렌더 + SORTERS 모듈 상수 + isDesktop prop 스레딩)
+└── App.jsx                 오케스트레이터 (훅 조합 + 렌더 + SORTERS 모듈 상수 + isDesktop prop 스레딩 + trackEvent 이벤트 계측)
 
 api/                        Vercel Serverless — 규칙: api/CLAUDE.md
 ├── _lib/                   auth.js, adminAuth.js, supabase.js
