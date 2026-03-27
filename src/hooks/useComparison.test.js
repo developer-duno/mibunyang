@@ -105,6 +105,31 @@ describe('useComparison', () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 
+  // --- MAX_COMPARE 제한 테스트 ---
+
+  it('localStorage에 5개 이상 ID → MAX_COMPARE(4개)로 잘림', () => {
+    localStorage.setItem('mibunyang_comp', JSON.stringify([1, 2, 3, 4, 5, 6]));
+    const { result } = renderHook(() => useComparison(vi.fn()));
+    expect(result.current.compIds).toHaveLength(4);
+    expect(result.current.compIds).toEqual([1, 2, 3, 4]);
+  });
+
+  it('localStorage에 비배열 값 → 빈 배열 폴백', () => {
+    localStorage.setItem('mibunyang_comp', JSON.stringify({ a: 1 }));
+    const { result } = renderHook(() => useComparison(vi.fn()));
+    expect(result.current.compIds).toEqual([]);
+  });
+
+  it('크로스탭 storage 이벤트에서도 MAX_COMPARE 제한 적용', () => {
+    const { result } = renderHook(() => useComparison(vi.fn()));
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'mibunyang_comp', newValue: JSON.stringify([1, 2, 3, 4, 5, 6, 7]),
+      }));
+    });
+    expect(result.current.compIds).toHaveLength(4);
+  });
+
   it('quota exceeded 시 showToast 호출', () => {
     const showToast = vi.fn();
     // localStorage.setItem을 QuotaExceededError로 모킹

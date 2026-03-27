@@ -27,7 +27,7 @@ export function useComparison(showToast) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(compIds)); } catch (e) { if (e.name === "QuotaExceededError") showToast("저장 실패: 저장소가 가득 찼습니다"); } }, [compIds, showToast]);
   useEffect(() => {
-    const h = (e) => { if (e.key === STORAGE_KEY) { try { setCompIds(JSON.parse(e.newValue || "[]")); } catch { /* ignore */ } } };
+    const h = (e) => { if (e.key === STORAGE_KEY) { try { const v = JSON.parse(e.newValue || "[]"); setCompIds(Array.isArray(v) ? v.slice(0, MAX_COMPARE) : []); } catch { /* ignore */ } } };
     window.addEventListener("storage", h);
     return () => window.removeEventListener("storage", h);
   }, []);

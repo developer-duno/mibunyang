@@ -35,7 +35,6 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
   const [activeDot, setActiveDot] = useState(null);
 
   const handleDotTap = useCallback((e) => {
-    if (e.type === "touchstart") e.preventDefault(); // click 이벤트 억제 → 더블 토글 방지
     const idx = Number(e.currentTarget.getAttribute("data-index"));
     setActiveDot(prev => prev === idx ? null : idx);
   }, []);
@@ -70,7 +69,7 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
       <path d={makePath(data)} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       {data.map((d, i) => <circle key={i} cx={toX(i, data.length)} cy={toY(d.y)} r="3" fill={color}><title>{d.label || `${d.x}: ${d.y}`}</title></circle>)}
       {/* 투명 hit area — 터치 타겟 확장 */}
-      {data.map((_, i) => <circle key={`h${i}`} cx={toX(i, data.length)} cy={toY(data[i].y)} r={HIT_AREA_RADIUS} fill="transparent" data-index={i} onClick={handleDotTap} onTouchStart={handleDotTap} style={{ cursor: "pointer" }} />)}
+      {data.map((_, i) => <circle key={`h${i}`} cx={toX(i, data.length)} cy={toY(data[i].y)} r={HIT_AREA_RADIUS} fill="transparent" data-index={i} onClick={handleDotTap} style={{ cursor: "pointer" }} />)}
       {activeDot != null && activeDot < data.length && (() => {
         const d = data[activeDot];
         const cx = toX(activeDot, data.length);
