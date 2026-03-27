@@ -14,12 +14,13 @@
 - `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
 - `@/theme/index.js` — 디자인 토큰 (C 팔레트 + shadowSm/shadowMd + catCol + gr 등급함수)
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
-- Supabase (PostgreSQL) — 데이터베이스 (14개 테이블 + apartments_flat VIEW)
+- Supabase (PostgreSQL) — 데이터베이스 (14개 테이블 + apartments_flat VIEW + presale 19컬럼)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (31개 워크플로우)
-- Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC)
+- Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC, 한국 IP 필수)
+- `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (pre.land.naver.com, 19개 필드)
 
 ## 반응형 레이아웃
 
@@ -50,9 +51,9 @@ constants → scoring → theme → components → hooks → App
 - `src/components/CLAUDE.md` — memo, 접근성, 크로스브라우저, 전문가 페이지, 컴포넌트 구조
 - `src/hooks/CLAUDE.md` — Hook 호출 순서, useMemo 의존성, 파생 상태, 교차 관심사 패턴
 - `api/CLAUDE.md` — null 함정, 한글, Supabase 연동, 인증
-- `scripts/CLAUDE.md` — units 보정 파이프라인, 네이버 로컬 자동화, 후처리 파이프라인
+- `scripts/CLAUDE.md` — units 보정 파이프라인, 네이버 로컬 자동화 (6단계), 후처리 파이프라인
 - `.github/workflows/CLAUDE.md` — 워크플로우 목록, GitHub Secrets
-- `supabase/CLAUDE.md` — 테이블 스키마 (14개 + VIEW)
+- `supabase/CLAUDE.md` — 테이블 스키마 (14개 + VIEW + presale 19컬럼)
 
 ## 데이터 소스
 

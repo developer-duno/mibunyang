@@ -34,6 +34,19 @@
 
 **수동 실행**: `bash scripts/run-naver-local.sh`
 
+## 네이버 로컬 파이프라인 (6단계)
+
+`run-naver-local.sh` / `run-naver-local.bat` 실행 시 6단계 순차 실행:
+
+| 단계 | 스크립트 | 역할 | 필수 |
+|------|---------|------|------|
+| 1/6 | naver-collect.py | 네이버 매물 수집 (curl_cffi) | 필수 |
+| 2/6 | sync-naver-complex.mjs | 22개 네이버 필드 → apartments 동기화 | 필수 |
+| 3/6 | **naver-presale.mjs** | **분양정보 19필드 수집 (pre.land.naver.com)** | 비필수 |
+| 4/6 | naver-units.mjs | 세대수(units) 2차 보정 | 필수 |
+| 5/6 | calc-exclusive-ratio.mjs | 전용률 계산 | 필수 |
+| 6/6 | compute-scores.mjs | cats_cache 사전 스코어링 갱신 | 비필수 |
+
 ## 네이버 수집 후처리 파이프라인
 
 naver-collect.py 완료 후 자동 실행되는 4단계:

@@ -61,10 +61,11 @@ scripts/
 ├── naver-units.py          네이버 세대수 보정
 └── collectors/
     ├── _shared.mjs         공유 유틸 (loadEnv, upsertBatch, fetchWithRetry)
-    └── naver-collect.py  ★ 네이버 인근 매물 수집
+    ├── naver-collect.py  ★ 네이버 인근 매물 수집
+    └── naver-presale.mjs ★ 네이버 분양정보 수집 (pre.land.naver.com, 19필드)
 
 supabase/
-└── schema.sql              14개 테이블 + VIEW + RLS + 트리거
+└── schema.sql              14개 테이블 + VIEW + presale 19컬럼 + RLS + 트리거
 
 .github/workflows/
 ├── daily-deploy.yml        매일 빌드+배포
@@ -92,11 +93,20 @@ GitHub Actions (일/주/월 스케줄)
   │                         ↓
   │                    public/data/apartments.json (787KB, 1,481건)
   │                         ↓
-  ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (13개 테이블)
+  ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (14개 테이블)
   │                                    ↓
   ├── naver-collect.py ──────────→ complexes + articles + complex_price_history
   │                                    ↓
   └── naver-units.py ────────────→ 세대수 보정 JSON
+
+로컬 PC (Windows 스케줄러, 매주 월/목 06:00, 한국 IP 필수)
+  └── run-naver-local.sh ──────→ 6단계 파이프라인:
+      1. naver-collect.py → complexes/articles
+      2. sync-naver-complex.mjs → apartments 22필드
+      3. naver-presale.mjs → apartments presale_* 19필드 (pre.land.naver.com)
+      4. naver-units.mjs → 세대수 보정
+      5. calc-exclusive-ratio.mjs → 전용률
+      6. compute-scores.mjs → cats_cache 갱신
 
 프론트엔드 로딩:
   VITE_USE_SUPABASE=true  → /api/supabase/apartments (Supabase VIEW)
