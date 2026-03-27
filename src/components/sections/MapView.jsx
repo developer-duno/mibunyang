@@ -15,6 +15,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
   const clustererRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [markerCount, setMarkerCount] = useState(0);
 
   // Kakao Maps SDK 로드 확인 + 지도 초기화
   useEffect(() => {
@@ -74,6 +75,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
       markers.push(marker);
     }
     clustererRef.current.addMarkers(markers);
+    setMarkerCount(markers.length);
 
     // 마커가 있으면 범위에 맞게 지도 조정
     if (markers.length > 0) {
@@ -92,7 +94,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
       {/* 필터 결과 수 오버레이 */}
       <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: C.indigo, boxShadow: "0 1px 4px rgba(0,0,0,0.12)", zIndex: 10 }}>
-        {filtered.length}개 단지
+        {markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
       </div>
       {/* 선택된 아파트 정보 카드 */}
       {selected && (
@@ -100,7 +102,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selected.apt.name}</div>
             <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
-              {selected.apt.region} {selected.apt.gu} · {selected.apt.price ? `${(selected.apt.price / 10000).toFixed(1)}억` : "가격 미정"}
+              {[selected.apt.region, selected.apt.gu].filter(Boolean).join(" ")} · {selected.apt.price ? `${(selected.apt.price / 10000).toFixed(1)}억` : "가격 미정"}
             </div>
           </div>
           <div style={{ textAlign: "center", flexShrink: 0 }}>

@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >/dev/null
 echo [%date% %time%] 네이버 수집 시작 >> "%~dp0..
 aver-collect.log"
@@ -14,9 +15,8 @@ if exist .env.local (
     )
   )
 )
-setlocal enabledelayedexpansion
 
-echo === 1/3 네이버 매물 수집 (Python) ===
+echo === 1/5 네이버 매물 수집 (Python) ===
 python scripts/collectors/naver-collect.py
 if errorlevel 1 (
   echo [%date% %time%] ERROR: naver-collect.py 실패 >> "%~dp0..\naver-collect.log"

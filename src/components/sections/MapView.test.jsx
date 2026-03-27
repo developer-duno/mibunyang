@@ -60,6 +60,7 @@ describe("MapView", () => {
   it("kakao SDK 없어도 크래시 없이 렌더링", () => {
     delete window.kakao;
     render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
-    expect(screen.getByText("1개 단지")).toBeInTheDocument();
+    // SDK 없으면 마커 0개 → "0 / 1개 단지" 표시
+    expect(screen.getByText("0 / 1개 단지")).toBeInTheDocument();
   });
 });
