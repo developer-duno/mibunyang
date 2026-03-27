@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { trackEvent } from "@/lib/analytics";
 
 const KAKAO_JS_KEY = import.meta.env.VITE_KAKAO_JS_KEY || "";
 const KAKAO_CHANNEL_ID = import.meta.env.VITE_KAKAO_CHANNEL_ID || "";
@@ -44,6 +45,7 @@ export function useShare(showToast) {
     } catch {
       showToast("카카오톡 공유에 실패했습니다");
     }
+    trackEvent("share_action", { method: "kakao" });
     setShareSheetOpen(false);
   }, [shareData, showToast]);
 
@@ -54,6 +56,7 @@ export function useShare(showToast) {
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const sep = isIOS ? "&" : "?";
     window.location.href = `sms:${sep}body=${encoded}`;
+    trackEvent("share_action", { method: "sms" });
     setShareSheetOpen(false);
   }, [shareData]);
 
@@ -73,6 +76,7 @@ export function useShare(showToast) {
       document.body.removeChild(el);
       showToast("링크가 복사되었습니다");
     }
+    trackEvent("share_action", { method: "copy" });
     setShareSheetOpen(false);
   }, [shareData, showToast]);
 

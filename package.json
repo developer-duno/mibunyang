@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
+    "@vercel/analytics": "^1.6.1",
     "@vercel/kv": "^2.0.0",
+    "@vercel/speed-insights": "^2.0.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "react": "^18.3.1",

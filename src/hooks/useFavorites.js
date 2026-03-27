@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
+import { trackEvent } from "@/lib/analytics";
 
 const STORAGE_KEY = "mibunyang_fav";
 const BACKUP_KEY = "mibunyang_fav_backup";
@@ -24,7 +25,9 @@ export function useFavorites(showToast) {
 
   const toggleFavorite = useCallback(id => {
     setFavoritesObj(prev => {
-      if (id in prev) {
+      const removing = id in prev;
+      trackEvent("favorite_toggle", { action: removing ? "remove" : "add" });
+      if (removing) {
         const next = { ...prev };
         delete next[id];
         return next;

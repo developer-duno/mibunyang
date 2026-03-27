@@ -35,6 +35,7 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { applyBaseFilters } from "@/lib/filterEngine";
+import { trackEvent } from "@/lib/analytics";
 
 /* ── 정렬 비교 함수 (모듈 레벨 — 클로저 미사용, 매 렌더 재생성 방지) ── */
 const SORTERS = {
@@ -52,7 +53,7 @@ export default function App() {
     try { const v = localStorage.getItem("mibunyang_profile"); return v && PROFILES[v] ? v : "live"; } catch { return "live"; }
   });
   const [isPending, startTransition] = useTransition();
-  const setProfile = useCallback((k) => { startTransition(() => setProfileRaw(k)); try { localStorage.setItem("mibunyang_profile", k); } catch {} }, [startTransition]);
+  const setProfile = useCallback((k) => { startTransition(() => setProfileRaw(k)); try { localStorage.setItem("mibunyang_profile", k); } catch {} trackEvent("profile_change", { profile: k }); }, [startTransition]);
   const [customWeights, setCustomWeights] = useState(() => {
     try { const v = localStorage.getItem("mibunyang_customWeights"); return v ? JSON.parse(v) : {}; } catch { return {}; }
   });
@@ -218,6 +219,7 @@ export default function App() {
 
   const handleNavClick = useCallback((k) => {
     if (k === "logout") return handleExpertLogout();
+    trackEvent("tab_switch", { tab: k, previous_tab: tab });
     if (k === "list") { setTab("list"); setShowCompOpen(false); return; }
     if (k === "compare") {
       if (compIds.length < 2) { showToast("카드에서 2개 이상 선택해주세요"); setTab("list"); return; }
@@ -406,7 +408,7 @@ export default function App() {
           )}
           {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} /></Suspense>}
           <AptListSection key={filterRegion}
-            visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => setVisibleCount(v => v + 30)}
+            visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + 30); trackEvent("load_more", { visible_count: visibleCount + 30 }); }}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} compIds={compIds}
             pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending}
             searchText={searchText} budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}

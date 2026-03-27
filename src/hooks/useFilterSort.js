@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { VALID_SORT_KEYS } from "@/constants/sortOptions";
 import { MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
+import { trackEvent } from "@/lib/analytics";
 
 const LS_CUSTOM_PRESETS = "mibunyang_custom_presets";
 const LS_FILTER_HISTORY = "mibunyang_filter_history";
@@ -119,6 +120,8 @@ export function useFilterSort({ onFilterChange }) {
         const currentUrl = window.location.search || window.location.pathname;
         if (newUrl !== currentUrl) {
           window.history.replaceState(null, "", newUrl);
+          const active = Object.values(state).filter(v => v !== "" && v !== "전체" && v !== false).length;
+          trackEvent("filter_change", { active_count: active });
         }
       } catch { /* iframe/cross-origin 환경에서 무시 */ }
     }, 300);

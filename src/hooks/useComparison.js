@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { trackEvent } from "@/lib/analytics";
 
 const STORAGE_KEY = "mibunyang_comp";
 export const MAX_COMPARE = 4;
@@ -19,7 +20,10 @@ export function useComparison(showToast) {
         showToast(`비교는 최대 ${MAX_COMPARE}개까지 가능합니다`);
         return prev;
       }
-      return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      const removing = prev.includes(id);
+      const next = removing ? prev.filter(x => x !== id) : [...prev, id];
+      trackEvent("compare_toggle", { action: removing ? "remove" : "add", total_compared: next.length });
+      return next;
     });
   }, [showToast]);
   useEffect(() => {
