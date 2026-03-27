@@ -35,6 +35,7 @@ src/
 │   ├── usePriceHistory.js / useUnsoldHistory.js  (시계열 API 페칭)
 │   └── useExpertMode.js / useAdminMode.js / useToast.js
 ├── lib/
+│   ├── analytics.js        Vercel Analytics trackEvent 래퍼 (벤더 격리)
 │   ├── classify.js         입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 │   ├── filterEngine.js     공통 base 필터 (applyBaseFilters, MANWON_PER_EUK)
 │   ├── exportPdf.js        비교 결과 PNG/PDF 내보내기 (dynamic import)
@@ -342,6 +343,8 @@ App (Pretendard Variable 폰트, paddingTop: isDesktop ? 64 : 0)
 │       └── 상담 요청 목록
 │
 │
+├── Analytics (main.jsx) ← Vercel Analytics 페이지뷰 + 커스텀 이벤트 (8개)
+├── SpeedInsights (main.jsx) ← Web Vitals (LCP, CLS, INP, TTFB)
 └── ErrorBoundary (main.jsx) ← 전체 앱 래핑, 오류 시 새로고침 안내
 ```
 

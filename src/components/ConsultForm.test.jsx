@@ -95,8 +95,8 @@ describe("ConsultForm", () => {
   it("관심매물 제거 버튼 클릭 시 setFavoriteIds 호출", () => {
     const setFavoriteIds = vi.fn();
     render(<ConsultForm {...makeProps({ favoriteIds: [1], setFavoriteIds })} />);
-    // ✕ 버튼 클릭
-    const removeButtons = screen.getAllByText("✕");
+    // IconClose 버튼 클릭 (SVG 아이콘으로 교체됨)
+    const removeButtons = screen.getAllByLabelText("관심단지 제거");
     fireEvent.click(removeButtons[0]);
     expect(setFavoriteIds).toHaveBeenCalledTimes(1);
   });

@@ -10,11 +10,13 @@
 - `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 - `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters)
 - `@/lib/dedup.js` — 아파트 중복 제거 + siblingIds 생성 (dedupApartments)
+- `@/lib/analytics.js` — Vercel Analytics trackEvent 래퍼 (벤더 격리, try-catch)
 - `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
 - `@/theme/index.js` — 디자인 토큰 (C 팔레트 + shadowSm/shadowMd + catCol + gr 등급함수)
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
 - Supabase (PostgreSQL) — 데이터베이스 (14개 테이블 + apartments_flat VIEW)
 - Vercel Serverless Functions (`api/`) — API 레이어
+- Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (27개 워크플로우)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC)
