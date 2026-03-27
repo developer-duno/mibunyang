@@ -3,20 +3,29 @@ import { C, catCol, gr } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 
+const btnStyle = {
+  background: C.slate100, color: C.slate600, border: "1.5px solid transparent",
+  borderRadius: 6, padding: "6px 10px", fontSize: 11, fontWeight: 600,
+  cursor: "pointer", minHeight: 36, transition: "all .15s",
+};
+
 export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose }) {
   const tableRef = useRef(null);
+  const exportingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
 
   const handleExport = useCallback(async (type) => {
-    if (!tableRef.current || exporting) return;
+    if (!tableRef.current || exportingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
     try {
       const { exportAsImage, exportAsPdf } = await import("@/lib/exportPdf");
       if (type === "pdf") await exportAsPdf(tableRef.current, "compare.pdf");
       else await exportAsImage(tableRef.current, "compare.png");
     } catch { /* 내보내기 실패 무시 */ }
+    exportingRef.current = false;
     setExporting(false);
-  }, [exporting]);
+  }, []);
 
   if (items.length < 2) return null;
   const cats = Object.keys(items[0].res.cats);
@@ -25,15 +34,16 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose
     const ltv = calcLTV(it.apt.price, z);
     return { zone: z, ltv, needCash: it.apt.price - ltv };
   });
+  const expBtnStyle = { ...btnStyle, cursor: exporting ? "wait" : "pointer", opacity: exporting ? 0.5 : 1 };
   return (
     <div style={{ background: C.card, border: `1.5px solid ${C.blueBorder}`, borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 6, flexWrap: "wrap" }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: C.blue }}>비교 분석</div>
         <div style={{ display: "flex", gap: 4 }}>
-          <button onClick={() => handleExport("png")} disabled={exporting} aria-label="이미지 내보내기" style={{ background: C.slate100, color: C.slate600, border: "1.5px solid transparent", borderRadius: 6, padding: "6px 10px", fontSize: 11, fontWeight: 600, cursor: exporting ? "wait" : "pointer", minHeight: 36, transition: "all .15s", opacity: exporting ? 0.5 : 1 }}>{exporting ? "..." : "PNG"}</button>
-          <button onClick={() => handleExport("pdf")} disabled={exporting} aria-label="PDF 내보내기" style={{ background: C.slate100, color: C.slate600, border: "1.5px solid transparent", borderRadius: 6, padding: "6px 10px", fontSize: 11, fontWeight: 600, cursor: exporting ? "wait" : "pointer", minHeight: 36, transition: "all .15s", opacity: exporting ? 0.5 : 1 }}>{exporting ? "..." : "PDF"}</button>
-          {onShare && <button onClick={onShare} aria-label="비교 결과 공유하기" style={{ background: C.slate100, color: C.slate600, border: "1.5px solid transparent", borderRadius: 6, padding: "6px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", minHeight: 36, transition: "all .15s" }}>공유</button>}
-          {onClose && <button onClick={onClose} aria-label="비교 닫기" style={{ background: C.slate100, color: C.slate600, border: "1.5px solid transparent", borderRadius: 6, padding: "6px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", minHeight: 36, transition: "all .15s" }}>닫기</button>}
+          <button onClick={() => handleExport("png")} disabled={exporting} aria-label="이미지 내보내기" style={expBtnStyle}>{exporting ? "..." : "PNG"}</button>
+          <button onClick={() => handleExport("pdf")} disabled={exporting} aria-label="PDF 내보내기" style={expBtnStyle}>{exporting ? "..." : "PDF"}</button>
+          {onShare && <button onClick={onShare} aria-label="비교 결과 공유하기" style={btnStyle}>공유</button>}
+          {onClose && <button onClick={onClose} aria-label="비교 닫기" style={btnStyle}>닫기</button>}
         </div>
       </div>
       <div ref={tableRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>

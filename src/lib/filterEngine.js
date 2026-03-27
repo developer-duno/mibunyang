@@ -1,5 +1,8 @@
 import { matchSearch } from "@/lib/chosung";
 
+/** 억 → 만원 변환 (사용자 입력 억 단위 × 10000 = DB 만원 단위) */
+const MANWON_PER_EUK = 10000;
+
 /**
  * 공통 base 필터 적용 — filtered useMemo와 filterOptionCounts useMemo에서 공유.
  * 드롭다운 필터(region, gu, moveIn, tier)는 포함하지 않음 (leave-one-out 패턴 때문).
@@ -19,8 +22,8 @@ export function applyBaseFilters(list, f) {
   const bMax = bMaxRaw != null && Number.isFinite(bMaxRaw) ? bMaxRaw : null;
   const effectiveMin = (bMin != null && bMax != null && bMin > bMax) ? bMax : bMin;
   const effectiveMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
-  if (effectiveMin != null) out = out.filter(x => x.apt.price >= effectiveMin * 10000);
-  if (effectiveMax != null) out = out.filter(x => x.apt.price <= effectiveMax * 10000);
+  if (effectiveMin != null) out = out.filter(x => x.apt.price >= effectiveMin * MANWON_PER_EUK);
+  if (effectiveMax != null) out = out.filter(x => x.apt.price <= effectiveMax * MANWON_PER_EUK);
 
   // 면적·세대수
   if (f.areaMin) out = out.filter(x => (x.apt.area ?? 0) >= Number(f.areaMin));

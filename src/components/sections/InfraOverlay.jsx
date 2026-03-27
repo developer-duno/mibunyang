@@ -6,6 +6,10 @@ import { C } from "@/theme";
  * code: Kakao Places 카테고리 그룹 코드
  * emoji: 마커 아이콘
  */
+const INFRA_SEARCH_RADIUS = 3000;
+const INFRA_MAX_RESULTS = 15;
+const INFRA_DEBOUNCE_MS = 500;
+
 const INFRA_CATEGORIES = [
   { key: "subway", label: "지하철", code: "SW8", emoji: "🚇" },
   { key: "hospital", label: "병원", code: "HP8", emoji: "🏥" },
@@ -49,7 +53,7 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }) {
         return marker;
       });
       markersRef.current = newMarkers;
-    }, { location: center, radius: 3000, size: 15, sort: kakao.services.SortBy.DISTANCE });
+    }, { location: center, radius: INFRA_SEARCH_RADIUS, size: INFRA_MAX_RESULTS, sort: kakao.services.SortBy.DISTANCE });
   }, [mapInstance]);
 
   // 활성 카테고리 변경 시 검색
@@ -68,7 +72,7 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }) {
     const kakao = window.kakao.maps;
     const listener = kakao.event.addListener(mapInstance, "idle", () => {
       clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = setTimeout(() => searchAndShow(cat.code, cat.emoji), 500);
+      searchDebounceRef.current = setTimeout(() => searchAndShow(cat.code, cat.emoji), INFRA_DEBOUNCE_MS);
     });
     return () => {
       kakao.event.removeListener(listener);

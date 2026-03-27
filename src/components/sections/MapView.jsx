@@ -5,11 +5,29 @@ import { InfraOverlay } from "./InfraOverlay";
 
 const KAKAO_MAP_KEY = import.meta.env.VITE_KAKAO_JS_KEY || "";
 
+/* ── 상수 ── */
+const MAP_DEFAULTS = { lat: 36.5, lng: 127.5, level: 13 };
+const CLUSTER_OPTS = { minLevel: 5, gridSize: 60 };
+const MARKER_WITH_PRICE = { w: 52, h: 44 };
+const MARKER_NO_PRICE = { w: 28, h: 36 };
+const MY_LOC_LEVEL = 6;
+const GEO_TIMEOUT = 5000;
+
 /** 만원 → 짧은 가격 문자열 (마커용) */
 function shortPrice(v) {
   if (v == null || v <= 0) return "";
   const eok = v / 10000;
   return eok >= 1 ? `${eok % 1 === 0 ? eok : eok.toFixed(1)}억` : `${v.toLocaleString()}만`;
+}
+
+/** 마커 SVG 빌더 — 가격 있으면 배지형, 없으면 핀형 */
+function buildMarkerSvg(total, gradeColor, priceLabel) {
+  if (priceLabel) {
+    const { w, h } = MARKER_WITH_PRICE;
+    return { w, h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect x="0" y="0" width="${w}" height="34" rx="6" fill="${gradeColor}"/><polygon points="${w / 2 - 5},34 ${w / 2},${h} ${w / 2 + 5},34" fill="${gradeColor}"/><text x="${w / 2}" y="14" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" dy="0.35em">${total}점</text><text x="${w / 2}" y="27" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(255,255,255,0.85)" dy="0.35em">${priceLabel}</text></svg>` };
+  }
+  const { w, h } = MARKER_NO_PRICE;
+  return { w, h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="${gradeColor}"/><circle cx="14" cy="13" r="9" fill="#fff"/><text x="14" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="${gradeColor}">${total}</text></svg>` };
 }
 
 /** Kakao Maps SDK를 동적 로드 (환경변수 기반, index.html 하드코딩 제거) */
@@ -18,7 +36,12 @@ function loadKakaoMapSdk() {
     if (window.kakao?.maps) { resolve(); return; }
     if (!KAKAO_MAP_KEY) { reject(new Error("VITE_KAKAO_JS_KEY 미설정")); return; }
     const existing = document.querySelector("script[src*='dapi.kakao.com/v2/maps']");
-    if (existing) { existing.addEventListener("load", () => resolve()); return; }
+    if (existing) {
+      if (window.kakao?.maps?.load) { resolve(); return; }
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("Kakao Maps SDK 로드 실패")));
+      return;
+    }
     const s = document.createElement("script");
     s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(KAKAO_MAP_KEY)}&libraries=clusterer,services&autoload=false`;
     s.onload = () => resolve();
@@ -52,17 +75,17 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
         window.kakao.maps.load(() => {
           if (cancelled || !mapRef.current || mapInstanceRef.current) return;
           const map = new window.kakao.maps.Map(mapRef.current, {
-            center: new window.kakao.maps.LatLng(36.5, 127.5),
-            level: 13,
+            center: new window.kakao.maps.LatLng(MAP_DEFAULTS.lat, MAP_DEFAULTS.lng),
+            level: MAP_DEFAULTS.level,
           });
           map.addControl(new window.kakao.maps.ZoomControl(), window.kakao.maps.ControlPosition.RIGHT);
           mapInstanceRef.current = map;
           clustererRef.current = new window.kakao.maps.MarkerClusterer({
             map,
             averageCenter: true,
-            minLevel: 5,
+            minLevel: CLUSTER_OPTS.minLevel,
             disableClickZoom: false,
-            gridSize: 60,
+            gridSize: CLUSTER_OPTS.gridSize,
             styles: [{
               width: "44px", height: "44px", background: C.indigo, borderRadius: "50%",
               color: C.white, textAlign: "center", fontWeight: "700", fontSize: "13px",
@@ -94,12 +117,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
       if (!apt.lat || !apt.lng) continue;
       const pos = new kakao.LatLng(apt.lat, apt.lng);
       const grade = gr(res.total);
-      const pLabel = shortPrice(apt.price);
-      const w = pLabel ? 52 : 28;
-      const h = pLabel ? 44 : 36;
-      const svg = pLabel
-        ? `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect x="0" y="0" width="${w}" height="34" rx="6" fill="${grade.c}"/><polygon points="${w / 2 - 5},34 ${w / 2},${h} ${w / 2 + 5},34" fill="${grade.c}"/><text x="${w / 2}" y="14" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" dy="0.35em">${res.total}점</text><text x="${w / 2}" y="27" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(255,255,255,0.85)" dy="0.35em">${pLabel}</text></svg>`
-        : `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="${grade.c}"/><circle cx="14" cy="13" r="9" fill="#fff"/><text x="14" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="${grade.c}">${res.total}</text></svg>`;
+      const { w, h, svg } = buildMarkerSvg(res.total, grade.c, shortPrice(apt.price));
       const marker = new kakao.Marker({
         position: pos,
         title: apt.name,
@@ -115,7 +133,6 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
     clustererRef.current.addMarkers(markers);
     setMarkerCount(markers.length);
 
-    // 마커가 있으면 범위에 맞게 지도 조정
     if (markers.length > 0) {
       const bounds = new kakao.LatLngBounds();
       markers.forEach(m => bounds.extend(m.getPosition()));
@@ -146,10 +163,10 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC }) {
           myLocMarkerRef.current.setMap(mapInstanceRef.current);
         }
         mapInstanceRef.current.setCenter(loc);
-        mapInstanceRef.current.setLevel(6);
+        mapInstanceRef.current.setLevel(MY_LOC_LEVEL);
       },
       () => { /* 권한 거부 시 조용히 무시 */ },
-      { enableHighAccuracy: false, timeout: 5000 },
+      { enableHighAccuracy: false, timeout: GEO_TIMEOUT },
     );
   }, [ready]);
 

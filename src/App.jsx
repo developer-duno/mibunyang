@@ -36,6 +36,17 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { applyBaseFilters } from "@/lib/filterEngine";
 
+/* ── 정렬 비교 함수 (모듈 레벨 — 클로저 미사용, 매 렌더 재생성 방지) ── */
+const SORTERS = {
+  total: (a, b) => b.res.total - a.res.total,
+  price: (a, b) => a.apt.price - b.apt.price,
+  priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total,
+  location: (a, b) => b.res.cats.location.total - a.res.cats.location.total,
+  safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total,
+  benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0),
+  newest: (a, b) => (b.apt.updatedAt ?? "").localeCompare(a.apt.updatedAt ?? ""),
+};
+
 export default function App() {
   const [profile, setProfileRaw] = useState(() => {
     try { const v = localStorage.getItem("mibunyang_profile"); return v && PROFILES[v] ? v : "live"; } catch { return "live"; }
@@ -118,10 +129,9 @@ export default function App() {
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
     if (moveInFilter !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === moveInFilter);
     if (builderTier !== "전체") list = list.filter(x => classifyTier(x.apt) === builderTier);
-    const sorters = { total: (a, b) => b.res.total - a.res.total, price: (a, b) => a.apt.price - b.apt.price, priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total, location: (a, b) => b.res.cats.location.total - a.res.cats.location.total, safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total, benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0), newest: (a, b) => (b.apt.updatedAt ?? "").localeCompare(a.apt.updatedAt ?? "") };
-    return [...list].sort(sorters[sortKey] || sorters.total);
+    return [...list].sort(SORTERS[sortKey] || SORTERS.total);
   }, [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier]);
-  useEffect(() => { setVisibleCount(30); }, [profile, filterRegion, filterGu, debouncedSearchText, sortKey, budgetMin, budgetMax, showFavOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]);
+  useEffect(() => { setVisibleCount(30); }, [filtered]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
