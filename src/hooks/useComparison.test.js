@@ -33,7 +33,7 @@ describe('useComparison', () => {
 
     act(() => { result.current.toggleComp(5); });
     expect(result.current.compIds).toHaveLength(4);
-    expect(showToast).toHaveBeenCalledWith("비교는 최대 4개까지 가능합니다");
+    expect(showToast).toHaveBeenCalledWith(`비교는 최대 4개까지 가능합니다`);
   });
 
   it('showComp는 파생 상태: showCompOpen=true && compIds>=2', () => {

@@ -27,11 +27,15 @@ export const ScoreBadge = memo(function ScoreBadge({ score: _sc, size = 54 }) {
   );
 });
 
+const TOOLTIP_DISMISS_MS = 3000;
+const HIT_AREA_RADIUS = 16;
+
 export const LineChart = memo(function LineChart({ data: _data = [], color = C.blue, height = 160, secondaryData, secondaryColor = C.muted, yLabel = "", xLabel = "" }) {
   const data = _data.filter(d => d && d.y != null);
   const [activeDot, setActiveDot] = useState(null);
 
   const handleDotTap = useCallback((e) => {
+    if (e.type === "touchstart") e.preventDefault(); // click 이벤트 억제 → 더블 토글 방지
     const idx = Number(e.currentTarget.getAttribute("data-index"));
     setActiveDot(prev => prev === idx ? null : idx);
   }, []);
@@ -39,7 +43,7 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
 
   useEffect(() => {
     if (activeDot == null) return;
-    const t = setTimeout(() => setActiveDot(null), 3000);
+    const t = setTimeout(() => setActiveDot(null), TOOLTIP_DISMISS_MS);
     return () => clearTimeout(t);
   }, [activeDot]);
 
@@ -66,7 +70,7 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
       <path d={makePath(data)} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       {data.map((d, i) => <circle key={i} cx={toX(i, data.length)} cy={toY(d.y)} r="3" fill={color}><title>{d.label || `${d.x}: ${d.y}`}</title></circle>)}
       {/* 투명 hit area — 터치 타겟 확장 */}
-      {data.map((_, i) => <circle key={`h${i}`} cx={toX(i, data.length)} cy={toY(data[i].y)} r="16" fill="transparent" data-index={i} onClick={handleDotTap} onTouchStart={handleDotTap} style={{ cursor: "pointer" }} />)}
+      {data.map((_, i) => <circle key={`h${i}`} cx={toX(i, data.length)} cy={toY(data[i].y)} r={HIT_AREA_RADIUS} fill="transparent" data-index={i} onClick={handleDotTap} onTouchStart={handleDotTap} style={{ cursor: "pointer" }} />)}
       {activeDot != null && activeDot < data.length && (() => {
         const d = data[activeDot];
         const cx = toX(activeDot, data.length);

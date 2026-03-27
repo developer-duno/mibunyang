@@ -14,7 +14,7 @@ const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").th
 const MapView = lazy(() => import("@/components/sections/MapView").then(m => ({ default: m.MapView })));
 import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
-import { useComparison } from "@/hooks/useComparison";
+import { useComparison, MAX_COMPARE } from "@/hooks/useComparison";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useDetailModal } from "@/hooks/useDetailModal";
 import { useConsult } from "@/hooks/useConsult";
@@ -258,7 +258,7 @@ export default function App() {
     if (profileParam && PROFILES[profileParam]) setProfile(profileParam);
     if (detailId) detail.setDetailAptId(detailId);
     if (compareStr) {
-      const ids = compareStr.split(",").filter(Boolean).slice(0, 4);
+      const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
       if (ids.length >= 2) { setCompIds(ids); setShowCompOpen(true); }
     }
     if (detailId || compareStr) {

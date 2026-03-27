@@ -1,18 +1,22 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const STORAGE_KEY = "mibunyang_comp";
+export const MAX_COMPARE = 4;
 
 export function useComparison(showToast) {
   const [compIds, setCompIds] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      return Array.isArray(raw) ? raw.slice(0, MAX_COMPARE) : [];
+    } catch { return []; }
   });
   const [showCompOpen, setShowCompOpen] = useState(false);
   const initCountRef = useRef(compIds.length);
   const showComp = showCompOpen && compIds.length >= 2;
   const toggleComp = useCallback(id => {
     setCompIds(prev => {
-      if (!prev.includes(id) && prev.length >= 4) {
-        showToast("비교는 최대 4개까지 가능합니다");
+      if (!prev.includes(id) && prev.length >= MAX_COMPARE) {
+        showToast(`비교는 최대 ${MAX_COMPARE}개까지 가능합니다`);
         return prev;
       }
       return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
