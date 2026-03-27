@@ -67,7 +67,6 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
           { title: "시공사 등급", desc: "1군(현대, 삼성, GS 등), 2군, 기타로 구분됩니다. 시공사 브랜드를 기준으로 필터링할 수 있습니다." },
           { title: "최소 점수", desc: "종합점수 기준 필터입니다. 예: '70' 입력 시 70점 이상 단지만 표시됩니다." },
           { title: "혜택 필터", desc: "'혜택' 버튼을 켜면 분양가 할인, 무이자 등 혜택이 있는 단지만 표시됩니다." },
-          { title: "카테고리별 최소 점수", desc: "가격/입지/상품/혜택/안전/미래 각 카테고리별 최소 점수를 개별 설정할 수 있습니다. AND 조건으로 적용됩니다." },
         ].map((item, i) => (
           <div key={i} style={guideItem}>
             <div style={guideTitle}>{item.title}</div>
@@ -127,7 +126,6 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
           { title: "카테고리 점수", desc: "입지·가격·상품 3개 카테고리 점수가 바 차트로 표시됩니다. 색상 바의 길이가 점수를 나타냅니다." },
           { title: "핵심 정보", desc: "적정가 괴리도(+면 시세보다 비쌈, -면 저렴), 지하철·버스, 안전 등급이 한 줄로 요약됩니다." },
           { title: "혜택 표시", desc: "혜택이 있는 단지는 주황색 배경으로 총 혜택 금액과 혜택률(%)이 표시됩니다." },
-          { title: "관심매물 배지", desc: "관심매물로 등록 후 메모·태그를 입력하면 카드 하단에 메모 내용과 태그가 배지로 표시됩니다." },
         ].map((item, i) => (
           <div key={i} style={guideItem}>
             <div style={guideTitle}>{item.title}</div>
@@ -160,14 +158,11 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
         </div>
       </div>
 
-      {/* 6. 관심매물·메모·태그 */}
+      {/* 6. 관심매물 */}
       <div style={cardStyle}>
-        <div style={titleStyle}>관심매물 관리</div>
+        <div style={titleStyle}>관심매물</div>
         {[
           { title: "관심매물 등록", desc: "카드의 '관심매물' 버튼 또는 상세 모달의 하트 버튼으로 등록합니다. 등록된 단지는 브라우저에 저장되어 다음 방문에도 유지됩니다." },
-          { title: "메모 기능", desc: "관심매물로 등록한 단지의 상세 모달 하단에서 100자 이내 메모를 남길 수 있습니다. 메모 내용은 카드에도 배지로 표시됩니다." },
-          { title: "태그 분류", desc: "투자용, 실거주, 재검토, 가격매력, 입지우수 5가지 태그를 선택할 수 있습니다. 복수 선택이 가능합니다." },
-          { title: "태그 필터링", desc: "검색 바에서 관심매물 필터(하트 버튼)를 켜면 태그 필터가 나타납니다. 특정 태그가 붙은 관심매물만 골라볼 수 있습니다." },
           { title: "관심매물만 보기", desc: "검색 바 옆 하트 버튼을 누르면 관심매물만 필터링됩니다. 옆에 등록된 관심매물 수가 표시됩니다." },
         ].map((item, i) => (
           <div key={i} style={guideItem}>

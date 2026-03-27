@@ -45,14 +45,14 @@
 |---------|-----|------|
 | HeaderSection | 132 | 프로필 선택 + 헤더 |
 | SearchFilterBar | 359 | 검색/필터/정렬/프리셋/카운트 배지 |
-| AptListSection | 54 | 카드 그리드 + 비교 (favoritesObj→favMeta 전달) |
+| AptListSection | 54 | 카드 그리드 + 비교 (favoriteIds만 전달) |
 | ExpertLoginForm | 167 | 전문가 로그인/회원가입 |
 | InfoPage | 106 | 스코어링 엔진 설명 |
 | BottomNav | 35 | 하단 네비게이션 |
 | MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
-### DetailModal.jsx (~139줄) — 모달 컨테이너 + 메모/태그 UI
+### DetailModal.jsx — 모달 컨테이너 + 상담 CTA
 분리된 상세 컴포넌트 (`src/components/detail/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
@@ -79,8 +79,6 @@
 - 3초 auto-dismiss (useEffect + setTimeout + cleanup)
 - 범위 가드: `activeDot != null && activeDot < data.length`
 
-### AptCard 관심매물 배지 (세션20)
-- `favMeta` prop (표시 전용, 편집은 DetailModal에서만)
-- 조건: `isFav && favMeta?.memo?.trim()` → 메모 텍스트 (truncated, ellipsis)
-- 조건: `isFav && favMeta?.tags?.length > 0` → 태그 pill 배지 (C.indigo/C.indigoLight)
-- 스타일: S 객체에 `favRow`, `memoBadge`, `favTag` 정적 스타일
+### AptCard
+- `isFav` prop으로 관심매물 하이라이트 (border 색상)
+- `moveInDone` (준공 + 미분양 0%) → opacity 0.55 흐릿 표시

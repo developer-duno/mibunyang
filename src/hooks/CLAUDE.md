@@ -19,13 +19,13 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 | guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
 | catsCache | [apartments] | apartments 의존 필수 |
 | scored | [catsCache, profile, customWeights] | catsCache는 apartments 간접 의존 |
-| baseFilterArgs | [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText, catMinScores] | base 필터 상태 묶음 (12개, catMinScores는 useMemo 참조) |
+| baseFilterArgs | [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText] | base 필터 상태 묶음 (11개) |
 | filtered | [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier] | SORTERS 모듈 레벨 상수 사용 |
 | visible | [filtered, visibleCount] | 페이지네이션용 |
 | scoredMap | [scored] | Map 자료구조 (P-3: O(1) 조회) |
 | compItems | [compIds, scoredMap] | scoredMap.get() 사용 |
 | pw | [profile, customWeights] | customWeights 우선, PROFILES[profile].w 폴백 |
-| activeFilterCount | [showFavOnly, filterRegion, budgetMin, ...13개, catMinScores] | 활성 필터 개수 배지 (카테고리 min 포함) |
+| activeFilterCount | [showFavOnly, filterRegion, budgetMin, ...13개] | 활성 필터 개수 배지 |
 | regionOptions | [apartments] | apartments 의존 필수 |
 | filterOptionCounts | [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier] | leave-one-out 드롭다운 카운트 |
 
@@ -74,17 +74,6 @@ useFavorites(showToast)
   ├── favoritesObj: { [id]: { memo, tags, addedAt } }  // 내부 상태 (객체)
   ├── favoriteIds: Object.keys(favoritesObj)            // 파생 배열 (하위 호환)
   ├── toggleFavorite(id)
-  ├── setMemo(id, text)     // 100자 제한
-  ├── toggleTag(id, tag)    // FAV_TAGS 화이트리스트
-  └── setFavoriteIds(ids)   // 하위 호환 래퍼 (배열→객체 변환)
+  └── setFavoriteIds(idsOrFn)  // 배열 또는 함수 인자 지원 (React setState 관례)
 ```
 v1(배열) → v2(객체) 자동 마이그레이션 + `mibunyang_fav_backup` 백업.
-
-## useFilterSort 카테고리 필터 (catMinScores)
-
-```
-catMinScores = useMemo({ min_price, min_location, min_product, min_benefit, min_risk, min_future })
-handleCatMinChange(catKey, val)  // 단일 핸들러
-handleCatMinReset()              // 전체 초기화
-URL 파라미터: cprice, cloc, cprod, cbenefit, crisk, cfuture
-```
