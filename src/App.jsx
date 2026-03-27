@@ -11,6 +11,7 @@ const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ d
 const ConsultForm = lazy(() => import("@/components/ConsultForm").then(m => ({ default: m.ConsultForm })));
 const ExpertDashboard = lazy(() => import("@/components/expert/ExpertDashboard").then(m => ({ default: m.ExpertDashboard })));
 const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
+const MapView = lazy(() => import("@/components/sections/MapView").then(m => ({ default: m.MapView })));
 import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
 import { useComparison } from "@/hooks/useComparison";
@@ -404,6 +405,12 @@ export default function App() {
 
             onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}
           />
+        </div>
+      ) : tab === "map" ? (
+        <div style={{ padding: "0 16px" }}>
+          <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>지도 로딩 중...</div>}>
+            <MapView filtered={filtered} onDetail={detail.handleOpenDetail} isPC={isPC} />
+          </Suspense>
         </div>
       ) : tab === "info" ? (
         <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} />
