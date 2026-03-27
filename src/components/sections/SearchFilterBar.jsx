@@ -291,7 +291,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           border: moveInFilter !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
           background: C.slate100, color: moveInFilter !== "전체" ? C.indigo : C.slate600, cursor: "pointer",
         }}>
-          {["전체", "입주예정", "미입주", "입주완료"].map(v => { const c = filterOptionCounts?.moveInCounts?.[v] ?? 0; return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? "전체" : `${v} (${c})`}</option>; })}
+          {["전체", "입주예정", "미입주", "입주완료"].map(v => { const c = filterOptionCounts?.moveInCounts?.[v] ?? 0; const total = v === "전체" ? Object.values(filterOptionCounts?.moveInCounts ?? {}).reduce((s, n) => s + n, 0) : 0; return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}</option>; })}
         </select>
         {(hasAreaUnits || moveInFilter !== "전체") && (
           <button onClick={() => { onAreaUnitsReset(); onMoveInChange("전체"); }} aria-label="면적/세대/입주 초기화" style={resetBtn(28)}>✕</button>
@@ -309,7 +309,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
           background: C.slate100, color: builderTier !== "전체" ? C.indigo : C.slate600, cursor: "pointer",
         }}>
-          {["전체", "1군", "2군", "기타"].map(v => { const c = filterOptionCounts?.tierCounts?.[v] ?? 0; return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? "전체" : `${v} (${c})`}</option>; })}
+          {["전체", "1군", "2군", "기타"].map(v => { const c = filterOptionCounts?.tierCounts?.[v] ?? 0; const total = v === "전체" ? Object.values(filterOptionCounts?.tierCounts ?? {}).reduce((s, n) => s + n, 0) : 0; return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}</option>; })}
         </select>
         <button onClick={onToggleBenefitOnly} aria-label="혜택 있는 매물만" style={{
           flexShrink: 0, height: 28, padding: "0 8px", fontSize: 10, fontWeight: benefitOnly ? 700 : 500,
