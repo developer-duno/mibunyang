@@ -51,6 +51,22 @@ const showComp = showCompOpen && compIds.length >= 2;
 | usePriceHistory(apartmentId) | 분양가 시계열 API 페칭 | AbortController + retry |
 | useUnsoldHistory(apartmentId) | 미분양 추이 API 페칭 | AbortController + retry |
 
+## useComparison 구조 (세션20 — MAX_COMPARE 상수)
+
+```
+useComparison(showToast)
+  ├── MAX_COMPARE = 4                             // export 상수
+  ├── compIds: useState(localStorage → Array.isArray + slice(0, MAX_COMPARE))
+  ├── showCompOpen: useState(false)
+  ├── initCountRef: useRef(compIds.length)         // 복원 토스트용
+  ├── showComp = showCompOpen && compIds.length >= 2  // 파생 상태
+  ├── toggleComp(id)                               // MAX_COMPARE 제한
+  ├── useEffect(mount-only) → "이전 비교 N개 복원됨" 토스트
+  ├── useEffect(localStorage 동기화)
+  └── useEffect(크로스탭 storage 이벤트 → Array.isArray + slice 방어)
+```
+MAX_COMPARE 방어 4경로: ①초기화 ②toggleComp ③URL딥링크(App.jsx) ④크로스탭storage
+
 ## useFavorites 구조 (v2 — 객체 기반)
 
 ```

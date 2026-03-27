@@ -243,8 +243,8 @@ isPending        boolean   (transition)  useTransition — 프로필 전환 시
 |----|------|--------|
 | useToast | toast | — |
 | useFilterSort | filterRegion, filterGu, sortKey | — |
-| useComparison | compIds, showCompOpen | showComp (파생) |
-| useFavorites | favoriteIds | — |
+| useComparison | compIds, showCompOpen | showComp (파생), MAX_COMPARE=4 export, 복원 토스트 |
+| useFavorites | favoritesObj (객체) | favoriteIds (파생 배열), setMemo, toggleTag |
 | useDetailModal | detailAptId | — |
 | useConsult | consultForm, consultSubmitted, submitting, submittedConsults | fetchConsults(token) |
 | useExpertMode | expertPw, expertLoggedIn, expertExpandedApt | — |
@@ -287,6 +287,7 @@ App
 │   │   ├── 빈 상태 안내 (filtered.length === 0일 때)
 │   │   └── AptCard (memo) * filtered.length
 │   │       ├── ScoreBadge (memo) ← 원형 점수 배지
+│   │       ├── 관심매물 배지 (favMeta: 메모 truncated + 태그 pill)
 │   │       ├── Bar (memo) * 3 ← 상위 카테고리 미니 바
 │   │       └── 3버튼 (상세보기/관심매물/비교추가)
 │   │
@@ -306,7 +307,11 @@ App
 │   └── DetailModal (memo) ← 바텀시트 상세 팝업 (z-index:300)
 │       ├── ScoreBadge (80px)
 │       ├── Radar (memo) + 핵심지표
+│       ├── 메모·태그 편집 (isFav && favMeta, textarea + pill 토글)
 │       ├── CatPanel (memo) * 6
+│       ├── PriceChart (memo) ← 분양가 추이 LineChart (터치 툴팁)
+│       ├── UnsoldChart (memo) ← 미분양 추이 LineChart (2선 + 터치 툴팁)
+│       ├── PriceTable / SchoolInfo / LoanAnalysis / DataSections
 │       └── 관심매물/비교추가 버튼
 │
 ├── [전문가 모드] (PC 우선, maxWidth: 1200px)
@@ -340,12 +345,13 @@ App
 | ScoreBadge | primitives.jsx | score, size |
 | Radar | primitives.jsx | data, size |
 | CatPanel | CatPanel.jsx | cat, k |
-| AptCard | AptCard.jsx | apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights |
+| AptCard | AptCard.jsx | apt, res, rank, onDetail, isComp, onComp, isFav, onFav, favMeta, profileWeights |
 | CompareSheet | CompareSheet.jsx | items, onShare, onClose (+ PNG/PDF 내보내기 내장) |
 | MapView | sections/MapView.jsx | filtered, onDetail, isPC |
 | InfraOverlay | sections/InfraOverlay.jsx | mapInstance, ready |
 | ConsultForm | ConsultForm.jsx | scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast |
-| DetailModal | DetailModal.jsx | item, onClose, isComp, onComp, isFav, onFav |
+| DetailModal | DetailModal.jsx | item, onClose, isComp, onComp, isFav, onFav, favMeta, onSetMemo, onToggleTag, favTags |
+| LineChart | primitives.jsx | data, color, height, secondaryData, secondaryColor, yLabel, xLabel (+ 내부 activeDot 터치 인터랙션) |
 | ExpertFieldTable | expert/ | fields, apt |
 | ExpertScoreBreakdown | expert/ | res, apt |
 | ExpertScoreSummary | expert/ | res, profile |

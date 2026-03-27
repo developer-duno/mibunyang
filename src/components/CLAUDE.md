@@ -39,25 +39,25 @@
 
 ## 컴포넌트 구조
 
-### App.jsx (~490줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수
+### App.jsx (~481줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
-| HeaderSection | 35 | 프로필 선택 + 헤더 |
-| SearchFilterBar | 327 | 검색/필터/정렬/프리셋/카운트 배지 |
-| AptListSection | 69 | 카드 그리드 + 비교 |
-| ExpertLoginForm | 157 | 전문가 로그인/회원가입 |
-| InfoPage | 58 | 스코어링 엔진 설명 |
+| HeaderSection | 132 | 프로필 선택 + 헤더 |
+| SearchFilterBar | 359 | 검색/필터/정렬/프리셋/카운트 배지 |
+| AptListSection | 54 | 카드 그리드 + 비교 (favoritesObj→favMeta 전달) |
+| ExpertLoginForm | 167 | 전문가 로그인/회원가입 |
+| InfoPage | 106 | 스코어링 엔진 설명 |
 | BottomNav | 35 | 하단 네비게이션 |
 | MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
-### DetailModal.jsx (~140줄) — 모달 컨테이너 + 메모/태그 UI
+### DetailModal.jsx (~139줄) — 모달 컨테이너 + 메모/태그 UI
 분리된 상세 컴포넌트 (`src/components/detail/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
 | PriceTable | 88 | 인근 매매/전세 시세 |
-| **PriceChart** | 45 | 분양가 추이 SVG 라인 차트 (usePriceHistory) |
+| **PriceChart** | 43 | 분양가 추이 SVG 라인 차트 (usePriceHistory) |
 | **UnsoldChart** | 45 | 미분양 추이 SVG 라인 차트 (useUnsoldHistory) |
 | SchoolInfo | 36 | 학군 정보 |
 | LoanAnalysis | 93 | LTV/DSR/갭투자 분석 |
@@ -68,5 +68,19 @@
 |---------|------|
 | Bar | 수평 프로그레스 바 (gradient, borderRadius) |
 | ScoreBadge | 원형 점수 인디케이터 (SVG circle) |
-| **LineChart** | 시계열 SVG 라인 차트 (다중 라인, 그리드, 툴팁) |
+| **LineChart** | 시계열 SVG 라인 차트 (다중 라인, 그리드, 터치 툴팁) |
 | Radar | 6점 레이더 차트 (polygon) |
+
+#### LineChart 터치 인터랙션 (세션20)
+- `TOOLTIP_DISMISS_MS = 3000` — 모듈 레벨 상수
+- `HIT_AREA_RADIUS = 16` — 투명 circle hit area (36px+ 터치 타겟)
+- `activeDot: useState(null)` — 선택된 데이터 포인트 인덱스
+- `handleDotTap: useCallback` — `data-index` 속성 기반, `onClick`만 사용 (`onTouchStart` 미사용 — 스크롤 방해 방지)
+- 3초 auto-dismiss (useEffect + setTimeout + cleanup)
+- 범위 가드: `activeDot != null && activeDot < data.length`
+
+### AptCard 관심매물 배지 (세션20)
+- `favMeta` prop (표시 전용, 편집은 DetailModal에서만)
+- 조건: `isFav && favMeta?.memo?.trim()` → 메모 텍스트 (truncated, ellipsis)
+- 조건: `isFav && favMeta?.tags?.length > 0` → 태그 pill 배지 (C.indigo/C.indigoLight)
+- 스타일: S 객체에 `favRow`, `memoBadge`, `favTag` 정적 스타일

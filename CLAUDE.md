@@ -9,7 +9,7 @@
 - `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 - `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters)
 - `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
-- Supabase (PostgreSQL) — 데이터베이스 (13개 테이블 + apartments_flat VIEW)
+- Supabase (PostgreSQL) — 데이터베이스 (14개 테이블 + apartments_flat VIEW)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (27개 워크플로우)
@@ -30,7 +30,7 @@ constants → scoring → theme → components → hooks → App
 - `api/CLAUDE.md` — null 함정, 한글, Supabase 연동, 인증
 - `scripts/CLAUDE.md` — units 보정 파이프라인, 네이버 로컬 자동화, 후처리 파이프라인
 - `.github/workflows/CLAUDE.md` — 워크플로우 목록, GitHub Secrets
-- `supabase/CLAUDE.md` — 테이블 스키마 (13개 + VIEW)
+- `supabase/CLAUDE.md` — 테이블 스키마 (14개 + VIEW)
 
 ## 데이터 소스
 
