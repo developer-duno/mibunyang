@@ -2,7 +2,7 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 35개 컴포넌트
+## memo() 35개 컴포넌트 + icons.jsx (SVG 아이콘 10개)
 
 소비자 10개: Bar, ScoreBadge, Radar, **LineChart**, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal
 섹션 8개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay
@@ -28,13 +28,15 @@
 - SVG 텍스트: `dy="0.35em"` 사용 (`dominantBaseline` 금지 — Firefox <128)
 - iOS Safe Area: 하단 네비 + Toast에 `env(safe-area-inset-bottom)` 필수
 
-## 반응형 레이아웃 규칙 (세션25 데스크톱 UI Phase1)
+## 반응형 레이아웃 규칙 (Phase1+Phase2)
 
-- `isDesktop` (1024px+): 1200px 컨테이너, 3컬럼 카드, 고정 상단 바, BottomNav 숨김
-- `isPC` (768px+): 960px 컨테이너, 2컬럼 카드, 하단 BottomNav
+- `isDesktop` (1024px+): 1200px 컨테이너, 3컬럼 카드(gap 20px), 고정 상단 바(60px), BottomNav 숨김
+- `isPC` (768px+): 960px 컨테이너, 2컬럼 카드(gap 16px), 하단 BottomNav
 - 모바일 (<768px): 520px 컨테이너, 1컬럼, 하단 BottomNav
-- isDesktop prop 전달: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection → AptCard
+- isDesktop prop 전달: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection → AptCard, DetailModal, CompareSheet, MapView
 - 모든 데스크톱 변경은 `isDesktop` 조건 분기로 격리 (모바일 불변)
+- Pretendard Variable 폰트: CDN 로드 (index.html), fallback Noto Sans KR → 시스템 폰트
+- SVG 아이콘: `@/components/icons.jsx` (IconClose, IconHelp 등 10개, memo 래핑)
 
 ## 전문가 페이지 규칙
 
@@ -51,16 +53,16 @@
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
-| HeaderSection | 164 | 데스크톱: 고정 상단 바(프로필탭+네비) / 모바일: 블루 그라디언트 + HelpModal 공용 |
+| HeaderSection | 166 | 데스크톱: 고정 상단 바 60px(프로필탭+네비+IconHelp) / 모바일: 블루 그라디언트 + HelpModal 공용 |
 | SearchFilterBar | 321 | 검색/필터/정렬/프리셋/카운트 배지 (isDesktop 입력 확대) |
-| AptListSection | 53 | 카드 그리드 (isDesktop 3컬럼 / isPC 2컬럼) + isDesktop→AptCard 전달 |
+| AptListSection | 53 | 카드 그리드 (isDesktop 3컬럼 gap20 / isPC 2컬럼 gap16) + isDesktop→AptCard 전달 |
 | ExpertLoginForm | 167 | 전문가 로그인/회원가입 |
 | InfoPage | 267 | 스코어링 엔진 설명 (10섹션 + FAQ 10건) |
 | BottomNav | 36 | 하단 네비게이션 (isDesktop → return null) |
-| MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라) |
+| MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라, isDesktop 높이 최적화) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
-### DetailModal.jsx (126줄) — 모달 컨테이너 + 재공고 뱃지 + 상담 CTA
+### DetailModal.jsx (128줄) — 모달 컨테이너 + isDesktop(760px/큰Radar/IconClose/ARIA) + 재공고 뱃지 + 상담 CTA
 분리된 상세 컴포넌트 (`src/components/detail/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
@@ -87,8 +89,22 @@
 - 3초 auto-dismiss (useEffect + setTimeout + cleanup)
 - 범위 가드: `activeDot != null && activeDot < data.length`
 
-### AptCard (136줄)
-- `isDesktop` prop: 데스크톱 시 shadowMd, fontSize 16, padding 확대
+### icons.jsx — 인라인 SVG 아이콘 10개 (memo)
+| 아이콘 | 용도 |
+|--------|------|
+| IconClose | DetailModal 닫기 |
+| IconSearch | 검색 |
+| IconHelp | HeaderSection 도움말 |
+| IconLocation | 위치 핀 |
+| IconHeart / IconHeartFilled | 관심매물 |
+| IconCompare | 비교 |
+| IconShare | 공유 |
+| IconChevronDown | 드롭다운 |
+
+### AptCard (137줄)
+- `isDesktop` prop: 데스크톱 시 shadowMd, borderRadius 16, fontSize 16, padding 확대, grid gap 확대
 - `isFav` prop으로 관심매물 하이라이트 (border 색상)
 - `moveInDone` (준공 + 미분양 0%) → opacity 0.55 흐릿 표시
 - `dynStyles.body`, `dynStyles.nameText` — isDesktop 조건 분기 (useMemo 내부)
+
+### CompareSheet.jsx (124줄) — isDesktop(확대 패딩/폰트/프로그레스바, sticky thead)

@@ -5,7 +5,8 @@
 
 ## 기술 스택
 
-- React 18 + Vite + `@/` 경로 별칭 — 프론트엔드
+- React 18 + Vite + `@/` 경로 별칭 — 프론트엔드 (Pretendard Variable 폰트 CDN)
+- `@/components/icons.jsx` — 인라인 SVG 아이콘 10개 (IconClose, IconHelp 등, memo 래핑)
 - `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 - `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters)
 - `@/lib/dedup.js` — 아파트 중복 제거 + siblingIds 생성 (dedupApartments)
@@ -23,11 +24,15 @@
 | 브레이크포인트 | 플래그 | 컨테이너 | 카드 그리드 | 네비게이션 |
 |--------------|-------|---------|-----------|----------|
 | <768px | 모바일 | 520px | 1컬럼 | 하단 BottomNav |
-| 768~1023px | isPC | 960px | 2컬럼 | 하단 BottomNav |
-| 1024px+ | isDesktop | 1200px | 3컬럼 | 상단 고정 바 (HeaderSection) |
+| 768~1023px | isPC | 960px | 2컬럼 (gap 16px) | 하단 BottomNav |
+| 1024px+ | isDesktop | 1200px | 3컬럼 (gap 20px) | 상단 고정 바 60px (HeaderSection) |
 
 - `useResponsive()` → `{ isPC, isDesktop }` (150ms resize 디바운스)
+- isDesktop prop 전달: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection→AptCard, DetailModal, CompareSheet, MapView
 - 모바일 100% 유지, 데스크톱은 `isDesktop` 조건 분기로 격리
+- DetailModal: 데스크톱 760px, Radar 180px, IconClose, ARIA dialog
+- CompareSheet: 데스크톱 확대 패딩/폰트, sticky thead
+- MapView: 데스크톱 높이 calc(100dvh - 120px)
 - 롤백: useResponsive에서 `isDesktop: false` 고정 시 즉시 복원
 
 ## 의존성 방향 (단방향, 순환 참조 없음)
