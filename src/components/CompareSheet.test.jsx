@@ -23,28 +23,29 @@ function makeItem(id, name, total = 75) {
 describe("CompareSheet", () => {
   // 2개 미만이면 null 반환
   it("items가 1개면 아무것도 렌더링하지 않음", () => {
-    const { container } = render(<CompareSheet items={[makeItem(1, "아파트A")]} onClose={vi.fn()} />);
+    const { container } = render(<CompareSheet items={[makeItem(1, "아파트A")]} onClose={vi.fn()} profile="live" />);
     expect(container.innerHTML).toBe("");
   });
 
   it("items가 0개면 아무것도 렌더링하지 않음", () => {
-    const { container } = render(<CompareSheet items={[]} onClose={vi.fn()} />);
+    const { container } = render(<CompareSheet items={[]} onClose={vi.fn()} profile="live" />);
     expect(container.innerHTML).toBe("");
   });
 
   // 2개 이상이면 비교 테이블 렌더링
   it("2개 이상이면 비교 분석 제목 표시", () => {
     const items = [makeItem(1, "아파트A"), makeItem(2, "아파트B")];
-    render(<CompareSheet items={items} onClose={vi.fn()} />);
+    render(<CompareSheet items={items} onClose={vi.fn()} profile="live" />);
     expect(screen.getByText("비교 분석")).toBeInTheDocument();
   });
 
   // 아파트 이름 표시 (마지막 단어만 사용)
   it("아파트 이름이 테이블 헤더에 표시", () => {
     const items = [makeItem(1, "힐스테이트 수원"), makeItem(2, "래미안 판교")];
-    render(<CompareSheet items={items} onClose={vi.fn()} />);
-    expect(screen.getByText("수원")).toBeInTheDocument();
-    expect(screen.getByText("판교")).toBeInTheDocument();
+    render(<CompareSheet items={items} onClose={vi.fn()} profile="live" />);
+    // 동일 점수이므로 추천에도 표시될 수 있음 → getAllByText 사용
+    expect(screen.getAllByText("수원").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("판교").length).toBeGreaterThanOrEqual(1);
   });
 
   // 종합 점수 표시
@@ -139,10 +140,35 @@ describe("CompareSheet", () => {
 
   it("카테고리 바는 catCol 색상을 사용", () => {
     const items = [makeItem(1, "A", 80), makeItem(2, "B", 70)];
-    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} />);
+    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} profile="live" />);
     // 바 트랙(배경 #ECEEF4)과 내부 gradient 바가 존재하는지 확인
     const tracks = container.querySelectorAll('div[style*="border-radius: 99px"]');
     // 종합 2트랙 + 카테고리 6×2=12트랙 → 트랙+바 총 28개 (각 트랙 안에 바 1개)
     expect(tracks.length).toBeGreaterThanOrEqual(14);
+  });
+
+  // --- 프로필 기준 추천 요약 테스트 ---
+
+  it("프로필 기준 추천 요약이 표시됨", () => {
+    const items = [makeItem(1, "힐스테이트 A", 80), makeItem(2, "래미안 B", 65)];
+    render(<CompareSheet items={items} onClose={vi.fn()} profile="live" />);
+    // "실거주 기준 추천" 텍스트가 표시되어야 함
+    expect(screen.getByText(/실거주 기준 추천/)).toBeInTheDocument();
+    // 최고 점수 아파트 이름 + 점수가 추천 영역에 표시
+    expect(screen.getByText(/80점/)).toBeInTheDocument();
+  });
+
+  it("invest 프로필일 때 '투자 기준 추천' 표시", () => {
+    const items = [makeItem(1, "아파트 X", 70), makeItem(2, "아파트 Y", 90)];
+    render(<CompareSheet items={items} onClose={vi.fn()} profile="invest" />);
+    expect(screen.getByText(/투자 기준 추천/)).toBeInTheDocument();
+    // Y가 90점으로 최고 → 추천 영역에 점수 표시
+    expect(screen.getByText(/90점/)).toBeInTheDocument();
+  });
+
+  it("profile 미전달 시 기본값(실거주) 폴백", () => {
+    const items = [makeItem(1, "A단지", 75), makeItem(2, "B단지", 80)];
+    render(<CompareSheet items={items} onClose={vi.fn()} />);
+    expect(screen.getByText(/실거주 기준 추천/)).toBeInTheDocument();
   });
 });

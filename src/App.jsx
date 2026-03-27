@@ -73,7 +73,7 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite, favoritesObj, setMemo, toggleTag, FAV_TAGS } = useFavorites(showToast);
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, catMinScores, handleCatMinChange, handleCatMinReset } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, catMinScores, handleCatMinChange, handleCatMinReset, selectedTags, toggleTagFilter, resetTagFilter } = useFilterSort({ onFilterChange: closeDetail });
   const debouncedSearchText = useDebouncedValue(searchText, 300);
 
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
@@ -121,8 +121,9 @@ export default function App() {
   const baseFilterArgs = useMemo(() => ({
     showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax,
     unitsMin, unitsMax, minScore, benefitOnly, searchText: debouncedSearchText,
+    selectedTags, favoritesObj,
     ...catMinScores,
-  }), [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText, catMinScores]);
+  }), [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText, catMinScores, selectedTags, favoritesObj]);
 
   const filtered = useMemo(() => {
     let list = applyBaseFilters(scored, baseFilterArgs);
@@ -138,8 +139,8 @@ export default function App() {
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
   const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
   const activeFilterCount = useMemo(() =>
-    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly, searchText, ...Object.values(catMinScores).filter(Boolean)].filter(Boolean).length,
-    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchText, catMinScores]
+    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly, searchText, selectedTags.length > 0, ...Object.values(catMinScores).filter(Boolean)].filter(Boolean).length,
+    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchText, catMinScores, selectedTags]
   );
 
   const regionOptions = useMemo(() => {
@@ -202,6 +203,15 @@ export default function App() {
     expert.setExpertExpandedApt(aptId);
     setTab("expert");
   }, [expert.setExpertExpandedApt]);
+
+  const handleConsultFromDetail = useCallback((aptId) => {
+    consult.setConsultForm(prev => ({
+      ...prev,
+      interestedApts: prev.interestedApts.includes(aptId) ? prev.interestedApts : [...prev.interestedApts, aptId],
+    }));
+    detail.setDetailAptId(null);
+    setTab("consult");
+  }, [consult.setConsultForm, detail.setDetailAptId]);
 
   const consultRef = useRef(consult);
   consultRef.current = consult;
@@ -368,6 +378,7 @@ export default function App() {
             onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
             filterOptionCounts={filterOptionCounts}
             catMinScores={catMinScores} onCatMinChange={handleCatMinChange} onCatMinReset={handleCatMinReset}
+            selectedTags={selectedTags} onToggleTagFilter={toggleTagFilter} onResetTagFilter={resetTagFilter} favTags={FAV_TAGS}
           />
         </div>
       )}
@@ -381,7 +392,7 @@ export default function App() {
               cursor: "pointer", marginBottom: 10, transition: "all .2s"
             }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
           )}
-          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} /></Suspense>}
+          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} /></Suspense>}
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => setVisibleCount(v => v + 30)}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoritesObj={favoritesObj} compIds={compIds}
@@ -464,7 +475,8 @@ export default function App() {
           isComp={compIds.includes(detail.detailAptId)} onComp={toggleComp}
           isFav={favoriteIds.includes(detail.detailAptId)} onFav={toggleFavorite}
           onShare={handleShareDetail} isPC={isPC}
-          favMeta={favoritesObj[detail.detailAptId]} onSetMemo={setMemo} onToggleTag={toggleTag} favTags={FAV_TAGS} /></Suspense>;
+          favMeta={favoritesObj[detail.detailAptId]} onSetMemo={setMemo} onToggleTag={toggleTag} favTags={FAV_TAGS}
+          onConsult={handleConsultFromDetail} /></Suspense>;
       })()}
 
       {/* 토스트 */}

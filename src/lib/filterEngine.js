@@ -14,6 +14,13 @@ const MANWON_PER_EUK = 10000;
 export function applyBaseFilters(list, f) {
   let out = list;
   if (f.showFavOnly) out = out.filter(x => f.favoriteIds.includes(x.apt.id));
+  // 태그 필터 (OR 로직: 선택된 태그 중 하나라도 포함)
+  if (f.selectedTags?.length > 0 && f.favoritesObj) {
+    out = out.filter(x => {
+      const tags = f.favoritesObj[x.apt.id]?.tags || [];
+      return f.selectedTags.some(t => tags.includes(t));
+    });
+  }
 
   // 예산 범위 (역전 시 자동 스왑)
   const bMinRaw = f.budgetMin !== "" ? Number(f.budgetMin) : null;

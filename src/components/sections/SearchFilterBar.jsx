@@ -45,6 +45,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onUndo, onRedo, canUndo, canRedo,
   filterOptionCounts,
   catMinScores, onCatMinChange, onCatMinReset,
+  selectedTags, onToggleTagFilter, onResetTagFilter, favTags,
 }) {
   const hasAreaUnits = areaMin || areaMax || unitsMin || unitsMax;
   const prevLenRef = useRef(filteredLength);
@@ -101,6 +102,26 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           }}>↪</button>
         </>}
       </div>
+      {/* 태그 필터 (관심매물 모드에서만 표시) */}
+      {showFavOnly && favTags?.length > 0 && (
+        <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontSize: 10, color: C.muted, flexShrink: 0, fontWeight: 600 }}>태그</span>
+          {favTags.map(tag => {
+            const active = selectedTags?.includes(tag);
+            return <button key={tag} onClick={() => onToggleTagFilter?.(tag)} style={{
+              fontSize: 10, padding: "2px 8px", borderRadius: 10,
+              border: active ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+              background: active ? C.indigoLight : "transparent",
+              color: active ? C.indigo : C.muted,
+              fontWeight: active ? 700 : 500,
+              cursor: "pointer", transition: "all .15s",
+            }}>{tag}</button>;
+          })}
+          {selectedTags?.length > 0 && (
+            <button onClick={onResetTagFilter} aria-label="태그 필터 초기화" style={{ ...resetBtn(22), fontSize: 9 }}>✕</button>
+          )}
+        </div>
+      )}
       {/* 결과 건수 + 활성 필터 태그 칩 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: filterCollapsed ? 0 : 6 }}>
         {activeFilterCount > 0 && (
@@ -115,6 +136,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             {builderTier !== "전체" && <span onClick={() => onBuilderTierChange("전체")} style={chipStyle}>{builderTier} ✕</span>}
             {benefitOnly && <span onClick={onToggleBenefitOnly} style={chipStyle}>혜택 ✕</span>}
             {searchText && <span onClick={() => onSearchChange("")} style={chipStyle}>{searchText.length > 10 ? searchText.slice(0, 10) + "…" : searchText} ✕</span>}
+            {selectedTags?.map(tag => <span key={tag} onClick={() => onToggleTagFilter?.(tag)} style={chipStyle}>{tag} ✕</span>)}
           </div>
         )}
         {filteredLength != null && <span key={filteredLength} style={{

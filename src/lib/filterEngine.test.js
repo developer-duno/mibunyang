@@ -151,4 +151,44 @@ describe("applyBaseFilters", () => {
     const result = applyBaseFilters([item], { ...DEFAULT_FILTER, min_price: "50" });
     expect(result).toHaveLength(0);
   });
+
+  // --- 태그별 필터 테스트 ---
+
+  it("selectedTags가 비어있으면 전체 반환", () => {
+    const items = [makeItem(), makeItem({ id: "t2" })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, selectedTags: [], favoritesObj: {} });
+    expect(result).toHaveLength(2);
+  });
+
+  it("selectedTags OR 필터 — 선택된 태그 중 하나라도 포함하면 통과", () => {
+    const items = [makeItem(), makeItem({ id: "t2" }), makeItem({ id: "t3" })];
+    const favoritesObj = {
+      t1: { memo: "", tags: ["투자용"], addedAt: "2026-01-01" },
+      t2: { memo: "", tags: ["실거주", "가격매력"], addedAt: "2026-01-01" },
+      t3: { memo: "", tags: [], addedAt: "2026-01-01" },
+    };
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, selectedTags: ["투자용"], favoritesObj });
+    // t1만 "투자용" 태그 보유
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t1");
+  });
+
+  it("selectedTags 복수 태그 OR — 어느 하나라도 매칭", () => {
+    const items = [makeItem(), makeItem({ id: "t2" }), makeItem({ id: "t3" })];
+    const favoritesObj = {
+      t1: { memo: "", tags: ["투자용"], addedAt: "2026-01-01" },
+      t2: { memo: "", tags: ["실거주"], addedAt: "2026-01-01" },
+      t3: { memo: "", tags: ["재검토"], addedAt: "2026-01-01" },
+    };
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, selectedTags: ["투자용", "실거주"], favoritesObj });
+    expect(result).toHaveLength(2);
+    expect(result.map(x => x.apt.id).sort()).toEqual(["t1", "t2"]);
+  });
+
+  it("selectedTags 있지만 favoritesObj 없으면 전체 반환 (안전 처리)", () => {
+    const items = [makeItem(), makeItem({ id: "t2" })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, selectedTags: ["투자용"] });
+    // favoritesObj가 없으므로 필터 미적용
+    expect(result).toHaveLength(2);
+  });
 });

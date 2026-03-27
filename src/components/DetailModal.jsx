@@ -11,7 +11,7 @@ import { DataSections } from "./detail/DataSections";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 
-export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, favMeta, onSetMemo, onToggleTag, favTags }) {
+export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, favMeta, onSetMemo, onToggleTag, favTags, onConsult }) {
   useEffect(() => {
     if (!item) return;
     document.body.style.overflow = "hidden";
@@ -90,6 +90,13 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         <LoanAnalysis apt={apt} />
 
         <DataSections apt={apt} />
+        {onConsult && (
+          <button onClick={() => onConsult(apt.id)} style={{
+            width: "100%", background: C.blue, color: C.white, border: "none", borderRadius: 8,
+            padding: "12px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", minHeight: 44,
+            marginBottom: 8, transition: "all .15s",
+          }}>이 매물 상담하기</button>
+        )}
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <button onClick={() => onFav(apt.id)} style={{
             flex: 1, background: isFav ? C.redLight : C.slate100, color: isFav ? C.red : C.muted,

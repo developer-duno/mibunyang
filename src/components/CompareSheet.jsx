@@ -2,6 +2,7 @@ import { memo, useRef, useState, useCallback } from "react";
 import { C, catCol, gr } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
+import { PROFILES } from "@/constants/profiles";
 
 const btnStyle = {
   background: C.slate100, color: C.slate600, border: "1.5px solid transparent",
@@ -9,7 +10,7 @@ const btnStyle = {
   cursor: "pointer", minHeight: 36, transition: "all .15s",
 };
 
-export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose }) {
+export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose, profile }) {
   const tableRef = useRef(null);
   const exportingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
@@ -34,6 +35,13 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose
     const ltv = calcLTV(it.apt.price, z);
     return { zone: z, ltv, needCash: it.apt.price - ltv };
   });
+  // 프로필 기준 추천 요약
+  const profileInfo = PROFILES[profile] || PROFILES.live;
+  const best = items.reduce((a, b) => a.res.total >= b.res.total ? a : b, items[0]);
+  const bestCats = Object.entries(best.res.cats).sort((a, b) => b[1].total - a[1].total);
+  const topCat = bestCats[0];
+  const topCatLabel = topCat ? topCat[1].label.split("·")[0] : "";
+
   const expBtnStyle = { ...btnStyle, cursor: exporting ? "wait" : "pointer", opacity: exporting ? 0.5 : 1 };
   return (
     <div style={{ background: C.card, border: `1.5px solid ${C.blueBorder}`, borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
@@ -45,6 +53,11 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose
           {onShare && <button onClick={onShare} aria-label="비교 결과 공유하기" style={btnStyle}>공유</button>}
           {onClose && <button onClick={onClose} aria-label="비교 닫기" style={btnStyle}>닫기</button>}
         </div>
+      </div>
+      <div style={{ background: C.blueLight, borderRadius: 8, padding: "8px 10px", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.blue }}>💡 {profileInfo.name} 기준 추천</span>
+        <span style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{best.apt.name.split(" ").pop()}</span>
+        <span style={{ fontSize: 11, color: C.muted }}>({best.res.total}점 · {topCatLabel} {topCat[1].total}점)</span>
       </div>
       <div ref={tableRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 320 }}>

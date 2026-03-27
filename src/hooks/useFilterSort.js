@@ -115,6 +115,13 @@ export function useFilterSort({ onFilterChange }) {
   const [minScore, setMinScore] = useState(() => urlInit.current?.minScore ?? "");
   const [builderTier, setBuilderTier] = useState(() => urlInit.current?.builderTier ?? "전체");
   const [benefitOnly, setBenefitOnly] = useState(() => urlInit.current?.benefitOnly ?? false);
+  // 태그 필터 (관심매물 태그별)
+  const [selectedTags, setSelectedTags] = useState([]);
+  const toggleTagFilter = useCallback((tag) => {
+    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+    onFilterChange?.();
+  }, [onFilterChange]);
+  const resetTagFilter = useCallback(() => { setSelectedTags([]); onFilterChange?.(); }, [onFilterChange]);
   // 카테고리별 최소 점수
   const [min_price, setMinPrice] = useState(() => urlInit.current?.min_price ?? "");
   const [min_location, setMinLocation] = useState(() => urlInit.current?.min_location ?? "");
@@ -184,6 +191,7 @@ export function useFilterSort({ onFilterChange }) {
       SETTERS[stateKey]?.(val);
     }
     setShowFavOnly(false);
+    setSelectedTags([]);
     const sk = overrides.sortKey || "total";
     try { localStorage.setItem("mibunyang_sort", sk); } catch {}
     onFilterChange?.();
@@ -321,5 +329,5 @@ export function useFilterSort({ onFilterChange }) {
     applySnapshot(next);
   }, [getCurrentSnapshot, applySnapshot]);
 
-  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, catMinScores, handleCatMinChange, handleCatMinReset };
+  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, catMinScores, handleCatMinChange, handleCatMinReset, selectedTags, toggleTagFilter, resetTagFilter };
 }
