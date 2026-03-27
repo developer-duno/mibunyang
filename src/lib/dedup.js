@@ -4,7 +4,7 @@
  * 정적 JSON 폴백 경로에서 사용
  *
  * @param {Array} apartments - 아파트 배열 (id, name, region, gu, dong 필수)
- * @returns {Array} 중복 제거된 아파트 배열
+ * @returns {Array} 중복 제거된 아파트 배열 (각 항목에 siblingIds 추가)
  */
 export function dedupApartments(apartments) {
   if (!apartments?.length) return apartments || [];
@@ -14,9 +14,15 @@ export function dedupApartments(apartments) {
     const baseName = (apt.name || "").replace(/\([^)]*\)$/, "");
     const key = `${baseName}\0${apt.region || ""}\0${apt.gu || ""}\0${apt.dong || ""}`;
     const existing = groups.get(key);
-    if (!existing || apt.id > existing.id) {
-      groups.set(key, apt);
+    if (existing) {
+      existing.ids.push(apt.id);
+      if (apt.id > existing.rep.id) existing.rep = apt;
+    } else {
+      groups.set(key, { rep: apt, ids: [apt.id] });
     }
   }
-  return [...groups.values()];
+  return [...groups.values()].map(({ rep, ids }) => ({
+    ...rep,
+    siblingIds: ids.sort(),
+  }));
 }

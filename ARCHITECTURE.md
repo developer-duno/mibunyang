@@ -37,7 +37,7 @@ src/
 │   ├── filterEngine.js     공통 base 필터 (applyBaseFilters, MANWON_PER_EUK)
 │   ├── exportPdf.js        비교 결과 PNG/PDF 내보내기 (dynamic import)
 │   ├── chosung.js          초성 검색 (matchSearch)
-│   ├── dedup.js            아파트 중복 제거 순수 함수 (dedupApartments)
+│   ├── dedup.js            아파트 중복 제거 + siblingIds 생성 (dedupApartments)
 │   └── format.js           가격/날짜 포맷 (fmtPrice, fmtCompletion)
 ├── services/
 │   ├── staticDataApi.js    ★ Supabase API 또는 JSON 폴백

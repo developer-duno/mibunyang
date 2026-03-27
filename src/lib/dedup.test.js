@@ -17,6 +17,9 @@ describe("dedupApartments", () => {
     const result = dedupApartments(input);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("ah-2022910099"); // 가장 큰 ID
+    // siblingIds에 모든 재공고 ID 포함
+    expect(result[0].siblingIds).toHaveLength(3);
+    expect(result[0].siblingIds).toEqual(expect.arrayContaining(["ah-2022910028", "ah-2022910067", "ah-2022910099"]));
   });
 
   // #2: 괄호 접미사 변형 → 병합
@@ -82,5 +85,36 @@ describe("dedupApartments", () => {
     ];
     const result = dedupApartments(input);
     expect(result).toHaveLength(3);
+  });
+
+  // #9: 단독 공고 siblingIds = [자기 id]
+  it("단독 공고의 siblingIds는 자기 ID만 포함", () => {
+    const input = [makeApt({ id: "ah-solo-001", name: "솔로아파트" })];
+    const result = dedupApartments(input);
+    expect(result).toHaveLength(1);
+    expect(result[0].siblingIds).toEqual(["ah-solo-001"]);
+  });
+
+  // #10: 괄호 변형 병합 시 siblingIds 정합성
+  it("괄호 변형 병합 시 siblingIds에 모든 변형 ID 포함", () => {
+    const input = [
+      makeApt({ id: "ah-010", name: "용문역 리체스트" }),
+      makeApt({ id: "ah-020", name: "용문역 리체스트(임의공급)" }),
+      makeApt({ id: "ah-030", name: "용문역 리체스트(청약전환)" }),
+    ];
+    const result = dedupApartments(input);
+    expect(result).toHaveLength(1);
+    expect(result[0].siblingIds).toEqual(["ah-010", "ah-020", "ah-030"]);
+  });
+
+  // #11: siblingIds는 정렬됨
+  it("siblingIds는 오름차순 정렬", () => {
+    const input = [
+      makeApt({ id: "ah-zzz" }),
+      makeApt({ id: "ah-aaa" }),
+      makeApt({ id: "ah-mmm" }),
+    ];
+    const result = dedupApartments(input);
+    expect(result[0].siblingIds).toEqual(["ah-aaa", "ah-mmm", "ah-zzz"]);
   });
 });

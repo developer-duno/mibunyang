@@ -81,9 +81,15 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         )}
 
 
+        {apt.siblingIds?.length > 1 && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: C.amber, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 6, padding: "3px 8px", marginBottom: 8 }}>
+            재공고 {apt.siblingIds.length}회 · 시계열 통합 조회
+          </div>
+        )}
+
         <PriceTable apt={apt} />
-        <PriceChart apartmentId={apt.id} />
-        <UnsoldChart apartmentId={apt.id} />
+        <PriceChart apartmentId={apt.id} siblingIds={apt.siblingIds} />
+        <UnsoldChart apartmentId={apt.id} siblingIds={apt.siblingIds} />
 
         <SchoolInfo apt={apt} />
 

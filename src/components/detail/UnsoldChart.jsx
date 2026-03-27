@@ -4,8 +4,8 @@ import { LineChart } from "@/components/primitives";
 import { useUnsoldHistory } from "@/hooks/useUnsoldHistory";
 
 /** 미분양 추이 차트 — DetailModal 내 표시 */
-export const UnsoldChart = memo(function UnsoldChart({ apartmentId }) {
-  const { data, loading, error, retry } = useUnsoldHistory(apartmentId);
+export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }) {
+  const { data, loading, error, retry } = useUnsoldHistory(apartmentId, siblingIds);
 
   if (!apartmentId) return null;
   if (loading) return <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 12 }}>불러오는 중...</div>;

@@ -20,7 +20,7 @@ describe('useApartmentData', () => {
     });
     const { result } = renderHook(() => useApartmentData());
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.apartments).toEqual([{ id: 1 }]);
+    expect(result.current.apartments).toEqual([{ id: 1, siblingIds: [1] }]);
     expect(result.current.dataUpdatedAt).toBe("2026-01-01");
     expect(result.current.error).toBeNull();
   });

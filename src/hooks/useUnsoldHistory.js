@@ -3,19 +3,25 @@ import { useState, useCallback, useEffect } from "react";
 /**
  * 아파트 미분양 추이 시계열 데이터 페칭 훅
  * @param {string} apartmentId - 아파트 ID
+ * @param {string[]} [siblingIds] - 재공고 sibling ID 배열 (복수 조회)
  * @returns {{ data, loading, error, retry }}
  */
-export function useUnsoldHistory(apartmentId) {
+export function useUnsoldHistory(apartmentId, siblingIds) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // 원시값으로 직렬화하여 무한 루프 방지
+  const idsKey = siblingIds?.length > 1 ? siblingIds.join(",") : "";
 
   const load = useCallback(async (signal) => {
     if (!apartmentId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/supabase/unsold-history?apartment_id=${encodeURIComponent(apartmentId)}`, { signal });
+      const url = idsKey
+        ? `/api/supabase/unsold-history?apartment_ids=${encodeURIComponent(idsKey)}`
+        : `/api/supabase/unsold-history?apartment_id=${encodeURIComponent(apartmentId)}`;
+      const res = await fetch(url, { signal });
       if (signal?.aborted) return;
       if (!res.ok) throw new Error(`API 오류 (${res.status})`);
       const json = await res.json();
@@ -28,7 +34,7 @@ export function useUnsoldHistory(apartmentId) {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [apartmentId]);
+  }, [apartmentId, idsKey]);
 
   const retry = useCallback(() => { const ac = new AbortController(); load(ac.signal); return () => ac.abort(); }, [load]);
 

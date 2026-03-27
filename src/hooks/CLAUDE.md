@@ -44,12 +44,15 @@ const showComp = showCompOpen && compIds.length >= 2;
 | useExpertMode.handleExpertLogout(onLogout) | 콜백 파라미터 | App에서 `() => { setTab("list"); setShowCompOpen(false); }` 전달 |
 | useFilterSort({ onFilterChange }) | 콜백 옵션 | App에서 `() => setDetailAptId(null)` 전달 |
 
-## 세션19 추가 훅
+## 세션19 추가 훅 (세션24 siblingIds 확장)
 
 | 훅 | 역할 | 패턴 |
 |----|------|------|
-| usePriceHistory(apartmentId) | 분양가 시계열 API 페칭 | AbortController + retry |
-| useUnsoldHistory(apartmentId) | 미분양 추이 API 페칭 | AbortController + retry |
+| usePriceHistory(apartmentId, siblingIds?) | 분양가 시계열 API 페칭 | AbortController + retry + idsKey 직렬화 |
+| useUnsoldHistory(apartmentId, siblingIds?) | 미분양 추이 API 페칭 | AbortController + retry + idsKey 직렬화 |
+
+- `siblingIds?.length > 1`이면 `apartment_ids` 복수 조회, 아니면 기존 `apartment_id` 단일 조회
+- **무한 루프 방지**: `siblingIds` 배열을 `idsKey = siblingIds.join(",")` 원시값으로 직렬화하여 useCallback 의존성에 사용
 
 ## useComparison 구조 (세션20 — MAX_COMPARE 상수)
 

@@ -4,8 +4,8 @@ import { LineChart } from "@/components/primitives";
 import { usePriceHistory } from "@/hooks/usePriceHistory";
 
 /** 분양가 추이 차트 — DetailModal 내 표시 */
-export const PriceChart = memo(function PriceChart({ apartmentId }) {
-  const { data, loading, error, retry } = usePriceHistory(apartmentId);
+export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }) {
+  const { data, loading, error, retry } = usePriceHistory(apartmentId, siblingIds);
 
   if (!apartmentId) return null;
   if (loading) return <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 12 }}>불러오는 중...</div>;
