@@ -255,7 +255,7 @@ export function useFilterSort({ onFilterChange }) {
     const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future };
     const timer = setTimeout(() => saveToHistory(state), 500);
     return () => clearTimeout(timer);
-  }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, saveToHistory]);
+  }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, searchText, min_price, min_location, min_product, min_benefit, min_risk, min_future, saveToHistory]);
 
   const applyHistory = useCallback((entry) => {
     if (entry?.values) resetFilters(entry.values);
