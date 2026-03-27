@@ -359,7 +359,7 @@ export default function App() {
         </div>
       )}
 
-      {tab === "list" ? (
+      {(tab === "list" || tab === "map") && (
         <div style={{ padding: "0 16px" }}>
           <SearchFilterBar
             searchText={searchText} onSearchChange={handleSearchChange}
@@ -387,7 +387,11 @@ export default function App() {
             onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
             filterOptionCounts={filterOptionCounts}
           />
+        </div>
+      )}
 
+      {tab === "list" ? (
+        <div style={{ padding: "0 16px" }}>
           {compIds.length >= 2 && (
             <button onClick={() => { const wasOpen = showComp; setShowCompOpen(!showCompOpen); if (wasOpen) window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{
               width: "100%", background: showComp ? C.indigo : "transparent", color: showComp ? C.white : C.indigo,
