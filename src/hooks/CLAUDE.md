@@ -83,7 +83,7 @@ useFavorites(showToast)
 v1(배열) → v2(객체) 자동 마이그레이션 + `mibunyang_fav_backup` 백업.
 **세션21**: memo/tags UI 제거됨 — App.jsx에서 `favoritesObj` 미사용 (내부 저장 구조만 유지).
 
-## useResponsive 구조 (세션25 — 데스크톱 UI Phase1)
+## useResponsive 구조 (Phase1+Phase2)
 
 ```
 useResponsive()
@@ -93,5 +93,6 @@ useResponsive()
   └── return { isPC: width >= 768, isDesktop: width >= 1024 }
 ```
 - **디바운스 150ms**: resize 이벤트 초당 60~120회 → 6~7회로 감소
-- **isDesktop prop 전달**: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection → AptCard
+- **isDesktop prop 전달**: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection → AptCard, DetailModal, CompareSheet, MapView
 - **isPC 하위 호환**: 기존 isPC 로직 100% 유지, isDesktop은 추가 분기
+- **롤백**: useResponsive에서 `isDesktop: false` 고정 시 즉시 Phase1 이전 상태 복원

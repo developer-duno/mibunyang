@@ -54,7 +54,7 @@
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
 | HeaderSection | 166 | 데스크톱: 고정 상단 바 60px(프로필탭+네비+IconHelp) / 모바일: 블루 그라디언트 + HelpModal 공용 |
-| SearchFilterBar | 321 | 검색/필터/정렬/프리셋/카운트 배지 (isDesktop 입력 확대) |
+| SearchFilterBar | 322 | 검색/필터/정렬/프리셋/카운트 배지 (SVG 아이콘: IconClose, IconHeart, IconChevronDown) |
 | AptListSection | 53 | 카드 그리드 (isDesktop 3컬럼 gap20 / isPC 2컬럼 gap16) + isDesktop→AptCard 전달 |
 | ExpertLoginForm | 167 | 전문가 로그인/회원가입 |
 | InfoPage | 267 | 스코어링 엔진 설명 (10섹션 + FAQ 10건) |
@@ -62,7 +62,7 @@
 | MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라, isDesktop 높이 최적화) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
-### DetailModal.jsx (128줄) — 모달 컨테이너 + isDesktop(760px/큰Radar/IconClose/ARIA) + 재공고 뱃지 + 상담 CTA
+### DetailModal.jsx (127줄) — 모달 컨테이너 + isDesktop(760px/큰Radar/IconClose/ARIA) + 재공고 뱃지 + 상담 CTA
 분리된 상세 컴포넌트 (`src/components/detail/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
@@ -89,22 +89,24 @@
 - 3초 auto-dismiss (useEffect + setTimeout + cleanup)
 - 범위 가드: `activeDot != null && activeDot < data.length`
 
-### icons.jsx — 인라인 SVG 아이콘 10개 (memo)
-| 아이콘 | 용도 |
-|--------|------|
-| IconClose | DetailModal 닫기 |
-| IconSearch | 검색 |
-| IconHelp | HeaderSection 도움말 |
-| IconLocation | 위치 핀 |
-| IconHeart / IconHeartFilled | 관심매물 |
-| IconCompare | 비교 |
-| IconShare | 공유 |
-| IconChevronDown | 드롭다운 |
+### icons.jsx (37줄) — 인라인 SVG 아이콘 10개 (memo 래핑, size/color props)
+| 아이콘 | 사용 위치 |
+|--------|----------|
+| IconClose | DetailModal, SearchFilterBar(×4), MapView, ConsultForm |
+| IconHelp | HeaderSection (데스크톱 도움말) |
+| IconHeart / IconHeartFilled | SearchFilterBar (관심매물 토글) |
+| IconChevronDown | SearchFilterBar (필터 접기/펼치기, CSS rotate 180deg) |
+| IconSearch | (미사용 — 향후 확장용) |
+| IconLocation | (미사용 — 향후 확장용) |
+| IconCompare | (미사용 — 향후 확장용) |
+| IconShare | (미사용 — 향후 확장용) |
 
-### AptCard (137줄)
+### AptCard (136줄)
 - `isDesktop` prop: 데스크톱 시 shadowMd, borderRadius 16, fontSize 16, padding 확대, grid gap 확대
 - `isFav` prop으로 관심매물 하이라이트 (border 색상)
 - `moveInDone` (준공 + 미분양 0%) → opacity 0.55 흐릿 표시
 - `dynStyles.body`, `dynStyles.nameText` — isDesktop 조건 분기 (useMemo 내부)
 
-### CompareSheet.jsx (124줄) — isDesktop(확대 패딩/폰트/프로그레스바, sticky thead)
+### CompareSheet.jsx (123줄) — isDesktop(확대 패딩/폰트/프로그레스바, sticky thead)
+
+### ConsultForm.jsx (129줄) — 상담 신청 폼 + IconClose(관심단지 제거)

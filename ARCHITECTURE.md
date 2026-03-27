@@ -20,6 +20,7 @@ src/
 │   └── index.js            C(팔레트+shadowSm/Md), catCol, catBg, gr(등급함수)
 ├── components/             규칙: components/CLAUDE.md
 │   ├── primitives.jsx      Bar, ScoreBadge, LineChart, Radar (memo)
+│   ├── icons.jsx            인라인 SVG 아이콘 10개 (IconClose, IconHelp 등, memo)
 │   ├── AptCard.jsx / CatPanel.jsx / CompareSheet.jsx (PNG/PDF 내보내기)
 │   ├── DetailModal.jsx / ConsultForm.jsx / ShareSheet.jsx
 │   ├── sections/
@@ -274,47 +275,54 @@ const handleExpertLogout = () => {
 
 ## 5. 컴포넌트 트리
 
-### 소비자 모드 (모바일 우선, maxWidth: 520px)
+### 소비자 모드 (반응형: 모바일 520px / 태블릿 960px / 데스크톱 1200px)
 
 ```
-App
-├── 헤더 (인디고 그라데이션, 프로필 버튼 5개)
+App (Pretendard Variable 폰트, paddingTop: isDesktop ? 64 : 0)
+├── HeaderSection (memo)
+│   ├── [isDesktop] 고정 상단 바 60px (로고18px + 프로필탭 + 네비13px + IconHelp)
+│   └── [mobile] 블루 그라디언트 헤더 + 프로필 버튼 5개
 │
 ├── [소비자 모드]
 │   ├── [tab === "list"]
-│   │   ├── 시/도 + 구/군 2단 드롭다운
-│   │   ├── 정렬 버튼 (7종)
+│   │   ├── SearchFilterBar (memo) ← 검색/필터/정렬/프리셋 (SVG 아이콘: IconClose, IconHeart, IconChevronDown)
 │   │   ├── 비교 토글 버튼 (compIds >= 2일 때)
-│   │   ├── CompareSheet (memo) ← showComp일 때
+│   │   ├── CompareSheet (memo, isDesktop) ← showComp일 때 (데스크톱: 확대패딩, sticky thead)
 │   │   ├── 빈 상태 안내 (filtered.length === 0일 때)
-│   │   └── AptCard (memo) * filtered.length
-│   │       ├── ScoreBadge (memo) ← 원형 점수 배지
-│   │       ├── 관심매물 하이라이트 (isFav → border 색상)
-│   │       ├── Bar (memo) * 3 ← 상위 카테고리 미니 바
-│   │       └── 3버튼 (상세보기/관심매물/비교추가)
+│   │   └── AptListSection (memo) → AptCard (memo) * filtered.length
+│   │       ├── [isDesktop] 3컬럼 grid gap 20px
+│   │       ├── [isPC] 2컬럼 grid gap 16px
+│   │       ├── [mobile] 1컬럼
+│   │       └── AptCard: ScoreBadge + Bar*3 + 3버튼 (데스크톱: borderRadius16, shadowMd)
 │   │
 │   ├── [tab === "map"]
-│   │   └── MapView (memo, lazy) ← Kakao Map 지도 뷰
+│   │   └── MapView (memo, lazy, isDesktop) ← Kakao Map 지도 뷰
 │   │       ├── InfraOverlay (memo) ← 인프라 토글 (지하철/병원/마트/학교)
-│   │       ├── 현위치 버튼 (geolocation API)
+│   │       ├── 현위치 버튼 (📍 이모지)
 │   │       ├── 가격 라벨 마커 (buildMarkerSvg, 점수+가격 배지)
-│   │       └── 선택 아파트 정보 카드
+│   │       ├── 선택 아파트 정보 카드 (IconClose 닫기)
+│   │       └── [isDesktop] 높이 calc(100dvh - 120px)
 │   │
 │   ├── [tab === "consult"]
-│   │   └── ConsultForm (memo) ← 상담 신청 폼
+│   │   └── ConsultForm (memo) ← 상담 신청 폼 (IconClose 관심단지 제거)
 │   │
 │   ├── [tab === "info"]
 │   │   └── InfoPage (10섹션 + FAQ 10건) + 전문가 로그인 링크
 │   │
-│   └── DetailModal (memo) ← 바텀시트 상세 팝업 (z-index:300)
-│       ├── ScoreBadge (80px)
-│       ├── Radar (memo) + 핵심지표
+│   └── DetailModal (memo, isDesktop) ← 모달 (z-index:300, ARIA dialog)
+│       ├── [isDesktop] 760px, 패딩24px, 폰트18px, Radar 180px, IconClose
+│       ├── [mobile] 바텀시트 520px, 드래그핸들
+│       ├── ScoreBadge (80px) + Radar + 핵심지표
 │       ├── 상담 CTA 버튼 ("이 매물 상담하기")
 │       ├── CatPanel (memo) * 6
-│       ├── PriceChart (memo) ← 분양가 추이 LineChart (터치 툴팁)
-│       ├── UnsoldChart (memo) ← 미분양 추이 LineChart (2선 + 터치 툴팁)
+│       ├── PriceChart (memo) ← 분양가 추이 LineChart
+│       ├── UnsoldChart (memo) ← 미분양 추이 LineChart
 │       ├── PriceTable / SchoolInfo / LoanAnalysis / DataSections
-│       └── 관심매물/비교추가 버튼
+│       └── 관심매물/비교추가/공유 버튼 (데스크톱: 14px, 패딩12px)
+│
+├── BottomNav (memo) ← [isDesktop] return null / [mobile] 하단 고정
+├── Toast (role="status", z-index:400) ← [isDesktop] bottom:24px / [mobile] bottom:76px
+├── 사업자 정보 푸터
 │
 ├── [전문가 모드] (PC 우선, maxWidth: 1200px)
 │   ├── [tab === "expert"]
@@ -333,10 +341,8 @@ App
 │   └── [tab === "expertConsults"]
 │       └── 상담 요청 목록
 │
-├── Toast (role="status", z-index:200)
-└── <nav> 하단 네비 (4개 버튼, z-index:100)
-    ├── 소비자: 목록/비교/상담/정보
-    └── 전문가: 대시보드/상담목록/소비자뷰/로그아웃
+│
+└── ErrorBoundary (main.jsx) ← 전체 앱 래핑, 오류 시 새로고침 안내
 ```
 
 ### memo() 컴포넌트 Props
@@ -347,12 +353,12 @@ App
 | ScoreBadge | primitives.jsx | score, size |
 | Radar | primitives.jsx | data, size |
 | CatPanel | CatPanel.jsx | cat, k |
-| AptCard | AptCard.jsx | apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView |
-| CompareSheet | CompareSheet.jsx | items, onShare, onClose, profile (+ PNG/PDF 내보내기 내장) |
-| MapView | sections/MapView.jsx | filtered, onDetail, isPC |
+| AptCard | AptCard.jsx | apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop |
+| CompareSheet | CompareSheet.jsx | items, onShare, onClose, profile, isDesktop (+ PNG/PDF 내보내기 내장) |
+| MapView | sections/MapView.jsx | filtered, onDetail, isPC, isDesktop |
 | InfraOverlay | sections/InfraOverlay.jsx | mapInstance, ready |
 | ConsultForm | ConsultForm.jsx | scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast |
-| DetailModal | DetailModal.jsx | item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, onConsult |
+| DetailModal | DetailModal.jsx | item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult |
 | LineChart | primitives.jsx | data, color, height, secondaryData, secondaryColor, yLabel, xLabel (+ 내부 activeDot 터치 인터랙션) |
 | ExpertFieldTable | expert/ | apt, fields, title, color, exclude |
 | ExpertScoreBreakdown | expert/ | apt, res, profile |
