@@ -145,6 +145,7 @@ function sanitize(row) {
     unsoldRate: (row.units ?? 0) <= 1 ? null
       : (row.unsold != null && row.unsold >= (row.units ?? 0)) ? null
       : (row.unsoldRate ?? 50),
+    updatedAt: row.updatedAt ?? null,
     completion: row.completion ?? "",
     heating: row.heating ?? null,
     maxFloor: row.maxFloor ?? null,

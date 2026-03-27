@@ -487,6 +487,7 @@ SELECT
   a.heat_fuel AS "heatFuel",
   a.corridor_type AS "corridorType",
   a.building_coverage_ratio AS "buildingCoverageRatio",
+  a.updated_at AS "updatedAt",
   a.cats_cache AS "catsCache",
   a.scores_computed_at AS "scoresComputedAt",
   a.competition_rate AS "competitionRate",

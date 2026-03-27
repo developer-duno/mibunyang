@@ -123,7 +123,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           animation: `${BADGE_ANIM} 0.3s ease-out`
         }}>{filteredLength} / {scoredLength}개{delta != null && <span style={{
           fontSize: 9, marginLeft: 3, fontWeight: 600,
-          color: delta > 0 ? "#16A34A" : C.red
+          color: delta > 0 ? C.green : C.red
         }}>{delta > 0 ? "+" : ""}{delta}</span>}</span>}
         {activeFilterCount > 0 && onResetAll && (
           <button onClick={onResetAll} aria-label="전체 필터 초기화" style={{
