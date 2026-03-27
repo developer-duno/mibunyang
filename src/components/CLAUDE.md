@@ -39,15 +39,15 @@
 
 ## 컴포넌트 구조
 
-### App.jsx (~481줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수
+### App.jsx (~487줄) — Hook + useMemo + 콜백 + 탭 라우팅 + SORTERS 모듈 상수
 분리된 섹션 컴포넌트 (`src/components/sections/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
 | HeaderSection | 132 | 프로필 선택 + 헤더 |
-| SearchFilterBar | 359 | 검색/필터/정렬/프리셋/카운트 배지 |
-| AptListSection | 54 | 카드 그리드 + 비교 (favoriteIds만 전달) |
+| SearchFilterBar | 321 | 검색/필터/정렬/프리셋/카운트 배지 |
+| AptListSection | 53 | 카드 그리드 + 비교 (favoriteIds만 전달) |
 | ExpertLoginForm | 167 | 전문가 로그인/회원가입 |
-| InfoPage | 106 | 스코어링 엔진 설명 |
+| InfoPage | 267 | 스코어링 엔진 설명 (10섹션 + FAQ 10건) |
 | BottomNav | 35 | 하단 네비게이션 |
 | MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
@@ -56,11 +56,11 @@
 분리된 상세 컴포넌트 (`src/components/detail/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
-| PriceTable | 88 | 인근 매매/전세 시세 |
+| PriceTable | 86 | 인근 매매/전세 시세 |
 | **PriceChart** | 43 | 분양가 추이 SVG 라인 차트 (usePriceHistory) |
 | **UnsoldChart** | 45 | 미분양 추이 SVG 라인 차트 (useUnsoldHistory) |
-| SchoolInfo | 36 | 학군 정보 |
-| LoanAnalysis | 93 | LTV/DSR/갭투자 분석 |
+| SchoolInfo | 63 | 학군 정보 |
+| LoanAnalysis | 91 | LTV/DSR/갭투자 분석 |
 | DataSections | 168 | 공공데이터 5개 섹션 |
 
 ### primitives.jsx — 재사용 SVG 프리미티브 (memo)

@@ -71,9 +71,10 @@ MAX_COMPARE 방어 4경로: ①초기화 ②toggleComp ③URL딥링크(App.jsx) 
 
 ```
 useFavorites(showToast)
-  ├── favoritesObj: { [id]: { memo, tags, addedAt } }  // 내부 상태 (객체)
+  ├── favoritesObj: { [id]: { memo, tags, addedAt } }  // 내부 상태 (객체, 저장소 호환용)
   ├── favoriteIds: Object.keys(favoritesObj)            // 파생 배열 (하위 호환)
   ├── toggleFavorite(id)
   └── setFavoriteIds(idsOrFn)  // 배열 또는 함수 인자 지원 (React setState 관례)
 ```
 v1(배열) → v2(객체) 자동 마이그레이션 + `mibunyang_fav_backup` 백업.
+**세션21**: memo/tags UI 제거됨 — App.jsx에서 `favoritesObj` 미사용 (내부 저장 구조만 유지).
