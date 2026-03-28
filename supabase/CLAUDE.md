@@ -19,7 +19,7 @@
 | (apartments 컬럼) | 건축 특성 4개 (corridor_type/heat_fuel/avg_maintenance_cost/primary_direction) | molit-building-info.mjs, naver-collect.py |
 | (apartments 컬럼) | 청약 경쟁률 3개 (competition_rate/supply/applicants) | collect-applyhome.mjs |
 | (apartments 컬럼) | 지번 3개 (bjd_code/lot_main/lot_sub) | reverse-geocode.mjs |
-| (apartments 컬럼) | 에너지 3개 (elec_usage_kwh/gas_usage_mj/energy_collected_at) | collect-building-hub.mjs |
+| (apartments 컬럼) | 에너지 3개 (elec_usage_kwh/gas_usage_mj/energy_collected_at) | collect-building-hub.mjs (⚠️ 공공/상업 건물만, 주거 아파트 미제공) |
 | (apartments 컬럼) | 분양정보 19개 (presale_min_price~presale_fetched_at) | naver-presale.mjs |
 | complexes | 네이버 단지 정보 | naver-collect.py |
 | articles | 네이버 매물 정보 | naver-collect.py |
@@ -59,5 +59,12 @@ presale_inquiry TEXT (분양문의), presale_features TEXT (특징),
 presale_move_in TEXT (입주시기), presale_recruit_date TEXT (분양시기),
 presale_schedule JSONB (일정상세), presale_housing_type TEXT (주택유형),
 presale_fetched_at TIMESTAMPTZ (수집시점)
-마이그레이션: 20260329000000_add_presale_fields.sql
+마이그레이션: 20260329000000_add_presale_fields.sql (2026-03-29 Dashboard 실행 완료)
 ```
+
+## 공유 DB 주의사항
+
+Supabase 인스턴스 `rwdtljipvmqpazrimyns`는 **mibunyang + naver-estate-web 공유**.
+- mibunyang: apartments, prices, infra, schools, transport, builders, regions, trade_stats 등
+- naver-estate-web: complexes, articles, complex_price_history (+ 자체 테이블)
+- 스키마 변경(ALTER TABLE, DROP VIEW 등) 시 양쪽 프로젝트 영향 확인 필수

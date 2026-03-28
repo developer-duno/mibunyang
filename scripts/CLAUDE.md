@@ -82,5 +82,22 @@ bash scripts/post-naver-collect.sh
 | data.go.kr | collect-maintenance | 0.4초 | 3회 | (i+1)×2초 | 관리비 5항목×단지, kaptCode 매칭 |
 | (로컬 계산) | calc-school-walk | — | — | — | schools.nearby_schools → 초등 도보 시간 |
 | odcloud.kr | collect-applyhome | — | — | — | 청약홈 잔여세대 경쟁률 (주간) |
-| data.go.kr | collect-building-hub | 0.4초 | 3회 | (i+1)×2초 | 건축HUB 에너지+인허가 4엔드포인트, 월 1회 |
+| data.go.kr | collect-building-hub | 0.4초 | 3회 | (i+1)×2초 | 건축HUB 에너지+인허가 2엔드포인트(전기+가스), 월 1회 |
 | _shared.mjs | fetchWithRetry (공통) | — | 기본 3회 | Retry-After 헤더 → 지수 백오프 | 429/500/503 구분 |
+
+## BldEngyHubService 한계 (2026-03-29 진단)
+
+`collect-building-hub.mjs`의 에너지 수집(전기/가스)은 **대형 공공/상업 건물만 대상**.
+주거용 아파트는 BldEngyHubService에 데이터가 없음 (KEPCO/가스공사 관할).
+
+| 테스트 대상 | 결과 | 비고 |
+|------------|------|------|
+| 서울시청 (종로구 청운동 1) | ✅ 90,064 kWh | 공공건물 |
+| 코엑스 (삼성동 159) | ✅ 9,528,662 kWh | 상업건물 |
+| 은마아파트 (대치동 62) | ❌ 0건 | 주거용 |
+| 래미안 원베일리 (서초동 91) | ❌ 0건 | 주거용 |
+
+- bjd_code 보유: 1480/1481 (99.9%), 모두 10자리 정상
+- lot_main 유효: 1457건 (98.4%)
+- API 키 등록 정상 (NORMAL SERVICE)
+- **현 수집기는 소수 비주거 건물만 매칭** — 주거 에너지 필요 시 KEPCO API 등 별도 소스 조사 필요

@@ -22,6 +22,15 @@
 - GitHub Actions — 데이터 수집 (31개 워크플로우)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC, 한국 IP 필수)
 - `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (pre.land.naver.com, 19개 필드, isCLI 패턴)
+  - ⚠️ 2026-03-29 현재 JWT 인증 실패 — Naver가 브라우저 렌더링 기반 인증으로 변경, curl_cffi/Playwright 전환 필요
+
+## 공유 인프라 (mibunyang ↔ naver-estate-web)
+
+| 자원 | 상세 | 주의사항 |
+|------|------|---------|
+| Supabase DB | `rwdtljipvmqpazrimyns.supabase.co` | **동일 인스턴스** — 스키마 변경 시 양쪽 영향 |
+| data.go.kr API Key | MOLIT_KEY (`8daf3599...`) | 일일 한도 10,000건 공유 |
+| Vercel Team | `developer-dunos-projects` | 프로젝트는 별도 (mibunyang / naver-estate-web) |
 
 ## 반응형 레이아웃
 

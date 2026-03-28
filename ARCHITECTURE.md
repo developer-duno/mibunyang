@@ -103,7 +103,7 @@ GitHub Actions (일/주/월 스케줄)
   └── run-naver-local.sh ──────→ 6단계 파이프라인:
       1. naver-collect.py → complexes/articles
       2. sync-naver-complex.mjs → apartments 22필드
-      3. naver-presale.mjs → apartments presale_* 19필드 (pre.land.naver.com)
+      3. naver-presale.mjs → apartments presale_* 19필드 (⚠️ JWT 인증 실패 중, 브라우저 기반 전환 필요)
       4. naver-units.mjs → 세대수 보정
       5. calc-exclusive-ratio.mjs → 전용률
       6. compute-scores.mjs → cats_cache 갱신
@@ -111,6 +111,11 @@ GitHub Actions (일/주/월 스케줄)
 프론트엔드 로딩:
   VITE_USE_SUPABASE=true  → /api/supabase/apartments (Supabase VIEW)
   VITE_USE_SUPABASE=false → /data/apartments.json (정적 JSON 폴백)
+
+⚠️ 공유 인프라:
+  Supabase DB (rwdtljipvmqpazrimyns) ← mibunyang + naver-estate-web 공유
+  data.go.kr API Key (MOLIT_KEY)     ← 일일 한도 10,000건 공유
+  Vercel Team (developer-dunos-projects) ← 프로젝트는 별도
 ```
 
 ### React 상태 흐름
