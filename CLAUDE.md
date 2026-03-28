@@ -19,7 +19,7 @@
 - Vercel Serverless Functions (`api/`) — API 레이어
 - Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
 - Vercel KV (Upstash Redis) — 인증 세션
-- GitHub Actions — 데이터 수집 (31개 워크플로우)
+- GitHub Actions — 데이터 수집 (32개 워크플로우, monitor-db-size 포함)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC, 한국 IP 필수)
 - `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (pre.land.naver.com, 19개 필드, isCLI 패턴)
   - ⚠️ 2026-03-29 현재 JWT 인증 실패 — Naver가 브라우저 렌더링 기반 인증으로 변경, curl_cffi/Playwright 전환 필요

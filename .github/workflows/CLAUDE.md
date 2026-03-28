@@ -46,6 +46,11 @@
 | `collect-building-hub.yml` | 건축HUB 에너지+인허가 4엔드포인트 (15일) |
 | `collect-applyhome.yml` | 청약홈 잔여세대 경쟁률 (주간) |
 
+### 모니터링
+| 워크플로우 | 설명 |
+|-----------|------|
+| `monitor-db-size.yml` | Supabase DB 테이블별 행 수 점검 (매월 1일 KST 06:00) |
+
 ### 유틸리티
 | 워크플로우 | 설명 |
 |-----------|------|
@@ -58,7 +63,7 @@
 ### 로컬 전용 (네이버)
 | 스크립트 | 설명 |
 |---------|------|
-| `scripts/run-naver-local.bat` | Windows 스케줄러 자동 실행 (주 2회 월/목 06:00) |
+| `scripts/run-naver-local.bat` | Windows 스케줄러 자동 실행 (주 2회 월/목 08:00) |
 | `scripts/run-naver-local.sh` | 수동 실행용 (bash) |
 | `scripts/collectors/naver-collect.py` | Python 수집 로직 (curl_cffi) |
 
