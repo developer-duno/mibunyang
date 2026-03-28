@@ -9,8 +9,8 @@ $WorkDir = (Resolve-Path ".").Path
 # 기존 작업 삭제
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
-# 트리거: 매주 월/목 오전 6시
-$Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Thursday -At 6:00AM
+# 트리거: 매주 월/목 오전 8시 (naver-estate-web interval 크롤링과 시간 분리)
+$Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Thursday -At 8:00AM
 
 # 액션: 배치 스크립트 실행
 $Action = New-ScheduledTaskAction -Execute $ScriptPath -WorkingDirectory $WorkDir
@@ -29,11 +29,11 @@ Register-ScheduledTask `
     -Trigger $Trigger `
     -Action $Action `
     -Settings $Settings `
-    -Description "미분양 네이버 부동산 수집 (주 2회: 월/목 06:00)" `
+    -Description "미분양 네이버 부동산 수집 (주 2회: 월/목 08:00)" `
     -RunLevel Highest
 
 Write-Host "작업 등록 완료: $TaskName"
-Write-Host "  스케줄: 매주 월/목 오전 6시"
+Write-Host "  스케줄: 매주 월/목 오전 8시"
 Write-Host "  스크립트: $ScriptPath"
 Write-Host ""
 Write-Host "확인: Get-ScheduledTask -TaskName $TaskName | Format-List"

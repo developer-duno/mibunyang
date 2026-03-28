@@ -62,9 +62,39 @@ presale_fetched_at TIMESTAMPTZ (수집시점)
 마이그레이션: 20260329000000_add_presale_fields.sql (2026-03-29 Dashboard 실행 완료)
 ```
 
-## 공유 DB 주의사항
+## 공유 DB 규칙
 
 Supabase 인스턴스 `rwdtljipvmqpazrimyns`는 **mibunyang + naver-estate-web 공유**.
-- mibunyang: apartments, prices, infra, schools, transport, builders, regions, trade_stats 등
-- naver-estate-web: complexes, articles, complex_price_history (+ 자체 테이블)
-- 스키마 변경(ALTER TABLE, DROP VIEW 등) 시 양쪽 프로젝트 영향 확인 필수
+
+### 테이블 소유권
+
+| 소유 | 테이블 | 쓰기 권한 | 읽기 권한 |
+|------|--------|----------|----------|
+| **공용** | complexes | 양쪽 upsert (컬럼 분리: mibunyang→nearby_apartment_ids, naver-estate-web→cortar/detail) | 양쪽 |
+| **공용** | articles | 양쪽 upsert (mibunyang→로컬수집, naver-estate-web→APScheduler) | 양쪽 |
+| **공용** | complex_price_history | 양쪽 upsert | 양쪽 |
+| **공용** | trades | mibunyang만 upsert | 양쪽 |
+| **mibunyang 전용** | apartments, prices, unsold_history, infra, schools, transport, builders, regions, trade_stats, consults + apartments_flat VIEW | mibunyang만 | mibunyang만 |
+| **naver-estate-web 전용** | user_profiles, audit_logs, rate_limit_counters, admin_settings, crawler_checkpoints, complex_pyeong_details, article_price_history | naver-estate-web만 | naver-estate-web만 |
+
+### 컬럼명 불일치 현황 (complexes 테이블)
+
+| 컬럼 의도 | schema.sql 정의 | naver-collect.py upsert | naver-estate-web ORM | 상태 |
+|----------|----------------|----------------------|---------------------|------|
+| 위도 | `lat` | `latitude` | `latitude` | ⚠️ schema vs 코드 불일치 |
+| 경도 | `lng` | `longitude` | `longitude` | ⚠️ schema vs 코드 불일치 |
+| 총세대수 | `total_households` | `total_household_count` | `total_household_count` | ⚠️ schema vs 코드 불일치 |
+| 부동산유형 | `real_estate_type` | `real_estate_type_code` | `real_estate_type_code` | ⚠️ schema vs 코드 불일치 |
+| 난방방식 | `heat_method` | `heat_method` | `heat_method_type` | 부분 불일치 |
+| 난방연료 | `heat_fuel` | `heat_fuel` | `heat_fuel_type` | 부분 불일치 |
+
+**⚠️ 인덱스 버그**: `schema.sql:353`에 `idx_complexes_location ON complexes(latitude, longitude)` — 테이블 정의는 `lat, lng` → 인덱스 생성 실패 가능성. Phase 3에서 정규화 예정.
+
+### 마이그레이션 체크리스트
+
+공용 테이블(complexes/articles/complex_price_history/trades) 변경 시:
+1. 상대 프로젝트의 SELECT 쿼리 / ORM 모델 검색
+2. 양쪽 CLAUDE.md에 변경 내역 기록
+3. 기존 컬럼 타입 변경/삭제 금지 (컬럼 추가만)
+4. CREATE INDEX 시 upsert 성능 영향 고려
+5. ALTER TABLE은 트래픽 저점(KST 02:00~03:00)에 실행

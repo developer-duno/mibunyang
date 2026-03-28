@@ -28,9 +28,17 @@
 
 | 자원 | 상세 | 주의사항 |
 |------|------|---------|
-| Supabase DB | `rwdtljipvmqpazrimyns.supabase.co` | **동일 인스턴스** — 스키마 변경 시 양쪽 영향 |
-| data.go.kr API Key | MOLIT_KEY (`8daf3599...`) | 일일 한도 10,000건 공유 |
-| Vercel Team | `developer-dunos-projects` | 프로젝트는 별도 (mibunyang / naver-estate-web) |
+| Supabase DB | mibunyang: `rwdtljipvmqpazrimyns` / naver-estate-web: `gcfckzqrcujktloilwpz` | 공용 테이블은 mibunyang DB에 존재 |
+| data.go.kr API Key | MOLIT_KEY (`8daf3599...`) | 일일 한도 10,000건 공유, 양쪽 IP 다름 |
+| 집 서버 IP | 192.168.219.101 (외부: Cloudflare Tunnel) | 네이버 크롤링 rate limit 공유 |
+| Vercel Team | `developer-dunos-projects` | 프로젝트는 별도 — 환경변수/배포 독립 유지 |
+
+### 공유 인프라 규칙 (상세는 하위 CLAUDE.md 참조)
+
+- **테이블 소유권**: 공용 테이블(complexes/articles/complex_price_history/trades) 기존 컬럼 타입 변경/삭제 금지 → `supabase/CLAUDE.md`
+- **API 쿼터**: data.go.kr 일일 10,000회 분배 + 10일-토요일 충돌 방지 → `scripts/CLAUDE.md`
+- **네이버 시간 분리**: mibunyang 08:00(월/목), naver-estate-web interval 기반 → `scripts/CLAUDE.md`
+- **마이그레이션**: 공용 테이블 ALTER 전 상대 프로젝트 쿼리 검색 필수 → `supabase/CLAUDE.md`
 
 ## 반응형 레이아웃
 

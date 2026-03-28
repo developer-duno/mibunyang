@@ -18,7 +18,7 @@
 
 | 구분 | 방식 | 설명 |
 |------|------|------|
-| 네이버 수집 (자동) | Windows 스케줄러 | `scripts/run-naver-local.bat` — 주 2회 (월/목 06:00) |
+| 네이버 수집 (자동) | Windows 스케줄러 | `scripts/run-naver-local.bat` — 주 2회 (월/목 08:00) |
 | 네이버 수집 (수동) | 로컬 | `bash scripts/run-naver-local.sh` |
 | 후처리(sync+calc) | GitHub Actions | `collect-naver-listings.yml` — 매일 자동 |
 | 기타 수집기 | GitHub Actions | 공공 API이므로 IP 제한 없음 |
@@ -27,7 +27,7 @@
 
 **자동 수집 (Windows 작업 스케줄러)**:
 - 작업명: `MibunyangNaverCollect`
-- 스케줄: 매주 월/목 오전 6시
+- 스케줄: 매주 월/목 오전 8시 (naver-estate-web interval 크롤링과 시간 분리)
 - 스크립트: `scripts/run-naver-local.bat`
 - 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-naver-task.ps1`
 - 수동 트리거: `schtasks /run /tn MibunyangNaverCollect`
@@ -64,6 +64,33 @@ bash scripts/post-naver-collect.sh
 
 - `watch-and-run.sh` — naver-collect.py 프로세스 종료 감시 → post-naver-collect.sh 자동 실행
 - **compute-scores.mjs**는 `@/` 경로 별칭 사용 → 반드시 `node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs`로 실행
+
+## data.go.kr API 쿼터 분배 (실측 기반, mibunyang + naver-estate-web 공유)
+
+일일 한도: 10,000회 (MOLIT_KEY 공유). mibunyang은 GitHub Actions(US IP), naver-estate-web은 집 서버(KR IP).
+
+| 일자 | 워크플로우 | 추정 호출수 | 비고 |
+|------|-----------|-----------|------|
+| 매월 1일 | collect-unsold-kosis | ~1회 | KOSIS 단일 호출 |
+| 매월 5일 | collect-population, collect-market-stats | ~100회 | |
+| 매월 6일 | collect-trades | 1,500~3,500 | 지역쌍 × 6개월 × 3종 |
+| 매월 6일 | collect-molit-units | 50~300 | 보정 대상만 |
+| **매월 10일** | **collect-building-info** | **~8,500** | **가장 큰 수집** |
+| 매월 10일 | collect-housing-permits | ~100 | |
+| **토요일** | naver-estate-web public_data | ~3,600 | MAX_DAILY_CALLS=9,000 |
+
+**⚠️ 위험일: 매월 10일이 토요일인 경우** — building-info(8,500) + public_data(3,600) = 12,100 > 10,000 (연 1~2회 발생)
+
+## 네이버 크롤링 시간 분리 (같은 IP)
+
+| 시간(KST) | 프로젝트 | 작업 | 실행일 |
+|-----------|----------|------|--------|
+| 03:00 | naver-estate-web | discover_regions | 일요일만 |
+| 08:00 | mibunyang | 로컬 naver-collect.py (6단계) | 월/목 |
+| 매12시간 | naver-estate-web | crawl_articles (interval) | 매일 (시간 불고정) |
+| 매4시간 | naver-estate-web | crawl_details (interval) | 매일 (시간 불고정) |
+| 04:00 | naver-estate-web | collect_prices | 수요일 |
+| 10:30/14:30/19:00 | naver-estate-web | popular 크롤링 | 매일 |
 
 ## API Rate Limit 정리
 

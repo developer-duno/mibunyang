@@ -1,0 +1,65 @@
+name: Monitor Database Size
+
+on:
+  schedule:
+    - cron: '0 21 1 * *' # 매월 1일 UTC 21:00 = KST 06:00
+  workflow_dispatch:
+
+concurrency:
+  group: monitoring
+  cancel-in-progress: false
+
+jobs:
+  check-size:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY secret 필요"
+            exit 1
+          fi
+
+      - name: Check database size
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          node -e "
+            const { createClient } = require('@supabase/supabase-js');
+            const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+            (async () => {
+              const tables = [
+                'apartments','prices','unsold_history','trades','trade_stats',
+                'infra','schools','transport','builders','regions',
+                'complexes','articles','complex_price_history','consults'
+              ];
+              console.log('=== Supabase DB 테이블별 행 수 ===');
+              let total = 0;
+              for (const t of tables) {
+                const { count, error } = await sb.from(t).select('*', { count: 'exact', head: true });
+                const c = error ? 'ERROR' : count;
+                if (typeof c === 'number') total += c;
+                console.log(t.padEnd(25) + String(c).padStart(10));
+              }
+              console.log('─'.repeat(36));
+              console.log('총 행 수'.padEnd(25) + String(total).padStart(10));
+              console.log('');
+              if (total > 500000) {
+                console.log('::warning::총 행 수 500,000 초과 — Supabase 스토리지 점검 권장');
+              }
+            })();
+          "
