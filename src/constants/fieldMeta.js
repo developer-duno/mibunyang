@@ -1,5 +1,5 @@
 import { BRAND_TIER, LAYOUT_SCORE } from "./brands";
-import { fmtPrice, fmtCompletion } from "@/lib/format";
+import { fmtPrice, fmtCompletion, fmtRecruitDate, fmtPresaleSchedule } from "@/lib/format";
 
 const n = (v, unit, fallback = "—") => v != null ? `${v}${unit}` : fallback;
 const nk = (v, unit) => v != null ? `${v.toLocaleString("ko-KR")}${unit}` : "—";
@@ -125,6 +125,26 @@ export const FIELD_META = {
   elecUsageKwh: { label: "월 전기사용량", section: "에너지", unit: "kWh", fmt: v => v != null ? `${v.toLocaleString("ko-KR")} kWh` : "미수집" },
   gasUsageMj: { label: "월 가스사용량", section: "에너지", unit: "MJ", fmt: v => v != null ? `${v.toLocaleString("ko-KR")} MJ` : "미수집" },
   energyCollectedAt: { label: "에너지 수집 시점", section: "에너지", fmt: v => v ? new Date(v).toLocaleDateString("ko-KR") : "미수집" },
+  // ── 섹션10: 네이버 분양정보 ──
+  presaleMinPrice: { label: "분양 최저가", section: "분양", unit: "만원", fmt: v => v != null ? fmtPrice(v) : "미수집" },
+  presaleMaxPrice: { label: "분양 최고가", section: "분양", unit: "만원", fmt: v => v != null ? fmtPrice(v) : "미수집" },
+  presalePp: { label: "평당 분양가", section: "분양", unit: "만원", fmt: v => v != null ? nk(v, "만원") : "미수집" },
+  presaleType: { label: "분양유형", section: "분양", fmt: v => v ?? "미수집" },
+  presaleStage: { label: "분양단계", section: "분양", fmt: v => v ?? "미수집" },
+  presaleStageCode: { label: "분양단계코드", section: "분양", hidden: true, fmt: v => v ?? "—" },
+  presaleHousingType: { label: "주택유형", section: "분양", fmt: v => v ?? "미수집" },
+  presaleGeneralSupply: { label: "일반분양 세대", section: "분양", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집" },
+  presaleBuildings: { label: "동수", section: "분양", unit: "동", fmt: v => v != null ? n(v, "동") : "미수집" },
+  presaleParking: { label: "주차대수", section: "분양", unit: "대", fmt: v => v != null ? nk(v, "대") : "미수집" },
+  presaleMoveIn: { label: "입주시기", section: "분양", fmt: v => v ?? "미수집" },
+  presaleRecruitDate: { label: "분양시기", section: "분양", fmt: v => v ? fmtRecruitDate(v) : "미수집" },
+  presaleSchedule: { label: "분양일정", section: "분양", fmt: v => fmtPresaleSchedule(v) },
+  presaleInquiry: { label: "분양문의", section: "분양", fmt: v => v ?? "미수집" },
+  presaleFeatures: { label: "특징", section: "분양", fmt: v => v ?? "미수집" },
+  presaleImageUrl: { label: "대표이미지", section: "분양", hidden: true, fmt: v => v ? "있음" : "없음" },
+  naverPresaleNo: { label: "네이버 분양번호", section: "분양", hidden: true, fmt: v => v ?? "—" },
+  naverPresaleSeq: { label: "네이버 공고순번", section: "분양", hidden: true, fmt: v => v ?? "—" },
+  presaleFetchedAt: { label: "분양정보 수집시점", section: "분양", fmt: v => v ? new Date(v).toLocaleDateString("ko-KR") : "미수집" },
 };
 
 export const FIELD_SECTIONS = [
@@ -137,4 +157,5 @@ export const FIELD_SECTIONS = [
   { key: "미래", label: "미래가치", fields: ["transitDev","devDist","cityDev","industryDev"] },
   { key: "에너지", label: "건축HUB 에너지", fields: ["elecUsageKwh","gasUsageMj","energyCollectedAt"] },
   { key: "교차검증", label: "네이버 교차검증", fields: ["naverNearbyMedian","naverNearbyAvg","naverJeonseRate","naverSellCount","naverJeonseCount","naverWolseCount","naverBuildYear","naverAvgFloor","naverSchoolWalkMin","naverNearbyCount","naverFetchedAt"] },
+  { key: "분양", label: "네이버 분양정보", fields: ["presaleMinPrice","presaleMaxPrice","presalePp","presaleType","presaleStage","presaleStageCode","presaleHousingType","presaleGeneralSupply","presaleBuildings","presaleParking","presaleMoveIn","presaleRecruitDate","presaleSchedule","presaleInquiry","presaleFeatures","presaleImageUrl","naverPresaleNo","naverPresaleSeq","presaleFetchedAt"] },
 ];

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmtPrice, fmtCompletion, maskName, maskPhone } from './format';
+import { fmtPrice, fmtCompletion, maskName, maskPhone, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from './format';
 
 // 가격 포맷팅 테스트
 describe('fmtPrice', () => {
@@ -129,5 +129,54 @@ describe('maskPhone', () => {
   it('null/undefined → 빈 문자열', () => {
     expect(maskPhone(null)).toBe("");
     expect(maskPhone(undefined)).toBe("");
+  });
+});
+
+// --- 분양가 범위 포맷팅 테스트 ---
+describe('fmtPriceRange', () => {
+  it('min~max 범위 포맷', () => {
+    expect(fmtPriceRange(30000, 50000)).toBe('3억 ~ 5억');
+  });
+  it('min == max → 단일 값', () => {
+    expect(fmtPriceRange(30000, 30000)).toBe('3억');
+  });
+  it('both null → "—"', () => {
+    expect(fmtPriceRange(null, null)).toBe('—');
+  });
+  it('min만 있고 max null → "3억 ~ ?"', () => {
+    expect(fmtPriceRange(30000, null)).toBe('3억 ~ ?');
+  });
+});
+
+// --- 분양일정 JSONB 포맷팅 테스트 ---
+describe('fmtPresaleSchedule', () => {
+  it('JSONB 객체 → 문자열', () => {
+    const schedule = { scheduleName: "입주자모집공고", dateInfo: "2026-03-01" };
+    expect(fmtPresaleSchedule(schedule)).toContain("입주자모집공고");
+  });
+  it('배열 → 콤마 조인', () => {
+    const arr = [{ scheduleName: "공고", dateInfo: "3/1" }, { scheduleName: "청약", dateInfo: "3/5" }];
+    const result = fmtPresaleSchedule(arr);
+    expect(result).toContain("공고");
+    expect(result).toContain("청약");
+  });
+  it('null → "—"', () => {
+    expect(fmtPresaleSchedule(null)).toBe("—");
+  });
+  it('빈 배열 → "—"', () => {
+    expect(fmtPresaleSchedule([])).toBe("—");
+  });
+  it('잘못된 JSONB (빈 객체) → "—"', () => {
+    expect(fmtPresaleSchedule({})).toBe("—");
+  });
+});
+
+// --- 분양시기 포맷팅 테스트 ---
+describe('fmtRecruitDate', () => {
+  it('"2026-03-01" → 날짜 포맷', () => {
+    expect(fmtRecruitDate("2026-03-01")).toBe("2026.03.01");
+  });
+  it('null → "—"', () => {
+    expect(fmtRecruitDate(null)).toBe("—");
   });
 });

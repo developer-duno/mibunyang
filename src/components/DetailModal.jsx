@@ -8,6 +8,7 @@ import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
 import { DataSections } from "./detail/DataSections";
+import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { IconClose } from "./icons";
@@ -93,6 +94,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         <UnsoldChart apartmentId={apt.id} siblingIds={apt.siblingIds} />
 
         <SchoolInfo apt={apt} />
+
+        <PresaleInfo apt={apt} />
 
         <LoanAnalysis apt={apt} />
 

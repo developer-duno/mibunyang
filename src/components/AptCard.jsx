@@ -104,8 +104,13 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           </div>
         )}
 
-        {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || noxCount > 0 || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade))) && (
+        {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade))) && (
           <div style={S.alertRow}>
+            {apt.presaleStage && (() => {
+              const sm = { "분양중": { bg: C.greenLight, color: C.green }, "분양예정": { bg: C.blueLight, color: C.blue } };
+              const s = sm[apt.presaleStage] ?? { bg: C.purpleLight, color: C.purple };
+              return <span style={{ ...S.alertTag, background: s.bg, color: s.color }}>{apt.presaleStage}</span>;
+            })()}
             {apt.completion && (() => {
               const b = completionBadge(apt.completion, moveInDone, completionPast);
               return <span style={{ ...S.alertTag, background: b.bg, color: b.color }}>{b.text}</span>;

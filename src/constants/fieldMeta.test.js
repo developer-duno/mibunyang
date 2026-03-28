@@ -4,8 +4,8 @@ import { FIELD_META, FIELD_SECTIONS } from './fieldMeta';
 describe('FIELD_META', () => {
   const keys = Object.keys(FIELD_META);
 
-  it('85개 이상 필드 정의', () => {
-    expect(keys.length).toBeGreaterThanOrEqual(85);
+  it('104개 이상 필드 정의', () => {
+    expect(keys.length).toBeGreaterThanOrEqual(104);
   });
 
   keys.forEach((key) => {
@@ -75,11 +75,22 @@ describe('FIELD_META', () => {
   it('psr fmt: 숫자 → toFixed(2)', () => {
     expect(FIELD_META.psr.fmt(0.85)).toBe("0.85");
   });
+
+  // 분양정보 필드 테스트
+  it('presaleSchedule fmt: JSONB 객체 → 문자열', () => {
+    const schedule = { scheduleName: "입주자모집공고", dateInfo: "2026-03-01" };
+    const result = FIELD_META.presaleSchedule.fmt(schedule);
+    expect(result).toContain("입주자모집공고");
+  });
+
+  it('presaleSchedule fmt: null → "—"', () => {
+    expect(FIELD_META.presaleSchedule.fmt(null)).toBe("—");
+  });
 });
 
 describe('FIELD_SECTIONS', () => {
-  it('9개 섹션 존재', () => {
-    expect(FIELD_SECTIONS).toHaveLength(9);
+  it('10개 섹션 존재', () => {
+    expect(FIELD_SECTIONS).toHaveLength(10);
   });
 
   FIELD_SECTIONS.forEach((section) => {

@@ -29,3 +29,39 @@ export const fmtCompletion = (v) => {
   if (!v || v.length < 6) return v || "-";
   return `${v.slice(0, 4)}년 ${v.slice(4, 6)}월`;
 };
+
+/** 분양가 범위: min~max (만원 → 억/만) */
+export const fmtPriceRange = (min, max) => {
+  if (min == null && max == null) return "—";
+  if (min != null && max != null && min === max) return fmtPrice(min);
+  const lo = min != null ? fmtPrice(min) : "?";
+  const hi = max != null ? fmtPrice(max) : "?";
+  return `${lo} ~ ${hi}`;
+};
+
+/** presaleSchedule JSONB → 문자열 (배열/객체/문자열 모두 처리) */
+export const fmtPresaleSchedule = (schedule) => {
+  if (!schedule) return "—";
+  if (typeof schedule === "string") return schedule;
+  if (Array.isArray(schedule)) {
+    const items = schedule
+      .filter(s => s && (s.scheduleName || s.dateInfo))
+      .map(s => `${s.scheduleName ?? ""} ${s.dateInfo ?? ""}`.trim());
+    return items.length > 0 ? items.join(", ") : "—";
+  }
+  if (schedule.scheduleName || schedule.dateInfo) {
+    return `${schedule.scheduleName ?? ""} ${schedule.dateInfo ?? ""}`.trim();
+  }
+  if (schedule.schdl_info) {
+    return typeof schedule.schdl_info === "string" ? schedule.schdl_info : "일정 있음";
+  }
+  return "—";
+};
+
+/** 분양시기 포맷: "2026-03-01" → "2026.03.01" */
+export const fmtRecruitDate = (v) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return v;
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+};

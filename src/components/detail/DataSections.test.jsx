@@ -18,8 +18,8 @@ describe("DataSections", () => {
     expect(screen.queryByText("단지 기본정보")).toBeNull();
   });
 
-  // 클릭하면 5개 섹션 제목 표시
-  it("토글 클릭 시 5개 데이터 섹션 제목을 표시한다", () => {
+  // 클릭하면 6개 섹션 제목 표시
+  it("토글 클릭 시 6개 데이터 섹션 제목을 표시한다", () => {
     const apt = makeApt();
     render(<DataSections apt={apt} />);
     fireEvent.click(screen.getByText("공공데이터 상세"));
@@ -28,6 +28,7 @@ describe("DataSections", () => {
     expect(screen.getByText("교통 상세")).toBeTruthy();
     expect(screen.getByText("시장/투자 지표")).toBeTruthy();
     expect(screen.getByText("네이버 교차검증")).toBeTruthy();
+    expect(screen.getByText("네이버 분양정보")).toBeTruthy();
   });
 
   // 출처 표시

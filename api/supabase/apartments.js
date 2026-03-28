@@ -268,5 +268,25 @@ function sanitize(row) {
     energyCollectedAt: row.energyCollectedAt ?? null,
     // 사전 스코어링 캐시 (JSONB → PostgREST 자동 파싱)
     catsCache: row.catsCache ?? null,
+    // 네이버 분양정보 (pre.land.naver.com — null 허용, 미수집 시 null)
+    presaleMinPrice: row.presaleMinPrice ?? null,
+    presaleMaxPrice: row.presaleMaxPrice ?? null,
+    presalePp: row.presalePp ?? null,
+    presaleType: row.presaleType ?? null,
+    presaleStage: row.presaleStage ?? null,
+    presaleStageCode: row.presaleStageCode ?? null,
+    presaleImageUrl: row.presaleImageUrl ?? null,
+    naverPresaleNo: row.naverPresaleNo ?? null,
+    naverPresaleSeq: row.naverPresaleSeq ?? null,
+    presaleGeneralSupply: row.presaleGeneralSupply ?? null,
+    presaleBuildings: row.presaleBuildings ?? null,
+    presaleParking: row.presaleParking ?? null,
+    presaleInquiry: row.presaleInquiry ?? null,
+    presaleFeatures: row.presaleFeatures ?? null,
+    presaleMoveIn: row.presaleMoveIn ?? null,
+    presaleRecruitDate: row.presaleRecruitDate ?? null,
+    presaleSchedule: row.presaleSchedule ?? null,
+    presaleHousingType: row.presaleHousingType ?? null,
+    presaleFetchedAt: row.presaleFetchedAt ?? null,
   };
 }

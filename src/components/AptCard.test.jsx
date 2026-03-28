@@ -148,4 +148,16 @@ describe("AptCard", () => {
     expect(onDetail).toHaveBeenCalledWith(1);
   });
 
+  // 분양 배지 표시
+  it("presaleStage가 있으면 분양 배지를 표시한다", () => {
+    render(<AptCard {...makeProps({ apt: makeApt({ presaleStage: "분양중" }) })} />);
+    expect(screen.getByText("분양중")).toBeTruthy();
+  });
+
+  it("presaleStage가 null이면 분양 배지 미표시", () => {
+    render(<AptCard {...makeProps({ apt: makeApt({ presaleStage: null }) })} />);
+    expect(screen.queryByText("분양중")).toBeNull();
+    expect(screen.queryByText("분양예정")).toBeNull();
+  });
+
 });

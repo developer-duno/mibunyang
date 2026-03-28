@@ -26,6 +26,14 @@ export function makeApt(overrides = {}) {
     avgMaintenanceCost: 0, _regionAvgMaint: 0,
     transitDev: "GTX-C 착공", devDist: 1, cityDev: "신도시", industryDev: "테크노밸리",
     lat: 37.2636, lng: 127.0286,
+    // 분양정보 (default null — 대부분 아파트에 presale 데이터 없음)
+    presaleMinPrice: null, presaleMaxPrice: null, presalePp: null,
+    presaleType: null, presaleStage: null, presaleStageCode: null,
+    presaleImageUrl: null, naverPresaleNo: null, naverPresaleSeq: null,
+    presaleGeneralSupply: null, presaleBuildings: null, presaleParking: null,
+    presaleInquiry: null, presaleFeatures: null, presaleMoveIn: null,
+    presaleRecruitDate: null, presaleSchedule: null, presaleHousingType: null,
+    presaleFetchedAt: null,
     ...overrides,
   };
 }

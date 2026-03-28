@@ -29,6 +29,13 @@ const DATA_SECTIONS = [
     grid: ["naverNearbyMedian", "naverJeonseRate", "naverSellCount", "naverJeonseCount",
            "naverWolseCount", "naverSchoolWalkMin", "naverNearbyCount", "naverFetchedAt"],
   },
+  {
+    title: "네이버 분양정보",
+    grid: ["presaleStage", "presaleType", "presaleHousingType", "presaleMinPrice", "presaleMaxPrice",
+           "presalePp", "presaleGeneralSupply", "presaleBuildings", "presaleParking",
+           "presaleMoveIn", "presaleRecruitDate", "presaleSchedule", "presaleInquiry",
+           "presaleFeatures", "presaleFetchedAt"],
+  },
 ];
 
 function dataValueColor(field, value) {
