@@ -581,6 +581,9 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 | regions | 월 1회 | KOSIS API | collect-data.mjs Phase 2 |
 | trades | 매월 1/15일 | 국토부 API | collect-trades.mjs |
 | trade_stats | 매주 일요일 | trades 기반 | trade-stats.mjs |
+| apartments (경쟁률) | 주 1회 | 청약홈 API | collect-applyhome.mjs |
+| apartments (에너지) | 월 1회 | 건축HUB API | collect-building-hub.mjs |
+| cats_cache | 수집 후 | 스코어링 엔진 | compute-scores.mjs |
 | complexes | 로컬 수집 | 네이버 부동산 | naver-collect.py |
 | articles | 로컬 수집 | 네이버 부동산 | naver-collect.py |
 | complex_price_history | 로컬 수집 | 네이버 부동산 | naver-collect.py |

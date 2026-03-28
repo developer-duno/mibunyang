@@ -16,6 +16,7 @@
 | transport | 교통 정보 | transport-tago.mjs |
 | builders | 건설사 재무 | dart-builders.mjs |
 | regions | 지역 통계 (인구, 이동, 시장지표 5개) | population.mjs, migration.mjs, collect-market-stats.mjs |
+| (apartments 컬럼) | 건축 특성 4개 (corridor_type/heat_fuel/avg_maintenance_cost/primary_direction) | molit-building-info.mjs, naver-collect.py |
 | (apartments 컬럼) | 청약 경쟁률 3개 (competition_rate/supply/applicants) | collect-applyhome.mjs |
 | (apartments 컬럼) | 지번 3개 (bjd_code/lot_main/lot_sub) | reverse-geocode.mjs |
 | (apartments 컬럼) | 에너지 3개 (elec_usage_kwh/gas_usage_mj/energy_collected_at) | collect-building-hub.mjs |

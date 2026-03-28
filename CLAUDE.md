@@ -21,7 +21,7 @@
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (31개 워크플로우)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC, 한국 IP 필수)
-- `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (pre.land.naver.com, 19개 필드)
+- `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (pre.land.naver.com, 19개 필드, isCLI 패턴)
 
 ## 반응형 레이아웃
 
