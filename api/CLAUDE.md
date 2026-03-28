@@ -28,7 +28,7 @@ API에서 null 반환 시 **위험 단지가 안전하게 표시됨**. `sanitize
 
 - 읽기: `SUPABASE_ANON_KEY` (Vercel 환경변수) — `api/_lib/supabase.js`
 - 쓰기: `SUPABASE_SERVICE_KEY` (GitHub Secrets만) — `scripts/collectors/_shared.mjs`
-- `apartments_flat` VIEW를 통해 13개 테이블 JOIN → 평탄 형태 반환
+- `apartments_flat` VIEW를 통해 7개 테이블 JOIN → 평탄 형태 반환 (apartments + prices + trades + schools + transport + infra + trade_stats)
 - RLS 활성: anon = 읽기만, service_role = 읽기+쓰기
 - API 응답 형식: `{ ok: true, data: [...], count: N, fetchedAt: "..." }` (기존 JSON과 동일)
 

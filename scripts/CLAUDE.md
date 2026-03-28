@@ -87,7 +87,9 @@ bash scripts/post-naver-collect.sh
 
 ### API 쿼터 로깅 (api_quota_log)
 
-모든 data.go.kr 수집기는 완료 시 `recordApiQuota(collector, apiName, callCount)`를 호출하여 `api_quota_log` 테이블에 기록.
+모든 data.go.kr 수집기(9개)는 완료 시 `recordApiQuota(collector, apiName, callCount)`를 호출하여 `api_quota_log` 테이블에 기록.
+
+대상 수집기: molit-building-info, collect-trades, housing-permits, molit-units, population, migration, collect-maintenance, collect-building-hub, transport-tago
 
 - 일별 합계 조회: `SELECT * FROM api_quota_daily WHERE log_date = CURRENT_DATE;`
 - dry-run 모드에서는 기록하지 않음
