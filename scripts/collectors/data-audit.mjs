@@ -280,13 +280,15 @@ async function fetchAllFromTable(sb, table, columns, filterCol, filterVal) {
 
 // apartments 컬럼 (core + building + risk + benefits + naver + environment + future)
 const APT_COLS = "id,name,region,gu,dong,address,road_address,district,lat,lng,builder,units,completion,layout," +
-  "max_floor,parking_ratio,floor_area_ratio,exclusive_ratio,energy_grade,heating,floors,has_pool," +
+  "max_floor,parking_ratio,floor_area_ratio,exclusive_ratio,energy_grade,heating,corridor_type,heat_fuel,avg_maintenance_cost,primary_direction,floors,has_pool," +
   "is_regulated,dsr40pass," +
   "discount_pct,loan_free,balcony_free,cashback,benefits," +
   "view,sunlight,noise,noxious,noxious_dist," +
   "transit_dev,dev_dist,city_dev,industry_dev," +
   "naver_nearby_median,naver_nearby_avg,naver_jeonse_rate,naver_sell_count,naver_jeonse_count," +
-  "naver_wolse_count,naver_build_year,naver_avg_floor,naver_school_walk_min,naver_nearby_count";
+  "naver_wolse_count,naver_build_year,naver_avg_floor,naver_school_walk_min,naver_nearby_count," +
+  "elec_usage_kwh,gas_usage_mj,energy_collected_at," +
+  "competition_rate,competition_supply,competition_applicants";
 
 // snake_case → camelCase 변환
 function toCamel(row) {
@@ -294,6 +296,8 @@ function toCamel(row) {
     road_address: "roadAddress", max_floor: "maxFloor", parking_ratio: "parkingRatio",
     floor_area_ratio: "floorAreaRatio", exclusive_ratio: "exclusiveRatio",
     energy_grade: "energyGrade", has_pool: "hasPool", is_regulated: "isRegulated",
+    corridor_type: "corridorType", heat_fuel: "heatFuel",
+    avg_maintenance_cost: "avgMaintenanceCost", primary_direction: "primaryDirection",
     discount_pct: "discountPct", loan_free: "loanFree", balcony_free: "balconyFree",
     noxious_dist: "noxiousDist", transit_dev: "transitDev", dev_dist: "devDist",
     city_dev: "cityDev", industry_dev: "industryDev",
@@ -302,6 +306,10 @@ function toCamel(row) {
     naver_jeonse_count: "naverJeonseCount", naver_wolse_count: "naverWolseCount",
     naver_build_year: "naverBuildYear", naver_avg_floor: "naverAvgFloor",
     naver_school_walk_min: "naverSchoolWalkMin", naver_nearby_count: "naverNearbyCount",
+    elec_usage_kwh: "elecUsageKwh", gas_usage_mj: "gasUsageMj",
+    energy_collected_at: "energyCollectedAt",
+    competition_rate: "competitionRate", competition_supply: "competitionSupply",
+    competition_applicants: "competitionApplicants",
   };
   const out = {};
   for (const [k, v] of Object.entries(row)) out[map[k] || k] = v;
