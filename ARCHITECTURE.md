@@ -13,7 +13,7 @@ src/
 │   ├── brands.js           BRAND_TIER(16), AGE_PREMIUM(7), LAYOUT_SCORE
 │   ├── profiles.js         PROFILES(5개 사용자 프로필)
 │   ├── regions.js          CITY_TIER(5등급), REGIONS(17개 시도)
-│   └── fieldMeta.js        FIELD_META(95필드), FIELD_SECTIONS(8섹션)
+│   └── fieldMeta.js        FIELD_META(128필드), FIELD_SECTIONS(10섹션, presale 19필드 포함)
 ├── scoring/
 │   └── engine.js           score{6개}, calcAll — 규칙: scoring/CLAUDE.md
 ├── theme/
@@ -41,7 +41,7 @@ src/
 │   ├── exportPdf.js        비교 결과 PNG/PDF 내보내기 (dynamic import)
 │   ├── chosung.js          초성 검색 (matchSearch)
 │   ├── dedup.js            아파트 중복 제거 + siblingIds 생성 (dedupApartments)
-│   └── format.js           가격/날짜 포맷 (fmtPrice, fmtCompletion)
+│   └── format.js           가격/날짜 포맷 (fmtPrice, fmtCompletion, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate)
 ├── services/
 │   ├── staticDataApi.js    ★ Supabase API 또는 JSON 폴백
 │   ├── applyhomeApi.js / kakaoApi.js / neisApi.js / kosisApi.js / dartApi.js
@@ -328,7 +328,7 @@ App (Pretendard Variable 폰트, paddingTop: isDesktop ? 64 : 0)
 │       ├── CatPanel (memo) * 6
 │       ├── PriceChart (memo) ← 분양가 추이 LineChart
 │       ├── UnsoldChart (memo) ← 미분양 추이 LineChart
-│       ├── PriceTable / SchoolInfo / LoanAnalysis / DataSections
+│       ├── PriceTable / SchoolInfo / PresaleInfo / LoanAnalysis / DataSections
 │       └── 관심매물/비교추가/공유 버튼 (데스크톱: 14px, 패딩12px)
 │
 ├── BottomNav (memo) ← [isDesktop] return null / [mobile] 하단 고정
@@ -341,8 +341,8 @@ App (Pretendard Variable 폰트, paddingTop: isDesktop ? 64 : 0)
 │   │       ├── ExpertSidebar (검색/필터/정렬 + 단지 목록, 280px)
 │   │       └── 메인 콘텐츠 영역
 │   │           ├── ExpertAptHeader (단지명/위치/점수/Radar)
-│   │           ├── ExpertFieldTable (memo) * 8섹션 (2컬럼 CSS Grid)
-│   │           │   └── FIELD_META 기반 95개 필드 렌더
+│   │           ├── ExpertFieldTable (memo) * 10섹션 (2컬럼 CSS Grid)
+│   │           │   └── FIELD_META 기반 128개 필드 렌더 (presale 19필드 포함)
 │   │           ├── ExpertUnitPlaceholder (동/호수 안내)
 │   │           ├── ExpertScoreBreakdown (6카테고리 산출 내역)
 │   │           │   └── 적정가 계산 과정 인라인 표시
@@ -477,7 +477,7 @@ App (Pretendard Variable 폰트, paddingTop: isDesktop ? 64 : 0)
 
 ### FIELD_META 시스템 (constants/fieldMeta.js)
 
-모든 95개 필드의 메타데이터를 정의하는 상수:
+모든 128개 필드의 메타데이터를 정의하는 상수:
 
 ```js
 FIELD_META = {
@@ -489,15 +489,17 @@ FIELD_META = {
 }
 ```
 
-FIELD_SECTIONS는 8개 섹션으로 필드키를 그룹화:
+FIELD_SECTIONS는 10개 섹션으로 필드키를 그룹화:
 1. 단지 개요 (21필드) — id, name, region, area, price, pp, avgMaintenanceCost, primaryDirection, ...
-2. 가격/시장 지표 (8필드) — nearbyMedian, jeonseRate, pir, psr, dataReliability, ...
-3. 안전도/리스크 (9필드) — unsoldRate, recentTrades6m, supplyRatio, builderCreditGrade, ...
-4. 입지/교통/교육/환경 (25필드) — subwayDist, busRoutes, schoolScore, hospital, view, ...
-5. 상품성/건축 (7필드) — parkingRatio, floorAreaRatio, energyGrade, ...
+2. 가격/시장 지표 (11필드) — nearbyMedian, jeonseRate, pir, psr, dataReliability, priceIndex, ...
+3. 안전도/리스크 (15필드) — unsoldRate, recentTrades6m, supplyRatio, builderCreditGrade, cancelRatio6m, ...
+4. 입지/교통/교육/환경 (24필드) — subwayDist, busRoutes, schoolScore, hospital, view, ...
+5. 상품성/건축 (10필드) — parkingRatio, floorAreaRatio, energyGrade, heatFuel, corridorType, ...
 6. 혜택/할인 (10필드) — discountPct, loanFree, optionFree, ...
 7. 미래가치 (4필드) — transitDev, devDist, cityDev, industryDev
-8. 네이버 교차검증 (11필드) — naverNearbyMedian, naverJeonseRate, naverSellCount, ...
+8. 건축HUB 에너지 (3필드) — elecUsageKwh, gasUsageMj, energyCollectedAt
+9. 네이버 교차검증 (11필드) — naverNearbyMedian, naverJeonseRate, naverSellCount, ...
+10. 네이버 분양정보 (19필드) — presaleMinPrice, presaleMaxPrice, presalePp, presaleStage, presaleSchedule, ...
 
 ### ExpertScoreBreakdown 적정가 인라인 계산
 
@@ -552,7 +554,7 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 │  regions (시계열, 지역 통계)                                  │
 │  trades (시계열, 실거래가 원본)                                │
 │                                                              │
-│  apartments_flat (VIEW) ← 7개 테이블 JOIN → 평탄 95+필드     │
+│  apartments_flat (VIEW) ← 7개 테이블 JOIN → 평탄 128+필드 (presale 19 포함) │
 ├──────────────────────────────────────────────────────────────┤
 │                    네이버 인근 시세 데이터                     │
 │                                                              │

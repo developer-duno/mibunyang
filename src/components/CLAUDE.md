@@ -2,11 +2,11 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 35개 컴포넌트 + icons.jsx (SVG 아이콘 10개)
+## memo() 36개 컴포넌트 + icons.jsx (SVG 아이콘 10개)
 
 소비자 10개: Bar, ScoreBadge, Radar, **LineChart**, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal
 섹션 8개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay
-상세 6개 (DetailModal에서 분리): PriceTable, **PriceChart**, **UnsoldChart**, SchoolInfo, LoanAnalysis, DataSections
+상세 7개 (DetailModal에서 분리): PriceTable, **PriceChart**, **UnsoldChart**, SchoolInfo, **PresaleInfo**, LoanAnalysis, DataSections
 전문가 9개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide
 관리자 2개: AdminDashboard, AdminHelpGuide
 
@@ -62,7 +62,7 @@
 | MapView | 216 | Kakao Map 지도 뷰 (마커+클러스터+현위치+인프라, isDesktop 높이 최적화) |
 | InfraOverlay | 112 | 인프라 카테고리 토글 (지하철/병원/마트/학교) |
 
-### DetailModal.jsx (127줄) — 모달 컨테이너 + isDesktop(760px/큰Radar/IconClose/ARIA) + 재공고 뱃지 + 상담 CTA
+### DetailModal.jsx (130줄) — 모달 컨테이너 + isDesktop(760px/큰Radar/IconClose/ARIA) + 재공고 뱃지 + PresaleInfo + 상담 CTA
 분리된 상세 컴포넌트 (`src/components/detail/`):
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
@@ -71,7 +71,8 @@
 | **UnsoldChart** | 45 | 미분양 추이 SVG 라인 차트 (useUnsoldHistory + siblingIds) |
 | SchoolInfo | 63 | 학군 정보 |
 | LoanAnalysis | 91 | LTV/DSR/갭투자 분석 |
-| DataSections | 168 | 공공데이터 5개 섹션 |
+| PresaleInfo | 130 | 네이버 분양정보 (단계배지/이미지/가격카드/그리드/일정/링크/Analytics) |
+| DataSections | 175 | 공공데이터 6개 섹션 (분양정보 포함) |
 
 ### primitives.jsx — 재사용 SVG 프리미티브 (memo)
 | 컴포넌트 | 역할 |
@@ -101,11 +102,12 @@
 | IconCompare | (미사용 — 향후 확장용) |
 | IconShare | (미사용 — 향후 확장용) |
 
-### AptCard (136줄)
+### AptCard (143줄)
 - `isDesktop` prop: 데스크톱 시 shadowMd, borderRadius 16, fontSize 16, padding 확대, grid gap 확대
 - `isFav` prop으로 관심매물 하이라이트 (border 색상)
 - `moveInDone` (준공 + 미분양 0%) → opacity 0.55 흐릿 표시
 - `dynStyles.body`, `dynStyles.nameText` — isDesktop 조건 분기 (useMemo 내부)
+- alertRow 배지: 분양중(green)/분양예정(blue) + 입주상태 + 미분양 + 시공사신용 + 혐오시설
 
 ### CompareSheet.jsx (123줄) — isDesktop(확대 패딩/폰트/프로그레스바, sticky thead)
 

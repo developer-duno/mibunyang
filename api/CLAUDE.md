@@ -14,6 +14,9 @@ API에서 null 반환 시 **위험 단지가 안전하게 표시됨**. `sanitize
 - 위험 필드 null → 비관적 기본값 (unsoldRate:50, pir:10, psr:1.5)
 - 혜택 필드 null → 0
 - 문자열 키 null → 최저 등급
+- **presale 19필드**: 전부 `?? null` (정보성 필드, 스코어링 미사용 → null 허용)
+  - presaleMinPrice~presaleFetchedAt: 네이버 분양정보 (pre.land.naver.com)
+  - presaleSchedule: JSONB → PostgREST 자동 파싱, 프론트에서 fmtPresaleSchedule() 처리
 
 ## 한글 텍스트 주의
 
