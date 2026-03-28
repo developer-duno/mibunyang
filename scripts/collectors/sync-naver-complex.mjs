@@ -106,7 +106,7 @@ async function main() {
   for (let off = 0; ; off += PAGE) {
     const { data: page, error: cErr } = await sbMibunyang
       .from("complexes")
-      .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, heat_fuel, corridor_type, building_coverage_ratio")
+      .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, heat_fuel_type, corridor_type, building_coverage_ratio")
       .range(off, off + PAGE - 1);
     if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
     complexes.push(...page);
@@ -212,9 +212,9 @@ async function main() {
         row.heating = heatingByComplex[cpx.complex_no];
       }
 
-      // 난방연료
-      if (apt.heat_fuel == null && cpx.heat_fuel != null) {
-        row.heat_fuel = cpx.heat_fuel;
+      // 난방연료 (complexes.heat_fuel_type → apartments.heat_fuel)
+      if (apt.heat_fuel == null && cpx.heat_fuel_type != null) {
+        row.heat_fuel = cpx.heat_fuel_type;
       }
 
       // 복도유형

@@ -79,18 +79,21 @@ Supabase 인스턴스 `rwdtljipvmqpazrimyns`는 **mibunyang + naver-estate-web �
 | **mibunyang 전용** | apartments, prices, unsold_history, infra, schools, transport, builders, regions, trade_stats, consults + apartments_flat VIEW | mibunyang만 | mibunyang만 |
 | **naver-estate-web 전용** | user_profiles, audit_logs, rate_limit_counters, admin_settings, crawler_checkpoints, complex_pyeong_details, article_price_history | naver-estate-web만 | naver-estate-web만 |
 
-### 컬럼명 불일치 현황 (complexes 테이블)
+### 컬럼명 정규화 완료 (Phase 3, 2026-03-29)
 
-| 컬럼 의도 | schema.sql 정의 | naver-collect.py upsert | naver-estate-web ORM | 상태 |
-|----------|----------------|----------------------|---------------------|------|
-| 위도 | `lat` | `latitude` | `latitude` | ⚠️ schema vs 코드 불일치 |
-| 경도 | `lng` | `longitude` | `longitude` | ⚠️ schema vs 코드 불일치 |
-| 총세대수 | `total_households` | `total_household_count` | `total_household_count` | ⚠️ schema vs 코드 불일치 |
-| 부동산유형 | `real_estate_type` | `real_estate_type_code` | `real_estate_type_code` | ⚠️ schema vs 코드 불일치 |
-| 난방방식 | `heat_method` | `heat_method` | `heat_method_type` | 부분 불일치 |
-| 난방연료 | `heat_fuel` | `heat_fuel` | `heat_fuel_type` | 부분 불일치 |
+DB 실사 결과, 실제 DB는 naver-estate-web 기준 컬럼명으로 이미 정규화됨.
+schema.sql의 구 컬럼명(lat/lng/total_households 등)은 **실제 DB에 존재하지 않음**.
 
-**⚠️ 인덱스 버그**: `schema.sql:353`에 `idx_complexes_location ON complexes(latitude, longitude)` — 테이블 정의는 `lat, lng` → 인덱스 생성 실패 가능성. Phase 3에서 정규화 예정.
+| 컬럼 의도 | 실제 DB 컬럼 | naver-collect.py | naver-estate-web | 상태 |
+|----------|-------------|-----------------|-----------------|------|
+| 위도 | `latitude` | `latitude` | `latitude` | ✅ 일치 |
+| 경도 | `longitude` | `longitude` | `longitude` | ✅ 일치 |
+| 총세대수 | `total_household_count` | `total_household_count` | `total_household_count` | ✅ 일치 |
+| 부동산유형 | `real_estate_type_code` | `real_estate_type_code` | `real_estate_type_code` | ✅ 일치 |
+| 난방방식 | `heat_method_type` | `heat_method_type` | `heat_method_type` | ✅ 일치 (Phase 3 수정) |
+| 난방연료 | `heat_fuel_type` + `heat_fuel`(레거시) | `heat_fuel_type` | `heat_fuel_type` | ✅ 일치 (Phase 3 수정) |
+
+인덱스: `idx_complexes_location ON complexes(latitude, longitude)` — 실제 DB latitude/longitude 존재, 정상.
 
 ### 마이그레이션 체크리스트
 

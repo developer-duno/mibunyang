@@ -244,31 +244,42 @@ CREATE TABLE IF NOT EXISTS trade_stats (
 CREATE TABLE IF NOT EXISTS complexes (
   complex_no TEXT PRIMARY KEY,
   complex_name TEXT NOT NULL,
-  real_estate_type TEXT,                  -- APT/ABYG/JGC/PRE
-  region TEXT,
-  gu TEXT,
-  dong TEXT,
-  lat DOUBLE PRECISION,
-  lng DOUBLE PRECISION,
-  total_households INTEGER,
-  use_approve_ymd TEXT,                   -- 준공일 YYYYMMDD
-  construction_company TEXT,
-  floor_area_ratio REAL,
-  total_parking_count INTEGER,
+  cortar_no TEXT,                         -- 법정동 코드 (naver-estate-web)
+  real_estate_type_code TEXT,             -- APT/ABYG/JGC/PRE
+  real_estate_type_name TEXT,             -- 부동산유형 명칭
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  total_household_count INTEGER,
   high_floor INTEGER,
   low_floor INTEGER,
-  min_supply_area REAL,
-  max_supply_area REAL,
-  earthquake_design BOOLEAN,             -- 내진설계 여부
-  entrance_type TEXT,                    -- 현관구조
-  heat_method TEXT,                      -- 난방방식
-  heat_fuel TEXT,                        -- 난방연료
-  corridor_type TEXT,                    -- 복도유형
-  building_coverage_ratio NUMERIC,       -- 건폐율
-  -- 어떤 미분양 아파트 근처인지 추적
-  nearby_apartment_ids JSONB,            -- ["ah-xxx", "ah-yyy"]
+  use_approve_ymd TEXT,                   -- 준공일 YYYYMMDD
+  total_dong_count INTEGER,
+  min_supply_area_m2 DOUBLE PRECISION,
+  max_supply_area_m2 DOUBLE PRECISION,
+  cortar_address TEXT,                    -- 지번 주소 (naver-estate-web)
+  sido TEXT,                              -- 시도
+  sigungu TEXT,                           -- 시군구
+  dong TEXT,                              -- 동
   last_crawled_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  heat_method_type TEXT,                  -- 난방방식 (중앙/개별/지역)
+  total_parking_count INTEGER,
+  construction_company TEXT,
+  floor_area_ratio TEXT,                  -- 용적률
+  building_coverage_ratio TEXT,           -- 건폐율
+  detail_crawled_at TIMESTAMPTZ,          -- 상세 크롤 시점 (naver-estate-web)
+  address TEXT,                           -- 주소
+  road_address TEXT,                      -- 도로명주소
+  heat_fuel_type TEXT,                    -- 난방연료 (도시가스/LPG 등)
+  parking_count_by_household DOUBLE PRECISION,
+  management_office_tel TEXT,             -- 관리사무소 연락처
+  nearby_median_price INTEGER,            -- 주변 중앙가격 (naver-estate-web)
+  jeonse_rate DOUBLE PRECISION,           -- 전세율 (naver-estate-web)
+  recent_trades_6m INTEGER,               -- 최근 6개월 거래 (naver-estate-web)
+  has_pool BOOLEAN,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ,
+  heat_fuel TEXT,                         -- 난방연료 (레거시, heat_fuel_type 사용 권장)
+  corridor_type TEXT                      -- 복도유형
 );
 
 -- ============================================================

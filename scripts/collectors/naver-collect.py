@@ -102,12 +102,10 @@ def ejwt(cid=None):
             d=_extract_json_obj(r.text,"complexDetail")
             if d:
                 COMPLEX_DETAILS[str(cid)]={
-                    "earthquake_design":d.get("earthquakeDesignApplied"),
-                    "entrance_type":d.get("entranceTypeName"),
-                    "heat_method":d.get("heatMethodTypeName"),
-                    "heat_fuel":d.get("heatFuelTypeName"),
+                    # earthquake_design, entrance_type, building_coverage_ratio — DB 미존재 (Phase 3 실사)
+                    "heat_method_type":d.get("heatMethodTypeName"),
+                    "heat_fuel_type":d.get("heatFuelTypeName"),
                     "corridor_type":d.get("corridorTypeName"),
-                    "building_coverage_ratio":_safe_float(d.get("buildingCoverageRatio")),
                 }
         except Exception as e:
             log(f"  complexDetail parse fail (cid={cid}): {e}")
