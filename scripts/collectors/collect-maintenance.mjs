@@ -12,7 +12,7 @@
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -93,6 +93,7 @@ async function main() {
 
   const sb = getSupabase();
   const rpt = createReporter(PHASE);
+  let apiCalls = 0;
 
   // 조회 월 (2개월 전 — 관리비 데이터 지연 반영)
   const now = new Date();
@@ -127,6 +128,7 @@ async function main() {
     let aptList;
     try {
       aptList = await fetchSidoAptList(PHASE, sidoCode, API_KEY);
+      apiCalls++;
       await sleep(REQUEST_DELAY);
     } catch (err) {
       logError(PHASE, `  목록 조회 실패: ${err.message}`);
@@ -148,9 +150,11 @@ async function main() {
 
         // 총 세대수 조회 (관리비 / 세대수 = 세대당 관리비)
         const totalHouseholds = await fetchTotalHouseholds(match.kaptCode);
+        apiCalls++; // fetchTotalHouseholds
         await sleep(REQUEST_DELAY);
 
         const totalCost = await fetchMaintenanceCost(match.kaptCode, searchDate);
+        apiCalls += COST_ENDPOINTS.length; // 5개 항목 각각 API 호출
 
         if (totalCost == null || totalCost <= 0) { rpt.skip(1); continue; }
         if (!totalHouseholds) { rpt.skip(1); continue; }
@@ -182,6 +186,10 @@ async function main() {
   }
 
   rpt.summary();
+  log(PHASE, `API 호출: ${apiCalls}회`);
+
+  if (!dryRun) await recordApiQuota("collect-maintenance", "MOLIT_KEY", apiCalls);
+
   log(PHASE, "\n=== 완료 ===");
 }
 

@@ -3,6 +3,7 @@ name: Building Info Collection (MOLIT)
 on:
   schedule:
     - cron: '0 16 10 * *' # 매월 10일 UTC 16:00 = KST 01:00
+    - cron: '0 16 11 * *' # 매월 11일 — 10일 토요일 fallback
   workflow_dispatch:
     inputs:
       dry_run:
@@ -26,17 +27,48 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Check Saturday conflict (10일 토요일 → 11일 fallback)
+        id: check-day
+        if: github.event_name == 'schedule'
+        run: |
+          TODAY=$(date -u +%d)
+          DOW=$(date -u +%u)  # 1=Mon ... 6=Sat 7=Sun
+
+          if [ "$TODAY" = "10" ] && [ "$DOW" = "6" ]; then
+            echo "::notice::10일 토요일 — naver-estate-web public_data(~3,600) 충돌 방지, 11일 자동 재실행"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$TODAY" = "11" ]; then
+            YESTERDAY_DOW=$(date -u -d "yesterday" +%u 2>/dev/null || date -u -v-1d +%u)
+            if [ "$YESTERDAY_DOW" = "6" ]; then
+              echo "::notice::10일 토요일 fallback — 11일 실행"
+              echo "skip=false" >> $GITHUB_OUTPUT
+            else
+              echo "::notice::10일이 토요일 아니었음 — 11일 스킵"
+              echo "skip=true" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+
       - uses: actions/checkout@v4
+        if: steps.check-day.outputs.skip != 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.check-day.outputs.skip != 'true'
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
+        if: steps.check-day.outputs.skip != 'true'
         run: npm ci
 
       - name: Validate secrets
+        if: steps.check-day.outputs.skip != 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -49,6 +81,7 @@ jobs:
           echo "Secrets validated"
 
       - name: Collect building info
+        if: steps.check-day.outputs.skip != 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -60,6 +93,7 @@ jobs:
           node scripts/collectors/molit-building-info.mjs $ARGS
 
       - name: Sync naver complex data
+        if: steps.check-day.outputs.skip != 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

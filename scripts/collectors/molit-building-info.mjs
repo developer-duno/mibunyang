@@ -14,7 +14,7 @@
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -147,7 +147,7 @@ async function main() {
     regionGroups[r].push(t);
   }
 
-  let updated = 0, skipped = 0, failed = 0;
+  let updated = 0, skipped = 0, failed = 0, apiCalls = 0;
 
   // 3. 지역별 API 호출 → 매칭 → 상세 조회
   for (const [region, regionTargets] of Object.entries(regionGroups)) {
@@ -159,6 +159,7 @@ async function main() {
     let aptList;
     try {
       aptList = await fetchSidoAptList(PHASE, sidoCode, API_KEY);
+      apiCalls += Math.ceil(aptList.length / 500) || 1; // 페이지네이션 횟수
       await sleep(REQUEST_DELAY);
     } catch (err) {
       logError(PHASE, `  목록 조회 실패: ${err.message}`);
@@ -189,6 +190,7 @@ async function main() {
       try {
         await sleep(REQUEST_DELAY);
         const detail = await fetchAptDetail(kaptCode);
+        apiCalls += 2; // Bass + Dtl 2개 엔드포인트
         if (!detail) { log(PHASE, `    ${target.name}: 상세 조회 실패`); failed++; continue; }
 
         const info = extractBuildingInfo(detail);
@@ -205,8 +207,9 @@ async function main() {
   }
 
   log(PHASE, `\n=== 완료 ===`);
+  log(PHASE, `갱신: ${updated}, 건너뜀: ${skipped}, 실패: ${failed}, API: ${apiCalls}회`);
 
-  log(PHASE, `갱신: ${updated}, 건너뜀: ${skipped}, 실패: ${failed}`);
+  if (!dryRun) await recordApiQuota("molit-building-info", "MOLIT_KEY", apiCalls);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

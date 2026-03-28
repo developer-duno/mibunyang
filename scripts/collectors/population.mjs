@@ -12,7 +12,7 @@
  *   SUPABASE_URL     — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
@@ -112,11 +112,15 @@ async function main() {
 
   log("init", `대상: ${curYear}년 ${curMonth}월 vs ${prevYear}년 ${curMonth}월`);
 
+  // API 호출 카운트 (시도 17개 × 2회 = 34회)
+  let apiCalls = 0;
+
   // 1. 올해/작년 데이터 가져오기
   const [curItems, prevItems] = await Promise.all([
     fetchPopulation(curYear, curMonth),
     fetchPopulation(prevYear, curMonth),
   ]);
+  apiCalls += SIDO_CODES.length * 2; // 17 시도 × 2 (올해 + 작년)
 
   if (!curItems.length || !prevItems.length) {
     logError("data", "인구 데이터가 비어있습니다. API 키를 확인하세요.");
@@ -250,6 +254,8 @@ async function main() {
   }
   log("done", `regions 테이블 ${saved}/${rows.length}건 저장 완료 (${today()})`);
   rpt.summary();
+
+  if (!dryRun) await recordApiQuota("population", "MOIS_POP_KEY", apiCalls);
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)

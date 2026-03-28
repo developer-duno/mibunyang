@@ -8,7 +8,7 @@
  *   node scripts/collectors/transport-tago.mjs              (Supabase UPDATE)
  *   node scripts/collectors/transport-tago.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
@@ -188,7 +188,10 @@ async function main() {
     if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated})`);
   }
 
-  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped}, TAGO 호출 ${tagoCallCount > maxTago ? maxTago : tagoCallCount}건 ===`);
+  const actualTagoCalls = Math.min(tagoCallCount, maxTago);
+  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped}, TAGO 호출 ${actualTagoCalls}건 ===`);
+
+  if (!dryRun) await recordApiQuota("transport-tago", "TAGO_KEY", actualTagoCalls);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

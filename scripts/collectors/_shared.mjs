@@ -193,6 +193,26 @@ export function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ── API 쿼터 로깅 ───────────────────────────────────────────
+// data.go.kr 등 일일 한도 API 사용량을 api_quota_log 테이블에 기록
+export async function recordApiQuota(collector, apiName, callCount) {
+  if (!callCount || callCount <= 0) return;
+  try {
+    const sb = getSupabase();
+    const { error } = await sb.from("api_quota_log").insert({
+      log_date: today(),
+      collector,
+      api_name: apiName,
+      call_count: callCount,
+    });
+    if (error) logError("quota", `${collector} 쿼터 기록 실패: ${error.message}`);
+    else log("quota", `${collector}: ${apiName} ${callCount}회 기록`);
+  } catch (err) {
+    // 쿼터 로깅 실패는 수집 중단하지 않음
+    logError("quota", `${collector} 쿼터 기록 예외: ${err.message}`);
+  }
+}
+
 // ── 수집 리포터 ─────────────────────────────────────────────
 export function createReporter(phase) {
   const startTime = Date.now();

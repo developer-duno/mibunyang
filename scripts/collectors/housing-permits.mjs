@@ -12,7 +12,7 @@
  *   SUPABASE_URL        — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, VALID_REGIONS, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, VALID_REGIONS, today, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
@@ -81,11 +81,13 @@ async function main() {
   // 1. 시도별로 인허가 데이터 조회
   const permitsByRegion = {};
   let totalFetched = 0;
+  let apiCalls = 0;
 
   for (const [region, sidoCd] of Object.entries(SIDO_CODES)) {
     try {
       // 시도 단위로 조회 (sigunguCd에 시도코드만 넣으면 시도 전체)
       const items = await fetchPermits(sidoCd, prevYear);
+      apiCalls++;
       totalFetched += items.length;
 
       let totalUnits = 0;
@@ -185,6 +187,7 @@ async function main() {
     else updated++;
   }
 
+  await recordApiQuota("housing-permits", "MOLIT_KEY", apiCalls);
   log("done", `regions 테이블 supply_ratio ${updated}건 업데이트 완료 (${today()})`);
 }
 

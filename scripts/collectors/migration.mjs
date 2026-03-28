@@ -12,7 +12,7 @@
  *   SUPABASE_URL        — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, today, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
@@ -96,10 +96,12 @@ async function main() {
 
   // 1. 월별 데이터 조회 + 집계
   const netByKey = {}; // "region:gu" → { in: N, out: N }
+  let apiCalls = 0;
 
   for (const month of months) {
     try {
       const items = await fetchMigration(year, month);
+      apiCalls++;
 
       for (const item of items) {
         const adminNm = item.admNm || item.adminNm || "";
@@ -202,6 +204,8 @@ async function main() {
   }
 
   log("done", `regions 테이블 net_migration ${updated}건 업데이트 완료 (${today()})`);
+
+  if (!dryRun) await recordApiQuota("migration", "MOIS_POP_KEY", apiCalls);
 }
 
 main().catch(err => { logError("main", err.message); process.exit(1); });

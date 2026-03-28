@@ -31,7 +31,7 @@
  * 전제조건:
  *   reverse-geocode.mjs --force 실행 후 bjd_code가 채워져 있어야 함
  */
-import { loadEnv, getSupabase, log, logError, sleep, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota } from "./_shared.mjs";
 import { REQUEST_DELAY } from "./_molit-api.mjs";
 
 loadEnv();
@@ -212,6 +212,7 @@ async function main() {
   if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
 
   log(PHASE, `대상: ${apts.length}건`);
+  let apiCalls = 0;
 
   // 첫 호출 시 응답 샘플 로깅 (안전장치 #5)
   let sampleLogged = false;
@@ -224,6 +225,7 @@ async function main() {
       // 1. 에너지 (전기 + 가스)
       if (force || apt.elec_usage_kwh == null) {
         const energy = await fetchEnergy(apt.bjd_code, apt.lot_main, apt.lot_sub, useYm);
+        apiCalls += 2; // 전기 + 가스 각 1회
         if (energy.elec != null) row.elec_usage_kwh = energy.elec;
         if (energy.gas != null) row.gas_usage_mj = energy.gas;
         if (energy.elec != null || energy.gas != null) row.energy_collected_at = new Date().toISOString();
@@ -274,6 +276,10 @@ async function main() {
   }
 
   rpt.summary();
+  log(PHASE, `API 호출: ${apiCalls}회`);
+
+  if (!dryRun) await recordApiQuota("collect-building-hub", "MOLIT_KEY", apiCalls);
+
   log(PHASE, "\n=== 완료 ===");
 }
 

@@ -14,7 +14,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, MIN_SIMILARITY, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -107,6 +107,7 @@ async function main() {
   let corrected = 0;
   let failed = 0;
   let skipped = 0;
+  let apiCalls = 0;
 
   for (const [region, group] of Object.entries(groups)) {
     log(PHASE, `\n--- ${region} (${group.sidoCode}) ${group.targets.length}건 ---`);
@@ -114,6 +115,7 @@ async function main() {
     let aptList;
     try {
       aptList = await fetchSidoAptList(PHASE, group.sidoCode, API_KEY);
+      apiCalls += Math.ceil(aptList.length / 500) || 1;
       log(PHASE, `  API 단지 목록: ${aptList.length}건`);
     } catch (err) {
       logError(PHASE, `  API 조회 실패: ${err.message}`);
@@ -149,6 +151,7 @@ async function main() {
       try {
         await sleep(REQUEST_DELAY);
         const detail = await fetchAptDetail(kaptCode);
+        apiCalls++;
         if (!detail) {
           log(PHASE, `    → 상세 조회 실패`);
           failed++;
@@ -177,7 +180,9 @@ async function main() {
   }
 
   log(PHASE, `\n=== 완료 ===`);
-  log(PHASE, `보정: ${corrected}건, 실패: ${failed}건, 건너뛰기: ${skipped}건`);
+  log(PHASE, `보정: ${corrected}건, 실패: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회`);
+
+  if (!dryRun) await recordApiQuota("molit-units", "MOLIT_KEY", apiCalls);
 }
 
 main().catch(err => {
