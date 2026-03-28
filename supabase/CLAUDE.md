@@ -2,7 +2,7 @@
 
 > 스키마/마이그레이션 수정 시 반드시 이 규칙을 따를 것.
 
-## 테이블 (14개 + 1 VIEW + presale 19컬럼)
+## 테이블 (15개 + 2 VIEW + presale 19컬럼)
 
 | 테이블 | 설명 | 주요 수집기 |
 |--------|------|-----------|
@@ -25,7 +25,9 @@
 | articles | 네이버 매물 정보 | naver-collect.py |
 | complex_price_history | 네이버 시세 이력 | naver-collect.py |
 | consults | 상담 신청 | api/consults.js |
+| api_quota_log | data.go.kr API 쿼터 사용량 추적 | recordApiQuota() (_shared.mjs) |
 | **apartments_flat** (VIEW) | dedup CTE + 7개 테이블 JOIN 평탄화 + presale 19컬럼 | — |
+| **api_quota_daily** (VIEW) | 일별 API 쿼터 합계 (모니터링용) | — |
 
 ## 시계열 테이블 스키마
 

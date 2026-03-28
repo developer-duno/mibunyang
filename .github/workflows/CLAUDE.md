@@ -30,7 +30,7 @@
 | `collect-molit-units.yml` | 국토부 공동주택 총세대수 보정 (6일) |
 | `collect-population.yml` | 행안부 인구 증감률 (5일) |
 | `collect-housing-permits.yml` | 국토부 주택 인허가 공급비율 (10일) |
-| `collect-building-info.yml` | 국토부 건축물 상세정보 (10일) |
+| `collect-building-info.yml` | 국토부 건축물 상세정보 (10일, 토요일→11일 fallback) |
 | `collect-migration.yml` | 행안부 전입/전출 순이동 (15일) |
 | `collect-infra.yml` | Kakao Places 인프라 (1일) |
 | `collect-transport.yml` | Kakao Places 교통 (1일) |
