@@ -19,13 +19,7 @@ import {
   fetchWithRetry, resolveBuilder,
 } from "./_shared.mjs";
 
-loadEnv();
-
-// ── 환경변수 검증 ───────────────────────────────────────────
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-  logError("init", "SUPABASE_URL + SUPABASE_SERVICE_KEY 환경변수 필요");
-  process.exit(1);
-}
+// loadEnv + 환경변수 검증은 main()에서 수행 (테스트 시 import 안전)
 
 // ── 상수 ────────────────────────────────────────────────────
 const PHASE = "naver-presale";
@@ -417,6 +411,11 @@ async function fetchDetailData(complexNo, seq) {
 // ── 메인 ────────────────────────────────────────────────────
 
 async function main() {
+  loadEnv();
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    logError("init", "SUPABASE_URL + SUPABASE_SERVICE_KEY 환경변수 필요");
+    process.exit(1);
+  }
   const sb = getSupabase();
   const reporter = createReporter(PHASE);
 
@@ -601,7 +600,6 @@ async function main() {
   reporter.summary();
 }
 
-main().catch(err => {
-  logError(PHASE, err.message);
-  process.exit(1);
-});
+// CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
