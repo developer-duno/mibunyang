@@ -1,4 +1,4 @@
-# 네이버 수집 Windows 작업 스케줄러 등록 스크립트
+﻿# 네이버 수집 Windows 작업 스케줄러 등록 스크립트
 # 관리자 권한 PowerShell에서 실행:
 #   powershell -ExecutionPolicy Bypass -File scripts\register-naver-task.ps1
 
