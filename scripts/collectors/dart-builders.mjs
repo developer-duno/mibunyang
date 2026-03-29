@@ -64,7 +64,7 @@ const BUILDER_CORP_CODES = {
   "대방산업": "01102332",
 };
 
-function estimateCreditGrade(debtRatio) {
+export function estimateCreditGrade(debtRatio) {
   if (debtRatio <= 100) return "A";
   if (debtRatio <= 150) return "A-";
   if (debtRatio <= 200) return "BBB";
@@ -73,7 +73,7 @@ function estimateCreditGrade(debtRatio) {
   return "CCC";
 }
 
-function parseAmount(str) {
+export function parseAmount(str) {
   if (!str) return 0;
   return parseFloat(str.replace(/,/g, "")) || 0;
 }
@@ -264,7 +264,5 @@ async function main() {
   if (aliasCount > 0) log("done", `alias 행 ${aliasCount}건 추가 (아파트 원본명)`);
 }
 
-main().catch((err) => {
-  logError("main", err.message);
-  process.exit(1);
-});
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch((err) => { logError("main", err.message); process.exit(1); });

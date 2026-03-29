@@ -16,7 +16,7 @@ import { loadEnv, getSupabase, log, logError, ROOT } from "./_shared.mjs";
 loadEnv();
 
 // ── Haversine 거리 (km) ─────────────────────────────────────
-function haversine(lat1, lng1, lat2, lng2) {
+export function haversine(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
@@ -122,4 +122,5 @@ async function main() {
   }
 }
 
-main().catch(err => { logError("main", err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });

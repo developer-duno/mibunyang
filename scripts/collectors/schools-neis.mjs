@@ -16,7 +16,7 @@ const KAKAO_KEY = process.env.KAKAO_KEY;
 if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
 
 const EXCLUDE_POI = ["행정실", "교장실", "교무실", "상담실", "교차로", "체육관", "기숙사", "테니스장", "공영주차장", "백주년기념관", "로봇관", "정약용체육관"];
-const isSchoolPlace = (name) => !EXCLUDE_POI.some(suf => name.includes(suf));
+export const isSchoolPlace = (name) => !EXCLUDE_POI.some(suf => name.includes(suf));
 
 async function searchKakao(lat, lng, keyword, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
@@ -25,7 +25,7 @@ async function searchKakao(lat, lng, keyword, radius) {
   return data.documents || [];
 }
 
-function calcScore(elem, middle, high) {
+export function calcScore(elem, middle, high) {
   let score = 50;
   for (const s of elem) {
     const d = Number(s.distance);
@@ -43,7 +43,7 @@ function calcScore(elem, middle, high) {
   return Math.min(score, 100);
 }
 
-function gradeFromScore(score) {
+export function gradeFromScore(score) {
   if (score >= 80) return "A";
   if (score >= 60) return "B";
   if (score >= 40) return "C";
@@ -110,4 +110,5 @@ async function main() {
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

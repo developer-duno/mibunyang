@@ -59,7 +59,7 @@ const SIDO_CODES = {
 };
 
 // ── 시도명 역매핑 ────────────────────────────────────────
-function resolveRegion(fullName) {
+export function resolveRegion(fullName) {
   if (!fullName) return null;
   if (REGION_MAP[fullName]) return REGION_MAP[fullName];
   for (const [k, v] of Object.entries(REGION_MAP)) {
@@ -191,4 +191,5 @@ async function main() {
   log("done", `regions 테이블 supply_ratio ${updated}건 업데이트 완료 (${today()})`);
 }
 
-main().catch(err => { logError("main", err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });

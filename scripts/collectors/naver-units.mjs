@@ -140,7 +140,7 @@ async function apiGet(url, params = {}, needAuth = true) {
 }
 
 // ── 단지 검색 ────────────────────────────────────────────────
-function cleanName(name) {
+export function cleanName(name) {
   return (name || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
 }
 
@@ -309,7 +309,5 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-main().catch(err => {
-  logError(PHASE, err.message);
-  process.exit(1);
-});
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

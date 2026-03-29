@@ -17,7 +17,7 @@ loadEnv();
 const PHASE = "sync-naver";
 
 /** complex → apartment 매칭 (complex_links 우선, 이름 유사도 폴백) */
-function matchApartments(cpx, aptList, complexLinksMap) {
+export function matchApartments(cpx, aptList, complexLinksMap) {
   const nearbyIds = complexLinksMap.get(cpx.complex_no) || [];
   let matched = [];
   if (nearbyIds.length > 0) {
@@ -35,7 +35,7 @@ function matchApartments(cpx, aptList, complexLinksMap) {
 }
 
 /** 중앙값 계산 */
-function median(arr) {
+export function median(arr) {
   if (!arr.length) return 0;
   const s = [...arr].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
@@ -43,7 +43,7 @@ function median(arr) {
 }
 
 /** floor_info "3/15" → 3 파싱 */
-function parseFloor(fi) {
+export function parseFloor(fi) {
   if (!fi) return null;
   const first = String(fi).split("/")[0].trim();
   const KOR = { "저": 3, "중": 8, "고": 20 };
@@ -53,7 +53,7 @@ function parseFloor(fi) {
 }
 
 /** Spatial grid index (0.02deg ~ 2km cells) */
-function buildSpatialGrid(allComplexes, cellSize = 0.02) {
+export function buildSpatialGrid(allComplexes, cellSize = 0.02) {
   const grid = {};
   for (const cpx of allComplexes) {
     if (!cpx.latitude || !cpx.longitude) continue;
@@ -65,7 +65,7 @@ function buildSpatialGrid(allComplexes, cellSize = 0.02) {
 }
 
 /** Find nearby complexes within radius using grid */
-function findNearbyComplexes(apt, spatialGrid, radiusKm = 2) {
+export function findNearbyComplexes(apt, spatialGrid, radiusKm = 2) {
   if (!apt.lat || !apt.lng) return [];
   const { grid, cellSize } = spatialGrid;
   const R = 6371;
@@ -566,4 +566,5 @@ async function main() {
   log(PHASE, "\n=== 전체 동기화 완료 ===");
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

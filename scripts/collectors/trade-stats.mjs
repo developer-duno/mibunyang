@@ -19,7 +19,7 @@ loadEnv();
 const NATIONAL_MEDIAN_INCOME = 5000; // 만원/월 — avg_income null 시 기본값
 
 // ── 중위값 헬퍼 ────────────────────────────────────────────────
-function median(arr) {
+export function median(arr) {
   if (!arr.length) return null;
   const sorted = [...arr].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -29,7 +29,7 @@ function median(arr) {
 }
 
 // ── 날짜 헬퍼 ──────────────────────────────────────────────────
-function monthsAgo(n) {
+export function monthsAgo(n) {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
   return d.toISOString().slice(0, 10);
@@ -84,7 +84,7 @@ async function fetchCancelledTrades(sb, cutoff) {
 
 // ── 메인 ─────────────────────────────────────────────────────
 /** 거래 배열 → 면적별 min/avg/max/count 통계 */
-function groupByArea(trades) {
+export function groupByArea(trades) {
   const groups = new Map();
   for (const t of trades) {
     const bucket = Math.round(t.area / 5) * 5;
@@ -548,7 +548,5 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  logError("main", err.message);
-  process.exit(1);
-});
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch((err) => { logError("main", err.message); process.exit(1); });

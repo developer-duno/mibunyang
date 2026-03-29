@@ -241,7 +241,7 @@ async function getComplexDetail(complexId) {
 // ── 가격 파싱 (Python _parse_price_str 포트) ───────────────
 
 /** "2억 5,000" → 25000, "5천" → 5000, "2억 3천" → 23000 (만원) */
-function parseNaverPrice(str) {
+export function parseNaverPrice(str) {
   if (!str) return 0;
   const s = str.replace(/[,\s만원]/g, "");
   const parts = s.split("억");
@@ -260,7 +260,7 @@ function parseNaverPrice(str) {
 }
 
 /** 평당가 계산 */
-function calcPricePerPyeong(price, areaM2) {
+export function calcPricePerPyeong(price, areaM2) {
   if (!price || !areaM2 || areaM2 <= 0) return null;
   return Math.round(price / (areaM2 / M2_TO_PYEONG));
 }
@@ -268,7 +268,7 @@ function calcPricePerPyeong(price, areaM2) {
 // ── 데이터 변환 (Python from_dict 포트) ────────────────────
 
 /** 단지 데이터에서 수영장 유무 감지 */
-function detectPool(data) {
+export function detectPool(data) {
   // 구조화된 시설 정보 확인
   const facilityStr = JSON.stringify(
     data.facilityInfo ?? data.complexFacility ?? data.communityFacilityInfo ?? ""
@@ -292,7 +292,7 @@ function detectPool(data) {
 }
 
 /** API 응답 → complexes 행 */
-function toComplexRow(data) {
+export function toComplexRow(data) {
   return {
     complex_no: String(data.complexNo || data.complexNumber),
     complex_name: data.complexName || data.name || "",
@@ -314,7 +314,7 @@ function toComplexRow(data) {
 }
 
 /** API 응답 → articles 행 */
-function toArticleRow(data, complexNo) {
+export function toArticleRow(data, complexNo) {
   const price = parseNaverPrice(data.dealOrWarrantPrc);
   const rentPrice = parseNaverPrice(data.rentPrc);
   const area2 = data.area2 ? parseFloat(data.area2) : null;
@@ -350,7 +350,7 @@ function toArticleRow(data, complexNo) {
 
 
 /** 상세 API로 매물 보강 (Python update_from_detail 포트) */
-function enrichArticleFromDetail(row, detail) {
+export function enrichArticleFromDetail(row, detail) {
   const d = detail.articleDetail || {};
   const addition = detail.articleAddition || {};
 
@@ -568,8 +568,5 @@ async function main() {
 
 }
 
-main().catch(err => {
-  logError("naver", `치명적 오류: ${err.message}`);
-  console.error(err);
-  process.exit(1);
-});
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError("naver", `치명적 오류: ${err.message}`); console.error(err); process.exit(1); });

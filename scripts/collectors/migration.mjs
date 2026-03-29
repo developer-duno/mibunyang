@@ -55,7 +55,7 @@ async function fetchMigration(year, month) {
 }
 
 // ── 시도명 → 약칭 변환 ──────────────────────────────────────
-function resolveRegion(fullName) {
+export function resolveRegion(fullName) {
   if (!fullName) return null;
   if (REGION_MAP[fullName]) return REGION_MAP[fullName];
   for (const [k, v] of Object.entries(REGION_MAP)) {
@@ -65,7 +65,7 @@ function resolveRegion(fullName) {
 }
 
 // ── 시군구명 파싱 ────────────────────────────────────────────
-function parseGu(adminNm) {
+export function parseGu(adminNm) {
   const parts = adminNm.trim().split(/\s+/);
   if (parts.length < 2) return null;
 
@@ -208,4 +208,5 @@ async function main() {
   if (!dryRun) await recordApiQuota("migration", "MOIS_POP_KEY", apiCalls);
 }
 
-main().catch(err => { logError("main", err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });

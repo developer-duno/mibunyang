@@ -144,7 +144,7 @@ async function main() {
 }
 
 /** 시도명 정규화 */
-function normalizeRegion(name) {
+export function normalizeRegion(name) {
   const map = {
     "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
     "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
@@ -159,4 +159,5 @@ function normalizeRegion(name) {
   return map[name] || name;
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
