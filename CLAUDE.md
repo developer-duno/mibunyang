@@ -24,6 +24,9 @@
 - `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (pre.land.naver.com POST API, 19개 필드, isCLI 패턴)
   - 2026-03-29 pre.land Next.js RSC SPA 전환 → 기존 GET API 전면 폐기, POST API(`/api/complex/*`)로 재구현
   - JWT 불필요 (curl_cffi TLS fingerprint도 불필요, 네이티브 fetch POST로 동작)
+  - `extractPresaleFields(row)` — DRY 헬퍼: presale_*/naver_presale_* 필드만 추출 (update·insert 공용)
+  - `buildNewApartment(row, complexData, regionFallback)` — 신규 단지 생성 (ap-{no} ID, unit_source="naver_presale")
+  - `matchPresaleToApt(presale, apartments, indexes)` — 4단계 tier 매칭 (Map O(1) Tier1·2 + tier 반환 + tierCounts 집계)
   - `naver-presale-jwt.py` — new.land.naver.com JWT 추출 헬퍼 (향후 인증 필요 시 fallback용)
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)

@@ -63,6 +63,9 @@ scripts/
     ├── _shared.mjs         공유 유틸 (loadEnv, upsertBatch, fetchWithRetry)
     ├── naver-collect.py  ★ 네이버 인근 매물 수집
     ├── naver-presale.mjs ★ 네이버 분양정보 수집 (pre.land POST API, JWT 불필요, 19필드)
+    │     ├── extractPresaleFields() — DRY 필드 추출 (update·insert 공용)
+    │     ├── buildNewApartment()   — 신규 단지 생성 (ap-{no}, unit_source="naver_presale")
+    │     └── matchPresaleToApt()   — 4단계 tier 매칭 (Map O(1) Tier1·2, tier 반환, tierCounts 집계)
     └── naver-presale-jwt.py  JWT 추출 헬퍼 (new.land, 향후 인증 필요 시 fallback)
 
 supabase/

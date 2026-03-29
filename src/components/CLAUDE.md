@@ -71,7 +71,7 @@
 | **UnsoldChart** | 45 | 미분양 추이 SVG 라인 차트 (useUnsoldHistory + siblingIds) |
 | SchoolInfo | 63 | 학군 정보 |
 | LoanAnalysis | 91 | LTV/DSR/갭투자 분석 |
-| PresaleInfo | 130 | 네이버 분양정보 (단계배지/이미지/가격카드/그리드/일정/링크/Analytics) |
+| PresaleInfo | 130 | 네이버 분양정보 (fmtRecruitDate·단계배지/이미지/가격카드/그리드/일정/링크/Analytics) |
 | DataSections | 175 | 공공데이터 6개 섹션 (분양정보 포함) |
 
 ### primitives.jsx — 재사용 SVG 프리미티브 (memo)
