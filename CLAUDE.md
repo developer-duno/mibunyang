@@ -33,7 +33,7 @@
   - `fetchTradeRows(lawdCd, months, type, rg, seen)` — 단일 거래타입 월별 수집 (fetchWithRetry 사용)
   - `TRADE_CONFIGS` — 3가지 거래타입별 엔드포인트/검증/행생성 규칙
   - `getTag()` — TAG_REGEX_CACHE 기반 XML 태그 추출
-- `scripts/collectors/_molit-api.mjs` — 국토부 공동주택 API 공유 모듈 (SIDO_CODE 17개, molitApiCall 재시도, fetchSidoAptList 페이지네이션, findBestMatch 유사도 매칭)
+- `scripts/collectors/_molit-api.mjs` — 국토부 공동주택 API 공유 모듈 (SIDO_CODE 17개, NonRetryableError 클래스, molitApiCall 재시도+즉시실패 분리, fetchSidoAptList 페이지네이션, findBestMatch 유사도 매칭)
 - `scripts/collectors/molit-building-info.mjs` — 건물 상세 수집기 (isCLI 패턴, export 3함수)
   - `extractBuildingInfo(detail)` — V4 응답에서 parking_ratio/max_floor/energy_grade/heating/corridor_type 추출
   - `updateBuilding(sb, aptId, info, dryRun)` — null 필드 제외 후 선택적 UPDATE
