@@ -183,6 +183,7 @@ async function main() {
   log(PHASE, `보정: ${corrected}건, 실패: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회`);
 
   if (!dryRun) await recordApiQuota("molit-units", "MOLIT_KEY", apiCalls);
+  if (failed > 0) process.exit(1);
 }
 
 const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());

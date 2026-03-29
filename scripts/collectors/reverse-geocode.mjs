@@ -140,6 +140,7 @@ async function main() {
   }
 
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 실패 ${failed} / 전체 ${apts.length} ===`);
+  if (failed > 0) process.exit(1);
 }
 
 /** 시도명 정규화 */

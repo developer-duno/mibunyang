@@ -306,6 +306,7 @@ async function main() {
 
   log(PHASE, `\n=== 완료 ===`);
   log(PHASE, `보정: ${corrected}건, 실패: ${failed}건`);
+  if (failed > 0) process.exit(1);
 }
 
 main().catch(err => {

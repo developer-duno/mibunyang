@@ -109,7 +109,8 @@ async function main() {
   const rpt = createReporter(PHASE);
   rpt.success(updated);
   rpt.skip(skipped);
-  rpt.summary();
+  const result = rpt.summary();
+  if (result.fail > 0) process.exit(1);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

@@ -275,12 +275,13 @@ async function main() {
     if ((i + 1) % 100 === 0) log(PHASE, `진행: ${i + 1}/${apts.length}`);
   }
 
-  rpt.summary();
+  const result = rpt.summary();
   log(PHASE, `API 호출: ${apiCalls}회`);
 
   if (!dryRun) await recordApiQuota("collect-building-hub", "MOLIT_KEY", apiCalls);
 
   log(PHASE, "\n=== 완료 ===");
+  if (result.fail > 0) process.exit(1);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

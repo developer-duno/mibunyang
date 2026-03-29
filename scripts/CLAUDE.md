@@ -20,10 +20,22 @@
 | `_molit-api.mjs` | 공유 모듈 (API 호출·매칭·페이지네이션, NonRetryableError) | molitApiCall, fetchSidoAptList, findBestMatch, cleanName, SIDO_CODE 등 | — |
 | `molit-building-info.mjs` | 건물 상세 수집 (주차·층수·에너지·난방·복도) | extractBuildingInfo, updateBuilding, fetchAptDetail | ✓ |
 | `molit-units.mjs` | 세대수 보정 (units, unsold_rate) | getTargets, updateUnits, fetchAptDetail | ✓ |
+| `collect-maintenance.mjs` | 관리비 수집 (5항목 합산, 세대당 계산) | fetchTotalHouseholds, fetchMaintenanceCost | ✓ |
 
-- isCLI 패턴: `process.argv[1] && import.meta.url.endsWith(...)` — 10개 파일에서 사용 (테스트 시 main() 실행 방지)
+- isCLI 패턴: `process.argv[1] && import.meta.url.endsWith(...)` — 13개 파일에서 사용 (테스트 시 main() 실행 방지)
 - NonRetryableError: 4xx/XML 에러 즉시 throw (재시도 불가), 429/500/503만 재시도 후 실패 시 throw "재시도 소진"
-- 테스트: `_molit-api.test.mjs`(30), `molit-building-info.test.mjs`(25), `molit-units.test.mjs`(18) — 즉시 throw + mockFetch 호출횟수 검증
+- 테스트: `_molit-api.test.mjs`(30), `molit-building-info.test.mjs`(25), `molit-units.test.mjs`(18), `collect-maintenance.test.mjs`(18) — 즉시 throw + mockFetch 호출횟수 검증
+
+### Exit Code 정책
+
+수집기 main() 함수 종료 시 부분 실패를 exit code로 반영하여 GitHub Actions에서 감지:
+
+- **createReporter 사용 수집기 (8개)**: `const result = rpt.summary(); if (result.fail > 0) process.exit(1);`
+  - collect-maintenance, collect-applyhome, collect-building-hub, collect-market-stats, calc-school-walk, population, collect-trades, infra-kakao
+- **수동 failed 카운터 수집기 (5개)**: `if (failed > 0) process.exit(1);`
+  - molit-building-info, molit-units, naver-units, geocode-missing, reverse-geocode
+- **자체 exit 로직 수집기**: naver-presale (API 접근 불가 시 exit(0), 환경변수 누락 시 exit(1))
+- recordApiQuota(await) 완료 후에 exit 호출하여 쿼터 기록 보장
 
 ## 네이버 부동산 수집 — 로컬 자동화
 

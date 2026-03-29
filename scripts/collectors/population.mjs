@@ -253,9 +253,10 @@ async function main() {
     rpt.success(1);
   }
   log("done", `regions 테이블 ${saved}/${rows.length}건 저장 완료 (${today()})`);
-  rpt.summary();
+  const result = rpt.summary();
 
   if (!dryRun) await recordApiQuota("population", "MOIS_POP_KEY", apiCalls);
+  if (result.fail > 0) process.exit(1);
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)

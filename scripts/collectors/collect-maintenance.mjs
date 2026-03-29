@@ -39,7 +39,7 @@ const COST_ENDPOINTS = [
 ];
 
 // ── 총 세대수 조회 (AptBasisInfoServiceV4) ──────────────────────
-async function fetchTotalHouseholds(kaptCode) {
+export async function fetchTotalHouseholds(kaptCode) {
   try {
     const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY);
     const item = json?.response?.body?.item ?? json?.response?.body?.items?.item;
@@ -49,7 +49,7 @@ async function fetchTotalHouseholds(kaptCode) {
 }
 
 // ── 관리비 조회 (5개 항목 합산) ────────────────────────────────
-async function fetchMaintenanceCost(kaptCode, searchDate) {
+export async function fetchMaintenanceCost(kaptCode, searchDate) {
   let totalCost = 0;
   let validCount = 0;
 
@@ -185,12 +185,14 @@ async function main() {
     }
   }
 
-  rpt.summary();
+  const result = rpt.summary();
   log(PHASE, `API 호출: ${apiCalls}회`);
 
   if (!dryRun) await recordApiQuota("collect-maintenance", "MOLIT_KEY", apiCalls);
 
   log(PHASE, "\n=== 완료 ===");
+  if (result.fail > 0) process.exit(1);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

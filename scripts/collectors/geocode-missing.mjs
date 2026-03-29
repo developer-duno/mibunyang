@@ -155,6 +155,7 @@ async function main() {
   }
 
   log(PHASE, `\n=== 완료: 성공 ${geocoded}, 실패 ${failed} / 전체 ${apts.length} ===`);
+  if (failed > 0) process.exit(1);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });

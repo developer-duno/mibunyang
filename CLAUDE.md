@@ -42,6 +42,9 @@
   - `getTargets(sb)` — units≤1 또는 unsold_rate≥100% 대상 조회
   - `updateUnits(sb, aptId, newUnits, unsold, dryRun)` — unsold_rate 재계산 + unit_source="molit"
   - `fetchAptDetail(kaptCode)` — V4 기본정보에서 kaptdaCnt(세대수) 조회
+- `scripts/collectors/collect-maintenance.mjs` — 관리비 수집기 (isCLI 패턴, export 2함수)
+  - `fetchTotalHouseholds(kaptCode)` — AptBasisInfoServiceV4에서 총 세대수 조회
+  - `fetchMaintenanceCost(kaptCode, searchDate)` — 5항목(난방/급탕/가스/전기/수도) 합산 관리비 조회
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 

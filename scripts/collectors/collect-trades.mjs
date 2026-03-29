@@ -298,7 +298,8 @@ async function main() {
   const rpt = createReporter(PHASE);
   rpt.success(inserted);
   rpt.fail(uniqueRows.length - inserted);
-  rpt.summary();
+  const result = rpt.summary();
+  if (result.fail > 0) process.exit(1);
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)

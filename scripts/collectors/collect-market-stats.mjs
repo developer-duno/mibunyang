@@ -193,8 +193,9 @@ async function main() {
     await sleep(1000);
   }
 
-  rpt.summary();
+  const result = rpt.summary();
   log(PHASE, "=== 완료 ===");
+  if (result.fail > 0) process.exit(1);
 }
 
 main().catch(err => { logError(PHASE, err.message); process.exit(1); });
