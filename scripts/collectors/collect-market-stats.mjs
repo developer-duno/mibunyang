@@ -87,6 +87,23 @@ async function fetchKosisTable(indicator, startPrdDe, endPrdDe) {
   });
 }
 
+/** KOSIS 행에서 지역별 최신값 추출 */
+export function extractLatestByRegion(rows, indicator) {
+  const latestByRegion = {};
+  for (const row of rows) {
+    if (row.C2_NM && row.C2_NM !== "전체") continue;
+    const region = REGION_MAP[row.C1_NM];
+    if (!region) continue;
+    const value = indicator.parse(row.DT, 10);
+    if (isNaN(value)) continue;
+    const period = row.PRD_DE;
+    if (!latestByRegion[region] || period > latestByRegion[region].period) {
+      latestByRegion[region] = { value, period };
+    }
+  }
+  return latestByRegion;
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
   if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
@@ -142,23 +159,7 @@ async function main() {
       logError(PHASE, `  ${ind.label}: ${rows.length}건 < 최소 ${ind.minExpected}건 — itmId/prdSe 확인 필요`);
     }
 
-    // 최신 기간의 시도별 값 추출 (C2_NM이 있으면 "전체"만, 없으면 전부)
-    const latestByRegion = {};
-    for (const row of rows) {
-      // objL2가 있는 테이블(005,006)은 "전체" 행만 사용
-      if (row.C2_NM && row.C2_NM !== "전체") continue;
-      // "전국", "수도권" 등 집계행 제외
-      const region = REGION_MAP[row.C1_NM];
-      if (!region) continue;
-
-      const value = ind.parse(row.DT, 10);
-      if (isNaN(value)) continue;
-
-      const period = row.PRD_DE;
-      if (!latestByRegion[region] || period > latestByRegion[region].period) {
-        latestByRegion[region] = { value, period };
-      }
-    }
+    const latestByRegion = extractLatestByRegion(rows, ind);
 
     const regionCount = Object.keys(latestByRegion).length;
     log(PHASE, `  ${ind.label}: ${rows.length}건 응답, ${regionCount}개 시도 매핑`);
@@ -198,4 +199,5 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

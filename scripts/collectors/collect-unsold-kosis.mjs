@@ -35,6 +35,56 @@ const REGION_MAP = {
   "제주특별자치도": "제주", "제주도": "제주",
 };
 
+/** KOSIS 응답 행 → 시군구별 미분양 집계 (최신 월만) */
+export function parseKosisRows(rows) {
+  const unsoldByRegionGu = {};
+  const latestPeriod = {};
+
+  for (const row of rows) {
+    const region = REGION_MAP[row.C1_NM];
+    if (!region) continue;
+
+    const gu = row.C2_NM === "계" ? "_total" : row.C2_NM;
+    const period = row.PRD_DE;
+    const value = parseInt(row.DT, 10);
+    if (isNaN(value)) continue;
+
+    const key = `${region}::${gu}`;
+    if (!latestPeriod[key] || period > latestPeriod[key]) {
+      latestPeriod[key] = period;
+      if (!unsoldByRegionGu[region]) unsoldByRegionGu[region] = {};
+      unsoldByRegionGu[region][gu] = value;
+    }
+  }
+
+  return unsoldByRegionGu;
+}
+
+/** 시군구 미분양 맵 → 시도별 합계 */
+export function aggregateRegionTotals(unsoldByRegionGu) {
+  const regionTotals = {};
+  for (const [region, guMap] of Object.entries(unsoldByRegionGu)) {
+    if (guMap["소계"] != null) {
+      regionTotals[region] = guMap["소계"];
+    } else if (guMap["_total"] != null) {
+      regionTotals[region] = guMap["_total"];
+    } else {
+      regionTotals[region] = Object.values(guMap).reduce((s, v) => s + v, 0);
+    }
+  }
+  return regionTotals;
+}
+
+/** 비례배분 미분양 추정 */
+export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
+  if (!guUnsold || guUnsold <= 0 || !aptUnits || aptUnits <= 0 || !totalUnitsInGu || totalUnitsInGu <= 0) return null;
+  const estimated = Math.round(guUnsold * (aptUnits / totalUnitsInGu));
+  if (estimated <= 0) return null;
+  const unsoldRate = Math.round(estimated / aptUnits * 1000) / 10;
+  if (unsoldRate > 100) return null; // 비정상 값 방지
+  return { estimated, unsoldRate };
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -54,20 +104,18 @@ async function main() {
   const params = new URLSearchParams({
     method: "getList",
     apiKey: KOSIS_KEY,
-    orgId: "116",           // 국토교통부
-    tblId: "DT_MLTM_2082",  // 시·군·구별 미분양현황 (월간, 시군구 단위)
+    orgId: "116",
+    tblId: "DT_MLTM_2082",
     itmId: "ALL",
     objL1: "ALL",
     objL2: "ALL",
-    prdSe: "M",                                   // 월간 데이터
+    prdSe: "M",
     startPrdDe: startMonth,
     endPrdDe: endMonth,
     format: "json",
     jsonVD: "Y",
   });
 
-  // Node.js v24 내장 fetch(undici)가 KOSIS 서버와 TLS 호환 실패 (ECONNRESET)
-  // → Node.js https 모듈로 직접 호출
   const https = await import("node:https");
   const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
   const data = await new Promise((resolve, reject) => {
@@ -93,42 +141,8 @@ async function main() {
     return;
   }
 
-  // 최신 월 기준으로 시군구별 미분양 집계
-  // { region: { gu: unsoldCount, _total: totalForRegion } }
-  const unsoldByRegionGu = {};
-  const latestPeriod = {};
-
-  for (const row of rows) {
-    // DT_MLTM_2082 구조: C1_NM="서울" (시도), C2_NM="강남구" (시군구) 또는 "계" (합계)
-    const region = REGION_MAP[row.C1_NM];
-    if (!region) continue;
-
-    const gu = row.C2_NM === "계" ? "_total" : row.C2_NM;
-    const period = row.PRD_DE;
-    const value = parseInt(row.DT, 10);
-    if (isNaN(value)) continue;
-
-    const key = `${region}::${gu}`;
-    if (!latestPeriod[key] || period > latestPeriod[key]) {
-      latestPeriod[key] = period;
-      if (!unsoldByRegionGu[region]) unsoldByRegionGu[region] = {};
-      unsoldByRegionGu[region][gu] = value;
-    }
-  }
-
-  // 시도별 합계 계산
-  const regionTotals = {};
-  for (const [region, guMap] of Object.entries(unsoldByRegionGu)) {
-    // KOSIS에서 시도 행 자체가 합계인 경우
-    if (guMap["소계"] != null) {
-      regionTotals[region] = guMap["소계"];
-    } else if (guMap["_total"] != null) {
-      regionTotals[region] = guMap["_total"];
-    } else {
-      // 시군구 합산
-      regionTotals[region] = Object.values(guMap).reduce((s, v) => s + v, 0);
-    }
-  }
+  const unsoldByRegionGu = parseKosisRows(rows);
+  const regionTotals = aggregateRegionTotals(unsoldByRegionGu);
 
   log(PHASE, `시도별 미분양: ${Object.entries(regionTotals).map(([r, v]) => `${r}=${v}`).join(", ")}`);
 
@@ -201,14 +215,13 @@ async function main() {
     const guUnsold = guMap?.[apt.gu] ?? regionTotals[apt.region] ?? null;
     if (guUnsold == null || guUnsold <= 0) continue;
 
-    // 비례배분: 시군구 미분양 × (단지 세대수 / 시군구 총 세대수)
+    // 비례배분
     const guKey = `${apt.region}::${apt.gu}`;
     const totalUnitsInGu = unitsByGu[guKey] || apt.units;
-    const estimated = Math.round(guUnsold * (apt.units / totalUnitsInGu));
-    if (estimated <= 0) continue;
+    const result = calcProportionalUnsold(guUnsold, apt.units, totalUnitsInGu);
+    if (!result) continue;
 
-    const unsoldRate = Math.round(estimated / apt.units * 1000) / 10;
-    if (unsoldRate > 100) continue; // 비정상 값 방지
+    const { estimated, unsoldRate } = result;
 
     if (dryRun) {
       log(PHASE, `  [DRY-RUN] ${apt.name} (${apt.region} ${apt.gu}): unsold=${estimated}, rate=${unsoldRate}%`);
@@ -230,4 +243,5 @@ async function main() {
   log(PHASE, "\n=== 완료 ===");
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

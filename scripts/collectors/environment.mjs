@@ -156,4 +156,5 @@ async function main() {
   }
 }
 
-main().catch(err => { logError("main", err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });

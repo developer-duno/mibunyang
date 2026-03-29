@@ -46,6 +46,26 @@ async function geocodeKeyword(query) {
   return null;
 }
 
+/** region에 콤마가 있으면 단지명 기반으로 정확한 지역 선택 */
+export function resolveRegionFromName(region, aptName) {
+  if (!region || !region.includes(",")) return region;
+  const candidates = region.split(",").map(s => s.trim());
+  return candidates.find(r => aptName.includes(r)) || candidates[0];
+}
+
+/** gu가 주소가 아닌 값(번지, 블록 등)이면 단지명에서 추출 */
+export function extractGu(gu, aptName) {
+  if (!gu) return null;
+  if (!/^\d+/.test(gu) && !/BL$|블록$|지구$|구역$/.test(gu)) return null;
+  const guMatch = aptName.match(/([가-힣]+[시구군])\s/);
+  return guMatch ? guMatch[1] : null;
+}
+
+/** 주소 문자열 조립 */
+export function buildAddress(region, gu, dong) {
+  return [region, gu, dong].filter(Boolean).join(" ");
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -67,30 +87,23 @@ async function main() {
   for (let i = 0; i < apts.length; i++) {
     const apt = apts[i];
     try {
-      // 단지명에서 괄호 내용 제거 (검색 정확도 향상)
       const cleanName = apt.name.replace(/\(.*?\)/g, "").trim();
 
-      // region에 콤마가 있으면 단지명 기반으로 정확한 지역 선택
       let region = apt.region;
       const dbUpdates = {};
-      if (region && region.includes(",")) {
-        const candidates = region.split(",").map(s => s.trim());
-        const matched = candidates.find(r => apt.name.includes(r));
-        region = matched || candidates[0];
+      const resolved = resolveRegionFromName(region, apt.name);
+      if (resolved !== region) {
+        region = resolved;
         dbUpdates.region = region;
         log(PHASE, `  region 수정: "${apt.region}" → "${region}" (${apt.name})`);
       }
 
-      // gu가 주소가 아닌 값(번지, 블록 등)이면 단지명에서 추출
       let gu = apt.gu;
-      if (gu && (/^\d+/.test(gu) || /BL$|블록$|지구$|구역$/.test(gu))) {
-        // 단지명에서 "XX시" 또는 "XX구" 추출
-        const guMatch = apt.name.match(/([가-힣]+[시구군])\s/);
-        if (guMatch) {
-          gu = guMatch[1];
-          dbUpdates.gu = gu;
-          log(PHASE, `  gu 수정: "${apt.gu}" → "${gu}" (${apt.name})`);
-        }
+      const extractedGu = extractGu(gu, apt.name);
+      if (extractedGu) {
+        gu = extractedGu;
+        dbUpdates.gu = gu;
+        log(PHASE, `  gu 수정: "${apt.gu}" → "${gu}" (${apt.name})`);
       }
 
       // DB 수정 적용
@@ -99,7 +112,7 @@ async function main() {
       }
 
       // 1차: 주소 검색 (region + gu + dong)
-      const addr = [region, gu, apt.dong].filter(Boolean).join(" ");
+      const addr = buildAddress(region, gu, apt.dong);
       let result = addr ? await geocode(addr) : null;
       await sleep(100);
 
@@ -158,4 +171,5 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

@@ -18,6 +18,20 @@ loadEnv();
 const PHASE = "school-walk";
 const WALK_SPEED = 70; // m/분 (어린이 도보 속도)
 
+/** 초등학교 필터 + 최소 거리 찾기 */
+export function findNearestElemSchool(nearbySchools) {
+  if (!Array.isArray(nearbySchools) || nearbySchools.length === 0) return null;
+  const elementary = nearbySchools.filter(s => s.type === "초" && s.distance > 0);
+  if (elementary.length === 0) return null;
+  return Math.min(...elementary.map(s => s.distance));
+}
+
+/** 거리(m) → 도보 시간(분) */
+export function calcWalkingMinutes(distanceM, walkSpeed = WALK_SPEED) {
+  if (!distanceM || distanceM <= 0 || !walkSpeed || walkSpeed <= 0) return null;
+  return Math.ceil(distanceM / walkSpeed);
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -37,16 +51,10 @@ async function main() {
   const updates = [];
 
   for (const row of schools) {
-    const nearby = row.nearby_schools;
-    if (!Array.isArray(nearby) || nearby.length === 0) continue;
-
-    // type이 "초"인 학교만 필터
-    const elementary = nearby.filter(s => s.type === "초" && s.distance > 0);
-    if (elementary.length === 0) continue;
-
-    // 최소 거리
-    const minDist = Math.min(...elementary.map(s => s.distance));
-    const walkMin = Math.ceil(minDist / WALK_SPEED);
+    const minDist = findNearestElemSchool(row.nearby_schools);
+    if (minDist == null) continue;
+    const walkMin = calcWalkingMinutes(minDist);
+    if (walkMin == null) continue;
 
     updates.push({ id: row.apartment_id, walkMin, minDist });
   }
@@ -76,4 +84,5 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

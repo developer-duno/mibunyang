@@ -16,7 +16,7 @@ const KAKAO_KEY = process.env.KAKAO_KEY;
 if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
 
 // Semaphore: 동시 실행 수 제한 (SC-2 — Kakao API 초당 50건 제한 대응)
-function createSemaphore(max) {
+export function createSemaphore(max) {
   let running = 0;
   const queue = [];
   return async (fn) => {
@@ -113,4 +113,5 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

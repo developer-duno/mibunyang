@@ -12,21 +12,30 @@ import { resolve } from "path";
 import { loadEnv, getSupabase, log, ROOT } from "./_shared.mjs";
 
 loadEnv();
-const DRY = process.argv.includes("--dry-run");
+
+/** 규제지역 JSON → Set 생성 */
+export function buildRegulatedSet(zones) {
+  const regulated = new Set();
+  for (const list of [zones["투기과열지구"], zones["조정대상지역"]]) {
+    if (Array.isArray(list)) list.forEach(z => regulated.add(z));
+  }
+  return regulated;
+}
+
+/** region + gu → 규제 조회 키 */
+export function makeRegionKey(region, gu) {
+  return `${region ?? ""} ${gu ?? ""}`.trim();
+}
 
 async function main() {
+  const DRY = process.argv.includes("--dry-run");
   const sb = getSupabase();
 
   // 규제지역 JSON 로드
   const jsonPath = resolve(ROOT, "public/data/regulation-zones.json");
   const zones = JSON.parse(readFileSync(jsonPath, "utf8"));
 
-  // "서울 강남구" 형태 → Set
-  const regulated = new Set();
-  for (const list of [zones["투기과열지구"], zones["조정대상지역"]]) {
-    if (Array.isArray(list)) list.forEach(z => regulated.add(z));
-  }
-
+  const regulated = buildRegulatedSet(zones);
   log("regulation", `규제지역: ${regulated.size}개 시군구`);
 
   // 전체 아파트 조회
@@ -39,7 +48,7 @@ async function main() {
 
   let updated = 0;
   for (const apt of apts) {
-    const key = `${apt.region ?? ""} ${apt.gu ?? ""}`.trim();
+    const key = makeRegionKey(apt.region, apt.gu);
     const shouldBeRegulated = regulated.has(key);
 
     // 이미 동일하면 건너뜀
@@ -66,4 +75,5 @@ async function main() {
   log("regulation", `완료: ${updated}건 갱신`);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(e => { console.error(e); process.exit(1); });
