@@ -12,7 +12,7 @@ import { loadEnv, getSupabase, log } from "./_shared.mjs";
 loadEnv();
 const DRY = process.argv.includes("--dry-run");
 
-function classifyFloors(maxFloor) {
+export function classifyFloors(maxFloor) {
   if (maxFloor == null || maxFloor <= 0) return null;
   if (maxFloor <= 5) return "저층(1~5F)";
   if (maxFloor <= 15) return "중층(6~15F)";
@@ -63,4 +63,5 @@ async function main() {
   log("calc-floors", `완료: ${updated}건 갱신`);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(e => { console.error(e); process.exit(1); });

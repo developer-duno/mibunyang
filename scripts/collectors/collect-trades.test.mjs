@@ -9,7 +9,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { getLawdCd, extractItems, getTag } = await import("./collect-trades.mjs");
+const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl } = await import("./collect-trades.mjs");
 
 describe("getLawdCd", () => {
   // 정상 매핑 — REGION_GU_OVERRIDE 경유 (동명이구)
@@ -124,5 +124,111 @@ describe("SilvTrade XML 파싱", () => {
     expect(getTag(silvItem, "dealAmount")).toBe("55,000");
     expect(getTag(silvItem, "excluUseAr")).toBe("84.99");
     expect(getTag(silvItem, "floor")).toBe("15");
+  });
+});
+
+// ── TRADE_CONFIGS 구조 검증 ─────────────────────────────────
+describe("TRADE_CONFIGS", () => {
+  // 3가지 타입 모두 존재
+  it("sale, jeonse, presale 3가지 타입이 존재한다", () => {
+    expect(Object.keys(TRADE_CONFIGS)).toEqual(["sale", "jeonse", "presale"]);
+  });
+
+  // 각 타입에 필수 키 존재
+  for (const [type, config] of Object.entries(TRADE_CONFIGS)) {
+    it(`${type}: 필수 키(endpoint, label, priceTag, validate, buildRow)가 존재한다`, () => {
+      expect(config.endpoint).toBeTruthy();
+      expect(config.label).toBeTruthy();
+      expect(config.priceTag).toBeTruthy();
+      expect(typeof config.validate).toBe("function");
+      expect(typeof config.buildRow).toBe("function");
+    });
+  }
+
+  // sale에만 fallbackEndpoint 존재
+  it("sale에만 fallbackEndpoint가 있다", () => {
+    expect(TRADE_CONFIGS.sale.fallbackEndpoint).toBeTruthy();
+    expect(TRADE_CONFIGS.jeonse.fallbackEndpoint).toBeUndefined();
+    expect(TRADE_CONFIGS.presale.fallbackEndpoint).toBeUndefined();
+  });
+
+  // presale에만 skipUnregistered 존재
+  it("presale에만 skipUnregistered가 true이다", () => {
+    expect(TRADE_CONFIGS.presale.skipUnregistered).toBe(true);
+    expect(TRADE_CONFIGS.sale.skipUnregistered).toBeUndefined();
+  });
+});
+
+// ── buildApiUrl 검증 ────────────────────────────────────────
+describe("buildApiUrl", () => {
+  it("올바른 URL을 생성한다", () => {
+    const url = buildApiUrl("https://apis.data.go.kr/test/api", "11680", "202603");
+    expect(url).toContain("serviceKey=");
+    expect(url).toContain("LAWD_CD=11680");
+    expect(url).toContain("DEAL_YMD=202603");
+    expect(url).toContain("numOfRows=9999");
+  });
+});
+
+// ── TRADE_CONFIGS.buildRow 검증 ─────────────────────────────
+describe("TRADE_CONFIGS.buildRow", () => {
+  /** 테스트용 base 행 팩토리 */
+  function makeBase() {
+    return { region: "서울", gu: "강남구", dong: "역삼동", deal_month: "202603", area: 84.99, price: 50000, floor: 10, build_year: 2020 };
+  }
+
+  it("sale: 비폴백 시 apt_name, dealing_type, cancel_date 포함", () => {
+    const item = `<item><aptNm>래미안</aptNm><dealingGbn>중개</dealingGbn><cdealDay>26.03.01</cdealDay></item>`;
+    const row = TRADE_CONFIGS.sale.buildRow(item, makeBase(), false);
+    expect(row.trade_type).toBe("sale");
+    expect(row.apt_name).toBe("래미안");
+    expect(row.dealing_type).toBe("중개");
+    expect(row.cancel_date).toBe("26.03.01");
+    expect(row.deposit).toBeNull();
+  });
+
+  it("sale: 폴백 시 apt_name, dealing_type, cancel_date 미포함", () => {
+    const item = `<item></item>`;
+    const row = TRADE_CONFIGS.sale.buildRow(item, makeBase(), true);
+    expect(row.apt_name).toBeUndefined();
+    expect(row.dealing_type).toBeUndefined();
+    expect(row.cancel_date).toBeUndefined();
+  });
+
+  it("jeonse: deposit = price와 동일", () => {
+    const row = TRADE_CONFIGS.jeonse.buildRow("<item/>", makeBase());
+    expect(row.trade_type).toBe("jeonse");
+    expect(row.deposit).toBe(50000);
+  });
+
+  it("presale: apt_name 포함, deposit null", () => {
+    const item = `<item><aptNm>동탄역 캐슬</aptNm></item>`;
+    const row = TRADE_CONFIGS.presale.buildRow(item, makeBase());
+    expect(row.trade_type).toBe("presale");
+    expect(row.apt_name).toBe("동탄역 캐슬");
+    expect(row.deposit).toBeNull();
+  });
+});
+
+// ── TRADE_CONFIGS.validate 검증 ─────────────────────────────
+describe("TRADE_CONFIGS.validate", () => {
+  it("sale: price > 0 && area > 0 이면 true", () => {
+    expect(TRADE_CONFIGS.sale.validate(50000, 84.99)).toBe(true);
+    expect(TRADE_CONFIGS.sale.validate(0, 84.99)).toBe(false);
+    expect(TRADE_CONFIGS.sale.validate(50000, 0)).toBe(false);
+  });
+
+  it("jeonse: deposit > 0 && monthlyRent === 0 && area > 0 이면 true", () => {
+    // monthlyRent=0인 순수 전세만 수집
+    const pureJeonse = "<item><monthlyRent>0</monthlyRent></item>";
+    const monthly = "<item><monthlyRent>50</monthlyRent></item>";
+    expect(TRADE_CONFIGS.jeonse.validate(30000, 60, pureJeonse)).toBe(true);
+    expect(TRADE_CONFIGS.jeonse.validate(30000, 60, monthly)).toBe(false);
+    expect(TRADE_CONFIGS.jeonse.validate(0, 60, pureJeonse)).toBe(false);
+  });
+
+  it("presale: price > 0 && area > 0 이면 true", () => {
+    expect(TRADE_CONFIGS.presale.validate(55000, 84.99)).toBe(true);
+    expect(TRADE_CONFIGS.presale.validate(0, 84.99)).toBe(false);
   });
 });

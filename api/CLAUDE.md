@@ -32,6 +32,30 @@ API에서 null 반환 시 **위험 단지가 안전하게 표시됨**. `sanitize
 - RLS 활성: anon = 읽기만, service_role = 읽기+쓰기
 - API 응답 형식: `{ ok: true, data: [...], count: N, fetchedAt: "..." }` (기존 JSON과 동일)
 
+## API 핸들러 래퍼 (withHandler)
+
+모든 API 핸들러는 `api/_lib/handler.js`의 `withHandler(config)`로 래핑:
+
+```js
+import { withHandler } from "../_lib/handler.js";
+
+export default withHandler({
+  method: "POST",           // "GET", "POST", ["GET","POST"]
+  cors: {},                 // {} = 기본 CORS, { maxAge: 86400 } = 커스텀, 생략 = CORS 미적용
+  rateLimit: "login",       // 엔드포인트 키 (rateLimit.js LIMITS), 생략 = 미적용
+  admin: true,              // true = verifyAdminToken 필수, 생략 = 미적용
+  handler: async (req, res) => { /* 비즈니스 로직 */ },
+  // 또는 듀얼 메서드: handler: { GET: handleGet, POST: handlePost }
+});
+```
+
+**미들웨어 실행 순서**: CORS → Method(405) → RateLimit(429) → Admin(401) → Dispatch
+**패턴별 사용**:
+- Pattern C (method only): `{ method: "GET", handler }` — supabase/*, kakao, neis, dart, kosis, applyhome
+- Pattern B (admin): `{ method: "GET", admin: true, handler }` — admin/users, admin/review
+- Pattern A (CORS+RL): `{ method: "POST", cors: {}, rateLimit: "login", handler }` — auth/login, auth/signup, auth/verify
+- Mixed (듀얼): `{ method: ["GET","POST"], cors: {}, handler: { POST, GET } }` — consults
+
 ## 시계열 API 엔드포인트 (세션19 추가)
 
 | 엔드포인트 | 테이블 | 파라미터 | 캐싱 |

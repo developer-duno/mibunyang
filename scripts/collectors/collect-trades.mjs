@@ -10,13 +10,15 @@
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY, MOLIT_KEY
  */
 import {
-  loadEnv, getMibuyangSupabase, log, logError, sleep, upsertBatch, createReporter, recordApiQuota,
+  loadEnv, getMibuyangSupabase, log, logError, sleep,
+  upsertBatch, createReporter, recordApiQuota, fetchWithRetry,
 } from "./_shared.mjs";
 
 loadEnv();
 
 const PHASE = "trades";
 const API_KEY = process.env.MOLIT_KEY;
+const API_BASE = "https://apis.data.go.kr/1613000";
 
 const REGION_LAWD_PREFIX = {
   "서울": "11", "부산": "26", "대구": "27", "인천": "28",
@@ -76,14 +78,11 @@ const REGION_GU_OVERRIDE = {
 function getLawdCd(region, gu) {
   const ov = REGION_GU_OVERRIDE[region + ":" + gu];
   if (ov) return ov;
-  // 구/군 이름으로 직접 매핑 시도
   if (GU_LAWD_MAP[gu]) return GU_LAWD_MAP[gu];
-  // 시 이름 시도 (경기도 등)
   const shortGu = gu.replace(/시$|군$|구$/, "");
   for (const [name, code] of Object.entries(GU_LAWD_MAP)) {
     if (name.includes(shortGu)) return code;
   }
-  // 시도 코드 + 000 (시도 전체)
   const prefix = REGION_LAWD_PREFIX[region];
   return prefix ? prefix + "000" : null;
 }
@@ -92,23 +91,117 @@ function extractItems(xml) {
   return [...xml.matchAll(/<item>[\s\S]*?<\/item>/g)].map(m => m[0]);
 }
 
+// regex 캐싱 — 호출당 new RegExp 생성 방지
+const TAG_REGEX_CACHE = {};
 function getTag(item, tag) {
-  const r = item.match(new RegExp("<" + tag + ">([^<]*)</" + tag + ">"));
+  if (!TAG_REGEX_CACHE[tag]) TAG_REGEX_CACHE[tag] = new RegExp("<" + tag + ">([^<]*)</" + tag + ">");
+  const r = item.match(TAG_REGEX_CACHE[tag]);
   return r ? r[1].trim() : "";
 }
 
-async function fetchApi(url, retries = 3) {
-  for (let i = 0; i < retries; i++) {
+// ── 거래타입별 설정 ──────────────────────────────────────────
+const TRADE_CONFIGS = {
+  sale: {
+    endpoint: `${API_BASE}/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev`,
+    fallbackEndpoint: `${API_BASE}/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade`,
+    label: "매매",
+    priceTag: "dealAmount",
+    validate: (price, area) => price > 0 && area > 0,
+    buildRow: (item, base, isFallback) => {
+      const row = { ...base, trade_type: "sale", deposit: null };
+      if (!isFallback) {
+        row.apt_name = getTag(item, "aptNm") || null;
+        row.dealing_type = getTag(item, "dealingGbn") || null;
+        const cd = getTag(item, "cdealDay");
+        row.cancel_date = (cd && cd.trim()) ? cd.trim() : null;
+      }
+      return row;
+    },
+  },
+  jeonse: {
+    endpoint: `${API_BASE}/RTMSDataSvcAptRent/getRTMSDataSvcAptRent`,
+    label: "전세",
+    priceTag: "deposit",
+    validate: (price, area, item) => {
+      const monthlyRent = parseInt((getTag(item, "monthlyRent") || "0").replace(/,/g, ""));
+      return price > 0 && monthlyRent === 0 && area > 0;
+    },
+    buildRow: (_item, base) => ({ ...base, trade_type: "jeonse", deposit: base.price }),
+  },
+  presale: {
+    endpoint: `${API_BASE}/RTMSDataSvcSilvTrade/getRTMSDataSvcSilvTrade`,
+    label: "분양권",
+    priceTag: "dealAmount",
+    skipUnregistered: true,
+    validate: (price, area) => price > 0 && area > 0,
+    buildRow: (item, base) => ({
+      ...base, trade_type: "presale", deposit: null,
+      apt_name: getTag(item, "aptNm") || null,
+    }),
+  },
+};
+
+function buildApiUrl(endpoint, lawdCd, month) {
+  return `${endpoint}?serviceKey=${API_KEY}&LAWD_CD=${lawdCd}&DEAL_YMD=${month}&pageNo=1&numOfRows=9999`;
+}
+
+async function fetchXml(url) {
+  const res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  return res ? await res.text() : null;
+}
+
+/**
+ * 단일 거래타입의 모든 월 데이터를 수집.
+ * @returns {{ rows: object[], apiCalls: number, fallbackUsed: boolean }}
+ */
+export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbackUsed) {
+  const config = TRADE_CONFIGS[type];
+  const rows = [];
+  let apiCalls = 0;
+  let fallbackUsed = prevFallbackUsed || false;
+  let regionFallback = false;
+
+  for (const month of months) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(30000), headers: { "User-Agent": "Mozilla/5.0" } });
-      if (res.ok) return await res.text();
-      if (res.status === 429) { await sleep((i + 1) * 3000); continue; }
-      if (i === retries - 1) throw new Error("HTTP " + res.status);
+      let xml = await fetchXml(buildApiUrl(config.endpoint, lawdCd, month));
+
+      // sale: AptTradeDev 미등록 → 기존 API 폴백
+      if (config.fallbackEndpoint && xml && xml.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
+        if (!fallbackUsed) log(PHASE, "AptTradeDev 미등록 — 기존 API 폴백");
+        regionFallback = true;
+        fallbackUsed = true;
+        xml = await fetchXml(buildApiUrl(config.fallbackEndpoint, lawdCd, month));
+      }
+
+      // presale: SERVICE_KEY 미등록 시 무시
+      if (config.skipUnregistered && xml && xml.includes("SERVICE_KEY_IS_NOT_REGISTERED")) continue;
+      if (!xml) continue;
+
+      for (const item of extractItems(xml)) {
+        const price = parseInt((getTag(item, config.priceTag) || "0").replace(/,/g, ""));
+        const area = parseFloat(getTag(item, "excluUseAr") || "0");
+        if (!config.validate(price, area, item)) continue;
+
+        const floor = parseInt(getTag(item, "floor") || "0") || null;
+        const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
+        const dong = getTag(item, "umdNm") || null;
+        const key = `${rg.region}|${rg.gu}|${month}|${area}|${price}|${floor}|${type}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const base = {
+          region: rg.region, gu: rg.gu, dong, deal_month: month,
+          area: Math.round(area * 100) / 100, price, floor, build_year: buildYear,
+        };
+        rows.push(config.buildRow(item, base, regionFallback));
+      }
+      apiCalls++;
     } catch (err) {
-      if (i === retries - 1) throw err;
-      await sleep((i + 1) * 2000);
+      logError(PHASE, `${config.label} API 실패 ${lawdCd}/${month}: ${err.message}`);
     }
+    await sleep(200);
   }
+  return { rows, apiCalls, fallbackUsed };
 }
 
 async function main() {
@@ -155,100 +248,11 @@ async function main() {
     const lawdCd = getLawdCd(rg.region, rg.gu);
     if (!lawdCd) { log(PHASE, "  " + rg.region + " " + rg.gu + ": 법정동코드 없음"); continue; }
 
-    // 매매 실거래 (AptTradeDev — 폴백: 기존 RTMSDataSvcAptTrade)
-    let regionFallback = false;
-    for (const month of months) {
-      try {
-        let url = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
-        let xml = await fetchApi(url);
-        if (xml && xml.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
-          if (!fallbackUsed) log(PHASE, "AptTradeDev 미등록 — 기존 API 폴백");
-          regionFallback = true;
-          fallbackUsed = true;
-          url = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
-          xml = await fetchApi(url);
-        }
-        if (!xml) continue;
-        for (const item of extractItems(xml)) {
-          const price = parseInt((getTag(item, "dealAmount") || "0").replace(/,/g, ""));
-          const area = parseFloat(getTag(item, "excluUseAr") || "0");
-          const floor = parseInt(getTag(item, "floor") || "0") || null;
-          const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
-          const dong = getTag(item, "umdNm") || null;
-          if (price <= 0 || area <= 0) continue;
-          const key = rg.region + "|" + rg.gu + "|" + month + "|" + area + "|" + price + "|" + floor + "|sale";
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const row = { region: rg.region, gu: rg.gu, dong, deal_month: month, area: Math.round(area * 100) / 100, price, floor, build_year: buildYear, trade_type: "sale", deposit: null };
-          if (!regionFallback) {
-            row.apt_name = getTag(item, "aptNm") || null;
-            row.dealing_type = getTag(item, "dealingGbn") || null;
-            const cd = getTag(item, "cdealDay");
-            row.cancel_date = (cd && cd.trim()) ? cd.trim() : null;
-          }
-          rows.push(row);
-        }
-        apiCalls++;
-      } catch (err) {
-        logError(PHASE, "매매 API 실패 " + lawdCd + "/" + month + ": " + err.message);
-      }
-      await sleep(200);
-    }
-
-    // 전세 실거래
-    for (const month of months) {
-      try {
-        const url = "https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
-        const xml = await fetchApi(url);
-        if (!xml) continue;
-        for (const item of extractItems(xml)) {
-          const deposit = parseInt((getTag(item, "deposit") || "0").replace(/,/g, ""));
-          const monthlyRent = parseInt((getTag(item, "monthlyRent") || "0").replace(/,/g, ""));
-          const area = parseFloat(getTag(item, "excluUseAr") || "0");
-          const floor = parseInt(getTag(item, "floor") || "0") || null;
-          const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
-          const dong = getTag(item, "umdNm") || null;
-          if (deposit <= 0 || monthlyRent !== 0 || area <= 0) continue;
-          const key = rg.region + "|" + rg.gu + "|" + month + "|" + area + "|" + deposit + "|" + floor + "|jeonse";
-          if (seen.has(key)) continue;
-          seen.add(key);
-          rows.push({ region: rg.region, gu: rg.gu, dong, deal_month: month, area: Math.round(area * 100) / 100, price: deposit, floor, build_year: buildYear, trade_type: "jeonse", deposit });
-        }
-        apiCalls++;
-      } catch (err) {
-        logError(PHASE, "전세 API 실패 " + lawdCd + "/" + month + ": " + err.message);
-      }
-      await sleep(200);
-    }
-
-    // 분양권전매 (SilvTrade — 축적 목적)
-    for (const month of months) {
-      try {
-        const url = "https://apis.data.go.kr/1613000/RTMSDataSvcSilvTrade/getRTMSDataSvcSilvTrade?serviceKey=" + API_KEY + "&LAWD_CD=" + lawdCd + "&DEAL_YMD=" + month + "&pageNo=1&numOfRows=9999";
-        const xml = await fetchApi(url);
-        if (!xml || xml.includes("SERVICE_KEY_IS_NOT_REGISTERED")) continue;
-        for (const item of extractItems(xml)) {
-          const price = parseInt((getTag(item, "dealAmount") || "0").replace(/,/g, ""));
-          const area = parseFloat(getTag(item, "excluUseAr") || "0");
-          const floor = parseInt(getTag(item, "floor") || "0") || null;
-          const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
-          const dong = getTag(item, "umdNm") || null;
-          if (price <= 0 || area <= 0) continue;
-          const key = rg.region + "|" + rg.gu + "|" + month + "|" + area + "|" + price + "|" + floor + "|presale";
-          if (seen.has(key)) continue;
-          seen.add(key);
-          rows.push({
-            region: rg.region, gu: rg.gu, dong, deal_month: month,
-            area: Math.round(area * 100) / 100, price, floor, build_year: buildYear,
-            trade_type: "presale", deposit: null,
-            apt_name: getTag(item, "aptNm") || null,
-          });
-        }
-        apiCalls++;
-      } catch (err) {
-        logError(PHASE, "분양권 API 실패 " + lawdCd + "/" + month + ": " + err.message);
-      }
-      await sleep(200);
+    for (const type of ["sale", "jeonse", "presale"]) {
+      const result = await fetchTradeRows(lawdCd, months, type, rg, seen, fallbackUsed);
+      rows.push(...result.rows);
+      apiCalls += result.apiCalls;
+      fallbackUsed = result.fallbackUsed;
     }
 
     if (apiCalls % 50 === 0 && apiCalls > 0) log(PHASE, "  API " + apiCalls + "건, " + rows.length + "건 수집 중...");
@@ -302,4 +306,4 @@ const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replac
 if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
 
 // 테스트용 순수 함수 export
-export { getLawdCd, extractItems, getTag };
+export { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl };

@@ -48,7 +48,7 @@ src/
 └── App.jsx                 오케스트레이터 (훅 조합 + 렌더 + SORTERS 모듈 상수 + isDesktop prop 스레딩 + trackEvent 이벤트 계측)
 
 api/                        Vercel Serverless — 규칙: api/CLAUDE.md
-├── _lib/                   auth.js, adminAuth.js, supabase.js
+├── _lib/                   handler.js(withHandler HOF), auth.js, adminAuth.js, cors.js, rateLimit.js, supabase.js
 ├── supabase/apartments.js  ★ 9개 테이블 JOIN → 평탄 형태 반환
 ├── supabase/prices.js      분양가 시계열 API (apartment_id 필수)
 ├── supabase/unsold-history.js  미분양 추이 시계열 API

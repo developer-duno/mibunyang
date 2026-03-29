@@ -13,6 +13,12 @@ loadEnv();
 
 const PHASE = "excl-ratio";
 
+/** 전용률 계산: (전용면적 / 공급면적) * 100, 소수점 1자리 */
+export function calcRatio(area, supplyArea) {
+  if (!area || !supplyArea || supplyArea <= 0) return null;
+  return Math.round(area / supplyArea * 100 * 10) / 10;
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -58,7 +64,7 @@ async function main() {
     const p = priceMap[apt.id];
     if (!p) { skipped++; continue; }
 
-    const ratio = Math.round(p.area / p.supply_area * 100 * 10) / 10;
+    const ratio = calcRatio(p.area, p.supply_area);
 
     if (dryRun) {
       log(PHASE, `  [DRY] ${apt.name}: ${p.area}/${p.supply_area} = ${ratio}%`);
@@ -77,4 +83,5 @@ async function main() {
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
