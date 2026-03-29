@@ -22,7 +22,7 @@
 | `molit-units.mjs` | 세대수 보정 (units, unsold_rate) | getTargets, updateUnits, fetchAptDetail | ✓ |
 | `collect-maintenance.mjs` | 관리비 수집 (5항목 합산, 세대당 계산) | fetchTotalHouseholds, fetchMaintenanceCost | ✓ |
 
-- isCLI 패턴: `process.argv[1] && import.meta.url.endsWith(...)` — 24개 파일에서 사용 (테스트 시 main() 실행 방지)
+- isCLI 패턴: `process.argv[1] && import.meta.url.endsWith(...)` — 31개 파일에서 사용 (테스트 시 main() 실행 방지)
 - NonRetryableError: 4xx/XML 에러 즉시 throw (재시도 불가), 429/500/503만 재시도 후 실패 시 throw "재시도 소진"
 - 테스트: `_molit-api.test.mjs`(30), `molit-building-info.test.mjs`(28), `molit-units.test.mjs`(15), `collect-maintenance.test.mjs`(18) — 즉시 throw + mockFetch 호출횟수 검증
 
@@ -41,6 +41,18 @@
 | `industry-match.mjs` | haversine | ✓ | 3 |
 | `naver-units.mjs` | cleanName | ✓ | 8 |
 | `housing-permits.mjs` | resolveRegion | ✓ | 6 |
+
+### Batch 3 테스트 추가 모듈 (6개, 67케이스 — main() 인라인 로직 추출)
+
+| 파일 | export 함수 | isCLI | 테스트 수 |
+|------|-------------|-------|----------|
+| `collect-unsold-kosis.mjs` | parseKosisRows, aggregateRegionTotals, calcProportionalUnsold | ✓ | 18 |
+| `infra-kakao.mjs` | createSemaphore | ✓ | 5 |
+| `geocode-missing.mjs` | resolveRegionFromName, extractGu, buildAddress | ✓ | 17 |
+| `collect-market-stats.mjs` | extractLatestByRegion | ✓ | 7 |
+| `calc-school-walk.mjs` | findNearestElemSchool, calcWalkingMinutes | ✓ | 11 |
+| `regulation-seed.mjs` | buildRegulatedSet, makeRegionKey | ✓ | 9 |
+| `environment.mjs` | (순수 함수 없음, isCLI만 추가) | ✓ | — |
 
 ### Exit Code 정책
 
