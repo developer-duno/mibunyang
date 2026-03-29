@@ -24,7 +24,7 @@
 
 - isCLI 패턴: `process.argv[1] && import.meta.url.endsWith(...)` — 13개 파일에서 사용 (테스트 시 main() 실행 방지)
 - NonRetryableError: 4xx/XML 에러 즉시 throw (재시도 불가), 429/500/503만 재시도 후 실패 시 throw "재시도 소진"
-- 테스트: `_molit-api.test.mjs`(30), `molit-building-info.test.mjs`(25), `molit-units.test.mjs`(18), `collect-maintenance.test.mjs`(18) — 즉시 throw + mockFetch 호출횟수 검증
+- 테스트: `_molit-api.test.mjs`(30), `molit-building-info.test.mjs`(28), `molit-units.test.mjs`(15), `collect-maintenance.test.mjs`(18) — 즉시 throw + mockFetch 호출횟수 검증
 
 ### Exit Code 정책
 
