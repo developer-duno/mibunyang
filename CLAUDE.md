@@ -6,7 +6,7 @@
 ## 기술 스택
 
 - React 18 + Vite + `@/` 경로 별칭 — 프론트엔드 (Pretendard Variable 폰트 CDN)
-- `@/components/icons.jsx` — 인라인 SVG 아이콘 10개 (IconClose, IconHelp 등, memo 래핑)
+- `@/components/icons.jsx` — 인라인 SVG 아이콘 9개 (IconClose, IconSearch, IconHelp, IconLocation, IconHeart, IconHeartFilled, IconCompare, IconShare, IconChevronDown, memo 래핑)
 - `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 - `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters)
 - `@/lib/dedup.js` — 아파트 중복 제거 + siblingIds 생성 (dedupApartments)
@@ -17,7 +17,7 @@
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
 - Supabase (PostgreSQL) — 데이터베이스 (15개 테이블 + 2 VIEW + presale 19컬럼)
 - Vercel Serverless Functions (`api/`) — API 레이어
-- `api/_lib/handler.js` — withHandler HOF (CORS/Method/RateLimit/Admin 통합, 14개 핸들러 래핑)
+- `api/_lib/handler.js` — withHandler HOF (CORS/Method/RateLimit/Admin 통합, 14개 API 엔드포인트에서 사용)
 - Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (32개 워크플로우, monitor-db-size 포함)
@@ -29,6 +29,10 @@
   - `buildNewApartment(row, complexData, regionFallback)` — 신규 단지 생성 (ap-{no} ID, unit_source="naver_presale")
   - `matchPresaleToApt(presale, apartments, indexes)` — 4단계 tier 매칭 (Map O(1) Tier1·2 + tier 반환 + tierCounts 집계)
   - `naver-presale-jwt.py` — new.land.naver.com JWT 추출 헬퍼 (향후 인증 필요 시 fallback용)
+- `scripts/collectors/collect-trades.mjs` — 국토부 실거래가 수집 (매매/전세/분양권 3종, TRADE_CONFIGS DRY)
+  - `fetchTradeRows(lawdCd, months, type, rg, seen)` — 단일 거래타입 월별 수집 (fetchWithRetry 사용)
+  - `TRADE_CONFIGS` — 3가지 거래타입별 엔드포인트/검증/행생성 규칙
+  - `getTag()` — TAG_REGEX_CACHE 기반 XML 태그 추출
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 

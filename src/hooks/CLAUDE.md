@@ -6,7 +6,7 @@
 
 App.jsx 내부:
 ```
-useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 12개 (useToast, useFavorites(showToast), useDetailModal, useFilterSort, useDebouncedValue, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare, useResponsive) → useMemo (13개: baseFilterArgs, activeFilterCount, filterOptionCounts 포함) → useEffect (6개) → useRef → useCallback
+useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 14개 (useToast, useFavorites(showToast), useDetailModal, useFilterSort, useDebouncedValue, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare, useResponsive, usePriceHistory, useUnsoldHistory) → useMemo (13개: baseFilterArgs, activeFilterCount, filterOptionCounts 포함) → useEffect (6개) → useRef → useCallback
 **useResponsive 위치**: line 69 (모든 useState 이후, useMemo 이전) → `{ isPC, isDesktop }` 반환 → isDesktop은 line 176+ JSX에서만 사용 (TDZ 안전)
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.

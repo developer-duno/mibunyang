@@ -20,7 +20,7 @@ src/
 │   └── index.js            C(팔레트+shadowSm/Md), catCol, catBg, gr(등급함수)
 ├── components/             규칙: components/CLAUDE.md
 │   ├── primitives.jsx      Bar, ScoreBadge, LineChart, Radar (memo)
-│   ├── icons.jsx            인라인 SVG 아이콘 10개 (IconClose, IconHelp 등, memo)
+│   ├── icons.jsx            인라인 SVG 아이콘 9개 (IconClose, IconSearch, IconHelp 등, memo)
 │   ├── AptCard.jsx / CatPanel.jsx / CompareSheet.jsx (PNG/PDF 내보내기)
 │   ├── DetailModal.jsx / ConsultForm.jsx / ShareSheet.jsx
 │   ├── sections/

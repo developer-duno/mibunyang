@@ -2,7 +2,7 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 36개 컴포넌트 + icons.jsx (SVG 아이콘 10개)
+## memo() 36개 컴포넌트 + icons.jsx (SVG 아이콘 9개)
 
 소비자 10개: Bar, ScoreBadge, Radar, **LineChart**, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal
 섹션 8개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay
@@ -36,7 +36,7 @@
 - isDesktop prop 전달: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection → AptCard, DetailModal, CompareSheet, MapView
 - 모든 데스크톱 변경은 `isDesktop` 조건 분기로 격리 (모바일 불변)
 - Pretendard Variable 폰트: CDN 로드 (index.html), fallback Noto Sans KR → 시스템 폰트
-- SVG 아이콘: `@/components/icons.jsx` (IconClose, IconHelp 등 10개, memo 래핑)
+- SVG 아이콘: `@/components/icons.jsx` (IconClose, IconHelp 등 9개, memo 래핑)
 
 ## 전문가 페이지 규칙
 
@@ -90,7 +90,7 @@
 - 3초 auto-dismiss (useEffect + setTimeout + cleanup)
 - 범위 가드: `activeDot != null && activeDot < data.length`
 
-### icons.jsx (37줄) — 인라인 SVG 아이콘 10개 (memo 래핑, size/color props)
+### icons.jsx (37줄) — 인라인 SVG 아이콘 9개 (memo 래핑, size/color props)
 | 아이콘 | 사용 위치 |
 |--------|----------|
 | IconClose | DetailModal, SearchFilterBar(×4), MapView, ConsultForm |
