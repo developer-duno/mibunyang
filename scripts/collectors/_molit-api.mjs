@@ -29,41 +29,61 @@ export const SIDO_CODE = {
   "전북": "45", "전남": "46", "경북": "47", "경남": "48", "제주": "50",
 };
 
+// ── 재시도 불가 에러 (4xx, XML 응답 등 즉시 실패) ───────────
+class NonRetryableError extends Error {
+  constructor(message) { super(message); this.name = "NonRetryableError"; }
+}
+
 // ── API 호출 (재시도 + 선형 백오프) ──────────────────────────
 // phase: 로그 프리픽스, apiKey: 모듈 스코프 대신 파라미터로 주입
 export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey) {
   const qs = new URLSearchParams({ serviceKey: apiKey, type: "json", ...params });
   const url = `${baseUrl}/${endpoint}?${qs}`;
+  let lastStatus = 0;
 
   for (let attempt = 0; attempt < MOLIT_MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(MOLIT_TIMEOUT_MS) });
+
+      // 재시도 가능: 429/500/503
       if (res.status === 429) {
+        lastStatus = 429;
+        if (attempt === MOLIT_MAX_RETRIES - 1) break;
         await sleep((attempt + 1) * MOLIT_BACKOFF_429_MS);
         continue;
       }
       if (res.status === 500 || res.status === 503) {
+        lastStatus = res.status;
         log(phase, `  API ${res.status} (시도 ${attempt + 1}/${MOLIT_MAX_RETRIES})`);
+        if (attempt === MOLIT_MAX_RETRIES - 1) break;
         await sleep((attempt + 1) * MOLIT_BACKOFF_5XX_MS);
         continue;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // 즉시 throw (재시도 불가): 4xx
+      if (!res.ok) throw new NonRetryableError(`HTTP ${res.status}`);
 
       const text = await res.text();
       // data.go.kr sometimes returns XML error even with type=json
       if (text.startsWith("<?xml") || text.startsWith("<")) {
         if (text.includes("SERVICE_KEY_IS_NOT_REGISTERED")) {
-          throw new Error("API 키 미등록 — data.go.kr에서 서비스 신청 필요");
+          throw new NonRetryableError("API 키 미등록 — data.go.kr에서 서비스 신청 필요");
         }
-        throw new Error(`XML 응답: ${text.slice(0, 200)}`);
+        throw new NonRetryableError(`XML 응답: ${text.slice(0, 200)}`);
       }
 
       return JSON.parse(text);
     } catch (err) {
+      // NonRetryableError → 즉시 re-throw (재시도 안 함)
+      if (err instanceof NonRetryableError) throw err;
+      // 타임아웃/네트워크 에러 → 재시도
       if (attempt === MOLIT_MAX_RETRIES - 1) throw err;
+      lastStatus = 0;
       await sleep((attempt + 1) * MOLIT_BACKOFF_5XX_MS);
     }
   }
+  // 429/500/503 재시도 소진
+  throw new Error(`${endpoint}: ${MOLIT_MAX_RETRIES}회 재시도 소진 (마지막 상태: ${lastStatus})`);
 }
 
 // ── 시도별 단지 목록 조회 (V3: AptListService3 — 페이지네이션) ─

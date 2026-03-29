@@ -168,31 +168,43 @@ describe("molitApiCall", () => {
     });
   }
 
-  // 4xx (429 제외) → throw → catch → 3회 재시도 후 최종 throw
-  it("4xx (403) → 재시도 소진 후 throw", async () => {
+  // 4xx (429 제외) → NonRetryableError → 즉시 throw (재시도 안 함)
+  it("4xx (403) → 즉시 throw (mockFetch 1회)", async () => {
     mockFetch.mockResolvedValue(errRes(403));
     await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key"))
       .rejects.toThrow("HTTP 403");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  // XML 에러 — catch에 잡혀 3회 재시도 후 최종 throw
-  it("XML 응답 → 3회 재시도 후 throw", async () => {
+  // XML 에러 → NonRetryableError → 즉시 throw
+  it("XML 응답 → 즉시 throw (mockFetch 1회)", async () => {
     mockFetch.mockResolvedValue(xmlRes('<?xml version="1.0"?><error>fail</error>'));
     await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key"))
       .rejects.toThrow("XML 응답:");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("SERVICE_KEY 미등록 → 3회 재시도 후 throw", async () => {
+  it("SERVICE_KEY 미등록 → 즉시 throw (mockFetch 1회)", async () => {
     mockFetch.mockResolvedValue(xmlRes("<error>SERVICE_KEY_IS_NOT_REGISTERED</error>"));
     await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key"))
       .rejects.toThrow("API 키 미등록");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  // 3회 500 → 루프 종료 후 undefined (throw 아님, continue로 빠져나감)
-  it("3회 500 → 재시도 소진 후 undefined 반환", async () => {
+  // 3회 500 → break → 루프 후 throw "재시도 소진"
+  it("3회 500 → 재시도 소진 후 throw", async () => {
     mockFetch.mockResolvedValue(errRes(500));
-    const result = await molitApiCall("test", API_LIST_BASE, "ep", {}, "key");
-    expect(result).toBeUndefined();
+    await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key"))
+      .rejects.toThrow("재시도 소진");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  // 3회 429 → break → 루프 후 throw "재시도 소진"
+  it("3회 429 → 재시도 소진 후 throw", async () => {
+    mockFetch.mockResolvedValue(errRes(429));
+    await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key"))
+      .rejects.toThrow("재시도 소진");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   // 타임아웃 — fetch reject → catch → 3회 후 throw
@@ -200,6 +212,7 @@ describe("molitApiCall", () => {
     mockFetch.mockRejectedValue(new Error("AbortError: timeout"));
     await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key"))
       .rejects.toThrow("AbortError");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 });
 

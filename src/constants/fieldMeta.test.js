@@ -8,34 +8,26 @@ describe('FIELD_META', () => {
     expect(keys.length).toBeGreaterThanOrEqual(104);
   });
 
-  keys.forEach((key) => {
-    const meta = FIELD_META[key];
+  // 모든 필드: label·section·fmt 스키마 검증
+  it('모든 필드에 label(string)·section(string)·fmt(function) 존재', () => {
+    for (const key of keys) {
+      const meta = FIELD_META[key];
+      expect(typeof meta.label, `필드 ${key}: label이 string이 아님`).toBe('string');
+      expect(meta.label.length, `필드 ${key}: label이 빈 문자열`).toBeGreaterThan(0);
+      expect(typeof meta.section, `필드 ${key}: section이 string이 아님`).toBe('string');
+      expect(typeof meta.fmt, `필드 ${key}: fmt가 function이 아님`).toBe('function');
+    }
+  });
 
-    it(`${key}: label 존재`, () => {
-      expect(typeof meta.label).toBe('string');
-      expect(meta.label.length).toBeGreaterThan(0);
-    });
-
-    it(`${key}: section 존재`, () => {
-      expect(typeof meta.section).toBe('string');
-    });
-
-    it(`${key}: fmt 함수 존재`, () => {
-      expect(typeof meta.fmt).toBe('function');
-    });
-
-    // fmt 함수 null 안전성 검증 — 가장 중요
-    it(`${key}: fmt(null) 에러 없이 동작`, () => {
-      expect(() => meta.fmt(null)).not.toThrow();
-    });
-
-    it(`${key}: fmt(undefined) 에러 없이 동작`, () => {
-      expect(() => meta.fmt(undefined)).not.toThrow();
-    });
-
-    it(`${key}: fmt(0) 에러 없이 동작`, () => {
-      expect(() => meta.fmt(0)).not.toThrow();
-    });
+  // fmt 함수 null 안전성 검증 — 가장 중요
+  it('모든 fmt 함수가 null/undefined/0 입력에 에러 없이 동작', () => {
+    const edgeCases = [null, undefined, 0];
+    for (const key of keys) {
+      const { fmt } = FIELD_META[key];
+      for (const val of edgeCases) {
+        expect(() => fmt(val), `필드 ${key}: fmt(${val}) 에러 발생`).not.toThrow();
+      }
+    }
   });
 
   // 특수 케이스
@@ -93,23 +85,21 @@ describe('FIELD_SECTIONS', () => {
     expect(FIELD_SECTIONS).toHaveLength(10);
   });
 
-  FIELD_SECTIONS.forEach((section) => {
-    it(`섹션 "${section.key}": fields가 FIELD_META에 모두 존재`, () => {
-      section.fields.forEach((f) => {
-        expect(FIELD_META).toHaveProperty(f);
-      });
-    });
-
-    it(`섹션 "${section.key}": 중복 필드 없음`, () => {
+  // 모든 섹션: fields가 FIELD_META에 존재 + 중복 없음
+  it('모든 섹션의 fields가 FIELD_META에 존재하고 중복 없음', () => {
+    for (const section of FIELD_SECTIONS) {
       const unique = new Set(section.fields);
-      expect(unique.size).toBe(section.fields.length);
-    });
+      expect(unique.size, `섹션 "${section.key}": 중복 필드 발견`).toBe(section.fields.length);
+      for (const f of section.fields) {
+        expect(FIELD_META, `섹션 "${section.key}": 필드 "${f}"가 FIELD_META에 없음`).toHaveProperty(f);
+      }
+    }
   });
 
   it('모든 FIELD_META 키가 FIELD_SECTIONS에 포함', () => {
     const allSectionFields = FIELD_SECTIONS.flatMap((s) => s.fields);
-    Object.keys(FIELD_META).forEach((key) => {
-      expect(allSectionFields).toContain(key);
-    });
+    for (const key of Object.keys(FIELD_META)) {
+      expect(allSectionFields, `필드 "${key}"가 어떤 섹션에도 없음`).toContain(key);
+    }
   });
 });
