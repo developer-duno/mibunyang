@@ -13,6 +13,17 @@
 보정 대상: `units <= 1` 또는 `unsold_rate >= 100%`인 단지.
 보정 시 `unsold_rate`도 재계산: `ROUND(unsold / new_units * 100, 1)`.
 
+### MOLIT 수집기 모듈 구조
+
+| 파일 | 역할 | export 함수 | isCLI |
+|------|------|-------------|-------|
+| `_molit-api.mjs` | 공유 모듈 (API 호출·매칭·페이지네이션) | molitApiCall, fetchSidoAptList, findBestMatch, cleanName, SIDO_CODE 등 | — |
+| `molit-building-info.mjs` | 건물 상세 수집 (주차·층수·에너지·난방·복도) | extractBuildingInfo, updateBuilding, fetchAptDetail | ✓ |
+| `molit-units.mjs` | 세대수 보정 (units, unsold_rate) | getTargets, updateUnits, fetchAptDetail | ✓ |
+
+- isCLI 패턴: `process.argv[1] && import.meta.url.endsWith(...)` — 10개 파일에서 사용 (테스트 시 main() 실행 방지)
+- 테스트: `_molit-api.test.mjs`, `molit-building-info.test.mjs`, `molit-units.test.mjs` (복합 시나리오 35블록)
+
 ## 네이버 부동산 수집 — 로컬 자동화
 
 **네이버 수집은 한국 IP가 필요. Windows 작업 스케줄러로 로컬 PC에서 자동 실행.**
