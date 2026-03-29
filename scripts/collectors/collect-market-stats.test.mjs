@@ -80,4 +80,21 @@ describe("extractLatestByRegion", () => {
     const result = extractLatestByRegion(rows, makeIndicator());
     expect(Object.keys(result)).toHaveLength(0);
   });
+
+  it("C2_NM=null인 행 → 포함 (C2_NM falsy 조건 mutation 방지)", () => {
+    const rows = [makeRow("서울", null, "202601", "100.0")];
+    const result = extractLatestByRegion(rows, makeIndicator());
+    expect(result["서울"]).toBeDefined();
+  });
+
+  it("C2_NM='강남구' 등 비전체 행 → 제외 (필터 mutation 방지)", () => {
+    const rows = [
+      makeRow("서울", "전체", "202601", "100.0"),
+      makeRow("서울", "강남구", "202601", "150.0"),
+      makeRow("서울", "서초구", "202601", "140.0"),
+    ];
+    const result = extractLatestByRegion(rows, makeIndicator());
+    expect(result["서울"].value).toBe(100.0);
+    expect(result["서울"].value).not.toBe(150.0);
+  });
 });

@@ -58,6 +58,26 @@ describe("findNearestElemSchool", () => {
     const schools = [{ type: "초", distance: 0 }, { type: "초", distance: 400 }];
     expect(findNearestElemSchool(schools)).toBe(400);
   });
+
+  it("중학교/고등학교 섞여도 초등학교만 선택 (type mutation 방지)", () => {
+    const schools = [
+      { type: "중", distance: 100 },  // 더 가깝지만 무시
+      { type: "초", distance: 300 },  // 선택됨
+      { type: "고", distance: 50 },   // 더 가깝지만 무시
+    ];
+    expect(findNearestElemSchool(schools)).toBe(300);
+  });
+
+  it("여러 초등학교 중 최소 거리 검증 (Math.min mutation 방지)", () => {
+    const schools = [
+      { type: "초", distance: 500 },
+      { type: "초", distance: 200 },
+      { type: "초", distance: 800 },
+    ];
+    const result = findNearestElemSchool(schools);
+    expect(result).toBe(200);
+    expect(result).not.toBe(800); // Math.max mutation 감지
+  });
 });
 
 // ── calcWalkingMinutes ────────────────────────────────────────

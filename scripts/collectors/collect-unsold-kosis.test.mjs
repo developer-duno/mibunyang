@@ -131,4 +131,18 @@ describe("calcProportionalUnsold", () => {
   it("null 입력 → null", () => {
     expect(calcProportionalUnsold(null, 100, 500)).toBeNull();
   });
+
+  it("경계값: unsoldRate 정확히 100.0% → 허용 (> 100 조건)", () => {
+    // guUnsold=100, aptUnits=100, totalUnitsInGu=100 → estimated=100, unsoldRate=100.0
+    const result = calcProportionalUnsold(100, 100, 100);
+    expect(result).not.toBeNull();
+    expect(result.unsoldRate).toBe(100.0);
+  });
+
+  it("경계값: unsoldRate 100.1% → null", () => {
+    // guUnsold=1001, aptUnits=100, totalUnitsInGu=1000 → estimated=100, unsoldRate=100.0 (반올림)
+    // 직접 100 초과 케이스: guUnsold=101, aptUnits=100, totalUnitsInGu=100 → 101, 101%
+    const result = calcProportionalUnsold(101, 100, 100);
+    expect(result).toBeNull();
+  });
 });
