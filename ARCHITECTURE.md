@@ -62,10 +62,11 @@ scripts/
 └── collectors/
     ├── _shared.mjs         공유 유틸 (loadEnv, upsertBatch, fetchWithRetry)
     ├── naver-collect.py  ★ 네이버 인근 매물 수집
-    └── naver-presale.mjs ★ 네이버 분양정보 수집 (pre.land.naver.com, 19필드)
+    ├── naver-presale.mjs ★ 네이버 분양정보 수집 (pre.land POST API, JWT 불필요, 19필드)
+    └── naver-presale-jwt.py  JWT 추출 헬퍼 (new.land, 향후 인증 필요 시 fallback)
 
 supabase/
-└── schema.sql              14개 테이블 + VIEW + presale 19컬럼 + RLS + 트리거
+└── schema.sql              15개 테이블 + 2 VIEW + presale 19컬럼
 
 .github/workflows/
 ├── daily-deploy.yml        매일 빌드+배포
@@ -99,11 +100,11 @@ GitHub Actions (일/주/월 스케줄)
   │                                    ↓
   └── naver-units.py ────────────→ 세대수 보정 JSON
 
-로컬 PC (Windows 스케줄러, 매주 월/목 06:00, 한국 IP 필수)
+로컬 PC (Windows 스케줄러, 매주 월/목 08:00, 한국 IP 필수)
   └── run-naver-local.sh ──────→ 6단계 파이프라인:
       1. naver-collect.py → complexes/articles
       2. sync-naver-complex.mjs → apartments 22필드
-      3. naver-presale.mjs → apartments presale_* 19필드 (⚠️ JWT 인증 실패 중, 브라우저 기반 전환 필요)
+      3. naver-presale.mjs → apartments presale_* 19필드 (pre.land POST API, JWT 불필요)
       4. naver-units.mjs → 세대수 보정
       5. calc-exclusive-ratio.mjs → 전용률
       6. compute-scores.mjs → cats_cache 갱신

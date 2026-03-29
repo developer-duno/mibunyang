@@ -73,7 +73,7 @@ constants → scoring → theme → components → hooks → App
 - `api/CLAUDE.md` — null 함정, 한글, Supabase 연동, 인증
 - `scripts/CLAUDE.md` — units 보정 파이프라인, 네이버 로컬 자동화 (6단계), 후처리 파이프라인
 - `.github/workflows/CLAUDE.md` — 워크플로우 목록, GitHub Secrets
-- `supabase/CLAUDE.md` — 테이블 스키마 (14개 + VIEW + presale 19컬럼)
+- `supabase/CLAUDE.md` — 테이블 스키마 (15개 + 2 VIEW + presale 19컬럼)
 
 ## 데이터 소스
 
