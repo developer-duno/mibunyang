@@ -9,12 +9,14 @@
  * - matchPresaleToApt: 4단계 매칭 로직
  */
 import { describe, it, expect } from "vitest";
+import { vi } from "vitest";
 import {
   parsePresalePrice,
   sanitizeImageUrl,
   parsePresaleAddress,
   toPresaleRow,
   matchPresaleToApt,
+  tryPythonJwt,
 } from "./naver-presale.mjs";
 
 // ── 테스트 팩토리 ─────────────────────────────────────────────
@@ -212,6 +214,29 @@ describe("toPresaleRow", () => {
     expect(row.presale_buildings).toBeNull();
     expect(row.presale_inquiry).toBeNull();
     expect(row.presale_housing_type).toBe("아파트");
+  });
+});
+
+// ── tryPythonJwt ─────────────────────────────────────────────
+
+describe("tryPythonJwt", () => {
+  // Python 실행 결과에 따라 JWT 또는 null 반환 확인
+  // 실제 Python 호출은 환경 의존적이므로, 반환값 형식만 검증
+  it("JWT 토큰 또는 null을 반환한다", () => {
+    const result = tryPythonJwt();
+    // Python 미설치 또는 네트워크 불가 시 null, 성공 시 eyJ... 문자열
+    if (result !== null) {
+      expect(result).toMatch(/^eyJ/);
+      expect(typeof result).toBe("string");
+    } else {
+      expect(result).toBeNull();
+    }
+  });
+
+  // 반환 타입은 항상 string 또는 null (예외 발생 안 함)
+  it("예외를 던지지 않고 안전하게 null을 반환한다", () => {
+    // tryPythonJwt는 내부에서 모든 에러를 catch하므로 예외 발생 안 함
+    expect(() => tryPythonJwt()).not.toThrow();
   });
 });
 

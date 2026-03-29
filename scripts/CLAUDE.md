@@ -44,7 +44,7 @@
 | ---- | ------------------------ | --------------------------------------------------------- | ------ |
 | 1/6  | naver-collect.py         | 네이버 매물 수집 (curl_cffi)                              | 필수   |
 | 2/6  | sync-naver-complex.mjs   | 22개 네이버 필드 → apartments 동기화                      | 필수   |
-| 3/6  | **naver-presale.mjs**    | **분양정보 19필드 수집 (pre.land.naver.com, isCLI 패턴)** | 비필수 |
+| 3/6  | **naver-presale.mjs**    | **분양정보 19필드 수집 (pre.land POST API, JWT 불필요)** | 비필수 |
 | 4/6  | naver-units.mjs          | 세대수(units) 2차 보정                                    | 필수   |
 | 5/6  | calc-exclusive-ratio.mjs | 전용률 계산                                               | 필수   |
 | 6/6  | compute-scores.mjs       | cats_cache 사전 스코어링 갱신                             | 비필수 |
@@ -113,7 +113,7 @@ bash scripts/post-naver-collect.sh
 | 네이버 부동산 | naver-collect.py                 | 1초                 | 3회            | JWT 리셋 + 5×(i+1)초 대기      | 비공식 API, 429 빈번                                 |
 | 네이버 부동산 | naver-listings.mjs               | 1초                 | 5회            | JWT 리셋 + [3,5,10,15,20]초    | 위와 동일 API                                        |
 | 네이버 부동산 | naver-units.mjs                  | 3초                 | 3회            | JWT 리셋 + [5,10,20]초         | 검색 API는 더 민감                                   |
-| 네이버 분양   | naver-presale.mjs                | 2초                 | 3회            | JWT 리셋 + [5,10,20]초         | pre.land.naver.com, 한국 IP 필수                     |
+| 네이버 분양   | naver-presale.mjs                | 2초                 | 3회            | [5,10,20]초 대기               | pre.land POST API, JWT 불필요 (2026-03 전환)         |
 | data.go.kr    | molit-units, molit-building-info | 0.4초               | 3회            | (i+1)×2초                      | 공공 API 초당 10건 제한                              |
 | data.go.kr    | housing-permits                  | fetchWithRetry 사용 | 3회            | 지수 백오프                    | 공공 API                                             |
 | data.go.kr    | population, migration            | fetchWithRetry 사용 | 3회            | 지수 백오프                    | 공공 API                                             |
@@ -141,4 +141,13 @@ bash scripts/post-naver-collect.sh
 - bjd_code 보유: 1480/1481 (99.9%), 모두 10자리 정상
 - lot_main 유효: 1457건 (98.4%)
 - API 키 등록 정상 (NORMAL SERVICE)
-- **현 수집기는 소수 비주거 건물만 매칭** — 주거 에너지 필요 시 KEPCO API 등 별도 소스 조사 필요
+- **현 수집기는 소수 비주거 건물만 매칭** — 주거 에너지 kWh/MJ 데이터는 공개 API 불가
+
+### 주거용 에너지 데이터 조사 결론 (2026-03-29)
+
+단지별 에너지 사용량(kWh/MJ)은 공개 API로 접근 불가:
+- **KEPCO**: 시군구 단위 집계만 (개인정보 이슈로 단지별 미제공)
+- **한국가스공사**: 시군구 단위만
+- **BEMS(건물에너지정보)**: 500세대+ 의무보고이나 API 미제공 (스크래핑 필요, 법적 리스크)
+- **K-apt 관리비**: `collect-maintenance.mjs`가 이미 난방비/가스료/전기료(원) 수집 중 → 에너지 "비용" 비교 가능
+- **결론**: 현재 K-apt 관리비 데이터가 최선. 추가 조치 불필요.

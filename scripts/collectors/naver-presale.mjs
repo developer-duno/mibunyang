@@ -13,6 +13,9 @@
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
+import { execFileSync } from "child_process";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter,
   upsertBatch, stringSimilarity, sleep, REGION_MAP, VALID_REGIONS,
@@ -76,9 +79,35 @@ async function throttle() {
   lastRequestTime = Date.now();
 }
 
-async function ensureJwt() {
-  if (jwtToken && (Date.now() - jwtTokenTime) < JWT_LIFETIME) return jwtToken;
+/** Python curl_cffi 헬퍼로 JWT 추출 시도 */
+export function tryPythonJwt() {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const scriptPath = resolve(__dirname, "naver-presale-jwt.py");
+  try {
+    const stdout = execFileSync("python3", [scriptPath], {
+      encoding: "utf-8",
+      timeout: 60000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const token = stdout.trim();
+    if (token && token.startsWith("eyJ")) {
+      log(PHASE, `JWT 획득 via Python (${token.slice(0, 20)}...)`);
+      return token;
+    }
+    log(PHASE, "Python JWT 출력이 유효하지 않음 — fetch fallback 사용");
+    return null;
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      log(PHASE, "Python 미설치 — fetch fallback 사용");
+    } else {
+      log(PHASE, `Python 헬퍼 실패: ${err.message?.slice(0, 80)} — fetch fallback 사용`);
+    }
+    return null;
+  }
+}
 
+/** fetch로 JWT 추출 (Python 실패 시 fallback) */
+async function fetchJwtFallback() {
   await throttle();
   try {
     const res = await fetch(`${PRESALE_BASE}/complexes/6025041/9033181`, {
@@ -96,37 +125,53 @@ async function ensureJwt() {
     for (const pat of patterns) {
       const m = html.match(pat);
       if (m) {
-        jwtToken = m[1];
-        jwtTokenTime = Date.now();
-        log(PHASE, `JWT 획득 (${jwtToken.slice(0, 20)}...)`);
-        return jwtToken;
+        log(PHASE, `JWT 획득 via fetch (${m[1].slice(0, 20)}...)`);
+        return m[1];
       }
     }
-    // JWT 없이도 API 접근 가능할 수 있음 — null 반환
-    log(PHASE, "JWT 미발견 — 인증 없이 시도");
+    log(PHASE, "JWT 미발견 (fetch) — 인증 없이 시도");
     return null;
   } catch (err) {
-    log(PHASE, `JWT 추출 실패: ${err.message} — 인증 없이 시도`);
+    log(PHASE, `JWT 추출 실패 (fetch): ${err.message} — 인증 없이 시도`);
     return null;
   }
 }
 
-/** API 요청 (재시도 + JWT) */
-async function presaleRequest(url) {
+async function ensureJwt() {
+  if (jwtToken && (Date.now() - jwtTokenTime) < JWT_LIFETIME) return jwtToken;
+
+  // 1차: Python curl_cffi (TLS fingerprint 우회)
+  const pyToken = tryPythonJwt();
+  if (pyToken) {
+    jwtToken = pyToken;
+    jwtTokenTime = Date.now();
+    return jwtToken;
+  }
+
+  // 2차: 네이티브 fetch (fallback)
+  const fetchToken = await fetchJwtFallback();
+  if (fetchToken) {
+    jwtToken = fetchToken;
+    jwtTokenTime = Date.now();
+    return jwtToken;
+  }
+
+  return null;
+}
+
+/** POST API 요청 (재시도, JWT 불필요 — 2026-03 신규 API) */
+async function presalePost(endpoint, body = {}) {
+  const url = `${PRESALE_BASE}${endpoint}`;
   for (let i = 0; i < MAX_RETRIES; i++) {
     try {
       await throttle();
-      const headers = { ...HEADERS };
-      const token = await ensureJwt();
-      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { ...HEADERS, "Content-Type": "application/json", "Origin": PRESALE_BASE },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000),
+      });
 
-      const res = await fetch(url, { headers, signal: AbortSignal.timeout(30000) });
-
-      if (res.status === 401 || res.status === 403) {
-        jwtToken = null; // 토큰 리셋
-        if (i < MAX_RETRIES - 1) { await sleep(RETRY_DELAYS[i]); continue; }
-        return null;
-      }
       if (res.status === 429) {
         await sleep(RETRY_DELAYS[i]);
         continue;
@@ -134,10 +179,14 @@ async function presaleRequest(url) {
       if (!res.ok) return null;
 
       const data = await res.json();
-      return data;
+      if (data?.isSuccess === false) {
+        logError(PHASE, `API 오류 ${endpoint}: ${data.message ?? data.errorCode ?? "unknown"}`);
+        return null;
+      }
+      return data?.result ?? data;
     } catch (err) {
       if (i === MAX_RETRIES - 1) {
-        logError(PHASE, `요청 실패 ${url}: ${err.message}`);
+        logError(PHASE, `요청 실패 ${endpoint}: ${err.message}`);
         return null;
       }
       await sleep(RETRY_DELAYS[i]);
@@ -226,11 +275,11 @@ export function toPresaleRow(complex, detail, listItem) {
     naver_presale_no: String(listItem?.preSaleComplexNumber ?? complex?.build_dtl_cd ?? ""),
     naver_presale_seq: String(listItem?.announcementPreSaleSequence ?? complex?.supp_cd ?? ""),
     presale_general_supply: complex?.house_supp_cnt ?? null,
-    presale_buildings: detail?.dong_cnt ?? detail?.building_count ?? null,
-    presale_parking: detail?.parking_cnt ?? detail?.total_parking_count ?? null,
-    presale_inquiry: detail?.inquiry_tel ?? detail?.contact_tel ?? null,
-    presale_features: detail?.features ?? detail?.complex_feature ?? null,
-    presale_move_in: detail?.move_in_date ?? detail?.use_approve_ymd ?? null,
+    presale_buildings: complex?.dong_cnt ?? detail?.dong_cnt ?? null,
+    presale_parking: complex?.parking_cnt ?? detail?.parking_cnt ?? null,
+    presale_inquiry: complex?.sell_office_phone ?? detail?.inquiry_tel ?? null,
+    presale_features: complex?.build_point ?? detail?.features ?? null,
+    presale_move_in: complex?.mvi_date ?? detail?.move_in_date ?? null,
     presale_recruit_date: complex?.recruit_date ?? null,
     presale_schedule: listItem ? {
       scheduleName: listItem.scheduleName ?? null,
@@ -243,13 +292,13 @@ export function toPresaleRow(complex, detail, listItem) {
     // enrichment 후보 (null인 기존 컬럼만 채울 때 사용)
     _enrich: {
       units: complex?.total_house_cnt ?? null,
-      builder: detail?.construction_company
-        ? resolveBuilder(detail.construction_company)
+      builder: complex?.cmpy_nm
+        ? resolveBuilder(complex.cmpy_nm.trim())
         : null,
-      max_floor: detail?.max_floor ?? detail?.high_floor ?? null,
-      lat: complex?.ypos ? parseFloat(complex.ypos) : null,
-      lng: complex?.xpos ? parseFloat(complex.xpos) : null,
-      completion: detail?.move_in_date?.replace(/\./g, "").slice(0, 6) ?? null,
+      max_floor: complex?.max_flr_cnt ?? null,
+      lat: complex?.ypos != null ? parseFloat(complex.ypos) : null,
+      lng: complex?.xpos != null ? parseFloat(complex.xpos) : null,
+      completion: complex?.mvi_date?.replace(/[-./]/g, "").slice(0, 6) ?? null,
       bjd_code: complex?.bubdong_code ?? null,
       address: complex?.address ?? null,
     },
@@ -314,98 +363,75 @@ export function matchPresaleToApt(presale, apartments) {
   return null;
 }
 
-// ── 리스트 API 탐색 (URL 미확정 → 다수 패턴 시도) ───────────
+// ── 리스트 / 상세 API (2026-03 신규 POST API) ───────────────
 
-const LIST_URL_PATTERNS = [
-  (cortarNo) => `${PRESALE_BASE}/api/complexes/presale?cortarNo=${cortarNo}`,
-  (cortarNo) => `${PRESALE_BASE}/api/presale/list?cortarNo=${cortarNo}`,
-  (cortarNo) => `${PRESALE_BASE}/api/complexes/list?cortarNo=${cortarNo}&realEstateType=PRE`,
-  (cortarNo) => `${PRESALE_BASE}/api/complexes/single-markers/2.0?cortarNo=${cortarNo}&preSaleStageCode=`,
-  (cortarNo) => `${PRESALE_BASE}/api/articles/presale?cortarNo=${cortarNo}`,
-];
-
-let workingListPattern = null;
-
+/** API 프로브 — preSaleScheduleList 엔드포인트 확인 */
 async function probeEndpoints() {
-  const testCortarNo = "1100000000"; // 서울
-  log(PHASE, `API 엔드포인트 탐색 (cortarNo=${testCortarNo})...`);
-
-  for (const patternFn of LIST_URL_PATTERNS) {
-    const url = patternFn(testCortarNo);
-    log(PHASE, `  시도: ${url}`);
-    const data = await presaleRequest(url);
-    if (data && (data.result?.list || data.complexList || Array.isArray(data))) {
-      log(PHASE, `  ✓ 성공: ${url}`);
-      workingListPattern = patternFn;
-      return data;
-    }
-    if (data && data.isSuccess != null) {
-      log(PHASE, `  ✓ 응답 확인 (isSuccess=${data.isSuccess}): ${url}`);
-      workingListPattern = patternFn;
-      return data;
-    }
+  log(PHASE, "API 엔드포인트 프로브 (POST /api/home/preSaleScheduleList)...");
+  const data = await presalePost("/api/home/preSaleScheduleList", { bubdong_code: "0000000000" });
+  if (data?.list && data.total_count > 0) {
+    log(PHASE, `  OK — 전국 ${data.total_count}건 확인`);
+    return data;
   }
-
-  // complex 엔드포인트 직접 시도 (리스트 없이 알려진 단지로)
-  log(PHASE, "  리스트 API 미발견 — complex 엔드포인트 직접 확인...");
-  const complexUrl = `${PRESALE_BASE}/api/complexes/6025041/9033181/complex`;
-  const complexData = await presaleRequest(complexUrl);
-  if (complexData?.build_nm) {
-    log(PHASE, `  ✓ complex 엔드포인트 동작 확인: ${complexData.build_nm}`);
-    return { _complexOnly: true, sample: complexData };
+  // 단일 단지 detail로 fallback 확인
+  log(PHASE, "  리스트 실패 — complex/detail 직접 확인...");
+  const detail = await presalePost("/api/complex/detail", { build_dtl_cd: 6025041, supp_cd: 9033181 });
+  if (detail?.build_nm) {
+    log(PHASE, `  OK (detail only) — ${detail.build_nm}`);
+    return { _complexOnly: true, sample: detail };
   }
-
-  logError(PHASE, "모든 엔드포인트 탐색 실패 — API 접근 불가");
+  logError(PHASE, "모든 엔드포인트 프로브 실패 — API 접근 불가");
   return null;
 }
 
-/** 리스트 API로 특정 시도의 분양단지 목록 조회 */
+/** 시도별 분양단지 목록 조회 (페이지네이션) */
 async function fetchPresaleList(region) {
   const cortarNo = REGION_CORTAR[region];
   if (!cortarNo) return [];
-  if (!workingListPattern) return [];
 
   const results = [];
   let page = 1;
   let hasNext = true;
+  const PAGE_SIZE = 100;
 
   while (hasNext) {
-    const url = workingListPattern(cortarNo) + `&page=${page}`;
-    const data = await presaleRequest(url);
-    if (!data) break;
+    const data = await presalePost("/api/home/preSaleScheduleList", {
+      bubdong_code: cortarNo,
+      page,
+      pageSize: PAGE_SIZE,
+    });
+    if (!data?.list?.length) break;
 
-    const list = data.result?.list || data.complexList || (Array.isArray(data) ? data : []);
-    if (!list.length) break;
-
-    for (const item of list) {
-      const concern = item.concernPreSaleComplex || item;
+    for (const item of data.list) {
       results.push({
-        preSaleComplexNumber: concern.preSaleComplexNumber ?? concern.complexNo ?? null,
-        announcementPreSaleSequence: concern.announcementPreSaleSequence ?? null,
-        preSaleComplexName: concern.preSaleComplexName ?? concern.complexName ?? null,
-        preSaleStageCode: concern.preSaleStageCode ?? null,
-        scheduleName: concern.scheduleName ?? null,
-        dateInfo: concern.dateInfo ?? null,
+        preSaleComplexNumber: item.build_dtl_cd ?? null,
+        announcementPreSaleSequence: item.supp_cd ?? null,
+        preSaleComplexName: item.build_nm ?? null,
+        preSaleStageCode: item.supp_proc_step ?? null,
+        scheduleName: item.schdl_info?.schdl_title ?? null,
+        dateInfo: item.schdl_info?.start_date ?? item.recruit_date ?? null,
       });
     }
 
-    hasNext = data.result?.hasNextPage ?? false;
+    hasNext = data.has_next_page ?? false;
     page++;
   }
 
   return results;
 }
 
-/** 단지 상세 — complex 엔드포인트 */
+/** 단지 상세 — POST /api/complex/detail */
 async function fetchComplexData(complexNo, seq) {
-  const url = `${PRESALE_BASE}/api/complexes/${complexNo}/${seq}/complex`;
-  return await presaleRequest(url);
+  const no = Number(complexNo), s = Number(seq);
+  if (!Number.isFinite(no) || !Number.isFinite(s)) return null;
+  return await presalePost("/api/complex/detail", { build_dtl_cd: no, supp_cd: s });
 }
 
-/** 단지 상세 — detail 엔드포인트 (실패 시 null) */
+/** 단지 일정 — POST /api/complex/schedule (실패 시 null) */
 async function fetchDetailData(complexNo, seq) {
-  const url = `${PRESALE_BASE}/api/complexes/${complexNo}/${seq}/detail`;
-  return await presaleRequest(url);
+  const no = Number(complexNo), s = Number(seq);
+  if (!Number.isFinite(no) || !Number.isFinite(s)) return null;
+  return await presalePost("/api/complex/schedule", { build_dtl_cd: no, supp_cd: s });
 }
 
 // ── 메인 ────────────────────────────────────────────────────
@@ -450,7 +476,7 @@ async function main() {
   const regions = regionFilter ? [regionFilter] : Object.keys(REGION_CORTAR);
   const allPresales = [];
 
-  if (workingListPattern) {
+  if (!probeResult._complexOnly) {
     for (const region of regions) {
       log(PHASE, `[목록] ${region} 조회...`);
       const list = await fetchPresaleList(region);
@@ -459,12 +485,11 @@ async function main() {
     }
   } else {
     log(PHASE, "리스트 API 미사용 — 기존 naver_presale_no 기반으로 갱신만 수행");
-    // 기존에 presale_no가 있는 아파트만 갱신
     for (const apt of apts) {
       if (apt.naver_presale_no) {
         allPresales.push({
           preSaleComplexNumber: apt.naver_presale_no,
-          announcementPreSaleSequence: null, // seq 미보유 시 스킵됨
+          announcementPreSaleSequence: null,
           preSaleComplexName: apt.name,
           _region: apt.region,
         });
