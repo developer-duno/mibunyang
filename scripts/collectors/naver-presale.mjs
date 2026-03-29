@@ -576,7 +576,7 @@ async function main() {
   // Phase 2+3: Detail 수집 + 매칭 + Upsert
   const updateRows = [];
   const insertRows = [];
-  const tierCounts = { 1: 0, 2: 0, 3: 0, 4: 0, none: 0 };
+  const tierCounts = { 1: 0, 2: 0, 3: 0, 4: 0, new: 0, none: 0 };
 
   for (let idx = 0; idx < total; idx++) {
     const item = uniquePresales[idx];
@@ -612,9 +612,9 @@ async function main() {
     const match = matchPresaleToApt(row, apts, aptIndexes);
 
     if (match) {
-      tierCounts[match.tier ?? "?"] = (tierCounts[match.tier ?? "?"] || 0) + 1;
-      if ((match.tier ?? 0) >= 3) {
-        log(PHASE, `  ⚠ 저신뢰 매칭: ${row._name} → ${match.apartment.name} (tier=${match.tier ?? "?"} conf=${(match.confidence ?? 0).toFixed(2)})`);
+      tierCounts[match.tier]++;
+      if (match.tier >= 3) {
+        log(PHASE, `  ⚠ 저신뢰 매칭: ${row._name} → ${match.apartment.name} (tier=${match.tier} conf=${match.confidence.toFixed(2)})`);
       }
       // 기존 아파트 업데이트
       const update = { id: match.apartment.id, ...extractPresaleFields(row) };
@@ -638,6 +638,7 @@ async function main() {
       const totalUnits = complexData.total_house_cnt ?? 0;
 
       if (isAptLike && totalUnits >= MIN_UNITS_FOR_INSERT) {
+        tierCounts.new++;
         insertRows.push(buildNewApartment(row, complexData, item._region));
         reporter.success();
       } else {
@@ -648,7 +649,7 @@ async function main() {
   }
 
   // 매칭 tier 집계
-  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 미매칭=${tierCounts.none}`);
+  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none}`);
 
   // DB 저장
   if (!dryRun) {
