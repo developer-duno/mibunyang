@@ -18,10 +18,6 @@ loadEnv();
 
 const PHASE = "applyhome";
 const API_KEY = process.env.MOLIT_KEY;
-if (!API_KEY) {
-  logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
-  process.exit(1);
-}
 
 const BASE_URL = "https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1/getRemndrLttotPblancCmpet";
 
@@ -55,7 +51,7 @@ async function fetchAllPages() {
 }
 
 // ── 아파트별 가중평균 경쟁률 집계 ────────────────────────────
-function aggregateByApartment(rows) {
+export function aggregateByApartment(rows) {
   // HOUSE_MANAGE_NO별 그룹핑
   const groups = {};
   for (const row of rows) {
@@ -91,6 +87,11 @@ function aggregateByApartment(rows) {
 
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
+  if (!API_KEY) {
+    logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
+    process.exit(1);
+  }
+
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
@@ -148,4 +149,5 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

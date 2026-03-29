@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
+import { REGION_MAP } from "./collectors/_shared.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -71,15 +72,6 @@ function resolveBuilder(name) {
 // ============================================================
 // Phase 1: 청약홈 (목록 + 주택형별 + 지오코딩)
 // ============================================================
-const REGION_MAP = {
-  "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
-  "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
-  "울산광역시": "울산", "세종특별자치시": "세종",
-  "경기도": "경기", "강원특별자치도": "강원", "강원도": "강원",
-  "충청북도": "충북", "충청남도": "충남",
-  "전북특별자치도": "전북", "전라북도": "전북", "전라남도": "전남",
-  "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주",
-};
 const AREA_CODE_REGION = {
   "100": "서울", "200": "부산", "210": "대구", "300": "대전",
   "400": "인천", "410": "경기", "500": "광주", "600": "울산",
@@ -228,7 +220,7 @@ ${JSON.stringify(items[0], null, 2)}`);
       const totalUnits = units.reduce((sum, u) =>
         sum + (parseInt(u.SUPLY_HSHLDCO || 0) + parseInt(u.SPSPLY_HSHLDCO || 0)), 0);
       const finalUnits = totalUnits > 0 ? totalUnits : a.units;
-      const unsoldRate = finalUnits > 0 ? Math.round(a.unsold / finalUnits * 1000) / 10 : a.unsoldRate;
+      const unsoldRate = (a.unsold != null && finalUnits > 0) ? Math.round(a.unsold / finalUnits * 1000) / 10 : a.unsoldRate;
       return { ...a, area, price, units: finalUnits, unsoldRate, pp: price && area ? Math.round(price / area * 3.3058) : null };
     });
     log(`  주택형별 보강: ${enriched}건`);
@@ -272,17 +264,6 @@ ${JSON.stringify(items[0], null, 2)}`);
 // ============================================================
 // Phase 2: KOSIS 통계
 // ============================================================
-const KOSIS_REGION_MAP = {
-  "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
-  "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
-  "울산광역시": "울산", "세종특별자치시": "세종",
-  "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원",
-  "충청북도": "충북", "충청남도": "충남",
-  "전라북도": "전북", "전북특별자치도": "전북", "전라남도": "전남",
-  "경상북도": "경북", "경상남도": "경남",
-  "제주도": "제주", "제주특별자치도": "제주",
-};
-
 async function phase2_kosis(apartments) {
   if (!KOSIS_KEY) { log("Phase 2: KOSIS_KEY 없음, 건너뜀"); meta.phases.kosis = { ok: false, reason: "no key" }; return apartments; }
   log("Phase 2: KOSIS 통계 조회...");
@@ -311,7 +292,7 @@ async function phase2_kosis(apartments) {
     const unsoldByRegionGu = {};
     const latestPeriod = {};
     for (const row of rows) {
-      const region = KOSIS_REGION_MAP[row.C1_NM];
+      const region = REGION_MAP[row.C1_NM];
       if (!region) continue;
       const gu = row.C2_NM || "_total";
       const period = row.PRD_DE;
@@ -394,7 +375,7 @@ async function phase2_kosis(apartments) {
         for (const row of popRows) {
           if (row.C2_NM !== "자연증가율(천명당)") continue;
           if (row.C1_NM === "전국") continue;
-          const region = KOSIS_REGION_MAP[row.C1_NM];
+          const region = REGION_MAP[row.C1_NM];
           if (!region) continue;
           const val = parseFloat(row.DT);
           if (isNaN(val)) continue;
@@ -1166,7 +1147,7 @@ async function main() {
       apartments = apartments.map(a => {
         const fix = corrections[a.id];
         if (fix && fix.units > 1 && (a.units || 0) <= 1) {
-          const unsoldRate = fix.units > 0 ? Math.round(a.unsold / fix.units * 1000) / 10 : a.unsoldRate;
+          const unsoldRate = (a.unsold != null && fix.units > 0) ? Math.round(a.unsold / fix.units * 1000) / 10 : a.unsoldRate;
           corrected++;
           return { ...a, units: fix.units, unsoldRate, unitSource: "naver" };
         }

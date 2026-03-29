@@ -2,46 +2,24 @@
 /**
  * transport-tago.mjs 테스트 — 지하철역명/노선 추출, IC/KTX 필터, 증분 수집 로직
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from "vitest";
 
-// ── 테스트 대상 함수 직접 정의 (모듈 export 없이 테스트) ──────────
+vi.mock("./_shared.mjs", async (importOriginal) => {
+  const orig = await importOriginal();
+  return {
+    ...orig,
+    loadEnv: vi.fn(),
+    getSupabase: vi.fn(),
+    log: vi.fn(),
+    logError: vi.fn(),
+    fetchWithRetry: vi.fn(),
+    sleep: vi.fn(),
+    recordApiQuota: vi.fn(),
+  };
+});
 
-/** 가장 가까운 지하철역의 역명 추출 */
-function extractSubwayName(doc) {
-  if (!doc) return null;
-  const name = doc.place_name || "";
-  const match = name.match(/^(.+?역)/);
-  return match ? match[1] : name;
-}
-
-/** 지하철 결과에서 가장 가까운 역의 노선 추출 */
-function extractSubwayLines(subways, stationName) {
-  if (!stationName || subways.length === 0) return null;
-  const baseName = stationName.replace(/역$/, "");
-  const lines = new Set();
-  for (const s of subways) {
-    if (!(s.place_name || "").includes(baseName)) continue;
-    const cat = s.category_name || "";
-    const lineMatch = cat.match(/(\d+호선|[가-힣]+선)$/);
-    if (lineMatch) lines.add(lineMatch[1]);
-    const nameMatch = (s.place_name || "").match(/(\d+호선|[가-힣]+선)$/);
-    if (nameMatch) lines.add(nameMatch[1]);
-  }
-  return lines.size > 0 ? [...lines].join(",") : null;
-}
-
-/** KTX역 결과 필터 */
-function isValidStation(doc) {
-  const name = doc.place_name || "";
-  const cat = doc.category_name || "";
-  return name.endsWith("역") || cat.includes("기차") || cat.includes("철도");
-}
-
-/** IC 결과 필터 */
-function isValidIC(doc) {
-  const name = doc.place_name || "";
-  return name.includes("IC") || name.includes("나들목") || name.includes("인터체인지");
-}
+const { extractSubwayName, extractSubwayLines, isValidStation, isValidIC } =
+  await import("./transport-tago.mjs");
 
 // ── 팩토리 함수 ────────────────────────────────────────────────
 

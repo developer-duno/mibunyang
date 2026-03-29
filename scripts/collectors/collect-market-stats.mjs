@@ -12,7 +12,7 @@
  *   node scripts/collectors/collect-market-stats.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-market-stats.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, createReporter, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, sleep, REGION_MAP } from "./_shared.mjs";
 
 loadEnv();
 
@@ -27,23 +27,6 @@ const INDICATORS = [
   { col: "initial_sale_rate", tblId: "DT_41401N_008", prdSe: "Q", objLevels: 1, parse: parseFloat, minExpected: 5,  label: "초기분양률" },
   { col: "land_cost_ratio",   tblId: "DT_41401N_009", prdSe: "M", objLevels: 1, parse: parseInt,   minExpected: 10, label: "대지비비율" },
 ];
-
-// KOSIS C1_NM → DB region 매핑 (HUG 테이블은 약칭 사용)
-const REGION_MAP = {
-  "서울": "서울", "부산": "부산", "대구": "대구", "인천": "인천",
-  "광주": "광주", "대전": "대전", "울산": "울산", "세종": "세종",
-  "경기": "경기", "강원": "강원", "충북": "충북", "충남": "충남",
-  "전북": "전북", "전남": "전남", "경북": "경북", "경남": "경남", "제주": "제주",
-  // 정식명 호환
-  "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
-  "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
-  "울산광역시": "울산", "세종특별자치시": "세종", "경기도": "경기",
-  "강원특별자치도": "강원", "강원도": "강원",
-  "충청북도": "충북", "충청남도": "충남",
-  "전라북도": "전북", "전북특별자치도": "전북", "전라남도": "전남",
-  "경상북도": "경북", "경상남도": "경남",
-  "제주특별자치도": "제주", "제주도": "제주",
-};
 
 // ── KOSIS API 호출 (node:https — TLS 호환) ───────────────────
 async function fetchKosisTable(indicator, startPrdDe, endPrdDe) {

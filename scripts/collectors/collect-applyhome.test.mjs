@@ -1,39 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-// aggregateByApartment를 직접 import할 수 없으므로 (export 안 됨) 동일 로직으로 테스트
+// collect-applyhome.mjs의 aggregateByApartment 테스트
 // 이 테스트가 검증하는 것: HOUSE_MANAGE_NO별 가중평균 경쟁률 계산의 정확성
 
-// collect-applyhome.mjs의 aggregateByApartment 로직 재현 (순수 함수)
-function aggregateByApartment(rows) {
-  const groups = {};
-  for (const row of rows) {
-    const no = row.HOUSE_MANAGE_NO;
-    if (!no) continue;
-    if (!groups[no]) groups[no] = [];
-    groups[no].push(row);
-  }
+vi.mock("./_shared.mjs", async (importOriginal) => {
+  const orig = await importOriginal();
+  return {
+    ...orig,
+    loadEnv: vi.fn(),
+    getSupabase: vi.fn(),
+    log: vi.fn(),
+    logError: vi.fn(),
+    createReporter: vi.fn(() => ({
+      success: vi.fn(), fail: vi.fn(), skip: vi.fn(),
+      summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0 })),
+    })),
+  };
+});
 
-  const result = {};
-  for (const [no, items] of Object.entries(groups)) {
-    let totalSupply = 0;
-    let totalApplicants = 0;
-
-    for (const item of items) {
-      const supply = Number(item.SUPLY_HSHLDCO) || 0;
-      const applicants = Number(item.REQ_CNT) || 0;
-      totalSupply += supply;
-      totalApplicants += applicants;
-    }
-
-    const rate = totalSupply > 0
-      ? Math.round((totalApplicants / totalSupply) * 100) / 100
-      : null;
-
-    result[no] = { rate, supply: totalSupply, applicants: totalApplicants };
-  }
-
-  return result;
-}
+const { aggregateByApartment } = await import("./collect-applyhome.mjs");
 
 // 팩토리 함수: 청약 데이터 행 생성
 function makeRow(overrides = {}) {

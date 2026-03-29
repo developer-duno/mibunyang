@@ -22,7 +22,7 @@
 | `molit-units.mjs` | 세대수 보정 (units, unsold_rate) | getTargets, updateUnits, fetchAptDetail | ✓ |
 | `collect-maintenance.mjs` | 관리비 수집 (5항목 합산, 세대당 계산) | fetchTotalHouseholds, fetchMaintenanceCost | ✓ |
 
-- isCLI 패턴: `process.argv[1] && import.meta.url.endsWith(...)` — 31개 파일에서 사용 (테스트 시 main() 실행 방지)
+- isCLI 패턴: `process.argv[1] && import.meta.url.endsWith(...)` — 34개 파일에서 사용 (테스트 시 main() 실행 방지)
 - NonRetryableError: 4xx/XML 에러 즉시 throw (재시도 불가), 429/500/503만 재시도 후 실패 시 throw "재시도 소진"
 - 테스트: `_molit-api.test.mjs`(30), `molit-building-info.test.mjs`(28), `molit-units.test.mjs`(15), `collect-maintenance.test.mjs`(18) — 즉시 throw + mockFetch 호출횟수 검증
 
@@ -54,6 +54,21 @@
 | `regulation-seed.mjs` | buildRegulatedSet, makeRegionKey | ✓ | 9 |
 | `environment.mjs` | (순수 함수 없음, isCLI만 추가) | ✓ | — |
 
+### Batch 4 isCLI 가드 + export (3개, 52케이스)
+
+| 파일 | export 함수 | isCLI | 테스트 수 |
+|------|-------------|-------|----------|
+| `collect-applyhome.mjs` | aggregateByApartment | ✓ | 8 |
+| `collect-building-hub.mjs` | makeLotParams | ✓ | 22 |
+| `transport-tago.mjs` | isValidStation, isValidIC, extractSubwayName, extractSubwayLines | ✓ | 22 |
+
+### REGION_MAP 통합 (_shared.mjs → 37개)
+
+_shared.mjs의 REGION_MAP을 약칭17 + 정식명20 = 37개로 확장. 중복 정의 제거:
+- collect-market-stats.mjs, collect-unsold-kosis.mjs: 로컬 REGION_MAP → import 전환
+- collect-data.mjs: REGION_MAP + KOSIS_REGION_MAP → import 전환
+- api/applyhome/apartments.js: 로컬 유지 (api/→scripts/ 의존성 방지)
+
 ### Exit Code 정책
 
 수집기 main() 함수 종료 시 부분 실패를 exit code로 반영하여 GitHub Actions에서 감지:
@@ -63,6 +78,7 @@
 - **수동 failed 카운터 수집기 (5개)**: `if (failed > 0) process.exit(1);`
   - molit-building-info, molit-units, naver-units, geocode-missing, reverse-geocode
 - **자체 exit 로직 수집기**: naver-presale (API 접근 불가 시 exit(0), 환경변수 누락 시 exit(1))
+- **exit code 미반영 수집기 (1개)**: transport-tago — 수동 updated/skipped 카운터만 로깅, 부분 실패 시 exit(0)
 - recordApiQuota(await) 완료 후에 exit 호출하여 쿼터 기록 보장
 
 ## 네이버 부동산 수집 — 로컬 자동화

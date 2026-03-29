@@ -1,32 +1,47 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-// collect-building-hub.mjs의 makeLotParams 로직 재현 (순수 함수 테스트)
+// collect-building-hub.mjs 테스트
 // 이 테스트가 검증하는 것: 지번 파라미터 생성 + 에너지 집계 + 타입 변환의 정확성
 
-function makeLotParams(bjdCode, lotMain, lotSub) {
+vi.mock("./_shared.mjs", async (importOriginal) => {
+  const orig = await importOriginal();
   return {
-    sigunguCd: bjdCode.slice(0, 5),
-    bjdongCd: bjdCode.slice(5, 10),
-    bun: String(lotMain ?? 0).padStart(4, "0"),
-    ji: String(lotSub ?? 0).padStart(4, "0"),
+    ...orig,
+    loadEnv: vi.fn(),
+    getSupabase: vi.fn(),
+    log: vi.fn(),
+    logError: vi.fn(),
+    sleep: vi.fn(),
+    createReporter: vi.fn(() => ({
+      success: vi.fn(), fail: vi.fn(), skip: vi.fn(),
+      summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0 })),
+    })),
+    recordApiQuota: vi.fn(),
   };
-}
+});
 
-// quakeDesign 타입 변환 ("1"/"Y"/true → boolean)
+vi.mock("./_molit-api.mjs", async (importOriginal) => {
+  const orig = await importOriginal();
+  return { ...orig, REQUEST_DELAY: 0 };
+});
+
+const { makeLotParams } = await import("./collect-building-hub.mjs");
+
+// quakeDesign 타입 변환 ("1"/"Y"/true → boolean) — 원본 fetchQuakeDesign 내부 인라인 로직 재현
 function parseQuakeDesign(val) {
   if (val === "0" || val === "N" || val === false || val === "미적용") return false;
   if (val === "1" || val === "Y" || val === true || val === "적용") return true;
   return null;
 }
 
-// energy MAX 집계
+// energy MAX 집계 — 원본 fetchEnergy 내부 인라인 로직 재현
 function aggregateEnergy(items) {
   if (!items || items.length === 0) return null;
   const max = Math.max(...items.map(i => parseFloat(i.useQty) || 0));
   return max === 0 ? null : max;
 }
 
-// heatFuel MODE 집계
+// heatFuel MODE 집계 — 원본 fetchHeatFuel 내부 인라인 로직 재현
 function aggregateHeatFuel(items) {
   if (!items || items.length === 0) return null;
   const counts = {};

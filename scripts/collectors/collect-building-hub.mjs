@@ -38,10 +38,6 @@ loadEnv();
 
 const PHASE = "building-hub";
 const API_KEY = process.env.MOLIT_KEY;
-if (!API_KEY) {
-  logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
-  process.exit(1);
-}
 
 const API_BASE = "https://apis.data.go.kr/1613000/BldEngyHubService";
 
@@ -83,7 +79,7 @@ async function hubApiCall(endpoint, params) {
 }
 
 // ── 지번 파라미터 구성 ──────────────────────────────────────
-function makeLotParams(bjdCode, lotMain, lotSub) {
+export function makeLotParams(bjdCode, lotMain, lotSub) {
   return {
     sigunguCd: bjdCode.slice(0, 5),
     bjdongCd: bjdCode.slice(5, 10),
@@ -173,6 +169,11 @@ async function fetchQuakeDesign(bjdCode, lotMain, lotSub) {
 
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
+  if (!API_KEY) {
+    logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
+    process.exit(1);
+  }
+
   const dryRun = process.argv.includes("--dry-run");
   const force = process.argv.includes("--force");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -284,4 +285,5 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

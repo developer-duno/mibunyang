@@ -15,8 +15,6 @@ loadEnv();
 const PHASE = "transport";
 const KAKAO_KEY = process.env.KAKAO_KEY;
 const TAGO_KEY = process.env.TAGO_KEY;
-if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
-if (!TAGO_KEY) log(PHASE, "⚠️ TAGO_KEY 없음 — 버스 정류장 수집 건너뜀");
 
 const RADIUS = { SUBWAY: 10000, IC: 30000, KTX: 80000 };
 const DEFAULT_SUBWAY_DIST = 9999;
@@ -50,20 +48,20 @@ async function searchBusStopsTago(lat, lng) {
 }
 
 /** KTX역 결과 필터 */
-function isValidStation(doc) {
+export function isValidStation(doc) {
   const name = doc.place_name || "";
   const cat = doc.category_name || "";
   return name.endsWith("역") || cat.includes("기차") || cat.includes("철도");
 }
 
 /** IC 결과 필터 */
-function isValidIC(doc) {
+export function isValidIC(doc) {
   const name = doc.place_name || "";
   return name.includes("IC") || name.includes("나들목") || name.includes("인터체인지");
 }
 
 /** 가장 가까운 지하철역의 역명 추출 */
-function extractSubwayName(doc) {
+export function extractSubwayName(doc) {
   if (!doc) return null;
   const name = doc.place_name || "";
   const match = name.match(/^(.+?역)/);
@@ -71,7 +69,7 @@ function extractSubwayName(doc) {
 }
 
 /** 지하철 결과에서 가장 가까운 역의 노선 추출 */
-function extractSubwayLines(subways, stationName) {
+export function extractSubwayLines(subways, stationName) {
   if (!stationName || subways.length === 0) return null;
   const baseName = stationName.replace(/역$/, "");
   const lines = new Set();
@@ -87,6 +85,9 @@ function extractSubwayLines(subways, stationName) {
 }
 
 async function main() {
+  if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
+  if (!TAGO_KEY) log(PHASE, "⚠️ TAGO_KEY 없음 — 버스 정류장 수집 건너뜀");
+
   const dryRun = process.argv.includes("--dry-run");
   const forceAll = process.argv.includes("--force");
   const maxTago = Number(process.argv.find(a => a.startsWith("--limit="))?.split("=")[1]) || 10000;
@@ -194,4 +195,5 @@ async function main() {
   if (!dryRun) await recordApiQuota("transport-tago", "TAGO_KEY", actualTagoCalls);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
