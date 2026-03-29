@@ -17,6 +17,8 @@ import {
   toPresaleRow,
   matchPresaleToApt,
   tryPythonJwt,
+  extractPresaleFields,
+  buildNewApartment,
 } from "./naver-presale.mjs";
 
 // ── 테스트 팩토리 ─────────────────────────────────────────────
@@ -299,5 +301,103 @@ describe("matchPresaleToApt", () => {
 
     const result = matchPresaleToApt(row, apts);
     expect(result).not.toBeNull();
+  });
+
+  // 4순위: 동일 region + 이름 유사도 >= 0.7
+  it("동일 region + 이름 유사도 >= 0.7이면 4순위로 매칭한다", () => {
+    const row = toPresaleRow(createComplexResponse(), null, createListItem());
+    row._name = "테스트아파트";
+    const apts = [createApartment({
+      bjd_code: "9999999999",
+      region: "서울",
+      name: "테스트아파트 2단지",
+      lat: 35.0,
+      lng: 129.0,
+      naver_presale_no: null,
+    })];
+
+    const result = matchPresaleToApt(row, apts);
+    expect(result).not.toBeNull();
+    expect(result.tier).toBe(4);
+  });
+});
+
+// ── parsePresaleAddress 특수 주소 ────────────────────────────
+
+describe("parsePresaleAddress 특수 주소", () => {
+  // 세종특별자치시
+  it("세종특별자치시를 정확히 파싱한다", () => {
+    const result = parsePresaleAddress("세종특별자치시 어진동 123");
+    expect(result.region).toBe("세종");
+  });
+
+  // 제주특별자치도
+  it("제주특별자치도를 정확히 파싱한다", () => {
+    const result = parsePresaleAddress("제주특별자치도 제주시 연동 456");
+    expect(result.region).toBe("제주");
+  });
+});
+
+// ── toPresaleRow 충돌 필드 우선순위 ──────────────────────────
+
+describe("toPresaleRow 필드 충돌", () => {
+  // complex와 detail 모두 dong_cnt 값이 있을 때 complex 우선
+  it("complex↔detail 충돌 시 complex 값을 우선한다", () => {
+    const complex = createComplexResponse({ dong_cnt: 5, parking_cnt: 200 });
+    const detail = { dong_cnt: 3, parking_cnt: 150, inquiry_tel: "02-1234-5678" };
+    const row = toPresaleRow(complex, detail, createListItem());
+
+    // complex 우선 (presale_buildings = complex.dong_cnt ?? detail.dong_cnt)
+    expect(row.presale_buildings).toBe(5);
+    expect(row.presale_parking).toBe(200);
+    // detail fallback (complex에 sell_office_phone 없으면 detail.inquiry_tel)
+    expect(row.presale_inquiry).toBe("02-1234-5678");
+  });
+});
+
+// ── extractPresaleFields ─────────────────────────────────────
+
+describe("extractPresaleFields", () => {
+  // presale_* 및 naver_presale_* 필드만 추출하고 _enrich/_name 제외
+  it("presale/naver_presale 필드 21개만 추출하고 메타데이터를 제외한다", () => {
+    const row = toPresaleRow(createComplexResponse(), null, createListItem());
+    row._name = "테스트아파트";
+    const picked = extractPresaleFields(row);
+
+    // presale_* + naver_presale_* 키만 존재
+    const keys = Object.keys(picked);
+    expect(keys.every(k => k.startsWith("presale_") || k.startsWith("naver_presale"))).toBe(true);
+    // _enrich, _name 미포함
+    expect(picked._enrich).toBeUndefined();
+    expect(picked._name).toBeUndefined();
+    // 최소 19개 presale 필드 + 2 naver_presale
+    expect(keys.length).toBeGreaterThanOrEqual(19);
+  });
+});
+
+// ── buildNewApartment ────────────────────────────────────────
+
+describe("buildNewApartment", () => {
+  // ID 형식 검증: ap-{presaleNo}
+  it("ID가 ap-{presaleNo} 형식이다", () => {
+    const complex = createComplexResponse();
+    const row = toPresaleRow(complex, null, createListItem());
+    row._name = complex.build_nm;
+    const apt = buildNewApartment(row, complex, "서울");
+
+    expect(apt.id).toBe("ap-6025041");
+    expect(apt.id).toMatch(/^ap-\d+$/);
+  });
+
+  // unit_source = "naver_presale"
+  it("unit_source가 naver_presale이다", () => {
+    const complex = createComplexResponse();
+    const row = toPresaleRow(complex, null, createListItem());
+    row._name = complex.build_nm;
+    const apt = buildNewApartment(row, complex, "서울");
+
+    expect(apt.unit_source).toBe("naver_presale");
+    expect(apt.name).toBe("테스트아파트");
+    expect(apt.units).toBe(300);
   });
 });

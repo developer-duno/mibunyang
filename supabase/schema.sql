@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS apartments (
   has_pool BOOLEAN,
   dsr40pass BOOLEAN,                     -- DSR 40% 통과 여부
   announcement_url TEXT,
-  unit_source TEXT,                       -- "naver" | "applyhome"
+  unit_source TEXT,                       -- "applyhome" | "molit" | "naver" | "naver_presale"
   avg_maintenance_cost INTEGER,          -- 관리비 (만원/세대/월)
   primary_direction TEXT,                -- 주방향 (남향/동향 등)
   earthquake_design BOOLEAN,             -- 내진설계 여부 (추론 기반)

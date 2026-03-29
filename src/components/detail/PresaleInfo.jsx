@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useRef } from "react";
 import { C } from "@/theme";
-import { fmtPrice, fmtPriceRange, fmtPresaleSchedule } from "@/lib/format";
+import { fmtPrice, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics";
 
 const STAGE_COLORS = {
@@ -33,7 +33,7 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
     apt.presaleParking != null && { l: "주차대수", v: `${apt.presaleParking.toLocaleString("ko-KR")}대` },
     apt.presaleHousingType && { l: "주택유형", v: apt.presaleHousingType },
     apt.presaleMoveIn && { l: "입주시기", v: apt.presaleMoveIn },
-    apt.presaleRecruitDate && { l: "분양시기", v: apt.presaleRecruitDate },
+    apt.presaleRecruitDate && { l: "분양시기", v: fmtRecruitDate(apt.presaleRecruitDate) },
   ].filter(Boolean);
 
   return (

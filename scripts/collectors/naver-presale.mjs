@@ -19,7 +19,7 @@ import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter,
   upsertBatch, stringSimilarity, sleep, REGION_MAP, VALID_REGIONS,
-  fetchWithRetry, resolveBuilder,
+  resolveBuilder,
 } from "./_shared.mjs";
 
 // loadEnv + 환경변수 검증은 main()에서 수행 (테스트 시 import 안전)
@@ -190,7 +190,10 @@ async function presalePost(endpoint, body = {}) {
         await sleep(RETRY_DELAYS[i]);
         continue;
       }
-      if (!res.ok) return null;
+      if (!res.ok) {
+        logError(PHASE, `HTTP ${res.status} ${endpoint} (non-retryable)`);
+        return null;
+      }
 
       const data = await res.json();
       if (data?.isSuccess === false) {
@@ -321,32 +324,42 @@ export function toPresaleRow(complex, detail, listItem) {
   };
 }
 
-/** 4단계 매칭: presale → 기존 apartments */
-export function matchPresaleToApt(presale, apartments) {
+/** presale_* / naver_presale_* 필드만 추출 (DRY: update·insert 공용) */
+export function extractPresaleFields(row) {
+  const picked = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (k.startsWith("presale_") || k.startsWith("naver_presale")) {
+      picked[k] = v;
+    }
+  }
+  return picked;
+}
+
+/** 4단계 매칭: presale → 기존 apartments (indexes 옵션: Map 기반 O(1) 룩업) */
+export function matchPresaleToApt(presale, apartments, indexes) {
   const presaleNo = String(presale.naver_presale_no || "");
-  const presaleName = presale._enrich?.address
-    ? `${presale.presale_housing_type ?? ""} ${presale._enrich.address}`.trim()
-    : "";
   const buildName = presale._name || "";
   const lat = presale._enrich?.lat;
   const lng = presale._enrich?.lng;
   const bjdCode = presale._enrich?.bjd_code;
 
-  // 1순위: naver_presale_no 완전 일치 (기존 수집 이력)
+  // 1순위: naver_presale_no 완전 일치 (Map O(1) 또는 선형 탐색)
   if (presaleNo) {
-    const exact = apartments.find(a => a.naver_presale_no === presaleNo);
-    if (exact) return { apartment: exact, confidence: 1.0 };
+    const exact = indexes?.byPresaleNo?.get(presaleNo)
+      ?? apartments.find(a => a.naver_presale_no === presaleNo);
+    if (exact) return { apartment: exact, confidence: 1.0, tier: 1 };
   }
 
-  // 2순위: bjd_code + 이름 유사도 >= 0.5
+  // 2순위: bjd_code + 이름 유사도 >= 0.5 (Map 그룹 또는 전체 탐색)
   if (bjdCode) {
+    const candidates = indexes?.byBjd?.get(bjdCode) ?? apartments;
     let best = null, bestSim = 0;
-    for (const a of apartments) {
-      if (a.bjd_code !== bjdCode) continue;
+    for (const a of candidates) {
+      if (!indexes?.byBjd && a.bjd_code !== bjdCode) continue;
       const sim = stringSimilarity(buildName, a.name);
       if (sim >= MATCH_THRESHOLD_BJD && sim > bestSim) { best = a; bestSim = sim; }
     }
-    if (best) return { apartment: best, confidence: bestSim };
+    if (best) return { apartment: best, confidence: bestSim, tier: 2 };
   }
 
   // 3순위: 좌표 MATCH_DISTANCE_M 이내 + 이름 유사도
@@ -361,7 +374,7 @@ export function matchPresaleToApt(presale, apartments) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim >= MATCH_THRESHOLD_GEO && sim > bestSim) { best = a; bestSim = sim; }
     }
-    if (best) return { apartment: best, confidence: bestSim };
+    if (best) return { apartment: best, confidence: bestSim, tier: 3 };
   }
 
   // 4순위: 동일 region 내 이름 유사도
@@ -373,10 +386,33 @@ export function matchPresaleToApt(presale, apartments) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim >= MATCH_THRESHOLD_REGION && sim > bestSim) { best = a; bestSim = sim; }
     }
-    if (best) return { apartment: best, confidence: bestSim };
+    if (best) return { apartment: best, confidence: bestSim, tier: 4 };
   }
 
   return null;
+}
+
+/** 분양 데이터 → 신규 아파트 레코드 생성 (테스트 가능하도록 export) */
+export function buildNewApartment(row, complexData, regionFallback) {
+  const no = row.naver_presale_no || "";
+  const { region, gu, dong } = parsePresaleAddress(complexData.address);
+  const apt = {
+    id: `ap-${no}`,
+    name: complexData.build_nm,
+    region: region ?? regionFallback,
+    gu: gu ?? null,
+    dong: dong ?? null,
+    address: complexData.address ?? null,
+    lat: row._enrich.lat,
+    lng: row._enrich.lng,
+    units: complexData.total_house_cnt ?? 0,
+    builder: row._enrich.builder,
+    completion: row._enrich.completion,
+    bjd_code: row._enrich.bjd_code,
+    unit_source: "naver_presale",
+  };
+  Object.assign(apt, extractPresaleFields(row));
+  return apt;
 }
 
 // ── 리스트 / 상세 API (2026-03 신규 POST API) ───────────────
@@ -477,14 +513,28 @@ async function main() {
   log(PHASE, "기존 아파트 데이터 로드...");
   const { data: apartments, error: aptErr } = await sb
     .from("apartments")
-    .select("id, name, region, gu, dong, lat, lng, bjd_code, naver_presale_no, units, builder, max_floor, completion");
+    .select("id, name, region, gu, dong, lat, lng, bjd_code, naver_presale_no, units, builder, max_floor, completion")
+    .range(0, 9999);
 
   if (aptErr) {
     logError(PHASE, `apartments 조회 실패: ${aptErr.message}`);
     process.exit(1);
   }
   const apts = apartments ?? [];
+  if (apts.length === 10000) logError(PHASE, "apartments 10,000건 — .range(0, 9999) 초과 가능, 페이지네이션 필요");
   log(PHASE, `기존 아파트 ${apts.length}건 로드`);
+
+  // Map 인덱스 (Tier1·2 O(1) 룩업)
+  const byPresaleNo = new Map();
+  const byBjd = new Map();
+  for (const a of apts) {
+    if (a.naver_presale_no) byPresaleNo.set(a.naver_presale_no, a);
+    if (a.bjd_code) {
+      if (!byBjd.has(a.bjd_code)) byBjd.set(a.bjd_code, []);
+      byBjd.get(a.bjd_code).push(a);
+    }
+  }
+  const aptIndexes = { byPresaleNo, byBjd };
 
   // Phase 1: Discovery — 전국 분양단지 목록
   const regions = regionFilter ? [regionFilter] : Object.keys(REGION_CORTAR);
@@ -526,6 +576,7 @@ async function main() {
   // Phase 2+3: Detail 수집 + 매칭 + Upsert
   const updateRows = [];
   const insertRows = [];
+  const tierCounts = { 1: 0, 2: 0, 3: 0, 4: 0, none: 0 };
 
   for (let idx = 0; idx < total; idx++) {
     const item = uniquePresales[idx];
@@ -539,7 +590,7 @@ async function main() {
       continue;
     }
 
-    if (idx > 0 && idx % 10 === 0) {
+    if (idx % 10 === 0) {
       log(PHASE, `  진행: ${idx}/${total} (${((idx / total) * 100).toFixed(0)}%)`);
     }
 
@@ -558,17 +609,15 @@ async function main() {
     row._name = complexData.build_nm;
 
     // Phase 4: 매칭
-    const match = matchPresaleToApt(row, apts);
+    const match = matchPresaleToApt(row, apts, aptIndexes);
 
     if (match) {
-      // 기존 아파트 업데이트
-      const update = { id: match.apartment.id };
-      // presale 전용 필드
-      for (const [k, v] of Object.entries(row)) {
-        if (k.startsWith("presale_") || k.startsWith("naver_presale")) {
-          update[k] = v;
-        }
+      tierCounts[match.tier ?? "?"] = (tierCounts[match.tier ?? "?"] || 0) + 1;
+      if ((match.tier ?? 0) >= 3) {
+        log(PHASE, `  ⚠ 저신뢰 매칭: ${row._name} → ${match.apartment.name} (tier=${match.tier ?? "?"} conf=${(match.confidence ?? 0).toFixed(2)})`);
       }
+      // 기존 아파트 업데이트
+      const update = { id: match.apartment.id, ...extractPresaleFields(row) };
       // enrichment: null인 기존 컬럼만 채움
       const enrich = row._enrich;
       if (enrich) {
@@ -578,10 +627,7 @@ async function main() {
         if (!match.apartment.lat && enrich.lat) update.lat = enrich.lat;
         if (!match.apartment.lng && enrich.lng) update.lng = enrich.lng;
         if (!match.apartment.completion && enrich.completion) update.completion = enrich.completion;
-        if (!match.apartment.bjd_code && enrich.bjd_code) {
-          // bjd_code는 apartments 테이블에 없을 수도 있음
-          try { update.bjd_code = enrich.bjd_code; } catch { /* 무시 */ }
-        }
+        if (!match.apartment.bjd_code && enrich.bjd_code) update.bjd_code = enrich.bjd_code;
       }
       updateRows.push(update);
       reporter.success();
@@ -592,35 +638,17 @@ async function main() {
       const totalUnits = complexData.total_house_cnt ?? 0;
 
       if (isAptLike && totalUnits >= MIN_UNITS_FOR_INSERT) {
-        const { region, gu, dong } = parsePresaleAddress(complexData.address);
-        const newApt = {
-          id: `ap-${no}`,
-          name: complexData.build_nm,
-          region: region ?? item._region,
-          gu: gu ?? null,
-          dong: dong ?? null,
-          address: complexData.address ?? null,
-          lat: row._enrich.lat,
-          lng: row._enrich.lng,
-          units: totalUnits,
-          builder: row._enrich.builder,
-          completion: row._enrich.completion,
-          bjd_code: row._enrich.bjd_code,
-          unit_source: "naver_presale",
-        };
-        // presale 필드 병합
-        for (const [k, v] of Object.entries(row)) {
-          if (k.startsWith("presale_") || k.startsWith("naver_presale")) {
-            newApt[k] = v;
-          }
-        }
-        insertRows.push(newApt);
+        insertRows.push(buildNewApartment(row, complexData, item._region));
         reporter.success();
       } else {
+        tierCounts.none++;
         reporter.skip();
       }
     }
   }
+
+  // 매칭 tier 집계
+  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 미매칭=${tierCounts.none}`);
 
   // DB 저장
   if (!dryRun) {
