@@ -1,9 +1,9 @@
 # 네이버 수집 Windows 작업 스케줄러 등록 스크립트
 # 관리자 권한 PowerShell에서 실행:
-#   powershell -ExecutionPolicy Bypass -File scriptsegister-naver-task.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\register-naver-task.ps1
 
 $TaskName = "MibunyangNaverCollect"
-$ScriptPath = (Resolve-Path "scriptsun-naver-local.bat").Path
+$ScriptPath = (Resolve-Path "scripts\run-naver-local.bat").Path
 $WorkDir = (Resolve-Path ".").Path
 
 # 기존 작업 삭제
