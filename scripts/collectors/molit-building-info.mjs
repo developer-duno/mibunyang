@@ -30,7 +30,7 @@ if (!API_KEY) {
 }
 
 // ── 단지 기본+상세 조회 (V4: 두 엔드포인트 병합) ─────────────
-async function fetchAptDetail(kaptCode) {
+export async function fetchAptDetail(kaptCode) {
   // 기본 정보 (세대수, 최고층 등)
   const bassJson = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY);
   const bassBody = bassJson?.response?.body;
@@ -48,7 +48,7 @@ async function fetchAptDetail(kaptCode) {
 }
 
 // ── 상세 필드 추출 (V4 응답 기준) ────────────────────────────
-function extractBuildingInfo(detail) {
+export function extractBuildingInfo(detail) {
   const safeInt = (v) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
 
   // 주차: V4에서 kaptdPcnt(지상) + kaptdPcntu(지하) 합산
@@ -89,7 +89,7 @@ function extractBuildingInfo(detail) {
 }
 
 // ── DB 업데이트 ─────────────────────────────────────────────
-async function updateBuilding(sb, aptId, info, dryRun) {
+export async function updateBuilding(sb, aptId, info, dryRun) {
   // null 필드는 업데이트에서 제외 (기존 데이터 보존)
   const row = {};
   if (info.parking_ratio != null) row.parking_ratio = info.parking_ratio;
@@ -212,4 +212,5 @@ async function main() {
   if (!dryRun) await recordApiQuota("molit-building-info", "MOLIT_KEY", apiCalls);
 }
 
-main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

@@ -30,7 +30,7 @@ if (!API_KEY) {
 }
 
 // ── 1. Supabase에서 보정 대상 조회 ──────────────────────────
-async function getTargets(sb) {
+export async function getTargets(sb) {
   const { data, error } = await sb
     .from("apartments")
     .select("id, name, region, gu, address, units, unsold, unsold_rate, unit_source")
@@ -41,14 +41,14 @@ async function getTargets(sb) {
 }
 
 // ── 2. 단지 기본 조회 (V4: getAphusBassInfoV4) ──────────────
-async function fetchAptDetail(kaptCode) {
+export async function fetchAptDetail(kaptCode) {
   const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY);
   const body = json?.response?.body;
   return body?.item ?? body?.items?.item ?? null;
 }
 
 // ── 3. 보정 적용 ────────────────────────────────────────────
-async function updateUnits(sb, aptId, newUnits, unsold, dryRun) {
+export async function updateUnits(sb, aptId, newUnits, unsold, dryRun) {
   const unsoldRate = newUnits > 0 && unsold != null
     ? Math.round((unsold / newUnits) * 1000) / 10
     : null;
@@ -185,7 +185,8 @@ async function main() {
   if (!dryRun) await recordApiQuota("molit-units", "MOLIT_KEY", apiCalls);
 }
 
-main().catch(err => {
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => {
   logError(PHASE, err.message);
   process.exit(1);
 });
