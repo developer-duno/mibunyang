@@ -56,6 +56,15 @@ const HEADERS = {
 // 이미지 URL 허용 도메인
 const IMAGE_DOMAINS = ["naver-file.ebunyang.co.kr", "landthumb-phinf.pstatic.net"];
 
+// 매칭 임계값
+const MATCH_THRESHOLD_BJD = 0.5;       // 2순위: bjd_code + 이름 유사도
+const MATCH_THRESHOLD_GEO = 0.4;       // 3순위: 좌표 근접 + 이름 유사도
+const MATCH_THRESHOLD_REGION = 0.7;    // 4순위: 동일 region + 이름 유사도
+const MATCH_DISTANCE_M = 500;          // 3순위: 좌표 반경 (미터)
+const METERS_PER_DEGREE = 111000;      // 위도 1도 ≈ 111km (근사)
+const MIN_UNITS_FOR_INSERT = 20;       // 신규 아파트 최소 세대수
+const LIST_PAGE_SIZE = 100;            // 분양 목록 페이지 크기
+
 // ── CLI 인자 ────────────────────────────────────────────────
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -65,7 +74,7 @@ const complexLimit = limitArg ? parseInt(limitArg.replace("--limit=", ""), 10) :
 const regionArg = args.find(a => a.startsWith("--region="));
 const regionFilter = regionArg ? regionArg.replace("--region=", "") : null;
 
-// ── JWT 토큰 (pre.land.naver.com 전용) ─────────────────────
+// ── JWT 토큰 (레거시: 현재 POST API는 JWT 불필요, 향후 인증 변경 시 fallback용) ──
 let jwtToken = null;
 let jwtTokenTime = 0;
 const JWT_LIFETIME = 2800 * 1000; // 47분
@@ -176,6 +185,11 @@ async function presalePost(endpoint, body = {}) {
         await sleep(RETRY_DELAYS[i]);
         continue;
       }
+      if (res.status >= 500 && i < MAX_RETRIES - 1) {
+        logError(PHASE, `서버 에러 ${res.status} ${endpoint} (재시도 ${i + 1}/${MAX_RETRIES})`);
+        await sleep(RETRY_DELAYS[i]);
+        continue;
+      }
       if (!res.ok) return null;
 
       const data = await res.json();
@@ -277,10 +291,10 @@ export function toPresaleRow(complex, detail, listItem) {
     presale_general_supply: complex?.house_supp_cnt ?? null,
     presale_buildings: complex?.dong_cnt ?? detail?.dong_cnt ?? null,
     presale_parking: complex?.parking_cnt ?? detail?.parking_cnt ?? null,
-    presale_inquiry: complex?.sell_office_phone ?? detail?.inquiry_tel ?? null,
-    presale_features: complex?.build_point ?? detail?.features ?? null,
-    presale_move_in: complex?.mvi_date ?? detail?.move_in_date ?? null,
-    presale_recruit_date: complex?.recruit_date ?? null,
+    presale_inquiry: (complex?.sell_office_phone?.trim() || detail?.inquiry_tel?.trim()) || null,
+    presale_features: (complex?.build_point?.trim() || detail?.features?.trim()) || null,
+    presale_move_in: (complex?.mvi_date?.trim() || detail?.move_in_date?.trim()) || null,
+    presale_recruit_date: complex?.recruit_date?.trim() || null,
     presale_schedule: listItem ? {
       scheduleName: listItem.scheduleName ?? null,
       dateInfo: listItem.dateInfo ?? null,
@@ -298,7 +312,9 @@ export function toPresaleRow(complex, detail, listItem) {
       max_floor: complex?.max_flr_cnt ?? null,
       lat: complex?.ypos != null ? parseFloat(complex.ypos) : null,
       lng: complex?.xpos != null ? parseFloat(complex.xpos) : null,
-      completion: complex?.mvi_date?.replace(/[-./]/g, "").slice(0, 6) ?? null,
+      completion: complex?.mvi_date?.trim()
+        ? complex.mvi_date.replace(/[-./]/g, "").slice(0, 6)
+        : null,
       bjd_code: complex?.bubdong_code ?? null,
       address: complex?.address ?? null,
     },
@@ -328,34 +344,34 @@ export function matchPresaleToApt(presale, apartments) {
     for (const a of apartments) {
       if (a.bjd_code !== bjdCode) continue;
       const sim = stringSimilarity(buildName, a.name);
-      if (sim >= 0.5 && sim > bestSim) { best = a; bestSim = sim; }
+      if (sim >= MATCH_THRESHOLD_BJD && sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return { apartment: best, confidence: bestSim };
   }
 
-  // 3순위: 좌표 500m 이내 + 이름 유사도 >= 0.4
+  // 3순위: 좌표 MATCH_DISTANCE_M 이내 + 이름 유사도
   if (lat && lng) {
     let best = null, bestSim = 0;
     for (const a of apartments) {
       if (!a.lat || !a.lng) continue;
-      const dlat = (lat - a.lat) * 111000;
-      const dlng = (lng - a.lng) * 111000 * Math.cos(lat * Math.PI / 180);
+      const dlat = (lat - a.lat) * METERS_PER_DEGREE;
+      const dlng = (lng - a.lng) * METERS_PER_DEGREE * Math.cos(lat * Math.PI / 180);
       const dist = Math.sqrt(dlat * dlat + dlng * dlng);
-      if (dist > 500) continue;
+      if (dist > MATCH_DISTANCE_M) continue;
       const sim = stringSimilarity(buildName, a.name);
-      if (sim >= 0.4 && sim > bestSim) { best = a; bestSim = sim; }
+      if (sim >= MATCH_THRESHOLD_GEO && sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return { apartment: best, confidence: bestSim };
   }
 
-  // 4순위: 동일 region 내 이름 유사도 >= 0.7
+  // 4순위: 동일 region 내 이름 유사도
   const { region } = parsePresaleAddress(presale._enrich?.address);
   if (region && buildName) {
     let best = null, bestSim = 0;
     for (const a of apartments) {
       if (a.region !== region) continue;
       const sim = stringSimilarity(buildName, a.name);
-      if (sim >= 0.7 && sim > bestSim) { best = a; bestSim = sim; }
+      if (sim >= MATCH_THRESHOLD_REGION && sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return { apartment: best, confidence: bestSim };
   }
@@ -392,13 +408,11 @@ async function fetchPresaleList(region) {
   const results = [];
   let page = 1;
   let hasNext = true;
-  const PAGE_SIZE = 100;
-
   while (hasNext) {
     const data = await presalePost("/api/home/preSaleScheduleList", {
       bubdong_code: cortarNo,
       page,
-      pageSize: PAGE_SIZE,
+      pageSize: LIST_PAGE_SIZE,
     });
     if (!data?.list?.length) break;
 
@@ -577,7 +591,7 @@ async function main() {
       const isAptLike = /아파트|주상복합|오피스텔/.test(housingType);
       const totalUnits = complexData.total_house_cnt ?? 0;
 
-      if (isAptLike && totalUnits >= 20) {
+      if (isAptLike && totalUnits >= MIN_UNITS_FOR_INSERT) {
         const { region, gu, dong } = parsePresaleAddress(complexData.address);
         const newApt = {
           id: `ap-${no}`,

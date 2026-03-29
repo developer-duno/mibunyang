@@ -618,6 +618,26 @@ SELECT
   a.naver_school_walk_min AS "naverSchoolWalkMin",
   a.naver_nearby_count AS "naverNearbyCount",
   a.naver_fetched_at AS "naverFetchedAt",
+  -- 분양정보 (pre.land.naver.com POST API, 19필드)
+  a.presale_min_price AS "presaleMinPrice",
+  a.presale_max_price AS "presaleMaxPrice",
+  a.presale_pp AS "presalePp",
+  a.presale_type AS "presaleType",
+  a.presale_stage AS "presaleStage",
+  a.presale_stage_code AS "presaleStageCode",
+  a.presale_image_url AS "presaleImageUrl",
+  a.naver_presale_no AS "naverPresaleNo",
+  a.naver_presale_seq AS "naverPresaleSeq",
+  a.presale_general_supply AS "presaleGeneralSupply",
+  a.presale_buildings AS "presaleBuildings",
+  a.presale_parking AS "presaleParking",
+  a.presale_inquiry AS "presaleInquiry",
+  a.presale_features AS "presaleFeatures",
+  a.presale_move_in AS "presaleMoveIn",
+  a.presale_recruit_date AS "presaleRecruitDate",
+  a.presale_schedule AS "presaleSchedule",
+  a.presale_housing_type AS "presaleHousingType",
+  a.presale_fetched_at AS "presaleFetchedAt",
   -- 데이터 완성도 (계산, 합계 100)
   GREATEST(0, LEAST(100, (
     (CASE WHEN p.price IS NOT NULL THEN 15 ELSE 0 END) +
