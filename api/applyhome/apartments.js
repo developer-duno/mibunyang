@@ -1,4 +1,5 @@
 import { resolveBuilder } from "../../src/constants/brands.js";
+import { withHandler } from "../_lib/handler.js";
 
 const REGION_MAP = {
   "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
@@ -178,12 +179,7 @@ function mapItem(item, idx, isRemndr) {
   };
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
-
+export default withHandler({ method: "GET", handler: async (req, res) => {
   const apiKey = process.env.APPLYHOME_KEY;
   const kakaoKey = process.env.KAKAO_KEY;
 
@@ -268,4 +264,4 @@ export default async function handler(req, res) {
     console.error("ApplyHome API error:", err.message);
     res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
-}
+}});

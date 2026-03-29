@@ -1,15 +1,7 @@
 import { kv } from "@vercel/kv";
-import { verifyAdminToken } from "../_lib/adminAuth.js";
+import { withHandler } from "../_lib/handler.js";
 
-export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
-  if (!verifyAdminToken(req)) {
-    return res.status(401).json({ ok: false, error: "관리자 인증이 필요합니다" });
-  }
-
+export default withHandler({ method: "GET", admin: true, handler: async (req, res) => {
   const status = req.query.status || "pending";
   const allowed = ["pending", "approved", "rejected", "all"];
   if (!allowed.includes(status)) {
@@ -49,4 +41,4 @@ export default async function handler(req, res) {
     console.error("[admin/users] error:", err.message);
     res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
-}
+}});

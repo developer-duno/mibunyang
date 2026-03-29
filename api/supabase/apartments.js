@@ -11,6 +11,7 @@
  *   ?offset=0             오프셋
  */
 import { getSupabase } from "../_lib/supabase.js";
+import { withHandler } from "../_lib/handler.js";
 
 const BATCH_SIZE = 1000;
 
@@ -22,11 +23,7 @@ function buildQuery(supabase, region, gu, withCount) {
   return q;
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
+export default withHandler({ method: "GET", handler: async (req, res) => {
   try {
     const supabase = getSupabase();
     const { region, gu } = req.query;
@@ -101,7 +98,7 @@ export default async function handler(req, res) {
     console.error("API error:", err);
     return res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
-}
+}});
 
 /**
  * null → 기본값으로 정리 (기존 JSON 호환 + 스코어링 엔진 안전)

@@ -1,15 +1,7 @@
 import { kv } from "@vercel/kv";
-import { verifyAdminToken } from "../_lib/adminAuth.js";
+import { withHandler } from "../_lib/handler.js";
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
-  if (!verifyAdminToken(req)) {
-    return res.status(401).json({ ok: false, error: "관리자 인증이 필요합니다" });
-  }
-
+export default withHandler({ method: "POST", admin: true, handler: async (req, res) => {
   const { email, action, note } = req.body || {};
   if (!email || typeof email !== "string" || !["approve", "reject"].includes(action)) {
     return res.status(400).json({ ok: false, error: "이메일과 승인/거부 액션이 필요합니다" });
@@ -62,4 +54,4 @@ export default async function handler(req, res) {
     console.error("[admin/review] error:", err.message);
     res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
-}
+}});

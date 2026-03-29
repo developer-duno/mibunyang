@@ -1,21 +1,9 @@
 import { kv } from "@vercel/kv";
 import { verifyPassword, hashPassword, createToken } from "../_lib/auth.js";
-import { checkRateLimit } from "../_lib/rateLimit.js";
-import { handleCors } from "../_lib/cors.js";
+import { withHandler } from "../_lib/handler.js";
 import crypto from "crypto";
 
-export default async function handler(req, res) {
-  if (handleCors(req, res, { methods: "POST, OPTIONS" })) return;
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
-  const { limited, retryAfter } = await checkRateLimit(req, "login");
-  if (limited) {
-    res.setHeader("Retry-After", String(retryAfter));
-    return res.status(429).json({ ok: false, error: `요청이 너무 많습니다. ${retryAfter}초 후 다시 시도해주세요.` });
-  }
-
+export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handler: async (req, res) => {
   const { email, password } = req.body || {};
 
   if (!email || !password || typeof email !== "string" || typeof password !== "string") {
@@ -78,4 +66,4 @@ export default async function handler(req, res) {
     console.error("[auth/login] error:", err.message);
     res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
-}
+}});

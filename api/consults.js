@@ -1,18 +1,16 @@
 import { getSupabase, getMibuyangSupabase } from "./_lib/supabase.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 import { verifyToken } from "./_lib/auth.js";
-import { handleCors } from "./_lib/cors.js";
+import { withHandler } from "./_lib/handler.js";
 
 const VALID_CONSULT_TYPES = ["방문상담", "전화상담", "온라인상담"];
 const PHONE_REGEX = /^[\d\-]{8,20}$/;
 
-export default async function handler(req, res) {
-  if (handleCors(req, res, { methods: "GET, POST, OPTIONS" })) return;
-
-  if (req.method === "POST") return handlePost(req, res);
-  if (req.method === "GET") return handleGet(req, res);
-  return res.status(405).json({ ok: false, error: "Method not allowed" });
-}
+export default withHandler({
+  method: ["GET", "POST"],
+  cors: {},
+  handler: { POST: handlePost, GET: handleGet },
+});
 
 // POST — 소비자 상담 신청 (인증 불필요, Rate Limit 적용)
 async function handlePost(req, res) {

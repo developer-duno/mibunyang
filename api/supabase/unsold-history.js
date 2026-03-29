@@ -7,14 +7,11 @@
  * 응답: { ok: true, data: [...], count: N, fetchedAt: "..." }
  */
 import { getSupabase } from "../_lib/supabase.js";
+import { withHandler } from "../_lib/handler.js";
 
 const ID_PATTERN = /^ah-\d+$/;
 
-export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
+export default withHandler({ method: "GET", handler: async (req, res) => {
   try {
     const supabase = getSupabase();
     const rawIds = (req.query.apartment_ids || "").trim();
@@ -65,4 +62,4 @@ export default async function handler(req, res) {
     console.error("unsold-history API error:", err);
     return res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
-}
+}});

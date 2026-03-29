@@ -94,12 +94,9 @@ function gradeFromScore(score) {
   return score >= 85 ? "최우수" : score >= 70 ? "우수" : score >= 50 ? "보통" : "미흡";
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
+import { withHandler } from "../_lib/handler.js";
 
+export default withHandler({ method: "POST", handler: async (req, res) => {
   const neisKey = process.env.NEIS_KEY;
   const kakaoKey = process.env.KAKAO_KEY;
   if (!neisKey) {
@@ -154,4 +151,4 @@ export default async function handler(req, res) {
     console.error("Education API error:", err.message);
     res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
-}
+}});

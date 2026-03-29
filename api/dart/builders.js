@@ -70,12 +70,9 @@ async function fetchFinancials(dartKey, corpCode) {
   return null;
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
+import { withHandler } from "../_lib/handler.js";
 
+export default withHandler({ method: "POST", handler: async (req, res) => {
   const dartKey = process.env.DART_KEY;
   if (!dartKey) {
     res.status(500).json({ ok: false, error: "DART_KEY not configured" });
@@ -118,4 +115,4 @@ export default async function handler(req, res) {
     console.error("DART API error:", err.message);
     res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
-}
+}});

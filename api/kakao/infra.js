@@ -62,12 +62,9 @@ async function fetchAllForApartment(apiKey, apt) {
   return out;
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
+import { withHandler } from "../_lib/handler.js";
 
+export default withHandler({ method: "POST", handler: async (req, res) => {
   const apiKey = process.env.KAKAO_KEY;
   if (!apiKey) {
     res.status(500).json({ ok: false, error: "KAKAO_KEY not configured" });
@@ -94,4 +91,4 @@ export default async function handler(req, res) {
     console.error("Kakao API error:", err.message);
     res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
-}
+}});
