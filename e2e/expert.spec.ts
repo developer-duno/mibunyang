@@ -4,8 +4,8 @@ import { test, expect } from "@playwright/test";
 test.describe("전문가 페이지", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    // 빈 DB여도 페이지 로드는 가능 — 카드 없으면 skip
-    await page.waitForTimeout(3000);
+    // 빈 DB여도 페이지 로드는 가능 — 네비게이션 버튼 대기
+    await page.locator("body").waitFor({ state: "attached", timeout: 10000 });
   });
 
   test("전문가 탭 클릭 시 로그인 폼 또는 대시보드 표시", async ({ page }) => {

@@ -28,21 +28,6 @@ test.describe("아파트 목록", () => {
     expect(filteredCards).toBeLessThanOrEqual(allCards);
   });
 
-  test("검색 입력 시 결과 필터링", async ({ page }) => {
-    const searchInput = page.locator('input[type="text"]').first();
-    await expect(searchInput).toBeVisible({ timeout: 5000 });
-
-    const allCards = await page.locator('[role="button"]').count();
-    await searchInput.fill("힐스테이트");
-    await expect(page.locator('[role="button"]')).not.toHaveCount(allCards, { timeout: 5000 }).catch(() => {});
-    const cards = page.locator('[role="button"]');
-    const count = await cards.count();
-    if (count > 0) {
-      const firstCardText = await cards.first().textContent();
-      expect(firstCardText?.toLowerCase()).toContain("힐스테이트");
-    }
-  });
-
   test("정렬 변경 시 순서 변화", async ({ page }) => {
     const sortSelect = page.locator("select").first();
     if (!(await sortSelect.isVisible())) {

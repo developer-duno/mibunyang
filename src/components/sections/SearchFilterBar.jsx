@@ -22,7 +22,6 @@ const chipStyle = { fontSize: 10, padding: "2px 6px", borderRadius: 10, backgrou
 
 /** 검색 + 필터 + 정렬 + 가중치 뱃지 통합 바 */
 export const SearchFilterBar = memo(function SearchFilterBar({
-  searchText, onSearchChange,
   filterRegion, onRegionChange, regionOptions,
   filterGu, onGuChange, guOptions,
   budgetMin, onBudgetMinChange, budgetMax, onBudgetMaxChange, onBudgetReset,

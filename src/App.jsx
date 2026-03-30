@@ -153,7 +153,8 @@ export default function App() {
 
   const filterOptionCounts = useMemo(() => {
     if (!scored.length) return null;
-    const base = applyBaseFilters(scored, baseFilterArgs);
+    let base = applyBaseFilters(scored, baseFilterArgs);
+    if (hideNoUnsold) base = base.filter(x => (x.apt.unsoldRate ?? 0) > 0);
     // 드롭다운별 leave-one-out
     const withRegion = filterRegion !== "전체" ? base.filter(x => x.apt.region === filterRegion) : base;
     const withRegionGu = filterGu !== "전체" ? withRegion.filter(x => x.apt.gu === filterGu) : withRegion;
@@ -171,7 +172,7 @@ export default function App() {
     const tierCounts = Object.fromEntries(TIER_VALUES.map(v => [v, 0]));
     for (const { apt } of forTier) tierCounts[classifyTier(apt)]++;
     return { regionCounts, guCounts, moveInCounts, tierCounts };
-  }, [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier]);
+  }, [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier, hideNoUnsold]);
 
   // 데이터 최신성 텍스트 (ISO 날짜 표시)
   const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;
@@ -372,7 +373,6 @@ export default function App() {
       {(tab === "list" || tab === "map") && (
         <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           <SearchFilterBar
-            searchText={searchText} onSearchChange={handleSearchChange}
             filterRegion={filterRegion} onRegionChange={handleRegionChange} regionOptions={regionOptions}
             filterGu={filterGu} onGuChange={handleGuChange} guOptions={guOptions}
             budgetMin={budgetMin} onBudgetMinChange={handleBudgetMinChange} budgetMax={budgetMax} onBudgetMaxChange={handleBudgetMaxChange} onBudgetReset={handleBudgetReset}
