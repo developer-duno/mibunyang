@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveBuilder, stringSimilarity, today, sleep,
   REGION_MAP, VALID_REGIONS, createReporter,
+  REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd,
 } from "./_shared.mjs";
 
 describe("resolveBuilder", () => {
@@ -81,6 +82,67 @@ describe("REGION_MAP / VALID_REGIONS", () => {
     expect(REGION_MAP["서울특별시"]).toBe("서울");
     expect(REGION_MAP["경기도"]).toBe("경기");
     expect(REGION_MAP["제주특별자치도"]).toBe("제주");
+  });
+});
+
+describe("REGION_LAWD_PREFIX / GU_LAWD_MAP", () => {
+  it("REGION_LAWD_PREFIX는 17개 시도 매핑", () => {
+    expect(Object.keys(REGION_LAWD_PREFIX)).toHaveLength(17);
+    expect(REGION_LAWD_PREFIX["서울"]).toBe("11");
+    expect(REGION_LAWD_PREFIX["제주"]).toBe("50");
+  });
+
+  it("GU_LAWD_MAP은 9개 region 중첩 구조", () => {
+    expect(Object.keys(GU_LAWD_MAP)).toHaveLength(9);
+    expect(GU_LAWD_MAP["서울"]["강남구"]).toBe("11680");
+    expect(GU_LAWD_MAP["부산"]["중구"]).toBe("26110");
+  });
+
+  it("GU_LAWD_MAP 각 코드는 5자리 문자열", () => {
+    for (const guMap of Object.values(GU_LAWD_MAP)) {
+      for (const code of Object.values(guMap)) {
+        expect(code).toMatch(/^\d{5}$/);
+      }
+    }
+  });
+});
+
+describe("getLawdCd", () => {
+  // 동명이구 해소 — region별 정확한 코드 반환
+  it("서울 중구 → 11140", () => {
+    expect(getLawdCd("서울", "중구")).toBe("11140");
+  });
+  it("부산 중구 → 26110", () => {
+    expect(getLawdCd("부산", "중구")).toBe("26110");
+  });
+  it("울산 중구 → 31110", () => {
+    expect(getLawdCd("울산", "중구")).toBe("31110");
+  });
+
+  // 고유 키 직접 매칭
+  it("서울 강남구 → 11680", () => {
+    expect(getLawdCd("서울", "강남구")).toBe("11680");
+  });
+  it("경기 화성시 → 41590", () => {
+    expect(getLawdCd("경기", "화성시")).toBe("41590");
+  });
+
+  // shortGu 접두사 매칭 (최소 2자)
+  it("경기 수원 → 41110 (접미사 제거 후 접두사 매칭)", () => {
+    expect(getLawdCd("경기", "수원")).toBe("41110");
+  });
+
+  // null/undefined 가드
+  it("gu가 null이면 prefix 폴백", () => {
+    expect(getLawdCd("서울", null)).toBe("11000");
+  });
+  it("미등록 region → null", () => {
+    expect(getLawdCd("미래도", "미래구")).toBeNull();
+  });
+
+  // 비수도권 prefix 폴백 (GU_LAWD_MAP에 없는 region)
+  it("강원 춘천시 → 42000 (prefix 폴백)", () => {
+    expect(getLawdCd("강원", "춘천시")).toBe("42000");
   });
 });
 
