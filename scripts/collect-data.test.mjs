@@ -337,7 +337,7 @@ describe("mapItem", () => {
 });
 
 // ============================================================
-// getLawdCd — 법정동코드 매핑 (10케이스)
+// getLawdCd — 법정동코드 매핑 (28케이스: 기본9 + 중복키 해소 검증19)
 // ============================================================
 describe("getLawdCd", () => {
   // 직접 매칭 — 고유 키
@@ -381,19 +381,82 @@ describe("getLawdCd", () => {
     expect(getLawdCd("미래도", "미래구")).toBeNull();
   });
 
-  // TODO: GU_LAWD_MAP 중복 키 버그 — "중구"/"서구"/"동구" 등이 여러 시도에 중복 정의
-  // JS 객체는 마지막 값만 유지하므로, getLawdCd("서울", "중구")는 서울 코드(11140)가 아닌
-  // 마지막 정의된 시도의 코드를 반환함. region 파라미터를 활용하지 않는 구조적 한계.
-  // 향후 GU_LAWD_MAP을 { 서울: { 중구: "11140" }, 부산: { 중구: "26110" } } 형태로 개선 필요.
-  it("중복 키 '중구' → 마지막 정의값 반환 (알려진 한계)", () => {
-    const result = getLawdCd("서울", "중구");
-    // 서울 중구(11140)가 아닌 마지막 정의된 값이 반환됨
-    expect(result).toBe(GU_LAWD_MAP["중구"]);
+  // ── 중복 키 해소 검증 (중첩 구조 전환 후) ──
+  // 중구 — 6개 지역
+  it("서울 중구 → 11140", () => {
+    expect(getLawdCd("서울", "중구")).toBe("11140");
+  });
+  it("부산 중구 → 26110", () => {
+    expect(getLawdCd("부산", "중구")).toBe("26110");
+  });
+  it("인천 중구 → 28110", () => {
+    expect(getLawdCd("인천", "중구")).toBe("28110");
+  });
+  it("대구 중구 → 27110", () => {
+    expect(getLawdCd("대구", "중구")).toBe("27110");
+  });
+  it("대전 중구 → 30140", () => {
+    expect(getLawdCd("대전", "중구")).toBe("30140");
+  });
+  it("울산 중구 → 31110", () => {
+    expect(getLawdCd("울산", "중구")).toBe("31110");
+  });
+
+  // 동구 — 5개 지역
+  it("부산 동구 → 26170", () => {
+    expect(getLawdCd("부산", "동구")).toBe("26170");
+  });
+  it("인천 동구 → 28120", () => {
+    expect(getLawdCd("인천", "동구")).toBe("28120");
+  });
+  it("대구 동구 → 27140", () => {
+    expect(getLawdCd("대구", "동구")).toBe("27140");
+  });
+  it("대전 동구 → 30110", () => {
+    expect(getLawdCd("대전", "동구")).toBe("30110");
+  });
+  it("울산 동구 → 31170", () => {
+    expect(getLawdCd("울산", "동구")).toBe("31170");
+  });
+
+  // 서구 — 4개 지역
+  it("부산 서구 → 26140", () => {
+    expect(getLawdCd("부산", "서구")).toBe("26140");
+  });
+  it("인천 서구 → 28260", () => {
+    expect(getLawdCd("인천", "서구")).toBe("28260");
+  });
+  it("대전 서구 → 30170", () => {
+    expect(getLawdCd("대전", "서구")).toBe("30170");
+  });
+
+  // 남구/북구 — 대표 검증
+  it("부산 남구 → 26290", () => {
+    expect(getLawdCd("부산", "남구")).toBe("26290");
+  });
+  it("광주 북구 → 29170", () => {
+    expect(getLawdCd("광주", "북구")).toBe("29170");
+  });
+
+  // 강서구 — 서울/부산 구분
+  it("서울 강서구 → 11500", () => {
+    expect(getLawdCd("서울", "강서구")).toBe("11500");
+  });
+  it("부산 강서구 → 26440", () => {
+    expect(getLawdCd("부산", "강서구")).toBe("26440");
+  });
+
+  // null 가드
+  it("gu가 null이면 prefix 폴백", () => {
+    expect(getLawdCd("서울", null)).toBe("11000");
+  });
+  it("gu가 undefined이면 prefix 폴백", () => {
+    expect(getLawdCd("서울", undefined)).toBe("11000");
   });
 });
 
 // ============================================================
-// 상수 검증 (3케이스)
+// 상수 검증 (5케이스)
 // ============================================================
 describe("상수 무결성", () => {
   it("VALID_REGIONS는 17개 시도", () => {
@@ -411,5 +474,19 @@ describe("상수 무결성", () => {
     expect(Object.keys(REGION_LAWD_PREFIX)).toHaveLength(17);
     expect(REGION_LAWD_PREFIX["서울"]).toBe("11");
     expect(REGION_LAWD_PREFIX["경기"]).toBe("41");
+  });
+
+  it("GU_LAWD_MAP은 9개 region 중첩 구조", () => {
+    expect(Object.keys(GU_LAWD_MAP)).toHaveLength(9);
+    expect(GU_LAWD_MAP["서울"]).toBeDefined();
+    expect(GU_LAWD_MAP["서울"]["강남구"]).toBe("11680");
+  });
+
+  it("GU_LAWD_MAP 각 region의 코드는 5자리 문자열", () => {
+    for (const [region, guMap] of Object.entries(GU_LAWD_MAP)) {
+      for (const [gu, code] of Object.entries(guMap)) {
+        expect(code).toMatch(/^\d{5}$/);
+      }
+    }
   });
 });
