@@ -789,6 +789,19 @@ const GU_LAWD_MAP = {
   "세종시": "36110",
 };
 
+function getLawdCd(region, gu) {
+  // 구/군 이름으로 직접 매핑 시도
+  if (GU_LAWD_MAP[gu]) return GU_LAWD_MAP[gu];
+  // 시 이름 시도 (경기도 등)
+  const shortGu = gu.replace(/시$|군$|구$/, "");
+  for (const [name, code] of Object.entries(GU_LAWD_MAP)) {
+    if (name.includes(shortGu)) return code;
+  }
+  // 시도 코드 + 000 (시도 전체)
+  const prefix = REGION_LAWD_PREFIX[region];
+  return prefix ? prefix + "000" : null;
+}
+
 async function phase7_realtrade(apartments) {
   if (!DATA_GO_KEY) { log("Phase 7: DATA_GO_KEY 없음, 건너뜀"); meta.phases.realtrade = { ok: false, reason: "no key" }; return apartments; }
   log("Phase 7: 실거래가 조회...");
@@ -798,20 +811,6 @@ async function phase7_realtrade(apartments) {
     const [region, gu] = s.split("|");
     return { region, gu };
   }).filter(rg => rg.region && rg.gu);
-
-  // 법정동코드 매핑
-  function getLawdCd(region, gu) {
-    // 구/군 이름으로 직접 매핑 시도
-    if (GU_LAWD_MAP[gu]) return GU_LAWD_MAP[gu];
-    // 시 이름 시도 (경기도 등)
-    const shortGu = gu.replace(/시$|군$|구$/, "");
-    for (const [name, code] of Object.entries(GU_LAWD_MAP)) {
-      if (name.includes(shortGu)) return code;
-    }
-    // 시도 코드 + 000 (시도 전체)
-    const prefix = REGION_LAWD_PREFIX[region];
-    return prefix ? prefix + "000" : null;
-  }
 
   // 최근 6개월 YYYYMM 생성
   const months = [];
@@ -1214,4 +1213,10 @@ async function main() {
   }
 }
 
-main().catch(e => { console.error("수집 스크립트 치명적 오류:", e); });
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) {
+  main().catch(e => { console.error("수집 스크립트 치명적 오류:", e); process.exit(1); });
+}
+
+export { resolveBuilder, isValidGu, parseAddress, mapItem, getLawdCd, estimateCreditGrade };
+export { AREA_CODE_REGION, BUILDER_ALIASES, VALID_REGIONS, GU_LAWD_MAP, REGION_LAWD_PREFIX };
