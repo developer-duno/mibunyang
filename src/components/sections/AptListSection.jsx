@@ -8,7 +8,7 @@ export const AptListSection = memo(function AptListSection({
   visible, filteredLength, visibleCount, onLoadMore,
   onDetail, onFav, onComp, favoriteIds, compIds,
   pw, profile, isPC, isDesktop, isPending,
-  searchText, budgetMin, budgetMax, filterRegion,
+  budgetMin, budgetMax, filterRegion,
   dataLoading, dataFreshnessText,
   onExpertView,
 }) {
@@ -16,7 +16,7 @@ export const AptListSection = memo(function AptListSection({
     <>
     
       <div style={{ fontSize: isDesktop ? 13 : 11, color: C.muted, marginBottom: isDesktop ? 8 : 4, padding: "0 2px", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-        <span>{filteredLength}개 단지{dataFreshnessText ? ` · ${dataFreshnessText}` : ""} · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{searchText ? ` · "${searchText}"` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>
+        <span>{filteredLength}개 단지{dataFreshnessText ? ` · ${dataFreshnessText}` : ""} · {PROFILES[profile].name}{filterRegion !== "전체" ? ` · ${filterRegion}` : ""}{(budgetMin || budgetMax) ? ` · ${budgetMin || "0"}~${budgetMax || "∞"}억` : ""}</span>
         {budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax) && (
           <span style={{ color: C.red, fontWeight: 700 }}>(최소&gt;최대)</span>
         )}
@@ -25,9 +25,9 @@ export const AptListSection = memo(function AptListSection({
     
       {filteredLength === 0 && !dataLoading && (
         <div style={{ textAlign: "center", padding: "48px 24px", color: C.muted }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>{searchText ? "\uD83D\uDD0D" : (budgetMin || budgetMax) ? "\uD83D\uDCB0" : "\uD83D\uDDFA\uFE0F"}</div>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: C.text }}>{searchText ? `"${searchText}" 검색 결과가 없습니다` : (budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 지역에 미분양 단지가 없습니다"}</div>
-          <div style={{ fontSize: 12, lineHeight: 1.6 }}>{searchText ? "단지명, 건설사, 지역명으로 검색해보세요" : (budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "다른 지역을 선택하거나 '전체'로 변경해주세요"}</div>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>{(budgetMin || budgetMax) ? "\uD83D\uDCB0" : "\uD83D\uDDFA\uFE0F"}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: C.text }}>{(budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 조건에 맞는 미분양 단지가 없습니다"}</div>
+          <div style={{ fontSize: 12, lineHeight: 1.6 }}>{(budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "필터를 조정하거나 '전체'로 변경해주세요"}</div>
         </div>
       )}
     

@@ -30,41 +30,6 @@ function makeProps(overrides = {}) {
 }
 
 describe("SearchFilterBar", () => {
-  // 검색 입력 렌더링
-  it("검색 입력 필드가 렌더링됨", () => {
-    render(<SearchFilterBar {...makeProps()} />);
-    expect(screen.getByLabelText("단지 검색")).toBeInTheDocument();
-  });
-
-  // 검색어 입력 시 콜백 호출
-  it("검색어 입력 시 onSearchChange 호출", () => {
-    const onSearchChange = vi.fn();
-    render(<SearchFilterBar {...makeProps({ onSearchChange })} />);
-    fireEvent.change(screen.getByLabelText("단지 검색"), { target: { value: "현대" } });
-    expect(onSearchChange).toHaveBeenCalledWith("현대");
-  });
-
-  // 검색어가 있으면 지우기 버튼 표시
-  it("검색어가 있으면 지우기 버튼 표시", () => {
-    render(<SearchFilterBar {...makeProps({ searchText: "테스트" })} />);
-    const clearBtn = screen.getByLabelText("검색어 지우기");
-    expect(clearBtn).toBeInTheDocument();
-  });
-
-  // 지우기 버튼 클릭 시 빈 문자열로 콜백
-  it("지우기 버튼 클릭 시 검색어 초기화", () => {
-    const onSearchChange = vi.fn();
-    render(<SearchFilterBar {...makeProps({ searchText: "테스트", onSearchChange })} />);
-    fireEvent.click(screen.getByLabelText("검색어 지우기"));
-    expect(onSearchChange).toHaveBeenCalledWith("");
-  });
-
-  // 검색어 없으면 지우기 버튼 미표시
-  it("검색어가 없으면 지우기 버튼 미표시", () => {
-    render(<SearchFilterBar {...makeProps()} />);
-    expect(screen.queryByLabelText("검색어 지우기")).toBeNull();
-  });
-
   // 지역 select 렌더링
   it("시/도 선택이 렌더링됨", () => {
     render(<SearchFilterBar {...makeProps()} />);

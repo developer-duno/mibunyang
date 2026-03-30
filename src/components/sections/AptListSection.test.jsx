@@ -19,7 +19,6 @@ function makeProps(overrides = {}) {
     isPC: false,
     isDesktop: false,
     isPending: false,
-    searchText: "",
     budgetMin: "",
     budgetMax: "",
     filterRegion: "전체",
@@ -31,16 +30,10 @@ function makeProps(overrides = {}) {
 }
 
 describe("AptListSection", () => {
-  // 빈 상태 — 검색 결과 없음 메시지
+  // 빈 상태 — 결과 없음 메시지
   it("필터된 결과 0건이면 빈 상태 메시지 표시", () => {
     render(<AptListSection {...makeProps()} />);
-    expect(screen.getByText("해당 지역에 미분양 단지가 없습니다")).toBeInTheDocument();
-  });
-
-  // 검색어로 빈 결과
-  it("검색어가 있는데 결과 0건이면 검색 관련 빈 메시지", () => {
-    render(<AptListSection {...makeProps({ searchText: "없는단지" })} />);
-    expect(screen.getByText(/"없는단지" 검색 결과가 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText("해당 조건에 맞는 미분양 단지가 없습니다")).toBeInTheDocument();
   });
 
   // 예산으로 빈 결과
@@ -100,7 +93,7 @@ describe("AptListSection", () => {
   // 빈 지역 — 0건
   it("존재하지 않는 지역으로 필터하면 빈 상태 표시", () => {
     render(<AptListSection {...makeProps({ visible: [], filteredLength: 0, visibleCount: 0, filterRegion: "제주" })} />);
-    expect(screen.getByText("해당 지역에 미분양 단지가 없습니다")).toBeInTheDocument();
+    expect(screen.getByText("해당 조건에 맞는 미분양 단지가 없습니다")).toBeInTheDocument();
   });
 
 });

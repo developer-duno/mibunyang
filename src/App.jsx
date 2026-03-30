@@ -62,6 +62,8 @@ export default function App() {
     try { localStorage.setItem("mibunyang_customWeights", JSON.stringify(cw)); } catch {}
   }, []);
   const [visibleCount, setVisibleCount] = useState(30);
+  const [hideNoUnsold, setHideNoUnsold] = useState(true);
+  const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
   const [tab, setTab] = useState(() => {
     if (!sessionStorage.getItem("expertToken")) return "list";
     return sessionStorage.getItem("userRole") === "admin" ? "admin" : "expert";
@@ -130,16 +132,17 @@ export default function App() {
     if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
     if (moveInFilter !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === moveInFilter);
     if (builderTier !== "전체") list = list.filter(x => classifyTier(x.apt) === builderTier);
+    if (hideNoUnsold) list = list.filter(x => (x.apt.unsoldRate ?? 0) > 0);
     return [...list].sort(SORTERS[sortKey] || SORTERS.total);
-  }, [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier]);
+  }, [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier, hideNoUnsold]);
   useEffect(() => { setVisibleCount(30); }, [filtered]);
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
   const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
   const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
   const activeFilterCount = useMemo(() =>
-    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly, searchText].filter(Boolean).length,
-    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchText]
+    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly].filter(Boolean).length,
+    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]
   );
 
   const regionOptions = useMemo(() => {
@@ -340,14 +343,13 @@ export default function App() {
       minScore && `${minScore}점+`,
       builderTier !== "전체" && builderTier,
       benefitOnly && "혜택",
-      searchText && `"${searchText}"`,
     ].filter(Boolean).join(" · ");
     openShareSheet({
       title: "미분양 필터 공유",
       text: activeFilters || "전체 조건",
       url: getShareURL()
     });
-  }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchText, openShareSheet, getShareURL]);
+  }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, openShareSheet, getShareURL]);
 
   return (
     <div style={{ background: isDesktop ? C.white : C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", fontSize: isDesktop ? 14 : 13, color: C.text, paddingBottom: isDesktop ? 24 : 70, paddingTop: isDesktop ? 64 : 0, transition: "max-width .3s" }}>
@@ -383,6 +385,7 @@ export default function App() {
             minScore={minScore} onMinScoreChange={handleMinScoreChange}
             builderTier={builderTier} onBuilderTierChange={handleBuilderTierChange}
             benefitOnly={benefitOnly} onToggleBenefitOnly={toggleBenefitOnly}
+            hideNoUnsold={hideNoUnsold} onToggleHideNoUnsold={toggleHideNoUnsold}
             filterCollapsed={filterCollapsed} onToggleCollapsed={toggleFilterCollapsed}
             activeFilterCount={activeFilterCount}
             filteredLength={filtered.length} scoredLength={scored.length}
@@ -411,7 +414,7 @@ export default function App() {
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + 30); trackEvent("load_more", { visible_count: visibleCount + 30 }); }}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} compIds={compIds}
             pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending}
-            searchText={searchText} budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
+            budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
 
             onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}

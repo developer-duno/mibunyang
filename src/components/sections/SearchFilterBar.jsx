@@ -35,6 +35,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   minScore, onMinScoreChange,
   builderTier, onBuilderTierChange,
   benefitOnly, onToggleBenefitOnly,
+  hideNoUnsold, onToggleHideNoUnsold,
   filterCollapsed, onToggleCollapsed, activeFilterCount,
   filteredLength, scoredLength,
   onShareFilters,
@@ -58,22 +59,15 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   }, [presetName, onSavePreset]);
   return (
     <div data-no-print style={{ background: C.card, borderRadius: isDesktop ? 12 : 10, padding: isDesktop ? "12px 16px" : "8px 10px", border: `1px solid ${C.border}`, margin: isDesktop ? "12px 0 10px" : "8px 0 6px", boxShadow: C.shadowSm }}>
-      {/* 1행: 검색 + 관심 토글 + 결과 건수 + 접기 */}
+      {/* 1행: 미분양 토글 + 관심 토글 + 접기 */}
       <div style={{ display: "flex", gap: isDesktop ? 8 : 6, alignItems: "center", marginBottom: isDesktop ? 8 : 6 }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <input type="text" value={searchText} onChange={e => onSearchChange(e.target.value)} placeholder="단지명, 건설사, 지역 검색" aria-label="단지 검색" style={{
-            width: "100%", padding: isDesktop ? "8px 30px 8px 14px" : "6px 30px 6px 10px", fontSize: isDesktop ? 14 : 12,
-            border: searchText ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-            borderRadius: isDesktop ? 8 : 6, background: C.slate100, color: C.text,
-            outline: "none", height: isDesktop ? 40 : 32, boxSizing: "border-box"
-          }} />
-          {searchText && (
-            <button onClick={() => onSearchChange("")} aria-label="검색어 지우기" style={{
-              position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
-              background: "none", border: "none", cursor: "pointer", color: C.muted, padding: 2, display: "flex", alignItems: "center"
-            }}><IconClose size={14} /></button>
-          )}
-        </div>
+        <button onClick={onToggleHideNoUnsold} aria-pressed={!hideNoUnsold} aria-label="미분양 없는 단지 보기" style={{
+          flexShrink: 0, height: 32, padding: "0 10px", fontSize: 11, fontWeight: !hideNoUnsold ? 700 : 500,
+          background: !hideNoUnsold ? C.amberLight : C.slate100, color: !hideNoUnsold ? C.amber : C.slate600,
+          border: !hideNoUnsold ? `1.5px solid ${C.amber}` : `1px solid ${C.border}`, borderRadius: 6,
+          cursor: "pointer", display: "flex", alignItems: "center", gap: 3, transition: "all .15s"
+        }}>{hideNoUnsold ? "미분양 없는 단지 보기" : "미분양 없는 단지 숨기기"}</button>
+        <div style={{ flex: 1 }} />
         <button onClick={onToggleFavOnly} aria-label="관심매물만 보기" style={{
           flexShrink: 0, height: 32, padding: "0 10px", fontSize: 11, fontWeight: showFavOnly ? 700 : 500,
           background: showFavOnly ? C.redLight : C.slate100, color: showFavOnly ? C.red : C.slate600,
@@ -113,7 +107,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             {minScore && <span onClick={() => onMinScoreChange("")} style={chipStyle}>{minScore}점+ ✕</span>}
             {builderTier !== "전체" && <span onClick={() => onBuilderTierChange("전체")} style={chipStyle}>{builderTier} ✕</span>}
             {benefitOnly && <span onClick={onToggleBenefitOnly} style={chipStyle}>혜택 ✕</span>}
-            {searchText && <span onClick={() => onSearchChange("")} style={chipStyle}>{searchText.length > 10 ? searchText.slice(0, 10) + "…" : searchText} ✕</span>}
           </div>
         )}
         {filteredLength != null && <span key={filteredLength} style={{
