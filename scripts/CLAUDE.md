@@ -69,6 +69,13 @@ _shared.mjs의 REGION_MAP을 약칭17 + 정식명20 = 37개로 확장. 중복 �
 - collect-data.mjs: REGION_MAP + KOSIS_REGION_MAP → import 전환
 - api/applyhome/apartments.js: 로컬 유지 (api/→scripts/ 의존성 방지)
 
+### 법정동코드 매핑 통합 (_shared.mjs)
+
+REGION_LAWD_PREFIX(17개 시도 접두사) + GU_LAWD_MAP(9개 region 중첩 구조) + getLawdCd() 함수를 _shared.mjs로 통합:
+- collect-data.mjs, collect-trades.mjs: 로컬 정의 삭제 → _shared.mjs import + re-export
+- GU_LAWD_MAP: `{ region: { gu: code } }` 중첩 구조 (동명이구 중구/서구/동구 등 해소)
+- getLawdCd(region, gu): null 가드 + region 내 직접→접두사→전체 순회→prefix 폴백 4단계
+
 ### Exit Code 정책
 
 수집기 main() 함수 종료 시 부분 실패를 exit code로 반영하여 GitHub Actions에서 감지:
