@@ -8,7 +8,7 @@
  *   node scripts/collectors/transport-tago.mjs              (Supabase UPDATE)
  *   node scripts/collectors/transport-tago.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, createReporter } from "./_shared.mjs";
 
 loadEnv();
 
@@ -108,7 +108,8 @@ async function main() {
   }
   log(PHASE, `대상: ${targets.length}건, TAGO 일일 상한: ${maxTago}건`);
 
-  let updated = 0, skipped = 0, tagoCallCount = 0;
+  const rpt = createReporter(PHASE);
+  let tagoCallCount = 0;
 
   for (let i = 0; i < targets.length; i++) {
     const apt = targets[i];
@@ -173,26 +174,28 @@ async function main() {
 
       if (dryRun) {
         log(PHASE, `  [DRY] ${apt.name}: 지하철${subwayDist}m(${subwayName || "없음"},${subwayLines || "?"}) 버스${uniqueBus}(${busStopNames.slice(0, 3).join("·")}) IC${icDist}km KTX${ktxDist}km`);
-        updated++;
+        rpt.success();
         continue;
       }
 
       const { error: uErr } = await sb.from("infra").upsert([{ apartment_id: apt.id }], { onConflict: "apartment_id", ignoreDuplicates: true });
       const { error: tErr } = await sb.from("transport").upsert([row], { onConflict: "apartment_id" });
-      if (tErr) { logError(PHASE, `${apt.name}: ${tErr.message}`); skipped++; }
-      else updated++;
+      if (tErr) { logError(PHASE, `${apt.name}: ${tErr.message}`); rpt.fail(); }
+      else rpt.success();
     } catch (err) {
       logError(PHASE, `${apt.name}: ${err.message}`);
-      skipped++;
+      rpt.fail();
     }
 
-    if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated})`);
+    if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length}`);
   }
 
   const actualTagoCalls = Math.min(tagoCallCount, maxTago);
-  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped}, TAGO 호출 ${actualTagoCalls}건 ===`);
+  const result = rpt.summary();
+  log(PHASE, `TAGO API 호출: ${actualTagoCalls}회`);
 
   if (!dryRun) await recordApiQuota("transport-tago", "TAGO_KEY", actualTagoCalls);
+  if (result.fail > 0) process.exit(1);
 }
 
 const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());

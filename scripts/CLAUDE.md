@@ -73,12 +73,11 @@ _shared.mjs의 REGION_MAP을 약칭17 + 정식명20 = 37개로 확장. 중복 �
 
 수집기 main() 함수 종료 시 부분 실패를 exit code로 반영하여 GitHub Actions에서 감지:
 
-- **createReporter 사용 수집기 (8개)**: `const result = rpt.summary(); if (result.fail > 0) process.exit(1);`
-  - collect-maintenance, collect-applyhome, collect-building-hub, collect-market-stats, calc-school-walk, population, collect-trades, infra-kakao
+- **createReporter 사용 수집기 (9개)**: `const result = rpt.summary(); if (result.fail > 0) process.exit(1);`
+  - collect-maintenance, collect-applyhome, collect-building-hub, collect-market-stats, calc-school-walk, population, collect-trades, infra-kakao, transport-tago
 - **수동 failed 카운터 수집기 (5개)**: `if (failed > 0) process.exit(1);`
   - molit-building-info, molit-units, naver-units, geocode-missing, reverse-geocode
 - **자체 exit 로직 수집기**: naver-presale (API 접근 불가 시 exit(0), 환경변수 누락 시 exit(1))
-- **exit code 미반영 수집기 (1개)**: transport-tago — 수동 updated/skipped 카운터만 로깅, 부분 실패 시 exit(0)
 - recordApiQuota(await) 완료 후에 exit 호출하여 쿼터 기록 보장
 
 ## 네이버 부동산 수집 — 로컬 자동화
