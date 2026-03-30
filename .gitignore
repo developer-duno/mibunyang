@@ -22,6 +22,10 @@ check_*.mjs
 detailed_*.mjs
 test-debug*
 
+# Playwright
+playwright-report/
+test-results/
+
 # 바이너리/데이터
 *.xlsx
 

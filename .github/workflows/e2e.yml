@@ -21,17 +21,14 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Build
-        run: npm run build
-        env:
-          VITE_USE_SUPABASE: "true"
-          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-
+      # SUPABASE_ANON_KEY는 공개 키 — GitHub Secrets에 등록 필요
       - name: Run E2E tests
         run: npx playwright test
         env:
           CI: true
+          VITE_USE_SUPABASE: "true"
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

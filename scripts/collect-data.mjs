@@ -806,11 +806,13 @@ function getLawdCd(region, gu) {
   // 1) region 내 직접 매칭
   const regionMap = GU_LAWD_MAP[region];
   if (regionMap?.[gu]) return regionMap[gu];
-  // 2) region 내 shortGu 부분 매칭
+  // 2) region 내 shortGu 접두사 매칭 (최소 2자 이상)
   if (regionMap) {
     const short = gu.replace(/시$|군$|구$/, "");
-    for (const [name, code] of Object.entries(regionMap)) {
-      if (name.includes(short)) return code;
+    if (short.length >= 2) {
+      for (const [name, code] of Object.entries(regionMap)) {
+        if (name.startsWith(short)) return code;
+      }
     }
   }
   // 3) 전체 region 순회 (고유 키 — 경기 시군 등)

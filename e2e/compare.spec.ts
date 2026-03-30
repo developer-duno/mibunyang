@@ -11,28 +11,25 @@ test.describe("비교 기능", () => {
     const cards = page.locator('[role="button"]');
     const count = await cards.count();
     if (count < 2) {
-      test.skip();
+      test.skip(true, "비교에 필요한 카드 2개 미만");
       return;
     }
 
-    // 첫 번째 카드의 비교 체크박스/토글 클릭
     const firstCard = cards.first();
     const checkbox = firstCard.locator('input[type="checkbox"]');
-    if (await checkbox.isVisible()) {
-      await checkbox.click();
-      // 두 번째 카드의 비교 체크박스 클릭
-      const secondCheckbox = cards.nth(1).locator('input[type="checkbox"]');
-      if (await secondCheckbox.isVisible()) {
-        await secondCheckbox.click();
-      }
+    if (!(await checkbox.isVisible())) {
+      test.skip(true, "비교 체크박스 미존재");
+      return;
     }
 
-    // 비교 시트/테이블 영역 확인
-    await page.waitForTimeout(500);
-    const compareArea = page.locator("table, [data-testid='compare']");
-    // 비교 UI가 나타나면 확인
-    if (await compareArea.isVisible()) {
-      await expect(compareArea).toBeVisible();
+    await checkbox.click();
+    const secondCheckbox = cards.nth(1).locator('input[type="checkbox"]');
+    if (await secondCheckbox.isVisible()) {
+      await secondCheckbox.click();
     }
+
+    // 비교 시트/테이블 영역이 나타나야 함
+    const compareArea = page.locator("table, [data-testid='compare']");
+    await expect(compareArea).toBeVisible({ timeout: 3000 });
   });
 });

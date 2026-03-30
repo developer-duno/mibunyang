@@ -12,17 +12,17 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl } = await import("./collect-trades.mjs");
 
 describe("getLawdCd", () => {
-  // 정상 매핑 — REGION_GU_OVERRIDE 경유 (동명이구)
+  // 정상 매핑 — 중첩 구조 region 내 직접 조회
   it("서울 강남구 → 11680", () => {
     expect(getLawdCd("서울", "강남구")).toBe("11680");
   });
 
-  // 경기도 시군구 — GU_LAWD_MAP 직접 조회
+  // 경기도 시군구 — region 내 직접 조회
   it("경기 화성시 → 41590", () => {
     expect(getLawdCd("경기", "화성시")).toBe("41590");
   });
 
-  // 동명이구 처리 — 부산 해운대구 (override 테이블)
+  // 동명이구 — 부산 해운대구 (중첩 구조로 정확한 매칭)
   it("부산 해운대구 → 26350", () => {
     expect(getLawdCd("부산", "해운대구")).toBe("26350");
   });
