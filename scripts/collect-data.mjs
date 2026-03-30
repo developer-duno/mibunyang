@@ -196,7 +196,8 @@ ${JSON.stringify(items[0], null, 2)}`);
         sum + (parseInt(u.SUPLY_HSHLDCO || 0) + parseInt(u.SPSPLY_HSHLDCO || 0)), 0);
       const finalUnits = totalUnits > 0 ? totalUnits : a.units;
       const unsoldRate = (a.unsold != null && finalUnits > 0) ? Math.round(a.unsold / finalUnits * 1000) / 10 : a.unsoldRate;
-      return { ...a, area, price, units: finalUnits, unsoldRate, pp: price && area ? Math.round(price / area * 3.3058) : null };
+      const M2_TO_PYEONG = 3.3058;
+      return { ...a, area, price, units: finalUnits, unsoldRate, pp: price && area ? Math.round(price / area * M2_TO_PYEONG) : null };
     });
     log(`  주택형별 보강: ${enriched}건`);
   } catch (e) { logError("applyhome-mdl", e.message); }

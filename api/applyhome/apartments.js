@@ -224,7 +224,7 @@ export default withHandler({ method: "GET", handler: async (req, res) => {
           price,
           units,
           unsoldRate,
-          pp: price && area ? Math.round(price / area * 3.3058) : null,
+          pp: price && area ? Math.round(price / area * 3.3058) : null, // M2_TO_PYEONG
         };
       });
     } catch (e) {
