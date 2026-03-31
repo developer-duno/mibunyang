@@ -8,13 +8,15 @@
 - React 18 + Vite + `@/` 경로 별칭 — 프론트엔드 (Pretendard Variable 폰트 CDN)
 - `@/components/icons.jsx` — 인라인 SVG 아이콘 9개 (IconClose, IconSearch, IconHelp, IconLocation, IconHeart, IconHeartFilled, IconCompare, IconShare, IconChevronDown, memo 래핑)
 - `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
-- `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters)
+- `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters, 검색 제거됨)
+- `@/lib/chosung.js` — 초성 검색 유틸 (matchSearch, getChosung — 현재 미사용, 향후 복원용 보존)
 - `@/lib/dedup.js` — 아파트 중복 제거 + siblingIds 생성 (dedupApartments)
 - `@/lib/analytics.js` — Vercel Analytics trackEvent 래퍼 (벤더 격리, try-catch)
 - `@/lib/format.js` — 가격/날짜 포맷 (fmtPrice, fmtCompletion, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate)
 - `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
 - `@/theme/index.js` — 디자인 토큰 (C 팔레트 + shadowSm/shadowMd + catCol + gr 등급함수)
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
+- Playwright E2E — 5스펙 (smoke/list/modal/compare/expert), `npm run test:e2e`
 - Supabase (PostgreSQL) — 데이터베이스 (15개 테이블 + 2 VIEW + presale 19컬럼)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - `api/_lib/handler.js` — withHandler HOF (CORS/Method/RateLimit/Admin 통합, 14개 API 엔드포인트에서 사용)
@@ -28,11 +30,14 @@
   - `extractPresaleFields(row)` — DRY 헬퍼: presale_*/naver_presale_* 필드만 추출 (update·insert 공용)
   - `buildNewApartment(row, complexData, regionFallback)` — 신규 단지 생성 (ap-{no} ID, unit_source="naver_presale")
   - `matchPresaleToApt(presale, apartments, indexes)` — 4단계 tier 매칭 (Map O(1) Tier1·2 + tier 반환 + tierCounts 집계)
+  - 기존 아파트: `update().eq("id")` 부분 업데이트 (upsert→update 전환, name NOT NULL 위반 방지)
+  - 신규 아파트: `upsertBatch()` 배치 생성 (ap-{no} ID, MIN_UNITS_FOR_INSERT=20)
   - `naver-presale-jwt.py` — new.land.naver.com JWT 추출 헬퍼 (향후 인증 필요 시 fallback용)
 - `scripts/collectors/collect-trades.mjs` — 국토부 실거래가 수집 (매매/전세/분양권 3종, TRADE_CONFIGS DRY)
   - `fetchTradeRows(lawdCd, months, type, rg, seen)` — 단일 거래타입 월별 수집 (fetchWithRetry 사용)
   - `TRADE_CONFIGS` — 3가지 거래타입별 엔드포인트/검증/행생성 규칙
   - `getTag()` — TAG_REGEX_CACHE 기반 XML 태그 추출
+- `scripts/collectors/_shared.mjs` — 수집기 공유 모듈 (19개 export: loadEnv, getSupabase, REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, fetchWithRetry, upsertBatch, createReporter, recordApiQuota 등)
 - `scripts/collectors/_molit-api.mjs` — 국토부 공동주택 API 공유 모듈 (SIDO_CODE 17개, NonRetryableError 클래스, molitApiCall 재시도+즉시실패 분리, fetchSidoAptList 페이지네이션, findBestMatch 유사도 매칭)
 - `scripts/collectors/molit-building-info.mjs` — 건물 상세 수집기 (isCLI 패턴, export 3함수)
   - `extractBuildingInfo(detail)` — V4 응답에서 parking_ratio/max_floor/energy_grade/heating/corridor_type 추출
