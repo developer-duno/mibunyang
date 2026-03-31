@@ -3,6 +3,25 @@
 > React 18 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 37+ 지표 AHP 스코어링.
 > 상세 아키텍처는 ARCHITECTURE.md 참조.
 
+## 현재 진행 상황
+
+**마지막 작업**: 2026-03-31 세션49 — 보안 패치 3건 + filters 테스트 61건 + 빈 상태 UX + fin.land 리서치
+
+- 커밋 4건, 테스트 1982개, 번들 300KB, npm 취약점 0건
+
+**다음에 해야 할 것** (우선순위):
+
+1. presale 재실행 — 로컬 터미널에서 `node scripts/collectors/naver-presale.mjs` (한국 IP, --dry-run 선행)
+2. 금융감독원 finlife API 연동 검토 — fin.land.naver.com 비공개이므로 공식 API 대안
+3. E2E 테스트 보강 — 빈 상태 스켈레톤/필터 초기화 버튼 시나리오
+4. 토큰 블랙리스트 구현 — admin TTL 1h 전환 완료, 강제 로그아웃 미구현 (중기)
+
+**주의사항**:
+
+- admin 토큰 TTL 24h→1h 전환됨. 프론트 verify 폴링 15분 주기로 최대 15분 후 감지
+- admin API에 rateLimit 30회/5분 적용됨. useAdminMode.js에 429 처리 추가됨
+- 빈 상태 스켈레톤 pulse 애니메이션은 document.createElement("style")로 keyframes 주입 (filterStyles.js BADGE_ANIM 패턴)
+
 ## 기술 스택
 
 - React 18 + Vite + `@/` 경로 별칭 — 프론트엔드 (Pretendard Variable 폰트 CDN)
