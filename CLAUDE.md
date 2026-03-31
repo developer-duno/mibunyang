@@ -15,6 +15,7 @@
 - `@/lib/format.js` — 가격/날짜 포맷 (fmtPrice, fmtCompletion, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate)
 - `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
 - `@/theme/index.js` — 디자인 토큰 (C 팔레트 + shadowSm/shadowMd + catCol + gr 등급함수)
+- `@/components/filters/` — 필터 드롭다운 패널 7개 (FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel) + filterStyles.js 공유 스타일
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
 - Playwright E2E — 5스펙 (smoke/list/modal/compare/expert), `npm run test:e2e`
 - Supabase (PostgreSQL) — 데이터베이스 (15개 테이블 + 2 VIEW + presale 19컬럼)
@@ -171,3 +172,21 @@ constants → scoring → theme → components → hooks → App
 - DB 변경 포함 시 → 마이그레이션 롤백 방법 명시
 - API 변경 포함 시 → 영향받는 프론트 페이지 나열
 - 새 기능 추가 시 → 에러 처리·빈 데이터·로딩 상태 포함 확인
+
+# 하네스 코드 리뷰 규칙 (모든 코드 수정 후 자동 적용)
+
+## 수정 완료 시 자기 검증 (에이전트 스스로 실행):
+1. npx tsc --noEmit → 타입 에러 0건 확인
+2. 수정 파일의 참조처를 grep으로 확인 → 깨지는 연동 없는지
+3. grep으로 console.log, TODO, 민감정보 잔재 확인
+
+## 수정 코드 작성 규칙:
+- 수정마다 파일명:줄번호 + before/after 명시
+- 프론트 수정이 백엔드에 영향 → 백엔드도 같이 수정
+- 추측으로 "문제없음" 판정 금지 → 도구 실행 결과 기반만 인정
+
+## AI 안티패턴 방지:
+- 1회용 유틸 함수 생성 금지 (2회 이상 사용 확인 후 추출)
+- 과도한 추상화 금지 (현재 규모에 맞게)
+- 주석과 코드 불일치 금지
+- console.log 커밋 금지

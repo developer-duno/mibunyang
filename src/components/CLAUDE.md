@@ -7,6 +7,7 @@
 소비자 10개: Bar, ScoreBadge, Radar, **LineChart**, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal
 섹션 8개 (App.jsx에서 분리): HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay
 상세 7개 (DetailModal에서 분리): PriceTable, **PriceChart**, **UnsoldChart**, SchoolInfo, **PresaleInfo**, LoanAnalysis, DataSections
+필터 8개 (SearchFilterBar에서 분리): FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel + filterStyles.js
 전문가 9개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide
 관리자 2개: AdminDashboard, AdminHelpGuide
 
@@ -54,7 +55,7 @@
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
 | HeaderSection | 166 | 데스크톱: 고정 상단 바 60px(프로필탭+네비+IconHelp) / 모바일: 블루 그라디언트 + HelpModal 공용 |
-| SearchFilterBar | 322 | 검색/필터/정렬/프리셋/카운트 배지 (SVG 아이콘: IconClose, IconHeart, IconChevronDown) |
+| SearchFilterBar | 196 | 드롭다운 오케스트레이터 — 6개 FilterButton + 패널 분배 + 칩 + undo (filters/ 7패널 사용) |
 | AptListSection | 53 | 카드 그리드 (isDesktop 3컬럼 gap20 / isPC 2컬럼 gap16) + isDesktop→AptCard 전달 |
 | ExpertLoginForm | 167 | 전문가 로그인/회원가입 |
 | InfoPage | 267 | 스코어링 엔진 설명 (10섹션 + FAQ 10건) |
