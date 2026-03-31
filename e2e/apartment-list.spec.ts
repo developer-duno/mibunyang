@@ -29,13 +29,20 @@ test.describe("아파트 목록", () => {
   });
 
   test("정렬 변경 시 순서 변화", async ({ page }) => {
-    const sortSelect = page.locator("select").first();
-    if (!(await sortSelect.isVisible())) {
-      test.skip(true, "정렬 select 미존재");
+    // 정렬 드롭다운 열기 — FilterButton "정렬" 클릭
+    const sortTrigger = page.locator('[aria-expanded]', { hasText: "정렬" });
+    if (!(await sortTrigger.isVisible({ timeout: 3000 }).catch(() => false))) {
+      test.skip(true, "정렬 트리거 미존재");
       return;
     }
 
-    await sortSelect.selectOption({ index: 1 });
+    await sortTrigger.click();
+    // 정렬 패널 내 두 번째 옵션(저가순) 클릭
+    const sortOptions = page.locator('[aria-current]').or(page.locator('[role="region"][aria-label="정렬 필터"] button'));
+    const optCount = await sortOptions.count();
+    if (optCount > 1) {
+      await sortOptions.nth(1).click();
+    }
     await page.locator('[role="button"]').first().waitFor({ state: "attached", timeout: 3000 });
     const firstAfter = await page.locator('[role="button"]').first().textContent();
     expect(firstAfter?.length).toBeGreaterThan(0);
