@@ -5,17 +5,17 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-03-31 세션51 — AdminDashboard 강제 로그아웃 + presale/관리비 수집 + 리프레시 토큰 검토
+**마지막 작업**: 2026-03-31 세션52 — 번들 최적화 해소 + E2E admin 테스트 12케이스 + fin.land API 탐색
 
-- 커밋 1건, 테스트 2021개, 번들 158KB(메인), npm 취약점 0건
-- presale 717건 갱신 (실패 0), 관리비 306건 갱신 (실패 0), cats_cache 1352건 갱신
+- 번들 158KB(메인), E2E 7스펙(25테스트), 번들 최적화: supabase 프론트 미사용 확인
+- fin.land.naver.com: 네이버페이 부동산, front-api/v1/* 확인 (해외IP 429, 집서버 DevTools 필요)
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
-2. 번들 최적화 추가 — supabase 청크 분리 시도 (현재 re-export 구조로 빈 청크 생성)
-3. fin.land.naver.com 수집기 — 금융 매물 정보
-4. E2E 테스트 확장 — admin 플로우 추가
+2. ~~번들 최적화~~ — **해소**: supabase는 프론트 미사용 확인 (0개 import, api/ 전용). 빈 청크 없음. 현재 구조 최적 (vendor 141KB + main 158KB, lazy 6개)
+3. fin.land.naver.com 수집기 — 네이버페이 부동산(Next.js RSC), `front-api/v1/*` 엔드포인트 확인 (해외IP 429). 집서버 DevTools 조사 필요
+4. ~~E2E 테스트 확장~~ — **완료**: admin.spec.ts 12케이스 추가 (로그인/탭필터/승인/거부/강제로그아웃/재승인/가중치/도움말/로그아웃/429/세션만료/빈상태)
 
 **주의사항**:
 
@@ -47,7 +47,7 @@
 - `@/components/filters/` — 필터 드롭다운 패널 7개 (FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel) + filterStyles.js 공유 스타일 + 7개 테스트(61케이스)
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
 - `@/hooks/useLoanRates.js` — finlife 금리 데이터 페칭 훅 (useRef 세션 캐싱, AbortController)
-- Playwright E2E — 6스펙 (smoke/list/modal/compare/expert/skeleton-empty), `npm run test:e2e`
+- Playwright E2E — 7스펙 (smoke/list/modal/compare/expert/skeleton-empty/admin), `npm run test:e2e`
 - Supabase (PostgreSQL) — 데이터베이스 (15개 테이블 + 2 VIEW + presale 19컬럼)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - `api/_lib/handler.js` — withHandler HOF (CORS/Method/RateLimit/Admin 통합, 14개 API 엔드포인트에서 사용)
