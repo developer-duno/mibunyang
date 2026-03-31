@@ -7,6 +7,7 @@ const STATUS_TABS = [
   { key: "pending", label: "대기중", color: "#92400E", bg: "#FFFBEB" },
   { key: "approved", label: "승인됨", color: C.green, bg: C.greenLight },
   { key: "rejected", label: "거부됨", color: C.red, bg: C.redLight },
+  { key: "suspended", label: "정지됨", color: "#DC2626", bg: "#FEE2E2" },
   { key: "all", label: "전체", color: C.text, bg: C.slate100 },
 ];
 
@@ -308,7 +309,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       {!admin.adminLoading && admin.users.length === 0 && (
         <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-            {admin.selectedStatus === "pending" ? "대기중인 신청이 없습니다" : "해당 상태의 사용자가 없습니다"}
+            {admin.selectedStatus === "pending" ? "대기중인 신청이 없습니다" : admin.selectedStatus === "suspended" ? "정지된 사용자가 없습니다" : "해당 상태의 사용자가 없습니다"}
           </div>
         </div>
       )}
@@ -317,7 +318,8 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
         {admin.users.map(user => {
           const badge = SPECIALTY_BADGE[user.specialty] || SPECIALTY_BADGE["기타"];
-          const statusLabel = user.status === "approved" ? "승인됨" : user.status === "rejected" ? "거부됨" : "대기중";
+          const STATUS_LABELS = { approved: "승인됨", rejected: "거부됨", suspended: "정지됨", pending: "대기중" };
+          const statusLabel = STATUS_LABELS[user.status] || "대기중";
           const statusStyle = STATUS_TABS.find(t => t.key === user.status) || STATUS_TABS[0];
 
           return (
@@ -415,15 +417,29 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
                 </div>
               )}
 
-              {/* Re-approve for rejected users */}
-              {user.status === "rejected" && (
+              {/* 강제 로그아웃 — approved 사용자 대상 */}
+              {user.status === "approved" && (
+                <button
+                  disabled={admin.reviewLoading === user.email}
+                  onClick={() => admin.handleReview(user.email, "force-logout")}
+                  style={{
+                    width: "100%", padding: "8px", fontSize: 12, fontWeight: 700,
+                    background: C.white, color: "#DC2626", border: "1.5px solid #DC2626", borderRadius: 6,
+                    cursor: admin.reviewLoading === user.email ? "default" : "pointer",
+                    opacity: admin.reviewLoading === user.email ? 0.6 : 1, marginTop: 4, minHeight: 40
+                  }}>강제 로그아웃</button>
+              )}
+
+              {/* 재승인 — rejected 또는 suspended 사용자 대상 */}
+              {(user.status === "rejected" || user.status === "suspended") && (
                 <button
                   disabled={admin.reviewLoading === user.email}
                   onClick={() => admin.handleReview(user.email, "approve")}
                   style={{
                     width: "100%", padding: "8px", fontSize: 12, fontWeight: 700,
                     background: C.white, color: C.green, border: `1.5px solid ${C.green}`, borderRadius: 6,
-                    cursor: admin.reviewLoading === user.email ? "default" : "pointer", marginTop: 4
+                    cursor: admin.reviewLoading === user.email ? "default" : "pointer",
+                    opacity: admin.reviewLoading === user.email ? 0.6 : 1, marginTop: 4, minHeight: 40
                   }}>재승인</button>
               )}
             </div>

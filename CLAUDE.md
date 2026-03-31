@@ -5,15 +5,15 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-03-31 세션50 — 토큰 블랙리스트 + finlife 금리 API + 성능 최적화 + E2E 보강
+**마지막 작업**: 2026-03-31 세션51 — AdminDashboard 강제 로그아웃 UI + 리프레시 토큰 검토
 
-- 커밋 6건, 테스트 2013개, 번들 158KB(메인), npm 취약점 0건
+- 테스트 2021개, 번들 158KB(메인), npm 취약점 0건
 
 **다음에 해야 할 것** (우선순위):
 
 1. presale 재실행 — 로컬 터미널에서 `node scripts/collectors/naver-presale.mjs` (한국 IP, --dry-run 선행)
 2. finlife API Key 발급 — https://finlife.fss.or.kr 가입 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록
-3. 리프레시 토큰 도입 검토 — 현재 블랙리스트 + TTL 조합으로 충분하나 장기 과제
+3. 관리비 수집기 실행 — `node scripts/collectors/collect-maintenance.mjs` + compute-scores 후처리
 4. 번들 최적화 추가 — supabase 청크 분리 시도 (현재 re-export 구조로 빈 청크 생성)
 
 **주의사항**:
@@ -23,7 +23,9 @@
 - 빈 상태 스켈레톤 pulse 애니메이션은 document.createElement("style")로 keyframes 주입 (filterStyles.js BADGE_ANIM 패턴)
 - 토큰 블랙리스트: KV `bl:{hash}` 키, fail-open (Redis 장애 시 토큰 만료가 2차 방어선)
 - 로그아웃 시 서버 측 토큰 무효화 + 프론트 sessionStorage 삭제 (best-effort)
-- review.js force-logout → status="suspended" → verify 폴링에서 자동 감지
+- review.js force-logout → status="suspended" + `users:suspended` Set 관리 → verify 폴링에서 자동 감지
+- AdminDashboard: STATUS_TABS 5개 (pending/approved/rejected/suspended/all), approved→강제로그아웃, suspended→재승인
+- 리프레시 토큰: 검토 완료 → 현상 유지 권고 (docs/refresh-token-review.md). 사용자 100명+ 또는 모바일앱 시 재검토
 - finlife API: FINLIFE_API_KEY 환경변수 필요, 미등록 시 빈 배열 반환
 - vite vendor 청크: react+react-dom 분리됨 (141KB), 메인 번들 158KB
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)

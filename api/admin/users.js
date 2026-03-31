@@ -3,7 +3,7 @@ import { withHandler } from "../_lib/handler.js";
 
 export default withHandler({ method: "GET", admin: true, rateLimit: "admin", handler: async (req, res) => {
   const status = req.query.status || "pending";
-  const allowed = ["pending", "approved", "rejected", "all"];
+  const allowed = ["pending", "approved", "rejected", "suspended", "all"];
   if (!allowed.includes(status)) {
     return res.status(400).json({ ok: false, error: "잘못된 상태 필터입니다" });
   }
@@ -11,12 +11,13 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
   try {
     let emails = [];
     if (status === "all") {
-      const [p, a, r] = await Promise.all([
+      const [p, a, r, s] = await Promise.all([
         kv.smembers("users:pending"),
         kv.smembers("users:approved"),
         kv.smembers("users:rejected"),
+        kv.smembers("users:suspended"),
       ]);
-      emails = [...new Set([...(p || []), ...(a || []), ...(r || [])])];
+      emails = [...new Set([...(p || []), ...(a || []), ...(r || []), ...(s || [])])];
     } else {
       emails = (await kv.smembers(`users:${status}`)) || [];
     }

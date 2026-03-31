@@ -14,22 +14,16 @@ export default withHandler({ method: "POST", admin: true, rateLimit: "admin", ha
       return res.status(404).json({ ok: false, error: "사용자를 찾을 수 없습니다" });
     }
 
-    // 강제 로그아웃: status를 "suspended"로 변경 → verify 폴링에서 자동 감지
-    if (action === "force-logout") {
-      const updatedUser = { ...user, status: "suspended", reviewedAt: new Date().toISOString(), reviewNote: (note || "").trim() || "관리자 강제 로그아웃" };
-      await kv.set(key, updatedUser);
-      return res.json({ ok: true, message: "강제 로그아웃 처리되었습니다" });
-    }
-
-    const newStatus = action === "approve" ? "approved" : "rejected";
+    const newStatus = action === "force-logout" ? "suspended" : action === "approve" ? "approved" : "rejected";
     const oldStatus = user.status ?? "pending";
 
     const emailNorm = email.toLowerCase().trim();
+    const defaultNote = action === "force-logout" ? "관리자 강제 로그아웃" : null;
     const updatedUser = {
       ...user,
       status: newStatus,
       reviewedAt: new Date().toISOString(),
-      reviewNote: (note || "").trim() || null,
+      reviewNote: (note || "").trim() || defaultNote,
     };
 
     // 집합 먼저 업데이트 (실패 시 해시 변경 없이 안전)
@@ -56,7 +50,8 @@ export default withHandler({ method: "POST", admin: true, rateLimit: "admin", ha
       throw hashErr;
     }
 
-    res.json({ ok: true, message: action === "approve" ? "승인되었습니다" : "거부되었습니다" });
+    const MSG = { approve: "승인되었습니다", reject: "거부되었습니다", "force-logout": "강제 로그아웃 처리되었습니다" };
+    res.json({ ok: true, message: MSG[action] });
   } catch (err) {
     console.error("[admin/review] error:", err.message);
     res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });

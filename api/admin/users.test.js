@@ -121,20 +121,34 @@ describe('admin/users handler', () => {
     expect(users[1].email).toBe('old@test.com');
   });
 
-  // 정상: all 상태 필터 (3개 집합 병합)
+  // 정상: all 상태 필터 (4개 집합 병합 — pending/approved/rejected/suspended)
   it('all 상태 필터는 모든 사용자를 반환한다', async () => {
     mockKv.smembers
       .mockResolvedValueOnce(['p@test.com']) // pending
       .mockResolvedValueOnce(['a@test.com']) // approved
-      .mockResolvedValueOnce(['r@test.com']); // rejected
+      .mockResolvedValueOnce(['r@test.com']) // rejected
+      .mockResolvedValueOnce(['s@test.com']); // suspended
     mockKv.get
       .mockResolvedValueOnce(makeUser('p@test.com', '2025-01-01', 'pending'))
       .mockResolvedValueOnce(makeUser('a@test.com', '2025-02-01', 'approved'))
-      .mockResolvedValueOnce(makeUser('r@test.com', '2025-03-01', 'rejected'));
+      .mockResolvedValueOnce(makeUser('r@test.com', '2025-03-01', 'rejected'))
+      .mockResolvedValueOnce(makeUser('s@test.com', '2025-04-01', 'suspended'));
     const res = makeRes();
     await handler(makeReq({ status: 'all' }), res);
     const users = res.json.mock.calls[0][0].users;
-    expect(users).toHaveLength(3);
+    expect(users).toHaveLength(4);
+  });
+
+  // 정상: suspended 상태 필터
+  it('suspended 상태 필터는 정지된 사용자를 반환한다', async () => {
+    mockKv.smembers.mockResolvedValue(['s@test.com']);
+    mockKv.get.mockResolvedValueOnce(makeUser('s@test.com', '2025-04-01', 'suspended'));
+    const res = makeRes();
+    await handler(makeReq({ status: 'suspended' }), res);
+    expect(mockKv.smembers).toHaveBeenCalledWith('users:suspended');
+    const users = res.json.mock.calls[0][0].users;
+    expect(users).toHaveLength(1);
+    expect(users[0].status).toBe('suspended');
   });
 
   // 정상: 기본 상태는 pending

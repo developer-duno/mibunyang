@@ -78,12 +78,13 @@ describe("AdminDashboard", () => {
     expect(props.admin.handleAdminLogout).toHaveBeenCalledWith(props.onLogout);
   });
 
-  // 상태 탭 4개 표시
-  it("4개 상태 탭을 표시한다", () => {
+  // 상태 탭 5개 표시 (suspended 추가)
+  it("5개 상태 탭을 표시한다", () => {
     render(<AdminDashboard {...defaultProps()} />);
     expect(screen.getByText("대기중")).toBeTruthy();
     expect(screen.getByText("승인됨")).toBeTruthy();
     expect(screen.getByText("거부됨")).toBeTruthy();
+    expect(screen.getByText("정지됨")).toBeTruthy();
     expect(screen.getByText("전체")).toBeTruthy();
   });
 
@@ -157,6 +158,64 @@ describe("AdminDashboard", () => {
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     expect(screen.getByText("재승인")).toBeTruthy();
+  });
+
+  // approved 사용자에게 강제 로그아웃 버튼 표시
+  it("approved 사용자에게 강제 로그아웃 버튼을 표시한다", () => {
+    const admin = makeAdmin({
+      users: [{
+        email: "approved@test.com", name: "승인유저", status: "approved",
+        specialty: "부동산 중개", createdAt: "2025-01-01",
+      }],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    expect(screen.getByText("강제 로그아웃")).toBeTruthy();
+  });
+
+  // 강제 로그아웃 클릭 시 handleReview 호출
+  it("강제 로그아웃 버튼 클릭 시 handleReview를 force-logout으로 호출한다", () => {
+    const admin = makeAdmin({
+      users: [{
+        email: "approved@test.com", name: "승인유저", status: "approved",
+        specialty: "부동산 중개", createdAt: "2025-01-01",
+      }],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    fireEvent.click(screen.getByText("강제 로그아웃"));
+    expect(admin.handleReview).toHaveBeenCalledWith("approved@test.com", "force-logout");
+  });
+
+  // suspended 사용자에게 재승인 버튼 표시
+  it("suspended 사용자에게 재승인 버튼을 표시한다", () => {
+    const admin = makeAdmin({
+      users: [{
+        email: "suspended@test.com", name: "정지유저", status: "suspended",
+        specialty: "감정평가", createdAt: "2025-01-01",
+      }],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    expect(screen.getByText("재승인")).toBeTruthy();
+  });
+
+  // suspended 탭 선택 시 빈 목록 메시지
+  it("suspended 탭에 사용자가 없으면 정지된 사용자 안내를 표시한다", () => {
+    const admin = makeAdmin({ selectedStatus: "suspended" });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    expect(screen.getByText("정지된 사용자가 없습니다")).toBeTruthy();
+  });
+
+  // suspended 사용자 상태 배지 표시
+  it("suspended 사용자의 상태 배지를 정지됨으로 표시한다", () => {
+    const admin = makeAdmin({
+      users: [{
+        email: "sus@test.com", name: "정지유저", status: "suspended",
+        specialty: "기타", createdAt: "2025-01-01",
+      }],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    // 상태 탭의 "정지됨"과 배지의 "정지됨" 둘 다 존재
+    const badges = screen.getAllByText("정지됨");
+    expect(badges.length).toBeGreaterThanOrEqual(2); // 탭 + 배지
   });
 
   // onSwitchToExpert가 null이면 전문가 보기 버튼 미표시

@@ -129,6 +129,28 @@ describe('admin/review handler', () => {
     expect(res.status).toHaveBeenCalledWith(500);
   });
 
+  // 정상: approved → suspended (force-logout)
+  it('approved 사용자를 force-logout하면 suspended로 전환한다', async () => {
+    mockKv.get.mockResolvedValue({ email: 'user@test.com', status: 'approved' });
+    const res = makeRes();
+    await handler(makeReq({ email: 'user@test.com', action: 'force-logout' }), res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, message: '강제 로그아웃 처리되었습니다' }));
+    expect(mockKv.sadd).toHaveBeenCalledWith('users:suspended', 'user@test.com');
+    expect(mockKv.srem).toHaveBeenCalledWith('users:approved', 'user@test.com');
+    const savedUser = mockKv.set.mock.calls[0][1];
+    expect(savedUser.status).toBe('suspended');
+    expect(savedUser.reviewNote).toBe('관리자 강제 로그아웃');
+  });
+
+  // 정상: force-logout에 사유 전달 시 사유가 우선
+  it('force-logout에 note 전달 시 해당 사유가 저장된다', async () => {
+    mockKv.get.mockResolvedValue({ email: 'user@test.com', status: 'approved' });
+    const res = makeRes();
+    await handler(makeReq({ email: 'user@test.com', action: 'force-logout', note: '악의적 사용' }), res);
+    const savedUser = mockKv.set.mock.calls[0][1];
+    expect(savedUser.reviewNote).toBe('악의적 사용');
+  });
+
   // 같은 상태로 전환 시 srem 안함
   it('같은 상태로 전환 시 srem을 호출하지 않는다', async () => {
     mockKv.get.mockResolvedValue({ email: 'user@test.com', status: 'approved' });
