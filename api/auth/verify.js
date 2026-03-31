@@ -1,5 +1,6 @@
 import { kv } from "@vercel/kv";
 import { verifyToken } from "../_lib/auth.js";
+import { isBlacklisted } from "../_lib/tokenBlacklist.js";
 import { withHandler } from "../_lib/handler.js";
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "verify", handler: async (req, res) => {
@@ -13,9 +14,13 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "verify", hand
     return res.status(401).json({ ok: false, error: "유효하지 않은 토큰입니다" });
   }
 
+  if (await isBlacklisted(token)) {
+    return res.status(401).json({ ok: false, error: "로그아웃된 토큰입니다" });
+  }
+
   try {
     const user = await kv.get(`user:${payload.email}`);
-    if (!user || user.status === "rejected" || user.status === "pending") {
+    if (!user || user.status === "rejected" || user.status === "pending" || user.status === "suspended") {
       return res.status(403).json({ ok: false, reason: "revoked", error: "접근 권한이 없습니다" });
     }
   } catch {

@@ -3,8 +3,8 @@ import { withHandler } from "../_lib/handler.js";
 
 export default withHandler({ method: "POST", admin: true, rateLimit: "admin", handler: async (req, res) => {
   const { email, action, note } = req.body || {};
-  if (!email || typeof email !== "string" || !["approve", "reject"].includes(action)) {
-    return res.status(400).json({ ok: false, error: "이메일과 승인/거부 액션이 필요합니다" });
+  if (!email || typeof email !== "string" || !["approve", "reject", "force-logout"].includes(action)) {
+    return res.status(400).json({ ok: false, error: "이메일과 승인/거부/강제로그아웃 액션이 필요합니다" });
   }
 
   try {
@@ -12,6 +12,13 @@ export default withHandler({ method: "POST", admin: true, rateLimit: "admin", ha
     const user = await kv.get(key);
     if (!user) {
       return res.status(404).json({ ok: false, error: "사용자를 찾을 수 없습니다" });
+    }
+
+    // 강제 로그아웃: status를 "suspended"로 변경 → verify 폴링에서 자동 감지
+    if (action === "force-logout") {
+      const updatedUser = { ...user, status: "suspended", reviewedAt: new Date().toISOString(), reviewNote: (note || "").trim() || "관리자 강제 로그아웃" };
+      await kv.set(key, updatedUser);
+      return res.json({ ok: true, message: "강제 로그아웃 처리되었습니다" });
     }
 
     const newStatus = action === "approve" ? "approved" : "rejected";

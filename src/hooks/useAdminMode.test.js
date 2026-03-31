@@ -78,13 +78,14 @@ describe('useAdminMode', () => {
     expect(showToast).toHaveBeenCalledWith("승인 완료");
   });
 
-  it('관리자 로그아웃', () => {
+  it('관리자 로그아웃', async () => {
     sessionStorage.setItem("userRole", "admin");
     sessionStorage.setItem("expertToken", "token");
+    fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
     const onLogout = vi.fn();
     const { result } = renderHook(() => useAdminMode(showToast));
 
-    act(() => { result.current.handleAdminLogout(onLogout); });
+    await act(async () => { await result.current.handleAdminLogout(onLogout); });
 
     expect(result.current.adminLoggedIn).toBe(false);
     expect(sessionStorage.getItem("expertToken")).toBeNull();

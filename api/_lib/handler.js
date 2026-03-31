@@ -43,7 +43,7 @@ export function withHandler(config) {
     }
 
     // 4. Admin auth (config.admin === true 시에만)
-    if (config.admin && !verifyAdminToken(req)) {
+    if (config.admin && !(await verifyAdminToken(req))) {
       return res.status(401).json({ ok: false, error: "관리자 인증이 필요합니다" });
     }
 

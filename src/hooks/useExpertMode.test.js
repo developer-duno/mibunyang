@@ -107,13 +107,14 @@ describe('useExpertMode', () => {
     expect(result.current.authError).toBe("서버 연결 실패");
   });
 
-  it('로그아웃 → 세션 정리', () => {
+  it('로그아웃 → 세션 정리', async () => {
     sessionStorage.setItem("expertToken", "token");
     sessionStorage.setItem("userRole", "expert");
+    fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
     const onLogout = vi.fn();
     const { result } = renderHook(() => useExpertMode(showToast));
 
-    act(() => { result.current.handleExpertLogout(onLogout); });
+    await act(async () => { await result.current.handleExpertLogout(onLogout); });
 
     expect(result.current.expertLoggedIn).toBe(false);
     expect(sessionStorage.getItem("expertToken")).toBeNull();

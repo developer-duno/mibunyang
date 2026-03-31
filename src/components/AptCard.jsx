@@ -53,6 +53,14 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
     compBtn: { ...S.btnBase, background: isComp ? C.indigo : "transparent", color: isComp ? C.white : C.indigo, border: `1.5px solid ${C.indigo}`, fontWeight: 700 },
   }), [isComp, isFav, g.c, moveInDone, isDesktop]);
 
+  // 상위 3개 카테고리 정렬 메모이제이션 (매 렌더 재정렬 방지)
+  const topCats = useMemo(() =>
+    Object.entries(res.cats)
+      .sort((a, b) => (profileWeights[b[0]] || 0) - (profileWeights[a[0]] || 0))
+      .slice(0, 3),
+    [res.cats, profileWeights]
+  );
+
   return (
     <div style={dynStyles.wrapper}>
       <div style={dynStyles.bar} />
@@ -73,7 +81,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         </div>
 
         <div style={isDesktop ? { ...S.grid, gap: "10px 14px" } : S.grid}>
-          {Object.entries(res.cats).sort((a, b) => (profileWeights[b[0]] || 0) - (profileWeights[a[0]] || 0)).slice(0, 3).map(([k, c]) => (
+          {topCats.map(([k, c]) => (
             <div key={k}>
               <div style={S.catHeader}>
                 <span style={S.catLabel}>{SHORT_LABEL[c.label] || c.label}</span>

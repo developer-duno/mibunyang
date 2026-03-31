@@ -152,22 +152,27 @@ export default function App() {
     if (!scored.length) return null;
     let base = applyBaseFilters(scored, baseFilterArgs);
     if (hideNoUnsold) base = base.filter(x => (x.apt.unsoldRate ?? 0) > 0);
-    // 드롭다운별 leave-one-out
-    const withRegion = filterRegion !== "전체" ? base.filter(x => x.apt.region === filterRegion) : base;
-    const withRegionGu = filterGu !== "전체" ? withRegion.filter(x => x.apt.gu === filterGu) : withRegion;
-    const forRegion = (moveInFilter !== "전체" ? base.filter(x => classifyMoveIn(x.apt) === moveInFilter) : base).filter(x => builderTier === "전체" || classifyTier(x.apt) === builderTier);
-    const forGu = filterRegion !== "전체" ? forRegion.filter(x => x.apt.region === filterRegion) : forRegion;
-    const forMoveIn = builderTier !== "전체" ? withRegionGu.filter(x => classifyTier(x.apt) === builderTier) : withRegionGu;
-    const forTier = moveInFilter !== "전체" ? withRegionGu.filter(x => classifyMoveIn(x.apt) === moveInFilter) : withRegionGu;
-    // 카운트
+    // 단일 패스 leave-one-out 카운트 (5N→1N 최적화)
     const regionCounts = Object.create(null);
-    for (const { apt } of forRegion) if (apt.region) regionCounts[apt.region] = (regionCounts[apt.region] || 0) + 1;
     const guCounts = Object.create(null);
-    for (const { apt } of forGu) if (apt.gu) guCounts[apt.gu] = (guCounts[apt.gu] || 0) + 1;
     const moveInCounts = Object.fromEntries(MOVEIN_VALUES.map(v => [v, 0]));
-    for (const { apt } of forMoveIn) { const mi = classifyMoveIn(apt); if (mi) moveInCounts[mi]++; }
     const tierCounts = Object.fromEntries(TIER_VALUES.map(v => [v, 0]));
-    for (const { apt } of forTier) tierCounts[classifyTier(apt)]++;
+    for (const { apt } of base) {
+      const mi = classifyMoveIn(apt);
+      const ti = classifyTier(apt);
+      const matchRegion = filterRegion === "전체" || apt.region === filterRegion;
+      const matchGu = filterGu === "전체" || apt.gu === filterGu;
+      const matchMoveIn = moveInFilter === "전체" || mi === moveInFilter;
+      const matchTier = builderTier === "전체" || ti === builderTier;
+      // regionCounts: 지역 필터 제외, 나머지 필터 적용
+      if (matchMoveIn && matchTier && apt.region) regionCounts[apt.region] = (regionCounts[apt.region] || 0) + 1;
+      // guCounts: 구 필터 제외, 나머지 필터 적용 (지역 포함)
+      if (matchRegion && matchMoveIn && matchTier && apt.gu) guCounts[apt.gu] = (guCounts[apt.gu] || 0) + 1;
+      // moveInCounts: 입주 필터 제외, 나머지 필터 적용
+      if (matchRegion && matchGu && matchTier && mi) moveInCounts[mi]++;
+      // tierCounts: 시공사 필터 제외, 나머지 필터 적용
+      if (matchRegion && matchGu && matchMoveIn) tierCounts[ti]++;
+    }
     return { regionCounts, guCounts, moveInCounts, tierCounts };
   }, [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier, hideNoUnsold]);
 

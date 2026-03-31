@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef, useEffect } from "react";
 import { C } from "@/theme";
 import { AptCard } from "@/components/AptCard";
 import { PROFILES } from "@/constants/profiles";
@@ -64,13 +64,31 @@ export const AptListSection = memo(function AptListSection({
         ))}
       </div>
       {visibleCount < filteredLength && (
-        <div style={{ textAlign: "center", padding: "16px 0 24px" }}>
-          <button onClick={() => onLoadMore()} style={{ padding: isDesktop ? "12px 40px" : "10px 32px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, fontSize: isDesktop ? 14 : 13, fontWeight: 600, cursor: "pointer" }}>
-            더 보기 ({filteredLength - visibleCount}개 남음)
-          </button>
-        </div>
+        <>
+          <LoadMoreSentinel onLoadMore={onLoadMore} />
+          <div style={{ textAlign: "center", padding: "16px 0 24px" }}>
+            <button onClick={() => onLoadMore()} style={{ padding: isDesktop ? "12px 40px" : "10px 32px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, fontSize: isDesktop ? 14 : 13, fontWeight: 600, cursor: "pointer" }}>
+              더 보기 ({filteredLength - visibleCount}개 남음)
+            </button>
+          </div>
+        </>
       )}
-    
+
     </>
   );
+});
+
+/** IntersectionObserver 기반 자동 로드 sentinel */
+const LoadMoreSentinel = memo(function LoadMoreSentinel({ onLoadMore }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) onLoadMore();
+    }, { threshold: 0.1 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [onLoadMore]);
+  return <div ref={ref} style={{ height: 1 }} />;
 });

@@ -94,7 +94,17 @@ export function useExpertMode(showToast) {
     }
   }, [showToast]);
 
-  const handleExpertLogout = useCallback((onLogout) => {
+  const handleExpertLogout = useCallback(async (onLogout) => {
+    const token = sessionStorage.getItem("expertToken");
+    if (token) {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+      } catch { /* best-effort — 세션 삭제는 항상 실행 */ }
+    }
     setExpertLoggedIn(false);
     sessionStorage.removeItem("expertToken");
     sessionStorage.removeItem("userRole");
