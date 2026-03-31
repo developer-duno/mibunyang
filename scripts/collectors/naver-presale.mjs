@@ -655,7 +655,14 @@ async function main() {
   if (!dryRun) {
     if (updateRows.length) {
       log(PHASE, `기존 아파트 업데이트 ${updateRows.length}건...`);
-      await upsertBatch("apartments", updateRows, "id", 500, sb);
+      let updOk = 0, updFail = 0;
+      for (const row of updateRows) {
+        const { id, ...fields } = row;
+        const { error } = await sb.from("apartments").update(fields).eq("id", id);
+        if (error) { updFail++; if (updFail <= 3) logError(PHASE, `UPDATE ${id}: ${error.message}`); }
+        else updOk++;
+      }
+      log("apartments", `${updOk}/${updateRows.length}건 update${updFail ? ` (${updFail}건 실패)` : ""}`);
     }
     if (insertRows.length) {
       log(PHASE, `신규 아파트 생성 ${insertRows.length}건...`);
