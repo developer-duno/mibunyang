@@ -23,6 +23,10 @@ export function useAdminMode(showToast) {
         signal: controller.signal,
       });
       const data = await res.json();
+      if (res.status === 429) {
+        showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
       if (data.ok) {
         setUsers(data.users);
       } else {
@@ -50,6 +54,10 @@ export function useAdminMode(showToast) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ email, action, note }),
       });
+      if (res.status === 429) {
+        showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
       const data = await res.json();
       if (data.ok) {
         showToast(data.message);

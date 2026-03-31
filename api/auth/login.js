@@ -55,7 +55,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handl
     const token = createToken({
       email: user.email, name: user.name,
       ...(isAdmin && { role: "admin" }),
-    });
+    }, isAdmin ? { ttl: 3600000 } : undefined);
     res.json({
       ok: true,
       token,

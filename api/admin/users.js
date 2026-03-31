@@ -1,7 +1,7 @@
 import { kv } from "@vercel/kv";
 import { withHandler } from "../_lib/handler.js";
 
-export default withHandler({ method: "GET", admin: true, handler: async (req, res) => {
+export default withHandler({ method: "GET", admin: true, rateLimit: "admin", handler: async (req, res) => {
   const status = req.query.status || "pending";
   const allowed = ["pending", "approved", "rejected", "all"];
   if (!allowed.includes(status)) {

@@ -14,6 +14,11 @@ vi.mock('../_lib/adminAuth.js', () => ({
   verifyAdminToken: vi.fn().mockReturnValue({ email: 'admin@test.com', role: 'admin' }),
 }));
 
+// rateLimit 모킹 — admin rateLimit 추가로 인한 pipeline mock 필요
+vi.mock('../_lib/rateLimit.js', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
+}));
+
 // @vercel/kv 모킹
 const mockKv = {
   get: vi.fn(),
@@ -31,6 +36,7 @@ function makeRes() {
   return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
+    setHeader: vi.fn(),
   };
 }
 

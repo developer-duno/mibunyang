@@ -1,7 +1,7 @@
 import { kv } from "@vercel/kv";
 import { withHandler } from "../_lib/handler.js";
 
-export default withHandler({ method: "POST", admin: true, handler: async (req, res) => {
+export default withHandler({ method: "POST", admin: true, rateLimit: "admin", handler: async (req, res) => {
   const { email, action, note } = req.body || {};
   if (!email || typeof email !== "string" || !["approve", "reject"].includes(action)) {
     return res.status(400).json({ ok: false, error: "이메일과 승인/거부 액션이 필요합니다" });

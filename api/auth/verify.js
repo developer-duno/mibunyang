@@ -2,7 +2,7 @@ import { kv } from "@vercel/kv";
 import { verifyToken } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
 
-export default withHandler({ method: "POST", rateLimit: "verify", handler: async (req, res) => {
+export default withHandler({ method: "POST", cors: {}, rateLimit: "verify", handler: async (req, res) => {
   const { token } = req.body || {};
   if (!token) {
     return res.status(400).json({ ok: false, error: "토큰이 필요합니다" });
