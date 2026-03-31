@@ -31,7 +31,7 @@
 | 파일 | export 함수 | isCLI | 테스트 수 |
 |------|-------------|-------|----------|
 | `trade-stats.mjs` | median, monthsAgo, groupByArea | ✓ | 22 |
-| `schools-neis.mjs` | calcScore, gradeFromScore, isSchoolPlace | ✓ | 19 |
+| `schools-neis.mjs` | calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis | ✓ | 43 |
 | `sync-naver-complex.mjs` | matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes | ✓ | 25 |
 | `naver-listings.mjs` | parseNaverPrice, calcPricePerPyeong, detectPool, toComplexRow, toArticleRow, enrichArticleFromDetail | ✓ | 46 |
 | `dart-builders.mjs` | estimateCreditGrade, parseAmount | ✓ | 13 |

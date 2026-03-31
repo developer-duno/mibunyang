@@ -5,16 +5,19 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-03-31 세션52 — 번들 최적화 해소 + E2E admin 테스트 12케이스 + fin.land API 탐색
+**마지막 작업**: 2026-04-01 세션53 — NEIS 교육정보 API 연동 (학교 상세 보강 + 품질 보정)
 
-- 번들 158KB(메인), E2E 7스펙(25테스트), 번들 최적화: supabase 프론트 미사용 확인
-- fin.land.naver.com: 네이버페이 부동산, front-api/v1/* 확인 (해외IP 429, 집서버 DevTools 필요)
+- schools-neis.mjs: NEIS API(open.neis.go.kr) 연동, 설립유형/설립년/고교계열 수집
+- calcScore: 고교 계열 품질 보정 추가 (특목고+7, 자율고+5, 특성화고-2)
+- SchoolInfo.jsx: 설립유형 컬럼 추가
+- fin.land.naver.com: 500 에러 (서비스 다운) — 보류
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
-2. fin.land.naver.com 수집기 — 네이버페이 부동산(Next.js RSC), `front-api/v1/*` 확인. 집서버 DevTools 조사 필요
-3. 추가 데이터 소스 수집기 탐색 (청약홈 추가 데이터, 네이버 시세 등)
+2. fin.land.naver.com 수집기 — 현재 500 에러, 복구 후 재시도
+3. NEIS classInfo API 연동 — 학급수 수집 (schools-neis.mjs Phase 2)
+4. 추가 데이터 소스 수집기 탐색 (에어코리아 대기질, 응급의료기관 등)
 
 **주의사항**:
 
@@ -27,6 +30,7 @@
 - AdminDashboard: STATUS_TABS 5개 (pending/approved/rejected/suspended/all), approved→강제로그아웃, suspended→재승인
 - 리프레시 토큰: 검토 완료 → 현상 유지 권고 (docs/refresh-token-review.md). 사용자 100명+ 또는 모바일앱 시 재검토
 - finlife API: FINLIFE_API_KEY 환경변수 필요, 미등록 시 빈 배열 반환
+- NEIS API: NEIS_KEY 환경변수 필요 (open.neis.go.kr), 미등록 시 NEIS 보강 스킵 (거리 기반만)
 - vite vendor 청크: react+react-dom 분리됨 (141KB), 메인 번들 158KB
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
 - AptListSection: IntersectionObserver 자동 무한 스크롤 + "더 보기" 버튼 폴백

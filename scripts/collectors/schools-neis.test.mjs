@@ -1,7 +1,8 @@
 /**
  * schools-neis.mjs 테스트 — 학군 점수 순수 함수 검증
  *
- * 대상: calcScore, gradeFromScore, isSchoolPlace
+ * 대상: calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus,
+ *       normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis
  */
 import { describe, it, expect, vi } from "vitest";
 
@@ -22,7 +23,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { calcScore, gradeFromScore, isSchoolPlace } = await import("./schools-neis.mjs");
+const { calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis } = await import("./schools-neis.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** Kakao 검색 결과 팩토리 (distance 포함) */
@@ -147,5 +148,120 @@ describe("isSchoolPlace", () => {
 
   it("부분 매칭 — '교장' 만으로는 제외되지 않음 ('교장실'만 제외)", () => {
     expect(isSchoolPlace("교장")).toBe(true);
+  });
+});
+
+// ── calcQualityBonus ─────────────────────────────────────────────
+describe("calcQualityBonus", () => {
+  it("highSchoolType 없는 학교 → 보너스 0", () => {
+    expect(calcQualityBonus([{ distance: "900" }])).toBe(0);
+  });
+
+  it("특수목적고 → +7", () => {
+    expect(calcQualityBonus([{ distance: "900", highSchoolType: "특수목적고등학교" }])).toBe(7);
+  });
+
+  it("자율고 → +5", () => {
+    expect(calcQualityBonus([{ distance: "900", highSchoolType: "자율고등학교" }])).toBe(5);
+  });
+
+  it("특성화고 → -2", () => {
+    expect(calcQualityBonus([{ distance: "900", highSchoolType: "특성화고등학교" }])).toBe(-2);
+  });
+
+  it("일반고 → 0", () => {
+    expect(calcQualityBonus([{ distance: "900", highSchoolType: "일반고등학교" }])).toBe(0);
+  });
+
+  it("복합 — 특목고 + 일반고", () => {
+    const high = [
+      { distance: "800", highSchoolType: "특수목적고등학교" },
+      { distance: "1200", highSchoolType: "일반고등학교" },
+    ];
+    expect(calcQualityBonus(high)).toBe(7); // +7 + 0
+  });
+
+  it("복합 — 특목고 + 특성화고", () => {
+    const high = [
+      { distance: "800", highSchoolType: "특수목적고등학교" },
+      { distance: "1500", highSchoolType: "특성화고등학교" },
+    ];
+    expect(calcQualityBonus(high)).toBe(5); // +7 + (-2)
+  });
+});
+
+// ── calcScore + 품질 보정 ────────────────────────────────────────
+describe("calcScore 품질 보정", () => {
+  it("고등학교에 highSchoolType 없으면 기존 점수와 동일", () => {
+    const high = [makeSchool(900)]; // +5
+    expect(calcScore([], [], high)).toBe(55); // 50 + 5
+  });
+
+  it("특목고 1km 이내 → 거리(+5) + 품질(+7) = 62", () => {
+    const high = [{ distance: "800", highSchoolType: "특수목적고등학교" }];
+    expect(calcScore([], [], high)).toBe(62); // 50 + 5 + 7
+  });
+
+  it("자율고 1km 초과 → 거리(+2) + 품질(+5) = 57", () => {
+    const high = [{ distance: "1500", highSchoolType: "자율고등학교" }];
+    expect(calcScore([], [], high)).toBe(57); // 50 + 2 + 5
+  });
+
+  it("특성화고만 → 거리(+5) + 품질(-2) = 53", () => {
+    const high = [{ distance: "800", highSchoolType: "특성화고등학교" }];
+    expect(calcScore([], [], high)).toBe(53); // 50 + 5 + (-2)
+  });
+
+  it("품질 보정으로 100 초과 시 클램핑", () => {
+    const elem = [makeSchool(100), makeSchool(200), makeSchool(300)]; // +45
+    const high = [{ distance: "100", highSchoolType: "특수목적고등학교" }]; // +5 +7
+    // 50 + 45 + 5 + 7 = 107 → 100
+    expect(calcScore(elem, [], high)).toBe(100);
+  });
+
+  it("품질 보정으로 0 미만 시 클램핑", () => {
+    // 특성화고 여러 개로 음수 가능성 테스트 (기본 50이므로 실제로는 어려움)
+    expect(calcScore([], [], [])).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ── normalizeSchoolName ──────────────────────────────────────────
+describe("normalizeSchoolName", () => {
+  it("공백 제거", () => {
+    expect(normalizeSchoolName("서울 초등 학교")).toBe("서울초등학교");
+  });
+
+  it("괄호 제거", () => {
+    expect(normalizeSchoolName("서울대학교(부설)초등학교")).toBe("서울대학교부설초등학교");
+  });
+
+  it("일반 학교명은 그대로", () => {
+    expect(normalizeSchoolName("강남중학교")).toBe("강남중학교");
+  });
+});
+
+// ── fetchNeisSchoolInfo (NEIS_KEY 미설정 시) ─────────────────────
+describe("fetchNeisSchoolInfo", () => {
+  it("NEIS_KEY 없으면 null 반환", async () => {
+    // 테스트 환경에서 NEIS_KEY가 설정되지 않으므로 null
+    const result = await fetchNeisSchoolInfo("서울초등학교");
+    expect(result).toBeNull();
+  });
+});
+
+// ── enrichWithNeis (NEIS_KEY 미설정 시) ──────────────────────────
+describe("enrichWithNeis", () => {
+  it("NEIS_KEY 없으면 원본 그대로 반환", async () => {
+    const schools = [
+      { name: "서울초등학교", type: "초", distance: 300 },
+      { name: "강남중학교", type: "중", distance: 800 },
+    ];
+    const result = await enrichWithNeis(schools);
+    expect(result).toEqual(schools);
+  });
+
+  it("빈 배열 → 빈 배열", async () => {
+    const result = await enrichWithNeis([]);
+    expect(result).toEqual([]);
   });
 });

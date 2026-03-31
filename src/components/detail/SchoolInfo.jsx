@@ -17,6 +17,7 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }) {
   const counts = useMemo(() => types.map(t => { const w = schools.filter(s => s.type === t && s.distance != null && s.distance <= 1000); return w.length > 0 ? `${t} ${w.length}` : null; }).filter(Boolean), [schools]);
   const hasFounded = schools.some(s => s.founded);
   const hasClasses = schools.some(s => s.classes);
+  const hasSchoolType = schools.some(s => s.schoolType);
 
   return schools.length === 0 ? null : (
     <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
@@ -45,13 +46,14 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }) {
       {expanded && (
         <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
           <thead><tr>
-            <th style={thStyle}>학교명</th><th style={thStyle}>구분</th><th style={{ ...thStyle, textAlign: "right" }}>도보거리</th>{hasFounded && <th style={thStyle}>설립</th>}{hasClasses && <th style={{ ...thStyle, textAlign: "right" }}>학급수</th>}
+            <th style={thStyle}>학교명</th><th style={thStyle}>구분</th><th style={{ ...thStyle, textAlign: "right" }}>도보거리</th>{hasSchoolType && <th style={thStyle}>설립</th>}{hasFounded && <th style={thStyle}>설립년</th>}{hasClasses && <th style={{ ...thStyle, textAlign: "right" }}>학급수</th>}
           </tr></thead>
           <tbody>{[...schools].sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999)).map((s, i) => (
             <tr key={i}>
               <td style={{ ...tdStyle, fontWeight: 600 }}>{s.name}</td>
               <td style={tdStyle}>{s.highSchoolType ? `${s.type}(${s.highSchoolType})` : s.type}</td>
               <td style={{ ...tdStyle, textAlign: "right", color: distColor(s.distance) }}>{fmtDist(s.distance)}</td>
+              {hasSchoolType && <td style={tdStyle}>{s.schoolType || "-"}</td>}
               {hasFounded && <td style={tdStyle}>{s.founded || "-"}</td>}
               {hasClasses && <td style={{ ...tdStyle, textAlign: "right" }}>{s.classes ? `${s.classes}학급` : "-"}</td>}
             </tr>

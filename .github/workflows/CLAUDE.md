@@ -79,4 +79,5 @@
 | `DART_KEY` | DART 전자공시 API 키 (시공사 재무 수집) |
 | `KOSIS_KEY` | KOSIS 국가통계포털 API 키 (미분양 수집) |
 | `TAGO_KEY` | TAGO 대중교통 API 키 (버스정류장 수집, data.go.kr) |
+| `NEIS_KEY` | NEIS 교육정보 API 키 (학교 상세 수집, open.neis.go.kr, 선택) |
 | `SUPABASE_ANON_KEY` | Supabase 공개 키 (E2E 테스트 CI용, role=anon) |
