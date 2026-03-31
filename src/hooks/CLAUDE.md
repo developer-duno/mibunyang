@@ -6,7 +6,7 @@
 
 App.jsx 내부:
 ```
-useState (4개: profile, customWeights, visibleCount, tab) + useTransition (1개) → useCallback → 커스텀 훅 14개 (useToast, useFavorites(showToast), useDetailModal, useFilterSort, useDebouncedValue, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare, useResponsive, usePriceHistory, useUnsoldHistory) → useMemo (13개: baseFilterArgs, activeFilterCount, filterOptionCounts 포함) → useEffect (6개) → useRef → useCallback
+useState (5개: profile, customWeights, visibleCount, hideNoUnsold, tab) + useTransition (1개) → useCallback → 커스텀 훅 13개 (useToast, useFavorites(showToast), useDetailModal, useFilterSort, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare, useResponsive, usePriceHistory, useUnsoldHistory) → useMemo (13개: baseFilterArgs, activeFilterCount, filterOptionCounts 포함) → useEffect (6개) → useRef → useCallback
 **useResponsive 위치**: line 69 (모든 useState 이후, useMemo 이전) → `{ isPC, isDesktop }` 반환 → isDesktop은 line 176+ JSX에서만 사용 (TDZ 안전)
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
@@ -20,8 +20,8 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 | guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
 | catsCache | [apartments] | apartments 의존 필수 |
 | scored | [catsCache, profile, customWeights] | catsCache는 apartments 간접 의존 |
-| baseFilterArgs | [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText] | base 필터 상태 묶음 (11개) |
-| filtered | [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier] | SORTERS 모듈 레벨 상수 사용 |
+| baseFilterArgs | [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly] | base 필터 상태 묶음 (10개) |
+| filtered | [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier, hideNoUnsold] | SORTERS 모듈 레벨 상수 사용 + 미분양 필터 |
 | visible | [filtered, visibleCount] | 페이지네이션용 |
 | scoredMap | [scored] | Map 자료구조 (P-3: O(1) 조회) |
 | compItems | [compIds, scoredMap] | scoredMap.get() 사용 |

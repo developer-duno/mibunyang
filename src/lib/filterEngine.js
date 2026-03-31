@@ -1,5 +1,3 @@
-import { matchSearch } from "@/lib/chosung";
-
 /** 억 → 만원 변환 (사용자 입력 억 단위 × 10000 = DB 만원 단위) */
 const MANWON_PER_EUK = 10000;
 
@@ -36,11 +34,6 @@ export function applyBaseFilters(list, f) {
 
   // 혜택 유무
   if (f.benefitOnly) out = out.filter(x => (x.res.cats.benefit?.totalWon ?? 0) > 0);
-
-  // 검색어 (초성 지원)
-  if (f.searchText) out = out.filter(x =>
-    matchSearch(x.apt.name, f.searchText) || matchSearch(x.apt.builder ?? "", f.searchText) ||
-    matchSearch(x.apt.gu ?? "", f.searchText) || matchSearch(x.apt.region ?? "", f.searchText));
 
   return out;
 }

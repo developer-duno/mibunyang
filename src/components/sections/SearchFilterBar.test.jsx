@@ -5,8 +5,6 @@ import { catCol, catBg } from "@/theme";
 
 function makeProps(overrides = {}) {
   return {
-    searchText: "",
-    onSearchChange: vi.fn(),
     filterRegion: "전체",
     onRegionChange: vi.fn(),
     regionOptions: ["전체", "서울", "경기"],

@@ -31,8 +31,6 @@ import { HeaderSection } from "@/components/sections/HeaderSection";
 import { ExpertLoginForm } from "@/components/sections/ExpertLoginForm";
 import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
 import { AptListSection } from "@/components/sections/AptListSection";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-
 import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { applyBaseFilters } from "@/lib/filterEngine";
 import { trackEvent } from "@/lib/analytics";
@@ -76,8 +74,7 @@ export default function App() {
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites(showToast);
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, searchText, handleSearchChange, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo } = useFilterSort({ onFilterChange: closeDetail });
-  const debouncedSearchText = useDebouncedValue(searchText, 300);
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo } = useFilterSort({ onFilterChange: closeDetail });
 
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
@@ -123,8 +120,8 @@ export default function App() {
   }, [catsCache, profile, customWeights]);
   const baseFilterArgs = useMemo(() => ({
     showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax,
-    unitsMin, unitsMax, minScore, benefitOnly, searchText: debouncedSearchText,
-  }), [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, debouncedSearchText]);
+    unitsMin, unitsMax, minScore, benefitOnly,
+  }), [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly]);
 
   const filtered = useMemo(() => {
     let list = applyBaseFilters(scored, baseFilterArgs);

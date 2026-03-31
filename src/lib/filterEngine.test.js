@@ -14,7 +14,7 @@ const DEFAULT_FILTER = {
   budgetMin: "", budgetMax: "",
   areaMin: "", areaMax: "",
   unitsMin: "", unitsMax: "",
-  minScore: "", benefitOnly: false, searchText: "",
+  minScore: "", benefitOnly: false,
 };
 
 describe("applyBaseFilters", () => {
@@ -85,14 +85,6 @@ describe("applyBaseFilters", () => {
   it("showFavOnly 필터 적용", () => {
     const items = [makeItem(), makeItem({ id: "t2" })];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, showFavOnly: true, favoriteIds: ["t2"] });
-    expect(result).toHaveLength(1);
-    expect(result[0].apt.id).toBe("t2");
-  });
-
-  // 검색어 필터 (이름 매칭)
-  it("searchText 필터 — 이름 매칭", () => {
-    const items = [makeItem({ name: "힐스테이트" }), makeItem({ id: "t2", name: "래미안" })];
-    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, searchText: "래미안" });
     expect(result).toHaveLength(1);
     expect(result[0].apt.id).toBe("t2");
   });

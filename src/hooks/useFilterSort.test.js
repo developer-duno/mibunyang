@@ -22,7 +22,6 @@ describe('useFilterSort', () => {
     expect(result.current.filterRegion).toBe("전체");
     expect(result.current.filterGu).toBe("전체");
     expect(result.current.sortKey).toBe("total");
-    expect(result.current.searchText).toBe("");
     expect(result.current.budgetMin).toBe("");
     expect(result.current.budgetMax).toBe("");
   });
@@ -78,12 +77,6 @@ describe('useFilterSort', () => {
     expect(result.current.budgetMax).toBe("");
   });
 
-  it('검색어 변경', () => {
-    const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.handleSearchChange("힐스테이트"); });
-    expect(result.current.searchText).toBe("힐스테이트");
-  });
-
   it('getShareURL 반환', () => {
     const { result } = renderHook(() => useFilterSort({}));
     expect(typeof result.current.getShareURL).toBe("function");
@@ -108,7 +101,6 @@ describe("전체 초기화 + 프리셋", () => {
       result.current.handleAreaMinChange("60");
       result.current.handleUnitsMinChange("500");
       result.current.handleMoveInChange("입주예정");
-      result.current.handleSearchChange("힐스테이트");
     });
     act(() => { result.current.handleResetAll(); });
     expect(result.current.filterRegion).toBe("전체");
@@ -121,7 +113,6 @@ describe("전체 초기화 + 프리셋", () => {
     expect(result.current.areaMin).toBe("");
     expect(result.current.unitsMin).toBe("");
     expect(result.current.moveInFilter).toBe("전체");
-    expect(result.current.searchText).toBe("");
   });
 
   it("handleResetAll 시 onFilterChange 콜백 호출", () => {
@@ -257,34 +248,14 @@ describe("URL 필터 역직렬화 (Phase 2)", () => {
     expect(result.current.moveInFilter).toBe("전체");
   });
 
-  it("URL에서 searchText 읽기 (q 파라미터)", () => {
-    mockLocationSearch("?q=힐스테이트");
-    const { result } = renderHook(() => useFilterSort({}));
-    expect(result.current.searchText).toBe("힐스테이트");
-  });
-
-  it("searchText 50자 초과 → 50자 절삭", () => {
-    const longText = "가".repeat(60);
-    mockLocationSearch(`?q=${encodeURIComponent(longText)}`);
-    const { result } = renderHook(() => useFilterSort({}));
-    expect(result.current.searchText.length).toBe(50);
-  });
-
-  it("빈 searchText → 기본값", () => {
-    mockLocationSearch("?q=");
-    const { result } = renderHook(() => useFilterSort({}));
-    expect(result.current.searchText).toBe("");
-  });
-
   it("Phase 1 + Phase 2 복합 URL", () => {
-    mockLocationSearch("?region=서울&sort=benefit&bmax=5&amin=60&movein=입주예정&q=힐스");
+    mockLocationSearch("?region=서울&sort=benefit&bmax=5&amin=60&movein=입주예정");
     const { result } = renderHook(() => useFilterSort({}));
     expect(result.current.filterRegion).toBe("서울");
     expect(result.current.sortKey).toBe("benefit");
     expect(result.current.budgetMax).toBe("5");
     expect(result.current.areaMin).toBe("60");
     expect(result.current.moveInFilter).toBe("입주예정");
-    expect(result.current.searchText).toBe("힐스");
   });
 
   it("NaN areaMin → 기본값 폴백", () => {
