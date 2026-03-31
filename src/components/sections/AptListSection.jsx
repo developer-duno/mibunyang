@@ -10,7 +10,7 @@ export const AptListSection = memo(function AptListSection({
   pw, profile, isPC, isDesktop, isPending,
   budgetMin, budgetMax, filterRegion,
   dataLoading, dataFreshnessText,
-  onExpertView,
+  onExpertView, onResetAll,
 }) {
   return (
     <>
@@ -23,11 +23,34 @@ export const AptListSection = memo(function AptListSection({
 
       </div>
     
+      {dataLoading && (
+        <>
+          <style>{`@keyframes skeleton-pulse { 0%{opacity:1} 50%{opacity:0.4} 100%{opacity:1} }`}</style>
+          <div style={{ ...(isDesktop ? { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" } : isPC ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0 16px" } : {}) }}>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: isDesktop ? 0 : 12, animation: "skeleton-pulse 1.5s ease-in-out infinite" }}>
+                <div style={{ height: 16, width: "60%", background: C.slate100, borderRadius: 4, marginBottom: 12 }} />
+                <div style={{ height: 12, width: "80%", background: C.slate100, borderRadius: 4, marginBottom: 8 }} />
+                <div style={{ height: 12, width: "40%", background: C.slate100, borderRadius: 4, marginBottom: 16 }} />
+                <div style={{ height: 30, width: "100%", background: C.slate100, borderRadius: 4 }} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {filteredLength === 0 && !dataLoading && (
         <div style={{ textAlign: "center", padding: "48px 24px", color: C.muted }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>{(budgetMin || budgetMax) ? "\uD83D\uDCB0" : "\uD83D\uDDFA\uFE0F"}</div>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: C.text }}>{(budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 조건에 맞는 미분양 단지가 없습니다"}</div>
           <div style={{ fontSize: 12, lineHeight: 1.6 }}>{(budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "필터를 조정하거나 '전체'로 변경해주세요"}</div>
+          {onResetAll && (
+            <button onClick={onResetAll} style={{
+              marginTop: 12, padding: "8px 20px", fontSize: 13, fontWeight: 600,
+              background: C.indigo, color: "#fff", border: "none", borderRadius: 6,
+              cursor: "pointer",
+            }}>필터 초기화</button>
+          )}
         </div>
       )}
     

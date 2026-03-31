@@ -415,6 +415,7 @@ export default function App() {
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
 
             onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}
+            onResetAll={handleResetAll}
           />
         </div>
       ) : tab === "map" ? (
