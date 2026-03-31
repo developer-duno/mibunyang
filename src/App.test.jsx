@@ -278,4 +278,48 @@ describe('App 통합 테스트', () => {
       });
     });
   });
+
+  // 5. hideNoUnsold 토글 — 미분양 없는 단지 표시/숨기기
+  describe('미분양 필터 토글', () => {
+    it('기본 상태에서 unsoldRate > 0인 아파트만 표시된다', async () => {
+      const data = [
+        ...makeTestApartments(),
+        { ...makeTestApartments()[0], id: 'apt3', name: '완판아파트', unsoldRate: 0, unsold: 0 },
+      ];
+      fetchStaticApartments.mockResolvedValue({ data, dataUpdatedAt: null });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
+      });
+
+      // unsoldRate=0인 완판아파트는 기본 숨김
+      expect(screen.queryByText(/완판아파트/)).not.toBeInTheDocument();
+    });
+
+    it('"완판 포함" 버튼 클릭 시 모든 아파트가 표시된다', async () => {
+      const user = userEvent.setup();
+      const data = [
+        ...makeTestApartments(),
+        { ...makeTestApartments()[0], id: 'apt3', name: '완판아파트', unsoldRate: 0, unsold: 0 },
+      ];
+      fetchStaticApartments.mockResolvedValue({ data, dataUpdatedAt: null });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
+      });
+
+      // "완판 포함" 버튼 클릭
+      const toggleBtn = screen.getByLabelText("미분양 없는 단지 보기");
+      await user.click(toggleBtn);
+
+      // 완판아파트가 이제 보여야 함
+      await waitFor(() => {
+        expect(screen.getByText(/완판아파트/)).toBeInTheDocument();
+      });
+    });
+  });
 });
