@@ -5,16 +5,17 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-03-31 세션51 — AdminDashboard 강제 로그아웃 UI + 리프레시 토큰 검토
+**마지막 작업**: 2026-03-31 세션51 — AdminDashboard 강제 로그아웃 + presale/관리비 수집 + 리프레시 토큰 검토
 
-- 테스트 2021개, 번들 158KB(메인), npm 취약점 0건
+- 커밋 1건, 테스트 2021개, 번들 158KB(메인), npm 취약점 0건
+- presale 717건 갱신 (실패 0), 관리비 306건 갱신 (실패 0), cats_cache 1352건 갱신
 
 **다음에 해야 할 것** (우선순위):
 
-1. presale 재실행 — 로컬 터미널에서 `node scripts/collectors/naver-presale.mjs` (한국 IP, --dry-run 선행)
-2. finlife API Key 발급 — https://finlife.fss.or.kr 가입 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록
-3. 관리비 수집기 실행 — `node scripts/collectors/collect-maintenance.mjs` + compute-scores 후처리
-4. 번들 최적화 추가 — supabase 청크 분리 시도 (현재 re-export 구조로 빈 청크 생성)
+1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
+2. 번들 최적화 추가 — supabase 청크 분리 시도 (현재 re-export 구조로 빈 청크 생성)
+3. fin.land.naver.com 수집기 — 금융 매물 정보
+4. E2E 테스트 확장 — admin 플로우 추가
 
 **주의사항**:
 
