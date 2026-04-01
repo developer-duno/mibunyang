@@ -2,7 +2,8 @@
  * schools-neis.mjs 테스트 — 학군 점수 순수 함수 검증
  *
  * 대상: calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus,
- *       normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis
+ *       normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis,
+ *       getAcademicYear, fetchNeisClassInfo
  */
 import { describe, it, expect, vi } from "vitest";
 
@@ -23,7 +24,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis } = await import("./schools-neis.mjs");
+const { calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo } = await import("./schools-neis.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** Kakao 검색 결과 팩토리 (distance 포함) */
@@ -263,5 +264,44 @@ describe("enrichWithNeis", () => {
   it("빈 배열 → 빈 배열", async () => {
     const result = await enrichWithNeis([]);
     expect(result).toEqual([]);
+  });
+});
+
+// ── getAcademicYear ──────────────────────────────────────────────
+describe("getAcademicYear", () => {
+  it("현재 연도 또는 전년도 반환 (숫자)", () => {
+    const ay = getAcademicYear();
+    const now = new Date();
+    const expected = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
+    expect(ay).toBe(expected);
+  });
+
+  it("반환값은 4자리 숫자", () => {
+    const ay = getAcademicYear();
+    expect(ay).toBeGreaterThan(2020);
+    expect(ay).toBeLessThanOrEqual(new Date().getFullYear());
+  });
+});
+
+// ── fetchNeisClassInfo (NEIS_KEY 미설정 시) ──────────────────────
+describe("fetchNeisClassInfo", () => {
+  it("NEIS_KEY 없으면 null 반환", async () => {
+    const result = await fetchNeisClassInfo("B10", "7010057");
+    expect(result).toBeNull();
+  });
+
+  it("officeCode null → null", async () => {
+    const result = await fetchNeisClassInfo(null, "7010057");
+    expect(result).toBeNull();
+  });
+
+  it("neisCode null → null", async () => {
+    const result = await fetchNeisClassInfo("B10", null);
+    expect(result).toBeNull();
+  });
+
+  it("officeCode + neisCode 모두 null → null", async () => {
+    const result = await fetchNeisClassInfo(null, null);
+    expect(result).toBeNull();
   });
 });

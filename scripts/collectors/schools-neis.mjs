@@ -70,6 +70,8 @@ export async function fetchNeisSchoolInfo(schoolName) {
       founded: row.FOND_YMD ? Number(row.FOND_YMD.slice(0, 4)) : null,
       highSchoolType: row.HS_SC_NM || null,           // 일반고 / 특수목적고 / 특성화고 / 자율고
       coedu: row.COEDU_SC_NM || null,                 // 남녀공학 / 남 / 여
+      neisCode: row.SD_SCHUL_CODE || null,             // classInfo API용 학교코드
+      officeCode: row.ATPT_OFCDC_SC_CODE || null,      // classInfo API용 교육청코드
     };
 
     neisCache.set(cacheKey, info);
@@ -77,6 +79,40 @@ export async function fetchNeisSchoolInfo(schoolName) {
   } catch (err) {
     logError(PHASE, `NEIS 조회 실패 (${schoolName}): ${err.message}`);
     neisCache.set(cacheKey, null);
+    return null;
+  }
+}
+
+/** 학년도 계산 — 1~2월은 전년도 (한국 학년도 3월 시작) */
+export function getAcademicYear() {
+  const now = new Date();
+  return now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
+}
+
+/** classInfo 전용 캐시 — "officeCode|neisCode" → 학급수 */
+const classCache = new Map();
+
+/** NEIS 학급정보 조회 — 학급수(행 수) 반환 */
+export async function fetchNeisClassInfo(officeCode, neisCode) {
+  if (!NEIS_KEY || !officeCode || !neisCode) return null;
+
+  const cacheKey = `${officeCode}|${neisCode}`;
+  if (classCache.has(cacheKey)) return classCache.get(cacheKey);
+
+  const ay = getAcademicYear();
+  const url = `${NEIS_BASE}/classInfo?KEY=${NEIS_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${officeCode}&SD_SCHUL_CODE=${neisCode}&AY=${ay}&pIndex=1&pSize=100`;
+
+  try {
+    const res = await fetchWithRetry(url);
+    const data = await res.json();
+    neisApiCalls++;
+    const rows = data?.classInfo?.[1]?.row;
+    const count = rows?.length ?? null;
+    classCache.set(cacheKey, count);
+    return count;
+  } catch (err) {
+    logError(PHASE, `classInfo 실패 (${neisCode}): ${err.message}`);
+    classCache.set(cacheKey, null);
     return null;
   }
 }
@@ -91,12 +127,19 @@ export async function enrichWithNeis(nearbySchools) {
     await sleep(100); // NEIS rate limit 준수
 
     if (info) {
-      enriched.push({
+      const enrichedSchool = {
         ...school,
         ...(info.schoolType && { schoolType: info.schoolType }),
         ...(info.founded && { founded: info.founded }),
         ...(info.highSchoolType && school.type === "고" && { highSchoolType: info.highSchoolType }),
-      });
+      };
+      // classInfo 호출 — neisCode/officeCode 캐시에 있을 때만
+      if (info.neisCode && info.officeCode) {
+        const classes = await fetchNeisClassInfo(info.officeCode, info.neisCode);
+        if (classes) enrichedSchool.classes = classes;
+        await sleep(100); // classInfo rate limit
+      }
+      enriched.push(enrichedSchool);
     } else {
       enriched.push(school);
     }
@@ -222,7 +265,7 @@ async function main() {
   }
 
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
-  if (NEIS_KEY) log(PHASE, `NEIS API 호출: ${neisApiCalls}건, 캐시 히트: ${neisCache.size - neisApiCalls}건`);
+  if (NEIS_KEY) log(PHASE, `NEIS API 호출: ${neisApiCalls}건, schoolInfo 캐시: ${neisCache.size}건, classInfo 캐시: ${classCache.size}건`);
 }
 
 const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
