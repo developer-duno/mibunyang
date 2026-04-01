@@ -5,19 +5,20 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-01 세션53 — NEIS 교육정보 API 연동 (학교 상세 보강 + 품질 보정)
+**마지막 작업**: 2026-04-01 세션53 — NEIS 교육정보 API 연동 (schoolInfo + classInfo 2단계)
 
-- schools-neis.mjs: NEIS API(open.neis.go.kr) 연동, 설립유형/설립년/고교계열 수집
-- calcScore: 고교 계열 품질 보정 추가 (특목고+7, 자율고+5, 특성화고-2)
-- SchoolInfo.jsx: 설립유형 컬럼 추가
+- schools-neis.mjs Phase1: NEIS schoolInfo 연동 (설립유형/설립년/고교계열) + calcScore 품질 보정
+- schools-neis.mjs Phase2: NEIS classInfo 연동 (학급수) + getAcademicYear + classCache
+- SchoolInfo.jsx: 설립유형 컬럼 추가 (학급수는 기존 UI로 자동 표시)
 - fin.land.naver.com: 500 에러 (서비스 다운) — 보류
+- 테스트: 2046 unit(49 학교) + 빌드 158KB
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
 2. fin.land.naver.com 수집기 — 현재 500 에러, 복구 후 재시도
-3. NEIS classInfo API 연동 — 학급수 수집 (schools-neis.mjs Phase 2)
-4. 추가 데이터 소스 수집기 탐색 (에어코리아 대기질, 응급의료기관 등)
+3. 추가 데이터 소스 수집기 탐색 (에어코리아 대기질, 응급의료기관 등)
+4. NEIS 학생수 수집 — schoolInfo API에 TOT_STDNT_CNTL 미제공 시 학교알리미 엑셀 파싱
 
 **주의사항**:
 
