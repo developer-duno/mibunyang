@@ -111,7 +111,7 @@ describe("SchoolInfo", () => {
   });
 
   // founded, classes 컬럼 — 확장 테이블에서 표시
-  it("founded가 있는 학교가 있으면 확장 시 설립 컬럼을 표시한다", () => {
+  it("founded가 있는 학교가 있으면 확장 시 설립년 컬럼을 표시한다", () => {
     const apt = makeApt({
       nearbySchools: [
         { name: "오래된학교", type: "초", distance: 300, founded: "1980" },
@@ -121,7 +121,7 @@ describe("SchoolInfo", () => {
     render(<SchoolInfo apt={apt} />);
     // 확장 테이블 열기
     fireEvent.click(screen.getByText(/전체.*학교 보기/));
-    expect(screen.getByText("설립")).toBeTruthy();
+    expect(screen.getByText("설립년")).toBeTruthy();
     expect(screen.getByText("1980")).toBeTruthy();
   });
 
