@@ -55,7 +55,7 @@ describe('SUB_CONTEXT', () => {
   it('location: 5개 서브', () => { expect(Object.keys(SUB_CONTEXT.location)).toHaveLength(5); });
   it('product: 9개 서브', () => { expect(Object.keys(SUB_CONTEXT.product)).toHaveLength(9); });
   it('benefit: 6개 서브', () => { expect(Object.keys(SUB_CONTEXT.benefit)).toHaveLength(6); });
-  it('risk: 9개 서브', () => { expect(Object.keys(SUB_CONTEXT.risk)).toHaveLength(9); });
+  it('risk: 10개 서브', () => { expect(Object.keys(SUB_CONTEXT.risk)).toHaveLength(10); });
   it('future: 4개 서브', () => { expect(Object.keys(SUB_CONTEXT.future)).toHaveLength(4); });
 
   // interpret 3단계 검증 (높음/보통/낮음)

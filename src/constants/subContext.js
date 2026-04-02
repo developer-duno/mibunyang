@@ -131,6 +131,10 @@ export const SUB_CONTEXT = {
       interpret: (sc) => sc >= 70 ? "계약 해제 적음" : sc >= 40 ? "해제율 보통" : "계약 해제 주의",
       benchmark: "3% 이하 안전",
     },
+    "치안 안전": {
+      interpret: (sc) => sc >= 70 ? "치안 우수 지역" : sc >= 40 ? "치안 보통" : "치안 취약 주의",
+      benchmark: "1~2등급 안전",
+    },
   },
   future: {
     "교통개발": {

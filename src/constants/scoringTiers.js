@@ -125,6 +125,10 @@ export const CANCEL_RATIO_TIERS = [
 export const CANCEL_RATIO_HIGH_SCORE = 85;
 export const CANCEL_RATIO_NULL_SCORE = 35;
 
+// scoreRisk crimeSafetyGrade (행안부 지역안전지수 범죄: 1=최안전→낮은 위험, 5=최위험→높은 위험)
+export const CRIME_SAFETY_SCORES = { 1: 10, 2: 25, 3: 40, 4: 60, 5: 80 };
+export const CRIME_SAFETY_NULL_SCORE = 35;
+
 // scoreRisk popGrowth (위험 관점: 높으면 안전 → 낮은 위험점수)
 export const POP_RISK_TIERS = [
   { min: 0.5, score: 10 }, { min: 0, score: 20 },

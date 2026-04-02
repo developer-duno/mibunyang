@@ -5,18 +5,19 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션57 — finlife 보류 + 치안 데이터 소스 조사 완료
+**마지막 작업**: 2026-04-04 세션58 — 치안 안전지수 scoreRisk 10번째 지표 구현 완료
 
-- finlife API Key: finlife.fss.or.kr 사이트 오류로 발급 불가 → 보류 (기존 방어 코드로 운영 무영향)
-- AIRKOREA_KEY: data.go.kr 신청 완료, 승인 대기 중 (미등록 시 수집 스킵, 운영 무영향)
-- 치안 데이터 조사 완료: 읍면동 단위 범죄 통계는 비공개 → 행안부 지역안전지수(시군구 1~5등급) 추천
+- crime_safety_grade: apartments 컬럼 + scoreRisk 10번째 서브지표 (가중치 0.05) + 수집기 완성
+- CSV 데이터 미적용: data.go.kr/15069240 에서 CSV 다운로드 → `data/crime-safety-index.csv` 저장 후 수집기 실행 필요
+- 마이그레이션 미적용: `20260404000000_add_crime_safety_grade.sql` Supabase Dashboard 실행 필요
 
 **다음에 해야 할 것** (우선순위):
 
-1. 치안 데이터 구현 — 행안부 지역안전지수 CSV → `crime_safety_grade` 컬럼 → scoreRisk 10번째 지표 추가
-2. (보조) 경찰청 파출소 위치 CSV → Kakao 지오코딩 → `police_count`/`police_dist` 밀도 지표
-3. AIRKOREA_KEY 승인 확인 → GitHub Secret `AIRKOREA_KEY` 등록
-4. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
+1. 치안 CSV 다운로드 → `data/crime-safety-index.csv` 저장 → `node scripts/collectors/collect-crime-safety.mjs` 실행
+2. 마이그레이션 적용: Supabase Dashboard에서 `20260404000000_add_crime_safety_grade.sql` 실행
+3. (보조) 경찰청 파출소 위치 CSV → Kakao 지오코딩 → `police_count`/`police_dist` 밀도 지표
+4. AIRKOREA_KEY 승인 확인 → GitHub Secret `AIRKOREA_KEY` 등록
+5. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
 
 **주의사항**:
 
@@ -100,6 +101,9 @@
   - `haversine(lat1, lng1, lat2, lng2)` — 거리 계산 (km)
   - `fetchSidoData(sido)` — 시도별 측정소 실시간 대기질
   - `matchNearestStation(apt, stations)` — 최근접 측정소 매칭
+- `scripts/collectors/collect-crime-safety.mjs` — 행안부 지역안전지수 범죄등급 수집기 (로컬 CSV, isCLI 패턴, export 2함수)
+  - `parseCrimeCsv(csvText)` — CSV → Map<"region|gu", grade> 파싱
+  - `matchCrimeGrade(apt, crimeMap)` — region+gu 매칭 (세종 등 gu 없는 경우 폴백)
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 

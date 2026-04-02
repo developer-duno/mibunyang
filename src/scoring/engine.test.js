@@ -193,7 +193,7 @@ describe('scoreRisk', () => {
     const r = scoreRisk(makeApt());
     expect(r.total).toBeGreaterThanOrEqual(0);
     expect(r.total).toBeLessThanOrEqual(100);
-    expect(r.subs).toHaveLength(9);
+    expect(r.subs).toHaveLength(10);
   });
   it('미분양률 낮음 -> 안전 점수 높음', () => {
     expect(scoreRisk(makeApt({ unsoldRate: 5 })).total).toBeGreaterThan(scoreRisk(makeApt({ unsoldRate: 50 })).total);
@@ -218,13 +218,33 @@ describe('scoreRisk', () => {
   });
 });
 
-// scoreRisk 내부 9개 서브 가중치 합 = 1.00 검증
+// scoreRisk 내부 10개 서브 가중치 합 = 1.00 검증
 describe('scoreRisk — 내부 가중치 합계', () => {
-  it('9개 서브 가중치 합 = 1.00', () => {
-    // engine.js line 307: unsoldSc*0.15 + liqSc*0.15 + loanSc*0.15 + finSc*0.18 + regSc*0.05 + supSc*0.10 + mktSc*0.07 + cancelSc*0.05 + compSc*0.10
-    const weights = [0.15, 0.15, 0.15, 0.18, 0.05, 0.10, 0.07, 0.05, 0.10];
+  it('10개 서브 가중치 합 = 1.00', () => {
+    // engine.js: unsoldSc*0.14 + liqSc*0.14 + loanSc*0.15 + finSc*0.17 + regSc*0.05 + supSc*0.10 + mktSc*0.07 + cancelSc*0.04 + compSc*0.09 + crimeSc*0.05
+    const weights = [0.14, 0.14, 0.15, 0.17, 0.05, 0.10, 0.07, 0.04, 0.09, 0.05];
     const sum = weights.reduce((a, b) => a + b, 0);
     expect(Math.round(sum * 100) / 100).toBe(1.00);
+  });
+});
+
+// 치안 안전등급 테스트
+describe('scoreRisk — crimeSafetyGrade', () => {
+  it('crimeSafetyGrade null → 중립 65점 (100-35)', () => {
+    const r = scoreRisk(makeApt({ crimeSafetyGrade: null }));
+    expect(r.subs.find(s => s.name === "치안 안전").score).toBe(65);
+  });
+  it('crimeSafetyGrade 1등급 → 안전 90점 (100-10)', () => {
+    const r = scoreRisk(makeApt({ crimeSafetyGrade: 1 }));
+    expect(r.subs.find(s => s.name === "치안 안전").score).toBe(90);
+  });
+  it('crimeSafetyGrade 5등급 → 위험 20점 (100-80)', () => {
+    const r = scoreRisk(makeApt({ crimeSafetyGrade: 5 }));
+    expect(r.subs.find(s => s.name === "치안 안전").score).toBe(20);
+  });
+  it('1등급이 5등급보다 총점 높음', () => {
+    expect(scoreRisk(makeApt({ crimeSafetyGrade: 1 })).total)
+      .toBeGreaterThan(scoreRisk(makeApt({ crimeSafetyGrade: 5 })).total);
   });
 });
 
