@@ -46,7 +46,7 @@ export function parseCrimeCsv(csvText) {
     const rawGu = cols[1];
     const gradeStr = cols[crimeIdx];
     const grade = parseInt(gradeStr, 10);
-    if (!rawSido || !rawGu || isNaN(grade) || grade < 1 || grade > 5) continue;
+    if (!rawSido || isNaN(grade) || grade < 1 || grade > 5) continue;
 
     // 시도명 정규화: "서울특별시" → "서울"
     const region = REGION_MAP[rawSido] || rawSido;

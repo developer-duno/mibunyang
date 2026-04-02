@@ -22,6 +22,17 @@ describe("parseCrimeCsv", () => {
     expect(map.get("세종|세종시")).toBe(1);
   });
 
+  it("시도 전용 행 (gu 빈 값) 파싱 — 세종 등", () => {
+    const csv = `시도,시군구,범죄
+세종특별자치시,,1
+서울특별시,종로구,3`;
+    const map = parseCrimeCsv(csv);
+    // 세종 시도 행: gu 빈 → key "세종|"
+    expect(map.get("세종|")).toBe(1);
+    expect(map.get("서울|종로구")).toBe(3);
+    expect(map.size).toBe(2);
+  });
+
   it("빈 행/잘못된 등급 스킵", () => {
     const csv = `시도,시군구,범죄
 서울특별시,종로구,2
@@ -58,7 +69,7 @@ describe("matchCrimeGrade", () => {
   const crimeMap = new Map([
     ["서울|종로구", 2],
     ["서울|강남구", 3],
-    ["세종|세종시", 1],
+    ["세종|", 1],
     ["경기|수원시", 4],
   ]);
 
