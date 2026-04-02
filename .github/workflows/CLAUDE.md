@@ -45,6 +45,9 @@
 | `collect-maintenance.yml` | 국토부 공동주택 관리비 (15일) |
 | `collect-building-hub.yml` | 건축HUB 에너지+인허가 4엔드포인트 (15일) |
 | `collect-applyhome.yml` | 청약홈 잔여세대 경쟁률 (주간) |
+| `collect-childcare.yml` | Kakao 어린이집/유치원 (1일) |
+| `collect-emergency.yml` | data.go.kr 응급의료기관 (2일) |
+| `collect-air-quality.yml` | 에어코리아 대기질 (매주 월요일) |
 
 ### 모니터링
 | 워크플로우 | 설명 |
@@ -81,4 +84,5 @@
 | `TAGO_KEY` | TAGO 대중교통 API 키 (버스정류장 수집, data.go.kr) |
 | `NEIS_KEY` | NEIS 교육정보 API 키 (학교 상세 수집, open.neis.go.kr, 선택) |
 | `SCHOOLINFO_KEY` | 학교알리미 API 키 (학생수 수집, schoolinfo.go.kr, 선택) |
+| `AIRKOREA_KEY` | 에어코리아 대기질 API 키 (data.go.kr, 선택 — 미등록 시 대기질 수집 스킵) |
 | `SUPABASE_ANON_KEY` | Supabase 공개 키 (E2E 테스트 CI용, role=anon) |

@@ -11,7 +11,7 @@
 | unsold_history | 미분양 추이 (시계열) | 청약홈 API |
 | trades | 실거래가 (매매/전세) | collect-trades.mjs |
 | trade_stats | 거래 통계 캐시 (cancel_ratio_6m 포함) | trade-stats.mjs |
-| infra | 주변 인프라 (병원, 마트 등) | infra-kakao.mjs |
+| infra | 주변 인프라 (병원, 마트 등 + 어린이집/응급의료) | infra-kakao.mjs, collect-childcare.mjs, collect-emergency.mjs |
 | schools | 학교 정보 | schools-neis.mjs |
 | transport | 교통 정보 | transport-tago.mjs |
 | builders | 건설사 재무 | dart-builders.mjs |
@@ -21,6 +21,9 @@
 | (apartments 컬럼) | 지번 3개 (bjd_code/lot_main/lot_sub) | reverse-geocode.mjs |
 | (apartments 컬럼) | 에너지 3개 (elec_usage_kwh/gas_usage_mj/energy_collected_at) | collect-building-hub.mjs (⚠️ 공공/상업 건물만, 주거 아파트 미제공) |
 | (apartments 컬럼) | 분양정보 19개 (presale_min_price~presale_fetched_at) | naver-presale.mjs |
+| (apartments 컬럼) | 대기질 1개 (air_quality JSONB) | collect-air-quality.mjs |
+| (infra 컬럼) | 어린이집 2개 (childcare/childcare_dist) | collect-childcare.mjs |
+| (infra 컬럼) | 응급의료 2개 (emergency/emergency_dist) | collect-emergency.mjs |
 | complexes | 네이버 단지 정보 | naver-collect.py |
 | articles | 네이버 매물 정보 | naver-collect.py |
 | complex_price_history | 네이버 시세 이력 | naver-collect.py |

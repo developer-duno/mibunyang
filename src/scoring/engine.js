@@ -21,6 +21,7 @@ import {
   FUTURE_WEIGHT_MAP,
   PRICE_NO_DATA_DEFAULTS, DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
   DIRECTION_BONUS, SUNLIGHT_DIRECTION_MAX,
+  AIR_QUALITY_TIERS, AIR_QUALITY_DEFAULT,
 } from "@/constants/scoringTiers";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
@@ -174,7 +175,7 @@ export function scoreLocation(apt) {
 
   const school = apt.schoolScore ?? 50;
 
-  const infraItems = INFRA_CONFIG.map(cfg => ({ v: apt[cfg.key], m: cfg.max, w: cfg.weight }));
+  const infraItems = INFRA_CONFIG.map(cfg => ({ v: apt[cfg.key] ?? 0, m: cfg.max, w: cfg.weight }));
   const infra = infraItems.reduce((s, i) => s + Math.min(i.v / i.m, 1) * i.w * 100, 0);
 
   let viewSc = VIEW_SCORES[apt.view] || 0;
@@ -183,7 +184,8 @@ export function scoreLocation(apt) {
   const dirBonus = apt.primaryDirection ? (DIRECTION_BONUS[apt.primaryDirection] ?? 0) : 0;
   sunSc = Math.min(sunSc + dirBonus, SUNLIGHT_DIRECTION_MAX);
   let noiseSc = tierMax(apt.noise, NOISE_TIERS, 0);
-  const env = viewSc + sunSc + noiseSc;
+  const airSc = apt.airQuality?.pm25 != null ? tierMax(apt.airQuality.pm25, AIR_QUALITY_TIERS, 0) : AIR_QUALITY_DEFAULT;
+  const env = viewSc + sunSc + noiseSc + airSc;
   let noxPen = (apt.noxious || []).reduce((s, n) => s + (NOXIOUS_PENALTY[n] || 0), 0);
   // 거리 기반 감점 완화: noxiousDist >= 500m이면 감점 반감
   if (apt.noxiousDist != null && apt.noxiousDist >= NOXIOUS_DIST_THRESHOLD) noxPen = noxPen * NOXIOUS_REDUCTION;
@@ -205,8 +207,8 @@ export function scoreLocation(apt) {
         apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km ${apt.ktxDist <= 5 ? "우수" : apt.ktxDist <= 10 ? "양호" : "보통"}` : null,
       ].filter(Boolean).join(" · ") },
       { name: "학군", score: Math.round(school), info: apt.schoolGrade, detail: `${apt.schoolGrade || "미수집"} (A=100, B=80, C=60, D=40점)` },
-      { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy}`, detail: `병원${apt.hospital}/5(1km) 마트${apt.mart}/3(1km) 편의점${apt.conv}/10(500m) 공원${apt.park}/4(1km) 약국${apt.pharmacy}/4(500m)` },
-      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise && apt._noSunlight ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${apt.sunlight}`}${apt._noNoise ? "" : ` ${apt.noise}dB`}`, detail: `조망:${apt.view || "미확인"}(블루40 그린30 천공20점) 일조:${apt.sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${apt.noise}dB`}(50↓우수 60↓양호)` },
+      { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy} 보육${apt.childcare ?? 0}`, detail: `병원${apt.hospital}/5(1km) 마트${apt.mart}/3(1km) 편의점${apt.conv}/10(500m) 공원${apt.park}/4(1km) 약국${apt.pharmacy}/4(500m) 어린이집${apt.childcare ?? 0}/5(1km) 응급의료${apt.emergency ?? 0}/3(10km)` },
+      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise && apt._noSunlight ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${apt.sunlight}`}${apt._noNoise ? "" : ` ${apt.noise}dB`}${apt.airQuality?.grade ? ` 대기:${apt.airQuality.grade}` : ""}`, detail: `조망:${apt.view || "미확인"}(블루40 그린30 천공20점) 일조:${apt.sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${apt.noise}dB`}(50↓우수 60↓양호) 대기질:${apt.airQuality?.grade || "미수집"}(PM2.5 15↓좋음20 25↓보통15점)` },
       { name: "혐오시설", score: Math.round(noxSafe), info: (apt.noxious || []).length ? (apt.noxious || []).join(",") : "없음", detail: (apt.noxious || []).length ? `${(apt.noxious || []).join(",")} (500m↑ 감점 반감, 하한 -15점)` : "없음 (감점 0)" },
     ],
   };

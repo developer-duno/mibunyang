@@ -25,7 +25,7 @@
 | profiles.js PROFILES.retire | location(35)+product(25)+price(20)+risk(15)+benefit(5)+future(0) | **100** |
 | engine.js scorePrice 내부 | 0.30+0.20+0.15+0.25+0.10 | **1.00** |
 | engine.js scoreLocation 내부 | 0.30+0.25+0.20+0.10+0.15 | **1.00** |
-| engine.js infra 서브가중치 | 0.20+0.10+0.05+0.15+0.15+0.15+0.05+0.15 | **1.00** |
+| engine.js infra 서브가중치 | 0.16+0.08+0.04+0.12+0.12+0.12+0.04+0.12+0.10+0.10 | **1.00** (10항목) |
 | engine.js scoreRisk 내부 | 0.15+0.15+0.15+0.18+0.05+0.10+0.07+0.05+0.10 | **1.00** (9개 서브) |
 | engine.js scoreFuture 내부 | 동적 가중치 (아래 참조) | **항상 1.00** |
 | engine.js scoreProduct max | 20+15+15+10+10+10+10+5+5 | **100** |

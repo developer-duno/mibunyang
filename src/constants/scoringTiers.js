@@ -32,14 +32,16 @@ export const KTX_DIST_TIERS = [
 
 // === Location: 인프라 가중치 ===
 export const INFRA_CONFIG = [
-  { key: "hospital", max: 5, weight: 0.20 },
-  { key: "mart",     max: 3, weight: 0.10 },
-  { key: "conv",     max: 10, weight: 0.05 },
-  { key: "park",     max: 4, weight: 0.15 },
-  { key: "cafe",     max: 20, weight: 0.15 },
-  { key: "culture",  max: 3, weight: 0.15 },
-  { key: "bank",     max: 4, weight: 0.05 },
-  { key: "pharmacy", max: 4, weight: 0.15 },
+  { key: "hospital",  max: 5,  weight: 0.16 },
+  { key: "mart",      max: 3,  weight: 0.08 },
+  { key: "conv",      max: 10, weight: 0.04 },
+  { key: "park",      max: 4,  weight: 0.12 },
+  { key: "cafe",      max: 20, weight: 0.12 },
+  { key: "culture",   max: 3,  weight: 0.12 },
+  { key: "bank",      max: 4,  weight: 0.04 },
+  { key: "pharmacy",  max: 4,  weight: 0.12 },
+  { key: "childcare", max: 5,  weight: 0.10 },
+  { key: "emergency", max: 3,  weight: 0.10 },
 ];
 
 // === Location: 환경 ===
@@ -54,6 +56,14 @@ export const WON_TO_MANWON = 10000;       // 원 → 만원 변환
 export const NOISE_TIERS = [
   { max: 50, score: 30 }, { max: 60, score: 22 }, { max: 65, score: 15 }, { max: 70, score: 8 },
 ];
+// === Location: 대기질 (PM2.5 기준 4단계) ===
+export const AIR_QUALITY_TIERS = [
+  { max: 15, score: 20 },   // 좋음
+  { max: 25, score: 15 },   // 보통
+  { max: 50, score: 8 },    // 나쁨
+];
+export const AIR_QUALITY_DEFAULT = 12; // 데이터 없을 때 중립
+
 export const NOXIOUS_DIST_THRESHOLD = 500;   // m — 이 거리 이상이면 감점 반감
 export const NOXIOUS_REDUCTION = 0.5;
 export const NOXIOUS_PEN_CAP = -15;
