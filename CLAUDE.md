@@ -5,18 +5,18 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-04 세션58 — 치안 안전지수 scoreRisk 10번째 지표 구현 완료
+**마지막 작업**: 2026-04-03 세션59 — 치안 안전지수 CSV 데이터 적용 완료
 
-- crime_safety_grade: apartments 컬럼 + scoreRisk 10번째 서브지표 (가중치 0.05) + 수집기 완성
-- CSV 데이터 미적용: data.go.kr/15069240 에서 CSV 다운로드 → `data/crime-safety-index.csv` 저장 후 수집기 실행 필요
-- 마이그레이션 적용 완료: `20260404000000_add_crime_safety_grade.sql` (2026-04-04 Dashboard 실행)
+- MOIS 2025 보도자료 HWPX에서 시군구 범죄등급 추출 → `data/crime-safety-index.csv` (243행: 17시도+226시군구)
+- parseCrimeCsv 버그 수정: `!rawGu` 체크 제거 → 세종 등 gu 없는 시도 행 파싱 허용
+- 본실행 완료: 1928건 100% 매칭, null 0건 (등급 분포: 1등급 137, 2등급 370, 3등급 510, 4등급 755, 5등급 156)
+- AIRKOREA_KEY: data.go.kr 승인 완료 확인됨, GitHub Secret 등록 대기
 
 **다음에 해야 할 것** (우선순위):
 
-1. 치안 CSV 다운로드 → `data/crime-safety-index.csv` 저장 → `node scripts/collectors/collect-crime-safety.mjs` 실행
+1. AIRKOREA_KEY → GitHub Secret `AIRKOREA_KEY` + `.env` 등록 → 대기질 수집기 테스트
 2. (보조) 경찰청 파출소 위치 CSV → Kakao 지오코딩 → `police_count`/`police_dist` 밀도 지표
-3. AIRKOREA_KEY 승인 확인 → GitHub Secret `AIRKOREA_KEY` 등록
-4. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
+3. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
 
 **주의사항**:
 
