@@ -10,11 +10,12 @@
 - MOIS 2025 보도자료 HWPX에서 시군구 범죄등급 추출 → `data/crime-safety-index.csv` (243행: 17시도+226시군구)
 - parseCrimeCsv 버그 수정: `!rawGu` 체크 제거 → 세종 등 gu 없는 시도 행 파싱 허용
 - 본실행 완료: 1928건 100% 매칭, null 0건 (등급 분포: 1등급 137, 2등급 370, 3등급 510, 4등급 755, 5등급 156)
-- AIRKOREA_KEY: data.go.kr 승인 완료 확인됨, GitHub Secret 등록 대기
+- AIRKOREA_KEY: GitHub Secret + .env 등록 완료, 수집기 좌표 조인 버그 수정 (MsrstnInfoInqireSvc 연동)
+- 대기질 dry-run: 1927건 100% 매칭 (672개 측정소, API 18회)
 
 **다음에 해야 할 것** (우선순위):
 
-1. AIRKOREA_KEY → GitHub Secret `AIRKOREA_KEY` + `.env` 등록 → 대기질 수집기 테스트
+1. 대기질 수집기 본실행 (`node scripts/collectors/collect-air-quality.mjs`)
 2. (보조) 경찰청 파출소 위치 CSV → Kakao 지오코딩 → `police_count`/`police_dist` 밀도 지표
 3. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
 
