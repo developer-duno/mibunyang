@@ -1,6 +1,6 @@
 # 미분양 아파트 비교 엔진 v3.0
 
-> React 18 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 37+ 지표 AHP 스코어링.
+> React 18 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 41+ 지표 AHP 스코어링.
 > 상세 아키텍처는 ARCHITECTURE.md 참조.
 
 ## 현재 진행 상황
@@ -37,7 +37,7 @@
 - NEIS API: NEIS_KEY 환경변수 필요 (open.neis.go.kr), 미등록 시 NEIS 보강 스킵 (거리 기반만)
 - 학교알리미 API: SCHOOLINFO_KEY 환경변수 필요 (schoolinfo.go.kr), 미등록 시 학생수 보강 스킵
 - 에어코리아 API: AIRKOREA_KEY 환경변수 필요 (data.go.kr), 미등록 시 대기질 수집 스킵 (별도 쿼터, MOLIT_KEY와 분리)
-- vite vendor 청크: react+react-dom 분리됨 (141KB), 메인 번들 158KB
+- vite vendor 청크: react+react-dom 분리됨 (141KB), 메인 번들 159KB
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
 - AptListSection: IntersectionObserver 자동 무한 스크롤 + "더 보기" 버튼 폴백
 
@@ -66,7 +66,7 @@
 - `api/finlife/loans.js` — 금융감독원 finlife 주택담보대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
 - Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
 - Vercel KV (Upstash Redis) — 인증 세션
-- GitHub Actions — 데이터 수집 (32개 워크플로우, monitor-db-size 포함)
+- GitHub Actions — 데이터 수집 (35개 워크플로우, monitor-db-size 포함)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC, 한국 IP 필수)
 - `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (pre.land.naver.com POST API, 19개 필드, isCLI 패턴)
   - 2026-03-29 pre.land Next.js RSC SPA 전환 → 기존 GET API 전면 폐기, POST API(`/api/complex/*`)로 재구현
@@ -94,6 +94,17 @@
 - `scripts/collectors/collect-maintenance.mjs` — 관리비 수집기 (isCLI 패턴, export 2함수)
   - `fetchTotalHouseholds(kaptCode)` — AptBasisInfoServiceV4에서 총 세대수 조회
   - `fetchMaintenanceCost(kaptCode, searchDate)` — 5항목(난방/급탕/가스/전기/수도) 합산 관리비 조회
+- `scripts/collectors/collect-childcare.mjs` — 어린이집/유치원 수집기 (Kakao 키워드, isCLI 패턴, export 2함수)
+  - `searchKakao(lat, lng, keyword, radius)` — Kakao 키워드 검색
+  - `collectChildcare(lat, lng)` — 어린이집+유치원 합산 (중복 좌표 제거)
+- `scripts/collectors/collect-emergency.mjs` — 응급의료기관 수집기 (data.go.kr, isCLI 패턴, export 3함수)
+  - `haversine(lat1, lng1, lat2, lng2)` — 거리 계산 (km)
+  - `fetchEmergencyList()` — 전국 응급의료기관 목록 (페이지네이션)
+  - `matchNearest(apt, facilities)` — 단지별 최근접 매칭
+- `scripts/collectors/collect-air-quality.mjs` — 에어코리아 대기질 수집기 (data.go.kr, isCLI 패턴, export 3함수)
+  - `haversine(lat1, lng1, lat2, lng2)` — 거리 계산 (km)
+  - `fetchSidoData(sido)` — 시도별 측정소 실시간 대기질
+  - `matchNearestStation(apt, stations)` — 최근접 측정소 매칭
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 
