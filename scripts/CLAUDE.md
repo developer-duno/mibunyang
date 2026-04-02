@@ -31,7 +31,7 @@
 | 파일 | export 함수 | isCLI | 테스트 수 |
 |------|-------------|-------|----------|
 | `trade-stats.mjs` | median, monthsAgo, groupByArea | ✓ | 22 |
-| `schools-neis.mjs` | calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo | ✓ | 49 |
+| `schools-neis.mjs` | calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus | ✓ | 71 |
 | `sync-naver-complex.mjs` | matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes | ✓ | 25 |
 | `naver-listings.mjs` | parseNaverPrice, calcPricePerPyeong, detectPool, toComplexRow, toArticleRow, enrichArticleFromDetail | ✓ | 46 |
 | `dart-builders.mjs` | estimateCreditGrade, parseAmount | ✓ | 13 |
@@ -198,6 +198,7 @@ bash scripts/post-naver-collect.sh
 | (로컬 계산)   | calc-school-walk                 | —                   | —              | —                              | schools.nearby_schools → 초등 도보 시간              |
 | odcloud.kr    | collect-applyhome                | —                   | —              | —                              | 청약홈 잔여세대 경쟁률 (주간)                        |
 | data.go.kr    | collect-building-hub             | 0.4초               | 3회            | (i+1)×2초                      | 건축HUB 에너지+인허가 2엔드포인트(전기+가스), 월 1회 |
+| schoolinfo.go.kr | schools-neis.mjs (Phase 3)    | 0.2초               | 3회            | fetchWithRetry 지수 백오프      | 학교알리미 학생수, 지역벌크 (초/중/고 3회×sggCode)   |
 | \_shared.mjs  | fetchWithRetry (공통)            | —                   | 기본 3회       | Retry-After 헤더 → 지수 백오프 | 429/500/503 구분                                     |
 
 ## BldEngyHubService 한계 (2026-03-29 진단)

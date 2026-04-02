@@ -5,20 +5,19 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-01 세션53 — NEIS 교육정보 API 연동 (schoolInfo + classInfo 2단계)
+**마지막 작업**: 2026-04-01 세션54 — 학교알리미 OpenAPI 학생수 수집 (Phase 3)
 
-- schools-neis.mjs Phase1: NEIS schoolInfo 연동 (설립유형/설립년/고교계열) + calcScore 품질 보정
-- schools-neis.mjs Phase2: NEIS classInfo 연동 (학급수) + getAcademicYear + classCache
-- SchoolInfo.jsx: 설립유형 컬럼 추가 (학급수는 기존 UI로 자동 표시)
-- fin.land.naver.com: 500 에러 (서비스 다운) — 보류
-- 테스트: 2046 unit(49 학교) + 빌드 158KB
+- schools-neis.mjs Phase3: 학교알리미 OpenAPI 연동 (학생수) + calcDensityBonus + enrichWithStudents
+- SchoolInfo.jsx: 학생수 컬럼 추가 (hasStudents 조건부 표시)
+- collect-schools.yml: SCHOOLINFO_KEY 시크릿 추가
+- 테스트: 71 unit(22 신규) + 빌드 158KB
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
 2. fin.land.naver.com 수집기 — 현재 500 에러, 복구 후 재시도
 3. 추가 데이터 소스 수집기 탐색 (에어코리아 대기질, 응급의료기관 등)
-4. NEIS 학생수 수집 — schoolInfo API에 TOT_STDNT_CNTL 미제공 시 학교알리미 엑셀 파싱
+4. GitHub Secrets에 SCHOOLINFO_KEY 등록 → collect-schools 워크플로우 실행 테스트
 
 **주의사항**:
 
@@ -32,6 +31,7 @@
 - 리프레시 토큰: 검토 완료 → 현상 유지 권고 (docs/refresh-token-review.md). 사용자 100명+ 또는 모바일앱 시 재검토
 - finlife API: FINLIFE_API_KEY 환경변수 필요, 미등록 시 빈 배열 반환
 - NEIS API: NEIS_KEY 환경변수 필요 (open.neis.go.kr), 미등록 시 NEIS 보강 스킵 (거리 기반만)
+- 학교알리미 API: SCHOOLINFO_KEY 환경변수 필요 (schoolinfo.go.kr), 미등록 시 학생수 보강 스킵
 - vite vendor 청크: react+react-dom 분리됨 (141KB), 메인 번들 158KB
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
 - AptListSection: IntersectionObserver 자동 무한 스크롤 + "더 보기" 버튼 폴백

@@ -3,7 +3,8 @@
  *
  * 대상: calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus,
  *       normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis,
- *       getAcademicYear, fetchNeisClassInfo
+ *       getAcademicYear, fetchNeisClassInfo,
+ *       fetchStudentBulk, enrichWithStudents, calcDensityBonus
  */
 import { describe, it, expect, vi } from "vitest";
 
@@ -24,7 +25,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo } = await import("./schools-neis.mjs");
+const { calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus } = await import("./schools-neis.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** Kakao 검색 결과 팩토리 (distance 포함) */
@@ -303,5 +304,145 @@ describe("fetchNeisClassInfo", () => {
   it("officeCode + neisCode 모두 null → null", async () => {
     const result = await fetchNeisClassInfo(null, null);
     expect(result).toBeNull();
+  });
+});
+
+// ── Phase 3: fetchStudentBulk (SCHOOLINFO_KEY 미설정 시) ────────
+describe("fetchStudentBulk", () => {
+  it("SCHOOLINFO_KEY 없으면 null 반환", async () => {
+    const result = await fetchStudentBulk("11", "11680", "02");
+    expect(result).toBeNull();
+  });
+
+  it("sidoCode/sggCode 전달해도 키 없으면 null", async () => {
+    const result = await fetchStudentBulk("26", "26350", "03");
+    expect(result).toBeNull();
+  });
+});
+
+// ── enrichWithStudents (SCHOOLINFO_KEY 미설정 시) ────────────────
+describe("enrichWithStudents", () => {
+  it("SCHOOLINFO_KEY 없으면 원본 그대로 반환", async () => {
+    const schools = [
+      { name: "서울초등학교", type: "초", distance: 300 },
+    ];
+    const result = await enrichWithStudents(schools, "11", "11680");
+    expect(result).toEqual(schools);
+  });
+
+  it("빈 배열 → 빈 배열", async () => {
+    const result = await enrichWithStudents([], "11", "11680");
+    expect(result).toEqual([]);
+  });
+
+  it("sidoCode null → 원본 반환", async () => {
+    const schools = [{ name: "테스트학교", type: "초", distance: 500 }];
+    const result = await enrichWithStudents(schools, null, "11680");
+    expect(result).toEqual(schools);
+  });
+
+  it("sggCode null → 원본 반환", async () => {
+    const schools = [{ name: "테스트학교", type: "초", distance: 500 }];
+    const result = await enrichWithStudents(schools, "11", null);
+    expect(result).toEqual(schools);
+  });
+});
+
+// ── calcDensityBonus ────────────────────────────────────────────
+describe("calcDensityBonus", () => {
+  it("학생수/학급수 없는 학교 → 보너스 0", () => {
+    expect(calcDensityBonus([{ name: "학교", type: "초", distance: 300 }])).toBe(0);
+  });
+
+  it("적정 밀도 (20~28명/반) → +2", () => {
+    const schools = [{ students: 500, classes: 20 }]; // 25명/반
+    expect(calcDensityBonus(schools)).toBe(2);
+  });
+
+  it("경계값 하한 20명/반 → +2 (적정)", () => {
+    const schools = [{ students: 200, classes: 10 }]; // 정확히 20명/반
+    expect(calcDensityBonus(schools)).toBe(2);
+  });
+
+  it("경계값 상한 28명/반 → +2 (적정)", () => {
+    const schools = [{ students: 280, classes: 10 }]; // 정확히 28명/반
+    expect(calcDensityBonus(schools)).toBe(2);
+  });
+
+  it("과밀 (>35명/반) → -2", () => {
+    const schools = [{ students: 360, classes: 10 }]; // 36명/반
+    expect(calcDensityBonus(schools)).toBe(-2);
+  });
+
+  it("과소 (<12명/반) → -1", () => {
+    const schools = [{ students: 110, classes: 10 }]; // 11명/반
+    expect(calcDensityBonus(schools)).toBe(-1);
+  });
+
+  it("중간 구간 (12~19 또는 29~35) → 보너스 0", () => {
+    const schools = [{ students: 300, classes: 10 }]; // 30명/반
+    expect(calcDensityBonus(schools)).toBe(0);
+  });
+
+  it("classes=0 → 보너스 0 (무시)", () => {
+    const schools = [{ students: 100, classes: 0 }];
+    expect(calcDensityBonus(schools)).toBe(0);
+  });
+
+  it("복합 — 적정 + 과밀 → 합산", () => {
+    const schools = [
+      { students: 500, classes: 20 }, // 25명/반 → +2
+      { students: 400, classes: 10 }, // 40명/반 → -2
+    ];
+    expect(calcDensityBonus(schools)).toBe(0); // +2 + (-2)
+  });
+
+  it("상한 클램핑 — 적정 학교 다수 → 최대 +5", () => {
+    const schools = [
+      { students: 500, classes: 20 }, // +2
+      { students: 600, classes: 25 }, // +2
+      { students: 450, classes: 18 }, // +2
+      { students: 700, classes: 28 }, // +2
+    ];
+    expect(calcDensityBonus(schools)).toBe(5); // 8 → clamped to 5
+  });
+
+  it("하한 클램핑 — 과밀 학교 다수 → 최소 -5", () => {
+    const schools = [
+      { students: 400, classes: 10 }, // -2
+      { students: 360, classes: 10 }, // -2
+      { students: 380, classes: 10 }, // -2
+    ];
+    expect(calcDensityBonus(schools)).toBe(-5); // -6 → clamped to -5
+  });
+
+  it("students만 있고 classes 없음 → 무시", () => {
+    expect(calcDensityBonus([{ students: 500 }])).toBe(0);
+  });
+});
+
+// ── calcScore + 밀도 보정 ───────────────────────────────────────
+describe("calcScore 밀도 보정", () => {
+  it("allSchools 미전달 → 기존 점수와 동일", () => {
+    expect(calcScore([makeSchool(300)], [], [])).toBe(65); // 50 + 15
+  });
+
+  it("allSchools에 학생수 있으면 밀도 보정 적용", () => {
+    const all = [{ students: 500, classes: 20 }]; // 25명/반 → +2
+    expect(calcScore([], [], [], all)).toBe(52); // 50 + 0 + 2
+  });
+
+  it("밀도 보정으로 100 초과 시 클램핑", () => {
+    const elem = [makeSchool(100), makeSchool(200), makeSchool(300)]; // +45
+    const all = [{ students: 500, classes: 20 }]; // +2
+    // 50 + 45 + 2 = 97 → 97 (100 이하이므로 OK)
+    expect(calcScore(elem, [], [], all)).toBe(97);
+  });
+
+  it("밀도 보정 + 품질 보정 합산", () => {
+    const high = [{ distance: "800", highSchoolType: "특수목적고등학교" }]; // +5+7
+    const all = [{ students: 500, classes: 20 }]; // +2
+    // 50 + 5 + 7 + 2 = 64
+    expect(calcScore([], [], high, all)).toBe(64);
   });
 });

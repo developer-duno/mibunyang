@@ -8,7 +8,7 @@
  *   node scripts/collectors/schools-neis.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/schools-neis.mjs --limit 100  (처리 건수 제한)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity } from "./_shared.mjs";
 
 loadEnv();
 
@@ -19,6 +19,10 @@ if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit
 /** NEIS API 키 — 없으면 NEIS 보강 스킵 (기존 거리 기반만 유지) */
 const NEIS_KEY = process.env.NEIS_KEY;
 const NEIS_BASE = "https://open.neis.go.kr/hub";
+
+/** 학교알리미 API 키 — 없으면 학생수 보강 스킵 */
+const SCHOOLINFO_KEY = process.env.SCHOOLINFO_KEY;
+const SCHOOLINFO_BASE = "https://www.schoolinfo.go.kr/openApi.do";
 
 const EXCLUDE_POI = ["행정실", "교장실", "교무실", "상담실", "교차로", "체육관", "기숙사", "테니스장", "공영주차장", "백주년기념관", "로봇관", "정약용체육관"];
 export const isSchoolPlace = (name) => !EXCLUDE_POI.some(suf => name.includes(suf));
@@ -147,6 +151,99 @@ export async function enrichWithNeis(nearbySchools) {
   return enriched;
 }
 
+// ── Phase 3: 학교알리미 학생수 보강 ────────────────────────────
+/** 학교알리미 캐시 — "sidoCode|sggCode" → Map<normalizedName, { students, classes }> */
+const studentCache = new Map();
+let schoolInfoApiCalls = 0;
+
+/** 학교급 코드 → nearby_schools type 매핑 */
+const SCHULKND_TO_TYPE = { "02": "초", "03": "중", "04": "고" };
+
+/** 학교알리미 지역별 벌크 조회 — 한 학교급의 모든 학교 반환 */
+export async function fetchStudentBulk(sidoCode, sggCode, schulKndCode) {
+  if (!SCHOOLINFO_KEY) return null;
+
+  const ay = getAcademicYear();
+  const url = `${SCHOOLINFO_BASE}?apiKey=${SCHOOLINFO_KEY}&apiType=09&sidoCode=${sidoCode}&sggCode=${sggCode}&schulKndCode=${schulKndCode}&pbanYr=${ay}`;
+
+  try {
+    const res = await fetchWithRetry(url);
+    const data = await res.json();
+    schoolInfoApiCalls++;
+
+    if (data.resultCode !== "success" || !Array.isArray(data.list)) return null;
+
+    const map = new Map();
+    for (const row of data.list) {
+      const key = normalizeSchoolName(row.SCHUL_NM);
+      map.set(key, {
+        students: Number(row.COL_S_SUM) || 0,
+        classes: Number(row.COL_C_SUM) || 0,
+      });
+    }
+    return map;
+  } catch (err) {
+    logError(PHASE, `학교알리미 조회 실패 (${sidoCode}/${sggCode}/${schulKndCode}): ${err.message}`);
+    return null;
+  }
+}
+
+/** 지역 캐시 보장 — 초/중/고 3개 학교급을 한번에 캐시 */
+async function ensureStudentCache(sidoCode, sggCode) {
+  const cacheKey = `${sidoCode}|${sggCode}`;
+  if (studentCache.has(cacheKey)) return studentCache.get(cacheKey);
+
+  const merged = new Map();
+  for (const knd of ["02", "03", "04"]) {
+    const map = await fetchStudentBulk(sidoCode, sggCode, knd);
+    if (map) for (const [k, v] of map) merged.set(k, v);
+    await sleep(200); // rate limit 준수
+  }
+  studentCache.set(cacheKey, merged);
+  return merged;
+}
+
+/** nearby_schools에 학생수(students) 필드 보강 */
+export async function enrichWithStudents(nearbySchools, sidoCode, sggCode) {
+  if (!SCHOOLINFO_KEY || !sidoCode || !sggCode || nearbySchools.length === 0) return nearbySchools;
+
+  const cache = await ensureStudentCache(sidoCode, sggCode);
+  if (!cache || cache.size === 0) return nearbySchools;
+
+  return nearbySchools.map(school => {
+    const key = normalizeSchoolName(school.name);
+    // 1차: 정확 매칭
+    let match = cache.get(key);
+    // 2차: 유사도 매칭 (0.8+)
+    if (!match) {
+      let bestSim = 0;
+      for (const [cKey, cVal] of cache) {
+        const sim = stringSimilarity(key, cKey);
+        if (sim > bestSim && sim >= 0.8) { bestSim = sim; match = cVal; }
+      }
+    }
+    if (match && match.students > 0) {
+      return { ...school, students: match.students };
+    }
+    return school;
+  });
+}
+
+/** 학급당 학생수 기반 밀도 보정 — ±5점 범위 */
+export function calcDensityBonus(allSchools) {
+  let bonus = 0;
+  let counted = 0;
+  for (const s of allSchools) {
+    if (!s.students || !s.classes || s.classes === 0) continue;
+    const avg = s.students / s.classes;
+    counted++;
+    if (avg >= 20 && avg <= 28) bonus += 2;       // 적정 밀도
+    else if (avg > 35) bonus -= 2;                 // 과밀
+    else if (avg < 12) bonus -= 1;                 // 과소 (쇠퇴 신호)
+  }
+  return Math.min(Math.max(bonus, -5), 5);
+}
+
 // ── 학군 점수 계산 ──────────────────────────────────────────────
 /** 고교 계열 기반 품질 보정 (NEIS 데이터 있을 때만 작동) */
 export function calcQualityBonus(highSchools) {
@@ -162,7 +259,7 @@ export function calcQualityBonus(highSchools) {
   return bonus;
 }
 
-export function calcScore(elem, middle, high) {
+export function calcScore(elem, middle, high, allSchools) {
   let score = 50;
   // 거리 기반 점수 (기존 로직 유지)
   for (const s of elem) {
@@ -182,6 +279,9 @@ export function calcScore(elem, middle, high) {
   // 품질 보정 — NEIS highSchoolType 있을 때만 적용
   score += calcQualityBonus(high);
 
+  // 밀도 보정 — 학교알리미 학생수 있을 때만 적용
+  if (allSchools) score += calcDensityBonus(allSchools);
+
   return Math.min(Math.max(score, 0), 100);
 }
 
@@ -200,9 +300,11 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
   if (NEIS_KEY) log(PHASE, "NEIS API 활성화 — 학교 상세 보강 적용");
   else log(PHASE, "⚠️ NEIS_KEY 미설정 — 거리 기반만 사용");
+  if (SCHOOLINFO_KEY) log(PHASE, "학교알리미 API 활성화 — 학생수 보강 적용");
+  else log(PHASE, "⚠️ SCHOOLINFO_KEY 미설정 — 학생수 보강 스킵");
 
   const sb = getSupabase();
-  const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng").limit(10000);
+  const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng, region, gu, bjd_code").limit(10000);
   if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
 
   const targets = apts.filter(a => a.lat && a.lng).slice(0, limit);
@@ -230,12 +332,20 @@ async function main() {
 
       nearbySchools = await enrichWithNeis(nearbySchools);
 
-      // 3단계: 점수 계산 (NEIS 보강된 고교 데이터 반영)
+      // 3단계: 학교알리미 학생수 보강
+      const sggCode = (apt.bjd_code && apt.bjd_code.length >= 5)
+        ? apt.bjd_code.slice(0, 5)
+        : getLawdCd(apt.region, apt.gu);
+      const sidoCode = sggCode ? sggCode.slice(0, 2) : null;
+      nearbySchools = await enrichWithStudents(nearbySchools, sidoCode, sggCode);
+
+      // 4단계: 점수 계산 (NEIS + 학교알리미 보강 반영)
       const enrichedHigh = nearbySchools.filter(s => s.type === "고");
       const score = calcScore(
         nearbySchools.filter(s => s.type === "초"),
         nearbySchools.filter(s => s.type === "중"),
         enrichedHigh,
+        nearbySchools,
       );
       const grade = gradeFromScore(score);
 
@@ -266,6 +376,7 @@ async function main() {
 
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
   if (NEIS_KEY) log(PHASE, `NEIS API 호출: ${neisApiCalls}건, schoolInfo 캐시: ${neisCache.size}건, classInfo 캐시: ${classCache.size}건`);
+  if (SCHOOLINFO_KEY) log(PHASE, `학교알리미 API 호출: ${schoolInfoApiCalls}건, 지역 캐시: ${studentCache.size}건`);
 }
 
 const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());

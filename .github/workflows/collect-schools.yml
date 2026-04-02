@@ -44,6 +44,9 @@ jobs:
           if [ -z "${{ secrets.NEIS_KEY }}" ]; then
             echo "::warning::NEIS_KEY 미설정 — NEIS 학교 상세 보강 스킵됨"
           fi
+          if [ -z "${{ secrets.SCHOOLINFO_KEY }}" ]; then
+            echo "::warning::SCHOOLINFO_KEY 미설정 — 학교알리미 학생수 보강 스킵됨"
+          fi
           echo "Secrets validated"
 
       - name: Collect school data
@@ -52,6 +55,7 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
           NEIS_KEY: ${{ secrets.NEIS_KEY }}
+          SCHOOLINFO_KEY: ${{ secrets.SCHOOLINFO_KEY }}
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
