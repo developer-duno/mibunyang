@@ -5,23 +5,19 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션55 — 3개 데이터 소스 수집기 추가 (어린이집/응급의료/대기질) + 스코어링 반영
+**마지막 작업**: 2026-04-03 세션56 — 마이그레이션 3건 Supabase 적용 + AIRKOREA_KEY 발급 안내
 
-- collect-childcare.mjs: Kakao 어린이집/유치원 수집 → infra.childcare/childcare_dist
-- collect-emergency.mjs: data.go.kr 응급의료기관 수집 → infra.emergency/emergency_dist (haversine 매칭)
-- collect-air-quality.mjs: 에어코리아 대기질 수집 → apartments.air_quality JSONB (AIRKOREA_KEY 필요, 선택)
-- scoringTiers.js: INFRA_CONFIG 8→10항목 (childcare/emergency 추가, 가중치 재조정) + AIR_QUALITY_TIERS
-- engine.js: env 서브스코어에 airSc 추가, subs 텍스트 갱신
-- 마이그레이션 3건 + VIEW 갱신 + 워크플로우 3건 + 테스트 3건 (9 passed)
-- collect-schools.yml: timeout-minutes 30→60
-- fin.land.naver.com 조사: 수집기 불필요 판정, 항목 제거
+- 마이그레이션 3건 Dashboard SQL Editor로 적용 완료:
+  - infra: childcare/childcare_dist/emergency/emergency_dist 4컬럼
+  - apartments: air_quality JSONB 1컬럼
+  - apartments_flat VIEW 재생성 (신규 5컬럼 포함)
+- AIRKOREA_KEY: data.go.kr 발급 신청 필요 (미등록 시 수집 스킵, 운영 무영향)
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
-2. AIRKOREA_KEY 발급 신청 (data.go.kr 에어코리아 API) → GitHub Secret 등록
-3. 마이그레이션 3건 Supabase Dashboard 적용 (apply-migration 또는 수동)
-4. 범죄율/치안 데이터 소스 재검토 (읍면동 단위 공개 시)
+2. AIRKOREA_KEY 발급 신청 (data.go.kr 에어코리아 API) → GitHub Secret `AIRKOREA_KEY` 등록
+3. 범죄율/치안 데이터 소스 재검토 (읍면동 단위 공개 시)
 
 **주의사항**:
 
