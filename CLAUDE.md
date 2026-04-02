@@ -5,19 +5,18 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션59 — 치안 안전지수 CSV 데이터 적용 완료
+**마지막 작업**: 2026-04-03 세션60 — 대기질 수집기 본실행 완료
 
-- MOIS 2025 보도자료 HWPX에서 시군구 범죄등급 추출 → `data/crime-safety-index.csv` (243행: 17시도+226시군구)
-- parseCrimeCsv 버그 수정: `!rawGu` 체크 제거 → 세종 등 gu 없는 시도 행 파싱 허용
-- 본실행 완료: 1928건 100% 매칭, null 0건 (등급 분포: 1등급 137, 2등급 370, 3등급 510, 4등급 755, 5등급 156)
-- AIRKOREA_KEY: GitHub Secret + .env 등록 완료, 수집기 좌표 조인 버그 수정 (MsrstnInfoInqireSvc 연동)
-- 대기질 dry-run: 1927건 100% 매칭 (672개 측정소, API 18회)
+- 대기질 본실행 완료: 1927건 성공, 실패 0건 (672개 측정소, API 18회, 60초)
+- DB 검증: air_quality NOT NULL 1927건, NULL 1건 (좌표 미보유 단지)
+- PM2.5 기반 스코어링 자동 반영 (AIR_QUALITY_TIERS: 15↓=20점, 25↓=15점, 50↓=8점)
+- finlife 사이트: 여전히 HTTPS 연결 실패 (exit 56) → 이월
 
 **다음에 해야 할 것** (우선순위):
 
-1. 대기질 수집기 본실행 (`node scripts/collectors/collect-air-quality.mjs`)
-2. (보조) 경찰청 파출소 위치 CSV → Kakao 지오코딩 → `police_count`/`police_dist` 밀도 지표
-3. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
+1. (보조) 경찰청 파출소 위치 CSV → Kakao 지오코딩 → `police_count`/`police_dist` 밀도 지표
+2. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
+3. 대기질 주기적 갱신 워크플로우 (GitHub Actions cron)
 
 **주의사항**:
 
