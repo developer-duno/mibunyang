@@ -5,20 +5,15 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-02 세션54 — 학교알리미 OpenAPI 학생수 수집 (Phase 3) + 학교 필터 whitelist 전환
+**마지막 작업**: 2026-04-02 세션55 — collect-schools 타임아웃 60분 + fin.land.naver.com 조사 완료
 
-- schools-neis.mjs Phase3: 학교알리미 OpenAPI 연동 (학생수) + calcDensityBonus + enrichWithStudents
-- SchoolInfo.jsx: 학생수 컬럼 추가 (hasStudents 조건부 표시)
-- collect-schools.yml: SCHOOLINFO_KEY 시크릿 추가
-- 학교 필터: EXCLUDE_POI blacklist(12개) → SCHOOL_SUFFIX_RE whitelist 전환 (전기차충전소/병설유치원 등 완전 제거)
-- 테스트: 77 unit(28 신규) + 빌드 158KB
+- collect-schools.yml: timeout-minutes 30→60 (학교알리미 Phase3 추가 실행시간 대응)
+- fin.land.naver.com 조사: Npay 부동산 프론트엔드 SPA, 자체 API 없음 → loan.pay.naver.com 리다이렉트. finlife API가 동일 기능 커버 → 수집기 불필요 판정, 항목 제거
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
-2. fin.land.naver.com 수집기 — 현재 500 에러, 복구 후 재시도
-3. 추가 데이터 소스 수집기 탐색 (에어코리아 대기질, 응급의료기관 등)
-4. collect-schools 워크플로우 타임아웃 조정 (30분→60분) 또는 --limit 분할 실행
+2. 추가 데이터 소스 수집기 탐색 (에어코리아 대기질, 응급의료기관 등)
 
 **주의사항**:
 
