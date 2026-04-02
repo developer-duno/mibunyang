@@ -17,7 +17,7 @@
 1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
 2. fin.land.naver.com 수집기 — 현재 500 에러, 복구 후 재시도
 3. 추가 데이터 소스 수집기 탐색 (에어코리아 대기질, 응급의료기관 등)
-4. GitHub Secrets에 SCHOOLINFO_KEY 등록 → collect-schools 워크플로우 실행 테스트
+4. collect-schools 워크플로우 타임아웃 조정 (30분→60분) 또는 --limit 분할 실행
 
 **주의사항**:
 
