@@ -5,12 +5,13 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-01 세션54 — 학교알리미 OpenAPI 학생수 수집 (Phase 3)
+**마지막 작업**: 2026-04-02 세션54 — 학교알리미 OpenAPI 학생수 수집 (Phase 3) + 학교 필터 whitelist 전환
 
 - schools-neis.mjs Phase3: 학교알리미 OpenAPI 연동 (학생수) + calcDensityBonus + enrichWithStudents
 - SchoolInfo.jsx: 학생수 컬럼 추가 (hasStudents 조건부 표시)
 - collect-schools.yml: SCHOOLINFO_KEY 시크릿 추가
-- 테스트: 71 unit(22 신규) + 빌드 158KB
+- 학교 필터: EXCLUDE_POI blacklist(12개) → SCHOOL_SUFFIX_RE whitelist 전환 (전기차충전소/병설유치원 등 완전 제거)
+- 테스트: 77 unit(28 신규) + 빌드 158KB
 
 **다음에 해야 할 것** (우선순위):
 
