@@ -97,9 +97,10 @@
   - `haversine(lat1, lng1, lat2, lng2)` — 거리 계산 (km)
   - `fetchEmergencyList()` — 전국 응급의료기관 목록 (페이지네이션)
   - `matchNearest(apt, facilities)` — 단지별 최근접 매칭
-- `scripts/collectors/collect-air-quality.mjs` — 에어코리아 대기질 수집기 (data.go.kr, isCLI 패턴, export 3함수)
+- `scripts/collectors/collect-air-quality.mjs` — 에어코리아 대기질 수집기 (data.go.kr, isCLI 패턴, export 4함수)
   - `haversine(lat1, lng1, lat2, lng2)` — 거리 계산 (km)
-  - `fetchSidoData(sido)` — 시도별 측정소 실시간 대기질
+  - `fetchStationCoords()` — MsrstnInfoInqireSvc 전국 672개 측정소 좌표 조회 (1회 호출)
+  - `fetchSidoData(sido, coordMap)` — 시도별 실시간 대기질 + 좌표 조인
   - `matchNearestStation(apt, stations)` — 최근접 측정소 매칭
 - `scripts/collectors/collect-crime-safety.mjs` — 행안부 지역안전지수 범죄등급 수집기 (로컬 CSV, isCLI 패턴, export 2함수)
   - `parseCrimeCsv(csvText)` — CSV → Map<"region|gu", grade> 파싱

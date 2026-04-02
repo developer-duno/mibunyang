@@ -15,12 +15,13 @@ tmp/
 # Supabase CLI 캐시
 supabase/.temp/
 
-# 임시 스크립트
+# 임시 스크립트/로그
 _tmp_*
 backup_*.json
 check_*.mjs
 detailed_*.mjs
 test-debug*
+presale-log*
 
 # Playwright
 playwright-report/
