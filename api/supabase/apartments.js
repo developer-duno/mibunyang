@@ -198,6 +198,12 @@ function sanitize(row) {
     park: row.park ?? 0,
     subwayDist: row.subwayDist ?? 9999,
     nearbyFacilities: row.nearbyFacilities ?? [],
+    childcare: row.childcare ?? 0,
+    childcareDist: row.childcareDist ?? null,
+    emergency: row.emergency ?? 0,
+    emergencyDist: row.emergencyDist ?? null,
+    // 대기질
+    airQuality: row.airQuality ?? null,
     // 학군
     schoolScore: row.schoolScore ?? 50,
     schoolGrade: row.schoolGrade ?? "",

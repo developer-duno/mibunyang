@@ -39,9 +39,9 @@ export async function fetchSidoData(sido) {
     station: i.stationName,
     lat: parseFloat(i.dmX),
     lng: parseFloat(i.dmY),
-    pm10: i.pm10Value !== "-" ? parseInt(i.pm10Value) : null,
-    pm25: i.pm25Value !== "-" ? parseInt(i.pm25Value) : null,
-    o3: i.o3Value !== "-" ? parseFloat(i.o3Value) : null,
+    pm10: i.pm10Value !== "-" ? (parseInt(i.pm10Value) || null) : null,
+    pm25: i.pm25Value !== "-" ? (parseInt(i.pm25Value) || null) : null,
+    o3: i.o3Value !== "-" ? (parseFloat(i.o3Value) || null) : null,
     grade: i.khaiGrade === "1" ? "좋음" : i.khaiGrade === "2" ? "보통" : i.khaiGrade === "3" ? "나쁨" : i.khaiGrade === "4" ? "매우나쁨" : null,
   }));
 }

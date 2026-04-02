@@ -14,7 +14,6 @@ loadEnv();
 
 const PHASE = "childcare";
 const KAKAO_KEY = process.env.KAKAO_KEY;
-if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
 
 /** Kakao 키워드 검색 (반경 내 시설 조회) */
 export async function searchKakao(lat, lng, keyword, radius) {
@@ -46,6 +45,8 @@ export async function collectChildcare(lat, lng) {
 }
 
 async function main() {
+  if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
+
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 

@@ -14,7 +14,6 @@ loadEnv();
 
 const PHASE = "emergency";
 const API_KEY = process.env.MOLIT_KEY;
-if (!API_KEY) { logError(PHASE, "MOLIT_KEY 환경변수 필요"); process.exit(1); }
 
 /** Haversine 거리 (km) */
 export function haversine(lat1, lng1, lat2, lng2) {
@@ -71,6 +70,8 @@ export function matchNearest(apt, facilities) {
 }
 
 async function main() {
+  if (!API_KEY) { logError(PHASE, "MOLIT_KEY 환경변수 필요"); process.exit(1); }
+
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
