@@ -24,8 +24,9 @@ const NEIS_BASE = "https://open.neis.go.kr/hub";
 const SCHOOLINFO_KEY = process.env.SCHOOLINFO_KEY;
 const SCHOOLINFO_BASE = "https://www.schoolinfo.go.kr/openApi.do";
 
-const EXCLUDE_POI = ["행정실", "교장실", "교무실", "상담실", "교차로", "체육관", "기숙사", "테니스장", "공영주차장", "백주년기념관", "로봇관", "정약용체육관"];
-export const isSchoolPlace = (name) => !EXCLUDE_POI.some(suf => name.includes(suf));
+/** 학교명 whitelist — 정상 학교는 반드시 "학교"로 끝남 (부속시설·비학교 POI 자동 제외) */
+const SCHOOL_SUFFIX_RE = /(?:초등학교|중학교|고등학교|학교)$/;
+export const isSchoolPlace = (name) => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
 
 // ── Kakao Places API ────────────────────────────────────────────
 async function searchKakao(lat, lng, keyword, radius) {

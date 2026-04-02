@@ -121,35 +121,58 @@ describe("gradeFromScore", () => {
   });
 });
 
-// ── isSchoolPlace ─────────────────────────────────────────────
+// ── isSchoolPlace (whitelist — "학교"로 끝나는 이름만 통과) ────
 describe("isSchoolPlace", () => {
-  it("일반 학교명 → true", () => {
+  it("정상 초등학교 → true", () => {
     expect(isSchoolPlace("서울초등학교")).toBe(true);
+  });
+
+  it("정상 중학교 → true", () => {
     expect(isSchoolPlace("강남중학교")).toBe(true);
   });
 
-  it("제외 POI '행정실' 포함 → false", () => {
-    expect(isSchoolPlace("행정실")).toBe(false);
+  it("정상 고등학교 → true", () => {
+    expect(isSchoolPlace("가정고등학교")).toBe(true);
   });
 
-  it("제외 POI '체육관' 포함 → false", () => {
-    expect(isSchoolPlace("정약용체육관")).toBe(false);
+  it("'학교'로 끝나는 특수학교 → true", () => {
+    expect(isSchoolPlace("한국과학영재학교")).toBe(true);
   });
 
-  it("제외 POI '교장실' 포함 → false", () => {
-    expect(isSchoolPlace("교장실")).toBe(false);
+  it("'학교' 안에 '학교' 포함 — 끝이 '학교'면 통과", () => {
+    expect(isSchoolPlace("서울대학교부설초등학교")).toBe(true);
   });
 
-  it("제외 POI '기숙사' 포함 → false", () => {
+  it("앞뒤 공백 trim 처리 → true", () => {
+    expect(isSchoolPlace("  서울초등학교  ")).toBe(true);
+  });
+
+  it("병설유치원 — '학교' 뒤 추가 텍스트 → false", () => {
+    expect(isSchoolPlace("인천봉수초등학교 병설유치원")).toBe(false);
+  });
+
+  it("전기차충전소 — '학교' 뒤 추가 텍스트 → false", () => {
+    expect(isSchoolPlace("가현초등학교 전기차충전소")).toBe(false);
+  });
+
+  it("가온관 — '학교' 뒤 추가 텍스트 → false", () => {
+    expect(isSchoolPlace("인천가석초등학교 가온관")).toBe(false);
+  });
+
+  it("재개발추진위원회 — '학교'로 끝나지 않음 → false", () => {
+    expect(isSchoolPlace("신현초교주변구역재개발추진위원회")).toBe(false);
+  });
+
+  it("기숙사 — '학교' 뒤 텍스트 → false", () => {
     expect(isSchoolPlace("○○학교기숙사")).toBe(false);
   });
 
-  it("제외 POI '공영주차장' 포함 → false", () => {
-    expect(isSchoolPlace("학교공영주차장")).toBe(false);
+  it("체육관 — '학교' 없음 → false", () => {
+    expect(isSchoolPlace("정약용체육관")).toBe(false);
   });
 
-  it("부분 매칭 — '교장' 만으로는 제외되지 않음 ('교장실'만 제외)", () => {
-    expect(isSchoolPlace("교장")).toBe(true);
+  it("행정실 — '학교' 없음 → false", () => {
+    expect(isSchoolPlace("행정실")).toBe(false);
   });
 });
 
