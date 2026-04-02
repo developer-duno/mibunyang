@@ -5,19 +5,18 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션56 — 마이그레이션 3건 Supabase 적용 + AIRKOREA_KEY 발급 안내
+**마지막 작업**: 2026-04-03 세션57 — finlife 보류 + 치안 데이터 소스 조사 완료
 
-- 마이그레이션 3건 Dashboard SQL Editor로 적용 완료:
-  - infra: childcare/childcare_dist/emergency/emergency_dist 4컬럼
-  - apartments: air_quality JSONB 1컬럼
-  - apartments_flat VIEW 재생성 (신규 5컬럼 포함)
-- AIRKOREA_KEY: data.go.kr 발급 신청 필요 (미등록 시 수집 스킵, 운영 무영향)
+- finlife API Key: finlife.fss.or.kr 사이트 오류로 발급 불가 → 보류 (기존 방어 코드로 운영 무영향)
+- AIRKOREA_KEY: data.go.kr 신청 완료, 승인 대기 중 (미등록 시 수집 스킵, 운영 무영향)
+- 치안 데이터 조사 완료: 읍면동 단위 범죄 통계는 비공개 → 행안부 지역안전지수(시군구 1~5등급) 추천
 
 **다음에 해야 할 것** (우선순위):
 
-1. finlife API Key — 발급 신청 완료, 승인 대기 중 → 승인 후 Vercel 환경변수 `FINLIFE_API_KEY` 등록 + curl 테스트
-2. AIRKOREA_KEY 발급 신청 (data.go.kr 에어코리아 API) → GitHub Secret `AIRKOREA_KEY` 등록
-3. 범죄율/치안 데이터 소스 재검토 (읍면동 단위 공개 시)
+1. 치안 데이터 구현 — 행안부 지역안전지수 CSV → `crime_safety_grade` 컬럼 → scoreRisk 10번째 지표 추가
+2. (보조) 경찰청 파출소 위치 CSV → Kakao 지오코딩 → `police_count`/`police_dist` 밀도 지표
+3. AIRKOREA_KEY 승인 확인 → GitHub Secret `AIRKOREA_KEY` 등록
+4. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
 
 **주의사항**:
 
