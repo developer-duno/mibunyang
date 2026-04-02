@@ -29,21 +29,40 @@ export function haversine(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/** 시도별 측정소 실시간 대기질 조회 */
-export async function fetchSidoData(sido) {
+/** 전국 측정소 좌표 조회 (MsrstnInfoInqireSvc) */
+export async function fetchStationCoords() {
+  const url = `https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getMsrstnList?serviceKey=${API_KEY}&returnType=json&numOfRows=700&pageNo=1`;
+  const res = await fetchWithRetry(url);
+  const json = await res.json();
+  const items = json?.response?.body?.items || [];
+  // stationName → { lat, lng } 맵
+  const map = new Map();
+  for (const i of items) {
+    if (i.dmX && i.dmY && i.stationName) {
+      map.set(i.stationName, { lat: parseFloat(i.dmX), lng: parseFloat(i.dmY) });
+    }
+  }
+  return map;
+}
+
+/** 시도별 측정소 실시간 대기질 조회 — 좌표는 coordMap에서 조인 */
+export async function fetchSidoData(sido, coordMap) {
   const url = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty?serviceKey=${API_KEY}&returnType=json&numOfRows=200&pageNo=1&sidoName=${encodeURIComponent(sido)}&ver=1.0`;
   const res = await fetchWithRetry(url);
   const json = await res.json();
   const items = json?.response?.body?.items || [];
-  return items.filter(i => i.dmX && i.dmY).map(i => ({
-    station: i.stationName,
-    lat: parseFloat(i.dmX),
-    lng: parseFloat(i.dmY),
-    pm10: i.pm10Value !== "-" ? (parseInt(i.pm10Value) || null) : null,
-    pm25: i.pm25Value !== "-" ? (parseInt(i.pm25Value) || null) : null,
-    o3: i.o3Value !== "-" ? (parseFloat(i.o3Value) || null) : null,
-    grade: i.khaiGrade === "1" ? "좋음" : i.khaiGrade === "2" ? "보통" : i.khaiGrade === "3" ? "나쁨" : i.khaiGrade === "4" ? "매우나쁨" : null,
-  }));
+  return items.filter(i => coordMap?.has(i.stationName)).map(i => {
+    const coord = coordMap.get(i.stationName);
+    return {
+      station: i.stationName,
+      lat: coord.lat,
+      lng: coord.lng,
+      pm10: i.pm10Value !== "-" ? (parseInt(i.pm10Value) || null) : null,
+      pm25: i.pm25Value !== "-" ? (parseInt(i.pm25Value) || null) : null,
+      o3: i.o3Value !== "-" ? (parseFloat(i.o3Value) || null) : null,
+      grade: i.khaiGrade === "1" ? "좋음" : i.khaiGrade === "2" ? "보통" : i.khaiGrade === "3" ? "나쁨" : i.khaiGrade === "4" ? "매우나쁨" : null,
+    };
+  });
 }
 
 /** 단지별 최근접 측정소 매칭 */
@@ -69,13 +88,19 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 1. 전국 측정소 데이터 수집
+  // 1-1. 전국 측정소 좌표 조회 (1회 호출)
+  log(PHASE, "측정소 좌표 조회 중...");
+  const coordMap = await fetchStationCoords();
+  log(PHASE, `측정소 좌표 ${coordMap.size}건 조회`);
+  let apiCalls = 1;
+  await sleep(300);
+
+  // 1-2. 시도별 실시간 대기질 조회 + 좌표 조인
   log(PHASE, "시도별 대기질 데이터 조회 중...");
   const allStations = [];
-  let apiCalls = 0;
   for (const sido of SIDO_LIST) {
     try {
-      const stations = await fetchSidoData(sido);
+      const stations = await fetchSidoData(sido, coordMap);
       allStations.push(...stations);
       apiCalls++;
       await sleep(300);
