@@ -5,13 +5,10 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션63 — presale VIEW 복원 + FIELD_META 7개 필드 등록
+**마지막 작업**: 2026-04-03 세션64 — finlife API 상태 재확인 (장애 지속)
 
-- VIEW presale 19컬럼 누락 버그 발견 및 복원 마이그레이션 작성 (20260405000000)
-- FIELD_META 미등록 7개 필드 추가: childcare, childcareDist, emergency, emergencyDist, airQuality, noxiousDist, netMigration
-- DataSections에 치안/환경 섹션 추가 + 생활인프라에 보육/응급 추가 + 시장지표에 순이동 추가
-- 대기질/경찰관서 데이터 품질 점검 완료 (이상치 0건, 정상)
-- finlife 사이트: 여전히 HTTPS 연결 실패 (exit 56) → 이월
+- finlife.fss.or.kr HTTPS 연결 실패 (exit 56, schannel close_notify 누락) 재확인 → 계속 이월
+- 세션63 성과: VIEW presale 복원 + FIELD_META 7개 필드 + DataSections 치안/환경 추가
 
 **다음에 해야 할 것** (우선순위):
 
