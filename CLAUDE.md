@@ -5,20 +5,18 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션61 — 경찰관서 밀도 지표 추가
+**마지막 작업**: 2026-04-03 세션62 — 경찰관서 밀도 수집기 본실행 완료
 
-- 경찰관서 수집기 완성: collect-police.mjs (Kakao Places "경찰서" 3km 반경)
-- infra 테이블에 police(개수), police_dist(최근접 거리) 컬럼 추가
-- scoreRisk crimeSc 내부 분할: 범죄등급 70% + 경찰관서 근접성 30% (총합 1.00 유지)
-- GitHub Actions cron: 매월 1일 (collect-police.yml, timeout 60분)
-- 리뷰 수정: VIEW crimeSafetyGrade 복원 + API sanitize 누락 + FIELD_SECTIONS 등록
+- 마이그레이션 2개 Supabase Dashboard 적용 (infra 컬럼 + VIEW 갱신)
+- collect-police.mjs 본실행: 1,927건 전량 성공 (549초, 실패 0)
+- DB 검증: 1,928건 police NOT NULL, 평균 9.6개/752m, 범위 30~2,950m
 - finlife 사이트: 여전히 HTTPS 연결 실패 (exit 56) → 이월
 
 **다음에 해야 할 것** (우선순위):
 
-1. collect-police.mjs 본실행 (마이그레이션 적용 → dry-run → 본실행)
-2. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-3. 대기질/경찰관서 데이터 품질 모니터링
+1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
+2. 대기질/경찰관서 데이터 품질 모니터링
+3. 새 지표 기획 검토
 
 **주의사항**:
 
