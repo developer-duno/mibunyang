@@ -5,16 +5,15 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션64 — finlife API 상태 재확인 (장애 지속)
+**마지막 작업**: 2026-04-03 세션65 — VIEW presale 복원 마이그레이션 Supabase 적용 완료
 
-- finlife.fss.or.kr HTTPS 연결 실패 (exit 56, schannel close_notify 누락) 재확인 → 계속 이월
-- 세션63 성과: VIEW presale 복원 + FIELD_META 7개 필드 + DataSections 치안/환경 추가
+- 20260405000000_view_restore_presale.sql Dashboard에서 수동 적용 → apartments_flat presale 19컬럼 복원
+- finlife API 장애 계속 이월 (exit 56)
 
 **다음에 해야 할 것** (우선순위):
 
-1. Supabase Dashboard에서 20260405000000_view_restore_presale.sql 적용 (presale 복원)
-2. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-3. 새 지표 기획 검토
+1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
+2. 새 지표 기획 검토
 
 **주의사항**:
 
