@@ -16,13 +16,18 @@ const DATA_SECTIONS = [
       ["hospital", "hospitalDist"], ["mart", "martDist"], ["conv", "convDist"],
       ["park", "parkDist"], ["pharmacy", null], ["cafe", null],
       ["culture", null], ["bank", null],
+      ["childcare", "childcareDist"], ["emergency", "emergencyDist"],
     ],
   },
   { title: "교통 상세", grid: ["subwayDist", "subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"] },
   {
     title: "시장/투자 지표",
     highlight: ["pir", "psr", "popGrowth"],
-    grid: ["recentTrades6m", "nearbyMedian", "nearbyBuildYear", "avgFloor", "floorRange"],
+    grid: ["recentTrades6m", "nearbyMedian", "nearbyBuildYear", "avgFloor", "floorRange", "netMigration"],
+  },
+  {
+    title: "치안/환경",
+    grid: ["crimeSafetyGrade", "police", "policeDist", "airQuality", "noxiousDist"],
   },
   {
     title: "네이버 교차검증",

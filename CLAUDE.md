@@ -5,17 +5,18 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션62 — 경찰관서 밀도 수집기 본실행 완료
+**마지막 작업**: 2026-04-03 세션63 — presale VIEW 복원 + FIELD_META 7개 필드 등록
 
-- 마이그레이션 2개 Supabase Dashboard 적용 (infra 컬럼 + VIEW 갱신)
-- collect-police.mjs 본실행: 1,927건 전량 성공 (549초, 실패 0)
-- DB 검증: 1,928건 police NOT NULL, 평균 9.6개/752m, 범위 30~2,950m
+- VIEW presale 19컬럼 누락 버그 발견 및 복원 마이그레이션 작성 (20260405000000)
+- FIELD_META 미등록 7개 필드 추가: childcare, childcareDist, emergency, emergencyDist, airQuality, noxiousDist, netMigration
+- DataSections에 치안/환경 섹션 추가 + 생활인프라에 보육/응급 추가 + 시장지표에 순이동 추가
+- 대기질/경찰관서 데이터 품질 점검 완료 (이상치 0건, 정상)
 - finlife 사이트: 여전히 HTTPS 연결 실패 (exit 56) → 이월
 
 **다음에 해야 할 것** (우선순위):
 
-1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-2. 대기질/경찰관서 데이터 품질 모니터링
+1. Supabase Dashboard에서 20260405000000_view_restore_presale.sql 적용 (presale 복원)
+2. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
 3. 새 지표 기획 검토
 
 **주의사항**:
