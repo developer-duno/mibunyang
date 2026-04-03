@@ -48,6 +48,7 @@
 | `collect-childcare.yml` | Kakao 어린이집/유치원 (1일) |
 | `collect-emergency.yml` | data.go.kr 응급의료기관 (2일) |
 | `collect-air-quality.yml` | 에어코리아 대기질 (매주 월요일) |
+| `collect-police.yml` | Kakao 경찰관서 밀도 (1일) |
 
 ### 모니터링
 | 워크플로우 | 설명 |

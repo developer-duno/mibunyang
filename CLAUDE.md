@@ -5,18 +5,19 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션60 — 대기질 수집기 본실행 완료
+**마지막 작업**: 2026-04-03 세션61 — 경찰관서 밀도 지표 추가
 
-- 대기질 본실행 완료: 1927건 성공, 실패 0건 (672개 측정소, API 18회, 60초)
-- DB 검증: air_quality NOT NULL 1927건, NULL 1건 (좌표 미보유 단지)
-- PM2.5 기반 스코어링 자동 반영 (AIR_QUALITY_TIERS: 15↓=20점, 25↓=15점, 50↓=8점)
+- 경찰관서 수집기 완성: collect-police.mjs (Kakao Places "경찰서" 3km 반경)
+- infra 테이블에 police(개수), police_dist(최근접 거리) 컬럼 추가
+- scoreRisk crimeSc 내부 분할: 범죄등급 70% + 경찰관서 근접성 30% (총합 1.00 유지)
+- GitHub Actions cron: 매월 1일 (collect-police.yml, timeout 60분)
 - finlife 사이트: 여전히 HTTPS 연결 실패 (exit 56) → 이월
 
 **다음에 해야 할 것** (우선순위):
 
-1. (보조) 경찰청 파출소 위치 CSV → Kakao 지오코딩 → `police_count`/`police_dist` 밀도 지표
+1. collect-police.mjs 본실행 (마이그레이션 적용 → dry-run → 본실행)
 2. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-3. 대기질 주기적 갱신 워크플로우 (GitHub Actions cron)
+3. 대기질/경찰관서 데이터 품질 모니터링
 
 **주의사항**:
 
@@ -104,6 +105,8 @@
 - `scripts/collectors/collect-crime-safety.mjs` — 행안부 지역안전지수 범죄등급 수집기 (로컬 CSV, isCLI 패턴, export 2함수)
   - `parseCrimeCsv(csvText)` — CSV → Map<"region|gu", grade> 파싱
   - `matchCrimeGrade(apt, crimeMap)` — region+gu 매칭 (세종 등 gu 없는 경우 폴백)
+- `scripts/collectors/collect-police.mjs` — 경찰관서 밀도 수집기 (Kakao Places, isCLI 패턴, export 1함수)
+  - `searchPolice(lat, lng)` — Kakao 키워드 "경찰서" 반경 3km 검색, 중복좌표 제거, count+dist 반환
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 

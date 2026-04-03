@@ -234,13 +234,15 @@ describe('scoreRisk — crimeSafetyGrade', () => {
     const r = scoreRisk(makeApt({ crimeSafetyGrade: null }));
     expect(r.subs.find(s => s.name === "치안 안전").score).toBe(65);
   });
-  it('crimeSafetyGrade 1등급 → 안전 90점 (100-10)', () => {
+  it('crimeSafetyGrade 1등급 → 안전 83점 (grade 70% + police null 30%)', () => {
     const r = scoreRisk(makeApt({ crimeSafetyGrade: 1 }));
-    expect(r.subs.find(s => s.name === "치안 안전").score).toBe(90);
+    // crimeSc = 10*0.7 + 35*0.3 = 17.5, score = round(100-17.5) = 83
+    expect(r.subs.find(s => s.name === "치안 안전").score).toBe(83);
   });
-  it('crimeSafetyGrade 5등급 → 위험 20점 (100-80)', () => {
+  it('crimeSafetyGrade 5등급 → 위험 34점 (grade 70% + police null 30%)', () => {
     const r = scoreRisk(makeApt({ crimeSafetyGrade: 5 }));
-    expect(r.subs.find(s => s.name === "치안 안전").score).toBe(20);
+    // crimeSc = 80*0.7 + 35*0.3 = 66.5, score = round(100-66.5) = 34
+    expect(r.subs.find(s => s.name === "치안 안전").score).toBe(34);
   });
   it('1등급이 5등급보다 총점 높음', () => {
     expect(scoreRisk(makeApt({ crimeSafetyGrade: 1 })).total)

@@ -18,6 +18,7 @@ import {
   SUPPLY_RATIO_TIERS, SUPPLY_HIGH_SCORE,
   CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE, CANCEL_RATIO_NULL_SCORE,
   CRIME_SAFETY_SCORES, CRIME_SAFETY_NULL_SCORE,
+  POLICE_DIST_TIERS, POLICE_DIST_HIGH_SCORE, POLICE_DIST_NULL_SCORE,
   INTEREST_RATE, LOAN_TERM_MULT, BENEFIT_FULL_RATE,
   FUTURE_WEIGHT_MAP,
   PRICE_NO_DATA_DEFAULTS, DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
@@ -305,9 +306,12 @@ export function scoreRisk(apt) {
     : apt.competitionRate >= 0 ? 55
     : apt.competitionRate >= -0.5 ? 70
     : 85;
-  // 치안 안전: 행안부 지역안전지수 범죄 등급 (1=최안전~5=최위험)
-  let crimeSc = apt.crimeSafetyGrade == null ? CRIME_SAFETY_NULL_SCORE
+  // 치안 안전: 행안부 범죄 등급(70%) + 경찰관서 근접성(30%)
+  const gradeRisk = apt.crimeSafetyGrade == null ? CRIME_SAFETY_NULL_SCORE
     : (CRIME_SAFETY_SCORES[apt.crimeSafetyGrade] ?? CRIME_SAFETY_NULL_SCORE);
+  const policeRisk = apt.policeDist == null ? POLICE_DIST_NULL_SCORE
+    : tierMax(apt.policeDist, POLICE_DIST_TIERS, POLICE_DIST_HIGH_SCORE);
+  let crimeSc = gradeRisk * 0.7 + policeRisk * 0.3;
   const risk = unsoldSc * 0.14 + liqSc * 0.14 + loanSc * 0.15 + finSc * 0.17 + regSc * 0.05 + supSc * 0.10 + mktSc * 0.07 + cancelSc * 0.04 + compSc * 0.09 + crimeSc * 0.05;
   const safety = Math.round(Math.max(0, Math.min(100, 100 - risk)));
   return {
@@ -322,7 +326,7 @@ export function scoreRisk(apt) {
       { name: "공급량", score: 100 - supSc, info: `${apt.supplyRatio}%`, detail: `${apt.supplyRatio}% (부족 50%↓, 적정 100%↓, 과잉 130%↑)` },
       { name: "시장환경", score: 100 - mktSc, info: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` : "정보 없음", detail: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}% (성장 +1%↑, 안정 0%↑, 감소 -0.8%↓)` : "인구 데이터 없음 (중립 35점)" },
       { name: "계약해제율", score: 100 - cancelSc, info: apt.cancelRatio6m != null ? `${apt.cancelRatio6m}%` : "정보 없음", detail: apt.cancelRatio6m != null ? `${apt.cancelRatio6m}% (안전 3%↓, 주의 8~15%, 위험 25%↑)` : "계약해제율 데이터 없음 (중립 35점)" },
-      { name: "치안 안전", score: 100 - crimeSc, info: apt.crimeSafetyGrade != null ? `${apt.crimeSafetyGrade}등급` : "정보 없음", detail: apt.crimeSafetyGrade != null ? `${apt.crimeSafetyGrade}등급 (1등급=최안전, 5등급=최위험) — 행안부 지역안전지수` : "치안 데이터 없음 (중립 35점)" },
+      { name: "치안 안전", score: Math.round(100 - crimeSc), info: [apt.crimeSafetyGrade != null ? `${apt.crimeSafetyGrade}등급` : null, apt.policeDist != null ? `경찰 ${apt.policeDist}m` : null].filter(Boolean).join(" · ") || "정보 없음", detail: [apt.crimeSafetyGrade != null ? `범죄등급 ${apt.crimeSafetyGrade}등급 (1=최안전~5=최위험)` : "범죄등급 미수집", apt.policeDist != null ? `경찰관서 ${apt.policeDist}m (${(apt.police ?? 0)}개/3km)` : "경찰관서 미수집"].join(" · ") },
     ],
   };
 }

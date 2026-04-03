@@ -25,6 +25,7 @@
 | (apartments 컬럼) | 치안 안전 1개 (crime_safety_grade SMALLINT 1~5) | collect-crime-safety.mjs |
 | (infra 컬럼) | 어린이집 2개 (childcare/childcare_dist) | collect-childcare.mjs |
 | (infra 컬럼) | 응급의료 2개 (emergency/emergency_dist) | collect-emergency.mjs |
+| (infra 컬럼) | 경찰관서 2개 (police/police_dist) | collect-police.mjs |
 | complexes | 네이버 단지 정보 | naver-collect.py |
 | articles | 네이버 매물 정보 | naver-collect.py |
 | complex_price_history | 네이버 시세 이력 | naver-collect.py |

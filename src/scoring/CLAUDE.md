@@ -141,8 +141,25 @@ scoreRisk 내부 10번째 서브지표 (가중치 0.05):
 | 4등급 | 60 | 주의 |
 | 5등급 (최위험) | 80 | 위험 |
 
-점수가 높을수록 위험. `100 - crimeSc`가 최종 서브점수.
+crimeSc는 내부 분할: `gradeRisk * 0.7 + policeRisk * 0.3`.
+점수가 높을수록 위험. `Math.round(100 - crimeSc)`가 최종 서브점수.
 데이터 소스: `apartments.crime_safety_grade` (행안부 지역안전지수 범죄 분야, 연 1회 CSV).
+
+## 경찰관서 근접성(policeDist) 스코어링
+
+scoreRisk 내부 crimeSc의 30% 비중 (총 가중치 0.05 × 0.3 = 0.015):
+
+| 거리 | 점수 | 비고 |
+|------|------|------|
+| null (데이터 없음) | 35 | 중립 (POLICE_DIST_NULL_SCORE) |
+| ≤ 500m | 5 | 매우 안전 |
+| ≤ 1km | 15 | 안전 |
+| ≤ 2km | 30 | 보통 |
+| ≤ 3km | 50 | 약간 불안 |
+| > 3km | 70 | 원거리 (POLICE_DIST_HIGH_SCORE) |
+
+점수가 높을수록 위험 (멀수록 높은 점수).
+데이터 소스: `infra.police_dist` (Kakao Places "경찰서" 3km 반경 최근접 거리, 매월 수집).
 
 ## 순이동(netMigration) 보너스/페널티
 

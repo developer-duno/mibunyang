@@ -129,6 +129,16 @@ export const CANCEL_RATIO_NULL_SCORE = 35;
 export const CRIME_SAFETY_SCORES = { 1: 10, 2: 25, 3: 40, 4: 60, 5: 80 };
 export const CRIME_SAFETY_NULL_SCORE = 35;
 
+// scoreRisk policeDist (경찰관서 근접성: 멀수록 높은 위험점수)
+export const POLICE_DIST_TIERS = [
+  { max: 500, score: 5 },    // 500m 이내
+  { max: 1000, score: 15 },   // 1km 이내
+  { max: 2000, score: 30 },   // 2km 이내
+  { max: 3000, score: 50 },   // 3km 이내
+];
+export const POLICE_DIST_HIGH_SCORE = 70;  // 3km 초과
+export const POLICE_DIST_NULL_SCORE = 35;  // 데이터 없음 중립
+
 // scoreRisk popGrowth (위험 관점: 높으면 안전 → 낮은 위험점수)
 export const POP_RISK_TIERS = [
   { min: 0.5, score: 10 }, { min: 0, score: 20 },

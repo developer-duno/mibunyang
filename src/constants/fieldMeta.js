@@ -51,6 +51,8 @@ export const FIELD_META = {
   competitionSupply: { label: "공급세대수(청약)", section: "안전", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집" },
   competitionApplicants: { label: "청약신청수", section: "안전", unit: "명", fmt: v => v != null ? nk(v, "명") : "미수집" },
   crimeSafetyGrade: { label: "치안 안전등급", section: "안전", fmt: v => v != null ? `${v}등급` : "미수집" },
+  police: { label: "경찰관서(3km)", section: "입지", unit: "개", fmt: v => n(v, "개") },
+  policeDist: { label: "경찰관서 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "미수집" },
   // ── 지역 시장 통계 (KOSIS HUG) ──
   priceIndex: { label: "분양가격지수", section: "가격", unit: "2014=100", fmt: v => v != null ? v.toFixed(1) : "미수집" },
   avgPriceSqm: { label: "㎡당 평균분양가", section: "가격", unit: "천원/㎡", fmt: v => v != null ? nk(v, "천원") : "미수집" },

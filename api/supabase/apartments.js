@@ -202,6 +202,8 @@ function sanitize(row) {
     childcareDist: row.childcareDist ?? null,
     emergency: row.emergency ?? 0,
     emergencyDist: row.emergencyDist ?? null,
+    police: row.police ?? 0,
+    policeDist: row.policeDist ?? null,
     // 대기질
     airQuality: row.airQuality ?? null,
     // 학군
