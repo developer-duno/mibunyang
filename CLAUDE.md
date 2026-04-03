@@ -11,6 +11,7 @@
 - infra 테이블에 police(개수), police_dist(최근접 거리) 컬럼 추가
 - scoreRisk crimeSc 내부 분할: 범죄등급 70% + 경찰관서 근접성 30% (총합 1.00 유지)
 - GitHub Actions cron: 매월 1일 (collect-police.yml, timeout 60분)
+- 리뷰 수정: VIEW crimeSafetyGrade 복원 + API sanitize 누락 + FIELD_SECTIONS 등록
 - finlife 사이트: 여전히 HTTPS 연결 실패 (exit 56) → 이월
 
 **다음에 해야 할 것** (우선순위):
