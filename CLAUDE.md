@@ -64,49 +64,18 @@
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (35개 워크플로우, monitor-db-size 포함)
 - Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC, 한국 IP 필수)
-- `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (pre.land.naver.com POST API, 19개 필드, isCLI 패턴)
-  - 2026-03-29 pre.land Next.js RSC SPA 전환 → 기존 GET API 전면 폐기, POST API(`/api/complex/*`)로 재구현
-  - JWT 불필요 (curl_cffi TLS fingerprint도 불필요, 네이티브 fetch POST로 동작)
-  - `extractPresaleFields(row)` — DRY 헬퍼: presale_*/naver_presale_* 필드만 추출 (update·insert 공용)
-  - `buildNewApartment(row, complexData, regionFallback)` — 신규 단지 생성 (ap-{no} ID, unit_source="naver_presale")
-  - `matchPresaleToApt(presale, apartments, indexes)` — 4단계 tier 매칭 (Map O(1) Tier1·2 + tier 반환 + tierCounts 집계)
-  - 기존 아파트: `update().eq("id")` 부분 업데이트 (upsert→update 전환, name NOT NULL 위반 방지)
-  - 신규 아파트: `upsertBatch()` 배치 생성 (ap-{no} ID, MIN_UNITS_FOR_INSERT=20)
-  - `naver-presale-jwt.py` — new.land.naver.com JWT 추출 헬퍼 (향후 인증 필요 시 fallback용)
-- `scripts/collectors/collect-trades.mjs` — 국토부 실거래가 수집 (매매/전세/분양권 3종, TRADE_CONFIGS DRY)
-  - `fetchTradeRows(lawdCd, months, type, rg, seen)` — 단일 거래타입 월별 수집 (fetchWithRetry 사용)
-  - `TRADE_CONFIGS` — 3가지 거래타입별 엔드포인트/검증/행생성 규칙
-  - `getTag()` — TAG_REGEX_CACHE 기반 XML 태그 추출
-- `scripts/collectors/_shared.mjs` — 수집기 공유 모듈 (19개 export: loadEnv, getSupabase, REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, fetchWithRetry, upsertBatch, createReporter, recordApiQuota 등)
-- `scripts/collectors/_molit-api.mjs` — 국토부 공동주택 API 공유 모듈 (SIDO_CODE 17개, NonRetryableError 클래스, molitApiCall 재시도+즉시실패 분리, fetchSidoAptList 페이지네이션, findBestMatch 유사도 매칭)
-- `scripts/collectors/molit-building-info.mjs` — 건물 상세 수집기 (isCLI 패턴, export 3함수)
-  - `extractBuildingInfo(detail)` — V4 응답에서 parking_ratio/max_floor/energy_grade/heating/corridor_type 추출
-  - `updateBuilding(sb, aptId, info, dryRun)` — null 필드 제외 후 선택적 UPDATE
-  - `fetchAptDetail(kaptCode)` — Bass+Dtl 2엔드포인트 병합 조회
-- `scripts/collectors/molit-units.mjs` — 세대수(units) 보정 수집기 (isCLI 패턴, export 3함수)
-  - `getTargets(sb)` — units≤1 또는 unsold_rate≥100% 대상 조회
-  - `updateUnits(sb, aptId, newUnits, unsold, dryRun)` — unsold_rate 재계산 + unit_source="molit"
-  - `fetchAptDetail(kaptCode)` — V4 기본정보에서 kaptdaCnt(세대수) 조회
-- `scripts/collectors/collect-maintenance.mjs` — 관리비 수집기 (isCLI 패턴, export 2함수)
-  - `fetchTotalHouseholds(kaptCode)` — AptBasisInfoServiceV4에서 총 세대수 조회
-  - `fetchMaintenanceCost(kaptCode, searchDate)` — 5항목(난방/급탕/가스/전기/수도) 합산 관리비 조회
-- `scripts/collectors/collect-childcare.mjs` — 어린이집/유치원 수집기 (Kakao 키워드, isCLI 패턴, export 2함수)
-  - `searchKakao(lat, lng, keyword, radius)` — Kakao 키워드 검색
-  - `collectChildcare(lat, lng)` — 어린이집+유치원 합산 (중복 좌표 제거)
-- `scripts/collectors/collect-emergency.mjs` — 응급의료기관 수집기 (data.go.kr, isCLI 패턴, export 3함수)
-  - `haversine(lat1, lng1, lat2, lng2)` — 거리 계산 (km)
-  - `fetchEmergencyList()` — 전국 응급의료기관 목록 (페이지네이션)
-  - `matchNearest(apt, facilities)` — 단지별 최근접 매칭
-- `scripts/collectors/collect-air-quality.mjs` — 에어코리아 대기질 수집기 (data.go.kr, isCLI 패턴, export 4함수)
-  - `haversine(lat1, lng1, lat2, lng2)` — 거리 계산 (km)
-  - `fetchStationCoords()` — MsrstnInfoInqireSvc 전국 672개 측정소 좌표 조회 (1회 호출)
-  - `fetchSidoData(sido, coordMap)` — 시도별 실시간 대기질 + 좌표 조인
-  - `matchNearestStation(apt, stations)` — 최근접 측정소 매칭
-- `scripts/collectors/collect-crime-safety.mjs` — 행안부 지역안전지수 범죄등급 수집기 (로컬 CSV, isCLI 패턴, export 2함수)
-  - `parseCrimeCsv(csvText)` — CSV → Map<"region|gu", grade> 파싱
-  - `matchCrimeGrade(apt, crimeMap)` — region+gu 매칭 (세종 등 gu 없는 경우 폴백)
-- `scripts/collectors/collect-police.mjs` — 경찰관서 밀도 수집기 (Kakao Places, isCLI 패턴, export 1함수)
-  - `searchPolice(lat, lng)` — Kakao 키워드 "경찰서" 반경 3km 검색, 중복좌표 제거, count+dist 반환
+- `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (POST API, 19필드, 4단계 tier 매칭)
+- `scripts/collectors/collect-trades.mjs` — 국토부 실거래가 수집 (매매/전세/분양권 3종)
+- `scripts/collectors/_shared.mjs` — 수집기 공유 모듈 (19개 export)
+- `scripts/collectors/_molit-api.mjs` — 국토부 공동주택 API 공유 (SIDO_CODE 17개, 재시도+유사도 매칭)
+- `scripts/collectors/molit-building-info.mjs` — 건물 상세 (parking_ratio/max_floor/energy_grade 등)
+- `scripts/collectors/molit-units.mjs` — 세대수 보정 (units≤1 대상)
+- `scripts/collectors/collect-maintenance.mjs` — 관리비 (5항목 합산)
+- `scripts/collectors/collect-childcare.mjs` — 어린이집/유치원 (Kakao 키워드 1km)
+- `scripts/collectors/collect-emergency.mjs` — 응급의료기관 (haversine 10km)
+- `scripts/collectors/collect-air-quality.mjs` — 에어코리아 대기질 (최근접 측정소 매칭)
+- `scripts/collectors/collect-crime-safety.mjs` — 행안부 범죄등급 (로컬 CSV)
+- `scripts/collectors/collect-police.mjs` — 경찰관서 밀도 (Kakao 3km, count+dist)
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 
