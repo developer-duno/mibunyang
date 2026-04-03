@@ -206,6 +206,8 @@ function sanitize(row) {
     policeDist: row.policeDist ?? null,
     // 대기질
     airQuality: row.airQuality ?? null,
+    // 치안
+    crimeSafetyGrade: row.crimeSafetyGrade ?? null,
     // 학군
     schoolScore: row.schoolScore ?? 50,
     schoolGrade: row.schoolGrade ?? "",

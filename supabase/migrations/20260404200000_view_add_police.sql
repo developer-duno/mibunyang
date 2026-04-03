@@ -100,6 +100,8 @@ SELECT
   a.noxious,
   a.noxious_dist AS "noxiousDist",
   a.air_quality AS "airQuality",
+  -- 치안
+  a.crime_safety_grade AS "crimeSafetyGrade",
   -- 최신 분양가 (prices 테이블에서)
   p.area,
   p.price,
