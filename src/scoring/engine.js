@@ -24,6 +24,15 @@ import {
   PRICE_NO_DATA_DEFAULTS, DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
   DIRECTION_BONUS, SUNLIGHT_DIRECTION_MAX,
   AIR_QUALITY_TIERS, AIR_QUALITY_DEFAULT,
+  // 신규 상수 (세션66 스코어링 반영)
+  AIR_PM10_TIERS, AIR_PM10_DEFAULT, AIR_O3_TIERS, AIR_O3_DEFAULT, AIR_O3_BAD_SCORE,
+  SCHOOL_WALK_BONUS, SCHOOL_WALK_FAR_ADJ,
+  INIT_SALE_TIERS, INIT_SALE_HIGH_RISK, INIT_SALE_NULL,
+  LISTING_FLOOD_THRESHOLD, LISTING_WARN_THRESHOLD, LISTING_FLOOD_PENALTY, LISTING_WARN_PENALTY,
+  PUBLIC_PRESALE_BONUS, NEW_SUPPLY_HIGH, NEW_SUPPLY_LOW, NEW_SUPPLY_HIGH_ADJ, NEW_SUPPLY_LOW_ADJ,
+  LAND_COST_TIERS, LAND_COST_LOW, LAND_COST_NULL,
+  PRICE_INDEX_HOT, PRICE_INDEX_WARM, PRICE_INDEX_HOT_BONUS, PRICE_INDEX_WARM_BONUS,
+  HOUSING_TYPE_CAP_DEFAULT, HOUSING_TYPE_CAP_NON_APT,
 } from "@/constants/scoringTiers";
 
 // --- scoreFuture 키워드 배열 (Clean-3) ---
@@ -81,6 +90,16 @@ function sanitize(apt, rm) {
     avgMaintenanceCost: num(apt.avgMaintenanceCost, 0),
     primaryDirection: str(apt.primaryDirection, ""),
     _regionAvgMaint: num(rm?.maint, 0),
+    // 신규 스코어링 필드 (세션66)
+    initialSaleRate: num(apt.initialSaleRate, null),
+    landCostRatio: num(apt.landCostRatio, null),
+    priceIndex: num(apt.priceIndex, null),
+    avgPriceSqm: num(apt.avgPriceSqm, null),
+    presalePp: num(apt.presalePp, null),
+    presaleParking: num(apt.presaleParking, null),
+    presaleGeneralSupply: num(apt.presaleGeneralSupply, null),
+    naverSellCount: num(apt.naverSellCount, null),
+    naverSchoolWalkMin: num(apt.naverSchoolWalkMin, null),
     // 원본 null 여부 플래그 (표시용)
     _noView: apt.view == null || apt.view === "",
     _noNoise: apt.noise == null,
@@ -118,11 +137,25 @@ export function scorePrice(apt) {
   const b = brand || { adj: 1.0 };
   const ageCoeff = getAgeCoeff(apt.completion);
   const areaAdj = getAreaAdj(apt.area);
-  const fairPrice = apt.nearbyMedian * ageCoeff * areaAdj * b.adj;
+  let fairPrice = apt.nearbyMedian * ageCoeff * areaAdj * b.adj;
+  // fairPrice=0 폴백: avgPriceSqm 또는 presalePp로 대체 시도
+  if (fairPrice <= 0 && apt.avgPriceSqm != null && apt.area > 0) {
+    fairPrice = Math.round(apt.avgPriceSqm * apt.area / 10000 * 3.3) * ageCoeff * b.adj;
+  }
+  if (fairPrice <= 0 && apt.presalePp != null && apt.presalePp > 0) {
+    fairPrice = apt.presalePp * ageCoeff * b.adj;
+  }
+  // 택지비 비율 서브스코어 (공통)
+  const landSc = apt.landCostRatio != null
+    ? tierMin(apt.landCostRatio, LAND_COST_TIERS, LAND_COST_LOW) : LAND_COST_NULL;
+  // priceIndex 보정: 과열 시장에서 신뢰도 가산
+  const idxBonus = apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_HOT ? PRICE_INDEX_HOT_BONUS
+    : apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_WARM ? PRICE_INDEX_WARM_BONUS : 0;
+  const relSc = Math.min(apt.dataReliability + idxBonus, 100);
   if (fairPrice <= 0) {
     const devSc = PRICE_NO_DATA_DEFAULTS.dev;
     const jrSc = PRICE_NO_DATA_DEFAULTS.jr; const pirSc = PRICE_NO_DATA_DEFAULTS.pir; const psrSc = PRICE_NO_DATA_DEFAULTS.psr;
-    const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + Math.min(apt.dataReliability, 100) * 0.10;
+    const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
     return {
       total: Math.round(Math.min(total, 100)), fairPrice: 0, deviation: "0.0",
       subs: [
@@ -130,7 +163,8 @@ export function scorePrice(apt) {
         { name: "전세가율", score: Math.round(jrSc), info: `${apt.jeonseRate}%`, detail: `${apt.jeonseRate}% (적정 70~80%, 위험 40%↓)` },
         { name: "PIR", score: Math.round(pirSc), info: `${apt.pir}배`, detail: `${apt.pir}배 (우수 3↓, 양호 5↓, 보통 7↓)` },
         { name: "PSR", score: Math.round(psrSc), info: `${(apt.psr * 100).toFixed(0)}%`, detail: `${(apt.psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓)` },
-        { name: "데이터 신뢰도", score: Math.min(apt.dataReliability, 100), info: `${apt.dataReliability}%`, detail: `${apt.dataReliability}% (80%↑신뢰, 30%↓추정)` },
+        { name: "데이터 신뢰도", score: relSc, info: `${apt.dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}`, detail: `${apt.dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""} (80%↑신뢰, 30%↓추정)` },
+        { name: "택지비비율", score: landSc, info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음", detail: apt.landCostRatio != null ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)` : "택지비 데이터 없음 (중립 50점)" },
       ],
     };
   }
@@ -146,7 +180,7 @@ export function scorePrice(apt) {
 
   let pirSc = apt.pir <= 3 ? 100 : apt.pir <= 5 ? 80 + (5 - apt.pir) / 2 * 20 : apt.pir <= 7 ? 60 + (7 - apt.pir) / 2 * 20 : Math.max(0, 60 - (apt.pir - 7) * 10);
   let psrSc = Math.min(apt.psr < 0.85 ? 85 + (0.85 - apt.psr) / 0.15 * 15 : apt.psr <= 1.0 ? 50 + (1.0 - apt.psr) / 0.15 * 35 : Math.max(0, 50 - (apt.psr - 1.0) / 0.2 * 50), 100);
-  const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + Math.min(apt.dataReliability, 100) * 0.10;
+  const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
   return {
     total: Math.round(Math.min(total, 100)), fairPrice: Math.round(fairPrice), deviation: dev.toFixed(1),
     subs: [
@@ -154,7 +188,8 @@ export function scorePrice(apt) {
       { name: "전세가율", score: Math.round(jrSc), info: `${jr}%`, detail: `${jr}% (적정 70~80%, 위험 40%↓, 과열 90%↑)` },
       { name: "PIR", score: Math.round(pirSc), info: `${apt.pir}배`, detail: `${apt.pir}배 (우수 3↓, 양호 5↓, 보통 7↓, 부담 7↑)` },
       { name: "PSR", score: Math.round(psrSc), info: `${(apt.psr * 100).toFixed(0)}%`, detail: `${(apt.psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓, 고평가 100%↑)` },
-      { name: "데이터 신뢰도", score: Math.min(apt.dataReliability, 100), info: `${apt.dataReliability}%`, detail: `${apt.dataReliability}% (80%↑신뢰, 50%↑보통, 30%↓추정)` },
+      { name: "데이터 신뢰도", score: relSc, info: `${apt.dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}`, detail: `${apt.dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""} (80%↑신뢰, 50%↑보통, 30%↓추정)` },
+      { name: "택지비비율", score: landSc, info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음", detail: apt.landCostRatio != null ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)` : "택지비 데이터 없음 (중립 50점)" },
     ],
   };
 }
@@ -176,7 +211,11 @@ export function scoreLocation(apt) {
   const maxTransport = 25 * ct.subwayW + 30 * ct.busW + 20 * ct.icW + 20 * ct.ktxW + 5;
   const transport = Math.min((subSc + busSc + icSc + ktxSc + 5) / maxTransport * 100, 100);
 
-  const school = apt.schoolScore ?? 50;
+  // 학교 도보시간 보정: naverSchoolWalkMin 기반 ±10
+  const walkMin = apt.naverSchoolWalkMin;
+  const walkAdj = walkMin == null ? 0
+    : tierMax(walkMin, SCHOOL_WALK_BONUS, SCHOOL_WALK_FAR_ADJ);
+  const school = Math.max(0, Math.min(100, (apt.schoolScore ?? 50) + walkAdj));
 
   const infraItems = INFRA_CONFIG.map(cfg => ({ v: apt[cfg.key] ?? 0, m: cfg.max, w: cfg.weight }));
   const infra = infraItems.reduce((s, i) => s + Math.min(i.v / i.m, 1) * i.w * 100, 0);
@@ -187,7 +226,13 @@ export function scoreLocation(apt) {
   const dirBonus = apt.primaryDirection ? (DIRECTION_BONUS[apt.primaryDirection] ?? 0) : 0;
   sunSc = Math.min(sunSc + dirBonus, SUNLIGHT_DIRECTION_MAX);
   let noiseSc = tierMax(apt.noise, NOISE_TIERS, 0);
-  const airSc = apt.airQuality?.pm25 != null ? tierMax(apt.airQuality.pm25, AIR_QUALITY_TIERS, 0) : AIR_QUALITY_DEFAULT;
+  // 대기질 복합: PM2.5(40%) + PM10(35%) + O3(25%) — pm10/o3 null이면 기존과 동일
+  const pm25Sc = apt.airQuality?.pm25 != null ? tierMax(apt.airQuality.pm25, AIR_QUALITY_TIERS, 0) : AIR_QUALITY_DEFAULT;
+  const pm10Sc = apt.airQuality?.pm10 != null ? tierMax(apt.airQuality.pm10, AIR_PM10_TIERS, 0) : null;
+  const o3Sc = apt.airQuality?.o3 != null ? tierMax(apt.airQuality.o3, AIR_O3_TIERS, AIR_O3_BAD_SCORE) : null;
+  const airSc = (pm10Sc == null && o3Sc == null)
+    ? pm25Sc
+    : pm25Sc * 0.40 + (pm10Sc ?? AIR_PM10_DEFAULT) * 0.35 + (o3Sc ?? AIR_O3_DEFAULT) * 0.25;
   const env = viewSc + sunSc + noiseSc + airSc;
   let noxPen = (apt.noxious || []).reduce((s, n) => s + (NOXIOUS_PENALTY[n] || 0), 0);
   // 거리 기반 감점 완화: noxiousDist >= 500m이면 감점 반감
@@ -209,9 +254,9 @@ export function scoreLocation(apt) {
         apt.icDist < 90 ? `IC ${apt.icDist}km ${apt.icDist <= 2 ? "우수" : apt.icDist <= 5 ? "양호" : "보통"}` : "IC 원거리",
         apt.ktxDist < 90 ? `KTX ${apt.ktxDist}km ${apt.ktxDist <= 5 ? "우수" : apt.ktxDist <= 10 ? "양호" : "보통"}` : null,
       ].filter(Boolean).join(" · ") },
-      { name: "학군", score: Math.round(school), info: apt.schoolGrade, detail: `${apt.schoolGrade || "미수집"} (A=100, B=80, C=60, D=40점)` },
+      { name: "학군", score: Math.round(school), info: apt.schoolGrade ? `${apt.schoolGrade}${walkMin != null ? ` 도보${walkMin}분` : ""}` : apt.schoolGrade, detail: `${apt.schoolGrade || "미수집"} (A=100, B=80, C=60, D=40점)${walkMin != null ? ` · 도보 ${walkMin}분 (5분↓+10, 10분↓+5, 20분↑-10)` : ""}` },
       { name: "생활인프라", score: Math.round(infra), info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy} 보육${apt.childcare ?? 0}`, detail: `병원${apt.hospital}/5(1km) 마트${apt.mart}/3(1km) 편의점${apt.conv}/10(500m) 공원${apt.park}/4(1km) 약국${apt.pharmacy}/4(500m) 어린이집${apt.childcare ?? 0}/5(1km) 응급의료${apt.emergency ?? 0}/3(10km)` },
-      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise && apt._noSunlight ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${apt.sunlight}`}${apt._noNoise ? "" : ` ${apt.noise}dB`}${apt.airQuality?.grade ? ` 대기:${apt.airQuality.grade}` : ""}`, detail: `조망:${apt.view || "미확인"}(블루40 그린30 천공20점) 일조:${apt.sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${apt.noise}dB`}(50↓우수 60↓양호) 대기질:${apt.airQuality?.grade || "미수집"}(PM2.5 15↓좋음20 25↓보통15점)` },
+      { name: "자연환경", score: Math.round(env), info: apt._noView && apt._noNoise && apt._noSunlight ? "정보 없음" : `${apt.view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${apt.sunlight}`}${apt._noNoise ? "" : ` ${apt.noise}dB`}${apt.airQuality?.grade ? ` 대기:${apt.airQuality.grade}` : ""}`, detail: `조망:${apt.view || "미확인"}(블루40 그린30 천공20점) 일조:${apt.sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${apt.noise}dB`}(50↓우수 60↓양호) 대기질:${apt.airQuality?.grade || "미수집"}(PM2.5${pm10Sc != null ? `/PM10` : ""}${o3Sc != null ? `/O3` : ""})` },
       { name: "혐오시설", score: Math.round(noxSafe), info: (apt.noxious || []).length ? (apt.noxious || []).join(",") : "없음", detail: (apt.noxious || []).length ? `${(apt.noxious || []).join(",")} (500m↑ 감점 반감, 하한 -15점)` : "없음 (감점 0)" },
     ],
   };
@@ -221,10 +266,18 @@ export function scoreProduct(apt) {
   const brand = BRAND_TIER[apt.builder];
   if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
   const b = brand || { score: 5, tier: "기타" };
-  const brandSc = b.score;
+  // 주택유형별 브랜드 상한: 오피스텔/도시형 → 15, 아파트/null → 20
+  const housingCap = apt.presaleHousingType != null &&
+    (apt.presaleHousingType.includes("오피스텔") || apt.presaleHousingType.includes("도시형"))
+    ? HOUSING_TYPE_CAP_NON_APT : HOUSING_TYPE_CAP_DEFAULT;
+  const brandSc = Math.min(b.score, housingCap);
   let unitSc = apt.units <= 1 ? UNIT_UNKNOWN_SCORE : tierMin(apt.units, UNIT_TIERS, UNIT_SMALL_SCORE);
   if (apt.hasPool) unitSc = Math.min(unitSc + 3, 15);
-  let parkSc = tierMin(apt.parkingRatio, PARKING_TIERS, PARKING_LOW_SCORE);
+  // presaleParking 폴백: parkingRatio 기본값(0.5)이고 presaleParking 있으면 대체
+  const effectivePR = apt._noParking && apt.presaleParking != null
+    ? apt.presaleParking / Math.max(apt.presaleGeneralSupply ?? apt.units, 1)
+    : apt.parkingRatio;
+  let parkSc = tierMin(effectivePR, PARKING_TIERS, PARKING_LOW_SCORE);
   let farSc = tierMax(apt.floorAreaRatio, FAR_TIERS, FAR_HIGH_SCORE);
   let energySc = (ENERGY_SCORES[apt.energyGrade] ?? ENERGY_DEFAULT) + (GREEN_BLDG_SCORES[apt.greenBldg] || 0);
   let exclSc = tierMin(apt.exclusiveRatio, EXCL_RATIO_TIERS, EXCL_LOW_SCORE);
@@ -281,12 +334,27 @@ export function scoreBenefit(apt) {
 export function scoreRisk(apt) {
   let unsoldSc = apt.units <= 1 ? UNSOLD_UNKNOWN_SCORE : tierMax(apt.unsoldRate, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE);
   let liqSc = tierMin(apt.recentTrades6m, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE);
+  // 매물 과잉 페널티: naverSellCount 기반
+  const listingPen = apt.naverSellCount != null && apt.naverSellCount > LISTING_FLOOD_THRESHOLD ? LISTING_FLOOD_PENALTY
+    : apt.naverSellCount != null && apt.naverSellCount > LISTING_WARN_THRESHOLD ? LISTING_WARN_PENALTY : 0;
+  liqSc = Math.min(liqSc + listingPen, 100);
   let loanSc = (apt.dsr40pass ? 15 : 50) + (apt.loanFree ? 0 : 15);
   let finSc = (apt.hugGuarantee ? 0 : 40) + (CREDIT_GRADE_SCORES[apt.builderCreditGrade] ?? CREDIT_DEFAULT) + (apt.builderDebtRatio > 200 ? 20 : apt.builderDebtRatio > 150 ? 10 : 0);
-  finSc = Math.min(finSc, 100);
-  const zone = getZone(apt.region, apt.gu);
+  // 공공분양 재무안전 보너스
+  if (apt.presaleType != null && apt.presaleType.includes("공공")) finSc += PUBLIC_PRESALE_BONUS;
+  finSc = Math.max(0, Math.min(finSc, 100));
+  // 규제지역: DB isRegulated 우선, null이면 getZone() 폴백
+  const zone = apt.isRegulated != null
+    ? (apt.isRegulated ? "regulated" : "normal")
+    : getZone(apt.region, apt.gu);
   let regSc = zone !== "normal" ? 60 : 10;
   let supSc = tierMax(apt.supplyRatio, SUPPLY_RATIO_TIERS, SUPPLY_HIGH_SCORE);
+  // 신규공급 보정
+  if (apt.newSupply != null && apt.newSupply > NEW_SUPPLY_HIGH) supSc = Math.min(supSc + NEW_SUPPLY_HIGH_ADJ, 100);
+  else if (apt.newSupply != null && apt.newSupply < NEW_SUPPLY_LOW) supSc = Math.max(supSc + NEW_SUPPLY_LOW_ADJ, 0);
+  // 초기분양률 서브스코어 (신규)
+  let initSc = apt.initialSaleRate == null ? INIT_SALE_NULL
+    : tierMin(apt.initialSaleRate, INIT_SALE_TIERS, INIT_SALE_HIGH_RISK);
   let mktSc = apt.popGrowth == null ? 35
     : apt.popGrowth >= 1.0 ? 5
     : apt.popGrowth >= 0.5 ? 20
@@ -312,7 +380,7 @@ export function scoreRisk(apt) {
   const policeRisk = apt.policeDist == null ? POLICE_DIST_NULL_SCORE
     : tierMax(apt.policeDist, POLICE_DIST_TIERS, POLICE_DIST_HIGH_SCORE);
   let crimeSc = gradeRisk * 0.7 + policeRisk * 0.3;
-  const risk = unsoldSc * 0.14 + liqSc * 0.14 + loanSc * 0.15 + finSc * 0.17 + regSc * 0.05 + supSc * 0.10 + mktSc * 0.07 + cancelSc * 0.04 + compSc * 0.09 + crimeSc * 0.05;
+  const risk = unsoldSc * 0.14 + liqSc * 0.14 + loanSc * 0.15 + finSc * 0.17 + regSc * 0.05 + supSc * 0.10 + mktSc * 0.04 + cancelSc * 0.04 + compSc * 0.09 + crimeSc * 0.05 + initSc * 0.03;
   const safety = Math.round(Math.max(0, Math.min(100, 100 - risk)));
   return {
     total: safety, riskRaw: Math.round(risk),
@@ -327,6 +395,7 @@ export function scoreRisk(apt) {
       { name: "시장환경", score: 100 - mktSc, info: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}%` : "정보 없음", detail: apt.popGrowth != null ? `인구 ${apt.popGrowth > 0 ? "+" : ""}${apt.popGrowth}% (성장 +1%↑, 안정 0%↑, 감소 -0.8%↓)` : "인구 데이터 없음 (중립 35점)" },
       { name: "계약해제율", score: 100 - cancelSc, info: apt.cancelRatio6m != null ? `${apt.cancelRatio6m}%` : "정보 없음", detail: apt.cancelRatio6m != null ? `${apt.cancelRatio6m}% (안전 3%↓, 주의 8~15%, 위험 25%↑)` : "계약해제율 데이터 없음 (중립 35점)" },
       { name: "치안 안전", score: Math.round(100 - crimeSc), info: [apt.crimeSafetyGrade != null ? `${apt.crimeSafetyGrade}등급` : null, apt.policeDist != null ? `경찰 ${apt.policeDist}m` : null].filter(Boolean).join(" · ") || "정보 없음", detail: [apt.crimeSafetyGrade != null ? `범죄등급 ${apt.crimeSafetyGrade}등급 (1=최안전~5=최위험)` : "범죄등급 미수집", apt.policeDist != null ? `경찰관서 ${apt.policeDist}m (${(apt.police ?? 0)}개/3km)` : "경찰관서 미수집"].join(" · ") },
+      { name: "초기분양률", score: 100 - initSc, info: apt.initialSaleRate != null ? `${apt.initialSaleRate}%` : "정보 없음", detail: apt.initialSaleRate != null ? `${apt.initialSaleRate}% (90%↑안전, 70%↑양호, 50%↑보통, 30%↓위험)` : "초기분양률 데이터 없음 (중립 40점)" },
     ],
   };
 }

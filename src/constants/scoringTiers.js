@@ -194,3 +194,72 @@ export const AREA_ADJ_TIERS = [
   { max: 60, adj: 1.08 }, { max: 85, adj: 1.0 }, { max: 115, adj: 0.97 },
 ];
 export const AREA_ADJ_LARGE = 0.94;
+
+// === Location: 대기질 PM10 (4단계, ㎍/㎥ 기준) ===
+export const AIR_PM10_TIERS = [
+  { max: 30, score: 20 },   // 좋음
+  { max: 80, score: 15 },   // 보통
+  { max: 150, score: 8 },   // 나쁨
+];
+export const AIR_PM10_DEFAULT = 12;  // 데이터 없을 때 중립
+
+// === Location: 오존 O3 (3단계, ppm 기준) ===
+export const AIR_O3_TIERS = [
+  { max: 0.03, score: 20 },  // 좋음
+  { max: 0.09, score: 12 },  // 보통
+];
+export const AIR_O3_DEFAULT = 12;    // 데이터 없을 때 중립
+export const AIR_O3_BAD_SCORE = 5;   // 나쁨
+
+// === Location: 도보통학 시간 보정 (분 기준) ===
+export const SCHOOL_WALK_BONUS = [
+  { max: 5, score: 10 },   // 5분 이내 +10
+  { max: 10, score: 5 },   // 10분 이내 +5
+  { max: 15, score: 0 },   // 15분 이내 ±0
+  { max: 20, score: -5 },  // 20분 이내 -5
+];
+export const SCHOOL_WALK_FAR_ADJ = -10;  // 20분 초과
+
+// === Risk: 초기분양률 (높을수록 안전 → 낮은 위험점수) ===
+export const INIT_SALE_TIERS = [
+  { min: 90, score: 10 },   // 초기 90%↑ = 매우 안전
+  { min: 70, score: 25 },
+  { min: 50, score: 45 },
+  { min: 30, score: 65 },
+];
+export const INIT_SALE_HIGH_RISK = 85;  // 30% 미만
+export const INIT_SALE_NULL = 40;       // 데이터 없음 중립
+
+// === Risk: 매물 과잉 임계값 ===
+export const LISTING_FLOOD_THRESHOLD = 50;  // 매물 50건 초과 → +5
+export const LISTING_WARN_THRESHOLD = 30;   // 매물 30건 초과 → +2
+export const LISTING_FLOOD_PENALTY = 5;
+export const LISTING_WARN_PENALTY = 2;
+
+// === Risk: 공공분양 재무안전 보너스 ===
+export const PUBLIC_PRESALE_BONUS = -15;
+
+// === Risk: 신규공급 보정 임계값 ===
+export const NEW_SUPPLY_HIGH = 5000;     // 대량 공급 → supSc +5
+export const NEW_SUPPLY_LOW = 1000;      // 희소 공급 → supSc -3
+export const NEW_SUPPLY_HIGH_ADJ = 5;
+export const NEW_SUPPLY_LOW_ADJ = -3;
+
+// === Price: 택지비 비율 (높을수록 가격 안정 → 높은 점수) ===
+export const LAND_COST_TIERS = [
+  { min: 60, score: 80 },   // 택지비 60%↑ = 구조적 가격 하한
+  { min: 40, score: 60 },
+  { min: 20, score: 40 },
+];
+export const LAND_COST_LOW = 25;    // 20% 미만
+export const LAND_COST_NULL = 50;   // 데이터 없음 중립
+
+// === Price: 매매가격지수 보정 임계값 ===
+export const PRICE_INDEX_HOT = 130;       // 과열 시장 → +5
+export const PRICE_INDEX_WARM = 110;      // 상승 시장 → +3
+export const PRICE_INDEX_HOT_BONUS = 5;
+export const PRICE_INDEX_WARM_BONUS = 3;
+
+// === Product: 주택유형별 브랜드 상한 ===
+export const HOUSING_TYPE_CAP_DEFAULT = 20;
+export const HOUSING_TYPE_CAP_NON_APT = 15;  // 오피스텔/도시형

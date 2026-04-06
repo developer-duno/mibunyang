@@ -23,10 +23,10 @@
 | profiles.js PROFILES.newlywed | location(30)+product(15)+price(30)+risk(10)+benefit(10)+future(5) | **100** |
 | profiles.js PROFILES.edu | location(45)+product(20)+price(15)+risk(10)+benefit(5)+future(5) | **100** |
 | profiles.js PROFILES.retire | location(35)+product(25)+price(20)+risk(15)+benefit(5)+future(0) | **100** |
-| engine.js scorePrice 내부 | 0.30+0.20+0.15+0.25+0.10 | **1.00** |
+| engine.js scorePrice 내부 | 0.30+0.20+0.15+0.25+0.07+0.03 | **1.00** (6개 서브: 괴리도/전세가율/PIR/PSR/신뢰도/택지비) |
 | engine.js scoreLocation 내부 | 0.30+0.25+0.20+0.10+0.15 | **1.00** |
 | engine.js infra 서브가중치 | 0.16+0.08+0.04+0.12+0.12+0.12+0.04+0.12+0.10+0.10 | **1.00** (10항목) |
-| engine.js scoreRisk 내부 | 0.14+0.14+0.15+0.17+0.05+0.10+0.07+0.04+0.09+0.05 | **1.00** (10개 서브) |
+| engine.js scoreRisk 내부 | 0.14+0.14+0.15+0.17+0.05+0.10+0.04+0.04+0.09+0.05+0.03 | **1.00** (11개 서브: +initSc) |
 | engine.js scoreFuture 내부 | 동적 가중치 (아래 참조) | **항상 1.00** |
 | engine.js scoreProduct max | 20+15+15+10+10+10+10+5+5 | **100** |
 
@@ -170,6 +170,62 @@ popSc에 가산/감산. 인구 증감률과 별개로 실제 전입/전출 데�
 | 순이동 > 0 (순유입) | popSc + 10 | Math.min(100) |
 | 순이동 ≤ -5000 (대규모 유출) | popSc - 5 | Math.max(0) |
 | 순이동 null 또는 -5000~0 | 변경 없음 | — |
+
+## 세션66 신규 반영 필드 (15개)
+
+### 초기분양률(initialSaleRate) — scoreRisk 11번째 서브 (가중치 0.03)
+
+| 분양률 | 점수 | 비고 |
+|--------|------|------|
+| null | 40 | 중립 (INIT_SALE_NULL) |
+| ≥ 90% | 10 | 매우 안전 |
+| ≥ 70% | 25 | 양호 |
+| ≥ 50% | 45 | 보통 |
+| ≥ 30% | 65 | 주의 |
+| < 30% | 85 | 위험 (INIT_SALE_HIGH_RISK) |
+
+점수가 높을수록 위험. `100 - initSc`가 최종 서브점수.
+
+### 택지비비율(landCostRatio) — scorePrice 6번째 서브 (가중치 0.03)
+
+| 비율 | 점수 | 비고 |
+|------|------|------|
+| null | 50 | 중립 (LAND_COST_NULL) |
+| ≥ 60% | 80 | 구조적 가격 하한 |
+| ≥ 40% | 60 | 양호 |
+| ≥ 20% | 40 | 보통 |
+| < 20% | 25 | 건축비 리스크 (LAND_COST_LOW) |
+
+점수가 높을수록 안전.
+
+### 대기질 복합 (airSc) — scoreLocation env 서브 내부
+
+PM2.5만 있으면 기존과 동일. PM10 또는 O3 데이터 있으면 복합:
+`airSc = pm25Sc × 0.40 + pm10Sc × 0.35 + o3Sc × 0.25`
+
+### 도보통학(naverSchoolWalkMin) — scoreLocation school 서브 보정
+
+| 시간 | 보정 |
+|------|------|
+| null | ±0 (변경 없음) |
+| ≤ 5분 | +10 |
+| ≤ 10분 | +5 |
+| ≤ 15분 | ±0 |
+| ≤ 20분 | -5 |
+| > 20분 | -10 |
+
+schoolSc = clamp(0, schoolScore + walkAdj, 100)
+
+### 기타 신규 필드 (가중치 변경 없이 기존 서브에 흡수)
+
+- `isRegulated`: scoreRisk regSc — DB값 우선, null이면 getZone() 폴백
+- `naverSellCount`: scoreRisk liqSc — 매물 50건↑ +5, 30건↑ +2 페널티
+- `presaleType`: scoreRisk finSc — "공공" 포함 시 -15 보너스
+- `newSupply`: scoreRisk supSc — 5000↑ +5, 1000↓ -3 보정
+- `priceIndex`: scorePrice relSc — 130↑ +5, 110↑ +3 신뢰도 가산
+- `avgPriceSqm`/`presalePp`: scorePrice — fairPrice=0 폴백 데이터 소스
+- `presaleParking`/`presaleGeneralSupply`: scoreProduct — parkingRatio null일 때 폴백
+- `presaleHousingType`: scoreProduct — 오피스텔/도시형 brandSc 상한 15
 
 ## 스코어링 파이프라인 (App.jsx에서의 흐름)
 

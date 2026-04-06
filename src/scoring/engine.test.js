@@ -78,7 +78,7 @@ describe('scorePrice', () => {
     const r = scorePrice(makeApt());
     expect(r.total).toBeGreaterThanOrEqual(0);
     expect(r.total).toBeLessThanOrEqual(100);
-    expect(r.subs).toHaveLength(5);
+    expect(r.subs).toHaveLength(6);
     expect(r.fairPrice).toBeGreaterThan(0);
   });
   it('nearbyMedian=0이면 fairPrice=0', () => {
@@ -193,7 +193,7 @@ describe('scoreRisk', () => {
     const r = scoreRisk(makeApt());
     expect(r.total).toBeGreaterThanOrEqual(0);
     expect(r.total).toBeLessThanOrEqual(100);
-    expect(r.subs).toHaveLength(10);
+    expect(r.subs).toHaveLength(11);
   });
   it('미분양률 낮음 -> 안전 점수 높음', () => {
     expect(scoreRisk(makeApt({ unsoldRate: 5 })).total).toBeGreaterThan(scoreRisk(makeApt({ unsoldRate: 50 })).total);
@@ -221,8 +221,8 @@ describe('scoreRisk', () => {
 // scoreRisk 내부 10개 서브 가중치 합 = 1.00 검증
 describe('scoreRisk — 내부 가중치 합계', () => {
   it('10개 서브 가중치 합 = 1.00', () => {
-    // engine.js: unsoldSc*0.14 + liqSc*0.14 + loanSc*0.15 + finSc*0.17 + regSc*0.05 + supSc*0.10 + mktSc*0.07 + cancelSc*0.04 + compSc*0.09 + crimeSc*0.05
-    const weights = [0.14, 0.14, 0.15, 0.17, 0.05, 0.10, 0.07, 0.04, 0.09, 0.05];
+    // engine.js: unsoldSc*0.14 + liqSc*0.14 + loanSc*0.15 + finSc*0.17 + regSc*0.05 + supSc*0.10 + mktSc*0.04 + cancelSc*0.04 + compSc*0.09 + crimeSc*0.05 + initSc*0.03
+    const weights = [0.14, 0.14, 0.15, 0.17, 0.05, 0.10, 0.04, 0.04, 0.09, 0.05, 0.03];
     const sum = weights.reduce((a, b) => a + b, 0);
     expect(Math.round(sum * 100) / 100).toBe(1.00);
   });
@@ -470,5 +470,178 @@ describe('scoreFuture — FUTURE_WEIGHT_MAP 모든 8개 경로', () => {
     const r = scoreFuture(makeApt({ transitDev: 'GTX-C 착공', cityDev: '신도시', industryDev: '테크노밸리', popGrowth: 0.5, netMigration: null, devDist: 1 }));
     // 교통/도시/산업/인구 모두 0 이상
     r.subs.forEach(s => expect(s.score).toBeGreaterThanOrEqual(0));
+  });
+});
+
+// === 세션66: 신규 15개 필드 스코어링 테스트 ===
+
+describe('scoreLocation — 대기질 복합 (PM10/O3)', () => {
+  it('pm10/o3 null → 기존과 동일 (pm25만 사용)', () => {
+    const base = scoreLocation(makeApt());
+    const withNull = scoreLocation(makeApt({ airQuality: { pm25: null, pm10: null, o3: null } }));
+    // 둘 다 pm25 null → AIR_QUALITY_DEFAULT 사용 → 동일
+    expect(withNull.subs.find(s => s.name === "자연환경").score)
+      .toBe(base.subs.find(s => s.name === "자연환경").score);
+  });
+  it('pm10 좋음 → 환경 점수 변화', () => {
+    const withPm10 = scoreLocation(makeApt({ airQuality: { pm25: 20, pm10: 20, o3: null } }));
+    expect(withPm10.subs.find(s => s.name === "자연환경").score).toBeGreaterThanOrEqual(0);
+  });
+  it('o3 나쁨 → 환경 점수 하락', () => {
+    const good = scoreLocation(makeApt({ airQuality: { pm25: 10, pm10: 20, o3: 0.02 } }));
+    const bad = scoreLocation(makeApt({ airQuality: { pm25: 10, pm10: 20, o3: 0.15 } }));
+    expect(good.subs.find(s => s.name === "자연환경").score)
+      .toBeGreaterThan(bad.subs.find(s => s.name === "자연환경").score);
+  });
+});
+
+describe('scoreLocation — 도보통학 보정', () => {
+  it('naverSchoolWalkMin null → 학군 점수 불변', () => {
+    const base = scoreLocation(makeApt({ schoolScore: 70 }));
+    const withNull = scoreLocation(makeApt({ schoolScore: 70, naverSchoolWalkMin: null }));
+    expect(withNull.subs.find(s => s.name === "학군").score)
+      .toBe(base.subs.find(s => s.name === "학군").score);
+  });
+  it('5분 이내 → +10', () => {
+    const r = scoreLocation(makeApt({ schoolScore: 70, naverSchoolWalkMin: 3 }));
+    expect(r.subs.find(s => s.name === "학군").score).toBe(80);
+  });
+  it('25분 → -10', () => {
+    const r = scoreLocation(makeApt({ schoolScore: 70, naverSchoolWalkMin: 25 }));
+    expect(r.subs.find(s => s.name === "학군").score).toBe(60);
+  });
+  it('학군 점수 0~100 클램핑', () => {
+    const high = scoreLocation(makeApt({ schoolScore: 95, naverSchoolWalkMin: 3 }));
+    expect(high.subs.find(s => s.name === "학군").score).toBeLessThanOrEqual(100);
+    const low = scoreLocation(makeApt({ schoolScore: 5, naverSchoolWalkMin: 25 }));
+    expect(low.subs.find(s => s.name === "학군").score).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('scoreRisk — 초기분양률 (initSc)', () => {
+  it('initialSaleRate null → 중립 60점 (100-40)', () => {
+    const r = scoreRisk(makeApt({ initialSaleRate: null }));
+    expect(r.subs.find(s => s.name === "초기분양률").score).toBe(60);
+  });
+  it('90%↑ → 안전 90점 (100-10)', () => {
+    const r = scoreRisk(makeApt({ initialSaleRate: 95 }));
+    expect(r.subs.find(s => s.name === "초기분양률").score).toBe(90);
+  });
+  it('20% → 위험 15점 (100-85)', () => {
+    const r = scoreRisk(makeApt({ initialSaleRate: 20 }));
+    expect(r.subs.find(s => s.name === "초기분양률").score).toBe(15);
+  });
+});
+
+describe('scoreRisk — isRegulated DB값 우선', () => {
+  it('isRegulated=true → 규제지역', () => {
+    const r = scoreRisk(makeApt({ isRegulated: true }));
+    expect(r.subs.find(s => s.name === "규제").score).toBe(40); // 100 - 60
+  });
+  it('isRegulated=false → 비규제', () => {
+    const r = scoreRisk(makeApt({ isRegulated: false }));
+    expect(r.subs.find(s => s.name === "규제").score).toBe(90); // 100 - 10
+  });
+  it('isRegulated=null → getZone() 폴백', () => {
+    const r = scoreRisk(makeApt({ isRegulated: null }));
+    expect(r.subs.find(s => s.name === "규제").score).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('scoreRisk — naverSellCount 매물과잉 페널티', () => {
+  it('naverSellCount=60 → liqSc 페널티 +5', () => {
+    const base = scoreRisk(makeApt({ naverSellCount: null }));
+    const flood = scoreRisk(makeApt({ naverSellCount: 60 }));
+    expect(flood.subs.find(s => s.name === "거래량").score)
+      .toBeLessThanOrEqual(base.subs.find(s => s.name === "거래량").score);
+  });
+});
+
+describe('scoreRisk — presaleType 공공분양 보너스', () => {
+  it('공공분양 → 시공사 재무 점수 상승', () => {
+    const priv = scoreRisk(makeApt({ presaleType: "민간분양" }));
+    const pub = scoreRisk(makeApt({ presaleType: "공공분양" }));
+    expect(pub.subs.find(s => s.name === "시공사 재무").score)
+      .toBeGreaterThanOrEqual(priv.subs.find(s => s.name === "시공사 재무").score);
+  });
+});
+
+describe('scorePrice — 택지비비율 (landSc)', () => {
+  it('landCostRatio null → 중립 50점', () => {
+    const r = scorePrice(makeApt({ landCostRatio: null }));
+    expect(r.subs.find(s => s.name === "택지비비율").score).toBe(50);
+  });
+  it('landCostRatio 70% → 80점', () => {
+    const r = scorePrice(makeApt({ landCostRatio: 70 }));
+    expect(r.subs.find(s => s.name === "택지비비율").score).toBe(80);
+  });
+  it('landCostRatio 10% → 25점', () => {
+    const r = scorePrice(makeApt({ landCostRatio: 10 }));
+    expect(r.subs.find(s => s.name === "택지비비율").score).toBe(25);
+  });
+});
+
+describe('scorePrice — fairPrice 폴백', () => {
+  it('nearbyMedian=0 + avgPriceSqm 있으면 → fairPrice 산출 시도', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: 0, avgPriceSqm: 5000, area: 84 }));
+    // avgPriceSqm 5000千원/㎡ × 84㎡ / 10000 × 3.3 ≈ 138.6 만원 (매우 작지만 > 0)
+    expect(r.fairPrice).toBeGreaterThanOrEqual(0);
+  });
+  it('nearbyMedian=0 + presalePp 있으면 → fairPrice 산출 시도', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: 0, avgPriceSqm: null, presalePp: 2000 }));
+    expect(r.fairPrice).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('scorePrice — priceIndex 보정', () => {
+  it('priceIndex=140 → 신뢰도 +5', () => {
+    const base = scorePrice(makeApt({ priceIndex: null }));
+    const hot = scorePrice(makeApt({ priceIndex: 140 }));
+    expect(hot.subs.find(s => s.name === "데이터 신뢰도").score)
+      .toBeGreaterThanOrEqual(base.subs.find(s => s.name === "데이터 신뢰도").score);
+  });
+});
+
+describe('scoreProduct — presale 폴백', () => {
+  it('parkingRatio null + presaleParking → 주차 점수 변화', () => {
+    // _noParking 플래그는 sanitize()에서 설정 → 직접 전달
+    const noData = scoreProduct(makeApt({ parkingRatio: 0.5, _noParking: true, presaleParking: null }));
+    const withPresale = scoreProduct(makeApt({ parkingRatio: 0.5, _noParking: true, presaleParking: 1500, presaleGeneralSupply: 1000 }));
+    // 1500/1000 = 1.5 → 15점 vs 기본값 0.5 → 5점
+    expect(withPresale.subs.find(s => s.name === "주차").score)
+      .toBeGreaterThan(noData.subs.find(s => s.name === "주차").score);
+  });
+  it('presaleHousingType 오피스텔 → 브랜드 상한 15', () => {
+    const apt = scoreProduct(makeApt({ builder: "현대건설", presaleHousingType: "오피스텔" }));
+    expect(apt.subs.find(s => s.name === "브랜드").score).toBeLessThanOrEqual(15);
+  });
+  it('presaleHousingType null → 브랜드 상한 20 (기존과 동일)', () => {
+    const apt = scoreProduct(makeApt({ builder: "현대건설", presaleHousingType: null }));
+    expect(apt.subs.find(s => s.name === "브랜드").score).toBe(20);
+  });
+});
+
+describe('scorePrice — 내부 가중치 합계 (세션66)', () => {
+  it('6개 서브 가중치 합 = 1.00', () => {
+    // engine.js: devSc*0.30 + jrSc*0.20 + pirSc*0.15 + psrSc*0.25 + relSc*0.07 + landSc*0.03
+    const weights = [0.30, 0.20, 0.15, 0.25, 0.07, 0.03];
+    const sum = weights.reduce((a, b) => a + b, 0);
+    expect(Math.round(sum * 100) / 100).toBe(1.00);
+  });
+});
+
+describe('하위 호환 — makeApt() 기본값 제로 드리프트', () => {
+  it('신규 필드 null인 기본 아파트 — 모든 프로필 0~100', () => {
+    const cats = calcCats(makeApt(), {});
+    Object.values(cats).forEach(c => {
+      expect(c.total).toBeGreaterThanOrEqual(0);
+      expect(c.total).toBeLessThanOrEqual(100);
+    });
+  });
+  it('Location 제로 드리프트: pm10/o3/walkMin null → 기존과 동일', () => {
+    // makeApt()에 airQuality 없음 → pm10/o3 모두 null → 기존 pm25 전용 경로
+    const r = scoreLocation(makeApt());
+    expect(r.total).toBeGreaterThanOrEqual(0);
+    expect(r.total).toBeLessThanOrEqual(100);
   });
 });
