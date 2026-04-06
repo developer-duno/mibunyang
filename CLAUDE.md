@@ -5,17 +5,16 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-06 세션69 — upsertBatch 429 방어 + 미테스트 컴포넌트 5개 테스트
+**마지막 작업**: 2026-04-07 세션70 — 스코어링 클램핑 0~100 일관성 + transport-tago HTTPS
 
-- 코드: upsertBatch 배치 간 100ms 지연 + 429 감지 시 지수 백오프 재시도 (maxRetries=3)
-- 아키: createSemaphore를 _shared.mjs로 이동 (infra-kakao.mjs re-export)
-- 코드: 개별 재시도 시 50ms 간격 추가 (연속 호출 방지)
-- 테스트: AdminHelpGuide(3) + ExpertHelpGuide(3) + ShareSheet(5) + PriceChart(5) + UnsoldChart(5) = 21케이스
+- 코드: scorePrice/scoreProduct/scoreFuture/calcAll total에 Math.max(0,...) 하한 추가 (6곳)
+- 코드: scoreLocation transport 서브스코어에도 하한 클램핑 추가
+- 코드: transport-tago.mjs HTTP → HTTPS 전환 (다른 수집기와 일관성)
+- 테스트: 클램핑 음수 방어 6케이스 추가 (engine.test.js)
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-2. 🟢 스코어링 클램핑 일관성 — scorePrice/scoreProduct/scoreFuture/calcAll에 Math.max(0,...) 하한 추가 (실제 음수 불가하나 패턴 통일)
 
 **주의사항**:
 
