@@ -645,3 +645,53 @@ describe('하위 호환 — makeApt() 기본값 제로 드리프트', () => {
     expect(r.total).toBeLessThanOrEqual(100);
   });
 });
+
+// === 세션70: 클램핑 일관성 — 음수 방어 테스트 ===
+
+describe('클램핑 일관성 — 음수 방어', () => {
+  it('scorePrice: nearbyMedian=0 경로에서 total >= 0', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: 0 }));
+    expect(r.total).toBeGreaterThanOrEqual(0);
+  });
+
+  it('scorePrice: 극단 고가에서 total >= 0', () => {
+    const r = scorePrice(makeApt({ price: 999999, nearbyMedian: 10000, pir: 99, psr: 9, jeonseRate: 0 }));
+    expect(r.total).toBeGreaterThanOrEqual(0);
+  });
+
+  it('scoreProduct: 모든 필드 null/최소에서 total >= 0', () => {
+    const r = scoreProduct(makeApt({
+      builder: null, units: 0, parkingRatio: 0, floorAreaRatio: 0,
+      energyGrade: null, exclusiveRatio: 0, layout: null, quakeDesign: false, maxFloor: null,
+    }));
+    expect(r.total).toBeGreaterThanOrEqual(0);
+  });
+
+  it('scoreFuture: 데이터 없음 + 극단 음수 popGrowth에서 total >= 0', () => {
+    const r = scoreFuture(makeApt({
+      transitDev: null, cityDev: null, industryDev: null,
+      popGrowth: -10, netMigration: -99999,
+    }));
+    expect(r.total).toBeGreaterThanOrEqual(0);
+  });
+
+  it('calcAll: 극단 나쁜 아파트에서 모든 프로필 total >= 0', () => {
+    const badApt = makeApt({
+      price: 999999, nearbyMedian: 1000, pir: 99, psr: 9, jeonseRate: 0,
+      subwayDist: 99999, busRoutes: 0, icDist: 999, ktxDist: 999,
+      builder: null, units: 0, popGrowth: -10,
+      discountPct: 0, loanFree: false, optionFree: false, balconyFree: false, cashback: 0,
+      unsoldRate: 100, transitDev: null, cityDev: null, industryDev: null,
+    });
+    Object.keys(PROFILES).forEach(p => {
+      const r = calcAll(badApt, p, {});
+      expect(r.total).toBeGreaterThanOrEqual(0);
+      expect(r.total).toBeLessThanOrEqual(100);
+    });
+  });
+
+  it('scoreLocation: 교통 최소에서 transport 서브 >= 0', () => {
+    const r = scoreLocation(makeApt({ subwayDist: 99999, busRoutes: 0, icDist: 999, ktxDist: 999 }));
+    expect(r.subs.find(s => s.name === "교통").score).toBeGreaterThanOrEqual(0);
+  });
+});

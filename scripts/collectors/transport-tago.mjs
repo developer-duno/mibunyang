@@ -38,7 +38,7 @@ async function searchKakaoCategory(lat, lng, categoryCode, radius) {
 /** TAGO API: 좌표 기반 근처 버스 정류장 조회 */
 async function searchBusStopsTago(lat, lng) {
   if (!TAGO_KEY) return [];
-  const url = `http://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=${encodeURIComponent(TAGO_KEY)}&gpsLati=${lat}&gpsLong=${lng}&_type=json&numOfRows=15`;
+  const url = `https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=${encodeURIComponent(TAGO_KEY)}&gpsLati=${lat}&gpsLong=${lng}&_type=json&numOfRows=15`;
   const res = await fetchWithRetry(url, { signal: AbortSignal.timeout(15000) }, 3);
   if (!res.ok) return [];
   const data = await res.json();

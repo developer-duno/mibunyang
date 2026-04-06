@@ -157,7 +157,7 @@ export function scorePrice(apt) {
     const jrSc = PRICE_NO_DATA_DEFAULTS.jr; const pirSc = PRICE_NO_DATA_DEFAULTS.pir; const psrSc = PRICE_NO_DATA_DEFAULTS.psr;
     const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
     return {
-      total: Math.round(Math.min(total, 100)), fairPrice: 0, deviation: "0.0",
+      total: Math.round(Math.max(0, Math.min(total, 100))), fairPrice: 0, deviation: "0.0",
       subs: [
         { name: "적정가 괴리도", score: devSc, info: "데이터 부재", detail: "주변 시세 없음 — 적정가 산출 불가" },
         { name: "전세가율", score: Math.round(jrSc), info: `${apt.jeonseRate}%`, detail: `${apt.jeonseRate}% (적정 70~80%, 위험 40%↓)` },
@@ -182,7 +182,7 @@ export function scorePrice(apt) {
   let psrSc = Math.min(apt.psr < 0.85 ? 85 + (0.85 - apt.psr) / 0.15 * 15 : apt.psr <= 1.0 ? 50 + (1.0 - apt.psr) / 0.15 * 35 : Math.max(0, 50 - (apt.psr - 1.0) / 0.2 * 50), 100);
   const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
   return {
-    total: Math.round(Math.min(total, 100)), fairPrice: Math.round(fairPrice), deviation: dev.toFixed(1),
+    total: Math.round(Math.max(0, Math.min(total, 100))), fairPrice: Math.round(fairPrice), deviation: dev.toFixed(1),
     subs: [
       { name: "적정가 괴리도", score: Math.round(devSc), info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`, detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (±5% 적정, ±10~20% 주의, 20%↑ 과대)` },
       { name: "전세가율", score: Math.round(jrSc), info: `${jr}%`, detail: `${jr}% (적정 70~80%, 위험 40%↓, 과열 90%↑)` },
@@ -209,7 +209,7 @@ export function scoreLocation(apt) {
   const icSc = rawIc * ct.icW;
   const ktxSc = rawKtx * ct.ktxW;
   const maxTransport = 25 * ct.subwayW + 30 * ct.busW + 20 * ct.icW + 20 * ct.ktxW + 5;
-  const transport = Math.min((subSc + busSc + icSc + ktxSc + 5) / maxTransport * 100, 100);
+  const transport = Math.max(0, Math.min((subSc + busSc + icSc + ktxSc + 5) / maxTransport * 100, 100));
 
   // 학교 도보시간 보정: naverSchoolWalkMin 기반 ±10
   const walkMin = apt.naverSchoolWalkMin;
@@ -286,7 +286,7 @@ export function scoreProduct(apt) {
   let structSc = tierMin(apt.maxFloor, FLOOR_TIERS, FLOOR_LOW_SCORE);
   const rawTotal = brandSc + unitSc + parkSc + farSc + energySc + exclSc + layoutSc + quakeSc + structSc;
   const maxPossible = Object.values(PRODUCT_MAX).reduce((a, b) => a + b, 0);
-  const total = Math.round(Math.min(rawTotal / maxPossible * 100, 100));
+  const total = Math.round(Math.max(0, Math.min(rawTotal / maxPossible * 100, 100)));
   return {
     total,
     subs: [
@@ -441,7 +441,7 @@ export function scoreFuture(apt) {
   const total = trSc * fw.tr + citySc * fw.city + popSc * fw.pop + indSc * fw.ind;
   const pg = apt.popGrowth;
   return {
-    total: Math.round(Math.min(total, 100)),
+    total: Math.round(Math.max(0, Math.min(total, 100))),
     subs: [
       { name: "교통개발", score: Math.round(trSc), info: apt.transitDev || "없음", detail: apt.transitDev ? `${apt.transitDev} (GTX/KTX역 ×1.2배, 1km내 100점, 2km 70점)` : "교통개발 없음 (0점)" },
       { name: "도시개발", score: Math.round(citySc), info: apt.cityDev || "없음", detail: apt.cityDev ? `${apt.cityDev} (신도시/테크노 80점, 재생/특구 50점, 기타 30점)` : "도시개발 없음 (0점)" },
@@ -492,5 +492,5 @@ export function calcAll(apt, profile, ctx) {
     const ct = cats[k].total;
     return s + (Number.isFinite(ct) ? ct * w[k] / 100 : 0);
   }, 0);
-  return { total: Math.round(Math.min(total, 100)), cats, weights: w };
+  return { total: Math.round(Math.max(0, Math.min(total, 100))), cats, weights: w };
 }
