@@ -47,7 +47,7 @@
 | 파일 | export 함수 | isCLI | 테스트 수 |
 |------|-------------|-------|----------|
 | `collect-unsold-kosis.mjs` | parseKosisRows, aggregateRegionTotals, calcProportionalUnsold | ✓ | 18 |
-| `infra-kakao.mjs` | createSemaphore | ✓ | 5 |
+| `infra-kakao.mjs` | createSemaphore (re-export from _shared.mjs) | ✓ | 5 |
 | `geocode-missing.mjs` | resolveRegionFromName, extractGu, buildAddress | ✓ | 17 |
 | `collect-market-stats.mjs` | extractLatestByRegion | ✓ | 7 |
 | `calc-school-walk.mjs` | findNearestElemSchool, calcWalkingMinutes | ✓ | 11 |
@@ -200,6 +200,7 @@ bash scripts/post-naver-collect.sh
 | data.go.kr    | collect-building-hub             | 0.4초               | 3회            | (i+1)×2초                      | 건축HUB 에너지+인허가 2엔드포인트(전기+가스), 월 1회 |
 | schoolinfo.go.kr | schools-neis.mjs (Phase 3)    | 0.2초               | 3회            | fetchWithRetry 지수 백오프      | 학교알리미 학생수, 지역벌크 (초/중/고 3회×sggCode)   |
 | \_shared.mjs  | fetchWithRetry (공통)            | —                   | 기본 3회       | Retry-After 헤더 → 지수 백오프 | 429/500/503 구분                                     |
+| Supabase      | upsertBatch (_shared.mjs)        | 배치 간 100ms       | 3회            | (attempt+1)²×1초 지수 백오프    | 429 "too many/rate limit" 감지, 개별 재시도 50ms 간격 |
 
 ## BldEngyHubService 한계 (2026-03-29 진단)
 
