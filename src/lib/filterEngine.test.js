@@ -10,7 +10,7 @@ function makeItem(aptOverrides = {}, resOverrides = {}) {
 }
 
 const DEFAULT_FILTER = {
-  showFavOnly: false, favoriteIds: [],
+  showFavOnly: false, favoriteSet: new Set(),
   budgetMin: "", budgetMax: "",
   areaMin: "", areaMax: "",
   unitsMin: "", unitsMax: "",
@@ -84,7 +84,7 @@ describe("applyBaseFilters", () => {
   // 즐겨찾기 필터
   it("showFavOnly 필터 적용", () => {
     const items = [makeItem(), makeItem({ id: "t2" })];
-    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, showFavOnly: true, favoriteIds: ["t2"] });
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, showFavOnly: true, favoriteSet: new Set(["t2"]) });
     expect(result).toHaveLength(1);
     expect(result[0].apt.id).toBe("t2");
   });

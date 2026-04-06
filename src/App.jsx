@@ -71,7 +71,7 @@ export default function App() {
 
   // 8 custom hooks
   const { toast, showToast } = useToast();
-  const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavorites(showToast);
+  const { favoriteIds, favoriteSet, setFavoriteIds, toggleFavorite } = useFavorites(showToast);
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
   const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo } = useFilterSort({ onFilterChange: closeDetail });
@@ -119,9 +119,9 @@ export default function App() {
     });
   }, [catsCache, profile, customWeights]);
   const baseFilterArgs = useMemo(() => ({
-    showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax,
+    showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax,
     unitsMin, unitsMax, minScore, benefitOnly,
-  }), [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly]);
+  }), [showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly]);
 
   const filtered = useMemo(() => {
     let list = applyBaseFilters(scored, baseFilterArgs);
@@ -414,7 +414,7 @@ export default function App() {
           {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} /></Suspense>}
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + 30); trackEvent("load_more", { visible_count: visibleCount + 30 }); }}
-            onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} compIds={compIds}
+            onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}
             pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending}
             budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
@@ -493,7 +493,7 @@ export default function App() {
         if (!item) return null;
         return <Suspense fallback={null}><DetailModal item={item} onClose={detail.handleCloseDetail}
           isComp={compIds.includes(detail.detailAptId)} onComp={toggleComp}
-          isFav={favoriteIds.includes(detail.detailAptId)} onFav={toggleFavorite}
+          isFav={favoriteSet.has(detail.detailAptId)} onFav={toggleFavorite}
           onShare={handleShareDetail} isPC={isPC} isDesktop={isDesktop}
           onConsult={handleConsultFromDetail} /></Suspense>;
       })()}

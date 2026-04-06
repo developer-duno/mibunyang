@@ -22,6 +22,8 @@ export function useFavorites(showToast) {
 
   // 파생 배열 — 기존 소비자(filterEngine, AptListSection, ConsultForm 등) 하위 호환
   const favoriteIds = useMemo(() => Object.keys(favoritesObj), [favoritesObj]);
+  // O(1) 조회용 Set — includes() 대체
+  const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
 
   const toggleFavorite = useCallback(id => {
     setFavoritesObj(prev => {
@@ -83,5 +85,5 @@ export function useFavorites(showToast) {
     return () => window.removeEventListener("storage", h);
   }, []);
 
-  return { favoriteIds, setFavoriteIds, toggleFavorite, favoritesObj };
+  return { favoriteIds, favoriteSet, setFavoriteIds, toggleFavorite, favoritesObj };
 }

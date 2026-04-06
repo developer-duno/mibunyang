@@ -56,19 +56,23 @@ export default withHandler({ method: "GET", handler: async (req, res) => {
       allData = firstBatch || [];
       totalCount = count;
 
-      // 추가 배치 필요 시 순차 요청
+      // 추가 배치 필요 시 병렬 요청
       if (count && count > BATCH_SIZE) {
         const remaining = Math.ceil((count - BATCH_SIZE) / BATCH_SIZE);
+        const batchPromises = [];
         for (let i = 1; i <= remaining; i++) {
           const offset = i * BATCH_SIZE;
-          const batchQuery = buildQuery(supabase, region, gu, false).range(offset, offset + BATCH_SIZE - 1);
-          const { data: batch, error: batchError } = await batchQuery;
-          if (batchError) {
-            console.error(`Batch ${i} error:`, batchError);
-            break;
+          batchPromises.push(buildQuery(supabase, region, gu, false).range(offset, offset + BATCH_SIZE - 1));
+        }
+        const results = await Promise.allSettled(batchPromises);
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value.data) {
+            allData = allData.concat(result.value.data);
+          } else if (result.status === "rejected") {
+            console.error("Batch error:", result.reason);
+          } else if (result.value?.error) {
+            console.error("Batch query error:", result.value.error);
           }
-          if (batch) allData = allData.concat(batch);
-          if (!batch || batch.length < BATCH_SIZE) break;
         }
       }
     }

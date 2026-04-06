@@ -13,6 +13,7 @@ function makeProps(overrides = {}) {
     onFav: vi.fn(),
     onComp: vi.fn(),
     favoriteIds: [],
+    favoriteSet: new Set(),
     compIds: [],
     pw: { location: 40, product: 20, price: 20, risk: 10, benefit: 5, future: 5 },
     profile: "live",

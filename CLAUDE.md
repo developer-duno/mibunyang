@@ -5,20 +5,19 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-06 세션66 — 미반영 15개 필드 스코어링 통합 + 보안/성능/접근성 개선
+**마지막 작업**: 2026-04-06 세션67 — 성능 개선 + 훅 통합
 
-- 스코어링: 15개 신규 필드 반영 (scorePrice landSc, scoreRisk initSc, airQuality PM10/O3, 도보통학 등)
-- 보안: API 배열 크기 제한(kakao/neis/dart) + consults GET 블랙리스트 + .env.example
-- 성능: useResponsive 불필요 리렌더 제거 (불리언 기반 상태)
-- 접근성: DetailModal 포커스 트랩 + 자동 포커스 + 복원 (WCAG 2.1 AA)
-- 테스트: 122개(스코어링) + subContext/SchoolInfo 수정 → 전체 2132+ 통과
+- 성능: favoriteIds.includes() → favoriteSet.has() (O(n)→O(1), filterEngine/AptListSection/App)
+- 성능: Supabase 배치 쿼리 순차→병렬 (Promise.allSettled, apartments.js)
+- 코드: usePriceHistory/useUnsoldHistory → useHistoryData 공통 훅 추출 (48줄 중복 제거)
+- 테스트: useHistoryData 4케이스 + favoriteSet 2케이스 추가 → 전체 2147+ 통과
+- manualChunks supabase 분리 시도 → @supabase/supabase-js는 서버사이드 전용이라 불필요 확인
 
-**다음에 해야 할 것** (우선순위):
+**다음에 해�� 할 것** (우선순위):
 
 1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-2. 🟡 성능: Array.includes→Set (favorites/compIds), Supabase 배치 병렬화, manualChunks 확장
-3. 🟡 코드: usePriceHistory/useUnsoldHistory 중복 훅 통합, PRODUCT_MAX 통합
-4. 🟢 아키: ExpertDashboard useResponsive 전환, 매직 넘버 상수화, 미테스트 컴포넌트 5개
+2. 🟡 코드: PRODUCT_MAX 통합
+3. 🟢 아���: ExpertDashboard useResponsive 전환, 매직 넘버 상수화, 미테스트 컴포넌트 5개
 
 **주의사항**:
 

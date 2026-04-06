@@ -7,9 +7,11 @@ describe('useFavorites', () => {
     localStorage.clear();
   });
 
-  it('초기 상태: 빈 배열', () => {
+  it('초기 상태: 빈 배열 + 빈 Set', () => {
     const { result } = renderHook(() => useFavorites(vi.fn()));
     expect(result.current.favoriteIds).toEqual([]);
+    expect(result.current.favoriteSet).toBeInstanceOf(Set);
+    expect(result.current.favoriteSet.size).toBe(0);
   });
 
   // v1→v2 마이그레이션: 배열 → 객체 자동 변환
@@ -124,5 +126,16 @@ describe('useFavorites', () => {
     act(() => { result.current.toggleFavorite("apt-1"); });
     expect(showToast).toHaveBeenCalledWith("저장 실패: 저장소가 가득 찼습니다");
     Storage.prototype.setItem = origSet;
+  });
+
+  // favoriteSet 동기화 검증
+  it('favoriteSet은 favoriteIds와 동기화됨', () => {
+    const { result } = renderHook(() => useFavorites(vi.fn()));
+    act(() => { result.current.toggleFavorite("apt-1"); });
+    act(() => { result.current.toggleFavorite("apt-2"); });
+    expect(result.current.favoriteSet.has("apt-1")).toBe(true);
+    expect(result.current.favoriteSet.has("apt-2")).toBe(true);
+    expect(result.current.favoriteSet.has("apt-3")).toBe(false);
+    expect(result.current.favoriteSet.size).toBe(2);
   });
 });

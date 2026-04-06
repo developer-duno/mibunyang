@@ -20,7 +20,7 @@ React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 | guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
 | catsCache | [apartments] | apartments 의존 필수 |
 | scored | [catsCache, profile, customWeights] | catsCache는 apartments 간접 의존 |
-| baseFilterArgs | [showFavOnly, favoriteIds, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly] | base 필터 상태 묶음 (10개) |
+| baseFilterArgs | [showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly] | base 필터 상태 묶음 (10개) |
 | filtered | [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier, hideNoUnsold] | SORTERS 모듈 레벨 상수 사용 + 미분양 필터 |
 | visible | [filtered, visibleCount] | 페이지네이션용 |
 | scoredMap | [scored] | Map 자료구조 (P-3: O(1) 조회) |
@@ -45,15 +45,17 @@ const showComp = showCompOpen && compIds.length >= 2;
 | useExpertMode.handleExpertLogout(onLogout) | 콜백 파라미터 | App에서 `() => { setTab("list"); setShowCompOpen(false); }` 전달 |
 | useFilterSort({ onFilterChange }) | 콜백 옵션 | App에서 `() => setDetailAptId(null)` 전달 |
 
-## 세션19 추가 훅 (세션24 siblingIds 확장)
+## 시계열 데이터 훅 (세션67 통합)
 
-| 훅 | 역할 | 패턴 |
+| 훅 | 역할 | 구현 |
 |----|------|------|
-| usePriceHistory(apartmentId, siblingIds?) | 분양가 시계열 API 페칭 | AbortController + retry + idsKey 직렬화 |
-| useUnsoldHistory(apartmentId, siblingIds?) | 미분양 추이 API 페칭 | AbortController + retry + idsKey 직렬화 |
+| useHistoryData(endpoint, apartmentId, siblingIds?) | 공통 시계열 데이터 페칭 | AbortController + retry + idsKey 직렬화 |
+| usePriceHistory(apartmentId, siblingIds?) | 분양가 시계열 (래퍼) | `useHistoryData("/api/supabase/prices", ...)` |
+| useUnsoldHistory(apartmentId, siblingIds?) | 미분양 추이 (래퍼) | `useHistoryData("/api/supabase/unsold-history", ...)` |
 
-- `siblingIds?.length > 1`이면 `apartment_ids` 복수 조회, 아니면 기존 `apartment_id` 단일 조회
-- **무한 루프 방지**: `siblingIds` 배열을 `idsKey = siblingIds.join(",")` 원시값으로 직렬화하여 useCallback 의존성에 사용
+- `siblingIds?.length > 1`이면 `apartment_ids` 복수 조���, 아니면 기존 `apartment_id` 단일 조회
+- **무한 루프 방지**: `siblingIds` ���열을 `idsKey = siblingIds.join(",")` 원시값으로 직렬��하여 useCallback 의존성에 사용
+- `endpoint`는 문자열 상수로 useCallback 의존성에 포함 (안정적)
 
 ## useComparison 구조 (세션20 — MAX_COMPARE 상수)
 
@@ -77,8 +79,9 @@ MAX_COMPARE 방어 4경로: ①초기화 ②toggleComp ③URL딥링크(App.jsx) 
 useFavorites(showToast)
   ├── favoritesObj: { [id]: { memo, tags, addedAt } }  // 내부 상태 (객체, 저장소 호환용)
   ├── favoriteIds: Object.keys(favoritesObj)            // 파생 배열 (하위 호환)
+  ├── favoriteSet: new Set(favoriteIds)                 // O(1) 조회용 (세션67 추가)
   ├── toggleFavorite(id)
-  └── setFavoriteIds(idsOrFn)  // 배열 또는 함수 인자 지원 (React setState 관례)
+  └── setFavoriteIds(idsOrFn)  // 배열 또는 함수 인자 ���원 (React setState 관례)
 ```
 v1(배열) → v2(객체) 자동 마이그레이션 + `mibunyang_fav_backup` 백업.
 **세션21**: memo/tags UI 제거됨 — App.jsx에서 `favoritesObj` 미사용 (내부 저장 구조만 유지).
