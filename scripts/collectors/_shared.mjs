@@ -62,23 +62,55 @@ export function logError(phase, msg) {
   console.error(`[${phase}] ERROR: ${msg}`);
 }
 
+// ── 세마포어 (동시 실행 수 제한) ───────────────────────────
+export function createSemaphore(max) {
+  let running = 0;
+  const queue = [];
+  return async (fn) => {
+    if (running >= max) await new Promise(r => queue.push(r));
+    running++;
+    try { return await fn(); }
+    finally { running--; if (queue.length) queue.shift()(); }
+  };
+}
+
 // ── 배치 upsert ────────────────────────────────────────────
-export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb = null) {
+const RATE_LIMIT_RE = /too many|rate limit/i;
+
+export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb = null, { delayMs = 100, maxRetries = 3 } = {}) {
   if (!rows.length) return 0;
   sb = sb ?? getSupabase();
   let inserted = 0;
 
   for (let i = 0; i < rows.length; i += batchSize) {
-    const batch = rows.slice(i, i + batchSize);
-    const { error } = await sb
-      .from(table)
-      .upsert(batch, { onConflict: conflictCol, ignoreDuplicates: false });
+    if (i > 0 && delayMs > 0) await sleep(delayMs);
 
-    if (error) {
+    const batch = rows.slice(i, i + batchSize);
+    let error = null;
+
+    // 429 재시도 루프
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const res = await sb
+        .from(table)
+        .upsert(batch, { onConflict: conflictCol, ignoreDuplicates: false });
+      error = res.error;
+
+      if (!error) { inserted += batch.length; break; }
+
+      if (RATE_LIMIT_RE.test(error.message ?? "")) {
+        const wait = (attempt + 1) ** 2 * 1000;
+        log(table, `429 감지 — ${wait}ms 대기 후 재시도 (${attempt + 1}/${maxRetries})`);
+        await sleep(wait);
+        continue;
+      }
+      break; // 비-429 에러는 개별 재시도로
+    }
+
+    if (error && !RATE_LIMIT_RE.test(error.message ?? "")) {
       logError(table, `배치 ${i}~${i + batch.length}: ${error.message}`);
-      // 개별 재시도
       let retryOk = 0, retryFail = 0;
       for (const row of batch) {
+        if (retryOk + retryFail > 0) await sleep(50);
         const { error: e2 } = await sb
           .from(table)
           .upsert([row], { onConflict: conflictCol, ignoreDuplicates: false });
@@ -86,8 +118,6 @@ export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb 
         else retryFail++;
       }
       log(table, `  개별 재시도: ${retryOk}/${batch.length} 성공, ${retryFail}건 실패`);
-    } else {
-      inserted += batch.length;
     }
   }
 

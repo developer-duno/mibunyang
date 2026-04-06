@@ -7,7 +7,7 @@
  *   node scripts/collectors/infra-kakao.mjs              (Supabase UPDATE)
  *   node scripts/collectors/infra-kakao.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, createSemaphore } from "./_shared.mjs";
 
 loadEnv();
 
@@ -15,17 +15,8 @@ const PHASE = "infra";
 const KAKAO_KEY = process.env.KAKAO_KEY;
 if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
 
-// Semaphore: 동시 실행 수 제한 (SC-2 — Kakao API 초당 50건 제한 대응)
-export function createSemaphore(max) {
-  let running = 0;
-  const queue = [];
-  return async (fn) => {
-    if (running >= max) await new Promise(r => queue.push(r));
-    running++;
-    try { return await fn(); }
-    finally { running--; if (queue.length) queue.shift()(); }
-  };
-}
+// re-export for backward compat (infra-kakao.test.mjs에서 import)
+export { createSemaphore };
 const sem = createSemaphore(5); // 동시 5건 (Kakao 초당 50건 중 안전 마진)
 
 const CATEGORIES = [
