@@ -5,20 +5,19 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-06 세션67 — 성능 개선 + 훅 통합
+**마지막 작업**: 2026-04-06 세션68 — PRODUCT_MAX 통합 + useResponsive 전환 + 매직 넘버 상수화
 
-- 성능: favoriteIds.includes() → favoriteSet.has() (O(n)→O(1), filterEngine/AptListSection/App)
-- 성능: Supabase 배치 쿼리 순차→병렬 (Promise.allSettled, apartments.js)
-- 코드: usePriceHistory/useUnsoldHistory → useHistoryData 공통 훅 추출 (48줄 중복 제거)
-- 테스트: useHistoryData 4케이스 + favoriteSet 2케이스 추가 → 전체 2147+ 통과
-- manualChunks supabase 분리 시도 → @supabase/supabase-js는 서버사이드 전용이라 불필요 확인
+- 코드: PRODUCT_MAX 단일 출처 — subContext.js 한글 키를 scoringTiers.js에서 파생 (이중 정의 제거)
+- 아키: ExpertDashboard 자체 resize 리스너 → useResponsive 훅 전환 (150ms 디바운스)
+- 코드: 훅 타이머 상수화 (RESIZE_DEBOUNCE_MS, TOAST_DISMISS_MS, URL_SYNC_DEBOUNCE_MS)
+- 코드: App.jsx VISIBLE_PAGE_SIZE, 미분양률 UNSOLD_ALERT/WARN/SAFE_THRESHOLD 명명 상수
+- 수정: DetailModal deviation null 가드 추가 (교차검증 발견)
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-2. 🟡 코드: PRODUCT_MAX 통합
-3. 🟡 성능: Supabase 배치 10,000+건 시 동시성 제한(pLimit) 검토 — 현재 ~2,200건 안전
-4. 🟢 아키: ExpertDashboard useResponsive 전환, 매직 넘버 상수화, 미테스트 컴포넌트 5개
+2. 🟡 성능: Supabase 배치 10,000+건 시 동시성 제한(pLimit) 검토 — 현재 ~2,200건 안전
+3. 🟢 아키: 미테스트 컴포넌트 5개
 
 **주의사항**:
 
