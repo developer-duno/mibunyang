@@ -5,19 +5,17 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-06 세션68 — PRODUCT_MAX 통합 + useResponsive 전환 + 매직 넘버 상수화
+**마지막 작업**: 2026-04-06 세션69 — upsertBatch 429 방어 + 미테스트 컴포넌트 5개 테스트
 
-- 코드: PRODUCT_MAX 단일 출처 — subContext.js 한글 키를 scoringTiers.js에서 파생 (이중 정의 제거)
-- 아키: ExpertDashboard 자체 resize 리스너 → useResponsive 훅 전환 (150ms 디바운스)
-- 코드: 훅 타이머 상수화 (RESIZE_DEBOUNCE_MS, TOAST_DISMISS_MS, URL_SYNC_DEBOUNCE_MS)
-- 코드: App.jsx VISIBLE_PAGE_SIZE, 미분양률 UNSOLD_ALERT/WARN/SAFE_THRESHOLD 명명 상수
-- 수정: DetailModal deviation null 가드 추가 (교차검증 발견)
+- 코드: upsertBatch 배치 간 100ms 지연 + 429 감지 시 지수 백오프 재시도 (maxRetries=3)
+- 아키: createSemaphore를 _shared.mjs로 이동 (infra-kakao.mjs re-export)
+- 코드: 개별 재시도 시 50ms 간격 추가 (연속 호출 방지)
+- 테스트: AdminHelpGuide(3) + ExpertHelpGuide(3) + ShareSheet(5) + PriceChart(5) + UnsoldChart(5) = 21케이스
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-2. 🟡 성능: Supabase 배치 10,000+건 시 동시성 제한(pLimit) 검토 — 현재 ~2,200건 안전
-3. 🟢 아키: 미테스트 컴포넌트 5개
+2. 🟢 스코어링 클램핑 일관성 — scorePrice/scoreProduct/scoreFuture/calcAll에 Math.max(0,...) 하한 추가 (실제 음수 불가하나 패턴 통일)
 
 **주의사항**:
 
