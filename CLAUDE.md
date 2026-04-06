@@ -13,11 +13,12 @@
 - 테스트: useHistoryData 4케이스 + favoriteSet 2케이스 추가 → 전체 2147+ 통과
 - manualChunks supabase 분리 시도 → @supabase/supabase-js는 서버사이드 전용이라 불필요 확인
 
-**다음에 해�� 할 것** (우선순위):
+**다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
 2. 🟡 코드: PRODUCT_MAX 통합
-3. 🟢 아���: ExpertDashboard useResponsive 전환, 매직 넘버 상수화, 미테스트 컴포넌트 5개
+3. 🟡 성능: Supabase 배치 10,000+건 시 동시성 제한(pLimit) 검토 — 현재 ~2,200건 안전
+4. 🟢 아키: ExpertDashboard useResponsive 전환, 매직 넘버 상수화, 미테스트 컴포넌트 5개
 
 **주의사항**:
 
