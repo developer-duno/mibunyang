@@ -84,6 +84,10 @@ export default withHandler({ method: "POST", handler: async (req, res) => {
     res.status(400).json({ ok: false, error: "builders array required" });
     return;
   }
+  if (builders.length > 100) {
+    res.status(400).json({ ok: false, error: "최대 100개까지 처리 가능합니다" });
+    return;
+  }
 
   try {
     const data = {};

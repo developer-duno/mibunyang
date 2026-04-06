@@ -1,15 +1,24 @@
 import { useState, useEffect } from "react";
 
+function computeFlags(w) {
+  return { isPC: w >= 768, isDesktop: w >= 1024 };
+}
+
 export function useResponsive() {
-  const [width, setWidth] = useState(() => window.innerWidth);
+  const [flags, setFlags] = useState(() => computeFlags(window.innerWidth));
   useEffect(() => {
     let timeout;
     const check = () => {
       clearTimeout(timeout);
-      timeout = setTimeout(() => setWidth(window.innerWidth), 150);
+      timeout = setTimeout(() => {
+        setFlags(prev => {
+          const next = computeFlags(window.innerWidth);
+          return (prev.isPC === next.isPC && prev.isDesktop === next.isDesktop) ? prev : next;
+        });
+      }, 150);
     };
     window.addEventListener("resize", check);
     return () => { clearTimeout(timeout); window.removeEventListener("resize", check); };
   }, []);
-  return { isPC: width >= 768, isDesktop: width >= 1024 };
+  return flags;
 }

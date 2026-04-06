@@ -24,6 +24,10 @@ export const SUB_CONTEXT = {
       interpret: (sc) => sc >= 70 ? "데이터 충분" : sc >= 40 ? "일부 추정치 포함" : "데이터 부족",
       benchmark: "70% 이상 권장",
     },
+    "택지비비율": {
+      interpret: (sc) => sc >= 70 ? "택지비 비중 높아 가격 안정" : sc >= 40 ? "택지비 보통" : "건축비 비중 높아 주의",
+      benchmark: "60% 이상 안정",
+    },
   },
   location: {
     "교통": {
@@ -134,6 +138,10 @@ export const SUB_CONTEXT = {
     "치안 안전": {
       interpret: (sc) => sc >= 70 ? "치안 우수 지역" : sc >= 40 ? "치안 보통" : "치안 취약 주의",
       benchmark: "1~2등급 안전",
+    },
+    "초기분양률": {
+      interpret: (sc) => sc >= 70 ? "초기 분양 순조" : sc >= 40 ? "초기 분양 보통" : "초기 분양 저조 주의",
+      benchmark: "90% 이상 안전",
     },
   },
   future: {

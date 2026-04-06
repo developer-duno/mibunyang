@@ -1,6 +1,7 @@
 import { getSupabase, getMibuyangSupabase } from "./_lib/supabase.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 import { verifyToken } from "./_lib/auth.js";
+import { isBlacklisted } from "./_lib/tokenBlacklist.js";
 import { withHandler } from "./_lib/handler.js";
 
 const VALID_CONSULT_TYPES = ["방문상담", "전화상담", "온라인상담"];
@@ -70,9 +71,13 @@ async function handleGet(req, res) {
   if (!auth || !auth.startsWith("Bearer ")) {
     return res.status(401).json({ ok: false, error: "인증이 필요합니다" });
   }
-  const payload = verifyToken(auth.slice(7));
+  const token = auth.slice(7);
+  const payload = verifyToken(token);
   if (!payload) {
     return res.status(401).json({ ok: false, error: "유효하지 않은 토큰입니다" });
+  }
+  if (await isBlacklisted(token)) {
+    return res.status(401).json({ ok: false, error: "로그아웃된 토큰입니다" });
   }
 
   try {

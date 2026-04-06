@@ -4,6 +4,7 @@ dist/
 .claude-memory/
 .env
 .env.*
+!.env.example
 *.local
 .DS_Store
 Thumbs.db

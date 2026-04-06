@@ -44,7 +44,7 @@ describe("SchoolInfo", () => {
   it("schoolGrade가 null이면 등급 배지를 표시하지 않는다", () => {
     const apt = makeApt({
       schoolGrade: null,
-      nearbySchools: [{ name: "테스트초", type: "초", distance: 500 }],
+      nearbySchools: [{ name: "테스트초등학교", type: "초", distance: 500 }],
     });
     render(<SchoolInfo apt={apt} />);
     expect(screen.queryByText("최우수")).toBeNull();
@@ -55,7 +55,7 @@ describe("SchoolInfo", () => {
   it("schoolGrade가 '최우수'이면 배지를 표시한다", () => {
     const apt = makeApt({
       schoolGrade: "최우수",
-      nearbySchools: [{ name: "강남초", type: "초", distance: 200 }],
+      nearbySchools: [{ name: "강남초등학교", type: "초", distance: 200 }],
     });
     render(<SchoolInfo apt={apt} />);
     expect(screen.getByText("최우수")).toBeTruthy();
@@ -65,7 +65,7 @@ describe("SchoolInfo", () => {
   it("schoolGrade가 '우수'이면 배지를 표시한다", () => {
     const apt = makeApt({
       schoolGrade: "우수",
-      nearbySchools: [{ name: "서초초", type: "초", distance: 400 }],
+      nearbySchools: [{ name: "서초초등학교", type: "초", distance: 400 }],
     });
     render(<SchoolInfo apt={apt} />);
     expect(screen.getByText("우수")).toBeTruthy();
@@ -74,7 +74,7 @@ describe("SchoolInfo", () => {
   // distance가 null인 경우 "—" 표시
   it("distance가 null이면 '—'을 표시한다", () => {
     const apt = makeApt({
-      nearbySchools: [{ name: "테스트초", type: "초", distance: null }],
+      nearbySchools: [{ name: "테스트초등학교", type: "초", distance: null }],
     });
     render(<SchoolInfo apt={apt} />);
     expect(screen.getByText("—")).toBeTruthy();
@@ -93,9 +93,9 @@ describe("SchoolInfo", () => {
   it("'전체 보기' 버튼 클릭 시 상세 테이블이 나타난다", () => {
     const apt = makeApt({
       nearbySchools: [
-        { name: "가까운초", type: "초", distance: 200 },
-        { name: "먼초", type: "초", distance: 800 },
-        { name: "테스트중", type: "중", distance: 500 },
+        { name: "가까운초등학교", type: "초", distance: 200 },
+        { name: "먼초등학교", type: "초", distance: 800 },
+        { name: "테스트중학교", type: "중", distance: 500 },
       ],
     });
     const { container } = render(<SchoolInfo apt={apt} />);
@@ -129,7 +129,7 @@ describe("SchoolInfo", () => {
   it("highSchoolType이 있으면 구분에 함께 표시한다", () => {
     const apt = makeApt({
       nearbySchools: [
-        { name: "영재고", type: "고", highSchoolType: "과학고", distance: 600 },
+        { name: "영재고등학교", type: "고", highSchoolType: "과학고", distance: 600 },
       ],
     });
     render(<SchoolInfo apt={apt} />);
@@ -140,10 +140,10 @@ describe("SchoolInfo", () => {
   it("1km 이내 학교 개수를 유형별로 표시한다", () => {
     const apt = makeApt({
       nearbySchools: [
-        { name: "초1", type: "초", distance: 300 },
-        { name: "초2", type: "초", distance: 800 },
-        { name: "초3", type: "초", distance: 1500 },
-        { name: "중1", type: "중", distance: 600 },
+        { name: "가나초등학교", type: "초", distance: 300 },
+        { name: "다라초등학교", type: "초", distance: 800 },
+        { name: "마바초등학교", type: "초", distance: 1500 },
+        { name: "사아중학교", type: "중", distance: 600 },
       ],
     });
     render(<SchoolInfo apt={apt} />);

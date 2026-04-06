@@ -109,6 +109,10 @@ export default withHandler({ method: "POST", handler: async (req, res) => {
     res.status(400).json({ ok: false, error: "apartments array required" });
     return;
   }
+  if (apartments.length > 50) {
+    res.status(400).json({ ok: false, error: "최대 50개까지 처리 가능합니다" });
+    return;
+  }
 
   try {
     // 1. 고유 지역 추출 → NEIS 학교 목록 조회 (fallback용)

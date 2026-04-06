@@ -1,4 +1,4 @@
-import { memo, useEffect } from "react";
+import { memo, useEffect, useRef } from "react";
 import { C, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
@@ -14,12 +14,34 @@ import { UnsoldChart } from "./detail/UnsoldChart";
 import { IconClose } from "./icons";
 
 export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult }) {
+  const closeRef = useRef(null);
+  const prevFocusRef = useRef(null);
   useEffect(() => {
     if (!item) return;
+    prevFocusRef.current = document.activeElement;
     document.body.style.overflow = "hidden";
-    const handleEsc = (e) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", handleEsc);
-    return () => { document.body.style.overflow = ""; document.removeEventListener("keydown", handleEsc); };
+    // 모달 열림 시 닫기 버튼으로 포커스 이동 (모바일 가상키보드 방지)
+    requestAnimationFrame(() => closeRef.current?.focus());
+    const handleKey = (e) => {
+      if (e.key === "Escape") { onClose(); return; }
+      // 포커스 트랩: Tab 키가 모달 내부에서만 순환
+      if (e.key === "Tab") {
+        const modal = closeRef.current?.closest('[role="dialog"]');
+        if (!modal) return;
+        const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (!focusable.length) return;
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.body.style.overflow = "";
+      document.removeEventListener("keydown", handleKey);
+      // 모달 닫힘 시 이전 포커스 복원
+      prevFocusRef.current?.focus?.();
+    };
   }, [!!item, onClose]);
 
   if (!item) return null;
@@ -40,7 +62,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               {apt.address && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{apt.address}{apt.district ? ` (${apt.district})` : ""}</div>}
               {apt.roadAddress && <div style={{ fontSize: 11, color: C.muted }}>{apt.roadAddress}</div>}
             </div>
-            <button onClick={onClose} aria-label="닫기" style={{ background: C.slate100, border: "none", borderRadius: "50%", width: 44, height: 44, cursor: "pointer", color: C.muted, display: "flex", alignItems: "center", justifyContent: "center" }}><IconClose size={18} /></button>
+            <button ref={closeRef} onClick={onClose} aria-label="닫기" style={{ background: C.slate100, border: "none", borderRadius: "50%", width: 44, height: 44, cursor: "pointer", color: C.muted, display: "flex", alignItems: "center", justifyContent: "center" }}><IconClose size={18} /></button>
           </div>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>

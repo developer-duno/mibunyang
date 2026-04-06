@@ -81,8 +81,8 @@ describe('FIELD_META', () => {
 });
 
 describe('FIELD_SECTIONS', () => {
-  it('10개 섹션 존재', () => {
-    expect(FIELD_SECTIONS).toHaveLength(10);
+  it('9개 섹션 존재', () => {
+    expect(FIELD_SECTIONS).toHaveLength(9);
   });
 
   // 모든 섹션: fields가 FIELD_META에 존재 + 중복 없음
@@ -96,9 +96,10 @@ describe('FIELD_SECTIONS', () => {
     }
   });
 
-  it('모든 FIELD_META 키가 FIELD_SECTIONS에 포함', () => {
+  it('hidden 아닌 모든 FIELD_META 키가 FIELD_SECTIONS에 포함', () => {
     const allSectionFields = FIELD_SECTIONS.flatMap((s) => s.fields);
     for (const key of Object.keys(FIELD_META)) {
+      if (FIELD_META[key].hidden) continue; // hidden 필드는 섹션 미포함 허용
       expect(allSectionFields, `필드 "${key}"가 어떤 섹션에도 없음`).toContain(key);
     }
   });

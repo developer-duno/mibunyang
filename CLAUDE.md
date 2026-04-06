@@ -5,15 +5,20 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-03 세션65 — VIEW presale 복원 마이그레이션 Supabase 적용 완료
+**마지막 작업**: 2026-04-06 세션66 — 미반영 15개 필드 스코어링 통합 + 보안/성능/접근성 개선
 
-- 20260405000000_view_restore_presale.sql Dashboard에서 수동 적용 → apartments_flat presale 19컬럼 복원
-- finlife API 장애 계속 이월 (exit 56)
+- 스코어링: 15개 신규 필드 반영 (scorePrice landSc, scoreRisk initSc, airQuality PM10/O3, 도보통학 등)
+- 보안: API 배열 크기 제한(kakao/neis/dart) + consults GET 블랙리스트 + .env.example
+- 성능: useResponsive 불필요 리렌더 제거 (불리언 기반 상태)
+- 접근성: DetailModal 포커스 트랩 + 자동 포커스 + 복원 (WCAG 2.1 AA)
+- 테스트: 122개(스코어링) + subContext/SchoolInfo 수정 → 전체 2132+ 통과
 
 **다음에 해야 할 것** (우선순위):
 
 1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
-2. 새 지표 기획 검토
+2. 🟡 성능: Array.includes→Set (favorites/compIds), Supabase 배치 병렬화, manualChunks 확장
+3. 🟡 코드: usePriceHistory/useUnsoldHistory 중복 훅 통합, PRODUCT_MAX 통합
+4. 🟢 아키: ExpertDashboard useResponsive 전환, 매직 넘버 상수화, 미테스트 컴포넌트 5개
 
 **주의사항**:
 

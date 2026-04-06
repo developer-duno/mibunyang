@@ -76,11 +76,17 @@ export default withHandler({ method: "POST", handler: async (req, res) => {
     res.status(400).json({ ok: false, error: "apartments array required" });
     return;
   }
+  if (apartments.length > 50) {
+    res.status(400).json({ ok: false, error: "최대 50개까지 처리 가능합니다" });
+    return;
+  }
+  // 좌표 타입 가드: lat/lng가 숫자가 아닌 항목 필터링
+  const valid = apartments.filter(a => typeof a.lat === "number" && typeof a.lng === "number" && a.id != null);
 
   try {
     const results = {};
     await Promise.all(
-      apartments.map(async (apt) => {
+      valid.map(async (apt) => {
         results[apt.id] = await fetchAllForApartment(apiKey, apt);
       })
     );
