@@ -4,6 +4,7 @@ import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 
+const UNSOLD_ALERT_THRESHOLD = 30;
 /* ── 모듈 레벨 상수 (렌더마다 재생성 방지) ── */
 export const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
@@ -112,7 +113,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           </div>
         )}
 
-        {(apt.completion || (apt.unsoldRate ?? 0) >= 30 || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade))) && (
+        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade))) && (
           <div style={S.alertRow}>
             {apt.presaleStage && (() => {
               const sm = { "분양중": { bg: C.greenLight, color: C.green }, "분양예정": { bg: C.blueLight, color: C.blue } };
@@ -123,7 +124,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               const b = completionBadge(apt.completion, moveInDone, completionPast);
               return <span style={{ ...S.alertTag, background: b.bg, color: b.color }}>{b.text}</span>;
             })()}
-            {(apt.unsoldRate ?? 0) >= 30 && (
+            {(apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {apt.unsoldRate}%</span>
             )}
             {apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade) && (

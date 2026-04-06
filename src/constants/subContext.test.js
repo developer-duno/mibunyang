@@ -109,6 +109,7 @@ describe('engine↔subContext 키 정합성', () => {
   });
 });
 
+// PRODUCT_MAX: scoringTiers.js(영어 키)에서 파생된 한글 키 bridge export
 describe('PRODUCT_MAX', () => {
   it('합계 = 100', () => {
     expect(Object.values(PRODUCT_MAX).reduce((a, b) => a + b, 0)).toBe(100);

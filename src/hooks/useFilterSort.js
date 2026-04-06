@@ -3,6 +3,8 @@ import { VALID_SORT_KEYS } from "@/constants/sortOptions";
 import { MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { trackEvent } from "@/lib/analytics";
 
+const URL_SYNC_DEBOUNCE_MS = 300;
+
 const LS_CUSTOM_PRESETS = "mibunyang_custom_presets";
 const LS_FILTER_HISTORY = "mibunyang_filter_history";
 const MAX_HISTORY = 10;
@@ -121,7 +123,7 @@ export function useFilterSort({ onFilterChange }) {
           trackEvent("filter_change", { active_count: active });
         }
       } catch { /* iframe/cross-origin 환경에서 무시 */ }
-    }, 300);
+    }, URL_SYNC_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
 

@@ -165,8 +165,12 @@ export const SUB_CONTEXT = {
 };
 
 // scoreProduct 서브별 최대 점수 (시각화 정규화용)
-// 출처: engine.js scoreProduct maxPossible = 20+15+15+10+10+10+10+5+5
-export const PRODUCT_MAX = {
-  "브랜드": 20, "세대수": 15, "주차": 15, "용적률": 10,
-  "에너지": 10, "전용률": 10, "평면": 10, "내진": 5, "구조": 5,
+// 단일 출처: scoringTiers.js PRODUCT_MAX (영어 키) → 한글 키 변환
+import { PRODUCT_MAX as _PM } from "@/constants/scoringTiers";
+const _KEY_MAP = {
+  brand: "브랜드", unit: "세대수", parking: "주차", far: "용적률",
+  energy: "에너지", exclusive: "전용률", layout: "평면", quake: "내진", structure: "구조",
 };
+export const PRODUCT_MAX = Object.fromEntries(
+  Object.entries(_PM).map(([k, v]) => [_KEY_MAP[k], v])
+);

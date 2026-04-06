@@ -8,6 +8,8 @@ import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
 import { DataSections } from "./detail/DataSections";
+
+const UNSOLD_WARN_THRESHOLD = 15;
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
@@ -78,9 +80,9 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             {[
               { l: "지역", v: [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "), c: C.blue },
               { l: "분양가", v: fmtPrice(apt.price) },
-              { l: "적정가 괴리", v: `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`, c: Number(res.cats.price.deviation) > 0 ? C.green : C.red },
+              { l: "적정가 괴리", v: res.cats.price.deviation != null ? `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%` : "—", c: res.cats.price.deviation != null ? (Number(res.cats.price.deviation) > 0 ? C.green : C.red) : C.muted },
               { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
-              { l: "미분양률", v: apt.unsoldRate != null ? `${apt.unsoldRate}%` : "—", c: apt.unsoldRate != null ? (apt.unsoldRate > 15 ? C.red : C.green) : C.muted },
+              { l: "미분양률", v: apt.unsoldRate != null ? `${apt.unsoldRate}%` : "—", c: apt.unsoldRate != null ? (apt.unsoldRate > UNSOLD_WARN_THRESHOLD ? C.red : C.green) : C.muted },
               { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
               { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
               { l: "입주", v: fmtCompletion(apt.completion) },

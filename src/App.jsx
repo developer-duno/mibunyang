@@ -35,6 +35,8 @@ import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/
 import { applyBaseFilters } from "@/lib/filterEngine";
 import { trackEvent } from "@/lib/analytics";
 
+const VISIBLE_PAGE_SIZE = 30;
+
 /* ── 정렬 비교 함수 (모듈 레벨 — 클로저 미사용, 매 렌더 재생성 방지) ── */
 const SORTERS = {
   total: (a, b) => b.res.total - a.res.total,
@@ -59,7 +61,7 @@ export default function App() {
     setCustomWeights(cw);
     try { localStorage.setItem("mibunyang_customWeights", JSON.stringify(cw)); } catch {}
   }, []);
-  const [visibleCount, setVisibleCount] = useState(30);
+  const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
   const [hideNoUnsold, setHideNoUnsold] = useState(true);
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
   const [tab, setTab] = useState(() => {
@@ -413,7 +415,7 @@ export default function App() {
           )}
           {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} /></Suspense>}
           <AptListSection key={filterRegion}
-            visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + 30); trackEvent("load_more", { visible_count: visibleCount + 30 }); }}
+            visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + VISIBLE_PAGE_SIZE); trackEvent("load_more", { visible_count: visibleCount + VISIBLE_PAGE_SIZE }); }}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}
             pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending}
             budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}

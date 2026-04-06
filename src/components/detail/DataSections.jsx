@@ -4,6 +4,9 @@ import { FIELD_META } from "@/constants/fieldMeta";
 import { Bar } from "@/components/primitives";
 import { fmtPrice } from "@/lib/format";
 
+const UNSOLD_WARN_THRESHOLD = 15;
+const UNSOLD_SAFE_THRESHOLD = 5;
+
 const DATA_SECTIONS = [
   {
     title: "단지 기본정보",
@@ -45,7 +48,7 @@ const DATA_SECTIONS = [
 
 function dataValueColor(field, value) {
   if (value == null) return C.muted;
-  if (field === "unsoldRate") return value > 15 ? C.red : value <= 5 ? C.green : C.text;
+  if (field === "unsoldRate") return value > UNSOLD_WARN_THRESHOLD ? C.red : value <= UNSOLD_SAFE_THRESHOLD ? C.green : C.text;
   if (field === "subwayDist") return value <= 500 ? C.green : value <= 1000 ? C.blue : C.text;
   if (field === "popGrowth") return value > 0 ? C.green : value < 0 ? C.red : C.text;
   if (field === "dataReliability") return value >= 80 ? C.green : value >= 50 ? C.amber : C.red;

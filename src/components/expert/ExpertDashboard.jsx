@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, memo } from "react";
 import { C } from "@/theme";
+import { useResponsive } from "@/hooks/useResponsive";
 import { PROFILES } from "@/constants/profiles";
 import { FIELD_SECTIONS } from "@/constants/fieldMeta";
 import { ExpertFieldTable } from "./ExpertFieldTable";
@@ -18,15 +19,9 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const [regionFilter, setRegionFilter] = useState("전체");
   const [sort, setSort] = useState("total");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const { isPC } = useResponsive();
+  const isMobile = !isPC;
   const [helpOpen, setHelpOpen] = useState(false);
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
 
   useEffect(() => {
     if (!sidebarOpen) return;
