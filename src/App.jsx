@@ -1,8 +1,6 @@
-// App.jsx SRP 분리 완료 — InfoPage, BottomNav, HeaderSection, ExpertLoginForm, SearchFilterBar, AptListSection
+// App.jsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
 import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { REGIONS } from "@/constants/regions";
-import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { fmtPrice } from "@/lib/format";
 import { C } from "@/theme";
 
@@ -22,8 +20,10 @@ import { useExpertMode } from "@/hooks/useExpertMode";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
-
 import { useResponsive } from "@/hooks/useResponsive";
+import { useDataPipeline, VISIBLE_PAGE_SIZE } from "@/hooks/useDataPipeline";
+import { useAppNavigation } from "@/hooks/useAppNavigation";
+
 import { ShareSheet } from "@/components/ShareSheet";
 import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
@@ -31,24 +31,10 @@ import { HeaderSection } from "@/components/sections/HeaderSection";
 import { ExpertLoginForm } from "@/components/sections/ExpertLoginForm";
 import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
 import { AptListSection } from "@/components/sections/AptListSection";
-import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
-import { applyBaseFilters } from "@/lib/filterEngine";
 import { trackEvent } from "@/lib/analytics";
 
-const VISIBLE_PAGE_SIZE = 30;
-
-/* ── 정렬 비교 함수 (모듈 레벨 — 클로저 미사용, 매 렌더 재생성 방지) ── */
-const SORTERS = {
-  total: (a, b) => b.res.total - a.res.total,
-  price: (a, b) => a.apt.price - b.apt.price,
-  priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total,
-  location: (a, b) => b.res.cats.location.total - a.res.cats.location.total,
-  safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total,
-  benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0),
-  newest: (a, b) => (b.apt.updatedAt ?? "").localeCompare(a.apt.updatedAt ?? ""),
-};
-
 export default function App() {
+  // ── useState + useTransition ──
   const [profile, setProfileRaw] = useState(() => {
     try { const v = localStorage.getItem("mibunyang_profile"); return v && PROFILES[v] ? v : "live"; } catch { return "live"; }
   });
@@ -61,7 +47,6 @@ export default function App() {
     setCustomWeights(cw);
     try { localStorage.setItem("mibunyang_customWeights", JSON.stringify(cw)); } catch {}
   }, []);
-  const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
   const [hideNoUnsold, setHideNoUnsold] = useState(true);
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
   const [tab, setTab] = useState(() => {
@@ -69,15 +54,13 @@ export default function App() {
     return sessionStorage.getItem("userRole") === "admin" ? "admin" : "expert";
   });
 
+  // ── 커스텀 훅 13개 ──
   const { isPC, isDesktop } = useResponsive();
-
-  // 8 custom hooks
   const { toast, showToast } = useToast();
   const { favoriteIds, favoriteSet, setFavoriteIds, toggleFavorite } = useFavorites(showToast);
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail.setDetailAptId]);
   const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo } = useFilterSort({ onFilterChange: closeDetail });
-
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
@@ -85,235 +68,39 @@ export default function App() {
   const { apartments, loading: dataLoading, error: dataError, retry: retryData, dataUpdatedAt } = useApartmentData();
   const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, isMobile } = useShare(showToast);
 
-  // 5 useMemo
-  const guOptions = useMemo(() => {
-    if (filterRegion === "전체") {
-      const gus = new Set(apartments.map(a => a.gu).filter(Boolean));
-      return ["전체", ...[...gus].sort()];
-    }
-    const regionGus = new Set(apartments.filter(a => a.region === filterRegion).map(a => a.gu).filter(Boolean));
-    return ["전체", ...[...regionGus].sort()];
-  }, [filterRegion, apartments]);
+  // ── 데이터 파이프라인 ──
+  const {
+    guOptions, scored, filtered, visible,
+    visibleCount, setVisibleCount,
+    scoredMap, compItems, pw,
+    activeFilterCount, regionOptions, filterOptionCounts, dataFreshnessText,
+  } = useDataPipeline({
+    apartments, profile, customWeights,
+    filterRegion, filterGu, sortKey, moveInFilter, builderTier,
+    showFavOnly, favoriteSet, budgetMin, budgetMax,
+    areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly,
+    hideNoUnsold, compIds, dataUpdatedAt,
+  });
 
-  const catsCache = useMemo(() => {
-    const needsFallback = apartments.some(a => !a.catsCache?.price);
-    const ctx = needsFallback ? { regionMedians: computeRegionalMedians(apartments) } : null;
+  // ── 탭 전환/인증 네비게이션 ──
+  const {
+    handleExpertLogin, handleExpertLogout,
+    switchToAdmin, switchToExpert, switchToInfo,
+    handleExpertView, handleConsultFromDetail,
+    handleNavClick,
+  } = useAppNavigation({
+    tab, setTab, expert, admin, consult, detail,
+    compIds, setShowCompOpen, showToast,
+    budgetMin, budgetMax,
+  });
 
-    if (import.meta.env.DEV && needsFallback) {
-      const missing = apartments.filter(a => !a.catsCache?.price).length;
-      console.warn(`[catsCache] ${missing}/${apartments.length} 폴백 (catsCache 누락)`);
-      if (missing === apartments.length && apartments.length > 0) {
-        console.error("[catsCache] 전체 폴백! API가 catsCache를 반환하지 않음 — 필드명 확인 필요");
-      }
-    }
-
-    return apartments.map(a => ({
-      apt: a,
-      cats: (a.catsCache && a.catsCache.price) ? a.catsCache : calcCats(a, ctx),
-    }));
-  }, [apartments]);
-  const scored = useMemo(() => {
-    const raw = customWeights[profile];
-    const w = (raw && typeof raw === "object" && Object.keys(PROFILES[profile].w).every(k => typeof raw[k] === "number")) ? raw : PROFILES[profile].w;
-    return catsCache.map(({ apt, cats }) => {
-      const total = Math.round(Math.min(Object.keys(cats).reduce((s, k) => s + cats[k].total * (w[k] ?? 0) / 100, 0), 100));
-      return { apt, res: { total, cats, weights: w } };
-    });
-  }, [catsCache, profile, customWeights]);
-  const baseFilterArgs = useMemo(() => ({
-    showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax,
-    unitsMin, unitsMax, minScore, benefitOnly,
-  }), [showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly]);
-
-  const filtered = useMemo(() => {
-    let list = applyBaseFilters(scored, baseFilterArgs);
-    if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
-    if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
-    if (moveInFilter !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === moveInFilter);
-    if (builderTier !== "전체") list = list.filter(x => classifyTier(x.apt) === builderTier);
-    if (hideNoUnsold) list = list.filter(x => (x.apt.unsoldRate ?? 0) > 0);
-    return [...list].sort(SORTERS[sortKey] || SORTERS.total);
-  }, [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier, hideNoUnsold]);
-  useEffect(() => { setVisibleCount(30); }, [filtered]);
-  const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
-  const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
-  const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
-  const activeFilterCount = useMemo(() =>
-    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly].filter(Boolean).length,
-    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]
-  );
-
-  const regionOptions = useMemo(() => {
-    const rs = new Set(apartments.map(a => a.region).filter(Boolean));
-    const order = Object.keys(REGIONS);
-    return ["전체", ...order.filter(r => rs.has(r)), ...[...rs].filter(r => !order.includes(r)).sort()];
-  }, [apartments]);
-
-  const filterOptionCounts = useMemo(() => {
-    if (!scored.length) return null;
-    let base = applyBaseFilters(scored, baseFilterArgs);
-    if (hideNoUnsold) base = base.filter(x => (x.apt.unsoldRate ?? 0) > 0);
-    // 단일 패스 leave-one-out 카운트 (5N→1N 최적화)
-    const regionCounts = Object.create(null);
-    const guCounts = Object.create(null);
-    const moveInCounts = Object.fromEntries(MOVEIN_VALUES.map(v => [v, 0]));
-    const tierCounts = Object.fromEntries(TIER_VALUES.map(v => [v, 0]));
-    for (const { apt } of base) {
-      const mi = classifyMoveIn(apt);
-      const ti = classifyTier(apt);
-      const matchRegion = filterRegion === "전체" || apt.region === filterRegion;
-      const matchGu = filterGu === "전체" || apt.gu === filterGu;
-      const matchMoveIn = moveInFilter === "전체" || mi === moveInFilter;
-      const matchTier = builderTier === "전체" || ti === builderTier;
-      // regionCounts: 지역 필터 제외, 나머지 필터 적용
-      if (matchMoveIn && matchTier && apt.region) regionCounts[apt.region] = (regionCounts[apt.region] || 0) + 1;
-      // guCounts: 구 필터 제외, 나머지 필터 적용 (지역 포함)
-      if (matchRegion && matchMoveIn && matchTier && apt.gu) guCounts[apt.gu] = (guCounts[apt.gu] || 0) + 1;
-      // moveInCounts: 입주 필터 제외, 나머지 필터 적용
-      if (matchRegion && matchGu && matchTier && mi) moveInCounts[mi]++;
-      // tierCounts: 시공사 필터 제외, 나머지 필터 적용
-      if (matchRegion && matchGu && matchMoveIn) tierCounts[ti]++;
-    }
-    return { regionCounts, guCounts, moveInCounts, tierCounts };
-  }, [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier, hideNoUnsold]);
-
-  // 데이터 최신성 텍스트 (ISO 날짜 표시)
-  const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;
-
-
+  // ── containerMaxWidth ──
   const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
 
-  // handleExpertLogin wrapper (setTab is in App scope)
-  const handleExpertLogin = useCallback(async () => {
-    const result = await expert.handleExpertLogin();
-    if (result?.ok) {
-      if (result.role === "admin") {
-        sessionStorage.setItem("userRole", "admin");
-        admin.setAdminLoggedIn(true);
-        setTab("admin");
-      } else {
-        sessionStorage.setItem("userRole", "expert");
-        setTab("expert");
-      }
-    }
-  }, [expert.handleExpertLogin, admin.setAdminLoggedIn]);
-
-  const handleExpertLogout = useCallback(() => {
-    expert.handleExpertLogout(() => { setTab("list"); setShowCompOpen(false); });
-  }, [expert.handleExpertLogout, setShowCompOpen]);
-
-  const switchToAdmin = useCallback(() => setTab("admin"), []);
-  const switchToExpert = useCallback(() => setTab("expert"), []);
-  const switchToInfo = useCallback(() => setTab("info"), []);
-  const handleExpertView = useCallback((aptId) => {
-    expert.setExpertExpandedApt(aptId);
-    setTab("expert");
-  }, [expert.setExpertExpandedApt]);
-
-  const handleConsultFromDetail = useCallback((aptId) => {
-    consult.setConsultForm(prev => ({
-      ...prev,
-      interestedApts: prev.interestedApts.includes(aptId) ? prev.interestedApts : [...prev.interestedApts, aptId],
-    }));
-    detail.setDetailAptId(null);
-    setTab("consult");
-  }, [consult.setConsultForm, detail.setDetailAptId]);
-
-  const consultRef = useRef(consult);
-  consultRef.current = consult;
-  const budgetRef = useRef({ budgetMin, budgetMax });
-  budgetRef.current = { budgetMin, budgetMax };
-
-  const handleNavClick = useCallback((k) => {
-    if (k === "logout") return handleExpertLogout();
-    trackEvent("tab_switch", { tab: k, previous_tab: tab });
-    if (k === "list") { setTab("list"); setShowCompOpen(false); return; }
-    if (k === "compare") {
-      if (compIds.length < 2) { showToast("카드에서 2개 이상 선택해주세요"); setTab("list"); return; }
-      setShowCompOpen(true); setTab("list"); return;
-    }
-    if (k === "consult") {
-      const c = consultRef.current;
-      const b = budgetRef.current;
-      if (c.consultSubmitted) {
-        c.setConsultSubmitted(false);
-        c.setConsultForm({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
-      } else {
-        c.setConsultForm(prev => ({
-          ...prev,
-          budgetMin: prev.budgetMin || (b.budgetMin ? String(Number(b.budgetMin) * 10000) : ""),
-          budgetMax: prev.budgetMax || (b.budgetMax ? String(Number(b.budgetMax) * 10000) : ""),
-        }));
-      }
-    }
-    setTab(k);
-  }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen]);
-
-  // verify 실패 시 admin 상태 동기화 (양방향)
-  useEffect(() => {
-    if (!expert.expertLoggedIn && admin.adminLoggedIn) {
-      admin.setAdminLoggedIn(false);
-      if (tab === "admin" || tab === "expert") setTab("list");
-    }
-  }, [expert.expertLoggedIn, admin.adminLoggedIn, admin.setAdminLoggedIn, tab]);
-
-  // print CSS useEffect (모든 모드에서 적용)
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.id = "print-styles";
-    style.textContent = `@media print { nav[aria-label] { display: none !important; } [data-no-print] { display: none !important; } [data-sidebar] { display: none !important; } [data-print-content] { flex: none !important; width: 100% !important; overflow: visible !important; height: auto !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
-    document.head.appendChild(style);
-    return () => { const el = document.getElementById("print-styles"); if (el) el.remove(); };
-  }, []);
-
-  // URL 딥링크 복원 (공유 URL로 접근 시)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const detailId = params.get("detail");
-    const compareStr = params.get("compare");
-    const profileParam = params.get("profile");
-    if (profileParam && PROFILES[profileParam]) setProfile(profileParam);
-    if (detailId) detail.setDetailAptId(detailId);
-    if (compareStr) {
-      const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
-      if (ids.length >= 2) { setCompIds(ids); setShowCompOpen(true); }
-    }
-    if (detailId || compareStr) {
-      const cleanParams = new URLSearchParams(window.location.search);
-      cleanParams.delete("detail");
-      cleanParams.delete("compare");
-      const remaining = cleanParams.toString();
-      try { window.history.replaceState(null, "", remaining ? `?${remaining}` : window.location.pathname); } catch {}
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // 전문가 로그인 시 상담 목록 서버 조회
-  useEffect(() => {
-    if (expert.expertLoggedIn && tab === "expertConsults") {
-      const token = sessionStorage.getItem("expertToken");
-      if (token) consult.fetchConsults(token);
-    }
-  }, [expert.expertLoggedIn, tab, consult.fetchConsults]);
-
-  // dedup 후 localStorage에 남은 무효 ID 정리
-  useEffect(() => {
-    if (dataLoading || dataError || !apartments.length) return;
-    const validIds = new Set(apartments.map(a => a.id));
-    setFavoriteIds(ids => {
-      const next = ids.filter(id => validIds.has(id));
-      if (next.length === ids.length) return ids;
-      if (ids.length - next.length > 0) showToast(`데이터 변경으로 관심매물 ${ids.length - next.length}개가 정리되었습니다`);
-      return next;
-    });
-    setCompIds(ids => {
-      const next = ids.filter(id => validIds.has(id));
-      return next.length === ids.length ? ids : next;
-    });
-  }, [apartments, dataLoading, dataError, setFavoriteIds, setCompIds, showToast]);
-
+  // ── 공유 콜백 (네비게이션과 별개) ──
   const scoredMapRef = useRef(scoredMap);
   useEffect(() => { scoredMapRef.current = scoredMap; }, [scoredMap]);
+
   const handleShareDetail = useCallback((aptId) => {
     const item = scoredMapRef.current.get(aptId);
     if (!item) return;
@@ -337,7 +124,6 @@ export default function App() {
     });
   }, [compIds, compItems, profile, openShareSheet, getShareURL]);
 
-  /** 현재 필터 조건만 공유 */
   const handleShareFilters = useCallback(() => {
     const activeFilters = [
       filterRegion !== "전체" && filterRegion,
@@ -356,6 +142,53 @@ export default function App() {
     });
   }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, openShareSheet, getShareURL]);
 
+  // ── 독립 useEffect: print CSS ──
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "print-styles";
+    style.textContent = `@media print { nav[aria-label] { display: none !important; } [data-no-print] { display: none !important; } [data-sidebar] { display: none !important; } [data-print-content] { flex: none !important; width: 100% !important; overflow: visible !important; height: auto !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
+    document.head.appendChild(style);
+    return () => { const el = document.getElementById("print-styles"); if (el) el.remove(); };
+  }, []);
+
+  // ── 독립 useEffect: URL 딥링크 복원 ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const detailId = params.get("detail");
+    const compareStr = params.get("compare");
+    const profileParam = params.get("profile");
+    if (profileParam && PROFILES[profileParam]) setProfile(profileParam);
+    if (detailId) detail.setDetailAptId(detailId);
+    if (compareStr) {
+      const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
+      if (ids.length >= 2) { setCompIds(ids); setShowCompOpen(true); }
+    }
+    if (detailId || compareStr) {
+      const cleanParams = new URLSearchParams(window.location.search);
+      cleanParams.delete("detail");
+      cleanParams.delete("compare");
+      const remaining = cleanParams.toString();
+      try { window.history.replaceState(null, "", remaining ? `?${remaining}` : window.location.pathname); } catch {}
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 독립 useEffect: dedup 후 무효 ID 정리 ──
+  useEffect(() => {
+    if (dataLoading || dataError || !apartments.length) return;
+    const validIds = new Set(apartments.map(a => a.id));
+    setFavoriteIds(ids => {
+      const next = ids.filter(id => validIds.has(id));
+      if (next.length === ids.length) return ids;
+      if (ids.length - next.length > 0) showToast(`데이터 변경으로 관심매물 ${ids.length - next.length}개가 정리되었습니다`);
+      return next;
+    });
+    setCompIds(ids => {
+      const next = ids.filter(id => validIds.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [apartments, dataLoading, dataError, setFavoriteIds, setCompIds, showToast]);
+
+  // ── JSX ──
   return (
     <div style={{ background: isDesktop ? C.white : C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", fontSize: isDesktop ? 14 : 13, color: C.text, paddingBottom: isDesktop ? 24 : 70, paddingTop: isDesktop ? 64 : 0, transition: "max-width .3s" }}>
 

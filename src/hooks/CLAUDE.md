@@ -4,16 +4,44 @@
 
 ## Hook 호출 순서
 
-App.jsx 내부:
+App.jsx 내부 (세션72 분리 후):
 ```
-useState (5개: profile, customWeights, visibleCount, hideNoUnsold, tab) + useTransition (1개) → useCallback → 커스텀 훅 13개 (useToast, useFavorites(showToast), useDetailModal, useFilterSort, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare, useResponsive, usePriceHistory, useUnsoldHistory) → useMemo (13개: baseFilterArgs, activeFilterCount, filterOptionCounts 포함) → useEffect (6개) → useRef → useCallback
-**useResponsive 위치**: line 69 (모든 useState 이후, useMemo 이전) → `{ isPC, isDesktop }` 반환 → isDesktop은 line 176+ JSX에서만 사용 (TDZ 안전)
+useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개)
+  → useCallback (setProfile, saveCustomWeights, toggleHideNoUnsold, closeDetail)
+  → 커스텀 훅 13개 (useResponsive, useToast, useFavorites, useDetailModal, useFilterSort, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare)
+  → useDataPipeline (useMemo 13개 + visibleCount useState + reset useEffect 내장)
+  → useAppNavigation (useCallback 7개 + useRef 2개 + useEffect 2개 내장)
+  → 공유 콜백 3개 (handleShare*) + scoredMapRef
+  → 독립 useEffect 3개 (print CSS, URL 딥링크, 무효 ID 정리)
+  → JSX
 ```
 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
 React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
 **TDZ 방지**: 커스텀 훅 호출 시 매개변수가 반드시 해당 훅 호출 **이전에** 정의되어야 함. Vite production 빌드에서 const 재배열로 TDZ 에러 발생 (2eaac74).
 
-## useMemo 의존성 배열 (App.jsx)
+## useDataPipeline 구조 (세션72)
+
+```
+useDataPipeline({ apartments, profile, customWeights, ...필터상태, hideNoUnsold, compIds, dataUpdatedAt })
+  ├── SORTERS, VISIBLE_PAGE_SIZE (모듈 레벨 상수)
+  ├── visibleCount: useState(VISIBLE_PAGE_SIZE)
+  ├── useMemo 13개 (guOptions → catsCache → scored → filtered → visible 체인)
+  ├── useEffect: filtered 변경 시 visibleCount 리셋
+  └── return { guOptions, scored, filtered, visible, visibleCount, setVisibleCount, scoredMap, compItems, pw, activeFilterCount, regionOptions, filterOptionCounts, dataFreshnessText, ... }
+```
+
+## useAppNavigation 구조 (세션72)
+
+```
+useAppNavigation({ tab, setTab, expert, admin, consult, detail, compIds, setShowCompOpen, showToast, budgetMin, budgetMax })
+  ├── useRef 2개 (consultRef, budgetRef — stale closure 방지)
+  ├── useCallback 7개 (handleExpertLogin/Logout, switchToAdmin/Expert/Info, handleExpertView, handleConsultFromDetail, handleNavClick)
+  ├── useEffect: admin 동기화 (verify 실패 감지)
+  ├── useEffect: 전문가 상담 목록 fetch
+  └── return { handleExpertLogin, handleExpertLogout, switchTo*, handleExpertView, handleConsultFromDetail, handleNavClick }
+```
+
+## useMemo 의존성 배열 (useDataPipeline 내부)
 
 | useMemo | 의존성 | 절대 누락 금지 |
 |---------|--------|--------------|
