@@ -31,9 +31,14 @@
 - NEIS API: NEIS_KEY 환경변수 필요 (open.neis.go.kr), 미등록 시 NEIS 보강 스킵 (거리 기반만)
 - 학교알리미 API: SCHOOLINFO_KEY 환경변수 필요 (schoolinfo.go.kr), 미등록 시 학생수 보강 스킵
 - 에어코리아 API: AIRKOREA_KEY 환경변수 필요 (data.go.kr), 미등록 시 대기질 수집 스킵 (별도 쿼터, MOLIT_KEY와 분리)
-- vite vendor 청크: react+react-dom 분리됨 (190KB), 메인 번들 160KB
+- vite vendor 청크: react+react-dom 분리됨 (190KB), 메인 번들 164KB
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
 - AptListSection: IntersectionObserver 자동 무한 스크롤 + "더 보기" 버튼 폴백
+- useDeferredValue: 필터 5개 원시값 래핑 (filterRegion/filterGu/sortKey/moveInFilter/builderTier)
+- useTransition: 정렬 변경 시 startSortTransition 래핑 (useFilterSort.js)
+- 데스크톱 키보드 단축키: 1~5 프로필, Ctrl+Z undo, Ctrl+Shift+Z redo, Escape 모달닫기
+- AdminDashboard→WeightEditor 분리: `src/components/admin/WeightEditor.jsx` (231줄)
+- E2E: 11 spec (smoke/list/modal/compare/expert/skeleton-empty/admin/favorites/share/loan-rates/mobile)
 
 ## 기술 스택
 
@@ -55,7 +60,7 @@
 - `@/hooks/useRentLoanRates.js` — finlife 전세자금대출 금리 훅 (useFinlifeRates 래퍼, 단일 캐싱)
 - `@/constants/loanGroups.js` — 금융권역 코드-라벨 매핑 (LOAN_GROUPS, DEFAULT_GROUP)
 - `@/components/detail/LoanRatesSection.jsx` — 금리비교 + 금융권역 탭 (은행/저축은행/보험/기타)
-- Playwright E2E — 7스펙 (smoke/list/modal/compare/expert/skeleton-empty/admin), `npm run test:e2e`
+- Playwright E2E — 11스펙 (smoke/list/modal/compare/expert/skeleton-empty/admin/favorites/share/loan-rates/mobile), `npm run test:e2e`
 - Supabase (PostgreSQL) — 데이터베이스 (15개 테이블 + 2 VIEW + presale 19컬럼)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - `api/_lib/handler.js` — withHandler HOF (CORS/Method/RateLimit/Admin 통합, 14개 API 엔드포인트에서 사용)
