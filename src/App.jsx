@@ -143,6 +143,22 @@ export default function App() {
     });
   }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, openShareSheet, getShareURL]);
 
+  // ── 독립 useEffect: 데스크톱 키보드 단축키 ──
+  useEffect(() => {
+    if (!isDesktop) return;
+    const profileKeys = Object.keys(PROFILES);
+    const handler = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key >= "1" && e.key <= "5") { e.preventDefault(); setProfile(profileKeys[Number(e.key) - 1]); return; }
+      if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey && canUndo) { e.preventDefault(); undo(); return; }
+      if (((e.key === "z" && e.shiftKey) || e.key === "y") && (e.ctrlKey || e.metaKey) && canRedo) { e.preventDefault(); redo(); return; }
+      if (e.key === "Escape" && detail.detailAptId) { e.preventDefault(); detail.setDetailAptId(null); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isDesktop, setProfile, canUndo, canRedo, undo, redo, detail.detailAptId, detail.setDetailAptId]);
+
   // ── 독립 useEffect: print CSS ──
   useEffect(() => {
     const style = document.createElement("style");
