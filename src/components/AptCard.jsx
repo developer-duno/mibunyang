@@ -113,7 +113,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           </div>
         )}
 
-        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade))) && (
+        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade)) || (apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4)) && (
           <div style={S.alertRow}>
             {apt.presaleStage && (() => {
               const sm = { "분양중": { bg: C.greenLight, color: C.green }, "분양예정": { bg: C.blueLight, color: C.blue } };
@@ -132,6 +132,9 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             )}
             {noxCount > 0 && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>혐오시설 {noxCount}건</span>
+            )}
+            {apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4 && (
+              <span style={{ ...S.alertTag, background: apt.crimeSafetyGrade >= 5 ? C.redLight : C.amberLight, color: apt.crimeSafetyGrade >= 5 ? C.red : C.amber }}>{apt.crimeSafetyGrade >= 5 ? "치안위험" : "치안주의"}</span>
             )}
           </div>
         )}
