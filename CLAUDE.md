@@ -5,17 +5,20 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-08 세션75 — React 19 활용 + UX 개선 + 데이터 확장 + E2E 강화 + 기술 부채
+**마지막 작업**: 2026-04-08 세션76 — 헤더 화이트 테마 + 데이터 수집 일괄 실행 + CI 수정
 
-- React 19: useDeferredValue(필터), useTransition(정렬), AptCard memo 커스텀 비교
-- UX: Suspense fallback 스켈레톤, 빈 상태 필터 요약/완화 제안, 데스크톱 키보드 단축키(1~5/Ctrl+Z)
-- 데이터: 대기질 PM2.5/PM10 표시, 치안 4-5등급 경고 배지
-- E2E: 즐겨찾기/공유/금리비교/모바일 4개 추가 (7→11 spec)
-- 기술 부채: chosung.js 제거, AdminDashboard→WeightEditor 분리 (451→223줄)
+- UI: 모바일/PC 헤더 화이트 테마 전환 (파란 그라디언트→흰색 배경 + borderStrong 테두리)
+- 테마: C.borderStrong("#D1D5DB") 추가, PC/모바일 헤더 테두리 1.5px 강화
+- CI fix: App.jsx React Compiler lint error 해결 (detail 의존성 수정)
+- 데이터: 미등록 필드 38개 일괄 수집 (10개 수집기 실행, dataReliability 77.2%)
+  - molit-building-info 695건, naver-presale 658건(신규164), transport-tago 481건
+  - sync-naver-complex 992건 시세 동기화, dart-builders 11개 시공사, transit-match 546건
 
 **다음에 해야 할 것** (우선순위):
 
-1. (백로그 비어 있음 — 새 작업 대기)
+1. naver-listings 재실행 (rate limit 해제 후) → sync-naver-complex 재실행 → 대표향/수영장/건폐율 채우기
+2. building-hub 재실행 (data.go.kr API 정상화 후) → heat_fuel 추가 수집
+3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
 
 **주의사항**:
 
@@ -39,6 +42,8 @@
 - 데스크톱 키보드 단축키: 1~5 프로필, Ctrl+Z undo, Ctrl+Shift+Z redo, Escape 모달닫기
 - AdminDashboard→WeightEditor 분리: `src/components/admin/WeightEditor.jsx` (231줄)
 - E2E: 11 spec (smoke/list/modal/compare/expert/skeleton-empty/admin/favorites/share/loan-rates/mobile)
+- 헤더 화이트 테마: C.borderStrong("#D1D5DB"), 모바일 borderBottom 1.5px, 장식원 제거
+- App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환, `detail.setDetailAptId` 금지)
 
 ## 기술 스택
 
@@ -50,7 +55,7 @@
 - `@/lib/analytics.js` — Vercel Analytics trackEvent 래퍼 (벤더 격리, try-catch)
 - `@/lib/format.js` — 가격/날짜 포맷 (fmtPrice, fmtCompletion, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate)
 - `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
-- `@/theme/index.js` — 디자인 토큰 (C 팔레트 + shadowSm/shadowMd + catCol + gr 등급함수)
+- `@/theme/index.js` — 디자인 토큰 (C 팔레트 + borderStrong + shadowSm/shadowMd + catCol + gr 등급함수)
 - `@/components/filters/` — 필터 드롭다운 패널 7개 (FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel) + filterStyles.js 공유 스타일 + 7개 테스트(61케이스)
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
 - `@/hooks/useDataPipeline.js` — 데이터 파이프라인 훅 (useMemo 13개: apartments→scored→filtered→visible + visibleCount + SORTERS)
