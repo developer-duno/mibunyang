@@ -5,16 +5,15 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-07 세션72 — App.jsx 520줄 분리 (useDataPipeline + useAppNavigation 추출)
+**마지막 작업**: 2026-04-07 세션73 — engine.js 496줄 모듈화 (스코어링 함수별 파일 분리)
 
-- 리팩터: App.jsx 520줄 → 353줄 (32% 감소)
-- 리팩터: useDataPipeline.js 신규 (135줄) — useMemo 13개 + visibleCount useState + SORTERS 상수
-- 리팩터: useAppNavigation.js 신규 (104줄) — 탭 전환 useCallback 7개 + useRef 2개 + useEffect 2개
+- 리팩터: engine.js 496줄 → 97줄 (80% 감소, 오케스트레이터 + re-export)
+- 분리: scorePrice.js (75줄), scoreLocation.js (70줄), scoreProduct.js (50줄), scoreBenefit.js (30줄), scoreRisk.js (75줄), scoreFuture.js (55줄), computeRegionalMedians.js (20줄)
+- import 경로 변경 0곳 (engine.js re-export 패턴)
 
 **다음에 해야 할 것** (우선순위):
 
-1. (🟢) engine.js 496줄 모듈화 — 스코어링 함수별 파일 분리
-2. (🟢) React 18→19 / Vite 6→8 메이저 업데이트 검토
+1. (🟢) React 18→19 / Vite 6→8 메이저 업데이트 검토
 
 **주의사항**:
 

@@ -1,6 +1,23 @@
 # 스코어링 엔진 규칙
 
-> `engine.js` 수정 시 반드시 이 규칙을 따를 것.
+> 스코어링 모듈 수정 시 반드시 이 규칙을 따를 것.
+
+## 파일 구조
+
+```
+src/scoring/
+  engine.js              — 오케스트레이터 (sanitize + calcCats + calcAll + re-export)
+  scorePrice.js          — 가격 매력도 (scorePrice, getAgeCoeff, getAreaAdj)
+  scoreLocation.js       — 입지·생활권 (scoreLocation)
+  scoreProduct.js        — 상품성 (scoreProduct)
+  scoreBenefit.js        — 혜택·할인 (scoreBenefit)
+  scoreRisk.js           — 안전도 (scoreRisk)
+  scoreFuture.js         — 미래가치 (scoreFuture + matchAny + 키워드 상수)
+  computeRegionalMedians.js — 지역별 중위값 계산
+  engine.test.js         — 전체 테스트
+```
+
+모든 함수는 engine.js에서 re-export → `@/scoring/engine` import 경로 유지.
 
 ## 함수 시그니처
 
