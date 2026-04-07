@@ -58,7 +58,13 @@ export const FIELD_META = {
   childcareDist: { label: "어린이집 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "미수집" },
   emergency: { label: "응급의료기관", section: "입지", unit: "개", fmt: v => n(v, "개") },
   emergencyDist: { label: "응급의료 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "미수집" },
-  airQuality: { label: "대기질 등급", section: "입지", fmt: v => v?.grade ?? "미수집" },
+  airQuality: { label: "대기질", section: "입지", fmt: v => {
+    if (!v?.grade) return "미수집";
+    const parts = [v.grade];
+    if (v.pm25 != null) parts.push(`PM2.5: ${v.pm25}`);
+    if (v.pm10 != null) parts.push(`PM10: ${v.pm10}`);
+    return parts.join(" / ");
+  }},
   noxiousDist: { label: "혐오시설 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "없음" },
   netMigration: { label: "순이동", section: "가격", unit: "명", fmt: v => v != null ? `${v > 0 ? "+" : ""}${v.toLocaleString("ko-KR")}명` : "미수집" },
   // ── 지역 시장 통계 (KOSIS HUG) ──
