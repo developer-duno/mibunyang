@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useDeferredValue } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { REGIONS } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
@@ -30,6 +30,15 @@ export function useDataPipeline({
   hideNoUnsold, compIds, dataUpdatedAt,
 }) {
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
+
+  /* ── useDeferredValue: 필터/정렬 변경 시 UI 반응성 개선 (React 19) ── */
+  const deferredRegion = useDeferredValue(filterRegion);
+  const deferredGu = useDeferredValue(filterGu);
+  const deferredSortKey = useDeferredValue(sortKey);
+  const deferredMoveIn = useDeferredValue(moveInFilter);
+  const deferredTier = useDeferredValue(builderTier);
+  const isFilterPending = deferredRegion !== filterRegion || deferredGu !== filterGu
+    || deferredSortKey !== sortKey || deferredMoveIn !== moveInFilter || deferredTier !== builderTier;
 
   const guOptions = useMemo(() => {
     if (filterRegion === "전체") {
@@ -74,13 +83,13 @@ export function useDataPipeline({
 
   const filtered = useMemo(() => {
     let list = applyBaseFilters(scored, baseFilterArgs);
-    if (filterRegion !== "전체") list = list.filter(x => x.apt.region === filterRegion);
-    if (filterGu !== "전체") list = list.filter(x => x.apt.gu === filterGu);
-    if (moveInFilter !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === moveInFilter);
-    if (builderTier !== "전체") list = list.filter(x => classifyTier(x.apt) === builderTier);
+    if (deferredRegion !== "전체") list = list.filter(x => x.apt.region === deferredRegion);
+    if (deferredGu !== "전체") list = list.filter(x => x.apt.gu === deferredGu);
+    if (deferredMoveIn !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === deferredMoveIn);
+    if (deferredTier !== "전체") list = list.filter(x => classifyTier(x.apt) === deferredTier);
     if (hideNoUnsold) list = list.filter(x => (x.apt.unsoldRate ?? 0) > 0);
-    return [...list].sort(SORTERS[sortKey] || SORTERS.total);
-  }, [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier, hideNoUnsold]);
+    return [...list].sort(SORTERS[deferredSortKey] || SORTERS.total);
+  }, [scored, baseFilterArgs, deferredRegion, deferredGu, deferredSortKey, deferredMoveIn, deferredTier, hideNoUnsold]);
 
   useEffect(() => { setVisibleCount(VISIBLE_PAGE_SIZE); }, [filtered]);
 
@@ -112,17 +121,17 @@ export function useDataPipeline({
     for (const { apt } of base) {
       const mi = classifyMoveIn(apt);
       const ti = classifyTier(apt);
-      const matchRegion = filterRegion === "전체" || apt.region === filterRegion;
-      const matchGu = filterGu === "전체" || apt.gu === filterGu;
-      const matchMoveIn = moveInFilter === "전체" || mi === moveInFilter;
-      const matchTier = builderTier === "전체" || ti === builderTier;
+      const matchRegion = deferredRegion === "전체" || apt.region === deferredRegion;
+      const matchGu = deferredGu === "전체" || apt.gu === deferredGu;
+      const matchMoveIn = deferredMoveIn === "전체" || mi === deferredMoveIn;
+      const matchTier = deferredTier === "전체" || ti === deferredTier;
       if (matchMoveIn && matchTier && apt.region) regionCounts[apt.region] = (regionCounts[apt.region] || 0) + 1;
       if (matchRegion && matchMoveIn && matchTier && apt.gu) guCounts[apt.gu] = (guCounts[apt.gu] || 0) + 1;
       if (matchRegion && matchGu && matchTier && mi) moveInCounts[mi]++;
       if (matchRegion && matchGu && matchMoveIn) tierCounts[ti]++;
     }
     return { regionCounts, guCounts, moveInCounts, tierCounts };
-  }, [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier, hideNoUnsold]);
+  }, [scored, baseFilterArgs, deferredRegion, deferredGu, deferredMoveIn, deferredTier, hideNoUnsold]);
 
   const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;
 
@@ -131,5 +140,6 @@ export function useDataPipeline({
     visibleCount, setVisibleCount,
     scoredMap, compItems, pw,
     activeFilterCount, regionOptions, filterOptionCounts, dataFreshnessText,
+    isFilterPending,
   };
 }

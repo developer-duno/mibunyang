@@ -74,6 +74,7 @@ export default function App() {
     visibleCount, setVisibleCount,
     scoredMap, compItems, pw,
     activeFilterCount, regionOptions, filterOptionCounts, dataFreshnessText,
+    isFilterPending,
   } = useDataPipeline({
     apartments, profile, customWeights,
     filterRegion, filterGu, sortKey, moveInFilter, builderTier,
@@ -250,7 +251,7 @@ export default function App() {
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + VISIBLE_PAGE_SIZE); trackEvent("load_more", { visible_count: visibleCount + VISIBLE_PAGE_SIZE }); }}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}
-            pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending}
+            pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending || isFilterPending}
             budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
 
