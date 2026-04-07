@@ -147,4 +147,13 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
       </div>
     </div>
   );
+}, (prev, next) => {
+  if (prev.apt.id !== next.apt.id || prev.rank !== next.rank) return false;
+  if (prev.res.total !== next.res.total) return false;
+  if (prev.isComp !== next.isComp || prev.isFav !== next.isFav) return false;
+  if (prev.isDesktop !== next.isDesktop) return false;
+  if (!!prev.onExpertView !== !!next.onExpertView) return false;
+  const pk = prev.profileWeights, nk = next.profileWeights;
+  if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
+  return true;
 });
