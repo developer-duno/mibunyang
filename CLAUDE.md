@@ -5,16 +5,20 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-07 세션70 — 스코어링 클램핑 0~100 일관성 + transport-tago HTTPS
+**마지막 작업**: 2026-04-07 세션71 — 전세자금대출 API + 금융권역 탭 + 갭투자 월이자
 
-- 코드: scorePrice/scoreProduct/scoreFuture/calcAll total에 Math.max(0,...) 하한 추가 (6곳)
-- 코드: scoreLocation transport 서브스코어에도 하한 클램핑 추가
-- 코드: transport-tago.mjs HTTP → HTTPS 전환 (다른 수집기와 일관성)
-- 테스트: 클램핑 음수 방어 6케이스 추가 (engine.test.js)
+- 코드: finlife 전세자금대출 API 엔드포인트 추가 (api/finlife/rent-loans.js)
+- 코드: useLoanRates 금융권역(topFinGrpNo) 파라미터화 + 권역별 Map 캐싱
+- 코드: useRentLoanRates 전세대출 금리 훅 신규 (useLoanRates 패턴)
+- 코드: LoanRatesSection 분리 + 금융권역 탭 UI (은행/저축은행/보험/기타)
+- 코드: LoanAnalysis 갭투자 테이블에 전세대출 월이자 열 추가
+- 상수: loanGroups.js 금융권역 코드-라벨 매핑
+- 인프라: Vercel FINLIFE_API_KEY Production 환경변수 등록 완료
+- 테스트: API 7케이스 + 훅 11케이스 + UI 20케이스
 
 **다음에 해야 할 것** (우선순위):
 
-1. finlife API Key — 사이트 정상화 후 재시도 → Vercel `FINLIFE_API_KEY` 등록
+1. (선택) 추가 개선 작업 TBD
 
 **주의사항**:
 
@@ -48,7 +52,10 @@
 - `@/theme/index.js` — 디자인 토큰 (C 팔레트 + shadowSm/shadowMd + catCol + gr 등급함수)
 - `@/components/filters/` — 필터 드롭다운 패널 7개 (FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel) + filterStyles.js 공유 스타일 + 7개 테스트(61케이스)
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
-- `@/hooks/useLoanRates.js` — finlife 금리 데이터 페칭 훅 (useRef 세션 캐싱, AbortController)
+- `@/hooks/useLoanRates.js` — finlife 주택담보대출 금리 훅 (topFinGrpNo 파라미터, Map 권역별 캐싱)
+- `@/hooks/useRentLoanRates.js` — finlife 전세자금대출 금리 훅 (useRef 세션 캐싱)
+- `@/constants/loanGroups.js` — 금융권역 코드-라벨 매핑 (LOAN_GROUPS, DEFAULT_GROUP)
+- `@/components/detail/LoanRatesSection.jsx` — 금리비교 + 금융권역 탭 (은행/저축은행/보험/기타)
 - Playwright E2E — 7스펙 (smoke/list/modal/compare/expert/skeleton-empty/admin), `npm run test:e2e`
 - Supabase (PostgreSQL) — 데이터베이스 (15개 테이블 + 2 VIEW + presale 19컬럼)
 - Vercel Serverless Functions (`api/`) — API 레이어
@@ -57,6 +64,7 @@
 - `api/_lib/tokenBlacklist.js` — JWT 토큰 블랙리스트 (SHA-256 해시, KV `bl:{hash}`, TTL=잔여만료, fail-open)
 - `api/auth/logout.js` — 로그아웃 엔드포인트 (POST, 토큰 블랙리스트 등록, 멱등성)
 - `api/finlife/loans.js` — 금융감독원 finlife 주택담보대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
+- `api/finlife/rent-loans.js` — 금융감독원 finlife 전세자금대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
 - Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
 - Vercel KV (Upstash Redis) — 인증 세션
 - GitHub Actions — 데이터 수집 (35개 워크플로우, monitor-db-size 포함)
