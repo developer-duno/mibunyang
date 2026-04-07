@@ -247,7 +247,7 @@ export default function App() {
               cursor: "pointer", marginBottom: 10, transition: "all .2s"
             }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
           )}
-          {showComp && <Suspense fallback={null}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} /></Suspense>}
+          {showComp && <Suspense fallback={<div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, animation: "skeleton-pulse 1.5s ease-in-out infinite" }}><div style={{ height: 16, width: "40%", background: C.slate100, borderRadius: 4, marginBottom: 16 }} /><div style={{ height: 120, background: C.slate100, borderRadius: 4 }} /></div>}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} /></Suspense>}
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + VISIBLE_PAGE_SIZE); trackEvent("load_more", { visible_count: visibleCount + VISIBLE_PAGE_SIZE }); }}
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}
@@ -327,7 +327,7 @@ export default function App() {
       {detail.detailAptId && (() => {
         const item = scored.find(x => x.apt.id === detail.detailAptId);
         if (!item) return null;
-        return <Suspense fallback={null}><DetailModal item={item} onClose={detail.handleCloseDetail}
+        return <Suspense fallback={<div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}><div style={{ background: C.card, borderRadius: 16, padding: 32, width: isDesktop ? 760 : "90%", maxHeight: "80vh", animation: "skeleton-pulse 1.5s ease-in-out infinite" }}><div style={{ height: 20, width: "50%", background: C.slate100, borderRadius: 4, marginBottom: 16 }} /><div style={{ height: 14, width: "70%", background: C.slate100, borderRadius: 4, marginBottom: 12 }} /><div style={{ height: 200, background: C.slate100, borderRadius: 8 }} /></div></div>}><DetailModal item={item} onClose={detail.handleCloseDetail}
           isComp={compIds.includes(detail.detailAptId)} onComp={toggleComp}
           isFav={favoriteSet.has(detail.detailAptId)} onFav={toggleFavorite}
           onShare={handleShareDetail} isPC={isPC} isDesktop={isDesktop}
