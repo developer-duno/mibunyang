@@ -5,20 +5,24 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-07 세션71 — 전세자금대출 API + 금융권역 탭 + 갭투자 월이자
+**마지막 작업**: 2026-04-07 세션71 — 전세자금대출 API + 금융권역 탭 + 갭투자 월이자 + 중복 제거 + 보안 강화
 
 - 코드: finlife 전세자금대출 API 엔드포인트 추가 (api/finlife/rent-loans.js)
 - 코드: useLoanRates 금융권역(topFinGrpNo) 파라미터화 + 권역별 Map 캐싱
-- 코드: useRentLoanRates 전세대출 금리 훅 신규 (useLoanRates 패턴)
+- 코드: useRentLoanRates 전세대출 금리 훅 신규
 - 코드: LoanRatesSection 분리 + 금융권역 탭 UI (은행/저축은행/보험/기타)
 - 코드: LoanAnalysis 갭투자 테이블에 전세대출 월이자 열 추가
-- 상수: loanGroups.js 금융권역 코드-라벨 매핑
+- 리팩터: api/_lib/finlife.js 공통 모듈 추출 (95% 중복 제거)
+- 리팩터: useFinlifeRates.js 공통 팩토리 훅 (92% 중복 제거)
+- 보안: 외부 API 프록시 7개에 rate limit 적용 (proxy:30/5min)
 - 인프라: Vercel FINLIFE_API_KEY Production 환경변수 등록 완료
-- 테스트: API 7케이스 + 훅 11케이스 + UI 20케이스
+- 테스트: usePriceHistory/useUnsoldHistory 래퍼 훅 + supabase prices/unsold-history API 테스트 추가
 
 **다음에 해야 할 것** (우선순위):
 
-1. (선택) 추가 개선 작업 TBD
+1. (🟢) App.jsx 520줄 분리 — AppLayout + useAppState 추출
+2. (🟢) engine.js 496줄 모듈화 — 스코어링 함수별 파일 분리
+3. (🟢) React 18→19 / Vite 6→8 메이저 업데이트 검토
 
 **주의사항**:
 
@@ -52,15 +56,17 @@
 - `@/theme/index.js` — 디자인 토큰 (C 팔레트 + shadowSm/shadowMd + catCol + gr 등급함수)
 - `@/components/filters/` — 필터 드롭다운 패널 7개 (FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel) + filterStyles.js 공유 스타일 + 7개 테스트(61케이스)
 - `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
-- `@/hooks/useLoanRates.js` — finlife 주택담보대출 금리 훅 (topFinGrpNo 파라미터, Map 권역별 캐싱)
-- `@/hooks/useRentLoanRates.js` — finlife 전세자금대출 금리 훅 (useRef 세션 캐싱)
+- `@/hooks/useFinlifeRates.js` — finlife 금리 페칭 공통 팩토리 훅 (useLoanRates/useRentLoanRates 공유)
+- `@/hooks/useLoanRates.js` — finlife 주택담보대출 금리 훅 (useFinlifeRates 래퍼, Map 권역별 캐싱)
+- `@/hooks/useRentLoanRates.js` — finlife 전세자금대출 금리 훅 (useFinlifeRates 래퍼, 단일 캐싱)
 - `@/constants/loanGroups.js` — 금융권역 코드-라벨 매핑 (LOAN_GROUPS, DEFAULT_GROUP)
 - `@/components/detail/LoanRatesSection.jsx` — 금리비교 + 금융권역 탭 (은행/저축은행/보험/기타)
 - Playwright E2E — 7스펙 (smoke/list/modal/compare/expert/skeleton-empty/admin), `npm run test:e2e`
 - Supabase (PostgreSQL) — 데이터베이스 (15개 테이블 + 2 VIEW + presale 19컬럼)
 - Vercel Serverless Functions (`api/`) — API 레이어
 - `api/_lib/handler.js` — withHandler HOF (CORS/Method/RateLimit/Admin 통합, 14개 API 엔드포인트에서 사용)
-- `api/_lib/rateLimit.js` — IP 기반 Rate Limit (Vercel KV, LIMITS: login:5/signup:5/verify:20/consult:10/admin:30/logout:10, WINDOW 5분, fail-close)
+- `api/_lib/rateLimit.js` — IP 기반 Rate Limit (Vercel KV, LIMITS: login:5/signup:5/verify:20/consult:10/admin:30/logout:10/proxy:30, WINDOW 5분, fail-close)
+- `api/_lib/finlife.js` — finlife API 공통 모듈 (VALID_GROUPS, fetchFinlifeProducts — loans.js/rent-loans.js 공유)
 - `api/_lib/tokenBlacklist.js` — JWT 토큰 블랙리스트 (SHA-256 해시, KV `bl:{hash}`, TTL=잔여만료, fail-open)
 - `api/auth/logout.js` — 로그아웃 엔드포인트 (POST, 토큰 블랙리스트 등록, 멱등성)
 - `api/finlife/loans.js` — 금융감독원 finlife 주택담보대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
