@@ -9,6 +9,8 @@ export const AptListSection = memo(function AptListSection({
   onDetail, onFav, onComp, favoriteIds, favoriteSet, compIds,
   pw, profile, isPC, isDesktop, isPending,
   budgetMin, budgetMax, filterRegion,
+  moveInFilter, builderTier, minScore,
+  onResetBudget, onResetRegion,
   dataLoading, dataFreshnessText,
   onExpertView, onResetAll,
 }) {
@@ -43,14 +45,25 @@ export const AptListSection = memo(function AptListSection({
         <div style={{ textAlign: "center", padding: "48px 24px", color: C.muted }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>{(budgetMin || budgetMax) ? "\uD83D\uDCB0" : "\uD83D\uDDFA\uFE0F"}</div>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: C.text }}>{(budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 조건에 맞는 미분양 단지가 없습니다"}</div>
-          <div style={{ fontSize: 12, lineHeight: 1.6 }}>{(budgetMin || budgetMax) ? "예산을 조정하거나 초기화해주세요" : "필터를 조정하거나 '전체'로 변경해주세요"}</div>
-          {onResetAll && (
-            <button onClick={onResetAll} style={{
-              marginTop: 12, padding: "8px 20px", fontSize: 13, fontWeight: 600,
-              background: C.indigo, color: "#fff", border: "none", borderRadius: 6,
-              cursor: "pointer",
-            }}>필터 초기화</button>
-          )}
+          <div style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 8 }}>적용된 필터를 확인해주세요</div>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 6, marginBottom: 12 }}>
+            {filterRegion !== "전체" && <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 12, background: C.indigoLight, color: C.indigo, fontWeight: 600 }}>{filterRegion}</span>}
+            {(budgetMin || budgetMax) && <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 12, background: C.amberLight, color: C.amber, fontWeight: 600 }}>{budgetMin || "0"}~{budgetMax || "\u221E"}\uc5B5</span>}
+            {moveInFilter !== "전체" && <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 12, background: C.greenLight, color: C.green, fontWeight: 600 }}>{moveInFilter}</span>}
+            {builderTier !== "전체" && <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 12, background: C.blueLight, color: C.blue, fontWeight: 600 }}>{builderTier}</span>}
+            {minScore && <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 12, background: C.slate100, color: C.text, fontWeight: 600 }}>{minScore}점 이상</span>}
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+            {(budgetMin || budgetMax) && onResetBudget && (
+              <button onClick={onResetBudget} style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, background: C.amberLight, color: C.amber, border: "none", borderRadius: 6, cursor: "pointer" }}>예산 해제</button>
+            )}
+            {filterRegion !== "전체" && onResetRegion && (
+              <button onClick={onResetRegion} style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, background: C.indigoLight, color: C.indigo, border: "none", borderRadius: 6, cursor: "pointer" }}>지역 전체로</button>
+            )}
+            {onResetAll && (
+              <button onClick={onResetAll} style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, background: C.indigo, color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>전체 초기화</button>
+            )}
+          </div>
         </div>
       )}
     

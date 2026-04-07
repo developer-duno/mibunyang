@@ -253,8 +253,9 @@ export default function App() {
             onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}
             pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending || isFilterPending || isSortPending}
             budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
+            moveInFilter={moveInFilter} builderTier={builderTier} minScore={minScore}
+            onResetBudget={handleBudgetReset} onResetRegion={() => handleRegionChange("전체")}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
-
             onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}
             onResetAll={handleResetAll}
           />
