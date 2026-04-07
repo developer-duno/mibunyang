@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useRef, useCallback } from "react";
+import { useFinlifeRates } from "./useFinlifeRates";
+
+/** Map 캐시에서 권역별 조회 */
+const getMapCached = (ref, grp) => ref.current.get(grp) || null;
+/** Map 캐시에 권역별 저장 */
+const setMapCached = (ref, grp, data) => ref.current.set(grp, data);
 
 /**
  * 금융감독원 finlife 주택담보대출 금리 데이터 페칭 훅
@@ -7,41 +13,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
  * @returns {{ rates: Array, loading: boolean, error: string|null }}
  */
 export function useLoanRates(topFinGrpNo = "020000") {
-  const [rates, setRates] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const cacheRef = useRef(new Map());
-
-  const load = useCallback(async (signal) => {
-    // 권역별 캐시 히트 시 재사용
-    if (cacheRef.current.has(topFinGrpNo)) {
-      setRates(cacheRef.current.get(topFinGrpNo));
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/finlife/loans?topFinGrpNo=${topFinGrpNo}`, { signal });
-      if (signal?.aborted) return;
-      if (!res.ok) throw new Error(`API 오류 (${res.status})`);
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "금리 데이터 조회 실패");
-      const data = json.data ?? [];
-      cacheRef.current.set(topFinGrpNo, data);
-      setRates(data);
-    } catch (err) {
-      if (err.name === "AbortError") return;
-      setError(err.message);
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [topFinGrpNo]);
-
-  useEffect(() => {
-    const ac = new AbortController();
-    load(ac.signal);
-    return () => ac.abort();
-  }, [load]);
-
-  return { rates, loading, error };
+  const getCached = useCallback((ref) => getMapCached(ref, topFinGrpNo), [topFinGrpNo]);
+  const setCached = useCallback((ref, data) => setMapCached(ref, topFinGrpNo, data), [topFinGrpNo]);
+  return useFinlifeRates("/api/finlife/loans", topFinGrpNo, cacheRef, getCached, setCached);
 }
