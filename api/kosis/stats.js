@@ -81,7 +81,7 @@ function parseUnsoldData(rows) {
 
 import { withHandler } from "../_lib/handler.js";
 
-export default withHandler({ method: "GET", handler: async (req, res) => {
+export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (req, res) => {
   const apiKey = process.env.KOSIS_KEY;
   if (!apiKey) {
     res.status(500).json({ ok: false, error: "KOSIS_KEY not configured" });

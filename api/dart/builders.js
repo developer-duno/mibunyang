@@ -72,7 +72,7 @@ async function fetchFinancials(dartKey, corpCode) {
 
 import { withHandler } from "../_lib/handler.js";
 
-export default withHandler({ method: "POST", handler: async (req, res) => {
+export default withHandler({ method: "POST", rateLimit: "proxy", handler: async (req, res) => {
   const dartKey = process.env.DART_KEY;
   if (!dartKey) {
     res.status(500).json({ ok: false, error: "DART_KEY not configured" });

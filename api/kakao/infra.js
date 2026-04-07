@@ -64,7 +64,7 @@ async function fetchAllForApartment(apiKey, apt) {
 
 import { withHandler } from "../_lib/handler.js";
 
-export default withHandler({ method: "POST", handler: async (req, res) => {
+export default withHandler({ method: "POST", rateLimit: "proxy", handler: async (req, res) => {
   const apiKey = process.env.KAKAO_KEY;
   if (!apiKey) {
     res.status(500).json({ ok: false, error: "KAKAO_KEY not configured" });

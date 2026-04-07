@@ -13,7 +13,7 @@ const mapMortgageProduct = (base, o) => ({
   rateAvg: o.lend_rate_avg ?? null,
 });
 
-export default withHandler({ method: "GET", handler: async (req, res) => {
+export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (req, res) => {
   const apiKey = process.env.FINLIFE_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ ok: false, error: "FINLIFE_API_KEY not configured" });

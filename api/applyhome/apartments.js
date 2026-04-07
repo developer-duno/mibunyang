@@ -180,7 +180,7 @@ function mapItem(item, idx, isRemndr) {
   };
 }
 
-export default withHandler({ method: "GET", handler: async (req, res) => {
+export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (req, res) => {
   const apiKey = process.env.APPLYHOME_KEY;
   const kakaoKey = process.env.KAKAO_KEY;
 

@@ -10,6 +10,11 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// rateLimit 모킹
+vi.mock('../_lib/rateLimit.js', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
+}));
+
 // brands.js 모킹
 vi.mock('../../src/constants/brands.js', () => ({
   resolveBuilder: vi.fn((name) => name || '기타'),

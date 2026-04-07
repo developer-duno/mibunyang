@@ -1,6 +1,6 @@
 import { kv } from "@vercel/kv";
 
-const LIMITS = { login: 5, signup: 5, verify: 20, consult: 10, admin: 30, logout: 10 };
+const LIMITS = { login: 5, signup: 5, verify: 20, consult: 10, admin: 30, logout: 10, proxy: 30 };
 const DEFAULT_MAX = 5;
 const WINDOW_SEC = 300; // 5분
 

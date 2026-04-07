@@ -4,6 +4,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// rateLimit 모킹
+vi.mock('../_lib/rateLimit.js', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.FINLIFE_API_KEY;

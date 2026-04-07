@@ -9,6 +9,11 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// rateLimit 모킹
+vi.mock('../_lib/rateLimit.js', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
+}));
+
 // fetch 모킹
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);

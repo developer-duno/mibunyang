@@ -96,7 +96,7 @@ function gradeFromScore(score) {
 
 import { withHandler } from "../_lib/handler.js";
 
-export default withHandler({ method: "POST", handler: async (req, res) => {
+export default withHandler({ method: "POST", rateLimit: "proxy", handler: async (req, res) => {
   const neisKey = process.env.NEIS_KEY;
   const kakaoKey = process.env.KAKAO_KEY;
   if (!neisKey) {
