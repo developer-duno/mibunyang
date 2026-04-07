@@ -93,4 +93,55 @@ describe('useLoanRates', () => {
       );
     });
   });
+
+  // 기본값 020000 확인
+  it('기본값으로 topFinGrpNo=020000을 사용한다', async () => {
+    mockFetchSuccess([]);
+
+    renderHook(() => useLoanRates());
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('topFinGrpNo=020000'),
+        expect.any(Object),
+      );
+    });
+  });
+
+  // 금융권역 파라미터 전달 확인
+  it('topFinGrpNo 파라미터가 fetch URL에 반영된다', async () => {
+    mockFetchSuccess([]);
+
+    renderHook(() => useLoanRates('030300'));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('topFinGrpNo=030300'),
+        expect.any(Object),
+      );
+    });
+  });
+
+  // 다른 금융권역 전환 시 재fetch
+  it('다른 금융권역으로 전환 시 새로 fetch한다', async () => {
+    mockFetchSuccess([{ bank: '은행A' }]);
+    mockFetchSuccess([{ bank: '저축은행B' }]);
+
+    const { result, rerender } = renderHook(
+      ({ grp }) => useLoanRates(grp),
+      { initialProps: { grp: '020000' } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.rates).toEqual([{ bank: '은행A' }]);
+
+    rerender({ grp: '030300' });
+
+    await waitFor(() => {
+      expect(result.current.rates).toEqual([{ bank: '저축은행B' }]);
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });

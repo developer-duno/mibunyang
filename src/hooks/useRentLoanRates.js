@@ -1,33 +1,31 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
 /**
- * 금융감독원 finlife 주택담보대출 금리 데이터 페칭 훅
- * 금융권역(topFinGrpNo)별 캐싱 지원
- * @param {string} topFinGrpNo - 금융권역 코드 (기본 "020000" 은행)
+ * 금융감독원 finlife 전세자금대출 금리 데이터 페칭 훅
+ * 세션 내 1회만 fetch (useRef 캐싱)
  * @returns {{ rates: Array, loading: boolean, error: string|null }}
  */
-export function useLoanRates(topFinGrpNo = "020000") {
+export function useRentLoanRates() {
   const [rates, setRates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const cacheRef = useRef(new Map());
+  const cacheRef = useRef(null);
 
   const load = useCallback(async (signal) => {
-    // 권역별 캐시 히트 시 재사용
-    if (cacheRef.current.has(topFinGrpNo)) {
-      setRates(cacheRef.current.get(topFinGrpNo));
+    if (cacheRef.current) {
+      setRates(cacheRef.current);
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/finlife/loans?topFinGrpNo=${topFinGrpNo}`, { signal });
+      const res = await fetch("/api/finlife/rent-loans?topFinGrpNo=020000", { signal });
       if (signal?.aborted) return;
       if (!res.ok) throw new Error(`API 오류 (${res.status})`);
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "금리 데이터 조회 실패");
+      if (!json.ok) throw new Error(json.error || "전세대출 금리 조회 실패");
       const data = json.data ?? [];
-      cacheRef.current.set(topFinGrpNo, data);
+      cacheRef.current = data;
       setRates(data);
     } catch (err) {
       if (err.name === "AbortError") return;
@@ -35,7 +33,7 @@ export function useLoanRates(topFinGrpNo = "020000") {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [topFinGrpNo]);
+  }, []);
 
   useEffect(() => {
     const ac = new AbortController();
