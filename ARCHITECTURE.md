@@ -39,7 +39,6 @@ src/
 │   ├── classify.js         입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 │   ├── filterEngine.js     공통 base 필터 (applyBaseFilters, MANWON_PER_EUK)
 │   ├── exportPdf.js        비교 결과 PNG/PDF 내보내기 (dynamic import)
-│   ├── chosung.js          초성 검색 (matchSearch)
 │   ├── dedup.js            아파트 중복 제거 + siblingIds 생성 (dedupApartments)
 │   └── format.js           가격/날짜 포맷 (fmtPrice, fmtCompletion, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate)
 ├── services/

@@ -40,7 +40,6 @@
 - `@/components/icons.jsx` — 인라인 SVG 아이콘 9개 (IconClose, IconSearch, IconHelp, IconLocation, IconHeart, IconHeartFilled, IconCompare, IconShare, IconChevronDown, memo 래핑)
 - `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 - `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters, 검색 제거됨)
-- `@/lib/chosung.js` — 초성 검색 유틸 (matchSearch, getChosung — 현재 미사용, 향후 복원용 보존)
 - `@/lib/dedup.js` — 아파트 중복 제거 + siblingIds 생성 (dedupApartments)
 - `@/lib/analytics.js` — Vercel Analytics trackEvent 래퍼 (벤더 격리, try-catch)
 - `@/lib/format.js` — 가격/날짜 포맷 (fmtPrice, fmtCompletion, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate)

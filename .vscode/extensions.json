@@ -1,0 +1,34 @@
+{
+  "recommendations": [
+    // 필수: 코드 품질
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+
+    // React 개발
+    "dsznajder.es7-react-js-snippets",
+    "burkeholland.simple-react-snippets",
+
+    // 생산성
+    "christian-kohler.path-intellisense",
+    "christian-kohler.npm-intellisense",
+    "formulahendry.auto-rename-tag",
+    "formulahendry.auto-close-tag",
+    "naumovs.color-highlight",
+    "streetsidesoftware.code-spell-checker",
+
+    // Git
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+
+    // Supabase / DB
+    "mtxr.sqltools",
+
+    // 테스트
+    "vitest.explorer",
+
+    // 기타 유틸
+    "usernamehw.errorlens",
+    "gruntfuggly.todo-tree",
+    "alefragnani.bookmarks"
+  ]
+}
