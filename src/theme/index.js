@@ -8,6 +8,7 @@ export const C = {
   purple: "#7C3AED", purpleLight: "#F5F0FF", purpleBorder: "#DDD6FE",
   cyan: "#0891B2", cyanLight: "#ECFEFF", cyanBorder: "#A5F3FC",
   indigo: "#4338CA", indigoLight: "#EEF2FF",
+  borderStrong: "#D1D5DB",
   slate100: "#F1F5F9", slate600: "#475569",
   shadowSm: "0 1px 3px rgba(0,0,0,0.06)",
   shadowMd: "0 2px 8px rgba(0,0,0,0.08)",
