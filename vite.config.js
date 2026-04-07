@@ -6,10 +6,12 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          vendor: ["react", "react-dom"],
+        manualChunks(id) {
+          if (/[\\/]node_modules[\\/](react|react-dom)[\\/]/.test(id)) {
+            return 'vendor';
+          }
         },
       },
     },

@@ -1,19 +1,20 @@
 # 미분양 아파트 비교 엔진 v3.0
 
-> React 18 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 41+ 지표 AHP 스코어링.
+> React 19 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 41+ 지표 AHP 스코어링.
 > 상세 아키텍처는 ARCHITECTURE.md 참조.
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-07 세션73 — engine.js 496줄 모듈화 (스코어링 함수별 파일 분리)
+**마지막 작업**: 2026-04-07 세션74 — React 18→19 / Vite 6→8 메이저 업데이트
 
-- 리팩터: engine.js 496줄 → 97줄 (80% 감소, 오케스트레이터 + re-export)
-- 분리: scorePrice.js (75줄), scoreLocation.js (70줄), scoreProduct.js (50줄), scoreBenefit.js (30줄), scoreRisk.js (75줄), scoreFuture.js (55줄), computeRegionalMedians.js (20줄)
-- import 경로 변경 0곳 (engine.js re-export 패턴)
+- 업그레이드: React 18.3.1→19.2.4, Vite 6.4.1→8.0.5, @vitejs/plugin-react 4.7.0→6.0.1
+- vite.config.js: rollupOptions→rolldownOptions + manualChunks 함수화 (Rolldown 번들러 전환)
+- vendor 청크: 141KB→190KB (React 19 크기 증가), 메인 번들: 164KB→160KB
+- 코드 변경 0줄 (순수 인프라 업그레이드)
 
 **다음에 해야 할 것** (우선순위):
 
-1. (🟢) React 18→19 / Vite 6→8 메이저 업데이트 검토
+1. (백로그 비어 있음 — 새 작업 대기)
 
 **주의사항**:
 
@@ -29,13 +30,13 @@
 - NEIS API: NEIS_KEY 환경변수 필요 (open.neis.go.kr), 미등록 시 NEIS 보강 스킵 (거리 기반만)
 - 학교알리미 API: SCHOOLINFO_KEY 환경변수 필요 (schoolinfo.go.kr), 미등록 시 학생수 보강 스킵
 - 에어코리아 API: AIRKOREA_KEY 환경변수 필요 (data.go.kr), 미등록 시 대기질 수집 스킵 (별도 쿼터, MOLIT_KEY와 분리)
-- vite vendor 청크: react+react-dom 분리됨 (141KB), 메인 번들 164KB
+- vite vendor 청크: react+react-dom 분리됨 (190KB), 메인 번들 160KB
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
 - AptListSection: IntersectionObserver 자동 무한 스크롤 + "더 보기" 버튼 폴백
 
 ## 기술 스택
 
-- React 18 + Vite + `@/` 경로 별칭 — 프론트엔드 (Pretendard Variable 폰트 CDN)
+- React 19 + Vite 8 (Rolldown) + `@/` 경로 별칭 — 프론트엔드 (Pretendard Variable 폰트 CDN)
 - `@/components/icons.jsx` — 인라인 SVG 아이콘 9개 (IconClose, IconSearch, IconHelp, IconLocation, IconHeart, IconHeartFilled, IconCompare, IconShare, IconChevronDown, memo 래핑)
 - `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
 - `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters, 검색 제거됨)
