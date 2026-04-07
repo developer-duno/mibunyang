@@ -29,7 +29,7 @@
 - NEIS API: NEIS_KEY 환경변수 필요 (open.neis.go.kr), 미등록 시 NEIS 보강 스킵 (거리 기반만)
 - 학교알리미 API: SCHOOLINFO_KEY 환경변수 필요 (schoolinfo.go.kr), 미등록 시 학생수 보강 스킵
 - 에어코리아 API: AIRKOREA_KEY 환경변수 필요 (data.go.kr), 미등록 시 대기질 수집 스킵 (별도 쿼터, MOLIT_KEY와 분리)
-- vite vendor 청크: react+react-dom 분리됨 (141KB), 메인 번들 159KB
+- vite vendor 청크: react+react-dom 분리됨 (141KB), 메인 번들 164KB
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
 - AptListSection: IntersectionObserver 자동 무한 스크롤 + "더 보기" 버튼 폴백
 
