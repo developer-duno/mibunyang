@@ -5,12 +5,13 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-07 세션74 — React 18→19 / Vite 6→8 메이저 업데이트
+**마지막 작업**: 2026-04-08 세션75 — React 19 활용 + UX 개선 + 데이터 확장 + E2E 강화 + 기술 부채
 
-- 업그레이드: React 18.3.1→19.2.4, Vite 6.4.1→8.0.5, @vitejs/plugin-react 4.7.0→6.0.1
-- vite.config.js: rollupOptions→rolldownOptions + manualChunks 함수화 (Rolldown 번들러 전환)
-- vendor 청크: 141KB→190KB (React 19 크기 증가), 메인 번들: 164KB→160KB
-- 코드 변경 0줄 (순수 인프라 업그레이드)
+- React 19: useDeferredValue(필터), useTransition(정렬), AptCard memo 커스텀 비교
+- UX: Suspense fallback 스켈레톤, 빈 상태 필터 요약/완화 제안, 데스크톱 키보드 단축키(1~5/Ctrl+Z)
+- 데이터: 대기질 PM2.5/PM10 표시, 치안 4-5등급 경고 배지
+- E2E: 즐겨찾기/공유/금리비교/모바일 4개 추가 (7→11 spec)
+- 기술 부채: chosung.js 제거, AdminDashboard→WeightEditor 분리 (451→223줄)
 
 **다음에 해야 할 것** (우선순위):
 

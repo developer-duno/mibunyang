@@ -9,7 +9,7 @@
 상세 7개 (DetailModal에서 분리): PriceTable, **PriceChart**, **UnsoldChart**, SchoolInfo, **PresaleInfo**, LoanAnalysis, DataSections
 필터 8개 (SearchFilterBar에서 분리): FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel + filterStyles.js
 전문가 9개: ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide
-관리자 2개: AdminDashboard, AdminHelpGuide
+관리자 3개: AdminDashboard, AdminHelpGuide, WeightEditor
 
 - 반드시 `memo(function Name(...) { ... })` 패턴 유지
 - memo 효과를 위해 `onToggle` 등 콜백은 `useCallback`으로 안정화 필수
