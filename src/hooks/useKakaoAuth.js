@@ -7,7 +7,8 @@ import { useState, useCallback, useRef } from "react";
  * - SDK 미사용 (window.location.href 리다이렉트 — useShare의 Kakao.init 충돌 없음)
  */
 
-const KAKAO_JS_KEY = import.meta.env.VITE_KAKAO_JS_KEY || "";
+// OAuth authorize URL의 client_id는 REST API 키를 사용 (JS키 아님)
+const KAKAO_REST_KEY = import.meta.env.VITE_KAKAO_REST_API_KEY || "";
 
 function generateState() {
   const arr = new Uint8Array(16);
@@ -23,7 +24,7 @@ export function useKakaoAuth(showToast) {
 
   /** 카카오 인가 URL로 이동 (pendingDetailId: 로그인 후 복귀할 상세 ID) */
   const initKakaoLogin = useCallback((pendingDetailId) => {
-    if (!KAKAO_JS_KEY) {
+    if (!KAKAO_REST_KEY) {
       showToastRef.current("카카오 로그인을 사용할 수 없습니다");
       return;
     }
@@ -36,7 +37,7 @@ export function useKakaoAuth(showToast) {
     } catch { /* sessionStorage 접근 실패 시 무시 */ }
 
     const params = new URLSearchParams({
-      client_id: KAKAO_JS_KEY,
+      client_id: KAKAO_REST_KEY,
       redirect_uri: `${window.location.origin}/oauth/kakao/callback`,
       response_type: "code",
       scope: "openid,account_email",
