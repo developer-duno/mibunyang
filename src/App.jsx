@@ -136,12 +136,12 @@ export default function App() {
     if (isLoggedIn) { detail.handleOpenDetail(aptId); return; }
     setPendingDetailId(aptId);
     setShowLoginPrompt(true);
-  }, [isLoggedIn, detail.handleOpenDetail]);
+  }, [isLoggedIn, detail]);
 
   const handleKakaoFromPrompt = useCallback(() => {
     setShowLoginPrompt(false);
     kakao.initKakaoLogin(pendingDetailId);
-  }, [kakao.initKakaoLogin, pendingDetailId]);
+  }, [kakao, pendingDetailId]);
 
   const handleExpertFromPrompt = useCallback(() => {
     setShowLoginPrompt(false);
