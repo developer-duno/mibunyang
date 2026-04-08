@@ -5,20 +5,25 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-08 세션76 — 헤더 화이트 테마 + 데이터 수집 일괄 실행 + CI 수정
+**마지막 작업**: 2026-04-08 세션77 — 카카오 로그인 + 비로그인 블라인드 시스템
 
-- UI: 모바일/PC 헤더 화이트 테마 전환 (파란 그라디언트→흰색 배경 + borderStrong 테두리)
-- 테마: C.borderStrong("#D1D5DB") 추가, PC/모바일 헤더 테두리 1.5px 강화
-- CI fix: App.jsx React Compiler lint error 해결 (detail 의존성 수정)
-- 데이터: 미등록 필드 38개 일괄 수집 (10개 수집기 실행, dataReliability 77.2%)
-  - molit-building-info 695건, naver-presale 658건(신규164), transport-tago 481건
-  - sync-naver-complex 992건 시세 동기화, dart-builders 11개 시공사, transit-match 546건
+- 카카오 OAuth: api/auth/kakao.js (code 교환 + KV 3분기 + JWT 발급, rateLimit kakao:10)
+- 프론트 훅: useKakaoAuth.js (state CSRF 방어 + 콜백 처리 + pendingDetail 복원)
+- 비로그인 블라인드: AptCard 점수 블러("??") + LoginPromptModal + handleDetailGated
+- ExpertLoginForm: 카카오 로그인 버튼 추가 (구분선 + SVG 로고)
+- App.jsx: kakaoCallback 탭 + isLoggedIn 파생 + 로그인 게이트
+- useAppNavigation: map/compare 탭 로그인 체크 (isLoggedIn + onLoginRequired)
+- useExpertMode: setExpertLoggedIn/setAuthUser export 추가
+- vercel.json: CSP kauth.kakao.com 추가
+- Vercel 환경변수: KAKAO_REST_API_KEY, KAKAO_REDIRECT_URI 설정 완료
 
 **다음에 해야 할 것** (우선순위):
 
-1. naver-listings 재실행 (rate limit 해제 후) → sync-naver-complex 재실행 → 대표향/수영장/건폐율 채우기
-2. building-hub 재실행 (data.go.kr API 정상화 후) → heat_fuel 추가 수집
-3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
+1. 카카오 로그인 동의항목 설정 완료 확인 (닉네임 필수, 이메일 필수, 프로필사진 선택)
+2. 카카오 콘솔 Redirect URI 등록 확인 (3개 도메인)
+3. naver-listings 재실행 (rate limit 해제 후) → sync-naver-complex 재실행 → 대표향/수영장/건폐율 채우기
+4. building-hub 재실행 (data.go.kr API 정상화 후) → heat_fuel 추가 수집
+5. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
 
 **주의사항**:
 
@@ -34,7 +39,13 @@
 - NEIS API: NEIS_KEY 환경변수 필요 (open.neis.go.kr), 미등록 시 NEIS 보강 스킵 (거리 기반만)
 - 학교알리미 API: SCHOOLINFO_KEY 환경변수 필요 (schoolinfo.go.kr), 미등록 시 학생수 보강 스킵
 - 에어코리아 API: AIRKOREA_KEY 환경변수 필요 (data.go.kr), 미등록 시 대기질 수집 스킵 (별도 쿼터, MOLIT_KEY와 분리)
-- vite vendor 청크: react+react-dom 분리됨 (190KB), 메인 번들 164KB
+- 카카오 OAuth: KAKAO_REST_API_KEY(서버 전용) + VITE_KAKAO_JS_KEY(프론트 안전) 분리, KAKAO_REDIRECT_URI 환경변수
+- 카카오 KV 구조: user:{email} (기존+kakaoId 필드), kakao:{kakaoId}→email 역참조 (TTL 90일)
+- 카카오 신규 사용자: role:"user", status:"approved" (승인 불필요), passwordHash/salt 없음
+- 비로그인 블라인드: isLoggedIn=false → AptCard 점수 블러("??") + 상세/비교/지도 LoginPromptModal
+- useKakaoAuth: SDK 미사용 (window.location.href 리다이렉트), useShare의 Kakao.init()과 충돌 없음
+- App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환, `detail.setDetailAptId` 금지)
+- vite vendor 청크: react+react-dom 분리됨 (190KB), 메인 번들 171KB
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
 - AptListSection: IntersectionObserver 자동 무한 스크롤 + "더 보기" 버튼 폴백
 - useDeferredValue: 필터 5개 원시값 래핑 (filterRegion/filterGu/sortKey/moveInFilter/builderTier)
@@ -73,6 +84,9 @@
 - `api/_lib/finlife.js` — finlife API 공통 모듈 (VALID_GROUPS, fetchFinlifeProducts — loans.js/rent-loans.js 공유)
 - `api/_lib/tokenBlacklist.js` — JWT 토큰 블랙리스트 (SHA-256 해시, KV `bl:{hash}`, TTL=잔여만료, fail-open)
 - `api/auth/logout.js` — 로그아웃 엔드포인트 (POST, 토큰 블랙리스트 등록, 멱등성)
+- `api/auth/kakao.js` — 카카오 OAuth 콜백 (POST, code 교환 + KV 3분기 + JWT 발급, rateLimit kakao:10)
+- `@/hooks/useKakaoAuth.js` — 카카오 OAuth 프론트 훅 (state CSRF + 콜백 처리 + pendingDetail)
+- `@/components/LoginPromptModal.jsx` — 비로그인 로그인 유도 모달 (카카오 + 전문가 링크)
 - `api/finlife/loans.js` — 금융감독원 finlife 주택담보대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
 - `api/finlife/rent-loans.js` — 금융감독원 finlife 전세자금대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
 - Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
