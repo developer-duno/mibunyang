@@ -165,8 +165,8 @@ export function useExpertMode(showToast) {
     authMode, setAuthMode,
     authForm, setAuthForm,
     authLoading, authError, authStatus,
-    authUser,
-    expertLoggedIn, expertExpandedApt, setExpertExpandedApt,
+    authUser, setAuthUser,
+    expertLoggedIn, setExpertLoggedIn, expertExpandedApt, setExpertExpandedApt,
     handleExpertLogin, handleExpertSignup, handleExpertLogout,
   };
 }

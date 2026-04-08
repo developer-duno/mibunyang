@@ -5,7 +5,7 @@ import { C } from "@/theme";
  * 전문가 로그인/회원가입 폼
  * Props: expert (useExpertMode 전체 반환값), onLogin (handleExpertLogin 콜백), onBack (돌아가기)
  */
-export const ExpertLoginForm = memo(function ExpertLoginForm({ expert, onLogin, onBack }) {
+export const ExpertLoginForm = memo(function ExpertLoginForm({ expert, onLogin, onBack, onKakaoLogin, kakaoLoading }) {
   return (
         <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
           <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
@@ -155,6 +155,30 @@ export const ExpertLoginForm = memo(function ExpertLoginForm({ expert, onLogin, 
                 minHeight: 44, marginBottom: 12, transition: "background .15s"
               }}>{expert.authLoading ? "처리 중..." : expert.authMode === "login" ? "로그인" : "회원가입"}</button>
             </form>
+
+            {/* 카카오 로그인 — 로그인 탭에서만 표시 */}
+            {expert.authMode === "login" && onKakaoLogin && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", margin: "4px 0 12px" }}>
+                  <div style={{ flex: 1, height: 1, background: C.border }} />
+                  <span style={{ padding: "0 10px", fontSize: 11, color: C.muted }}>또는</span>
+                  <div style={{ flex: 1, height: 1, background: C.border }} />
+                </div>
+                <button type="button" onClick={onKakaoLogin} disabled={kakaoLoading}
+                  style={{
+                    width: "100%", minHeight: 44, padding: "12px", fontSize: 14, fontWeight: 700,
+                    background: kakaoLoading ? "#E5D85C" : "#FEE500", color: "#191919",
+                    border: "none", borderRadius: 6, cursor: kakaoLoading ? "default" : "pointer",
+                    marginBottom: 12, transition: "background .15s",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path fillRule="evenodd" clipRule="evenodd" d="M9 1C4.58 1 1 3.79 1 7.21c0 2.17 1.44 4.08 3.62 5.18l-.93 3.4c-.08.3.26.54.52.36l4.07-2.68c.24.02.47.03.72.03 4.42 0 8-2.79 8-6.22S13.42 1 9 1z" fill="#191919"/>
+                  </svg>
+                  {kakaoLoading ? "처리 중..." : "카카오로 시작하기"}
+                </button>
+              </>
+            )}
 
             <div>
               <button onClick={onBack} style={{

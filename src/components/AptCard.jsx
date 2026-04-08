@@ -34,7 +34,7 @@ const S = {
   alertTag: { fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600 },
 };
 
-export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop }) {
+export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop, isLoggedIn = true }) {
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = (apt.noxious || []).length;
@@ -78,7 +78,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               ))}
             </div>
           </div>
-          <ScoreBadge score={res.total} size={56} />
+          {isLoggedIn
+            ? <ScoreBadge score={res.total} size={56} />
+            : <div style={{ width: 56, height: 56, borderRadius: "50%", background: C.slate100, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: C.muted, filter: "blur(2px)" }}>??</div>
+          }
         </div>
 
         <div style={isDesktop ? { ...S.grid, gap: "10px 14px" } : S.grid}>
@@ -86,7 +89,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             <div key={k}>
               <div style={S.catHeader}>
                 <span style={S.catLabel}>{SHORT_LABEL[c.label] || c.label}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: catCol[k] }}>{c.total}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: catCol[k], ...(isLoggedIn ? {} : { filter: "blur(4px)" }) }}>{isLoggedIn ? c.total : "??"}</span>
               </div>
               <Bar value={c.total} color={catCol[k]} h={5} />
             </div>
@@ -155,6 +158,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (prev.res.total !== next.res.total) return false;
   if (prev.isComp !== next.isComp || prev.isFav !== next.isFav) return false;
   if (prev.isDesktop !== next.isDesktop) return false;
+  if (prev.isLoggedIn !== next.isLoggedIn) return false;
   if (!!prev.onExpertView !== !!next.onExpertView) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;

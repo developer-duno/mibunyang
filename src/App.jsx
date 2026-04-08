@@ -23,8 +23,10 @@ import { useShare } from "@/hooks/useShare";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useDataPipeline, VISIBLE_PAGE_SIZE } from "@/hooks/useDataPipeline";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { useKakaoAuth } from "@/hooks/useKakaoAuth";
 
 import { ShareSheet } from "@/components/ShareSheet";
+import { LoginPromptModal } from "@/components/LoginPromptModal";
 import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
 import { HeaderSection } from "@/components/sections/HeaderSection";
@@ -50,9 +52,12 @@ export default function App() {
   const [hideNoUnsold, setHideNoUnsold] = useState(true);
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
   const [tab, setTab] = useState(() => {
+    if (window.location.pathname.startsWith("/oauth/kakao/callback")) return "kakaoCallback";
     if (!sessionStorage.getItem("expertToken")) return "list";
     return sessionStorage.getItem("userRole") === "admin" ? "admin" : "expert";
   });
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [pendingDetailId, setPendingDetailId] = useState(null);
 
   // ── 커스텀 훅 13개 ──
   const { isPC, isDesktop } = useResponsive();
@@ -64,7 +69,11 @@ export default function App() {
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
+  const kakao = useKakaoAuth(showToast);
   const admin = useAdminMode(showToast);
+
+  // 로그인 여부 파생 (카카오 또는 전문가)
+  const isLoggedIn = expert.expertLoggedIn;
   const { apartments, loading: dataLoading, error: dataError, retry: retryData, dataUpdatedAt } = useApartmentData();
   const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, isMobile } = useShare(showToast);
 
@@ -92,8 +101,52 @@ export default function App() {
   } = useAppNavigation({
     tab, setTab, expert, admin, consult, detail,
     compIds, setShowCompOpen, showToast,
-    budgetMin, budgetMax,
+    budgetMin, budgetMax, isLoggedIn, onLoginRequired: () => setShowLoginPrompt(true),
   });
+
+  // ── 카카오 콜백 처리 ──
+  useEffect(() => {
+    if (tab !== "kakaoCallback") return;
+    kakao.handleKakaoCallback().then(result => {
+      if (result?.ok) {
+        sessionStorage.setItem("expertToken", result.token);
+        const role = result.role || "user";
+        sessionStorage.setItem("userRole", role);
+        expert.setExpertLoggedIn(true);
+        expert.setAuthUser(result.user);
+        if (role === "admin") { admin.setAdminLoggedIn(true); setTab("admin"); }
+        else if (role === "expert") { setTab("expert"); }
+        else {
+          // 일반 사용자: pendingDetail 복원 또는 목록으로
+          if (result.pendingDetail) { detail.setDetailAptId(result.pendingDetail); }
+          setTab("list");
+        }
+        showToast("로그인 성공");
+        trackEvent("kakao_login", { role, isNew: !result.user.affiliation });
+      } else {
+        setTab("list");
+      }
+      // URL 정리
+      try { window.history.replaceState(null, "", "/"); } catch {}
+    });
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 비로그인 게이트: 카드 클릭 시 로그인 안내 ──
+  const handleDetailGated = useCallback((aptId) => {
+    if (isLoggedIn) { detail.handleOpenDetail(aptId); return; }
+    setPendingDetailId(aptId);
+    setShowLoginPrompt(true);
+  }, [isLoggedIn, detail.handleOpenDetail]);
+
+  const handleKakaoFromPrompt = useCallback(() => {
+    setShowLoginPrompt(false);
+    kakao.initKakaoLogin(pendingDetailId);
+  }, [kakao.initKakaoLogin, pendingDetailId]);
+
+  const handleExpertFromPrompt = useCallback(() => {
+    setShowLoginPrompt(false);
+    setTab("expertLogin");
+  }, []);
 
   // ── containerMaxWidth ──
   const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
@@ -266,7 +319,7 @@ export default function App() {
           {showComp && <Suspense fallback={<div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, animation: "skeleton-pulse 1.5s ease-in-out infinite" }}><div style={{ height: 16, width: "40%", background: C.slate100, borderRadius: 4, marginBottom: 16 }} /><div style={{ height: 120, background: C.slate100, borderRadius: 4 }} /></div>}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} /></Suspense>}
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + VISIBLE_PAGE_SIZE); trackEvent("load_more", { visible_count: visibleCount + VISIBLE_PAGE_SIZE }); }}
-            onDetail={detail.handleOpenDetail} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}
+            onDetail={handleDetailGated} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}
             pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending || isFilterPending || isSortPending}
             budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             moveInFilter={moveInFilter} builderTier={builderTier} minScore={minScore}
@@ -274,6 +327,7 @@ export default function App() {
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
             onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}
             onResetAll={handleResetAll}
+            isLoggedIn={isLoggedIn}
           />
         </div>
       ) : tab === "map" ? (
@@ -292,7 +346,7 @@ export default function App() {
           </Suspense>
         </div>
       ) : tab === "expertLogin" ? (
-        <ExpertLoginForm expert={expert} onLogin={handleExpertLogin} onBack={() => setTab("info")} />
+        <ExpertLoginForm expert={expert} onLogin={handleExpertLogin} onBack={() => setTab("info")} onKakaoLogin={() => kakao.initKakaoLogin()} kakaoLoading={kakao.kakaoLoading} />
       ) : tab === "expert" ? (
         <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>대시보드 로딩 중...</div>}>
           <ExpertDashboard scored={scored} profile={profile} setProfile={setProfile}
@@ -305,6 +359,13 @@ export default function App() {
             <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} />
           </Suspense>
         ) : null
+      ) : tab === "kakaoCallback" ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "40dvh" }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 }}>카카오 로그인 처리 중...</div>
+            <div style={{ fontSize: 12, color: C.muted }}>잠시만 기다려주세요</div>
+          </div>
+        </div>
       ) : tab === "expertConsults" ? (
         <div style={{ padding: "0 16px" }}>
           <div style={{ background: C.indigoLight, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -350,6 +411,10 @@ export default function App() {
           onShare={handleShareDetail} isPC={isPC} isDesktop={isDesktop}
           onConsult={handleConsultFromDetail} /></Suspense>;
       })()}
+
+      {/* 로그인 유도 모달 */}
+      <LoginPromptModal open={showLoginPrompt} onClose={() => setShowLoginPrompt(false)}
+        onKakaoLogin={handleKakaoFromPrompt} onExpertLogin={handleExpertFromPrompt} kakaoLoading={kakao.kakaoLoading} />
 
       {/* 토스트 */}
       <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} isPC={isPC} />
