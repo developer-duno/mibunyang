@@ -34,7 +34,7 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
           로그인이 필요합니다
         </div>
         <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 24 }}>
-          점수 분석, 상세 정보, 비교 기능을<br />
+          점수 분석과 상세 정보를<br />
           이용하려면 로그인해주세요.
         </div>
 

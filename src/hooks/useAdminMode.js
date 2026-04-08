@@ -8,6 +8,8 @@ export function useAdminMode(showToast) {
   const [users, setUsers] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState("pending");
   const [reviewLoading, setReviewLoading] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const abortRef = useRef(null);
 
   const fetchUsers = useCallback(async (status) => {
@@ -72,6 +74,21 @@ export function useAdminMode(showToast) {
     }
   }, [showToast, fetchUsers, selectedStatus]);
 
+  const fetchStats = useCallback(async () => {
+    const token = sessionStorage.getItem("expertToken");
+    if (!token) return;
+    setStatsLoading(true);
+    try {
+      const res = await fetch("/api/admin/stats", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 429) return;
+      const data = await res.json();
+      if (data.ok) setStats(data);
+    } catch { /* 통계 실패는 무시 — 핵심 기능 아님 */ }
+    finally { setStatsLoading(false); }
+  }, []);
+
   const handleAdminLogout = useCallback(async (onLogout) => {
     const token = sessionStorage.getItem("expertToken");
     if (token) {
@@ -97,6 +114,11 @@ export function useAdminMode(showToast) {
     }
   }, [adminLoggedIn, selectedStatus, fetchUsers]);
 
+  // 통계는 관리자 로그인 시 1회만 조회
+  useEffect(() => {
+    if (adminLoggedIn) fetchStats();
+  }, [adminLoggedIn, fetchStats]);
+
   useEffect(() => {
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, []);
@@ -106,5 +128,6 @@ export function useAdminMode(showToast) {
     adminLoading, reviewLoading,
     users, selectedStatus, setSelectedStatus,
     handleAdminLogout, handleReview, fetchUsers,
+    stats, statsLoading,
   };
 }

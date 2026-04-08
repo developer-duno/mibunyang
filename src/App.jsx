@@ -316,7 +316,7 @@ export default function App() {
               cursor: "pointer", marginBottom: 10, transition: "all .2s"
             }}>{compIds.length}개 비교 {showComp ? "닫기" : "보기"}</button>
           )}
-          {showComp && <Suspense fallback={<div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, animation: "skeleton-pulse 1.5s ease-in-out infinite" }}><div style={{ height: 16, width: "40%", background: C.slate100, borderRadius: 4, marginBottom: 16 }} /><div style={{ height: 120, background: C.slate100, borderRadius: 4 }} /></div>}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} /></Suspense>}
+          {showComp && <Suspense fallback={<div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, animation: "skeleton-pulse 1.5s ease-in-out infinite" }}><div style={{ height: 16, width: "40%", background: C.slate100, borderRadius: 4, marginBottom: 16 }} /><div style={{ height: 120, background: C.slate100, borderRadius: 4 }} /></div>}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} isLoggedIn={isLoggedIn} /></Suspense>}
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + VISIBLE_PAGE_SIZE); trackEvent("load_more", { visible_count: visibleCount + VISIBLE_PAGE_SIZE }); }}
             onDetail={handleDetailGated} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}

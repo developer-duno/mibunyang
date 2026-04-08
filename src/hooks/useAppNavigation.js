@@ -58,8 +58,8 @@ export function useAppNavigation({
     if (k === "logout") return handleExpertLogout();
     trackEvent("tab_switch", { tab: k, previous_tab: tab });
     if (k === "list") { setTab("list"); setShowCompOpen(false); return; }
-    // 비로그인 시 map/compare/favorites 차단
-    if (!isLoggedIn && (k === "map" || k === "compare")) { onLoginRequired?.(); return; }
+    // 비로그인 시 map 차단 (compare는 비로그인 허용)
+    if (!isLoggedIn && k === "map") { onLoginRequired?.(); return; }
     if (k === "compare") {
       if (compIds.length < 2) { showToast("카드에서 2개 이상 선택해주세요"); setTab("list"); return; }
       setShowCompOpen(true); setTab("list"); return;

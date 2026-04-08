@@ -171,4 +171,33 @@ describe("CompareSheet", () => {
     render(<CompareSheet items={items} onClose={vi.fn()} />);
     expect(screen.getByText(/실거주 기준 추천/)).toBeInTheDocument();
   });
+
+  // --- 비로그인 블러 테스트 ---
+
+  it("isLoggedIn=false일 때 점수가 '??'로 표시되고 추천 요약 숨김", () => {
+    const items = [makeItem(1, "A", 82), makeItem(2, "B", 63)];
+    render(<CompareSheet items={items} onClose={vi.fn()} profile="live" isLoggedIn={false} />);
+    // 실제 점수(82, 63)는 DOM에 없어야 함
+    expect(screen.queryByText("82")).toBeNull();
+    expect(screen.queryByText("63")).toBeNull();
+    // "??" 텍스트가 표시되어야 함
+    expect(screen.getAllByText("??").length).toBeGreaterThanOrEqual(2);
+    // 추천 요약 숨김
+    expect(screen.queryByText(/기준 추천/)).toBeNull();
+    // 로그인 CTA 표시
+    expect(screen.getByText("점수 분석을 보려면 로그인하세요")).toBeInTheDocument();
+    // 팩트 데이터(분양가, 규제 등)는 여전히 표시
+    expect(screen.getByText("분양가")).toBeInTheDocument();
+    expect(screen.getByText("규제현황")).toBeInTheDocument();
+  });
+
+  it("isLoggedIn=false일 때 export/공유 버튼 숨김", () => {
+    const items = [makeItem(1, "A"), makeItem(2, "B")];
+    render(<CompareSheet items={items} onShare={vi.fn()} onClose={vi.fn()} isLoggedIn={false} />);
+    expect(screen.queryByLabelText("이미지 내보내기")).toBeNull();
+    expect(screen.queryByLabelText("PDF 내보내기")).toBeNull();
+    expect(screen.queryByLabelText("비교 결과 공유하기")).toBeNull();
+    // 닫기 버튼은 여전히 표시
+    expect(screen.getByLabelText("비교 닫기")).toBeInTheDocument();
+  });
 });
