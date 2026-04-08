@@ -40,7 +40,6 @@ export function useKakaoAuth(showToast) {
       client_id: KAKAO_REST_KEY,
       redirect_uri: `${window.location.origin}/oauth/kakao/callback`,
       response_type: "code",
-      scope: "openid,account_email",
       state,
     });
     window.location.href = `https://kauth.kakao.com/oauth/authorize?${params}`;
