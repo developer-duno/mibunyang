@@ -8,20 +8,35 @@ import crypto from "crypto";
  * POST /api/auth/kakao  { code: string }
  */
 
-// redirect_uri 서버 하드코딩 (보안: req.body에서 받지 않음)
-function getRedirectUri() {
-  return process.env.KAKAO_REDIRECT_URI || "https://mibunyang.vercel.app/oauth/kakao/callback";
-}
+// redirect_uri 화이트리스트 검증 (다중 도메인 대응)
+const ALLOWED_ORIGINS = new Set([
+  "https://www.xn--hg3bi2ac4o1ig57cnoa.com",
+  "https://xn--hg3bi2ac4o1ig57cnoa.com",
+  "https://mibunyang.vercel.app",
+  "http://localhost:5173",
+]);
+const CALLBACK_PATH = "/oauth/kakao/callback";
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handler: async (req, res) => {
-  const { code } = req.body || {};
+  const { code, redirect_uri } = req.body || {};
 
-  // 1. code 검증
+  // 1. code + redirect_uri 검증
   if (!code || typeof code !== "string" || code.length < 10 || code.length > 200) {
     return res.status(400).json({ ok: false, error: "유효하지 않은 인가 코드입니다" });
   }
   if (!/^[A-Za-z0-9_-]+$/.test(code)) {
     return res.status(400).json({ ok: false, error: "유효하지 않은 인가 코드입니다" });
+  }
+  if (!redirect_uri || typeof redirect_uri !== "string") {
+    return res.status(400).json({ ok: false, error: "redirect_uri가 필요합니다" });
+  }
+  try {
+    const origin = new URL(redirect_uri).origin;
+    if (!ALLOWED_ORIGINS.has(origin) || !redirect_uri.endsWith(CALLBACK_PATH)) {
+      return res.status(400).json({ ok: false, error: "허용되지 않은 redirect_uri입니다" });
+    }
+  } catch {
+    return res.status(400).json({ ok: false, error: "잘못된 redirect_uri 형식입니다" });
   }
 
   const restApiKey = process.env.KAKAO_REST_API_KEY;
@@ -35,7 +50,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     const tokenParams = new URLSearchParams({
       grant_type: "authorization_code",
       client_id: restApiKey,
-      redirect_uri: getRedirectUri(),
+      redirect_uri,
       code,
     });
     if (process.env.KAKAO_CLIENT_SECRET) {

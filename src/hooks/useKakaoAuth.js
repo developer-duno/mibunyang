@@ -87,7 +87,7 @@ export function useKakaoAuth(showToast) {
       const res = await fetch("/api/auth/kakao", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, redirect_uri: `${window.location.origin}/oauth/kakao/callback` }),
       });
 
       if (res.status === 429) {
