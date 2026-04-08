@@ -16,5 +16,5 @@ export function useLoanRates(topFinGrpNo = "020000") {
   const cacheRef = useRef(new Map());
   const getCached = useCallback((ref) => getMapCached(ref, topFinGrpNo), [topFinGrpNo]);
   const setCached = useCallback((ref, data) => setMapCached(ref, topFinGrpNo, data), [topFinGrpNo]);
-  return useFinlifeRates("/api/finlife/loans", topFinGrpNo, cacheRef, getCached, setCached);
+  return useFinlifeRates("/api/finlife/rates?type=mortgage", topFinGrpNo, cacheRef, getCached, setCached);
 }

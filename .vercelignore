@@ -9,3 +9,5 @@ api/kakao/
 api/kosis/
 api/neis/
 api/applyhome/
+api/finlife/loans.js
+api/finlife/rent-loans.js

@@ -21,7 +21,8 @@ export function useFinlifeRates(apiPath, topFinGrpNo, cacheRef, getCached, setCa
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${apiPath}?topFinGrpNo=${topFinGrpNo}`, { signal });
+      const sep = apiPath.includes("?") ? "&" : "?";
+      const res = await fetch(`${apiPath}${sep}topFinGrpNo=${topFinGrpNo}`, { signal });
       if (signal?.aborted) return;
       if (!res.ok) throw new Error(`API 오류 (${res.status})`);
       const json = await res.json();

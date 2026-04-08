@@ -15,5 +15,5 @@ export function useRentLoanRates() {
   const cacheRef = useRef(null);
   const getCached = useCallback((ref) => getSingleCached(ref), []);
   const setCached = useCallback((ref, data) => setSingleCached(ref, null, data), []);
-  return useFinlifeRates("/api/finlife/rent-loans", "020000", cacheRef, getCached, setCached);
+  return useFinlifeRates("/api/finlife/rates?type=rent", "020000", cacheRef, getCached, setCached);
 }
