@@ -80,15 +80,15 @@ describe('useLoanRates', () => {
     expect(result.current.error).toBeNull();
   });
 
-  // /api/finlife/loans 엔드포인트 호출 확인
-  it('/api/finlife/loans 엔드포인트를 호출한다', async () => {
+  // /api/finlife/rates?type=mortgage 엔드포인트 호출 확인
+  it('/api/finlife/rates?type=mortgage 엔드포인트를 호출한다', async () => {
     mockFetchSuccess([]);
 
     renderHook(() => useLoanRates());
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/finlife/loans'),
+        expect.stringContaining('/api/finlife/rates?type=mortgage'),
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });

@@ -36,15 +36,15 @@ describe('useRentLoanRates', () => {
     expect(result.current.error).toBeNull();
   });
 
-  // /api/finlife/rent-loans 엔드포인트 호출 확인
-  it('/api/finlife/rent-loans 엔드포인트를 호출한다', async () => {
+  // /api/finlife/rates?type=rent 엔드포인트 호출 확인
+  it('/api/finlife/rates?type=rent 엔드포인트를 호출한다', async () => {
     mockFetchSuccess([]);
 
     renderHook(() => useRentLoanRates());
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/finlife/rent-loans'),
+        expect.stringContaining('/api/finlife/rates?type=rent'),
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });
