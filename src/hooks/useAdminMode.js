@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
+const PAGE_SIZE = 20;
+
 export function useAdminMode(showToast) {
   const [adminLoggedIn, setAdminLoggedIn] = useState(() => {
     try { return sessionStorage.getItem("userRole") === "admin" && !!sessionStorage.getItem("expertToken"); } catch { return false; }
@@ -7,12 +9,16 @@ export function useAdminMode(showToast) {
   const [adminLoading, setAdminLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState("pending");
+  const [searchQuery, setSearchQueryRaw] = useState("");
+  const [page, setPage] = useState(0);
+  const [totalUsers, setTotalUsers] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(null);
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const abortRef = useRef(null);
+  const debounceRef = useRef(null);
 
-  const fetchUsers = useCallback(async (status) => {
+  const fetchUsers = useCallback(async (status, search = "", pg = 0) => {
     const token = sessionStorage.getItem("expertToken");
     if (!token) return;
     if (abortRef.current) abortRef.current.abort();
@@ -20,7 +26,9 @@ export function useAdminMode(showToast) {
     abortRef.current = controller;
     setAdminLoading(true);
     try {
-      const res = await fetch(`/api/admin/users?status=${status || "pending"}`, {
+      const params = new URLSearchParams({ status: status || "pending", limit: String(PAGE_SIZE), offset: String(pg * PAGE_SIZE) });
+      if (search) params.set("q", search);
+      const res = await fetch(`/api/admin/users?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
@@ -31,6 +39,7 @@ export function useAdminMode(showToast) {
       }
       if (data.ok) {
         setUsers(data.users);
+        setTotalUsers(data.total ?? data.users.length);
       } else {
         if (res.status === 401) {
           setAdminLoggedIn(false);
@@ -45,6 +54,21 @@ export function useAdminMode(showToast) {
       setAdminLoading(false);
     }
   }, [showToast]);
+
+  // 디바운스 검색: 타이핑 중 300ms 대기 후 fetch
+  const setSearchQuery = useCallback((q) => {
+    setSearchQueryRaw(q);
+    setPage(0);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchUsers(selectedStatus, q, 0);
+    }, 300);
+  }, [fetchUsers, selectedStatus]);
+
+  const handlePageChange = useCallback((newPage) => {
+    setPage(newPage);
+    fetchUsers(selectedStatus, searchQuery, newPage);
+  }, [fetchUsers, selectedStatus, searchQuery]);
 
   const handleReview = useCallback(async (email, action, note) => {
     const token = sessionStorage.getItem("expertToken");
@@ -63,7 +87,7 @@ export function useAdminMode(showToast) {
       const data = await res.json();
       if (data.ok) {
         showToast(data.message);
-        fetchUsers(selectedStatus);
+        fetchUsers(selectedStatus, searchQuery, page);
       } else {
         showToast(data.error || "처리 실패");
       }
@@ -72,7 +96,7 @@ export function useAdminMode(showToast) {
     } finally {
       setReviewLoading(null);
     }
-  }, [showToast, fetchUsers, selectedStatus]);
+  }, [showToast, fetchUsers, selectedStatus, searchQuery, page]);
 
   const fetchStats = useCallback(async () => {
     const token = sessionStorage.getItem("expertToken");
@@ -110,9 +134,10 @@ export function useAdminMode(showToast) {
 
   useEffect(() => {
     if (adminLoggedIn) {
-      fetchUsers(selectedStatus);
+      setPage(0);
+      fetchUsers(selectedStatus, searchQuery, 0);
     }
-  }, [adminLoggedIn, selectedStatus, fetchUsers]);
+  }, [adminLoggedIn, selectedStatus, fetchUsers, searchQuery]);
 
   // 통계는 관리자 로그인 시 1회만 조회
   useEffect(() => {
@@ -120,13 +145,17 @@ export function useAdminMode(showToast) {
   }, [adminLoggedIn, fetchStats]);
 
   useEffect(() => {
-    return () => { if (abortRef.current) abortRef.current.abort(); };
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, []);
 
   return {
     adminLoggedIn, setAdminLoggedIn,
     adminLoading, reviewLoading,
     users, selectedStatus, setSelectedStatus,
+    searchQuery, setSearchQuery, page, handlePageChange, totalUsers, PAGE_SIZE,
     handleAdminLogout, handleReview, fetchUsers,
     stats, statsLoading,
   };

@@ -83,7 +83,7 @@ describe('admin/users handler', () => {
     mockKv.smembers.mockResolvedValue([]);
     const res = makeRes();
     await handler(makeReq({ status: 'pending' }), res);
-    expect(res.json).toHaveBeenCalledWith({ ok: true, users: [] });
+    expect(res.json).toHaveBeenCalledWith({ ok: true, users: [], total: 0 });
   });
 
   // 정상: pending 상태 필터
@@ -170,5 +170,56 @@ describe('admin/users handler', () => {
     const users = res.json.mock.calls[0][0].users;
     expect(users).toHaveLength(1);
     expect(users[0].email).toBe('exists@test.com');
+  });
+
+  // 검색: q 파라미터로 이름/이메일 필터링
+  it('q 파라미터로 이름 검색 시 일치하는 사용자만 반환한다', async () => {
+    mockKv.smembers.mockResolvedValue(['kim@test.com', 'lee@test.com']);
+    mockKv.get
+      .mockResolvedValueOnce({ ...makeUser('kim@test.com', '2025-01-01'), name: '김철수' })
+      .mockResolvedValueOnce({ ...makeUser('lee@test.com', '2025-02-01'), name: '이영희' });
+    const res = makeRes();
+    await handler(makeReq({ status: 'pending', q: '김철' }), res);
+    const { users, total } = res.json.mock.calls[0][0];
+    expect(users).toHaveLength(1);
+    expect(users[0].name).toBe('김철수');
+    expect(total).toBe(1);
+  });
+
+  // 페이지네이션: limit/offset으로 슬라이스
+  it('limit/offset으로 페이지네이션한다', async () => {
+    mockKv.smembers.mockResolvedValue(['a@t.com', 'b@t.com', 'c@t.com']);
+    mockKv.get
+      .mockResolvedValueOnce(makeUser('a@t.com', '2025-03-01'))
+      .mockResolvedValueOnce(makeUser('b@t.com', '2025-02-01'))
+      .mockResolvedValueOnce(makeUser('c@t.com', '2025-01-01'));
+    const res = makeRes();
+    await handler(makeReq({ status: 'pending', limit: '2', offset: '0' }), res);
+    const { users, total } = res.json.mock.calls[0][0];
+    expect(users).toHaveLength(2);
+    expect(total).toBe(3);
+  });
+
+  // 페이지네이션: offset으로 두 번째 페이지
+  it('offset으로 두 번째 페이지를 반환한다', async () => {
+    mockKv.smembers.mockResolvedValue(['a@t.com', 'b@t.com', 'c@t.com']);
+    mockKv.get
+      .mockResolvedValueOnce(makeUser('a@t.com', '2025-03-01'))
+      .mockResolvedValueOnce(makeUser('b@t.com', '2025-02-01'))
+      .mockResolvedValueOnce(makeUser('c@t.com', '2025-01-01'));
+    const res = makeRes();
+    await handler(makeReq({ status: 'pending', limit: '2', offset: '2' }), res);
+    const { users, total } = res.json.mock.calls[0][0];
+    expect(users).toHaveLength(1);
+    expect(total).toBe(3);
+  });
+
+  // q 파라미터 sanitize: 100자 초과 시 잘림
+  it('q 파라미터가 100자 초과 시 잘려서 처리된다', async () => {
+    mockKv.smembers.mockResolvedValue([]);
+    const res = makeRes();
+    const longQ = 'a'.repeat(200);
+    await handler(makeReq({ status: 'pending', q: longQ }), res);
+    expect(res.json).toHaveBeenCalledWith({ ok: true, users: [], total: 0 });
   });
 });

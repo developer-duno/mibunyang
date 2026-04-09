@@ -114,4 +114,50 @@ describe('useAdminMode', () => {
     await act(async () => { await result.current.fetchUsers("pending"); });
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it('검색 시 q 파라미터가 fetch URL에 포함된다', async () => {
+    sessionStorage.setItem("userRole", "admin");
+    sessionStorage.setItem("expertToken", "token");
+    fetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [], total: 0 }) });
+
+    const { result } = renderHook(() => useAdminMode(showToast));
+    await waitFor(() => expect(result.current.adminLoading).toBe(false));
+
+    fetch.mockClear();
+    act(() => { result.current.setSearchQuery("김철수"); });
+
+    // 디바운스 300ms 대기
+    await waitFor(() => {
+      const calls = fetch.mock.calls;
+      const hasSearchParam = calls.some(c => c[0].includes("q="));
+      expect(hasSearchParam).toBe(true);
+    }, { timeout: 1000 });
+  });
+
+  it('검색 변경 시 page가 0으로 리셋된다', async () => {
+    sessionStorage.setItem("userRole", "admin");
+    sessionStorage.setItem("expertToken", "token");
+    fetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com" }], total: 30 }) });
+
+    const { result } = renderHook(() => useAdminMode(showToast));
+    await waitFor(() => expect(result.current.adminLoading).toBe(false));
+
+    // 페이지 변경
+    act(() => { result.current.handlePageChange(2); });
+    expect(result.current.page).toBe(2);
+
+    // 검색 시 page 리셋
+    act(() => { result.current.setSearchQuery("test"); });
+    expect(result.current.page).toBe(0);
+  });
+
+  it('totalUsers 응답 반영', async () => {
+    sessionStorage.setItem("userRole", "admin");
+    sessionStorage.setItem("expertToken", "token");
+    fetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com" }], total: 42 }) });
+
+    const { result } = renderHook(() => useAdminMode(showToast));
+    await waitFor(() => expect(result.current.adminLoading).toBe(false));
+    expect(result.current.totalUsers).toBe(42);
+  });
 });

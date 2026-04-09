@@ -1,11 +1,16 @@
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { C } from "@/theme";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * 로그인 유도 모달 — 비로그인 사용자가 상세/비교/지도/관심매물 접근 시 표시
  * Props: open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading
  */
-export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading }) {
+export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading, trigger }) {
+  useEffect(() => {
+    if (open) trackEvent("login_prompt_shown", { trigger: trigger || "unknown" });
+  }, [open, trigger]);
+
   if (!open) return null;
 
   return (
@@ -17,7 +22,7 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
         display: "flex", alignItems: "center", justifyContent: "center",
         zIndex: 9999, padding: 16,
       }}
-      onClick={onClose}
+      onClick={() => { trackEvent("login_prompt_dismissed", { trigger }); onClose(); }}
     >
       <div
         style={{
@@ -41,7 +46,7 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
         {/* 카카오 로그인 버튼 */}
         <button
           type="button"
-          onClick={onKakaoLogin}
+          onClick={() => { trackEvent("login_prompt_kakao_click", { trigger }); onKakaoLogin(); }}
           disabled={kakaoLoading}
           style={{
             width: "100%", minHeight: 44, padding: "12px 16px",
@@ -62,7 +67,7 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
         {/* 전문가 로그인 링크 */}
         <button
           type="button"
-          onClick={onExpertLogin}
+          onClick={() => { trackEvent("login_prompt_expert_click", { trigger }); onExpertLogin(); }}
           style={{
             background: "transparent", border: "none",
             color: C.muted, fontSize: 12, cursor: "pointer",
@@ -75,7 +80,7 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
         {/* 닫기 */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => { trackEvent("login_prompt_dismissed", { trigger }); onClose(); }}
           style={{
             background: "transparent", border: "none",
             color: C.muted, fontSize: 11, cursor: "pointer",

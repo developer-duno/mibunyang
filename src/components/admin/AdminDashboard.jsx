@@ -157,7 +157,28 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       {/* Expert Applications Section */}
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>전문가 신청 관리</div>
-        <div style={{ fontSize: 11, color: C.muted }}>{admin.users.length}건</div>
+        <div style={{ fontSize: 11, color: C.muted }}>전체 {admin.totalUsers}건</div>
+      </div>
+
+      {/* 검색 */}
+      <div style={{ position: "relative", marginBottom: 12 }}>
+        <input
+          type="text" placeholder="이름, 이메일, 소속 검색..." value={admin.searchQuery}
+          onChange={e => admin.setSearchQuery(e.target.value)}
+          style={{
+            width: "100%", padding: "8px 32px 8px 12px", fontSize: 13, borderRadius: 8,
+            border: `1px solid ${C.border}`, background: C.white, color: C.text,
+            outline: "none", boxSizing: "border-box",
+          }}
+        />
+        {admin.searchQuery && (
+          <button type="button" onClick={() => admin.setSearchQuery("")}
+            style={{
+              position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+              background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14, padding: 0,
+            }}
+          >✕</button>
+        )}
       </div>
 
       {/* Status Tabs */}
@@ -182,7 +203,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       {!admin.adminLoading && admin.users.length === 0 && (
         <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-            {admin.selectedStatus === "pending" ? "대기중인 신청이 없습니다" : admin.selectedStatus === "suspended" ? "정지된 사용자가 없습니다" : "해당 상태의 사용자가 없습니다"}
+            {admin.searchQuery ? "검색 결과가 없습니다" : admin.selectedStatus === "pending" ? "대기중인 신청이 없습니다" : admin.selectedStatus === "suspended" ? "정지된 사용자가 없습니다" : "해당 상태의 사용자가 없습니다"}
           </div>
         </div>
       )}
@@ -319,6 +340,30 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
           );
         })}
       </div>
+
+      {/* 페이지네이션 */}
+      {admin.totalUsers > admin.PAGE_SIZE && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
+          <button type="button" disabled={admin.page === 0} onClick={() => admin.handlePageChange(admin.page - 1)}
+            style={{
+              padding: "6px 14px", fontSize: 12, fontWeight: 600, borderRadius: 6,
+              border: `1px solid ${C.border}`, background: admin.page === 0 ? C.slate100 : C.white,
+              color: admin.page === 0 ? C.muted : C.text, cursor: admin.page === 0 ? "default" : "pointer",
+            }}>이전</button>
+          <span style={{ fontSize: 12, color: C.muted }}>
+            {admin.page * admin.PAGE_SIZE + 1}~{Math.min((admin.page + 1) * admin.PAGE_SIZE, admin.totalUsers)}건 / 전체 {admin.totalUsers}건
+          </span>
+          <button type="button" disabled={(admin.page + 1) * admin.PAGE_SIZE >= admin.totalUsers}
+            onClick={() => admin.handlePageChange(admin.page + 1)}
+            style={{
+              padding: "6px 14px", fontSize: 12, fontWeight: 600, borderRadius: 6,
+              border: `1px solid ${C.border}`,
+              background: (admin.page + 1) * admin.PAGE_SIZE >= admin.totalUsers ? C.slate100 : C.white,
+              color: (admin.page + 1) * admin.PAGE_SIZE >= admin.totalUsers ? C.muted : C.text,
+              cursor: (admin.page + 1) * admin.PAGE_SIZE >= admin.totalUsers ? "default" : "pointer",
+            }}>다음</button>
+        </div>
+      )}
     </div>
   );
 });

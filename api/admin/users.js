@@ -7,6 +7,9 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
   if (!allowed.includes(status)) {
     return res.status(400).json({ ok: false, error: "잘못된 상태 필터입니다" });
   }
+  const q = typeof req.query.q === "string" ? req.query.q.trim().substring(0, 100).toLowerCase() : "";
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
 
   try {
     let emails = [];
@@ -23,7 +26,7 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
     }
 
     if (emails.length === 0) {
-      return res.json({ ok: true, users: [] });
+      return res.json({ ok: true, users: [], total: 0 });
     }
 
     const results = await Promise.allSettled(
@@ -37,7 +40,12 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
     const users = results.filter(r => r.status === "fulfilled" && r.value).map(r => r.value);
 
     const sorted = users.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    res.json({ ok: true, users: sorted });
+    const filtered = q
+      ? sorted.filter(u => [u.name, u.email, u.affiliation, u.specialty].some(f => f && String(f).toLowerCase().includes(q)))
+      : sorted;
+    const total = filtered.length;
+    const paged = filtered.slice(offset, offset + limit);
+    res.json({ ok: true, users: paged, total });
   } catch (err) {
     console.error("[admin/users] error:", err.message);
     res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });

@@ -60,6 +60,7 @@ export default function App() {
     return "list";
   });
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [loginTrigger, setLoginTrigger] = useState(null);
   const [pendingDetailId, setPendingDetailId] = useState(null);
 
   // ── 커스텀 훅 13개 ──
@@ -104,7 +105,7 @@ export default function App() {
   } = useAppNavigation({
     tab, setTab, expert, admin, consult, detail,
     compIds, setShowCompOpen, showToast,
-    budgetMin, budgetMax, isLoggedIn, onLoginRequired: () => setShowLoginPrompt(true),
+    budgetMin, budgetMax, isLoggedIn, onLoginRequired: () => { setLoginTrigger("map"); setShowLoginPrompt(true); },
   });
 
   // ── 카카오 콜백 처리 ──
@@ -138,6 +139,7 @@ export default function App() {
   const handleDetailGated = useCallback((aptId) => {
     if (isLoggedIn) { detail.handleOpenDetail(aptId); return; }
     setPendingDetailId(aptId);
+    setLoginTrigger("detail");
     setShowLoginPrompt(true);
   }, [isLoggedIn, detail]);
 
@@ -416,8 +418,8 @@ export default function App() {
       })()}
 
       {/* 로그인 유도 모달 */}
-      <LoginPromptModal open={showLoginPrompt} onClose={() => setShowLoginPrompt(false)}
-        onKakaoLogin={handleKakaoFromPrompt} onExpertLogin={handleExpertFromPrompt} kakaoLoading={kakao.kakaoLoading} />
+      <LoginPromptModal open={showLoginPrompt} onClose={() => { setShowLoginPrompt(false); setLoginTrigger(null); }}
+        onKakaoLogin={handleKakaoFromPrompt} onExpertLogin={handleExpertFromPrompt} kakaoLoading={kakao.kakaoLoading} trigger={loginTrigger} />
 
       {/* 토스트 */}
       <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} isPC={isPC} />
