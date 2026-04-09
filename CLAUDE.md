@@ -5,26 +5,22 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-09 세션78 — 관리자 대시보드 통계 + 비로그인 비교 허용 + 데이터 보강
+**마지막 작업**: 2026-04-09 세션79 — 관리자 검색/페이지네이션 + 비로그인 전환율 Analytics
 
-- 비로그인 비교 허용: useAppNavigation compare 게이트 제거, CompareSheet 점수 "??" 블라인드 (DOM 미노출)
-- CompareSheet: isLoggedIn prop 추가, 비로그인 시 export/공유 숨김 + 로그인 CTA 배너
-- LoginPromptModal: 안내문에서 "비교 기능" 제거
-- 관리자 통계 API: GET /api/admin/stats (scard 카운트 + 카카오/전문가 비율 + 전문분야 + 14일 가입추이)
-- AdminDashboard: StatsSection 추가 (카운트 카드 5개 + 유형 바 + 분야 차트 + 가입 추이)
-- useAdminMode: fetchStats + stats/statsLoading 상태 추가
-- 카카오 사용자 탭 버그 수정: role="user" 새로고침 시 expert→list로 수정
-- CSP: vercel.live(script-src) + cdn.jsdelivr.net(connect-src) 추가
-- molit-building-info: 건폐율(kaptdBcRat) + 용적률(kaptdVlRat) 수집 추가 (국토부 API에 미존재 확인 → complexes 좌표 매칭 + gu 중위값 폴백)
-- 데이터 보강: 건폐율 2001건 전부 채움, 수영장 2001건 false 기본, 대표향 2001건 채움 (155건 실제 + 남향 기본)
+- LoginPromptModal: trigger prop + trackEvent 4개 (login_prompt_shown/kakao_click/expert_click/dismissed)
+- App.jsx: loginTrigger 상태 추가 (detail/map 트리거 구분)
+- api/admin/users: q(검색)/limit(기본20)/offset 쿼리 파라미터 + total 응답 + 서버 측 sanitize
+- useAdminMode: searchQuery/page/totalUsers 상태 + 300ms 디바운스 + handlePageChange
+- AdminDashboard: 검색 입력(이름/이메일/소속) + 페이지네이션(이전/다음) + 빈 검색결과 메시지
+- 테스트: LoginPromptModal 6건 + users 5건(검색/페이지네이션) + useAdminMode 3건(디바운스/페이지리셋/total)
 
 **다음에 해야 할 것** (우선순위):
 
 1. 네이버 수집 재실행 (로컬 naver-collect.py) → 수영장 detectPool 갱신 + 대표향 실측 갱신
 2. building-hub 재실행 (data.go.kr API 정상화 후) → heat_fuel 추가 수집
 3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
-4. 관리자 대시보드 추가 기능: 사용자 검색/페이지네이션, 일괄 처리
-5. 비로그인 전환율 분석: Analytics kakao_login 이벤트 모니터링
+4. 관리자 대시보드 추가 기능: 일괄 처리 (승인/거부)
+5. 비로그인 전환율 분석: Vercel Analytics 대시보드에서 login_prompt_* 이벤트 모니터링
 
 **주의사항**:
 
@@ -60,6 +56,10 @@
 - E2E: 11 spec (smoke/list/modal/compare/expert/skeleton-empty/admin/favorites/share/loan-rates/mobile)
 - 헤더 화이트 테마: C.borderStrong("#D1D5DB"), 모바일 borderBottom 1.5px, 장식원 제거
 - App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환, `detail.setDetailAptId` 금지)
+- LoginPromptModal Analytics: trigger prop (detail/map), 4개 이벤트 (login_prompt_shown/kakao_click/expert_click/dismissed)
+- 관리자 검색: api/admin/users?q=검색&limit=20&offset=0 (인메모리 필터+슬라이스, total 응답)
+- useAdminMode 검색: searchQuery/page/totalUsers + 300ms 디바운스 (debounceRef), PAGE_SIZE=20
+- AdminDashboard 페이지네이션: 이전/다음 버튼, totalUsers > PAGE_SIZE 시 표시
 
 ## 기술 스택
 
