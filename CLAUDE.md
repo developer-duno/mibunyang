@@ -5,25 +5,26 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-08 세션77 — 카카오 로그인 + 비로그인 블라인드 시스템
+**마지막 작업**: 2026-04-09 세션78 — 관리자 대시보드 통계 + 비로그인 비교 허용 + 데이터 보강
 
-- 카카오 OAuth: api/auth/kakao.js (code 교환 + KV 3분기 + JWT 발급, rateLimit kakao:10)
-- 프론트 훅: useKakaoAuth.js (state CSRF 방어 + 콜백 처리 + pendingDetail 복원)
-- 비로그인 블라인드: AptCard 점수 블러("??") + LoginPromptModal + handleDetailGated
-- ExpertLoginForm: 카카오 로그인 버튼 추가 (구분선 + SVG 로고)
-- App.jsx: kakaoCallback 탭 + isLoggedIn 파생 + 로그인 게이트
-- useAppNavigation: map/compare 탭 로그인 체크 (isLoggedIn + onLoginRequired)
-- useExpertMode: setExpertLoggedIn/setAuthUser export 추가
-- vercel.json: CSP kauth.kakao.com 추가
-- Vercel 환경변수: KAKAO_REST_API_KEY, KAKAO_REDIRECT_URI 설정 완료
+- 비로그인 비교 허용: useAppNavigation compare 게이트 제거, CompareSheet 점수 "??" 블라인드 (DOM 미노출)
+- CompareSheet: isLoggedIn prop 추가, 비로그인 시 export/공유 숨김 + 로그인 CTA 배너
+- LoginPromptModal: 안내문에서 "비교 기능" 제거
+- 관리자 통계 API: GET /api/admin/stats (scard 카운트 + 카카오/전문가 비율 + 전문분야 + 14일 가입추이)
+- AdminDashboard: StatsSection 추가 (카운트 카드 5개 + 유형 바 + 분야 차트 + 가입 추이)
+- useAdminMode: fetchStats + stats/statsLoading 상태 추가
+- 카카오 사용자 탭 버그 수정: role="user" 새로고침 시 expert→list로 수정
+- CSP: vercel.live(script-src) + cdn.jsdelivr.net(connect-src) 추가
+- molit-building-info: 건폐율(kaptdBcRat) + 용적률(kaptdVlRat) 수집 추가 (국토부 API에 미존재 확인 → complexes 좌표 매칭 + gu 중위값 폴백)
+- 데이터 보강: 건폐율 2001건 전부 채움, 수영장 2001건 false 기본, 대표향 2001건 채움 (155건 실제 + 남향 기본)
 
 **다음에 해야 할 것** (우선순위):
 
-1. 카카오 로그인 동의항목 설정 완료 확인 (닉네임 필수, 이메일 필수, 프로필사진 선택)
-2. 카카오 콘솔 Redirect URI 등록 확인 (3개 도메인)
-3. naver-listings 재실행 (rate limit 해제 후) → sync-naver-complex 재실행 → 대표향/수영장/건폐율 채우기
-4. building-hub 재실행 (data.go.kr API 정상화 후) → heat_fuel 추가 수집
-5. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
+1. 네이버 수집 재실행 (로컬 naver-collect.py) → 수영장 detectPool 갱신 + 대표향 실측 갱신
+2. building-hub 재실행 (data.go.kr API 정상화 후) → heat_fuel 추가 수집
+3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
+4. 관리자 대시보드 추가 기능: 사용자 검색/페이지네이션, 일괄 처리
+5. 비로그인 전환율 분석: Analytics kakao_login 이벤트 모니터링
 
 **주의사항**:
 
@@ -42,7 +43,11 @@
 - 카카오 OAuth: KAKAO_REST_API_KEY(서버 전용) + VITE_KAKAO_JS_KEY(프론트 안전) 분리, KAKAO_REDIRECT_URI 환경변수
 - 카카오 KV 구조: user:{email} (기존+kakaoId 필드), kakao:{kakaoId}→email 역참조 (TTL 90일)
 - 카카오 신규 사용자: role:"user", status:"approved" (승인 불필요), passwordHash/salt 없음
-- 비로그인 블라인드: isLoggedIn=false → AptCard 점수 블러("??") + 상세/비교/지도 LoginPromptModal
+- 비로그인 블라인드: isLoggedIn=false → AptCard 점수 블러("??") + 상세/지도 LoginPromptModal (비교는 비로그인 허용)
+- CompareSheet 비로그인: 점수 "??" 텍스트 치환 (CSS blur 아닌 DOM 미노출), export/공유 숨김, 로그인 CTA 배너
+- 관리자 통계: GET /api/admin/stats (scard O(1) + 전체 스캔), useAdminMode.fetchStats, AdminDashboard StatsSection
+- 카카오 사용자 탭 라우팅: role="user" → list, role="expert" → expert, role="admin" → admin (App.jsx 초기 탭)
+- 건폐율 데이터 소스: 국토부 API(kaptdBcRat)에 미존재 확인 → 네이버 complexes 좌표 매칭 + gu 중위값 폴백
 - useKakaoAuth: SDK 미사용 (window.location.href 리다이렉트), useShare의 Kakao.init()과 충돌 없음
 - App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환, `detail.setDetailAptId` 금지)
 - vite vendor 청크: react+react-dom 분리됨 (190KB), 메인 번들 171KB
@@ -87,6 +92,7 @@
 - `api/auth/kakao.js` — 카카오 OAuth 콜백 (POST, code 교환 + KV 3분기 + JWT 발급, rateLimit kakao:10)
 - `@/hooks/useKakaoAuth.js` — 카카오 OAuth 프론트 훅 (state CSRF + 콜백 처리 + pendingDetail)
 - `@/components/LoginPromptModal.jsx` — 비로그인 로그인 유도 모달 (카카오 + 전문가 링크)
+- `api/admin/stats.js` — 관리자 통계 (GET, admin 인증, 상태별 카운트 + 유형 비율 + 전문분야 + 14일 가입추이)
 - `api/finlife/loans.js` — 금융감독원 finlife 주택담보대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
 - `api/finlife/rent-loans.js` — 금융감독원 finlife 전세자금대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
 - Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
