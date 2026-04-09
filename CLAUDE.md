@@ -5,18 +5,21 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-09 세션79 — 관리자 검색/페이지네이션 + 비로그인 전환율 Analytics
+**마지막 작업**: 2026-04-09 세션79 — 관리자 검색/페이지네이션 + Analytics + 네이버 재수집 + Vercel 복구
 
 - LoginPromptModal: trigger prop + trackEvent 4개 (login_prompt_shown/kakao_click/expert_click/dismissed)
 - App.jsx: loginTrigger 상태 추가 (detail/map 트리거 구분)
-- api/admin/users: q(검색)/limit(기본20)/offset 쿼리 파라미터 + total 응답 + 서버 측 sanitize
-- useAdminMode: searchQuery/page/totalUsers 상태 + 300ms 디바운스 + handlePageChange
+- api/admin/users: q(검색)/limit(기본20)/offset + total 응답 + action=stats 통합 (Vercel 12함수 복구)
+- useAdminMode: searchQuery/page/totalUsers 상태 + 300ms 디바운스 + fetchStats → users?action=stats
 - AdminDashboard: 검색 입력(이름/이메일/소속) + 페이지네이션(이전/다음) + 빈 검색결과 메시지
-- 테스트: LoginPromptModal 6건 + users 5건(검색/페이지네이션) + useAdminMode 3건(디바운스/페이지리셋/total)
+- Vercel Hobby 12함수 제한 복구: admin/stats.js → admin/users.js?action=stats 통합
+- naver-collect.py: SB.select 페이지네이션 (PostgREST 1000행 제한 해소, 2001건 전체 수집)
+- sync-naver-complex.mjs: apartments/articles 4곳 페이지네이션 + Phase4 matchApartments 매칭 수정 (0→9435건)
+- 네이버 재수집 실행: complexes 29727건 + articles ~11458건 + sync Phase1~4 완료
 
 **다음에 해야 할 것** (우선순위):
 
-1. 네이버 수집 재실행 (로컬 naver-collect.py) → 수영장 detectPool 갱신 + 대표향 실측 갱신
+1. 네이버 수집 완전 재실행 (articles 1250/29727에서 중단 → 전체 완료 필요)
 2. building-hub 재실행 (data.go.kr API 정상화 후) → heat_fuel 추가 수집
 3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
 4. 관리자 대시보드 추가 기능: 일괄 처리 (승인/거부)
