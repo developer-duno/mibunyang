@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .claude/
+!.claude/SESSION_LOG.md
 .claude-memory/
 .env
 .env.*

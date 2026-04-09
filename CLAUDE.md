@@ -1,19 +1,16 @@
 # 미분양 아파트 비교 엔진 v3.0
 
 > React 19 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 41+ 지표 AHP 스코어링.
-> 상세 아키텍처는 ARCHITECTURE.md 참조.
 
 ## 현재 진행 상황
 
 **마지막 작업**: 2026-04-10 세션80 — 테스트/memo/validation 리팩토링 + 네이버 전체 재수집 + building-hub
 
-- useDataPipeline.test.js: 신규 29개 테스트 (renderHook + vi.mock, 정렬/필터/페이지네이션/폴백 검증)
+- useDataPipeline.test.js: 신규 29개 테스트 (renderHook + vi.mock)
 - WeightEditor.jsx: memo() 래핑 + AdminDashboard default import 전환
 - api/_lib/apartmentValidation.js: ID 검증 공유 모듈 추출 (parseApartmentIds + ID_PATTERN)
-- api/_lib/apartmentValidation.test.js: 13개 테스트 (정상/에러/SQL injection/경계값)
-- api/supabase/prices.js, unsold-history.js: apartmentValidation import로 검증 중복 제거
-- naver-collect.py: 전체 재수집 nohup 실행 (python -u, 진행 중)
-- collect-building-hub.mjs: nohup 실행 (진행 중)
+- prices.js, unsold-history.js: apartmentValidation import로 검증 중복 제거
+- naver-collect.py + collect-building-hub.mjs: nohup 실행 (진행 중)
 
 **다음에 해야 할 것** (우선순위):
 
@@ -22,112 +19,83 @@
 3. 관리자 대시보드 추가 기능: 일괄 처리 (승인/거부)
 4. 비로그인 전환율 분석: Vercel Analytics 대시보드에서 login_prompt_* 이벤트 모니터링
 
-**주의사항**:
+---
 
-- admin 토큰 TTL 24h→1h 전환됨. 프론트 verify 폴링 15분 주기로 최대 15분 후 감지
-- admin API에 rateLimit 30회/5분 적용됨. useAdminMode.js에 429 처리 추가됨
-- 빈 상태 스켈레톤 pulse 애니메이션은 document.createElement("style")로 keyframes 주입 (filterStyles.js BADGE_ANIM 패턴)
-- 토큰 블랙리스트: KV `bl:{hash}` 키, fail-open (Redis 장애 시 토큰 만료가 2차 방어선)
-- 로그아웃 시 서버 측 토큰 무효화 + 프론트 sessionStorage 삭제 (best-effort)
-- review.js force-logout → status="suspended" + `users:suspended` Set 관리 → verify 폴링에서 자동 감지
-- AdminDashboard: STATUS_TABS 5개 (pending/approved/rejected/suspended/all), approved→강제로그아웃, suspended→재승인
-- 리프레시 토큰: 검토 완료 → 현상 유지 권고 (docs/refresh-token-review.md). 사용자 100명+ 또는 모바일앱 시 재검토
-- finlife API: FINLIFE_API_KEY 환경변수 필요, 미등록 시 빈 배열 반환
-- NEIS API: NEIS_KEY 환경변수 필요 (open.neis.go.kr), 미등록 시 NEIS 보강 스킵 (거리 기반만)
-- 학교알리미 API: SCHOOLINFO_KEY 환경변수 필요 (schoolinfo.go.kr), 미등록 시 학생수 보강 스킵
-- 에어코리아 API: AIRKOREA_KEY 환경변수 필요 (data.go.kr), 미등록 시 대기질 수집 스킵 (별도 쿼터, MOLIT_KEY와 분리)
-- 카카오 OAuth: KAKAO_REST_API_KEY(서버 전용) + VITE_KAKAO_JS_KEY(프론트 안전) 분리, KAKAO_REDIRECT_URI 환경변수
-- 카카오 KV 구조: user:{email} (기존+kakaoId 필드), kakao:{kakaoId}→email 역참조 (TTL 90일)
-- 카카오 신규 사용자: role:"user", status:"approved" (승인 불필요), passwordHash/salt 없음
-- 비로그인 블라인드: isLoggedIn=false → AptCard 점수 블러("??") + 상세/지도 LoginPromptModal (비교는 비로그인 허용)
-- CompareSheet 비로그인: 점수 "??" 텍스트 치환 (CSS blur 아닌 DOM 미노출), export/공유 숨김, 로그인 CTA 배너
-- 관리자 통계: GET /api/admin/stats (scard O(1) + 전체 스캔), useAdminMode.fetchStats, AdminDashboard StatsSection
-- 카카오 사용자 탭 라우팅: role="user" → list, role="expert" → expert, role="admin" → admin (App.jsx 초기 탭)
-- 건폐율 데이터 소스: 국토부 API(kaptdBcRat)에 미존재 확인 → 네이버 complexes 좌표 매칭 + gu 중위값 폴백
-- useKakaoAuth: SDK 미사용 (window.location.href 리다이렉트), useShare의 Kakao.init()과 충돌 없음
-- App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환, `detail.setDetailAptId` 금지)
-- vite vendor 청크: react+react-dom 분리됨 (190KB), 메인 번들 171KB
+## 아키텍처 개요
+
+```
+constants → scoring → theme → components → hooks → App    (단방향, 순환 참조 없음)
+```
+
+| 레이어 | 기술 | 핵심 모듈 |
+|--------|------|----------|
+| **프론트** | React 19 + Vite 8 (Rolldown) | App.jsx (~512줄), `@/` 경로 별칭, Pretendard 폰트 |
+| **상태/훅** | useMemo 13개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
+| **컴포넌트** | memo() 36개 + icons.jsx (SVG 9개) | 소비자10 + 섹션8 + 상세7 + 필터8 + 전문가9 + 관리자3 |
+| **API** | Vercel Serverless (14개 엔드포인트) | withHandler HOF (CORS/Method/RateLimit/Admin 통합) |
+| **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
+| **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth + 전문가/관리자 role 기반 |
+| **캐싱** | Vercel KV (Upstash Redis) | 세션, 토큰 블랙리스트, Rate Limit |
+| **수집** | GitHub Actions (35개) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
+| **테스트** | Vitest + Playwright E2E (11 spec) | `npm run test` / `npm run test:e2e` |
+| **모니터링** | Vercel Analytics + Speed Insights | 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음) |
+
+### 번들 구성
+
+| 청크 | 크기 | 비고 |
+|------|------|------|
+| vendor (react+react-dom) | 190KB | 분리됨 |
+| index (메인) | 172KB | |
+| html2canvas + jsPDF | 200+400KB | dynamic import (초기 로딩 무관) |
+
+---
+
+## 환경변수
+
+| 변수 | 용도 | 필수 | 비고 |
+|------|------|------|------|
+| `SUPABASE_URL` | DB 연결 | O | Vercel + .env.local |
+| `SUPABASE_ANON_KEY` | 읽기 전용 | O | API 레이어 |
+| `SUPABASE_SERVICE_KEY` | 쓰기 | O | GitHub Secrets / 로컬만 |
+| `MOLIT_KEY` | data.go.kr 공공API | O | 일일 10,000건 공유 |
+| `FINLIFE_API_KEY` | 금감원 금리 | - | 미등록 시 빈 배열 |
+| `NEIS_KEY` | 교육청 학교 | - | 미등록 시 거리 기반만 |
+| `SCHOOLINFO_KEY` | 학교알리미 학생수 | - | 미등록 시 스킵 |
+| `AIRKOREA_KEY` | 에어코리아 대기질 | - | 별도 쿼터, MOLIT_KEY와 분리 |
+| `KAKAO_REST_API_KEY` | 카카오 OAuth (서버) | O | VITE_KAKAO_JS_KEY와 분리 |
+| `VITE_KAKAO_JS_KEY` | 카카오 (프론트) | O | 공개 키 |
+| `KAKAO_REDIRECT_URI` | OAuth 콜백 URL | O | |
+| `VITE_USE_SUPABASE` | DB 모드 전환 | - | `true` → Supabase, 아니면 로컬 JSON |
+
+---
+
+## 교차 관심사 (하위 CLAUDE.md에 없는 전역 규칙)
+
+### 인증/세션
+- admin 토큰 TTL 1h. 프론트 verify 폴링 15분 주기
+- 토큰 블랙리스트: KV `bl:{hash}`, fail-open (만료가 2차 방어선)
+- 로그아웃: 서버 토큰 무효화 + 프론트 sessionStorage 삭제
+- 카카오 신규 사용자: role:"user", status:"approved" (승인 불필요)
+- 카카오 KV: `user:{email}` + `kakao:{kakaoId}→email` 역참조 (TTL 90일)
+- 카카오 탭 라우팅: role="user"→list, "expert"→expert, "admin"→admin
+
+### 비로그인 블라인드
+- AptCard: 점수 블러("??") + 상세/지도 LoginPromptModal
+- CompareSheet: 점수 "??" 텍스트 치환 (CSS blur 아닌 DOM 미노출), export/공유 숨김
+- LoginPromptModal Analytics: trigger prop (detail/map), 4개 이벤트
+
+### React 성능 패턴
+- useDeferredValue: 필터 5개 원시값 (filterRegion/filterGu/sortKey/moveInFilter/builderTier)
+- useTransition: 정렬 변경 시 startSortTransition (useFilterSort.js)
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
-- AptListSection: IntersectionObserver 자동 무한 스크롤 + "더 보기" 버튼 폴백
-- useDeferredValue: 필터 5개 원시값 래핑 (filterRegion/filterGu/sortKey/moveInFilter/builderTier)
-- useTransition: 정렬 변경 시 startSortTransition 래핑 (useFilterSort.js)
-- 데스크톱 키보드 단축키: 1~5 프로필, Ctrl+Z undo, Ctrl+Shift+Z redo, Escape 모달닫기
-- AdminDashboard→WeightEditor 분리: `src/components/admin/WeightEditor.jsx` (231줄)
-- E2E: 11 spec (smoke/list/modal/compare/expert/skeleton-empty/admin/favorites/share/loan-rates/mobile)
-- 헤더 화이트 테마: C.borderStrong("#D1D5DB"), 모바일 borderBottom 1.5px, 장식원 제거
-- App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환, `detail.setDetailAptId` 금지)
-- LoginPromptModal Analytics: trigger prop (detail/map), 4개 이벤트 (login_prompt_shown/kakao_click/expert_click/dismissed)
-- 관리자 검색: api/admin/users?q=검색&limit=20&offset=0 (인메모리 필터+슬라이스, total 응답)
-- useAdminMode 검색: searchQuery/page/totalUsers + 300ms 디바운스 (debounceRef), PAGE_SIZE=20
-- AdminDashboard 페이지네이션: 이전/다음 버튼, totalUsers > PAGE_SIZE 시 표시
+- AptListSection: IntersectionObserver 무한 스크롤 + "더 보기" 폴백
+- App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환)
 
-## 기술 스택
+### 데스크톱
+- 키보드 단축키: 1~5 프로필, Ctrl+Z undo, Ctrl+Shift+Z redo, Escape 모달닫기
+- 헤더 화이트 테마: C.borderStrong("#D1D5DB"), 모바일 borderBottom 1.5px
 
-- React 19 + Vite 8 (Rolldown) + `@/` 경로 별칭 — 프론트엔드 (Pretendard Variable 폰트 CDN)
-- `@/components/icons.jsx` — 인라인 SVG 아이콘 9개 (IconClose, IconSearch, IconHelp, IconLocation, IconHeart, IconHeartFilled, IconCompare, IconShare, IconChevronDown, memo 래핑)
-- `@/lib/classify.js` — 입주 상태/시공사 등급 분류 (MOVEIN_STATUS, TIER_LABELS)
-- `@/lib/filterEngine.js` — 공통 base 필터 엔진 (applyBaseFilters, 검색 제거됨)
-- `@/lib/dedup.js` — 아파트 중복 제거 + siblingIds 생성 (dedupApartments)
-- `@/lib/analytics.js` — Vercel Analytics trackEvent 래퍼 (벤더 격리, try-catch)
-- `@/lib/format.js` — 가격/날짜 포맷 (fmtPrice, fmtCompletion, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate)
-- `@/lib/exportPdf.js` — 비교 결과 PNG/PDF 내보내기 (html2canvas + jsPDF dynamic import)
-- `@/theme/index.js` — 디자인 토큰 (C 팔레트 + borderStrong + shadowSm/shadowMd + catCol + gr 등급함수)
-- `@/components/filters/` — 필터 드롭다운 패널 7개 (FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel) + filterStyles.js 공유 스타일 + 7개 테스트(61케이스)
-- `@/hooks/useResponsive.js` — 반응형 훅 (isPC 768px+ / isDesktop 1024px+ / 150ms 디바운스)
-- `@/hooks/useDataPipeline.js` — 데이터 파이프라인 훅 (useMemo 13개: apartments→scored→filtered→visible + visibleCount + SORTERS)
-- `@/hooks/useAppNavigation.js` — 탭 전환/인증 네비게이션 훅 (useCallback 7개 + useRef 2개 + useEffect 2개)
-- `@/hooks/useFinlifeRates.js` — finlife 금리 페칭 공통 팩토리 훅 (useLoanRates/useRentLoanRates 공유)
-- `@/hooks/useLoanRates.js` — finlife 주택담보대출 금리 훅 (useFinlifeRates 래퍼, Map 권역별 캐싱)
-- `@/hooks/useRentLoanRates.js` — finlife 전세자금대출 금리 훅 (useFinlifeRates 래퍼, 단일 캐싱)
-- `@/constants/loanGroups.js` — 금융권역 코드-라벨 매핑 (LOAN_GROUPS, DEFAULT_GROUP)
-- `@/components/detail/LoanRatesSection.jsx` — 금리비교 + 금융권역 탭 (은행/저축은행/보험/기타)
-- Playwright E2E — 11스펙 (smoke/list/modal/compare/expert/skeleton-empty/admin/favorites/share/loan-rates/mobile), `npm run test:e2e`
-- Supabase (PostgreSQL) — 데이터베이스 (15개 테이블 + 2 VIEW + presale 19컬럼)
-- Vercel Serverless Functions (`api/`) — API 레이어
-- `api/_lib/handler.js` — withHandler HOF (CORS/Method/RateLimit/Admin 통합, 14개 API 엔드포인트에서 사용)
-- `api/_lib/rateLimit.js` — IP 기반 Rate Limit (Vercel KV, LIMITS: login:5/signup:5/verify:20/consult:10/admin:30/logout:10/proxy:30, WINDOW 5분, fail-close)
-- `api/_lib/apartmentValidation.js` — 아파트 ID 검증 공유 모듈 (parseApartmentIds, ID_PATTERN — prices.js/unsold-history.js 공용)
-- `api/_lib/finlife.js` — finlife API 공통 모듈 (VALID_GROUPS, fetchFinlifeProducts — loans.js/rent-loans.js 공유)
-- `api/_lib/tokenBlacklist.js` — JWT 토큰 블랙리스트 (SHA-256 해시, KV `bl:{hash}`, TTL=잔여만료, fail-open)
-- `api/auth/logout.js` — 로그아웃 엔드포인트 (POST, 토큰 블랙리스트 등록, 멱등성)
-- `api/auth/kakao.js` — 카카오 OAuth 콜백 (POST, code 교환 + KV 3분기 + JWT 발급, rateLimit kakao:10)
-- `@/hooks/useKakaoAuth.js` — 카카오 OAuth 프론트 훅 (state CSRF + 콜백 처리 + pendingDetail)
-- `@/components/LoginPromptModal.jsx` — 비로그인 로그인 유도 모달 (카카오 + 전문가 링크)
-- `api/admin/stats.js` — 관리자 통계 (GET, admin 인증, 상태별 카운트 + 유형 비율 + 전문분야 + 14일 가입추이)
-- `api/finlife/loans.js` — 금융감독원 finlife 주택담보대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
-- `api/finlife/rent-loans.js` — 금융감독원 finlife 전세자금대출 금리 프록시 (GET, s-maxage=3600, FINLIFE_API_KEY 필요)
-- Vercel Analytics + Speed Insights — 페이지뷰/Web Vitals/커스텀 이벤트 (쿠키 없음)
-- Vercel KV (Upstash Redis) — 인증 세션
-- GitHub Actions — 데이터 수집 (35개 워크플로우, monitor-db-size 포함)
-- Windows 작업 스케줄러 — 네이버 수집 자동화 (로컬 PC, 한국 IP 필수)
-- `scripts/collectors/naver-presale.mjs` — 네이버 분양정보 수집 (POST API, 19필드, 4단계 tier 매칭)
-- `scripts/collectors/collect-trades.mjs` — 국토부 실거래가 수집 (매매/전세/분양권 3종)
-- `scripts/collectors/_shared.mjs` — 수집기 공유 모듈 (19개 export)
-- `scripts/collectors/_molit-api.mjs` — 국토부 공동주택 API 공유 (SIDO_CODE 17개, 재시도+유사도 매칭)
-- `scripts/collectors/molit-building-info.mjs` — 건물 상세 (parking_ratio/max_floor/energy_grade 등)
-- `scripts/collectors/molit-units.mjs` — 세대수 보정 (units≤1 대상)
-- `scripts/collectors/collect-maintenance.mjs` — 관리비 (5항목 합산)
-- `scripts/collectors/collect-childcare.mjs` — 어린이집/유치원 (Kakao 키워드 1km)
-- `scripts/collectors/collect-emergency.mjs` — 응급의료기관 (haversine 10km)
-- `scripts/collectors/collect-air-quality.mjs` — 에어코리아 대기질 (최근접 측정소 매칭)
-- `scripts/collectors/collect-crime-safety.mjs` — 행안부 범죄등급 (로컬 CSV)
-- `scripts/collectors/collect-police.mjs` — 경찰관서 밀도 (Kakao 3km, count+dist)
-
-## 공유 인프라 (mibunyang ↔ naver-estate-web)
-
-| 자원 | 상세 | 주의사항 |
-|------|------|---------|
-| Supabase DB | mibunyang: `rwdtljipvmqpazrimyns` / naver-estate-web: `gcfckzqrcujktloilwpz` | 공용 테이블은 mibunyang DB에 존재 |
-| data.go.kr API Key | MOLIT_KEY (`8daf3599...`) | 일일 한도 10,000건 공유, 양쪽 IP 다름 |
-| 집 서버 IP | 192.168.219.101 (외부: Cloudflare Tunnel) | 네이버 크롤링 rate limit 공유 |
-| Vercel Team | `developer-dunos-projects` | 프로젝트는 별도 — 환경변수/배포 독립 유지 |
-
-### 공유 인프라 규칙 (상세는 하위 CLAUDE.md 참조)
-
-- **테이블 소유권**: 공용 테이블(complexes/articles/complex_price_history/trades) 기존 컬럼 타입 변경/삭제 금지 → `supabase/CLAUDE.md`
-- **API 쿼터**: data.go.kr 일일 10,000회 분배 + 10일-토요일 충돌 방지 → `scripts/CLAUDE.md`
-- **네이버 시간 분리**: mibunyang 08:00(월/목), naver-estate-web interval 기반 → `scripts/CLAUDE.md`
-- **마이그레이션**: 공용 테이블 ALTER 전 상대 프로젝트 쿼리 검색 필수 → `supabase/CLAUDE.md`
+---
 
 ## 반응형 레이아웃
 
@@ -135,37 +103,43 @@
 |--------------|-------|---------|-----------|----------|
 | <768px | 모바일 | 520px | 1컬럼 | 하단 BottomNav |
 | 768~1023px | isPC | 960px | 2컬럼 (gap 16px) | 하단 BottomNav |
-| 1024px+ | isDesktop | 1200px | 3컬럼 (gap 20px) | 상단 고정 바 60px (HeaderSection) |
+| 1024px+ | isDesktop | 1200px | 3컬럼 (gap 20px) | 상단 고정 바 60px |
 
-- `useResponsive()` → `{ isPC, isDesktop }` (150ms resize 디바운스)
-- isDesktop prop 전달: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection→AptCard, DetailModal, CompareSheet, MapView
-- 모바일 100% 유지, 데스크톱은 `isDesktop` 조건 분기로 격리
-- DetailModal: 데스크톱 760px, Radar 180px, IconClose, ARIA dialog
-- CompareSheet: 데스크톱 확대 패딩/폰트, sticky thead
-- MapView: 데스크톱 높이 calc(100dvh - 120px)
+- `useResponsive()` → `{ isPC, isDesktop }` (150ms 디바운스)
+- isDesktop prop: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection→AptCard, DetailModal, CompareSheet, MapView
 - 롤백: useResponsive에서 `isDesktop: false` 고정 시 즉시 복원
 
-## 의존성 방향 (단방향, 순환 참조 없음)
+---
 
-```
-constants → scoring → theme → components → hooks → App
-```
+## 공유 인프라 (mibunyang ↔ naver-estate-web)
+
+| 자원 | 상세 | 주의사항 |
+|------|------|---------|
+| Supabase DB | mibunyang: `rwdtljipvmqpazrimyns` / naver-estate-web: `gcfckzqrcujktloilwpz` | 공용 테이블은 mibunyang DB |
+| data.go.kr API Key | MOLIT_KEY | 일일 10,000건 공유 |
+| 집 서버 IP | 192.168.219.101 (외부: Cloudflare Tunnel) | 네이버 rate limit 공유 |
+| Vercel Team | `developer-dunos-projects` | 프로젝트별 환경변수/배포 독립 |
+
+### 공유 규칙 (상세는 하위 CLAUDE.md)
+
+- **테이블 소유권**: 공용 테이블 기존 컬럼 변경/삭제 금지 → `supabase/CLAUDE.md`
+- **API 쿼터**: 일일 10,000회 분배 + 10일-토요일 충돌 방지 → `scripts/CLAUDE.md`
+- **네이버 시간 분리**: mibunyang 08:00(월/목), naver-estate-web interval → `scripts/CLAUDE.md`
+- **마이그레이션**: 공용 테이블 ALTER 전 상대 프로젝트 쿼리 검색 필수 → `supabase/CLAUDE.md`
+
+---
 
 ## 서브디렉토리 규칙 파일
 
-각 도메인별 상세 규칙은 해당 디렉토리의 CLAUDE.md에 분리:
-- `src/scoring/CLAUDE.md` — 가중치 합계, 클램핑, null 처리, 키워드 그룹, 스코어링 파이프라인
-- `src/components/CLAUDE.md` — memo, 접근성, 크로스브라우저, 전문가 페이지, 컴포넌트 구조
-- `src/hooks/CLAUDE.md` — Hook 호출 순서, useMemo 의존성, 파생 상태, 교차 관심사 패턴
-- `api/CLAUDE.md` — null 함정, 한글, Supabase 연동, 인증
-- `scripts/CLAUDE.md` — units 보정 파이프라인, 네이버 로컬 자동화 (6단계), 후처리 파이프라인
-- `.github/workflows/CLAUDE.md` — 워크플로우 목록, GitHub Secrets
-- `supabase/CLAUDE.md` — 테이블 스키마 (15개 + 2 VIEW + presale 19컬럼)
-
-## 데이터 소스
-
-`VITE_USE_SUPABASE=true` → Supabase API, 아니면 `/data/apartments.json`.
-참조: `src/services/staticDataApi.js`, `src/hooks/useApartmentData.js`.
+| 디렉토리 | 핵심 내용 |
+|---------|----------|
+| `src/scoring/CLAUDE.md` | 가중치 합계 100, 클램핑, null 처리, 스코어링 파이프라인 |
+| `src/components/CLAUDE.md` | memo 36개, 접근성(ARIA/터치타겟/대비), 크로스브라우저, 컴포넌트 구조 |
+| `src/hooks/CLAUDE.md` | Hook 호출 순서, useMemo 의존성 13개, 파생 상태, 교차 관심사 패턴 |
+| `api/CLAUDE.md` | JS null 함정, 한글 인코딩, Supabase 연동, 인증, withHandler 패턴 |
+| `scripts/CLAUDE.md` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터, Rate Limit 정리 |
+| `.github/workflows/CLAUDE.md` | 35개 워크플로우 목록, GitHub Secrets, 스케줄 |
+| `supabase/CLAUDE.md` | 15개 테이블 스키마, 2 VIEW, presale 19컬럼, RLS 정책 |
 
 ---
 
@@ -173,39 +147,114 @@ constants → scoring → theme → components → hooks → App
 
 ### 5가지 교차검증 (병렬 에이전트)
 
-작업 완료 후, **커밋 전** 반드시 5개 에이전트를 **동시에** 실행하여 교차검증:
+커밋 전 반드시 5개 에이전트를 **동시에** 실행:
 
-| # | 에이전트 | 검증 항목 | 주요 체크 |
-|---|---------|----------|----------|
-| 1 | **빌드 검증** | `npx vite build` 성공 여부 | 빌드 에러, import 누락, 번들 크기 |
-| 2 | **스코어링 무결성** | 가중치 합계 = 100, 클램핑 0~100 | PROFILES 5개, engine.js 내부 가중치, Math.min/max |
-| 3 | **null 안전성** | null/undefined 가드 누락 탐지 | `?.`, `?? 0`, `|| []` 패턴, toLocaleString·toFixed 등 |
-| 4 | **Hook 규칙** | React Rules of Hooks 준수 | 호출 순서, 의존성 배열, 조건부 호출 없음 |
-| 5 | **보안 점검** | XSS, CSP, 인젝션, 민감정보 노출 | CSP 헤더, env 키 노출, innerHTML, dangerouslySetInnerHTML |
+| # | 검증 | 주요 체크 |
+|---|------|----------|
+| 1 | **빌드** | `npx vite build` 성공, import 누락, 번들 크기 |
+| 2 | **스코어링** | PROFILES 5개 가중치 합계 = 100, 클램핑 0~100 |
+| 3 | **null 안전성** | `?.`, `?? 0`, `\|\| []` 패턴, toLocaleString/toFixed 가드 |
+| 4 | **Hook 규칙** | 호출 순서, 의존성 배열, 조건부 호출 없음 |
+| 5 | **보안** | XSS, 인젝션, env 키 노출, innerHTML |
 
-검증 결과에서 문제 발견 시 수정 후 재검증. 모두 통과하면 커밋+푸시.
+검증 통과 후 `git commit` + `git push` 자동 수행.
 
-### 커밋+푸시
+### 코드 품질 규칙
 
-모든 교차검증 통과 후 반드시 `git commit` + `git push` 수행. 별도 요청 없이도 자동 실행.
+- **리뷰**: 연동 무결성 + 프론트↔백엔드 타입 일관성 + 보안. 추측 금지 → 도구 실행 결과만 인정
+- **테스트**: 새 기능 = 정상 1개 + 에러 1개 필수. 한국어 주석 + 팩토리 함수
+- **플랜**: 영향 범위 → 실행 순서 → 위험 → 롤백 → 테스트. 5파일+ 시 단계 분리
+- **안티패턴**: 1회용 유틸 금지 / 과도한 추상화 금지 / console.log 커밋 금지
 
 ---
 
-# 코드 리뷰 + 테스트 + 플랜 규칙
+# 하네스 엔지니어링 규칙 (Plan → Guard → Work → Review)
 
-## 코드 리뷰 필수 항목
-- 연동 무결성 + SOLID + 프론트↔백엔드 타입 일관성 + 보안(XSS/Injection)
-- 수정 시 코드로 직접 반영, 추측 판정 금지 → 도구 실행 결과 기반만 인정
+## Plan: Sonnet 최적화 분할 (모든 계획에 최우선 적용)
 
-## 테스트 규칙
-- 새 기능: 정상 1개 + 에러 1개 필수. 파일명: `[대상].test.js` / `[대상].spec.ts`
-- 한국어 주석 + 팩토리 함수. 실행: `npm run test` / `npm run test:e2e`
+### 크기 기준
 
-## 플랜 모드 필수 섹션
-영향 범위 → 실행 순서 → 위험 요소 → 롤백 → 테스트 계획. 5파일+ 시 단계 분리. DB 변경 시 롤백 SQL 명시.
+| 항목 | 허용 | 초과 시 |
+|------|------|--------|
+| 단계당 수정+신규 파일 | **3개 이하** | 단계 분리 |
+| 단일 파일 변경 | **80줄 이내** (고위험 50줄) | 하위 컴포넌트 분리 |
+| 단일 컴포넌트 | **150줄 미만** | 분리 계획 수립 |
+| 동시 관심사 | **1가지** | 단계 분리 |
 
-## 수정 완료 자기 검증
-1. 빌드 검증 (`npx vite build`) 2. 참조처 grep 3. console.log/TODO/민감정보 잔재 확인
+### 분할 순서 (의존 관계)
 
-## AI 안티패턴 방지
-1회용 유틸 금지 / 과도한 추상화 금지 / console.log 커밋 금지
+```
+1. DB 스키마 (마이그레이션) ─ 독립
+2. 타입 정의 ─ 독립
+3. API 함수 ─ 독립
+4. 공통 훅/유틸 ─ 각각 독립
+5. 하위 컴포넌트 ─ 1개씩 독립
+6. 메인 컴포넌트 ─ 독립
+7. 페이지 라우트 + 통합 ─ 마지막
+```
+
+### 절대 금지
+- 한 단계에 "타입 + API + 컴포넌트" 동시 생성
+- 한 단계에 파일 4개 이상 수정
+- DB 변경과 API 변경을 같은 단계에서 수행
+
+### /plan 실행 시 필수 포함
+1. 수정 파일 목록 + 각 파일의 참조처 (grep 결과 기반)
+2. 실행 순서 + 의존 관계 명시
+3. 영향 범위 + 깨질 수 있는 기존 기능
+4. 롤백 방법 + 커밋 분리 전략
+5. 테스트 계획
+6. 모든 단계에 예상 줄 수 표시
+
+---
+
+## Guard: 가드레일 (위반 시 실행 금지)
+
+- **5개+ 파일 수정** → 반드시 단계 분리
+- **DB 변경** → 롤백 마이그레이션 필수 명시
+- **API 변경** → 해당 API 사용하는 프론트 페이지 나열
+- **새 기능** → 에러 처리 + 빈 데이터 + 로딩 상태 + 입력 검증 필수
+- **추측 금지** → "영향 없음" 판정은 grep 결과 기반만 인정
+
+---
+
+## Work: 코드 작성 규칙 (모든 코드 작성 시 자동 적용)
+
+### 실행 규칙
+- 계획에 없는 파일 수정 금지
+- 계획에 없는 리팩토링 금지 (하고 싶으면 "범위 초과" 표시 후 승인 대기)
+- 한 단계 끝날 때마다 `npx vite build` 실행
+- 에러 시 자동 수정 3회 루프, 3회 실패 시 멈추고 보고
+
+### 코드 작성 필수 포함 (빠뜨리면 안 됨)
+- **에러 처리**: API 호출 → try-catch + 사용자 에러 UI
+- **로딩 상태**: 데이터 fetch → isLoading 상태 + 스피너/스켈레톤
+- **빈 데이터**: 목록 0건 → "데이터가 없습니다" UI
+- **입력 검증**: 폼 → 빈 값, 형식, 길이 검증
+- **반응형**: 모바일(375px) 기본 대응
+- **중복 방지**: 제출 버튼 → disabled={isSubmitting}
+
+### 수정 추적
+- 새 파일/수정 파일마다 변경 내용 한 줄 요약
+- 기존 프로젝트 네이밍/패턴/구조 따를 것
+- 새 코드에 한국어 주석으로 목적 설명
+
+---
+
+## Review: 세션 마무리 규칙
+
+### 작업 종료 시 반드시
+1. `git status` — 미커밋 변경 없는지 확인
+2. `npx vite build` — 빌드 정상인지 확인
+3. console.log 잔재 제거
+4. CLAUDE.md "현재 진행 상황" 섹션 업데이트
+
+### SESSION_LOG 관리
+- **위치**: `.claude/SESSION_LOG.md`
+- 매 세션 종료 시 업데이트
+- 이전 세션 로그는 날짜별 누적 (삭제 금지)
+- `.gitignore`에 추가하지 말 것 (다른 기기에서도 이어하려면)
+
+### 다음 세션 이어하기
+- `/resume` 명령으로 시작
+- 또는 CLAUDE.md 상단의 "현재 진행 상황" 참고
