@@ -42,6 +42,8 @@ function makeDetail(overrides = {}) {
     kaptdEcntp: null,     // 에너지 등급 (Bass 폴백)
     codeHeatNm: "개별난방",
     codeHallNm: "복도식",
+    kaptdBcRat: "18.5",   // 건폐율
+    kaptdVlRat: "249.7",  // 용적률
     ...overrides,
   };
 }
@@ -55,13 +57,21 @@ function makeMockSb(updateResult = { error: null }) {
 
 // ── extractBuildingInfo ──────────────────────────────────────
 describe("extractBuildingInfo", () => {
-  it("기본값으로 5개 필드 모두 정확히 추출", () => {
+  it("기본값으로 7개 필드 모두 정확히 추출", () => {
     const info = extractBuildingInfo(makeDetail());
     expect(info.parking_ratio).toBe(0.7);
     expect(info.max_floor).toBe(25);
     expect(info.energy_grade).toBe(2);
     expect(info.heating).toBe("개별난방");
     expect(info.corridor_type).toBe("복도식");
+    expect(info.building_coverage_ratio).toBe(18.5);
+    expect(info.floor_area_ratio).toBe(249.7);
+  });
+
+  it("건폐율/용적률 null 처리", () => {
+    const info = extractBuildingInfo(makeDetail({ kaptdBcRat: null, kaptdVlRat: undefined }));
+    expect(info.building_coverage_ratio).toBeNull();
+    expect(info.floor_area_ratio).toBeNull();
   });
 
   // parking_ratio 엣지케이스
