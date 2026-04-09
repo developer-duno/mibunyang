@@ -168,9 +168,42 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 
 ---
 
+# Claude가 자동 사용하는 스킬 (사용자 입력 불필요)
+
+> 아래 스킬은 **Claude가 적절한 시점에 자동으로 실행**합니다. 사용자가 직접 명령어를 입력할 필요 없습니다.
+
+| 스킬 | Claude가 자동 실행하는 시점 | 효과 |
+|------|--------------------------|------|
+| **simplify** | 코드 작성 완료 후, 커밋 전 | 변경 코드의 재사용성/품질/효율 자동 리뷰 + 수정 |
+| **commit** | 모든 검증 통과 후 | git 변경사항 자동 커밋 + 푸시 |
+| **loop** | 장시간 수집기 실행 시 | 주기적으로 로그 확인 (예: 5분마다 진행 상태 체크) |
+| **schedule** | 정기 자동화 설정 요청 시 | cron 기반 원격 에이전트 생성/관리 |
+| **claude-api** | anthropic SDK import 감지 시 | Claude API/SDK 코드 작성 지원 |
+| **update-config** | 설정 변경 필요 시 | Claude Code settings.json 자동 설정 |
+
+### 하네스 워크플로우에서의 자동 실행 흐름
+
+```
+사용자: "XXX 기능 만들어줘"
+  ↓
+Claude: 계획 수립 (Plan 모드 자동 진입)
+  ↓ 게이트 검증 (Guard)
+Claude: 코드 작성 (Work)
+  ↓
+Claude: simplify 자동 실행 (품질 리뷰)
+  ↓
+Claude: 교차검증 5단계 실행
+  ↓
+Claude: commit + push 자동 실행 (Review)
+```
+
+---
+
 # 하네스 엔지니어링 규칙 (Plan → Guard → Work → Review)
 
 ## Plan: Sonnet 최적화 분할 (모든 계획에 최우선 적용)
+
+> 사용자가 새 기능/리팩토링을 요청하면 Claude가 자동으로 Plan 모드 진입.
 
 ### 크기 기준
 
@@ -220,6 +253,8 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 
 ## Work: 코드 작성 규칙 (모든 코드 작성 시 자동 적용)
 
+> 코드 작성 완료 시 Claude가 자동으로 simplify 품질 리뷰 실행.
+
 ### 실행 규칙
 - 계획에 없는 파일 수정 금지
 - 계획에 없는 리팩토링 금지 (하고 싶으면 "범위 초과" 표시 후 승인 대기)
@@ -243,11 +278,15 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 
 ## Review: 세션 마무리 규칙
 
-### 작업 종료 시 반드시
-1. `git status` — 미커밋 변경 없는지 확인
-2. `npx vite build` — 빌드 정상인지 확인
-3. console.log 잔재 제거
-4. CLAUDE.md "현재 진행 상황" 섹션 업데이트
+> Claude가 자동으로 simplify → 교차검증 5단계 → commit 순서 실행.
+
+### 작업 종료 시 Claude가 자동 수행
+1. simplify 실행 — 변경 코드 품질 리뷰
+2. `git status` — 미커밋 변경 확인
+3. `npx vite build` — 빌드 검증
+4. console.log 잔재 제거
+5. commit + push — 자동 커밋
+6. CLAUDE.md "현재 진행 상황" 업데이트
 
 ### SESSION_LOG 관리
 - **위치**: `.claude/SESSION_LOG.md`
@@ -256,5 +295,5 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - `.gitignore`에 추가하지 말 것 (다른 기기에서도 이어하려면)
 
 ### 다음 세션 이어하기
-- `/resume` 명령으로 시작
-- 또는 CLAUDE.md 상단의 "현재 진행 상황" 참고
+- CLAUDE.md 상단의 "현재 진행 상황" 자동 참고
+- 장시간 수집 실행 시 Claude가 loop 스킬로 자동 모니터링
