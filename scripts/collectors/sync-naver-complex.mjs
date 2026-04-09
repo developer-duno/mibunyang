@@ -153,13 +153,17 @@ async function main() {
 
   log(PHASE, `heating_type 집계: ${Object.keys(heatingByComplex).length}개 단지`);
 
-  // 2. apartments 조회
-  const { data: apartments, error: aErr } = await sbMibunyang
-    .from("apartments")
-    .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio")
-    .range(0, 9999);
-
-  if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
+  // 2. apartments 조회 (페이지네이션 — 1000행 제한 우회)
+  const apartments = [];
+  for (let off = 0; ; off += PAGE) {
+    const { data: page, error: aErr } = await sbMibunyang
+      .from("apartments")
+      .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio")
+      .range(off, off + PAGE - 1);
+    if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
+    apartments.push(...page);
+    if (page.length < PAGE) break;
+  }
   log(PHASE, `apartments: ${apartments.length}건`);
 
   // articles area/direction 조회 (전용률 + 조망/일조 계산용)
@@ -297,13 +301,19 @@ async function main() {
     }
     log(PHASE, `active 매물 집계: ${Object.keys(counts).length}개 단지`);
 
-    // apartments 재조회 (unsold 관련 필드)
-    const { data: aptsForUnsold, error: aErr2 } = await sbMibunyang
-      .from("apartments")
-      .select("id, name, units, unsold, unsold_rate, naver_sell_count, naver_jeonse_count, naver_wolse_count")
-      .range(0, 9999);
+    // apartments 재조회 (unsold 관련 필드, 페이지네이션)
+    const aptsForUnsold = [];
+    for (let off = 0; ; off += PAGE) {
+      const { data: page, error: aErr2 } = await sbMibunyang
+        .from("apartments")
+        .select("id, name, units, unsold, unsold_rate, naver_sell_count, naver_jeonse_count, naver_wolse_count")
+        .range(off, off + PAGE - 1);
+      if (aErr2) { logError(PHASE, `apartments 재조회 실패: ${aErr2.message}`); break; }
+      aptsForUnsold.push(...page);
+      if (page.length < PAGE) break;
+    }
 
-    if (aErr2) {
+    if (aptsForUnsold.length === 0) {
       logError(PHASE, `apartments 재조회 실패: ${aErr2.message}`);
     } else {
       let unsoldUpdated = 0;
@@ -399,13 +409,19 @@ async function main() {
   }
   log(PHASE, `층수 데이터: ${Object.keys(floorByComplex).length}개 단지`);
 
-  // 3-c. apartments 재조회 (naver_* 필드)
-  const { data: aptsForNaver, error: aErr3 } = await sbMibunyang
-    .from("apartments")
-    .select("id, name, lat, lng, naver_nearby_median, naver_nearby_avg, naver_jeonse_rate, naver_build_year, naver_avg_floor, naver_nearby_count, naver_fetched_at")
-    .range(0, 9999);
+  // 3-c. apartments 재조회 (naver_* 필드, 페이지네이션)
+  const aptsForNaver = [];
+  for (let off = 0; ; off += PAGE) {
+    const { data: page, error: aErr3 } = await sbMibunyang
+      .from("apartments")
+      .select("id, name, lat, lng, naver_nearby_median, naver_nearby_avg, naver_jeonse_rate, naver_build_year, naver_avg_floor, naver_nearby_count, naver_fetched_at")
+      .range(off, off + PAGE - 1);
+    if (aErr3) { logError(PHASE, `apartments naver 재조회 실패: ${aErr3.message}`); break; }
+    aptsForNaver.push(...page);
+    if (page.length < PAGE) break;
+  }
 
-  if (aErr3) {
+  if (aptsForNaver.length === 0) {
     logError(PHASE, `apartments 재조회 실패: ${aErr3.message}`);
   } else {
     let naverUpdated = 0;
@@ -497,15 +513,20 @@ async function main() {
     log(PHASE, "\n── Phase 4: 관리비/방향 집계 ──");
 
     // complex_no → apartment_id 매핑이 이미 Phase 2에서 구축됨
-    // articles에서 complex_no별 관리비 평균, 방향 최빈값 집계
-    const { data: articleStats, error: asErr } = await sbMibunyang
-      .from("articles")
-      .select("complex_no, numeric_maintenance_cost, direction")
-      .eq("is_active", true);
+    // articles에서 complex_no별 관리비 평균, 방향 최빈값 집계 (페이지네이션)
+    const articleStats = [];
+    for (let off = 0; ; off += PAGE) {
+      const { data: page, error: asErr } = await sbMibunyang
+        .from("articles")
+        .select("complex_no, numeric_maintenance_cost, direction")
+        .eq("is_active", true)
+        .range(off, off + PAGE - 1);
+      if (asErr) { logError(PHASE, `articles 조회 실패: ${asErr.message}`); break; }
+      articleStats.push(...page);
+      if (page.length < PAGE) break;
+    }
 
-    if (asErr) {
-      logError(PHASE, `articles 조회 실패: ${asErr.message}`);
-    } else {
+    if (articleStats.length > 0) {
       // complex_no별 집계
       const complexAgg = {};
       for (const art of (articleStats || [])) {
@@ -520,42 +541,28 @@ async function main() {
       }
 
       let phase4Updated = 0;
-      for (const apt of apartments) {
-        // apt에 매칭된 complex_no 찾기 (complexLinksMap 또는 이름 매칭)
-        let matchedCn = null;
-        for (const [cn, ids] of complexLinksMap.entries()) {
-          if (ids.includes(apt.id)) { matchedCn = cn; break; }
-        }
-        if (!matchedCn) continue;
-
-        const agg = complexAgg[matchedCn];
+      // complexes → apartments 매칭 (Phase 1과 동일 방식)
+      for (const cpx of complexes) {
+        const agg = complexAgg[cpx.complex_no];
         if (!agg) continue;
+        const matchedApts = matchApartments(cpx, apartments, complexLinksMap);
+        if (matchedApts.length === 0) continue;
 
-        const row = {};
-        // 관리비: null 비율 80% 이상이면 스킵
-        if (agg.costs.length > 0) {
-          row.avg_maintenance_cost = Math.round(agg.costs.reduce((a, b) => a + b, 0) / agg.costs.length);
-        }
-        // 방향: 최빈값
-        const dirEntries = Object.entries(agg.dirs);
-        if (dirEntries.length > 0) {
-          dirEntries.sort((a, b) => b[1] - a[1]);
-          row.primary_direction = dirEntries[0][0];
-        }
-
-        if (Object.keys(row).length === 0) continue;
-
-        if (dryRun) {
-          log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`);
-          phase4Updated++;
-          continue;
-        }
-
-        const { error } = await sbMibunyang.from("apartments").update(row).eq("id", apt.id);
-        if (error) {
-          logError(PHASE, `  ${apt.name} Phase4 UPDATE 실패: ${error.message}`);
-        } else {
-          phase4Updated++;
+        for (const apt of matchedApts) {
+          const row = {};
+          if (agg.costs.length > 0) {
+            row.avg_maintenance_cost = Math.round(agg.costs.reduce((a, b) => a + b, 0) / agg.costs.length);
+          }
+          const dirEntries = Object.entries(agg.dirs);
+          if (dirEntries.length > 0) {
+            dirEntries.sort((a, b) => b[1] - a[1]);
+            row.primary_direction = dirEntries[0][0];
+          }
+          if (Object.keys(row).length === 0) continue;
+          if (dryRun) { log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`); phase4Updated++; continue; }
+          const { error } = await sbMibunyang.from("apartments").update(row).eq("id", apt.id);
+          if (error) { logError(PHASE, `  ${apt.name} Phase4 UPDATE 실패: ${error.message}`); }
+          else { phase4Updated++; }
         }
       }
 
