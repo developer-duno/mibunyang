@@ -63,9 +63,11 @@ describe('useAdminMode', () => {
     // 첫 번째 fetch: 유저 조회
     fetch
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com" }] }) })
-      // 두 번째 fetch: 리뷰
+      // 두 번째 fetch: fetchStats (adminLoggedIn 시 자동 호출)
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true, counts: {} }) })
+      // 세 번째 fetch: 리뷰
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true, message: "승인 완료" }) })
-      // 세 번째 fetch: 재조회
+      // 네 번째 fetch: 재조회
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true, users: [] }) });
 
     const { result } = renderHook(() => useAdminMode(showToast));
