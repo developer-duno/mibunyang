@@ -103,7 +103,7 @@ export function useAdminMode(showToast) {
     if (!token) return;
     setStatsLoading(true);
     try {
-      const res = await fetch("/api/admin/stats", {
+      const res = await fetch("/api/admin/users?action=stats", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 429) return;

@@ -32,9 +32,19 @@ class SB:
         url=f"{SB_REST}/{tbl}?select={cols}"
         if filters:
             for f in filters:url+=f"&{f}"
-        r=hx.get(url,headers=SB_HEADERS)
-        r.raise_for_status()
-        return r.json()
+        # PostgREST 기본 1000행 제한 → 페이지네이션
+        all_rows=[];off=0;ps=1000
+        while True:
+            h={**SB_HEADERS,"Range":f"{off}-{off+ps-1}","Prefer":"count=exact"}
+            r=hx.get(url,headers=h)
+            if r.status_code==416:break  # Range Not Satisfiable → 끝
+            r.raise_for_status()
+            rows=r.json()
+            if not rows:break
+            all_rows.extend(rows)
+            if len(rows)<ps:break
+            off+=ps
+        return all_rows
     @staticmethod
     def upsert(tbl,rows,on_conflict):
         h={**SB_HEADERS,"Prefer":"resolution=merge-duplicates,return=minimal"}

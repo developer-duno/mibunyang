@@ -27,7 +27,7 @@ const mockKv = {
 };
 vi.mock('@vercel/kv', () => ({ kv: mockKv }));
 
-const { default: handler } = await import('./stats.js');
+const { default: handler } = await import('./users.js');
 const { verifyAdminToken } = await import('../_lib/adminAuth.js');
 
 /** res 목 객체 팩토리 */
@@ -67,7 +67,7 @@ describe('GET /api/admin/stats', () => {
       .mockResolvedValueOnce({ email: 'g@test.com', specialty: '감정평가', createdAt: today })
       .mockResolvedValueOnce({ email: 'h@test.com', specialty: '부동산 중개', createdAt: '2020-01-01T00:00:00Z' });
 
-    const req = { method: 'GET', query: {}, headers: { authorization: 'Bearer valid' } };
+    const req = { method: 'GET', query: { action: 'stats' }, headers: { authorization: 'Bearer valid' } };
     const res = makeRes();
     await handler(req, res);
 
