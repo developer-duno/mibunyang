@@ -1,11 +1,11 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, memo } from "react";
 import { C, catCol, catBg } from "@/theme";
 import { PROFILES } from "@/constants/profiles";
 
 const CAT_LABELS = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
 const CAT_KEYS = ["location", "product", "price", "risk", "benefit", "future"];
 
-export function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, scored }) {
+export default memo(function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, scored }) {
   const [editingProfile, setEditingProfile] = useState(null);
   const [draft, setDraft] = useState({});
   const [previewAptIdx, setPreviewAptIdx] = useState(0);
@@ -228,4 +228,4 @@ export function WeightEditor({ profile, setProfile, customWeights, saveCustomWei
       )}
     </div>
   );
-}
+});

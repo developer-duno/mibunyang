@@ -5,25 +5,22 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-09 세션79 — 관리자 검색/페이지네이션 + Analytics + 네이버 재수집 + Vercel 복구
+**마지막 작업**: 2026-04-10 세션80 — 테스트/memo/validation 리팩토링 + 네이버 전체 재수집 + building-hub
 
-- LoginPromptModal: trigger prop + trackEvent 4개 (login_prompt_shown/kakao_click/expert_click/dismissed)
-- App.jsx: loginTrigger 상태 추가 (detail/map 트리거 구분)
-- api/admin/users: q(검색)/limit(기본20)/offset + total 응답 + action=stats 통합 (Vercel 12함수 복구)
-- useAdminMode: searchQuery/page/totalUsers 상태 + 300ms 디바운스 + fetchStats → users?action=stats
-- AdminDashboard: 검색 입력(이름/이메일/소속) + 페이지네이션(이전/다음) + 빈 검색결과 메시지
-- Vercel Hobby 12함수 제한 복구: admin/stats.js → admin/users.js?action=stats 통합
-- naver-collect.py: SB.select 페이지네이션 (PostgREST 1000행 제한 해소, 2001건 전체 수집)
-- sync-naver-complex.mjs: apartments/articles 4곳 페이지네이션 + Phase4 matchApartments 매칭 수정 (0→9435건)
-- 네이버 재수집 실행: complexes 29727건 + articles ~11458건 + sync Phase1~4 완료
+- useDataPipeline.test.js: 신규 29개 테스트 (renderHook + vi.mock, 정렬/필터/페이지네이션/폴백 검증)
+- WeightEditor.jsx: memo() 래핑 + AdminDashboard default import 전환
+- api/_lib/apartmentValidation.js: ID 검증 공유 모듈 추출 (parseApartmentIds + ID_PATTERN)
+- api/_lib/apartmentValidation.test.js: 13개 테스트 (정상/에러/SQL injection/경계값)
+- api/supabase/prices.js, unsold-history.js: apartmentValidation import로 검증 중복 제거
+- naver-collect.py: 전체 재수집 nohup 실행 (python -u, 진행 중)
+- collect-building-hub.mjs: nohup 실행 (진행 중)
 
 **다음에 해야 할 것** (우선순위):
 
-1. 네이버 수집 완전 재실행 (articles 1250/29727에서 중단 → 전체 완료 필요)
-2. building-hub 재실행 (data.go.kr API 정상화 후) → heat_fuel 추가 수집
-3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
-4. 관리자 대시보드 추가 기능: 일괄 처리 (승인/거부)
-5. 비로그인 전환율 분석: Vercel Analytics 대시보드에서 login_prompt_* 이벤트 모니터링
+1. 네이버 수집 완료 확인 후 sync-naver-complex.mjs 재실행 (6단계 파이프라인 2~6단계)
+2. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
+3. 관리자 대시보드 추가 기능: 일괄 처리 (승인/거부)
+4. 비로그인 전환율 분석: Vercel Analytics 대시보드에서 login_prompt_* 이벤트 모니터링
 
 **주의사항**:
 
@@ -89,6 +86,7 @@
 - Vercel Serverless Functions (`api/`) — API 레이어
 - `api/_lib/handler.js` — withHandler HOF (CORS/Method/RateLimit/Admin 통합, 14개 API 엔드포인트에서 사용)
 - `api/_lib/rateLimit.js` — IP 기반 Rate Limit (Vercel KV, LIMITS: login:5/signup:5/verify:20/consult:10/admin:30/logout:10/proxy:30, WINDOW 5분, fail-close)
+- `api/_lib/apartmentValidation.js` — 아파트 ID 검증 공유 모듈 (parseApartmentIds, ID_PATTERN — prices.js/unsold-history.js 공용)
 - `api/_lib/finlife.js` — finlife API 공통 모듈 (VALID_GROUPS, fetchFinlifeProducts — loans.js/rent-loans.js 공유)
 - `api/_lib/tokenBlacklist.js` — JWT 토큰 블랙리스트 (SHA-256 해시, KV `bl:{hash}`, TTL=잔여만료, fail-open)
 - `api/auth/logout.js` — 로그아웃 엔드포인트 (POST, 토큰 블랙리스트 등록, 멱등성)

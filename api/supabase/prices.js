@@ -8,40 +8,23 @@
  */
 import { getSupabase } from "../_lib/supabase.js";
 import { withHandler } from "../_lib/handler.js";
+import { parseApartmentIds } from "../_lib/apartmentValidation.js";
 
-const ID_PATTERN = /^ah-\d+$/;
+const SELECT = "apartment_id, area, supply_area, price, pp, house_type, supply_count, recorded_at";
 
 export default withHandler({ method: "GET", handler: async (req, res) => {
   try {
     const supabase = getSupabase();
-    const rawIds = (req.query.apartment_ids || "").trim();
-    const apartmentId = (req.query.apartment_id || "").trim();
+    const parsed = parseApartmentIds(req.query);
+    if (parsed.error) {
+      return res.status(parsed.status).json({ ok: false, error: parsed.error });
+    }
 
     let query;
-    if (rawIds) {
-      const ids = rawIds.split(",").map(s => s.trim()).filter(Boolean);
-      if (ids.length === 0 || ids.length > 20) {
-        return res.status(400).json({ ok: false, error: "apartment_ids는 1~20개 사이여야 합니다" });
-      }
-      if (!ids.every(id => ID_PATTERN.test(id))) {
-        return res.status(400).json({ ok: false, error: "잘못된 apartment_id 형식입니다" });
-      }
-      query = supabase
-        .from("prices")
-        .select("apartment_id, area, supply_area, price, pp, house_type, supply_count, recorded_at")
-        .in("apartment_id", ids)
-        .order("recorded_at", { ascending: true });
-    } else if (apartmentId) {
-      if (!ID_PATTERN.test(apartmentId)) {
-        return res.status(400).json({ ok: false, error: "잘못된 apartment_id 형식입니다" });
-      }
-      query = supabase
-        .from("prices")
-        .select("apartment_id, area, supply_area, price, pp, house_type, supply_count, recorded_at")
-        .eq("apartment_id", apartmentId)
-        .order("recorded_at", { ascending: true });
+    if (parsed.ids) {
+      query = supabase.from("prices").select(SELECT).in("apartment_id", parsed.ids).order("recorded_at", { ascending: true });
     } else {
-      return res.status(400).json({ ok: false, error: "apartment_id 또는 apartment_ids 파라미터가 필요합니다" });
+      query = supabase.from("prices").select(SELECT).eq("apartment_id", parsed.id).order("recorded_at", { ascending: true });
     }
 
     const { data, error } = await query;

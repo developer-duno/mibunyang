@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import { C } from "@/theme";
 import { AdminHelpGuide } from "./AdminHelpGuide";
-import { WeightEditor } from "./WeightEditor";
+import WeightEditor from "./WeightEditor";
 
 const STATUS_TABS = [
   { key: "pending", label: "대기중", color: "#92400E", bg: "#FFFBEB" },
