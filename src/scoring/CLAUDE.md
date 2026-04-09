@@ -8,16 +8,16 @@
 src/scoring/
   engine.js              — 오케스트레이터 (sanitize + calcCats + calcAll + re-export)
   scorePrice.js          — 가격 매력도 (scorePrice, getAgeCoeff, getAreaAdj)
-  scoreLocation.js       — 입지·생활권 (scoreLocation)
+  scoreLocation.js       — 입지/생활권 (scoreLocation)
   scoreProduct.js        — 상품성 (scoreProduct)
-  scoreBenefit.js        — 혜택·할인 (scoreBenefit)
+  scoreBenefit.js        — 혜택/할인 (scoreBenefit)
   scoreRisk.js           — 안전도 (scoreRisk)
   scoreFuture.js         — 미래가치 (scoreFuture + matchAny + 키워드 상수)
   computeRegionalMedians.js — 지역별 중위값 계산
   engine.test.js         — 전체 테스트
 ```
 
-모든 함수는 engine.js에서 re-export → `@/scoring/engine` import 경로 유지.
+모든 함수는 engine.js에서 re-export. import 경로: `@/scoring/engine`
 
 ## 함수 시그니처
 
@@ -27,242 +27,175 @@ src/scoring/
 | `calcAll(apt, profile, ctx)` | profile 가중치 적용 | { total, cats, weights } |
 | `computeRegionalMedians(apts)` | 전체 아파트 배열 | 지역별 중위값 객체 |
 
-**ctx 파라미터**: App.jsx에서 `computeRegionalMedians(apartments)`로 생성하여 전달.
+---
 
 ## 가중치 합계 = 100% (또는 1.00)
 
-수정 시 반드시 합계를 검증할 것. 한 곳이라도 틀리면 전체 점수가 왜곡됨.
+수정 시 반드시 합계 검증. 한 곳이라도 틀리면 전체 점수 왜곡됨.
 
-| 위치 | 항목 | 합계 |
-|------|------|------|
-| profiles.js PROFILES.live | location(40)+product(20)+price(20)+risk(10)+benefit(5)+future(5) | **100** |
-| profiles.js PROFILES.invest | location(15)+product(10)+price(30)+risk(25)+benefit(10)+future(10) | **100** |
-| profiles.js PROFILES.newlywed | location(30)+product(15)+price(30)+risk(10)+benefit(10)+future(5) | **100** |
-| profiles.js PROFILES.edu | location(45)+product(20)+price(15)+risk(10)+benefit(5)+future(5) | **100** |
-| profiles.js PROFILES.retire | location(35)+product(25)+price(20)+risk(15)+benefit(5)+future(0) | **100** |
-| engine.js scorePrice 내부 | 0.30+0.20+0.15+0.25+0.07+0.03 | **1.00** (6개 서브: 괴리도/전세가율/PIR/PSR/신뢰도/택지비) |
-| engine.js scoreLocation 내부 | 0.30+0.25+0.20+0.10+0.15 | **1.00** |
-| engine.js infra 서브가중치 | 0.16+0.08+0.04+0.12+0.12+0.12+0.04+0.12+0.10+0.10 | **1.00** (10항목) |
-| engine.js scoreRisk 내부 | 0.14+0.14+0.15+0.17+0.05+0.10+0.04+0.04+0.09+0.05+0.03 | **1.00** (11개 서브: +initSc) |
-| engine.js scoreFuture 내부 | 동적 가중치 (아래 참조) | **항상 1.00** |
-| engine.js scoreProduct max | 20+15+15+10+10+10+10+5+5 | **100** |
+| 위치 | 합계 |
+|------|------|
+| PROFILES 5개 (live/invest/newlywed/edu/retire) | 각각 **100** |
+| scorePrice 내부 (괴리도/전세가율/PIR/PSR/신뢰도/택지비) | **1.00** |
+| scoreLocation 내부 (5개 서브) | **1.00** |
+| infra 서브가중치 (10항목) | **1.00** |
+| scoreRisk 내부 (11개 서브) | **1.00** |
+| scoreFuture 내부 (동적, 아래 참조) | **항상 1.00** |
+| scoreProduct max (9개 항목) | **100** |
 
 ## 모든 점수 0~100 클램핑
 
-모든 서브스코어와 카테고리 총점은 `Math.min(..., 100)` 또는 `Math.max(0, Math.min(100, ...))` 클램핑 필수.
-특히 PSR 서브스코어는 psr < 0.7일 때 100 초과 가능 → Math.min 필수.
+`Math.min(..., 100)` 또는 `Math.max(0, Math.min(100, ...))` 필수.
+특히 PSR 서브스코어는 psr < 0.7일 때 100 초과 가능.
 
 ## 새 카테고리 추가 시
 
-1. `engine.js`에 `scoreNewCategory(apt, ctx)` 함수 작성 (반환: `{ total, subs[] }`)
+1. `engine.js`에 `scoreNewCategory(apt, ctx)` 작성 (반환: `{ total, subs[] }`)
 2. `calcCats()` 내 호출 추가
-3. `src/constants/profiles.js` — **PROFILES 5개 전부** 가중치 재조정 (합계 100 유지)
+3. `src/constants/profiles.js` — PROFILES 5개 전부 가중치 재조정 (합계 100 유지)
 4. `src/theme/index.js` — catCol, catBg에 새 색상 추가
 5. CompareSheet, CatPanel, Radar에 키 추가
+
+---
 
 ## scoreFuture 동적 가중치
 
 교통/도시/산업 데이터 부재 시 인구에 가중치 집중 (합계 항상 1.00):
 
-| 교통 | 도시 | 산업 | wTr | wCity | wPop | wInd | 합계 |
-|------|------|------|-----|-------|------|------|------|
-| 있음 | 있음 | 있음 | 0.30 | 0.25 | 0.25 | 0.20 | **1.00** |
-| 있음 | 있음 | 없음 | 0.40 | 0.30 | 0.30 | 0 | **1.00** |
-| 있음 | 없음 | 있음 | 0.40 | 0 | 0.30 | 0.30 | **1.00** |
-| 있음 | 없음 | 없음 | 0.55 | 0 | 0.45 | 0 | **1.00** |
-| 없음 | 있음 | 있음 | 0 | 0.35 | 0.35 | 0.30 | **1.00** |
-| 없음 | 있음 | 없음 | 0 | 0.45 | 0.55 | 0 | **1.00** |
-| 없음 | 없음 | 있음 | 0 | 0 | 0.60 | 0.40 | **1.00** |
-| 없음 | 없음 | 없음 | 0 | 0 | 1.00 | 0 | **1.00** |
+| 교통 | 도시 | 산업 | wTr | wCity | wPop | wInd |
+|------|------|------|-----|-------|------|------|
+| O | O | O | 0.30 | 0.25 | 0.25 | 0.20 |
+| O | O | X | 0.40 | 0.30 | 0.30 | 0 |
+| O | X | O | 0.40 | 0 | 0.30 | 0.30 |
+| O | X | X | 0.55 | 0 | 0.45 | 0 |
+| X | O | O | 0 | 0.35 | 0.35 | 0.30 |
+| X | O | X | 0 | 0.45 | 0.55 | 0 |
+| X | X | O | 0 | 0 | 0.60 | 0.40 |
+| X | X | X | 0 | 0 | 1.00 | 0 |
 
 ## scoreFuture 키워드 그룹
 
-### 교통개발 키워드
-
-| 배열 | 용도 | 키워드 |
+| 그룹 | 용도 | 키워드 |
 |------|------|--------|
-| TRANSIT_ACTIVE | 기존/운행 중 교통 | 기존, 운행중, 개통 |
-| TRANSIT_PLANNED | 계획/공사 중 교통 | 계획, 착공, 공사중, 추진, 확정, 예정, 인가 |
-| TRANSIT_HIGH | 고가치 교통 (1.2x 보너스) | GTX, KTX역, SRT, 지하철연장, 신설역, 광역급행, BRT, 트램, 경전철, 도시철도 |
+| TRANSIT_ACTIVE | 기존/운행 중 | 기존, 운행중, 개통 |
+| TRANSIT_PLANNED | 계획/공사 중 | 계획, 착공, 공사중, 추진, 확정, 예정, 인가 |
+| TRANSIT_HIGH | 고가치 (1.2x) | GTX, KTX역, SRT, 지하철연장, 신설역, 광역급행, BRT, 트램, 경전철, 도시철도 |
+| CITY_HIGH | 80점 | 테크노, 주거타운, 신도시, 신도심, 복합도시, 재건축, 혁신, 스마트시티 등 |
+| CITY_MID | 50점 | 재생, 리모델링, 관광, 산업단지, 특구, 역세권개발 등 |
+| 기타 | 30점 | 위 키워드 미매칭 시 |
 
-### 도시개발 키워드
+`includes()` 부분 매칭 주의 ("신도" → "신도시"+"신도심" 모두 매칭).
 
-| 그룹 | 점수 | 키워드 |
-|------|------|--------|
-| CITY_HIGH (80점) | 대규모 개발 | 테크노, 주거타운, 신도시, 신도심, 복합도시, 재건축, 혁신, 스마트시티, 자족도시, 행정중심, 경제자유구역, 국가산단 |
-| CITY_MID (50점) | 중규모 개발 | 재생, 리모델링, 관광, 산업단지, 공항, 특구, 메디컬, 역세권개발, 도시정비, 택지개발, 물류단지, 연구단지 |
-| 기타 (30점) | 기본 | (위 키워드 미매칭 시) |
+---
 
-새 키워드는 적절한 점수 그룹에 배치. `includes()` 부분 매칭 주의 (예: "신도" → "신도시"+"신도심" 모두 매칭).
+## 서브지표 점수 테이블
 
-## popGrowth 7단계 점수 (한국 현실 기반)
+### popGrowth (인구 증감률)
 
-| 인구 증감률 | 점수 | 비고 |
-|-----------|------|------|
-| null (데이터 없음) | 35 | 중립 (비관적 기본값 아님) |
-| ≥ +1.0% | 95 | 신도시급 유입 |
-| ≥ +0.5% | 80 | 성장 도시 |
-| ≥ 0% | 65 | 안정적 |
-| ≥ -0.3% | 50 | 한국 평균 수준 |
-| ≥ -0.8% | 35 | 일반적 감소 |
-| ≥ -2.0% | 20 | 주의 구간 |
-| < -2.0% | 10 | 인구 급감 |
-
-근거: 한국 전체 평균 인구 성장률 약 -0.3%, 서울 -0.1%~-0.8%가 67%.
-
-## cancel_ratio_6m (계약해제율) 스코어링
-
-scoreRisk 내부 9번째 서브지표 (가중치 0.04):
-
-| 해제율 | 점수 | 비고 |
+| 증감률 | 점수 | 비고 |
 |--------|------|------|
-| null (데이터 없음) | 35 | 중립 (CANCEL_RATIO_NULL_SCORE) |
-| ≤ 3% | 10 | 안전 |
-| ≤ 8% | 25 | 주의 |
-| ≤ 15% | 45 | 경고 |
-| ≤ 25% | 65 | 높음 |
-| > 25% | 85 | 극도로 높음 (CANCEL_RATIO_HIGH_SCORE) |
+| null | 35 | 중립 |
+| >= +1.0% | 95 | 신도시급 |
+| >= +0.5% | 80 | 성장 도시 |
+| >= 0% | 65 | 안정적 |
+| >= -0.3% | 50 | 한국 평균 |
+| >= -0.8% | 35 | 일반적 감소 |
+| >= -2.0% | 20 | 주의 |
+| < -2.0% | 10 | 급감 |
 
-점수가 높을수록 위험. `100 - cancelSc`가 최종 서브점수.
-데이터 소스: `trade_stats.cancel_ratio_6m` (6개월 매매 해제비율, 3건 미만이면 NULL).
+### cancel_ratio_6m (계약해제율) — scoreRisk 가중치 0.04
 
-## 경쟁률(competitionRate) 스코어링
+점수 높을수록 위험. `100 - cancelSc`가 최종 서브점수.
 
-scoreRisk 내부 8번째 서브지표 (가중치 0.09):
+| 해제율 | 점수 |
+|--------|------|
+| null | 35 |
+| <= 3% | 10 |
+| <= 8% | 25 |
+| <= 15% | 45 |
+| <= 25% | 65 |
+| > 25% | 85 |
 
-| 경쟁률 | 점수 | 비고 |
-|--------|------|------|
-| null (데이터 없음) | 40 | 중립 |
-| ≥ 10:1 | 5 | 매우 인기 |
-| ≥ 3:1 | 15 | 인기 |
-| ≥ 1:1 | 30 | 적정 |
-| ≥ 0.5:1 | 45 | 약한 수요 |
-| ≥ 0:1 | 55 | 간신히 충족 |
-| ≥ -0.5 | 70 | 소폭 미달 |
-| < -0.5 | 85 | 심한 미달 |
+### competitionRate (경쟁률) — scoreRisk 가중치 0.09
 
-점수가 높을수록 위험. `100 - compSc`가 최종 서브점수.
-완충 구간: rate=0 전후로 급격한 점수 변화를 방지 (55→70 완만 전이).
-데이터 소스: `apartments.competition_rate` (청약홈 잔여세대 경쟁률, collect-applyhome.mjs).
+점수 높을수록 위험. `100 - compSc`가 최종 서브점수.
 
-## 치안 안전(crimeSafetyGrade) 스코어링
+| 경쟁률 | 점수 |
+|--------|------|
+| null | 40 |
+| >= 10:1 | 5 |
+| >= 3:1 | 15 |
+| >= 1:1 | 30 |
+| >= 0.5:1 | 45 |
+| >= 0:1 | 55 |
+| >= -0.5 | 70 |
+| < -0.5 | 85 |
 
-scoreRisk 내부 10번째 서브지표 (가중치 0.05):
+### crimeSafetyGrade (치안) — scoreRisk 가중치 0.05
 
-| 등급 | 점수 | 비고 |
-|------|------|------|
-| null (데이터 없음) | 35 | 중립 (CRIME_SAFETY_NULL_SCORE) |
-| 1등급 (최안전) | 10 | 안전 |
-| 2등급 | 25 | 양호 |
-| 3등급 | 40 | 보통 |
-| 4등급 | 60 | 주의 |
-| 5등급 (최위험) | 80 | 위험 |
+crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 
-crimeSc는 내부 분할: `gradeRisk * 0.7 + policeRisk * 0.3`.
-점수가 높을수록 위험. `Math.round(100 - crimeSc)`가 최종 서브점수.
-데이터 소스: `apartments.crime_safety_grade` (행안부 지역안전지수 범죄 분야, 연 1회 CSV).
+| 등급 | gradeRisk | policeDist | policeRisk |
+|------|-----------|------------|------------|
+| null | 35 | null | 35 |
+| 1등급 | 10 | <= 500m | 5 |
+| 2등급 | 25 | <= 1km | 15 |
+| 3등급 | 40 | <= 2km | 30 |
+| 4등급 | 60 | <= 3km | 50 |
+| 5등급 | 80 | > 3km | 70 |
 
-## 경찰관서 근접성(policeDist) 스코어링
+### netMigration (순이동) — popSc 보정
 
-scoreRisk 내부 crimeSc의 30% 비중 (총 가중치 0.05 × 0.3 = 0.015):
-
-| 거리 | 점수 | 비고 |
-|------|------|------|
-| null (데이터 없음) | 35 | 중립 (POLICE_DIST_NULL_SCORE) |
-| ≤ 500m | 5 | 매우 안전 |
-| ≤ 1km | 15 | 안전 |
-| ≤ 2km | 30 | 보통 |
-| ≤ 3km | 50 | 약간 불안 |
-| > 3km | 70 | 원거리 (POLICE_DIST_HIGH_SCORE) |
-
-점수가 높을수록 위험 (멀수록 높은 점수).
-데이터 소스: `infra.police_dist` (Kakao Places "경찰서" 3km 반경 최근접 거리, 매월 수집).
-
-## 순이동(netMigration) 보너스/페널티
-
-popSc에 가산/감산. 인구 증감률과 별개로 실제 전입/전출 데이터 반영:
-
-| 조건 | 효과 | 클램핑 |
-|------|------|--------|
-| 순이동 > 0 (순유입) | popSc + 10 | Math.min(100) |
-| 순이동 ≤ -5000 (대규모 유출) | popSc - 5 | Math.max(0) |
-| 순이동 null 또는 -5000~0 | 변경 없음 | — |
-
-## 세션66 신규 반영 필드 (15개)
-
-### 초기분양률(initialSaleRate) — scoreRisk 11번째 서브 (가중치 0.03)
-
-| 분양률 | 점수 | 비고 |
-|--------|------|------|
-| null | 40 | 중립 (INIT_SALE_NULL) |
-| ≥ 90% | 10 | 매우 안전 |
-| ≥ 70% | 25 | 양호 |
-| ≥ 50% | 45 | 보통 |
-| ≥ 30% | 65 | 주의 |
-| < 30% | 85 | 위험 (INIT_SALE_HIGH_RISK) |
-
-점수가 높을수록 위험. `100 - initSc`가 최종 서브점수.
-
-### 택지비비율(landCostRatio) — scorePrice 6번째 서브 (가중치 0.03)
-
-| 비율 | 점수 | 비고 |
-|------|------|------|
-| null | 50 | 중립 (LAND_COST_NULL) |
-| ≥ 60% | 80 | 구조적 가격 하한 |
-| ≥ 40% | 60 | 양호 |
-| ≥ 20% | 40 | 보통 |
-| < 20% | 25 | 건축비 리스크 (LAND_COST_LOW) |
-
-점수가 높을수록 안전.
-
-### 대기질 복합 (airSc) — scoreLocation env 서브 내부
-
-PM2.5만 있으면 기존과 동일. PM10 또는 O3 데이터 있으면 복합:
-`airSc = pm25Sc × 0.40 + pm10Sc × 0.35 + o3Sc × 0.25`
-
-### 도보통학(naverSchoolWalkMin) — scoreLocation school 서브 보정
-
-| 시간 | 보정 |
+| 조건 | 효과 |
 |------|------|
-| null | ±0 (변경 없음) |
-| ≤ 5분 | +10 |
-| ≤ 10분 | +5 |
-| ≤ 15분 | ±0 |
-| ≤ 20분 | -5 |
-| > 20분 | -10 |
+| 순유입 (> 0) | popSc + 10, Math.min(100) |
+| 대규모 유출 (<= -5000) | popSc - 5, Math.max(0) |
+| 그 외 | 변경 없음 |
 
-schoolSc = clamp(0, schoolScore + walkAdj, 100)
+### initialSaleRate (초기분양률) — scoreRisk 가중치 0.03
 
-### 기타 신규 필드 (가중치 변경 없이 기존 서브에 흡수)
+점수 높을수록 위험. `100 - initSc`가 최종.
 
-- `isRegulated`: scoreRisk regSc — DB값 우선, null이면 getZone() 폴백
-- `naverSellCount`: scoreRisk liqSc — 매물 50건↑ +5, 30건↑ +2 페널티
-- `presaleType`: scoreRisk finSc — "공공" 포함 시 -15 보너스
-- `newSupply`: scoreRisk supSc — 5000↑ +5, 1000↓ -3 보정
-- `priceIndex`: scorePrice relSc — 130↑ +5, 110↑ +3 신뢰도 가산
-- `avgPriceSqm`/`presalePp`: scorePrice — fairPrice=0 폴백 데이터 소스
-- `presaleParking`/`presaleGeneralSupply`: scoreProduct — parkingRatio null일 때 폴백
-- `presaleHousingType`: scoreProduct — 오피스텔/도시형 brandSc 상한 15
+| 분양률 | 점수 |
+|--------|------|
+| null | 40 |
+| >= 90% | 10 |
+| >= 70% | 25 |
+| >= 50% | 45 |
+| >= 30% | 65 |
+| < 30% | 85 |
 
-## 스코어링 파이프라인 (App.jsx에서의 흐름)
+### landCostRatio (택지비비율) — scorePrice 가중치 0.03
 
-```
-apartments (API 데이터)
-  ↓ [apartments 변경 시]
-catsCache = apartments.map(a => calcCats(a, { regionMedians }))
-  ↓ [profile, customWeights 변경 시]
-scored = catsCache.map(c => { total = 가중합산; return { apt, res } })
-  ↓ [필터/정렬 변경 시]
-filtered → visible (페이지네이션)
-```
+점수 높을수록 안전.
 
-`calcCats(apt, ctx)`는 regionMedians 컨텍스트를 받아 6개 카테고리 점수 반환.
-`scoreFuture`는 `FUTURE_WEIGHT_MAP` 룩업 테이블로 동적 가중치 결정 (Q-4).
-`calcAll(apt, profile, ctx)`는 가중합산 총점 + 카테고리 점수 반환.
+| 비율 | 점수 |
+|------|------|
+| null | 50 |
+| >= 60% | 80 |
+| >= 40% | 60 |
+| >= 20% | 40 |
+| < 20% | 25 |
+
+### 기타 보정 필드
+
+| 필드 | 적용 위치 | 효과 |
+|------|----------|------|
+| airSc (대기질 복합) | scoreLocation env | PM2.5*0.4 + PM10*0.35 + O3*0.25 |
+| naverSchoolWalkMin | scoreLocation school | <= 5분: +10, <= 10분: +5, <= 20분: -5, > 20분: -10 |
+| isRegulated | scoreRisk regSc | DB값 우선, null이면 getZone() 폴백 |
+| naverSellCount | scoreRisk liqSc | 50건+ → +5, 30건+ → +2 페널티 |
+| presaleType | scoreRisk finSc | "공공" 포함 시 -15 보너스 |
+| newSupply | scoreRisk supSc | 5000+ → +5, 1000- → -3 |
+| priceIndex | scorePrice relSc | 130+ → +5, 110+ → +3 |
+| presaleParking/presaleGeneralSupply | scoreProduct | parkingRatio null 폴백 |
+| presaleHousingType | scoreProduct | 오피스텔/도시형 brandSc 상한 15 |
+
+---
 
 ## null/undefined 처리
 
-- `??` (nullish coalescing) 사용: `apt.schoolScore ?? 50` — falsy-zero(0)도 정상 처리
+- `??` (nullish coalescing) 사용: `apt.schoolScore ?? 50` — 0도 정상 처리
 - `||` (logical OR) 금지: `apt.schoolScore || 50` — 0이 50으로 대체되는 함정
 - 배열 가드: `(apt.noxious || []).length`
 - 숫자 가드: `(apt.units ?? 0).toLocaleString()`

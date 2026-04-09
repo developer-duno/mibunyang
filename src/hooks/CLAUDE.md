@@ -2,63 +2,69 @@
 
 > App.jsx 및 커스텀 훅 수정 시 반드시 이 규칙을 따를 것.
 
-## Hook 호출 순서
+## Hook 호출 순서 (App.jsx)
 
-App.jsx 내부 (세션72 분리 후):
 ```
 useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개)
   → useCallback (setProfile, saveCustomWeights, toggleHideNoUnsold, closeDetail)
-  → 커스텀 훅 13개 (useResponsive, useToast, useFavorites, useDetailModal, useFilterSort, useComparison, useConsult, useExpertMode, useAdminMode, useApartmentData, useShare)
-  → useDataPipeline (useMemo 13개 + visibleCount useState + reset useEffect 내장)
-  → useAppNavigation (useCallback 7개 + useRef 2개 + useEffect 2개 내장)
+  → 커스텀 훅 13개 (useResponsive → useToast → ... → useShare)
+  → useDataPipeline (useMemo 13개 + visibleCount + reset useEffect)
+  → useAppNavigation (useCallback 7개 + useRef 2개 + useEffect 2개)
   → 공유 콜백 3개 (handleShare*) + scoredMapRef
   → 독립 useEffect 3개 (print CSS, URL 딥링크, 무효 ID 정리)
   → JSX
 ```
-각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장.
-React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지.
-**TDZ 방지**: 커스텀 훅 호출 시 매개변수가 반드시 해당 훅 호출 **이전에** 정의되어야 함. Vite production 빌드에서 const 재배열로 TDZ 에러 발생 (2eaac74).
 
-## useDataPipeline 구조 (세션72)
+- 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장
+- React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지
+- **TDZ 방지**: 훅 매개변수가 해당 훅 호출 이전에 정의되어야 함 (Vite 빌드 const 재배열)
+
+---
+
+## useDataPipeline 구조
 
 ```
-useDataPipeline({ apartments, profile, customWeights, ...필터상태, hideNoUnsold, compIds, dataUpdatedAt })
+useDataPipeline({ apartments, profile, customWeights, ...필터상태, compIds, dataUpdatedAt })
   ├── SORTERS, VISIBLE_PAGE_SIZE (모듈 레벨 상수)
   ├── visibleCount: useState(VISIBLE_PAGE_SIZE)
   ├── useMemo 13개 (guOptions → catsCache → scored → filtered → visible 체인)
   ├── useEffect: filtered 변경 시 visibleCount 리셋
-  └── return { guOptions, scored, filtered, visible, visibleCount, setVisibleCount, scoredMap, compItems, pw, activeFilterCount, regionOptions, filterOptionCounts, dataFreshnessText, ... }
+  └── return { guOptions, scored, filtered, visible, scoredMap, compItems, pw, ... }
 ```
 
-## useAppNavigation 구조 (세션72)
-
-```
-useAppNavigation({ tab, setTab, expert, admin, consult, detail, compIds, setShowCompOpen, showToast, budgetMin, budgetMax })
-  ├── useRef 2개 (consultRef, budgetRef — stale closure 방지)
-  ├── useCallback 7개 (handleExpertLogin/Logout, switchToAdmin/Expert/Info, handleExpertView, handleConsultFromDetail, handleNavClick)
-  ├── useEffect: admin 동기화 (verify 실패 감지)
-  ├── useEffect: 전문가 상담 목록 fetch
-  └── return { handleExpertLogin, handleExpertLogout, switchTo*, handleExpertView, handleConsultFromDetail, handleNavClick }
-```
-
-## useMemo 의존성 배열 (useDataPipeline 내부)
+### useMemo 의존성 배열
 
 | useMemo | 의존성 | 절대 누락 금지 |
 |---------|--------|--------------|
 | guOptions | [filterRegion, apartments] | apartments는 API 데이터 |
 | catsCache | [apartments] | apartments 의존 필수 |
-| scored | [catsCache, profile, customWeights] | catsCache는 apartments 간접 의존 |
-| baseFilterArgs | [showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly] | base 필터 상태 묶음 (10개) |
-| filtered | [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier, hideNoUnsold] | SORTERS 모듈 레벨 상수 사용 + 미분양 필터 |
-| visible | [filtered, visibleCount] | 페이지네이션용 |
-| scoredMap | [scored] | Map 자료구조 (P-3: O(1) 조회) |
-| compItems | [compIds, scoredMap] | scoredMap.get() 사용 |
-| pw | [profile, customWeights] | customWeights 우선, PROFILES[profile].w 폴백 |
-| activeFilterCount | [showFavOnly, filterRegion, budgetMin, ...13개] | 활성 필터 개수 배지 |
-| regionOptions | [apartments] | apartments 의존 필수 |
-| filterOptionCounts | [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier] | leave-one-out 드롭다운 카운트 |
+| scored | [catsCache, profile, customWeights] | |
+| baseFilterArgs | [showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly] | 10개 |
+| filtered | [scored, baseFilterArgs, filterRegion, filterGu, sortKey, moveInFilter, builderTier, hideNoUnsold] | |
+| visible | [filtered, visibleCount] | |
+| scoredMap | [scored] | Map (O(1) 조회) |
+| compItems | [compIds, scoredMap] | |
+| pw | [profile, customWeights] | customWeights 우선, PROFILES 폴백 |
+| activeFilterCount | [showFavOnly, filterRegion, budgetMin, ...13개] | |
+| regionOptions | [apartments] | |
+| filterOptionCounts | [scored, baseFilterArgs, filterRegion, filterGu, moveInFilter, builderTier, hideNoUnsold] | leave-one-out |
 
-## showComp는 파생 상태
+---
+
+## useAppNavigation 구조
+
+```
+useAppNavigation({ tab, setTab, expert, admin, consult, detail, compIds, ... })
+  ├── useRef 2개 (consultRef, budgetRef — stale closure 방지)
+  ├── useCallback 7개 (handleExpertLogin/Logout, switchTo*, handleNavClick ...)
+  ├── useEffect: admin 동기화 (verify 실패 감지)
+  ├── useEffect: 전문가 상담 목록 fetch
+  └── return { handleExpertLogin, handleExpertLogout, switchTo*, handleNavClick }
+```
+
+---
+
+## 파생 상태 규칙
 
 ```js
 const showComp = showCompOpen && compIds.length >= 2;
@@ -69,61 +75,57 @@ const showComp = showCompOpen && compIds.length >= 2;
 
 | 훅 | 패턴 | 설명 |
 |----|------|------|
-| useExpertMode.handleExpertLogin() | `true`/`false` 반환 | App에서 `if (success) setTab("expert")` |
-| useExpertMode.handleExpertLogout(onLogout) | 콜백 파라미터 | App에서 `() => { setTab("list"); setShowCompOpen(false); }` 전달 |
+| useExpertMode.handleExpertLogin() | 반환값 | App에서 `if (success) setTab("expert")` |
+| useExpertMode.handleExpertLogout(cb) | 콜백 파라미터 | App에서 탭/비교 초기화 전달 |
 | useFilterSort({ onFilterChange }) | 콜백 옵션 | App에서 `() => setDetailAptId(null)` 전달 |
 
-## 시계열 데이터 훅 (세션67 통합)
+---
+
+## 시계열 데이터 훅
 
 | 훅 | 역할 | 구현 |
 |----|------|------|
-| useHistoryData(endpoint, apartmentId, siblingIds?) | 공통 시계열 데이터 페칭 | AbortController + retry + idsKey 직렬화 |
-| usePriceHistory(apartmentId, siblingIds?) | 분양가 시계열 (래퍼) | `useHistoryData("/api/supabase/prices", ...)` |
-| useUnsoldHistory(apartmentId, siblingIds?) | 미분양 추이 (래퍼) | `useHistoryData("/api/supabase/unsold-history", ...)` |
+| useHistoryData(endpoint, aptId, siblingIds?) | 공통 시계열 페칭 | AbortController + retry + idsKey 직렬화 |
+| usePriceHistory(aptId, siblingIds?) | 분양가 시계열 | `useHistoryData("/api/supabase/prices", ...)` |
+| useUnsoldHistory(aptId, siblingIds?) | 미분양 추이 | `useHistoryData("/api/supabase/unsold-history", ...)` |
 
-- `siblingIds?.length > 1`이면 `apartment_ids` 복수 조���, 아니면 기존 `apartment_id` 단일 조회
-- **무한 루프 방지**: `siblingIds` ���열을 `idsKey = siblingIds.join(",")` 원시값으로 직렬��하여 useCallback 의존성에 사용
-- `endpoint`는 문자열 상수로 useCallback 의존성에 포함 (안정적)
+- `siblingIds?.length > 1`이면 `apartment_ids` 복수 조회
+- **무한 루프 방지**: siblingIds 배열을 `idsKey = siblingIds.join(",")` 원시값으로 직렬화
 
-## useComparison 구조 (세션20 — MAX_COMPARE 상수)
+## useComparison 구조
 
 ```
 useComparison(showToast)
-  ├── MAX_COMPARE = 4                             // export 상수
-  ├── compIds: useState(localStorage → Array.isArray + slice(0, MAX_COMPARE))
+  ├── MAX_COMPARE = 4 (export 상수)
+  ├── compIds: useState(localStorage 복원, slice(0, MAX_COMPARE))
   ├── showCompOpen: useState(false)
-  ├── initCountRef: useRef(compIds.length)         // 복원 토스트용
-  ├── showComp = showCompOpen && compIds.length >= 2  // 파생 상태
-  ├── toggleComp(id)                               // MAX_COMPARE 제한
-  ├── useEffect(mount-only) → "이전 비교 N개 복원됨" 토스트
-  ├── useEffect(localStorage 동기화)
-  └── useEffect(크로스탭 storage 이벤트 → Array.isArray + slice 방어)
+  ├── showComp = showCompOpen && compIds.length >= 2 (파생 상태)
+  ├── toggleComp(id) — MAX_COMPARE 제한
+  └── useEffect × 3 (mount 토스트, localStorage 동기화, 크로스탭 storage)
 ```
-MAX_COMPARE 방어 4경로: ①초기화 ②toggleComp ③URL딥링크(App.jsx) ④크로스탭storage
 
-## useFavorites 구조 (v2 — 객체 기반)
+MAX_COMPARE 방어 4경로: 초기화 / toggleComp / URL딥링크(App.jsx) / 크로스탭storage
+
+## useFavorites 구조 (v2 객체 기반)
 
 ```
 useFavorites(showToast)
-  ├── favoritesObj: { [id]: { memo, tags, addedAt } }  // 내부 상태 (객체, 저장소 호환용)
-  ├── favoriteIds: Object.keys(favoritesObj)            // 파생 배열 (하위 호환)
-  ├── favoriteSet: new Set(favoriteIds)                 // O(1) 조회용 (세션67 추가)
+  ├── favoritesObj: { [id]: { memo, tags, addedAt } }
+  ├── favoriteIds: Object.keys(favoritesObj) (파생 배열)
+  ├── favoriteSet: new Set(favoriteIds) (O(1) 조회)
   ├── toggleFavorite(id)
-  └── setFavoriteIds(idsOrFn)  // 배열 또는 함수 인자 ���원 (React setState 관례)
+  └── setFavoriteIds(idsOrFn) — 배열/함수 인자 지원
 ```
-v1(배열) → v2(객체) 자동 마이그레이션 + `mibunyang_fav_backup` 백업.
-**세션21**: memo/tags UI 제거됨 — App.jsx에서 `favoritesObj` 미사용 (내부 저장 구조만 유지).
 
-## useResponsive 구조 (Phase1+Phase2)
+v1(배열) → v2(객체) 자동 마이그레이션. memo/tags UI는 제거됨 (내부 저장 구조만 유지).
+
+## useResponsive 구조
 
 ```
 useResponsive()
   ├── width: useState(window.innerWidth)
-  ├── useEffect: resize 리스너 + 150ms 디바운스 (setTimeout)
-  ├── cleanup: clearTimeout + removeEventListener
+  ├── useEffect: resize 리스너 + 150ms 디바운스
   └── return { isPC: width >= 768, isDesktop: width >= 1024 }
 ```
-- **디바운스 150ms**: resize 이벤트 초당 60~120회 → 6~7회로 감소
-- **isDesktop prop 전달**: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection → AptCard, DetailModal, CompareSheet, MapView
-- **isPC 하위 호환**: 기존 isPC 로직 100% 유지, isDesktop은 추가 분기
-- **롤백**: useResponsive에서 `isDesktop: false` 고정 시 즉시 Phase1 이전 상태 복원
+
+롤백: `isDesktop: false` 고정 시 즉시 복원.
