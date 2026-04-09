@@ -54,7 +54,10 @@ export default function App() {
   const [tab, setTab] = useState(() => {
     if (window.location.pathname.startsWith("/oauth/kakao/callback")) return "kakaoCallback";
     if (!sessionStorage.getItem("expertToken")) return "list";
-    return sessionStorage.getItem("userRole") === "admin" ? "admin" : "expert";
+    const role = sessionStorage.getItem("userRole");
+    if (role === "admin") return "admin";
+    if (role === "expert") return "expert";
+    return "list";
   });
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [pendingDetailId, setPendingDetailId] = useState(null);
