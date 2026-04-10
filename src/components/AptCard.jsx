@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { C, catCol, gr, SHORT_LABEL } from "@/theme";
+import { C, F, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
@@ -21,17 +21,17 @@ const S = {
   header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
   nameWrap: { flex: 1, minWidth: 0 },
   nameRow: { display: "flex", alignItems: "center", gap: 6, marginBottom: 5 },
-  nameText: { fontSize: 15, fontWeight: 800, letterSpacing: -.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  nameText: { fontSize: F.lg, fontWeight: 800, letterSpacing: -.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   tagRow: { display: "flex", gap: 4, flexWrap: "wrap" },
   grid: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px 12px", marginTop: 12 },
   catHeader: { display: "flex", justifyContent: "space-between", marginBottom: 2 },
-  catLabel: { fontSize: 11, color: C.muted },
+  catLabel: { fontSize: F.sm, color: C.muted },
   infoRow: { display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 },
-  infoTag: { fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.bg, color: C.sub },
+  infoTag: { fontSize: F.sm, padding: "3px 7px", borderRadius: 3, background: C.bg, color: C.sub },
   alertRow: { marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" },
   btnRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 },
-  btnBase: { borderRadius: 6, padding: "8px 12px", fontSize: 12, cursor: "pointer", flex: 1, minHeight: 36, transition: "all .15s" },
-  alertTag: { fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600 },
+  btnBase: { borderRadius: 6, padding: "8px 10px", fontSize: F.base, cursor: "pointer", flex: 1, minHeight: 36, transition: "all .15s" },
+  alertTag: { fontSize: F.sm, padding: "3px 8px", borderRadius: 4, fontWeight: 600 },
 };
 
 export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop, isLoggedIn = true }) {
@@ -46,9 +46,9 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   const dynStyles = useMemo(() => ({
     wrapper: { ...S.wrapper, background: C.card, border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`, ...(moveInDone ? { opacity: 0.55 } : {}), ...(isDesktop ? { boxShadow: C.shadowMd, borderRadius: 16 } : {}) },
     body: { ...S.body, ...(isDesktop ? { padding: "16px 20px" } : {}) },
-    nameText: { ...S.nameText, ...(isDesktop ? { fontSize: 16 } : {}) },
+    nameText: { ...S.nameText, ...(isDesktop ? { fontSize: F.xl } : {}) },
     bar: { height: 4, background: `linear-gradient(90deg,${g.c},${g.c}88)` },
-    rank: { fontSize: 11, fontWeight: 800, color: C.white, background: g.c, padding: "3px 8px", borderRadius: 4, flexShrink: 0 },
+    rank: { fontSize: F.sm, fontWeight: 800, color: C.white, background: g.c, padding: "3px 8px", borderRadius: 4, flexShrink: 0 },
     detailBtn: { ...S.btnBase, background: C.slate100, color: C.slate600, border: "1.5px solid transparent", fontWeight: 600 },
     favBtn: { ...S.btnBase, background: isFav ? C.redLight : C.slate100, color: isFav ? C.red : C.muted, border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent", fontWeight: isFav ? 700 : 600 },
     compBtn: { ...S.btnBase, background: isComp ? C.indigo : "transparent", color: isComp ? C.white : C.indigo, border: `1.5px solid ${C.indigo}`, fontWeight: 700 },
@@ -74,7 +74,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             </div>
             <div style={S.tagRow}>
               {[regionTag, `${apt.area ?? ""}㎡`, fmtPrice(apt.price), apt.builder ?? ""].filter(Boolean).map((t, i) => (
-                <span key={i} style={{ fontSize: 11, color: i === 0 ? C.blue : C.sub, background: i === 0 ? C.blueLight : C.bg, padding: "3px 8px", borderRadius: 4, fontWeight: i === 0 ? 700 : 400 }}>{t}</span>
+                <span key={i} style={{ fontSize: F.sm, color: i === 0 ? C.blue : C.sub, background: i === 0 ? C.blueLight : C.bg, padding: "3px 8px", borderRadius: 4, fontWeight: i === 0 ? 700 : 400 }}>{t}</span>
               ))}
             </div>
           </div>
@@ -89,7 +89,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             <div key={k}>
               <div style={S.catHeader}>
                 <span style={S.catLabel}>{SHORT_LABEL[c.label] || c.label}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: catCol[k], ...(isLoggedIn ? {} : { filter: "blur(4px)" }) }}>{isLoggedIn ? c.total : "??"}</span>
+                <span style={{ fontSize: F.base, fontWeight: 700, color: catCol[k], ...(isLoggedIn ? {} : { filter: "blur(4px)" }) }}>{isLoggedIn ? c.total : "??"}</span>
               </div>
               <Bar value={c.total} color={catCol[k]} h={5} />
             </div>
@@ -108,11 +108,11 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
 
         {benefitWon > 0 ? (
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 8, padding: "8px 12px" }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit?.rate ?? 0}%)</span>
+            <span style={{ fontSize: F.base, fontWeight: 700, color: C.amber }}>총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit?.rate ?? 0}%)</span>
           </div>
         ) : res.cats.benefit?.noData && (
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, background: C.slate100, borderRadius: 8, padding: "6px 12px" }}>
-            <span style={{ fontSize: 11, color: C.muted }}>혜택 데이터 미수집</span>
+            <span style={{ fontSize: F.sm, color: C.muted }}>혜택 데이터 미수집</span>
           </div>
         )}
 

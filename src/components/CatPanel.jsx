@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { C, catCol, gr } from "@/theme";
+import { C, F, catCol, gr } from "@/theme";
 import { Bar } from "./primitives";
 import { SUB_CONTEXT, PRODUCT_MAX } from "@/constants/subContext";
 
@@ -12,7 +12,7 @@ function renderDots(n) {
   if (n < 0) return null;
   const filled = Math.max(0, Math.min(n, 5));
   return (
-    <span style={{ fontSize: 10, letterSpacing: 1, color: C.muted }} aria-label={`${filled}/5점`}>
+    <span style={{ fontSize: F.xs, letterSpacing: 1, color: C.muted }} aria-label={`${filled}/5점`}>
       {"●".repeat(filled)}{"○".repeat(5 - filled)}
     </span>
   );
@@ -60,12 +60,12 @@ export const CatPanel = memo(function CatPanel({ cat, k }) {
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{cat.label}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: grade.c, background: grade.bg, padding: "2px 8px", borderRadius: 4 }}>{grade.l}</span>
+          <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>{cat.label}</span>
+          <span style={{ fontSize: F.sm, fontWeight: 700, color: grade.c, background: grade.bg, padding: "2px 8px", borderRadius: 4 }}>{grade.l}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: col }}>{cat.total}</span>
-          <span style={{ fontSize: 12, color: C.muted, transition: "transform .2s", transform: expanded ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>
+          <span style={{ fontSize: F.lg, fontWeight: 800, color: col }}>{cat.total}</span>
+          <span style={{ fontSize: F.sm, color: C.muted, transition: "transform .2s", transform: expanded ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>
         </div>
       </div>
 
@@ -77,10 +77,10 @@ export const CatPanel = memo(function CatPanel({ cat, k }) {
           const interp = sc?.interpret?.(s.score);
           return (
             <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 0" }}>
-              <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>·</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{s.name}:</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: col }}>{s.info}</span>
-              {interp && <span style={{ fontSize: 11, color: scoreColor(s.score, k, s.name) }}>→ {interp}</span>}
+              <span style={{ fontSize: F.xs, color: C.muted, flexShrink: 0 }}>·</span>
+              <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}:</span>
+              <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{s.info}</span>
+              {interp && <span style={{ fontSize: F.sm, color: scoreColor(s.score, k, s.name) }}>→ {interp}</span>}
             </div>
           );
         })}
@@ -96,15 +96,15 @@ export const CatPanel = memo(function CatPanel({ cat, k }) {
             return (
               <div key={s.name} style={{ padding: "6px 0", borderBottom: i < cat.subs.length - 1 ? `1px solid ${C.border}` : "none" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{s.name}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: col }}>{s.info}</span>
+                  <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}</span>
+                  <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{s.info}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     {renderDots(dots)}
-                    {interp && <span style={{ fontSize: 11, color: sc2 }}>{interp}</span>}
+                    {interp && <span style={{ fontSize: F.sm, color: sc2 }}>{interp}</span>}
                   </div>
-                  {sc?.benchmark && <span style={{ fontSize: 10, color: C.muted }}>기준: {sc.benchmark}</span>}
+                  {sc?.benchmark && <span style={{ fontSize: F.xs, color: C.muted }}>기준: {sc.benchmark}</span>}
                 </div>
               </div>
             );
