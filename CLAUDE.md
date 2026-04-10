@@ -4,17 +4,18 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-11 세션82 — 폰트 Phase 3-7 완료 + 관리자 일괄처리 + 네이버 후처리
+**마지막 작업**: 2026-04-11 세션83 — ESM 로더 수정 + naver-units 적응형 Rate Limit
 
-- 폰트 가독성 Phase 3-7: 38파일 ~307건 fontSize → F 상수 전환 (전체 완료, feat/font-size 머지)
-- 관리자 일괄 승인/거부: review.js 배열 지원 + useAdminMode batch + AdminDashboard 체크박스 UI
-- 네이버 후처리: sync 성공, KOSIS 성공, naver-units 실패(rate limit), compute-scores 실패(ESM 로더)
+- alias-loader.mjs: 상대 경로 확장자 자동 해석 추가 (./foo → ./foo.js) → compute-scores.mjs ESM 실행 수정
+- naver-units.mjs: 기본 인터벌 3→5초, 백오프 [8,15,30]초, 429 적응형 증가(최대 15초)
+- migration.mjs: 행안부 API(transMovStats) HTTP 500 — 모든 연도에서 실패, MOIS_POP_KEY 만료 또는 API 장애
 
 **다음에 해야 할 것** (우선순위):
 
-1. compute-scores.mjs ESM 로더 이슈 해결 (scorePrice 모듈 경로)
-2. naver-units.mjs rate limit 해결 (또는 molit-units 대체)
-3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
+1. naver-units.mjs 실제 실행 테스트 (로컬 한국IP에서 월/목 08:00)
+2. compute-scores.mjs 실제 실행 (`node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs`)
+3. migration.mjs: data.go.kr에서 transMovStats API 구독 상태/키 갱신 확인
+4. post-naver-collect.sh 전체 파이프라인 재실행
 
 ---
 

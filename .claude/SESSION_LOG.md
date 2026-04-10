@@ -1,3 +1,43 @@
+# 세션 83 — 2026-04-11
+
+## 주요 작업
+
+### 1. compute-scores.mjs ESM 로더 이슈 해결
+- alias-loader.mjs: 상대 경로 확장자 자동 해석 추가 (`./foo` → `./foo.js`)
+- engine.js의 7개 extensionless import 해결 (scorePrice, scoreLocation 등)
+- 검증: `calcCats` import 성공 + vite build 408ms 통과
+
+### 2. naver-units.mjs 적응형 Rate Limit
+- 기본 인터벌 3→5초, 백오프 [5,10,20]→[8,15,30]초
+- 429 연속 시 적응형 인터벌 증가 (최대 15초), 성공 시 감쇠
+- 구문 검증 통과 (실제 실행은 로컬 한국IP에서 확인 필요)
+
+### 3. migration.mjs 데이터 가용성 테스트
+- dry-run 실행 → HTTP 500 (2026년 1월)
+- 2024년 6월 데이터로도 HTTP 500 → API 서버 자체 장애 또는 MOIS_POP_KEY 만료
+- 대응: data.go.kr에서 transMovStats API 구독 상태/키 갱신 필요
+
+## 커밋 (1개)
+1. `df98ca5` fix: ESM 로더 상대경로 해석 + naver-units 적응형 Rate Limit
+
+## 교차검증 결과
+- 빌드: 408ms 성공
+- 스코어링: 5개 프로필 합계 100 확인
+- null 안전성: PASS
+- Hook 규칙: PASS (Node 스크립트, React 훅 없음)
+- 보안: PASS
+
+## 9 GATE 검증 (계획 단계)
+- 🟢7, 🟡2, 🔴0 → 실행 허가
+
+## 다음 세션 권장
+1. naver-units 로컬 실제 실행 (월/목 08:00)
+2. compute-scores 실제 실행 (Supabase 데이터 대상)
+3. data.go.kr transMovStats API 키 갱신/구독 확인
+4. post-naver-collect.sh 전체 파이프라인 재실행
+
+---
+
 # 세션 82 — 2026-04-11
 
 ## 주요 작업
