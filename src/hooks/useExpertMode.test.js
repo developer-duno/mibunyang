@@ -7,7 +7,7 @@ describe('useExpertMode', () => {
 
   beforeEach(() => {
     showToast = vi.fn();
-    sessionStorage.clear();
+    localStorage.clear();
     vi.restoreAllMocks();
     // 기본 fetch 모킹 (마운트 시 verify 호출 포함)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -23,8 +23,8 @@ describe('useExpertMode', () => {
     expect(result.current.authError).toBe("");
   });
 
-  it('sessionStorage에 토큰이 있으면 로그인 상태', () => {
-    sessionStorage.setItem("expertToken", "test-token");
+  it('localStorage에 토큰이 있으면 로그인 상태', () => {
+    localStorage.setItem("expertToken", "test-token");
     const { result } = renderHook(() => useExpertMode(showToast));
     expect(result.current.expertLoggedIn).toBe(true);
   });
@@ -50,7 +50,7 @@ describe('useExpertMode', () => {
 
     expect(loginResult).toEqual({ ok: true, role: "expert" });
     expect(result.current.expertLoggedIn).toBe(true);
-    expect(sessionStorage.getItem("expertToken")).toBe("abc123");
+    expect(localStorage.getItem("expertToken")).toBe("abc123");
   });
 
   it('로그인 429 → 에러 메시지', async () => {
@@ -108,8 +108,8 @@ describe('useExpertMode', () => {
   });
 
   it('로그아웃 → 세션 정리', async () => {
-    sessionStorage.setItem("expertToken", "token");
-    sessionStorage.setItem("userRole", "expert");
+    localStorage.setItem("expertToken", "token");
+    localStorage.setItem("userRole", "expert");
     fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
     const onLogout = vi.fn();
     const { result } = renderHook(() => useExpertMode(showToast));
@@ -117,8 +117,8 @@ describe('useExpertMode', () => {
     await act(async () => { await result.current.handleExpertLogout(onLogout); });
 
     expect(result.current.expertLoggedIn).toBe(false);
-    expect(sessionStorage.getItem("expertToken")).toBeNull();
-    expect(sessionStorage.getItem("userRole")).toBeNull();
+    expect(localStorage.getItem("expertToken")).toBeNull();
+    expect(localStorage.getItem("userRole")).toBeNull();
     expect(onLogout).toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith("로그아웃되었습니다");
   });

@@ -1,19 +1,22 @@
-import { verifyToken } from "../_lib/auth.js";
+import { verifyToken, verifyRefreshToken } from "../_lib/auth.js";
 import { blacklistToken } from "../_lib/tokenBlacklist.js";
 import { withHandler } from "../_lib/handler.js";
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "logout", handler: async (req, res) => {
-  const { token } = req.body || {};
+  const { token, refreshToken } = req.body || {};
   if (!token || typeof token !== "string") {
     return res.status(400).json({ ok: false, error: "토큰이 필요합니다" });
   }
 
+  // access token 블랙리스트
   const payload = verifyToken(token);
-  if (!payload) {
-    // 이미 만료/무효 토큰 — 멱등성 보장
-    return res.json({ ok: true, message: "로그아웃되었습니다" });
+  if (payload) await blacklistToken(token, payload);
+
+  // refresh token도 블랙리스트 (있으면)
+  if (refreshToken && typeof refreshToken === "string") {
+    const rtPayload = verifyRefreshToken(refreshToken);
+    if (rtPayload) await blacklistToken(refreshToken, rtPayload);
   }
 
-  await blacklistToken(token, payload);
   res.json({ ok: true, message: "로그아웃되었습니다" });
 }});

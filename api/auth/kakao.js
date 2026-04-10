@@ -1,5 +1,5 @@
 import { kv } from "@vercel/kv";
-import { createToken } from "../_lib/auth.js";
+import { createToken, createRefreshToken } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
 import crypto from "crypto";
 
@@ -165,9 +165,11 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       isAdmin ? { ttl: 3600000 } : undefined,
     );
 
+    const refreshToken = createRefreshToken(emailNorm);
     res.json({
       ok: true,
       token,
+      refreshToken,
       user: { email: emailNorm, name: user.name, affiliation: user.affiliation || "" },
       ...(role !== "user" && { role }),
     });

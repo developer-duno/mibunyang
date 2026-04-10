@@ -53,8 +53,8 @@ export default function App() {
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
   const [tab, setTab] = useState(() => {
     if (window.location.pathname.startsWith("/oauth/kakao/callback")) return "kakaoCallback";
-    if (!sessionStorage.getItem("expertToken")) return "list";
-    const role = sessionStorage.getItem("userRole");
+    if (!localStorage.getItem("expertToken")) return "list";
+    const role = localStorage.getItem("userRole");
     if (role === "admin") return "admin";
     if (role === "expert") return "expert";
     return "list";
@@ -113,9 +113,10 @@ export default function App() {
     if (tab !== "kakaoCallback") return;
     kakao.handleKakaoCallback().then(result => {
       if (result?.ok) {
-        sessionStorage.setItem("expertToken", result.token);
+        localStorage.setItem("expertToken", result.token);
+        if (result.refreshToken) localStorage.setItem("refreshToken", result.refreshToken);
         const role = result.role || "user";
-        sessionStorage.setItem("userRole", role);
+        localStorage.setItem("userRole", role);
         expert.setExpertLoggedIn(true);
         expert.setAuthUser(result.user);
         if (role === "admin") { admin.setAdminLoggedIn(true); setTab("admin"); }

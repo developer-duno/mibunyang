@@ -102,7 +102,7 @@ export function useKakaoAuth(showToast) {
         // pendingDetail 복원
         let pendingDetail = null;
         try { pendingDetail = sessionStorage.getItem("kakao_pending_detail"); sessionStorage.removeItem("kakao_pending_detail"); } catch {}
-        return { ok: true, token: data.token, user: data.user, role: data.role || "user", pendingDetail };
+        return { ok: true, token: data.token, refreshToken: data.refreshToken, user: data.user, role: data.role || "user", pendingDetail };
       }
 
       setKakaoError(data.error || "카카오 로그인 실패");

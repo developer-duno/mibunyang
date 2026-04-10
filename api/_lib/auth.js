@@ -38,6 +38,19 @@ export function createToken(payload, { ttl } = {}) {
   return `${header}.${body}.${sig}`;
 }
 
+// refresh token 생성 (30일 기본, type:"refresh" 구분)
+const REFRESH_TTL = 30 * 24 * 60 * 60 * 1000; // 30일
+export function createRefreshToken(email, { ttl } = {}) {
+  return createToken({ email, type: "refresh" }, { ttl: ttl || REFRESH_TTL });
+}
+
+// refresh token 검증 (type:"refresh" 확인)
+export function verifyRefreshToken(token) {
+  const payload = verifyToken(token);
+  if (!payload || payload.type !== "refresh") return null;
+  return payload;
+}
+
 export function verifyToken(token) {
   try {
     const secret = getSecret();

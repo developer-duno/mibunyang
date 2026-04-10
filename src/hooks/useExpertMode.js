@@ -8,7 +8,7 @@ export function useExpertMode(showToast) {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authStatus, setAuthStatus] = useState(null);
-  const [expertLoggedIn, setExpertLoggedIn] = useState(() => { try { return !!sessionStorage.getItem("expertToken"); } catch { return false; } });
+  const [expertLoggedIn, setExpertLoggedIn] = useState(() => { try { return !!localStorage.getItem("expertToken"); } catch { return false; } });
   const [authUser, setAuthUser] = useState(null);
   const [expertExpandedApt, setExpertExpandedApt] = useState(null);
 
@@ -35,7 +35,8 @@ export function useExpertMode(showToast) {
       }
       const data = await res.json();
       if (data.ok) {
-        sessionStorage.setItem("expertToken", data.token);
+        localStorage.setItem("expertToken", data.token);
+        if (data.refreshToken) localStorage.setItem("refreshToken", data.refreshToken);
         setExpertLoggedIn(true);
         setAuthUser(data.user);
         setAuthForm({ ...EMPTY_FORM });
@@ -95,19 +96,21 @@ export function useExpertMode(showToast) {
   }, [showToast]);
 
   const handleExpertLogout = useCallback(async (onLogout) => {
-    const token = sessionStorage.getItem("expertToken");
+    const token = localStorage.getItem("expertToken");
+    const refreshToken = localStorage.getItem("refreshToken");
     if (token) {
       try {
         await fetch("/api/auth/logout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ token, refreshToken }),
         });
-      } catch { /* best-effort — 세션 삭제는 항상 실행 */ }
+      } catch { /* best-effort — 로컬 삭제는 항상 실행 */ }
     }
     setExpertLoggedIn(false);
-    sessionStorage.removeItem("expertToken");
-    sessionStorage.removeItem("userRole");
+    localStorage.removeItem("expertToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("userRole");
     setExpertExpandedApt(null);
     setAuthUser(null);
     setAuthForm({ ...EMPTY_FORM });
@@ -124,7 +127,7 @@ export function useExpertMode(showToast) {
     let cancelled = false;
     let abortCtrl = null;
     const verify = () => {
-      const token = sessionStorage.getItem("expertToken");
+      const token = localStorage.getItem("expertToken");
       if (!token) return;
       abortCtrl = new AbortController();
       fetch("/api/auth/verify", {
@@ -137,16 +140,36 @@ export function useExpertMode(showToast) {
           if (r.status === 429 || r.status >= 500) return null;
           return r.json();
         })
-        .then(data => {
+        .then(async (data) => {
           if (cancelled || !data) return;
           if (!data.ok) {
+            // access token 만료 → refresh token으로 자동 갱신 시도
+            const rt = localStorage.getItem("refreshToken");
+            if (rt) {
+              try {
+                const rr = await fetch("/api/auth/refresh", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ refreshToken: rt }),
+                });
+                const rd = await rr.json();
+                if (rd.ok) {
+                  localStorage.setItem("expertToken", rd.token);
+                  localStorage.setItem("refreshToken", rd.refreshToken);
+                  if (rd.role) localStorage.setItem("userRole", rd.role);
+                  setAuthUser(rd.user);
+                  return; // 갱신 성공 — 로그아웃 안 함
+                }
+              } catch { /* refresh 실패 → 아래 로그아웃 */ }
+            }
             setExpertLoggedIn(false);
-            sessionStorage.removeItem("expertToken");
-            sessionStorage.removeItem("userRole");
+            localStorage.removeItem("expertToken");
+            localStorage.removeItem("refreshToken");
+            localStorage.removeItem("userRole");
             showToastRef.current("세션이 만료되었습니다. 다시 로그인해주세요.");
           } else {
             setAuthUser(data.user);
-            if (data.role) sessionStorage.setItem("userRole", data.role);
+            if (data.role) localStorage.setItem("userRole", data.role);
           }
         })
         .catch(err => {
