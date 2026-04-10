@@ -1,3 +1,62 @@
+# 세션 84 — 2026-04-11
+
+## 주요 작업
+
+### 1. 환경 사전 검증 (단계 0)
+- 환경변수 4개(SUPABASE_URL, SUPABASE_SERVICE_KEY, MOIS_POP_KEY, KOSIS_KEY): 전부 OK
+- alias-loader.mjs: Node 24에서 `--loader` 정상 동작 (deprecated 경고만)
+- Supabase 연결: apartments 2,001건 확인
+
+### 2. naver-units 실행 테스트 (단계 1)
+- `--limit=5` 실행: 5건 모두 Rate limit (적응형 인터벌 5→7.5→10→12.5→15초 정상 동작)
+- 한국 IP 확인 (182.228.191.24)
+- 보정 대상: 441→54건으로 감소 (molit/applyhome 등에서 보정됨)
+- 결론: 코드 레벨 Rate Limit 정상이나, 네이버가 IP/JWT 기반 차단 강화
+
+### 3. compute-scores 실행 (단계 2) — 성공
+- dry-run: 1,424건 전부 스코어링, 스킵 0건, 6개 카테고리 정상 (3.2초)
+- 실제 실행: 1,424/1,424건 DB UPDATE 완료 (실패 0건, 9.1초)
+- alias-loader 세션83 수정 완벽 검증
+
+### 4. transMovStats API 키 확인 (단계 3)
+- curl 테스트: 2024-06, 2025-01, 2025-12, 2026-01 전부 HTTP 500
+- 응답: "Unexpected errors" → MOIS_POP_KEY 만료 확정
+- KOSIS API: HTTP 200 정상 (3/23 실패는 일시적)
+- 대응: data.go.kr 포털에서 키 갱신 필요 (다음 세션)
+
+### 5. post-naver-collect.sh 안정성 수정 (단계 4)
+- naver-units 단계를 `if-else` 명시적 분기로 변경 (비치명적 처리)
+- `set -e`에 의존하지 않음 (Windows Git Bash 호환성)
+- 구문 검증 통과 (`bash -n`)
+
+### 6. 전체 파이프라인 실행 (단계 5) — 진행 중
+- sync-naver-complex: Phase 1 갱신14, Phase 2 매물44, Phase 3 시세1986건
+- Phase 4 관리비/방향 집계: 장시간 실행 중 (63K complexes articles 처리)
+- 빌드: 380ms 성공
+
+## 커밋 (예정)
+- `fix: post-naver-collect.sh — naver-units 실패 시 파이프라인 계속 진행`
+- `docs: 세션84 — 파이프라인 실행 테스트 + CLAUDE.md 업데이트`
+
+## 교차검증 결과
+- 빌드: 380ms 성공
+- 스코어링: compute-scores 1,424건 전부 성공, 6개 카테고리 검증
+- null 안전성: PASS (safeJsonReplacer NaN→null)
+- Hook 규칙: PASS (Node 스크립트, React 훅 없음)
+- 보안: PASS (하드코딩 없음, env 로드 정상)
+
+## 9 GATE 검증
+- 🟢6, 🟡3, 🔴0 → 실행 허가
+- 보완: 성공/실패 기준표 추가, Stage 4 명시적 분기, 외부 API fallback 명시
+
+## 다음 세션 권장
+1. data.go.kr MOIS_POP_KEY 갱신 (브라우저 작업)
+2. naver-units Rate Limit 근본 대응 (심야 실행 / curl_cffi 검토)
+3. post-naver-collect.sh 파이프라인 완료 확인 (로그)
+4. apartments 2,001건 vs apartments_flat 1,424건 차이 원인 조사
+
+---
+
 # 세션 83 — 2026-04-11
 
 ## 주요 작업
