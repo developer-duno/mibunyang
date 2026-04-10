@@ -1,0 +1,12 @@
+# 패키지 잠금 (대용량, 읽을 필요 없음)
+package-lock.json
+
+# GitHub Actions 워크플로우 35+개 (CLAUDE.md에 요약 있음)
+.github/
+
+# Playwright E2E 테스트 설정
+playwright.config.js
+
+# Vercel 설정
+.vercelignore
+vercel.json

@@ -17,7 +17,7 @@
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, upsertBatch, log, logError, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, upsertBatch, log, logError, today, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -383,16 +383,14 @@ async function main() {
   // 1. Supabase에서 미분양 아파트 좌표 조회
   const sb = getSupabase();
   const sbMibunyang = getMibuyangSupabase();
-  const { data: apartments, error: aptErr } = await sbMibunyang
-    .from("apartments")
-    .select("id, name, region, gu, dong, lat, lng")
-    .not("lat", "is", null)
-    .not("lng", "is", null);
-
-  if (aptErr) {
-    logError(phase, `아파트 조회 실패: ${aptErr.message}`);
-    process.exit(1);
-  }
+  // selectAll: 1000행 제한 자동 페이지네이션
+  const apartments = await selectAll(
+    (s) => s.from("apartments")
+      .select("id, name, region, gu, dong, lat, lng")
+      .not("lat", "is", null)
+      .not("lng", "is", null),
+    sbMibunyang
+  );
 
   const targets = aptLimit > 0 ? apartments.slice(0, aptLimit) : apartments;
   log(phase, `📊 미분양 아파트 ${targets.length}건 대상 (전체: ${apartments.length}건)`);

@@ -14,7 +14,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, selectAll } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, MIN_SIMILARITY, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -31,12 +31,13 @@ if (!API_KEY) {
 
 // ── 1. Supabase에서 보정 대상 조회 ──────────────────────────
 export async function getTargets(sb) {
-  const { data, error } = await sb
-    .from("apartments")
-    .select("id, name, region, gu, address, units, unsold, unsold_rate, unit_source")
-    .or("units.lte.1,unsold_rate.gte.100");
-
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  // selectAll: 1000행 제한 자동 페이지네이션
+  const data = await selectAll(
+    (s) => s.from("apartments")
+      .select("id, name, region, gu, address, units, unsold, unsold_rate, unit_source")
+      .or("units.lte.1,unsold_rate.gte.100"),
+    sb
+  );
   return data ?? [];
 }
 

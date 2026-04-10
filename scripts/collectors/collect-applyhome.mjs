@@ -12,7 +12,7 @@
  *   MOLIT_KEY (data.go.kr 통합 키 — odcloud.kr 호환)
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -109,11 +109,10 @@ async function main() {
   log(PHASE, `고유 아파트: ${aptNos.length}건`);
 
   // 3. 우리 아파트 ID와 매칭 (ah-{HOUSE_MANAGE_NO})
-  const { data: apartments, error } = await sb
-    .from("apartments")
-    .select("id");
-
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  const apartments = await selectAll(
+    (s) => s.from("apartments").select("id"),
+    sb
+  );
 
   const aptSet = new Set(apartments.map(a => a.id));
   let matched = 0;

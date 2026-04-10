@@ -12,7 +12,7 @@
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota, selectAll } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -101,12 +101,12 @@ async function main() {
   const searchDate = `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, "0")}`;
   log(PHASE, `조회 월: ${searchDate}`);
 
-  // 1. 대상 아파트 조회
-  let query = sb.from("apartments").select("id, name, region, gu, units, avg_maintenance_cost");
-  if (!force) query = query.is("avg_maintenance_cost", null);
-
-  const { data: targets, error } = await query;
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  // 1. 대상 아파트 조회 (selectAll: 1000행 제한 자동 페이지네이션)
+  const targets = await selectAll((s) => {
+    let q = s.from("apartments").select("id, name, region, gu, units, avg_maintenance_cost");
+    if (!force) q = q.is("avg_maintenance_cost", null);
+    return q;
+  }, sb);
   log(PHASE, `대상: ${targets.length}건`);
   if (!targets.length) { log(PHASE, "대상 없음, 종료"); return; }
 

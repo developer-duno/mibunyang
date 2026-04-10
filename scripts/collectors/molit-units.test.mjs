@@ -33,10 +33,12 @@ const { getTargets, fetchAptDetail, updateUnits } = await import("./molit-units.
 
 // ── 헬퍼 ─────────────────────────────────────────────────────
 function makeMockSbForQuery(data, error = null) {
-  const or = vi.fn().mockResolvedValue({ data, error });
+  // selectAll이 .range()를 호출하므로 체인에 포함
+  const range = vi.fn().mockResolvedValue({ data, error });
+  const or = vi.fn().mockReturnValue({ range });
   const select = vi.fn().mockReturnValue({ or });
   const from = vi.fn().mockReturnValue({ select });
-  return { from, select, or };
+  return { from, select, or, range };
 }
 
 function makeMockSbForUpdate(updateResult = { error: null }) {
@@ -66,7 +68,7 @@ describe("getTargets", () => {
     it(label, async () => {
       const sb = makeMockSbForQuery(data, error);
       if (shouldThrow) {
-        await expect(getTargets(sb)).rejects.toThrow("apartments 조회 실패");
+        await expect(getTargets(sb)).rejects.toThrow("selectAll 조회 실패");
       } else {
         const result = await getTargets(sb);
         expect(result).toEqual([]);

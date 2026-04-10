@@ -295,6 +295,24 @@ export function stringSimilarity(a, b) {
   return (2 * dp[m][n]) / len;
 }
 
+// ── Supabase 전체 조회 (1000행 제한 자동 페이지네이션) ────────
+// queryFn: (sb) => sb.from("t").select("cols").filter(...) 형태의 쿼리 빌더 콜백
+export async function selectAll(queryFn, sb = null) {
+  sb = sb ?? getSupabase();
+  const PAGE = 1000;
+  const all = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await queryFn(sb).range(offset, offset + PAGE - 1);
+    if (error) throw new Error(`selectAll 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    offset += PAGE;
+  }
+  return all;
+}
+
 // ── sleep ────────────────────────────────────────────────────
 export function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));

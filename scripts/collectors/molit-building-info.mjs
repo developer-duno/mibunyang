@@ -14,7 +14,7 @@
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, selectAll } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -132,17 +132,15 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 1. 대상 아파트 조회 (건물 상세 미수집)
-  let query = sb.from("apartments")
-    .select("id, name, region, gu, address, parking_ratio, max_floor, energy_grade, building_coverage_ratio, floor_area_ratio");
-
-  if (!force) {
-    // 상품성 필드 중 하나라도 null이면 재수집 대상
-    query = query.or("energy_grade.is.null,parking_ratio.is.null,max_floor.is.null,building_coverage_ratio.is.null,floor_area_ratio.is.null");
-  }
-
-  const { data, error } = await query;
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  // 1. 대상 아파트 조회 (건물 상세 미수집, selectAll: 1000행 제한 자동 페이지네이션)
+  const data = await selectAll((s) => {
+    let q = s.from("apartments")
+      .select("id, name, region, gu, address, parking_ratio, max_floor, energy_grade, building_coverage_ratio, floor_area_ratio");
+    if (!force) {
+      q = q.or("energy_grade.is.null,parking_ratio.is.null,max_floor.is.null,building_coverage_ratio.is.null,floor_area_ratio.is.null");
+    }
+    return q;
+  }, sb);
   const targets = data ?? [];
   log(PHASE, `대상: ${targets.length}건 ${force ? "(전체 재수집)" : "(상품성 필드 null 포함)"}`);
 

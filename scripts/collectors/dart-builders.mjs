@@ -11,7 +11,7 @@
  * 필요 환경변수:
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY, DART_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -126,17 +126,12 @@ async function main() {
     process.exit(1);
   }
 
-  // 1. apartments에서 사용 중인 시공사 목록 조회
+  // 1. apartments에서 사용 중인 시공사 목록 조회 (selectAll: 1000행 제한 자동 페이지네이션)
   const sb = getSupabase();
-  const { data: apts, error: aptErr } = await sb
-    .from("apartments")
-    .select("builder")
-    .not("builder", "is", null);
-
-  if (aptErr) {
-    logError("load", `아파트 조회 실패: ${aptErr.message}`);
-    process.exit(1);
-  }
+  const apts = await selectAll(
+    (s) => s.from("apartments").select("builder").not("builder", "is", null),
+    sb
+  );
 
   const builderSet = new Set(apts.map(a => a.builder).filter(Boolean));
   log("load", `아파트 사용 시공사 ${builderSet.size}개`);

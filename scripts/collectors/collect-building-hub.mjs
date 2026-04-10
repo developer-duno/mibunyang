@@ -31,7 +31,7 @@
  * 전제조건:
  *   reverse-geocode.mjs --force 실행 후 bjd_code가 채워져 있어야 함
  */
-import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota, selectAll } from "./_shared.mjs";
 import { REQUEST_DELAY } from "./_molit-api.mjs";
 
 loadEnv();
@@ -205,12 +205,13 @@ async function main() {
   const useYm = `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, "0")}`;
   log(PHASE, `조회 월: ${useYm}, bjd_code 보유: ${count}건`);
 
-  // 대상 아파트 조회
-  const { data: apts, error } = await sb
-    .from("apartments")
-    .select("id, name, bjd_code, lot_main, lot_sub, heat_fuel, quake_design, elec_usage_kwh")
-    .not("bjd_code", "is", null);
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  // 대상 아파트 조회 (selectAll: 1000행 제한 자동 페이지네이션)
+  const apts = await selectAll(
+    (s) => s.from("apartments")
+      .select("id, name, bjd_code, lot_main, lot_sub, heat_fuel, quake_design, elec_usage_kwh")
+      .not("bjd_code", "is", null),
+    sb
+  );
 
   log(PHASE, `대상: ${apts.length}건`);
   let apiCalls = 0;

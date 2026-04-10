@@ -7,7 +7,7 @@
  *   node scripts/collectors/calc-exclusive-ratio.mjs              (Supabase UPDATE)
  *   node scripts/collectors/calc-exclusive-ratio.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -25,12 +25,13 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 전용률이 없는 아파트
-  const { data: apts, error: aErr } = await sb
-    .from("apartments")
-    .select("id, name, exclusive_ratio")
-    .is("exclusive_ratio", null);
-  if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
+  // 전용률이 없는 아파트 (selectAll: 1000행 제한 자동 페이지네이션)
+  const apts = await selectAll(
+    (s) => s.from("apartments")
+      .select("id, name, exclusive_ratio")
+      .is("exclusive_ratio", null),
+    sb
+  );
   log(PHASE, `대상: ${apts.length}건 (exclusive_ratio null)`);
 
   if (!apts.length) { log(PHASE, "대상 없음, 종료"); return; }
@@ -41,12 +42,13 @@ async function main() {
   const prices = [];
   for (let i = 0; i < aptIds.length; i += CHUNK) {
     const chunk = aptIds.slice(i, i + CHUNK);
-    const { data, error: pErr } = await sb
-      .from("prices")
-      .select("apartment_id, area, supply_area")
-      .in("apartment_id", chunk);
-    if (pErr) throw new Error(`prices 조회 실패 (chunk ${Math.floor(i / CHUNK) + 1}): ${pErr.message}`);
-    prices.push(...(data || []));
+    const data = await selectAll(
+      (s) => s.from("prices")
+        .select("apartment_id, area, supply_area")
+        .in("apartment_id", chunk),
+      sb
+    );
+    prices.push(...data);
   }
   log(PHASE, `prices ${prices.length}건 조회 (${Math.ceil(aptIds.length / CHUNK)} 청크)`);
 
