@@ -13,10 +13,13 @@ echo "[post-naver] 1/4 sync-naver-complex.mjs 실행..."
 node scripts/collectors/sync-naver-complex.mjs
 echo "[post-naver] 1/4 완료"
 
-# 2. naver-units (세대수 보정)
+# 2. naver-units (세대수 보정, 비치명적 — 네이버 Rate Limit 시 스킵)
 echo "[post-naver] 2/4 naver-units.mjs 실행..."
-node scripts/collectors/naver-units.mjs
-echo "[post-naver] 2/4 완료"
+if node scripts/collectors/naver-units.mjs; then
+  echo "[post-naver] 2/4 완료"
+else
+  echo "[post-naver] 2/4 naver-units 실패 (비치명적, 계속 진행)"
+fi
 
 # 3. collect-unsold-kosis (KOSIS 비례배분)
 echo "[post-naver] 3/4 collect-unsold-kosis.mjs 실행..."
