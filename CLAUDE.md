@@ -4,20 +4,21 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-10 세션80 — 테스트/memo/validation 리팩토링 + 네이버 전체 재수집 + building-hub
+**마지막 작업**: 2026-04-10 세션81 — selectAll 1000행 해결 + 자동 로그인 + 폰트 가독성 Phase 0-2
 
-- useDataPipeline.test.js: 신규 29개 테스트 (renderHook + vi.mock)
-- WeightEditor.jsx: memo() 래핑 + AdminDashboard default import 전환
-- api/_lib/apartmentValidation.js: ID 검증 공유 모듈 추출 (parseApartmentIds + ID_PATTERN)
-- prices.js, unsold-history.js: apartmentValidation import로 검증 중복 제거
-- naver-collect.py + collect-building-hub.mjs: nohup 실행 (진행 중)
+- _shared.mjs: selectAll() 공유 페이지네이션 헬퍼 + 9개 수집기 적용
+- 자동 로그인: sessionStorage → localStorage + refresh token rotation (30일)
+- 폰트 가독성: F 상수 정의 + AptCard/CatPanel/Primitives/DetailModal 적용 (feat/font-size 브랜치)
+- .claudeignore 생성 (package-lock.json, .github/ 등 제외)
+- naver-collect.py 재실행 (19,200/29,727 = 64.6% 진행 중)
+- building-hub 재실행 (2,000건 전체 대상, 전부 스킵 — 주거용 데이터 없음)
 
 **다음에 해야 할 것** (우선순위):
 
-1. 네이버 수집 완료 확인 후 sync-naver-complex.mjs 재실행 (6단계 파이프라인 2~6단계)
-2. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
-3. 관리자 대시보드 추가 기능: 일괄 처리 (승인/거부)
-4. 비로그인 전환율 분석: Vercel Analytics 대시보드에서 login_prompt_* 이벤트 모니터링
+1. 네이버 수집 완료 확인 후 post-naver-collect.sh 실행 (sync → units → KOSIS → scores)
+2. 폰트 가독성 Phase 3-7 이어서 (feat/font-size 브랜치, CompareSheet/필터/섹션/전문가/관리자)
+3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
+4. 관리자 대시보드 추가 기능: 일괄 처리 (승인/거부)
 
 ---
 
