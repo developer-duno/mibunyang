@@ -4,6 +4,7 @@
  */
 import { memo } from "react";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
+import { F } from "@/theme";
 
 export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClose }) {
   return (
@@ -15,7 +16,7 @@ export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClos
             aria-current={selected ? "true" : undefined}
             style={{
               display: "flex", alignItems: "center", gap: 8,
-              padding: "6px 10px", fontSize: 12,
+              padding: "6px 10px", fontSize: F.sm,
               fontWeight: selected ? 700 : 500,
               background: selected ? s.bg : "transparent",
               color: selected ? s.ac : "#475569",

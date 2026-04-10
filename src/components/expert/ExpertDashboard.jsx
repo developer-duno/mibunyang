@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { PROFILES } from "@/constants/profiles";
 import { FIELD_SECTIONS } from "@/constants/fieldMeta";
@@ -63,13 +63,13 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
         <div data-no-print style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 4 }}>
           <button onClick={() => setSidebarOpen(true)} aria-label="단지 목록 열기" style={{
             background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6,
-            padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            padding: "6px 10px", fontSize: F.sm, fontWeight: 700, cursor: "pointer",
             color: C.text, minHeight: 44, whiteSpace: "nowrap", flexShrink: 0
           }}>&#9776; 목록</button>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
             {Object.entries(PROFILES).map(([k, p]) => (
               <button key={k} onClick={() => setProfile(k)} aria-pressed={profile === k} style={{
-                padding: "6px 10px", fontSize: 11, fontWeight: profile === k ? 700 : 500,
+                padding: "6px 10px", fontSize: F.xs, fontWeight: profile === k ? 700 : 500,
                 background: profile === k ? C.indigoLight : C.slate100, color: profile === k ? C.indigo : C.slate600,
                 border: profile === k ? `1.5px solid ${C.indigo}` : "1.5px solid transparent", borderRadius: 4, cursor: "pointer"
               }}>{p.name}</button>
@@ -78,15 +78,15 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
             <button onClick={() => setHelpOpen(v => !v)} data-no-print style={{
               background: helpOpen ? C.indigo : C.white, color: helpOpen ? C.white : C.indigo,
-              border: `1px solid ${C.indigo}`, borderRadius: 4, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+              border: `1px solid ${C.indigo}`, borderRadius: 4, padding: "6px 10px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
             }}>도움말</button>
             {onSwitchToAdmin && (
               <button onClick={onSwitchToAdmin} data-no-print style={{
-                background: C.white, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 4, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+                background: C.white, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 4, padding: "6px 10px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
               }}>관리</button>
             )}
             <button onClick={() => window.print()} data-no-print aria-label="현재 페이지 인쇄" style={{
-              background: C.indigo, color: C.white, border: "none", borderRadius: 4, padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+              background: C.indigo, color: C.white, border: "none", borderRadius: 4, padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
             }}>인쇄</button>
           </div>
         </div>
@@ -117,7 +117,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
             <ExpertDataCompleteness apt={selectedItem.apt} />
           </>
         ) : (
-          <div style={{ padding: 40, textAlign: "center", color: C.muted, fontSize: 13 }}>좌측 사이드바에서 단지를 선택해주세요.</div>
+          <div style={{ padding: 40, textAlign: "center", color: C.muted, fontSize: F.base }}>좌측 사이드바에서 단지를 선택해주세요.</div>
         )}
       </div>
     </div>

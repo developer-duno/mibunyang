@@ -3,11 +3,11 @@
  * SearchFilterBar 기존 1행 지역 select를 드롭다운 패널로 추출
  */
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { selectBase } from "./filterStyles";
 
 const sel = (active, disabled) => ({
-  ...selectBase, flex: 1, minWidth: 80, padding: "4px 20px 4px 8px", fontSize: 12, height: 36,
+  ...selectBase, flex: 1, minWidth: 80, padding: "4px 20px 4px 8px", fontSize: F.sm, height: 36,
   fontWeight: active ? 700 : 500,
   border: active ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
   borderRadius: 6, background: disabled ? "#E2E8F0" : C.slate100,

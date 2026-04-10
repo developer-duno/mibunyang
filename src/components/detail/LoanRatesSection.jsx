@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { fmtPrice } from "@/lib/format";
 import { thStyle, tdStyle } from "./tableStyles";
 import { useLoanRates } from "@/hooks/useLoanRates";
@@ -22,8 +22,8 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }) {
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowRates(v => !v); } }}
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
       >
-        <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>은행별 금리 비교</span>
-        <span style={{ fontSize: 12, color: C.muted, transition: "transform .2s", transform: showRates ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>
+        <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>은행별 금리 비교</span>
+        <span style={{ fontSize: F.sm, color: C.muted, transition: "transform .2s", transform: showRates ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>
       </div>
       {showRates && (
         <div style={{ marginTop: 8 }}>
@@ -36,7 +36,7 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }) {
                 aria-selected={selectedGroup === g.code}
                 onClick={() => setSelectedGroup(g.code)}
                 style={{
-                  flex: 1, padding: "5px 0", fontSize: 11, fontWeight: 600, border: "none", borderRadius: 6, cursor: "pointer",
+                  flex: 1, padding: "5px 0", fontSize: F.xs, fontWeight: 600, border: "none", borderRadius: 6, cursor: "pointer",
                   background: selectedGroup === g.code ? C.blue : "#f1f5f9",
                   color: selectedGroup === g.code ? "#fff" : C.muted,
                 }}
@@ -46,10 +46,10 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }) {
             ))}
           </div>
 
-          {ratesLoading && <div style={{ fontSize: 11, color: C.muted, padding: "12px 0", textAlign: "center" }}>금리 정보를 불러오는 중...</div>}
-          {ratesError && <div style={{ fontSize: 11, color: C.red, padding: "12px 0", textAlign: "center" }}>금리 정보를 불러올 수 없습니다</div>}
+          {ratesLoading && <div style={{ fontSize: F.xs, color: C.muted, padding: "12px 0", textAlign: "center" }}>금리 정보를 불러오는 중...</div>}
+          {ratesError && <div style={{ fontSize: F.xs, color: C.red, padding: "12px 0", textAlign: "center" }}>금리 정보를 불러올 수 없습니다</div>}
           {!ratesLoading && !ratesError && loanRates.length === 0 && (
-            <div style={{ fontSize: 11, color: C.muted, padding: "12px 0", textAlign: "center" }}>금리 정보가 없습니다</div>
+            <div style={{ fontSize: F.xs, color: C.muted, padding: "12px 0", textAlign: "center" }}>금리 정보가 없습니다</div>
           )}
           {!ratesLoading && loanRates.length > 0 && (
             <>
@@ -70,14 +70,14 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }) {
                 ))}</tbody>
               </table>
               {ltvBase > 0 && loanRates[0]?.rateMin != null && (
-                <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
+                <div style={{ fontSize: F.xs, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
                   <strong style={{ color: C.text }}>월 상환액 시뮬레이션</strong> (대출 {fmtPrice(ltvBase)}, 30년 원리금균등)
                   <div style={{ marginTop: 4 }}>
                     최저 금리 {loanRates[0].rateMin}% 기준: <strong style={{ color: C.blue }}>{fmtPrice(Math.round(calcMonthlyPayment(ltvBase, loanRates[0].rateMin, 30) / 10000) * 10000)}/월</strong>
                   </div>
                 </div>
               )}
-              <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>출처: 금융감독원 금융상품통합비교공시 (1시간 캐싱)</div>
+              <div style={{ fontSize: F.micro, color: C.muted, marginTop: 6 }}>출처: 금융감독원 금융상품통합비교공시 (1시간 캐싱)</div>
             </>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { memo, useEffect } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { trackEvent } from "@/lib/analytics";
 
 /**
@@ -35,10 +35,10 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
         {/* 안내 아이콘 */}
         <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
 
-        <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 8 }}>
+        <div style={{ fontSize: F.xl, fontWeight: 800, color: C.text, marginBottom: 8 }}>
           로그인이 필요합니다
         </div>
-        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 24 }}>
+        <div style={{ fontSize: F.base, color: C.muted, lineHeight: 1.6, marginBottom: 24 }}>
           점수 분석과 상세 정보를<br />
           이용하려면 로그인해주세요.
         </div>
@@ -51,7 +51,7 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
           style={{
             width: "100%", minHeight: 44, padding: "12px 16px",
             background: kakaoLoading ? "#E5D85C" : "#FEE500",
-            color: "#191919", fontSize: 15, fontWeight: 700,
+            color: "#191919", fontSize: F.md, fontWeight: 700,
             border: "none", borderRadius: 8, cursor: kakaoLoading ? "default" : "pointer",
             marginBottom: 12, transition: "background .15s",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -70,7 +70,7 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
           onClick={() => { trackEvent("login_prompt_expert_click", { trigger }); onExpertLogin(); }}
           style={{
             background: "transparent", border: "none",
-            color: C.muted, fontSize: 12, cursor: "pointer",
+            color: C.muted, fontSize: F.sm, cursor: "pointer",
             padding: "8px 0", width: "100%",
           }}
         >
@@ -83,7 +83,7 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
           onClick={() => { trackEvent("login_prompt_dismissed", { trigger }); onClose(); }}
           style={{
             background: "transparent", border: "none",
-            color: C.muted, fontSize: 11, cursor: "pointer",
+            color: C.muted, fontSize: F.xs, cursor: "pointer",
             padding: "4px 0", marginTop: 4,
           }}
         >

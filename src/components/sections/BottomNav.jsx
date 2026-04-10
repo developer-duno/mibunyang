@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 
 /**
  * BottomNav - 하단 내비게이션 바
@@ -27,7 +27,7 @@ export const BottomNav = memo(function BottomNav({ tab, expertLoggedIn, showComp
             border: "none", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
             color: isActive ? activeColor : C.muted, padding: "10px 14px", minHeight: 48, transition: "all .2s"
           }}>
-            <span style={{ fontSize: 13, fontWeight: isActive ? 800 : 600, letterSpacing: -0.2 }}>{n.l}</span>
+            <span style={{ fontSize: F.base, fontWeight: isActive ? 800 : 600, letterSpacing: -0.2 }}>{n.l}</span>
           </button>
         );
       })}

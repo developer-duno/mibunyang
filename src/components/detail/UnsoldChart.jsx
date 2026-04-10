@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { LineChart } from "@/components/primitives";
 import { useUnsoldHistory } from "@/hooks/useUnsoldHistory";
 
@@ -8,11 +8,11 @@ export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }
   const { data, loading, error, retry } = useUnsoldHistory(apartmentId, siblingIds);
 
   if (!apartmentId) return null;
-  if (loading) return <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 12 }}>불러오는 중...</div>;
+  if (loading) return <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: F.sm }}>불러오는 중...</div>;
   if (error) return (
     <div style={{ height: 80, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
-      <span style={{ color: C.muted, fontSize: 12 }}>차트를 불러올 수 없습니다</span>
-      <button onClick={retry} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.slate100, color: C.slate600, cursor: "pointer" }}>재시도</button>
+      <span style={{ color: C.muted, fontSize: F.sm }}>차트를 불러올 수 없습니다</span>
+      <button onClick={retry} style={{ fontSize: F.xs, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.slate100, color: C.slate600, cursor: "pointer" }}>재시도</button>
     </div>
   );
   if (data.length < 2) return null;
@@ -35,9 +35,9 @@ export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>미분양 추이</span>
-        <span style={{ fontSize: 10, color: C.red }}>● 미분양</span>
-        {secondaryData.length >= 2 && <span style={{ fontSize: 10, color: C.muted }}>┄ 준공후</span>}
+        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>미분양 추이</span>
+        <span style={{ fontSize: F.micro, color: C.red }}>● 미분양</span>
+        {secondaryData.length >= 2 && <span style={{ fontSize: F.micro, color: C.muted }}>┄ 준공후</span>}
       </div>
       <LineChart data={chartData} color={C.red} height={160} yLabel="미분양 추이" secondaryData={secondaryData.length >= 2 ? secondaryData : undefined} secondaryColor={C.amber} />
     </div>

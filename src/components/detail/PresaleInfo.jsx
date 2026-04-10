@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { fmtPrice, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics";
 
@@ -40,9 +40,9 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
     <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
       {/* 헤더: 제목 + 단계 배지 */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>네이버 분양정보</span>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: stageStyle.bg, color: stageStyle.color }}>{apt.presaleStage}</span>
-        {apt.presaleType && <span style={{ fontSize: 11, color: C.muted }}>{apt.presaleType}</span>}
+        <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>네이버 분양정보</span>
+        <span style={{ fontSize: F.xs, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: stageStyle.bg, color: stageStyle.color }}>{apt.presaleStage}</span>
+        {apt.presaleType && <span style={{ fontSize: F.xs, color: C.muted }}>{apt.presaleType}</span>}
       </div>
 
       {/* 대표 이미지 */}
@@ -61,13 +61,13 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
       {(apt.presaleMinPrice != null || apt.presaleMaxPrice != null) && (
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>분양가 범위</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>{fmtPriceRange(apt.presaleMinPrice, apt.presaleMaxPrice)}</div>
+            <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>분양가 범위</div>
+            <div style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>{fmtPriceRange(apt.presaleMinPrice, apt.presaleMaxPrice)}</div>
           </div>
           {apt.presalePp != null && (
             <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>평당가</div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: C.blue }}>{fmtPrice(apt.presalePp)}</div>
+              <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>평당가</div>
+              <div style={{ fontSize: F.base, fontWeight: 800, color: C.blue }}>{fmtPrice(apt.presalePp)}</div>
             </div>
           )}
         </div>
@@ -78,8 +78,8 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
           {infoItems.map((item, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
-              <span style={{ fontSize: 11, color: C.muted }}>{item.l}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.text }}>{item.v}</span>
+              <span style={{ fontSize: F.xs, color: C.muted }}>{item.l}</span>
+              <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{item.v}</span>
             </div>
           ))}
         </div>
@@ -87,21 +87,21 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
 
       {/* 일정 */}
       {apt.presaleSchedule && (
-        <div style={{ marginTop: 6, fontSize: 11, color: C.sub }}>
+        <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
           <span style={{ fontWeight: 600 }}>일정: </span>{fmtPresaleSchedule(apt.presaleSchedule)}
         </div>
       )}
 
       {/* 특징 */}
       {apt.presaleFeatures && (
-        <div style={{ marginTop: 6, fontSize: 11, color: C.sub }}>
+        <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
           <span style={{ fontWeight: 600 }}>특징: </span>{apt.presaleFeatures}
         </div>
       )}
 
       {/* 분양문의 전화 */}
       {apt.presaleInquiry && (
-        <div style={{ marginTop: 6, fontSize: 11, color: C.sub }}>
+        <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
           <span style={{ fontWeight: 600 }}>분양문의: </span>
           <a href={`tel:${apt.presaleInquiry.replace(/[^\d+\-()]/g, "")}`} style={{ color: C.blue, textDecoration: "none" }}>{apt.presaleInquiry}</a>
         </div>
@@ -115,14 +115,14 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => trackEvent("presale_naver_click", { presaleNo: apt.naverPresaleNo })}
-            style={{ fontSize: 12, color: C.blue, fontWeight: 600, textDecoration: "underline" }}
+            style={{ fontSize: F.sm, color: C.blue, fontWeight: 600, textDecoration: "underline" }}
           >네이버 분양정보 보기</a>
         </div>
       )}
 
       {/* 수집시점 */}
       {apt.presaleFetchedAt && (
-        <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>
+        <div style={{ fontSize: F.micro, color: C.muted, marginTop: 6 }}>
           수집: {new Date(apt.presaleFetchedAt).toLocaleDateString("ko-KR")}
         </div>
       )}

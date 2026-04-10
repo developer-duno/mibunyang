@@ -1,11 +1,11 @@
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 
 const card = { background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 10 };
-const title = { fontSize: 13, fontWeight: 700, color: C.purple, marginBottom: 6 };
-const desc = { fontSize: 12, color: C.sub, lineHeight: 1.7 };
+const title = { fontSize: F.base, fontWeight: 700, color: C.purple, marginBottom: 6 };
+const desc = { fontSize: F.sm, color: C.sub, lineHeight: 1.7 };
 const item = { marginBottom: 8 };
-const label = { fontSize: 12, fontWeight: 700, color: C.text };
+const label = { fontSize: F.sm, fontWeight: 700, color: C.text };
 
 /**
  * AdminHelpGuide - 관리자용 도움말 (토글 패널)
@@ -17,8 +17,8 @@ export const AdminHelpGuide = memo(function AdminHelpGuide({ open, onClose }) {
   return (
     <div style={{ background: C.purpleLight, borderRadius: 12, border: `1px solid ${C.purple}30`, padding: 16, marginBottom: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <span style={{ fontSize: 15, fontWeight: 800, color: C.purple }}>관리자 도움말</span>
-        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, color: C.purple, padding: "8px 12px", minHeight: 36 }}>닫기</button>
+        <span style={{ fontSize: F.md, fontWeight: 800, color: C.purple }}>관리자 도움말</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: F.base, fontWeight: 700, color: C.purple, padding: "8px 12px", minHeight: 36 }}>닫기</button>
       </div>
 
       <div style={card}>

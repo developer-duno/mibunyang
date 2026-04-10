@@ -3,7 +3,7 @@
  * 클릭 시 해당 필터 패널을 열고/닫는 공용 버튼
  */
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { IconChevronDown } from "@/components/icons";
 
 export const FilterButton = memo(function FilterButton({ label, summary, isOpen, isActive, onClick }) {
@@ -13,7 +13,7 @@ export const FilterButton = memo(function FilterButton({ label, summary, isOpen,
       onClick={onClick}
       aria-expanded={isOpen}
       style={{
-        height: 36, padding: "0 10px", fontSize: 12,
+        height: 36, padding: "0 10px", fontSize: F.sm,
         fontWeight: active ? 700 : 500,
         background: isOpen ? C.indigoLight : isActive ? C.indigoLight : C.slate100,
         color: isOpen ? C.indigo : isActive ? C.indigo : C.slate600,

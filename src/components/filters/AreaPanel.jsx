@@ -3,7 +3,7 @@
  * 면적 프리셋(소형/중형/대형) 추가로 사용 편의성 개선
  */
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { IconClose } from "@/components/icons";
 import { numInput, tilde, resetBtn, selectBase } from "./filterStyles";
 
@@ -37,7 +37,7 @@ export const AreaPanel = memo(function AreaPanel({
             return (
               <button key={p.label} onClick={() => { onAreaMinChange(p.min); onAreaMaxChange(p.max); }}
                 style={{
-                  flex: 1, fontSize: 10, fontWeight: selected ? 700 : 600, padding: "3px 0", height: 28,
+                  flex: 1, fontSize: F.micro, fontWeight: selected ? 700 : 600, padding: "3px 0", height: 28,
                   background: selected ? C.indigoLight : C.slate100,
                   color: selected ? C.indigo : C.slate600,
                   border: selected ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
@@ -56,7 +56,7 @@ export const AreaPanel = memo(function AreaPanel({
         <input type="number" inputMode="numeric" min="0" value={unitsMax} onChange={e => onUnitsMaxChange(e.target.value)} placeholder="최대" aria-label="최대 세대수" style={numInput(unitsMax, 30)} />
         <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
         <select value={moveInFilter} onChange={e => onMoveInChange(e.target.value)} aria-label="입주 상태" style={{
-          ...selectBase, flex: "0 0 auto", padding: "4px 20px 4px 6px", fontSize: 11, height: 30, borderRadius: 5,
+          ...selectBase, flex: "0 0 auto", padding: "4px 20px 4px 6px", fontSize: F.xs, height: 30, borderRadius: 5,
           fontWeight: moveInFilter !== "전체" ? 700 : 500,
           border: moveInFilter !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
           background: C.slate100, color: moveInFilter !== "전체" ? C.indigo : C.slate600, cursor: "pointer",
