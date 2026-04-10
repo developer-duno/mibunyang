@@ -2,7 +2,7 @@
  * 필터 컴포넌트 공유 인라인 스타일 상수
  * SearchFilterBar에서 추출 — 6개 패널 + 오케스트레이터 공용
  */
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 
 /* 배지 pulse 애니메이션 (SSR-safe, 최초 1회 주입) */
 const BADGE_ANIM = "badge-pulse";
@@ -19,13 +19,13 @@ export const selectArrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 export const selectBase = { WebkitAppearance: "none", MozAppearance: "none", appearance: "none", backgroundImage: selectArrow, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
 
 /* 숫자 입력 필드 스타일 (val: 현재값, h: 높이) */
-export const numInput = (val, h = 30) => ({ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: 11, border: val ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: h, boxSizing: "border-box", background: C.slate100 });
+export const numInput = (val, h = 30) => ({ flex: 1, minWidth: 0, padding: "4px 6px", fontSize: F.sm, border: val ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 5, outline: "none", height: h, boxSizing: "border-box", background: C.slate100 });
 
 /* 초기화 버튼 스타일 */
-export const resetBtn = (h = 30) => ({ background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: 11, color: C.muted, cursor: "pointer", height: h, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 });
+export const resetBtn = (h = 30) => ({ background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 5, padding: "0 6px", fontSize: F.sm, color: C.muted, cursor: "pointer", height: h, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 });
 
 /* 물결표(~) 구분자 */
-export const tilde = { fontSize: 10, color: C.muted, flexShrink: 0 };
+export const tilde = { fontSize: F.micro, color: C.muted, flexShrink: 0 };
 
 /* 활성 필터 칩 */
-export const chipStyle = { fontSize: 10, padding: "2px 6px", borderRadius: 10, background: C.indigoLight, color: C.indigo, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
+export const chipStyle = { fontSize: F.sm, padding: "3px 8px", borderRadius: 10, background: C.indigoLight, color: C.indigo, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };

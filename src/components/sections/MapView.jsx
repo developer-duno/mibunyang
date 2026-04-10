@@ -1,5 +1,5 @@
 import { memo, useRef, useEffect, useState, useCallback } from "react";
-import { C, gr } from "@/theme";
+import { C, F, gr } from "@/theme";
 import { InfraOverlay } from "./InfraOverlay";
 import { IconClose } from "@/components/icons";
 
@@ -175,10 +175,10 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
       {error && (
         <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.9)", zIndex: 20 }}>
-          <div style={{ textAlign: "center", color: C.muted, fontSize: 13 }}>
+          <div style={{ textAlign: "center", color: C.muted, fontSize: F.base }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>🗺️</div>
             <div>지도를 불러올 수 없습니다</div>
-            <div style={{ fontSize: 11, marginTop: 4 }}>{error}</div>
+            <div style={{ fontSize: F.xs, marginTop: 4 }}>{error}</div>
           </div>
         </div>
       )}
@@ -186,28 +186,28 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
       <InfraOverlay mapInstance={mapInstanceRef.current} ready={ready} />
       {/* 현위치 버튼 */}
       {ready && navigator.geolocation && (
-        <button onClick={handleMyLocation} aria-label="현위치" style={{ position: "absolute", bottom: 16, right: 12, width: 36, height: 36, borderRadius: "50%", background: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, fontSize: 16 }}>
+        <button onClick={handleMyLocation} aria-label="현위치" style={{ position: "absolute", bottom: 16, right: 12, width: 36, height: 36, borderRadius: "50%", background: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, fontSize: F.lg }}>
           📍
         </button>
       )}
       {/* 필터 결과 수 오버레이 */}
-      <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: C.indigo, boxShadow: "0 1px 4px rgba(0,0,0,0.12)", zIndex: 10 }}>
+      <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "4px 10px", fontSize: F.xs, fontWeight: 700, color: C.indigo, boxShadow: "0 1px 4px rgba(0,0,0,0.12)", zIndex: 10 }}>
         {markerCount == null ? `${filtered.length}개 단지` : markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
       </div>
       {/* 선택된 아파트 정보 카드 */}
       {selected && (
         <div style={{ position: "absolute", bottom: 12, left: 12, right: 12, background: C.white, borderRadius: 10, padding: "10px 12px", boxShadow: "0 2px 12px rgba(0,0,0,0.15)", zIndex: 10, display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selected.apt.name}</div>
-            <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
+            <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selected.apt.name}</div>
+            <div style={{ fontSize: F.xs, color: C.sub, marginTop: 2 }}>
               {[selected.apt.region, selected.apt.gu].filter(Boolean).join(" ")} · {selected.apt.price ? `${(selected.apt.price / 10000).toFixed(1)}억` : "가격 미정"}
             </div>
           </div>
           <div style={{ textAlign: "center", flexShrink: 0 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: gr(selected.res.total).c }}>{selected.res.total}</div>
+            <div style={{ fontSize: F.xl, fontWeight: 800, color: gr(selected.res.total).c }}>{selected.res.total}</div>
             <div style={{ fontSize: 9, color: C.muted }}>종합점수</div>
           </div>
-          <button onClick={handleInfoClick} style={{ flexShrink: 0, padding: "8px 12px", fontSize: 11, fontWeight: 700, background: C.indigo, color: C.white, border: "none", borderRadius: 6, cursor: "pointer" }}>상세</button>
+          <button onClick={handleInfoClick} style={{ flexShrink: 0, padding: "8px 12px", fontSize: F.xs, fontWeight: 700, background: C.indigo, color: C.white, border: "none", borderRadius: 6, cursor: "pointer" }}>상세</button>
           <button onClick={() => setSelected(null)} aria-label="닫기" style={{ position: "absolute", top: 6, right: 8, background: "none", border: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center" }}><IconClose size={14} /></button>
         </div>
       )}

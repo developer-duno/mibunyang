@@ -1,15 +1,15 @@
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 
 const cardStyle = { background: C.card, borderRadius: 12, padding: 14, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", marginBottom: 12 };
-const titleStyle = { fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 10 };
+const titleStyle = { fontSize: F.md, fontWeight: 800, color: C.text, marginBottom: 10 };
 const titleBlue = { ...titleStyle, color: C.blue };
 const guideItem = { marginBottom: 10 };
-const guideTitle = { fontSize: 13, fontWeight: 700, color: C.text };
-const guideDesc = { fontSize: 12, color: C.sub, lineHeight: 1.6, marginTop: 2 };
+const guideTitle = { fontSize: F.base, fontWeight: 700, color: C.text };
+const guideDesc = { fontSize: F.sm, color: C.sub, lineHeight: 1.6, marginTop: 2 };
 const divider = { borderTop: `1px solid ${C.border}`, marginTop: 10, paddingTop: 10 };
 const tipBox = { background: C.blueLight, borderRadius: 8, padding: "8px 10px", marginTop: 6, marginBottom: 6 };
-const tipText = { fontSize: 11, color: C.blue, lineHeight: 1.6 };
+const tipText = { fontSize: F.xs, color: C.blue, lineHeight: 1.6 };
 
 /**
  * InfoPage - 스코어링 엔진 구조 + 소비자용 사용 가이드 + FAQ
@@ -211,16 +211,16 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
         ))}
 
         <div style={divider}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.blue, marginBottom: 6 }}>도시등급별 교통 보정</div>
-          <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.6 }}>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.blue, marginBottom: 6 }}>도시등급별 교통 보정</div>
+          <div style={{ fontSize: F.xs, color: C.sub, lineHeight: 1.6 }}>
             특별시(S) · 광역시(A) · 특례시(B) · 일반시(C) · 군(D) 등급별로 지하철·버스·IC·KTX 가중치가 자동 조정됩니다.
             예: 서울에서는 지하철 접근성이 중요하지만, 군 지역에서는 IC 거리가 더 중요하게 반영됩니다.
           </div>
         </div>
 
         <div style={divider}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>학술 기반</div>
-          <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.6 }}>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 4 }}>학술 기반</div>
+          <div style={{ fontSize: F.xs, color: C.sub, lineHeight: 1.6 }}>
             AHP 계층분석법(황규성·장형진 2016) · 헤도닉 가격모형 · 한국부동산원 공시가격 조사체계 · 국토연구원 GTX 영향 분석(2024) · 하자심사분쟁조정위 데이터
           </div>
         </div>
@@ -251,13 +251,13 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
       {/* 전문가 로그인 CTA */}
       {!expertLoggedIn && (
         <div style={cardStyle}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8 }}>파트너 전문가 전용</div>
-          <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.6, marginBottom: 10 }}>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>파트너 전문가 전용</div>
+          <div style={{ fontSize: F.sm, color: C.sub, lineHeight: 1.6, marginBottom: 10 }}>
             부동산 전문가라면 69개 세부 지표, 스코어 산출 과정, 데이터 완성도를 상세히 확인할 수 있는 전문가 대시보드를 이용하세요.
             모든 카테고리의 서브스코어와 계산 근거를 투명하게 제공합니다.
           </div>
           <button onClick={onExpertLoginClick} style={{
-            width: "100%", background: C.indigoLight, border: `1.5px solid ${C.indigo}`, color: C.indigo, fontSize: 13, fontWeight: 700,
+            width: "100%", background: C.indigoLight, border: `1.5px solid ${C.indigo}`, color: C.indigo, fontSize: F.base, fontWeight: 700,
             cursor: "pointer", padding: "12px", borderRadius: 6, minHeight: 44
           }}>전문가 로그인</button>
         </div>

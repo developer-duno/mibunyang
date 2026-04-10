@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef, useCallback } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 
 /**
  * 인프라 카테고리 정의
@@ -100,7 +100,7 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }) {
             color: active === cat.key ? C.white : C.text,
             border: `1px solid ${active === cat.key ? C.indigo : C.border}`,
             boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
-            cursor: "pointer", fontSize: 16,
+            cursor: "pointer", fontSize: F.lg,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}
         >

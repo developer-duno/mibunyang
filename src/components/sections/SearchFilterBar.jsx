@@ -5,7 +5,7 @@
  * 2행: 활성 필터 칩 + 초기화/공유
  */
 import { memo, useState, useRef, useEffect, useCallback } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
 import { FILTER_PRESETS } from "@/constants/filterPresets";
 import { IconClose, IconHeart, IconHeartFilled } from "@/components/icons";
@@ -91,20 +91,20 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         <div style={{ flex: 1 }} />
         {/* 건수 배지 */}
         {filteredLength != null && <span key={filteredLength} style={{
-          fontSize: 11, fontWeight: 700, flexShrink: 0, padding: "2px 8px", borderRadius: 10,
+          fontSize: F.xs, fontWeight: 700, flexShrink: 0, padding: "2px 8px", borderRadius: 10,
           color: filteredLength === 0 ? C.red : C.indigo,
           background: filteredLength === 0 ? C.redLight : C.indigoLight,
         }}>{filteredLength}{scoredLength != null ? ` / ${scoredLength}` : ""}개</span>}
         {/* 관심매물 */}
         <button onClick={onToggleFavOnly} aria-label="관심매물만 보기" aria-pressed={showFavOnly} style={{
-          flexShrink: 0, height: 36, padding: "0 10px", fontSize: 11, fontWeight: showFavOnly ? 700 : 500,
+          flexShrink: 0, height: 36, padding: "0 10px", fontSize: F.xs, fontWeight: showFavOnly ? 700 : 500,
           background: showFavOnly ? C.redLight : C.slate100, color: showFavOnly ? C.red : C.slate600,
           border: showFavOnly ? `1.5px solid ${C.red}` : `1px solid ${C.border}`, borderRadius: 6,
           cursor: "pointer", display: "flex", alignItems: "center", gap: 3, transition: "all .15s",
         }}>{showFavOnly ? <IconHeartFilled size={13} /> : <IconHeart size={13} />}{favCount > 0 ? ` ${favCount}` : ""}</button>
         {/* 미분양 토글 */}
         <button onClick={onToggleHideNoUnsold} aria-pressed={!hideNoUnsold} aria-label="미분양 없는 단지 보기" style={{
-          flexShrink: 0, height: 36, padding: "0 8px", fontSize: 10, fontWeight: !hideNoUnsold ? 700 : 500,
+          flexShrink: 0, height: 36, padding: "0 8px", fontSize: F.micro, fontWeight: !hideNoUnsold ? 700 : 500,
           background: !hideNoUnsold ? C.amberLight : C.slate100, color: !hideNoUnsold ? C.amber : C.slate600,
           border: !hideNoUnsold ? `1.5px solid ${C.amber}` : `1px solid ${C.border}`, borderRadius: 6,
           cursor: "pointer", display: "flex", alignItems: "center", gap: 2, transition: "all .15s",
@@ -112,12 +112,12 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         {/* undo/redo */}
         {(canUndo || canRedo) && <>
           <button onClick={onUndo} disabled={!canUndo} aria-label="필터 되돌리기" style={{
-            flexShrink: 0, height: 36, width: 36, fontSize: 13, background: canUndo ? C.slate100 : "#F1F5F9",
+            flexShrink: 0, height: 36, width: 36, fontSize: F.base, background: canUndo ? C.slate100 : "#F1F5F9",
             color: canUndo ? C.slate600 : "#CBD5E1", border: `1px solid ${canUndo ? C.border : "#E2E8F0"}`,
             borderRadius: 6, cursor: canUndo ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center",
           }}>↩</button>
           <button onClick={onRedo} disabled={!canRedo} aria-label="필터 다시실행" style={{
-            flexShrink: 0, height: 36, width: 36, fontSize: 13, background: canRedo ? C.slate100 : "#F1F5F9",
+            flexShrink: 0, height: 36, width: 36, fontSize: F.base, background: canRedo ? C.slate100 : "#F1F5F9",
             color: canRedo ? C.slate600 : "#CBD5E1", border: `1px solid ${canRedo ? C.border : "#E2E8F0"}`,
             borderRadius: 6, cursor: canRedo ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center",
           }}>↪</button>
@@ -142,11 +142,11 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {/* 기본 프리셋 */}
           <div>
-            <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, marginBottom: 4 }}>추천 프리셋</div>
+            <div style={{ fontSize: F.micro, color: C.muted, fontWeight: 600, marginBottom: 4 }}>추천 프리셋</div>
             <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
               {FILTER_PRESETS.map(p => (
                 <button key={p.key} onClick={() => { onApplyPreset(p.values); closePanel(); }} title={p.desc} style={{
-                  flex: "1 0 auto", fontSize: 11, fontWeight: 600, padding: "4px 8px", height: 30,
+                  flex: "1 0 auto", fontSize: F.xs, fontWeight: 600, padding: "4px 8px", height: 30,
                   background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`,
                   borderRadius: 5, cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap",
                 }}>{p.label}</button>
@@ -156,12 +156,12 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           {/* 커스텀 프리셋 */}
           {customPresets?.length > 0 && (
             <div>
-              <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, marginBottom: 4 }}>내 프리셋</div>
+              <div style={{ fontSize: F.micro, color: C.muted, fontWeight: 600, marginBottom: 4 }}>내 프리셋</div>
               <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                 {customPresets.map(p => (
                   <span key={p.key} style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
                     <button onClick={() => { onApplyPreset(p.values); closePanel(); }} title={p.desc} style={{
-                      fontSize: 11, fontWeight: 600, padding: "4px 8px", height: 30,
+                      fontSize: F.xs, fontWeight: 600, padding: "4px 8px", height: 30,
                       background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
                       borderRadius: "5px 0 0 5px", cursor: "pointer", whiteSpace: "nowrap",
                     }}>{p.label}</button>
@@ -182,13 +182,13 @@ export const SearchFilterBar = memo(function SearchFilterBar({
                   <input type="text" value={presetName} onChange={e => setPresetName(e.target.value)}
                     maxLength={12} placeholder="이름 (12자)" autoFocus
                     onKeyDown={e => { if (e.key === "Enter") handlePresetSave(); if (e.key === "Escape") { setShowPresetInput(false); setPresetName(""); } }}
-                    style={{ width: 80, fontSize: 10, height: 28, padding: "2px 6px", border: `1px solid ${C.green}`, borderRadius: 4, outline: "none", background: C.greenLight }} />
-                  <button onClick={handlePresetSave} style={{ fontSize: 10, fontWeight: 600, padding: "3px 6px", height: 28, background: C.green, color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>저장</button>
-                  <button onClick={() => { setShowPresetInput(false); setPresetName(""); }} style={{ fontSize: 10, padding: "3px 4px", height: 28, background: C.slate100, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 4, cursor: "pointer" }}>취소</button>
+                    style={{ width: 80, fontSize: F.micro, height: 28, padding: "2px 6px", border: `1px solid ${C.green}`, borderRadius: 4, outline: "none", background: C.greenLight }} />
+                  <button onClick={handlePresetSave} style={{ fontSize: F.micro, fontWeight: 600, padding: "3px 6px", height: 28, background: C.green, color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>저장</button>
+                  <button onClick={() => { setShowPresetInput(false); setPresetName(""); }} style={{ fontSize: F.micro, padding: "3px 4px", height: 28, background: C.slate100, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 4, cursor: "pointer" }}>취소</button>
                 </div>
               ) : (
                 <button onClick={() => setShowPresetInput(true)} aria-label="현재 필터를 프리셋으로 저장" style={{
-                  fontSize: 10, fontWeight: 600, padding: "3px 8px", height: 28,
+                  fontSize: F.micro, fontWeight: 600, padding: "3px 8px", height: 28,
                   background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
                   borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap",
                 }}>+ 프리셋 저장</button>
@@ -197,7 +197,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             {filterHistory?.length > 0 && (
               <select key={historyKey} onChange={e => { const i = Number(e.target.value); if (filterHistory[i]) { onApplyHistory?.(filterHistory[i]); setHistoryKey(k => k + 1); closePanel(); } }} defaultValue="" aria-label="필터 히스토리" style={{
                 WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-                flex: 1, fontSize: 10, height: 28, padding: "2px 20px 2px 6px",
+                flex: 1, fontSize: F.micro, height: 28, padding: "2px 20px 2px 6px",
                 border: `1px solid ${C.border}`, borderRadius: 4, background: C.slate100, color: C.slate600, cursor: "pointer",
               }}>
                 <option value="" disabled>히스토리 ({filterHistory.length})</option>
@@ -232,14 +232,14 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           </div>
           {onResetAll && (
             <button onClick={onResetAll} aria-label="전체 필터 초기화" style={{
-              flexShrink: 0, height: 22, padding: "0 6px", fontSize: 10, fontWeight: 600,
+              flexShrink: 0, height: 22, padding: "0 6px", fontSize: F.micro, fontWeight: 600,
               background: C.redLight, color: C.red, border: `1px solid ${C.red}`, borderRadius: 4,
               cursor: "pointer", display: "flex", alignItems: "center", gap: 2,
             }}>초기화</button>
           )}
           {onShareFilters && (
             <button onClick={onShareFilters} aria-label="필터 조건 공유" style={{
-              flexShrink: 0, height: 22, padding: "0 6px", fontSize: 10, fontWeight: 600,
+              flexShrink: 0, height: 22, padding: "0 6px", fontSize: F.micro, fontWeight: 600,
               background: C.slate100, color: C.slate600, border: `1px solid ${C.border}`, borderRadius: 4,
               cursor: "pointer", display: "flex", alignItems: "center", gap: 2,
             }}>공유</button>

@@ -3,7 +3,7 @@
  * 기존 SearchFilterBar 5행에서 추출
  */
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { IconClose } from "@/components/icons";
 import { numInput, tilde, resetBtn, selectBase } from "./filterStyles";
 
@@ -21,7 +21,7 @@ export const DetailPanel = memo(function DetailPanel({
       <span style={tilde}>점</span>
       <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
       <select value={builderTier} onChange={e => onBuilderTierChange(e.target.value)} aria-label="시공사 등급" style={{
-        ...selectBase, flex: "0 0 auto", padding: "4px 20px 4px 6px", fontSize: 11, height: 30, borderRadius: 5,
+        ...selectBase, flex: "0 0 auto", padding: "4px 20px 4px 6px", fontSize: F.xs, height: 30, borderRadius: 5,
         fontWeight: builderTier !== "전체" ? 700 : 500,
         border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
         background: C.slate100, color: builderTier !== "전체" ? C.indigo : C.slate600, cursor: "pointer",
@@ -33,7 +33,7 @@ export const DetailPanel = memo(function DetailPanel({
         })}
       </select>
       <button onClick={onToggleBenefitOnly} aria-label="혜택 있는 매물만" aria-pressed={benefitOnly} style={{
-        flexShrink: 0, height: 30, padding: "0 10px", fontSize: 11, fontWeight: benefitOnly ? 700 : 500,
+        flexShrink: 0, height: 30, padding: "0 10px", fontSize: F.xs, fontWeight: benefitOnly ? 700 : 500,
         background: benefitOnly ? C.amberLight : C.slate100, color: benefitOnly ? C.amber : C.slate600,
         border: benefitOnly ? `1.5px solid ${C.amber}` : `1px solid ${C.border}`, borderRadius: 5,
         cursor: "pointer", transition: "all .15s",

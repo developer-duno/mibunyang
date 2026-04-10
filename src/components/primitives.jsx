@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useEffect } from "react";
-import { C, gr } from "@/theme";
+import { C, F, gr } from "@/theme";
 
 export const Bar = memo(function Bar({ value: _v, color = C.blue, h = 5 }) {
   const value = _v ?? 0;
@@ -21,7 +21,7 @@ export const ScoreBadge = memo(function ScoreBadge({ score: _sc, size = 54 }) {
       </svg>
       <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: size > 50 ? 22 : 16, fontWeight: 800, color: g.c, lineHeight: 1 }}>{score}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: g.c, marginTop: 1 }}>{g.l}</span>
+        <span style={{ fontSize: F.xs, fontWeight: 700, color: g.c, marginTop: 1 }}>{g.l}</span>
       </div>
     </div>
   );
@@ -46,7 +46,7 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
     return () => clearTimeout(t);
   }, [activeDot]);
 
-  if (data.length < 2) return <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 12 }}>데이터가 부족합니다</div>;
+  if (data.length < 2) return <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: F.base }}>데이터가 부족합니다</div>;
   const pad = { t: 16, r: 12, b: 28, l: 44 };
   const w = 300, h = height;
   const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
@@ -63,7 +63,7 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
       {/* 빈 영역 터치 시 dismiss */}
       <rect x="0" y="0" width={w} height={h} fill="transparent" onClick={handleDismiss} />
       {Array.from({ length: gridLines + 1 }, (_, i) => { const y = pad.t + (ih / gridLines) * i; const val = maxY - (rangeY / gridLines) * i; return (
-        <g key={i}><line x1={pad.l} y1={y} x2={w - pad.r} y2={y} stroke="#E5E7EB" strokeWidth=".5" /><text x={pad.l - 4} y={y} textAnchor="end" dy="0.35em" fill={C.muted} fontSize="9">{Math.round(val).toLocaleString()}</text></g>
+        <g key={i}><line x1={pad.l} y1={y} x2={w - pad.r} y2={y} stroke="#E5E7EB" strokeWidth=".5" /><text x={pad.l - 4} y={y} textAnchor="end" dy="0.35em" fill={C.muted} fontSize={F.micro}>{Math.round(val).toLocaleString()}</text></g>
       ); })}
       {secondaryData && secondaryData.length >= 2 && <path d={makePath(secondaryData)} fill="none" stroke={secondaryColor} strokeWidth="1.5" strokeDasharray="4 3" opacity=".6" />}
       <path d={makePath(data)} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
@@ -82,12 +82,12 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
           <g>
             <circle cx={cx} cy={cy} r="5" fill={color} stroke={C.white} strokeWidth="2" />
             <rect x={tx} y={ty - 12} width={tw} height={18} rx={4} fill={C.text} opacity=".85" />
-            <text x={tx + tw / 2} y={ty} textAnchor="middle" dy="0.35em" fill={C.white} fontSize="10" fontWeight="600">{label}</text>
+            <text x={tx + tw / 2} y={ty} textAnchor="middle" dy="0.35em" fill={C.white} fontSize={F.xs} fontWeight="600">{label}</text>
           </g>
         );
       })()}
-      {data.length <= 12 && data.map((d, i) => <text key={`l${i}`} x={toX(i, data.length)} y={h - 6} textAnchor="middle" dy="0.35em" fill={C.muted} fontSize="8">{d.x}</text>)}
-      {xLabel && <text x={w / 2} y={h - 1} textAnchor="middle" fill={C.muted} fontSize="8">{xLabel}</text>}
+      {data.length <= 12 && data.map((d, i) => <text key={`l${i}`} x={toX(i, data.length)} y={h - 6} textAnchor="middle" dy="0.35em" fill={C.muted} fontSize={F.micro}>{d.x}</text>)}
+      {xLabel && <text x={w / 2} y={h - 1} textAnchor="middle" fill={C.muted} fontSize={F.micro}>{xLabel}</text>}
     </svg>
   );
 });
@@ -105,7 +105,7 @@ export const Radar = memo(function Radar({ data: _data, size = 130 }) {
       {[.25, .5, .75, 1].map(r2 => <polygon key={r2} points={poly(r2)} fill="none" stroke="#E5E7EB" strokeWidth=".7" />)}
       <polygon points={dp} fill="rgba(37,99,235,0.1)" stroke={C.blue} strokeWidth="1.5" />
       {data.map((d, i) => { const a = -Math.PI / 2 + i * step; return <circle key={i} cx={cx + Math.cos(a) * r * d.v / 100} cy={cy + Math.sin(a) * r * d.v / 100} r="3" fill={C.blue} />; })}
-      {data.map((d, i) => { const a = -Math.PI / 2 + i * step; return <text key={`t${i}`} x={cx + Math.cos(a) * (r + 16)} y={cy + Math.sin(a) * (r + 16)} textAnchor="middle" dy="0.35em" fill={C.sub} fontSize="12" fontWeight="600">{d.l}</text>; })}
+      {data.map((d, i) => { const a = -Math.PI / 2 + i * step; return <text key={`t${i}`} x={cx + Math.cos(a) * (r + 16)} y={cy + Math.sin(a) * (r + 16)} textAnchor="middle" dy="0.35em" fill={C.sub} fontSize={F.sm} fontWeight="600">{d.l}</text>; })}
     </svg>
   );
 });

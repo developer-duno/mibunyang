@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, memo } from "react";
-import { C, catCol, catBg } from "@/theme";
+import { C, F, catCol, catBg } from "@/theme";
 import { PROFILES } from "@/constants/profiles";
 
 const CAT_LABELS = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
@@ -47,7 +47,7 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 12 }}>가중치 관리</div>
+      <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text, marginBottom: 12 }}>가중치 관리</div>
 
       {/* Profile tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
@@ -56,7 +56,7 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
           const isCustom = !!customWeights[pKey];
           return (
             <button key={pKey} onClick={() => setProfile(pKey)} style={{
-              padding: "6px 14px", fontSize: 12, fontWeight: active ? 700 : 500,
+              padding: "6px 14px", fontSize: F.sm, fontWeight: active ? 700 : 500,
               background: active ? C.indigoLight : C.white, color: active ? C.indigo : C.muted,
               border: active ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
               borderRadius: 6, cursor: "pointer", transition: "all .15s", position: "relative"
@@ -72,11 +72,11 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
       <div style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
         {/* Header */}
         <div style={{ display: "grid", gridTemplateColumns: "80px repeat(6, 1fr) 120px", gap: 0, background: C.slate100, padding: "8px 12px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>프로필</div>
+          <div style={{ fontSize: F.xs, fontWeight: 700, color: C.muted }}>프로필</div>
           {CAT_KEYS.map(k => (
-            <div key={k} style={{ fontSize: 11, fontWeight: 700, color: catCol[k], textAlign: "center" }}>{CAT_LABELS[k]}</div>
+            <div key={k} style={{ fontSize: F.xs, fontWeight: 700, color: catCol[k], textAlign: "center" }}>{CAT_LABELS[k]}</div>
           ))}
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textAlign: "center" }}>작업</div>
+          <div style={{ fontSize: F.xs, fontWeight: 700, color: C.muted, textAlign: "center" }}>작업</div>
         </div>
 
         {/* Rows */}
@@ -92,7 +92,7 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
               padding: "10px 12px", borderTop: `1px solid ${C.border}`,
               background: isActive ? C.indigoLight + "40" : C.white
             }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, display: "flex", alignItems: "center" }}>
+              <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, display: "flex", alignItems: "center" }}>
                 {p.name}
                 {isCustom && <span style={{ fontSize: 9, color: C.amber, marginLeft: 4 }}>수정됨</span>}
               </div>
@@ -106,14 +106,14 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
                       value={draft[k] ?? 0}
                       onChange={e => handleChange(k, e.target.value)}
                       style={{
-                        width: 44, textAlign: "center", fontSize: 12, fontWeight: 700,
+                        width: 44, textAlign: "center", fontSize: F.sm, fontWeight: 700,
                         padding: "4px 2px", border: `1.5px solid ${catCol[k]}`, borderRadius: 4,
                         color: catCol[k], background: catBg[k], outline: "none"
                       }}
                     />
                   ) : (
                     <span style={{
-                      fontSize: 12, fontWeight: 600, color: catCol[k],
+                      fontSize: F.sm, fontWeight: 600, color: catCol[k],
                       background: catBg[k], padding: "3px 8px", borderRadius: 4, minWidth: 32
                     }}>{w[k]}</span>
                   )}
@@ -124,24 +124,24 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
                 {isEditing ? (
                   <>
                     <button onClick={handleSave} disabled={sum !== 100} style={{
-                      fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 4, cursor: sum === 100 ? "pointer" : "default",
+                      fontSize: F.xs, fontWeight: 700, padding: "4px 10px", borderRadius: 4, cursor: sum === 100 ? "pointer" : "default",
                       background: sum === 100 ? C.green : C.slate100, color: sum === 100 ? C.white : C.muted,
                       border: "none", opacity: sum === 100 ? 1 : 0.5
                     }}>저장</button>
                     <button onClick={cancelEdit} style={{
-                      fontSize: 11, fontWeight: 600, padding: "4px 8px", borderRadius: 4, cursor: "pointer",
+                      fontSize: F.xs, fontWeight: 600, padding: "4px 8px", borderRadius: 4, cursor: "pointer",
                       background: C.white, color: C.muted, border: `1px solid ${C.border}`
                     }}>취소</button>
                   </>
                 ) : (
                   <>
                     <button onClick={() => startEdit(pKey)} style={{
-                      fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 4, cursor: "pointer",
+                      fontSize: F.xs, fontWeight: 700, padding: "4px 10px", borderRadius: 4, cursor: "pointer",
                       background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`
                     }}>편집</button>
                     {isCustom && (
                       <button onClick={() => handleReset(pKey)} style={{
-                        fontSize: 11, fontWeight: 600, padding: "4px 8px", borderRadius: 4, cursor: "pointer",
+                        fontSize: F.xs, fontWeight: 600, padding: "4px 8px", borderRadius: 4, cursor: "pointer",
                         background: C.white, color: C.muted, border: `1px solid ${C.border}`
                       }}>초기화</button>
                     )}
@@ -156,7 +156,7 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
       {/* Sum validation message */}
       {editingProfile && (
         <div style={{
-          marginTop: 8, fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 6,
+          marginTop: 8, fontSize: F.xs, fontWeight: 600, padding: "6px 12px", borderRadius: 6,
           background: sum === 100 ? C.greenLight : C.redLight,
           color: sum === 100 ? C.green : C.red
         }}>
@@ -168,11 +168,11 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
       {previewItem && (
         <div style={{ marginTop: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>가중치 산출 내역 미리보기</div>
+            <div style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>가중치 산출 내역 미리보기</div>
             <div style={{ display: "flex", gap: 4 }}>
               {topApts.map((item, i) => (
                 <button key={item.apt.id} onClick={() => setPreviewAptIdx(i)} style={{
-                  padding: "3px 8px", fontSize: 10, fontWeight: previewAptIdx === i ? 700 : 500, borderRadius: 4, cursor: "pointer",
+                  padding: "3px 8px", fontSize: F.micro, fontWeight: previewAptIdx === i ? 700 : 500, borderRadius: 4, cursor: "pointer",
                   background: previewAptIdx === i ? C.indigoLight : C.white,
                   color: previewAptIdx === i ? C.indigo : C.muted,
                   border: previewAptIdx === i ? `1px solid ${C.indigo}` : `1px solid ${C.border}`,
@@ -184,8 +184,8 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
 
           <div style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>{previewItem.apt.name}</span>
-              <span style={{ fontSize: 20, fontWeight: 900, color: C.indigo }}>{previewItem.res.total}점</span>
+              <span style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>{previewItem.apt.name}</span>
+              <span style={{ fontSize: F.xxl, fontWeight: 900, color: C.indigo }}>{previewItem.res.total}점</span>
             </div>
 
             {/* Breakdown bars */}
@@ -195,18 +195,18 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
                 const contribution = Math.round(c.total * w / 100);
                 return (
                   <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: catCol[k], minWidth: 32 }}>{CAT_LABELS[k] || k}</span>
+                    <span style={{ fontSize: F.xs, fontWeight: 700, color: catCol[k], minWidth: 32 }}>{CAT_LABELS[k] || k}</span>
                     <div style={{ flex: 1, height: 20, background: C.slate100, borderRadius: 4, position: "relative", overflow: "hidden" }}>
                       <div style={{
                         width: `${Math.min(contribution * 2, 100)}%`, height: "100%", background: catBg[k], borderRadius: 4,
                         transition: "width .3s", opacity: w === 0 ? 0.3 : 1
                       }} />
-                      <span style={{ position: "absolute", left: 6, top: 2, fontSize: 10, fontWeight: 700, color: catCol[k] }}>
+                      <span style={{ position: "absolute", left: 6, top: 2, fontSize: F.micro, fontWeight: 700, color: catCol[k] }}>
                         {c.total}점
                       </span>
                     </div>
-                    <span style={{ fontSize: 11, color: C.muted, minWidth: 20, textAlign: "right" }}>{w}%</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: catCol[k], minWidth: 24, textAlign: "right" }}>{contribution}</span>
+                    <span style={{ fontSize: F.xs, color: C.muted, minWidth: 20, textAlign: "right" }}>{w}%</span>
+                    <span style={{ fontSize: F.xs, fontWeight: 700, color: catCol[k], minWidth: 24, textAlign: "right" }}>{contribution}</span>
                   </div>
                 );
               })}
@@ -217,7 +217,7 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
               {Object.entries(previewItem.res.cats).map(([k, c]) => {
                 const w = previewItem.res.weights[k] ?? 0;
                 return (
-                  <span key={k} style={{ fontSize: 11, color: catCol[k], background: catBg[k], padding: "3px 8px", borderRadius: 4, fontWeight: 600 }}>
+                  <span key={k} style={{ fontSize: F.xs, color: catCol[k], background: catBg[k], padding: "3px 8px", borderRadius: 4, fontWeight: 600 }}>
                     {CAT_LABELS[k] || k} {c.total}×{w}%={Math.round(c.total * w / 100)}
                   </span>
                 );

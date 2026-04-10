@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { LineChart } from "@/components/primitives";
 import { usePriceHistory } from "@/hooks/usePriceHistory";
 
@@ -8,11 +8,11 @@ export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }) 
   const { data, loading, error, retry } = usePriceHistory(apartmentId, siblingIds);
 
   if (!apartmentId) return null;
-  if (loading) return <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 12 }}>불러오는 중...</div>;
+  if (loading) return <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: F.sm }}>불러오는 중...</div>;
   if (error) return (
     <div style={{ height: 80, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
-      <span style={{ color: C.muted, fontSize: 12 }}>차트를 불러올 수 없습니다</span>
-      <button onClick={retry} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.slate100, color: C.slate600, cursor: "pointer" }}>재시도</button>
+      <span style={{ color: C.muted, fontSize: F.sm }}>차트를 불러올 수 없습니다</span>
+      <button onClick={retry} style={{ fontSize: F.xs, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.slate100, color: C.slate600, cursor: "pointer" }}>재시도</button>
     </div>
   );
   if (data.length < 2) return null;
@@ -36,7 +36,7 @@ export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }) 
 
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>분양가 추이</div>
+      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6 }}>분양가 추이</div>
       <LineChart data={chartData} color={C.green} height={160} yLabel="분양가 추이" />
     </div>
   );

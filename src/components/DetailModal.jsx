@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from "react";
-import { C, SHORT_LABEL } from "@/theme";
+import { C, F, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
 import { CatPanel } from "./CatPanel";
@@ -59,10 +59,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           {!isDesktop && <div onClick={onClose} style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: "0 auto 12px", cursor: "pointer" }} />}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div>
-              <div style={{ fontSize: isDesktop ? 18 : 16, fontWeight: 800, color: C.text }}>{apt.name}</div>
-              <div style={{ fontSize: isDesktop ? 13 : 12, color: C.muted }}>{[apt.region, apt.gu, apt.dong].filter(Boolean).join(" ")} · {apt.area}㎡ · {fmtPrice(apt.price)}</div>
-              {apt.address && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{apt.address}{apt.district ? ` (${apt.district})` : ""}</div>}
-              {apt.roadAddress && <div style={{ fontSize: 11, color: C.muted }}>{apt.roadAddress}</div>}
+              <div style={{ fontSize: isDesktop ? F.xl : F.lg, fontWeight: 800, color: C.text }}>{apt.name}</div>
+              <div style={{ fontSize: isDesktop ? F.base : F.sm, color: C.muted }}>{[apt.region, apt.gu, apt.dong].filter(Boolean).join(" ")} · {apt.area}㎡ · {fmtPrice(apt.price)}</div>
+              {apt.address && <div style={{ fontSize: F.sm, color: C.muted, marginTop: 2 }}>{apt.address}{apt.district ? ` (${apt.district})` : ""}</div>}
+              {apt.roadAddress && <div style={{ fontSize: F.sm, color: C.muted }}>{apt.roadAddress}</div>}
             </div>
             <button ref={closeRef} onClick={onClose} aria-label="닫기" style={{ background: C.slate100, border: "none", borderRadius: "50%", width: 44, height: 44, cursor: "pointer", color: C.muted, display: "flex", alignItems: "center", justifyContent: "center" }}><IconClose size={18} /></button>
           </div>
@@ -76,7 +76,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "0 0 12px" }}>
           <div style={{ flexShrink: 0 }}><Radar data={radarData} size={isDesktop ? 180 : 150} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }}>핵심 지표</div>
+            <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 6 }}>핵심 지표</div>
             {[
               { l: "지역", v: [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "), c: C.blue },
               { l: "분양가", v: fmtPrice(apt.price) },
@@ -88,8 +88,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               { l: "입주", v: fmtCompletion(apt.completion) },
             ].map((r, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-                <span style={{ fontSize: 12, color: C.muted }}>{r.l}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: r.c || C.text }}>{r.v}</span>
+                <span style={{ fontSize: F.base, color: C.muted }}>{r.l}</span>
+                <span style={{ fontSize: F.base, fontWeight: 600, color: r.c || C.text }}>{r.v}</span>
               </div>
             ))}
           </div>
@@ -97,10 +97,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         {apt.benefits && apt.benefits.length > 0 && (
           <div style={{ background: C.amberLight, borderRadius: 10, padding: "8px 10px", marginBottom: 10, border: `1px solid ${C.amberBorder}` }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.amber, marginBottom: 4 }}>혜택 상세</div>
+            <div style={{ fontSize: F.base, fontWeight: 700, color: C.amber, marginBottom: 4 }}>혜택 상세</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {apt.benefits.map((b, i) => (
-                <span key={i} style={{ fontSize: 11, color: C.amber, background: C.white, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.amberBorder}` }}>{b}</span>
+                <span key={i} style={{ fontSize: F.sm, color: C.amber, background: C.white, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.amberBorder}` }}>{b}</span>
               ))}
             </div>
           </div>
@@ -108,7 +108,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
 
         {apt.siblingIds?.length > 1 && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: C.amber, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 6, padding: "3px 8px", marginBottom: 8 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: F.sm, color: C.amber, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 6, padding: "3px 8px", marginBottom: 8 }}>
             재공고 {apt.siblingIds.length}회 · 시계열 통합 조회
           </div>
         )}
@@ -127,22 +127,22 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {onConsult && (
           <button onClick={() => onConsult(apt.id)} style={{
             width: "100%", background: C.blue, color: C.white, border: "none", borderRadius: 8,
-            padding: "12px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", minHeight: 44,
+            padding: "12px 0", fontSize: F.base, fontWeight: 700, cursor: "pointer", minHeight: 44,
             marginBottom: 8, transition: "all .15s",
           }}>이 매물 상담하기</button>
         )}
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <button onClick={() => onFav(apt.id)} style={{
             flex: 1, background: isFav ? C.redLight : C.slate100, color: isFav ? C.red : C.muted,
-            border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent", borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? 14 : 13, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
+            border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent", borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? F.md : F.base, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>{isFav ? "관심 등록됨" : "관심매물 추가"}</button>
           <button onClick={() => onComp(apt.id)} style={{
             flex: 1, background: isComp ? C.indigo : "transparent", color: isComp ? C.white : C.indigo,
-            border: `1.5px solid ${C.indigo}`, borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? 14 : 13, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
+            border: `1.5px solid ${C.indigo}`, borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? F.md : F.base, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>{isComp ? "비교 중" : "비교 추가"}</button>
           {onShare && <button onClick={() => onShare(apt.id)} aria-label="이 단지 공유하기" style={{
             flex: 1, background: C.slate100, color: C.slate600,
-            border: "1.5px solid transparent", borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? 14 : 13, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
+            border: "1.5px solid transparent", borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? F.md : F.base, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>공유</button>}
         </div>
 

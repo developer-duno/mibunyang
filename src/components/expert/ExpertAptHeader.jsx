@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { C, SHORT_LABEL } from "@/theme";
+import { C, F, SHORT_LABEL } from "@/theme";
 import { BRAND_TIER } from "@/constants/brands";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
@@ -13,8 +13,8 @@ export const ExpertAptHeader = memo(function ExpertAptHeader({ apt, res }) {
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 20, marginBottom: 12 }}>
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 280 }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{apt.name}</div>
-          <div style={{ fontSize: 13, color: C.sub, marginBottom: 8 }}>{apt.region} {apt.gu} {apt.dong ?? ""} · 도시등급 {cityLabel}</div>
+          <div style={{ fontSize: F.xxl, fontWeight: 800, color: C.text, marginBottom: 4 }}>{apt.name}</div>
+          <div style={{ fontSize: F.base, color: C.sub, marginBottom: 8 }}>{apt.region} {apt.gu} {apt.dong ?? ""} · 도시등급 {cityLabel}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
             {[
               `${apt.area ?? ""}㎡`,
@@ -25,7 +25,7 @@ export const ExpertAptHeader = memo(function ExpertAptHeader({ apt, res }) {
               apt.units > 1 ? `${apt.units.toLocaleString()}세대${apt.unsold > 0 ? ` (미분양 ${apt.unsold})` : ""}` : null,
               apt.discountPct > 0 ? `할인 ${apt.discountPct}%` : null,
             ].filter(Boolean).map((tag, i) => (
-              <span key={i} style={{ padding: "4px 10px", background: C.bg, borderRadius: 4, fontSize: 11, color: C.sub, fontWeight: 600 }}>{tag}</span>
+              <span key={i} style={{ padding: "4px 10px", background: C.bg, borderRadius: 4, fontSize: F.xs, color: C.sub, fontWeight: 600 }}>{tag}</span>
             ))}
           </div>
         </div>

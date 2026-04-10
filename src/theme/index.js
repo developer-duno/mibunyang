@@ -14,6 +14,18 @@ export const C = {
   shadowMd: "0 2px 8px rgba(0,0,0,0.08)",
 };
 
+// 폰트 크기 스케일 (카톡 수준 가독성 기준, base=14px)
+export const F = {
+  micro: 10,  // 차트 축 라벨, 법적 면책문구
+  xs: 11,     // 차트 툴팁, 미세 배지
+  sm: 12,     // 칩, 필터 라벨, 보조 배지
+  base: 14,   // 본문, 값, 테이블 셀
+  md: 15,     // 섹션 제목, 패널 헤더
+  lg: 16,     // 카드 이름, 모달 제목 (모바일)
+  xl: 18,     // 데스크톱 제목
+  xxl: 20,    // 메인 제목
+};
+
 export const catCol = { price: C.green, location: C.blue, product: C.purple, benefit: C.amber, risk: C.red, future: C.cyan };
 export const catBg = { price: C.greenLight, location: C.blueLight, product: C.purpleLight, benefit: C.amberLight, risk: C.redLight, future: C.cyanLight };
 

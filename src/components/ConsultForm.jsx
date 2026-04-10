@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import { IconClose } from "./icons";
 
 export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast }) {
@@ -7,16 +7,16 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
     return (
       <div style={{ padding: "0 16px" }}>
         <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
-          <div style={{ width: 48, height: 48, borderRadius: "50%", background: C.greenLight, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 14, fontWeight: 800, color: C.green }}>완료</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 8 }}>상담 신청이 완료되었습니다</div>
-          <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.8, marginBottom: 20 }}>
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: C.greenLight, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: F.base, fontWeight: 800, color: C.green }}>완료</div>
+          <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text, marginBottom: 8 }}>상담 신청이 완료되었습니다</div>
+          <div style={{ fontSize: F.sm, color: C.sub, lineHeight: 1.8, marginBottom: 20 }}>
             신청자: {form.name}<br/>
             연락처: {form.phone}<br/>
             관심 단지: {favoriteIds.length}건<br/>
             상담 유형: {form.consultType}
           </div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>전문 컨설턴트가 24시간 내 연락드립니다.</div>
-          <div style={{ fontSize: 11, color: C.muted, background: C.slate100, borderRadius: 6, padding: "8px 12px", marginBottom: 16 }}>
+          <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 20 }}>전문 컨설턴트가 24시간 내 연락드립니다.</div>
+          <div style={{ fontSize: F.xs, color: C.muted, background: C.slate100, borderRadius: 6, padding: "8px 12px", marginBottom: 16 }}>
             * 본 서비스는 데모 버전입니다. 실제 상담 연결은 서비스 정식 출시 후 제공됩니다.
           </div>
         </div>
@@ -41,17 +41,17 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
 
   const favItems = favoriteIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean);
 
-  const inputStyle = { width: "100%", padding: "10px 12px", fontSize: 13, border: `1px solid ${C.border}`, borderRadius: 6, background: C.white, color: C.text, boxSizing: "border-box", minHeight: 42 };
-  const labelStyle = { fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6, display: "block" };
+  const inputStyle = { width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6, background: C.white, color: C.text, boxSizing: "border-box", minHeight: 42 };
+  const labelStyle = { fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block" };
   const sectionStyle = { marginBottom: 16 };
 
   return (
     <div style={{ padding: "0 16px" }}>
       <div style={{ background: C.card, borderRadius: 12, padding: 16, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 4 }}>전문가 상담 신청</div>
-        <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>분석 결과를 바탕으로 전문 컨설턴트와 상담하세요</div>
+        <div style={{ fontSize: F.md, fontWeight: 800, color: C.text, marginBottom: 4 }}>전문가 상담 신청</div>
+        <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 16 }}>분석 결과를 바탕으로 전문 컨설턴트와 상담하세요</div>
 
-        <div style={{ fontSize: 11, color: C.muted, background: C.slate100, borderRadius: 6, padding: "8px 12px", marginBottom: 16 }}>
+        <div style={{ fontSize: F.xs, color: C.muted, background: C.slate100, borderRadius: 6, padding: "8px 12px", marginBottom: 16 }}>
           * 데모 버전 — 실제 상담 연결은 정식 출시 후 제공됩니다.
         </div>
 
@@ -68,14 +68,14 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
           <div style={labelStyle}>관심 단지 * ({favoriteIds.length}개)</div>
           {favItems.length === 0 ? (
             <div style={{ padding: "16px 12px", border: `1px dashed ${C.border}`, borderRadius: 6, textAlign: "center" }}>
-              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>목록에서 관심매물 버튼을 눌러<br/>관심 단지를 추가해주세요</div>
+              <div style={{ fontSize: F.sm, color: C.muted, lineHeight: 1.6 }}>목록에서 관심매물 버튼을 눌러<br/>관심 단지를 추가해주세요</div>
             </div>
           ) : (
             <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, background: C.bg, overflow: "hidden" }}>
               {favItems.map(item => (
                 <div key={item.apt.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: `1px solid ${C.border}`, background: C.indigoLight }}>
-                  <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: C.text }}>{item.apt.name}</span>
-                  <span style={{ fontSize: 11, color: C.muted }}>{item.apt.region} · {item.res.total}점</span>
+                  <span style={{ flex: 1, fontSize: F.sm, fontWeight: 700, color: C.text }}>{item.apt.name}</span>
+                  <span style={{ fontSize: F.xs, color: C.muted }}>{item.apt.region} · {item.res.total}점</span>
                   <button onClick={() => setFavoriteIds(p => p.filter(x => x !== item.apt.id))} aria-label="관심단지 제거" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}><IconClose size={14} /></button>
                 </div>
               ))}
@@ -88,16 +88,16 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <div style={{ flex: 1 }}>
               <input type="number" placeholder="최소" aria-label="최소 예산 (만원)" value={form.budgetMin} onChange={e => updateField("budgetMin", e.target.value)} style={{ ...inputStyle, textAlign: "center" }} />
-              {form.budgetMin && <div style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 2 }}>{budgetDisplay(form.budgetMin)}</div>}
+              {form.budgetMin && <div style={{ fontSize: F.micro, color: C.muted, textAlign: "center", marginTop: 2 }}>{budgetDisplay(form.budgetMin)}</div>}
             </div>
-            <span style={{ color: C.muted, fontSize: 12 }}>~</span>
+            <span style={{ color: C.muted, fontSize: F.sm }}>~</span>
             <div style={{ flex: 1 }}>
               <input type="number" placeholder="최대" aria-label="최대 예산 (만원)" value={form.budgetMax} onChange={e => updateField("budgetMax", e.target.value)} style={{ ...inputStyle, textAlign: "center" }} />
-              {form.budgetMax && <div style={{ fontSize: 10, color: C.muted, textAlign: "center", marginTop: 2 }}>{budgetDisplay(form.budgetMax)}</div>}
+              {form.budgetMax && <div style={{ fontSize: F.micro, color: C.muted, textAlign: "center", marginTop: 2 }}>{budgetDisplay(form.budgetMax)}</div>}
             </div>
           </div>
           {form.budgetMin && form.budgetMax && parseInt(form.budgetMin, 10) > parseInt(form.budgetMax, 10) && (
-            <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>최소 예산이 최대보다 큽니다</div>
+            <div style={{ fontSize: F.xs, color: C.red, marginTop: 4 }}>최소 예산이 최대보다 큽니다</div>
           )}
         </div>
 
@@ -106,7 +106,7 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
           <div role="group" aria-label="상담 유형 선택" style={{ display: "flex", gap: 6 }}>
             {["방문상담", "전화상담", "온라인상담"].map(t => (
               <button key={t} onClick={() => updateField("consultType", t)} aria-pressed={form.consultType === t} style={{
-                flex: 1, padding: "8px 4px", fontSize: 12, fontWeight: form.consultType === t ? 700 : 500, minHeight: 38,
+                flex: 1, padding: "8px 4px", fontSize: F.sm, fontWeight: form.consultType === t ? 700 : 500, minHeight: 38,
                 background: form.consultType === t ? C.indigoLight : C.slate100, color: form.consultType === t ? C.indigo : C.slate600,
                 border: form.consultType === t ? `1.5px solid ${C.indigo}` : "1.5px solid transparent", borderRadius: 4, cursor: "pointer"
               }}>{t}</button>
@@ -120,7 +120,7 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
         </div>
 
         <button onClick={handleSubmit} disabled={submitted} style={{
-          width: "100%", padding: "14px", fontSize: 14, fontWeight: 800, color: C.white, background: submitted ? C.muted : C.indigo,
+          width: "100%", padding: "14px", fontSize: F.base, fontWeight: 800, color: C.white, background: submitted ? C.muted : C.indigo,
           border: "none", borderRadius: 6, cursor: submitted ? "default" : "pointer", minHeight: 48
         }}>상담 신청하기</button>
       </div>
