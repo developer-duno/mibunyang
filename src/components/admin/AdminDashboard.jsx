@@ -208,6 +208,42 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
         </div>
       )}
 
+      {/* 일괄 처리 바 — pending 탭일 때만 */}
+      {admin.selectedStatus === "pending" && admin.users.length > 0 && !admin.adminLoading && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 12, fontWeight: 600, color: C.sub }}>
+            <input type="checkbox"
+              checked={admin.users.length > 0 && admin.users.every(u => admin.selectedEmails.has(u.email))}
+              onChange={() => admin.selectAllEmails(admin.users.map(u => u.email))}
+              style={{ width: 16, height: 16, cursor: "pointer" }}
+            />전체 선택
+          </label>
+          {admin.selectedEmails.size > 0 && (
+            <>
+              <span style={{ fontSize: 11, color: C.muted }}>{admin.selectedEmails.size}건 선택</span>
+              <button
+                disabled={admin.batchLoading}
+                onClick={() => admin.handleBatchReview("approve")}
+                style={{
+                  padding: "6px 14px", fontSize: 12, fontWeight: 700, borderRadius: 6,
+                  background: C.green, color: C.white, border: "none",
+                  cursor: admin.batchLoading ? "default" : "pointer",
+                  opacity: admin.batchLoading ? 0.6 : 1, minHeight: 32,
+                }}>일괄 승인</button>
+              <button
+                disabled={admin.batchLoading}
+                onClick={() => admin.handleBatchReview("reject")}
+                style={{
+                  padding: "6px 14px", fontSize: 12, fontWeight: 700, borderRadius: 6,
+                  background: C.white, color: C.red, border: `1.5px solid ${C.red}`,
+                  cursor: admin.batchLoading ? "default" : "pointer",
+                  opacity: admin.batchLoading ? 0.6 : 1, minHeight: 32,
+                }}>일괄 거부</button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* User Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
         {admin.users.map(user => {
@@ -223,9 +259,16 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
             }}>
               {/* Header row */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>{user.name}</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>{user.email}</div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  {admin.selectedStatus === "pending" && (
+                    <input type="checkbox" checked={admin.selectedEmails.has(user.email)}
+                      onChange={() => admin.toggleSelectEmail(user.email)}
+                      style={{ width: 16, height: 16, marginTop: 2, cursor: "pointer" }} />
+                  )}
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>{user.name}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{user.email}</div>
+                  </div>
                 </div>
                 <span style={{
                   fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4,
@@ -291,22 +334,22 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
               {user.status === "pending" && (
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                   <button
-                    disabled={admin.reviewLoading === user.email}
+                    disabled={(admin.reviewLoading === user.email || admin.batchLoading)}
                     onClick={() => admin.handleReview(user.email, "approve")}
                     style={{
                       flex: 1, padding: "10px", fontSize: 13, fontWeight: 700,
                       background: C.green, color: C.white, border: "none", borderRadius: 6,
-                      cursor: admin.reviewLoading === user.email ? "default" : "pointer",
-                      opacity: admin.reviewLoading === user.email ? 0.6 : 1, minHeight: 40
+                      cursor: (admin.reviewLoading === user.email || admin.batchLoading) ? "default" : "pointer",
+                      opacity: (admin.reviewLoading === user.email || admin.batchLoading) ? 0.6 : 1, minHeight: 40
                     }}>승인</button>
                   <button
-                    disabled={admin.reviewLoading === user.email}
+                    disabled={(admin.reviewLoading === user.email || admin.batchLoading)}
                     onClick={() => admin.handleReview(user.email, "reject")}
                     style={{
                       flex: 1, padding: "10px", fontSize: 13, fontWeight: 700,
                       background: C.white, color: C.red, border: `1.5px solid ${C.red}`, borderRadius: 6,
-                      cursor: admin.reviewLoading === user.email ? "default" : "pointer",
-                      opacity: admin.reviewLoading === user.email ? 0.6 : 1, minHeight: 40
+                      cursor: (admin.reviewLoading === user.email || admin.batchLoading) ? "default" : "pointer",
+                      opacity: (admin.reviewLoading === user.email || admin.batchLoading) ? 0.6 : 1, minHeight: 40
                     }}>거부</button>
                 </div>
               )}
@@ -314,26 +357,26 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
               {/* 강제 로그아웃 — approved 사용자 대상 */}
               {user.status === "approved" && (
                 <button
-                  disabled={admin.reviewLoading === user.email}
+                  disabled={(admin.reviewLoading === user.email || admin.batchLoading)}
                   onClick={() => admin.handleReview(user.email, "force-logout")}
                   style={{
                     width: "100%", padding: "8px", fontSize: 12, fontWeight: 700,
                     background: C.white, color: "#DC2626", border: "1.5px solid #DC2626", borderRadius: 6,
-                    cursor: admin.reviewLoading === user.email ? "default" : "pointer",
-                    opacity: admin.reviewLoading === user.email ? 0.6 : 1, marginTop: 4, minHeight: 40
+                    cursor: (admin.reviewLoading === user.email || admin.batchLoading) ? "default" : "pointer",
+                    opacity: (admin.reviewLoading === user.email || admin.batchLoading) ? 0.6 : 1, marginTop: 4, minHeight: 40
                   }}>강제 로그아웃</button>
               )}
 
               {/* 재승인 — rejected 또는 suspended 사용자 대상 */}
               {(user.status === "rejected" || user.status === "suspended") && (
                 <button
-                  disabled={admin.reviewLoading === user.email}
+                  disabled={(admin.reviewLoading === user.email || admin.batchLoading)}
                   onClick={() => admin.handleReview(user.email, "approve")}
                   style={{
                     width: "100%", padding: "8px", fontSize: 12, fontWeight: 700,
                     background: C.white, color: C.green, border: `1.5px solid ${C.green}`, borderRadius: 6,
-                    cursor: admin.reviewLoading === user.email ? "default" : "pointer",
-                    opacity: admin.reviewLoading === user.email ? 0.6 : 1, marginTop: 4, minHeight: 40
+                    cursor: (admin.reviewLoading === user.email || admin.batchLoading) ? "default" : "pointer",
+                    opacity: (admin.reviewLoading === user.email || admin.batchLoading) ? 0.6 : 1, marginTop: 4, minHeight: 40
                   }}>재승인</button>
               )}
             </div>

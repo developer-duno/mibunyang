@@ -13,6 +13,8 @@ export function useAdminMode(showToast) {
   const [page, setPage] = useState(0);
   const [totalUsers, setTotalUsers] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(null);
+  const [selectedEmails, setSelectedEmails] = useState(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const abortRef = useRef(null);
@@ -98,6 +100,49 @@ export function useAdminMode(showToast) {
     }
   }, [showToast, fetchUsers, selectedStatus, searchQuery, page]);
 
+  // 일괄 선택 관리
+  const toggleSelectEmail = useCallback((email) => {
+    setSelectedEmails(prev => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email); else next.add(email);
+      return next;
+    });
+  }, []);
+  const selectAllEmails = useCallback((emailList) => {
+    setSelectedEmails(prev => prev.size === emailList.length ? new Set() : new Set(emailList));
+  }, []);
+  const clearSelectedEmails = useCallback(() => setSelectedEmails(new Set()), []);
+
+  // 일괄 처리
+  const handleBatchReview = useCallback(async (action, note) => {
+    const token = sessionStorage.getItem("expertToken");
+    if (!token || selectedEmails.size === 0) return;
+    setBatchLoading(true);
+    try {
+      const res = await fetch("/api/admin/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ emails: [...selectedEmails], action, note }),
+      });
+      if (res.status === 429) { showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요."); return; }
+      const data = await res.json();
+      if (data.ok) {
+        const msg = data.failCount > 0
+          ? `${data.successCount}건 성공, ${data.failCount}건 실패`
+          : `${data.successCount}건 처리 완료`;
+        showToast(msg);
+        clearSelectedEmails();
+        fetchUsers(selectedStatus, searchQuery, page);
+      } else {
+        showToast(data.error || "일괄 처리 실패");
+      }
+    } catch {
+      showToast("서버 연결에 실패했습니다");
+    } finally {
+      setBatchLoading(false);
+    }
+  }, [showToast, fetchUsers, selectedStatus, searchQuery, page, selectedEmails, clearSelectedEmails]);
+
   const fetchStats = useCallback(async () => {
     const token = sessionStorage.getItem("expertToken");
     if (!token) return;
@@ -135,9 +180,10 @@ export function useAdminMode(showToast) {
   useEffect(() => {
     if (adminLoggedIn) {
       setPage(0);
+      clearSelectedEmails(); // 탭 전환 시 선택 초기화
       fetchUsers(selectedStatus, searchQuery, 0);
     }
-  }, [adminLoggedIn, selectedStatus, fetchUsers, searchQuery]);
+  }, [adminLoggedIn, selectedStatus, fetchUsers, searchQuery, clearSelectedEmails]);
 
   // 통계는 관리자 로그인 시 1회만 조회
   useEffect(() => {
@@ -153,10 +199,11 @@ export function useAdminMode(showToast) {
 
   return {
     adminLoggedIn, setAdminLoggedIn,
-    adminLoading, reviewLoading,
+    adminLoading, reviewLoading, batchLoading,
     users, selectedStatus, setSelectedStatus,
     searchQuery, setSearchQuery, page, handlePageChange, totalUsers, PAGE_SIZE,
-    handleAdminLogout, handleReview, fetchUsers,
+    handleAdminLogout, handleReview, handleBatchReview, fetchUsers,
+    selectedEmails, toggleSelectEmail, selectAllEmails, clearSelectedEmails,
     stats, statsLoading,
   };
 }

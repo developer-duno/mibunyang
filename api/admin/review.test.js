@@ -156,9 +156,70 @@ describe('admin/review handler', () => {
     mockKv.get.mockResolvedValue({ email: 'user@test.com', status: 'approved' });
     const res = makeRes();
     await handler(makeReq({ email: 'user@test.com', action: 'approve' }), res);
-    // sadd는 호출하지만 srem은 호출하지 않아야 함 (oldStatus === newStatus)
     expect(mockKv.sadd).toHaveBeenCalledWith('users:approved', 'user@test.com');
-    // srem should NOT be called (same status)
     expect(mockKv.srem).not.toHaveBeenCalled();
+  });
+});
+
+describe('admin/review 배치 처리', () => {
+  // 배치: 정상 처리 (2건)
+  it('emails 배열로 여러 건을 일괄 처리한다', async () => {
+    mockKv.get
+      .mockResolvedValueOnce({ email: 'a@test.com', status: 'pending' })
+      .mockResolvedValueOnce({ email: 'b@test.com', status: 'pending' });
+    const res = makeRes();
+    await handler(makeReq({ emails: ['a@test.com', 'b@test.com'], action: 'approve' }), res);
+    const data = res.json.mock.calls[0][0];
+    expect(data.ok).toBe(true);
+    expect(data.successCount).toBe(2);
+    expect(data.failCount).toBe(0);
+    expect(data.results).toHaveLength(2);
+  });
+
+  // 배치: 부분 실패 (존재하지 않는 이메일 포함)
+  it('일부 이메일이 존재하지 않으면 부분 실패를 반환한다', async () => {
+    mockKv.get
+      .mockResolvedValueOnce({ email: 'a@test.com', status: 'pending' })
+      .mockResolvedValueOnce(null); // b@test.com 미존재
+    const res = makeRes();
+    await handler(makeReq({ emails: ['a@test.com', 'b@test.com'], action: 'approve' }), res);
+    const data = res.json.mock.calls[0][0];
+    expect(data.successCount).toBe(1);
+    expect(data.failCount).toBe(1);
+    expect(data.results[1].ok).toBe(false);
+  });
+
+  // 배치: 빈 배열
+  it('빈 emails 배열은 400을 반환한다', async () => {
+    const res = makeRes();
+    await handler(makeReq({ emails: [], action: 'approve' }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  // 배치: 초과 배열 (50건 초과)
+  it('50건 초과 시 400을 반환한다', async () => {
+    const emails = Array.from({ length: 51 }, (_, i) => `user${i}@test.com`);
+    const res = makeRes();
+    await handler(makeReq({ emails, action: 'approve' }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].error).toContain('50');
+  });
+
+  // 배치: 유효하지 않은 이메일 형식
+  it('@ 없는 이메일은 400을 반환한다', async () => {
+    const res = makeRes();
+    await handler(makeReq({ emails: ['valid@test.com', 'invalid'], action: 'approve' }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  // 단건 하위호환: email 필드로 보내면 기존 응답 형식 유지
+  it('단건 email은 기존 응답 형식(message)을 반환한다', async () => {
+    mockKv.get.mockResolvedValue({ email: 'user@test.com', status: 'pending' });
+    const res = makeRes();
+    await handler(makeReq({ email: 'user@test.com', action: 'approve' }), res);
+    const data = res.json.mock.calls[0][0];
+    expect(data.ok).toBe(true);
+    expect(data.message).toBeTruthy();
+    expect(data.results).toBeUndefined(); // 배치 응답이 아님
   });
 });

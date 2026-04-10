@@ -12,8 +12,14 @@ function makeAdmin(overrides = {}) {
     setSelectedStatus: vi.fn(),
     adminLoading: false,
     reviewLoading: null,
+    batchLoading: false,
     handleReview: vi.fn(),
+    handleBatchReview: vi.fn(),
     handleAdminLogout: vi.fn(),
+    selectedEmails: new Set(),
+    toggleSelectEmail: vi.fn(),
+    selectAllEmails: vi.fn(),
+    clearSelectedEmails: vi.fn(),
     ...overrides,
   };
 }
@@ -234,12 +240,52 @@ describe("AdminDashboard", () => {
   // 가중치 편집 → 합계 != 100이면 저장 불가 검증
   it("가중치 합계가 100이 아니면 저장 버튼이 비활성화된다", () => {
     render(<AdminDashboard {...defaultProps()} />);
-    // 첫 번째 프로필의 편집 버튼 클릭
     const editButtons = screen.getAllByText("편집");
     fireEvent.click(editButtons[0]);
-    // 저장 버튼이 나타남
     const saveBtn = screen.getByText("저장");
-    // 초기 합계는 100이므로 활성화
     expect(saveBtn.disabled).toBe(false);
+  });
+
+  // 일괄 처리: pending 탭에서 전체 선택 체크박스 표시
+  it("pending 탭에 사용자가 있으면 전체 선택 체크박스를 표시한다", () => {
+    const admin = makeAdmin({
+      users: [
+        { email: "a@test.com", name: "A", status: "pending", specialty: "기타", createdAt: "2025-01-01" },
+        { email: "b@test.com", name: "B", status: "pending", specialty: "기타", createdAt: "2025-01-01" },
+      ],
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    expect(screen.getByText("전체 선택")).toBeTruthy();
+  });
+
+  // 일괄 처리: 선택 시 일괄 승인/거부 버튼 표시
+  it("이메일이 선택되면 일괄 승인/거부 버튼을 표시한다", () => {
+    const admin = makeAdmin({
+      users: [
+        { email: "a@test.com", name: "A", status: "pending", specialty: "기타", createdAt: "2025-01-01" },
+      ],
+      selectedEmails: new Set(["a@test.com"]),
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    expect(screen.getByText("일괄 승인")).toBeTruthy();
+    expect(screen.getByText("일괄 거부")).toBeTruthy();
+    expect(screen.getByText("1건 선택")).toBeTruthy();
+  });
+
+  // 일괄 처리: batchLoading 중 버튼 비활성화
+  it("batchLoading 중 일괄/개별 버튼이 비활성화된다", () => {
+    const admin = makeAdmin({
+      users: [
+        { email: "a@test.com", name: "A", status: "pending", specialty: "기타", createdAt: "2025-01-01" },
+      ],
+      selectedEmails: new Set(["a@test.com"]),
+      batchLoading: true,
+    });
+    render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    // 일괄 버튼 비활성화
+    expect(screen.getByText("일괄 승인").disabled).toBe(true);
+    expect(screen.getByText("일괄 거부").disabled).toBe(true);
+    // 개별 승인 버튼도 비활성화 (batchLoading)
+    expect(screen.getByText("승인").disabled).toBe(true);
   });
 });
