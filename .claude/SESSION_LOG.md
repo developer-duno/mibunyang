@@ -1,3 +1,53 @@
+# 세션 82 — 2026-04-11
+
+## 주요 작업
+
+### 1. 네이버 후처리 (post-naver-collect.sh)
+- rm naver.pid (stale 정리) → post-naver-collect.sh 실행
+- 1/4 sync-naver-complex: 성공 (Phase1 갱신3, Phase2 45건, Phase3 1986건, Phase4 9734건)
+- 2/4 naver-units: 실패 (50건 전부 rate limit → 검색 결과 없음)
+- 3/4 collect-unsold-kosis: 성공 (492건 KOSIS 응답, regions 352건, apartments 235건 갱신)
+- 4/4 compute-scores: 실패 (scorePrice 모듈 미발견 — ESM 로더 기존 이슈)
+
+### 2. 폰트 가독성 Phase 3-7 완료 (feat/font-size 브랜치 → main 머지)
+- Phase 3: CompareSheet (17건 fontSize → F 상수)
+- Phase 4: 필터 6파일 (7건)
+- Phase 5: 섹션 8파일 (71건)
+- Phase 6: 전문가 9파일 (46건)
+- Phase 7: 관리자 3파일 (78건) + 기타 11파일 (88건)
+- 합계: 38파일, ~307건 fontSize 하드코딩 → F 상수 전환
+- Phase 0-2 포함 전체 컴포넌트 폰트 통일 완료
+
+### 3. 관리자 일괄 승인/거부 기능
+- api/admin/review.js: emails[] 배열 지원 (최대 50건, 직렬 처리, 하위호환)
+- useAdminMode.js: selectedEmails/batchLoading + handleBatchReview + 탭 전환 시 초기화
+- AdminDashboard.jsx: pending 카드 체크박스 + 전체선택 + 일괄 승인/거부 버튼
+- 테스트 6+3=9케이스 추가 (배치 정상/부분실패/빈배열/초과/UI)
+
+## 커밋 (4개)
+1. `2255123` feat: 폰트 가독성 개선 Phase 3-7 — 38개 컴포넌트 F 상수 전환 (feat/font-size)
+2. `69011cb` feat: 관리자 일괄 승인/거부 — review API 배열 지원 + 체크박스 UI (main)
+3. `d62387f` Merge branch 'feat/font-size' (main)
+
+## 교차검증 결과
+- 빌드: 413-488ms 성공
+- 스코어링: 5개 프로필 합계 100 확인
+- null 안전성: PASS
+- Hook 규칙: PASS
+- 보안: PASS
+- 테스트: 43개 전부 통과
+
+## 9 GATE 검증 (계획 단계)
+- 🟢2, 🟡7, 🔴0 → 실행 허가
+- 보완 7건 반영 후 구현 (탭 전환 초기화, 배치 응답 형식, 전체선택 범위 등)
+
+## 다음 세션 권장
+1. compute-scores.mjs ESM 로더 이슈 해결 (scorePrice 모듈 경로)
+2. naver-units.mjs rate limit 해결 (또는 molit-units로 대체)
+3. migration.mjs (행안부 API 2026년 데이터 제공 시)
+
+---
+
 # 세션 81 — 2026-04-10
 
 ## 주요 작업

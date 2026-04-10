@@ -4,21 +4,17 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-10 세션81 — selectAll 1000행 해결 + 자동 로그인 + 폰트 가독성 Phase 0-2
+**마지막 작업**: 2026-04-11 세션82 — 폰트 Phase 3-7 완료 + 관리자 일괄처리 + 네이버 후처리
 
-- _shared.mjs: selectAll() 공유 페이지네이션 헬퍼 + 9개 수집기 적용
-- 자동 로그인: sessionStorage → localStorage + refresh token rotation (30일)
-- 폰트 가독성: F 상수 정의 + AptCard/CatPanel/Primitives/DetailModal 적용 (feat/font-size 브랜치)
-- .claudeignore 생성 (package-lock.json, .github/ 등 제외)
-- naver-collect.py 재실행 (19,200/29,727 = 64.6% 진행 중)
-- building-hub 재실행 (2,000건 전체 대상, 전부 스킵 — 주거용 데이터 없음)
+- 폰트 가독성 Phase 3-7: 38파일 ~307건 fontSize → F 상수 전환 (전체 완료, feat/font-size 머지)
+- 관리자 일괄 승인/거부: review.js 배열 지원 + useAdminMode batch + AdminDashboard 체크박스 UI
+- 네이버 후처리: sync 성공, KOSIS 성공, naver-units 실패(rate limit), compute-scores 실패(ESM 로더)
 
 **다음에 해야 할 것** (우선순위):
 
-1. 네이버 수집 완료 확인 후 post-naver-collect.sh 실행 (sync → units → KOSIS → scores)
-2. 폰트 가독성 Phase 3-7 이어서 (feat/font-size 브랜치, CompareSheet/필터/섹션/전문가/관리자)
+1. compute-scores.mjs ESM 로더 이슈 해결 (scorePrice 모듈 경로)
+2. naver-units.mjs rate limit 해결 (또는 molit-units 대체)
 3. migration.mjs 재실행 (행안부 API 2026년 데이터 제공 시) → net_migration
-4. 관리자 대시보드 추가 기능: 일괄 처리 (승인/거부)
 
 ---
 
