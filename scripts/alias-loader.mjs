@@ -22,5 +22,17 @@ export function resolve(specifier, context, nextResolve) {
     }
     return nextResolve(pathToFileURL(realPath).href, context);
   }
+  // 상대 경로 확장자 자동 추가 (Vite처럼 ./foo → ./foo.js)
+  if (
+    (specifier.startsWith("./") || specifier.startsWith("../")) &&
+    !specifier.endsWith(".js") && !specifier.endsWith(".mjs") && !specifier.endsWith(".json")
+  ) {
+    const parentDir = dirname(fileURLToPath(context.parentURL));
+    const candidate = pathResolve(parentDir, specifier) + ".js";
+    if (existsSync(candidate)) {
+      return nextResolve(pathToFileURL(candidate).href, context);
+    }
+  }
+
   return nextResolve(specifier, context);
 }

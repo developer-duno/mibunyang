@@ -32,14 +32,18 @@ const NAVER_COMPLEX_API = `${NAVER_BASE}/api/complexes`;
 
 const JWT_PATTERN = /"token":"(eyJ[A-Za-z0-9._-]+)"/;
 const JWT_LIFETIME = 40 * 60 * 1000; // 40분
-const MIN_INTERVAL = 3000;           // 요청 간 최소 3초 (네이버 Rate Limit 대응)
+const MIN_INTERVAL = 5000;           // 요청 간 최소 5초 (네이버 Rate Limit 대응, 기존 3초→5초)
 const MAX_RETRIES = 3;
-const RETRY_DELAYS = [5000, 10000, 20000];
+const RETRY_DELAYS = [8000, 15000, 30000]; // 보수적 백오프 (기존 [5,10,20]초)
 
 // ── 세션 상태 ────────────────────────────────────────────────
 let jwtToken = null;
 let jwtTokenTime = 0;
 let lastRequestTime = 0;
+
+// ── 적응형 인터벌 (429 연속 시 자동 증가, 성공 시 감쇠) ──────
+let currentInterval = MIN_INTERVAL;
+let consecutive429 = 0;
 
 const HEADERS = {
   "Accept": "application/json, text/plain, */*",
@@ -59,10 +63,10 @@ const dryRun = args.includes("--dry-run");
 const limitArg = args.find(a => a.startsWith("--limit="));
 const aptLimit = limitArg ? parseInt(limitArg.replace("--limit=", ""), 10) : 0;
 
-// ── Rate Limiting ────────────────────────────────────────────
+// ── Rate Limiting (적응형) ───────────────────────────────────
 async function throttle() {
   const elapsed = Date.now() - lastRequestTime;
-  if (elapsed < MIN_INTERVAL) await sleep(MIN_INTERVAL - elapsed);
+  if (elapsed < currentInterval) await sleep(currentInterval - elapsed);
   lastRequestTime = Date.now();
 }
 
@@ -115,7 +119,12 @@ async function apiGet(url, params = {}, needAuth = true) {
         signal: AbortSignal.timeout(30000),
       });
 
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        // 성공 시 적응형 인터벌 감쇠
+        if (consecutive429 > 0) consecutive429 = Math.max(0, consecutive429 - 1);
+        currentInterval = Math.max(MIN_INTERVAL, currentInterval - 500);
+        return await res.json();
+      }
 
       if (res.status === 401 || res.status === 403) {
         log(PHASE, `  인증 만료 (HTTP ${res.status}), 토큰 갱신 중...`);
@@ -123,8 +132,10 @@ async function apiGet(url, params = {}, needAuth = true) {
         continue;
       }
       if (res.status === 429) {
+        consecutive429++;
+        currentInterval = Math.min(MIN_INTERVAL * (1 + consecutive429 * 0.5), 15000);
         const delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
-        log(PHASE, `  Rate limit, ${delay / 1000}초 대기...`);
+        log(PHASE, `  Rate limit (연속 ${consecutive429}회), 인터벌=${(currentInterval / 1000).toFixed(1)}초, ${delay / 1000}초 대기...`);
         await sleep(delay);
         continue;
       }
