@@ -15,5 +15,6 @@ api/kosis/
 api/neis/
 api/applyhome/
 api/admin/stats.js
+api/auth/refresh.js
 api/finlife/loans.js
 api/finlife/rent-loans.js

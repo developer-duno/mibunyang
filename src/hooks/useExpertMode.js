@@ -147,10 +147,10 @@ export function useExpertMode(showToast) {
             const rt = localStorage.getItem("refreshToken");
             if (rt) {
               try {
-                const rr = await fetch("/api/auth/refresh", {
+                const rr = await fetch("/api/auth/verify", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ refreshToken: rt }),
+                  body: JSON.stringify({ action: "refresh", refreshToken: rt }),
                 });
                 const rd = await rr.json();
                 if (rd.ok) {
