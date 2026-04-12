@@ -14,6 +14,9 @@
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
 import { loadEnv, getSupabase, log, logError, stringSimilarity, sleep } from "./_shared.mjs";
+import { execFileSync } from "child_process";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 
 loadEnv();
 
@@ -100,11 +103,36 @@ async function ensureJwt() {
   return null;
 }
 
+// ── Python curl_cffi 프록시 (TLS 핑거프린트 우회) ──────────
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROXY_SCRIPT = resolve(__dirname, "naver-fetch-proxy.py");
+
+function tryPythonFetch(fullUrl, needAuth) {
+  // Windows: python3은 Store 리다이렉터 → python 사용
+  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+  try {
+    const stdout = execFileSync(pythonCmd, [
+      PROXY_SCRIPT, fullUrl,
+      ...(needAuth ? ["--auth"] : []),
+    ], { encoding: "utf-8", timeout: 30000, stdio: ["ignore", "pipe", "pipe"] });
+    const data = JSON.parse(stdout);
+    if (data) {
+      log(PHASE, "  → Python curl_cffi 성공");
+      return data;
+    }
+  } catch (err) {
+    if (err.code === "ENOENT") log(PHASE, "  Python 미설치 — 스킵");
+    else log(PHASE, `  Python 프록시 실패: ${err.message?.slice(0, 60)}`);
+  }
+  return null;
+}
+
 // ── 네이버 API GET 요청 ─────────────────────────────────────
 async function apiGet(url, params = {}, needAuth = true) {
   const qs = new URLSearchParams(params);
   const fullUrl = Object.keys(params).length ? `${url}?${qs}` : url;
 
+  // 1차: Node.js fetch (적응형 Rate Limit)
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     await throttle();
     const headers = { ...HEADERS };
@@ -120,7 +148,6 @@ async function apiGet(url, params = {}, needAuth = true) {
       });
 
       if (res.ok) {
-        // 성공 시 적응형 인터벌 감쇠
         if (consecutive429 > 0) consecutive429 = Math.max(0, consecutive429 - 1);
         currentInterval = Math.max(MIN_INTERVAL, currentInterval - 500);
         return await res.json();
@@ -147,6 +174,14 @@ async function apiGet(url, params = {}, needAuth = true) {
       }
     }
   }
+
+  // 2차: fetch 전부 429 → Python curl_cffi TLS 우회 시도
+  if (consecutive429 >= MAX_RETRIES) {
+    log(PHASE, "  fetch 전부 429 → Python curl_cffi 시도...");
+    const pyData = tryPythonFetch(fullUrl, needAuth);
+    if (pyData) return pyData;
+  }
+
   return null;
 }
 
