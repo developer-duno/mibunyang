@@ -20,10 +20,12 @@
 
 **다음에 해야 할 것** (우선순위):
 
-1. naver-collect.py 완료 대기 후 post-naver-collect.sh 파이프라인 실행
-2. naver-units-night 첫 02:00 실행 결과 확인 (scripts/naver-units-night.log)
-3. 행안부 API 서버 복구 대기 (500 장애)
-4. Vercel 12함수 제한 주의 — 새 API 추가 시 기존 엔드포인트에 action 파라미터로 통합
+1. 🔴 **모바일 옵션 버튼 미작동 디버깅** (사용자 신고, SearchFilterBar 인터랙션)
+2. naver-collect.py 완료 대기 후 post-naver-collect.sh 파이프라인 실행
+3. naver-units-night 첫 02:00 실행 결과 확인 (scripts/naver-units-night.log)
+4. 행안부 API 서버 복구 대기 (transMovStats 500 + stdgPpltnHhStus 502 모두 다운, 외부 장애 확정)
+5. price 64% / dataReliability 57.4% 갭 보정 전략 수립
+6. Vercel 12함수 제한 주의 — 새 API 추가 시 기존 엔드포인트에 action 파라미터로 통합
 
 ---
 
