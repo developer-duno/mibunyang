@@ -1,3 +1,31 @@
+# 세션 87 — 2026-04-13
+
+## 주요 작업
+
+### 1. 모바일 옵션 버튼 미작동 — 조사 착수 (미완)
+- 1순위 이월 과제. 플랜 모드에서 SearchFilterBar/FilterButton/FilterDropdown/App.jsx/HeaderSection 읽기 완료
+- Explore 에이전트 1차 가설(mousedown 리스너 미지원)은 **기각** — mousedown은 드롭다운 외부 탭 닫기용이며, 버튼이 열리지 않는 현상과 직접 관련 없음
+- 직접 검증 결과: FilterButton은 isDesktop 분기 없이 순수 React `<button onClick>` 사용. 코드상 모바일 전용 버그 지점이 특정되지 않음
+- 가능 후보 (미검증): BottomNav/토스트 z-index 겹침, 부모 wrapper pointer-events, 안드로이드 특정 브라우저 이벤트 경합, 사용자가 말하는 "옵션"이 다른 UI 요소일 가능성
+- 재현 조건 질의 시도 → 사용자가 중단 요청 → 조사 중단
+- **다음 세션 행동**: 사용자에게 재현 단계/환경/"옵션 버튼"의 정확한 지칭 확인 후 재개
+
+### 2. 세션 마무리
+- 작업 트리 clean, 코드 변경 없음
+- SESSION_LOG 업데이트 + CLAUDE.md 진행 상황 갱신
+
+## 미해결 (다음 세션 이월)
+- 🔴 **모바일 옵션 버튼 미작동** — 사용자 재현 정보 필요 (증상/환경/버튼 위치)
+- naver-collect.py 완료 후 post-naver-collect.sh 실행
+- naver-units-night 02:00 첫 실행 결과 확인 (scripts/naver-units-night.log)
+- 행안부 API 복구 대기
+- price 64% / dataReliability 57.4% 갭 보정 전략
+
+## 커밋 (0개)
+- 코드 변경 없음 — 문서 커밋만 예정
+
+---
+
 # 세션 86 — 2026-04-13
 
 ## 주요 작업

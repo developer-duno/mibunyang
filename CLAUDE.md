@@ -4,28 +4,27 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-13 세션86 — DB 품질 지표 정확 측정 + naver-units 스케줄 재등록
+**마지막 작업**: 2026-04-13 세션87 — 모바일 옵션 버튼 조사 착수(재현 정보 부족으로 중단)
 
-- 행안부 API: HTTP 500 "Unexpected errors" 장애 지속 (세션85 502에서 변화)
-- naver-units-night: schtasks 누락 → 재등록 완료 (daily 02:00, State=Ready)
-- naver-collect.py: 진행 중 (PID 45004, 5250/29699 = 17.7%, 단지당 ~12초)
-- 세션85 "0% 보고" 정정: 실제 측정 결과 unsoldRate/subwayDist 모두 데이터 존재
-- DB 품질 (apartments_flat 1,424건 기준):
-  - units (>1): 1,401 (98.4%)
-  - lat/lng: 1,423 (99.9%)
-  - price (>0): 911 (64.0%)
-  - unsoldRate (non-zero): 875 (61.4%)
-  - subwayDist (non-9999): 1,125 (79.0%) — 나머지 21%는 거제/군산/석림 등 반경 10km 내 실제 지하철 없음(정상)
-  - dataReliability ≥70: 818 (57.4%)
+- 세션87: 플랜 모드로 SearchFilterBar/FilterButton/FilterDropdown/App.jsx/HeaderSection 정독
+- Explore 에이전트 1차 가설(mousedown 미지원)은 **기각** — 외부 클릭 닫기용이며 버튼 미작동과 무관
+- 직접 검증: FilterButton은 isDesktop 분기 없이 순수 `<button onClick>` — 코드상 모바일 전용 버그 지점 특정 실패
+- 미확인 후보: z-index 겹침(BottomNav/토스트), 부모 pointer-events, 이벤트 경합, "옵션 버튼"의 정확한 지칭
+- 작업 트리 clean — 이번 세션 코드 변경 없음
+- DB 품질 (apartments_flat 1,424건 기준, 세션86 측정값 유효):
+  - units 98.4% · lat/lng 99.9% · price 64.0% · unsoldRate 61.4% · subwayDist 79.0% · dataReliability 57.4%
+- 행안부 API: 500/502 지속 (외부 장애)
 
 **다음에 해야 할 것** (우선순위):
 
-1. 🔴 **모바일 옵션 버튼 미작동 디버깅** (사용자 신고, SearchFilterBar 인터랙션)
+1. 🔴 **모바일 옵션 버튼 — 사용자에게 재현 정보 확인 후 디버깅 재개**
+   - 질의할 것: (a) "옵션 버튼"이 정확히 어느 버튼(지역/금액/면적/정렬/추천/상세, 혹은 다른 UI)인지 (b) 증상(탭 무반응/드롭다운 열림 후 내부 조작 불가/한 번만 동작) (c) 환경(iOS Safari/Android Chrome/DevTools 모바일 모드) (d) 최근 어느 시점부터 안 됨
+   - 재현되면 BottomNav z-index, 부모 wrapper, 이벤트 경합 순으로 검사
 2. naver-collect.py 완료 대기 후 post-naver-collect.sh 파이프라인 실행
 3. naver-units-night 첫 02:00 실행 결과 확인 (scripts/naver-units-night.log)
-4. 행안부 API 서버 복구 대기 (transMovStats 500 + stdgPpltnHhStus 502 모두 다운, 외부 장애 확정)
+4. 행안부 API 서버 복구 대기
 5. price 64% / dataReliability 57.4% 갭 보정 전략 수립
-6. Vercel 12함수 제한 주의 — 새 API 추가 시 기존 엔드포인트에 action 파라미터로 통합
+6. Vercel 12함수 제한 주의 — 새 API 추가 시 action 파라미터로 통합
 
 ---
 
