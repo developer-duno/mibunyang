@@ -4,23 +4,26 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-13 세션85 — 데이터 수집 파이프라인 실행 + 건강 체크
+**마지막 작업**: 2026-04-13 세션86 — DB 품질 지표 정확 측정 + naver-units 스케줄 재등록
 
-- MOIS_POP_KEY: 키 유효 확인 (2028-03-10까지), 행안부 API 서버 502 장애 지속
-- naver-units: 429 지속 → Windows Task Scheduler 심야(02:00) 스케줄 등록
-- naver-collect.py: 전체 재실행 중 (29,699건 단지 수집)
-- 테스트: 146파일 2,270개 전부 통과, 린트 0에러 85경고
-- 빌드: vite build 성공 (926ms)
-- DB 품질: units 100%, lat/lng 99.9%, price 64%, unsold_rate 0%(보정 필요), subway_dist 0%
-- dataReliability: avg 82.5, median 92 (1,424건 중 709건 ≥70)
+- 행안부 API: HTTP 500 "Unexpected errors" 장애 지속 (세션85 502에서 변화)
+- naver-units-night: schtasks 누락 → 재등록 완료 (daily 02:00, State=Ready)
+- naver-collect.py: 진행 중 (PID 45004, 5250/29699 = 17.7%, 단지당 ~12초)
+- 세션85 "0% 보고" 정정: 실제 측정 결과 unsoldRate/subwayDist 모두 데이터 존재
+- DB 품질 (apartments_flat 1,424건 기준):
+  - units (>1): 1,401 (98.4%)
+  - lat/lng: 1,423 (99.9%)
+  - price (>0): 911 (64.0%)
+  - unsoldRate (non-zero): 875 (61.4%)
+  - subwayDist (non-9999): 1,125 (79.0%) — 나머지 21%는 거제/군산/석림 등 반경 10km 내 실제 지하철 없음(정상)
+  - dataReliability ≥70: 818 (57.4%)
 
 **다음에 해야 할 것** (우선순위):
 
-1. naver-collect.py 완료 후 post-naver-collect.sh 파이프라인 실행
-2. naver-units 심야(02:00) 실행 결과 확인 → unsold_rate 보정
-3. 행안부 API 서버 복구 대기 (502 장애, 30분 자동 체크 중)
-4. subway_dist 수집 파이프라인 확인 (인프라 데이터 0% 문제)
-5. Vercel 12함수 제한 주의 — 새 API 추가 시 기존 엔드포인트에 action 파라미터로 통합
+1. naver-collect.py 완료 대기 후 post-naver-collect.sh 파이프라인 실행
+2. naver-units-night 첫 02:00 실행 결과 확인 (scripts/naver-units-night.log)
+3. 행안부 API 서버 복구 대기 (500 장애)
+4. Vercel 12함수 제한 주의 — 새 API 추가 시 기존 엔드포인트에 action 파라미터로 통합
 
 ---
 
