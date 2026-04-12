@@ -4,23 +4,21 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-11 세션84 — 파이프라인 실행 테스트 + compute-scores 성공
+**마지막 작업**: 2026-04-11 세션84 — 파이프라인 테스트 + Vercel 복구 + curl_cffi fallback
 
 - compute-scores.mjs: 1,424건 전체 스코어링 + DB UPDATE 성공 (실패 0, 9.1초)
-- alias-loader.mjs: Node 24에서 `--loader` 정상 동작 확인 (deprecated 경고만, 기능 문제 없음)
-- naver-units.mjs: 적응형 Rate Limit 동작 확인 (5→15초 에스컬레이션) — 네이버 차단 강화로 보정 0건
-- naver-units 보정 대상: 441→54건으로 감소 (다른 소스에서 보정됨)
-- migration.mjs: transMovStats API 전체 HTTP 500 확정 — MOIS_POP_KEY 만료
-- KOSIS API: HTTP 200 정상 (3/23 "fetch failed"는 일시적 네트워크 문제)
-- post-naver-collect.sh: naver-units 비치명적 처리 수정 (if-else 명시적 분기)
-- sync-naver-complex: Phase 1 갱신14, Phase 2 매물44, Phase 3 시세1986건 (Phase 4 진행 중)
+- Vercel 배포 복구: 12함수 제한 초과 → auth/refresh→verify 통합 + .vercelignore Python 제외
+- naver-units.mjs: Python curl_cffi subprocess fallback 추가 (fetch 429→Python 재시도)
+- 네이버 Rate Limit: curl_cffi도 동일 429 → IP 기반 차단 확정 (TLS 아님)
+- post-naver-collect.sh: naver-units 비치명적 처리 (if-else 명시적 분기)
+- migration.mjs: transMovStats API 전체 HTTP 500 — MOIS_POP_KEY 만료 확정
+- apartments 2,001 vs apartments_flat 1,424: VIEW dedup 정상 (577건 = 청약홈 재공고 중복)
 
 **다음에 해야 할 것** (우선순위):
 
 1. data.go.kr 포털에서 MOIS_POP_KEY 갱신 (브라우저 → 마이페이지 → 활용 신청 현황 → 연장)
-2. naver-units Rate Limit 근본 대응 (심야 실행 또는 curl_cffi 방식 검토)
-3. post-naver-collect.sh 완료 확인 + compute-scores 재실행 (pipeline 내)
-4. apartments 2,001건 대비 apartments_flat 1,424건 차이 원인 확인
+2. naver-units 심야 실행 (02:00~05:00 KST, IP Rate Limit 해제 대기)
+3. Vercel 12함수 제한 주의 — 새 API 추가 시 기존 엔드포인트에 action 파라미터로 통합
 
 ---
 

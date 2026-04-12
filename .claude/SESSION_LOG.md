@@ -34,26 +34,41 @@
 - Phase 4 관리비/방향 집계: 장시간 실행 중 (63K complexes articles 처리)
 - 빌드: 380ms 성공
 
-## 커밋 (예정)
-- `fix: post-naver-collect.sh — naver-units 실패 시 파이프라인 계속 진행`
-- `docs: 세션84 — 파이프라인 실행 테스트 + CLAUDE.md 업데이트`
+### 7. Vercel 배포 복구 (긴급)
+- 원인: auth/refresh.js 추가(세션81)로 Serverless Functions 13개 → Hobby 12개 초과
+- 11시간 동안 배포 실패 상태 (모든 커밋 Error)
+- 해결: auth/refresh→auth/verify?action=refresh 통합 (12개 유지)
+- .vercelignore: requirements.txt/scripts/*.py 제외 추가 (Python 빌드 방지)
+- 배포 성공 확인 (Ready, 17s)
+
+### 8. naver-units Python curl_cffi fallback
+- fetch 3회 429 시 Python naver-fetch-proxy.py subprocess로 재시도
+- Windows python3→python 자동 감지
+- 테스트 결과: **curl_cffi도 동일 429** → TLS 핑거프린팅이 아닌 IP 기반 차단
+- 코드 자체는 정상 동작 (심야 재시도 필요)
+
+## 커밋 (5개)
+1. `ee20815` fix: post-naver-collect.sh — naver-units 실패 시 파이프라인 계속 진행
+2. `472542b` docs: 세션84 — 파이프라인 실행 테스트 + CLAUDE.md 업데이트
+3. `d5678e8` fix: Vercel 배포 에러 수정 — requirements.txt/Python 파일 제외
+4. `3129213` fix: Vercel Hobby 12함수 제한 복구 — refresh→verify 통합
+5. `cdc44d8` feat: naver-units Python curl_cffi fallback 추가
 
 ## 교차검증 결과
-- 빌드: 380ms 성공
-- 스코어링: compute-scores 1,424건 전부 성공, 6개 카테고리 검증
-- null 안전성: PASS (safeJsonReplacer NaN→null)
-- Hook 규칙: PASS (Node 스크립트, React 훅 없음)
-- 보안: PASS (하드코딩 없음, env 로드 정상)
+- 빌드: 503ms 성공
+- Vercel 배포: Ready 확인
+- 스코어링: compute-scores 1,424건 전부 성공
+- console.log: 0건
+- 보안: PASS
 
-## 9 GATE 검증
-- 🟢6, 🟡3, 🔴0 → 실행 허가
-- 보완: 성공/실패 기준표 추가, Stage 4 명시적 분기, 외부 API fallback 명시
+## 9 GATE 검증 (2회 실행)
+- 파이프라인 계획: 🟢6, 🟡3, 🔴0 → 실행 허가
+- 후속개선 계획: 🟢7, 🟡2, 🔴0 → 실행 허가
 
 ## 다음 세션 권장
-1. data.go.kr MOIS_POP_KEY 갱신 (브라우저 작업)
-2. naver-units Rate Limit 근본 대응 (심야 실행 / curl_cffi 검토)
-3. post-naver-collect.sh 파이프라인 완료 확인 (로그)
-4. apartments 2,001건 vs apartments_flat 1,424건 차이 원인 조사
+1. data.go.kr MOIS_POP_KEY 갱신 (브라우저 → 마이페이지 → 연장 신청)
+2. naver-units 심야 실행 (02:00~05:00 KST, IP Rate Limit 해제 대기)
+3. Vercel 12함수 — 새 API 추가 시 action 파라미터 통합 필수
 
 ---
 
