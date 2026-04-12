@@ -1,3 +1,60 @@
+# 세션 85 — 2026-04-13
+
+## 주요 작업
+
+### 1. MOIS_POP_KEY 상태 확인
+- data.go.kr 3개 API 모두 키 유효 (2028-03-10~25까지)
+- 행안부(1741000) API: HTTP 502 Bad Gateway — 서버 장애 (키 만료 아님)
+- 30분 자동 체크 설정 (ScheduleWakeup)
+
+### 2. naver-units 429 테스트 + 심야 스케줄
+- `--dry-run --limit=3`: 3건 모두 429 (fetch + curl_cffi 전부 실패)
+- Windows Task Scheduler 심야(02:00 KST) 자동 실행 등록
+- 작업명: `naver-units-night`
+
+### 3. naver-collect.py 전체 재실행
+- 29,699건 단지 대상 전체 수집 시작 (백그라운드)
+- 150/29,699건 진행 확인 (4,105 매물 수집)
+- Python stdout 버퍼링 이슈: `PYTHONUNBUFFERED=1` + tee로 해결
+
+### 4. 프로젝트 건강 체크
+- 테스트: 146파일 2,270개 전부 통과 (50.36초)
+- 린트: 0 에러, 85 경고 (warn 수준)
+- 빌드: vite build 성공 (423~926ms)
+
+### 5. DB 데이터 품질 점검
+- units: 100%, lat/lng: 99.9%, builder: 99.8%, schoolScore: 94.9%
+- price/pp/area: 64.0% (가격 미공개 단지)
+- unsold_rate: 0% (naver-units 보정 필요)
+- subway_dist: 0% (인프라 수집 미완)
+- dataReliability: avg 82.5, median 92, ≥70: 709/1,000건
+- 이상값: units<=0: 0건
+
+### 6. CLAUDE.md 정정
+- "MOIS_POP_KEY 만료 확정" → "행안부 API 서버 장애 (키 유효)"
+- 세션85 진행 상황 + 다음 작업 업데이트
+
+## 커밋
+- (세션 진행 중 — naver-collect.py 완료 후 최종 커밋 예정)
+
+## 교차검증 결과
+- 빌드: 423ms 성공
+- 테스트: 2,270개 통과
+- 린트: 0 에러
+- 스코어링: 세션84에서 1,424건 완료 (변경 없음)
+
+## 9 GATE 검증
+- 파이프라인 플랜: 🟢8, 🟡1, 🔴0 → 실행 허가
+- 개선 작업 플랜: 🟢9, 🟡0, 🔴0 → 실행 허가
+
+## 다음 세션 권장
+1. naver-collect.py 완료 확인 → post-naver-collect.sh 실행
+2. naver-units 심야(02:00) 결과 확인 → unsold_rate 보정
+3. 행안부 API 복구 확인 → migration.mjs --dry-run
+4. subway_dist 수집 파이프라인 점검
+
+---
+
 # 세션 84 — 2026-04-11
 
 ## 주요 작업

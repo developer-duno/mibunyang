@@ -4,21 +4,23 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-11 세션84 — 파이프라인 테스트 + Vercel 복구 + curl_cffi fallback
+**마지막 작업**: 2026-04-13 세션85 — 데이터 수집 파이프라인 실행 + 건강 체크
 
-- compute-scores.mjs: 1,424건 전체 스코어링 + DB UPDATE 성공 (실패 0, 9.1초)
-- Vercel 배포 복구: 12함수 제한 초과 → auth/refresh→verify 통합 + .vercelignore Python 제외
-- naver-units.mjs: Python curl_cffi subprocess fallback 추가 (fetch 429→Python 재시도)
-- 네이버 Rate Limit: curl_cffi도 동일 429 → IP 기반 차단 확정 (TLS 아님)
-- post-naver-collect.sh: naver-units 비치명적 처리 (if-else 명시적 분기)
-- migration.mjs: transMovStats API 전체 HTTP 500 — MOIS_POP_KEY 만료 확정
-- apartments 2,001 vs apartments_flat 1,424: VIEW dedup 정상 (577건 = 청약홈 재공고 중복)
+- MOIS_POP_KEY: 키 유효 확인 (2028-03-10까지), 행안부 API 서버 502 장애 지속
+- naver-units: 429 지속 → Windows Task Scheduler 심야(02:00) 스케줄 등록
+- naver-collect.py: 전체 재실행 중 (29,699건 단지 수집)
+- 테스트: 146파일 2,270개 전부 통과, 린트 0에러 85경고
+- 빌드: vite build 성공 (926ms)
+- DB 품질: units 100%, lat/lng 99.9%, price 64%, unsold_rate 0%(보정 필요), subway_dist 0%
+- dataReliability: avg 82.5, median 92 (1,424건 중 709건 ≥70)
 
 **다음에 해야 할 것** (우선순위):
 
-1. data.go.kr 포털에서 MOIS_POP_KEY 갱신 (브라우저 → 마이페이지 → 활용 신청 현황 → 연장)
-2. naver-units 심야 실행 (02:00~05:00 KST, IP Rate Limit 해제 대기)
-3. Vercel 12함수 제한 주의 — 새 API 추가 시 기존 엔드포인트에 action 파라미터로 통합
+1. naver-collect.py 완료 후 post-naver-collect.sh 파이프라인 실행
+2. naver-units 심야(02:00) 실행 결과 확인 → unsold_rate 보정
+3. 행안부 API 서버 복구 대기 (502 장애, 30분 자동 체크 중)
+4. subway_dist 수집 파이프라인 확인 (인프라 데이터 0% 문제)
+5. Vercel 12함수 제한 주의 — 새 API 추가 시 기존 엔드포인트에 action 파라미터로 통합
 
 ---
 
