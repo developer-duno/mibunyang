@@ -179,14 +179,92 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 
 > 아래 스킬은 **Claude가 적절한 시점에 자동으로 실행**합니다. 사용자가 직접 명령어를 입력할 필요 없습니다.
 
-| 스킬 | Claude가 자동 실행하는 시점 | 효과 |
-|------|--------------------------|------|
+> **중요**: 플러그인 스킬은 네임스페이스(`/plugin-name:skill-name`) 형식으로 호출해야 합니다. Claude는 아래 트리거 조건을 감지하면 **직접 해당 스킬을 호출**합니다. 사용자가 명시적으로 요청하지 않아도 자동 발동해야 하는 스킬들입니다.
+
+### 내장 스킬 (항상 자동)
+
+| 스킬 | 자동 실행 시점 | 효과 |
+|------|-------------|------|
 | **simplify** | 코드 작성 완료 후, 커밋 전 | 변경 코드의 재사용성/품질/효율 자동 리뷰 + 수정 |
 | **commit** | 모든 검증 통과 후 | git 변경사항 자동 커밋 + 푸시 |
-| **loop** | 장시간 수집기 실행 시 | 주기적으로 로그 확인 (예: 5분마다 진행 상태 체크) |
+| **loop** | 장시간 수집기 실행 시 | 주기적으로 로그 확인 |
 | **schedule** | 정기 자동화 설정 요청 시 | cron 기반 원격 에이전트 생성/관리 |
 | **claude-api** | anthropic SDK import 감지 시 | Claude API/SDK 코드 작성 지원 |
-| **update-config** | 설정 변경 필요 시 | Claude Code settings.json 자동 설정 |
+| **update-config** | 설정 변경 필요 시 | settings.json 자동 설정 |
+
+### 플러그인 스킬 (Claude가 명시적으로 호출)
+
+> 아래 트리거 상황이 발생하면 Claude는 추가 사용자 요청 없이 해당 플러그인 스킬을 적극 꺼내 쓸 것.
+
+#### 개발/디버깅 (engineering 플러그인)
+
+| 스킬 | 트리거 상황 |
+|------|----------|
+| `/engineering:debug` | 에러/스택트레이스 발생, "X가 안 됨", "staging은 되는데 prod는 안 됨", 모바일 옵션 버튼 같은 재현 필요 이슈 |
+| `/engineering:tech-debt` | price 64% / dataReliability 57.4% 같은 품질 갭 보정 전략 수립, 리팩토링 범위 결정, 코드 건강성 평가 |
+| `/engineering:architecture` | Vercel 12함수 제한 같은 설계 결정 기록(ADR), 기술 선택 트레이드오프 문서화 |
+| `/engineering:system-design` | 수집→후처리 파이프라인 재설계, 새 데이터 소스 추가 시 |
+| `/engineering:deploy-checklist` | 마이그레이션/피처플래그 포함 배포 전, CI 상태/롤백 계획 확인 |
+| `/engineering:incident-response` | 행안부 API 500/502 같은 외부 장애, Vercel 함수 장애, 네이버 수집 실패 연쇄 |
+| `/engineering:testing-strategy` | 새 기능 추가 시 E2E/유닛 테스트 계획, 회귀 방지 전략 |
+| `/engineering:documentation` | 런북/README/CLAUDE.md 서브 규칙 파일 작성 |
+| `/engineering:standup` | 세션 마무리 활동 요약 작성 |
+
+#### 데이터/SQL (data 플러그인)
+
+| 스킬 | 트리거 상황 |
+|------|----------|
+| `/data:sql-queries` · `/data:write-query` | Supabase 쿼리 작성/최적화, apartments_flat 집계, 자연어→SQL 변환 |
+| `/data:explore-data` | 새 테이블 품질 진단, null rate/분포 확인 (DB 품질 지표 갱신 시) |
+| `/data:validate-data` | 분석/수집 결과 QA, 편향/정확성 체크 |
+| `/data:analyze` | 메트릭 조사, 가격/미분양률 트렌드 원인 분석, 지역 세그먼트 비교 |
+| `/data:statistical-analysis` | AHP 스코어링 결과 검증, 이상치 탐지 |
+| `/data:data-visualization` · `/data:build-dashboard` | 수집 파이프라인/DB 품질 대시보드 생성 |
+
+#### 리뷰/품질 (pr-review-toolkit, code-review)
+
+| 스킬 | 트리거 상황 |
+|------|----------|
+| `/code-review:code-review` | GitHub PR 리뷰 전용 (CLAUDE.md 준수 + 버그 + git blame + confidence 80+ 필터). 로컬 커밋 전 5교차검증과는 별개 — PR 생성 후 자동 발동 |
+| `/engineering:code-review` | 커밋 전 로컬 diff 리뷰 (보안/성능/정합성). PR 없이도 호출 가능, 5교차검증 수동 보강용 |
+| `/pr-review-toolkit:review-pr` | 6개 전문 에이전트 PR 리뷰 |
+| `pr-review-toolkit` 에이전트들 | code-reviewer / comment-analyzer / pr-test-analyzer / silent-failure-hunter / type-design-analyzer / code-simplifier — 각각 Agent tool로 호출 |
+
+#### UI 개발/테스트 (frontend-design, webapp-testing)
+
+| 스킬 | 트리거 상황 |
+|------|----------|
+| `/frontend-design` (자동) | React UI 신규 작성/디자인 작업 시 자동 발동 |
+| `webapp-testing` | UI 변경 후 브라우저 검증 (CLAUDE.md 규칙: "UI/프론트엔드 변경은 dev server + 브라우저 확인"). Playwright로 클릭/스크린샷/콘솔 로그 |
+
+#### 문서/세션 관리 (claude-md-management, session-report)
+
+| 스킬 | 트리거 상황 |
+|------|----------|
+| `/claude-md-management:revise-claude-md` | 세션 종료 시 새로 알게 된 제약/패턴을 CLAUDE.md에 반영 |
+| `session-report` | 세션 마무리 시 SESSION_LOG.md 리포트 생성 |
+
+> 참고: `claude-md-management:claude-md-improver`는 스킬이 아니라 **에이전트**입니다 (Agent tool로 호출). CLAUDE.md 7개 파일(루트 + 6개 서브)이 코드베이스 현실과 어긋났을 때 감사용으로 사용.
+
+#### 기능 개발 워크플로우 (feature-dev)
+
+| 스킬 | 트리거 상황 |
+|------|----------|
+| `/feature-dev:feature-dev` | 새 기능 요청 시 Plan→Guard→Work→Review 워크플로우로 진행. 복잡한 다단계 기능에 |
+| `feature-dev` 에이전트들 | code-architect (설계 판단), code-explorer (탐색), code-reviewer (구현 후) |
+
+### 자동 발동 규칙 (Claude가 따를 것)
+
+1. **에러/버그 재현 요청** → 즉시 `/engineering:debug` 호출
+2. **품질 지표/DB 분석 요청** → `/data:explore-data` 또는 `/data:analyze` 먼저 실행
+3. **SQL 작성 필요** → `/data:sql-queries` 또는 `/data:write-query` 경유
+4. **PR 리뷰 요청** → `/code-review:code-review` 우선, 세부 필요 시 `pr-review-toolkit` 에이전트 병렬 실행
+5. **UI 변경** → 구현 후 `webapp-testing`으로 브라우저 검증 (CLAUDE.md 필수 규칙)
+6. **배포 직전** → `/engineering:deploy-checklist` 실행
+7. **외부 API 장애 대응** → `/engineering:incident-response`
+8. **설계 결정** → `/engineering:architecture`로 ADR 작성, CLAUDE.md에 반영
+9. **세션 마무리** → `session-report` + `/claude-md-management:revise-claude-md`로 학습 반영
+10. **기술 부채 논의** → `/engineering:tech-debt`로 우선순위 정리
 
 ### 하네스 워크플로우에서의 자동 실행 흐름
 
