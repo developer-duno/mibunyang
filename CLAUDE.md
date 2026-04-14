@@ -4,13 +4,12 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-15 세션89 — naver-units IP 차단(만성 429) 대응: `post-naver-collect.sh` 2/4 단계를 `molit-units.mjs`로 교체. 국토부 공동주택 API 기반이라 IP 차단 영향 없음. dry-run 결과 보정 16건 / API 53회 소비 확인. / 세션88: Claude 설정 리뉴얼 + scoring-validator 보강
+**마지막 작업**: 2026-04-15 세션89 — naver-units 완전 퇴역(mibunyang 모든 실행 경로): post-naver-collect 2/4 + run-naver-local 4/6(bat/sh) → `molit-units.mjs` 교체. 실패 시 비치명적 처리로 후속 단계 보호, .bat errorlevel 상속 버그(`verify >nul`) 픽스. `naver-units.yml` failure 조사 결과 이미 해결된 문제(346446a)로 확인, 실패 원인은 JWT timeout 로그로 확정. 문서 정합성 갱신. 커밋 4개(213da52/f0440a2/ef8eba4/3db83b6).
 
 **다음 세션 우선순위**:
-1. price 64% / dataReliability 57.4% 갭 보정 전략
-2. `run-naver-local.bat`/`.sh` 4/6 단계(naver-units) 정책 결정 — molit 전환 또는 유지
-3. 행안부 API 복구 대기
-4. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
+1. price 64% / dataReliability 57.4% 갭 보정 전략 (큰 설계 작업, 플랜 모드 권장)
+2. 행안부 API 복구 대기 (외부)
+3. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
 
 **DB 품질** (apartments_flat 1,424건, 세션86 측정): units 98.4% · lat/lng 99.9% · price 64.0% · unsoldRate 61.4% · subwayDist 79.0% · dataReliability 57.4%
 
