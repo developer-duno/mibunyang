@@ -324,6 +324,26 @@ export function toPresaleRow(complex, detail, listItem) {
   };
 }
 
+/**
+ * complex 응답 → prices 테이블 행 변환 (house_type='presale_min')
+ * price 커버리지 갭 보정용. recorded_at은 수집일 + (apartment_id, house_type, recorded_at) 복합키로 자연 멱등.
+ */
+export function toPresalePriceRow(complex, apartmentId) {
+  const price = parsePresalePrice(complex?.min_price);
+  if (price == null || !apartmentId) return null;
+  const pp = parsePresalePrice(complex?.pyper_price);
+  return {
+    apartment_id: apartmentId,
+    area: null,
+    supply_area: null,
+    price,
+    pp: pp ?? null,
+    house_type: "presale_min",
+    supply_count: null,
+    recorded_at: new Date().toISOString().slice(0, 10),
+  };
+}
+
 /** presale_* / naver_presale_* 필드만 추출 (DRY: update·insert 공용) */
 export function extractPresaleFields(row) {
   const picked = {};
@@ -576,6 +596,7 @@ async function main() {
   // Phase 2+3: Detail 수집 + 매칭 + Upsert
   const updateRows = [];
   const insertRows = [];
+  const priceRows = []; // prices 테이블 upsert용 (house_type='presale_min')
   const tierCounts = { 1: 0, 2: 0, 3: 0, 4: 0, new: 0, none: 0 };
 
   for (let idx = 0; idx < total; idx++) {
@@ -630,6 +651,8 @@ async function main() {
         if (!match.apartment.bjd_code && enrich.bjd_code) update.bjd_code = enrich.bjd_code;
       }
       updateRows.push(update);
+      const priceRow = toPresalePriceRow(complexData, match.apartment.id);
+      if (priceRow) priceRows.push(priceRow);
       reporter.success();
     } else {
       // 신규 생성 가능 여부 판단
@@ -639,7 +662,10 @@ async function main() {
 
       if (isAptLike && totalUnits >= MIN_UNITS_FOR_INSERT) {
         tierCounts.new++;
-        insertRows.push(buildNewApartment(row, complexData, item._region));
+        const newApt = buildNewApartment(row, complexData, item._region);
+        insertRows.push(newApt);
+        const priceRow = toPresalePriceRow(complexData, newApt.id);
+        if (priceRow) priceRows.push(priceRow);
         reporter.success();
       } else {
         tierCounts.none++;
@@ -668,8 +694,17 @@ async function main() {
       log(PHASE, `신규 아파트 생성 ${insertRows.length}건...`);
       await upsertBatch("apartments", insertRows, "id", 500, sb);
     }
+    // prices 테이블에도 분양가 병행 저장 (house_type='presale_min', apartment_id FK 안전을 위해 apartments upsert 뒤에 실행)
+    if (priceRows.length) {
+      log(PHASE, `prices 테이블 분양가 upsert ${priceRows.length}건...`);
+      try {
+        await upsertBatch("prices", priceRows, "apartment_id,house_type,recorded_at", 500, sb);
+      } catch (e) {
+        logError(PHASE, `prices upsert 실패 (비치명적): ${e.message}`);
+      }
+    }
   } else {
-    log(PHASE, `[DRY-RUN] 업데이트 ${updateRows.length}건, 신규 ${insertRows.length}건 (미저장)`);
+    log(PHASE, `[DRY-RUN] 업데이트 ${updateRows.length}건, 신규 ${insertRows.length}건, prices ${priceRows.length}건 (미저장)`);
   }
 
   reporter.summary();

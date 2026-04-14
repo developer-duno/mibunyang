@@ -12,6 +12,7 @@ const mockQuery = {
   select: vi.fn().mockReturnThis(),
   eq: vi.fn().mockReturnThis(),
   in: vi.fn().mockReturnThis(),
+  not: vi.fn().mockReturnThis(),
   order: vi.fn().mockImplementation(() => Promise.resolve({ data: mockData, error: null })),
 };
 vi.mock('../_lib/supabase.js', () => ({

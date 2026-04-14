@@ -20,11 +20,12 @@ export default withHandler({ method: "GET", handler: async (req, res) => {
       return res.status(parsed.status).json({ ok: false, error: parsed.error });
     }
 
+    // presale_* house_type은 네이버 분양가 폴백용 내부 데이터 — 프론트 시계열 노출 제외
     let query;
     if (parsed.ids) {
-      query = supabase.from("prices").select(SELECT).in("apartment_id", parsed.ids).order("recorded_at", { ascending: true });
+      query = supabase.from("prices").select(SELECT).in("apartment_id", parsed.ids).not("house_type", "like", "presale_%").order("recorded_at", { ascending: true });
     } else {
-      query = supabase.from("prices").select(SELECT).eq("apartment_id", parsed.id).order("recorded_at", { ascending: true });
+      query = supabase.from("prices").select(SELECT).eq("apartment_id", parsed.id).not("house_type", "like", "presale_%").order("recorded_at", { ascending: true });
     }
 
     const { data, error } = await query;
