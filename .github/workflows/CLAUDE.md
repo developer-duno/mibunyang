@@ -4,13 +4,18 @@
 
 ## 워크플로우 목록
 
-### 매일 (3개)
+### 매일 (2개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
 | `collect-naver-listings.yml` | 네이버 후처리 (sync + 전용률 계산) |
-| `naver-units.yml` | 네이버 세대수 2차 보정 |
 | `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00) |
+
+### 비활성(수동 전용, 1개)
+
+| 워크플로우 | 설명 |
+|-----------|------|
+| `naver-units.yml` | (수동 전용) 네이버 API가 GitHub Actions 미국 IP의 JWT를 차단 → 커밋 `346446a`에서 스케줄 비활성화. 세션89부터 `molit-units.mjs`가 로컬 파이프라인과 post-naver-collect에서 대체 수행. 파일 보존만 |
 
 ### CI/CD (1개)
 

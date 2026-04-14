@@ -42,8 +42,13 @@
 - **재검증**: `collector-contract` WARN 지적(.bat errorlevel 상속 위험) → `verify >nul` 리셋으로 해소. 쿼터는 월/목 하루 2회 molit-units 실행 시 ~106회로 한도 대비 미미
 - **빌드**: `npx vite build` 604ms PASS
 
+### 5. `.github/workflows/naver-units.yml` failure 조사 → 이미 해결된 문제
+- **조사 결과**: 3월 18일 이후 실행 0건. 커밋 `346446a`("fix: Naver Units 스케줄 비활성화 — 한국 IP 필요")가 이미 근본 해결. 현재 yml은 `workflow_dispatch:` 수동 전용
+- **실패 원인**: 네이버 API가 GitHub Actions 미국 IP의 JWT 발급을 차단 (yml 2~4행 주석에 이미 명시)
+- **문서 불일치 해소**: `.github/workflows/CLAUDE.md`가 "매일 (3개)" 카테고리에 `naver-units.yml`을 포함 → "매일 (2개)" + 신규 "비활성(수동 전용, 1개)" 섹션으로 분리. 세션89에서 molit-units로 대체된 맥락도 주석 추가
+- **추가 작업 불필요**: 코드·yml 수정 없음, 문서만 갱신
+
 ## 미해결 (다음 세션 이월)
-- `.github/workflows/naver-units.yml` 3월 18일부터 failure 원인 조사
 - price 64% / dataReliability 57.4% 갭 보정 전략
 - 행안부 API 복구 대기 (외부)
 
