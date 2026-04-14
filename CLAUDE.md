@@ -4,14 +4,15 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-15 세션90 — price 커버리지 64%→100% 복구. 원인은 naver-presale.mjs가 apartments 테이블에만 쓰고 시계열 prices 테이블에는 안 써서 apartments_flat VIEW의 latest_prices CTE가 못 잡은 구조. 9-GATE 3회 반복(초안 A/C v1 🔴 발견 후 C v2 확정). 변경: VIEW tie-breaker(공식가 우선) + prices API presale_ 필터 + naver-presale prices upsert 병행 + backfill-presale-prices.mjs 신규. 결과: price 채움률 64.0→100.0%, dataReliability 평균 57.4→83.9. 테스트 2,270/2,270 통과. 커밋 `b638dde`.
+**마지막 작업**: 2026-04-15 세션91 — scorePrice 단위 버그 + sanitize 유령 폴백 제거. Phase 1 실측 중 지방 미분양 단지의 catsCache에 "적정가 괴리도 -34,027%" 쓰레기 값 발견. 버그 4개: avgPriceSqm 폴백 단위 오류(`/10000*3.3` → `/10`), presalePp 평수 환산 누락, 폴백 경로 areaAdj 누락, engine.js sanitize 유령 폴백(`pir??10, psr??1.5, jeonseRate??40, nearbyMedian??0`) 제거. 9-GATE 🟢9/9 통과. 테스트 2,270→2,275 통과. scoring-validator + null-safety-checker PASS. compute-scores 재계산 후 **전국 price 카테고리 평균 44.3→53.7 (+9.4pt)**, 지방 8개 region +15~+38pt 대폭 상승(세종 +37.9, 충북 +29.8, 강원 +24.6, 제주 +24.5). 서울 -1.8pt는 pir null 153건의 유령 고점수(region 중위 1.3→100점)가 정직한 중립(50점)으로 정정된 결과(롤백 대상 아님). 커밋 `475f291`.
 
 **다음 세션 우선순위**:
-1. nearbyMedian 65.5% / trade_stats 커버리지 보강 (API 레이어 폴백 이미 있음, 수집 확대 검토)
-2. 행안부 API 복구 대기 (외부)
-3. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
+1. trade_stats 지방 수집 확대 (nearbyMedian 325건 근본 보강, 쿼터/스케줄 조정 필요)
+2. 서울 pir null 57% 원천 수집 이슈 점검
+3. 행안부 API 복구 대기 (외부)
+4. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
 
-**DB 품질** (apartments_flat 1,424건, 세션90 측정): units 98.4% · lat/lng 99.9% · **price 100.0%** · unsoldRate 61.4% · subwayDist 79.0% · **dataReliability 83.9%**
+**DB 품질** (apartments_flat 1,424건, 세션91 측정): units 98.4% · lat/lng 99.9% · **price 100.0%** · unsoldRate 61.4% · subwayDist 79.0% · **price 카테고리 평균 53.7** (세션90 44.3→53.7, +9.4pt)
 
 ---
 

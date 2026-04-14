@@ -1,3 +1,120 @@
+# 세션 91 — 2026-04-15
+
+## 주요 작업 — scorePrice 단위 버그 + sanitize 유령 폴백 제거
+
+**커밋**: `475f291 fix(scoring): scorePrice 단위 버그 + sanitize 유령 폴백 제거 (세션91)`
+
+### 1. Phase 1 실측 — "nearbyMedian 34.5% NULL" 문제 재정의
+
+세션91 우선순위 1 "nearbyMedian 커버리지 보강"으로 시작했으나 실측 중 훨씬 심각한 버그 3개 발견:
+
+**nearbyMedian NULL 지역 편향 (1424건 전수)**:
+- 서울/부산/대구/광주/대전/울산 6개 광역시 NULL 0건
+- 충남/충북/경남/세종/전남/강원/전북/제주 8개 지방 region 100% NULL (238건)
+- 경북 83%, 경기 43% 부분
+- 총 491건 NULL, 그중 진짜 공백(naverNearbyMedian 폴백 불가) 325건
+
+**근본 원인 (trades 테이블 편향)**: 349,201행 중 지방 8개 region 0건. `scripts/collectors/trade-stats.mjs` 1단계(매매 3건+)가 시작부터 불가능.
+
+**제품 관점의 의미**: 미분양률 상위 region(제주 32.2%, 경남 18.9%, 경북 15.0%, 전북 13.3%, 충북 9.2%)이 정확히 NULL region과 일치. 즉 "미분양 비교엔진"의 핵심 타겟이 price 데이터 공백.
+
+### 2. 더 심각한 버그 4개 발견 — 단위/유령 폴백
+
+실측 중 경남 "거제 유로스카이" 샘플의 `catsCache.price.subs[0].info` 가 "-34,027.0%" 쓰레기 값인 것 발견. 단순 공백이 아니라 스코어링이 수학적으로 고장난 상태.
+
+**버그 1 — scorePrice.js:40 avgPriceSqm 단위 오류**:
+- avgPriceSqm 단위 = 천원/㎡ (`src/constants/fieldMeta.js:72` 명시, KOSIS HUG)
+- 이전 수식: `× area / 10000 × 3.3` → 1/3030 축소
+- 경남 샘플: fairPrice=132만원 → dev=-32,401% → clamp로 0점
+- 수정: `× area / 10` (올바른 단위 변환, 천원/㎡ × ㎡ / 10 = 만원)
+
+**버그 2 — scorePrice.js:43 presalePp 단위 오류**:
+- presalePp 단위 = 만원/평 (`fieldMeta.js:148`)
+- 이전 수식: 총가로 그대로 씀 → 1/25 스케일
+- 수정: `× (area / 3.3058)` 평수 환산
+
+**버그 3 — scorePrice.js:40/43 areaAdj 누락**:
+- 37행 nearbyMedian 경로는 areaAdj 곱하는데 폴백 경로는 안 곱함 → 일관성 깨짐
+- 수정: 모든 경로에 areaAdj 적용
+
+**버그 4 — engine.js:17,26 sanitize 유령 폴백**:
+- `pir: num(apt.pir, rm?.pir ?? 10), psr: num(apt.psr, rm?.psr ?? 1.5)`
+- `jeonseRate: num(apt.jeonseRate, 40), nearbyMedian: num(apt.nearbyMedian, 0)`
+- 실제 NULL인 필드를 유령(최악값 또는 region 중위값)으로 덮어써 UI에 "전세가율 40%, PSR 150%" 거짓 정보 표시
+- 수정: 전부 null 통과 + scorePrice.js 52-67/72-93 에 `== null` 가드 + `PRICE_NO_DATA_DEFAULTS` + "데이터 부재" info
+
+### 3. 9-GATE 플랜 검증
+
+플랜 파일: `C:\Users\user\.claude\plans\wobbly-prancing-wren.md`
+
+- GATE 0 (Sonnet 크기): 🟢 (3파일/≈50 LOC)
+- GATE 1 (영향 범위): 🟢 — grep 실측으로 scoreRisk/Location/Product/Benefit/Future 모두 pir/psr/jeonseRate/nearbyMedian 미사용 확인. 플랜의 scoreRisk.js 방어 단계 불필요로 삭제.
+- GATE 2 (실행 순서): 🟢 — 단계 1+2+3 원자적 단일 커밋 필요(상호 의존)
+- GATE 3~8: 🟢 전부 PASS
+- 최종: 9 GATE 중 🟢9 🟡0 🔴0 → 실행 허가
+
+### 4. 구현 (3단계, 단일 커밋)
+
+1. `src/scoring/scorePrice.js` (+28/-12): 40/43행 단위 교정 + areaAdj 일관성 + 52-67행 데이터 부재 분기 null 가드 + 72-93행 정상 경로 null 가드 + "데이터 부재" info
+2. `src/scoring/engine.js` (+2/-2): 17/26행 sanitize 유령 폴백 전부 null 통과
+3. `src/scoring/engine.test.js` (+45/-12): 584-594행 버그를 스펙으로 박은 기존 테스트 교체 + 경남 회귀 케이스 + null 3종 케이스 추가
+
+### 5. 교차검증 (5교차 필수 + 전용 서브에이전트)
+
+- 스코어링: PASS (scoring-validator) — 가중합 1.00, 클램핑 무결, null 분기 일관, 수식 단위 교정 검증
+- null 안전성: PASS (null-safety-checker) — High 0 / Medium 0 / Low 0건 (크래시), NaN 전파 경로 없음
+- 빌드: `npx vite build` 성공 (382ms)
+- 테스트: 전체 2,270 → 2,275 passed (+5), engine.test.js 128 → 133
+- Hook 규칙: 메인 직접 검사 — 신규 훅 없음, 기존 동작 불변
+- 보안: 메인 직접 검사 — scoring은 순수 함수, 시크릿/XSS/DB 스키마 무관
+
+### 6. compute-scores 재계산 결과
+
+`node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs` → 1424/1424 성공 / 9.2초
+
+**경남 거제 유로스카이 Before → After**:
+- 적정가 괴리도: `score=0 info=-34,027.0%` → `score=0 info=-12.3%` (쓰레기 값 제거)
+- 전세가율: `score=40 info=40%` (유령) → `score=50 info=데이터 부재` (정직)
+- PSR: `score=0 info=150%` (유령) → `score=50 info=데이터 부재` (정직)
+
+**전국 price 카테고리 평균 44.3 → 53.7 (+9.4pt)**:
+
+| region | Before | After | Δ |
+|---|---|---|---|
+| 세종 | 29.2 | 67.1 | +37.9 |
+| 충북 | 29.0 | 58.8 | +29.8 |
+| 강원 | 27.9 | 52.5 | +24.6 |
+| 제주 | 28.9 | 53.4 | +24.5 |
+| 경남 | 28.6 | 52.4 | +23.8 |
+| 충남 | 28.3 | 49.2 | +20.9 |
+| 경북 | 30.6 | 49.0 | +18.4 |
+| 전남 | 30.3 | 45.8 | +15.5 |
+| 전북 | 30.4 | 45.1 | +14.7 |
+| 경기 | 40.8 | 53.8 | +13.0 |
+| 서울 | 66.1 | 64.3 | -1.8 |
+
+**서울 -1.8pt 하락 분석 (롤백 기준 점검)**:
+- 서울 266건 중 pir null 153건 (57%), psr null 153건 (57%)
+- 이전 유령 폴백 `num(apt.pir, rm?.pir ?? 10)` 에서 `rm.pir` = 서울 중위값 1.3배 → pir≤3 분기 → pirSc=100 (허위 고점수)
+- 새 코드 null → `PRICE_NO_DATA_DEFAULTS.pir = 50`
+- 153건 × -7.5pt 가중 기여 = 평균 -4.3pt (pir만으로)
+- 결론: 서울 하락은 "region 중위값을 null 단지에 유령 적용한 허위 고점수"가 정직한 중립으로 정정된 것. 버그 수정, 롤백 대상 아님.
+
+### 7. 세션 교훈
+
+- "커버리지 gap" 우선순위에서 "코드 버그" 재발견: 원래는 nearbyMedian 수집 확대(A)를 할 예정이었는데 Phase 1 실측 중 경남 샘플의 "-34027%" 쓰레기 값을 보고 방향 전환. 수집 쿼터 0 + 코드 50줄로 지방 미분양 전체 복구.
+- sanitize 유령 폴백은 dataReliability 메트릭에 안 잡힘: 세션90에서 dataReliability 57.4→83.9로 자축했지만 그건 price 채움률 반영뿐이었고 pir/psr/jeonseRate의 유령 폴백은 "필드 있음"으로 잡혀서 신뢰도 높게 나왔음. 실제 UI 품질과 dataReliability 지표의 괴리.
+- 9-GATE 정석 재확인: GATE 1(영향 범위 실측)에서 scoreRisk.js 방어 단계를 grep으로 삭제. 플랜을 "짐작"으로 보수적으로 짜지 않고 실측으로 좁히는 것이 절약 + 집중도 향상.
+- "다른 각도로 한번 더"의 가치: 첫 실측에서 "nearbyMedian 34.5% 공백"으로 끝날 뻔한 조사를 사용자가 "다른 각도" 요청해서 catsCache 내부로 한 단계 더 들어가 경남 샘플의 "-34027%" 발견 → 진짜 버그 4개. 사용자의 재프롬프트가 결정적.
+
+### 8. 미해결 / 다음 세션 이월
+
+- trade_stats 수집기 지방 확대: 현 상태에서 nearbyMedian 자체 공백은 그대로. API 폴백으로 325건 중 일부는 naverNearbyMedian 으로 구제. 근본적 수집 확대는 쿼터 영향/스케줄 조정 필요 → 별도 세션.
+- 서울 pir null 57% 원천 수집 이슈 점검: 서울 pir null 비율이 57%인 이유 확인 필요 (수집 누락 vs 원천 부재).
+- 세션90 +26.5pt 초과 개선 원인: 이번 세션 Phase 1에서 "평균 산술의 당연한 결과"로 종결.
+
+---
+
 # 세션 90 — 2026-04-15
 
 ## 주요 작업 — price 커버리지 64% → 100% 복구
