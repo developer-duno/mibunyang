@@ -581,15 +581,58 @@ describe('scorePrice — 택지비비율 (landSc)', () => {
   });
 });
 
-describe('scorePrice — fairPrice 폴백', () => {
-  it('nearbyMedian=0 + avgPriceSqm 있으면 → fairPrice 산출 시도', () => {
-    const r = scorePrice(makeApt({ nearbyMedian: 0, avgPriceSqm: 5000, area: 84 }));
-    // avgPriceSqm 5000千원/㎡ × 84㎡ / 10000 × 3.3 ≈ 138.6 만원 (매우 작지만 > 0)
-    expect(r.fairPrice).toBeGreaterThanOrEqual(0);
+describe('scorePrice — fairPrice 폴백 (단위 교정)', () => {
+  // avgPriceSqm 단위: 천원/㎡ (fieldMeta.js:72) → fairPrice(만원) = avgPriceSqm × area / 10
+  it('nearbyMedian=null + avgPriceSqm 있으면 → 만원 스케일로 올바른 fairPrice', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: 4510, area: 84.9372, price: 43000 }));
+    // 4510 × 84.9372 / 10 ≈ 38307 만원 × brandAdj × ageCoeff (completion 미래면 1.0, 과거면 >1)
+    expect(r.fairPrice).toBeGreaterThanOrEqual(35000);
+    expect(r.fairPrice).toBeLessThanOrEqual(45000);
+    // dev는 한 자릿수 ~ 30% 이내여야 함 (이전 버그는 -32,401%)
+    expect(parseFloat(r.deviation)).toBeGreaterThan(-30);
+    expect(parseFloat(r.deviation)).toBeLessThan(30);
   });
-  it('nearbyMedian=0 + presalePp 있으면 → fairPrice 산출 시도', () => {
-    const r = scorePrice(makeApt({ nearbyMedian: 0, avgPriceSqm: null, presalePp: 2000 }));
-    expect(r.fairPrice).toBeGreaterThanOrEqual(0);
+  // presalePp 단위: 만원/평 (fieldMeta.js:148) → fairPrice(만원) = presalePp × (area / 3.3058)
+  it('nearbyMedian=null + presalePp 있으면 → 평수 환산으로 올바른 fairPrice', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: null, presalePp: 2000, area: 84, price: 40000 }));
+    // 2000 × (84 / 3.3058) ≈ 50,822 만원 × brandAdj × ageCoeff
+    expect(r.fairPrice).toBeGreaterThanOrEqual(45000);
+    expect(r.fairPrice).toBeLessThanOrEqual(58000);
+  });
+  it('셋 다 null → PRICE_NO_DATA_DEFAULTS 분기', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: null, presalePp: null }));
+    expect(r.fairPrice).toBe(0);
+    expect(r.subs.find(s => s.name === "적정가 괴리도").info).toBe("데이터 부재");
+  });
+  it('경남 거제 유로스카이 실측 회귀 — dev 쓰레기 값 나오면 안 됨', () => {
+    // 세션91 실측: 이전엔 fairPrice=132, dev=-32,401% (clamp로 0점)
+    const r = scorePrice(makeApt({
+      nearbyMedian: null, avgPriceSqm: 4510, area: 84.9372, price: 43000,
+      jeonseRate: null, pir: null, psr: null,
+    }));
+    expect(r.subs.find(s => s.name === "적정가 괴리도").score).toBeGreaterThan(0);
+    expect(r.subs.find(s => s.name === "적정가 괴리도").info).not.toContain("-32");
+  });
+});
+
+describe('scorePrice — null 가드 (유령 폴백 제거)', () => {
+  it('jeonseRate=null → "데이터 부재" 표시 + PRICE_NO_DATA_DEFAULTS.jr 점수', () => {
+    const r = scorePrice(makeApt({ jeonseRate: null }));
+    const sub = r.subs.find(s => s.name === "전세가율");
+    expect(sub.info).toBe("데이터 부재");
+    expect(sub.score).toBe(50); // PRICE_NO_DATA_DEFAULTS.jr
+  });
+  it('pir=null → "데이터 부재" 표시', () => {
+    const r = scorePrice(makeApt({ pir: null }));
+    const sub = r.subs.find(s => s.name === "PIR");
+    expect(sub.info).toBe("데이터 부재");
+    expect(sub.score).toBe(50);
+  });
+  it('psr=null → "데이터 부재" 표시 (NaN% 유령 방지)', () => {
+    const r = scorePrice(makeApt({ psr: null }));
+    const sub = r.subs.find(s => s.name === "PSR");
+    expect(sub.info).toBe("데이터 부재");
+    expect(sub.score).toBe(50);
   });
 });
 

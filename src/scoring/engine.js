@@ -14,7 +14,7 @@ function sanitize(apt, rm) {
   return {
     ...apt,
     // 위험 필드 → 지역 중위값 우선, 없으면 비관적 기본값
-    pir: num(apt.pir, rm?.pir ?? 10), psr: num(apt.psr, rm?.psr ?? 1.5),
+    pir: num(apt.pir, null), psr: num(apt.psr, null),
     unsoldRate: num(apt.unsoldRate, rm?.unsoldRate ?? 50), recentTrades6m: num(apt.recentTrades6m, 0), cancelRatio6m: num(apt.cancelRatio6m, null),
     competitionRate: num(apt.competitionRate, null),
     crimeSafetyGrade: apt.crimeSafetyGrade != null ? num(apt.crimeSafetyGrade, null) : null,
@@ -23,7 +23,7 @@ function sanitize(apt, rm) {
     netMigration: apt.netMigration != null ? num(apt.netMigration, null) : null,
     dataReliability: num(apt.dataReliability, 30),
     // 가격/시장 필드
-    jeonseRate: num(apt.jeonseRate, 40), nearbyMedian: num(apt.nearbyMedian, 0),
+    jeonseRate: num(apt.jeonseRate, null), nearbyMedian: num(apt.nearbyMedian, null),
     price: num(apt.price, 0), area: num(apt.area, 84),
     // 교통 필드
     subwayDist: num(apt.subwayDist, 9999), busRoutes: num(apt.busRoutes, 0),
