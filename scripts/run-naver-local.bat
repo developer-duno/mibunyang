@@ -35,13 +35,16 @@ call node scripts/collectors/naver-presale.mjs
 if errorlevel 1 (
   echo [%date% %time%] WARNING: naver-presale.mjs 실패 (비필수) >> "%~dp0..\naver-collect.log"
 )
+:: errorlevel 명시적 리셋 (후속 단계 오탐 방지)
+verify >nul
 
-echo === 4/6 네이버 세대수 보정 ===
-call node scripts/collectors/naver-units.mjs
+echo === 4/6 세대수 보정 (molit-units, 세션89 교체) ===
+call node scripts/collectors/molit-units.mjs
 if errorlevel 1 (
-  echo [%date% %time%] ERROR: naver-units.mjs 실패 >> "%~dp0..\naver-collect.log"
-  exit /b 1
+  echo [%date% %time%] WARNING: molit-units.mjs 실패 (비필수, 계속 진행) >> "%~dp0..\naver-collect.log"
 )
+:: errorlevel 명시적 리셋 (후속 5/6 오탐 방지)
+verify >nul
 
 echo === 5/6 전용률 계산 ===
 call node scripts/collectors/calc-exclusive-ratio.mjs

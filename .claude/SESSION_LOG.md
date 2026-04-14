@@ -34,8 +34,15 @@
 1. `213da52` docs: 모바일 옵션 버튼 과제 제외 (타 프로젝트 건으로 확인)
 2. `fix(collectors): post-naver-collect 2/4 단계 naver-units → molit-units` (세션89 작업 커밋)
 
+### 4. run-naver-local 배치 파일 4/6 단계도 molit-units 전환
+- **배경**: 로컬 월/목 08:00 배치에서 4/6 naver-units가 IP 차단으로 실패하면 `.bat`는 `exit /b 1`, `.sh`는 `set -e`로 5/6, 6/6까지 중단됨 — post-naver-collect보다 더 심각한 상태였음
+- **변경 2파일**:
+  - `scripts/run-naver-local.bat` 39~45행: `naver-units.mjs` → `molit-units.mjs`, 실패 시 WARNING 처리(exit 제거), errorlevel 명시적 리셋(`verify >nul`) 추가. 같은 패턴의 3/6 naver-presale 블록에도 리셋 추가(기존 잠재 오탐 버그 일괄 해소)
+  - `scripts/run-naver-local.sh` 36~37행: `naver-units.mjs` → `molit-units.mjs`, `|| echo WARNING` 추가(set -e 환경에서 비치명적 처리)
+- **재검증**: `collector-contract` WARN 지적(.bat errorlevel 상속 위험) → `verify >nul` 리셋으로 해소. 쿼터는 월/목 하루 2회 molit-units 실행 시 ~106회로 한도 대비 미미
+- **빌드**: `npx vite build` 604ms PASS
+
 ## 미해결 (다음 세션 이월)
-- `run-naver-local.bat`/`.sh` 4/6 단계 naver-units → molit 전환 정책 결정
 - `.github/workflows/naver-units.yml` 3월 18일부터 failure 원인 조사
 - price 64% / dataReliability 57.4% 갭 보정 전략
 - 행안부 API 복구 대기 (외부)

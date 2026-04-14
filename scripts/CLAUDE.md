@@ -66,11 +66,11 @@
 | 1/6 | naver-collect.py | 네이버 매물 수집 (curl_cffi) | O |
 | 2/6 | sync-naver-complex.mjs | 22개 필드 → apartments 동기화 | O |
 | 3/6 | naver-presale.mjs | 분양정보 19필드 수집 | - |
-| 4/6 | naver-units.mjs | 세대수 2차 보정 | **(비활성, IP 차단)** |
+| 4/6 | molit-units.mjs | 세대수 보정 (국토부 API, 세션89 교체) | - |
 | 5/6 | calc-exclusive-ratio.mjs | 전용률 계산 | O |
 | 6/6 | compute-scores.mjs | cats_cache 스코어링 갱신 | - |
 
-**주의**: 4/6 단계는 `run-naver-local.bat`/`.sh`가 여전히 `naver-units.mjs`를 호출하지만 IP 차단으로 실패 지속. 별도 세션에서 배치 파일 업데이트 예정(세션89 플랜 범위 밖).
+**세션89 변경**: 4/6 단계가 `naver-units.mjs`(네이버 크롤링, IP 차단)에서 `molit-units.mjs`(국토부 API)로 교체됨. 실패 시 WARNING 처리로 5/6, 6/6 계속 진행. `run-naver-local.bat`/`.sh` 양쪽 동일.
 
 **주의**: compute-scores.mjs는 `node --loader ./scripts/alias-loader.mjs` 필요 (`@/` 별칭)
 

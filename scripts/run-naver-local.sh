@@ -33,8 +33,8 @@ echo "=== 3/6 네이버 분양정보 수집 (pre.land) ==="
 node scripts/collectors/naver-presale.mjs || echo "WARNING: naver-presale.mjs 실패 (비필수)"
 
 echo ""
-echo "=== 4/6 네이버 세대수 보정 ==="
-node scripts/collectors/naver-units.mjs
+echo "=== 4/6 세대수 보정 (molit-units, 세션89 교체) ==="
+node scripts/collectors/molit-units.mjs || echo "WARNING: molit-units.mjs 실패 (비필수, 계속 진행)"
 
 echo ""
 echo "=== 5/6 전용률 계산 ==="
