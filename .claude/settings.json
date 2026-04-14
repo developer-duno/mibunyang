@@ -1,0 +1,76 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npm test:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm outdated:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm view:*)",
+      "Bash(npm list:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx playwright:*)",
+      "Bash(npx supabase:*)",
+      "Bash(npx vercel:*)",
+      "Bash(node --check:*)",
+      "Bash(node --input-type=module)",
+      "Bash(git add:*)",
+      "Bash(git commit -m :*)",
+      "Bash(git push:*)",
+      "Bash(git log:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git stash:*)",
+      "Bash(git show:*)",
+      "Bash(git blame:*)",
+      "Bash(gh run:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh pr:*)",
+      "WebSearch",
+      "WebFetch(domain:finlife.fss.or.kr)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:docs.anthropic.com)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwd | grep -qi 'mibunyang' || echo '[hook] cwd가 mibunyang 아님 — 경로 확인' >&2"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p .claude && echo 1 >> .claude/.edit-counter && n=$(wc -l < .claude/.edit-counter 2>/dev/null || echo 0); if [ \"$n\" -gt 5 ]; then echo \"[hook] $n파일 편집됨 — 5파일+ 단계 분리 검토\" >&2; touch .claude/.build-dirty; fi; exit 0"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .claude/.build-dirty ]; then echo '[hook] 다수 편집 감지 — npx vite build 권장' >&2; fi; rm -f .claude/.build-dirty .claude/.edit-counter; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

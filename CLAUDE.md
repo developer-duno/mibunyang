@@ -4,27 +4,17 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-13 세션87 — 모바일 옵션 버튼 조사 착수(재현 정보 부족으로 중단)
+**마지막 작업**: 2026-04-13 세션87 — 모바일 옵션 버튼 조사는 재현 정보 대기 중
 
-- 세션87: 플랜 모드로 SearchFilterBar/FilterButton/FilterDropdown/App.jsx/HeaderSection 정독
-- Explore 에이전트 1차 가설(mousedown 미지원)은 **기각** — 외부 클릭 닫기용이며 버튼 미작동과 무관
-- 직접 검증: FilterButton은 isDesktop 분기 없이 순수 `<button onClick>` — 코드상 모바일 전용 버그 지점 특정 실패
-- 미확인 후보: z-index 겹침(BottomNav/토스트), 부모 pointer-events, 이벤트 경합, "옵션 버튼"의 정확한 지칭
-- 작업 트리 clean — 이번 세션 코드 변경 없음
-- DB 품질 (apartments_flat 1,424건 기준, 세션86 측정값 유효):
-  - units 98.4% · lat/lng 99.9% · price 64.0% · unsoldRate 61.4% · subwayDist 79.0% · dataReliability 57.4%
-- 행안부 API: 500/502 지속 (외부 장애)
+**다음 세션 우선순위**:
+1. 🔴 모바일 옵션 버튼 — 사용자에게 (a)어느 버튼 (b)증상 (c)환경 (d)언제부터 확인 후 디버깅
+2. naver-collect 완료 후 post-naver-collect.sh 실행
+3. naver-units-night 02:00 실행 결과 확인 (scripts/naver-units-night.log)
+4. price 64% / dataReliability 57.4% 갭 보정 전략
+5. 행안부 API 복구 대기
+6. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
 
-**다음에 해야 할 것** (우선순위):
-
-1. 🔴 **모바일 옵션 버튼 — 사용자에게 재현 정보 확인 후 디버깅 재개**
-   - 질의할 것: (a) "옵션 버튼"이 정확히 어느 버튼(지역/금액/면적/정렬/추천/상세, 혹은 다른 UI)인지 (b) 증상(탭 무반응/드롭다운 열림 후 내부 조작 불가/한 번만 동작) (c) 환경(iOS Safari/Android Chrome/DevTools 모바일 모드) (d) 최근 어느 시점부터 안 됨
-   - 재현되면 BottomNav z-index, 부모 wrapper, 이벤트 경합 순으로 검사
-2. naver-collect.py 완료 대기 후 post-naver-collect.sh 파이프라인 실행
-3. naver-units-night 첫 02:00 실행 결과 확인 (scripts/naver-units-night.log)
-4. 행안부 API 서버 복구 대기
-5. price 64% / dataReliability 57.4% 갭 보정 전략 수립
-6. Vercel 12함수 제한 주의 — 새 API 추가 시 action 파라미터로 통합
+**DB 품질** (apartments_flat 1,424건, 세션86 측정): units 98.4% · lat/lng 99.9% · price 64.0% · unsoldRate 61.4% · subwayDist 79.0% · dataReliability 57.4%
 
 ---
 
@@ -127,8 +117,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | 집 서버 IP | 192.168.219.101 (외부: Cloudflare Tunnel) | 네이버 rate limit 공유 |
 | Vercel Team | `developer-dunos-projects` | 프로젝트별 환경변수/배포 독립 |
 
-### 공유 규칙 (상세는 하위 CLAUDE.md)
-
+### 공유 규칙
 - **테이블 소유권**: 공용 테이블 기존 컬럼 변경/삭제 금지 → `supabase/CLAUDE.md`
 - **API 쿼터**: 일일 10,000회 분배 + 10일-토요일 충돌 방지 → `scripts/CLAUDE.md`
 - **네이버 시간 분리**: mibunyang 08:00(월/목), naver-estate-web interval → `scripts/CLAUDE.md`
@@ -141,244 +130,95 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | 디렉토리 | 핵심 내용 |
 |---------|----------|
 | `src/scoring/CLAUDE.md` | 가중치 합계 100, 클램핑, null 처리, 스코어링 파이프라인 |
-| `src/components/CLAUDE.md` | memo 36개, 접근성(ARIA/터치타겟/대비), 크로스브라우저, 컴포넌트 구조 |
-| `src/hooks/CLAUDE.md` | Hook 호출 순서, useMemo 의존성 13개, 파생 상태, 교차 관심사 패턴 |
-| `api/CLAUDE.md` | JS null 함정, 한글 인코딩, Supabase 연동, 인증, withHandler 패턴 |
-| `scripts/CLAUDE.md` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터, Rate Limit 정리 |
+| `src/components/CLAUDE.md` | memo 36개, 접근성(ARIA/터치타겟/대비), 크로스브라우저 |
+| `src/hooks/CLAUDE.md` | Hook 호출 순서, useMemo 의존성 13개, 파생 상태 |
+| `api/CLAUDE.md` | JS null 함정, 한글 인코딩, Supabase 연동, withHandler 패턴 |
+| `scripts/CLAUDE.md` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
 | `.github/workflows/CLAUDE.md` | 35개 워크플로우 목록, GitHub Secrets, 스케줄 |
 | `supabase/CLAUDE.md` | 15개 테이블 스키마, 2 VIEW, presale 19컬럼, RLS 정책 |
 
 ---
 
-## 작업 완료 후 필수 프로세스
+## 작업 규칙 (Plan → Guard → Work → Review)
 
-### 5가지 교차검증 (병렬 에이전트)
+### Plan (새 기능/리팩토링 요청 시 자동 진입)
+- 단계당 수정+신규 파일 **3개 이하**
+- 단일 파일 **80줄 이내**(고위험 50줄), 단일 컴포넌트 **150줄 미만**
+- **5파일+** 수정 시 반드시 단계 분리
+- DB 변경과 API 변경은 **다른 단계**에서
+- 한 단계에 "타입 + API + 컴포넌트" 동시 생성 금지
+- 플랜 필수 포함: 파일 목록+참조처(grep 결과) / 실행 순서+의존 / 영향 범위 / 롤백 / 테스트 / 단계별 예상 줄 수
 
-커밋 전 반드시 5개 에이전트를 **동시에** 실행:
+### 의존 분할 순서
+DB 스키마 → 타입 → API → 훅/유틸 → 하위 컴포넌트 → 메인 컴포넌트 → 페이지 라우트
 
-| # | 검증 | 주요 체크 |
-|---|------|----------|
-| 1 | **빌드** | `npx vite build` 성공, import 누락, 번들 크기 |
-| 2 | **스코어링** | PROFILES 5개 가중치 합계 = 100, 클램핑 0~100 |
-| 3 | **null 안전성** | `?.`, `?? 0`, `\|\| []` 패턴, toLocaleString/toFixed 가드 |
-| 4 | **Hook 규칙** | 호출 순서, 의존성 배열, 조건부 호출 없음 |
-| 5 | **보안** | XSS, 인젝션, env 키 노출, innerHTML |
+### Guard (위반 시 실행 금지)
+- 5파일+ 수정 → 단계 분리
+- DB 변경 → 롤백 마이그레이션 명시
+- API 변경 → 사용하는 프론트 페이지 나열
+- 새 기능 → **에러 처리 / 로딩 상태 / 빈 데이터 / 입력 검증 / 반응형(375px) / 중복 제출 방지** 필수
+- "영향 없음" 판정은 **grep 결과 기반**만 인정
 
-검증 통과 후 `git commit` + `git push` 자동 수행.
+### Work
+- 계획에 없는 파일 수정/리팩토링 금지 (하고 싶으면 "범위 초과" 표시 후 승인 대기)
+- 단계 끝날 때마다 `npx vite build`
+- 에러 자동 수정 **3회 실패** 시 중단+보고
+- 새 코드에 한국어 주석으로 목적 설명, 기존 네이밍/패턴 따를 것
 
-### 코드 품질 규칙
+### Review (커밋 전 자동 수행)
+1. **simplify** 스킬 — 변경 코드 재사용성/품질/효율 리뷰
+2. **5교차검증 병렬 에이전트**:
+   - 빌드 (`npx vite build`, import 누락, 번들 크기)
+   - 스코어링 (PROFILES 5개 가중치 합 = 100, 클램핑 0~100)
+   - null 안전성 (`?.`, `?? 0`, `|| []`, toLocaleString/toFixed 가드)
+   - Hook 규칙 (호출 순서, 의존성 배열, 조건부 호출 없음)
+   - 보안 (XSS, 인젝션, env 키 노출, innerHTML)
+3. console.log 잔재 제거
+4. `git commit` + `git push` (자동)
+5. CLAUDE.md "현재 진행 상황" 업데이트
+6. `.claude/SESSION_LOG.md` 업데이트 (날짜별 누적, 삭제 금지, .gitignore 금지)
 
-- **리뷰**: 연동 무결성 + 프론트↔백엔드 타입 일관성 + 보안. 추측 금지 → 도구 실행 결과만 인정
-- **테스트**: 새 기능 = 정상 1개 + 에러 1개 필수. 한국어 주석 + 팩토리 함수
-- **플랜**: 영향 범위 → 실행 순서 → 위험 → 롤백 → 테스트. 5파일+ 시 단계 분리
-- **안티패턴**: 1회용 유틸 금지 / 과도한 추상화 금지 / console.log 커밋 금지
-
----
-
-# Claude가 자동 사용하는 스킬 (사용자 입력 불필요)
-
-> 아래 스킬은 **Claude가 적절한 시점에 자동으로 실행**합니다. 사용자가 직접 명령어를 입력할 필요 없습니다.
-
-> **중요**: 플러그인 스킬은 네임스페이스(`/plugin-name:skill-name`) 형식으로 호출해야 합니다. Claude는 아래 트리거 조건을 감지하면 **직접 해당 스킬을 호출**합니다. 사용자가 명시적으로 요청하지 않아도 자동 발동해야 하는 스킬들입니다.
-
-### 내장 스킬 (항상 자동)
-
-| 스킬 | 자동 실행 시점 | 효과 |
-|------|-------------|------|
-| **simplify** | 코드 작성 완료 후, 커밋 전 | 변경 코드의 재사용성/품질/효율 자동 리뷰 + 수정 |
-| **commit** | 모든 검증 통과 후 | git 변경사항 자동 커밋 + 푸시 |
-| **loop** | 장시간 수집기 실행 시 | 주기적으로 로그 확인 |
-| **schedule** | 정기 자동화 설정 요청 시 | cron 기반 원격 에이전트 생성/관리 |
-| **claude-api** | anthropic SDK import 감지 시 | Claude API/SDK 코드 작성 지원 |
-| **update-config** | 설정 변경 필요 시 | settings.json 자동 설정 |
-
-### 플러그인 스킬 (Claude가 명시적으로 호출)
-
-> 아래 트리거 상황이 발생하면 Claude는 추가 사용자 요청 없이 해당 플러그인 스킬을 적극 꺼내 쓸 것.
-
-#### 개발/디버깅 (engineering 플러그인)
-
-| 스킬 | 트리거 상황 |
-|------|----------|
-| `/engineering:debug` | 에러/스택트레이스 발생, "X가 안 됨", "staging은 되는데 prod는 안 됨", 모바일 옵션 버튼 같은 재현 필요 이슈 |
-| `/engineering:tech-debt` | price 64% / dataReliability 57.4% 같은 품질 갭 보정 전략 수립, 리팩토링 범위 결정, 코드 건강성 평가 |
-| `/engineering:architecture` | Vercel 12함수 제한 같은 설계 결정 기록(ADR), 기술 선택 트레이드오프 문서화 |
-| `/engineering:system-design` | 수집→후처리 파이프라인 재설계, 새 데이터 소스 추가 시 |
-| `/engineering:deploy-checklist` | 마이그레이션/피처플래그 포함 배포 전, CI 상태/롤백 계획 확인 |
-| `/engineering:incident-response` | 행안부 API 500/502 같은 외부 장애, Vercel 함수 장애, 네이버 수집 실패 연쇄 |
-| `/engineering:testing-strategy` | 새 기능 추가 시 E2E/유닛 테스트 계획, 회귀 방지 전략 |
-| `/engineering:documentation` | 런북/README/CLAUDE.md 서브 규칙 파일 작성 |
-| `/engineering:standup` | 세션 마무리 활동 요약 작성 |
-
-#### 데이터/SQL (data 플러그인)
-
-| 스킬 | 트리거 상황 |
-|------|----------|
-| `/data:sql-queries` · `/data:write-query` | Supabase 쿼리 작성/최적화, apartments_flat 집계, 자연어→SQL 변환 |
-| `/data:explore-data` | 새 테이블 품질 진단, null rate/분포 확인 (DB 품질 지표 갱신 시) |
-| `/data:validate-data` | 분석/수집 결과 QA, 편향/정확성 체크 |
-| `/data:analyze` | 메트릭 조사, 가격/미분양률 트렌드 원인 분석, 지역 세그먼트 비교 |
-| `/data:statistical-analysis` | AHP 스코어링 결과 검증, 이상치 탐지 |
-| `/data:data-visualization` · `/data:build-dashboard` | 수집 파이프라인/DB 품질 대시보드 생성 |
-
-#### 리뷰/품질 (pr-review-toolkit, code-review)
-
-| 스킬 | 트리거 상황 |
-|------|----------|
-| `/code-review:code-review` | GitHub PR 리뷰 전용 (CLAUDE.md 준수 + 버그 + git blame + confidence 80+ 필터). 로컬 커밋 전 5교차검증과는 별개 — PR 생성 후 자동 발동 |
-| `/engineering:code-review` | 커밋 전 로컬 diff 리뷰 (보안/성능/정합성). PR 없이도 호출 가능, 5교차검증 수동 보강용 |
-| `/pr-review-toolkit:review-pr` | 6개 전문 에이전트 PR 리뷰 |
-| `pr-review-toolkit` 에이전트들 | code-reviewer / comment-analyzer / pr-test-analyzer / silent-failure-hunter / type-design-analyzer / code-simplifier — 각각 Agent tool로 호출 |
-
-#### UI 개발/테스트 (frontend-design, webapp-testing)
-
-| 스킬 | 트리거 상황 |
-|------|----------|
-| `/frontend-design` (자동) | React UI 신규 작성/디자인 작업 시 자동 발동 |
-| `webapp-testing` | UI 변경 후 브라우저 검증 (CLAUDE.md 규칙: "UI/프론트엔드 변경은 dev server + 브라우저 확인"). Playwright로 클릭/스크린샷/콘솔 로그 |
-
-#### 문서/세션 관리 (claude-md-management, session-report)
-
-| 스킬 | 트리거 상황 |
-|------|----------|
-| `/claude-md-management:revise-claude-md` | 세션 종료 시 새로 알게 된 제약/패턴을 CLAUDE.md에 반영 |
-| `session-report` | 세션 마무리 시 SESSION_LOG.md 리포트 생성 |
-
-> 참고: `claude-md-management:claude-md-improver`는 스킬이 아니라 **에이전트**입니다 (Agent tool로 호출). CLAUDE.md 7개 파일(루트 + 6개 서브)이 코드베이스 현실과 어긋났을 때 감사용으로 사용.
-
-#### 기능 개발 워크플로우 (feature-dev)
-
-| 스킬 | 트리거 상황 |
-|------|----------|
-| `/feature-dev:feature-dev` | 새 기능 요청 시 Plan→Guard→Work→Review 워크플로우로 진행. 복잡한 다단계 기능에 |
-| `feature-dev` 에이전트들 | code-architect (설계 판단), code-explorer (탐색), code-reviewer (구현 후) |
-
-### 자동 발동 규칙 (Claude가 따를 것)
-
-1. **에러/버그 재현 요청** → 즉시 `/engineering:debug` 호출
-2. **품질 지표/DB 분석 요청** → `/data:explore-data` 또는 `/data:analyze` 먼저 실행
-3. **SQL 작성 필요** → `/data:sql-queries` 또는 `/data:write-query` 경유
-4. **PR 리뷰 요청** → `/code-review:code-review` 우선, 세부 필요 시 `pr-review-toolkit` 에이전트 병렬 실행
-5. **UI 변경** → 구현 후 `webapp-testing`으로 브라우저 검증 (CLAUDE.md 필수 규칙)
-6. **배포 직전** → `/engineering:deploy-checklist` 실행
-7. **외부 API 장애 대응** → `/engineering:incident-response`
-8. **설계 결정** → `/engineering:architecture`로 ADR 작성, CLAUDE.md에 반영
-9. **세션 마무리** → `session-report` + `/claude-md-management:revise-claude-md`로 학습 반영
-10. **기술 부채 논의** → `/engineering:tech-debt`로 우선순위 정리
-
-### 하네스 워크플로우에서의 자동 실행 흐름
-
-```
-사용자: "XXX 기능 만들어줘"
-  ↓
-Claude: 계획 수립 (Plan 모드 자동 진입)
-  ↓ 게이트 검증 (Guard)
-Claude: 코드 작성 (Work)
-  ↓
-Claude: simplify 자동 실행 (품질 리뷰)
-  ↓
-Claude: 교차검증 5단계 실행
-  ↓
-Claude: commit + push 자동 실행 (Review)
-```
+### 안티패턴
+1회용 유틸 금지 / 과도한 추상화 금지 / 추측 금지(도구 실행 결과만 인정) / 테스트는 새 기능당 정상 1 + 에러 1 최소
 
 ---
 
-# 하네스 엔지니어링 규칙 (Plan → Guard → Work → Review)
+## 로컬 Claude 자원 (2026-04-14 리뉴얼)
 
-## Plan: Sonnet 최적화 분할 (모든 계획에 최우선 적용)
+### SESSION_LOG.md vs memory 역할 분리
+- **`.claude/SESSION_LOG.md`** (커밋 추적): 과거 지향·불변. 날짜/커밋 SHA/결정 근거. 세션 종료 시 1회 append.
+- **`~/.claude/projects/f--mibunyang/memory/`** (gitignored): 현재 지향·휘발. 진행 중 가설·다음 단계·TODO.
+- **중복 금지**: 확정 사실은 SESSION_LOG로 이관 후 memory에서 삭제. 같은 사실 두 곳 작성 금지.
+- CLAUDE.md "현재 진행 상황"은 한 줄 요약만 — 상세는 SESSION_LOG.
 
-> 사용자가 새 기능/리팩토링을 요청하면 Claude가 자동으로 Plan 모드 진입.
+### 프로젝트 전용 슬래시 커맨드 (`.claude/commands/`)
+- `/collect-naver` — 네이버 수집 + post-naver-collect 파이프라인
+- `/score-recalc` — 점수 재계산 + PROFILES 가중치 합 sanity
+- `/cross-validate` — simplify + 5교차검증 병렬 (Review 단계 자동화)
+- `/db-quality` — apartments_flat 품질 지표 재측정
 
-### 크기 기준
+### 프로젝트 전용 서브에이전트 (`.claude/agents/`)
+- `scoring-validator` — 가중치/클램핑/null 검증
+- `null-safety-checker` — optional chaining·기본값·숫자 포맷 가드
+- `collector-contract` — 수집기 배치/upsert/병렬/쿼터/에러 계약
 
-| 항목 | 허용 | 초과 시 |
-|------|------|--------|
-| 단계당 수정+신규 파일 | **3개 이하** | 단계 분리 |
-| 단일 파일 변경 | **80줄 이내** (고위험 50줄) | 하위 컴포넌트 분리 |
-| 단일 컴포넌트 | **150줄 미만** | 분리 계획 수립 |
-| 동시 관심사 | **1가지** | 단계 분리 |
-
-### 분할 순서 (의존 관계)
-
-```
-1. DB 스키마 (마이그레이션) ─ 독립
-2. 타입 정의 ─ 독립
-3. API 함수 ─ 독립
-4. 공통 훅/유틸 ─ 각각 독립
-5. 하위 컴포넌트 ─ 1개씩 독립
-6. 메인 컴포넌트 ─ 독립
-7. 페이지 라우트 + 통합 ─ 마지막
-```
-
-### 절대 금지
-- 한 단계에 "타입 + API + 컴포넌트" 동시 생성
-- 한 단계에 파일 4개 이상 수정
-- DB 변경과 API 변경을 같은 단계에서 수행
-
-### /plan 실행 시 필수 포함
-1. 수정 파일 목록 + 각 파일의 참조처 (grep 결과 기반)
-2. 실행 순서 + 의존 관계 명시
-3. 영향 범위 + 깨질 수 있는 기존 기능
-4. 롤백 방법 + 커밋 분리 전략
-5. 테스트 계획
-6. 모든 단계에 예상 줄 수 표시
+### settings.json hooks (비차단 경고)
+- `SessionStart`: cwd=mibunyang 확인 (D:\ 재발 방지)
+- `PostToolUse(Edit|Write)`: 5파일+ 편집 감지 → `.build-dirty` 플래그
+- `Stop`: build 상기 + 카운터/플래그 리셋
 
 ---
 
-## Guard: 가드레일 (위반 시 실행 금지)
+## 이 프로젝트에서 자주 쓰는 스킬
 
-- **5개+ 파일 수정** → 반드시 단계 분리
-- **DB 변경** → 롤백 마이그레이션 필수 명시
-- **API 변경** → 해당 API 사용하는 프론트 페이지 나열
-- **새 기능** → 에러 처리 + 빈 데이터 + 로딩 상태 + 입력 검증 필수
-- **추측 금지** → "영향 없음" 판정은 grep 결과 기반만 인정
+Claude는 스킬 리스트를 시스템 리마인더로 이미 받고 있음. 아래는 mibunyang에서 유독 자주 쓰는 것만 — 상황이 맞으면 추가 요청 없이 자동 호출:
 
----
-
-## Work: 코드 작성 규칙 (모든 코드 작성 시 자동 적용)
-
-> 코드 작성 완료 시 Claude가 자동으로 simplify 품질 리뷰 실행.
-
-### 실행 규칙
-- 계획에 없는 파일 수정 금지
-- 계획에 없는 리팩토링 금지 (하고 싶으면 "범위 초과" 표시 후 승인 대기)
-- 한 단계 끝날 때마다 `npx vite build` 실행
-- 에러 시 자동 수정 3회 루프, 3회 실패 시 멈추고 보고
-
-### 코드 작성 필수 포함 (빠뜨리면 안 됨)
-- **에러 처리**: API 호출 → try-catch + 사용자 에러 UI
-- **로딩 상태**: 데이터 fetch → isLoading 상태 + 스피너/스켈레톤
-- **빈 데이터**: 목록 0건 → "데이터가 없습니다" UI
-- **입력 검증**: 폼 → 빈 값, 형식, 길이 검증
-- **반응형**: 모바일(375px) 기본 대응
-- **중복 방지**: 제출 버튼 → disabled={isSubmitting}
-
-### 수정 추적
-- 새 파일/수정 파일마다 변경 내용 한 줄 요약
-- 기존 프로젝트 네이밍/패턴/구조 따를 것
-- 새 코드에 한국어 주석으로 목적 설명
-
----
-
-## Review: 세션 마무리 규칙
-
-> Claude가 자동으로 simplify → 교차검증 5단계 → commit 순서 실행.
-
-### 작업 종료 시 Claude가 자동 수행
-1. simplify 실행 — 변경 코드 품질 리뷰
-2. `git status` — 미커밋 변경 확인
-3. `npx vite build` — 빌드 검증
-4. console.log 잔재 제거
-5. commit + push — 자동 커밋
-6. CLAUDE.md "현재 진행 상황" 업데이트
-
-### SESSION_LOG 관리
-- **위치**: `.claude/SESSION_LOG.md`
-- 매 세션 종료 시 업데이트
-- 이전 세션 로그는 날짜별 누적 (삭제 금지)
-- `.gitignore`에 추가하지 말 것 (다른 기기에서도 이어하려면)
-
-### 다음 세션 이어하기
-- CLAUDE.md 상단의 "현재 진행 상황" 자동 참고
-- 장시간 수집 실행 시 Claude가 loop 스킬로 자동 모니터링
+- **`/engineering:debug`** — 모바일 옵션 버튼 같은 재현 필요 버그, "X가 안 됨"
+- **`/engineering:incident-response`** — 행안부 API 500/502 같은 외부 장애, 네이버 수집 실패 연쇄
+- **`/data:sql-queries` · `/data:explore-data`** — Supabase 쿼리 작성, apartments_flat 품질 진단
+- **`/data:analyze`** — price/unsoldRate 트렌드/세그먼트 조사
+- **`webapp-testing`** — UI 변경 후 브라우저 검증 (Playwright, **필수**)
+- **`/code-review:code-review`** — GitHub PR 리뷰 (로컬 5교차검증과는 별개)
+- **`/engineering:tech-debt`** — price 64%/dataReliability 57.4% 같은 품질 갭 전략
+- **`simplify` · `commit`** — 커밋 전 자동 (Review 단계에서 호출)
+- **`session-report` + `/claude-md-management:revise-claude-md`** — 세션 마무리 시
