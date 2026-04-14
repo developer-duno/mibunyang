@@ -1,3 +1,93 @@
+# 세션 88 — 2026-04-15
+
+## 주요 작업 (Claude 설정 리뉴얼 전담 세션)
+
+### 1. 에이전트/스킬/플러그인 전수조사 (3차 시도 끝에 정확화)
+- 1차: `installed_plugins.json`의 `projectPath` 필드를 "소속"으로 오해 → "16개 전부 naver-estate-web 소속"이라 오진
+- 2차: `~/.claude/plans/claude-config-renewal.md`(287줄) 존재를 놓침 → "사용자가 정리 안 해둠"이라 오진
+- 3차: 파일 20개+ 실제 Read 후 진실 확정
+  - **진실의 원천**: `~/.claude/settings.json`의 `enabledPlugins` (글로벌 8개) + 프로젝트 `.claude/settings.json`의 `enabledPlugins`
+  - `installed_plugins.json`은 단순 설치 이력, `projectPath`는 자동 설치 시점 cwd 메타
+  - 공식 마켓플레이스 플러그인은 Claude Code 첫 실행 시 자동 설치 (`officialMarketplaceAutoInstalled: true`)
+  - 에이전트 이름 충돌은 Claude Code가 `플러그인명:에이전트명`으로 자동 네임스페이싱 처리
+
+### 2. mibunyang 프로젝트 스코프 enabledPlugins 추가
+- 파일: `f:/mibunyang/.claude/settings.json`
+- 추가: `engineering@knowledge-work-plugins`, `data@knowledge-work-plugins`, `session-report@claude-plugins-official`
+- 근거: mibunyang CLAUDE.md가 참조하는 `/engineering:debug`, `/data:sql-queries` 등이 글로벌 enable에 없어 실제 호출 불가 상태였음
+- 패턴: sangse-agent가 이미 `feature-dev`/`frontend-design`을 프로젝트 스코프로 선언한 것과 동일
+- 거버넌스: 글로벌 `~/.claude/settings.json`은 그대로 유지(8개), 프로젝트 로컬에만 3개 추가
+- 백업: `f:/mibunyang/.claude/settings.json.bak-20260415-enablepluginadd`
+
+### 3. scoring-validator.md 정확성 보강 (36줄 → 103줄)
+- `src/scoring/CLAUDE.md` 실제 표와 대조해 오류 수정:
+  - PROFILES 이름 추측("균형/가성비/투자/실거주/학군") → 실명 `live/invest/newlywed/edu/retire`
+  - 가중치 합 "100 또는 1.0" 모호 표현 → 층위별 정확한 기준 (PROFILES=100, scoreProduct=100, 내부 서브=1.00)
+  - PSR 특수 케이스 (psr < 0.7 → 100 초과 가능) 명시
+  - 검증 절차 1번에 `src/scoring/CLAUDE.md` 먼저 Read 강제
+- 백업: `f:/mibunyang/.claude/agents/scoring-validator.md.bak-20260415`
+
+### 4. mibunyang CLAUDE.md Review 섹션 의무화
+- 기존: "5교차검증 병렬 에이전트"라고만 나열 → 호출 방법 불명확
+- 변경: 각 축에 구체적 Task 호출 명시
+  - 스코어링: `Task(subagent_type="scoring-validator")` **필수**
+  - null: `Task(subagent_type="null-safety-checker")` **필수**
+  - 수집기 변경 시: `collector-contract` 추가
+  - 빌드/Hook/보안: 메인 agent 직접 검사 (의도된 설계)
+- 추가 규칙: 전용 에이전트가 있는 축을 메인 agent가 직접 검사하는 것 **금지**
+- SESSION_LOG 교차검증 섹션에 어느 에이전트가 찍었는지 기록 의무 추가
+- 백업: `f:/mibunyang/CLAUDE.md.bak-20260415`
+
+### 5. 글로벌 CLAUDE.md 재발 방지 섹션 추가
+- 파일: `~/.claude/CLAUDE.md`
+- 새 섹션: `## 진단 전 파일 직접 확인 (설렁설렁 읽기 금지)`
+- 내용:
+  - 질문 종류별 필수 확인 파일 매트릭스 (플러그인/에이전트/스킬/MCP/설정 이력/메타)
+  - 네임스페이스·진실의 원천 규칙 (installed_plugins.json은 이력, enabledPlugins가 진실)
+  - 4단계 설렁설렁 방지 체크리스트
+  - 이번 세션 3회 연속 오진 사건 기록 (재발 방지용)
+- 추가로 "설명 방식 (쉬운 말 원칙)" 섹션도 이미 존재 → 확인만
+- 백업: `~/.claude/CLAUDE.md.bak-20260415`
+
+### 6. 메모리 업데이트
+- `projects/f--mibunyang/memory/feedback_easy_explanation.md` 신규 — 쉬운 말은 사용자 대화용, 코드/파일명/명령은 원문 정확히 (2회 지적 후 정정)
+- `MEMORY.md` 인덱스에 1줄 추가
+
+### 7. hookify 플러그인 설치 (세션 중반)
+- `claude plugin install hookify@claude-plugins-official`
+- 현재 scope: local, enabled
+- `conversation-analyzer` 에이전트 등록 확인
+- 실제 hook 작성은 다음 세션 이월
+
+## 커밋 (2개, 이번 세션)
+1. `77a8e0e` docs: CLAUDE.md 스킬 섹션 확장 + 분류 정정 (세션 초반)
+2. `121cb26` docs+chore: 로컬 에이전트 Task 호출 의무화 + scoring-validator 정확성 보강 + engineering/data/session-report 활성화
+
+(`f314dd1` "Claude Code 로컬 설정 리뉴얼"은 세션87 이월분)
+
+## 교차검증 결과
+- 이번 세션은 코드(src/) 변경 없음 — 5교차검증 해당 없음
+- 변경 파일: CLAUDE.md, .claude/settings.json, .claude/agents/scoring-validator.md (문서·설정만)
+- JSON 유효성 검증: `python -c "import json; json.load(...)"` PASS
+- 마크다운 grep 검증: 핵심 키워드 모두 기대 위치에 존재
+
+## 이번 세션에서 학습한 것 (자기 반성)
+- "파일을 실제로 Read하지 않고 메타데이터만으로 추측"하는 실수를 3회 연속 반복
+- 설렁설렁 읽기 방지를 위한 **체크리스트를 글로벌 CLAUDE.md에 박음** — 규칙 의존 말고 체크리스트 실행 의존
+- "진실의 원천 파일"과 "이력/메타 파일"을 구분하는 습관 체화 필요
+
+## 다음 세션 권장 순서
+1. 🔴 **모바일 옵션 버튼 재개** (세션87부터 이월, 최우선)
+   - 사용자에게 재현 정보 확인: (a)어느 버튼 (b)증상 (c)환경 (d)언제부터
+2. 새 `enabledPlugins` 검증: `claude plugin list`로 engineering/data/session-report가 mibunyang에서 enabled로 뜨는지 확인
+3. 5교차검증 실제 호출 테스트: 다음 커밋 때 `Task(subagent_type="scoring-validator")`가 진짜 불리는지 관찰 + SESSION_LOG에 기록 확인
+4. naver-collect 완료 후 post-naver-collect.sh 실행
+5. naver-units-night 02:00 로그 확인
+6. price 64% / dataReliability 57.4% 갭 보정 전략
+7. 행안부 API 복구 대기
+
+---
+
 # 세션 87 — 2026-04-13
 
 ## 주요 작업

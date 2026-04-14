@@ -4,7 +4,7 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-13 세션87 — 모바일 옵션 버튼 조사는 재현 정보 대기 중
+**마지막 작업**: 2026-04-15 세션88 — Claude 설정 리뉴얼: mibunyang 프로젝트 스코프 `enabledPlugins` 추가(engineering/data/session-report), scoring-validator 정확성 보강(층위별 합계 규칙), CLAUDE.md Review 섹션에 Task 서브에이전트 호출 의무 명문화, 글로벌 CLAUDE.md에 "진단 전 파일 직접 확인" 재발 방지 섹션 추가
 
 **다음 세션 우선순위**:
 1. 🔴 모바일 옵션 버튼 — 사용자에게 (a)어느 버튼 (b)증상 (c)환경 (d)언제부터 확인 후 디버깅
