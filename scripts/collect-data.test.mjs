@@ -476,10 +476,12 @@ describe("상수 무결성", () => {
     expect(REGION_LAWD_PREFIX["경기"]).toBe("41");
   });
 
-  it("GU_LAWD_MAP은 9개 region 중첩 구조", () => {
-    expect(Object.keys(GU_LAWD_MAP)).toHaveLength(9);
+  it("GU_LAWD_MAP은 17개 region 중첩 구조", () => {
+    expect(Object.keys(GU_LAWD_MAP)).toHaveLength(17);
     expect(GU_LAWD_MAP["서울"]).toBeDefined();
     expect(GU_LAWD_MAP["서울"]["강남구"]).toBe("11680");
+    expect(GU_LAWD_MAP["경남"]).toBeDefined();
+    expect(GU_LAWD_MAP["제주"]["서귀포시"]).toBe("50130");
   });
 
   it("GU_LAWD_MAP 각 region의 코드는 5자리 문자열", () => {

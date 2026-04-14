@@ -92,10 +92,12 @@ describe("REGION_LAWD_PREFIX / GU_LAWD_MAP", () => {
     expect(REGION_LAWD_PREFIX["제주"]).toBe("50");
   });
 
-  it("GU_LAWD_MAP은 9개 region 중첩 구조", () => {
-    expect(Object.keys(GU_LAWD_MAP)).toHaveLength(9);
+  it("GU_LAWD_MAP은 17개 region 중첩 구조", () => {
+    expect(Object.keys(GU_LAWD_MAP)).toHaveLength(17);
     expect(GU_LAWD_MAP["서울"]["강남구"]).toBe("11680");
     expect(GU_LAWD_MAP["부산"]["중구"]).toBe("26110");
+    expect(GU_LAWD_MAP["경남"]["거제시"]).toBe("48310");
+    expect(GU_LAWD_MAP["제주"]["제주시"]).toBe("50110");
   });
 
   it("GU_LAWD_MAP 각 코드는 5자리 문자열", () => {
@@ -140,9 +142,17 @@ describe("getLawdCd", () => {
     expect(getLawdCd("미래도", "미래구")).toBeNull();
   });
 
-  // 비수도권 prefix 폴백 (GU_LAWD_MAP에 없는 region)
-  it("강원 춘천시 → 42000 (prefix 폴백)", () => {
-    expect(getLawdCd("강원", "춘천시")).toBe("42000");
+  it("강원 춘천시 → 42110", () => {
+    expect(getLawdCd("강원", "춘천시")).toBe("42110");
+  });
+  it("경남 거제시 → 48310", () => {
+    expect(getLawdCd("경남", "거제시")).toBe("48310");
+  });
+  it("제주 서귀포시 → 50130", () => {
+    expect(getLawdCd("제주", "서귀포시")).toBe("50130");
+  });
+  it("미등록 군 → prefix 폴백", () => {
+    expect(getLawdCd("경북", "미래군")).toBe("47000");
   });
 });
 

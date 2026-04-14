@@ -93,7 +93,7 @@
 |------|-----------|----------|
 | 매월 1일 | collect-unsold-kosis | ~1 |
 | 매월 5일 | population, market-stats | ~100 |
-| 매월 6일 | collect-trades | 1,500~3,500 |
+| 매월 6일 | collect-trades | 1,500~3,500 (세션92: 지방 8개 region 확장 시 +500~1,500) |
 | 매월 6일 + 월/목 08:00 후 | molit-units | 50~300 (+post-naver-collect 시 추가) |
 | **매월 10일** | **building-info** | **~8,500** |
 | 매월 10일 | housing-permits | ~100 |
@@ -102,6 +102,7 @@
 **위험일**:
 - 매월 10일이 토요일 → 12,100 > 10,000. collect-building-info.yml에 토요일 → 11일 fallback 구현됨.
 - 매월 10일이 월/목 → building-info 8,500 + post-naver-collect molit-units 300 = ~8,800~9,100(한도의 88~91%). 여유 900~1,200회. 모니터링 필요(세션89).
+- **매월 6일 (세션92 이후)**: 지방 8개 region(강원/충북/충남/전북/전남/경북/경남/제주) 확장으로 collect-trades 최대 ~5,000회 가능. 여전히 10일보다 여유 있음 — 단 dry-run 실측 후 9,000 초과 시 `.github/workflows/collect-trades.yml` 2분할 고려(metro 6일 / rural 20일).
 
 ### 쿼터 로깅
 
