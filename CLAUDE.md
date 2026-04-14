@@ -4,15 +4,14 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-15 세션88 — Claude 설정 리뉴얼: mibunyang 프로젝트 스코프 `enabledPlugins` 추가(engineering/data/session-report), scoring-validator 정확성 보강(층위별 합계 규칙), CLAUDE.md Review 섹션에 Task 서브에이전트 호출 의무 명문화, 글로벌 CLAUDE.md에 "진단 전 파일 직접 확인" 재발 방지 섹션 추가
+**마지막 작업**: 2026-04-15 세션88 — Claude 설정 리뉴얼: mibunyang 프로젝트 스코프 `enabledPlugins` 추가(engineering/data/session-report), scoring-validator 정확성 보강(층위별 합계 규칙), CLAUDE.md Review 섹션에 Task 서브에이전트 호출 의무 명문화, 글로벌 CLAUDE.md에 "진단 전 파일 직접 확인" 재발 방지 섹션 추가 / 세션89: 모바일 옵션 버튼은 타 프로젝트 건으로 확인되어 mibunyang 과제에서 제외
 
 **다음 세션 우선순위**:
-1. 🔴 모바일 옵션 버튼 — 사용자에게 (a)어느 버튼 (b)증상 (c)환경 (d)언제부터 확인 후 디버깅
-2. naver-collect 완료 후 post-naver-collect.sh 실행
-3. naver-units-night 02:00 실행 결과 확인 (scripts/naver-units-night.log)
-4. price 64% / dataReliability 57.4% 갭 보정 전략
-5. 행안부 API 복구 대기
-6. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
+1. naver-collect 완료 후 post-naver-collect.sh 실행
+2. naver-units-night 02:00 실행 결과 확인 (scripts/naver-units-night.log)
+3. price 64% / dataReliability 57.4% 갭 보정 전략
+4. 행안부 API 복구 대기
+5. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
 
 **DB 품질** (apartments_flat 1,424건, 세션86 측정): units 98.4% · lat/lng 99.9% · price 64.0% · unsoldRate 61.4% · subwayDist 79.0% · dataReliability 57.4%
 
@@ -217,7 +216,7 @@ DB 스키마 → 타입 → API → 훅/유틸 → 하위 컴포넌트 → 메�
 
 Claude는 스킬 리스트를 시스템 리마인더로 이미 받고 있음. 아래는 mibunyang에서 유독 자주 쓰는 것만 — 상황이 맞으면 추가 요청 없이 자동 호출:
 
-- **`/engineering:debug`** — 모바일 옵션 버튼 같은 재현 필요 버그, "X가 안 됨"
+- **`/engineering:debug`** — 재현 필요한 UI 버그, "X가 안 됨"
 - **`/engineering:incident-response`** — 행안부 API 500/502 같은 외부 장애, 네이버 수집 실패 연쇄
 - **`/data:sql-queries` · `/data:explore-data`** — Supabase 쿼리 작성, apartments_flat 품질 진단
 - **`/data:analyze`** — price/unsoldRate 트렌드/세그먼트 조사
