@@ -1,3 +1,49 @@
+# 세션 90 — 2026-04-15
+
+## 주요 작업 — price 커버리지 64% → 100% 복구
+
+**커밋**: `b638dde feat(data): price 커버리지 64%→100% 복구 — prices 테이블 presale 백필`
+
+### 1. 원인 분석 (Supabase 실측)
+- price NULL 513건 **전부가 presaleMinPrice NOT NULL** — "데이터 없음"이 아니라 "저장 위치 분리" 문제였음
+- naver-presale.mjs가 apartments.presale_min_price에만 기록하고 시계열 prices 테이블에는 안 써서 apartments_flat VIEW의 latest_prices CTE(prices 참조)가 못 잡음
+- presaleStage 분포: 분양중 295 / 미분양 121 / 청약중 60 / 분양계획 37 (전부 현재 분양 대상, 옛 단지 아님)
+
+### 2. 9-GATE 플랜 검증 (3번 반복)
+- 초안 A (VIEW COALESCE): Gate1 🔴×3 — api/supabase/apartments.js:244의 _fallbackNearbyMedian 패턴과 filterEngine 의미 변경 회귀 → 폐기
+- C v1 (prices 백필): Gate1 🔴×2 — latest_prices CTE tie-breaker 없음, api/supabase/prices.js 필터 부재 → 폐기
+- **C v2**: 9/9 🟢 — CTE tie-breaker + API house_type 필터로 두 🔴 사전 차단
+
+### 3. 구현 (5단계)
+1. supabase/migrations/20260415044846_view_latest_prices_tiebreak.sql — latest_prices CTE ORDER BY에 `(CASE WHEN house_type LIKE 'presale_%' THEN 1 ELSE 0 END)` 추가, 공식가 우선
+2. api/supabase/prices.js — `.not('house_type','like','presale_%')` 2곳 추가
+3. scripts/collectors/naver-presale.mjs — toPresalePriceRow 신규 + priceRows 누적 + apartments upsert 직후 prices 병행 upsert (비치명적)
+4. scripts/backfill-presale-prices.mjs — 신규, 기존 728건 일괄 백필
+5. 대시보드 수동 적용 (supabase 원격 추적 기록 없어서 db push 위험) → 백필 → compute-scores 재계산 → 테스트
+
+### 4. 검증 결과
+- price 채움률: 64.0% → **100.0%** (+36.0pt)
+- dataReliability 평균: 57.4 → **83.9** (+26.5pt, 예상 +7.6pt 초과 달성)
+- prices 테이블 presale_min 행: 728건
+- compute-scores: 1,424/1,424 성공
+- 전체 테스트: 2,270/2,270 통과 (api/supabase/prices.test.js mock에 `.not` 추가)
+- vite build 성공
+
+### 5. 5교차검증 (병렬 Task)
+- 빌드: 메인 agent PASS
+- 스코어링: **scoring-validator** PASS — fairPrice≤0 분기가 dev 계산보다 선행, 클램핑·가중식 합 무결
+- null 안전성: **null-safety-checker** PASS — parsePresalePrice + toPresalePriceRow 이중 가드, backfill error/length 가드 정상
+- 수집기 계약: **collector-contract** PASS — onConflict 복합키 일치, FK 순서 안전, try/catch 비치명적 처리
+- 보안: 메인 agent PASS — 민감정보·XSS·인젝션 벡터 없음
+
+### 6. 범위 밖 (다음 세션 후보)
+- nearbyMedian 65.5% → 77.6% 보강 (API 레이어 _fallbackNearbyMedian 폴백 이미 존재)
+- trade_stats.pir/psr/jeonseRate 커버리지
+- Vercel 12함수 제한 (대기)
+- 행안부 API 복구 대기 (외부)
+
+---
+
 # 세션 89 — 2026-04-15
 
 ## 주요 작업
