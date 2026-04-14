@@ -1,4 +1,9 @@
 {
+  "enabledPlugins": {
+    "engineering@knowledge-work-plugins": true,
+    "data@knowledge-work-plugins": true,
+    "session-report@claude-plugins-official": true
+  },
   "permissions": {
     "allow": [
       "Bash(npm run:*)",

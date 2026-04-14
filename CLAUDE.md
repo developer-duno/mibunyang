@@ -167,16 +167,20 @@ DB 스키마 → 타입 → API → 훅/유틸 → 하위 컴포넌트 → 메�
 
 ### Review (커밋 전 자동 수행)
 1. **simplify** 스킬 — 변경 코드 재사용성/품질/효율 리뷰
-2. **5교차검증 병렬 에이전트**:
-   - 빌드 (`npx vite build`, import 누락, 번들 크기)
-   - 스코어링 (PROFILES 5개 가중치 합 = 100, 클램핑 0~100)
-   - null 안전성 (`?.`, `?? 0`, `|| []`, toLocaleString/toFixed 가드)
-   - Hook 규칙 (호출 순서, 의존성 배열, 조건부 호출 없음)
-   - 보안 (XSS, 인젝션, env 키 노출, innerHTML)
-3. console.log 잔재 제거
-4. `git commit` + `git push` (자동)
-5. CLAUDE.md "현재 진행 상황" 업데이트
-6. `.claude/SESSION_LOG.md` 업데이트 (날짜별 누적, 삭제 금지, .gitignore 금지)
+2. **5교차검증 병렬 에이전트** — Task 도구로 **동일 메시지에서 동시 기동** (또는 `/cross-validate` 슬래시 커맨드 사용):
+   - **빌드**: 메인 agent가 `npx vite build` 실행 + import 누락 + 번들 크기
+   - **스코어링**: `Task(subagent_type="scoring-validator")` — 전용 서브에이전트 호출 **필수**. 메인이 직접 grep 금지
+   - **null 안전성**: `Task(subagent_type="null-safety-checker")` — 전용 서브에이전트 호출 **필수**
+   - **Hook 규칙**: 메인 agent가 직접 검사 (호출 순서·의존성·조건부 호출)
+   - **보안**: 메인 agent가 직접 검사 (XSS·인젝션·env 노출·innerHTML·withHandler)
+   - 수집기 관련 변경 시 추가로 `Task(subagent_type="collector-contract")` 호출
+3. **SESSION_LOG.md 교차검증 섹션에 어느 에이전트가 찍었는지 기록** (예: "스코어링: PASS (scoring-validator)"). 에이전트 호출 이력이 없으면 "검증 미실행"으로 표기
+4. console.log 잔재 제거
+5. `git commit` + `git push` (자동)
+6. CLAUDE.md "현재 진행 상황" 업데이트
+7. `.claude/SESSION_LOG.md` 업데이트 (날짜별 누적, 삭제 금지, .gitignore 금지)
+
+**금지**: 전용 에이전트가 존재하는 축(스코어링, null 안전성, 수집기 계약)을 메인 agent가 **직접 검사하는 것 금지**. 전용 에이전트가 있는데 우회하면 커버리지 누락·결과 비교 불가·SESSION_LOG 추적 불가.
 
 ### 안티패턴
 1회용 유틸 금지 / 과도한 추상화 금지 / 추측 금지(도구 실행 결과만 인정) / 테스트는 새 기능당 정상 1 + 에러 1 최소
@@ -218,6 +222,7 @@ Claude는 스킬 리스트를 시스템 리마인더로 이미 받고 있음. �
 - **`/data:sql-queries` · `/data:explore-data`** — Supabase 쿼리 작성, apartments_flat 품질 진단
 - **`/data:analyze`** — price/unsoldRate 트렌드/세그먼트 조사
 - **`webapp-testing`** — UI 변경 후 브라우저 검증 (Playwright, **필수**)
+- **`frontend-design`** — 새 컴포넌트/섹션 작성 시 자동 발동. Pretendard · C.borderStrong · memo 36개 구조 일관성 유지
 - **`/code-review:code-review`** — GitHub PR 리뷰 (로컬 5교차검증과는 별개)
 - **`/engineering:tech-debt`** — price 64%/dataReliability 57.4% 같은 품질 갭 전략
 - **`simplify` · `commit`** — 커밋 전 자동 (Review 단계에서 호출)
