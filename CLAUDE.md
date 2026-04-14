@@ -4,14 +4,13 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-15 세션88 — Claude 설정 리뉴얼: mibunyang 프로젝트 스코프 `enabledPlugins` 추가(engineering/data/session-report), scoring-validator 정확성 보강(층위별 합계 규칙), CLAUDE.md Review 섹션에 Task 서브에이전트 호출 의무 명문화, 글로벌 CLAUDE.md에 "진단 전 파일 직접 확인" 재발 방지 섹션 추가 / 세션89: 모바일 옵션 버튼은 타 프로젝트 건으로 확인되어 mibunyang 과제에서 제외
+**마지막 작업**: 2026-04-15 세션89 — naver-units IP 차단(만성 429) 대응: `post-naver-collect.sh` 2/4 단계를 `molit-units.mjs`로 교체. 국토부 공동주택 API 기반이라 IP 차단 영향 없음. dry-run 결과 보정 16건 / API 53회 소비 확인. / 세션88: Claude 설정 리뉴얼 + scoring-validator 보강
 
 **다음 세션 우선순위**:
-1. naver-collect 완료 후 post-naver-collect.sh 실행
-2. naver-units-night 02:00 실행 결과 확인 (scripts/naver-units-night.log)
-3. price 64% / dataReliability 57.4% 갭 보정 전략
-4. 행안부 API 복구 대기
-5. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
+1. price 64% / dataReliability 57.4% 갭 보정 전략
+2. `run-naver-local.bat`/`.sh` 4/6 단계(naver-units) 정책 결정 — molit 전환 또는 유지
+3. 행안부 API 복구 대기
+4. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
 
 **DB 품질** (apartments_flat 1,424건, 세션86 측정): units 98.4% · lat/lng 99.9% · price 64.0% · unsoldRate 61.4% · subwayDist 79.0% · dataReliability 57.4%
 

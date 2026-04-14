@@ -6,11 +6,13 @@
 
 `apartments.unit_source` 필드로 세대수 출처 추적:
 
-| 출처 | 값 | 보정 | 주기 |
-|------|-----|------|------|
-| 청약홈 API | `"applyhome"` | 기본 (부정확할 수 있음) | 주간 |
-| 국토부 공동주택 API | `"molit"` | 1차 보정 | 매월 |
-| 네이버 부동산 | `"naver"` | 2차 보정 | 매일 |
+| 출처 | 값 | 보정 | 주기 | 상태 |
+|------|-----|------|------|------|
+| 청약홈 API | `"applyhome"` | 기본 (부정확할 수 있음) | 주간 | 활성 |
+| 국토부 공동주택 API | `"molit"` | 1차 + 2차 보정 | 매월 + post-naver-collect 시 | 활성 |
+| 네이버 부동산 | `"naver"` | (옛 2차 보정) | - | **중단(IP 차단, 세션89)** |
+
+세션89부터 naver-units가 집 서버 IP Rate Limit으로 연속 실패 → `post-naver-collect.sh` 2/4 단계를 molit-units로 교체. naver-units.mjs 파일 자체는 유지(향후 IP 해제/프록시 도입 시 복구 가능).
 
 보정 대상: `units <= 1` 또는 `unsold_rate >= 100%`인 단지.
 보정 시 `unsold_rate` 재계산: `ROUND(unsold / new_units * 100, 1)`.
@@ -64,9 +66,11 @@
 | 1/6 | naver-collect.py | 네이버 매물 수집 (curl_cffi) | O |
 | 2/6 | sync-naver-complex.mjs | 22개 필드 → apartments 동기화 | O |
 | 3/6 | naver-presale.mjs | 분양정보 19필드 수집 | - |
-| 4/6 | naver-units.mjs | 세대수 2차 보정 | O |
+| 4/6 | naver-units.mjs | 세대수 2차 보정 | **(비활성, IP 차단)** |
 | 5/6 | calc-exclusive-ratio.mjs | 전용률 계산 | O |
 | 6/6 | compute-scores.mjs | cats_cache 스코어링 갱신 | - |
+
+**주의**: 4/6 단계는 `run-naver-local.bat`/`.sh`가 여전히 `naver-units.mjs`를 호출하지만 IP 차단으로 실패 지속. 별도 세션에서 배치 파일 업데이트 예정(세션89 플랜 범위 밖).
 
 **주의**: compute-scores.mjs는 `node --loader ./scripts/alias-loader.mjs` 필요 (`@/` 별칭)
 
@@ -75,7 +79,7 @@
 | 단계 | 스크립트 | 역할 |
 |------|---------|------|
 | 1 | sync-naver-complex.mjs | 22개 필드 동기화 |
-| 2 | naver-units.mjs | 세대수 보정 |
+| 2 | molit-units.mjs | 세대수 2차 보정 (국토부 API, 세션89 교체) |
 | 3 | collect-unsold-kosis.mjs | KOSIS 미분양률 비례배분 |
 | 4 | compute-scores.mjs | cats_cache 갱신 |
 
@@ -90,12 +94,14 @@
 | 매월 1일 | collect-unsold-kosis | ~1 |
 | 매월 5일 | population, market-stats | ~100 |
 | 매월 6일 | collect-trades | 1,500~3,500 |
-| 매월 6일 | molit-units | 50~300 |
+| 매월 6일 + 월/목 08:00 후 | molit-units | 50~300 (+post-naver-collect 시 추가) |
 | **매월 10일** | **building-info** | **~8,500** |
 | 매월 10일 | housing-permits | ~100 |
 | **토요일** | naver-estate-web public_data | ~3,600 |
 
-**위험일**: 매월 10일이 토요일 → 12,100 > 10,000. collect-building-info.yml에 토요일 → 11일 fallback 구현됨.
+**위험일**:
+- 매월 10일이 토요일 → 12,100 > 10,000. collect-building-info.yml에 토요일 → 11일 fallback 구현됨.
+- 매월 10일이 월/목 → building-info 8,500 + post-naver-collect molit-units 300 = ~8,800~9,100(한도의 88~91%). 여유 900~1,200회. 모니터링 필요(세션89).
 
 ### 쿼터 로깅
 

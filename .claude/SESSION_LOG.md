@@ -1,3 +1,47 @@
+# 세션 89 — 2026-04-15
+
+## 주요 작업
+
+### 1. 세션88 이월 오류 정리
+- "모바일 옵션 버튼 미작동"은 mibunyang이 아닌 타 프로젝트 건으로 확인 → CLAUDE.md 우선순위 1번에서 제거
+- 커밋: `213da52 docs: 모바일 옵션 버튼 과제 제외 (타 프로젝트 건으로 확인)`
+
+### 2. naver-units 만성 Rate Limit 대응 — post-naver-collect 2/4 단계 교체
+- **문제**: 방금 실행한 naver-units 로그에서 7/54 진행 중 연속 20회 429 발생. fetch + Python curl_cffi 양 경로 모두 실패 → TLS 핑거프린팅이 아닌 **집 서버 IP 차단** 재확인 (세션83, 84, 87 반복)
+- **해법**: 이미 존재하는 `molit-units.mjs`(국토부 공동주택 API)가 naver-units와 **동일한 타겟 쿼리**(`units<=1 OR unsold_rate>=100`)를 쓴다는 점 발견. 파이프라인 2/4 단계만 교체
+- **변경 파일 3개**:
+  - `scripts/post-naver-collect.sh`: 2/4 단계 `naver-units.mjs` → `molit-units.mjs`
+  - `scripts/CLAUDE.md`: 파이프라인 표 + 쿼터 표 + 위험일 경고 갱신
+  - `CLAUDE.md`: 다음 세션 우선순위에서 naver-units-night 제거, price/dataReliability 갭을 1번으로 승격
+- **dry-run 결과**: 보정 대상 57건 중 16건 보정, 41건 실패, 9건 건너뛰기, API 53회 소비 — MOLIT API 정상 응답, IP 차단 이슈 없음
+- **손대지 않은 것**:
+  - `scripts/collectors/naver-units.mjs` 파일 자체 (향후 IP 해제/프록시 도입 시 복구 자산)
+  - `.github/workflows/naver-units.yml` (별도 조사 필요)
+  - `scripts/run-naver-local.bat`, `.sh`의 4/6 단계 (범위 초과, 다음 세션 별도 플랜)
+
+### 3. 9 GATE + 5교차검증 (Review 의무 준수)
+- **9 GATE(0~8)**: 🟢 7 / 🟡 2 / 🔴 0 → 실행 허가
+  - 🟡 GATE1: `run-naver-local.*` 4/6 단계 미수정(의도적 범위 외)
+  - 🟡 GATE8: 매월 10일이 월/목인 달 쿼터 근접 리스크
+- **5교차검증 (병렬 Task)**:
+  - 빌드: 메인 agent `npx vite build` 444~507ms 3회 PASS
+  - 수집기 계약: **`collector-contract`** WARN (월/목-10일 쿼터 경고) → `scripts/CLAUDE.md` 위험일 표에 경고 추가로 해소
+  - null 안전성: **`null-safety-checker`** PASS (scoring/engine.js:18, scoreRisk.js:17 등 전 소비처 가드 존재)
+  - 스코어링: **`scoring-validator`** PASS (스코어링 코드 미수정, 불변식 자동 유지)
+  - Hook/보안: 해당 없음(수집기 변경)
+
+## 커밋 (2개 예정)
+1. `213da52` docs: 모바일 옵션 버튼 과제 제외 (타 프로젝트 건으로 확인)
+2. `fix(collectors): post-naver-collect 2/4 단계 naver-units → molit-units` (세션89 작업 커밋)
+
+## 미해결 (다음 세션 이월)
+- `run-naver-local.bat`/`.sh` 4/6 단계 naver-units → molit 전환 정책 결정
+- `.github/workflows/naver-units.yml` 3월 18일부터 failure 원인 조사
+- price 64% / dataReliability 57.4% 갭 보정 전략
+- 행안부 API 복구 대기 (외부)
+
+---
+
 # 세션 88 — 2026-04-15
 
 ## 주요 작업 (Claude 설정 리뉴얼 전담 세션)
