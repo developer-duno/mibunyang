@@ -1,11 +1,10 @@
 /**
- * migration.mjs 테스트 — 전입/전출 순수 함수 검증
+ * migration.mjs 테스트 — KOSIS DT_1B26001_A01 파서 검증
  *
- * 대상: resolveRegion, parseGu
+ * 대상: normalizeC1Name, mapC1, aggregateKosisRows, C1_TO_REGION
  */
 import { describe, it, expect, vi } from "vitest";
 
-// _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = await importOriginal();
   return {
@@ -14,71 +13,146 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     getSupabase: vi.fn(),
     log: vi.fn(),
     logError: vi.fn(),
-    today: vi.fn(() => "2026-03-30"),
     recordApiQuota: vi.fn(),
-    REGION_MAP: orig.REGION_MAP,
+    REGION_LAWD_PREFIX: orig.REGION_LAWD_PREFIX,
   };
 });
 
-// MOIS_POP_KEY 설정 — 모듈 로드 시 process.exit 방지
-process.env.MOIS_POP_KEY = "test-key";
+process.env.KOSIS_MIGRATION_KEY = "test-key";
 
-const { resolveRegion, parseGu } = await import("./migration.mjs");
+const { normalizeC1Name, mapC1, aggregateKosisRows, C1_TO_REGION } = await import("./migration.mjs");
 
-// ── resolveRegion ─────────────────────────────────────────────
-describe("resolveRegion", () => {
-  it("정확한 매칭 '서울특별시' → '서울'", () => {
-    expect(resolveRegion("서울특별시")).toBe("서울");
+// ── normalizeC1Name ──────────────────────────────────────────
+describe("normalizeC1Name", () => {
+  it("공백 2칸 제거 '중  구' → '중구'", () => {
+    expect(normalizeC1Name("중  구")).toBe("중구");
   });
-
-  it("정확한 매칭 '경기도' → '경기'", () => {
-    expect(resolveRegion("경기도")).toBe("경기");
+  it("공백 없는 이름 유지", () => {
+    expect(normalizeC1Name("강남구")).toBe("강남구");
   });
-
-  it("부분 매칭 '부산' → '부산'", () => {
-    expect(resolveRegion("부산")).toBe("부산");
-  });
-
   it("null → null", () => {
-    expect(resolveRegion(null)).toBeNull();
-  });
-
-  it("매칭 불가 → null", () => {
-    expect(resolveRegion("알수없는지역")).toBeNull();
-  });
-
-  it("세종특별자치시 → 세종", () => {
-    expect(resolveRegion("세종특별자치시")).toBe("세종");
+    expect(normalizeC1Name(null)).toBeNull();
   });
 });
 
-// ── parseGu ───────────────────────────────────────────────────
-describe("parseGu", () => {
-  it("'서울특별시 강남구' → { region: '서울', gu: '강남구' }", () => {
-    const result = parseGu("서울특별시 강남구");
-    expect(result).toEqual({ region: "서울", gu: "강남구" });
+// ── C1_TO_REGION ─────────────────────────────────────────────
+describe("C1_TO_REGION", () => {
+  it("주요 시도 매핑", () => {
+    expect(C1_TO_REGION["11"]).toBe("서울");
+    expect(C1_TO_REGION["26"]).toBe("부산");
+    expect(C1_TO_REGION["41"]).toBe("경기");
+    expect(C1_TO_REGION["36"]).toBe("세종");
+  });
+  it("강원 51(신) + 42(레거시 방어)", () => {
+    expect(C1_TO_REGION["51"]).toBe("강원");
+    expect(C1_TO_REGION["42"]).toBe("강원");
+  });
+  it("전북 52(신) + 45(레거시 방어)", () => {
+    expect(C1_TO_REGION["52"]).toBe("전북");
+    expect(C1_TO_REGION["45"]).toBe("전북");
+  });
+});
+
+// ── mapC1 ────────────────────────────────────────────────────
+describe("mapC1", () => {
+  it("'00' 전국 → null (제외)", () => {
+    expect(mapC1("00", "전국")).toBeNull();
+  });
+  it("2자리 시도 11 → { region: 서울, gu: null }", () => {
+    expect(mapC1("11", "서울특별시")).toEqual({ region: "서울", gu: null });
+  });
+  it("5자리 시군구 11680 → { region: 서울, gu: 강남구 }", () => {
+    expect(mapC1("11680", "강남구")).toEqual({ region: "서울", gu: "강남구" });
+  });
+  it("부산 중구 26110 ('중  구' 공백 정규화)", () => {
+    expect(mapC1("26110", "중  구")).toEqual({ region: "부산", gu: "중구" });
+  });
+  it("서울 중구 11140 — 동명이구 prefix 구분", () => {
+    expect(mapC1("11140", "중구")).toEqual({ region: "서울", gu: "중구" });
+  });
+  it("세종 5자리 → { region: 세종, gu: 세종시 }", () => {
+    expect(mapC1("36110", "세종시")).toEqual({ region: "세종", gu: "세종시" });
+  });
+  it("강원 51 prefix → 강원 매핑", () => {
+    expect(mapC1("51110", "춘천시")).toEqual({ region: "강원", gu: "춘천시" });
+  });
+  it("전북 52 prefix → 전북 매핑", () => {
+    expect(mapC1("52110", "전주시")).toEqual({ region: "전북", gu: "전주시" });
+  });
+  it("알 수 없는 prefix → null", () => {
+    expect(mapC1("99110", "알수없음")).toBeNull();
+  });
+  it("3자리 이상한 코드 → null", () => {
+    expect(mapC1("111", "이상")).toBeNull();
+  });
+});
+
+// ── aggregateKosisRows ───────────────────────────────────────
+describe("aggregateKosisRows", () => {
+  const mkRow = (C1, C1_NM, PRD_DE, ITM_NM, DT) => ({ C1, C1_NM, PRD_DE, ITM_NM, DT });
+
+  it("빈 배열 → period null, entries []", () => {
+    expect(aggregateKosisRows([])).toEqual({ period: null, entries: [] });
   });
 
-  it("'경기도 수원시' → { region: '경기', gu: '수원시' }", () => {
-    const result = parseGu("경기도 수원시");
-    expect(result).toEqual({ region: "경기", gu: "수원시" });
+  it("최신 월만 선택 (202602 > 202601)", () => {
+    const rows = [
+      mkRow("11", "서울특별시", "202601", "순이동", "100"),
+      mkRow("11", "서울특별시", "202602", "순이동", "200"),
+    ];
+    const { period, entries } = aggregateKosisRows(rows);
+    expect(period).toBe("202602");
+    expect(entries).toEqual([{ region: "서울", gu: null, net_migration: 200 }]);
   });
 
-  it("세종특별자치시 → { region: '세종', gu: '세종시' }", () => {
-    const result = parseGu("세종특별자치시 아무동");
-    expect(result).toEqual({ region: "세종", gu: "세종시" });
+  it("순이동 ITM_NM 만 채택 — 총전입/총전출 제외", () => {
+    const rows = [
+      mkRow("11", "서울특별시", "202602", "총전입", "500000"),
+      mkRow("11", "서울특별시", "202602", "총전출", "550000"),
+      mkRow("11", "서울특별시", "202602", "순이동", "-50000"),
+    ];
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].net_migration).toBe(-50000);
   });
 
-  it("단어 1개만 → null", () => {
-    expect(parseGu("서울")).toBeNull();
+  it("전국('00') 제외", () => {
+    const rows = [
+      mkRow("00", "전국", "202602", "순이동", "0"),
+      mkRow("11", "서울특별시", "202602", "순이동", "-100"),
+    ];
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].region).toBe("서울");
   });
 
-  it("알 수 없는 시도 → null", () => {
-    expect(parseGu("미국 뉴욕")).toBeNull();
+  it("시도 + 시군구 혼합 처리", () => {
+    const rows = [
+      mkRow("11", "서울특별시", "202602", "순이동", "-1000"),
+      mkRow("11680", "강남구", "202602", "순이동", "200"),
+      mkRow("26", "부산광역시", "202602", "순이동", "-500"),
+      mkRow("26110", "중  구", "202602", "순이동", "-30"),
+    ];
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries).toHaveLength(4);
+    expect(entries).toContainEqual({ region: "서울", gu: null, net_migration: -1000 });
+    expect(entries).toContainEqual({ region: "서울", gu: "강남구", net_migration: 200 });
+    expect(entries).toContainEqual({ region: "부산", gu: "중구", net_migration: -30 });
   });
 
-  it("앞뒤 공백 trim", () => {
-    const result = parseGu("  서울특별시  종로구  ");
-    expect(result).toEqual({ region: "서울", gu: "종로구" });
+  it("DT 쉼표 구분 파싱", () => {
+    const rows = [mkRow("11", "서울특별시", "202602", "순이동", "-12,345")];
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries[0].net_migration).toBe(-12345);
+  });
+
+  it("NaN DT 필터링", () => {
+    const rows = [
+      mkRow("11", "서울특별시", "202602", "순이동", "invalid"),
+      mkRow("26", "부산광역시", "202602", "순이동", "100"),
+    ];
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].region).toBe("부산");
   });
 });

@@ -1,3 +1,53 @@
+# 세션 102 — 2026-04-16 (행안부 API 탐색 → KOSIS 전환 결정)
+
+**목표**: `regions.net_migration` 454/454 NULL(100%) 해소를 위해 행안부 `MOIS_POP_KEY` 갱신 → `migration.mjs` 재실행.
+
+## 사전 진단
+- `migration.mjs` 호출 URL: `https://apis.data.go.kr/1741000/transMovStats/getTransMovStats`
+- 로컬 `.env.local` 기존 키로 테스트 → `Forbidden`
+- `regions.net_migration` 454/454 NULL 재확인
+
+## 사용자와 함께 행안부 활용신청 4개 전수 확인 (API 설계 미스매치 판정)
+| API | 제공 데이터 | net_migration 산출 |
+|---|---|---|
+| `ppltnDataStus/selectPpltnDataStus` | 전입↔전출 O-D 페어별 0~110세 남녀 인구 | ❌ 62,500 페어 · 쿼터 터짐 |
+| `RegistrationPopulationByRegion` | 지역별 주민등록인구/세대 현황 | ❌ 이동량 아님 |
+| `stdgPpltnHhStus/selectStdgPpltnHhStus` | 법정동별 인구/세대/남녀비 | ❌ 이동량 아님 |
+| ~~`transMovStats/getTransMovStats`~~ | 시군구별 전입/전출 요약 | ✓ (행안부에 **존재하지 않음** — 세션85 HTTP 502는 실은 엔드포인트 부재) |
+
+**결론**: 행안부(1741000) 경로로는 시군구별 이동량 요약 API가 없음. 세션85 "서버 장애 키 유효"는 오진 — 엔드포인트 자체가 없거나 중단.
+
+## KOSIS 전환 결정 + API 실증
+- 사용자가 KOSIS 통계목록 → "국내인구이동통계" → **"시군구별 이동자수"** 발견 (수록기간 월/분기/년 1970.01~2026.02)
+- 테이블ID `DT_1B26001_A01` / 기관ID `101` / 인증키 신규 발급 (`NTBhZGYy...ZTA=`)
+- 실증 호출 성공 (2026년 2월 데이터까지 갱신일 2026-03-27):
+  - `objL1=ALL` 한 번 호출에 **전국 272건** (전국1 + 시도17 + 시군구254)
+  - 필드: `C1`(5자리 시군구코드) / `C1_NM`(한글) / `ITM_ID`(T10 총전입 / T20 총전출 / T25 순이동) / `PRD_DE`(YYYYMM) / `DT`(값)
+  - 호출 1~3회로 월별 완주 → 쿼터 극소
+
+## 세션 종료 상태 (커밋·코드 변경 없음)
+- `.claude/settings.local.json` 폴루션 초기화 (`allow: []`)
+- `.env.local` `MOIS_POP_KEY` 행안부 신규 키 교체됨 (사용자 수동) — 다만 실제 불필요해짐, 다음 세션에서 KOSIS 키로 대체
+- 수정 파일: `.claude/settings.local.json` (1건) + `.claude/SESSION_LOG.md` (이 항목)
+
+## 다음 세션 (103) 우선순위
+1. **migration.mjs KOSIS 전환 재작성**
+   - `.env.local`에 `KOSIS_MIGRATION_KEY=NTBhZGYy...ZTA=` 추가 (기존 `KOSIS_KEY`와 분리/재사용 판단)
+   - `scripts/collectors/migration.mjs`: `BASE_URL` → `https://kosis.kr/openapi/Param/statisticsParameterData.do`
+   - 파라미터: `method=getList&orgId=101&tblId=DT_1B26001_A01&itmId=T10+T20+T25&objL1=ALL&prdSe=M&newEstPrdCnt=N&format=json&jsonVD=Y&apiKey=...`
+   - 파싱: `C1_NM` + `ITM_NM`으로 피벗 → `regions` upsert
+   - `regions` 매칭 키 확인: `C1`(5자리) ↔ `regions.sgg_code` 또는 `lawd_cd` 호환성 점검 필수
+2. dry-run → 실행 → 454건 NULL 해소 KPI 측정
+3. 기존 4개 행안부 API는 일단 보관 (`ppltnDataStus`는 향후 연령별 분석 용도 가능)
+4. 세션102 수확물: **세션85의 "MOIS 서버 장애" 기록은 오진** → CLAUDE.md 진행 상황에서 제거 또는 정정
+
+## 검증
+- API 실증만 (코드/DB 변경 없음)
+- vitest / build 미실행 (변경 없음)
+- 커밋 없음
+
+---
+
 # 세션 97 — 2026-04-15 (dataReliability VIEW 공식 강화 — 유령값 제거)
 
 **목표**: `apartments_flat.dataReliability` 공식에서 `IS NOT NULL` 체크가 `DEFAULT 0` 컬럼의 유령값에 10점을 오부여하는 문제를 해소. 세션96에서 발견한 transport.bus_routes=0 (772건, 39.6%) / infra.hospital=0 (83건) / prices.price<=0 (57건).
@@ -1349,3 +1399,133 @@ region 별 price 평균 급상승:
 1. naver-collect.py 전체 재실행 (--limit 없이, nohup으로 12시간+ 실행)
 2. building-hub 재실행 (data.go.kr API 정상화 후)
 3. 🟡 개선 백로그: useDataPipeline 테스트, WeightEditor memo(), API 검증 중복 제거
+
+---
+
+# 세션 100 — 2026-04-16 (미등록 필드 32개 NULL률 진단 — read-only)
+
+**배경**: 사용자가 전문가 대시보드 "데이터 완성도" UI에서 한 아파트당 31~32개 필드가 "미등록"으로 표시되는 것을 캡처 2장으로 공유. 수집기부터 검토하자는 방향 제시.
+
+## Plan 모드 + 9 GATE 검증
+- Plan 파일: `~/.claude/plans/wild-wiggling-gray.md`
+- Phase 1: Explore 3병렬로 fieldMeta↔수집기↔DB 매핑 완료 (32개 필드 중 28개는 DB 컬럼 존재, 4개는 컬럼 자체 부재 판정)
+- Phase 2 확정 범위: **진단만** (사용자 선택, read-only)
+- 9 GATE: 🟢 8 / 🟡 1 (수단 옵션 열어두기) / 🔴 0 → 실행 허가
+
+## 실행
+- 임시 스크립트: `scripts/diag_null_rates.mjs` (커밋 금지, 실행 후 삭제 예정)
+- 키 전환: .env.supabase의 ANON_KEY가 옛 키(Invalid API key) → SUPABASE_SERVICE_KEY로 전환. grep으로 upsert/insert/update/delete/rpc 0건 확인 후 실행 (GATE 5 본래 의도 유지)
+- `.env.supabase`는 loadEnv() 로드 대상이 아니어서 스크립트 자체에 `.env.supabase`까지 읽는 로더 내장
+
+## 실측 결과 (2026-04-15T17:19Z)
+
+**총 행수**: apartments 2001 / transport 1697 / builders 32 / regions 454
+
+**🔴 A급 병목 (NULL 95%+)**
+- `regions.net_migration` **100%** — 행안부 API(MOIS_POP_KEY) 미복구. CLAUDE.md 백로그와 일치. recorded_at 최신값 2026-03-20
+- `apartments.district` **96.4%** — 72건만 존재, 수집기 미연결
+
+**🟡 B급 부분 수집 (NULL 60~90%)**
+| 수집기 | 필드 | NULL% |
+|---|---|---|
+| molit-building-info | layout 60.7 / floor_area_ratio 78.2 / heat_fuel 80.9 / energy_grade 85.1 | 60~85 |
+| naver-listings | naver_jeonse_count 70.1 / naver_wolse_count 74.2 | 70~74 |
+| naver-presale (14컬럼) | presale_* 전 필드 **63~75%** (728/2001 단지만 수집, 마지막 2026-04-07) | 63~75 |
+
+**🟢 C급 정상 (NULL <40%)**
+- applyhome: competition_rate/supply/applicants 37% (청약 대상 외 단지는 당연 NULL)
+- transport-tago: subway_name 12.2 / subway_lines 19.3 / bus_stop_names 20.9 (세션98 NULL sentinel 효과 확인)
+- dart-builders: builders.credit_grade 0 / debt_ratio 0 (32/32 완벽)
+
+## 핵심 발견
+1. **naver-presale은 건강**: 728건 전 필드 동일 NULL률 → "분양 중 단지 대상" 범위가 728개라는 뜻. 나머지 1,273건은 "적용 대상 아님"이 NULL로 찍힘. **"미등록" UI 판정이 적용 대상 구분을 안 해서 과대 표시**되는 것이 가장 큰 원인
+2. **진짜 시급한 결손은 단 2건**: net_migration(MOIS 키) + district(수집기 미연결)
+3. **molit-building-info 매칭률이 레버리지 최대**: 4필드가 60~85% NULL. kaptCode 매칭 개선 시 4필드 동시 해소
+4. **builders는 테이블 자체 완벽한데 UI는 미등록**: apartments↔builders join 실패 의심. 별도 세션에서 builder_id 매칭률 측정 필요
+
+## 다음 세션 권장 (세션101)
+1. **완성도 UI 로직 개선** (최우선, 코드 작업): `ExpertDataCompleteness.jsx`에 "적용 대상 아님(N/A)" 분류 추가. presale_* 14필드는 분양 중 단지만 평가, applyhome 3필드는 청약 대상만 평가 → 체감 미등록 수 대폭 감소
+2. **행안부 API 키 갱신** (환경변수 1건): MOIS_POP_KEY → population.mjs 재실행 → net_migration 1필드 해소
+3. **molit-building-info 매칭 개선**: kaptCode 매칭 실패 샘플 분석 → 4필드 NULL률 축소
+4. **apartments↔builders join 추적**: credit_grade/debt_ratio가 UI에 왜 미등록으로 뜨는지 매칭 로직 확인
+5. **district 컬럼 소스 탐색**: 72건이 어떻게 채워졌는지 grep → 수집기 후보 선정 (또는 도시/산업 개발과 묶어 C 그룹 마이그레이션 설계)
+
+## 건드리지 않은 것
+- 코드 수정 0건 (read-only)
+- DB 마이그레이션 0건
+- 수집기 재실행 0건
+
+## 임시 파일
+- `scripts/diag_null_rates.mjs` → 이 세션 종료 시 삭제(커밋 금지)
+
+---
+
+# 세션 103 — 2026-04-16 (migration.mjs KOSIS 전환 실행)
+
+**목표**: 세션102 에서 확정한 KOSIS DT_1B26001_A01 전환을 코드로 구현 → regions.net_migration 454/454 NULL 해소.
+
+## 응답 구조 probe (scripts/probe-kosis-migration.mjs 1회성)
+- HTTP 200, 총 272건/기준월(T25 순이동만) = 전국1 + 시도17 + 시군구254
+- 응답 필드: `C1_OBJ_NM, DT, C1, PRD_SE, ITM_ID, TBL_ID, ITM_NM, TBL_NM, PRD_DE, LST_CHN_DE, C1_NM_ENG, C1_NM, UNIT_NM, ITM_NM_ENG, ORG_ID, C1_OBJ_NM_ENG`
+- **C1 길이 패턴**: 2자리=시도(17건), 5자리=시군구(254건), "00"=전국
+- **C1 앞 2자리가 시도 C1 과 동일** → `REGION_LAWD_PREFIX` 역변환 그대로 사용
+- **동명이구 해결**: 서울중구 11140 / 부산중구 26110 (prefix 분리)
+- **공백 이슈**: 부산/대구 등 "중  구" (공백 2칸) → normalizeC1Name 필요
+- ITM_NM: "총전입" / "총전출" / "순이동" → 순이동 직접 사용(계산 불필요)
+- probe 파일은 세션 내에서 삭제
+
+## 구현 (scripts/collectors/migration.mjs 전면 재작성)
+| 항목 | 구버전 (행안부 transMovStats) | 신버전 (KOSIS DT_1B26001_A01) |
+|---|---|---|
+| BASE_URL | apis.data.go.kr/1741000/… | kosis.kr/openapi/Param/statisticsParameterData.do |
+| 인증키 env | MOIS_POP_KEY | KOSIS_MIGRATION_KEY |
+| 호출 횟수 | 월별 3회 (srchMonth 순회) | ALL 1회 |
+| 파싱 | admNm 문자열 split + REGION_MAP | C1 코드 길이 + prefix 맵 |
+| 순이동 | moveIn - moveOut 직접 계산 | ITM_NM="순이동" DT 직접 사용 |
+| 동명이구 | parseGu 에 의존 (서울/부산 중구 구분 불가) | C1 prefix 로 구조적 해결 |
+
+**신규 export**: `C1_TO_REGION`, `normalizeC1Name`, `mapC1`, `aggregateKosisRows`
+**제거 export**: `resolveRegion`, `parseGu`
+
+## 테스트 (migration.test.mjs 재작성)
+- 12 → 23 tests (+11)
+- 신규 커버: normalizeC1Name(공백2칸/null), C1_TO_REGION(강원 51/42, 전북 52/45 양방향), mapC1(전국/시도/시군구/세종/동명이구/비정상 코드), aggregateKosisRows(빈 배열/최신월 선택/순이동 필터/전국 제외/혼합/쉼표/NaN)
+
+## KPI 실측
+| 시점 | regions 총행 | net_migration NULL | 비율 |
+|---|---|---|---|
+| UPDATE 전 | 454 | 454 | 100.0% |
+| UPDATE 후 | 454 | **0** | **0.0%** |
+
+- KOSIS 응답 271 entries (시도17 + 시군구254) → 271건 UPDATE 성공 / 0건 실패
+- PostgREST `.update().eq()` 특성상 같은 region+gu 의 모든 recorded_at 스냅샷(4개) 동기화 갱신 → 454건 전체 해소
+- 쿼터: KOSIS_MIGRATION_KEY 1콜 (data.go.kr MOLIT_KEY 와 완전 분리)
+
+## 교차검증 (cross-validate)
+- **vitest 전체**: 146 files / **2,335 tests** 🟢 (세션97 대비 +25)
+- **vite build**: 🟢 400ms, 번들 크기 정상
+- **null-safety-checker**: PASS — 전 KOSIS 필드(C1/C1_NM/PRD_DE/ITM_NM/DT) undefined 경로 안전
+- **collector-contract**: WARN → **C 옵션 수정 적용**
+  1. `.order("recorded_at", desc).limit(1)` 는 PostgREST UPDATE 에 반영 안 됨 → 제거 + 주석 명시
+  2. try/finally 로 `recordApiQuota` 기록 보장 (fetchKosis throw 경로 커버)
+  3. 재시도 백오프는 월1회 단일 호출이라 면제(WARN 유지)
+
+## 정정 사항
+- **CLAUDE.md 세션85 "MOIS_POP_KEY 502 서버 장애" 기록 → 오진 처리**: 행안부 transMovStats 엔드포인트는 현재 행안부(1741000) 네임스페이스에 존재하지 않음. 세션85 당시 HTTP 502 는 엔드포인트 부재 응답이었을 가능성. 이후 세션103 에서 KOSIS로 완전 이관.
+
+## 파일 변경
+```
+M scripts/collectors/migration.mjs  (213줄 → 216줄, 전면 재작성)
+M scripts/collectors/migration.test.mjs (85줄 → 165줄, 재작성 +11 tests)
+M CLAUDE.md (현재 진행 상황 세션103 추가)
+M .claude/SESSION_LOG.md (본 섹션)
+```
+
+## 임시 파일 (삭제 완료)
+- `scripts/probe-kosis-migration.mjs` (3회 갱신 후 삭제)
+- `scripts/kosis-c1-map.json` (probe 부산물, 삭제)
+
+## 다음 세션
+- (저우선) regions 시계열 스냅샷 UPDATE 의미 재설계 — recorded_at 별 분리 저장 원하면 2단계 SELECT→UPDATE 필요
+- (저우선) fetchKosis 재시도 백오프 추가 (fetchWithRetry 재사용)
+- KPI: regions.net_migration 454/454 ✅ 해소 완료

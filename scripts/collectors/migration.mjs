@@ -1,212 +1,232 @@
 /**
- * 행안부 전입/전출 통계 → 시군구별 순이동 수집
+ * KOSIS 시군구별 이동자수 → 시군구/시도별 순이동 수집
  *
- * API: 행정안전부_주민등록 전입전출 통계 (data.go.kr)
+ * API: KOSIS OpenAPI 통계청 "시군구별 이동자수" (DT_1B26001_A01)
+ *      orgId=101, itmId=T25(순이동), objL1=ALL → 1회 호출로 전국 272건
+ *      (전국1 + 시도17 + 시군구254)
+ *
+ * 세션103: 행안부 transMovStats 전환. 기존 API는 4개 활용신청 전부 net_migration 부적합.
+ *          transMovStats 자체가 행안부에 존재하지 않음(세션85 "502 서버장애"는 오진).
+ *
+ * C1 코드 규칙:
+ *   - 2자리(시도): 11서울, 26부산, 27대구, 28인천, 29광주, 30대전, 31울산, 36세종,
+ *                 41경기, 51강원, 43충북, 44충남, 52전북, 46전남, 47경북, 48경남, 50제주
+ *   - 5자리(시군구): 앞 2자리 = 시도 C1 → 동명이구 자동 해결
  *
  * 사용법:
- *   node scripts/collectors/migration.mjs          (Supabase regions 테이블 업데이트)
- *   node scripts/collectors/migration.mjs --dry-run (미리보기만)
+ *   node scripts/collectors/migration.mjs          (Supabase regions UPDATE)
+ *   node scripts/collectors/migration.mjs --dry-run (미리보기)
  *
  * 필요 환경변수:
- *   MOIS_POP_KEY        — data.go.kr 인증키 (행안부 API)
- *   SUPABASE_URL        — Supabase 프로젝트 URL
- *   SUPABASE_SERVICE_KEY — Supabase service_role 키
+ *   KOSIS_MIGRATION_KEY  — KOSIS OpenAPI 키
+ *   SUPABASE_URL / SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, today, recordApiQuota } from "./_shared.mjs";
+import {
+  loadEnv, getSupabase, log, logError,
+  REGION_LAWD_PREFIX, recordApiQuota,
+} from "./_shared.mjs";
 
 loadEnv();
 
-const API_KEY = process.env.MOIS_POP_KEY;
+const PHASE = "migration";
+const API_KEY = process.env.KOSIS_MIGRATION_KEY;
 if (!API_KEY) {
-  logError("init", "MOIS_POP_KEY 환경변수 필요 (data.go.kr 인증키)");
+  logError(PHASE, "KOSIS_MIGRATION_KEY 환경변수 필요");
   process.exit(1);
 }
 
-const BASE_URL = "https://apis.data.go.kr/1741000/transMovStats/getTransMovStats";
+const BASE_URL = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
 
-// ── 전입/전출 데이터 조회 ──────────────────────────────────
-async function fetchMigration(year, month) {
-  const params = new URLSearchParams({
-    serviceKey: API_KEY,
-    pageNo: "1",
-    numOfRows: "500",
-    type: "json",
-    srchSeCd: "2", // 시군구
-    srchYear: String(year),
-    srchMonth: String(month).padStart(2, "0"),
-  });
-
-  const url = `${BASE_URL}?${params}`;
-  log("fetch", `${year}년 ${month}월 전입/전출 데이터 조회...`);
-
-  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-
-  const json = await res.json();
-  // API 응답 구조에 맞게 파싱
-  const items = json?.StatsTransMovSearch?.item ?? json?.response?.body?.items?.item;
-  if (!items || !Array.isArray(items)) {
-    log("fetch", `${year}년 ${month}월: 데이터 없음`);
-    return [];
+// ── C1 2자리 → 약칭 역변환 맵 (REGION_LAWD_PREFIX 역방향) ─────
+// 강원 42→51, 전북 45→52 특별자치도 개편 이후 KOSIS는 신 코드 사용.
+// 레거시 코드도 함께 수용(자체 방어).
+export const C1_TO_REGION = (() => {
+  const map = {};
+  for (const [region, prefix] of Object.entries(REGION_LAWD_PREFIX)) {
+    map[prefix] = region;
   }
+  // 강원/전북 특별자치도 개편 — KOSIS는 51/52, 레거시는 42/45
+  map["51"] = "강원";
+  map["52"] = "전북";
+  map["42"] = "강원"; // 방어
+  map["45"] = "전북"; // 방어
+  return map;
+})();
 
-  log("fetch", `${year}년 ${month}월: ${items.length}건`);
-  return items;
+// ── KOSIS 공백 이슈 정규화 ─────────────────────────────────
+// 부산/대구 등 "중  구" 공백 2칸 → "중구"
+export function normalizeC1Name(name) {
+  if (!name) return name;
+  return name.replace(/\s+/g, "");
 }
 
-// ── 시도명 → 약칭 변환 ──────────────────────────────────────
-export function resolveRegion(fullName) {
-  if (!fullName) return null;
-  if (REGION_MAP[fullName]) return REGION_MAP[fullName];
-  for (const [k, v] of Object.entries(REGION_MAP)) {
-    if (fullName.includes(v) || k.includes(fullName)) return v;
+// ── C1 코드 → { region, gu } 매핑 ─────────────────────────
+export function mapC1(c1Code, c1Name) {
+  const code = String(c1Code);
+  const name = normalizeC1Name(c1Name);
+  if (code === "00") return null; // 전국 제외
+
+  if (code.length === 2) {
+    const region = C1_TO_REGION[code];
+    return region ? { region, gu: null } : null;
+  }
+  if (code.length === 5) {
+    const prefix = code.slice(0, 2);
+    const region = C1_TO_REGION[prefix];
+    if (!region) return null;
+    // 세종은 시군구 없음
+    if (region === "세종") return { region, gu: "세종시" };
+    return { region, gu: name };
   }
   return null;
 }
 
-// ── 시군구명 파싱 ────────────────────────────────────────────
-export function parseGu(adminNm) {
-  const parts = adminNm.trim().split(/\s+/);
-  if (parts.length < 2) return null;
+// ── KOSIS 응답 행 → 집계 ────────────────────────────────────
+// 최신 PRD_DE (월)만 사용, ITM_NM === "순이동" 만
+export function aggregateKosisRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return { period: null, entries: [] };
 
-  const region = resolveRegion(parts[0]);
-  if (!region) return null;
+  // 최신 PRD_DE 찾기
+  let latestPrd = "";
+  for (const r of rows) {
+    if (r.PRD_DE > latestPrd) latestPrd = r.PRD_DE;
+  }
 
-  if (region === "세종") return { region, gu: "세종시" };
+  const entries = [];
+  for (const r of rows) {
+    if (r.PRD_DE !== latestPrd) continue;
+    if (r.ITM_NM !== "순이동") continue;
 
-  const gu = parts[1];
-  return { region, gu };
+    const mapped = mapC1(r.C1, r.C1_NM);
+    if (!mapped) continue;
+
+    const netMigration = parseInt(String(r.DT || "0").replace(/,/g, ""), 10);
+    if (Number.isNaN(netMigration)) continue;
+
+    entries.push({
+      region: mapped.region,
+      gu: mapped.gu,
+      net_migration: netMigration,
+    });
+  }
+  return { period: latestPrd, entries };
 }
 
-// ── 메인 ─────────────────────────────────────────────────────
+// ── KOSIS 호출 ──────────────────────────────────────────────
+async function fetchKosis() {
+  const params = new URLSearchParams({
+    method: "getList",
+    apiKey: API_KEY,
+    orgId: "101",
+    tblId: "DT_1B26001_A01",
+    itmId: "T10 T20 T25",
+    objL1: "ALL",
+    prdSe: "M",
+    newEstPrdCnt: "1", // 최신 1개월
+    format: "json",
+    jsonVD: "Y",
+  });
+  const url = `${BASE_URL}?${params}`;
+  log(PHASE, "KOSIS DT_1B26001_A01 호출...");
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0" },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) throw new Error(`KOSIS HTTP ${res.status}`);
+
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch { throw new Error(`KOSIS JSON 파싱 실패: ${text.slice(0, 200)}`); }
+  if (json?.err) throw new Error(`KOSIS 에러 ${json.err}: ${json.errMsg || ""}`);
+  return Array.isArray(json) ? json : [];
+}
+
+// ── 메인 ────────────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
-  // 최근 3개월 데이터 집계 (API 지연 감안)
-  const now = new Date();
-  const targetDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-  const year = targetDate.getFullYear();
-  const months = [
-    targetDate.getMonth() + 1,
-    targetDate.getMonth(),
-    targetDate.getMonth() - 1,
-  ].filter(m => m > 0).map(m => m > 12 ? m - 12 : m);
-
-  log("init", `대상: ${year}년 ${months.join(",")}월 전입/전출 통계`);
-
-  // 1. 월별 데이터 조회 + 집계
-  const netByKey = {}; // "region:gu" → { in: N, out: N }
+  // 세션103: KOSIS 호출 자체가 쿼터 1콜 소비이므로 throw 경로에서도 기록 보장
   let apiCalls = 0;
-
-  for (const month of months) {
-    try {
-      const items = await fetchMigration(year, month);
-      apiCalls++;
-
-      for (const item of items) {
-        const adminNm = item.admNm || item.adminNm || "";
-        const parsed = parseGu(adminNm);
-        if (!parsed) continue;
-
-        const key = `${parsed.region}:${parsed.gu}`;
-        if (!netByKey[key]) netByKey[key] = { region: parsed.region, gu: parsed.gu, moveIn: 0, moveOut: 0 };
-
-        // 전입/전출 수 파싱 (API 필드명은 변동 가능)
-        const moveIn = parseInt(String(item.movInCnt || item.moveInCnt || "0").replace(/,/g, ""), 10);
-        const moveOut = parseInt(String(item.movOutCnt || item.moveOutCnt || "0").replace(/,/g, ""), 10);
-
-        netByKey[key].moveIn += moveIn;
-        netByKey[key].moveOut += moveOut;
-      }
-
-      await new Promise(r => setTimeout(r, 500)); // 레이트 리밋
-    } catch (err) {
-      logError("fetch", `${year}년 ${month}월: ${err.message}`);
+  let failed = 0;
+  try {
+    const result = await runCollect(dryRun);
+    failed = result.failed;
+    apiCalls = result.apiCalls;
+  } finally {
+    if (!dryRun && apiCalls > 0) {
+      await recordApiQuota(PHASE, "KOSIS_MIGRATION_KEY", apiCalls);
     }
   }
+  if (failed > 0) process.exit(1);
+}
 
-  // 2. 순이동 계산
-  const rows = [];
-  for (const [, data] of Object.entries(netByKey)) {
-    const netMigration = data.moveIn - data.moveOut;
-    rows.push({
-      region: data.region,
-      gu: data.gu,
-      net_migration: netMigration,
-      recorded_at: `${year}-${String(months[0]).padStart(2, "0")}-01`,
-    });
+async function runCollect(dryRun) {
+  const rows = await fetchKosis();
+  const apiCalls = 1;
+  log(PHASE, `KOSIS 응답: ${rows.length}건`);
+
+  const { period, entries } = aggregateKosisRows(rows);
+  if (!period || entries.length === 0) {
+    log(PHASE, "유효 데이터 없음 — 종료");
+    return { apiCalls, failed: 0 };
   }
-
-  // 3. 시도 단위 집계
-  const regionAgg = {};
-  for (const r of rows) {
-    if (!regionAgg[r.region]) regionAgg[r.region] = { moveIn: 0, moveOut: 0 };
-    const data = netByKey[`${r.region}:${r.gu}`];
-    regionAgg[r.region].moveIn += data.moveIn;
-    regionAgg[r.region].moveOut += data.moveOut;
-  }
-
-  for (const [region, agg] of Object.entries(regionAgg)) {
-    rows.push({
-      region,
-      gu: null,
-      net_migration: agg.moveIn - agg.moveOut,
-      recorded_at: `${year}-${String(months[0]).padStart(2, "0")}-01`,
-    });
-  }
-
-  log("calc", `${rows.length}건 순이동 계산 완료`);
+  log(PHASE, `기준월: ${period}, 유효 entry: ${entries.length}건`);
 
   // 요약
-  const regionRows = rows.filter(r => !r.gu);
-  const positive = regionRows.filter(r => r.net_migration > 0);
-  const negative = regionRows.filter(r => r.net_migration < 0);
-  log("summary", `시도: ${regionRows.length}건 (순유입: ${positive.length}, 순유출: ${negative.length})`);
+  const regionRows = entries.filter(e => !e.gu);
+  const guRows = entries.filter(e => e.gu);
+  const positive = regionRows.filter(e => e.net_migration > 0);
+  const negative = regionRows.filter(e => e.net_migration < 0);
+  log(PHASE, `시도: ${regionRows.length}건 (유입 ${positive.length}, 유출 ${negative.length}) / 시군구: ${guRows.length}건`);
 
   if (dryRun) {
-    log("dry-run", "미리보기 모드 — 업데이트 생략");
     console.log("\n시도별 순이동:");
-    for (const r of regionRows.sort((a, b) => b.net_migration - a.net_migration)) {
-      const sign = r.net_migration > 0 ? "+" : "";
+    for (const r of [...regionRows].sort((a, b) => b.net_migration - a.net_migration)) {
+      const sign = r.net_migration >= 0 ? "+" : "";
       console.log(`  ${r.region}: ${sign}${r.net_migration.toLocaleString()}명`);
     }
     console.log("\n상위 10 시군구 (순유입):");
-    const guRows = rows.filter(r => r.gu);
-    for (const r of guRows.sort((a, b) => b.net_migration - a.net_migration).slice(0, 10)) {
+    for (const r of [...guRows].sort((a, b) => b.net_migration - a.net_migration).slice(0, 10)) {
       console.log(`  ${r.region} ${r.gu}: +${r.net_migration.toLocaleString()}명`);
     }
     console.log("\n하위 10 시군구 (순유출):");
-    for (const r of guRows.sort((a, b) => a.net_migration - b.net_migration).slice(0, 10)) {
+    for (const r of [...guRows].sort((a, b) => a.net_migration - b.net_migration).slice(0, 10)) {
       console.log(`  ${r.region} ${r.gu}: ${r.net_migration.toLocaleString()}명`);
     }
-    return;
+    return { apiCalls, failed: 0 };
   }
 
-  // 4. Supabase 업데이트
+  // Supabase UPDATE
+  // NOTE: PostgREST `.update().eq()` 는 ORDER BY/LIMIT 을 UPDATE 문에 반영하지 않음.
+  // regions 는 region+gu 당 여러 recorded_at 스냅샷이 동일 최신값으로 동기화되는 구조로 운영.
+  // "최신 1건만" 의도의 `.order().limit(1)` 은 미작동이므로 제거(세션103 collector-contract 지적).
   const sb = getSupabase();
-  let updated = 0;
+  let updated = 0, failed = 0;
 
-  for (const r of rows) {
-    // 기존 regions 행의 net_migration 컬럼 갱신
+  for (const e of entries) {
     const query = sb
       .from("regions")
-      .update({ net_migration: r.net_migration })
-      .eq("region", r.region)
-      .order("recorded_at", { ascending: false })
-      .limit(1);
+      .update({ net_migration: e.net_migration })
+      .eq("region", e.region);
 
-    if (r.gu) query.eq("gu", r.gu);
+    if (e.gu) query.eq("gu", e.gu);
     else query.is("gu", null);
 
     const { error } = await query;
-    if (error) logError("upsert", `${r.region} ${r.gu ?? ""}: ${error.message}`);
-    else updated++;
+    if (error) {
+      logError(PHASE, `${e.region} ${e.gu ?? ""}: ${error.message}`);
+      failed++;
+    } else {
+      updated++;
+    }
   }
 
-  log("done", `regions 테이블 net_migration ${updated}건 업데이트 완료 (${today()})`);
+  log(PHASE, `regions.net_migration UPDATE: ${updated}건 성공 / ${failed}건 실패`);
 
-  if (!dryRun) await recordApiQuota("migration", "MOIS_POP_KEY", apiCalls);
+  return { apiCalls, failed };
 }
 
 const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
