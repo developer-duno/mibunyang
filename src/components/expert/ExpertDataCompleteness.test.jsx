@@ -65,4 +65,52 @@ describe("ExpertDataCompleteness", () => {
     // makeApt는 대부분 필드 채움 → 50% 이상 기대
     expect(pct).toBeGreaterThan(30);
   });
+
+  // ── N/A(적용 대상 아님) 분류 — 세션101 ──
+  // presaleStage null인 단지는 presale/competition 필드 17개가 N/A로 빠져야 함
+  it("presaleStage가 null이면 해당없음 카운트가 표시된다", () => {
+    const apt = makeApt({ presaleStage: null });
+    render(<ExpertDataCompleteness apt={apt} />);
+    expect(screen.getByText(/해당없음:/)).toBeTruthy();
+    expect(screen.getByText(/적용 대상 아님 필드:/)).toBeTruthy();
+  });
+
+  // presaleStage 값이 있으면 presale 필드는 평가 대상으로 복귀 → N/A 줄 미표시
+  it("presaleStage가 '분양중'이면 적용 대상 아님 줄이 숨겨진다", () => {
+    const apt = makeApt({
+      presaleStage: "분양중",
+      presaleMinPrice: 30000, presaleMaxPrice: 50000, presalePp: 1500,
+      presaleType: "민간분양", presaleHousingType: "아파트",
+      presaleGeneralSupply: 500, presaleBuildings: 5, presaleParking: 600,
+      presaleMoveIn: "2027년 상반기", presaleRecruitDate: "2026-05",
+      presaleSchedule: {}, presaleInquiry: "1588-1234", presaleFeatures: "특징",
+      presaleFetchedAt: "2026-04-07T00:00:00Z",
+      competitionRate: 5.2, competitionSupply: 300, competitionApplicants: 1560,
+    });
+    render(<ExpertDataCompleteness apt={apt} />);
+    // 해당없음 카운트는 0개
+    expect(screen.getByText(/해당없음:/).textContent).toMatch(/해당없음:\s*0/);
+    // "적용 대상 아님 필드:" 줄은 조건부 렌더링이라 없어야 함
+    expect(screen.queryByText(/적용 대상 아님 필드:/)).toBeNull();
+  });
+
+  // N/A 제외 분모 — 같은 filled 기준에서 presaleStage 없는 쪽이 pct가 같거나 높음
+  it("N/A는 완성도 분모에서 제외된다 (분모 축소 효과)", () => {
+    const base = { id: 1, name: "테스트" };
+    const { unmount: u1 } = render(<ExpertDataCompleteness apt={{ ...base, presaleStage: null }} />);
+    const pctNA = parseInt(screen.getByRole("progressbar").getAttribute("aria-valuenow"), 10);
+    u1();
+    // presaleStage="분양중"이면 presale/competition 필드 17개가 미등록으로 잡혀 분모 커짐
+    render(<ExpertDataCompleteness apt={{ ...base, presaleStage: "분양중" }} />);
+    const pctAll = parseInt(screen.getByRole("progressbar").getAttribute("aria-valuenow"), 10);
+    // 둘 다 filled가 거의 없음 → pct는 0 근처인데, N/A 쪽이 분모 축소로 같거나 커야 함
+    expect(pctNA).toBeGreaterThanOrEqual(pctAll);
+  });
+
+  // 요약 줄에 "평가 N / 총 M" 표기 포함
+  it("평가 대상 수와 총 필드 수를 구분해 표시한다", () => {
+    const apt = makeApt({ presaleStage: null });
+    render(<ExpertDataCompleteness apt={apt} />);
+    expect(screen.getByText(/평가 \d+ \/ 총 \d+개/)).toBeTruthy();
+  });
 });

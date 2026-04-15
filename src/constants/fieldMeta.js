@@ -4,6 +4,10 @@ import { fmtPrice, fmtCompletion, fmtRecruitDate, fmtPresaleSchedule } from "@/l
 const n = (v, unit, fallback = "—") => v != null ? `${v}${unit}` : fallback;
 const nk = (v, unit) => v != null ? `${v.toLocaleString("ko-KR")}${unit}` : "—";
 
+// 분양 중이 아닌 단지 → presale/competition 필드는 "적용 대상 아님" 분류
+// (세션101: 세션100 NULL률 진단으로 confirmed — 1273/2001 단지가 presaleStage null)
+const presaleNA = (_v, apt) => apt?.presaleStage == null;
+
 export const FIELD_META = {
   // ── 섹션1: 단지 개요 ──
   id: { label: "단지 ID", section: "개요", fmt: v => v ?? "—" },
@@ -47,9 +51,9 @@ export const FIELD_META = {
   floorRange: { label: "거래 층수 범위", section: "가격", fmt: v => v ?? "미수집" },
   cancelRatio6m: { label: "계약해제율", section: "안전", unit: "%", fmt: v => v != null ? `${v}%` : "미수집", isEstimated: (v, apt) => apt?._fallbackCancelRatio6m },
   // ── 청약 경쟁률 ──
-  competitionRate: { label: "청약 경쟁률", section: "안전", fmt: v => v != null ? (v < 0 ? `미달 ${(Math.abs(v) * 100).toFixed(0)}%` : `${v.toFixed(1)}:1`) : "미수집" },
-  competitionSupply: { label: "공급세대수(청약)", section: "안전", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집" },
-  competitionApplicants: { label: "청약신청수", section: "안전", unit: "명", fmt: v => v != null ? nk(v, "명") : "미수집" },
+  competitionRate: { label: "청약 경쟁률", section: "안전", fmt: v => v != null ? (v < 0 ? `미달 ${(Math.abs(v) * 100).toFixed(0)}%` : `${v.toFixed(1)}:1`) : "미수집", isNotApplicable: presaleNA },
+  competitionSupply: { label: "공급세대수(청약)", section: "안전", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집", isNotApplicable: presaleNA },
+  competitionApplicants: { label: "청약신청수", section: "안전", unit: "명", fmt: v => v != null ? nk(v, "명") : "미수집", isNotApplicable: presaleNA },
   crimeSafetyGrade: { label: "치안 안전등급", section: "안전", fmt: v => v != null ? `${v}등급` : "미수집" },
   police: { label: "경찰관서(3km)", section: "입지", unit: "개", fmt: v => n(v, "개") },
   policeDist: { label: "경찰관서 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "미수집" },
@@ -143,25 +147,25 @@ export const FIELD_META = {
   gasUsageMj: { label: "월 가스사용량", section: "에너지", unit: "MJ", hidden: true, fmt: v => v != null ? `${v.toLocaleString("ko-KR")} MJ` : "미수집" },
   energyCollectedAt: { label: "에너지 수집 시점", section: "에너지", hidden: true, fmt: v => v ? new Date(v).toLocaleDateString("ko-KR") : "미수집" },
   // ── 섹션10: 네이버 분양정보 ──
-  presaleMinPrice: { label: "분양 최저가", section: "분양", unit: "만원", fmt: v => v != null ? fmtPrice(v) : "미수집" },
-  presaleMaxPrice: { label: "분양 최고가", section: "분양", unit: "만원", fmt: v => v != null ? fmtPrice(v) : "미수집" },
-  presalePp: { label: "평당 분양가", section: "분양", unit: "만원", fmt: v => v != null ? nk(v, "만원") : "미수집" },
-  presaleType: { label: "분양유형", section: "분양", fmt: v => v ?? "미수집" },
+  presaleMinPrice: { label: "분양 최저가", section: "분양", unit: "만원", fmt: v => v != null ? fmtPrice(v) : "미수집", isNotApplicable: presaleNA },
+  presaleMaxPrice: { label: "분양 최고가", section: "분양", unit: "만원", fmt: v => v != null ? fmtPrice(v) : "미수집", isNotApplicable: presaleNA },
+  presalePp: { label: "평당 분양가", section: "분양", unit: "만원", fmt: v => v != null ? nk(v, "만원") : "미수집", isNotApplicable: presaleNA },
+  presaleType: { label: "분양유형", section: "분양", fmt: v => v ?? "미수집", isNotApplicable: presaleNA },
   presaleStage: { label: "분양단계", section: "분양", fmt: v => v ?? "미수집" },
   presaleStageCode: { label: "분양단계코드", section: "분양", hidden: true, fmt: v => v ?? "—" },
-  presaleHousingType: { label: "주택유형", section: "분양", fmt: v => v ?? "미수집" },
-  presaleGeneralSupply: { label: "일반분양 세대", section: "분양", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집" },
-  presaleBuildings: { label: "동수", section: "분양", unit: "동", fmt: v => v != null ? n(v, "동") : "미수집" },
-  presaleParking: { label: "주차대수", section: "분양", unit: "대", fmt: v => v != null ? nk(v, "대") : "미수집" },
-  presaleMoveIn: { label: "입주시기", section: "분양", fmt: v => v ?? "미수집" },
-  presaleRecruitDate: { label: "분양시기", section: "분양", fmt: v => v ? fmtRecruitDate(v) : "미수집" },
-  presaleSchedule: { label: "분양일정", section: "분양", fmt: v => fmtPresaleSchedule(v) },
-  presaleInquiry: { label: "분양문의", section: "분양", fmt: v => v ?? "미수집" },
-  presaleFeatures: { label: "특징", section: "분양", fmt: v => v ?? "미수집" },
+  presaleHousingType: { label: "주택유형", section: "분양", fmt: v => v ?? "미수집", isNotApplicable: presaleNA },
+  presaleGeneralSupply: { label: "일반분양 세대", section: "분양", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집", isNotApplicable: presaleNA },
+  presaleBuildings: { label: "동수", section: "분양", unit: "동", fmt: v => v != null ? n(v, "동") : "미수집", isNotApplicable: presaleNA },
+  presaleParking: { label: "주차대수", section: "분양", unit: "대", fmt: v => v != null ? nk(v, "대") : "미수집", isNotApplicable: presaleNA },
+  presaleMoveIn: { label: "입주시기", section: "분양", fmt: v => v ?? "미수집", isNotApplicable: presaleNA },
+  presaleRecruitDate: { label: "분양시기", section: "분양", fmt: v => v ? fmtRecruitDate(v) : "미수집", isNotApplicable: presaleNA },
+  presaleSchedule: { label: "분양일정", section: "분양", fmt: v => fmtPresaleSchedule(v), isNotApplicable: presaleNA },
+  presaleInquiry: { label: "분양문의", section: "분양", fmt: v => v ?? "미수집", isNotApplicable: presaleNA },
+  presaleFeatures: { label: "특징", section: "분양", fmt: v => v ?? "미수집", isNotApplicable: presaleNA },
   presaleImageUrl: { label: "대표이미지", section: "분양", hidden: true, fmt: v => v ? "있음" : "없음" },
   naverPresaleNo: { label: "네이버 분양번호", section: "분양", hidden: true, fmt: v => v ?? "—" },
   naverPresaleSeq: { label: "네이버 공고순번", section: "분양", hidden: true, fmt: v => v ?? "—" },
-  presaleFetchedAt: { label: "분양정보 수집시점", section: "분양", fmt: v => v ? new Date(v).toLocaleDateString("ko-KR") : "미수집" },
+  presaleFetchedAt: { label: "분양정보 수집시점", section: "분양", fmt: v => v ? new Date(v).toLocaleDateString("ko-KR") : "미수집", isNotApplicable: presaleNA },
 };
 
 export const FIELD_SECTIONS = [
