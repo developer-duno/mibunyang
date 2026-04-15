@@ -311,6 +311,20 @@ export const GU_LAWD_MAP = {
   },
 };
 
+// 세션95 단계 B: apartments.gu 정규화 (화성시 재오염 방지 방어선).
+// "화성시 동탄구" 같은 복합 문자열이 미래 경로로 들어와도 "화성시"로 축약.
+// 세션94 에서 확정된 화성시 비법정 구 화이트리스트만 처리.
+// 신규 region/case 는 여기 추가.
+const HWASEONG_BARE_GU = new Set(["동탄구", "만세구", "효행구", "병점구"]);
+export function normalizeGu(region, gu) {
+  if (!gu) return gu;
+  if (region === "경기") {
+    if (gu.startsWith("화성시 ")) return "화성시";
+    if (HWASEONG_BARE_GU.has(gu)) return "화성시";
+  }
+  return gu;
+}
+
 export function getLawdCd(region, gu) {
   // 세종특별자치시는 구·군 없이 단일 LAWD_CD(36110)만 유효. prefix+"000"(36000)은 MOLIT 미지원.
   if (region === "세종") return "36110";

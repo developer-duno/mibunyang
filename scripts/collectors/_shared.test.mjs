@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveBuilder, stringSimilarity, today, sleep,
   REGION_MAP, VALID_REGIONS, createReporter,
-  REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd,
+  REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
 } from "./_shared.mjs";
 
 describe("resolveBuilder", () => {
@@ -238,5 +238,29 @@ describe("sleep", () => {
     const start = Date.now();
     await sleep(50);
     expect(Date.now() - start).toBeGreaterThanOrEqual(40); // 타이머 오차 허용
+  });
+});
+
+describe("normalizeGu (세션95 단계 B)", () => {
+  it("경기 화성시 동탄구 → 화성시 (복합 문자열)", () => {
+    expect(normalizeGu("경기", "화성시 동탄구")).toBe("화성시");
+  });
+  it("경기 화성시 만세구/효행구/병점구 → 화성시", () => {
+    expect(normalizeGu("경기", "화성시 만세구")).toBe("화성시");
+    expect(normalizeGu("경기", "화성시 효행구")).toBe("화성시");
+    expect(normalizeGu("경기", "화성시 병점구")).toBe("화성시");
+  });
+  it("경기 동탄구 단독 → 화성시 (비법정 구 화이트리스트)", () => {
+    expect(normalizeGu("경기", "동탄구")).toBe("화성시");
+  });
+  it("경기 수원시 장안구 → 그대로 (법정 구)", () => {
+    expect(normalizeGu("경기", "수원시 장안구")).toBe("수원시 장안구");
+  });
+  it("서울 강남구 → 그대로 (비경기 region)", () => {
+    expect(normalizeGu("서울", "강남구")).toBe("강남구");
+  });
+  it("null/undefined gu → 그대로 (getLawdCd 호환)", () => {
+    expect(normalizeGu("경기", null)).toBeNull();
+    expect(normalizeGu("세종", undefined)).toBeUndefined();
   });
 });

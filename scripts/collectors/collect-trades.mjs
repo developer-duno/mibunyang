@@ -12,7 +12,7 @@
 import {
   loadEnv, getMibuyangSupabase, log, logError, sleep,
   upsertBatch, createReporter, recordApiQuota, fetchWithRetry,
-  REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd,
+  REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -172,7 +172,8 @@ async function main() {
   }
 
   // 세종은 구·군 없이 단일 LAWD_CD(36110)만 유효 — gu 없어도 한 번만 수집
-  let regionGuPairs = [...new Set(allApts.map(a => a.region + "|" + (a.gu ?? "")))]
+  // 세션95 단계 B: apartments.gu 가 미래 경로로 오염돼도 normalizeGu 로 방어
+  let regionGuPairs = [...new Set(allApts.map(a => a.region + "|" + (normalizeGu(a.region, a.gu) ?? "")))]
     .map(s => { const [region, gu] = s.split("|"); return { region, gu: gu || null }; })
     .filter(rg => rg.region && (rg.gu || rg.region === "세종"));
 

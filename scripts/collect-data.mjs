@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd } from "./collectors/_shared.mjs";
+import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu } from "./collectors/_shared.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -88,7 +88,7 @@ function mapItem(item, idx, isRemndr) {
   const unsold = remndr > 0 ? remndr : null;
   return {
     id: `ah-${item.HOUSE_MANAGE_NO || String(idx)}`,
-    name, dong, gu, region,
+    name, dong, gu: normalizeGu(region, gu), region,
     lat: null, lng: null,
     area: 84, price: null, pp: null,
     units, unsold,
