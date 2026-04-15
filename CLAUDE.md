@@ -4,22 +4,21 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-15 세션93 — 세종 33건 nearbyMedian NULL 해소. 원인: trade-stats.mjs 의 `!gu` 가드가 세종(apartments gu=NULL 40 + "행정중심복합도시" 1, trades gu=NULL 21,507 + "행정중심복합도시" 7,169)을 양쪽에서 스킵. 해법: `statsKey(region, gu)` 헬퍼 신규 — 세종 화이트리스트로 gu 무시(`"세종:"` 단일 버킷), 비세종은 기존 리터럴과 bit 동일. 7곳(tradesByGu/naverByGu/historyByGu/cancelByGu/apartments loop/guComplexes 비교) 치환 + complexGuMap 세종 정규화(sido="세종특별자치시"→"세종"). 단일 파일 ~25줄 변경, 테스트 5 assert 추가(2,296→2,301). 쿼터 소비 0 (in-memory 재계산만). **KPI 결정적**: `nearbyMedian` NULL **98→65 (6.9→4.6%, -2.3pt, 33건 해소)**, 커버리지 93.1→**95.4%**. 세종 33/34 해소, 경기 61 + 인천 4 잔존. 9 GATE 전수 🟢, 5교차검증 3전 PASS (scoring-validator/null-safety-checker/collector-contract).
+**마지막 작업**: 2026-04-15 세션94 — 화성시 50건 nearbyMedian NULL 해소. 사전조사에서 원인 체인 재특정: apartments.gu 에 "화성시 동탄구/만세구/효행구/병점구" 복합 문자열 64건 저장돼 있어 `collect-trades.mjs:163` regionGuPairs 생성 시 `getLawdCd("경기","화성시 동탄구")` 매칭 실패 → MOLIT API 호출 자체가 미수행 → trades 화성시 0건 → trade-stats `statsKey` 매칭 실패 → nearby_median NULL. 세션92-d 의 LAWD 41591 교정은 정확했으나 gu 복합 문자열 때문에 효과 없었음. 3단계 처리: (A) `scripts/fix_hwaseong_gu.mjs` 신규 — LIKE '화성시 %' OR gu IN (동탄/만세/효행/병점) 매칭, 64/64 UPDATE, JSON 백업 자동(롤백 지원), 멱등. (C1) `collect-trades.mjs` `--only=region:gu` 플래그 +15줄 + 테스트 3개 (32→35 passed). (C2) 화성시 타겟 재수집 18콜 → 매매 706+전세 1523+분양권 6=2,235건 upsert → trade-stats 재계산 2001/2001. **KPI**: nearbyMedian NULL **65→15 (-50, -76.9%)**, 커버리지 95.4→**99.3%** (+3.9pt). 화성시 64/64 해소. 잔존 15건 전부 섬·산간(인천 동구 5/옹진군 2, 경기 가평 3/양평 4/연천 1) — 구조적. 쿼터 19콜 소비. 9 GATE 전수 🟢, Review 단계 simplify/scoring-validator/null-safety-checker/collector-contract.
 
-**이전 작업**: 2026-04-15 세션92-c/d — 통합시 복합 gu 연쇄 발견. 92-b 후 잔여 58건 조사 → 충북·충남·경북·경남 통합시(청주/천안/포항/창원) 단일 키가 MOLIT 미지원, 하위 구만 유효. 92-c/d 에서 경기·충청·영남 20여개 하위 구 매핑 확장 + 화성시 41590→41591 교정. 본 수집 527,149건 upsert. **KPI**: nearbyMedian NULL 491→98. 커밋 `23f5beb` + `d8ce1d7` + `d7af7bf`.
+**이전 작업**: 2026-04-15 세션93 — 세종 33건 nearbyMedian NULL 해소. `statsKey(region,gu)` 헬퍼 도입, 세종 화이트리스트로 gu 무시. KPI 98→65. 커밋 `8ee1907`.
 
-**잔여 65건 (구조적 56 + 개선 가능 9)**:
-- 화성시 비법정구 "동탄구/만세구/효행구/병점구" 52건 — apartments 원천 정규화 필요
-- 인천 동구/옹진군 4건 — 섬 지역 실 공백
-- 경기 양평/가평/연천 6건 + 기타 3건
+**잔여 15건 (전부 구조적)**:
+- 인천 동구 5 / 옹진군 2 — 섬 지역 실거래 공백
+- 경기 가평군 3 / 양평군 4 / 연천군 1 — 군 단위 거래 희소
 
 **다음 세션 우선순위**:
-1. apartments.gu 정규화 마이그레이션 (화성시 52건) — DB migration 필요
+1. **(세션95 권장) 수집기 normalizeGu 가드** — 화성시 재오염 방지 (gu 쓰기 경로 전수조사 + `_shared.mjs` normalizeGu 훅)
 2. 서울 pir null 57% 원천 수집 이슈
 3. dataReliability 지표 유령값 탐지 개선
 4. 행안부 API 복구 대기 / Vercel 12함수
 
-**DB 품질** (apartments_flat 1,424건, 세션93 측정): units 98.4% · lat/lng 99.9% · **price 100.0%** · unsoldRate 61.4% · subwayDist 79.0% · **nearbyMedian 95.4%**(98→65 NULL, 세션92 대비 -2.3pt)
+**DB 품질** (trade_stats 2,001건, 세션94 측정): **nearbyMedian 99.3%** (65→15 NULL, 세션93 대비 -3.9pt 개선)
 
 ---
 

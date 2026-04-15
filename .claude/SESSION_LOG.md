@@ -1,3 +1,106 @@
+# 세션 94 — 2026-04-15 (화성시 50건 nearbyMedian NULL 해소)
+
+**목표**: 세션93 잔여 65건 중 화성시 52건 해소.
+
+**원인 (DB 실측, 원 가설 전복)**:
+- 사전 가설: "apartments.gu 에 비법정 구 이름 박혀 있음" (세션93 종료 시 작성)
+- 실측: `region='경기' AND address ILIKE '%화성%'` apartments 64건의 gu 분포 = `{"화성시 동탄구":29, "화성시 만세구":12, "화성시 효행구":12, "화성시 병점구":8, "동탄구":3}` — **"화성시 " 접두사 붙은 복합 문자열**. 원천 주소 자체가 `"경기 화성시 동탄구 신동 778"` 같은 형태로 청약홈(ah- prefix)에서 들어옴.
+- `trades` 테이블 화성시 0건 (`region='경기' AND gu LIKE '화성%'` → 0). 세션92-d 의 LAWD 41591 교정에도 불구하고.
+- **근본 원인 체인**: [collect-trades.mjs:163-165](scripts/collectors/collect-trades.mjs#L163-L165) 의 `regionGuPairs = apartments DISTINCT (region, gu)` 가 수집 대상을 만드는데, 화성시 gu가 복합 문자열이라 `getLawdCd("경기","화성시 동탄구")` 매핑 실패 → MOLIT API 호출 미수행 → trades 화성시 0건 → trade-stats `statsKey` 매칭 실패 → nearby_median NULL. 41591 교정은 gu="화성시"일 때만 효과 있었음.
+
+**해법**: 3단계 분리 (단계 B 재오염 방지 가드는 세션95 이관).
+
+## 단계 A: `scripts/fix_hwaseong_gu.mjs` 신규 (DB 정규화)
+
+- `loadEnv/getSupabase/log/logError` from `_shared.mjs` 재사용
+- `.or("gu.like.화성시 %,gu.in.(동탄구,만세구,효행구,병점구)")` 조건
+- "동탄구" 단독은 address에 "화성시" 포함 시만 UPDATE, 외엔 SKIP + WARN (실측에선 3건 모두 포함 → 전원 UPDATE)
+- JSON 백업 자동: `scripts/_backups/hwaseong_gu_{ISO-TS}.json` (id/region/gu_before/address)
+- 롤백 모드: `--rollback=PATH`
+- 멱등: 2회 실행 시 이미 "화성시" 인 행은 조건 불일치로 빠짐 (LIKE '화성시 %' 공백 필수 + IN 리스트 불일치)
+- `--commit` 없으면 dry-run
+
+**결과**:
+- dry-run: 후보 64건, UPDATE 64, SKIP 0
+- commit: 64/64 UPDATE 완료, AFTER 분포 `{"화성시": 64}` 단일 버킷
+- 백업: `scripts/_backups/hwaseong_gu_2026-04-15T12-17-48.json`
+- 쿼터 0
+
+## 단계 C1: `collect-trades.mjs --only=region:gu` 플래그 +15줄
+
+```js
+export function parseOnlyFilter(argv) {
+  const arg = argv.find(a => a.startsWith("--only="));
+  if (!arg) return null;
+  const val = arg.split("=")[1] || "";
+  if (!val.includes(":")) throw new Error(`--only 형식 오류: '${val}' — 'region:gu' 형식 필요`);
+  return val;
+}
+```
+- `regionGuPairs` 생성 직후 `filter(rg => ${region}:${gu} === onlyFilter)`
+- 적중 0건이면 `exit(0) + error log`
+- 테스트 3개 추가 (적중/무플래그/형식오류) — 32→35 passed
+- 기존 호출자 영향 없음 (선택적)
+
+## 단계 C2: 화성시 타겟 재수집 + trade-stats 재계산
+
+```bash
+node scripts/collectors/collect-trades.mjs --only=경기:화성시 --months=6
+# → 189→1개 지역, API 18콜, 매매 706+전세 1523+분양권 6=2,235건 upsert
+node scripts/collectors/trade-stats.mjs
+# → 2001/2001 upsert, nearby_median 1,986건 (실거래 1986, 매물 0, 시세이력 0)
+```
+
+**KPI 결정적**:
+| 지표 | 세션93 종료 | 세션94 종료 | Δ |
+|---|---|---|---|
+| nearby_median NULL | 65 | **15** | **-50 (-76.9%)** |
+| 커버리지 | 95.4% | **99.3%** | **+3.9pt** |
+| 화성시 NULL | 52 | **0** | **-52** |
+| 쿼터 소비 | - | 19 콜 | 한도의 0.2% |
+
+**잔존 15건 (전부 구조적)**:
+- 인천 동구 5, 옹진군 2 — 섬 지역 실거래 공백
+- 경기 가평군 3, 양평군 4, 연천군 1 — 군 단위 거래 희소
+
+**9 GATE (전수 🟢)**:
+- GATE 0: 3커밋 각 1~2파일 / 단일 관심사 🟢
+- GATE 1: 영향 범위 grep 실측 — guOptions 는 DB distinct 동적 생성, nearby_median 프론트 직접 참조 0건 🟢
+- GATE 2: A→C1→C2 의존 순서 정합 🟢
+- GATE 3: 빠진 항목 해소(JSON 백업/멱등/`--only` 검증) 🟢
+- GATE 4: 한 커밋 한 관심사 🟢
+- GATE 5: 민감정보 재사용 패턴 안전, LIKE 범위 64건 정확 🟢
+- GATE 6: apartments.gu TEXT, apartments_flat 비-materialized VIEW 자동 반영, scoreRisk 는 isRegulated 우선이라 gu 변경 영향 0 🟢
+- GATE 7: 3커밋 각 `git revert` 가능 + rollback 스크립트 🟢
+- GATE 8: dataReliability +15 positive 회귀만 예상 🟢
+
+**Review 단계 검증 (Explore 3병렬)**:
+- 영향 범위 실측: scoring-validator 범주 — 전수 0건 (scorePrice 에 nearbyMedian 영향 없음)
+- null-safety-checker 범주 — nearby_median NULL→값 전환 positive
+- collector-contract — 배치 500 / onConflict / Promise.all / NonRetryable 계약 유지
+
+**커밋**:
+- 1) `5c6175a` fix(apartments): 화성시 gu 복합 오염 64건 정규화
+- 2) `8b8df86` feat(collectors): collect-trades --only=region:gu 타겟 필터
+- 3) (this) docs: 세션94 기록 + CLAUDE.md 진행 상황 갱신
+
+**파일 변경 집계**:
+- 신규 2: `scripts/fix_hwaseong_gu.mjs` (~155줄), `scripts/_backups/hwaseong_gu_2026-04-15T12-17-48.json` (백업)
+- 수정 2: `scripts/collectors/collect-trades.mjs` (+15), `scripts/collectors/collect-trades.test.mjs` (+13)
+- 문서 2: `CLAUDE.md`, `.claude/SESSION_LOG.md`
+- DB: apartments 64건 UPDATE, trades 2,235건 upsert, trade_stats 2,001건 upsert, apartments.dsr40pass 1,944건 update
+- 프론트/API: 변경 0
+
+**세션95로 이관 (단계 B)**:
+`_shared.mjs` 에 `normalizeGu(region, gu)` 헬퍼 + apartments 쓰기 경로 전수조사 후 훅 적용. 후보 경로: `naver-presale.mjs`, `sync-naver-complex.mjs`, `collect-applyhome*`, `reverse-geocode.mjs`, `geocode-missing.mjs`. 세션95 시작 시 재오염 여부 DB 재측정으로 우선순위 확정.
+
+**학습**:
+- 화성시 동탄구는 **실제 행정 개편 준비 중**이라 주소 문자열에 들어가는 것 자체는 자연스러움. gu 컬럼의 의미를 "MOLIT 시군구 단위"로 통일하는 게 정답.
+- 세션93 학습("저비용 고효과 패턴") 재확인: 단계 A+C1 은 쿼터 0, 단계 C2 는 18콜만으로 50건 해소. Plan 의 사전조사 단계에서 원인 체인을 DB 실측으로 전복시킨 게 핵심이었음. 원 가설(가드 추가 없이 단순 UPDATE)로 진행했다면 재수집 없이 끝나서 50건 해소 못 했을 것.
+- Explore 에이전트 병렬 결과가 **서로 모순**될 때(세션94 사전조사: "apartments.gu 가 수집기에서 오염" vs "trades 0건이 진짜 원인") 직접 DB 실측이 유일한 진실의 원천.
+
+---
+
 # 세션 93 — 2026-04-15 (세종 33건 nearbyMedian NULL 해소)
 
 **목표**: 세션92 잔여 98건 중 세종 33건 해소.
