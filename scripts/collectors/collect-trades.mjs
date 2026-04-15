@@ -159,9 +159,10 @@ async function main() {
     from += PAGE;
   }
 
-  const regionGuPairs = [...new Set(allApts.map(a => a.region + "|" + a.gu))]
-    .map(s => { const [region, gu] = s.split("|"); return { region, gu }; })
-    .filter(rg => rg.region && rg.gu);
+  // 세종은 구·군 없이 단일 LAWD_CD(36110)만 유효 — gu 없어도 한 번만 수집
+  const regionGuPairs = [...new Set(allApts.map(a => a.region + "|" + (a.gu ?? "")))]
+    .map(s => { const [region, gu] = s.split("|"); return { region, gu: gu || null }; })
+    .filter(rg => rg.region && (rg.gu || rg.region === "세종"));
 
   log(PHASE, "아파트 " + allApts.length + "건, " + regionGuPairs.length + "개 지역");
 

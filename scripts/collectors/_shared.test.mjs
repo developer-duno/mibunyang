@@ -98,6 +98,10 @@ describe("REGION_LAWD_PREFIX / GU_LAWD_MAP", () => {
     expect(GU_LAWD_MAP["부산"]["중구"]).toBe("26110");
     expect(GU_LAWD_MAP["경남"]["거제시"]).toBe("48310");
     expect(GU_LAWD_MAP["제주"]["제주시"]).toBe("50110");
+    // 강원특별자치도·전북특별자치도 출범 이후 51xxx/52xxx 개편 코드
+    expect(GU_LAWD_MAP["강원"]["춘천시"]).toBe("51110");
+    expect(GU_LAWD_MAP["전북"]["전주시 완산구"]).toBe("52111");
+    expect(GU_LAWD_MAP["전북"]["전주시 덕진구"]).toBe("52113");
   });
 
   it("GU_LAWD_MAP 각 코드는 5자리 문자열", () => {
@@ -142,14 +146,26 @@ describe("getLawdCd", () => {
     expect(getLawdCd("미래도", "미래구")).toBeNull();
   });
 
-  it("강원 춘천시 → 42110", () => {
-    expect(getLawdCd("강원", "춘천시")).toBe("42110");
+  it("강원 춘천시 → 51110 (강원특별자치도)", () => {
+    expect(getLawdCd("강원", "춘천시")).toBe("51110");
+  });
+  it("전북 전주시 덕진구 → 52113 (전북특별자치도)", () => {
+    expect(getLawdCd("전북", "전주시 덕진구")).toBe("52113");
+  });
+  it("전북 전주시 완산구 → 52111", () => {
+    expect(getLawdCd("전북", "전주시 완산구")).toBe("52111");
   });
   it("경남 거제시 → 48310", () => {
     expect(getLawdCd("경남", "거제시")).toBe("48310");
   });
   it("제주 서귀포시 → 50130", () => {
     expect(getLawdCd("제주", "서귀포시")).toBe("50130");
+  });
+  it("세종 null gu → 36110 (특별자치시)", () => {
+    expect(getLawdCd("세종", null)).toBe("36110");
+  });
+  it("세종 임의 gu → 36110 (region 단일)", () => {
+    expect(getLawdCd("세종", "행정중심복합도시")).toBe("36110");
   });
   it("미등록 군 → prefix 폴백", () => {
     expect(getLawdCd("경북", "미래군")).toBe("47000");
