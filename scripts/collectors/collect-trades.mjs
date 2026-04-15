@@ -138,11 +138,23 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
   return { rows, apiCalls, fallbackUsed };
 }
 
+// "경기:화성시" 형태의 --only 필터 파싱. 세션94 단계 C.
+export function parseOnlyFilter(argv) {
+  const arg = argv.find(a => a.startsWith("--only="));
+  if (!arg) return null;
+  const val = arg.split("=")[1] || "";
+  if (!val.includes(":")) {
+    throw new Error(`--only 형식 오류: '${val}' — 'region:gu' 형식 필요 (예: 경기:화성시)`);
+  }
+  return val;
+}
+
 async function main() {
   if (!API_KEY) { logError(PHASE, "MOLIT_KEY 환경변수 필요"); process.exit(1); }
   const dryRun = process.argv.includes("--dry-run");
   const monthsArg = process.argv.find(a => a.startsWith("--months="));
   const monthCount = monthsArg ? parseInt(monthsArg.split("=")[1], 10) : 6;
+  const onlyFilter = parseOnlyFilter(process.argv);
 
   const sb = getMibuyangSupabase();
 
@@ -160,9 +172,19 @@ async function main() {
   }
 
   // 세종은 구·군 없이 단일 LAWD_CD(36110)만 유효 — gu 없어도 한 번만 수집
-  const regionGuPairs = [...new Set(allApts.map(a => a.region + "|" + (a.gu ?? "")))]
+  let regionGuPairs = [...new Set(allApts.map(a => a.region + "|" + (a.gu ?? "")))]
     .map(s => { const [region, gu] = s.split("|"); return { region, gu: gu || null }; })
     .filter(rg => rg.region && (rg.gu || rg.region === "세종"));
+
+  if (onlyFilter) {
+    const before = regionGuPairs.length;
+    regionGuPairs = regionGuPairs.filter(rg => `${rg.region}:${rg.gu ?? ""}` === onlyFilter);
+    log(PHASE, `--only=${onlyFilter} 필터 적용: ${before} → ${regionGuPairs.length}개 지역`);
+    if (regionGuPairs.length === 0) {
+      logError(PHASE, `--only=${onlyFilter} 적중 pair 0건 — apartments 에 해당 region/gu 없음`);
+      process.exit(0);
+    }
+  }
 
   log(PHASE, "아파트 " + allApts.length + "건, " + regionGuPairs.length + "개 지역");
 

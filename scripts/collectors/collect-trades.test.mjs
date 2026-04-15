@@ -9,7 +9,19 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl } = await import("./collect-trades.mjs");
+const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl, parseOnlyFilter } = await import("./collect-trades.mjs");
+
+describe("parseOnlyFilter (세션94 단계 C)", () => {
+  it("--only=경기:화성시 → '경기:화성시'", () => {
+    expect(parseOnlyFilter(["node", "collect-trades.mjs", "--only=경기:화성시"])).toBe("경기:화성시");
+  });
+  it("플래그 없음 → null", () => {
+    expect(parseOnlyFilter(["node", "collect-trades.mjs", "--months=6"])).toBeNull();
+  });
+  it(":누락 시 throw (9 GATE 5 해소)", () => {
+    expect(() => parseOnlyFilter(["node", "collect-trades.mjs", "--only=경기"])).toThrow(/형식 오류/);
+  });
+});
 
 describe("getLawdCd", () => {
   // 정상 매핑 — 중첩 구조 region 내 직접 조회
