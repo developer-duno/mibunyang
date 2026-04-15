@@ -4,15 +4,16 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-15 세션91 — scorePrice 단위 버그 + sanitize 유령 폴백 제거. Phase 1 실측 중 지방 미분양 단지의 catsCache에 "적정가 괴리도 -34,027%" 쓰레기 값 발견. 버그 4개: avgPriceSqm 폴백 단위 오류(`/10000*3.3` → `/10`), presalePp 평수 환산 누락, 폴백 경로 areaAdj 누락, engine.js sanitize 유령 폴백(`pir??10, psr??1.5, jeonseRate??40, nearbyMedian??0`) 제거. 9-GATE 🟢9/9 통과. 테스트 2,270→2,275 통과. scoring-validator + null-safety-checker PASS. compute-scores 재계산 후 **전국 price 카테고리 평균 44.3→53.7 (+9.4pt)**, 지방 8개 region +15~+38pt 대폭 상승(세종 +37.9, 충북 +29.8, 강원 +24.6, 제주 +24.5). 서울 -1.8pt는 pir null 153건의 유령 고점수(region 중위 1.3→100점)가 정직한 중립(50점)으로 정정된 결과(롤백 대상 아님). 커밋 `475f291`.
+**마지막 작업**: 2026-04-15 세션92 — `GU_LAWD_MAP` 지방 8개 region(강원/충북/충남/전북/전남/경북/경남/제주) 구/군 123개 법정동 5자리 매핑 추가. 9-GATE 🟢8/🟡1(쿼터)/🔴0 → dry-run 실측 3,474회(일 한도 34.7%)로 경고 해소. 단일 커밋 4파일(_shared.mjs +52, 테스트 2개, CLAUDE.md). 테스트 2,275→2,278 통과. null-safety-checker + collector-contract + scoring-validator PASS. 본 수집: `collect-trades` 349,924건 upsert(실패 0) → `trade-stats` nearby_median 실거래 933→**1,496건(+60%)** → `compute-scores` 1,424/1,424 성공. **KPI**: `nearbyMedian` NULL 491→**362건(34.5→25.4%)**, 전국 price 카테고리 평균 53.7→**56.65(+2.95pt)**, 제주 36.3→**63.7**·충북 31.6→**57.5**·전남·경남·경북·충남 +15~+28pt 대폭 해소. **잔여 3개 region**(강원/전북/세종)은 `apartments.gu` 원천 형식 문제 — 전북은 "전주시 덕진구" 복합 gu, 세종은 gu 40건 NULL, 강원은 원인 불명(매핑은 맞는데 trades 0). 세션93 우선 이월. 커밋 `0848aa2`.
 
 **다음 세션 우선순위**:
-1. trade_stats 지방 수집 확대 (nearbyMedian 325건 근본 보강, 쿼터/스케줄 조정 필요)
+1. 지방 3개 region 미해소 원인 조사 (강원 단일 region dry-run, 전북 복합 gu 처리, 세종 gu NULL 원천)
 2. 서울 pir null 57% 원천 수집 이슈 점검
-3. 행안부 API 복구 대기 (외부)
-4. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
+3. dataReliability 지표 개선 (유령 값 탐지 로직)
+4. 행안부 API 복구 대기 (외부)
+5. Vercel 12함수 제한 — 새 API 추가 시 action 파라미터로 통합
 
-**DB 품질** (apartments_flat 1,424건, 세션91 측정): units 98.4% · lat/lng 99.9% · **price 100.0%** · unsoldRate 61.4% · subwayDist 79.0% · **price 카테고리 평균 53.7** (세션90 44.3→53.7, +9.4pt)
+**DB 품질** (apartments_flat 1,424건, 세션92 측정): units 98.4% · lat/lng 99.9% · **price 100.0%** · unsoldRate 61.4% · subwayDist 79.0% · **nearbyMedian 74.6%**(491→362 NULL) · **price 카테고리 평균 56.65**(세션91 53.7→56.65, +2.95pt)
 
 ---
 

@@ -1,3 +1,106 @@
+# 세션 92 — 2026-04-15
+
+## 주요 작업 — trade_stats 지방 수집 확대 (GU_LAWD_MAP 지방 8개 region 매핑)
+
+**커밋**: `0848aa2 feat(collectors): GU_LAWD_MAP 지방 8개 region 확장 (세션92)`
+
+### 1. 근본 원인 (세션91에서 확인, 세션92에서 해결)
+
+`scripts/collectors/_shared.mjs:189-231` `GU_LAWD_MAP` 에 강원/충북/충남/전북/전남/경북/경남/제주 구/군 매핑이 정의되지 않아서 `collect-trades.mjs:182` `getLawdCd` 가 null → "법정동코드 없음" 로그와 함께 지방 region 전부 스킵. `trades` 349,201행 중 지방 8개 region 0건 → `trade-stats.mjs:223` 1단계 불가 → `nearbyMedian` 지방 100% NULL.
+
+### 2. 구현 (단일 커밋, 4파일 73+/8-)
+
+1. `scripts/collectors/_shared.mjs` +52 — GU_LAWD_MAP 에 강원 18, 충북 11, 충남 15, 전북 14, 전남 22, 경북 23, 경남 18, 제주 2 = **총 123 구/군** 5자리 시군구 코드 추가 (행안부 공식)
+2. `scripts/collectors/_shared.test.mjs` +14/-4 — length 9→17 갱신 + "강원 춘천시 42110" 교정 + 경남 거제/제주 서귀포 케이스 3개 + 경북 미래군 prefix 폴백 케이스
+3. `scripts/collect-data.test.mjs` +4/-2 — 동일 9→17 갱신
+4. `scripts/CLAUDE.md` +3 — 쿼터 분배 표에 "세션92 지방 확장 시 +500~1,500" 주석 및 "매월 6일 최대 ~5,000" 위험 메모
+
+### 3. 9-GATE 플랜 검증 (Opus)
+
+플랜 파일: `C:\Users\user\.claude\plans\quizzical-gathering-hearth.md`
+
+- GATE 0 (Sonnet 크기): 초기 🔴 (테스트 2개 하드코딩 "length 9" 발견) → 단계 1에 테스트 갱신 동기 포함 → 🟢
+- GATE 1 (영향 범위): `getLawdCd` 참조 5곳 실측, `schools-neis.mjs:339` sggCode 폴백이 "42000" → "42110" 으로 **긍정 부수효과** 발견
+- GATE 5 (보안): `collect-trades.mjs:21/79/142` env 경로만, 하드코딩 시크릿 없음
+- GATE 8 (쿼터): collector-contract C4 🟡 경고 → dry-run 후 🟢 해소
+- 최종: 9 GATE 중 🟢8 🟡1 🔴0 → 실행 허가
+
+### 4. 교차검증
+
+- 플랜 단계: `collector-contract` 서브에이전트 (계약 준수, C4 쿼터 경고 1건)
+- 변경 후: `null-safety-checker` (PASS, High/Medium/Low 0건) + `collector-contract` (PASS, C4 경고 해소)
+- 단계 5 후: `scoring-validator` (PASS, 세션91 단위 교정·null 가드 회귀 없음, 평균 56.65 정상 범위)
+- simplify 리뷰 3병렬 (재사용/품질/효율): 세션 번호 주석 5곳 제거 권고 반영
+- 빌드: `npx vite build` 448ms / 375ms 성공
+- 테스트: 2,275 → **2,278 passed (+3)**
+
+### 5. dry-run 실측 (커밋 전)
+
+`node --loader ./scripts/alias-loader.mjs scripts/collectors/collect-trades.mjs --dry-run --months=6`
+
+- 지역 수 193개 (확장 반영)
+- API 3,474회 (일 한도 10,000의 34.7%, 9,000 한도 대비 38.6%)
+- 총 350,270건 수집 (매매 174,064 + 전세 165,180 + 분양권 11,026)
+- "법정동코드 없음" 로그 0건 (8개 region 매핑 완전 커버)
+- "AptTradeDev" 정식 엔드포인트, 기존 API 폴백 없음
+
+→ 단계 3 스케줄 분산 **불필요** (GATE 8 경고 해소)
+
+### 6. 본 수집 (단계 5)
+
+1. `collect-trades.mjs` — 349,924건 upsert 성공, 실패 0, MOLIT_KEY 3,474회 쿼터 기록
+2. `trade-stats.mjs` — 1,951/1,951건 trade_stats upsert, dsr40pass 1,904 업데이트, **nearby_median 실거래 1,496건 (세션91 기준 933 → +563, +60%)**
+3. `compute-scores.mjs` — 1,424/1,424 catsCache UPDATE 성공 (9.7초)
+
+### 7. KPI 측정 결과
+
+**`trades` 테이블**: 349,201 → **403,146건** (+53,945)
+
+**`nearbyMedian` NULL**: 491건(34.5%) → **362건(25.4%)** — 9.1pt 개선
+
+**지방 region nearbyMedian 해소**:
+
+| region | 세션91 NULL | 세션92 NULL | 비고 |
+|---|---|---|---|
+| 제주 | 14/14 (100%) | **0/14 (0%)** | ✨ 완전 해소 |
+| 전남 | 33/33 (100%) | **0/33 (0%)** | ✨ 완전 해소 |
+| 경남 | 34/34 (100%) | 10/34 (29%) | 24건 해소 |
+| 경북 | 25/30 (83%) | 9/30 (30%) | 16건 해소 |
+| 충남 | 41/41 (100%) | 19/41 (46%) | 22건 해소 |
+| 충북 | 40/40 (100%) | 20/40 (50%) | 20건 해소 |
+| 강원 | 33/33 (100%) | 33/33 (100%) | **미해소 (잔여 과제)** |
+| 전북 | 19/19 (100%) | 19/19 (100%) | **미해소 (잔여 과제)** |
+| 세종 | 34/34 (100%) | 34/34 (100%) | **미해소 (잔여 과제)** |
+
+**전국 price 카테고리 평균 (전수 1,424건)**: 53.7 → **56.65 (+2.95pt)**
+
+region 별 price 평균 급상승:
+- 충북 ~31.6 → **57.5** (+25.9pt)
+- 제주 ~36.3 → **63.7** (+27.4pt)
+- 경북 → 48.8 / 전남 → 36.8 / 경남 → 44.1 / 충남 → 40.2 (지방 매핑 반영)
+- 강원 56.7 / 전북 47.0 / 세종 67.1 (trades 0건, 세션91 50점 중립 폴백 유지)
+
+### 8. 잔여 과제 (3개 region 미해소 원인)
+
+실측(`apartments` 테이블 gu 분포) 결과:
+
+1. **세종 trades 0건**: `apartments.gu` 40/41건 **NULL**. `collect-trades.mjs:164` `.filter(rg => rg.region && rg.gu)` 에서 루프 제외. GU_LAWD_MAP 매핑과 무관 — **apartments 원천 gu 정규화 필요**
+2. **전북 trades 0건**: `apartments.gu` 가 `"전주시 덕진구"`, `"전주시 완산구"` 복합 형식. GU_LAWD_MAP 에 `"전주시"` 만 있어서 정확 매칭 실패 → 전역 폴백 → prefix "45000" → MOLIT API 가 빈 응답. **GU_LAWD_MAP 에 하위 구 매핑 추가 또는 gu 정규화 필요**
+3. **강원 trades 0건**: `apartments.gu` 가 `"원주시"` 등 단순 시 이름이고 GU_LAWD_MAP 매칭도 정상일텐데 trades 0건. **원인 불명, 단일 region 재실행 또는 MOLIT API 응답 재확인 필요**
+
+이 3건은 세션93 우선 과제로 이월.
+
+### 9. 다음 세션 시작점
+
+우선순위 1 (지방 3개 region 미해소 원인 조사):
+- 강원 단일 region dry-run 재실행해서 API 호출 vs 응답 확인
+- 전북·충남 복합 gu("전주시 덕진구" 등) 처리 전략 — (a) GU_LAWD_MAP 에 하위 구 5자리 추가, (b) apartments.gu 정규화 마이그레이션, (c) collect-trades 에서 복합 gu 분리 로직
+- 세종 gu NULL 40건 원천 수집 이슈
+
+우선순위 2~5: 세션91 에서 이월된 항목 (서울 pir null 57%, dataReliability 유령값 탐지, 행안부, Vercel 12함수)
+
+---
+
 # 세션 91 — 2026-04-15
 
 ## 주요 작업 — scorePrice 단위 버그 + sanitize 유령 폴백 제거
