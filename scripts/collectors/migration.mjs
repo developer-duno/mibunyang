@@ -23,7 +23,7 @@
  */
 import {
   loadEnv, getSupabase, log, logError,
-  REGION_LAWD_PREFIX, recordApiQuota,
+  REGION_LAWD_PREFIX, recordApiQuota, fetchWithRetry,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -113,7 +113,9 @@ export function aggregateKosisRows(rows) {
 }
 
 // ── KOSIS 호출 ──────────────────────────────────────────────
-async function fetchKosis() {
+// 세션104: 단일 fetch → fetchWithRetry (429/500/503 지수 백오프 3회).
+// AbortSignal.timeout(30s)은 fetchWithRetry 내부에 이미 포함.
+export async function fetchKosis() {
   const params = new URLSearchParams({
     method: "getList",
     apiKey: API_KEY,
@@ -129,11 +131,13 @@ async function fetchKosis() {
   const url = `${BASE_URL}?${params}`;
   log(PHASE, "KOSIS DT_1B26001_A01 호출...");
 
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0" },
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!res.ok) throw new Error(`KOSIS HTTP ${res.status}`);
+  let res;
+  try {
+    res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  } catch (err) {
+    // 에러 메시지 prefix 유지(`KOSIS HTTP ...`) — 로그 grep 컨벤션
+    throw new Error(`KOSIS ${err.message}`);
+  }
 
   const text = await res.text();
   let json;

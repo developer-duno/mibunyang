@@ -1529,3 +1529,56 @@ M .claude/SESSION_LOG.md (본 섹션)
 - (저우선) regions 시계열 스냅샷 UPDATE 의미 재설계 — recorded_at 별 분리 저장 원하면 2단계 SELECT→UPDATE 필요
 - (저우선) fetchKosis 재시도 백오프 추가 (fetchWithRetry 재사용)
 - KPI: regions.net_migration 454/454 ✅ 해소 완료
+
+---
+
+# 세션 104 — 2026-04-16 (migration.mjs fetchWithRetry + pir NULL 조사)
+
+**목표**: 우선순위 순 3개 작업 — (1) regions 시계열 전환 (2) KOSIS 재시도 백오프 (3) pir NULL 50건 구조적 분기 조사.
+
+## Plan 모드 — 9 GATE 재검증
+
+초기 플랜 GATE 1·6 🔴: `migration.mjs` 단독 시계열 INSERT 전환 시 `apartments_flat.latest_regions` CTE(`DISTINCT ON recorded_at DESC`)가 `net_migration`만 있고 `pop_growth`/`supply_ratio` NULL인 새 행을 뽑아 **전국 회귀**. 컬럼별 소유자 분리 구조(population/housing-permits/collect-market-stats 별도) 때문. → **옵션 C 확정: 작업 1 에픽 분리, 세션104는 작업 2·3만.** 재검증 🟢 9/🟡 0/🔴 0.
+
+## 작업 2 — migration.mjs fetchWithRetry 전환
+
+- [scripts/collectors/migration.mjs:118-148](scripts/collectors/migration.mjs#L118) `fetchKosis()` export 승격 + `fetch` → `fetchWithRetry`
+- AbortSignal.timeout(30s)은 `_shared.mjs:130` fetchWithRetry 내부에 이미 포함 → 중복 제거
+- 4xx(429 제외) 즉시 throw, 429/500/503 지수 백오프 3회 — `_shared.mjs` 계약
+- 에러 메시지 prefix `KOSIS HTTP …` 유지 위해 try/catch로 rethrow (collector-contract WARN 해소)
+- [scripts/collectors/migration.test.mjs](scripts/collectors/migration.test.mjs) `fetchWithRetryMock` + `fetchKosis` describe 4 추가 (23 → 27 tests)
+
+## 작업 3 — pir NULL 50건 분류 조사 (읽기 전용)
+
+| 사유 | 건수 | 비고 |
+|---|---|---|
+| price=0 기타 | 35 | LH/SH 공공 2, 정비사업 키워드 12, 신탁/후분양 20 |
+| 미분류(가격 있음) | 9 | **⚠️ 실버그 의심** — price 있는데 pir NULL |
+| 정비사업(키워드 매치) | 5 | builder에 조합/재건축/리모델링 |
+| 임대형 | 1 | 청년안심주택 |
+
+- 진짜 "가격 있는데 pir NULL" 5~7건: 원주역 우미 린, 의정부 힐스테이트 탑석, 하남 감일, 광주 태전, 경산 중산자이, 포항 힐스초곡, 광주 봉선 — 세션105에서 trade_stats 입력값(nearby_median / avg_income) 추적 필요
+- 세션105 플랜 초안: [.claude/plans/session105-pir-null-classification.md](.claude/plans/session105-pir-null-classification.md)
+
+## 교차검증
+
+- 빌드: 🟢 (vite build 376ms, 번들 크기 변동 없음)
+- Hook: N/A (수집기 변경)
+- 보안: 🟢 (API_KEY 노출 없음)
+- 수집기 계약: PASS (collector-contract) — WARN 1건(prefix)은 코드 수정으로 해소
+- null 안전: PASS (null-safety-checker) — WARN 1건은 이론상 도달 불가 경로
+- 스코어링: N/A
+
+## KPI
+
+- vitest: 146 files / **2,339 tests** 🟢 (세션103 2,335 → +4)
+- vite build: 🟢
+- regions.net_migration: 0/454 NULL 유지
+- pir NULL 조사 산출물 1개 (.claude/plans/session105-pir-null-classification.md)
+
+## 다음 세션
+
+- (고우선) pir NULL 50건 구조적 분기 실행 — 세션105 플랜 따라 "가격 있는데 pir NULL" 버그부터 추적
+- (보류 에픽) regions 시계열 스냅샷 아키텍처 재설계 — VIEW LATERAL 재작성 + 컬렉터 recorded_at 정책 통일
+- Vercel 12함수 감축
+

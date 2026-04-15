@@ -3,7 +3,9 @@
  *
  * 대상: normalizeC1Name, mapC1, aggregateKosisRows, C1_TO_REGION
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = await importOriginal();
@@ -15,12 +17,13 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
     REGION_LAWD_PREFIX: orig.REGION_LAWD_PREFIX,
+    fetchWithRetry: (...args) => fetchWithRetryMock(...args),
   };
 });
 
 process.env.KOSIS_MIGRATION_KEY = "test-key";
 
-const { normalizeC1Name, mapC1, aggregateKosisRows, C1_TO_REGION } = await import("./migration.mjs");
+const { normalizeC1Name, mapC1, aggregateKosisRows, C1_TO_REGION, fetchKosis } = await import("./migration.mjs");
 
 // ── normalizeC1Name ──────────────────────────────────────────
 describe("normalizeC1Name", () => {
@@ -154,5 +157,46 @@ describe("aggregateKosisRows", () => {
     const { entries } = aggregateKosisRows(rows);
     expect(entries).toHaveLength(1);
     expect(entries[0].region).toBe("부산");
+  });
+});
+
+// ── fetchKosis (fetchWithRetry 연동) ─────────────────────────
+// 세션104: KOSIS 호출을 _shared.mjs:fetchWithRetry 로 위임해 429/500/503
+// 지수 백오프가 걸리는지 검증. 파서 로직은 위 블록들이 담당.
+describe("fetchKosis — fetchWithRetry 위임", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+  });
+
+  it("성공 응답을 JSON 배열로 반환", async () => {
+    const rows = [{ C1: "11", C1_NM: "서울특별시", PRD_DE: "202602", ITM_NM: "순이동", DT: "-100" }];
+    fetchWithRetryMock.mockResolvedValueOnce({ text: async () => JSON.stringify(rows) });
+    const result = await fetchKosis();
+    expect(result).toEqual(rows);
+    expect(fetchWithRetryMock).toHaveBeenCalledTimes(1);
+    // 호출 URL에 KOSIS 파라미터 핵심값 포함
+    const url = fetchWithRetryMock.mock.calls[0][0];
+    expect(url).toContain("orgId=101");
+    expect(url).toContain("tblId=DT_1B26001_A01");
+  });
+
+  it("fetchWithRetry 내부에서 재시도 후 성공한 응답을 그대로 사용", async () => {
+    // fetchWithRetry 가 내부적으로 재시도를 처리했다는 가정 (단일 resolved 값만 반환)
+    fetchWithRetryMock.mockResolvedValueOnce({ text: async () => "[]" });
+    const result = await fetchKosis();
+    expect(result).toEqual([]);
+    expect(fetchWithRetryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetchWithRetry 최종 실패 시 KOSIS prefix 유지해 에러 전파", async () => {
+    fetchWithRetryMock.mockRejectedValueOnce(new Error("HTTP 500"));
+    await expect(fetchKosis()).rejects.toThrow("KOSIS HTTP 500");
+  });
+
+  it("KOSIS err 필드 응답은 명시적 에러로 전환", async () => {
+    fetchWithRetryMock.mockResolvedValueOnce({
+      text: async () => JSON.stringify({ err: "30", errMsg: "인증 실패" }),
+    });
+    await expect(fetchKosis()).rejects.toThrow(/KOSIS 에러 30/);
   });
 });
