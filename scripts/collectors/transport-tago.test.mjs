@@ -18,7 +18,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { extractSubwayName, extractSubwayLines, isValidStation, isValidIC } =
+const { extractSubwayName, extractSubwayLines, isValidStation, isValidIC, buildTransportRow } =
   await import("./transport-tago.mjs");
 
 // ── 팩토리 함수 ────────────────────────────────────────────────
@@ -140,5 +140,58 @@ describe('isValidIC — 고속도로IC 필터', () => {
 
   it('빈 place_name → false', () => {
     expect(isValidIC({ place_name: "" })).toBe(false);
+  });
+});
+
+// 세션98: buildTransportRow — 수집 실패(null)와 실제 0건([]) 구분
+describe('buildTransportRow — TAGO 수집 실패/성공 신호 분리', () => {
+  const baseInput = { apartmentId: "ah-1", subways: [], validICs: [], validKTX: [] };
+
+  it('busStops=null (수집 실패): bus_routes/bus_stop_names 둘 다 null', () => {
+    const row = buildTransportRow({ ...baseInput, busStops: null });
+    expect(row.bus_routes).toBeNull();
+    expect(row.bus_stop_names).toBeNull();
+  });
+
+  it('busStops=[] (성공·0건): bus_routes=0, bus_stop_names=null', () => {
+    const row = buildTransportRow({ ...baseInput, busStops: [] });
+    expect(row.bus_routes).toBe(0);
+    expect(row.bus_stop_names).toBeNull();
+  });
+
+  it('busStops=[A,B] (성공·N건): bus_routes=2, bus_stop_names="A,B"', () => {
+    const row = buildTransportRow({ ...baseInput, busStops: [{ nodenm: "A" }, { nodenm: "B" }] });
+    expect(row.bus_routes).toBe(2);
+    expect(row.bus_stop_names).toBe("A,B");
+  });
+
+  it('busStops=[A,A,B] (중복 제거): bus_routes=2', () => {
+    const row = buildTransportRow({ ...baseInput, busStops: [{ nodenm: "A" }, { nodenm: "A" }, { nodenm: "B" }] });
+    expect(row.bus_routes).toBe(2);
+    expect(row.bus_stop_names).toBe("A,B");
+  });
+
+  it('busStops=[{nodenm:""},{nodenm:null}] (빈/null nodenm 필터): bus_routes=0', () => {
+    const row = buildTransportRow({ ...baseInput, busStops: [{ nodenm: "" }, { nodenm: null }] });
+    expect(row.bus_routes).toBe(0);
+    expect(row.bus_stop_names).toBeNull();
+  });
+
+  it('apartment_id + 다른 필드 통합: subway/IC/KTX 와 동시 조립', () => {
+    const row = buildTransportRow({
+      apartmentId: "ah-99",
+      subways: [{ place_name: "강남역", distance: "350", category_name: "교통,지하철,2호선" }],
+      busStops: null,
+      validICs: [{ distance: "5500" }],
+      validKTX: [{ distance: "12000" }],
+    });
+    expect(row.apartment_id).toBe("ah-99");
+    expect(row.subway_dist).toBe(350);
+    expect(row.subway_name).toBe("강남역");
+    expect(row.bus_routes).toBeNull();
+    expect(row.bus_stop_names).toBeNull();
+    expect(row.ic_dist).toBe(5.5);
+    expect(row.ktx_dist).toBe(12);
+    expect(row.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });

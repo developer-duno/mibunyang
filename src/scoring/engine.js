@@ -65,7 +65,10 @@ function sanitize(apt, rm) {
     // 원본 null 여부 플래그 (표시용)
     _noView: apt.view == null || apt.view === "",
     _noNoise: apt.noise == null,
-    _noBus: apt.busRoutes == null,
+    // 세션98: bus_routes는 api/CLAUDE.md "위험 필드 null→비관적 기본값" 규칙으로
+    // apartments.js에서 `?? 0` 처리됨 → null 판정 불가.
+    // 수집 성공 여부는 busStopNames(수집기가 실패 시 null 저장) 기준으로 판정.
+    _noBus: apt.busStopNames == null,
     _noParking: apt.parkingRatio == null,
     _noFar: apt.floorAreaRatio == null,
     _noExcl: apt.exclusiveRatio == null,

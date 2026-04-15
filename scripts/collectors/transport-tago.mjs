@@ -35,16 +35,66 @@ async function searchKakaoCategory(lat, lng, categoryCode, radius) {
   return data.documents || [];
 }
 
-/** TAGO API: 좌표 기반 근처 버스 정류장 조회 */
+/**
+ * TAGO API: 좌표 기반 근처 버스 정류장 조회
+ *
+ * 세션98: 수집 성공/실패 신호를 명시적으로 구분한다.
+ *   - null  = 호출 실패 (키 없음/HTTP 실패/JSON 실패/body 비정상)
+ *   - []    = 호출 성공, 근처 0건 (실제 0노선 동네)
+ *   - [...] = 호출 성공, N건
+ *
+ * 실패와 실제 0건이 같게 저장되던 유령값 문제를 DB 레벨에서 분리한다.
+ */
 async function searchBusStopsTago(lat, lng) {
-  if (!TAGO_KEY) return [];
+  if (!TAGO_KEY) return null;
   const url = `https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=${encodeURIComponent(TAGO_KEY)}&gpsLati=${lat}&gpsLong=${lng}&_type=json&numOfRows=15`;
-  const res = await fetchWithRetry(url, { signal: AbortSignal.timeout(15000) }, 3);
-  if (!res.ok) return [];
-  const data = await res.json();
-  const items = data?.response?.body?.items?.item;
-  if (!items) return [];
-  return Array.isArray(items) ? items : [items];
+  try {
+    const res = await fetchWithRetry(url, { signal: AbortSignal.timeout(15000) }, 3);
+    if (!res.ok) return null;
+    const data = await res.json();
+    // 정상 구조 검증: response.body.items 가 있어야 성공. item 없으면 성공·0건.
+    const body = data?.response?.body;
+    if (!body || !("items" in body)) return null;
+    const items = body.items?.item;
+    if (items == null || items === "") return [];
+    return Array.isArray(items) ? items : [items];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * transport 테이블 upsert row 조립 (순수 함수, 테스트용 export)
+ *
+ * 세션98: busStops 가 null 이면 수집 실패 → bus_routes + bus_stop_names 둘 다 NULL.
+ * 빈 배열이면 성공·0건 → bus_routes=0, bus_stop_names=null (현행 유지).
+ */
+export function buildTransportRow({ apartmentId, subways, busStops, validICs, validKTX }) {
+  const subwayDist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : DEFAULT_SUBWAY_DIST;
+  const subwayName = extractSubwayName(subways[0]);
+  const subwayLines = extractSubwayLines(subways, subwayName);
+
+  // 수집 실패(null)와 실제 0건([]) 구분
+  const busStopNames = busStops === null
+    ? null
+    : [...new Set(busStops.map(d => d.nodenm).filter(Boolean))];
+  const busRoutes = busStopNames === null ? null : busStopNames.length;
+  const busStopNamesStr = (busStopNames && busStopNames.length > 0) ? busStopNames.join(",") : null;
+
+  const icDist = validICs.length > 0 ? Math.round(Number(validICs[0].distance) / 1000 * 10) / 10 : DEFAULT_IC_DIST;
+  const ktxDist = validKTX.length > 0 ? Math.round(Number(validKTX[0].distance) / 1000 * 10) / 10 : DEFAULT_KTX_DIST;
+
+  return {
+    apartment_id: apartmentId,
+    subway_dist: subwayDist,
+    subway_name: subwayName,
+    subway_lines: subwayLines,
+    bus_routes: busRoutes,
+    bus_stop_names: busStopNamesStr,
+    ic_dist: icDist,
+    ktx_dist: ktxDist,
+    updated_at: new Date().toISOString(),
+  };
 }
 
 /** KTX역 결과 필터 */
@@ -114,7 +164,8 @@ async function main() {
   for (let i = 0; i < targets.length; i++) {
     const apt = targets[i];
     try {
-      let subways = [], busStops = [], validICs = [], validKTX = [];
+      // busStops 초기값 null = "TAGO 호출 미수행/실패" 로 취급
+      let subways = [], busStops = null, validICs = [], validKTX = [];
 
       // 지하철역 (Kakao SW8 카테고리)
       try {
@@ -123,6 +174,7 @@ async function main() {
       await sleep(100);
 
       // 버스 정류장 (TAGO 좌표기반 API — 일일 상한 제어)
+      // 성공: 배열(0건 포함), 실패/상한초과: null
       try {
         if (tagoCallCount < maxTago) {
           busStops = await searchBusStopsTago(apt.lat, apt.lng);
@@ -131,7 +183,7 @@ async function main() {
           log(PHASE, `⚠️ TAGO 일일 상한 ${maxTago}건 도달 — 버스 수집 중단`);
           tagoCallCount++;
         }
-      } catch (e) { /* 빈 배열 유지 */ }
+      } catch (e) { busStops = null; }
       await sleep(100);
 
       // 고속도로 IC (Kakao 키워드)
@@ -148,32 +200,13 @@ async function main() {
       } catch (e) { /* 빈 배열 유지 */ }
       await sleep(100);
 
-      // 결과 계산
-      const subwayDist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : DEFAULT_SUBWAY_DIST;
-      const subwayName = extractSubwayName(subways[0]);
-      const subwayLines = extractSubwayLines(subways, subwayName);
-
-      // TAGO 버스 정류장: nodenm(정류장명) 기준 고유 개수
-      const busStopNames = [...new Set(busStops.map(d => d.nodenm).filter(Boolean))];
-      const uniqueBus = busStopNames.length;
-
-      const icDist = validICs.length > 0 ? Math.round(Number(validICs[0].distance) / 1000 * 10) / 10 : DEFAULT_IC_DIST;
-      const ktxDist = validKTX.length > 0 ? Math.round(Number(validKTX[0].distance) / 1000 * 10) / 10 : DEFAULT_KTX_DIST;
-
-      const row = {
-        apartment_id: apt.id,
-        subway_dist: subwayDist,
-        subway_name: subwayName,
-        subway_lines: subwayLines,
-        bus_routes: uniqueBus,
-        bus_stop_names: busStopNames.length > 0 ? busStopNames.join(",") : null,
-        ic_dist: icDist,
-        ktx_dist: ktxDist,
-        updated_at: new Date().toISOString(),
-      };
+      const row = buildTransportRow({ apartmentId: apt.id, subways, busStops, validICs, validKTX });
 
       if (dryRun) {
-        log(PHASE, `  [DRY] ${apt.name}: 지하철${subwayDist}m(${subwayName || "없음"},${subwayLines || "?"}) 버스${uniqueBus}(${busStopNames.slice(0, 3).join("·")}) IC${icDist}km KTX${ktxDist}km`);
+        const busLabel = row.bus_routes === null
+          ? "버스수집실패"
+          : `버스${row.bus_routes}(${(row.bus_stop_names || "").split(",").slice(0, 3).join("·")})`;
+        log(PHASE, `  [DRY] ${apt.name}: 지하철${row.subway_dist}m(${row.subway_name || "없음"},${row.subway_lines || "?"}) ${busLabel} IC${row.ic_dist}km KTX${row.ktx_dist}km`);
         rpt.success();
         continue;
       }
