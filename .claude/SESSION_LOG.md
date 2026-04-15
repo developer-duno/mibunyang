@@ -1,3 +1,84 @@
+# 세션 96 — 2026-04-15 (서울 PIR 57% 메모 기각 + dataReliability 유령값 발견)
+
+**목표**: (1) 서울 PIR NULL 57% 원인 특정·해소 (2) 부수적으로 dataReliability 유령값 탐지.
+
+## 단계 1 — 서울 PIR 실측 (Plan 파일: `~/.claude/plans/vectorized-twirling-volcano.md`)
+
+**가설 전복**: CLAUDE.md 의 "서울 pir null 57%" 메모가 **세션85 이전 낡은 수치**. 세션94+95 trade_stats 복구의 부수효과로 이미 대부분 해결됨.
+
+### Phase 1 — Explore 3병렬 결과
+- PIR 계산 위치: [trade-stats.mjs:306-318](scripts/collectors/trade-stats.mjs#L306-L318) / 식: `pir = price ÷ (income × 12)` / income 3단계 fallback (`incomeMap(key) ?? incomeMap(region) ?? 5000`) → **income은 NULL 원인이 될 수 없음**. 유일 NULL 경로: `aptPrice == null || aptPrice <= 0`.
+- `apartments` 테이블엔 `price` 컬럼 자체가 없음 (`presale_min_price`/`presale_max_price`만). `apartments_flat` VIEW가 `latest_prices` JOIN 으로 조립.
+- `regions.avg_income` 컬럼은 존재하나 수집 스크립트 없음(시도 단위만).
+
+### 단계 1-A DB 실측
+| 지표 | 값 |
+|------|-----|
+| 서울 apartments 총 | 431 |
+| 서울 apartments_flat 총 | 266 (presale 미대상 165건 설계대로 필터링) |
+| 서울 `price` NULL | **0/266 (0%)** |
+| 서울 `pir` NULL | **9/266 (3.4%)** |
+| 전국 apartments_flat | 1,424 |
+| 전국 `pir` NULL | 50/1,424 (3.5%) |
+
+서울 165건 드롭 원인: 156건이 `presale_min_price` NULL (정상 재고 아파트 — `apartments_flat` VIEW가 분양/미분양 대상만 노출하는 설계).
+
+### 잔존 9건 구조적 분석
+모두 `price=0` → [trade-stats.mjs:308](scripts/collectors/trade-stats.mjs#L308) `aptPrice > 0` 가드에 걸림. 전부 분양가 미확정 재건축/재개발/청년안심주택:
+- 서초구 신반포22차재건축, 디에이치클래스트
+- 동작구 써밋더힐, 노량진5촉진구역
+- 강동구 길동생활B동 청년안심주택, 강북구 더리치먼드미아, 중구 덕수궁롯데캐슬, 관악구 신림2구역, 영등포구 써밋클라비온
+
+→ **세션94+95 잔존 15건(섬/군)과 동일 성격의 구조적 공백**. 수집 또는 코드 수정으로 해소 불가. affordability 계산 비대상으로 명시적 분기 처리는 저우선순위.
+
+### 단계 1 결과 및 방향 전환
+- 9 GATE(0~8) Plan 승인 → 실측 단계만 수행 → **해소 대상 소멸 확인** → 단계 2/3 스킵
+- 사용자에게 AskUserQuestion 보고 → "CLAUDE.md 메모 갱신 + 우선순위 2로 전환" 선택
+- CLAUDE.md "현재 진행 상황" + "DB 품질" + "다음 세션 우선순위" 3개 섹션 갱신
+- **vitest**: `scripts/collectors/trade-stats.test.mjs` 25/25 passed (변경 없음)
+
+## 단계 2 — dataReliability 9축 유령값 실측 (읽기만)
+
+**공식** ([schema.sql:642-652](supabase/schema.sql#L642-L652)): price/hospital/school/bus/debt/pop/nearbyMedian/jeonse/units 9축 각각 `IS NOT NULL` 체크 → 0점 또는 고정 점수 부여.
+
+### 9축 유령값 실측
+| 축 | 조건 | 유령값 | 비율 | 영향 점수 |
+|----|------|-------|------|----------|
+| `transport.bus_routes = 0` | 10점 | **772/1,950** | **39.6%** 🔴 | 10점 오부여 |
+| `infra.hospital = 0` | 12점 | 83/2,001 | 4.1% 🟡 | 12점 |
+| `prices.price <= 0` | 15점 | 57/3,690 | 1.5% | 15점 |
+| `apartments.units <= 1` | 10점 | 31/2,001 | 1.5% (공식에선 `> 1` 체크로 이미 제외) | - |
+| `schools.school_score = 0` | 12점 | 1/1,950 | 0.05% | - |
+| `regions.pop_growth = 0` | 8점 | 6/454 | 1.3% | - |
+| `builders.debt_ratio = 0` | 8점 | 0/32 | 0% | - |
+| `trade_stats.nearby_median = 0` | 15점 | 0/2,001 | 0% | - |
+| `trade_stats.jeonse_rate = 0` | 10점 | 0/2,001 | 0% | - |
+
+### 🔴 최대 유령값: `bus_routes = 0`
+region 분포(샘플 500건): **서울 192 / 경기 105 / 부산 14 / 인천 23 / 울산 9 / 대전 5 / 대구 5 / 광주 4** → 대도시가 86% 차지 → **수집 실패를 0으로 기록한 전형적 유령값**. 서울에 버스 노선 0개 아파트는 존재 불가.
+
+### 🟡 hospital=0
+region 분포: **경기 38 / 전남 9 / 세종 6 / 부산 6 / 경북 6 / 울산 6** → 경기 38건 중 다수가 유령값 의심, 나머지는 산간·소도시 정상 가능.
+
+## 발견의 시사점
+
+1. **dataReliability VIEW 공식이 IS NOT NULL 체크만으로 느슨함** — 점수가 부풀려짐
+2. **우선순위**: `bus_routes = 0 AND region IN ('서울','경기','부산',...)` 같은 화이트리스트 보강 필요
+3. **수정 대상**: `supabase/schema.sql` VIEW + `supabase/migrations/` 새 마이그레이션 + 영향 범위 11파일(`scorePrice.js`, `engine.js`, `fieldMeta.js` 등)
+4. **수정은 세션97로 이관** — 9 GATE 거치지 않은 새 작업이라 세션96에선 코드 수정 금지, 실측·문서화까지만
+
+## 커밋
+
+CLAUDE.md 갱신 1건만. 코드/스키마 수정 없음.
+
+## 다음 세션 우선순위 (세션97 후보)
+
+1. **dataReliability 공식 강화** — VIEW 에 `bus_routes > 0` 같은 조건 추가, 마이그레이션 파일 + scorePrice 영향 테스트
+2. (저우선) 전국 PIR 구조적 50건에 `sales_type = '재건축|재개발|청년주택'` 제외 플래그
+3. 행안부 API 복구 / Vercel 12함수 (외부 대기)
+
+---
+
 # 세션 94 — 2026-04-15 (화성시 50건 nearbyMedian NULL 해소)
 
 **목표**: 세션93 잔여 65건 중 화성시 52건 해소.

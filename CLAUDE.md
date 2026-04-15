@@ -4,7 +4,9 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-15 세션94 — 화성시 50건 nearbyMedian NULL 해소. 사전조사에서 원인 체인 재특정: apartments.gu 에 "화성시 동탄구/만세구/효행구/병점구" 복합 문자열 64건 저장돼 있어 `collect-trades.mjs:163` regionGuPairs 생성 시 `getLawdCd("경기","화성시 동탄구")` 매칭 실패 → MOLIT API 호출 자체가 미수행 → trades 화성시 0건 → trade-stats `statsKey` 매칭 실패 → nearby_median NULL. 세션92-d 의 LAWD 41591 교정은 정확했으나 gu 복합 문자열 때문에 효과 없었음. 3단계 처리: (A) `scripts/fix_hwaseong_gu.mjs` 신규 — LIKE '화성시 %' OR gu IN (동탄/만세/효행/병점) 매칭, 64/64 UPDATE, JSON 백업 자동(롤백 지원), 멱등. (C1) `collect-trades.mjs` `--only=region:gu` 플래그 +15줄 + 테스트 3개 (32→35 passed). (C2) 화성시 타겟 재수집 18콜 → 매매 706+전세 1523+분양권 6=2,235건 upsert → trade-stats 재계산 2001/2001. **KPI**: nearbyMedian NULL **65→15 (-50, -76.9%)**, 커버리지 95.4→**99.3%** (+3.9pt). 화성시 64/64 해소. 잔존 15건 전부 섬·산간(인천 동구 5/옹진군 2, 경기 가평 3/양평 4/연천 1) — 구조적. 쿼터 19콜 소비. 9 GATE 전수 🟢, Review 단계 simplify/scoring-validator/null-safety-checker/collector-contract.
+**마지막 작업**: 2026-04-15 세션96 — 서울 PIR NULL 57% 메모 검증: **이미 해소된 상태** 확인. Phase 1 Explore 3병렬 + DB 실측으로 현재 서울 `apartments_flat.pir` NULL이 **9/266 = 3.4%** (전국 50/1,424 = 3.5%) 임을 특정. 57% 는 세션85 이전 낡은 메모로 세션94+95 trade_stats 복구 과정에서 부수적으로 해결된 것. 서울 `price` NULL 0건. 잔존 9건 전부 `price=0` 구조적(재건축/재개발/청년안심주택 분양가 미확정) — [trade-stats.mjs:308](scripts/collectors/trade-stats.mjs#L308) `aptPrice > 0` 조건에 걸림. 서울 apartments 431 → flat 266 드롭 165건은 presale_min_price NULL 156건으로 VIEW 설계대로(정상 재고 필터링) 버그 아님. 세션96은 우선순위 1(PIR) 해소 대상 소멸로 우선순위 2(dataReliability 유령값 탐지)로 전환. vitest trade-stats 25/25 passed.
+
+**이전 작업**: 2026-04-15 세션94 — 화성시 50건 nearbyMedian NULL 해소. 사전조사에서 원인 체인 재특정: apartments.gu 에 "화성시 동탄구/만세구/효행구/병점구" 복합 문자열 64건 저장돼 있어 `collect-trades.mjs:163` regionGuPairs 생성 시 `getLawdCd("경기","화성시 동탄구")` 매칭 실패 → MOLIT API 호출 자체가 미수행 → trades 화성시 0건 → trade-stats `statsKey` 매칭 실패 → nearby_median NULL. 세션92-d 의 LAWD 41591 교정은 정확했으나 gu 복합 문자열 때문에 효과 없었음. 3단계 처리: (A) `scripts/fix_hwaseong_gu.mjs` 신규 — LIKE '화성시 %' OR gu IN (동탄/만세/효행/병점) 매칭, 64/64 UPDATE, JSON 백업 자동(롤백 지원), 멱등. (C1) `collect-trades.mjs` `--only=region:gu` 플래그 +15줄 + 테스트 3개 (32→35 passed). (C2) 화성시 타겟 재수집 18콜 → 매매 706+전세 1523+분양권 6=2,235건 upsert → trade-stats 재계산 2001/2001. **KPI**: nearbyMedian NULL **65→15 (-50, -76.9%)**, 커버리지 95.4→**99.3%** (+3.9pt). 화성시 64/64 해소. 잔존 15건 전부 섬·산간(인천 동구 5/옹진군 2, 경기 가평 3/양평 4/연천 1) — 구조적. 쿼터 19콜 소비. 9 GATE 전수 🟢, Review 단계 simplify/scoring-validator/null-safety-checker/collector-contract.
 
 **이전 작업**: 2026-04-15 세션93 — 세종 33건 nearbyMedian NULL 해소. `statsKey(region,gu)` 헬퍼 도입, 세종 화이트리스트로 gu 무시. KPI 98→65. 커밋 `8ee1907`.
 
@@ -13,12 +15,13 @@
 - 경기 가평군 3 / 양평군 4 / 연천군 1 — 군 단위 거래 희소
 
 **다음 세션 우선순위**:
-1. **(세션95 권장) 수집기 normalizeGu 가드** — 화성시 재오염 방지 (gu 쓰기 경로 전수조사 + `_shared.mjs` normalizeGu 훅)
-2. 서울 pir null 57% 원천 수집 이슈
-3. dataReliability 지표 유령값 탐지 개선
-4. 행안부 API 복구 대기 / Vercel 12함수
+1. **(세션97 권장) dataReliability 공식 강화** — `bus_routes=0`이 **772/1,950(39.6%)**, 서울 192·경기 105 등 대도시 집중 = 전형적 유령값. VIEW 공식이 `IS NOT NULL` 체크만이라 10점 오부여. `schema.sql` + 마이그레이션 + scorePrice 영향 11파일
+2. (저우선) 서울 잔존 9건 / 전국 잔존 50건 pir NULL — 전부 `price=0` 구조적 → 재건축·재개발·청년안심주택은 affordability 비대상으로 명시적 분기 검토
+3. 행안부 API 복구 대기 / Vercel 12함수
 
-**DB 품질** (trade_stats 2,001건, 세션94 측정): **nearbyMedian 99.3%** (65→15 NULL, 세션93 대비 -3.9pt 개선)
+**DB 품질** (세션96 측정):
+- trade_stats 2,001건: **nearbyMedian 99.3%** (세션94 측정치 유지)
+- apartments_flat 1,424건: **pir 96.5%** (서울 266건 96.6%, 전국 대비 편차 없음) — 세션96 재측정으로 57% 낡은 메모 기각
 
 ---
 
