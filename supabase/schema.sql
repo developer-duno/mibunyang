@@ -361,8 +361,8 @@ CREATE INDEX IF NOT EXISTS idx_regions_region ON regions(region);
 CREATE INDEX IF NOT EXISTS idx_regions_latest ON regions(region, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_prices_latest ON prices(apartment_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_regions_sido_latest ON regions(region, recorded_at DESC) WHERE gu IS NULL;
-CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(latitude, longitude);
-CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type_name, is_active);
+CREATE INDEX IF NOT EXISTS idx_complexes_location ON complexes(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_articles_complex ON articles(complex_no, trade_type_name, is_active);
 CREATE INDEX IF NOT EXISTS idx_articles_active ON articles(is_active) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_complex_price_history ON complex_price_history(complex_no, trade_type);
 CREATE INDEX IF NOT EXISTS idx_trades_cancel ON trades(region, deal_month) WHERE cancel_date IS NOT NULL;
@@ -640,10 +640,10 @@ SELECT
   a.presale_fetched_at AS "presaleFetchedAt",
   -- 데이터 완성도 (계산, 합계 100)
   GREATEST(0, LEAST(100, (
-    (CASE WHEN p.price IS NOT NULL THEN 15 ELSE 0 END) +
-    (CASE WHEN i.hospital IS NOT NULL THEN 12 ELSE 0 END) +
+    (CASE WHEN p.price > 0 THEN 15 ELSE 0 END) +
+    (CASE WHEN i.hospital > 0 THEN 12 ELSE 0 END) +
     (CASE WHEN sc.school_score IS NOT NULL THEN 12 ELSE 0 END) +
-    (CASE WHEN t.bus_routes IS NOT NULL THEN 10 ELSE 0 END) +
+    (CASE WHEN t.bus_stop_names IS NOT NULL THEN 10 ELSE 0 END) +
     (CASE WHEN b.debt_ratio IS NOT NULL THEN 8 ELSE 0 END) +
     (CASE WHEN r.pop_growth IS NOT NULL THEN 8 ELSE 0 END) +
     (CASE WHEN ts.nearby_median IS NOT NULL THEN 15 ELSE 0 END) +
