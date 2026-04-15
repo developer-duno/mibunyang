@@ -18,7 +18,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { median, monthsAgo, groupByArea } = await import("./trade-stats.mjs");
+const { median, monthsAgo, groupByArea, statsKey } = await import("./trade-stats.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** 거래 데이터 팩토리 */
@@ -185,5 +185,34 @@ describe("groupByArea", () => {
     expect(result[2]).toEqual({
       area: 110, min: 90000, avg: 90000, max: 90000, count: 1,
     });
+  });
+});
+
+// ── statsKey ─────────────────────────────────────────────────
+// 세종 단지(gu=null 40건 + "행정중심복합도시" 1건)를 한 버킷으로 통합하기 위한
+// 키 헬퍼. 비세종은 기존 리터럴 `region:gu` 와 bit 단위 동일해야 함.
+describe("statsKey", () => {
+  it("세종 + null → '세종:' (세종 단일 버킷)", () => {
+    expect(statsKey("세종", null)).toBe("세종:");
+  });
+
+  it("세종 + 임의 gu 값 → '세종:' (세종은 gu 무시)", () => {
+    expect(statsKey("세종", "행정중심복합도시")).toBe("세종:");
+    expect(statsKey("세종", "세종시")).toBe("세종:");
+  });
+
+  it("비세종 region + gu → 'region:gu' (기존 리터럴과 동일)", () => {
+    expect(statsKey("경기", "성남시 분당구")).toBe("경기:성남시 분당구");
+    expect(statsKey("서울", "강남구")).toBe("서울:강남구");
+  });
+
+  it("비세종 region + null gu → null (엄격 차단)", () => {
+    expect(statsKey("경기", null)).toBeNull();
+    expect(statsKey("서울", "")).toBeNull();
+  });
+
+  it("region 없음 → null", () => {
+    expect(statsKey(null, "강남구")).toBeNull();
+    expect(statsKey("", "강남구")).toBeNull();
   });
 });

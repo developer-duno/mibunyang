@@ -1,3 +1,52 @@
+# 세션 93 — 2026-04-15 (세종 33건 nearbyMedian NULL 해소)
+
+**목표**: 세션92 잔여 98건 중 세종 33건 해소.
+
+**원인 (DB 실측)**:
+- `apartments` 세종 41건: gu=NULL 40 + gu="행정중심복합도시" 1 (세션43 린스트라우스 보강)
+- `trades` 세종 28,676건: gu=NULL 21,507 + gu="행정중심복합도시" 7,169
+- `complexes` 세종: sido="세종특별자치시", sigungu=NULL
+- **비세종 region 의 gu=NULL 행 0건** (화이트리스트 안전성 실측)
+- `trade-stats.mjs` L159 `if (!t.gu) continue;` 와 L207 `if (!apt.gu) continue;` 가 세종을 양쪽에서 스킵. 린스트라우스 1건도 complexes sigungu=NULL 탓에 naverByGu/historyByGu 키 불일치로 매칭 실패.
+
+**해법**: `statsKey(region, gu)` 헬퍼 export — 세종 화이트리스트로 gu 무시(`"세종:"` 단일 버킷), 비세종은 기존 `region:gu` 리터럴과 bit 동일. 7곳 치환:
+- tradesByGu (L159~164)
+- complexGuMap 생성 (L166~173, sido="세종특별자치시"→region="세종", gu=null 정규화)
+- naverByGu (L176~182)
+- historyByGu (L186~192)
+- cancelByGu (L196~202)
+- apartments loop 가드 (L209~212)
+- guComplexes 비교 (L418~421, `statsKey(gi.region, gi.gu) === key`)
+
+**변경 규모**: `scripts/collectors/trade-stats.mjs` 단일 파일 ~25줄. `trade-stats.test.mjs` 에 `statsKey` describe 블록 5 assert 추가. DB 스키마·API·프론트 변경 0. 쿼터 소비 0.
+
+**9 GATE**: 0~8 전수 🟢.
+- GATE 1 영향 범위 실측: workflow CLI 2곳(import 0), test import median/monthsAgo/groupByArea 만, statsKey 이름 충돌 0, 비세종 gu=NULL 0건 실측
+- GATE 5 보안: Explore 서브에이전트 PASS, 민감정보/injection/쿼터/스키마 전부 🟢
+
+**5교차검증 병렬** (3전 PASS):
+- scoring-validator: PASS — 가중치/클램핑/null 처리 불변, PROFILES 합계 100 유지, null→실수치 전환은 정상 입력 경로
+- null-safety-checker: PASS — 7개 호출처 `if (!key) continue;` 가드 전부 확인, guComplexes `gi && statsKey(...)===key` 가드 안전
+- collector-contract: PASS — BATCH=500, onConflict="apartment_id", Promise.all, 개별 재시도, 에러 로깅 전부 불변
+
+**테스트**: 2,296 → **2,301 green** (+5 정확). vitest 기반(TypeScript 프로젝트 아님, tsc 대신 npm run test).
+
+**dry-run 검증**:
+- `nearby_median: 1922건` (실거래 1922, 매물 0, 시세이력 0)
+- 세션92 `nearby_median: 1900` → +22 (dry-run; compute-scores 미반영 상태)
+- 본 실행 후 KPI 재측정 결정적: apartments_flat 1,424 기준 **nearbyMedian NULL 98 → 65** (-33), 세종 33/34 전량 해소
+- 잔존: 경기 61 + 인천 4 = 65 (세종 사라짐)
+- 커버리지 93.1 → 95.4% (+2.3pt)
+
+**범위 외 (세션94 이후)**:
+- 화성시 비법정구 52건 (apartments.gu DB migration, Plan 필수)
+- 서울 pir null 57%
+- dataReliability 유령값 탐지
+
+**커밋**: (pending)
+
+---
+
 # 세션 92-c/d — 2026-04-15 (통합시 복합 gu 연쇄 발견 및 해결)
 
 ## 주요 작업 — 세션92-b 후 잔여 NULL 원인 파고들기

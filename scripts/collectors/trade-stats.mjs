@@ -18,6 +18,16 @@ loadEnv();
 
 const NATIONAL_MEDIAN_INCOME = 5000; // 만원/월 — avg_income null 시 기본값
 
+// ── region/gu → 인덱스 키 ──────────────────────────────────────
+// 세종은 gu=null(40건) / gu="행정중심복합도시"(1건) 두 버킷으로 분산돼 있어
+// 한 버킷으로 통합하기 위해 region==="세종" 화이트리스트로 gu 무시.
+// 비세종은 기존 `region:gu` 리터럴과 bit 단위 동일한 키 반환.
+export function statsKey(region, gu) {
+  if (!region) return null;
+  if (region === "세종") return "세종:";
+  return gu ? `${region}:${gu}` : null;
+}
+
 // ── 중위값 헬퍼 ────────────────────────────────────────────────
 export function median(arr) {
   if (!arr.length) return null;
@@ -153,47 +163,54 @@ async function main() {
     }
   }
 
-  // 거래 그룹: "region:gu" → trades[]
+  // 거래 그룹: statsKey(region,gu) → trades[]
   const tradesByGu = new Map();
   for (const t of trades) {
-    if (!t.region || !t.gu || t.price == null) continue;
-    const key = `${t.region}:${t.gu}`;
+    if (t.price == null) continue;
+    const key = statsKey(t.region, t.gu);
+    if (!key) continue;
     if (!tradesByGu.has(key)) tradesByGu.set(key, []);
     tradesByGu.get(key).push(t);
   }
 
   // 네이버 단지 → 아파트 매핑, 단지별 구 정보
+  // 세종은 sido="세종특별자치시", sigungu=NULL 로 저장돼 있어 region="세종" 로 정규화하고 gu 는 버림.
   const complexGuMap = new Map();
   for (const nc of naverComplexes) {
-    if (nc.sido && nc.sigungu) complexGuMap.set(nc.complex_no, { region: nc.sido, gu: nc.sigungu });
+    if (!nc.sido) continue;
+    const region = nc.sido === "세종특별자치시" ? "세종" : nc.sido;
+    const gu = region === "세종" ? null : nc.sigungu;
+    if (region === "세종" || gu) complexGuMap.set(nc.complex_no, { region, gu });
   }
 
-  // 네이버 매물 그룹: "region:gu" → articles[]
+  // 네이버 매물 그룹: statsKey → articles[]
   const naverByGu = new Map();
   for (const a of naverArticles) {
     const guInfo = complexGuMap.get(a.complex_no);
     if (!guInfo) continue;
-    const key = `${guInfo.region}:${guInfo.gu}`;
+    const key = statsKey(guInfo.region, guInfo.gu);
+    if (!key) continue;
     if (!naverByGu.has(key)) naverByGu.set(key, []);
     naverByGu.get(key).push(a);
   }
 
-  // 시세 이력 그룹: "region:gu" → price_avg[]
+  // 시세 이력 그룹: statsKey → price_avg[]
   const historyByGu = new Map();
   for (const h of priceHistory) {
     const guInfo = complexGuMap.get(h.complex_no);
     if (!guInfo || h.price_avg == null) continue;
-    const key = `${guInfo.region}:${guInfo.gu}`;
+    const key = statsKey(guInfo.region, guInfo.gu);
+    if (!key) continue;
     if (!historyByGu.has(key)) historyByGu.set(key, []);
     historyByGu.get(key).push(h.price_avg);
   }
 
-  // 해제 거래 그룹: "region:gu" → 해제 건수 (매매만)
+  // 해제 거래 그룹: statsKey → 해제 건수 (매매만)
   const cancelByGu = new Map();
   for (const t of cancelledTrades) {
-    if (!t.region || !t.gu) continue;
     if (t.trade_type !== "sale" && t.trade_type !== "매매" && t.trade_type != null) continue;
-    const key = `${t.region}:${t.gu}`;
+    const key = statsKey(t.region, t.gu);
+    if (!key) continue;
     cancelByGu.set(key, (cancelByGu.get(key) || 0) + 1);
   }
 
@@ -204,9 +221,9 @@ async function main() {
   let processed = 0;
 
   for (const apt of apartments) {
-    if (!apt.region || !apt.gu) continue;
+    const key = statsKey(apt.region, apt.gu);
+    if (!key) continue;
 
-    const key = `${apt.region}:${apt.gu}`;
     const aptPrice = apt.price; // 만원
     const aptArea = apt.area || null;
 
@@ -411,7 +428,7 @@ async function main() {
     let nearbyBuildYear = null;
     const guComplexes = naverComplexes.filter(nc => {
       const gi = complexGuMap.get(nc.complex_no);
-      return gi && gi.region === apt.region && gi.gu === apt.gu;
+      return gi && statsKey(gi.region, gi.gu) === key;
     });
     const buildYears = guComplexes
       .map(nc => nc.use_approve_ymd ? parseInt(nc.use_approve_ymd.slice(0, 4), 10) : NaN)

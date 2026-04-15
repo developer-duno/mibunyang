@@ -4,22 +4,22 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-15 세션92-c/d — 통합시 복합 gu 연쇄 발견. 92-b 후 잔여 58건 조사 → 충북·충남·경북·경남 통합시(청주/천안/포항/창원) 단일 키가 MOLIT 미지원, 하위 구만 유효. MOLIT probe 로 13개 구 코드 확정 + `getLawdCd` 단독 구 매칭 분기(`gu.endsWith("구")` → regionMap 내 `" 구"` 로 끝나는 키 검색) 추가. 92-c 완료 후 NULL 251건 재조사에서 **경기 대형 발견** — 수원/성남/안양/부천/안산/고양/용인 7개 통합시 180건도 동일 문제. 92-d 에서 경기 18개 하위 구 매핑 추가 + 화성시 41590→41591 교정. 본 수집 **527,149건 upsert** (총 trades 597,329, 누적 +248k). **KPI 결정적 결과**: `nearbyMedian` NULL **491→98 (34.5→6.9%, 누적 -27.6pt, 391건 해소)**. 전국 price 카테고리 평균 53.7→**56.81 (+3.11pt)**. 경기 57.0→**59.2** (+2.2pt). 테스트 2,278→2,296. 커밋 `23f5beb` + `d8ce1d7`.
+**마지막 작업**: 2026-04-15 세션93 — 세종 33건 nearbyMedian NULL 해소. 원인: trade-stats.mjs 의 `!gu` 가드가 세종(apartments gu=NULL 40 + "행정중심복합도시" 1, trades gu=NULL 21,507 + "행정중심복합도시" 7,169)을 양쪽에서 스킵. 해법: `statsKey(region, gu)` 헬퍼 신규 — 세종 화이트리스트로 gu 무시(`"세종:"` 단일 버킷), 비세종은 기존 리터럴과 bit 동일. 7곳(tradesByGu/naverByGu/historyByGu/cancelByGu/apartments loop/guComplexes 비교) 치환 + complexGuMap 세종 정규화(sido="세종특별자치시"→"세종"). 단일 파일 ~25줄 변경, 테스트 5 assert 추가(2,296→2,301). 쿼터 소비 0 (in-memory 재계산만). **KPI 결정적**: `nearbyMedian` NULL **98→65 (6.9→4.6%, -2.3pt, 33건 해소)**, 커버리지 93.1→**95.4%**. 세종 33/34 해소, 경기 61 + 인천 4 잔존. 9 GATE 전수 🟢, 5교차검증 3전 PASS (scoring-validator/null-safety-checker/collector-contract).
 
-**잔여 98건 (구조적 56 + 개선 가능 42)**:
+**이전 작업**: 2026-04-15 세션92-c/d — 통합시 복합 gu 연쇄 발견. 92-b 후 잔여 58건 조사 → 충북·충남·경북·경남 통합시(청주/천안/포항/창원) 단일 키가 MOLIT 미지원, 하위 구만 유효. 92-c/d 에서 경기·충청·영남 20여개 하위 구 매핑 확장 + 화성시 41590→41591 교정. 본 수집 527,149건 upsert. **KPI**: nearbyMedian NULL 491→98. 커밋 `23f5beb` + `d8ce1d7` + `d7af7bf`.
+
+**잔여 65건 (구조적 56 + 개선 가능 9)**:
 - 화성시 비법정구 "동탄구/만세구/효행구/병점구" 52건 — apartments 원천 정규화 필요
-- 세종 33건 — trade-stats.mjs region+gu 매칭 로직이 세종 gu NULL 로 단지별 매칭 실패
 - 인천 동구/옹진군 4건 — 섬 지역 실 공백
 - 경기 양평/가평/연천 6건 + 기타 3건
 
 **다음 세션 우선순위**:
-1. 세종 33건 — trade-stats.mjs 매칭 로직 세종 예외 처리
-2. apartments.gu 정규화 마이그레이션 (화성시 52건)
-3. 서울 pir null 57% 원천 수집 이슈
-4. dataReliability 지표 유령값 탐지 개선
-5. 행안부 API 복구 대기 / Vercel 12함수
+1. apartments.gu 정규화 마이그레이션 (화성시 52건) — DB migration 필요
+2. 서울 pir null 57% 원천 수집 이슈
+3. dataReliability 지표 유령값 탐지 개선
+4. 행안부 API 복구 대기 / Vercel 12함수
 
-**DB 품질** (apartments_flat 1,424건, 세션92-d 측정): units 98.4% · lat/lng 99.9% · **price 100.0%** · unsoldRate 61.4% · subwayDist 79.0% · **nearbyMedian 93.1%**(491→98 NULL, 세션91 대비 -27.6pt) · **price 카테고리 평균 56.81**(세션91 53.7→56.81, +3.11pt)
+**DB 품질** (apartments_flat 1,424건, 세션93 측정): units 98.4% · lat/lng 99.9% · **price 100.0%** · unsoldRate 61.4% · subwayDist 79.0% · **nearbyMedian 95.4%**(98→65 NULL, 세션92 대비 -2.3pt)
 
 ---
 
