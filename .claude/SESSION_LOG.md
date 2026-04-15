@@ -1,3 +1,62 @@
+# 세션 97 — 2026-04-15 (dataReliability VIEW 공식 강화 — 유령값 제거)
+
+**목표**: `apartments_flat.dataReliability` 공식에서 `IS NOT NULL` 체크가 `DEFAULT 0` 컬럼의 유령값에 10점을 오부여하는 문제를 해소. 세션96에서 발견한 transport.bus_routes=0 (772건, 39.6%) / infra.hospital=0 (83건) / prices.price<=0 (57건).
+
+## Plan 모드 + 9 GATE 검증
+- Plan 파일: `~/.claude/plans/gleaming-crunching-robin.md`
+- 9 GATE: 🟢 8 / 🟡 1 (229줄 파일·실질 3줄 수정으로 완화) / 🔴 0
+- Explore 3병렬 + grep 원문 증거 기반 영향 범위 실측 완료
+
+## 핵심 결정
+**bus_routes 판정**: `t.bus_stop_names IS NOT NULL` (수집기가 busStopNames.length>0일 때만 join 저장 → "수집 성공" 신호로 정확)
+- 대안 `bus_routes > 0` 기각: 실제 버스 없는 섬·산간도 감점 (부당)
+**hospital/price 판정**: `> 0` (두 컬럼은 NULL 신호 없어서 차선이자 최선)
+
+## 단계 A — 마이그레이션 + schema.sql 동기화
+- [supabase/migrations/20260416000000_fix_data_reliability_formula.sql](supabase/migrations/20260416000000_fix_data_reliability_formula.sql) 신규 229줄 (226 복사 + 실질 3줄)
+- [supabase/schema.sql:642-645](supabase/schema.sql#L642-L645) 3줄 동기화
+
+## 단계 B — 롤백 파일 + Supabase 적용
+- [supabase/migrations/20260416000001_rollback_data_reliability_formula.sql](supabase/migrations/20260416000001_rollback_data_reliability_formula.sql) 신규 229줄 (비상용, 미적용)
+- Supabase SQL Editor 수동 적용 — forward 마이그레이션만 실행
+
+## 실측 KPI (세션97 적용 후)
+
+| 지표 | 값 | 비고 |
+|---|---|---|
+| total apartments_flat | 1,424 | 세션96과 동일 |
+| **avg dataReliability** | **88.38** | 변경 전 예상 93 대비 **-4.62점** (예상 -4.7 일치) |
+| below_50 | 4 | |
+| above_80 | 1,317 (92.5%) | |
+| bus 박탈 대상 | **239/772** | 예상 ~772의 31%만 감점 |
+
+**중요 발견**: bus_routes=0 중 **533건(69%)은 수집 성공이지만 실제 버스 0 노선** — `bus_stop_names` 채워졌으나 unique routes 0. `bus_stop_names IS NOT NULL` 판정이 유령값 **239건만 정확히 박탈**하고 실제 버스 없는 533건은 점수 **유지**. `> 0` 방식 대비 훨씬 정확한 결과로 판정 로직 선택이 옳았음.
+
+## 분포 (10점 버킷)
+| bkt | cnt | avg |
+|---|---|---|
+| 4 | 3 | 33.0 |
+| 5 | 1 | 41.0 |
+| 6 | 43 | 57.7 |
+| 7 | 51 | 67.3 |
+| 8 | 54 | 79.1 |
+| 9 | 247 | 82.9 |
+| 10 | 1,025 | 92.7 |
+
+## Review (5교차검증)
+- **빌드**: 🟢 `npx vite build` 381ms
+- **테스트**: 🟢 vitest 146 files / 2310 tests passed
+- **스코어링**: 🟢 PASS (scoring-validator) — 가중치 합 100, 클램핑·null 처리 유지, engine.js:24 null→30 기본값 안전
+- **null 안전성**: 🟢 PASS (null-safety-checker) — SQL `NULL > 0` = UNKNOWN → CASE ELSE 안전, 소비 지점 가드 완비
+- **Hook 규칙**: N/A (React Hook 변경 없음)
+- **보안**: 🟢 민감정보 0건 (migrations grep)
+
+## 후속 (다음 세션)
+- `transport-tago.mjs:156-168` TAGO 실패 시 `uniqueBus=null` 저장으로 전환 (근본 개선, 수집기 계약 변경)
+- 이번 세션에서 분리한 이유: DB 변경과 수집기 변경을 한 PR에 묶지 않음 (CLAUDE.md 규칙)
+
+---
+
 # 세션 96 — 2026-04-15 (서울 PIR 57% 메모 기각 + dataReliability 유령값 발견)
 
 **목표**: (1) 서울 PIR NULL 57% 원인 특정·해소 (2) 부수적으로 dataReliability 유령값 탐지.
