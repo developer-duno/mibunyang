@@ -28,6 +28,15 @@ export function getAreaAdj(area) {
   return 0.94;
 }
 
+function classifyNoPrice(apt) {
+  const name = apt.name || "";
+  const presale = apt.presaleType || "";
+  if (presale.includes("임대")) return "임대형 공급 — 분양가 산출 대상 아님";
+  if (/(재건축|재개발|촉진구역|\d+구역)/.test(name)) return "정비사업 — 조합원 물량, 분양가 미정";
+  if (/(써밋|후분양)/.test(name)) return "후분양 단지 — 분양가 미정";
+  return "분양가 데이터 없음 (중립 점수)";
+}
+
 export function scorePrice(apt) {
   const brand = BRAND_TIER[apt.builder];
   if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
@@ -49,14 +58,15 @@ export function scorePrice(apt) {
   const idxBonus = apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_HOT ? PRICE_INDEX_HOT_BONUS
     : apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_WARM ? PRICE_INDEX_WARM_BONUS : 0;
   const relSc = Math.min(apt.dataReliability + idxBonus, 100);
-  if (fairPrice <= 0) {
+  if (fairPrice <= 0 || !apt.price || apt.price <= 0) {
     const devSc = PRICE_NO_DATA_DEFAULTS.dev;
     const jrSc = PRICE_NO_DATA_DEFAULTS.jr; const pirSc = PRICE_NO_DATA_DEFAULTS.pir; const psrSc = PRICE_NO_DATA_DEFAULTS.psr;
     const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
+    const noPriceDetail = (!apt.price || apt.price <= 0) ? classifyNoPrice(apt) : "주변 시세 없음 — 적정가 산출 불가";
     return {
       total: Math.round(Math.max(0, Math.min(total, 100))), fairPrice: 0, deviation: "0.0",
       subs: [
-        { name: "적정가 괴리도", score: devSc, info: "데이터 부재", detail: "주변 시세 없음 — 적정가 산출 불가" },
+        { name: "적정가 괴리도", score: devSc, info: "데이터 부재", detail: noPriceDetail },
         { name: "전세가율", score: Math.round(jrSc), info: apt.jeonseRate == null ? "데이터 부재" : `${apt.jeonseRate}%`, detail: apt.jeonseRate == null ? "전세가율 데이터 없음 (중립 50점)" : `${apt.jeonseRate}% (적정 70~80%, 위험 40%↓)` },
         { name: "PIR", score: Math.round(pirSc), info: apt.pir == null ? "데이터 부재" : `${apt.pir}배`, detail: apt.pir == null ? "PIR 데이터 없음 (중립 50점)" : `${apt.pir}배 (우수 3↓, 양호 5↓, 보통 7↓)` },
         { name: "PSR", score: Math.round(psrSc), info: apt.psr == null ? "데이터 부재" : `${(apt.psr * 100).toFixed(0)}%`, detail: apt.psr == null ? "PSR 데이터 없음 (중립 50점)" : `${(apt.psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓)` },

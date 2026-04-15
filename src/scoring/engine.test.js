@@ -738,3 +738,32 @@ describe('클램핑 일관성 — 음수 방어', () => {
     expect(r.subs.find(s => s.name === "교통").score).toBeGreaterThanOrEqual(0);
   });
 });
+
+// 세션99: scorePrice price=0 devSc=97 오인 버그 회귀 방어
+// 재건축·후분양·임대형 등 price=0 + nearbyMedian>0 조합이 정상 분기로 빠져
+// dev=100% → devSc=97 만점을 받던 버그. 분기 조건에 apt.price<=0 추가 후
+// "데이터 부재" 경로로 흡수되어 devSc=PRICE_NO_DATA_DEFAULTS.dev=30 중립.
+describe('scorePrice — price=0 devSc=97 오인 버그 (세션99)', () => {
+  it('price=0 + nearbyMedian>0 → 데이터 부재 분기 (devSc=30)', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 202000 }));
+    const dev = r.subs.find(s => s.name === "적정가 괴리도");
+    expect(dev.score).toBe(30);
+    expect(dev.info).toBe("데이터 부재");
+    expect(r.fairPrice).toBe(0);
+  });
+
+  it('재건축 단지 detail → "정비사업" 안내', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "신반포22차재건축" }));
+    expect(r.subs[0].detail).toContain("정비사업");
+  });
+
+  it('후분양 단지(써밋) detail → "후분양" 안내', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 135000, name: "써밋더힐" }));
+    expect(r.subs[0].detail).toContain("후분양");
+  });
+
+  it('임대형 단지 detail → "임대형" 안내 (presaleType 기반)', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 130000, name: "길동생활B동 청년안심주택", presaleType: "민간임대시행자임의" }));
+    expect(r.subs[0].detail).toContain("임대형");
+  });
+});
