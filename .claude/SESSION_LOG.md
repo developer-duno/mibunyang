@@ -1,4 +1,76 @@
-# 세션 111 — 2026-04-17 (classifyNoPrice 분기 확장 — 택지지구/공공/오피스텔)
+# 세션 111-B — 2026-04-17 (classifyNoPrice 분양계획 분기 — 100% 커버리지 달성)
+
+**목표**: 세션111-A 후 기타 잔존 12건을 개별 조사한 결과, 전부 `presale_stage = "분양계획"` + `presale_pp=0` + `recruit_date=2026-04~05` 임을 확인. 모집공고 전 예정 단지 정상 데이터. `classifyNoPrice`에 분양계획 분기 1개 추가로 38건 100% 커버리지.
+
+## 사전 조사 — 12건 원본 수집값 추적
+
+Supabase `apartments` 원본 조회 (`naver_fetched_at`, `presale_fetched_at`, `presale_stage`, `presale_min/max/pp`) 결과:
+
+| 단지 | stage | presale_pp | recruit | naver_nearby_median |
+|---|---|---|---|---|
+| 전주골드클래스시그니처 | 분양계획 | 0 | 2026-04 | null |
+| 더샵관저아르테 | 분양계획 | 0 | 2026-04 | null |
+| 천안동문디이스트파크시티 | 분양계획 | 0 | 2026-05 | null |
+| 디에이치클래스트 | 분양계획 | 0 | 2026 미정 | null |
+| 알티에로광안 | 분양계획 | 0 | 2026-05 | null |
+| 영통역우미린 | 분양계획 | 0 | 2026-04 | 58250 |
+| 검암역자이르네 | 분양계획 | 0 | 2026-05 | null |
+| 울산신복역비스타메트로 | 분양계획 | 0 | 2026-04 | null |
+| 더리치먼드미아 | 분양계획 | 0 | 2026-04 | 66500 |
+| 힐스테이트구월아트파크 | 분양계획 | 0 | 2026-04 | 35250 |
+| 테라스99동탄 | 분양계획 | 0 | 2026-04 | null |
+| 용인고림동문디이스트 | 분양계획 | 0 | 2026-04 | null |
+
+**결론**: 12건 전부 동일 패턴 — naver-presale 수집기가 분양계획 단계 단지를 price=0으로 저장하는 정상 동작. 취소/오류 없음.
+
+## 변경 파일 (2개)
+
+### src/scoring/scorePrice.js
+- `classifyNoPrice()` 에 `stage === "분양계획"` 분기 1개 추가 (L41)
+- 새 지역변수 `const stage = apt.presaleStage || ""`
+- 판정 위치: 오피스텔 다음, 택지블록 앞 (이름 패턴보다 구체적 신호)
+- 메시지: "분양 예정 단지 — 모집공고 전"
+- 주석 블록 갱신 (판정 순서 + 분양계획 위치 근거 명기)
+
+### src/scoring/engine.test.js
+- describe 'scorePrice — price=0 classifyNoPrice 확장 (세션111)' 에 테스트 2개 추가
+  - `presaleStage=분양계획 → "분양 예정 단지" 안내` (기본 케이스)
+  - `분양계획 우선순위: 오피스텔 이후, 택지블록 이전` (신도시+분양계획 조합에서 분양계획 우선 검증)
+
+## KPI — 100% 커버리지 달성
+
+38건 분류 결과 (시뮬 확정):
+| 카테고리 | 세션111-A | 세션111-B | 증감 |
+|---|---|---|---|
+| 임대형 | 2 | 2 | - |
+| 정비사업 | 4 | 4 | - |
+| 후분양 | 2 | 2 | - |
+| 오피스텔 | 3 | 3 | - |
+| **분양계획** (신규) | 0 | **27** | +27 |
+| 택지지구 블록 | 15 | 0 | -15 (분양계획이 먼저 흡수) |
+| 공공분양 | 0 | 0 | - |
+| **기타(기본 메시지)** | 12 | **0** | **-12** |
+
+**맞춤 안내 적용률: 26/38 → 38/38 (100%)**
+
+## Review (5교차검증)
+
+- **빌드**: `npx vite build` 🟢 377ms
+- **테스트**: `npx vitest run` 🟢 147 files / **2,375 tests** (세션111-A 2,373 → +2)
+- **스코어링 (scoring-validator)**: PASS — PROFILES 5×100, 0.30+0.20+0.15+0.25+0.07+0.03=1.0000 불변, PIR 구간 상수 불변, classifyNoPrice 분기는 detail 문자열만 생성 (점수 경로 무개입)
+- **null 안전성 (null-safety-checker)**: PASS — `apt.presaleStage || ""` 기본값, strict equality `===` 안전, apartments_flat VIEW `presaleStage` 노출 확인(schema.sql:626, migration 3종 동일, fieldMeta.js:154 등록)
+- **Hook/보안**: 순수 함수 + 입력 경로 없음, 변경 없음
+
+## 다음 세션 우선순위
+
+1. **frontend UI 검증** — AptCard/DetailModal에서 "분양 예정 단지" 메시지 실제 렌더 확인 (webapp-testing, Playwright)
+2. **시군구별 소득 수집 (장기)** — 국세청 TASIS 스크레이핑
+3. **Vercel 12함수 감축 (장기)**
+4. **행안부 API 복구 대기**
+
+---
+
+# 세션 111-A — 2026-04-17 (classifyNoPrice 분기 확장 — 택지지구/공공/오피스텔)
 
 **목표**: 잔존 38건 pir NULL(전부 price=0)에 대해 `classifyNoPrice` 분기를 확장해 UX 메시지를 정교화. 점수 로직은 불변, 문구만 개선. 세션99 도입분의 후속 작업.
 

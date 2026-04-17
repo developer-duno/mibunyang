@@ -825,4 +825,17 @@ describe('scorePrice — price=0 classifyNoPrice 확장 (세션111)', () => {
     expect(r.subs[0].detail).toBe("분양가 데이터 없음 (중립 점수)");
     expect(r.subs[0].score).toBe(30);
   });
+
+  // 세션111 후속: presaleStage="분양계획" 분기 (모집공고 전 예정 단지)
+  it('presaleStage=분양계획 → "분양 예정 단지" 안내', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "더샵관저아르테", presaleType: "민간분양", presaleStage: "분양계획" }));
+    expect(r.subs[0].detail).toContain("분양 예정 단지");
+    expect(r.subs[0].score).toBe(30);
+  });
+
+  it('분양계획 우선순위: 오피스텔 이후, 택지블록 이전', () => {
+    // 택지블록 패턴(신도시)+분양계획 → 분양계획이 먼저 매칭
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "고덕국제신도시수자인풍경채1단지", presaleStage: "분양계획" }));
+    expect(r.subs[0].detail).toContain("분양 예정 단지");
+  });
 });
