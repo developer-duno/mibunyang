@@ -1582,3 +1582,100 @@ M .claude/SESSION_LOG.md (본 섹션)
 - (보류 에픽) regions 시계열 스냅샷 아키텍처 재설계 — VIEW LATERAL 재작성 + 컬렉터 recorded_at 정책 통일
 - Vercel 12함수 감축
 
+# 세션 105 — 2026-04-16 (pir NULL "가격 있음" 7건 원인 확정 — read-only)
+
+**목표**: 세션104에서 분류한 "가격 있는데 pir NULL" 5~7건의 실제 원인 추적. 플랜 `.claude/plans/session105-pir-null-classification.md` 따라 Phase 1(읽기 전용 Supabase 쿼리 + 코드 grep)만 실행. 수정·커밋 없음.
+
+## 하네스 9 GATE
+
+1차 판정: 🟢6/🟡2/🔴1 → 재검토. 🔴 원인은 플랜에 `calc-trade-stats.mjs`(존재하지 않는 파일명) 기재, 실제 파일은 `scripts/collectors/trade-stats.mjs`. 🟡 원인은 "버그 수정 + VIEW 파생 + scorePrice 단순화"를 한 세션에 묶은 과잉 범위. 2차: Phase 1(읽기 전용)만으로 범위 축소 → 🟢9/🟡0/🔴0 통과.
+
+## Supabase 쿼리 4회 (사용자가 SQL Editor 직접 실행)
+
+1. `apartments` + `apartments_flat` 조인 → 의심 7단지 13행 추출 (동일 단지 복수 평형 포함). `flat_price` 채워짐, `flat_pir` NULL 확인
+2. `trade_stats` 13 id 조회 → 모든 row 존재, `nearby_median`·`recent_trades_6m`은 정상, `pir`만 NULL. `updated_at` 전부 2026-04-15 12:22
+3. `prices` latest_price_at 조회 → **pir NULL 전부 4-14, pir 정상 전부 3-20**. 완벽 분리
+4. `prices` 전체 row 덤프 (4개 대표 apt) → 결정적 증거 확보
+
+## 원인 확정: `naver-presale.mjs` price=0 저장 버그
+
+```
+apt_id           recorded_at  price  area     → 영향
+ah-2024910033    2026-03-14   57030  84.8937
+ah-2024910033    2026-03-20   57030  84.8937
+ah-2024910033    2026-04-14   0      NULL      ← 오염
+```
+
+`trade-stats.mjs:143-149` `latestPriceMap` 갱신이 `recorded_at` 최신만 보고 price=0 row를 채택 → `aptPrice=0` → L308 `aptPrice > 0` 거짓 → pir 계산 스킵. 반면 `apartments_flat` VIEW의 `latest_prices` CTE는 `DISTINCT ON (apartment_id) ORDER BY recorded_at DESC`로 최신 row를 무조건 채택 (~~price>0 필터는 없음~~ 세션106에서 실제 schema.sql:466-471 확인하여 정정). `price>0`은 `dataReliability` 공식(L643)에서만 사용. `flat_price`가 정상으로 보인 건 이전 정상 row가 아직 최신이었던 시점의 캐시 결과였을 가능성 또는 VIEW 갱신 타이밍 차이.
+
+**범인 코드**:
+- `scripts/collectors/naver-presale.mjs:218-223` `parsePresalePrice(0)` → `Math.round(0/10000)=0` 반환
+- `scripts/collectors/naver-presale.mjs:333` `if (price == null || !apartmentId) return null;` 가드가 `0 == null → false`라 통과
+- 네이버 분양 API가 `min_price: 0` 반환 시(분양가 미공시 단지) 그대로 prices에 저장
+
+**4-14 실행 주체**: `.github/workflows/` 에 `naver-presale` 없음 → 정기 스케줄 아님. 월/목 08:00 로컬 파이프라인 3/6 단계 정기 실행도 4-14(화) 아님. **수동 실행 또는 post-naver-collect 체인 중 실행**으로 추정.
+
+**동일 위험 다른 수집기 grep**: `prices` 테이블에 쓰는 활성 수집기는 `naver-presale.mjs` 단독 확인(seed/migrate는 1회성 제외). 다른 경로 없음.
+
+## 사이드 이슈 (별개 에픽)
+
+`regions.avg_income` 전국 26행 **100% NULL**. 어떤 수집기도 이 컬럼에 쓰지 않음(Explore 에이전트가 grep으로 확인). 현재 `trade-stats.mjs:310-313`이 `NATIONAL_MEDIAN_INCOME` 5000만원 상수 폴백에 100% 의존 → pir 절대값 정확도 문제지만 **이번 7건 NULL의 원인은 아님**(pir 정상 apt도 같은 지역이라 동일 폴백 통과하는데 정상 계산됨). KOSIS 가계동향조사 또는 국세청 근로소득 API 수집기 신설이 필요한 별도 에픽.
+
+## 세션106 수정 범위 (예상)
+
+1. `naver-presale.mjs` 1줄 수정: `toPresalePriceRow` L333 가드에 `|| price <= 0` 추가. `parsePresalePrice` 자체는 건드리지 않음(순수 함수 계약 유지)
+2. `trade-stats.mjs` 2차 방어: L143-149 `latestPriceMap` 갱신 전 `if (p.price > 0)` 필터
+3. 과거 오염 row 클린업 SQL: `DELETE FROM prices WHERE price = 0 AND area IS NULL;` (또는 수동 검증 후 개별 삭제)
+4. 테스트: `naver-presale.test.mjs`에 `min_price=0` 케이스 추가, `trade-stats.test.mjs`에 price=0 latest row 폴백 케이스 추가
+5. 클린업 후 trade-stats.mjs 재실행 → pir NULL 50 → 7~10건 수준으로 감소 기대 (나머지는 정비사업/공공임대 구조적)
+
+## 산출물
+
+코드 변경 0. 파일 생성 0 (findings.md 저장 생략). CLAUDE.md + SESSION_LOG 기록만.
+
+# 세션 106 — 2026-04-17 (price=0 오염 버그 수정 + DB 클린업)
+
+**목표**: 세션105에서 확정된 price=0 오염 버그 수정. 커밋 `fbf373b`.
+
+## 하네스 9 GATE
+
+서브에이전트 3개 병렬 실증: 🟢9 / 🟡0 / 🔴0. GATE 6에서 중요 발견 — CLAUDE.md/SESSION_LOG 세션105 기록의 "VIEW latest_prices CTE에 price>0 필터" 서술이 실제 코드와 불일치. `supabase/schema.sql:466-471`에는 해당 필터 없음. `price>0`은 `dataReliability` 공식(L643)에서만 사용. 세션105 기록 정정 완료.
+
+## 코드 변경
+
+| 파일 | 변경 | 줄 수 |
+|------|------|-------|
+| `scripts/collectors/naver-presale.mjs:333` | `toPresalePriceRow` 가드에 `\|\| price <= 0` 추가 | 1줄 수정 |
+| `scripts/collectors/trade-stats.mjs:144` | latestPriceMap 루프에 `if (!p.price \|\| p.price <= 0) continue;` | 1줄 추가 |
+| `scripts/collectors/naver-presale.test.mjs` | toPresalePriceRow describe 4케이스 (정상/price=0/null/빈ID) | 31줄 추가 |
+
+## DB 클린업
+
+`DELETE FROM prices WHERE price=0 AND area IS NULL AND house_type='presale_min'` → **57건 삭제**, 잔존 0건. trade-stats 재실행 2001/2001건 upsert 완료.
+
+## Review
+
+- simplify: 해당 없음 (코드 2줄 추가만)
+- 빌드: vite build 🟢 390ms
+- 스코어링: scoring-validator **PASS** — 가중치 합계 전부 정상, 스코어링 불변식 무관
+- null 안전성: null-safety-checker **PASS** (Low 1건: `!p.price`가 문자열 "0" 통과 이론적 가능, Supabase numeric 컬럼이라 실제 불가)
+- 수집기 계약: collector-contract **PASS** (C1~C5 전부 충족)
+- Hook 규칙: 해당 없음 (수집기 스크립트, React Hook 미사용)
+- 보안: 조건문 1줄 추가만, 민감정보 없음
+
+## KPI
+
+| 지표 | 변경 전 | 변경 후 |
+|------|---------|---------|
+| pir NULL | 50건 (3.5%) | **38건 (2.7%)** |
+| pir 커버리지 | 96.5% | **97.3%** |
+| "가격>0 pir NULL" 모순 | 7건 | **0건** |
+
+예상(-7건)보다 -12건 더 해소된 이유: 57건 오염 row 삭제 후 이전 정상 가격 row로 폴백되면서 추가 5건도 pir 계산 가능해짐.
+
+## 다음 세션 (107+)
+
+- transport-tago.mjs NULL 저장 전환 (수집기 계약 근본 개선)
+- 잔존 38건 pir NULL — price=0 구조적 분기 검토
+- regions.avg_income 100% NULL 별도 에픽
+

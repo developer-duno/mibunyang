@@ -4,7 +4,11 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-16 세션104 — `migration.mjs` KOSIS 호출에 `fetchWithRetry` 적용 + pir NULL 50건 구조적 분기 조사. **9 GATE 재검증 옵션 C 확정**: 원래 계획의 "regions 시계열 스냅샷 전환"은 `apartments_flat.latest_regions` CTE(DISTINCT ON recorded_at DESC)와 컬럼별 소유자 분리 구조(migration/population/housing-permits/collect-market-stats) 충돌로 GATE 1·6 🔴 → VIEW를 컬럼별 LATERAL 최신값으로 재작성하는 별도 에픽으로 분리. 세션104는 작업 2·3만 실행, GATE 🟢 9/🟡 0/🔴 0. **작업 2**: `scripts/collectors/migration.mjs:118` `fetchKosis()` export 승격 + raw `fetch`→`fetchWithRetry`(`_shared.mjs:130`, AbortSignal 30s 내장, 429/500/503 지수 백오프 3회). 에러 prefix `KOSIS HTTP …` 유지 위해 try/catch rethrow(collector-contract WARN 해소). 테스트 `fetchWithRetryMock` + fetchKosis describe 4개 추가(23→27). **작업 3**: `apartments_flat.pir` NULL 50건 Supabase SDK 조회 + 사유 키워드 분류 → price=0 기타 35, 미분류(가격 있음) 9, 정비사업 5, 임대형 1. "가격 있는데 pir NULL" 5~7건(원주역 우미 린·의정부 힐스테이트 탑석·하남 감일·광주 태전·경산 중산자이·포항 힐스초곡·광주 봉선)은 세션105에서 trade_stats 입력값(nearby_median·avg_income) 추적 예정. 세션105 플랜 초안: `.claude/plans/session105-pir-null-classification.md`. **KPI**: vitest 146 files/**2,339 tests** 🟢(세션103 2,335→+4), vite build 🟢. Review: collector-contract PASS / null-safety-checker PASS.
+**마지막 작업**: 2026-04-17 세션106 — price=0 오염 버그 수정 + DB 클린업. 커밋 `fbf373b`. **수정A**: `naver-presale.mjs:333` toPresalePriceRow 가드에 `|| price <= 0` 추가 — 네이버 min_price=0(분양가 미공시) 저장 차단. **수정B**: `trade-stats.mjs:144` latestPriceMap 루프에 `if (!p.price || p.price <= 0) continue;` 방어 — 기존 오염 row도 무시. **테스트**: toPresalePriceRow 4케이스 추가(정상/price=0/null/빈ID). **DB 클린업**: prices 테이블 price=0 오염 row **57건 DELETE** + trade-stats 재실행 2001건. **KPI**: pir NULL **50→38건**(-12), "가격>0 인데 pir NULL" **7→0건**(모순 완전 해소), pir 커버리지 96.5→**97.3%**. **GATE 6 발견**: CLAUDE.md/SESSION_LOG 세션105 기록의 "apartments_flat VIEW latest_prices CTE에 price>0 필터"는 오류 — 실제 `supabase/schema.sql:466-471`에 해당 필터 없음. `price>0`은 `dataReliability` 공식(L643)에서만 사용. 이번 세션에서 정정. **Review**: 9 GATE 🟢9 + simplify + scoring-validator PASS / null-safety-checker PASS / collector-contract PASS(C1~C5).
+
+**이전 작업**: 2026-04-16 세션105 — "가격 있는데 pir NULL" 7건 원인 확정 (읽기 전용 조사, 코드/커밋 0). `naver-presale.mjs` price=0 저장 버그 확정. 세션106에서 수정 완료.
+
+**이전 작업**: 2026-04-16 세션104 — `migration.mjs` KOSIS 호출에 `fetchWithRetry` 적용 + pir NULL 50건 구조적 분기 조사. **9 GATE 재검증 옵션 C 확정**: 원래 계획의 "regions 시계열 스냅샷 전환"은 `apartments_flat.latest_regions` CTE(DISTINCT ON recorded_at DESC)와 컬럼별 소유자 분리 구조(migration/population/housing-permits/collect-market-stats) 충돌로 GATE 1·6 🔴 → VIEW를 컬럼별 LATERAL 최신값으로 재작성하는 별도 에픽으로 분리. 세션104는 작업 2·3만 실행, GATE 🟢 9/🟡 0/🔴 0. **작업 2**: `scripts/collectors/migration.mjs:118` `fetchKosis()` export 승격 + raw `fetch`→`fetchWithRetry`(`_shared.mjs:130`, AbortSignal 30s 내장, 429/500/503 지수 백오프 3회). 에러 prefix `KOSIS HTTP …` 유지 위해 try/catch rethrow(collector-contract WARN 해소). 테스트 `fetchWithRetryMock` + fetchKosis describe 4개 추가(23→27). **작업 3**: `apartments_flat.pir` NULL 50건 Supabase SDK 조회 + 사유 키워드 분류 → price=0 기타 35, 미분류(가격 있음) 9, 정비사업 5, 임대형 1. "가격 있는데 pir NULL" 5~7건(원주역 우미 린·의정부 힐스테이트 탑석·하남 감일·광주 태전·경산 중산자이·포항 힐스초곡·광주 봉선)은 세션105에서 trade_stats 입력값(nearby_median·avg_income) 추적 예정. 세션105 플랜 초안: `.claude/plans/session105-pir-null-classification.md`. **KPI**: vitest 146 files/**2,339 tests** 🟢(세션103 2,335→+4), vite build 🟢. Review: collector-contract PASS / null-safety-checker PASS.
 
 **이전 작업**: 2026-04-16 세션103 — `migration.mjs` 행안부 → KOSIS DT_1B26001_A01 전면 전환. **세션85 "행안부 MOIS_POP_KEY 502 서버장애" 진단은 오진** — 세션102 재조사에서 행안부 활용신청 4개 API 전부 net_migration 부적합 확인, transMovStats 테이블 자체가 행안부에 존재하지 않음. KOSIS "시군구별 이동자수"(orgId=101, tblId=DT_1B26001_A01, itmId=T25순이동, objL1=ALL) 단일 호출로 전국 272건(전국1+시도17+시군구254) 일괄 수집. **C1 prefix 매핑**: C1 2자리=시도(11서울…50제주), 5자리=앞2자리가 시도prefix → 동명이구 자동 해결(부산중구 26110 vs 서울중구 11140). `C1_TO_REGION` 맵은 기존 `REGION_LAWD_PREFIX` 역변환 + 강원 42/51·전북 45/52 양방향 방어. 공백 정규화 `normalizeC1Name("중  구")→"중구"`. ITM_NM "순이동" 직접 사용(계산 불필요). **신규 export**: `C1_TO_REGION`, `normalizeC1Name`, `mapC1`, `aggregateKosisRows`. 테스트 12→23 (+11), 전체 vitest **146 files / 2,335 tests 🟢**. **KPI**: regions.net_migration NULL **454 → 0 (100%→0%)**, 271건 UPDATE 성공/0 실패. Review: null-safety-checker PASS / collector-contract WARN → C 옵션 수정 적용(limit(1) 제거 + try/finally로 쿼터 기록 보장). 커밋 예정.
 
@@ -26,13 +30,14 @@
 
 **다음 세션 우선순위**:
 1. **(세션98 권장) transport-tago.mjs NULL 저장 전환** — TAGO 응답 비정상 시 `uniqueBus=null` + `bus_stop_names=null` 저장으로 DB 레벨에서 수집 실패·실제 0을 구분. `scripts/collectors/transport-tago.mjs:156-168` 약 10줄 수정 + `transport-tago.test.mjs` 22개 재검증. 세션97은 VIEW 공식만 고쳐 현재 상태에서 올바른 판정을 뽑지만, 근본 개선은 수집기 계약 레벨에서 해야 함.
-2. (저우선) 서울 잔존 9건 / 전국 잔존 50건 pir NULL — 전부 `price=0` 구조적 → 재건축·재개발·청년안심주택은 affordability 비대상으로 명시적 분기 검토
-3. 행안부 API 복구 대기 / Vercel 12함수
+2. (저우선) 잔존 38건 pir NULL — price=0 구조적(정비사업/후분양/공공임대) → affordability 비대상으로 명시적 분기 검토
+3. (별도 에픽) `regions.avg_income` 26행 100% NULL → KOSIS 가계동향/국세청 API 수집기 신설
+4. 행안부 API 복구 대기 / Vercel 12함수
 
-**DB 품질** (세션97 측정):
+**DB 품질** (세션106 측정):
 - trade_stats 2,001건: **nearbyMedian 99.3%** (세션94 측정치 유지)
 - apartments_flat 1,424건:
-  - **pir 96.5%** (세션96 측정 유지)
+  - **pir 97.3%** (세션106: 50→38건 NULL, "가격>0 pir NULL" 0건)
   - **dataReliability 평균 88.38점** (세션97 공식 강화 후, -4.62점), 80점 이상 1,317건(92.5%)
 
 ---
