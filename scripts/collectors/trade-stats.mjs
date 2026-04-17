@@ -142,6 +142,7 @@ async function main() {
   // rawPrices에서 아파트별 최신 가격·면적 매핑 (apartments 테이블에 price/area 컬럼 없음)
   const latestPriceMap = new Map();
   for (const p of rawPrices) {
+    if (!p.price || p.price <= 0) continue; // price=0 오염 row 방어
     const prev = latestPriceMap.get(p.apartment_id);
     if (!prev || (p.recorded_at && (!prev.recorded_at || p.recorded_at > prev.recorded_at))) {
       latestPriceMap.set(p.apartment_id, p);

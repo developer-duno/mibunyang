@@ -330,7 +330,7 @@ export function toPresaleRow(complex, detail, listItem) {
  */
 export function toPresalePriceRow(complex, apartmentId) {
   const price = parsePresalePrice(complex?.min_price);
-  if (price == null || !apartmentId) return null;
+  if (price == null || price <= 0 || !apartmentId) return null;
   const pp = parsePresalePrice(complex?.pyper_price);
   return {
     apartment_id: apartmentId,

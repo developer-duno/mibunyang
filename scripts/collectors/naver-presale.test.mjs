@@ -19,6 +19,7 @@ import {
   tryPythonJwt,
   extractPresaleFields,
   buildNewApartment,
+  toPresalePriceRow,
 } from "./naver-presale.mjs";
 
 // ── 테스트 팩토리 ─────────────────────────────────────────────
@@ -113,6 +114,36 @@ describe("parsePresalePrice", () => {
   // 잘못된 형식
   it("숫자가 아닌 문자열은 null을 반환한다", () => {
     expect(parsePresalePrice("abc")).toBeNull();
+  });
+});
+
+// ── toPresalePriceRow ─────────────────────────────────────────
+
+describe("toPresalePriceRow", () => {
+  // 정상: min_price → 만원 변환, house_type="presale_min"
+  it("정상 분양가를 prices 행으로 변환한다", () => {
+    const row = toPresalePriceRow({ min_price: 461000000 }, "apt-1");
+    expect(row).toMatchObject({
+      apartment_id: "apt-1",
+      price: 46100,
+      house_type: "presale_min",
+      area: null,
+    });
+  });
+
+  // 핵심 버그 케이스: min_price=0 → null 반환
+  it("min_price=0이면 null을 반환한다 (오염 방지)", () => {
+    expect(toPresalePriceRow({ min_price: 0 }, "apt-1")).toBeNull();
+  });
+
+  // min_price=null → null 반환
+  it("min_price=null이면 null을 반환한다", () => {
+    expect(toPresalePriceRow({ min_price: null }, "apt-1")).toBeNull();
+  });
+
+  // apartmentId 빈값 → null 반환
+  it("apartmentId가 빈 문자열이면 null을 반환한다", () => {
+    expect(toPresalePriceRow({ min_price: 500000000 }, "")).toBeNull();
   });
 });
 
