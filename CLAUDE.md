@@ -4,7 +4,7 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-18 세션114 — 시도 평균 폴백 사용 시 **dataReliability -15 차감 + detail 경고 접미**(방안 A+B). 섬·군 지역 인접 실거래 실측으로 폴백 왜곡 확인(경기 시도 평균 7,312 천원/㎡ vs 여주 2,484·이천 2,819·가평 trades 0건 → 실시세의 2~3배 고평가). `src/constants/scoringTiers.js`에 `PRICE_FALLBACK_RELIABILITY_PENALTY = 15` 신규 상수. `src/scoring/scorePrice.js`: (A) `fairPriceFromSidoAvg` 플래그 도입, `avgPriceSqm`/`presalePp` 폴백 경로에서 `fairPrice>0` 시 true → `relBase = Math.max(0, apt.dataReliability - 15)` 하한 클램프 적용, `relSc = Math.min(relBase + idxBonus, 100)` 상한 유지. (B) 정상 경로 반환 시 괴리도 detail 끝에 `" — 광역 시도 평균 기준(실시세 왜곡 가능)"` 접미, 데이터 신뢰도 info/detail에 `" -폴백차감15"` 접미. **점수 가중치(0.30+0.20+0.15+0.25+0.07+0.03=1.00)·PROFILES 5×100·PIR 구간·PRICE_NO_DATA_DEFAULTS 일체 불변.** `nearbyMedian>0` 경로(1,984건)는 바이트 단위 동일. **영향 범위**: nearbyMedian NULL 10건 중 폴백 사용 **5건만 차감 대상**(인천 2·경기 3), area=NULL 5건은 이미 `"주변 시세 없음"` 분기. 테스트 7개 추가(기준선·avgSqm폴백·하한클램프·detail경고·미사용경고없음·presalePp폴백·자라섬 회귀). **KPI**: vite build 🟢 422ms / vitest 147 files **2,384 tests** 🟢(세션112 2,377→+7) / scoring-validator PASS(가중치 전수·0~100 이중 클램프·상수 불변) / null-safety-checker PASS(sanitize `num(…,30)`로 dataReliability null 구조적 차단·fairPriceFromSidoAvg false 초기화로 undefined 누출 없음) / Hook PASS(순수 함수) / 보안 PASS(detail 전부 하드코딩 리터럴+상수, 입력 없음). 커밋 예정.
+**마지막 작업**: 2026-04-18 세션114 — 시도 평균 폴백 사용 시 **dataReliability -15 차감 + detail 경고 접미**(방안 A+B). **실측 검증**: 커밋 `ee85ce3` 푸시(04-18 01:05 KST) 후 daily-deploy(04-18 03:44 KST)가 자동 실행해 `apartments.cats_cache` **5/5 단지에 sidoNotice 문자열 주입 확인**(DB SDK 실측, Supabase CLI 우선 원칙). Vercel 프로덕션 배포 **Ready**(mibunyang-peach.vercel.app), 카드 **1,321개 렌더 + 콘솔 에러 0건**(Playwright 회귀 실측). sidoNotice/폴백차감15 최종 노출은 로그인 후 `ExpertScoreBreakdown` 세부 뷰에서만 보이는 구조라 비로그인 실측으로 끝단 확인은 범위 초과(다음 세션 OAuth 자동화 숙제). **부수 CLAUDE.md 세척**: API 엔드포인트 수 `14개 → 21개` 정정, "Vercel 12함수 감축" 우선순위 제거(Ready 배포 확인으로 낡은 우려로 판명). 섬·군 지역 인접 실거래 실측으로 폴백 왜곡 확인(경기 시도 평균 7,312 천원/㎡ vs 여주 2,484·이천 2,819·가평 trades 0건 → 실시세의 2~3배 고평가). `src/constants/scoringTiers.js`에 `PRICE_FALLBACK_RELIABILITY_PENALTY = 15` 신규 상수. `src/scoring/scorePrice.js`: (A) `fairPriceFromSidoAvg` 플래그 도입, `avgPriceSqm`/`presalePp` 폴백 경로에서 `fairPrice>0` 시 true → `relBase = Math.max(0, apt.dataReliability - 15)` 하한 클램프 적용, `relSc = Math.min(relBase + idxBonus, 100)` 상한 유지. (B) 정상 경로 반환 시 괴리도 detail 끝에 `" — 광역 시도 평균 기준(실시세 왜곡 가능)"` 접미, 데이터 신뢰도 info/detail에 `" -폴백차감15"` 접미. **점수 가중치(0.30+0.20+0.15+0.25+0.07+0.03=1.00)·PROFILES 5×100·PIR 구간·PRICE_NO_DATA_DEFAULTS 일체 불변.** `nearbyMedian>0` 경로(1,984건)는 바이트 단위 동일. **영향 범위**: nearbyMedian NULL 10건 중 폴백 사용 **5건만 차감 대상**(인천 2·경기 3), area=NULL 5건은 이미 `"주변 시세 없음"` 분기. 테스트 7개 추가(기준선·avgSqm폴백·하한클램프·detail경고·미사용경고없음·presalePp폴백·자라섬 회귀). **KPI**: vite build 🟢 422ms / vitest 147 files **2,384 tests** 🟢(세션112 2,377→+7) / scoring-validator PASS(가중치 전수·0~100 이중 클램프·상수 불변) / null-safety-checker PASS(sanitize `num(…,30)`로 dataReliability null 구조적 차단·fairPriceFromSidoAvg false 초기화로 undefined 누출 없음) / Hook PASS(순수 함수) / 보안 PASS(detail 전부 하드코딩 리터럴+상수, 입력 없음). 커밋 예정.
 
 **이전 작업**: 2026-04-17 세션112 — `AptCard.jsx` price=0 단지 infoTag에 `classifyNoPrice` detail 노출. 세션111이 생성한 8분기 안내 문구(임대/정비/후분양/오피스텔/분양계획/택지블록/공공/기본)가 `ExpertScoreBreakdown.jsx:58`(전문가 모드)에서만 보이던 것을 일반 사용자 카드로 확장. 변경: [AptCard.jsx:100-104](src/components/AptCard.jsx#L100) 조건부 렌더 3줄 → 5줄 삼항 확장 (`info === "데이터 부재"`이되 `detail` 있으면 `<span>{detail}</span>`, 둘 다 없으면 null). 점수/가중치/scorePrice.js **일체 불변**. 테스트 [AptCard.test.jsx](src/components/AptCard.test.jsx)에 2케이스 추가(detail 노출 + `"적정가 -3.5%"` 회귀 방지). **KPI**: vite build 🟢 384ms / vitest 147 files **2,377 tests** 🟢 (세션111 2,375 → +2) / scoring-validator PASS (PROFILES 5×100·0.30+0.20+0.15+0.25+0.07+0.03=1.00 불변·PIR_SCORE_TIERS·PRICE_NO_DATA_DEFAULTS 상수 불변·스코어링 모듈 0바이트 diff) / null-safety-checker PASS (subs[0]?.info/?.detail optional chaining·detail undefined→null 반환·빈 span 방지) / Hook PASS (순수 JSX 조건부 렌더) / 보안 PASS (detail은 scorePrice 하드코딩 리터럴, 사용자 입력 없음). 커밋 `d21ace9`.
 
@@ -46,10 +46,11 @@
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
 **다음 세션 우선순위** (세션114 재정렬):
-1. **가평·양평·옹진 dev 왜곡 실측 + 정직성 보정** — avgSqm 폴백이 시도 평균값이라 섬·군 실거래와 괴리. 군단위 nearbyMedian NULL이면서 시도 avgSqm 폴백 사용 시 `dataReliability` 차감 검토(예: -10점). 10건 영향.
-2. **Vercel 12함수 감축** (장기)
+1. ~~가평·양평·옹진 dev 왜곡 정직성 보정~~ **완료 (세션114 방안 A+B)**
+2. ~~Vercel 12함수 감축~~ **불필요 — 실측 결과 21개 함수로 Ready 배포 중, 현재 한도 문제 없음 (CLAUDE.md 낡은 우려)**
 3. **시군구별 소득 수집(장기, 별도 세션)** — KOSIS는 시도 해상도까지만 제공 확인(세션110). 국세청 TASIS 스크레이핑이 유일 경로 — 별도 수집기 프로젝트.
 4. 행안부 API 복구 대기
+5. **로그인 후 DetailModal 실측** — 세션114 sidoNotice/폴백차감15 문자열의 최종 사용자 노출은 `ExpertScoreBreakdown` 같은 세부 뷰에서만 보임. OAuth 자동화 필요.
 
 **DB 품질** (세션110 측정, nearbyMedian 커버리지는 세션114 재측정):
 - trade_stats 2,001건: **nearbyMedian 잔여 NULL 10건** (세션114 실측, 99.5%+ 커버리지)
@@ -72,7 +73,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **프론트** | React 19 + Vite 8 (Rolldown) | App.jsx (~512줄), `@/` 경로 별칭, Pretendard 폰트 |
 | **상태/훅** | useMemo 13개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
 | **컴포넌트** | memo() 36개 + icons.jsx (SVG 9개) | 소비자10 + 섹션8 + 상세7 + 필터8 + 전문가9 + 관리자3 |
-| **API** | Vercel Serverless (14개 엔드포인트) | withHandler HOF (CORS/Method/RateLimit/Admin 통합) |
+| **API** | Vercel Serverless (21개 함수, `api/**/*.js` 테스트 제외) | withHandler HOF (CORS/Method/RateLimit/Admin 통합) |
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth + 전문가/관리자 role 기반 |
 | **캐싱** | Vercel KV (Upstash Redis) | 세션, 토큰 블랙리스트, Rate Limit |
