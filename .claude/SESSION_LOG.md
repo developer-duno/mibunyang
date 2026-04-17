@@ -2092,3 +2092,47 @@ export const PIR_SCORE_TIERS = {
 - **잔존 38건 pir NULL 구조적 분기** — affordability 비대상 UI 표시
 - **Vercel 12함수 감축**
 
+
+---
+
+## 세션112 (2026-04-17) — AptCard infoTag classifyNoPrice detail 노출
+
+### 배경
+세션111에서 `scorePrice.js` `classifyNoPrice`가 생성한 8분기 안내 문구(임대/정비사업/후분양/오피스텔/분양계획/택지지구 블록/공공분양/기본)가 `subs[0].detail`에 담기지만, 실제 소비 경로는 `ExpertScoreBreakdown.jsx:58`의 `sub.detail || sub.info` 1곳뿐이었음. `AptCard.jsx:100`은 `subs[0].info`만 읽고 `"데이터 부재"`면 태그 자체를 숨기는 구조라 일반 사용자 카드에서는 구체 안내가 사라짐. 세션112는 이 소비 경로를 AptCard로 확장.
+
+### 접근 — Plan 모드 + 9 GATE
+사용자가 "하네스 엔지니어링 방식으로 검증" 요청. 9 GATE 0~8 전수 🟢 9/🟡 0/🔴 0 통과 후 실행.
+
+- GATE 0: 수정 2 + 신규 0 = 2파일, 단일 파일 8줄 이내 → 🟢
+- GATE 1: `"데이터 부재"` 문자열·`subs[0]` 참조 전수 grep, 깨짐 0곳
+- GATE 2~8: DB/API 변경 없음, 단방향 소비(scoring → components), 단일 커밋
+
+### 실행 (단일 커밋)
+- 수정 `src/components/AptCard.jsx` L100-104 — 조건부 렌더 3줄 → 5줄 삼항 확장
+  - 기존: `info && info !== "데이터 부재"` 이면 `"적정가 {info}"` 표시
+  - 변경: 위 조건 true면 기존 유지 / info가 "데이터 부재"이되 `detail`이 있으면 `<span>{detail}</span>` / 둘 다 없으면 null
+- 수정 `src/components/AptCard.test.jsx` — 2케이스 추가
+  - (a) `info="데이터 부재"` + `detail="정비사업 — 조합원 물량, 분양가 미정"` → 문구 노출 단언
+  - (b) `info="-3.5%"` → `"적정가 -3.5%"` 회귀 방지
+
+### 교차검증
+- **vite build**: 🟢 384ms
+- **vitest 전체**: 🟢 147 files / **2,377 tests** (세션111 2,375 → +2 순증)
+- **scoring-validator (Task)**: 🟢 PASS — PROFILES 5×100, scorePrice 내부 1.00, PIR_SCORE_TIERS·PRICE_NO_DATA_DEFAULTS 상수 불변, `src/scoring/*`·`src/constants/*` **0 바이트 diff** 확인
+- **null-safety-checker (Task)**: 🟢 PASS — `subs[0]?.info`/`subs[0]?.detail` optional chaining으로 subs=[] 또는 subs[0]=undefined 안전, detail undefined 시 null 반환으로 빈 span 방지
+- **Hook 규칙 (메인)**: 🟢 순수 JSX 조건부 렌더, 훅 호출 없음
+- **보안 (메인)**: 🟢 `detail`은 scorePrice.js classifyNoPrice 하드코딩 리터럴, 사용자 입력 경로 없음, React 기본 이스케이프
+
+### 파일 변경 (2 files)
+- 수정 `src/components/AptCard.jsx` — +4/-2 (조건부 삼항)
+- 수정 `src/components/AptCard.test.jsx` — +14 (테스트 2케이스)
+
+### 커밋
+- `d21ace9` feat(AptCard): price=0 classifyNoPrice detail 카드 노출 — 세션112
+
+### 다음 세션 (113+)
+- **실제 브라우저 검증 (webapp-testing)** — 이번 세션은 로컬 단위/빌드 수준만 검증, 프로덕션 카드에서 "정비사업 — ..." 류 문구가 실제로 렌더되는지 Playwright로 확인 필요 (price=0 단지 샘플 1~2개 클릭 스냅샷)
+- **시군구별 소득 수집** (국세청 TASIS 스크레이핑, 장기 별도 프로젝트)
+- **잔존 15건 nearbyMedian NULL** — 섬·산간 구조적, 별도 분기 문구 추가 여부 판단
+- **Vercel 12함수 감축** (장기)
+- **행안부 API 복구 대기**
