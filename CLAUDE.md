@@ -4,7 +4,9 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-17 세션107 — regions.avg_income 100% NULL 해소 + PIR 기준값 단위 정정. **중대 발견**: `trade-stats.mjs:19` `NATIONAL_MEDIAN_INCOME = 5000` 주석이 "만원/월"이지만 사실상 연소득 단위로 쓰이며 PIR이 현실의 1/25 수준(중앙값 0.76)으로 왜곡돼 있었음 — 월 5,000만원이면 연 6억원. KOSIS 실측은 195만원/월(전국 2022). **신규**: `scripts/collectors/collect-avg-income.mjs` (KOSIS DT_1C86 "시도별 1인당 개인소득" 수집, 1콜 → 17개 시도 UPDATE, 천원/년 → 만원/월 변환, REGION_MAP 경유 C1_NM 파싱). **수정**: trade-stats.mjs NATIONAL_MEDIAN_INCOME **5000 → 195** (KOSIS 실측). **테스트**: collect-avg-income.test.mjs 18 신규(단위변환 6 + aggregate 8 + fetch 4). **KPI**: regions.avg_income 시도 **17/17 UPDATE** (179~218만원/월 분포), trade-stats 재실행 2001/2001, **PIR 중앙값 0.76 → 19.25** (25배 정상화), PIR 최대 5 → 114, 커버리지 97.3% 유지. **이번 세션 스코프 한정**: 수집기 + 기본값만. scorePrice PIR 구간(`≤3→100/≤5→80/≤7→60/>7→부담`) 재설계는 다음 세션 — 개인소득 기준 PIR과 구간이 맞지 않아 882/1000건이 "부담(>7)" 구간으로 몰림. **Review**: vite build 🟢 744ms / vitest 147 files **2,361 tests** 🟢(세션106 2,339→+22) / collector-contract PASS(C1~C5 migration.mjs 패턴 1:1 계승) / null-safety-checker PASS(High 0).
+**마지막 작업**: 2026-04-17 세션108 — `scorePrice.js` PIR 구간 재설계 (개인소득 PIR 분포 대응). 세션107에서 PIR 중앙값 0.76→19.25 정상화됐지만 기존 구간(`≤3/≤5/≤7`, 가구소득 가정)과 안 맞아 **828/1000건(83%)이 PIR 0~9점 쏠림**. 분위수 기반 새 구간(`≤10 우수/≤20 양호/≤30 보통/>30 부담`). **신규 상수**: `PIR_SCORE_TIERS = { EXCELLENT_MAX: 10, GOOD_MAX: 20, MODERATE_MAX: 30, BURDEN_PENALTY: 2 }` in `scoringTiers.js`. **scorePrice.js**: L90-99 구간 교체 + L72·L109 detail 문자열 `"우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑"`. **테스트**: engine.test.js PIR 5개(우수/양호/보통/부담/하한클램프) — 기존 `PIR<=3→100` 1개 교체 + 4개 신규. **KPI 시뮬(1000건)**: 90~100점 113→**261**, 70~89점 4→**480**, 0~9점 **828→21**, 평균 PIR 서브스코어 **13.3 → 77.1** (정상 분화). **경계 연속성**: pir=10→100, pir=20→80, pir=30→60, pir=60→0 (수식 연결 검증). **Review**: vite build 🟢 531ms / vitest 147 files **2,365 tests** 🟢(세션107 2,361→+4) / scoring-validator PASS(PROFILES 5개·scorePrice 내부 0.15 가중치 불변·경계 수식 연속성·테스트 경계 기댓값 전수 검산).
+
+**이전 작업**: 2026-04-17 세션107 — regions.avg_income 100% NULL 해소 + trade-stats.mjs NATIONAL_MEDIAN_INCOME 5000→195 정정. 커밋 `eb019ae`. PIR 중앙값 0.76→19.25 정상화.
 
 **이전 작업**: 2026-04-17 세션106 — price=0 오염 버그 수정 + DB 클린업. 커밋 `fbf373b`. KPI pir NULL 50→38건, "가격>0 pir NULL" 7→0건, pir 커버리지 97.3%.
 
@@ -31,11 +33,10 @@
 - 경기 가평군 3 / 양평군 4 / 연천군 1 — 군 단위 거래 희소
 
 **다음 세션 우선순위**:
-1. **(세션107 권장) PIR 구간 재설계 (scorePrice.js:92)** — 세션107에서 avg_income 채우면서 PIR 중앙값 0.76→19.25로 정상화됨. 기존 구간 `≤3→100/≤5→80/≤7→60/>7→부담`은 가구소득 PIR 가정이라 **개인소득 기준 PIR(20~40)과 맞지 않음** — 현재 882/1000건이 "부담" 구간에 쏠림. 한국 실정에 맞춘 재설계(예: `≤10`/`≤20`/`≤30`/`>30`) 필요. regionMedians fallback 로직도 영향 검토.
-2. **(세션98 완료) transport-tago.mjs NULL 저장 전환** — 세션98에서 이미 구현 완료 확인. `searchBusStopsTago` null 반환, `buildTransportRow` null/[]/N 분기, 테스트 22개 보유.
-3. **시군구별 avg_income 수집** — 세션107은 시도 17개만 채움. 국세청 연말정산 통계 또는 KOSIS 시군구별 소득 API로 254개 시군구 분화하면 PIR 정확도 상승.
-4. (저우선) 잔존 38건 pir NULL — price=0 구조적(정비사업/후분양/공공임대) → affordability 비대상으로 명시적 분기 검토
-5. 행안부 API 복구 대기 / Vercel 12함수
+1. **(세션109 권장) compute-scores 재실행** — 세션108 PIR 구간 변경이 1,424건 `cats_cache`에 반영되도록 `node --loader ./scripts/alias-loader.mjs scripts/collectors/compute-scores.mjs` 실행. 실행 후 프론트에서 가격 매력도 분포 변화 확인.
+2. **시군구별 avg_income 수집** — 세션107은 시도 17개만 채움. 국세청 연말정산 통계 또는 KOSIS 시군구별 소득 API로 254개 시군구 분화하면 PIR 정확도 상승.
+3. (저우선) 잔존 38건 pir NULL — price=0 구조적(정비사업/후분양/공공임대) → affordability 비대상으로 명시적 분기 검토
+4. 행안부 API 복구 대기 / Vercel 12함수
 
 **DB 품질** (세션107 측정):
 - trade_stats 2,001건: **nearbyMedian 99.3%** (세션94 측정치 유지)

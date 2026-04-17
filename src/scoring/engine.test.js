@@ -92,8 +92,24 @@ describe('scorePrice', () => {
   it('분양가 > 적정가 -> 낮은 점수', () => {
     expect(scorePrice(makeApt({ price: 80000, nearbyMedian: 40000 })).total).toBeLessThan(60);
   });
-  it('PIR <= 3 -> PIR 서브스코어 100', () => {
-    expect(scorePrice(makeApt({ pir: 2 })).subs.find(s => s.name === "PIR").score).toBe(100);
+  it('세션108: PIR <= 10 -> PIR 서브스코어 100 (우수 구간)', () => {
+    expect(scorePrice(makeApt({ pir: 8 })).subs.find(s => s.name === "PIR").score).toBe(100);
+  });
+  it('세션108: PIR=15 -> 양호 구간 80~100 선형', () => {
+    const s = scorePrice(makeApt({ pir: 15 })).subs.find(s => s.name === "PIR").score;
+    expect(s).toBeGreaterThanOrEqual(89);
+    expect(s).toBeLessThanOrEqual(91);
+  });
+  it('세션108: PIR=25 -> 보통 구간 60~80 선형', () => {
+    const s = scorePrice(makeApt({ pir: 25 })).subs.find(s => s.name === "PIR").score;
+    expect(s).toBeGreaterThanOrEqual(69);
+    expect(s).toBeLessThanOrEqual(71);
+  });
+  it('세션108: PIR=40 -> 부담 구간 (60-20=40점)', () => {
+    expect(scorePrice(makeApt({ pir: 40 })).subs.find(s => s.name === "PIR").score).toBe(40);
+  });
+  it('세션108: PIR=60 -> 부담 구간 하한 0 클램프', () => {
+    expect(scorePrice(makeApt({ pir: 60 })).subs.find(s => s.name === "PIR").score).toBe(0);
   });
   it('전세가율 75%에서 최대', () => {
     expect(scorePrice(makeApt({ jeonseRate: 75 })).subs.find(s => s.name === "전세가율").score).toBeGreaterThanOrEqual(95);

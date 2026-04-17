@@ -4,6 +4,7 @@ import {
   DEV_SCORE_TIERS, DEV_SCORE_NEGATIVE_MULT, DEV_SCORE_BASE,
   LAND_COST_TIERS, LAND_COST_LOW, LAND_COST_NULL,
   PRICE_NO_DATA_DEFAULTS,
+  PIR_SCORE_TIERS,
   PRICE_INDEX_HOT, PRICE_INDEX_WARM, PRICE_INDEX_HOT_BONUS, PRICE_INDEX_WARM_BONUS,
 } from "@/constants/scoringTiers";
 
@@ -68,7 +69,7 @@ export function scorePrice(apt) {
       subs: [
         { name: "적정가 괴리도", score: devSc, info: "데이터 부재", detail: noPriceDetail },
         { name: "전세가율", score: Math.round(jrSc), info: apt.jeonseRate == null ? "데이터 부재" : `${apt.jeonseRate}%`, detail: apt.jeonseRate == null ? "전세가율 데이터 없음 (중립 50점)" : `${apt.jeonseRate}% (적정 70~80%, 위험 40%↓)` },
-        { name: "PIR", score: Math.round(pirSc), info: apt.pir == null ? "데이터 부재" : `${apt.pir}배`, detail: apt.pir == null ? "PIR 데이터 없음 (중립 50점)" : `${apt.pir}배 (우수 3↓, 양호 5↓, 보통 7↓)` },
+        { name: "PIR", score: Math.round(pirSc), info: apt.pir == null ? "데이터 부재" : `${apt.pir}배`, detail: apt.pir == null ? "PIR 데이터 없음 (중립 50점)" : `${apt.pir}배 (우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑)` },
         { name: "PSR", score: Math.round(psrSc), info: apt.psr == null ? "데이터 부재" : `${(apt.psr * 100).toFixed(0)}%`, detail: apt.psr == null ? "PSR 데이터 없음 (중립 50점)" : `${(apt.psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓)` },
         { name: "데이터 신뢰도", score: relSc, info: `${apt.dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}`, detail: `${apt.dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""} (80%↑신뢰, 30%↓추정)` },
         { name: "택지비비율", score: landSc, info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음", detail: apt.landCostRatio != null ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)` : "택지비 데이터 없음 (중립 50점)" },
@@ -88,8 +89,14 @@ export function scorePrice(apt) {
   else jrSc = Math.max(0, jr / 60 * 60);
 
   const pir = apt.pir;
+  // 세션108: KOSIS 1인당 개인소득 기준 PIR 분포(p25=14.7, p50=19.25, p75=25.27)에 맞춘
+  // 재설계 구간. 기존 ≤3/≤5/≤7 구간(가구소득 가정)은 개인소득 PIR에 부적절.
+  const { EXCELLENT_MAX, GOOD_MAX, MODERATE_MAX, BURDEN_PENALTY } = PIR_SCORE_TIERS;
   const pirSc = pir == null ? PRICE_NO_DATA_DEFAULTS.pir
-    : pir <= 3 ? 100 : pir <= 5 ? 80 + (5 - pir) / 2 * 20 : pir <= 7 ? 60 + (7 - pir) / 2 * 20 : Math.max(0, 60 - (pir - 7) * 10);
+    : pir <= EXCELLENT_MAX ? 100
+    : pir <= GOOD_MAX ? 80 + (GOOD_MAX - pir) / (GOOD_MAX - EXCELLENT_MAX) * 20
+    : pir <= MODERATE_MAX ? 60 + (MODERATE_MAX - pir) / (MODERATE_MAX - GOOD_MAX) * 20
+    : Math.max(0, 60 - (pir - MODERATE_MAX) * BURDEN_PENALTY);
   const psr = apt.psr;
   const psrSc = psr == null ? PRICE_NO_DATA_DEFAULTS.psr
     : Math.min(psr < 0.85 ? 85 + (0.85 - psr) / 0.15 * 15 : psr <= 1.0 ? 50 + (1.0 - psr) / 0.15 * 35 : Math.max(0, 50 - (psr - 1.0) / 0.2 * 50), 100);
@@ -99,7 +106,7 @@ export function scorePrice(apt) {
     subs: [
       { name: "적정가 괴리도", score: Math.round(devSc), info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`, detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (±5% 적정, ±10~20% 주의, 20%↑ 과대)` },
       { name: "전세가율", score: Math.round(jrSc), info: jr == null ? "데이터 부재" : `${jr}%`, detail: jr == null ? "전세가율 데이터 없음 (중립 50점)" : `${jr}% (적정 70~80%, 위험 40%↓, 과열 90%↑)` },
-      { name: "PIR", score: Math.round(pirSc), info: pir == null ? "데이터 부재" : `${pir}배`, detail: pir == null ? "PIR 데이터 없음 (중립 50점)" : `${pir}배 (우수 3↓, 양호 5↓, 보통 7↓, 부담 7↑)` },
+      { name: "PIR", score: Math.round(pirSc), info: pir == null ? "데이터 부재" : `${pir}배`, detail: pir == null ? "PIR 데이터 없음 (중립 50점)" : `${pir}배 (우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑)` },
       { name: "PSR", score: Math.round(psrSc), info: psr == null ? "데이터 부재" : `${(psr * 100).toFixed(0)}%`, detail: psr == null ? "PSR 데이터 없음 (중립 50점)" : `${(psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓, 고평가 100%↑)` },
       { name: "데이터 신뢰도", score: relSc, info: `${apt.dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}`, detail: `${apt.dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""} (80%↑신뢰, 50%↑보통, 30%↓추정)` },
       { name: "택지비비율", score: landSc, info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음", detail: apt.landCostRatio != null ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)` : "택지비 데이터 없음 (중립 50점)" },
