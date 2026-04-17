@@ -2136,3 +2136,63 @@ export const PIR_SCORE_TIERS = {
 - **잔존 15건 nearbyMedian NULL** — 섬·산간 구조적, 별도 분기 문구 추가 여부 판단
 - **Vercel 12함수 감축** (장기)
 - **행안부 API 복구 대기**
+
+---
+
+## 2026-04-17/18 · 세션113 — 세션112 classifyNoPrice detail 브라우저 실측
+
+### 목표
+세션112 `AptCard.jsx:100-104` 삼항 확장(`classifyNoPrice` 8분기 detail 노출)이 **실제 사용자 화면에서 렌더되는지** Playwright 눈으로 확인. 코드 변경 0건, 증거 수집만.
+
+### 결정적 발견 (다음 세션 필독)
+- **`mibunyang.vercel.app`은 이 레포의 배포 주소가 아님** — Next.js 기반 다른 프로젝트가 선점. `/properties` 랜딩이 나오지만 구조가 완전 달라 0 카드·0 hit.
+- **진짜 production URL: `https://mibunyang-peach.vercel.app`** (`vercel inspect`로 확보). 별칭 4개(`mibunyang-developer-dunos-projects.vercel.app`·`mibunyang-git-main-developer-dunos-projects.vercel.app`·punycode 한국어 도메인 `xn--hg3bi2ac4o1ig57cnoa.com` 2종).
+- 최신 production deploy 커밋 `ef1e4fd` = 세션112 확정분. 자동 배포 확인됨.
+- **`public/data/apartments.json`에는 price=0 단지 0건** (min=8672, fetchedAt 2026-03-07) — 정적 JSON 폴백 경로로는 classifyNoPrice 분기 재현 자체가 불가능. Supabase 경로 또는 프로덕션 사이트 필수.
+- `.env.local` 파일이 레포에 없음. 로컬 dev 서버로 DB 경로 돌리려면 사용자가 값 제공해야 함.
+
+### 실행 (정찰 스크립트 3종)
+- `scripts/session113_recon.py` — 랜딩 접속 + "매물 보러가기" 클릭 + 초기 스크린샷
+- `scripts/session113_hunt.py` — 무한스크롤로 1,230개 카드 전수 로드 + detail 문구 grep
+- `scripts/session113_closeup.py` — 대표 4분기 카드 클로즈업 캡처
+
+스크립트 3종은 일회성(Playwright 정찰용)이라 커밋 제외. `backups/session113_scripts/`로 이동 예정.
+
+### 검증 결과 (🟢 전부 PASS)
+
+**전수 스캔 (1,230 카드 로드 후)**
+- classifyNoPrice detail 문구 실제 렌더 **29건**
+  - 중립 점수("분양가 데이터 없음") 21건
+  - 정비사업 4건 (명륜2구역/노량진5촉진/신반포22차/서울신림2)
+  - 후분양 2건 (써밋더힐/써밋클라비온)
+  - 임대형 2건 (왕숙진접메르디앙/길동생활B 청년안심주택)
+- 나머지 4분기(오피스텔/택지지구블록/분양계획/공공분양)는 이번 샘플엔 없음 — `classifyNoPrice` 판정 우선순위에서 앞 분기에 흡수됐거나 카드 정렬 하위에 위치
+
+**대표 4케이스 클로즈업 (시각 확인)**
+| 케이스 | 순위 | 단지 | 렌더된 문구 |
+|---|---|---|---|
+| 정비사업 | 504위 | 명륜2구역주택재건축정비사업 (부산 동래구) | "정비사업 — 조합원 물량, 분양가 미정" |
+| 후분양 | 373위 | 써밋더힐 (서울 동작구) | "후분양 단지 — 분양가 미정" |
+| 임대형 | 703위 | 왕숙진접메르디앙더퍼스트 (경기 남양주) | "임대형 공급 — 분양가 산출 대상 아님" |
+| 회귀 (price>0) | 1위 | 디에이치 자이 개포 (서울 강남) | "적정가 +35.1%" (기존 문구 유지) |
+
+회귀 확인: price>0 단지는 삼항의 첫 분기(`info !== "데이터 부재"`)가 정상 작동, 기존 UX 100% 유지.
+
+### 환경 교훈 (세션114+ 필독)
+1. **프로덕션 URL 확인은 `vercel inspect --logs <deploy-url>` 부터** — `vercel.json` 프로젝트명으로 URL 추측하면 틀림. 타 프로젝트가 선점한 사례.
+2. **webapp-testing은 프로덕션 경로가 제일 쉽다** — `.env.local` + `npm run dev` + DB 토큰 설정보다 배포된 URL 접속이 마찰 최소.
+3. **price=0 단지는 종합점수 하위** — 무한스크롤로 500~1200위까지 내려야 나옴. `role=button` 카드 총 1,230개. 전수 로드에 40회 wheel + 0.4초 대기 약 16초.
+4. **정찰 스크립트 커밋 금지 원칙** — 일회성 검증 코드는 `backups/` 격리. 세션38(sangse-agent)에서 git stash + 열린 로그 파일 문제와 맥락 동일.
+
+### 산출물 (커밋 외부)
+- `/tmp/mibunyang-session113/` — 스크린샷 5장 + 텍스트 증거 3건
+- `scripts/session113_*.py` → `backups/session113_scripts/`로 이동 예정
+
+### 커밋
+**없음** (코드 변경 0건, 증거만 수집).
+
+### 다음 세션 (114+)
+- **잔존 15건 nearbyMedian NULL** — 섬·산간(인천 동구/옹진/가평/양평/연천) 구조적. `classifyNoPrice` 패턴으로 별도 분기 문구 추가 검토 ("도서·산간 지역 — 실거래 희소")
+- **시군구별 소득 수집** (국세청 TASIS 스크레이핑, 장기)
+- **Vercel 12함수 감축** (장기)
+- **행안부 API 복구 대기**
