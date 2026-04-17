@@ -1,3 +1,81 @@
+# 세션 110 — 2026-04-17 (KOSIS INH_1C96_04 전환 + 4단 파이프라인 재실행)
+
+**목표**: regions.avg_income을 2022년 DT_1C86 → 2024p INH_1C96_04로 최신화하고 PIR 파이프라인(trade-stats → compute-scores)을 재실행해 apartments.cats_cache에 반영. 시군구 해상도 확장은 KOSIS에 테이블 부재 확인 후 별도 프로젝트로 분리.
+
+## 사전 조사 — 시군구별 KOSIS 소득 테이블 부재 확정
+
+1. `DT_1C86`(세션107 사용): 시도 전용, 시군구 데이터 없음
+2. `DT_133001N_4215`(국세청 근로소득 연말정산): KOSIS에서 objL1=ALL 미작동, 메타 엔드포인트(getMeta·statisticsMeta.do·statisticsExplanation.do) 4개 시도 전부 404/err=20. 세션 쿠키 기반 인증 추정
+3. 공공데이터포털 `15140146` CSV: 파일데이터 전체 19행 = 전국+시도17 = 시도 전용 확인(사용자 제공 CSV 확인)
+4. 결론: KOSIS는 시도 해상도까지. 시군구 분화는 **국세청 TASIS 스크레이핑** 이 유일 경로이며 별도 수집기 프로젝트 범위 — 세션110은 시도 최신화로 대체
+
+## 변경 파일 (3개)
+
+### scripts/collectors/collect-avg-income.mjs
+- `tblId: "DT_1C86"` → `"INH_1C96_04"`
+- `TARGET_ITM_NM`: "1인당 개인소득" → "1인당 가계총처분가능소득"
+- 헤더 주석 블록 갱신(세션110 경위 추가)
+- 호출 로그·dry-run 출력 문구 교체
+- 로직 불변(thousandWonYearToManWonMonth, aggregateIncomeRows, REGION_MAP 경유 매핑, Supabase UPDATE 루프)
+
+### scripts/collectors/collect-avg-income.test.mjs
+- 모든 픽스처의 ITM_NM 교체(8개 mkRow)
+- 2022 수치 기반 테스트 → 2024 수치(전국 27825·서울 32224) 2개 정정
+- URL 파라미터 검증 테스트 tblId 교체
+- **신규 회귀 방지 테스트 1개**: "INH_1C96_04 2024년 18건 응답 → 17개 시도 매핑 완결" (18행 fixture, period 2024 고정, 서울 DT=32224 → 269만원/월 경계 검증)
+
+### CLAUDE.md
+- "현재 진행 상황" 세션110 요약으로 교체
+- 다음 세션 우선순위 재구성(시군구 확장은 장기 항목으로 이동, 1순위는 38건 pir NULL 명시 분기)
+- DB 품질 섹션 세션110 측정치로 갱신
+
+## 4단 파이프라인 실행 결과
+
+### 1단: avg-income UPDATE (17/17)
+- KOSIS 1콜, 18건 응답, 유효 시도 17건
+- 기준연도 2022 → 2024p
+- 전국 195 → 232만원/월(+19%), 서울 218 → 269(+23%), 제주 179 → 205(+15%)
+- recordApiQuota: KOSIS_MIGRATION_KEY 1회
+
+### 2단: trade-stats (2001/2001 upsert)
+- `trade_stats.pir`: 1,960건 (세션107 대비 유지)
+- 평균 PIR **18.3년** (세션107 19.25 → -0.95, 소득 상향 반영)
+- 중앙값 16.85, Q1/Q3 12.93/22.24
+
+### 3단: compute-scores (1424/1424 UPDATE, 11.9초)
+- `node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs`
+- dry-run 3.0초 → 실제 UPDATE 11.9초
+- 실패 0, 스킵 0
+
+### 4단: cats_cache 분포 재측정 (apartments 1,994건)
+- `price.total` 평균 **52.8** (세션109 52.2 → +0.6)
+  - 0~9: 0건 / 10~29: 148(7.4%) / 30~49: 987(49.5%) / 50~69: 322(16.1%) / 70~89: 534(26.8%) / 90~100: 3(0.2%)
+- `price.subs[PIR].score`(세션108 신 포맷 필터 1,386건) 평균 **83.5**, 90~100점 614건(44.3%)
+  - 세션108 시뮬(1000건)의 평균 77.1·90~100 261건(26.1%) 대비 소득 상향으로 상위권 강화
+
+## Review 교차검증 (3 에이전트 전부 PASS)
+
+- **Build**: vite build 🟢 462ms, 번들 크기 유지(vendor 189KB/index 175KB/gzip 53KB)
+- **Test**: vitest 147 files / **2,366 tests** 🟢 (세션109 2,365 → +1 회귀 방지)
+- **Scoring (scoring-validator)**: PASS — PROFILES 5×100·scorePrice 내부 0.15 가중치 불변·scoreLocation 1.00·infra 10항목 1.00·scoreRisk 11항목 1.00·FUTURE_WEIGHT_MAP 8경우 전부 1.00·PRODUCT_MAX 100 전수 확인. clamp 경로(engine.js:101 / scorePrice.js:68,81,102,105 등) 전수. **PIR 0.57 저가 임대 케이스**(ap-6021413 울산송정2 국민임대 가격 2,556만원 / 울산 avg_income 259만원/월 × 12 = 3,108만원 → PIR 0.82)가 PRICE_NO_DATA(pirSc=50) 우회가 아닌 세션108 `EXCELLENT_MAX=10` 구간 정상 진입(pirSc=100) 확인.
+- **Null safety (null-safety-checker)**: PASS — KOSIS 응답 필드(C1/C1_NM/PRD_DE/ITM_NM/DT) undefined·null·0·음수·NaN 경로 전부 가드 존재. `REGION_MAP[r.C1_NM]` undefined 시 continue로 필터. `thousandWonYearToManWonMonth` 이중 가드(n≤0 + Number.isFinite). trade-stats incomeMap + `annualIncome > 0` 분모 가드 재검증. Low 주의 1건: 주석 잔재 "1인당 개인소득"(로직 영향 0, 기록용).
+- **Collector contract (collector-contract)**: PASS — C1~C5 전 축 준수. 쿼터 기록은 main `try/finally` + `apiCalls>0` 가드로 fetchKosisIncome throw 경로도 일관성 있게 처리. "KOSIS HTTP …" prefix 유지는 L97-99 catch+rethrow로 세션104 migration.mjs 합의 계승. failed exit 순서 recordApiQuota 후 호출되어 쿼터 기록 보장.
+
+## 커밋 & 푸시 상태
+
+- 변경 파일: `scripts/collectors/collect-avg-income.mjs`, `scripts/collectors/collect-avg-income.test.mjs`, `CLAUDE.md`, `.claude/SESSION_LOG.md`
+- DB 측 변경: `regions.avg_income` 17행 / `trade_stats` 2001행 재계산 / `apartments.cats_cache` 1424행 재계산 / `apartments.dsr40pass` 1960행
+- 기존 untracked 파일(`.bak-20260415` 2개, `backups/`, `scripts/fix_sejong_coord.mjs`)은 세션110과 무관
+
+## 다음 세션 (111) 우선순위
+
+1. **잔존 38건 pir NULL 명시 분기** — `scorePrice.js` classifyNoPrice 확장으로 정비사업/후분양/공공임대 케이스를 "affordability 비대상"으로 분기
+2. **시군구별 소득 수집(장기)** — 별도 프로젝트: 국세청 TASIS 스크레이핑
+3. Vercel 12함수 감축 (장기)
+4. 행안부 API 복구 대기
+
+---
+
 # 세션 109 — 2026-04-17 (compute-scores 재실행 + PIR 구간 재설계 cats_cache 반영)
 
 **목표**: 세션108에서 `scorePrice.js` PIR 서브스코어 구간을 재설계(≤10 우수 / ≤20 양호 / ≤30 보통 / >30 부담)했지만 실제 `apartments.cats_cache`에는 미반영 상태 → `compute-scores.mjs` 재실행으로 1,424건 재계산.

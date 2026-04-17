@@ -1,17 +1,19 @@
 /**
- * KOSIS 시도별 1인당 개인소득 → regions.avg_income UPDATE
+ * KOSIS 시도별 1인당 가계총처분가능소득 → regions.avg_income UPDATE
  *
- * API: KOSIS OpenAPI "시도별 1인당 지역내총생산 지역총소득 개인소득"
- *      orgId=101, tblId=DT_1C86, itmId=T3(1인당 개인소득), objL1=ALL
+ * API: KOSIS OpenAPI "1인당 가계총처분가능소득(시도)"
+ *      orgId=101, tblId=INH_1C96_04, itmId=T3, objL1=ALL
  *      1회 호출로 전국1+시도17 = 18건.
  *
- * 세션107: regions.avg_income 100% NULL 해소.
- *   - 현재 trade-stats.mjs NATIONAL_MEDIAN_INCOME=5000 (단위 오해로 PIR 중앙값 0.76 비현실)
- *   - KOSIS 1인당 개인소득은 "천원/년" 단위 → 수집기에서 "만원/월"로 변환 저장
- *   - 전국 195만원/월 ~ 서울 218만원/월 ~ 제주 179만원/월 (2022 기준)
+ * 세션107: regions.avg_income 100% NULL 해소(당시 DT_1C86, 2022년 기준).
+ * 세션110: DT_1C86 → INH_1C96_04 전환. 두 테이블 모두 통계청 지역소득 계통으로
+ *   산식·단위·의미 동일하나 INH_1C96_04는 2024년 p(잠정치)까지 제공. 전국 평균
+ *   23,388(2022) → 27,825 천원/년(2024p)으로 +19% 최신화. 단위(천원/년) 불변.
+ *   시군구 해상도는 KOSIS에 존재하지 않음 — 국세청 TASIS 스크레이핑이 필요하나
+ *   별도 프로젝트 범위이므로 이번 세션에서는 시도 단위 최신화까지만 진행.
  *
- * C1 매핑: DT_1C86의 C1 코드 체계는 DT_1B26001_A01과 다름 (예: 서울 11, 부산 21).
- *   → C1_NM(정식명) 파싱 후 REGION_MAP 경유로 약칭 변환 (안전).
+ * C1 매핑: C1_NM(정식명) 파싱 후 REGION_MAP 경유로 약칭 변환.
+ *   DT_1C86과 INH_1C96_04 모두 C1_NM이 "서울특별시" 등 정식명으로 동일.
  *
  * 사용법:
  *   node scripts/collectors/collect-avg-income.mjs           (Supabase regions UPDATE)
@@ -32,7 +34,7 @@ const PHASE = "avg-income";
 const API_KEY = process.env.KOSIS_MIGRATION_KEY;
 
 const BASE_URL = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
-const TARGET_ITM_NM = "1인당 개인소득";
+const TARGET_ITM_NM = "1인당 가계총처분가능소득";
 
 // ── 단위 변환: 천원/년 → 만원/월 ───────────────────────────
 // KOSIS DT는 문자열("23,388"), 콤마 제거 후 정수화. 반올림은 가장 가까운 정수.
@@ -79,8 +81,8 @@ export async function fetchKosisIncome() {
     method: "getList",
     apiKey: API_KEY,
     orgId: "101",
-    tblId: "DT_1C86",
-    itmId: "T3", // 1인당 개인소득
+    tblId: "INH_1C96_04",
+    itmId: "T3", // 1인당 가계총처분가능소득
     objL1: "ALL",
     prdSe: "Y",
     newEstPrdCnt: "1", // 최신 1년
@@ -88,7 +90,7 @@ export async function fetchKosisIncome() {
     jsonVD: "Y",
   });
   const url = `${BASE_URL}?${params}`;
-  log(PHASE, "KOSIS DT_1C86 1인당 개인소득 호출...");
+  log(PHASE, "KOSIS INH_1C96_04 1인당 가계총처분가능소득 호출...");
 
   let res;
   try {
@@ -136,7 +138,7 @@ async function runCollect(dryRun) {
   log(PHASE, `기준연도: ${period}, 유효 시도: ${entries.length}건`);
 
   if (dryRun) {
-    console.log("\n시도별 1인당 개인소득 (만원/월):");
+    console.log("\n시도별 1인당 가계총처분가능소득 (만원/월):");
     for (const e of [...entries].sort((a, b) => b.avg_income - a.avg_income)) {
       console.log(`  ${e.region}: ${e.avg_income.toLocaleString()}만원/월`);
     }

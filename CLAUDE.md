@@ -4,7 +4,9 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-17 세션109 — `compute-scores.mjs` 재실행으로 세션108 PIR 구간 변경을 `apartments.cats_cache` 1,424건에 반영. **Dry-run**: 1,424/1,424 계산 성공 / 0 스킵 / 0 실패(4.9초). **실제 UPDATE**: 1,424/1,424 DB 반영 성공(10.6초, 배치 10). **사후 집계(apartments 1,994건 전수)**: 평균 price 서브스코어 **52.2점**, 분포 0~9=0 / 10~29=166(8.3%) / **30~49=994(49.8%, 중심)** / 50~69=309(15.5%) / **70~89=522(26.2%, 상위권)** / 90~100=3(0.2%). 세션108 이전 PIR 쏠림("828/1000 0~9점") 해소 확인. **프론트 검증(webapp-testing)**: `vite dev` 기동 성공, 메인 페이지 콘솔 에러 0, 카드 30+ 렌더, 가격 라벨 표시 정상(비로그인 블러 "??" 유지). 코드 변경 0(DB UPDATE만). **주의**: `compute-scores.mjs`는 `scripts/` 직하 위치(CLAUDE.md 안내 `scripts/collectors/`는 오기 — 다음 세션에서 정정 권장).
+**마지막 작업**: 2026-04-17 세션110 — `collect-avg-income.mjs` KOSIS tblId DT_1C86 → INH_1C96_04 전환(2022 → 2024p 최신화). **사전조사 결론**: KOSIS에 시군구 해상도 소득 테이블 부재(DT_133001N_4215 국세청 근로소득은 세션 쿠키 필요·objL1=ALL 미작동). 시군구 확장은 국세청 TASIS 스크레이핑이라는 별도 프로젝트 범위라 이번 세션에서 시도 단위 최신화로 대체 — **미래 자신이 같은 조사 반복 방지 목적으로 SESSION_LOG에 결론 명기**. **변경**: tblId·TARGET_ITM_NM("1인당 가계총처분가능소득")·로그 문구·주석 2블록 + 테스트 픽스처 교체 + 2024년 회귀 방지 테스트 1개. **KPI 파이프라인 4단**: (1) avg-income UPDATE 17/17(KOSIS 1콜), 전국 195→232만원/월·서울 218→269·제주 179→205 (+15~23%). (2) trade-stats 재계산 2001/2001 upsert, PIR 평균 18.3년(세션107 19.25→ -0.95). (3) compute-scores 1424/1424 UPDATE(11.9초). (4) apartments.cats_cache 전수 집계 — **price 서브스코어 평균 52.2→52.8, PIR 서브스코어 평균 83.5(세션108 시뮬 13.3 대비 대폭 상승), 90~100점 44.3%**. **Review**: vite build 🟢 462ms / vitest 147 files **2,366 tests** 🟢(+1 회귀) / scoring-validator PASS(PROFILES 5×100·scorePrice 0.15 가중치 불변·PIR 0.57 정상 tier 진입 확인) / null-safety-checker PASS(KOSIS 응답 필드 전수 가드·trade-stats NATIONAL_MEDIAN_INCOME fallback 경로 재검증) / collector-contract PASS(쿼터 finally 기록·"KOSIS HTTP …" prefix·failed exit 패턴 세션104 계승).
+
+**이전 작업**: 2026-04-17 세션109 — `compute-scores.mjs` 재실행으로 세션108 PIR 구간 변경을 `apartments.cats_cache` 1,424건에 반영. dry-run·실제 UPDATE 전부 1,424/1,424 성공. 사후 집계(1,994건) 평균 price 서브스코어 52.2점, 분포 중심 30~49(49.8%), 상위권 70~89(26.2%). 프론트 검증(webapp-testing) 콘솔 에러 0, 카드 30+ 렌더. 코드 변경 0(DB UPDATE만). 커밋 `9bbab23`.
 
 **이전 작업**: 2026-04-17 세션108 — `scorePrice.js` PIR 구간 재설계 (개인소득 PIR 분포 대응). 세션107에서 PIR 중앙값 0.76→19.25 정상화됐지만 기존 구간(`≤3/≤5/≤7`, 가구소득 가정)과 안 맞아 **828/1000건(83%)이 PIR 0~9점 쏠림**. 분위수 기반 새 구간(`≤10 우수/≤20 양호/≤30 보통/>30 부담`). **신규 상수**: `PIR_SCORE_TIERS = { EXCELLENT_MAX: 10, GOOD_MAX: 20, MODERATE_MAX: 30, BURDEN_PENALTY: 2 }` in `scoringTiers.js`. **scorePrice.js**: L90-99 구간 교체 + L72·L109 detail 문자열 `"우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑"`. **테스트**: engine.test.js PIR 5개(우수/양호/보통/부담/하한클램프) — 기존 `PIR<=3→100` 1개 교체 + 4개 신규. **KPI 시뮬(1000건)**: 90~100점 113→**261**, 70~89점 4→**480**, 0~9점 **828→21**, 평균 PIR 서브스코어 **13.3 → 77.1** (정상 분화). **경계 연속성**: pir=10→100, pir=20→80, pir=30→60, pir=60→0 (수식 연결 검증). **Review**: vite build 🟢 531ms / vitest 147 files **2,365 tests** 🟢(세션107 2,361→+4) / scoring-validator PASS(PROFILES 5개·scorePrice 내부 0.15 가중치 불변·경계 수식 연속성·테스트 경계 기댓값 전수 검산).
 
@@ -35,18 +37,17 @@
 - 경기 가평군 3 / 양평군 4 / 연천군 1 — 군 단위 거래 희소
 
 **다음 세션 우선순위**:
-1. **시군구별 avg_income 수집** — 세션107은 시도 17개만 채움. 국세청 연말정산 통계 또는 KOSIS 시군구별 소득 API로 254개 시군구 분화하면 PIR 정확도 상승.
-2. (선택) CLAUDE.md `compute-scores.mjs` 경로 정정 — `scripts/collectors/` → `scripts/` (세션109에서 실제 경로 `scripts/compute-scores.mjs` 확인)
-3. (저우선) 잔존 38건 pir NULL — price=0 구조적(정비사업/후분양/공공임대) → affordability 비대상으로 명시적 분기 검토
-4. 행안부 API 복구 대기 / Vercel 12함수
+1. **잔존 38건 pir NULL 명시 분기** — price=0 구조적(정비사업/후분양/공공임대)을 affordability 비대상으로 classifyNoPrice 확장. 세션99에서 시작한 저가 임대 UX 정책 후속.
+2. **시군구별 소득 수집(장기, 별도 세션)** — KOSIS는 시도 해상도까지만 제공 확인(세션110 결론). 시군구 분화가 필요하면 **국세청 TASIS 스크레이핑**이 유일 경로 — 세션 쿠키/토큰 파싱 필요한 별도 수집기 프로젝트. 세션110은 범위 밖으로 판단해 시도 최신화로 대체함.
+3. 행안부 API 복구 대기 / Vercel 12함수 감축
 
-**DB 품질** (세션107 측정):
+**DB 품질** (세션110 측정):
 - trade_stats 2,001건: **nearbyMedian 99.3%** (세션94 측정치 유지)
-- apartments_flat 1,424건:
-  - **pir 97.3%** (1,386건 커버), 중앙값 **19.25** (세션107 0.76→19.25 정상화)
+  - **pir 1,960건**, 중앙값 **16.85년**, 평균 **18.34년** (세션107 19.25 → 세션110 18.34, 2024 소득 반영으로 -0.91)
+- apartments 1,994건: **cats_cache.price 평균 52.8점**, PIR 서브스코어 평균 83.5점(90~100점 44.3%)
   - **dataReliability 평균 88.38점** (세션97 공식 강화 후), 80점 이상 1,317건(92.5%)
 - regions 454건:
-  - **avg_income 시도 17/17 UPDATE** (세션107, 179~218만원/월), 시군구 392건은 NULL 유지(trade-stats가 시도값 fallback)
+  - **avg_income 시도 17/17 UPDATE** (세션110 INH_1C96_04 2024p, 205~269만원/월), 시군구 392건은 NULL 유지(trade-stats가 시도값 fallback)
 
 ---
 
