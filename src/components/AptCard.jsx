@@ -97,9 +97,11 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         </div>
 
         <div style={S.infoRow}>
-          {res.cats.price.subs[0]?.info && res.cats.price.subs[0].info !== "데이터 부재" && (
+          {res.cats.price.subs[0]?.info && res.cats.price.subs[0].info !== "데이터 부재" ? (
             <span style={S.infoTag}>적정가 {res.cats.price.subs[0].info}</span>
-          )}
+          ) : res.cats.price.subs[0]?.detail ? (
+            <span style={S.infoTag}>{res.cats.price.subs[0].detail}</span>
+          ) : null}
           {res.cats.location.subs[0]?.info && <span style={S.infoTag}>{res.cats.location.subs[0].info}</span>}
           <span style={S.infoTag}>안전 {gr(res.cats.risk?.total ?? 0).l}등급</span>
           {(apt.discountPct ?? 0) > 0 && <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>할인 {apt.discountPct}%</span>}
