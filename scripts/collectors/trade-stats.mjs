@@ -16,7 +16,10 @@ import { loadEnv, getSupabase, getMibuyangSupabase, log, logError } from "./_sha
 
 loadEnv();
 
-const NATIONAL_MEDIAN_INCOME = 5000; // 만원/월 — avg_income null 시 기본값
+// KOSIS DT_1C86 2022년 전국 1인당 개인소득 23,388천원/년 ÷ 12 ÷ 10 = 195만원/월.
+// 세션107 이전 5000(단위 오해, 월로 기재됐으나 연 단위로 쓰이고 있었음) → 195로 정정.
+// collect-avg-income.mjs가 regions.avg_income을 동일 단위(만원/월)로 채우므로 기본값도 일치.
+const NATIONAL_MEDIAN_INCOME = 195; // 만원/월 — avg_income null 시 fallback
 
 // ── region/gu → 인덱스 키 ──────────────────────────────────────
 // 세종은 gu=null(40건) / gu="행정중심복합도시"(1건) 두 버킷으로 분산돼 있어

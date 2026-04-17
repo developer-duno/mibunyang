@@ -1,0 +1,169 @@
+/**
+ * KOSIS 시도별 1인당 개인소득 → regions.avg_income UPDATE
+ *
+ * API: KOSIS OpenAPI "시도별 1인당 지역내총생산 지역총소득 개인소득"
+ *      orgId=101, tblId=DT_1C86, itmId=T3(1인당 개인소득), objL1=ALL
+ *      1회 호출로 전국1+시도17 = 18건.
+ *
+ * 세션107: regions.avg_income 100% NULL 해소.
+ *   - 현재 trade-stats.mjs NATIONAL_MEDIAN_INCOME=5000 (단위 오해로 PIR 중앙값 0.76 비현실)
+ *   - KOSIS 1인당 개인소득은 "천원/년" 단위 → 수집기에서 "만원/월"로 변환 저장
+ *   - 전국 195만원/월 ~ 서울 218만원/월 ~ 제주 179만원/월 (2022 기준)
+ *
+ * C1 매핑: DT_1C86의 C1 코드 체계는 DT_1B26001_A01과 다름 (예: 서울 11, 부산 21).
+ *   → C1_NM(정식명) 파싱 후 REGION_MAP 경유로 약칭 변환 (안전).
+ *
+ * 사용법:
+ *   node scripts/collectors/collect-avg-income.mjs           (Supabase regions UPDATE)
+ *   node scripts/collectors/collect-avg-income.mjs --dry-run (미리보기)
+ *
+ * 필요 환경변수:
+ *   KOSIS_MIGRATION_KEY  — KOSIS OpenAPI 키 (migration.mjs와 공유)
+ *   SUPABASE_URL / SUPABASE_SERVICE_KEY
+ */
+import {
+  loadEnv, getSupabase, log, logError,
+  REGION_MAP, recordApiQuota, fetchWithRetry,
+} from "./_shared.mjs";
+
+loadEnv();
+
+const PHASE = "avg-income";
+const API_KEY = process.env.KOSIS_MIGRATION_KEY;
+
+const BASE_URL = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
+const TARGET_ITM_NM = "1인당 개인소득";
+
+// ── 단위 변환: 천원/년 → 만원/월 ───────────────────────────
+// KOSIS DT는 문자열("23,388"), 콤마 제거 후 정수화. 반올림은 가장 가까운 정수.
+export function thousandWonYearToManWonMonth(dt) {
+  if (dt == null) return null;
+  const n = parseInt(String(dt).replace(/,/g, ""), 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // 천원/년 ÷ 12개월 ÷ 10(천원→만원) = 만원/월
+  return Math.round(n / 120);
+}
+
+// ── KOSIS 응답 행 → 시도별 avg_income 엔트리 ────────────────
+// 전국(C1="00") 제외. ITM_NM="1인당 개인소득"만, 최신 PRD_DE만.
+export function aggregateIncomeRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return { period: null, entries: [] };
+
+  let latestPrd = "";
+  for (const r of rows) {
+    if (r.PRD_DE > latestPrd) latestPrd = r.PRD_DE;
+  }
+
+  const entries = [];
+  for (const r of rows) {
+    if (r.PRD_DE !== latestPrd) continue;
+    if (r.ITM_NM !== TARGET_ITM_NM) continue;
+    if (r.C1 === "00") continue; // 전국 제외
+
+    const region = REGION_MAP[r.C1_NM];
+    if (!region) continue; // 미매핑 지역 무시
+
+    const avgIncome = thousandWonYearToManWonMonth(r.DT);
+    if (avgIncome == null) continue;
+
+    entries.push({ region, gu: null, avg_income: avgIncome });
+  }
+  return { period: latestPrd, entries };
+}
+
+// ── KOSIS 호출 ──────────────────────────────────────────────
+export async function fetchKosisIncome() {
+  if (!API_KEY) throw new Error("KOSIS_MIGRATION_KEY 환경변수 필요");
+
+  const params = new URLSearchParams({
+    method: "getList",
+    apiKey: API_KEY,
+    orgId: "101",
+    tblId: "DT_1C86",
+    itmId: "T3", // 1인당 개인소득
+    objL1: "ALL",
+    prdSe: "Y",
+    newEstPrdCnt: "1", // 최신 1년
+    format: "json",
+    jsonVD: "Y",
+  });
+  const url = `${BASE_URL}?${params}`;
+  log(PHASE, "KOSIS DT_1C86 1인당 개인소득 호출...");
+
+  let res;
+  try {
+    res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  } catch (err) {
+    throw new Error(`KOSIS ${err.message}`);
+  }
+
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch { throw new Error(`KOSIS JSON 파싱 실패: ${text.slice(0, 200)}`); }
+  if (json?.err) throw new Error(`KOSIS 에러 ${json.err}: ${json.errMsg || ""}`);
+  return Array.isArray(json) ? json : [];
+}
+
+// ── 메인 ────────────────────────────────────────────────────
+async function main() {
+  const dryRun = process.argv.includes("--dry-run");
+  if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
+
+  let apiCalls = 0;
+  let failed = 0;
+  try {
+    const result = await runCollect(dryRun);
+    failed = result.failed;
+    apiCalls = result.apiCalls;
+  } finally {
+    if (!dryRun && apiCalls > 0) {
+      await recordApiQuota(PHASE, "KOSIS_MIGRATION_KEY", apiCalls);
+    }
+  }
+  if (failed > 0) process.exit(1);
+}
+
+async function runCollect(dryRun) {
+  const rows = await fetchKosisIncome();
+  const apiCalls = 1;
+  log(PHASE, `KOSIS 응답: ${rows.length}건`);
+
+  const { period, entries } = aggregateIncomeRows(rows);
+  if (!period || entries.length === 0) {
+    log(PHASE, "유효 데이터 없음 — 종료");
+    return { apiCalls, failed: 0 };
+  }
+  log(PHASE, `기준연도: ${period}, 유효 시도: ${entries.length}건`);
+
+  if (dryRun) {
+    console.log("\n시도별 1인당 개인소득 (만원/월):");
+    for (const e of [...entries].sort((a, b) => b.avg_income - a.avg_income)) {
+      console.log(`  ${e.region}: ${e.avg_income.toLocaleString()}만원/월`);
+    }
+    return { apiCalls, failed: 0 };
+  }
+
+  // Supabase UPDATE (migration.mjs 패턴 동일 — region+gu=null 시도 단위)
+  const sb = getSupabase();
+  let updated = 0, failed = 0;
+
+  for (const e of entries) {
+    const { error } = await sb
+      .from("regions")
+      .update({ avg_income: e.avg_income })
+      .eq("region", e.region)
+      .is("gu", null);
+    if (error) {
+      logError(PHASE, `${e.region}: ${error.message}`);
+      failed++;
+    } else {
+      updated++;
+    }
+  }
+
+  log(PHASE, `regions.avg_income UPDATE: ${updated}건 성공 / ${failed}건 실패`);
+  return { apiCalls, failed };
+}
+
+const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

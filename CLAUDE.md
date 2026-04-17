@@ -4,7 +4,9 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-17 세션106 — price=0 오염 버그 수정 + DB 클린업. 커밋 `fbf373b`. **수정A**: `naver-presale.mjs:333` toPresalePriceRow 가드에 `|| price <= 0` 추가 — 네이버 min_price=0(분양가 미공시) 저장 차단. **수정B**: `trade-stats.mjs:144` latestPriceMap 루프에 `if (!p.price || p.price <= 0) continue;` 방어 — 기존 오염 row도 무시. **테스트**: toPresalePriceRow 4케이스 추가(정상/price=0/null/빈ID). **DB 클린업**: prices 테이블 price=0 오염 row **57건 DELETE** + trade-stats 재실행 2001건. **KPI**: pir NULL **50→38건**(-12), "가격>0 인데 pir NULL" **7→0건**(모순 완전 해소), pir 커버리지 96.5→**97.3%**. **GATE 6 발견**: CLAUDE.md/SESSION_LOG 세션105 기록의 "apartments_flat VIEW latest_prices CTE에 price>0 필터"는 오류 — 실제 `supabase/schema.sql:466-471`에 해당 필터 없음. `price>0`은 `dataReliability` 공식(L643)에서만 사용. 이번 세션에서 정정. **Review**: 9 GATE 🟢9 + simplify + scoring-validator PASS / null-safety-checker PASS / collector-contract PASS(C1~C5).
+**마지막 작업**: 2026-04-17 세션107 — regions.avg_income 100% NULL 해소 + PIR 기준값 단위 정정. **중대 발견**: `trade-stats.mjs:19` `NATIONAL_MEDIAN_INCOME = 5000` 주석이 "만원/월"이지만 사실상 연소득 단위로 쓰이며 PIR이 현실의 1/25 수준(중앙값 0.76)으로 왜곡돼 있었음 — 월 5,000만원이면 연 6억원. KOSIS 실측은 195만원/월(전국 2022). **신규**: `scripts/collectors/collect-avg-income.mjs` (KOSIS DT_1C86 "시도별 1인당 개인소득" 수집, 1콜 → 17개 시도 UPDATE, 천원/년 → 만원/월 변환, REGION_MAP 경유 C1_NM 파싱). **수정**: trade-stats.mjs NATIONAL_MEDIAN_INCOME **5000 → 195** (KOSIS 실측). **테스트**: collect-avg-income.test.mjs 18 신규(단위변환 6 + aggregate 8 + fetch 4). **KPI**: regions.avg_income 시도 **17/17 UPDATE** (179~218만원/월 분포), trade-stats 재실행 2001/2001, **PIR 중앙값 0.76 → 19.25** (25배 정상화), PIR 최대 5 → 114, 커버리지 97.3% 유지. **이번 세션 스코프 한정**: 수집기 + 기본값만. scorePrice PIR 구간(`≤3→100/≤5→80/≤7→60/>7→부담`) 재설계는 다음 세션 — 개인소득 기준 PIR과 구간이 맞지 않아 882/1000건이 "부담(>7)" 구간으로 몰림. **Review**: vite build 🟢 744ms / vitest 147 files **2,361 tests** 🟢(세션106 2,339→+22) / collector-contract PASS(C1~C5 migration.mjs 패턴 1:1 계승) / null-safety-checker PASS(High 0).
+
+**이전 작업**: 2026-04-17 세션106 — price=0 오염 버그 수정 + DB 클린업. 커밋 `fbf373b`. KPI pir NULL 50→38건, "가격>0 pir NULL" 7→0건, pir 커버리지 97.3%.
 
 **이전 작업**: 2026-04-16 세션105 — "가격 있는데 pir NULL" 7건 원인 확정 (읽기 전용 조사, 코드/커밋 0). `naver-presale.mjs` price=0 저장 버그 확정. 세션106에서 수정 완료.
 
@@ -29,16 +31,19 @@
 - 경기 가평군 3 / 양평군 4 / 연천군 1 — 군 단위 거래 희소
 
 **다음 세션 우선순위**:
-1. **(세션98 권장) transport-tago.mjs NULL 저장 전환** — TAGO 응답 비정상 시 `uniqueBus=null` + `bus_stop_names=null` 저장으로 DB 레벨에서 수집 실패·실제 0을 구분. `scripts/collectors/transport-tago.mjs:156-168` 약 10줄 수정 + `transport-tago.test.mjs` 22개 재검증. 세션97은 VIEW 공식만 고쳐 현재 상태에서 올바른 판정을 뽑지만, 근본 개선은 수집기 계약 레벨에서 해야 함.
-2. (저우선) 잔존 38건 pir NULL — price=0 구조적(정비사업/후분양/공공임대) → affordability 비대상으로 명시적 분기 검토
-3. (별도 에픽) `regions.avg_income` 26행 100% NULL → KOSIS 가계동향/국세청 API 수집기 신설
-4. 행안부 API 복구 대기 / Vercel 12함수
+1. **(세션107 권장) PIR 구간 재설계 (scorePrice.js:92)** — 세션107에서 avg_income 채우면서 PIR 중앙값 0.76→19.25로 정상화됨. 기존 구간 `≤3→100/≤5→80/≤7→60/>7→부담`은 가구소득 PIR 가정이라 **개인소득 기준 PIR(20~40)과 맞지 않음** — 현재 882/1000건이 "부담" 구간에 쏠림. 한국 실정에 맞춘 재설계(예: `≤10`/`≤20`/`≤30`/`>30`) 필요. regionMedians fallback 로직도 영향 검토.
+2. **(세션98 완료) transport-tago.mjs NULL 저장 전환** — 세션98에서 이미 구현 완료 확인. `searchBusStopsTago` null 반환, `buildTransportRow` null/[]/N 분기, 테스트 22개 보유.
+3. **시군구별 avg_income 수집** — 세션107은 시도 17개만 채움. 국세청 연말정산 통계 또는 KOSIS 시군구별 소득 API로 254개 시군구 분화하면 PIR 정확도 상승.
+4. (저우선) 잔존 38건 pir NULL — price=0 구조적(정비사업/후분양/공공임대) → affordability 비대상으로 명시적 분기 검토
+5. 행안부 API 복구 대기 / Vercel 12함수
 
-**DB 품질** (세션106 측정):
+**DB 품질** (세션107 측정):
 - trade_stats 2,001건: **nearbyMedian 99.3%** (세션94 측정치 유지)
 - apartments_flat 1,424건:
-  - **pir 97.3%** (세션106: 50→38건 NULL, "가격>0 pir NULL" 0건)
-  - **dataReliability 평균 88.38점** (세션97 공식 강화 후, -4.62점), 80점 이상 1,317건(92.5%)
+  - **pir 97.3%** (1,386건 커버), 중앙값 **19.25** (세션107 0.76→19.25 정상화)
+  - **dataReliability 평균 88.38점** (세션97 공식 강화 후), 80점 이상 1,317건(92.5%)
+- regions 454건:
+  - **avg_income 시도 17/17 UPDATE** (세션107, 179~218만원/월), 시군구 392건은 NULL 유지(trade-stats가 시도값 fallback)
 
 ---
 

@@ -1679,3 +1679,82 @@ ah-2024910033    2026-04-14   0      NULL      ← 오염
 - 잔존 38건 pir NULL — price=0 구조적 분기 검토
 - regions.avg_income 100% NULL 별도 에픽
 
+---
+
+# 세션 107 — 2026-04-17 (regions.avg_income 100% NULL 해소 + PIR 기준값 단위 정정)
+
+## 사전 진단
+- **transport-tago.mjs NULL 저장 전환**: 세션98에서 이미 완료된 상태 확인(`searchBusStopsTago` null 반환, `buildTransportRow` null/[] 분기, 테스트 22개) → 재작업 불필요
+- **pir NULL 38건**: 전부 price=0 구조적(정비사업/후분양/공공임대) → 추가 수정 효과 미미
+- **regions.avg_income 100% NULL** (454/454) 확인 → 이번 세션 대상
+
+## 중대한 발견 — PIR 기본값 단위 오류
+- `trade-stats.mjs:19` `NATIONAL_MEDIAN_INCOME = 5000` 주석이 "만원/월"이지만 사실상 "만원/년"으로 해석돼 쓰이고 있었음
+- 월 5,000만원 = 연 6억원 → 비현실적
+- 결과: 서울 10억 아파트 PIR = 1.67 (현실 30~40배가 정상), 전체 PIR 중앙값 0.76
+- KOSIS 실측: 2022년 전국 1인당 개인소득 23,388천원/년 = **195만원/월**
+- 이번 세션 스코프: 수집기 + 기본값 정정만. PIR 구간(scorePrice.js `≤3→100`) 재설계는 별도 세션
+
+## KOSIS API 실증
+- 테이블 `DT_1C86`(시도별 1인당 지역내총생산 지역총소득 개인소득), orgId=101
+- ITM_ID=T3(1인당 개인소득), objL1=ALL, prdSe=Y, newEstPrdCnt=1
+- 1회 호출 18건(전국1 + 시도17), C1_NM 정식명 → REGION_MAP 경유 약칭 변환
+- migration.mjs와 달리 C1 코드 체계가 다름(11서울/21부산/22대구…) → 이름 기반 파싱이 안전
+
+## 구현
+### 1. `scripts/collectors/collect-avg-income.mjs` 신규 (160줄)
+- `thousandWonYearToManWonMonth`: `parseInt(DT.replace(/,/g,''),10) / 120` 반올림. null/빈문자열/NaN/0/음수 전부 null 흡수
+- `aggregateIncomeRows`: 최신 PRD_DE + ITM_NM="1인당 개인소득" + C1!="00" + REGION_MAP 매핑 성공만
+- `fetchKosisIncome`: `_shared.mjs:fetchWithRetry` 위임, 실패 시 `KOSIS ${err.message}` prefix
+- `main`: try/finally로 `apiCalls > 0` 시 recordApiQuota 보장(세션103 collector-contract 패턴)
+- Supabase UPDATE: `.update().eq("region").is("gu",null)` 시도 단위만
+
+### 2. `scripts/collectors/collect-avg-income.test.mjs` 신규 (18 tests)
+- thousandWonYearToManWonMonth 6: 전국/서울 실측값, 쉼표, null/빈/0/음수
+- aggregateIncomeRows 8: 최신연도/ITM필터/전국제외/시도6종/미매핑/NaN/강원특별자치도
+- fetchKosisIncome 4: URL 파라미터/에러 prefix/err필드/JSON파싱 실패
+
+### 3. `trade-stats.mjs:19` 기본값 정정
+- `NATIONAL_MEDIAN_INCOME`: **5000 → 195** (만원/월)
+- 주석에 "세션107 이전 단위 오해, 월로 기재됐으나 연 단위로 쓰이고 있었음" 명시
+
+## KPI 변화
+### 수집
+- KOSIS 1콜 → regions.avg_income **17/17 UPDATE** 성공 (시도 단위, 179~218 만원/월)
+- 시군구 392건은 NULL 유지 → trade-stats `incomeMap.get(apt.region)` fallback으로 커버
+
+### trade-stats 재실행
+- 2001/2001 upsert 완료
+- PIR 평균: 기재 없음(없던 지표) → **22.0년**
+- PIR 중앙값: **0.76 → 19.25** (약 25배 증가, 현실적 범위로 정정)
+- PIR 최대: 5 → 114 (서울 포제스한강 32억 → PIR 122)
+- PIR 커버리지: 97.3% 유지
+
+### scorePrice 구간 분포 (1000건 샘플)
+| 구간 | 세션106 이전 | 세션107 이후 |
+|---|---|---|
+| PIR ≤ 3 (100점) | ~전부 | 112 |
+| PIR 3~5 (80~) | 소수 | 4 |
+| PIR 5~7 (60~) | 0 | 2 |
+| PIR > 7 (부담) | 0 | 882 |
+
+→ **scorePrice PIR 구간이 개인소득 기준 PIR과 맞지 않음** 확인. 다음 세션에서 구간 재설계 필요.
+
+## 교차검증
+- **빌드**: vite build 🟢 744ms
+- **테스트**: vitest 147 files / **2,361 tests 🟢** (세션106 2,339 → +22, 수집기 신규 18 + 조정)
+- **collector-contract (Task)**: 🟢 PASS — C1~C5 전부 통과, migration.mjs 패턴 1:1 계승, try/finally 쿼터 보장 준수
+- **null-safety-checker (Task)**: 🟢 PASS — High 0, Medium/Low 실질 위험 없음, REGION_MAP 미매핑 continue 흡수
+- **scoring**: 메인이 직접 검사 — PIR 값만 변화, scorePrice 로직/가중치 불변
+- **보안**: 메인 직접 — env 노출 없음, SQL 인젝션 없음(Supabase SDK 파라미터화)
+
+## 파일 변경
+- **신규**: `scripts/collectors/collect-avg-income.mjs` (160줄)
+- **신규**: `scripts/collectors/collect-avg-income.test.mjs` (18 tests)
+- **수정**: `scripts/collectors/trade-stats.mjs` (L19 상수 + 주석 3줄)
+
+## 다음 세션 (108+)
+- **PIR 구간 재설계 (scorePrice.js)**: 개인소득 기준 PIR은 20~40대가 정상 → 기존 `≤3/≤5/≤7` 구간이 부적절. 한국 실정에 맞춘 재설계 필요(예: ≤10 우수, ≤20 양호, ≤30 보통, >30 부담). regionMedians fallback도 영향 검토
+- **시군구별 avg_income**: 현재 시도 단위만 커버. 국세청 연말정산 통계 또는 KOSIS 시군구별 소득 데이터 추가 수집 검토(시도 → 시군구 분화로 PIR 정확도 상승)
+- 잔존 38건 pir NULL — price=0 구조적 명시 분기
+
