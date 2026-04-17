@@ -4,7 +4,9 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-17 세션108 — `scorePrice.js` PIR 구간 재설계 (개인소득 PIR 분포 대응). 세션107에서 PIR 중앙값 0.76→19.25 정상화됐지만 기존 구간(`≤3/≤5/≤7`, 가구소득 가정)과 안 맞아 **828/1000건(83%)이 PIR 0~9점 쏠림**. 분위수 기반 새 구간(`≤10 우수/≤20 양호/≤30 보통/>30 부담`). **신규 상수**: `PIR_SCORE_TIERS = { EXCELLENT_MAX: 10, GOOD_MAX: 20, MODERATE_MAX: 30, BURDEN_PENALTY: 2 }` in `scoringTiers.js`. **scorePrice.js**: L90-99 구간 교체 + L72·L109 detail 문자열 `"우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑"`. **테스트**: engine.test.js PIR 5개(우수/양호/보통/부담/하한클램프) — 기존 `PIR<=3→100` 1개 교체 + 4개 신규. **KPI 시뮬(1000건)**: 90~100점 113→**261**, 70~89점 4→**480**, 0~9점 **828→21**, 평균 PIR 서브스코어 **13.3 → 77.1** (정상 분화). **경계 연속성**: pir=10→100, pir=20→80, pir=30→60, pir=60→0 (수식 연결 검증). **Review**: vite build 🟢 531ms / vitest 147 files **2,365 tests** 🟢(세션107 2,361→+4) / scoring-validator PASS(PROFILES 5개·scorePrice 내부 0.15 가중치 불변·경계 수식 연속성·테스트 경계 기댓값 전수 검산).
+**마지막 작업**: 2026-04-17 세션109 — `compute-scores.mjs` 재실행으로 세션108 PIR 구간 변경을 `apartments.cats_cache` 1,424건에 반영. **Dry-run**: 1,424/1,424 계산 성공 / 0 스킵 / 0 실패(4.9초). **실제 UPDATE**: 1,424/1,424 DB 반영 성공(10.6초, 배치 10). **사후 집계(apartments 1,994건 전수)**: 평균 price 서브스코어 **52.2점**, 분포 0~9=0 / 10~29=166(8.3%) / **30~49=994(49.8%, 중심)** / 50~69=309(15.5%) / **70~89=522(26.2%, 상위권)** / 90~100=3(0.2%). 세션108 이전 PIR 쏠림("828/1000 0~9점") 해소 확인. **프론트 검증(webapp-testing)**: `vite dev` 기동 성공, 메인 페이지 콘솔 에러 0, 카드 30+ 렌더, 가격 라벨 표시 정상(비로그인 블러 "??" 유지). 코드 변경 0(DB UPDATE만). **주의**: `compute-scores.mjs`는 `scripts/` 직하 위치(CLAUDE.md 안내 `scripts/collectors/`는 오기 — 다음 세션에서 정정 권장).
+
+**이전 작업**: 2026-04-17 세션108 — `scorePrice.js` PIR 구간 재설계 (개인소득 PIR 분포 대응). 세션107에서 PIR 중앙값 0.76→19.25 정상화됐지만 기존 구간(`≤3/≤5/≤7`, 가구소득 가정)과 안 맞아 **828/1000건(83%)이 PIR 0~9점 쏠림**. 분위수 기반 새 구간(`≤10 우수/≤20 양호/≤30 보통/>30 부담`). **신규 상수**: `PIR_SCORE_TIERS = { EXCELLENT_MAX: 10, GOOD_MAX: 20, MODERATE_MAX: 30, BURDEN_PENALTY: 2 }` in `scoringTiers.js`. **scorePrice.js**: L90-99 구간 교체 + L72·L109 detail 문자열 `"우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑"`. **테스트**: engine.test.js PIR 5개(우수/양호/보통/부담/하한클램프) — 기존 `PIR<=3→100` 1개 교체 + 4개 신규. **KPI 시뮬(1000건)**: 90~100점 113→**261**, 70~89점 4→**480**, 0~9점 **828→21**, 평균 PIR 서브스코어 **13.3 → 77.1** (정상 분화). **경계 연속성**: pir=10→100, pir=20→80, pir=30→60, pir=60→0 (수식 연결 검증). **Review**: vite build 🟢 531ms / vitest 147 files **2,365 tests** 🟢(세션107 2,361→+4) / scoring-validator PASS(PROFILES 5개·scorePrice 내부 0.15 가중치 불변·경계 수식 연속성·테스트 경계 기댓값 전수 검산).
 
 **이전 작업**: 2026-04-17 세션107 — regions.avg_income 100% NULL 해소 + trade-stats.mjs NATIONAL_MEDIAN_INCOME 5000→195 정정. 커밋 `eb019ae`. PIR 중앙값 0.76→19.25 정상화.
 
@@ -33,8 +35,8 @@
 - 경기 가평군 3 / 양평군 4 / 연천군 1 — 군 단위 거래 희소
 
 **다음 세션 우선순위**:
-1. **(세션109 권장) compute-scores 재실행** — 세션108 PIR 구간 변경이 1,424건 `cats_cache`에 반영되도록 `node --loader ./scripts/alias-loader.mjs scripts/collectors/compute-scores.mjs` 실행. 실행 후 프론트에서 가격 매력도 분포 변화 확인.
-2. **시군구별 avg_income 수집** — 세션107은 시도 17개만 채움. 국세청 연말정산 통계 또는 KOSIS 시군구별 소득 API로 254개 시군구 분화하면 PIR 정확도 상승.
+1. **시군구별 avg_income 수집** — 세션107은 시도 17개만 채움. 국세청 연말정산 통계 또는 KOSIS 시군구별 소득 API로 254개 시군구 분화하면 PIR 정확도 상승.
+2. (선택) CLAUDE.md `compute-scores.mjs` 경로 정정 — `scripts/collectors/` → `scripts/` (세션109에서 실제 경로 `scripts/compute-scores.mjs` 확인)
 3. (저우선) 잔존 38건 pir NULL — price=0 구조적(정비사업/후분양/공공임대) → affordability 비대상으로 명시적 분기 검토
 4. 행안부 API 복구 대기 / Vercel 12함수
 

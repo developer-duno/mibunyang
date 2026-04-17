@@ -1,3 +1,46 @@
+# 세션 109 — 2026-04-17 (compute-scores 재실행 + PIR 구간 재설계 cats_cache 반영)
+
+**목표**: 세션108에서 `scorePrice.js` PIR 서브스코어 구간을 재설계(≤10 우수 / ≤20 양호 / ≤30 보통 / >30 부담)했지만 실제 `apartments.cats_cache`에는 미반영 상태 → `compute-scores.mjs` 재실행으로 1,424건 재계산.
+
+## 사전 확인
+- `scripts/compute-scores.mjs` 경로 정정 (CLAUDE.md 안내는 `scripts/collectors/compute-scores.mjs`로 잘못 표기돼 있었음 — 실제는 `scripts/` 직하)
+- `--dry-run` 지원 확인
+
+## 실행 결과
+- **Dry-run**: 1,424/1,424 계산 성공, 스킵 0, 실패 0 (4.9초)
+- **실제 UPDATE**: 1,424/1,424 DB 반영 성공, 실패 0 (10.6초)
+- 배치 크기 10, 500건마다 진행 로그
+
+## 사후 검증 (apartments 1,994건 전수 집계)
+- 평균 price 서브스코어 **52.2점**
+- 분포:
+  | 구간 | 건수 | 비율 |
+  |------|------|------|
+  | 0~9 | 0 | 0.0% |
+  | 10~29 | 166 | 8.3% |
+  | 30~49 | 994 | 49.8% |
+  | 50~69 | 309 | 15.5% |
+  | 70~89 | 522 | 26.2% |
+  | 90~100 | 3 | 0.2% |
+- 세션108 이전 PIR 쏠림("828/1000 0~9점") → 30~49가 중심, 70~89 상위권도 26.2%로 양호한 분화
+
+## 프론트 검증 (webapp-testing)
+- `vite dev` 기동 성공 (http://localhost:5173)
+- 메인 페이지 로드 정상: 콘솔 에러 0, 카드 30+ 렌더링, 가격 라벨 표시
+- 비로그인 블라인드 정책으로 점수 블러 처리("??") — 스크린샷 `tmp/session109_home.png`
+
+## 커밋 상태
+- **코드 변경 0건** (compute-scores 재실행은 DB UPDATE만 수행)
+- 기존 untracked 파일은 세션109와 무관 (.bak-20260415 2개, backups/, fix_sejong_coord.mjs)
+
+## 다음 세션 (110) 우선순위
+1. **시군구별 avg_income 수집** — 세션107은 시도 17개만. KOSIS 시군구별 소득 API 또는 국세청 연말정산 통계로 254 시군구 분화 → PIR 정확도 상승
+2. 잔존 38건 pir NULL — price=0 구조적(정비사업/후분양/공공임대) → affordability 비대상 명시 분기
+3. Vercel 12함수 감축 (장기)
+4. (선택) CLAUDE.md compute-scores 경로 정정 — `scripts/collectors/` → `scripts/`
+
+---
+
 # 세션 102 — 2026-04-16 (행안부 API 탐색 → KOSIS 전환 결정)
 
 **목표**: `regions.net_migration` 454/454 NULL(100%) 해소를 위해 행안부 `MOIS_POP_KEY` 갱신 → `migration.mjs` 재실행.
