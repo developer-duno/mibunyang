@@ -29,12 +29,18 @@ export function getAreaAdj(area) {
   return 0.94;
 }
 
+// 세션111: price=0 구조적 사유별 UX 분기 확장.
+// 점수 로직(devSc=30 중립)은 불변, 문구만 정교화.
+// 판정 순서: 임대 → 정비사업 → 후분양 → 오피스텔 → 택지지구 블록 → 공공분양 → 기본.
 function classifyNoPrice(apt) {
   const name = apt.name || "";
   const presale = apt.presaleType || "";
   if (presale.includes("임대")) return "임대형 공급 — 분양가 산출 대상 아님";
   if (/(재건축|재개발|촉진구역|\d+구역)/.test(name)) return "정비사업 — 조합원 물량, 분양가 미정";
   if (/(써밋|후분양)/.test(name)) return "후분양 단지 — 분양가 미정";
+  if (/\(오\)$/.test(name)) return "오피스텔 — 분양가 별도 공고";
+  if (/(\d+BL|\d+블럭|\d+블록|\bA\d+\b|\bB\d+\b|\d+단지|지구|신도시)/.test(name)) return "택지지구 블록 — 분양가 공고 전";
+  if (presale.includes("공공")) return "공공분양 — 분양가 공고 대기";
   return "분양가 데이터 없음 (중립 점수)";
 }
 

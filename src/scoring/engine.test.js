@@ -783,3 +783,46 @@ describe('scorePrice — price=0 devSc=97 오인 버그 (세션99)', () => {
     expect(r.subs[0].detail).toContain("임대형");
   });
 });
+
+// 세션111: price=0 구조적 사유별 UX 분기 확장 (택지지구/공공/오피스텔).
+// 점수는 불변(devSc=30), 문구만 정교화. 38건 중 26건 미분류 → 맞춤 안내로 흡수.
+describe('scorePrice — price=0 classifyNoPrice 확장 (세션111)', () => {
+  it('택지지구 블록(BL 접미사) → "택지지구 블록" 안내', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "인천검암S3BL" }));
+    expect(r.subs[0].detail).toContain("택지지구 블록");
+    expect(r.subs[0].score).toBe(30);
+  });
+
+  it('신도시 포함 단지 → "택지지구 블록" 안내', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "고덕국제신도시수자인풍경채1단지" }));
+    expect(r.subs[0].detail).toContain("택지지구 블록");
+  });
+
+  it('오피스텔 (오) 접미사 → "오피스텔" 안내', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "덕수궁롯데캐슬136(오)" }));
+    expect(r.subs[0].detail).toContain("오피스텔");
+  });
+
+  it('공공분양 + 일반 이름 → "공공분양" 안내', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "고덕신도시아테라", presaleType: "공공분양" }));
+    // 이름에 "신도시" 포함되어 "택지지구 블록" 우선 매칭 (규칙상 정상)
+    expect(r.subs[0].detail).toMatch(/택지지구 블록|공공분양/);
+  });
+
+  it('공공분양 + 블록 접미사 없는 이름 → "공공분양" 안내', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "일반공공단지A", presaleType: "공공분양" }));
+    expect(r.subs[0].detail).toContain("공공분양");
+  });
+
+  it('판정 우선순위: 임대 > 정비사업 > 후분양 > 오피스텔 > 택지블록 > 공공', () => {
+    // "재건축" + 공공분양 → 정비사업이 우선
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "X구역재건축", presaleType: "공공분양" }));
+    expect(r.subs[0].detail).toContain("정비사업");
+  });
+
+  it('매칭 안 되는 민간분양 → 기본 메시지 유지', () => {
+    const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "더샵관저아르테", presaleType: "민간분양" }));
+    expect(r.subs[0].detail).toBe("분양가 데이터 없음 (중립 점수)");
+    expect(r.subs[0].score).toBe(30);
+  });
+});

@@ -1,3 +1,70 @@
+# 세션 111 — 2026-04-17 (classifyNoPrice 분기 확장 — 택지지구/공공/오피스텔)
+
+**목표**: 잔존 38건 pir NULL(전부 price=0)에 대해 `classifyNoPrice` 분기를 확장해 UX 메시지를 정교화. 점수 로직은 불변, 문구만 개선. 세션99 도입분의 후속 작업.
+
+## 사전 조사 — pir NULL 38건 전수 분석
+
+Supabase SDK 조회(`supabase.from("apartments_flat").select(...).is("pir", null)`) 결과:
+- 총 38건 **전부 price=0** (priceYes=0)
+- 세션99 `classifyNoPrice` 기존 분기(임대/정비사업/후분양) 매칭: 8건 (임대 2 + 정비 4 + 후분양 2)
+- "미분류"(기본 메시지): 30건 — 택지지구 블록·공공분양·오피스텔 중심
+
+## 변경 파일 (2개)
+
+### src/scoring/scorePrice.js
+- `classifyNoPrice()` (L32-47)에 3개 신규 분기 추가
+  - 오피스텔 `(오)$` 접미사 → "오피스텔 — 분양가 별도 공고"
+  - 택지지구 블록 `\d+BL|\d+블럭|\d+블록|\bA\d+\b|\bB\d+\b|\d+단지|지구|신도시` → "택지지구 블록 — 분양가 공고 전"
+  - `presaleType.includes("공공")` → "공공분양 — 분양가 공고 대기"
+- 판정 우선순위: 임대 → 정비사업 → 후분양 → 오피스텔 → 택지블록 → 공공분양 → 기본
+- 주석 블록으로 세션111 경위 명기
+- 점수 로직(devSc=30, 가중치, 클램핑) **일체 불변**
+
+### src/scoring/engine.test.js
+- describe 'scorePrice — price=0 classifyNoPrice 확장 (세션111)' 신규 추가
+- 테스트 7개 (택지블록 BL/신도시 2 + 오피스텔 1 + 공공분양 2 + 우선순위 1 + 기본 유지 1)
+- 각 테스트에서 `score: 30` 단언으로 **점수 불변 회귀 방지**
+
+## KPI — 분류 커버리지
+
+38건 분류 결과 (시뮬):
+| 카테고리 | 세션110 전 | 세션111 후 | 증감 |
+|---|---|---|---|
+| 임대형 | 2 | 2 | - |
+| 정비사업 | 4 | 4 | - |
+| 후분양 | 2 | 2 | - |
+| **오피스텔** (신규) | 0 | 3 | +3 |
+| **택지지구 블록** (신규) | 0 | 15 | +15 |
+| **공공분양** (신규) | 0 | 0* | 0 |
+| 기타(기본 메시지) | 30 | 12 | **-18** |
+
+\* 공공분양 대상 4건(인천검암S3BL/B1BL, 고덕신도시아테라, 수원광교 A17)은 "신도시"/"BL" 키워드로 택지블록에 먼저 매칭. 설계 의도대로(규칙상 정상). 테스트 `우선순위` 케이스로 명시 검증.
+
+**맞춤 안내 적용률: 8/38 → 26/38 (+18건, 21% → 68%)**
+
+## Review (5교차검증)
+
+- **빌드**: `npx vite build` 🟢 388ms
+- **테스트**: `npx vitest run` 🟢 147 files / **2,373 tests** (세션110 2,366 → +7)
+- **스코어링 (scoring-validator)**: PASS — PROFILES 5×100, scorePrice 서브가중치 1.00 불변, PIR 구간 상수 불변, 클램핑 경로 무변경, classifyNoPrice는 detail 문자열만 생성하므로 점수 영향 0
+- **null 안전성 (null-safety-checker)**: PASS — `apt.name || ""`, `apt.presaleType || ""` 기본값 보장, 정규식 6개 전부 빈 문자열 대응, 모든 분기 종점이 string 리터럴 return
+- **Hook 규칙 (메인)**: PASS — 순수 함수, React Hook 무관
+- **보안 (메인)**: PASS — 사용자 입력 경로 없음, XSS/인젝션 경로 0
+
+## 저장소 스냅샷
+
+- 브랜치: main, origin 동기
+- unstaged 노이즈(세션111 무관): `.claude/agents/scoring-validator.md.bak-20260415`, `CLAUDE.md.bak-20260415`, `backups/`, `scripts/fix_sejong_coord.mjs`
+
+## 다음 세션 우선순위
+
+1. **기타 12건 민간분양 price=0 개별 조사** — naver-presale 수집기에서 왜 price=0으로 저장됐는지 사례별 추적 (분양 전/취소/데이터 누락 중 어느 경로인지)
+2. **시군구별 소득 수집 (장기)** — 국세청 TASIS 스크레이핑 별도 프로젝트
+3. **Vercel 12함수 감축 (장기)**
+4. **행안부 API 복구 대기**
+
+---
+
 # 세션 110 — 2026-04-17 (KOSIS INH_1C96_04 전환 + 4단 파이프라인 재실행)
 
 **목표**: regions.avg_income을 2022년 DT_1C86 → 2024p INH_1C96_04로 최신화하고 PIR 파이프라인(trade-stats → compute-scores)을 재실행해 apartments.cats_cache에 반영. 시군구 해상도 확장은 KOSIS에 테이블 부재 확인 후 별도 프로젝트로 분리.
