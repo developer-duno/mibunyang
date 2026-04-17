@@ -631,6 +631,68 @@ describe('scorePrice — fairPrice 폴백 (단위 교정)', () => {
   });
 });
 
+describe('scorePrice — 시도 평균 폴백 신뢰도 차감 + detail 경고 (세션114)', () => {
+  // 방안 A: nearbyMedian=null 이고 avgSqm/presalePp 폴백 사용 시 dataReliability -15
+  it('nearbyMedian 있음 → 폴백 없음 → 차감 없음 (기준선)', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: 55000, avgPriceSqm: 7312, dataReliability: 90 }));
+    const rel = r.subs.find(s => s.name === "데이터 신뢰도");
+    expect(rel.score).toBe(90);
+    expect(rel.info).not.toContain("폴백차감");
+  });
+  it('nearbyMedian=null + avgPriceSqm 사용 → relSc -15 + info에 "-폴백차감15"', () => {
+    const r = scorePrice(makeApt({
+      nearbyMedian: null, avgPriceSqm: 7312, area: 84.9372, price: 42590,
+      dataReliability: 55,
+    }));
+    const rel = r.subs.find(s => s.name === "데이터 신뢰도");
+    expect(rel.score).toBe(40); // 55 - 15
+    expect(rel.info).toContain("-폴백차감15");
+  });
+  it('dataReliability=10 에서 차감해도 0 미만으로 떨어지지 않음 (클램프)', () => {
+    const r = scorePrice(makeApt({
+      nearbyMedian: null, avgPriceSqm: 7312, area: 84.9372, price: 42590,
+      dataReliability: 10,
+    }));
+    const rel = r.subs.find(s => s.name === "데이터 신뢰도");
+    expect(rel.score).toBe(0);
+  });
+  // 방안 B: 폴백 사용 시 괴리도 detail에 "광역 시도 평균 기준" 접미
+  it('폴백 사용 → 괴리도 detail에 "광역 시도 평균 기준" 경고 포함', () => {
+    const r = scorePrice(makeApt({
+      nearbyMedian: null, avgPriceSqm: 7312, area: 84.9372, price: 42590,
+      dataReliability: 55,
+    }));
+    const dev = r.subs.find(s => s.name === "적정가 괴리도");
+    expect(dev.detail).toContain("광역 시도 평균 기준");
+  });
+  it('폴백 미사용 → 괴리도 detail에 경고 없음', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: 55000 }));
+    const dev = r.subs.find(s => s.name === "적정가 괴리도");
+    expect(dev.detail).not.toContain("광역 시도 평균 기준");
+  });
+  // 방안 A: presalePp 폴백도 동일하게 차감
+  it('presalePp 폴백도 dataReliability -15 적용', () => {
+    const r = scorePrice(makeApt({
+      nearbyMedian: null, avgPriceSqm: null, presalePp: 2000, area: 84, price: 40000,
+      dataReliability: 67,
+    }));
+    const rel = r.subs.find(s => s.name === "데이터 신뢰도");
+    expect(rel.score).toBe(52); // 67 - 15
+  });
+  // 회귀 방지: 가평 자라섬 수자인 실측 — 폴백 사용 + 차감 동시 확인
+  it('가평 자라섬 수자인 실측 회귀 — 폴백 + 차감 + 경고 모두 반영', () => {
+    const r = scorePrice(makeApt({
+      nearbyMedian: null, avgPriceSqm: 7312, area: 84.9176, price: 42590,
+      dataReliability: 55, jeonseRate: null,
+    }));
+    expect(r.fairPrice).toBeGreaterThan(0);
+    const rel = r.subs.find(s => s.name === "데이터 신뢰도");
+    expect(rel.score).toBe(40);
+    const dev = r.subs.find(s => s.name === "적정가 괴리도");
+    expect(dev.detail).toContain("광역 시도 평균 기준");
+  });
+});
+
 describe('scorePrice — null 가드 (유령 폴백 제거)', () => {
   it('jeonseRate=null → "데이터 부재" 표시 + PRICE_NO_DATA_DEFAULTS.jr 점수', () => {
     const r = scorePrice(makeApt({ jeonseRate: null }));

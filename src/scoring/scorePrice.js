@@ -6,6 +6,7 @@ import {
   PRICE_NO_DATA_DEFAULTS,
   PIR_SCORE_TIERS,
   PRICE_INDEX_HOT, PRICE_INDEX_WARM, PRICE_INDEX_HOT_BONUS, PRICE_INDEX_WARM_BONUS,
+  PRICE_FALLBACK_RELIABILITY_PENALTY,
 } from "@/constants/scoringTiers";
 
 const IS_DEV = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
@@ -55,12 +56,17 @@ export function scorePrice(apt) {
   const ageCoeff = getAgeCoeff(apt.completion);
   const areaAdj = getAreaAdj(apt.area);
   let fairPrice = (apt.nearbyMedian ?? 0) * ageCoeff * areaAdj * b.adj;
+  // 세션114: nearbyMedian 부재로 시도 평균 폴백(avgPriceSqm/presalePp) 사용 여부.
+  // 섬·군 지역에서 시도 평균이 실시세의 2~3배로 왜곡 → 신뢰도 차감 + detail 경고.
+  let fairPriceFromSidoAvg = false;
   // fairPrice=0 폴백: avgPriceSqm(천원/㎡) 또는 presalePp(만원/평) → 만원 총가
   if (fairPrice <= 0 && apt.avgPriceSqm != null && apt.area > 0) {
     fairPrice = Math.round(apt.avgPriceSqm * apt.area / 10) * ageCoeff * areaAdj * b.adj;
+    if (fairPrice > 0) fairPriceFromSidoAvg = true;
   }
   if (fairPrice <= 0 && apt.presalePp != null && apt.presalePp > 0 && apt.area > 0) {
     fairPrice = apt.presalePp * (apt.area / 3.3058) * ageCoeff * areaAdj * b.adj;
+    if (fairPrice > 0) fairPriceFromSidoAvg = true;
   }
   // 택지비 비율 서브스코어 (공통)
   const landSc = apt.landCostRatio != null
@@ -68,7 +74,11 @@ export function scorePrice(apt) {
   // priceIndex 보정: 과열 시장에서 신뢰도 가산
   const idxBonus = apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_HOT ? PRICE_INDEX_HOT_BONUS
     : apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_WARM ? PRICE_INDEX_WARM_BONUS : 0;
-  const relSc = Math.min(apt.dataReliability + idxBonus, 100);
+  // 방안 A: 시도 평균 폴백 사용 시 dataReliability 차감(세션114)
+  const relBase = fairPriceFromSidoAvg
+    ? Math.max(0, apt.dataReliability - PRICE_FALLBACK_RELIABILITY_PENALTY)
+    : apt.dataReliability;
+  const relSc = Math.min(relBase + idxBonus, 100);
   if (fairPrice <= 0 || !apt.price || apt.price <= 0) {
     const devSc = PRICE_NO_DATA_DEFAULTS.dev;
     const jrSc = PRICE_NO_DATA_DEFAULTS.jr; const pirSc = PRICE_NO_DATA_DEFAULTS.pir; const psrSc = PRICE_NO_DATA_DEFAULTS.psr;
@@ -111,14 +121,17 @@ export function scorePrice(apt) {
   const psrSc = psr == null ? PRICE_NO_DATA_DEFAULTS.psr
     : Math.min(psr < 0.85 ? 85 + (0.85 - psr) / 0.15 * 15 : psr <= 1.0 ? 50 + (1.0 - psr) / 0.15 * 35 : Math.max(0, 50 - (psr - 1.0) / 0.2 * 50), 100);
   const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
+  // 방안 B: 시도 평균 폴백 사용 시 detail 접미 경고(세션114)
+  const sidoNotice = fairPriceFromSidoAvg ? " — 광역 시도 평균 기준(실시세 왜곡 가능)" : "";
+  const relNotice = fairPriceFromSidoAvg ? ` -폴백차감${PRICE_FALLBACK_RELIABILITY_PENALTY}` : "";
   return {
     total: Math.round(Math.max(0, Math.min(total, 100))), fairPrice: Math.round(fairPrice), deviation: dev.toFixed(1),
     subs: [
-      { name: "적정가 괴리도", score: Math.round(devSc), info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`, detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (±5% 적정, ±10~20% 주의, 20%↑ 과대)` },
+      { name: "적정가 괴리도", score: Math.round(devSc), info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`, detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (±5% 적정, ±10~20% 주의, 20%↑ 과대)${sidoNotice}` },
       { name: "전세가율", score: Math.round(jrSc), info: jr == null ? "데이터 부재" : `${jr}%`, detail: jr == null ? "전세가율 데이터 없음 (중립 50점)" : `${jr}% (적정 70~80%, 위험 40%↓, 과열 90%↑)` },
       { name: "PIR", score: Math.round(pirSc), info: pir == null ? "데이터 부재" : `${pir}배`, detail: pir == null ? "PIR 데이터 없음 (중립 50점)" : `${pir}배 (우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑)` },
       { name: "PSR", score: Math.round(psrSc), info: psr == null ? "데이터 부재" : `${(psr * 100).toFixed(0)}%`, detail: psr == null ? "PSR 데이터 없음 (중립 50점)" : `${(psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓, 고평가 100%↑)` },
-      { name: "데이터 신뢰도", score: relSc, info: `${apt.dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}`, detail: `${apt.dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""} (80%↑신뢰, 50%↑보통, 30%↓추정)` },
+      { name: "데이터 신뢰도", score: relSc, info: `${apt.dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}${relNotice}`, detail: `${apt.dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""}${relNotice} (80%↑신뢰, 50%↑보통, 30%↓추정)` },
       { name: "택지비비율", score: landSc, info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음", detail: apt.landCostRatio != null ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)` : "택지비 데이터 없음 (중립 50점)" },
     ],
   };

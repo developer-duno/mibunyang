@@ -172,6 +172,12 @@ export const FUTURE_WEIGHT_MAP = {
 // === Price: 데이터 부재 시 기본값 ===
 export const PRICE_NO_DATA_DEFAULTS = { dev: 30, jr: 50, pir: 50, psr: 50 };
 
+// 세션114: 인근 실거래 중위값(nearbyMedian) 부재로 시도 평균 avgPriceSqm을
+// fairPrice 폴백으로 사용할 때 적용. 섬·군 지역에서 시도 평균이 실시세의
+// 2~3배로 과대평가되는 왜곡을 사용자에게 알리기 위해 dataReliability 차감 +
+// detail 문자열 경고 접미를 부여. 점수 로직(괴리도/PIR/PSR/전세가율 계산) 불변.
+export const PRICE_FALLBACK_RELIABILITY_PENALTY = 15;
+
 // === Price: PIR (소득대비 가격비율) 점수 구간 ===
 // 세션108 재설계: KOSIS 1인당 개인소득(만원/월) 기준. 기존 ≤3/≤5/≤7 구간은
 // 가구소득 PIR 가정이라 개인소득 PIR(2022 전국 p50=19.25, p75=25.27, p90=34.27)과

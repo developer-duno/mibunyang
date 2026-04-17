@@ -4,7 +4,9 @@
 
 ## 현재 진행 상황
 
-**마지막 작업**: 2026-04-17 세션112 — `AptCard.jsx` price=0 단지 infoTag에 `classifyNoPrice` detail 노출. 세션111이 생성한 8분기 안내 문구(임대/정비/후분양/오피스텔/분양계획/택지블록/공공/기본)가 `ExpertScoreBreakdown.jsx:58`(전문가 모드)에서만 보이던 것을 일반 사용자 카드로 확장. 변경: [AptCard.jsx:100-104](src/components/AptCard.jsx#L100) 조건부 렌더 3줄 → 5줄 삼항 확장 (`info === "데이터 부재"`이되 `detail` 있으면 `<span>{detail}</span>`, 둘 다 없으면 null). 점수/가중치/scorePrice.js **일체 불변**. 테스트 [AptCard.test.jsx](src/components/AptCard.test.jsx)에 2케이스 추가(detail 노출 + `"적정가 -3.5%"` 회귀 방지). **KPI**: vite build 🟢 384ms / vitest 147 files **2,377 tests** 🟢 (세션111 2,375 → +2) / scoring-validator PASS (PROFILES 5×100·0.30+0.20+0.15+0.25+0.07+0.03=1.00 불변·PIR_SCORE_TIERS·PRICE_NO_DATA_DEFAULTS 상수 불변·스코어링 모듈 0바이트 diff) / null-safety-checker PASS (subs[0]?.info/?.detail optional chaining·detail undefined→null 반환·빈 span 방지) / Hook PASS (순수 JSX 조건부 렌더) / 보안 PASS (detail은 scorePrice 하드코딩 리터럴, 사용자 입력 없음). 커밋 `d21ace9`.
+**마지막 작업**: 2026-04-18 세션114 — 시도 평균 폴백 사용 시 **dataReliability -15 차감 + detail 경고 접미**(방안 A+B). 섬·군 지역 인접 실거래 실측으로 폴백 왜곡 확인(경기 시도 평균 7,312 천원/㎡ vs 여주 2,484·이천 2,819·가평 trades 0건 → 실시세의 2~3배 고평가). `src/constants/scoringTiers.js`에 `PRICE_FALLBACK_RELIABILITY_PENALTY = 15` 신규 상수. `src/scoring/scorePrice.js`: (A) `fairPriceFromSidoAvg` 플래그 도입, `avgPriceSqm`/`presalePp` 폴백 경로에서 `fairPrice>0` 시 true → `relBase = Math.max(0, apt.dataReliability - 15)` 하한 클램프 적용, `relSc = Math.min(relBase + idxBonus, 100)` 상한 유지. (B) 정상 경로 반환 시 괴리도 detail 끝에 `" — 광역 시도 평균 기준(실시세 왜곡 가능)"` 접미, 데이터 신뢰도 info/detail에 `" -폴백차감15"` 접미. **점수 가중치(0.30+0.20+0.15+0.25+0.07+0.03=1.00)·PROFILES 5×100·PIR 구간·PRICE_NO_DATA_DEFAULTS 일체 불변.** `nearbyMedian>0` 경로(1,984건)는 바이트 단위 동일. **영향 범위**: nearbyMedian NULL 10건 중 폴백 사용 **5건만 차감 대상**(인천 2·경기 3), area=NULL 5건은 이미 `"주변 시세 없음"` 분기. 테스트 7개 추가(기준선·avgSqm폴백·하한클램프·detail경고·미사용경고없음·presalePp폴백·자라섬 회귀). **KPI**: vite build 🟢 422ms / vitest 147 files **2,384 tests** 🟢(세션112 2,377→+7) / scoring-validator PASS(가중치 전수·0~100 이중 클램프·상수 불변) / null-safety-checker PASS(sanitize `num(…,30)`로 dataReliability null 구조적 차단·fairPriceFromSidoAvg false 초기화로 undefined 누출 없음) / Hook PASS(순수 함수) / 보안 PASS(detail 전부 하드코딩 리터럴+상수, 입력 없음). 커밋 예정.
+
+**이전 작업**: 2026-04-17 세션112 — `AptCard.jsx` price=0 단지 infoTag에 `classifyNoPrice` detail 노출. 세션111이 생성한 8분기 안내 문구(임대/정비/후분양/오피스텔/분양계획/택지블록/공공/기본)가 `ExpertScoreBreakdown.jsx:58`(전문가 모드)에서만 보이던 것을 일반 사용자 카드로 확장. 변경: [AptCard.jsx:100-104](src/components/AptCard.jsx#L100) 조건부 렌더 3줄 → 5줄 삼항 확장 (`info === "데이터 부재"`이되 `detail` 있으면 `<span>{detail}</span>`, 둘 다 없으면 null). 점수/가중치/scorePrice.js **일체 불변**. 테스트 [AptCard.test.jsx](src/components/AptCard.test.jsx)에 2케이스 추가(detail 노출 + `"적정가 -3.5%"` 회귀 방지). **KPI**: vite build 🟢 384ms / vitest 147 files **2,377 tests** 🟢 (세션111 2,375 → +2) / scoring-validator PASS (PROFILES 5×100·0.30+0.20+0.15+0.25+0.07+0.03=1.00 불변·PIR_SCORE_TIERS·PRICE_NO_DATA_DEFAULTS 상수 불변·스코어링 모듈 0바이트 diff) / null-safety-checker PASS (subs[0]?.info/?.detail optional chaining·detail undefined→null 반환·빈 span 방지) / Hook PASS (순수 JSX 조건부 렌더) / 보안 PASS (detail은 scorePrice 하드코딩 리터럴, 사용자 입력 없음). 커밋 `d21ace9`.
 
 **이전 작업**: 2026-04-17 세션111 — `classifyNoPrice` 분기 확장으로 38건 pir NULL **100% 맞춤 안내 달성**. **세션111-A**: 오피스텔/택지지구 블록/공공분양 3개 분기 추가(21%→68%). **세션111-B**: 기타 잔존 12건 원본 추적 결과 전부 `presale_stage="분양계획"` + `presale_pp=0` + `recruit=2026-04~05` (모집공고 전 예정 단지 정상 데이터) 확인 → `stage === "분양계획"` 분기 1개 추가로 27건 흡수(**100% 커버리지**). 판정 순서: 임대→정비→후분양→오피스텔→**분양계획**→택지블록→공공→기본. 점수 로직(devSc=30, 가중치 1.00, PIR 구간) **일체 불변**, UX 문구만 정교화. `engine.test.js` 9개 테스트 추가(택지블록·오피스텔·공공·분양계획·우선순위·기본 유지, 각 `score: 30` 단언). **KPI**: 맞춤 안내 적용률 **8/38 → 38/38 (100%)**. **Review**: vite build 🟢 377ms / vitest 147 files **2,375 tests** 🟢(세션110 2,366→+9) / scoring-validator PASS(PROFILES 5×100·0.30+0.20+0.15+0.25+0.07+0.03=1.00 불변·PIR 구간 상수 불변·classifyNoPrice detail 문자열만 생성) / null-safety-checker PASS(`apt.presaleStage||""` 기본값·strict equality 안전·apartments_flat VIEW presaleStage 노출 확인) / Hook PASS(순수 함수) / 보안 PASS(입력 경로 없음).
 
@@ -36,17 +38,21 @@
 
 **이전 작업**: 2026-04-15 세션93 — 세종 33건 nearbyMedian NULL 해소. `statsKey(region,gu)` 헬퍼 도입, 세종 화이트리스트로 gu 무시. KPI 98→65. 커밋 `8ee1907`.
 
-**잔여 15건 (전부 구조적)**:
-- 인천 동구 5 / 옹진군 2 — 섬 지역 실거래 공백
-- 경기 가평군 3 / 양평군 4 / 연천군 1 — 군 단위 거래 희소
+**잔여 10건 (세션114 실측, 전부 구조적 + avgSqm 폴백 경로로 점수 계산 중)**:
+- 인천 동구 2 (두산위브 더센트럴, 리아츠 더 인천 4차) — 섬 인접 공백
+- 인천 옹진군 2 (백령1/연평 국민임대) — 섬, area=NULL → 폴백 무효, pir만 작동
+- 경기 가평군 3 (자라섬 수자인, 청평수자인더퍼스트, 썬밸리오드카운티) — 군 단위 거래 희소
+- 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스) — 동일
+- 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-**다음 세션 우선순위**:
-1. **잔존 38건 pir NULL 명시 분기** — price=0 구조적(정비사업/후분양/공공임대)을 affordability 비대상으로 classifyNoPrice 확장. 세션99에서 시작한 저가 임대 UX 정책 후속.
-2. **시군구별 소득 수집(장기, 별도 세션)** — KOSIS는 시도 해상도까지만 제공 확인(세션110 결론). 시군구 분화가 필요하면 **국세청 TASIS 스크레이핑**이 유일 경로 — 세션 쿠키/토큰 파싱 필요한 별도 수집기 프로젝트. 세션110은 범위 밖으로 판단해 시도 최신화로 대체함.
-3. 행안부 API 복구 대기 / Vercel 12함수 감축
+**다음 세션 우선순위** (세션114 재정렬):
+1. **가평·양평·옹진 dev 왜곡 실측 + 정직성 보정** — avgSqm 폴백이 시도 평균값이라 섬·군 실거래와 괴리. 군단위 nearbyMedian NULL이면서 시도 avgSqm 폴백 사용 시 `dataReliability` 차감 검토(예: -10점). 10건 영향.
+2. **Vercel 12함수 감축** (장기)
+3. **시군구별 소득 수집(장기, 별도 세션)** — KOSIS는 시도 해상도까지만 제공 확인(세션110). 국세청 TASIS 스크레이핑이 유일 경로 — 별도 수집기 프로젝트.
+4. 행안부 API 복구 대기
 
-**DB 품질** (세션110 측정):
-- trade_stats 2,001건: **nearbyMedian 99.3%** (세션94 측정치 유지)
+**DB 품질** (세션110 측정, nearbyMedian 커버리지는 세션114 재측정):
+- trade_stats 2,001건: **nearbyMedian 잔여 NULL 10건** (세션114 실측, 99.5%+ 커버리지)
   - **pir 1,960건**, 중앙값 **16.85년**, 평균 **18.34년** (세션107 19.25 → 세션110 18.34, 2024 소득 반영으로 -0.91)
 - apartments 1,994건: **cats_cache.price 평균 52.8점**, PIR 서브스코어 평균 83.5점(90~100점 44.3%)
   - **dataReliability 평균 88.38점** (세션97 공식 강화 후), 80점 이상 1,317건(92.5%)
