@@ -23,7 +23,7 @@ function buildQuery(supabase, region, gu, withCount) {
   return q;
 }
 
-export default withHandler({ method: "GET", handler: async (req, res) => {
+export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (req, res) => {
   try {
     const supabase = getSupabase();
     const { region, gu } = req.query;
