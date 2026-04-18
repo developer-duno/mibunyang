@@ -22,7 +22,10 @@ export async function fetchStaticApartments() {
 
 async function fetchFromSupabase() {
   const res = await fetch("/api/supabase/apartments");
-  if (!res.ok) throw new Error(`Supabase API failed: ${res.status}`);
+  if (!res.ok) {
+    if (res.status === 429) throw new Error("요청이 너무 많습니다. 잠시 후 새로고침하세요");
+    throw new Error(`Supabase API failed: ${res.status}`);
+  }
   const json = await res.json();
   if (!json.ok || !json.data?.length) throw new Error("Supabase data empty");
   return json;
