@@ -55,13 +55,43 @@
 - 조치: `.claude/plans/session117-sigungu-income-poc.md` 4.2절에 "B1 실패 기록 2026-04-19 R²=+0.38" append, **C 공식 확정 재확인**
 - 재검토 조건: regions에 NULL 4컬럼 실측 값 채워진 뒤 재실험 / 또는 시군구 실측 소득 샘플 소규모 확보
 
+## 단계 5·6 후속 에픽 조사 (이번 세션 추가)
+
+### apartments_flat VIEW 577건 누락 근본 원인
+
+- VIEW `apartments_flat` (`supabase/schema.sql:451`)의 dedup CTE가 `PARTITION BY regexp_replace(name, '\([^)]*\)$', '')` + `ROW_NUMBER() ORDER BY id DESC`로 동일 이름 파티션당 id 가장 큰 행만 살림
+- cats_cache NULL 7건 전부 **"(오)" 접미 오피스텔 쌍 단지**의 "(오) 없는" 쪽 — 오피스텔이 id 더 커서 오피스텔이 살아남고 일반분양이 dedup에서 제외
+- 예시:
+  - ap-6028344 옥정중앙역디에트르 (NULL, 일반) ← ap-6028346 (오) (CACHED) 에 밀림
+  - ap-6028138 숭의역라온프라이빗스카이브 (NULL, 일반) ← ap-6028177 (오) (CACHED) 에 밀림
+  - 7건 모두 동일 패턴
+- **VIEW 계약상 의도적 동작** — "오피스텔이 일반분양을 가리는 게 올바른가"는 UX·스코어 정책·dedup 규칙까지 건드리는 에픽. 단일 세션 범위 초과로 **기록만 남기고 세션 외 진행**
+
+### regions NULL 4컬럼 수집기 실태
+
+- **population**: `population.mjs` L166-185에 시도 집계 로직 존재, 시군구 420/454 채워짐 (92.5%). 하지만 2026-03-14·03-20 스냅샷의 시도 17행만 `population=null`(pop_growth는 있음) — 원인 미상(해당 실행이 INSERT 경로를 부분적으로 탔을 가능성). 2-01 스냅샷에는 17개 모두 정상. VIEW `latest_regions`가 최신 스냅샷을 선택해서 시도 population NULL로 노출
+- **households**: regions UPDATE 수집기 **없음** (`collect-maintenance`는 apartments.households는 다루지만 regions는 안 건드림). 0/454 NULL
+- **jeonse_rate**: `trade-stats.mjs:461`이 apartments에는 저장하나 regions에는 **안 저장**. 0/454 NULL
+- **supply_ratio**: `housing-permits.mjs:150,180`에 수집기 존재. 그러나 housing-permits가 `householdMap[region] = r.households || r.population` 시도 레벨 조회 → 시도 `households`/`population` NULL → base 없음 → `supplyRatio=null`로 UPDATE 스킵. **체인 차단**. 0/454 NULL
+
+### B1 R² v2 재실험 (population 추가)
+
+- v1: 17행 · 독립변수 8개 · 유효 14건 → 최고 R²=+0.379 (Ridge α=10)
+- v2: 14행(population NOT NULL) · 독립변수 9개(population 추가) · 유효 12건 → 최고 R²=+0.290 (Ridge α=10)
+- v2 Pearson top3: land_cost_ratio +0.72 / avg_price_sqm +0.71 / net_migration +0.52
+- **게이트 재실패** — B1 C 확정 유지. `.claude/plans/session117-*.md` 4.2절에 v2 결과 추가 기록 필요
+
 ## 다음 세션 (119+) 진입점
 
-- **단계 3만 남음**: 사용자가 공공데이터포털/학교알리미에서 `AIRKOREA_KEY` / `NEIS_KEY` / `SCHOOLINFO_KEY` 발급 → `gh secret set` 3개 → `gh workflow run collect-air-quality.yml` / `collect-schools.yml` 수동 트리거. 단지별 대기질·학교NEIS상세·학생수 3개 데이터 보강 (1,994 단지 전체 영향)
-- 단계 4 지방 trades — **스킵 확정** (전국 17개 시도 이미 전량 수집)
-- 단계 5 compute-scores — **스킵 확정** (gap 7건이 VIEW 필터링 범위 밖)
-- 단계 6 B1 R² — **실패 기록 후 C 확정 재확인** (재검토 조건 충족 시 재실험 가능)
-- 별도 에픽 후보: `apartments_flat` VIEW 필터링 조건 실측 (왜 2001→1424만 노출하는지), regions NULL 4컬럼(`population`/`households`/`jeonse_rate`/`supply_ratio`) 수집기 추가
+- **단계 3만 실행 대기**: 사용자가 공공데이터포털/학교알리미에서 `AIRKOREA_KEY` / `NEIS_KEY` / `SCHOOLINFO_KEY` 발급 → `gh secret set` 3개 → `gh workflow run collect-air-quality.yml` / `collect-schools.yml` 수동 트리거. 단지별 대기질·학교NEIS상세·학생수 3개 데이터 보강 (1,994 단지 전체 영향)
+- 단계 4 지방 trades — 스킵 확정
+- 단계 5 compute-scores — 스킵 확정 (VIEW dedup 의도적 동작)
+- 단계 6 B1 — v1·v2 연속 실패로 C 확정
+- **새로운 에픽 후보**:
+  - (A) apartments_flat dedup 정책 재검토: `ORDER BY id DESC` → `ORDER BY presale_stage='일반' DESC, id DESC` 식으로 일반분양 우선 정렬
+  - (B) `households` regions 수집기 신규 작성 (행안부 세대 API)
+  - (C) `trade-stats.mjs`에 regions.jeonse_rate 파생 저장 로직 추가 (apartments 레벨 평균 → regions 기여)
+  - (D) population.mjs 2026-03-14/03-20 부분 NULL 원인 추적 (최근 실행 로그 또는 INSERT 분기 재현)
 
 ## KPI
 
