@@ -2301,3 +2301,89 @@ Supabase SDK 조회로 영향 5건의 `cats_cache.price` 확인 → **5/5 sidoNo
 - **세션114 끝단 UI 실측** — 로그인 후 DetailModal `ExpertScoreBreakdown`에서 sidoNotice/폴백차감15 노출 확인. 카카오 OAuth 자동화 필요 (별도 세션)
 - **시군구별 소득 수집** (국세청 TASIS 스크레이핑, 장기)
 - **행안부 API 복구 대기**
+
+---
+
+# 2026-04-18 세션115 — 세션114 끝단 UI 실측 + 시군구 소득 경로 조사 + 노이즈 정리
+
+## 한 줄 요약
+Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전문가 대시보드 5/5 단지에서 sidoNotice + `-폴백차감15` DOM 노출 확인**, 콘솔 에러 0. 부수로 KOSIS 시군구 소득 공식 부재 확정(TASIS/폴백 추정 대안 문서화), `.bak-20260415` 2개 삭제 + `.gitignore`에 `backups/`·`**/*.bak-*` 추가.
+
+## 작업1 — 전문가 대시보드 끝단 UI 실측 (Playwright)
+
+**우회 전략**:
+1. `ctx.add_init_script()`로 `expertToken`·`refreshToken`·`userRole=expert` localStorage 주입
+2. `ctx.route("**/api/auth/verify", ...)` + `**/api/auth/login` 을 `{ok:true, user:..., role:"expert"}` 스텁으로 가로채 useExpertMode verify 폴링의 로그아웃 분기 차단
+3. 앱 mount 시 `App.jsx:123`의 `else if (role === "expert") { setTab("expert"); }` 자동 트리거로 전문가 탭 즉시 진입
+4. 사이드바 검색창에 키워드 입력 후 매칭 버튼 클릭 → `ExpertDashboard.jsx:100`의 `ExpertScoreBreakdown` 렌더
+5. `ExpertScoreBreakdown.jsx:58`의 `<td>{sub.detail || sub.info}</td>` 에서 문자열 추출
+
+**실측 결과** (프로덕션 mibunyang-peach.vercel.app, 뷰포트 1366×900):
+
+| # | 단지 | region/gu | 괴리도 detail | 신뢰도 detail | sido | pen |
+|---|------|-----------|---------------|---------------|------|-----|
+| 1 | 자라섬 수자인 | 경기 가평군 | `+31.4% ... — 광역 시도 평균 기준(실시세 왜곡 가능)` | `55% +지수보정5 -폴백차감15 ... → 45` | ✅ | ✅ |
+| 2 | 효성해링턴 플레이스 양평 | 경기 양평군 | `-70.7% ... — 광역 시도 평균 기준(...)` | `55% +지수보정5 -폴백차감15 → 45` | ✅ | ✅ |
+| 3 | 인천 두산위브 더센트럴 | 인천 동구 | `-5.0% ... — 광역 시도 평균 기준(...)` | `57% +지수보정5 -폴백차감15 → 47` | ✅ | ✅ |
+| 4 | 에코리버 (양평) | 경기 양평군 | `+28.4% ... — 광역 시도 평균 기준(...)` | `67% +지수보정5 -폴백차감15 → 57` | ✅ | ✅ |
+| 5 | 리아츠 더 인천 | 인천 동구 | `-0.1% ... — 광역 시도 평균 기준(...)` | `67% +지수보정5 -폴백차감15 → 57` | ✅ | ✅ |
+
+**콘솔 에러 0건**. `relSc = min(raw - 15 + 지수보정5, 100)` 공식(scorePrice.js:78-81) 계산 결과와 실측 점수 5/5 완전 일치(45/45/47/57/57).
+
+**동명 단지 교정**: 1차 시도에서 `incheon_doosan` sidoNotice=False 발생 → 프로덕션 API로 교차 조회한 결과 동명 단지 2개(`ah-2022910271` 인천 동구 NULL 폴백 대상 / `ah-2025910010` 부평구 nearbyMedian=35800 폴백 비대상). 키워드를 `"인천 두산위브 더센트럴"`로 정확히 지정해 동구 단지 타겟팅 후 2차 실행 5/5 성공.
+
+**세션114 CLAUDE.md 문구 교정**: 세션114에서 "로그인 후 DetailModal 실측"이라 기록했으나 실제 노출 지점은 **전문가 탭 `ExpertDashboard`**(`src/components/expert/ExpertDashboard.jsx:100`)이지 DetailModal 아님. DetailModal은 소비자 뷰의 상세 모달이고, 가격 카테고리 subs[].detail을 표 형식으로 펼치는 컴포넌트는 `ExpertScoreBreakdown`만 존재(grep 실측).
+
+**산출물**: `backups/session115_scripts/probe_expert.py`, `result.json`, `01_home_logged.png`, `02_after_tab_click.png`, `03_*_expert.png` (5장). 이 디렉토리는 이번 세션에서 .gitignore에 `backups/` 추가로 추적 제외 — 증거용 로컬 보존만.
+
+## 작업2 — 시군구별 소득 수집 경로 조사 (코드 X)
+
+**배경**: `regions.avg_income`이 시도 17건만 채워져 있고 시군구 392건은 NULL → `trade-stats.mjs`가 시도값 fallback → 섬·군 PIR 왜곡(세션114 5건이 전형).
+
+**Explore 에이전트 조사 결과**:
+1. **경로 A(KOSIS 재확인)**: [KOSIS 공식 FAQ](https://kostat.go.kr/board.es?mid=a10502130300&bid=3243&tag=&act=view&list_no=390663)로 **"지역소득 통계는 시도 단위만 공식 제공, 시군구 GRDP는 2025년 이후 각 시도 공표 예정"** 확정. INH_1C96_04(세션110 채용)은 시도 18건(전국+17) 구조상 최대.
+2. **경로 B(국세청 TASIS, tasis.nts.go.kr)**: 시군구별 근로소득자 평균임금 공개. WebSquare 기반 JavaScript 렌더링 필요(다운로드 버튼 없음, 공식 OpenAPI 미공개). Playwright/Puppeteer 자동화 가능하나 난이도 중상·대량 스크레이핑 법적 이슈 검토 필요.
+3. **경로 C(폴백 추정 모델)**: 시도값 × 인구 가중치 또는 인근 시군구 평균. 현재 trade-stats가 이미 시도 fallback 중이라 구현 측 추가 작업은 최소(폴백 시 메타데이터 마킹만 필요하면 됨).
+4. **기타 확인**: KOSIS "지역별고용조사"(DT_1ES3A01S) 229개 시군구 **경제활동인구·임금** 있으나 근로소득 아님. 지방재정365(lofin365.go.kr)는 재정자립도만, 개인소득 없음. 민간 사이트(잡코리아 등)는 법적 재사용 불가로 배제.
+
+**결론**: A 불가 / B 추진 가능 / C 현상 유지. 이번 세션은 코드 변경 없이 다음 세션 결정사항으로만 남김.
+
+## 작업3 — unstaged 노이즈 정리
+
+**처분 결정** (사용자 선택: "추천 조합"):
+- ✅ `CLAUDE.md.bak-20260415` 삭제 (4-15 01:54 생성, 4세션째 방치)
+- ✅ `.claude/agents/scoring-validator.md.bak-20260415` 삭제 (동일 시점)
+- ✅ `.gitignore`에 `backups/` + `**/*.bak-*` 추가 — **tracked 디렉토리 `backups/session113_scripts/`·`session114_scripts/`는 영향 없음**(git은 tracked 파일에 .gitignore 미적용). 신규 `backups/session115_scripts/`·`backups/transport_session98_recovery_*.json`은 자동 숨김.
+- ⏸ `scripts/fix_sejong_coord.mjs` 보류 — 세션109~111 SESSION_LOG에 3회 "무관 노이즈"로 언급, 실행 여부 미확인. `fix_hwaseong_gu.mjs`는 세션94 커밋 패턴 선례 있으나 `fix_sejong_coord`는 세션 마커 없고 `ah-2022910239 (세종 린스트라우스)` lat/lng NULL 보정 일회성 용도. 다음 세션에서 DB 확인 후 결정.
+
+## KPI
+- vite build 🟢 392ms
+- 스코어링 코드 diff 0(로직 변경 없음)
+- .gitignore +4줄 / 파일 삭제 2개(untracked→실파일)
+- 프로덕션 실측 5/5 PASS, 콘솔 에러 0
+
+## 교차검증
+- 빌드: PASS (npx vite build 392ms, 메인 agent)
+- 스코어링: **해당 없음** (scoring 코드 변경 0바이트)
+- null-safety: **해당 없음** (.gitignore + 파일 삭제만)
+- Hook 규칙: **해당 없음** (React 변경 없음)
+- 보안: PASS (스텁 토큰은 실측 스크립트 내부 + gitignore됨)
+- collector-contract: **해당 없음**
+
+## 환경 교훈 (세션116+ 필독)
+1. **Playwright로 전문가 대시보드 우회 진입 레시피**:
+   - `addInitScript`로 `localStorage.setItem('expertToken', 'dummy'); setItem('refreshToken', 'dummy'); setItem('userRole', 'expert')`
+   - `ctx.route("**/api/auth/verify", ...)` + `login` 스텁 필수 (없으면 useExpertMode의 verify 폴링이 `data.ok=false` 받고 로그아웃 분기 탐)
+   - `userRole="expert"`면 앱 mount 시 `App.jsx:123 setTab("expert")` **자동 진입** — 별도 클릭 불필요
+   - 재현 스크립트: `backups/session115_scripts/probe_expert.py` (gitignore지만 로컬 보존)
+2. **동명 단지 주의**: "두산위브 더센트럴"처럼 **지역이 다른 동명 단지**(인천 동구 vs 부평구)가 존재할 수 있음. `has_text=키워드` 필터만 쓰면 DOM 앞쪽이 잡혀 의도와 다른 단지가 클릭됨. 이럴 때는 **프로덕션 `/api/supabase/apartments`로 사전 조회 → id/name 풀네임 확인 후 키워드 특정**
+3. **Windows cp949 stdout 함정**: Python print에 em-dash(`—`, U+2014) 등 비ASCII 포함 시 `PYTHONIOENCODING=utf-8` 환경변수 없이 실행하면 `UnicodeEncodeError 'cp949'` 발생. Git Bash에서 `PYTHONIOENCODING=utf-8 python ...` 프리픽스 고정
+4. **`.gitignore`는 이미 tracked된 파일/디렉토리에 소급 적용 안 됨**: `backups/`를 늦게 추가해도 `backups/session113_scripts/*`(이전 세션에서 커밋됨)는 계속 추적됨. 의도한 동작 — 증거 디렉토리 구조는 유지, 신규 산출물만 차단
+
+## 커밋
+- `32f1885` chore(gitignore): backups/ + **/*.bak-* 무시 — 세션115 노이즈 정리
+
+## 다음 세션 (116+)
+- **시군구별 소득 수집 실행 결정** — TASIS 스크레이핑 PoC vs 시도 폴백 마킹 중 선택
+- **`scripts/fix_sejong_coord.mjs` 처분** — DB 조회(ah-2022910239 lat/lng)로 이미 반영 여부 확인 후 삭제 or 실행+커밋
+- **행안부 API 복구 대기**
