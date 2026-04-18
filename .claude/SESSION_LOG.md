@@ -1,4 +1,52 @@
-# 세션 118 — 2026-04-19 (수집기 부전 복구 — Naver concurrency 분리 + KOSIS fetchWithRetry)
+# 세션 119 — 2026-04-19 (공개 Supabase API rateLimit + dompurify 취약 해소)
+
+**거시 목적**: `/improve` 2026-04-19 백로그 🔴 미션 1건 해소. 공개 API 3개에 rate limit 적용 + dompurify moderate 취약 1건 제거.
+
+## 플랜
+
+- `.claude/plans/radiant-watching-moonbeam.md` (세션 스크래치, gitignore)
+- 9 GATE 초안 (🟢7/🟡2/🔴0) → 사용자 권고로 **단계 1 6파일 → 1a/1b/1c 3분할** 후 🟢8/🟡1/🔴0
+- 🟡: 프론트 429 전용 처리 없음 (`staticDataApi.js`·`useHistoryData.js` 일반 에러 throw만) — 범위 밖, 정상 사용자 초과 가능성 낮음
+
+## 커밋 (4건, origin/main)
+
+| 커밋 | 변경 | 파일 |
+|------|------|------|
+| `deef147` | fix(api): rate-limit proxy on /supabase/apartments | apartments.js +1 / apartments.test.js +4 (mock) |
+| `fb8ef69` | fix(api): rate-limit proxy on /supabase/prices | prices.js +1 / prices.test.js +4 |
+| `a76b69f` | fix(api): rate-limit proxy on /supabase/unsold-history | unsold-history.js +1 / unsold-history.test.js +4 |
+| `be54322` | chore(deps): audit fix dompurify 3.3.3 → 3.4.0 (GHSA-39q2-94rc-95cp) | package-lock.json +3/-3 (package.json 불변) |
+
+## 구현 요점
+
+- **기존 `proxy: 30` LIMITS 키 재사용** (`api/_lib/rateLimit.js:3`) — 신규 상수 0. 이미 8개 API(dart/kosis/kakao/neis/applyhome/finlife 3종)가 동일 키 사용 중. per-IP per-endpoint 키(`rl:{ip}:{endpoint}`)라 엔드포인트마다 독립 카운터 — 공유 고갈 없음.
+- **테스트 mock 3줄** — `finlife/loans.test.js:8-10` 표준 패턴 복제. 기존 16개 테스트 파일이 쓰는 동일 블록. mock 없으면 withHandler→checkRateLimit→@vercel/kv fail-close→429→모든 케이스 fail.
+- **dompurify**: jspdf 4.2.1의 간접 의존. `npm audit fix` 한 번으로 nested dep 3.3.3→3.4.0 갱신, package.json 불변. overrides 강제 불필요.
+
+## 5교차검증 결과
+
+- 빌드: PASS (메인 agent) — `vite build` 511ms → 406ms, 번들 크기 불변 (vendor 189.63kB, index 176.11kB, jspdf 399.63kB)
+- 보안: PASS (메인 agent) — `rateLimit: "proxy"` 적용 3건 grep 확인, `npm audit` 0건, withHandler 미들웨어 순서 보존
+- null 안전성: PASS (null-safety-checker) — withHandler 3단계 RateLimit만 개입, sanitize() 본문·응답 JSON 일절 간섭 없음. 429 응답 `{ok:false,error}` 스키마가 기존 500/405/400과 동일
+- simplify: PASS (메인 agent) — finlife/loans.js 기존 패턴 복제로 단순화 여지 없음
+- 회귀: PASS — 전체 `npm run test` **147 파일 / 2385 tests PASS**
+
+## 주요 실측 데이터
+
+- `npm audit`: 1 moderate (GHSA-39q2-94rc-95cp) → **0 vulnerabilities**
+- `npm ls dompurify`: `jspdf@4.2.1 → dompurify@3.3.3` → `3.4.0`
+- supabase 테스트 전수: apartments 20/20 + prices 7/7 + unsold-history 6/6 = **33/33**
+- GATE 1 참조 실측: `/api/supabase/apartments` 참조 5곳, `/prices` 6곳, `/unsold-history` 6곳 — 모두 응답 스키마 불변으로 깨짐 0
+- GATE 5 민감정보 grep (src/): `token`/`password`/`apikey` 모두 정상 저장·공개 키. 하드코딩 노출 0
+
+## 남은 아이디어 (다음 세션)
+
+- **프론트 429 처리 개선** (🟡 → 🟢 승격 후보): `staticDataApi.js:25`·`useHistoryData.js:25`의 `!res.ok` 일반 에러를 429 전용 토스트로 분기. 공용 IP 뒤 다수 사용자 차단 시 UX 회복. 별도 에픽.
+- **/improve 백로그 🟡 6건** — ESLint 10·@vercel/kv 3·@vercel/analytics 2 메이저, `onClick={() => ...}` 131건 useCallback 전환, App.jsx 442줄 분리 등. 한 건씩 /blueprint 가능.
+
+---
+
+
 
 **거시 목적**: 기존 수집기를 100% 활용해 단지별 미등록 지점을 채운다. 수집기를 새로 만들지 않고 이미 있는데 안 돌거나 반쪽만 도는 것을 온전히 돌린다.
 

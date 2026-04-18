@@ -9,6 +9,14 @@
 
 ### 최근 3세션 (상세)
 
+**세션119 (2026-04-19)** — 공개 API rateLimit + dompurify 취약 해소 (4커밋 origin/main)
+- `/improve` 🔴 미션 1건 해소. 9 GATE 🟢8/🟡1/🔴0 통과 후 단계 1 6파일 → **1a/1b/1c 3분할** 재검증
+- `api/supabase/{apartments,prices,unsold-history}.js`에 `rateLimit: "proxy"` (30/5분/IP) 각각 적용 — 커밋 `deef147`·`fb8ef69`·`a76b69f`
+- 기존 `proxy: 30` LIMITS 키 재사용 (이미 8개 API에서 사용 중). 3개 테스트 파일에 `finlife/loans.test.js:8-10` 표준 mock 3줄 추가
+- `npm audit fix` → dompurify 3.3.3 → **3.4.0** (GHSA-39q2-94rc-95cp, ADD_TAGS 우회 moderate). package.json 불변, lock만 갱신 — 커밋 `be54322`
+- 검증: supabase 테스트 33/33 + 전체 2385/2385 PASS, `vite build` 406ms (번들 불변), `npm audit` 0건
+- 🟡: 프론트 `staticDataApi.js:25`·`useHistoryData.js:25`가 429 전용 처리 없음 — 정상 사용자 30/5분 초과 가능성 낮음, 별도 에픽
+
 **세션118 (2026-04-19)** — 수집기 부전 복구 (7커밋 origin/main)
 - 9 GATE 초안 🔴3 → 재설계 후 🟢8/🟡1/🔴0
 - [collect-naver-listings.yml](.github/workflows/collect-naver-listings.yml) concurrency 분리 (커밋 `082d0e2`) · [collect-unsold-kosis.mjs](scripts/collectors/collect-unsold-kosis.mjs) fetchWithRetry (커밋 `8328692`)
@@ -200,7 +208,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 > 🔴 미션은 /blueprint 로 바로 실행. 🟡/🟢 는 3회 이상 /improve에서 반복 지적되면 🔴 승격.
 
 ### 🔴 즉시 (미션 1개 · 2단계)
-- **미션 1 — 공개 API 보안**: `api/supabase/{apartments,prices,unsold-history}.js`에 `rateLimit: "proxy"` 추가 + `npm audit fix`로 dompurify moderate 해소 (GHSA-39q2-94rc-95cp)
+- ~~**미션 1 — 공개 API 보안**: `api/supabase/{apartments,prices,unsold-history}.js`에 `rateLimit: "proxy"` 추가 + `npm audit fix`로 dompurify moderate 해소 (GHSA-39q2-94rc-95cp)~~ **완료 (세션119, 4커밋 `deef147..be54322`)**
 
 ### 🟡 곧 (이번 달 · 6건)
 - 의존성 메이저 업그레이드: `eslint 10`, `@vercel/kv 3`, `@vercel/analytics 2`
