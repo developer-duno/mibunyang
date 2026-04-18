@@ -81,9 +81,35 @@
 - v2 Pearson top3: land_cost_ratio +0.72 / avg_price_sqm +0.71 / net_migration +0.52
 - **게이트 재실패** — B1 C 확정 유지. `.claude/plans/session117-*.md` 4.2절에 v2 결과 추가 기록 필요
 
+## 세션118 세 번째 후속 — 네이버 긴급 쿨다운 완화 + 단계 3 재정의
+
+### 네이버 4종 긴급 수정 (cooldown_fix.md 지침, 커밋 `74db0d0`)
+
+- ① [naver-listings.mjs L39-42](scripts/collectors/naver-listings.mjs#L39-L42): `MIN_INTERVAL` 1s→5s, `PAGE_DELAY` 1.5s→3s, `RETRY_DELAYS [3,5,10,15,20]s → [10,20,40,60,120]s`
+- ② [naver-collect.py L94](scripts/collectors/naver-collect.py#L94): `thr(s=1.0) → thr(s=5.0)` 기본 요청 간격 5배
+- ③ [run-naver-local.bat L19-28](scripts/run-naver-local.bat#L19-L28): `python` → `py -3` 폴백 + `MIBUNYANG_PYTHON` env 오버라이드 (Windows Store stub 루프 차단 방지)
+- ④ [collect-naver-listings.yml L13-17](.github/workflows/collect-naver-listings.yml#L13-L17): `timeout-minutes 30 → 60`
+- 검증: vite build 🟢 397ms, vitest naver-listings 38/38 passed
+
+### 단계 3 재정의 (커밋 `3c969cb`)
+
+**초기 가정 오류**: CLAUDE.md 세션117 진단 "AIRKOREA_KEY/NEIS_KEY/SCHOOLINFO_KEY 미설정"은 **틀림**. `gh secret list` 실측: 세 키 전부 2026-03-31~04-02에 이미 등록됨.
+
+**진짜 장애**:
+- air-quality 정상 수집 중 (최근 2회 성공, apartments.air_quality 1950/2001 = **97.5% 커버**)
+- schools 04-01·04-02·03-18 **연속 cancelled** — 매월 1일 UTC 20:00 `unsold-kosis`/`schools`/`childcare` 3종이 같은 `data-collection` 그룹·같은 시간에 시작 → 30분 timeout으로 취소
+- 실측: schools.nearby_schools 배열에 `name/type/distance` 3키만 있고 `neis_code`·`student_count` 누락 — 세션89 이후 NEIS 보강 한 번도 반영 안 됨
+
+**수정**: [collect-schools.yml](.github/workflows/collect-schools.yml)
+- cron `0 20 1 * *` → `0 22 2 * *` (매월 1일 KST 05:00 → **2일 KST 07:00**)
+- concurrency group `data-collection` → `school-collection` (분리)
+- `.github/workflows/CLAUDE.md` 스케줄 표 "1일 → 2일" 동기화
+
+**즉시 검증**: `gh workflow run collect-schools.yml` 수동 dispatch → 이전 30분 대기 후 cancelled와 달리 **즉시 in_progress** 진입 확인 (run 24609959606).
+
 ## 다음 세션 (119+) 진입점
 
-- **단계 3만 실행 대기**: 사용자가 공공데이터포털/학교알리미에서 `AIRKOREA_KEY` / `NEIS_KEY` / `SCHOOLINFO_KEY` 발급 → `gh secret set` 3개 → `gh workflow run collect-air-quality.yml` / `collect-schools.yml` 수동 트리거. 단지별 대기질·학교NEIS상세·학생수 3개 데이터 보강 (1,994 단지 전체 영향)
+- schools 워크플로우 첫 완료 후 NEIS 보강 데이터가 실제로 저장되는지 사후 확인 (`schools.nearby_schools` 배열에 `neis_code`/`student_count` 키 추가 여부)
 - 단계 4 지방 trades — 스킵 확정
 - 단계 5 compute-scores — 스킵 확정 (VIEW dedup 의도적 동작)
 - 단계 6 B1 — v1·v2 연속 실패로 C 확정
