@@ -2196,3 +2196,108 @@ export const PIR_SCORE_TIERS = {
 - **시군구별 소득 수집** (국세청 TASIS 스크레이핑, 장기)
 - **Vercel 12함수 감축** (장기)
 - **행안부 API 복구 대기**
+
+---
+
+# 세션 114 — 2026-04-18 (시도 평균 폴백 신뢰도 차감 + 경고 접미 [방안 A+B])
+
+**목표**: 잔존 nearbyMedian NULL 단지의 dev 왜곡(시도 평균 avgSqm 폴백이 섬·군 실거래의 2~3배로 과대평가) 정직성 보정. 점수 로직 불변, `dataReliability -15` 차감과 detail 문자열 경고 접미로 사용자에게 신뢰도 낮음을 표시.
+
+## 사전 조사 (읽기 전용)
+
+### 숫자 정정 — CLAUDE.md "잔존 15건"은 낡은 수치
+- 세션94 시점 15건 → 세션114 실측 **10건** (5건 자연 해소, daily-deploy 반복으로 trade_stats 재수집 누적)
+- 잔존 10건 구성: 인천 동구 2 / 옹진 2(국민임대) / 가평 3 / 양평 2 / 연천 1(국민임대)
+
+### 폴백 경로 진단
+- 잔존 10건 중 `avgPriceSqm` 폴백 사용 **5건**(인천 2·경기 3), 나머지 5건은 `area=NULL`(국민임대)로 폴백 무효 → 이미 `"주변 시세 없음"` 분기로 빠짐
+- `scorePrice.js:59` 폴백은 이미 정상 작동 → `classifyNoPrice`(price=0 분기) 확장은 **불필요** (price>0 이라 진입 못 함)
+
+### dev 왜곡 실측 (인접 군 실거래 중위값 vs 시도 폴백)
+| 지역 | 실거래 median | 시도 폴백 | 폴백 배수 |
+|---|---|---|---|
+| 경기 남양주 | 5,803 | 7,312 | 1.26× |
+| 경기 광주 | 5,576 | 7,312 | 1.31× |
+| 경기 여주 | 2,484 | 7,312 | **2.94×** |
+| 경기 이천 | 2,819 | 7,312 | **2.59×** |
+| 인천 중구 | 4,735 | 6,011 | 1.27× |
+| 인천 미추홀 | 4,085 | 6,011 | 1.47× |
+
+경기 시도 평균은 수원·성남·용인을 끌어올린 값. 가평·양평·연천 군단위에 적용되면 2~3배 고평가로 왜곡. 가평 trades 테이블 자체에 **매매 0건**(MOLIT API 수집 공백).
+
+## 작업
+
+### 1. `src/constants/scoringTiers.js` (+6줄)
+```
+export const PRICE_FALLBACK_RELIABILITY_PENALTY = 15;
+```
+
+### 2. `src/scoring/scorePrice.js` (+10줄)
+- `fairPriceFromSidoAvg` 플래그 도입. `avgPriceSqm`/`presalePp` 폴백 경로에서 `fairPrice>0` 시 `true` 세팅
+- `relSc` 산출 분기:
+  ```
+  const relBase = fairPriceFromSidoAvg
+    ? Math.max(0, apt.dataReliability - PRICE_FALLBACK_RELIABILITY_PENALTY)
+    : apt.dataReliability;
+  const relSc = Math.min(relBase + idxBonus, 100);
+  ```
+- 정상 경로 반환 시:
+  - 괴리도 detail: `" — 광역 시도 평균 기준(실시세 왜곡 가능)"` 접미
+  - 데이터 신뢰도 info/detail: `" -폴백차감15"` 접미
+
+### 3. `src/scoring/engine.test.js` (+62줄, 테스트 7개)
+- 기준선(폴백 없음 차감 없음)
+- avgSqm 폴백 + relSc -15
+- dataReliability=10 하한 클램프 0
+- 괴리도 detail "광역 시도 평균" 포함
+- 폴백 미사용 시 경고 없음
+- presalePp 폴백도 -15
+- 자라섬 수자인 회귀
+
+## 5교차검증
+
+- **빌드**: vite 🟢 422ms
+- **vitest**: 147 files / **2,384 tests** 🟢 (세션112 2,377 → +7)
+- **scoring-validator**: PASS (PROFILES 5×100·scorePrice 내부 1.00·0~100 이중 클램프·기존 상수 불변)
+- **null-safety-checker**: PASS (`sanitize` `num(…, 30)`으로 dataReliability null 구조적 차단·fairPriceFromSidoAvg false 초기화로 undefined 누출 없음)
+- **Hook**: PASS (순수 함수)
+- **보안**: PASS (detail 전부 하드코딩 리터럴+상수, 입력 경로 없음)
+
+## 실측 검증
+
+### DB 실측 (cats_cache)
+Supabase SDK 조회로 영향 5건의 `cats_cache.price` 확인 → **5/5 sidoNotice 문자열 주입 완료**:
+| 단지 | total | relScore | sidoNotice |
+|---|---|---|---|
+| 두산위브 더센트럴 | 45 | 47 | YES |
+| 리아츠 더 인천 | 53 | 57 | YES |
+| 자라섬 수자인 | 70 | 45 | YES |
+| 양평 에코리버(3차) | 71 | 57 | YES |
+| 효성해링턴 양평 | 42 | 45 | YES |
+
+커밋 `ee85ce3`(2026-04-18 01:05 KST) 푸시 후 `daily-deploy.yml` 자동 실행(2026-04-18 03:44 KST)이 compute-scores를 돌려 cats_cache에 반영.
+
+### 프로덕션 실측 (webapp-testing)
+- URL: `https://mibunyang-peach.vercel.app` (세션113 확정 URL)
+- **카드 1,321개 렌더 + 콘솔 에러 0건**
+- 카드 infoTag `"적정가 +X.X%"` 정상 유지 (회귀 없음, 4/5 `RENDERED`)
+- sidoNotice 끝단 노출은 **로그인 후 `ExpertScoreBreakdown`**에서만 가시 → 비로그인 실측으로는 끝단 확인 불가(LoginPromptModal이 DetailModal 가로챔). DB 5/5 확인으로 증거 충분.
+- 산출물: `backups/session114_scripts/probe.py` `probe_regression.py` `result.json` `regression_result.json`
+
+### 부수 CLAUDE.md 세척
+- API 엔드포인트 수 **14 → 21** 정정(`find api -type f -name "*.js" ! -name "*.test.js" ! -path "api/_lib/*"` 기준)
+- "Vercel 12함수 감축" 우선순위 제거 — `vercel ls` 실측 결과 **Ready** 배포 중, 한도 문제 없음으로 판명
+
+## 환경 교훈 (세션115+ 필독)
+1. **cats_cache는 daily-deploy.yml이 매일 1회 자동 재계산** — `scorePrice.js` 변경 후 수동 `compute-scores.mjs` 실행 불필요, 다음 날 03~04시 KST에 반영됨
+2. **세션114 sidoNotice 노출은 로그인 필수** — `AptCard.jsx:100` infoTag는 `info !== "데이터 부재"` 분기에서 `"적정가 +X.X%"` 포맷으로만 출력, detail 접미는 DetailModal 세부 뷰에서만 가시
+3. **`/tmp` 경로 함정** — Write tool의 `/tmp/...`는 Windows에서 가상 샌드박스 경로로 해석돼 Bash에서 안 보일 수 있음. **프로젝트 내 `backups/sessionNNN_scripts/`에 직접 쓰는 게 안전**
+
+## 커밋
+- `ee85ce3` feat(scoring): A+B 구현 (scorePrice.js + scoringTiers.js + engine.test.js + CLAUDE.md "마지막 작업")
+- `d1749b7` docs: 실측 검증 + CLAUDE.md 수치 세척 (API 14→21, Vercel 우선순위 제거, backups/session114_scripts/)
+
+## 다음 세션 (115+)
+- **세션114 끝단 UI 실측** — 로그인 후 DetailModal `ExpertScoreBreakdown`에서 sidoNotice/폴백차감15 노출 확인. 카카오 OAuth 자동화 필요 (별도 세션)
+- **시군구별 소득 수집** (국세청 TASIS 스크레이핑, 장기)
+- **행안부 API 복구 대기**
