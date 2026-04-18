@@ -1,3 +1,84 @@
+# 세션 116 — 2026-04-18 (세션115 남은 과제 3개 순차 정리 — 전부 문서 변경)
+
+**목표**: 세션115 마무리에서 미해결로 넘긴 후속 과제 3개(fix_sejong_coord 처분 / 행안부 문구 교정 / 시군구 소득 PoC 설계)를 순서대로 정리. 코드 변경은 없고 문서·파일 관리만.
+
+## 사전 조사 (3 Explore 에이전트 병렬)
+
+1. **세종 린스트라우스 lat/lng DB 값**: Supabase SDK(`_shared.mjs` `loadEnv`+`getSupabase`)로 `apartments` `id="ah-2022910239"` 조회 → lat=36.4975527417026, lng=127.256494831314 (NULL 아님). 스크립트 자체 가드 [scripts/fix_sejong_coord.mjs:43-45](scripts/fix_sejong_coord.mjs#L43-L45) 이미 작동 → dry-run 실행해도 무동작. 백업 JSON 로직 없음(`fix_hwaseong_gu.mjs`와 달리).
+
+2. **시도 평균 폴백 경로 + `fairPriceFromSidoAvg` 플래그**:
+   - [scripts/collectors/trade-stats.mjs:22](scripts/collectors/trade-stats.mjs#L22) `NATIONAL_MEDIAN_INCOME = 195` (만원/월)
+   - [scripts/collectors/trade-stats.mjs:162-167](scripts/collectors/trade-stats.mjs#L162-L167) `incomeMap` 구축 (region:gu 또는 region 단독 키)
+   - [scripts/collectors/trade-stats.mjs:314-317](scripts/collectors/trade-stats.mjs#L314-L317) 3단 폴백: gu 일치 → region 일치 → 195
+   - [src/scoring/scorePrice.js:61](src/scoring/scorePrice.js#L61) `fairPriceFromSidoAvg` 플래그 선언, L63~L69 `avgPriceSqm`/`presalePp` 폴백 시 true
+   - L78-80 `dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY(15)`
+   - L125-126 detail에 `" — 광역 시도 평균 기준(실시세 왜곡 가능)"` + `" -폴백차감15"` 접미
+   - **플래그는 런타임 계산만** (DB/VIEW 미저장) — 소비자 뷰는 경고 미표시, 전문가 대시보드만 `{sub.detail||sub.info}` 렌더
+
+3. **행안부 API 의존성**:
+   - `migration.mjs`는 세션103에서 KOSIS DT_1B26001_A01로 완전 전환(행안부 호출 0건)
+   - `population.mjs` L19·L22 여전히 MOIS_POP_KEY + `apis.data.go.kr/1741000/stdgPpltnHhStus/...` 활성
+   - `.github/workflows/collect-population.yml` L38·L50 MOIS_POP_KEY secret 주입
+   - `data-fill.mjs` L35 `envKeys: ["MOIS_POP_KEY"]` 필수
+   - 최근 실행 `gh run list --workflow=collect-population.yml --limit 5`: 2026-04-05 schedule `success` 2m40s (장애 없음)
+
+## 작업 1 — fix_sejong_coord.mjs 처분
+
+- 삭제 직전 Supabase SDK로 lat/lng 재확인(위 탐색 재검) → `rm scripts/fix_sejong_coord.mjs`
+- 파일이 untracked 상태라 `git rm` 실패, 일반 `rm`으로 처리. git history에 흔적 안 남음 → 별도 커밋 불필요.
+- **결과**: working tree clean (untracked 0)
+
+## 작업 3 — CLAUDE.md 행안부 문구 교정
+
+**교정 전 (세션115)**:
+```
+6. 행안부 API 복구 대기
+```
+
+**교정 후 (세션116)**:
+```
+6. population.mjs MOIS 인구 API 안정성 모니터링 — migration.mjs는 세션103 KOSIS 전환 완료(행안부 호출 0), population.mjs만 MOIS_POP_KEY 의존. 최근 collect-population.yml 2026-04-05 schedule success 2m40s — 현재 장애 없음. 상시 대기 불필요, 장애 시에만 대응.
+```
+
+동시에 5번 항목(fix_sejong_coord 처분)도 완료 체크 추가.
+
+## 작업 2 — 시군구 소득 PoC 설계 문서
+
+**신규 파일**: `.claude/plans/session117-sigungu-income-poc.md` (로컬 전용 gitignored, `.claude/*` 룰)
+
+**섹션 구성**:
+1. 배경 — 현재 폴백+차감15가 작동 중이라 기능 손실 없음
+2. 선택지 비교
+   - **A (TASIS 스크레이핑)**: 3~5세션 / 데이터 신뢰도 중 / 유지보수 높음 / 법적 리스크 중 / Playwright + WebSquare
+   - **B (시도값 기반 추정 모델)**: 2~4세션 / 신뢰도 하~중 / 유지보수 중 / 법적 리스크 하 / KOSIS 사업체조사·실거래·인구 지표 회귀
+   - **C (현상 유지)**: 변경 없음 / 세션114 정직성 보정(-15점 + 경고 접미) 충분
+3. **추천: C**. 트리거(사용자 왜곡 제보, UX 피드백, 경쟁사 도입 등) 발생 시 B 우선 → R²<0.7이면 A
+4. 착수 체크리스트 — A·B 둘 다 5파일+ 변경이라 단계 분리 필수
+5. 참고 정보 — 위 사전 조사 라인 넘버
+
+## Review (코드 변경 0줄 → 전용 에이전트 생략)
+
+- **scoring-validator 생략 근거**: `src/scoring/*` 수정 0
+- **null-safety-checker 생략 근거**: 새 컴포넌트/API 추가 0
+- **collector-contract 생략 근거**: `scripts/collectors/*` 수정 0
+- **수행한 검증**:
+  - `npx vite build` 🟢 445ms
+  - `git check-ignore -v .claude/plans/session117-...` 확인 → gitignored 정상
+  - `gh run list` 교차검증 후 문구 반영
+  - Supabase SDK 2회 조회(탐색 에이전트 + 삭제 직전 재확인)
+- **보안**: 외부 URL·서드파티 토큰 변경 없음
+- **Hook 규칙**: React Hook 변경 없음
+
+## KPI
+
+- vite build 🟢 445ms (세션115 392ms와 동일 건강 상태)
+- 우선순위 항목 2개 완료 체크(fix_sejong 삭제 / 행안부 문구 교정)
+- 로컬 PoC 설계 문서 1건 작성 (gitignored)
+- 코드 변경 0줄 / 문서 변경 2개 파일(CLAUDE.md + 신규 plan)
+- 작업 1/3 완료, 작업 2 "설계 문서 단계" 완료, 실제 구현은 트리거 대기
+
+---
+
 # 세션 111-B — 2026-04-17 (classifyNoPrice 분양계획 분기 — 100% 커버리지 달성)
 
 **목표**: 세션111-A 후 기타 잔존 12건을 개별 조사한 결과, 전부 `presale_stage = "분양계획"` + `presale_pp=0` + `recruit_date=2026-04~05` 임을 확인. 모집공고 전 예정 단지 정상 데이터. `classifyNoPrice`에 분양계획 분기 1개 추가로 38건 100% 커버리지.
