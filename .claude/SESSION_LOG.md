@@ -36,12 +36,32 @@
 - **collector-contract 에이전트**: PASS — fetchWithRetry 시그니처/try/catch 위치/에러 prefix 전부 세션104 패턴과 일관. 기존 rows 파싱·regions UPDATE·apartments UPDATE 로직 0바이트 변경. 쿼터 로깅 영향 없음
 - **null-safety-checker 에이전트**: PASS — 모든 에러 경로가 outer try/catch로 수렴해 data undefined 상태에서 `data.err` 접근 불가능. `Array.isArray(data) ? data : []` 가드(L116) 유효. `err.message`는 Error 인스턴스 보장으로 optional chaining 불요
 
+## 단계 5 판정 (이번 세션 내 실행)
+
+- compute-scores dry-run: apartments_flat VIEW에서 **1,424건만 로드** (apartments 2001 중 577건은 VIEW 필터링으로 제외). cats_cache NULL 7건은 전부 정상 단지(옥정중앙역디에트르 u=2807 등)지만 **VIEW 범위 밖** 가능성 — compute-scores 재실행해도 반영 못 함
+- 결론: **단계 5 재계산 실행 이익 없음 → 스킵 확정**
+- 근본 원인(apartments_flat VIEW 필터링 조건) 조사는 별도 에픽 (세션97 `dataReliability` VIEW 공식 강화 후속)
+
+## 단계 6 B1 R² 실험 (이번 세션 내 실행)
+
+- `tmp/poc-b1-sido-train.csv` 17행 추출 (regions 시도 최신 스냅샷)
+- regions DB NULL 실측: `population`/`households`/`jeonse_rate`/`supply_ratio` **4개 컬럼 전부 NULL** → 사용 가능 독립변수 8개로 축소
+- NULL 행 3개 드롭 → **유효 샘플 14건**
+- `tmp/poc-b1-regression.py` Python 회귀 (sklearn LOOCV, OLS + Ridge α∈{1,10} + top-3 축소):
+  - Pearson top 3: avg_price_sqm +0.70, land_cost_ratio +0.69, pop_growth +0.62
+  - LOOCV 최고 성능: **Ridge α=10, R²=+0.379, MAE=10.60만원/월**
+- **게이트 R² ≥ 0.7 AND MAE ≤ 20 → ❌ 실패** (R² 0.38 < 0.7)
+- 근본 원인: 샘플 17(유효 14)의 통계적 한계 + 독립변수 4개 DB NULL로 훈련셋 빈약
+- 조치: `.claude/plans/session117-sigungu-income-poc.md` 4.2절에 "B1 실패 기록 2026-04-19 R²=+0.38" append, **C 공식 확정 재확인**
+- 재검토 조건: regions에 NULL 4컬럼 실측 값 채워진 뒤 재실험 / 또는 시군구 실측 소득 샘플 소규모 확보
+
 ## 다음 세션 (119+) 진입점
 
-- **단계 3**: 사용자가 공공데이터포털/학교알리미에서 `AIRKOREA_KEY` / `NEIS_KEY` / `SCHOOLINFO_KEY` 발급 → `gh secret set` 3개 → `gh workflow run collect-air-quality.yml` / `collect-schools.yml` 수동 트리거. 단지별 대기질·학교NEIS상세·학생수 3개 데이터 보강 (1,994 단지 전체 영향)
-- **단계 4**: 지방 trades 이미 전부 수집됨 — **스킵 확정**
-- **단계 5**: compute-scores gap 7건만 — 단계 3 수집 3일 후 1회 재계산
-- **단계 6 (선택)**: 시군구 소득 B1 R² 실험 (tmp/ 로컬, DB 쓰기 0). 세션117 C 확정 재검토
+- **단계 3만 남음**: 사용자가 공공데이터포털/학교알리미에서 `AIRKOREA_KEY` / `NEIS_KEY` / `SCHOOLINFO_KEY` 발급 → `gh secret set` 3개 → `gh workflow run collect-air-quality.yml` / `collect-schools.yml` 수동 트리거. 단지별 대기질·학교NEIS상세·학생수 3개 데이터 보강 (1,994 단지 전체 영향)
+- 단계 4 지방 trades — **스킵 확정** (전국 17개 시도 이미 전량 수집)
+- 단계 5 compute-scores — **스킵 확정** (gap 7건이 VIEW 필터링 범위 밖)
+- 단계 6 B1 R² — **실패 기록 후 C 확정 재확인** (재검토 조건 충족 시 재실험 가능)
+- 별도 에픽 후보: `apartments_flat` VIEW 필터링 조건 실측 (왜 2001→1424만 노출하는지), regions NULL 4컬럼(`population`/`households`/`jeonse_rate`/`supply_ratio`) 수집기 추가
 
 ## KPI
 
@@ -49,6 +69,8 @@
 - vitest: collect-unsold-kosis 20 → 21 passed
 - vite build: 🟢 401ms (단계 1) / 384ms (단계 2)
 - 9 GATE: 🟢8/🟡1/🔴0
+- B1 실험: LOOCV R²=+0.38 (게이트 0.7 미달), MAE 10.60만원/월 — C 확정 재확인
+- 커밋 2개 (`082d0e2` concurrency, `8328692` KOSIS fetchWithRetry) + origin/main 동기
 
 ---
 
