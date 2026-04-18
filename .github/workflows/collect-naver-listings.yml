@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: data-collection
+  group: naver-postprocess
   cancel-in-progress: false
 
 jobs:
