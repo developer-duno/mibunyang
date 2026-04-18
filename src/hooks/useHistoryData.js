@@ -24,7 +24,10 @@ export function useHistoryData(endpoint, apartmentId, siblingIds) {
         : `${endpoint}?apartment_id=${encodeURIComponent(apartmentId)}`;
       const res = await fetch(url, { signal });
       if (signal?.aborted) return;
-      if (!res.ok) throw new Error(`API 오류 (${res.status})`);
+      if (!res.ok) {
+        if (res.status === 429) throw new Error("요청이 너무 많습니다. 잠시 후 다시 시도해주세요");
+        throw new Error(`API 오류 (${res.status})`);
+      }
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "데이터 조회 실패");
       setData(json.data || []);

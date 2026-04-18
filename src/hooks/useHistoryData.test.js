@@ -72,4 +72,16 @@ describe("useHistoryData", () => {
     renderHook(() => useHistoryData("/api/supabase/prices", null));
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  // 429 응답 시 한국어 전용 메시지
+  it("429 응답 시 한국어 재시도 안내 메시지를 설정한다", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false, status: 429 });
+
+    const { result } = renderHook(() =>
+      useHistoryData("/api/supabase/prices", "ah-999")
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("요청이 너무 많습니다. 잠시 후 다시 시도해주세요");
+  });
 });
