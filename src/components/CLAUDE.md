@@ -2,17 +2,17 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 36개 컴포넌트
+## memo() 컴포넌트 (45개, 2026-04-19 실측)
 
 | 그룹 | 개수 | 위치 | 컴포넌트 |
 |------|------|------|---------|
-| 소비자 | 10 | `src/components/` | Bar, ScoreBadge, Radar, LineChart, CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal |
-| 섹션 | 8 | `sections/` | HeaderSection, SearchFilterBar, AptListSection, ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay |
-| 상세 | 7 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, DataSections |
-| 필터 | 8 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel + filterStyles.js |
+| 소비자 | 8 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, primitives.jsx 내부 4개 |
+| 섹션 | 8 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay |
+| 상세 | 8 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections |
+| 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
 | 전문가 | 9 | `expert/` | ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide |
 | 관리자 | 3 | `admin/` | AdminDashboard, AdminHelpGuide, WeightEditor |
-| 아이콘 | 9 | `icons.jsx` | IconClose, IconSearch, IconHelp, IconLocation, IconHeart, IconHeartFilled, IconCompare, IconShare, IconChevronDown |
+| 아이콘 | 1 | `icons.jsx` | 내부 공용 memo 1개 (IconClose 등 9개 아이콘은 순수 SVG 함수, memo 래핑 안 함) |
 
 - 반드시 `memo(function Name(...) { ... })` 패턴 유지
 - memo 효과를 위해 콜백은 `useCallback`으로 안정화 필수
@@ -47,7 +47,7 @@
 
 ## 주요 컴포넌트 구조
 
-### App.jsx (~512줄)
+### App.jsx (~442줄, 2026-04-19 실측)
 
 Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 

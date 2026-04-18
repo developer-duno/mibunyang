@@ -8,7 +8,7 @@
 useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개)
   → useCallback (setProfile, saveCustomWeights, toggleHideNoUnsold, closeDetail)
   → 커스텀 훅 13개 (useResponsive → useToast → ... → useShare)
-  → useDataPipeline (useMemo 13개 + visibleCount + reset useEffect)
+  → useDataPipeline (useMemo 14개 + visibleCount + reset useEffect)
   → useAppNavigation (useCallback 7개 + useRef 2개 + useEffect 2개)
   → 공유 콜백 3개 (handleShare*) + scoredMapRef
   → 독립 useEffect 3개 (print CSS, URL 딥링크, 무효 ID 정리)
@@ -27,7 +27,7 @@ useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개
 useDataPipeline({ apartments, profile, customWeights, ...필터상태, compIds, dataUpdatedAt })
   ├── SORTERS, VISIBLE_PAGE_SIZE (모듈 레벨 상수)
   ├── visibleCount: useState(VISIBLE_PAGE_SIZE)
-  ├── useMemo 13개 (guOptions → catsCache → scored → filtered → visible 체인)
+  ├── useMemo 14개 (guOptions → catsCache → scored → filtered → visible 체인)
   ├── useEffect: filtered 변경 시 visibleCount 리셋
   └── return { guOptions, scored, filtered, visible, scoredMap, compItems, pw, ... }
 ```

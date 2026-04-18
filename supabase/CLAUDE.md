@@ -4,6 +4,10 @@
 
 ## 테이블 (15개 + 2 VIEW)
 
+> schema.sql은 `apartments_flat` VIEW 포함. `api_quota_daily` VIEW는 migration `20260329100000_api_quota_log.sql`에만 존재(schema.sql snapshot 미동기, 운영에는 영향 없음).
+
+
+
 | 테이블 | 설명 | 주요 수집기 |
 |--------|------|-----------|
 | apartments | 미분양 핵심 데이터 + 분양정보 19컬럼 | 청약홈, naver-presale |

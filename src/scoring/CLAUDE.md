@@ -48,6 +48,31 @@ src/scoring/
 `Math.min(..., 100)` 또는 `Math.max(0, Math.min(100, ...))` 필수.
 특히 PSR 서브스코어는 psr < 0.7일 때 100 초과 가능.
 
+## PIR 점수 구간 (세션108 재설계)
+
+개인소득 PIR 분포(중앙값 18.3년)에 맞춘 4단계. 세션107 소득 정상화 후 기존 `≤3/≤5/≤7` 구간이 83%를 하위 10점대로 몰던 문제 해소.
+
+| 구간 | 점수 | 경계 |
+|------|------|------|
+| ≤ 10 | 100 | 우수 |
+| 10~20 | 80→100 선형 | 양호 |
+| 20~30 | 60→80 선형 | 보통 |
+| > 30 | 60-(pir-30)×2 (0 하한) | 부담 |
+
+상수: `src/constants/scoringTiers.js` → `PIR_SCORE_TIERS = { EXCELLENT_MAX: 10, GOOD_MAX: 20, MODERATE_MAX: 30, BURDEN_PENALTY: 2 }`.
+
+## fairPrice 폴백 + 신뢰도 차감 (세션114)
+
+`nearbyMedian` 부재 시 `fairPrice` 산정은 3단 폴백:
+
+1. `trade_stats.nearby_median`  (1순위)
+2. `regions.avg_price_sqm` × 면적 → `fairPriceFromSidoAvg=true` 플래그 설정
+3. `presale_pp` × 면적/3.3058 → 동일 플래그 설정
+
+**폴백 사용 시**: `dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY` (기본 15, `src/constants/scoringTiers.js`). 괴리도 `detail`에 `" — 광역 시도 평균 기준(실시세 왜곡 가능)"`, 신뢰도 `info/detail`에 `" -폴백차감15"` 접미. 점수 계산 로직·가중치는 불변, UX 정직성 보정만.
+
+영향 단지: 섬·군 10개(인천 동구 2·옹진군 2·경기 가평군 3·양평군 2·연천군 1). 세션115 Playwright 실측으로 전문가 대시보드 `ExpertScoreBreakdown`에서 5/5 DOM 노출 확인.
+
 ## 새 카테고리 추가 시
 
 1. `engine.js`에 `scoreNewCategory(apt, ctx)` 작성 (반환: `{ total, subs[] }`)

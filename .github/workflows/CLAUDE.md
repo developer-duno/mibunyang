@@ -17,11 +17,12 @@
 |-----------|------|
 | `naver-units.yml` | (수동 전용) 네이버 API가 GitHub Actions 미국 IP의 JWT를 차단 → 커밋 `346446a`에서 스케줄 비활성화. 세션89부터 `molit-units.mjs`가 로컬 파이프라인과 post-naver-collect에서 대체 수행. 파일 보존만 |
 
-### CI/CD (1개)
+### CI/CD (2개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
 | `ci.yml` | CI 파이프라인 (린트 + 테스트 + 빌드, push/PR 트리거) |
+| `e2e.yml` | Playwright E2E 테스트 (push/PR 트리거) |
 
 ### 매주 (3개)
 
