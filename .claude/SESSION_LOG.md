@@ -1,3 +1,62 @@
+# 세션 119 후속 — 2026-04-19 (429 UX + 이메일 검증 공용화 + supabase-js 2.103)
+
+**거시 목적**: 세션119 미션의 남은 🟡 이슈 3건 해소 (`/improve` 백로그 후속).
+
+## 플랜
+
+- `.claude/plans/session119-triple-followup.md` (gitignore)
+- 9 GATE 1차 🟢8/🟡1 → 단계 4를 4a/4b 분할 후 🟢9/🟡0/🔴0
+
+## 커밋 (5건, origin/main)
+
+| 커밋 | 변경 | 파일 |
+|------|------|------|
+| `7b6d223` | fix(hooks): 429 UX message on useHistoryData | +5/-1 |
+| `97b572e` | fix(services): 429 UX message on staticDataApi before fallback | +37/-1 (테스트 2개 신규 포함) |
+| `1d4f3c3` | refactor(api): extract isValidEmail util + apply to auth/signup·login | +60/-2 (_lib/validators.js + test 신규) |
+| `295334c` | fix(api): tighten admin/review email validation with isValidEmail | +11/-1 |
+| `73b3295` | chore(deps): @supabase/supabase-js 2.98 → 2.103 | lock 자동 |
+
+## TDD 사이클 (단계별)
+
+- 단계 3a: `useHistoryData.js` 429 분기 — RED(`expected '요청이 너무 많습니다...' to be 'API 오류 (429)'`) → GREEN(5/5 tests PASS)
+- 단계 3b: `staticDataApi.js` 429 분기 — RED(console.warn spy 미호출) → GREEN(9/9 tests PASS). DEV 모드에서 `console.warn`에 메시지 전파 확인
+- 단계 4a: `_lib/validators.js` 신규 — RED(모듈 import 실패) → GREEN(17/17 tests PASS) + auth/signup·login 인라인 정규식 제거
+- 단계 4b: `admin/review.js` 강화 — RED(`bad@`/`@x.com`/TLD 1글자 400 미반환) → GREEN(19/19 tests PASS)
+
+## 실측 증거
+
+- `npm audit` 0 vulnerabilities (세션119 3.4.0 상태 유지)
+- `npm ls @supabase/supabase-js` → `2.103.3`
+- `npm run test` **148 files / 2406 tests PASS** (세션119 2385 → +21 신규)
+- `vite build` 512ms, index 176.11→176.20kB (+0.09kB 미미)
+- Node 요구사항 `>=20.0.0` 충족 (로컬 v24.14.1 · Vercel 기본 Node 22)
+
+## 5교차검증
+
+- 빌드: PASS (메인 agent, exit 0)
+- 보안: PASS (메인 agent) — `validators.js` 민감정보 0 · 이메일 검증 공용화로 `bad@`/TLD 1글자 등 기존 통과 값 차단 · 429 메시지 민감정보 없음
+- null 안전성: PASS (null-safety-checker) — `typeof === "string"` 단락 평가로 `null`/`undefined`/`123`/`{}` 안전, `res.status === 429` 엄격 동등 · admin/review의 `Array.isArray` → 길이 → `every` 순서 보존
+- Hook 규칙: PASS (메인 agent) — `useHistoryData` 의 `load` useCallback 의존성 `[apartmentId, idsKey, endpoint]` 불변
+- simplify: N/A — 각 변경 단일 책임
+- 회귀: PASS — 이번 세션 영향 테스트 10 files / 114 tests 포함 전수 통과
+
+## 주요 발견
+
+- 단계 4a에서 `auth/signup.js:13` 와 `login.js:12` 에 **동일 RFC 5322 정규식 중복** 확인 → 공용 유틸로 뽑으면서 자연스럽게 해소
+- 단계 4b의 기존 `emails.every(e => e.includes("@"))` 는 `bad@`, `@x.com`, TLD 1글자(`a@b.c`) 전부 통과시킴 → 실측 테스트로 확인 후 강화
+- staticDataApi의 429 메시지는 **JSON 폴백 성공 시 사용자에게 안 보임** (기존 설계 유지). 개발자 console.warn 디버깅 + 양쪽 실패 시 최종 토스트 품질 향상 목적
+
+## 남은 🟡 백로그 (세션120+ 후보)
+
+- ESLint 10 / @vercel/kv 3 / @vercel/analytics 2 메이저 업그레이드 (breaking change 동반 — 별도 세션)
+- App.jsx 442줄 → `useAppState()` 훅 분리 (2~3시간 에픽)
+- inline `onClick={() => ...}` 131건 → useCallback (대규모 리팩토링)
+- `api/supabase/apartments.js` sanitize() 54필드 → 그룹별 분리
+- inline `style={{...}}` 787건 → CSS 상수 (분기 내)
+
+---
+
 # 세션 119 — 2026-04-19 (공개 Supabase API rateLimit + dompurify 취약 해소)
 
 **거시 목적**: `/improve` 2026-04-19 백로그 🔴 미션 1건 해소. 공개 API 3개에 rate limit 적용 + dompurify moderate 취약 1건 제거.
