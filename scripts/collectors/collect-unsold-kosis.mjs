@@ -9,7 +9,7 @@
  *   node scripts/collectors/collect-unsold-kosis.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-unsold-kosis.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry } from "./_shared.mjs";
 
 loadEnv();
 
@@ -97,21 +97,20 @@ async function main() {
     jsonVD: "Y",
   });
 
-  const https = await import("node:https");
+  // 세션118: raw https.request → fetchWithRetry (429/500/503 + ECONNRESET 지수 백오프 3회).
+  // AbortSignal.timeout(30s)은 fetchWithRetry 내부에 포함. 에러 prefix `KOSIS ...` 유지.
   const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
-  const data = await new Promise((resolve, reject) => {
-    const req = https.request(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
-      if (res.statusCode !== 200) return reject(new Error(`KOSIS HTTP ${res.statusCode}`));
-      let body = "";
-      res.on("data", (c) => (body += c));
-      res.on("end", () => {
-        try { resolve(JSON.parse(body)); } catch { reject(new Error("KOSIS JSON 파싱 실패")); }
-      });
-    });
-    req.on("error", reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error("KOSIS 타임아웃")); });
-    req.end();
-  });
+  let data;
+  try {
+    const res = await fetchWithRetry(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error("JSON 파싱 실패");
+    }
+  } catch (err) {
+    throw new Error(`KOSIS ${err.message}`);
+  }
   if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
 
   const rows = Array.isArray(data) ? data : [];

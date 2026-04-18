@@ -146,3 +146,26 @@ describe("calcProportionalUnsold", () => {
     expect(result).toBeNull();
   });
 });
+
+// ── fetchWithRetry 통합 ───────────────────────────────────────
+// 세션118: raw https.request → fetchWithRetry 교체 후 ECONNRESET 재시도 검증.
+describe("fetchWithRetry 통합", () => {
+  it("ECONNRESET 1회 → 재시도 후 성공", async () => {
+    const { fetchWithRetry } = await import("./_shared.mjs");
+    let calls = 0;
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn(async () => {
+      calls++;
+      if (calls === 1) throw new Error("read ECONNRESET");
+      return { ok: true, json: async () => ({ err: null, result: "ok" }) };
+    });
+    try {
+      const res = await fetchWithRetry("https://example.test/", {}, 3);
+      const body = await res.json();
+      expect(calls).toBe(2);
+      expect(body.result).toBe("ok");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+});

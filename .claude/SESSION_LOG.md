@@ -1,3 +1,57 @@
+# 세션 118 — 2026-04-19 (수집기 부전 복구 — Naver concurrency 분리 + KOSIS fetchWithRetry)
+
+**거시 목적**: 기존 수집기를 100% 활용해 단지별 미등록 지점을 채운다. 수집기를 새로 만들지 않고 이미 있는데 안 돌거나 반쪽만 도는 것을 온전히 돌린다.
+
+## Phase 1 실측 발견 (단계 0, 읽기 전용)
+
+- **Naver Post-Processing 6일 연속 cancelled** (2026-04-12~04-17): `concurrency: group=data-collection, cancel-in-progress: false` + 월간 수집기 27개 공유 그룹 → 큐에서 서로 밀어냄. sync-naver-complex·geocode·reverse-geocode·calc-exclusive-ratio·transport·infra·schools 7단계 후처리가 매일 누락
+- **MOLIT Units 04-06 failure**: 426 성공/40 실패/9 skip인데 `scripts/CLAUDE.md "Exit Code 정책"` 계약 `failed > 0 → exit(1)`에 따라 Actions UI failure 표시. 데이터는 이미 upsert 완료 — 다음달 6일 자동 재시도가 정상 경로. 수정 불요 확인
+- **KOSIS Unsold 04-01 failure**: `read ECONNRESET` 네트워크 1회성. `collect-unsold-kosis.mjs:100-114` raw `https.request` → `fetchWithRetry` 미적용 지점 특정
+- **compute-scores gap 실측**: apartments 2001 vs cats_cache 1994 = **7건** (플랜 추정 570건은 과거 기록, 현재 거의 채워짐 — 단계 5 백필 대부분 불필요)
+- **지방 17개 시도 trades 전부 존재**: 광주 16,038 / 울산 13,748 / 세종 28,676 / 강원 12,963 / 제주 1,890 등 (단계 4 지방 확장 스킵 확정 — `collect-trades.mjs`가 이미 전국 DB 동적 로드)
+- **MOLIT 쿼터 현황**: 2026-04-15 기준 collect-trades 3,474 / building-info 3,087 / building-hub 2,794 / maintenance 1,763 — 여유 충분
+
+## 9 GATE 검증 (Plan 모드, 초안 🔴3 → 수정 후 🟢8/🟡1/🔴0)
+
+- 초안 GATE 1 🔴: `collect-trades.yml`에 matrix 없음 → 단계 4 재설계(cron 2nd job + `--only` 플래그) → 단계 0 실측으로 지방 이미 수집됨 확인 후 스킵
+- 초안 GATE 4 🔴: `molit-units` exit 로직 변경은 `scripts/CLAUDE.md "Exit Code 정책"` 의도적 계약 위반 → 단계 2에서 molit-units 수정 제외
+- 초안 GATE 8 🔴: 6일·10일 쿼터 교차 위험 → 실제 날짜 분리 확정, 지방 확장 스킵으로 해소
+
+## 변경 사항 (단계 1·2, 파일 3개 변경)
+
+### 단계 1: `.github/workflows/collect-naver-listings.yml` (YAML 1줄)
+- `concurrency: group: data-collection` → `naver-postprocess` 분리
+- 월간 수집기 27개와 그룹 독립 → 매일 04:00 KST 자동 실행 시 cancelled 방지
+- `vite build` 🟢 401ms
+
+### 단계 2: `scripts/collectors/collect-unsold-kosis.mjs` (±5줄)
+- L100-114 raw `https.request` + `setTimeout(30000)` + `JSON.parse` → `fetchWithRetry(url, options)` + `res.json()` 교체 (세션104 `migration.mjs:118-147` 동일 패턴)
+- try/catch로 에러 prefix `KOSIS ...` 유지(collector-contract 계약)
+- `_shared.mjs:130` `fetchWithRetry` 내장: AbortSignal.timeout(30s), 429/500/503 지수 백오프 3회, ECONNRESET catch로 재시도
+- 테스트 `collect-unsold-kosis.test.mjs` describe 1개/test 1개 추가: "ECONNRESET 1회 → 재시도 후 성공" (기존 20 → 21 tests)
+- `vite build` 🟢 384ms
+
+## Review 결과
+
+- **collector-contract 에이전트**: PASS — fetchWithRetry 시그니처/try/catch 위치/에러 prefix 전부 세션104 패턴과 일관. 기존 rows 파싱·regions UPDATE·apartments UPDATE 로직 0바이트 변경. 쿼터 로깅 영향 없음
+- **null-safety-checker 에이전트**: PASS — 모든 에러 경로가 outer try/catch로 수렴해 data undefined 상태에서 `data.err` 접근 불가능. `Array.isArray(data) ? data : []` 가드(L116) 유효. `err.message`는 Error 인스턴스 보장으로 optional chaining 불요
+
+## 다음 세션 (119+) 진입점
+
+- **단계 3**: 사용자가 공공데이터포털/학교알리미에서 `AIRKOREA_KEY` / `NEIS_KEY` / `SCHOOLINFO_KEY` 발급 → `gh secret set` 3개 → `gh workflow run collect-air-quality.yml` / `collect-schools.yml` 수동 트리거. 단지별 대기질·학교NEIS상세·학생수 3개 데이터 보강 (1,994 단지 전체 영향)
+- **단계 4**: 지방 trades 이미 전부 수집됨 — **스킵 확정**
+- **단계 5**: compute-scores gap 7건만 — 단계 3 수집 3일 후 1회 재계산
+- **단계 6 (선택)**: 시군구 소득 B1 R² 실험 (tmp/ 로컬, DB 쓰기 0). 세션117 C 확정 재검토
+
+## KPI
+
+- 변경 파일: 3 (YAML 1 + 수집기 1 + 테스트 1), 순 +23줄
+- vitest: collect-unsold-kosis 20 → 21 passed
+- vite build: 🟢 401ms (단계 1) / 384ms (단계 2)
+- 9 GATE: 🟢8/🟡1/🔴0
+
+---
+
 # 세션 117 — 2026-04-18 (시군구 소득 PoC 상태 공식화 — C 확정, 코드 변경 0)
 
 **목표**: 세션116 미완 과제였던 PoC 설계 문서(`.claude/plans/session117-sigungu-income-poc.md`)를 "대기 → 공식 확정 C"로 상태 전이. 판단 근거를 SESSION_LOG에 고정해 세션118+ 재오픈 시 기준점 제공.
