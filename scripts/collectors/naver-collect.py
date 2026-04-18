@@ -91,7 +91,9 @@ def _extract_json_obj(html,key):
             try:return json.loads(html[start:i+1])
             except json.JSONDecodeError:return None
     return None
-def thr(s=1.0):
+def thr(s=5.0):
+    # 세션118 긴급 완화: 네이버 IP 쿨다운 대응 (cooldown_fix.md ②)
+    # 기본 요청 간격 1초 → 5초로 상향 (naver-listings.mjs MIN_INTERVAL과 일치)
     global _lr
     d=time.time()-_lr
     if d<s:time.sleep(s-d)

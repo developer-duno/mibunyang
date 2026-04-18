@@ -12,7 +12,9 @@ concurrency:
 jobs:
   post-process:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 세션118 긴급 완화 (cooldown_fix.md ④): 요청 간격 5배 상향(①)으로
+    # 수집 시간 약 3배 증가 예상 → timeout 30→60분
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4

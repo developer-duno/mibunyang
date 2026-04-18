@@ -36,10 +36,12 @@ const NAVER_ARTICLE_DETAIL_API = `${NAVER_BASE}/api/articles`;
 
 const JWT_TOKEN_PATTERN = /"token":"(eyJ[A-Za-z0-9._-]+)"/;
 const JWT_LIFETIME = 3000 * 1000; // 50분 (ms)
-const MIN_INTERVAL = 1000;        // 요청 간 최소 1초
-const PAGE_DELAY = 1500;          // 페이지 간 1.5초
+// 세션118 긴급 완화: 네이버 IP 쿨다운 대응 (cooldown_fix.md ①)
+// 요청 간격·페이지 간격 각 5배, 재시도 대기 [3,5,10,15,20]→[10,20,40,60,120]초
+const MIN_INTERVAL = 5000;        // 요청 간 최소 5초 (이전 1초)
+const PAGE_DELAY = 3000;          // 페이지 간 3초 (이전 1.5초)
 const MAX_RETRIES = 5;
-const RETRY_DELAYS = [3000, 5000, 10000, 15000, 20000];
+const RETRY_DELAYS = [10000, 20000, 40000, 60000, 120000];
 const CACHE_TTL = 600000;         // 캐시 10분
 const MAX_CACHE_SIZE = 500;       // 캐시 최대 항목 수
 

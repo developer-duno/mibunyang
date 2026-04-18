@@ -17,7 +17,15 @@ if exist .env.local (
 )
 
 echo === 1/6 네이버 매물 수집 (Python) ===
-python scripts/collectors/naver-collect.py
+:: 세션118 긴급 완화 (cooldown_fix.md ③): Python 런처 폴백 복구
+:: MIBUNYANG_PYTHON env가 설정돼 있으면 그걸 사용, 아니면 py -3 런처로
+:: 고정(단일 `python` 명령은 Windows Store stub 루프 차단 위험 존재).
+if defined MIBUNYANG_PYTHON (
+  set "PY_CMD=%MIBUNYANG_PYTHON%"
+) else (
+  set "PY_CMD=py -3"
+)
+%PY_CMD% scripts/collectors/naver-collect.py
 if errorlevel 1 (
   echo [%date% %time%] ERROR: naver-collect.py 실패 >> "%~dp0..\naver-collect.log"
   exit /b 1
