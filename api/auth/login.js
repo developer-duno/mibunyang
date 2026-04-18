@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 import { verifyPassword, hashPassword, createToken, createRefreshToken } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
+import { isValidEmail } from "../_lib/validators.js";
 import crypto from "crypto";
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handler: async (req, res) => {
@@ -9,7 +10,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handl
   if (!email || !password || typeof email !== "string" || typeof password !== "string") {
     return res.status(400).json({ ok: false, error: "이메일과 비밀번호를 입력해주세요" });
   }
-  if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email) || email.length > 254) {
+  if (!isValidEmail(email)) {
     return res.status(400).json({ ok: false, error: "올바른 이메일 형식이 아닙니다" });
   }
   if (password.length < 8 || password.length > 128) {

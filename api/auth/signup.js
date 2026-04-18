@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 import { hashPassword } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
+import { isValidEmail } from "../_lib/validators.js";
 
 const SPECIALTIES = ["부동산 중개", "분양 컨설팅", "감정평가", "건축/설계", "기타"];
 
@@ -10,7 +11,7 @@ export default withHandler({ method: "POST", cors: { maxAge: 86400 }, rateLimit:
   if (!email || !password || !name) {
     return res.status(400).json({ ok: false, error: "이메일, 비밀번호, 이름은 필수입니다" });
   }
-  if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email) || email.length > 254) {
+  if (!isValidEmail(email)) {
     return res.status(400).json({ ok: false, error: "올바른 이메일 형식이 아닙니다" });
   }
   if (password.length < 8 || password.length > 128) {
