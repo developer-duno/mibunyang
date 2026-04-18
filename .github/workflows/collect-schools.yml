@@ -21,7 +21,9 @@ concurrency:
 jobs:
   collect-schools:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 세션118: 2026-04-19 수동 dispatch가 60분 timeout으로 cancelled
+    # (2001건 × NEIS/SCHOOLINFO API 호출 부하). 120분으로 확장.
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4

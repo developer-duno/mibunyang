@@ -456,7 +456,8 @@ WITH dedup_ranked AS (
                    region,
                    COALESCE(gu, ''),
                    COALESCE(dong, '')
-      ORDER BY id DESC
+      -- 세션118: "(오)" 오피스텔 접미보다 일반분양 우선 선택 (LIKE 결과 false(0)<true(1), ASC로 일반 승자).
+      ORDER BY (name LIKE '%(오)%') ASC, id DESC
     ) AS _dedup_rank
   FROM apartments
 ),
