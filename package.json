@@ -20,7 +20,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.1",
+    "@supabase/supabase-js": "^2.103.3",
     "@vercel/analytics": "^1.6.1",
     "@vercel/kv": "^2.0.0",
     "@vercel/speed-insights": "^2.0.0",
