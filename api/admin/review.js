@@ -1,5 +1,6 @@
 import { kv } from "@vercel/kv";
 import { withHandler } from "../_lib/handler.js";
+import { isValidEmail } from "../_lib/validators.js";
 
 // 단건 review 처리 (내부 헬퍼)
 async function reviewOne(emailRaw, action, note) {
@@ -69,7 +70,7 @@ export default withHandler({ method: "POST", admin: true, rateLimit: "admin", ha
   if (emails.length > MAX_BATCH) {
     return res.status(400).json({ ok: false, error: `최대 ${MAX_BATCH}건까지 일괄 처리 가능합니다` });
   }
-  if (!emails.every(e => typeof e === "string" && e.includes("@"))) {
+  if (!emails.every(isValidEmail)) {
     return res.status(400).json({ ok: false, error: "유효하지 않은 이메일이 포함되어 있습니다" });
   }
 

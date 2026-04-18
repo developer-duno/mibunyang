@@ -212,6 +212,15 @@ describe('admin/review 배치 처리', () => {
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
+  // 배치: RFC 5322 정규식으로 걸러지는 값 (기존 .includes("@")는 통과시킴)
+  it('RFC 5322 정규식에 걸리는 이메일은 400을 반환한다 (bad@ / @.com / TLD 1글자)', async () => {
+    for (const badEmail of ['bad@', '@x.com', 'a@b.c']) {
+      const res = makeRes();
+      await handler(makeReq({ emails: ['valid@test.com', badEmail], action: 'approve' }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+  });
+
   // 단건 하위호환: email 필드로 보내면 기존 응답 형식 유지
   it('단건 email은 기존 응답 형식(message)을 반환한다', async () => {
     mockKv.get.mockResolvedValue({ email: 'user@test.com', status: 'pending' });
