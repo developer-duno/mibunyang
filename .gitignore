@@ -35,6 +35,10 @@ detailed_*.mjs
 test-debug*
 presale-log*
 
+# 세션별 조사·복구 산출물 (증거용 보존, 리포만 추적 제외)
+backups/
+**/*.bak-*
+
 # Playwright
 playwright-report/
 test-results/
