@@ -38,7 +38,7 @@
 | `collect-unsold-kosis.yml` | 1일 | KOSIS 시군구별 미분양 |
 | `collect-infra.yml` | 1일 | Kakao Places 인프라 |
 | `collect-transport.yml` | 1일 | Kakao Places 교통 |
-| `collect-schools.yml` | 1일 | NEIS 학교 |
+| `collect-schools.yml` | 2일 | NEIS 학교 (세션118: 1일→2일 이동 + school-collection 그룹 분리) |
 | `collect-noise.yml` | 1일 | 소음 추정 |
 | `collect-environment.yml` | 1일 | 환경/혐오시설 |
 | `collect-noxious.yml` | 1일 | 혐오시설 거리 |

@@ -1,8 +1,11 @@
 name: School District Collection
 
 on:
+  # 세션118: 매월 1일 UTC 20:00에 unsold-kosis/schools/childcare 3종이
+  # 같은 concurrency 그룹·같은 시간에 시작해 30분 timeout으로 cancelled
+  # 연속. schools를 2일 UTC 22:00(KST 07:00)로 이동 + 그룹 분리로 해소.
   schedule:
-    - cron: '0 20 1 * *' # 매월 1일 UTC 20:00 = KST 05:00
+    - cron: '0 22 2 * *' # 매월 2일 UTC 22:00 = KST 07:00 (이전: 1일 05:00)
   workflow_dispatch:
     inputs:
       dry_run:
@@ -12,7 +15,7 @@ on:
         default: false
 
 concurrency:
-  group: data-collection
+  group: school-collection
   cancel-in-progress: false
 
 jobs:
