@@ -194,6 +194,34 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 
 ---
 
+## 개선 백로그 (2026-04-19 /improve 분석 결과)
+
+> 상세 리포트: `~/.claude/plans/pwd-f-mibunyang-improve-report.md`
+> 🔴 미션은 /blueprint 로 바로 실행. 🟡/🟢 는 3회 이상 /improve에서 반복 지적되면 🔴 승격.
+
+### 🔴 즉시 (미션 1개 · 2단계)
+- **미션 1 — 공개 API 보안**: `api/supabase/{apartments,prices,unsold-history}.js`에 `rateLimit: "proxy"` 추가 + `npm audit fix`로 dompurify moderate 해소 (GHSA-39q2-94rc-95cp)
+
+### 🟡 곧 (이번 달 · 6건)
+- 의존성 메이저 업그레이드: `eslint 10`, `@vercel/kv 3`, `@vercel/analytics 2`
+- `@supabase/supabase-js` 2.98→2.103 마이너
+- `onClick={() => ...}` inline 클로저 **131건** → useCallback (ExpertDashboard 등 상위)
+- `admin/review.js:72` 이메일 `.includes("@")` → RFC 5322 정규식
+- `App.jsx` 442줄 → `useAppState()` 훅 분리 (250줄 목표)
+- `api/supabase/apartments.js` sanitize() 54필드 → 그룹별 분리
+
+### 🟢 여유 (분기 내 · 8건)
+- inline `style={{...}}` **787건** → CSS 상수·className 전환 (대규모)
+- `LoanRatesSection:49` 금리 탭 Skeleton 보강
+- `AdminDashboard` 로딩 UI (`adminLoading` 상태 렌더링)
+- 저장 액션(가중치·프리셋) 토스트 피드백 추가
+- `AdminDashboard` 412줄 → 매출탭/승인탭 분리
+- `src/scoring/engine.js`·`scorePrice.js` JSDoc 추가
+- `api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼
+- `collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)
+
+---
+
 ## 서브디렉토리 규칙 파일
 
 | 디렉토리 | 핵심 내용 |
