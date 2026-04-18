@@ -4,6 +4,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// rateLimit 모킹 — withHandler의 checkRateLimit 경로 우회 (finlife/loans.test.js 패턴)
+vi.mock('../_lib/rateLimit.js', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
+}));
+
 /** Supabase 체이닝 모킹 */
 const mockData = [
   { apartment_id: "ah-1", base_month: "2025-01", unsold_count: 50 },

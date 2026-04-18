@@ -12,7 +12,7 @@ import { parseApartmentIds } from "../_lib/apartmentValidation.js";
 
 const SELECT = "apartment_id, base_month, unsold_count, post_completion_unsold, change, recorded_at";
 
-export default withHandler({ method: "GET", handler: async (req, res) => {
+export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (req, res) => {
   try {
     const supabase = getSupabase();
     const parsed = parseApartmentIds(req.query);
