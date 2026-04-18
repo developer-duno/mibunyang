@@ -107,6 +107,32 @@
 
 **즉시 검증**: `gh workflow run collect-schools.yml` 수동 dispatch → 이전 30분 대기 후 cancelled와 달리 **즉시 in_progress** 진입 확인 (run 24609959606).
 
+## schools 수동 dispatch 결과 (run 24609959606 완료 후 실측)
+
+**결과**: `conclusion: cancelled` — 60분 timeout 도달 (17:26:00 시작 → 18:26:03 UTC `The operation was canceled`). concurrency 그룹 충돌은 아니고 **수집기 자체 실행 시간 초과**.
+
+**부분 반영 확인** (cancelled지만 중간까지 저장된 데이터):
+- schools 총 1,961건 중 **642건 업데이트** (32.7%, `updated_at >= 2026-04-18T17:26:00`)
+- `nearby_schools` 배열에 NEIS 보강 신규 키 **4개 추가** 확인(30행 샘플):
+  - `classes` (학급수, 292/298)
+  - `founded` (설립연도, 292/298)
+  - `schoolType` (공립/사립, 292/298)
+  - `highSchoolType` (고등학교만, 95/298)
+- **세션89 이후 NEIS 보강 0% → 32.7% 부분 복구** (`classes/founded/schoolType` 기준)
+- **`student_count` 키 부재** — SCHOOLINFO_KEY secret은 정상이고 "학교알리미 API 활성화" 로그도 있지만 timeout 전 저장까지 도달 못 함. 수집기 구조상 NEIS 보강 후 별도 단계일 가능성 (추가 조사 필요)
+
+**Validate secrets warning 오탐**: `NEIS_KEY 미설정`·`SCHOOLINFO_KEY 미설정` warning은 workflow yml의 Validate 스텝 env 블록에 두 key 누락이라 발생 — 실제 Collect 스텝은 secret 수신해 "NEIS API 활성화"·"학교알리미 API 활성화" 로그 확인됨. Validate 스텝 env 보완은 별도 에픽.
+
+**조치**: `collect-schools.yml` timeout 60 → **120분 확장** (커밋 `7e29032`). 수집기 자체가 2,001단지 전수 순회라 incremental 없어 120분도 부족 가능성 — 필요 시 `--incremental` 플래그 또는 배치 분할 추가 에픽.
+
+## apartments_flat dedup 정렬 교정 (커밋 `7e29032`)
+
+**목적**: (오) 오피스텔 접미 쌍 7건 중 6건이 id가 커 `ORDER BY id DESC`에서 오피스텔이 VIEW 승자 → 일반분양 본체 숨김.
+
+**변경**: `supabase/migrations/20260419000000_view_dedup_prefer_general.sql` 신규. `ORDER BY (name LIKE '%(오)%') ASC, id DESC`. LIKE 결과 false(0)<true(1) ASC로 (오) 없는 쪽 우선. `_rollbacks/` 디렉토리 신설해 rollback 2개 `supabase db push` 대상 제외. `supabase/schema.sql` 동기화.
+
+**적용 대기**: `supabase db push`가 옛 마이그레이션(20260317 naver_price_history)에서 relation not exist로 막혀 CLI 경로 불가(세션97과 동일 이슈). MCP 권한 에러(`You do not have permission`). **사용자가 Supabase Dashboard SQL Editor에서 forward 파일 본문 수동 실행 필요**.
+
 ## 다음 세션 (119+) 진입점
 
 - schools 워크플로우 첫 완료 후 NEIS 보강 데이터가 실제로 저장되는지 사후 확인 (`schools.nearby_schools` 배열에 `neis_code`/`student_count` 키 추가 여부)
