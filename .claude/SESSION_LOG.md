@@ -1,3 +1,63 @@
+# 세션 124 — 2026-04-19 (Scoring JSDoc 에픽 2-B2 — 시리즈 완료)
+
+**거시 목적**: 백로그 4에픽 통합 플랜 에픽 2-B2 (안전·미래 JSDoc 2파일) 처리. 이로써 src/scoring/ 7파일 8함수 JSDoc 시리즈(에픽 2-A·2-B1·2-B2) 전부 완성.
+
+## 플랜
+
+- `~/.claude/plans/pwd-fizzy-storm.md` — 9 GATE 9🟢/0🟡/0🔴 (세션123 동일 패턴 선례)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 2-B2 진행
+
+## 커밋 (1건, origin/main `d83cafd..a2ea62e`)
+
+| 커밋 | 변경 |
+|------|------|
+| `a2ea62e` | docs(scoring): add JSDoc to scoreRisk/scoreFuture (epic 2-B2) |
+
+## 변경 (2파일, +72/-1)
+
+| 파일 | JSDoc 추가 대상 + 박제 규칙 |
+|---|---|
+| [scoreRisk.js](src/scoring/scoreRisk.js) | scoreRisk — 11서브 가중치 합 **1.0000** (실측 검산 PASS): unsold 0.14 · liq 0.14 · loan 0.15 · fin 0.17 · reg 0.05 · sup 0.10 · mkt 0.04 · cancel 0.04 · comp 0.09 · crime 0.05 · init 0.03. safety=100-risk 방향성(내부 sub*는 위험점수, 반환 subs[].score는 안전점수). listingPen(naverSellCount 임계), finSc 공공분양 보너스, isRegulated 폴백, newSupply 보정, crimeSc 복합(grade×0.7+police×0.3), 서브 구간 표 위치(CLAUDE.md L131~L191) 명시 |
+| [scoreFuture.js](src/scoring/scoreFuture.js) | scoreFuture — FUTURE_WEIGHT_MAP 8조합 합 항상 1.00, popSc 7단계 임계값(1.0/0.5/0/-0.3/-0.8/-2.0), TRANSIT_HIGH 1.2배 보너스, netMigration 보정(>0 +10/≤-5000 -5), indSc 산식. 5개 키워드 상수(TRANSIT_ACTIVE/PLANNED/HIGH, CITY_HIGH/MID) + matchAny 헬퍼에도 JSDoc 1줄씩 추가. `includes()` 부분 매칭 함정("신도" → "신도시"+"신도심") 3중 박제 |
+
+## 5교차검증 (병렬)
+
+- **빌드**: `npx vite build` 591ms — 번들 불변 (vendor 189.63KB · index 181.08KB)
+- **테스트**: scoring 157 PASS → 전체 **2422 PASS** (세션123 동일 유지)
+- **scoring-validator PASS** — JSDoc ↔ 실제 구현 ↔ src/scoring/CLAUDE.md 3축 일치
+  - scoreRisk L101 risk 산식 가중치 11개 합 1.0000 검산 → JSDoc 박제값 정확 일치
+  - FUTURE_WEIGHT_MAP 8조합 (000~111) 각 합이 모두 정확히 1.00 검산 (scoringTiers.js L161~L170)
+  - popSc 7단계 임계값 + TRANSIT_HIGH 1.2배 + netMigration 보정 + 키워드 상수 의미 모두 일치
+- **null-safety-checker PASS** — JSDoc 안전성 약속 정확
+  - matchAny 호출 6지점 모두 상위 가드(`!apt.transitDev || === "없음"` 등) 통과 후 → str=null 호출 불가 약속 정확
+  - FUTURE_WEIGHT_MAP[key] 8조합 키는 `${+bool}` 강제 변환으로 항상 존재 → fw undefined 불가
+  - 모든 null 분기(`== null`/`!= null`) 약속이 코드와 1:1 매칭
+- **lint**: 84 warnings (증가 0)
+
+## 회귀 없음
+
+- vite build 591ms (세션123 484ms 대비 정상 변동)
+- 번들 크기 모든 청크 불변
+- 외부 import 7파일 (engine.js·engine.test.js·subContext.test.js·scoringTiers.js·CLAUDE.md 등) 영향 0
+
+## Scoring JSDoc 시리즈 종합 (3세션 누적)
+
+| 세션 | 에픽 | 커밋 | 파일 | 함수 |
+|---|---|---|---|---|
+| 122 | 2-A | `7b4b0ad` | engine.js · scorePrice.js · computeRegionalMedians.js | sanitize · calcCats · calcAll · getAgeCoeff · getAreaAdj · scorePrice · computeRegionalMedians (7) |
+| 123 | 2-B1 | `d314f2f` | scoreLocation.js · scoreProduct.js · scoreBenefit.js | scoreLocation · scoreProduct · scoreBenefit (3) |
+| 124 | 2-B2 | `a2ea62e` | scoreRisk.js · scoreFuture.js | scoreRisk · scoreFuture (2) + matchAny 헬퍼 + 5 키워드 상수 |
+
+**총 8개 파일·12개 식별자** JSDoc 박제 완료. src/scoring/CLAUDE.md 의 모든 가중치·클램핑·null 처리·동적 가중치·키워드 그룹·서브 구간 규칙이 함수 옆에 박제됨.
+
+## 다음 세션 우선순위 (세션125+)
+
+1. **에픽 3-A** (eslint 10 호환성 조사, 커밋 없음, 0.5세션) — Node 버전·peer dep 실측, eslint 10 CHANGELOG 검토
+2. **에픽 3-B** (eslint 10 + Node engines 적용, 1세션) — package.json + .nvmrc + eslint.config.js + 워크플로우 3파일
+3. (이후) 에픽 4 KV→Upstash — Vercel 환경변수 확인 후 4-A1 착수
+
+---
+
 # 세션 123 — 2026-04-19 (Scoring JSDoc 에픽 2-B1)
 
 **거시 목적**: 백로그 4에픽 통합 플랜 에픽 2-B1 (입지·상품·혜택 JSDoc 3파일) 처리. 리스크 0, 1커밋 단일 단계.

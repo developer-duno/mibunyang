@@ -9,6 +9,13 @@
 
 ### 최근 3세션 (상세)
 
+**세션124 (2026-04-19)** — Scoring JSDoc 에픽 2-B2 안전·미래 — 시리즈 완료 (1커밋 origin/main `a2ea62e`)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 2-B2 진행. 9 GATE 9🟢/0🟡/0🔴 (세션123 동일 패턴 선례)
+- **2파일 +72/-1** — [scoreRisk.js](src/scoring/scoreRisk.js) (11서브 가중치 합 1.0000 검산 박제 + safety=100-risk 방향성 + listingPen·finSc 공공분양·crimeSc 복합·서브 구간 표 위치), [scoreFuture.js](src/scoring/scoreFuture.js) (FUTURE_WEIGHT_MAP 8조합 합 항상 1.00 + popSc 7단계 + TRANSIT_HIGH 1.2배 + netMigration 보정 + 5키워드 상수/matchAny 헬퍼 JSDoc + `includes()` 부분 매칭 함정 박제)
+- 5교차검증: scoring-validator 🟢 (FUTURE_WEIGHT_MAP 8조합 모두 합 1.00 검산, popSc 7단계 임계값 정확), null-safety-checker 🟢 (matchAny 상위 가드 6지점 검증, fw undefined 불가)
+- **Scoring JSDoc 시리즈 완성**: 3세션 누적 8파일 12식별자 (에픽 2-A `7b4b0ad` + 2-B1 `d314f2f` + 2-B2 `a2ea62e`)
+- 검증: 150 files / **2422 tests PASS** (세션123 동일 유지), `vite build` 591ms, 번들 불변, lint 84 warnings 유지
+
 **세션123 (2026-04-19)** — Scoring JSDoc 에픽 2-B1 입지·상품·혜택 (1커밋 origin/main `d314f2f`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 2-B1 진행. 9 GATE 9🟢/0🟡/0🔴 (세션122 에픽 2-A 동일 패턴 선례)
 - **3파일 +81/-0** — [scoreLocation.js](src/scoring/scoreLocation.js) (5서브 합 1.00 + airSc 복합 + walkMin/혐오시설 거리 보정 + INFRA_CONFIG 10항목 합 1.00 박제), [scoreProduct.js](src/scoring/scoreProduct.js) (PRODUCT_MAX 9항목 합 100 + 주택유형별 brandSc 상한 + presaleParking 폴백 박제), [scoreBenefit.js](src/scoring/scoreBenefit.js) (loanVal 공식 + maintSave 이중 가드 + price=0/totalWon=0 0나누기 방지 박제)
@@ -280,7 +287,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - ~~`AdminDashboard` 로딩 UI (`adminLoading` 상태 렌더링)~~ **완료 (세션122, 커밋 `88b7138` — `SkeletonList` statsLoading/adminLoading 2지점)**
 - ~~저장 액션(가중치·프리셋) 토스트 피드백 추가~~ **완료 (세션121 C, 커밋 `9e52be8` — 4지점 useToast 적용: 가중치 저장/초기화, 프리셋 저장/삭제)**
 - `AdminDashboard` 412줄 → 매출탭/승인탭 분리
-- `src/scoring/engine.js`·`scorePrice.js` JSDoc 추가 — **부분 완료**: 세션122 에픽 2-A 커밋 `7b4b0ad` (engine·scorePrice·computeRegionalMedians 7함수) + 세션123 에픽 2-B1 커밋 `d314f2f` (scoreLocation·Product·Benefit 3함수). 남은: scoreRisk/Future 2파일 (에픽 2-B2 예정)
+- ~~`src/scoring/engine.js`·`scorePrice.js` JSDoc 추가~~ **완료**: 세션122 에픽 2-A 커밋 `7b4b0ad` (engine·scorePrice·computeRegionalMedians 7함수) + 세션123 에픽 2-B1 커밋 `d314f2f` (scoreLocation·Product·Benefit 3함수) + 세션124 에픽 2-B2 커밋 `a2ea62e` (scoreRisk·scoreFuture 2함수 + matchAny + 5키워드 상수). **src/scoring/ 7파일 12식별자 JSDoc 시리즈 완성**.
 - ~~`api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼~~ **완료 (세션121, 커밋 `3cad834` — `createTimeseriesHandler` 팩토리 추출, 외부 동작 불변)**
 - `collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)
 
