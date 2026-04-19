@@ -9,6 +9,16 @@
 
 ### 최근 3세션 (상세)
 
+**세션127 (2026-04-20)** — 에픽 4-A1b-1: rateLimit 체인 Upstash 교체 (1커밋 origin/main `86eb15d..e479ade`)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4 재설계 — 원안 "prod 2파일 동시" → 5 하위 에픽 pair-commit 전략으로 분할
+- 9 GATE 1차 🔴2건(`vi.mock('@vercel/kv')` 10파일 회귀 리스크) → 2차 재검증 🟢9/🟡0/🔴0 (비대칭성 발견)
+- **비대칭 실측**: `vi.mock('../_lib/rateLimit.js')` **10회** 함수레벨 스텁(철벽) vs `vi.mock('../_lib/tokenBlacklist')` **0회** → rateLimit 선별 교체, tokenBlacklist 세션128 이월
+- **커밋 `e479ade`** (3파일 +8/-28): [redis.js](api/_lib/redis.js) 28→9줄 (`getInstance` getter 제거, `export const kv = Redis.fromEnv()` 직접 노출) + [rateLimit.js](api/_lib/rateLimit.js) L1 `@vercel/kv` → `./redis.js` + [rateLimit.test.js](api/_lib/rateLimit.test.js) L14 mock 경로 교체
+- Vercel Upstash 실측: `upstash-kv-fuchsia-pocket ● Available` 연결됨, `KV_REST_API_URL/TOKEN` 레거시 env 는 `Redis.fromEnv()` 공식 fallback (`nodejs.mjs:266-282` 실측) → env 추가 불필요
+- 5교차검증: null-safety-checker 🟢 (High/Med 0, Low 1 즉시 수정), 메인 보안 🟢 (fail-close `rateLimit.js:22-25` 불변)
+- 검증: 150 files / **2422 tests PASS** (세션126 동일), `vite build` 510ms, 번들 불변, `npm audit` 0건
+- `@vercel/kv` prod import 10 → 9 (rateLimit.js 제거)
+
 **세션126 (2026-04-19~20)** — 에픽 4-A0+4-A1a: Upstash 설치 + Lazy Redis Wrapper (2커밋 origin/main `c7ea9a1..f02bea0`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4 착수. 9 GATE 4차 재검증 🟢8/🟡1/🔴0 (GATE 3 🟡 유지 — prod 교체는 환경변수 주입 후 세션127 이월)
 - **커밋 `c7ea9a1`**: `npm install @upstash/redis@1.37.0 --save` — transitive 1.36.3 → direct 1.37.0 승격. semver 호환 `^1.31.3`, npm audit 0건

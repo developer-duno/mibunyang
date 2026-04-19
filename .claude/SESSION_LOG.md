@@ -1,3 +1,95 @@
+# 세션 127 — 2026-04-20 (에픽 4-A1b-1: rateLimit 체인 Upstash 교체)
+
+**거시 목적**: 통합 플랜 에픽 4 9 GATE 재설계 후 가장 낮은 리스크 구간(rateLimit 체인)만 선별 교체. tokenBlacklist 체인은 세션128+ 이월.
+
+## 플랜
+
+- `~/.claude/plans/pwd-jolly-blossom.md` — 하이브리드 D 선택 (문서 재설계 + rateLimit 체인만 커밋)
+- 9 GATE 2차 재검증 🟢9/🟡0/🔴0 통과
+- 원안 "prod 2파일 동시 교체" 폐기 근거 실측: `vi.mock('../_lib/rateLimit.js')` **10회** 존재(함수레벨 스텁 철벽) vs `vi.mock('../_lib/tokenBlacklist')` **0회** (비대칭 리스크) → tokenBlacklist 분리
+
+## 커밋 (1건, origin/main `86eb15d..e479ade`)
+
+| 커밋 | 변경 |
+|------|------|
+| `e479ade` | refactor(kv): migrate rateLimit chain to Upstash Redis wrapper |
+
+통합 플랜 `pwd-linear-rossum.md` 에픽 4 재설계는 gitignored 로컬 문서만 갱신 (레포 커밋 없음)
+
+## 변경 (3파일, +8/-28 순감 20줄)
+
+| 파일 | 변경 |
+|---|---|
+| [api/_lib/redis.js](../api/_lib/redis.js) | 28→9줄. `getRedisClient()` factory + `getInstance` getter 제거, `export const kv = Redis.fromEnv()` 직접 노출 |
+| [api/_lib/rateLimit.js](../api/_lib/rateLimit.js) | L1 `from "@vercel/kv"` → `from "./redis.js"` (1줄) |
+| [api/_lib/rateLimit.test.js](../api/_lib/rateLimit.test.js) | L7 주석 정정 + L14 `vi.mock('@vercel/kv')` → `vi.mock('./redis.js')` (3줄) |
+
+## 세션127 사전 실측 (의심 3건 해소)
+
+| 쟁점 | 실측 | 결과 |
+|------|------|------|
+| Vercel Upstash 설치 | `vercel integration ls` | `upstash-kv-fuchsia-pocket ● Available` (43일 전 연결) |
+| 환경변수 주입 | `vercel env ls` | `KV_REST_API_URL/TOKEN/REDIS_URL/KV_URL` (레거시 이름, 동일 Redis) |
+| @upstash/redis fallback | `node_modules/@upstash/redis/nodejs.mjs:266-282` Read | `UPSTASH_REDIS_REST_URL \|\| KV_REST_API_URL` 공식 지원 → env 추가 불필요 |
+
+## 9 GATE 2차 재검증 과정
+
+1차 검증 시 🔴 2건 발견(GATE 1 `vi.mock('@vercel/kv')` 10파일, GATE 3 7 간접 테스트 회귀 리스크) → 재설계 필요 판정.
+
+2차 "very thorough" 서브에이전트 병렬 실측으로 **비대칭성 확정**:
+
+| 체인 | 간접 호출 prod | 함수레벨 mock | 안전도 |
+|------|---------------|----------------|--------|
+| rateLimit | handler+consults 2개 | `vi.mock('../_lib/rateLimit.js')` 10회 | 🟢 매우 안전 |
+| tokenBlacklist | adminAuth+logout+verify+refresh+consults 5개 | `vi.mock('../_lib/tokenBlacklist')` 0회 | 🔴 고위험 |
+
+Plan 에이전트 대안 비교(A 코드0/B rateLimit/C 2체인/D 하이브리드) → **D 파레토 최적** 결론.
+
+## 5교차검증
+
+| 축 | 담당 | 결과 |
+|----|------|------|
+| 빌드 | 메인 | 🟢 `vite build` 510ms, 번들 불변 (vendor 189.63kB 세션126 동일) |
+| null 안전성 | `Task(subagent_type="null-safety-checker")` | 🟢 High/Medium 0, Low 1건 즉시 수정(주석 불일치) — `Redis.fromEnv()` null 전파 경로 0 확인, `_Redis` 생성자·`pipeline.exec()` 모두 인스턴스/배열 반환 보장 |
+| 보안 | 메인 | 🟢 env 하드코딩 0, fail-close `rateLimit.js:22-25` 제어흐름 불변, rate limit 바이패스 경로 없음 |
+
+## 검증 결과
+
+- **150 files / 2422 tests PASS** (세션126 기준 유지 — 회귀 0)
+- `npx vite build` 510ms, 번들 크기 diff 0
+- `npm audit` 0건 유지
+- rateLimit.test.js 단독: 9 케이스 228ms PASS
+
+## 설계 결정
+
+- **wrapper 단순화**: 세션126 `kv.getInstance.pipeline()` getter 구조는 `@vercel/kv` 의 `kv.pipeline()` 직접 호출과 비호환 → `export const kv = Redis.fromEnv()` 직접 노출
+- **Node 모듈 캐싱**: 첫 import 시점 1회 초기화 → lazy 의도 실질 보존
+- **pair-commit 전략**: 이후 tokenBlacklist 체인도 prod + test 동반 커밋 단위로 분할 (세션128+)
+
+## 범위 밖 (이월)
+
+| 작업 | 이월 | 이유 |
+|------|------|------|
+| tokenBlacklist.js + .test.js + adminAuth.test.js | 세션128 에픽 4-A1b-2 | 함수레벨 mock 0회 고위험 |
+| auth/{verify,refresh,logout}.test.js mock 경로 | 세션128+ 에픽 4-A1b-3 | tokenBlacklist 간접 호출 pair |
+| admin/* test mock + prod | 세션129+ 에픽 4-A1b-4 + 4-C | admin prod 교체와 pair |
+| `@vercel/kv` package.json 제거 + signup E2E | 에픽 4-D4 | 전 prod 마이그레이션 완료 후 |
+
+## 다음 세션 (세션128+) 우선순위
+
+1. 🔴 에픽 4-A1b-2: tokenBlacklist 체인 3파일 + 사전 실측 (`vi.mock('../_lib/tokenBlacklist')` 0회 배경 — 설계 의도 vs 누락)
+2. 🟡 4-A1b-3: auth/{verify,refresh,logout}.test.js mock 경로 교체 (test only)
+3. 🟢 에픽 4-B (auth prod 5파일) 단계적 pair 진행
+
+## 저장소 스냅샷
+
+- 브랜치: main, origin/main 동기 (`e479ade`)
+- 최근 커밋: `e479ade` ← `86eb15d` ← `f02bea0` ← `c7ea9a1` ← 세션125 `e9f0068`
+- 회귀: tsc 0, vitest 2422/2422 PASS, eslint 수정파일 미적용(api/ ignored)
+- npm audit: 0건
+
+---
+
 # 세션 126 — 2026-04-19~20 (에픽 4-A0+4-A1a: Upstash 설치 + Lazy Redis Wrapper)
 
 **거시 목적**: 통합 플랜 에픽 4 (KV→Upstash 마이그레이션) 첫 두 단계 병합 착수. prod 교체는 환경변수 주입 후 세션127 이월.
