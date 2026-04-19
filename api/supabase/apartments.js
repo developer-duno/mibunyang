@@ -247,18 +247,9 @@ function sanitizeTransport(row) {
   };
 }
 
-/**
- * null → 기본값으로 정리 (기존 JSON 호환 + 스코어링 엔진 안전)
- * CLAUDE.md: "위험 필드 null → 비관적 기본값, 혜택 필드 null → 0"
- */
-function sanitize(row) {
+/** 건설사 + 지역 + KOSIS 시장 통계 + 청약 경쟁률 (13개) */
+function sanitizeRegion(row) {
   return {
-    ...sanitizeFallbackFlags(row),
-    ...sanitizeBasics(row),
-    ...sanitizeBenefits(row),
-    ...sanitizeEnvironment(row),
-    ...sanitizeInfra(row),
-    ...sanitizeTransport(row),
     // 건설사
     builderDebtRatio: row.builderDebtRatio ?? 250,
     builderCreditGrade: row.builderCreditGrade ?? null,
@@ -266,7 +257,7 @@ function sanitize(row) {
     popGrowth: row.popGrowth ?? null,
     netMigration: row.netMigration ?? null,
     supplyRatio: row.supplyRatio ?? 150,
-    // 지역 시장 통계 (KOSIS HUG — 정보성, null 허용)
+    // KOSIS HUG 시장 통계 (정보성, null 허용)
     priceIndex: row.priceIndex ?? null,
     avgPriceSqm: row.avgPriceSqm ?? null,
     newSupply: row.newSupply ?? null,
@@ -276,7 +267,13 @@ function sanitize(row) {
     competitionRate: row.competitionRate ?? null,
     competitionSupply: row.competitionSupply ?? null,
     competitionApplicants: row.competitionApplicants ?? null,
-    // 실거래 (위험 필드 → 비관적 기본값)
+  };
+}
+
+/** 실거래 위험 필드 + 규제/보증 + 시세 배열 (16개, 네이버 폴백 포함) */
+function sanitizeTransaction(row) {
+  return {
+    // 실거래 (위험 필드 → 비관적 기본값, 네이버 폴백)
     nearbyMedian: row.nearbyMedian ?? row.naverNearbyMedian ?? null,
     recentTrades6m: row.recentTrades6m ?? 0,
     nearbyBuildYear: row.nearbyBuildYear ?? row.naverBuildYear ?? null,
@@ -290,14 +287,17 @@ function sanitize(row) {
     isRegulated: row.isRegulated ?? false,
     dsr40pass: row.dsr40pass ?? false,
     hugGuarantee: row.hugGuarantee ?? false,
-    // 시세 배열 (DetailModal 시세 테이블에서 사용)
+    // 시세 배열 (DetailModal 시세 테이블)
     priceByArea: row.priceByArea ?? [],
     rentByArea: row.rentByArea ?? [],
     jeonseByArea: row.jeonseByArea ?? [],
     priceByFloor: row.priceByFloor ?? [],
-    // 메타
-    dataReliability: row.dataReliability ?? 30,
-    // 네이버 교차검증 (null 허용 — 미수집 시 null)
+  };
+}
+
+/** 네이버 교차검증 11개 (null 허용 — 미수집 시 null) */
+function sanitizeNaverCross(row) {
+  return {
     naverNearbyMedian: row.naverNearbyMedian ?? null,
     naverNearbyAvg: row.naverNearbyAvg ?? null,
     naverJeonseRate: row.naverJeonseRate ?? null,
@@ -309,13 +309,12 @@ function sanitize(row) {
     naverSchoolWalkMin: row.naverSchoolWalkMin ?? null,
     naverNearbyCount: row.naverNearbyCount ?? null,
     naverFetchedAt: row.naverFetchedAt ?? null,
-    // 건축HUB 에너지 (null 허용 — 미수집 시 null)
-    elecUsageKwh: row.elecUsageKwh ?? null,
-    gasUsageMj: row.gasUsageMj ?? null,
-    energyCollectedAt: row.energyCollectedAt ?? null,
-    // 사전 스코어링 캐시 (JSONB → PostgREST 자동 파싱)
-    catsCache: row.catsCache ?? null,
-    // 네이버 분양정보 (pre.land.naver.com — null 허용, 미수집 시 null)
+  };
+}
+
+/** 네이버 분양정보 19개 (pre.land.naver.com — null 허용) */
+function sanitizePresale(row) {
+  return {
     presaleMinPrice: row.presaleMinPrice ?? null,
     presaleMaxPrice: row.presaleMaxPrice ?? null,
     presalePp: row.presalePp ?? null,
@@ -335,5 +334,30 @@ function sanitize(row) {
     presaleSchedule: row.presaleSchedule ?? null,
     presaleHousingType: row.presaleHousingType ?? null,
     presaleFetchedAt: row.presaleFetchedAt ?? null,
+  };
+}
+
+/**
+ * null → 기본값으로 정리 (기존 JSON 호환 + 스코어링 엔진 안전)
+ * CLAUDE.md: "위험 필드 null → 비관적 기본값, 혜택 필드 null → 0"
+ */
+function sanitize(row) {
+  return {
+    ...sanitizeFallbackFlags(row),
+    ...sanitizeBasics(row),
+    ...sanitizeBenefits(row),
+    ...sanitizeEnvironment(row),
+    ...sanitizeInfra(row),
+    ...sanitizeTransport(row),
+    ...sanitizeRegion(row),
+    ...sanitizeTransaction(row),
+    dataReliability: row.dataReliability ?? 30,
+    ...sanitizeNaverCross(row),
+    // 건축HUB 에너지 (인라인 — 3필드만)
+    elecUsageKwh: row.elecUsageKwh ?? null,
+    gasUsageMj: row.gasUsageMj ?? null,
+    energyCollectedAt: row.energyCollectedAt ?? null,
+    catsCache: row.catsCache ?? null,
+    ...sanitizePresale(row),
   };
 }
