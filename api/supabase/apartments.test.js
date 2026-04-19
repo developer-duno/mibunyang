@@ -333,4 +333,78 @@ describe('sanitize (null → 기본값)', () => {
     expect(d.initialSaleRate).toBeNull();
     expect(d.landCostRatio).toBeNull();
   });
+
+  // 리팩토링 회귀 방어: sanitize()가 모든 필드를 반환하는지 전수 검증
+  it('sanitize()는 전체 필드를 반환한다 (리팩토링 회귀 방어)', async () => {
+    const row = { id: 1, name: 'X', region: '경기' };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+
+    const expectedKeys = [
+      // _fallback 11개
+      '_fallbackPir', '_fallbackPsr', '_fallbackJeonseRate', '_fallbackSupplyRatio',
+      '_fallbackUnsoldRate', '_fallbackBuilderDebt', '_fallbackDataReliability',
+      '_fallbackNearbyMedian', '_fallbackNearbyBuildYear', '_fallbackAvgFloor',
+      '_fallbackCancelRatio6m',
+      // 기본 + 위치
+      'id', 'name', 'dong', 'gu', 'region', 'address', 'roadAddress', 'district',
+      'lat', 'lng', 'builder', 'avgMaintenanceCost', 'primaryDirection',
+      'heatFuel', 'corridorType', 'buildingCoverageRatio', 'layout', 'floors',
+      'units', 'unsold', 'unsoldRate', 'updatedAt', 'completion', 'heating',
+      'maxFloor', 'parkingRatio', 'floorAreaRatio', 'exclusiveRatio',
+      'energyGrade', 'greenBldg', 'quakeDesign', 'hasPool', 'announcementUrl',
+      // 혜택
+      'discountPct', 'loanFree', 'loanFreePct', 'optionFree', 'optionValue',
+      'balconyFree', 'balconyValue', 'cashback', 'contractDiscount', 'benefits',
+      // 미래가치 + 환경
+      'transitDev', 'devDist', 'cityDev', 'industryDev',
+      'view', 'sunlight', 'noise', 'noxious', 'noxiousDist',
+      // 분양가
+      'area', 'price', 'pp',
+      // 인프라
+      'hospital', 'hospitalDist', 'mart', 'conv', 'cafe', 'culture', 'bank',
+      'pharmacy', 'martDist', 'convDist', 'parkDist', 'cafeDist', 'cultureDist',
+      'bankDist', 'pharmacyDist', 'park', 'subwayDist', 'nearbyFacilities',
+      'childcare', 'childcareDist', 'emergency', 'emergencyDist', 'police', 'policeDist',
+      // 대기질/치안/학군
+      'airQuality', 'crimeSafetyGrade', 'schoolScore', 'schoolGrade', 'nearbySchools',
+      // 교통
+      'busRoutes', 'icDist', 'ktxDist', 'subwayName', 'subwayLines', 'busStopNames',
+      // 건설사/지역
+      'builderDebtRatio', 'builderCreditGrade',
+      'popGrowth', 'netMigration', 'supplyRatio',
+      // KOSIS 통계
+      'priceIndex', 'avgPriceSqm', 'newSupply', 'initialSaleRate', 'landCostRatio',
+      // 청약 경쟁률
+      'competitionRate', 'competitionSupply', 'competitionApplicants',
+      // 실거래
+      'nearbyMedian', 'recentTrades6m', 'nearbyBuildYear', 'avgFloor', 'floorRange',
+      'jeonseRate', 'pir', 'psr', 'cancelRatio6m',
+      // 규제/보증
+      'isRegulated', 'dsr40pass', 'hugGuarantee',
+      // 시세 배열
+      'priceByArea', 'rentByArea', 'jeonseByArea', 'priceByFloor',
+      // 메타
+      'dataReliability',
+      // 네이버 교차검증
+      'naverNearbyMedian', 'naverNearbyAvg', 'naverJeonseRate', 'naverSellCount',
+      'naverJeonseCount', 'naverWolseCount', 'naverBuildYear', 'naverAvgFloor',
+      'naverSchoolWalkMin', 'naverNearbyCount', 'naverFetchedAt',
+      // 건축HUB 에너지
+      'elecUsageKwh', 'gasUsageMj', 'energyCollectedAt',
+      // 스코어링 캐시
+      'catsCache',
+      // 분양정보 19개
+      'presaleMinPrice', 'presaleMaxPrice', 'presalePp', 'presaleType',
+      'presaleStage', 'presaleStageCode', 'presaleImageUrl', 'naverPresaleNo',
+      'naverPresaleSeq', 'presaleGeneralSupply', 'presaleBuildings', 'presaleParking',
+      'presaleInquiry', 'presaleFeatures', 'presaleMoveIn', 'presaleRecruitDate',
+      'presaleSchedule', 'presaleHousingType', 'presaleFetchedAt',
+    ];
+    for (const key of expectedKeys) {
+      expect(d).toHaveProperty(key);
+    }
+  });
 });
