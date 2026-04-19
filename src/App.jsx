@@ -24,6 +24,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useDataPipeline, VISIBLE_PAGE_SIZE } from "@/hooks/useDataPipeline";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { useKakaoAuth } from "@/hooks/useKakaoAuth";
+import { useLoginGate } from "@/hooks/useLoginGate";
 
 import { ShareSheet } from "@/components/ShareSheet";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
@@ -59,10 +60,6 @@ export default function App() {
     if (role === "expert") return "expert";
     return "list";
   });
-  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [loginTrigger, setLoginTrigger] = useState(null);
-  const [pendingDetailId, setPendingDetailId] = useState(null);
-
   // ── 커스텀 훅 13개 ──
   const { isPC, isDesktop } = useResponsive();
   const { toast, showToast } = useToast();
@@ -95,6 +92,13 @@ export default function App() {
     areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly,
     hideNoUnsold, compIds, dataUpdatedAt,
   });
+
+  // ── 비로그인 게이트 (LoginPromptModal 관련 3 state + 3 핸들러) ──
+  const {
+    showLoginPrompt, setShowLoginPrompt,
+    loginTrigger, setLoginTrigger,
+    handleDetailGated, handleKakaoFromPrompt, handleExpertFromPrompt,
+  } = useLoginGate({ isLoggedIn, detail, kakao, setTab });
 
   // ── 탭 전환/인증 네비게이션 ──
   const {
@@ -135,24 +139,6 @@ export default function App() {
       try { window.history.replaceState(null, "", "/"); } catch {}
     });
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── 비로그인 게이트: 카드 클릭 시 로그인 안내 ──
-  const handleDetailGated = useCallback((aptId) => {
-    if (isLoggedIn) { detail.handleOpenDetail(aptId); return; }
-    setPendingDetailId(aptId);
-    setLoginTrigger("detail");
-    setShowLoginPrompt(true);
-  }, [isLoggedIn, detail]);
-
-  const handleKakaoFromPrompt = useCallback(() => {
-    setShowLoginPrompt(false);
-    kakao.initKakaoLogin(pendingDetailId);
-  }, [kakao, pendingDetailId]);
-
-  const handleExpertFromPrompt = useCallback(() => {
-    setShowLoginPrompt(false);
-    setTab("expertLogin");
-  }, []);
 
   // ── containerMaxWidth ──
   const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
