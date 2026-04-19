@@ -1,3 +1,63 @@
+# 세션 119 3차 후속 — 2026-04-19 (sanitize 그룹 분리 + @vercel/analytics 2.0)
+
+**거시 목적**: 세션119 2차 후속에 이어 🟡 백로그 저리스크 2건 해소.
+
+## 플랜
+
+- `.claude/plans/session119-third-followup.md` (gitignore)
+- 9 GATE 1차 🟢9/🟡0 → 2차 🟢7/🟡2 (단계 6 분할 + 스냅샷 권고) → 3차 🟢9/🟡0/🔴0 최종
+
+## 커밋 (5건, origin/main)
+
+| 커밋 | 변경 | 파일 |
+|------|------|------|
+| `587826d` | test(api): add sanitize() field coverage snapshot before refactor | +74 |
+| `c5f704c` | refactor(api): extract sanitizeFallbackFlags + sanitizeBasics helpers | +24/-10 |
+| `8ca6980` | refactor(api): extract benefits/environment/infra/transport helpers | +37/-15 |
+| `d704adf` | refactor(api): extract transaction/naverCross/presale helpers | +48/-24 |
+| `22434c2` | chore(deps): @vercel/analytics 1.6.1 → 2.0.1 | +10/-6 |
+
+## sanitize() 최종 구조
+
+`apartments.js` 303→363줄 (+60). 7개 그룹 헬퍼 + 4단독 인라인:
+- `sanitizeFallbackFlags` (11) · `sanitizeBasics` (25, unsold/unsoldRate 특수 로직 포함)
+- `sanitizeBenefits` (10) · `sanitizeEnvironment` (9)
+- `sanitizeInfra` (29, 분양가+인프라+대기질/치안/학군 인라인 포함)
+- `sanitizeTransport` (6) · `sanitizeRegion` (13, 건설사+지역+KOSIS+청약)
+- `sanitizeTransaction` (16, 네이버 폴백 포함) · `sanitizeNaverCross` (11)
+- `sanitizePresale` (19)
+- 단독 인라인: `dataReliability`, 에너지 3필드, `catsCache` (그룹 소속 애매)
+
+## 실측 증거
+
+- `npm audit` 0 vulnerabilities (유지)
+- `npm ls @vercel/analytics` → `2.0.1`
+- `npm run test` **148 files / 2407 tests PASS** (세션119 후속 2406 → +1 스냅샷)
+- `vite build` 500ms, index 176.20→**176.74kB** (+0.54kB 미미)
+- analytics 2.0.1 peerDep `react: ^18 || ^19` → 현재 19.2.5 충족, `/react` subpath exports 유지 → `src/main.jsx` 수정 0
+
+## 5교차검증
+
+- 빌드: PASS (메인 agent, exit 0)
+- 보안: PASS (메인 agent) — `npm audit` 0 · analytics 2.0.1 소스 수정 0파일
+- null 안전성: PASS (null-safety-checker) — 7그룹 분리 전·후 규칙 동일 (위험 비관/혜택 0·false/정보성 null), `units·unsold·unsoldRate` 3중 조건 보존, `nearbyMedian` 2단 폴백 보존, `_fallbackNearbyMedian == null && != null` 논리 보존
+- Hook 규칙: N/A
+- simplify: PASS (메인 agent) — 대기질/치안/학군 5필드 인라인 유지 (과잉 분리 회피), 에너지 3필드 인라인, `dataReliability`·`catsCache` 단독 유지. 헬퍼 분리로 가독성·필드 추가 위치 명확성↑
+- 회귀: PASS — 2407 tests 전수 통과
+
+## TDD 사이클 요약
+
+- 6-pre: `toHaveProperty` 기반 전수 스냅샷 1건 추가 (6a~6c 안전장치)
+- 6a/6b/6c: 순수 리팩토링이므로 RED 없이 **"기존 테스트 PASS 유지"** 가 회귀 검증 역할. 각 커밋 후 `npm run test -- api/supabase/apartments.test.js` 21/21 확인 필수
+
+## 남은 🟡 백로그 (세션120+ 후보)
+
+- ESLint 10 / @vercel/kv 3 메이저 업그레이드 (breaking 동반)
+- App.jsx 442줄 → `useAppState()` 훅 분리 (효과 54줄, Hook 규칙 제약)
+- inline `onClick` 75건 · `style={{}}` 820건 전환 (대규모)
+
+---
+
 # 세션 119 후속 — 2026-04-19 (429 UX + 이메일 검증 공용화 + supabase-js 2.103)
 
 **거시 목적**: 세션119 미션의 남은 🟡 이슈 3건 해소 (`/improve` 백로그 후속).

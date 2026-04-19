@@ -9,6 +9,13 @@
 
 ### 최근 3세션 (상세)
 
+**세션119 3차 후속 (2026-04-19)** — sanitize 그룹 분리 + @vercel/analytics 2.0 (5커밋 origin/main)
+- `/improve` 🟡 백로그 저리스크 2건 해소. 9 GATE 3차 🟢9/🟡0/🔴0
+- **sanitize() 7그룹 분리** (커밋 `587826d`→`c5f704c`→`8ca6980`→`d704adf`): 193줄 단일 객체 → `sanitizeFallbackFlags`·`Basics`·`Benefits`·`Environment`·`Infra`·`Transport`·`Region`·`Transaction`·`NaverCross`·`Presale` 10헬퍼 + 4단독 인라인. 파일 303→363줄
+- **스냅샷 테스트 선행**: 54필드 `toHaveProperty` 전수 검증 1건 추가(587826d)로 리팩토링 회귀 방어
+- **@vercel/analytics 1.6.1→2.0.1** (커밋 `22434c2`): 메이저 업그레이드, `/react` subpath + `track()` 시그니처 유지로 **소스 수정 0파일**. peerDep react `^18||^19` 유지
+- 검증: 148 files / **2407 tests PASS** (이전 2406 → +1), `vite build` 500ms, `npm audit` 0건, 번들 +0.54kB
+
 **세션119 후속 (2026-04-19)** — 429 UX + 이메일 검증 공용화 + supabase-js 2.103 (5커밋 origin/main)
 - `/improve` 🟡 3건 묶음 해소. 9 GATE 1차 🟢8/🟡1 → 단계 4 분할 후 🟢9/🟡0/🔴0
 - **429 UX**: [src/hooks/useHistoryData.js](src/hooks/useHistoryData.js) · [src/services/staticDataApi.js](src/services/staticDataApi.js) 에 `res.status === 429` 분기 + 한국어 재시도 메시지 (커밋 `7b6d223`·`97b572e`)
@@ -217,13 +224,13 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 ### 🔴 즉시 (미션 1개 · 2단계)
 - ~~**미션 1 — 공개 API 보안**: `api/supabase/{apartments,prices,unsold-history}.js`에 `rateLimit: "proxy"` 추가 + `npm audit fix`로 dompurify moderate 해소 (GHSA-39q2-94rc-95cp)~~ **완료 (세션119, 4커밋 `deef147..be54322`)**
 
-### 🟡 곧 (이번 달 · 6건, 이 중 2건 완료)
-- 의존성 메이저 업그레이드: `eslint 10`, `@vercel/kv 3`, `@vercel/analytics 2`
+### 🟡 곧 (이번 달 · 6건, 이 중 4건 완료)
+- 의존성 메이저 업그레이드: `eslint 10`, `@vercel/kv 3`, ~~`@vercel/analytics 2`~~ **완료 (세션119 3차 후속, 커밋 `22434c2`)**
 - ~~`@supabase/supabase-js` 2.98→2.103 마이너~~ **완료 (세션119 후속, 커밋 `73b3295`)**
-- `onClick={() => ...}` inline 클로저 **131건** → useCallback (ExpertDashboard 등 상위)
+- `onClick={() => ...}` inline 클로저 75건(실측) → useCallback (ExpertDashboard 등 상위)
 - ~~`admin/review.js:72` 이메일 `.includes("@")` → RFC 5322 정규식~~ **완료 (세션119 후속, 커밋 `1d4f3c3`·`295334c` — 공용 `isValidEmail()` 추출)**
 - `App.jsx` 442줄 → `useAppState()` 훅 분리 (250줄 목표)
-- `api/supabase/apartments.js` sanitize() 54필드 → 그룹별 분리
+- ~~`api/supabase/apartments.js` sanitize() 54필드 → 그룹별 분리~~ **완료 (세션119 3차 후속, 커밋 `587826d`→`d704adf` — 7헬퍼 + 스냅샷 테스트)**
 
 ### 🟢 여유 (분기 내 · 8건)
 - inline `style={{...}}` **787건** → CSS 상수·className 전환 (대규모)
