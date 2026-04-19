@@ -9,6 +9,14 @@
 
 ### 최근 3세션 (상세)
 
+**세션121 단계 C (2026-04-19)** — 저장 액션 토스트 피드백 (1커밋 origin/main `9e52be8`)
+- 🟢 백로그 "저장 액션(가중치·프리셋) 토스트 피드백" 해소. 기존 useToast 패턴 4지점 적용
+- [WeightEditor.jsx](src/components/admin/WeightEditor.jsx) +4 / [AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx) +2 / [SearchFilterBar.jsx](src/components/sections/SearchFilterBar.jsx) +6 / [App.jsx](src/App.jsx) +2
+- 토스트 4종: `"가중치가 저장되었습니다"` · `"프로필이 초기화되었습니다"` · `"프리셋이 저장되었습니다"` · `"프리셋이 삭제되었습니다"`
+- 기본값 `showToast = () => {}` 폴백으로 기존 테스트 수정 없이 통과. prop drilling 2레벨
+- 9 GATE 🟢9/🟡0/🔴0, null-safety Review PASS (Medium 1건 즉시 수정: 삭제 실패 시 토스트 안 뜨도록 조건 가드)
+- 검증: 150 files / **2418 tests PASS** 유지, `vite build` 396ms, 번들 +0.13kB
+
 **세션121 단계 A (2026-04-19)** — onClick inline → useCallback 안정화 (1커밋 origin/main `1ed7db3`)
 - 🟡 백로그 "onClick inline 75건 → useCallback" 실효 타깃 6건 집중 처리 (루프 28건·이미 적용 6건·trivial 다수 의식적 배제)
 - **[ExpertDashboard.jsx](src/components/expert/ExpertDashboard.jsx)** (125→126) — `handleSelect` useCallback 래핑 → ExpertSidebar(memo) 불필요 리렌더 방지
@@ -265,7 +273,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - inline `style={{...}}` **787건** → CSS 상수·className 전환 (대규모)
 - `LoanRatesSection:49` 금리 탭 Skeleton 보강
 - `AdminDashboard` 로딩 UI (`adminLoading` 상태 렌더링)
-- 저장 액션(가중치·프리셋) 토스트 피드백 추가
+- ~~저장 액션(가중치·프리셋) 토스트 피드백 추가~~ **완료 (세션121 C, 커밋 `9e52be8` — 4지점 useToast 적용: 가중치 저장/초기화, 프리셋 저장/삭제)**
 - `AdminDashboard` 412줄 → 매출탭/승인탭 분리
 - `src/scoring/engine.js`·`scorePrice.js` JSDoc 추가
 - ~~`api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼~~ **완료 (세션121, 커밋 `3cad834` — `createTimeseriesHandler` 팩토리 추출, 외부 동작 불변)**

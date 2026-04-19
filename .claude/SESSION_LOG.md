@@ -1,3 +1,81 @@
+# 세션 121 단계 C — 2026-04-19 (저장 액션 토스트 피드백 추가)
+
+**거시 목적**: 🟢 백로그 "저장 액션(가중치·프리셋) 토스트 피드백" 해소. 4개 저장 지점의 무반응 UX를 기존 useToast 패턴으로 통일.
+
+## 플랜
+
+- `~/.claude/plans/pwd-zazzy-pumpkin.md` (단계 B·A 실행 후 C로 갱신)
+- Explore 실측: useToast 선례 5곳 패턴 확인, prop drilling 2레벨 (App → AdminDashboard → WeightEditor / App → SearchFilterBar)
+- 9 GATE 1차 🟢9/🟡0/🔴0 → 실행 허가
+
+## 커밋 (1건, origin/main `f475114..9e52be8`)
+
+| 커밋 | 변경 |
+|------|------|
+| `9e52be8` | feat(components): add toast feedback for save actions (weights·presets) |
+
+## 수정 파일 (4파일, +18/-9)
+
+| 파일 | 변경 |
+|---|---|
+| [WeightEditor.jsx](src/components/admin/WeightEditor.jsx) | +4 — showToast prop(default `() => {}`) + handleSave·handleReset 성공 호출 + deps |
+| [AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx) | +2 — showToast prop 수신 + WeightEditor 릴레이 |
+| [SearchFilterBar.jsx](src/components/sections/SearchFilterBar.jsx) | +6 — showToast prop + handlePresetSave·onDeletePreset 호출 (삭제는 핸들러 존재 시만) |
+| [App.jsx](src/App.jsx) | +2 — AdminDashboard·SearchFilterBar에 showToast 전달 |
+
+## 토스트 메시지 4종
+
+| 지점 | 메시지 |
+|---|---|
+| WeightEditor.handleSave | `"가중치가 저장되었습니다"` |
+| WeightEditor.handleReset | `"프로필이 초기화되었습니다"` |
+| SearchFilterBar.handlePresetSave | `"프리셋이 저장되었습니다"` |
+| SearchFilterBar 프리셋 삭제 | `"프리셋이 삭제되었습니다"` |
+
+## 9 GATE 검증 (전원 🟢)
+
+| Gate | 판정 | 증거 |
+|---|---|---|
+| 0 Sonnet 크기 | 🟢 | 4파일, 단일파일 최대 +6줄, 관심사 1개 |
+| 1 영향 범위 | 🟢 | useToast 선례 5곳 패턴 일치, App.jsx 이미 useToast 보유 |
+| 2 실행 순서 | 🟢 | 1커밋, prop drilling 경로 자연스러움 |
+| 3 완전성 | 🟢 | 4개 저장 지점 모두 커버 |
+| 4 적정성 | 🟢 | 기본값 폴백으로 테스트 호환, Context 도입 없이 prop 2레벨 유지 |
+| 5 보안 | 🟢 | 메시지 고정 리터럴, XSS 0 |
+| 6 연동 일관성 | 🟢 | useToast API 형식·메시지 톤 기존 선례와 일치 |
+| 7 롤백 | 🟢 | 단일 커밋 revert |
+| 8 UX·확장성 | 🟢 | 2.2초 자동 소거 기존 동작 유지 |
+
+## 검증
+
+| 체크 | 결과 | 에이전트 |
+|---|---|---|
+| 타깃 테스트 | **WeightEditor 없음 / AdminDashboard 25/25 / SearchFilterBar 14/14 PASS** | 메인 (vitest) |
+| 전체 테스트 | **2418 PASS / 150 files** 유지 | 메인 (vitest) |
+| vite build | **396ms 성공**, index.js +0.13kB | 메인 |
+| null 안전성 | **PASS (High 0, Medium 1→해소 0, Low 0)** — 삭제 시퀀스 UX 불일치 지적 즉시 수정 | null-safety-checker |
+| Hook 규칙 | **PASS (조건부 호출 0)** | null-safety-checker |
+| 보안 | **PASS** | 메인 (문자열 리터럴) |
+
+## Review 중 피드백 반영
+
+null-safety-checker가 지적한 Medium 1건 (`onDeletePreset?.(p.key); showToast(...)` → 삭제 실패해도 토스트 뜨는 UX 불일치) 즉시 수정: `if (onDeletePreset) { onDeletePreset(p.key); showToast(...); }` 로 조건부 실행 보장. 재검증 14/14 PASS.
+
+## 교훈
+
+- **기본값 폴백으로 테스트 호환성 확보**: `showToast = () => {}` destructuring default가 prop 없는 기존 테스트 그대로 통과시킴. 등가 리팩토링 성공 지표 유지
+- **Review 단계에서 UX 이슈 즉시 수정**: null-safety-checker가 Medium으로 지적한 "옵셔널 체이닝 실패 시에도 토스트 뜸"은 크래시 아니지만 사용자 혼란 요인. 정직하게 `if (handler)` 조건 가드로 고치는 편이 3줄이라도 옳음
+- **useToast 기존 패턴 활용**: 새 토스트 시스템 도입 없이 5곳에서 검증된 API 재사용 → 인지 비용 0
+
+## 다음 단계 (세션122 후보)
+
+- 🟢 LoanRatesSection Skeleton 보강 + AdminDashboard 로딩 UI (공통 Skeleton 컴포넌트 신설)
+- 🟢 AdminDashboard 412→420줄 → 매출탭/승인탭 분리
+- 🟢 src/scoring/engine.js·scorePrice.js JSDoc
+- 🟡 eslint 10 / @vercel/kv 3 메이저 업그레이드 (브레이킹 체인지 조사 후)
+
+---
+
 # 세션 121 단계 A — 2026-04-19 (onClick inline → useCallback 안정화)
 
 **거시 목적**: 🟡 백로그 "onClick inline 75건 → useCallback (ExpertDashboard 등 상위)"의 실효 타깃 6건 집중 처리. 단계 B 후속.
