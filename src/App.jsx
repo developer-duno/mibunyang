@@ -25,6 +25,8 @@ import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { useKakaoAuth } from "@/hooks/useKakaoAuth";
 import { useLoginGate } from "@/hooks/useLoginGate";
 import { useShareCallbacks } from "@/hooks/useShareCallbacks";
+import { useKakaoCallbackEffect } from "@/hooks/useKakaoCallbackEffect";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 import { ShareSheet } from "@/components/ShareSheet";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
@@ -112,33 +114,8 @@ export default function App() {
     budgetMin, budgetMax, isLoggedIn, onLoginRequired: () => { setLoginTrigger("map"); setShowLoginPrompt(true); },
   });
 
-  // ── 카카오 콜백 처리 ──
-  useEffect(() => {
-    if (tab !== "kakaoCallback") return;
-    kakao.handleKakaoCallback().then(result => {
-      if (result?.ok) {
-        localStorage.setItem("expertToken", result.token);
-        if (result.refreshToken) localStorage.setItem("refreshToken", result.refreshToken);
-        const role = result.role || "user";
-        localStorage.setItem("userRole", role);
-        expert.setExpertLoggedIn(true);
-        expert.setAuthUser(result.user);
-        if (role === "admin") { admin.setAdminLoggedIn(true); setTab("admin"); }
-        else if (role === "expert") { setTab("expert"); }
-        else {
-          // 일반 사용자: pendingDetail 복원 또는 목록으로
-          if (result.pendingDetail) { detail.setDetailAptId(result.pendingDetail); }
-          setTab("list");
-        }
-        showToast("로그인 성공");
-        trackEvent("kakao_login", { role, isNew: !result.user.affiliation });
-      } else {
-        setTab("list");
-      }
-      // URL 정리
-      try { window.history.replaceState(null, "", "/"); } catch {}
-    });
-  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── 카카오 OAuth 콜백 useEffect ──
+  useKakaoCallbackEffect({ tab, kakao, expert, admin, detail, setTab, showToast });
 
   // ── containerMaxWidth ──
   const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
@@ -150,21 +127,8 @@ export default function App() {
     unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly,
   });
 
-  // ── 독립 useEffect: 데스크톱 키보드 단축키 ──
-  useEffect(() => {
-    if (!isDesktop) return;
-    const profileKeys = Object.keys(PROFILES);
-    const handler = (e) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key >= "1" && e.key <= "5") { e.preventDefault(); setProfile(profileKeys[Number(e.key) - 1]); return; }
-      if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey && canUndo) { e.preventDefault(); undo(); return; }
-      if (((e.key === "z" && e.shiftKey) || e.key === "y") && (e.ctrlKey || e.metaKey) && canRedo) { e.preventDefault(); redo(); return; }
-      if (e.key === "Escape" && detail.detailAptId) { e.preventDefault(); detail.setDetailAptId(null); }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [isDesktop, setProfile, canUndo, canRedo, undo, redo, detail.detailAptId, detail.setDetailAptId]);
+  // ── 데스크톱 키보드 단축키 ──
+  useKeyboardShortcuts({ isDesktop, setProfile, canUndo, canRedo, undo, redo, detail });
 
   // ── 독립 useEffect: print CSS ──
   useEffect(() => {

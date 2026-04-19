@@ -9,8 +9,11 @@ useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개
   → useCallback (setProfile, saveCustomWeights, toggleHideNoUnsold, closeDetail)
   → 커스텀 훅 13개 (useResponsive → useToast → ... → useShare)
   → useDataPipeline (useMemo 14개 + visibleCount + reset useEffect)
+  → useLoginGate (state 3개 + callback 3개, onLoginRequired 참조 위해 Nav 앞에 배치)
   → useAppNavigation (useCallback 7개 + useRef 2개 + useEffect 2개)
-  → 공유 콜백 3개 (handleShare*) + scoredMapRef
+  → useKakaoCallbackEffect (void, [tab] deps eslint-disable 유지)
+  → useShareCallbacks (callback 3개 + scoredMapRef 내부 관리)
+  → useKeyboardShortcuts (void, 데스크톱 가드)
   → 독립 useEffect 3개 (print CSS, URL 딥링크, 무효 ID 정리)
   → JSX
 ```
@@ -18,6 +21,7 @@ useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개
 - 각 커스텀 훅 내부: useState → useRef → useCallback → useEffect 순서 보장
 - React Rules of Hooks: 조건문 안에서 호출 금지, 순서 변경 금지
 - **TDZ 방지**: 훅 매개변수가 해당 훅 호출 이전에 정의되어야 함 (Vite 빌드 const 재배열)
+- **useLoginGate 위치**: `useAppNavigation`의 `onLoginRequired` 콜백이 `setLoginTrigger`/`setShowLoginPrompt`를 참조하므로 Nav **앞**에 호출
 
 ---
 
