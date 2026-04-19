@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, memo } from "react";
+import { useState, useMemo, useEffect, useCallback, memo } from "react";
 import { C, F } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { PROFILES } from "@/constants/profiles";
@@ -33,10 +33,11 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const selectedId = expandedApt || (scored.length > 0 ? scored[0].apt.id : null);
   const selectedItem = useMemo(() => scored.find(x => x.apt.id === selectedId), [scored, selectedId]);
 
-  const handleSelect = (id) => {
+  // ExpertSidebar(memo)에 onSelect prop 전달 — 참조 안정화로 불필요 리렌더 방지
+  const handleSelect = useCallback((id) => {
     setExpandedApt(id);
     setSidebarOpen(false);
-  };
+  }, [setExpandedApt]);
 
   return (
     <div style={{ display: "flex", height: "calc(100dvh - 100px)", position: "relative" }}>

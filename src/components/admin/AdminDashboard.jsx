@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, useCallback } from "react";
 import { C, F } from "@/theme";
 import { AdminHelpGuide } from "./AdminHelpGuide";
 import WeightEditor from "./WeightEditor";
@@ -117,6 +117,14 @@ function StatsSection({ stats }) {
 export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights, scored }) {
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // 고정 파라미터 핸들러 — 참조 안정화 (루프 내부 바인딩은 제외)
+  const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
+  const handleLogoutClick = useCallback(() => admin.handleAdminLogout(onLogout), [admin, onLogout]);
+  const handleBatchApprove = useCallback(() => admin.handleBatchReview("approve"), [admin]);
+  const handleBatchReject = useCallback(() => admin.handleBatchReview("reject"), [admin]);
+  const handlePagePrev = useCallback(() => admin.handlePageChange(admin.page - 1), [admin]);
+  const handlePageNext = useCallback(() => admin.handlePageChange(admin.page + 1), [admin]);
+
   return (
     <div style={{ padding: "0 16px" }}>
       {/* Header */}
@@ -125,7 +133,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
           <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text }}>관리자 대시보드</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => setHelpOpen(v => !v)} style={{
+          <button onClick={toggleHelp} style={{
             background: helpOpen ? C.purple : C.purpleLight, color: helpOpen ? C.white : C.purple,
             border: `1px solid ${C.purple}`, borderRadius: 6,
             padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
@@ -136,7 +144,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
               padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
             }}>전문가 보기</button>
           )}
-          <button onClick={() => admin.handleAdminLogout(onLogout)} style={{
+          <button onClick={handleLogoutClick} style={{
             background: C.redLight, color: C.red, border: `1px solid #FECACA`, borderRadius: 6,
             padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
           }}>로그아웃</button>
@@ -223,7 +231,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
               <span style={{ fontSize: F.xs, color: C.muted }}>{admin.selectedEmails.size}건 선택</span>
               <button
                 disabled={admin.batchLoading}
-                onClick={() => admin.handleBatchReview("approve")}
+                onClick={handleBatchApprove}
                 style={{
                   padding: "6px 14px", fontSize: F.sm, fontWeight: 700, borderRadius: 6,
                   background: C.green, color: C.white, border: "none",
@@ -232,7 +240,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
                 }}>일괄 승인</button>
               <button
                 disabled={admin.batchLoading}
-                onClick={() => admin.handleBatchReview("reject")}
+                onClick={handleBatchReject}
                 style={{
                   padding: "6px 14px", fontSize: F.sm, fontWeight: 700, borderRadius: 6,
                   background: C.white, color: C.red, border: `1.5px solid ${C.red}`,
@@ -387,7 +395,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       {/* 페이지네이션 */}
       {admin.totalUsers > admin.PAGE_SIZE && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
-          <button type="button" disabled={admin.page === 0} onClick={() => admin.handlePageChange(admin.page - 1)}
+          <button type="button" disabled={admin.page === 0} onClick={handlePagePrev}
             style={{
               padding: "6px 14px", fontSize: F.sm, fontWeight: 600, borderRadius: 6,
               border: `1px solid ${C.border}`, background: admin.page === 0 ? C.slate100 : C.white,
@@ -397,7 +405,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
             {admin.page * admin.PAGE_SIZE + 1}~{Math.min((admin.page + 1) * admin.PAGE_SIZE, admin.totalUsers)}건 / 전체 {admin.totalUsers}건
           </span>
           <button type="button" disabled={(admin.page + 1) * admin.PAGE_SIZE >= admin.totalUsers}
-            onClick={() => admin.handlePageChange(admin.page + 1)}
+            onClick={handlePageNext}
             style={{
               padding: "6px 14px", fontSize: F.sm, fontWeight: 600, borderRadius: 6,
               border: `1px solid ${C.border}`,
