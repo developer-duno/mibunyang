@@ -108,11 +108,13 @@ describe("AdminDashboard", () => {
     expect(screen.getByText("대기중인 신청이 없습니다")).toBeTruthy();
   });
 
-  // 로딩 중 표시
-  it("adminLoading이 true이면 로딩 메시지를 표시한다", () => {
+  // 로딩 중 Skeleton 표시
+  it("adminLoading이 true이면 Skeleton 로딩 UI를 표시한다", () => {
     const admin = makeAdmin({ adminLoading: true });
-    render(<AdminDashboard {...defaultProps()} admin={admin} />);
-    expect(screen.getByText("로딩 중...")).toBeTruthy();
+    const { container } = render(<AdminDashboard {...defaultProps()} admin={admin} />);
+    const skeleton = container.querySelector("div[aria-hidden='true']");
+    expect(skeleton).toBeTruthy();
+    expect(skeleton.children.length).toBe(3);
   });
 
   // pending 사용자 — 승인/거부 버튼 표시

@@ -4,6 +4,7 @@ import { fmtPrice } from "@/lib/format";
 import { thStyle, tdStyle } from "./tableStyles";
 import { useLoanRates } from "@/hooks/useLoanRates";
 import { LOAN_GROUPS, DEFAULT_GROUP } from "@/constants/loanGroups";
+import { SkeletonText } from "@/components/primitives";
 
 export const LoanRatesSection = memo(function LoanRatesSection({ apt }) {
   const [showRates, setShowRates] = useState(false);
@@ -46,7 +47,7 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }) {
             ))}
           </div>
 
-          {ratesLoading && <div style={{ fontSize: F.xs, color: C.muted, padding: "12px 0", textAlign: "center" }}>금리 정보를 불러오는 중...</div>}
+          {ratesLoading && <SkeletonText lines={4} width="90%" />}
           {ratesError && <div style={{ fontSize: F.xs, color: C.red, padding: "12px 0", textAlign: "center" }}>금리 정보를 불러올 수 없습니다</div>}
           {!ratesLoading && !ratesError && loanRates.length === 0 && (
             <div style={{ fontSize: F.xs, color: C.muted, padding: "12px 0", textAlign: "center" }}>금리 정보가 없습니다</div>

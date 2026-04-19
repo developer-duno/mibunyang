@@ -109,3 +109,46 @@ export const Radar = memo(function Radar({ data: _data, size = 130 }) {
     </svg>
   );
 });
+
+// Skeleton — 로딩 placeholder. @keyframes skeleton-pulse 는 AptListSection 과 동일 (1.5s)
+const SKELETON_STYLE = `@keyframes skeleton-pulse { 0%{opacity:1} 50%{opacity:0.4} 100%{opacity:1} }`;
+const pulseStyle = { animation: "skeleton-pulse 1.5s ease-in-out infinite" };
+
+export const SkeletonBox = memo(function SkeletonBox({ width = "100%", height = 12, radius = 4 }) {
+  return (
+    <>
+      <style>{SKELETON_STYLE}</style>
+      <div aria-hidden="true" style={{ width, height, background: C.slate100, borderRadius: radius, ...pulseStyle }} />
+    </>
+  );
+});
+
+export const SkeletonText = memo(function SkeletonText({ lines = 3, width = "80%" }) {
+  return (
+    <>
+      <style>{SKELETON_STYLE}</style>
+      <div aria-hidden="true" style={{ padding: "12px 0", ...pulseStyle }}>
+        {Array.from({ length: lines }, (_, i) => (
+          <div key={i} style={{ height: 12, width: i === lines - 1 ? "60%" : width, background: C.slate100, borderRadius: 4, marginBottom: i === lines - 1 ? 0 : 8 }} />
+        ))}
+      </div>
+    </>
+  );
+});
+
+export const SkeletonList = memo(function SkeletonList({ count = 3, columns = 1 }) {
+  return (
+    <>
+      <style>{SKELETON_STYLE}</style>
+      <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: 12, padding: "12px 0" }}>
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, ...pulseStyle }}>
+            <div style={{ height: 14, width: "50%", background: C.slate100, borderRadius: 4, marginBottom: 10 }} />
+            <div style={{ height: 12, width: "85%", background: C.slate100, borderRadius: 4, marginBottom: 6 }} />
+            <div style={{ height: 12, width: "35%", background: C.slate100, borderRadius: 4 }} />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+});

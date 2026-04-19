@@ -2,6 +2,7 @@ import { memo, useState, useCallback } from "react";
 import { C, F } from "@/theme";
 import { AdminHelpGuide } from "./AdminHelpGuide";
 import WeightEditor from "./WeightEditor";
+import { SkeletonList } from "@/components/primitives";
 
 const STATUS_TABS = [
   { key: "pending", label: "대기중", color: "#92400E", bg: "#FFFBEB" },
@@ -158,9 +159,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
 
       {/* Stats Section */}
       {admin.stats && <StatsSection stats={admin.stats} />}
-      {admin.statsLoading && (
-        <div style={{ textAlign: "center", padding: 16, color: C.muted, fontSize: F.sm, marginBottom: 12 }}>통계 로딩 중...</div>
-      )}
+      {admin.statsLoading && <SkeletonList count={4} columns={2} />}
 
       {/* Expert Applications Section */}
       <div style={{ marginBottom: 12 }}>
@@ -204,9 +203,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
         })}
       </div>
 
-      {admin.adminLoading && (
-        <div style={{ textAlign: "center", padding: 20, color: C.muted, fontSize: F.sm }}>로딩 중...</div>
-      )}
+      {admin.adminLoading && <SkeletonList count={3} columns={1} />}
 
       {!admin.adminLoading && admin.users.length === 0 && (
         <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>

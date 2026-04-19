@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { Bar, ScoreBadge, Radar, LineChart } from "./primitives";
+import { Bar, ScoreBadge, Radar, LineChart, SkeletonBox, SkeletonText, SkeletonList } from "./primitives";
 
 describe("Bar", () => {
   // null/undefined value는 0으로 폴백
@@ -167,5 +167,37 @@ describe("LineChart", () => {
     act(() => { vi.advanceTimersByTime(3000); });
     expect(container.querySelector('circle[r="5"]')).toBeNull();
     vi.useRealTimers();
+  });
+});
+
+describe("SkeletonBox", () => {
+  it("기본 prop 으로 렌더링", () => {
+    const { container } = render(<SkeletonBox />);
+    const el = container.querySelector("div[aria-hidden='true']");
+    expect(el).toBeInTheDocument();
+    expect(el.style.animation).toContain("skeleton-pulse");
+  });
+});
+
+describe("SkeletonText", () => {
+  it("lines prop 개수만큼 bar 렌더링 (마지막은 60%)", () => {
+    const { container } = render(<SkeletonText lines={4} />);
+    const wrapper = container.querySelector("div[aria-hidden='true']");
+    expect(wrapper.children.length).toBe(4);
+  });
+
+  it("기본 lines=3 이면 3줄 렌더링", () => {
+    const { container } = render(<SkeletonText />);
+    const wrapper = container.querySelector("div[aria-hidden='true']");
+    expect(wrapper.children.length).toBe(3);
+  });
+});
+
+describe("SkeletonList", () => {
+  it("count prop 개수만큼 카드 렌더링", () => {
+    const { container } = render(<SkeletonList count={5} columns={2} />);
+    const grid = container.querySelector("div[aria-hidden='true']");
+    expect(grid.children.length).toBe(5);
+    expect(grid.style.gridTemplateColumns).toBe("repeat(2, 1fr)");
   });
 });
