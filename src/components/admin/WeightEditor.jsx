@@ -5,7 +5,7 @@ import { PROFILES } from "@/constants/profiles";
 const CAT_LABELS = { location: "입지", product: "상품", price: "가격", risk: "안전", benefit: "혜택", future: "미래" };
 const CAT_KEYS = ["location", "product", "price", "risk", "benefit", "future"];
 
-export default memo(function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, scored }) {
+export default memo(function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }) {
   const [editingProfile, setEditingProfile] = useState(null);
   const [draft, setDraft] = useState({});
   const [previewAptIdx, setPreviewAptIdx] = useState(0);
@@ -32,14 +32,16 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
     saveCustomWeights(next);
     setEditingProfile(null);
     setDraft({});
-  }, [sum, editingProfile, draft, customWeights, saveCustomWeights]);
+    showToast("가중치가 저장되었습니다");
+  }, [sum, editingProfile, draft, customWeights, saveCustomWeights, showToast]);
 
   const handleReset = useCallback((pKey) => {
     const next = { ...customWeights };
     delete next[pKey];
     saveCustomWeights(next);
     if (editingProfile === pKey) { setEditingProfile(null); setDraft({}); }
-  }, [customWeights, saveCustomWeights, editingProfile]);
+    showToast("프로필이 초기화되었습니다");
+  }, [customWeights, saveCustomWeights, editingProfile, showToast]);
 
   // Top 5 apartments for score breakdown preview
   const topApts = useMemo(() => (scored || []).slice(0, 5), [scored]);

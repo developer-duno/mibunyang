@@ -42,6 +42,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterHistory, onApplyHistory, onClearHistory,
   onUndo, onRedo, canUndo, canRedo,
   filterOptionCounts,
+  showToast = () => {},
 }) {
   /* ── 드롭다운 상태 (한번에 하나만) ── */
   const [openPanel, setOpenPanel] = useState(null);
@@ -68,8 +69,13 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   const [presetName, setPresetName] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
   const handlePresetSave = useCallback(() => {
-    if (presetName.trim() && onSavePreset) { onSavePreset(presetName); setPresetName(""); setShowPresetInput(false); }
-  }, [presetName, onSavePreset]);
+    if (presetName.trim() && onSavePreset) {
+      onSavePreset(presetName);
+      setPresetName("");
+      setShowPresetInput(false);
+      showToast("프리셋이 저장되었습니다");
+    }
+  }, [presetName, onSavePreset, showToast]);
 
   /* 트리거 버튼 요약 텍스트 */
   const regionSummary = filterRegion !== "전체" ? (filterGu !== "전체" ? `${filterRegion} ${filterGu}` : filterRegion) : null;
@@ -165,7 +171,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
                       background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
                       borderRadius: "5px 0 0 5px", cursor: "pointer", whiteSpace: "nowrap",
                     }}>{p.label}</button>
-                    <button onClick={() => onDeletePreset?.(p.key)} aria-label={`${p.label} 삭제`} style={{
+                    <button onClick={() => { if (onDeletePreset) { onDeletePreset(p.key); showToast("프리셋이 삭제되었습니다"); } }} aria-label={`${p.label} 삭제`} style={{
                       fontSize: 9, padding: "4px 5px", height: 30, background: C.greenLight, color: C.green,
                       border: `1px solid ${C.green}`, borderLeft: "none", borderRadius: "0 5px 5px 0", cursor: "pointer",
                     }}>✕</button>

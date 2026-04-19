@@ -114,7 +114,7 @@ function StatsSection({ stats }) {
   );
 }
 
-export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights, scored }) {
+export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   // 고정 파라미터 핸들러 — 참조 안정화 (루프 내부 바인딩은 제외)
@@ -154,7 +154,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       <AdminHelpGuide open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {/* Weight Editor Section */}
-      <WeightEditor profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} />
+      <WeightEditor profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} showToast={showToast} />
 
       {/* Stats Section */}
       {admin.stats && <StatsSection stats={admin.stats} />}

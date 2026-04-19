@@ -221,6 +221,7 @@ export default function App() {
             filterHistory={filterHistory} onApplyHistory={applyHistory} onClearHistory={clearHistory}
             onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
             filterOptionCounts={filterOptionCounts}
+            showToast={showToast}
           />
         </div>
       )}
@@ -274,7 +275,7 @@ export default function App() {
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>관리자 패널 로딩 중...</div>}>
-            <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} />
+            <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} showToast={showToast} />
           </Suspense>
         ) : null
       ) : tab === "kakaoCallback" ? (
