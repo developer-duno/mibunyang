@@ -163,15 +163,9 @@ function sanitizeBasics(row) {
   };
 }
 
-/**
- * null → 기본값으로 정리 (기존 JSON 호환 + 스코어링 엔진 안전)
- * CLAUDE.md: "위험 필드 null → 비관적 기본값, 혜택 필드 null → 0"
- */
-function sanitize(row) {
+/** 혜택 10개 (null → 0/false) */
+function sanitizeBenefits(row) {
   return {
-    ...sanitizeFallbackFlags(row),
-    ...sanitizeBasics(row),
-    // 혜택 (null → 0/false)
     discountPct: row.discountPct ?? 0,
     loanFree: row.loanFree ?? false,
     loanFreePct: row.loanFreePct ?? 0,
@@ -182,22 +176,32 @@ function sanitize(row) {
     cashback: row.cashback ?? 0,
     contractDiscount: row.contractDiscount ?? false,
     benefits: row.benefits ?? [],
-    // 미래가치
+  };
+}
+
+/** 미래가치 + 환경 9개 */
+function sanitizeEnvironment(row) {
+  return {
     transitDev: row.transitDev ?? null,
     devDist: row.devDist ?? null,
     cityDev: row.cityDev ?? null,
     industryDev: row.industryDev ?? null,
-    // 환경
     view: row.view ?? null,
     sunlight: row.sunlight ?? null,
     noise: row.noise ?? null,
     noxious: row.noxious ?? [],
     noxiousDist: row.noxiousDist ?? null,
+  };
+}
+
+/** 분양가 + 인프라 + 대기질·치안·학군 (29개, 위험 필드 → 비관적 기본값) */
+function sanitizeInfra(row) {
+  return {
     // 분양가
     area: row.area ?? 0,
     price: row.price ?? 0,
     pp: row.pp ?? 0,
-    // 인프라
+    // 인프라 (시설 카운트 + 거리)
     hospital: row.hospital ?? 0,
     hospitalDist: row.hospitalDist ?? null,
     mart: row.mart ?? 0,
@@ -222,21 +226,39 @@ function sanitize(row) {
     emergencyDist: row.emergencyDist ?? null,
     police: row.police ?? 0,
     policeDist: row.policeDist ?? null,
-    // 대기질
+    // 대기질·치안·학군 (인라인 — 그룹당 1~3필드라 별도 헬퍼 과잉)
     airQuality: row.airQuality ?? null,
-    // 치안
     crimeSafetyGrade: row.crimeSafetyGrade ?? null,
-    // 학군
     schoolScore: row.schoolScore ?? 50,
     schoolGrade: row.schoolGrade ?? "",
     nearbySchools: row.nearbySchools ?? [],
-    // 교통
+  };
+}
+
+/** 교통 6개 */
+function sanitizeTransport(row) {
+  return {
     busRoutes: row.busRoutes ?? 0,
     icDist: row.icDist ?? 99,
     ktxDist: row.ktxDist ?? 99,
     subwayName: row.subwayName ?? null,
     subwayLines: row.subwayLines ?? null,
     busStopNames: row.busStopNames ?? null,
+  };
+}
+
+/**
+ * null → 기본값으로 정리 (기존 JSON 호환 + 스코어링 엔진 안전)
+ * CLAUDE.md: "위험 필드 null → 비관적 기본값, 혜택 필드 null → 0"
+ */
+function sanitize(row) {
+  return {
+    ...sanitizeFallbackFlags(row),
+    ...sanitizeBasics(row),
+    ...sanitizeBenefits(row),
+    ...sanitizeEnvironment(row),
+    ...sanitizeInfra(row),
+    ...sanitizeTransport(row),
     // 건설사
     builderDebtRatio: row.builderDebtRatio ?? 250,
     builderCreditGrade: row.builderCreditGrade ?? null,
