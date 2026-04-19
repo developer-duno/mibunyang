@@ -9,6 +9,12 @@
 
 ### 최근 3세션 (상세)
 
+**세션123 (2026-04-19)** — Scoring JSDoc 에픽 2-B1 입지·상품·혜택 (1커밋 origin/main `d314f2f`)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 2-B1 진행. 9 GATE 9🟢/0🟡/0🔴 (세션122 에픽 2-A 동일 패턴 선례)
+- **3파일 +81/-0** — [scoreLocation.js](src/scoring/scoreLocation.js) (5서브 합 1.00 + airSc 복합 + walkMin/혐오시설 거리 보정 + INFRA_CONFIG 10항목 합 1.00 박제), [scoreProduct.js](src/scoring/scoreProduct.js) (PRODUCT_MAX 9항목 합 100 + 주택유형별 brandSc 상한 + presaleParking 폴백 박제), [scoreBenefit.js](src/scoring/scoreBenefit.js) (loanVal 공식 + maintSave 이중 가드 + price=0/totalWon=0 0나누기 방지 박제)
+- 5교차검증: scoring-validator 🟢 (JSDoc ↔ 구현 ↔ src/scoring/CLAUDE.md 3중 일치, PRODUCT_MAX 검산 20+15+15+10+10+10+10+5+5=100), null-safety-checker 🟢 (안전성 약속 정확, sanitize 의존 6건은 책임 범위 밖)
+- 검증: 150 files / **2422 tests PASS** (세션122 동일 유지), `vite build` 484ms, 번들 불변, lint 84 warnings 유지
+
 **세션122 (2026-04-19)** — Skeleton primitives + Scoring JSDoc 핵심 3파일 (2커밋 origin/main `88b7138..7b4b0ad`)
 - 백로그 4에픽 통합 플랜(`pwd-linear-rossum.md`) 착수. 9 GATE 3차 재검증 🟢8/🟡1/🔴0 통과 후 실행
 - **에픽 1** [primitives.jsx](src/components/primitives.jsx) +45줄 — SkeletonBox/SkeletonText/SkeletonList 3종. 기존 AptListSection `@keyframes skeleton-pulse` 1.5s 재사용. [detail/LoanRatesSection.jsx](src/components/detail/LoanRatesSection.jsx) L50 텍스트 → `<SkeletonText>`, [admin/AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx) L162·L206 → `<SkeletonList>`
@@ -274,7 +280,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - ~~`AdminDashboard` 로딩 UI (`adminLoading` 상태 렌더링)~~ **완료 (세션122, 커밋 `88b7138` — `SkeletonList` statsLoading/adminLoading 2지점)**
 - ~~저장 액션(가중치·프리셋) 토스트 피드백 추가~~ **완료 (세션121 C, 커밋 `9e52be8` — 4지점 useToast 적용: 가중치 저장/초기화, 프리셋 저장/삭제)**
 - `AdminDashboard` 412줄 → 매출탭/승인탭 분리
-- `src/scoring/engine.js`·`scorePrice.js` JSDoc 추가 — **부분 완료 (세션122 에픽 2-A, 커밋 `7b4b0ad`: engine·scorePrice·computeRegionalMedians 7함수)**. 남은: scoreLocation/Product/Benefit/Risk/Future 5파일 (에픽 2-B1/B2 예정)
+- `src/scoring/engine.js`·`scorePrice.js` JSDoc 추가 — **부분 완료**: 세션122 에픽 2-A 커밋 `7b4b0ad` (engine·scorePrice·computeRegionalMedians 7함수) + 세션123 에픽 2-B1 커밋 `d314f2f` (scoreLocation·Product·Benefit 3함수). 남은: scoreRisk/Future 2파일 (에픽 2-B2 예정)
 - ~~`api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼~~ **완료 (세션121, 커밋 `3cad834` — `createTimeseriesHandler` 팩토리 추출, 외부 동작 불변)**
 - `collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)
 

@@ -1,3 +1,55 @@
+# 세션 123 — 2026-04-19 (Scoring JSDoc 에픽 2-B1)
+
+**거시 목적**: 백로그 4에픽 통합 플랜 에픽 2-B1 (입지·상품·혜택 JSDoc 3파일) 처리. 리스크 0, 1커밋 단일 단계.
+
+## 플랜
+
+- `~/.claude/plans/pwd-fizzy-storm.md` — 9 GATE 9🟢/0🟡/0🔴 (세션122 에픽 2-A 동일 패턴 선례)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 2-B1 진행
+
+## 커밋 (1건, origin/main `4f9cede..d314f2f`)
+
+| 커밋 | 변경 |
+|------|------|
+| `d314f2f` | docs(scoring): add JSDoc to scoreLocation/Product/Benefit (epic 2-B1) |
+
+## 변경 (3파일, +81/-0)
+
+| 파일 | JSDoc 추가 대상 + 박제 규칙 |
+|---|---|
+| [scoreLocation.js](src/scoring/scoreLocation.js) | scoreLocation — 5개 서브 가중치 합 1.00 (transport 0.30 · school 0.25 · infra 0.20 · env 0.10 · noxSafe 0.15), airSc 복합 PM2.5(0.40)+PM10(0.35)+O3(0.25), walkMin 보정(±10), 혐오시설 거리 완화(NOXIOUS_DIST_THRESHOLD/REDUCTION/PEN_CAP), DIRECTION_BONUS, INFRA_CONFIG 합 1.00, `??` 전용 |
+| [scoreProduct.js](src/scoring/scoreProduct.js) | scoreProduct — PRODUCT_MAX 9항목 합 100, rawTotal/maxPossible 정규화, 주택유형별 brandSc 상한(오피스텔/도시형 15 vs 일반 20), presaleParking 폴백 공식, hasPool +3 상한 15, units≤1 중립 8점 |
+| [scoreBenefit.js](src/scoring/scoreBenefit.js) | scoreBenefit — 6혜택 합산, loanVal=`price×(loanFreePct/100)×INTEREST_RATE×LOAN_TERM_MULT`, maintSave 이중 가드(_regionAvgMaint>0 && avgMaintenanceCost>0)+음수 클램프, price=0/totalWon=0 0나누기 방지, sc=Math.max(0,Math.min(round(rate/BENEFIT_FULL_RATE×100),100)), noData 6개 모두 0 플래그 |
+
+JSDoc 패턴: `@param` · `@returns` · `@example` 3태그 (세션122 에픽 2-A와 동일 톤). 함수 시그니처·로직 변경 0.
+
+## 5교차검증 (병렬)
+
+- **빌드**: `npx vite build` 484ms — 번들 불변 (vendor 189.63KB · index 181.08KB)
+- **테스트**: scoring 157 PASS → 전체 **2422 PASS** (세션122 동일 유지)
+- **scoring-validator PASS** — JSDoc ↔ 실제 구현 ↔ src/scoring/CLAUDE.md 3축 일치 검증
+  - scoreLocation L88 가중치 5개 합 1.00 일치, airSc 비율(0.40/0.35/0.25) 일치, INFRA_CONFIG 10항목 합 1.00 검산
+  - scoreProduct PRODUCT_MAX 9항목 합 = 20+15+15+10+10+10+10+5+5 = 100 일치
+  - scoreBenefit loanVal 공식·maintSave 이중 가드·price=0 가드 모두 정확
+- **null-safety-checker PASS** — JSDoc이 명시한 가드(price>0, totalWon>0, ?? 사용) 전부 코드와 일치, 잘못된 안전성 약속 없음
+  - Medium 6건은 sanitize 레이어 의존(이번 변경 책임 범위 밖, JSDoc 추가 약속도 안 함)
+- **lint**: 84 warnings (증가 0)
+
+## 회귀 없음
+
+- vite build 484ms (세션122 419~423ms 대비 정상 변동)
+- 번들 크기 모든 청크 불변
+- 외부 import 3파일 (engine.js·engine.test.js·subContext.test.js) 영향 0
+
+## 다음 세션 우선순위 (세션124+)
+
+1. **에픽 2-B2** (scoreRisk + scoreFuture 2파일 JSDoc, 0.5세션) — 같은 패턴 마무리
+2. **에픽 3-A** (eslint 10 호환성 조사, 커밋 없음, 0.5세션) — Node 버전·peer dep 실측
+3. **에픽 3-B** (eslint 10 + Node engines 적용, 본 3파일 + 워크플로우 3파일 별도 커밋, 1세션)
+4. (이후) 에픽 4 KV→Upstash 마이그레이션 — Vercel 환경변수 확인 후 4-A1 착수
+
+---
+
 # 세션 122 — 2026-04-19 (Skeleton primitives + Scoring JSDoc)
 
 **거시 목적**: 백로그 4에픽 통합 플랜(pwd-linear-rossum.md) 착수. 리스크 0 구간 2에픽 (1·2-A) 완료.
