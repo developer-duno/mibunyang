@@ -9,6 +9,13 @@
 
 ### 최근 3세션 (상세)
 
+**세션122 (2026-04-19)** — Skeleton primitives + Scoring JSDoc 핵심 3파일 (2커밋 origin/main `88b7138..7b4b0ad`)
+- 백로그 4에픽 통합 플랜(`pwd-linear-rossum.md`) 착수. 9 GATE 3차 재검증 🟢8/🟡1/🔴0 통과 후 실행
+- **에픽 1** [primitives.jsx](src/components/primitives.jsx) +45줄 — SkeletonBox/SkeletonText/SkeletonList 3종. 기존 AptListSection `@keyframes skeleton-pulse` 1.5s 재사용. [detail/LoanRatesSection.jsx](src/components/detail/LoanRatesSection.jsx) L50 텍스트 → `<SkeletonText>`, [admin/AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx) L162·L206 → `<SkeletonList>`
+- **에픽 2-A** JSDoc 7함수 — [engine.js](src/scoring/engine.js) sanitize·calcCats·calcAll, [scorePrice.js](src/scoring/scorePrice.js) getAgeCoeff·getAreaAdj·scorePrice, [computeRegionalMedians.js](src/scoring/computeRegionalMedians.js). src/scoring/CLAUDE.md 규칙 박제 (가중치 1.00/100, 0~100 클램핑, `??` 전용, PIR 구간, fairPrice 3단 폴백 -15)
+- 5교차검증: null-safety-checker 🟢 (에픽 1), scoring-validator 🟢 (에픽 2-A, JSDoc 내용 전부 CLAUDE.md + 실제 구현과 일치)
+- 검증: 150 files / **2422 tests PASS** (세션121 2418 → +4 Skeleton), `vite build` 423/419ms, 번들 불변, lint 84 warnings (기존 수준)
+
 **세션121 단계 C (2026-04-19)** — 저장 액션 토스트 피드백 (1커밋 origin/main `9e52be8`)
 - 🟢 백로그 "저장 액션(가중치·프리셋) 토스트 피드백" 해소. 기존 useToast 패턴 4지점 적용
 - [WeightEditor.jsx](src/components/admin/WeightEditor.jsx) +4 / [AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx) +2 / [SearchFilterBar.jsx](src/components/sections/SearchFilterBar.jsx) +6 / [App.jsx](src/App.jsx) +2
@@ -16,14 +23,6 @@
 - 기본값 `showToast = () => {}` 폴백으로 기존 테스트 수정 없이 통과. prop drilling 2레벨
 - 9 GATE 🟢9/🟡0/🔴0, null-safety Review PASS (Medium 1건 즉시 수정: 삭제 실패 시 토스트 안 뜨도록 조건 가드)
 - 검증: 150 files / **2418 tests PASS** 유지, `vite build` 396ms, 번들 +0.13kB
-
-**세션121 단계 A (2026-04-19)** — onClick inline → useCallback 안정화 (1커밋 origin/main `1ed7db3`)
-- 🟡 백로그 "onClick inline 75건 → useCallback" 실효 타깃 6건 집중 처리 (루프 28건·이미 적용 6건·trivial 다수 의식적 배제)
-- **[ExpertDashboard.jsx](src/components/expert/ExpertDashboard.jsx)** (125→126) — `handleSelect` useCallback 래핑 → ExpertSidebar(memo) 불필요 리렌더 방지
-- **[AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx)** (412→420) — `toggleHelp`·`handleLogoutClick`·`handleBatchApprove/Reject`·`handlePagePrev/Next` 6개 추출, 인라인 onClick 12→6 (-50%)
-- 9 GATE 1차 🟢9/🟡0/🔴0 (Explore 실측 75건 → 타깃 좁힘 + null-safety-checker Review)
-- 검증: 150 files / **2418 tests PASS** 유지, `vite build` 386ms, 번들 +0.19kB (극소)
-- 알려진 한계: `admin` 객체 참조 안정성 (useAdminMode 훅 소관, 별도 에픽)
 
 **세션121 (2026-04-19)** — createTimeseriesHandler 팩토리 추출 (1커밋 origin/main `3cad834`)
 - 🟢 백로그 "api/supabase/prices.js ↔ unsold-history.js 중복 11줄 → 공통 헬퍼" 해소
@@ -271,11 +270,11 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 
 ### 🟢 여유 (분기 내 · 8건)
 - inline `style={{...}}` **787건** → CSS 상수·className 전환 (대규모)
-- `LoanRatesSection:49` 금리 탭 Skeleton 보강
-- `AdminDashboard` 로딩 UI (`adminLoading` 상태 렌더링)
+- ~~`LoanRatesSection:49` 금리 탭 Skeleton 보강~~ **완료 (세션122, 커밋 `88b7138` — `SkeletonText lines=4`)**
+- ~~`AdminDashboard` 로딩 UI (`adminLoading` 상태 렌더링)~~ **완료 (세션122, 커밋 `88b7138` — `SkeletonList` statsLoading/adminLoading 2지점)**
 - ~~저장 액션(가중치·프리셋) 토스트 피드백 추가~~ **완료 (세션121 C, 커밋 `9e52be8` — 4지점 useToast 적용: 가중치 저장/초기화, 프리셋 저장/삭제)**
 - `AdminDashboard` 412줄 → 매출탭/승인탭 분리
-- `src/scoring/engine.js`·`scorePrice.js` JSDoc 추가
+- `src/scoring/engine.js`·`scorePrice.js` JSDoc 추가 — **부분 완료 (세션122 에픽 2-A, 커밋 `7b4b0ad`: engine·scorePrice·computeRegionalMedians 7함수)**. 남은: scoreLocation/Product/Benefit/Risk/Future 5파일 (에픽 2-B1/B2 예정)
 - ~~`api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼~~ **완료 (세션121, 커밋 `3cad834` — `createTimeseriesHandler` 팩토리 추출, 외부 동작 불변)**
 - `collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)
 

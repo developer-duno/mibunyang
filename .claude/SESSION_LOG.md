@@ -1,3 +1,67 @@
+# 세션 122 — 2026-04-19 (Skeleton primitives + Scoring JSDoc)
+
+**거시 목적**: 백로그 4에픽 통합 플랜(pwd-linear-rossum.md) 착수. 리스크 0 구간 2에픽 (1·2-A) 완료.
+
+## 플랜
+
+- `~/.claude/plans/pwd-linear-rossum.md` — 9 GATE 3차 재검증 🟢8/🟡1/🔴0 통과 후 승인
+- 4에픽 전체 (Skeleton + JSDoc + eslint 10 + @vercel/kv→@upstash/redis) 총 9~10세션
+- 세션122 범위: 에픽 1 + 2-A 2커밋
+
+## 커밋 (2건, origin/main `9f6c97b..7b4b0ad`)
+
+| 커밋 | 변경 |
+|------|------|
+| `88b7138` | feat(components): add Skeleton primitives + apply to LoanRates/Admin loading |
+| `7b4b0ad` | docs(scoring): add JSDoc to 7 core functions (engine + scorePrice + computeRegionalMedians) |
+
+## 에픽 1 — Skeleton 공통 컴포넌트 (5파일, +87/-12)
+
+| 파일 | 변경 |
+|---|---|
+| [primitives.jsx](src/components/primitives.jsx) | +45 — SkeletonBox/Text/List 3종 추가 (L113~), `@keyframes skeleton-pulse` 1.5s 재사용 |
+| [primitives.test.jsx](src/components/primitives.test.jsx) | +25 — 4 신규 테스트 |
+| [detail/LoanRatesSection.jsx](src/components/detail/LoanRatesSection.jsx) | ±2 — L50 텍스트 → `<SkeletonText lines={4} width="90%" />` |
+| [admin/AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx) | ±4 — L162 statsLoading → `<SkeletonList count={4} columns={2} />`, L206 adminLoading → `<SkeletonList count={3} columns={1} />` |
+| [admin/AdminDashboard.test.jsx](src/components/admin/AdminDashboard.test.jsx) | ±4 — 텍스트 assertion → Skeleton 노드 + children.length 확인 |
+
+기존 primitives.jsx 111줄 + 4컴포넌트(Bar/ScoreBadge/LineChart/Radar) 구조에 추가 (별도 폴더 신설 아님 — 과잉 추상화 회피).
+
+## 에픽 2-A — Scoring JSDoc 핵심 3파일 (+75/-1)
+
+| 파일 | JSDoc 추가 대상 |
+|---|---|
+| [engine.js](src/scoring/engine.js) | sanitize (비관적 기본값), calcCats (safe 폴백), calcAll (가중치 100 + 클램핑) |
+| [scorePrice.js](src/scoring/scorePrice.js) | getAgeCoeff, getAreaAdj, scorePrice (가중치 1.00 + fairPrice 3단 폴백 + PIR 구간) |
+| [computeRegionalMedians.js](src/scoring/computeRegionalMedians.js) | 5필드 중앙값 (pir/psr/unsoldRate/supplyRatio/maint) |
+
+src/scoring/CLAUDE.md 규칙 박제: 가중치 합 1.00/100, 0~100 클램핑, `??` 전용 (||금지), PIR 구간 (≤10→100/≤20→80~100/≤30→60~80/>30→60-(pir-30)×2), fairPrice 3단 폴백 + `PRICE_FALLBACK_RELIABILITY_PENALTY` -15.
+
+## 5교차검증
+
+- **빌드**: vite build 423ms (에픽 1) / 419ms (에픽 2-A) — 번들 불변
+- **테스트**: 2418 → **2422 PASS** (+4 Skeleton, 1건 assertion 수정)
+- **null-safety-checker PASS (에픽 1)** — Skeleton prop 구조분해 기본값 + `Array.from({length})` 음수·NaN 안전 + 조건부 렌더 가드
+- **scoring-validator PASS (에픽 2-A)** — 모든 JSDoc 내용이 CLAUDE.md 규칙 + 실제 구현과 일치 (가중치 숫자·기본값·구간 경계 전부 대조)
+- **lint**: 84 warnings (기존 수준 유지)
+
+## 9 GATE (세션122 시작 전 플랜 3차 재검증)
+
+🟢 8 / 🟡 1 / 🔴 0 → 실행 허가 (4-A1 착수 전 Vercel 환경변수 확인 조건)
+
+실측 근거: @vercel/kv 10 prod + 10 test, scoring 외부 import 3 지점, eslint ignores `api/` 포함, `eslint-plugin-react-hooks` peer `"^10.0.0"` 확정, fail-open 3중 문서화 (CLAUDE.md L201 + docs/refresh-token-review.md + 코드 주석).
+
+## 남은 플랜 (다음 세션부터)
+
+1. 에픽 2-B1 — JSDoc scoreLocation/Product/Benefit (3파일, 0.5세션)
+2. 에픽 2-B2 — JSDoc scoreRisk/Future (2파일, 0.5세션)
+3. 에픽 3-A/B — eslint 10 + Node engines (1.5세션)
+4. 에픽 4-A1~D4 — @vercel/kv → @upstash/redis 9단계 (4세션)
+
+합계 남은 공수: 약 7~8세션 예상.
+
+---
+
 # 세션 121 단계 C — 2026-04-19 (저장 액션 토스트 피드백 추가)
 
 **거시 목적**: 🟢 백로그 "저장 액션(가중치·프리셋) 토스트 피드백" 해소. 4개 저장 지점의 무반응 UX를 기존 useToast 패턴으로 통일.
