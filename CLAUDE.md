@@ -9,6 +9,14 @@
 
 ### 최근 3세션 (상세)
 
+**세션126 (2026-04-19~20)** — 에픽 4-A0+4-A1a: Upstash 설치 + Lazy Redis Wrapper (2커밋 origin/main `c7ea9a1..f02bea0`)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4 착수. 9 GATE 4차 재검증 🟢8/🟡1/🔴0 (GATE 3 🟡 유지 — prod 교체는 환경변수 주입 후 세션127 이월)
+- **커밋 `c7ea9a1`**: `npm install @upstash/redis@1.37.0 --save` — transitive 1.36.3 → direct 1.37.0 승격. semver 호환 `^1.31.3`, npm audit 0건
+- **커밋 `f02bea0`**: [api/_lib/redis.js](api/_lib/redis.js) 신규 28줄 — `getRedisClient()` lazy factory + `kv` getter. 호출부 0 → 런타임 영향 0
+- 실측 근거: `node_modules/@upstash/redis/nodejs.mjs` L266-283 — env 부재 시 `console.warn`만, throw 없음 → 빌드·배포 안전
+- 5교차검증 (커밋 2): null-safety-checker 🟢 (High 0/Med 0/Low 2 정보성)
+- 검증: 150 files / **2422 tests PASS** (세션125 동일 유지), `vite build` 470/441ms, 번들 불변, `npm audit` 0건
+
 **세션125 (2026-04-19)** — 에픽 3-A 조사 + Node 환경 핀 (1커밋 origin/main `6520ec9`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 3-A 진행. 사용자 옵션 B 선택. 9 GATE 9🟢/0🟡/0🔴
 - **에픽 3-A 조사 결론**: eslint 10 본 적용(에픽 3-B) 🔴 차단 — `eslint-plugin-react@7.37.5` (최신) peer 가 `eslint: ^9.7` 까지만 지원, npm registry 에 호환 신버전 미배포. 재오픈 트리거: `npm view eslint-plugin-react@latest peerDependencies` 결과 `^10.0.0` 등장

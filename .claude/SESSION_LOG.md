@@ -1,3 +1,76 @@
+# 세션 126 — 2026-04-19~20 (에픽 4-A0+4-A1a: Upstash 설치 + Lazy Redis Wrapper)
+
+**거시 목적**: 통합 플랜 에픽 4 (KV→Upstash 마이그레이션) 첫 두 단계 병합 착수. prod 교체는 환경변수 주입 후 세션127 이월.
+
+## 플랜
+
+- `~/.claude/plans/pwd-composed-metcalfe.md` — 옵션 2 (npm + wrapper) 사용자 승인. 9 GATE 4차 재검증 🟢8/🟡1/🔴0
+- GATE 3 🟡 유지 근거: prod 교체(4-A1b)는 환경변수 부재 시 프로덕션 로그인 throw 리스크 → 세션127 이월이 안전
+
+## 커밋 (2건, origin/main `e9f0068..f02bea0`)
+
+| 커밋 | 변경 |
+|------|------|
+| `c7ea9a1` | chore(deps): add @upstash/redis@1.37.0 for KV migration |
+| `f02bea0` | refactor(kv): add lazy Upstash Redis wrapper for gradual migration |
+
+## 변경 (3파일, +36/-3)
+
+| 파일 | 변경 |
+|---|---|
+| [package.json](../package.json) | dependencies에 `"@upstash/redis": "^1.37.0"` 1줄 추가 |
+| `package-lock.json` | npm 자동 갱신 (transitive 1.36.3 → direct 1.37.0 승격) |
+| [api/_lib/redis.js](../api/_lib/redis.js) | 신규 28줄 — `getRedisClient()` lazy factory + `kv` getter re-export |
+
+## 설계 결정
+
+- **lazy factory**: `Redis.fromEnv()` 호출 시점에만 실행. import·빌드 단계에서 환경변수 검사 없음
+  - 실측 근거: `node_modules/@upstash/redis/nodejs.mjs` L266-283 — env 부재 시 `console.warn`만, 인스턴스 반환 (`null/undefined` 반환 불가)
+- **kv getter**: 세션127 prod 교체 시 `import { kv } from "./redis.js"` 1줄 변경으로 끝나도록 준비
+- **호출부 0**: 이번 세션에선 어느 prod 파일도 wrapper를 import 하지 않음 → 런타임 영향 0
+
+## 검증
+
+- **빌드**: `npx vite build` 커밋1 470ms / 커밋2 441ms — 번들 불변
+- **테스트**: 150 files / **2422 PASS** (세션125 동일 유지, 소스 미변경이라 확정)
+- **보안**: `npm audit` 0건 (Upstash 공식 SDK, MIT)
+- **5교차검증 (커밋 2)**: null-safety-checker PASS (High 0/Med 0/Low 2, Low는 정보성)
+
+## 9 GATE 하네스 (4차, 옵션 2 범위)
+
+| GATE | 판정 | 근거 |
+|------|------|------|
+| 0 크기 | 🟢 | 커밋1 수정2 / 커밋2 신규1, 관심사 분리 |
+| 1 영향 | 🟢 | wrapper import 0곳, transitive→direct 승격 |
+| 2 순서 | 🟢 | deps → wrapper 필수 순서 준수 |
+| 3 완전성 | 🟡 | prod 교체 세션127 이월 (의도된 안전 분리) |
+| 4 적정성 | 🟢 | 관심사 2개 분리 커밋, lazy factory 패턴 |
+| 5 보안 | 🟢 | Upstash 공식, audit 0, env 로그 미노출 |
+| 6 연동 | 🟢 | @vercel/kv 10 prod 파일 L1 import 그대로 |
+| 7 롤백 | 🟢 | 각 커밋 독립 revert, 호출부 0 |
+| 8 UX·외부 | 🟢 | 런타임 미호출, Upstash 장애 영향 0 |
+
+**최종: 🟢 8 / 🟡 1 / 🔴 0 → 실행 허가**
+
+## 사용자 결정 과정
+
+1차: 옵션 A/B/C 3지선다 → 사용자 "환경변수 없음 - Upstash 설치 필요" + "3커밋 분할 Recommended"
+2차(범위 확대): GATE 3 🟡 → 🟢 승격 시도 → 옵션 1/2/3 3지선다 → 사용자 "가장 최선을 추천" → Claude 옵션 2 추천
+3차(4차 GATE 후): 옵션 3 가면 GATE 7/8 🔴 하향 리스크 → 사용자 "가장 확실/정확/목적 맞게" → Claude 옵션 2 유지 확정
+
+## 다음 세션 (세션127) 착수 조건
+
+**필수 선행 (사용자 액션)**:
+- Vercel 대시보드 → Integrations → Upstash Redis 설치 (Marketplace)
+- 환경변수 `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` 주입 확인
+
+**착수 시 범위 (4-A1b)**:
+- prod 2파일 (`rateLimit.js` + `tokenBlacklist.js`) import 교체
+- 대응 테스트 mock 경로 교체 (`vi.mock('@vercel/kv')` → `vi.mock('./redis.js')`)
+- 4파일 · 2커밋 (prod+test 쌍 단위)
+
+---
+
 # 세션 125 — 2026-04-19 (에픽 3-A 조사 + Node 환경 핀)
 
 **거시 목적**: 통합 플랜 에픽 3-A (eslint 10 호환성 조사) 수행. 본 적용(3-B) 차단 판정 + 부수 작업(Node engines + .nvmrc) 1커밋.
