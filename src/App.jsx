@@ -1,7 +1,6 @@
 // App.jsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
-import { useState, useMemo, useEffect, useCallback, useRef, useTransition, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { fmtPrice } from "@/lib/format";
 import { C } from "@/theme";
 
 const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
@@ -25,6 +24,7 @@ import { useDataPipeline, VISIBLE_PAGE_SIZE } from "@/hooks/useDataPipeline";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { useKakaoAuth } from "@/hooks/useKakaoAuth";
 import { useLoginGate } from "@/hooks/useLoginGate";
+import { useShareCallbacks } from "@/hooks/useShareCallbacks";
 
 import { ShareSheet } from "@/components/ShareSheet";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
@@ -143,50 +143,12 @@ export default function App() {
   // ── containerMaxWidth ──
   const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
 
-  // ── 공유 콜백 (네비게이션과 별개) ──
-  const scoredMapRef = useRef(scoredMap);
-  useEffect(() => { scoredMapRef.current = scoredMap; }, [scoredMap]);
-
-  const handleShareDetail = useCallback((aptId) => {
-    const item = scoredMapRef.current.get(aptId);
-    if (!item) return;
-    const base = getShareURL();
-    const sep = base.includes("?") ? "&" : "?";
-    openShareSheet({
-      title: `${item.apt.name} - 미분양 분석`,
-      text: `${item.apt.name} ${item.res.total}점 · ${fmtPrice(item.apt.price)}`,
-      url: `${base}${sep}detail=${aptId}&profile=${profile}`
-    });
-  }, [profile, openShareSheet, getShareURL]);
-
-  const handleShareCompare = useCallback(() => {
-    if (compIds.length < 2) return;
-    const base = getShareURL();
-    const sep = base.includes("?") ? "&" : "?";
-    openShareSheet({
-      title: `미분양 ${compIds.length}개 단지 비교`,
-      text: compItems.map(x => x.apt.name).join(" vs "),
-      url: `${base}${sep}compare=${compIds.join(",")}&profile=${profile}`
-    });
-  }, [compIds, compItems, profile, openShareSheet, getShareURL]);
-
-  const handleShareFilters = useCallback(() => {
-    const activeFilters = [
-      filterRegion !== "전체" && filterRegion,
-      budgetMin && `${budgetMin}~${budgetMax || "∞"}억`,
-      (areaMin || areaMax) && `면적 ${areaMin || "0"}~${areaMax || "∞"}㎡`,
-      (unitsMin || unitsMax) && `세대 ${unitsMin || "0"}~${unitsMax || "∞"}`,
-      moveInFilter !== "전체" && moveInFilter,
-      minScore && `${minScore}점+`,
-      builderTier !== "전체" && builderTier,
-      benefitOnly && "혜택",
-    ].filter(Boolean).join(" · ");
-    openShareSheet({
-      title: "미분양 필터 공유",
-      text: activeFilters || "전체 조건",
-      url: getShareURL()
-    });
-  }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, openShareSheet, getShareURL]);
+  // ── 공유 콜백 3종 (scoredMapRef 내부 관리) ──
+  const { handleShareDetail, handleShareCompare, handleShareFilters } = useShareCallbacks({
+    scoredMap, profile, compIds, compItems, openShareSheet, getShareURL,
+    filterRegion, budgetMin, budgetMax, areaMin, areaMax,
+    unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly,
+  });
 
   // ── 독립 useEffect: 데스크톱 키보드 단축키 ──
   useEffect(() => {
