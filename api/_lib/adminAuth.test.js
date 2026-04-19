@@ -9,9 +9,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// @vercel/kv 모킹 (tokenBlacklist 내부에서 사용)
+// ./redis.js 모킹 (tokenBlacklist 내부에서 사용, 세션128: @vercel/kv → ./redis.js)
 const mockKv = { get: vi.fn().mockResolvedValue(null), set: vi.fn() };
-vi.mock('@vercel/kv', () => ({ kv: mockKv }));
+vi.mock('./redis.js', () => ({ kv: mockKv }));
 
 const { verifyAdminToken } = await import('./adminAuth.js');
 const { createToken } = await import('./auth.js');

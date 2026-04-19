@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "./redis.js";
 import crypto from "crypto";
 
 /** 토큰 해시 생성 (SHA-256, 32자 — 원본 토큰 저장 방지) */

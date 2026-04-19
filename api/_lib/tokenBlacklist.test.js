@@ -4,9 +4,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// @vercel/kv 모킹
+// ./redis.js 모킹 (세션128: @vercel/kv → ./redis.js)
 const mockKv = { set: vi.fn(), get: vi.fn() };
-vi.mock('@vercel/kv', () => ({ kv: mockKv }));
+vi.mock('./redis.js', () => ({ kv: mockKv }));
 
 const { hashToken, blacklistToken, isBlacklisted } = await import('./tokenBlacklist.js');
 
