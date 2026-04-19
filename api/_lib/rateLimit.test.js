@@ -4,14 +4,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// @vercel/kv 모킹
+// Redis wrapper 모킹 (세션127: @vercel/kv → ./redis.js)
 const mockPipeline = {
   incr: vi.fn(),
   expire: vi.fn(),
   exec: vi.fn(),
 };
 
-vi.mock('@vercel/kv', () => ({
+vi.mock('./redis.js', () => ({
   kv: {
     pipeline: () => mockPipeline,
   },

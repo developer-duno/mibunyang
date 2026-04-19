@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "./redis.js";
 
 const LIMITS = { login: 5, signup: 5, verify: 20, consult: 10, admin: 30, logout: 10, proxy: 30, kakao: 10 };
 const DEFAULT_MAX = 5;
