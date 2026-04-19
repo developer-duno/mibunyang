@@ -9,6 +9,14 @@
 
 ### 최근 3세션 (상세)
 
+**세션121 단계 A (2026-04-19)** — onClick inline → useCallback 안정화 (1커밋 origin/main `1ed7db3`)
+- 🟡 백로그 "onClick inline 75건 → useCallback" 실효 타깃 6건 집중 처리 (루프 28건·이미 적용 6건·trivial 다수 의식적 배제)
+- **[ExpertDashboard.jsx](src/components/expert/ExpertDashboard.jsx)** (125→126) — `handleSelect` useCallback 래핑 → ExpertSidebar(memo) 불필요 리렌더 방지
+- **[AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx)** (412→420) — `toggleHelp`·`handleLogoutClick`·`handleBatchApprove/Reject`·`handlePagePrev/Next` 6개 추출, 인라인 onClick 12→6 (-50%)
+- 9 GATE 1차 🟢9/🟡0/🔴0 (Explore 실측 75건 → 타깃 좁힘 + null-safety-checker Review)
+- 검증: 150 files / **2418 tests PASS** 유지, `vite build` 386ms, 번들 +0.19kB (극소)
+- 알려진 한계: `admin` 객체 참조 안정성 (useAdminMode 훅 소관, 별도 에픽)
+
 **세션121 (2026-04-19)** — createTimeseriesHandler 팩토리 추출 (1커밋 origin/main `3cad834`)
 - 🟢 백로그 "api/supabase/prices.js ↔ unsold-history.js 중복 11줄 → 공통 헬퍼" 해소
 - **신규** [api/_lib/timeseriesHandler.js](api/_lib/timeseriesHandler.js) 58줄 — `createTimeseriesHandler({ table, select, orderBy, errorLabel, filter? })` 팩토리
@@ -248,7 +256,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 ### 🟡 곧 (이번 달 · 6건, 이 중 4건 완료)
 - 의존성 메이저 업그레이드: `eslint 10`, `@vercel/kv 3`, ~~`@vercel/analytics 2`~~ **완료 (세션119 3차 후속, 커밋 `22434c2`)**
 - ~~`@supabase/supabase-js` 2.98→2.103 마이너~~ **완료 (세션119 후속, 커밋 `73b3295`)**
-- `onClick={() => ...}` inline 클로저 75건(실측) → useCallback (ExpertDashboard 등 상위)
+- ~~`onClick={() => ...}` inline 클로저 75건(실측) → useCallback (ExpertDashboard 등 상위)~~ **부분 완료 (세션121 A, 커밋 `1ed7db3` — memo 자식 효과 확실한 6건 처리: ExpertDashboard.handleSelect + AdminDashboard 5건. 루프 28건·이미 적용 6건·trivial 다수는 의식적 배제)**
 - ~~`admin/review.js:72` 이메일 `.includes("@")` → RFC 5322 정규식~~ **완료 (세션119 후속, 커밋 `1d4f3c3`·`295334c` — 공용 `isValidEmail()` 추출)**
 - ~~`App.jsx` 442줄 → `useAppState()` 훅 분리 (250줄 목표)~~ **완료 (세션120, 3커밋 `54818b9..97bcb67`, 442→354줄 -88, 4훅 추출)**
 - ~~`api/supabase/apartments.js` sanitize() 54필드 → 그룹별 분리~~ **완료 (세션119 3차 후속, 커밋 `587826d`→`d704adf` — 7헬퍼 + 스냅샷 테스트)**

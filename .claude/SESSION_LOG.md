@@ -1,3 +1,94 @@
+# 세션 121 단계 A — 2026-04-19 (onClick inline → useCallback 안정화)
+
+**거시 목적**: 🟡 백로그 "onClick inline 75건 → useCallback (ExpertDashboard 등 상위)"의 실효 타깃 6건 집중 처리. 단계 B 후속.
+
+## 플랜
+
+- `~/.claude/plans/pwd-zazzy-pumpkin.md` (단계 B 실행 후 A로 갱신)
+- Explore 실측: 75건 중 루프 파라미터 28건(37%)·이미 적용 6건(8%) 제외 → 실효 27건 → 그 중 memo 자식 효과 확실한 **6건**
+- 9 GATE 1차 🟢9/🟡0/🔴0 (사용자 하네스 검증 반영) → 실행 허가
+
+## 커밋 (1건, origin/main `38e243a..1ed7db3`)
+
+| 커밋 | 변경 |
+|------|------|
+| `1ed7db3` | refactor(components): stabilize onClick handlers with useCallback (ExpertDashboard + AdminDashboard) |
+
+## 수정 파일
+
+**[src/components/expert/ExpertDashboard.jsx](src/components/expert/ExpertDashboard.jsx)** (125→126줄)
+- `import { ..., useCallback, memo }` 추가
+- `handleSelect` 일반 함수 → `useCallback((id) => { setExpandedApt(id); setSidebarOpen(false); }, [setExpandedApt])`
+- ExpertSidebar(memo)에 onSelect prop 안정화 → scored/search/sort/region 변경 시 Sidebar 리렌더 방지
+
+**[src/components/admin/AdminDashboard.jsx](src/components/admin/AdminDashboard.jsx)** (412→420줄)
+- `import { memo, useState, useCallback }` 추가
+- 6개 핸들러 추출 (루프 외부 고정 파라미터만):
+
+| 이름 | deps | 변경 전 onClick |
+|---|---|---|
+| `toggleHelp` | `[]` | `() => setHelpOpen(v => !v)` |
+| `handleLogoutClick` | `[admin, onLogout]` | `() => admin.handleAdminLogout(onLogout)` |
+| `handleBatchApprove` | `[admin]` | `() => admin.handleBatchReview("approve")` |
+| `handleBatchReject` | `[admin]` | `() => admin.handleBatchReview("reject")` |
+| `handlePagePrev` | `[admin]` | `() => admin.handlePageChange(admin.page - 1)` |
+| `handlePageNext` | `[admin]` | `() => admin.handlePageChange(admin.page + 1)` |
+
+- AdminDashboard 인라인 onClick: 12 → 6 (−6건, −50%)
+
+## 배제 대상 (의도적)
+
+- **루프 내부 파라미터 바인딩 28건**: `admin.users.map` 내 `handleReview(user.email, ...)` / STATUS_TABS.map / 프로필 버튼 루프 — 렌더마다 값 변해 useCallback 불가
+- **이미 적용 6건**: SearchFilterBar togglePanel/closePanel/handlePresetSave, HeaderSection toggleHelp/closeHelp
+- **trivial 1줄 토글**: memo 자식에게 전달 안 되면 수익 0
+
+## 9 GATE 검증 (전원 🟢)
+
+| Gate | 판정 | 증거 |
+|---|---|---|
+| 0 Sonnet 크기 | 🟢 | 2파일 수정, 단일파일 +1/+8줄, 관심사 1개 |
+| 1 영향 범위 | 🟢 | Explore: 75건 실측, 타깃 6건. 외부 API 불변 |
+| 2 실행 순서 | 🟢 | 1커밋 독립 |
+| 3 완전성 | 🟢 | UI 동작 0 변화 |
+| 4 적정성 | 🟢 | 과잉 래핑 없음, 루프·trivial 제외 |
+| 5 보안 | 🟢 | innerHTML/eval grep 0 |
+| 6 연동 일관성 | 🟢 | admin 메서드 인자 불변, fireEvent 테스트 호환 |
+| 7 롤백 | 🟢 | 단일 커밋 revert |
+| 8 UX·확장성 | 🟢 | admin 객체 참조 이슈는 useAdminMode 소관, 범위 외 수용 |
+
+## 검증
+
+| 체크 | 결과 | 에이전트 |
+|---|---|---|
+| 타깃 테스트 | **45/45 PASS** (ExpertDashboard 8 + AdminDashboard 25 + ExpertSidebar 12, 수정 없이) | 메인 (vitest) |
+| 전체 테스트 | **2418 PASS / 150 files** 유지 | 메인 (vitest) |
+| vite build | **386ms 성공**, 번들 +0.19kB (AdminDashboard 26.60→26.76, ExpertDashboard 26.75→26.78) | 메인 |
+| null 안전성 | **PASS (High 0, Medium 0, Low 1)** | null-safety-checker |
+| Hook 규칙 | **PASS (조건부 호출 없음, 최상단 호출 확인)** | null-safety-checker + 메인 |
+| 보안 | **PASS (innerHTML/eval 0, XSS 벡터 없음)** | 메인 (grep) |
+| 스코어링 | **SKIP (스코어링 무관)** | - |
+
+## 알려진 한계 (의식적 수용)
+
+- **admin 객체 참조 안정성**: `useAdminMode(showToast)` 훅이 매 렌더마다 새 객체를 반환할 경우 AdminDashboard의 useCallback 효과 반감. 단 정확성 불변, 렌더 횟수가 같다면 의미 없음
+- 별도 에픽으로 기록: App.jsx admin 객체 `useMemo` 감싸기 or useAdminMode 훅 내부 안정화 — 향후 세션
+
+## 교훈
+
+- **useCallback은 "참조 안정성"이지 "성능 마법"이 아님**: memo 자식이 prop으로 받을 때만 실효. trivial 토글을 다 감싸면 오히려 메모리·인지 비용만 늘어남
+- **Explore 실측으로 범위 좁히기**: 75건 모두 건드리려 했으면 변경 범위 폭증 + 수익 없는 래핑 다수. 6건으로 줄여 집중
+- **외부 동작 불변 증명**: 세션121 B와 같은 패턴. 기존 테스트 수정 없이 통과 = 등가 리팩토링 완성
+
+## 다음 단계 (세션122 후보)
+
+- 🟡 eslint 10 / @vercel/kv 3 메이저 업그레이드 (브레이킹 체인지 조사 후)
+- 🟢 AdminDashboard 412→420줄 → 매출탭/승인탭 분리
+- 🟢 src/scoring/engine.js·scorePrice.js JSDoc
+- 🟢 LoanRatesSection 금리 탭 Skeleton 보강
+- (장기) admin 객체 참조 안정화 (useAdminMode 훅 또는 App.jsx useMemo)
+
+---
+
 # 세션 121 — 2026-04-19 (api/supabase 중복 → createTimeseriesHandler 팩토리 추출)
 
 **거시 목적**: 🟢 백로그 "api/supabase/prices.js ↔ unsold-history.js 중복 11줄 → 공통 헬퍼" 해소. 세션119 /improve 지적 단건 정리.
