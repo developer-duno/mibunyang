@@ -11,6 +11,13 @@ import {
 
 const IS_DEV = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
 
+/**
+ * 준공시점 기반 연식 보정계수. 신축 프리미엄 반영.
+ * 미준공(예정) → 1.0, 미입력·파싱 실패 → 1.05 (약간 보수적 중립).
+ * AGE_PREMIUM 구간: {0~5y: 1.08, 5~10y: 1.05, 10~20y: 1.0, 20+y: 0.95} 등 (src/constants/brands.js).
+ * @param {string|null|undefined} completion - "YYYY-MM-DD" 형식
+ * @returns {number} 보정계수 (0.95~1.08 범위, 미입력 시 1.05)
+ */
 export function getAgeCoeff(completion) {
   if (!completion) return 1.05;
   const parts = completion.toString().split("-");
@@ -22,6 +29,13 @@ export function getAgeCoeff(completion) {
   return found ? found.coeff : 1.05;
 }
 
+/**
+ * 평형별 가격 보정계수. 소형 프리미엄·대형 디스카운트 반영.
+ * 면적 미등록(0 또는 null) → 1.0 중립 (평균 평형 가정).
+ * 구간: 60㎡ 미만 1.08 (소형), 60~85 1.0 (국민평형), 85~115 0.97, 115+ 0.94.
+ * @param {number|null} area - 전용면적 ㎡
+ * @returns {number} 보정계수 (0.94~1.08)
+ */
 export function getAreaAdj(area) {
   if (!area || area <= 0) return 1.0;  // 면적 미등록 = 중립
   if (area < 60) return 1.08;
@@ -49,6 +63,24 @@ function classifyNoPrice(apt) {
   return "분양가 데이터 없음 (중립 점수)";
 }
 
+/**
+ * 가격 매력도 점수 (가중치 합 1.00, total 0~100 클램핑).
+ * 서브스코어: 괴리도 0.30 / 전세가율 0.20 / PIR 0.15 / PSR 0.25 / 신뢰도 0.07 / 택지비 0.03.
+ * fairPrice 3단 폴백 (src/scoring/CLAUDE.md "fairPrice 폴백 + 신뢰도 차감"):
+ *   1순위: trade_stats.nearby_median
+ *   2순위: regions.avg_price_sqm × 면적 → fairPriceFromSidoAvg=true
+ *   3순위: presale_pp × 면적/3.3058 → fairPriceFromSidoAvg=true
+ * 폴백 사용 시: dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY (기본 15).
+ * PIR 구간: ≤10→100, ≤20→80~100 선형, ≤30→60~80 선형, >30→60-(pir-30)×2 (0 하한, 세션108).
+ * priceIndex 보정: 130+ → +5, 110+ → +3 (과열 시장 신뢰도 가산).
+ * @param {Object} apt - sanitize 된 아파트
+ * @returns {{ total: number, subs: Array, fairPrice: number, deviation: number, fairPriceFromSidoAvg: boolean }}
+ *   - total: [0, 100] 클램핑
+ *   - subs: 6개 서브스코어 { key, label, value, weight, score, ...detail }
+ *   - fairPrice: 적정가 (만원). 3단 폴백 결과
+ *   - deviation: (price - fairPrice) / fairPrice (음수 = 저평가)
+ *   - fairPriceFromSidoAvg: 2/3순위 폴백 사용 여부 (신뢰도 -15 표시용)
+ */
 export function scorePrice(apt) {
   const brand = BRAND_TIER[apt.builder];
   if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
