@@ -13,6 +13,42 @@ import {
   PUBLIC_PRESALE_BONUS, NEW_SUPPLY_HIGH, NEW_SUPPLY_LOW, NEW_SUPPLY_HIGH_ADJ, NEW_SUPPLY_LOW_ADJ,
 } from "@/constants/scoringTiers";
 
+/**
+ * 안전도 점수 (0~100). 11개 서브 위험점수를 가중 합산 → `safety = 100 - risk` 반환.
+ *
+ * 11서브 가중치 합계 = 1.00 (CLAUDE.md L42, 실측 검산 PASS):
+ *   unsold 0.14 · liq 0.14 · loan 0.15 · fin 0.17 · reg 0.05 · sup 0.10 ·
+ *   mkt 0.04 · cancel 0.04 · comp 0.09 · crime 0.05 · init 0.03 = 1.0000
+ *
+ * 점수 방향성: 내부 sub*는 위험점수(높을수록 위험), 반환 subs[].score는 `100 - subSc`(안전점수, 높을수록 안전).
+ * 클램핑: `Math.round(Math.max(0, Math.min(100, 100 - risk)))`.
+ *
+ * 핵심 보정:
+ *   - listingPen: naverSellCount > LISTING_FLOOD_THRESHOLD → LISTING_FLOOD_PENALTY,
+ *     > LISTING_WARN_THRESHOLD → LISTING_WARN_PENALTY. liqSc 가산 후 상한 100.
+ *   - finSc 공공분양 보너스: presaleType "공공" 포함 시 + PUBLIC_PRESALE_BONUS (0~100 클램프).
+ *   - isRegulated 폴백: DB값 우선, null이면 `getZone(region, gu)` 폴백.
+ *   - newSupply 보정: > NEW_SUPPLY_HIGH → supSc + NEW_SUPPLY_HIGH_ADJ (상한 100),
+ *     < NEW_SUPPLY_LOW → supSc + NEW_SUPPLY_LOW_ADJ (하한 0).
+ *   - crimeSc 복합: gradeRisk(행안부 범죄등급) × 0.7 + policeRisk(경찰관서 거리) × 0.3.
+ *   - 서브점수 구간 표는 src/scoring/CLAUDE.md L131~L191 참조 (mktSc 7단계, compSc 7단계,
+ *     cancelSc 5구간, initSc 5구간, crimeSc 5등급).
+ *
+ * null 처리: `apt.cancelRatio6m == null ? CANCEL_RATIO_NULL_SCORE : ...` 등 명시적 분기.
+ * `??` 사용 (CREDIT_GRADE_SCORES[…] ?? CREDIT_DEFAULT).
+ *
+ * @param {object} apt 단지 객체. units, unsoldRate, recentTrades6m, naverSellCount, dsr40pass,
+ *   loanFree, hugGuarantee, builderCreditGrade, builderDebtRatio, presaleType, isRegulated,
+ *   region, gu, supplyRatio, newSupply, initialSaleRate, popGrowth, cancelRatio6m,
+ *   competitionRate, crimeSafetyGrade, policeDist, police 등.
+ * @returns {{ total: number, riskRaw: number,
+ *   subs: Array<{name:string, score:number, info:string, detail:string}> }}
+ *   total 0~100 안전점수, riskRaw 위험점수 원본, subs 11개(각 score는 안전점수).
+ *
+ * @example
+ * // 11서브 가중치 합 검증
+ * 0.14+0.14+0.15+0.17+0.05+0.10+0.04+0.04+0.09+0.05+0.03 === 1.00  // true
+ */
 export function scoreRisk(apt) {
   let unsoldSc = apt.units <= 1 ? UNSOLD_UNKNOWN_SCORE : tierMax(apt.unsoldRate, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE);
   let liqSc = tierMin(apt.recentTrades6m, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE);
