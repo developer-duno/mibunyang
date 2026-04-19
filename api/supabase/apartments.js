@@ -104,13 +104,9 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
   }
 }});
 
-/**
- * null → 기본값으로 정리 (기존 JSON 호환 + 스코어링 엔진 안전)
- * CLAUDE.md: "위험 필드 null → 비관적 기본값, 혜택 필드 null → 0"
- */
-function sanitize(row) {
+/** 추정값 추적 플래그 11개 (ExpertDataCompleteness에서 사용) */
+function sanitizeFallbackFlags(row) {
   return {
-    // 추정값 추적 플래그 (ExpertDataCompleteness에서 사용)
     _fallbackPir: row.pir == null,
     _fallbackPsr: row.psr == null,
     _fallbackJeonseRate: row.jeonseRate == null,
@@ -122,6 +118,13 @@ function sanitize(row) {
     _fallbackNearbyBuildYear: row.nearbyBuildYear == null && row.naverBuildYear != null,
     _fallbackAvgFloor: row.avgFloor == null && row.naverAvgFloor != null,
     _fallbackCancelRatio6m: row.cancelRatio6m == null,
+  };
+}
+
+/** 위치·건물 기본 필드 (unsold/unsoldRate 특수 로직 포함) */
+function sanitizeBasics(row) {
+  const units = row.units ?? 0;
+  return {
     id: row.id,
     name: row.name,
     dong: row.dong ?? "",
@@ -140,10 +143,10 @@ function sanitize(row) {
     buildingCoverageRatio: row.buildingCoverageRatio ?? null,
     layout: row.layout ?? null,
     floors: row.floors ?? null,
-    units: row.units ?? 0,
-    unsold: (row.unsold != null && (row.units ?? 0) > 1 && row.unsold >= (row.units ?? 0)) ? null : (row.unsold ?? null),
-    unsoldRate: (row.units ?? 0) <= 1 ? null
-      : (row.unsold != null && row.unsold >= (row.units ?? 0)) ? null
+    units,
+    unsold: (row.unsold != null && units > 1 && row.unsold >= units) ? null : (row.unsold ?? null),
+    unsoldRate: units <= 1 ? null
+      : (row.unsold != null && row.unsold >= units) ? null
       : (row.unsoldRate ?? 50),
     updatedAt: row.updatedAt ?? null,
     completion: row.completion ?? "",
@@ -157,6 +160,17 @@ function sanitize(row) {
     quakeDesign: row.quakeDesign ?? null,
     hasPool: row.hasPool ?? null,
     announcementUrl: row.announcementUrl ?? null,
+  };
+}
+
+/**
+ * null → 기본값으로 정리 (기존 JSON 호환 + 스코어링 엔진 안전)
+ * CLAUDE.md: "위험 필드 null → 비관적 기본값, 혜택 필드 null → 0"
+ */
+function sanitize(row) {
+  return {
+    ...sanitizeFallbackFlags(row),
+    ...sanitizeBasics(row),
     // 혜택 (null → 0/false)
     discountPct: row.discountPct ?? 0,
     loanFree: row.loanFree ?? false,
