@@ -9,6 +9,15 @@
 
 ### 최근 3세션 (상세)
 
+**세션121 (2026-04-19)** — createTimeseriesHandler 팩토리 추출 (1커밋 origin/main `3cad834`)
+- 🟢 백로그 "api/supabase/prices.js ↔ unsold-history.js 중복 11줄 → 공통 헬퍼" 해소
+- **신규** [api/_lib/timeseriesHandler.js](api/_lib/timeseriesHandler.js) 58줄 — `createTimeseriesHandler({ table, select, orderBy, errorLabel, filter? })` 팩토리
+- **수정** [api/supabase/prices.js](api/supabase/prices.js) 49→21줄 (-28), [api/supabase/unsold-history.js](api/supabase/unsold-history.js) 48→19줄 (-29) — 선언부만 남김. presale_% 필터는 `filter` 훅으로 이전
+- 외부 동작 불변: 기존 테스트 13케이스(prices 7 + unsold-history 6) **수정 없이** 통과
+- 9 GATE 1차 🟢9/🟡0/🔴0 (서브에이전트 2개 병렬: 영향범위 grep + 보안 실측)
+- 검증: 150 files / **2418 tests PASS** (세션120 유지), `vite build` 397ms, null-safety PASS, 번들 불변
+- rateLimit "proxy" 유지 (세션119 🔴 보안 수정 보존)
+
 **세션120 (2026-04-19)** — App.jsx 훅 4분리 442→354줄 (3커밋 origin/main `7b52948..97bcb67`)
 - 🟡 백로그 "App.jsx 442줄 → useAppState() 훅 분리" 해소. 보수 4훅 분리로 -88줄(-20%) 달성
 - **신규 훅 4종**:
@@ -251,7 +260,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - 저장 액션(가중치·프리셋) 토스트 피드백 추가
 - `AdminDashboard` 412줄 → 매출탭/승인탭 분리
 - `src/scoring/engine.js`·`scorePrice.js` JSDoc 추가
-- `api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼
+- ~~`api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼~~ **완료 (세션121, 커밋 `3cad834` — `createTimeseriesHandler` 팩토리 추출, 외부 동작 불변)**
 - `collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)
 
 ---

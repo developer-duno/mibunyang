@@ -1,3 +1,70 @@
+# 세션 121 — 2026-04-19 (api/supabase 중복 → createTimeseriesHandler 팩토리 추출)
+
+**거시 목적**: 🟢 백로그 "api/supabase/prices.js ↔ unsold-history.js 중복 11줄 → 공통 헬퍼" 해소. 세션119 /improve 지적 단건 정리.
+
+## 플랜
+
+- `~/.claude/plans/pwd-zazzy-pumpkin.md`
+- 사용자 지시: B(중복 헬퍼) → A(onClick useCallback) 순서. B부터 실행
+- 9 GATE 1차 전원 🟢9/🟡0/🔴0 → 실행 허가
+
+## 커밋 (1건, origin/main `b75e4df..3cad834`)
+
+| 커밋 | 변경 |
+|------|------|
+| `3cad834` | refactor(api/supabase): extract createTimeseriesHandler — prices·unsold-history 중복 제거 |
+
+## 신규/수정 파일
+
+- **신규** `api/_lib/timeseriesHandler.js` (+58줄) — `createTimeseriesHandler({ table, select, orderBy, errorLabel, filter? })` 팩토리
+  - withHandler GET + rateLimit "proxy" 보존
+  - parseApartmentIds 400 → filter? 훅 → order ASC → Cache-Control public s-maxage=3600
+  - 3단 보호: parsed.error 400 / error 500 / catch 500
+  - 응답 포맷 `{ ok, data: data||[], count, fetchedAt }` 유지
+- **수정** `api/supabase/prices.js` 49→21줄 (-28) — 선언부만 남김. `filter: (q) => q.not("house_type","like","presale_%")` 으로 presale 필터 이전
+- **수정** `api/supabase/unsold-history.js` 48→19줄 (-29) — filter 생략(훅 조건부 스킵)
+
+순 변화: 3파일 +74 / -75 = **-1줄** (중복 11줄 제거 + 팩토리 재사용 기반)
+
+## 9 GATE 검증 (전원 🟢)
+
+| Gate | 판정 | 증거 |
+|---|---|---|
+| 0 Sonnet 크기 | 🟢 | 수정 2 + 신규 1 = 3파일, 단일파일 최대 58줄, 관심사 1개 |
+| 1 영향 범위 | 🟢 | Explore: prices/unsold-history 참조 20곳 모두 문자열 URL, 코드 import 0건. `timeseriesHandler` 이름 충돌 0 |
+| 2 실행 순서 | 🟢 | 1커밋 독립, 의존 역전 없음 |
+| 3 완전성 | 🟢 | 에러 3단 보호·한국어 메시지·캐싱 헤더 보존 |
+| 4 적정성 | 🟢 | `filter` 훅 프로퍼티 확장점 적정 |
+| 5 보안 | 🟢 | Explore: API_KEY/SECRET/innerHTML/eval grep 0, ANON_KEY 유지, SQL Injection `/^ah-\d+$/` 보존, rateLimit 체인 순서 유지 |
+| 6 연동 일관성 | 🟢 | 프론트 필드 의존(recorded_at/unsold_count/base_month) SELECT 상수 그대로 |
+| 7 롤백 | 🟢 | 단일 커밋 revert 복원 |
+| 8 UX·확장성 | 🟢 | 신규 시계열 API 3줄로 추가 가능 |
+
+## 검증
+
+| 체크 | 결과 | 에이전트 |
+|---|---|---|
+| 타겟 테스트 | **13/13 PASS** (prices 7 + unsold-history 6, 수정 없이) | 메인 (vitest) |
+| 전체 테스트 | **2418 PASS / 150 files** (세션120 2418 동일 유지) | 메인 (vitest) |
+| vite build | **397ms 성공, 번들 불변** | 메인 |
+| null 안전성 | **PASS (High/Med 0건, Low 3건 전부 실제 리스크 없음)** | null-safety-checker |
+| 보안 | **PASS (민감정보 grep 0, console.log 0)** | 메인 |
+| 스코어링 | **SKIP (스코어링 변경 없음)** | - |
+| 수집기 계약 | **SKIP (수집기 변경 없음)** | - |
+
+## 교훈
+
+- **등가 리팩토링의 성공 기준**: 기존 테스트 **수정 없이** 통과 = 외부 동작 불변 증명. 세션121이 이 기준 만족
+- **filter 훅 조건부 스킵 패턴**: `if (filter) query = filter(query)` 가드로 선택적 체이닝 → unsold-history처럼 필터 없는 경우도 안전
+- **세션119 3차 후속의 sanitize 7그룹 분리**와 같은 "프로퍼티 선언 → 팩토리 호출" 패턴의 일관성 — mibunyang이 축적 중인 리팩토링 스타일
+
+## 다음 단계 (세션121 단계 A 예정)
+
+- 🟡 onClick={() => ...} inline 클로저 75건 → useCallback (ExpertDashboard 상위 위주)
+- 후속: 🟡 eslint 10 / @vercel/kv 3 메이저, 🟢 AdminDashboard 분리 등
+
+---
+
 # 세션 120 — 2026-04-19 (App.jsx 훅 4분리 442→354줄)
 
 **거시 목적**: 🟡 백로그 "App.jsx 442줄 → useAppState() 훅 분리 (250줄 목표)" 해소. 보수 4훅 분리로 442→354줄 (-88, -20%) 달성.
