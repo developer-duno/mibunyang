@@ -1,5 +1,32 @@
 import { INTEREST_RATE, LOAN_TERM_MULT, BENEFIT_FULL_RATE } from "@/constants/scoringTiers";
 
+/**
+ * 혜택·할인 점수 (0~100). 6개 혜택 만원 단위 합산 → 분양가 대비 비율 → BENEFIT_FULL_RATE 기준.
+ *
+ * 합산 항목 6개:
+ *   discVal(분양가 할인) + loanVal(중도금 무이자) + optVal(옵션 무상) +
+ *   balVal(발코니 확장) + cashVal(캐시백) + maintSave(관리비 절감)
+ *
+ * 핵심 공식:
+ *   - loanVal = `loanFree ? round(price × (loanFreePct/100) × INTEREST_RATE × LOAN_TERM_MULT) : 0`.
+ *   - maintSave: `_regionAvgMaint > 0 && avgMaintenanceCost > 0` 동시 충족 시
+ *     `max(0, round((regionAvgMaint - avgMaintenanceCost) × 12))` (음수 클램프).
+ *   - rate = `price > 0 ? (totalWon / price) × 100 : 0` (price=0 가드).
+ *   - sc = `Math.max(0, Math.min(round(rate / BENEFIT_FULL_RATE × 100), 100))`.
+ *   - itemScore: `totalWon > 0 ? round(sc × v / totalWon) : 0` (0으로 나누기 방지).
+ *   - noData: 6개 모두 0이면 true (UI 분기용).
+ *
+ * @param {object} apt 단지 객체. price, discountPct, loanFree, loanFreePct, optionFree,
+ *   optionValue, balconyFree, balconyValue, cashback, avgMaintenanceCost, _regionAvgMaint 등.
+ * @returns {{ total: number, totalWon: number, rate: string, noData: boolean,
+ *   subs: Array<{name:string, score:number, info:string, detail:string}> }}
+ *   total 0~100 정수, totalWon 만원 단위 합, rate 소수1자리(상한 9999.0), noData 플래그, subs 6개.
+ *
+ * @example
+ * // 분양가 5억(50000만), 할인 25% → 12500만 → rate 25 → sc 100 (BENEFIT_FULL_RATE 기준 충족 시)
+ * scoreBenefit({ price: 50000, discountPct: 25, loanFree: false, optionFree: false,
+ *                balconyFree: false, cashback: 0 }).total  // 100
+ */
 export function scoreBenefit(apt) {
   const loanVal = apt.loanFree ? Math.round(apt.price * (apt.loanFreePct / 100) * INTEREST_RATE * LOAN_TERM_MULT) : 0;
   const discVal = Math.round(apt.price * apt.discountPct / 100);

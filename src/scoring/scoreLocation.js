@@ -13,6 +13,33 @@ import {
 
 const IS_DEV = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
 
+/**
+ * 입지·생활권 점수 (0~100). 5개 서브 가중치 합계 = 1.00 (불변식).
+ *
+ * 가중치(이 함수 내부 — src/scoring/CLAUDE.md L40):
+ *   transport 0.30 · school 0.25 · infra 0.20 · env 0.10 · noxSafe 0.15
+ *
+ * 핵심 보정:
+ *   - airSc 복합: PM2.5(0.40) + PM10(0.35) + O3(0.25). pm10/o3 둘 다 null이면 PM2.5 단독.
+ *   - school 도보보정: naverSchoolWalkMin 기반 ≤5분 +10, ≤10분 +5, ≤20분 -5, >20분 -10.
+ *   - 혐오시설 거리 완화: noxiousDist ≥ NOXIOUS_DIST_THRESHOLD(500m) 시 감점 × NOXIOUS_REDUCTION,
+ *     하한 NOXIOUS_PEN_CAP.
+ *   - 일조 방향 보너스: primaryDirection별 DIRECTION_BONUS 가산, 상한 SUNLIGHT_DIRECTION_MAX.
+ *   - infra 서브가중치 10항목 합계 1.00 (INFRA_CONFIG, CLAUDE.md L41).
+ *
+ * null 처리: `apt.schoolScore ?? 50` 등 `??` 사용. `||` 금지(0이 50으로 대체되는 함정).
+ * 클램핑: `Math.max(0, Math.min(total, 100))` 강제.
+ *
+ * @param {object} apt 단지 객체. region, subwayDist, busRoutes, icDist, ktxDist, schoolScore,
+ *   naverSchoolWalkMin, view, sunlight, primaryDirection, noise, airQuality{pm25,pm10,o3,grade},
+ *   noxious[], noxiousDist, hospital/mart/conv/park/pharmacy/childcare/emergency 등.
+ * @returns {{ total: number, subs: Array<{name:string, score:number, info:string, detail:string}> }}
+ *   total 0~100 정수, subs 5개(교통·학군·생활인프라·자연환경·혐오시설).
+ *
+ * @example
+ * // 5개 서브 가중치 합 검증
+ * 0.30 + 0.25 + 0.20 + 0.10 + 0.15 === 1.00  // true
+ */
 export function scoreLocation(apt) {
   const tier = REGIONS[apt.region]?.tier;
   if (!tier && IS_DEV) console.warn(`[scoring] Unknown region: "${apt.region}"`);

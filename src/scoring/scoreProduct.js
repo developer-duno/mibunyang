@@ -10,6 +10,33 @@ import {
 
 const IS_DEV = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
 
+/**
+ * 상품성 점수 (0~100). 9개 항목 합산 후 PRODUCT_MAX 합으로 정규화.
+ *
+ * PRODUCT_MAX 합계 = 100 (CLAUDE.md L44, 9개 max 합):
+ *   brand · units · parking · far · energy · excl · layout · quake · struct
+ * 정규화: `Math.max(0, Math.min(rawTotal / maxPossible × 100, 100))`.
+ *
+ * 핵심 보정:
+ *   - 주택유형별 브랜드 상한: presaleHousingType이 "오피스텔"/"도시형" 포함 시
+ *     HOUSING_TYPE_CAP_NON_APT(15), 그 외 HOUSING_TYPE_CAP_DEFAULT(20).
+ *   - presaleParking 폴백: `_noParking && presaleParking != null`이면
+ *     `presaleParking / max(presaleGeneralSupply ?? units, 1)`로 effectivePR 산출.
+ *   - hasPool 보너스: unitSc + 3, 상한 15.
+ *   - units ≤ 1: UNIT_UNKNOWN_SCORE(중립 8점) — 0/1 동시 처리.
+ *
+ * null 처리: `apt.units ?? 0`, `apt.childcare ?? 0` 등 `??` 사용.
+ *
+ * @param {object} apt 단지 객체. builder, units, hasPool, parkingRatio, _noParking,
+ *   presaleParking, presaleGeneralSupply, presaleHousingType, floorAreaRatio, energyGrade,
+ *   greenBldg, exclusiveRatio, layout, quakeDesign, maxFloor 등.
+ * @returns {{ total: number, subs: Array<{name:string, score:number, info:string, detail:string}> }}
+ *   total 0~100 정수, subs 9개(브랜드·세대수·주차·용적률·에너지·전용률·평면·내진·구조).
+ *
+ * @example
+ * // PRODUCT_MAX 9항목 합 = 100
+ * Object.values(PRODUCT_MAX).reduce((a, b) => a + b, 0) === 100  // true
+ */
 export function scoreProduct(apt) {
   const brand = BRAND_TIER[apt.builder];
   if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
