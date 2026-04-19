@@ -1,3 +1,78 @@
+# 세션 120 — 2026-04-19 (App.jsx 훅 4분리 442→354줄)
+
+**거시 목적**: 🟡 백로그 "App.jsx 442줄 → useAppState() 훅 분리 (250줄 목표)" 해소. 보수 4훅 분리로 442→354줄 (-88, -20%) 달성.
+
+## 플랜
+
+- `~/.claude/plans/pwd-concurrent-owl.md`
+- 사용자 선택: 보수 4훅 (~355줄) + 3단계 커밋
+- 9 GATE 1차 🟢6/🟡3/🔴0 → 2차 보강 후 🟢9/🟡0/🔴0 → 3차(E2E 커버리지 질의) → 사용자 "수동 smoke만" 선택 → 실행 허가
+
+## 커밋 (3건, origin/main `7b52948..97bcb67`)
+
+| 커밋 | 변경 | App.jsx |
+|------|------|---------|
+| `54818b9` | refactor(App): extract useLoginGate hook (비로그인 게이트 3상태 + 3핸들러) | 442→428 (-14) |
+| `31b53d4` | refactor(App): extract useShareCallbacks hook (3 공유 핸들러 + scoredMapRef) | 428→390 (-38) |
+| `97bcb67` | refactor(App): extract useKakaoCallbackEffect + useKeyboardShortcuts hooks | 390→354 (-36) |
+
+## 신규 훅 4종 + 테스트 2종
+
+- `src/hooks/useLoginGate.js` (34줄) + `.test.js` 5건 — showLoginPrompt/loginTrigger/pendingDetailId + handleDetailGated/handleKakaoFromPrompt/handleExpertFromPrompt
+- `src/hooks/useShareCallbacks.js` (59줄) + `.test.js` 6건 — handleShareDetail/Compare/Filters + scoredMapRef 내부 관리
+- `src/hooks/useKakaoCallbackEffect.js` (34줄) — void. `[tab]` deps + eslint-disable 유지 (의미론적 탭 전환 트리거)
+- `src/hooks/useKeyboardShortcuts.js` (23줄) — void. 1~5 프로필 / Ctrl+Z undo / Ctrl+Shift+Z·Ctrl+Y redo / Escape / INPUT·TEXTAREA·SELECT 포커스 가드
+- `src/hooks/CLAUDE.md` "Hook 호출 순서" 갱신 — 4훅 추가 + useLoginGate가 Nav 앞인 이유 명시
+
+## Hook 호출 순서 (최종)
+
+```
+useState + useTransition → 로컬 useCallback (3) → 커스텀 훅 13개
+  → useDataPipeline → useLoginGate → useAppNavigation
+  → useKakaoCallbackEffect → useShareCallbacks → useKeyboardShortcuts
+  → 잔존 useEffect 3개 (print CSS, URL 딥링크, 무효 ID 정리) → JSX
+```
+
+**useLoginGate 위치 주의**: `useAppNavigation`의 `onLoginRequired` 콜백이 `setLoginTrigger`/`setShowLoginPrompt`를 참조 → Nav **앞**에 배치 (TDZ 방지).
+
+## 검증
+
+| 체크 | 결과 | 에이전트 |
+|------|------|---------|
+| vitest 전체 | **150 files / 2418 tests PASS** (세션119 3차 후속 2407 → +11) | 메인 |
+| vite build | 486ms, 번들 불변 | 메인 |
+| Hook 규칙 | 조건부 호출 없음, 순서 고정, deps 완전 | 메인 직접 |
+| null 안전성 | Step 1 PASS / Step 2 "기존 App.jsx 동일 패턴" 확인 후 로직 보존 유지 | null-safety-checker |
+| 보안 | env 노출 0, innerHTML 0 (테스트 19건만) | 메인 직접 + Explore agent |
+| 스코어링 | 해당 없음 (리팩토링) | 스킵 |
+
+## 실측으로 교정한 에이전트 오판
+
+1. **Plan 에이전트 "~355줄 예측"** — 실측 354줄로 1줄 차 (오차 0.3%, 🟢)
+2. **null-safety-checker Step 2 FAIL 판정** — 지적 내용(base.includes, item.res.total, compItems.map)은 전부 **리팩토링 전 App.jsx에 동일하게 존재**. `git show HEAD~1:src/App.jsx`로 확인 → 로직 100% 보존 원칙상 방어 강화는 별도 에픽으로 이관
+
+## 9 GATE 검증 결과
+
+- **1차** (~355 플랜 초안): 🟢6/🟡3/🔴0 — Step 3 관심사 2가지·App.test.jsx 실행 누락·카카오 ref 래핑 위험
+- **2차** (보강 후): 🟢9/🟡0/🔴0 — 3 경고 전부 플랜에 반영
+- **3차** (E2E 커버리지 질의): 사용자 "수동 smoke만 강화" 결정 → 실행 허가
+
+## 다음 세션 우선순위
+
+1. **남은 🟡 백로그 (2건)**:
+   - `onClick={() => ...}` inline 클로저 75건 → useCallback (ExpertDashboard 등 상위)
+   - ~~`App.jsx` 442줄 → `useAppState()` 훅 분리~~ **완료 (세션120)**
+2. **🟢 여유 백로그 (8건)** — 분기 내 처리
+3. 남은 메이저 의존성 2건: `eslint 10`, `@vercel/kv 3`
+
+## 세션 내 Q&A / 교훈
+
+- 사용자 "하네스 엔지니어링 방식으로 검증해" 2회 반복 — Plan → 1차 9-GATE → 플랜 보강 → 2차 9-GATE → 사용자 E2E 질의 → 실행 허가 플로우 정착
+- 사용자 "알기쉽게 설명해줘 왜 저게 필요한지" — E2E 보강 옵션을 전문용어 없이 쉬운 비유로 설명해야 했던 케이스. 글로벌 규칙 적용 성공
+- null-safety-checker가 FAIL 찍어도 **리팩토링 전 동일 패턴이면 기존 보존이 원칙**. `git show HEAD~1:` 로 교차 검증하는 습관화
+
+---
+
 # 세션 119 3차 후속 — 2026-04-19 (sanitize 그룹 분리 + @vercel/analytics 2.0)
 
 **거시 목적**: 세션119 2차 후속에 이어 🟡 백로그 저리스크 2건 해소.

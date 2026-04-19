@@ -9,6 +9,18 @@
 
 ### 최근 3세션 (상세)
 
+**세션120 (2026-04-19)** — App.jsx 훅 4분리 442→354줄 (3커밋 origin/main `7b52948..97bcb67`)
+- 🟡 백로그 "App.jsx 442줄 → useAppState() 훅 분리" 해소. 보수 4훅 분리로 -88줄(-20%) 달성
+- **신규 훅 4종**:
+  - [useLoginGate.js](src/hooks/useLoginGate.js) 34줄 + test 5건 (커밋 `54818b9`) — showLoginPrompt/loginTrigger/pendingDetailId + 3핸들러
+  - [useShareCallbacks.js](src/hooks/useShareCallbacks.js) 59줄 + test 6건 (커밋 `31b53d4`) — scoredMapRef 내부 관리 + 필터 10개 개별 prop
+  - [useKakaoCallbackEffect.js](src/hooks/useKakaoCallbackEffect.js) 34줄 (커밋 `97bcb67`) — `[tab]` deps + eslint-disable 유지 명시
+  - [useKeyboardShortcuts.js](src/hooks/useKeyboardShortcuts.js) 23줄 (커밋 `97bcb67`) — 1~5/Ctrl+Z/Escape 가드
+- **Hook 호출 순서 조정**: useLoginGate를 useAppNavigation **앞**에 배치 (onLoginRequired 콜백이 setLoginTrigger 참조)
+- [src/hooks/CLAUDE.md](src/hooks/CLAUDE.md) 호출 순서 섹션 갱신
+- 9 GATE 1차 🟢6/🟡3 → 2차 보강 🟢9/🟡0/🔴0 통과 후 실행
+- 검증: 150 files / **2418 tests PASS** (세션119 3차 후속 2407 → +11), `vite build` 486ms, 번들 불변
+
 **세션119 3차 후속 (2026-04-19)** — sanitize 그룹 분리 + @vercel/analytics 2.0 (5커밋 origin/main)
 - `/improve` 🟡 백로그 저리스크 2건 해소. 9 GATE 3차 🟢9/🟡0/🔴0
 - **sanitize() 7그룹 분리** (커밋 `587826d`→`c5f704c`→`8ca6980`→`d704adf`): 193줄 단일 객체 → `sanitizeFallbackFlags`·`Basics`·`Benefits`·`Environment`·`Infra`·`Transport`·`Region`·`Transaction`·`NaverCross`·`Presale` 10헬퍼 + 4단독 인라인. 파일 303→363줄
@@ -229,7 +241,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - ~~`@supabase/supabase-js` 2.98→2.103 마이너~~ **완료 (세션119 후속, 커밋 `73b3295`)**
 - `onClick={() => ...}` inline 클로저 75건(실측) → useCallback (ExpertDashboard 등 상위)
 - ~~`admin/review.js:72` 이메일 `.includes("@")` → RFC 5322 정규식~~ **완료 (세션119 후속, 커밋 `1d4f3c3`·`295334c` — 공용 `isValidEmail()` 추출)**
-- `App.jsx` 442줄 → `useAppState()` 훅 분리 (250줄 목표)
+- ~~`App.jsx` 442줄 → `useAppState()` 훅 분리 (250줄 목표)~~ **완료 (세션120, 3커밋 `54818b9..97bcb67`, 442→354줄 -88, 4훅 추출)**
 - ~~`api/supabase/apartments.js` sanitize() 54필드 → 그룹별 분리~~ **완료 (세션119 3차 후속, 커밋 `587826d`→`d704adf` — 7헬퍼 + 스냅샷 테스트)**
 
 ### 🟢 여유 (분기 내 · 8건)
