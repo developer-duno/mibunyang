@@ -1,3 +1,104 @@
+# 세션 128 — 2026-04-20 (에픽 4-A1b-2: tokenBlacklist 체인 Upstash 교체)
+
+**거시 목적**: 세션127 에서 분리한 tokenBlacklist 체인을 `@vercel/kv` → `./redis.js` (Upstash) 로 교체. prod `@vercel/kv` import 9 → 8 감소. auth prod 5파일(login/signup/kakao/verify/refresh)은 세션129+ 이월.
+
+## 플랜
+
+- `~/.claude/plans/pwd-rustling-wind.md` — tokenBlacklist + 4 test pair-commit 단일 커밋 전략
+- 9 GATE 3회 재검증 🟢8/🟡0/🔴0 수렴 (세션127 2회 선례 대비 1회 추가 강화)
+
+## 9 GATE 3회 수렴 기록
+
+| 회차 | 🔴 | 🟡 | 🟢 | 핵심 발견 |
+|------|-----|-----|-----|-----------|
+| 1차 | 1 | 1 | 6 | **GATE 3 refresh.js 누락** — test 커버 없는 쌍둥이 prod 간과 |
+| 2차 | 0 | 1 | 7 | refresh.js 🟡 미묘 섹션 플랜 박제 (prod 런타임 OK, test 공백 세션129 이월) |
+| 3차 | 0 | 0 | 8 | Vitest 클로저 공유 실증 + 3-mock 병존 선례 5건 확증 (signup/handler/review/stats/users) + GATE 0 예외 정당 |
+
+## 1차 발견 (🔴 → 박제)
+
+`refresh.js` 가 `@vercel/kv` 직접 (L1 `kv.get(user:)`) + `tokenBlacklist` 경유 (L3) 로 **verify.js 와 쌍둥이 구조** 인데 `refresh.test.js` 존재하지 않음 (Phase 1 실측 확정). 교체 후 prod 런타임 영향:
+
+- SDK 객체 2개 (Vercel KV + Upstash Redis) 이지만 `Redis.fromEnv()` 의 `KV_REST_API_URL/TOKEN` fallback 으로 **서버 측 같은 Upstash 인스턴스** 공유 (세션126 실측)
+- 블랙리스트 조회 + 사용자 조회 모두 정상 작동
+- test 커버 공백은 세션129 우선순위 1 로 이월 (verify/refresh 쌍둥이 동시 교체 + refresh.test.js 신규)
+
+## 3차 실증 증거
+
+- **Vitest 클로저 공유**: 두 팩토리가 같은 `mockKv` 레퍼런스 반환 → `result1.obj === result2.obj === shared: true`
+- **3-mock 병존 선례**: signup/handler/review/stats/users.test.js 5개 파일에 이미 존재 → verify.test.js 추가는 6번째 사례
+- **verify.test.js 13 케이스 베이스라인 PASS** (2026-04-20 01:27:23 실행)
+- **GATE 0 예외 정당**: 4파일+ 단일 커밋 최근 100커밋 중 0건, 분할 시 레드 빌드 불가피, 총 diff 11줄, import path 1:1 치환
+
+## 커밋 (1건, origin/main `99a04f3..c1072a1`)
+
+| 커밋 | 변경 |
+|------|------|
+| `c1072a1` | refactor(kv): migrate tokenBlacklist chain to Upstash Redis wrapper |
+
+## 변경 (5파일, +11/-8 순증 3줄)
+
+| 파일 | 변경 |
+|---|---|
+| [api/_lib/tokenBlacklist.js](../api/_lib/tokenBlacklist.js) | L1 `from "@vercel/kv"` → `from "./redis.js"` (1줄) |
+| [api/_lib/tokenBlacklist.test.js](../api/_lib/tokenBlacklist.test.js) | L7-9 주석 + `vi.mock('@vercel/kv')` → `vi.mock('./redis.js')` (2줄) |
+| [api/_lib/adminAuth.test.js](../api/_lib/adminAuth.test.js) | L12-14 주석 + mock target → `./redis.js` (2줄) |
+| [api/auth/logout.test.js](../api/auth/logout.test.js) | L17-19 주석 + mock target → `../_lib/redis.js` (2줄) |
+| [api/auth/verify.test.js](../api/auth/verify.test.js) | L17-22 `vi.mock('../_lib/redis.js')` **추가** + 주석 3줄 (기존 `@vercel/kv` mock 유지, 동일 mockKv 공유 병존) (+5/-2) |
+
+## 두-mock 병존 설계 (verify.test.js)
+
+verify.js 는 `@vercel/kv` 직접 (kv.get(user:)) + tokenBlacklist 경유 두 경로 사용. 교체 후 verify.js prod 를 건드리지 않으면 두 모듈 각각 mock 필요:
+
+```js
+const mockKv = { get: vi.fn(), set: vi.fn() };
+vi.mock('@vercel/kv', () => ({ kv: mockKv }));           // verify.js 본체용
+vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));     // tokenBlacklist 경유용
+```
+
+두 팩토리가 **동일 JS 레퍼런스**(`mockKv`) 반환 → `kv.get` 큐 단일화 → `mockResolvedValueOnce` 체인 기존 그대로 작동 → **테스트 코드 0줄 변경**.
+
+세션129 에서 verify.js prod 교체 시 `vi.mock('@vercel/kv')` 제거 → `./redis.js` 단독화 (자연 해제).
+
+## 5교차검증
+
+| 축 | 에이전트 | 결과 |
+|---|---|---|
+| 빌드 | 메인 | 🟢 `vite build` 550ms, 번들 불변 |
+| 스코어링 | 해당없음 | (scoring 코드 변경 없음) |
+| null 안전성 | null-safety-checker | 🟢 PASS — High/Med 0건, Low 2건 (정보성, `val !== null` vs Upstash null 반환 일치 / verify.test.js 두-mock 병존 큐 단일화 안전) |
+| Hook 규칙 | 해당없음 | (React hook 변경 없음) |
+| 보안 | 메인 | 🟢 PASS — GATE 5 실측 완료. Upstash `SetCommandOptions.ex` 정식 지원 (`chunk-IH7W44G6.mjs:2259`), fail-open L24-26 catch 보존 |
+
+## 검증 (pre-commit)
+
+- `npm run test api/_lib/tokenBlacklist + adminAuth + logout + verify`: **36 PASS** (tokenBlacklist 9 + adminAuth 8 + logout 6 + verify 13)
+- `npm run test` 전체: **150 files / 2422 tests PASS** (세션127 동일 유지)
+- `npx vite build`: **550ms 성공**, 번들 불변
+- `npm audit`: **0 vulnerabilities**
+- `grep -c "from.*@vercel/kv" api/ --include="*.js" | grep -v .test`: **8** (9 → 8, 정확히 예상)
+
+## 세션128 통계
+
+- **1차 GATE**: 🟢6 / 🟡1 / 🔴1 (refresh.js 누락 발견)
+- **2차 GATE**: 🟢7 / 🟡1 / 🔴0 (박제 해소)
+- **3차 GATE**: 🟢8 / 🟡0 / 🔴0 (실증 완결)
+- 세션127 (2회 수렴) 대비 3회 연속 🔴=0 수렴으로 안전성 강화
+- prod `@vercel/kv` import 10 → 9 (세션127) → **8 (세션128)**
+- 에픽 4 전체 진행도: 4-A0 + 4-A1a + 4-A1b-1 + 4-A1b-2 완료 (4-A1c 및 4-B 세션129+)
+
+## 다음 세션 (세션129) 우선순위
+
+1. 🔴 **auth 체인 prod 5파일 + test 6파일 교체**
+   - verify.js (두-mock 병존 해제 대상)
+   - refresh.js (+ refresh.test.js 신규 작성) — **refresh.test.js 부재 해소**
+   - login / signup / kakao + 각 test mock 경로
+   - 범위 11파일 → 2~3 pair-commit 분할 필수 (CLAUDE.md 3파일 규칙)
+2. 🟡 **세션130 예정**: `package.json` 의 `@vercel/kv` 의존성 제거 (prod 0 달성 시)
+3. ⚪ **Next.js 16 / ESLint 10 업그레이드** (eslint-plugin-react peer 재검)
+
+---
+
 # 세션 127 — 2026-04-20 (에픽 4-A1b-1: rateLimit 체인 Upstash 교체)
 
 **거시 목적**: 통합 플랜 에픽 4 9 GATE 재설계 후 가장 낮은 리스크 구간(rateLimit 체인)만 선별 교체. tokenBlacklist 체인은 세션128+ 이월.

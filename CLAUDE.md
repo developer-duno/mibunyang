@@ -9,6 +9,17 @@
 
 ### 최근 3세션 (상세)
 
+**세션128 (2026-04-20)** — 에픽 4-A1b-2: tokenBlacklist 체인 Upstash 교체 (1커밋 origin/main `99a04f3..c1072a1`)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4-A1b-2 진행. 실행 플랜 [pwd-rustling-wind.md](C:\Users\user\.claude\plans\pwd-rustling-wind.md)
+- **9 GATE 3회 수렴** (세션127 2회 대비 1회 추가 강화): 1차 🟢6/🟡1/🔴1 → 2차 🟢7/🟡1/🔴0 → 3차 🟢8/🟡0/🔴0
+- **1차 🔴 발견 → 박제**: `refresh.js` 가 `@vercel/kv` 직접(L1) + tokenBlacklist 경유(L3) **verify.js 쌍둥이** 인데 `refresh.test.js` 부재. prod 런타임은 `Redis.fromEnv()` KV_REST_API fallback 으로 같은 Upstash 서버 공유 → 영향 0. test 공백은 세션129 우선순위 1 이월
+- **3차 실증**: Vitest 두-mock 병존 `result1.obj === result2.obj === shared: true` + 3-mock 선례 5건 (signup/handler/review/stats/users.test.js)
+- **커밋 `c1072a1`** (5파일 +11/-8): [tokenBlacklist.js](api/_lib/tokenBlacklist.js) L1 `@vercel/kv` → `./redis.js` + 4 test mock 경로 교체 ([tokenBlacklist.test.js](api/_lib/tokenBlacklist.test.js) `./redis.js` / [adminAuth.test.js](api/_lib/adminAuth.test.js) `./redis.js` / [logout.test.js](api/auth/logout.test.js) `../_lib/redis.js` / [verify.test.js](api/auth/verify.test.js) `../_lib/redis.js` **추가** 두-mock 병존)
+- **verify.test.js 두-mock 병존**: verify.js 가 `@vercel/kv` 직접 + tokenBlacklist 경유 두 경로 사용 → 두 팩토리가 동일 `mockKv` 반환해 `kv.get` 큐 단일화 → 기존 13 케이스 코드 0줄 변경으로 통과
+- 5교차검증: null-safety-checker 🟢 PASS (High/Med 0, Low 2 정보성), 보안 메인 🟢 (Upstash `SetCommandOptions.ex` `chunk-IH7W44G6.mjs:2259` 정식 지원 실측, fail-open `tokenBlacklist.js:24-26` 보존)
+- 검증: 150 files / **2422 tests PASS** (세션127 동일), `vite build` 550ms, 번들 불변, `npm audit` 0건
+- `@vercel/kv` prod import 9 → **8** (tokenBlacklist.js 제거)
+
 **세션127 (2026-04-20)** — 에픽 4-A1b-1: rateLimit 체인 Upstash 교체 (1커밋 origin/main `86eb15d..e479ade`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4 재설계 — 원안 "prod 2파일 동시" → 5 하위 에픽 pair-commit 전략으로 분할
 - 9 GATE 1차 🔴2건(`vi.mock('@vercel/kv')` 10파일 회귀 리스크) → 2차 재검증 🟢9/🟡0/🔴0 (비대칭성 발견)
