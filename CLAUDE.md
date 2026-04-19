@@ -9,6 +9,12 @@
 
 ### 최근 3세션 (상세)
 
+**세션125 (2026-04-19)** — 에픽 3-A 조사 + Node 환경 핀 (1커밋 origin/main `6520ec9`)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 3-A 진행. 사용자 옵션 B 선택. 9 GATE 9🟢/0🟡/0🔴
+- **에픽 3-A 조사 결론**: eslint 10 본 적용(에픽 3-B) 🔴 차단 — `eslint-plugin-react@7.37.5` (최신) peer 가 `eslint: ^9.7` 까지만 지원, npm registry 에 호환 신버전 미배포. 재오픈 트리거: `npm view eslint-plugin-react@latest peerDependencies` 결과 `^10.0.0` 등장
+- **본 작업 (2파일 +4/-0)** — [package.json](package.json) `engines.node: ">=20.19.0"` 추가, `.nvmrc` 신규 1줄. 값 근거: 로컬 v24.14.1 + Vercel Node 22 + GitHub Actions 37워크플로우 모두 충족 실측
+- 검증: 150 files / **2422 tests PASS** (세션124 동일 유지), `vite build` 466ms, 번들 불변
+
 **세션124 (2026-04-19)** — Scoring JSDoc 에픽 2-B2 안전·미래 — 시리즈 완료 (1커밋 origin/main `a2ea62e`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 2-B2 진행. 9 GATE 9🟢/0🟡/0🔴 (세션123 동일 패턴 선례)
 - **2파일 +72/-1** — [scoreRisk.js](src/scoring/scoreRisk.js) (11서브 가중치 합 1.0000 검산 박제 + safety=100-risk 방향성 + listingPen·finSc 공공분양·crimeSc 복합·서브 구간 표 위치), [scoreFuture.js](src/scoring/scoreFuture.js) (FUTURE_WEIGHT_MAP 8조합 합 항상 1.00 + popSc 7단계 + TRANSIT_HIGH 1.2배 + netMigration 보정 + 5키워드 상수/matchAny 헬퍼 JSDoc + `includes()` 부분 매칭 함정 박제)
@@ -274,7 +280,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - ~~**미션 1 — 공개 API 보안**: `api/supabase/{apartments,prices,unsold-history}.js`에 `rateLimit: "proxy"` 추가 + `npm audit fix`로 dompurify moderate 해소 (GHSA-39q2-94rc-95cp)~~ **완료 (세션119, 4커밋 `deef147..be54322`)**
 
 ### 🟡 곧 (이번 달 · 6건, 이 중 4건 완료)
-- 의존성 메이저 업그레이드: `eslint 10`, `@vercel/kv 3`, ~~`@vercel/analytics 2`~~ **완료 (세션119 3차 후속, 커밋 `22434c2`)**
+- 의존성 메이저 업그레이드: `eslint 10` **🔴 차단** (세션125 에픽 3-A 조사: eslint-plugin-react 최신이 peer eslint ^9.7까지만 지원), `@vercel/kv 3` (에픽 4 KV→Upstash 전체 마이그레이션으로 대체 예정), ~~`@vercel/analytics 2`~~ **완료 (세션119 3차 후속, 커밋 `22434c2`)**. Node 환경 핀(engines + .nvmrc)은 세션125 커밋 `6520ec9` 로 선행 완료
 - ~~`@supabase/supabase-js` 2.98→2.103 마이너~~ **완료 (세션119 후속, 커밋 `73b3295`)**
 - ~~`onClick={() => ...}` inline 클로저 75건(실측) → useCallback (ExpertDashboard 등 상위)~~ **부분 완료 (세션121 A, 커밋 `1ed7db3` — memo 자식 효과 확실한 6건 처리: ExpertDashboard.handleSelect + AdminDashboard 5건. 루프 28건·이미 적용 6건·trivial 다수는 의식적 배제)**
 - ~~`admin/review.js:72` 이메일 `.includes("@")` → RFC 5322 정규식~~ **완료 (세션119 후속, 커밋 `1d4f3c3`·`295334c` — 공용 `isValidEmail()` 추출)**

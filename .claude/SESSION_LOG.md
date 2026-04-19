@@ -1,3 +1,66 @@
+# 세션 125 — 2026-04-19 (에픽 3-A 조사 + Node 환경 핀)
+
+**거시 목적**: 통합 플랜 에픽 3-A (eslint 10 호환성 조사) 수행. 본 적용(3-B) 차단 판정 + 부수 작업(Node engines + .nvmrc) 1커밋.
+
+## 플랜
+
+- `~/.claude/plans/pwd-fizzy-storm.md` — 옵션 B (engines + .nvmrc 만) 사용자 승인. 9 GATE 9🟢/0🟡/0🔴
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 의 에픽 3-A 진행
+
+## 커밋 (1건, origin/main `40b296d..6520ec9`)
+
+| 커밋 | 변경 |
+|------|------|
+| `6520ec9` | chore: pin Node engine + .nvmrc (>=20.19.0) |
+
+## 에픽 3-A 조사 결과 (read-only 실측)
+
+| 항목 | 실측값 | 판정 |
+|---|---|---|
+| 로컬 Node | v24.14.1 | 🟢 eslint 10 요구(`^20.19 \|\| ^22.13 \|\| >=24`) 충족 |
+| 로컬 npm | v11.11.0 | 🟢 |
+| `eslint@10.2.1` | engines `^20.19 \|\| ^22.13 \|\| >=24`, peer `jiti: '*'` | 🟢 |
+| `@eslint/js@10.0.1` | 호환 | 🟢 |
+| `eslint-plugin-react-hooks@7.1.1` | peer `... \|\| ^10.0.0` | 🟢 |
+| `eslint-config-prettier@10.1.8` | peer `eslint: >=7.0.0` | 🟢 |
+| **`eslint-plugin-react@7.37.5` (최신)** | **peer `eslint: ^3 \|\| ... \|\| ^9.7`** | 🔴 **eslint 10 미지원** |
+| `package.json engines` | 없음 | 🟡 추가 |
+| `.nvmrc` | 없음 | 🟡 추가 |
+| CI 워크플로우 `node-version` | 37개 (`'20'` 다수, `22` 1개=ci.yml) | 🟢 engines 미체크, 영향 0 |
+
+**결론**: `eslint-plugin-react` 가 npm registry 에 eslint 10 호환 신버전 미배포 → 에픽 3-B 본 적용 🔴 차단. 재오픈 트리거 = `npm view eslint-plugin-react@latest peerDependencies` 의 `eslint` 필드에 `^10.0.0` 등장.
+
+## 변경 (2파일, +4/-0)
+
+| 파일 | 변경 |
+|---|---|
+| [package.json](package.json) | `engines.node: ">=20.19.0"` 추가 (scripts 다음·dependencies 위) |
+| `.nvmrc` (신규, 루트) | `20.19.0` 1줄 — nvm/fnm 일괄 환경 진입 |
+
+값 선택 근거: eslint 10 풀릴 때 즉시 적용 가능한 최소값. 로컬 v24.14.1 + Vercel Node 22 + GitHub Actions 20/22 모두 충족.
+
+## 검증
+
+- **빌드**: `npx vite build` 466ms — 번들 불변
+- **테스트**: 150 files / **2422 PASS** (세션124 동일 유지)
+- **회귀**: 0건 (engines 필드는 `npm install` 경고만, 빌드/테스트 무영향)
+
+## 사용자 결정 과정
+
+1차 질문: 옵션 A(전체 보류) / B(engines+.nvmrc만) / B+A(둘 다) / C(플러그인 교체) 4지선다 → 사용자 "어느 게 가장 좋고 확실하고 안전?" 재질문
+2차 질문 (3관점 비교 제시):
+- 가치: B는 Node 드리프트 방지 효과 / A는 0 / C는 입력 대비 적음
+- 확실성: B는 2파일·~3줄·실측 완료, 되돌릴 게 거의 없음 / C는 84 warnings 변화 예측 불가
+- 안전성: B는 1커밋 revert·번들 불변·2422 PASS / C는 lint 규칙 전부 다름
+→ 사용자 **B 단독** 선택 (B+A 아님, 이번 세션 종료)
+
+## 다음 세션 우선순위 (세션126+)
+
+1. **에픽 4-A1** (KV→Upstash wrapper + prod 2파일, 0.5세션) — Vercel 대시보드에서 Upstash 환경변수(`UPSTASH_REDIS_REST_URL/TOKEN`) 확인 필수
+2. **에픽 3-B 재오픈 모니터링** — 분기별 1회 `npm view eslint-plugin-react@latest peerDependencies` 확인. `^10.0.0` 등장 시 재개
+
+---
+
 # 세션 124 — 2026-04-19 (Scoring JSDoc 에픽 2-B2 — 시리즈 완료)
 
 **거시 목적**: 백로그 4에픽 통합 플랜 에픽 2-B2 (안전·미래 JSDoc 2파일) 처리. 이로써 src/scoring/ 7파일 8함수 JSDoc 시리즈(에픽 2-A·2-B1·2-B2) 전부 완성.
