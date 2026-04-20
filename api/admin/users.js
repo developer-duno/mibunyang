@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "../_lib/redis.js";
 import { withHandler } from "../_lib/handler.js";
 
 // action=stats → 통계 반환 (stats.js 통합 — Vercel Hobby 12함수 제한)
