@@ -9,6 +9,26 @@
 
 ### 최근 3세션 (상세)
 
+**세션134 (2026-04-21)** — unsold_history 0행 복구 + 세션118 migration DB 반영 (1커밋 origin/main `95ebcfd..c5c3a55`)
+- 실행 플랜 [cd-f-mibunyang-pwd-graceful-newt.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-graceful-newt.md). **2차 수렴 9 GATE 🟢9/🟡0/🔴0** (1차 🟡1 → PRD_DE 정규식 가드 반영 후 2차 전통과)
+- **세션133 🥈 migration 반영**: Supabase Dashboard SQL Editor 에서 사용자가 `20260419000000_view_dedup_prefer_general.sql` 직접 실행. apartments_flat total_rows=1424 (불변) / `(오)` 접미 23→**17** (-6건, 세션118 예상 "6건 교체" 정확 일치). 기존 오피스텔 승자 자리에 일반분양 본체 6건 노출 시작
+- **세션133 🥇 unsold_history 0행 원인 확정**: 조사 결과 "수집기가 아예 구현된 적 없음" (grep 0건). 테이블/읽기 엔드포인트(`api/supabase/unsold-history.js` 세션121 리팩토링)/프론트 UnsoldChart 모두 있는데 **우편함만 있고 우체부 없음** 상황
+- **해결 방향 A**: 기존 `collect-unsold-kosis.mjs` 확장. KOSIS API 가 이미 3개월 범위 단일 호출로 받아오는데 `parseKosisRows` 가 최신 월만 추출하고 버려옴 → 재파싱으로 시계열 저장. **API 재호출 0, 쿼터 증가 0**
+- **커밋 `c5c3a55`** (2파일 +114/-2):
+  - [collect-unsold-kosis.mjs](scripts/collectors/collect-unsold-kosis.mjs) 신규 export `parseKosisRowsAllMonths(rows)` (PRD_DE `/^\d{6}$/` 정규식 가드 포함) + `main()` 말미 unsold_history upsert 블록 + `recordApiQuota(PHASE, "KOSIS_KEY", 1)` 추가 + import 2개
+  - `upsertBatch("unsold_history", rows, "apartment_id,base_month", 500, sb)` UNIQUE 멱등
+  - `post_completion_unsold`/`change` 는 KOSIS `DT_MLTM_2082` 미제공 → `null` 저장 (프론트 UnsoldChart null 안전)
+  - [collect-unsold-kosis.test.mjs](scripts/collectors/collect-unsold-kosis.test.mjs) 신규 describe 5건 (3개월 분리 / PRD_DE 분기 포맷 skip / C1_NM 매핑 실패 / DT NaN / '계' `_total` 월별)
+- **기존 `parseKosisRows` 병존** (교체 X) — regions/apartments UPDATE 경로 회귀 0
+- **실제 DB 실행 결과** (로컬 `KOSIS_KEY` 보유로 CI 전 로컬 실측):
+  - apartments 미분양 추정 갱신 119건
+  - **unsold_history 0 → 1,099행** (distinct 508 apartments × 평균 2.16 월)
+  - 월 범위 `["202601", "202602"]` — KOSIS 1~2개월 지연 반영 정상 (`202603`/`202604` 요청했으나 응답 없음)
+  - `recordApiQuota kosis-unsold: KOSIS_KEY 1회 기록` 정상
+- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 1 — `row.C2_NM` undefined 시 `"undefined"` 키 품질 이슈만) / collector-contract 🟢 (C1 배치 500 + conflictCol "apartment_id,base_month" UNIQUE 일치, C2 순차, C3 에러, C4 쿼터 dry-run 가드, C5 dry-run 로그 전부 PASS) / 빌드 🟢 (868ms 번들 불변) / 보안 🟢 (KOSIS_KEY 재사용, injection 0)
+- 검증: 150 files / **2429 → 2434 tests PASS** (+5), `vite build` 868ms
+- **사용자 가치**: UnsoldChart.jsx 가 508개 아파트의 월별 미분양 추이 차트를 실제로 그릴 수 있게 됨. 매월 1일 자동 수집으로 시계열 자연 축적
+
 **세션133 (2026-04-20~21)** — 우선순위 자기점검 + DB 품질 전수 재측정 + UX Playwright 실측 (docs-only, 1커밋 예정)
 - **촉발**: 사용자 "프로젝트 목적에 부합한 일들 하고 있나" 점검 요청. 세션132 `neisCode` 작업을 포함해 최근 우선순위 판단에 사실 오류 누적 가능성
 - **1단계 — migration 반영 안내**: 세션118 `20260419000000_view_dedup_prefer_general.sql` 이 작성만 되고 DB 반영 안 된 상태 확인. "(오)" 23건 노출 유지 (예상 반영 후 20건). Dashboard SQL Editor 수동 실행 사용자 과제
@@ -217,14 +237,14 @@
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션134+, 세션133 재정립)
+### 다음 세션 우선순위 (세션135+, 세션134 후속)
 
-> 세션133 에서 "프로젝트 목적에 충실한지" 자기점검 + DB 전수 재측정 + Playwright UX 실측 후 재정렬.
+> 세션134 에서 🔴 1·2순위 (unsold_history 복구, migration 반영) 전부 해소. 남은 🟡 위주로 재정렬.
 
-1. 🔴 **`unsold_history` 0행 원인 조사** — 미분양 추이 시계열 전무. "미분양 아파트 비교 엔진" 핵심 기능. 수집기 실행 이력 + 저장 실패 지점 추적
-2. 🔴 **세션118 migration DB 반영** — `supabase/migrations/20260419000000_view_dedup_prefer_general.sql` 을 Dashboard SQL Editor 에서 수동 실행. "(오)" 접미 3건 정리 (CLI/MCP 권한 막힘으로 사용자 1회 수행)
-3. 🟡 **세션132 커밋 `8b16d62` 사후 확인** — 다음 `collect-schools.yml` 정기 실행 후 `schools.nearby_schools[*].neisCode` 비율 쿼리 (기대 >70%). 현재 0%
-4. 🟡 **`schools.students` 학교알리미 API 수집 복구** — 세션89 이후 연속 실패. 5,239 요소 중 0건. schools-neis.mjs `enrichWithStudents` 경로 진단
+1. 🟡 **세션132 커밋 `8b16d62` 사후 확인** — 다음 `collect-schools.yml` 정기 실행 후 `schools.nearby_schools[*].neisCode` 비율 쿼리 (기대 >70%). 현재 0%
+2. 🟡 **`schools.students` 학교알리미 API 수집 복구** — 세션89 이후 연속 실패. 5,239 요소 중 0건. schools-neis.mjs `enrichWithStudents` 경로 진단
+3. 🟡 **unsold_history 시계열 축적 모니터링** — 매월 1일 KOSIS 수집 후 행수 증가 확인. 2~3개월 후 distinct_apartment_id × months 좌표에서 결측 패턴 분석 (현재 508×2개월, 향후 이상적으로 1,300×3개월 = 3,900행)
+4. 🟡 **방향 B 검토** — 청약홈 API 가 단지별 월별 미분양 이력 제공하는지 조사. KOSIS 비례배분(세션134) 대비 정확도 개선 여지
 5. 🟡 `population.mjs` MOIS 인구 API 안정성 모니터링 — 장애 시에만
 6. 🟢 **이월 에픽 후보** (reader 부재라 낮은 우선순위): (a) `households` regions 수집기, (b) `trade-stats.mjs` 에 regions.jeonse_rate 파생 저장
 
@@ -252,9 +272,9 @@
   - nearby_schools 요소 5,239개 샘플링: **neisCode 0% / students 0% / classes 2.7%** — 세션132 neisCode 저장 커밋 `8b16d62` 는 **다음 `collect-schools.yml` 정기 실행 후에야 반영**. students 는 학교알리미 API 수집이 세션89 이후 지속 실패
 - **시계열 테이블**:
   - prices 3,633행 (apt당 평균 1.8행) · trades 608,713행
-  - **unsold_history 0행** — 🔴 **치명적 미수집**. 수집기 존재 여부 + 원인 조사가 다음 세션 우선
+  - **unsold_history 1,099행** — 세션134 복구 완료. 508 apartments × 2개월 (202601/202602), KOSIS 1~2개월 지연 반영 정상. 매월 1일 자동 누적
 - **혜택 10컬럼 (discountPct/loanFree/cashback/balcony 등) 100% NULL** — 🟡 의도적. 시행사 제공 자료 기반 운영자 수기 입력 대상. 자동 수집 대상 아님 (data-fill.mjs:46 `SKIP_CATEGORIES` 에 `benefits` 포함)
-- **apartments_flat "(오)" 23건 노출** — 세션118 migration `20260419000000_view_dedup_prefer_general.sql` 작성됐으나 **DB 반영 미완**. Supabase Dashboard SQL Editor 수동 실행 필요 (CLI/MCP 권한 막힘)
+- **apartments_flat "(오)" 23→17건** — 세션134 migration 반영 완료 (`20260419000000_view_dedup_prefer_general.sql`, Supabase Dashboard 수동 실행). 일반분양 본체 6건이 VIEW 승자로 교체
 
 ---
 ---

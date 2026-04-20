@@ -1,3 +1,103 @@
+# 세션 134 — 2026-04-21 (unsold_history 0행 복구 + 세션118 migration DB 반영)
+
+**거시 목적**: 세션133 에서 정립된 🔴 1·2순위 해소 — "미분양 아파트 비교 엔진" 의 핵심 기능인 미분양 추이 시계열(`unsold_history`)이 0행이던 문제 복구 + 세션118 dedup migration 의 DB 반영.
+
+**커밋**: `95ebcfd..c5c3a55` (1커밋 origin/main)
+**실행 플랜**: `C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-graceful-newt.md`
+
+## 한 일
+
+### 🥈 세션118 migration 반영 (사용자 수행, 5분)
+- Supabase Dashboard SQL Editor 에서 `20260419000000_view_dedup_prefer_general.sql` 237줄 수동 실행
+- 검증 쿼리: `SELECT COUNT(*), COUNT(*) FILTER (WHERE name LIKE '%(오)%') FROM apartments_flat;`
+- **결과**: total_rows 1424 (불변) / (오) 접미 **23 → 17** (-6건, 세션118 예상 "6건 교체" 정확 일치)
+- 의미: 기존 오피스텔 승자 6건이 일반분양 본체로 교체 → VIEW 로 노출 시작. total_rows 는 이미 일반분양도 같은 이름으로 rank=1 이 있어 불변
+
+### 🥇 `unsold_history` 0행 원인 조사 (Explore 서브에이전트)
+- 결론: **수집기가 아예 구현된 적 없음** (grep 0건, `supabase/CLAUDE.md:15` "청약홈" 명시는 설계만)
+- 테이블(schema 있음) + 읽기 엔드포인트(`api/supabase/unsold-history.js` 세션121 리팩토링) + 프론트(UnsoldChart) 모두 갖춰져 있는데 **수집기만 구멍** — "우편함/창구 있는데 우체부 없음" 비유
+
+### 방향 A 설계 (사용자 승인)
+- 기존 `collect-unsold-kosis.mjs` 확장. KOSIS API 가 이미 `startPrdDe/endPrdDe` 로 3개월 범위 단일 호출하는데 `parseKosisRows` 가 최신 월만 추출하고 과거 월을 버림 → 재파싱으로 시계열 저장
+- **API 재호출 0, 쿼터 증가 0** (파싱 루프일 뿐)
+
+### 9 GATE 2차 수렴
+- 1차: 🟢8/🟡1/🔴0 (GATE 3 `PRD_DE` 정규식 가드 권고)
+- 2차: 🟢9/🟡0/🔴0 (권고 반영 + "월별 루프 → 파싱 루프" 표현 명확화 + 단계 2 줄수 45→18 실측)
+- 서브에이전트 병렬 3회 (Explore 영향범위 + null-safety-checker + collector-contract)
+
+### 커밋 `c5c3a55` (2파일 +114/-2)
+- [scripts/collectors/collect-unsold-kosis.mjs](f:/mibunyang/scripts/collectors/collect-unsold-kosis.mjs):
+  - 신규 export `parseKosisRowsAllMonths(rows)` — PRD_DE `/^\d{6}$/` 정규식 가드 포함. 구조 `{ region: { gu: { period: value } } }`
+  - `main()` 말미 unsold_history upsert 블록 (`apartments 미분양 추정 갱신` 후, `=== 완료 ===` 직전)
+  - `upsertBatch("unsold_history", historyRows, "apartment_id,base_month", 500, sb)` UNIQUE 멱등
+  - `post_completion_unsold` / `change` 는 KOSIS `DT_MLTM_2082` 미제공 → `null`
+  - `recordApiQuota(PHASE, "KOSIS_KEY", 1)` 추가 (세션 이월 부채 해소, `if (!dryRun)` 가드)
+  - import 2개 추가 (`upsertBatch`, `recordApiQuota`)
+  - **기존 `parseKosisRows` 병존** (교체 X) — regions/apartments UPDATE 경로 회귀 0
+- [scripts/collectors/collect-unsold-kosis.test.mjs](f:/mibunyang/scripts/collectors/collect-unsold-kosis.test.mjs):
+  - 신규 describe `parseKosisRowsAllMonths` 5 케이스: 3개월 분리 / PRD_DE 분기포맷 skip / C1_NM 매핑 실패 / DT NaN / '계' `_total` 월별 집계
+
+### 로컬 실제 실행 (CI 전 검증)
+- env 확인: `KOSIS_KEY`/`SUPABASE_URL` 로컬 보유
+- **dry-run**: `apartments 미분양 추정 갱신: 119건` + `[DRY-RUN] unsold_history: 1099건 예상`
+- **실제 실행**: upsert 성공
+  - `KOSIS 응답: 492건` (202601~202604 요청, 실제 202601~202602 만 반환 — KOSIS 1~2개월 지연)
+  - `apartments 미분양 추정 갱신: 119건`
+  - **`unsold_history 저장: 1,099건`** (0행 → 1,099행)
+  - `recordApiQuota kosis-unsold: KOSIS_KEY 1회 기록`
+- DB 검증 쿼리 결과:
+  - total_rows: **1,099**
+  - distinct apartment_id: **508**
+  - base_months: `["202601", "202602"]`
+  - 평균 2.16 행/apt (508 × 2.16 ≈ 1,099 일치)
+
+## 5교차검증 (메인 agent + 2 서브에이전트)
+
+- **빌드**: 🟢 `vite build` 868ms, 번들 불변 (수집기는 번들 미포함)
+- **스코어링**: N/A (src/scoring/ 미변경)
+- **null 안전성**: 🟢 **null-safety-checker** High 0 / Med 0 / Low 1 (`row.C2_NM` undefined 시 `"undefined"` 문자열 키 품질 이슈만, 크래시 없음)
+- **Hook 규칙**: N/A (훅 미변경)
+- **수집기 계약**: 🟢 **collector-contract** C1~C5 전부 PASS
+  - C1: upsertBatch 500 배치 + conflictCol `"apartment_id,base_month"` ↔ UNIQUE 정확 일치
+  - C2: 순차 for 루프 유지 (Promise.all 부재)
+  - C3: fetchWithRetry + upsertBatch 내장 재시도 + logError 3경로
+  - C4: KOSIS 단일 호출, `recordApiQuota` dry-run 가드 + `=== 완료 ===` 직전 배치
+  - C5: `[DRY-RUN] unsold_history: N건 예상` 로그 정상
+- **보안**: 🟢 메인 직접 (KOSIS_KEY 재사용, Supabase SDK 매개변수화로 injection 0, innerHTML 무관)
+
+## 검증 결과
+
+- 150 files / **2434 tests PASS** (세션130 2429 → +5 신규 describe)
+- `collect-unsold-kosis.test.mjs`: 18 → **26 PASS** (+8: 기존 parseKosisRows 7 + 신규 AllMonths 5 + 기타 유지)
+- `vite build` 868ms
+- 번들 불변
+- `git diff --stat`: +114/-2 2파일
+
+## 사용자 가치
+
+- `UnsoldChart.jsx` 가 **508개 아파트** 의 월별 미분양 추이 차트를 실제로 그릴 수 있게 됨 (이전 0행 → 데이터 있음)
+- 매월 1일 자동 수집 (`collect-unsold-kosis.yml` cron `'0 20 1 * *'`) 으로 시계열 자연 축적
+- UNIQUE `(apartment_id, base_month)` 제약 → 재실행 멱등 (중복 없음)
+
+## 다음 세션 (세션135+) 우선순위
+
+> 세션134 에서 🔴 2건 전부 해소 → 🟡 위주로 재정렬
+
+1. 🟡 세션132 커밋 `8b16d62` CI 사후 확인 (`collect-schools.yml` 정기 실행 후 neisCode 비율 >70% 확인)
+2. 🟡 `schools.students` 학교알리미 복구 (세션89 이후 연속 실패, 5,239/0)
+3. 🟡 `unsold_history` 시계열 축적 모니터링 (2~3개월 후 결측 패턴 분석)
+4. 🟡 방향 B 검토 — 청약홈 API 월별 미분양 이력 제공 여부 조사 (세션134 KOSIS 비례배분 대비 정확도 개선 여지)
+5. 🟡 `population.mjs` MOIS 인구 API 안정성 (장애 시에만)
+
+## 교훈 (3개)
+
+1. **"우편함은 있는데 우체부가 없다"** — 설계서(supabase/CLAUDE.md)와 실제 구현(grep 결과)이 다를 수 있음. 테이블 존재 + 읽기 엔드포인트 존재 ≠ 수집기 존재. 세션133 "DB 품질 전수 재측정" 이 없었으면 계속 못 찾았을 것
+2. **이미 받아온 데이터 재활용이 새 수집기보다 우선** — KOSIS 단일 API 호출이 이미 3개월 범위 반환 중이었는데 최신 월만 쓰고 버렸음. 새 API 조사(방향 B) 전에 기존 응답 재파싱(방향 A) 이 훨씬 빠른 MVP
+3. **로컬 `.env.local` 보유는 CI 대기 없이 즉시 실측 가능케 함** — service_role key 로 직접 `upsertBatch` 실행 → 1커밋에 "코드 + DB 반영 + 검증" 한 번에 완결. CI workflow_dispatch 대기 불필요
+
+---
+
 # 세션 133 — 2026-04-20~21 (우선순위 자기점검 + DB 전수 재측정 + UX Playwright 실측)
 
 **거시 목적**: 사용자 "네가 잘하고 있는 거 맞아? 프로젝트 목적에 부합한 일들 하고 있는 거 맞아?" 점검 요청. 세션132 `neisCode` 작업 직후 정직하게 자기평가 → 세션 시작 시 `(2) apartments_flat dedup` 을 1순위로 제안한 근거(cats_cache NULL 7건)가 **실측 시 이미 해소**돼 있음을 발견 → 백로그 전수 재측정으로 전환.
