@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ./redis.js 모킹 (세션128: @vercel/kv → ./redis.js)
+// redis.js 모킹
 const mockKv = { set: vi.fn(), get: vi.fn() };
 vi.mock('./redis.js', () => ({ kv: mockKv }));
 

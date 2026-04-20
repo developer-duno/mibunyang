@@ -9,7 +9,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// ./redis.js 모킹 (tokenBlacklist 내부에서 사용, 세션128: @vercel/kv → ./redis.js)
+// redis.js 모킹 (tokenBlacklist 내부에서 사용)
 const mockKv = { get: vi.fn().mockResolvedValue(null), set: vi.fn() };
 vi.mock('./redis.js', () => ({ kv: mockKv }));
 

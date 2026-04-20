@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Redis wrapper 모킹 (세션127: @vercel/kv → ./redis.js)
+// redis.js 모킹 (pipeline 전용)
 const mockPipeline = {
   incr: vi.fn(),
   expire: vi.fn(),
