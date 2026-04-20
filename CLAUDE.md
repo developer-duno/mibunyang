@@ -9,12 +9,12 @@
 
 ### 최근 3세션 (상세)
 
-**세션131 (2026-04-20)** — test 주석 정리 10 라인 3분할 커밋 + eslint 재확인 + 통합 플랜 아카이브 (4커밋 origin/main `39ce0ca..<hash4>`)
+**세션131 (2026-04-20)** — test 주석 정리 10 라인 3분할 커밋 + eslint 재확인 + 통합 플랜 아카이브 (4커밋 origin/main `39ce0ca..18777ce`)
 - 실행 플랜 [131-humble-snowglobe.md](C:\Users\user\.claude\plans\131-humble-snowglobe.md). 9 GATE 1차 🔴(6파일 일괄) → 실측 grep 재수행 10 라인 식별 → 3분할 재설계 → 2차 🟢9/🟡0/🔴0
 - **커밋 `39ce0ca`** (3파일 +3/-3): api/_lib/ test 3종 주석 정리 — `rateLimit.test.js:7` / `tokenBlacklist.test.js:7` / `adminAuth.test.js:12` 에서 `세션127/128: @vercel/kv → ./redis.js` 히스토리 제거
 - **커밋 `1b4893a`** (5파일 +5/-5): api/auth/ test 5종 주석 정리 — `logout/login/signup/kakao/verify.test.js` 에서 `세션128/129 Upstash 교체` 히스토리 제거. kakao.test.js:143 본문 회귀 방지 앵커는 보존
 - **커밋 `35ba093`** (2파일 +2/-2): admin test 2종 **사실 오류 수정** — `review.test.js:22` / `users.test.js:22` 의 `@vercel/kv 모킹` 주석이 실제 L29/L27 `vi.mock('../_lib/redis.js')` 와 불일치 → `redis.js 모킹` 으로 정정
-- **커밋 `<hash4>`** docs: 이 세션 기록 + 통합 플랜 아카이브 반영
+- **커밋 `18777ce`** docs: 이 세션 기록 + 통합 플랜 아카이브 반영
 - **eslint 재확인**: `npm view eslint-plugin-react@latest peerDependencies` → peer `^3 || ... || ^9.7` 불변. 에픽 3-B 🔴 차단 유지. 재오픈 트리거: registry `^10.0.0` 등장
 - **통합 플랜 아카이브**: `~/.claude/plans/pwd-linear-rossum.md` (git 외부) 상단 완료 배너 + 에픽 11개(1/2-A/2-B1/2-B2/3-A/3-B/4-A0+A1a/4-A1b-1/4-A1b-2/4-B/4-C) 각 말미 완료 커밋 해시 박제
 - **비변경 대상 명시**: [kakao.test.js:143](api/auth/kakao.test.js#L143) 본문 회귀 방지 앵커 / [redis.js:3](api/_lib/redis.js#L3) 프로덕션 wrapper 설계 근거 / `src/scoring/**` 가중치 재설계 앵커 — 전부 보존
