@@ -1,3 +1,101 @@
+# 세션 133 — 2026-04-20~21 (우선순위 자기점검 + DB 전수 재측정 + UX Playwright 실측)
+
+**거시 목적**: 사용자 "네가 잘하고 있는 거 맞아? 프로젝트 목적에 부합한 일들 하고 있는 거 맞아?" 점검 요청. 세션132 `neisCode` 작업 직후 정직하게 자기평가 → 세션 시작 시 `(2) apartments_flat dedup` 을 1순위로 제안한 근거(cats_cache NULL 7건)가 **실측 시 이미 해소**돼 있음을 발견 → 백로그 전수 재측정으로 전환.
+
+## 한 일 (docs-only)
+
+### 1단계 — 세션118 migration 반영 현황 확인
+- 파일: `supabase/migrations/20260419000000_view_dedup_prefer_general.sql` (237줄, 세션118 작성)
+- **상태**: DB 반영 미완. `apartments_flat` 1424건 그대로, "(오)" 23건 노출 (반영 후 예상 20건). 세션118 이후 CLI/MCP 권한 막힘으로 사용자 Dashboard 수동 실행 대기
+- 복구 경로: https://supabase.com/dashboard/project/rwdtljipvmqpazrimyns/sql/new → 파일 본문 붙여넣기 → Run
+
+### 2단계 — DB 품질 전수 재측정 (`scripts/db-quality-audit.mjs` 1회성, 삭제됨)
+
+세션110/114/118 기록 대비 변동:
+
+| 지표 | 기록 | 실측 | 판정 |
+|---|---|---|---|
+| apartments_flat.catsCache NULL | 7 | **0** | ✅ 자연 해소 |
+| apartments.cats_cache NULL | - | 7 (flat 밖 577건 중) | — |
+| price = 0 | 버그 기록 | **0** | ✅ 해소 유지 (세션99) |
+| price NULL | - | 38 (2.7%) | 🟡 |
+| dataReliability ≥80 | 1,317 (92.5%) | **1,338 (94.0%)** | ✅ 자연 개선 |
+| trade_stats pir | 1,960 (98.0%) | 1,960 (98.0%) | 동일 |
+| trade_stats psr | - | 1,282 (64.1%) | 🟡 35.9% NULL |
+| trade_stats jeonse_rate | - | 1,950 (97.5%) | ✅ |
+| regions.net_migration | "454→0" | **454/454 (100%)** | ✅ 기록 오표기 (세션103 이후 이미 100%) |
+| regions.pop_growth | - | **454/454 (100%)** | ✅ |
+| regions.avg_income 시도 | 17/17 | 62/454 (시도 62행) | ⚠️ recorded_at 누적 |
+| regions.households/jeonse_rate/supply_ratio | 0/454 | **0/454** | 🔴 유지 (reader 없어 우선순위 낮음) |
+| air_quality | 1,950 (97.5%) | 1,950 (97.5%) | 동일 |
+| schools school_score | - | **1,971/1,971 (100%)** | ✅ |
+| schools nearby_schools[*].neisCode | - | **0/5,239 (0%)** | 🔴 세션132 커밋 `8b16d62` 후 CI 미실행 |
+| schools nearby_schools[*].students | 0% 기록 | **0/5,239** | 🔴 학교알리미 API 지속 실패 |
+| schools nearby_schools[*].classes | 4/8 필드 | **143/5,239 (2.7%)** | 🔴 NEIS classInfo 거의 실패 |
+| **unsold_history 시계열** | - | **0행** | 🔴 **NEW 발견 — 치명적** |
+| prices 시계열 | - | 3,633행 | - |
+| trades | - | 608,713행 | - |
+| apartments_flat 에 "(오)" | - | 23/24 노출 | ⚠️ migration 미반영 |
+
+### 3단계 — Playwright UX 실측 (`~/.claude/tmp/mibunyang_ux_audit*.py` 4회 반복, 정리됨)
+
+**실측 결과**:
+- 홈 카드 표기: **`1424개 단지`** ↔ 원본 2001. dedup 577건(28.8%) 숨음 — migration 반영 시 3건 감소
+- 카드 텍스트: 이름/지역/면적/가격/건설사/지하철/안전등급/준공일/혐오시설/치안 노출
+- 점수 모두 "??" 블러 (비로그인 설계 의도)
+- **"혜택 데이터 미수집"** 문구 카드마다 노출 — DB 측 10컬럼 100% NULL 원인
+- localStorage 토큰 주입 후 홈 재방문 시 서버 `verify` 가 fake 토큰 무효 판정 → DetailModal 자동화 실패. 실제 카카오 OAuth 필요
+- **콘솔 에러/경고 0건** — 프론트 런타임 건전성 ✅
+
+**혜택 NULL 의도적임 확인** (사용자 확인): `scripts/collectors/data-fill.mjs:46` `SKIP_CATEGORIES = new Set([..., "benefits"])` + 주석 "자동 보정 불가 — 원본". **시행사 자료 기반 운영자 수기 입력 대상**. 향후 세션에서 benefits 수집기 작성 제안 금지.
+
+## 핵심 정직 평가
+
+### 세션132 재평가
+`neisCode` 저장은 기술적으로 정당 (수집기 멱등성 확보) 하나 **사용자 체감 0** 이라 1순위가 아니었음. 제가 세션 시작에 `(1)+(4)` 묶음 제안한 판단 자체가 프로젝트 목적(사용자 점수 판단 지원) 기준이 아닌 "작업 묶음 편의" 기준이었음.
+
+### 세션133 초반 (2) 제안 재평가
+`apartments_flat dedup 정책` 우선순위 1등이라 제안한 3가지 근거 모두 실측으로 뒤집힘:
+1. ❌ "cats_cache NULL 7건 복원" → 실측 0건 (이미 해소)
+2. ❌ "`presale_stage='일반'` 우선" → 그런 값 존재 안 함 (세션118 `(name LIKE '%(오)%')` 로 대체됨)
+3. ⚠️ "VIEW 수정" → migration 은 세션118 에 이미 작성. 반영 대기 중
+
+### 교훈 박제
+- CLAUDE.md "현재 진행 상황" 의 숫자 지표는 **점프샷**. 인용 전 실측 재확인 필수
+- 코드 수정 우선순위는 항상 **사용자 체감 × reader 존재** 기준. "데이터가 DB 에 있냐 없냐" 는 필요조건일 뿐 충분조건 아님
+- "프로그램 목적에 충실한가?" 질문을 스스로 던지지 않으면 작업 묶음 편의에 휘둘림
+
+## 변경 파일
+
+- `CLAUDE.md` — "DB 품질" 섹션 세션133 실측값으로 교체, "다음 세션 우선순위" 세션134+ 로 재정립, "최근 3세션 (상세)" 세션133 블록 추가, "명시적 비-작업" 박제
+- `.claude/SESSION_LOG.md` — 본 세션133 블록 append
+
+## 비변경
+
+- 코드 0 변경 (docs-only)
+- 세션132 커밋 `8b16d62` 는 유지 (롤백 불요 — 기술적으로 정당한 작업)
+- 혜택 10컬럼 NULL 은 **의도적 설계** 로 확정. 건드리지 말 것
+
+## 저장소 스냅샷
+
+- 브랜치: main, origin/main 동기 (세션132 `14f69ea` → 본 세션 docs 커밋 예정)
+- 커밋 예정 해시: 아래 push 후 추가 기록
+
+## 다음 세션 (134+) 우선순위
+
+1. 🔴 **unsold_history 0행 원인 조사** — 수집기 이력 + GitHub Actions 로그 추적
+2. 🔴 **세션118 migration 반영** — 사용자 Dashboard 실행 (1회성)
+3. 🟡 세션132 커밋 CI 사후 확인 — `collect-schools.yml` 정기 실행 후 `nearby_schools[*].neisCode` 비율 쿼리
+4. 🟡 `schools.students` 학교알리미 API 수집 복구
+5. 🟢 이월 저가치 백로그: regions households 수집기, jeonse_rate 파생 (모두 reader 없음)
+
+## 명시적 비-작업
+
+- 혜택 10컬럼 NULL — 시행사 자료 운영자 수기 입력 대상
+- 시군구 소득 B1 재실험 — 세션117 C 공식 확정, 트리거 4개 발동 전 유지
+
+---
+
 # 세션 132 — 2026-04-20 (schools-neis neisCode/officeCode 저장 설계 오류 수정)
 
 **거시 목적**: 세션118 이월 "NEIS 보강 run 24609959606 완료 후 `nearby_schools` 에 `neis_code`/`student_count` 키 추가 여부 확인" 을 실측. DB 점검이 아니라 **코드 설계 오류** 로 드러남. `fetchNeisSchoolInfo` 가 `SD_SCHUL_CODE`/`ATPT_OFCDC_SC_CODE` 를 추출하면서도 `enrichWithNeis` 반환 객체에 포함하지 않아 재조회 멱등성 미달. 조건부 스프레드 2줄 추가로 해소. 세션118 `student_count` 이름 변경은 4레이어 파급 확인 후 별도 ADR 이월.

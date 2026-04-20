@@ -9,6 +9,23 @@
 
 ### 최근 3세션 (상세)
 
+**세션133 (2026-04-20~21)** — 우선순위 자기점검 + DB 품질 전수 재측정 + UX Playwright 실측 (docs-only, 1커밋 예정)
+- **촉발**: 사용자 "프로젝트 목적에 부합한 일들 하고 있나" 점검 요청. 세션132 `neisCode` 작업을 포함해 최근 우선순위 판단에 사실 오류 누적 가능성
+- **1단계 — migration 반영 안내**: 세션118 `20260419000000_view_dedup_prefer_general.sql` 이 작성만 되고 DB 반영 안 된 상태 확인. "(오)" 23건 노출 유지 (예상 반영 후 20건). Dashboard SQL Editor 수동 실행 사용자 과제
+- **2단계 — DB 품질 전수 재측정** (`db-quality-audit.mjs` 1회성 실행 후 삭제):
+  - ✅ 자연 개선: `cats_cache NULL` 7→0 (flat 기준), `price=0` 해소 유지, `dataReliability ≥80` 1,317→1,338 (92.5→94.0%), `net_migration/pop_growth` 100% (세션103 이후), `catsCache` flat 0 NULL
+  - 🔴 **NEW 발견**: `unsold_history 0행` (시계열 전무), `schools.nearby_schools[*].students` 0/5,239, `classes` 143/5,239 (2.7%), `neisCode` 0% (세션132 커밋 후 CI 미실행)
+  - 🔴 유지: `regions.households/jeonse_rate/supply_ratio 0/454` (reader 없어 우선순위 낮음)
+  - 🟡 **의도적**: 혜택 10컬럼 100% NULL — 시행사 자료 운영자 수기 입력 대상 (`data-fill.mjs:46 SKIP_CATEGORIES` 에 `benefits` 포함). **자동 수집 대상 아님, 건드리지 말 것**
+- **3단계 — Playwright UX 실측** (`~/.claude/tmp/mibunyang_ux_audit*.py` 4회 반복, 삭제 예정):
+  - `1424개 단지` 표기 확인 → migration 미반영 확정 (원본 2001 대비 577개 dedup 제외)
+  - 비로그인 카드: 점수 "??" 블러, "혜택 데이터 미수집" 전 카드 노출 (설계 의도)
+  - 로그인 모방 시도 실패 — fake token 을 서버 `verify` 가 무효 판정. DetailModal 자동화는 실제 카카오 OAuth 필요
+  - 콘솔 에러/경고 **0건** — 프런트 런타임 건전성 ✅
+- **세션132 재평가**: `neisCode` 저장은 수집기 멱등성 확보 (진짜 가치 있음) 이나 사용자 체감 0. 우선순위 1등이었으면 안 됐음 정직하게 인정
+- **세션134 우선순위 재정립**: `unsold_history 0행 조사` 🥇 / 세션118 migration 반영 🥈 / 세션132 CI 사후 확인 🥉 / `schools.students` 학교알리미 복구 4등
+- 커밋 예정: CLAUDE.md DB 품질 섹션 + 다음 세션 우선순위 + 최근 3세션 블록 + SESSION_LOG 세션133 append
+
 **세션132 (2026-04-20)** — schools-neis neisCode/officeCode 저장 설계 오류 수정 (1커밋 origin/main `ae4987c..8b16d62`)
 - 실행 플랜 [cd-f-mibunyang-pwd-polymorphic-penguin.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-polymorphic-penguin.md). 9 GATE **3차 검증** 🟢6/🟡3/🔴0 (1차 🟢7/🟡2 → 2차 🟢6/🟡3 → 3차 동일). 서브에이전트 병렬 3회
 - **설계 오류**: [schools-neis.mjs:78-79](scripts/collectors/schools-neis.mjs#L78-L79) `fetchNeisSchoolInfo` 가 `SD_SCHUL_CODE`/`ATPT_OFCDC_SC_CODE` 를 추출하지만 L135-140 `enrichWithNeis` 반환 객체에 **포함 안 함** → `classInfo` 호출용으로만 쓰고 버림. 재조회 멱등성 미달, NEIS API 추가 호출 낭비, 동명이교 매칭 리스크
@@ -200,31 +217,44 @@
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션119+)
+### 다음 세션 우선순위 (세션134+, 세션133 재정립)
 
-1. ~~가평·양평·옹진 dev 왜곡 정직성 보정~~ **완료 (세션114)**
-2. ~~Vercel 12함수 감축~~ **불필요 (세션114, 21개로 Ready)**
-3. ~~전문가 대시보드 sidoNotice 끝단 UI 실측~~ **완료 (세션115 Playwright 5/5)**
-4. ~~시군구별 소득 수집~~ **C 공식 확정 (세션117)** — 재오픈 트리거 4개 발동 전 유지
-5. ~~`fix_sejong_coord.mjs` 처분~~ **완료 (세션116)**
-6. **`population.mjs` MOIS 인구 API 안정성 모니터링** — 장애 시에만 대응
-7. **세션118 수동 dispatch(`collect-schools.yml` run 24609959606) 완료 후 NEIS 보강 실측** — `schools.nearby_schools`에 `neis_code`/`student_count` 키 추가 여부 확인
-8. **새 에픽 후보**: (a) apartments_flat dedup 정책 `presale_stage='일반' 우선`, (b) `households` regions 수집기 신설, (c) `trade-stats.mjs`에 regions.jeonse_rate 파생 저장, (d) population.mjs 3-14/3-20 부분 NULL 재현
+> 세션133 에서 "프로젝트 목적에 충실한지" 자기점검 + DB 전수 재측정 + Playwright UX 실측 후 재정렬.
 
-### DB 품질 (세션110/114/118 측정)
+1. 🔴 **`unsold_history` 0행 원인 조사** — 미분양 추이 시계열 전무. "미분양 아파트 비교 엔진" 핵심 기능. 수집기 실행 이력 + 저장 실패 지점 추적
+2. 🔴 **세션118 migration DB 반영** — `supabase/migrations/20260419000000_view_dedup_prefer_general.sql` 을 Dashboard SQL Editor 에서 수동 실행. "(오)" 접미 3건 정리 (CLI/MCP 권한 막힘으로 사용자 1회 수행)
+3. 🟡 **세션132 커밋 `8b16d62` 사후 확인** — 다음 `collect-schools.yml` 정기 실행 후 `schools.nearby_schools[*].neisCode` 비율 쿼리 (기대 >70%). 현재 0%
+4. 🟡 **`schools.students` 학교알리미 API 수집 복구** — 세션89 이후 연속 실패. 5,239 요소 중 0건. schools-neis.mjs `enrichWithStudents` 경로 진단
+5. 🟡 `population.mjs` MOIS 인구 API 안정성 모니터링 — 장애 시에만
+6. 🟢 **이월 에픽 후보** (reader 부재라 낮은 우선순위): (a) `households` regions 수집기, (b) `trade-stats.mjs` 에 regions.jeonse_rate 파생 저장
 
-- **trade_stats 2,001건**: nearbyMedian 잔여 NULL 10건 (99.5% 커버)
-  - pir 1,960건, 중앙값 16.85년, 평균 18.34년 (세션110 INH_1C96_04 2024p 반영)
-- **apartments 2,001건**: cats_cache 1,994건 (99.7%), 평균 price 서브스코어 52.8점, PIR 서브스코어 평균 83.5점(90~100점 44.3%)
-  - cats_cache NULL 7건 = VIEW dedup으로 제외된 "(오) 없는" 쪽 일반분양 (세션118 실측)
-  - dataReliability 평균 88.38점 (세션97 강화 후), 80점↑ 1,317건(92.5%)
-- **regions 454건**:
-  - avg_income 시도 17/17 (세션110 INH_1C96_04 2024p, 205~269만원/월), 시군구 392건 NULL(trade-stats 시도값 fallback)
-  - net_migration 454→0 NULL (세션103 KOSIS 전환)
-  - population 시군구 420/454 (92.5%), 시도 3-14/3-20 스냅샷 부분 NULL
-  - households / jeonse_rate / supply_ratio **0/454** (수집기 부재·미저장·체인 차단, 세션118 확정)
-- **air_quality**: apartments 1,950/2,001 (97.5% 커버) — AIRKOREA 정상 수집
-- **schools NEIS 보강**: 0% (세션89~세션118 이전 연속 cancelled). 세션118에서 cron/그룹 재배치로 복구 중 (run 24609959606 완료 대기)
+**명시적 비-작업** (의도적 설계, 건드리지 말 것):
+- **혜택 10컬럼 100% NULL** — 시행사 제공 자료 기반 운영자 수기 입력 (자동 수집 대상 아님)
+- **시군구 소득** — 세션117 C 공식 확정, 재오픈 트리거 4개 발동 전 유지
+
+### DB 품질 (세션133 전수 재측정 · 2026-04-20)
+
+> 세션110/114/118 기록이 오래돼 세션133 에서 전수 재측정. 일부 지표는 자연 개선, 일부는 미해결 유지.
+
+- **apartments 2,001건 → apartments_flat VIEW 1,424건** (dedup 577건 제외)
+  - apartments.cats_cache NULL 7건 (0.3%), **apartments_flat.catsCache NULL 0건** — 세션118 "NULL 7건" 기록은 VIEW 기준 이미 해소
+  - price = 0 **0건** (세션99 오염 버그 해소 유지), price NULL 38건 (2.7%)
+  - dataReliability ≥80 **1,338건 (94.0%)** — 세션97 이후 소폭 개선 (1,317→1,338)
+- **trade_stats 2,001건**: pir 98.0% / psr 64.1% / jeonse_rate 97.5% / nearby_median 99.2%
+- **regions 454행 (시도 62 + 시군구 392)**:
+  - avg_income **62/454 (13.7%)** — 시도 단위만. 세션110 "시도 17/17" 이 더 정확한 표현 (regions 테이블이 시도별 여러 recorded_at 스냅샷 포함)
+  - population 420/454 (92.5%) — 시군구 부분 NULL
+  - **net_migration / pop_growth 454/454 (100%)** — 세션103 KOSIS 전환 이후 전량 채워짐 (이전 기록 "454→0 NULL" 은 오표기)
+  - **households / jeonse_rate / supply_ratio 0/454 유지** — reader 부재로 우선순위 낮음
+- **apartments.air_quality 1,950/2,001 (97.5%)** — AIRKOREA 정상 수집
+- **schools 1,971건 (apt 대비 98.5%)**:
+  - school_score 1,971/1,971 (100%)
+  - nearby_schools 요소 5,239개 샘플링: **neisCode 0% / students 0% / classes 2.7%** — 세션132 neisCode 저장 커밋 `8b16d62` 는 **다음 `collect-schools.yml` 정기 실행 후에야 반영**. students 는 학교알리미 API 수집이 세션89 이후 지속 실패
+- **시계열 테이블**:
+  - prices 3,633행 (apt당 평균 1.8행) · trades 608,713행
+  - **unsold_history 0행** — 🔴 **치명적 미수집**. 수집기 존재 여부 + 원인 조사가 다음 세션 우선
+- **혜택 10컬럼 (discountPct/loanFree/cashback/balcony 등) 100% NULL** — 🟡 의도적. 시행사 제공 자료 기반 운영자 수기 입력 대상. 자동 수집 대상 아님 (data-fill.mjs:46 `SKIP_CATEGORIES` 에 `benefits` 포함)
+- **apartments_flat "(오)" 23건 노출** — 세션118 migration `20260419000000_view_dedup_prefer_general.sql` 작성됐으나 **DB 반영 미완**. Supabase Dashboard SQL Editor 수동 실행 필요 (CLI/MCP 권한 막힘)
 
 ---
 ---
