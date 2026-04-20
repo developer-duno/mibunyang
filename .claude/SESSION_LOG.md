@@ -1,3 +1,77 @@
+# 세션 129 — 2026-04-20 (에픽 4-B: auth 체인 Upstash 교체 + refresh.js dead route 제거)
+
+**거시 목적**: 세션128 박제 "refresh.test.js 부재"를 **refresh.js 삭제로 근본 해소** + auth prod 4파일 (verify/login/signup/kakao) `@vercel/kv` → `../_lib/redis.js` 교체. prod `@vercel/kv` import 8 → 3.
+
+## 플랜
+
+- `~/.claude/plans/pwd-fancy-pixel.md` — 4 pair-commit (refresh 삭제 / verify / login+signup / kakao+신규)
+- 사용자 지시: A안 3분할 유지 + "안전·정확 제일. 프로젝트에 절대 문제 없게"
+
+## 9 GATE 0~8 전수 검증 (1회 통과)
+
+| GATE | 판정 | 핵심 증거 |
+|------|------|-----------|
+| 0 Sonnet 크기 | 🟢 | 4단계, 단계당 1~4파일, 단일 변경 +1~180줄 |
+| 1 영향 범위 | 🟢 | prod `@vercel/kv` import 8건 실측 (auth 5 + admin 3). `/api/auth/refresh` 참조 코드 0건 |
+| 2 순서·의존 | 🟢 | 4단계 독립 커밋, DB 변경 없음 |
+| 3 완전성 | 🟢 | null 가드 기존 보존, withHandler 불변 |
+| 4 적정성 | 🟢 | 범위 밖 리팩토링 없음. refresh.js 삭제는 CLAUDE.md "과도한 추상화 금지" 정신 |
+| 5 보안 | 🟢 | redirect_uri 화이트리스트, fail-open 보존, `kv.set(ex: TTL)` `chunk-IH7W44G6.mjs:2259` 정식 지원 |
+| 6 연동 | 🟢 | `useExpertMode.js:133,150` 만 verify 호출. vercel.json rewrites에 refresh 없음 |
+| 7 롤백 | 🟢 | 4커밋 독립 revert 가능 |
+| 8 확장성 | 🟢 | @upstash/redis 동일 Redis 프로토콜 |
+
+## 중대 발견 → 결정
+
+- **refresh.js 는 dead route**: 프론트(`useExpertMode.js`)가 `/api/auth/verify` (action=refresh) 만 호출. refresh.js 본체와 verify.js `handleRefresh` (L7-44)는 100% 동일 로직 쌍둥이. `docs/refresh-token-review.md:78` + verify.js L6 주석 모두 "기존 /api/auth/refresh 통합" 명시
+- **결정**: Vercel 파일 기반 라우팅 특성상 dead route 공격 표면 → 삭제로 근본 해소. 세션128 박제 "refresh.test.js 부재" 도 refresh.js 삭제로 자연 해소
+
+## 커밋 (4커밋 origin/main push)
+
+| # | SHA | 파일 | 줄수 | 요약 |
+|---|-----|------|------|------|
+| 1 | `708fa44` | 1삭제 | -48 | refresh.js 삭제 (dead route) |
+| 2 | `12d1578` | 2수정 | +2/-5 | verify.js + verify.test.js 두-mock 해제 |
+| 3 | `3b7630e` | 4수정 | +6/-6 | login+signup prod + test mock 경로 |
+| 4 | `efda699` | 1수정+1신규 | +171/-1 | kakao.js + **kakao.test.js 9케이스 신규** |
+
+## 5교차검증
+
+- **빌드**: `npx vite build` 389ms, 번들 변동 0 (import 경로만)
+- **null 안전성**: `null-safety-checker` 🟢 PASS (@upstash/redis `get/set/sadd/del` null 반환 @vercel/kv 동등 실증 `error-8y4qG0W2.d.ts:4636`, `SetCommandOptions.ex` `chunk-IH7W44G6.mjs:2259` 정식 지원)
+- **Hook 규칙**: 해당 없음
+- **보안**: 메인 🟢 (redirect_uri 화이트리스트 4도메인 보존, KAKAO_REST_API_KEY 로그 미노출, fail-open 보존)
+- **수집기 계약**: 해당 없음
+
+## kakao.test.js 신규 9케이스
+
+1. POST 아님 → 405
+2. code 없음 → 400
+3. redirect_uri 화이트리스트 외 → 400
+4. 카카오 토큰 교환 실패 → 401
+5. C 분기 (신규 사용자) — user:{email} + kakao:{id} set
+6. A 분기 (kakaoId 기존) — user 재조회
+7. B 분기 (email 기존 + kakaoId 신규) — 연동 set
+8. **ex: 7776000 TTL 호출** (세션128 SetCommandOptions.ex 회귀 방지)
+9. status=rejected → 403
+
+## 검증 결과
+
+- 테스트: 151 files / **2431 tests PASS** (세션128 2422 → +9 kakao)
+- 빌드: `vite build` 389ms, 번들 불변
+- `@vercel/kv` prod import: **8 → 3** (admin/stats·users·review 만 잔존)
+- `npm audit` 0건 유지
+
+## 세션130 이월
+
+1. `api/admin/review.js` + `review.test.js` pair
+2. `api/admin/users.js` + `users.test.js` pair
+3. `api/admin/stats.js` + `stats.test.js` pair
+4. 위 3쌍 완료 후 `package.json` `@vercel/kv` 의존성 제거 + `npm audit`
+5. CLAUDE.md 개선 백로그 🟡 `@vercel/kv 3` 항목 해소
+
+---
+
 # 세션 128 — 2026-04-20 (에픽 4-A1b-2: tokenBlacklist 체인 Upstash 교체)
 
 **거시 목적**: 세션127 에서 분리한 tokenBlacklist 체인을 `@vercel/kv` → `./redis.js` (Upstash) 로 교체. prod `@vercel/kv` import 9 → 8 감소. auth prod 5파일(login/signup/kakao/verify/refresh)은 세션129+ 이월.

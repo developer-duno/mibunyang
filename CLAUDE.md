@@ -9,6 +9,17 @@
 
 ### 최근 3세션 (상세)
 
+**세션129 (2026-04-20)** — 에픽 4-B: auth 체인 Upstash 교체 + refresh.js dead route 제거 (4커밋 origin/main `143f9ea..efda699`)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4-B. 실행 플랜 [pwd-fancy-pixel.md](C:\Users\user\.claude\plans\pwd-fancy-pixel.md)
+- **9 GATE 0~8 전수 🟢9/🟡0/🔴0** 통과 후 실행. null-safety-checker 🟢 PASS (High/Med 0, Upstash `get/set/sadd/del` null 반환 `@vercel/kv` 동등 실증 `error-8y4qG0W2.d.ts:4636`)
+- **중대 발견 → 결정**: `api/auth/refresh.js` 가 프론트 호출 0건 (grep 실증, `useExpertMode.js:133,150` 은 `/api/auth/verify` 만 사용) + verify.js `handleRefresh` 가 동일 로직 쌍둥이 → **dead route 삭제** 결정 (공격 표면 축소)
+- **커밋 `708fa44`** (1파일 -48): refresh.js 삭제 — 세션128 박제 "refresh.test.js 부재" 근본 해소
+- **커밋 `12d1578`** (2파일 +2/-5): verify.js L1 교체 + verify.test.js 두-mock 해제 (`vi.mock('@vercel/kv')` 제거, `../_lib/redis.js` 단독)
+- **커밋 `3b7630e`** (4파일 +6/-6): login+signup pair — prod L1 교체 + test mock 경로 교체. `sadd/del` Upstash 호환 실측
+- **커밋 `efda699`** (2파일 +171/-1): kakao.js L1 교체 + **kakao.test.js 신규 9케이스** (OAuth A/B/C 분기 + redirect_uri 화이트리스트 + `ex: 7776000` TTL 호환)
+- 검증: 151 files / **2431 tests PASS** (세션128 2422 → +9 kakao), `vite build` 389ms, 번들 불변, `npm audit` 0건
+- **`@vercel/kv` prod import 8 → 3** (admin/stats·users·review 만 잔존, 세션130 에픽 4-C 이월)
+
 **세션128 (2026-04-20)** — 에픽 4-A1b-2: tokenBlacklist 체인 Upstash 교체 (1커밋 origin/main `99a04f3..c1072a1`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4-A1b-2 진행. 실행 플랜 [pwd-rustling-wind.md](C:\Users\user\.claude\plans\pwd-rustling-wind.md)
 - **9 GATE 3회 수렴** (세션127 2회 대비 1회 추가 강화): 1차 🟢6/🟡1/🔴1 → 2차 🟢7/🟡1/🔴0 → 3차 🟢8/🟡0/🔴0
