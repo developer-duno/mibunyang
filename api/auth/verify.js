@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "../_lib/redis.js";
 import { verifyToken, createToken, createRefreshToken, verifyRefreshToken } from "../_lib/auth.js";
 import { isBlacklisted, blacklistToken } from "../_lib/tokenBlacklist.js";
 import { withHandler } from "../_lib/handler.js";

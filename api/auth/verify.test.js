@@ -14,11 +14,8 @@ vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
 
-// @vercel/kv 모킹 (verify.js 가 @vercel/kv 직접 import 유지 — 세션129 이월)
-// ../_lib/redis.js 모킹 (tokenBlacklist 가 세션128 에서 새 경로로 import)
-// 두 팩토리가 동일 mockKv 인스턴스 반환 → kv.get 호출 순서가 단일 큐로 공유
+// ../_lib/redis.js 모킹 (verify.js + tokenBlacklist 공통 경로, 세션129 두-mock 해제)
 const mockKv = { get: vi.fn(), set: vi.fn() };
-vi.mock('@vercel/kv', () => ({ kv: mockKv }));
 vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 
 const { default: handler } = await import('./verify.js');
