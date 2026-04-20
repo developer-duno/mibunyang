@@ -26,7 +26,7 @@ const mockKv = {
   sadd: vi.fn().mockResolvedValue(1),
   srem: vi.fn().mockResolvedValue(1),
 };
-vi.mock('@vercel/kv', () => ({ kv: mockKv }));
+vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 
 const { default: handler } = await import('./review.js');
 const { verifyAdminToken } = await import('../_lib/adminAuth.js');
