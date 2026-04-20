@@ -14,7 +14,7 @@ vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
 
-// ../_lib/redis.js 모킹 (verify.js + tokenBlacklist 공통 경로, 세션129 두-mock 해제)
+// redis.js 모킹 (verify.js + tokenBlacklist 공통 경로)
 const mockKv = { get: vi.fn(), set: vi.fn() };
 vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 

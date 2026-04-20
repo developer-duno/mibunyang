@@ -19,7 +19,7 @@ vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
 
-// ../_lib/redis.js 모킹 (세션129 Upstash 교체)
+// redis.js 모킹
 const mockKv = {
   get: vi.fn(),
   set: vi.fn().mockResolvedValue('OK'),

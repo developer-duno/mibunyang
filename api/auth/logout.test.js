@@ -14,7 +14,7 @@ vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
 
-// ../_lib/redis.js 모킹 (tokenBlacklist 내부에서 사용, 세션128: @vercel/kv → ./redis.js)
+// redis.js 모킹 (tokenBlacklist 내부에서 사용)
 const mockKv = { set: vi.fn(), get: vi.fn() };
 vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 

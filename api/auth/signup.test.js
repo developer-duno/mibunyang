@@ -19,7 +19,7 @@ vi.mock('../_lib/auth.js', () => ({
   hashPassword: vi.fn().mockReturnValue({ hash: 'hashed', salt: 'salted' }),
 }));
 
-// ../_lib/redis.js 모킹 (세션129 Upstash 교체)
+// redis.js 모킹
 const mockKv = {
   get: vi.fn().mockResolvedValue(null),
   set: vi.fn().mockResolvedValue('OK'),
