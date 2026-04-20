@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "../_lib/redis.js";
 import { verifyPassword, hashPassword, createToken, createRefreshToken } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
 import { isValidEmail } from "../_lib/validators.js";

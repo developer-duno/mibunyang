@@ -17,12 +17,12 @@ vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
 
-// @vercel/kv 모킹
+// ../_lib/redis.js 모킹 (세션129 Upstash 교체)
 const mockKv = {
   get: vi.fn(),
   set: vi.fn().mockResolvedValue('OK'),
 };
-vi.mock('@vercel/kv', () => ({
+vi.mock('../_lib/redis.js', () => ({
   kv: mockKv,
 }));
 

@@ -19,14 +19,14 @@ vi.mock('../_lib/auth.js', () => ({
   hashPassword: vi.fn().mockReturnValue({ hash: 'hashed', salt: 'salted' }),
 }));
 
-// @vercel/kv 모킹
+// ../_lib/redis.js 모킹 (세션129 Upstash 교체)
 const mockKv = {
   get: vi.fn().mockResolvedValue(null),
   set: vi.fn().mockResolvedValue('OK'),
   sadd: vi.fn().mockResolvedValue(1),
   del: vi.fn().mockResolvedValue(1),
 };
-vi.mock('@vercel/kv', () => ({ kv: mockKv }));
+vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 
 const { default: handler } = await import('./signup.js');
 const { checkRateLimit } = await import('../_lib/rateLimit.js');
