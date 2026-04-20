@@ -9,12 +9,38 @@
  *   node scripts/collectors/collect-unsold-kosis.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-unsold-kosis.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, upsertBatch, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
 const PHASE = "kosis-unsold";
 const KOSIS_KEY = process.env.KOSIS_KEY;
+
+/**
+ * KOSIS 응답 행 → 시군구별 월별 미분양 맵 (전 월 유지)
+ * 구조: { "서울::강남구": { "202601": 42, "202602": 38, "202603": 35 } }
+ *
+ * parseKosisRows 와 달리 모든 월 데이터를 보존 → unsold_history 시계열 upsert 용도.
+ * 기존 parseKosisRows 는 "최신 월 단일값" 으로 regions/apartments 갱신에 사용 (병존).
+ * PRD_DE 정규식 가드: KOSIS 응답이 YYYYMM 외 포맷(분기/반기 등) 반환 시 방어.
+ */
+export function parseKosisRowsAllMonths(rows) {
+  const unsoldByRegionGuMonth = {};
+  for (const row of rows) {
+    if (!/^\d{6}$/.test(row.PRD_DE)) continue;
+    const region = REGION_MAP[row.C1_NM];
+    if (!region) continue;
+    const gu = row.C2_NM === "계" ? "_total" : row.C2_NM;
+    const period = row.PRD_DE;
+    const value = parseInt(row.DT, 10);
+    if (isNaN(value)) continue;
+
+    if (!unsoldByRegionGuMonth[region]) unsoldByRegionGuMonth[region] = {};
+    if (!unsoldByRegionGuMonth[region][gu]) unsoldByRegionGuMonth[region][gu] = {};
+    unsoldByRegionGuMonth[region][gu][period] = value;
+  }
+  return unsoldByRegionGuMonth;
+}
 
 /** KOSIS 응답 행 → 시군구별 미분양 집계 (최신 월만) */
 export function parseKosisRows(rows) {
@@ -220,6 +246,45 @@ async function main() {
   }
 
   log(PHASE, `apartments 미분양 추정 갱신: ${aptUpdated}건`);
+
+  // 3. unsold_history 시계열 upsert (세션134, 방향 A)
+  // KOSIS 단일 API 호출 응답(3개월 범위)을 재파싱하여 월별 시계열 저장.
+  // API 재호출 아님 → 쿼터 증가 0.
+  const allMonthsMap = parseKosisRowsAllMonths(rows);
+  const historyRows = [];
+  const todayDate = new Date().toISOString().slice(0, 10);
+  for (const apt of apartments) {
+    if (!apt.region || !apt.gu || !apt.units || apt.units <= 1) continue;
+    const monthMap = allMonthsMap[apt.region]?.[apt.gu];
+    if (!monthMap) continue;
+    const guKey = `${apt.region}::${apt.gu}`;
+    const totalUnitsInGu = unitsByGu[guKey] || apt.units;
+    for (const [period, guUnsold] of Object.entries(monthMap)) {
+      const result = calcProportionalUnsold(guUnsold, apt.units, totalUnitsInGu);
+      if (!result) continue;
+      historyRows.push({
+        apartment_id: apt.id,
+        base_month: period,
+        unsold_count: result.estimated,
+        post_completion_unsold: null,
+        change: null,
+        recorded_at: todayDate,
+      });
+    }
+  }
+
+  if (dryRun) {
+    log(PHASE, `[DRY-RUN] unsold_history: ${historyRows.length}건 예상`);
+  } else if (historyRows.length > 0) {
+    const inserted = await upsertBatch("unsold_history", historyRows, "apartment_id,base_month", 500, sb);
+    log(PHASE, `unsold_history 저장: ${inserted}건`);
+  } else {
+    log(PHASE, "unsold_history 저장: 0건 (대상 없음)");
+  }
+
+  // 4. API 쿼터 기록 (KOSIS 단일 호출)
+  if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
+
   log(PHASE, "\n=== 완료 ===");
 }
 

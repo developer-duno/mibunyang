@@ -17,7 +17,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { parseKosisRows, aggregateRegionTotals, calcProportionalUnsold } =
+const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold } =
   await import("./collect-unsold-kosis.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
@@ -69,6 +69,53 @@ describe("parseKosisRows", () => {
     const rows = [makeRow("서울특별시", "종로구", "202601", 50)];
     const result = parseKosisRows(rows);
     expect(result["서울"]["종로구"]).toBe(50);
+  });
+});
+
+// ── parseKosisRowsAllMonths ───────────────────────────────────
+describe("parseKosisRowsAllMonths", () => {
+  it("3개월치 행 → 월별 분리 반환 (모든 월 유지)", () => {
+    const rows = [
+      makeRow("서울", "강남구", "202601", 100),
+      makeRow("서울", "강남구", "202602", 120),
+      makeRow("서울", "강남구", "202603", 135),
+    ];
+    const result = parseKosisRowsAllMonths(rows);
+    expect(result["서울"]["강남구"]).toEqual({
+      "202601": 100,
+      "202602": 120,
+      "202603": 135,
+    });
+  });
+
+  it("PRD_DE 포맷 위반(분기 '20261Q') → 무시", () => {
+    const rows = [
+      makeRow("서울", "강남구", "20261Q", 100),
+      makeRow("서울", "강남구", "202602", 120),
+    ];
+    const result = parseKosisRowsAllMonths(rows);
+    expect(result["서울"]["강남구"]).toEqual({ "202602": 120 });
+  });
+
+  it("C1_NM 매핑 실패 → skip", () => {
+    const rows = [makeRow("미국", "뉴욕", "202601", 100)];
+    const result = parseKosisRowsAllMonths(rows);
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+
+  it("DT NaN → skip", () => {
+    const rows = [makeRow("서울", "강남구", "202601", "abc")];
+    const result = parseKosisRowsAllMonths(rows);
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+
+  it("'계' 행 → '_total' 키로 월별 집계", () => {
+    const rows = [
+      makeRow("서울", "계", "202601", 500),
+      makeRow("서울", "계", "202602", 520),
+    ];
+    const result = parseKosisRowsAllMonths(rows);
+    expect(result["서울"]["_total"]).toEqual({ "202601": 500, "202602": 520 });
   });
 });
 
