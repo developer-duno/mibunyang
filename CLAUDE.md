@@ -9,6 +9,17 @@
 
 ### 최근 3세션 (상세)
 
+**세션132 (2026-04-20)** — schools-neis neisCode/officeCode 저장 설계 오류 수정 (1커밋 origin/main `ae4987c..8b16d62`)
+- 실행 플랜 [cd-f-mibunyang-pwd-polymorphic-penguin.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-polymorphic-penguin.md). 9 GATE **3차 검증** 🟢6/🟡3/🔴0 (1차 🟢7/🟡2 → 2차 🟢6/🟡3 → 3차 동일). 서브에이전트 병렬 3회
+- **설계 오류**: [schools-neis.mjs:78-79](scripts/collectors/schools-neis.mjs#L78-L79) `fetchNeisSchoolInfo` 가 `SD_SCHUL_CODE`/`ATPT_OFCDC_SC_CODE` 를 추출하지만 L135-140 `enrichWithNeis` 반환 객체에 **포함 안 함** → `classInfo` 호출용으로만 쓰고 버림. 재조회 멱등성 미달, NEIS API 추가 호출 낭비, 동명이교 매칭 리스크
+- **커밋 `8b16d62`** (1파일 +3): `enrichedSchool` 객체 리터럴에 `...(info.neisCode && { neisCode: info.neisCode })` + `...(info.officeCode && { officeCode: info.officeCode })` 2줄 추가. 기존 L137-139 조건부 스프레드 패턴 복제
+- **의도적 비변경**: 세션118 이 요청한 `student_count` 이름 변경은 4레이어 파급 (SchoolInfo.jsx UI + collect-data.mjs 레거시 + schools-neis 본체 + 77테스트) 으로 별도 ADR 세션 이월. 세션132 는 "재조회 가능성 보장" 만 충족
+- **테스트 전략 판정 (3차 실측)**: `NEIS_KEY` 가 모듈 로드 시점 `const` 캡처 + `vi.resetModules` 레포 전체 **0건 사용** (서브에이전트 grep) → 신규 자동 테스트 작성 **실제 불가**. 세션121 `3cad834` (timeseriesHandler 추출, 신규 테스트 0건으로 🟢9/🟡0/🔴0 통과) 선례 근거 조건부 승인. 대체 경로: GitHub Secrets `NEIS_KEY` 등록 확인 (`collect-schools.yml` 실측) → 다음 CI 정기 수집 후 DB 쿼리로 검증
+- **5교차검증 (1커밋)**: collector-contract 🟢 (C1~C5 전부 PASS) / null-safety-checker 🟢 (High/Med/Low 0, `...(null && obj)` JS 스펙상 no-op) / 메인 보안 🟢 (innerHTML/eval/Function 0건) / 빌드 🟢 (`vite build` 400ms 번들 불변)
+- **GATE 변동 이력**: GATE 1 🟢→🟡 (2차 test 삭제 영향 박제) · GATE 5 🟡→🟢 (3차 "동시실행 race/쿼터" 본 변경 무관 이슈 배제) · GATE 8 🟢→🟡 (테스트 규칙 해석)
+- 검증: 150 files / **schools-neis 77 PASS 유지** (회귀 0), `vite build` 400ms, 번들 불변, `git diff --stat` +3 단일 파일
+- **사후 모니터링 쿼리** (다음 CI 수집 후 확인용): `SELECT COUNT(*) FILTER (WHERE s->>'neisCode' IS NOT NULL) AS with_code, COUNT(*) AS total FROM schools, jsonb_array_elements(nearby_schools) s;` — 기대 `with_code/total > 70%`
+
 **세션131 (2026-04-20)** — test 주석 정리 10 라인 3분할 커밋 + eslint 재확인 + 통합 플랜 아카이브 (4커밋 origin/main `39ce0ca..18777ce`)
 - 실행 플랜 [131-humble-snowglobe.md](C:\Users\user\.claude\plans\131-humble-snowglobe.md). 9 GATE 1차 🔴(6파일 일괄) → 실측 grep 재수행 10 라인 식별 → 3분할 재설계 → 2차 🟢9/🟡0/🔴0
 - **커밋 `39ce0ca`** (3파일 +3/-3): api/_lib/ test 3종 주석 정리 — `rateLimit.test.js:7` / `tokenBlacklist.test.js:7` / `adminAuth.test.js:12` 에서 `세션127/128: @vercel/kv → ./redis.js` 히스토리 제거

@@ -1,3 +1,97 @@
+# 세션 132 — 2026-04-20 (schools-neis neisCode/officeCode 저장 설계 오류 수정)
+
+**거시 목적**: 세션118 이월 "NEIS 보강 run 24609959606 완료 후 `nearby_schools` 에 `neis_code`/`student_count` 키 추가 여부 확인" 을 실측. DB 점검이 아니라 **코드 설계 오류** 로 드러남. `fetchNeisSchoolInfo` 가 `SD_SCHUL_CODE`/`ATPT_OFCDC_SC_CODE` 를 추출하면서도 `enrichWithNeis` 반환 객체에 포함하지 않아 재조회 멱등성 미달. 조건부 스프레드 2줄 추가로 해소. 세션118 `student_count` 이름 변경은 4레이어 파급 확인 후 별도 ADR 이월.
+
+## 플랜
+
+- `~/.claude/plans/cd-f-mibunyang-pwd-polymorphic-penguin.md` — 1에픽 1커밋 (prod 2줄)
+- 9 GATE **3차 검증**: 1차 🟢7/🟡2 → 2차 🟢6/🟡3 (test 파일 수정 제거 반영) → 3차 🟢6/🟡3 (GATE 5 🟡→🟢 상향 + GATE 1 🟢→🟡 하향 상쇄) → 실행 허가
+- 서브에이전트 병렬 3회: 1차 GATE 1 영향범위 + GATE 5 보안 / 2차 GATE 3 테스트전략 실측 + GATE 1 JSONB reader 재조사 / 3차 GATE 종합 재검증
+
+## 커밋 (origin/main push)
+
+1. **`8b16d62`** fix(schools-neis): persist neisCode/officeCode in nearby_schools JSONB (session 132)
+   - [schools-neis.mjs:140-142](scripts/collectors/schools-neis.mjs#L140-L142) `enrichedSchool` 객체 리터럴에 2줄 조건부 스프레드 추가
+     ```javascript
+     // neisCode/officeCode 보존 — 재조회 멱등성 (session 132)
+     ...(info.neisCode && { neisCode: info.neisCode }),
+     ...(info.officeCode && { officeCode: info.officeCode }),
+     ```
+   - 기존 L137-139 (`schoolType`/`founded`/`highSchoolType`) 조건부 스프레드 패턴 **완전 동일 복제**
+   - diff: +3 / -0 / 1 file changed
+
+## 핵심 결정
+
+1. **scope 축소 (`(4)` jeonse_rate 제거)**: 사용자 "프로그램 목적에 충실한 방법" 요청에 대응. Phase 1 Explore 실측 `regions.jeonse_rate` 가 현재 **아무 곳에서도 읽히지 않음** (데드 데이터) → 저장 작업은 프로그램 목적(= 사용자 점수 정확도) 기여 0. 반면 `neisCode` 는 `school_score` 간접 지원 + 수집기 멱등 계약 기반 → 가치 명확
+2. **`student_count` 이름 변경 보류**: Phase 1 Explore 에서 `students` 가 4레이어(SchoolInfo.jsx UI L20,60 / collect-data.mjs 레거시 L561,577 / schools-neis 본체 L208-246 / 77 테스트) 에서 일관 사용 중. 이름 변경은 기존 JSONB 백필 + ADR 필요 → 별도 세션
+3. **신규 자동 테스트 0건 확정**: `NEIS_KEY` 가 모듈 로드 시점 `const` 캡처 + `vi.resetModules` 레포 전체 0건 사용 (서브에이전트 grep 실측) → 현재 테스트 인프라로 mock 주입 불가능. 세션121 `3cad834` (timeseriesHandler 추출) 가 신규 테스트 0건으로 9 GATE 🟢9/🟡0/🔴0 통과한 **선례 실측 확인** 후 조건부 승인
+
+## 9 GATE 최종 (3차)
+
+| GATE | 1차 | 2차 | 3차 | 변동 이유 |
+|---|---|---|---|---|
+| 0 크기 | 🟢 | 🟢 | 🟢 | 1파일 +2줄 |
+| 1 영향 | 🟢 | 🟢 | 🟡 | 2차 test 삭제로 shape 자동 검증 빈틈 박제 |
+| 2 순서 | 🟢 | 🟢 | 🟢 | L142 info 평가 독립 |
+| 3 완전성 | 🟡 | 🟡 | 🟡 | 세션121 `3cad834` 선례 실측 확인 |
+| 4 적정성 | 🟢 | 🟢 | 🟢 | L137-139 패턴 복제 |
+| 5 보안 | 🟡 | 🟡 | 🟢 | 본 변경 무관 이슈 배제 → 🟢 상향 |
+| 6 FE↔BE↔DB | 🟢 | 🟢 | 🟢 | SchoolInfo.jsx 렌더 8필드 확정 |
+| 7 롤백 | 🟢 | 🟢 | 🟢 | 단일 revert |
+| 8 UX/확장성/테스트 | 🟢 | 🟡 | 🟡 | 수동 통합 검증 필수 + CI Secrets 등록 확인 |
+
+## 5교차검증 (커밋 `8b16d62`)
+
+- **빌드**: 🟢 `vite build` 400ms, 번들 불변 (메인 agent 직접)
+- **collector-contract**: 🟢 PASS — 배치/upsert/병렬/쿼터/에러 C1~C5 전부 통과. `...(null && obj)` 조건부 스프레드가 기존 L137-139 와 완전 동형 확인. classInfo 호출 경로(L145) 불변
+- **null-safety-checker**: 🟢 PASS — High/Medium/Low **0건**. `info` 는 L134 가드로 truthy 확정, `info.neisCode` null 시 JS 스펙상 `...null` 은 no-op. downstream (src/, api/) 에서 neisCode/officeCode 참조 0건 grep 확인
+- **메인 보안**: 🟢 — grep `innerHTML|dangerouslySetInnerHTML|eval|Function` 0건. NEIS 식별자는 공개 포탈 필드 (민감정보 아님)
+
+## 저장소 스냅샷
+
+- 브랜치: main, origin/main 동기 (`8b16d62`)
+- 최근 커밋: 8b16d62 → ae4987c (세션131) → 18777ce → 35ba093 → 1b4893a
+- 회귀: schools-neis 77 tests PASS (세션118 이후 71 → 77 로 증가했던 것 실측 확인), vite build 400ms 번들 불변
+- untracked (커밋 제외): 세션131 동일 (.claude/commands/, .claude/settings.json, scripts/clear-user-keys.ts, scripts/deploy-test-*.png, scripts/test-deploy.py, scripts/test-phase-e-d.sh)
+
+## 비변경 대상 (의도적 박제)
+
+- [SchoolInfo.jsx:20,60](src/components/detail/SchoolInfo.jsx#L20) — `students` UI 리더. 이름 변경 시 동시 수정 필요
+- [collect-data.mjs:561,577](scripts/collect-data.mjs#L561) — 레거시 `students` 라이터
+- [schools-neis.mjs:208-246](scripts/collectors/schools-neis.mjs#L208) — `enrichWithStudents`, `calcDensityBonus`. JSDoc 명확화는 별도 에픽 B-1
+- kakao.test.js:143 본문 회귀 방지 앵커 (세션131 보존 유지)
+
+## 사후 모니터링
+
+다음 CI 정기 수집 (`collect-schools.yml` cron) 후 실행 권장:
+```sql
+-- neisCode 저장 비율 (기대: >70% for NEIS_KEY 활성 환경)
+SELECT
+  COUNT(*) FILTER (WHERE s->>'neisCode' IS NOT NULL) AS with_code,
+  COUNT(*) AS total
+FROM schools, jsonb_array_elements(nearby_schools) s;
+
+-- 멱등성 스모크 (기대: 0행)
+SELECT
+  s->>'name' AS name,
+  COUNT(DISTINCT s->>'neisCode') AS variants
+FROM schools, jsonb_array_elements(nearby_schools) s
+WHERE s->>'neisCode' IS NOT NULL
+GROUP BY s->>'name'
+HAVING COUNT(DISTINCT s->>'neisCode') > 1;
+```
+
+## 다음 세션 우선순위 (세션133+)
+
+1. **`(4)` regions.jeonse_rate 파생 저장** — 단, 먼저 **reader 쪽** (src/scoring/ 또는 프론트) 을 만들고 수집을 붙여야 데드 데이터 회피
+2. **`(2)` apartments_flat dedup 정책** — VIEW CTE `ORDER BY id DESC` → `presale_stage='일반' 우선` (cats_cache NULL 7건 뿌리)
+3. **`(3)` households regions 수집기 신설** — 0/454 NULL
+4. **B-1 에픽**: `students` vs `classes` JSDoc 명확화 (NEIS classInfo vs 학교알리미 bulk 의미 중복 박제)
+5. **세션118 제안 B-2 ADR**: `students` → `student_count` 이름 통일 (4레이어 파급 + 기존 JSONB 백필 설계)
+6. **세션118 schools NEIS 사후 확인**: 다음 `collect-schools.yml` 실행 후 위 쿼리 #1 결과 모니터링. `with_code/total < 70%` 이면 NEIS 매칭 로직 (`fetchNeisSchoolInfo:70-71` 정확 매칭 우선) 재검토
+
+---
+
 # 세션 131 — 2026-04-20 (test 주석 정리 10 라인 3분할 커밋 + eslint 재확인 + 통합 플랜 아카이브)
 
 **거시 목적**: 세션126~130 `@vercel/kv` → `@upstash/redis` 마이그레이션 종결 후 **잔존 test 주석 정돈**. 사실 오류 2건(admin) 수정 + 단순 히스토리 8건 제거. 통합 플랜 `pwd-linear-rossum.md` 완료 상태 박제. eslint 10 차단 상태 재확인.
