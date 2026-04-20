@@ -137,6 +137,9 @@ export async function enrichWithNeis(nearbySchools) {
         ...(info.schoolType && { schoolType: info.schoolType }),
         ...(info.founded && { founded: info.founded }),
         ...(info.highSchoolType && school.type === "고" && { highSchoolType: info.highSchoolType }),
+        // neisCode/officeCode 보존 — 재조회 멱등성 (session 132)
+        ...(info.neisCode && { neisCode: info.neisCode }),
+        ...(info.officeCode && { officeCode: info.officeCode }),
       };
       // classInfo 호출 — neisCode/officeCode 캐시에 있을 때만
       if (info.neisCode && info.officeCode) {
