@@ -9,6 +9,18 @@
 
 ### 최근 3세션 (상세)
 
+**세션131 (2026-04-20)** — test 주석 정리 10 라인 3분할 커밋 + eslint 재확인 + 통합 플랜 아카이브 (4커밋 origin/main `39ce0ca..<hash4>`)
+- 실행 플랜 [131-humble-snowglobe.md](C:\Users\user\.claude\plans\131-humble-snowglobe.md). 9 GATE 1차 🔴(6파일 일괄) → 실측 grep 재수행 10 라인 식별 → 3분할 재설계 → 2차 🟢9/🟡0/🔴0
+- **커밋 `39ce0ca`** (3파일 +3/-3): api/_lib/ test 3종 주석 정리 — `rateLimit.test.js:7` / `tokenBlacklist.test.js:7` / `adminAuth.test.js:12` 에서 `세션127/128: @vercel/kv → ./redis.js` 히스토리 제거
+- **커밋 `1b4893a`** (5파일 +5/-5): api/auth/ test 5종 주석 정리 — `logout/login/signup/kakao/verify.test.js` 에서 `세션128/129 Upstash 교체` 히스토리 제거. kakao.test.js:143 본문 회귀 방지 앵커는 보존
+- **커밋 `35ba093`** (2파일 +2/-2): admin test 2종 **사실 오류 수정** — `review.test.js:22` / `users.test.js:22` 의 `@vercel/kv 모킹` 주석이 실제 L29/L27 `vi.mock('../_lib/redis.js')` 와 불일치 → `redis.js 모킹` 으로 정정
+- **커밋 `<hash4>`** docs: 이 세션 기록 + 통합 플랜 아카이브 반영
+- **eslint 재확인**: `npm view eslint-plugin-react@latest peerDependencies` → peer `^3 || ... || ^9.7` 불변. 에픽 3-B 🔴 차단 유지. 재오픈 트리거: registry `^10.0.0` 등장
+- **통합 플랜 아카이브**: `~/.claude/plans/pwd-linear-rossum.md` (git 외부) 상단 완료 배너 + 에픽 11개(1/2-A/2-B1/2-B2/3-A/3-B/4-A0+A1a/4-A1b-1/4-A1b-2/4-B/4-C) 각 말미 완료 커밋 해시 박제
+- **비변경 대상 명시**: [kakao.test.js:143](api/auth/kakao.test.js#L143) 본문 회귀 방지 앵커 / [redis.js:3](api/_lib/redis.js#L3) 프로덕션 wrapper 설계 근거 / `src/scoring/**` 가중치 재설계 앵커 — 전부 보존
+- 검증: 150 files / **2429 tests PASS** (세션130 동일 유지), 주석만 변경이므로 `vite build` smoke 생략
+- 5교차검증: 전용 에이전트 호출 조건 미해당(스코어링/null/수집기 모두 비수정) → 메인 agent 직접 검증으로 처리
+
 **세션130 (2026-04-20)** — 에픽 4-C: admin 체인 Upstash 교체 + stats dead route 제거 + **@vercel/kv 의존성 완전 제거** (4커밋 origin/main `ce9e3d2..4a90768`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4-C. 실행 플랜 [pwd-f-mibunyang-soft-parasol.md](C:\Users\user\.claude\plans\pwd-f-mibunyang-soft-parasol.md)
 - **9 GATE 2회 수렴**: 1차 🟢5/🟡4 (GATE 0/1/3/4 — stats.js dead route 발견) → 재설계 (치환→삭제) → 2차 🟢9/🟡0/🔴0 통과
@@ -32,17 +44,6 @@
 - **커밋 `efda699`** (2파일 +171/-1): kakao.js L1 교체 + **kakao.test.js 신규 9케이스** (OAuth A/B/C 분기 + redirect_uri 화이트리스트 + `ex: 7776000` TTL 호환)
 - 검증: 151 files / **2431 tests PASS** (세션128 2422 → +9 kakao), `vite build` 389ms, 번들 불변, `npm audit` 0건
 - **`@vercel/kv` prod import 8 → 3** (admin/stats·users·review 만 잔존, 세션130 에픽 4-C 이월)
-
-**세션128 (2026-04-20)** — 에픽 4-A1b-2: tokenBlacklist 체인 Upstash 교체 (1커밋 origin/main `99a04f3..c1072a1`)
-- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4-A1b-2 진행. 실행 플랜 [pwd-rustling-wind.md](C:\Users\user\.claude\plans\pwd-rustling-wind.md)
-- **9 GATE 3회 수렴** (세션127 2회 대비 1회 추가 강화): 1차 🟢6/🟡1/🔴1 → 2차 🟢7/🟡1/🔴0 → 3차 🟢8/🟡0/🔴0
-- **1차 🔴 발견 → 박제**: `refresh.js` 가 `@vercel/kv` 직접(L1) + tokenBlacklist 경유(L3) **verify.js 쌍둥이** 인데 `refresh.test.js` 부재. prod 런타임은 `Redis.fromEnv()` KV_REST_API fallback 으로 같은 Upstash 서버 공유 → 영향 0. test 공백은 세션129 우선순위 1 이월
-- **3차 실증**: Vitest 두-mock 병존 `result1.obj === result2.obj === shared: true` + 3-mock 선례 5건 (signup/handler/review/stats/users.test.js)
-- **커밋 `c1072a1`** (5파일 +11/-8): [tokenBlacklist.js](api/_lib/tokenBlacklist.js) L1 `@vercel/kv` → `./redis.js` + 4 test mock 경로 교체 ([tokenBlacklist.test.js](api/_lib/tokenBlacklist.test.js) `./redis.js` / [adminAuth.test.js](api/_lib/adminAuth.test.js) `./redis.js` / [logout.test.js](api/auth/logout.test.js) `../_lib/redis.js` / [verify.test.js](api/auth/verify.test.js) `../_lib/redis.js` **추가** 두-mock 병존)
-- **verify.test.js 두-mock 병존**: verify.js 가 `@vercel/kv` 직접 + tokenBlacklist 경유 두 경로 사용 → 두 팩토리가 동일 `mockKv` 반환해 `kv.get` 큐 단일화 → 기존 13 케이스 코드 0줄 변경으로 통과
-- 5교차검증: null-safety-checker 🟢 PASS (High/Med 0, Low 2 정보성), 보안 메인 🟢 (Upstash `SetCommandOptions.ex` `chunk-IH7W44G6.mjs:2259` 정식 지원 실측, fail-open `tokenBlacklist.js:24-26` 보존)
-- 검증: 150 files / **2422 tests PASS** (세션127 동일), `vite build` 550ms, 번들 불변, `npm audit` 0건
-- `@vercel/kv` prod import 9 → **8** (tokenBlacklist.js 제거)
 
 **세션127 (2026-04-20)** — 에픽 4-A1b-1: rateLimit 체인 Upstash 교체 (1커밋 origin/main `86eb15d..e479ade`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4 재설계 — 원안 "prod 2파일 동시" → 5 하위 에픽 pair-commit 전략으로 분할

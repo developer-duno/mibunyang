@@ -1,3 +1,84 @@
+# 세션 131 — 2026-04-20 (test 주석 정리 10 라인 3분할 커밋 + eslint 재확인 + 통합 플랜 아카이브)
+
+**거시 목적**: 세션126~130 `@vercel/kv` → `@upstash/redis` 마이그레이션 종결 후 **잔존 test 주석 정돈**. 사실 오류 2건(admin) 수정 + 단순 히스토리 8건 제거. 통합 플랜 `pwd-linear-rossum.md` 완료 상태 박제. eslint 10 차단 상태 재확인.
+
+## 플랜
+
+- `~/.claude/plans/131-humble-snowglobe.md` — 3분할 커밋 (단계 1-A/1-B/1-C) + docs 커밋 1개
+- 9 GATE 1차 초안 🔴 (6파일 일괄) → 사용자 지적으로 실측 grep 재수행 → 10 라인 식별 → 3분할 재설계 → 2차 🟢 9/🟡 0/🔴 0 통과
+
+## 커밋 (origin/main push)
+
+1. **`39ce0ca`** docs(tests): _lib redis mock 주석 정리 (히스토리 제거)
+   - [rateLimit.test.js:7](api/_lib/rateLimit.test.js#L7) → `redis.js 모킹 (pipeline 전용)`
+   - [tokenBlacklist.test.js:7](api/_lib/tokenBlacklist.test.js#L7) → `redis.js 모킹`
+   - [adminAuth.test.js:12](api/_lib/adminAuth.test.js#L12) → `redis.js 모킹 (tokenBlacklist 내부에서 사용)`
+2. **`1b4893a`** docs(tests): auth redis mock 주석 정리 (히스토리 제거)
+   - [logout.test.js:17](api/auth/logout.test.js#L17) → `redis.js 모킹 (tokenBlacklist 내부에서 사용)`
+   - [login.test.js:20](api/auth/login.test.js#L20) → `redis.js 모킹`
+   - [signup.test.js:22](api/auth/signup.test.js#L22) → `redis.js 모킹`
+   - [kakao.test.js:22](api/auth/kakao.test.js#L22) → `redis.js 모킹`
+   - [verify.test.js:17](api/auth/verify.test.js#L17) → `redis.js 모킹 (verify.js + tokenBlacklist 공통 경로)`
+3. **`35ba093`** docs(tests): admin @vercel/kv 주석 오류 수정 → redis.js
+   - [review.test.js:22](api/admin/review.test.js#L22) `@vercel/kv 모킹` → `redis.js 모킹` (L29 실제와 일치)
+   - [users.test.js:22](api/admin/users.test.js#L22) `@vercel/kv 모킹` → `redis.js 모킹` (L27 실제와 일치)
+4. **(이 커밋)** docs: session131 기록 + 통합 플랜 아카이브 반영
+
+## 비변경 대상 (명시적 보존)
+
+| 파일 | 보존 이유 |
+|---|---|
+| [kakao.test.js:143](api/auth/kakao.test.js#L143) `Upstash SetCommandOptions.ex 회귀 방지 (세션128 실증)` | 본문 테스트 케이스 앵커 — 어떤 assertion인지 설명. 날짜 앵커 유지 |
+| [redis.js:3](api/_lib/redis.js#L3) `@vercel/kv deprecated 대체` | 프로덕션 wrapper 존재 이유 (세션126 lazy wrapper 설계 근거) |
+| src/scoring/** `세션108/111/114` 앵커 | 가중치 재설계 날짜 앵커. `src/scoring/CLAUDE.md`가 본문 설명 보존 중 |
+
+## eslint 10 재확인
+
+```
+npm view eslint-plugin-react@latest peerDependencies
+→ peerDependencies = { eslint: '^3 || ^4 || ... || ^9.7' }
+  version = '7.37.5'
+```
+
+세션125 조사 결론 불변. **에픽 3-B 차단 유지**. 재오픈 트리거: registry 에 `^10.0.0` peer 배포 등장.
+
+## 통합 플랜 아카이브
+
+- `~/.claude/plans/pwd-linear-rossum.md` (git 외부) 상단에 완료 배너 삽입
+- 에픽 1/2-A/2-B1/2-B2/3-A/3-B/4-A0+A1a/4-A1b-1/4-A1b-2/4-B/4-C 각 말미에 완료 커밋 해시 박제
+- 3-B는 🔴 차단 유지 표기 + 재오픈 트리거 명시
+- 파일명 유지 (히스토리 보존 원칙)
+
+## 검증
+
+- 150 files / **2429 tests PASS** (세션130 동일 유지)
+- 주석만 변경이므로 `vite build` 재실행 불필요 (필요 시 smoke 1회 가능)
+- `git log origin/main..HEAD` 4커밋 확인 예정
+
+## 5교차검증
+
+- 빌드: `npm test` 2429 PASS (메인 agent)
+- 스코어링: **해당 없음** (scoring 파일 비수정)
+- null-safety: **해당 없음** (null 처리 로직 비수정)
+- Hook 규칙: **해당 없음** (컴포넌트/훅 비수정)
+- 보안: PASS (주석만 변경, XSS/인젝션/env 영향 0, 메인 agent)
+- collector-contract: **해당 없음** (수집기 비수정)
+
+전용 에이전트 호출 조건 미해당 — 메인 agent 직접 검증으로 처리.
+
+## 다음 세션 (132+) 우선순위
+
+1. 수집기 부전 모니터링 (세션118 후속): MOIS 인구 / schools NEIS 보강 (`gh run view 24609959606`) / population.mjs 3-14/3-20 부분 NULL
+2. 세션118 제안 에픽 후보 5개 중 택1:
+   - apartments_flat dedup 정책 재검토 (ORDER BY presale_stage='일반' DESC)
+   - `households` regions 수집기 신설 (현재 0/454)
+   - trade-stats.mjs에 regions.jeonse_rate 파생 저장
+   - population.mjs 3-14/3-20 부분 NULL 원인 추적
+   - 시군구 소득 PoC B1 재실험 (regions NULL 3컬럼 채워진 후)
+3. 🟢 백로그 잔여: inline `style={{...}}` 787건 → CSS 상수, AdminDashboard 412줄 분리, collect-building-hub.mjs TODO 2건
+
+---
+
 # 세션 130 — 2026-04-20 (에픽 4-C: admin 체인 Upstash 교체 + stats dead route 제거 + @vercel/kv 의존성 완전 제거)
 
 **거시 목적**: 세션126~129 에서 진행해온 `@vercel/kv` → `@upstash/redis` 마이그레이션의 **최종 단계**. admin 3파일 처리 + 의존성 자체 제거로 **5세션 마이그레이션 종결**.
