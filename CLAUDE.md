@@ -9,6 +9,19 @@
 
 ### 최근 3세션 (상세)
 
+**세션130 (2026-04-20)** — 에픽 4-C: admin 체인 Upstash 교체 + stats dead route 제거 + **@vercel/kv 의존성 완전 제거** (4커밋 origin/main `ce9e3d2..4a90768`)
+- 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4-C. 실행 플랜 [pwd-f-mibunyang-soft-parasol.md](C:\Users\user\.claude\plans\pwd-f-mibunyang-soft-parasol.md)
+- **9 GATE 2회 수렴**: 1차 🟢5/🟡4 (GATE 0/1/3/4 — stats.js dead route 발견) → 재설계 (치환→삭제) → 2차 🟢9/🟡0/🔴0 통과
+- **중대 발견 → 결정**: `api/admin/stats.js` 프론트 호출 0건 (grep 실증, `useAdminMode.js:151` 은 `/api/admin/users?action=stats` 만 사용 → users.js 의 handleStats L5-51 경로) + stats.js 주석 L4 "stats.js 통합 — Vercel Hobby 12함수 제한" 자체 실토 → **dead route 삭제** 결정 (세션129 refresh.js 선례 동일)
+- **Explore 서브에이전트 오탐 기각**: 1번 에이전트 "숨은 호출자 1건" 보고 → 메인 Read 직접 검증 (`useAdminMode.js:146-159`) → `fetchStats` 함수명만 "stats" 키워드 매칭, 실제 URL 은 users.js 경로로 확정
+- **커밋 `e5aab6f`** (2파일 +2/-2): review.js L1 교체 + review.test.js L29 mock 경로 교체 (19케이스 본문 0변경)
+- **커밋 `264f209`** (2파일 +2/-2): users.js L1 교체 + users.test.js L27 mock 경로 교체. handleStats + main handler 동시. stats.test.js 교차 의존 파손은 단계 3 에서 자동 해소 (설계상 의도된 윈도우)
+- **커밋 `bc7aafa`** (2파일 -186): stats.js 90줄 + stats.test.js 97줄 **삭제**. dead code 대량 감축
+- **커밋 `4a90768`** (2파일 -15): package.json L29 `"@vercel/kv": "^2.0.0"` 제거 + package-lock.json 재생성. `node_modules/@vercel/kv` 실측 제거 (`npm install` removed 1 package)
+- 검증: 150 files / **2429 tests PASS** (세션129 2431 → -2 stats.test.js 삭제분), `vite build` 431ms, 번들 불변, `npm audit` 0건
+- **@vercel/kv prod import 3 → 0 ← 세션126~130 Upstash 마이그레이션 5세션 종결**
+- null-safety-checker 3회 호출 🟢 PASS (High/Med 0): review.js 롤백 체인 + users.js handleStats/main 양경로 + 의존성 제거 단독 검증
+
 **세션129 (2026-04-20)** — 에픽 4-B: auth 체인 Upstash 교체 + refresh.js dead route 제거 (4커밋 origin/main `143f9ea..efda699`)
 - 활성 통합 플랜 [pwd-linear-rossum.md](C:\Users\user\.claude\plans\pwd-linear-rossum.md) 에픽 4-B. 실행 플랜 [pwd-fancy-pixel.md](C:\Users\user\.claude\plans\pwd-fancy-pixel.md)
 - **9 GATE 0~8 전수 🟢9/🟡0/🔴0** 통과 후 실행. null-safety-checker 🟢 PASS (High/Med 0, Upstash `get/set/sadd/del` null 반환 `@vercel/kv` 동등 실증 `error-8y4qG0W2.d.ts:4636`)
@@ -320,7 +333,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - ~~**미션 1 — 공개 API 보안**: `api/supabase/{apartments,prices,unsold-history}.js`에 `rateLimit: "proxy"` 추가 + `npm audit fix`로 dompurify moderate 해소 (GHSA-39q2-94rc-95cp)~~ **완료 (세션119, 4커밋 `deef147..be54322`)**
 
 ### 🟡 곧 (이번 달 · 6건, 이 중 4건 완료)
-- 의존성 메이저 업그레이드: `eslint 10` **🔴 차단** (세션125 에픽 3-A 조사: eslint-plugin-react 최신이 peer eslint ^9.7까지만 지원), `@vercel/kv 3` (에픽 4 KV→Upstash 전체 마이그레이션으로 대체 예정), ~~`@vercel/analytics 2`~~ **완료 (세션119 3차 후속, 커밋 `22434c2`)**. Node 환경 핀(engines + .nvmrc)은 세션125 커밋 `6520ec9` 로 선행 완료
+- 의존성 메이저 업그레이드: `eslint 10` **🔴 차단** (세션125 에픽 3-A 조사: eslint-plugin-react 최신이 peer eslint ^9.7까지만 지원), ~~`@vercel/kv 3`~~ **완료 (세션130 에픽 4-C 커밋 `4a90768` — @vercel/kv 패키지 자체 제거, @upstash/redis@1.37.0 단독 사용)**, ~~`@vercel/analytics 2`~~ **완료 (세션119 3차 후속, 커밋 `22434c2`)**. Node 환경 핀(engines + .nvmrc)은 세션125 커밋 `6520ec9` 로 선행 완료
 - ~~`@supabase/supabase-js` 2.98→2.103 마이너~~ **완료 (세션119 후속, 커밋 `73b3295`)**
 - ~~`onClick={() => ...}` inline 클로저 75건(실측) → useCallback (ExpertDashboard 등 상위)~~ **부분 완료 (세션121 A, 커밋 `1ed7db3` — memo 자식 효과 확실한 6건 처리: ExpertDashboard.handleSelect + AdminDashboard 5건. 루프 28건·이미 적용 6건·trivial 다수는 의식적 배제)**
 - ~~`admin/review.js:72` 이메일 `.includes("@")` → RFC 5322 정규식~~ **완료 (세션119 후속, 커밋 `1d4f3c3`·`295334c` — 공용 `isValidEmail()` 추출)**

@@ -1,3 +1,109 @@
+# 세션 130 — 2026-04-20 (에픽 4-C: admin 체인 Upstash 교체 + stats dead route 제거 + @vercel/kv 의존성 완전 제거)
+
+**거시 목적**: 세션126~129 에서 진행해온 `@vercel/kv` → `@upstash/redis` 마이그레이션의 **최종 단계**. admin 3파일 처리 + 의존성 자체 제거로 **5세션 마이그레이션 종결**.
+
+## 플랜
+
+- `~/.claude/plans/pwd-f-mibunyang-soft-parasol.md` — 4 pair-commit (review 치환 / users 치환 / stats 삭제 / 의존성 제거)
+- 원안은 3 pair 치환 + 1 의존성 제거였으나 **9 GATE 1차 검증에서 stats.js dead route 발견 → 재설계** (치환 → 삭제)
+
+## 9 GATE 2회 수렴
+
+### 1차 (원안)
+- 🟢5 / 🟡4 (GATE 0/1/3/4) / 🔴0
+- 🟡 공통 원인: `api/admin/stats.js` 프론트 호출 0건 실측 → 단순 치환은 과잉
+- 결정: 재설계
+
+### 2차 (재설계 후)
+- 🟢9 / 🟡0 / 🔴0 → 실행 허가
+
+## 중대 발견 — stats.js dead route
+
+**실측 근거:**
+1. `grep -rn "/api/admin/stats" f:/mibunyang/src --include="*.js" --include="*.jsx"` → **0 hit**
+2. `src/hooks/useAdminMode.js:151` 은 `/api/admin/users?action=stats` 호출 → **users.js 의 handleStats (L5-51) 경유**, stats.js 경로 미사용
+3. `stats.js:L4` 주석 자체 실토: `"stats.js 통합 — Vercel Hobby 12함수 제한"`
+4. `stats.test.js:L30` `import('./users.js')` — stats.js 자체는 검증 범위 밖, 실제로는 users.js 의 handleStats 검증 중
+5. handleStats 로직 비교 (Explore 서브에이전트 실측): users.js L5-51 vs stats.js L1-90 → **100% 동등** (에러 로깅 라벨만 `[admin/users?action=stats]` vs `[admin/stats]`)
+
+**세션129 refresh.js 선례 동일 패턴** — 프론트 0 hit + 쌍둥이 로직 존재 → 삭제로 공격 표면 축소
+
+## Explore 서브에이전트 오탐 기각
+
+- Explore 1번 "숨은 호출자 1건 확인" 보고 → `useAdminMode.js:151 fetchStats` 지목
+- 메인 직접 Read 검증: `useAdminMode.js:146-159` 확인 → `fetchStats` 함수명만 "stats" 키워드 매칭, 실제 URL 은 `/api/admin/users?action=stats` (L151) → stats.js 파일과 **완전 무관**
+- 서브에이전트 보고를 검증 없이 수용하지 않는 하네스 원칙 재확인
+
+## 커밋 (origin/main push 완료, `ce9e3d2..4a90768`)
+
+### `e5aab6f` — refactor(admin): review.js @vercel/kv → ./redis.js
+- 2파일 +2/-2
+- `api/admin/review.js:1` `@vercel/kv` → `../_lib/redis.js`
+- `api/admin/review.test.js:29` `vi.mock('@vercel/kv')` → `vi.mock('../_lib/redis.js')`
+- 19 케이스 본문 0변경
+- sadd/srem/get/set Upstash 호환 (error-8y4qG0W2.d.ts:2051,2255 실측)
+- `@vercel/kv` prod import 3 → 2
+- null-safety-checker 🟢 PASS (High/Med 0, Low 1: `user.status ?? "pending"` 정보성)
+
+### `264f209` — refactor(admin): users.js @vercel/kv → ./redis.js
+- 2파일 +2/-2
+- `api/admin/users.js:1` import 교체 (handleStats + main handler 동시)
+- `api/admin/users.test.js:27` mock 경로 교체
+- 15 케이스 본문 0변경
+- scard/smembers/get Upstash 호환 (error-8y4qG0W2.d.ts:2058,2220)
+- **stats.test.js 교차 의존 파손** (Step 2.4): users.js 가 `../_lib/redis.js` 로 교체됐지만 stats.test.js L28 이 여전히 `vi.mock('@vercel/kv')` → mock 불일치로 1 케이스 FAIL. 설계상 의도된 윈도우 (단계 3 에서 파일 삭제로 자동 해소)
+- `@vercel/kv` prod import 2 → 1
+- null-safety-checker 🟢 PASS (High/Med 0, Low 2: Date NaN 안정성 정보성)
+
+### `bc7aafa` — refactor(admin): stats.js + stats.test.js 삭제
+- 2파일 **-186**
+- `api/admin/stats.js` (90줄) + `api/admin/stats.test.js` (97줄) **삭제**
+- 사전 안전 게이트 재확인: `grep -rn "api/admin/stats" src/` 0 hit
+- `@vercel/kv` prod import 1 → **0** ← 마이그레이션 최종 목표 달성
+- 세션129 refresh.js 선례 동일 철학
+- null-safety-checker 호출 불필요 (파일 삭제)
+
+### `4a90768` — chore(deps): @vercel/kv 의존성 제거
+- 2파일 -15
+- `package.json:29` `"@vercel/kv": "^2.0.0"` 삭제
+- `npm install` 실행 → `removed 1 package in 695ms`
+- `node_modules/@vercel/kv` 폴더 자동 삭제 실측 (`ls` → `No such file or directory`)
+- `npm audit` 0건 유지
+- @upstash/redis@1.37.0 단독 사용
+
+## 검증 (세션 말미)
+
+- 테스트: 150 files / **2429 tests PASS** (세션129 2431 → -2 stats.test.js 삭제분)
+- 빌드: `vite build` 431ms, 번들 불변
+- `@vercel/kv` prod import: **3 → 0** ← 세션126~130 5세션 마이그레이션 종결
+- `@vercel/kv` 패키지 의존성: 제거됨
+- `node_modules/@vercel/kv`: 제거됨
+- `npm audit`: 0 vulnerabilities
+
+## 5교차검증
+
+- 빌드: PASS (메인)
+- null 안전성: PASS (null-safety-checker 3회 호출 — review/users/의존성 제거 단독)
+- Hook 규칙: 미적용 (백엔드 리팩토링)
+- 보안: PASS (메인 — withHandler admin:true 체인 불변, AUTH_SECRET 미노출, dead route 제거로 공격 표면 축소)
+- 수집기 계약: 미적용
+
+## 환경 교훈 (세션131+ 필독)
+
+1. **stats.test.js 교차 의존 패턴**: 테스트 파일이 `import('./target.js')` 하면서 동시에 `vi.mock('@vercel/kv')` 같은 외부 모듈 mock 만 설정하고 target.js 의 실제 의존 모듈은 mock 안 하는 경우, target.js 의 import 가 교체되면 mock 불일치로 **hang or FAIL**. 세션130 에서는 파일 삭제로 해소됐지만 다른 교차 의존 발견 시 우선 `stats.test.js:30` 유형의 간접 import 패턴 검사
+2. **서브에이전트 오탐 기각 레시피**: Explore 서브에이전트가 키워드 매칭만 하고 실제 URL/경로를 검증 안 하는 경우 있음. 주요 결정 직전에는 **메인 Read 로 해당 줄 재확인** 필수. `fetchStats` 함수명 → stats.js 경로 오판 사례
+3. **세션129 refresh.js 선례 복제 가능성**: dead route 탐지 레시피는 (a) 프론트 grep 0 hit + (b) 쌍둥이 로직 존재 + (c) 주석 자체 실토. 3요소 모두 만족 시 삭제 안전. 세션130 stats.js 도 정확히 3요소 충족
+
+## 다음 세션 (131+)
+
+1. ~~CLAUDE.md "개선 백로그" 🟡 `@vercel/kv 3` 항목~~ **완료 표기 (이 세션에서 갱신)**
+2. **세션125 "에픽 3-A eslint 10 차단" 상태 재확인** — `npm view eslint-plugin-react@latest peerDependencies` 재조회
+3. **test 파일 historical 주석 4건** (`// 세션12x: @vercel/kv → ./redis.js`, logout.test.js L17 / adminAuth.test.js L12 / tokenBlacklist.test.js L7 / rateLimit.test.js L7) + 세션130 에서 만든 주석 2건 (review.test.js L22 / users.test.js L22 `// @vercel/kv 모킹`) → 정리 여부 결정
+4. **수집기 부전 모니터링** (세션118 후속): MOIS 인구 API / schools NEIS / population.mjs
+5. **에픽 4 종결 기록 이관**: `pwd-linear-rossum.md` 통합 플랜 업데이트 (에픽 4 완료 표기)
+
+---
+
 # 세션 129 — 2026-04-20 (에픽 4-B: auth 체인 Upstash 교체 + refresh.js dead route 제거)
 
 **거시 목적**: 세션128 박제 "refresh.test.js 부재"를 **refresh.js 삭제로 근본 해소** + auth prod 4파일 (verify/login/signup/kakao) `@vercel/kv` → `../_lib/redis.js` 교체. prod `@vercel/kv` import 8 → 3.
