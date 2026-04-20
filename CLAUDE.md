@@ -9,6 +9,17 @@
 
 ### 최근 3세션 (상세)
 
+**세션136 (2026-04-21)** — schools.students 학교알리미 복구 Phase 0 진단 → **가설 E 서비스 점검 확정, 4/30 대기** (docs-only, 1커밋 예정)
+- 실행 플랜 [cd-f-mibunyang-pwd-pure-hamming.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-pure-hamming.md). 2차 재판정 🟢9/🟡0/🔴0 (1차 🟢7/🟡2 → 서브에이전트 재검증 3건 보강 후 전통과)
+- **가설 판정**: A 엔드포인트/B 키 만료/C 매칭/D IP — 전부 **보류** (원본 응답 수령 자체 불가). **E 서비스 점검 ✅ 확정** — 학교알리미 공식 공지 "2025-08~2026-03 업로드 첨부파일 열람 일시 중단, 2026-04-30 1차 정시 공시와 함께 재게시" 사용자 스크린샷 실증
+- **Phase 0 실행**: `scripts/_tmp_schoolinfo_probe.mjs` 40줄 (_tmp_* gitignored) → 강남구 초중고 3회 호출 시도. `SCHOOLINFO_KEY` 로컬 `.env.local` 미동기화로 중단. `gh secret list` 실측: SCHOOLINFO_KEY 2026-04-02 등록 확인(세션118 일치), 단 write-only 라 값 추출 불가. 사용자 스크린샷으로 원인 전환
+- **2차 검증 주요 발견 3건**:
+  - `normalizeSchoolName` 4지점 이중 역할 (schools-neis.mjs L53/70/182/218) → Phase 1-C 옵션 A 기각, **옵션 B(유사도 0.8→0.75 + DEBUG 로그)** 단계적 접근 채택
+  - `classes` 1.4% 실적은 neisCode 과거 저장분 유산 — 실제 baseline 사실상 0%
+  - **[schools-neis.mjs](scripts/collectors/schools-neis.mjs) `recordApiQuota` 호출 0건** — scripts/CLAUDE.md "쿼터 로깅 9개 수집기" 원칙 위반. 다른 수집기(molit-building-info.mjs:219, migration.mjs:163) 전부 기록 중. 독립 유효 성과로 세션137 이월
+- **코드 수정 0파일**, docs 2파일 (SESSION_LOG + 이 CLAUDE.md)
+- **교훈**: "API 0건/실패" 진단 시 Claude 혼자 코드·API 조사로는 "외부 서비스 점검" 가설 못 잡음 → 공식 사이트 접속해 공지 확인을 다음 세션부터 우선 절차로
+
 **세션135 (2026-04-21)** — 세션132 CI 사후 확인 + "재활용 패턴" 전수 점검 (docs-only, 1커밋 예정)
 - 실행 플랜 [cd-f-mibunyang-pwd-lazy-pumpkin.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-lazy-pumpkin.md). 9 GATE 🟢9/🟡0/🔴0 (1차 🟢7/🟡2 → 단계 1 실패처리 1줄 추가 후 전통과)
 - **단계 1 결과**: `schools.nearby_schools[*].neisCode` = **0.0% (21,608 요소 중 0건)**. 🔴 원인 확정: `collect-schools.yml` cron `'0 22 2 * *'` = 매월 2일 UTC 22:00 → 세션132 커밋 `8b16d62` (2026-04-20 작성) 는 **2026-05-03 KST 07:00** 실행 시 첫 반영. 현재 0% 는 정상. **5/3 이후 재측정 필요**
@@ -239,17 +250,18 @@
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션136+, 세션135 후속)
+### 다음 세션 우선순위 (세션137+, 세션136 후속)
 
-> 세션135 에서 #1 (neisCode CI 사후 확인) 은 원인 확정 후 **5/3 KST 07:00 까지 대기** 상태. market-stats 복구 가치 신규 발견. 순서 재정렬.
+> 세션136 에서 `schools.students` 는 **학교알리미 서비스 점검(가설 E)** 이 원인으로 확정되어 **2026-04-30 까지 대기**. `neisCode` 도 `5/3 KST 07:00` 정기 실행 대기. 두 건이 모두 외부 이벤트 대기라 내부 작업 위주로 재정렬.
 
-1. 🟡 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 매월 2일 UTC 22:00 = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건) — 세션135 실측
-2. 🟡 **`schools.students` 학교알리미 API 수집 복구** — 세션89 이후 연속 실패. **21,608 요소 중 0건** (세션135 재측정, 세션133 "5,239/0" 은 page limit 누락). schools-neis.mjs `enrichWithStudents` 경로 진단
-3. 🟡 **unsold_history 시계열 축적 모니터링** — 매월 1일 KOSIS 수집 후 행수 증가 확인. 2~3개월 후 distinct_apartment_id × months 좌표에서 결측 패턴 분석 (현재 508×2개월, 향후 이상적으로 1,300×3개월 = 3,900행)
-4. 🟡 **방향 B 검토** — 청약홈 API 가 단지별 월별 미분양 이력 제공하는지 조사. KOSIS 비례배분(세션134) 대비 정확도 개선 여지
-5. 🟡 **collect-market-stats.mjs 시계열 복구 (세션135 신규 발견)** — 5지표 × (6개월+8분기) API 응답에서 최신값만 저장, 시계열 버림. 세션134 unsold_history 와 동일 패턴. 새 테이블 `market_stats_history` 신설 필요. **reader 부재라 긴급도 낮음** — 분양가 추이 차트 신설 의사결정 시 착수
-6. 🟡 `population.mjs` MOIS 인구 API 안정성 모니터링 — 장애 시에만
-7. 🟢 **이월 에픽 후보** (reader 부재라 낮은 우선순위): (a) `households` regions 수집기, (b) `trade-stats.mjs` 에 regions.jeonse_rate 파생 저장
+1. 🥇 **2026-04-30 이후 학교알리미 재프로브** — `scripts/_tmp_schoolinfo_probe.mjs` 40줄 레시피 재작성(세션136 플랜 Phase 0 참조). 응답 정상이면 `collect-schools.yml` 5/3 정기 실행 대기, 응답 이상이면 Phase 1-A/B/C/D 분기. 사용자에게 SCHOOLINFO_KEY 로컬 `.env.local` 동기화 요청 선행 필요(`gh secret` write-only)
+2. 🥈 **`recordApiQuota` schools-neis 1줄 보강** — 세션136 2차 검증 발견. scripts/CLAUDE.md "9개 수집기 쿼터 로깅" 원칙 위반. `main()` 말미에 `if (!dryRun && SCHOOLINFO_KEY) await recordApiQuota("schools-neis", "SCHOOLINFO_KEY", schoolInfoApiCalls);` + NEIS_KEY 병행. 재프로브 커밋과 묶거나 단독 커밋
+3. 🥉 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
+4. 🟡 **unsold_history 시계열 축적 모니터링** — 매월 1일 KOSIS 수집 후 행수 증가 확인. 2~3개월 후 결측 패턴 분석 (현재 508×2개월, 향후 이상적으로 1,300×3개월 = 3,900행)
+5. 🟡 **방향 B 검토** — 청약홈 API 가 단지별 월별 미분양 이력 제공하는지 조사. KOSIS 비례배분(세션134) 대비 정확도 개선 여지
+6. 🟡 **collect-market-stats.mjs 시계열 복구 (세션135 신규 발견)** — 5지표 × (6개월+8분기) API 응답에서 최신값만 저장, 시계열 버림. 세션134 unsold_history 와 동일 패턴. 새 테이블 `market_stats_history` 신설 필요. **reader 부재라 긴급도 낮음**
+7. 🟡 `population.mjs` MOIS 인구 API 안정성 모니터링 — 장애 시에만
+8. 🟢 **이월 에픽 후보** (reader 부재라 낮은 우선순위): (a) `households` regions 수집기, (b) `trade-stats.mjs` 에 regions.jeonse_rate 파생 저장
 
 **명시적 비-작업** (의도적 설계, 건드리지 말 것):
 - **혜택 10컬럼 100% NULL** — 시행사 제공 자료 기반 운영자 수기 입력 (자동 수집 대상 아님)
