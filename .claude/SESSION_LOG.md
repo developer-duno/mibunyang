@@ -1,3 +1,77 @@
+# 세션 135 — 2026-04-21 (세션132 CI 사후 확인 + "재활용 패턴" 3개 수집기 전수 점검)
+
+**거시 목적**: 세션134 핵심 발견 2개를 세션135 에서 실측·전수 적용.
+1. 세션132 커밋 `8b16d62` (schools `neisCode` 저장) CI 반영 현황 DB 쿼리 확인
+2. 세션134 "재활용 낭비 패턴" (3개월 응답에서 최신 월만 쓰고 버리는) 이 타 수집기에 있는지 전수 점검
+
+**커밋**: 예정 (docs-only 1커밋)
+**실행 플랜**: `C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-lazy-pumpkin.md`
+
+## 한 일
+
+### 9 GATE 검증 (1차 🟢7/🟡2 → 단계 1 실패처리 1줄 추가 → 전통과)
+
+- GATE 0 크기: 3단계 전부 적정 (수정 0 + docs 3)
+- GATE 1 영향범위: docs-only 자가 봉쇄, `.gitignore:31` `_tmp_*` 보호
+- GATE 2 실행순서: 단계 1→2→3 독립 커밋 가능
+- GATE 3 완전성: 🟡 (단계 1 에러 처리 미명시) → 플랜 L42 에 1줄 추가해서 🟢
+- GATE 4 적정성: 관심사 단계별 1가지
+- GATE 5 보안: 서브에이전트 Explore 2개 병렬 기동. 민감 정보 하드코딩 0건 (`_shared.mjs:34`, `collect-unsold-kosis.mjs:17` 전부 `process.env.*`) / `.gitignore:31` `_tmp_*` 패턴 보호 / `supabase/schema.sql:168-174` schools 테이블 JSONB 구조 실증 / RLS SELECT only 명시
+- GATE 6 연동: 해당 없음
+- GATE 7 롤백: 🟡 → 단계 1 에러 처리 1줄로 동시 해소
+- GATE 8 UX: 해당 없음
+
+### 단계 1 — `schools.neisCode` 저장 비율 쿼리
+
+- 1회성 스크립트 `scripts/_tmp_schools_neiscode_audit.mjs` 작성 (페이지네이션 포함, `.gitignore:31` 보호)
+- **초기 실행**: `schools` 1000행만 읽힘 (supabase-js 기본 limit) → 페이지네이션 추가 후 재실행
+- **최종 결과**: schools 1,971행 / nearby_schools 요소 **21,608** / neisCode 0 (0.0%) / students 0 (0.0%) / classes 312 (1.4%)
+- **판정**: 🔴 FAIL **→ 원인 확정: CI 미실행** (`collect-schools.yml` cron `'0 22 2 * *'` = 매월 2일 UTC 22:00 = KST 3일 07:00, 세션132 커밋 `8b16d62` 는 2026-04-20 작성 → 다음 반영은 **2026-05-03 KST 07:00**). NEIS_KEY 문제 아님
+- 실행 후 스크립트 삭제, `git status` clean 확인
+
+### 부수 발견 — 세션133 DB 품질 표 수치 오류
+
+- 세션133 기록: nearby_schools 요소 "5,239개"
+- 세션135 실측: **21,608개** (4배)
+- 원인: 세션133 에서 `supabase-js` 기본 `limit=1000` 에 걸려 schools 1,000행만 읽음 → nearby_schools 요소도 비례 축소
+- CLAUDE.md DB 품질 섹션 L275 수치 정정 필요
+
+### 단계 2 — 3개 수집기 "재활용 낭비" 패턴 전수 점검 (코드 읽기 전용)
+
+| 수집기 | API 응답 범위 | 최신값만 쓰는가 | 시계열 테이블 | 결론 |
+|--------|--------------|----------------|--------------|------|
+| `migration.mjs` | L127 `newEstPrdCnt: "1"` (1개월) | N/A (API 수준 고정) | `regions.net_migration` 단일 | ✅ 낭비 없음 |
+| `collect-market-stats.mjs` | L102-107 6개월+8분기 | ✅ `extractLatestByRegion` L74-88 최신값만 추출 | **부재** (`regions.price_index` 등 단일 컬럼) | 🟡 **복구 가치 있음** |
+| `population.mjs` | L43-44 `srchFrYm=srchToYm` 단일 월 | N/A | `regions.recorded_at` 시계열 INSERT 경로 (L238-250) | ✅ 올바른 설계 |
+
+### 🟡 복구 가치 상세 — collect-market-stats.mjs
+
+- 5지표 × (6개월 or 8분기) × 17시도 = **매월 수백 행의 시계열 정보 낭비**
+- 세션134 `unsold_history` 복구(0→1099행)와 **동일 패턴**
+- 차이점: market-stats 는 테이블 자체 신설 필요 (`market_stats_history`). unsold_history 는 이미 있었음
+- **복구 긴급도**: 🟡 낮음 (reader 부재). 분양가 추이 차트 신설 의사결정 시 즉시 가치 상승
+
+### 결론 3개
+
+1. 🟡 #1 (neisCode CI 사후 확인) → **5/3 대기**로 조정. 🔴 아님
+2. 🟡 #5~6 (market-stats 시계열 복구) → 새 우선순위 추가
+3. ✅ migration.mjs / population.mjs 설계 ↔ 구현 갭 없음 확인
+
+## 교차검증
+
+- GATE 0 (크기): 메인 agent 직접 판정 🟢
+- GATE 1 (영향범위): Explore 서브에이전트 1번 🟢 (파일 실존, 커밋 해시 정합, `_tmp_` 충돌 없음)
+- GATE 5 (보안): Explore 서브에이전트 2번 🟢 (민감 정보 하드코딩 0건, `.gitignore` 보호, RLS SELECT only, 테이블 구조 실증)
+- 전용 에이전트 호출 조건 미해당: 코드 수정 0파일 → scoring-validator/null-safety-checker/collector-contract 모두 스킵
+
+## 다음 세션 (세션136+)
+
+세션135 의 🟡 #1 은 2026-05-03 KST 07:00 이후 재측정. 그 전까지 다른 🟡 진행 가능:
+- 🟡 #2 `schools.students` 학교알리미 복구 — 세션89 이후 연속 실패, 21,608/0 건 (세션135 재측정)
+- 🟡 #5 `collect-market-stats.mjs` 시계열 복구 — 새 테이블 신설 + 세션134 선례 적용
+
+---
+
 # 세션 134 — 2026-04-21 (unsold_history 0행 복구 + 세션118 migration DB 반영)
 
 **거시 목적**: 세션133 에서 정립된 🔴 1·2순위 해소 — "미분양 아파트 비교 엔진" 의 핵심 기능인 미분양 추이 시계열(`unsold_history`)이 0행이던 문제 복구 + 세션118 dedup migration 의 DB 반영.

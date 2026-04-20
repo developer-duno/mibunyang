@@ -9,6 +9,18 @@
 
 ### 최근 3세션 (상세)
 
+**세션135 (2026-04-21)** — 세션132 CI 사후 확인 + "재활용 패턴" 전수 점검 (docs-only, 1커밋 예정)
+- 실행 플랜 [cd-f-mibunyang-pwd-lazy-pumpkin.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-lazy-pumpkin.md). 9 GATE 🟢9/🟡0/🔴0 (1차 🟢7/🟡2 → 단계 1 실패처리 1줄 추가 후 전통과)
+- **단계 1 결과**: `schools.nearby_schools[*].neisCode` = **0.0% (21,608 요소 중 0건)**. 🔴 원인 확정: `collect-schools.yml` cron `'0 22 2 * *'` = 매월 2일 UTC 22:00 → 세션132 커밋 `8b16d62` (2026-04-20 작성) 는 **2026-05-03 KST 07:00** 실행 시 첫 반영. 현재 0% 는 정상. **5/3 이후 재측정 필요**
+- **부수 발견**: 세션133 DB 품질 표의 "schools 5,239 요소" 는 `supabase-js` 기본 limit 1000 탓 과소집계. 실제 **21,608** (4배). 페이지네이션 포함 1회성 스크립트(`_tmp_*`, `.gitignore` 보호, 실행 후 삭제) 로 실측
+- **단계 2 매트릭스** (코드 읽기 전용, 수정 0파일):
+  - ✅ [migration.mjs](scripts/collectors/migration.mjs) L127 `newEstPrdCnt: "1"` — 최신 1개월만 요청 → 재활용 낭비 없음
+  - 🟡 [collect-market-stats.mjs](scripts/collectors/collect-market-stats.mjs) L102-107 6개월+8분기 요청 / L74-88 `extractLatestByRegion` 지역별 최신값만 추출, 나머지 버림 / regions 에 시계열 컬럼 부재 → **세션134 unsold_history 와 동일 패턴**, 복구 가치 🟡 (reader 없어 긴급도 낮음)
+  - ✅ [population.mjs](scripts/collectors/population.mjs) L43-44 `srchFrYm=srchToYm` 단일 월 요청 + L238-250 `regions.recorded_at` 시계열 INSERT → 올바른 설계
+- **결론 3개**: (1) 🟡 #1 CI 사후 확인은 5/3 까지 **대기** (🔴 아님), (2) collect-market-stats 시계열 복구 🟡 #5~6 추가, (3) migration/population 안전 확인
+- **서브에이전트 병렬 검증**: GATE 0~8 중 GATE 1 (영향범위) / GATE 5 (보안) Explore 2개 동시 기동. 민감 정보 하드코딩 0건, `.gitignore:31` `_tmp_*` 패턴 보호 확인, `schools.nearby_schools` 테이블 구조 실증(`supabase/schema.sql:168-174`)
+- **코드 수정 0파일**, docs 3파일 (이 CLAUDE.md + priorities + SESSION_LOG) 예정
+
 **세션134 (2026-04-21)** — unsold_history 0행 복구 + 세션118 migration DB 반영 (1커밋 origin/main `95ebcfd..c5c3a55`)
 - 실행 플랜 [cd-f-mibunyang-pwd-graceful-newt.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-graceful-newt.md). **2차 수렴 9 GATE 🟢9/🟡0/🔴0** (1차 🟡1 → PRD_DE 정규식 가드 반영 후 2차 전통과)
 - **세션133 🥈 migration 반영**: Supabase Dashboard SQL Editor 에서 사용자가 `20260419000000_view_dedup_prefer_general.sql` 직접 실행. apartments_flat total_rows=1424 (불변) / `(오)` 접미 23→**17** (-6건, 세션118 예상 "6건 교체" 정확 일치). 기존 오피스텔 승자 자리에 일반분양 본체 6건 노출 시작
@@ -45,17 +57,6 @@
 - **세션132 재평가**: `neisCode` 저장은 수집기 멱등성 확보 (진짜 가치 있음) 이나 사용자 체감 0. 우선순위 1등이었으면 안 됐음 정직하게 인정
 - **세션134 우선순위 재정립**: `unsold_history 0행 조사` 🥇 / 세션118 migration 반영 🥈 / 세션132 CI 사후 확인 🥉 / `schools.students` 학교알리미 복구 4등
 - 커밋 예정: CLAUDE.md DB 품질 섹션 + 다음 세션 우선순위 + 최근 3세션 블록 + SESSION_LOG 세션133 append
-
-**세션132 (2026-04-20)** — schools-neis neisCode/officeCode 저장 설계 오류 수정 (1커밋 origin/main `ae4987c..8b16d62`)
-- 실행 플랜 [cd-f-mibunyang-pwd-polymorphic-penguin.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-polymorphic-penguin.md). 9 GATE **3차 검증** 🟢6/🟡3/🔴0 (1차 🟢7/🟡2 → 2차 🟢6/🟡3 → 3차 동일). 서브에이전트 병렬 3회
-- **설계 오류**: [schools-neis.mjs:78-79](scripts/collectors/schools-neis.mjs#L78-L79) `fetchNeisSchoolInfo` 가 `SD_SCHUL_CODE`/`ATPT_OFCDC_SC_CODE` 를 추출하지만 L135-140 `enrichWithNeis` 반환 객체에 **포함 안 함** → `classInfo` 호출용으로만 쓰고 버림. 재조회 멱등성 미달, NEIS API 추가 호출 낭비, 동명이교 매칭 리스크
-- **커밋 `8b16d62`** (1파일 +3): `enrichedSchool` 객체 리터럴에 `...(info.neisCode && { neisCode: info.neisCode })` + `...(info.officeCode && { officeCode: info.officeCode })` 2줄 추가. 기존 L137-139 조건부 스프레드 패턴 복제
-- **의도적 비변경**: 세션118 이 요청한 `student_count` 이름 변경은 4레이어 파급 (SchoolInfo.jsx UI + collect-data.mjs 레거시 + schools-neis 본체 + 77테스트) 으로 별도 ADR 세션 이월. 세션132 는 "재조회 가능성 보장" 만 충족
-- **테스트 전략 판정 (3차 실측)**: `NEIS_KEY` 가 모듈 로드 시점 `const` 캡처 + `vi.resetModules` 레포 전체 **0건 사용** (서브에이전트 grep) → 신규 자동 테스트 작성 **실제 불가**. 세션121 `3cad834` (timeseriesHandler 추출, 신규 테스트 0건으로 🟢9/🟡0/🔴0 통과) 선례 근거 조건부 승인. 대체 경로: GitHub Secrets `NEIS_KEY` 등록 확인 (`collect-schools.yml` 실측) → 다음 CI 정기 수집 후 DB 쿼리로 검증
-- **5교차검증 (1커밋)**: collector-contract 🟢 (C1~C5 전부 PASS) / null-safety-checker 🟢 (High/Med/Low 0, `...(null && obj)` JS 스펙상 no-op) / 메인 보안 🟢 (innerHTML/eval/Function 0건) / 빌드 🟢 (`vite build` 400ms 번들 불변)
-- **GATE 변동 이력**: GATE 1 🟢→🟡 (2차 test 삭제 영향 박제) · GATE 5 🟡→🟢 (3차 "동시실행 race/쿼터" 본 변경 무관 이슈 배제) · GATE 8 🟢→🟡 (테스트 규칙 해석)
-- 검증: 150 files / **schools-neis 77 PASS 유지** (회귀 0), `vite build` 400ms, 번들 불변, `git diff --stat` +3 단일 파일
-- **사후 모니터링 쿼리** (다음 CI 수집 후 확인용): `SELECT COUNT(*) FILTER (WHERE s->>'neisCode' IS NOT NULL) AS with_code, COUNT(*) AS total FROM schools, jsonb_array_elements(nearby_schools) s;` — 기대 `with_code/total > 70%`
 
 **세션131 (2026-04-20)** — test 주석 정리 10 라인 3분할 커밋 + eslint 재확인 + 통합 플랜 아카이브 (4커밋 origin/main `39ce0ca..18777ce`)
 - 실행 플랜 [131-humble-snowglobe.md](C:\Users\user\.claude\plans\131-humble-snowglobe.md). 9 GATE 1차 🔴(6파일 일괄) → 실측 grep 재수행 10 라인 식별 → 3분할 재설계 → 2차 🟢9/🟡0/🔴0
@@ -206,10 +207,11 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~115 색인 (상세는 SESSION_LOG)
+### 세션93~132 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 132 | 04-20 | schools-neis neisCode/officeCode 저장 3줄 추가 (재조회 멱등성 보장). CI 반영은 5/3 이후 | `8b16d62` |
 | 115 | 04-18 | sidoNotice 끝단 UI 실측 (Playwright 5/5 전문가 대시보드 DOM 노출) | `32f1885` |
 | 114 | 04-18 | fairPriceFromSidoAvg 폴백 신뢰도 `-15` + 경고 접미. `PRICE_FALLBACK_RELIABILITY_PENALTY=15` 신규 | `ee85ce3`·`d1749b7`·`e6c48ec` |
 | 112 | 04-17 | AptCard `classifyNoPrice` detail 일반 카드로 확장 | `d21ace9` |
@@ -237,16 +239,17 @@
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션135+, 세션134 후속)
+### 다음 세션 우선순위 (세션136+, 세션135 후속)
 
-> 세션134 에서 🔴 1·2순위 (unsold_history 복구, migration 반영) 전부 해소. 남은 🟡 위주로 재정렬.
+> 세션135 에서 #1 (neisCode CI 사후 확인) 은 원인 확정 후 **5/3 KST 07:00 까지 대기** 상태. market-stats 복구 가치 신규 발견. 순서 재정렬.
 
-1. 🟡 **세션132 커밋 `8b16d62` 사후 확인** — 다음 `collect-schools.yml` 정기 실행 후 `schools.nearby_schools[*].neisCode` 비율 쿼리 (기대 >70%). 현재 0%
-2. 🟡 **`schools.students` 학교알리미 API 수집 복구** — 세션89 이후 연속 실패. 5,239 요소 중 0건. schools-neis.mjs `enrichWithStudents` 경로 진단
+1. 🟡 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 매월 2일 UTC 22:00 = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건) — 세션135 실측
+2. 🟡 **`schools.students` 학교알리미 API 수집 복구** — 세션89 이후 연속 실패. **21,608 요소 중 0건** (세션135 재측정, 세션133 "5,239/0" 은 page limit 누락). schools-neis.mjs `enrichWithStudents` 경로 진단
 3. 🟡 **unsold_history 시계열 축적 모니터링** — 매월 1일 KOSIS 수집 후 행수 증가 확인. 2~3개월 후 distinct_apartment_id × months 좌표에서 결측 패턴 분석 (현재 508×2개월, 향후 이상적으로 1,300×3개월 = 3,900행)
 4. 🟡 **방향 B 검토** — 청약홈 API 가 단지별 월별 미분양 이력 제공하는지 조사. KOSIS 비례배분(세션134) 대비 정확도 개선 여지
-5. 🟡 `population.mjs` MOIS 인구 API 안정성 모니터링 — 장애 시에만
-6. 🟢 **이월 에픽 후보** (reader 부재라 낮은 우선순위): (a) `households` regions 수집기, (b) `trade-stats.mjs` 에 regions.jeonse_rate 파생 저장
+5. 🟡 **collect-market-stats.mjs 시계열 복구 (세션135 신규 발견)** — 5지표 × (6개월+8분기) API 응답에서 최신값만 저장, 시계열 버림. 세션134 unsold_history 와 동일 패턴. 새 테이블 `market_stats_history` 신설 필요. **reader 부재라 긴급도 낮음** — 분양가 추이 차트 신설 의사결정 시 착수
+6. 🟡 `population.mjs` MOIS 인구 API 안정성 모니터링 — 장애 시에만
+7. 🟢 **이월 에픽 후보** (reader 부재라 낮은 우선순위): (a) `households` regions 수집기, (b) `trade-stats.mjs` 에 regions.jeonse_rate 파생 저장
 
 **명시적 비-작업** (의도적 설계, 건드리지 말 것):
 - **혜택 10컬럼 100% NULL** — 시행사 제공 자료 기반 운영자 수기 입력 (자동 수집 대상 아님)
@@ -269,7 +272,7 @@
 - **apartments.air_quality 1,950/2,001 (97.5%)** — AIRKOREA 정상 수집
 - **schools 1,971건 (apt 대비 98.5%)**:
   - school_score 1,971/1,971 (100%)
-  - nearby_schools 요소 5,239개 샘플링: **neisCode 0% / students 0% / classes 2.7%** — 세션132 neisCode 저장 커밋 `8b16d62` 는 **다음 `collect-schools.yml` 정기 실행 후에야 반영**. students 는 학교알리미 API 수집이 세션89 이후 지속 실패
+  - nearby_schools 요소 **21,608개** (세션135 페이지네이션 실측 · 세션133 "5,239" 는 supabase-js 기본 limit 1000 탓 과소): **neisCode 0% / students 0% / classes 1.4%** — 세션132 neisCode 저장 커밋 `8b16d62` 는 **다음 `collect-schools.yml` 정기 실행(5/3 KST 07:00) 후에야 반영**. students 는 학교알리미 API 수집이 세션89 이후 지속 실패
 - **시계열 테이블**:
   - prices 3,633행 (apt당 평균 1.8행) · trades 608,713행
   - **unsold_history 1,099행** — 세션134 복구 완료. 508 apartments × 2개월 (202601/202602), KOSIS 1~2개월 지연 반영 정상. 매월 1일 자동 누적
