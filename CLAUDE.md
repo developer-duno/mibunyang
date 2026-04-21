@@ -9,7 +9,18 @@
 
 ### 최근 3세션 (상세)
 
-**세션136 (2026-04-21)** — schools.students 학교알리미 복구 Phase 0 진단 → **가설 E 서비스 점검 확정, 4/30 대기** (docs-only, 1커밋 예정)
+**세션137 (2026-04-21~22)** — schools-neis `recordApiQuota` 1줄 보강 — CLAUDE.md 쿼터 로깅 원칙 복구 (1커밋 origin/main `c0f501f..5b2be14`)
+- 실행 플랜 [cd-f-mibunyang-pwd-moonlit-kahn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-moonlit-kahn.md). 9 GATE 🟢9/🟡0/🔴0 (서브에이전트 GATE 5-4 🔴 "api_quota_log UNIQUE 부재" 판정 → **재판정 🟢** — 기존 스키마 설계 의도, `api_quota_daily` VIEW `SUM()` 집계로 충분)
+- **배경**: 세션136 2차 검증 독립 유효 성과 (scripts/CLAUDE.md "9개 수집기 쿼터 로깅" 원칙 위반 — schools-neis 만 누락, migration.mjs:163·molit-building-info.mjs:219·collect-unsold-kosis.mjs:286 전부 준수). 4/30 학교알리미 + 5/3 CI 외부 이벤트 대기라 지금 할 수 있는 유일한 내부 작업
+- **커밋 `5b2be14`** (1파일 +4/-1):
+  - [schools-neis.mjs](scripts/collectors/schools-neis.mjs) L11 import 에 `recordApiQuota` 추가 (`_shared.mjs:431` export 재사용)
+  - L385-386 main() 말미 2줄: `if (!dryRun && NEIS_KEY) await recordApiQuota(PHASE, "NEIS_KEY", neisApiCalls);` / `if (!dryRun && SCHOOLINFO_KEY) await recordApiQuota(PHASE, "SCHOOLINFO_KEY", schoolInfoApiCalls);`
+  - dryRun 가드 + 키 존재 가드 (migration.mjs 패턴과 동일)
+- **5교차검증**: collector-contract 🟢 PASS (쿼터 로깅 원칙 위반 해소, 모범 패턴 3수집기와 일관) / null-safety-checker 🟢 (High/Med/Low 0, 카운터 L42/L161 모듈스코프 `let X=0` 초기화 확정) / 빌드 🟢 486ms 번들 불변 / 보안 🟢 (env **이름** 만 DB 기록, try/catch 메인 흐름 보호)
+- **검증**: 150 files / **2434 tests PASS** (세션136 동일 유지), dry-run 실측 시 "DRY-RUN 모드" 로그 + `recordApiQuota` 호출 0건 (가드 작동 확인)
+- **사용자 가치**: 2026-05-03 KST 07:00 `collect-schools.yml` 정기 실행 후 `api_quota_log` 테이블로 NEIS/SCHOOLINFO 호출량 일별 추적 가능. 4/30 학교알리미 서비스 재개 후 호출 정상화 여부 실측 모니터링 수단 확보
+
+**세션136 (2026-04-21)** — schools.students 학교알리미 복구 Phase 0 진단 → **가설 E 서비스 점검 확정, 4/30 대기** (1커밋 origin/main `c0f501f`)
 - 실행 플랜 [cd-f-mibunyang-pwd-pure-hamming.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-pure-hamming.md). 2차 재판정 🟢9/🟡0/🔴0 (1차 🟢7/🟡2 → 서브에이전트 재검증 3건 보강 후 전통과)
 - **가설 판정**: A 엔드포인트/B 키 만료/C 매칭/D IP — 전부 **보류** (원본 응답 수령 자체 불가). **E 서비스 점검 ✅ 확정** — 학교알리미 공식 공지 "2025-08~2026-03 업로드 첨부파일 열람 일시 중단, 2026-04-30 1차 정시 공시와 함께 재게시" 사용자 스크린샷 실증
 - **Phase 0 실행**: `scripts/_tmp_schoolinfo_probe.mjs` 40줄 (_tmp_* gitignored) → 강남구 초중고 3회 호출 시도. `SCHOOLINFO_KEY` 로컬 `.env.local` 미동기화로 중단. `gh secret list` 실측: SCHOOLINFO_KEY 2026-04-02 등록 확인(세션118 일치), 단 write-only 라 값 추출 불가. 사용자 스크린샷으로 원인 전환

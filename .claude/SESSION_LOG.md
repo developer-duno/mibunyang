@@ -1,3 +1,55 @@
+# 세션 137 — 2026-04-21~22 (schools-neis recordApiQuota 1줄 보강 — CLAUDE.md 쿼터 로깅 원칙 복구)
+
+**거시 목적**: 세션136 2차 검증에서 발견된 독립 유효 성과 "schools-neis.mjs `recordApiQuota` 호출 0건" (scripts/CLAUDE.md "9개 수집기 쿼터 로깅" 원칙 위반) 해소.
+
+**결론**: 1파일 +4/-1 라인 단일 커밋. 4/30 학교알리미 + 5/3 CI 2건 모두 외부 이벤트 대기라 내부에서 할 수 있는 유일한 작업이었음.
+
+## 작업 — Phase 1 실행
+
+### 1-1. Plan 모드 설계 + 9 GATE 검증
+
+- 실행 플랜 [cd-f-mibunyang-pwd-moonlit-kahn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-moonlit-kahn.md)
+- 서브에이전트 2개 병렬 (GATE 1·6 영향범위·연동 / GATE 5 보안·안전)
+- 서브에이전트 GATE 5-4 🔴 "api_quota_log UNIQUE 부재 → 재실행 시 누적" 판정 → **재판정 🟢** (기존 스키마 설계 의도 — `api_quota_daily` VIEW 가 `SUM()` 집계, 9개 수집기 모두 동일 전제, 내 수정으로 새로 생긴 문제 아님)
+- 9 GATE 최종 🟢9/🟡0/🔴0 통과
+
+### 1-2. Edit 2건 실행
+
+- [schools-neis.mjs:11](f:/mibunyang/scripts/collectors/schools-neis.mjs#L11) import 에 `recordApiQuota` 추가
+- [schools-neis.mjs:385-386](f:/mibunyang/scripts/collectors/schools-neis.mjs#L385-L386) main() 말미 2줄 신규:
+  ```js
+  if (!dryRun && NEIS_KEY) await recordApiQuota(PHASE, "NEIS_KEY", neisApiCalls);
+  if (!dryRun && SCHOOLINFO_KEY) await recordApiQuota(PHASE, "SCHOOLINFO_KEY", schoolInfoApiCalls);
+  ```
+
+### 1-3. 5교차검증 (Task 도구 병렬 기동)
+
+| 검증 축 | 도구 | 결과 |
+|---------|------|------|
+| 빌드 | `npx vite build` | 🟢 486ms, 번들 불변 |
+| 단독 테스트 | `npm test schools-neis.test.mjs` | 🟢 77 PASS (2회 반복 재현 — 초기 FAIL 은 git stash 직후 vitest transform 캐시 플레이크) |
+| 전체 테스트 | `npm test` | 🟢 150 files / **2434 tests PASS** 유지 |
+| dry-run 실측 | `node schools-neis.mjs --dry-run --limit 3` | 🟢 "DRY-RUN 모드" + `recordApiQuota` 호출 0건 (dryRun 가드 작동) |
+| 수집기 계약 | `Task(subagent_type="collector-contract")` | 🟢 PASS — 쿼터 로깅 원칙 위반 해소, 모범 패턴 3수집기(migration/molit-building-info/collect-unsold-kosis)와 일관 |
+| null-safety | `Task(subagent_type="null-safety-checker")` | 🟢 PASS (High/Med/Low 전부 0, 카운터 L42/L161 모듈스코프 `let X=0` 초기화 확정) |
+| 보안 | 메인 직접 | 🟢 환경변수 이름만 DB 기록 (값 아님), try/catch 로 메인 흐름 보호 |
+
+### 1-4. 커밋·푸시
+
+- 커밋 `5b2be14` (1파일 +4/-1): `chore(schools-neis): record NEIS/SCHOOLINFO API quota (session 137)`
+- 푸시 완료 `c0f501f..5b2be14 main -> main`
+
+## 이월 (세션137 범위 밖)
+
+- 🥇 2026-04-30 이후 학교알리미 재프로브 (9일 대기)
+- 🥉 2026-05-03 KST 07:00 `collect-schools.yml` 정기 실행 후 `neisCode` 반영률 / `api_quota_log.schools` 행 실측
+
+## 다음 세션 시작점
+
+4/30 이후 기상 후 학교알리미 재프로브. 이전까지는 🟢 여유 백로그(inline style 787건·AdminDashboard 412줄 분리 등) 중 선택.
+
+---
+
 # 세션 136 — 2026-04-21 (schools.students 학교알리미 복구 — 가설 E 서비스 점검으로 4/30 대기 확정)
 
 **거시 목적**: 세션135 우선순위 #2 (`schools.students` 0% 복구) 착수. 원인 진단 후 Phase 1 가설별 대응.
