@@ -8,7 +8,7 @@
  *   node scripts/collectors/schools-neis.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/schools-neis.mjs --limit 100  (처리 건수 제한)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
@@ -381,6 +381,9 @@ async function main() {
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
   if (NEIS_KEY) log(PHASE, `NEIS API 호출: ${neisApiCalls}건, schoolInfo 캐시: ${neisCache.size}건, classInfo 캐시: ${classCache.size}건`);
   if (SCHOOLINFO_KEY) log(PHASE, `학교알리미 API 호출: ${schoolInfoApiCalls}건, 지역 캐시: ${studentCache.size}건`);
+
+  if (!dryRun && NEIS_KEY) await recordApiQuota(PHASE, "NEIS_KEY", neisApiCalls);
+  if (!dryRun && SCHOOLINFO_KEY) await recordApiQuota(PHASE, "SCHOOLINFO_KEY", schoolInfoApiCalls);
 }
 
 const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
