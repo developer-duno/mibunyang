@@ -9,6 +9,17 @@
 
 ### 최근 3세션 (상세)
 
+**세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`)
+- 실행 플랜 [cd-f-mibunyang-pwd-eager-engelbart.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-eager-engelbart.md). 9 GATE 🟢9/🟡0/🔴0 (GATE 0 UserCard 140줄 🟡 → 기존 inline 블록 이동 관심사 실효 1.5개로 🟢 재판정)
+- **배경**: 백로그 🟢 "AdminDashboard 412줄 → 매출탭/승인탭 분리" 항목 해소. 실측 417줄 (412는 과거 기록 오표기). **"매출탭" 은 존재하지 않음** — 5개 STATUS_TABS 는 전부 사용자 승인 관련(pending/approved/rejected/suspended/all). 실제 분리 축은 StatsSection + UserCard + UserList 3분할로 재설계
+- **커밋 `97d205a`** (2파일 +25/-17) — 단계 1: [constants.js](src/components/admin/constants.js) 24줄 신규 (`STATUS_TABS` + `SPECIALTY_BADGE` + `STATUS_LABELS`), AdminDashboard.jsx 417→401줄
+- **커밋 `d799d9b`** (3파일 +241/-231) — 단계 2: [StatsSection.jsx](src/components/admin/StatsSection.jsx) 97줄 신규 (L8-101 inline 함수 이동) + [UserCard.jsx](src/components/admin/UserCard.jsx) 138줄 신규 (L237-374 카드 렌더 블록 `{ user, admin }` prop). `actionDisabled` 공통 변수 도입 유혹 원복 — 로직 0변경 원칙. AdminDashboard.jsx 401→176줄
+- **커밋 `cdfe592`** (2파일 +95/-83) — 단계 3: [UserList.jsx](src/components/admin/UserList.jsx) 92줄 신규 (adminLoading 스켈레톤 + empty + 일괄바 pending 전용 + 그리드 + 페이지네이션 통합, `handleBatchApprove/Reject/PagePrev/Next` 4 useCallback 이동). AdminDashboard.jsx 176→**96줄** (CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 달성)
+- **Public API 불변**: `import { AdminDashboard } from "./AdminDashboard"` named export 그대로, props 9개 시그니처 불변 → **AdminDashboard.test.jsx 293줄 0수정, 25/25 PASS**
+- **5교차검증**: null-safety-checker 2회 호출 🟢 (High/Med/Low 0, Low 2 — 전부 기존 동작 그대로 / 단계 3 High/Med/Low 전부 0) / 빌드 🟢 437~523ms 번들 불변 / Playwright 비로그인 smoke 🟢 console errors 0/warnings 0
+- **검증**: 150 files / **2434 tests PASS** (세션137 동일 수치 유지), `vite build` 437ms
+- **사용자 가치**: admin 폴더 3 → 6컴포넌트로 재구성 (AdminDashboard/AdminHelpGuide/WeightEditor/StatsSection/UserCard/UserList). 향후 매출탭 추가·카드 memo 래핑·가상화 등 확장 경로 확보
+
 **세션137 (2026-04-21~22)** — schools-neis `recordApiQuota` 1줄 보강 — CLAUDE.md 쿼터 로깅 원칙 복구 (1커밋 origin/main `c0f501f..5b2be14`)
 - 실행 플랜 [cd-f-mibunyang-pwd-moonlit-kahn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-moonlit-kahn.md). 9 GATE 🟢9/🟡0/🔴0 (서브에이전트 GATE 5-4 🔴 "api_quota_log UNIQUE 부재" 판정 → **재판정 🟢** — 기존 스키마 설계 의도, `api_quota_daily` VIEW `SUM()` 집계로 충분)
 - **배경**: 세션136 2차 검증 독립 유효 성과 (scripts/CLAUDE.md "9개 수집기 쿼터 로깅" 원칙 위반 — schools-neis 만 누락, migration.mjs:163·molit-building-info.mjs:219·collect-unsold-kosis.mjs:286 전부 준수). 4/30 학교알리미 + 5/3 CI 외부 이벤트 대기라 지금 할 수 있는 유일한 내부 작업
@@ -433,7 +444,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - ~~`LoanRatesSection:49` 금리 탭 Skeleton 보강~~ **완료 (세션122, 커밋 `88b7138` — `SkeletonText lines=4`)**
 - ~~`AdminDashboard` 로딩 UI (`adminLoading` 상태 렌더링)~~ **완료 (세션122, 커밋 `88b7138` — `SkeletonList` statsLoading/adminLoading 2지점)**
 - ~~저장 액션(가중치·프리셋) 토스트 피드백 추가~~ **완료 (세션121 C, 커밋 `9e52be8` — 4지점 useToast 적용: 가중치 저장/초기화, 프리셋 저장/삭제)**
-- `AdminDashboard` 412줄 → 매출탭/승인탭 분리
+- ~~`AdminDashboard` 412줄 → 매출탭/승인탭 분리~~ **완료 (세션138, 3커밋 `97d205a..cdfe592`, 417 → 96줄 -321/-77%)**. 실측 "매출탭" 부재 확인 → 실제 분리 축은 **StatsSection + UserCard + UserList 3분할**. admin 폴더 3 → 6컴포넌트. test 293줄 0수정
 - ~~`src/scoring/engine.js`·`scorePrice.js` JSDoc 추가~~ **완료**: 세션122 에픽 2-A 커밋 `7b4b0ad` (engine·scorePrice·computeRegionalMedians 7함수) + 세션123 에픽 2-B1 커밋 `d314f2f` (scoreLocation·Product·Benefit 3함수) + 세션124 에픽 2-B2 커밋 `a2ea62e` (scoreRisk·scoreFuture 2함수 + matchAny + 5키워드 상수). **src/scoring/ 7파일 12식별자 JSDoc 시리즈 완성**.
 - ~~`api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼~~ **완료 (세션121, 커밋 `3cad834` — `createTimeseriesHandler` 팩토리 추출, 외부 동작 불변)**
 - `collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)

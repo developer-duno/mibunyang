@@ -4422,3 +4422,82 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 - **시군구별 소득 수집 실행 결정** — TASIS 스크레이핑 PoC vs 시도 폴백 마킹 중 선택
 - **`scripts/fix_sejong_coord.mjs` 처분** — DB 조회(ah-2022910239 lat/lng)로 이미 반영 여부 확인 후 삭제 or 실행+커밋
 - **행안부 API 복구 대기**
+
+---
+
+## 세션138 (2026-04-22) — AdminDashboard 417→96줄 3분할
+
+### 배경
+- 백로그 🟢 "AdminDashboard 412줄 → 매출탭/승인탭 분리" 해소
+- 실측 417줄 (CLAUDE.md "412" 는 과거 세션 기록 오표기)
+- **"매출탭" 은 존재하지 않음** — 5개 `STATUS_TABS` 는 전부 사용자 승인 관련(pending/approved/rejected/suspended/all)
+- 실제 분리 축은 `StatsSection` + `UserCard` + `UserList` 3분할로 재설계
+
+### 실행 플랜
+- [cd-f-mibunyang-pwd-eager-engelbart.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-eager-engelbart.md) 축 B (3분할) 선택
+- 9 GATE 🟢9/🟡0/🔴0 통과 후 실행
+- 실측 증거: `wc -l` 417줄 / `grep "AdminDashboard"` App.jsx 2곳 + test 24곳 named export 불변 → 깨짐 0 / `grep "API_KEY|..."` admin/ 0건
+
+### 커밋 3개 (origin/main `9c035f3..cdfe592`)
+
+#### 커밋 `97d205a` — refactor(admin): extract STATUS_TABS/SPECIALTY_BADGE to constants.js
+- **단계 1**: constants.js 24줄 신규
+  - `STATUS_TABS` (기존 AdminDashboard L7-13 이동)
+  - `SPECIALTY_BADGE` (기존 L15-21 이동)
+  - `STATUS_LABELS` (기존 카드 블록 L256 인라인 객체를 모듈 상수로 승격)
+- AdminDashboard.jsx 417 → 401줄 (-16)
+- 2파일 +25/-17
+- 검증: 빌드 464ms, AdminDashboard 25/25 PASS
+
+#### 커밋 `d799d9b` — refactor(admin): extract StatsSection and UserCard components
+- **단계 2**:
+  - StatsSection.jsx 97줄 신규 — 기존 L8-101 `function StatsSection({ stats })` 그대로 이동
+  - UserCard.jsx 138줄 신규 — 기존 L237-374 `admin.users.map` 내부 카드 렌더 블록을 `function UserCard({ user, admin })` 로 추출. admin 통째 전달
+  - **`actionDisabled` 공통 변수 도입 유혹 원복** — 로직 0변경 원칙
+- AdminDashboard.jsx 401 → 176줄 (-225)
+- 3파일 +241/-231
+- 검증: 빌드 523ms, admin 테스트 28/28 PASS
+- null-safety-checker 🟢 (High/Med 0, Low 2 — 전부 기존 동작)
+
+#### 커밋 `cdfe592` — refactor(admin): extract UserList (batch bar + grid + pagination)
+- **단계 3**: UserList.jsx 92줄 신규 — adminLoading 스켈레톤 + empty + 일괄바(pending 전용) + 그리드 + 페이지네이션 통합
+- `handleBatchApprove/Reject/PagePrev/Next` 4 useCallback UserList 내부로 이동
+- AdminDashboard.jsx 176 → **96줄** (-80) — CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 달성
+- 2파일 +95/-83
+- 검증: 빌드 437ms, 전체 **2434/2434 tests PASS**
+- null-safety-checker 🟢 (High/Med/Low 0)
+- Playwright 비로그인 smoke 🟢 console errors 0/warnings 0
+
+### 최종 구조 (admin/ 폴더 6컴포넌트)
+
+| 파일 | 줄 | 역할 | memo |
+|------|-----|------|------|
+| AdminDashboard.jsx | 96 | 얇은 컨테이너 | ✅ |
+| AdminHelpGuide.jsx | 53 | 도움말 패널 (미변경) | ❌ |
+| WeightEditor.jsx | 233 | 가중치 에디터 (미변경) | ✅ |
+| StatsSection.jsx | 97 | 사용자 통계 | ❌ |
+| UserCard.jsx | 138 | 사용자 1인 카드 | ❌ |
+| UserList.jsx | 92 | 목록 오케스트레이터 | ❌ |
+| constants.js | 24 | 공유 상수 | — |
+
+### Public API 불변
+- `import { AdminDashboard } from "./AdminDashboard"` named export 유지
+- App.jsx lazy import 경로 불변
+- AdminDashboard.test.jsx 293줄 **0수정**, 25/25 PASS
+
+### 5교차검증
+- 빌드: 메인 `npx vite build` 437ms / 번들 불변
+- null-safety: `Task(subagent_type="null-safety-checker")` 2회 (단계 2/3) → 🟢 PASS
+- Hook 규칙: 메인 직접 검사 — useCallback 4개 UserList 최상단 일괄 선언, 조건부 호출 0
+- 보안: 메인 직접 검사 — grep 민감정보 0건, innerHTML 테스트 1건만
+- 스코어링/수집기: N/A (뷰 계층 이동만)
+
+### 교훈
+1. **백로그 텍스트를 실측 없이 믿지 말 것** — Phase 1 Explore 가 "매출탭 부재" 사실 발견
+2. **스몰 리팩터를 플랜 밖에서 끼우지 말 것** — `actionDisabled` 유혹 즉시 원복
+3. **GATE 0 🟡 판정은 실효 관심사 개수로 재판정 가능** — UserCard 140줄 형식상 🟡 → 기존 블록 무변경 이동이라 실효 1.5개 → 🟢
+
+### 다음 세션 (139+)
+- 2026-04-30 이후: 학교알리미 재프로브
+- 2026-05-03 이후: collect-schools.yml CI 정기 실행 후 neisCode/api_quota_log 확인
+- 내부 후보: inline style 전환 / collect-building-hub TODO / regions NULL 수집기 설계
