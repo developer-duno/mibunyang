@@ -4,8 +4,9 @@
  * API: data.go.kr 국토교통부_건축HUB (1613000/BldEngyHubService)
  *   1. getBeElctyUsgInfo  — 전기사용량 (kWh)
  *   2. getBeGasUsgInfo    — 가스사용량 (MJ)
- *   3. getHpMgmCoopTpOulnInfo — 관리공동형별개요 (난방연료코드명 → heatFuel gap-fill)
- *   4. getHpBasisOulnInfo — 기본개요 (내진설계적용여부 → quakeDesign 실데이터)
+ *
+ * heat_fuel·quake_design 은 네이버 수집 경로(sync-naver-complex.mjs)로 확보.
+ * HpPermitService(별도 구독 필요) 연동 코드는 세션139에서 제거. scripts/CLAUDE.md 정책 참조.
  *
  * 미사용 엔드포인트 (Phase 2 또는 불필요):
  *   - getBeWaterUsgInfo (수도) — 스코어링 무관
@@ -123,50 +124,6 @@ async function fetchEnergy(bjdCode, lotMain, lotSub, useYm) {
   return { elec, gas };
 }
 
-// ── 관리공동형별개요 (heatFuel gap-fill) ─────────────────────
-async function fetchHeatFuel(bjdCode, lotMain, lotSub) {
-  const params = { ...makeLotParams(bjdCode, lotMain, lotSub), numOfRows: "10", pageNo: "1" };
-  try {
-    const json = await hubApiCall("getHpMgmCoopTpOulnInfo", params);
-    const items = json?.response?.body?.items ?? [];
-    const arr = Array.isArray(items) ? items : (items.item ? [].concat(items.item) : []);
-    if (arr.length === 0) return null;
-    // MODE 집계: 가장 많이 나오는 난방연료코드명
-    const counts = {};
-    for (const item of arr) {
-      const fuel = item.heatMethCdNm || item.fuelCdNm || null; // 난방연료코드명
-      if (fuel) counts[fuel] = (counts[fuel] || 0) + 1;
-    }
-    const entries = Object.entries(counts);
-    return entries.length > 0 ? entries.sort((a, b) => b[1] - a[1])[0][0] : null;
-  } catch (err) {
-    log(PHASE, `  관리개요 조회 실패: ${err.message}`);
-    return null;
-  }
-}
-
-// ── 기본개요 (quakeDesign 실데이터) ──────────────────────────
-async function fetchQuakeDesign(bjdCode, lotMain, lotSub) {
-  const params = { ...makeLotParams(bjdCode, lotMain, lotSub), numOfRows: "10", pageNo: "1" };
-  try {
-    const json = await hubApiCall("getHpBasisOulnInfo", params);
-    const items = json?.response?.body?.items ?? [];
-    const arr = Array.isArray(items) ? items : (items.item ? [].concat(items.item) : []);
-    if (arr.length === 0) return null;
-    // AND 집계: 모든 건물이 내진설계 적용이어야 true
-    for (const item of arr) {
-      const val = item.eqkDsgnApplyYn ?? item.quakeDesignApplyYn ?? null;
-      // data.go.kr 문자열 → boolean 변환
-      if (val === "0" || val === "N" || val === false || val === "미적용") return false;
-      if (val == null) return null; // 데이터 없으면 판단 보류
-    }
-    return true; // 모든 건물이 "1"/"Y"/true/"적용"
-  } catch (err) {
-    log(PHASE, `  기본개요 조회 실패: ${err.message}`);
-    return null;
-  }
-}
-
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
   if (!API_KEY) {
@@ -208,7 +165,7 @@ async function main() {
   // 대상 아파트 조회 (selectAll: 1000행 제한 자동 페이지네이션)
   const apts = await selectAll(
     (s) => s.from("apartments")
-      .select("id, name, bjd_code, lot_main, lot_sub, heat_fuel, quake_design, elec_usage_kwh")
+      .select("id, name, bjd_code, lot_main, lot_sub, elec_usage_kwh")
       .not("bjd_code", "is", null),
     sb
   );
@@ -238,24 +195,6 @@ async function main() {
         }
       }
       await sleep(REQUEST_DELAY);
-
-      // 2. 난방연료 gap-fill — 비활성화 (getHpMgmCoopTpOulnInfo는 BldEngyHubService에 없음, 별도 구독 필요)
-      // TODO: HpPermitService 또는 별도 건축허가 API 구독 후 활성화
-      // if (force || apt.heat_fuel == null) {
-      //   const heatFuel = await fetchHeatFuel(apt.bjd_code, apt.lot_main, apt.lot_sub);
-      //   if (heatFuel != null && (apt.heat_fuel == null || force)) {
-      //     row.heat_fuel = heatFuel;
-      //   }
-      // }
-
-      // 3. 내진설계 실데이터 — 비활성화 (getHpBasisOulnInfo는 BldEngyHubService에 없음, 별도 구독 필요)
-      // TODO: HpPermitService 또는 별도 건축허가 API 구독 후 활성화
-      // if (force || apt.quake_design == null) {
-      //   const quake = await fetchQuakeDesign(apt.bjd_code, apt.lot_main, apt.lot_sub);
-      //   if (quake != null && (apt.quake_design == null || force)) {
-      //     row.quake_design = quake;
-      //   }
-      // }
 
       // DB 업데이트
       if (Object.keys(row).length === 0) { rpt.skip(1); continue; }
