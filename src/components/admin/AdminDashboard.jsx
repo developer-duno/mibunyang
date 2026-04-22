@@ -3,22 +3,7 @@ import { C, F } from "@/theme";
 import { AdminHelpGuide } from "./AdminHelpGuide";
 import WeightEditor from "./WeightEditor";
 import { SkeletonList } from "@/components/primitives";
-
-const STATUS_TABS = [
-  { key: "pending", label: "대기중", color: "#92400E", bg: "#FFFBEB" },
-  { key: "approved", label: "승인됨", color: C.green, bg: C.greenLight },
-  { key: "rejected", label: "거부됨", color: C.red, bg: C.redLight },
-  { key: "suspended", label: "정지됨", color: "#DC2626", bg: "#FEE2E2" },
-  { key: "all", label: "전체", color: C.text, bg: C.slate100 },
-];
-
-const SPECIALTY_BADGE = {
-  "부동산 중개": { color: "#1D4ED8", bg: "#DBEAFE" },
-  "분양 컨설팅": { color: "#7C3AED", bg: "#EDE9FE" },
-  "감정평가": { color: "#059669", bg: "#D1FAE5" },
-  "건축/설계": { color: "#EA580C", bg: "#FFF7ED" },
-  "기타": { color: C.muted, bg: C.slate100 },
-};
+import { STATUS_TABS, SPECIALTY_BADGE, STATUS_LABELS } from "./constants";
 
 function StatsSection({ stats }) {
   const { counts, userTypes, specialtyDist, recentSignups } = stats;
@@ -253,7 +238,6 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
         {admin.users.map(user => {
           const badge = SPECIALTY_BADGE[user.specialty] || SPECIALTY_BADGE["기타"];
-          const STATUS_LABELS = { approved: "승인됨", rejected: "거부됨", suspended: "정지됨", pending: "대기중" };
           const statusLabel = STATUS_LABELS[user.status] || "대기중";
           const statusStyle = STATUS_TABS.find(t => t.key === user.status) || STATUS_TABS[0];
 
