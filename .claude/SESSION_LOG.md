@@ -4612,3 +4612,82 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 - 🟢 남은 150줄+ 후보 실측 (세션140 이후 9개 남음): `SearchFilterBar` 257 / `WeightEditor` 233 / `MapView` 216 / `ExpertLoginForm` 191 / `DataSections` 183 / `GuideSections` 175 / `AptCard` 168 / `HeaderSection` 161 / `DetailModal` 154 / `primitives` 154
 - 🟢 inline style 787건 점진 전환 (세션140 에서 미처리, 백로그 🟢 a)
 - 🟡 regions households/jeonse_rate/supply_ratio 수집기 설계 (reader 부재, 우선순위 낮음)
+
+---
+
+## 세션141 (2026-04-23) — SearchFilterBar 257→184줄 PresetPanel 분리
+
+### 한 줄 요약
+세션140 InfoPage 분리 흐름 이어서, sections/ 최대 컴포넌트 SearchFilterBar.jsx 257줄에서 추천 프리셋 인라인 블록(L146-220, 75줄)을 `filters/PresetPanel.jsx` 109줄로 추출. 본체 257→184줄 (-73, -28%). 단일 커밋(`de250f7`).
+
+### 실행 플랜
+[cd-f-mibunyang-pwd-magical-popcorn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-magical-popcorn.md). 9 GATE(0~8) 🟢9/🟡0/🔴0 통과.
+
+### 사용자 결정 4건 (Plan 에이전트 🔴 4건 사전 발견 → 안전 옵션 채택)
+| # | 결정 | 사용자 선택 근거 |
+|---|------|----------|
+| 1 | filters/ 폴더에 PresetPanel 추가 (sections/filter/ 신설 거부) | 이미 RegionPanel 등 5개 패널 존재. filters(복수)/filter(단수) 영구 이름 충돌 회피 |
+| 2 | 본체 184줄 수용 (150줄 미달성) | PresetPanel 도메인 분리만 우선. 추가 압축은 다음 세션 이월 |
+| 3 | 신규 109줄 단일 커밋 허용 | 세션140 GuideSections 175줄 단일 커밋 선례 (5408446) |
+| 4 | `key={openPanel === "preset" ? "open" : "closed"}` 강제 unmount | 외부 클릭으로 패널 닫힐 때 showPresetInput 잔존 회귀 명시적 방지 |
+
+### 커밋 `de250f7` (2파일 +123/-87)
+- 신규 [src/components/filters/PresetPanel.jsx](src/components/filters/PresetPanel.jsx) 109줄
+  - props 10개 (customPresets/onApplyPreset/onSavePreset/onDeletePreset/filterHistory/onApplyHistory/onClearHistory/activeFilterCount/closePanel/showToast)
+  - state 3개 (showPresetInput/presetName/historyKey) + handlePresetSave useCallback
+  - JSX 3블록: 기본 프리셋 (FILTER_PRESETS.map) + 커스텀 프리셋 + 저장 input/히스토리 select
+  - 기존 RegionPanel/SortPanel과 일관된 `memo(function PresetPanel(...))` 패턴
+- 수정 [src/components/sections/SearchFilterBar.jsx](src/components/sections/SearchFilterBar.jsx) 257→184줄
+  - L10 `import { FILTER_PRESETS }` 제거 (PresetPanel로 단독 이전)
+  - L20 `import { PresetPanel } from "@/components/filters/PresetPanel"` 추가
+  - L67-78 (state 3 + useCallback 1) 12줄 제거 → PresetPanel 내부로 이동
+  - L146-220 인라인 75줄 → 14줄 PresetPanel 호출로 교체 (key prop 포함)
+- Public API 불변: `export const SearchFilterBar = memo(...)` named export + props 50개 시그니처 0변경
+- App.jsx L37 import 변경 0 / SearchFilterBar.test.jsx 14케이스 0수정 14/14 PASS
+
+### 5교차검증
+| 축 | 결과 | 도구 |
+|----|------|------|
+| 빌드 | 🟢 504ms (번들 불변) | 메인 agent |
+| 테스트 | 🟢 150 files / 2434 PASS (세션140 동일) | 메인 agent (`npx vitest run`) |
+| null 안전성 | 🟢 PASS (High/Med 0, Low 2 정보성) | `null-safety-checker` 서브에이전트 |
+| Hook 규칙 | 🟢 PASS (useState 3·useCallback 1 PresetPanel 내부 격리, 호출 순서 변동 0) | 메인 agent 직접 |
+| 보안 | 🟢 PASS (innerHTML/eval/XSS 0, `<input maxLength={12}>` 가드 보존) | 메인 agent 직접 |
+| 스코어링 | 해당 없음 (스코어링 비수정) | 호출 조건 미해당 |
+
+### 9 GATE 검증 특기 사항
+- GATE 1 (영향 범위) Explore 서브에이전트 grep 실측 — SearchFilterBar 외부 참조는 App.jsx L37 import + L200 호출 + test 1 import (props 인터페이스만). PresetPanel 사전 존재 0건. FILTER_PRESETS는 SearchFilterBar L153 1곳만 사용 → PresetPanel 단독 import 가능
+- GATE 0 (Sonnet 크기) — 단일 단계 / 1수정+1신규 / 109줄 신규(150 미만) / 단일 관심사 → 🟢. 세션140 GuideSections 175줄 단일 커밋 선례로 안전성 입증
+- GATE 5 (보안) — `grep -rn "API_KEY|SECRET|password|token|apikey"` 0건, `grep "innerHTML|dangerouslySetInnerHTML|eval("` 0건
+
+### 기록 보정 (실측)
+- 세션 시작 메모리 "SearchFilterBar.test.jsx 15케이스" → **실제 14케이스** (`grep -c "  it("` 실측 14). 세션140 교훈 1번 "테스트 숫자는 항상 실측" 동일 패턴 재발. 메모리 기반 추정 금지
+- 세션140 메모리 "SearchFilterBar 196줄" 도 부정확 — 실측 257줄 (61줄 차이). 세션140 컴포넌트 표는 시점 차이로 보정 필요 (이번 세션141 작업 후 184줄)
+- PresetPanel.jsx 예상 95줄 → 실측 109줄 (+14). JSDoc 4줄 + props 분할 줄바꿈 + 닫기 괄호 들여쓰기. 메인 CLAUDE.md 150줄 미만 제약 충족 범위
+- SearchFilterBar.jsx 예상 179줄 → 실측 184줄 (+5). 동일 원인. 사용자 결정 #2 "179줄 수용" 범위 내
+
+### 사용자 가치
+- SearchFilterBar.jsx 가독성 대폭 향상 — 추천 패널 로직이 별도 파일로 격리되어 향후 프리셋 기능 수정이 본체 영향 0
+- filters/ 폴더 6개 패널 일관 구조 (RegionPanel/BudgetPanel/AreaPanel/SortPanel/DetailPanel + 신규 PresetPanel)
+- key prop 강제 unmount로 추천 패널 외부 클릭 후 재오픈 시 입력 상태 자연 초기화 (잠재 UX 회귀 명시적 방지)
+
+### 교훈
+1. **Plan 에이전트 반대 의견의 가치** — 사용자 원안 "sections/filter/ 분할"을 Plan 에이전트가 거부 (filters/ vs filter/ 영구 이름 충돌, admin/sections/info 와 도메인 응집 패턴 차이). 사용자 재확정으로 옳은 방향으로 전환. **Plan 에이전트는 검증이 아니라 약점 발굴 용도로 호출하면 효용 증대** (세션75 sangse-agent 교훈 동일 패턴)
+2. **메모리 vs 실측의 격차 누적** — 세션140 "10 케이스" → 실측 9, 세션141 "15 케이스" → 실측 14, "SearchFilterBar 196줄" → 실측 257. 세션 시작 브리프의 컴포넌트 줄수/테스트 케이스 수치는 모두 실측 검증 후 사용. CLAUDE.md "현재 진행 상황" 섹션의 줄수 표는 다음 세션 추가 작업 시 실측으로 갱신 필요
+3. **`key prop` 강제 unmount의 명시성** — Plan 에이전트가 발견한 잠재 회귀 (showPresetInput 잔존)를 useEffect 가 아닌 1줄 key prop 으로 해결. 자식 컴포넌트는 isOpen prop 모름 + 부모는 의도 명확. React 표준 패턴
+4. **단일 단계 단일 커밋 정책의 효율성** — 세션138 (3커밋), 세션140 (2커밋) 분할 흐름 이어가지 않고 단일 커밋 채택. PresetPanel 자체가 1 도메인이라 추가 분할 시 파편화. "분리 가능 ≠ 분리 필요" (세션140 교훈 3번 적용)
+
+### 다음 세션 (142+) 우선순위
+**4/30 학교알리미 재개 전 내부 작업 윈도우 (오늘 4/23, 일주일 남음)**
+
+1. 🟢 **SearchFilterBar 본체 184줄 → 150줄 미만** — 1행 JSX (L87-131, 45줄) 또는 2행 칩 (L225-254, 30줄) 분리. Plan 에이전트는 "memo 효과 미미 + 위치 기반" 으로 거부했지만 150줄 제약 달성을 명확히 우선시할 경우 후보. 또는 inline style 객체 상수화 (메인 CLAUDE.md "백로그 🟡 inline style 787건" 과 함께)
+2. 🟢 **남은 150줄+ 후보 8개**: WeightEditor 233 (🔴 스코어링 상수 밀집) / MapView 216 (Kakao API) / **ExpertLoginForm 191** (🟢 폼 검증, 안전) / DataSections 183 (detail/) / GuideSections 175 (세션140 신규, props 0이라 분리 이득 미미) / AptCard 168 (🔴 memo 중심) / HeaderSection 161 / DetailModal 154
+3. 🥇 **2026-04-30 이후 학교알리미 재프로브** (대기)
+4. 🥈 **2026-05-03 이후 neisCode CI 반영률 쿼리** (대기)
+
+### 비-작업 (의도적 설계)
+- 혜택 10컬럼 100% NULL = 시행사 수기 입력
+- 시군구 소득 = 세션117 C 공식 확정
+- HpPermitService = 세션139 미구독 확정
+- InfoPage 4파일 재통합 = 세션140 분리 확정
+- SearchFilterBar 1행/2행 분리 = 세션141 Plan 에이전트 🔴 거부 (props drilling + memo 함정)

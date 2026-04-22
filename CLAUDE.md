@@ -9,6 +9,24 @@
 
 ### 최근 3세션 (상세)
 
+**세션141 (2026-04-23)** — SearchFilterBar.jsx 257→184줄 PresetPanel 분리 (1커밋 origin/main `de250f7`)
+- 실행 플랜 [cd-f-mibunyang-pwd-magical-popcorn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-magical-popcorn.md). 9 GATE 🟢9/🟡0/🔴0
+- **배경**: 4/30 학교알리미 재개 전 외부 이벤트 대기 윈도우. 세션140 InfoPage 분리 흐름 이어가서 src/components/sections/ 최대 컴포넌트 SearchFilterBar.jsx 257줄(메인 CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 초과) 처리
+- **사용자 결정 4건** (Plan 에이전트 🔴 4건 사전 발견 → 안전 옵션 채택):
+  1. **filters/ 폴더에 PresetPanel 추가** (sections/filter/ 신설 거부) — 이미 RegionPanel 등 5개 패널 존재. filters(복수)/filter(단수) 영구 이름 충돌 회피
+  2. 본체 184줄 수용 (150줄 미달성, 다음 세션 이월) — PresetPanel 도메인 분리만 우선
+  3. 신규 109줄 단일 커밋 허용 (세션140 GuideSections 175줄 단일 커밋 선례)
+  4. `key={openPanel === "preset" ? "open" : "closed"}` 강제 unmount — showPresetInput 잔존 회귀 명시적 방지
+- **커밋 `de250f7`** (2파일 +123/-87):
+  - 신규 [filters/PresetPanel.jsx](src/components/filters/PresetPanel.jsx) 109줄 — props 10개 + state 3개 + handlePresetSave useCallback + JSX 3블록 (기본/커스텀 프리셋 + 저장 input/히스토리 select). 기존 RegionPanel/SortPanel 일관 `memo(function PresetPanel(...))` 패턴
+  - 수정 [SearchFilterBar.jsx](src/components/sections/SearchFilterBar.jsx) 257→184줄 (-73, -28%): L10 `FILTER_PRESETS` import 제거 + L20 PresetPanel import 추가, L67-78 (state+useCallback) 12줄 제거, L146-220 인라인 75줄 → 14줄 PresetPanel 호출(key prop 포함)로 교체
+- **Public API 불변**: `export const SearchFilterBar = memo(...)` named export + props 50개 시그니처 0변경 → **App.jsx L37 0수정 / SearchFilterBar.test.jsx 14케이스 0수정 14/14 PASS**
+- **5교차검증**: null-safety-checker 🟢 PASS (High/Med 0, Low 2 정보성) / 빌드 🟢 504ms 번들 불변 / Hook·보안 메인 agent 직접 검증 (useState 3·useCallback 1 격리, innerHTML/eval/XSS 0)
+- **검증**: 150 files / **2434 tests PASS** (세션140 동일 유지)
+- **사용자 가치**: SearchFilterBar.jsx 가독성 대폭 향상, 추천 패널 로직 격리로 향후 프리셋 수정이 본체 영향 0. filters/ 폴더 6개 패널 일관 구조 (RegionPanel/BudgetPanel/AreaPanel/SortPanel/DetailPanel + 신규 PresetPanel). key prop 강제 unmount로 잠재 UX 회귀 명시적 방지
+- **기록 보정**: 세션 시작 메모리 "15케이스" → 실측 14, "SearchFilterBar 196줄" → 실측 257, PresetPanel 예상 95줄 → 실측 109. 세션140 교훈 1번 "테스트 숫자는 항상 실측" 동일 패턴 재발
+- **교훈**: Plan 에이전트 반대 의견 (sections/filter/ 분할 거부)이 사용자 원안을 수정하는 결정적 가치 — 약점 발굴 용도로 호출하면 효용 증대. `key prop` 1줄 강제 unmount가 useEffect 보다 명시적·표준적
+
 **세션140 (2026-04-22~23)** — InfoPage.jsx 267→60줄 4분할 (2커밋 origin/main `54ecea1..5408446`)
 - 실행 플랜 [cd-f-mibunyang-pwd-resilient-fiddle.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-resilient-fiddle.md). 9 GATE 🟢9/🟡0/🔴0 (GATE 0 Sonnet 크기 재검증 포함)
 - **배경**: 세션139 이어 4/30 학교알리미 재개 전 내부 작업. `src/components/` 150줄+ 파일 실측(`wc -l`) 결과 `sections/InfoPage.jsx` 가 **267줄**로 최대 소비자 컴포넌트. CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 초과. admin/ 폴더 6컴포넌트 선례 따라 `sections/info/` 서브폴더 신설
@@ -38,21 +56,7 @@
 - **5교차검증**: 전용 에이전트 호출 조건 미해당(스코어링/null/수집기 계약 모두 비수정 — 삭제만). 메인 agent 직접 검증으로 처리 (grep 외부 참조 0건 + 테스트 PASS)
 - **사용자 가치**: 코드 명확성 향상 (죽은 코드 -61줄), 같은 고민 재발 방지 (정책 문서 박제), 재오픈 조건 명시로 미래 의사결정 부담 감소
 
-**세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`)
-- 실행 플랜 [cd-f-mibunyang-pwd-eager-engelbart.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-eager-engelbart.md). 9 GATE 🟢9/🟡0/🔴0 (GATE 0 UserCard 140줄 🟡 → 기존 inline 블록 이동 관심사 실효 1.5개로 🟢 재판정)
-- **배경**: 백로그 🟢 "AdminDashboard 412줄 → 매출탭/승인탭 분리" 항목 해소. 실측 417줄 (412는 과거 기록 오표기). **"매출탭" 은 존재하지 않음** — 5개 STATUS_TABS 는 전부 사용자 승인 관련(pending/approved/rejected/suspended/all). 실제 분리 축은 StatsSection + UserCard + UserList 3분할로 재설계
-- **커밋 `97d205a`** (2파일 +25/-17) — 단계 1: [constants.js](src/components/admin/constants.js) 24줄 신규 (`STATUS_TABS` + `SPECIALTY_BADGE` + `STATUS_LABELS`), AdminDashboard.jsx 417→401줄
-- **커밋 `d799d9b`** (3파일 +241/-231) — 단계 2: [StatsSection.jsx](src/components/admin/StatsSection.jsx) 97줄 신규 (L8-101 inline 함수 이동) + [UserCard.jsx](src/components/admin/UserCard.jsx) 138줄 신규 (L237-374 카드 렌더 블록 `{ user, admin }` prop). `actionDisabled` 공통 변수 도입 유혹 원복 — 로직 0변경 원칙. AdminDashboard.jsx 401→176줄
-- **커밋 `cdfe592`** (2파일 +95/-83) — 단계 3: [UserList.jsx](src/components/admin/UserList.jsx) 92줄 신규 (adminLoading 스켈레톤 + empty + 일괄바 pending 전용 + 그리드 + 페이지네이션 통합, `handleBatchApprove/Reject/PagePrev/Next` 4 useCallback 이동). AdminDashboard.jsx 176→**96줄** (CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 달성)
-- **Public API 불변**: `import { AdminDashboard } from "./AdminDashboard"` named export 그대로, props 9개 시그니처 불변 → **AdminDashboard.test.jsx 293줄 0수정, 25/25 PASS**
-- **5교차검증**: null-safety-checker 2회 호출 🟢 (High/Med/Low 0, Low 2 — 전부 기존 동작 그대로 / 단계 3 High/Med/Low 전부 0) / 빌드 🟢 437~523ms 번들 불변 / Playwright 비로그인 smoke 🟢 console errors 0/warnings 0
-- **검증**: 150 files / **2434 tests PASS** (세션137 동일 수치 유지), `vite build` 437ms
-- **사용자 가치**: admin 폴더 3 → 6컴포넌트로 재구성 (AdminDashboard/AdminHelpGuide/WeightEditor/StatsSection/UserCard/UserList). 향후 매출탭 추가·카드 memo 래핑·가상화 등 확장 경로 확보
-
-**세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`)
-- 실행 플랜 [cd-f-mibunyang-pwd-eager-engelbart.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-eager-engelbart.md). 9 GATE 🟢9/🟡0/🔴0
-- admin 폴더 3 → 6컴포넌트 (AdminDashboard/AdminHelpGuide/WeightEditor/StatsSection/UserCard/UserList)
-- 상세는 SESSION_LOG 참조
+**세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
 **세션137 (2026-04-21~22)** — schools-neis `recordApiQuota` 1줄 보강 — CLAUDE.md 쿼터 로깅 원칙 복구 (1커밋 origin/main `c0f501f..5b2be14`)
 - 실행 플랜 [cd-f-mibunyang-pwd-moonlit-kahn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-moonlit-kahn.md). 9 GATE 🟢9/🟡0/🔴0 (서브에이전트 GATE 5-4 🔴 "api_quota_log UNIQUE 부재" 판정 → **재판정 🟢** — 기존 스키마 설계 의도, `api_quota_daily` VIEW `SUM()` 집계로 충분)
