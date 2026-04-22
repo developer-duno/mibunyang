@@ -9,6 +9,17 @@
 
 ### 최근 3세션 (상세)
 
+**세션140 (2026-04-22~23)** — InfoPage.jsx 267→60줄 4분할 (2커밋 origin/main `54ecea1..5408446`)
+- 실행 플랜 [cd-f-mibunyang-pwd-resilient-fiddle.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-resilient-fiddle.md). 9 GATE 🟢9/🟡0/🔴0 (GATE 0 Sonnet 크기 재검증 포함)
+- **배경**: 세션139 이어 4/30 학교알리미 재개 전 내부 작업. `src/components/` 150줄+ 파일 실측(`wc -l`) 결과 `sections/InfoPage.jsx` 가 **267줄**로 최대 소비자 컴포넌트. CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 초과. admin/ 폴더 6컴포넌트 선례 따라 `sections/info/` 서브폴더 신설
+- **커밋 `54ecea1`** (3파일 +82/-53): [ScoringEngine.jsx](src/components/sections/info/ScoringEngine.jsx) 45줄 신규 (L196-227 이동: 6카테고리 map + 도시등급 divider + 학술기반 divider) + [FAQSection.jsx](src/components/sections/info/FAQSection.jsx) 33줄 신규 (L229-249 이동: 10 Q&A map) + InfoPage 267→218줄
+- **커밋 `5408446`** (2파일 +177/-160): [GuideSections.jsx](src/components/sections/info/GuideSections.jsx) 175줄 신규 (L38-196 통합: 섹션 2~8 프로필/필터/정렬/카드/관심매물/지도/상담, React Fragment 루트) + InfoPage 218→**60줄** (-77%). ExpertCTA 미분리 근거: props 2개 유일 소비자로 drilling 회피. unused style 상수 3개(guideItem/guideTitle/divider) 제거
+- **Public API 불변**: `import { InfoPage } from "@/components/sections/InfoPage"` named export + props 2개 시그니처 불변 → **App.jsx 0수정 / InfoPage.test.jsx 0수정**
+- **5교차검증**: null-safety-checker 2회 🟢 (단계 1 High/Med 0, Low 2 / 단계 2 High/Med 0, Low 2) / 빌드 🟢 578~925ms 번들 불변 / Playwright e2e/expert.spec.ts "정보 탭에서 스코어링 설명 표시" 🟢 / Hook·보안 메인 agent 직접 검증 (useState/useEffect 없음, API 호출 0)
+- **검증**: 150 files / **2434 tests PASS** (세션139 동일 유지), InfoPage.test.jsx 9/9 PASS
+- **사용자 가치**: InfoPage.jsx 가독성 대폭 향상, 섹션별 독립 컴포넌트로 향후 FAQ/스코어링 구조 수정이 격리. admin/ 선례와 일관된 폴더 구조 완성
+- **교훈**: 세션 브리프 메모리 "10 케이스" 를 실측 확인 없이 수용 → 단계 1 실행 후 "9 passed" 로 정정. point-in-time 메모리는 항상 실측으로 검증
+
 **세션139 (2026-04-22)** — building-hub HpPermitService 연동 코드 제거 + 정책 박제 (2커밋 origin/main `bf2294d..00280a9`)
 - 4/30 학교알리미 재개 전 내부 작업. 개선 백로그 🟢 "collect-building-hub.mjs:243,252 TODO 2건" 해소
 - **실측 맥락**: `heat_fuel`·`quake_design` 둘 다 `sync-naver-complex.mjs` L219-221 (`complexes.heat_fuel_type → apartments.heat_fuel`) + `naver-collect.py` L117/119 (quakeDesign Phase 3 실사) 로 이미 DB 수집 중. building-hub 의 `fetchHeatFuel`/`fetchQuakeDesign` 함수 2개 + 주석처리된 호출부는 "HpPermitService 구독 후 활성화" 조건부로만 존재 → **네이버 경로 단일화 + HpPermitService 미구독 확정** 정책 결정
@@ -37,6 +48,11 @@
 - **5교차검증**: null-safety-checker 2회 호출 🟢 (High/Med/Low 0, Low 2 — 전부 기존 동작 그대로 / 단계 3 High/Med/Low 전부 0) / 빌드 🟢 437~523ms 번들 불변 / Playwright 비로그인 smoke 🟢 console errors 0/warnings 0
 - **검증**: 150 files / **2434 tests PASS** (세션137 동일 수치 유지), `vite build` 437ms
 - **사용자 가치**: admin 폴더 3 → 6컴포넌트로 재구성 (AdminDashboard/AdminHelpGuide/WeightEditor/StatsSection/UserCard/UserList). 향후 매출탭 추가·카드 memo 래핑·가상화 등 확장 경로 확보
+
+**세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`)
+- 실행 플랜 [cd-f-mibunyang-pwd-eager-engelbart.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-eager-engelbart.md). 9 GATE 🟢9/🟡0/🔴0
+- admin 폴더 3 → 6컴포넌트 (AdminDashboard/AdminHelpGuide/WeightEditor/StatsSection/UserCard/UserList)
+- 상세는 SESSION_LOG 참조
 
 **세션137 (2026-04-21~22)** — schools-neis `recordApiQuota` 1줄 보강 — CLAUDE.md 쿼터 로깅 원칙 복구 (1커밋 origin/main `c0f501f..5b2be14`)
 - 실행 플랜 [cd-f-mibunyang-pwd-moonlit-kahn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-moonlit-kahn.md). 9 GATE 🟢9/🟡0/🔴0 (서브에이전트 GATE 5-4 🔴 "api_quota_log UNIQUE 부재" 판정 → **재판정 🟢** — 기존 스키마 설계 의도, `api_quota_daily` VIEW `SUM()` 집계로 충분)
@@ -463,6 +479,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - ~~`AdminDashboard` 로딩 UI (`adminLoading` 상태 렌더링)~~ **완료 (세션122, 커밋 `88b7138` — `SkeletonList` statsLoading/adminLoading 2지점)**
 - ~~저장 액션(가중치·프리셋) 토스트 피드백 추가~~ **완료 (세션121 C, 커밋 `9e52be8` — 4지점 useToast 적용: 가중치 저장/초기화, 프리셋 저장/삭제)**
 - ~~`AdminDashboard` 412줄 → 매출탭/승인탭 분리~~ **완료 (세션138, 3커밋 `97d205a..cdfe592`, 417 → 96줄 -321/-77%)**. 실측 "매출탭" 부재 확인 → 실제 분리 축은 **StatsSection + UserCard + UserList 3분할**. admin 폴더 3 → 6컴포넌트. test 293줄 0수정
+- ~~`InfoPage.jsx` 267줄 → sections/info/ 서브폴더 분리~~ **완료 (세션140, 2커밋 `54ecea1..5408446`, 267 → 60줄 -77%)**. sections/info/ 4파일 구조: GuideSections 175줄 / ScoringEngine 45줄 / FAQSection 33줄. InfoPage 60줄(시작하기 + 3 호출 + ExpertCTA). Public API·테스트 0수정
 - ~~`src/scoring/engine.js`·`scorePrice.js` JSDoc 추가~~ **완료**: 세션122 에픽 2-A 커밋 `7b4b0ad` (engine·scorePrice·computeRegionalMedians 7함수) + 세션123 에픽 2-B1 커밋 `d314f2f` (scoreLocation·Product·Benefit 3함수) + 세션124 에픽 2-B2 커밋 `a2ea62e` (scoreRisk·scoreFuture 2함수 + matchAny + 5키워드 상수). **src/scoring/ 7파일 12식별자 JSDoc 시리즈 완성**.
 - ~~`api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼~~ **완료 (세션121, 커밋 `3cad834` — `createTimeseriesHandler` 팩토리 추출, 외부 동작 불변)**
 - ~~`collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)~~ **완료 (세션139, 2커밋 `1434c2f..00280a9`)**. 네이버 경로로 `heat_fuel`·`quake_design` 수집 중 실측 확인 → HpPermitService 미구독 확정, fetchHeatFuel/fetchQuakeDesign 함수 2개 + 주석 블록 삭제(-61줄), scripts/CLAUDE.md 에 재오픈 트리거 3종 박제

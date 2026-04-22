@@ -4556,3 +4556,59 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 ### 다음 세션 (140+)
 - 외부 이벤트 대기는 그대로 (4/30 학교알리미, 5/3 CI)
 - 내부 후보 남은 것: inline style 787건 점진 전환 / regions NULL 수집기 설계 / LoginPromptModal 등 다른 150줄+ 컴포넌트 분리
+
+---
+
+## 세션140 (2026-04-22) — InfoPage.jsx 267→60줄 4분할 (sections/info/ 서브폴더)
+
+### 요약
+세션139 에 이어 4/30 학교알리미 재개 전 내부 작업. `src/components/sections/InfoPage.jsx` 가 소비자용 150줄+ 컴포넌트 중 최대(267줄)임을 `wc -l` 실측으로 확인. CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 위반 해소. admin/ 폴더 6컴포넌트 선례를 따라 `sections/info/` 서브폴더 신설 후 3파일 분리.
+
+### 플랜
+실행 플랜 [cd-f-mibunyang-pwd-resilient-fiddle.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-resilient-fiddle.md). 9 GATE 🟢9/🟡0/🔴0. 사용자 재검증 요청으로 단독 GATE 0 (Sonnet 크기) 추가 통과 (단계당 2~3파일, 단일 파일 최대 175줄 경계).
+
+### 커밋
+
+**커밋 `54ecea1`** (3파일 +82/-53): `refactor(info): extract ScoringEngine and FAQSection components`
+- 신규 [ScoringEngine.jsx](src/components/sections/info/ScoringEngine.jsx) 45줄 — L196-227 이동 (6카테고리 map + 도시등급 divider + 학술기반 divider)
+- 신규 [FAQSection.jsx](src/components/sections/info/FAQSection.jsx) 33줄 — L229-249 이동 (10 Q&A map)
+- 수정 [InfoPage.jsx](src/components/sections/InfoPage.jsx) 267→218줄
+
+**커밋 `5408446`** (2파일 +177/-160): `refactor(info): extract GuideSections and slim InfoPage to 60 lines`
+- 신규 [GuideSections.jsx](src/components/sections/info/GuideSections.jsx) 175줄 — L38-196 통합 (섹션 2~8: 프로필/필터/정렬/카드/관심매물/지도/상담). React Fragment 루트
+- 수정 [InfoPage.jsx](src/components/sections/InfoPage.jsx) 218→**60줄** (-77%)
+- InfoPage 에 잔존: 시작하기 카드(15줄) + 3 하위 호출 + ExpertCTA(12줄). ExpertCTA 미분리 근거는 props 2개 유일 소비자로 drilling 회피
+- unused style 상수 3개(guideItem/guideTitle/divider) 제거 — Guide로 이동
+
+### 검증
+
+- **빌드 🟢**: `vite build` 578ms(단계 1) / 925ms(단계 2), 번들 불변
+- **테스트 🟢**: 150 files / **2434 tests PASS** (세션139 동일 수치 유지)
+- **InfoPage.test.jsx 0수정으로 9/9 PASS** — 10개라고 알고 있던 건 세션 브리프 메모리 오류, 실제는 9개 케이스
+- **Playwright 🟢**: `e2e/smoke.spec.ts` + `e2e/expert.spec.ts` "정보 탭에서 스코어링 설명 표시" PASS
+- **null-safety-checker 2회 🟢 PASS**: 단계 1 (High/Med 0, Low 2 정보성) + 단계 2 (High/Med 0, Low 2 정보성)
+- Hook/보안: 메인 agent 직접 검증 (useState/useEffect 없음, memo 래핑만, API 호출 0, 하드코딩 정적 콘텐츠)
+
+### Public API 불변 확인
+- `import { InfoPage } from "@/components/sections/InfoPage"` named export 유지
+- props `{ expertLoggedIn, onExpertLoginClick }` 시그니처 불변
+- App.jsx 수정 0파일 / InfoPage.test.jsx 수정 0파일 / App.test.jsx 무영향
+
+### 결과
+
+- InfoPage.jsx: 267 → **60줄 (-77%)**
+- sections/info/ 서브폴더 신설: 4파일 총 313줄
+- CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 달성 (60줄 / 45줄 / 33줄 / 175줄 — GuideSections 만 150 초과지만 map 반복 패턴이라 복잡도 낮음, 분할 시 파편화 이득 無)
+- 개선 백로그 🟢 해소: "LoginPromptModal 등 다른 150줄+ 컴포넌트 분리" 중 최대 후보 처리
+
+### 교훈
+1. **"10 케이스" vs 실측 9 케이스** — 세션 시작 브리프 메모리("10 케이스") 를 무비판 수용했다가 단계 1 테스트 실행 후 "9 passed" 를 보고 잠시 혼란. 실제 파일 `grep -c "it("` 로 9 확정. 메모리는 point-in-time 이라는 시스템 리마인더 경고가 정확히 맞았음. **테스트 숫자는 항상 실측**
+2. **Fragment 루트 + props 0 컴포넌트의 memo 효과** — GuideSections/ScoringEngine/FAQSection 전부 props 없음 + 정적 콘텐츠 → memo 비교 항상 true → 부모(InfoPage) 리렌더 시 자식 리렌더 완전 차단. InfoPage 가 `expertLoggedIn` 변화로 리렌더돼도 Guide/Scoring/FAQ 는 정적 유지. 성능상 이득(단, InfoPage 는 탭 전환 시에만 렌더라 실측 이득 미미)
+3. **Plan 에이전트의 "ExpertCTA 미분리" 판단** — 분리 후보 중 유일하게 props 소비하는 블록을 미분리 유지한 Plan 에이전트 판단이 정확. 분리 시 props drilling 1단계 발생하는데 이득 없음. "분리할 수 있다" ≠ "분리해야 한다"
+4. **style 상수 15줄 복제의 의식적 수용** — DRY 위반이지만 공용 `_styles.js` 추출은 inline style 787건 전체 공용화 작업과 함께 처리해야 의미. 현 범위에서 InfoPage 4파일만 추출하면 오히려 일관성 저해. 백로그 🟢 a 와 연계 명시
+
+### 다음 세션 (141+)
+- 외부 이벤트 대기 그대로 (4/30 학교알리미, 5/3 collect-schools CI 반영 확인)
+- 🟢 남은 150줄+ 후보 실측 (세션140 이후 9개 남음): `SearchFilterBar` 257 / `WeightEditor` 233 / `MapView` 216 / `ExpertLoginForm` 191 / `DataSections` 183 / `GuideSections` 175 / `AptCard` 168 / `HeaderSection` 161 / `DetailModal` 154 / `primitives` 154
+- 🟢 inline style 787건 점진 전환 (세션140 에서 미처리, 백로그 🟢 a)
+- 🟡 regions households/jeonse_rate/supply_ratio 수집기 설계 (reader 부재, 우선순위 낮음)
