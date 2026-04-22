@@ -4501,3 +4501,58 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 - 2026-04-30 이후: 학교알리미 재프로브
 - 2026-05-03 이후: collect-schools.yml CI 정기 실행 후 neisCode/api_quota_log 확인
 - 내부 후보: inline style 전환 / collect-building-hub TODO / regions NULL 수집기 설계
+
+---
+
+## 세션139 (2026-04-22) — building-hub HpPermitService 연동 코드 제거 + 정책 박제
+
+### 배경
+- 4/30 학교알리미 재개 전 내부 작업
+- 개선 백로그 🟢 "collect-building-hub.mjs:243,252 TODO 2건 (HpPermitService 구독 결정)" 해소
+- 실측 결과: `heat_fuel`·`quake_design` 둘 다 이미 네이버 수집 경로로 DB 확보 중
+
+### 실측 맥락
+- `sync-naver-complex.mjs` L219-221: `complexes.heat_fuel_type → apartments.heat_fuel`
+- `naver-collect.py` L117/119: quakeDesign Phase 3 실사 (`heatFuelTypeName` + `earthquake_design`)
+- `collect-building-hub.mjs` 의 `fetchHeatFuel`/`fetchQuakeDesign` 함수는 "HpPermitService 구독 후 활성화" 조건부
+- 외부 참조 검증: 본 파일 내부 정의 2 + 주석 2 + 테스트 파일 주석 2(인라인 로직 재현 언급) = 실제 import/호출 외부 **0건**
+
+### 정책 결정
+**네이버 경로 단일화 + HpPermitService 미구독 확정**
+
+재오픈 트리거 3종:
+1. 네이버 IP 차단 장기화 (세션89 수준 실패가 3개월+ 지속)
+2. `heat_fuel`/`quake_design` NULL 비율 30%+ 악화
+3. 구독비 초과 사업 요구
+
+### 커밋 2개 (origin/main `bf2294d..00280a9`)
+
+#### 커밋 `1434c2f` — refactor(building-hub): drop unused HpPermitService gap-fill code
+- [collect-building-hub.mjs](scripts/collectors/collect-building-hub.mjs) 290 → 229줄 (-61)
+- `fetchHeatFuel` 함수 (기존 L127-146, ~20줄) 삭제
+- `fetchQuakeDesign` 함수 (기존 L149-168, ~20줄) 삭제
+- 호출부 주석 블록 (기존 L242-258, heat_fuel/quake_design gap-fill 17줄) 삭제
+- apartments select 컬럼 `heat_fuel, quake_design` 제거 (삭제된 호출부에서만 참조)
+- JSDoc 상단에 "네이버 경로로 확보 + HpPermitService 보류" 2줄 명시
+- 1파일 +4/-65
+- 검증: 테스트 22/22 PASS
+
+#### 커밋 `00280a9` — docs(scripts): lock in heat_fuel/quake_design Naver-only policy
+- [scripts/CLAUDE.md](scripts/CLAUDE.md) "BldEngyHubService 한계" 섹션 아래에 "heat_fuel/quake_design 수집 정책" 서브섹션 추가
+- 네이버 경로 근거 + HpPermitService 미구독 결정 + 재오픈 트리거 3종 + 과거 코드 복구 경로
+- 1파일 +7/-0
+
+### 검증
+- building-hub 테스트 22/22 PASS (테스트는 `makeLotParams` 만 import + 나머지 인라인 로직 재현)
+- `npx vite build` 581ms, 번들 불변
+- 5교차검증: 전용 에이전트 호출 조건 미해당 (스코어링/null/수집기 계약 모두 비수정 — 삭제만)
+- 메인 agent 직접 검증: `grep "fetchHeatFuel|fetchQuakeDesign"` 외부 import 0건 + 테스트 PASS
+
+### 교훈
+1. **"TODO 구독 결정" 은 실측 먼저** — 네이버가 이미 해당 필드를 수집 중인지 grep 으로 확인하니 "HpPermitService 불필요" 가 자명해짐. 결정 회의 없이 데이터만 봐도 답
+2. **죽은 코드와 정책 박제는 한 세트** — 코드만 삭제하면 같은 고민이 재발. scripts/CLAUDE.md 에 재오픈 트리거를 명시해야 삭제가 영구적 결정으로 승격
+3. **주석처리된 TODO는 기술 부채** — "나중에 결정하자" 포스트잇은 매 세션마다 인지 비용. 정책 결정 or 삭제 둘 중 하나로 끝내야 함
+
+### 다음 세션 (140+)
+- 외부 이벤트 대기는 그대로 (4/30 학교알리미, 5/3 CI)
+- 내부 후보 남은 것: inline style 787건 점진 전환 / regions NULL 수집기 설계 / LoginPromptModal 등 다른 150줄+ 컴포넌트 분리

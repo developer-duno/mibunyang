@@ -9,6 +9,24 @@
 
 ### 최근 3세션 (상세)
 
+**세션139 (2026-04-22)** — building-hub HpPermitService 연동 코드 제거 + 정책 박제 (2커밋 origin/main `bf2294d..00280a9`)
+- 4/30 학교알리미 재개 전 내부 작업. 개선 백로그 🟢 "collect-building-hub.mjs:243,252 TODO 2건" 해소
+- **실측 맥락**: `heat_fuel`·`quake_design` 둘 다 `sync-naver-complex.mjs` L219-221 (`complexes.heat_fuel_type → apartments.heat_fuel`) + `naver-collect.py` L117/119 (quakeDesign Phase 3 실사) 로 이미 DB 수집 중. building-hub 의 `fetchHeatFuel`/`fetchQuakeDesign` 함수 2개 + 주석처리된 호출부는 "HpPermitService 구독 후 활성화" 조건부로만 존재 → **네이버 경로 단일화 + HpPermitService 미구독 확정** 정책 결정
+- **커밋 `1434c2f`** (1파일 +4/-65): [collect-building-hub.mjs](scripts/collectors/collect-building-hub.mjs) 290 → 229줄 (-61)
+  - `fetchHeatFuel` 함수 (기존 L127-146) + `fetchQuakeDesign` 함수 (기존 L149-168) 삭제 (총 ~45줄)
+  - 호출부 주석 블록 (기존 L242-258, heat_fuel/quake_design gap-fill 17줄) 삭제
+  - apartments select 컬럼 `heat_fuel, quake_design` 제거 (삭제된 호출부에서만 참조했음)
+  - JSDoc 상단에 "네이버 경로로 확보 + HpPermitService 보류" 2줄 명시
+- **커밋 `00280a9`** (1파일 +7/-0): [scripts/CLAUDE.md](scripts/CLAUDE.md) "BldEngyHubService 한계" 섹션 아래에 "heat_fuel/quake_design 수집 정책" 서브섹션 박제
+  - 네이버 경로 단일화 근거 (sync-naver-complex.mjs:219-221 + naver-collect.py:117/119)
+  - HpPermitService 미구독 결정
+  - 재오픈 트리거 3종: (1) 네이버 장기 차단 3개월+, (2) NULL 30%+ 악화, (3) 구독비 초과 사업 요구
+  - 과거 코드 복구 경로: `git log` 직전 커밋
+- **외부 참조 검증**: `grep "fetchHeatFuel|fetchQuakeDesign"` → 본 파일 내부 4건(정의 2 + 주석 2) + 테스트 파일 주석 2건(인라인 로직 재현 언급)만. 실제 import/호출 외부 0건 확인 → 삭제 안전
+- **검증**: building-hub 테스트 **22/22 PASS** (테스트는 `makeLotParams` 만 import + 나머지는 인라인 로직 재현 방식), `vite build` 581ms 번들 불변
+- **5교차검증**: 전용 에이전트 호출 조건 미해당(스코어링/null/수집기 계약 모두 비수정 — 삭제만). 메인 agent 직접 검증으로 처리 (grep 외부 참조 0건 + 테스트 PASS)
+- **사용자 가치**: 코드 명확성 향상 (죽은 코드 -61줄), 같은 고민 재발 방지 (정책 문서 박제), 재오픈 조건 명시로 미래 의사결정 부담 감소
+
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`)
 - 실행 플랜 [cd-f-mibunyang-pwd-eager-engelbart.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-eager-engelbart.md). 9 GATE 🟢9/🟡0/🔴0 (GATE 0 UserCard 140줄 🟡 → 기존 inline 블록 이동 관심사 실효 1.5개로 🟢 재판정)
 - **배경**: 백로그 🟢 "AdminDashboard 412줄 → 매출탭/승인탭 분리" 항목 해소. 실측 417줄 (412는 과거 기록 오표기). **"매출탭" 은 존재하지 않음** — 5개 STATUS_TABS 는 전부 사용자 승인 관련(pending/approved/rejected/suspended/all). 실제 분리 축은 StatsSection + UserCard + UserList 3분할로 재설계
@@ -447,7 +465,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 - ~~`AdminDashboard` 412줄 → 매출탭/승인탭 분리~~ **완료 (세션138, 3커밋 `97d205a..cdfe592`, 417 → 96줄 -321/-77%)**. 실측 "매출탭" 부재 확인 → 실제 분리 축은 **StatsSection + UserCard + UserList 3분할**. admin 폴더 3 → 6컴포넌트. test 293줄 0수정
 - ~~`src/scoring/engine.js`·`scorePrice.js` JSDoc 추가~~ **완료**: 세션122 에픽 2-A 커밋 `7b4b0ad` (engine·scorePrice·computeRegionalMedians 7함수) + 세션123 에픽 2-B1 커밋 `d314f2f` (scoreLocation·Product·Benefit 3함수) + 세션124 에픽 2-B2 커밋 `a2ea62e` (scoreRisk·scoreFuture 2함수 + matchAny + 5키워드 상수). **src/scoring/ 7파일 12식별자 JSDoc 시리즈 완성**.
 - ~~`api/supabase/prices.js` ↔ `unsold-history.js` 중복 11줄 → 공통 헬퍼~~ **완료 (세션121, 커밋 `3cad834` — `createTimeseriesHandler` 팩토리 추출, 외부 동작 불변)**
-- `collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)
+- ~~`collect-building-hub.mjs:243,252` TODO 2건 (HpPermitService 구독 결정)~~ **완료 (세션139, 2커밋 `1434c2f..00280a9`)**. 네이버 경로로 `heat_fuel`·`quake_design` 수집 중 실측 확인 → HpPermitService 미구독 확정, fetchHeatFuel/fetchQuakeDesign 함수 2개 + 주석 블록 삭제(-61줄), scripts/CLAUDE.md 에 재오픈 트리거 3종 박제
 
 ---
 
