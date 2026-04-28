@@ -1,3 +1,88 @@
+# 세션 145 — 2026-04-28 (MapView.jsx 216→158줄 헬퍼 + SelectedAptCard 분리)
+
+**거시 목적**: 세션140~144 5세션 연속 분리 흐름 계속 (140 InfoPage → 141 SearchFilterBar → 142 ExpertLoginForm → 143 DataSections → 144 primitives → **145 MapView**). 8개 150줄+ 컴포넌트 실측 후 MapView 채택.
+
+**결론**: 단일 커밋(`c1fbdaa`) 3파일 +79/-64, 회귀 0 (150 files / 2434 tests PASS 베이스라인 유지). MapView 216→158줄(-58, -27%). 158줄 미달성(8줄 초과) 의식적 수용.
+
+## 작업
+
+### 1-1. 후보 평가 + 결정 (사용자 위임 "이어서 작업해줘")
+
+8개 150줄+ 컴포넌트 실측 (`wc -l`):
+- WeightEditor 233 🔴(테스트 부재) / **MapView 216** ⭐ / SearchFilterBar 184 🟢(세션141 거부) / GuideSections 175 🟡 / AptCard 168 🔴 / HeaderSection 161 🟡(세션143 거부) / DetailModal 154 🟡(세션143 거부) / DataSections 152 🟡(세션143 결과)
+
+**MapView 채택 근거**:
+- WeightEditor 233 거부: **테스트 파일 부재** (회귀 검증 수단 0). 가중치 합계 100 검증 등 회귀 위험 큼. 테스트 작성 후 별도 세션
+- AptCard 168 거부: AptListSection 53줄과 결합도 + memo 중심 위험 🔴
+- MapView: 헬퍼 함수 3개(shortPrice/buildMarkerSvg/loadKakaoMapSdk) + 상수 6개가 컴포넌트 외부 51줄 자연 경계 ⭐⭐⭐. SelectedAptCard 17줄 인라인 도메인 분리 ⭐⭐
+- 사용자 가치: 마커 SVG 디자인(가격 배지형 / 핀형) 변경이 SDK 로더·지도 인스턴스 영향 0 → 시각화 유지보수 명확화
+
+### 1-2. 9 GATE 검증 (사용자 요청 하네스)
+
+GATE 0~8 전수 실측 🟢9/🟡0/🔴0:
+- 보안 grep `API_KEY|SECRET|password|token|apikey` MapView.jsx **0 결과** (KAKAO_MAP_KEY는 `import.meta.env.VITE_KAKAO_JS_KEY`)
+- 영향 범위: 소비자 1곳 (App.jsx L11 lazy import named export), 헬퍼 3함수 사용 위치 모두 MapView 내부 (외부 0)
+- 이름 충돌: `find SelectedAptCard*` `find kakaoMapHelpers*` 0개
+
+### 1-3. 단계별 실행
+
+**단계 1**: [kakaoMapHelpers.js](src/components/sections/kakaoMapHelpers.js) 신규 48줄
+- 확장자 .js (JSX 없음 — 순수 헬퍼 모듈)
+- 상수 7개 export (KAKAO_MAP_KEY/MAP_DEFAULTS/CLUSTER_OPTS/MARKER_WITH_PRICE/MARKER_NO_PRICE/MY_LOC_LEVEL/GEO_TIMEOUT)
+- 3함수 export (shortPrice/buildMarkerSvg/loadKakaoMapSdk)
+- 본문 그대로 이식 (구조 변경 0)
+
+**단계 2**: [SelectedAptCard.jsx](src/components/sections/SelectedAptCard.jsx) 신규 25줄
+- props 3개: `{selected, onInfoClick, onClose}`
+- L8 `if (!selected) return null` early return
+- gr 함수 + IconClose 자식 직접 import
+- memo 패턴 유지
+
+**단계 3**: [MapView.jsx](src/components/sections/MapView.jsx) 수정 216→158줄
+- L1-4 import 교체 (IconClose 제거, kakaoMapHelpers + SelectedAptCard named import 추가)
+- L6-14 상수 9줄 제거
+- L16-51 헬퍼 함수 36줄 제거
+- L197-213 SelectedAptCard 인라인 17줄 → 자식 호출 1줄로 교체
+
+### 1-4. 5교차검증
+
+| 축 | 결과 |
+|---|---|
+| 빌드 | 🟢 `vite build` 412ms |
+| 테스트 | 🟢 MapView.test.jsx 4/4 PASS, 전체 150 files / **2434 tests PASS** (세션144 베이스라인 유지) |
+| null 안전 | 🟢 `null-safety-checker` High/Med 0, Low 3 정보성 (분리 전 가드 동등 이식) |
+| Hook 규칙 | 🟢 메인 직접 grep — SelectedAptCard hook 0 (memo만), MapView 부모 useEffect/useRef/useState/useCallback 호출 순서 동일 |
+| 보안 | 🟢 메인 직접 grep — sections/ 내 innerHTML/dangerouslySetInnerHTML/eval 0 (BottomNav.test의 read-only innerHTML 무관) |
+
+### 1-5. Public API 불변
+
+- `export const MapView = memo(...)` named export + props 4개(filtered/onDetail/isPC/isDesktop) 시그니처 0변경
+- App.jsx L11 `lazy(() => import("@/components/sections/MapView").then(m => ({ default: m.MapView })))` 0수정
+- MapView.test.jsx 4케이스 0수정 (Kakao SDK mock + 통합 렌더링)
+
+### 1-6. 158줄 미달성 의식적 수용
+
+- 추가 분리 후보 — useMyLocation 훅 추출 시 ~25줄 감소해 130줄 가능. 하지만 1회용 훅 안티패턴
+- 세션141 SearchFilterBar 184(34줄 초과)·세션143 DataSections 152(2줄 초과) 선례 일관 적용
+- 본체 JSX + useEffect 2개 + handler 2개는 적정 응집도
+
+## 사용자 가치
+
+- **마커 디자인 격리** — 가격 배지형(52×44) / 핀형(28×36) SVG 빌더 변경이 SDK 로더·지도 인스턴스 영향 0
+- **SDK 로더 격리** — Promise 기반 동적 로드 + 환경변수 가드 + 중복 script 방지가 단독 모듈
+- **선택 카드 격리** — 마커 클릭 시 정보 카드 UI 변경이 지도 컨테이너 영향 0
+- **6세션 연속 흐름**: 140(InfoPage 60) → 141(SearchFilterBar 184) → 142(ExpertLoginForm 121) → 143(DataSections 152) → 144(primitives 91) → **145(MapView 158)**
+
+## 교훈 (세션144 7건 + 1)
+
+8. **신규**: 테스트 부재 컴포넌트는 분리 후보에서 우선 제외 — WeightEditor 233줄이 자연 경계 명확하나 회귀 검증 수단 0으로 위험. 테스트 작성 선행 필요. 세션143 "150 미달성 무리한 강제 회피" 교훈과 보완 관계
+
+## 커밋
+
+- `c1fbdaa` refactor(map): extract kakaoMapHelpers and SelectedAptCard from MapView — 3파일 +79/-64
+
+---
+
 # 세션 144 — 2026-04-28 (primitives.jsx 154→91줄 LineChart 단독 분리 — 시계열 차트 엔진 격리)
 
 **거시 목적**: 세션140~143 흐름 계속. detail/ 외 마지막 150줄+ 컴포넌트 primitives.jsx 처리. 7 memo 컴포넌트(Bar/ScoreBadge/LineChart/Radar/Skeleton 3종) 한 파일에서 LineChart 60줄 hook 3개만 단독 분리.

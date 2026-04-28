@@ -9,6 +9,24 @@
 
 ### 최근 3세션 (상세)
 
+**세션145 (2026-04-28)** — MapView.jsx 216→158줄 헬퍼 + SelectedAptCard 분리 (1커밋 origin/main `c1fbdaa`)
+- 실행 플랜 [session145-mapview-helpers-extract.md](C:\Users\user\.claude\plans\session145-mapview-helpers-extract.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증)
+- **배경**: 세션140~144 5세션 연속 분리 흐름 계속. 8개 150줄+ 컴포넌트 실측 후 MapView 채택 (사용자 위임 "이어서 작업해줘"). WeightEditor 233은 **테스트 파일 부재**로 회귀 검증 불가 → 우선 제외. AptCard 168은 AptListSection 결합도 + memo 중심 위험 🔴
+- **MapView 분리 결정**: 헬퍼 함수 3개(shortPrice/buildMarkerSvg/loadKakaoMapSdk) + 상수 6개가 컴포넌트 외부 51줄로 자연 경계 ⭐⭐⭐. SelectedAptCard 17줄 인라인 도메인 분리 ⭐⭐. useMyLocation 훅 추출은 1회용 훅 안티패턴으로 회피
+- **9 GATE 검증**: 보안 grep `API_KEY|SECRET|password|token|apikey` MapView 0 결과 (KAKAO_MAP_KEY는 `import.meta.env.VITE_KAKAO_JS_KEY`). 영향 범위 — App.jsx L11 lazy import named export 1곳, 헬퍼 3함수 사용 위치 모두 MapView 내부(외부 0). 파일명 충돌 0
+- **커밋 `c1fbdaa`** (3파일 +79/-64):
+  - 신규 [kakaoMapHelpers.js](src/components/sections/kakaoMapHelpers.js) **48줄** (확장자 .js — JSX 없음): 상수 7 + 3함수 named export. 본문 그대로 이식
+  - 신규 [SelectedAptCard.jsx](src/components/sections/SelectedAptCard.jsx) **25줄**: props 3개 `{selected, onInfoClick, onClose}` + `if (!selected) return null` early return + memo + gr/IconClose 자식 직접 import
+  - 수정 [MapView.jsx](src/components/sections/MapView.jsx) **216 → 158줄** (-58, -27%): import 교체(IconClose 제거, 헬퍼/SelectedAptCard 추가), 상수 9줄 + 헬퍼 36줄 + SelectedAptCard 인라인 17줄 제거 → 자식 호출 1줄
+- **158줄 미달성(8줄 초과) 의식적 수용**: useMyLocation 훅 추출은 1회용 훅 안티패턴. 세션141 SearchFilterBar 184(34줄 초과)·세션143 DataSections 152(2줄 초과) 선례 일관 적용
+- **Public API 불변**: `export const MapView = memo(...)` named export + props 4개(filtered/onDetail/isPC/isDesktop) 시그니처 0변경 → App.jsx L11 lazy import 0수정 / MapView.test.jsx 4케이스 0수정 4/4 PASS
+- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 3 정보성 — 분리 전 가드 동등 이식 + onClose 인라인 클로저 memo 무효화 가능성은 분리 전후 영향 무관) / 빌드 🟢 412ms / Hook 메인 직접 (SelectedAptCard hook 0, MapView 부모 useEffect/useRef/useState/useCallback 호출 순서 동일) / 보안 메인 직접 (sections/ innerHTML/dangerouslySetInnerHTML/eval 0)
+- **검증**: 150 files / **2434 tests PASS** (세션144 베이스라인 정확히 유지)
+- **사용자 가치**: 마커 SVG 디자인(가격 배지형 52×44 / 핀형 28×36) 변경이 SDK 로더·지도 인스턴스 영향 0. SDK 로더 Promise 기반 동적 로드 + 환경변수 가드 + 중복 script 방지 단독 모듈. 선택 카드 UI 변경이 지도 컨테이너 영향 0
+- **6세션 연속 흐름**: 140(InfoPage 60) → 141(SearchFilterBar 184) → 142(ExpertLoginForm 121) → 143(DataSections 152) → 144(primitives 91) → **145(MapView 158)**
+- **교훈 1건 추가 (세션144 7건 + 1)**:
+  - 8. 테스트 부재 컴포넌트는 분리 후보에서 우선 제외 — WeightEditor 233줄은 자연 경계 명확하나 회귀 검증 수단 0으로 위험. 테스트 작성 선행 필요. 세션143 "150 미달성 무리한 강제 회피" 교훈과 보완 관계
+
 **세션144 (2026-04-28)** — primitives.jsx 154→91줄 LineChart 단독 분리 (1커밋 origin/main `79bdb1c`)
 - 실행 플랜 [session144-primitives-linechart-extract.md](C:\Users\user\.claude\plans\session144-primitives-linechart-extract.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증)
 - **배경**: 세션140~143 흐름 계속. 8개 150줄+ 컴포넌트 실측 후보 평가 → primitives.jsx 채택 (사용자 위임 "프로젝트 목적에 가장 적합하게"). LineChart는 PriceChart(분양가 추이)·UnsoldChart(미분양 추이) 시계열 차트 공통 엔진 → 데이터 시각화 신뢰성 향상이 사용자 가치
@@ -45,27 +63,6 @@
 - **교훈 2건 (세션142 4건 추가)**:
   - 자식 props는 실제 의존성 grep으로 결정 — Plan 단계 dataValueColor 전달 가정이 실측 시 의존 0 확인되어 단순화 (`{pairs, apt}` 2개)
   - 150줄 미달성을 무리한 추가 분리로 강제 달성하지 말 것 — 1회용 모듈 안티패턴 회피가 합리적
-
-**세션142 (2026-04-23)** — ExpertLoginForm.jsx 191→121줄 SignupExtraFields 분리, **150줄 미만 첫 달성** (3커밋 origin/main `ae118f5..365dda4`)
-- 설계 [docs/superpowers/specs/2026-04-23-expertloginform-signup-extract-design.md](docs/superpowers/specs/2026-04-23-expertloginform-signup-extract-design.md) + 실행계획 [docs/superpowers/plans/2026-04-23-expertloginform-signup-extract.md](docs/superpowers/plans/2026-04-23-expertloginform-signup-extract.md). 9 GATE 🟢9/🟡0/🔴0
-- **배경**: 세션141 SearchFilterBar 184줄 (150줄 미달성) 다음 시도. 4/30 학교알리미 재개 전 내부 작업 윈도우. ExpertLoginForm 191줄 = 회원가입 추가 필드 7개 (이름/소속/연락처/전문분야/자격증/경력/자기소개) 가 본체 39%(74줄) 차지하는 자연 경계 → 도메인 분리 적합
-- **워크플로**: superpowers 5단계 (brainstorming → 신중 재검토 → 9 GATE 검증 → writing-plans → executing-plans Inline). 사용자 결정 3건 (A안 최소분리/방식1 props 2개/평면배치) 모두 brainstorming 단계 고정 → 실행 중 변경 0건
-- **사용자 결정 3건**:
-  1. **A안 (최소 분리, SignupExtraFields 1개)** — AuthStatusBanner(17줄)·KakaoLoginButton(22줄) 본체 유지 (작아서 분리 이득 미미)
-  2. **방식 1 (props 2개)** — `authForm`, `setAuthForm` 만 전달. 방식 2(expert 전체)는 캡슐화 약화로 거부
-  3. **평면 배치** — sections/expert-login/ 서브폴더 거부 (info/ 는 4파일이라 신설). 1파일은 평면 — filters/detail/expert/admin 일관 규칙
-- **GATE 1 서브에이전트 오탐 정정**: Explore agent 가 "ExpertLoginForm.test.jsx signup 5케이스 깨짐 가능" 보고 → 메인 직접 재검증 (React Testing Library 통합 렌더링은 자식 분리 무관) → **오탐 확정**. 실행 결과 14/14 PASS 로 검증
-- **커밋 3개** (`d953296..365dda4`):
-  - `ae118f5` docs(spec) — 설계 문서 108줄
-  - `e7bc071` docs(plan) — 실행 계획서 337줄 (Task 1~5 단계별 코드 블록)
-  - `365dda4` refactor(expert) — 본 작업 단일 커밋 (2파일 +91/-72):
-    - 신규 [SignupExtraFields.jsx](src/components/sections/SignupExtraFields.jsx) **89줄** (예상 ~85, 오차 +4) — JSDoc 11줄 + memo 래핑 + 7필드 Fragment 루트
-    - 수정 [ExpertLoginForm.jsx](src/components/sections/ExpertLoginForm.jsx) **191 → 121줄** (-70, -37%): L3 import 1줄 추가, L76-149 인라인 74줄 → 자식 호출 3줄
-- **Public API 불변**: `import { ExpertLoginForm } from "@/components/sections/ExpertLoginForm"` named export + props 5개 시그니처 0변경 → **App.jsx L268 0수정 / ExpertLoginForm.test.jsx 14케이스 0수정 14/14 PASS**
-- **5교차검증**: null-safety-checker 🟢 PASS (High/Med 0). EMPTY_FORM 빈 문자열 초기화 + `expert.authMode==="signup" &&` 가드로 props undefined 진입 경로 없음. `(authForm.bio || "").length` 폴백·`authForm.specialty ? C.text : C.muted` falsy 분기 분리 전후 동일 / 빌드 🟢 373ms 번들 -0.05kB / Hook·보안 메인 agent 직접 검증 (자식 useState/useEffect/useCallback 0건 순수 표현, dangerouslySetInnerHTML/innerHTML/eval 0 grep match)
-- **검증**: 150 files / **2434 tests PASS** (세션141 베이스라인 정확히 유지), ExpertLoginForm.test.jsx 14/14 PASS
-- **사용자 가치**: **150줄 미만 첫 달성** — 메인 CLAUDE.md "단일 컴포넌트 150줄 미만" 제약을 sections/ 폴더에서 처음 명시 충족. 회원가입 도메인 격리로 향후 필드 추가/검증 로직 변경이 본체 영향 0
-- **교훈 4건**: (1) 150줄 미달성을 한계로 일반화 금지 — 컴포넌트별 분리 가능성은 도메인 응집도에 따라 다름 (2) superpowers 5단계 워크플로는 작은 작업에도 풀 적용 가능 (오버헤드 < 가치) (3) GATE 1 서브에이전트 보수적 경고는 항상 메인 재검증 필요 (4) 사용자 신중 재검토 요청은 추가 발견의 기회 (sections/ 평면 배치 일관 규칙 확인)
 
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
@@ -289,10 +286,11 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~141 색인 (상세는 SESSION_LOG)
+### 세션93~142 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 142 | 04-23 | ExpertLoginForm 191→121줄 SignupExtraFields 분리 — 150줄 미만 첫 달성 (sections/ 평면 배치) | `365dda4` |
 | 141 | 04-23 | SearchFilterBar 257→184줄 PresetPanel 분리 (filters/ 폴더 6패널 구조 완성, 150 미달성 용인) | `de250f7` |
 | 140 | 04-22~23 | InfoPage.jsx 267→60줄 4분할 (sections/info/ 서브폴더 신설, ScoringEngine·FAQSection·GuideSections) | `54ecea1`·`5408446` |
 | 139 | 04-22 | building-hub HpPermitService 코드 제거(-61줄) + 정책 박제. 네이버 경로 단일화 + 미구독 확정 | `1434c2f`·`00280a9` |
