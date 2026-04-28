@@ -1,8 +1,9 @@
 import { memo, useState } from "react";
 import { C, F } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
-import { Bar } from "@/components/primitives";
 import { fmtPrice } from "@/lib/format";
+import { HighlightField } from "./HighlightField";
+import { InfrastructureSection } from "./InfrastructureSection";
 
 const UNSOLD_WARN_THRESHOLD = 15;
 const UNSOLD_SAFE_THRESHOLD = 5;
@@ -87,44 +88,12 @@ export const DataSections = memo(function DataSections({ apt }) {
                 {hasAny ? (<>
                   {section.highlight && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: section.grid ? 6 : 0 }}>
-                      {section.highlight.map(f => {
-                        const meta = FIELD_META[f];
-                        if (!meta) return null;
-                        const val = apt[f];
-                        const desc = { pir: "연소득 대비 분양가 비율. 낮을수록 부담 적음", psr: "주변 시세 대비 분양가 비율. 1 미만이면 저평가", popGrowth: "해당 지역 인구 증감률. 양수면 유입 지역", unsoldRate: "총 세대 중 미분양 비율. 낮을수록 인기", dataReliability: "핵심 데이터 수집 완성도" }[f];
-                        return (
-                          <div key={f} style={{ flex: "1 1 calc(50% - 4px)", minWidth: 100, background: C.slate100, borderRadius: 8, padding: "8px 10px" }}>
-                            <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>{meta.label}</div>
-                            {desc && <div style={{ fontSize: 9, color: C.muted, opacity: 0.7, marginBottom: 2 }}>{desc}</div>}
-                            <div style={{ fontSize: F.base, fontWeight: 800, color: dataValueColor(f, val) }}>{meta.fmt(val)}</div>
-                            {f === "dataReliability" && val != null && <Bar value={val} color={dataValueColor(f, val)} h={4} />}
-                          </div>
-                        );
-                      })}
+                      {section.highlight.map(f => (
+                        <HighlightField key={f} field={f} apt={apt} dataValueColor={dataValueColor} />
+                      ))}
                     </div>
                   )}
-                  {section.pairs && (() => {
-                    const sorted = [...section.pairs].sort((a, b) => ((apt[b[0]] ?? 0) > 0 ? 1 : 0) - ((apt[a[0]] ?? 0) > 0 ? 1 : 0));
-                    return (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
-                        {sorted.map(([countF, distF]) => {
-                          const meta = FIELD_META[countF];
-                          if (!meta) return null;
-                          const count = apt[countF] ?? 0;
-                          const dist = distF ? apt[distF] : null;
-                          const dimmed = count === 0;
-                          return (
-                            <div key={countF} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", opacity: dimmed ? 0.4 : 1 }}>
-                              <span style={{ fontSize: F.xs, color: C.muted }}>{meta.label}</span>
-                              <span style={{ fontSize: F.xs, fontWeight: 600, color: dimmed ? C.muted : C.text }}>
-                                {count}{meta.unit ?? ""}{dist != null ? ` (${dist}m)` : ""}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
+                  {section.pairs && <InfrastructureSection pairs={section.pairs} apt={apt} />}
                   {section.grid && (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
                       {section.grid.map(f => {
