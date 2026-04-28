@@ -9,6 +9,27 @@
 
 ### 최근 3세션 (상세)
 
+**세션142 (2026-04-23)** — ExpertLoginForm.jsx 191→121줄 SignupExtraFields 분리, **150줄 미만 첫 달성** (3커밋 origin/main `ae118f5..365dda4`)
+- 설계 [docs/superpowers/specs/2026-04-23-expertloginform-signup-extract-design.md](docs/superpowers/specs/2026-04-23-expertloginform-signup-extract-design.md) + 실행계획 [docs/superpowers/plans/2026-04-23-expertloginform-signup-extract.md](docs/superpowers/plans/2026-04-23-expertloginform-signup-extract.md). 9 GATE 🟢9/🟡0/🔴0
+- **배경**: 세션141 SearchFilterBar 184줄 (150줄 미달성) 다음 시도. 4/30 학교알리미 재개 전 내부 작업 윈도우. ExpertLoginForm 191줄 = 회원가입 추가 필드 7개 (이름/소속/연락처/전문분야/자격증/경력/자기소개) 가 본체 39%(74줄) 차지하는 자연 경계 → 도메인 분리 적합
+- **워크플로**: superpowers 5단계 (brainstorming → 신중 재검토 → 9 GATE 검증 → writing-plans → executing-plans Inline). 사용자 결정 3건 (A안 최소분리/방식1 props 2개/평면배치) 모두 brainstorming 단계 고정 → 실행 중 변경 0건
+- **사용자 결정 3건**:
+  1. **A안 (최소 분리, SignupExtraFields 1개)** — AuthStatusBanner(17줄)·KakaoLoginButton(22줄) 본체 유지 (작아서 분리 이득 미미)
+  2. **방식 1 (props 2개)** — `authForm`, `setAuthForm` 만 전달. 방식 2(expert 전체)는 캡슐화 약화로 거부
+  3. **평면 배치** — sections/expert-login/ 서브폴더 거부 (info/ 는 4파일이라 신설). 1파일은 평면 — filters/detail/expert/admin 일관 규칙
+- **GATE 1 서브에이전트 오탐 정정**: Explore agent 가 "ExpertLoginForm.test.jsx signup 5케이스 깨짐 가능" 보고 → 메인 직접 재검증 (React Testing Library 통합 렌더링은 자식 분리 무관) → **오탐 확정**. 실행 결과 14/14 PASS 로 검증
+- **커밋 3개** (`d953296..365dda4`):
+  - `ae118f5` docs(spec) — 설계 문서 108줄
+  - `e7bc071` docs(plan) — 실행 계획서 337줄 (Task 1~5 단계별 코드 블록)
+  - `365dda4` refactor(expert) — 본 작업 단일 커밋 (2파일 +91/-72):
+    - 신규 [SignupExtraFields.jsx](src/components/sections/SignupExtraFields.jsx) **89줄** (예상 ~85, 오차 +4) — JSDoc 11줄 + memo 래핑 + 7필드 Fragment 루트
+    - 수정 [ExpertLoginForm.jsx](src/components/sections/ExpertLoginForm.jsx) **191 → 121줄** (-70, -37%): L3 import 1줄 추가, L76-149 인라인 74줄 → 자식 호출 3줄
+- **Public API 불변**: `import { ExpertLoginForm } from "@/components/sections/ExpertLoginForm"` named export + props 5개 시그니처 0변경 → **App.jsx L268 0수정 / ExpertLoginForm.test.jsx 14케이스 0수정 14/14 PASS**
+- **5교차검증**: null-safety-checker 🟢 PASS (High/Med 0). EMPTY_FORM 빈 문자열 초기화 + `expert.authMode==="signup" &&` 가드로 props undefined 진입 경로 없음. `(authForm.bio || "").length` 폴백·`authForm.specialty ? C.text : C.muted` falsy 분기 분리 전후 동일 / 빌드 🟢 373ms 번들 -0.05kB / Hook·보안 메인 agent 직접 검증 (자식 useState/useEffect/useCallback 0건 순수 표현, dangerouslySetInnerHTML/innerHTML/eval 0 grep match)
+- **검증**: 150 files / **2434 tests PASS** (세션141 베이스라인 정확히 유지), ExpertLoginForm.test.jsx 14/14 PASS
+- **사용자 가치**: **150줄 미만 첫 달성** — 메인 CLAUDE.md "단일 컴포넌트 150줄 미만" 제약을 sections/ 폴더에서 처음 명시 충족. 회원가입 도메인 격리로 향후 필드 추가/검증 로직 변경이 본체 영향 0
+- **교훈 4건**: (1) 150줄 미달성을 한계로 일반화 금지 — 컴포넌트별 분리 가능성은 도메인 응집도에 따라 다름 (2) superpowers 5단계 워크플로는 작은 작업에도 풀 적용 가능 (오버헤드 < 가치) (3) GATE 1 서브에이전트 보수적 경고는 항상 메인 재검증 필요 (4) 사용자 신중 재검토 요청은 추가 발견의 기회 (sections/ 평면 배치 일관 규칙 확인)
+
 **세션141 (2026-04-23)** — SearchFilterBar.jsx 257→184줄 PresetPanel 분리 (1커밋 origin/main `de250f7`)
 - 실행 플랜 [cd-f-mibunyang-pwd-magical-popcorn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-magical-popcorn.md). 9 GATE 🟢9/🟡0/🔴0
 - **배경**: 4/30 학교알리미 재개 전 외부 이벤트 대기 윈도우. 세션140 InfoPage 분리 흐름 이어가서 src/components/sections/ 최대 컴포넌트 SearchFilterBar.jsx 257줄(메인 CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 초과) 처리
@@ -37,24 +58,6 @@
 - **검증**: 150 files / **2434 tests PASS** (세션139 동일 유지), InfoPage.test.jsx 9/9 PASS
 - **사용자 가치**: InfoPage.jsx 가독성 대폭 향상, 섹션별 독립 컴포넌트로 향후 FAQ/스코어링 구조 수정이 격리. admin/ 선례와 일관된 폴더 구조 완성
 - **교훈**: 세션 브리프 메모리 "10 케이스" 를 실측 확인 없이 수용 → 단계 1 실행 후 "9 passed" 로 정정. point-in-time 메모리는 항상 실측으로 검증
-
-**세션139 (2026-04-22)** — building-hub HpPermitService 연동 코드 제거 + 정책 박제 (2커밋 origin/main `bf2294d..00280a9`)
-- 4/30 학교알리미 재개 전 내부 작업. 개선 백로그 🟢 "collect-building-hub.mjs:243,252 TODO 2건" 해소
-- **실측 맥락**: `heat_fuel`·`quake_design` 둘 다 `sync-naver-complex.mjs` L219-221 (`complexes.heat_fuel_type → apartments.heat_fuel`) + `naver-collect.py` L117/119 (quakeDesign Phase 3 실사) 로 이미 DB 수집 중. building-hub 의 `fetchHeatFuel`/`fetchQuakeDesign` 함수 2개 + 주석처리된 호출부는 "HpPermitService 구독 후 활성화" 조건부로만 존재 → **네이버 경로 단일화 + HpPermitService 미구독 확정** 정책 결정
-- **커밋 `1434c2f`** (1파일 +4/-65): [collect-building-hub.mjs](scripts/collectors/collect-building-hub.mjs) 290 → 229줄 (-61)
-  - `fetchHeatFuel` 함수 (기존 L127-146) + `fetchQuakeDesign` 함수 (기존 L149-168) 삭제 (총 ~45줄)
-  - 호출부 주석 블록 (기존 L242-258, heat_fuel/quake_design gap-fill 17줄) 삭제
-  - apartments select 컬럼 `heat_fuel, quake_design` 제거 (삭제된 호출부에서만 참조했음)
-  - JSDoc 상단에 "네이버 경로로 확보 + HpPermitService 보류" 2줄 명시
-- **커밋 `00280a9`** (1파일 +7/-0): [scripts/CLAUDE.md](scripts/CLAUDE.md) "BldEngyHubService 한계" 섹션 아래에 "heat_fuel/quake_design 수집 정책" 서브섹션 박제
-  - 네이버 경로 단일화 근거 (sync-naver-complex.mjs:219-221 + naver-collect.py:117/119)
-  - HpPermitService 미구독 결정
-  - 재오픈 트리거 3종: (1) 네이버 장기 차단 3개월+, (2) NULL 30%+ 악화, (3) 구독비 초과 사업 요구
-  - 과거 코드 복구 경로: `git log` 직전 커밋
-- **외부 참조 검증**: `grep "fetchHeatFuel|fetchQuakeDesign"` → 본 파일 내부 4건(정의 2 + 주석 2) + 테스트 파일 주석 2건(인라인 로직 재현 언급)만. 실제 import/호출 외부 0건 확인 → 삭제 안전
-- **검증**: building-hub 테스트 **22/22 PASS** (테스트는 `makeLotParams` 만 import + 나머지는 인라인 로직 재현 방식), `vite build` 581ms 번들 불변
-- **5교차검증**: 전용 에이전트 호출 조건 미해당(스코어링/null/수집기 계약 모두 비수정 — 삭제만). 메인 agent 직접 검증으로 처리 (grep 외부 참조 0건 + 테스트 PASS)
-- **사용자 가치**: 코드 명확성 향상 (죽은 코드 -61줄), 같은 고민 재발 방지 (정책 문서 박제), 재오픈 조건 명시로 미래 의사결정 부담 감소
 
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
@@ -278,10 +281,11 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~132 색인 (상세는 SESSION_LOG)
+### 세션93~139 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 139 | 04-22 | building-hub HpPermitService 코드 제거(-61줄) + 정책 박제. 네이버 경로 단일화 + 미구독 확정 | `1434c2f`·`00280a9` |
 | 132 | 04-20 | schools-neis neisCode/officeCode 저장 3줄 추가 (재조회 멱등성 보장). CI 반영은 5/3 이후 | `8b16d62` |
 | 115 | 04-18 | sidoNotice 끝단 UI 실측 (Playwright 5/5 전문가 대시보드 DOM 노출) | `32f1885` |
 | 114 | 04-18 | fairPriceFromSidoAvg 폴백 신뢰도 `-15` + 경고 접미. `PRICE_FALLBACK_RELIABILITY_PENALTY=15` 신규 | `ee85ce3`·`d1749b7`·`e6c48ec` |
@@ -310,13 +314,21 @@
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션137+, 세션136 후속)
+### 다음 세션 우선순위 (세션143+, 세션142 후속)
 
-> 세션136 에서 `schools.students` 는 **학교알리미 서비스 점검(가설 E)** 이 원인으로 확정되어 **2026-04-30 까지 대기**. `neisCode` 도 `5/3 KST 07:00` 정기 실행 대기. 두 건이 모두 외부 이벤트 대기라 내부 작업 위주로 재정렬.
+> 4/30 학교알리미 + 5/3 neisCode CI 외부 이벤트 대기 윈도우 (오늘 4/23 기준 일주일 남음). 내부 작업: 컴포넌트 150줄 미만 리팩토링 흐름 (세션140 InfoPage → 141 SearchFilterBar → 142 ExpertLoginForm) 이어가기.
 
-1. 🥇 **2026-04-30 이후 학교알리미 재프로브** — `scripts/_tmp_schoolinfo_probe.mjs` 40줄 레시피 재작성(세션136 플랜 Phase 0 참조). 응답 정상이면 `collect-schools.yml` 5/3 정기 실행 대기, 응답 이상이면 Phase 1-A/B/C/D 분기. 사용자에게 SCHOOLINFO_KEY 로컬 `.env.local` 동기화 요청 선행 필요(`gh secret` write-only)
-2. 🥈 **`recordApiQuota` schools-neis 1줄 보강** — 세션136 2차 검증 발견. scripts/CLAUDE.md "9개 수집기 쿼터 로깅" 원칙 위반. `main()` 말미에 `if (!dryRun && SCHOOLINFO_KEY) await recordApiQuota("schools-neis", "SCHOOLINFO_KEY", schoolInfoApiCalls);` + NEIS_KEY 병행. 재프로브 커밋과 묶거나 단독 커밋
-3. 🥉 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
+1. 🟢 **남은 150줄+ 컴포넌트 분리 후보 7개** — 세션142 ExpertLoginForm 191→121 (150줄 미만 첫 달성) 흐름 계속:
+   - SearchFilterBar 184 (세션141 이월, inline style 상수화 또는 추가 도메인 분리)
+   - WeightEditor 233 (🔴 스코어링 상수 밀집)
+   - MapView 216 (🟡 Kakao API)
+   - DataSections 183 (🟢 detail/ 안전)
+   - GuideSections 175 (분리 이득 미미, props 0)
+   - AptCard 168 (🔴 memo 중심)
+   - HeaderSection 161 (🟡)
+   - DetailModal 154 (🟡)
+2. 🥇 **2026-04-30 이후 학교알리미 재프로브** — `scripts/_tmp_schoolinfo_probe.mjs` 40줄 레시피 재작성(세션136 플랜 Phase 0 참조). 응답 정상이면 `collect-schools.yml` 5/3 정기 실행 대기, 응답 이상이면 Phase 1-A/B/C/D 분기. 사용자에게 SCHOOLINFO_KEY 로컬 `.env.local` 동기화 요청 선행 필요(`gh secret` write-only)
+3. 🥈 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
 4. 🟡 **unsold_history 시계열 축적 모니터링** — 매월 1일 KOSIS 수집 후 행수 증가 확인. 2~3개월 후 결측 패턴 분석 (현재 508×2개월, 향후 이상적으로 1,300×3개월 = 3,900행)
 5. 🟡 **방향 B 검토** — 청약홈 API 가 단지별 월별 미분양 이력 제공하는지 조사. KOSIS 비례배분(세션134) 대비 정확도 개선 여지
 6. 🟡 **collect-market-stats.mjs 시계열 복구 (세션135 신규 발견)** — 5지표 × (6개월+8분기) API 응답에서 최신값만 저장, 시계열 버림. 세션134 unsold_history 와 동일 패턴. 새 테이블 `market_stats_history` 신설 필요. **reader 부재라 긴급도 낮음**
@@ -326,6 +338,8 @@
 **명시적 비-작업** (의도적 설계, 건드리지 말 것):
 - **혜택 10컬럼 100% NULL** — 시행사 제공 자료 기반 운영자 수기 입력 (자동 수집 대상 아님)
 - **시군구 소득** — 세션117 C 공식 확정, 재오픈 트리거 4개 발동 전 유지
+- **ExpertLoginForm AuthStatusBanner/KakaoLoginButton 추가 분리** — 세션142 A안 채택 (작아서 분리 이득 미미)
+- **sections/expert-login/ 서브폴더 신설** — 세션142 거부 (1파일은 평면 규칙)
 
 ### DB 품질 (세션133 전수 재측정 · 2026-04-20)
 

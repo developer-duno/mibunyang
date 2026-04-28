@@ -4691,3 +4691,122 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 - HpPermitService = 세션139 미구독 확정
 - InfoPage 4파일 재통합 = 세션140 분리 확정
 - SearchFilterBar 1행/2행 분리 = 세션141 Plan 에이전트 🔴 거부 (props drilling + memo 함정)
+
+---
+
+## 세션142 (2026-04-23) — ExpertLoginForm 191→121줄 SignupExtraFields 분리
+
+### 한 줄 요약
+
+**150줄 미만 첫 달성** — 회원가입 추가 필드 7개를 SignupExtraFields.jsx 로 분리. ExpertLoginForm 191→121줄 (-70, -37%). superpowers 5단계 워크플로 (brainstorming → writing-plans → executing-plans) + 9 GATE 🟢9/🟡0/🔴0 + 5교차검증 🟢 통과. 단일 커밋 `365dda4` push 완료.
+
+### 배경
+
+세션140 (InfoPage 267→60줄 4분할) → 141 (SearchFilterBar 257→184줄 PresetPanel 분리) 흐름. 세션141 종료 메모 "내부 후보 6개" 중 ExpertLoginForm 191줄 선택 (🟢 폼 검증 분리 안전). 4/30 학교알리미 재개 전 외부 이벤트 대기 윈도우 (오늘 4/23 기준 일주일 남음).
+
+세션141 SearchFilterBar 본체 184줄 (150줄 미달) 이후 첫 150줄 미만 달성을 명시적 목표로.
+
+### 워크플로 (superpowers 5단계)
+
+1. **brainstorming 스킬** — A안(최소 분리, SignupExtraFields 1개) vs B안(3분할) vs C안(단계 분리) 중 사용자 A안 선택. 방식 1(props 2개) vs 방식 2(expert 전체) vs 방식 3(컨텍스트) 중 사용자 방식 1 선택
+2. **신중 재검토** (사용자 요청) — sections/ 폴더 평면 배치 패턴 + filters/detail/expert/admin 6컴포넌트 일관 규칙 확인 → 서브폴더 신설 거부, 평면 배치 확정
+3. **하네스 9 GATE 검증** — 사용자 명시 요청. GATE 0~8 전수 🟢9/🟡0/🔴0 통과. GATE 1 서브에이전트가 "테스트 5케이스 깨짐" 경고했으나 메인 직접 재검증 결과 **오탐** 확정 (React Testing Library 통합 렌더링 표준)
+4. **설계 문서** — `docs/superpowers/specs/2026-04-23-expertloginform-signup-extract-design.md` 108줄 (커밋 `ae118f5`)
+5. **실행 계획서** — `docs/superpowers/plans/2026-04-23-expertloginform-signup-extract.md` 337줄 (커밋 `e7bc071`). Inline Execution 방식 추천 (Subagent-Driven 대비 오버헤드 비율) + 사용자 동의
+
+### 사용자 결정 3건
+
+1. **A안 (최소 분리, SignupExtraFields 1개만)** — AuthStatusBanner(17줄)·KakaoLoginButton(22줄) 본체 유지. 작아서 분리 이득 미미
+2. **방식 1 (props 2개)** — `authForm`, `setAuthForm` 만 전달. 방식 2(expert 전체)는 캡슐화 약화로 거부
+3. **평면 배치** — sections/expert-login/ 서브폴더 거부 (info/ 는 4파일이라 신설). 1파일은 평면 — filters/detail/expert/admin 일관 규칙
+
+### 9 GATE 판정 결과
+
+| GATE | 판정 | 핵심 증거 |
+|------|------|----------|
+| 0 Sonnet 크기 | 🟢 | 1단계 + 2파일 + 1관심사 + 1커밋 |
+| 1 영향 범위 | 🟢 | grep "ExpertLoginForm" → App.jsx:36/268, test.jsx:3 (외부 2곳). SignupExtraFields 충돌 0건. 회원가입 7필드 외부 직접 접근 0건 |
+| 2 실행 순서 | 🟢 | DB·API 변경 0. 단일 커밋 원자성 |
+| 3 완전성 | 🟢 | maxLength=500/min=0/max=50 입력 제약 자식으로 그대로 이전 |
+| 4 적정성 | 🟢 | 요청 범위 밖 0건. props 2개 최소 인터페이스 |
+| 5 보안 | 🟢 | grep "API_KEY\|SECRET" 정상 사용 (input type/autoComplete/state key). dangerouslySetInnerHTML/innerHTML/eval 0 grep match |
+| 6 일관성 | 🟢 | memo 패턴 (PresetPanel/GuideSections/InfoPage 동일). 평면 배치 |
+| 7 롤백 | 🟢 | 단일 커밋 git revert 1회 복구 (선례 de250f7 동일) |
+| 8 UX 확장성 | 🟢 | DOM 트리 동일, UX 변화 0 |
+
+**GATE 1 서브에이전트 오탐 정정**: Explore agent 가 "ExpertLoginForm.test.jsx 5 signup 케이스 깨짐 가능"이라고 보고했으나 메인 직접 검증 결과 통합 렌더링 (`screen.getByLabelText`) 은 자식 컴포넌트도 같은 DOM 트리에 렌더되므로 **0수정 통과 확정**. 실행 결과 14/14 PASS 로 검증.
+
+### 커밋 3개 (origin/main `d953296..365dda4`)
+
+1. **`ae118f5` docs(spec)** — 설계 문서 108줄 (Context/결정사항/인터페이스/폴더구조/비변경대상/검증/롤백)
+2. **`e7bc071` docs(plan)** — 실행 계획서 337줄 (Task 1~5 단계별 코드 블록 + 검증 명령 + 커밋 메시지)
+3. **`365dda4` refactor(expert)** — 본 작업 단일 커밋 (2파일 +91/-72)
+   - 신규 [SignupExtraFields.jsx](src/components/sections/SignupExtraFields.jsx) **89줄** (예상 ~85, 오차 +4) — JSDoc 11줄 + memo 래핑 + 7필드 (이름/소속/연락처/전문분야/자격증/경력/자기소개) Fragment 루트
+   - 수정 [ExpertLoginForm.jsx](src/components/sections/ExpertLoginForm.jsx) **191 → 121줄** (-70, -37%): L3 import 1줄 추가, L76-149 인라인 74줄 → L77-79 자식 호출 3줄
+
+### Public API 불변
+
+- `import { ExpertLoginForm } from "@/components/sections/ExpertLoginForm"` named export + props 5개 시그니처 0변경 → **App.jsx L268 0수정 / ExpertLoginForm.test.jsx 14케이스 0수정 14/14 PASS**
+- useExpertMode.js authForm/setAuthForm/handleExpertSignup 정의 0변경
+
+### 5교차검증
+
+| 축 | 검증 도구 | 결과 |
+|----|----------|------|
+| 빌드 | `npx vite build` | 🟢 373ms, 0 errors, 번들 -0.05kB (index 182.75→182.70) |
+| null 안전성 | null-safety-checker 서브에이전트 | 🟢 PASS (High/Med 0). EMPTY_FORM 빈 문자열 초기화 + `expert.authMode==="signup" &&` 가드로 props undefined 진입 경로 없음. `(authForm.bio || "").length` 폴백·`authForm.specialty ? C.text : C.muted` falsy 분기 분리 전후 동일 |
+| Hook 규칙 | 메인 직접 grep | 🟢 자식 useState/useEffect/useCallback/useMemo/useRef **0건** (no match) — 순수 표현 컴포넌트 |
+| 보안 | 메인 직접 grep | 🟢 dangerouslySetInnerHTML/innerHTML/eval **0 grep match**. `disabled={authLoading}` 본체 유지 (중복 클릭 방지) |
+| 스코어링 | 비해당 | 스코어링 코드 무관 |
+| 수집기 계약 | 비해당 | 수집기 무관 |
+
+### 검증 결과
+
+- `npx vitest run src/components/sections/ExpertLoginForm.test.jsx` → **14/14 PASS** 0수정
+- `npm test` → **150 files / 2434 tests PASS** (세션141 베이스라인 정확히 유지)
+- `wc -l` → ExpertLoginForm.jsx **121줄** (목표 <150 달성), SignupExtraFields.jsx **89줄**
+
+### 사용자 가치
+
+- **150줄 미만 첫 달성** — 메인 CLAUDE.md "단일 컴포넌트 150줄 미만" 제약을 sections/ 폴더 컴포넌트 중 처음으로 명시 충족
+- ExpertLoginForm.jsx 가독성 대폭 향상 — 회원가입 도메인 격리로 향후 필드 추가/검증 로직 변경이 본체 영향 0
+- sections/ 폴더 평면 배치 일관 (info/ 만 서브폴더) — 1파일 분리는 평면 규칙 재확인
+
+### 워크플로 효율성 분석 (Inline vs Subagent-Driven)
+
+세션142 inline 방식 채택 결과:
+- 5 Tasks 평균 2~3분/Task → 총 15분 내외
+- 메인 컨텍스트가 GATE 검증 결과·실측 정보를 그대로 활용
+- GATE 1 서브에이전트 오탐을 메인이 즉시 정정 가능했음
+- Subagent-Driven 채택 시 Task당 컨텍스트 재구축 비용 (계획서 + 관련 파일 재독) 이 작업 시간보다 컸을 것
+
+→ **소규모 단일 커밋 작업은 Inline 방식이 최적**. Subagent-Driven 은 Task 10개+의 대규모 에픽 또는 30분+ 복잡 Task 에 적합 (선례 정립).
+
+### 교훈 (4개)
+
+1. **150줄 미만 달성은 가능했다** — 세션141 종료 시점에는 "다음 세션 이월"로 분류된 SearchFilterBar 150줄 미달성이 일종의 한계처럼 여겨졌으나, 세션142 ExpertLoginForm 은 다른 도메인이지만 191→121줄로 첫 달성. **미달성을 한계로 일반화하지 말 것** — 컴포넌트별 분리 가능성은 도메인 응집도에 따라 다름
+
+2. **superpowers 5단계 워크플로의 가치** — brainstorming(설계 합의) → 9 GATE 검증 → spec 문서화 → plan 문서화 → executing-plans 의 순서가 한 세션 내 모두 수행 가능. 사용자 결정 3건 (A안/방식1/평면배치) 모두 brainstorming 단계에서 고정 → 실행 중 변경 0건. 작은 작업에도 풀 워크플로 적용 가능 (오버헤드 < 가치)
+
+3. **GATE 1 서브에이전트 오탐 패턴** — Explore agent 가 "테스트 깨짐 가능성"을 보고했으나 메인 직접 검증으로 오탐 확정. **서브에이전트의 보수적 경고는 항상 메인 재검증 필요**. 특히 React 표준 동작 (Testing Library 통합 렌더링) 같은 영역은 서브에이전트가 "안전 우선" 으로 과장하는 경향. 메인 직접 grep + Read + 도구 규격 확인이 필수
+
+4. **사용자 신중 재검토 요청의 가치** — 사용자가 "다시한번 신중하게 검토" 요청 → sections/ 폴더 평면 배치 패턴 + filters/detail/expert/admin 6컴포넌트 일관 규칙 확인. 처음 제안 (서브폴더 신설 가능성 열어둔 채 평면 추천) 보다 **근거 보강된 평면 확정** 으로 진화. 사용자 재검토 요청은 추가 발견의 기회
+
+### 다음 세션 (143+) 우선순위
+
+**4/30 학교알리미 재개 전 내부 작업 윈도우 (오늘 4/23, 일주일 남음)**
+
+1. 🟢 **SearchFilterBar 본체 184줄 → 150줄 미만** — 세션141 이월. inline style 객체 상수화 (메인 CLAUDE.md "백로그 🟡 inline style 787건" 시작점) 또는 본체 추가 분리. Plan 에이전트 거부했던 1행/2행 분리는 재오픈 X
+2. 🟢 **남은 150줄+ 후보 7개**: WeightEditor 233 (🔴) / MapView 216 (🟡) / DataSections 183 (🟢 detail/) / GuideSections 175 (분리 이득 미미) / AptCard 168 (🔴) / HeaderSection 161 (🟡) / DetailModal 154 (🟡)
+3. 🥇 **2026-04-30 이후 학교알리미 재프로브** (대기)
+4. 🥈 **2026-05-03 이후 neisCode CI 반영률 쿼리** (대기)
+
+### 비-작업 (의도적 설계, 누적)
+
+- 혜택 10컬럼 100% NULL = 시행사 수기 입력
+- 시군구 소득 = 세션117 C 공식 확정
+- HpPermitService = 세션139 미구독 확정
+- InfoPage 4파일 재통합 = 세션140 분리 확정
+- SearchFilterBar 1행/2행 분리 = 세션141 Plan 에이전트 🔴 거부 (props drilling + memo 함정)
+- ExpertLoginForm AuthStatusBanner/KakaoLoginButton 추가 분리 = 세션142 A안 채택 (작아서 분리 이득 미미)
+- sections/expert-login/ 서브폴더 신설 = 세션142 거부 (1파일은 평면 규칙)
