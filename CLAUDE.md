@@ -9,6 +9,27 @@
 
 ### 최근 3세션 (상세)
 
+**세션143 (2026-04-28)** — DataSections.jsx 183→152줄 2자식 분리 (HighlightField + InfrastructureSection) (1커밋 origin/main `276e15a`)
+- 실행 플랜 [cd-f-mibunyang-pwd-curious-quilt.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-curious-quilt.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증으로 GATE 0~8 전수 실측)
+- **배경**: 세션140 InfoPage 267→60 4분할 → 141 SearchFilterBar 257→184 PresetPanel → 142 ExpertLoginForm 191→121 SignupExtraFields 흐름. detail/ 폴더 최대 컴포넌트 DataSections.jsx 처리. 4/30 학교알리미 D-2 / 5/3 neisCode CI D-5 외부 이벤트 대기 윈도우 내부 작업
+- **사용자 결정 3건**:
+  1. **작업 범위 — DataSections만** (HeaderSection/DetailModal 거부): HeaderSection 데스크톱/모바일 분리는 세션141 SearchFilterBar 1행/2행 거부 패턴 재현 위험, DetailModal 154 경계선 + 자식 6개 이미 외주 + props drilling 증가
+  2. **분리 깊이 — 2자식**: HighlightField + InfrastructureSection. GridFields 거부(1회용 추상화 안티패턴)
+  3. **InfrastructureSection props 단순화** — 실측으로 dataValueColor 의존 0 확인 → `{pairs, apt}` 2개로 축소 (Plan 단계 `{pairs, apt, dataValueColor}` 3개 예상에서 변경)
+- **커밋 `276e15a`** (3파일 +67/-37):
+  - 신규 [HighlightField.jsx](src/components/detail/HighlightField.jsx) **31줄** (예상 ~45, 오차 -14): props 3개 `{field, apt, dataValueColor}` + HIGHLIGHT_DESC 5필드 설명 + closure 색상 함수 1회 호출 (인라인 2회 중복 제거)
+  - 신규 [InfrastructureSection.jsx](src/components/detail/InfrastructureSection.jsx) **30줄** (예상 ~50, 오차 -20): props 2개 + IIFE 제거 → 평탄 함수 본문
+  - 수정 [DataSections.jsx](src/components/detail/DataSections.jsx) **183 → 152줄** (-31, -17%): import 2줄 추가(Bar 제거) + L88-127 인라인 40줄 → 자식 호출 7줄
+- **150줄 미달성(152줄, 2줄 초과) 의식적 수용**: DATA_SECTIONS 상수(38줄)·dataValueColor 헬퍼(13줄) 별도 모듈화는 1회 사용 + 부모 한정 데이터라 1회용 모듈 안티패턴. 본체 JSX 89줄은 적정
+- **Public API 불변**: named export `memo(DataSections)` + props `{ apt }` 0변경 → DetailModal.jsx L126 0수정 / DataSections.test.jsx 12케이스 0수정 12/12 PASS (세션142 14케이스 선례 동일)
+- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 4 정보성 — 분리 전 가드 4종 동등 이식 확인) / 빌드 🟢 541ms 번들 불변(DetailModal 49.56KB) / Hook 메인 직접 (자식 useState/useEffect/useCallback/useMemo/useRef 0, memo만) / 보안 메인 직접 (innerHTML/dangerouslySetInnerHTML/eval 0)
+- **9 GATE 하네스 검증**: 사용자 요청으로 GATE 0~8 전수 실측 (영향범위 grep, 테스트 0수정 본문 직접 분석, 보안 grep, 의존 그래프). DataSections 참조 16곳 전부 무영향 확정
+- **검증**: 150 files / **2434 tests PASS** (세션142 베이스라인 정확히 유지)
+- **사용자 가치**: detail/ 폴더 자식 컴포넌트 **8 → 10개**. pir/psr 도메인 설명·생활인프라 정렬 로직 격리로 향후 수정이 본체 영향 0. inline highlight 박스 18줄 + pairs IIFE 22줄이 자식 호출 7줄로 압축돼 가독성 향상
+- **교훈 2건 (세션142 4건 추가)**:
+  - 자식 props는 실제 의존성 grep으로 결정 — Plan 단계 dataValueColor 전달 가정이 실측 시 의존 0 확인되어 단순화 (`{pairs, apt}` 2개)
+  - 150줄 미달성을 무리한 추가 분리로 강제 달성하지 말 것 — 1회용 모듈 안티패턴 회피가 합리적
+
 **세션142 (2026-04-23)** — ExpertLoginForm.jsx 191→121줄 SignupExtraFields 분리, **150줄 미만 첫 달성** (3커밋 origin/main `ae118f5..365dda4`)
 - 설계 [docs/superpowers/specs/2026-04-23-expertloginform-signup-extract-design.md](docs/superpowers/specs/2026-04-23-expertloginform-signup-extract-design.md) + 실행계획 [docs/superpowers/plans/2026-04-23-expertloginform-signup-extract.md](docs/superpowers/plans/2026-04-23-expertloginform-signup-extract.md). 9 GATE 🟢9/🟡0/🔴0
 - **배경**: 세션141 SearchFilterBar 184줄 (150줄 미달성) 다음 시도. 4/30 학교알리미 재개 전 내부 작업 윈도우. ExpertLoginForm 191줄 = 회원가입 추가 필드 7개 (이름/소속/연락처/전문분야/자격증/경력/자기소개) 가 본체 39%(74줄) 차지하는 자연 경계 → 도메인 분리 적합
@@ -47,17 +68,6 @@
 - **사용자 가치**: SearchFilterBar.jsx 가독성 대폭 향상, 추천 패널 로직 격리로 향후 프리셋 수정이 본체 영향 0. filters/ 폴더 6개 패널 일관 구조 (RegionPanel/BudgetPanel/AreaPanel/SortPanel/DetailPanel + 신규 PresetPanel). key prop 강제 unmount로 잠재 UX 회귀 명시적 방지
 - **기록 보정**: 세션 시작 메모리 "15케이스" → 실측 14, "SearchFilterBar 196줄" → 실측 257, PresetPanel 예상 95줄 → 실측 109. 세션140 교훈 1번 "테스트 숫자는 항상 실측" 동일 패턴 재발
 - **교훈**: Plan 에이전트 반대 의견 (sections/filter/ 분할 거부)이 사용자 원안을 수정하는 결정적 가치 — 약점 발굴 용도로 호출하면 효용 증대. `key prop` 1줄 강제 unmount가 useEffect 보다 명시적·표준적
-
-**세션140 (2026-04-22~23)** — InfoPage.jsx 267→60줄 4분할 (2커밋 origin/main `54ecea1..5408446`)
-- 실행 플랜 [cd-f-mibunyang-pwd-resilient-fiddle.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-resilient-fiddle.md). 9 GATE 🟢9/🟡0/🔴0 (GATE 0 Sonnet 크기 재검증 포함)
-- **배경**: 세션139 이어 4/30 학교알리미 재개 전 내부 작업. `src/components/` 150줄+ 파일 실측(`wc -l`) 결과 `sections/InfoPage.jsx` 가 **267줄**로 최대 소비자 컴포넌트. CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 초과. admin/ 폴더 6컴포넌트 선례 따라 `sections/info/` 서브폴더 신설
-- **커밋 `54ecea1`** (3파일 +82/-53): [ScoringEngine.jsx](src/components/sections/info/ScoringEngine.jsx) 45줄 신규 (L196-227 이동: 6카테고리 map + 도시등급 divider + 학술기반 divider) + [FAQSection.jsx](src/components/sections/info/FAQSection.jsx) 33줄 신규 (L229-249 이동: 10 Q&A map) + InfoPage 267→218줄
-- **커밋 `5408446`** (2파일 +177/-160): [GuideSections.jsx](src/components/sections/info/GuideSections.jsx) 175줄 신규 (L38-196 통합: 섹션 2~8 프로필/필터/정렬/카드/관심매물/지도/상담, React Fragment 루트) + InfoPage 218→**60줄** (-77%). ExpertCTA 미분리 근거: props 2개 유일 소비자로 drilling 회피. unused style 상수 3개(guideItem/guideTitle/divider) 제거
-- **Public API 불변**: `import { InfoPage } from "@/components/sections/InfoPage"` named export + props 2개 시그니처 불변 → **App.jsx 0수정 / InfoPage.test.jsx 0수정**
-- **5교차검증**: null-safety-checker 2회 🟢 (단계 1 High/Med 0, Low 2 / 단계 2 High/Med 0, Low 2) / 빌드 🟢 578~925ms 번들 불변 / Playwright e2e/expert.spec.ts "정보 탭에서 스코어링 설명 표시" 🟢 / Hook·보안 메인 agent 직접 검증 (useState/useEffect 없음, API 호출 0)
-- **검증**: 150 files / **2434 tests PASS** (세션139 동일 유지), InfoPage.test.jsx 9/9 PASS
-- **사용자 가치**: InfoPage.jsx 가독성 대폭 향상, 섹션별 독립 컴포넌트로 향후 FAQ/스코어링 구조 수정이 격리. admin/ 선례와 일관된 폴더 구조 완성
-- **교훈**: 세션 브리프 메모리 "10 케이스" 를 실측 확인 없이 수용 → 단계 1 실행 후 "9 passed" 로 정정. point-in-time 메모리는 항상 실측으로 검증
 
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
@@ -281,10 +291,11 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~139 색인 (상세는 SESSION_LOG)
+### 세션93~140 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 140 | 04-22~23 | InfoPage.jsx 267→60줄 4분할 (sections/info/ 서브폴더 신설, ScoringEngine·FAQSection·GuideSections) | `54ecea1`·`5408446` |
 | 139 | 04-22 | building-hub HpPermitService 코드 제거(-61줄) + 정책 박제. 네이버 경로 단일화 + 미구독 확정 | `1434c2f`·`00280a9` |
 | 132 | 04-20 | schools-neis neisCode/officeCode 저장 3줄 추가 (재조회 멱등성 보장). CI 반영은 5/3 이후 | `8b16d62` |
 | 115 | 04-18 | sidoNotice 끝단 UI 실측 (Playwright 5/5 전문가 대시보드 DOM 노출) | `32f1885` |

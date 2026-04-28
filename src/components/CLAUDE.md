@@ -8,7 +8,7 @@
 |------|------|------|---------|
 | 소비자 | 8 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, primitives.jsx 내부 4개 |
 | 섹션 | 8 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay |
-| 상세 | 8 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections |
+| 상세 | 10 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection |
 | 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
 | 전문가 | 9 | `expert/` | ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide |
 | 관리자 | 3 | `admin/` | AdminDashboard, AdminHelpGuide, WeightEditor (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
@@ -69,7 +69,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | PriceChart | 43 | 분양가 추이 SVG (usePriceHistory + siblingIds) |
 | UnsoldChart | 45 | 미분양 추이 SVG (useUnsoldHistory + siblingIds) |
 | PresaleInfo | 130 | 네이버 분양정보 (가격카드/일정/링크/Analytics) |
-| DataSections | 175 | 공공데이터 6개 섹션 |
+| DataSections | 152 | 공공데이터 6개 섹션 (세션143 HighlightField·InfrastructureSection 분리 후) |
 
 ### 프리미티브 (`primitives.jsx`)
 

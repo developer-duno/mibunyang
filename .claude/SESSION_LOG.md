@@ -1,3 +1,101 @@
+# 세션 143 — 2026-04-28 (DataSections 183→152줄 2자식 분리 — HighlightField + InfrastructureSection)
+
+**거시 목적**: 세션140 InfoPage 267→60 4분할 → 141 SearchFilterBar 257→184 PresetPanel → 142 ExpertLoginForm 191→121 SignupExtraFields 흐름 계속. detail/ 폴더 최대 컴포넌트 DataSections.jsx 183줄(CLAUDE.md "단일 컴포넌트 150줄 미만" 초과) 처리. 4/30 학교알리미 D-2 / 5/3 neisCode CI D-5 외부 이벤트 대기 윈도우 내부 작업.
+
+**결론**: 단일 커밋(`276e15a`) 3파일 +67/-37, 회귀 0 (150 files / 2434 tests PASS 베이스라인 유지). DataSections 183→152줄(-31, -17%). 150줄 미달성(2줄 초과) 인정 — DATA_SECTIONS 상수(38줄) 추가 분리는 1회용 모듈 안티패턴 위험으로 회피.
+
+## 작업 — Phase 1 실행
+
+### 1-1. Plan 모드 9 GATE 검증
+
+- 실행 플랜 [cd-f-mibunyang-pwd-curious-quilt.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-curious-quilt.md)
+- Phase 1: Explore 3개 병렬 (DataSections / HeaderSection / DetailModal)
+- Phase 2: Plan 에이전트 1개 (옵션 A vs B trade-off)
+- Phase 3: 사용자 결정 위임 ("이정도는 네가 판단해자 최적으로")
+  - 작업 범위: **DataSections만** 채택 (HeaderSection은 세션141 패턴 회피, DetailModal 154 경계선 + 비용 > 이득)
+  - 분리 깊이: **2자식** 채택 (1개는 143줄 미달성, 3개는 GridFields 1회용 추상화)
+- 사용자 추가 요청: 9 GATE 하네스 검증 (서브에이전트 병렬 실측)
+- 9 GATE 최종 🟢9/🟡0/🔴0 통과
+
+### 1-2. 사용자 결정 3건
+
+1. **작업 범위 — DataSections만**
+   - HeaderSection 161 거부: 데스크톱/모바일 이분 분리는 세션141 SearchFilterBar "1행/2행 분리 거부" 패턴 재현 위험. HelpModal만 분리해도 161→125줄 = 150 미달성
+   - DetailModal 154 거부: 4줄 초과(경계선), 자식 6개 이미 외주, focus trap/aria-modal 통합 필요, props drilling 증가
+2. **분리 깊이 — 2자식 (HighlightField + InfrastructureSection)**
+   - HighlightField: pir/psr/popGrowth/unsoldRate/dataReliability 5필드 박스 (도메인 응집 ⭐⭐⭐)
+   - InfrastructureSection: 생활인프라 2열 그리드 + 정렬 IIFE (도메인 응집 ⭐⭐⭐)
+   - GridFields 거부: 4섹션 재사용 가능하나 props 4개 + 1회용 유틸 안티패턴
+3. **헬퍼 처리 — closure 의존 함수 props 전달**
+   - dataValueColor: 부모 내 함수 유지 + HighlightField에 props 전달
+   - InfrastructureSection: 실측으로 dataValueColor 의존 0 확인 (색상 로직 없음, dimmed/text만) → props 단순화 (`{pairs, apt}` 2개)
+   - DATA_SECTIONS 상수 / FIELD_META / Bar / showData state: 부모 유지
+
+### 1-3. 단계별 실행
+
+**단계 1**: [HighlightField.jsx](src/components/detail/HighlightField.jsx) 신규 31줄 (예상 ~45, 실측 -14)
+- props 3개: `{field, apt, dataValueColor}`
+- HIGHLIGHT_DESC 5필드 설명 모듈 상수
+- closure 색상 함수 1회 호출(`color` 변수)로 부모 인라인의 2회 호출 중복 제거
+- memo + early return `if (!meta) return null`
+
+**단계 2**: [InfrastructureSection.jsx](src/components/detail/InfrastructureSection.jsx) 신규 30줄 (예상 ~50, 실측 -20)
+- props 2개: `{pairs, apt}` (dataValueColor 의존 0 실측)
+- IIFE 제거 → 평탄 함수 본문 (`const sorted = [...pairs].sort(...)`)
+- memo + `if (!meta) return null`
+
+**단계 3**: [DataSections.jsx](src/components/detail/DataSections.jsx) 수정 183→152줄
+- import 2줄 추가 (Bar 제거 — 자식으로 이동)
+- L88-127 인라인 40줄 → 자식 호출 7줄로 교체:
+  ```jsx
+  {section.highlight && (
+    <div style={{...}}>
+      {section.highlight.map(f => (
+        <HighlightField key={f} field={f} apt={apt} dataValueColor={dataValueColor} />
+      ))}
+    </div>
+  )}
+  {section.pairs && <InfrastructureSection pairs={section.pairs} apt={apt} />}
+  ```
+- 부모 가드 유지: `section.highlight && (...)`, `section.pairs && (...)`, `hasAny ?`
+
+### 1-4. 5교차검증
+
+| 축 | 결과 |
+|---|---|
+| 빌드 | 🟢 `vite build` 541ms, 번들 불변 (DetailModal 49.56KB 유지) |
+| 테스트 | 🟢 `DataSections.test.jsx` 12/12 PASS (0수정 가정 검증), 전체 150 files / 2434 tests PASS |
+| null 안전 | 🟢 `null-safety-checker` High/Med 0, Low 4 정보성 (분리 전 가드 4종 동등 이식 확인) |
+| Hook 규칙 | 🟢 메인 직접 grep — 자식 2개 useState/useEffect/useCallback/useMemo/useRef 0건, memo만 |
+| 보안 | 🟢 메인 직접 grep — innerHTML/dangerouslySetInnerHTML/eval 0 (test 파일 read-only innerHTML 무관) |
+
+### 1-5. Public API 불변
+
+- `export const DataSections = memo(...)` named export 0변경
+- props `{ apt }` 단일 prop 0변경
+- [DetailModal.jsx:126](src/components/DetailModal.jsx#L126) `<DataSections apt={apt} />` 0수정
+- [DataSections.test.jsx](src/components/detail/DataSections.test.jsx) 12케이스 0수정 — React Testing Library 통합 렌더는 자식 분리 무관 (세션142 ExpertLoginForm 14케이스 0수정 선례 동일)
+
+## 사용자 가치
+
+- **detail/ 폴더 자식 컴포넌트 8 → 10개** — pir/psr 도메인 5필드 박스 격리, 생활인프라 정렬 격리. 향후 highlight 설명 텍스트 / 인프라 정렬 로직 수정이 본체 영향 0
+- **150줄 미달성(152줄, 2줄 초과)** — 추가 분리 안티패턴 위험으로 의식적 수용. CLAUDE.md 제약은 단일 컴포넌트 기준이고 DataSections는 데이터 상수(DATA_SECTIONS 38줄) + 헬퍼 함수(dataValueColor 13줄) + JSX 본체(89줄) 구조라 본체는 적정
+
+## 교훈 (세션142 4건 + 세션143 추가 2건)
+
+1. (이전) 150줄 미달성을 한계로 일반화 금지 — 도메인 응집도에 따라 다름
+2. (이전) superpowers 5단계 워크플로는 작은 작업에도 풀 적용 가능
+3. (이전) GATE 1 서브에이전트 보수적 경고는 메인 재검증 필요
+4. (이전) 사용자 신중 재검토 요청은 추가 발견의 기회
+5. **신규**: 자식 컴포넌트 props는 실제 의존성 grep으로 결정 — Plan 단계에서 dataValueColor를 InfrastructureSection에 전달하기로 했지만 본문 실측 시 의존 0 확인 → 단순화 (`{pairs, apt}` 2개로 축소)
+6. **신규**: 150줄 미달성을 무리한 추가 분리로 강제 달성하지 말 것 — DATA_SECTIONS 상수(38줄)·dataValueColor(13줄) 별도 모듈화는 1회 사용 + 부모 한정 데이터라 1회용 모듈 안티패턴. 152줄 인정이 합리적
+
+## 커밋
+
+- `276e15a` refactor(detail): extract HighlightField and InfrastructureSection from DataSections — 3파일 +67/-37
+
+---
+
 # 세션 137 — 2026-04-21~22 (schools-neis recordApiQuota 1줄 보강 — CLAUDE.md 쿼터 로깅 원칙 복구)
 
 **거시 목적**: 세션136 2차 검증에서 발견된 독립 유효 성과 "schools-neis.mjs `recordApiQuota` 호출 0건" (scripts/CLAUDE.md "9개 수집기 쿼터 로깅" 원칙 위반) 해소.
