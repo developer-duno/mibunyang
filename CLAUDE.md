@@ -9,6 +9,22 @@
 
 ### 최근 3세션 (상세)
 
+**세션144 (2026-04-28)** — primitives.jsx 154→91줄 LineChart 단독 분리 (1커밋 origin/main `79bdb1c`)
+- 실행 플랜 [session144-primitives-linechart-extract.md](C:\Users\user\.claude\plans\session144-primitives-linechart-extract.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증)
+- **배경**: 세션140~143 흐름 계속. 8개 150줄+ 컴포넌트 실측 후보 평가 → primitives.jsx 채택 (사용자 위임 "프로젝트 목적에 가장 적합하게"). LineChart는 PriceChart(분양가 추이)·UnsoldChart(미분양 추이) 시계열 차트 공통 엔진 → 데이터 시각화 신뢰성 향상이 사용자 가치
+- **단독 분리 결정**: 7 memo 컴포넌트 중 LineChart만 hook 3개(useState/useCallback/useEffect) + 60줄로 가장 복잡. 나머지 6개(Bar/ScoreBadge/Radar/Skeleton 3종) 모두 hook 0 + 평균 13줄 → 분리 가치 미미. 1자식 평면 배치 일관 규칙(세션142/143)으로 `src/components/LineChart.jsx`
+- **9 GATE 검증**: 보안 grep `API_KEY|SECRET|password|token|apikey` 3파일 0 결과. 영향 범위 grep — primitives 소비자 11곳 전부 named import → re-export로 0수정 보장. `find LineChart*` 0개 충돌 0. 상수 사용 위치 실측 — TOOLTIP_DISMISS_MS/HIT_AREA_RADIUS LineChart 전용 → 같이 이동
+- **커밋 `79bdb1c`** (2파일 +72/-66):
+  - 신규 [LineChart.jsx](src/components/LineChart.jsx) **69줄**: import + 상수 2개 + memo 본문 + hook 3개. 본문 그대로 이식 (구조 변경 0)
+  - 수정 [primitives.jsx](src/components/primitives.jsx) **154 → 91줄** (-63, -41%): L1 import에서 useState/useCallback/useEffect 제거(memo만), `export { LineChart } from "./LineChart"` re-export 1줄 추가, L30-31 상수 2줄 + L33-93 LineChart 본문 61줄 제거
+- **Public API 불변**: re-export 라인으로 `import { LineChart } from "@/components/primitives"` named import 시그니처 동일 → 11곳 소비자 0수정 (PriceChart L3, UnsoldChart L3, primitives.test.jsx L3 등)
+- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 3 정보성 — `data.length<2` early return + `(secondaryData \|\| []).map` 가드 + `(d.y ?? 0).toLocaleString()` 폴백 분리 전 동등 이식) / 빌드 🟢 427ms 번들 변동 0 (DetailModal 49.56KB 유지) / Hook 메인 직접 (primitives 부모 hook 0 확인) / 보안 메인 직접 (LineChart innerHTML/dangerouslySetInnerHTML/eval 0)
+- **검증**: 150 files / **2434 tests PASS** (세션143 베이스라인 정확히 유지), primitives + 소비자 통합 33/33 PASS
+- **사용자 가치**: 시계열 차트 엔진 격리 — 터치 dismiss 3초·hit area 16px·그리드 4분할·보조 라인·툴팁 로직 수정이 다른 6 컴포넌트 영향 0. 모바일 터치 UX 상수(TOOLTIP_DISMISS_MS/HIT_AREA_RADIUS) LineChart 전용 명확화
+- **5세션 연속 흐름 완성**: 140(InfoPage 60) → 141(SearchFilterBar 184 미달) → 142(ExpertLoginForm 121) → 143(DataSections 152 미달 2줄) → **144(primitives 91)**
+- **교훈 1건 추가 (세션143 6건 + 1)**:
+  - 7. 7 memo 컴포넌트 한 파일은 hook 분포로 분리 가치 측정 — hook 3개 vs 0 비율이 극단적이면 hook 있는 1개만 분리해도 가독성 ⭐⭐⭐. 모두 hook 0이면 분리 가치 미미
+
 **세션143 (2026-04-28)** — DataSections.jsx 183→152줄 2자식 분리 (HighlightField + InfrastructureSection) (1커밋 origin/main `276e15a`)
 - 실행 플랜 [cd-f-mibunyang-pwd-curious-quilt.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-curious-quilt.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증으로 GATE 0~8 전수 실측)
 - **배경**: 세션140 InfoPage 267→60 4분할 → 141 SearchFilterBar 257→184 PresetPanel → 142 ExpertLoginForm 191→121 SignupExtraFields 흐름. detail/ 폴더 최대 컴포넌트 DataSections.jsx 처리. 4/30 학교알리미 D-2 / 5/3 neisCode CI D-5 외부 이벤트 대기 윈도우 내부 작업
@@ -50,24 +66,6 @@
 - **검증**: 150 files / **2434 tests PASS** (세션141 베이스라인 정확히 유지), ExpertLoginForm.test.jsx 14/14 PASS
 - **사용자 가치**: **150줄 미만 첫 달성** — 메인 CLAUDE.md "단일 컴포넌트 150줄 미만" 제약을 sections/ 폴더에서 처음 명시 충족. 회원가입 도메인 격리로 향후 필드 추가/검증 로직 변경이 본체 영향 0
 - **교훈 4건**: (1) 150줄 미달성을 한계로 일반화 금지 — 컴포넌트별 분리 가능성은 도메인 응집도에 따라 다름 (2) superpowers 5단계 워크플로는 작은 작업에도 풀 적용 가능 (오버헤드 < 가치) (3) GATE 1 서브에이전트 보수적 경고는 항상 메인 재검증 필요 (4) 사용자 신중 재검토 요청은 추가 발견의 기회 (sections/ 평면 배치 일관 규칙 확인)
-
-**세션141 (2026-04-23)** — SearchFilterBar.jsx 257→184줄 PresetPanel 분리 (1커밋 origin/main `de250f7`)
-- 실행 플랜 [cd-f-mibunyang-pwd-magical-popcorn.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-magical-popcorn.md). 9 GATE 🟢9/🟡0/🔴0
-- **배경**: 4/30 학교알리미 재개 전 외부 이벤트 대기 윈도우. 세션140 InfoPage 분리 흐름 이어가서 src/components/sections/ 최대 컴포넌트 SearchFilterBar.jsx 257줄(메인 CLAUDE.md "단일 컴포넌트 150줄 미만" 제약 초과) 처리
-- **사용자 결정 4건** (Plan 에이전트 🔴 4건 사전 발견 → 안전 옵션 채택):
-  1. **filters/ 폴더에 PresetPanel 추가** (sections/filter/ 신설 거부) — 이미 RegionPanel 등 5개 패널 존재. filters(복수)/filter(단수) 영구 이름 충돌 회피
-  2. 본체 184줄 수용 (150줄 미달성, 다음 세션 이월) — PresetPanel 도메인 분리만 우선
-  3. 신규 109줄 단일 커밋 허용 (세션140 GuideSections 175줄 단일 커밋 선례)
-  4. `key={openPanel === "preset" ? "open" : "closed"}` 강제 unmount — showPresetInput 잔존 회귀 명시적 방지
-- **커밋 `de250f7`** (2파일 +123/-87):
-  - 신규 [filters/PresetPanel.jsx](src/components/filters/PresetPanel.jsx) 109줄 — props 10개 + state 3개 + handlePresetSave useCallback + JSX 3블록 (기본/커스텀 프리셋 + 저장 input/히스토리 select). 기존 RegionPanel/SortPanel 일관 `memo(function PresetPanel(...))` 패턴
-  - 수정 [SearchFilterBar.jsx](src/components/sections/SearchFilterBar.jsx) 257→184줄 (-73, -28%): L10 `FILTER_PRESETS` import 제거 + L20 PresetPanel import 추가, L67-78 (state+useCallback) 12줄 제거, L146-220 인라인 75줄 → 14줄 PresetPanel 호출(key prop 포함)로 교체
-- **Public API 불변**: `export const SearchFilterBar = memo(...)` named export + props 50개 시그니처 0변경 → **App.jsx L37 0수정 / SearchFilterBar.test.jsx 14케이스 0수정 14/14 PASS**
-- **5교차검증**: null-safety-checker 🟢 PASS (High/Med 0, Low 2 정보성) / 빌드 🟢 504ms 번들 불변 / Hook·보안 메인 agent 직접 검증 (useState 3·useCallback 1 격리, innerHTML/eval/XSS 0)
-- **검증**: 150 files / **2434 tests PASS** (세션140 동일 유지)
-- **사용자 가치**: SearchFilterBar.jsx 가독성 대폭 향상, 추천 패널 로직 격리로 향후 프리셋 수정이 본체 영향 0. filters/ 폴더 6개 패널 일관 구조 (RegionPanel/BudgetPanel/AreaPanel/SortPanel/DetailPanel + 신규 PresetPanel). key prop 강제 unmount로 잠재 UX 회귀 명시적 방지
-- **기록 보정**: 세션 시작 메모리 "15케이스" → 실측 14, "SearchFilterBar 196줄" → 실측 257, PresetPanel 예상 95줄 → 실측 109. 세션140 교훈 1번 "테스트 숫자는 항상 실측" 동일 패턴 재발
-- **교훈**: Plan 에이전트 반대 의견 (sections/filter/ 분할 거부)이 사용자 원안을 수정하는 결정적 가치 — 약점 발굴 용도로 호출하면 효용 증대. `key prop` 1줄 강제 unmount가 useEffect 보다 명시적·표준적
 
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
@@ -291,10 +289,11 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~140 색인 (상세는 SESSION_LOG)
+### 세션93~141 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 141 | 04-23 | SearchFilterBar 257→184줄 PresetPanel 분리 (filters/ 폴더 6패널 구조 완성, 150 미달성 용인) | `de250f7` |
 | 140 | 04-22~23 | InfoPage.jsx 267→60줄 4분할 (sections/info/ 서브폴더 신설, ScoringEngine·FAQSection·GuideSections) | `54ecea1`·`5408446` |
 | 139 | 04-22 | building-hub HpPermitService 코드 제거(-61줄) + 정책 박제. 네이버 경로 단일화 + 미구독 확정 | `1434c2f`·`00280a9` |
 | 132 | 04-20 | schools-neis neisCode/officeCode 저장 3줄 추가 (재조회 멱등성 보장). CI 반영은 5/3 이후 | `8b16d62` |

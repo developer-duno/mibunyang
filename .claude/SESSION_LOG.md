@@ -1,3 +1,76 @@
+# 세션 144 — 2026-04-28 (primitives.jsx 154→91줄 LineChart 단독 분리 — 시계열 차트 엔진 격리)
+
+**거시 목적**: 세션140~143 흐름 계속. detail/ 외 마지막 150줄+ 컴포넌트 primitives.jsx 처리. 7 memo 컴포넌트(Bar/ScoreBadge/LineChart/Radar/Skeleton 3종) 한 파일에서 LineChart 60줄 hook 3개만 단독 분리.
+
+**결론**: 단일 커밋(`79bdb1c`) 2파일 +72/-66, 회귀 0 (150 files / 2434 tests PASS 베이스라인 유지). primitives.jsx 154→91줄(-63, -41%). LineChart.jsx 69줄 신규. 둘 다 150 미만 달성.
+
+## 작업
+
+### 1-1. 후보 평가 + 결정
+
+8개 150줄+ 컴포넌트 실측 (`wc -l`):
+- WeightEditor 233 🔴 / MapView 216 🟡 / SearchFilterBar 184 🟢(세션141 이월) / GuideSections 175 🟡 / AptCard 168 🔴 / HeaderSection 161 🟡(세션143 거부) / **primitives 154** ⭐ / DetailModal 154 🟡(세션143 거부)
+
+**primitives.jsx 채택 근거** (사용자 위임 "프로젝트 목적에 가장 적합하게"):
+- LineChart는 PriceChart(분양가 추이)·UnsoldChart(미분양 추이) 시계열 차트 공통 엔진 → 데이터 시각화 신뢰성 향상
+- 7 memo 중 LineChart만 hook 3개(useState/useCallback/useEffect) + 60줄로 가장 복잡
+- 자연 경계 명확, 위험 최소(memo만)
+- 1자식 평면 배치 일관 규칙(세션142/143)으로 `src/components/LineChart.jsx`
+
+### 1-2. 9 GATE 검증
+
+- 사용자 요청 9 GATE 하네스 검증 (서브에이전트 없이 grep + Read 직접)
+- GATE 0~8 전수 🟢9/🟡0/🔴0
+- 보안 grep `API_KEY|SECRET|password|token|apikey` 0 결과 (3 파일 실측)
+- 영향 범위 grep: primitives 소비자 11곳, LineChart 직접 사용 3곳(PriceChart/UnsoldChart/primitives.test) 모두 named import → re-export로 0수정 보장
+- 파일명 충돌: `find LineChart*` 0개 → 충돌 0
+- 상수 사용 위치: TOOLTIP_DISMISS_MS L30→L45만, HIT_AREA_RADIUS L31→L72만 (LineChart 전용 → 같이 이동)
+
+### 1-3. 단계별 실행
+
+**단계 1**: [LineChart.jsx](src/components/LineChart.jsx) 신규 69줄
+- import + 상수 2개 + memo 본문 + hook 3개 (useState/useCallback/useEffect)
+- 본문 그대로 이식 (구조 변경 0)
+
+**단계 2**: [primitives.jsx](src/components/primitives.jsx) 154→91줄
+- L1 import에서 `useState, useCallback, useEffect` 제거 (memo만 유지)
+- 파일 상단 `export { LineChart } from "./LineChart";` 1줄 추가 (re-export)
+- L30-31 LineChart 상수 2줄 제거
+- L33-93 LineChart 본문 61줄 제거
+
+### 1-4. 5교차검증
+
+| 축 | 결과 |
+|---|---|
+| 빌드 | 🟢 `vite build` 427ms, 번들 크기 변동 0 |
+| 테스트 | 🟢 primitives.test.jsx + PriceChart.test.jsx + UnsoldChart.test.jsx 33/33 PASS (단계 3+4 통합 실행), 전체 150 files / **2434 tests PASS** |
+| null 안전 | 🟢 `null-safety-checker` High/Med 0, Low 3 정보성 (`data.length<2` early return + `(secondaryData \|\| []).map` 가드 + `(d.y ?? 0).toLocaleString()` 폴백 분리 전 동등 이식) |
+| Hook 규칙 | 🟢 메인 직접 grep — primitives.jsx에 useState/useEffect/useCallback 0건 (LineChart로 완전 이동), 부모 잔존 6컴포넌트 모두 hook 0 |
+| 보안 | 🟢 메인 직접 grep — LineChart.jsx에 innerHTML/dangerouslySetInnerHTML/eval 0 |
+
+### 1-5. Public API 불변
+
+- primitives.jsx의 `export { LineChart } from "./LineChart"` re-export로 named import 시그니처 동일 유지
+- 11곳 소비자 0수정 (PriceChart L3, UnsoldChart L3, primitives.test L3 등)
+- 전부 `import { LineChart } from "@/components/primitives"` 또는 `"./primitives"` 패턴 (실측)
+
+## 사용자 가치
+
+- **시계열 차트 엔진 격리** — 분양가 추이·미분양 추이 차트 로직(터치 dismiss 3초 / hit area 16px / 그리드 4분할 / 보조 라인 / 툴팁) 수정이 다른 6 컴포넌트(Bar/ScoreBadge/Radar/Skeleton 3종) 영향 0
+- **primitives.jsx 단순화** — 154 → 91줄 (-41%). hook 3개 한 컴포넌트가 있어 복잡했는데 분리 후 모든 잔존 컴포넌트 hook 0
+- **터치 UX 격리** — TOOLTIP_DISMISS_MS=3000 / HIT_AREA_RADIUS=16 모바일 터치 차트 UX 상수가 LineChart 전용 명확화
+- **5세션 연속 흐름 완성**: 140(InfoPage 60) → 141(SearchFilterBar 184 미달) → 142(ExpertLoginForm 121) → 143(DataSections 152 미달 2줄) → **144(primitives 91)**. 세션140 이후 5번째 분리
+
+## 교훈 (세션143 + 1건 추가)
+
+7. **신규**: 7 memo 컴포넌트 한 파일은 hook 분포로 분리 가치 측정 — 이번처럼 hook 3개 vs 0 비율이 극단적이면 hook 있는 1개만 분리해도 가독성 ⭐⭐⭐. 모두 hook 0이면 분리 가치 미미
+
+## 커밋
+
+- `79bdb1c` refactor(primitives): extract LineChart to dedicated module — 2파일 +72/-66
+
+---
+
 # 세션 143 — 2026-04-28 (DataSections 183→152줄 2자식 분리 — HighlightField + InfrastructureSection)
 
 **거시 목적**: 세션140 InfoPage 267→60 4분할 → 141 SearchFilterBar 257→184 PresetPanel → 142 ExpertLoginForm 191→121 SignupExtraFields 흐름 계속. detail/ 폴더 최대 컴포넌트 DataSections.jsx 183줄(CLAUDE.md "단일 컴포넌트 150줄 미만" 초과) 처리. 4/30 학교알리미 D-2 / 5/3 neisCode CI D-5 외부 이벤트 대기 윈도우 내부 작업.
