@@ -9,6 +9,25 @@
 
 ### 최근 3세션 (상세)
 
+**세션146 (2026-04-28)** — WeightEditor.test.jsx 신규 14 케이스 (분리 전 테스트 선행 작업) (1커밋 origin/main `ecd00cb`)
+- 실행 플랜 [session146-weighteditor-test-prep.md](C:\Users\user\.claude\plans\session146-weighteditor-test-prep.md). 9 GATE 🟢9/🟡0/🔴0
+- **배경**: 세션145 교훈 8번 직접 적용 — "테스트 부재 컴포넌트는 분리 전 테스트 작성 선행". WeightEditor 233줄은 모든 150줄+ 컴포넌트 중 유일한 테스트 부재로 세션145 분리 후보에서 제외됨. 분리 대신 분리 선행 작업
+- **결정**: 분리 후보 거의 소진 + 사용자 직접 가치(가중치 편집 회귀 위험) + 위험 ⭐(코드 0수정) → AdminDashboard.test.jsx 통합 케이스 4건(L52/58/236/243)이 가중치 영역 일부만 검증, 미리보기/입력검증/초기화 등 0건 → 단위 테스트가 분리 검증에 더 적합
+- **커밋 `ecd00cb`** (1파일 +171/-0): [WeightEditor.test.jsx](src/components/admin/WeightEditor.test.jsx) **153줄 14 케이스 6 도메인**:
+  1. 기본 렌더링 3건 (제목/5 프로필 탭/6 카테고리 헤더)
+  2. 프로필 선택 1건 (setProfile 호출)
+  3. 편집 모드 4건 (input 전환/합계 검증/100 초과 가드/취소 복원)
+  4. 저장·초기화 2건 (saveCustomWeights + showToast 호출, isCustom 초기화)
+  5. 미리보기 카드 3건 (섹션 표시/아파트 탭 전환/scored 빈 배열 숨김)
+  6. 가중치 검산 1건 (PROFILES 5개 모두 합계 100)
+- **실행 중 정정**: 최초 11/14 PASS (3 실패) — `getByText`가 프로필 이름·아파트 이름의 탭 버튼 + 테이블 row 중복 등장으로 multiple matches 에러. `getAllByText` + `length >= 2` 또는 `[0]` 첫 등장 클릭으로 수정 → 14/14 PASS
+- **Public API 불변**: WeightEditor.jsx 0수정, AdminDashboard.test.jsx 기존 통합 케이스 4건 보존
+- **검증**: 151 files / **2448 tests PASS** (세션145 2434 → +14), `vite build` 429ms 번들 영향 0 (테스트 dev-only)
+- **사용자 가치**: 가중치 편집/저장/초기화/미리보기 4 도메인 회귀 검증 수단 확보. 사용자(관리자) 6 카테고리 가중치 직접 조정이 점수 재계산 영향 → 회귀 시 직접 가치 손상이라 안전판 필수
+- **세션147 분리 토대**: 233줄 → WeightTable 84 + ScoreBreakdownPreview 62 자식 분리 시 단위 테스트로 회귀 검증 가능
+- **7세션 연속 품질 향상**: 140~145 분리 6세션 + 146 테스트 작성 = 7세션 품질 작업 연속
+- **교훈 1건 추가 (세션145 8건 + 1)**: 9. `getByText`는 중복 텍스트 즉시 실패하는 strict 매처 — 한 컴포넌트 내 같은 텍스트가 여러 위치 등장 시 `getAllByText` + index 또는 length 검증 필요
+
 **세션145 (2026-04-28)** — MapView.jsx 216→158줄 헬퍼 + SelectedAptCard 분리 (1커밋 origin/main `c1fbdaa`)
 - 실행 플랜 [session145-mapview-helpers-extract.md](C:\Users\user\.claude\plans\session145-mapview-helpers-extract.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증)
 - **배경**: 세션140~144 5세션 연속 분리 흐름 계속. 8개 150줄+ 컴포넌트 실측 후 MapView 채택 (사용자 위임 "이어서 작업해줘"). WeightEditor 233은 **테스트 파일 부재**로 회귀 검증 불가 → 우선 제외. AptCard 168은 AptListSection 결합도 + memo 중심 위험 🔴
@@ -42,27 +61,6 @@
 - **5세션 연속 흐름 완성**: 140(InfoPage 60) → 141(SearchFilterBar 184 미달) → 142(ExpertLoginForm 121) → 143(DataSections 152 미달 2줄) → **144(primitives 91)**
 - **교훈 1건 추가 (세션143 6건 + 1)**:
   - 7. 7 memo 컴포넌트 한 파일은 hook 분포로 분리 가치 측정 — hook 3개 vs 0 비율이 극단적이면 hook 있는 1개만 분리해도 가독성 ⭐⭐⭐. 모두 hook 0이면 분리 가치 미미
-
-**세션143 (2026-04-28)** — DataSections.jsx 183→152줄 2자식 분리 (HighlightField + InfrastructureSection) (1커밋 origin/main `276e15a`)
-- 실행 플랜 [cd-f-mibunyang-pwd-curious-quilt.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-curious-quilt.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증으로 GATE 0~8 전수 실측)
-- **배경**: 세션140 InfoPage 267→60 4분할 → 141 SearchFilterBar 257→184 PresetPanel → 142 ExpertLoginForm 191→121 SignupExtraFields 흐름. detail/ 폴더 최대 컴포넌트 DataSections.jsx 처리. 4/30 학교알리미 D-2 / 5/3 neisCode CI D-5 외부 이벤트 대기 윈도우 내부 작업
-- **사용자 결정 3건**:
-  1. **작업 범위 — DataSections만** (HeaderSection/DetailModal 거부): HeaderSection 데스크톱/모바일 분리는 세션141 SearchFilterBar 1행/2행 거부 패턴 재현 위험, DetailModal 154 경계선 + 자식 6개 이미 외주 + props drilling 증가
-  2. **분리 깊이 — 2자식**: HighlightField + InfrastructureSection. GridFields 거부(1회용 추상화 안티패턴)
-  3. **InfrastructureSection props 단순화** — 실측으로 dataValueColor 의존 0 확인 → `{pairs, apt}` 2개로 축소 (Plan 단계 `{pairs, apt, dataValueColor}` 3개 예상에서 변경)
-- **커밋 `276e15a`** (3파일 +67/-37):
-  - 신규 [HighlightField.jsx](src/components/detail/HighlightField.jsx) **31줄** (예상 ~45, 오차 -14): props 3개 `{field, apt, dataValueColor}` + HIGHLIGHT_DESC 5필드 설명 + closure 색상 함수 1회 호출 (인라인 2회 중복 제거)
-  - 신규 [InfrastructureSection.jsx](src/components/detail/InfrastructureSection.jsx) **30줄** (예상 ~50, 오차 -20): props 2개 + IIFE 제거 → 평탄 함수 본문
-  - 수정 [DataSections.jsx](src/components/detail/DataSections.jsx) **183 → 152줄** (-31, -17%): import 2줄 추가(Bar 제거) + L88-127 인라인 40줄 → 자식 호출 7줄
-- **150줄 미달성(152줄, 2줄 초과) 의식적 수용**: DATA_SECTIONS 상수(38줄)·dataValueColor 헬퍼(13줄) 별도 모듈화는 1회 사용 + 부모 한정 데이터라 1회용 모듈 안티패턴. 본체 JSX 89줄은 적정
-- **Public API 불변**: named export `memo(DataSections)` + props `{ apt }` 0변경 → DetailModal.jsx L126 0수정 / DataSections.test.jsx 12케이스 0수정 12/12 PASS (세션142 14케이스 선례 동일)
-- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 4 정보성 — 분리 전 가드 4종 동등 이식 확인) / 빌드 🟢 541ms 번들 불변(DetailModal 49.56KB) / Hook 메인 직접 (자식 useState/useEffect/useCallback/useMemo/useRef 0, memo만) / 보안 메인 직접 (innerHTML/dangerouslySetInnerHTML/eval 0)
-- **9 GATE 하네스 검증**: 사용자 요청으로 GATE 0~8 전수 실측 (영향범위 grep, 테스트 0수정 본문 직접 분석, 보안 grep, 의존 그래프). DataSections 참조 16곳 전부 무영향 확정
-- **검증**: 150 files / **2434 tests PASS** (세션142 베이스라인 정확히 유지)
-- **사용자 가치**: detail/ 폴더 자식 컴포넌트 **8 → 10개**. pir/psr 도메인 설명·생활인프라 정렬 로직 격리로 향후 수정이 본체 영향 0. inline highlight 박스 18줄 + pairs IIFE 22줄이 자식 호출 7줄로 압축돼 가독성 향상
-- **교훈 2건 (세션142 4건 추가)**:
-  - 자식 props는 실제 의존성 grep으로 결정 — Plan 단계 dataValueColor 전달 가정이 실측 시 의존 0 확인되어 단순화 (`{pairs, apt}` 2개)
-  - 150줄 미달성을 무리한 추가 분리로 강제 달성하지 말 것 — 1회용 모듈 안티패턴 회피가 합리적
 
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
@@ -286,10 +284,11 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~142 색인 (상세는 SESSION_LOG)
+### 세션93~143 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 143 | 04-28 | DataSections 183→152줄 2자식 분리 (HighlightField + InfrastructureSection, detail/ 평면) — 150 미달 2줄 인정 | `276e15a` |
 | 142 | 04-23 | ExpertLoginForm 191→121줄 SignupExtraFields 분리 — 150줄 미만 첫 달성 (sections/ 평면 배치) | `365dda4` |
 | 141 | 04-23 | SearchFilterBar 257→184줄 PresetPanel 분리 (filters/ 폴더 6패널 구조 완성, 150 미달성 용인) | `de250f7` |
 | 140 | 04-22~23 | InfoPage.jsx 267→60줄 4분할 (sections/info/ 서브폴더 신설, ScoringEngine·FAQSection·GuideSections) | `54ecea1`·`5408446` |
