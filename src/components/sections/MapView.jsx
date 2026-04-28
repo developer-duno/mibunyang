@@ -1,54 +1,11 @@
 import { memo, useRef, useEffect, useState, useCallback } from "react";
 import { C, F, gr } from "@/theme";
 import { InfraOverlay } from "./InfraOverlay";
-import { IconClose } from "@/components/icons";
-
-const KAKAO_MAP_KEY = import.meta.env.VITE_KAKAO_JS_KEY || "";
-
-/* ── 상수 ── */
-const MAP_DEFAULTS = { lat: 36.5, lng: 127.5, level: 13 };
-const CLUSTER_OPTS = { minLevel: 5, gridSize: 60 };
-const MARKER_WITH_PRICE = { w: 52, h: 44 };
-const MARKER_NO_PRICE = { w: 28, h: 36 };
-const MY_LOC_LEVEL = 6;
-const GEO_TIMEOUT = 5000;
-
-/** 만원 → 짧은 가격 문자열 (마커용) */
-function shortPrice(v) {
-  if (v == null || v <= 0) return "";
-  const eok = v / 10000;
-  return eok >= 1 ? `${eok % 1 === 0 ? eok : eok.toFixed(1)}억` : `${v.toLocaleString()}만`;
-}
-
-/** 마커 SVG 빌더 — 가격 있으면 배지형, 없으면 핀형 */
-function buildMarkerSvg(total, gradeColor, priceLabel) {
-  if (priceLabel) {
-    const { w, h } = MARKER_WITH_PRICE;
-    return { w, h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect x="0" y="0" width="${w}" height="34" rx="6" fill="${gradeColor}"/><polygon points="${w / 2 - 5},34 ${w / 2},${h} ${w / 2 + 5},34" fill="${gradeColor}"/><text x="${w / 2}" y="14" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" dy="0.35em">${total}점</text><text x="${w / 2}" y="27" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(255,255,255,0.85)" dy="0.35em">${priceLabel}</text></svg>` };
-  }
-  const { w, h } = MARKER_NO_PRICE;
-  return { w, h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="${gradeColor}"/><circle cx="14" cy="13" r="9" fill="#fff"/><text x="14" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="${gradeColor}">${total}</text></svg>` };
-}
-
-/** Kakao Maps SDK를 동적 로드 (환경변수 기반, index.html 하드코딩 제거) */
-function loadKakaoMapSdk() {
-  return new Promise((resolve, reject) => {
-    if (window.kakao?.maps) { resolve(); return; }
-    if (!KAKAO_MAP_KEY) { reject(new Error("VITE_KAKAO_JS_KEY 미설정")); return; }
-    const existing = document.querySelector("script[src*='dapi.kakao.com/v2/maps']");
-    if (existing) {
-      if (window.kakao?.maps?.load) { resolve(); return; }
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () => reject(new Error("Kakao Maps SDK 로드 실패")));
-      return;
-    }
-    const s = document.createElement("script");
-    s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(KAKAO_MAP_KEY)}&libraries=clusterer,services&autoload=false`;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("Kakao Maps SDK 로드 실패"));
-    document.head.appendChild(s);
-  });
-}
+import { SelectedAptCard } from "./SelectedAptCard";
+import {
+  MAP_DEFAULTS, CLUSTER_OPTS, MY_LOC_LEVEL, GEO_TIMEOUT,
+  shortPrice, buildMarkerSvg, loadKakaoMapSdk,
+} from "./kakaoMapHelpers";
 
 /**
  * MapView — Kakao Map 기반 아파트 지도 뷰
@@ -195,22 +152,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
         {markerCount == null ? `${filtered.length}개 단지` : markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
       </div>
       {/* 선택된 아파트 정보 카드 */}
-      {selected && (
-        <div style={{ position: "absolute", bottom: 12, left: 12, right: 12, background: C.white, borderRadius: 10, padding: "10px 12px", boxShadow: "0 2px 12px rgba(0,0,0,0.15)", zIndex: 10, display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selected.apt.name}</div>
-            <div style={{ fontSize: F.xs, color: C.sub, marginTop: 2 }}>
-              {[selected.apt.region, selected.apt.gu].filter(Boolean).join(" ")} · {selected.apt.price ? `${(selected.apt.price / 10000).toFixed(1)}억` : "가격 미정"}
-            </div>
-          </div>
-          <div style={{ textAlign: "center", flexShrink: 0 }}>
-            <div style={{ fontSize: F.xl, fontWeight: 800, color: gr(selected.res.total).c }}>{selected.res.total}</div>
-            <div style={{ fontSize: 9, color: C.muted }}>종합점수</div>
-          </div>
-          <button onClick={handleInfoClick} style={{ flexShrink: 0, padding: "8px 12px", fontSize: F.xs, fontWeight: 700, background: C.indigo, color: C.white, border: "none", borderRadius: 6, cursor: "pointer" }}>상세</button>
-          <button onClick={() => setSelected(null)} aria-label="닫기" style={{ position: "absolute", top: 6, right: 8, background: "none", border: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center" }}><IconClose size={14} /></button>
-        </div>
-      )}
+      <SelectedAptCard selected={selected} onInfoClick={handleInfoClick} onClose={() => setSelected(null)} />
     </div>
   );
 });
