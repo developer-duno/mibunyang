@@ -1,3 +1,97 @@
+# 세션 147 — 2026-04-28 (WeightEditor.jsx 233→100줄 2자식 분리 — WeightTable + ScoreBreakdownPreview)
+
+**거시 목적**: 세션146에서 토대 마련한 WeightEditor 분리 진행. 233줄은 모든 150줄+ 컴포넌트 중 가장 큰 단일 파일이었으나 14 케이스 단위 테스트로 회귀 검증 수단 사전 확보 → 무사고 분리. **8세션 연속 품질 작업 완성** (140~145 분리 6 + 146 테스트 + 147 분리).
+
+**결론**: 단일 커밋(`359fec3`) 3파일 +184/-149, 회귀 0 (151 files / 2448 tests PASS 베이스라인 정확히 유지). WeightEditor 233→100줄 (-133, -57%). **150 미만 확실 달성** (세션143 DataSections 152·세션145 MapView 158 미달성과 달리 명확히 미만).
+
+## 작업
+
+### 1-1. 후보 평가 + 결정
+
+세션146 교훈 8번 직접 활용 — WeightEditor.test.jsx 14 케이스 작성 완료 후 회귀 검증 수단 확보된 상태에서 분리 안전 진행. 다른 분리 후보(SearchFilterBar/GuideSections/AptCard/HeaderSection/MapView/DetailModal/DataSections)는 세션141/143/145에서 비-작업 명시 또는 결과물.
+
+**자연 경계 재확인**:
+- WeightTable: 5 프로필 × 6 카테고리 input/span + 편집/저장/취소/초기화 (84줄)
+- ScoreBreakdownPreview: 상위 5 아파트 탭 + breakdown bar + sub-scores (62줄)
+
+### 1-2. 9 GATE 검증 (사용자 요청 하네스 박제)
+
+GATE 0~8 전수 🟢9/🟡0/🔴0:
+- 보안 grep `API_KEY|SECRET|password|token|apikey` WeightEditor 0 결과
+- 영향 범위: AdminDashboard.jsx L4·L45 1곳 + WeightEditor.test 14 케이스 + AdminDashboard.test 가중치 4 케이스. 모두 통합 렌더링이라 자식 분리 무관
+- 신규 파일명 충돌 0
+
+### 1-3. 단계별 실행
+
+**단계 1**: [WeightTable.jsx](src/components/admin/WeightTable.jsx) 신규 **97줄** (예상 ~85, 오차 +12)
+- props 10개: profile/customWeights/editingProfile/draft/sum + onChange/onStartEdit/onCancelEdit/onSave/onReset
+- CAT_LABELS/CAT_KEYS 자식 직접 import (전역 상수 패턴)
+- catCol/catBg `@/theme` 직접 import
+- PROFILES 직접 import → Object.entries 5 row 렌더
+- isEditing/isCustom/isActive 분기 본문 그대로 이식
+
+**단계 2**: [ScoreBreakdownPreview.jsx](src/components/admin/ScoreBreakdownPreview.jsx) 신규 **71줄** (예상 ~65, 오차 +6)
+- props 3개: topApts/previewAptIdx/setPreviewAptIdx
+- previewItem 계산 자식 내부로 이동 (`topApts[previewAptIdx] || topApts[0]`)
+- `if (!previewItem) return null` early return
+- CAT_LABELS / catCol / catBg 자식 직접 import
+
+**단계 3**: [WeightEditor.jsx](src/components/admin/WeightEditor.jsx) 수정 **233 → 100줄** (-133, -57%)
+- import 2줄 추가 (자식)
+- catCol/catBg/CAT_LABELS 제거 (자식 이동)
+- L74-156 Weight table 인라인 83줄 → `<WeightTable {...10 props} />` 12줄
+- L170-230 Preview 인라인 61줄 → `<ScoreBreakdownPreview {...3 props} />` 1줄
+- L49 `previewItem` 변수 제거 (자식 내부 계산)
+
+### 1-4. 5교차검증
+
+| 축 | 결과 |
+|---|---|
+| 빌드 | 🟢 `vite build` 438ms 번들 변동 0 |
+| 테스트 | 🟢 WeightEditor 14 + AdminDashboard 25 = **39/39 PASS** (단계 4·5 통합), 전체 **151 files / 2448 tests PASS** (세션146 베이스라인 정확히 유지) |
+| null 안전 | 🟢 `null-safety-checker` High/Med 0, Low 3 정보성 (분리 전 가드 동등 이식 — `customWeights[pKey] ?? p.w`·`draft[k] ?? 0`·`topApts[idx] || topApts[0]`·`!previewItem return null` 4중 가드 유지) |
+| Hook 규칙 | 🟢 메인 직접 grep — 자식 2개 모두 useState/useEffect/useCallback/useMemo/useRef 0건 (memo만), 부모 호출 순서(useState 3 + useCallback 5 + useMemo 1) 동일 |
+| 보안 | 🟢 메인 직접 grep — admin/ 내 innerHTML/dangerouslySetInnerHTML/eval 0 (AdminHelpGuide.test의 read-only innerHTML 무관) |
+
+### 1-5. Public API 불변
+
+- `export default memo(function WeightEditor(...))` 시그니처 0변경
+- props 6개(profile/setProfile/customWeights/saveCustomWeights/scored/showToast) 시그니처 0변경
+- AdminDashboard.jsx L4 `import WeightEditor from "./WeightEditor"` 0수정
+- AdminDashboard.jsx L45 호출 0수정 (props 6개 동일)
+- WeightEditor.test.jsx 14 케이스 0수정 14/14 PASS
+- AdminDashboard.test.jsx 가중치 관련 4 케이스 + 다른 21 케이스 0수정 25/25 PASS
+
+## 사용자 가치
+
+- **150 미만 확실 달성** — 233 → 100줄. 세션143 DataSections 152(2줄 초과)·세션145 MapView 158(8줄 초과) 미달성 패턴과 달리 명확히 150 미만 (편집/미리보기 도메인 자연 경계 명확)
+- **편집 행렬 격리** — WeightTable 분리로 6 카테고리 input/span UI 변경이 미리보기 카드 영향 0
+- **미리보기 격리** — ScoreBreakdownPreview 분리로 점수 분해 차트(breakdown bar + sub-scores) 변경이 가중치 편집 영향 0
+- **세션146 교훈 8번 효과 검증** — 분리 전 테스트 작성 선행 → 14 케이스가 회귀 검증 수단으로 작동 → 무사고 분리 성공. 향후 테스트 부재 컴포넌트 분리 시 동일 패턴 적용
+
+## 8세션 연속 품질 작업 완성
+
+| 세션 | 작업 | 줄 수 변화 |
+|------|------|----------|
+| 140 | InfoPage 4분할 | 267 → 60 |
+| 141 | SearchFilterBar PresetPanel 분리 | 257 → 184 (미달) |
+| 142 | ExpertLoginForm SignupExtraFields | 191 → 121 (첫 달성) |
+| 143 | DataSections 2자식 분리 | 183 → 152 (2줄 초과) |
+| 144 | primitives LineChart 분리 | 154 → 91 |
+| 145 | MapView 헬퍼 + SelectedAptCard | 216 → 158 (8줄 초과) |
+| 146 | WeightEditor 테스트 14 케이스 | 신규 153줄 |
+| **147** | **WeightEditor 2자식 분리** | **233 → 100** |
+
+## 교훈 (세션146 9건 + 1)
+
+10. **신규**: 분리 전 테스트 작성 선행이 가장 효과적인 안전판 — 세션147에서 14 단위 테스트 0수정 PASS로 분리 무결성 즉시 확인. 세션146 교훈 8번이 1세션 만에 효과 검증된 사례
+
+## 커밋
+
+- `359fec3` refactor(admin): extract WeightTable and ScoreBreakdownPreview from WeightEditor — 3파일 +184/-149
+
+---
+
 # 세션 146 — 2026-04-28 (WeightEditor.test.jsx 신규 14 케이스 — 분리 전 테스트 선행)
 
 **거시 목적**: 세션145 교훈 8번 직접 적용 — "테스트 부재 컴포넌트는 분리 전 테스트 작성 선행 필요". WeightEditor 233줄은 모든 150줄+ 컴포넌트 중 유일한 테스트 부재로 세션145 후보 평가에서 제외됨. 분리 대신 분리 선행 작업으로 회귀 검증 수단 확보.

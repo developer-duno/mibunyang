@@ -9,6 +9,24 @@
 
 ### 최근 3세션 (상세)
 
+**세션147 (2026-04-28)** — WeightEditor.jsx 233→100줄 2자식 분리 (WeightTable + ScoreBreakdownPreview) (1커밋 origin/main `359fec3`)
+- 실행 플랜 [session147-weighteditor-split.md](C:\Users\user\.claude\plans\session147-weighteditor-split.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스)
+- **배경**: 세션146 교훈 8번 직접 활용 — WeightEditor.test.jsx 14 케이스 작성 완료 후 회귀 검증 수단 확보된 상태에서 분리 안전 진행. 233줄은 모든 150줄+ 컴포넌트 중 가장 큰 단일 파일이었음
+- **분리 결정**: 2자식 (WeightTable + ScoreBreakdownPreview) — 가중치 편집 행렬(83줄) + 점수 분해 미리보기(61줄) 자연 경계 명확. handler 5개·state 3개·topApts useMemo 부모 유지 (1회용 훅 안티패턴 회피)
+- **9 GATE 검증**: 보안 grep 0 결과, 영향 범위 — AdminDashboard L4·L45 1곳 + WeightEditor.test 14 + AdminDashboard.test 4 가중치 케이스 모두 통합 렌더링이라 자식 분리 무관, 신규 파일명 충돌 0
+- **커밋 `359fec3`** (3파일 +184/-149):
+  - 신규 [WeightTable.jsx](src/components/admin/WeightTable.jsx) **97줄** (예상 ~85, 오차 +12): props 10개 (profile/customWeights/editingProfile/draft/sum + onChange/onStartEdit/onCancelEdit/onSave/onReset). CAT_LABELS/CAT_KEYS + catCol/catBg + PROFILES 자식 직접 import. isEditing/isCustom/isActive 분기 본문 그대로 이식
+  - 신규 [ScoreBreakdownPreview.jsx](src/components/admin/ScoreBreakdownPreview.jsx) **71줄** (예상 ~65, 오차 +6): props 3개. previewItem 계산 자식 내부로 이동 (`topApts[previewAptIdx] || topApts[0]`) + `if (!previewItem) return null` early return
+  - 수정 [WeightEditor.jsx](src/components/admin/WeightEditor.jsx) **233 → 100줄** (-133, -57%): import 2줄 추가, catCol/catBg/CAT_LABELS 제거(자식 이동), Weight table 인라인 83줄 → 자식 호출 12줄, Preview 인라인 61줄 → 1줄, previewItem 변수 1줄 제거
+- **150 미만 확실 달성 ⭐** — 세션143 DataSections 152(2줄 초과)·세션145 MapView 158(8줄 초과) 미달성 패턴과 달리 명확히 미만. 편집/미리보기 도메인 자연 경계 명확
+- **Public API 불변**: `export default memo(WeightEditor)` + props 6개 시그니처 0변경 → AdminDashboard.jsx L4·L45 0수정 / WeightEditor.test.jsx 14 케이스 0수정 14/14 PASS / AdminDashboard.test.jsx 25 케이스 0수정 25/25 PASS
+- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 3 정보성 — 분리 전 4중 가드 동등 이식 `customWeights[pKey] ?? p.w` / `draft[k] ?? 0` / `topApts[idx] || topApts[0]` / `!previewItem return null`) / 빌드 🟢 438ms 번들 변동 0 / Hook 메인 직접 (자식 2개 모두 useState/useEffect/useCallback/useMemo/useRef 0건, memo만) / 보안 메인 직접 (admin/ innerHTML/dangerouslySetInnerHTML/eval 0)
+- **검증**: 151 files / **2448 tests PASS** (세션146 베이스라인 정확히 유지)
+- **사용자 가치**: 가중치 편집 행렬·미리보기 차트 격리 → 향후 슬라이더 UI 변경/breakdown bar 차트 변경이 본체 영향 0. 사용자(관리자) 6 카테고리 가중치 직접 조정이 점수 재계산 핵심 기능
+- **8세션 연속 품질 작업 완성**: 140(InfoPage 60) → 141(SearchFilterBar 184) → 142(ExpertLoginForm 121) → 143(DataSections 152) → 144(primitives 91) → 145(MapView 158) → 146(WeightEditor 테스트 14건) → **147(WeightEditor 100)**
+- **교훈 1건 추가 (세션146 9건 + 1)**:
+  - 10. 분리 전 테스트 작성 선행이 가장 효과적인 안전판 — 14 단위 테스트 0수정 PASS로 분리 무결성 즉시 확인. 세션146 교훈 8번이 1세션 만에 효과 검증된 사례
+
 **세션146 (2026-04-28)** — WeightEditor.test.jsx 신규 14 케이스 (분리 전 테스트 선행 작업) (1커밋 origin/main `ecd00cb`)
 - 실행 플랜 [session146-weighteditor-test-prep.md](C:\Users\user\.claude\plans\session146-weighteditor-test-prep.md). 9 GATE 🟢9/🟡0/🔴0
 - **배경**: 세션145 교훈 8번 직접 적용 — "테스트 부재 컴포넌트는 분리 전 테스트 작성 선행". WeightEditor 233줄은 모든 150줄+ 컴포넌트 중 유일한 테스트 부재로 세션145 분리 후보에서 제외됨. 분리 대신 분리 선행 작업
@@ -45,22 +63,6 @@
 - **6세션 연속 흐름**: 140(InfoPage 60) → 141(SearchFilterBar 184) → 142(ExpertLoginForm 121) → 143(DataSections 152) → 144(primitives 91) → **145(MapView 158)**
 - **교훈 1건 추가 (세션144 7건 + 1)**:
   - 8. 테스트 부재 컴포넌트는 분리 후보에서 우선 제외 — WeightEditor 233줄은 자연 경계 명확하나 회귀 검증 수단 0으로 위험. 테스트 작성 선행 필요. 세션143 "150 미달성 무리한 강제 회피" 교훈과 보완 관계
-
-**세션144 (2026-04-28)** — primitives.jsx 154→91줄 LineChart 단독 분리 (1커밋 origin/main `79bdb1c`)
-- 실행 플랜 [session144-primitives-linechart-extract.md](C:\Users\user\.claude\plans\session144-primitives-linechart-extract.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증)
-- **배경**: 세션140~143 흐름 계속. 8개 150줄+ 컴포넌트 실측 후보 평가 → primitives.jsx 채택 (사용자 위임 "프로젝트 목적에 가장 적합하게"). LineChart는 PriceChart(분양가 추이)·UnsoldChart(미분양 추이) 시계열 차트 공통 엔진 → 데이터 시각화 신뢰성 향상이 사용자 가치
-- **단독 분리 결정**: 7 memo 컴포넌트 중 LineChart만 hook 3개(useState/useCallback/useEffect) + 60줄로 가장 복잡. 나머지 6개(Bar/ScoreBadge/Radar/Skeleton 3종) 모두 hook 0 + 평균 13줄 → 분리 가치 미미. 1자식 평면 배치 일관 규칙(세션142/143)으로 `src/components/LineChart.jsx`
-- **9 GATE 검증**: 보안 grep `API_KEY|SECRET|password|token|apikey` 3파일 0 결과. 영향 범위 grep — primitives 소비자 11곳 전부 named import → re-export로 0수정 보장. `find LineChart*` 0개 충돌 0. 상수 사용 위치 실측 — TOOLTIP_DISMISS_MS/HIT_AREA_RADIUS LineChart 전용 → 같이 이동
-- **커밋 `79bdb1c`** (2파일 +72/-66):
-  - 신규 [LineChart.jsx](src/components/LineChart.jsx) **69줄**: import + 상수 2개 + memo 본문 + hook 3개. 본문 그대로 이식 (구조 변경 0)
-  - 수정 [primitives.jsx](src/components/primitives.jsx) **154 → 91줄** (-63, -41%): L1 import에서 useState/useCallback/useEffect 제거(memo만), `export { LineChart } from "./LineChart"` re-export 1줄 추가, L30-31 상수 2줄 + L33-93 LineChart 본문 61줄 제거
-- **Public API 불변**: re-export 라인으로 `import { LineChart } from "@/components/primitives"` named import 시그니처 동일 → 11곳 소비자 0수정 (PriceChart L3, UnsoldChart L3, primitives.test.jsx L3 등)
-- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 3 정보성 — `data.length<2` early return + `(secondaryData \|\| []).map` 가드 + `(d.y ?? 0).toLocaleString()` 폴백 분리 전 동등 이식) / 빌드 🟢 427ms 번들 변동 0 (DetailModal 49.56KB 유지) / Hook 메인 직접 (primitives 부모 hook 0 확인) / 보안 메인 직접 (LineChart innerHTML/dangerouslySetInnerHTML/eval 0)
-- **검증**: 150 files / **2434 tests PASS** (세션143 베이스라인 정확히 유지), primitives + 소비자 통합 33/33 PASS
-- **사용자 가치**: 시계열 차트 엔진 격리 — 터치 dismiss 3초·hit area 16px·그리드 4분할·보조 라인·툴팁 로직 수정이 다른 6 컴포넌트 영향 0. 모바일 터치 UX 상수(TOOLTIP_DISMISS_MS/HIT_AREA_RADIUS) LineChart 전용 명확화
-- **5세션 연속 흐름 완성**: 140(InfoPage 60) → 141(SearchFilterBar 184 미달) → 142(ExpertLoginForm 121) → 143(DataSections 152 미달 2줄) → **144(primitives 91)**
-- **교훈 1건 추가 (세션143 6건 + 1)**:
-  - 7. 7 memo 컴포넌트 한 파일은 hook 분포로 분리 가치 측정 — hook 3개 vs 0 비율이 극단적이면 hook 있는 1개만 분리해도 가독성 ⭐⭐⭐. 모두 hook 0이면 분리 가치 미미
 
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
@@ -284,10 +286,11 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~143 색인 (상세는 SESSION_LOG)
+### 세션93~144 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 144 | 04-28 | primitives.jsx 154→91줄 LineChart 단독 분리 (시계열 차트 엔진 격리, re-export 11 소비자 0수정) | `79bdb1c` |
 | 143 | 04-28 | DataSections 183→152줄 2자식 분리 (HighlightField + InfrastructureSection, detail/ 평면) — 150 미달 2줄 인정 | `276e15a` |
 | 142 | 04-23 | ExpertLoginForm 191→121줄 SignupExtraFields 분리 — 150줄 미만 첫 달성 (sections/ 평면 배치) | `365dda4` |
 | 141 | 04-23 | SearchFilterBar 257→184줄 PresetPanel 분리 (filters/ 폴더 6패널 구조 완성, 150 미달성 용인) | `de250f7` |

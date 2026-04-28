@@ -11,7 +11,7 @@
 | 상세 | 10 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection |
 | 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
 | 전문가 | 9 | `expert/` | ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide |
-| 관리자 | 3 | `admin/` | AdminDashboard, AdminHelpGuide, WeightEditor (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
+| 관리자 | 5 | `admin/` | AdminDashboard, AdminHelpGuide, WeightEditor, WeightTable, ScoreBreakdownPreview (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
 | 아이콘 | 1 | `icons.jsx` | 내부 공용 memo 1개 (IconClose 등 9개 아이콘은 순수 SVG 함수, memo 래핑 안 함) |
 
 - 반드시 `memo(function Name(...) { ... })` 패턴 유지
