@@ -9,6 +9,17 @@
 
 ### 최근 3세션 (상세)
 
+**세션148 (2026-04-28)** — postcss <8.5.10 XSS 보안 패치 (npm audit fix) (1커밋 origin/main `4f3a1e9`)
+- 실행 플랜 [session148-postcss-audit-fix.md](C:\Users\user\.claude\plans\session148-postcss-audit-fix.md). 9 GATE 🟢9/🟡0/🔴0
+- **배경**: 세션147에서 8세션 연속 컴포넌트 분리 작업(140~147) 자연 종료. 남은 7개 150줄+ 컴포넌트 모두 비-작업 명시 또는 결과물 → 도메인 전환 시점에 `npm audit` 정기 점검
+- **취약점**: postcss <8.5.10 XSS (GHSA-qx2v-qp2m-jg93) — CSS Stringify Output에 unescaped `</style>` 노출. `npm ls postcss` 결과 vite@8.0.5 → postcss@8.5.8 (transitive only, package.json 직접 의존 0)
+- **9 GATE 검증**: GATE 1 영향범위 — postcss는 vite internal, src/ 0 참조 / GATE 5 보안 — 본 작업 자체가 보안 강화 / 세션119 dompurify moderate 1커밋 해소(`be54322`) 선례 동일
+- **커밋 `4f3a1e9`** (1파일 +3/-3): `npm audit fix` 실행 결과 "changed 1 package, found 0 vulnerabilities". package-lock.json 3줄 갱신만 (postcss version + resolved + integrity). 실측 8.5.8 → **8.5.12** (8.5.10+ 요구 충족, 최신)
+- **Public API 불변**: package.json 0수정 (transitive only), 모든 src/ / api/ / scripts/ 파일 0수정, 빌드 산출물 동일 (jspdf 399.63KB 등 불변)
+- **검증**: 151 files / **2448 tests PASS** (세션147 베이스라인 정확히 유지), `vite build` 417ms, `npm audit` **0 vulnerabilities**
+- **사용자 가치**: moderate 보안 취약점 해소. 빌드 도구 의존성이라 직접 노출 낮지만 supply chain 위생 차단
+- **교훈 1건 추가 (세션147 10건 + 1)**: 11. 분리 흐름 자연 종료 후 도메인 전환 시점에 `npm audit` 정기 점검이 효과적 — 8세션 연속 작업하면서 의존성 위생 누락 가능성. 다음 정기 점검 트리거: 매 10세션 또는 분리 흐름 종료 시점
+
 **세션147 (2026-04-28)** — WeightEditor.jsx 233→100줄 2자식 분리 (WeightTable + ScoreBreakdownPreview) (1커밋 origin/main `359fec3`)
 - 실행 플랜 [session147-weighteditor-split.md](C:\Users\user\.claude\plans\session147-weighteditor-split.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스)
 - **배경**: 세션146 교훈 8번 직접 활용 — WeightEditor.test.jsx 14 케이스 작성 완료 후 회귀 검증 수단 확보된 상태에서 분리 안전 진행. 233줄은 모든 150줄+ 컴포넌트 중 가장 큰 단일 파일이었음
@@ -45,24 +56,6 @@
 - **세션147 분리 토대**: 233줄 → WeightTable 84 + ScoreBreakdownPreview 62 자식 분리 시 단위 테스트로 회귀 검증 가능
 - **7세션 연속 품질 향상**: 140~145 분리 6세션 + 146 테스트 작성 = 7세션 품질 작업 연속
 - **교훈 1건 추가 (세션145 8건 + 1)**: 9. `getByText`는 중복 텍스트 즉시 실패하는 strict 매처 — 한 컴포넌트 내 같은 텍스트가 여러 위치 등장 시 `getAllByText` + index 또는 length 검증 필요
-
-**세션145 (2026-04-28)** — MapView.jsx 216→158줄 헬퍼 + SelectedAptCard 분리 (1커밋 origin/main `c1fbdaa`)
-- 실행 플랜 [session145-mapview-helpers-extract.md](C:\Users\user\.claude\plans\session145-mapview-helpers-extract.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스 검증)
-- **배경**: 세션140~144 5세션 연속 분리 흐름 계속. 8개 150줄+ 컴포넌트 실측 후 MapView 채택 (사용자 위임 "이어서 작업해줘"). WeightEditor 233은 **테스트 파일 부재**로 회귀 검증 불가 → 우선 제외. AptCard 168은 AptListSection 결합도 + memo 중심 위험 🔴
-- **MapView 분리 결정**: 헬퍼 함수 3개(shortPrice/buildMarkerSvg/loadKakaoMapSdk) + 상수 6개가 컴포넌트 외부 51줄로 자연 경계 ⭐⭐⭐. SelectedAptCard 17줄 인라인 도메인 분리 ⭐⭐. useMyLocation 훅 추출은 1회용 훅 안티패턴으로 회피
-- **9 GATE 검증**: 보안 grep `API_KEY|SECRET|password|token|apikey` MapView 0 결과 (KAKAO_MAP_KEY는 `import.meta.env.VITE_KAKAO_JS_KEY`). 영향 범위 — App.jsx L11 lazy import named export 1곳, 헬퍼 3함수 사용 위치 모두 MapView 내부(외부 0). 파일명 충돌 0
-- **커밋 `c1fbdaa`** (3파일 +79/-64):
-  - 신규 [kakaoMapHelpers.js](src/components/sections/kakaoMapHelpers.js) **48줄** (확장자 .js — JSX 없음): 상수 7 + 3함수 named export. 본문 그대로 이식
-  - 신규 [SelectedAptCard.jsx](src/components/sections/SelectedAptCard.jsx) **25줄**: props 3개 `{selected, onInfoClick, onClose}` + `if (!selected) return null` early return + memo + gr/IconClose 자식 직접 import
-  - 수정 [MapView.jsx](src/components/sections/MapView.jsx) **216 → 158줄** (-58, -27%): import 교체(IconClose 제거, 헬퍼/SelectedAptCard 추가), 상수 9줄 + 헬퍼 36줄 + SelectedAptCard 인라인 17줄 제거 → 자식 호출 1줄
-- **158줄 미달성(8줄 초과) 의식적 수용**: useMyLocation 훅 추출은 1회용 훅 안티패턴. 세션141 SearchFilterBar 184(34줄 초과)·세션143 DataSections 152(2줄 초과) 선례 일관 적용
-- **Public API 불변**: `export const MapView = memo(...)` named export + props 4개(filtered/onDetail/isPC/isDesktop) 시그니처 0변경 → App.jsx L11 lazy import 0수정 / MapView.test.jsx 4케이스 0수정 4/4 PASS
-- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 3 정보성 — 분리 전 가드 동등 이식 + onClose 인라인 클로저 memo 무효화 가능성은 분리 전후 영향 무관) / 빌드 🟢 412ms / Hook 메인 직접 (SelectedAptCard hook 0, MapView 부모 useEffect/useRef/useState/useCallback 호출 순서 동일) / 보안 메인 직접 (sections/ innerHTML/dangerouslySetInnerHTML/eval 0)
-- **검증**: 150 files / **2434 tests PASS** (세션144 베이스라인 정확히 유지)
-- **사용자 가치**: 마커 SVG 디자인(가격 배지형 52×44 / 핀형 28×36) 변경이 SDK 로더·지도 인스턴스 영향 0. SDK 로더 Promise 기반 동적 로드 + 환경변수 가드 + 중복 script 방지 단독 모듈. 선택 카드 UI 변경이 지도 컨테이너 영향 0
-- **6세션 연속 흐름**: 140(InfoPage 60) → 141(SearchFilterBar 184) → 142(ExpertLoginForm 121) → 143(DataSections 152) → 144(primitives 91) → **145(MapView 158)**
-- **교훈 1건 추가 (세션144 7건 + 1)**:
-  - 8. 테스트 부재 컴포넌트는 분리 후보에서 우선 제외 — WeightEditor 233줄은 자연 경계 명확하나 회귀 검증 수단 0으로 위험. 테스트 작성 선행 필요. 세션143 "150 미달성 무리한 강제 회피" 교훈과 보완 관계
 
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
@@ -286,10 +279,11 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~144 색인 (상세는 SESSION_LOG)
+### 세션93~145 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 145 | 04-28 | MapView 216→158줄 헬퍼 + SelectedAptCard 분리 (시계열 차트 격리) — 150 미달 8줄 인정 | `c1fbdaa` |
 | 144 | 04-28 | primitives.jsx 154→91줄 LineChart 단독 분리 (시계열 차트 엔진 격리, re-export 11 소비자 0수정) | `79bdb1c` |
 | 143 | 04-28 | DataSections 183→152줄 2자식 분리 (HighlightField + InfrastructureSection, detail/ 평면) — 150 미달 2줄 인정 | `276e15a` |
 | 142 | 04-23 | ExpertLoginForm 191→121줄 SignupExtraFields 분리 — 150줄 미만 첫 달성 (sections/ 평면 배치) | `365dda4` |
