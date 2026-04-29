@@ -3,31 +3,48 @@ import { PROFILES } from "@/constants/profiles";
 import { C, F } from "@/theme";
 import { IconHelp } from "@/components/icons";
 
+/* ── HelpModal 정적 스타일 (AptCard L18 패턴) ── */
+const HM_S = {
+  backdrop: { position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.5)", zIndex: 500 },
+  panel: { position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "calc(100% - 32px)", maxWidth: 480, maxHeight: "80dvh", background: C.white, borderRadius: 16, zIndex: 501, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden", display: "flex", flexDirection: "column" },
+  headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 },
+  headerTitle: { fontSize: F.md, fontWeight: 800, color: C.text },
+  closeBtn: { background: C.slate100, border: "none", borderRadius: 6, padding: "6px 12px", fontSize: F.sm, fontWeight: 700, color: C.muted, cursor: "pointer", minHeight: 36 },
+  scrollBody: { overflowY: "auto", padding: "12px 16px 20px" },
+  sectionTitle: { fontSize: F.base, fontWeight: 800, marginBottom: 8, paddingBottom: 4, borderBottom: `1px solid ${C.border}` },
+  itemRow: { marginBottom: 6 },
+  itemLabel: { fontSize: F.sm, fontWeight: 700, color: C.text },
+  itemDesc: { fontSize: F.xs, color: C.sub, marginLeft: 6 },
+  footerWrap: { marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` },
+  footerLine1: { fontSize: F.xs, color: C.muted, lineHeight: 1.6 },
+  footerLine2: { fontSize: F.micro, color: C.muted, marginTop: 4 },
+};
+
 /** 도움말 모달 (데스크톱/모바일 공용) */
 function HelpModal({ onClose }) {
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.5)", zIndex: 500 }} />
-      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "calc(100% - 32px)", maxWidth: 480, maxHeight: "80dvh", background: C.white, borderRadius: 16, zIndex: 501, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-          <span style={{ fontSize: F.md, fontWeight: 800, color: C.text }}>도움말</span>
-          <button onClick={onClose} aria-label="닫기" style={{ background: C.slate100, border: "none", borderRadius: 6, padding: "6px 12px", fontSize: F.sm, fontWeight: 700, color: C.muted, cursor: "pointer", minHeight: 36 }}>닫기</button>
+      <div onClick={onClose} style={HM_S.backdrop} />
+      <div style={HM_S.panel}>
+        <div style={HM_S.headerRow}>
+          <span style={HM_S.headerTitle}>도움말</span>
+          <button onClick={onClose} aria-label="닫기" style={HM_S.closeBtn}>닫기</button>
         </div>
-        <div style={{ overflowY: "auto", padding: "12px 16px 20px" }}>
+        <div style={HM_S.scrollBody}>
           {HELP_SECTIONS.map((sec, si) => (
             <div key={si} style={{ marginBottom: si < HELP_SECTIONS.length - 1 ? 16 : 0 }}>
-              <div style={{ fontSize: F.base, fontWeight: 800, color: si === 0 ? C.blue : si === 1 ? C.green : C.amber, marginBottom: 8, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>{sec.title}</div>
+              <div style={{ ...HM_S.sectionTitle, color: si === 0 ? C.blue : si === 1 ? C.green : C.amber }}>{sec.title}</div>
               {sec.items.map((item, i) => (
-                <div key={i} style={{ marginBottom: 6 }}>
-                  <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>{item.t}</span>
-                  <span style={{ fontSize: F.xs, color: C.sub, marginLeft: 6 }}>{item.d}</span>
+                <div key={i} style={HM_S.itemRow}>
+                  <span style={HM_S.itemLabel}>{item.t}</span>
+                  <span style={HM_S.itemDesc}>{item.d}</span>
                 </div>
               ))}
             </div>
           ))}
-          <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.6 }}>도시등급별 교통 보정: 특별시(S) · 광역시(A) · 특례시(B) · 일반시(C) · 군(D) 등급에 따라 지하철·버스·IC·KTX 가중치가 자동 조정됩니다.</div>
-            <div style={{ fontSize: F.micro, color: C.muted, marginTop: 4 }}>학술 기반: AHP 계층분석법 · 헤도닉 가격모형 · 국토연구원 GTX 분석(2024)</div>
+          <div style={HM_S.footerWrap}>
+            <div style={HM_S.footerLine1}>도시등급별 교통 보정: 특별시(S) · 광역시(A) · 특례시(B) · 일반시(C) · 군(D) 등급에 따라 지하철·버스·IC·KTX 가중치가 자동 조정됩니다.</div>
+            <div style={HM_S.footerLine2}>학술 기반: AHP 계층분석법 · 헤도닉 가격모형 · 국토연구원 GTX 분석(2024)</div>
           </div>
         </div>
       </div>
