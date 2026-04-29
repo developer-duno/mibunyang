@@ -20,6 +20,23 @@ const HM_S = {
   footerLine2: { fontSize: F.micro, color: C.muted, marginTop: 4 },
 };
 
+/* ── HeaderSection 본체 정적 스타일 ── */
+const HS_S = {
+  desktopLeft: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
+  desktopH1: { margin: 0, fontSize: F.xl, fontWeight: 800, color: C.blue, letterSpacing: -0.5, whiteSpace: "nowrap" },
+  desktopCount: { fontSize: F.xs, color: C.muted, whiteSpace: "nowrap" },
+  desktopProfileWrap: { display: "flex", gap: 2, alignItems: "center" },
+  desktopRight: { display: "flex", gap: 4, alignItems: "center", flexShrink: 0 },
+  desktopLogoutBtn: { background: "none", border: "none", color: C.muted, fontSize: F.xs, fontWeight: 500, padding: "6px 8px", cursor: "pointer", minHeight: 36 },
+  mobileHeaderRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  mobileH1: { margin: 0, fontSize: F.xl, fontWeight: 800, color: C.blue, letterSpacing: -.5 },
+  mobileSubtitle: { margin: "2px 0 0", fontSize: F.sm, color: C.sub, fontWeight: 500 },
+  mobileTopRight: { display: "flex", gap: 6, alignItems: "center" },
+  mobileVersion: { background: C.slate100, borderRadius: 8, padding: "6px 10px", fontSize: F.xs, fontWeight: 600, color: C.muted },
+  mobileProfileScroll: { display: "flex", gap: 6, justifyContent: "center", overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" },
+  mobileProfileLabel: { fontSize: F.base, fontWeight: 700, letterSpacing: -0.3 },
+};
+
 /** 도움말 모달 (데스크톱/모바일 공용) */
 function HelpModal({ onClose }) {
   return (
@@ -92,13 +109,13 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
       <>
         <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: containerMaxWidth, background: C.white, borderBottom: `1.5px solid ${C.borderStrong}`, padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 50, boxShadow: C.shadowSm, transition: "max-width .3s" }}>
           {/* 좌측: 로고 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-            <h1 style={{ margin: 0, fontSize: F.xl, fontWeight: 800, color: C.blue, letterSpacing: -0.5, whiteSpace: "nowrap" }}>미분양 비교</h1>
-            <span style={{ fontSize: F.xs, color: C.muted, whiteSpace: "nowrap" }}>{apartmentCount}개 단지</span>
+          <div style={HS_S.desktopLeft}>
+            <h1 style={HS_S.desktopH1}>미분양 비교</h1>
+            <span style={HS_S.desktopCount}>{apartmentCount}개 단지</span>
           </div>
 
           {/* 중앙: 프로필 탭 */}
-          <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+          <div style={HS_S.desktopProfileWrap}>
             {Object.entries(PROFILES).map(([k, p]) => (
               <button key={k} onClick={() => onProfileChange(k)} aria-pressed={profile === k} style={{
                 background: "none", border: "none", borderBottom: profile === k ? `2px solid ${C.blue}` : "2px solid transparent",
@@ -109,7 +126,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
           </div>
 
           {/* 우측: 네비 + 도움말 */}
-          <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+          <div style={HS_S.desktopRight}>
             {navItems.map(n => {
               const isActive = n.k === "compare" ? (showComp && tab === "list") : (tab === n.k && !(n.k === "list" && showComp));
               return (
@@ -121,7 +138,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
               );
             })}
             {expertLoggedIn && (
-              <button onClick={() => onNavClick("logout")} style={{ background: "none", border: "none", color: C.muted, fontSize: F.xs, fontWeight: 500, padding: "6px 8px", cursor: "pointer", minHeight: 36 }}>로그아웃</button>
+              <button onClick={() => onNavClick("logout")} style={HS_S.desktopLogoutBtn}>로그아웃</button>
             )}
             <button onClick={toggleHelp} aria-label="도움말" style={{
               background: helpOpen ? C.blueLight : C.slate100, color: helpOpen ? C.blue : C.muted,
@@ -141,12 +158,12 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
   /* ── 모바일: 화이트 테마 ── */
   return (
     <div style={{ background: C.white, padding: 16, borderBottom: `1.5px solid ${C.borderStrong}`, color: C.text, position: "relative" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div style={HS_S.mobileHeaderRow}>
         <div>
-          <h1 style={{ margin: 0, fontSize: F.xl, fontWeight: 800, color: C.blue, letterSpacing: -.5 }}>전국 미분양 비교 엔진</h1>
-          <p style={{ margin: "2px 0 0", fontSize: F.sm, color: C.sub, fontWeight: 500 }}>전국 {apartmentCount}개 단지 · 6개 항목 · 34+ 지표</p>
+          <h1 style={HS_S.mobileH1}>전국 미분양 비교 엔진</h1>
+          <p style={HS_S.mobileSubtitle}>전국 {apartmentCount}개 단지 · 6개 항목 · 34+ 지표</p>
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={HS_S.mobileTopRight}>
           <button onClick={toggleHelp} aria-label="도움말" style={{
             background: helpOpen ? C.blueLight : C.slate100,
             color: helpOpen ? C.blue : C.muted,
@@ -154,10 +171,10 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
             fontSize: F.md, fontWeight: 800, cursor: "pointer", transition: "all .2s",
             display: "flex", alignItems: "center", justifyContent: "center"
           }}>?</button>
-          <div style={{ background: C.slate100, borderRadius: 8, padding: "6px 10px", fontSize: F.xs, fontWeight: 600, color: C.muted }}>v3.0</div>
+          <div style={HS_S.mobileVersion}>v3.0</div>
         </div>
       </div>
-      <div style={{ display: "flex", gap: 6, justifyContent: "center", overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" }}>
+      <div style={HS_S.mobileProfileScroll}>
         {Object.entries(PROFILES).map(([k, p]) => (
           <button key={k} onClick={() => onProfileChange(k)} aria-pressed={profile === k} style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
@@ -167,7 +184,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
             borderRadius: 8, padding: "8px 0", minHeight: 44, cursor: "pointer", transition: "all .2s",
             boxShadow: profile === k ? "0 2px 8px rgba(37,99,235,0.15)" : "none"
           }}>
-            <span style={{ fontSize: F.base, fontWeight: 700, letterSpacing: -0.3 }}>{p.name}</span>
+            <span style={HS_S.mobileProfileLabel}>{p.name}</span>
           </button>
         ))}
       </div>
