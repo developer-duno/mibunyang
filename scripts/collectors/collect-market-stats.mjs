@@ -106,7 +106,7 @@ export function parseAllPeriodsByRegion(rows, indicator) {
     if (!region) continue;
     const value = indicator.parse(row.DT, 10);
     if (isNaN(value)) continue;
-    out.push({ region, gu: null, base_month: row.PRD_DE, value });
+    out.push({ region, gu: "", base_month: row.PRD_DE, value });
   }
   return out;
 }
@@ -175,7 +175,7 @@ async function main() {
     // ── market_stats_history 시계열 누적 (병존, regions UPDATE 와 동일 응답 재파싱) ──
     for (const row of parseAllPeriodsByRegion(rows, ind)) {
       const key = `${row.region}::${row.base_month}`;
-      if (!historyMap[key]) historyMap[key] = { region: row.region, gu: null, base_month: row.base_month };
+      if (!historyMap[key]) historyMap[key] = { region: row.region, gu: "", base_month: row.base_month };
       historyMap[key][ind.col] = row.value;
     }
 

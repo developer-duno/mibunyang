@@ -110,7 +110,7 @@ describe("parseAllPeriodsByRegion", () => {
     const result = parseAllPeriodsByRegion(rows, makeIndicator());
     expect(result).toHaveLength(3);
     expect(result.map(r => r.base_month)).toEqual(["202601", "202602", "202603"]);
-    expect(result[0]).toEqual({ region: "서울", gu: null, base_month: "202601", value: 100.0 });
+    expect(result[0]).toEqual({ region: "서울", gu: "", base_month: "202601", value: 100.0 });
   });
 
   it("분기 PRD_DE '20261' (5자리) → 허용", () => {
