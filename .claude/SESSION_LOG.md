@@ -5483,3 +5483,71 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 - SearchFilterBar 1행/2행 분리 = 세션141 Plan 에이전트 🔴 거부 (props drilling + memo 함정)
 - ExpertLoginForm AuthStatusBanner/KakaoLoginButton 추가 분리 = 세션142 A안 채택 (작아서 분리 이득 미미)
 - sections/expert-login/ 서브폴더 신설 = 세션142 거부 (1파일은 평면 규칙)
+
+---
+
+## 세션152 (2026-04-30) — WeightEditor inline style 호이스팅 (WE_S 6키)
+
+### 배경
+
+- 4/30 학교알리미 D-Day 당일이지만 사용자 프로브 실행 전 외부 대기 윈도우
+- 세션149~151 누적 inline 호이스팅 패턴 (HS_S/HM_S/DM_S/DS_S) 4파일 79건 정착
+- 박제 메모: "WeightEditor 100줄 정적 4건 (67% 비율, 작지만 깔끔)" — 가성비 67%로 가용 후보 중 최고
+
+### 9 GATE 검증 (🟢9/🟡0/🔴0 전 통과)
+
+서브에이전트 2개 병렬 실측:
+- **GATE 1 영향범위 (Explore)**: WeightEditor 외부 import 2곳(AdminDashboard:4, test:3) / WE_S 명명 충돌 0건 / 테스트 toHaveStyle 0건 → 0수정 / 자식 2개 prop 미수신 / theme 모듈 import 순환 0
+- **GATE 5 보안 (Explore)**: 민감정보 0 / dangerouslySetInnerHTML 0 / DB 변경 0 / 권한 부모 gating / 멱등성 확보
+
+메인 직접 검증: GATE 0/2/3/4/6/7/8 (Sonnet 크기 / 의존순서 / 완전성 / 정확성 재검증 / 연동 / 롤백 / UX)
+
+### 커밋 `3738dfe`
+
+[src/components/admin/WeightEditor.jsx](src/components/admin/WeightEditor.jsx) 1파일 +19/-9 (100→110줄, 순증 +10)
+
+**WE_S 6키** (모듈 스코프, L9):
+- 정적 4: container / title / tabRow / tabBadge
+- 베이스 2: tabButtonBase (active 의존 4동적) / validationBase (sum===100 의존 2동적)
+
+**매핑**:
+- L51 → WE_S.container / L52 → WE_S.title / L55 → WE_S.tabRow / L67 → WE_S.tabBadge (정적 4 단순 치환)
+- L60-65 `{ ...WE_S.tabButtonBase, fontWeight, background, color, border }` (4동적)
+- L88-92 `{ ...WE_S.validationBase, background, color }` (2동적)
+
+### 5교차검증
+
+- **null-safety-checker**: 비해당 (style 객체 호이스팅, null 분기 없음)
+- **빌드** (메인): vite build 423ms / AdminDashboard 청크 27.65KB 불변
+- **회귀** (메인): 151 files / **2453 tests PASS** (세션151 베이스라인 정확히 유지) / WeightEditor 14케이스 0수정
+- **lint** (메인): clean (no-unused-vars 등 0 warning)
+- **보안** (메인 + Explore): 변경 없음
+
+### GATE 4 grep 재검증
+
+- `style={{` 잔존 **2건** (L69 tabButton 스프레드, L98 validationBase 스프레드 — 동적 보존 의도)
+- `WE_S.` 매치 **8건** (4 정적 참조 + 2 스프레드 + 2 다른 위치 = 6키 전부 사용)
+
+### 사용자 가치
+
+- ⚪ 간접 — 정적 호이스팅 미세 성능 개선 (memo 리렌더 시 객체 재생성 회피)
+- 디자인 토큰화 토대 (향후 CSS-in-JS 마이그레이션 유리)
+- **5파일 inline 누적 85→29 (-66%)** — HS_S 13 + HM_S 12 + DM_S 13 + DS_S 14 + WE_S 6 = 58정적 호이스팅
+
+### 교훈
+
+1. **외부 대기 윈도우의 가성비 활용** — 4/30 학교알리미 D-Day 당일이지만 사용자 프로브 실행 전 30분 윈도우에 안전한 소작업 1건 완료. 박제 메모 "정적 4건 67%" 가 가용 후보 중 최고 가성비
+2. **9 GATE 서브에이전트 2병렬의 효율성** — GATE 1 (영향범위) + GATE 5 (보안) Explore 동시 기동, 메인은 GATE 0/2/3/4/6/7/8 직접 검증. 폴링 금지 규칙 준수
+3. **세션 누적 패턴 5번째 반복으로 안정화** — HS_S → HM_S → DM_S → DS_S → WE_S, 4파일 검증된 명명 컨벤션(`*Base` 접미사 + 의미 기반 키) 정착. 새 컴포넌트도 동일 패턴으로 즉시 적용 가능
+
+### 다음 세션 (153+) 우선순위
+
+1. 🥇 **학교알리미 프로브 결과 보고 분기** — 사용자 4/30 실행 후 결과 공유 시 E 해소/C 매칭/B 키만료/A 엔드포인트/부분실패 분기
+2. 🥈 **세션151 migration 사용자 과제** — Supabase Dashboard SQL Editor `20260429000000_create_market_stats_history.sql` 수동 실행 필요. 5/5 cron 전 미실행 시 부분 실패
+3. 🥉 **세션132 커밋 `8b16d62` 사후 확인** — 5/3 KST 07:00 CI 후 schools.nearby_schools[*].neisCode 비율 쿼리 (현재 0%)
+4. 🟢 **세션151 후속 — market_stats_history reader** — 5/5 CI 후 134건 누적 시작 후 reader endpoint + DetailModal LineChart
+5. 🟢 **inline style 호이스팅 후속** — 잔여 SearchFilterBar 38% / AptCard 35% 는 가성비 낮아 보류 권장
+
+### 비-작업 (누적, 세션152 신규 0)
+
+(세션142 동일 + 세션149~151 누적 동일 — 변동 없음)

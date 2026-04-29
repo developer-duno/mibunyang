@@ -9,6 +9,24 @@
 
 ### 최근 3세션 (상세)
 
+**세션152 (2026-04-30)** — WeightEditor inline style → WE_S 6키 호이스팅 (1커밋 origin/main `3738dfe`)
+- 실행 플랜 [cd-f-mibunyang-pwd-clever-cherny.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-clever-cherny.md). 9 GATE 🟢9/🟡0/🔴0 (서브에이전트 2개 병렬: GATE 1 영향범위 + GATE 5 보안 grep 실측, 메인 GATE 0/2/3/4/6/7/8 직접)
+- **배경**: 4/30 학교알리미 D-Day 당일이지만 사용자 프로브 실행 전 외부 대기 윈도우. 박제 "WeightEditor 100줄 정적 4건 67%" 가용 후보 중 최고 가성비. 세션149~151 패턴 5번째 적용
+- **GATE 1 실측 4확인**: WeightEditor 외부 import 2곳(AdminDashboard:4, test:3) / WE_S 명명 충돌 0 / 테스트 toHaveStyle 0건 → 0수정 / 자식 prop 미수신 / theme import 순환 0
+- **커밋 `3738dfe` (1파일 +19/-9, 100→110줄)**: [WeightEditor.jsx](src/components/admin/WeightEditor.jsx) — `const WE_S = {...}` 6키 모듈 스코프 정의 + 6건 inline → 객체 참조 치환
+  - **WE_S 6키**: container/title/tabRow/tabBadge (정적 4) + tabButtonBase/validationBase (스프레드 베이스 2)
+  - **정적 4건 단순 치환**: L51→container / L52→title / L55→tabRow / L67→tabBadge
+  - **동적 2건 부분 호이스트**: L60-65 `{ ...WE_S.tabButtonBase, fontWeight, background, color, border }` (active 의존 4동적) + L88-92 `{ ...WE_S.validationBase, background, color }` (sum===100 의존 2동적)
+- **inline 누적 5 컴포넌트 85→29 (-66%)** ⭐ — 세션149 HS_S 13키 + HM_S 12키 + 세션150 DM_S 13키 + 세션151 DS_S 14키 + 세션152 WE_S 6키 = 58정적 호이스팅 + 잔여 27 동적 보존
+- **5교차검증**: null-safety-checker 비해당 / 빌드 🟢 423ms (AdminDashboard 27.65KB 불변) / 회귀 🟢 (151 files / 2453 tests PASS, WeightEditor 14케이스 0수정) / lint 🟢 clean / 보안 🟢 (DB 변경 0, 권한 부모 gating)
+- **GATE 4 grep 재검증**: `style={{` 잔존 2건 (스프레드 동적 2건만) + `WE_S.` 매치 8건 (6키 전부 사용)
+- **검증**: 151 files / **2453 tests PASS** (세션151 베이스라인 정확히 유지)
+- **사용자 가치**: ⚪ 간접 — 정적 호이스팅 미세 성능 개선 + 디자인 토큰화 토대
+- **교훈 3건 추가 (세션151 23건 + 3 = 26건)**:
+  24. **외부 대기 윈도우의 가성비 활용** — 4/30 D-Day 당일 프로브 실행 전 30분 윈도우에 안전한 소작업 1건 완료. 박제 메모 가성비 67% 가용 후보 중 최고
+  25. **9 GATE 서브에이전트 2병렬 효율성** — GATE 1 + 5 Explore 동시, 메인 7게이트 직접. 폴링 금지 규칙 준수
+  26. **세션 누적 패턴 5번째 반복 안정화** — HS_S → HM_S → DM_S → DS_S → WE_S 4파일 검증된 컨벤션(`*Base` 접미사 + 의미 기반 키) 정착. 신규 컴포넌트 즉시 적용 가능
+
 **세션151 (2026-04-29)** — DataSections inline → DS_S 14건 호이스팅 + collect-market-stats 시계열 복구 (2커밋 origin/main `2f32aaf..f448edb`)
 - 실행 플랜 [cd-f-mibunyang-pwd-harmonic-rossum.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-harmonic-rossum.md). 9 GATE 🟢18/⚪2/🔴0 (서브에이전트 2개 병렬: GATE 1/5/6 grep 실측 + GATE 2/3/4/7/8 정합성, 🟡 1건 ROLLBACK 주석 보강 후 전통과)
 - **배경**: 세션149~150 inline 호이스팅 패턴 (HS_S/HM_S/DM_S) 1세션 더 확장 + 박제 메모 vs 실측 차이 2건 발견 후 수정
@@ -338,9 +356,9 @@ _(세션148/147/146 상세는 SESSION_LOG 또는 아래 색인 표 참조)_
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션152+, 세션151 후속)
+### 다음 세션 우선순위 (세션153+, 세션152 후속)
 
-> 4/29 기준 4/30 학교알리미 D-Day / 5/3 neisCode CI D-4 / 5/5 market-stats CI 첫 실행. 세션149~151 에서 inline 호이스팅 (HS_S → HM_S → DM_S → DS_S) 4파일 79건 정착 + 세션151에서 market_stats_history 시계열 복구 시작. 다음 세션 진입 시점: **4/30 사용자 프로브 실행 결과 보고 우선**.
+> 4/30 기준 학교알리미 D-Day 당일 / 5/3 neisCode CI D-3 / 5/5 market-stats CI D-5. 세션149~152 에서 inline 호이스팅 (HS_S → HM_S → DM_S → DS_S → WE_S) 5파일 85건 정착. 다음 세션 진입 시점: **사용자 학교알리미 프로브 실행 결과 보고 우선**.
 
 1. 🥇 **4/30 학교알리미 프로브 결과 분기** — 세션149 작성 `scripts/_tmp_schoolinfo_probe.mjs` (gitignored, 50줄) 사용자 실행 결과 공유 후 분기:
    - E 해소 ✅ (success + hasStudents=true): 5/3 CI 정기 실행 대기 + 사후 schools 테이블 검증
