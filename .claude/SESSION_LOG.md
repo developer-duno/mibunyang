@@ -1,3 +1,70 @@
+# 세션 149 — 2026-04-29 (학교알리미 재프로브 사전 준비 + HeaderSection inline style 상수화 시작점 박제)
+
+**거시 목적**: 세션148 npm audit 종료 후 외부 이벤트 D-1/D-4 윈도우 (4/30 학교알리미 재개, 5/3 neisCode CI). 외부 대기 작업 1건(프로브 사전 준비) + 백로그 🟢 1번 "inline style 787건 점진 상수화" 시작점 박제 2커밋.
+
+**결론**: 1 gitignored 파일 + 2 커밋(`f62f2c5`, `b46a415`) origin/main push. HeaderSection.jsx inline 34건 → 9건 (-74%), 회귀 0 (151 files / 2448 tests PASS 정확히 유지).
+
+## 작업
+
+### 1. 학교알리미 재프로브 사전 준비 (gitignored)
+
+세션136 가설 E (서비스 점검) 확정 + 4/30 재게시 공지에 따라 즉시 실행 가능한 프로브 작성.
+
+- **신규** `scripts/_tmp_schoolinfo_probe.mjs` (50줄) — 강남/서초/송파 × 초/중/고 = 9회 호출. resultCode/list/COL_S_SUM 출력 + 자동 판정(E 해소/C 매칭/B 키만료/A 엔드포인트/부분실패)
+- gitignored (`_tmp_*` 패턴, `git status` clean 확인)
+- SCHOOLINFO_KEY .env.local 동기화 사용자 확인 완료
+- 사용자 트리거 4/30 실행 → 결과 보고 후 세션150 분기
+
+### 2. HelpModal 정적 스타일 추출 (커밋 `f62f2c5`)
+
+AptCard L18 `const S = {...}` 패턴 복제 시작점.
+
+- 9 GATE 사전 검증 🟢9/🟡0/🔴0 (병렬: 백그라운드 Explore 에이전트 + 메인 직접)
+- HM_S 객체 12키 추가 (HelpModal 직전)
+- HelpModal JSX 14 inline → 12 객체 참조 + 1 스프레드(섹션 색상) + 1 인라인(loop index marginBottom)
+- 1파일 +30/-13, 외부 동작·DOM·번들 0변경
+- HeaderSection 8/8 PASS, 전체 2448 PASS, vite build 387ms
+
+### 3. HeaderSection 본체 정적 스타일 추출 (커밋 `b46a415`)
+
+HM_S 직속 후속, 같은 모듈에 HS_S 추가.
+
+- 9 GATE 🟢9/🟡0/🔴0 (직전과 동일 패턴)
+- HS_S 객체 13키 추가 (HM_S 직후): 데스크톱 6 + 모바일 7
+- 본체 22 inline 중 정적 13 추출, 동적 9건 (profile/isActive/helpOpen/containerMaxWidth) 인라인 보존
+- 1파일 +30/-13
+- HeaderSection 8/8 PASS, 전체 2448 PASS, vite build 457ms
+
+## 5교차검증
+
+전용 에이전트 호출 조건 미해당 (스코어링/null/수집기 변경 0) → 메인 agent 5축 직접:
+- 빌드 🟢, null 안전성 🟢, Hook 규칙 🟢, 보안 🟢, 회귀 🟢
+
+## 사용자 가치
+
+- **간접 가치**: HeaderSection inline 34→9 (-74%) — 정적 호이스팅으로 미세 성능 개선, 향후 디자인 토큰화·CSS-in-JS 마이그레이션 토대
+- **시작점 박제**: AptCard 패턴 → HM_S → HS_S 명명 컨벤션 확립. 다른 컴포넌트(DetailModal 29건, SearchFilterBar 12건, AptCard 잔여 17건) 동일 방식 적용 가능
+- **외부 이벤트 대비**: 4/30 학교알리미 재개 시 30~60분 지연 없이 1분 내 진단 가능
+
+## 다음 세션 (150) 우선순위
+
+1. 🥇 **4/30 프로브 결과 분기** — 사용자 실행 결과 공유 후 응답 패턴별 분기
+   - E 해소 ✅: 5/3 CI 정기 실행 대기 + 사후 schools 테이블 검증
+   - C/A/B/D: 각 가설별 진단 스크립트 작성
+   - 실행 후 `rm scripts/_tmp_schoolinfo_probe.mjs`
+2. 🟢 **DetailModal 29건 inline 상수화** — 가장 큰 잔여 후보, props 동적 분석 후 정적 ~12건 추출 추정
+3. 🟢 **SearchFilterBar 12건** / AptCard 잔여 17건 — 작아서 마지막
+
+## 교훈
+
+1. **분리 흐름 종료 후 inline 상수화 자연스러운 후속** — 분리 가능 후보 소진된 상황에서 같은 파일 내부 정적 객체 추출은 위험 ⭐ 대비 효과 큼. AptCard L18 모범 패턴이 이미 있어 명명·구조 합의 비용 0
+2. **백그라운드 Explore + 메인 직접 grep 병렬이 9 GATE 가속** — GATE 1 영향범위를 백그라운드 에이전트에 위임하면서 메인은 GATE 5/6 직접 처리. 동일 결론 도출하지만 폴링 금지(자동 알림) 규칙 준수
+3. **외부 이벤트 D-1 사전 준비의 가치** — 4/30 당일 즉시 코드 작성하면 30~60분 지연. 50줄 미리 두면 1분 내 실행 + 결과 보고 가능
+4. **HelpModal vs 본체 분리 커밋의 가치** — 24건을 한 커밋에 묶으면 80줄 예산 초과 + 단일 책임 혼합. 분리하면 1커밋 = 1관심사 = `git revert` 단위
+5. **가용 백로그 기준 우선순위 재평가** — "분리 후보 비-작업 명시"라는 사실이 백로그 🟢 1번 (inline style)을 자연스럽게 부상시킴. 백로그 우선순위 정적이 아니라 가용 작업 컨텍스트 따라 변동
+
+---
+
 # 세션 148 — 2026-04-28 (postcss <8.5.10 XSS 보안 패치 — npm audit fix)
 
 **거시 목적**: 세션147에서 8세션 연속 컴포넌트 분리·테스트 작업(140~147) 자연 종료. 남은 7개 150줄+ 컴포넌트 모두 세션141/143/145에서 비-작업 명시 또는 결과물. 도메인 전환 시점에서 npm audit 점검 결과 moderate 취약점 발견 → 즉시 해소.

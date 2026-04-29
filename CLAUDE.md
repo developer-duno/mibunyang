@@ -9,6 +9,24 @@
 
 ### 최근 3세션 (상세)
 
+**세션149 (2026-04-29)** — 학교알리미 재프로브 사전 준비 + HeaderSection inline style 상수화 시작점 박제 (2커밋 origin/main `f62f2c5..b46a415` + 1 gitignored)
+- 실행 플랜 [cd-f-mibunyang-pwd-fuzzy-axolotl.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-fuzzy-axolotl.md) (학교알리미) + [session149-headersection-helpmodal-styles.md](C:\Users\user\.claude\plans\session149-headersection-helpmodal-styles.md) (HM_S) + [session149-headersection-body-styles.md](C:\Users\user\.claude\plans\session149-headersection-body-styles.md) (HS_S). 9 GATE 🟢9/🟡0/🔴0 (전 작업 동일 패턴)
+- **배경**: 세션148 npm audit 종료 + 외부 이벤트 D-1/D-4 윈도우 (4/30 학교알리미 재개, 5/3 neisCode CI). 외부 대기 작업 1건 + 백로그 🟢 1번 "inline style 787건 점진 상수화" 시작점 박제
+- **작업 1 학교알리미 프로브 (gitignored)**: `scripts/_tmp_schoolinfo_probe.mjs` 50줄 — 강남(11680)/서초(11650)/송파(11710) × 초(02)/중(03)/고(04) = 9회 호출. resultCode/list/COL_S_SUM 출력 + 자동 판정(E 해소/C 매칭/B 키만료/A 엔드포인트/부분실패). 사용자 SCHOOLINFO_KEY .env.local 동기화 확인 완료. `_tmp_*` 패턴 보호 (`git status` clean). 4/30 사용자 트리거 1분 내 실행 가능
+- **작업 2 HelpModal 정적 추출 커밋 `f62f2c5`** (1파일 +30/-13): AptCard L18 `const S = {...}` 패턴 복제 시작점. HM_S 12키 추가 (HelpModal 직전) → HelpModal 14 inline → 12 객체 참조 + 1 스프레드(섹션 색상) + 1 인라인(loop index marginBottom)
+- **작업 3 HeaderSection 본체 정적 추출 커밋 `b46a415`** (1파일 +30/-13): HM_S 직속 후속. HS_S 13키 추가 (HM_S 직후) — 데스크톱 6 (desktopLeft/desktopH1/desktopCount/desktopProfileWrap/desktopRight/desktopLogoutBtn) + 모바일 7 (mobileHeaderRow/mobileH1/mobileSubtitle/mobileTopRight/mobileVersion/mobileProfileScroll/mobileProfileLabel) → 본체 22 inline 중 정적 13 추출. 동적 9건(profile/isActive/helpOpen/containerMaxWidth) 인라인 보존
+- **HeaderSection.jsx 전체 inline 34건 → 9건 (-74%)** ⭐ — 잔여 9건 모두 props/state 동적 의존
+- **9 GATE 검증**: 백그라운드 Explore 에이전트 + 메인 직접 grep 병렬 — 동일 결론 도출. 폴링 금지 규칙 준수 (백그라운드 자동 알림)
+- **5교차검증**: 전용 에이전트 호출 조건 미해당 (스코어링/null/수집기 변경 0) → 메인 agent 5축 직접. 빌드 🟢 387ms/457ms / null 🟢 / Hook 🟢 / 보안 🟢 / 회귀 🟢
+- **검증**: 151 files / **2448 tests PASS** (세션148 베이스라인 정확히 유지), HeaderSection 8/8 PASS 2회
+- **사용자 가치**: 간접 — 정적 호이스팅 미세 성능 개선, 향후 디자인 토큰화·CSS-in-JS 마이그레이션 토대. 외부 대비 — 4/30 즉시 진단 가능
+- **교훈 5건 추가 (세션148 11건 + 5 = 16건)**:
+  12. 분리 흐름 종료 후 inline 상수화가 자연스러운 후속 — 같은 파일 내부 정적 객체 추출은 위험 ⭐ 대비 효과 큼
+  13. 백그라운드 Explore + 메인 직접 grep 병렬이 9 GATE 가속 — GATE 1을 백그라운드 위임하면서 메인은 GATE 5/6 직접 처리. 폴링 금지(자동 알림) 규칙 준수
+  14. 외부 이벤트 D-1 사전 준비의 가치 — 4/30 당일 즉시 작성하면 30~60분 지연. 50줄 미리 두면 1분 내 실행
+  15. HelpModal vs 본체 분리 커밋의 가치 — 24건을 한 커밋에 묶으면 80줄 예산 초과 + 단일 책임 혼합. 분리하면 1커밋 = 1관심사 = `git revert` 단위
+  16. 가용 백로그 기준 우선순위 재평가 — "분리 후보 비-작업 명시"가 백로그 🟢 1번을 자연스럽게 부상. 우선순위 정적 아니라 가용 컨텍스트 따라 변동
+
 **세션148 (2026-04-28)** — postcss <8.5.10 XSS 보안 패치 (npm audit fix) (1커밋 origin/main `4f3a1e9`)
 - 실행 플랜 [session148-postcss-audit-fix.md](C:\Users\user\.claude\plans\session148-postcss-audit-fix.md). 9 GATE 🟢9/🟡0/🔴0
 - **배경**: 세션147에서 8세션 연속 컴포넌트 분리 작업(140~147) 자연 종료. 남은 7개 150줄+ 컴포넌트 모두 비-작업 명시 또는 결과물 → 도메인 전환 시점에 `npm audit` 정기 점검
@@ -318,20 +336,29 @@
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션143+, 세션142 후속)
+### 다음 세션 우선순위 (세션150+, 세션149 후속)
 
-> 4/30 학교알리미 + 5/3 neisCode CI 외부 이벤트 대기 윈도우 (오늘 4/23 기준 일주일 남음). 내부 작업: 컴포넌트 150줄 미만 리팩토링 흐름 (세션140 InfoPage → 141 SearchFilterBar → 142 ExpertLoginForm) 이어가기.
+> 4/29 기준 4/30 학교알리미 D-1 / 5/3 neisCode CI D-4. 세션149 에서 inline style 점진 상수화 흐름 (HM_S → HS_S) 시작점 박제 완료. 다음 세션 진입 시점: **4/30 사용자 프로브 실행 결과 보고 우선**.
 
-1. 🟢 **남은 150줄+ 컴포넌트 분리 후보 7개** — 세션142 ExpertLoginForm 191→121 (150줄 미만 첫 달성) 흐름 계속:
-   - SearchFilterBar 184 (세션141 이월, inline style 상수화 또는 추가 도메인 분리)
+1. 🥇 **4/30 학교알리미 프로브 결과 분기** — 세션149 작성 `scripts/_tmp_schoolinfo_probe.mjs` (gitignored, 50줄) 사용자 실행 결과 공유 후 분기:
+   - E 해소 ✅ (success + hasStudents=true): 5/3 CI 정기 실행 대기 + 사후 schools 테이블 검증
+   - C 매칭/구조 변경 (success + hasStudents=false): 응답 raw 덤프 분석, COL_S_SUM 필드명 변경 가능성
+   - A/B/D 분기 (resultCode≠success 또는 ERROR): 가설별 진단 스크립트
+   - 실행 후 `rm scripts/_tmp_schoolinfo_probe.mjs`
+2. 🟢 **inline style 점진 상수화 후속 (백로그 🟢 1번)** — 세션149 HeaderSection 34→9 (-74%) 박제 후 다음 단계:
+   - DetailModal 29건 (props 동적 분석 후 정적 ~12건 추정 — 세션149 Plan 에이전트 권고)
+   - SearchFilterBar 12건 (가장 작아서 마지막)
+   - AptCard 잔여 17건 (이미 S 객체 있음, 동적 props 다층 — 분석 더 필요)
+3. 🥈 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
+4. 🟢 **남은 150줄+ 컴포넌트 분리 후보 7개** — 분리 가능 후보 모두 비-작업 명시 또는 결과물 (긴급도 낮음):
+   - SearchFilterBar 184 (세션141 이월, 도메인 분리 한계)
    - WeightEditor 233 (🔴 스코어링 상수 밀집)
    - MapView 216 (🟡 Kakao API)
    - DataSections 183 (🟢 detail/ 안전)
-   - GuideSections 175 (분리 이득 미미, props 0)
+   - GuideSections 175 (분리 이득 미미)
    - AptCard 168 (🔴 memo 중심)
-   - HeaderSection 161 (🟡)
+   - HeaderSection 161 (🟡, 세션149 inline 상수화로 가독성 개선)
    - DetailModal 154 (🟡)
-2. 🥇 **2026-04-30 이후 학교알리미 재프로브** — `scripts/_tmp_schoolinfo_probe.mjs` 40줄 레시피 재작성(세션136 플랜 Phase 0 참조). 응답 정상이면 `collect-schools.yml` 5/3 정기 실행 대기, 응답 이상이면 Phase 1-A/B/C/D 분기. 사용자에게 SCHOOLINFO_KEY 로컬 `.env.local` 동기화 요청 선행 필요(`gh secret` write-only)
 3. 🥈 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
 4. 🟡 **unsold_history 시계열 축적 모니터링** — 매월 1일 KOSIS 수집 후 행수 증가 확인. 2~3개월 후 결측 패턴 분석 (현재 508×2개월, 향후 이상적으로 1,300×3개월 = 3,900행)
 5. 🟡 **방향 B 검토** — 청약홈 API 가 단지별 월별 미분양 이력 제공하는지 조사. KOSIS 비례배분(세션134) 대비 정확도 개선 여지
@@ -344,6 +371,7 @@
 - **시군구 소득** — 세션117 C 공식 확정, 재오픈 트리거 4개 발동 전 유지
 - **ExpertLoginForm AuthStatusBanner/KakaoLoginButton 추가 분리** — 세션142 A안 채택 (작아서 분리 이득 미미)
 - **sections/expert-login/ 서브폴더 신설** — 세션142 거부 (1파일은 평면 규칙)
+- **HeaderSection 동적 inline 9건 추가 추출** — 세션149 명시 (props/state 의존, useMemo·스프레드 분리는 별도 후속 시 검토)
 
 ### DB 품질 (세션133 전수 재측정 · 2026-04-20)
 
