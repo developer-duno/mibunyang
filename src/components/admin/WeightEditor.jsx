@@ -6,6 +6,15 @@ import { ScoreBreakdownPreview } from "./ScoreBreakdownPreview";
 
 const CAT_KEYS = ["location", "product", "price", "risk", "benefit", "future"];
 
+const WE_S = {
+  container: { marginBottom: 24 },
+  title: { fontSize: F.lg, fontWeight: 800, color: C.text, marginBottom: 12 },
+  tabRow: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" },
+  tabBadge: { position: "absolute", top: -3, right: -3, width: 7, height: 7, borderRadius: "50%", background: C.amber },
+  tabButtonBase: { padding: "6px 14px", fontSize: F.sm, borderRadius: 6, cursor: "pointer", transition: "all .15s", position: "relative" },
+  validationBase: { marginTop: 8, fontSize: F.xs, fontWeight: 600, padding: "6px 12px", borderRadius: 6 },
+};
+
 export default memo(function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }) {
   const [editingProfile, setEditingProfile] = useState(null);
   const [draft, setDraft] = useState({});
@@ -48,23 +57,24 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
   const topApts = useMemo(() => (scored || []).slice(0, 5), [scored]);
 
   return (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text, marginBottom: 12 }}>가중치 관리</div>
+    <div style={WE_S.container}>
+      <div style={WE_S.title}>가중치 관리</div>
 
       {/* Profile tabs */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+      <div style={WE_S.tabRow}>
         {Object.entries(PROFILES).map(([pKey, p]) => {
           const active = profile === pKey;
           const isCustom = !!customWeights[pKey];
           return (
             <button key={pKey} onClick={() => setProfile(pKey)} style={{
-              padding: "6px 14px", fontSize: F.sm, fontWeight: active ? 700 : 500,
-              background: active ? C.indigoLight : C.white, color: active ? C.indigo : C.muted,
+              ...WE_S.tabButtonBase,
+              fontWeight: active ? 700 : 500,
+              background: active ? C.indigoLight : C.white,
+              color: active ? C.indigo : C.muted,
               border: active ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-              borderRadius: 6, cursor: "pointer", transition: "all .15s", position: "relative"
             }}>
               {p.name}
-              {isCustom && <span style={{ position: "absolute", top: -3, right: -3, width: 7, height: 7, borderRadius: "50%", background: C.amber }} />}
+              {isCustom && <span style={WE_S.tabBadge} />}
             </button>
           );
         })}
@@ -86,9 +96,9 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
       {/* Sum validation message */}
       {editingProfile && (
         <div style={{
-          marginTop: 8, fontSize: F.xs, fontWeight: 600, padding: "6px 12px", borderRadius: 6,
+          ...WE_S.validationBase,
           background: sum === 100 ? C.greenLight : C.redLight,
-          color: sum === 100 ? C.green : C.red
+          color: sum === 100 ? C.green : C.red,
         }}>
           합계: {sum}% {sum === 100 ? "— 저장 가능" : `— 100%가 되어야 합니다 (${sum > 100 ? `${sum - 100}% 초과` : `${100 - sum}% 부족`})`}
         </div>
