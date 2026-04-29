@@ -1,3 +1,29 @@
+# 세션 151 — 2026-04-29 (DataSections inline → DS_S 14건 호이스팅 + collect-market-stats 시계열 복구)
+
+**거시 목적**: 세션149~150 inline 호이스팅 패턴 1세션 더 확장 + 박제 메모 vs 실측 차이 2건(DataSections 가성비/market-stats reader 5건) 발견 후 수정. 2도메인 동시 진행 (커밋·머지 분리).
+
+**결론**: 2커밋 origin/main push (`1c6959d..f448edb`).
+- 커밋 1 `2f32aaf`: DataSections.jsx 14건 inline 호이스팅 (DS_S 14키, 동적 4건 보존, 부분 호이스트 4건). 1파일 +44/-24 순증 +20.
+- 커밋 2 `f448edb`: market_stats_history 시계열 테이블 신규 + parseAllPeriodsByRegion + historyMap merge + recordApiQuota(KOSIS_KEY, 5). 3파일 +128/-3.
+
+**검증**: 151 files / **2453 tests PASS** (세션150 2448 → +5). vite build 433ms. dry-run 134건 예상 출력 확인. 5교차검증 (null-safety-checker × 2회 + collector-contract × 1회) 전부 🟢 PASS.
+
+**inline 누적 4파일 79→23 (-71%)** ⭐ — 세션149 HeaderSection 34→9 + HelpModal 14→2 / 세션150 DetailModal 29→15 / 세션151 DataSections 18→4
+
+**9수집기 쿼터 로깅 누락 1건 해소** — 세션137 schools-neis와 동일 패턴 (collect-market-stats recordApiQuota 0건 → 5건/회).
+
+**migration 사용자 과제**: Supabase Dashboard SQL Editor에서 `20260429000000_create_market_stats_history.sql` 수동 실행 필요. 5/5 cron 첫 실행 전까지.
+
+**교훈 6건 추가 (세션150 17건 + 6 = 23건)**:
+18. 박제 메모 vs 실측 차이 발견 가치 — 우선순위 박제 그대로 따랐으면 가성비 38%로 시간 낭비. 실측 grep + 라인 매핑으로 DataSections 83% 발굴
+19. 세션 사이 사실 검증 가치 — 세션135 박제 "reader 부재"가 실측 5건. 박제는 시점 정보, 실행 전 재검증 필수
+20. 2도메인 동시 진행 시 커밋 분리 원칙 — 도메인 독립이라 한 세션 내 가능, 단 커밋·머지 분리로 revert 단위 명확
+21. 9 GATE 서브에이전트 병렬 검증 — GATE 1/5/6 + GATE 2/3/4/7/8 두 에이전트 동시, 메인은 GATE 0 자체 검증
+22. 분기 API 응답 포맷 추정 vs 실측 차이 — KOSIS prdSe=Q 요청은 5자리(20262)지만 응답은 6자리(202504). dry-run 1회 inspect로 즉시 확인
+23. API 호출 0증가 시계열 복구 — 동일 rows를 두 함수가 재파싱(extractLatestByRegion + parseAllPeriodsByRegion)으로 KOSIS 쿼터 0증가
+
+---
+
 # 세션 150 — 2026-04-29 (DetailModal inline style → DM_S 14건 호이스팅, 세션149 HS_S/HM_S 패턴 직속 후속)
 
 **거시 목적**: 세션149에서 박제한 "inline style 점진 상수화" 백로그 🟢 1번 세 번째 단계. 4/30 학교알리미 D-1 시점에 80줄 이내 안전 작업으로 적합. DetailModal.jsx 29 inline 중 정적 14건을 DM_S 객체로 추출.

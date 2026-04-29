@@ -9,6 +9,37 @@
 
 ### 최근 3세션 (상세)
 
+**세션151 (2026-04-29)** — DataSections inline → DS_S 14건 호이스팅 + collect-market-stats 시계열 복구 (2커밋 origin/main `2f32aaf..f448edb`)
+- 실행 플랜 [cd-f-mibunyang-pwd-harmonic-rossum.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-harmonic-rossum.md). 9 GATE 🟢18/⚪2/🔴0 (서브에이전트 2개 병렬: GATE 1/5/6 grep 실측 + GATE 2/3/4/7/8 정합성, 🟡 1건 ROLLBACK 주석 보강 후 전통과)
+- **배경**: 세션149~150 inline 호이스팅 패턴 (HS_S/HM_S/DM_S) 1세션 더 확장 + 박제 메모 vs 실측 차이 2건 발견 후 수정
+  - 박제 1순위 SearchFilterBar(38%)/AptCard(35%) 모두 가성비 낮음 → 실측 가성비 최고 **DataSections 83% (15정/3동)**
+  - 박제 "collect-market-stats reader 부재" 잘못 → 실측 **5건** (scorePrice avgPriceSqm/priceIndex/landCostRatio + scoreRisk newSupply/initialSaleRate, latest_regions CTE 통해 노출). 시계열 복구 가치 🟢 상승
+- **사용자 결정 (AskUserQuestion 2건)**: 진행 방향 = "DataSections + market-stats" / Reader 범위 = "B안: 수집기+테이블만, reader 다음 세션"
+- **커밋 1 `2f32aaf` (1파일 +44/-24, 순증 +20)**: [DataSections.jsx](src/components/detail/DataSections.jsx) — `const DS_S = {...}` 14키 모듈 스코프 정의 + 14건 inline → 객체 참조 치환
+  - **DS_S 14키**: container/toggleHead/toggleTitle/body/subBlock/sectionTitle/subSectionTitle/highlightRowBase/grid/gridCell/gridLabel/gridValueBase/emptyText/link/footer
+  - **동적 4건 보존**: L78 rotate(showData) / L86 marginTop(si>0) / L90 marginBottom(section.grid) / L106·L124·L135 color 부분 호이스트
+  - **부분 호이스트 4건**: `{ ...DS_S.gridValueBase, color: <expr> }` + `{ ...DS_S.highlightRowBase, marginBottom: <expr> }` 패턴
+- **커밋 2 `f448edb` (3파일 +128/-3)**: collect-market-stats 시계열 복구
+  - [supabase/migrations/20260429000000_create_market_stats_history.sql](supabase/migrations/20260429000000_create_market_stats_history.sql) **신규** (region/gu/base_month + 5지표 wide format, UNIQUE COALESCE(gu,'') + RLS Public read+Service write + ROLLBACK 주석 5줄)
+  - [collect-market-stats.mjs](scripts/collectors/collect-market-stats.mjs) parseAllPeriodsByRegion 신규 export + historyMap merge (지표 루프 안) + main() 말미 upsertBatch + recordApiQuota(KOSIS_KEY, 5)
+  - [collect-market-stats.test.mjs](scripts/collectors/collect-market-stats.test.mjs) parseAllPeriodsByRegion 5케이스 추가 (월간 3개월/분기 5자리/포맷 위반/REGION_MAP 매핑 실패/DT NaN)
+- **dry-run 실측**: `market_stats_history: 134건 예상` (5지표 wide merge), recordApiQuota dryRun 가드 작동
+- **분기 PRD_DE 응답 6자리 발견** (예: `202504`) — 요청은 5자리(`20262`) 보내지만 응답은 월간 형식. 정규식 `/^\d{6}$/` + `/^\d{5}$/` 둘 다 두어 회귀 0
+- **병존 정책**: 기존 extractLatestByRegion + regions UPDATE 0수정. apartments_flat VIEW · latest_regions CTE · scorePrice/scoreRisk reader 5건 회귀 0
+- **inline 누적 3 컴포넌트 78→27 (-65%)** ⭐ — HeaderSection 34→9 / DetailModal 29→15 / DataSections 18→4 (= 세션149 HS_S 13키 + HM_S 12키 + 세션150 DM_S 13키 + 세션151 DS_S 14키)
+- **9수집기 쿼터 로깅 누락 1건 해소** — 세션137 schools-neis 와 동일 패턴 (collect-market-stats recordApiQuota 0건 → 5건/회)
+- **5교차검증**: null-safety-checker 🟢 (단계1: High/Med 0, Low 3 false positive / 단계2: High/Med 0, Low 3 변경 무관) / collector-contract 🟢 (C1~C5 + 추가 4항목 PASS, conflictCol UNIQUE 일치) / 빌드 🟢 433ms (DetailModal 49.98KB 불변) / 보안 🟢 (KOSIS_KEY env 이름만 DB 기록)
+- **검증**: 151 files / **2453 tests PASS** (세션150 2448 → +5)
+- **사용자 가치**: ⚪ 간접 — DataSections inline 정적 호이스팅 미세 성능 + market_stats_history 시계열 누적 시작 (134건/회). reader는 다음 세션 차트 컴포넌트로
+- **migration 사용자 과제**: Supabase Dashboard SQL Editor 수동 실행 필요 (CREATE TABLE 성공 후 다음 cron 5/5 부터 데이터 누적 시작)
+- **교훈 6건 추가 (세션150 17건 + 6 = 23건)**:
+  18. **박제 메모 vs 실측 차이 발견 가치** — 우선순위 박제 메모(SearchFilterBar 1순위)를 그대로 따랐으면 가성비 38%로 시간 낭비. 실측 grep + 라인 매핑으로 DataSections 83% 발굴
+  19. **세션 사이 사실 검증 가치** — 세션135 박제 "collect-market-stats reader 부재" 가 실측 5건. 박제는 시점 정보, 실행 전 재검증 필수
+  20. **2도메인 동시 진행 시 커밋 분리 원칙** — inline 호이스팅(렌더링) + 시계열 복구(수집기) 도메인 독립이라 한 세션 내 가능, 단 커밋·머지 분리로 revert 단위 명확
+  21. **9 GATE 서브에이전트 병렬 검증** — GATE 1/5/6 (grep 실측) + GATE 2/3/4/7/8 (정합성) 두 에이전트 동시 기동, 메인은 GATE 0 자체 검증. 폴링 금지 규칙 준수
+  22. **분기 API 응답 포맷 추정 vs 실측 차이** — KOSIS prdSe=Q 요청 PRD_DE 가 5자리(`20262`)로 보내도 응답은 6자리(`202504`). dry-run 1회 inspect 가 정규식 안전성 즉시 확인
+  23. **API 호출 0증가 시계열 복구** — 동일 `rows` 두 함수(extractLatestByRegion + parseAllPeriodsByRegion) 재파싱으로 KOSIS 쿼터 0증가. 세션134 collect-unsold-kosis 동일 패턴
+
 **세션150 (2026-04-29)** — DetailModal inline style → DM_S 14건 호이스팅 (세션149 HS_S/HM_S 패턴 직속 후속) (1커밋 origin/main `dbe0b90`)
 - 실행 플랜 [cd-f-mibunyang-pwd-sparkling-lecun.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-sparkling-lecun.md). 9 GATE 🟢9/🟡0/🔴0 (서브에이전트 2개 병렬: 영향범위 grep + 보안 실측)
 - **배경**: 4/30 학교알리미 D-1 시점에 80줄 이내 안전 작업 적합. 분리 후보 3개(DetailModal 29 / SearchFilterBar 12 / AptCard 17) 중 가성비 최고인 DetailModal 단독 진행. market-stats 시계열 복구는 reader 부재로 우선순위 낮음
@@ -41,53 +72,7 @@
   15. HelpModal vs 본체 분리 커밋의 가치 — 24건을 한 커밋에 묶으면 80줄 예산 초과 + 단일 책임 혼합. 분리하면 1커밋 = 1관심사 = `git revert` 단위
   16. 가용 백로그 기준 우선순위 재평가 — "분리 후보 비-작업 명시"가 백로그 🟢 1번을 자연스럽게 부상. 우선순위 정적 아니라 가용 컨텍스트 따라 변동
 
-**세션148 (2026-04-28)** — postcss <8.5.10 XSS 보안 패치 (npm audit fix) (1커밋 origin/main `4f3a1e9`)
-- 실행 플랜 [session148-postcss-audit-fix.md](C:\Users\user\.claude\plans\session148-postcss-audit-fix.md). 9 GATE 🟢9/🟡0/🔴0
-- **배경**: 세션147에서 8세션 연속 컴포넌트 분리 작업(140~147) 자연 종료. 남은 7개 150줄+ 컴포넌트 모두 비-작업 명시 또는 결과물 → 도메인 전환 시점에 `npm audit` 정기 점검
-- **취약점**: postcss <8.5.10 XSS (GHSA-qx2v-qp2m-jg93) — CSS Stringify Output에 unescaped `</style>` 노출. `npm ls postcss` 결과 vite@8.0.5 → postcss@8.5.8 (transitive only, package.json 직접 의존 0)
-- **9 GATE 검증**: GATE 1 영향범위 — postcss는 vite internal, src/ 0 참조 / GATE 5 보안 — 본 작업 자체가 보안 강화 / 세션119 dompurify moderate 1커밋 해소(`be54322`) 선례 동일
-- **커밋 `4f3a1e9`** (1파일 +3/-3): `npm audit fix` 실행 결과 "changed 1 package, found 0 vulnerabilities". package-lock.json 3줄 갱신만 (postcss version + resolved + integrity). 실측 8.5.8 → **8.5.12** (8.5.10+ 요구 충족, 최신)
-- **Public API 불변**: package.json 0수정 (transitive only), 모든 src/ / api/ / scripts/ 파일 0수정, 빌드 산출물 동일 (jspdf 399.63KB 등 불변)
-- **검증**: 151 files / **2448 tests PASS** (세션147 베이스라인 정확히 유지), `vite build` 417ms, `npm audit` **0 vulnerabilities**
-- **사용자 가치**: moderate 보안 취약점 해소. 빌드 도구 의존성이라 직접 노출 낮지만 supply chain 위생 차단
-- **교훈 1건 추가 (세션147 10건 + 1)**: 11. 분리 흐름 자연 종료 후 도메인 전환 시점에 `npm audit` 정기 점검이 효과적 — 8세션 연속 작업하면서 의존성 위생 누락 가능성. 다음 정기 점검 트리거: 매 10세션 또는 분리 흐름 종료 시점
-
-**세션147 (2026-04-28)** — WeightEditor.jsx 233→100줄 2자식 분리 (WeightTable + ScoreBreakdownPreview) (1커밋 origin/main `359fec3`)
-- 실행 플랜 [session147-weighteditor-split.md](C:\Users\user\.claude\plans\session147-weighteditor-split.md). 9 GATE 🟢9/🟡0/🔴0 (사용자 요청 하네스)
-- **배경**: 세션146 교훈 8번 직접 활용 — WeightEditor.test.jsx 14 케이스 작성 완료 후 회귀 검증 수단 확보된 상태에서 분리 안전 진행. 233줄은 모든 150줄+ 컴포넌트 중 가장 큰 단일 파일이었음
-- **분리 결정**: 2자식 (WeightTable + ScoreBreakdownPreview) — 가중치 편집 행렬(83줄) + 점수 분해 미리보기(61줄) 자연 경계 명확. handler 5개·state 3개·topApts useMemo 부모 유지 (1회용 훅 안티패턴 회피)
-- **9 GATE 검증**: 보안 grep 0 결과, 영향 범위 — AdminDashboard L4·L45 1곳 + WeightEditor.test 14 + AdminDashboard.test 4 가중치 케이스 모두 통합 렌더링이라 자식 분리 무관, 신규 파일명 충돌 0
-- **커밋 `359fec3`** (3파일 +184/-149):
-  - 신규 [WeightTable.jsx](src/components/admin/WeightTable.jsx) **97줄** (예상 ~85, 오차 +12): props 10개 (profile/customWeights/editingProfile/draft/sum + onChange/onStartEdit/onCancelEdit/onSave/onReset). CAT_LABELS/CAT_KEYS + catCol/catBg + PROFILES 자식 직접 import. isEditing/isCustom/isActive 분기 본문 그대로 이식
-  - 신규 [ScoreBreakdownPreview.jsx](src/components/admin/ScoreBreakdownPreview.jsx) **71줄** (예상 ~65, 오차 +6): props 3개. previewItem 계산 자식 내부로 이동 (`topApts[previewAptIdx] || topApts[0]`) + `if (!previewItem) return null` early return
-  - 수정 [WeightEditor.jsx](src/components/admin/WeightEditor.jsx) **233 → 100줄** (-133, -57%): import 2줄 추가, catCol/catBg/CAT_LABELS 제거(자식 이동), Weight table 인라인 83줄 → 자식 호출 12줄, Preview 인라인 61줄 → 1줄, previewItem 변수 1줄 제거
-- **150 미만 확실 달성 ⭐** — 세션143 DataSections 152(2줄 초과)·세션145 MapView 158(8줄 초과) 미달성 패턴과 달리 명확히 미만. 편집/미리보기 도메인 자연 경계 명확
-- **Public API 불변**: `export default memo(WeightEditor)` + props 6개 시그니처 0변경 → AdminDashboard.jsx L4·L45 0수정 / WeightEditor.test.jsx 14 케이스 0수정 14/14 PASS / AdminDashboard.test.jsx 25 케이스 0수정 25/25 PASS
-- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 3 정보성 — 분리 전 4중 가드 동등 이식 `customWeights[pKey] ?? p.w` / `draft[k] ?? 0` / `topApts[idx] || topApts[0]` / `!previewItem return null`) / 빌드 🟢 438ms 번들 변동 0 / Hook 메인 직접 (자식 2개 모두 useState/useEffect/useCallback/useMemo/useRef 0건, memo만) / 보안 메인 직접 (admin/ innerHTML/dangerouslySetInnerHTML/eval 0)
-- **검증**: 151 files / **2448 tests PASS** (세션146 베이스라인 정확히 유지)
-- **사용자 가치**: 가중치 편집 행렬·미리보기 차트 격리 → 향후 슬라이더 UI 변경/breakdown bar 차트 변경이 본체 영향 0. 사용자(관리자) 6 카테고리 가중치 직접 조정이 점수 재계산 핵심 기능
-- **8세션 연속 품질 작업 완성**: 140(InfoPage 60) → 141(SearchFilterBar 184) → 142(ExpertLoginForm 121) → 143(DataSections 152) → 144(primitives 91) → 145(MapView 158) → 146(WeightEditor 테스트 14건) → **147(WeightEditor 100)**
-- **교훈 1건 추가 (세션146 9건 + 1)**:
-  - 10. 분리 전 테스트 작성 선행이 가장 효과적인 안전판 — 14 단위 테스트 0수정 PASS로 분리 무결성 즉시 확인. 세션146 교훈 8번이 1세션 만에 효과 검증된 사례
-
-**세션146 (2026-04-28)** — WeightEditor.test.jsx 신규 14 케이스 (분리 전 테스트 선행 작업) (1커밋 origin/main `ecd00cb`)
-- 실행 플랜 [session146-weighteditor-test-prep.md](C:\Users\user\.claude\plans\session146-weighteditor-test-prep.md). 9 GATE 🟢9/🟡0/🔴0
-- **배경**: 세션145 교훈 8번 직접 적용 — "테스트 부재 컴포넌트는 분리 전 테스트 작성 선행". WeightEditor 233줄은 모든 150줄+ 컴포넌트 중 유일한 테스트 부재로 세션145 분리 후보에서 제외됨. 분리 대신 분리 선행 작업
-- **결정**: 분리 후보 거의 소진 + 사용자 직접 가치(가중치 편집 회귀 위험) + 위험 ⭐(코드 0수정) → AdminDashboard.test.jsx 통합 케이스 4건(L52/58/236/243)이 가중치 영역 일부만 검증, 미리보기/입력검증/초기화 등 0건 → 단위 테스트가 분리 검증에 더 적합
-- **커밋 `ecd00cb`** (1파일 +171/-0): [WeightEditor.test.jsx](src/components/admin/WeightEditor.test.jsx) **153줄 14 케이스 6 도메인**:
-  1. 기본 렌더링 3건 (제목/5 프로필 탭/6 카테고리 헤더)
-  2. 프로필 선택 1건 (setProfile 호출)
-  3. 편집 모드 4건 (input 전환/합계 검증/100 초과 가드/취소 복원)
-  4. 저장·초기화 2건 (saveCustomWeights + showToast 호출, isCustom 초기화)
-  5. 미리보기 카드 3건 (섹션 표시/아파트 탭 전환/scored 빈 배열 숨김)
-  6. 가중치 검산 1건 (PROFILES 5개 모두 합계 100)
-- **실행 중 정정**: 최초 11/14 PASS (3 실패) — `getByText`가 프로필 이름·아파트 이름의 탭 버튼 + 테이블 row 중복 등장으로 multiple matches 에러. `getAllByText` + `length >= 2` 또는 `[0]` 첫 등장 클릭으로 수정 → 14/14 PASS
-- **Public API 불변**: WeightEditor.jsx 0수정, AdminDashboard.test.jsx 기존 통합 케이스 4건 보존
-- **검증**: 151 files / **2448 tests PASS** (세션145 2434 → +14), `vite build` 429ms 번들 영향 0 (테스트 dev-only)
-- **사용자 가치**: 가중치 편집/저장/초기화/미리보기 4 도메인 회귀 검증 수단 확보. 사용자(관리자) 6 카테고리 가중치 직접 조정이 점수 재계산 영향 → 회귀 시 직접 가치 손상이라 안전판 필수
-- **세션147 분리 토대**: 233줄 → WeightTable 84 + ScoreBreakdownPreview 62 자식 분리 시 단위 테스트로 회귀 검증 가능
-- **7세션 연속 품질 향상**: 140~145 분리 6세션 + 146 테스트 작성 = 7세션 품질 작업 연속
-- **교훈 1건 추가 (세션145 8건 + 1)**: 9. `getByText`는 중복 텍스트 즉시 실패하는 strict 매처 — 한 컴포넌트 내 같은 텍스트가 여러 위치 등장 시 `getAllByText` + index 또는 length 검증 필요
+_(세션148/147/146 상세는 SESSION_LOG 또는 아래 색인 표 참조)_
 
 **세션138 (2026-04-22)** — AdminDashboard 417→96줄 3분할 (3커밋 origin/main `9c035f3..cdfe592`) — 상세는 SESSION_LOG 참조
 
@@ -311,10 +296,13 @@
 - CLAUDE.md 행안부 문구 정정 (`migration.mjs` 세션103에서 KOSIS 전환 완료)
 - 시군구 소득 PoC 설계 문서 작성 (A/B/C 비교, 추천안 C)
 
-### 세션93~145 색인 (상세는 SESSION_LOG)
+### 세션93~148 색인 (상세는 SESSION_LOG)
 
 | 세션 | 날짜 | 핵심 변경 | 커밋 |
 |------|------|----------|------|
+| 148 | 04-28 | postcss <8.5.10 XSS moderate 보안 패치 (npm audit fix). transitive only, package.json 0수정. 8.5.8→8.5.12 | `4f3a1e9` |
+| 147 | 04-28 | WeightEditor 233→100줄 2자식 분리 (WeightTable 97 + ScoreBreakdownPreview 71). 150 미만 확실 달성 | `359fec3` |
+| 146 | 04-28 | WeightEditor.test.jsx 신규 14케이스 6도메인 (분리 전 테스트 선행, 코드 0수정). 153줄 추가 | `ecd00cb` |
 | 145 | 04-28 | MapView 216→158줄 헬퍼 + SelectedAptCard 분리 (시계열 차트 격리) — 150 미달 8줄 인정 | `c1fbdaa` |
 | 144 | 04-28 | primitives.jsx 154→91줄 LineChart 단독 분리 (시계열 차트 엔진 격리, re-export 11 소비자 0수정) | `79bdb1c` |
 | 143 | 04-28 | DataSections 183→152줄 2자식 분리 (HighlightField + InfrastructureSection, detail/ 평면) — 150 미달 2줄 인정 | `276e15a` |
@@ -350,35 +338,28 @@
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션151+, 세션150 후속)
+### 다음 세션 우선순위 (세션152+, 세션151 후속)
 
-> 4/29 기준 4/30 학교알리미 D-Day / 5/3 neisCode CI D-4. 세션149~150 에서 inline style 점진 상수화 흐름 (HM_S → HS_S → DM_S) 정착. 다음 세션 진입 시점: **4/30 사용자 프로브 실행 결과 보고 우선**.
+> 4/29 기준 4/30 학교알리미 D-Day / 5/3 neisCode CI D-4 / 5/5 market-stats CI 첫 실행. 세션149~151 에서 inline 호이스팅 (HS_S → HM_S → DM_S → DS_S) 4파일 79건 정착 + 세션151에서 market_stats_history 시계열 복구 시작. 다음 세션 진입 시점: **4/30 사용자 프로브 실행 결과 보고 우선**.
 
 1. 🥇 **4/30 학교알리미 프로브 결과 분기** — 세션149 작성 `scripts/_tmp_schoolinfo_probe.mjs` (gitignored, 50줄) 사용자 실행 결과 공유 후 분기:
    - E 해소 ✅ (success + hasStudents=true): 5/3 CI 정기 실행 대기 + 사후 schools 테이블 검증
    - C 매칭/구조 변경 (success + hasStudents=false): 응답 raw 덤프 분석, COL_S_SUM 필드명 변경 가능성
    - A/B/D 분기 (resultCode≠success 또는 ERROR): 가설별 진단 스크립트
    - 실행 후 `rm scripts/_tmp_schoolinfo_probe.mjs`
-2. 🟢 **inline style 점진 상수화 후속 (백로그 🟢 1번)** — 세션149~150 누적 2 컴포넌트 63→24 (-62%) 박제 후 다음 단계:
-   - SearchFilterBar 12건 (가장 작아서 마지막, 정적 ~3건 효율 25%)
-   - AptCard 잔여 17건 (이미 S 객체 있음, 동적 props 다층 — 분석 더 필요)
-   - 잔여 150줄+ 컴포넌트 분리 후보 (WeightEditor 233 / GuideSections 175 등)
-3. 🥈 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
-4. 🟢 **남은 150줄+ 컴포넌트 분리 후보 7개** — 분리 가능 후보 모두 비-작업 명시 또는 결과물 (긴급도 낮음):
-   - SearchFilterBar 184 (세션141 이월, 도메인 분리 한계)
-   - WeightEditor 233 (🔴 스코어링 상수 밀집)
-   - MapView 216 (🟡 Kakao API)
-   - DataSections 183 (🟢 detail/ 안전)
-   - GuideSections 175 (분리 이득 미미)
-   - AptCard 168 (🔴 memo 중심)
-   - HeaderSection 161 (🟡, 세션149 inline 상수화로 가독성 개선)
-   - DetailModal 154 (🟡)
-3. 🥈 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
-4. 🟡 **unsold_history 시계열 축적 모니터링** — 매월 1일 KOSIS 수집 후 행수 증가 확인. 2~3개월 후 결측 패턴 분석 (현재 508×2개월, 향후 이상적으로 1,300×3개월 = 3,900행)
-5. 🟡 **방향 B 검토** — 청약홈 API 가 단지별 월별 미분양 이력 제공하는지 조사. KOSIS 비례배분(세션134) 대비 정확도 개선 여지
-6. 🟡 **collect-market-stats.mjs 시계열 복구 (세션135 신규 발견)** — 5지표 × (6개월+8분기) API 응답에서 최신값만 저장, 시계열 버림. 세션134 unsold_history 와 동일 패턴. 새 테이블 `market_stats_history` 신설 필요. **reader 부재라 긴급도 낮음**
-7. 🟡 `population.mjs` MOIS 인구 API 안정성 모니터링 — 장애 시에만
-8. 🟢 **이월 에픽 후보** (reader 부재라 낮은 우선순위): (a) `households` regions 수집기, (b) `trade-stats.mjs` 에 regions.jeonse_rate 파생 저장
+2. 🥈 **세션151 migration 사용자 과제** — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 필요. CREATE TABLE 성공 후 다음 cron 5/5 (매월 5일 KOSIS 수집) 부터 자연 누적 시작. 미실행 시 5/5 cron 의 upsert 단계가 "table not found" 로 실패 (regions UPDATE 부분은 정상 작동, 부분 실패만)
+3. 🟢 **inline style 점진 상수화 후속** — 세션149~151 누적 4파일 79→23 (-71%) 정착 후 남은 후보:
+   - WeightEditor 100줄 정적 4건 (67% 비율, 작지만 깔끔)
+   - 잔여 후보 SearchFilterBar 38% / AptCard 35% (🟡 가성비 낮음, 보류 권장)
+4. 🥉 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
+5. 🟢 **세션151 후속 — market_stats_history reader** (시계열 차트) — 5/5 CI 후 134건 누적 시작 후 다음 단계:
+   - `api/supabase/market-stats-history.js` 신규 (createTimeseriesHandler 팩토리 재사용 — 세션121 패턴, 5지표 모두 옵션 필터)
+   - `useMarketStatsHistory` hook (정적 fetch + 5분 캐시)
+   - DetailModal 안 5지표 LineChart (시계열 차트, primitives.LineChart 재사용)
+6. 🟡 **unsold_history 시계열 축적 모니터링** — 매월 1일 KOSIS 수집 후 행수 증가 확인. 2~3개월 후 결측 패턴 분석 (현재 508×2개월, 향후 이상적으로 1,300×3개월 = 3,900행)
+7. 🟡 **방향 B 검토** — 청약홈 API 가 단지별 월별 미분양 이력 제공하는지 조사. KOSIS 비례배분(세션134) 대비 정확도 개선 여지
+8. 🟡 `population.mjs` MOIS 인구 API 안정성 모니터링 — 장애 시에만
+9. 🟢 **이월 에픽 후보** (reader 부재라 낮은 우선순위): (a) `households` regions 수집기, (b) `trade-stats.mjs` 에 regions.jeonse_rate 파생 저장
 
 **명시적 비-작업** (의도적 설계, 건드리지 말 것):
 - **혜택 10컬럼 100% NULL** — 시행사 제공 자료 기반 운영자 수기 입력 (자동 수집 대상 아님)
@@ -387,6 +368,9 @@
 - **sections/expert-login/ 서브폴더 신설** — 세션142 거부 (1파일은 평면 규칙)
 - **HeaderSection 동적 inline 9건 추가 추출** — 세션149 명시 (props/state 의존, useMemo·스프레드 분리는 별도 후속 시 검토)
 - **DetailModal 동적 inline 15건 추가 추출** — 세션150 명시 (isPC/isDesktop/isFav/isComp/r.c 의존, 별도 후속 시 useMemo dynStyles 패턴 검토)
+- **DataSections 동적 inline 4건 추가 추출** — 세션151 명시 (showData/loop index/section.grid/dataValueColor·f.dist 의존, 부분 호이스트 4건은 이미 적용)
+- **market-stats reader endpoint·차트 컴포넌트** — 세션151 사용자 결정 B안 채택 (수집기+테이블만, reader는 별도 세션). 5/5 CI 데이터 누적 후 가치 재평가
+- **collect-market-stats long format 재논의** — 세션151 wide 확정 (scorePrice/scoreRisk reader 5건 모두 wide 사용). long 마이그레이션은 향후 reader 요구사항 변화시
 
 ### DB 품질 (세션133 전수 재측정 · 2026-04-20)
 

@@ -177,7 +177,7 @@
 | regulation-seed.test.mjs | 9 |
 | collect-applyhome.test.mjs | 8 |
 | naver-units.test.mjs | 8 |
-| collect-market-stats.test.mjs | 7 |
+| collect-market-stats.test.mjs | 14 |
 | housing-permits.test.mjs | 6 |
 | infra-kakao.test.mjs | 5 |
 | transit-match.test.mjs | 4 |
