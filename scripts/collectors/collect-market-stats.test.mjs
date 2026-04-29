@@ -1,7 +1,7 @@
 /**
  * collect-market-stats.mjs 테스트 — KOSIS 시장통계 순수 함수 검증
  *
- * 대상: extractLatestByRegion
+ * 대상: extractLatestByRegion, parseAllPeriodsByRegion
  */
 import { describe, it, expect, vi } from "vitest";
 
@@ -22,7 +22,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { extractLatestByRegion } = await import("./collect-market-stats.mjs");
+const { extractLatestByRegion, parseAllPeriodsByRegion } = await import("./collect-market-stats.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 function makeRow(c1, c2, period, value) {
@@ -96,5 +96,53 @@ describe("extractLatestByRegion", () => {
     const result = extractLatestByRegion(rows, makeIndicator());
     expect(result["서울"].value).toBe(100.0);
     expect(result["서울"].value).not.toBe(150.0);
+  });
+});
+
+// ── parseAllPeriodsByRegion (시계열 보존) ──────────────────────
+describe("parseAllPeriodsByRegion", () => {
+  it("월간 3개월치 → 3행 반환 (모든 PRD_DE 보존)", () => {
+    const rows = [
+      makeRow("서울", null, "202601", "100.0"),
+      makeRow("서울", null, "202602", "101.0"),
+      makeRow("서울", null, "202603", "102.0"),
+    ];
+    const result = parseAllPeriodsByRegion(rows, makeIndicator());
+    expect(result).toHaveLength(3);
+    expect(result.map(r => r.base_month)).toEqual(["202601", "202602", "202603"]);
+    expect(result[0]).toEqual({ region: "서울", gu: null, base_month: "202601", value: 100.0 });
+  });
+
+  it("분기 PRD_DE '20261' (5자리) → 허용", () => {
+    const rows = [makeRow("서울", null, "20261", "85.5")];
+    const result = parseAllPeriodsByRegion(rows, makeIndicator());
+    expect(result).toHaveLength(1);
+    expect(result[0].base_month).toBe("20261");
+  });
+
+  it("PRD_DE 포맷 위반 ('2026Q1', '20261A', '2026') → 무시", () => {
+    const rows = [
+      makeRow("서울", null, "2026Q1", "100.0"),
+      makeRow("서울", null, "20261A", "100.0"),
+      makeRow("서울", null, "2026", "100.0"),
+    ];
+    const result = parseAllPeriodsByRegion(rows, makeIndicator());
+    expect(result).toHaveLength(0);
+  });
+
+  it("REGION_MAP 매핑 실패 (전국) → 무시", () => {
+    const rows = [makeRow("전국", null, "202601", "100.0")];
+    const result = parseAllPeriodsByRegion(rows, makeIndicator());
+    expect(result).toHaveLength(0);
+  });
+
+  it("DT NaN ('-') → 무시", () => {
+    const rows = [
+      makeRow("서울", null, "202601", "-"),
+      makeRow("서울", null, "202602", "100.0"),
+    ];
+    const result = parseAllPeriodsByRegion(rows, makeIndicator());
+    expect(result).toHaveLength(1);
+    expect(result[0].base_month).toBe("202602");
   });
 });

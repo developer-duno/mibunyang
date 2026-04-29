@@ -12,7 +12,7 @@
  *   node scripts/collectors/collect-market-stats.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-market-stats.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, createReporter, sleep, REGION_MAP } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, sleep, REGION_MAP, upsertBatch, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
@@ -87,6 +87,30 @@ export function extractLatestByRegion(rows, indicator) {
   return latestByRegion;
 }
 
+/**
+ * KOSIS 행 → 모든 기간/지역 평탄 배열 (시계열 보존)
+ * 반환: [{ region, gu, base_month, value }, ...]
+ *
+ * extractLatestByRegion 와 달리 모든 PRD_DE 보존 → market_stats_history upsert 용도.
+ * PRD_DE 정규식: 월간 /^\d{6}$/ (예: "202603") + 분기 /^\d{5}$/ (예: "20261", prdSe=Q 응답)
+ * 세션134 collect-unsold-kosis.parseKosisRowsAllMonths 패턴 미러링.
+ */
+export function parseAllPeriodsByRegion(rows, indicator) {
+  const out = [];
+  const monthRe = /^\d{6}$/;
+  const quarterRe = /^\d{5}$/;
+  for (const row of rows) {
+    if (!monthRe.test(row.PRD_DE) && !quarterRe.test(row.PRD_DE)) continue;
+    if (row.C2_NM && row.C2_NM !== "전체") continue;
+    const region = REGION_MAP[row.C1_NM];
+    if (!region) continue;
+    const value = indicator.parse(row.DT, 10);
+    if (isNaN(value)) continue;
+    out.push({ region, gu: null, base_month: row.PRD_DE, value });
+  }
+  return out;
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
   if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
@@ -116,6 +140,7 @@ async function main() {
   log(PHASE, `regions 시도 행: ${regions.length}건`);
 
   // 지표별 수집
+  const historyMap = {}; // key = "region::base_month" → wide row (5지표 merge)
   for (const ind of INDICATORS) {
     const start = ind.prdSe === "Q" ? startQ : startMonth;
     const end = ind.prdSe === "Q" ? endQ : endMonth;
@@ -147,6 +172,13 @@ async function main() {
     const regionCount = Object.keys(latestByRegion).length;
     log(PHASE, `  ${ind.label}: ${rows.length}건 응답, ${regionCount}개 시도 매핑`);
 
+    // ── market_stats_history 시계열 누적 (병존, regions UPDATE 와 동일 응답 재파싱) ──
+    for (const row of parseAllPeriodsByRegion(rows, ind)) {
+      const key = `${row.region}::${row.base_month}`;
+      if (!historyMap[key]) historyMap[key] = { region: row.region, gu: null, base_month: row.base_month };
+      historyMap[key][ind.col] = row.value;
+    }
+
     // regions 테이블 UPDATE
     let updated = 0;
     for (const reg of regions) {
@@ -176,6 +208,20 @@ async function main() {
     // KOSIS 부하 방지
     await sleep(1000);
   }
+
+  // ── market_stats_history upsert (5지표 병합 wide row) ──
+  const historyRows = Object.values(historyMap);
+  if (historyRows.length > 0) {
+    if (dryRun) {
+      log(PHASE, `[DRY-RUN] market_stats_history: ${historyRows.length}건 예상`);
+    } else {
+      const inserted = await upsertBatch("market_stats_history", historyRows, "region,gu,base_month", 500, sb);
+      log(PHASE, `market_stats_history 저장: ${inserted}건`);
+    }
+  }
+
+  // KOSIS 호출 쿼터 기록 (지표별 1회)
+  if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", INDICATORS.length);
 
   const result = rpt.summary();
   log(PHASE, "=== 완료 ===");
