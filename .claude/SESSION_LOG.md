@@ -1,3 +1,86 @@
+# 세션 150 — 2026-04-29 (DetailModal inline style → DM_S 14건 호이스팅, 세션149 HS_S/HM_S 패턴 직속 후속)
+
+**거시 목적**: 세션149에서 박제한 "inline style 점진 상수화" 백로그 🟢 1번 세 번째 단계. 4/30 학교알리미 D-1 시점에 80줄 이내 안전 작업으로 적합. DetailModal.jsx 29 inline 중 정적 14건을 DM_S 객체로 추출.
+
+**결론**: 1커밋 `dbe0b90` origin/main push (`0e6dadf..dbe0b90`). DetailModal.jsx inline 29 → 15 (-48%, 14건 추출). 회귀 0 (151 files / 2448 tests PASS 정확히 유지). DetailModal.test.jsx 15/15 PASS 0수정. vite build 495ms (이전 457ms 대비 +38ms 무시 가능).
+
+## 9 GATE 하네스 검증
+
+| GATE | 판정 | 실측 근거 |
+|------|------|-----------|
+| 0 Sonnet 크기 | 🟢 | 1파일/0신규/+31/-14/1관심사/1단계 |
+| 1 영향범위 | 🟢 | grep 실측: App.jsx L7,327 (lazy) + DetailModal.test.jsx L3 (참조 2곳, 깨짐 0곳) |
+| 2 실행순서 | 🟢 | DB/API/타입 0, 단일 파일·단일 커밋 |
+| 3 완전성 | 🟢 | DOM 0변경 → 체크리스트 N/A |
+| 4 적정성 | 🟡→🟢 | Plan 13건 매핑에서 L91 metricsLabel 정적 누락 발견 → 14건으로 자연 정정 |
+| 5 보안 | 🟢 | API_KEY/innerHTML/eval = 0건. theme/index.js C/F 키 모두 실재 |
+| 6 연동 일관성 | 🟢 | API/DB/props 0변경 |
+| 7 롤백 | 🟢 | 단일 커밋 git revert 1회 |
+| 8 UX/확장성 | 🟢 | DOM 0변경, 객체 재생성 비용 미세 절감 |
+
+**최종**: 🟢9 / 🟡0 / 🔴0 → 실행 허가 (서브에이전트 2개 병렬: 영향범위 grep + 보안 실측)
+
+## 변경 내역 (1커밋)
+
+### 커밋 `dbe0b90` (1파일 +31/-14)
+
+`refactor(detail): extract DetailModal static styles to DM_S object`
+
+[DetailModal.jsx](src/components/DetailModal.jsx) — `const DM_S = {...}` 13키 모듈 스코프 정의 + 14건 inline → 객체 참조 치환:
+
+**DM_S 13키** (헤더 3 + 메트릭 5 + 혜택 4 + 기타 1):
+- `dragBar` / `headerRow` / `closeBtn` (헤더 영역)
+- `scoreBadgeWrap` / `radarRow` / `metricsHead` / `metricsRow` / `metricsLabel` (메트릭 영역)
+- `benefitsBox` / `benefitsHead` / `benefitsChipRow` / `benefitsChip` (혜택 영역)
+- `republishBadge` / `actionRow` (기타)
+
+**보존된 동적 inline 15건** (props/state 의존):
+- L73 outer overlay (isPC alignItems)
+- L74 inner card (isPC borderRadius/maxHeight/boxShadow + isDesktop maxWidth)
+- L75 header padding (isDesktop)
+- L79-82 name/sub fontSize (isDesktop) + 주소 라인 2개 (작은 객체)
+- L87 body padding (isDesktop)
+- L94 radar wrap (1키 flexShrink)
+- L95 지표 colA (2키 flex)
+- L109 지표 value span (`r.c || C.text` 동적 색상)
+- L145-163 onConsult/isFav/isComp/onShare 버튼 4종 (isFav, isComp, isDesktop)
+
+## 5교차검증
+
+| 축 | 검증 | 결과 |
+|---|------|------|
+| 빌드 | 메인 직접 `npx vite build` | 🟢 495ms, DetailModal 청크 49.93KB 불변 |
+| null-safety | `Task(subagent_type="null-safety-checker")` | 🟢 PASS (High/Medium 0, Low 3 전부 변경 무관 false positive) |
+| Hook 규칙 | 메인 직접 grep | 🟢 useRef×2 + useEffect×1 변경 0 |
+| 보안 | 메인 직접 grep | 🟢 innerHTML/dangerouslySetInnerHTML/eval 0건 |
+| 회귀 | 메인 `npx vitest run` | 🟢 151 files / 2448 PASS (베이스라인 정확히 유지) |
+
+## 사용자 가치
+
+⚪ 간접 — 정적 호이스팅 미세 성능 개선 (객체 재생성 비용 제거), 디자인 토큰화 후속 작업의 토대.
+
+세션149 16건 + 본 세션 1건 = **누적 17건 교훈 추가**:
+
+17. **Plan 매핑표 정밀도의 한계** — Plan 에이전트가 "12건 확정"이라 보고했지만 실측 grep + 라인별 정적/동적 재분류로 L91 metricsLabel 정적 1건 누락 발견. **하네스 검증 단계에서 추측 정정 → 14건 자연 확장**. Plan 단계만 신뢰하지 말고 9 GATE 검증 단계에 실측 라인별 분류를 다시 한번 돌려봐야 누락 안 생김.
+
+## 저장소 스냅샷
+
+- 브랜치: main, origin/main 동기 `dbe0b90`
+- 1커밋 push (`0e6dadf..dbe0b90`):
+  - `dbe0b90` refactor(detail): extract DetailModal static styles to DM_S object (세션 150)
+- working tree: clean (세션 외 unstaged 0)
+- vitest: 2448/2448, vite build 495ms
+- inline style 점진 상수화 누적: HeaderSection 34→9 (세션149) + DetailModal 29→15 (세션150) = **2 컴포넌트 63→24 (-62%)**
+
+## 다음 세션 우선순위
+
+1. 🥇 **4/30 학교알리미 프로브 결과 분기** — 사용자 `node scripts/_tmp_schoolinfo_probe.mjs` 실행 결과 보고 후 가설 E/C/B/A 분기
+2. 🥈 **세션132 커밋 `8b16d62` 사후 확인** — 5/3 KST 07:00 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리
+3. 🟢 **inline 상수화 후속** — SearchFilterBar 12건 (정적 ~3건, 효율 25%) 또는 AptCard 잔여 17건 (S 혼합 위험 중간) 또는 잔여 150줄+ 컴포넌트
+4. 🟡 collect-market-stats.mjs 시계열 복구 (reader 부재라 긴급도 낮음)
+
+---
+
 # 세션 149 — 2026-04-29 (학교알리미 재프로브 사전 준비 + HeaderSection inline style 상수화 시작점 박제)
 
 **거시 목적**: 세션148 npm audit 종료 후 외부 이벤트 D-1/D-4 윈도우 (4/30 학교알리미 재개, 5/3 neisCode CI). 외부 대기 작업 1건(프로브 사전 준비) + 백로그 🟢 1번 "inline style 787건 점진 상수화" 시작점 박제 2커밋.

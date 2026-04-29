@@ -9,6 +9,20 @@
 
 ### 최근 3세션 (상세)
 
+**세션150 (2026-04-29)** — DetailModal inline style → DM_S 14건 호이스팅 (세션149 HS_S/HM_S 패턴 직속 후속) (1커밋 origin/main `dbe0b90`)
+- 실행 플랜 [cd-f-mibunyang-pwd-sparkling-lecun.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-sparkling-lecun.md). 9 GATE 🟢9/🟡0/🔴0 (서브에이전트 2개 병렬: 영향범위 grep + 보안 실측)
+- **배경**: 4/30 학교알리미 D-1 시점에 80줄 이내 안전 작업 적합. 분리 후보 3개(DetailModal 29 / SearchFilterBar 12 / AptCard 17) 중 가성비 최고인 DetailModal 단독 진행. market-stats 시계열 복구는 reader 부재로 우선순위 낮음
+- **GATE 4 정정**: Plan 에이전트 "12건 확정" 보고 후 영향범위 grep 실측에서 L91 metricsLabel 정적 1건 누락 발견 → 14건 자연 확장 (80줄 예산 여전히 안전)
+- **커밋 `dbe0b90`** (1파일 +31/-14): [DetailModal.jsx](src/components/DetailModal.jsx) — `const DM_S = {...}` 13키 모듈 스코프 정의 + 14건 inline → 객체 참조 치환
+  - **DM_S 13키**: dragBar/headerRow/closeBtn (헤더 3) + scoreBadgeWrap/radarRow/metricsHead/metricsRow/metricsLabel (메트릭 5) + benefitsBox/benefitsHead/benefitsChipRow/benefitsChip (혜택 4) + republishBadge/actionRow (기타 2)
+  - **잔여 동적 15건 보존**: outer/card/header padding (isPC/isDesktop) / 주소 라인 2개 (작은 객체) / radar wrap (1키) / metricsCol (2키) / metricsValue (`r.c || C.text` 동적 색상) / onConsult·isFav·isComp·onShare 버튼 4종 (props 의존)
+- **DetailModal.jsx 전체 inline 29건 → 15건 (-48%)** ⭐ — 세션149 HeaderSection 34→9 (-74%) 패턴 정착
+- **5교차검증**: null-safety-checker 🟢 (High/Med 0, Low 3 변경 무관 false positive) / 빌드 🟢 495ms (DetailModal 청크 49.93KB 불변) / Hook 메인 직접 (useRef×2 + useEffect×1 변경 0) / 보안 메인 직접 (innerHTML/eval 0건)
+- **검증**: 151 files / **2448 tests PASS** (세션149 베이스라인 정확히 유지), DetailModal.test.jsx 15/15 PASS 0수정
+- **사용자 가치**: ⚪ 간접 — 정적 호이스팅 미세 성능 개선, 디자인 토큰화 토대. inline 상수화 누적 2 컴포넌트 63→24 (-62%)
+- **교훈 1건 추가 (세션149 16건 + 1 = 17건)**:
+  17. Plan 매핑표 정밀도의 한계 — Plan 에이전트 "12건 확정" 후 9 GATE 영향범위 grep 실측에서 L91 metricsLabel 누락 발견. **하네스 검증 단계에 라인별 정적/동적 재분류 한 번 더 돌리는 게 안전**. Plan만 신뢰하지 말 것
+
 **세션149 (2026-04-29)** — 학교알리미 재프로브 사전 준비 + HeaderSection inline style 상수화 시작점 박제 (2커밋 origin/main `f62f2c5..b46a415` + 1 gitignored)
 - 실행 플랜 [cd-f-mibunyang-pwd-fuzzy-axolotl.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-fuzzy-axolotl.md) (학교알리미) + [session149-headersection-helpmodal-styles.md](C:\Users\user\.claude\plans\session149-headersection-helpmodal-styles.md) (HM_S) + [session149-headersection-body-styles.md](C:\Users\user\.claude\plans\session149-headersection-body-styles.md) (HS_S). 9 GATE 🟢9/🟡0/🔴0 (전 작업 동일 패턴)
 - **배경**: 세션148 npm audit 종료 + 외부 이벤트 D-1/D-4 윈도우 (4/30 학교알리미 재개, 5/3 neisCode CI). 외부 대기 작업 1건 + 백로그 🟢 1번 "inline style 787건 점진 상수화" 시작점 박제
@@ -336,19 +350,19 @@
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션150+, 세션149 후속)
+### 다음 세션 우선순위 (세션151+, 세션150 후속)
 
-> 4/29 기준 4/30 학교알리미 D-1 / 5/3 neisCode CI D-4. 세션149 에서 inline style 점진 상수화 흐름 (HM_S → HS_S) 시작점 박제 완료. 다음 세션 진입 시점: **4/30 사용자 프로브 실행 결과 보고 우선**.
+> 4/29 기준 4/30 학교알리미 D-Day / 5/3 neisCode CI D-4. 세션149~150 에서 inline style 점진 상수화 흐름 (HM_S → HS_S → DM_S) 정착. 다음 세션 진입 시점: **4/30 사용자 프로브 실행 결과 보고 우선**.
 
 1. 🥇 **4/30 학교알리미 프로브 결과 분기** — 세션149 작성 `scripts/_tmp_schoolinfo_probe.mjs` (gitignored, 50줄) 사용자 실행 결과 공유 후 분기:
    - E 해소 ✅ (success + hasStudents=true): 5/3 CI 정기 실행 대기 + 사후 schools 테이블 검증
    - C 매칭/구조 변경 (success + hasStudents=false): 응답 raw 덤프 분석, COL_S_SUM 필드명 변경 가능성
    - A/B/D 분기 (resultCode≠success 또는 ERROR): 가설별 진단 스크립트
    - 실행 후 `rm scripts/_tmp_schoolinfo_probe.mjs`
-2. 🟢 **inline style 점진 상수화 후속 (백로그 🟢 1번)** — 세션149 HeaderSection 34→9 (-74%) 박제 후 다음 단계:
-   - DetailModal 29건 (props 동적 분석 후 정적 ~12건 추정 — 세션149 Plan 에이전트 권고)
-   - SearchFilterBar 12건 (가장 작아서 마지막)
+2. 🟢 **inline style 점진 상수화 후속 (백로그 🟢 1번)** — 세션149~150 누적 2 컴포넌트 63→24 (-62%) 박제 후 다음 단계:
+   - SearchFilterBar 12건 (가장 작아서 마지막, 정적 ~3건 효율 25%)
    - AptCard 잔여 17건 (이미 S 객체 있음, 동적 props 다층 — 분석 더 필요)
+   - 잔여 150줄+ 컴포넌트 분리 후보 (WeightEditor 233 / GuideSections 175 등)
 3. 🥈 **세션132 커밋 `8b16d62` 사후 확인 — 5/3 이후** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%). 현재 0.0% (21,608 요소 중 0건)
 4. 🟢 **남은 150줄+ 컴포넌트 분리 후보 7개** — 분리 가능 후보 모두 비-작업 명시 또는 결과물 (긴급도 낮음):
    - SearchFilterBar 184 (세션141 이월, 도메인 분리 한계)
@@ -372,6 +386,7 @@
 - **ExpertLoginForm AuthStatusBanner/KakaoLoginButton 추가 분리** — 세션142 A안 채택 (작아서 분리 이득 미미)
 - **sections/expert-login/ 서브폴더 신설** — 세션142 거부 (1파일은 평면 규칙)
 - **HeaderSection 동적 inline 9건 추가 추출** — 세션149 명시 (props/state 의존, useMemo·스프레드 분리는 별도 후속 시 검토)
+- **DetailModal 동적 inline 15건 추가 추출** — 세션150 명시 (isPC/isDesktop/isFav/isComp/r.c 의존, 별도 후속 시 useMemo dynStyles 패턴 검토)
 
 ### DB 품질 (세션133 전수 재측정 · 2026-04-20)
 
