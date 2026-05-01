@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { MapView } from "./MapView";
 
 // 색칠 모드 lazy chunk fetch 무력화 (테스트 환경에서 ChoroplethView lazy import 막음)
 beforeEach(() => {
-  global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ features: [] }) }));
+  globalThis.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ features: [] }) }));
 });
 
 /* ── 테스트 데이터 팩토리 ── */

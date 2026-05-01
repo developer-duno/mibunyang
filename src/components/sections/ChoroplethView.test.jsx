@@ -45,7 +45,7 @@ async function flushPromises() {
 
 describe("ChoroplethView", () => {
   beforeEach(() => {
-    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }));
+    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }));
   });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -108,8 +108,8 @@ describe("ChoroplethView", () => {
 
   it("fetch 실패 → role=alert 에러 노출", async () => {
     setupKakao();
-    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 404 }));
-    const { container, getByRole } = render(<ChoroplethView mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
+    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 404 }));
+    const { getByRole } = render(<ChoroplethView mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
     await flushPromises();
     expect(getByRole("alert")).toHaveTextContent("지도 데이터를 불러올 수 없습니다");
   });

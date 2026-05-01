@@ -48,7 +48,7 @@ async function flushPromises() {
 
 describe("ChoroplethSigunguOverlay", () => {
   beforeEach(() => {
-    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }));
+    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }));
   });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -98,7 +98,7 @@ describe("ChoroplethSigunguOverlay", () => {
 
   it("fetch 실패 → role=alert", async () => {
     setupKakao();
-    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 404 }));
+    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 404 }));
     const { getByRole } = render(<ChoroplethSigunguOverlay mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onGuClick={vi.fn()} />);
     await flushPromises();
     expect(getByRole("alert")).toHaveTextContent("시군구 데이터를 불러올 수 없습니다");
