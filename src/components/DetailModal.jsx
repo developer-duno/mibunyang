@@ -13,6 +13,7 @@ const UNSOLD_WARN_THRESHOLD = 15;
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
+import { MarketStatsCharts } from "./detail/MarketStatsCharts";
 import { IconClose } from "./icons";
 
 const DM_S = {
@@ -139,6 +140,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         <PresaleInfo apt={apt} />
 
         <LoanAnalysis apt={apt} />
+
+        <MarketStatsCharts region={apt.region} gu={apt.gu} />
 
         <DataSections apt={apt} />
         {onConsult && (
