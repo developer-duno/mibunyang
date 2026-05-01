@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useState, useCallback } from "react";
+import { memo, useRef, useEffect, useState, useCallback, lazy, Suspense } from "react";
 import { C, F, gr } from "@/theme";
 import { InfraOverlay } from "./InfraOverlay";
 import { SelectedAptCard } from "./SelectedAptCard";
@@ -6,6 +6,8 @@ import {
   MAP_DEFAULTS, CLUSTER_OPTS, MY_LOC_LEVEL, GEO_TIMEOUT,
   shortPrice, buildMarkerSvg, loadKakaoMapSdk,
 } from "./kakaoMapHelpers";
+
+const ChoroplethView = lazy(() => import("./ChoroplethView").then(m => ({ default: m.ChoroplethView })));
 
 /**
  * MapView — Kakao Map 기반 아파트 지도 뷰
@@ -22,6 +24,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   const [selected, setSelected] = useState(null);
   const [markerCount, setMarkerCount] = useState(null);
   const [error, setError] = useState(null);
+  const [mode, setMode] = useState("point"); // "point" | "choropleth"
 
   // Kakao Maps SDK 동적 로드 + 지도 초기화
   useEffect(() => {
@@ -64,6 +67,13 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   // 마커 업데이트
   useEffect(() => {
     if (!ready || !clustererRef.current) return;
+    // 색칠 모드에서는 마커 숨김 (clusterer.clear 후 종료)
+    if (mode !== "point") {
+      clustererRef.current.clear();
+      setSelected(null);
+      setMarkerCount(0);
+      return;
+    }
     const kakao = window.kakao.maps;
     clustererRef.current.clear();
     setSelected(null);
@@ -95,7 +105,12 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
       markers.forEach(m => bounds.extend(m.getPosition()));
       mapInstanceRef.current.setBounds(bounds);
     }
-  }, [ready, filtered]);
+  }, [ready, filtered, mode]);
+
+  // 색칠 모드 폴리곤 클릭 → 점 보기 자동 복귀
+  const handleSidoClick = useCallback(() => {
+    setMode("point");
+  }, []);
 
   const handleInfoClick = useCallback(() => {
     if (selected && onDetail) onDetail(selected.apt.id);
@@ -147,10 +162,33 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
           📍
         </button>
       )}
-      {/* 필터 결과 수 오버레이 */}
-      <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "4px 10px", fontSize: F.xs, fontWeight: 700, color: C.indigo, boxShadow: "0 1px 4px rgba(0,0,0,0.12)", zIndex: 10 }}>
-        {markerCount == null ? `${filtered.length}개 단지` : markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
+      {/* 좌상단: 결과수 + 모드 토글 */}
+      <div style={{ position: "absolute", top: 8, left: 8, display: "flex", gap: 6, zIndex: 10 }}>
+        <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "4px 10px", fontSize: F.xs, fontWeight: 700, color: C.indigo, boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}>
+          {mode === "choropleth" ? `${filtered.length}개 단지` : markerCount == null ? `${filtered.length}개 단지` : markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
+        </div>
+        <button
+          onClick={() => setMode(m => m === "point" ? "choropleth" : "point")}
+          aria-pressed={mode === "choropleth"}
+          aria-label="지도 모드 토글"
+          style={{ background: "rgba(255,255,255,0.92)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 10px", fontSize: F.xs, fontWeight: 700, color: C.indigo, cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}
+        >
+          {mode === "point" ? "🎨 색칠" : "📍 점"}
+        </button>
       </div>
+      {/* 색칠 모드: ChoroplethView lazy 렌더 */}
+      {mode === "choropleth" && (
+        <Suspense fallback={null}>
+          <ChoroplethView
+            mapInstance={mapInstanceRef.current}
+            ready={ready}
+            filtered={filtered}
+            onSidoClick={handleSidoClick}
+            isPC={isPC}
+            isDesktop={isDesktop}
+          />
+        </Suspense>
+      )}
       {/* 선택된 아파트 정보 카드 */}
       <SelectedAptCard selected={selected} onInfoClick={handleInfoClick} onClose={() => setSelected(null)} />
     </div>

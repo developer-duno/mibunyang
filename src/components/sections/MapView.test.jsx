@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { MapView } from "./MapView";
+
+// 색칠 모드 lazy chunk fetch 무력화 (테스트 환경에서 ChoroplethView lazy import 막음)
+beforeEach(() => {
+  global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ features: [] }) }));
+});
 
 /* ── 테스트 데이터 팩토리 ── */
 function makeItem(overrides = {}) {
@@ -71,5 +76,47 @@ describe("MapView", () => {
     await flushPromises();
     // SDK 없으면 markerCount=null → filtered.length만 표시
     expect(screen.getByText("1개 단지")).toBeInTheDocument();
+  });
+
+  // 색칠 모드 토글 — 기본은 점 보기, 버튼 클릭 시 색칠로 전환
+  it("토글 버튼 기본 라벨은 '🎨 색칠'", async () => {
+    setupKakao();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    expect(screen.getByLabelText("지도 모드 토글")).toHaveTextContent("🎨 색칠");
+  });
+
+  it("토글 클릭 → 라벨이 '📍 점' 으로 바뀌고 aria-pressed=true", async () => {
+    setupKakao();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    const btn = screen.getByLabelText("지도 모드 토글");
+    fireEvent.click(btn);
+    await flushPromises();
+    expect(btn).toHaveTextContent("📍 점");
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("색칠 모드 시 마커 useEffect 가드 → addMarkers 호출 0", async () => {
+    const clusterer = setupKakao();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    // 점 모드: addMarkers 1회
+    expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
+    // 색칠 토글 클릭
+    fireEvent.click(screen.getByLabelText("지도 모드 토글"));
+    await flushPromises();
+    // 색칠 모드 진입 후 addMarkers 호출 안 늘어남 (clear 만 호출)
+    expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
+    expect(clusterer.clear.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("색칠 모드 결과수 표기는 'N개 단지' (markerCount 의존 분기 우회)", async () => {
+    setupKakao();
+    render(<MapView filtered={[makeItem(), makeItem({ apt: { id: "t2" } })]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    fireEvent.click(screen.getByLabelText("지도 모드 토글"));
+    await flushPromises();
+    expect(screen.getByText("2개 단지")).toBeInTheDocument();
   });
 });
