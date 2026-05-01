@@ -1,0 +1,90 @@
+import { memo, useMemo } from "react";
+import { C, F } from "@/theme";
+import { LineChart } from "@/components/primitives";
+import { useMarketStatsHistory } from "@/hooks/useMarketStatsHistory";
+
+// 5지표 메타 정보 — KOSIS 시계열 컬럼 ↔ 한국어 라벨/단위/색
+const METRICS = [
+  { key: "avg_price_sqm",     label: "평균분양가격",   unit: "천원/㎡",    color: C.green },
+  { key: "price_index",       label: "분양가격지수",   unit: "(100=기준)", color: C.blue },
+  { key: "new_supply",        label: "신규공급 세대수", unit: "세대",      color: C.purple },
+  { key: "initial_sale_rate", label: "초기분양율",     unit: "%",         color: C.amber },
+  { key: "land_cost_ratio",   label: "택지비율",       unit: "%",         color: C.cyan },
+];
+
+// "202503" → "03" (월 2자리 표기)
+const monthLabel = (yyyymm) => {
+  if (typeof yyyymm !== "string" || yyyymm.length !== 6) return "";
+  return yyyymm.slice(4);
+};
+
+/**
+ * MarketStatsCharts — region+gu 시장통계 5지표 시계열
+ *
+ * Props:
+ *   region: string — DB 짧은 이름 ("서울"·"경기")
+ *   gu: string — DB 표기 ("강남구") 또는 "" (시도 단위)
+ *
+ * - 5/5 cron 전 데이터 0건 = amberLight 안내 박스 노출
+ * - 정상 시 5개 LineChart 세로 배치 (height 120 × 5 = 누적 600px)
+ * - region 미설정 / loading / error 시 null (조용한 숨김)
+ */
+export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }) {
+  const { data, loading, error } = useMarketStatsHistory(region, gu);
+
+  // 모든 차트가 같은 x축 라벨 사용
+  const xLabels = useMemo(
+    () => Array.isArray(data) ? data.map(d => monthLabel(d?.base_month)) : [],
+    [data]
+  );
+
+  if (!region) return null;
+  if (loading) return null; // PriceChart/UnsoldChart 패턴 (조용한 로딩)
+  if (error) return null;
+
+  // 5/5 cron 전 데이터 0건 = 명시적 안내 (사용자 결정)
+  if (!Array.isArray(data) || data.length < 2) return (
+    <div
+      role="status"
+      style={{
+        marginTop: 16,
+        padding: "12px 14px",
+        background: C.amberLight,
+        border: `1px solid ${C.amberBorder}`,
+        borderRadius: 8,
+        fontSize: F.xs,
+        color: C.amber,
+        lineHeight: 1.5,
+      }}
+    >
+      📊 지역 시장 추이 — 매월 5일 KOSIS 통계 자동 수집·누적 중
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+      <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>
+        지역 시장 추이 ({region}{gu ? ` ${gu}` : ""})
+      </div>
+      {METRICS.map(m => {
+        const chartData = data
+          .map((d, i) => {
+            const v = Number(d?.[m.key]);
+            if (!Number.isFinite(v)) return null;
+            return { x: xLabels[i] || "", y: v, label: `${xLabels[i] || ""}: ${v.toLocaleString()} ${m.unit}` };
+          })
+          .filter(Boolean);
+        if (chartData.length < 2) return null;
+        return (
+          <div key={m.key}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600 }}>{m.label}</span>
+              <span>{m.unit}</span>
+            </div>
+            <LineChart data={chartData} color={m.color} height={120} yLabel={m.label} />
+          </div>
+        );
+      })}
+    </div>
+  );
+});
