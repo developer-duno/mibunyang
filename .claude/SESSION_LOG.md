@@ -1,3 +1,52 @@
+# 세션 156 — 2026-05-02 (market-stats reader + DetailModal 5지표 시계열 차트)
+
+**거시 목적**: 세션 151 박제 "다음 세션" B안 실행 — market_stats_history 테이블의 region+gu 5지표 시계열을 단지 상세에 LineChart 5개로 노출. 사용자 가치 직접.
+
+**결론**: 4커밋 origin/main push (`3854e7a..a343ebe`) + CI 핫픽스 1커밋 (`78de163`).
+- 핫픽스 `78de163`: CI eslint no-undef 6건 (global → globalThis + beforeEach import + 미사용 container 제거)
+- 커밋 1 `3854e7a`: /api/supabase/market-stats-history reader (region+gu, withHandler 직접, 6 테스트, +149줄)
+- 커밋 2 `ef4766e`: useMarketStatsHistory 훅 (useHistoryData 패턴 답습, 4 테스트, +114줄)
+- 커밋 3 `4958a99`: MarketStatsCharts 컴포넌트 (5 LineChart 세로, +90줄)
+- 커밋 4 `a343ebe`: DetailModal 통합 (+3줄)
+
+**사용자 결정 (AskUserQuestion 3건)**:
+1. 다음 백로그 = "market-stats reader + 차트" (옵션 1, 추천 채택)
+2. 5지표 = "5개 차트 세로 분리" (단위 다름 — 천원/㎡, %, 세대 — 통합 비합리)
+3. migration 검증 = "Vercel 배포 env 기준 구현" (이번 세션 = reader/컴포넌트만)
+4. 5/5 cron 전 데이터 0건 = "명시적 안내" (amberLight 박스, 사용자 기대감 관리)
+
+**Phase 1 실측 발견**:
+- market_stats_history 5지표: price_index / avg_price_sqm / new_supply / initial_sale_rate / land_cost_ratio
+- UNIQUE(region, gu, base_month). gu DEFAULT '' (시도 단위). base_month 6자리 YYYYMM
+- createTimeseriesHandler 재사용 불가 — `parseApartmentIds(req.query)` 강제 호출 → withHandler 직접 사용 결정
+- LineChart props 정확화: `data = [{x, y, label?}]` 객체 배열 (단순 number 배열 아님)
+- DetailModal 의 apt.region / apt.gu 이미 props 흐름 (수정 0)
+
+**9 GATE 검증 흐름**: 1차 🟡 GATE 3 (4건 import/함수명/응답형식 부정확) + 🟡 GATE 6 (createTimeseriesHandler 재사용 불가 미명시) + 🟡 GATE 8 (5/5 cron 전 UX 결정 누락) → 2차 보강 후 🟢 9/0/0 통과.
+
+**5교차검증**: null-safety-checker 🟢 PASS (High/Medium 0, Low 3 false positive — err.message 폴백/req.query 배열/toLocaleString 모두 안전 확인) / vite build 🟢 591ms (DetailModal 청크 +1KB) / Hook 메인 🟢 (useState→useCallback→useEffect 순서 정합) / 보안 메인 🟢 (innerHTML/eval/dangerouslySetInnerHTML 0건)
+
+**검증**: 158 files / **2499 tests PASS** (세션 155 156/2489 → +2 files / +10 tests 정확 일치)
+
+**사용자 가치**: 🟢 직접 — 단지 상세 모달에 region+gu 5지표 시계열 추이 노출. 5/5 KOSIS cron 후 자연 활성화. 그 전엔 amberLight 안내 박스로 사용자 기대감 관리.
+
+**번들 영향**:
+- DetailModal 청크 49.98KB (+1KB) — MarketStatsCharts 인라인 (lazy 미적용, 추후 검토)
+- Cache-Control s-maxage=3600 + brower 캐시로 동일 region+gu 반복 호출 0
+
+**미해결 이월 작업**:
+- 사용자 과제: Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 (5/5 cron 첫 실행 전 필수)
+- 미실행 시: cron 의 upsert 단계 "table not found" 부분 실패. regions UPDATE 부분은 정상 (별개 작업)
+- reader 자체는 빈 테이블 조회 시 200 + data:[] 반환 → MarketStatsCharts 가 안내 박스 표시 (UX 안전)
+
+**교훈 4건 추가 (세션 155 41건 + 4 = 45건)**:
+42. **createTimeseriesHandler 팩토리 일반화의 한계** — apartment_id 패턴 강제(parseApartmentIds 내부 호출)로 region+gu 패턴 재사용 불가. **신규 reader 가 단순**, 향후 시계열 패턴 3개+ 누적 시 createGenericTimeseriesHandler 추출 검토. 일반화는 필요 시점에
+43. **LineChart props 시그니처 사전 검증의 가치** — 1차 플랜에 `data = [{number, ...}]` 단순 배열로 표기 → Phase 1 GATE 3 검증에서 PriceChart.jsx 실측으로 `[{x, y, label}]` 객체 배열 발견. 빌드 단계에서 잡혔어도 코드 재작성 비용 발생할 뻔
+44. **eslint react-hooks/set-state-in-effect 경고** — `.then()` chain 안 setState 호출은 plugin 이 잡음. useCallback + async/await 패턴(useHistoryData)이 정답. 처음 작성 시 무시하지 말고 기존 패턴 답습이 안전
+45. **CI eslint vs 로컬 vitest 차이** — `globals: true` 인 vitest 환경에서 `global.fetch` / 미import beforeEach 가 통과하지만 eslint no-undef 잡음. **로컬 통과 ≠ CI 통과**. push 전 `npx eslint <파일>` 한 번 도는 게 안전
+
+---
+
 # 세션 155 — 2026-05-02 (색칠 지도 UI 2단계 — 시군구 251 폴리곤 + 합산 매핑 + 줌 자동 전환)
 
 **거시 목적**: 세션 153 (자료) → 154 (시도) → **155 = 시군구 251 색칠**. 색칠 지도 3 세션 분할 마지막 단계. 사용자가 시도 폴리곤 클릭 시 줌인 → 그 영역에서 시군구 폴리곤 자동 펼침 = 자연스러운 드릴다운 완성.

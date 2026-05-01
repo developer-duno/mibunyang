@@ -39,6 +39,21 @@
 
 ### 최근 3세션 (상세)
 
+**세션156 (2026-05-02)** — market-stats reader + DetailModal 5지표 시계열 차트 (4커밋 origin/main `3854e7a..a343ebe` + 핫픽스 `78de163`)
+- 실행 플랜 [cd-f-mibunyang-pwd-fancy-lobster.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-fancy-lobster.md). 1차 🟡 GATE 3/6/8 → 2차 보강 🟢9/🟡0/🔴0
+- **배경**: 세션 151 박제 "다음 세션" B안 실행 — market_stats_history 의 region+gu 5지표 시계열을 단지 상세에 LineChart 5개로 노출. 베타테스터 "어처구니없는 지도" 종결 후 다음 사용자 가치 직접 작업
+- **사용자 결정 4건**: 백로그 옵션 1 (market-stats reader) / 5개 차트 세로 분리 / Vercel 배포 env 기준 / 5/5 cron 전 명시적 안내
+- **Phase 1 실측 정확화 4건** (1차 플랜 부정확): import 경로 `"../_lib/handler.js"` (withHandler) + `getSupabase` (getServiceClient 부재) / `method: "GET"` (string) / `fetchedAt: new Date().toISOString()` + Cache-Control `s-maxage=3600, stale-while-revalidate=7200` / 에러 메시지 `"... 데이터 조회 중 오류가 발생했습니다"` 답습. **createTimeseriesHandler 재사용 불가** — parseApartmentIds 강제 호출
+- **핫픽스 `78de163`** (3파일 +7/-7): CI eslint no-undef 6건 — global → globalThis (jsdom/node 표준) + MapView.test 의 beforeEach import 추가 + 미사용 container 제거. **로컬 vitest globals:true 통과해도 eslint no-undef 잡음**
+- **커밋 1 `3854e7a`** (2파일 +149줄): [api/supabase/market-stats-history.js](api/supabase/market-stats-history.js) — withHandler 직접 (method GET, rateLimit proxy). region/gu length 가드 (20/30자) + .eq() 바인딩 + .order(base_month, asc) + Cache-Control. 6 테스트 (POST 405 / region 누락 400 / length 초과 400 / 정상 200 / gu="" 시도단위 / Supabase error 500)
+- **커밋 2 `ef4766e`** (2파일 +114줄): [src/hooks/useMarketStatsHistory.js](src/hooks/useMarketStatsHistory.js) — useHistoryData 패턴 답습 (useCallback + useEffect + AbortController). region 빈값 → fetch 0 / 429 → 한국어 / Array.isArray(json.data) 검증. 4 테스트
+- **커밋 3 `4958a99`** (1파일 +90줄): [MarketStatsCharts.jsx](src/components/detail/MarketStatsCharts.jsx) — 5 LineChart 세로 (height 120 × 5 = 누적 600px). METRICS 상수 (avg_price_sqm/price_index/new_supply/initial_sale_rate/land_cost_ratio + 한국어 라벨/단위/색). 5/5 cron 전 amberLight 안내 박스 + monthLabel("202503"→"03"). LineChart 정확 시그니처 `[{x, y, label}]`
+- **커밋 4 `a343ebe`** (1파일 +3줄): [DetailModal.jsx](src/components/DetailModal.jsx) — DataSections 직전 `<MarketStatsCharts region={apt.region} gu={apt.gu} />`. 기존 PriceChart/UnsoldChart 호출 0 수정, 15 테스트 0 회귀
+- **5교차검증**: null-safety-checker 🟢 PASS (High/Medium 0, Low 3 false positive — err.message 폴백/req.query 배열/toLocaleString 모두 안전) / vite build 🟢 591ms (DetailModal 청크 +1KB) / Hook 메인 🟢 / 보안 메인 🟢 (innerHTML/eval 0)
+- **검증**: 158 files / **2499 tests PASS** (세션 155 156/2489 → +2/+10 정확 일치)
+- **사용자 가치**: 🟢 직접 — 5/5 KOSIS cron 후 단지 상세 모달에 region+gu 5지표 시계열 추이 자동 노출. 그 전엔 안내 박스로 사용자 기대감 관리
+- **이월 사용자 과제**: Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 (5/5 cron 전 필수). 미실행 시 cron upsert 부분 실패 (regions UPDATE 정상)
+
 **세션155 (2026-05-02)** — 색칠 지도 UI 2단계 시군구 251 폴리곤 + 합산 매핑 + 줌 자동 전환 (4커밋 origin/main `f405c11..6e68722`)
 - 실행 플랜 [cd-f-mibunyang-pwd-fancy-lobster.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-fancy-lobster.md). 1차 🟡 GATE 3/8 → 2차 🟢9/🟡0/🔴0
 - **배경**: 색칠 지도 3 세션 분할 마지막. 153(자료 박제) → 154(시도 17) → 155(시군구 251 + 자동 드릴다운). 베타테스터 "특단의 조치" 정면 종결
@@ -420,16 +435,16 @@ _(세션148/147/146 상세는 SESSION_LOG 또는 아래 색인 표 참조)_
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션156+, 세션155 후속)
+### 다음 세션 우선순위 (세션157+, 세션156 후속)
 
-> 5/2 기준: 색칠 지도 3 세션 분할 완료 (153 자료 → 154 시도 → 155 시군구). **세션156 진입 시점 = 사용자 베타테스터 색칠 지도 체험 결과 청취 우선**. 5/3 neisCode CI D-1 / 5/5 market-stats CI D-3.
+> 5/2 기준: 색칠 지도 3 세션 (153~155) + market-stats reader (156) 모두 완성. **세션 157 진입 시점 = 5/3 CI / 5/5 cron 외부 이벤트 결과 청취 우선**.
 
-1. 🥇 **베타테스터 색칠 지도 체험 보고 청취** — 세션 153~155 3단계 완성. 사용자가 이번 주 안에 베타테스터에게 "색칠 모드 토글 → 줌인 시 시군구 자동 전환" 흐름 시연 가능. UX 잡음(level 8↔9 진동 / 폴리곤 색 가독성 / 일반시 합산 표기 적절성) 보고에 따라 후속 분기:
-   - level 진동 보고 시 → 히스테리시스 (≥10 시도 / ≤8 시군구) 또는 50ms 디바운스 적용
-   - 색 가독성 → fillOpacity 조정 (시군구 0.55 → 0.6~0.7)
-   - 합산 적절성 → 일반시 12개 분할/통합 사용자 선택 토글 검토
-2. 🥈 **5/3 학교알리미 + neisCode CI 결과 검증** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%) + 학교알리미 students/classes 비율 추적 (현재 0% / 1.4%)
-3. 🥉 **세션151 migration 사용자 과제** — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 필요. 미실행 시 5/5 cron upsert 부분 실패
+1. 🥇 **세션156 사용자 과제 — market_stats_history migration 수동 실행 필수** — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행. **5/5 KST 매월 5일 KOSIS cron 첫 실행 전 필수**. 미실행 시 cron 의 upsert 단계 "table not found" 부분 실패. 단지 상세에선 reader 가 빈 결과 반환 → MarketStatsCharts 안내 박스 표시 (UX 안전)
+2. 🥈 **베타테스터 색칠 지도 + 시계열 차트 체험 보고 청취** — 세션 153~156 모두 사용자 가치 직접 작업. 베타테스터에게 (a) 색칠 모드 시도→시군구 드릴다운 + (b) 단지 상세 5지표 시계열 (5/5 이후) 시연 가능. UX 잡음 보고에 따른 분기:
+   - 색칠: level 8↔9 진동 / 폴리곤 가독성 / 일반시 합산 표기
+   - 시계열: 5개 차트 누적 600px 모바일 스크롤 / amberLight 안내 가독성
+3. 🥉 **5/3 학교알리미 + neisCode CI 결과 검증** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%) + 학교알리미 students/classes 비율 추적 (현재 0% / 1.4%)
+4. 🟡 **inline style 잔여 호이스팅** — 세션 149~152 누적 5파일 85건 (-66%) 정착 후 보류 중. SearchFilterBar 38% / AptCard 35% — 가성비 낮음. 외부 이벤트 없을 때 안전한 소작업으로
 2. 🥈 **세션151 migration 사용자 과제** — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 필요. CREATE TABLE 성공 후 다음 cron 5/5 (매월 5일 KOSIS 수집) 부터 자연 누적 시작. 미실행 시 5/5 cron 의 upsert 단계가 "table not found" 로 실패 (regions UPDATE 부분은 정상 작동, 부분 실패만)
 3. 🟢 **inline style 점진 상수화 후속** — 세션149~151 누적 4파일 79→23 (-71%) 정착 후 남은 후보:
    - WeightEditor 100줄 정적 4건 (67% 비율, 작지만 깔끔)
@@ -462,6 +477,10 @@ _(세션148/147/146 상세는 SESSION_LOG 또는 아래 색인 표 참조)_
 - **시군구 별도 토글 버튼** — 세션155 사용자 결정 "줌 자동 전환" 채택
 - **줌 임계값 히스테리시스/디바운스 (level 8↔9 경계 진동)** — 세션155: 사용자 의도적 1단계 줌 입출 시에만 발생, 폴리곤 그리기 1회씩이라 실 영향 미미. 향후 UX 잡음 보고 시 hysteresis (≥10 시도 / ≤8 시군구) 또는 50ms 디바운스 적용
 - **kakao.event.removeListener 미지원 fallback 강화** — 세션155: 미지원 시 zoom_changed 핸들러는 mapInstance(=페이지) 라이프사이클까지 살아있음. 옵셔널 호출 한 줄 가드만 적용. mapInstance 재마운트 시점이라 누수 미미
+- **createTimeseriesHandler 일반화 (region+gu 패턴 흡수)** — 세션156: 팩토리가 `parseApartmentIds(req.query)` 강제 호출. 신규 reader 가 단순. 향후 시계열 패턴 3개+ 누적 시 createGenericTimeseriesHandler 추출 검토 (현 시점 2개라 일반화 비용 > 가치)
+- **MarketStatsCharts lazy import** — 세션156: DetailModal 청크 +1KB 만 추가. 별도 lazy chunk 분리는 단지 상세 첫 진입 시 즉시 fetch 라 의미 미미. Suspense 추가 비용 > 절감
+- **5지표 차트 1개 통합** — 세션156 사용자 결정 "5개 분리" 채택. LineChart secondary 1개 한계 + 단위 5종 다름 (천원/㎡, 지수, 세대, %, %)
+- **시도 단위 (gu="") 시계열을 ChoroplethView 클릭에 연결** — 세션156: 단지 상세 = region+gu 페어. ChoroplethView 시도 폴리곤 클릭 = 점 보기 전환. 시도 단위 차트는 별도 패널 필요해 가치 미정 (베타테스터 보고 후 검토)
 
 ### DB 품질 (세션133 전수 재측정 · 2026-04-20)
 
