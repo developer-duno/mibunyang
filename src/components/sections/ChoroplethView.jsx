@@ -48,7 +48,7 @@ export const ChoroplethView = memo(function ChoroplethView({
     polygonsRef.current.forEach(p => p.setMap(null));
     polygonsRef.current = [];
 
-    for (const feature of geoData.features) {
+    for (const feature of (geoData.features || [])) {
       const geoName = feature?.properties?.name;
       const dbName = geoSidoToDbName(geoName);
       if (!dbName) continue;
@@ -60,6 +60,7 @@ export const ChoroplethView = memo(function ChoroplethView({
       const paths = geoJsonFeatureToKakaoPaths(feature, kakao);
 
       for (const path of paths) {
+        if (path.length === 0) continue;
         const polygon = new kakao.Polygon({
           path,
           strokeWeight: 1.5,
