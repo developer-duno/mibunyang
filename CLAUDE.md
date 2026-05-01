@@ -39,6 +39,26 @@
 
 ### 최근 3세션 (상세)
 
+**세션154 (2026-05-02)** — 색칠 지도 UI 1단계 시도 17개 폴리곤 + 토글 + 줌인 (6커밋 origin/main `3fc32e0..b7974ff`)
+- 실행 플랜 [cd-f-mibunyang-pwd-fancy-lobster.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-fancy-lobster.md). 1차 9 GATE 🔴 GATE 0 + 🟡 GATE 1/3/8 → 5단계 재분할 + 4건 보강 후 2차 🟢9/🟡0/🔴0 통과
+- **배경**: 세션 153 색칠 지도 3 세션 분할의 **2단계 UI 구현**. 베타테스터 "지도 어처구니없다 / 특단의 조치" 보고 정면 대응. 사용자 결정 (AskUserQuestion 2건): 마커 완전히 숨김 + 폴리곤 클릭 시 줌인 + 점 보기 자동 복귀
+- **9 GATE 1차 발견**: `src/utils/` 디렉토리 부재 (실측 `src/lib/`) / `MapView` 가 `App.jsx:11` 에서 lazy import 중인데 ChoroplethView 도 같은 패턴 적용 누락 / fetch 중 SkeletonText 누락 / Suspense fallback 누락
+- **커밋 1 `33496cc`** (2파일 +95줄): [src/lib/geoJsonToKakaoPaths.js](src/lib/geoJsonToKakaoPaths.js) — `geoJsonFeatureToKakaoPaths(feature, kakao)` 헬퍼 (Polygon → 1 path / MultiPolygon → N path / hole 무시 / [lng,lat]→LatLng(lat,lng) 뒤집기). 테스트 4 케이스
+- **커밋 2 `8020a19`** (1파일 +55줄): [ChoroplethLegend.jsx](src/components/sections/ChoroplethLegend.jsx) — 6단계 색 박스 범례. gr() 점수 95/85/75/65/55/45 호출 후 S/A/B+/B/C/D 라벨. isPC/isDesktop 분기 fontSize/padding/box. role=img + aria-label
+- **커밋 3 `c6b28fd`** (1파일 +106줄): [ChoroplethView.jsx](src/components/sections/ChoroplethView.jsx) — 본체. fetch `/geo/sido.geojson` 1회 → 시도 17 폴리곤 색칠. byRegion[dbName].avg → gr().c, 데이터 없으면 회색 0.25. click → setBounds + onSidoClick(dbName), hover 0.65→0.85, mouseout 복귀. unmount cleanup
+- **커밋 4 `6806194`** (1파일 +128줄): ChoroplethView 8 테스트 (fetch · 폴리곤 · 이벤트 · cleanup). kakao 이벤트는 DOM 이벤트 아니라 `kakao.maps.event.addListener` 콜백 → fake event registry 만들어 handler 직접 호출
+- **커밋 5 `0c612ce`** (2파일 +91/-6, MapView 158→196줄): [MapView.jsx](src/components/sections/MapView.jsx) — `mode` useState ("point"|"choropleth") + 좌상단 [🎨 색칠]/[📍 점] 토글 버튼 (aria-pressed, aria-label) + 마커 useEffect 가드 (색칠 모드 시 clusterer.clear) + lazy + Suspense fallback null. handleSidoClick = setMode("point") (setBounds 는 ChoroplethView 내부)
+- **커밋 6 `b7974ff`** (1파일 +2/-1): null-safety-checker Medium/Low 보강 — `(geoData.features || [])` (외부 정적 GeoJSON 신뢰 회피) + `if (path.length === 0) continue` (빈 path setBounds 방어)
+- **5교차검증**: null-safety-checker 🟢 (High/Medium 0 본질, Low 4건 중 2건 즉시 보강) / vite build 🟢 418ms (MapView 9.41→10.57KB +1.16, **ChoroplethView 4KB 별도 lazy chunk**) / Hook 메인 🟢 (호출 순서 정합 mode 추가 후) / 보안 메인 🟢 (innerHTML/eval/dangerouslySetInnerHTML/new Function 0건)
+- **검증**: 154 files / **2474 tests PASS** (세션 153 152/2458 → +2 files / +16 tests 정확 일치)
+- **사용자 가치**: 🟢 직접 — 베타테스터 "지도 어처구니없다" 정면 대응. 좌상단 토글 클릭 → 시도 17개 폴리곤 평균 점수 색칠 + 우하단 범례 + 폴리곤 클릭 자동 줌인. 데이터 0건 시도 회색 0.25
+- **다음 세션 155 (3단계 시군구)**: 251개 폴리곤 + 창원 5구·청주 2구 합산 매핑 + 동적 import + 줌 레벨 감지
+
+**세션153 (2026-05-02)** — 색칠 지도 기반 자료 (GeoJSON 2 + 매핑 + 평균 점수 훅) (4커밋 origin/main `3be8865..3fc32e0`)
+- 베타테스터 "지도 어처구니없다 / 특단의 조치" 보고 후 색칠 지도(코로플레스) 3 세션 분할의 **1단계 자료 박제**. UI 변경 0
+- 4커밋: 쉬운 말 규칙 박제 / 전문가 로그인 시 지도 메뉴 노출 / CSP daumcdn 화이트리스트 (카카오 SDK) / GeoJSON 2개(시도 17 + 시군구 251) + regionGeoMapping 17개 + useRegionAverages 훅 + 테스트 5
+- **검증**: 152 files / 2458 tests PASS (+5 useRegionAverages)
+
 **세션152 (2026-04-30)** — WeightEditor inline style → WE_S 6키 호이스팅 (1커밋 origin/main `3738dfe`)
 - 실행 플랜 [cd-f-mibunyang-pwd-clever-cherny.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-clever-cherny.md). 9 GATE 🟢9/🟡0/🔴0 (서브에이전트 2개 병렬: GATE 1 영향범위 + GATE 5 보안 grep 실측, 메인 GATE 0/2/3/4/6/7/8 직접)
 - **배경**: 4/30 학교알리미 D-Day 당일이지만 사용자 프로브 실행 전 외부 대기 윈도우. 박제 "WeightEditor 100줄 정적 4건 67%" 가용 후보 중 최고 가성비. 세션149~151 패턴 5번째 적용
@@ -386,15 +406,17 @@ _(세션148/147/146 상세는 SESSION_LOG 또는 아래 색인 표 참조)_
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션153+, 세션152 후속)
+### 다음 세션 우선순위 (세션155+, 세션154 후속)
 
-> 4/30 기준 학교알리미 D-Day 당일 / 5/3 neisCode CI D-3 / 5/5 market-stats CI D-5. 세션149~152 에서 inline 호이스팅 (HS_S → HM_S → DM_S → DS_S → WE_S) 5파일 85건 정착. 다음 세션 진입 시점: **사용자 학교알리미 프로브 실행 결과 보고 우선**.
+> 5/2 기준: 색칠 지도 1단계 시도 17 폴리곤 완료. **세션155 = 색칠 지도 3단계 시군구 251개 + 창원/청주 합산** 1순위. 5/3 neisCode CI D-1 / 5/5 market-stats CI D-3. 학교알리미 4/30 프로브는 사용자 미실행, 5/3 CI 결과로 갈음.
 
-1. 🥇 **4/30 학교알리미 프로브 결과 분기** — 세션149 작성 `scripts/_tmp_schoolinfo_probe.mjs` (gitignored, 50줄) 사용자 실행 결과 공유 후 분기:
-   - E 해소 ✅ (success + hasStudents=true): 5/3 CI 정기 실행 대기 + 사후 schools 테이블 검증
-   - C 매칭/구조 변경 (success + hasStudents=false): 응답 raw 덤프 분석, COL_S_SUM 필드명 변경 가능성
-   - A/B/D 분기 (resultCode≠success 또는 ERROR): 가설별 진단 스크립트
-   - 실행 후 `rm scripts/_tmp_schoolinfo_probe.mjs`
+1. 🥇 **세션155 색칠 지도 3단계 시군구 폴리곤** — 세션 153~154 후속 마무리:
+   - `public/geo/sigungu.geojson` (351KB / 251 features) 동적 import (시도 모드에서 시군구 모드 토글 시점)
+   - 창원시(5개 구) / 청주시(2개 구) 합산 매핑 함수 (`useRegionAverages.byGu` 의 `"경남|창원시"` 단일 키 ↔ GeoJSON 5 features 합산)
+   - 줌 레벨 감지 useEffect (지도 줌 ≥ 9 일 때 자동으로 시군구로 전환?) — 사용자 결정 필요
+   - 시군구 폴리곤 클릭 = 그 시군구 줌인 + 점 보기 자동 전환 (세션154 시도 패턴 그대로)
+2. 🥈 **5/3 학교알리미 + neisCode CI 결과 검증** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%) + 학교알리미 students/classes 비율 추적 (현재 0% / 1.4%)
+3. 🥉 **세션151 migration 사용자 과제** — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 필요. 미실행 시 5/5 cron upsert 부분 실패
 2. 🥈 **세션151 migration 사용자 과제** — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 필요. CREATE TABLE 성공 후 다음 cron 5/5 (매월 5일 KOSIS 수집) 부터 자연 누적 시작. 미실행 시 5/5 cron 의 upsert 단계가 "table not found" 로 실패 (regions UPDATE 부분은 정상 작동, 부분 실패만)
 3. 🟢 **inline style 점진 상수화 후속** — 세션149~151 누적 4파일 79→23 (-71%) 정착 후 남은 후보:
    - WeightEditor 100줄 정적 4건 (67% 비율, 작지만 깔끔)
@@ -419,6 +441,9 @@ _(세션148/147/146 상세는 SESSION_LOG 또는 아래 색인 표 참조)_
 - **DataSections 동적 inline 4건 추가 추출** — 세션151 명시 (showData/loop index/section.grid/dataValueColor·f.dist 의존, 부분 호이스트 4건은 이미 적용)
 - **market-stats reader endpoint·차트 컴포넌트** — 세션151 사용자 결정 B안 채택 (수집기+테이블만, reader는 별도 세션). 5/5 CI 데이터 누적 후 가치 재평가
 - **collect-market-stats long format 재논의** — 세션151 wide 확정 (scorePrice/scoreRisk reader 5건 모두 wide 사용). long 마이그레이션은 향후 reader 요구사항 변화시
+- **kakaoMapHelpers.js 안에 폴리곤 헬퍼 추가** — 세션154 거부 ("MapView.jsx 전용. 외부 컴포넌트 사용 0" 주석 위반 회피, `src/lib/geoJsonToKakaoPaths.js` 분리)
+- **색칠 모드에서 마커 + 폴리곤 동시 표시** — 세션154 사용자 결정 (마커 완전히 숨김 채택). UX 잡음·성능 부담
+- **폴리곤 클릭 인포윈도우** — 세션154 사용자 결정 (줌인 + 점 보기 자동 전환으로 충분)
 
 ### DB 품질 (세션133 전수 재측정 · 2026-04-20)
 

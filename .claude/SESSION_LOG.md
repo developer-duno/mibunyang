@@ -1,4 +1,41 @@
-# 세션 151 — 2026-04-29 (DataSections inline → DS_S 14건 호이스팅 + collect-market-stats 시계열 복구)
+# 세션 154 — 2026-05-02 (색칠 지도 UI 1단계 — 시도 17개 폴리곤 + 토글 + 줌인)
+
+**거시 목적**: 세션 153 색칠 지도 3 세션 분할의 **2단계 UI 구현**. 베타테스터 "지도 어처구니없다 / 특단의 조치" 보고 정면 대응. 시도 단위 평균 점수를 한눈에 파악 가능하게.
+
+**결론**: 6커밋 origin/main push (`3fc32e0..b7974ff`).
+- 커밋 1 `33496cc`: geoJsonFeatureToKakaoPaths 헬퍼 + 4 테스트 (src/lib/, +95줄)
+- 커밋 2 `8020a19`: ChoroplethLegend 6단계 색 박스 범례 (+55줄)
+- 커밋 3 `c6b28fd`: ChoroplethView 본체 (시도 17 폴리곤 + click/hover + cleanup, +106줄)
+- 커밋 4 `6806194`: ChoroplethView 8 테스트 케이스 (+128줄)
+- 커밋 5 `0c612ce`: MapView 통합 (mode toggle + lazy + Suspense + 4 추가 테스트, 158→196줄, +91/-6)
+- 커밋 6 `b7974ff`: null-safety-checker Medium/Low 보강 (geoData.features ?? [] / path.length===0 가드, +2/-1)
+
+**사용자 결정 (AskUserQuestion 2건, Phase 2)**:
+1. 색칠 모드에서 마커 = "완전히 숨김 (추천)" — 화면 깔끔 + 코드 단순
+2. 폴리곤 클릭 = "그 시도 줌인 + 점 보기 자동 전환 (추천)" — 자연스러운 드릴다운
+
+**9 GATE 검증 흐름**: 1차 🔴 GATE 0 (단계 C1 본체+테스트 통합 신규 2파일/190줄 경계) + 🟡 GATE 1 (`src/utils/` 디렉토리 부재 — 실측은 `src/lib/`) + 🟡 GATE 3 (Skeleton/lazy/모바일 토글 위치 누락) + 🟡 GATE 8 (Suspense fallback 누락) → 5단계 재분할 + 4건 보강 후 2차 🟢 9/0/0 통과.
+
+**5교차검증**: null-safety-checker 🟢 PASS (High/Medium 0 본질, Low 4건 중 2건 즉시 보강) / vite build 🟢 418ms (MapView 9.41→10.57KB +1.16, ChoroplethView 4KB lazy 별도 청크) / Hook 메인 직접 🟢 (mode useState 추가 후 호출 순서 정합) / 보안 메인 직접 🟢 (innerHTML/eval/dangerouslySetInnerHTML/new Function 0건)
+
+**검증**: 154 files / **2474 tests PASS** (세션 153 152/2458 → +2 files / +16 tests 정확 일치)
+
+**사용자 가치**: 🟢 직접 — 베타테스터 "지도 어처구니없다" 정면 대응. 좌상단 [🎨 색칠] 버튼 클릭 → 시도 17개 폴리곤이 평균 점수 색(gr() 6단계 S/A/B+/B/C/D)으로 칠해짐. 우하단 범례. 폴리곤 hover 진해지고 클릭하면 그 시도로 자동 줌인 + 점 보기 복귀. 데이터 0건 시도는 회색 0.25 fillOpacity.
+
+**누락 작업**:
+- 🥈 사용자 과제 이월 — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 (세션 151 미실행)
+- 다음 세션 155 = 시군구 251개 폴리곤 (창원 5구·청주 2구 합산 매핑 + 동적 import + 줌 레벨 감지)
+
+**교훈 5건 추가 (세션 153 31건 + 5 = 36건)**:
+32. **하네스 9 GATE 검증이 플랜 정밀도 끌어올림** — 1차 플랜에서 `src/utils/` 부재 / lazy import 누락 / Skeleton 누락 4건 발견. 사용자가 "코드 수정 금지·실측 증거만" 강제한 결과. 메인이 직접 grep + 파일 read 한 게 결정적
+33. **lazy + Suspense 패턴 실측 후 적용** — App.jsx L11 의 `lazy(() => import("MapView"))` 패턴 grep 후 ChoroplethView 도 같은 패턴으로 통일. 4KB 별도 청크로 점 보기 모드 사용자에게 무부담
+34. **kakao SDK 이벤트 리스너 vs DOM fireEvent 분리 패턴** — Polygon click/mouseover 는 DOM 이벤트가 아니라 `kakao.maps.event.addListener(target, type, handler)` 콜백. 테스트에서 fake event registry 만들어 handler 직접 호출하는 방식 (8 케이스 모두)
+35. **null-safety-checker Medium 1건도 즉시 보강** — `geoData.features` 외부 정적 자원 100% 신뢰 가정. 한 줄 방어 (`|| []`) 추가가 2 commits 사이 0줄 비용. 외부 의존성은 항상 방어
+36. **3 세션 분할 전략의 1단계 UI 변경 0 → 2단계 UI 통합 → 3단계 시군구 확장** — 세션 153 (자료 박제, UI 0) → 154 (시도 UI, 안전 통합) → 155 (시군구) 점진적. 한 번에 다 했으면 80줄 예산 초과 + 회귀 리스크 폭증
+
+---
+
+
 
 **거시 목적**: 세션149~150 inline 호이스팅 패턴 1세션 더 확장 + 박제 메모 vs 실측 차이 2건(DataSections 가성비/market-stats reader 5건) 발견 후 수정. 2도메인 동시 진행 (커밋·머지 분리).
 
