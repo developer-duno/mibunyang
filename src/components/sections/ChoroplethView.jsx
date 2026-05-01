@@ -1,10 +1,14 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useRegionAverages } from "@/hooks/useRegionAverages";
 import { geoSidoToDbName } from "@/constants/regionGeoMapping";
 import { gr, C, F } from "@/theme";
 import { geoJsonFeatureToKakaoPaths } from "@/lib/geoJsonToKakaoPaths";
 import { SkeletonText } from "../primitives";
 import { ChoroplethLegend } from "./ChoroplethLegend";
+
+const ChoroplethSigunguOverlay = lazy(() =>
+  import("./ChoroplethSigunguOverlay").then(m => ({ default: m.ChoroplethSigunguOverlay }))
+);
 
 /**
  * ChoroplethView — 색칠 지도(시도 17개 폴리곤)
@@ -27,7 +31,29 @@ export const ChoroplethView = memo(function ChoroplethView({
   const polygonsRef = useRef([]);
   const [geoData, setGeoData] = useState(null);
   const [error, setError] = useState(null);
+  const [level, setLevel] = useState(13);
+  const showSigungu = level <= 8;
+  // 줌 임계값 디바운스 미적용: level 8↔9 경계 진동은 사용자 의도적 1단계 줌 입출 시에만,
+  // 폴리곤 그리기 1회씩이라 실 영향 미미. 향후 UX 잡음 보고 시 hysteresis 적용.
   const { byRegion } = useRegionAverages(filtered);
+
+  // 0. 줌 이벤트 리스너 (level 동기화)
+  useEffect(() => {
+    if (!ready || !mapInstance) return;
+    const kakao = window.kakao?.maps;
+    if (!kakao?.event) return;
+    const handler = () => setLevel(mapInstance.getLevel());
+    kakao.event.addListener(mapInstance, "zoom_changed", handler);
+    // 초기 level 동기화
+    if (typeof mapInstance.getLevel === "function") setLevel(mapInstance.getLevel());
+    return () => {
+      // kakao SDK 의 event.removeListener 는 일부 버전 미지원. 옵셔널 호출 가드.
+      // 미지원 시 zoom_changed 핸들러는 mapInstance(=페이지) 라이프사이클까지 살아있음.
+      if (kakao.event?.removeListener) {
+        kakao.event.removeListener(mapInstance, "zoom_changed", handler);
+      }
+    };
+  }, [ready, mapInstance]);
 
   // 1. GeoJSON 1회 fetch
   useEffect(() => {
@@ -44,6 +70,13 @@ export const ChoroplethView = memo(function ChoroplethView({
     if (!ready || !mapInstance || !geoData) return;
     const kakao = window.kakao?.maps;
     if (!kakao?.Polygon) return;
+
+    // 시군구 모드일 땐 시도 폴리곤 전부 cleanup 후 종료
+    if (showSigungu) {
+      polygonsRef.current.forEach(p => p.setMap(null));
+      polygonsRef.current = [];
+      return;
+    }
 
     polygonsRef.current.forEach(p => p.setMap(null));
     polygonsRef.current = [];
@@ -86,7 +119,7 @@ export const ChoroplethView = memo(function ChoroplethView({
       polygonsRef.current.forEach(p => p.setMap(null));
       polygonsRef.current = [];
     };
-  }, [ready, mapInstance, geoData, byRegion, onSidoClick]);
+  }, [ready, mapInstance, geoData, byRegion, onSidoClick, showSigungu]);
 
   if (error) return (
     <div
@@ -103,5 +136,19 @@ export const ChoroplethView = memo(function ChoroplethView({
     </div>
   );
 
-  return <ChoroplethLegend isPC={isPC} isDesktop={isDesktop} />;
+  return (
+    <>
+      <ChoroplethLegend isPC={isPC} isDesktop={isDesktop} />
+      {showSigungu && (
+        <Suspense fallback={null}>
+          <ChoroplethSigunguOverlay
+            mapInstance={mapInstance}
+            ready={ready}
+            filtered={filtered}
+            onGuClick={onSidoClick}
+          />
+        </Suspense>
+      )}
+    </>
+  );
 });

@@ -125,4 +125,49 @@ describe("ChoroplethView", () => {
       expect(m).toHaveBeenCalledWith(null);
     });
   });
+
+  // ─── 단계 D 추가: 줌 감지 + 시군구 자동 전환 ───
+  it("level 13 (초기) → 시도 폴리곤만 그려지고 시군구 컴포넌트 미렌더", async () => {
+    const { polygons, eventListeners } = setupKakao();
+    const mapInstance = { setBounds: vi.fn(), getLevel: vi.fn(() => 13) };
+    render(<ChoroplethView mapInstance={mapInstance} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
+    await flushPromises();
+    // 시도 폴리곤 2개 (서울/부산 매핑) — 시군구 모드 미진입
+    expect(polygons.length).toBeGreaterThan(0);
+    // zoom_changed 리스너 등록 확인
+    const zoomListener = eventListeners.find(l => l.type === "zoom_changed");
+    expect(zoomListener).toBeDefined();
+  });
+
+  it("level 7 (≤8) zoom_changed → 시도 폴리곤 cleanup (setMap(null))", async () => {
+    const { polygons, eventListeners } = setupKakao();
+    const mapInstance = { setBounds: vi.fn(), getLevel: vi.fn(() => 13) };
+    render(<ChoroplethView mapInstance={mapInstance} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
+    await flushPromises();
+    // 시도 폴리곤이 그려진 상태
+    const initialCount = polygons.length;
+    expect(initialCount).toBeGreaterThan(0);
+    // 줌 7로 변경
+    mapInstance.getLevel = vi.fn(() => 7);
+    const zoomHandler = eventListeners.find(l => l.type === "zoom_changed").handler;
+    await act(async () => { zoomHandler(); });
+    await flushPromises();
+    // 시도 폴리곤 모두 setMap(null) 호출됨 (cleanup)
+    polygons.slice(0, initialCount).forEach(p => {
+      expect(p.setMap).toHaveBeenCalledWith(null);
+    });
+  });
+
+  it("unmount 시 zoom_changed removeListener 옵셔널 호출", async () => {
+    const { eventListeners } = setupKakao();
+    const removeListener = vi.fn();
+    window.kakao.maps.event.removeListener = removeListener;
+    const mapInstance = { setBounds: vi.fn(), getLevel: vi.fn(() => 13) };
+    const { unmount } = render(<ChoroplethView mapInstance={mapInstance} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
+    await flushPromises();
+    const zoomListener = eventListeners.find(l => l.type === "zoom_changed");
+    unmount();
+    // removeListener(mapInstance, "zoom_changed", handler) 호출 검증
+    expect(removeListener).toHaveBeenCalledWith(mapInstance, "zoom_changed", zoomListener.handler);
+  });
 });
