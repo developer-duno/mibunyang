@@ -1,3 +1,52 @@
+# 세션 155 — 2026-05-02 (색칠 지도 UI 2단계 — 시군구 251 폴리곤 + 합산 매핑 + 줌 자동 전환)
+
+**거시 목적**: 세션 153 (자료) → 154 (시도) → **155 = 시군구 251 색칠**. 색칠 지도 3 세션 분할 마지막 단계. 사용자가 시도 폴리곤 클릭 시 줌인 → 그 영역에서 시군구 폴리곤 자동 펼침 = 자연스러운 드릴다운 완성.
+
+**결론**: 4커밋 origin/main push (`f405c11..6e68722`).
+- 커밋 1 `f405c11`: geoSigunguToByGuKey 합산 매핑 헬퍼 + 6 테스트 (`src/lib/`, +78줄)
+- 커밋 2 `a122c64`: ChoroplethSigunguOverlay 본체 (시군구 251 폴리곤 + fetch + 이벤트 + cleanup, +99줄)
+- 커밋 3 `83d0fc0`: ChoroplethSigunguOverlay 6 테스트 (창원 5구 합산 검증 포함, +115줄)
+- 커밋 4 `6e68722`: ChoroplethView 줌 감지 + 시군구 자동 전환 (108→154줄, +95/-3, 11 테스트)
+
+**사용자 결정 (AskUserQuestion 4건)**:
+1. 진입 시점 = "지금 바로"
+2. 자동 전환 방식 = "줌 레벨 감지 자동 (≥9 시도 / ≤8 시군구)"
+3. 창원(5구)/청주(2구) = "5+2 합산 → 창원시/청주시 한 덩어리"
+4. 데이터 없는 시군구 = "회색 0.2 fillOpacity"
+
+**Phase 1 실측 발견**:
+- sigungu.geojson 251 features (Polygon 233 / MultiPolygon 18)
+- code 5자리 prefix 2자리 = SIDO_CODE_TO_DB 17키 100% 일치
+- name 동명이구 7개 (북구·동구·남구·중구·서구·강서구·고성군) → 코드 prefix 매핑 필수
+- **일반시 12개 구 분할 33 polygon** (고양·부천·성남·수원·안산·안양·용인·전주·창원·천안·청주·포항). DB regions.js gus 배열은 시 단일 표기 → 정규식 `/^(.+?시)[가-힣]+구$/` 으로 자동 합산
+
+**9 GATE 검증 흐름**: 1차 🟡 GATE 3 (시도 useEffect 가드 미명시) + 🟡 GATE 8 (removeListener fallback / 히스테리시스 결정) → 2차 보강 후 🟢 9/0/0 통과.
+
+**5교차검증**: null-safety-checker 🟢 PASS (High/Medium 0, Low 3 false positive — `mapInstance.getLevel` typeof 가드 / byGu 객체 참조 deps / showSigungu 전이 race 모두 안전 확인) / vite build 🟢 429ms (ChoroplethSigunguOverlay 별도 lazy chunk + ChoroplethView +1KB) / Hook 메인 🟢 (useState 5 + useRef 1 + useEffect 3 호출 순서 정합) / 보안 메인 🟢 (innerHTML/eval/dangerouslySetInnerHTML 0건)
+
+**검증**: 156 files / **2489 tests PASS** (세션 154 154/2474 → +2 files / +15 tests 정확 일치)
+
+**사용자 가치**: 🟢 직접 — 색칠 모드에서 줌 ≥9 시 시도 17 폴리곤 자동 cleanup + 시군구 251 폴리곤 자동 노출. 강남구·창원시·청주시 등 단지별 평균 점수 색으로 한눈 파악. 베타테스터 "특단의 조치" 보고 정면 종결.
+
+**번들 영향**:
+- MapView 청크 불변 (10.57KB)
+- ChoroplethView 4→4.7KB (+0.7, lazy)
+- **ChoroplethSigunguOverlay 별도 lazy chunk** (~3.5KB, 줌 ≥9 시 fetch)
+- sigungu.geojson 359KB 는 fetch 시점(줌 ≥9) 1회 로드, 캐시 후 0
+
+**누락 작업** (의도적 박제):
+- 줌 임계값 히스테리시스/디바운스 미적용 (level 8↔9 경계 진동은 실 영향 미미, 향후 UX 잡음 보고 시 적용)
+- kakao.event.removeListener 미지원 SDK 버전 fallback: 옵셔널 호출 가드만, 누수는 mapInstance(=페이지) 라이프사이클까지
+
+**교훈 5건 추가 (세션 154 36건 + 5 = 41건)**:
+37. **GeoJSON code prefix 활용 핵심** — name 만으로 매핑 불가 (동명이구 7개). 5자리 코드 앞 2자리가 시도 코드 = SIDO_CODE_TO_DB 100% 매칭 발견. 정규식 + 코드 이중 매핑이 안전 보장
+38. **DB 표기 vs GeoJSON 표기 사전 검증의 가치** — Phase 1 에서 일반시 12개 구 분할 33 polygon 발견 후 즉시 DB regions.js gus 배열 grep 으로 시 단일 표기 일치 확인. 안 했으면 강원·전남 같은 일반시 군 매핑 실패할 뻔
+39. **lazy + Suspense 패턴 2단계 중첩** — MapView 가 ChoroplethView 를 lazy + Suspense, ChoroplethView 가 ChoroplethSigunguOverlay 를 lazy + Suspense. 각 단계 청크 분리 + 사용자가 토글 안 누르면 0 부담 / 줌 안 ≥9 가면 0 부담 = 점진적 로드
+40. **showSigungu 가드 의존성 명시 누락** — 1차 플랜에 가드 한 줄만 적었으나 useEffect 의존성 배열에 추가 안 함 → 2차 보강 시 GATE 3 🟡 검출. 사용자가 "9 GATE 검증" 강제했기에 잡힘. **의존성 배열은 가드 변수 추가 필수**
+41. **null-safety-checker Low 3건은 모두 false positive** — `mapInstance.getLevel` 가드는 SDK 보장 / byGu 객체 참조 deps 는 성능 이슈만 / showSigungu race 는 polygonsRef 분리로 불가능. **Low 건도 명시 검토 후 PASS 처리하면 후속 세션에서 동일 이슈 재검토 필요 0**
+
+---
+
 # 세션 154 — 2026-05-02 (색칠 지도 UI 1단계 — 시도 17개 폴리곤 + 토글 + 줌인)
 
 **거시 목적**: 세션 153 색칠 지도 3 세션 분할의 **2단계 UI 구현**. 베타테스터 "지도 어처구니없다 / 특단의 조치" 보고 정면 대응. 시도 단위 평균 점수를 한눈에 파악 가능하게.

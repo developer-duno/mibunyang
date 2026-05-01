@@ -39,6 +39,20 @@
 
 ### 최근 3세션 (상세)
 
+**세션155 (2026-05-02)** — 색칠 지도 UI 2단계 시군구 251 폴리곤 + 합산 매핑 + 줌 자동 전환 (4커밋 origin/main `f405c11..6e68722`)
+- 실행 플랜 [cd-f-mibunyang-pwd-fancy-lobster.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-fancy-lobster.md). 1차 🟡 GATE 3/8 → 2차 🟢9/🟡0/🔴0
+- **배경**: 색칠 지도 3 세션 분할 마지막. 153(자료 박제) → 154(시도 17) → 155(시군구 251 + 자동 드릴다운). 베타테스터 "특단의 조치" 정면 종결
+- **사용자 결정 4건**: 지금 바로 / 줌 ≥9 자동 전환 / 창원(5)·청주(2) 합산 / 데이터 0건 회색 0.2
+- **Phase 1 실측 발견**: sigungu.geojson 251 features (Poly 233 + Multi 18). code 5자리 prefix 2자리 = SIDO_CODE_TO_DB 17키 100% 일치. **일반시 12개 구 분할 33 polygon** (고양·부천·성남·수원·안산·안양·용인·전주·창원·천안·청주·포항) → DB regions.js gus 시 단일 표기 일치 → 정규식 `/^(.+?시)[가-힣]+구$/` 자동 합산
+- **커밋 1 `f405c11`** (2파일 +78줄): [src/lib/geoJsonGuToDbKey.js](src/lib/geoJsonGuToDbKey.js) — `geoSigunguToByGuKey(feature)` 헬퍼. code prefix → SIDO_CODE_TO_DB → region (동명이구 7개 안전). name "XX시YY구" → 일반시 12개 합산. 6 테스트 (창원 5구 → 모두 "경남|창원시" / 동명이구 / null 가드)
+- **커밋 2 `a122c64`** (1파일 +99줄): [ChoroplethSigunguOverlay.jsx](src/components/sections/ChoroplethSigunguOverlay.jsx) — 시군구 폴리곤 오버레이. fetch `/geo/sigungu.geojson` 1회 → 251 폴리곤. byGu[key].avg → gr().c, 데이터 없으면 회색 0.2. 시도(0.65/0.25)보다 옅게 0.55/0.2. click → setBounds + onGuClick(byGuKey)
+- **커밋 3 `83d0fc0`** (1파일 +115줄): ChoroplethSigunguOverlay 6 테스트. **창원 5구 합산 검증** (5 features 입력 → 5 polygon 모두 같은 키 콜백)
+- **커밋 4 `6e68722`** (2파일 +95/-3, ChoroplethView 108→154줄): [ChoroplethView.jsx](src/components/sections/ChoroplethView.jsx) — `level` useState + `showSigungu = level <= 8` + `zoom_changed` 리스너 useEffect (cleanup `removeListener` 옵셔널) + 시도 useEffect 첫 줄 `if (showSigungu)` 가드 + 의존성 배열 추가 + 렌더에 SigunguOverlay Suspense lazy. 추가 3 테스트
+- **5교차검증**: null-safety-checker 🟢 PASS (High/Med 0, Low 3 false positive — `mapInstance.getLevel` typeof 가드 / byGu 객체 참조 deps 성능만 / showSigungu race 는 polygonsRef 분리로 불가능) / vite build 🟢 429ms (ChoroplethSigunguOverlay 별도 lazy chunk) / Hook 메인 🟢 / 보안 메인 🟢 (innerHTML/eval 0건)
+- **검증**: 156 files / **2489 tests PASS** (세션 154 154/2474 → +2 files / +15 tests 정확 일치)
+- **사용자 가치**: 🟢 직접 — 색칠 모드 + 줌 ≥9 시 시군구 251 자동 노출. 시도 → 시군구 → 단지 마커 3단계 자연스러운 드릴다운 완성
+- **누락 작업 의도적 박제 2건**: 줌 임계값 히스테리시스/디바운스 미적용 (실 영향 미미) / removeListener 미지원 SDK fallback (누수 미미)
+
 **세션154 (2026-05-02)** — 색칠 지도 UI 1단계 시도 17개 폴리곤 + 토글 + 줌인 (6커밋 origin/main `3fc32e0..b7974ff`)
 - 실행 플랜 [cd-f-mibunyang-pwd-fancy-lobster.md](C:\Users\user\.claude\plans\cd-f-mibunyang-pwd-fancy-lobster.md). 1차 9 GATE 🔴 GATE 0 + 🟡 GATE 1/3/8 → 5단계 재분할 + 4건 보강 후 2차 🟢9/🟡0/🔴0 통과
 - **배경**: 세션 153 색칠 지도 3 세션 분할의 **2단계 UI 구현**. 베타테스터 "지도 어처구니없다 / 특단의 조치" 보고 정면 대응. 사용자 결정 (AskUserQuestion 2건): 마커 완전히 숨김 + 폴리곤 클릭 시 줌인 + 점 보기 자동 복귀
@@ -406,15 +420,14 @@ _(세션148/147/146 상세는 SESSION_LOG 또는 아래 색인 표 참조)_
 - 경기 양평군 2 (우방아이유쉘 에코리버3차, 효성해링턴 플레이스)
 - 경기 연천군 1 (수레울1단지 국민임대) — area=NULL
 
-### 다음 세션 우선순위 (세션155+, 세션154 후속)
+### 다음 세션 우선순위 (세션156+, 세션155 후속)
 
-> 5/2 기준: 색칠 지도 1단계 시도 17 폴리곤 완료. **세션155 = 색칠 지도 3단계 시군구 251개 + 창원/청주 합산** 1순위. 5/3 neisCode CI D-1 / 5/5 market-stats CI D-3. 학교알리미 4/30 프로브는 사용자 미실행, 5/3 CI 결과로 갈음.
+> 5/2 기준: 색칠 지도 3 세션 분할 완료 (153 자료 → 154 시도 → 155 시군구). **세션156 진입 시점 = 사용자 베타테스터 색칠 지도 체험 결과 청취 우선**. 5/3 neisCode CI D-1 / 5/5 market-stats CI D-3.
 
-1. 🥇 **세션155 색칠 지도 3단계 시군구 폴리곤** — 세션 153~154 후속 마무리:
-   - `public/geo/sigungu.geojson` (351KB / 251 features) 동적 import (시도 모드에서 시군구 모드 토글 시점)
-   - 창원시(5개 구) / 청주시(2개 구) 합산 매핑 함수 (`useRegionAverages.byGu` 의 `"경남|창원시"` 단일 키 ↔ GeoJSON 5 features 합산)
-   - 줌 레벨 감지 useEffect (지도 줌 ≥ 9 일 때 자동으로 시군구로 전환?) — 사용자 결정 필요
-   - 시군구 폴리곤 클릭 = 그 시군구 줌인 + 점 보기 자동 전환 (세션154 시도 패턴 그대로)
+1. 🥇 **베타테스터 색칠 지도 체험 보고 청취** — 세션 153~155 3단계 완성. 사용자가 이번 주 안에 베타테스터에게 "색칠 모드 토글 → 줌인 시 시군구 자동 전환" 흐름 시연 가능. UX 잡음(level 8↔9 진동 / 폴리곤 색 가독성 / 일반시 합산 표기 적절성) 보고에 따라 후속 분기:
+   - level 진동 보고 시 → 히스테리시스 (≥10 시도 / ≤8 시군구) 또는 50ms 디바운스 적용
+   - 색 가독성 → fillOpacity 조정 (시군구 0.55 → 0.6~0.7)
+   - 합산 적절성 → 일반시 12개 분할/통합 사용자 선택 토글 검토
 2. 🥈 **5/3 학교알리미 + neisCode CI 결과 검증** — `collect-schools.yml` cron `'0 22 2 * *'` = 5/3 KST 07:00. 그 이후 `schools.nearby_schools[*].neisCode` 비율 쿼리(기대 >70%) + 학교알리미 students/classes 비율 추적 (현재 0% / 1.4%)
 3. 🥉 **세션151 migration 사용자 과제** — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 필요. 미실행 시 5/5 cron upsert 부분 실패
 2. 🥈 **세션151 migration 사용자 과제** — Supabase Dashboard SQL Editor 에서 `20260429000000_create_market_stats_history.sql` 수동 실행 필요. CREATE TABLE 성공 후 다음 cron 5/5 (매월 5일 KOSIS 수집) 부터 자연 누적 시작. 미실행 시 5/5 cron 의 upsert 단계가 "table not found" 로 실패 (regions UPDATE 부분은 정상 작동, 부분 실패만)
@@ -444,6 +457,11 @@ _(세션148/147/146 상세는 SESSION_LOG 또는 아래 색인 표 참조)_
 - **kakaoMapHelpers.js 안에 폴리곤 헬퍼 추가** — 세션154 거부 ("MapView.jsx 전용. 외부 컴포넌트 사용 0" 주석 위반 회피, `src/lib/geoJsonToKakaoPaths.js` 분리)
 - **색칠 모드에서 마커 + 폴리곤 동시 표시** — 세션154 사용자 결정 (마커 완전히 숨김 채택). UX 잡음·성능 부담
 - **폴리곤 클릭 인포윈도우** — 세션154 사용자 결정 (줌인 + 점 보기 자동 전환으로 충분)
+- **시도+시군구 동시 표시** — 세션155 줌 ≥9 자동 전환 = 시도 폴리곤 cleanup. 겹치면 가독성 저하
+- **시군구 줌인 후 동(읍·면) 단계** — 세션155: GeoJSON 자료 없음, 가치 미미
+- **시군구 별도 토글 버튼** — 세션155 사용자 결정 "줌 자동 전환" 채택
+- **줌 임계값 히스테리시스/디바운스 (level 8↔9 경계 진동)** — 세션155: 사용자 의도적 1단계 줌 입출 시에만 발생, 폴리곤 그리기 1회씩이라 실 영향 미미. 향후 UX 잡음 보고 시 hysteresis (≥10 시도 / ≤8 시군구) 또는 50ms 디바운스 적용
+- **kakao.event.removeListener 미지원 fallback 강화** — 세션155: 미지원 시 zoom_changed 핸들러는 mapInstance(=페이지) 라이프사이클까지 살아있음. 옵셔널 호출 한 줄 가드만 적용. mapInstance 재마운트 시점이라 누수 미미
 
 ### DB 품질 (세션133 전수 재측정 · 2026-04-20)
 
