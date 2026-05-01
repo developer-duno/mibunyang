@@ -86,3 +86,22 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 - `isFav`: 관심매물 하이라이트 (border 색상)
 - `moveInDone` (준공 + 미분양 0%): opacity 0.55
 - alertRow 배지: 분양중/분양예정 + 입주상태 + 미분양 + 시공사신용 + 혐오시설
+
+---
+
+## 반응형 레이아웃
+
+| 브레이크포인트 | 플래그 | 컨테이너 | 카드 그리드 | 네비게이션 |
+|--------------|-------|---------|-----------|----------|
+| <768px | 모바일 | 520px | 1컬럼 | 하단 BottomNav |
+| 768~1023px | isPC | 960px | 2컬럼 (gap 16px) | 하단 BottomNav |
+| 1024px+ | isDesktop | 1200px | 3컬럼 (gap 20px) | 상단 고정 바 60px |
+
+- `useResponsive()` → `{ isPC, isDesktop }` (150ms 디바운스)
+- isDesktop prop: App → HeaderSection, BottomNav, SearchFilterBar, AptListSection→AptCard, DetailModal, CompareSheet, MapView
+- 롤백: useResponsive에서 `isDesktop: false` 고정 시 즉시 복원
+
+## 데스크톱 키보드/테마
+
+- 키보드 단축키: 1~5 프로필, Ctrl+Z undo, Ctrl+Shift+Z redo, Escape 모달닫기
+- 헤더 화이트 테마: C.borderStrong("#D1D5DB"), 모바일 borderBottom 1.5px

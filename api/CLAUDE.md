@@ -106,3 +106,20 @@ export default withHandler({
 - 분양권 판별: `realEstateTypeCode` in ["ABYG", "PRE"]
 - 소프트 삭제: `is_active=FALSE` (DELETE 금지)
 - 페이지네이션: `isMoreData=false`까지 반복 (페이지 수 가정 금지)
+
+---
+
+## 인증/세션
+
+- admin 토큰 TTL 1h. 프론트 verify 폴링 15분 주기
+- 토큰 블랙리스트: KV `bl:{hash}`, fail-open (만료가 2차 방어선)
+- 로그아웃: 서버 토큰 무효화 + 프론트 sessionStorage 삭제
+- 카카오 신규 사용자: role:"user", status:"approved" (승인 불필요)
+- 카카오 KV: `user:{email}` + `kakao:{kakaoId}→email` 역참조 (TTL 90일)
+- 카카오 탭 라우팅: role="user"→list, "expert"→expert, "admin"→admin
+
+## 비로그인 블라인드 정책
+
+- AptCard: 점수 블러("??") + 상세/지도 LoginPromptModal
+- CompareSheet: 점수 "??" 텍스트 치환 (CSS blur 아닌 DOM 미노출), export/공유 숨김
+- LoginPromptModal Analytics: trigger prop (detail/map), 4개 이벤트

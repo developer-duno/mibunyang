@@ -133,3 +133,13 @@ useResponsive()
 ```
 
 롤백: `isDesktop: false` 고정 시 즉시 복원.
+
+---
+
+## React 성능 패턴
+
+- useDeferredValue: 필터 5개 원시값 (filterRegion/filterGu/sortKey/moveInFilter/builderTier)
+- useTransition: 정렬 변경 시 startSortTransition (useFilterSort.js)
+- filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
+- AptListSection: IntersectionObserver 무한 스크롤 + "더 보기" 폴백
+- App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환)
