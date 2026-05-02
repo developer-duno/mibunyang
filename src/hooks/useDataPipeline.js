@@ -91,6 +91,8 @@ export function useDataPipeline({
     return [...list].sort(SORTERS[deferredSortKey] || SORTERS.total);
   }, [scored, baseFilterArgs, deferredRegion, deferredGu, deferredSortKey, deferredMoveIn, deferredTier, hideNoUnsold]);
 
+  // filtered 가 새로 생성되면 페이지네이션을 첫 30개로 리셋 — 외부 상태(필터 결과) 동기화의 정당한 effect 사용
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setVisibleCount(VISIBLE_PAGE_SIZE); }, [filtered]);
 
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
