@@ -193,4 +193,30 @@ describe("AptCard", () => {
     expect(screen.queryByText("추가 모집")).toBeNull();
   });
 
+  // memo comparator — alertRow 6필드 변경 시 카드 다시 그림 (BACKLOG 🟢)
+  // 같은 apt.id 로 6필드 중 하나만 바꿨을 때 새 배지가 화면에 반영되어야 함
+  describe("memo comparator — alertRow 6필드 변경 시 리렌더 (회귀 방지)", () => {
+    const FIELD_CASES = [
+      // 미래 시점으로 두어 "입주예정" 분기에 안정 진입 (NOW_YM 무관)
+      { field: "completion", from: null, to: "210106", expectedText: /입주예정 2101년 06월/ },
+      { field: "unsoldRate", from: 0, to: 50, expectedText: /미분양 50%/ },
+      { field: "presaleStage", from: null, to: "분양중", expectedText: /분양중/ },
+      { field: "crimeSafetyGrade", from: null, to: 5, expectedText: /치안위험/ },
+      { field: "builderCreditGrade", from: null, to: "C", expectedText: /시공사 C/ },
+      { field: "unsoldEventCount", from: 0, to: 3, expectedText: /추가 모집/ },
+    ];
+
+    for (const { field, from, to, expectedText } of FIELD_CASES) {
+      it(`${field} 변경 시 카드 리렌더 (배지 표시)`, () => {
+        // unsoldEventCount 는 ah- prefix 가드 필요
+        const baseId = field === "unsoldEventCount" ? "ah-100" : "naver-100";
+        const aptInitial = makeApt({ id: baseId, [field]: from });
+        const aptUpdated = makeApt({ id: baseId, [field]: to });
+        const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+        rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+        expect(screen.getByText(expectedText)).toBeInTheDocument();
+      });
+    }
+  });
+
 });

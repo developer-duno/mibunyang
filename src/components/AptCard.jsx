@@ -166,6 +166,15 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (prev.isDesktop !== next.isDesktop) return false;
   if (prev.isLoggedIn !== next.isLoggedIn) return false;
   if (!!prev.onExpertView !== !!next.onExpertView) return false;
+  // alertRow 6배지 신호 — 누락 시 데이터 갱신돼도 카드 안 다시 그림
+  // (BACKLOG 🟢: AptCard memo comparator 6필드 — 세션168)
+  const pa = prev.apt, na = next.apt;
+  if (pa.completion !== na.completion) return false;
+  if (pa.unsoldRate !== na.unsoldRate) return false;
+  if (pa.presaleStage !== na.presaleStage) return false;
+  if (pa.crimeSafetyGrade !== na.crimeSafetyGrade) return false;
+  if (pa.builderCreditGrade !== na.builderCreditGrade) return false;
+  if (pa.unsoldEventCount !== na.unsoldEventCount) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
   return true;
