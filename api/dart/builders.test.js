@@ -9,6 +9,29 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+describe('dart/builders payload validation', () => {
+  it('builders 항목이 문자열이 아니면 400을 반환한다', async () => {
+    const res = makeRes();
+    await handler({ method: 'POST', body: { builders: ['GS嫄댁꽕', 123] } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].error).toBe('builders must contain strings only');
+  });
+
+  it('builders 항목이 빈 문자열이면 400을 반환한다', async () => {
+    const res = makeRes();
+    await handler({ method: 'POST', body: { builders: ['   '] } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].error).toBe('invalid builder name');
+  });
+
+  it('builders 항목이 너무 길면 400을 반환한다', async () => {
+    const res = makeRes();
+    await handler({ method: 'POST', body: { builders: ['a'.repeat(41)] } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].error).toBe('invalid builder name');
+  });
+});
+
 // rateLimit 모킹
 vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),

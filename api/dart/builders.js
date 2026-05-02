@@ -31,6 +31,28 @@ function parseAmount(str) {
   return parseFloat(str.replace(/,/g, "")) || 0;
 }
 
+function validateBuilders(builders) {
+  if (!Array.isArray(builders) || builders.length === 0) {
+    return { error: "builders array required" };
+  }
+  if (builders.length > 100) {
+    return { error: "max 100 builders allowed" };
+  }
+
+  const normalized = [];
+  for (const builder of builders) {
+    if (typeof builder !== "string") {
+      return { error: "builders must contain strings only" };
+    }
+    const name = builder.trim();
+    if (!name || name.length > 40) {
+      return { error: "invalid builder name" };
+    }
+    if (!normalized.includes(name)) normalized.push(name);
+  }
+  return { builders: normalized };
+}
+
 async function fetchFinancials(dartKey, corpCode) {
   // 보고서 코드 순서: 사업보고서 → 반기 → 1분기 → 3분기
   const reprtCodes = ["11011", "11012", "11013", "11014"];
@@ -79,15 +101,12 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     return;
   }
 
-  const { builders } = req.body || {};
-  if (!Array.isArray(builders) || builders.length === 0) {
-    res.status(400).json({ ok: false, error: "builders array required" });
+  const validation = validateBuilders(req.body?.builders);
+  if (validation.error) {
+    res.status(400).json({ ok: false, error: validation.error });
     return;
   }
-  if (builders.length > 100) {
-    res.status(400).json({ ok: false, error: "최대 100개까지 처리 가능합니다" });
-    return;
-  }
+  const builders = validation.builders;
 
   try {
     const data = {};
