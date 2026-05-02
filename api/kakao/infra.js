@@ -1,15 +1,7 @@
+import { withHandler } from "../_lib/handler.js";
+import { validateApartmentPayload } from "../_lib/proxyValidation.js";
+
 const KAKAO_BASE = "https://dapi.kakao.com/v2/local";
-
-const CATEGORY_MAP = {
-  hospital: "HP8",
-  mart: "MT1",
-  conv: "CS2",
-  cafe: "CE7",
-  culture: "CT1",
-  bank: "BK9",
-  pharmacy: "PM9",
-};
-
 const RADIUS = 1000;
 
 async function searchCategory(apiKey, lat, lng, code) {
@@ -62,8 +54,6 @@ async function fetchAllForApartment(apiKey, apt) {
   return out;
 }
 
-import { withHandler } from "../_lib/handler.js";
-
 export default withHandler({ method: "POST", rateLimit: "proxy", handler: async (req, res) => {
   const apiKey = process.env.KAKAO_KEY;
   if (!apiKey) {
@@ -71,22 +61,16 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     return;
   }
 
-  const { apartments } = req.body;
-  if (!Array.isArray(apartments)) {
-    res.status(400).json({ ok: false, error: "apartments array required" });
+  const validation = validateApartmentPayload(req.body, { max: 50, requireCoordinates: true });
+  if (!validation.ok) {
+    res.status(validation.status).json({ ok: false, error: validation.error });
     return;
   }
-  if (apartments.length > 50) {
-    res.status(400).json({ ok: false, error: "최대 50개까지 처리 가능합니다" });
-    return;
-  }
-  // 좌표 타입 가드: lat/lng가 숫자가 아닌 항목 필터링
-  const valid = apartments.filter(a => typeof a.lat === "number" && typeof a.lng === "number" && a.id != null);
 
   try {
     const results = {};
     await Promise.all(
-      valid.map(async (apt) => {
+      validation.apartments.map(async (apt) => {
         results[apt.id] = await fetchAllForApartment(apiKey, apt);
       })
     );
@@ -95,6 +79,6 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     res.json({ ok: true, data: results, fetchedAt: new Date().toISOString() });
   } catch (err) {
     console.error("Kakao API error:", err.message);
-    res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
+    res.status(502).json({ ok: false, error: "External API error" });
   }
 }});

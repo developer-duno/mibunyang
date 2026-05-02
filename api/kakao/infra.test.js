@@ -144,4 +144,18 @@ describe('kakao/infra handler', () => {
     await handler({ method: 'POST', body: { apartments: [{ id: 'a', lat: 37, lng: 127 }] } }, res);
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', expect.stringContaining('s-maxage=86400'));
   });
+
+  it('rejects apartments without coordinates', async () => {
+    const res = makeRes();
+    await handler({ method: 'POST', body: { apartments: [{ id: 'apt-1' }] } }, res);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('rejects apartments with out-of-range coordinates', async () => {
+    const res = makeRes();
+    await handler({ method: 'POST', body: { apartments: [{ id: 'apt-1', lat: 91, lng: 127 }] } }, res);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
 });
