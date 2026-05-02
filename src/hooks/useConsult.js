@@ -26,12 +26,12 @@ export function useConsult(showToast, favoriteIds) {
       if (!json.ok) throw new Error(json.error || "서버 오류");
       setConsultSubmitted(true);
       showToast("상담 신청이 완료되었습니다");
-    } catch (err) {
+    } catch {
       // API 실패 시 localStorage 폴백 (개인정보 마스킹)
       const fallback = { ...entry, name: maskName(entry.name), phone: maskPhone(entry.phone), submittedAt: new Date().toISOString(), id: Date.now().toString() };
       const updated = [...submittedConsults, fallback];
       setSubmittedConsults(updated);
-      try { localStorage.setItem("mibunyang_consults", JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem("mibunyang_consults", JSON.stringify(updated)); } catch { /* noop: localStorage 쿼터 초과 등 무시 */ }
       setConsultSubmitted(true);
       showToast("상담 신청이 저장되었습니다 (오프라인)");
     } finally {

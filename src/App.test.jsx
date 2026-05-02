@@ -98,8 +98,8 @@ describe('App 통합 테스트', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // localStorage/sessionStorage 초기화
-    try { localStorage.clear(); } catch {}
-    try { sessionStorage.clear(); } catch {}
+    try { localStorage.clear(); } catch { /* noop: jsdom storage 미가용 환경 무시 */ }
+    try { sessionStorage.clear(); } catch { /* noop: jsdom storage 미가용 환경 무시 */ }
   });
 
   // 1. 기본 렌더링: 로딩 → 데이터 로드 → 카드 표시

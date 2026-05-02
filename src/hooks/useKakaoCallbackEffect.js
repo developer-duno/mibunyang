@@ -29,7 +29,7 @@ export function useKakaoCallbackEffect({ tab, kakao, expert, admin, detail, setT
       } else {
         setTab("list");
       }
-      try { window.history.replaceState(null, "", "/"); } catch {}
+      try { window.history.replaceState(null, "", "/"); } catch { /* noop: history.replaceState 미지원 환경 무시 */ }
     });
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 }

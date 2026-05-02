@@ -45,13 +45,13 @@ export default function App() {
     try { const v = localStorage.getItem("mibunyang_profile"); return v && PROFILES[v] ? v : "live"; } catch { return "live"; }
   });
   const [isPending, startTransition] = useTransition();
-  const setProfile = useCallback((k) => { startTransition(() => setProfileRaw(k)); try { localStorage.setItem("mibunyang_profile", k); } catch {} trackEvent("profile_change", { profile: k }); }, [startTransition]);
+  const setProfile = useCallback((k) => { startTransition(() => setProfileRaw(k)); try { localStorage.setItem("mibunyang_profile", k); } catch { /* noop: localStorage 쿼터/접근 실패 무시 */ } trackEvent("profile_change", { profile: k }); }, [startTransition]);
   const [customWeights, setCustomWeights] = useState(() => {
     try { const v = localStorage.getItem("mibunyang_customWeights"); return v ? JSON.parse(v) : {}; } catch { return {}; }
   });
   const saveCustomWeights = useCallback((cw) => {
     setCustomWeights(cw);
-    try { localStorage.setItem("mibunyang_customWeights", JSON.stringify(cw)); } catch {}
+    try { localStorage.setItem("mibunyang_customWeights", JSON.stringify(cw)); } catch { /* noop: localStorage 쿼터/접근 실패 무시 */ }
   }, []);
   const [hideNoUnsold, setHideNoUnsold] = useState(true);
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
@@ -192,7 +192,7 @@ export default function App() {
       cleanParams.delete("detail");
       cleanParams.delete("compare");
       const remaining = cleanParams.toString();
-      try { window.history.replaceState(null, "", remaining ? `?${remaining}` : window.location.pathname); } catch {}
+      try { window.history.replaceState(null, "", remaining ? `?${remaining}` : window.location.pathname); } catch { /* noop: history.replaceState 미지원 환경 무시 */ }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -102,7 +102,7 @@ export function useKakaoAuth(showToast) {
       if (data.ok) {
         // pendingDetail 복원
         let pendingDetail = null;
-        try { pendingDetail = sessionStorage.getItem("kakao_pending_detail"); sessionStorage.removeItem("kakao_pending_detail"); } catch {}
+        try { pendingDetail = sessionStorage.getItem("kakao_pending_detail"); sessionStorage.removeItem("kakao_pending_detail"); } catch { /* noop: sessionStorage 미가용 무시 */ }
         return { ok: true, token: data.token, refreshToken: data.refreshToken, user: data.user, role: data.role || "user", pendingDetail };
       }
 
