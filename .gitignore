@@ -43,6 +43,9 @@ backups/
 playwright-report/
 test-results/
 
+# Superpowers brainstorming visual companion
+.superpowers/
+
 # 바이너리/데이터
 *.xlsx
 
