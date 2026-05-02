@@ -145,4 +145,47 @@ describe("SearchFilterBar", () => {
     render(<SearchFilterBar {...makeProps({ hideNoUnsold: false })} />);
     expect(screen.getByText("미분양만")).toBeInTheDocument();
   });
+
+  // ── 활성 필터 칩 키보드 접근성 (a11y 보강) ──────────────────────
+  describe("활성 필터 칩 키보드 접근성", () => {
+    it("활성 칩이 role=button + tabIndex=0 + aria-label 부여됨", () => {
+      render(<SearchFilterBar {...makeProps({
+        showFavOnly: true, activeFilterCount: 1, favCount: 3,
+      })} />);
+      const chip = screen.getByRole("button", { name: "관심 필터 해제" });
+      expect(chip.getAttribute("tabindex")).toBe("0");
+      expect(chip.tagName).toBe("SPAN");
+    });
+
+    it("Enter 키 입력 시 onClick 콜백 호출 (관심 칩)", () => {
+      const onToggleFavOnly = vi.fn();
+      render(<SearchFilterBar {...makeProps({
+        showFavOnly: true, activeFilterCount: 1, onToggleFavOnly,
+      })} />);
+      const chip = screen.getByRole("button", { name: "관심 필터 해제" });
+      fireEvent.keyDown(chip, { key: "Enter" });
+      expect(onToggleFavOnly).toHaveBeenCalledTimes(1);
+    });
+
+    it("Space 키 입력 시 onClick 콜백 호출 (지역 칩)", () => {
+      const onRegionChange = vi.fn();
+      render(<SearchFilterBar {...makeProps({
+        filterRegion: "서울", activeFilterCount: 1, onRegionChange,
+      })} />);
+      const chip = screen.getByRole("button", { name: "서울 필터 해제" });
+      fireEvent.keyDown(chip, { key: " " });
+      expect(onRegionChange).toHaveBeenCalledWith("전체");
+    });
+
+    it("다른 키 입력 시 onClick 콜백 미호출 (회귀 가드)", () => {
+      const onBudgetReset = vi.fn();
+      render(<SearchFilterBar {...makeProps({
+        budgetMin: "3", activeFilterCount: 1, onBudgetReset,
+      })} />);
+      const chip = screen.getByRole("button", { name: "예산 필터 해제" });
+      fireEvent.keyDown(chip, { key: "a" });
+      fireEvent.keyDown(chip, { key: "Tab" });
+      expect(onBudgetReset).not.toHaveBeenCalled();
+    });
+  });
 });

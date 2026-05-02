@@ -49,6 +49,14 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   const togglePanel = useCallback((key) => setOpenPanel(prev => prev === key ? null : key), []);
   const closePanel = useCallback(() => setOpenPanel(null), []);
 
+  /* 활성 필터 칩 키보드 핸들러 — Enter/Space → 동일 onClick 콜백 */
+  const onChipKeyDown = useCallback((cb) => (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      cb();
+    }
+  }, []);
+
   /* ESC 키보드 + 외부 클릭으로 닫기 */
   const barRef = useRef(null);
   useEffect(() => {
@@ -153,15 +161,15 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       {activeFilterCount > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap", flex: 1 }}>
-            {showFavOnly && <span onClick={onToggleFavOnly} style={chipStyle}>관심 ✕</span>}
-            {filterRegion !== "전체" && <span onClick={() => onRegionChange("전체")} style={chipStyle}>{filterRegion} ✕</span>}
-            {(budgetMin || budgetMax) && <span onClick={onBudgetReset} style={chipStyle}>{budgetMin || "0"}~{budgetMax || "∞"}억 ✕</span>}
-            {(areaMin || areaMax) && <span onClick={() => { onAreaMinChange(""); onAreaMaxChange(""); }} style={chipStyle}>면적 {areaMin || "0"}~{areaMax || "∞"}㎡ ✕</span>}
-            {(unitsMin || unitsMax) && <span onClick={() => { onUnitsMinChange(""); onUnitsMaxChange(""); }} style={chipStyle}>세대 {unitsMin || "0"}~{unitsMax || "∞"} ✕</span>}
-            {moveInFilter !== "전체" && <span onClick={() => onMoveInChange("전체")} style={chipStyle}>{moveInFilter} ✕</span>}
-            {minScore && <span onClick={() => onMinScoreChange("")} style={chipStyle}>{minScore}점+ ✕</span>}
-            {builderTier !== "전체" && <span onClick={() => onBuilderTierChange("전체")} style={chipStyle}>{builderTier} ✕</span>}
-            {benefitOnly && <span onClick={onToggleBenefitOnly} style={chipStyle}>혜택 ✕</span>}
+            {showFavOnly && <span role="button" tabIndex={0} aria-label="관심 필터 해제" onClick={onToggleFavOnly} onKeyDown={onChipKeyDown(onToggleFavOnly)} style={chipStyle}>관심 ✕</span>}
+            {filterRegion !== "전체" && <span role="button" tabIndex={0} aria-label={`${filterRegion} 필터 해제`} onClick={() => onRegionChange("전체")} onKeyDown={onChipKeyDown(() => onRegionChange("전체"))} style={chipStyle}>{filterRegion} ✕</span>}
+            {(budgetMin || budgetMax) && <span role="button" tabIndex={0} aria-label="예산 필터 해제" onClick={onBudgetReset} onKeyDown={onChipKeyDown(onBudgetReset)} style={chipStyle}>{budgetMin || "0"}~{budgetMax || "∞"}억 ✕</span>}
+            {(areaMin || areaMax) && <span role="button" tabIndex={0} aria-label="면적 필터 해제" onClick={() => { onAreaMinChange(""); onAreaMaxChange(""); }} onKeyDown={onChipKeyDown(() => { onAreaMinChange(""); onAreaMaxChange(""); })} style={chipStyle}>면적 {areaMin || "0"}~{areaMax || "∞"}㎡ ✕</span>}
+            {(unitsMin || unitsMax) && <span role="button" tabIndex={0} aria-label="세대수 필터 해제" onClick={() => { onUnitsMinChange(""); onUnitsMaxChange(""); }} onKeyDown={onChipKeyDown(() => { onUnitsMinChange(""); onUnitsMaxChange(""); })} style={chipStyle}>세대 {unitsMin || "0"}~{unitsMax || "∞"} ✕</span>}
+            {moveInFilter !== "전체" && <span role="button" tabIndex={0} aria-label={`${moveInFilter} 필터 해제`} onClick={() => onMoveInChange("전체")} onKeyDown={onChipKeyDown(() => onMoveInChange("전체"))} style={chipStyle}>{moveInFilter} ✕</span>}
+            {minScore && <span role="button" tabIndex={0} aria-label="점수 필터 해제" onClick={() => onMinScoreChange("")} onKeyDown={onChipKeyDown(() => onMinScoreChange(""))} style={chipStyle}>{minScore}점+ ✕</span>}
+            {builderTier !== "전체" && <span role="button" tabIndex={0} aria-label={`${builderTier} 필터 해제`} onClick={() => onBuilderTierChange("전체")} onKeyDown={onChipKeyDown(() => onBuilderTierChange("전체"))} style={chipStyle}>{builderTier} ✕</span>}
+            {benefitOnly && <span role="button" tabIndex={0} aria-label="혜택 필터 해제" onClick={onToggleBenefitOnly} onKeyDown={onChipKeyDown(onToggleBenefitOnly)} style={chipStyle}>혜택 ✕</span>}
           </div>
           {onResetAll && (
             <button onClick={onResetAll} aria-label="전체 필터 초기화" style={{
