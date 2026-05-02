@@ -118,7 +118,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           </div>
         )}
 
-        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade)) || (apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4)) && (
+        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade)) || (apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4) || (apt.unsoldEventCount > 0 && apt.id?.startsWith("ah-"))) && (
           <div style={S.alertRow}>
             {apt.presaleStage && (() => {
               const sm = { "분양중": { bg: C.greenLight, color: C.green }, "분양예정": { bg: C.blueLight, color: C.blue } };
@@ -140,6 +140,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             )}
             {apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4 && (
               <span style={{ ...S.alertTag, background: apt.crimeSafetyGrade >= 5 ? C.redLight : C.amberLight, color: apt.crimeSafetyGrade >= 5 ? C.red : C.amber }}>{apt.crimeSafetyGrade >= 5 ? "치안위험" : "치안주의"}</span>
+            )}
+            {/* 무순위 공고 발생 단지 — ah- 단지만 (다른 prefix는 0의 의미가 "정보 없음") */}
+            {apt.unsoldEventCount > 0 && apt.id?.startsWith("ah-") && (
+              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>추가 모집</span>
             )}
           </div>
         )}
