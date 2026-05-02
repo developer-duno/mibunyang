@@ -93,8 +93,8 @@ describe("subscribers POST signup", () => {
       headers: {},
       body: {
         phone: "010-1234-5678",
-        region: "서울특별시",
-        gu: "강동구",
+        region: " 서울특별시 ",
+        gu: " 강동구 ",
         apartment_id: "apt-123",
         consent: true,
       },
@@ -110,7 +110,7 @@ describe("subscribers POST signup", () => {
         consent_source: "upcoming-page",
         opt_out_at: null,
       }),
-      { onConflict: "phone,region,gu,apartment_id" }
+      { onConflict: "phone,region_key,gu_key,apartment_key" }
     );
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ ok: true });
@@ -145,7 +145,7 @@ describe("subscribers POST signup", () => {
         gu: null,
         apartment_id: null,
       }),
-      { onConflict: "phone,region,gu,apartment_id" }
+      { onConflict: "phone,region_key,gu_key,apartment_key" }
     );
     expect(res.status).toHaveBeenCalledWith(200);
   });

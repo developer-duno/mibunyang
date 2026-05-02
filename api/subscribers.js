@@ -1,14 +1,15 @@
-// /api/subscribers — 분양 시작 알림 신청 (POST) + 철회 (DELETE)
-// spec: docs/superpowers/specs/2026-05-02-upcoming-presale-page-design.md § 3-2·3-3
-// RLS: anon-only INSERT, service_role-only SELECT/UPDATE (휴대폰 정보 보호)
+// /api/subscribers - 분양 시작 알림 신청 (POST) + 철회 (DELETE)
+// spec: docs/superpowers/specs/2026-05-02-upcoming-presale-page-design.md
+// RLS: anon-only INSERT, service_role-only SELECT/UPDATE
 
 import crypto from "crypto";
 import { getMibuyangSupabase } from "./_lib/supabase.js";
 import { withHandler } from "./_lib/handler.js";
 
 const PHONE_RE = /^01[0-9]-?\d{3,4}-?\d{4}$/;
-const REGION_RE = /^[가-힣]{2,15}$/;
+const REGION_RE = /^[\uac00-\ud7a3]{2,15}$/;
 const APT_ID_RE = /^[a-z]+-\d+$/i;
+const SUBSCRIBER_CONFLICT_TARGET = "phone,region_key,gu_key,apartment_key";
 
 export default withHandler({
   method: ["POST", "DELETE"],
@@ -17,9 +18,11 @@ export default withHandler({
   handler: { POST: handlePost, DELETE: handleDelete },
 });
 
-// POST — 알림 신청 (anon 가능)
 async function handlePost(req, res) {
   const { phone, region, gu, apartment_id, consent } = req.body || {};
+  const regionValue = normalizeOptionalString(region);
+  const guValue = normalizeOptionalString(gu);
+  const apartmentIdValue = normalizeOptionalString(apartment_id);
 
   if (consent !== true) {
     return res.status(400).json({ ok: false, error: "개인정보 동의가 필요합니다" });
@@ -27,14 +30,14 @@ async function handlePost(req, res) {
   if (!phone || typeof phone !== "string" || !PHONE_RE.test(phone.trim())) {
     return res.status(400).json({ ok: false, error: "올바른 휴대폰 번호를 입력해주세요" });
   }
-  if (region && (typeof region !== "string" || !REGION_RE.test(region))) {
+  if (regionValue && (typeof regionValue !== "string" || !REGION_RE.test(regionValue))) {
     return res.status(400).json({ ok: false, error: "올바른 지역을 선택해주세요" });
   }
-  if (gu && (typeof gu !== "string" || !REGION_RE.test(gu))) {
+  if (guValue && (typeof guValue !== "string" || !REGION_RE.test(guValue))) {
     return res.status(400).json({ ok: false, error: "올바른 시군구를 선택해주세요" });
   }
-  if (apartment_id && (typeof apartment_id !== "string" || !APT_ID_RE.test(apartment_id))) {
-    return res.status(400).json({ ok: false, error: "올바른 단지 ID 가 아닙니다" });
+  if (apartmentIdValue && (typeof apartmentIdValue !== "string" || !APT_ID_RE.test(apartmentIdValue))) {
+    return res.status(400).json({ ok: false, error: "올바른 단지 ID가 아닙니다" });
   }
 
   const e164 = normalizeToE164(phone);
@@ -44,21 +47,19 @@ async function handlePost(req, res) {
 
   try {
     const sb = getMibuyangSupabase();
-
-    // UNIQUE 제약 (phone, region, gu, apartment_id) → upsert
     const { error } = await sb
       .from("subscribers")
       .upsert(
         {
           phone: e164,
-          region: region || null,
-          gu: gu || null,
-          apartment_id: apartment_id || null,
+          region: regionValue,
+          gu: guValue,
+          apartment_id: apartmentIdValue,
           consent_at: new Date().toISOString(),
           consent_source: "upcoming-page",
-          opt_out_at: null, // 재가입 시 철회 해제
+          opt_out_at: null,
         },
-        { onConflict: "phone,region,gu,apartment_id" }
+        { onConflict: SUBSCRIBER_CONFLICT_TARGET }
       );
 
     if (error) {
@@ -73,7 +74,6 @@ async function handlePost(req, res) {
   }
 }
 
-// DELETE — 알림 철회 (HMAC 토큰 검증)
 async function handleDelete(req, res) {
   const { phone, token } = req.body || {};
 
@@ -89,12 +89,12 @@ async function handleDelete(req, res) {
     return res.status(400).json({ ok: false, error: "휴대폰 번호 정규화 실패" });
   }
 
-  // HMAC 검증
   const secret = process.env.SUBSCRIBERS_OPT_OUT_SECRET;
   if (!secret) {
     console.error("[/api/subscribers DELETE] SUBSCRIBERS_OPT_OUT_SECRET 환경변수 미설정");
     return res.status(500).json({ ok: false, error: "서버 설정 오류" });
   }
+
   const expected = Buffer.from(crypto.createHmac("sha256", secret).update(e164).digest("hex"), "hex");
   const provided = Buffer.from(token, "hex");
   if (provided.length !== expected.length) {
@@ -123,14 +123,16 @@ async function handleDelete(req, res) {
   }
 }
 
-/**
- * 한국 휴대폰 번호 → E.164 ("+821012345678")
- * 입력: "010-1234-5678", "01012345678", "010 1234 5678"
- * @returns {string|null} E.164 또는 실패 시 null
- */
 export function normalizeToE164(phone) {
   if (!phone || typeof phone !== "string") return null;
   const digits = phone.replace(/\D/g, "");
   if (!/^010\d{7,8}$/.test(digits) && !/^01[16-9]\d{6,8}$/.test(digits)) return null;
   return `+82${digits.slice(1)}`;
+}
+
+function normalizeOptionalString(value) {
+  if (value == null) return null;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed || null;
 }
