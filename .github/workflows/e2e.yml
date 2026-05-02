@@ -19,7 +19,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       # SUPABASE_ANON_KEY는 공개 키 — GitHub Secrets에 등록 필요
       - name: Run E2E tests
