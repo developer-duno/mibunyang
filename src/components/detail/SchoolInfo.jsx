@@ -7,14 +7,14 @@ const thStyle = { fontSize: F.xs, fontWeight: 700, color: "#64748B", padding: "6
 const tdStyle = { fontSize: F.sm, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
 const SCHOOL_SUFFIX_RE = /(?:초등학교|중학교|고등학교|학교)$/;
+const SCHOOL_TYPES = Object.freeze(["초", "중", "고"]);
 const isSchool = (name) => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
 
 export const SchoolInfo = memo(function SchoolInfo({ apt }) {
   const schools = (apt.nearbySchools ?? []).filter(s => isSchool(s.name));
   const [expanded, setExpanded] = useState(false);
-  const types = ["초", "중", "고"];
-  const nearest = useMemo(() => types.map(t => schools.filter(s => s.type === t).sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999))[0]).filter(Boolean), [schools]);
-  const counts = useMemo(() => types.map(t => { const w = schools.filter(s => s.type === t && s.distance != null && s.distance <= 1000); return w.length > 0 ? `${t} ${w.length}` : null; }).filter(Boolean), [schools]);
+  const nearest = useMemo(() => SCHOOL_TYPES.map(t => schools.filter(s => s.type === t).sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999))[0]).filter(Boolean), [schools]);
+  const counts = useMemo(() => SCHOOL_TYPES.map(t => { const w = schools.filter(s => s.type === t && s.distance != null && s.distance <= 1000); return w.length > 0 ? `${t} ${w.length}` : null; }).filter(Boolean), [schools]);
   const hasFounded = schools.some(s => s.founded);
   const hasClasses = schools.some(s => s.classes);
   const hasStudents = schools.some(s => s.students);

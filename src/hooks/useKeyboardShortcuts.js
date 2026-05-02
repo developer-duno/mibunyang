@@ -20,5 +20,6 @@ export function useKeyboardShortcuts({ isDesktop, setProfile, canUndo, canRedo, 
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detail 객체 전체 대신 사용하는 두 필드만 명시 (객체 정체성 변경 시 핸들러 재바인딩 회피)
   }, [isDesktop, setProfile, canUndo, canRedo, undo, redo, detail.detailAptId, detail.setDetailAptId]);
 }

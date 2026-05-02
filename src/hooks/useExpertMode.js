@@ -58,7 +58,8 @@ export function useExpertMode(showToast) {
     } finally {
       setAuthLoading(false);
     }
-  }, []); // showToastRef 사용으로 showToast 의존성 제거 (P-4)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- showToast는 useToast의 useCallback([])로 평생 불변이라 deps 누락 안전 (P-4)
+  }, []);
 
   const handleExpertSignup = useCallback(async () => {
     const form = authFormRef.current;
