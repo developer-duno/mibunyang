@@ -8,7 +8,7 @@
     "collect": "node scripts/collect-data.mjs",
     "migrate": "node scripts/migrate-to-supabase.mjs",
     "migrate:dry": "node scripts/migrate-to-supabase.mjs --dry-run",
-    "prebuild": "if [ \"$VERCEL\" ]; then echo '[prebuild] Vercel — skip collect'; else node scripts/collect-data.mjs; fi",
+    "prebuild": "node scripts/prebuild.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src/",
