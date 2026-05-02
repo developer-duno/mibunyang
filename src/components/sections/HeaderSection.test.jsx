@@ -82,4 +82,27 @@ describe("HeaderSection", () => {
     render(<HeaderSection {...defaultProps} apartmentCount={0} />);
     expect(screen.getByText(/0개 단지/)).toBeInTheDocument();
   });
+
+  // § 5-5: upcomingCount prop — Feature Flag ON (테스트 env) 기준
+  it("§ 5-5: upcomingCount=392 → '📅 곧 분양 392개' 라벨", () => {
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} upcomingCount={392} />);
+    expect(screen.getByText("📅 곧 분양 392개")).toBeInTheDocument();
+  });
+
+  it("§ 5-5: upcomingCount=null → '📅 곧 분양' (숫자 fallback)", () => {
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} upcomingCount={null} />);
+    expect(screen.getByText("📅 곧 분양")).toBeInTheDocument();
+    expect(screen.queryByText(/곧 분양 \d+개/)).not.toBeInTheDocument();
+  });
+
+  it("§ 5-5: upcomingCount=0 → '📅 곧 분양' (0건은 N개 미표기)", () => {
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} upcomingCount={0} />);
+    expect(screen.getByText("📅 곧 분양")).toBeInTheDocument();
+  });
+
+  it("§ 5-5: upcomingCount prop 미전달 (undefined) 도 안전", () => {
+    expect(() => {
+      render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
+    }).not.toThrow();
+  });
 });

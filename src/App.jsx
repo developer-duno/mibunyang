@@ -55,6 +55,22 @@ export default function App() {
   }, []);
   const [hideNoUnsold, setHideNoUnsold] = useState(true);
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
+
+  // § 5-5: 헤더 CTA "곧 분양 N개" — Feature Flag ON 일 때만 1회 fetch (Vercel CDN 5분 캐시)
+  const [upcomingCount, setUpcomingCount] = useState(null);
+  useEffect(() => {
+    if (import.meta.env.VITE_FEATURE_UPCOMING !== "true") return;
+    let cancelled = false;
+    fetch("/api/upcoming")
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        if (cancelled || !j?.ok) return;
+        const t = j.totals || {};
+        setUpcomingCount((t.plan || 0) + (t.apply || 0) + (t.sale || 0));
+      })
+      .catch(() => { /* 헤더 라벨 fallback 동작, 사용자 영향 없음 */ });
+    return () => { cancelled = true; };
+  }, []);
   const [tab, setTab] = useState(() => {
     if (window.location.pathname.startsWith("/oauth/kakao/callback")) return "kakaoCallback";
     if (window.location.pathname.startsWith("/upcoming")) {
@@ -217,7 +233,9 @@ export default function App() {
     <div style={{ background: isDesktop ? C.white : C.bg, minHeight: "100dvh", maxWidth: containerMaxWidth, margin: "0 auto", fontFamily: "'Pretendard Variable','Noto Sans KR',-apple-system,BlinkMacSystemFont,sans-serif", fontSize: isDesktop ? 14 : 13, color: C.text, paddingBottom: isDesktop ? 24 : 70, paddingTop: isDesktop ? 64 : 0, transition: "max-width .3s" }}>
 
       <HeaderSection profile={profile} onProfileChange={setProfile} apartmentCount={apartments.length}
-        isDesktop={isDesktop} tab={tab} onNavClick={handleNavClick} showComp={showComp} compCount={compIds.length} expertLoggedIn={expert.expertLoggedIn} containerMaxWidth={containerMaxWidth} />
+        isDesktop={isDesktop} tab={tab} onNavClick={handleNavClick} showComp={showComp} compCount={compIds.length}
+        expertLoggedIn={expert.expertLoggedIn} containerMaxWidth={containerMaxWidth}
+        upcomingCount={upcomingCount} />
 
       {dataLoading && (
         <div style={{ textAlign: "center", padding: "6px", fontSize: 11, color: C.muted }}>

@@ -95,18 +95,21 @@ const HELP_SECTIONS = [
 /**
  * 헤더 섹션 — 데스크톱: 고정 상단 바 + 네비 / 모바일: 블루 그라디언트
  */
-export const HeaderSection = memo(function HeaderSection({ profile, onProfileChange, apartmentCount, isDesktop, tab, onNavClick, showComp, compCount, expertLoggedIn, containerMaxWidth }) {
+export const HeaderSection = memo(function HeaderSection({ profile, onProfileChange, apartmentCount, isDesktop, tab, onNavClick, showComp, compCount, expertLoggedIn, containerMaxWidth, upcomingCount }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
 
   const upcomingEnabled = import.meta.env.VITE_FEATURE_UPCOMING === "true";
+  const upcomingLabel = upcomingCount != null && upcomingCount > 0
+    ? `📅 곧 분양 ${upcomingCount}개`
+    : "📅 곧 분양";
   const navItems = expertLoggedIn
     ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "지도", k: "map" }]
     : [
         { l: "목록", k: "list" },
         { l: "지도", k: "map" },
-        ...(upcomingEnabled ? [{ l: "📅 곧 분양", k: "upcoming" }] : []),
+        ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),
         { l: "비교", k: "compare" },
         { l: "상담", k: "consult" },
         { l: "정보", k: "info" },
