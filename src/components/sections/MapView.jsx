@@ -67,18 +67,20 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     };
   }, []);
 
-  // 마커 업데이트
+  // 색칠 모드 진입 시 마커/선택 상태 리셋 (event handler 에서 호출 — set-state-in-effect 회피)
+  const clearMarkersAndSelection = useCallback(() => {
+    clustererRef.current?.clear();
+    setSelected(null);
+    setMarkerCount(0);
+  }, []);
+
+  // 마커 업데이트 — point 모드에서만 동작 (color 모드는 event handler 가 clear 처리)
   useEffect(() => {
-    if (!ready || !clustererRef.current) return;
-    // 색칠 모드에서는 마커 숨김 (clusterer.clear 후 종료)
-    if (mode !== "point") {
-      clustererRef.current.clear();
-      setSelected(null);
-      setMarkerCount(0);
-      return;
-    }
+    if (!ready || !clustererRef.current || mode !== "point") return;
     const kakao = window.kakao.maps;
     clustererRef.current.clear();
+    // filtered 변경 시 이전 선택 정리 — 새 filtered 에서 사라진 단지의 selected 카드가 남는 것 방지
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelected(null);
 
     const markers = [];
@@ -110,10 +112,18 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     }
   }, [ready, filtered, mode, mapInstance]);
 
-  // 색칠 모드 폴리곤 클릭 → 점 보기 자동 복귀
+  // 색칠 모드 폴리곤 클릭 → 점 보기 자동 복귀 (마커는 useEffect 가 재생성하므로 clear 불필요)
   const handleSidoClick = useCallback(() => {
     setMode("point");
   }, []);
+
+  // 모드 토글 버튼 — point→color 전환 시 마커/선택 즉시 정리 (color→point 는 useEffect 가 재생성)
+  const handleModeToggle = useCallback(() => {
+    setMode(m => {
+      if (m === "point") clearMarkersAndSelection();
+      return m === "point" ? "choropleth" : "point";
+    });
+  }, [clearMarkersAndSelection]);
 
   const handleInfoClick = useCallback(() => {
     if (selected && onDetail) onDetail(selected.apt.id);
@@ -171,7 +181,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
           {mode === "choropleth" ? `${filtered.length}개 단지` : markerCount == null ? `${filtered.length}개 단지` : markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
         </div>
         <button
-          onClick={() => setMode(m => m === "point" ? "choropleth" : "point")}
+          onClick={handleModeToggle}
           aria-pressed={mode === "choropleth"}
           aria-label="지도 모드 토글"
           style={{ background: "rgba(255,255,255,0.92)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 10px", fontSize: F.xs, fontWeight: 700, color: C.indigo, cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}
