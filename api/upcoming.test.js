@@ -18,13 +18,38 @@ vi.mock("./_lib/cors.js", () => ({
   handleCors: vi.fn().mockReturnValue(false),
 }));
 
+vi.mock("./_lib/rateLimit.js", () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
   lastSelectArg = null;
   mockIn.mockResolvedValue({ data: [], error: null });
 });
 
+describe("upcoming rateLimit", () => {
+  it("proxy rateLimit를 적용한다", async () => {
+    mockIn.mockResolvedValueOnce({ data: [], error: null });
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    expect(checkRateLimit).toHaveBeenCalledWith(req, "proxy");
+  });
+
+  it("rateLimit 초과 시 429 + Retry-After, Supabase 미조회", async () => {
+    checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(res.setHeader).toHaveBeenCalledWith("Retry-After", "300");
+    expect(mockSelect).not.toHaveBeenCalled();
+  });
+});
+
 const { default: handler, extractDates } = await import("./upcoming.js");
+const { checkRateLimit } = await import("./_lib/rateLimit.js");
 
 function makeRes() {
   return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
