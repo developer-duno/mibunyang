@@ -62,6 +62,9 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
       // 모달 닫힘 시 이전 포커스 복원
       prevFocusRef.current?.focus?.();
     };
+    // boolean sentinel: 모달 열림/닫힘(false↔true)에만 effect 재실행. item 객체 reference 변경 시
+    // 포커스가 닫기 버튼으로 튀거나 body overflow 가 깜박이는 것 방지. exhaustive-deps 의도적 위반.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!item, onClose]);
 
   if (!item) return null;
