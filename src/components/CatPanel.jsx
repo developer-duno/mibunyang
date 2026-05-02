@@ -72,7 +72,7 @@ export const CatPanel = memo(function CatPanel({ cat, k }) {
       <Bar value={cat.total} color={col} h={5} />
 
       {highlights.length > 0 && <div style={{ marginTop: 6 }}>
-        {highlights.map((s, i) => {
+        {highlights.map((s) => {
           const sc = ctx[s.name];
           const interp = sc?.interpret?.(s.score);
           return (

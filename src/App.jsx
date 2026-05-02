@@ -129,7 +129,7 @@ export default function App() {
 
   // ── 탭 전환/인증 네비게이션 ──
   const {
-    handleExpertLogin, handleExpertLogout,
+    handleExpertLogin,
     switchToAdmin, switchToExpert, switchToInfo,
     handleExpertView, handleConsultFromDetail,
     handleNavClick,
@@ -238,7 +238,7 @@ export default function App() {
             filterGu={filterGu} onGuChange={handleGuChange} guOptions={guOptions}
             budgetMin={budgetMin} onBudgetMinChange={handleBudgetMinChange} budgetMax={budgetMax} onBudgetMaxChange={handleBudgetMaxChange} onBudgetReset={handleBudgetReset}
             sortKey={sortKey} onSortChange={setSortKey}
-            isPC={isPC} isDesktop={isDesktop}
+            isDesktop={isDesktop}
             showFavOnly={showFavOnly} onToggleFavOnly={toggleFavOnly} favCount={favoriteIds.length}
             areaMin={areaMin} onAreaMinChange={handleAreaMinChange} areaMax={areaMax} onAreaMaxChange={handleAreaMaxChange}
             unitsMin={unitsMin} onUnitsMinChange={handleUnitsMinChange} unitsMax={unitsMax} onUnitsMaxChange={handleUnitsMaxChange} onAreaUnitsReset={handleAreaUnitsReset}
@@ -274,7 +274,7 @@ export default function App() {
           {showComp && <Suspense fallback={<div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, animation: "skeleton-pulse 1.5s ease-in-out infinite" }}><div style={{ height: 16, width: "40%", background: C.slate100, borderRadius: 4, marginBottom: 16 }} /><div style={{ height: 120, background: C.slate100, borderRadius: 4 }} /></div>}><CompareSheet items={compItems} onShare={handleShareCompare} onClose={() => setShowCompOpen(false)} profile={profile} isDesktop={isDesktop} isLoggedIn={isLoggedIn} /></Suspense>}
           <AptListSection key={filterRegion}
             visible={visible} filteredLength={filtered.length} visibleCount={visibleCount} onLoadMore={() => { setVisibleCount(v => v + VISIBLE_PAGE_SIZE); trackEvent("load_more", { visible_count: visibleCount + VISIBLE_PAGE_SIZE }); }}
-            onDetail={handleDetailGated} onFav={toggleFavorite} onComp={toggleComp} favoriteIds={favoriteIds} favoriteSet={favoriteSet} compIds={compIds}
+            onDetail={handleDetailGated} onFav={toggleFavorite} onComp={toggleComp} favoriteSet={favoriteSet} compIds={compIds}
             pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending || isFilterPending || isSortPending}
             budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             moveInFilter={moveInFilter} builderTier={builderTier} minScore={minScore}
@@ -341,7 +341,7 @@ export default function App() {
               <div style={{ fontSize: 12, color: C.muted }}>소비자가 상담을 신청하면 여기에 표시됩니다</div>
             </div>
           ) : (
-            consult.submittedConsults.map((c, i) => {
+            consult.submittedConsults.map((c) => {
               const aptNames = c.interestedApts.map(id => { const found = apartments.find(a => a.id === id); return found ? found.name : id; });
               return (
                 <div key={c.id} style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 8 }}>

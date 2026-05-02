@@ -6,7 +6,7 @@ import { PROFILES } from "@/constants/profiles";
 /** 아파트 카드 그리드 + 빈 결과 + 더 보기 */
 export const AptListSection = memo(function AptListSection({
   visible, filteredLength, visibleCount, onLoadMore,
-  onDetail, onFav, onComp, favoriteIds, favoriteSet, compIds,
+  onDetail, onFav, onComp, favoriteSet, compIds,
   pw, profile, isPC, isDesktop, isPending,
   budgetMin, budgetMax, filterRegion,
   moveInFilter, builderTier, minScore,

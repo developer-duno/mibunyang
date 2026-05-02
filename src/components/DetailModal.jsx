@@ -68,7 +68,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   const { apt, res } = item;
   const zone = getZone(apt.region, apt.gu);
   const zoneName = ZONE_TYPE[zone];
-  const radarData = Object.entries(res.cats).map(([k, c]) => ({ l: SHORT_LABEL[c.label] || c.label, v: c.total }));
+  const radarData = Object.values(res.cats).map((c) => ({ l: SHORT_LABEL[c.label] || c.label, v: c.total }));
 
   return (
     <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, zIndex: 300, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isPC ? "center" : "flex-end", justifyContent: "center" }} onClick={onClose} role="dialog" aria-modal="true" aria-label={`${apt.name} 상세 분석`}>

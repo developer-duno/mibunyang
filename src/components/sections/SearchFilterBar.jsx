@@ -7,7 +7,7 @@
 import { memo, useState, useRef, useEffect, useCallback } from "react";
 import { C, F } from "@/theme";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
-import { IconClose, IconHeart, IconHeartFilled } from "@/components/icons";
+import { IconHeart, IconHeartFilled } from "@/components/icons";
 import { chipStyle } from "@/components/filters/filterStyles";
 import { FilterButton } from "@/components/filters/FilterButton";
 import { FilterDropdown } from "@/components/filters/FilterDropdown";
@@ -24,7 +24,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterGu, onGuChange, guOptions,
   budgetMin, onBudgetMinChange, budgetMax, onBudgetMaxChange, onBudgetReset,
   sortKey, onSortChange,
-  isPC, isDesktop,
+  isDesktop,
   showFavOnly, onToggleFavOnly, favCount,
   areaMin, onAreaMinChange, areaMax, onAreaMaxChange,
   unitsMin, onUnitsMinChange, unitsMax, onUnitsMaxChange, onAreaUnitsReset,
