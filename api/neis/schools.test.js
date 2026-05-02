@@ -5,6 +5,7 @@ beforeEach(() => {
   process.env.NEIS_KEY = "test-neis-key";
   process.env.KAKAO_KEY = "test-kakao-key";
   vi.clearAllMocks();
+  checkRateLimit.mockResolvedValue({ limited: false });
 });
 
 vi.mock("../_lib/rateLimit.js", () => ({
@@ -15,6 +16,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
 const { default: handler } = await import("./schools.js");
+const { checkRateLimit } = await import("../_lib/rateLimit.js");
 
 function makeRes() {
   return {
@@ -133,5 +135,20 @@ describe("neis/schools handler", () => {
     }, res);
 
     expect(res.status).toHaveBeenCalledWith(502);
+  });
+
+  it("returns 429 before upstream calls when proxy rate limit is exceeded", async () => {
+    checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    const res = makeRes();
+
+    await handler({
+      method: "POST",
+      headers: {},
+      body: { apartments: [{ id: "a", lat: 37, lng: 127 }] },
+    }, res);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(res.setHeader).toHaveBeenCalledWith("Retry-After", "300");
+    expect(res.status).toHaveBeenCalledWith(429);
   });
 });

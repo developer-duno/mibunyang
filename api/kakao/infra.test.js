@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 beforeEach(() => {
   process.env.KAKAO_KEY = 'test-kakao-key';
   vi.clearAllMocks();
+  checkRateLimit.mockResolvedValue({ limited: false });
 });
 
 // rateLimit 모킹
@@ -19,6 +20,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 const { default: handler } = await import('./infra.js');
+const { checkRateLimit } = await import('../_lib/rateLimit.js');
 
 /** res 목 객체 팩토리 */
 function makeRes() {
@@ -157,5 +159,16 @@ describe('kakao/infra handler', () => {
     await handler({ method: 'POST', body: { apartments: [{ id: 'apt-1', lat: 91, lng: 127 }] } }, res);
     expect(mockFetch).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('returns 429 before upstream calls when proxy rate limit is exceeded', async () => {
+    checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    const res = makeRes();
+
+    await handler({ method: 'POST', headers: {}, body: { apartments: [{ id: 'apt-1', lat: 37, lng: 127 }] } }, res);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(res.setHeader).toHaveBeenCalledWith('Retry-After', '300');
+    expect(res.status).toHaveBeenCalledWith(429);
   });
 });
