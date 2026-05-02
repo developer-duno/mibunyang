@@ -5,6 +5,7 @@ import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice, fmtRecruitDate } from "@/lib/format";
 import { Tooltip, extractTerm } from "./Tooltip";
+import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
 
 const STAGE_STYLES = {
   분양계획: { bg: C.greenLight, color: C.green, label: "분양 예정" },
@@ -69,6 +70,7 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
   const stage = STAGE_STYLES[apt.presaleStage] || STAGE_STYLES["분양중"];
   const dday = useMemo(() => computeDday(apt.presaleRecruitDate), [apt.presaleRecruitDate]);
   const score = apt.catsCache?.total;
+  const calendarUrl = useMemo(() => buildGoogleCalendarUrl(apt), [apt]);
 
   return (
     <div
@@ -146,11 +148,26 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
             )}
           </div>
         )}
-        {score != null && (
-          <div style={{ fontSize: F.xs, color: C.green, marginTop: 2 }}>
-            ★ 점수 {score.toFixed(1)}
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+          {score != null && (
+            <span style={{ fontSize: F.xs, color: C.green }}>
+              ★ 점수 {score.toFixed(1)}
+            </span>
+          )}
+          {isMobile && calendarUrl && (
+            <a
+              href={calendarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              aria-label="구글 캘린더에 청약 일정 추가"
+              style={{
+                fontSize: F.xs, color: C.blue, textDecoration: "underline",
+                minHeight: 24,
+              }}
+            >📅 캘린더 추가</a>
+          )}
+        </div>
       </div>
 
       {!isMobile && (
@@ -165,6 +182,23 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
             }}
             aria-label="알림 신청"
           >🔔 알림</button>
+          {calendarUrl && (
+            <a
+              href={calendarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              aria-label="구글 캘린더에 청약 일정 추가"
+              style={{
+                fontSize: F.xs, padding: "6px 10px",
+                background: C.card, color: C.text,
+                border: `1px solid ${C.border}`, borderRadius: 4,
+                minHeight: 44, minWidth: 44,
+                textDecoration: "none", textAlign: "center",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >📅 캘린더</a>
+          )}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onOpenDetail?.(apt.id); }}
