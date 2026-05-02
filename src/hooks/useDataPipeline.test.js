@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useDataPipeline, VISIBLE_PAGE_SIZE } from "./useDataPipeline";
 
 /* ── calcCats / computeRegionalMedians 모킹 ── */
 vi.mock("@/scoring/engine", () => ({
-  calcCats: vi.fn((apt) => ({
+  calcCats: vi.fn(() => ({
     price: { total: 70, subs: [] },
     location: { total: 65, subs: [] },
     product: { total: 60, subs: [] },

@@ -1,13 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useConsult } from './useConsult';
 
 // fetch 모킹 팩토리
 function mockFetchSuccess(data = {}) {
   return vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ ok: true, ...data }) }));
-}
-function mockFetchError(error = "서버 오류") {
-  return vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ ok: false, error }) }));
 }
 function mockFetchNetworkError() {
   return vi.fn(() => Promise.reject(new Error("network error")));
