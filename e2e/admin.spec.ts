@@ -106,16 +106,12 @@ async function loginAsAdmin(page: Page) {
   await loginCta.click();
 
   // 로그인 폼 채우기 + submit
+  // mock 응답이 token+role 반환 → useExpertMode.handleExpertLogin 이 자동으로
+  // localStorage 박고 setExpertLoggedIn(true), useAppNavigation L24 가 userRole
+  // 박고 admin.setAdminLoggedIn(true) 호출 → 자동 관리자 대시보드 마운트
   await page.locator('input[type="email"]').fill("admin@test.com");
   await page.locator('input[type="password"]').fill("testpassword");
   await page.locator('button[type="submit"]').click();
-
-  // useExpertMode L38 가 localStorage 에 token 박지만, useAppNavigation L24 의
-  // userRole 설정 직후 useAdminMode L7 init state 는 이미 평가됨 → 보강
-  await page.evaluate(() => {
-    localStorage.setItem("expertToken", "mock-admin-jwt");
-    localStorage.setItem("userRole", "admin");
-  });
 
   // 관리자 대시보드 표시 대기
   await expect(page.getByText("관리자 대시보드")).toBeVisible({ timeout: 10000 });
