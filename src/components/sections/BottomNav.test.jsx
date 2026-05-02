@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { BottomNav } from "./BottomNav";
 
@@ -88,5 +88,38 @@ describe("BottomNav", () => {
     render(<BottomNav {...makeProps({ expertLoggedIn: true, tab: "expert", onNavClick })} />);
     fireEvent.click(screen.getByText("로그아웃"));
     expect(onNavClick).toHaveBeenCalledWith("logout");
+  });
+
+  // ── upcomingEnabled (Feature Flag) 분기 ─────────────────────────────
+  describe("VITE_FEATURE_UPCOMING flag", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("VITE_FEATURE_UPCOMING=true 일반 사용자: '📅 곧 분양' 표시", () => {
+      vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
+      render(<BottomNav {...makeProps()} />);
+      expect(screen.getByText("📅 곧 분양")).toBeInTheDocument();
+    });
+
+    it("VITE_FEATURE_UPCOMING=true 클릭 시 onNavClick('upcoming') 호출", () => {
+      vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
+      const onNavClick = vi.fn();
+      render(<BottomNav {...makeProps({ onNavClick })} />);
+      fireEvent.click(screen.getByText("📅 곧 분양"));
+      expect(onNavClick).toHaveBeenCalledWith("upcoming");
+    });
+
+    it("VITE_FEATURE_UPCOMING 미설정 시 '📅 곧 분양' 미표시 (회귀 가드)", () => {
+      vi.stubEnv("VITE_FEATURE_UPCOMING", "");
+      render(<BottomNav {...makeProps()} />);
+      expect(screen.queryByText("📅 곧 분양")).toBeNull();
+    });
+
+    it("VITE_FEATURE_UPCOMING=true 전문가 로그인 시 '📅 곧 분양' 미표시", () => {
+      vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
+      render(<BottomNav {...makeProps({ expertLoggedIn: true, tab: "expert" })} />);
+      expect(screen.queryByText("📅 곧 분양")).toBeNull();
+    });
   });
 });

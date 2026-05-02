@@ -47,4 +47,21 @@ test.describe("모바일 레이아웃 @mobile", () => {
     const modal = page.locator('[role="dialog"]');
     await expect(modal).toBeVisible({ timeout: 5000 });
   });
+
+  // VITE_FEATURE_UPCOMING=true 환경에서만 BottomNav 곧 분양 진입로 표시
+  // flag OFF 환경 (예: PR preview) 에서는 자동 skip
+  test("모바일 BottomNav 에 '곧 분양' 진입로 표시 + 클릭 시 /upcoming 이동", async ({ page }) => {
+    const bottomNav = page.locator('nav[aria-label="메인 내비게이션"]');
+    await expect(bottomNav).toBeVisible({ timeout: 5000 });
+
+    const upcomingBtn = bottomNav.getByRole("button", { name: /곧 분양/ });
+    const isFeatureOn = await upcomingBtn.isVisible().catch(() => false);
+    if (!isFeatureOn) {
+      test.skip(true, "VITE_FEATURE_UPCOMING flag OFF — BottomNav 곧 분양 미노출 (정상)");
+      return;
+    }
+
+    await upcomingBtn.click();
+    await expect(page).toHaveURL(/\/upcoming$/, { timeout: 5000 });
+  });
 });

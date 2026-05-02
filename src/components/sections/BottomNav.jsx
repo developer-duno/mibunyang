@@ -12,9 +12,17 @@ import { C, F } from "@/theme";
  */
 export const BottomNav = memo(function BottomNav({ tab, expertLoggedIn, showComp, onNavClick, containerMaxWidth, isDesktop }) {
   if (isDesktop) return null;
+  const upcomingEnabled = import.meta.env.VITE_FEATURE_UPCOMING === "true";
   const navItems = expertLoggedIn
     ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "지도", k: "map" }, { l: "로그아웃", k: "logout" }]
-    : [{ l: "목록", k: "list" }, { l: "지도", k: "map" }, { l: "비교", k: "compare" }, { l: "상담", k: "consult" }, { l: "정보", k: "info" }];
+    : [
+        { l: "목록", k: "list" },
+        { l: "지도", k: "map" },
+        ...(upcomingEnabled ? [{ l: "📅 곧 분양", k: "upcoming" }] : []),
+        { l: "비교", k: "compare" },
+        { l: "상담", k: "consult" },
+        { l: "정보", k: "info" },
+      ];
 
   return (
     <nav aria-label="메인 내비게이션" data-no-print style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: containerMaxWidth, background: expertLoggedIn ? C.indigoLight : C.white, borderTop: `1px solid ${expertLoggedIn ? C.indigo + "30" : C.border}`, padding: "8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px", display: "flex", justifyContent: "space-around", zIndex: 100, boxShadow: "0 -2px 10px rgba(0,0,0,0.05)", transition: "max-width .3s" }}>
