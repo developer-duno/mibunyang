@@ -32,11 +32,31 @@ Run: `node scripts/collectors/collect-applyhome.mjs --dry-run 2>&1 | tail -3`
 
 Expected: `매칭: 1263/1314건` 또는 그 비슷한 매칭률 (96% 이상). 매칭률이 70% 미만이면 즉시 중단하고 사용자에게 보고.
 
-- [ ] **Step 0-3: 직전 VIEW 마이그 컬럼 수 확인 (스펙 117 가정)**
+- [ ] **Step 0-3: 직전 VIEW 마이그 컬럼 수·alias 리스트 확정 (12차 GATE 보강)**
 
-Run: `grep -E "AS\s+\"" supabase/migrations/20260419000000_view_dedup_prefer_general.sql | grep -oE '"[a-zA-Z_]+"' | sort -u | wc -l`
+Run:
+```bash
+# 컬럼 수
+grep -E "AS\s+\"" supabase/migrations/20260419000000_view_dedup_prefer_general.sql | grep -oE '"[a-zA-Z_]+"' | sort -u | wc -l
 
-Expected: `117`. 다르면 스펙 § 2 의 컬럼 수 박제 갱신 필요.
+# alias 리스트 — Step 7-3 컬럼명 비교 진단 expected VALUES 박제용 자동 추출
+grep -oE 'AS\s+"[a-zA-Z_]+"' supabase/migrations/20260419000000_view_dedup_prefer_general.sql | sort -u > /tmp/expected_aliases.txt
+wc -l /tmp/expected_aliases.txt
+```
+
+Expected: 두 결과 동일. 12차 외부 GATE 검증에서 spec 가정값 117 정확성 미보장 — **실측값을 그대로 사용하고 spec L234 가정값은 무시**. /tmp/expected_aliases.txt 결과를 Step 2-2 신규 SQL 의 SELECT 본문 + Step 7-3 expected VALUES 양쪽에 박제.
+
+- [ ] **Step 0-4: AptCard.test.jsx helper 이름 실측 (12차 GATE 정정 반영)**
+
+Run: `grep -nE "^function (make[A-Z][a-zA-Z]+)" src/components/AptCard.test.jsx`
+
+Expected: `makeRes`, `makeProps` 출력. plan Step 6-5 가 `makeProps` 사용하는지 확인 (이전 plan 의 `makeAptCardProps` 는 존재하지 않음 — 12차 GATE 정정 완료).
+
+- [ ] **Step 0-5: GitHub Actions 이메일 알림 활성 확인 (G8 보강)**
+
+GitHub UI: Settings → Notifications → Actions → "Send notifications for failed workflows only" 가 켜져있는지 확인.
+
+5% 경고 + `process.exit(1)` 시 GitHub Actions 빨간 X + 이메일 알림이 실제로 발송되는지가 본 작업 알림 채널의 유일한 수단. 미활성 시 PR #2 머지 전 활성화. 아니면 5% 경고 후 단지 7일간 사용자 가치 0 (다음 cron 까지) 상태 인지 못 함.
 
 ---
 
@@ -685,25 +705,25 @@ Modify `src/components/AptCard.test.jsx` 파일 끝(또는 적절한 describe �
 describe("AptCard — '추가 모집' 배지", () => {
   it("unsoldEventCount > 0 + ah- 단지면 '추가 모집' 배지 표시", () => {
     const apt = makeApt({ id: "ah-100", unsoldEventCount: 5 });
-    render(<AptCard {...makeAptCardProps({ apt })} />);
+    render(<AptCard {...makeProps({ apt })} />);
     expect(screen.getByText("추가 모집")).toBeInTheDocument();
   });
 
   it("unsoldEventCount = 0 이면 배지 미표시", () => {
     const apt = makeApt({ id: "ah-100", unsoldEventCount: 0 });
-    render(<AptCard {...makeAptCardProps({ apt })} />);
+    render(<AptCard {...makeProps({ apt })} />);
     expect(screen.queryByText("추가 모집")).toBeNull();
   });
 
   it("naver- 단지 (id prefix 가드) 면 배지 미표시 (정보 없음)", () => {
     const apt = makeApt({ id: "naver-9999", unsoldEventCount: 5 });
-    render(<AptCard {...makeAptCardProps({ apt })} />);
+    render(<AptCard {...makeProps({ apt })} />);
     expect(screen.queryByText("추가 모집")).toBeNull();
   });
 });
 ```
 
-⚠️ `makeAptCardProps` 가 기존 AptCard.test.jsx 에 있는 helper 가정. 없으면 기존 테스트 케이스의 props 구조를 그대로 따라 명시.
+⚠️ `makeProps` 는 `src/components/AptCard.test.jsx` L22 의 helper. `apt` override 받아 `makeApt()` 기본값에 spread. 12차 GATE 검증에서 정정 (이전 plan 의 `makeAptCardProps` 는 존재하지 않음).
 
 - [ ] **Step 6-6: AptCard 테스트 실행**
 
@@ -840,4 +860,30 @@ N < M 이면 실패 단지는 다음 cron 재시도 (UNIQUE 멱등성으로 안�
   - 단위 테스트: 각 필드 변경 시 리렌더 트리거 확인 (현재 AptCard memo 단위 테스트 0건)
   - 트리거: AptCard / 다른 카드 컴포넌트의 memo 회귀 사고 발생 시 또는 분기 점검 작업
   - 발견 경위: 청약홈 무순위 이벤트 로그 작업(2026-05-02 세션 159) 9차 GATE 검증에서 comparator 일관 누락 패턴 식별
+
+- 🟢 5% 경고 임계값 경험치 측정 — 첫 적재 후 1주 측정
+  - 첫 적재 후 1주간 supply=0 비율 로그 측정 (target: 거짓 경보 0)
+  - 1개 이상 false positive 발생 시 10% 로 상향 + spec § 3 박제 갱신
+  - 트리거: PR #2 머지 후 7~14일 (cron 1~2회 실행분 누적)
+  - 발견 경위: 12차 GATE 검증 (G4) — 5% 의 경험적 근거 미공개
+
+- 🟢 모바일 alertRow 6배지 줄바꿈 시각 회귀 검증
+  - 375px (iPhone SE) 에서 6개 배지(분양중/입주예정/미분양/시공사/혐오시설/추가모집) 동시 표시 시 alertRow 높이 측정
+  - flexWrap 자동 줄바꿈 정상 작동 + 카드 높이 폭주 없음 확인
+  - 트리거: PR #3 머지 후 즉시 (UI 스모크 확장)
+  - 발견 경위: 12차 GATE 검증 (G8) — 스모크 테스트 시각 확인만 있고 레이아웃 시뮬레이션 없음
 ```
+
+---
+
+## UX 사전 공지 (G8 보강 — PR #3 머지 직전)
+
+⚠️ **PR #3 머지 직전, 별도 in-app banner 또는 세션 시작 안내 등재 권장**:
+
+첫 적재 직후 1,263개 단지에 동시에 빨간 "추가 모집" 배지 출현. 사용자 시각 충격을 줄이려면 다음 중 하나:
+
+1. (권장) 다음 사용자 세션 첫 진입 시 1회 토스트: "🔴 빨간 '추가 모집' 배지가 새로 추가됐어요. 청약홈 무순위 공고 발생 단지를 표시합니다."
+2. 변경로그 (CHANGELOG.md 또는 사용자 노출 안내문) 1줄 추가
+3. (보류) 운영자 직접 사용자 안내 (베타테스터 그룹에만 메시지)
+
+본 작업 범위 외이지만 PR #3 머지 시점에 어느 옵션으로 갈지 결정 필수. 미결정 시 사용자 혼란.
