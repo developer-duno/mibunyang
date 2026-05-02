@@ -105,7 +105,13 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
     ? `📅 곧 분양 ${upcomingCount}개`
     : "📅 곧 분양";
   const navItems = expertLoggedIn
-    ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "지도", k: "map" }]
+    ? [
+        { l: "대시보드", k: "expert" },
+        { l: "상담목록", k: "expertConsults" },
+        { l: "소비자뷰", k: "list" },
+        { l: "지도", k: "map" },
+        ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),
+      ]
     : [
         { l: "목록", k: "list" },
         { l: "지도", k: "map" },

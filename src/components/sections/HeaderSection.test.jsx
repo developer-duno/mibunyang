@@ -105,4 +105,14 @@ describe("HeaderSection", () => {
       render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
     }).not.toThrow();
   });
+
+  // 전문가 로그인 상태에서도 '곧 분양' 메뉴 노출 (운영자 본인 사용성 — 세션 168 사용자 보고)
+  it("expertLoggedIn=true 분기에도 '📅 곧 분양 N개' 노출", () => {
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} expertLoggedIn={true} upcomingCount={392} />);
+    expect(screen.getByText("📅 곧 분양 392개")).toBeInTheDocument();
+    // 동시에 전문가 전용 메뉴도 그대로
+    expect(screen.getByText("대시보드")).toBeInTheDocument();
+    expect(screen.getByText("상담목록")).toBeInTheDocument();
+    expect(screen.getByText("소비자뷰")).toBeInTheDocument();
+  });
 });
