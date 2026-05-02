@@ -1,4 +1,3 @@
-// /api/subscribers 단위 테스트
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
 
@@ -21,6 +20,7 @@ vi.mock("./_lib/rateLimit.js", () => ({
 }));
 
 const { default: handler, normalizeToE164 } = await import("./subscribers.js");
+const { checkRateLimit } = await import("./_lib/rateLimit.js");
 
 function makeRes() {
   return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
@@ -34,6 +34,8 @@ beforeEach(() => {
   process.env.SUBSCRIBERS_OPT_OUT_SECRET = "test-opt-out-secret";
   vi.clearAllMocks();
   mockEq.mockResolvedValue({ error: null });
+  mockUpsert.mockResolvedValue({ error: null });
+  checkRateLimit.mockResolvedValue({ limited: false });
 });
 
 afterEach(() => {
@@ -82,48 +84,131 @@ describe("subscribers DELETE opt-out", () => {
   });
 });
 
-describe("normalizeToE164 — 한국 휴대폰 → E.164", () => {
-  it("010-1234-5678 → +821012345678", () => {
+describe("subscribers POST signup", () => {
+  it("subscribes with normalized phone and restores opt-in state", async () => {
+    const res = makeRes();
+
+    await handler({
+      method: "POST",
+      headers: {},
+      body: {
+        phone: "010-1234-5678",
+        region: "서울특별시",
+        gu: "강동구",
+        apartment_id: "apt-123",
+        consent: true,
+      },
+    }, res);
+
+    expect(mockFrom).toHaveBeenCalledWith("subscribers");
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phone: "+821012345678",
+        region: "서울특별시",
+        gu: "강동구",
+        apartment_id: "apt-123",
+        consent_source: "upcoming-page",
+        opt_out_at: null,
+      }),
+      { onConflict: "phone,region,gu,apartment_id" }
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it("rejects signup without consent", async () => {
+    const res = makeRes();
+
+    await handler({
+      method: "POST",
+      headers: {},
+      body: { phone: "010-1234-5678", consent: false },
+    }, res);
+
+    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("stores empty scope as null for nationwide subscription", async () => {
+    const res = makeRes();
+
+    await handler({
+      method: "POST",
+      headers: {},
+      body: { phone: "01012345678", consent: true },
+    }, res);
+
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phone: "+821012345678",
+        region: null,
+        gu: null,
+        apartment_id: null,
+      }),
+      { onConflict: "phone,region,gu,apartment_id" }
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("returns 429 when subscriber rate limit is exceeded", async () => {
+    checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    const res = makeRes();
+
+    await handler({
+      method: "POST",
+      headers: {},
+      body: { phone: "010-1234-5678", consent: true },
+    }, res);
+
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.objectContaining({ method: "POST" }), "subscribers");
+    expect(res.setHeader).toHaveBeenCalledWith("Retry-After", "300");
+    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(429);
+  });
+});
+
+describe("normalizeToE164", () => {
+  it("normalizes 010-1234-5678", () => {
     expect(normalizeToE164("010-1234-5678")).toBe("+821012345678");
   });
 
-  it("01012345678 (구분자 없음) → +821012345678", () => {
+  it("normalizes 01012345678", () => {
     expect(normalizeToE164("01012345678")).toBe("+821012345678");
   });
 
-  it("010 1234 5678 (공백 구분) → +821012345678", () => {
+  it("normalizes 010 1234 5678", () => {
     expect(normalizeToE164("010 1234 5678")).toBe("+821012345678");
   });
 
-  it("011-123-4567 (구식 PCS) → +821112345678 형태 변환", () => {
+  it("normalizes legacy 011 numbers", () => {
     expect(normalizeToE164("011-123-4567")).toBe("+82111234567");
   });
 
-  it("019-1234-5678 (구식) → +8219...", () => {
+  it("normalizes legacy 019 numbers", () => {
     expect(normalizeToE164("019-1234-5678")).toBe("+821912345678");
   });
 
-  it("02-123-4567 (서울 유선) → null", () => {
+  it("rejects landline numbers", () => {
     expect(normalizeToE164("02-123-4567")).toBeNull();
   });
 
-  it("빈 문자열 → null", () => {
+  it("rejects empty strings", () => {
     expect(normalizeToE164("")).toBeNull();
   });
 
-  it("null → null", () => {
+  it("rejects null", () => {
     expect(normalizeToE164(null)).toBeNull();
   });
 
-  it("숫자 타입 → null", () => {
+  it("rejects non-strings", () => {
     expect(normalizeToE164(1012345678)).toBeNull();
   });
 
-  it("외국 번호 (+1-234-567-8900) → null (한국 외 차단)", () => {
+  it("rejects foreign numbers", () => {
     expect(normalizeToE164("+1-234-567-8900")).toBeNull();
   });
 
-  it("010-12-34 (자릿수 부족) → null", () => {
+  it("rejects too-short numbers", () => {
     expect(normalizeToE164("010-12-34")).toBeNull();
   });
 });
