@@ -70,7 +70,9 @@ export const SearchFilterBar = memo(function SearchFilterBar({
 
   /* 건수 변화 추적 */
   const prevLenRef = useRef(filteredLength);
-  if (filteredLength != null && filteredLength !== prevLenRef.current) prevLenRef.current = filteredLength;
+  useEffect(() => {
+    if (filteredLength != null) prevLenRef.current = filteredLength;
+  }, [filteredLength]);
 
   /* 트리거 버튼 요약 텍스트 */
   const regionSummary = filterRegion !== "전체" ? (filterGu !== "전체" ? `${filterRegion} ${filterGu}` : filterRegion) : null;
