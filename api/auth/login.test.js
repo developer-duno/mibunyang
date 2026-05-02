@@ -28,7 +28,7 @@ vi.mock('../_lib/redis.js', () => ({
 
 const { default: handler } = await import('./login.js');
 const { checkRateLimit } = await import('../_lib/rateLimit.js');
-const { hashPassword } = await import('../_lib/auth.js');
+const { hashPassword, verifyToken } = await import('../_lib/auth.js');
 
 /** res 목 객체 팩토리 */
 function makeRes() {
@@ -124,6 +124,18 @@ describe('auth/login handler', () => {
     }));
   });
 
+  it('approved expert login includes role=expert in response and token', async () => {
+    mockKv.get.mockResolvedValue(makeUser());
+    const res = makeRes();
+    await handler(makeReq({ email: 'test@example.com', password: 'validPass123' }), res);
+    const response = res.json.mock.calls[0][0];
+    expect(response.role).toBe('expert');
+    expect(verifyToken(response.token)).toEqual(expect.objectContaining({
+      email: 'test@example.com',
+      role: 'expert',
+    }));
+  });
+
   // 에러: PENDING 상태 사용자
   it('PENDING 상태 사용자는 403을 반환한다', async () => {
     mockKv.get.mockResolvedValue(makeUser({ status: 'pending' }));
@@ -163,10 +175,12 @@ describe('auth/login handler', () => {
     mockKv.get.mockResolvedValue(makeUser({ email: 'admin@test.com' }));
     const res = makeRes();
     await handler(makeReq({ email: 'admin@test.com', password: 'validPass123' }), res);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+    const response = res.json.mock.calls[0][0];
+    expect(response).toEqual(expect.objectContaining({
       ok: true,
       role: 'admin',
     }));
+    expect(verifyToken(response.token)).toEqual(expect.objectContaining({ role: 'admin' }));
   });
 
   // KV 에러 시 500

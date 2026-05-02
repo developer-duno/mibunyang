@@ -53,9 +53,10 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handl
       }
     }
 
+    const role = isAdmin ? "admin" : "expert";
     const token = createToken({
       email: user.email, name: user.name,
-      ...(isAdmin && { role: "admin" }),
+      role,
     }, isAdmin ? { ttl: 3600000 } : undefined);
     const refreshToken = createRefreshToken(user.email);
     res.json({
@@ -63,7 +64,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handl
       token,
       refreshToken,
       user: { email: user.email, name: user.name, affiliation: user.affiliation },
-      ...(isAdmin && { role: "admin" }),
+      role,
     });
   } catch (err) {
     console.error("[auth/login] error:", err.message);
