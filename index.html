@@ -10,7 +10,12 @@
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="미분양 비교 엔진 v3.0" />
     <meta name="twitter:description" content="전국 미분양 아파트를 6개 카테고리 34개 지표로 비교 분석" />
-    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+    <link rel="preload" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" /></noscript>
+    <style>
+      /* Pretendard 로드 전 FOIT 방지: 시스템 폰트로 즉시 첫 페인트 → Pretendard 로드되면 자동 전환 */
+      body { font-family: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    </style>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>" />
     <title>미분양 비교 엔진 v3.0</title>
   </head>
