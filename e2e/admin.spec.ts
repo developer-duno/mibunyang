@@ -110,6 +110,13 @@ async function loginAsAdmin(page: Page) {
   await page.locator('input[type="password"]').fill("testpassword");
   await page.locator('button[type="submit"]').click();
 
+  // useExpertMode L38 가 localStorage 에 token 박지만, useAppNavigation L24 의
+  // userRole 설정 직후 useAdminMode L7 init state 는 이미 평가됨 → 보강
+  await page.evaluate(() => {
+    localStorage.setItem("expertToken", "mock-admin-jwt");
+    localStorage.setItem("userRole", "admin");
+  });
+
   // 관리자 대시보드 표시 대기
   await expect(page.getByText("관리자 대시보드")).toBeVisible({ timeout: 10000 });
 }
@@ -300,11 +307,15 @@ test.describe("관리자 대시보드", () => {
     // 대시보드 사라짐 확인
     await expect(page.getByText("관리자 대시보드")).not.toBeVisible({ timeout: 5000 });
 
-    // sessionStorage 비워짐 확인
-    const token = await page.evaluate(() => sessionStorage.getItem("expertToken"));
-    expect(token).toBeNull();
-    const role = await page.evaluate(() => sessionStorage.getItem("userRole"));
-    expect(role).toBeNull();
+    // 양쪽 storage 비워짐 확인 (localStorage + sessionStorage 잔재 정리)
+    const lToken = await page.evaluate(() => localStorage.getItem("expertToken"));
+    expect(lToken).toBeNull();
+    const lRole = await page.evaluate(() => localStorage.getItem("userRole"));
+    expect(lRole).toBeNull();
+    const sToken = await page.evaluate(() => sessionStorage.getItem("expertToken"));
+    expect(sToken).toBeNull();
+    const sRole = await page.evaluate(() => sessionStorage.getItem("userRole"));
+    expect(sRole).toBeNull();
   });
 
   test("429 레이트리밋 — 토스트 메시지 표시", async ({ page }) => {
@@ -327,8 +338,8 @@ test.describe("관리자 대시보드", () => {
 
     // admin 세션 주입 후 페이지 로드
     await page.addInitScript(() => {
-      sessionStorage.setItem("expertToken", "mock-admin-jwt");
-      sessionStorage.setItem("userRole", "admin");
+      localStorage.setItem("expertToken", "mock-admin-jwt");
+      localStorage.setItem("userRole", "admin");
     });
     await page.goto("/");
 
@@ -357,8 +368,8 @@ test.describe("관리자 대시보드", () => {
     });
 
     await page.addInitScript(() => {
-      sessionStorage.setItem("expertToken", "mock-admin-jwt");
-      sessionStorage.setItem("userRole", "admin");
+      localStorage.setItem("expertToken", "mock-admin-jwt");
+      localStorage.setItem("userRole", "admin");
     });
     await page.goto("/");
 
@@ -392,8 +403,8 @@ test.describe("관리자 대시보드", () => {
     });
 
     await page.addInitScript(() => {
-      sessionStorage.setItem("expertToken", "mock-admin-jwt");
-      sessionStorage.setItem("userRole", "admin");
+      localStorage.setItem("expertToken", "mock-admin-jwt");
+      localStorage.setItem("userRole", "admin");
     });
     await page.goto("/");
 
