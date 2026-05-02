@@ -58,7 +58,7 @@ export const UpcomingCardList = memo(function UpcomingCardList({ items, onSubscr
 const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail, isMobile }) {
   const stage = STAGE_STYLES[apt.presaleStage] || STAGE_STYLES["분양중"];
   const dday = useMemo(() => computeDday(apt.presaleRecruitDate), [apt.presaleRecruitDate]);
-  const score = apt.cats_cache?.total;
+  const score = apt.catsCache?.total;
 
   return (
     <div
