@@ -100,9 +100,17 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
 
+  const upcomingEnabled = import.meta.env.VITE_FEATURE_UPCOMING === "true";
   const navItems = expertLoggedIn
     ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "지도", k: "map" }]
-    : [{ l: "목록", k: "list" }, { l: "지도", k: "map" }, { l: "비교", k: "compare" }, { l: "상담", k: "consult" }, { l: "정보", k: "info" }];
+    : [
+        { l: "목록", k: "list" },
+        { l: "지도", k: "map" },
+        ...(upcomingEnabled ? [{ l: "📅 곧 분양", k: "upcoming" }] : []),
+        { l: "비교", k: "compare" },
+        { l: "상담", k: "consult" },
+        { l: "정보", k: "info" },
+      ];
 
   if (isDesktop) {
     return (

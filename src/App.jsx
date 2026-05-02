@@ -9,6 +9,7 @@ const ConsultForm = lazy(() => import("@/components/ConsultForm").then(m => ({ d
 const ExpertDashboard = lazy(() => import("@/components/expert/ExpertDashboard").then(m => ({ default: m.ExpertDashboard })));
 const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 const MapView = lazy(() => import("@/components/sections/MapView").then(m => ({ default: m.MapView })));
+const UpcomingPage = lazy(() => import("@/components/UpcomingPage").then(m => ({ default: m.UpcomingPage })));
 import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
 import { useComparison, MAX_COMPARE } from "@/hooks/useComparison";
@@ -56,6 +57,14 @@ export default function App() {
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
   const [tab, setTab] = useState(() => {
     if (window.location.pathname.startsWith("/oauth/kakao/callback")) return "kakaoCallback";
+    if (window.location.pathname.startsWith("/upcoming")) {
+      // Feature Flag OFF 시 메인으로 fallback (URL도 /로 정리)
+      if (import.meta.env.VITE_FEATURE_UPCOMING !== "true") {
+        try { window.history.replaceState(null, "", "/"); } catch { /* noop */ }
+        return "list";
+      }
+      return "upcoming";
+    }
     if (!localStorage.getItem("expertToken")) return "list";
     const role = localStorage.getItem("userRole");
     if (role === "admin") return "admin";
@@ -138,6 +147,17 @@ export default function App() {
     document.head.appendChild(style);
     return () => { const el = document.getElementById("print-styles"); if (el) el.remove(); };
   }, []);
+
+  // ── 독립 useEffect: tab="upcoming" ↔ URL "/upcoming" 동기화 ──
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onUpcomingPath = window.location.pathname.startsWith("/upcoming");
+    if (tab === "upcoming" && !onUpcomingPath) {
+      try { window.history.pushState(null, "", "/upcoming"); } catch { /* noop */ }
+    } else if (tab !== "upcoming" && onUpcomingPath) {
+      try { window.history.pushState(null, "", "/"); } catch { /* noop */ }
+    }
+  }, [tab]);
 
   // ── 독립 useEffect: URL 딥링크 복원 ──
   useEffect(() => {
@@ -278,6 +298,13 @@ export default function App() {
             <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} showToast={showToast} />
           </Suspense>
         ) : null
+      ) : tab === "upcoming" ? (
+        <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>분양예정 페이지 로딩 중...</div>}>
+          <UpcomingPage
+            onOpenDetail={detail.handleOpenDetail}
+            onBackToMain={() => { setTab("list"); try { window.history.pushState(null, "", "/"); } catch { /* noop */ } }}
+          />
+        </Suspense>
       ) : tab === "kakaoCallback" ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "40dvh" }}>
           <div style={{ textAlign: "center" }}>
