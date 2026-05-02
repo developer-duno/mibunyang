@@ -11,6 +11,8 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     getSupabase: vi.fn(),
     log: vi.fn(),
     logError: vi.fn(),
+    selectAll: vi.fn(),
+    upsertBatch: vi.fn(async (_t, rows) => rows.length),
     createReporter: vi.fn(() => ({
       success: vi.fn(), fail: vi.fn(), skip: vi.fn(),
       summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0 })),
@@ -18,7 +20,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { aggregateByApartment } = await import("./collect-applyhome.mjs");
+const { aggregateByApartment, buildEventsFromAggregated } = await import("./collect-applyhome.mjs");
 
 // 팩토리 함수: 청약 데이터 행 생성
 function makeRow(overrides = {}) {
@@ -93,5 +95,49 @@ describe("aggregateByApartment — 가중평균 경쟁률 계산", () => {
     const result = aggregateByApartment(rows);
     expect(result["2024000001"].rate).toBe(0.3); // 30/100
     expect(result["2024000001"].rate).toBeLessThan(1);
+  });
+});
+
+describe("buildEventsFromAggregated — events 객체 빌드", () => {
+  it("매칭된 단지만 events 반환 (apartment_id 형식 ah-{no})", () => {
+    const aggregated = {
+      "2024A": { rate: 5, supply: 100, applicants: 500 },
+      "2024B": { rate: 3, supply: 50, applicants: 150 },
+      "2024X": { rate: 1, supply: 30, applicants: 30 }, // 매칭 안 됨
+    };
+    const apartments = [{ id: "ah-2024A" }, { id: "ah-2024B" }];
+    const result = buildEventsFromAggregated(aggregated, apartments, "2026-05-02");
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      apartment_id: "ah-2024A",
+      house_manage_no: "2024A",
+      supply: 100,
+      applicants: 500,
+      rate: 5,
+      recorded_at: "2026-05-02",
+    });
+    expect(result[1].apartment_id).toBe("ah-2024B");
+  });
+
+  it("빈 입력 처리", () => {
+    expect(buildEventsFromAggregated({}, [], "2026-05-02")).toEqual([]);
+    expect(buildEventsFromAggregated({}, [{ id: "ah-X" }], "2026-05-02")).toEqual([]);
+    expect(buildEventsFromAggregated({ "X": { supply: 1, applicants: 1, rate: 1 } }, [], "2026-05-02")).toEqual([]);
+  });
+
+  it("필드 매핑 정확성 (supply/applicants/rate/recorded_at 모두 정확히 들어감)", () => {
+    const aggregated = { "Y": { supply: 7, applicants: 13, rate: 1.857 } };
+    const apartments = [{ id: "ah-Y" }];
+    const result = buildEventsFromAggregated(aggregated, apartments, "2026-12-31");
+
+    expect(result).toEqual([{
+      apartment_id: "ah-Y",
+      house_manage_no: "Y",
+      supply: 7,
+      applicants: 13,
+      rate: 1.857,
+      recorded_at: "2026-12-31",
+    }]);
   });
 });

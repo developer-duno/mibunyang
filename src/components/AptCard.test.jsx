@@ -174,4 +174,23 @@ describe("AptCard", () => {
     expect(screen.getByText("적정가 -3.5%")).toBeInTheDocument();
   });
 
+  // 무순위 공고 발생 단지 — "추가 모집" 빨간 배지
+  it("unsoldEventCount > 0 + ah- 단지면 '추가 모집' 배지 표시", () => {
+    const apt = makeApt({ id: "ah-100", unsoldEventCount: 5 });
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("추가 모집")).toBeInTheDocument();
+  });
+
+  it("unsoldEventCount = 0 이면 '추가 모집' 배지 미표시", () => {
+    const apt = makeApt({ id: "ah-100", unsoldEventCount: 0 });
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.queryByText("추가 모집")).toBeNull();
+  });
+
+  it("naver- 단지 (id prefix 가드) 면 '추가 모집' 배지 미표시 (정보 없음)", () => {
+    const apt = makeApt({ id: "naver-9999", unsoldEventCount: 5 });
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.queryByText("추가 모집")).toBeNull();
+  });
+
 });

@@ -34,6 +34,8 @@ export function makeApt(overrides = {}) {
     presaleInquiry: null, presaleFeatures: null, presaleMoveIn: null,
     presaleRecruitDate: null, presaleSchedule: null, presaleHousingType: null,
     presaleFetchedAt: null,
+    // 무순위 공고 이벤트 (apartments_flat LEFT JOIN ae)
+    unsoldEventCount: 0, lastUnsoldEventAt: null,
     ...overrides,
   };
 }
