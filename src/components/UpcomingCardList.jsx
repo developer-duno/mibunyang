@@ -93,7 +93,17 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
           {dday && (
-            <span style={{ fontSize: F.sm, fontWeight: 800, color: dday.color }} aria-label={`디데이 ${dday.label}`}>
+            <span
+              style={{
+                fontSize: F.md,
+                fontWeight: 900,
+                color: dday.color,
+                letterSpacing: "-0.02em",
+                lineHeight: 1.1,
+                marginRight: 2,
+              }}
+              aria-label={`디데이 ${dday.label}`}
+            >
               {dday.label}
             </span>
           )}
