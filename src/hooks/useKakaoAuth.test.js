@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
-async function renderKakaoHook(showToast = vi.fn()) {
+async function renderKakaoHook(showToast = vi.fn(), restKey = 'test-rest-key') {
   vi.resetModules();
-  vi.stubEnv('VITE_KAKAO_REST_API_KEY', 'test-rest-key');
+  vi.stubEnv('VITE_KAKAO_REST_API_KEY', restKey);
   const { useKakaoAuth } = await import('./useKakaoAuth');
   return { showToast, ...renderHook(() => useKakaoAuth(showToast)) };
 }
@@ -147,5 +147,16 @@ describe('useKakaoAuth', () => {
 
     expect(firstState).toMatch(/^[0-9a-f]{32}$/);
     expect(secondState).toBe(firstState);
+  });
+
+  it('requires the public VITE_KAKAO_REST_API_KEY client id for login start', async () => {
+    const { result, showToast } = await renderKakaoHook(vi.fn(), '');
+
+    act(() => {
+      result.current.initKakaoLogin();
+    });
+
+    expect(sessionStorage.getItem('kakao_oauth_state')).toBeNull();
+    expect(showToast).toHaveBeenCalled();
   });
 });
