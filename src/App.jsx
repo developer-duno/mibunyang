@@ -65,8 +65,24 @@ export default function App() {
       }
       return "upcoming";
     }
-    if (!localStorage.getItem("expertToken")) return "list";
-    const role = localStorage.getItem("userRole");
+    // 8e2b5b7 이전 sessionStorage 잔재 자동 마이그레이션 (1회성)
+    let token = localStorage.getItem("expertToken");
+    let role = localStorage.getItem("userRole");
+    if (!token) {
+      try {
+        const sToken = sessionStorage.getItem("expertToken");
+        const sRole = sessionStorage.getItem("userRole");
+        if (sToken) {
+          localStorage.setItem("expertToken", sToken);
+          if (sRole) localStorage.setItem("userRole", sRole);
+          sessionStorage.removeItem("expertToken");
+          sessionStorage.removeItem("userRole");
+          token = sToken;
+          role = sRole;
+        }
+      } catch { /* storage 접근 실패 시 무시 */ }
+    }
+    if (!token) return "list";
     if (role === "admin") return "admin";
     if (role === "expert") return "expert";
     return "list";
