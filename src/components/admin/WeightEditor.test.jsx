@@ -163,7 +163,7 @@ describe("WeightEditor", () => {
 
   // 그룹 6: 가중치 합계 검산
   it("PROFILES 모든 프로필의 기본 가중치 합계가 100이다", () => {
-    Object.entries(PROFILES).forEach(([key, p]) => {
+    Object.values(PROFILES).forEach((p) => {
       const sum = Object.values(p.w).reduce((a, b) => a + b, 0);
       expect(sum).toBe(100);
     });

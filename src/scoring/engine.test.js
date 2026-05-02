@@ -46,7 +46,7 @@ describe('프로필 가중치 합계', () => {
   });
   it('모든 프로필에 6개 카테고리가 있다', () => {
     const cats = ['location', 'product', 'price', 'risk', 'benefit', 'future'];
-    Object.entries(PROFILES).forEach(([key, profile]) => {
+    Object.values(PROFILES).forEach((profile) => {
       cats.forEach(cat => {
         expect(profile.w).toHaveProperty(cat);
         expect(typeof profile.w[cat]).toBe('number');

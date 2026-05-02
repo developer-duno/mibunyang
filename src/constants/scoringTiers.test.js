@@ -42,7 +42,7 @@ describe('FUTURE_WEIGHT_MAP', () => {
 
   // 모든 조합의 가중치 합계 = 1.00
   it('모든 조합의 가중치 합계가 1.00이다', () => {
-    Object.entries(FUTURE_WEIGHT_MAP).forEach(([key, weights]) => {
+    Object.values(FUTURE_WEIGHT_MAP).forEach((weights) => {
       const sum = weights.tr + weights.city + weights.pop + weights.ind;
       expect(sum).toBeCloseTo(1.0, 10);
     });

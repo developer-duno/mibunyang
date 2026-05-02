@@ -50,7 +50,7 @@ describe("DataSections", () => {
       dataReliability: null, heating: null, layout: null,
     };
     expect(() => {
-      const { container } = render(<DataSections apt={apt} />);
+      render(<DataSections apt={apt} />);
       fireEvent.click(screen.getByText("공공데이터 상세"));
     }).not.toThrow();
   });

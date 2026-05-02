@@ -56,7 +56,7 @@ describe("AdminDashboard", () => {
 
   // 모든 프로필의 가중치 합계 = 100 검증
   it("모든 프로필의 가중치 합계가 100이다", () => {
-    Object.entries(PROFILES).forEach(([key, profile]) => {
+    Object.values(PROFILES).forEach((profile) => {
       const sum = Object.values(profile.w).reduce((a, b) => a + b, 0);
       expect(sum).toBe(100);
     });

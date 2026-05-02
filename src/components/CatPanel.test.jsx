@@ -85,7 +85,7 @@ describe("CatPanel", () => {
 
   // 빈 서브지표
   it("서브지표가 없으면 하이라이트 영역이 없음", () => {
-    const { container } = render(<CatPanel cat={makeCat({ subs: [] })} k="price" />);
+    render(<CatPanel cat={makeCat({ subs: [] })} k="price" />);
     // progressbar(Bar)는 존재하지만 하이라이트 dot은 없어야 함
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
   });
