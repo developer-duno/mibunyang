@@ -71,28 +71,34 @@ async function handleGet(req, res) {
 }
 
 /**
- * 단지에서 캘린더용 날짜 추출 (spec § 3-1-A·B 정책)
- * - presaleRecruitDate (TEXT, "YYYY-MM-DD") → applyStart
- * - presaleSchedule.dateInfo (객체, "YYYY.MM.DD" 형식) → scheduleName 따라 매핑
- * 파싱 실패 시 skip (spec § 3-1-A C-fallback)
+ * 단지에서 캘린더용 날짜 추출 (spec § 3-1-A·B + § 6-1 4색 점 정책)
+ * - 분양계획 단지의 recruit_date → presale_announce (녹)
+ * - 청약중/분양중 단지의 recruit_date → apply_start (노)
+ * - schedule.scheduleName 키워드 휴리스틱 → presale_announce/apply_start/apply_end/winner_announce
  *
  * @returns {Array<{date: string, event: string}>} ISO 날짜(YYYY-MM-DD) + 이벤트 키
  */
 export function extractDates(apt) {
   const dates = [];
+  const isPlanStage = apt?.presaleStage === "분양계획";
 
-  // 1) presaleRecruitDate (TEXT) → applyStart 후보
-  if (apt.presaleRecruitDate) {
+  // 1) presaleRecruitDate (TEXT) — 분양계획 vs 그 외 단계로 이벤트 키 분리
+  if (apt?.presaleRecruitDate) {
     const iso = parseRecruitDate(apt.presaleRecruitDate);
-    if (iso) dates.push({ date: iso, event: "apply_start" });
+    if (iso) {
+      dates.push({
+        date: iso,
+        event: isPlanStage ? "presale_announce" : "apply_start",
+      });
+    }
   }
 
   // 2) presaleSchedule (JSONB 3형태)
-  const schedule = apt.presaleSchedule;
+  const schedule = apt?.presaleSchedule;
   if (schedule && typeof schedule === "object" && !Array.isArray(schedule)) {
     if (schedule.dateInfo && DATE_RE.test(schedule.dateInfo)) {
       const iso = schedule.dateInfo.replace(/\./g, "-");
-      const event = inferEventFromName(schedule.scheduleName);
+      const event = inferEventFromName(schedule.scheduleName, isPlanStage);
       dates.push({ date: iso, event });
     }
   }
@@ -108,10 +114,15 @@ function parseRecruitDate(v) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function inferEventFromName(name) {
-  if (!name || typeof name !== "string") return "etc";
+export function inferEventFromName(name, isPlanStage = false) {
+  if (!name || typeof name !== "string") {
+    return isPlanStage ? "presale_announce" : "etc";
+  }
   if (name.includes("당첨")) return "winner_announce";
   if (name.includes("종료") || name.includes("마감")) return "apply_end";
+  if (name.includes("모집") || name.includes("분양공고") || name.includes("분양예정")) {
+    return "presale_announce";
+  }
   if (name.includes("청약")) return "apply_start";
-  return "etc";
+  return isPlanStage ? "presale_announce" : "etc";
 }

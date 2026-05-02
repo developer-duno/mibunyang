@@ -48,7 +48,7 @@ describe("upcoming rateLimit", () => {
   });
 });
 
-const { default: handler, extractDates } = await import("./upcoming.js");
+const { default: handler, extractDates, inferEventFromName } = await import("./upcoming.js");
 const { checkRateLimit } = await import("./_lib/rateLimit.js");
 
 function makeRes() {
@@ -56,10 +56,16 @@ function makeRes() {
 }
 
 describe("extractDates — 캘린더 날짜 추출 (spec § 3-1-A·B)", () => {
-  it("presaleRecruitDate (YYYY-MM-DD) → apply_start 매핑", () => {
-    const apt = { presaleRecruitDate: "2026-05-08", presaleSchedule: null };
+  it("청약중 단지의 presaleRecruitDate (YYYY-MM-DD) → apply_start 매핑", () => {
+    const apt = { presaleStage: "청약중", presaleRecruitDate: "2026-05-08", presaleSchedule: null };
     const result = extractDates(apt);
     expect(result).toEqual([{ date: "2026-05-08", event: "apply_start" }]);
+  });
+
+  it("분양계획 단지의 presaleRecruitDate → presale_announce 매핑 (spec § 6-1 4색)", () => {
+    const apt = { presaleStage: "분양계획", presaleRecruitDate: "2026-06-15", presaleSchedule: null };
+    const result = extractDates(apt);
+    expect(result).toEqual([{ date: "2026-06-15", event: "presale_announce" }]);
   });
 
   it("presaleSchedule.dateInfo (YYYY.MM.DD) + scheduleName 청약 → apply_start", () => {
@@ -113,8 +119,9 @@ describe("extractDates — 캘린더 날짜 추출 (spec § 3-1-A·B)", () => {
     expect(extractDates(apt)).toEqual([]);
   });
 
-  it("presaleRecruitDate + presaleSchedule 둘 다 → 2건 반환", () => {
+  it("청약중 단지의 presaleRecruitDate + presaleSchedule 둘 다 → 2건 반환", () => {
     const apt = {
+      presaleStage: "청약중",
       presaleRecruitDate: "2026-05-08",
       presaleSchedule: { scheduleName: "당첨자 발표", dateInfo: "2026.05.20", schdl_info: null },
     };
@@ -122,6 +129,58 @@ describe("extractDates — 캘린더 날짜 추출 (spec § 3-1-A·B)", () => {
     expect(result).toHaveLength(2);
     expect(result[0].event).toBe("apply_start");
     expect(result[1].event).toBe("winner_announce");
+  });
+
+  it("분양계획 단지 + scheduleName='모집공고' → presale_announce", () => {
+    const apt = {
+      presaleStage: "분양계획",
+      presaleRecruitDate: null,
+      presaleSchedule: { scheduleName: "모집공고일", dateInfo: "2026.06.10", schdl_info: null },
+    };
+    expect(extractDates(apt)[0].event).toBe("presale_announce");
+  });
+});
+
+describe("inferEventFromName — 키워드 휴리스틱 (spec § 6-1 4색)", () => {
+  it("'당첨' 포함 → winner_announce", () => {
+    expect(inferEventFromName("당첨자 발표")).toBe("winner_announce");
+  });
+
+  it("'마감' 포함 → apply_end", () => {
+    expect(inferEventFromName("청약 마감")).toBe("apply_end");
+  });
+
+  it("'종료' 포함 → apply_end", () => {
+    expect(inferEventFromName("청약 종료")).toBe("apply_end");
+  });
+
+  it("'모집' 포함 → presale_announce", () => {
+    expect(inferEventFromName("입주자 모집공고")).toBe("presale_announce");
+  });
+
+  it("'분양공고' 포함 → presale_announce", () => {
+    expect(inferEventFromName("분양공고 게시")).toBe("presale_announce");
+  });
+
+  it("'청약' 포함 (마감/모집 키워드 없음) → apply_start", () => {
+    expect(inferEventFromName("1순위 청약일")).toBe("apply_start");
+  });
+
+  it("키워드 없음 + isPlanStage=true → presale_announce", () => {
+    expect(inferEventFromName("기타 일정", true)).toBe("presale_announce");
+  });
+
+  it("키워드 없음 + isPlanStage=false → etc", () => {
+    expect(inferEventFromName("기타 일정", false)).toBe("etc");
+  });
+
+  it("null/undefined + isPlanStage=true → presale_announce", () => {
+    expect(inferEventFromName(null, true)).toBe("presale_announce");
+    expect(inferEventFromName(undefined, true)).toBe("presale_announce");
+  });
+
+  it("null + isPlanStage=false → etc", () => {
+    expect(inferEventFromName(null)).toBe("etc");
   });
 });
 
@@ -182,7 +241,8 @@ describe("handleGet — Supabase select 컬럼명 + 핸들러 분기 (회귀 방
     await handler(req, res);
     const body = res.json.mock.calls[0][0];
     expect(body.totals).toEqual({ plan: 1, apply: 1, sale: 1 });
-    expect(body.calendar["2026-05-08"]).toEqual([{ id: "ap-1", event: "apply_start" }]);
+    // 분양계획 단지는 presale_announce (4번째 색 — spec § 6-1)
+    expect(body.calendar["2026-05-08"]).toEqual([{ id: "ap-1", event: "presale_announce" }]);
     expect(body.calendar["2026-05-20"]).toEqual([{ id: "ap-2", event: "winner_announce" }]);
   });
 });
