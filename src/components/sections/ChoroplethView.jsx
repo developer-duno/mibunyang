@@ -44,9 +44,11 @@ export const ChoroplethView = memo(function ChoroplethView({
     if (!kakao?.event) return;
     const handler = () => setLevel(mapInstance.getLevel());
     kakao.event.addListener(mapInstance, "zoom_changed", handler);
-    // 초기 level 동기화
-    if (typeof mapInstance.getLevel === "function") setLevel(mapInstance.getLevel());
+    const initialSyncId = typeof mapInstance.getLevel === "function"
+      ? window.setTimeout(handler, 0)
+      : null;
     return () => {
+      if (initialSyncId != null) window.clearTimeout(initialSyncId);
       // kakao SDK 의 event.removeListener 는 일부 버전 미지원. 옵셔널 호출 가드.
       // 미지원 시 zoom_changed 핸들러는 mapInstance(=페이지) 라이프사이클까지 살아있음.
       if (kakao.event?.removeListener) {
