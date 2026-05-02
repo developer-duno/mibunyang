@@ -32,7 +32,7 @@ async function handleRefresh(req, res) {
   // 이전 refresh token 블랙리스트 (rotation)
   await blacklistToken(refreshToken, payload);
 
-  const role = user.role || "user";
+  const role = user.role || "expert";
   const isAdmin = role === "admin";
   const token = createToken(
     { email: payload.email, name: user.name, ...(role !== "user" && { role }) },

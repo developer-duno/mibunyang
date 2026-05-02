@@ -19,7 +19,7 @@ const mockKv = { get: vi.fn(), set: vi.fn() };
 vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 
 const { default: handler } = await import('./verify.js');
-const { createToken } = await import('../_lib/auth.js');
+const { createToken, createRefreshToken, verifyToken } = await import('../_lib/auth.js');
 const { checkRateLimit } = await import('../_lib/rateLimit.js');
 
 /** res 목 객체 팩토리 */
@@ -128,6 +128,21 @@ describe('auth/verify handler', () => {
     const res = makeRes();
     await handler({ method: 'POST', body: { token }, headers: {} }, res);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ role: 'admin' }));
+  });
+
+  it('refresh issues role=expert for approved expert without stored role', async () => {
+    const refreshToken = createRefreshToken('expert@test.com');
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce({ email: 'expert@test.com', name: 'Expert', status: 'approved' });
+    mockKv.set.mockResolvedValueOnce('OK');
+    const res = makeRes();
+    await handler({ method: 'POST', body: { action: 'refresh', refreshToken }, headers: {} }, res);
+    const response = res.json.mock.calls[0][0];
+    expect(response.role).toBe('expert');
+    expect(verifyToken(response.token)).toEqual(expect.objectContaining({
+      email: 'expert@test.com',
+      role: 'expert',
+    }));
   });
 
   // 블랙리스트: 로그아웃된 토큰 거부
