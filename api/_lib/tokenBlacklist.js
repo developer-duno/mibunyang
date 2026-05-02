@@ -15,12 +15,20 @@ export async function blacklistToken(token, payload) {
   await kv.set(`bl:${hash}`, 1, { ex: ttlSec });
 }
 
-/** 블랙리스트 확인 — Redis 장애 시 fail-open (가용성 우선, 토큰 만료가 2차 방어선) */
+/**
+ * 블랙리스트 확인 — Redis 장애 시 fail-open.
+ *
+ * Operational policy:
+ * - Availability wins over logout blacklist enforcement if KV is temporarily down.
+ * - JWT expiration remains the primary hard boundary; this blacklist is a
+ *   best-effort early revocation layer for already-issued tokens.
+ * - Missing KV values, including null and undefined, mean "not blacklisted".
+ */
 export async function isBlacklisted(token) {
   try {
     const hash = hashToken(token);
     const val = await kv.get(`bl:${hash}`);
-    return val !== null;
+    return val != null;
   } catch {
     return false;
   }

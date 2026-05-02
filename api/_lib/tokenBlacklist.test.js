@@ -74,6 +74,16 @@ describe('isBlacklisted', () => {
     expect(await isBlacklisted('any-token')).toBe(false);
   });
 
+  it('KV timeout 시 fail-open (false 반환)', async () => {
+    mockKv.get.mockRejectedValue(new Error('Connection timeout'));
+    expect(await isBlacklisted('timeout-token')).toBe(false);
+  });
+
+  it('KV가 undefined를 반환하면 미등록 토큰으로 처리한다', async () => {
+    mockKv.get.mockResolvedValue(undefined);
+    expect(await isBlacklisted('missing-token')).toBe(false);
+  });
+
   // 해시 기반 키 사용 확인
   it('bl:{hash} 형식의 키로 조회한다', async () => {
     mockKv.get.mockResolvedValue(null);
