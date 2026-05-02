@@ -54,6 +54,9 @@ export const FIELD_META = {
   competitionRate: { label: "청약 경쟁률", section: "안전", fmt: v => v != null ? (v < 0 ? `미달 ${(Math.abs(v) * 100).toFixed(0)}%` : `${v.toFixed(1)}:1`) : "미수집", isNotApplicable: presaleNA },
   competitionSupply: { label: "공급세대수(청약)", section: "안전", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집", isNotApplicable: presaleNA },
   competitionApplicants: { label: "청약신청수", section: "안전", unit: "명", fmt: v => v != null ? nk(v, "명") : "미수집", isNotApplicable: presaleNA },
+  // ── 무순위 공고 이벤트 (applyhome_events 시계열 집계) ──
+  unsoldEventCount: { label: "무순위 공고 횟수", section: "안전", fmt: v => (v ?? 0) > 0 ? `${v}회` : "—" },
+  lastUnsoldEventAt: { label: "최근 무순위 공고일", section: "안전", fmt: v => v ? new Date(v).toLocaleDateString("ko-KR") : "—" },
   crimeSafetyGrade: { label: "치안 안전등급", section: "안전", fmt: v => v != null ? `${v}등급` : "미수집" },
   police: { label: "경찰관서(3km)", section: "입지", unit: "개", fmt: v => n(v, "개") },
   policeDist: { label: "경찰관서 거리", section: "입지", unit: "m", fmt: v => v != null ? `${v}m` : "미수집" },
@@ -171,7 +174,7 @@ export const FIELD_META = {
 export const FIELD_SECTIONS = [
   { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","address","roadAddress","district","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout","heating","avgMaintenanceCost","primaryDirection"] },
   { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","nearbyBuildYear","avgFloor","floorRange","priceIndex","avgPriceSqm","landCostRatio","netMigration"] },
-  { key: "안전", label: "안전도/리스크", fields: ["unsoldRate","competitionRate","competitionSupply","competitionApplicants","crimeSafetyGrade","recentTrades6m","cancelRatio6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth","newSupply","initialSaleRate"] },
+  { key: "안전", label: "안전도/리스크", fields: ["unsoldRate","competitionRate","competitionSupply","competitionApplicants","unsoldEventCount","lastUnsoldEventAt","crimeSafetyGrade","recentTrades6m","cancelRatio6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth","newSupply","initialSaleRate"] },
   { key: "입지", label: "입지/교통/교육/환경", fields: ["subwayDist","subwayName","subwayLines","busRoutes","busStopNames","icDist","ktxDist","schoolScore","schoolGrade","hospital","hospitalDist","mart","martDist","conv","convDist","park","parkDist","cafe","culture","bank","pharmacy","police","policeDist","childcare","childcareDist","emergency","emergencyDist","view","sunlight","noise","noxious","noxiousDist","airQuality"] },
   { key: "상품성", label: "상품성/건축", fields: ["parkingRatio","floorAreaRatio","energyGrade","greenBldg","quakeDesign","exclusiveRatio","hasPool","heatFuel","corridorType","buildingCoverageRatio"] },
   { key: "혜택", label: "혜택/할인", fields: ["discountPct","loanFree","loanFreePct","optionFree","optionValue","balconyFree","balconyValue","cashback","contractDiscount","benefits"] },

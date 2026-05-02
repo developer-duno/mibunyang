@@ -379,6 +379,8 @@ describe('sanitize (null → 기본값)', () => {
       'priceIndex', 'avgPriceSqm', 'newSupply', 'initialSaleRate', 'landCostRatio',
       // 청약 경쟁률
       'competitionRate', 'competitionSupply', 'competitionApplicants',
+      // 무순위 이벤트
+      'unsoldEventCount', 'lastUnsoldEventAt',
       // 실거래
       'nearbyMedian', 'recentTrades6m', 'nearbyBuildYear', 'avgFloor', 'floorRange',
       'jeonseRate', 'pir', 'psr', 'cancelRatio6m',

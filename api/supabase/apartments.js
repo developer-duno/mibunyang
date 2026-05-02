@@ -267,6 +267,9 @@ function sanitizeRegion(row) {
     competitionRate: row.competitionRate ?? null,
     competitionSupply: row.competitionSupply ?? null,
     competitionApplicants: row.competitionApplicants ?? null,
+    // 무순위 공고 이벤트 (apartments_flat LEFT JOIN ae)
+    unsoldEventCount: row.unsoldEventCount ?? 0,
+    lastUnsoldEventAt: row.lastUnsoldEventAt ?? null,
   };
 }
 
