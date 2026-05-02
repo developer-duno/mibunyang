@@ -25,6 +25,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   const [markerCount, setMarkerCount] = useState(null);
   const [error, setError] = useState(null);
   const [mode, setMode] = useState("point"); // "point" | "choropleth"
+  const [mapInstance, setMapInstance] = useState(null);
 
   // Kakao Maps SDK 동적 로드 + 지도 초기화
   useEffect(() => {
@@ -40,6 +41,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
           });
           map.addControl(new window.kakao.maps.ZoomControl(), window.kakao.maps.ControlPosition.RIGHT);
           mapInstanceRef.current = map;
+          setMapInstance(map);
           clustererRef.current = new window.kakao.maps.MarkerClusterer({
             map,
             averageCenter: true,
@@ -60,6 +62,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
       cancelled = true;
       if (clustererRef.current) clustererRef.current.clear();
       mapInstanceRef.current = null;
+      setMapInstance(null);
       clustererRef.current = null;
     };
   }, []);
@@ -100,12 +103,12 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     clustererRef.current.addMarkers(markers);
     setMarkerCount(markers.length);
 
-    if (markers.length > 0) {
+    if (markers.length > 0 && mapInstance) {
       const bounds = new kakao.LatLngBounds();
       markers.forEach(m => bounds.extend(m.getPosition()));
-      mapInstanceRef.current.setBounds(bounds);
+      mapInstance.setBounds(bounds);
     }
-  }, [ready, filtered, mode]);
+  }, [ready, filtered, mode, mapInstance]);
 
   // 색칠 모드 폴리곤 클릭 → 점 보기 자동 복귀
   const handleSidoClick = useCallback(() => {
@@ -119,7 +122,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   // 현위치 버튼 핸들러
   const myLocMarkerRef = useRef(null);
   const handleMyLocation = useCallback(() => {
-    if (!ready || !mapInstanceRef.current || !navigator.geolocation) return;
+    if (!ready || !mapInstance || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const kakao = window.kakao.maps;
@@ -132,15 +135,15 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
             image: new kakao.MarkerImage(blueDot, new kakao.Size(20, 20), { offset: new kakao.Point(10, 10) }),
             zIndex: 100,
           });
-          myLocMarkerRef.current.setMap(mapInstanceRef.current);
+          myLocMarkerRef.current.setMap(mapInstance);
         }
-        mapInstanceRef.current.setCenter(loc);
-        mapInstanceRef.current.setLevel(MY_LOC_LEVEL);
+        mapInstance.setCenter(loc);
+        mapInstance.setLevel(MY_LOC_LEVEL);
       },
       () => { /* 권한 거부 시 조용히 무시 */ },
       { enableHighAccuracy: false, timeout: GEO_TIMEOUT },
     );
-  }, [ready]);
+  }, [ready, mapInstance]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)", borderRadius: isDesktop ? 12 : 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
@@ -155,7 +158,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
         </div>
       )}
       {/* 인프라 오버레이 토글 */}
-      <InfraOverlay mapInstance={mapInstanceRef.current} ready={ready} />
+      <InfraOverlay mapInstance={mapInstance} ready={ready} />
       {/* 현위치 버튼 */}
       {ready && navigator.geolocation && (
         <button onClick={handleMyLocation} aria-label="현위치" style={{ position: "absolute", bottom: 16, right: 12, width: 36, height: 36, borderRadius: "50%", background: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, fontSize: F.lg }}>
@@ -180,7 +183,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
       {mode === "choropleth" && (
         <Suspense fallback={null}>
           <ChoroplethView
-            mapInstance={mapInstanceRef.current}
+            mapInstance={mapInstance}
             ready={ready}
             filtered={filtered}
             onSidoClick={handleSidoClick}
