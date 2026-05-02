@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useTransition } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from "react";
 import { VALID_SORT_KEYS } from "@/constants/sortOptions";
 import { MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { trackEvent } from "@/lib/analytics";
@@ -86,28 +86,28 @@ function serializeToURL(state) {
 
 export function useFilterSort({ onFilterChange }) {
   // URL에서 초기값 읽기 (lazy — 1회만)
-  const urlInit = useRef(deserializeFromURL());
+  const [urlInit] = useState(() => deserializeFromURL());
 
-  const [filterRegion, setFilterRegion] = useState(() => urlInit.current?.filterRegion ?? "전체");
-  const [filterGu, setFilterGu] = useState(() => urlInit.current?.filterGu ?? "전체");
+  const [filterRegion, setFilterRegion] = useState(() => urlInit?.filterRegion ?? "전체");
+  const [filterGu, setFilterGu] = useState(() => urlInit?.filterGu ?? "전체");
   const [sortKey, setSortKeyRaw] = useState(() => {
-    if (urlInit.current?.sortKey) return urlInit.current.sortKey;
+    if (urlInit?.sortKey) return urlInit.sortKey;
     try { const v = localStorage.getItem("mibunyang_sort"); return v && VALID_SORT_KEYS.has(v) ? v : "total"; } catch { return "total"; }
   });
   const [isSortPending, startSortTransition] = useTransition();
-  const setSortKey = useCallback((k) => { try { localStorage.setItem("mibunyang_sort", k); } catch {} startSortTransition(() => setSortKeyRaw(k)); }, [startSortTransition]);
-  const [budgetMin, setBudgetMin] = useState(() => urlInit.current?.budgetMin ?? "");
-  const [budgetMax, setBudgetMax] = useState(() => urlInit.current?.budgetMax ?? "");
+  const setSortKey = useCallback((k) => { try { localStorage.setItem("mibunyang_sort", k); } catch { /* ignore storage errors */ } startSortTransition(() => setSortKeyRaw(k)); }, [startSortTransition]);
+  const [budgetMin, setBudgetMin] = useState(() => urlInit?.budgetMin ?? "");
+  const [budgetMax, setBudgetMax] = useState(() => urlInit?.budgetMax ?? "");
   const [showFavOnly, setShowFavOnly] = useState(false);
-  const [areaMin, setAreaMin] = useState(() => urlInit.current?.areaMin ?? "");
-  const [areaMax, setAreaMax] = useState(() => urlInit.current?.areaMax ?? "");
-  const [unitsMin, setUnitsMin] = useState(() => urlInit.current?.unitsMin ?? "");
-  const [unitsMax, setUnitsMax] = useState(() => urlInit.current?.unitsMax ?? "");
-  const [moveInFilter, setMoveInFilter] = useState(() => urlInit.current?.moveInFilter ?? "전체");
+  const [areaMin, setAreaMin] = useState(() => urlInit?.areaMin ?? "");
+  const [areaMax, setAreaMax] = useState(() => urlInit?.areaMax ?? "");
+  const [unitsMin, setUnitsMin] = useState(() => urlInit?.unitsMin ?? "");
+  const [unitsMax, setUnitsMax] = useState(() => urlInit?.unitsMax ?? "");
+  const [moveInFilter, setMoveInFilter] = useState(() => urlInit?.moveInFilter ?? "전체");
   const [filterCollapsed, setFilterCollapsed] = useState(false);
-  const [minScore, setMinScore] = useState(() => urlInit.current?.minScore ?? "");
-  const [builderTier, setBuilderTier] = useState(() => urlInit.current?.builderTier ?? "전체");
-  const [benefitOnly, setBenefitOnly] = useState(() => urlInit.current?.benefitOnly ?? false);
+  const [minScore, setMinScore] = useState(() => urlInit?.minScore ?? "");
+  const [builderTier, setBuilderTier] = useState(() => urlInit?.builderTier ?? "전체");
+  const [benefitOnly, setBenefitOnly] = useState(() => urlInit?.benefitOnly ?? false);
 
   // URL 동기화 (debounce 300ms, replaceState)
   const isInitialLoad = useRef(true);
@@ -146,13 +146,13 @@ export function useFilterSort({ onFilterChange }) {
   const handleAreaUnitsReset = useCallback(() => { setAreaMin(""); setAreaMax(""); setUnitsMin(""); setUnitsMax(""); onFilterChange?.(); }, [onFilterChange]);
 
   // setter 맵 — FILTER_URL_MAP stateKey → React setter (DRY: 새 필터 추가 시 여기에도 추가)
-  const SETTERS = {
+  const SETTERS = useMemo(() => ({
     filterRegion: setFilterRegion, filterGu: setFilterGu, sortKey: setSortKeyRaw,
     budgetMin: setBudgetMin, budgetMax: setBudgetMax, minScore: setMinScore,
     builderTier: setBuilderTier, benefitOnly: setBenefitOnly,
     areaMin: setAreaMin, areaMax: setAreaMax, unitsMin: setUnitsMin, unitsMax: setUnitsMax,
     moveInFilter: setMoveInFilter,
-  };
+  }), []);
 
   /** 공통 필터 리셋 — overrides로 프리셋 값 덮어쓰기 */
   const resetFilters = useCallback((overrides = {}) => {
@@ -162,9 +162,9 @@ export function useFilterSort({ onFilterChange }) {
     }
     setShowFavOnly(false);
     const sk = overrides.sortKey || "total";
-    try { localStorage.setItem("mibunyang_sort", sk); } catch {}
+    try { localStorage.setItem("mibunyang_sort", sk); } catch { /* ignore storage errors */ }
     onFilterChange?.();
-  }, [onFilterChange]);
+  }, [SETTERS, onFilterChange]);
 
   /** 전체 필터 초기화 */
   const handleResetAll = useCallback(() => resetFilters(), [resetFilters]);
@@ -193,13 +193,13 @@ export function useFilterSort({ onFilterChange }) {
     const preset = { key: `custom_${Date.now()}`, label: name.trim().slice(0, 12), desc: "사용자 프리셋", values, custom: true };
     const next = [...customPresets.filter(p => p.label !== preset.label), preset].slice(-10);
     setCustomPresets(next);
-    try { localStorage.setItem(LS_CUSTOM_PRESETS, JSON.stringify(next)); } catch {}
-  }, [customPresets, filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
+    try { localStorage.setItem(LS_CUSTOM_PRESETS, JSON.stringify(next)); } catch { /* ignore storage errors */ }
+  }, [SETTERS, customPresets, filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
 
   const deleteCustomPreset = useCallback((key) => {
     const next = customPresets.filter(p => p.key !== key);
     setCustomPresets(next);
-    try { localStorage.setItem(LS_CUSTOM_PRESETS, JSON.stringify(next)); } catch {}
+    try { localStorage.setItem(LS_CUSTOM_PRESETS, JSON.stringify(next)); } catch { /* ignore storage errors */ }
   }, [customPresets]);
 
   /* ── 필터 히스토리 (최근 MAX_HISTORY개, URL 변경 시 자동 저장) ── */
@@ -218,7 +218,7 @@ export function useFilterSort({ onFilterChange }) {
       if (prev[0]?.sig === sig) return prev;
       const entry = { sig, values: state, ts: Date.now(), count: nonDefault.length };
       const next = [entry, ...prev.filter(h => h.sig !== sig)].slice(0, MAX_HISTORY);
-      try { localStorage.setItem(LS_FILTER_HISTORY, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(LS_FILTER_HISTORY, JSON.stringify(next)); } catch { /* ignore storage errors */ }
       return next;
     });
   }, []);
@@ -240,13 +240,15 @@ export function useFilterSort({ onFilterChange }) {
 
   const clearHistory = useCallback(() => {
     setFilterHistory([]);
-    try { localStorage.removeItem(LS_FILTER_HISTORY); } catch {}
+    try { localStorage.removeItem(LS_FILTER_HISTORY); } catch { /* ignore storage errors */ }
   }, []);
 
   /* ── Undo / Redo (MAX_UNDO 스택) ── */
   const undoStack = useRef([]);
   const redoStack = useRef([]);
   const skipUndo = useRef(false);
+  const [undoDepth, setUndoDepth] = useState(0);
+  const [redoDepth, setRedoDepth] = useState(0);
 
   const getCurrentSnapshot = useCallback(() => ({
     filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly,
@@ -261,12 +263,14 @@ export function useFilterSort({ onFilterChange }) {
     if (prevSnapshot.current && JSON.stringify(prevSnapshot.current) !== JSON.stringify(snap)) {
       undoStack.current = [...undoStack.current, prevSnapshot.current].slice(-MAX_UNDO);
       redoStack.current = [];
+      setUndoDepth(undoStack.current.length);
+      setRedoDepth(0);
     }
     prevSnapshot.current = snap;
   }, [getCurrentSnapshot]);
 
-  const canUndo = undoStack.current.length > 0;
-  const canRedo = redoStack.current.length > 0;
+  const canUndo = undoDepth > 0;
+  const canRedo = redoDepth > 0;
 
   const applySnapshot = useCallback((snap) => {
     skipUndo.current = true;
@@ -276,8 +280,8 @@ export function useFilterSort({ onFilterChange }) {
     }
     if ("showFavOnly" in snap) setShowFavOnly(snap.showFavOnly);
     const sk = snap.sortKey || "total";
-    try { localStorage.setItem("mibunyang_sort", sk); } catch {}
-  }, []);
+    try { localStorage.setItem("mibunyang_sort", sk); } catch { /* ignore storage errors */ }
+  }, [SETTERS]);
 
   const undo = useCallback(() => {
     if (undoStack.current.length === 0) return;
@@ -285,6 +289,8 @@ export function useFilterSort({ onFilterChange }) {
     redoStack.current = [...redoStack.current, current];
     const prev = undoStack.current[undoStack.current.length - 1];
     undoStack.current = undoStack.current.slice(0, -1);
+    setUndoDepth(undoStack.current.length);
+    setRedoDepth(redoStack.current.length);
     applySnapshot(prev);
   }, [getCurrentSnapshot, applySnapshot]);
 
@@ -294,6 +300,8 @@ export function useFilterSort({ onFilterChange }) {
     undoStack.current = [...undoStack.current, current];
     const next = redoStack.current[redoStack.current.length - 1];
     redoStack.current = redoStack.current.slice(0, -1);
+    setUndoDepth(undoStack.current.length);
+    setRedoDepth(redoStack.current.length);
     applySnapshot(next);
   }, [getCurrentSnapshot, applySnapshot]);
 

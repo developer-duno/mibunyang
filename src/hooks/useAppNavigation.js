@@ -12,9 +12,13 @@ export function useAppNavigation({
 }) {
   // ── useRef (stale closure 방지) ──
   const consultRef = useRef(consult);
-  consultRef.current = consult;
   const budgetRef = useRef({ budgetMin, budgetMax });
-  budgetRef.current = { budgetMin, budgetMax };
+  useEffect(() => {
+    consultRef.current = consult;
+  }, [consult]);
+  useEffect(() => {
+    budgetRef.current = { budgetMin, budgetMax };
+  }, [budgetMin, budgetMax]);
 
   // ── 전문가 로그인/로그아웃 ──
   const handleExpertLogin = useCallback(async () => {
@@ -29,21 +33,21 @@ export function useAppNavigation({
         setTab("expert");
       }
     }
-  }, [expert.handleExpertLogin, admin.setAdminLoggedIn]);
+  }, [admin, expert, setTab]);
 
   const handleExpertLogout = useCallback(() => {
     expert.handleExpertLogout(() => { setTab("list"); setShowCompOpen(false); });
-  }, [expert.handleExpertLogout, setShowCompOpen]);
+  }, [expert, setShowCompOpen, setTab]);
 
   // ── 탭 전환 ──
-  const switchToAdmin = useCallback(() => setTab("admin"), []);
-  const switchToExpert = useCallback(() => setTab("expert"), []);
-  const switchToInfo = useCallback(() => setTab("info"), []);
+  const switchToAdmin = useCallback(() => setTab("admin"), [setTab]);
+  const switchToExpert = useCallback(() => setTab("expert"), [setTab]);
+  const switchToInfo = useCallback(() => setTab("info"), [setTab]);
 
   const handleExpertView = useCallback((aptId) => {
     expert.setExpertExpandedApt(aptId);
     setTab("expert");
-  }, [expert.setExpertExpandedApt]);
+  }, [expert, setTab]);
 
   const handleConsultFromDetail = useCallback((aptId) => {
     consult.setConsultForm(prev => ({
@@ -52,7 +56,7 @@ export function useAppNavigation({
     }));
     detail.setDetailAptId(null);
     setTab("consult");
-  }, [consult.setConsultForm, detail.setDetailAptId]);
+  }, [consult, detail, setTab]);
 
   const handleNavClick = useCallback((k) => {
     if (k === "logout") return handleExpertLogout();
@@ -79,7 +83,7 @@ export function useAppNavigation({
       }
     }
     setTab(k);
-  }, [compIds.length, showToast, handleExpertLogout, setShowCompOpen, isLoggedIn, onLoginRequired]);
+  }, [compIds.length, handleExpertLogout, isLoggedIn, onLoginRequired, setShowCompOpen, setTab, showToast, tab]);
 
   // ── useEffect: verify 실패 시 admin 상태 동기화 ──
   useEffect(() => {
@@ -87,7 +91,7 @@ export function useAppNavigation({
       admin.setAdminLoggedIn(false);
       if (tab === "admin" || tab === "expert") setTab("list");
     }
-  }, [expert.expertLoggedIn, admin.adminLoggedIn, admin.setAdminLoggedIn, tab]);
+  }, [admin, expert.expertLoggedIn, setTab, tab]);
 
   // ── useEffect: 전문가 로그인 시 상담 목록 서버 조회 ──
   useEffect(() => {
@@ -95,7 +99,7 @@ export function useAppNavigation({
       const token = localStorage.getItem("expertToken");
       if (token) consult.fetchConsults(token);
     }
-  }, [expert.expertLoggedIn, tab, consult.fetchConsults]);
+  }, [consult, expert.expertLoggedIn, tab]);
 
   return {
     handleExpertLogin, handleExpertLogout,
