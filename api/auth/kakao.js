@@ -146,6 +146,10 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       await kv.set(`user:${emailNorm}`, user);
     }
 
+    // status set 동기화 — admin 통계/목록의 진실의 원천 (idempotent: 이미 있으면 no-op)
+    // signup.js / review.js 와 동일 패턴. 누락 시 admin 대시보드에서 카카오 가입자 카운트 0
+    await kv.sadd(`users:${user.status || "approved"}`, emailNorm);
+
     // 역참조 키 저장 (TTL 90일)
     await kv.set(`kakao:${kakaoId}`, emailNorm, { ex: 90 * 24 * 60 * 60 });
 

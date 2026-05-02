@@ -20,6 +20,7 @@ vi.mock("../_lib/rateLimit.js", () => ({
 const mockKv = {
   get: vi.fn(),
   set: vi.fn().mockResolvedValue("OK"),
+  sadd: vi.fn().mockResolvedValue(1),
 };
 vi.mock("../_lib/redis.js", () => ({ kv: mockKv }));
 
@@ -151,6 +152,8 @@ describe("auth/kakao handler", () => {
       kakaoId: "12345",
       status: "approved",
     }));
+    // 회귀 가드: admin 통계의 진실의 원천인 users:{status} set 동기화 누락 방지
+    expect(mockKv.sadd).toHaveBeenCalledWith("users:approved", "kakao@test.com");
   });
 
   it("reuses an existing Kakao-linked user", async () => {
