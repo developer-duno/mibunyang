@@ -6,7 +6,7 @@ import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 
 const UNSOLD_ALERT_THRESHOLD = 30;
 /* ── 모듈 레벨 상수 (렌더마다 재생성 방지) ── */
-export const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
 function completionBadge(completion, moveInDone, completionPast) {
   if (moveInDone) return { bg: C.greenLight, color: C.green, text: `입주완료 ${fmtCompletion(completion)}` };
