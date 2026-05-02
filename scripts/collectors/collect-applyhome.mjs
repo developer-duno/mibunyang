@@ -12,7 +12,7 @@
  *   MOLIT_KEY (data.go.kr 통합 키 — odcloud.kr 호환)
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, selectAll, upsertBatch } from "./_shared.mjs";
 
 loadEnv();
 
@@ -85,6 +85,25 @@ export function aggregateByApartment(rows) {
   return result;
 }
 
+// 매칭된 단지만 events 배열로 변환 (순수 함수, DB 호출 없음 — 단위 테스트용)
+export function buildEventsFromAggregated(aggregated, apartments, recordedAt) {
+  const aptSet = new Set(apartments.map(a => a.id));
+  const events = [];
+  for (const [no, agg] of Object.entries(aggregated)) {
+    const aptId = `ah-${no}`;
+    if (!aptSet.has(aptId)) continue;
+    events.push({
+      apartment_id: aptId,
+      house_manage_no: no,
+      supply: agg.supply,
+      applicants: agg.applicants,
+      rate: agg.rate,
+      recorded_at: recordedAt,
+    });
+  }
+  return events;
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
   if (!API_KEY) {
@@ -108,6 +127,18 @@ async function main() {
   const aptNos = Object.keys(aggregated);
   log(PHASE, `고유 아파트: ${aptNos.length}건`);
 
+  // 2.5. 청약홈 API 응답 형식 변경 조기 감지 (5% 경고 + exit(1) 알림)
+  // ⚠️ 위치 = aggregate 직후 + apartments.update 루프 진입 전.
+  //    이 시점에는 어떤 DB 쓰기도 발생 안 함 → exit(1) 시 데이터 무결.
+  const totalAggregated = aptNos.length;
+  const zeroSupplyCount = Object.values(aggregated)
+    .filter(a => a.supply === 0).length;
+  const zeroRatio = totalAggregated > 0 ? zeroSupplyCount / totalAggregated : 0;
+  if (zeroRatio > 0.05) {
+    logError(PHASE, `⚠️ supply=0 비율 ${(zeroRatio * 100).toFixed(1)}% (${zeroSupplyCount}/${totalAggregated}) — 청약홈 API 필드명 변경 가능성. odcloud 응답 1건 샘플 확인 필요.`);
+    process.exit(1);
+  }
+
   // 3. 우리 아파트 ID와 매칭 (ah-{HOUSE_MANAGE_NO})
   const apartments = await selectAll(
     (s) => s.from("apartments").select("id"),
@@ -116,6 +147,7 @@ async function main() {
 
   const aptSet = new Set(apartments.map(a => a.id));
   let matched = 0;
+  const events = [];   // 시계열 적재용 — apartments.update 성공 시에만 누적
 
   for (const [no, agg] of Object.entries(aggregated)) {
     const aptId = `ah-${no}`;
@@ -138,8 +170,33 @@ async function main() {
       updated_at: new Date().toISOString(),
     }).eq("id", aptId);
 
-    if (updErr) { logError(PHASE, `  ${aptId} UPDATE 실패: ${updErr.message}`); rpt.fail(1); }
-    else rpt.success(1);
+    if (updErr) { logError(PHASE, `  ${aptId} UPDATE 실패: ${updErr.message}`); rpt.fail(1); continue; }
+    rpt.success(1);
+
+    // 시계열 events 누적 (apartments.update 성공 분기 안)
+    events.push({
+      apartment_id: aptId,
+      house_manage_no: no,
+      supply: agg.supply,
+      applicants: agg.applicants,
+      rate: agg.rate,
+      recorded_at: new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  // 4. 시계열 일괄 upsert (dry-run 모드 아닐 때만)
+  if (!dryRun && events.length > 0) {
+    const inserted = await upsertBatch(
+      "applyhome_events",
+      events,
+      "apartment_id,house_manage_no",
+      500,
+      sb,
+    );
+    const failed = events.length - inserted;
+    if (failed > 0) rpt.fail(failed);
+    // 추가 PHASE 로그 불필요: upsertBatch 내부가 이미
+    // "applyhome_events: ${inserted}/${rows.length}건 upsert" 출력
   }
 
   log(PHASE, `매칭: ${matched}/${aptNos.length}건`);
