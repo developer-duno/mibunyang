@@ -30,7 +30,7 @@ const monthLabel = (yyyymm) => {
  * - region 미설정 / loading / error 시 null (조용한 숨김)
  */
 export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }) {
-  const { data, loading, error } = useMarketStatsHistory(region, gu);
+  const { data, loading, error, retry } = useMarketStatsHistory(region, gu);
 
   // 모든 차트가 같은 x축 라벨 사용
   const xLabels = useMemo(
@@ -39,8 +39,17 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu })
   );
 
   if (!region) return null;
-  if (loading) return null; // PriceChart/UnsoldChart 패턴 (조용한 로딩)
-  if (error) return null;
+  if (loading) return (
+    <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: F.sm, marginTop: 16 }}>
+      시장 통계를 불러오는 중...
+    </div>
+  );
+  if (error) return (
+    <div style={{ height: 96, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16 }}>
+      <span style={{ color: C.muted, fontSize: F.sm }}>시장 통계를 불러올 수 없습니다</span>
+      <button onClick={retry} style={{ fontSize: F.xs, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.slate100, color: C.slate600, cursor: "pointer" }}>다시시도</button>
+    </div>
+  );
 
   // 5/5 cron 전 데이터 0건 = 명시적 안내 (사용자 결정)
   if (!Array.isArray(data) || data.length < 2) return (
