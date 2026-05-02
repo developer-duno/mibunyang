@@ -80,6 +80,10 @@ async function handleGet(req, res) {
     return res.status(401).json({ ok: false, error: "로그아웃된 토큰입니다" });
   }
 
+  if (payload.role !== "expert" && payload.role !== "admin") {
+    return res.status(403).json({ ok: false, error: "Forbidden" });
+  }
+
   try {
     const sb = getMibuyangSupabase();
     const { data, error, count } = await sb

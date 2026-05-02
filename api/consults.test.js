@@ -17,6 +17,10 @@ vi.mock("./_lib/auth.js", () => ({
   verifyToken: vi.fn().mockReturnValue(null),
 }));
 
+vi.mock("./_lib/tokenBlacklist.js", () => ({
+  isBlacklisted: vi.fn().mockResolvedValue(false),
+}));
+
 // Supabase chainable mock
 const mockInsert = vi.fn().mockResolvedValue({ error: null });
 const mockLimit = vi.fn().mockResolvedValue({ data: [], error: null, count: 0 });
@@ -159,8 +163,22 @@ describe("consults handler", () => {
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
+  it("GET: token without role returns 403", async () => {
+    verifyToken.mockReturnValueOnce({ email: "user@test.com" });
+    const res = makeRes();
+    await handler({ method: "GET", headers: { authorization: "Bearer no-role-token" }, query: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("GET: user role returns 403", async () => {
+    verifyToken.mockReturnValueOnce({ email: "user@test.com", role: "user" });
+    const res = makeRes();
+    await handler({ method: "GET", headers: { authorization: "Bearer user-token" }, query: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
   it("GET: 유효한 토큰으로 상담 목록을 반환한다", async () => {
-    verifyToken.mockReturnValueOnce({ email: "expert@test.com" });
+    verifyToken.mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
     // snake_case DB 응답 목
     mockLimit.mockResolvedValueOnce({
       data: [makeConsultRow()],
@@ -179,8 +197,16 @@ describe("consults handler", () => {
     expect(responseData.count).toBe(1);
   });
 
+  it("GET: admin role can read consult list", async () => {
+    verifyToken.mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    const res = makeRes();
+    await handler({ method: "GET", headers: { authorization: "Bearer admin-token" }, query: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+  });
+
   it("GET: Supabase 조회 실패 시 500을 반환한다", async () => {
-    verifyToken.mockReturnValueOnce({ email: "expert@test.com" });
+    verifyToken.mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
     mockLimit.mockResolvedValueOnce({ data: null, error: new Error("DB error"), count: 0 });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer valid-token" }, query: {} }, res);
