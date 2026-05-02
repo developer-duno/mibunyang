@@ -21,11 +21,11 @@ export function useAppNavigation({
     const result = await expert.handleExpertLogin();
     if (result?.ok) {
       if (result.role === "admin") {
-        sessionStorage.setItem("userRole", "admin");
+        localStorage.setItem("userRole", "admin");
         admin.setAdminLoggedIn(true);
         setTab("admin");
       } else {
-        sessionStorage.setItem("userRole", "expert");
+        localStorage.setItem("userRole", "expert");
         setTab("expert");
       }
     }
@@ -92,7 +92,7 @@ export function useAppNavigation({
   // ── useEffect: 전문가 로그인 시 상담 목록 서버 조회 ──
   useEffect(() => {
     if (expert.expertLoggedIn && tab === "expertConsults") {
-      const token = sessionStorage.getItem("expertToken");
+      const token = localStorage.getItem("expertToken");
       if (token) consult.fetchConsults(token);
     }
   }, [expert.expertLoggedIn, tab, consult.fetchConsults]);
