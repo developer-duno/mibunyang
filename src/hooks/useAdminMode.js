@@ -4,7 +4,21 @@ const PAGE_SIZE = 20;
 
 export function useAdminMode(showToast) {
   const [adminLoggedIn, setAdminLoggedIn] = useState(() => {
-    try { return sessionStorage.getItem("userRole") === "admin" && !!sessionStorage.getItem("expertToken"); } catch { return false; }
+    try {
+      // 정상 경로: localStorage 에서 admin 인증 확인
+      if (localStorage.getItem("userRole") === "admin" && !!localStorage.getItem("expertToken")) return true;
+      // 마이그레이션: 8e2b5b7 이전에 sessionStorage 에 박혀있던 토큰 자동 이관 (1회성)
+      const sToken = sessionStorage.getItem("expertToken");
+      const sRole = sessionStorage.getItem("userRole");
+      if (sRole === "admin" && sToken) {
+        localStorage.setItem("expertToken", sToken);
+        localStorage.setItem("userRole", sRole);
+        sessionStorage.removeItem("expertToken");
+        sessionStorage.removeItem("userRole");
+        return true;
+      }
+      return false;
+    } catch { return false; }
   });
   const [adminLoading, setAdminLoading] = useState(false);
   const [users, setUsers] = useState([]);
@@ -21,7 +35,7 @@ export function useAdminMode(showToast) {
   const debounceRef = useRef(null);
 
   const fetchUsers = useCallback(async (status, search = "", pg = 0) => {
-    const token = sessionStorage.getItem("expertToken");
+    const token = localStorage.getItem("expertToken");
     if (!token) return;
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
@@ -45,6 +59,8 @@ export function useAdminMode(showToast) {
       } else {
         if (res.status === 401) {
           setAdminLoggedIn(false);
+          localStorage.removeItem("expertToken");
+          localStorage.removeItem("userRole");
           sessionStorage.removeItem("expertToken");
           sessionStorage.removeItem("userRole");
           showToast("관리자 세션이 만료되었습니다");
@@ -73,7 +89,7 @@ export function useAdminMode(showToast) {
   }, [fetchUsers, selectedStatus, searchQuery]);
 
   const handleReview = useCallback(async (email, action, note) => {
-    const token = sessionStorage.getItem("expertToken");
+    const token = localStorage.getItem("expertToken");
     if (!token) return;
     setReviewLoading(email);
     try {
@@ -115,7 +131,7 @@ export function useAdminMode(showToast) {
 
   // 일괄 처리
   const handleBatchReview = useCallback(async (action, note) => {
-    const token = sessionStorage.getItem("expertToken");
+    const token = localStorage.getItem("expertToken");
     if (!token || selectedEmails.size === 0) return;
     setBatchLoading(true);
     try {
@@ -144,7 +160,7 @@ export function useAdminMode(showToast) {
   }, [showToast, fetchUsers, selectedStatus, searchQuery, page, selectedEmails, clearSelectedEmails]);
 
   const fetchStats = useCallback(async () => {
-    const token = sessionStorage.getItem("expertToken");
+    const token = localStorage.getItem("expertToken");
     if (!token) return;
     setStatsLoading(true);
     try {
@@ -159,7 +175,7 @@ export function useAdminMode(showToast) {
   }, []);
 
   const handleAdminLogout = useCallback(async (onLogout) => {
-    const token = sessionStorage.getItem("expertToken");
+    const token = localStorage.getItem("expertToken");
     if (token) {
       try {
         await fetch("/api/auth/logout", {
@@ -170,6 +186,8 @@ export function useAdminMode(showToast) {
       } catch { /* best-effort — 세션 삭제는 항상 실행 */ }
     }
     setAdminLoggedIn(false);
+    localStorage.removeItem("expertToken");
+    localStorage.removeItem("userRole");
     sessionStorage.removeItem("expertToken");
     sessionStorage.removeItem("userRole");
     setUsers([]);

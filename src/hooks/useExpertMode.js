@@ -111,6 +111,8 @@ export function useExpertMode(showToast) {
     localStorage.removeItem("expertToken");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("userRole");
+    sessionStorage.removeItem("expertToken");
+    sessionStorage.removeItem("userRole");
     setExpertExpandedApt(null);
     setAuthUser(null);
     setAuthForm({ ...EMPTY_FORM });

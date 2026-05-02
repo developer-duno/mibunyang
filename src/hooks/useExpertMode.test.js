@@ -107,9 +107,12 @@ describe('useExpertMode', () => {
     expect(result.current.authError).toBe("서버 연결 실패");
   });
 
-  it('로그아웃 → 세션 정리', async () => {
+  it('로그아웃 → 양쪽 storage 세션 정리', async () => {
     localStorage.setItem("expertToken", "token");
     localStorage.setItem("userRole", "expert");
+    // 8e2b5b7 이전 sessionStorage 잔재 시뮬레이션
+    sessionStorage.setItem("expertToken", "stale");
+    sessionStorage.setItem("userRole", "admin");
     fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
     const onLogout = vi.fn();
     const { result } = renderHook(() => useExpertMode(showToast));
@@ -119,6 +122,8 @@ describe('useExpertMode', () => {
     expect(result.current.expertLoggedIn).toBe(false);
     expect(localStorage.getItem("expertToken")).toBeNull();
     expect(localStorage.getItem("userRole")).toBeNull();
+    expect(sessionStorage.getItem("expertToken")).toBeNull();
+    expect(sessionStorage.getItem("userRole")).toBeNull();
     expect(onLogout).toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith("로그아웃되었습니다");
   });

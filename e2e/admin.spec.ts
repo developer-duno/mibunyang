@@ -62,9 +62,24 @@ async function setupAdminMocks(page: Page) {
     });
   });
 
-  // admin/users API — status 파라미터에 따라 분기
+  // admin/users API — action=stats 분기 + status 파라미터 분기
   await page.route("**/api/admin/users*", async (route) => {
     const url = new URL(route.request().url());
+    // fetchStats 호출 (action=stats) 분기 — StatsSection 이 destructure 하는 4 키 모두 포함
+    if (url.searchParams.get("action") === "stats") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          counts: { pending: 2, approved: 1, rejected: 1, suspended: 1 },
+          userTypes: { kakao: 0, expert: 4 },
+          specialtyDist: { "부동산 중개": 4 },
+          recentSignups: [],
+        }),
+      });
+      return;
+    }
     const status = url.searchParams.get("status") || "pending";
     const map: Record<string, unknown[]> = {
       pending: MOCK_PENDING,
@@ -106,6 +121,9 @@ async function loginAsAdmin(page: Page) {
   await loginCta.click();
 
   // 로그인 폼 채우기 + submit
+  // mock 응답이 token+role 반환 → useExpertMode.handleExpertLogin 이 자동으로
+  // localStorage 박고 setExpertLoggedIn(true), useAppNavigation L24 가 userRole
+  // 박고 admin.setAdminLoggedIn(true) 호출 → 자동 관리자 대시보드 마운트
   await page.locator('input[type="email"]').fill("admin@test.com");
   await page.locator('input[type="password"]').fill("testpassword");
   await page.locator('button[type="submit"]').click();
@@ -300,11 +318,15 @@ test.describe("관리자 대시보드", () => {
     // 대시보드 사라짐 확인
     await expect(page.getByText("관리자 대시보드")).not.toBeVisible({ timeout: 5000 });
 
-    // sessionStorage 비워짐 확인
-    const token = await page.evaluate(() => sessionStorage.getItem("expertToken"));
-    expect(token).toBeNull();
-    const role = await page.evaluate(() => sessionStorage.getItem("userRole"));
-    expect(role).toBeNull();
+    // 양쪽 storage 비워짐 확인 (localStorage + sessionStorage 잔재 정리)
+    const lToken = await page.evaluate(() => localStorage.getItem("expertToken"));
+    expect(lToken).toBeNull();
+    const lRole = await page.evaluate(() => localStorage.getItem("userRole"));
+    expect(lRole).toBeNull();
+    const sToken = await page.evaluate(() => sessionStorage.getItem("expertToken"));
+    expect(sToken).toBeNull();
+    const sRole = await page.evaluate(() => sessionStorage.getItem("userRole"));
+    expect(sRole).toBeNull();
   });
 
   test("429 레이트리밋 — 토스트 메시지 표시", async ({ page }) => {
@@ -327,8 +349,8 @@ test.describe("관리자 대시보드", () => {
 
     // admin 세션 주입 후 페이지 로드
     await page.addInitScript(() => {
-      sessionStorage.setItem("expertToken", "mock-admin-jwt");
-      sessionStorage.setItem("userRole", "admin");
+      localStorage.setItem("expertToken", "mock-admin-jwt");
+      localStorage.setItem("userRole", "admin");
     });
     await page.goto("/");
 
@@ -357,8 +379,8 @@ test.describe("관리자 대시보드", () => {
     });
 
     await page.addInitScript(() => {
-      sessionStorage.setItem("expertToken", "mock-admin-jwt");
-      sessionStorage.setItem("userRole", "admin");
+      localStorage.setItem("expertToken", "mock-admin-jwt");
+      localStorage.setItem("userRole", "admin");
     });
     await page.goto("/");
 
@@ -382,8 +404,23 @@ test.describe("관리자 대시보드", () => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
     });
 
-    // 모든 상태에 빈 배열 반환
+    // 모든 상태에 빈 배열 반환 + action=stats 분기 (StatsSection 마운트 보장)
     await page.route("**/api/admin/users*", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("action") === "stats") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            counts: { pending: 0, approved: 0, rejected: 0, suspended: 0 },
+            userTypes: { kakao: 0, expert: 0 },
+            specialtyDist: {},
+            recentSignups: [],
+          }),
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -392,8 +429,8 @@ test.describe("관리자 대시보드", () => {
     });
 
     await page.addInitScript(() => {
-      sessionStorage.setItem("expertToken", "mock-admin-jwt");
-      sessionStorage.setItem("userRole", "admin");
+      localStorage.setItem("expertToken", "mock-admin-jwt");
+      localStorage.setItem("userRole", "admin");
     });
     await page.goto("/");
 
