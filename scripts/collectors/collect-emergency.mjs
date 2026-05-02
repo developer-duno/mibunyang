@@ -8,23 +8,14 @@
  *   node scripts/collectors/collect-emergency.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-emergency.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, createReporter, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, createReporter, recordApiQuota, haversineKm } from "./_shared.mjs";
 
 loadEnv();
 
 const PHASE = "emergency";
 const API_KEY = process.env.MOLIT_KEY;
 
-/** Haversine 거리 (km) */
-export function haversine(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+export const haversine = haversineKm;
 
 /** 전국 응급의료기관 목록 조회 (페이지네이션) */
 export async function fetchEmergencyList() {

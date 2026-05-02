@@ -8,7 +8,7 @@
  */
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, ROOT } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, ROOT, haversineMeters } from "./_shared.mjs";
 
 loadEnv();
 
@@ -30,15 +30,7 @@ const NOXIOUS_KEYWORDS = [
 const SEARCH_RADIUS = 2000; // 2km 반경 검색
 
 // ── Haversine 거리 (m) ──────────────────────────────────────
-function haversineM(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+const haversineM = haversineMeters;
 
 // ── Kakao 키워드 검색 ───────────────────────────────────────
 async function searchNearby(lat, lng, keyword) {
