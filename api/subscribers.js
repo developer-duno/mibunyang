@@ -95,8 +95,12 @@ async function handleDelete(req, res) {
     console.error("[/api/subscribers DELETE] SUBSCRIBERS_OPT_OUT_SECRET 환경변수 미설정");
     return res.status(500).json({ ok: false, error: "서버 설정 오류" });
   }
-  const expected = crypto.createHmac("sha256", secret).update(e164).digest("hex");
-  if (!crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))) {
+  const expected = Buffer.from(crypto.createHmac("sha256", secret).update(e164).digest("hex"), "hex");
+  const provided = Buffer.from(token, "hex");
+  if (provided.length !== expected.length) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  if (!crypto.timingSafeEqual(provided, expected)) {
     return res.status(401).json({ ok: false, error: "인증 실패" });
   }
 
