@@ -62,9 +62,24 @@ async function setupAdminMocks(page: Page) {
     });
   });
 
-  // admin/users API — status 파라미터에 따라 분기
+  // admin/users API — action=stats 분기 + status 파라미터 분기
   await page.route("**/api/admin/users*", async (route) => {
     const url = new URL(route.request().url());
+    // fetchStats 호출 (action=stats) 분기 — StatsSection 이 destructure 하는 4 키 모두 포함
+    if (url.searchParams.get("action") === "stats") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          counts: { pending: 2, approved: 1, rejected: 1, suspended: 1 },
+          userTypes: { kakao: 0, expert: 4 },
+          specialtyDist: { "부동산 중개": 4 },
+          recentSignups: [],
+        }),
+      });
+      return;
+    }
     const status = url.searchParams.get("status") || "pending";
     const map: Record<string, unknown[]> = {
       pending: MOCK_PENDING,
