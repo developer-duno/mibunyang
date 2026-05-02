@@ -5,6 +5,9 @@ api/**/*.spec.js
 # Python 수집기 전용 (로컬/GitHub Actions에서만 실행)
 requirements.txt
 scripts/
+!scripts/
+scripts/**
+!scripts/prebuild.mjs
 *.py
 
 # 수집기 전용 API — GitHub Actions에서만 사용 (프론트엔드 미호출)
