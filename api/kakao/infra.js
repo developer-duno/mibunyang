@@ -3,10 +3,35 @@ import { validateApartmentPayload } from "../_lib/proxyValidation.js";
 
 const KAKAO_BASE = "https://dapi.kakao.com/v2/local";
 const RADIUS = 1000;
+const UPSTREAM_TIMEOUT_MS = 3000;
+const APARTMENT_CONCURRENCY = 4;
+
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = [];
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const current = index++;
+      results[current] = await mapper(items[current], current);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
 async function searchCategory(apiKey, lat, lng, code) {
   const url = `${KAKAO_BASE}/search/category.json?category_group_code=${code}&x=${lng}&y=${lat}&radius=${RADIUS}&size=1`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `KakaoAK ${apiKey}` },
   });
   if (!res.ok) throw new Error(`Kakao ${code}: HTTP ${res.status}`);
@@ -16,7 +41,7 @@ async function searchCategory(apiKey, lat, lng, code) {
 
 async function searchPark(apiKey, lat, lng) {
   const url = `${KAKAO_BASE}/search/keyword.json?query=${encodeURIComponent("공원")}&x=${lng}&y=${lat}&radius=${RADIUS}&size=1`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `KakaoAK ${apiKey}` },
   });
   if (!res.ok) throw new Error(`Kakao park: HTTP ${res.status}`);
@@ -26,7 +51,7 @@ async function searchPark(apiKey, lat, lng) {
 
 async function searchSubway(apiKey, lat, lng) {
   const url = `${KAKAO_BASE}/search/category.json?category_group_code=SW8&x=${lng}&y=${lat}&radius=5000&sort=distance&size=1`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `KakaoAK ${apiKey}` },
   });
   if (!res.ok) throw new Error(`Kakao subway: HTTP ${res.status}`);
@@ -69,10 +94,12 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
 
   try {
     const results = {};
-    await Promise.all(
-      validation.apartments.map(async (apt) => {
+    await mapWithConcurrency(
+      validation.apartments,
+      APARTMENT_CONCURRENCY,
+      async (apt) => {
         results[apt.id] = await fetchAllForApartment(apiKey, apt);
-      })
+      }
     );
 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600");

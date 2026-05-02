@@ -125,7 +125,7 @@ describe("neis/schools handler", () => {
     expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", expect.stringContaining("s-maxage=86400"));
   });
 
-  it("returns 502 when upstream calls fail unexpectedly", async () => {
+  it("uses a safe fallback score when Kakao upstream calls fail", async () => {
     mockFetch.mockRejectedValue(new Error("Network error"));
     const res = makeRes();
 
@@ -134,7 +134,9 @@ describe("neis/schools handler", () => {
       body: { apartments: [{ id: "a", lat: 37, lng: 127 }] },
     }, res);
 
-    expect(res.status).toHaveBeenCalledWith(502);
+    const result = res.json.mock.calls[0][0].data.a;
+    expect(res.status).not.toHaveBeenCalledWith(502);
+    expect(result.schoolScore).toBe(0);
   });
 
   it("returns 429 before upstream calls when proxy rate limit is exceeded", async () => {

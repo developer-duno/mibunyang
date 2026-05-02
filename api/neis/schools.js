@@ -2,6 +2,9 @@ import { withHandler } from "../_lib/handler.js";
 import { validateApartmentPayload } from "../_lib/proxyValidation.js";
 
 const NEIS_BASE = "https://open.neis.go.kr/hub/schoolInfo";
+const UPSTREAM_TIMEOUT_MS = 3000;
+const APARTMENT_CONCURRENCY = 6;
+const REGION_CONCURRENCY = 3;
 
 const EDU_OFFICE_CODE = {
   서울: "B10", 부산: "C10", 대구: "D10", 인천: "E10",
@@ -10,6 +13,29 @@ const EDU_OFFICE_CODE = {
   전북: "P10", 전남: "Q10", 경북: "R10", 경남: "S10", 제주: "T10",
 };
 
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = [];
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const current = index++;
+      results[current] = await mapper(items[current], current);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 async function fetchSchoolsByRegion(neisKey, regionCode) {
   const schools = [];
   let page = 1;
@@ -17,7 +43,7 @@ async function fetchSchoolsByRegion(neisKey, regionCode) {
 
   while (true) {
     const url = `${NEIS_BASE}?KEY=${neisKey}&Type=json&ATPT_OFCDC_SC_CODE=${regionCode}&pIndex=${page}&pSize=${size}`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) break;
     const json = await res.json();
 
@@ -43,7 +69,7 @@ async function fetchSchoolsByRegion(neisKey, regionCode) {
 
 async function searchNearbySchools(kakaoKey, lat, lng, keyword, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `KakaoAK ${kakaoKey}` },
   });
   if (!res.ok) return { count: 0, nearest: null };
@@ -89,6 +115,10 @@ function gradeFromScore(score) {
   return score >= 85 ? "최우수" : score >= 70 ? "우수" : score >= 50 ? "보통" : "미흡";
 }
 
+function settledValue(result) {
+  return result.status === "fulfilled" ? result.value : { count: 0, nearest: null };
+}
+
 export default withHandler({ method: "POST", rateLimit: "proxy", handler: async (req, res) => {
   const neisKey = process.env.NEIS_KEY;
   const kakaoKey = process.env.KAKAO_KEY;
@@ -107,33 +137,33 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
   try {
     const regions = [...new Set(apartments.map(a => a.region).filter(Boolean))];
     const regionSchools = {};
-    await Promise.allSettled(
-      regions.map(async (region) => {
-        const code = EDU_OFFICE_CODE[region];
-        if (!code) return;
+    await mapWithConcurrency(regions, REGION_CONCURRENCY, async (region) => {
+      const code = EDU_OFFICE_CODE[region];
+      if (!code) return;
+      try {
         regionSchools[region] = await fetchSchoolsByRegion(neisKey, code);
-      })
-    );
+      } catch {
+        regionSchools[region] = [];
+      }
+    });
 
     const results = {};
-    await Promise.all(
-      apartments.map(async (apt) => {
-        if (apt.lat != null && apt.lng != null && kakaoKey) {
-          const [elem, middle, high] = await Promise.all([
-            searchNearbySchools(kakaoKey, apt.lat, apt.lng, "초등학교", 2000),
-            searchNearbySchools(kakaoKey, apt.lat, apt.lng, "중학교", 2000),
-            searchNearbySchools(kakaoKey, apt.lat, apt.lng, "고등학교", 2000),
-          ]);
-          const score = calcScoreFromKakao(elem, middle, high);
-          results[apt.id] = { schoolScore: score, schoolGrade: gradeFromScore(score) };
-        } else {
-          const schools = regionSchools[apt.region] || [];
-          const guSchools = apt.gu ? schools.filter(s => s.address.includes(apt.gu)) : schools;
-          const score = calcScoreFromNEIS(guSchools);
-          results[apt.id] = { schoolScore: score, schoolGrade: gradeFromScore(score) };
-        }
-      })
-    );
+    await mapWithConcurrency(apartments, APARTMENT_CONCURRENCY, async (apt) => {
+      if (apt.lat != null && apt.lng != null && kakaoKey) {
+        const [elem, middle, high] = await Promise.allSettled([
+          searchNearbySchools(kakaoKey, apt.lat, apt.lng, "초등학교", 2000),
+          searchNearbySchools(kakaoKey, apt.lat, apt.lng, "중학교", 2000),
+          searchNearbySchools(kakaoKey, apt.lat, apt.lng, "고등학교", 2000),
+        ]);
+        const score = calcScoreFromKakao(settledValue(elem), settledValue(middle), settledValue(high));
+        results[apt.id] = { schoolScore: score, schoolGrade: gradeFromScore(score) };
+      } else {
+        const schools = regionSchools[apt.region] || [];
+        const guSchools = apt.gu ? schools.filter(s => s.address.includes(apt.gu)) : schools;
+        const score = calcScoreFromNEIS(guSchools);
+        results[apt.id] = { schoolScore: score, schoolGrade: gradeFromScore(score) };
+      }
+    });
 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600");
     res.json({ ok: true, data: results, fetchedAt: new Date().toISOString() });
