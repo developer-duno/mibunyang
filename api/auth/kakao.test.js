@@ -12,6 +12,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete global.fetch;
+  delete process.env.KAKAO_CLIENT_SECRET;
 });
 
 // rateLimit 모킹
@@ -90,6 +91,34 @@ describe('auth/kakao handler', () => {
     const res = makeRes();
     await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('returns 500 before token exchange when KAKAO_REST_API_KEY is missing', async () => {
+    delete process.env.KAKAO_REST_API_KEY;
+    global.fetch = vi.fn();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = makeRes();
+
+    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(500);
+    consoleError.mockRestore();
+  });
+
+  it('includes optional KAKAO_CLIENT_SECRET in the token exchange body', async () => {
+    process.env.KAKAO_CLIENT_SECRET = 'test-client-secret';
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+
+    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
+
+    const tokenRequestBody = global.fetch.mock.calls[0][1].body;
+    expect(tokenRequestBody).toContain('client_id=test-kakao-key');
+    expect(tokenRequestBody).toContain('client_secret=test-client-secret');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
   });
 
   // 5. C 분기: 완전 신규 카카오 사용자
