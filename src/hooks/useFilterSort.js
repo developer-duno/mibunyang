@@ -104,7 +104,6 @@ export function useFilterSort({ onFilterChange }) {
   const [unitsMin, setUnitsMin] = useState(() => urlInit?.unitsMin ?? "");
   const [unitsMax, setUnitsMax] = useState(() => urlInit?.unitsMax ?? "");
   const [moveInFilter, setMoveInFilter] = useState(() => urlInit?.moveInFilter ?? "전체");
-  const [filterCollapsed, setFilterCollapsed] = useState(false);
   const [minScore, setMinScore] = useState(() => urlInit?.minScore ?? "");
   const [builderTier, setBuilderTier] = useState(() => urlInit?.builderTier ?? "전체");
   const [benefitOnly, setBenefitOnly] = useState(() => urlInit?.benefitOnly ?? false);
@@ -129,7 +128,6 @@ export function useFilterSort({ onFilterChange }) {
   }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
 
   const handleMoveInChange = useCallback((val) => { setMoveInFilter(val); onFilterChange?.(); }, [onFilterChange]);
-  const toggleFilterCollapsed = useCallback(() => setFilterCollapsed(p => !p), []);
   const handleMinScoreChange = useCallback((val) => { setMinScore(val); onFilterChange?.(); }, [onFilterChange]);
   const handleBuilderTierChange = useCallback((val) => { setBuilderTier(val); onFilterChange?.(); }, [onFilterChange]);
   const toggleBenefitOnly = useCallback(() => { setBenefitOnly(p => !p); onFilterChange?.(); }, [onFilterChange]);
@@ -305,5 +303,5 @@ export function useFilterSort({ onFilterChange }) {
     applySnapshot(next);
   }, [getCurrentSnapshot, applySnapshot]);
 
-  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, filterCollapsed, toggleFilterCollapsed, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending };
+  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending };
 }

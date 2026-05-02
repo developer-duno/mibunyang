@@ -33,7 +33,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   builderTier, onBuilderTierChange,
   benefitOnly, onToggleBenefitOnly,
   hideNoUnsold, onToggleHideNoUnsold,
-  filterCollapsed, onToggleCollapsed, activeFilterCount,
+  activeFilterCount,
   filteredLength, scoredLength,
   onShareFilters,
   onResetAll,
