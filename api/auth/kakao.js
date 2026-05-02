@@ -17,6 +17,15 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 const CALLBACK_PATH = "/oauth/kakao/callback";
 
+function getAllowedOrigins() {
+  const origins = new Set(ALLOWED_ORIGINS);
+  for (const origin of (process.env.KAKAO_ALLOWED_ORIGINS || "").split(",")) {
+    const trimmed = origin.trim();
+    if (trimmed) origins.add(trimmed);
+  }
+  return origins;
+}
+
 export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handler: async (req, res) => {
   const { code, redirect_uri } = req.body || {};
 
@@ -32,7 +41,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
   }
   try {
     const origin = new URL(redirect_uri).origin;
-    if (!ALLOWED_ORIGINS.has(origin) || !redirect_uri.endsWith(CALLBACK_PATH)) {
+    if (!getAllowedOrigins().has(origin) || !redirect_uri.endsWith(CALLBACK_PATH)) {
       return res.status(400).json({ ok: false, error: "허용되지 않은 redirect_uri입니다" });
     }
   } catch {

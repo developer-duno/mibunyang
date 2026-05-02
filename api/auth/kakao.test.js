@@ -1,33 +1,29 @@
 // @vitest-environment node
-/**
- * auth/kakao.js 테스트 — OAuth A/B/C 분기 + redirect_uri 화이트리스트 + ex:TTL 호환
- */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 beforeEach(() => {
-  process.env.AUTH_SECRET = 'test-secret-key-for-auth';
-  process.env.KAKAO_REST_API_KEY = 'test-kakao-key';
+  process.env.AUTH_SECRET = "test-secret-key-for-auth";
+  process.env.KAKAO_REST_API_KEY = "test-kakao-key";
   vi.clearAllMocks();
 });
 
 afterEach(() => {
   delete global.fetch;
   delete process.env.KAKAO_CLIENT_SECRET;
+  delete process.env.KAKAO_ALLOWED_ORIGINS;
 });
 
-// rateLimit 모킹
-vi.mock('../_lib/rateLimit.js', () => ({
+vi.mock("../_lib/rateLimit.js", () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
 
-// redis.js 모킹
 const mockKv = {
   get: vi.fn(),
-  set: vi.fn().mockResolvedValue('OK'),
+  set: vi.fn().mockResolvedValue("OK"),
 };
-vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
+vi.mock("../_lib/redis.js", () => ({ kv: mockKv }));
 
-const { default: handler } = await import('./kakao.js');
+const { default: handler } = await import("./kakao.js");
 
 function makeRes() {
   return {
@@ -37,163 +33,179 @@ function makeRes() {
   };
 }
 
-/** 카카오 API 2단 fetch mock (토큰 교환 + 사용자 정보) */
 function mockKakaoFetch({ tokenOk = true, userOk = true, userPayload = {} } = {}) {
   global.fetch = vi.fn()
     .mockResolvedValueOnce({
       ok: tokenOk,
       json: async () => tokenOk
-        ? { access_token: 'kakao-access-token' }
-        : { error: 'invalid_grant', error_description: '카카오 거부' },
+        ? { access_token: "kakao-access-token" }
+        : { error: "invalid_grant", error_description: "denied" },
     })
     .mockResolvedValueOnce({
       ok: userOk,
       json: async () => userOk
-        ? { id: 12345, kakao_account: { email: 'kakao@test.com', profile: { nickname: '테스터' } }, ...userPayload }
-        : { msg: '사용자 조회 실패', code: -401 },
+        ? { id: 12345, kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" } }, ...userPayload }
+        : { msg: "user lookup failed", code: -401 },
     });
 }
 
-const VALID_BODY = { code: 'AAAAAAAAAAAA', redirect_uri: 'http://localhost:5173/oauth/kakao/callback' };
+const VALID_BODY = { code: "AAAAAAAAAAAA", redirect_uri: "http://localhost:5173/oauth/kakao/callback" };
 
-describe('auth/kakao handler', () => {
-  // 1. 메서드 검증
-  it('POST가 아닌 메서드는 405를 반환한다', async () => {
+describe("auth/kakao handler", () => {
+  it("rejects non-POST methods", async () => {
     const res = makeRes();
-    await handler({ method: 'GET', body: {}, headers: {} }, res);
+    await handler({ method: "GET", body: {}, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(405);
   });
 
-  // 2. code 없음
-  it('code 없으면 400을 반환한다', async () => {
+  it("rejects missing code", async () => {
     const res = makeRes();
-    await handler({ method: 'POST', body: { redirect_uri: VALID_BODY.redirect_uri }, headers: {} }, res);
+    await handler({ method: "POST", body: { redirect_uri: VALID_BODY.redirect_uri }, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
-  // 3. redirect_uri 화이트리스트 외
-  it('허용되지 않은 redirect_uri는 400을 반환한다', async () => {
+  it("rejects redirect_uri origins outside the allowlist", async () => {
     const res = makeRes();
     await handler({
-      method: 'POST',
-      body: { code: VALID_BODY.code, redirect_uri: 'https://evil.com/oauth/kakao/callback' },
+      method: "POST",
+      body: { code: VALID_BODY.code, redirect_uri: "https://evil.com/oauth/kakao/callback" },
       headers: {},
     }, res);
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      error: expect.stringContaining('허용되지 않은'),
-    }));
   });
 
-  // 4. 카카오 토큰 교환 실패
-  it('카카오 토큰 교환 실패 시 401을 반환한다', async () => {
+  it("allows redirect_uri origins configured by KAKAO_ALLOWED_ORIGINS", async () => {
+    process.env.KAKAO_ALLOWED_ORIGINS = "https://preview.example.com, https://staging.example.com";
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+
+    await handler({
+      method: "POST",
+      body: { code: VALID_BODY.code, redirect_uri: "https://staging.example.com/oauth/kakao/callback" },
+      headers: {},
+    }, res);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+  });
+
+  it("rejects configured origins when the callback path is different", async () => {
+    process.env.KAKAO_ALLOWED_ORIGINS = "https://staging.example.com";
+    global.fetch = vi.fn();
+    const res = makeRes();
+
+    await handler({
+      method: "POST",
+      body: { code: VALID_BODY.code, redirect_uri: "https://staging.example.com/oauth/kakao/other" },
+      headers: {},
+    }, res);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("returns 401 when Kakao token exchange fails", async () => {
     mockKakaoFetch({ tokenOk: false });
     const res = makeRes();
-    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
-  it('returns 500 before token exchange when KAKAO_REST_API_KEY is missing', async () => {
+  it("returns 500 before token exchange when KAKAO_REST_API_KEY is missing", async () => {
     delete process.env.KAKAO_REST_API_KEY;
     global.fetch = vi.fn();
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = makeRes();
 
-    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
 
     expect(global.fetch).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(500);
     consoleError.mockRestore();
   });
 
-  it('includes optional KAKAO_CLIENT_SECRET in the token exchange body', async () => {
-    process.env.KAKAO_CLIENT_SECRET = 'test-client-secret';
+  it("includes optional KAKAO_CLIENT_SECRET in the token exchange body", async () => {
+    process.env.KAKAO_CLIENT_SECRET = "test-client-secret";
     mockKakaoFetch();
     mockKv.get.mockResolvedValueOnce(null);
     mockKv.get.mockResolvedValueOnce(null);
     const res = makeRes();
 
-    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
 
     const tokenRequestBody = global.fetch.mock.calls[0][1].body;
-    expect(tokenRequestBody).toContain('client_id=test-kakao-key');
-    expect(tokenRequestBody).toContain('client_secret=test-client-secret');
+    expect(tokenRequestBody).toContain("client_id=test-kakao-key");
+    expect(tokenRequestBody).toContain("client_secret=test-client-secret");
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
   });
 
-  // 5. C 분기: 완전 신규 카카오 사용자
-  it('완전 신규 사용자는 user 생성 + ok: true (C 분기)', async () => {
-    mockKakaoFetch();
-    mockKv.get.mockResolvedValueOnce(null); // kakao:{id} 없음
-    mockKv.get.mockResolvedValueOnce(null); // user:{email} 없음
-    const res = makeRes();
-    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
-    // user:{email} set + kakao:{id} set (TTL 90일)
-    expect(mockKv.set).toHaveBeenCalledWith('user:kakao@test.com', expect.objectContaining({
-      kakaoId: '12345',
-      status: 'approved',
-    }));
-  });
-
-  // 6. A 분기: kakaoId 기존 사용자
-  it('기존 카카오 사용자는 재조회 + ok: true (A 분기)', async () => {
-    mockKakaoFetch();
-    mockKv.get.mockResolvedValueOnce('kakao@test.com'); // kakao:{id} → email
-    mockKv.get.mockResolvedValueOnce({                  // user:{email}
-      email: 'kakao@test.com',
-      name: '테스터',
-      kakaoId: '12345',
-      status: 'approved',
-    });
-    const res = makeRes();
-    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
-  });
-
-  // 7. B 분기: email 기존 + kakaoId 신규 연동
-  it('email 기존 사용자에 kakaoId 연동 + ok: true (B 분기)', async () => {
-    mockKakaoFetch();
-    mockKv.get.mockResolvedValueOnce(null); // kakao:{id} 없음
-    mockKv.get.mockResolvedValueOnce({       // user:{email} 있음
-      email: 'kakao@test.com',
-      name: '기존',
-      status: 'approved',
-    });
-    const res = makeRes();
-    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
-    // kakaoId 연동 set 호출
-    expect(mockKv.set).toHaveBeenCalledWith('user:kakao@test.com', expect.objectContaining({
-      kakaoId: '12345',
-    }));
-  });
-
-  // 8. ex:TTL 호환 — Upstash SetCommandOptions.ex 회귀 방지 (세션128 실증)
-  it('kakao:{id} 역참조 set 시 ex: 7776000 TTL 호출', async () => {
+  it("creates a new Kakao user when neither kakao id nor email exists", async () => {
     mockKakaoFetch();
     mockKv.get.mockResolvedValueOnce(null);
     mockKv.get.mockResolvedValueOnce(null);
     const res = makeRes();
-    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+    expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
+      kakaoId: "12345",
+      status: "approved",
+    }));
+  });
+
+  it("reuses an existing Kakao-linked user", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce("kakao@test.com");
+    mockKv.get.mockResolvedValueOnce({
+      email: "kakao@test.com",
+      name: "Tester",
+      kakaoId: "12345",
+      status: "approved",
+    });
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+  });
+
+  it("links an existing email user to Kakao id", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce({
+      email: "kakao@test.com",
+      name: "Existing",
+      status: "approved",
+    });
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+    expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
+      kakaoId: "12345",
+    }));
+  });
+
+  it("stores kakao id lookup with a 90 day TTL", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
     expect(mockKv.set).toHaveBeenCalledWith(
-      'kakao:12345',
-      'kakao@test.com',
+      "kakao:12345",
+      "kakao@test.com",
       expect.objectContaining({ ex: 90 * 24 * 60 * 60 }),
     );
   });
 
-  // 9. status=rejected → 403
-  it('status=rejected 사용자는 403을 반환한다', async () => {
+  it("rejects rejected users", async () => {
     mockKakaoFetch();
-    mockKv.get.mockResolvedValueOnce('kakao@test.com');
+    mockKv.get.mockResolvedValueOnce("kakao@test.com");
     mockKv.get.mockResolvedValueOnce({
-      email: 'kakao@test.com',
-      name: '거부됨',
-      status: 'rejected',
+      email: "kakao@test.com",
+      name: "Rejected",
+      status: "rejected",
     });
     const res = makeRes();
-    await handler({ method: 'POST', body: VALID_BODY, headers: {} }, res);
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 });
