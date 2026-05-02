@@ -31,6 +31,7 @@ export function useKakaoAuth(showToast) {
     if (kakaoLoading) return; // 중복 클릭 방지
 
     const state = generateState();
+    setKakaoLoading(true);
     try {
       sessionStorage.setItem("kakao_oauth_state", state);
       if (pendingDetailId) sessionStorage.setItem("kakao_pending_detail", pendingDetailId);
