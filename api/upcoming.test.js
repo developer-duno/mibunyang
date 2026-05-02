@@ -1,6 +1,34 @@
-// /api/upcoming 단위 테스트
-import { describe, it, expect } from "vitest";
-import { extractDates } from "./upcoming.js";
+// @vitest-environment node
+// /api/upcoming 단위 + 핸들러 통합 테스트
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Supabase chainable mock — .from().select().in() 체인이 select 인자를 캡처
+let lastSelectArg = null;
+const mockIn = vi.fn();
+const mockSelect = vi.fn((arg) => {
+  lastSelectArg = arg;
+  return { in: mockIn };
+});
+
+vi.mock("./_lib/supabase.js", () => ({
+  getSupabase: vi.fn(() => ({ from: vi.fn(() => ({ select: mockSelect })) })),
+}));
+
+vi.mock("./_lib/cors.js", () => ({
+  handleCors: vi.fn().mockReturnValue(false),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  lastSelectArg = null;
+  mockIn.mockResolvedValue({ data: [], error: null });
+});
+
+const { default: handler, extractDates } = await import("./upcoming.js");
+
+function makeRes() {
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
+}
 
 describe("extractDates — 캘린더 날짜 추출 (spec § 3-1-A·B)", () => {
   it("presaleRecruitDate (YYYY-MM-DD) → apply_start 매핑", () => {
@@ -69,5 +97,67 @@ describe("extractDates — 캘린더 날짜 추출 (spec § 3-1-A·B)", () => {
     expect(result).toHaveLength(2);
     expect(result[0].event).toBe("apply_start");
     expect(result[1].event).toBe("winner_announce");
+  });
+});
+
+describe("handleGet — Supabase select 컬럼명 + 핸들러 분기 (회귀 방지)", () => {
+  it("select 문에 catsCache 카멜케이스 포함, cats_cache snake_case 미포함", async () => {
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    // 회귀 방지 핵심: VIEW 별칭이 "catsCache" 이므로 카멜케이스만 허용
+    expect(lastSelectArg).toContain("catsCache");
+    expect(lastSelectArg).not.toContain("cats_cache");
+  });
+
+  it("Supabase 빈 데이터 → 200 + 빈 stages/calendar/totals", async () => {
+    mockIn.mockResolvedValueOnce({ data: [], error: null });
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const body = res.json.mock.calls[0][0];
+    expect(body.ok).toBe(true);
+    expect(body.stages).toEqual({ plan: [], apply: [], sale: [] });
+    expect(body.calendar).toEqual({});
+    expect(body.totals).toEqual({ plan: 0, apply: 0, sale: 0 });
+  });
+
+  it("Supabase error → 500 + ok:false", async () => {
+    mockIn.mockResolvedValueOnce({ data: null, error: { message: "column does not exist" } });
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ ok: false });
+  });
+
+  it("Cache-Control 헤더 s-maxage=300, stale-while-revalidate=600 설정", async () => {
+    mockIn.mockResolvedValueOnce({ data: [], error: null });
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.setHeader).toHaveBeenCalledWith(
+      "Cache-Control",
+      "s-maxage=300, stale-while-revalidate=600",
+    );
+  });
+
+  it("presaleStage 별 stages 분류 + calendar 매핑", async () => {
+    mockIn.mockResolvedValueOnce({
+      data: [
+        { id: "ap-1", presaleStage: "분양계획", presaleRecruitDate: "2026-05-08", presaleSchedule: null },
+        { id: "ap-2", presaleStage: "청약중", presaleRecruitDate: null, presaleSchedule: { scheduleName: "당첨자 발표", dateInfo: "2026.05.20" } },
+        { id: "ap-3", presaleStage: "분양중", presaleRecruitDate: null, presaleSchedule: null },
+      ],
+      error: null,
+    });
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    const body = res.json.mock.calls[0][0];
+    expect(body.totals).toEqual({ plan: 1, apply: 1, sale: 1 });
+    expect(body.calendar["2026-05-08"]).toEqual([{ id: "ap-1", event: "apply_start" }]);
+    expect(body.calendar["2026-05-20"]).toEqual([{ id: "ap-2", event: "winner_announce" }]);
   });
 });
