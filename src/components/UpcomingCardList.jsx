@@ -4,6 +4,7 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice, fmtRecruitDate } from "@/lib/format";
+import { Tooltip, extractTerm } from "./Tooltip";
 
 const STAGE_STYLES = {
   분양계획: { bg: C.greenLight, color: C.green, label: "분양 예정" },
@@ -12,6 +13,15 @@ const STAGE_STYLES = {
 };
 
 const PLACEHOLDER_IMG = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'><rect width='60' height='60' fill='%23E8EAF0'/><text x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%236B7280' font-size='10'>🏢</text></svg>";
+
+const chipStyle = {
+  fontSize: F.xs,
+  padding: "2px 6px",
+  background: C.bg,
+  color: C.muted,
+  borderRadius: 4,
+  border: `1px solid ${C.border}`,
+};
 
 /**
  * D-day 계산 — spec § 6-2
@@ -122,6 +132,20 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
           {apt.region} {apt.gu || ""} ·{" "}
           {apt.presaleMinPrice ? fmtPrice(apt.presaleMinPrice) : "분양가 미공개"}
         </div>
+        {(apt.presaleHousingType || apt.presaleType) && (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+            {apt.presaleHousingType && (
+              <Tooltip term={extractTerm(apt.presaleHousingType)}>
+                <span style={chipStyle}>{apt.presaleHousingType}</span>
+              </Tooltip>
+            )}
+            {apt.presaleType && apt.presaleType !== apt.presaleHousingType && (
+              <Tooltip term={extractTerm(apt.presaleType)}>
+                <span style={chipStyle}>{apt.presaleType}</span>
+              </Tooltip>
+            )}
+          </div>
+        )}
         {score != null && (
           <div style={{ fontSize: F.xs, color: C.green, marginTop: 2 }}>
             ★ 점수 {score.toFixed(1)}

@@ -28,7 +28,8 @@ async function handleGet(req, res) {
       .from("apartments_flat")
       .select(`id, name, region, gu, presaleStage, presaleMinPrice, presalePp,
                presaleRecruitDate, presaleSchedule, presaleImageUrl, naverPresaleNo,
-               naverPresaleSeq, catsCache`)
+               naverPresaleSeq, presaleHousingType, presaleType, presaleInquiry,
+               catsCache`)
       .in("presaleStage", ALL_STAGES);
 
     if (error) {
