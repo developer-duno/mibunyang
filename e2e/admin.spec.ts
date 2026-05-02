@@ -404,8 +404,23 @@ test.describe("관리자 대시보드", () => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
     });
 
-    // 모든 상태에 빈 배열 반환
+    // 모든 상태에 빈 배열 반환 + action=stats 분기 (StatsSection 마운트 보장)
     await page.route("**/api/admin/users*", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("action") === "stats") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            counts: { pending: 0, approved: 0, rejected: 0, suspended: 0 },
+            userTypes: { kakao: 0, expert: 0 },
+            specialtyDist: {},
+            recentSignups: [],
+          }),
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
