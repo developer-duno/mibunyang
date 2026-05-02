@@ -341,8 +341,8 @@ function UpcomingCard({ apt }) {
         <StageBadge stage={apt.presaleStage} />
         <h3>{apt.name}</h3>
         <p>{apt.presaleRecruitDate} 청약 · {apt.region} {apt.gu} · {apt.presaleMinPrice ? fmtPrice(apt.presaleMinPrice) : '미공개'}</p>
-        <p style={{ fontSize:11, color:C.green }}>★ 점수 {apt.cats_cache?.total?.toFixed(1) ?? '-'}</p>
-        {/* score 는 기존 cats_cache 기반 fallback. 산식 변경 0 (§ 비-작업 3 박제) */}
+        <p style={{ fontSize:11, color:C.green }}>★ 점수 {apt.catsCache?.total?.toFixed(1) ?? '-'}</p>
+        {/* score 는 기존 catsCache (apartments_flat VIEW 별칭) 기반 fallback. 산식 변경 0 (§ 비-작업 3 박제) */}
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
         <button onClick={() => subscribe(apt.id)}>🔔 알림</button>
