@@ -12,6 +12,7 @@
  */
 import { getSupabase } from "../_lib/supabase.js";
 import { withHandler } from "../_lib/handler.js";
+import { validateApartmentListQuery } from "../_lib/proxyValidation.js";
 
 const BATCH_SIZE = 1000;
 
@@ -26,18 +27,19 @@ function buildQuery(supabase, region, gu, withCount) {
 export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { region, gu } = req.query;
-    const hasExplicitPagination = req.query.limit || req.query.offset;
+    const validation = validateApartmentListQuery(req.query);
+    if (!validation.ok) {
+      return res.status(validation.status).json({ ok: false, error: validation.error });
+    }
+    const { region, gu, limit, offset, hasExplicitPagination } = validation.query;
 
     let allData;
     let totalCount;
 
     if (hasExplicitPagination) {
       // 명시적 limit/offset → 기존 단일 쿼리 (하위 호환)
-      const safeLimit = Math.max(1, Math.min(parseInt(req.query.limit || "10000", 10) || 10000, 10000));
-      const safeOffset = Math.max(0, parseInt(req.query.offset || "0", 10) || 0);
       let query = buildQuery(supabase, region, gu, true);
-      query = query.range(safeOffset, safeOffset + safeLimit - 1);
+      query = query.range(offset, offset + limit - 1);
       const { data, error, count } = await query;
       if (error) {
         console.error("Supabase query error:", error);

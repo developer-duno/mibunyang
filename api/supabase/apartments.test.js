@@ -108,10 +108,17 @@ describe('handler', () => {
 
   // 정상: 음수/비정상 limit 처리
   it('비정상 limit은 최소 1로 클램핑한다', async () => {
-    mockQuery.range.mockResolvedValue({ data: [], error: null, count: 0 });
     const res = makeRes();
     await handler(makeReq({ limit: '-5' }), res);
-    expect(mockQuery.range).toHaveBeenCalledWith(0, 0); // min(max(1, -5), 10000) = 1, range(0, 0)
+    expect(mockQuery.range).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('array query values return 400 before querying', async () => {
+    const res = makeRes();
+    await handler(makeReq({ limit: ['1', '2'] }), res);
+    expect(mockQuery.range).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
   });
 
   // 배치 페이지네이션: 1000개 이하 → 단일 배치
