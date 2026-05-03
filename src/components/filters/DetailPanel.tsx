@@ -7,15 +7,25 @@ import { C, F } from "@/theme";
 import { IconClose } from "@/components/icons";
 import { numInput, tilde, resetBtn, selectBase } from "./filterStyles";
 
+type DetailPanelProps = {
+  minScore: number | string;
+  onMinScoreChange: (_v: string) => void;
+  builderTier: string;
+  onBuilderTierChange: (_v: string) => void;
+  benefitOnly: boolean;
+  onToggleBenefitOnly: () => void;
+  filterOptionCounts?: { tierCounts?: Record<string, number> };
+};
+
 export const DetailPanel = memo(function DetailPanel({
   minScore, onMinScoreChange,
   builderTier, onBuilderTierChange,
   benefitOnly, onToggleBenefitOnly,
   filterOptionCounts,
-}) {
+}: DetailPanelProps) {
   const hasFilter = minScore || builderTier !== "전체" || benefitOnly;
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const }}>
       <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
       <input type="number" inputMode="numeric" min="0" max="100" value={minScore} onChange={e => onMinScoreChange(e.target.value)} placeholder="점수" aria-label="최소 종합점수" style={{ ...numInput(minScore, 30), maxWidth: 60 }} />
       <span style={tilde}>점</span>
@@ -28,7 +38,7 @@ export const DetailPanel = memo(function DetailPanel({
       }}>
         {["전체", "1군", "2군", "기타"].map(v => {
           const c = filterOptionCounts?.tierCounts?.[v] ?? 0;
-          const total = v === "전체" ? Object.values(filterOptionCounts?.tierCounts ?? {}).reduce((s, n) => s + n, 0) : 0;
+          const total = v === "전체" ? Object.values(filterOptionCounts?.tierCounts ?? {}).reduce((s: number, n: number) => s + n, 0) : 0;
           return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}</option>;
         })}
       </select>

@@ -14,14 +14,29 @@ const AREA_PRESETS = [
   { label: "대형 85㎡~", min: "85", max: "" },
 ];
 
+type AreaPanelProps = {
+  areaMin: string;
+  onAreaMinChange: (_v: string) => void;
+  areaMax: string;
+  onAreaMaxChange: (_v: string) => void;
+  unitsMin: string;
+  onUnitsMinChange: (_v: string) => void;
+  unitsMax: string;
+  onUnitsMaxChange: (_v: string) => void;
+  onAreaUnitsReset: () => void;
+  moveInFilter: string;
+  onMoveInChange: (_v: string) => void;
+  filterOptionCounts?: { moveInCounts?: Record<string, number> };
+};
+
 export const AreaPanel = memo(function AreaPanel({
   areaMin, onAreaMinChange, areaMax, onAreaMaxChange,
   unitsMin, onUnitsMinChange, unitsMax, onUnitsMaxChange,
   onAreaUnitsReset, moveInFilter, onMoveInChange, filterOptionCounts,
-}) {
+}: AreaPanelProps) {
   const hasFilter = areaMin || areaMax || unitsMin || unitsMax || moveInFilter !== "전체";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column" as const, gap: 8 }}>
       {/* 면적 입력 + 프리셋 */}
       <div>
         <div style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 6 }}>
@@ -63,7 +78,7 @@ export const AreaPanel = memo(function AreaPanel({
         }}>
           {["전체", "입주예정", "미입주", "입주완료"].map(v => {
             const c = filterOptionCounts?.moveInCounts?.[v] ?? 0;
-            const total = v === "전체" ? Object.values(filterOptionCounts?.moveInCounts ?? {}).reduce((s, n) => s + n, 0) : 0;
+            const total = v === "전체" ? Object.values(filterOptionCounts?.moveInCounts ?? {}).reduce((s: number, n: number) => s + n, 0) : 0;
             return <option key={v} value={v} disabled={v !== "전체" && c === 0}>{v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}</option>;
           })}
         </select>

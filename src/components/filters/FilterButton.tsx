@@ -5,8 +5,9 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { IconChevronDown } from "@/components/icons";
+import type { FilterButtonProps } from "@/types/filters";
 
-export const FilterButton = memo(function FilterButton({ label, summary, isOpen, isActive, onClick }) {
+export const FilterButton = memo(function FilterButton({ label, summary, isOpen, isActive, onClick }: FilterButtonProps) {
   const active = isOpen || isActive;
   return (
     <button

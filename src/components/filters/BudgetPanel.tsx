@@ -9,12 +9,20 @@ import { numInput, tilde, resetBtn } from "./filterStyles";
 
 const BUDGET_PRESETS = [3, 5, 7, 10];
 
+type BudgetPanelProps = {
+  budgetMin: string;
+  onBudgetMinChange: (_v: string) => void;
+  budgetMax: string;
+  onBudgetMaxChange: (_v: string) => void;
+  onBudgetReset: () => void;
+};
+
 export const BudgetPanel = memo(function BudgetPanel({
   budgetMin, onBudgetMinChange, budgetMax, onBudgetMaxChange, onBudgetReset,
-}) {
+}: BudgetPanelProps) {
   const hasBudget = budgetMin || budgetMax;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column" as const, gap: 6 }}>
       {/* 예산 입력 */}
       <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
         <input type="number" inputMode="decimal" min="0" step="0.1" value={budgetMin} onChange={e => onBudgetMinChange(e.target.value)} placeholder="최소(억)" aria-label="최소 예산(억)" style={numInput(budgetMin)} />

@@ -6,10 +6,18 @@ import { memo } from "react";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
 import { F } from "@/theme";
 
-export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClose }) {
+type SortOption = { key: string; bg: string; ac: string; mobileLabel: string };
+
+type SortPanelProps = {
+  sortKey: string;
+  onSortChange: (_key: string) => void;
+  onClose: () => void;
+};
+
+export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClose }: SortPanelProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      {SORT_OPTIONS.map(s => {
+    <div style={{ display: "flex", flexDirection: "column" as const, gap: 3 }}>
+      {(SORT_OPTIONS as SortOption[]).map((s: SortOption) => {
         const selected = sortKey === s.key;
         return (
           <button key={s.key} onClick={() => { onSortChange(s.key); onClose(); }}
@@ -22,7 +30,7 @@ export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClos
               color: selected ? s.ac : "#475569",
               border: selected ? `1.5px solid ${s.ac}` : "1.5px solid transparent",
               borderRadius: 6, cursor: "pointer", transition: "all .15s",
-              textAlign: "left",
+              textAlign: "left" as const,
             }}
           >
             <span style={{
