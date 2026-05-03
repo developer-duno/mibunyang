@@ -1,16 +1,39 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
-const EMPTY_FORM = { email: "", password: "", name: "", affiliation: "", phone: "", specialty: "", license: "", experience: "", bio: "" };
+interface ExpertAuthForm {
+  email: string;
+  password: string;
+  name: string;
+  affiliation: string;
+  phone: string;
+  specialty: string;
+  license: string;
+  experience: string;
+  bio: string;
+}
 
-export function useExpertMode(showToast) {
-  const [authMode, setAuthMode] = useState("login");
-  const [authForm, setAuthForm] = useState({ ...EMPTY_FORM });
+type AuthMode = "login" | "signup";
+type AuthStatus = "pending" | "rejected" | null;
+type ShowToast = (_msg: string) => void;
+
+interface ExpertUser {
+  email?: string;
+  name?: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
+const EMPTY_FORM: ExpertAuthForm = { email: "", password: "", name: "", affiliation: "", phone: "", specialty: "", license: "", experience: "", bio: "" };
+
+export function useExpertMode(showToast: ShowToast) {
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [authForm, setAuthForm] = useState<ExpertAuthForm>({ ...EMPTY_FORM });
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [authStatus, setAuthStatus] = useState(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(null);
   const [expertLoggedIn, setExpertLoggedIn] = useState(() => { try { return !!localStorage.getItem("expertToken"); } catch { return false; } });
-  const [authUser, setAuthUser] = useState(null);
-  const [expertExpandedApt, setExpertExpandedApt] = useState(null);
+  const [authUser, setAuthUser] = useState<ExpertUser | null>(null);
+  const [expertExpandedApt, setExpertExpandedApt] = useState<string | null>(null);
 
   const authFormRef = useRef(authForm);
   const showToastRef = useRef(showToast);
@@ -96,7 +119,7 @@ export function useExpertMode(showToast) {
     }
   }, [showToast]);
 
-  const handleExpertLogout = useCallback(async (onLogout) => {
+  const handleExpertLogout = useCallback(async (onLogout?: () => void) => {
     const token = localStorage.getItem("expertToken");
     const refreshToken = localStorage.getItem("refreshToken");
     if (token) {
@@ -128,7 +151,7 @@ export function useExpertMode(showToast) {
 
   useEffect(() => {
     let cancelled = false;
-    let abortCtrl = null;
+    let abortCtrl: AbortController | null = null;
     const verify = () => {
       const token = localStorage.getItem("expertToken");
       if (!token) return;
@@ -175,8 +198,8 @@ export function useExpertMode(showToast) {
             if (data.role) localStorage.setItem("userRole", data.role);
           }
         })
-        .catch(err => {
-          if (err.name === "AbortError") return;
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
           // 네트워크 일시 장애 시 로그아웃하지 않음 (다음 verify 주기에 재시도)
         });
     };
