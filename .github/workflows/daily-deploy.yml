@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
       - name: Compute apartment scores (cats_cache)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
