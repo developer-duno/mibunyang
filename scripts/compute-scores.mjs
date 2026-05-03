@@ -9,7 +9,7 @@
  *   프론트엔드 calcCats() 355,440 ops → 0 ops (서버 캐시 사용)
  */
 import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter } from "./collectors/_shared.mjs";
-import { computeRegionalMedians, calcCats } from "@/scoring/engine.js";
+import { computeRegionalMedians, calcCats } from "@/scoring/engine";
 
 // ── 설정 ─────────────────────────────────────────────────────
 const DRY_RUN = process.argv.includes("--dry-run");
