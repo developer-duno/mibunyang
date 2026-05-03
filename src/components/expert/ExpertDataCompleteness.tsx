@@ -1,16 +1,18 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
+import type { ExpertDataCompletenessProps } from "@/types/expert";
 
-export const ExpertDataCompleteness = memo(function ExpertDataCompleteness({ apt }) {
-  const allFields = Object.keys(FIELD_META).filter(k => !FIELD_META[k].hidden);
+export const ExpertDataCompleteness = memo(function ExpertDataCompleteness({ apt }: ExpertDataCompletenessProps) {
+  const FM = FIELD_META as Record<string, { label: string; hidden?: boolean; isNotApplicable?: (_v: unknown, _apt: unknown) => boolean; isEstimated?: (_v: unknown, _apt: unknown) => boolean; isDefault?: (_v: unknown) => boolean; fmt?: (_v: unknown, _apt: unknown) => unknown }>;
+  const allFields = Object.keys(FM).filter(k => !FM[k].hidden);
   let filled = 0, estimated = 0, defaults = 0, missing = 0, na = 0;
-  const estimatedFields = [];
-  const defaultFields = [];
-  const missingFields = [];
-  const naFields = [];
+  const estimatedFields: string[] = [];
+  const defaultFields: string[] = [];
+  const missingFields: string[] = [];
+  const naFields: string[] = [];
   allFields.forEach(k => {
-    const meta = FIELD_META[k];
+    const meta = FM[k];
     const v = apt[k];
     // 적용 대상 아님 판정이 최우선 — 분양 중이 아닌 단지는 presale/competition 필드가 애초 평가 대상 아님
     if (meta.isNotApplicable && meta.isNotApplicable(v, apt)) { na++; naFields.push(meta.label); return; }

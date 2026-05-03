@@ -11,13 +11,15 @@ import { ExpertDataCompleteness } from "./ExpertDataCompleteness";
 import { ExpertSidebar } from "./ExpertSidebar";
 import { ExpertAptHeader } from "./ExpertAptHeader";
 import { ExpertHelpGuide } from "./ExpertHelpGuide";
+import type { ExpertDashboardProps } from "@/types/components/ExpertDashboard.types";
+import type { ExpertSortKey } from "@/types/expert";
 
-const SEC_COLOR = { "가격": C.green, "안전": C.red, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan, "교차검증": "#6366F1" };
+const SEC_COLOR: Record<string, string> = { "가격": C.green, "안전": C.red, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan, "교차검증": "#6366F1" };
 
-export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, setProfile, expandedApt, setExpandedApt, onSwitchToAdmin }) {
+export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, setProfile, expandedApt, setExpandedApt, onSwitchToAdmin }: ExpertDashboardProps) {
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState("전체");
-  const [sort, setSort] = useState("total");
+  const [sort, setSort] = useState<ExpertSortKey>("total");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { isPC } = useResponsive();
   const isMobile = !isPC;
@@ -25,16 +27,16 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
 
   useEffect(() => {
     if (!sidebarOpen) return;
-    const onKey = (e) => { if (e.key === "Escape") setSidebarOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSidebarOpen(false); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [sidebarOpen]);
 
-  const selectedId = expandedApt || (scored.length > 0 ? scored[0].apt.id : null);
+  const selectedId: string | null = expandedApt || (scored.length > 0 ? (scored[0].apt.id ?? null) : null);
   const selectedItem = useMemo(() => scored.find(x => x.apt.id === selectedId), [scored, selectedId]);
 
   // ExpertSidebar(memo)에 onSelect prop 전달 — 참조 안정화로 불필요 리렌더 방지
-  const handleSelect = useCallback((id) => {
+  const handleSelect = useCallback((id: string) => {
     setExpandedApt(id);
     setSidebarOpen(false);
   }, [setExpandedApt]);
@@ -69,7 +71,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
           }}>&#9776; 목록</button>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
             {Object.entries(PROFILES).map(([k, p]) => (
-              <button key={k} onClick={() => setProfile(k)} aria-pressed={profile === k} style={{
+              <button key={k} onClick={() => setProfile(k as typeof profile)} aria-pressed={profile === k} style={{
                 padding: "6px 10px", fontSize: F.xs, fontWeight: profile === k ? 700 : 500,
                 background: profile === k ? C.indigoLight : C.slate100, color: profile === k ? C.indigo : C.slate600,
                 border: profile === k ? `1.5px solid ${C.indigo}` : "1.5px solid transparent", borderRadius: 4, cursor: "pointer"

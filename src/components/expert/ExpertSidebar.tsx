@@ -1,8 +1,9 @@
 import { memo, useMemo } from "react";
 import { C, F, gr } from "@/theme";
 import { EXPERT_SORT_OPTIONS } from "@/constants/sortOptions";
+import type { ExpertSidebarProps, ExpertSortKey } from "@/types/expert";
 
-export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort, isMobile, onClose }) {
+export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, onSelect, search, setSearch, regionFilter, setRegionFilter, sort, setSort, isMobile, onClose }: ExpertSidebarProps) {
   const regions = useMemo(() => ["전체", ...[...new Set(scored.map(x => x.apt.region).filter(Boolean))].sort()], [scored]);
   const filtered = useMemo(() => {
     let list = scored;
@@ -37,7 +38,7 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
             style={{ flex: 1, padding: "6px 8px", fontSize: F.xs, border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: "pointer" }}>
             {regions.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
-          <select value={sort} onChange={e => setSort(e.target.value)} aria-label="정렬 기준"
+          <select value={sort} onChange={e => setSort(e.target.value as ExpertSortKey)} aria-label="정렬 기준"
             style={{ flex: 1, padding: "6px 8px", fontSize: F.xs, border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: "pointer" }}>
             {EXPERT_SORT_OPTIONS.map(s => (
               <option key={s.key} value={s.key}>{s.mobileLabel}</option>
@@ -51,7 +52,7 @@ export const ExpertSidebar = memo(function ExpertSidebar({ scored, selectedId, o
           const g2 = gr(res.total);
           const selected = selectedId === apt.id;
           return (
-            <button key={apt.id} onClick={() => onSelect(apt.id)}
+            <button key={apt.id} onClick={() => onSelect(apt.id ?? "")}
               style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: selected ? C.indigoLight : "transparent",
                 border: "none", borderBottom: `1px solid ${C.bg}`, borderLeft: selected ? `3px solid ${C.indigo}` : "3px solid transparent",
                 cursor: "pointer", textAlign: "left", transition: "background .15s" }}>

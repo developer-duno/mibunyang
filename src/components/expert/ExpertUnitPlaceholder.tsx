@@ -1,8 +1,11 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
+import type { ExpertUnitPlaceholderProps } from "@/types/expert";
 
-export const ExpertUnitPlaceholder = memo(function ExpertUnitPlaceholder({ apt }) {
-  const unsoldRate = apt.unsoldRate != null ? Number(apt.unsoldRate).toFixed(1) : (apt.units > 0 && apt.unsold != null ? (apt.unsold / apt.units * 100).toFixed(1) : null);
+export const ExpertUnitPlaceholder = memo(function ExpertUnitPlaceholder({ apt }: ExpertUnitPlaceholderProps) {
+  const units = Number(apt.units ?? 0);
+  const unsold = apt.unsold != null ? Number(apt.unsold) : null;
+  const unsoldRate = apt.unsoldRate != null ? Number(apt.unsoldRate).toFixed(1) : (units > 0 && unsold != null ? (unsold / units * 100).toFixed(1) : null);
   return (
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: F.base, fontWeight: 800, color: C.purple, marginBottom: 10, borderBottom: `2px solid ${C.purple}`, paddingBottom: 6 }}>동/호수 현황</div>
@@ -13,7 +16,7 @@ export const ExpertUnitPlaceholder = memo(function ExpertUnitPlaceholder({ apt }
         </div>
         <div style={{ textAlign: "center", padding: 10, background: C.redLight, borderRadius: 6 }}>
           <div style={{ fontSize: F.xs, color: C.muted }}>미분양</div>
-          <div style={{ fontSize: F.lg, fontWeight: 800, color: C.red }}>{apt.unsold != null ? apt.unsold.toLocaleString("ko-KR") : "—"}</div>
+          <div style={{ fontSize: F.lg, fontWeight: 800, color: C.red }}>{unsold != null ? unsold.toLocaleString("ko-KR") : "—"}</div>
         </div>
         <div style={{ textAlign: "center", padding: 10, background: C.amberLight, borderRadius: 6 }}>
           <div style={{ fontSize: F.xs, color: C.muted }}>미분양률</div>

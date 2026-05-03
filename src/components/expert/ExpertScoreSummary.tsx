@@ -1,8 +1,9 @@
 import { memo } from "react";
 import { C, F, catCol, gr } from "@/theme";
 import { PROFILES } from "@/constants/profiles";
+import type { ExpertScoreSummaryProps } from "@/types/expert";
 
-export const ExpertScoreSummary = memo(function ExpertScoreSummary({ res, profile }) {
+export const ExpertScoreSummary = memo(function ExpertScoreSummary({ res, profile }: ExpertScoreSummaryProps) {
   const w = PROFILES[profile]?.w || PROFILES.live.w;
   const g = gr(res.total);
   const catKeys = Object.keys(res.cats);
@@ -20,11 +21,11 @@ export const ExpertScoreSummary = memo(function ExpertScoreSummary({ res, profil
         </thead>
         <tbody>
           {catKeys.map(k => {
-            const cat = res.cats[k];
-            const weight = w[k] || 0;
+            const cat = res.cats[k as keyof typeof res.cats];
+            const weight = w[k as keyof typeof w] || 0;
             return (
               <tr key={k} style={{ borderBottom: `1px solid ${C.bg}` }}>
-                <td style={{ padding: "6px 4px", fontWeight: 600, color: catCol[k] }}>{cat.label}</td>
+                <td style={{ padding: "6px 4px", fontWeight: 600, color: (catCol as Record<string, string>)[k] }}>{cat.label}</td>
                 <td style={{ textAlign: "center", padding: "6px 4px", fontWeight: 700 }}>{cat.total}</td>
                 <td style={{ textAlign: "center", padding: "6px 4px", color: C.muted }}>{weight}%</td>
                 <td style={{ textAlign: "right", padding: "6px 4px", fontWeight: 700, color: C.text }}>{(cat.total * weight / 100).toFixed(1)}</td>
