@@ -1,7 +1,44 @@
-const REGION_RE = /^[\uac00-\ud7a3\sA-Za-z0-9_-]{1,40}$/;
+const REGION_RE = /^[가-힣\sA-Za-z0-9_-]{1,40}$/;
 const APARTMENT_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
 
-export function validateApartmentPayload(body, options = {}) {
+type ValidateOk<T> = { ok: true } & T;
+type ValidateErr = { ok: false; status: number; error: string };
+
+type Apartment = {
+  id?: unknown;
+  lat?: unknown;
+  lng?: unknown;
+  region?: unknown;
+  gu?: unknown;
+  [key: string]: unknown;
+};
+
+type NormalizedApartment = {
+  id: string;
+  lat: number | null;
+  lng: number | null;
+  region: string | undefined;
+  gu: string | undefined;
+  [key: string]: unknown;
+};
+
+type Body = {
+  apartments?: unknown;
+  [key: string]: unknown;
+};
+
+type Query = {
+  region?: unknown;
+  gu?: unknown;
+  limit?: unknown;
+  offset?: unknown;
+  [key: string]: unknown;
+};
+
+export function validateApartmentPayload(
+  body: Body,
+  options: { max?: number; requireCoordinates?: boolean } = {},
+): ValidateOk<{ apartments: NormalizedApartment[] }> | ValidateErr {
   const { max = 50, requireCoordinates = false } = options;
   const apartments = body?.apartments;
 
@@ -12,9 +49,9 @@ export function validateApartmentPayload(body, options = {}) {
     return { ok: false, status: 400, error: `apartments must contain at most ${max} items` };
   }
 
-  const normalized = [];
+  const normalized: NormalizedApartment[] = [];
   for (const apt of apartments) {
-    const validated = validateApartment(apt, { requireCoordinates });
+    const validated = validateApartment(apt as Apartment, { requireCoordinates });
     if (!validated.ok) return validated;
     normalized.push(validated.apartment);
   }
@@ -22,7 +59,9 @@ export function validateApartmentPayload(body, options = {}) {
   return { ok: true, apartments: normalized };
 }
 
-export function validateApartmentListQuery(query = {}) {
+export function validateApartmentListQuery(
+  query: Query = {},
+): ValidateOk<{ query: { region: string | undefined; gu: string | undefined; limit: number; offset: number; hasExplicitPagination: boolean } }> | ValidateErr {
   const region = normalizeOptionalText(query.region, "region");
   if (!region.ok) return region;
   const gu = normalizeOptionalText(query.gu, "gu");
@@ -45,7 +84,10 @@ export function validateApartmentListQuery(query = {}) {
   };
 }
 
-function validateApartment(apt, { requireCoordinates }) {
+function validateApartment(
+  apt: Apartment,
+  { requireCoordinates }: { requireCoordinates: boolean },
+): ValidateOk<{ apartment: NormalizedApartment }> | ValidateErr {
   if (!apt || typeof apt !== "object" || Array.isArray(apt)) {
     return invalid("apartment must be an object");
   }
@@ -75,14 +117,14 @@ function validateApartment(apt, { requireCoordinates }) {
   };
 }
 
-function normalizeId(value) {
+function normalizeId(value: unknown): string | null {
   if (typeof value === "number" && Number.isSafeInteger(value)) return String(value);
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return APARTMENT_ID_RE.test(trimmed) ? trimmed : null;
 }
 
-function normalizeCoordinate(value, name) {
+function normalizeCoordinate(value: unknown, name: string): ValidateOk<{ value: number | null }> | ValidateErr {
   if (value == null || value === "") return { ok: true, value: null };
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(number)) return invalid(`apartment ${name} must be a number`);
@@ -91,7 +133,7 @@ function normalizeCoordinate(value, name) {
   return { ok: true, value: number };
 }
 
-function normalizeOptionalText(value, name) {
+function normalizeOptionalText(value: unknown, name: string): ValidateOk<{ value: string | undefined }> | ValidateErr {
   if (value == null || value === "") return { ok: true, value: undefined };
   if (Array.isArray(value) || typeof value !== "string") return invalid(`${name} must be a string`);
   const trimmed = value.trim();
@@ -100,7 +142,11 @@ function normalizeOptionalText(value, name) {
   return { ok: true, value: trimmed };
 }
 
-function parseBoundedInteger(value, name, { min, max, defaultValue }) {
+function parseBoundedInteger(
+  value: unknown,
+  name: string,
+  { min, max, defaultValue }: { min: number; max: number; defaultValue: number },
+): ValidateOk<{ value: number }> | ValidateErr {
   if (value == null || value === "") return { ok: true, value: defaultValue };
   if (Array.isArray(value)) return invalid(`${name} must be a single value`);
   const parsed = Number(value);
@@ -109,6 +155,6 @@ function parseBoundedInteger(value, name, { min, max, defaultValue }) {
   return { ok: true, value: parsed };
 }
 
-function invalid(error) {
+function invalid(error: string): ValidateErr {
   return { ok: false, status: 400, error };
 }
