@@ -1,17 +1,28 @@
-import { memo, useState, useCallback, useEffect } from "react";
+import { memo, useState, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { C, F } from "@/theme";
 
 const TOOLTIP_DISMISS_MS = 3000;
 const HIT_AREA_RADIUS = 16;
 
+type LineChartPoint = { x: string | number; y: number | null; label?: string };
+type LineChartProps = {
+  data?: LineChartPoint[];
+  color?: string;
+  height?: number;
+  secondaryData?: LineChartPoint[];
+  secondaryColor?: string;
+  yLabel?: string;
+  xLabel?: string;
+};
+
 // 시계열 라인 차트 — PriceChart(분양가 추이)·UnsoldChart(미분양 추이) 공통 엔진
 // 터치 dot 탭 시 툴팁 노출 + 3초 후 auto-dismiss + 빈 영역 탭 시 즉시 dismiss
-export const LineChart = memo(function LineChart({ data: _data = [], color = C.blue, height = 160, secondaryData, secondaryColor = C.muted, yLabel = "", xLabel = "" }) {
-  const data = _data.filter(d => d && d.y != null);
-  const [activeDot, setActiveDot] = useState(null);
+export const LineChart = memo(function LineChart({ data: _data = [], color = C.blue, height = 160, secondaryData, secondaryColor = C.muted, yLabel = "", xLabel = "" }: LineChartProps) {
+  const data = _data.filter((d): d is LineChartPoint & { y: number } => d != null && d.y != null);
+  const [activeDot, setActiveDot] = useState<number | null>(null);
 
-  const handleDotTap = useCallback((e) => {
-    const idx = Number(e.currentTarget.getAttribute("data-index"));
+  const handleDotTap = useCallback((e: ReactMouseEvent<SVGCircleElement>) => {
+    const idx = Number((e.currentTarget as SVGCircleElement).getAttribute("data-index"));
     setActiveDot(prev => prev === idx ? null : idx);
   }, []);
   const handleDismiss = useCallback(() => setActiveDot(null), []);
@@ -29,9 +40,9 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
   const allY = [...data.map(d => d.y), ...(secondaryData || []).map(d => d.y).filter(v => v != null)];
   const minY = Math.min(...allY), maxY = Math.max(...allY);
   const rangeY = maxY - minY || 1;
-  const toX = (i, len) => pad.l + (i / (len - 1)) * iw;
-  const toY = (v) => pad.t + ih - ((v - minY) / rangeY) * ih;
-  const makePath = (pts) => pts.map((d, i) => `${i === 0 ? "M" : "L"}${toX(i, pts.length).toFixed(1)},${toY(d.y).toFixed(1)}`).join(" ");
+  const toX = (i: number, len: number) => pad.l + (i / (len - 1)) * iw;
+  const toY = (v: number) => pad.t + ih - ((v - minY) / rangeY) * ih;
+  const makePath = (pts: Array<{ y: number | null }>) => pts.map((d, i) => `${i === 0 ? "M" : "L"}${toX(i, pts.length).toFixed(1)},${toY(d.y as number).toFixed(1)}`).join(" ");
   const gridLines = 4;
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={yLabel || "추이 차트"} style={{ display: "block" }}>
@@ -43,9 +54,9 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
       ); })}
       {secondaryData && secondaryData.length >= 2 && <path d={makePath(secondaryData)} fill="none" stroke={secondaryColor} strokeWidth="1.5" strokeDasharray="4 3" opacity=".6" />}
       <path d={makePath(data)} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      {data.map((d, i) => <circle key={i} cx={toX(i, data.length)} cy={toY(d.y)} r="3" fill={color}><title>{d.label || `${d.x}: ${d.y}`}</title></circle>)}
+      {data.map((d, i) => <circle key={i} cx={toX(i, data.length)} cy={toY(d.y as number)} r="3" fill={color}><title>{d.label || `${d.x}: ${d.y}`}</title></circle>)}
       {/* 투명 hit area — 터치 타겟 확장 */}
-      {data.map((_, i) => <circle key={`h${i}`} cx={toX(i, data.length)} cy={toY(data[i].y)} r={HIT_AREA_RADIUS} fill="transparent" data-index={i} onClick={handleDotTap} style={{ cursor: "pointer" }} />)}
+      {data.map((_d, i) => <circle key={`h${i}`} cx={toX(i, data.length)} cy={toY(data[i].y as number)} r={HIT_AREA_RADIUS} fill="transparent" data-index={i} onClick={handleDotTap} style={{ cursor: "pointer" }} />)}
       {activeDot != null && activeDot < data.length && (() => {
         const d = data[activeDot];
         const cx = toX(activeDot, data.length);
@@ -62,7 +73,7 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
           </g>
         );
       })()}
-      {data.length <= 12 && data.map((d, i) => <text key={`l${i}`} x={toX(i, data.length)} y={h - 6} textAnchor="middle" dy="0.35em" fill={C.muted} fontSize={F.micro}>{d.x}</text>)}
+      {data.length <= 12 && data.map((d: LineChartPoint, i: number) => <text key={`l${i}`} x={toX(i, data.length)} y={h - 6} textAnchor="middle" dy="0.35em" fill={C.muted} fontSize={F.micro}>{d.x}</text>)}
       {xLabel && <text x={w / 2} y={h - 1} textAnchor="middle" fill={C.muted} fontSize={F.micro}>{xLabel}</text>}
     </svg>
   );

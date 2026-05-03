@@ -3,7 +3,8 @@ import { C, F, gr } from "@/theme";
 
 export { LineChart } from "./LineChart";
 
-export const Bar = memo(function Bar({ value: _v, color = C.blue, h = 5 }) {
+type BarProps = { value?: number | null; color?: string; h?: number };
+export const Bar = memo(function Bar({ value: _v, color = C.blue, h = 5 }: BarProps) {
   const value = _v ?? 0;
   return (
     <div role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100} style={{ background: "#ECEEF4", borderRadius: 99, height: h, width: "100%", overflow: "hidden" }}>
@@ -12,7 +13,8 @@ export const Bar = memo(function Bar({ value: _v, color = C.blue, h = 5 }) {
   );
 });
 
-export const ScoreBadge = memo(function ScoreBadge({ score: _sc, size = 54 }) {
+type ScoreBadgeProps = { score?: number | null; size?: number };
+export const ScoreBadge = memo(function ScoreBadge({ score: _sc, size = 54 }: ScoreBadgeProps) {
   const score = _sc ?? 0;
   const g = gr(score), r = size / 2 - 3.5, circ = 2 * Math.PI * r, off = circ * (1 - score / 100);
   return (
@@ -29,12 +31,14 @@ export const ScoreBadge = memo(function ScoreBadge({ score: _sc, size = 54 }) {
   );
 });
 
-export const Radar = memo(function Radar({ data: _data, size = 130 }) {
+type RadarPoint = { v: number; l: string };
+type RadarProps = { data?: RadarPoint[] | null; size?: number };
+export const Radar = memo(function Radar({ data: _data, size = 130 }: RadarProps) {
   const data = _data || [];
   const n = data.length;
   if (n === 0) return null;
   const cx = size / 2, cy = size / 2, r = size * .36, step = 2 * Math.PI / n;
-  const poly = ratio => data.map((_, i) => { const a = -Math.PI / 2 + i * step; return `${cx + Math.cos(a) * r * ratio},${cy + Math.sin(a) * r * ratio}`; }).join(" ");
+  const poly = (ratio: number) => data.map((_d, i) => { const a = -Math.PI / 2 + i * step; return `${cx + Math.cos(a) * r * ratio},${cy + Math.sin(a) * r * ratio}`; }).join(" ");
   const dp = data.map((d, i) => { const a = -Math.PI / 2 + i * step; return `${cx + Math.cos(a) * r * d.v / 100},${cy + Math.sin(a) * r * d.v / 100}`; }).join(" ");
   return (
     <svg width={size} height={size} role="img" aria-label="카테고리별 점수 레이더 차트">
@@ -51,7 +55,8 @@ export const Radar = memo(function Radar({ data: _data, size = 130 }) {
 const SKELETON_STYLE = `@keyframes skeleton-pulse { 0%{opacity:1} 50%{opacity:0.4} 100%{opacity:1} }`;
 const pulseStyle = { animation: "skeleton-pulse 1.5s ease-in-out infinite" };
 
-export const SkeletonBox = memo(function SkeletonBox({ width = "100%", height = 12, radius = 4 }) {
+type SkeletonBoxProps = { width?: string | number; height?: number; radius?: number };
+export const SkeletonBox = memo(function SkeletonBox({ width = "100%", height = 12, radius = 4 }: SkeletonBoxProps) {
   return (
     <>
       <style>{SKELETON_STYLE}</style>
@@ -60,7 +65,8 @@ export const SkeletonBox = memo(function SkeletonBox({ width = "100%", height = 
   );
 });
 
-export const SkeletonText = memo(function SkeletonText({ lines = 3, width = "80%" }) {
+type SkeletonTextProps = { lines?: number; width?: string };
+export const SkeletonText = memo(function SkeletonText({ lines = 3, width = "80%" }: SkeletonTextProps) {
   return (
     <>
       <style>{SKELETON_STYLE}</style>
@@ -73,7 +79,8 @@ export const SkeletonText = memo(function SkeletonText({ lines = 3, width = "80%
   );
 });
 
-export const SkeletonList = memo(function SkeletonList({ count = 3, columns = 1 }) {
+type SkeletonListProps = { count?: number; columns?: number };
+export const SkeletonList = memo(function SkeletonList({ count = 3, columns = 1 }: SkeletonListProps) {
   return (
     <>
       <style>{SKELETON_STYLE}</style>

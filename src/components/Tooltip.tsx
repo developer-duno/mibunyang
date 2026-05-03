@@ -2,14 +2,14 @@
 // hover/focus/tap 3가지 트리거 + ARIA aria-describedby
 // 모바일에서는 tap=toggle, 데스크톱은 hover/focus
 
-import { memo, useState, useId, useRef, useEffect } from "react";
+import { memo, useState, useId, useRef, useEffect, type ReactNode } from "react";
 import { C, F } from "@/theme";
 
 /**
  * 청약 표준 용어 풀이 사전 (spec § 5-3 + § 6-3)
  * 키워드 → 한 줄 설명. UpcomingCard 의 주택유형/공급유형 칩에 적용.
  */
-export const TERM_GLOSSARY = {
+export const TERM_GLOSSARY: Record<string, string> = {
   민영: "민간 건설사가 공급하는 주택. 가점제·추첨제 혼합.",
   공공: "공공기관이 공급하는 주택. 소득·자산 기준 적용.",
   국민: "국가·지자체·LH 등이 공급하는 주택. 무주택 우선.",
@@ -26,7 +26,7 @@ export const TERM_GLOSSARY = {
  * 자유 형식 텍스트에서 용어 사전 키 추출
  * 예) "민영주택" → "민영", "도시형 생활주택" → "도시형"
  */
-export function extractTerm(label) {
+export function extractTerm(label: unknown): string | null {
   if (!label || typeof label !== "string") return null;
   for (const key of Object.keys(TERM_GLOSSARY)) {
     if (label.includes(key)) return key;
@@ -34,18 +34,24 @@ export function extractTerm(label) {
   return null;
 }
 
-export const Tooltip = memo(function Tooltip({ term, definition, children }) {
+type TooltipProps = {
+  term?: string;
+  definition?: string;
+  children: ReactNode;
+};
+
+export const Tooltip = memo(function Tooltip({ term, definition, children }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const id = useId();
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLSpanElement>(null);
 
   const text = definition || (term ? TERM_GLOSSARY[term] : null);
 
   // 외부 클릭 시 닫기 (모바일 tap-toggle 보강)
   useEffect(() => {
     if (!open) return;
-    function onDocClick(e) {
-      if (!containerRef.current?.contains(e.target)) setOpen(false);
+    function onDocClick(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("click", onDocClick);
     return () => document.removeEventListener("click", onDocClick);

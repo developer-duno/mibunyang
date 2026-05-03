@@ -6,7 +6,16 @@ import { trackEvent } from "@/lib/analytics";
  * 로그인 유도 모달 — 비로그인 사용자가 상세/비교/지도/관심매물 접근 시 표시
  * Props: open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading
  */
-export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading, trigger }) {
+type LoginPromptModalProps = {
+  open: boolean;
+  onClose: () => void;
+  onKakaoLogin: () => void;
+  onExpertLogin: () => void;
+  kakaoLoading?: boolean;
+  trigger?: string;
+};
+
+export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading, trigger }: LoginPromptModalProps) {
   useEffect(() => {
     if (open) trackEvent("login_prompt_shown", { trigger: trigger || "unknown" });
   }, [open, trigger]);

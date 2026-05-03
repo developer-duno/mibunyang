@@ -1,10 +1,20 @@
 import { memo, useEffect } from "react";
 import { C, F } from "@/theme";
 
-export const ShareSheet = memo(function ShareSheet({ open, onKakao, onSMS, onCopy, onClose, isMobile, isPC }) {
+type ShareSheetProps = {
+  open: boolean;
+  onKakao: () => void;
+  onSMS: () => void;
+  onCopy: () => void;
+  onClose: () => void;
+  isMobile?: boolean;
+  isPC?: boolean;
+};
+
+export const ShareSheet = memo(function ShareSheet({ open, onKakao, onSMS, onCopy, onClose, isMobile, isPC }: ShareSheetProps) {
   useEffect(() => {
     if (!open) return;
-    const h = (e) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [open, onClose]);

@@ -1,7 +1,11 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 
-const I = (name, d, opts = {}) =>
-  memo(function Icon({ size = 16, color = "currentColor" }) {
+type IconProps = { size?: number; color?: string };
+type IconPath = string | ((_color: string) => ReactNode);
+type IconOpts = { fill?: boolean; sw?: number };
+
+const I = (_name: string, d: IconPath, opts: IconOpts = {}) =>
+  memo(function Icon({ size = 16, color = "currentColor" }: IconProps) {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={opts.fill ? "none" : color} strokeWidth={opts.sw || 2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {typeof d === "string" ? <path d={d} fill={opts.fill ? color : "none"} /> : d(color)}
