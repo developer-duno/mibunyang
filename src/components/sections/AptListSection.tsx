@@ -2,6 +2,40 @@ import { memo, useRef, useEffect } from "react";
 import { C, F } from "@/theme";
 import { AptCard } from "@/components/AptCard";
 import { PROFILES } from "@/constants/profiles";
+import type { Apt } from "@/types/scoring";
+import type { ScoringResult } from "@/types/components";
+
+type ProfileKey = keyof typeof PROFILES;
+
+type AptListSectionProps = {
+  visible: Array<{ apt: Apt; res: ScoringResult }>;
+  filteredLength: number;
+  visibleCount: number;
+  onLoadMore: () => void;
+  onDetail: (_id: string) => void;
+  onFav: (_id: string) => void;
+  onComp: (_id: string) => void;
+  favoriteSet: Set<string>;
+  compIds: string[];
+  pw: any;
+  profile: ProfileKey;
+  isPC?: boolean;
+  isDesktop?: boolean;
+  isPending?: boolean;
+  budgetMin: string;
+  budgetMax: string;
+  filterRegion: string;
+  moveInFilter: string;
+  builderTier: string;
+  minScore: string | number;
+  onResetBudget?: () => void;
+  onResetRegion?: () => void;
+  dataLoading?: boolean;
+  dataFreshnessText?: string;
+  onExpertView: (_apt: Apt) => void;
+  onResetAll?: () => void;
+  isLoggedIn?: boolean;
+};
 
 /** 아파트 카드 그리드 + 빈 결과 + 더 보기 */
 export const AptListSection = memo(function AptListSection({
@@ -13,7 +47,7 @@ export const AptListSection = memo(function AptListSection({
   onResetBudget, onResetRegion,
   dataLoading, dataFreshnessText,
   onExpertView, onResetAll, isLoggedIn,
-}) {
+}: AptListSectionProps) {
   return (
     <>
     
@@ -71,8 +105,8 @@ export const AptListSection = memo(function AptListSection({
         {visible.map((item, idx) => (
           <AptCard key={item.apt.id} apt={item.apt} res={item.res} rank={idx + 1}
             onDetail={onDetail}
-            isComp={compIds.includes(item.apt.id)} onComp={onComp}
-            isFav={favoriteSet.has(item.apt.id)} onFav={onFav}
+            isComp={compIds.includes(item.apt.id ?? "")} onComp={onComp}
+            isFav={favoriteSet.has(item.apt.id ?? "")} onFav={onFav}
             profileWeights={pw} onExpertView={onExpertView} isDesktop={isDesktop} isLoggedIn={isLoggedIn} />
         ))}
       </div>
@@ -92,8 +126,8 @@ export const AptListSection = memo(function AptListSection({
 });
 
 /** IntersectionObserver 기반 자동 로드 sentinel */
-const LoadMoreSentinel = memo(function LoadMoreSentinel({ onLoadMore }) {
-  const ref = useRef(null);
+const LoadMoreSentinel = memo(function LoadMoreSentinel({ onLoadMore }: { onLoadMore: () => void }) {
+  const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;

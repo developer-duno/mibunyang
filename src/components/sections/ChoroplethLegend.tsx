@@ -13,7 +13,8 @@ const TIERS = [
   { score: 45, label: "D <50" },
 ];
 
-export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop }) {
+type ChoroplethLegendProps = { isPC?: boolean; isDesktop?: boolean };
+export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop }: ChoroplethLegendProps) {
   const fontSize = isDesktop ? F.xs : F.micro;
   const padding = isDesktop ? "8px 10px" : "6px 8px";
   const boxSize = isPC ? 12 : 10;
@@ -36,7 +37,7 @@ export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop
         boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
         border: `1px solid ${C.border}`,
         display: "flex",
-        flexDirection: "column",
+        flexDirection: "column" as const,
         gap,
         zIndex: 10,
       }}

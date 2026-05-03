@@ -5,6 +5,7 @@ import { gr, C, F } from "@/theme";
 import { geoJsonFeatureToKakaoPaths } from "@/lib/geoJsonToKakaoPaths";
 import { SkeletonText } from "../primitives";
 import { ChoroplethLegend } from "./ChoroplethLegend";
+import type { ChoroplethViewProps } from "@/types/components/ChoroplethView.types";
 
 const ChoroplethSigunguOverlay = lazy(() =>
   import("./ChoroplethSigunguOverlay").then(m => ({ default: m.ChoroplethSigunguOverlay }))
@@ -27,10 +28,10 @@ const ChoroplethSigunguOverlay = lazy(() =>
  */
 export const ChoroplethView = memo(function ChoroplethView({
   mapInstance, ready, filtered, onSidoClick, isPC, isDesktop,
-}) {
-  const polygonsRef = useRef([]);
-  const [geoData, setGeoData] = useState(null);
-  const [error, setError] = useState(null);
+}: ChoroplethViewProps) {
+  const polygonsRef = useRef<any[]>([]);
+  const [geoData, setGeoData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const [level, setLevel] = useState(13);
   const showSigungu = level <= 8;
   // 줌 임계값 디바운스 미적용: level 8↔9 경계 진동은 사용자 의도적 1단계 줌 입출 시에만,
@@ -40,11 +41,11 @@ export const ChoroplethView = memo(function ChoroplethView({
   // 0. 줌 이벤트 리스너 (level 동기화)
   useEffect(() => {
     if (!ready || !mapInstance) return;
-    const kakao = window.kakao?.maps;
+    const kakao = (window as any).kakao?.maps;
     if (!kakao?.event) return;
-    const handler = () => setLevel(mapInstance.getLevel());
+    const handler = () => setLevel((mapInstance as any).getLevel());
     kakao.event.addListener(mapInstance, "zoom_changed", handler);
-    const initialSyncId = typeof mapInstance.getLevel === "function"
+    const initialSyncId = typeof (mapInstance as any).getLevel === "function"
       ? window.setTimeout(handler, 0)
       : null;
     return () => {
@@ -70,7 +71,7 @@ export const ChoroplethView = memo(function ChoroplethView({
   // 2. 폴리곤 그리기 + cleanup
   useEffect(() => {
     if (!ready || !mapInstance || !geoData) return;
-    const kakao = window.kakao?.maps;
+    const kakao = (window as any).kakao?.maps;
     if (!kakao?.Polygon) return;
 
     // 시군구 모드일 땐 시도 폴리곤 전부 cleanup 후 종료
@@ -107,8 +108,8 @@ export const ChoroplethView = memo(function ChoroplethView({
         polygon.setMap(mapInstance);
         kakao.event.addListener(polygon, "click", () => {
           const bounds = new kakao.LatLngBounds();
-          path.forEach(latlng => bounds.extend(latlng));
-          mapInstance.setBounds(bounds);
+          path.forEach((latlng: any) => bounds.extend(latlng));
+          (mapInstance as any).setBounds(bounds);
           if (onSidoClick) onSidoClick(dbName);
         });
         kakao.event.addListener(polygon, "mouseover", () => polygon.setOptions({ fillOpacity: 0.85 }));

@@ -4,7 +4,7 @@
  * 드롭다운: 한번에 하나만 열림 (openPanel 상태)
  * 2행: 활성 필터 칩 + 초기화/공유
  */
-import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { memo, useState, useRef, useEffect, useCallback, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { C, F } from "@/theme";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
 import { IconHeart, IconHeartFilled } from "@/components/icons";
@@ -17,6 +17,7 @@ import { AreaPanel } from "@/components/filters/AreaPanel";
 import { SortPanel } from "@/components/filters/SortPanel";
 import { DetailPanel } from "@/components/filters/DetailPanel";
 import { PresetPanel } from "@/components/filters/PresetPanel";
+import type { SearchFilterBarProps } from "@/types/components/SearchFilterBar.types";
 
 /** 검색 + 필터 + 정렬 + 프리셋 통합 바 */
 export const SearchFilterBar = memo(function SearchFilterBar({
@@ -43,14 +44,15 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onUndo, onRedo, canUndo, canRedo,
   filterOptionCounts,
   showToast = () => {},
-}) {
+}: SearchFilterBarProps) {
   /* ── 드롭다운 상태 (한번에 하나만) ── */
-  const [openPanel, setOpenPanel] = useState(null);
-  const togglePanel = useCallback((key) => setOpenPanel(prev => prev === key ? null : key), []);
+  const [openPanel, setOpenPanel] = useState<string | null>(null);
+  const togglePanel = useCallback((key: string) => setOpenPanel(prev => prev === key ? null : key), []);
   const closePanel = useCallback(() => setOpenPanel(null), []);
 
   /* 활성 필터 칩 키보드 핸들러 — Enter/Space → 동일 onClick 콜백 */
-  const onChipKeyDown = useCallback((cb) => (e) => {
+  const onChipKeyDown = useCallback((cb: (() => void) | undefined) => (e: ReactKeyboardEvent) => {
+    if (!cb) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       cb();
@@ -58,27 +60,27 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   }, []);
 
   /* ESC 키보드 + 외부 클릭으로 닫기 */
-  const barRef = useRef(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!openPanel) return;
-    const onKey = (e) => { if (e.key === "Escape") closePanel(); };
-    const onClick = (e) => { if (barRef.current && !barRef.current.contains(e.target)) closePanel(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closePanel(); };
+    const onClick = (e: MouseEvent) => { if (barRef.current && !barRef.current.contains(e.target as Node)) closePanel(); };
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onClick);
     return () => { document.removeEventListener("keydown", onKey); document.removeEventListener("mousedown", onClick); };
   }, [openPanel, closePanel]);
 
   /* 건수 변화 추적 */
-  const prevLenRef = useRef(filteredLength);
+  const prevLenRef = useRef<number>(filteredLength);
   useEffect(() => {
     if (filteredLength != null) prevLenRef.current = filteredLength;
   }, [filteredLength]);
 
   /* 트리거 버튼 요약 텍스트 */
-  const regionSummary = filterRegion !== "전체" ? (filterGu !== "전체" ? `${filterRegion} ${filterGu}` : filterRegion) : null;
-  const budgetSummary = (budgetMin || budgetMax) ? `${budgetMin || "0"}~${budgetMax || "∞"}억` : null;
-  const areaSummary = (areaMin || areaMax) ? `${areaMin || "0"}~${areaMax || "∞"}㎡` : (unitsMin || unitsMax) ? "세대수" : moveInFilter !== "전체" ? moveInFilter : null;
-  const sortLabel = sortKey !== "total" ? SORT_OPTIONS.find(s => s.key === sortKey)?.pcLabel : null;
+  const regionSummary = filterRegion !== "전체" ? (filterGu !== "전체" ? `${filterRegion} ${filterGu}` : filterRegion) : undefined;
+  const budgetSummary = (budgetMin || budgetMax) ? `${budgetMin || "0"}~${budgetMax || "∞"}억` : undefined;
+  const areaSummary = (areaMin || areaMax) ? `${areaMin || "0"}~${areaMax || "∞"}㎡` : (unitsMin || unitsMax) ? "세대수" : moveInFilter !== "전체" ? moveInFilter : undefined;
+  const sortLabel = sortKey !== "total" ? SORT_OPTIONS.find(s => s.key === sortKey)?.pcLabel : undefined;
   const detailActive = !!(minScore || builderTier !== "전체" || benefitOnly);
 
   return (
@@ -104,7 +106,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           background: showFavOnly ? C.redLight : C.slate100, color: showFavOnly ? C.red : C.slate600,
           border: showFavOnly ? `1.5px solid ${C.red}` : `1px solid ${C.border}`, borderRadius: 6,
           cursor: "pointer", display: "flex", alignItems: "center", gap: 3, transition: "all .15s",
-        }}>{showFavOnly ? <IconHeartFilled size={13} /> : <IconHeart size={13} />}{favCount > 0 ? ` ${favCount}` : ""}</button>
+        }}>{showFavOnly ? <IconHeartFilled size={13} /> : <IconHeart size={13} />}{(favCount ?? 0) > 0 ? ` ${favCount}` : ""}</button>
         {/* 미분양 토글 */}
         <button onClick={onToggleHideNoUnsold} aria-pressed={!hideNoUnsold} aria-label="미분양 없는 단지 보기" style={{
           flexShrink: 0, height: 36, padding: "0 8px", fontSize: F.micro, fontWeight: !hideNoUnsold ? 700 : 500,
@@ -143,13 +145,13 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       <FilterDropdown isOpen={openPanel === "preset"} label="추천" isDesktop={isDesktop}>
         <PresetPanel
           key={openPanel === "preset" ? "open" : "closed"}
-          customPresets={customPresets}
-          onApplyPreset={onApplyPreset}
-          onSavePreset={onSavePreset}
-          onDeletePreset={onDeletePreset}
-          filterHistory={filterHistory}
-          onApplyHistory={onApplyHistory}
-          onClearHistory={onClearHistory}
+          customPresets={customPresets as any}
+          onApplyPreset={onApplyPreset as any}
+          onSavePreset={onSavePreset as any}
+          onDeletePreset={onDeletePreset as any}
+          filterHistory={filterHistory as any}
+          onApplyHistory={onApplyHistory as any}
+          onClearHistory={onClearHistory as any}
           activeFilterCount={activeFilterCount}
           closePanel={closePanel}
           showToast={showToast}

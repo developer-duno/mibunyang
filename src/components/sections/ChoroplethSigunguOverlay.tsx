@@ -3,6 +3,15 @@ import { gr, C, F } from "@/theme";
 import { useRegionAverages } from "@/hooks/useRegionAverages";
 import { geoJsonFeatureToKakaoPaths } from "@/lib/geoJsonToKakaoPaths";
 import { geoSigunguToByGuKey } from "@/lib/geoJsonGuToDbKey";
+import type { Apt } from "@/types/scoring";
+import type { ScoringResult } from "@/types/components";
+
+type ChoroplethSigunguOverlayProps = {
+  mapInstance: unknown;
+  ready: boolean;
+  filtered: Array<{ apt: Apt; res: ScoringResult }>;
+  onGuClick?: (_key: string) => void;
+};
 
 /**
  * ChoroplethSigunguOverlay — 색칠 지도 시군구 251 폴리곤 오버레이
@@ -21,10 +30,10 @@ import { geoSigunguToByGuKey } from "@/lib/geoJsonGuToDbKey";
  */
 export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
   mapInstance, ready, filtered, onGuClick,
-}) {
-  const polygonsRef = useRef([]);
-  const [geoData, setGeoData] = useState(null);
-  const [error, setError] = useState(null);
+}: ChoroplethSigunguOverlayProps) {
+  const polygonsRef = useRef<any[]>([]);
+  const [geoData, setGeoData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const { byGu } = useRegionAverages(filtered);
 
   // 1. sigungu.geojson 1회 fetch (브라우저 캐시로 2회째 0ms)
@@ -40,7 +49,7 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
   // 2. 폴리곤 그리기 + cleanup
   useEffect(() => {
     if (!ready || !mapInstance || !geoData) return;
-    const kakao = window.kakao?.maps;
+    const kakao = (window as any).kakao?.maps;
     if (!kakao?.Polygon) return;
 
     polygonsRef.current.forEach(p => p.setMap(null));
@@ -69,8 +78,8 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
         polygon.setMap(mapInstance);
         kakao.event.addListener(polygon, "click", () => {
           const bounds = new kakao.LatLngBounds();
-          path.forEach(latlng => bounds.extend(latlng));
-          mapInstance.setBounds(bounds);
+          path.forEach((latlng: any) => bounds.extend(latlng));
+          (mapInstance as any).setBounds(bounds);
           if (onGuClick) onGuClick(key);
         });
         kakao.event.addListener(polygon, "mouseover", () => polygon.setOptions({ fillOpacity: 0.8 }));

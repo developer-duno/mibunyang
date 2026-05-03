@@ -17,31 +17,36 @@ const INFRA_CATEGORIES = [
   { key: "school", label: "학교", code: "SC4", emoji: "🏫" },
 ];
 
+type InfraOverlayProps = {
+  mapInstance: unknown;
+  ready: boolean;
+};
+
 /**
  * InfraOverlay — 지도 위 인프라 마커 토글
  * Props:
  *   mapInstance: kakao.maps.Map 인스턴스
  *   ready: boolean — 지도 준비 여부
  */
-export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }) {
-  const [active, setActive] = useState(null); // 현재 활성 카테고리 key (null = 없음)
-  const markersRef = useRef([]);
-  const searchDebounceRef = useRef(null);
+export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: InfraOverlayProps) {
+  const [active, setActive] = useState<string | null>(null);
+  const markersRef = useRef<any[]>([]);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 카테고리 마커 검색 + 표시
-  const searchAndShow = useCallback((categoryCode, emoji) => {
-    if (!mapInstance || !window.kakao?.maps?.services) return;
+  const searchAndShow = useCallback((categoryCode: string, emoji: string) => {
+    if (!mapInstance || !(window as any).kakao?.maps?.services) return;
     // 기존 마커 제거
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
-    const kakao = window.kakao.maps;
+    const kakao = (window as any).kakao.maps;
     const ps = new kakao.services.Places();
-    const center = mapInstance.getCenter();
+    const center = (mapInstance as any).getCenter();
 
-    ps.categorySearch(categoryCode, (data, status) => {
+    ps.categorySearch(categoryCode, (data: any[], status: string) => {
       if (status !== kakao.services.Status.OK) return;
-      const newMarkers = data.map(place => {
+      const newMarkers = data.map((place: any) => {
         const svgIcon = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="13" fill="#fff" stroke="${C.indigo}" stroke-width="2"/><text x="14" y="15" text-anchor="middle" font-size="14" dy="0.35em">${emoji}</text></svg>`)}`;
         const marker = new kakao.Marker({
           position: new kakao.LatLng(place.y, place.x),
@@ -69,20 +74,20 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }) {
 
     // 지도 이동 시 debounce로 재검색
     if (!mapInstance) return;
-    const kakao = window.kakao.maps;
+    const kakao = (window as any).kakao.maps;
     const listener = kakao.event.addListener(mapInstance, "idle", () => {
-      clearTimeout(searchDebounceRef.current);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = setTimeout(() => searchAndShow(cat.code, cat.emoji), INFRA_DEBOUNCE_MS);
     });
     return () => {
       kakao.event.removeListener(listener);
-      clearTimeout(searchDebounceRef.current);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
     };
   }, [ready, active, mapInstance, searchAndShow]);
 
-  const toggle = useCallback((key) => {
+  const toggle = useCallback((key: string) => {
     setActive(prev => prev === key ? null : key);
   }, []);
 

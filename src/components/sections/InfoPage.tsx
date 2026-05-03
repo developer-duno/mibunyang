@@ -17,7 +17,8 @@ const tipText = { fontSize: F.xs, color: C.blue, lineHeight: 1.6 };
  *   expertLoggedIn: boolean - 전문가 로그인 상태
  *   onExpertLoginClick: () => void - 전문가 로그인 탭 이동
  */
-export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginClick }) {
+type InfoPageProps = { expertLoggedIn: boolean; onExpertLoginClick: () => void };
+export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginClick }: InfoPageProps) {
   return (
     <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
 

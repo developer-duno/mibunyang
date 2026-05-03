@@ -1,10 +1,17 @@
 import { memo } from "react";
 import { C, F, gr } from "@/theme";
 import { IconClose } from "@/components/icons";
+import type { CompareItem } from "@/types/components";
+
+type SelectedAptCardProps = {
+  selected: CompareItem | null;
+  onInfoClick: () => void;
+  onClose: () => void;
+};
 
 // 지도에서 마커 클릭 시 하단에 뜨는 아파트 정보 카드
 // 닫기 버튼 + 상세 보기 버튼 + 종합 점수 표시
-export const SelectedAptCard = memo(function SelectedAptCard({ selected, onInfoClick, onClose }) {
+export const SelectedAptCard = memo(function SelectedAptCard({ selected, onInfoClick, onClose }: SelectedAptCardProps) {
   if (!selected) return null;
   return (
     <div style={{ position: "absolute", bottom: 12, left: 12, right: 12, background: C.white, borderRadius: 10, padding: "10px 12px", boxShadow: "0 2px 12px rgba(0,0,0,0.15)", zIndex: 10, display: "flex", alignItems: "center", gap: 10 }}>

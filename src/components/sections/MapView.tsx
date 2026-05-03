@@ -6,26 +6,24 @@ import {
   MAP_DEFAULTS, CLUSTER_OPTS, MY_LOC_LEVEL, GEO_TIMEOUT,
   shortPrice, buildMarkerSvg, loadKakaoMapSdk,
 } from "./kakaoMapHelpers";
+import type { MapViewProps } from "@/types/components/MapView.types";
+import type { Apt } from "@/types/scoring";
+import type { ScoringResult } from "@/types/components";
+
+type FilteredItem = { apt: Apt; res: ScoringResult };
 
 const ChoroplethView = lazy(() => import("./ChoroplethView").then(m => ({ default: m.ChoroplethView })));
 
-/**
- * MapView — Kakao Map 기반 아파트 지도 뷰
- * Props:
- *   filtered: Array<{apt, res}> — 필터링된 아파트 목록
- *   onDetail: (id) => void — 상세 모달 열기
- *   isPC: boolean
- */
-export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop }) {
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const clustererRef = useRef(null);
+export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop }: MapViewProps) {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<unknown>(null);
+  const clustererRef = useRef<{ clear: () => void; addMarkers: (_m: unknown[]) => void } | null>(null);
   const [ready, setReady] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [markerCount, setMarkerCount] = useState(null);
-  const [error, setError] = useState(null);
-  const [mode, setMode] = useState("point"); // "point" | "choropleth"
-  const [mapInstance, setMapInstance] = useState(null);
+  const [selected, setSelected] = useState<FilteredItem | null>(null);
+  const [markerCount, setMarkerCount] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"point" | "choropleth">("point");
+  const [mapInstance, setMapInstance] = useState<unknown>(null);
 
   // Kakao Maps SDK 동적 로드 + 지도 초기화
   useEffect(() => {
@@ -33,16 +31,17 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     loadKakaoMapSdk()
       .then(() => {
         if (cancelled) return;
-        window.kakao.maps.load(() => {
+        const kakao = (window as any).kakao;
+        kakao.maps.load(() => {
           if (cancelled || !mapRef.current || mapInstanceRef.current) return;
-          const map = new window.kakao.maps.Map(mapRef.current, {
-            center: new window.kakao.maps.LatLng(MAP_DEFAULTS.lat, MAP_DEFAULTS.lng),
+          const map = new kakao.maps.Map(mapRef.current, {
+            center: new kakao.maps.LatLng(MAP_DEFAULTS.lat, MAP_DEFAULTS.lng),
             level: MAP_DEFAULTS.level,
           });
-          map.addControl(new window.kakao.maps.ZoomControl(), window.kakao.maps.ControlPosition.RIGHT);
+          map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
           mapInstanceRef.current = map;
           setMapInstance(map);
-          clustererRef.current = new window.kakao.maps.MarkerClusterer({
+          clustererRef.current = new kakao.maps.MarkerClusterer({
             map,
             averageCenter: true,
             minLevel: CLUSTER_OPTS.minLevel,
@@ -77,13 +76,13 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   // 마커 업데이트 — point 모드에서만 동작 (color 모드는 event handler 가 clear 처리)
   useEffect(() => {
     if (!ready || !clustererRef.current || mode !== "point") return;
-    const kakao = window.kakao.maps;
+    const kakao = (window as any).kakao.maps;
     clustererRef.current.clear();
     // filtered 변경 시 이전 선택 정리 — 새 filtered 에서 사라진 단지의 selected 카드가 남는 것 방지
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelected(null);
 
-    const markers = [];
+    const markers: unknown[] = [];
     for (const item of filtered) {
       const { apt, res } = item;
       if (!apt.lat || !apt.lng) continue;
@@ -107,8 +106,8 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
 
     if (markers.length > 0 && mapInstance) {
       const bounds = new kakao.LatLngBounds();
-      markers.forEach(m => bounds.extend(m.getPosition()));
-      mapInstance.setBounds(bounds);
+      markers.forEach((m: any) => bounds.extend(m.getPosition()));
+      (mapInstance as any).setBounds(bounds);
     }
   }, [ready, filtered, mode, mapInstance]);
 
@@ -126,16 +125,16 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   }, [clearMarkersAndSelection]);
 
   const handleInfoClick = useCallback(() => {
-    if (selected && onDetail) onDetail(selected.apt.id);
+    if (selected && onDetail && selected.apt.id) onDetail(selected.apt.id);
   }, [selected, onDetail]);
 
   // 현위치 버튼 핸들러
-  const myLocMarkerRef = useRef(null);
+  const myLocMarkerRef = useRef<any>(null);
   const handleMyLocation = useCallback(() => {
     if (!ready || !mapInstance || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const kakao = window.kakao.maps;
+        const kakao = (window as any).kakao.maps;
         const loc = new kakao.LatLng(pos.coords.latitude, pos.coords.longitude);
         if (myLocMarkerRef.current) myLocMarkerRef.current.setPosition(loc);
         else {
@@ -147,8 +146,8 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
           });
           myLocMarkerRef.current.setMap(mapInstance);
         }
-        mapInstance.setCenter(loc);
-        mapInstance.setLevel(MY_LOC_LEVEL);
+        (mapInstance as any).setCenter(loc);
+        (mapInstance as any).setLevel(MY_LOC_LEVEL);
       },
       () => { /* 권한 거부 시 조용히 무시 */ },
       { enableHighAccuracy: false, timeout: GEO_TIMEOUT },

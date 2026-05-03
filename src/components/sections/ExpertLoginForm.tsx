@@ -1,17 +1,39 @@
-import { memo } from "react";
+import { memo, type Dispatch, type SetStateAction } from "react";
 import { C, F } from "@/theme";
 import { SignupExtraFields } from "./SignupExtraFields";
+
+// useExpertMode() 반환값은 8+ 필드 + handler 다수.
+// 본 컴포넌트는 expert 전체를 통째로 받아 form/error/state 전부 사용 → setAuthForm 은 React 표준 setter.
+type AuthFormState = Record<string, any>;
+type ExpertState = {
+  authMode: "login" | "signup";
+  setAuthMode: (_m: "login" | "signup") => void;
+  authForm: AuthFormState;
+  setAuthForm: Dispatch<SetStateAction<AuthFormState>>;
+  authStatus?: "pending" | "rejected" | string | null;
+  authError?: string | null;
+  authLoading?: boolean;
+  handleExpertSignup: () => void;
+};
+
+type ExpertLoginFormProps = {
+  expert: ExpertState;
+  onLogin: () => void;
+  onBack: () => void;
+  onKakaoLogin?: () => void;
+  kakaoLoading?: boolean;
+};
 
 /**
  * 전문가 로그인/회원가입 폼
  * Props: expert (useExpertMode 전체 반환값), onLogin (handleExpertLogin 콜백), onBack (돌아가기)
  */
-export const ExpertLoginForm = memo(function ExpertLoginForm({ expert, onLogin, onBack, onKakaoLogin, kakaoLoading }) {
+export const ExpertLoginForm = memo(function ExpertLoginForm({ expert, onLogin, onBack, onKakaoLogin, kakaoLoading }: ExpertLoginFormProps) {
   return (
         <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
           <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
             <div role="tablist" style={{ display: "flex", borderBottom: `2px solid ${C.border}`, marginBottom: 16 }}>
-              {[{ key: "login", label: "로그인" }, { key: "signup", label: "회원가입" }].map(tab => {
+              {([{ key: "login", label: "로그인" }, { key: "signup", label: "회원가입" }] as const).map(tab => {
                 const active = expert.authMode === tab.key;
                 return (
                   <button key={tab.key} role="tab" aria-selected={active} type="button"
