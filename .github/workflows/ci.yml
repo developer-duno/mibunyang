@@ -26,6 +26,8 @@ jobs:
         run: npm run typecheck
 
       - name: Test
+        env:
+          VITE_FEATURE_UPCOMING: "true"
         run: npm run test
 
       - name: Build
