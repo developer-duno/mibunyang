@@ -2,8 +2,9 @@ import { useCallback } from "react";
 import { C, F } from "@/theme";
 import { SkeletonList } from "@/components/primitives";
 import { UserCard } from "./UserCard";
+import type { UserListProps } from "@/types/admin";
 
-export function UserList({ admin }) {
+export function UserList({ admin }: UserListProps) {
   const handleBatchApprove = useCallback(() => admin.handleBatchReview("approve"), [admin]);
   const handleBatchReject = useCallback(() => admin.handleBatchReview("reject"), [admin]);
   const handlePagePrev = useCallback(() => admin.handlePageChange(admin.page - 1), [admin]);

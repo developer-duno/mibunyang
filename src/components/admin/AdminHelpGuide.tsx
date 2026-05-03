@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
+import type { AdminHelpGuideProps } from "@/types/admin";
 
 const card = { background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 10 };
 const title = { fontSize: F.base, fontWeight: 700, color: C.purple, marginBottom: 6 };
@@ -11,7 +12,7 @@ const label = { fontSize: F.sm, fontWeight: 700, color: C.text };
  * AdminHelpGuide - 관리자용 도움말 (토글 패널)
  * Props: open: boolean, onClose: () => void
  */
-export const AdminHelpGuide = memo(function AdminHelpGuide({ open, onClose }) {
+export const AdminHelpGuide = memo(function AdminHelpGuide({ open, onClose }: AdminHelpGuideProps) {
   if (!open) return null;
 
   return (

@@ -3,10 +3,15 @@ import { C, F } from "@/theme";
 import { PROFILES } from "@/constants/profiles";
 import { WeightTable } from "./WeightTable";
 import { ScoreBreakdownPreview } from "./ScoreBreakdownPreview";
+import type { WeightEditorProps } from "@/types/components/WeightEditor.types";
+import type { Profile, ProfileWeights } from "@/types/scoring";
+import type { CustomWeights } from "@/types/admin";
 
-const CAT_KEYS = ["location", "product", "price", "risk", "benefit", "future"];
+const CAT_KEYS: Array<keyof ProfileWeights> = ["location", "product", "price", "risk", "benefit", "future"];
 
-const WE_S = {
+import type { CSSProperties } from "react";
+
+const WE_S: Record<string, CSSProperties> = {
   container: { marginBottom: 24 },
   title: { fontSize: F.lg, fontWeight: 800, color: C.text, marginBottom: 12 },
   tabRow: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" },
@@ -15,20 +20,20 @@ const WE_S = {
   validationBase: { marginTop: 8, fontSize: F.xs, fontWeight: 600, padding: "6px 12px", borderRadius: 6 },
 };
 
-export default memo(function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }) {
-  const [editingProfile, setEditingProfile] = useState(null);
-  const [draft, setDraft] = useState({});
+export default memo(function WeightEditor({ profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }: WeightEditorProps) {
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
+  const [draft, setDraft] = useState<Partial<ProfileWeights>>({});
   const [previewAptIdx, setPreviewAptIdx] = useState(0);
 
-  const startEdit = useCallback((pKey) => {
-    const current = customWeights[pKey] ?? PROFILES[pKey].w;
+  const startEdit = useCallback((pKey: Profile) => {
+    const current = customWeights[pKey] ?? (PROFILES as Record<string, { w: ProfileWeights }>)[pKey].w;
     setDraft({ ...current });
     setEditingProfile(pKey);
   }, [customWeights]);
 
   const cancelEdit = useCallback(() => { setEditingProfile(null); setDraft({}); }, []);
 
-  const handleChange = useCallback((catKey, val) => {
+  const handleChange = useCallback((catKey: string, val: string) => {
     const n = val === "" ? 0 : parseInt(val, 10);
     if (isNaN(n) || n < 0 || n > 100) return;
     setDraft(prev => ({ ...prev, [catKey]: n }));
@@ -38,15 +43,16 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
 
   const handleSave = useCallback(() => {
     if (sum !== 100) return;
-    const next = { ...customWeights, [editingProfile]: { ...draft } };
+    if (!editingProfile) return;
+    const next: CustomWeights = { ...customWeights, [editingProfile]: { ...draft } as ProfileWeights };
     saveCustomWeights(next);
     setEditingProfile(null);
     setDraft({});
     showToast("가중치가 저장되었습니다");
   }, [sum, editingProfile, draft, customWeights, saveCustomWeights, showToast]);
 
-  const handleReset = useCallback((pKey) => {
-    const next = { ...customWeights };
+  const handleReset = useCallback((pKey: Profile) => {
+    const next: CustomWeights = { ...customWeights };
     delete next[pKey];
     saveCustomWeights(next);
     if (editingProfile === pKey) { setEditingProfile(null); setDraft({}); }
@@ -63,10 +69,11 @@ export default memo(function WeightEditor({ profile, setProfile, customWeights, 
       {/* Profile tabs */}
       <div style={WE_S.tabRow}>
         {Object.entries(PROFILES).map(([pKey, p]) => {
-          const active = profile === pKey;
-          const isCustom = !!customWeights[pKey];
+          const pk = pKey as Profile;
+          const active = profile === pk;
+          const isCustom = !!customWeights[pk];
           return (
-            <button key={pKey} onClick={() => setProfile(pKey)} style={{
+            <button key={pk} onClick={() => setProfile(pk)} style={{
               ...WE_S.tabButtonBase,
               fontWeight: active ? 700 : 500,
               background: active ? C.indigoLight : C.white,

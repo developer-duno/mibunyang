@@ -6,8 +6,9 @@ import { SkeletonList } from "@/components/primitives";
 import { STATUS_TABS } from "./constants";
 import { StatsSection } from "./StatsSection";
 import { UserList } from "./UserList";
+import type { AdminDashboardProps } from "@/types/components/AdminDashboard.types";
 
-export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }) {
+export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }: AdminDashboardProps) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);

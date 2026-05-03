@@ -1,8 +1,9 @@
 import { C, F } from "@/theme";
 import { STATUS_TABS, SPECIALTY_BADGE, STATUS_LABELS } from "./constants";
+import type { UserCardProps } from "@/types/components/UserCard.types";
 
-export function UserCard({ user, admin }) {
-  const badge = SPECIALTY_BADGE[user.specialty] || SPECIALTY_BADGE["기타"];
+export function UserCard({ user, admin }: UserCardProps) {
+  const badge = (user.specialty ? SPECIALTY_BADGE[user.specialty] : null) || SPECIALTY_BADGE["기타"];
   const statusLabel = STATUS_LABELS[user.status] || "대기중";
   const statusStyle = STATUS_TABS.find(t => t.key === user.status) || STATUS_TABS[0];
 

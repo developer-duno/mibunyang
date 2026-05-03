@@ -1,7 +1,8 @@
 import { C, F } from "@/theme";
 import { STATUS_TABS, SPECIALTY_BADGE } from "./constants";
+import type { StatsSectionProps } from "@/types/admin";
 
-export function StatsSection({ stats }) {
+export function StatsSection({ stats }: StatsSectionProps) {
   const { counts, userTypes, specialtyDist, recentSignups } = stats;
   const maxSignup = Math.max(...recentSignups.map(d => d.count), 1);
   const userTotal = (userTypes.kakao || 0) + (userTypes.expert || 0);
