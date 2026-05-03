@@ -1,8 +1,31 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { IconClose } from "./icons";
+import type { CompareItem } from "@/types/components";
 
-export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast }) {
+type ConsultFormState = {
+  name?: string;
+  phone?: string;
+  email?: string;
+  message?: string;
+  budgetMin?: string;
+  budgetMax?: string;
+  consultType?: string;
+  [key: string]: unknown;
+};
+
+type ConsultFormProps = {
+  scored: CompareItem[];
+  favoriteIds: string[];
+  setFavoriteIds: (_ids: string[]) => void;
+  form: ConsultFormState;
+  setForm: (_form: ConsultFormState) => void;
+  onSubmit: () => void;
+  submitted: boolean;
+  showToast: (_msg: string) => void;
+};
+
+export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setFavoriteIds, form, setForm, onSubmit, submitted, showToast }: ConsultFormProps) {
   if (submitted) {
     return (
       <div style={{ padding: "0 16px" }}>
@@ -24,24 +47,24 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
     );
   }
 
-  const updateField = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+  const updateField = (key: string, val: unknown) => setForm({ ...form, [key]: val });
 
   const handleSubmit = () => {
-    if (!form.name.trim()) { showToast("이름을 입력해주세요"); return; }
-    if (!form.phone.trim()) { showToast("연락처를 입력해주세요"); return; }
+    if (!String(form.name ?? "").trim()) { showToast("이름을 입력해주세요"); return; }
+    if (!String(form.phone ?? "").trim()) { showToast("연락처를 입력해주세요"); return; }
     if (favoriteIds.length === 0) { showToast("목록에서 관심매물을 1개 이상 추가해주세요"); return; }
     onSubmit();
   };
 
-  const budgetDisplay = (v) => {
-    const n = parseInt(v, 10);
+  const budgetDisplay = (v: unknown) => {
+    const n = parseInt(String(v ?? ""), 10);
     if (!n || isNaN(n)) return "";
     return n >= 10000 ? `${(n / 10000).toFixed(1)}억` : `${n.toLocaleString("ko-KR")}만`;
   };
 
-  const favItems = favoriteIds.map(id => scored.find(x => x.apt.id === id)).filter(Boolean);
+  const favItems = favoriteIds.map(id => scored.find(x => x.apt.id === id)).filter((item): item is CompareItem => Boolean(item));
 
-  const inputStyle = { width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6, background: C.white, color: C.text, boxSizing: "border-box", minHeight: 42 };
+  const inputStyle = { width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6, background: C.white, color: C.text, boxSizing: "border-box" as const, minHeight: 42 };
   const labelStyle = { fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block" };
   const sectionStyle = { marginBottom: 16 };
 
@@ -76,7 +99,7 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
                 <div key={item.apt.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: `1px solid ${C.border}`, background: C.indigoLight }}>
                   <span style={{ flex: 1, fontSize: F.sm, fontWeight: 700, color: C.text }}>{item.apt.name}</span>
                   <span style={{ fontSize: F.xs, color: C.muted }}>{item.apt.region} · {item.res.total}점</span>
-                  <button onClick={() => setFavoriteIds(p => p.filter(x => x !== item.apt.id))} aria-label="관심단지 제거" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}><IconClose size={14} /></button>
+                  <button onClick={() => setFavoriteIds(favoriteIds.filter(x => x !== item.apt.id))} aria-label="관심단지 제거" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: "2px 4px", display: "flex", alignItems: "center" }}><IconClose size={14} /></button>
                 </div>
               ))}
             </div>

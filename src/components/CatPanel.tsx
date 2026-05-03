@@ -2,13 +2,21 @@ import { memo, useState } from "react";
 import { C, F, catCol, gr } from "@/theme";
 import { Bar } from "./primitives";
 import { SUB_CONTEXT, PRODUCT_MAX } from "@/constants/subContext";
+import type { Res } from "@/types/scoring";
 
-function getDots(score, catKey, subName) {
+type SubScoreItem = { name: string; score: number; info?: string };
+
+type CatPanelProps = {
+  cat: Res;
+  k: string;
+};
+
+function getDots(score: number, catKey: string, subName: string): number {
   if (catKey === "benefit") return -1;
   return Math.round(normalizeScore(score, catKey, subName) / 20);
 }
 
-function renderDots(n) {
+function renderDots(n: number) {
   if (n < 0) return null;
   const filled = Math.max(0, Math.min(n, 5));
   return (
@@ -18,18 +26,18 @@ function renderDots(n) {
   );
 }
 
-function normalizeScore(score, catKey, subName) {
-  if (catKey === "product") return Math.round(score / (PRODUCT_MAX[subName] || 10) * 100);
+function normalizeScore(score: number, catKey: string, subName: string): number {
+  if (catKey === "product") return Math.round(score / ((PRODUCT_MAX as Record<string, number>)[subName] || 10) * 100);
   return score;
 }
 
-function scoreColor(score, catKey, subName) {
+function scoreColor(score: number, catKey: string, subName: string): string {
   if (catKey === "benefit") return C.amber;
   const n = normalizeScore(score, catKey, subName);
   return n >= 70 ? C.green : n >= 40 ? C.amber : C.red;
 }
 
-function getHighlights(subs, catKey) {
+function getHighlights(subs: SubScoreItem[], catKey: string): SubScoreItem[] {
   if (catKey === "benefit") {
     return subs.filter(s => s.info !== "-").slice(0, 3);
   }
@@ -42,12 +50,12 @@ function getHighlights(subs, catKey) {
     .slice(0, 3);
 }
 
-export const CatPanel = memo(function CatPanel({ cat, k }) {
+export const CatPanel = memo(function CatPanel({ cat, k }: CatPanelProps) {
   const [expanded, setExpanded] = useState(false);
-  const col = catCol[k];
+  const col = (catCol as Record<string, string>)[k];
   const grade = gr(cat.total);
-  const ctx = SUB_CONTEXT[k] || {};
-  const highlights = getHighlights(cat.subs, k);
+  const ctx = (SUB_CONTEXT as unknown as Record<string, Record<string, { interpret?: ((_sc: number) => string) | null; benchmark?: string | null }>>)[k] || {};
+  const highlights = getHighlights(cat.subs as SubScoreItem[], k);
 
   return (
     <div style={{ marginBottom: 12, background: C.bg, borderRadius: 10, padding: "10px 12px", border: `1px solid ${C.border}` }}>
@@ -88,7 +96,7 @@ export const CatPanel = memo(function CatPanel({ cat, k }) {
 
       {expanded && (
         <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-          {cat.subs.map((s, i) => {
+          {(cat.subs as SubScoreItem[]).map((s: SubScoreItem, i: number) => {
             const sc = ctx[s.name];
             const dots = getDots(s.score, k, s.name);
             const interp = sc?.interpret?.(s.score);
