@@ -1,0 +1,204 @@
+/**
+ * 스코어링 도메인 타입 (M1 a-2).
+ *
+ * scoring/* 모듈이 import 하여 .ts 변환 시 함수 시그니처에 사용.
+ * 모든 필드 optional — sanitize() 가 null 폴백 처리하므로 호출처는 부분 객체도 안전.
+ *
+ * src/scoring/CLAUDE.md 의 함수 시그니처 표 + engine.js JSDoc 기반.
+ */
+
+/**
+ * 원본 아파트 객체 (DB SELECT 또는 sanitize 결과).
+ *
+ * sanitize() 후의 a 객체 = 모든 위험·가격·인프라 필드 num()/str() 처리 완료.
+ * 본 타입은 sanitize 입력·출력 둘 다 커버 (보수적 partial).
+ */
+export interface Apt {
+  // 식별자
+  id?: string;
+  name?: string;
+
+  // 위치
+  region?: string;
+  gu?: string;
+
+  // 가격·시장 (sanitize 후 num)
+  price?: number;
+  area?: number;
+  pir?: number | null;
+  psr?: number | null;
+  jeonseRate?: number | null;
+  nearbyMedian?: number | null;
+  avgPriceSqm?: number | null;
+  presalePp?: number | null;
+  priceIndex?: number | null;
+  landCostRatio?: number | null;
+
+  // 위험 (sanitize 후 num + 비관 폴백)
+  unsoldRate?: number;
+  recentTrades6m?: number;
+  cancelRatio6m?: number | null;
+  competitionRate?: number | null;
+  crimeSafetyGrade?: number | null;
+  builderDebtRatio?: number;
+  supplyRatio?: number;
+  popGrowth?: number | null;
+  netMigration?: number | null;
+  dataReliability?: number;
+  initialSaleRate?: number | null;
+  isRegulated?: boolean | null;
+  naverSellCount?: number | null;
+
+  // 교통
+  subwayDist?: number;
+  busRoutes?: number;
+  busStopNames?: string[] | null;
+  icDist?: number;
+  ktxDist?: number;
+
+  // 인프라
+  noise?: number;
+  hospital?: number;
+  mart?: number;
+  conv?: number;
+  park?: number;
+  cafe?: number;
+  culture?: number;
+  bank?: number;
+  pharmacy?: number;
+
+  // 혜택
+  loanFree?: boolean;
+  loanFreePct?: number;
+  discountPct?: number;
+  optionFree?: boolean;
+  optionValue?: number;
+  balconyFree?: boolean;
+  balconyValue?: number;
+  cashback?: number;
+
+  // 상품성
+  units?: number;
+  parkingRatio?: number;
+  floorAreaRatio?: number;
+  exclusiveRatio?: number;
+  maxFloor?: number;
+  devDist?: number;
+  presaleParking?: number | null;
+  presaleGeneralSupply?: number | null;
+  presaleHousingType?: string;
+
+  // 관리비·방향·연식·브랜드
+  avgMaintenanceCost?: number;
+  primaryDirection?: string;
+  builder?: string;
+  completion?: string | null;
+
+  // 환경·교육
+  view?: string;
+  sunlight?: string;
+  schoolGrade?: string;
+  naverSchoolWalkMin?: number | null;
+
+  // 미래가치 (개발)
+  transitDev?: string;
+  cityDev?: string;
+  industryDev?: string;
+  presaleType?: string;
+  presaleStage?: string;
+  newSupply?: number;
+
+  // sanitize 내부 플래그
+  _regionAvgMaint?: number;
+  _noView?: boolean;
+  _noNoise?: boolean;
+  _noBus?: boolean;
+  _noParking?: boolean;
+  _noFar?: boolean;
+  _noExcl?: boolean;
+  _noFloor?: boolean;
+  _noSunlight?: boolean;
+
+  // 추가 필드 (도메인 확장 — strict 회피)
+  [key: string]: unknown;
+}
+
+/**
+ * 단일 카테고리 점수 결과 (모든 scoreXxx 함수의 공통 반환).
+ * scorePrice 는 fairPrice/deviation/fairPriceFromSidoAvg 추가, scoreBenefit 은 totalWon/rate/noData 추가.
+ */
+export interface Res {
+  total: number;
+  subs: Array<SubScore>;
+  // scorePrice
+  fairPrice?: number;
+  deviation?: string | number;
+  fairPriceFromSidoAvg?: boolean;
+  // scoreBenefit
+  totalWon?: number;
+  rate?: string;
+  noData?: boolean;
+  // calcCats 가 추가
+  label?: string;
+  key?: string;
+  // 다른 도메인별 필드
+  [key: string]: unknown;
+}
+
+export interface SubScore {
+  name: string;
+  score: number;
+  info?: string;
+  detail?: string;
+  // scorePrice/Location 등 도메인별 추가 필드
+  [key: string]: unknown;
+}
+
+/**
+ * calcCats 반환 — 6개 카테고리 점수.
+ */
+export interface Cats {
+  price: Res;
+  location: Res;
+  product: Res;
+  benefit: Res;
+  risk: Res;
+  future: Res;
+}
+
+/**
+ * PROFILES 의 키 (가중치 프로필 5종).
+ * src/constants/profiles.js 의 PROFILES 키.
+ */
+export type Profile = "live" | "invest" | "newlywed" | "edu" | "retire";
+
+/**
+ * PROFILES[profile].w — 6 카테고리 가중치.
+ * **불변식**: Object.values(w).reduce((a,b) => a+b) === 100
+ * (런타임 검증: WeightEditor.test.jsx L165, subContext.test.js, engine.test.js)
+ */
+export interface ProfileWeights {
+  price: number;
+  location: number;
+  product: number;
+  benefit: number;
+  risk: number;
+  future: number;
+}
+
+/**
+ * calcAll/calcCats 의 ctx 인자 — 지역 중위값 맵.
+ * computeRegionalMedians(apartments) 의 반환을 그대로 받음.
+ */
+export interface ScoringContext {
+  regionMedians?: Record<
+    string,
+    {
+      pir: number | null;
+      psr: number | null;
+      unsoldRate: number | null;
+      supplyRatio: number | null;
+      maint: number | null;
+    }
+  >;
+}
