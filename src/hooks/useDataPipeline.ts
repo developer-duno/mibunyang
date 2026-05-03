@@ -4,18 +4,20 @@ import { REGIONS } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { applyBaseFilters } from "@/lib/filterEngine";
+import type { Cats, ProfileWeights } from "@/types/scoring";
+import type { UseDataPipelineArgs, UseDataPipelineReturn, ScoredApt, SortKey } from "@/types/hooks";
 
 export const VISIBLE_PAGE_SIZE = 30;
 
 /* ── 정렬 비교 함수 (모듈 레벨 — 클로저 미사용, 매 렌더 재생성 방지) ── */
-const SORTERS = {
+const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
   total: (a, b) => b.res.total - a.res.total,
-  price: (a, b) => a.apt.price - b.apt.price,
+  price: (a, b) => (a.apt.price ?? 0) - (b.apt.price ?? 0),
   priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total,
   location: (a, b) => b.res.cats.location.total - a.res.cats.location.total,
   safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total,
-  benefit: (a, b) => (b.res.cats.benefit?.totalWon ?? 0) - (a.res.cats.benefit?.totalWon ?? 0),
-  newest: (a, b) => (b.apt.updatedAt ?? "").localeCompare(a.apt.updatedAt ?? ""),
+  benefit: (a, b) => (Number(b.res.cats.benefit?.totalWon ?? 0)) - (Number(a.res.cats.benefit?.totalWon ?? 0)),
+  newest: (a, b) => String(b.apt.updatedAt ?? "").localeCompare(String(a.apt.updatedAt ?? "")),
 };
 
 /**
@@ -28,7 +30,7 @@ export function useDataPipeline({
   showFavOnly, favoriteSet, budgetMin, budgetMax,
   areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly,
   hideNoUnsold, compIds, dataUpdatedAt,
-}) {
+}: UseDataPipelineArgs): UseDataPipelineReturn {
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
 
   /* ── useDeferredValue: 필터/정렬 변경 시 UI 반응성 개선 (React 19) ── */
@@ -40,38 +42,48 @@ export function useDataPipeline({
   const isFilterPending = deferredRegion !== filterRegion || deferredGu !== filterGu
     || deferredSortKey !== sortKey || deferredMoveIn !== moveInFilter || deferredTier !== builderTier;
 
-  const guOptions = useMemo(() => {
+  const guOptions = useMemo<string[]>(() => {
     if (filterRegion === "전체") {
-      const gus = new Set(apartments.map(a => a.gu).filter(Boolean));
+      const gus = new Set(apartments.map(a => a.gu).filter((g): g is string => Boolean(g)));
       return ["전체", ...[...gus].sort()];
     }
-    const regionGus = new Set(apartments.filter(a => a.region === filterRegion).map(a => a.gu).filter(Boolean));
+    const regionGus = new Set(apartments.filter(a => a.region === filterRegion).map(a => a.gu).filter((g): g is string => Boolean(g)));
     return ["전체", ...[...regionGus].sort()];
   }, [filterRegion, apartments]);
 
   const catsCache = useMemo(() => {
-    const needsFallback = apartments.some(a => !a.catsCache?.price);
-    const ctx = needsFallback ? { regionMedians: computeRegionalMedians(apartments) } : null;
+    const needsFallback = apartments.some(a => !(a.catsCache as Cats | undefined)?.price);
+    const ctx = needsFallback ? { regionMedians: computeRegionalMedians(apartments) } : undefined;
 
     if (import.meta.env.DEV && needsFallback) {
-      const missing = apartments.filter(a => !a.catsCache?.price).length;
+      const missing = apartments.filter(a => !(a.catsCache as Cats | undefined)?.price).length;
       console.warn(`[catsCache] ${missing}/${apartments.length} 폴백 (catsCache 누락)`);
       if (missing === apartments.length && apartments.length > 0) {
         console.error("[catsCache] 전체 폴백! API가 catsCache를 반환하지 않음 — 필드명 확인 필요");
       }
     }
 
-    return apartments.map(a => ({
-      apt: a,
-      cats: (a.catsCache && a.catsCache.price) ? a.catsCache : calcCats(a, ctx),
-    }));
+    return apartments.map(a => {
+      const cached = a.catsCache as Cats | undefined;
+      const cats: Cats = (cached && cached.price) ? cached : (calcCats(a, ctx) as Cats);
+      return { apt: a, cats };
+    });
   }, [apartments]);
 
-  const scored = useMemo(() => {
+  const scored = useMemo<ScoredApt[]>(() => {
+    const profilesMap = PROFILES as Record<string, { w: ProfileWeights }>;
     const raw = customWeights[profile];
-    const w = (raw && typeof raw === "object" && Object.keys(PROFILES[profile].w).every(k => typeof raw[k] === "number")) ? raw : PROFILES[profile].w;
+    const defaultW = profilesMap[profile].w;
+    const w: ProfileWeights = (
+      raw && typeof raw === "object"
+      && Object.keys(defaultW).every(k => typeof (raw as unknown as Record<string, unknown>)[k] === "number")
+    ) ? (raw as ProfileWeights) : defaultW;
     return catsCache.map(({ apt, cats }) => {
-      const total = Math.round(Math.min(Object.keys(cats).reduce((s, k) => s + cats[k].total * (w[k] ?? 0) / 100, 0), 100));
+      const catKeys = Object.keys(cats) as Array<keyof Cats>;
+      const total = Math.round(Math.min(
+        catKeys.reduce((s, k) => s + cats[k].total * (w[k as keyof ProfileWeights] ?? 0) / 100, 0),
+        100
+      ));
       return { apt, res: { total, cats, weights: w } };
     });
   }, [catsCache, profile, customWeights]);
@@ -96,17 +108,17 @@ export function useDataPipeline({
   useEffect(() => { setVisibleCount(VISIBLE_PAGE_SIZE); }, [filtered]);
 
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  const scoredMap = useMemo(() => new Map(scored.map(x => [x.apt.id, x])), [scored]);
-  const compItems = useMemo(() => compIds.map(id => scoredMap.get(id)).filter(Boolean), [compIds, scoredMap]);
-  const pw = useMemo(() => customWeights[profile] ?? PROFILES[profile].w, [profile, customWeights]);
+  const scoredMap = useMemo(() => new Map<string, ScoredApt>(scored.map(x => [x.apt.id ?? "", x])), [scored]);
+  const compItems = useMemo<ScoredApt[]>(() => compIds.map(id => scoredMap.get(id)).filter((x): x is ScoredApt => Boolean(x)), [compIds, scoredMap]);
+  const pw = useMemo<ProfileWeights>(() => customWeights[profile] ?? (PROFILES as Record<string, { w: ProfileWeights }>)[profile].w, [profile, customWeights]);
 
   const activeFilterCount = useMemo(() =>
     [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly].filter(Boolean).length,
     [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]
   );
 
-  const regionOptions = useMemo(() => {
-    const rs = new Set(apartments.map(a => a.region).filter(Boolean));
+  const regionOptions = useMemo<string[]>(() => {
+    const rs = new Set(apartments.map(a => a.region).filter((r): r is string => Boolean(r)));
     const order = Object.keys(REGIONS);
     return ["전체", ...order.filter(r => rs.has(r)), ...[...rs].filter(r => !order.includes(r)).sort()];
   }, [apartments]);
