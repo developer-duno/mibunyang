@@ -2,11 +2,11 @@
  * Supabase 클라이언트 (서버사이드 — Vercel Serverless Functions)
  * 읽기 전용: SUPABASE_ANON_KEY 사용
  */
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-let _client = null;
+let _client: SupabaseClient | null = null;
 
-export function getSupabase() {
+export function getSupabase(): SupabaseClient {
   if (_client) return _client;
 
   const url = process.env.SUPABASE_URL;
@@ -26,9 +26,9 @@ export function getSupabase() {
 /**
  * Supabase 클라이언트 (서버사이드, mibunyang 스키마 전용)
  */
-let _mibuyangClient = null;
+let _mibuyangClient: SupabaseClient | null = null;
 
-export function getMibuyangSupabase() {
+export function getMibuyangSupabase(): SupabaseClient {
   if (_mibuyangClient) return _mibuyangClient;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;

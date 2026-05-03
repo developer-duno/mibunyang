@@ -5,12 +5,15 @@
 
 export const ID_PATTERN = /^ah-\d+$/;
 
+type ParseResult =
+  | { ids: string[] }
+  | { id: string }
+  | { error: string; status: number };
+
 /**
  * apartment_id / apartment_ids 파라미터 파싱 및 검증
- * @param {object} query - req.query 객체
- * @returns {{ ids: string[] } | { id: string } | { error: string, status: number }}
  */
-export function parseApartmentIds(query) {
+export function parseApartmentIds(query: { apartment_ids?: string; apartment_id?: string }): ParseResult {
   const rawIds = (query.apartment_ids || "").trim();
   const apartmentId = (query.apartment_id || "").trim();
 
