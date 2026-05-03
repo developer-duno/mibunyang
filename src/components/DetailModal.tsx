@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, type ComponentType } from "react";
 import { C, F, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
@@ -19,14 +19,14 @@ import { IconClose } from "./icons";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
 
 // M3d 변환 전 children 컴포넌트 props 타입 누락 회피용 - JSX 호출 시 캐스팅
-const PriceTableC = PriceTable as React.ComponentType<Record<string, unknown>>;
-const SchoolInfoC = SchoolInfo as React.ComponentType<Record<string, unknown>>;
-const LoanAnalysisC = LoanAnalysis as React.ComponentType<Record<string, unknown>>;
-const DataSectionsC = DataSections as React.ComponentType<Record<string, unknown>>;
-const PresaleInfoC = PresaleInfo as React.ComponentType<Record<string, unknown>>;
-const PriceChartC = PriceChart as React.ComponentType<Record<string, unknown>>;
-const UnsoldChartC = UnsoldChart as React.ComponentType<Record<string, unknown>>;
-const MarketStatsChartsC = MarketStatsCharts as React.ComponentType<Record<string, unknown>>;
+const PriceTableC = PriceTable as ComponentType<Record<string, unknown>>;
+const SchoolInfoC = SchoolInfo as ComponentType<Record<string, unknown>>;
+const LoanAnalysisC = LoanAnalysis as ComponentType<Record<string, unknown>>;
+const DataSectionsC = DataSections as ComponentType<Record<string, unknown>>;
+const PresaleInfoC = PresaleInfo as ComponentType<Record<string, unknown>>;
+const PriceChartC = PriceChart as ComponentType<Record<string, unknown>>;
+const UnsoldChartC = UnsoldChart as ComponentType<Record<string, unknown>>;
+const MarketStatsChartsC = MarketStatsCharts as ComponentType<Record<string, unknown>>;
 
 const DM_S = {
   dragBar: { width: 40, height: 4, background: C.border, borderRadius: 2, margin: "0 auto 12px", cursor: "pointer" },

@@ -112,7 +112,7 @@ export const PresetPanel = memo(function PresetPanel({
           }}>
             <option value="" disabled>히스토리 ({(filterHistory ?? []).length})</option>
             {filterHistory.map((h: HistoryItem, i: number) => (
-              <option key={h.sig ?? `h-${i}`} value={i}>필터 {h.count ?? 0}개 · {new Date(h.ts ?? Date.now()).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</option>
+              <option key={h.sig ?? `h-${i}`} value={i}>필터 {h.count ?? 0}개{h.ts ? ` · ${new Date(h.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : ""}</option>
             ))}
           </select>
         )}

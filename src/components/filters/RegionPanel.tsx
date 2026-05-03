@@ -2,7 +2,7 @@
  * 지역 필터 패널 — 시/도 + 구/군 select
  * SearchFilterBar 기존 1행 지역 select를 드롭다운 패널로 추출
  */
-import { memo } from "react";
+import { memo, type CSSProperties } from "react";
 import { C, F } from "@/theme";
 import { selectBase } from "./filterStyles";
 
@@ -26,7 +26,7 @@ const sel = (active: boolean, disabled: boolean) => ({
   borderRadius: 6, background: disabled ? "#E2E8F0" : C.slate100,
   color: disabled ? "#94A3B8" : active ? C.indigo : C.slate600,
   cursor: disabled ? "default" : "pointer",
-} as React.CSSProperties);
+} as CSSProperties);
 
 export const RegionPanel = memo(function RegionPanel({
   filterRegion, onRegionChange, regionOptions,
