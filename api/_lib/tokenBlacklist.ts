@@ -1,14 +1,15 @@
 import { kv } from "./redis.js";
 import crypto from "crypto";
+import type { AuthPayload } from "./auth.js";
 
 /** 토큰 해시 생성 (SHA-256, 32자 — 원본 토큰 저장 방지) */
-export function hashToken(token) {
+export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex").slice(0, 32);
 }
 
 /** 토큰 블랙리스트 등록 (TTL = 토큰 잔여 만료 시간) */
-export async function blacklistToken(token, payload) {
-  const ttlMs = payload.exp - Date.now();
+export async function blacklistToken(token: string, payload: AuthPayload): Promise<void> {
+  const ttlMs = (payload.exp ?? 0) - Date.now();
   if (ttlMs <= 0) return; // 이미 만료된 토큰은 등록 불필요
   const ttlSec = Math.ceil(ttlMs / 1000);
   const hash = hashToken(token);
@@ -24,7 +25,7 @@ export async function blacklistToken(token, payload) {
  *   best-effort early revocation layer for already-issued tokens.
  * - Missing KV values, including null and undefined, mean "not blacklisted".
  */
-export async function isBlacklisted(token) {
+export async function isBlacklisted(token: string): Promise<boolean> {
   try {
     const hash = hashToken(token);
     const val = await kv.get(`bl:${hash}`);

@@ -4,13 +4,21 @@ const PBKDF2_ITERATIONS = 100_000;
 const PBKDF2_KEYLEN = 64;
 const PBKDF2_DIGEST = "sha512";
 
-export function hashPassword(password, existingSalt) {
+export type AuthPayload = {
+  email?: string;
+  type?: string;
+  iat?: number;
+  exp?: number;
+  [key: string]: unknown;
+};
+
+export function hashPassword(password: string, existingSalt?: string): { hash: string; salt: string } {
   const salt = existingSalt || crypto.randomBytes(32).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_DIGEST).toString("hex");
   return { hash, salt };
 }
 
-export function verifyPassword(password, storedHash, salt) {
+export function verifyPassword(password: string, storedHash: string, salt: string): boolean {
   // 레거시 SHA-256 해시 감지 (64자 = SHA-256, 128자 = PBKDF2-SHA512)
   if (storedHash.length === 64) {
     const legacyHash = crypto.createHash("sha256").update(salt + password).digest("hex");
@@ -20,13 +28,13 @@ export function verifyPassword(password, storedHash, salt) {
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(storedHash, "hex"));
 }
 
-function getSecret() {
+function getSecret(): string {
   const secret = process.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET environment variable is not set");
   return secret;
 }
 
-export function createToken(payload, { ttl } = {}) {
+export function createToken(payload: AuthPayload, { ttl }: { ttl?: number } = {}): string {
   const secret = getSecret();
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const body = Buffer.from(JSON.stringify({
@@ -40,26 +48,26 @@ export function createToken(payload, { ttl } = {}) {
 
 // refresh token 생성 (30일 기본, type:"refresh" 구분)
 const REFRESH_TTL = 30 * 24 * 60 * 60 * 1000; // 30일
-export function createRefreshToken(email, { ttl } = {}) {
+export function createRefreshToken(email: string, { ttl }: { ttl?: number } = {}): string {
   return createToken({ email, type: "refresh" }, { ttl: ttl || REFRESH_TTL });
 }
 
 // refresh token 검증 (type:"refresh" 확인)
-export function verifyRefreshToken(token) {
+export function verifyRefreshToken(token: string): AuthPayload | null {
   const payload = verifyToken(token);
   if (!payload || payload.type !== "refresh") return null;
   return payload;
 }
 
-export function verifyToken(token) {
+export function verifyToken(token: string): AuthPayload | null {
   try {
     const secret = getSecret();
     const [header, body, sig] = token.split(".");
     if (!header || !body || !sig) return null;
     const expected = crypto.createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
     if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-    const payload = JSON.parse(Buffer.from(body, "base64url").toString());
-    if (payload.exp < Date.now()) return null;
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString()) as AuthPayload;
+    if (payload.exp != null && payload.exp < Date.now()) return null;
     return payload;
   } catch {
     return null;
