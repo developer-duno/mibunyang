@@ -1,16 +1,13 @@
-import { memo, useEffect, useRef, type ComponentType } from "react";
+import { memo, useEffect, useRef } from "react";
 import { C, F, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
 import { CatPanel } from "./CatPanel";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
-// detail/* 컴포넌트는 M3d 에서 .tsx 변환 예정 → 임시 any 캐스팅
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
 import { DataSections } from "./detail/DataSections";
-
-const UNSOLD_WARN_THRESHOLD = 15;
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
@@ -18,15 +15,7 @@ import { MarketStatsCharts } from "./detail/MarketStatsCharts";
 import { IconClose } from "./icons";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
 
-// M3d 변환 전 children 컴포넌트 props 타입 누락 회피용 - JSX 호출 시 캐스팅
-const PriceTableC = PriceTable as ComponentType<Record<string, unknown>>;
-const SchoolInfoC = SchoolInfo as ComponentType<Record<string, unknown>>;
-const LoanAnalysisC = LoanAnalysis as ComponentType<Record<string, unknown>>;
-const DataSectionsC = DataSections as ComponentType<Record<string, unknown>>;
-const PresaleInfoC = PresaleInfo as ComponentType<Record<string, unknown>>;
-const PriceChartC = PriceChart as ComponentType<Record<string, unknown>>;
-const UnsoldChartC = UnsoldChart as ComponentType<Record<string, unknown>>;
-const MarketStatsChartsC = MarketStatsCharts as ComponentType<Record<string, unknown>>;
+const UNSOLD_WARN_THRESHOLD = 15;
 
 const DM_S = {
   dragBar: { width: 40, height: 4, background: C.border, borderRadius: 2, margin: "0 auto 12px", cursor: "pointer" },
@@ -146,19 +135,19 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           </div>
         )}
 
-        <PriceTableC apt={apt} />
-        <PriceChartC apartmentId={apt.id} siblingIds={apt.siblingIds} />
-        <UnsoldChartC apartmentId={apt.id} siblingIds={apt.siblingIds} />
+        <PriceTable apt={apt} />
+        <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
+        <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
 
-        <SchoolInfoC apt={apt} />
+        <SchoolInfo apt={apt} />
 
-        <PresaleInfoC apt={apt} />
+        <PresaleInfo apt={apt} />
 
-        <LoanAnalysisC apt={apt} />
+        <LoanAnalysis apt={apt} />
 
-        <MarketStatsChartsC region={apt.region} gu={apt.gu} />
+        <MarketStatsCharts region={apt.region} gu={apt.gu} />
 
-        <DataSectionsC apt={apt} />
+        <DataSections apt={apt} />
         {onConsult && (
           <button onClick={() => onConsult(apt.id as string)} style={{
             width: "100%", background: C.blue, color: C.white, border: "none", borderRadius: 8,

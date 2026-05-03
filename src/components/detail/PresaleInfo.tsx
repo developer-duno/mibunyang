@@ -2,14 +2,17 @@ import { memo, useState, useEffect, useRef } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics";
+import type { PresaleInfoProps } from "@/types/components/PresaleInfo.types";
 
-const STAGE_COLORS = {
+const STAGE_COLORS: Record<string, { bg: string; color: string }> = {
   "분양중": { bg: C.greenLight, color: C.green },
   "분양예정": { bg: C.blueLight, color: C.blue },
   "계약": { bg: C.amberLight, color: C.amber },
 };
 
-export const PresaleInfo = memo(function PresaleInfo({ apt }) {
+interface InfoItem { l: string; v: string }
+
+export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) {
   const tracked = useRef(false);
   const [imgErr, setImgErr] = useState(false);
 
@@ -22,19 +25,22 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
 
   if (!apt.presaleStage) return null;
 
-  const stageStyle = STAGE_COLORS[apt.presaleStage] ?? { bg: C.purpleLight, color: C.purple };
+  const stageStyle = STAGE_COLORS[String(apt.presaleStage)] ?? { bg: C.purpleLight, color: C.purple };
   const presaleUrl = apt.naverPresaleNo && apt.naverPresaleSeq
     ? `https://pre.land.naver.com/complexes/${apt.naverPresaleNo}/${apt.naverPresaleSeq}`
     : null;
 
-  const infoItems = [
-    apt.presaleGeneralSupply != null && { l: "일반분양", v: `${apt.presaleGeneralSupply.toLocaleString("ko-KR")}세대` },
-    apt.presaleBuildings != null && { l: "동수", v: `${apt.presaleBuildings}동` },
-    apt.presaleParking != null && { l: "주차대수", v: `${apt.presaleParking.toLocaleString("ko-KR")}대` },
-    apt.presaleHousingType && { l: "주택유형", v: apt.presaleHousingType },
-    apt.presaleMoveIn && { l: "입주시기", v: apt.presaleMoveIn },
+  const generalSupply = Number(apt.presaleGeneralSupply ?? NaN);
+  const buildings = Number(apt.presaleBuildings ?? NaN);
+  const parking = Number(apt.presaleParking ?? NaN);
+  const infoItems: InfoItem[] = ([
+    Number.isFinite(generalSupply) && { l: "일반분양", v: `${generalSupply.toLocaleString("ko-KR")}세대` },
+    Number.isFinite(buildings) && { l: "동수", v: `${buildings}동` },
+    Number.isFinite(parking) && { l: "주차대수", v: `${parking.toLocaleString("ko-KR")}대` },
+    apt.presaleHousingType && { l: "주택유형", v: String(apt.presaleHousingType) },
+    apt.presaleMoveIn && { l: "입주시기", v: String(apt.presaleMoveIn) },
     apt.presaleRecruitDate && { l: "분양시기", v: fmtRecruitDate(apt.presaleRecruitDate) },
-  ].filter(Boolean);
+  ].filter(Boolean) as InfoItem[]);
 
   return (
     <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
@@ -46,9 +52,9 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
       </div>
 
       {/* 대표 이미지 */}
-      {apt.presaleImageUrl && !imgErr && (
+      {Boolean(apt.presaleImageUrl) && !imgErr && (
         <img
-          src={apt.presaleImageUrl}
+          src={String(apt.presaleImageUrl)}
           alt={`${apt.name} 분양 이미지`}
           referrerPolicy="no-referrer"
           loading="lazy"
@@ -62,12 +68,12 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>분양가 범위</div>
-            <div style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>{fmtPriceRange(apt.presaleMinPrice, apt.presaleMaxPrice)}</div>
+            <div style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>{fmtPriceRange(apt.presaleMinPrice as number | null, apt.presaleMaxPrice as number | null)}</div>
           </div>
           {apt.presalePp != null && (
             <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
               <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>평당가</div>
-              <div style={{ fontSize: F.base, fontWeight: 800, color: C.blue }}>{fmtPrice(apt.presalePp)}</div>
+              <div style={{ fontSize: F.base, fontWeight: 800, color: C.blue }}>{fmtPrice(apt.presalePp as number)}</div>
             </div>
           )}
         </div>
@@ -86,24 +92,24 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
       )}
 
       {/* 일정 */}
-      {apt.presaleSchedule && (
+      {Boolean(apt.presaleSchedule) && (
         <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
           <span style={{ fontWeight: 600 }}>일정: </span>{fmtPresaleSchedule(apt.presaleSchedule)}
         </div>
       )}
 
       {/* 특징 */}
-      {apt.presaleFeatures && (
+      {Boolean(apt.presaleFeatures) && (
         <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
-          <span style={{ fontWeight: 600 }}>특징: </span>{apt.presaleFeatures}
+          <span style={{ fontWeight: 600 }}>특징: </span>{String(apt.presaleFeatures)}
         </div>
       )}
 
       {/* 분양문의 전화 */}
-      {apt.presaleInquiry && (
+      {Boolean(apt.presaleInquiry) && (
         <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
           <span style={{ fontWeight: 600 }}>분양문의: </span>
-          <a href={`tel:${apt.presaleInquiry.replace(/[^\d+\-()]/g, "")}`} style={{ color: C.blue, textDecoration: "none" }}>{apt.presaleInquiry}</a>
+          <a href={`tel:${String(apt.presaleInquiry).replace(/[^\d+\-()]/g, "")}`} style={{ color: C.blue, textDecoration: "none" }}>{String(apt.presaleInquiry)}</a>
         </div>
       )}
 
@@ -121,9 +127,9 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }) {
       )}
 
       {/* 수집시점 */}
-      {apt.presaleFetchedAt && (
+      {Boolean(apt.presaleFetchedAt) && (
         <div style={{ fontSize: F.micro, color: C.muted, marginTop: 6 }}>
-          수집: {new Date(apt.presaleFetchedAt).toLocaleDateString("ko-KR")}
+          수집: {new Date(apt.presaleFetchedAt as string).toLocaleDateString("ko-KR")}
         </div>
       )}
     </div>

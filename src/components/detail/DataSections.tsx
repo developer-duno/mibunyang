@@ -4,11 +4,12 @@ import { FIELD_META } from "@/constants/fieldMeta";
 import { fmtPrice } from "@/lib/format";
 import { HighlightField } from "./HighlightField";
 import { InfrastructureSection } from "./InfrastructureSection";
+import type { DataSectionsProps, DataSection } from "@/types/components/DataSections.types";
 
 const UNSOLD_WARN_THRESHOLD = 15;
 const UNSOLD_SAFE_THRESHOLD = 5;
 
-const DATA_SECTIONS = [
+const DATA_SECTIONS: DataSection[] = [
   {
     title: "단지 기본정보",
     highlight: ["unsoldRate", "pp", "completion", "dataReliability"],
@@ -49,7 +50,7 @@ const DATA_SECTIONS = [
 
 // 정적 inline style 호이스팅 (세션149 HS_S / 세션150 DM_S 패턴 확장)
 // 동적 4건은 인라인 보존: rotate(showData) / marginTop(si>0) / marginBottom(section.grid) / color(dataValueColor·f.dist)
-const DS_S = {
+const DS_S: Record<string, import("react").CSSProperties> = {
   container: { background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` },
   toggleHead: { display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" },
   toggleTitle: { fontSize: F.base, fontWeight: 700, color: C.text },
@@ -67,21 +68,23 @@ const DS_S = {
   footer: { fontSize: F.micro, color: C.muted, marginTop: 10, lineHeight: 1.5 },
 };
 
-function dataValueColor(field, value) {
+function dataValueColor(field: string, value: unknown): string {
   if (value == null) return C.muted;
-  if (field === "unsoldRate") return value > UNSOLD_WARN_THRESHOLD ? C.red : value <= UNSOLD_SAFE_THRESHOLD ? C.green : C.text;
-  if (field === "subwayDist") return value <= 500 ? C.green : value <= 1000 ? C.blue : C.text;
-  if (field === "popGrowth") return value > 0 ? C.green : value < 0 ? C.red : C.text;
-  if (field === "dataReliability") return value >= 80 ? C.green : value >= 50 ? C.amber : C.red;
-  if (["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"].includes(field)) return value === 0 ? C.muted : C.text;
+  const n = Number(value);
+  if (field === "unsoldRate") return n > UNSOLD_WARN_THRESHOLD ? C.red : n <= UNSOLD_SAFE_THRESHOLD ? C.green : C.text;
+  if (field === "subwayDist") return n <= 500 ? C.green : n <= 1000 ? C.blue : C.text;
+  if (field === "popGrowth") return n > 0 ? C.green : n < 0 ? C.red : C.text;
+  if (field === "dataReliability") return n >= 80 ? C.green : n >= 50 ? C.amber : C.red;
+  if (["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"].includes(field)) return n === 0 ? C.muted : C.text;
   if (field === "primaryDirection") {
     if (!value) return C.muted;
-    return value.includes("남") ? C.green : value.includes("북") ? C.red : C.text;
+    const s = String(value);
+    return s.includes("남") ? C.green : s.includes("북") ? C.red : C.text;
   }
   return C.text;
 }
 
-export const DataSections = memo(function DataSections({ apt }) {
+export const DataSections = memo(function DataSections({ apt }: DataSectionsProps) {
   const [showData, setShowData] = useState(false);
 
   return (
@@ -100,7 +103,7 @@ export const DataSections = memo(function DataSections({ apt }) {
       {showData && (
         <div style={DS_S.body}>
           {DATA_SECTIONS.map((section, si) => {
-            const allFields = [...(section.highlight || []), ...(section.grid || []), ...(section.pairs || []).flat().filter(Boolean)];
+            const allFields: string[] = [...(section.highlight || []), ...(section.grid || []), ...(section.pairs || []).flat().filter((x): x is string => typeof x === "string")];
             const hasAny = allFields.some(f => apt[f] != null);
             return (
               <div key={si} style={{ marginTop: si > 0 ? 12 : 0 }}>
@@ -117,13 +120,13 @@ export const DataSections = memo(function DataSections({ apt }) {
                   {section.grid && (
                     <div style={DS_S.grid}>
                       {section.grid.map(f => {
-                        const meta = FIELD_META[f];
+                        const meta = (FIELD_META as Record<string, { label: string; fmt?: (_v: unknown, _apt: unknown) => unknown }>)[f];
                         if (!meta) return null;
                         const val = apt[f];
                         return (
                           <div key={f} style={DS_S.gridCell}>
                             <span style={DS_S.gridLabel}>{meta.label}</span>
-                            <span style={{ ...DS_S.gridValueBase, color: dataValueColor(f, val) }}>{meta.fmt(val)}</span>
+                            <span style={{ ...DS_S.gridValueBase, color: dataValueColor(f, val) }}>{String(meta.fmt ? meta.fmt(val, apt) : val ?? "")}</span>
                           </div>
                         );
                       })}
@@ -135,10 +138,10 @@ export const DataSections = memo(function DataSections({ apt }) {
               </div>
             );
           })}
-          {(apt.nearbyFacilities ?? []).length > 0 && (
+          {(((apt.nearbyFacilities as Array<{ name: string; dist: number }> | undefined) ?? []).length > 0) && (
             <div style={DS_S.subBlock}>
               <div style={DS_S.subSectionTitle}>주변 편의시설 상세</div>
-              {(apt.nearbyFacilities ?? []).slice(0, 8).map((f, i) => (
+              {((apt.nearbyFacilities as Array<{ name: string; dist: number }> | undefined) ?? []).slice(0, 8).map((f, i) => (
                 <div key={i} style={DS_S.gridCell}>
                   <span style={DS_S.gridLabel}>{f.name}</span>
                   <span style={{ ...DS_S.gridValueBase, color: f.dist <= 300 ? C.green : f.dist <= 700 ? C.blue : C.text }}>{f.dist}m</span>
@@ -146,10 +149,10 @@ export const DataSections = memo(function DataSections({ apt }) {
               ))}
             </div>
           )}
-          {(apt.priceByFloor ?? []).length > 0 && (
+          {(((apt.priceByFloor as Array<{ group: string; avg: number; count: number }> | undefined) ?? []).length > 0) && (
             <div style={DS_S.subBlock}>
               <div style={DS_S.subSectionTitle}>층별 매매가 (주변 실거래)</div>
-              {apt.priceByFloor.map((p, i) => (
+              {((apt.priceByFloor as Array<{ group: string; avg: number; count: number }> | undefined) ?? []).map((p, i) => (
                 <div key={i} style={DS_S.gridCell}>
                   <span style={DS_S.gridLabel}>{p.group}</span>
                   <span style={{ ...DS_S.gridValueBase, color: C.text }}>{fmtPrice(p.avg)} ({p.count}건)</span>
@@ -157,9 +160,9 @@ export const DataSections = memo(function DataSections({ apt }) {
               ))}
             </div>
           )}
-          {apt.announcementUrl && (
+          {Boolean(apt.announcementUrl) && (
             <div style={DS_S.subBlock}>
-              <a href={apt.announcementUrl} target="_blank" rel="noopener noreferrer" style={DS_S.link}>모집공고 원문 보기</a>
+              <a href={String(apt.announcementUrl)} target="_blank" rel="noopener noreferrer" style={DS_S.link}>모집공고 원문 보기</a>
             </div>
           )}
           <div style={DS_S.footer}>

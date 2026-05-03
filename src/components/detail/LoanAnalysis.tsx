@@ -5,25 +5,30 @@ import { fmtPrice } from "@/lib/format";
 import { thStyle, tdStyle } from "./tableStyles";
 import { useRentLoanRates } from "@/hooks/useRentLoanRates";
 import { LoanRatesSection } from "./LoanRatesSection";
+import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
+import type { PriceAreaRow } from "@/types/detail";
 
-export const LoanAnalysis = memo(function LoanAnalysis({ apt }) {
+export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProps) {
   const [showLegal, setShowLegal] = useState(false);
-  const { rates: rentRates } = useRentLoanRates();
+  const { rates: rentRates } = useRentLoanRates() as { rates: Array<{ rateMin?: number | null }> };
 
   const zone = getZone(apt.region, apt.gu);
-  const zoneName = ZONE_TYPE[zone];
-  const rates = LTV_RATES[zone];
+  const zoneName = (ZONE_TYPE as Record<string, string>)[zone];
+  const rates = (LTV_RATES as Record<string, { under9: number; over9: number }>)[zone];
   const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
-  const ltvBase = calcLTV(apt.price, zone);
-  const needCash = apt.price - ltvBase;
-  const allLoan = (apt.priceByArea ?? []);
-  const narrowLoan = allLoan.filter(p => Math.abs(p.area - apt.area) <= 10);
-  const loanSrc = narrowLoan.length >= 3 ? narrowLoan : allLoan.filter(p => Math.abs(p.area - apt.area) <= 20);
+  const aptPrice = Number(apt.price ?? 0);
+  const aptArea = Number(apt.area ?? 0);
+  const ltvBase = calcLTV(aptPrice, zone);
+  const needCash = aptPrice - ltvBase;
+  const allLoan = ((apt.priceByArea as PriceAreaRow[] | undefined) ?? []);
+  const narrowLoan = allLoan.filter(p => Math.abs(p.area - aptArea) <= 10);
+  const loanSrc = narrowLoan.length >= 3 ? narrowLoan : allLoan.filter(p => Math.abs(p.area - aptArea) <= 20);
   const hasDetail = loanSrc.length > 0;
   const rentMinRate = rentRates[0]?.rateMin ?? null;
-  const hasRentData = (apt.rentByArea ?? []).length > 0;
+  const allRent = (apt.rentByArea as PriceAreaRow[] | undefined) ?? [];
+  const hasRentData = allRent.length > 0;
   const rows = hasDetail ? loanSrc.map(p => {
-    const rent = (apt.rentByArea ?? []).find(r => r.area === p.area);
+    const rent = allRent.find(r => r.area === p.area);
     const gap = rent ? p.min - rent.avg : null;
     const ltv = calcLTV(p.min, zone);
     const monthlyInterest = (gap != null && gap > 0 && rentMinRate) ? Math.round(gap * rentMinRate / 100 / 12) : null;
@@ -41,7 +46,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }) {
         <div style={{ display: "flex", gap: 8, marginBottom: hasDetail ? 10 : 0 }}>
           <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>분양가</div>
-            <div style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>{fmtPrice(apt.price)}</div>
+            <div style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>{fmtPrice(aptPrice)}</div>
           </div>
           <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>LTV 대출한도</div>

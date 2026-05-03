@@ -5,13 +5,14 @@ import { thStyle, tdStyle } from "./tableStyles";
 import { useLoanRates } from "@/hooks/useLoanRates";
 import { LOAN_GROUPS, DEFAULT_GROUP } from "@/constants/loanGroups";
 import { SkeletonText } from "@/components/primitives";
+import type { LoanRatesSectionProps } from "@/types/detail";
 
-export const LoanRatesSection = memo(function LoanRatesSection({ apt }) {
+export const LoanRatesSection = memo(function LoanRatesSection({ apt }: LoanRatesSectionProps) {
   const [showRates, setShowRates] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(DEFAULT_GROUP);
   const { rates: loanRates, loading: ratesLoading, error: ratesError } = useLoanRates(selectedGroup);
 
-  const ltvBase = apt._ltvBase ?? 0;
+  const ltvBase = Number(apt._ltvBase ?? 0);
 
   return (
     <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
@@ -88,7 +89,7 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }) {
 });
 
 /** 원리금균등 월 상환액 계산 (만원 단위) */
-function calcMonthlyPayment(principal, annualRate, years) {
+function calcMonthlyPayment(principal: number, annualRate: number, years: number) {
   if (!principal || !annualRate || !years) return 0;
   const r = annualRate / 100 / 12;
   const n = years * 12;

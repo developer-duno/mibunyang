@@ -2,9 +2,10 @@ import { memo } from "react";
 import { C, F } from "@/theme";
 import { LineChart } from "@/components/primitives";
 import { usePriceHistory } from "@/hooks/usePriceHistory";
+import type { PriceChartProps } from "@/types/detail";
 
 /** 분양가 추이 차트 — DetailModal 내 표시 */
-export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }) {
+export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }: PriceChartProps) {
   const { data, loading, error, retry } = usePriceHistory(apartmentId, siblingIds);
 
   if (!apartmentId) return null;
@@ -18,10 +19,11 @@ export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }) 
   if (data.length < 2) return null;
 
   // 타입별 최신 가격만 추출하여 시계열 구성
-  const byDate = {};
-  for (const row of data) {
+  interface PriceRow { recorded_at: string; price?: number | null }
+  const byDate: Record<string, PriceRow> = {};
+  for (const row of data as PriceRow[]) {
     const key = row.recorded_at;
-    if (!byDate[key] || row.price > byDate[key].price) byDate[key] = row;
+    if (!byDate[key] || (row.price ?? 0) > (byDate[key].price ?? 0)) byDate[key] = row;
   }
   const chartData = Object.entries(byDate)
     .sort(([a], [b]) => a.localeCompare(b))

@@ -1,17 +1,19 @@
 import { memo, useState, useMemo } from "react";
+import type { CSSProperties } from "react";
 import { C, F } from "@/theme";
+import type { SchoolInfoProps, SchoolRow } from "@/types/detail";
 
-const fmtDist = (d) => d == null ? "—" : d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${d}m`;
-const distColor = (d) => d != null && d <= 500 ? C.green : d != null && d <= 1000 ? C.blue : C.muted;
-const thStyle = { fontSize: F.xs, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
-const tdStyle = { fontSize: F.sm, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
+const fmtDist = (d?: number | null) => d == null ? "—" : d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${d}m`;
+const distColor = (d?: number | null) => d != null && d <= 500 ? C.green : d != null && d <= 1000 ? C.blue : C.muted;
+const thStyle: CSSProperties = { fontSize: F.xs, fontWeight: 700, color: "#64748B", padding: "6px 8px", textAlign: "left", borderBottom: "1px solid #E2E8F0" };
+const tdStyle: CSSProperties = { fontSize: F.sm, padding: "6px 8px", borderBottom: "1px solid #F1F5F9" };
 
 const SCHOOL_SUFFIX_RE = /(?:초등학교|중학교|고등학교|학교)$/;
 const SCHOOL_TYPES = Object.freeze(["초", "중", "고"]);
-const isSchool = (name) => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
+const isSchool = (name: unknown): name is string => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
 
-export const SchoolInfo = memo(function SchoolInfo({ apt }) {
-  const schools = (apt.nearbySchools ?? []).filter(s => isSchool(s.name));
+export const SchoolInfo = memo(function SchoolInfo({ apt }: SchoolInfoProps) {
+  const schools = ((apt.nearbySchools as SchoolRow[] | undefined) ?? []).filter(s => isSchool(s.name));
   const [expanded, setExpanded] = useState(false);
   const nearest = useMemo(() => SCHOOL_TYPES.map(t => schools.filter(s => s.type === t).sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999))[0]).filter(Boolean), [schools]);
   const counts = useMemo(() => SCHOOL_TYPES.map(t => { const w = schools.filter(s => s.type === t && s.distance != null && s.distance <= 1000); return w.length > 0 ? `${t} ${w.length}` : null; }).filter(Boolean), [schools]);

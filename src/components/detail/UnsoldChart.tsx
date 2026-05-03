@@ -2,9 +2,10 @@ import { memo } from "react";
 import { C, F } from "@/theme";
 import { LineChart } from "@/components/primitives";
 import { useUnsoldHistory } from "@/hooks/useUnsoldHistory";
+import type { UnsoldChartProps } from "@/types/detail";
 
 /** 미분양 추이 차트 — DetailModal 내 표시 */
-export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }) {
+export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }: UnsoldChartProps) {
   const { data, loading, error, retry } = useUnsoldHistory(apartmentId, siblingIds);
 
   if (!apartmentId) return null;
@@ -17,15 +18,17 @@ export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }
   );
   if (data.length < 2) return null;
 
-  const chartData = data.slice(-24).map(row => ({
+  interface UnsoldRow { base_month?: string; unsold_count?: number | null; post_completion_unsold?: number | null }
+  const rows = data as UnsoldRow[];
+  const chartData = rows.slice(-24).map((row: UnsoldRow) => ({
     x: (row.base_month || "").slice(4),
     y: row.unsold_count ?? 0,
     label: `${row.base_month}: 미분양 ${(row.unsold_count ?? 0).toLocaleString()}세대`,
   }));
 
-  const secondaryData = data.slice(-24)
-    .filter(row => row.post_completion_unsold != null)
-    .map(row => ({
+  const secondaryData = rows.slice(-24)
+    .filter((row: UnsoldRow) => row.post_completion_unsold != null)
+    .map((row: UnsoldRow) => ({
       x: (row.base_month || "").slice(4),
       y: row.post_completion_unsold ?? 0,
     }));

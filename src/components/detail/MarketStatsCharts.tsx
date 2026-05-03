@@ -2,9 +2,13 @@ import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { LineChart } from "@/components/primitives";
 import { useMarketStatsHistory } from "@/hooks/useMarketStatsHistory";
+import type { MarketStatsChartsProps } from "@/types/detail";
+
+interface MarketMetric { key: string; label: string; unit: string; color: string }
+interface MarketRow { base_month?: string; [key: string]: unknown }
 
 // 5지표 메타 정보 — KOSIS 시계열 컬럼 ↔ 한국어 라벨/단위/색
-const METRICS = [
+const METRICS: MarketMetric[] = [
   { key: "avg_price_sqm",     label: "평균분양가격",   unit: "천원/㎡",    color: C.green },
   { key: "price_index",       label: "분양가격지수",   unit: "(100=기준)", color: C.blue },
   { key: "new_supply",        label: "신규공급 세대수", unit: "세대",      color: C.purple },
@@ -13,7 +17,7 @@ const METRICS = [
 ];
 
 // "202503" → "03" (월 2자리 표기)
-const monthLabel = (yyyymm) => {
+const monthLabel = (yyyymm: unknown) => {
   if (typeof yyyymm !== "string" || yyyymm.length !== 6) return "";
   return yyyymm.slice(4);
 };
@@ -29,12 +33,12 @@ const monthLabel = (yyyymm) => {
  * - 정상 시 5개 LineChart 세로 배치 (height 120 × 5 = 누적 600px)
  * - region 미설정 / loading / error 시 null (조용한 숨김)
  */
-export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }) {
-  const { data, loading, error, retry } = useMarketStatsHistory(region, gu);
+export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }: MarketStatsChartsProps) {
+  const { data, loading, error, retry } = useMarketStatsHistory(region ?? "", gu ?? "") as { data: MarketRow[] | null; loading: boolean; error: unknown; retry: () => void };
 
   // 모든 차트가 같은 x축 라벨 사용
   const xLabels = useMemo(
-    () => Array.isArray(data) ? data.map(d => monthLabel(d?.base_month)) : [],
+    () => Array.isArray(data) ? data.map((d: MarketRow) => monthLabel(d?.base_month)) : [],
     [data]
   );
 
@@ -76,13 +80,14 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu })
         지역 시장 추이 ({region}{gu ? ` ${gu}` : ""})
       </div>
       {METRICS.map(m => {
-        const chartData = data
-          .map((d, i) => {
+        type ChartPoint = { x: string; y: number; label: string };
+        const chartData: ChartPoint[] = data
+          .map((d: MarketRow, i: number) => {
             const v = Number(d?.[m.key]);
             if (!Number.isFinite(v)) return null;
             return { x: xLabels[i] || "", y: v, label: `${xLabels[i] || ""}: ${v.toLocaleString()} ${m.unit}` };
           })
-          .filter(Boolean);
+          .filter((x): x is ChartPoint => x !== null);
         if (chartData.length < 2) return null;
         return (
           <div key={m.key}>
