@@ -15,25 +15,32 @@ import { getSupabase } from "./supabase.js";
 import { withHandler } from "./handler.js";
 import { parseApartmentIds } from "./apartmentValidation.js";
 
-/**
- * @param {object} cfg
- * @param {string}   cfg.table       - Supabase 테이블명
- * @param {string}   cfg.select      - SELECT 컬럼 목록
- * @param {string}   cfg.orderBy     - ORDER BY 컬럼 (ascending 고정)
- * @param {string}   cfg.errorLabel  - 사용자 에러 메시지 라벨 (예: "분양가")
- * @param {(q) => q} [cfg.filter]    - Supabase 쿼리 체인 추가 필터 훅 (선택)
- */
-export function createTimeseriesHandler({ table, select, orderBy, errorLabel, filter }) {
+type SupabaseQuery = {
+  in: (_col: string, _vals: string[]) => SupabaseQuery;
+  eq: (_col: string, _val: string) => SupabaseQuery;
+  order: (_col: string, _opts: { ascending: boolean }) => SupabaseQuery;
+  then: <T>(_resolve: (_value: { data: unknown[] | null; error: unknown }) => T) => Promise<T>;
+};
+
+type CreateTimeseriesConfig = {
+  table: string;
+  select: string;
+  orderBy: string;
+  errorLabel: string;
+  filter?: (_q: SupabaseQuery) => SupabaseQuery;
+};
+
+export function createTimeseriesHandler({ table, select, orderBy, errorLabel, filter }: CreateTimeseriesConfig) {
   return withHandler({ method: "GET", rateLimit: "proxy", handler: async (req, res) => {
     try {
       const supabase = getSupabase();
-      const parsed = parseApartmentIds(req.query);
-      if (parsed.error) {
+      const parsed = parseApartmentIds((req.query ?? {}) as { apartment_ids?: string; apartment_id?: string });
+      if ("error" in parsed) {
         return res.status(parsed.status).json({ ok: false, error: parsed.error });
       }
 
-      let query = supabase.from(table).select(select);
-      query = parsed.ids ? query.in("apartment_id", parsed.ids) : query.eq("apartment_id", parsed.id);
+      let query = supabase.from(table).select(select) as unknown as SupabaseQuery;
+      query = "ids" in parsed ? query.in("apartment_id", parsed.ids) : query.eq("apartment_id", parsed.id);
       if (filter) query = filter(query);
       query = query.order(orderBy, { ascending: true });
 
