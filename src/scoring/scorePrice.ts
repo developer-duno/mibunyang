@@ -8,24 +8,24 @@ import {
   PRICE_INDEX_HOT, PRICE_INDEX_WARM, PRICE_INDEX_HOT_BONUS, PRICE_INDEX_WARM_BONUS,
   PRICE_FALLBACK_RELIABILITY_PENALTY,
 } from "@/constants/scoringTiers";
+import type { Apt, Res } from "@/types/scoring";
 
-const IS_DEV = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
+const IS_DEV = typeof import.meta !== "undefined" && !!(import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV;
 
 /**
  * 준공시점 기반 연식 보정계수. 신축 프리미엄 반영.
  * 미준공(예정) → 1.0, 미입력·파싱 실패 → 1.05 (약간 보수적 중립).
  * AGE_PREMIUM 구간: {0~5y: 1.08, 5~10y: 1.05, 10~20y: 1.0, 20+y: 0.95} 등 (src/constants/brands.js).
- * @param {string|null|undefined} completion - "YYYY-MM-DD" 형식
- * @returns {number} 보정계수 (0.95~1.08 범위, 미입력 시 1.05)
  */
-export function getAgeCoeff(completion) {
+export function getAgeCoeff(completion: string | null | undefined): number {
   if (!completion) return 1.05;
   const parts = completion.toString().split("-");
   const comp = parts.length >= 2 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2] || 1)) : new Date(completion);
   if (isNaN(comp.getTime())) return 1.05;
   if (comp.getTime() > Date.now()) return 1.0;
   const yrs = Math.max(0, (Date.now() - comp.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-  const found = AGE_PREMIUM.find(a => yrs >= a.min && yrs < a.max);
+  type AgePremiumEntry = { min: number; max: number; coeff: number };
+  const found = (AGE_PREMIUM as AgePremiumEntry[]).find(a => yrs >= a.min && yrs < a.max);
   return found ? found.coeff : 1.05;
 }
 
@@ -33,10 +33,8 @@ export function getAgeCoeff(completion) {
  * 평형별 가격 보정계수. 소형 프리미엄·대형 디스카운트 반영.
  * 면적 미등록(0 또는 null) → 1.0 중립 (평균 평형 가정).
  * 구간: 60㎡ 미만 1.08 (소형), 60~85 1.0 (국민평형), 85~115 0.97, 115+ 0.94.
- * @param {number|null} area - 전용면적 ㎡
- * @returns {number} 보정계수 (0.94~1.08)
  */
-export function getAreaAdj(area) {
+export function getAreaAdj(area: number | null | undefined): number {
   if (!area || area <= 0) return 1.0;  // 면적 미등록 = 중립
   if (area < 60) return 1.08;
   if (area < 85) return 1.0;
@@ -49,10 +47,10 @@ export function getAreaAdj(area) {
 // 판정 순서: 임대 → 정비사업 → 후분양 → 오피스텔 → 분양계획 → 택지지구 블록 → 공공분양 → 기본.
 // presaleStage "분양계획"은 모집공고 전 예정 단지 신호 — naver-presale 수집기가
 // price=0으로 저장하는 정상 동작. 이름 패턴보다 구체적이라 택지블록 앞에 위치.
-function classifyNoPrice(apt) {
-  const name = apt.name || "";
-  const presale = apt.presaleType || "";
-  const stage = apt.presaleStage || "";
+function classifyNoPrice(apt: Apt): string {
+  const name = (apt.name as string) || "";
+  const presale = (apt.presaleType as string) || "";
+  const stage = (apt.presaleStage as string) || "";
   if (presale.includes("임대")) return "임대형 공급 — 분양가 산출 대상 아님";
   if (/(재건축|재개발|촉진구역|\d+구역)/.test(name)) return "정비사업 — 조합원 물량, 분양가 미정";
   if (/(써밋|후분양)/.test(name)) return "후분양 단지 — 분양가 미정";
@@ -73,49 +71,47 @@ function classifyNoPrice(apt) {
  * 폴백 사용 시: dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY (기본 15).
  * PIR 구간: ≤10→100, ≤20→80~100 선형, ≤30→60~80 선형, >30→60-(pir-30)×2 (0 하한, 세션108).
  * priceIndex 보정: 130+ → +5, 110+ → +3 (과열 시장 신뢰도 가산).
- * @param {Object} apt - sanitize 된 아파트
- * @returns {{ total: number, subs: Array, fairPrice: number, deviation: number, fairPriceFromSidoAvg: boolean }}
- *   - total: [0, 100] 클램핑
- *   - subs: 6개 서브스코어 { key, label, value, weight, score, ...detail }
- *   - fairPrice: 적정가 (만원). 3단 폴백 결과
- *   - deviation: (price - fairPrice) / fairPrice (음수 = 저평가)
- *   - fairPriceFromSidoAvg: 2/3순위 폴백 사용 여부 (신뢰도 -15 표시용)
  */
-export function scorePrice(apt) {
-  const brand = BRAND_TIER[apt.builder];
-  if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${apt.builder}"`);
+export function scorePrice(apt: Apt): Res {
+  const builder = (apt.builder ?? "기타") as string;
+  const brand = (BRAND_TIER as Record<string, { adj?: number }>)[builder];
+  if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${builder}"`);
   const b = brand || { adj: 1.0 };
+  const bAdj = b.adj ?? 1.0;
   const ageCoeff = getAgeCoeff(apt.completion);
-  const areaAdj = getAreaAdj(apt.area);
-  let fairPrice = (apt.nearbyMedian ?? 0) * ageCoeff * areaAdj * b.adj;
+  const area = (apt.area ?? 84) as number;
+  const areaAdj = getAreaAdj(area);
+  let fairPrice = (apt.nearbyMedian ?? 0) * ageCoeff * areaAdj * bAdj;
   // 세션114: nearbyMedian 부재로 시도 평균 폴백(avgPriceSqm/presalePp) 사용 여부.
   // 섬·군 지역에서 시도 평균이 실시세의 2~3배로 왜곡 → 신뢰도 차감 + detail 경고.
   let fairPriceFromSidoAvg = false;
   // fairPrice=0 폴백: avgPriceSqm(천원/㎡) 또는 presalePp(만원/평) → 만원 총가
-  if (fairPrice <= 0 && apt.avgPriceSqm != null && apt.area > 0) {
-    fairPrice = Math.round(apt.avgPriceSqm * apt.area / 10) * ageCoeff * areaAdj * b.adj;
+  if (fairPrice <= 0 && apt.avgPriceSqm != null && area > 0) {
+    fairPrice = Math.round(apt.avgPriceSqm * area / 10) * ageCoeff * areaAdj * bAdj;
     if (fairPrice > 0) fairPriceFromSidoAvg = true;
   }
-  if (fairPrice <= 0 && apt.presalePp != null && apt.presalePp > 0 && apt.area > 0) {
-    fairPrice = apt.presalePp * (apt.area / 3.3058) * ageCoeff * areaAdj * b.adj;
+  if (fairPrice <= 0 && apt.presalePp != null && apt.presalePp > 0 && area > 0) {
+    fairPrice = apt.presalePp * (area / 3.3058) * ageCoeff * areaAdj * bAdj;
     if (fairPrice > 0) fairPriceFromSidoAvg = true;
   }
   // 택지비 비율 서브스코어 (공통)
-  const landSc = apt.landCostRatio != null
+  const landSc: number = apt.landCostRatio != null
     ? tierMin(apt.landCostRatio, LAND_COST_TIERS, LAND_COST_LOW) : LAND_COST_NULL;
   // priceIndex 보정: 과열 시장에서 신뢰도 가산
   const idxBonus = apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_HOT ? PRICE_INDEX_HOT_BONUS
     : apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_WARM ? PRICE_INDEX_WARM_BONUS : 0;
   // 방안 A: 시도 평균 폴백 사용 시 dataReliability 차감(세션114)
+  const dataReliability = (apt.dataReliability ?? 30) as number;
   const relBase = fairPriceFromSidoAvg
-    ? Math.max(0, apt.dataReliability - PRICE_FALLBACK_RELIABILITY_PENALTY)
-    : apt.dataReliability;
+    ? Math.max(0, dataReliability - PRICE_FALLBACK_RELIABILITY_PENALTY)
+    : dataReliability;
   const relSc = Math.min(relBase + idxBonus, 100);
-  if (fairPrice <= 0 || !apt.price || apt.price <= 0) {
+  const price = (apt.price ?? 0) as number;
+  if (fairPrice <= 0 || !price || price <= 0) {
     const devSc = PRICE_NO_DATA_DEFAULTS.dev;
     const jrSc = PRICE_NO_DATA_DEFAULTS.jr; const pirSc = PRICE_NO_DATA_DEFAULTS.pir; const psrSc = PRICE_NO_DATA_DEFAULTS.psr;
     const total = devSc * 0.30 + jrSc * 0.20 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
-    const noPriceDetail = (!apt.price || apt.price <= 0) ? classifyNoPrice(apt) : "주변 시세 없음 — 적정가 산출 불가";
+    const noPriceDetail = (!price || price <= 0) ? classifyNoPrice(apt) : "주변 시세 없음 — 적정가 산출 불가";
     return {
       total: Math.round(Math.max(0, Math.min(total, 100))), fairPrice: 0, deviation: "0.0",
       subs: [
@@ -123,17 +119,23 @@ export function scorePrice(apt) {
         { name: "전세가율", score: Math.round(jrSc), info: apt.jeonseRate == null ? "데이터 부재" : `${apt.jeonseRate}%`, detail: apt.jeonseRate == null ? "전세가율 데이터 없음 (중립 50점)" : `${apt.jeonseRate}% (적정 70~80%, 위험 40%↓)` },
         { name: "PIR", score: Math.round(pirSc), info: apt.pir == null ? "데이터 부재" : `${apt.pir}배`, detail: apt.pir == null ? "PIR 데이터 없음 (중립 50점)" : `${apt.pir}배 (우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑)` },
         { name: "PSR", score: Math.round(psrSc), info: apt.psr == null ? "데이터 부재" : `${(apt.psr * 100).toFixed(0)}%`, detail: apt.psr == null ? "PSR 데이터 없음 (중립 50점)" : `${(apt.psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓)` },
-        { name: "데이터 신뢰도", score: relSc, info: `${apt.dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}`, detail: `${apt.dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""} (80%↑신뢰, 30%↓추정)` },
+        { name: "데이터 신뢰도", score: relSc, info: `${dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}`, detail: `${dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""} (80%↑신뢰, 30%↓추정)` },
         { name: "택지비비율", score: landSc, info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음", detail: apt.landCostRatio != null ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)` : "택지비 데이터 없음 (중립 50점)" },
       ],
     };
   }
-  const dev = ((fairPrice - apt.price) / fairPrice) * 100;
-  let devSc = dev >= DEV_SCORE_TIERS[0].min ? DEV_SCORE_TIERS[0].score : dev >= DEV_SCORE_TIERS[1].min ? DEV_SCORE_TIERS[1].base + (dev - DEV_SCORE_TIERS[1].min) / DEV_SCORE_TIERS[1].span * DEV_SCORE_TIERS[1].range : dev >= DEV_SCORE_TIERS[2].min ? DEV_SCORE_TIERS[2].base + (dev - DEV_SCORE_TIERS[2].min) / DEV_SCORE_TIERS[2].span * DEV_SCORE_TIERS[2].range : dev >= DEV_SCORE_TIERS[3].min ? DEV_SCORE_TIERS[3].base + dev / DEV_SCORE_TIERS[3].span * DEV_SCORE_TIERS[3].range : Math.max(0, DEV_SCORE_BASE + dev * DEV_SCORE_NEGATIVE_MULT);
+  const dev = ((fairPrice - price) / fairPrice) * 100;
+  type DevTier = { min: number; score?: number; base?: number; span?: number; range?: number };
+  const tiers = DEV_SCORE_TIERS as DevTier[];
+  let devSc = dev >= tiers[0].min ? (tiers[0].score as number)
+    : dev >= tiers[1].min ? (tiers[1].base as number) + (dev - tiers[1].min) / (tiers[1].span as number) * (tiers[1].range as number)
+    : dev >= tiers[2].min ? (tiers[2].base as number) + (dev - tiers[2].min) / (tiers[2].span as number) * (tiers[2].range as number)
+    : dev >= tiers[3].min ? (tiers[3].base as number) + dev / (tiers[3].span as number) * (tiers[3].range as number)
+    : Math.max(0, DEV_SCORE_BASE + dev * DEV_SCORE_NEGATIVE_MULT);
   devSc = Math.max(0, Math.min(devSc, 100));
 
   const jr = apt.jeonseRate;
-  let jrSc;
+  let jrSc: number;
   if (jr == null) jrSc = PRICE_NO_DATA_DEFAULTS.jr;
   else if (jr >= 70 && jr <= 80) jrSc = 80 + (1 - Math.abs(jr - 75) / 5) * 20;
   else if (jr > 80) jrSc = Math.max(0, 80 - (jr - 80) * 5);
@@ -163,7 +165,7 @@ export function scorePrice(apt) {
       { name: "전세가율", score: Math.round(jrSc), info: jr == null ? "데이터 부재" : `${jr}%`, detail: jr == null ? "전세가율 데이터 없음 (중립 50점)" : `${jr}% (적정 70~80%, 위험 40%↓, 과열 90%↑)` },
       { name: "PIR", score: Math.round(pirSc), info: pir == null ? "데이터 부재" : `${pir}배`, detail: pir == null ? "PIR 데이터 없음 (중립 50점)" : `${pir}배 (우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑)` },
       { name: "PSR", score: Math.round(psrSc), info: psr == null ? "데이터 부재" : `${(psr * 100).toFixed(0)}%`, detail: psr == null ? "PSR 데이터 없음 (중립 50점)" : `${(psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓, 고평가 100%↑)` },
-      { name: "데이터 신뢰도", score: relSc, info: `${apt.dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}${relNotice}`, detail: `${apt.dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""}${relNotice} (80%↑신뢰, 50%↑보통, 30%↓추정)` },
+      { name: "데이터 신뢰도", score: relSc, info: `${dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}${relNotice}`, detail: `${dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""}${relNotice} (80%↑신뢰, 50%↑보통, 30%↓추정)` },
       { name: "택지비비율", score: landSc, info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음", detail: apt.landCostRatio != null ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)` : "택지비 데이터 없음 (중립 50점)" },
     ],
   };
