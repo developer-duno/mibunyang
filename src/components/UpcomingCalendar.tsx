@@ -6,10 +6,13 @@ import { DayPicker } from "react-day-picker";
 import { ko } from "date-fns/locale";
 import "react-day-picker/style.css";
 import { C, F } from "@/theme";
+import type { UpcomingCalendarProps } from "@/types/upcoming";
+
+interface EventColor { bg: string; color: string; label: string }
 
 // 4색 매핑 — spec § 6-1 (녹/노/주/파)
 // 주황은 theme 토큰 없어 인라인 (#FFEDD5/#C2410C = Tailwind orange-100/700)
-const EVENT_COLORS = {
+const EVENT_COLORS: Record<string, EventColor> = {
   presale_announce: { bg: C.greenLight, color: C.green,    label: "🟢 분양예정" },
   apply_start:      { bg: C.amberLight, color: C.amber,    label: "🟡 청약 시작" },
   apply_end:        { bg: "#FFEDD5",    color: "#C2410C",  label: "🟠 청약 마감" },
@@ -17,10 +20,10 @@ const EVENT_COLORS = {
   etc:              { bg: C.slate100,   color: C.slate600, label: "기타" },
 };
 
-export const UpcomingCalendar = memo(function UpcomingCalendar({ calendar, selectedDate, onDayClick }) {
+export const UpcomingCalendar = memo(function UpcomingCalendar({ calendar, selectedDate, onDayClick }: UpcomingCalendarProps) {
   // calendar = { "2026-05-08": [{ id, event }], ... }
   const modifiers = useMemo(() => {
-    const m = { presaleAnnounce: [], applyStart: [], applyEnd: [], winnerAnnounce: [] };
+    const m: { presaleAnnounce: Date[]; applyStart: Date[]; applyEnd: Date[]; winnerAnnounce: Date[] } = { presaleAnnounce: [], applyStart: [], applyEnd: [], winnerAnnounce: [] };
     if (!calendar || typeof calendar !== "object") return m;
     for (const [iso, events] of Object.entries(calendar)) {
       const d = new Date(iso);
@@ -67,7 +70,7 @@ export const UpcomingCalendar = memo(function UpcomingCalendar({ calendar, selec
   );
 });
 
-function Legend({ color }) {
+function Legend({ color }: { color: EventColor }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
       <span style={{ width: 8, height: 8, borderRadius: "50%", background: color.color, display: "inline-block" }} aria-hidden="true" />

@@ -1,16 +1,8 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
+import type { BottomNavProps } from "@/types/upcoming";
 
-/**
- * BottomNav - 하단 내비게이션 바
- * Props:
- *   tab: string - 현재 활성 탭
- *   expertLoggedIn: boolean - 전문가 로그인 상태
- *   showComp: boolean - 비교 시트 표시 여부
- *   onNavClick: (key: string) => void - 네비 버튼 클릭 핸들러
- *   containerMaxWidth: number - 컨테이너 최대 너비
- */
-export const BottomNav = memo(function BottomNav({ tab, expertLoggedIn, showComp, onNavClick, containerMaxWidth, isDesktop }) {
+export const BottomNav = memo(function BottomNav({ tab, expertLoggedIn, showComp, onNavClick, containerMaxWidth, isDesktop }: BottomNavProps) {
   if (isDesktop) return null;
   const upcomingEnabled = import.meta.env.VITE_FEATURE_UPCOMING === "true";
   const navItems = expertLoggedIn

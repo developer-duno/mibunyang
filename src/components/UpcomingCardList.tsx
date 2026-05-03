@@ -2,12 +2,16 @@
 // spec § 4-3 + § 6-2 (D-day) + § 6-6 (4색 배지)
 
 import { memo, useMemo } from "react";
+import type { CSSProperties } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice, fmtRecruitDate } from "@/lib/format";
 import { Tooltip, extractTerm } from "./Tooltip";
 import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
+import type { UpcomingCardListProps, UpcomingCardProps, DdayInfo } from "@/types/components/UpcomingCardList.types";
 
-const STAGE_STYLES = {
+interface StageStyle { bg: string; color: string; label: string }
+
+const STAGE_STYLES: Record<string, StageStyle> = {
   분양계획: { bg: C.greenLight, color: C.green, label: "분양 예정" },
   청약중: { bg: C.amberLight, color: C.amber, label: "청약중" },
   분양중: { bg: C.blueLight, color: C.blue, label: "분양중" },
@@ -15,7 +19,7 @@ const STAGE_STYLES = {
 
 const PLACEHOLDER_IMG = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'><rect width='60' height='60' fill='%23E8EAF0'/><text x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%236B7280' font-size='10'>🏢</text></svg>";
 
-const chipStyle = {
+const chipStyle: CSSProperties = {
   fontSize: F.xs,
   padding: "2px 6px",
   background: C.bg,
@@ -26,9 +30,8 @@ const chipStyle = {
 
 /**
  * D-day 계산 — spec § 6-2
- * @returns {{label: string, color: string} | null}
  */
-export function computeDday(recruitDate, today = new Date()) {
+export function computeDday(recruitDate: string | null | undefined, today: Date = new Date()): DdayInfo | null {
   if (!recruitDate || typeof recruitDate !== "string") return null;
   const d = new Date(recruitDate);
   if (isNaN(d.getTime())) return null;
@@ -42,7 +45,7 @@ export function computeDday(recruitDate, today = new Date()) {
   return { label: `D-${days}`, color: C.muted };
 }
 
-export const UpcomingCardList = memo(function UpcomingCardList({ items, onSubscribe, onOpenDetail, isMobile }) {
+export const UpcomingCardList = memo(function UpcomingCardList({ items, onSubscribe, onOpenDetail, isMobile }: UpcomingCardListProps) {
   if (!items || items.length === 0) {
     return (
       <div style={{ padding: 32, textAlign: "center", color: C.muted, fontSize: F.base }}>
@@ -66,8 +69,8 @@ export const UpcomingCardList = memo(function UpcomingCardList({ items, onSubscr
   );
 });
 
-const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail, isMobile }) {
-  const stage = STAGE_STYLES[apt.presaleStage] || STAGE_STYLES["분양중"];
+const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail, isMobile }: UpcomingCardProps) {
+  const stage = STAGE_STYLES[String(apt.presaleStage ?? "")] || STAGE_STYLES["분양중"];
   const dday = useMemo(() => computeDday(apt.presaleRecruitDate), [apt.presaleRecruitDate]);
   const score = apt.catsCache?.total;
   const calendarUrl = useMemo(() => buildGoogleCalendarUrl(apt), [apt]);
@@ -137,12 +140,12 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
         {(apt.presaleHousingType || apt.presaleType) && (
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
             {apt.presaleHousingType && (
-              <Tooltip term={extractTerm(apt.presaleHousingType)}>
+              <Tooltip term={extractTerm(apt.presaleHousingType) ?? undefined}>
                 <span style={chipStyle}>{apt.presaleHousingType}</span>
               </Tooltip>
             )}
             {apt.presaleType && apt.presaleType !== apt.presaleHousingType && (
-              <Tooltip term={extractTerm(apt.presaleType)}>
+              <Tooltip term={extractTerm(apt.presaleType) ?? undefined}>
                 <span style={chipStyle}>{apt.presaleType}</span>
               </Tooltip>
             )}

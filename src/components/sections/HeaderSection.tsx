@@ -1,10 +1,13 @@
 import { memo, useState, useCallback } from "react";
+import type { CSSProperties } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { C, F } from "@/theme";
 import { IconHelp } from "@/components/icons";
+import type { Profile } from "@/types/scoring";
+import type { HeaderSectionProps, HelpModalProps } from "@/types/components/HeaderSection.types";
 
 /* ── HelpModal 정적 스타일 (AptCard L18 패턴) ── */
-const HM_S = {
+const HM_S: Record<string, CSSProperties> = {
   backdrop: { position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.5)", zIndex: 500 },
   panel: { position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "calc(100% - 32px)", maxWidth: 480, maxHeight: "80dvh", background: C.white, borderRadius: 16, zIndex: 501, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden", display: "flex", flexDirection: "column" },
   headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 },
@@ -21,7 +24,7 @@ const HM_S = {
 };
 
 /* ── HeaderSection 본체 정적 스타일 ── */
-const HS_S = {
+const HS_S: Record<string, CSSProperties> = {
   desktopLeft: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
   desktopH1: { margin: 0, fontSize: F.xl, fontWeight: 800, color: C.blue, letterSpacing: -0.5, whiteSpace: "nowrap" },
   desktopCount: { fontSize: F.xs, color: C.muted, whiteSpace: "nowrap" },
@@ -38,7 +41,7 @@ const HS_S = {
 };
 
 /** 도움말 모달 (데스크톱/모바일 공용) */
-function HelpModal({ onClose }) {
+function HelpModal({ onClose }: HelpModalProps) {
   return (
     <>
       <div onClick={onClose} style={HM_S.backdrop} />
@@ -95,7 +98,7 @@ const HELP_SECTIONS = [
 /**
  * 헤더 섹션 — 데스크톱: 고정 상단 바 + 네비 / 모바일: 블루 그라디언트
  */
-export const HeaderSection = memo(function HeaderSection({ profile, onProfileChange, apartmentCount, isDesktop, tab, onNavClick, showComp, compCount, expertLoggedIn, containerMaxWidth, upcomingCount }) {
+export const HeaderSection = memo(function HeaderSection({ profile, onProfileChange, apartmentCount, isDesktop, tab, onNavClick, showComp, compCount, expertLoggedIn, containerMaxWidth, upcomingCount }: HeaderSectionProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
@@ -134,7 +137,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
           {/* 중앙: 프로필 탭 */}
           <div style={HS_S.desktopProfileWrap}>
             {Object.entries(PROFILES).map(([k, p]) => (
-              <button key={k} onClick={() => onProfileChange(k)} aria-pressed={profile === k} style={{
+              <button key={k} onClick={() => onProfileChange(k as Profile)} aria-pressed={profile === k} style={{
                 background: "none", border: "none", borderBottom: profile === k ? `2px solid ${C.blue}` : "2px solid transparent",
                 color: profile === k ? C.blue : C.sub, fontSize: F.base, fontWeight: profile === k ? 700 : 500,
                 padding: "18px 12px", cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap"
@@ -193,7 +196,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
       </div>
       <div style={HS_S.mobileProfileScroll}>
         {Object.entries(PROFILES).map(([k, p]) => (
-          <button key={k} onClick={() => onProfileChange(k)} aria-pressed={profile === k} style={{
+          <button key={k} onClick={() => onProfileChange(k as Profile)} aria-pressed={profile === k} style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
             background: profile === k ? C.blueLight : C.slate100,
             color: profile === k ? C.blue : C.sub,

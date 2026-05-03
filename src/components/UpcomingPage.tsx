@@ -6,36 +6,41 @@ import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react
 import { C, F } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { SkeletonBox, SkeletonList } from "@/components/primitives";
+import type { UpcomingPageProps } from "@/types/components/UpcomingPage.types";
+import type { UpcomingApiResponse } from "@/types/upcoming";
 
 const UpcomingCalendar = lazy(() => import("@/components/UpcomingCalendar").then(m => ({ default: m.UpcomingCalendar })));
 const UpcomingCardList = lazy(() => import("@/components/UpcomingCardList").then(m => ({ default: m.UpcomingCardList })));
 const SubscribeForm = lazy(() => import("@/components/SubscribeForm").then(m => ({ default: m.SubscribeForm })));
 
-const STAGE_TABS = [
+type StageTabKey = "all" | "plan" | "apply" | "sale";
+interface StageTab { key: StageTabKey; label: string }
+
+const STAGE_TABS: StageTab[] = [
   { key: "all", label: "전체" },
   { key: "plan", label: "곧 분양" },
   { key: "apply", label: "청약중" },
   { key: "sale", label: "분양중" },
 ];
 
-export function UpcomingPage({ onOpenDetail, onBackToMain }) {
+export function UpcomingPage({ onOpenDetail, onBackToMain }: UpcomingPageProps) {
   // Feature Flag 가드 — App.jsx pathname 검사가 1차 차단하지만 직접 마운트 케이스 방어
   const flagOn = import.meta.env.VITE_FEATURE_UPCOMING === "true";
 
   const { isDesktop } = useResponsive();
-  const [data, setData] = useState(null);
+  const [data, setData] = useState<UpcomingApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("all");
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [subscribeAptId, setSubscribeAptId] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<StageTabKey>("all");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [subscribeAptId, setSubscribeAptId] = useState<string | null>(null);
 
   // URL 쿼리 파싱 (?stage=plan&date=2026-05-08)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const stage = params.get("stage");
-    if (stage && STAGE_TABS.some(t => t.key === stage)) setActiveTab(stage);
+    if (stage && STAGE_TABS.some(t => t.key === stage)) setActiveTab(stage as StageTabKey);
     const date = params.get("date");
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) setSelectedDate(date);
   }, []);
@@ -51,7 +56,8 @@ export function UpcomingPage({ onOpenDetail, onBackToMain }) {
       if (!json.ok) throw new Error(json.error || "데이터 조회 실패");
       setData(json);
     } catch (e) {
-      setError(e.message || "네트워크 오류");
+      const msg = e instanceof Error ? e.message : "네트워크 오류";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -66,7 +72,7 @@ export function UpcomingPage({ onOpenDetail, onBackToMain }) {
     if (!data || !data.stages) return [];
     let items = activeTab === "all"
       ? [...data.stages.plan, ...data.stages.apply, ...data.stages.sale]
-      : data.stages[activeTab] || [];
+      : (data.stages[activeTab as "plan" | "apply" | "sale"] || []);
 
     if (selectedDate && data.calendar?.[selectedDate]) {
       const idsOnDate = new Set(data.calendar[selectedDate].map(e => e.id));
@@ -75,13 +81,13 @@ export function UpcomingPage({ onOpenDetail, onBackToMain }) {
     return items;
   }, [data, activeTab, selectedDate]);
 
-  const handleDayClick = useCallback((day) => {
+  const handleDayClick = useCallback((day: Date | undefined) => {
     if (!day) return;
     const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
     setSelectedDate(iso === selectedDate ? null : iso);
   }, [selectedDate]);
 
-  const handleSubscribe = useCallback((aptId) => {
+  const handleSubscribe = useCallback((aptId: string) => {
     setSubscribeAptId(aptId);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
@@ -151,14 +157,14 @@ export function UpcomingPage({ onOpenDetail, onBackToMain }) {
       {!loading && !error && totalCount > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "320px 1fr" : "1fr", gap: 12 }}>
           <Suspense fallback={<SkeletonBox height={300} />}>
-            <UpcomingCalendar calendar={data.calendar} selectedDate={selectedDate} onDayClick={handleDayClick} />
+            <UpcomingCalendar calendar={data?.calendar ?? null} selectedDate={selectedDate} onDayClick={handleDayClick} />
           </Suspense>
 
           <div>
             {/* 필터 탭 */}
             <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
               {STAGE_TABS.map(tab => {
-                const count = tab.key === "all" ? totalCount : totals[tab.key];
+                const count = tab.key === "all" ? totalCount : (totals as Record<string, number>)[tab.key];
                 const active = activeTab === tab.key;
                 return (
                   <button
@@ -196,7 +202,7 @@ export function UpcomingPage({ onOpenDetail, onBackToMain }) {
 
             <div style={{ marginTop: 16 }}>
               <Suspense fallback={<SkeletonBox height={120} />}>
-                <SubscribeForm defaultApt={subscribeAptId} onSuccess={() => setSubscribeAptId(null)} />
+                <SubscribeForm defaultApt={subscribeAptId ?? undefined} onSuccess={() => setSubscribeAptId(null)} />
               </Suspense>
             </div>
           </div>
