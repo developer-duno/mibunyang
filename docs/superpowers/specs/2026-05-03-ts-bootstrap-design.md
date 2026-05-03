@@ -134,12 +134,12 @@
 산출물:
 - `vercel.json` glob 패턴 갱신
 - `src/types/supabase.ts`, `src/types/api.ts`
-- api/_lib/* 일부 .ts (handler, adminAuth, cors 우선)
+- ~~api/_lib/* 일부 .ts (handler, adminAuth, cors 우선)~~ → **세션 175 M2 완료: 13파일 전부 .ts 변환** (handler/auth/tokenBlacklist/redis/cors/rateLimit/adminAuth/proxyValidation/finlife/apartmentValidation/timeseriesHandler/validators/supabase). M5 진입 시 _lib 잔여 0 = 가속
 - 5~7커밋
 
 ### M3 — components/ 변환 (M2 + 8주, 2026-07 ~ 9월 초, 미션 A 와 동시)
 
-**전제:** 미션 A (메인 UI 재설계) 진행 중. 새로 짜는 컴포넌트는 처음부터 .tsx. components/ 실측 약 45개 (spec 작성 시 36개 추정 — M3 진입 시 재집계)
+**전제:** ~~미션 A (메인 UI 재설계) 진행 중~~ → **세션 175 사용자 결정 G-E: M3 단독 진행 + 미션 A 는 spec/plan 만 박제 (코드 0)**. 안전망 4건 (Feature Flag + 라우팅 분기 + 코드 보존 + 1커밋 롤백) 미션 A spec 무조건 포함 (`memory/feedback_ux_redesign_rollback.md`). components/ ~~실측 약 45개~~ → **세션 175 정확 실측 67파일** (root 15 + sections 13 + sections/info 3 + filters 8 + expert 9 + admin 8 + detail 11)
 
 **대형 컴포넌트 분할 규칙 (3차 차단):**
 - AptCard.jsx 현재 182줄 → .tsx 변환 시 ~212줄 예상. **GATE 0 200줄 상한 초과**
@@ -174,8 +174,8 @@
 ### M4 — hooks + 잔여 components (M3 + 4주, 2026-09 ~ 10월 초)
 
 작업:
-1. `src/hooks/` 8~12개 훅 .js → .ts. useMemo 13개 체인의 반환 타입 명시
-2. `src/utils/` 유틸 함수 .ts
+1. `src/hooks/` ~~8~12개~~ → **세션 175 정확 실측 27개** 훅 .js → .ts. useMemo 13개 체인의 반환 타입 명시 (200줄+ 2건 = useFilterSort 307 + useAdminMode 227 분할 강제)
+2. ~~`src/utils/`~~ → **세션 175 정확 실측: src/lib/ (10파일, 200줄- 모두)** 유틸 함수 .ts
 3. `src/constants/` .ts
 4. `src/theme/` .ts
 5. M3 에서 미션 A 가 안 건드린 잔여 components/ 변환
