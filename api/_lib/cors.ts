@@ -4,8 +4,23 @@ const ALLOWED_ORIGINS = [
   /^https?:\/\/localhost(:\d+)?$/,
 ];
 
+type ReqLike = {
+  headers: { origin?: string };
+  method?: string;
+};
+
+type ResLike = {
+  setHeader: (name: string, value: string) => void;
+  status: (code: number) => { end: () => void };
+};
+
+type CorsOptions = {
+  methods?: string;
+  maxAge?: number;
+};
+
 /** 요청 Origin이 허용 목록에 있으면 반환, 아니면 null */
-export function getAllowedOrigin(req) {
+export function getAllowedOrigin(req: ReqLike): string | null {
   const origin = req.headers.origin || "";
   if (ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
   if (process.env.VERCEL_URL && origin === `https://${process.env.VERCEL_URL}`) return origin;
@@ -14,12 +29,9 @@ export function getAllowedOrigin(req) {
 
 /**
  * CORS Origin 헤더 설정 + OPTIONS preflight 처리.
- * @param {object} req
- * @param {object} res
- * @param {{ methods?: string, maxAge?: number }} [options]
- * @returns {boolean} true면 preflight 처리 완료 (caller는 즉시 return)
+ * @returns true면 preflight 처리 완료 (caller는 즉시 return)
  */
-export function handleCors(req, res, options = {}) {
+export function handleCors(req: ReqLike, res: ResLike, options: CorsOptions = {}): boolean {
   const allowedOrigin = getAllowedOrigin(req);
   if (allowedOrigin) res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
 
