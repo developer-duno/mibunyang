@@ -1,23 +1,26 @@
 // 분양 시작 알림 신청 폼 — 휴대폰 + 관심지역 + 동의
 // spec § 4-4 + § 6-3 (용어 풀이) + 접근성 (aria-required, aria-invalid)
 
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, type FormEvent } from "react";
 import { C, F } from "@/theme";
 import { trackEvent } from "@/lib/analytics";
+import type { SubscribeFormProps } from "@/types/components/SubscribeForm.types";
+
+type SubscribeMessage = { type: "success" | "error"; text: string } | null;
 
 const PHONE_RE = /^01[0-9]-?\d{3,4}-?\d{4}$/;
 const REGIONS = ["서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원도", "충청북도", "충청남도", "전라북도", "전라남도", "경상북도", "경상남도", "제주특별자치도"];
 
-export const SubscribeForm = memo(function SubscribeForm({ defaultRegion, defaultApt, onSuccess }) {
+export const SubscribeForm = memo(function SubscribeForm({ defaultRegion, defaultApt, onSuccess }: SubscribeFormProps) {
   const [phone, setPhone] = useState("");
   const [region, setRegion] = useState(defaultRegion || "");
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState(null); // { type: "success" | "error", text: string }
+  const [message, setMessage] = useState<SubscribeMessage>(null);
 
   const phoneInvalid = phone.length > 0 && !PHONE_RE.test(phone);
 
-  const handleSubmit = useCallback(async (e) => {
+  const handleSubmit = useCallback(async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!consent) {
       setMessage({ type: "error", text: "개인정보 수집·이용 동의가 필요합니다" });
@@ -51,7 +54,7 @@ export const SubscribeForm = memo(function SubscribeForm({ defaultRegion, defaul
       trackEvent("subscriber_signup", { region, hasApt: !!defaultApt });
       onSuccess?.();
     } catch (err) {
-      setMessage({ type: "error", text: err.message || "신청 중 오류가 발생했습니다" });
+      setMessage({ type: "error", text: (err as Error)?.message || "신청 중 오류가 발생했습니다" });
     } finally {
       setSubmitting(false);
     }

@@ -3,12 +3,13 @@ import { C, F, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
+import type { AptCardProps } from "@/types/components/AptCard.types";
 
 const UNSOLD_ALERT_THRESHOLD = 30;
 /* ── 모듈 레벨 상수 (렌더마다 재생성 방지) ── */
 const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
-function completionBadge(completion, moveInDone, completionPast) {
+function completionBadge(completion: string | null | undefined, moveInDone: boolean, completionPast: boolean) {
   if (moveInDone) return { bg: C.greenLight, color: C.green, text: `입주완료 ${fmtCompletion(completion)}` };
   if (completionPast) return { bg: C.amberLight, color: C.amber, text: `미입주 (준공 ${fmtCompletion(completion)})` };
   return { bg: C.blueLight, color: C.blue, text: `입주예정 ${fmtCompletion(completion)}` };
@@ -22,22 +23,22 @@ const S = {
   nameWrap: { flex: 1, minWidth: 0 },
   nameRow: { display: "flex", alignItems: "center", gap: 6, marginBottom: 5 },
   nameText: { fontSize: F.lg, fontWeight: 800, letterSpacing: -.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  tagRow: { display: "flex", gap: 4, flexWrap: "wrap" },
+  tagRow: { display: "flex", gap: 4, flexWrap: "wrap" as const },
   grid: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px 12px", marginTop: 12 },
   catHeader: { display: "flex", justifyContent: "space-between", marginBottom: 2 },
   catLabel: { fontSize: F.sm, color: C.muted },
-  infoRow: { display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 },
+  infoRow: { display: "flex", gap: 4, flexWrap: "wrap" as const, marginTop: 6 },
   infoTag: { fontSize: F.sm, padding: "3px 7px", borderRadius: 3, background: C.bg, color: C.sub },
-  alertRow: { marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" },
+  alertRow: { marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" as const },
   btnRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 },
   btnBase: { borderRadius: 6, padding: "8px 10px", fontSize: F.base, cursor: "pointer", flex: 1, minHeight: 36, transition: "all .15s" },
   alertTag: { fontSize: F.sm, padding: "3px 8px", borderRadius: 4, fontWeight: 600 },
 };
 
-export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop, isLoggedIn = true }) {
+export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop, isLoggedIn = true }: AptCardProps) {
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
-    const noxCount = (apt.noxious || []).length;
+    const noxCount = ((apt.noxious as string[] | undefined) || []).length;
     const completionPast = apt.completion ? apt.completion < NOW_YM : false;
     const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
@@ -57,7 +58,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   // 상위 3개 카테고리 정렬 메모이제이션 (매 렌더 재정렬 방지)
   const topCats = useMemo(() =>
     Object.entries(res.cats)
-      .sort((a, b) => (profileWeights[b[0]] || 0) - (profileWeights[a[0]] || 0))
+      .sort((a, b) => ((profileWeights as unknown as Record<string, number>)[b[0]] || 0) - ((profileWeights as unknown as Record<string, number>)[a[0]] || 0))
       .slice(0, 3),
     [res.cats, profileWeights]
   );
@@ -65,12 +66,12 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   return (
     <div style={dynStyles.wrapper}>
       <div style={dynStyles.bar} />
-      <div style={dynStyles.body || S.body} onClick={() => onDetail(apt.id)} tabIndex={0} role="button" onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDetail(apt.id); } }}>
+      <div style={dynStyles.body || S.body} onClick={() => onDetail(apt.id as string)} tabIndex={0} role="button" onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDetail(apt.id as string); } }}>
         <div style={S.header}>
           <div style={S.nameWrap}>
             <div style={S.nameRow}>
               <span style={dynStyles.rank}>{rank}위</span>
-              <span title={apt.name} style={{ ...dynStyles.nameText, color: C.text }}>{apt.name}</span>
+              <span title={String(apt.name ?? "")} style={{ ...dynStyles.nameText, color: C.text }}>{String(apt.name ?? "")}</span>
             </div>
             <div style={S.tagRow}>
               {[regionTag, `${apt.area ?? ""}㎡`, fmtPrice(apt.price), apt.builder ?? ""].filter(Boolean).map((t, i) => (
@@ -85,13 +86,13 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         </div>
 
         <div style={isDesktop ? { ...S.grid, gap: "10px 14px" } : S.grid}>
-          {topCats.map(([k, c]) => (
+          {(topCats as Array<[string, { label: string; total: number }]>).map(([k, c]) => (
             <div key={k}>
               <div style={S.catHeader}>
-                <span style={S.catLabel}>{SHORT_LABEL[c.label] || c.label}</span>
-                <span style={{ fontSize: F.base, fontWeight: 700, color: catCol[k], ...(isLoggedIn ? {} : { filter: "blur(4px)" }) }}>{isLoggedIn ? c.total : "??"}</span>
+                <span style={S.catLabel}>{(SHORT_LABEL as Record<string, string>)[c.label] || c.label}</span>
+                <span style={{ fontSize: F.base, fontWeight: 700, color: (catCol as Record<string, string>)[k], ...(isLoggedIn ? {} : { filter: "blur(4px)" }) }}>{isLoggedIn ? c.total : "??"}</span>
               </div>
-              <Bar value={c.total} color={catCol[k]} h={5} />
+              <Bar value={c.total} color={(catCol as Record<string, string>)[k]} h={5} />
             </div>
           ))}
         </div>
@@ -118,22 +119,22 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           </div>
         )}
 
-        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade)) || (apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4) || (apt.unsoldEventCount > 0 && apt.id?.startsWith("ah-"))) && (
+        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade as string)) || (apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4) || (Number(apt.unsoldEventCount ?? 0) > 0 && (apt.id as string)?.startsWith("ah-"))) && (
           <div style={S.alertRow}>
-            {apt.presaleStage && (() => {
-              const sm = { "분양중": { bg: C.greenLight, color: C.green }, "분양예정": { bg: C.blueLight, color: C.blue } };
-              const s = sm[apt.presaleStage] ?? { bg: C.purpleLight, color: C.purple };
-              return <span style={{ ...S.alertTag, background: s.bg, color: s.color }}>{apt.presaleStage}</span>;
-            })()}
-            {apt.completion && (() => {
-              const b = completionBadge(apt.completion, moveInDone, completionPast);
+            {apt.presaleStage ? (() => {
+              const sm: Record<string, { bg: string; color: string }> = { "분양중": { bg: C.greenLight, color: C.green }, "분양예정": { bg: C.blueLight, color: C.blue } };
+              const s = sm[apt.presaleStage as string] ?? { bg: C.purpleLight, color: C.purple };
+              return <span style={{ ...S.alertTag, background: s.bg, color: s.color }}>{String(apt.presaleStage)}</span>;
+            })() : null}
+            {apt.completion ? (() => {
+              const b = completionBadge(apt.completion as string, moveInDone, completionPast);
               return <span style={{ ...S.alertTag, background: b.bg, color: b.color }}>{b.text}</span>;
-            })()}
+            })() : null}
             {(apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD && (
-              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {apt.unsoldRate}%</span>
+              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {String(apt.unsoldRate)}%</span>
             )}
-            {apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade) && (
-              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>시공사 {apt.builderCreditGrade}</span>
+            {Boolean(apt.builderCreditGrade) && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade as string) && (
+              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>시공사 {String(apt.builderCreditGrade)}</span>
             )}
             {noxCount > 0 && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>혐오시설 {noxCount}건</span>
@@ -142,7 +143,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               <span style={{ ...S.alertTag, background: apt.crimeSafetyGrade >= 5 ? C.redLight : C.amberLight, color: apt.crimeSafetyGrade >= 5 ? C.red : C.amber }}>{apt.crimeSafetyGrade >= 5 ? "치안위험" : "치안주의"}</span>
             )}
             {/* 무순위 공고 발생 단지 — ah- 단지만 (다른 prefix는 0의 의미가 "정보 없음") */}
-            {apt.unsoldEventCount > 0 && apt.id?.startsWith("ah-") && (
+            {Number(apt.unsoldEventCount ?? 0) > 0 && (apt.id as string)?.startsWith("ah-") && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>추가 모집</span>
             )}
           </div>
@@ -150,11 +151,11 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
       </div>
 
       <div style={isDesktop ? { ...S.btnRow, padding: "0 20px 14px" } : { ...S.btnRow, padding: "0 16px 12px" }}>
-        <button onClick={() => onDetail(apt.id)} style={dynStyles.detailBtn}>상세보기</button>
-        <button onClick={e => { e.stopPropagation(); onFav(apt.id); }} style={dynStyles.favBtn}>{isFav ? "관심 해제" : "관심매물"}</button>
-        <button onClick={e => { e.stopPropagation(); onComp(apt.id); }} style={dynStyles.compBtn}>{isComp ? "비교 중" : "비교"}</button>
+        <button onClick={() => onDetail(apt.id as string)} style={dynStyles.detailBtn}>상세보기</button>
+        <button onClick={e => { e.stopPropagation(); onFav(apt.id as string); }} style={dynStyles.favBtn}>{isFav ? "관심 해제" : "관심매물"}</button>
+        <button onClick={e => { e.stopPropagation(); onComp(apt.id as string); }} style={dynStyles.compBtn}>{isComp ? "비교 중" : "비교"}</button>
         {onExpertView && (
-          <button onClick={e => { e.stopPropagation(); onExpertView(apt.id); }} style={{ ...S.btnBase, background: C.indigo, color: C.white, border: "1.5px solid transparent", fontWeight: 700 }}>전문가</button>
+          <button onClick={e => { e.stopPropagation(); onExpertView(apt); }} style={{ ...S.btnBase, background: C.indigo, color: C.white, border: "1.5px solid transparent", fontWeight: 700 }}>전문가</button>
         )}
       </div>
     </div>

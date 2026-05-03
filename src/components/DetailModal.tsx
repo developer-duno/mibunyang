@@ -4,6 +4,7 @@ import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
 import { CatPanel } from "./CatPanel";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
+// detail/* 컴포넌트는 M3d 에서 .tsx 변환 예정 → 임시 any 캐스팅
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
@@ -15,34 +16,45 @@ import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { MarketStatsCharts } from "./detail/MarketStatsCharts";
 import { IconClose } from "./icons";
+import type { DetailModalProps } from "@/types/components/DetailModal.types";
+
+// M3d 변환 전 children 컴포넌트 props 타입 누락 회피용 - JSX 호출 시 캐스팅
+const PriceTableC = PriceTable as React.ComponentType<Record<string, unknown>>;
+const SchoolInfoC = SchoolInfo as React.ComponentType<Record<string, unknown>>;
+const LoanAnalysisC = LoanAnalysis as React.ComponentType<Record<string, unknown>>;
+const DataSectionsC = DataSections as React.ComponentType<Record<string, unknown>>;
+const PresaleInfoC = PresaleInfo as React.ComponentType<Record<string, unknown>>;
+const PriceChartC = PriceChart as React.ComponentType<Record<string, unknown>>;
+const UnsoldChartC = UnsoldChart as React.ComponentType<Record<string, unknown>>;
+const MarketStatsChartsC = MarketStatsCharts as React.ComponentType<Record<string, unknown>>;
 
 const DM_S = {
   dragBar: { width: 40, height: 4, background: C.border, borderRadius: 2, margin: "0 auto 12px", cursor: "pointer" },
   headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   closeBtn: { background: C.slate100, border: "none", borderRadius: "50%", width: 44, height: 44, cursor: "pointer", color: C.muted, display: "flex", alignItems: "center", justifyContent: "center" },
-  scoreBadgeWrap: { textAlign: "center", marginBottom: 16 },
+  scoreBadgeWrap: { textAlign: "center" as const, marginBottom: 16 },
   radarRow: { display: "flex", gap: 8, alignItems: "center", padding: "0 0 12px" },
   metricsHead: { fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 6 },
   metricsRow: { display: "flex", justifyContent: "space-between", padding: "4px 0" },
   metricsLabel: { fontSize: F.base, color: C.muted },
   benefitsBox: { background: C.amberLight, borderRadius: 10, padding: "8px 10px", marginBottom: 10, border: `1px solid ${C.amberBorder}` },
   benefitsHead: { fontSize: F.base, fontWeight: 700, color: C.amber, marginBottom: 4 },
-  benefitsChipRow: { display: "flex", flexWrap: "wrap", gap: 4 },
+  benefitsChipRow: { display: "flex", flexWrap: "wrap" as const, gap: 4 },
   benefitsChip: { fontSize: F.sm, color: C.amber, background: C.white, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.amberBorder}` },
   republishBadge: { display: "inline-flex", alignItems: "center", gap: 4, fontSize: F.sm, color: C.amber, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 6, padding: "3px 8px", marginBottom: 8 },
   actionRow: { display: "flex", gap: 8, marginBottom: 16 },
 };
 
-export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult }) {
-  const closeRef = useRef(null);
-  const prevFocusRef = useRef(null);
+export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult }: DetailModalProps) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const prevFocusRef = useRef<Element | null>(null);
   useEffect(() => {
     if (!item) return;
     prevFocusRef.current = document.activeElement;
     document.body.style.overflow = "hidden";
     // 모달 열림 시 닫기 버튼으로 포커스 이동 (모바일 가상키보드 방지)
     requestAnimationFrame(() => closeRef.current?.focus());
-    const handleKey = (e) => {
+    const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { onClose(); return; }
       // 포커스 트랩: Tab 키가 모달 내부에서만 순환
       if (e.key === "Tab") {
@@ -51,8 +63,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
         if (!focusable.length) return;
         const first = focusable[0], last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); (last as HTMLElement).focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); (first as HTMLElement).focus(); }
       }
     };
     document.addEventListener("keydown", handleKey);
@@ -60,7 +72,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
       document.body.style.overflow = "";
       document.removeEventListener("keydown", handleKey);
       // 모달 닫힘 시 이전 포커스 복원
-      prevFocusRef.current?.focus?.();
+      (prevFocusRef.current as HTMLElement | null)?.focus?.();
     };
     // boolean sentinel: 모달 열림/닫힘(false↔true)에만 effect 재실행. item 객체 reference 변경 시
     // 포커스가 닫기 버튼으로 튀거나 body overflow 가 깜박이는 것 방지. exhaustive-deps 의도적 위반.
@@ -69,9 +81,9 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
   if (!item) return null;
   const { apt, res } = item;
-  const zone = getZone(apt.region, apt.gu);
-  const zoneName = ZONE_TYPE[zone];
-  const radarData = Object.values(res.cats).map((c) => ({ l: SHORT_LABEL[c.label] || c.label, v: c.total }));
+  const zone = getZone(apt.region as string, apt.gu as string);
+  const zoneName = (ZONE_TYPE as Record<string, string>)[zone];
+  const radarData = (Object.values(res.cats) as Array<{ label: string; total: number }>).map((c) => ({ l: (SHORT_LABEL as Record<string, string>)[c.label] || c.label, v: c.total }));
 
   return (
     <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, zIndex: 300, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isPC ? "center" : "flex-end", justifyContent: "center" }} onClick={onClose} role="dialog" aria-modal="true" aria-label={`${apt.name} 상세 분석`}>
@@ -82,8 +94,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             <div>
               <div style={{ fontSize: isDesktop ? F.xl : F.lg, fontWeight: 800, color: C.text }}>{apt.name}</div>
               <div style={{ fontSize: isDesktop ? F.base : F.sm, color: C.muted }}>{[apt.region, apt.gu, apt.dong].filter(Boolean).join(" ")} · {apt.area}㎡ · {fmtPrice(apt.price)}</div>
-              {apt.address && <div style={{ fontSize: F.sm, color: C.muted, marginTop: 2 }}>{apt.address}{apt.district ? ` (${apt.district})` : ""}</div>}
-              {apt.roadAddress && <div style={{ fontSize: F.sm, color: C.muted }}>{apt.roadAddress}</div>}
+              {apt.address ? <div style={{ fontSize: F.sm, color: C.muted, marginTop: 2 }}>{String(apt.address)}{apt.district ? ` (${String(apt.district)})` : ""}</div> : null}
+              {apt.roadAddress ? <div style={{ fontSize: F.sm, color: C.muted }}>{String(apt.roadAddress)}</div> : null}
             </div>
             <button ref={closeRef} onClick={onClose} aria-label="닫기" style={DM_S.closeBtn}><IconClose size={18} /></button>
           </div>
@@ -116,11 +128,11 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           </div>
         </div>
 
-        {apt.benefits && apt.benefits.length > 0 && (
+        {Array.isArray(apt.benefits) && apt.benefits.length > 0 && (
           <div style={DM_S.benefitsBox}>
             <div style={DM_S.benefitsHead}>혜택 상세</div>
             <div style={DM_S.benefitsChipRow}>
-              {apt.benefits.map((b, i) => (
+              {(apt.benefits as string[]).map((b: string, i: number) => (
                 <span key={i} style={DM_S.benefitsChip}>{b}</span>
               ))}
             </div>
@@ -128,42 +140,42 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         )}
 
 
-        {apt.siblingIds?.length > 1 && (
+        {Array.isArray(apt.siblingIds) && (apt.siblingIds as string[]).length > 1 && (
           <div style={DM_S.republishBadge}>
-            재공고 {apt.siblingIds.length}회 · 시계열 통합 조회
+            재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회
           </div>
         )}
 
-        <PriceTable apt={apt} />
-        <PriceChart apartmentId={apt.id} siblingIds={apt.siblingIds} />
-        <UnsoldChart apartmentId={apt.id} siblingIds={apt.siblingIds} />
+        <PriceTableC apt={apt} />
+        <PriceChartC apartmentId={apt.id} siblingIds={apt.siblingIds} />
+        <UnsoldChartC apartmentId={apt.id} siblingIds={apt.siblingIds} />
 
-        <SchoolInfo apt={apt} />
+        <SchoolInfoC apt={apt} />
 
-        <PresaleInfo apt={apt} />
+        <PresaleInfoC apt={apt} />
 
-        <LoanAnalysis apt={apt} />
+        <LoanAnalysisC apt={apt} />
 
-        <MarketStatsCharts region={apt.region} gu={apt.gu} />
+        <MarketStatsChartsC region={apt.region} gu={apt.gu} />
 
-        <DataSections apt={apt} />
+        <DataSectionsC apt={apt} />
         {onConsult && (
-          <button onClick={() => onConsult(apt.id)} style={{
+          <button onClick={() => onConsult(apt.id as string)} style={{
             width: "100%", background: C.blue, color: C.white, border: "none", borderRadius: 8,
             padding: "12px 0", fontSize: F.base, fontWeight: 700, cursor: "pointer", minHeight: 44,
             marginBottom: 8, transition: "all .15s",
           }}>이 매물 상담하기</button>
         )}
         <div style={DM_S.actionRow}>
-          <button onClick={() => onFav(apt.id)} style={{
+          <button onClick={() => onFav(apt.id as string)} style={{
             flex: 1, background: isFav ? C.redLight : C.slate100, color: isFav ? C.red : C.muted,
             border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent", borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? F.md : F.base, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>{isFav ? "관심 등록됨" : "관심매물 추가"}</button>
-          <button onClick={() => onComp(apt.id)} style={{
+          <button onClick={() => onComp(apt.id as string)} style={{
             flex: 1, background: isComp ? C.indigo : "transparent", color: isComp ? C.white : C.indigo,
             border: `1.5px solid ${C.indigo}`, borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? F.md : F.base, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>{isComp ? "비교 중" : "비교 추가"}</button>
-          {onShare && <button onClick={() => onShare(apt.id)} aria-label="이 단지 공유하기" style={{
+          {onShare && <button onClick={() => onShare(apt.id as string)} aria-label="이 단지 공유하기" style={{
             flex: 1, background: C.slate100, color: C.slate600,
             border: "1.5px solid transparent", borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? F.md : F.base, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>공유</button>}
