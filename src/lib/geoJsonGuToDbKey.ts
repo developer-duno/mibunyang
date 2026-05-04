@@ -13,16 +13,18 @@
 
 import { SIDO_CODE_TO_DB } from "@/constants/regionGeoMapping";
 
-/**
- * @param {{properties?: {code?: string, name?: string}}} feature
- * @returns {string | null}  byGu 키 ("region|gu"), 매핑 실패 시 null
- */
-export function geoSigunguToByGuKey(feature) {
+export interface GeoJsonSigunguFeature {
+  properties?: { code?: string; name?: string };
+}
+
+/** byGu 키 ("region|gu"), 매핑 실패 시 null */
+export function geoSigunguToByGuKey(feature: GeoJsonSigunguFeature | null | undefined): string | null {
   const code = feature?.properties?.code;
   const name = feature?.properties?.name;
   if (typeof code !== "string" || typeof name !== "string") return null;
   if (code.length < 2 || name.length === 0) return null;
-  const region = SIDO_CODE_TO_DB[code.slice(0, 2)];
+  const sidoMap = SIDO_CODE_TO_DB as Record<string, string>;
+  const region = sidoMap[code.slice(0, 2)];
   if (!region) return null;
   // 일반시 합산: "XX시YY구" → "XX시"
   const m = name.match(/^(.+?시)[가-힣]+구$/);

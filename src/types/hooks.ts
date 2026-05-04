@@ -105,6 +105,43 @@ export interface UseDataPipelineReturn {
 }
 
 /**
+ * useComparison 반환 — App.jsx L113 분해.
+ */
+export interface UseComparisonReturn {
+  compIds: string[];
+  setCompIds: (_v: string[] | ((_prev: string[]) => string[])) => void;
+  showComp: boolean;
+  showCompOpen: boolean;
+  setShowCompOpen: (_v: boolean | ((_prev: boolean) => boolean)) => void;
+  toggleComp: (_id: string) => void;
+}
+
+/**
+ * useApartmentData 반환 — App.jsx L121 분해.
+ */
+export interface UseApartmentDataReturn {
+  apartments: Apt[];
+  loading: boolean;
+  error: string | null;
+  retry: () => void;
+  dataUpdatedAt: string | null;
+}
+
+/**
+ * useLoginGate 반환 — App.jsx L140~144 분해.
+ */
+export type LoginTrigger = "detail" | "expert" | null;
+export interface UseLoginGateReturn {
+  showLoginPrompt: boolean;
+  setShowLoginPrompt: (_v: boolean) => void;
+  loginTrigger: LoginTrigger;
+  setLoginTrigger: (_v: LoginTrigger) => void;
+  handleDetailGated: (_aptId: string) => void;
+  handleKakaoFromPrompt: () => void;
+  handleExpertFromPrompt: () => void;
+}
+
+/**
  * useExpertMode 반환 — useAdminMode 와 별도, 전문가 로그인 도메인.
  * (.js 훅 — 향후 정밀화)
  */

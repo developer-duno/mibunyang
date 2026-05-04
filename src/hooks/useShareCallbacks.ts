@@ -1,5 +1,38 @@
 import { useRef, useEffect, useCallback } from "react";
 import { fmtPrice } from "@/lib/format";
+import type { ScoredApt } from "@/types/hooks";
+
+interface ShareSheetData {
+  title: string;
+  text: string;
+  url: string;
+}
+
+interface UseShareCallbacksArgs {
+  scoredMap: Map<string, ScoredApt>;
+  profile: string;
+  compIds: string[];
+  compItems: ScoredApt[];
+  openShareSheet: (_data: ShareSheetData) => void;
+  getShareURL: () => string;
+  filterRegion: string;
+  budgetMin: string | number | null | "";
+  budgetMax: string | number | null | "";
+  areaMin: string | number | null | "";
+  areaMax: string | number | null | "";
+  unitsMin: string | number | null | "";
+  unitsMax: string | number | null | "";
+  moveInFilter: string;
+  minScore: string | number | null | "";
+  builderTier: string;
+  benefitOnly: boolean;
+}
+
+interface UseShareCallbacksReturn {
+  handleShareDetail: (_aptId: string) => void;
+  handleShareCompare: () => void;
+  handleShareFilters: () => void;
+}
 
 /**
  * 공유 콜백 3종 훅
@@ -9,11 +42,11 @@ export function useShareCallbacks({
   scoredMap, profile, compIds, compItems, openShareSheet, getShareURL,
   filterRegion, budgetMin, budgetMax, areaMin, areaMax,
   unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly,
-}) {
+}: UseShareCallbacksArgs): UseShareCallbacksReturn {
   const scoredMapRef = useRef(scoredMap);
   useEffect(() => { scoredMapRef.current = scoredMap; }, [scoredMap]);
 
-  const handleShareDetail = useCallback((aptId) => {
+  const handleShareDetail = useCallback((aptId: string) => {
     const item = scoredMapRef.current.get(aptId);
     if (!item) return;
     const base = getShareURL();
