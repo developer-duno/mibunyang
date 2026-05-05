@@ -1,4 +1,19 @@
-export const CITY_TIER = {
+export type TierKey = "S" | "A" | "B" | "C" | "D";
+
+export type CityTierEntry = {
+  label: string;
+  subwayW: number;
+  busW: number;
+  icW: number;
+  ktxW: number;
+};
+
+export type RegionEntry = {
+  tier: TierKey;
+  gus: string[];
+};
+
+export const CITY_TIER: Record<TierKey, CityTierEntry> = {
   S: { label: "특별시", subwayW: 1.0, busW: 0.7, icW: 0.6, ktxW: 0.8 },
   A: { label: "광역시", subwayW: 0.9, busW: 0.85, icW: 0.7, ktxW: 0.9 },
   B: { label: "특례시", subwayW: 0.7, busW: 0.9, icW: 0.8, ktxW: 0.9 },
@@ -6,7 +21,7 @@ export const CITY_TIER = {
   D: { label: "군",     subwayW: 0.1, busW: 1.0, icW: 1.0, ktxW: 0.5 },
 };
 
-export const REGIONS = {
+export const REGIONS: Record<string, RegionEntry> = {
   "서울": { tier: "S", gus: ["강남구","서초구","송파구","강동구","마포구","용산구","성동구","영등포구","동작구","관악구","강서구","양천구","구로구","금천구","노원구","도봉구","강북구","성북구","동대문구","중랑구","광진구","종로구","중구","서대문구","은평구"] },
   "부산": { tier: "A", gus: ["해운대구","수영구","남구","동래구","부산진구","연제구","사하구","북구","금정구","사상구","기장군","강서구","중구","서구","동구","영도구"] },
   "대구": { tier: "A", gus: ["수성구","중구","달서구","북구","동구","서구","남구","달성군"] },

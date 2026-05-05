@@ -2,7 +2,7 @@
 // public/geo/sido.geojson 의 긴 이름 ("서울특별시") ↔ DB regions.js 의 짧은 이름 ("서울")
 // 코드는 통계청 시도 2자리 (CTPRVN_CD)
 
-export const SIDO_GEO_TO_DB = {
+export const SIDO_GEO_TO_DB: Record<string, string> = {
   "서울특별시": "서울",
   "부산광역시": "부산",
   "대구광역시": "대구",
@@ -22,12 +22,12 @@ export const SIDO_GEO_TO_DB = {
   "제주특별자치도": "제주",
 };
 
-export const SIDO_DB_TO_GEO = Object.fromEntries(
+export const SIDO_DB_TO_GEO: Record<string, string> = Object.fromEntries(
   Object.entries(SIDO_GEO_TO_DB).map(([geo, db]) => [db, geo])
 );
 
 // 시도 2자리 코드 → DB 짧은 이름
-export const SIDO_CODE_TO_DB = {
+export const SIDO_CODE_TO_DB: Record<string, string> = {
   "11": "서울", "21": "부산", "22": "대구", "23": "인천", "24": "광주",
   "25": "대전", "26": "울산", "29": "세종", "31": "경기", "32": "강원",
   "33": "충북", "34": "충남", "35": "전북", "36": "전남", "37": "경북",
@@ -35,6 +35,6 @@ export const SIDO_CODE_TO_DB = {
 };
 
 /** GeoJSON feature.properties.name → DB 짧은 이름. 매핑 실패 시 null. */
-export function geoSidoToDbName(geoName) {
+export function geoSidoToDbName(geoName: string): string | null {
   return SIDO_GEO_TO_DB[geoName] ?? null;
 }

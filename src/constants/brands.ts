@@ -1,4 +1,4 @@
-export const BUILDER_ALIASES = {
+export const BUILDER_ALIASES: Record<string, string> = {
   "지에스건설": "GS건설", "GS건설(주)": "GS건설", "(주)GS건설": "GS건설",
   "현대건설(주)": "현대건설", "(주)현대건설": "현대건설",
   "(주)대우건설": "대우건설", "대우건설(주)": "대우건설",
@@ -15,13 +15,20 @@ export const BUILDER_ALIASES = {
   "금호건설(주)": "금호건설", "(주)금호건설": "금호건설",
 };
 
-export function resolveBuilder(name) {
+export function resolveBuilder(name?: string | null): string {
   if (!name) return "기타";
   const trimmed = name.trim();
   return BUILDER_ALIASES[trimmed] ?? trimmed;
 }
 
-export const BRAND_TIER = {
+export type BuilderTier = {
+  tier: string;
+  score: number;
+  label: string;
+  adj: number;
+};
+
+export const BRAND_TIER: Record<string, BuilderTier> = {
   "현대건설": { tier: "1군Super", score: 20, label: "힐스테이트", adj: 1.05 },
   "삼성물산": { tier: "1군Super", score: 20, label: "래미안", adj: 1.05 },
   "GS건설": { tier: "1군Super", score: 20, label: "자이", adj: 1.05 },
@@ -40,7 +47,7 @@ export const BRAND_TIER = {
   "태영건설": { tier: "2군", score: 10, label: "데시앙", adj: 1.0 },
 };
 
-export const AGE_PREMIUM = [
+export const AGE_PREMIUM: readonly { min: number; max: number; coeff: number }[] = [
   { min: 0, max: 1, coeff: 1.03 },
   { min: 1, max: 3, coeff: 1.05 },
   { min: 3, max: 5, coeff: 1.10 },
@@ -50,5 +57,5 @@ export const AGE_PREMIUM = [
   { min: 20, max: 99, coeff: 1.55 },
 ];
 
-export const LAYOUT_SCORE = { "4베이판상": 10, "4베이타워": 8, "3베이판상": 7, "3베이타워": 5, "2베이이하": 3 };
-export const NOXIOUS_PENALTY = { "소각장": -18, "고압송전탑": -12, "화장장": -10, "교도소": -10, "묘지": -5, "철도인접": -5, "유흥가": -4 };
+export const LAYOUT_SCORE: Record<string, number> = { "4베이판상": 10, "4베이타워": 8, "3베이판상": 7, "3베이타워": 5, "2베이이하": 3 };
+export const NOXIOUS_PENALTY: Record<string, number> = { "소각장": -18, "고압송전탑": -12, "화장장": -10, "교도소": -10, "묘지": -5, "철도인접": -5, "유흥가": -4 };

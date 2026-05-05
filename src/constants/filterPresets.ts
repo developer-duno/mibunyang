@@ -2,7 +2,26 @@
  * 필터 프리셋 — 자주 쓰는 필터 조합 1-클릭 적용
  * applyPreset()에 전달되는 객체 형태 (미지정 필드는 기본값으로 초기화)
  */
-export const FILTER_PRESETS = [
+export type FilterPresetValues = Partial<{
+  budgetMax: string;
+  areaMin: string;
+  areaMax: string;
+  benefitOnly: boolean;
+  sortKey: string;
+  minScore: string;
+  moveInFilter: string;
+  builderTier: string;
+  unitsMin: string;
+}>;
+
+export type FilterPreset = {
+  key: string;
+  label: string;
+  desc: string;
+  values: FilterPresetValues;
+};
+
+export const FILTER_PRESETS: readonly FilterPreset[] = [
   {
     key: "newlywed",
     label: "신혼부부",
