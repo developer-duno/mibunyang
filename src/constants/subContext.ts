@@ -1,8 +1,17 @@
+import { PRODUCT_MAX as _PM } from "@/constants/scoringTiers";
+
 // 소비자용 서브지표 해석 매핑 테이블
 // 엔진(engine.js) 수정 없이 표현 계층에서만 활용
 // 각 키는 engine.js subs[].name과 정확히 일치해야 함 (36개)
 
-export const SUB_CONTEXT = {
+type Category = "price" | "location" | "product" | "benefit" | "risk" | "future";
+
+export type SubInterpret = {
+  interpret: ((_sc: number) => string) | null;
+  benchmark: string | null;
+};
+
+export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
   price: {
     "적정가 괴리도": {
       interpret: (sc) => sc >= 70 ? "주변 시세 대비 저렴" : sc >= 40 ? "적정 수준" : "주변 대비 비쌈",
@@ -166,11 +175,10 @@ export const SUB_CONTEXT = {
 
 // scoreProduct 서브별 최대 점수 (시각화 정규화용)
 // 단일 출처: scoringTiers.js PRODUCT_MAX (영어 키) → 한글 키 변환
-import { PRODUCT_MAX as _PM } from "@/constants/scoringTiers";
-const _KEY_MAP = {
+const _KEY_MAP: Record<string, string> = {
   brand: "브랜드", unit: "세대수", parking: "주차", far: "용적률",
   energy: "에너지", exclusive: "전용률", layout: "평면", quake: "내진", structure: "구조",
 };
-export const PRODUCT_MAX = Object.fromEntries(
+export const PRODUCT_MAX: Record<string, number> = Object.fromEntries(
   Object.entries(_PM).map(([k, v]) => [_KEY_MAP[k], v])
 );

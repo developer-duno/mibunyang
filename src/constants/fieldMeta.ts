@@ -1,14 +1,27 @@
 import { BRAND_TIER, LAYOUT_SCORE } from "./brands";
 import { fmtPrice, fmtCompletion, fmtRecruitDate, fmtPresaleSchedule } from "@/lib/format";
 
-const n = (v, unit, fallback = "—") => v != null ? `${v}${unit}` : fallback;
-const nk = (v, unit) => v != null ? `${v.toLocaleString("ko-KR")}${unit}` : "—";
+// fmt/isEstimated 등 함수의 v/apt 매개변수는 동적 dict — DB row 타입 박제는 BACKLOG-M4c-fieldMeta-apt-type.
+// 좁힘 보류 — `any` 사용. 호출처 호환성 우선.
+export type FieldMetaEntry = {
+  label: string;
+  section: string;
+  unit?: string;
+  hidden?: boolean;
+  fmt: (_v: any, _apt?: any) => string;
+  isEstimated?: (_v: any, _apt?: any) => any;
+  isDefault?: (_v: any) => boolean;
+  isNotApplicable?: (_v: any, _apt?: any) => boolean;
+};
+
+const n = (v: any, unit: string, fallback = "—"): string => v != null ? `${v}${unit}` : fallback;
+const nk = (v: any, unit: string): string => v != null ? `${v.toLocaleString("ko-KR")}${unit}` : "—";
 
 // 분양 중이 아닌 단지 → presale/competition 필드는 "적용 대상 아님" 분류
 // (세션101: 세션100 NULL률 진단으로 confirmed — 1273/2001 단지가 presaleStage null)
-const presaleNA = (_v, apt) => apt?.presaleStage == null;
+const presaleNA = (_v: any, apt?: any): boolean => apt?.presaleStage == null;
 
-export const FIELD_META = {
+export const FIELD_META: Record<string, FieldMetaEntry> = {
   // ── 섹션1: 단지 개요 ──
   id: { label: "단지 ID", section: "개요", fmt: v => v ?? "—" },
   name: { label: "단지명", section: "개요", fmt: v => v ?? "—" },
@@ -171,7 +184,7 @@ export const FIELD_META = {
   presaleFetchedAt: { label: "분양정보 수집시점", section: "분양", fmt: v => v ? new Date(v).toLocaleDateString("ko-KR") : "미수집", isNotApplicable: presaleNA },
 };
 
-export const FIELD_SECTIONS = [
+export const FIELD_SECTIONS: { key: string; label: string; fields: string[] }[] = [
   { key: "개요", label: "단지 개요", fields: ["id","name","dong","gu","region","address","roadAddress","district","area","price","pp","floors","maxFloor","units","unsold","builder","completion","layout","heating","avgMaintenanceCost","primaryDirection"] },
   { key: "가격", label: "가격/시장 지표", fields: ["nearbyMedian","jeonseRate","pir","psr","dataReliability","nearbyBuildYear","avgFloor","floorRange","priceIndex","avgPriceSqm","landCostRatio","netMigration"] },
   { key: "안전", label: "안전도/리스크", fields: ["unsoldRate","competitionRate","competitionSupply","competitionApplicants","unsoldEventCount","lastUnsoldEventAt","crimeSafetyGrade","recentTrades6m","cancelRatio6m","supplyRatio","builderCreditGrade","builderDebtRatio","hugGuarantee","isRegulated","dsr40pass","popGrowth","newSupply","initialSaleRate"] },
