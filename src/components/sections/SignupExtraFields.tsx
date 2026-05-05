@@ -1,10 +1,10 @@
 import { memo, type Dispatch, type SetStateAction } from "react";
 import { C, F } from "@/theme";
+import type { ExpertAuthForm } from "@/hooks/useExpertMode";
 
-type SignupForm = Record<string, any>;
 type SignupExtraFieldsProps = {
-  authForm: SignupForm;
-  setAuthForm: Dispatch<SetStateAction<SignupForm>>;
+  authForm: ExpertAuthForm;
+  setAuthForm: Dispatch<SetStateAction<ExpertAuthForm>>;
 };
 
 /**
@@ -16,7 +16,7 @@ export const SignupExtraFields = memo(function SignupExtraFields({ authForm, set
       <div style={{ marginBottom: 12 }}>
         <label htmlFor="expert-name" style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" as const }}>이름</label>
         <input id="expert-name" type="text" autoComplete="name" value={String(authForm.name ?? "")}
-          onChange={e => setAuthForm((f: SignupForm) => ({ ...f, name: e.target.value }))}
+          onChange={e => setAuthForm((f: ExpertAuthForm) => ({ ...f, name: e.target.value }))}
           placeholder="이름 입력" style={{
             width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6,
             background: C.white, color: C.text, boxSizing: "border-box" as const, minHeight: 42
@@ -25,7 +25,7 @@ export const SignupExtraFields = memo(function SignupExtraFields({ authForm, set
       <div style={{ marginBottom: 12 }}>
         <label htmlFor="expert-affil" style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" as const }}>소속 (선택)</label>
         <input id="expert-affil" type="text" autoComplete="organization" value={String(authForm.affiliation ?? "")}
-          onChange={e => setAuthForm((f: SignupForm) => ({ ...f, affiliation: e.target.value }))}
+          onChange={e => setAuthForm((f: ExpertAuthForm) => ({ ...f, affiliation: e.target.value }))}
           placeholder="부동산 사무소명 등" style={{
             width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6,
             background: C.white, color: C.text, boxSizing: "border-box" as const, minHeight: 42
@@ -34,7 +34,7 @@ export const SignupExtraFields = memo(function SignupExtraFields({ authForm, set
       <div style={{ marginBottom: 12 }}>
         <label htmlFor="expert-phone" style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" as const }}>연락처</label>
         <input id="expert-phone" type="tel" autoComplete="tel" value={String(authForm.phone ?? "")}
-          onChange={e => setAuthForm((f: SignupForm) => ({ ...f, phone: e.target.value }))}
+          onChange={e => setAuthForm((f: ExpertAuthForm) => ({ ...f, phone: e.target.value }))}
           placeholder="010-1234-5678" style={{
             width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6,
             background: C.white, color: C.text, boxSizing: "border-box" as const, minHeight: 42
@@ -43,7 +43,7 @@ export const SignupExtraFields = memo(function SignupExtraFields({ authForm, set
       <div style={{ marginBottom: 12 }}>
         <label htmlFor="expert-specialty" style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" as const }}>전문 분야</label>
         <select id="expert-specialty" value={String(authForm.specialty ?? "")}
-          onChange={e => setAuthForm((f: SignupForm) => ({ ...f, specialty: e.target.value }))}
+          onChange={e => setAuthForm((f: ExpertAuthForm) => ({ ...f, specialty: e.target.value }))}
           style={{
             width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6,
             background: C.white, color: authForm.specialty ? C.text : C.muted, boxSizing: "border-box" as const, minHeight: 42,
@@ -58,7 +58,7 @@ export const SignupExtraFields = memo(function SignupExtraFields({ authForm, set
       <div style={{ marginBottom: 12 }}>
         <label htmlFor="expert-license" style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" as const }}>자격증/면허 (선택)</label>
         <input id="expert-license" type="text" value={String(authForm.license ?? "")}
-          onChange={e => setAuthForm((f: SignupForm) => ({ ...f, license: e.target.value }))}
+          onChange={e => setAuthForm((f: ExpertAuthForm) => ({ ...f, license: e.target.value }))}
           placeholder="예: 공인중개사, 감정평가사" style={{
             width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6,
             background: C.white, color: C.text, boxSizing: "border-box" as const, minHeight: 42
@@ -67,7 +67,7 @@ export const SignupExtraFields = memo(function SignupExtraFields({ authForm, set
       <div style={{ marginBottom: 12 }}>
         <label htmlFor="expert-exp" style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" as const }}>경력 (년)</label>
         <input id="expert-exp" type="number" min="0" max="50" value={String(authForm.experience ?? "")}
-          onChange={e => setAuthForm((f: SignupForm) => ({ ...f, experience: e.target.value }))}
+          onChange={e => setAuthForm((f: ExpertAuthForm) => ({ ...f, experience: e.target.value }))}
           placeholder="경력 연수" style={{
             width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6,
             background: C.white, color: C.text, boxSizing: "border-box" as const, minHeight: 42
@@ -76,7 +76,7 @@ export const SignupExtraFields = memo(function SignupExtraFields({ authForm, set
       <div style={{ marginBottom: 16 }}>
         <label htmlFor="expert-bio" style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6, display: "block", textAlign: "left" as const }}>자기소개 / 가입 사유 (10자 이상)</label>
         <textarea id="expert-bio" rows={4} maxLength={500} value={String(authForm.bio ?? "")}
-          onChange={e => setAuthForm((f: SignupForm) => ({ ...f, bio: e.target.value }))}
+          onChange={e => setAuthForm((f: ExpertAuthForm) => ({ ...f, bio: e.target.value }))}
           placeholder="전문가 페이지 이용 사유를 입력해주세요" style={{
             width: "100%", padding: "10px 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 6,
             background: C.white, color: C.text, boxSizing: "border-box" as const, resize: "vertical" as const, lineHeight: 1.6, fontFamily: "inherit"

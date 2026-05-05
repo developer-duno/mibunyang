@@ -5,12 +5,13 @@
 import { memo } from "react";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
 import { F } from "@/theme";
+import type { SortKey } from "@/types/hooks";
 
-type SortOption = { key: string; bg: string; ac: string; mobileLabel: string };
+type SortOption = { key: SortKey; bg: string; ac: string; mobileLabel: string };
 
 type SortPanelProps = {
-  sortKey: string;
-  onSortChange: (_key: string) => void;
+  sortKey: SortKey;
+  onSortChange: (_key: SortKey) => void;
   onClose: () => void;
 };
 

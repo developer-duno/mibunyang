@@ -80,7 +80,7 @@ export interface AdminStats {
  */
 export interface AdminScoredItem {
   apt: Apt;
-  res: ScoringResult & { weights?: Record<string, number> };
+  res: ScoringResult & { weights?: ProfileWeights };
 }
 
 /**

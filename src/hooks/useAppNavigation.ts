@@ -1,6 +1,7 @@
 import { useCallback, useRef, useEffect } from "react";
 import { trackEvent } from "@/lib/analytics";
 import type { UseAppNavigationArgs, UseAppNavigationReturn } from "@/types/hooks";
+import type { Apt } from "@/types/scoring";
 
 /**
  * 탭 전환/인증 네비게이션 훅
@@ -45,8 +46,8 @@ export function useAppNavigation({
   const switchToExpert = useCallback(() => setTab("expert"), [setTab]);
   const switchToInfo = useCallback(() => setTab("info"), [setTab]);
 
-  const handleExpertView = useCallback((aptId: string) => {
-    expert.setExpertExpandedApt(aptId);
+  const handleExpertView = useCallback((apt: Apt) => {
+    expert.setExpertExpandedApt(apt.id ?? null);
     setTab("expert");
   }, [expert, setTab]);
 

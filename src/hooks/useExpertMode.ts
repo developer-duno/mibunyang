@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
-interface ExpertAuthForm {
+export interface ExpertAuthForm {
   email: string;
   password: string;
   name: string;
@@ -12,11 +12,11 @@ interface ExpertAuthForm {
   bio: string;
 }
 
-type AuthMode = "login" | "signup";
-type AuthStatus = "pending" | "rejected" | null;
+export type AuthMode = "login" | "signup";
+export type AuthStatus = "pending" | "rejected" | null;
 type ShowToast = (_msg: string) => void;
 
-interface ExpertUser {
+export interface ExpertUser {
   email?: string;
   name?: string;
   role?: string;

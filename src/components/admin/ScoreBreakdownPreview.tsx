@@ -35,7 +35,7 @@ export const ScoreBreakdownPreview = memo(function ScoreBreakdownPreview({ topAp
 
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {Object.entries(previewItem.res.cats).map(([k, c]) => {
-            const w = previewItem.res.weights?.[k] ?? 0;
+            const w = (previewItem.res.weights as Record<string, number> | undefined)?.[k] ?? 0;
             const contribution = Math.round(c.total * w / 100);
             return (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -58,7 +58,7 @@ export const ScoreBreakdownPreview = memo(function ScoreBreakdownPreview({ topAp
 
         <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 3 }}>
           {Object.entries(previewItem.res.cats).map(([k, c]) => {
-            const w = previewItem.res.weights?.[k] ?? 0;
+            const w = (previewItem.res.weights as Record<string, number> | undefined)?.[k] ?? 0;
             return (
               <span key={k} style={{ fontSize: F.xs, color: (catCol as Record<string, string>)[k], background: (catBg as Record<string, string>)[k], padding: "3px 8px", borderRadius: 4, fontWeight: 600 }}>
                 {CAT_LABELS[k] || k} {c.total}×{w}%={Math.round(c.total * w / 100)}

@@ -1,6 +1,7 @@
 import { memo, useEffect } from "react";
 import { C, F } from "@/theme";
 import { trackEvent } from "@/lib/analytics";
+import type { LoginTrigger } from "@/types/hooks";
 
 /**
  * 로그인 유도 모달 — 비로그인 사용자가 상세/비교/지도/관심매물 접근 시 표시
@@ -12,7 +13,7 @@ type LoginPromptModalProps = {
   onKakaoLogin: () => void;
   onExpertLogin: () => void;
   kakaoLoading?: boolean;
-  trigger?: string;
+  trigger?: LoginTrigger;
 };
 
 export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading, trigger }: LoginPromptModalProps) {

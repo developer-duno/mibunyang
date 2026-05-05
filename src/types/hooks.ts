@@ -53,13 +53,13 @@ export interface UseDataPipelineArgs {
   builderTier: string;
   showFavOnly: boolean;
   favoriteSet: Set<string>;
-  budgetMin: number | null;
-  budgetMax: number | null;
-  areaMin: number | null;
-  areaMax: number | null;
-  unitsMin: number | null;
-  unitsMax: number | null;
-  minScore: number | null;
+  budgetMin: string;
+  budgetMax: string;
+  areaMin: string;
+  areaMax: string;
+  unitsMin: string;
+  unitsMax: string;
+  minScore: string;
   benefitOnly: boolean;
   hideNoUnsold: boolean;
   compIds: string[];
@@ -76,13 +76,13 @@ export interface UseDataPipelineReturn {
   baseFilterArgs: {
     showFavOnly: boolean;
     favoriteSet: Set<string>;
-    budgetMin: number | null;
-    budgetMax: number | null;
-    areaMin: number | null;
-    areaMax: number | null;
-    unitsMin: number | null;
-    unitsMax: number | null;
-    minScore: number | null;
+    budgetMin: string;
+    budgetMax: string;
+    areaMin: string;
+    areaMax: string;
+    unitsMin: string;
+    unitsMax: string;
+    minScore: string;
     benefitOnly: boolean;
   };
   filtered: ScoredApt[];
@@ -130,7 +130,7 @@ export interface UseApartmentDataReturn {
 /**
  * useLoginGate 반환 — App.jsx L140~144 분해.
  */
-export type LoginTrigger = "detail" | "expert" | null;
+export type LoginTrigger = "detail" | "expert" | "map" | null;
 export interface UseLoginGateReturn {
   showLoginPrompt: boolean;
   setShowLoginPrompt: (_v: boolean) => void;
@@ -345,11 +345,7 @@ export interface UseAppNavigationArgs {
     setExpertExpandedApt: (_id: string | null) => void;
     [key: string]: unknown;
   };
-  admin: {
-    adminLoggedIn: boolean;
-    setAdminLoggedIn: (_v: boolean) => void;
-    [key: string]: unknown;
-  };
+  admin: import("./admin").AdminMode;
   consult: {
     consultSubmitted: boolean;
     setConsultSubmitted: (_v: boolean) => void;
@@ -378,7 +374,7 @@ export interface UseAppNavigationReturn {
   switchToAdmin: () => void;
   switchToExpert: () => void;
   switchToInfo: () => void;
-  handleExpertView: (_aptId: string) => void;
+  handleExpertView: (_apt: import("./scoring").Apt) => void;
   handleConsultFromDetail: (_aptId: string) => void;
   handleNavClick: (_k: string) => void;
 }

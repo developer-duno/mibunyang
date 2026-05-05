@@ -1,25 +1,16 @@
 import { memo } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { C, F } from "@/theme";
 import { IconClose } from "./icons";
 import type { CompareItem } from "@/types/components";
-
-type ConsultFormState = {
-  name?: string;
-  phone?: string;
-  email?: string;
-  message?: string;
-  budgetMin?: string;
-  budgetMax?: string;
-  consultType?: string;
-  [key: string]: unknown;
-};
+import type { ConsultForm as ConsultFormState } from "@/hooks/useConsult";
 
 type ConsultFormProps = {
   scored: CompareItem[];
   favoriteIds: string[];
-  setFavoriteIds: (_ids: string[]) => void;
+  setFavoriteIds: (_idsOrFn: string[] | ((_prev: string[]) => string[])) => void;
   form: ConsultFormState;
-  setForm: (_form: ConsultFormState) => void;
+  setForm: Dispatch<SetStateAction<ConsultFormState>>;
   onSubmit: () => void;
   submitted: boolean;
   showToast: (_msg: string) => void;

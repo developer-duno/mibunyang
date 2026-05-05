@@ -1,23 +1,18 @@
 import { useEffect } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { trackEvent } from "@/lib/analytics";
-
-interface KakaoCallbackResult {
-  ok: boolean;
-  token?: string;
-  refreshToken?: string;
-  role?: string;
-  user?: { affiliation?: string };
-  pendingDetail?: string;
-}
+import type { UseKakaoAuthReturn } from "@/types/hooks";
+import type { AdminMode } from "@/types/admin";
+import type { ExpertUser } from "./useExpertMode";
 
 interface UseKakaoCallbackEffectArgs {
   tab: string;
-  kakao: { handleKakaoCallback: () => Promise<KakaoCallbackResult | null | undefined> };
+  kakao: Pick<UseKakaoAuthReturn, "handleKakaoCallback">;
   expert: {
-    setExpertLoggedIn: (_v: boolean) => void;
-    setAuthUser: (_u: unknown) => void;
+    setExpertLoggedIn: Dispatch<SetStateAction<boolean>>;
+    setAuthUser: Dispatch<SetStateAction<ExpertUser | null>>;
   };
-  admin: { setAdminLoggedIn: (_v: boolean) => void };
+  admin: Pick<AdminMode, "setAdminLoggedIn">;
   detail: { setDetailAptId: (_id: string | null) => void };
   setTab: (_tab: string) => void;
   showToast: (_msg: string) => void;
@@ -39,7 +34,7 @@ export function useKakaoCallbackEffect({ tab, kakao, expert, admin, detail, setT
         const role = result.role || "user";
         localStorage.setItem("userRole", role);
         expert.setExpertLoggedIn(true);
-        expert.setAuthUser(result.user);
+        expert.setAuthUser((result.user ?? null) as ExpertUser | null);
         if (role === "admin") { admin.setAdminLoggedIn(true); setTab("admin"); }
         else if (role === "expert") { setTab("expert"); }
         else {

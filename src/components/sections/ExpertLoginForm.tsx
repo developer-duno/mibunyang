@@ -1,16 +1,15 @@
 import { memo, type Dispatch, type SetStateAction } from "react";
 import { C, F } from "@/theme";
 import { SignupExtraFields } from "./SignupExtraFields";
+import type { ExpertAuthForm, AuthMode, AuthStatus } from "@/hooks/useExpertMode";
 
-// useExpertMode() 반환값은 8+ 필드 + handler 다수.
-// 본 컴포넌트는 expert 전체를 통째로 받아 form/error/state 전부 사용 → setAuthForm 은 React 표준 setter.
-type AuthFormState = Record<string, any>;
+// useExpertMode() 반환값 중 본 컴포넌트가 사용하는 필드만 선언.
 type ExpertState = {
-  authMode: "login" | "signup";
-  setAuthMode: (_m: "login" | "signup") => void;
-  authForm: AuthFormState;
-  setAuthForm: Dispatch<SetStateAction<AuthFormState>>;
-  authStatus?: "pending" | "rejected" | string | null;
+  authMode: AuthMode;
+  setAuthMode: (_m: AuthMode) => void;
+  authForm: ExpertAuthForm;
+  setAuthForm: Dispatch<SetStateAction<ExpertAuthForm>>;
+  authStatus?: AuthStatus;
   authError?: string | null;
   authLoading?: boolean;
   handleExpertSignup: () => void;

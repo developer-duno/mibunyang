@@ -31,8 +31,8 @@ type AptListSectionProps = {
   onResetBudget?: () => void;
   onResetRegion?: () => void;
   dataLoading?: boolean;
-  dataFreshnessText?: string;
-  onExpertView: (_apt: Apt) => void;
+  dataFreshnessText?: string | null;
+  onExpertView?: (_apt: Apt) => void;
   onResetAll?: () => void;
   isLoggedIn?: boolean;
 };

@@ -1,7 +1,9 @@
-// App.jsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
+// App.tsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
 import { useState, useEffect, useCallback, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { C } from "@/theme";
+import type { Profile } from "@/types/scoring";
+import type { CustomWeights } from "@/types/admin";
 
 const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
 const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));
@@ -41,15 +43,18 @@ import { trackEvent } from "@/lib/analytics";
 
 export default function App() {
   // ── useState + useTransition ──
-  const [profile, setProfileRaw] = useState(() => {
-    try { const v = localStorage.getItem("mibunyang_profile"); return v && PROFILES[v] ? v : "live"; } catch { return "live"; }
+  const [profile, setProfileRaw] = useState<Profile>(() => {
+    try {
+      const v = localStorage.getItem("mibunyang_profile");
+      return v && (v in PROFILES) ? (v as Profile) : "live";
+    } catch { return "live"; }
   });
   const [isPending, startTransition] = useTransition();
-  const setProfile = useCallback((k) => { startTransition(() => setProfileRaw(k)); try { localStorage.setItem("mibunyang_profile", k); } catch { /* noop: localStorage 쿼터/접근 실패 무시 */ } trackEvent("profile_change", { profile: k }); }, [startTransition]);
-  const [customWeights, setCustomWeights] = useState(() => {
+  const setProfile = useCallback((k: Profile) => { startTransition(() => setProfileRaw(k)); try { localStorage.setItem("mibunyang_profile", k); } catch { /* noop: localStorage 쿼터/접근 실패 무시 */ } trackEvent("profile_change", { profile: k }); }, [startTransition]);
+  const [customWeights, setCustomWeights] = useState<CustomWeights>(() => {
     try { const v = localStorage.getItem("mibunyang_customWeights"); return v ? JSON.parse(v) : {}; } catch { return {}; }
   });
-  const saveCustomWeights = useCallback((cw) => {
+  const saveCustomWeights = useCallback((cw: CustomWeights) => {
     setCustomWeights(cw);
     try { localStorage.setItem("mibunyang_customWeights", JSON.stringify(cw)); } catch { /* noop: localStorage 쿼터/접근 실패 무시 */ }
   }, []);
@@ -57,7 +62,7 @@ export default function App() {
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
 
   // § 5-5: 헤더 CTA "곧 분양 N개" — Feature Flag ON 일 때만 1회 fetch (Vercel CDN 5분 캐시)
-  const [upcomingCount, setUpcomingCount] = useState(null);
+  const [upcomingCount, setUpcomingCount] = useState<number | null>(null);
   useEffect(() => {
     if (import.meta.env.VITE_FEATURE_UPCOMING !== "true") return;
     let cancelled = false;
@@ -197,7 +202,7 @@ export default function App() {
     const detailId = params.get("detail");
     const compareStr = params.get("compare");
     const profileParam = params.get("profile");
-    if (profileParam && PROFILES[profileParam]) setProfile(profileParam);
+    if (profileParam && (profileParam in PROFILES)) setProfile(profileParam as Profile);
     if (detailId) detail.setDetailAptId(detailId);
     if (compareStr) {
       const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
@@ -273,7 +278,7 @@ export default function App() {
             customPresets={customPresets} onSavePreset={saveCustomPreset} onDeletePreset={deleteCustomPreset}
             filterHistory={filterHistory} onApplyHistory={applyHistory} onClearHistory={clearHistory}
             onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
-            filterOptionCounts={filterOptionCounts}
+            filterOptionCounts={filterOptionCounts ?? undefined}
             showToast={showToast}
           />
         </div>
@@ -364,7 +369,7 @@ export default function App() {
                 <div key={c.id} style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{c.name}</span>
-                    <span style={{ fontSize: 10, color: C.muted }}>{new Date(c.submittedAt).toLocaleString("ko-KR")}</span>
+                    <span style={{ fontSize: 10, color: C.muted }}>{c.submittedAt ? new Date(c.submittedAt).toLocaleString("ko-KR") : ""}</span>
                   </div>
                   <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.8 }}>
                     <div>연락처: {c.phone}</div>

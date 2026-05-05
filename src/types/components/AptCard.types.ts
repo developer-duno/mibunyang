@@ -23,5 +23,5 @@ export interface AptCardProps extends ResponsiveProps, AuthProps {
   isFav: boolean;
   onFav: (_id: string) => void;
   profileWeights: Weights;
-  onExpertView: (_apt: Apt) => void;
+  onExpertView?: (_apt: Apt) => void;
 }
