@@ -250,6 +250,88 @@ export interface UseKakaoAuthReturn {
 }
 
 /**
+ * useFilterSort 인자 — App.jsx L112 호출.
+ */
+export interface UseFilterSortArgs {
+  onFilterChange?: () => void;
+}
+
+/**
+ * 커스텀 필터 프리셋 — localStorage("mibunyang_custom_presets") 저장 단위.
+ */
+export interface FilterPreset {
+  key: string;
+  label: string;
+  desc: string;
+  values: Record<string, string | boolean>;
+  custom?: boolean;
+}
+
+/**
+ * 필터 히스토리 항목 — localStorage("mibunyang_filter_history") 저장 단위.
+ */
+export interface FilterHistoryEntry {
+  sig: string;
+  values: Record<string, string | boolean>;
+  ts: number;
+  count: number;
+}
+
+/**
+ * useFilterSort 반환 — App.jsx L112 분해 (42 키).
+ *
+ * FILTER_URL_MAP 13 상태 + showFavOnly + isSortPending + setSortKey
+ *  + 14 핸들러 + getShareURL/handleResetAll/applyPreset
+ *  + 커스텀 프리셋 3 + 히스토리 3 + Undo/Redo 4 = 42
+ */
+export interface UseFilterSortReturn {
+  filterRegion: string;
+  filterGu: string;
+  sortKey: SortKey;
+  setSortKey: (_k: SortKey) => void;
+  isSortPending: boolean;
+  budgetMin: string;
+  budgetMax: string;
+  areaMin: string;
+  areaMax: string;
+  unitsMin: string;
+  unitsMax: string;
+  moveInFilter: string;
+  minScore: string;
+  builderTier: string;
+  benefitOnly: boolean;
+  showFavOnly: boolean;
+  handleRegionChange: (_r: string) => void;
+  handleGuChange: (_g: string) => void;
+  handleBudgetMinChange: (_v: string) => void;
+  handleBudgetMaxChange: (_v: string) => void;
+  handleBudgetReset: () => void;
+  toggleFavOnly: () => void;
+  handleAreaMinChange: (_v: string) => void;
+  handleAreaMaxChange: (_v: string) => void;
+  handleUnitsMinChange: (_v: string) => void;
+  handleUnitsMaxChange: (_v: string) => void;
+  handleAreaUnitsReset: () => void;
+  handleMoveInChange: (_v: string) => void;
+  handleMinScoreChange: (_v: string) => void;
+  handleBuilderTierChange: (_v: string) => void;
+  toggleBenefitOnly: () => void;
+  getShareURL: () => string;
+  handleResetAll: () => void;
+  applyPreset: (_preset: Record<string, string | boolean>) => void;
+  customPresets: FilterPreset[];
+  saveCustomPreset: (_name: string) => void;
+  deleteCustomPreset: (_key: string) => void;
+  filterHistory: FilterHistoryEntry[];
+  applyHistory: (_entry: FilterHistoryEntry) => void;
+  clearHistory: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+/**
  * useAppNavigation 인자 — App.jsx L150 호출 객체.
  * expert/admin/consult/detail 4 도메인 + 추가 필드.
  */

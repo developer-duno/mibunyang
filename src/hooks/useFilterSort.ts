@@ -2,6 +2,13 @@ import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from
 import { VALID_SORT_KEYS } from "@/constants/sortOptions";
 import { MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { trackEvent } from "@/lib/analytics";
+import type {
+  SortKey,
+  UseFilterSortArgs,
+  UseFilterSortReturn,
+  FilterPreset,
+  FilterHistoryEntry,
+} from "@/types/hooks";
 
 const URL_SYNC_DEBOUNCE_MS = 300;
 
@@ -10,9 +17,23 @@ const LS_FILTER_HISTORY = "mibunyang_filter_history";
 const MAX_HISTORY = 10;
 const MAX_UNDO = 20;
 
+type ParserName = "string" | "sortKey" | "num" | "numClamp100" | "tier" | "moveIn" | "bool";
+
+type FilterUrlEntry = readonly [stateKey: string, urlKey: string, defaultVal: string | boolean, parserName: ParserName];
+
+type FilterState = {
+  filterRegion: string; filterGu: string; sortKey: SortKey;
+  budgetMin: string; budgetMax: string;
+  areaMin: string; areaMax: string;
+  unitsMin: string; unitsMax: string;
+  moveInFilter: string; minScore: string;
+  builderTier: string; benefitOnly: boolean;
+};
+
+type FilterSnapshot = FilterState & { showFavOnly: boolean };
+
 /* ── URL 필터 직렬화 스키마 ── */
-const FILTER_URL_MAP = [
-  // [state키, URL파라미터명, 기본값, 파서]
+const FILTER_URL_MAP: readonly FilterUrlEntry[] = [
   ["filterRegion", "region", "전체", "string"],
   ["filterGu", "gu", "전체", "string"],
   ["sortKey", "sort", "total", "sortKey"],
@@ -26,93 +47,98 @@ const FILTER_URL_MAP = [
   ["unitsMin", "umin", "", "num"],
   ["unitsMax", "umax", "", "num"],
   ["moveInFilter", "movein", "전체", "moveIn"],
-];
+] as const;
 
 const VALID_TIERS = new Set(["전체", ...TIER_VALUES]);
 const VALID_MOVEIN = new Set(["전체", ...MOVEIN_VALUES]);
 
 /** 숫자 파라미터 파싱 — isFinite + 하한 0 클램핑 */
-function parseNumParam(str, max = Infinity) {
+function parseNumParam(str: string | null, max = Infinity): string {
   if (str == null || str === "") return "";
   const n = Number(str);
   if (!Number.isFinite(n)) return "";
   return String(Math.max(0, Math.min(max, n)));
 }
 
+type ParsedValue = string | boolean | undefined;
+
 /* ── 파서/직렬화 전략 맵 (OCP: 새 타입 추가 시 여기만 수정) ── */
-const PARSERS = {
-  string:      (raw, defaultVal) => raw || defaultVal,
-  sortKey:     (raw, defaultVal) => VALID_SORT_KEYS.has(raw) ? raw : defaultVal,
+const PARSERS: Record<ParserName, (_raw: string, _defaultVal: string | boolean) => ParsedValue> = {
+  string:      (raw, defaultVal) => raw || (defaultVal as string),
+  sortKey:     (raw, defaultVal) => VALID_SORT_KEYS.has(raw) ? raw : (defaultVal as string),
   num:         (raw) => { const v = parseNumParam(raw); return v !== "" ? v : undefined; },
   numClamp100: (raw) => { const v = parseNumParam(raw, 100); return v !== "" ? v : undefined; },
-  tier:        (raw, defaultVal) => VALID_TIERS.has(raw) ? raw : defaultVal,
-  moveIn:      (raw, defaultVal) => VALID_MOVEIN.has(raw) ? raw : defaultVal,
+  tier:        (raw, defaultVal) => VALID_TIERS.has(raw) ? raw : (defaultVal as string),
+  moveIn:      (raw, defaultVal) => VALID_MOVEIN.has(raw) ? raw : (defaultVal as string),
   bool:        (raw) => raw === "1",
 };
 
-const SERIALIZERS = {
+type SerializerFn = (_val: string | boolean, _urlKey: string, _params: URLSearchParams, _defaultVal: string | boolean) => void;
+
+const SERIALIZERS: { bool: SerializerFn; _default: SerializerFn } = {
   bool: (val, urlKey, params) => { if (val) params.set(urlKey, "1"); else params.delete(urlKey); },
   _default: (val, urlKey, params, defaultVal) => {
     if (val === defaultVal || val === "" || val == null) params.delete(urlKey);
-    else params.set(urlKey, val);
+    else params.set(urlKey, String(val));
   },
 };
 
 /** URL 쿼리스트링에서 필터 초기값 읽기 */
-function deserializeFromURL() {
+function deserializeFromURL(): Partial<FilterState> | null {
   try {
     const params = new URLSearchParams(window.location.search);
-    const result = {};
+    const result: Record<string, string | boolean> = {};
     for (const [stateKey, urlKey, defaultVal, parserName] of FILTER_URL_MAP) {
       const raw = params.get(urlKey);
       if (raw == null) continue;
       const val = PARSERS[parserName]?.(raw, defaultVal);
       if (val !== undefined) result[stateKey] = val;
     }
-    return Object.keys(result).length > 0 ? result : null;
+    return Object.keys(result).length > 0 ? (result as Partial<FilterState>) : null;
   } catch { return null; }
 }
 
 /** 필터 상태를 URL 쿼리스트링으로 직렬화 (비기본값만) */
-function serializeToURL(state) {
+function serializeToURL(state: FilterState): string {
   const params = new URLSearchParams(window.location.search);
   for (const [stateKey, urlKey, defaultVal, parserName] of FILTER_URL_MAP) {
-    const val = state[stateKey];
-    (SERIALIZERS[parserName] || SERIALIZERS._default)(val, urlKey, params, defaultVal);
+    const val = state[stateKey as keyof FilterState] as string | boolean;
+    const serializer = parserName === "bool" ? SERIALIZERS.bool : SERIALIZERS._default;
+    serializer(val, urlKey, params, defaultVal);
   }
   const search = params.toString();
   return search ? `?${search}` : window.location.pathname;
 }
 
-export function useFilterSort({ onFilterChange }) {
+export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterSortReturn {
   // URL에서 초기값 읽기 (lazy — 1회만)
-  const [urlInit] = useState(() => deserializeFromURL());
+  const [urlInit] = useState<Partial<FilterState> | null>(() => deserializeFromURL());
 
-  const [filterRegion, setFilterRegion] = useState(() => urlInit?.filterRegion ?? "전체");
-  const [filterGu, setFilterGu] = useState(() => urlInit?.filterGu ?? "전체");
-  const [sortKey, setSortKeyRaw] = useState(() => {
+  const [filterRegion, setFilterRegion] = useState<string>(() => urlInit?.filterRegion ?? "전체");
+  const [filterGu, setFilterGu] = useState<string>(() => urlInit?.filterGu ?? "전체");
+  const [sortKey, setSortKeyRaw] = useState<SortKey>(() => {
     if (urlInit?.sortKey) return urlInit.sortKey;
-    try { const v = localStorage.getItem("mibunyang_sort"); return v && VALID_SORT_KEYS.has(v) ? v : "total"; } catch { return "total"; }
+    try { const v = localStorage.getItem("mibunyang_sort"); return v && VALID_SORT_KEYS.has(v) ? (v as SortKey) : "total"; } catch { return "total"; }
   });
   const [isSortPending, startSortTransition] = useTransition();
-  const setSortKey = useCallback((k) => { try { localStorage.setItem("mibunyang_sort", k); } catch { /* ignore storage errors */ } startSortTransition(() => setSortKeyRaw(k)); }, [startSortTransition]);
-  const [budgetMin, setBudgetMin] = useState(() => urlInit?.budgetMin ?? "");
-  const [budgetMax, setBudgetMax] = useState(() => urlInit?.budgetMax ?? "");
-  const [showFavOnly, setShowFavOnly] = useState(false);
-  const [areaMin, setAreaMin] = useState(() => urlInit?.areaMin ?? "");
-  const [areaMax, setAreaMax] = useState(() => urlInit?.areaMax ?? "");
-  const [unitsMin, setUnitsMin] = useState(() => urlInit?.unitsMin ?? "");
-  const [unitsMax, setUnitsMax] = useState(() => urlInit?.unitsMax ?? "");
-  const [moveInFilter, setMoveInFilter] = useState(() => urlInit?.moveInFilter ?? "전체");
-  const [minScore, setMinScore] = useState(() => urlInit?.minScore ?? "");
-  const [builderTier, setBuilderTier] = useState(() => urlInit?.builderTier ?? "전체");
-  const [benefitOnly, setBenefitOnly] = useState(() => urlInit?.benefitOnly ?? false);
+  const setSortKey = useCallback((k: SortKey) => { try { localStorage.setItem("mibunyang_sort", k); } catch { /* ignore storage errors */ } startSortTransition(() => setSortKeyRaw(k)); }, [startSortTransition]);
+  const [budgetMin, setBudgetMin] = useState<string>(() => urlInit?.budgetMin ?? "");
+  const [budgetMax, setBudgetMax] = useState<string>(() => urlInit?.budgetMax ?? "");
+  const [showFavOnly, setShowFavOnly] = useState<boolean>(false);
+  const [areaMin, setAreaMin] = useState<string>(() => urlInit?.areaMin ?? "");
+  const [areaMax, setAreaMax] = useState<string>(() => urlInit?.areaMax ?? "");
+  const [unitsMin, setUnitsMin] = useState<string>(() => urlInit?.unitsMin ?? "");
+  const [unitsMax, setUnitsMax] = useState<string>(() => urlInit?.unitsMax ?? "");
+  const [moveInFilter, setMoveInFilter] = useState<string>(() => urlInit?.moveInFilter ?? "전체");
+  const [minScore, setMinScore] = useState<string>(() => urlInit?.minScore ?? "");
+  const [builderTier, setBuilderTier] = useState<string>(() => urlInit?.builderTier ?? "전체");
+  const [benefitOnly, setBenefitOnly] = useState<boolean>(() => (urlInit?.benefitOnly as boolean) ?? false);
 
   // URL 동기화 (debounce 300ms, replaceState)
-  const isInitialLoad = useRef(true);
+  const isInitialLoad = useRef<boolean>(true);
   useEffect(() => {
     if (isInitialLoad.current) { isInitialLoad.current = false; return; }
-    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter };
+    const state: FilterState = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter };
     const timer = setTimeout(() => {
       try {
         const newUrl = serializeToURL(state);
@@ -127,39 +153,40 @@ export function useFilterSort({ onFilterChange }) {
     return () => clearTimeout(timer);
   }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
 
-  const handleMoveInChange = useCallback((val) => { setMoveInFilter(val); onFilterChange?.(); }, [onFilterChange]);
-  const handleMinScoreChange = useCallback((val) => { setMinScore(val); onFilterChange?.(); }, [onFilterChange]);
-  const handleBuilderTierChange = useCallback((val) => { setBuilderTier(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleMoveInChange = useCallback((val: string) => { setMoveInFilter(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleMinScoreChange = useCallback((val: string) => { setMinScore(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleBuilderTierChange = useCallback((val: string) => { setBuilderTier(val); onFilterChange?.(); }, [onFilterChange]);
   const toggleBenefitOnly = useCallback(() => { setBenefitOnly(p => !p); onFilterChange?.(); }, [onFilterChange]);
-  const handleRegionChange = useCallback((r) => { setFilterRegion(r); setFilterGu("전체"); onFilterChange?.(); }, [onFilterChange]);
-  const handleGuChange = useCallback((g) => { setFilterGu(g); onFilterChange?.(); }, [onFilterChange]);
-  const handleBudgetMinChange = useCallback((val) => { setBudgetMin(val); onFilterChange?.(); }, [onFilterChange]);
-  const handleBudgetMaxChange = useCallback((val) => { setBudgetMax(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleRegionChange = useCallback((r: string) => { setFilterRegion(r); setFilterGu("전체"); onFilterChange?.(); }, [onFilterChange]);
+  const handleGuChange = useCallback((g: string) => { setFilterGu(g); onFilterChange?.(); }, [onFilterChange]);
+  const handleBudgetMinChange = useCallback((val: string) => { setBudgetMin(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleBudgetMaxChange = useCallback((val: string) => { setBudgetMax(val); onFilterChange?.(); }, [onFilterChange]);
   const handleBudgetReset = useCallback(() => { setBudgetMin(""); setBudgetMax(""); onFilterChange?.(); }, [onFilterChange]);
   const toggleFavOnly = useCallback(() => { setShowFavOnly(p => !p); onFilterChange?.(); }, [onFilterChange]);
-  const handleAreaMinChange = useCallback((val) => { setAreaMin(val); onFilterChange?.(); }, [onFilterChange]);
-  const handleAreaMaxChange = useCallback((val) => { setAreaMax(val); onFilterChange?.(); }, [onFilterChange]);
-  const handleUnitsMinChange = useCallback((val) => { setUnitsMin(val); onFilterChange?.(); }, [onFilterChange]);
-  const handleUnitsMaxChange = useCallback((val) => { setUnitsMax(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleAreaMinChange = useCallback((val: string) => { setAreaMin(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleAreaMaxChange = useCallback((val: string) => { setAreaMax(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleUnitsMinChange = useCallback((val: string) => { setUnitsMin(val); onFilterChange?.(); }, [onFilterChange]);
+  const handleUnitsMaxChange = useCallback((val: string) => { setUnitsMax(val); onFilterChange?.(); }, [onFilterChange]);
   const handleAreaUnitsReset = useCallback(() => { setAreaMin(""); setAreaMax(""); setUnitsMin(""); setUnitsMax(""); onFilterChange?.(); }, [onFilterChange]);
 
   // setter 맵 — FILTER_URL_MAP stateKey → React setter (DRY: 새 필터 추가 시 여기에도 추가)
-  const SETTERS = useMemo(() => ({
-    filterRegion: setFilterRegion, filterGu: setFilterGu, sortKey: setSortKeyRaw,
-    budgetMin: setBudgetMin, budgetMax: setBudgetMax, minScore: setMinScore,
-    builderTier: setBuilderTier, benefitOnly: setBenefitOnly,
-    areaMin: setAreaMin, areaMax: setAreaMax, unitsMin: setUnitsMin, unitsMax: setUnitsMax,
-    moveInFilter: setMoveInFilter,
+  type AnySetter = (_v: string | boolean | SortKey) => void;
+  const SETTERS = useMemo<Record<string, AnySetter>>(() => ({
+    filterRegion: setFilterRegion as AnySetter, filterGu: setFilterGu as AnySetter, sortKey: setSortKeyRaw as AnySetter,
+    budgetMin: setBudgetMin as AnySetter, budgetMax: setBudgetMax as AnySetter, minScore: setMinScore as AnySetter,
+    builderTier: setBuilderTier as AnySetter, benefitOnly: setBenefitOnly as AnySetter,
+    areaMin: setAreaMin as AnySetter, areaMax: setAreaMax as AnySetter, unitsMin: setUnitsMin as AnySetter, unitsMax: setUnitsMax as AnySetter,
+    moveInFilter: setMoveInFilter as AnySetter,
   }), []);
 
   /** 공통 필터 리셋 — overrides로 프리셋 값 덮어쓰기 */
-  const resetFilters = useCallback((overrides = {}) => {
+  const resetFilters = useCallback((overrides: Record<string, string | boolean> = {}) => {
     for (const [stateKey, , defaultVal] of FILTER_URL_MAP) {
       const val = stateKey in overrides ? overrides[stateKey] : defaultVal;
       SETTERS[stateKey]?.(val);
     }
     setShowFavOnly(false);
-    const sk = overrides.sortKey || "total";
+    const sk = (overrides.sortKey as string) || "total";
     try { localStorage.setItem("mibunyang_sort", sk); } catch { /* ignore storage errors */ }
     onFilterChange?.();
   }, [SETTERS, onFilterChange]);
@@ -167,45 +194,54 @@ export function useFilterSort({ onFilterChange }) {
   /** 전체 필터 초기화 */
   const handleResetAll = useCallback(() => resetFilters(), [resetFilters]);
   /** 프리셋 적용 — 초기화 후 프리셋 값만 덮어쓰기 */
-  const applyPreset = useCallback((preset) => resetFilters(preset), [resetFilters]);
+  const applyPreset = useCallback((preset: Record<string, string | boolean>) => resetFilters(preset), [resetFilters]);
 
   /** 현재 필터 상태의 공유 URL 생성 (debounce 무관, 즉시) */
-  const getShareURL = useCallback(() => {
-    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter };
+  const getShareURL = useCallback((): string => {
+    const state: FilterState = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter };
     const search = serializeToURL(state);
     return `${window.location.origin}${window.location.pathname}${search.startsWith("?") ? search : ""}`;
   }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
 
   /* ── 커스텀 프리셋 저장/삭제 (localStorage) ── */
-  const [customPresets, setCustomPresets] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(LS_CUSTOM_PRESETS)) || []; } catch { return []; }
+  const [customPresets, setCustomPresets] = useState<FilterPreset[]>(() => {
+    try {
+      const raw = localStorage.getItem(LS_CUSTOM_PRESETS);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(parsed) ? (parsed as FilterPreset[]) : [];
+    } catch { return []; }
   });
 
-  const saveCustomPreset = useCallback((name) => {
+  const saveCustomPreset = useCallback((name: string) => {
     if (!name?.trim()) return;
-    const values = {};
+    const values: Record<string, string | boolean> = {};
+    const snap: Record<string, string | boolean> = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter };
     for (const [stateKey, , defaultVal] of FILTER_URL_MAP) {
-      const cur = SETTERS[stateKey] ? { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter }[stateKey] : undefined;
+      const cur = SETTERS[stateKey] ? snap[stateKey] : undefined;
       if (cur !== defaultVal && cur !== "" && cur != null && cur !== false) values[stateKey] = cur;
     }
-    const preset = { key: `custom_${Date.now()}`, label: name.trim().slice(0, 12), desc: "사용자 프리셋", values, custom: true };
+    const preset: FilterPreset = { key: `custom_${Date.now()}`, label: name.trim().slice(0, 12), desc: "사용자 프리셋", values, custom: true };
     const next = [...customPresets.filter(p => p.label !== preset.label), preset].slice(-10);
     setCustomPresets(next);
     try { localStorage.setItem(LS_CUSTOM_PRESETS, JSON.stringify(next)); } catch { /* ignore storage errors */ }
   }, [SETTERS, customPresets, filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
 
-  const deleteCustomPreset = useCallback((key) => {
+  const deleteCustomPreset = useCallback((key: string) => {
     const next = customPresets.filter(p => p.key !== key);
     setCustomPresets(next);
     try { localStorage.setItem(LS_CUSTOM_PRESETS, JSON.stringify(next)); } catch { /* ignore storage errors */ }
   }, [customPresets]);
 
   /* ── 필터 히스토리 (최근 MAX_HISTORY개, URL 변경 시 자동 저장) ── */
-  const [filterHistory, setFilterHistory] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(LS_FILTER_HISTORY)) || []; } catch { return []; }
+  const [filterHistory, setFilterHistory] = useState<FilterHistoryEntry[]>(() => {
+    try {
+      const raw = localStorage.getItem(LS_FILTER_HISTORY);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(parsed) ? (parsed as FilterHistoryEntry[]) : [];
+    } catch { return []; }
   });
 
-  const saveToHistory = useCallback((state) => {
+  const saveToHistory = useCallback((state: FilterState) => {
     const nonDefault = Object.entries(state).filter(([k, v]) => {
       const entry = FILTER_URL_MAP.find(([sk]) => sk === k);
       return entry && v !== entry[2] && v !== "" && v != null && v !== false;
@@ -214,7 +250,7 @@ export function useFilterSort({ onFilterChange }) {
     const sig = nonDefault.map(([k, v]) => `${k}:${v}`).sort().join("|");
     setFilterHistory(prev => {
       if (prev[0]?.sig === sig) return prev;
-      const entry = { sig, values: state, ts: Date.now(), count: nonDefault.length };
+      const entry: FilterHistoryEntry = { sig, values: state as unknown as Record<string, string | boolean>, ts: Date.now(), count: nonDefault.length };
       const next = [entry, ...prev.filter(h => h.sig !== sig)].slice(0, MAX_HISTORY);
       try { localStorage.setItem(LS_FILTER_HISTORY, JSON.stringify(next)); } catch { /* ignore storage errors */ }
       return next;
@@ -222,17 +258,17 @@ export function useFilterSort({ onFilterChange }) {
   }, []);
 
   // URL 동기화 시 히스토리에도 저장 (isHistoryInitial: 초기 로드 방지, skipHistory: undo/redo 오염 방지)
-  const isHistoryInitial = useRef(true);
-  const skipHistory = useRef(false);
+  const isHistoryInitial = useRef<boolean>(true);
+  const skipHistory = useRef<boolean>(false);
   useEffect(() => {
     if (isHistoryInitial.current) { isHistoryInitial.current = false; return; }
     if (skipHistory.current) { skipHistory.current = false; return; }
-    const state = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter };
+    const state: FilterState = { filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter };
     const timer = setTimeout(() => saveToHistory(state), 500);
     return () => clearTimeout(timer);
   }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, saveToHistory]);
 
-  const applyHistory = useCallback((entry) => {
+  const applyHistory = useCallback((entry: FilterHistoryEntry) => {
     if (entry?.values) resetFilters(entry.values);
   }, [resetFilters]);
 
@@ -242,19 +278,19 @@ export function useFilterSort({ onFilterChange }) {
   }, []);
 
   /* ── Undo / Redo (MAX_UNDO 스택) ── */
-  const undoStack = useRef([]);
-  const redoStack = useRef([]);
-  const skipUndo = useRef(false);
-  const [undoDepth, setUndoDepth] = useState(0);
-  const [redoDepth, setRedoDepth] = useState(0);
+  const undoStack = useRef<FilterSnapshot[]>([]);
+  const redoStack = useRef<FilterSnapshot[]>([]);
+  const skipUndo = useRef<boolean>(false);
+  const [undoDepth, setUndoDepth] = useState<number>(0);
+  const [redoDepth, setRedoDepth] = useState<number>(0);
 
-  const getCurrentSnapshot = useCallback(() => ({
+  const getCurrentSnapshot = useCallback((): FilterSnapshot => ({
     filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly,
     areaMin, areaMax, unitsMin, unitsMax, moveInFilter, showFavOnly,
   }), [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, showFavOnly]);
 
   // 필터 변경 시 undo 스택에 이전 상태 푸시
-  const prevSnapshot = useRef(null);
+  const prevSnapshot = useRef<FilterSnapshot | null>(null);
   useEffect(() => {
     const snap = getCurrentSnapshot();
     if (skipUndo.current) { skipUndo.current = false; prevSnapshot.current = snap; return; }
@@ -270,11 +306,11 @@ export function useFilterSort({ onFilterChange }) {
   const canUndo = undoDepth > 0;
   const canRedo = redoDepth > 0;
 
-  const applySnapshot = useCallback((snap) => {
+  const applySnapshot = useCallback((snap: FilterSnapshot) => {
     skipUndo.current = true;
     skipHistory.current = true;
     for (const [stateKey] of FILTER_URL_MAP) {
-      if (stateKey in snap) SETTERS[stateKey]?.(snap[stateKey]);
+      if (stateKey in snap) SETTERS[stateKey]?.(snap[stateKey as keyof FilterSnapshot] as string | boolean);
     }
     if ("showFavOnly" in snap) setShowFavOnly(snap.showFavOnly);
     const sk = snap.sortKey || "total";
