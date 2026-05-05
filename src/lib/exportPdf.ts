@@ -8,13 +8,13 @@ const A4_WIDTH_MM = 297;
 const A4_HEIGHT_MM = 210;
 
 /** DOM 요소 → Canvas 캡처 (공통) */
-async function captureElement(element) {
+async function captureElement(element: HTMLElement): Promise<HTMLCanvasElement> {
   const html2canvas = (await import("html2canvas")).default;
   return html2canvas(element, CAPTURE_OPTS);
 }
 
 /** DOM 요소 → PNG 이미지 다운로드 */
-export async function exportAsImage(element, filename = "compare.png") {
+export async function exportAsImage(element: HTMLElement, filename: string = "compare.png"): Promise<void> {
   const canvas = await captureElement(element);
   const link = document.createElement("a");
   link.download = filename;
@@ -23,7 +23,7 @@ export async function exportAsImage(element, filename = "compare.png") {
 }
 
 /** DOM 요소 → PDF 다운로드 */
-export async function exportAsPdf(element, filename = "compare.pdf") {
+export async function exportAsPdf(element: HTMLElement, filename: string = "compare.pdf"): Promise<void> {
   const [canvas, { jsPDF }] = await Promise.all([
     captureElement(element),
     import("jspdf"),

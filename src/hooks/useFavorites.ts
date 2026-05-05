@@ -1,31 +1,34 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { trackEvent } from "@/lib/analytics";
+import type { FavoriteEntry, UseFavoritesReturn } from "@/types/hooks";
 
 const STORAGE_KEY = "mibunyang_fav";
 const BACKUP_KEY = "mibunyang_fav_backup";
 
+const makeEntry = (): FavoriteEntry => ({ memo: "", tags: [], addedAt: new Date().toISOString() });
+
 /** v1(배열) → v2(객체) 자동 마이그레이션 */
-function loadFavorites() {
+function loadFavorites(): Record<string, FavoriteEntry> {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") as unknown;
     if (Array.isArray(raw)) {
       // v1→v2 마이그레이션: 배열→객체
       try { localStorage.setItem(BACKUP_KEY, JSON.stringify(raw)); } catch { /* backup 실패 무시 */ }
-      return Object.fromEntries(raw.map(id => [id, { memo: "", tags: [], addedAt: new Date().toISOString() }]));
+      return Object.fromEntries((raw as string[]).map(id => [id, makeEntry()]));
     }
-    return typeof raw === "object" && raw !== null ? raw : {};
+    return typeof raw === "object" && raw !== null ? (raw as Record<string, FavoriteEntry>) : {};
   } catch { return {}; }
 }
 
-export function useFavorites(showToast) {
-  const [favoritesObj, setFavoritesObj] = useState(loadFavorites);
+export function useFavorites(showToast?: (_msg: string) => void): UseFavoritesReturn {
+  const [favoritesObj, setFavoritesObj] = useState<Record<string, FavoriteEntry>>(loadFavorites);
 
   // 파생 배열 — 기존 소비자(filterEngine, AptListSection, ConsultForm 등) 하위 호환
   const favoriteIds = useMemo(() => Object.keys(favoritesObj), [favoritesObj]);
   // O(1) 조회용 Set — includes() 대체
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
 
-  const toggleFavorite = useCallback(id => {
+  const toggleFavorite = useCallback((id: string) => {
     setFavoritesObj(prev => {
       const removing = id in prev;
       trackEvent("favorite_toggle", { action: removing ? "remove" : "add" });
@@ -34,50 +37,53 @@ export function useFavorites(showToast) {
         delete next[id];
         return next;
       }
-      return { ...prev, [id]: { memo: "", tags: [], addedAt: new Date().toISOString() } };
+      return { ...prev, [id]: makeEntry() };
     });
   }, []);
 
   // setFavoriteIds — 하위 호환 래퍼 (배열 또는 함수 인자 지원)
-  const setFavoriteIds = useCallback((idsOrFn) => {
+  const setFavoriteIds = useCallback((idsOrFn: string[] | ((_prev: string[]) => string[])) => {
     if (typeof idsOrFn === "function") {
       setFavoritesObj(prev => {
         const prevIds = Object.keys(prev);
         const nextIds = idsOrFn(prevIds);
         if (!Array.isArray(nextIds)) return prev;
-        const next = {};
+        const next: Record<string, FavoriteEntry> = {};
         for (const id of nextIds) {
-          next[id] = prev[id] || { memo: "", tags: [], addedAt: new Date().toISOString() };
+          next[id] = prev[id] || makeEntry();
         }
         return next;
       });
     } else if (Array.isArray(idsOrFn)) {
       setFavoritesObj(prev => {
-        const next = {};
+        const next: Record<string, FavoriteEntry> = {};
         for (const id of idsOrFn) {
-          next[id] = prev[id] || { memo: "", tags: [], addedAt: new Date().toISOString() };
+          next[id] = prev[id] || makeEntry();
         }
         return next;
       });
     }
   }, []);
 
-  // localStorage 저장 (quota exceeded 시 토스트)
+  // localStorage 저장 (quota exceeded 시 토스트) — useComparison.ts 답습 2단계 분리 (DOMException 호환)
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(favoritesObj)); }
-    catch (e) { if (e.name === "QuotaExceededError") showToast?.("저장 실패: 저장소가 가득 찼습니다"); }
+    catch (e) {
+      const name = (e as { name?: string })?.name;
+      if (name === "QuotaExceededError") showToast?.("저장 실패: 저장소가 가득 찼습니다");
+    }
   }, [favoritesObj, showToast]);
 
   // 크로스탭 동기화
   useEffect(() => {
-    const h = (e) => {
+    const h = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY) return;
       try {
-        const raw = JSON.parse(e.newValue || "{}");
+        const raw = JSON.parse(e.newValue || "{}") as unknown;
         if (Array.isArray(raw)) {
-          setFavoritesObj(Object.fromEntries(raw.map(id => [id, { memo: "", tags: [], addedAt: new Date().toISOString() }])));
+          setFavoritesObj(Object.fromEntries((raw as string[]).map(id => [id, makeEntry()])));
         } else if (typeof raw === "object" && raw !== null) {
-          setFavoritesObj(raw);
+          setFavoritesObj(raw as Record<string, FavoriteEntry>);
         }
       } catch { /* ignore */ }
     };

@@ -86,7 +86,8 @@ export interface Apt {
   devDist?: number;
   presaleParking?: number | null;
   presaleGeneralSupply?: number | null;
-  presaleHousingType?: string;
+  presaleHousingType?: string | null;
+  presaleInquiry?: string | null;
 
   // 관리비·방향·연식·브랜드
   avgMaintenanceCost?: number;
@@ -104,8 +105,8 @@ export interface Apt {
   transitDev?: string;
   cityDev?: string;
   industryDev?: string;
-  presaleType?: string;
-  presaleStage?: string;
+  presaleType?: string | null;
+  presaleStage?: string | null;
   newSupply?: number;
 
   // sanitize 내부 플래그

@@ -1,15 +1,16 @@
 import { useState, useCallback, useEffect } from "react";
 import { trackEvent } from "@/lib/analytics";
+import type { ShareData, UseShareReturn } from "@/types/hooks";
 
 const KAKAO_JS_KEY = import.meta.env.VITE_KAKAO_JS_KEY || "";
 const KAKAO_CHANNEL_ID = import.meta.env.VITE_KAKAO_CHANNEL_ID || "";
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-export function useShare(showToast) {
+export function useShare(showToast: (_msg: string) => void): UseShareReturn {
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
-  const [shareData, setShareData] = useState(null);
+  const [shareData, setShareData] = useState<ShareData | null>(null);
 
-  const openShareSheet = useCallback((data) => {
+  const openShareSheet = useCallback((data: ShareData) => {
     setShareData(data);
     setShareSheetOpen(true);
   }, []);
@@ -24,7 +25,7 @@ export function useShare(showToast) {
       return;
     }
     if (!shareData) return;
-    const buttons = [
+    const buttons: Array<{ title: string; link: { mobileWebUrl: string; webUrl: string } }> = [
       { title: "분석 결과 보기", link: { mobileWebUrl: shareData.url, webUrl: shareData.url } }
     ];
     if (KAKAO_CHANNEL_ID) {

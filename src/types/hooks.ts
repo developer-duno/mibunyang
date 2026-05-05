@@ -161,3 +161,65 @@ export interface UseExpertModeReturn {
   // 기타 동적 필드
   [key: string]: unknown;
 }
+
+/**
+ * 공유 데이터 (useShare openShareSheet 인자) — M4b 2차.
+ * useShareCallbacks.ts L5 ShareSheetData 와 동일 형태 (구조형 타입 호환).
+ */
+export interface ShareData {
+  title: string;
+  text: string;
+  url: string;
+}
+
+/**
+ * useShare 반환 — App.jsx L122 분해 (7 필드, shareData 미분해).
+ */
+export interface UseShareReturn {
+  openShareSheet: (_data: ShareData) => void;
+  closeShareSheet: () => void;
+  shareKakao: () => void;
+  shareSMS: () => void;
+  shareCopy: () => Promise<void>;
+  shareSheetOpen: boolean;
+  shareData: ShareData | null;
+  isMobile: boolean;
+}
+
+/**
+ * 관심매물 항목 (v2 객체 스키마).
+ */
+export interface FavoriteEntry {
+  memo: string;
+  tags: string[];
+  addedAt: string;
+}
+
+/**
+ * useFavorites 반환 — App.jsx L109 분해 (4 필드, favoritesObj 미분해).
+ */
+export interface UseFavoritesReturn {
+  favoriteIds: string[];
+  favoriteSet: Set<string>;
+  setFavoriteIds: (_idsOrFn: string[] | ((_prev: string[]) => string[])) => void;
+  toggleFavorite: (_id: string) => void;
+  favoritesObj: Record<string, FavoriteEntry>;
+}
+
+/**
+ * 시장 통계 시계열 1행 — KOSIS 컬럼 동적 (avg_price_sqm/price_index/...).
+ */
+export interface MarketStatsRow {
+  base_month?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * useMarketStatsHistory 반환 — MarketStatsCharts.tsx L37 어셔션 유지 (회수 별도 sub).
+ */
+export interface UseMarketStatsHistoryReturn {
+  data: MarketStatsRow[];
+  loading: boolean;
+  error: string | null;
+  retry: () => void;
+}
