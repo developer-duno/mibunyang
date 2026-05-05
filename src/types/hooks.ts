@@ -223,3 +223,80 @@ export interface UseMarketStatsHistoryReturn {
   error: string | null;
   retry: () => void;
 }
+
+/**
+ * 카카오 OAuth 콜백 결과 — useKakaoAuth.handleKakaoCallback 반환.
+ * useKakaoCallbackEffect 의 로컬 정의와 구조형 호환 (subtype).
+ */
+export interface KakaoCallbackResult {
+  ok: boolean;
+  token?: string;
+  refreshToken?: string;
+  user?: { affiliation?: string;[key: string]: unknown };
+  role?: string;
+  pendingDetail?: string | null;
+  error?: string;
+  statusCode?: number;
+}
+
+/**
+ * useKakaoAuth 반환 — App.jsx L122 분해 (4 필드).
+ */
+export interface UseKakaoAuthReturn {
+  kakaoLoading: boolean;
+  kakaoError: string;
+  initKakaoLogin: (_pendingDetailId?: string | null) => void;
+  handleKakaoCallback: () => Promise<KakaoCallbackResult>;
+}
+
+/**
+ * useAppNavigation 인자 — App.jsx L150 호출 객체.
+ * expert/admin/consult/detail 4 도메인 + 추가 필드.
+ */
+export interface UseAppNavigationArgs {
+  tab: string;
+  setTab: (_v: string) => void;
+  expert: {
+    expertLoggedIn: boolean;
+    handleExpertLogin: () => Promise<{ ok: boolean; role?: string } | undefined>;
+    handleExpertLogout: (_resetCb: () => void) => void;
+    setExpertExpandedApt: (_id: string | null) => void;
+    [key: string]: unknown;
+  };
+  admin: {
+    adminLoggedIn: boolean;
+    setAdminLoggedIn: (_v: boolean) => void;
+    [key: string]: unknown;
+  };
+  consult: {
+    consultSubmitted: boolean;
+    setConsultSubmitted: (_v: boolean) => void;
+    setConsultForm: (_form: import("@/hooks/useConsult").ConsultForm | ((_prev: import("@/hooks/useConsult").ConsultForm) => import("@/hooks/useConsult").ConsultForm)) => void;
+    fetchConsults: (_token: string) => void;
+    [key: string]: unknown;
+  };
+  detail: {
+    setDetailAptId: (_id: string | null) => void;
+  };
+  compIds: string[];
+  setShowCompOpen: (_v: boolean) => void;
+  showToast: (_msg: string) => void;
+  budgetMin: string | number | null;
+  budgetMax: string | number | null;
+  isLoggedIn: boolean;
+  onLoginRequired?: () => void;
+}
+
+/**
+ * useAppNavigation 반환 — App.jsx 에서 분해.
+ */
+export interface UseAppNavigationReturn {
+  handleExpertLogin: () => Promise<void>;
+  handleExpertLogout: () => void;
+  switchToAdmin: () => void;
+  switchToExpert: () => void;
+  switchToInfo: () => void;
+  handleExpertView: (_aptId: string) => void;
+  handleConsultFromDetail: (_aptId: string) => void;
+  handleNavClick: (_k: string) => void;
+}

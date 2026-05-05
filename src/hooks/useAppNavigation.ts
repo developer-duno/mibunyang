@@ -1,5 +1,6 @@
 import { useCallback, useRef, useEffect } from "react";
 import { trackEvent } from "@/lib/analytics";
+import type { UseAppNavigationArgs, UseAppNavigationReturn } from "@/types/hooks";
 
 /**
  * 탭 전환/인증 네비게이션 훅
@@ -9,7 +10,7 @@ export function useAppNavigation({
   tab, setTab, expert, admin, consult, detail,
   compIds, setShowCompOpen, showToast,
   budgetMin, budgetMax, isLoggedIn, onLoginRequired,
-}) {
+}: UseAppNavigationArgs): UseAppNavigationReturn {
   // ── useRef (stale closure 방지) ──
   const consultRef = useRef(consult);
   const budgetRef = useRef({ budgetMin, budgetMax });
@@ -44,12 +45,12 @@ export function useAppNavigation({
   const switchToExpert = useCallback(() => setTab("expert"), [setTab]);
   const switchToInfo = useCallback(() => setTab("info"), [setTab]);
 
-  const handleExpertView = useCallback((aptId) => {
+  const handleExpertView = useCallback((aptId: string) => {
     expert.setExpertExpandedApt(aptId);
     setTab("expert");
   }, [expert, setTab]);
 
-  const handleConsultFromDetail = useCallback((aptId) => {
+  const handleConsultFromDetail = useCallback((aptId: string) => {
     consult.setConsultForm(prev => ({
       ...prev,
       interestedApts: prev.interestedApts.includes(aptId) ? prev.interestedApts : [...prev.interestedApts, aptId],
@@ -58,7 +59,7 @@ export function useAppNavigation({
     setTab("consult");
   }, [consult, detail, setTab]);
 
-  const handleNavClick = useCallback((k) => {
+  const handleNavClick = useCallback((k: string) => {
     if (k === "logout") return handleExpertLogout();
     trackEvent("tab_switch", { tab: k, previous_tab: tab });
     if (k === "list") { setTab("list"); setShowCompOpen(false); return; }

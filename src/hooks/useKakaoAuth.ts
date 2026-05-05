@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import type { KakaoCallbackResult, UseKakaoAuthReturn } from "@/types/hooks";
 
 /**
  * 카카오 OAuth 프론트 훅
@@ -8,22 +9,22 @@ import { useState, useCallback, useRef } from "react";
  */
 
 // OAuth authorize URL의 client_id는 REST API 키를 사용 (JS키 아님)
-const KAKAO_REST_KEY = import.meta.env.VITE_KAKAO_REST_API_KEY || "";
+const KAKAO_REST_KEY: string = import.meta.env.VITE_KAKAO_REST_API_KEY || "";
 
-function generateState() {
+function generateState(): string {
   const arr = new Uint8Array(16);
   crypto.getRandomValues(arr);
   return Array.from(arr, b => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function useKakaoAuth(showToast) {
-  const [kakaoLoading, setKakaoLoading] = useState(false);
-  const [kakaoError, setKakaoError] = useState("");
-  const showToastRef = useRef(showToast);
+export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthReturn {
+  const [kakaoLoading, setKakaoLoading] = useState<boolean>(false);
+  const [kakaoError, setKakaoError] = useState<string>("");
+  const showToastRef = useRef<(_msg: string) => void>(showToast);
   showToastRef.current = showToast;
 
   /** 카카오 인가 URL로 이동 (pendingDetailId: 로그인 후 복귀할 상세 ID) */
-  const initKakaoLogin = useCallback((pendingDetailId) => {
+  const initKakaoLogin = useCallback((pendingDetailId?: string | null) => {
     if (!KAKAO_REST_KEY) {
       showToastRef.current("카카오 로그인을 사용할 수 없습니다");
       return;
@@ -47,7 +48,7 @@ export function useKakaoAuth(showToast) {
   }, [kakaoLoading]);
 
   /** 콜백 처리 — App.jsx에서 pathname 감지 후 호출 */
-  const handleKakaoCallback = useCallback(async () => {
+  const handleKakaoCallback = useCallback(async (): Promise<KakaoCallbackResult> => {
     const params = new URLSearchParams(window.location.search);
 
     // 카카오 에러 처리 (사용자가 동의 거부 등)
