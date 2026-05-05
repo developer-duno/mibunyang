@@ -35,10 +35,11 @@ export interface AdminUser {
 /**
  * useAdminMode 훅의 반환 객체 — admin/* 컴포넌트의 admin prop.
  *
- * 훅이 .js 라 정확한 시그니처 미상 — Record<string, unknown> 으로 안전 처리
- * (M4 에서 useAdminMode.ts 변환 시 정밀 타입 부착 예정).
+ * 정밀 타입 부착 완료 (M4 옵션 C).
  */
 export interface AdminMode {
+  adminLoggedIn: boolean;
+  setAdminLoggedIn: (_v: boolean) => void;
   selectedStatus: UserStatusFilter;
   setSelectedStatus: (_v: UserStatusFilter) => void;
   searchQuery: string;
@@ -46,6 +47,7 @@ export interface AdminMode {
   selectedEmails: Set<string>;
   toggleSelectEmail: (_email: string) => void;
   selectAllEmails: (_emails: string[]) => void;
+  clearSelectedEmails: () => void;
   users: AdminUser[];
   totalUsers: number;
   page: number;
@@ -54,13 +56,12 @@ export interface AdminMode {
   adminLoading: boolean;
   reviewLoading: string | null;
   batchLoading: boolean;
-  handleReview: (_email: string, _action: "approve" | "reject" | "force-logout") => void;
-  handleBatchReview: (_action: "approve" | "reject") => void;
-  handleAdminLogout: (_onLogout: () => void) => void;
-  stats?: AdminStats | null;
-  statsLoading?: boolean;
-  // 그 외 동적 필드
-  [key: string]: unknown;
+  fetchUsers: (_status: UserStatusFilter, _search?: string, _pg?: number) => Promise<void>;
+  handleReview: (_email: string, _action: "approve" | "reject" | "force-logout", _note?: string) => Promise<void>;
+  handleBatchReview: (_action: "approve" | "reject", _note?: string) => Promise<void>;
+  handleAdminLogout: (_onLogout?: () => void) => Promise<void>;
+  stats: AdminStats | null;
+  statsLoading: boolean;
 }
 
 /**

@@ -1,9 +1,39 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import type {
+  AdminMode,
+  AdminUser,
+  AdminStats,
+  UserStatusFilter,
+  ShowToast,
+} from "@/types/admin";
 
 const PAGE_SIZE = 20;
 
-export function useAdminMode(showToast) {
-  const [adminLoggedIn, setAdminLoggedIn] = useState(() => {
+type FetchUsersResponse = {
+  ok?: boolean;
+  users?: AdminUser[];
+  total?: number;
+  error?: string;
+};
+
+type ReviewResponse = {
+  ok?: boolean;
+  message?: string;
+  error?: string;
+  successCount?: number;
+  failCount?: number;
+};
+
+type StatsResponse = {
+  ok?: boolean;
+  counts?: Record<string, number> & { total?: number };
+  userTypes?: { kakao: number; expert: number };
+  specialtyDist?: Record<string, number>;
+  recentSignups?: Array<{ date: string; count: number }>;
+};
+
+export function useAdminMode(showToast: ShowToast): AdminMode {
+  const [adminLoggedIn, setAdminLoggedIn] = useState<boolean>(() => {
     try {
       // 정상 경로: localStorage 에서 admin 인증 확인
       if (localStorage.getItem("userRole") === "admin" && !!localStorage.getItem("expertToken")) return true;
@@ -20,21 +50,21 @@ export function useAdminMode(showToast) {
       return false;
     } catch { return false; }
   });
-  const [adminLoading, setAdminLoading] = useState(false);
-  const [users, setUsers] = useState([]);
-  const [selectedStatus, setSelectedStatus] = useState("pending");
-  const [searchQuery, setSearchQueryRaw] = useState("");
-  const [page, setPage] = useState(0);
-  const [totalUsers, setTotalUsers] = useState(0);
-  const [reviewLoading, setReviewLoading] = useState(null);
-  const [selectedEmails, setSelectedEmails] = useState(new Set());
-  const [batchLoading, setBatchLoading] = useState(false);
-  const [stats, setStats] = useState(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const abortRef = useRef(null);
-  const debounceRef = useRef(null);
+  const [adminLoading, setAdminLoading] = useState<boolean>(false);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [selectedStatus, setSelectedStatus] = useState<UserStatusFilter>("pending");
+  const [searchQuery, setSearchQueryRaw] = useState<string>("");
+  const [page, setPage] = useState<number>(0);
+  const [totalUsers, setTotalUsers] = useState<number>(0);
+  const [reviewLoading, setReviewLoading] = useState<string | null>(null);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [batchLoading, setBatchLoading] = useState<boolean>(false);
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState<boolean>(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchUsers = useCallback(async (status, search = "", pg = 0) => {
+  const fetchUsers = useCallback(async (status: UserStatusFilter, search = "", pg = 0): Promise<void> => {
     const token = localStorage.getItem("expertToken");
     if (!token) return;
     if (abortRef.current) abortRef.current.abort();
@@ -48,14 +78,14 @@ export function useAdminMode(showToast) {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
-      const data = await res.json();
+      const data = await res.json() as FetchUsersResponse;
       if (res.status === 429) {
         showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
         return;
       }
       if (data.ok) {
-        setUsers(data.users);
-        setTotalUsers(data.total ?? data.users.length);
+        setUsers(data.users ?? []);
+        setTotalUsers(data.total ?? data.users?.length ?? 0);
       } else {
         if (res.status === 401) {
           setAdminLoggedIn(false);
@@ -67,14 +97,14 @@ export function useAdminMode(showToast) {
         }
       }
     } catch (err) {
-      if (err.name !== "AbortError") showToast("서버 연결에 실패했습니다");
+      if (err instanceof Error && err.name !== "AbortError") showToast("서버 연결에 실패했습니다");
     } finally {
       setAdminLoading(false);
     }
   }, [showToast]);
 
   // 디바운스 검색: 타이핑 중 300ms 대기 후 fetch
-  const setSearchQuery = useCallback((q) => {
+  const setSearchQuery = useCallback((q: string) => {
     setSearchQueryRaw(q);
     setPage(0);
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -83,12 +113,12 @@ export function useAdminMode(showToast) {
     }, 300);
   }, [fetchUsers, selectedStatus]);
 
-  const handlePageChange = useCallback((newPage) => {
+  const handlePageChange = useCallback((newPage: number) => {
     setPage(newPage);
     fetchUsers(selectedStatus, searchQuery, newPage);
   }, [fetchUsers, selectedStatus, searchQuery]);
 
-  const handleReview = useCallback(async (email, action, note) => {
+  const handleReview = useCallback(async (email: string, action: "approve" | "reject" | "force-logout", note?: string): Promise<void> => {
     const token = localStorage.getItem("expertToken");
     if (!token) return;
     setReviewLoading(email);
@@ -102,9 +132,9 @@ export function useAdminMode(showToast) {
         showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
         return;
       }
-      const data = await res.json();
+      const data = await res.json() as ReviewResponse;
       if (data.ok) {
-        showToast(data.message);
+        showToast(data.message ?? "처리 완료");
         fetchUsers(selectedStatus, searchQuery, page);
       } else {
         showToast(data.error || "처리 실패");
@@ -117,20 +147,20 @@ export function useAdminMode(showToast) {
   }, [showToast, fetchUsers, selectedStatus, searchQuery, page]);
 
   // 일괄 선택 관리
-  const toggleSelectEmail = useCallback((email) => {
+  const toggleSelectEmail = useCallback((email: string) => {
     setSelectedEmails(prev => {
       const next = new Set(prev);
       if (next.has(email)) next.delete(email); else next.add(email);
       return next;
     });
   }, []);
-  const selectAllEmails = useCallback((emailList) => {
+  const selectAllEmails = useCallback((emailList: string[]) => {
     setSelectedEmails(prev => prev.size === emailList.length ? new Set() : new Set(emailList));
   }, []);
   const clearSelectedEmails = useCallback(() => setSelectedEmails(new Set()), []);
 
   // 일괄 처리
-  const handleBatchReview = useCallback(async (action, note) => {
+  const handleBatchReview = useCallback(async (action: "approve" | "reject", note?: string): Promise<void> => {
     const token = localStorage.getItem("expertToken");
     if (!token || selectedEmails.size === 0) return;
     setBatchLoading(true);
@@ -141,9 +171,9 @@ export function useAdminMode(showToast) {
         body: JSON.stringify({ emails: [...selectedEmails], action, note }),
       });
       if (res.status === 429) { showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요."); return; }
-      const data = await res.json();
+      const data = await res.json() as ReviewResponse;
       if (data.ok) {
-        const msg = data.failCount > 0
+        const msg = (data.failCount ?? 0) > 0
           ? `${data.successCount}건 성공, ${data.failCount}건 실패`
           : `${data.successCount}건 처리 완료`;
         showToast(msg);
@@ -159,7 +189,7 @@ export function useAdminMode(showToast) {
     }
   }, [showToast, fetchUsers, selectedStatus, searchQuery, page, selectedEmails, clearSelectedEmails]);
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (): Promise<void> => {
     const token = localStorage.getItem("expertToken");
     if (!token) return;
     setStatsLoading(true);
@@ -168,13 +198,20 @@ export function useAdminMode(showToast) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 429) return;
-      const data = await res.json();
-      if (data.ok) setStats(data);
+      const data = await res.json() as StatsResponse;
+      if (data.ok && data.counts && data.userTypes && data.specialtyDist && data.recentSignups) {
+        setStats({
+          counts: data.counts,
+          userTypes: data.userTypes,
+          specialtyDist: data.specialtyDist,
+          recentSignups: data.recentSignups,
+        });
+      }
     } catch { /* 통계 실패는 무시 — 핵심 기능 아님 */ }
     finally { setStatsLoading(false); }
   }, []);
 
-  const handleAdminLogout = useCallback(async (onLogout) => {
+  const handleAdminLogout = useCallback(async (onLogout?: () => void): Promise<void> => {
     const token = localStorage.getItem("expertToken");
     if (token) {
       try {
