@@ -1,4 +1,6 @@
-export const C = {
+type Category = "price" | "location" | "product" | "benefit" | "risk" | "future";
+
+export const C: Record<string, string> = {
   white: "#FFFFFF", bg: "#F5F6FA", card: "#FFFFFF", border: "#E8EAF0",
   text: "#1B1F2B", sub: "#5C6478", muted: "#6B7280",
   blue: "#2563EB", blueLight: "#EEF3FF", blueBorder: "#C3D6FD",
@@ -15,7 +17,7 @@ export const C = {
 };
 
 // 폰트 크기 스케일 (카톡 수준 가독성 기준, base=14px)
-export const F = {
+export const F: Record<string, number> = {
   micro: 10,  // 차트 축 라벨, 법적 면책문구
   xs: 11,     // 차트 툴팁, 미세 배지
   sm: 12,     // 칩, 필터 라벨, 보조 배지
@@ -26,16 +28,16 @@ export const F = {
   xxl: 20,    // 메인 제목
 };
 
-export const catCol = { price: C.green, location: C.blue, product: C.purple, benefit: C.amber, risk: C.red, future: C.cyan };
-export const catBg = { price: C.greenLight, location: C.blueLight, product: C.purpleLight, benefit: C.amberLight, risk: C.redLight, future: C.cyanLight };
+export const catCol: Record<Category, string> = { price: C.green, location: C.blue, product: C.purple, benefit: C.amber, risk: C.red, future: C.cyan };
+export const catBg: Record<Category, string> = { price: C.greenLight, location: C.blueLight, product: C.purpleLight, benefit: C.amberLight, risk: C.redLight, future: C.cyanLight };
 
-export const SHORT_LABEL = { "입지·생활권": "입지", "가격 매력도": "가격", "혜택·할인": "혜택", "미래가치": "미래", "안전도": "안전", "상품성": "상품" };
+export const SHORT_LABEL: Record<string, string> = { "입지·생활권": "입지", "가격 매력도": "가격", "혜택·할인": "혜택", "미래가치": "미래", "안전도": "안전", "상품성": "상품" };
 
-export function gr(s) {
-  if (s >= 90) return { l: "S", c: C.blue, bg: C.blueLight };
-  if (s >= 80) return { l: "A", c: C.green, bg: C.greenLight };
-  if (s >= 70) return { l: "B+", c: "#047857", bg: "#ECFDF5" };
-  if (s >= 60) return { l: "B", c: C.amber, bg: C.amberLight };
-  if (s >= 50) return { l: "C", c: "#EA580C", bg: "#FFF7ED" };
+export function gr(s: number | null | undefined): { l: string; c: string; bg: string } {
+  if (s != null && s >= 90) return { l: "S", c: C.blue, bg: C.blueLight };
+  if (s != null && s >= 80) return { l: "A", c: C.green, bg: C.greenLight };
+  if (s != null && s >= 70) return { l: "B+", c: "#047857", bg: "#ECFDF5" };
+  if (s != null && s >= 60) return { l: "B", c: C.amber, bg: C.amberLight };
+  if (s != null && s >= 50) return { l: "C", c: "#EA580C", bg: "#FFF7ED" };
   return { l: "D", c: C.red, bg: C.redLight };
 }
