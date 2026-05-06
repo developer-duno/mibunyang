@@ -11,7 +11,8 @@
     "scripts/alias-loader.mjs",
     "scripts/prebuild.mjs",
     "scripts/seed-from-json.mjs",
-    "scripts/compute-scores.mjs"
+    "scripts/compute-scores.mjs",
+    "scripts/migrate-to-supabase.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }

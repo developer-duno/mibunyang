@@ -12,6 +12,7 @@
  * 참고: M5a 시점에 implicit any 27건 발견 → 다음 세션 (M5a-extra 또는 M5d) 에서 처리.
  *       현재는 // @ts-check 미적용 (typecheck:scripts include 제외).
  */
+// @ts-check
 import { readFileSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -21,6 +22,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 
 // ── 건설사 별칭 정규화 ───────────────────────────────────────
+/** @type {Record<string, string>} */
 const BUILDER_ALIASES = {
   "지에스건설": "GS건설", "GS건설(주)": "GS건설", "(주)GS건설": "GS건설",
   "현대건설(주)": "현대건설", "(주)현대건설": "현대건설",
@@ -37,6 +39,10 @@ const BUILDER_ALIASES = {
   "태영건설(주)": "태영건설", "(주)태영건설": "태영건설",
   "금호건설(주)": "금호건설", "(주)금호건설": "금호건설",
 };
+/**
+ * @param {string | undefined | null} name
+ * @returns {string}
+ */
 function resolveBuilder(name) {
   if (!name) return "기타";
   return BUILDER_ALIASES[name.trim()] ?? name.trim();
@@ -79,9 +85,13 @@ if (!dryRun && (!SUPABASE_URL || !SUPABASE_SERVICE_KEY)) {
 
 const supabase = dryRun
   ? null
-  : createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+  : createClient(
+      /** @type {string} */ (SUPABASE_URL),
+      /** @type {string} */ (SUPABASE_SERVICE_KEY),
+      {
+        auth: { autoRefreshToken: false, persistSession: false },
+      },
+    );
 
 // ── JSON 로드 ──────────────────────────────────────────────
 console.log(`📂 JSON 파일: ${jsonPath}`);
@@ -92,7 +102,10 @@ console.log(`📊 아파트 ${apartments.length}건 로드`);
 // ── 데이터 분해 ────────────────────────────────────────────
 const today = new Date().toISOString().slice(0, 10); // "2026-03-08"
 
-/** apartments 테이블 행 */
+/**
+ * apartments 테이블 행
+ * @param {Record<string, unknown>} a
+ */
 function toApartmentRow(a) {
   return {
     id: a.id,
@@ -103,7 +116,7 @@ function toApartmentRow(a) {
     address: a.address ?? null,
     lat: a.lat ?? null,
     lng: a.lng ?? null,
-    builder: resolveBuilder(a.builder),
+    builder: resolveBuilder(/** @type {string | undefined | null} */ (a.builder)),
     units: a.units ?? null,
     unsold: a.unsold ?? null,
     unsold_rate: a.unsoldRate ?? null,
@@ -157,7 +170,10 @@ function toApartmentRow(a) {
   };
 }
 
-/** prices 테이블 행 */
+/**
+ * prices 테이블 행
+ * @param {Record<string, unknown>} a
+ */
 function toPriceRow(a) {
   if (a.price == null) return null;
   return {
@@ -172,7 +188,10 @@ function toPriceRow(a) {
   };
 }
 
-/** infra 테이블 행 */
+/**
+ * infra 테이블 행
+ * @param {Record<string, unknown>} a
+ */
 function toInfraRow(a) {
   // 인프라 데이터가 하나라도 있으면 행 생성
   if (a.hospital == null && a.mart == null && a.subwayDist == null) return null;
@@ -199,7 +218,10 @@ function toInfraRow(a) {
   };
 }
 
-/** schools 테이블 행 */
+/**
+ * schools 테이블 행
+ * @param {Record<string, unknown>} a
+ */
 function toSchoolRow(a) {
   if (a.schoolScore == null) return null;
   return {
@@ -210,7 +232,10 @@ function toSchoolRow(a) {
   };
 }
 
-/** transport 테이블 행 */
+/**
+ * transport 테이블 행
+ * @param {Record<string, unknown>} a
+ */
 function toTransportRow(a) {
   if (a.busRoutes == null && a.icDist == null && a.ktxDist == null) return null;
   return {
@@ -221,7 +246,10 @@ function toTransportRow(a) {
   };
 }
 
-/** trade_stats 테이블 행 */
+/**
+ * trade_stats 테이블 행
+ * @param {Record<string, unknown>} a
+ */
 function toTradeStatsRow(a) {
   if (a.nearbyMedian == null && a.jeonseRate == null) return null;
   return {
@@ -235,11 +263,17 @@ function toTradeStatsRow(a) {
 }
 
 // ── 데이터 분해 실행 ───────────────────────────────────────
+/** @type {Record<string, unknown>[]} */
 const aptRows = [];
+/** @type {Record<string, unknown>[]} */
 const priceRows = [];
+/** @type {Record<string, unknown>[]} */
 const infraRows = [];
+/** @type {Record<string, unknown>[]} */
 const schoolRows = [];
+/** @type {Record<string, unknown>[]} */
 const transportRows = [];
+/** @type {Record<string, unknown>[]} */
 const tradeStatsRows = [];
 const builderMap = new Map();  // builder name → { debt_ratio, credit_grade }
 const regionMap = new Map();   // region → { pop_growth }
@@ -316,7 +350,14 @@ if (dryRun) {
 }
 
 // ── Supabase upsert ────────────────────────────────────────
+/**
+ * @param {string} table
+ * @param {Record<string, unknown>[]} rows
+ * @param {string} [conflictCol]
+ * @param {number} [batchSize]
+ */
 async function upsertBatch(table, rows, conflictCol = "id", batchSize = 500) {
+  if (!supabase) throw new Error("upsertBatch: supabase 미초기화 (dry-run 모드에서는 호출 금지)");
   if (!rows.length) {
     console.log(`  ⏭  ${table}: 0건 (스킵)`);
     return;
@@ -350,6 +391,7 @@ async function upsertBatch(table, rows, conflictCol = "id", batchSize = 500) {
 }
 
 async function migrate() {
+  if (!supabase) throw new Error("migrate: supabase 미초기화 (dry-run 모드에서는 호출 금지)");
   console.log("\n🚀 Supabase 마이그레이션 시작...\n");
 
   // 순서 중요: apartments 먼저 (FK 참조)
