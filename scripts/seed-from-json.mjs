@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 초기 데이터 시딩 — apartments.json → Supabase 7개 테이블
  *

@@ -8,6 +8,9 @@
  *
  * 환경변수:
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY (.env 또는 환경변수)
+ *
+ * 참고: M5a 시점에 implicit any 27건 발견 → 다음 세션 (M5a-extra 또는 M5d) 에서 처리.
+ *       현재는 // @ts-check 미적용 (typecheck:scripts include 제외).
  */
 import { readFileSync, existsSync } from "fs";
 import { resolve, dirname } from "path";

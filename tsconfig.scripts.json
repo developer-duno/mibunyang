@@ -8,7 +8,9 @@
   },
   "include": [
     "scripts/types.ts",
-    "scripts/alias-loader.mjs"
+    "scripts/alias-loader.mjs",
+    "scripts/prebuild.mjs",
+    "scripts/seed-from-json.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }
