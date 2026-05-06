@@ -7,11 +7,6 @@ import type { UseApartmentDataReturn } from "@/types/hooks";
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [2000, 4000];
 
-interface StaticApartmentsResponse {
-  data: Apt[];
-  dataUpdatedAt: string | null;
-}
-
 export function useApartmentData(): UseApartmentDataReturn {
   const [apartments, setApartments] = useState<Apt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +18,7 @@ export function useApartmentData(): UseApartmentDataReturn {
     setError(null);
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const { data, dataUpdatedAt: updAt } = await fetchStaticApartments() as StaticApartmentsResponse;
+        const { data, dataUpdatedAt: updAt } = await fetchStaticApartments();
         if (signal?.aborted) return;
         const normalized: Apt[] = data.map((a: Apt) => a.region && a.region.includes(",") ? { ...a, region: a.region.split(",")[0].trim() } : a);
         const seen = new Set<string>();

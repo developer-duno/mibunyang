@@ -6,35 +6,44 @@
  *   2단계: USE_SUPABASE=true → Supabase API, JSON 폴백
  *   3단계: JSON 제거 (Phase 2 완료 후)
  */
-const USE_SUPABASE = import.meta.env.VITE_USE_SUPABASE === "true";
+import type { Apt } from "@/types/scoring";
 
-export async function fetchStaticApartments() {
+const USE_SUPABASE: boolean = import.meta.env.VITE_USE_SUPABASE === "true";
+
+export interface StaticApartmentsResponse {
+  ok: boolean;
+  data: Apt[];
+  dataUpdatedAt: string | null;
+}
+
+export async function fetchStaticApartments(): Promise<StaticApartmentsResponse> {
   if (USE_SUPABASE) {
     try {
       return await fetchFromSupabase();
     } catch (err) {
-      if (import.meta.env.DEV) console.warn("Supabase 실패, 정적 JSON 폴백:", err.message);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (import.meta.env.DEV) console.warn("Supabase 실패, 정적 JSON 폴백:", msg);
       return await fetchFromJson();
     }
   }
   return await fetchFromJson();
 }
 
-async function fetchFromSupabase() {
+async function fetchFromSupabase(): Promise<StaticApartmentsResponse> {
   const res = await fetch("/api/supabase/apartments");
   if (!res.ok) {
     if (res.status === 429) throw new Error("요청이 너무 많습니다. 잠시 후 새로고침하세요");
     throw new Error(`Supabase API failed: ${res.status}`);
   }
-  const json = await res.json();
+  const json = await res.json() as StaticApartmentsResponse;
   if (!json.ok || !json.data?.length) throw new Error("Supabase data empty");
   return json;
 }
 
-async function fetchFromJson() {
+async function fetchFromJson(): Promise<StaticApartmentsResponse> {
   const res = await fetch("/data/apartments.json");
   if (!res.ok) throw new Error(`Static data fetch failed: ${res.status}`);
-  const json = await res.json();
+  const json = await res.json() as StaticApartmentsResponse;
   if (!json.ok || !json.data?.length) throw new Error("Static data empty");
   return json;
 }
