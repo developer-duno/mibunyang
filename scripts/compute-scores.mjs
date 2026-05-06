@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 서버 사전 스코어링 — 모든 아파트의 6개 카테고리 점수를 사전 계산하여 cats_cache에 저장
  *
@@ -18,19 +19,26 @@ const BATCH_SIZE = 1000;
 // ── cats_cache 검증 ──────────────────────────────────────────
 const REQUIRED_KEYS = ["price", "location", "product", "benefit", "risk", "future"];
 
+/** @param {unknown} cats */
 function validateCats(cats) {
+  if (!cats || typeof cats !== "object") return false;
+  const c = /** @type {Record<string, { total?: unknown, subs?: unknown, label?: unknown }>} */ (cats);
   return REQUIRED_KEYS.every(k =>
-    cats[k] &&
-    typeof cats[k].total === "number" &&
-    !Number.isNaN(cats[k].total) &&
-    Array.isArray(cats[k].subs) &&
-    cats[k].subs.length > 0 &&
-    typeof cats[k].label === "string"
+    c[k] &&
+    typeof c[k].total === "number" &&
+    !Number.isNaN(c[k].total) &&
+    Array.isArray(c[k].subs) &&
+    c[k].subs.length > 0 &&
+    typeof c[k].label === "string"
   );
 }
 
-// ── JSON 안전 직렬화 (NaN/Infinity → null) ────────────────────
-function safeJsonReplacer(key, value) {
+/**
+ * JSON 안전 직렬화 (NaN/Infinity → null)
+ * @param {string} _key
+ * @param {unknown} value
+ */
+function safeJsonReplacer(_key, value) {
   if (typeof value === "number" && !Number.isFinite(value)) return null;
   return value;
 }
@@ -96,7 +104,8 @@ async function main() {
       });
       reporter.success();
     } catch (err) {
-      logError("compute-scores", `스코어링 실패 (id=${apt.id}): ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError("compute-scores", `스코어링 실패 (id=${apt.id}): ${msg}`);
       reporter.fail();
       skipCount++;
     }
@@ -152,6 +161,7 @@ async function main() {
 }
 
 main().catch(err => {
-  logError("compute-scores", err.message);
+  const msg = err instanceof Error ? err.message : String(err);
+  logError("compute-scores", msg);
   process.exit(1);
 });

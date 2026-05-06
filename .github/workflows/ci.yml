@@ -28,6 +28,9 @@ jobs:
       - name: Typecheck (e2e)
         run: npm run typecheck:e2e
 
+      - name: Typecheck (scripts)
+        run: npm run typecheck:scripts
+
       - name: Test
         env:
           VITE_FEATURE_UPCOMING: "true"
