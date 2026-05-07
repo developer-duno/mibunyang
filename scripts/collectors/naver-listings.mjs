@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 네이버 부동산 매물 수집기 — 미분양 아파트 인근 시세 데이터
  *
@@ -16,6 +17,22 @@
  *   (시세 이력은 naver-estate-web에서 관리)
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
+ */
+/**
+ * @typedef {Record<string, unknown>} NaverApiData
+ * @typedef {{
+ *   article_no: string; complex_no: string; trade_type_name: string;
+ *   numeric_price: number | null; numeric_rent_price: number | null;
+ *   area1_m2: number | null; area2_m2: number | null;
+ *   price_per_pyeong: number | null;
+ *   floor_info: string | null; building_name: string | null; direction: string | null;
+ *   room_count: number | null; bathroom_count: number | null;
+ *   numeric_maintenance_cost: number | null;
+ *   move_in_date: string | null; heating_type: string | null;
+ *   use_approve_ymd: string | null;
+ *   is_presale: boolean; is_verified: boolean; is_active: boolean;
+ *   article_confirm_ymd: string | null; last_seen_at: string;
+ * }} ArticleRow
  */
 import { loadEnv, getSupabase, getMibuyangSupabase, upsertBatch, log, logError, today, selectAll } from "./_shared.mjs";
 
@@ -55,6 +72,7 @@ const limitArg = args.find(a => a.startsWith("--limit="));
 const aptLimit = limitArg ? parseInt(limitArg.replace("--limit=", ""), 10) : 0;
 
 // ── NaverEstateAPI (Python NaverEstateAPI 클래스 포트) ──────
+/** @type {string | null} */
 let jwtToken = null;
 let jwtTokenTime = 0;
 let lastRequestTime = 0;
@@ -82,11 +100,12 @@ async function throttle() {
   lastRequestTime = Date.now();
 }
 
+/** @param {number} ms */
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-/** 캐시 조회 */
+/** 캐시 조회 @param {string} key */
 function getCached(key) {
   const entry = cache.get(key);
   if (!entry) return null;
@@ -97,6 +116,7 @@ function getCached(key) {
   return entry.data;
 }
 
+/** @param {string} key @param {unknown} data */
 function setCached(key, data) {
   if (cache.size >= MAX_CACHE_SIZE) {
     const oldest = cache.keys().next().value;
@@ -105,7 +125,7 @@ function setCached(key, data) {
   cache.set(key, { time: Date.now(), data });
 }
 
-/** JWT 토큰 추출 (Python _ensure_jwt 포트) */
+/** JWT 토큰 추출 (Python _ensure_jwt 포트) @param {string} [complexId] */
 async function ensureJwt(complexId) {
   // 유효한 토큰 있으면 재사용
   if (jwtToken && (Date.now() - jwtTokenTime) < JWT_LIFETIME) {
@@ -151,7 +171,13 @@ async function ensureJwt(complexId) {
   return jwtToken;
 }
 
-/** HTTP 요청 + 재시도 (Python _request_with_retry 포트) */
+/**
+ * HTTP 요청 + 재시도 (Python _request_with_retry 포트)
+ * @param {string} url
+ * @param {Record<string, string>} [params]
+ * @param {boolean} [needAuth]
+ * @param {string | null} [refererComplexId]
+ */
 async function requestWithRetry(url, params = {}, needAuth = false, refererComplexId = null) {
   const qs = new URLSearchParams(params).toString();
   const fullUrl = qs ? `${url}?${qs}` : url;
@@ -164,9 +190,10 @@ async function requestWithRetry(url, params = {}, needAuth = false, refererCompl
     try {
       await throttle();
 
+      /** @type {Record<string, string>} */
       const headers = { ...HEADERS };
       if (needAuth) {
-        const token = await ensureJwt(refererComplexId);
+        const token = await ensureJwt(refererComplexId ?? undefined);
         headers["Authorization"] = `Bearer ${token}`;
         if (refererComplexId) {
           headers["Referer"] = `${NAVER_BASE}/complexes/${refererComplexId}`;
@@ -201,7 +228,7 @@ async function requestWithRetry(url, params = {}, needAuth = false, refererCompl
       return data;
     } catch (err) {
       if (i === MAX_RETRIES - 1) throw err;
-      log("retry", `${i + 1}/${MAX_RETRIES} 실패: ${err.message} — ${RETRY_DELAYS[i]}ms 대기`);
+      log("retry", `${i + 1}/${MAX_RETRIES} 실패: ${err instanceof Error ? err.message : String(err)} — ${RETRY_DELAYS[i]}ms 대기`);
       await sleep(RETRY_DELAYS[i]);
     }
   }
@@ -209,7 +236,7 @@ async function requestWithRetry(url, params = {}, needAuth = false, refererCompl
 
 // ── API 함수들 (Python 메서드 포트) ────────────────────────
 
-/** 키워드 검색 → 단지 목록 */
+/** 키워드 검색 → 단지 목록 @param {string} keyword @param {number} [page] */
 async function searchByKeyword(keyword, page = 1) {
   return requestWithRetry(NAVER_SEARCH_API, {
     query: keyword,
@@ -218,7 +245,7 @@ async function searchByKeyword(keyword, page = 1) {
   });
 }
 
-/** 단지별 매물 목록 */
+/** 단지별 매물 목록 @param {string} complexId @param {number} [page] */
 async function getComplexArticles(complexId, page = 1) {
   return requestWithRetry(`${NAVER_ARTICLES_API}/${complexId}`, {
     page: String(page),
@@ -228,12 +255,12 @@ async function getComplexArticles(complexId, page = 1) {
   }, true, complexId);
 }
 
-/** 매물 상세 */
+/** 매물 상세 @param {string} articleNo */
 async function getArticleDetail(articleNo) {
   return requestWithRetry(`${NAVER_ARTICLE_DETAIL_API}/${articleNo}`, {}, true);
 }
 
-/** 단지 상세 */
+/** 단지 상세 @param {string} complexId */
 async function getComplexDetail(complexId) {
   return requestWithRetry(`${NAVER_COMPLEX_API}/${complexId}`, {}, true, complexId);
 }
@@ -242,7 +269,7 @@ async function getComplexDetail(complexId) {
 
 // ── 가격 파싱 (Python _parse_price_str 포트) ───────────────
 
-/** "2억 5,000" → 25000, "5천" → 5000, "2억 3천" → 23000 (만원) */
+/** "2억 5,000" → 25000, "5천" → 5000, "2억 3천" → 23000 (만원) @param {string | null | undefined} str */
 export function parseNaverPrice(str) {
   if (!str) return 0;
   const s = str.replace(/[,\s만원]/g, "");
@@ -261,7 +288,7 @@ export function parseNaverPrice(str) {
   return parseInt(s) || 0;
 }
 
-/** 평당가 계산 */
+/** 평당가 계산 @param {number | null} price @param {number | null} areaM2 */
 export function calcPricePerPyeong(price, areaM2) {
   if (!price || !areaM2 || areaM2 <= 0) return null;
   return Math.round(price / (areaM2 / M2_TO_PYEONG));
@@ -269,7 +296,7 @@ export function calcPricePerPyeong(price, areaM2) {
 
 // ── 데이터 변환 (Python from_dict 포트) ────────────────────
 
-/** 단지 데이터에서 수영장 유무 감지 */
+/** 단지 데이터에서 수영장 유무 감지 @param {NaverApiData} data @returns {boolean | null} */
 export function detectPool(data) {
   // 구조화된 시설 정보 확인
   const facilityStr = JSON.stringify(
@@ -278,9 +305,9 @@ export function detectPool(data) {
   if (facilityStr.includes("수영") || facilityStr.includes("pool")) return true;
 
   // 사진 카테고리에서 확인
-  const photos = data.photos ?? data.complexPhotoList ?? [];
+  const photos = /** @type {Array<Record<string, unknown>>} */ (data.photos ?? data.complexPhotoList ?? []);
   for (const p of photos) {
-    const cat = (p.smallCategoryName ?? p.categoryName ?? "").toLowerCase();
+    const cat = String(p.smallCategoryName ?? p.categoryName ?? "").toLowerCase();
     if (cat.includes("수영") || cat.includes("pool")) return true;
   }
 
@@ -293,8 +320,9 @@ export function detectPool(data) {
   return null; // 확인 불가 → null (not false)
 }
 
-/** API 응답 → complexes 행 */
-export function toComplexRow(data) {
+/** API 응답 → complexes 행 @param {NaverApiData} input */
+export function toComplexRow(input) {
+  const data = /** @type {Record<string, any>} */ (input);
   return {
     complex_no: String(data.complexNo || data.complexNumber),
     complex_name: data.complexName || data.name || "",
@@ -310,24 +338,25 @@ export function toComplexRow(data) {
     low_floor: data.lowFloor ?? null,
     min_supply_area_m2: data.minSupplyArea ? parseFloat(data.minSupplyArea) : null,
     max_supply_area_m2: data.maxSupplyArea ? parseFloat(data.maxSupplyArea) : null,
-    has_pool: detectPool(data),
+    has_pool: detectPool(input),
     last_crawled_at: new Date().toISOString(),
   };
 }
 
-/** API 응답 → articles 행 */
-export function toArticleRow(data, complexNo) {
+/** API 응답 → articles 행 @param {NaverApiData} input @param {string} complexNo */
+export function toArticleRow(input, complexNo) {
+  const data = /** @type {Record<string, any>} */ (input);
   const price = parseNaverPrice(data.dealOrWarrantPrc);
   const rentPrice = parseNaverPrice(data.rentPrc);
   const area2 = data.area2 ? parseFloat(data.area2) : null;
   const area1 = data.area1 ? parseFloat(data.area1) : null;
-  const isPresale = (data.realEstateTypeName || "").includes("분양권") ||
-                    (data.articleRealEstateTypeName || "").includes("분양권");
+  const isPresale = String(data.realEstateTypeName || "").includes("분양권") ||
+                    String(data.articleRealEstateTypeName || "").includes("분양권");
 
   return {
     article_no: String(data.articleNo),
     complex_no: String(complexNo),
-    trade_type_name: data.tradeTypeName || "",
+    trade_type_name: String(data.tradeTypeName || ""),
     numeric_price: price || null,
     numeric_rent_price: rentPrice || null,
     area1_m2: area1,
@@ -351,10 +380,9 @@ export function toArticleRow(data, complexNo) {
 }
 
 
-/** 상세 API로 매물 보강 (Python update_from_detail 포트) */
+/** 상세 API로 매물 보강 (Python update_from_detail 포트) @param {ArticleRow} row @param {NaverApiData} detail */
 export function enrichArticleFromDetail(row, detail) {
-  const d = detail.articleDetail || {};
-  const addition = detail.articleAddition || {};
+  const d = /** @type {Record<string, any>} */ (detail.articleDetail || {});
 
   row.room_count = d.roomCount ?? null;
   row.bathroom_count = d.bathroomCount ?? null;
@@ -446,7 +474,7 @@ async function main() {
         if (hasMore) await sleep(PAGE_DELAY);
       }
     } catch (err) {
-      logError(phase, `검색 실패 "${regionKey}": ${err.message}`);
+      logError(phase, `검색 실패 "${regionKey}": ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -548,7 +576,7 @@ async function main() {
         }
       }
     } catch (err) {
-      logError(phase, `매물 수집 실패 ${complexRow.complex_no}: ${err.message}`);
+      logError(phase, `매물 수집 실패 ${complexRow.complex_no}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -568,5 +596,5 @@ async function main() {
 
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError("naver", `치명적 오류: ${err.message}`); console.error(err); process.exit(1); });
+const isCLI = !!process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch(err => { logError("naver", `치명적 오류: ${err instanceof Error ? err.message : String(err)}`); console.error(err); process.exit(1); });

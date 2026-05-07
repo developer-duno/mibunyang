@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * naver-listings.mjs 테스트 — 네이버 매물 수집기 순수 함수 검증
  *
@@ -7,7 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -272,7 +273,7 @@ describe("toArticleRow", () => {
 // ── enrichArticleFromDetail ────────────────────────────────────
 describe("enrichArticleFromDetail", () => {
   it("상세 API에서 방/욕실/관리비 보강", () => {
-    const row = { room_count: null, bathroom_count: null, numeric_maintenance_cost: null };
+    const row = /** @type {any} */ ({ room_count: null, bathroom_count: null, numeric_maintenance_cost: null });
     const detail = {
       articleDetail: {
         roomCount: 3,
@@ -297,13 +298,13 @@ describe("enrichArticleFromDetail", () => {
   });
 
   it("articleDetail 없음 → null 유지", () => {
-    const row = { room_count: null };
+    const row = /** @type {any} */ ({ room_count: null });
     const result = enrichArticleFromDetail(row, {});
     expect(result.room_count).toBeNull();
   });
 
   it("관리비 데이터 없음 → numeric_maintenance_cost 변경 안 됨", () => {
-    const row = { numeric_maintenance_cost: null };
+    const row = /** @type {any} */ ({ numeric_maintenance_cost: null });
     const detail = {
       articleDetail: { maintenanceCost: null },
       articleAddition: {},
@@ -313,7 +314,7 @@ describe("enrichArticleFromDetail", () => {
   });
 
   it("costsByDate 빈 배열 → 관리비 미변경", () => {
-    const row = { numeric_maintenance_cost: null };
+    const row = /** @type {any} */ ({ numeric_maintenance_cost: null });
     const detail = {
       articleDetail: { maintenanceCost: { costsByDate: [] } },
       articleAddition: {},
