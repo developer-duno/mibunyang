@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * calc-school-walk.mjs 테스트 — 초등학교 도보시간 순수 함수 검증
  *
@@ -7,7 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),

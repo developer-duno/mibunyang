@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 초등학교 도보거리 계산기
  *
@@ -18,7 +19,11 @@ loadEnv();
 const PHASE = "school-walk";
 const WALK_SPEED = 70; // m/분 (어린이 도보 속도)
 
-/** 초등학교 필터 + 최소 거리 찾기 */
+/**
+ * 초등학교 필터 + 최소 거리 찾기
+ * @param {Array<{ type: string, distance: number }> | null | undefined} nearbySchools
+ * @returns {number | null}
+ */
 export function findNearestElemSchool(nearbySchools) {
   if (!Array.isArray(nearbySchools) || nearbySchools.length === 0) return null;
   const elementary = nearbySchools.filter(s => s.type === "초" && s.distance > 0);
@@ -26,7 +31,12 @@ export function findNearestElemSchool(nearbySchools) {
   return Math.min(...elementary.map(s => s.distance));
 }
 
-/** 거리(m) → 도보 시간(분) */
+/**
+ * 거리(m) → 도보 시간(분)
+ * @param {number | null | undefined} distanceM
+ * @param {number} [walkSpeed]
+ * @returns {number | null}
+ */
 export function calcWalkingMinutes(distanceM, walkSpeed = WALK_SPEED) {
   if (!distanceM || distanceM <= 0 || !walkSpeed || walkSpeed <= 0) return null;
   return Math.ceil(distanceM / walkSpeed);
@@ -84,5 +94,10 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => {
+  const msg = err instanceof Error ? err.message : String(err);
+  logError(PHASE, msg);
+  process.exit(1);
+});
