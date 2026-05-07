@@ -48,7 +48,11 @@
     "scripts/collectors/migration.test.mjs",
     "scripts/collectors/noise-estimate.test.mjs",
     "scripts/collectors/noxious.test.mjs",
-    "scripts/collectors/transit-match.test.mjs"
+    "scripts/collectors/transit-match.test.mjs",
+    "scripts/collectors/dart-builders.test.mjs",
+    "scripts/collectors/transport-tago.test.mjs",
+    "scripts/collectors/data-audit.test.mjs",
+    "scripts/collectors/data-fill.test.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }

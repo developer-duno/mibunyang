@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * data-audit.mjs 테스트 — null 판정, 감사 계산 검증
  */

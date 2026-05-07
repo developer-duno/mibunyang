@@ -1,11 +1,12 @@
 // @vitest-environment node
+// @ts-check
 /**
  * transport-tago.mjs 테스트 — 지하철역명/노선 추출, IC/KTX 필터, 증분 수집 로직
  */
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -49,7 +50,7 @@ describe('extractSubwayName — 지하철역명 추출', () => {
   });
 
   it('null 입력 → null', () => {
-    expect(extractSubwayName(null)).toBeNull();
+    expect(extractSubwayName(/** @type {any} */ (null))).toBeNull();
   });
 
   it('undefined 입력 → null', () => {
@@ -172,7 +173,7 @@ describe('buildTransportRow — TAGO 수집 실패/성공 신호 분리', () => 
   });
 
   it('busStops=[{nodenm:""},{nodenm:null}] (빈/null nodenm 필터): bus_routes=0', () => {
-    const row = buildTransportRow({ ...baseInput, busStops: [{ nodenm: "" }, { nodenm: null }] });
+    const row = buildTransportRow({ ...baseInput, busStops: [{ nodenm: "" }, { nodenm: /** @type {any} */ (null) }] });
     expect(row.bus_routes).toBe(0);
     expect(row.bus_stop_names).toBeNull();
   });

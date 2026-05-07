@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * data-fill.mjs 테스트 — 실제 COLLECTORS/SKIP_CATEGORIES import 기반 검증
  */
@@ -5,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // Supabase 연결 + data-audit import chain 보호
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
 });
 
@@ -53,7 +54,7 @@ describe("COLLECTORS 수집기 매핑", () => {
   // 이 테스트가 검증하는 것: regions는 3개 스크립트 순차 실행
   it("regions는 population → migration → housing-permits 3개 순차", () => {
     const regions = COLLECTORS.find(c => c.category === "regions");
-    expect(regions.scripts).toEqual(["population.mjs", "migration.mjs", "housing-permits.mjs"]);
+    expect(regions?.scripts).toEqual(["population.mjs", "migration.mjs", "housing-permits.mjs"]);
   });
 });
 
