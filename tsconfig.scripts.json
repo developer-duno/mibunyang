@@ -57,6 +57,8 @@
     "scripts/collectors/reverse-geocode.test.mjs",
     "scripts/collectors/geocode-missing.mjs",
     "scripts/collectors/geocode-missing.test.mjs",
+    "scripts/collectors/collect-building-hub.mjs",
+    "scripts/collectors/collect-building-hub.test.mjs",
     "scripts/collectors/migration.test.mjs",
     "scripts/collectors/noise-estimate.test.mjs",
     "scripts/collectors/noxious.test.mjs",

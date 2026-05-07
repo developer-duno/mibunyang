@@ -1,10 +1,11 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 
 // collect-building-hub.mjs 테스트
 // 이 테스트가 검증하는 것: 지번 파라미터 생성 + 에너지 집계 + 타입 변환의 정확성
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -21,13 +22,17 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 });
 
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, REQUEST_DELAY: 0 };
 });
 
 const { makeLotParams } = await import("./collect-building-hub.mjs");
 
 // quakeDesign 타입 변환 ("1"/"Y"/true → boolean) — 원본 fetchQuakeDesign 내부 인라인 로직 재현
+/**
+ * @param {string | number | boolean | null | undefined} val
+ * @returns {boolean | null}
+ */
 function parseQuakeDesign(val) {
   if (val === "0" || val === "N" || val === false || val === "미적용") return false;
   if (val === "1" || val === "Y" || val === true || val === "적용") return true;
@@ -35,6 +40,10 @@ function parseQuakeDesign(val) {
 }
 
 // energy MAX 집계 — 원본 fetchEnergy 내부 인라인 로직 재현
+/**
+ * @param {Array<{useQty: string}> | null | undefined} items
+ * @returns {number | null}
+ */
 function aggregateEnergy(items) {
   if (!items || items.length === 0) return null;
   const max = Math.max(...items.map(i => parseFloat(i.useQty) || 0));
@@ -42,8 +51,13 @@ function aggregateEnergy(items) {
 }
 
 // heatFuel MODE 집계 — 원본 fetchHeatFuel 내부 인라인 로직 재현
+/**
+ * @param {Array<{heatMethCdNm?: string | null, fuelCdNm?: string | null}> | null | undefined} items
+ * @returns {string | null}
+ */
 function aggregateHeatFuel(items) {
   if (!items || items.length === 0) return null;
+  /** @type {Record<string, number>} */
   const counts = {};
   for (const item of items) {
     const fuel = item.heatMethCdNm || item.fuelCdNm || null;

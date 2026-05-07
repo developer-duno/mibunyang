@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 건축HUB 통합 수집기 — 건물에너지 + 주택인허가 데이터
  *
@@ -43,8 +44,13 @@ const API_KEY = process.env.MOLIT_KEY;
 const API_BASE = "https://apis.data.go.kr/1613000/BldEngyHubService";
 
 // BldEngyHubService는 type=json이어도 항상 XML 반환 → XML 파싱 필수
+/**
+ * @param {string} endpoint
+ * @param {Record<string, string>} params
+ * @returns {Promise<any>}
+ */
 async function hubApiCall(endpoint, params) {
-  const qs = new URLSearchParams({ serviceKey: API_KEY, type: "json", ...params });
+  const qs = new URLSearchParams({ serviceKey: API_KEY ?? "", type: "json", ...params });
   const url = `${API_BASE}/${endpoint}?${qs}`;
   const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -68,6 +74,7 @@ async function hubApiCall(endpoint, params) {
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
   while ((match = itemRegex.exec(text)) !== null) {
+    /** @type {Record<string, string>} */
     const obj = {};
     const fieldRegex = /<(\w+)>([^<]*)<\/\1>/g;
     let fm;
@@ -80,6 +87,12 @@ async function hubApiCall(endpoint, params) {
 }
 
 // ── 지번 파라미터 구성 ──────────────────────────────────────
+/**
+ * @param {string} bjdCode
+ * @param {number | null | undefined} lotMain
+ * @param {number | null | undefined} lotSub
+ * @returns {{sigunguCd: string, bjdongCd: string, bun: string, ji: string}}
+ */
 export function makeLotParams(bjdCode, lotMain, lotSub) {
   return {
     sigunguCd: bjdCode.slice(0, 5),
@@ -90,6 +103,13 @@ export function makeLotParams(bjdCode, lotMain, lotSub) {
 }
 
 // ── 에너지 수집 (전기 + 가스) ────────────────────────────────
+/**
+ * @param {string} bjdCode
+ * @param {number | null | undefined} lotMain
+ * @param {number | null | undefined} lotSub
+ * @param {string} useYm
+ * @returns {Promise<{elec: number | null, gas: number | null}>}
+ */
 async function fetchEnergy(bjdCode, lotMain, lotSub, useYm) {
   const params = { ...makeLotParams(bjdCode, lotMain, lotSub), useYm, numOfRows: "10", pageNo: "1" };
   let elec = null, gas = null;
@@ -104,7 +124,8 @@ async function fetchEnergy(bjdCode, lotMain, lotSub, useYm) {
       if (elec === 0) elec = null;
     }
   } catch (err) {
-    log(PHASE, `  전기 조회 실패: ${err.message}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    log(PHASE, `  전기 조회 실패: ${msg}`);
   }
 
   await sleep(REQUEST_DELAY);
@@ -118,7 +139,8 @@ async function fetchEnergy(bjdCode, lotMain, lotSub, useYm) {
       if (gas === 0) gas = null;
     }
   } catch (err) {
-    log(PHASE, `  가스 조회 실패: ${err.message}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    log(PHASE, `  가스 조회 실패: ${msg}`);
   }
 
   return { elec, gas };
@@ -178,6 +200,7 @@ async function main() {
 
   for (let i = 0; i < apts.length; i++) {
     const apt = apts[i];
+    /** @type {{ elec_usage_kwh?: number | null, gas_usage_mj?: number | null, energy_collected_at?: string | null, updated_at?: string }} */
     const row = {};
 
     try {
@@ -209,7 +232,8 @@ async function main() {
         else rpt.success(1);
       }
     } catch (err) {
-      logError(PHASE, `  ${apt.name}: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError(PHASE, `  ${apt.name}: ${msg}`);
       rpt.fail(1);
     }
 
@@ -225,5 +249,10 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) ?? "");
+if (isCLI) main().catch(err => {
+  const msg = err instanceof Error ? err.message : String(err);
+  logError(PHASE, msg);
+  process.exit(1);
+});
