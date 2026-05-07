@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 행안부 지역안전지수 범죄 등급 수집기 — CSV 파일 기반
  *
@@ -13,6 +14,10 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, REGION_MAP, log, logError, createReporter } from "./_shared.mjs";
 
+/**
+ * @typedef {{ id: string; name: string | null; region: string | null; gu: string | null }} CrimeAptRow
+ */
+
 loadEnv();
 
 const PHASE = "crime-safety";
@@ -23,29 +28,34 @@ const CSV_PATH = resolve(__dirname, "../../data/crime-safety-index.csv");
  * CSV 텍스트 파싱 → Map<"region|gu", grade>
  * CSV 형식: 시도,시군구,교통사고,화재,범죄,생활안전,자살,감염병
  * 또는: 시도,시군구,범죄 (최소 3컬럼)
+ * @param {string} csvText
+ * @returns {Map<string, number>}
  */
 export function parseCrimeCsv(csvText) {
   const lines = csvText.trim().split(/\r?\n/);
   if (lines.length < 2) throw new Error("CSV 데이터 부족 (헤더+1행 이상 필요)");
 
   // 헤더에서 범죄 컬럼 인덱스 찾기
-  const header = lines[0].split(",").map(h => h.trim());
-  let crimeIdx = header.findIndex(h => h === "범죄");
-  if (crimeIdx === -1) crimeIdx = header.findIndex(h => h.includes("범죄"));
+  const header = (lines[0] || "").split(",").map(/** @param {string} h */ h => h.trim());
+  let crimeIdx = header.findIndex(/** @param {string} h */ h => h === "범죄");
+  if (crimeIdx === -1) crimeIdx = header.findIndex(/** @param {string} h */ h => h.includes("범죄"));
   // 3컬럼 구조(시도,시군구,등급)인 경우
   if (crimeIdx === -1 && header.length === 3) crimeIdx = 2;
   if (crimeIdx === -1) throw new Error(`CSV에서 '범죄' 컬럼을 찾을 수 없음. 헤더: ${header.join(",")}`);
 
+  /** @type {Map<string, number>} */
   const map = new Map();
   let parsed = 0;
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(",").map(c => c.trim());
+    const line = lines[i];
+    if (!line) continue;
+    const cols = line.split(",").map(/** @param {string} c */ c => c.trim());
     if (cols.length < 3) continue;
 
     const rawSido = cols[0];
     const rawGu = cols[1];
     const gradeStr = cols[crimeIdx];
-    const grade = parseInt(gradeStr, 10);
+    const grade = parseInt(gradeStr || "", 10);
     if (!rawSido || isNaN(grade) || grade < 1 || grade > 5) continue;
 
     // 시도명 정규화: "서울특별시" → "서울"
@@ -61,6 +71,8 @@ export function parseCrimeCsv(csvText) {
 
 /**
  * 아파트의 region+gu로 범죄 등급 매칭
+ * @param {CrimeAptRow} apt
+ * @param {Map<string, number>} crimeMap
  * @returns {number|null} 1~5 등급 또는 null
  */
 export function matchCrimeGrade(apt, crimeMap) {
@@ -68,7 +80,8 @@ export function matchCrimeGrade(apt, crimeMap) {
   // 1. region|gu 정확 매칭
   if (apt.gu) {
     const key = `${apt.region}|${apt.gu}`;
-    if (crimeMap.has(key)) return crimeMap.get(key);
+    const hit = crimeMap.get(key);
+    if (hit !== undefined) return hit;
   }
   // 2. 세종처럼 gu가 없는 경우 → region만으로 매칭 시도
   for (const [key, grade] of crimeMap) {
@@ -129,5 +142,6 @@ async function main() {
 }
 
 // isCLI 패턴 — 직접 실행 시 main(), import 시 미실행
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
 if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });

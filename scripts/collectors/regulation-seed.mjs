@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 규제지역 시드 적용 — regulation-zones.json → apartments.is_regulated
  *
@@ -13,16 +14,26 @@ import { loadEnv, getSupabase, log, ROOT } from "./_shared.mjs";
 
 loadEnv();
 
-/** 규제지역 JSON → Set 생성 */
+/**
+ * 규제지역 JSON → Set 생성
+ * @param {Record<string, unknown>} zones
+ * @returns {Set<string>}
+ */
 export function buildRegulatedSet(zones) {
+  /** @type {Set<string>} */
   const regulated = new Set();
   for (const list of [zones["투기과열지구"], zones["조정대상지역"]]) {
-    if (Array.isArray(list)) list.forEach(z => regulated.add(z));
+    if (Array.isArray(list)) list.forEach(z => regulated.add(String(z)));
   }
   return regulated;
 }
 
-/** region + gu → 규제 조회 키 */
+/**
+ * region + gu → 규제 조회 키
+ * @param {string | null | undefined} region
+ * @param {string | null | undefined} gu
+ * @returns {string}
+ */
 export function makeRegionKey(region, gu) {
   return `${region ?? ""} ${gu ?? ""}`.trim();
 }
@@ -75,5 +86,6 @@ async function main() {
   log("regulation", `완료: ${updated}건 갱신`);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
 if (isCLI) main().catch(e => { console.error(e); process.exit(1); });

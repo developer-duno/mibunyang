@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 층수 범위 계산 — max_floor → floors 텍스트
  *
@@ -12,6 +13,10 @@ import { loadEnv, getSupabase, log } from "./_shared.mjs";
 loadEnv();
 const DRY = process.argv.includes("--dry-run");
 
+/**
+ * @param {number | null | undefined} maxFloor
+ * @returns {string | null}
+ */
 export function classifyFloors(maxFloor) {
   if (maxFloor == null || maxFloor <= 0) return null;
   if (maxFloor <= 5) return "저층(1~5F)";
@@ -63,5 +68,6 @@ async function main() {
   log("calc-floors", `완료: ${updated}건 갱신`);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
 if (isCLI) main().catch(e => { console.error(e); process.exit(1); });

@@ -19,7 +19,10 @@
     "scripts/collectors/molit-units.mjs",
     "scripts/collectors/collect-unsold-kosis.mjs",
     "scripts/collectors/sync-naver-complex.mjs",
-    "scripts/collectors/naver-presale.mjs"
+    "scripts/collectors/naver-presale.mjs",
+    "scripts/collectors/calc-floors.mjs",
+    "scripts/collectors/regulation-seed.mjs",
+    "scripts/collectors/collect-crime-safety.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }
