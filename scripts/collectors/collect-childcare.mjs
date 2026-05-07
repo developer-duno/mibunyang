@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 어린이집/유치원 수집기 — Kakao Places 기반
  *
@@ -15,15 +16,32 @@ loadEnv();
 const PHASE = "childcare";
 const KAKAO_KEY = process.env.KAKAO_KEY;
 
-/** Kakao 키워드 검색 (반경 내 시설 조회) */
+/**
+ * @typedef {{ x: string; y: string; distance: string; place_name?: string }} KakaoPlaceItem
+ * @typedef {{ documents: KakaoPlaceItem[] }} KakaoPlacesResponse
+ */
+
+/**
+ * Kakao 키워드 검색 (반경 내 시설 조회)
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} keyword
+ * @param {number} radius
+ * @returns {Promise<KakaoPlaceItem[]>}
+ */
 export async function searchKakao(lat, lng, keyword, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
   const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
-  const data = await res.json();
+  const data = /** @type {KakaoPlacesResponse} */ (await res.json());
   return data.documents || [];
 }
 
-/** 어린이집+유치원 합산 수집 */
+/**
+ * 어린이집+유치원 합산 수집
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<{ count: number; dist: number | null }>}
+ */
 export async function collectChildcare(lat, lng) {
   const [daycares, kindergartens] = await Promise.all([
     searchKakao(lat, lng, "어린이집", 1000),
@@ -38,9 +56,10 @@ export async function collectChildcare(lat, lng) {
   }
   // 거리순 정렬
   all.sort((a, b) => Number(a.distance) - Number(b.distance));
+  const first = all[0];
   return {
     count: all.length,
-    dist: all.length > 0 ? Math.round(Number(all[0].distance)) : null,
+    dist: first ? Math.round(Number(first.distance)) : null,
   };
 }
 
@@ -79,7 +98,8 @@ async function main() {
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); }
       else rpt.success(1);
     } catch (err) {
-      logError(PHASE, `${apt.name}: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError(PHASE, `${apt.name}: ${msg}`);
       rpt.fail(1);
     }
 
@@ -90,5 +110,6 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

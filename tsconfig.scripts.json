@@ -22,7 +22,10 @@
     "scripts/collectors/naver-presale.mjs",
     "scripts/collectors/calc-floors.mjs",
     "scripts/collectors/regulation-seed.mjs",
-    "scripts/collectors/collect-crime-safety.mjs"
+    "scripts/collectors/collect-crime-safety.mjs",
+    "scripts/collectors/collect-childcare.mjs",
+    "scripts/collectors/collect-police.mjs",
+    "scripts/collectors/infra-kakao.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }
