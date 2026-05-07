@@ -39,7 +39,8 @@
     "scripts/collectors/migration.mjs",
     "scripts/collectors/environment.mjs",
     "scripts/collectors/noise-estimate.mjs",
-    "scripts/collectors/noxious.mjs"
+    "scripts/collectors/noxious.mjs",
+    "scripts/collectors/transit-match.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }

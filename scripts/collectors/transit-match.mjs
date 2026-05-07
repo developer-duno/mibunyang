@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 교통/도시개발 시드 데이터 → 아파트 매칭
  *
@@ -91,6 +92,7 @@ async function main() {
 
     if (transitDev || cityDev) {
       const id = jsonMode ? apt.id : apt.id;
+      /** @type {{id: string, transit_dev?: string, dev_dist?: number|null, city_dev?: string}} */
       const update = { id };
       if (transitDev) {
         update.transit_dev = transitDev;
@@ -108,7 +110,7 @@ async function main() {
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
     for (const u of updates.slice(0, 20)) {
-      const apt = apartments.find(a => a.id === u.id);
+      const apt = apartments.find((/** @type {{id: string, name?: string}} */ a) => a.id === u.id);
       console.log(`  ${apt?.name || u.id}: transit=${u.transit_dev || "-"}, dist=${u.dev_dist || "-"}km, city=${u.city_dev || "-"}`);
     }
     if (updates.length > 20) console.log(`  ... 외 ${updates.length - 20}건`);
@@ -118,8 +120,9 @@ async function main() {
   // 6. 업데이트
   if (jsonMode) {
     // apartments.json 직접 업데이트
-    const aptMap = new Map(apartments.map(a => [a.id, a]));
+    const aptMap = new Map(apartments.map((/** @type {{id: string}} */ a) => [a.id, a]));
     for (const u of updates) {
+      /** @type {Record<string, unknown>} */
       const apt = aptMap.get(u.id);
       if (!apt) continue;
       if (u.transit_dev) { apt.transitDev = u.transit_dev; apt.devDist = u.dev_dist; }
@@ -133,6 +136,7 @@ async function main() {
     const sb = getSupabase();
     let ok = 0;
     for (const u of updates) {
+      /** @type {Record<string, unknown>} */
       const row = {};
       if (u.transit_dev) { row.transit_dev = u.transit_dev; row.dev_dist = u.dev_dist; }
       if (u.city_dev) row.city_dev = u.city_dev;
@@ -144,5 +148,6 @@ async function main() {
   }
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
