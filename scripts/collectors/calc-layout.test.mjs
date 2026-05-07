@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * calc-layout.mjs 테스트 — 베이 수, 건물유형, 레이아웃 문자열, 중앙값
  */
@@ -5,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // loadEnv + getSupabase 호출 방지 (모듈 로드 시 사이드이펙트)
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
 });
 

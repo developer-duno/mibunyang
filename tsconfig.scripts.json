@@ -51,6 +51,8 @@
     "scripts/collectors/naver-units.test.mjs",
     "scripts/collectors/calc-school-walk.mjs",
     "scripts/collectors/calc-school-walk.test.mjs",
+    "scripts/collectors/calc-layout.mjs",
+    "scripts/collectors/calc-layout.test.mjs",
     "scripts/collectors/migration.test.mjs",
     "scripts/collectors/noise-estimate.test.mjs",
     "scripts/collectors/noxious.test.mjs",

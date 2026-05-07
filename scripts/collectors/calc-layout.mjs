@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 평면구조(layout) 추정기 — 면적 + 건물 특성 기반
  *
@@ -25,14 +26,24 @@ const PLATE_LOW_FLOOR = 15;
 const TOWER_LOW_DENSITY = 6;   // 층당 세대 <= 6 → 타워
 const PLATE_HIGH_DENSITY = 12; // 층당 세대 >= 12 → 판상
 
-/** 면적(m²)으로 베이 수 추정 */
+/**
+ * 면적(m²)으로 베이 수 추정
+ * @param {number} area
+ * @returns {number}
+ */
 function estimateBayCount(area) {
   if (area >= BAY4_THRESHOLD) return 4;
   if (area >= BAY3_THRESHOLD) return 3;
   return 2;
 }
 
-/** 건물 특성으로 판상/타워 판별 (양수=타워, 0이하=판상) */
+/**
+ * 건물 특성으로 판상/타워 판별 (양수=타워, 0이하=판상)
+ * @param {string | null | undefined} complexName
+ * @param {number | null} highFloor
+ * @param {number | null} totalHouseholds
+ * @returns {"타워" | "판상"}
+ */
 function estimateBuildingType(complexName, highFloor, totalHouseholds) {
   let score = 0;
 
@@ -47,7 +58,7 @@ function estimateBuildingType(complexName, highFloor, totalHouseholds) {
   }
 
   // 3. 세대밀도 (총세대 / 최고층 ≈ 층당 세대수)
-  if (totalHouseholds > 0 && highFloor > 0) {
+  if (totalHouseholds != null && totalHouseholds > 0 && highFloor != null && highFloor > 0) {
     const density = totalHouseholds / highFloor;
     if (density <= TOWER_LOW_DENSITY) score += 1;
     if (density >= PLATE_HIGH_DENSITY) score -= 1;
@@ -56,13 +67,22 @@ function estimateBuildingType(complexName, highFloor, totalHouseholds) {
   return score > 0 ? "타워" : "판상";
 }
 
-/** 베이 수 + 건물 유형 → layout 문자열 */
+/**
+ * 베이 수 + 건물 유형 → layout 문자열
+ * @param {number} bayCount
+ * @param {string} buildingType
+ * @returns {string}
+ */
 function toLayoutString(bayCount, buildingType) {
   if (bayCount <= 2) return "2베이이하";
   return `${bayCount}베이${buildingType}`;
 }
 
-/** 배열의 중앙값 */
+/**
+ * 배열의 중앙값
+ * @param {number[]} arr
+ * @returns {number | null}
+ */
 function median(arr) {
   if (!arr.length) return null;
   const sorted = [...arr].sort((a, b) => a - b);
@@ -173,7 +193,7 @@ async function main() {
         if (cpx.high_floor >= TOWER_HIGH_FLOOR) typeScore += 1;
         if (cpx.high_floor < PLATE_LOW_FLOOR) typeScore -= 1;
       }
-      if (cpx.total_household_count > 0 && cpx.high_floor > 0) {
+      if (cpx.total_household_count != null && cpx.total_household_count > 0 && cpx.high_floor != null && cpx.high_floor > 0) {
         const density = cpx.total_household_count / cpx.high_floor;
         if (density <= TOWER_LOW_DENSITY) typeScore += 1;
         if (density >= PLATE_HIGH_DENSITY) typeScore -= 1;
@@ -200,8 +220,13 @@ async function main() {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) ?? "");
+if (isCLI) main().catch(err => {
+  const msg = err instanceof Error ? err.message : String(err);
+  logError(PHASE, msg);
+  process.exit(1);
+});
 
 // 테스트용 순수 함수 export
 export { estimateBayCount, estimateBuildingType, toLayoutString, median };
