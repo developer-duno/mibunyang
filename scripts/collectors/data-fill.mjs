@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 데이터 자동 보정 오케스트레이터
  *
@@ -20,6 +21,12 @@ import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, log, logError } from "./_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./data-audit.mjs";
 
+/**
+ * @typedef {{ category: string, phase: number, scripts: readonly string[], args: readonly string[], envKeys: readonly string[] }} CollectorEntry
+ * @typedef {{ category: string, phase: number, scripts: readonly string[], args: readonly string[], envKeys: readonly string[], nullRate: number, currentRate: number }} AuditTarget
+ * @typedef {{ ok: true } | { ok: false, error: string }} RunResult
+ */
+
 loadEnv();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -28,6 +35,7 @@ const PHASE = "data-fill";
 const COLLECTOR_TIMEOUT = 900_000; // 15분
 
 // ── 수집기 매핑 (Phase 순서대로 정의) ────────────────────────
+/** @type {readonly CollectorEntry[]} */
 export const COLLECTORS = [
   // Phase 1: 기반 데이터
   { category: "building",  phase: 1, scripts: ["molit-building-info.mjs"], args: ["--force"], envKeys: ["MOLIT_KEY"] },
@@ -46,6 +54,12 @@ export const COLLECTORS = [
 export const SKIP_CATEGORIES = new Set(["naver", "future", "core", "price", "risk", "benefits"]);
 
 // ── 수집기 실행 ──────────────────────────────────────────────
+/**
+ * @param {string} script
+ * @param {readonly string[]} extraArgs
+ * @param {boolean} dryRun
+ * @returns {Promise<RunResult>}
+ */
 async function runCollector(script, extraArgs, dryRun) {
   const scriptPath = resolve(__dirname, script);
   const args = [...extraArgs];
@@ -62,21 +76,30 @@ async function runCollector(script, extraArgs, dryRun) {
     if (stderr) process.stderr.write(stderr);
     return { ok: true };
   } catch (err) {
-    const code = err.code || err.status || "unknown";
-    logError(PHASE, `  ${script} 실패 (code: ${code}): ${err.message?.slice(0, 200)}`);
-    return { ok: false, error: err.message };
+    const e = /** @type {{ code?: string|number, status?: string|number, message?: string }} */ (err);
+    const code = e.code || e.status || "unknown";
+    logError(PHASE, `  ${script} 실패 (code: ${code}): ${e.message?.slice(0, 200) ?? ""}`);
+    return { ok: false, error: e.message ?? String(err) };
   }
 }
 
 // ── env 사전 검증 ────────────────────────────────────────────
+/**
+ * @param {readonly string[]} envKeys
+ * @returns {string[]}
+ */
 function checkEnvKeys(envKeys) {
   const missing = envKeys.filter(k => !process.env[k]);
   return missing;
 }
 
 // ── CLI 인자 파싱 ────────────────────────────────────────────
+/**
+ * @returns {{ dryRun: boolean, category: string | null, threshold: number }}
+ */
 function parseArgs() {
   const args = process.argv.slice(2);
+  /** @type {{ dryRun: boolean, category: string | null, threshold: number }} */
   const flags = { dryRun: false, category: null, threshold: 20 };
   for (const arg of args) {
     if (arg === "--dry-run") flags.dryRun = true;
@@ -101,6 +124,7 @@ async function main() {
   log(PHASE, `아파트 ${before.total}건, 평균 신뢰도 ${before.avgReliability}%\n`);
 
   // 2. 보정 대상 선정
+  /** @type {AuditTarget[]} */
   const targets = [];
   for (const col of COLLECTORS) {
     // 카테고리 필터
@@ -134,6 +158,7 @@ async function main() {
   log(PHASE, `\n보정 대상: ${targets.map(t => `${t.category}(${t.nullRate.toFixed(1)}% 누락)`).join(", ")}\n`);
 
   // 3. Phase별 순차 실행
+  /** @type {Record<string, string>} */
   const results = {};
   for (const phase of [1, 2, 3]) {
     const phaseTargets = targets.filter(t => t.phase === phase);
@@ -186,5 +211,5 @@ async function main() {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = !!process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch(err => { logError(PHASE, err instanceof Error ? err.message : String(err)); process.exit(1); });

@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 데이터 완성도 배치 감사 스크립트
  *
@@ -13,6 +14,16 @@
  */
 import { loadEnv, getSupabase, log, logError } from "./_shared.mjs";
 
+/**
+ * @typedef {{ collector: string, fields: string[] }} AuditFieldEntry
+ * @typedef {{ collector: string, filled: number, total: number, rate: number }} AuditCategoryStat
+ * @typedef {{ category: string, field: string, filled: number, missing: number }} AuditFieldStat
+ * @typedef {{ apartments: number, rate: number }} AuditRegionStat
+ * @typedef {{ total: number, filled: number, checked: number }} RegionRunStat
+ * @typedef {{ total: number, avgReliability?: number, categories: Record<string, AuditCategoryStat>, fields: Record<string, AuditFieldStat>, regions: Record<string, AuditRegionStat> }} AuditResult
+ * @typedef {{ id: string, name?: string, region?: string, dataReliability?: number, units?: number, [k: string]: unknown }} FlatRow
+ */
+
 loadEnv();
 
 const PHASE = "data-audit";
@@ -22,9 +33,11 @@ const BATCH_SIZE = 1000;
 const PERMANENT_NULL = new Set(["quakeDesign", "greenBldg"]);
 
 // ── 특수 null 판정 (VIEW COALESCE/기본값 마스킹) ──────────────
+/** @type {Record<string, number>} */
 const MASKED_DEFAULTS = { subwayDist: 9999, icDist: 99, ktxDist: 99 };
 
 // ── AUDIT_FIELDS: 14 카테고리, ~85 필드 ──────────────────────
+/** @type {Record<string, AuditFieldEntry>} */
 export const AUDIT_FIELDS = {
   core: {
     collector: "applyhome",
@@ -107,6 +120,11 @@ export const AUDIT_FIELDS = {
 
 
 // ── null 판정 ────────────────────────────────────────────────
+/**
+ * @param {string} field
+ * @param {unknown} value
+ * @returns {boolean}
+ */
 export function isFieldNull(field, value) {
   // 영구 미수집 필드
   if (PERMANENT_NULL.has(field)) return true;
@@ -117,16 +135,21 @@ export function isFieldNull(field, value) {
   // COALESCE 기본값 마스킹
   if (field in MASKED_DEFAULTS && value === MASKED_DEFAULTS[field]) return true;
   // units 특수 케이스 (세대수 미상)
-  if (field === "units" && value <= 1) return true;
+  if (field === "units" && typeof value === "number" && value <= 1) return true;
   return false;
 }
 
 // ── 감사 계산 ────────────────────────────────────────────────
+/**
+ * @param {FlatRow[]} rows
+ * @returns {AuditResult}
+ */
 export function computeAudit(rows) {
   const total = rows.length;
   if (total === 0) return { total: 0, categories: {}, fields: {}, regions: {} };
 
   // 필드별 null 카운트
+  /** @type {Record<string, AuditFieldStat>} */
   const fieldStats = {};
   for (const [cat, { fields }] of Object.entries(AUDIT_FIELDS)) {
     for (const f of fields) {
@@ -135,10 +158,11 @@ export function computeAudit(rows) {
   }
 
   // 지역별 집계
+  /** @type {Record<string, RegionRunStat>} */
   const regionStats = {};
 
   for (const row of rows) {
-    const region = row.region || "기타";
+    const region = (typeof row.region === "string" && row.region) ? row.region : "기타";
     if (!regionStats[region]) regionStats[region] = { total: 0, filled: 0, checked: 0 };
     regionStats[region].total++;
 
@@ -156,6 +180,7 @@ export function computeAudit(rows) {
   }
 
   // 카테고리별 집계
+  /** @type {Record<string, AuditCategoryStat>} */
   const categories = {};
   for (const [cat, { collector, fields }] of Object.entries(AUDIT_FIELDS)) {
     let catFilled = 0;
@@ -174,6 +199,7 @@ export function computeAudit(rows) {
   }
 
   // 지역별 커버리지율
+  /** @type {Record<string, AuditRegionStat>} */
   const regions = {};
   for (const [r, s] of Object.entries(regionStats)) {
     regions[r] = {
@@ -183,8 +209,8 @@ export function computeAudit(rows) {
   }
 
   // dataReliability 평균
-  const reliabilities = rows.map(r => r.dataReliability ?? 0);
-  const avgReliability = Math.round(reliabilities.reduce((a, b) => a + b, 0) / total * 10) / 10;
+  const reliabilities = rows.map((/** @type {FlatRow} */ r) => /** @type {number} */ (r.dataReliability ?? 0));
+  const avgReliability = Math.round(reliabilities.reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) / total * 10) / 10;
 
   return { total, avgReliability, categories, fields: fieldStats, regions };
 }
@@ -200,17 +226,28 @@ const DIM = "\x1b[2m";
 const RATE_EXCELLENT = 80; // % — 녹색 (우수)
 const RATE_WARNING = 50;   // % — 노랑 (양호)
 
+/**
+ * @param {number} rate
+ * @returns {string}
+ */
 function colorByRate(rate) {
   if (rate >= RATE_EXCELLENT) return GREEN;
   if (rate >= RATE_WARNING) return YELLOW;
   return RED;
 }
 
+/**
+ * @param {number} rate
+ * @returns {string}
+ */
 function bar(rate) {
   const filled = Math.round(rate / 10);
   return "■".repeat(filled) + "□".repeat(10 - filled);
 }
 
+/**
+ * @param {AuditResult} audit
+ */
 function printReport(audit) {
   const { total, avgReliability, categories, fields, regions } = audit;
 
@@ -253,7 +290,16 @@ function printReport(audit) {
 }
 
 // ── 테이블별 개별 쿼리 + 메모리 merge (VIEW 타임아웃 방지) ──
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {string} table
+ * @param {string} columns
+ * @param {string | null} filterCol
+ * @param {string | null} filterVal
+ * @returns {Promise<Record<string, unknown>[]>}
+ */
 async function fetchAllFromTable(sb, table, columns, filterCol, filterVal) {
+  /** @type {Record<string, unknown>[]} */
   const allRows = [];
   let query = sb.from(table).select(columns, { count: "exact" });
   if (filterCol && filterVal) query = query.eq(filterCol, filterVal);
@@ -261,7 +307,7 @@ async function fetchAllFromTable(sb, table, columns, filterCol, filterVal) {
 
   const { data: first, error, count } = await query;
   if (error) throw new Error(`${table} 조회 실패: ${error.message}`);
-  allRows.push(...(first || []));
+  allRows.push(.../** @type {Record<string, unknown>[]} */ (/** @type {unknown} */ (first || [])));
 
   if (count && count > BATCH_SIZE) {
     for (let i = 1; i * BATCH_SIZE < count; i++) {
@@ -271,7 +317,7 @@ async function fetchAllFromTable(sb, table, columns, filterCol, filterVal) {
       q = q.range(offset, offset + BATCH_SIZE - 1);
       const { data: batch, error: bErr } = await q;
       if (bErr) { logError(PHASE, `${table} 배치 ${i} 실패: ${bErr.message}`); break; }
-      if (batch) allRows.push(...batch);
+      if (batch) allRows.push(.../** @type {Record<string, unknown>[]} */ (/** @type {unknown} */ (batch)));
       if (!batch || batch.length < BATCH_SIZE) break;
     }
   }
@@ -291,7 +337,12 @@ const APT_COLS = "id,name,region,gu,dong,address,road_address,district,lat,lng,b
   "competition_rate,competition_supply,competition_applicants";
 
 // snake_case → camelCase 변환
+/**
+ * @param {Record<string, unknown>} row
+ * @returns {FlatRow}
+ */
 function toCamel(row) {
+  /** @type {Record<string, string>} */
   const map = {
     road_address: "roadAddress", max_floor: "maxFloor", parking_ratio: "parkingRatio",
     floor_area_ratio: "floorAreaRatio", exclusive_ratio: "exclusiveRatio",
@@ -311,13 +362,22 @@ function toCamel(row) {
     competition_rate: "competitionRate", competition_supply: "competitionSupply",
     competition_applicants: "competitionApplicants",
   };
+  /** @type {Record<string, unknown>} */
   const out = {};
   for (const [k, v] of Object.entries(row)) out[map[k] || k] = v;
-  return out;
+  return /** @type {FlatRow} */ (out);
 }
 
 // 관련 테이블 merge (apartment_id 또는 name 기준)
+/**
+ * @param {FlatRow[]} aptRows
+ * @param {Record<string, unknown>[]} relatedRows
+ * @param {string} joinKey
+ * @param {string} targetKey
+ * @param {Record<string, string>} colMap
+ */
 function mergeRelated(aptRows, relatedRows, joinKey, targetKey, colMap) {
+  /** @type {Map<unknown, Record<string, unknown>>} */
   const lookup = new Map();
   for (const r of relatedRows) lookup.set(r[joinKey], r);
   for (const apt of aptRows) {
@@ -327,6 +387,11 @@ function mergeRelated(aptRows, relatedRows, joinKey, targetKey, colMap) {
   }
 }
 
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {string | null} regionFilter
+ * @returns {Promise<FlatRow[]>}
+ */
 export async function fetchAllFromView(sb, regionFilter) {
   // 1. apartments 메인 테이블
   log(PHASE, "  apartments 테이블 조회...");
@@ -379,7 +444,7 @@ export async function fetchAllFromView(sb, regionFilter) {
 
   // merge transport (subwayDist: transport 우선, 없으면 infra에서 이미 설정됨)
   for (const t of transport) {
-    const apt = apts.find(a => a.id === t.apartment_id);
+    const apt = apts.find((/** @type {FlatRow} */ a) => a.id === t.apartment_id);
     if (!apt) continue;
     if (t.subway_dist != null) apt.subwayDist = t.subway_dist;
     apt.busRoutes = t.bus_routes;
@@ -429,7 +494,7 @@ export async function fetchAllFromView(sb, regionFilter) {
       (apt.popGrowth != null ? 8 : 0) +
       (apt.nearbyMedian != null ? 15 : 0) +
       (apt.jeonseRate != null ? 10 : 0) +
-      (apt.units > 1 ? 10 : 0)
+      ((typeof apt.units === "number" && apt.units > 1) ? 10 : 0)
     ));
   }
 
@@ -438,8 +503,12 @@ export async function fetchAllFromView(sb, regionFilter) {
 }
 
 // ── CLI 인자 파싱 ────────────────────────────────────────────
+/**
+ * @returns {{ json: boolean, region: string | null }}
+ */
 function parseArgs() {
   const args = process.argv.slice(2);
+  /** @type {{ json: boolean, region: string | null }} */
   const flags = { json: false, region: null };
   for (const arg of args) {
     if (arg === "--json") flags.json = true;
@@ -484,5 +553,5 @@ async function main() {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = !!process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch(err => { logError(PHASE, err instanceof Error ? err.message : String(err)); process.exit(1); });
