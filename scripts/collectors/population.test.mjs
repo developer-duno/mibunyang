@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * population.mjs 테스트 — 지역명 해석, 시군구 파싱 검증
  */
@@ -5,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // loadEnv + 외부 API 호출 방지
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
@@ -46,8 +47,9 @@ describe("parseGu", () => {
   // 경기도 시군구 (3단어)
   it("'경기도 수원시 팔달구' 파싱 — 2번째 토큰을 gu로", () => {
     const result = parseGu("경기도 수원시 팔달구");
-    expect(result.region).toBe("경기");
-    expect(result.gu).toBe("수원시");
+    expect(result).not.toBeNull();
+    expect(result?.region).toBe("경기");
+    expect(result?.gu).toBe("수원시");
   });
 
   // 세종 특수 처리
