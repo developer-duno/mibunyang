@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 청약홈 경쟁률 수집기
  *
@@ -21,8 +22,15 @@ const API_KEY = process.env.MOLIT_KEY;
 
 const BASE_URL = "https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1/getRemndrLttotPblancCmpet";
 
+/**
+ * @typedef {{ HOUSE_MANAGE_NO?: string; SUPLY_HSHLDCO?: string | number; REQ_CNT?: string | number; [k: string]: unknown }} ApplyHomeRow
+ * @typedef {{ rate: number | null; supply: number; applicants: number }} AggResult
+ */
+
 // ── API 페이지네이션 (odcloud: page/perPage) ─────────────────
+/** @returns {Promise<ApplyHomeRow[]>} */
 async function fetchAllPages() {
+  /** @type {ApplyHomeRow[]} */
   const allRows = [];
   let page = 1;
 
@@ -30,20 +38,20 @@ async function fetchAllPages() {
     const params = new URLSearchParams({
       page: String(page),
       perPage: "1000",
-      serviceKey: API_KEY,
+      serviceKey: API_KEY || "",
     });
 
     const url = `${BASE_URL}?${params}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const json = await res.json();
+    const json = /** @type {{ data?: ApplyHomeRow[]; totalCount?: number }} */ (await res.json());
     const data = json.data || [];
     allRows.push(...data);
 
     log(PHASE, `  page ${page}: ${data.length}건 (누적 ${allRows.length}/${json.totalCount})`);
 
-    if (allRows.length >= json.totalCount || data.length < 1000) break;
+    if (allRows.length >= (json.totalCount || 0) || data.length < 1000) break;
     page++;
   }
 
@@ -51,8 +59,13 @@ async function fetchAllPages() {
 }
 
 // ── 아파트별 가중평균 경쟁률 집계 ────────────────────────────
+/**
+ * @param {ApplyHomeRow[]} rows
+ * @returns {Record<string, AggResult>}
+ */
 export function aggregateByApartment(rows) {
   // HOUSE_MANAGE_NO별 그룹핑
+  /** @type {Record<string, ApplyHomeRow[]>} */
   const groups = {};
   for (const row of rows) {
     const no = row.HOUSE_MANAGE_NO;
@@ -61,6 +74,7 @@ export function aggregateByApartment(rows) {
     groups[no].push(row);
   }
 
+  /** @type {Record<string, AggResult>} */
   const result = {};
   for (const [no, items] of Object.entries(groups)) {
     let totalSupply = 0;
@@ -85,9 +99,15 @@ export function aggregateByApartment(rows) {
   return result;
 }
 
-// 매칭된 단지만 events 배열로 변환 (순수 함수, DB 호출 없음 — 단위 테스트용)
+/**
+ * 매칭된 단지만 events 배열로 변환 (순수 함수, DB 호출 없음 — 단위 테스트용)
+ * @param {Record<string, AggResult>} aggregated
+ * @param {Array<{ id: string }>} apartments
+ * @param {string} recordedAt
+ */
 export function buildEventsFromAggregated(aggregated, apartments, recordedAt) {
   const aptSet = new Set(apartments.map(a => a.id));
+  /** @type {Array<{ apartment_id: string; house_manage_no: string; supply: number; applicants: number; rate: number | null; recorded_at: string }>} */
   const events = [];
   for (const [no, agg] of Object.entries(aggregated)) {
     const aptId = `ah-${no}`;
@@ -140,13 +160,14 @@ async function main() {
   }
 
   // 3. 우리 아파트 ID와 매칭 (ah-{HOUSE_MANAGE_NO})
-  const apartments = await selectAll(
+  const apartments = /** @type {Array<{ id: string }>} */ (await selectAll(
     (s) => s.from("apartments").select("id"),
     sb
-  );
+  ));
 
   const aptSet = new Set(apartments.map(a => a.id));
   let matched = 0;
+  /** @type {Array<{ apartment_id: string; house_manage_no: string; supply: number; applicants: number; rate: number | null; recorded_at: string }>} */
   const events = [];   // 시계열 적재용 — apartments.update 성공 시에만 누적
 
   for (const [no, agg] of Object.entries(aggregated)) {
@@ -205,5 +226,6 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

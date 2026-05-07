@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 국토부 공동주택 기본정보 → 건물 상세 (주차, 최고층, 에너지, 내진, 녹색건축) 수집기
  *
@@ -20,6 +21,12 @@ import {
   molitApiCall, fetchSidoAptList, findBestMatch,
 } from "./_molit-api.mjs";
 
+/**
+ * @typedef {{ id: string; name: string; region: string | null; gu: string | null; address: string | null; parking_ratio: number | null; max_floor: number | null; energy_grade: number | null; building_coverage_ratio: number | null; floor_area_ratio: number | null }} BuildingAptTarget
+ * @typedef {Record<string, unknown>} BuildingDetail
+ * @typedef {{ parking_ratio: number | null; max_floor: number | null; energy_grade: number | null; heating: string | null; corridor_type: string | null; building_coverage_ratio: number | null; floor_area_ratio: number | null }} BuildingInfo
+ */
+
 loadEnv();
 
 const PHASE = "molit-building";
@@ -30,16 +37,20 @@ if (!API_KEY) {
 }
 
 // ── 단지 기본+상세 조회 (V4: 두 엔드포인트 병합) ─────────────
+/**
+ * @param {string} kaptCode
+ * @returns {Promise<BuildingDetail | null>}
+ */
 export async function fetchAptDetail(kaptCode) {
   // 기본 정보 (세대수, 최고층 등)
-  const bassJson = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY);
+  const bassJson = /** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY || ""));
   const bassBody = bassJson?.response?.body;
   const bass = bassBody?.item ?? bassBody?.items?.item ?? null;
 
   await sleep(REQUEST_DELAY);
 
   // 상세 정보 (주차, 에너지, 구조 등)
-  const dtlJson = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusDtlInfoV4", { kaptCode }, API_KEY);
+  const dtlJson = /** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusDtlInfoV4", { kaptCode }, API_KEY || ""));
   const dtlBody = dtlJson?.response?.body;
   const dtl = dtlBody?.item ?? dtlBody?.items?.item ?? null;
 
@@ -48,8 +59,13 @@ export async function fetchAptDetail(kaptCode) {
 }
 
 // ── 상세 필드 추출 (V4 응답 기준) ────────────────────────────
+/**
+ * @param {BuildingDetail} detail
+ * @returns {BuildingInfo}
+ */
 export function extractBuildingInfo(detail) {
-  const safeInt = (v) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
+  /** @param {unknown} v */
+  const safeInt = (v) => { const n = parseInt(String(v ?? ""), 10); return isNaN(n) ? null : n; };
 
   // 주차: V4에서 kaptdPcnt(지상) + kaptdPcntu(지하) 합산
   const groundParking = safeInt(detail.kaptdPcnt) || 0;
@@ -74,13 +90,14 @@ export function extractBuildingInfo(detail) {
   // 내진설계/녹색건축: V4 API에서 필드 제거됨 — 별도 추론(calc-quake-design)으로 처리
 
   // 난방방식: Bass에서 codeHeatNm (예: "개별난방", "지역난방", "중앙난방")
-  const heating = detail.codeHeatNm || null;
+  const heating = /** @type {string | null} */ (detail.codeHeatNm ?? null) || null;
 
   // 복도유형: Bass에서 codeHallNm (예: "복도식", "계단식", "혼합식")
-  const corridor_type = detail.codeHallNm || null;
+  const corridor_type = /** @type {string | null} */ (detail.codeHallNm ?? null) || null;
 
   // 건폐율/용적률: Bass에서 kaptdBcRat / kaptdVlRat (%)
-  const safeFloat = (v) => { const n = parseFloat(v); return isNaN(n) ? null : Math.round(n * 100) / 100; };
+  /** @param {unknown} v */
+  const safeFloat = (v) => { const n = parseFloat(String(v ?? "")); return isNaN(n) ? null : Math.round(n * 100) / 100; };
   const building_coverage_ratio = safeFloat(detail.kaptdBcRat);
   const floor_area_ratio = safeFloat(detail.kaptdVlRat);
 
@@ -96,8 +113,15 @@ export function extractBuildingInfo(detail) {
 }
 
 // ── DB 업데이트 ─────────────────────────────────────────────
+/**
+ * @param {ReturnType<typeof getSupabase>} sb
+ * @param {string} aptId
+ * @param {BuildingInfo} info
+ * @param {boolean} dryRun
+ */
 export async function updateBuilding(sb, aptId, info, dryRun) {
   // null 필드는 업데이트에서 제외 (기존 데이터 보존)
+  /** @type {Record<string, unknown>} */
   const row = {};
   if (info.parking_ratio != null) row.parking_ratio = info.parking_ratio;
   if (info.max_floor != null) row.max_floor = info.max_floor;
@@ -133,20 +157,21 @@ async function main() {
   const sb = getSupabase();
 
   // 1. 대상 아파트 조회 (건물 상세 미수집, selectAll: 1000행 제한 자동 페이지네이션)
-  const data = await selectAll((s) => {
+  const data = /** @type {BuildingAptTarget[] | null} */ (await selectAll((s) => {
     let q = s.from("apartments")
       .select("id, name, region, gu, address, parking_ratio, max_floor, energy_grade, building_coverage_ratio, floor_area_ratio");
     if (!force) {
       q = q.or("energy_grade.is.null,parking_ratio.is.null,max_floor.is.null,building_coverage_ratio.is.null,floor_area_ratio.is.null");
     }
     return q;
-  }, sb);
+  }, sb));
   const targets = data ?? [];
   log(PHASE, `대상: ${targets.length}건 ${force ? "(전체 재수집)" : "(상품성 필드 null 포함)"}`);
 
   if (!targets.length) { log(PHASE, "대상 없음, 종료"); return; }
 
   // 2. 지역별 그룹핑
+  /** @type {Record<string, BuildingAptTarget[]>} */
   const regionGroups = {};
   for (const t of targets) {
     const r = t.region || "기타";
@@ -165,11 +190,12 @@ async function main() {
 
     let aptList;
     try {
-      aptList = await fetchSidoAptList(PHASE, sidoCode, API_KEY);
+      aptList = await fetchSidoAptList(PHASE, sidoCode, API_KEY || "");
       apiCalls += Math.ceil(aptList.length / 500) || 1; // 페이지네이션 횟수
       await sleep(REQUEST_DELAY);
     } catch (err) {
-      logError(PHASE, `  목록 조회 실패: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError(PHASE, `  목록 조회 실패: ${msg}`);
       failed += regionTargets.length;
       continue;
     }
@@ -207,7 +233,8 @@ async function main() {
         if (ok) updated++;
         else skipped++;
       } catch (err) {
-        logError(PHASE, `    ${target.name}: ${err.message}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        logError(PHASE, `    ${target.name}: ${msg}`);
         failed++;
       }
     }
@@ -220,5 +247,6 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

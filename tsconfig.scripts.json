@@ -28,7 +28,12 @@
     "scripts/collectors/infra-kakao.mjs",
     "scripts/collectors/collect-emergency.mjs",
     "scripts/collectors/collect-air-quality.mjs",
-    "scripts/collectors/industry-match.mjs"
+    "scripts/collectors/industry-match.mjs",
+    "scripts/collectors/housing-permits.mjs",
+    "scripts/collectors/collect-maintenance.mjs",
+    "scripts/collectors/collect-applyhome.mjs",
+    "scripts/collectors/molit-building-info.mjs",
+    "scripts/collectors/collect-trades.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }

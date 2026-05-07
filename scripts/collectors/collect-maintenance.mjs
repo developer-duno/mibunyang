@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 국토부 공동주택 관리비 수집기
  *
@@ -17,6 +18,10 @@ import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
 } from "./_molit-api.mjs";
+
+/**
+ * @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; avg_maintenance_cost: number | null }} MaintAptTarget
+ */
 
 loadEnv();
 
@@ -39,24 +44,34 @@ const COST_ENDPOINTS = [
 ];
 
 // ── 총 세대수 조회 (AptBasisInfoServiceV4) ──────────────────────
+/**
+ * @param {string} kaptCode
+ * @returns {Promise<number | null>}
+ */
 export async function fetchTotalHouseholds(kaptCode) {
   try {
-    const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY);
-    const item = json?.response?.body?.item ?? json?.response?.body?.items?.item;
-    const cnt = parseInt(item?.kaptdaCnt, 10);
+    const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY || "");
+    const body = /** @type {{ response?: { body?: { item?: Record<string, unknown>; items?: { item?: Record<string, unknown> } } } }} */ (json);
+    const item = body?.response?.body?.item ?? body?.response?.body?.items?.item;
+    const cnt = parseInt(String(item?.kaptdaCnt ?? ""), 10);
     return isNaN(cnt) || cnt <= 0 ? null : cnt;
   } catch { return null; }
 }
 
 // ── 관리비 조회 (5개 항목 합산) ────────────────────────────────
+/**
+ * @param {string} kaptCode
+ * @param {string} searchDate
+ * @returns {Promise<number | null>}
+ */
 export async function fetchMaintenanceCost(kaptCode, searchDate) {
   let totalCost = 0;
   let validCount = 0;
 
-  for (const { label, endpoint, field } of COST_ENDPOINTS) {
+  for (const { endpoint, field } of COST_ENDPOINTS) {
     try {
       const params = new URLSearchParams({
-        serviceKey: API_KEY,
+        serviceKey: API_KEY || "",
         pageNo: "1",
         numOfRows: "1",
         type: "json",
@@ -67,11 +82,11 @@ export async function fetchMaintenanceCost(kaptCode, searchDate) {
       const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
       if (!res.ok) continue;
 
-      const json = await res.json();
+      const json = /** @type {{ response?: { body?: { item?: Record<string, unknown> } } }} */ (await res.json());
       const item = json?.response?.body?.item;
       if (!item) continue;
 
-      const value = parseInt(item[field], 10);
+      const value = parseInt(String(item[field] ?? ""), 10);
       if (!isNaN(value) && value >= 0) {
         totalCost += value;
         validCount++;
@@ -102,15 +117,16 @@ async function main() {
   log(PHASE, `조회 월: ${searchDate}`);
 
   // 1. 대상 아파트 조회 (selectAll: 1000행 제한 자동 페이지네이션)
-  const targets = await selectAll((s) => {
+  const targets = /** @type {MaintAptTarget[]} */ (await selectAll((s) => {
     let q = s.from("apartments").select("id, name, region, gu, units, avg_maintenance_cost");
     if (!force) q = q.is("avg_maintenance_cost", null);
     return q;
-  }, sb);
+  }, sb));
   log(PHASE, `대상: ${targets.length}건`);
   if (!targets.length) { log(PHASE, "대상 없음, 종료"); return; }
 
   // 2. 지역별 그룹핑
+  /** @type {Record<string, MaintAptTarget[]>} */
   const regionGroups = {};
   for (const t of targets) {
     const r = t.region || "기타";
@@ -127,11 +143,12 @@ async function main() {
 
     let aptList;
     try {
-      aptList = await fetchSidoAptList(PHASE, sidoCode, API_KEY);
+      aptList = await fetchSidoAptList(PHASE, sidoCode, API_KEY || "");
       apiCalls++;
       await sleep(REQUEST_DELAY);
     } catch (err) {
-      logError(PHASE, `  목록 조회 실패: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError(PHASE, `  목록 조회 실패: ${msg}`);
       rpt.fail(regionTargets.length);
       continue;
     }
@@ -179,7 +196,8 @@ async function main() {
         if (updErr) { logError(PHASE, `  ${target.name} UPDATE 실패: ${updErr.message}`); rpt.fail(1); }
         else rpt.success(1);
       } catch (err) {
-        logError(PHASE, `  ${target.name}: ${err.message}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        logError(PHASE, `  ${target.name}: ${msg}`);
         rpt.fail(1);
       }
     }
@@ -194,5 +212,6 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

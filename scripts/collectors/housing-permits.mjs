@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 국토부 주택 인허가 현황 → 시군구별 공급비율 수집
  *
@@ -12,7 +13,7 @@
  *   SUPABASE_URL        — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, VALID_REGIONS, today, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, today, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
@@ -24,10 +25,20 @@ if (!API_KEY) {
 
 const BASE_URL = "https://apis.data.go.kr/1613000/ArchPmsService_v2/getApHsptPrmsnLst";
 
+/**
+ * @typedef {{ hshldCo?: string; hhldCo?: string; [k: string]: unknown }} PermitItem
+ * @typedef {{ count: number; units: number }} PermitSummary
+ */
+
 // ── 인허가 데이터 조회 ────────────────────────────────────
+/**
+ * @param {string} sigunguCd
+ * @param {number} year
+ * @returns {Promise<PermitItem[]>}
+ */
 async function fetchPermits(sigunguCd, year) {
   const params = new URLSearchParams({
-    serviceKey: API_KEY,
+    serviceKey: API_KEY || "",
     pageNo: "1",
     numOfRows: "100",
     type: "json",
@@ -40,7 +51,7 @@ async function fetchPermits(sigunguCd, year) {
   const res = await fetchWithRetry(url, {}, 3);
   if (!res || !res.ok) return [];
 
-  const json = await res.json();
+  const json = /** @type {{ response?: { body?: { totalCount?: number; items?: { item?: PermitItem | PermitItem[] } } } }} */ (await res.json());
   const body = json?.response?.body;
   if (!body || body.totalCount === 0) return [];
 
@@ -51,6 +62,7 @@ async function fetchPermits(sigunguCd, year) {
 
 // ── 시도별 시군구 코드 목록 ──────────────────────────────
 // 주요 시도 코드 (법정동 코드 앞 5자리)
+/** @type {Record<string, string>} */
 const SIDO_CODES = {
   "서울": "11", "부산": "26", "대구": "27", "인천": "28",
   "광주": "29", "대전": "30", "울산": "31", "세종": "36",
@@ -59,9 +71,13 @@ const SIDO_CODES = {
 };
 
 // ── 시도명 역매핑 ────────────────────────────────────────
+/**
+ * @param {string | null | undefined} fullName
+ * @returns {string | null}
+ */
 export function resolveRegion(fullName) {
   if (!fullName) return null;
-  if (REGION_MAP[fullName]) return REGION_MAP[fullName];
+  if (REGION_MAP[fullName]) return REGION_MAP[fullName] || null;
   for (const [k, v] of Object.entries(REGION_MAP)) {
     if (fullName.includes(v) || k.includes(fullName)) return v;
   }
@@ -79,6 +95,7 @@ async function main() {
   log("init", `대상: ${prevYear}년 주택 인허가 현황`);
 
   // 1. 시도별로 인허가 데이터 조회
+  /** @type {Record<string, PermitSummary>} */
   const permitsByRegion = {};
   let totalFetched = 0;
   let apiCalls = 0;
@@ -93,7 +110,7 @@ async function main() {
       let totalUnits = 0;
       for (const item of items) {
         // 세대수 필드: hshldCo (세대수) 또는 hhldCo
-        const units = parseInt(item.hshldCo || item.hhldCo || "0", 10);
+        const units = parseInt(String(item.hshldCo || item.hhldCo || "0"), 10);
         totalUnits += units;
       }
 
@@ -107,7 +124,8 @@ async function main() {
       // API 레이트 리밋 방지
       await new Promise(r => setTimeout(r, 300));
     } catch (err) {
-      logError("fetch", `${region}: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError("fetch", `${region}: ${msg}`);
     }
   }
 
@@ -127,17 +145,20 @@ async function main() {
   }
 
   // 시도별 최신 가구 수
+  /** @type {Record<string, number>} */
   const householdMap = {};
-  for (const r of regionData) {
-    if (!householdMap[r.region]) {
-      householdMap[r.region] = r.households || r.population; // 가구수 없으면 인구수 사용
+  for (const r of /** @type {Array<{ region: string; households: number | null; population: number | null }>} */ (regionData)) {
+    if (householdMap[r.region] === undefined) {
+      householdMap[r.region] = r.households || r.population || 0; // 가구수 없으면 인구수 사용
     }
   }
 
   // 3. supply_ratio 계산 + 업데이트 rows
+  /** @type {Array<{ region: string; gu: null; supply_ratio: number | null; recorded_at: string }>} */
   const rows = [];
   for (const [region, data] of Object.entries(permitsByRegion)) {
     const base = householdMap[region];
+    /** @type {number | null} */
     let supplyRatio = null;
 
     if (base && base > 0 && data.units > 0) {
@@ -157,7 +178,7 @@ async function main() {
   // 요약 출력
   const withRatio = rows.filter(r => r.supply_ratio != null);
   const avgRatio = withRatio.length > 0
-    ? (withRatio.reduce((s, r) => s + r.supply_ratio, 0) / withRatio.length).toFixed(1)
+    ? (withRatio.reduce((s, r) => s + (r.supply_ratio || 0), 0) / withRatio.length).toFixed(1)
     : "N/A";
   log("summary", `공급비율 산출: ${withRatio.length}건, 평균: ${avgRatio}%`);
 
@@ -166,6 +187,7 @@ async function main() {
     console.log("\n시도별 주택 인허가 현황:");
     for (const r of rows.sort((a, b) => (b.supply_ratio ?? 0) - (a.supply_ratio ?? 0))) {
       const data = permitsByRegion[r.region];
+      if (!data) continue;
       console.log(`  ${r.region}: ${data.count}건, ${data.units.toLocaleString()}세대, 공급비율=${r.supply_ratio ?? "N/A"}%`);
     }
     return;
@@ -191,5 +213,6 @@ async function main() {
   log("done", `regions 테이블 supply_ratio ${updated}건 업데이트 완료 (${today()})`);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
