@@ -2,8 +2,28 @@
  * scripts/ 공유 타입 정의 — JSDoc typedef 형태로 .mjs 본체에서 참조.
  *
  * M5a (.mjs 유지 + // @ts-check + JSDoc) 의 인프라.
- * 진짜 .ts 변환은 M5d (`_shared.mjs` 까지) 에서 일괄 처리.
+ * M5d-1 (세션 193): collectors/_shared.mjs + _molit-api.mjs 의 공통 타입 4종 추가.
  */
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/** 지역 코드 → 코드 매핑 (REGION_MAP, REGION_LAWD_PREFIX, SIDO_CODE 공용) */
+export type RegionMap = Record<string, string>;
+
+/** region → gu → 5자리 법정동코드 (GU_LAWD_MAP) */
+export type GuLawdMap = Record<string, Record<string, string>>;
+
+/** 건설사 별칭 매핑 (BUILDER_ALIASES) */
+export type BuilderAliasMap = Record<string, string>;
+
+/** upsertBatch 옵션 (delayMs, maxRetries) */
+export interface UpsertBatchOptions {
+  delayMs?: number;
+  maxRetries?: number;
+}
+
+/** SupabaseClient — _shared/_molit-api JSDoc 에서 참조 */
+export type { SupabaseClient };
+
 
 /**
  * apartments_flat VIEW 의 핵심 컬럼.

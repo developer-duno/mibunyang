@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 국토부 공동주택 API 공유 모듈
  *
@@ -7,6 +8,21 @@
  *   - 시도별 단지 목록 페이지네이션
  *   - 이름 매칭 (유사도 + 구 보너스)
  */
+
+/**
+ * @typedef {object} MolitApiResponse
+ * @property {{ body?: { totalCount?: number | string; items?: unknown } } | undefined} [response]
+ *
+ * @typedef {{
+ *   kaptCode?: string;
+ *   kaptName?: string;
+ *   as1?: string;
+ *   as2?: string;
+ *   as3?: string;
+ *   [k: string]: unknown;
+ * }} MolitAptItem
+ */
+
 import { stringSimilarity, sleep, log } from "./_shared.mjs";
 
 // ── 상수 ─────────────────────────────────────────────────────
@@ -22,6 +38,7 @@ const MOLIT_BACKOFF_429_MS = 2000;     // 429 Rate Limit: (i+1)×2초
 const MOLIT_BACKOFF_5XX_MS = 1000;     // 5XX 서버에러: (i+1)×1초
 
 // 시도 약칭 → 시도 코드 (법정동 코드 앞 2자리)
+/** @type {import("../types.ts").RegionMap} */
 export const SIDO_CODE = {
   "서울": "11", "부산": "26", "대구": "27", "인천": "28",
   "광주": "29", "대전": "30", "울산": "31", "세종": "36",
@@ -31,11 +48,20 @@ export const SIDO_CODE = {
 
 // ── 재시도 불가 에러 (4xx, XML 응답 등 즉시 실패) ───────────
 class NonRetryableError extends Error {
+  /** @param {string} message */
   constructor(message) { super(message); this.name = "NonRetryableError"; }
 }
 
 // ── API 호출 (재시도 + 선형 백오프) ──────────────────────────
 // phase: 로그 프리픽스, apiKey: 모듈 스코프 대신 파라미터로 주입
+/**
+ * @param {string} phase
+ * @param {string} baseUrl
+ * @param {string} endpoint
+ * @param {Record<string, string>} params
+ * @param {string} apiKey
+ * @returns {Promise<MolitApiResponse>}
+ */
 export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey) {
   const qs = new URLSearchParams({ serviceKey: apiKey, type: "json", ...params });
   const url = `${baseUrl}/${endpoint}?${qs}`;
@@ -87,7 +113,14 @@ export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey) {
 }
 
 // ── 시도별 단지 목록 조회 (V3: AptListService3 — 페이지네이션) ─
+/**
+ * @param {string} phase
+ * @param {string} sidoCode
+ * @param {string} apiKey
+ * @returns {Promise<MolitAptItem[]>}
+ */
 export async function fetchSidoAptList(phase, sidoCode, apiKey) {
+  /** @type {MolitAptItem[]} */
   const allItems = [];
   let pageNo = 1;
 
@@ -98,12 +131,15 @@ export async function fetchSidoAptList(phase, sidoCode, apiKey) {
     if (!body || body.totalCount === 0) break;
 
     // V3: body.items가 바로 배열 (V1에서는 body.items.item이었음)
-    const rawItems = Array.isArray(body.items) ? body.items : body.items?.item;
+    const items = body.items;
+    const rawItems = Array.isArray(items)
+      ? items
+      : (/** @type {{ item?: unknown }} */ (items))?.item;
     if (!rawItems) break;
     const page = Array.isArray(rawItems) ? rawItems : [rawItems];
     allItems.push(...page);
 
-    const totalCount = parseInt(body.totalCount, 10) || 0;
+    const totalCount = parseInt(String(body.totalCount ?? "0"), 10) || 0;
     if (allItems.length >= totalCount || page.length < 500) break;
 
     pageNo++;
@@ -114,6 +150,10 @@ export async function fetchSidoAptList(phase, sidoCode, apiKey) {
 }
 
 // ── 이름 정규화 ──────────────────────────────────────────────
+/**
+ * @param {string | null | undefined} name
+ * @returns {string}
+ */
 export function cleanName(name) {
   // 괄호 내용 제거, 공백 정리
   return (name || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
@@ -123,6 +163,13 @@ export function cleanName(name) {
 // opts.guField    : "address" (as1+as2+as3) | "kaptName" (단지명)
 // opts.guBonus    : 구 일치 시 보너스 점수 (기본 0.15)
 // opts.attachScore: 결과에 matchScore 필드 첨부 여부 (기본 true)
+/**
+ * @param {string} targetName
+ * @param {string | null | undefined} targetGu
+ * @param {MolitAptItem[]} aptList
+ * @param {{ guField?: "address" | "kaptName"; guBonus?: number; attachScore?: boolean }} [opts]
+ * @returns {(MolitAptItem & { matchScore?: number }) | null}
+ */
 export function findBestMatch(targetName, targetGu, aptList, opts = {}) {
   const { guField = "address", guBonus = 0.15, attachScore = true } = opts;
   const cleaned = cleanName(targetName);

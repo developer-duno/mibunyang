@@ -1,10 +1,10 @@
-// @ts-nocheck
 /**
  * 공유 유틸리티 — 수집 스크립트 공통 모듈
  *
- * M5a 시점 정책: typecheck:scripts 가 본 파일을 traversal 로 검증할 때 implicit any 46건 발생.
- * M5d 에서 정밀 typedef 추가 예정. 그때까지 // @ts-nocheck 으로 차단.
+ * M5d-1 (세션 193): // @ts-nocheck 제거 + 24 export 정밀 typedef 박제.
+ * 의존자 42 (collectors 본체 전수). 본 모듈 typedef 가 M5d-2~4 (collectors 본체) 의 사전 조건.
  */
+// @ts-check
 import { readFileSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -14,6 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, "../..");
 
 // ── .env 로드 ──────────────────────────────────────────────
+/** @returns {void} */
 export function loadEnv() {
   for (const name of [".env.local", ".env"]) {
     const p = resolve(ROOT, name);
@@ -31,7 +32,9 @@ export function loadEnv() {
 }
 
 // ── Supabase 클라이언트 (service_role — 쓰기 권한) ─────────
+/** @type {import("@supabase/supabase-js").SupabaseClient | null} */
 let _supabase = null;
+/** @returns {import("@supabase/supabase-js").SupabaseClient} */
 export function getSupabase() {
   if (_supabase) return _supabase;
   const url = process.env.SUPABASE_URL;
@@ -44,7 +47,9 @@ export function getSupabase() {
 }
 
 // ── Supabase 클라이언트 (public 스키마 — naver-estate-web 공유) ─────────────
+/** @type {import("@supabase/supabase-js").SupabaseClient | null} */
 let _supabaseMibunyang = null;
+/** @returns {import("@supabase/supabase-js").SupabaseClient} */
 export function getMibuyangSupabase() {
   if (_supabaseMibunyang) return _supabaseMibunyang;
   const url = process.env.SUPABASE_URL;
@@ -58,26 +63,48 @@ export function getMibuyangSupabase() {
 }
 
 // ── 로깅 ───────────────────────────────────────────────────
+/**
+ * @param {string} phase
+ * @param {string} msg
+ * @returns {void}
+ */
 export function log(phase, msg) {
   console.log(`[${phase}] ${msg}`);
 }
 
+/**
+ * @param {string} phase
+ * @param {string} msg
+ * @returns {void}
+ */
 export function logError(phase, msg) {
   console.error(`[${phase}] ERROR: ${msg}`);
 }
 
 // ── 세마포어 (동시 실행 수 제한) ───────────────────────────
+/**
+ * @param {number} max
+ * @returns {<T>(fn: () => Promise<T>) => Promise<T>}
+ */
 export function createSemaphore(max) {
   let running = 0;
+  /** @type {Array<(value?: unknown) => void>} */
   const queue = [];
   return async (fn) => {
     if (running >= max) await new Promise(r => queue.push(r));
     running++;
     try { return await fn(); }
-    finally { running--; if (queue.length) queue.shift()(); }
+    finally { running--; if (queue.length) { const next = queue.shift(); if (next) next(); } }
   };
 }
 
+/**
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns {number}
+ */
 export function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -88,6 +115,13 @@ export function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/**
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns {number}
+ */
 export function haversineMeters(lat1, lng1, lat2, lng2) {
   return haversineKm(lat1, lng1, lat2, lng2) * 1000;
 }
@@ -95,20 +129,31 @@ export function haversineMeters(lat1, lng1, lat2, lng2) {
 // ── 배치 upsert ────────────────────────────────────────────
 const RATE_LIMIT_RE = /too many|rate limit/i;
 
+/**
+ * @template T
+ * @param {string} table
+ * @param {T[]} rows
+ * @param {string} conflictCol
+ * @param {number} [batchSize]
+ * @param {import("@supabase/supabase-js").SupabaseClient | null} [sb]
+ * @param {{ delayMs?: number; maxRetries?: number }} [opts]
+ * @returns {Promise<number>}
+ */
 export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb = null, { delayMs = 100, maxRetries = 3 } = {}) {
   if (!rows.length) return 0;
-  sb = sb ?? getSupabase();
+  const client = sb ?? getSupabase();
   let inserted = 0;
 
   for (let i = 0; i < rows.length; i += batchSize) {
     if (i > 0 && delayMs > 0) await sleep(delayMs);
 
     const batch = rows.slice(i, i + batchSize);
+    /** @type {{ message?: string } | null} */
     let error = null;
 
     // 429 재시도 루프
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const res = await sb
+      const res = await client
         .from(table)
         .upsert(batch, { onConflict: conflictCol, ignoreDuplicates: false });
       error = res.error;
@@ -129,7 +174,7 @@ export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb 
       let retryOk = 0, retryFail = 0;
       for (const row of batch) {
         if (retryOk + retryFail > 0) await sleep(50);
-        const { error: e2 } = await sb
+        const { error: e2 } = await client
           .from(table)
           .upsert([row], { onConflict: conflictCol, ignoreDuplicates: false });
         if (!e2) { inserted++; retryOk++; }
@@ -145,6 +190,12 @@ export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb 
 
 // ── API 호출 (재시도 포함) ──────────────────────────────────
 // 시그니처 유지: fetchWithRetry(url, options?, retries?)
+/**
+ * @param {string} url
+ * @param {RequestInit} [options]
+ * @param {number} [retries]
+ * @returns {Promise<Response>}
+ */
 export async function fetchWithRetry(url, options = {}, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -170,9 +221,11 @@ export async function fetchWithRetry(url, options = {}, retries = 3) {
       await new Promise(r => setTimeout(r, (i + 1) ** 2 * 1000));
     }
   }
+  throw new Error(`fetchWithRetry: ${retries}회 재시도 소진`);
 }
 
 // ── 지역 매핑 ──────────────────────────────────────────────
+/** @type {import("../types.ts").RegionMap} */
 export const REGION_MAP = {
   // 약칭 (KOSIS API 등에서 약칭으로 반환)
   "서울": "서울", "부산": "부산", "대구": "대구", "인천": "인천",
@@ -190,12 +243,14 @@ export const REGION_MAP = {
   "제주특별자치도": "제주", "제주도": "제주",
 };
 
+/** @type {readonly string[]} */
 export const VALID_REGIONS = [
   "서울","부산","대구","인천","광주","대전","울산","세종",
   "경기","강원","충북","충남","전북","전남","경북","경남","제주"
 ];
 
 // ── 법정동코드 매핑 ────────────────────────────────────────
+/** @type {import("../types.ts").RegionMap} */
 export const REGION_LAWD_PREFIX = {
   "서울": "11", "부산": "26", "대구": "27", "인천": "28",
   "광주": "29", "대전": "30", "울산": "31", "세종": "36",
@@ -204,6 +259,7 @@ export const REGION_LAWD_PREFIX = {
 };
 
 // 구/군 → 법정동코드 5자리 (region별 중첩 구조 — 중구/서구/동구 등 동명이구 해소)
+/** @type {import("../types.ts").GuLawdMap} */
 export const GU_LAWD_MAP = {
   "서울": {
     "종로구": "11110", "중구": "11140", "용산구": "11170", "성동구": "11200", "광진구": "11215",
@@ -334,6 +390,11 @@ export const GU_LAWD_MAP = {
 // 세션94 에서 확정된 화성시 비법정 구 화이트리스트만 처리.
 // 신규 region/case 는 여기 추가.
 const HWASEONG_BARE_GU = new Set(["동탄구", "만세구", "효행구", "병점구"]);
+/**
+ * @param {string} region
+ * @param {string | null | undefined} gu
+ * @returns {string | null | undefined}
+ */
 export function normalizeGu(region, gu) {
   if (!gu) return gu;
   if (region === "경기") {
@@ -343,6 +404,11 @@ export function normalizeGu(region, gu) {
   return gu;
 }
 
+/**
+ * @param {string} region
+ * @param {string | null | undefined} [gu]
+ * @returns {string | null}
+ */
 export function getLawdCd(region, gu) {
   // 세종특별자치시는 구·군 없이 단일 LAWD_CD(36110)만 유효. prefix+"000"(36000)은 MOLIT 미지원.
   if (region === "세종") return "36110";
@@ -374,6 +440,7 @@ export function getLawdCd(region, gu) {
 }
 
 // ── 건설사 별칭 ────────────────────────────────────────────
+/** @type {import("../types.ts").BuilderAliasMap} */
 export const BUILDER_ALIASES = {
   "지에스건설": "GS건설", "GS건설(주)": "GS건설", "(주)GS건설": "GS건설",
   "현대건설(주)": "현대건설", "(주)현대건설": "현대건설",
@@ -391,24 +458,33 @@ export const BUILDER_ALIASES = {
   "금호건설(주)": "금호건설", "(주)금호건설": "금호건설",
 };
 
+/**
+ * @param {string | null | undefined} name
+ * @returns {string}
+ */
 export function resolveBuilder(name) {
   if (!name) return "기타";
   return BUILDER_ALIASES[name.trim()] ?? name.trim();
 }
 
 // ── 문자열 유사도 (Python SequenceMatcher 포팅) ─────────────
+/**
+ * @param {unknown} a
+ * @param {unknown} b
+ * @returns {number}
+ */
 export function stringSimilarity(a, b) {
-  a = String(a ?? "").replace(/\s+/g, "");
-  b = String(b ?? "").replace(/\s+/g, "");
-  if (!a || !b) return 0;
-  if (a === b) return 1;
-  const len = a.length + b.length;
+  const sa = String(a ?? "").replace(/\s+/g, "");
+  const sb = String(b ?? "").replace(/\s+/g, "");
+  if (!sa || !sb) return 0;
+  if (sa === sb) return 1;
+  const len = sa.length + sb.length;
   // LCS 기반 유사도
-  const m = a.length, n = b.length;
+  const m = sa.length, n = sb.length;
   const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
+      dp[i][j] = sa[i - 1] === sb[j - 1]
         ? dp[i - 1][j - 1] + 1
         : Math.max(dp[i - 1][j], dp[i][j - 1]);
     }
@@ -418,13 +494,20 @@ export function stringSimilarity(a, b) {
 
 // ── Supabase 전체 조회 (1000행 제한 자동 페이지네이션) ────────
 // queryFn: (sb) => sb.from("t").select("cols").filter(...) 형태의 쿼리 빌더 콜백
+/**
+ * @template T
+ * @param {(sb: import("@supabase/supabase-js").SupabaseClient) => any} queryFn
+ * @param {import("@supabase/supabase-js").SupabaseClient | null} [sb]
+ * @returns {Promise<T[]>}
+ */
 export async function selectAll(queryFn, sb = null) {
-  sb = sb ?? getSupabase();
+  const client = sb ?? getSupabase();
   const PAGE = 1000;
+  /** @type {T[]} */
   const all = [];
   let offset = 0;
   while (true) {
-    const { data, error } = await queryFn(sb).range(offset, offset + PAGE - 1);
+    const { data, error } = await queryFn(client).range(offset, offset + PAGE - 1);
     if (error) throw new Error(`selectAll 조회 실패: ${error.message}`);
     if (!data || data.length === 0) break;
     all.push(...data);
@@ -435,17 +518,28 @@ export async function selectAll(queryFn, sb = null) {
 }
 
 // ── sleep ────────────────────────────────────────────────────
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
 export function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
 // ── 오늘 날짜 ──────────────────────────────────────────────
+/** @returns {string} */
 export function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
 // ── API 쿼터 로깅 ───────────────────────────────────────────
 // data.go.kr 등 일일 한도 API 사용량을 api_quota_log 테이블에 기록
+/**
+ * @param {string} collector
+ * @param {string} apiName
+ * @param {number} callCount
+ * @returns {Promise<void>}
+ */
 export async function recordApiQuota(collector, apiName, callCount) {
   if (!callCount || callCount <= 0) return;
   try {
@@ -460,11 +554,16 @@ export async function recordApiQuota(collector, apiName, callCount) {
     else log("quota", `${collector}: ${apiName} ${callCount}회 기록`);
   } catch (err) {
     // 쿼터 로깅 실패는 수집 중단하지 않음
-    logError("quota", `${collector} 쿼터 기록 예외: ${err.message}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    logError("quota", `${collector} 쿼터 기록 예외: ${msg}`);
   }
 }
 
 // ── 수집 리포터 ─────────────────────────────────────────────
+/**
+ * @param {string} phase
+ * @returns {import("../types.ts").Reporter}
+ */
 export function createReporter(phase) {
   const startTime = Date.now();
   let ok = 0, fail = 0, skip = 0;

@@ -12,7 +12,9 @@
     "scripts/prebuild.mjs",
     "scripts/seed-from-json.mjs",
     "scripts/compute-scores.mjs",
-    "scripts/migrate-to-supabase.mjs"
+    "scripts/migrate-to-supabase.mjs",
+    "scripts/collectors/_shared.mjs",
+    "scripts/collectors/_molit-api.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }
