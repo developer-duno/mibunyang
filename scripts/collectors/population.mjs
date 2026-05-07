@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 행안부 주민등록 인구 API → 시군구별 인구 증감률 수집
  *
@@ -30,6 +31,11 @@ const SIDO_CODES = [
 ];
 
 // ── 인구 데이터 조회 (17 시도별 순회) ─────────────────────────
+/**
+ * @param {number} year
+ * @param {number} month
+ * @returns {Promise<any[]>}
+ */
 async function fetchPopulation(year, month) {
   const ym = `${year}${String(month).padStart(2, "0")}`;
   log("fetch", `${year}년 ${month}월 인구 데이터 조회 (17 시도)...`);
@@ -38,7 +44,7 @@ async function fetchPopulation(year, month) {
   for (const stdgCd of SIDO_CODES) {
     try {
       const params = new URLSearchParams({
-        serviceKey: API_KEY,
+        serviceKey: API_KEY ?? "",
         stdgCd,
         srchFrYm: ym,
         srchToYm: ym,
@@ -58,7 +64,8 @@ async function fetchPopulation(year, month) {
         allItems.push(...items);
       }
     } catch (e) {
-      log("fetch", `  ${stdgCd}: ${e.message} — skip`);
+      const msg = e instanceof Error ? e.message : String(e);
+      log("fetch", `  ${stdgCd}: ${msg} — skip`);
     }
     // data.go.kr rate limit 대비 150ms 딜레이
     await new Promise(r => setTimeout(r, 150));
@@ -69,6 +76,10 @@ async function fetchPopulation(year, month) {
 }
 
 // ── 시도명 → 약칭 변환 ──────────────────────────────────────
+/**
+ * @param {string | null | undefined} fullName
+ * @returns {string | null}
+ */
 function resolveRegion(fullName) {
   if (!fullName) return null;
   // 정확 매칭
@@ -81,6 +92,10 @@ function resolveRegion(fullName) {
 }
 
 // ── 시군구명 파싱 ────────────────────────────────────────────
+/**
+ * @param {string} adminNm
+ * @returns {{region: string, gu: string} | null}
+ */
 function parseGu(adminNm) {
   // "서울특별시 강남구" → { region: "서울", gu: "강남구" }
   // "경기도 수원시 팔달구" → { region: "경기", gu: "수원시" }
@@ -164,6 +179,7 @@ async function main() {
   }
 
   // 4. 시도 단위 집계 (gu=null)
+  /** @type {Record<string, {curPop: number, prevPop: number}>} */
   const regionAgg = {};
   for (const r of rows) {
     if (!regionAgg[r.region]) regionAgg[r.region] = { curPop: 0, prevPop: 0 };
@@ -260,8 +276,9 @@ async function main() {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
 
 // 테스트용 순수 함수 export
 export { resolveRegion, parseGu };
