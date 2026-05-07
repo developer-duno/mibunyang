@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 좌표 누락 단지 지오코딩 — Kakao 주소검색 API
  *
@@ -16,7 +17,11 @@ const PHASE = "geocode";
 const KAKAO_KEY = process.env.KAKAO_KEY;
 if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
 
-/** Kakao 주소 검색 API */
+/**
+ * Kakao 주소 검색 API
+ * @param {string} query
+ * @returns {Promise<{lat: number, lng: number} | null>}
+ */
 async function geocode(query) {
   const url = `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(query)}&size=1`;
   const res = await fetch(url, {
@@ -31,7 +36,11 @@ async function geocode(query) {
   return null;
 }
 
-/** Kakao 키워드 검색 API (주소 검색 실패 시 폴백) */
+/**
+ * Kakao 키워드 검색 API (주소 검색 실패 시 폴백)
+ * @param {string} query
+ * @returns {Promise<{lat: number, lng: number} | null>}
+ */
 async function geocodeKeyword(query) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}&size=1`;
   const res = await fetch(url, {
@@ -46,14 +55,24 @@ async function geocodeKeyword(query) {
   return null;
 }
 
-/** region에 콤마가 있으면 단지명 기반으로 정확한 지역 선택 */
+/**
+ * region에 콤마가 있으면 단지명 기반으로 정확한 지역 선택
+ * @param {string | null | undefined} region
+ * @param {string} aptName
+ * @returns {string | null | undefined}
+ */
 export function resolveRegionFromName(region, aptName) {
   if (!region || !region.includes(",")) return region;
   const candidates = region.split(",").map(s => s.trim());
   return candidates.find(r => aptName.includes(r)) || candidates[0];
 }
 
-/** gu가 주소가 아닌 값(번지, 블록 등)이면 단지명에서 추출 */
+/**
+ * gu가 주소가 아닌 값(번지, 블록 등)이면 단지명에서 추출
+ * @param {string | null | undefined} gu
+ * @param {string} aptName
+ * @returns {string | null}
+ */
 export function extractGu(gu, aptName) {
   if (!gu) return null;
   if (!/^\d+/.test(gu) && !/BL$|블록$|지구$|구역$/.test(gu)) return null;
@@ -61,7 +80,13 @@ export function extractGu(gu, aptName) {
   return guMatch ? guMatch[1] : null;
 }
 
-/** 주소 문자열 조립 */
+/**
+ * 주소 문자열 조립
+ * @param {string | null | undefined} region
+ * @param {string | null | undefined} gu
+ * @param {string | null | undefined} dong
+ * @returns {string}
+ */
 export function buildAddress(region, gu, dong) {
   return [region, gu, dong].filter(Boolean).join(" ");
 }
@@ -90,6 +115,7 @@ async function main() {
       const cleanName = apt.name.replace(/\(.*?\)/g, "").trim();
 
       let region = apt.region;
+      /** @type {{ region?: string | null, gu?: string | null }} */
       const dbUpdates = {};
       const resolved = resolveRegionFromName(region, apt.name);
       if (resolved !== region) {
@@ -160,7 +186,8 @@ async function main() {
         failed++;
       }
     } catch (err) {
-      logError(PHASE, `${apt.name}: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError(PHASE, `${apt.name}: ${msg}`);
       failed++;
     }
 
@@ -171,5 +198,10 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) ?? "");
+if (isCLI) main().catch(err => {
+  const msg = err instanceof Error ? err.message : String(err);
+  logError(PHASE, msg);
+  process.exit(1);
+});
