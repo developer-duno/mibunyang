@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 역지오코딩 수집기 — Kakao 좌표→주소 변환
  *
@@ -21,7 +22,12 @@ if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit
 
 const DISTRICT_PATTERNS = /지구|구역|뉴타운|택지|단지|블록|BL$/;
 
-/** Kakao 역지오코딩: 좌표→행정구역 */
+/**
+ * Kakao 역지오코딩: 좌표→행정구역
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<{admin: any, legal: any} | null>}
+ */
 async function reverseGeocode(lat, lng) {
   const url = `https://dapi.kakao.com/v2/local/geo/coord2regioncode.json?x=${lng}&y=${lat}`;
   const res = await fetch(url, {
@@ -30,14 +36,19 @@ async function reverseGeocode(lat, lng) {
   });
   if (!res.ok) return null;
   const data = await res.json();
-  const docs = data.documents || [];
+  const docs = /** @type {Array<{region_type: string}>} */ (data.documents || []);
   // H=행정동, B=법정동
   const admin = docs.find(d => d.region_type === "H");
   const legal = docs.find(d => d.region_type === "B");
   return { admin, legal };
 }
 
-/** Kakao 좌표→도로명주소 */
+/**
+ * Kakao 좌표→도로명주소
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<{address: string|null, roadAddress: string|null, lotMain: number|null, lotSub: number} | null>}
+ */
 async function coordToAddress(lat, lng) {
   const url = `https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lng}&y=${lat}`;
   const res = await fetch(url, {
@@ -121,8 +132,8 @@ async function main() {
         bjd_code: bjdCode,
         lot_main: addr?.lotMain ?? null,
         lot_sub: addr?.lotSub ?? 0,
+        ...(district ? { district } : {}),
       };
-      if (district) updates.district = district;
 
       if (dryRun) {
         log(PHASE, `  [DRY] ${apt.name}: ${region} ${gu || ""} ${dong || ""} | ${addr?.address || "?"} | bjd=${bjdCode} lot=${addr?.lotMain}-${addr?.lotSub}`);
@@ -132,7 +143,8 @@ async function main() {
       }
       updated++;
     } catch (err) {
-      logError(PHASE, `${apt.name}: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError(PHASE, `${apt.name}: ${msg}`);
       failed++;
     }
 
@@ -143,7 +155,11 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-/** 시도명 정규화 */
+/**
+ * 시도명 정규화
+ * @param {string} name
+ * @returns {string}
+ */
 export function normalizeRegion(name) {
   const map = {
     "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
@@ -156,8 +172,13 @@ export function normalizeRegion(name) {
     "경상북도": "경북", "경상남도": "경남",
     "제주특별자치도": "제주",
   };
-  return map[name] || name;
+  return /** @type {Record<string, string>} */ (map)[name] || name;
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) ?? "");
+if (isCLI) main().catch(err => {
+  const msg = err instanceof Error ? err.message : String(err);
+  logError(PHASE, msg);
+  process.exit(1);
+});
