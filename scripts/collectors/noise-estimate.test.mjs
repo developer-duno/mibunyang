@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * noise-estimate.mjs 테스트 — 소음 추정 경계값 검증
  */
@@ -5,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // loadEnv + 외부 API 호출 방지
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
 });
 

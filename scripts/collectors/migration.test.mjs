@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * migration.mjs 테스트 — KOSIS DT_1B26001_A01 파서 검증
  *
@@ -8,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -17,7 +18,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
     REGION_LAWD_PREFIX: orig.REGION_LAWD_PREFIX,
-    fetchWithRetry: (...args) => fetchWithRetryMock(...args),
+    fetchWithRetry: (/** @type {unknown[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
@@ -92,6 +93,13 @@ describe("mapC1", () => {
 
 // ── aggregateKosisRows ───────────────────────────────────────
 describe("aggregateKosisRows", () => {
+  /**
+   * @param {string} C1
+   * @param {string} C1_NM
+   * @param {string} PRD_DE
+   * @param {string} ITM_NM
+   * @param {string} DT
+   */
   const mkRow = (C1, C1_NM, PRD_DE, ITM_NM, DT) => ({ C1, C1_NM, PRD_DE, ITM_NM, DT });
 
   it("빈 배열 → period null, entries []", () => {
