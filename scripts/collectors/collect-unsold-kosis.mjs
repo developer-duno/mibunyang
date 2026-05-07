@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * KOSIS 시군구별 미분양 세대수 수집기
  *
@@ -11,6 +12,11 @@
  */
 import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, upsertBatch, recordApiQuota } from "./_shared.mjs";
 
+/** @typedef {{ C1_NM: string; C2_NM: string; PRD_DE: string; DT: string }} KosisRow */
+/** @typedef {Record<string, Record<string, Record<string, number>>>} UnsoldByRegionGuMonth */
+/** @typedef {Record<string, Record<string, number>>} UnsoldByRegionGu */
+/** @typedef {Record<string, number>} RegionTotals */
+
 loadEnv();
 
 const PHASE = "kosis-unsold";
@@ -23,12 +29,16 @@ const KOSIS_KEY = process.env.KOSIS_KEY;
  * parseKosisRows 와 달리 모든 월 데이터를 보존 → unsold_history 시계열 upsert 용도.
  * 기존 parseKosisRows 는 "최신 월 단일값" 으로 regions/apartments 갱신에 사용 (병존).
  * PRD_DE 정규식 가드: KOSIS 응답이 YYYYMM 외 포맷(분기/반기 등) 반환 시 방어.
+ *
+ * @param {KosisRow[]} rows
+ * @returns {UnsoldByRegionGuMonth}
  */
 export function parseKosisRowsAllMonths(rows) {
+  /** @type {UnsoldByRegionGuMonth} */
   const unsoldByRegionGuMonth = {};
   for (const row of rows) {
     if (!/^\d{6}$/.test(row.PRD_DE)) continue;
-    const region = REGION_MAP[row.C1_NM];
+    const region = /** @type {Record<string, string>} */ (REGION_MAP)[row.C1_NM];
     if (!region) continue;
     const gu = row.C2_NM === "계" ? "_total" : row.C2_NM;
     const period = row.PRD_DE;
@@ -42,13 +52,19 @@ export function parseKosisRowsAllMonths(rows) {
   return unsoldByRegionGuMonth;
 }
 
-/** KOSIS 응답 행 → 시군구별 미분양 집계 (최신 월만) */
+/**
+ * KOSIS 응답 행 → 시군구별 미분양 집계 (최신 월만)
+ * @param {KosisRow[]} rows
+ * @returns {UnsoldByRegionGu}
+ */
 export function parseKosisRows(rows) {
+  /** @type {UnsoldByRegionGu} */
   const unsoldByRegionGu = {};
+  /** @type {Record<string, string>} */
   const latestPeriod = {};
 
   for (const row of rows) {
-    const region = REGION_MAP[row.C1_NM];
+    const region = /** @type {Record<string, string>} */ (REGION_MAP)[row.C1_NM];
     if (!region) continue;
 
     const gu = row.C2_NM === "계" ? "_total" : row.C2_NM;
@@ -67,8 +83,13 @@ export function parseKosisRows(rows) {
   return unsoldByRegionGu;
 }
 
-/** 시군구 미분양 맵 → 시도별 합계 */
+/**
+ * 시군구 미분양 맵 → 시도별 합계
+ * @param {UnsoldByRegionGu} unsoldByRegionGu
+ * @returns {RegionTotals}
+ */
 export function aggregateRegionTotals(unsoldByRegionGu) {
+  /** @type {RegionTotals} */
   const regionTotals = {};
   for (const [region, guMap] of Object.entries(unsoldByRegionGu)) {
     if (guMap["소계"] != null) {
@@ -82,7 +103,13 @@ export function aggregateRegionTotals(unsoldByRegionGu) {
   return regionTotals;
 }
 
-/** 비례배분 미분양 추정 */
+/**
+ * 비례배분 미분양 추정
+ * @param {number | null | undefined} guUnsold
+ * @param {number | null | undefined} aptUnits
+ * @param {number | null | undefined} totalUnitsInGu
+ * @returns {{ estimated: number; unsoldRate: number } | null}
+ */
 export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
   if (!guUnsold || guUnsold <= 0 || !aptUnits || aptUnits <= 0 || !totalUnitsInGu || totalUnitsInGu <= 0) return null;
   const estimated = Math.round(guUnsold * (aptUnits / totalUnitsInGu));
@@ -135,7 +162,7 @@ async function main() {
       throw new Error("JSON 파싱 실패");
     }
   } catch (err) {
-    throw new Error(`KOSIS ${err.message}`);
+    throw new Error(`KOSIS ${err instanceof Error ? err.message : String(err)}`);
   }
   if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
 
@@ -161,11 +188,12 @@ async function main() {
     logError(PHASE, `regions 조회 실패: ${rErr.message}`);
   } else {
     let regUpdated = 0;
-    for (const reg of regions) {
+    for (const reg of /** @type {Array<{ id: string; region: string; gu: string | null; regional_unsold: number | null }>} */ (regions)) {
       const guMap = unsoldByRegionGu[reg.region];
       if (!guMap) continue;
 
       // 시군구 매칭 (gu가 있으면 시군구별, 없으면 시도별)
+      /** @type {number | null} */
       let unsoldValue = null;
       if (reg.gu && guMap[reg.gu] != null) {
         unsoldValue = guMap[reg.gu];
@@ -201,16 +229,20 @@ async function main() {
     return;
   }
 
+  /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null }} AptRow */
+  const apartmentsTyped = /** @type {AptRow[]} */ (apartments);
+
   // 시군구별 총 분양세대수 계산
+  /** @type {Record<string, number>} */
   const unitsByGu = {};
-  for (const apt of apartments) {
+  for (const apt of apartmentsTyped) {
     if (!apt.region || !apt.gu || !apt.units) continue;
     const key = `${apt.region}::${apt.gu}`;
     unitsByGu[key] = (unitsByGu[key] || 0) + apt.units;
   }
 
   let aptUpdated = 0;
-  for (const apt of apartments) {
+  for (const apt of apartmentsTyped) {
     // 이미 확인된 값이 있으면 건너뜀 (우선순위: 청약홈 > 네이버 > KOSIS)
     if (apt.unsold != null && apt.unsold > 0) continue;
     if (apt.naver_sell_count != null && apt.naver_sell_count > 0) continue;
@@ -251,9 +283,10 @@ async function main() {
   // KOSIS 단일 API 호출 응답(3개월 범위)을 재파싱하여 월별 시계열 저장.
   // API 재호출 아님 → 쿼터 증가 0.
   const allMonthsMap = parseKosisRowsAllMonths(rows);
+  /** @type {Array<{ apartment_id: string; base_month: string; unsold_count: number; post_completion_unsold: number | null; change: number | null; recorded_at: string }>} */
   const historyRows = [];
   const todayDate = new Date().toISOString().slice(0, 10);
-  for (const apt of apartments) {
+  for (const apt of apartmentsTyped) {
     if (!apt.region || !apt.gu || !apt.units || apt.units <= 1) continue;
     const monthMap = allMonthsMap[apt.region]?.[apt.gu];
     if (!monthMap) continue;
@@ -288,5 +321,9 @@ async function main() {
   log(PHASE, "\n=== 완료 ===");
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch((/** @type {unknown} */ err) => {
+  logError(PHASE, err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

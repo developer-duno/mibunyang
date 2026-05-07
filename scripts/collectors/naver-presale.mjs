@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 네이버 분양정보 수집기 — pre.land.naver.com 분양 데이터
  *
@@ -22,6 +23,13 @@ import {
   resolveBuilder,
 } from "./_shared.mjs";
 
+/** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
+/** @typedef {{ byPresaleNo: Map<string, AptForMatch>; byBjd: Map<string, AptForMatch[]> }} AptIndexes */
+/** @typedef {{ build_dtl_cd?: number | string | null; supp_cd?: number | string | null; build_nm?: string; min_price?: number | null; max_price?: number | null; pyper_price?: number | null; supp_sclass?: string | null; supp_proc_step_nm?: string | null; preview_image?: string | null; house_supp_cnt?: number | null; dong_cnt?: number | null; parking_cnt?: number | null; sell_office_phone?: string | null; build_point?: string | null; mvi_date?: string | null; recruit_date?: string | null; schdl_info?: unknown; bclass_nm?: string | null; total_house_cnt?: number | null; cmpy_nm?: string | null; max_flr_cnt?: number | null; ypos?: number | string | null; xpos?: number | string | null; bubdong_code?: string | null; address?: string | null }} ComplexData */
+/** @typedef {{ dong_cnt?: number | null; parking_cnt?: number | null; inquiry_tel?: string | null; features?: string | null; move_in_date?: string | null }} DetailData */
+/** @typedef {{ preSaleComplexNumber?: number | string | null; announcementPreSaleSequence?: number | string | null; preSaleComplexName?: string | null; preSaleStageCode?: string | null; scheduleName?: string | null; dateInfo?: string | null; _region?: string | null }} ListItem */
+/** @typedef {{ presale_min_price: number | null; presale_max_price: number | null; presale_pp: number | null; presale_type: string | null; presale_stage: string | null; presale_stage_code: string | null; presale_image_url: string | null; naver_presale_no: string; naver_presale_seq: string; presale_general_supply: number | null; presale_buildings: number | null; presale_parking: number | null; presale_inquiry: string | null; presale_features: string | null; presale_move_in: string | null; presale_recruit_date: string | null; presale_schedule: unknown; presale_housing_type: string | null; presale_fetched_at: string; _enrich: { units: number | null; builder: string | null; max_floor: number | null; lat: number | null; lng: number | null; completion: string | null; bjd_code: string | null; address: string | null }; _name?: string }} PresaleRow */
+
 // loadEnv + 환경변수 검증은 main()에서 수행 (테스트 시 import 안전)
 
 // ── 상수 ────────────────────────────────────────────────────
@@ -32,6 +40,7 @@ const MAX_RETRIES = 3;
 const RETRY_DELAYS = [5000, 10000, 20000];
 
 // 17개 시도 cortarNo (naver-collect.py와 동일)
+/** @type {Record<string, string>} */
 const REGION_CORTAR = {
   "서울": "1100000000", "경기": "4100000000", "인천": "2800000000",
   "부산": "2600000000", "대전": "3000000000", "대구": "2700000000",
@@ -75,6 +84,7 @@ const regionArg = args.find(a => a.startsWith("--region="));
 const regionFilter = regionArg ? regionArg.replace("--region=", "") : null;
 
 // ── JWT 토큰 (레거시: 현재 POST API는 JWT 불필요, 향후 인증 변경 시 fallback용) ──
+/** @type {string | null} */
 let jwtToken = null;
 let jwtTokenTime = 0;
 const JWT_LIFETIME = 2800 * 1000; // 47분
@@ -106,16 +116,19 @@ export function tryPythonJwt() {
     log(PHASE, "Python JWT 출력이 유효하지 않음 — fetch fallback 사용");
     return null;
   } catch (err) {
-    if (err.code === "ENOENT") {
+    if (/** @type {NodeJS.ErrnoException} */ (err)?.code === "ENOENT") {
       log(PHASE, "Python 미설치 — fetch fallback 사용");
     } else {
-      log(PHASE, `Python 헬퍼 실패: ${err.message?.slice(0, 80)} — fetch fallback 사용`);
+      const msg = err instanceof Error ? err.message : String(err);
+      log(PHASE, `Python 헬퍼 실패: ${msg?.slice(0, 80)} — fetch fallback 사용`);
     }
     return null;
   }
 }
 
-/** fetch로 JWT 추출 (Python 실패 시 fallback) */
+/** fetch로 JWT 추출 (Python 실패 시 fallback)
+ * @returns {Promise<string | null>}
+ */
 async function fetchJwtFallback() {
   await throttle();
   try {
@@ -141,7 +154,7 @@ async function fetchJwtFallback() {
     log(PHASE, "JWT 미발견 (fetch) — 인증 없이 시도");
     return null;
   } catch (err) {
-    log(PHASE, `JWT 추출 실패 (fetch): ${err.message} — 인증 없이 시도`);
+    log(PHASE, `JWT 추출 실패 (fetch): ${err instanceof Error ? err.message : String(err)} — 인증 없이 시도`);
     return null;
   }
 }
@@ -168,7 +181,11 @@ async function ensureJwt() {
   return null;
 }
 
-/** POST API 요청 (재시도, JWT 불필요 — 2026-03 신규 API) */
+/** POST API 요청 (재시도, JWT 불필요 — 2026-03 신규 API)
+ * @param {string} endpoint
+ * @param {Record<string, unknown>} [body]
+ * @returns {Promise<any>}
+ */
 async function presalePost(endpoint, body = {}) {
   const url = `${PRESALE_BASE}${endpoint}`;
   for (let i = 0; i < MAX_RETRIES; i++) {
@@ -203,7 +220,7 @@ async function presalePost(endpoint, body = {}) {
       return data?.result ?? data;
     } catch (err) {
       if (i === MAX_RETRIES - 1) {
-        logError(PHASE, `요청 실패 ${endpoint}: ${err.message}`);
+        logError(PHASE, `요청 실패 ${endpoint}: ${err instanceof Error ? err.message : String(err)}`);
         return null;
       }
       await sleep(RETRY_DELAYS[i]);
@@ -214,7 +231,10 @@ async function presalePost(endpoint, body = {}) {
 
 // ── 핵심 함수 (export하여 테스트 가능) ──────────────────────
 
-/** 원(won) → 만원 변환, null-safe */
+/** 원(won) → 만원 변환, null-safe
+ * @param {number | string | null | undefined} wonPrice
+ * @returns {number | null}
+ */
 export function parsePresalePrice(wonPrice) {
   if (wonPrice == null) return null;
   const n = Number(wonPrice);
@@ -222,7 +242,10 @@ export function parsePresalePrice(wonPrice) {
   return Math.round(n / 10000);
 }
 
-/** 이미지 URL 검증 + 프로토콜 보정 */
+/** 이미지 URL 검증 + 프로토콜 보정
+ * @param {string | null | undefined} url
+ * @returns {string | null}
+ */
 export function sanitizeImageUrl(url) {
   if (!url || typeof url !== "string") return null;
   let normalized = url.startsWith("//") ? `https:${url}` : url;
@@ -241,11 +264,19 @@ export function sanitizeImageUrl(url) {
   }
 }
 
-/** 주소 파싱 → { region, gu, dong } */
+/** 주소 파싱 → { region, gu, dong }
+ * @param {string | null | undefined} address
+ * @returns {{ region: string | null; gu: string | null; dong: string | null }}
+ */
 export function parsePresaleAddress(address) {
   if (!address) return { region: null, gu: null, dong: null };
   const parts = address.trim().split(/\s+/);
-  let region = null, gu = null, dong = null;
+  /** @type {string | null} */
+  let region = null;
+  /** @type {string | null} */
+  let gu = null;
+  /** @type {string | null} */
+  let dong = null;
 
   for (const [full, short] of Object.entries(REGION_MAP)) {
     if (parts[0]?.includes(short) || address.includes(full)) {
@@ -275,7 +306,12 @@ export function parsePresaleAddress(address) {
   return { region, gu, dong };
 }
 
-/** complex + detail 응답 → DB 행 변환 */
+/** complex + detail 응답 → DB 행 변환
+ * @param {ComplexData | null | undefined} complex
+ * @param {DetailData | null | undefined} detail
+ * @param {ListItem | null | undefined} listItem
+ * @returns {PresaleRow}
+ */
 export function toPresaleRow(complex, detail, listItem) {
   const minPrice = parsePresalePrice(complex?.min_price);
   const maxPrice = parsePresalePrice(complex?.max_price);
@@ -313,8 +349,8 @@ export function toPresaleRow(complex, detail, listItem) {
         ? resolveBuilder(complex.cmpy_nm.trim())
         : null,
       max_floor: complex?.max_flr_cnt ?? null,
-      lat: complex?.ypos != null ? parseFloat(complex.ypos) : null,
-      lng: complex?.xpos != null ? parseFloat(complex.xpos) : null,
+      lat: complex?.ypos != null ? parseFloat(String(complex.ypos)) : null,
+      lng: complex?.xpos != null ? parseFloat(String(complex.xpos)) : null,
       completion: complex?.mvi_date?.trim()
         ? complex.mvi_date.replace(/[-./]/g, "").slice(0, 6)
         : null,
@@ -327,6 +363,10 @@ export function toPresaleRow(complex, detail, listItem) {
 /**
  * complex 응답 → prices 테이블 행 변환 (house_type='presale_min')
  * price 커버리지 갭 보정용. recorded_at은 수집일 + (apartment_id, house_type, recorded_at) 복합키로 자연 멱등.
+ */
+/**
+ * @param {ComplexData | null | undefined} complex
+ * @param {string | null | undefined} apartmentId
  */
 export function toPresalePriceRow(complex, apartmentId) {
   const price = parsePresalePrice(complex?.min_price);
@@ -344,8 +384,12 @@ export function toPresalePriceRow(complex, apartmentId) {
   };
 }
 
-/** presale_* / naver_presale_* 필드만 추출 (DRY: update·insert 공용) */
+/** presale_* / naver_presale_* 필드만 추출 (DRY: update·insert 공용)
+ * @param {Record<string, unknown>} row
+ * @returns {Record<string, unknown>}
+ */
 export function extractPresaleFields(row) {
+  /** @type {Record<string, unknown>} */
   const picked = {};
   for (const [k, v] of Object.entries(row)) {
     if (k.startsWith("presale_") || k.startsWith("naver_presale")) {
@@ -355,7 +399,12 @@ export function extractPresaleFields(row) {
   return picked;
 }
 
-/** 4단계 매칭: presale → 기존 apartments (indexes 옵션: Map 기반 O(1) 룩업) */
+/** 4단계 매칭: presale → 기존 apartments (indexes 옵션: Map 기반 O(1) 룩업)
+ * @param {PresaleRow} presale
+ * @param {AptForMatch[]} apartments
+ * @param {AptIndexes} [indexes]
+ * @returns {{ apartment: AptForMatch; confidence: number; tier: number } | null}
+ */
 export function matchPresaleToApt(presale, apartments, indexes) {
   const presaleNo = String(presale.naver_presale_no || "");
   const buildName = presale._name || "";
@@ -373,7 +422,9 @@ export function matchPresaleToApt(presale, apartments, indexes) {
   // 2순위: bjd_code + 이름 유사도 >= 0.5 (Map 그룹 또는 전체 탐색)
   if (bjdCode) {
     const candidates = indexes?.byBjd?.get(bjdCode) ?? apartments;
-    let best = null, bestSim = 0;
+    /** @type {AptForMatch | null} */
+    let best = null;
+    let bestSim = 0;
     for (const a of candidates) {
       if (!indexes?.byBjd && a.bjd_code !== bjdCode) continue;
       const sim = stringSimilarity(buildName, a.name);
@@ -384,7 +435,9 @@ export function matchPresaleToApt(presale, apartments, indexes) {
 
   // 3순위: 좌표 MATCH_DISTANCE_M 이내 + 이름 유사도
   if (lat && lng) {
-    let best = null, bestSim = 0;
+    /** @type {AptForMatch | null} */
+    let best = null;
+    let bestSim = 0;
     for (const a of apartments) {
       if (!a.lat || !a.lng) continue;
       const dlat = (lat - a.lat) * METERS_PER_DEGREE;
@@ -400,7 +453,9 @@ export function matchPresaleToApt(presale, apartments, indexes) {
   // 4순위: 동일 region 내 이름 유사도
   const { region } = parsePresaleAddress(presale._enrich?.address);
   if (region && buildName) {
-    let best = null, bestSim = 0;
+    /** @type {AptForMatch | null} */
+    let best = null;
+    let bestSim = 0;
     for (const a of apartments) {
       if (a.region !== region) continue;
       const sim = stringSimilarity(buildName, a.name);
@@ -412,7 +467,11 @@ export function matchPresaleToApt(presale, apartments, indexes) {
   return null;
 }
 
-/** 분양 데이터 → 신규 아파트 레코드 생성 (테스트 가능하도록 export) */
+/** 분양 데이터 → 신규 아파트 레코드 생성 (테스트 가능하도록 export)
+ * @param {PresaleRow} row
+ * @param {ComplexData} complexData
+ * @param {string | null | undefined} regionFallback
+ */
 export function buildNewApartment(row, complexData, regionFallback) {
   const no = row.naver_presale_no || "";
   const { region, gu, dong } = parsePresaleAddress(complexData.address);
@@ -456,7 +515,10 @@ async function probeEndpoints() {
   return null;
 }
 
-/** 시도별 분양단지 목록 조회 (페이지네이션) */
+/** 시도별 분양단지 목록 조회 (페이지네이션)
+ * @param {string} region
+ * @returns {Promise<ListItem[]>}
+ */
 async function fetchPresaleList(region) {
   const cortarNo = REGION_CORTAR[region];
   if (!cortarNo) return [];
@@ -490,14 +552,20 @@ async function fetchPresaleList(region) {
   return results;
 }
 
-/** 단지 상세 — POST /api/complex/detail */
+/** 단지 상세 — POST /api/complex/detail
+ * @param {string | number | null | undefined} complexNo
+ * @param {string | number | null | undefined} seq
+ */
 async function fetchComplexData(complexNo, seq) {
   const no = Number(complexNo), s = Number(seq);
   if (!Number.isFinite(no) || !Number.isFinite(s)) return null;
   return await presalePost("/api/complex/detail", { build_dtl_cd: no, supp_cd: s });
 }
 
-/** 단지 일정 — POST /api/complex/schedule (실패 시 null) */
+/** 단지 일정 — POST /api/complex/schedule (실패 시 null)
+ * @param {string | number | null | undefined} complexNo
+ * @param {string | number | null | undefined} seq
+ */
 async function fetchDetailData(complexNo, seq) {
   const no = Number(complexNo), s = Number(seq);
   if (!Number.isFinite(no) || !Number.isFinite(s)) return null;
@@ -540,20 +608,24 @@ async function main() {
     logError(PHASE, `apartments 조회 실패: ${aptErr.message}`);
     process.exit(1);
   }
-  const apts = apartments ?? [];
+  const apts = /** @type {AptForMatch[]} */ (apartments ?? []);
   if (apts.length === 10000) logError(PHASE, "apartments 10,000건 — .range(0, 9999) 초과 가능, 페이지네이션 필요");
   log(PHASE, `기존 아파트 ${apts.length}건 로드`);
 
   // Map 인덱스 (Tier1·2 O(1) 룩업)
+  /** @type {Map<string, AptForMatch>} */
   const byPresaleNo = new Map();
+  /** @type {Map<string, AptForMatch[]>} */
   const byBjd = new Map();
   for (const a of apts) {
     if (a.naver_presale_no) byPresaleNo.set(a.naver_presale_no, a);
     if (a.bjd_code) {
       if (!byBjd.has(a.bjd_code)) byBjd.set(a.bjd_code, []);
-      byBjd.get(a.bjd_code).push(a);
+      const list = byBjd.get(a.bjd_code);
+      if (list) list.push(a);
     }
   }
+  /** @type {AptIndexes} */
   const aptIndexes = { byPresaleNo, byBjd };
 
   // Phase 1: Discovery — 전국 분양단지 목록
@@ -582,21 +654,28 @@ async function main() {
   }
 
   // 중복 제거 (preSaleComplexNumber 기준)
+  /** @type {Set<string>} */
   const seen = new Set();
-  const uniquePresales = allPresales.filter(p => {
+  /** @type {ListItem[]} */
+  const uniquePresales = [];
+  for (const p of allPresales) {
     const key = String(p.preSaleComplexNumber);
-    if (!key || seen.has(key)) return false;
+    if (!key || seen.has(key)) continue;
     seen.add(key);
-    return true;
-  });
+    uniquePresales.push(p);
+  }
 
   const total = complexLimit ? Math.min(complexLimit, uniquePresales.length) : uniquePresales.length;
   log(PHASE, `총 ${uniquePresales.length}건 중 ${total}건 처리 예정`);
 
   // Phase 2+3: Detail 수집 + 매칭 + Upsert
+  /** @type {Array<Record<string, unknown>>} */
   const updateRows = [];
+  /** @type {Array<Record<string, unknown>>} */
   const insertRows = [];
+  /** @type {Array<Record<string, unknown>>} */
   const priceRows = []; // prices 테이블 upsert용 (house_type='presale_min')
+  /** @type {Record<string | number, number>} */
   const tierCounts = { 1: 0, 2: 0, 3: 0, 4: 0, new: 0, none: 0 };
 
   for (let idx = 0; idx < total; idx++) {
@@ -638,7 +717,8 @@ async function main() {
         log(PHASE, `  ⚠ 저신뢰 매칭: ${row._name} → ${match.apartment.name} (tier=${match.tier} conf=${match.confidence.toFixed(2)})`);
       }
       // 기존 아파트 업데이트
-      const update = { id: match.apartment.id, ...extractPresaleFields(row) };
+      /** @type {Record<string, unknown>} */
+      const update = { id: match.apartment.id, ...extractPresaleFields(/** @type {Record<string, unknown>} */ (row)) };
       // enrichment: null인 기존 컬럼만 채움
       const enrich = row._enrich;
       if (enrich) {
@@ -700,7 +780,7 @@ async function main() {
       try {
         await upsertBatch("prices", priceRows, "apartment_id,house_type,recorded_at", 500, sb);
       } catch (e) {
-        logError(PHASE, `prices upsert 실패 (비치명적): ${e.message}`);
+        logError(PHASE, `prices upsert 실패 (비치명적): ${e instanceof Error ? e.message : String(e)}`);
       }
     }
   } else {
@@ -711,5 +791,9 @@ async function main() {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch((/** @type {unknown} */ err) => {
+  logError(PHASE, err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

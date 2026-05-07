@@ -14,7 +14,12 @@
     "scripts/compute-scores.mjs",
     "scripts/migrate-to-supabase.mjs",
     "scripts/collectors/_shared.mjs",
-    "scripts/collectors/_molit-api.mjs"
+    "scripts/collectors/_molit-api.mjs",
+    "scripts/collectors/calc-exclusive-ratio.mjs",
+    "scripts/collectors/molit-units.mjs",
+    "scripts/collectors/collect-unsold-kosis.mjs",
+    "scripts/collectors/sync-naver-complex.mjs",
+    "scripts/collectors/naver-presale.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }

@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 국토부 공동주택 기본정보 → 총세대수(units) 보정 수집기
  *
@@ -20,6 +21,9 @@ import {
   molitApiCall, fetchSidoAptList, findBestMatch,
 } from "./_molit-api.mjs";
 
+/** @typedef {import("@supabase/supabase-js").SupabaseClient} SupabaseClient */
+/** @typedef {{ id: string; name: string; region: string; gu: string | null; address: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; unit_source: string | null }} TargetApt */
+
 loadEnv();
 
 const PHASE = "molit-units";
@@ -28,8 +32,14 @@ if (!API_KEY) {
   logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
   process.exit(1);
 }
+/** @type {string} */
+const API_KEY_SAFE = API_KEY;
 
 // ── 1. Supabase에서 보정 대상 조회 ──────────────────────────
+/**
+ * @param {SupabaseClient} sb
+ * @returns {Promise<TargetApt[]>}
+ */
 export async function getTargets(sb) {
   // selectAll: 1000행 제한 자동 페이지네이션
   const data = await selectAll(
@@ -38,17 +48,29 @@ export async function getTargets(sb) {
       .or("units.lte.1,unsold_rate.gte.100"),
     sb
   );
-  return data ?? [];
+  return /** @type {TargetApt[]} */ (data ?? []);
 }
 
 // ── 2. 단지 기본 조회 (V4: getAphusBassInfoV4) ──────────────
+/**
+ * @param {string} kaptCode
+ * @returns {Promise<Record<string, unknown> | null>}
+ */
 export async function fetchAptDetail(kaptCode) {
-  const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY);
-  const body = json?.response?.body;
+  const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY_SAFE);
+  const body = /** @type {{ item?: Record<string, unknown>; items?: { item?: Record<string, unknown> } } | undefined} */ (json?.response?.body);
   return body?.item ?? body?.items?.item ?? null;
 }
 
 // ── 3. 보정 적용 ────────────────────────────────────────────
+/**
+ * @param {SupabaseClient} sb
+ * @param {string} aptId
+ * @param {number} newUnits
+ * @param {number | null | undefined} unsold
+ * @param {boolean} dryRun
+ * @returns {Promise<boolean>}
+ */
 export async function updateUnits(sb, aptId, newUnits, unsold, dryRun) {
   const unsoldRate = newUnits > 0 && unsold != null
     ? Math.round((unsold / newUnits) * 1000) / 10
@@ -93,9 +115,10 @@ async function main() {
   }
 
   // 2. 시도별로 그룹핑 (API 호출 최소화 — V3는 시도 코드 기반)
+  /** @type {Record<string, { sidoCode: string; targets: TargetApt[] }>} */
   const groups = {};
   for (const t of targets) {
-    const sidoCode = SIDO_CODE[t.region];
+    const sidoCode = /** @type {Record<string, string>} */ (SIDO_CODE)[t.region];
     if (!sidoCode) {
       logError(PHASE, `  ${t.name}: 시도코드 매핑 없음 (region=${t.region})`);
       continue;
@@ -113,13 +136,14 @@ async function main() {
   for (const [region, group] of Object.entries(groups)) {
     log(PHASE, `\n--- ${region} (${group.sidoCode}) ${group.targets.length}건 ---`);
 
+    /** @type {Array<Record<string, unknown>>} */
     let aptList;
     try {
-      aptList = await fetchSidoAptList(PHASE, group.sidoCode, API_KEY);
+      aptList = await fetchSidoAptList(PHASE, group.sidoCode, API_KEY_SAFE);
       apiCalls += Math.ceil(aptList.length / 500) || 1;
       log(PHASE, `  API 단지 목록: ${aptList.length}건`);
     } catch (err) {
-      logError(PHASE, `  API 조회 실패: ${err.message}`);
+      logError(PHASE, `  API 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
       failed += group.targets.length;
       continue;
     }
@@ -145,7 +169,7 @@ async function main() {
         continue;
       }
 
-      const kaptCode = match.kaptCode;
+      const kaptCode = /** @type {string} */ (match.kaptCode);
       log(PHASE, `    → 매칭: ${match.kaptName || match.as3} (code=${kaptCode}, 유사도=${match.matchScore})`);
 
       // 단지 상세 조회 → 세대수
@@ -159,7 +183,7 @@ async function main() {
           continue;
         }
 
-        const kaptdaCnt = parseInt(detail.kaptdaCnt || "0", 10);
+        const kaptdaCnt = parseInt(String(detail.kaptdaCnt ?? "0"), 10);
         if (isNaN(kaptdaCnt) || kaptdaCnt <= 1) {
           log(PHASE, `    → 세대수 ${kaptdaCnt} (보정 불가)`);
           skipped++;
@@ -174,7 +198,7 @@ async function main() {
         else failed++;
 
       } catch (err) {
-        logError(PHASE, `    → 상세 조회 에러: ${err.message}`);
+        logError(PHASE, `    → 상세 조회 에러: ${err instanceof Error ? err.message : String(err)}`);
         failed++;
       }
     }
@@ -187,8 +211,9 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => {
-  logError(PHASE, err.message);
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch((/** @type {unknown} */ err) => {
+  logError(PHASE, err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

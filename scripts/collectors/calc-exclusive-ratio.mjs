@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 전용률 계산기 — prices 테이블의 area/supply_area 기반
  *
@@ -9,11 +10,18 @@
  */
 import { loadEnv, getSupabase, log, logError, selectAll } from "./_shared.mjs";
 
+/** @typedef {{ apartment_id: string; area: number | null; supply_area: number | null }} PriceRow */
+
 loadEnv();
 
 const PHASE = "excl-ratio";
 
-/** 전용률 계산: (전용면적 / 공급면적) * 100, 소수점 1자리 */
+/**
+ * 전용률 계산: (전용면적 / 공급면적) * 100, 소수점 1자리
+ * @param {number | null | undefined} area
+ * @param {number | null | undefined} supplyArea
+ * @returns {number | null}
+ */
 export function calcRatio(area, supplyArea) {
   if (!area || !supplyArea || supplyArea <= 0) return null;
   return Math.round(area / supplyArea * 100 * 10) / 10;
@@ -53,8 +61,9 @@ async function main() {
   log(PHASE, `prices ${prices.length}건 조회 (${Math.ceil(aptIds.length / CHUNK)} 청크)`);
 
   // 아파트별 최신 가격 레코드
+  /** @type {Record<string, PriceRow>} */
   const priceMap = {};
-  for (const p of prices) {
+  for (const p of /** @type {PriceRow[]} */ (prices)) {
     if (p.area && p.supply_area && p.supply_area > 0) {
       if (!priceMap[p.apartment_id]) priceMap[p.apartment_id] = p;
     }
@@ -85,5 +94,9 @@ async function main() {
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch((/** @type {unknown} */ err) => {
+  logError(PHASE, err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

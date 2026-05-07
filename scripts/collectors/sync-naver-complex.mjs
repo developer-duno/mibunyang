@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 네이버 단지 데이터 → apartments 동기화
  *
@@ -12,20 +13,34 @@
  */
 import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity } from "./_shared.mjs";
 
+/** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} ComplexRow */
+/** @typedef {{ id: string; name: string; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
+/** @typedef {{ id: string; name: string; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; naver_jeonse_count: number | null; naver_wolse_count: number | null }} AptUnsoldRow */
+/** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; naver_nearby_median: number | null; naver_nearby_avg: number | null; naver_jeonse_rate: number | null; naver_build_year: number | null; naver_avg_floor: number | null; naver_nearby_count: number | null; naver_fetched_at: string | null }} AptNaverRow */
+/** @typedef {{ complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null }} ArticleAreaRow */
+/** @typedef {{ grid: Record<string, ComplexRow[]>; cellSize: number }} SpatialGrid */
+
 loadEnv();
 
 const PHASE = "sync-naver";
 
-/** complex → apartment 매칭 (complex_links 우선, 이름 유사도 폴백) */
+/**
+ * complex → apartment 매칭 (complex_links 우선, 이름 유사도 폴백)
+ * @param {ComplexRow} cpx
+ * @param {AptBaseRow[] | AptUnsoldRow[]} aptList
+ * @param {Map<string, string[]>} complexLinksMap
+ * @returns {(AptBaseRow | AptUnsoldRow)[]}
+ */
 export function matchApartments(cpx, aptList, complexLinksMap) {
   const nearbyIds = complexLinksMap.get(cpx.complex_no) || [];
+  /** @type {(AptBaseRow | AptUnsoldRow)[]} */
   let matched = [];
   if (nearbyIds.length > 0) {
-    matched = aptList.filter(a => nearbyIds.includes(a.id));
+    matched = /** @type {(AptBaseRow | AptUnsoldRow)[]} */ (aptList).filter(a => nearbyIds.includes(a.id));
   }
   if (matched.length === 0) {
     const cpxName = (cpx.complex_name || "").replace(/\([^)]*\)/g, "").trim();
-    for (const apt of aptList) {
+    for (const apt of /** @type {(AptBaseRow | AptUnsoldRow)[]} */ (aptList)) {
       if (stringSimilarity(cpxName, apt.name) >= 0.6) {
         matched.push(apt);
       }
@@ -34,7 +49,11 @@ export function matchApartments(cpx, aptList, complexLinksMap) {
   return matched;
 }
 
-/** 중앙값 계산 */
+/**
+ * 중앙값 계산
+ * @param {number[]} arr
+ * @returns {number}
+ */
 export function median(arr) {
   if (!arr.length) return 0;
   const s = [...arr].sort((a, b) => a - b);
@@ -42,18 +61,29 @@ export function median(arr) {
   return s.length % 2 === 0 ? Math.round((s[mid - 1] + s[mid]) / 2) : s[mid];
 }
 
-/** floor_info "3/15" → 3 파싱 */
+/**
+ * floor_info "3/15" → 3 파싱
+ * @param {string | null | undefined} fi
+ * @returns {number | null}
+ */
 export function parseFloor(fi) {
   if (!fi) return null;
   const first = String(fi).split("/")[0].trim();
+  /** @type {Record<string, number>} */
   const KOR = { "저": 3, "중": 8, "고": 20 };
   if (KOR[first]) return KOR[first];
   const n = parseInt(first);
   return (n > 0 && n < 200) ? n : null;
 }
 
-/** Spatial grid index (0.02deg ~ 2km cells) */
+/**
+ * Spatial grid index (0.02deg ~ 2km cells)
+ * @param {ComplexRow[]} allComplexes
+ * @param {number} [cellSize]
+ * @returns {SpatialGrid}
+ */
 export function buildSpatialGrid(allComplexes, cellSize = 0.02) {
+  /** @type {Record<string, ComplexRow[]>} */
   const grid = {};
   for (const cpx of allComplexes) {
     if (!cpx.latitude || !cpx.longitude) continue;
@@ -64,21 +94,30 @@ export function buildSpatialGrid(allComplexes, cellSize = 0.02) {
   return { grid, cellSize };
 }
 
-/** Find nearby complexes within radius using grid */
+/**
+ * Find nearby complexes within radius using grid
+ * @param {{ lat: number | null; lng: number | null }} apt
+ * @param {SpatialGrid} spatialGrid
+ * @param {number} [radiusKm]
+ * @returns {string[]}
+ */
 export function findNearbyComplexes(apt, spatialGrid, radiusKm = 2) {
   if (!apt.lat || !apt.lng) return [];
   const { grid, cellSize } = spatialGrid;
   const R = 6371;
-  const toRad = d => d * Math.PI / 180;
+  /** @param {number} d */
+  const toRad = (d) => d * Math.PI / 180;
   const cellRadius = Math.ceil(radiusKm / (cellSize * 111));
   const cr = Math.floor(apt.lat / cellSize);
   const cc = Math.floor(apt.lng / cellSize);
+  /** @type {string[]} */
   const results = [];
   for (let dr = -cellRadius; dr <= cellRadius; dr++) {
     for (let dc = -cellRadius; dc <= cellRadius; dc++) {
       const cell = grid[(cr + dr) + "," + (cc + dc)];
       if (!cell) continue;
       for (const cpx of cell) {
+        if (cpx.latitude == null || cpx.longitude == null) continue;
         const dLat = toRad(cpx.latitude - apt.lat);
         const dLon = toRad(cpx.longitude - apt.lng);
         const a = Math.sin(dLat/2)**2 + Math.cos(toRad(apt.lat)) * Math.cos(toRad(cpx.latitude)) * Math.sin(dLon/2)**2;
@@ -101,6 +140,7 @@ async function main() {
 
   // 1. complexes에서 유용한 필드가 있는 데이터 조회
   // complexes 페이지네이션 (1000행 제한 우회)
+  /** @type {ComplexRow[]} */
   const complexes = [];
   const PAGE = 1000;
   for (let off = 0; ; off += PAGE) {
@@ -109,7 +149,8 @@ async function main() {
       .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, heat_fuel_type, corridor_type, building_coverage_ratio")
       .range(off, off + PAGE - 1);
     if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
-    complexes.push(...page);
+    if (!page) break;
+    complexes.push(.../** @type {ComplexRow[]} */ (page));
     if (page.length < PAGE) break;
   }
   log(PHASE, `complexes: ${complexes.length}건`);
@@ -122,10 +163,12 @@ async function main() {
 
   if (hErr) logError(PHASE, `articles heating 조회 실패: ${hErr.message}`);
 
+  /** @type {Record<string, string>} */
   const heatingByComplex = {};
   if (heatingRows) {
+    /** @type {Record<string, Record<string, number>>} */
     const freq = {};
-    for (const r of heatingRows) {
+    for (const r of /** @type {Array<{ complex_no: string; heating_type: string }>} */ (heatingRows)) {
       if (!freq[r.complex_no]) freq[r.complex_no] = {};
       freq[r.complex_no][r.heating_type] = (freq[r.complex_no][r.heating_type] || 0) + 1;
     }
@@ -135,6 +178,7 @@ async function main() {
     }
   }
   // complex_links 조회 (mibunyang 스키마)
+  /** @type {Map<string, string[]>} */
   const complexLinksMap = new Map();
   const { data: complexLinks, error: clErr } = await sbMibunyang
     .from("complex_links")
@@ -144,9 +188,10 @@ async function main() {
   if (clErr) {
     log(PHASE, `complex_links 미사용 (이름 유사도 매칭으로 폴백)`);
   } else if (complexLinks) {
-    for (const cl of complexLinks) {
+    for (const cl of /** @type {Array<{ complex_no: string; apartment_id: string }>} */ (complexLinks)) {
       if (!complexLinksMap.has(cl.complex_no)) complexLinksMap.set(cl.complex_no, []);
-      complexLinksMap.get(cl.complex_no).push(cl.apartment_id);
+      const list = complexLinksMap.get(cl.complex_no);
+      if (list) list.push(cl.apartment_id);
     }
   }
   log(PHASE, `complex_links: ${complexLinksMap.size}개 단지 매핑`);
@@ -154,6 +199,7 @@ async function main() {
   log(PHASE, `heating_type 집계: ${Object.keys(heatingByComplex).length}개 단지`);
 
   // 2. apartments 조회 (페이지네이션 — 1000행 제한 우회)
+  /** @type {AptBaseRow[]} */
   const apartments = [];
   for (let off = 0; ; off += PAGE) {
     const { data: page, error: aErr } = await sbMibunyang
@@ -161,7 +207,8 @@ async function main() {
       .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio")
       .range(off, off + PAGE - 1);
     if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
-    apartments.push(...page);
+    if (!page) break;
+    apartments.push(.../** @type {AptBaseRow[]} */ (page));
     if (page.length < PAGE) break;
   }
   log(PHASE, `apartments: ${apartments.length}건`);
@@ -174,8 +221,9 @@ async function main() {
     .range(0, 99999);
   if (arErr) logError(PHASE, `articles area 조회 실패: ${arErr.message}`);
 
+  /** @type {Record<string, ArticleAreaRow[]>} */
   const articlesByComplex = {};
-  for (const r of (areaRows || [])) {
+  for (const r of /** @type {ArticleAreaRow[]} */ (areaRows || [])) {
     if (!articlesByComplex[r.complex_no]) articlesByComplex[r.complex_no] = [];
     articlesByComplex[r.complex_no].push(r);
   }
@@ -185,10 +233,11 @@ async function main() {
   let updated = 0, skipped = 0;
 
   for (const cpx of complexes) {
-    const matchedApts = matchApartments(cpx, apartments, complexLinksMap);
+    const matchedApts = /** @type {AptBaseRow[]} */ (matchApartments(cpx, apartments, complexLinksMap));
     if (matchedApts.length === 0) continue;
 
     for (const apt of matchedApts) {
+      /** @type {Record<string, unknown>} */
       const row = {};
 
       // 용적률: 아파트에 없고 네이버에 있으면 동기화
@@ -197,7 +246,7 @@ async function main() {
       }
 
       // 주차비율: total_parking / total_household_count
-      if (apt.parking_ratio == null && cpx.total_parking_count && cpx.total_household_count > 0) {
+      if (apt.parking_ratio == null && cpx.total_parking_count && cpx.total_household_count && cpx.total_household_count > 0) {
         row.parking_ratio = Math.round((cpx.total_parking_count / cpx.total_household_count) * 100) / 100;
       }
 
@@ -234,9 +283,9 @@ async function main() {
       // 전용률: articles area1(공급)/area2(전용) 비율
       if (apt.exclusive_ratio == null) {
         const withArea = (articlesByComplex[cpx.complex_no] || [])
-          .filter(a => a.area1_m2 > 0 && a.area2_m2 > 0);
+          .filter(a => a.area1_m2 != null && a.area1_m2 > 0 && a.area2_m2 != null && a.area2_m2 > 0);
         if (withArea.length >= 1) {
-          const ratios = withArea.map(a => (a.area2_m2 / a.area1_m2) * 100);
+          const ratios = withArea.map(a => (/** @type {number} */ (a.area2_m2) / /** @type {number} */ (a.area1_m2)) * 100);
           row.exclusive_ratio = Math.round(median(ratios) * 10) / 10;
         }
       }
@@ -252,7 +301,7 @@ async function main() {
       // 일조: 남향 비율 기반 추정
       if (apt.sunlight == null || apt.sunlight === "") {
         const arts = (articlesByComplex[cpx.complex_no] || []).filter(a => a.direction);
-        const southCount = arts.filter(a => /남/.test(a.direction)).length;
+        const southCount = arts.filter(a => /남/.test(/** @type {string} */ (a.direction))).length;
         if (arts.length > 0 && southCount / arts.length >= 0.5) {
           row.sunlight = "양호";
         }
@@ -292,8 +341,9 @@ async function main() {
     logError(PHASE, `articles 조회 실패: ${artErr.message}`);
   } else {
     // 집계: { complex_no: { sell, jeonse, wolse } }
+    /** @type {Record<string, { sell: number; jeonse: number; wolse: number }>} */
     const counts = {};
-    for (const row of articles) {
+    for (const row of /** @type {Array<{ complex_no: string; trade_type_name: string }>} */ (articles ?? [])) {
       if (!counts[row.complex_no]) counts[row.complex_no] = { sell: 0, jeonse: 0, wolse: 0 };
       if (row.trade_type_name === "매매") counts[row.complex_no].sell++;
       else if (row.trade_type_name === "전세") counts[row.complex_no].jeonse++;
@@ -302,19 +352,23 @@ async function main() {
     log(PHASE, `active 매물 집계: ${Object.keys(counts).length}개 단지`);
 
     // apartments 재조회 (unsold 관련 필드, 페이지네이션)
+    /** @type {AptUnsoldRow[]} */
     const aptsForUnsold = [];
+    /** @type {string | null} */
+    let aErr2Msg = null;
     for (let off = 0; ; off += PAGE) {
       const { data: page, error: aErr2 } = await sbMibunyang
         .from("apartments")
         .select("id, name, units, unsold, unsold_rate, naver_sell_count, naver_jeonse_count, naver_wolse_count")
         .range(off, off + PAGE - 1);
-      if (aErr2) { logError(PHASE, `apartments 재조회 실패: ${aErr2.message}`); break; }
-      aptsForUnsold.push(...page);
+      if (aErr2) { aErr2Msg = aErr2.message; logError(PHASE, `apartments 재조회 실패: ${aErr2Msg}`); break; }
+      if (!page) break;
+      aptsForUnsold.push(.../** @type {AptUnsoldRow[]} */ (page));
       if (page.length < PAGE) break;
     }
 
     if (aptsForUnsold.length === 0) {
-      logError(PHASE, `apartments 재조회 실패: ${aErr2.message}`);
+      logError(PHASE, `apartments 재조회 실패: ${aErr2Msg ?? "데이터 없음"}`);
     } else {
       let unsoldUpdated = 0;
 
@@ -322,10 +376,11 @@ async function main() {
         const cnt = counts[cpx.complex_no];
         if (!cnt) continue;
 
-        const matchedApts = matchApartments(cpx, aptsForUnsold, complexLinksMap);
+        const matchedApts = /** @type {AptUnsoldRow[]} */ (matchApartments(cpx, aptsForUnsold, complexLinksMap));
         if (matchedApts.length === 0) continue;
 
         for (const apt of matchedApts) {
+          /** @type {Record<string, unknown>} */
           const row = {};
 
           // 매물 수 업데이트
@@ -334,7 +389,7 @@ async function main() {
           if (cnt.wolse !== (apt.naver_wolse_count ?? 0)) row.naver_wolse_count = cnt.wolse;
 
           // 매매 매물 수를 미분양 근사치로 사용
-          if (cnt.sell > 0 && apt.units > 0) {
+          if (cnt.sell > 0 && apt.units != null && apt.units > 0) {
             row.unsold = cnt.sell;
             row.unsold_rate = Math.round(cnt.sell / apt.units * 1000) / 10;
           }
@@ -377,9 +432,10 @@ async function main() {
   if (prErr) logError(PHASE, `price_history 조회 실패: ${prErr.message}`);
 
   // price_avg를 complex_no + trade_type별로 그룹핑
+  /** @type {Record<string, { A1: number[]; B1: number[] }>} */
   const priceByComplex = {};
   if (priceRows) {
-    for (const r of priceRows) {
+    for (const r of /** @type {Array<{ complex_no: string; trade_type: string; price_avg: number | null }>} */ (priceRows)) {
       if (!r.price_avg || r.price_avg <= 0) continue;
       if (!priceByComplex[r.complex_no]) priceByComplex[r.complex_no] = { A1: [], B1: [] };
       if (r.trade_type === "A1") priceByComplex[r.complex_no].A1.push(r.price_avg);
@@ -398,9 +454,10 @@ async function main() {
 
   if (flErr) logError(PHASE, `articles floor 조회 실패: ${flErr.message}`);
 
+  /** @type {Record<string, number[]>} */
   const floorByComplex = {};
   if (floorRows) {
-    for (const r of floorRows) {
+    for (const r of /** @type {Array<{ complex_no: string; floor_info: string | null }>} */ (floorRows)) {
       const f = parseFloor(r.floor_info);
       if (f == null) continue;
       if (!floorByComplex[r.complex_no]) floorByComplex[r.complex_no] = [];
@@ -410,21 +467,26 @@ async function main() {
   log(PHASE, `층수 데이터: ${Object.keys(floorByComplex).length}개 단지`);
 
   // 3-c. apartments 재조회 (naver_* 필드, 페이지네이션)
+  /** @type {AptNaverRow[]} */
   const aptsForNaver = [];
+  /** @type {string | null} */
+  let aErr3Msg = null;
   for (let off = 0; ; off += PAGE) {
     const { data: page, error: aErr3 } = await sbMibunyang
       .from("apartments")
       .select("id, name, lat, lng, naver_nearby_median, naver_nearby_avg, naver_jeonse_rate, naver_build_year, naver_avg_floor, naver_nearby_count, naver_fetched_at")
       .range(off, off + PAGE - 1);
-    if (aErr3) { logError(PHASE, `apartments naver 재조회 실패: ${aErr3.message}`); break; }
-    aptsForNaver.push(...page);
+    if (aErr3) { aErr3Msg = aErr3.message; logError(PHASE, `apartments naver 재조회 실패: ${aErr3Msg}`); break; }
+    if (!page) break;
+    aptsForNaver.push(.../** @type {AptNaverRow[]} */ (page));
     if (page.length < PAGE) break;
   }
 
   if (aptsForNaver.length === 0) {
-    logError(PHASE, `apartments 재조회 실패: ${aErr3.message}`);
+    logError(PHASE, `apartments 재조회 실패: ${aErr3Msg ?? "데이터 없음"}`);
   } else {
     let naverUpdated = 0;
+    /** @type {Set<string>} */
     const seen = new Set();
 
     for (const apt of aptsForNaver) {
@@ -435,9 +497,11 @@ async function main() {
       const allCnos = findNearbyComplexes(apt, spatialGrid, 2);
       if (allCnos.length === 0) continue;
 
+      /** @type {Record<string, unknown>} */
       const row = {};
 
         // 매매 시세 (A1) 중위/평균
+        /** @type {number[]} */
         const salePrices = [];
         for (const cno of allCnos) {
           if (priceByComplex[cno]?.A1) salePrices.push(...priceByComplex[cno].A1);
@@ -448,6 +512,7 @@ async function main() {
         }
 
         // 전세 시세 (B1) → 전세가율
+        /** @type {number[]} */
         const jeonPrices = [];
         for (const cno of allCnos) {
           if (priceByComplex[cno]?.B1) jeonPrices.push(...priceByComplex[cno].B1);
@@ -461,6 +526,7 @@ async function main() {
         }
 
         // 건축연도
+        /** @type {number[]} */
         const years = [];
         for (const cno of allCnos) {
           const c = complexes.find(x => x.complex_no === cno);
@@ -474,6 +540,7 @@ async function main() {
         }
 
         // 평균 층수
+        /** @type {number[]} */
         const floors = [];
         for (const cno of allCnos) {
           if (floorByComplex[cno]) floors.push(...floorByComplex[cno]);
@@ -514,6 +581,7 @@ async function main() {
 
     // complex_no → apartment_id 매핑이 이미 Phase 2에서 구축됨
     // articles에서 complex_no별 관리비 평균, 방향 최빈값 집계 (페이지네이션)
+    /** @type {Array<{ complex_no: string; numeric_maintenance_cost: number | null; direction: string | null }>} */
     const articleStats = [];
     for (let off = 0; ; off += PAGE) {
       const { data: page, error: asErr } = await sbMibunyang
@@ -522,12 +590,14 @@ async function main() {
         .eq("is_active", true)
         .range(off, off + PAGE - 1);
       if (asErr) { logError(PHASE, `articles 조회 실패: ${asErr.message}`); break; }
-      articleStats.push(...page);
+      if (!page) break;
+      articleStats.push(.../** @type {Array<{ complex_no: string; numeric_maintenance_cost: number | null; direction: string | null }>} */ (page));
       if (page.length < PAGE) break;
     }
 
     if (articleStats.length > 0) {
       // complex_no별 집계
+      /** @type {Record<string, { costs: number[]; dirs: Record<string, number> }>} */
       const complexAgg = {};
       for (const art of (articleStats || [])) {
         const cn = art.complex_no;
@@ -545,10 +615,11 @@ async function main() {
       for (const cpx of complexes) {
         const agg = complexAgg[cpx.complex_no];
         if (!agg) continue;
-        const matchedApts = matchApartments(cpx, apartments, complexLinksMap);
+        const matchedApts = /** @type {AptBaseRow[]} */ (matchApartments(cpx, apartments, complexLinksMap));
         if (matchedApts.length === 0) continue;
 
         for (const apt of matchedApts) {
+          /** @type {Record<string, unknown>} */
           const row = {};
           if (agg.costs.length > 0) {
             row.avg_maintenance_cost = Math.round(agg.costs.reduce((a, b) => a + b, 0) / agg.costs.length);
@@ -573,5 +644,9 @@ async function main() {
   log(PHASE, "\n=== 전체 동기화 완료 ===");
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch((/** @type {unknown} */ err) => {
+  logError(PHASE, err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
