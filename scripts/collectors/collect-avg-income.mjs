@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * KOSIS 시도별 1인당 가계총처분가능소득 → regions.avg_income UPDATE
  *
@@ -36,8 +37,31 @@ const API_KEY = process.env.KOSIS_MIGRATION_KEY;
 const BASE_URL = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
 const TARGET_ITM_NM = "1인당 가계총처분가능소득";
 
+/**
+ * @typedef {Object} KosisRow
+ * @property {string} [C1]
+ * @property {string} [C1_NM]
+ * @property {string} [C2]
+ * @property {string} [C2_NM]
+ * @property {string} [ITM_ID]
+ * @property {string} [ITM_NM]
+ * @property {string} [PRD_DE]
+ * @property {string} [DT]
+ */
+
+/**
+ * @typedef {Object} IncomeEntry
+ * @property {string} region
+ * @property {string|null} gu
+ * @property {number} avg_income
+ */
+
 // ── 단위 변환: 천원/년 → 만원/월 ───────────────────────────
 // KOSIS DT는 문자열("23,388"), 콤마 제거 후 정수화. 반올림은 가장 가까운 정수.
+/**
+ * @param {string|number|null|undefined} dt
+ * @returns {number|null}
+ */
 export function thousandWonYearToManWonMonth(dt) {
   if (dt == null) return null;
   const n = parseInt(String(dt).replace(/,/g, ""), 10);
@@ -48,21 +72,27 @@ export function thousandWonYearToManWonMonth(dt) {
 
 // ── KOSIS 응답 행 → 시도별 avg_income 엔트리 ────────────────
 // 전국(C1="00") 제외. ITM_NM="1인당 개인소득"만, 최신 PRD_DE만.
+/**
+ * @param {unknown} rows
+ * @returns {{period: string|null, entries: IncomeEntry[]}}
+ */
 export function aggregateIncomeRows(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return { period: null, entries: [] };
+  const typedRows = /** @type {KosisRow[]} */ (rows);
 
   let latestPrd = "";
-  for (const r of rows) {
-    if (r.PRD_DE > latestPrd) latestPrd = r.PRD_DE;
+  for (const r of typedRows) {
+    if (r.PRD_DE && r.PRD_DE > latestPrd) latestPrd = r.PRD_DE;
   }
 
+  /** @type {IncomeEntry[]} */
   const entries = [];
-  for (const r of rows) {
+  for (const r of typedRows) {
     if (r.PRD_DE !== latestPrd) continue;
     if (r.ITM_NM !== TARGET_ITM_NM) continue;
     if (r.C1 === "00") continue; // 전국 제외
 
-    const region = REGION_MAP[r.C1_NM];
+    const region = r.C1_NM ? REGION_MAP[r.C1_NM] : undefined;
     if (!region) continue; // 미매핑 지역 무시
 
     const avgIncome = thousandWonYearToManWonMonth(r.DT);
@@ -96,7 +126,8 @@ export async function fetchKosisIncome() {
   try {
     res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   } catch (err) {
-    throw new Error(`KOSIS ${err.message}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`KOSIS ${msg}`);
   }
 
   const text = await res.text();
@@ -125,6 +156,10 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
+/**
+ * @param {boolean} dryRun
+ * @returns {Promise<{apiCalls: number, failed: number}>}
+ */
 async function runCollect(dryRun) {
   const rows = await fetchKosisIncome();
   const apiCalls = 1;
@@ -167,5 +202,6 @@ async function runCollect(dryRun) {
   return { apiCalls, failed };
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

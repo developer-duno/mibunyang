@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * KOSIS 민간아파트 분양가격동향 5개 지표 수집기
  *
@@ -19,7 +20,42 @@ loadEnv();
 const PHASE = "market-stats";
 const KOSIS_KEY = process.env.KOSIS_KEY;
 
+/**
+ * @typedef {Object} Indicator
+ * @property {string} col
+ * @property {string} tblId
+ * @property {"M"|"Q"} prdSe
+ * @property {number} objLevels
+ * @property {(s: string, r?: number) => number} parse
+ * @property {number} minExpected
+ * @property {string} label
+ */
+
+/**
+ * @typedef {Object} KosisRow
+ * @property {string} [C1]
+ * @property {string} [C1_NM]
+ * @property {string} [C2]
+ * @property {string} [C2_NM]
+ * @property {string} [ITM_NM]
+ * @property {string} [PRD_DE]
+ * @property {string} [DT]
+ */
+
+/**
+ * @typedef {Object} HistoryRow
+ * @property {string} region
+ * @property {string} gu
+ * @property {string} base_month
+ * @property {number} [price_index]
+ * @property {number} [avg_price_sqm]
+ * @property {number} [new_supply]
+ * @property {number} [initial_sale_rate]
+ * @property {number} [land_cost_ratio]
+ */
+
 // 지표별 설정
+/** @type {Indicator[]} */
 const INDICATORS = [
   { col: "price_index",       tblId: "DT_41401N_006", prdSe: "M", objLevels: 2, parse: parseFloat, minExpected: 10, label: "분양가격지수" },
   { col: "avg_price_sqm",     tblId: "DT_41401N_005", prdSe: "M", objLevels: 2, parse: parseInt,   minExpected: 10, label: "평균분양가격" },
@@ -29,28 +65,36 @@ const INDICATORS = [
 ];
 
 // ── KOSIS API 호출 (node:https — TLS 호환) ───────────────────
+/**
+ * @param {Indicator} indicator
+ * @param {string} startPrdDe
+ * @param {string} endPrdDe
+ * @returns {Promise<unknown>}
+ */
 async function fetchKosisTable(indicator, startPrdDe, endPrdDe) {
   const https = await import("node:https");
   const tls = await import("node:tls");
 
-  const params = new URLSearchParams({
+  /** @type {Record<string, string>} */
+  const paramObj = {
     method: "getList",
-    apiKey: KOSIS_KEY,
+    apiKey: KOSIS_KEY || "",
     orgId: "414",
     tblId: indicator.tblId,
     itmId: "ALL",
     objL1: "ALL",
-    ...(indicator.objLevels >= 2 ? { objL2: "ALL" } : {}),
     prdSe: indicator.prdSe,
     startPrdDe,
     endPrdDe,
     format: "json",
     jsonVD: "Y",
-  });
+  };
+  if (indicator.objLevels >= 2) paramObj.objL2 = "ALL";
+  const params = new URLSearchParams(paramObj);
 
   const url = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
   const agent = new https.Agent({
-    secureOptions: tls.SSL_OP_LEGACY_SERVER_CONNECT,
+    secureOptions: /** @type {{ SSL_OP_LEGACY_SERVER_CONNECT: number }} */ (/** @type {unknown} */ (tls)).SSL_OP_LEGACY_SERVER_CONNECT,
     minVersion: "TLSv1.2",
     maxVersion: "TLSv1.2",
   });
@@ -70,16 +114,22 @@ async function fetchKosisTable(indicator, startPrdDe, endPrdDe) {
   });
 }
 
-/** KOSIS 행에서 지역별 최신값 추출 */
+/**
+ * KOSIS 행에서 지역별 최신값 추출
+ * @param {KosisRow[]} rows
+ * @param {Indicator} indicator
+ * @returns {Record<string, {value: number, period: string}>}
+ */
 export function extractLatestByRegion(rows, indicator) {
+  /** @type {Record<string, {value: number, period: string}>} */
   const latestByRegion = {};
   for (const row of rows) {
     if (row.C2_NM && row.C2_NM !== "전체") continue;
-    const region = REGION_MAP[row.C1_NM];
+    const region = row.C1_NM ? REGION_MAP[row.C1_NM] : undefined;
     if (!region) continue;
-    const value = indicator.parse(row.DT, 10);
+    const value = indicator.parse(row.DT || "", 10);
     if (isNaN(value)) continue;
-    const period = row.PRD_DE;
+    const period = row.PRD_DE || "";
     if (!latestByRegion[region] || period > latestByRegion[region].period) {
       latestByRegion[region] = { value, period };
     }
@@ -95,18 +145,25 @@ export function extractLatestByRegion(rows, indicator) {
  * PRD_DE 정규식: 월간 /^\d{6}$/ (예: "202603") + 분기 /^\d{5}$/ (예: "20261", prdSe=Q 응답)
  * 세션134 collect-unsold-kosis.parseKosisRowsAllMonths 패턴 미러링.
  */
+/**
+ * @param {KosisRow[]} rows
+ * @param {Indicator} indicator
+ * @returns {{region: string, gu: string, base_month: string, value: number}[]}
+ */
 export function parseAllPeriodsByRegion(rows, indicator) {
+  /** @type {{region: string, gu: string, base_month: string, value: number}[]} */
   const out = [];
   const monthRe = /^\d{6}$/;
   const quarterRe = /^\d{5}$/;
   for (const row of rows) {
-    if (!monthRe.test(row.PRD_DE) && !quarterRe.test(row.PRD_DE)) continue;
+    const prd = row.PRD_DE || "";
+    if (!monthRe.test(prd) && !quarterRe.test(prd)) continue;
     if (row.C2_NM && row.C2_NM !== "전체") continue;
-    const region = REGION_MAP[row.C1_NM];
+    const region = row.C1_NM ? REGION_MAP[row.C1_NM] : undefined;
     if (!region) continue;
-    const value = indicator.parse(row.DT, 10);
+    const value = indicator.parse(row.DT || "", 10);
     if (isNaN(value)) continue;
-    out.push({ region, gu: "", base_month: row.PRD_DE, value });
+    out.push({ region, gu: "", base_month: prd, value });
   }
   return out;
 }
@@ -140,6 +197,7 @@ async function main() {
   log(PHASE, `regions 시도 행: ${regions.length}건`);
 
   // 지표별 수집
+  /** @type {Record<string, HistoryRow>} */
   const historyMap = {}; // key = "region::base_month" → wide row (5지표 merge)
   for (const ind of INDICATORS) {
     const start = ind.prdSe === "Q" ? startQ : startMonth;
@@ -147,21 +205,25 @@ async function main() {
 
     log(PHASE, `\n[${ind.label}] ${ind.tblId} (${ind.prdSe}) ${start}~${end}`);
 
+    /** @type {unknown} */
     let data;
     try {
       data = await fetchKosisTable(ind, start, end);
     } catch (e) {
-      logError(PHASE, `  ${ind.label} API 실패: ${e.message}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      logError(PHASE, `  ${ind.label} API 실패: ${msg}`);
       rpt.fail(1);
       continue;
     }
 
-    if (data.err) {
-      logError(PHASE, `  ${ind.label} KOSIS 에러: ${data.errMsg || data.err}`);
+    const dataObj = /** @type {{ err?: string, errMsg?: string }} */ (data);
+    if (dataObj && typeof dataObj === "object" && "err" in dataObj && dataObj.err) {
+      logError(PHASE, `  ${ind.label} KOSIS 에러: ${dataObj.errMsg || dataObj.err}`);
       rpt.fail(1);
       continue;
     }
 
+    /** @type {KosisRow[]} */
     const rows = Array.isArray(data) ? data : [];
     if (rows.length < ind.minExpected) {
       logError(PHASE, `  ${ind.label}: ${rows.length}건 < 최소 ${ind.minExpected}건 — itmId/prdSe 확인 필요`);
@@ -176,7 +238,7 @@ async function main() {
     for (const row of parseAllPeriodsByRegion(rows, ind)) {
       const key = `${row.region}::${row.base_month}`;
       if (!historyMap[key]) historyMap[key] = { region: row.region, gu: "", base_month: row.base_month };
-      historyMap[key][ind.col] = row.value;
+      /** @type {Record<string, unknown>} */ (historyMap[key])[ind.col] = row.value;
     }
 
     // regions 테이블 UPDATE
@@ -228,5 +290,6 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

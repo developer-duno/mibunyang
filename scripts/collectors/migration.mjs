@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * KOSIS 시군구별 이동자수 → 시군구/시도별 순이동 수집
  *
@@ -37,10 +38,28 @@ if (!API_KEY) {
 
 const BASE_URL = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
 
+/**
+ * @typedef {Object} KosisRow
+ * @property {string} [C1]
+ * @property {string} [C1_NM]
+ * @property {string} [ITM_NM]
+ * @property {string} [PRD_DE]
+ * @property {string} [DT]
+ */
+
+/**
+ * @typedef {Object} MigrationEntry
+ * @property {string} region
+ * @property {string|null} gu
+ * @property {number} net_migration
+ */
+
 // ── C1 2자리 → 약칭 역변환 맵 (REGION_LAWD_PREFIX 역방향) ─────
 // 강원 42→51, 전북 45→52 특별자치도 개편 이후 KOSIS는 신 코드 사용.
 // 레거시 코드도 함께 수용(자체 방어).
+/** @type {Record<string, string>} */
 export const C1_TO_REGION = (() => {
+  /** @type {Record<string, string>} */
   const map = {};
   for (const [region, prefix] of Object.entries(REGION_LAWD_PREFIX)) {
     map[prefix] = region;
@@ -55,12 +74,21 @@ export const C1_TO_REGION = (() => {
 
 // ── KOSIS 공백 이슈 정규화 ─────────────────────────────────
 // 부산/대구 등 "중  구" 공백 2칸 → "중구"
+/**
+ * @param {string|null|undefined} name
+ * @returns {string|null|undefined}
+ */
 export function normalizeC1Name(name) {
   if (!name) return name;
   return name.replace(/\s+/g, "");
 }
 
 // ── C1 코드 → { region, gu } 매핑 ─────────────────────────
+/**
+ * @param {string|number|undefined} c1Code
+ * @param {string|null|undefined} c1Name
+ * @returns {{region: string, gu: string|null}|null}
+ */
 export function mapC1(c1Code, c1Name) {
   const code = String(c1Code);
   const name = normalizeC1Name(c1Name);
@@ -76,24 +104,30 @@ export function mapC1(c1Code, c1Name) {
     if (!region) return null;
     // 세종은 시군구 없음
     if (region === "세종") return { region, gu: "세종시" };
-    return { region, gu: name };
+    return { region, gu: name || null };
   }
   return null;
 }
 
 // ── KOSIS 응답 행 → 집계 ────────────────────────────────────
 // 최신 PRD_DE (월)만 사용, ITM_NM === "순이동" 만
+/**
+ * @param {unknown} rows
+ * @returns {{period: string|null, entries: MigrationEntry[]}}
+ */
 export function aggregateKosisRows(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return { period: null, entries: [] };
+  const typedRows = /** @type {KosisRow[]} */ (rows);
 
   // 최신 PRD_DE 찾기
   let latestPrd = "";
-  for (const r of rows) {
-    if (r.PRD_DE > latestPrd) latestPrd = r.PRD_DE;
+  for (const r of typedRows) {
+    if (r.PRD_DE && r.PRD_DE > latestPrd) latestPrd = r.PRD_DE;
   }
 
+  /** @type {MigrationEntry[]} */
   const entries = [];
-  for (const r of rows) {
+  for (const r of typedRows) {
     if (r.PRD_DE !== latestPrd) continue;
     if (r.ITM_NM !== "순이동") continue;
 
@@ -115,10 +149,14 @@ export function aggregateKosisRows(rows) {
 // ── KOSIS 호출 ──────────────────────────────────────────────
 // 세션104: 단일 fetch → fetchWithRetry (429/500/503 지수 백오프 3회).
 // AbortSignal.timeout(30s)은 fetchWithRetry 내부에 이미 포함.
+/**
+ * @returns {Promise<unknown[]>}
+ */
 export async function fetchKosis() {
-  const params = new URLSearchParams({
+  /** @type {Record<string, string>} */
+  const paramObj = {
     method: "getList",
-    apiKey: API_KEY,
+    apiKey: API_KEY || "",
     orgId: "101",
     tblId: "DT_1B26001_A01",
     itmId: "T10 T20 T25",
@@ -127,7 +165,8 @@ export async function fetchKosis() {
     newEstPrdCnt: "1", // 최신 1개월
     format: "json",
     jsonVD: "Y",
-  });
+  };
+  const params = new URLSearchParams(paramObj);
   const url = `${BASE_URL}?${params}`;
   log(PHASE, "KOSIS DT_1B26001_A01 호출...");
 
@@ -136,7 +175,8 @@ export async function fetchKosis() {
     res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   } catch (err) {
     // 에러 메시지 prefix 유지(`KOSIS HTTP ...`) — 로그 grep 컨벤션
-    throw new Error(`KOSIS ${err.message}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`KOSIS ${msg}`);
   }
 
   const text = await res.text();
@@ -166,6 +206,10 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
+/**
+ * @param {boolean} dryRun
+ * @returns {Promise<{apiCalls: number, failed: number}>}
+ */
 async function runCollect(dryRun) {
   const rows = await fetchKosis();
   const apiCalls = 1;
@@ -232,5 +276,6 @@ async function runCollect(dryRun) {
   return { apiCalls, failed };
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

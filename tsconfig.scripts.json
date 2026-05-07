@@ -33,7 +33,10 @@
     "scripts/collectors/collect-maintenance.mjs",
     "scripts/collectors/collect-applyhome.mjs",
     "scripts/collectors/molit-building-info.mjs",
-    "scripts/collectors/collect-trades.mjs"
+    "scripts/collectors/collect-trades.mjs",
+    "scripts/collectors/collect-avg-income.mjs",
+    "scripts/collectors/collect-market-stats.mjs",
+    "scripts/collectors/migration.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }
