@@ -36,7 +36,10 @@
     "scripts/collectors/collect-trades.mjs",
     "scripts/collectors/collect-avg-income.mjs",
     "scripts/collectors/collect-market-stats.mjs",
-    "scripts/collectors/migration.mjs"
+    "scripts/collectors/migration.mjs",
+    "scripts/collectors/environment.mjs",
+    "scripts/collectors/noise-estimate.mjs",
+    "scripts/collectors/noxious.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }

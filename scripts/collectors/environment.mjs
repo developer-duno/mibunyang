@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 환경 데이터(view) 수집기 — Kakao 키워드 검색 기반
  *
@@ -24,18 +25,46 @@ const BLUE_KEYWORDS = ["하천", "강", "호수", "저수지", "해수욕장", "
 // ── 그린 조망 키워드 ────────────────────────────────────────
 const GREEN_KEYWORDS = ["공원", "산", "수목원", "자연휴양림", "생태공원"];
 
+/**
+ * @typedef {Object} KakaoPlaceItem
+ * @property {string} place_name
+ * @property {string} y
+ * @property {string} x
+ * @property {string} [distance]
+ */
+
+/**
+ * @typedef {Object} EnvAptRow
+ * @property {string} id
+ * @property {string} [name]
+ * @property {number|null} [lat]
+ * @property {number|null} [lng]
+ * @property {string|null} [view]
+ */
+
 // ── Kakao 키워드 검색 ───────────────────────────────────────
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} keyword
+ * @returns {Promise<KakaoPlaceItem[]>}
+ */
 async function searchKeyword(lat, lng, keyword) {
   const kakaoKey = process.env.KAKAO_KEY;
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${SEARCH_RADIUS}&sort=distance&size=3`;
   const res = await fetchWithRetry(url, {
     headers: { Authorization: `KakaoAK ${kakaoKey}` },
   });
-  const data = await res.json();
+  const data = /** @type {{ documents?: KakaoPlaceItem[] }} */ (await res.json());
   return data.documents || [];
 }
 
 // ── 조망 판정 ───────────────────────────────────────────────
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<"블루"|"그린"|"천공"|null>}
+ */
 async function classifyView(lat, lng) {
   let errors = 0;
 
@@ -46,7 +75,8 @@ async function classifyView(lat, lng) {
       if (results.length > 0) return "블루";
     } catch (err) {
       errors++;
-      logError("classify", `블루 "${kw}": ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError("classify", `블루 "${kw}": ${msg}`);
     }
     await sleep(80);
   }
@@ -58,7 +88,8 @@ async function classifyView(lat, lng) {
       if (results.length > 0) return "그린";
     } catch (err) {
       errors++;
-      logError("classify", `그린 "${kw}": ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError("classify", `그린 "${kw}": ${msg}`);
     }
     await sleep(80);
   }
@@ -80,6 +111,7 @@ async function main() {
   }
 
   // 1. 아파트 데이터 로드
+  /** @type {EnvAptRow[]} */
   let apartments;
   if (jsonMode) {
     const jsonPath = resolve(ROOT, "public/data/apartments.json");
@@ -89,28 +121,31 @@ async function main() {
     const sb = getSupabase();
     const { data, error } = await sb.from("apartments").select("id, name, lat, lng, view").limit(10000);
     if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
-    apartments = data;
+    apartments = /** @type {EnvAptRow[]} */ (data || []);
     log("load", `Supabase apartments: ${apartments.length}건`);
   }
 
-  const withCoords = apartments.filter(a => a.lat && a.lng);
+  const withCoords = apartments.filter((/** @type {EnvAptRow} */ a) => a.lat && a.lng);
   // 이미 view가 있는 아파트는 스킵 (재수집 방지)
-  const targets = withCoords.filter(a => !a.view);
+  const targets = withCoords.filter((/** @type {EnvAptRow} */ a) => !a.view);
   log("filter", `대상: ${targets.length}건 (좌표 있고 view 없음) / 전체 ${apartments.length}건`);
 
   // 2. 각 아파트 조망 분류
+  /** @type {{id: string, view: "블루"|"그린"|"천공"}[]} */
   const updates = [];
   let processed = 0;
+  /** @type {Record<string, number>} */
   const counts = { "블루": 0, "그린": 0, "천공": 0 };
 
   for (const apt of targets) {
     try {
-      const view = await classifyView(apt.lat, apt.lng);
+      const view = await classifyView(Number(apt.lat), Number(apt.lng));
       if (view == null) { logError("skip", `${apt.name}: API 전체 실패, 판정 불가`); processed++; continue; }
       updates.push({ id: apt.id, view });
       counts[view]++;
     } catch (err) {
-      logError("classify", `${apt.name}: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError("classify", `${apt.name}: ${msg}`);
     }
 
     processed++;
@@ -124,7 +159,7 @@ async function main() {
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
     for (const u of updates.slice(0, 30)) {
-      const apt = apartments.find(a => a.id === u.id);
+      const apt = apartments.find((/** @type {EnvAptRow} */ a) => a.id === u.id);
       console.log(`  ${apt?.name || u.id}: ${u.view}`);
     }
     if (updates.length > 30) console.log(`  ... 외 ${updates.length - 30}건`);
@@ -133,7 +168,7 @@ async function main() {
 
   // 3. 업데이트
   if (jsonMode) {
-    const aptMap = new Map(apartments.map(a => [a.id, a]));
+    const aptMap = new Map(apartments.map((/** @type {EnvAptRow} */ a) => [a.id, a]));
     for (const u of updates) {
       const apt = aptMap.get(u.id);
       if (!apt) continue;
@@ -156,5 +191,6 @@ async function main() {
   }
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });

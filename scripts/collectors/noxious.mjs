@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 혐오시설 수집기 — Kakao 키워드 검색 기반
  *
@@ -29,10 +30,42 @@ const NOXIOUS_KEYWORDS = [
 
 const SEARCH_RADIUS = 2000; // 2km 반경 검색
 
+/**
+ * @typedef {Object} KakaoPlaceItem
+ * @property {string} place_name
+ * @property {string} y
+ * @property {string} x
+ * @property {string} [distance]
+ */
+
+/**
+ * @typedef {Object} NoxiousPlace
+ * @property {string} name
+ * @property {number} lat
+ * @property {number} lng
+ * @property {number} dist
+ */
+
+/**
+ * @typedef {Object} NoxiousAptRow
+ * @property {string} id
+ * @property {string} [name]
+ * @property {number|null} [lat]
+ * @property {number|null} [lng]
+ * @property {string[]|null} [noxious]
+ * @property {number|null} [noxious_dist]
+ */
+
 // ── Haversine 거리 (m) ──────────────────────────────────────
 const haversineM = haversineMeters;
 
 // ── Kakao 키워드 검색 ───────────────────────────────────────
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} keyword
+ * @returns {Promise<NoxiousPlace[]>}
+ */
 async function searchNearby(lat, lng, keyword) {
   const kakaoKey = process.env.KAKAO_KEY;
   if (!kakaoKey) throw new Error("KAKAO_KEY 필요");
@@ -41,8 +74,8 @@ async function searchNearby(lat, lng, keyword) {
   const res = await fetchWithRetry(url, {
     headers: { Authorization: `KakaoAK ${kakaoKey}` },
   });
-  const data = await res.json();
-  return (data.documents || []).map(d => ({
+  const data = /** @type {{ documents?: KakaoPlaceItem[] }} */ (await res.json());
+  return (data.documents || []).map((/** @type {KakaoPlaceItem} */ d) => ({
     name: d.place_name,
     lat: Number(d.y),
     lng: Number(d.x),
@@ -61,6 +94,7 @@ async function main() {
   }
 
   // 1. 아파트 데이터 로드
+  /** @type {NoxiousAptRow[]} */
   let apartments;
   if (jsonMode) {
     const jsonPath = resolve(ROOT, "public/data/apartments.json");
@@ -70,30 +104,33 @@ async function main() {
     const sb = getSupabase();
     const { data, error } = await sb.from("apartments").select("id, name, lat, lng, noxious, noxious_dist").limit(10000);
     if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
-    apartments = data;
+    apartments = /** @type {NoxiousAptRow[]} */ (data || []);
     log("load", `Supabase apartments: ${apartments.length}건`);
   }
 
-  const withCoords = apartments.filter(a => a.lat && a.lng);
+  const withCoords = apartments.filter((/** @type {NoxiousAptRow} */ a) => a.lat && a.lng);
   log("filter", `좌표 있는 아파트: ${withCoords.length}/${apartments.length}건`);
 
   // 2. 각 아파트 주변 혐오시설 검색
+  /** @type {{id: string, noxious: string[], noxious_dist: number}[]} */
   const updates = [];
   let searched = 0;
 
   for (const apt of withCoords) {
+    /** @type {string[]} */
     const found = [];
     let minDist = Infinity;
 
     for (const { keyword, category } of NOXIOUS_KEYWORDS) {
       try {
-        const results = await searchNearby(apt.lat, apt.lng, keyword);
+        const results = await searchNearby(Number(apt.lat), Number(apt.lng), keyword);
         for (const r of results) {
           if (!found.includes(category)) found.push(category);
           if (r.dist < minDist) minDist = r.dist;
         }
       } catch (err) {
-        logError("search", `${apt.name} "${keyword}": ${err.message}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        logError("search", `${apt.name} "${keyword}": ${msg}`);
       }
       await sleep(100); // API rate limit 보호
     }
@@ -117,7 +154,7 @@ async function main() {
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
     for (const u of updates.slice(0, 30)) {
-      const apt = apartments.find(a => a.id === u.id);
+      const apt = apartments.find((/** @type {NoxiousAptRow} */ a) => a.id === u.id);
       console.log(`  ${apt?.name || u.id}: ${u.noxious.join(", ")} (최근접 ${u.noxious_dist}m)`);
     }
     if (updates.length > 30) console.log(`  ... 외 ${updates.length - 30}건`);
@@ -126,12 +163,12 @@ async function main() {
 
   // 3. 업데이트
   if (jsonMode) {
-    const aptMap = new Map(apartments.map(a => [a.id, a]));
+    const aptMap = new Map(apartments.map((/** @type {NoxiousAptRow} */ a) => [a.id, a]));
     for (const u of updates) {
       const apt = aptMap.get(u.id);
       if (!apt) continue;
       apt.noxious = u.noxious;
-      apt.noxiousDist = u.noxious_dist;
+      /** @type {Record<string, unknown>} */ (apt).noxiousDist = u.noxious_dist;
     }
     const jsonPath = resolve(ROOT, "public/data/apartments.json");
     writeFileSync(jsonPath, JSON.stringify([...aptMap.values()], null, 2), "utf8");
@@ -151,8 +188,9 @@ async function main() {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
 
 // 테스트용 순수 함수 export
 export { haversineM };

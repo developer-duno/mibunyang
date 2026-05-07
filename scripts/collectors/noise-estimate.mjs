@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 소음 추정 수집기 — 도로 근접도 기반 dB 추정
  *
@@ -22,6 +23,10 @@ import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
 loadEnv();
 
 // ── 소음 추정 로직 ───────────────────────────────────────────────
+/**
+ * @param {number|null|undefined} roadDistM
+ * @returns {number|null}
+ */
 function estimateNoise(roadDistM) {
   if (roadDistM == null) return null;
   if (roadDistM <= 50) return 70;   // 높음 (65+ dB)
@@ -31,6 +36,10 @@ function estimateNoise(roadDistM) {
 }
 
 // ── 도로명 주소 파싱으로 소음 추정 (API 호출 불필요) ─────────────
+/**
+ * @param {string|null|undefined} roadAddress
+ * @returns {number|null}
+ */
 function estimateNoiseFromAddress(roadAddress) {
   if (!roadAddress) return null;
   // "대로" → 왕복 4차선 이상, 교통량 많음 → 50m 수준
@@ -43,6 +52,12 @@ function estimateNoiseFromAddress(roadAddress) {
 }
 
 // ── Kakao 키워드 검색 (도로 시설) ────────────────────────────────
+/**
+ * @param {string} kakaoKey
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<number|null>}
+ */
 async function findNearestRoad(kakaoKey, lat, lng) {
   // 1단계: "도로" 키워드 검색 (반경 1km)
   const keywords = ["대로", "도로", "고속도로"];
@@ -148,11 +163,13 @@ async function main() {
 
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
+    /** @type {Record<number, number>} */
     const grouped = { 70: 0, 60: 0, 50: 0, 40: 0 };
+    /** @type {Record<number, string>} */
     const labels = { 70: "높음(70dB)", 60: "보통(60dB)", 50: "낮음(50dB)", 40: "매우낮음(40dB)" };
     for (const r of results) if (grouped[r.noise] != null) grouped[r.noise]++;
     for (const [k, v] of Object.entries(grouped)) {
-      console.log(`  ${labels[k]}: ${v}건`);
+      console.log(`  ${labels[Number(k)]}: ${v}건`);
     }
     const fromAddr = results.filter(r => r.source === "address").length;
     const fromKakao = results.filter(r => r.source === "kakao").length;
@@ -179,8 +196,9 @@ async function main() {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch((err) => { logError("main", err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch((err) => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
 
 // 테스트용 순수 함수 export
 export { estimateNoise, estimateNoiseFromAddress };
