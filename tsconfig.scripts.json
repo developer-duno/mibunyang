@@ -25,7 +25,10 @@
     "scripts/collectors/collect-crime-safety.mjs",
     "scripts/collectors/collect-childcare.mjs",
     "scripts/collectors/collect-police.mjs",
-    "scripts/collectors/infra-kakao.mjs"
+    "scripts/collectors/infra-kakao.mjs",
+    "scripts/collectors/collect-emergency.mjs",
+    "scripts/collectors/collect-air-quality.mjs",
+    "scripts/collectors/industry-match.mjs"
   ],
   "exclude": ["node_modules", "dist", "build", ".vercel"]
 }

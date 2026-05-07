@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 에어코리아 대기질 수집기 — data.go.kr 실시간 측정소별 측정정보
  *
@@ -20,47 +21,74 @@ const SIDO_LIST = ["서울","부산","대구","인천","광주","대전","울산
 
 export const haversine = haversineKm;
 
-/** 전국 측정소 좌표 조회 (MsrstnInfoInqireSvc) */
+/**
+ * @typedef {{ lat: number; lng: number }} StationCoord
+ * @typedef {{ station: string; lat: number; lng: number; pm10: number | null; pm25: number | null; o3: number | null; grade: string | null }} StationData
+ * @typedef {{ id: string; name: string | null; lat: number | null; lng: number | null }} AirQualityAptRow
+ */
+
+/**
+ * 전국 측정소 좌표 조회 (MsrstnInfoInqireSvc)
+ * @returns {Promise<Map<string, StationCoord>>}
+ */
 export async function fetchStationCoords() {
   const url = `https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getMsrstnList?serviceKey=${API_KEY}&returnType=json&numOfRows=700&pageNo=1`;
   const res = await fetchWithRetry(url);
-  const json = await res.json();
+  const json = /** @type {{ response?: { body?: { items?: Array<Record<string, unknown>> } } }} */ (await res.json());
   const items = json?.response?.body?.items || [];
   // stationName → { lat, lng } 맵
+  /** @type {Map<string, StationCoord>} */
   const map = new Map();
   for (const i of items) {
     if (i.dmX && i.dmY && i.stationName) {
-      map.set(i.stationName, { lat: parseFloat(i.dmX), lng: parseFloat(i.dmY) });
+      map.set(String(i.stationName), { lat: parseFloat(String(i.dmX)), lng: parseFloat(String(i.dmY)) });
     }
   }
   return map;
 }
 
-/** 시도별 측정소 실시간 대기질 조회 — 좌표는 coordMap에서 조인 */
+/**
+ * 시도별 측정소 실시간 대기질 조회 — 좌표는 coordMap에서 조인
+ * @param {string} sido
+ * @param {Map<string, StationCoord>} coordMap
+ * @returns {Promise<StationData[]>}
+ */
 export async function fetchSidoData(sido, coordMap) {
   const url = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty?serviceKey=${API_KEY}&returnType=json&numOfRows=200&pageNo=1&sidoName=${encodeURIComponent(sido)}&ver=1.0`;
   const res = await fetchWithRetry(url);
-  const json = await res.json();
+  const json = /** @type {{ response?: { body?: { items?: Array<Record<string, unknown>> } } }} */ (await res.json());
   const items = json?.response?.body?.items || [];
-  return items.filter(i => coordMap?.has(i.stationName)).map(i => {
-    const coord = coordMap.get(i.stationName);
-    return {
-      station: i.stationName,
+  /** @type {StationData[]} */
+  const out = [];
+  for (const i of items) {
+    const stationName = i.stationName;
+    if (!stationName || typeof stationName !== "string") continue;
+    const coord = coordMap.get(stationName);
+    if (!coord) continue;
+    out.push({
+      station: stationName,
       lat: coord.lat,
       lng: coord.lng,
-      pm10: i.pm10Value !== "-" ? (parseInt(i.pm10Value) || null) : null,
-      pm25: i.pm25Value !== "-" ? (parseInt(i.pm25Value) || null) : null,
-      o3: i.o3Value !== "-" ? (parseFloat(i.o3Value) || null) : null,
+      pm10: i.pm10Value !== "-" ? (parseInt(String(i.pm10Value)) || null) : null,
+      pm25: i.pm25Value !== "-" ? (parseInt(String(i.pm25Value)) || null) : null,
+      o3: i.o3Value !== "-" ? (parseFloat(String(i.o3Value)) || null) : null,
       grade: i.khaiGrade === "1" ? "좋음" : i.khaiGrade === "2" ? "보통" : i.khaiGrade === "3" ? "나쁨" : i.khaiGrade === "4" ? "매우나쁨" : null,
-    };
-  });
+    });
+  }
+  return out;
 }
 
-/** 단지별 최근접 측정소 매칭 */
+/**
+ * 단지별 최근접 측정소 매칭
+ * @param {AirQualityAptRow} apt
+ * @param {StationData[]} stations
+ */
 export function matchNearestStation(apt, stations) {
-  let minDist = Infinity, nearest = null;
+  /** @type {StationData | null} */
+  let nearest = null;
+  let minDist = Infinity;
   for (const s of stations) {
-    const dist = haversine(apt.lat, apt.lng, s.lat, s.lng);
+    const dist = haversine(Number(apt.lat), Number(apt.lng), s.lat, s.lng);
     if (dist < minDist) { minDist = dist; nearest = s; }
   }
   if (!nearest) return null;
@@ -95,7 +123,7 @@ async function main() {
       allStations.push(...stations);
       apiCalls++;
       await sleep(300);
-    } catch (err) { logError(PHASE, `${sido}: ${err.message}`); }
+    } catch (err) { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, `${sido}: ${msg}`); }
   }
   log(PHASE, `측정소 ${allStations.length}건 조회 완료 (API ${apiCalls}회)`);
 
@@ -121,7 +149,8 @@ async function main() {
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); }
       else rpt.success(1);
     } catch (err) {
-      logError(PHASE, `${apt.name}: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError(PHASE, `${apt.name}: ${msg}`);
       rpt.fail(1);
     }
     if ((i + 1) % 100 === 0) log(PHASE, `진행: ${i + 1}/${targets.length}`);
@@ -132,5 +161,6 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

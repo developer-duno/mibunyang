@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 응급의료기관 수집기 — data.go.kr 국립중앙의료원 API
  *
@@ -17,8 +18,17 @@ const API_KEY = process.env.MOLIT_KEY;
 
 export const haversine = haversineKm;
 
-/** 전국 응급의료기관 목록 조회 (페이지네이션) */
+/**
+ * @typedef {{ name: string | null; type: string | null; lat: number; lng: number }} EmergencyFacility
+ * @typedef {{ id: string; name: string | null; lat: number | null; lng: number | null }} EmergencyAptRow
+ */
+
+/**
+ * 전국 응급의료기관 목록 조회 (페이지네이션)
+ * @returns {Promise<{ facilities: EmergencyFacility[]; apiCalls: number }>}
+ */
 export async function fetchEmergencyList() {
+  /** @type {EmergencyFacility[]} */
   const facilities = [];
   let page = 1;
   let apiCalls = 0;
@@ -31,13 +41,14 @@ export async function fetchEmergencyList() {
     const items = text.match(/<item>([\s\S]*?)<\/item>/g) || [];
     if (items.length === 0) break;
     for (const item of items) {
-      const get = (tag) => { const m = item.match(new RegExp(`<${tag}>([^<]*)</${tag}>`)); return m ? m[1] : null; };
+      /** @param {string} tag @returns {string} */
+      const get = (tag) => { const m = item.match(new RegExp(`<${tag}>([^<]*)</${tag}>`)); return m && m[1] ? m[1] : ""; };
       const lat = parseFloat(get("wgs84Lat"));
       const lng = parseFloat(get("wgs84Lon"));
       if (!lat || !lng) continue;
       facilities.push({
-        name: get("dutyName"),
-        type: get("dutyEmclsName"), // 권역응급/지역응급/지역의료기관
+        name: get("dutyName") || null,
+        type: get("dutyEmclsName") || null, // 권역응급/지역응급/지역의료기관
         lat, lng,
       });
     }
@@ -48,12 +59,17 @@ export async function fetchEmergencyList() {
   return { facilities, apiCalls };
 }
 
-/** 단지별 최근접 응급의료기관 매칭 */
+/**
+ * 단지별 최근접 응급의료기관 매칭
+ * @param {EmergencyAptRow} apt
+ * @param {EmergencyFacility[]} facilities
+ * @returns {{ count: number; dist: number }}
+ */
 export function matchNearest(apt, facilities) {
   let minDist = Infinity;
   let count = 0;
   for (const f of facilities) {
-    const dist = haversine(apt.lat, apt.lng, f.lat, f.lng);
+    const dist = haversine(Number(apt.lat), Number(apt.lng), f.lat, f.lng);
     if (dist <= 10) count++; // 10km 이내 시설 수
     if (dist < minDist) minDist = dist;
   }
@@ -97,7 +113,8 @@ async function main() {
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); }
       else rpt.success(1);
     } catch (err) {
-      logError(PHASE, `${apt.name}: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logError(PHASE, `${apt.name}: ${msg}`);
       rpt.fail(1);
     }
     if ((i + 1) % 100 === 0) log(PHASE, `진행: ${i + 1}/${targets.length}`);
@@ -108,5 +125,6 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

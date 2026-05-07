@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 산업단지 매칭 — 시드 데이터 기반 좌표 매칭
  *
@@ -16,6 +17,11 @@ import { loadEnv, getSupabase, log, logError, ROOT, haversineKm } from "./_share
 loadEnv();
 
 export const haversine = haversineKm;
+
+/**
+ * @typedef {{ name: string; type: string; lat: number; lng: number; radius?: number }} IndustryComplex
+ * @typedef {{ id: string; name: string | null; lat: number | null; lng: number | null; industry_dev?: string | null; industryDev?: string | null }} IndustryApt
+ */
 
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
@@ -48,18 +54,22 @@ async function main() {
     log("load", `Supabase apartments: ${apartments.length}건`);
   }
 
-  const withCoords = apartments.filter(a => a.lat && a.lng);
-  log("filter", `좌표 있는 아파트: ${withCoords.length}/${apartments.length}건`);
+  /** @type {IndustryApt[]} */
+  const aptList = apartments;
+  const withCoords = aptList.filter(/** @param {IndustryApt} a */ a => a.lat && a.lng);
+  log("filter", `좌표 있는 아파트: ${withCoords.length}/${aptList.length}건`);
 
   // 3. 각 아파트에 대해 반경 내 산업단지 매칭
+  /** @type {Array<{ id: string; industry_dev: string }>} */
   const updates = [];
   let matched = 0;
 
   for (const apt of withCoords) {
+    /** @type {Array<{ name: string; type: string; dist: number }>} */
     const nearby = [];
 
-    for (const cpx of complexes) {
-      const dist = haversine(apt.lat, apt.lng, cpx.lat, cpx.lng);
+    for (const cpx of /** @type {IndustryComplex[]} */ (complexes)) {
+      const dist = haversine(Number(apt.lat), Number(apt.lng), cpx.lat, cpx.lng);
       const radius = cpx.radius || 10; // 기본 10km
       if (dist <= radius) {
         nearby.push({ name: cpx.name, type: cpx.type, dist: Math.round(dist * 10) / 10 });
@@ -81,7 +91,7 @@ async function main() {
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
     for (const u of updates.slice(0, 30)) {
-      const apt = apartments.find(a => a.id === u.id);
+      const apt = aptList.find(/** @param {IndustryApt} a */ a => a.id === u.id);
       console.log(`  ${apt?.name || u.id}: ${u.industry_dev}`);
     }
     if (updates.length > 30) console.log(`  ... 외 ${updates.length - 30}건`);
@@ -90,7 +100,8 @@ async function main() {
 
   // 4. 업데이트
   if (jsonMode) {
-    const aptMap = new Map(apartments.map(a => [a.id, a]));
+    /** @type {Map<string, IndustryApt>} */
+    const aptMap = new Map(aptList.map(/** @param {IndustryApt} a */ a => [a.id, a]));
     for (const u of updates) {
       const apt = aptMap.get(u.id);
       if (!apt) continue;
@@ -113,5 +124,6 @@ async function main() {
   }
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError("main", err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
