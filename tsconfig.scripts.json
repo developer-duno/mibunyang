@@ -41,6 +41,8 @@
     "scripts/collectors/noise-estimate.mjs",
     "scripts/collectors/noxious.mjs",
     "scripts/collectors/transit-match.mjs",
+    "scripts/collectors/dart-builders.mjs",
+    "scripts/collectors/transport-tago.mjs",
     "scripts/collectors/migration.test.mjs",
     "scripts/collectors/noise-estimate.test.mjs",
     "scripts/collectors/noxious.test.mjs",

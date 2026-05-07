@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * DART 시공사 재무 수집기 — 부채비율 + 신용등급 추정
  *
@@ -13,9 +14,16 @@
  */
 import { loadEnv, getSupabase, log, logError, sleep, selectAll } from "./_shared.mjs";
 
+/**
+ * @typedef {{ fs_div: string, sj_div: string, account_nm: string, thstrm_amount: string }} DartFinancialItem
+ * @typedef {{ status: string, list?: DartFinancialItem[] }} DartFinancialResponse
+ * @typedef {{ debtRatio: number, year: number, reprt: string }} DartFinancialResult
+ */
+
 loadEnv();
 
 // ── 시공사 → DART 고유번호 매핑 ─────────────────────────────────
+/** @type {Record<string, string>} */
 const BUILDER_CORP_CODES = {
   // 대형 건설사 (기존 16개)
   "GS건설": "00120030",
@@ -64,6 +72,10 @@ const BUILDER_CORP_CODES = {
   "대방산업": "01102332",
 };
 
+/**
+ * @param {number} debtRatio
+ * @returns {string}
+ */
 export function estimateCreditGrade(debtRatio) {
   if (debtRatio <= 100) return "A";
   if (debtRatio <= 150) return "A-";
@@ -73,11 +85,20 @@ export function estimateCreditGrade(debtRatio) {
   return "CCC";
 }
 
+/**
+ * @param {string | null | undefined} str
+ * @returns {number}
+ */
 export function parseAmount(str) {
   if (!str) return 0;
   return parseFloat(str.replace(/,/g, "")) || 0;
 }
 
+/**
+ * @param {string} dartKey
+ * @param {string} corpCode
+ * @returns {Promise<DartFinancialResult | null>}
+ */
 async function fetchFinancials(dartKey, corpCode) {
   const reprtCodes = ["11011", "11012", "11013", "11014"];
   const currentYear = new Date().getFullYear();
@@ -89,16 +110,16 @@ async function fetchFinancials(dartKey, corpCode) {
         const url = `https://opendart.fss.or.kr/api/fnlttSinglAcnt.json?crtfc_key=${dartKey}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=${reprt}`;
         const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
         if (!res.ok) continue;
-        const json = await res.json();
+        const json = /** @type {DartFinancialResponse} */ (await res.json());
         if (json.status !== "000" || !json.list) continue;
 
-        let items = json.list.filter(x => x.fs_div === "CFS" && x.sj_div === "BS");
+        let items = json.list.filter((/** @type {DartFinancialItem} */ x) => x.fs_div === "CFS" && x.sj_div === "BS");
         if (items.length === 0) {
-          items = json.list.filter(x => x.fs_div === "OFS" && x.sj_div === "BS");
+          items = json.list.filter((/** @type {DartFinancialItem} */ x) => x.fs_div === "OFS" && x.sj_div === "BS");
         }
 
-        const debt = items.find(x => x.account_nm === "부채총계");
-        const equity = items.find(x => x.account_nm === "자본총계");
+        const debt = items.find((/** @type {DartFinancialItem} */ x) => x.account_nm === "부채총계");
+        const equity = items.find((/** @type {DartFinancialItem} */ x) => x.account_nm === "자본총계");
 
         if (debt && equity) {
           const debtAmt = parseAmount(debt.thstrm_amount);
@@ -137,6 +158,7 @@ async function main() {
   log("load", `아파트 사용 시공사 ${builderSet.size}개`);
 
   // 2. DART 매핑 가능한 시공사 필터 (정확 매칭 + 퍼지 매칭)
+  /** @type {Record<string, string>} */
   const ALIAS = {
     "지에스건설": "GS건설", "지에스건설(주)": "GS건설",
     "(주)대우건설": "대우건설", "디엘이앤씨 주식회사": "DL이앤씨", "디엘이앤씨": "DL이앤씨",
@@ -158,6 +180,10 @@ async function main() {
     "중흥에스클래스(주)": "중흥에스클래스", "대방산업개발 주식회사": "대방산업",
     "대방산업개발": "대방산업",
   };
+  /**
+   * @param {string} name
+   * @returns {string | null}
+   */
   function resolveBuilder(name) {
     if (BUILDER_CORP_CODES[name]) return name;
     if (ALIAS[name]) return ALIAS[name];
@@ -259,5 +285,5 @@ async function main() {
   if (aliasCount > 0) log("done", `alias 행 ${aliasCount}건 추가 (아파트 원본명)`);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch((err) => { logError("main", err.message); process.exit(1); });
+const isCLI = !!process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch((err) => { logError("main", err instanceof Error ? err.message : String(err)); process.exit(1); });

@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 교통 접근성 수집기 — Kakao Places + TAGO 대중교통 API
  *
@@ -10,6 +11,13 @@
  */
 import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, createReporter } from "./_shared.mjs";
 
+/**
+ * @typedef {{ place_name?: string, category_name?: string, distance?: string|number, x?: string|number, y?: string|number }} KakaoDoc
+ * @typedef {{ documents?: KakaoDoc[] }} KakaoSearchResponse
+ * @typedef {{ nodenm?: string, [k: string]: unknown }} TagoBusStop
+ * @typedef {{ response?: { body?: { items?: { item?: TagoBusStop|TagoBusStop[]|"" } } } }} TagoResponse
+ */
+
 loadEnv();
 
 const PHASE = "transport";
@@ -21,17 +29,31 @@ const DEFAULT_SUBWAY_DIST = 9999;
 const DEFAULT_IC_DIST = 99;
 const DEFAULT_KTX_DIST = 99;
 
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} keyword
+ * @param {number} radius
+ * @returns {Promise<KakaoDoc[]>}
+ */
 async function searchKakao(lat, lng, keyword, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
   const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
-  const data = await res.json();
+  const data = /** @type {KakaoSearchResponse} */ (await res.json());
   return data.documents || [];
 }
 
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} categoryCode
+ * @param {number} radius
+ * @returns {Promise<KakaoDoc[]>}
+ */
 async function searchKakaoCategory(lat, lng, categoryCode, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=${categoryCode}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
   const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
-  const data = await res.json();
+  const data = /** @type {KakaoSearchResponse} */ (await res.json());
   return data.documents || [];
 }
 
@@ -45,13 +67,18 @@ async function searchKakaoCategory(lat, lng, categoryCode, radius) {
  *
  * 실패와 실제 0건이 같게 저장되던 유령값 문제를 DB 레벨에서 분리한다.
  */
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<TagoBusStop[] | null>}
+ */
 async function searchBusStopsTago(lat, lng) {
   if (!TAGO_KEY) return null;
   const url = `https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=${encodeURIComponent(TAGO_KEY)}&gpsLati=${lat}&gpsLong=${lng}&_type=json&numOfRows=15`;
   try {
     const res = await fetchWithRetry(url, { signal: AbortSignal.timeout(15000) }, 3);
     if (!res.ok) return null;
-    const data = await res.json();
+    const data = /** @type {TagoResponse} */ (await res.json());
     // 정상 구조 검증: response.body.items 가 있어야 성공. item 없으면 성공·0건.
     const body = data?.response?.body;
     if (!body || !("items" in body)) return null;
@@ -69,6 +96,9 @@ async function searchBusStopsTago(lat, lng) {
  * 세션98: busStops 가 null 이면 수집 실패 → bus_routes + bus_stop_names 둘 다 NULL.
  * 빈 배열이면 성공·0건 → bus_routes=0, bus_stop_names=null (현행 유지).
  */
+/**
+ * @param {{ apartmentId: string, subways: KakaoDoc[], busStops: TagoBusStop[]|null, validICs: KakaoDoc[], validKTX: KakaoDoc[] }} args
+ */
 export function buildTransportRow({ apartmentId, subways, busStops, validICs, validKTX }) {
   const subwayDist = subways.length > 0 ? Math.round(Number(subways[0].distance)) : DEFAULT_SUBWAY_DIST;
   const subwayName = extractSubwayName(subways[0]);
@@ -77,7 +107,7 @@ export function buildTransportRow({ apartmentId, subways, busStops, validICs, va
   // 수집 실패(null)와 실제 0건([]) 구분
   const busStopNames = busStops === null
     ? null
-    : [...new Set(busStops.map(d => d.nodenm).filter(Boolean))];
+    : [...new Set(busStops.map((/** @type {TagoBusStop} */ d) => d.nodenm).filter(Boolean))];
   const busRoutes = busStopNames === null ? null : busStopNames.length;
   const busStopNamesStr = (busStopNames && busStopNames.length > 0) ? busStopNames.join(",") : null;
 
@@ -97,20 +127,32 @@ export function buildTransportRow({ apartmentId, subways, busStops, validICs, va
   };
 }
 
-/** KTX역 결과 필터 */
+/**
+ * KTX역 결과 필터
+ * @param {KakaoDoc} doc
+ * @returns {boolean}
+ */
 export function isValidStation(doc) {
   const name = doc.place_name || "";
   const cat = doc.category_name || "";
   return name.endsWith("역") || cat.includes("기차") || cat.includes("철도");
 }
 
-/** IC 결과 필터 */
+/**
+ * IC 결과 필터
+ * @param {KakaoDoc} doc
+ * @returns {boolean}
+ */
 export function isValidIC(doc) {
   const name = doc.place_name || "";
   return name.includes("IC") || name.includes("나들목") || name.includes("인터체인지");
 }
 
-/** 가장 가까운 지하철역의 역명 추출 */
+/**
+ * 가장 가까운 지하철역의 역명 추출
+ * @param {KakaoDoc | undefined} doc
+ * @returns {string | null}
+ */
 export function extractSubwayName(doc) {
   if (!doc) return null;
   const name = doc.place_name || "";
@@ -118,7 +160,12 @@ export function extractSubwayName(doc) {
   return match ? match[1] : name;
 }
 
-/** 지하철 결과에서 가장 가까운 역의 노선 추출 */
+/**
+ * 지하철 결과에서 가장 가까운 역의 노선 추출
+ * @param {KakaoDoc[]} subways
+ * @param {string | null} stationName
+ * @returns {string | null}
+ */
 export function extractSubwayLines(subways, stationName) {
   if (!stationName || subways.length === 0) return null;
   const baseName = stationName.replace(/역$/, "");
@@ -165,7 +212,14 @@ async function main() {
     const apt = targets[i];
     try {
       // busStops 초기값 null = "TAGO 호출 미수행/실패" 로 취급
-      let subways = [], busStops = null, validICs = [], validKTX = [];
+      /** @type {KakaoDoc[]} */
+      let subways = [];
+      /** @type {TagoBusStop[] | null} */
+      let busStops = null;
+      /** @type {KakaoDoc[]} */
+      let validICs = [];
+      /** @type {KakaoDoc[]} */
+      let validKTX = [];
 
       // 지하철역 (Kakao SW8 카테고리)
       try {
@@ -216,7 +270,7 @@ async function main() {
       if (tErr) { logError(PHASE, `${apt.name}: ${tErr.message}`); rpt.fail(); }
       else rpt.success();
     } catch (err) {
-      logError(PHASE, `${apt.name}: ${err.message}`);
+      logError(PHASE, `${apt.name}: ${err instanceof Error ? err.message : String(err)}`);
       rpt.fail();
     }
 
@@ -231,5 +285,5 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const isCLI = !!process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch(err => { logError(PHASE, err instanceof Error ? err.message : String(err)); process.exit(1); });
