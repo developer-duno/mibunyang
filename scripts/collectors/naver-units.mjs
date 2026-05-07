@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 네이버 부동산 → 총세대수(units) 보정 수집기
  *
@@ -17,6 +18,8 @@ import { loadEnv, getSupabase, log, logError, stringSimilarity, sleep } from "./
 import { execFileSync } from "child_process";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
+
+/** @typedef {import("@supabase/supabase-js").SupabaseClient} SupabaseClient */
 
 loadEnv();
 
@@ -40,6 +43,7 @@ const MAX_RETRIES = 3;
 const RETRY_DELAYS = [8000, 15000, 30000]; // 보수적 백오프 (기존 [5,10,20]초)
 
 // ── 세션 상태 ────────────────────────────────────────────────
+/** @type {string | null} */
 let jwtToken = null;
 let jwtTokenTime = 0;
 let lastRequestTime = 0;
@@ -96,7 +100,7 @@ async function ensureJwt() {
       }
       log(PHASE, `JWT 패턴 미매칭 (complex=${fallbackIds[i]}, status=${res.status})`);
     } catch (err) {
-      log(PHASE, `JWT 추출 실패 (시도 ${i + 1}/3): ${err.message}`);
+      log(PHASE, `JWT 추출 실패 (시도 ${i + 1}/3): ${err instanceof Error ? err.message : String(err)}`);
     }
     if (i < fallbackIds.length - 1) await sleep(RETRY_DELAYS[i]);
   }
@@ -107,6 +111,11 @@ async function ensureJwt() {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROXY_SCRIPT = resolve(__dirname, "naver-fetch-proxy.py");
 
+/**
+ * @param {string} fullUrl
+ * @param {boolean} needAuth
+ * @returns {any}
+ */
 function tryPythonFetch(fullUrl, needAuth) {
   // Windows: python3은 Store 리다이렉터 → python 사용
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
@@ -121,13 +130,21 @@ function tryPythonFetch(fullUrl, needAuth) {
       return data;
     }
   } catch (err) {
-    if (err.code === "ENOENT") log(PHASE, "  Python 미설치 — 스킵");
-    else log(PHASE, `  Python 프록시 실패: ${err.message?.slice(0, 60)}`);
+    /** @type {NodeJS.ErrnoException} */
+    const e = /** @type {any} */ (err);
+    if (e.code === "ENOENT") log(PHASE, "  Python 미설치 — 스킵");
+    else log(PHASE, `  Python 프록시 실패: ${(e.message ?? String(err)).slice(0, 60)}`);
   }
   return null;
 }
 
 // ── 네이버 API GET 요청 ─────────────────────────────────────
+/**
+ * @param {string} url
+ * @param {Record<string, string>} [params]
+ * @param {boolean} [needAuth]
+ * @returns {Promise<any>}
+ */
 async function apiGet(url, params = {}, needAuth = true) {
   const qs = new URLSearchParams(params);
   const fullUrl = Object.keys(params).length ? `${url}?${qs}` : url;
@@ -135,7 +152,7 @@ async function apiGet(url, params = {}, needAuth = true) {
   // 1차: Node.js fetch (적응형 Rate Limit)
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     await throttle();
-    const headers = { ...HEADERS };
+    const headers = /** @type {Record<string, string>} */ ({ ...HEADERS });
     if (needAuth) {
       const token = await ensureJwt();
       if (token) headers.Authorization = `Bearer ${token}`;
@@ -168,7 +185,7 @@ async function apiGet(url, params = {}, needAuth = true) {
       }
       log(PHASE, `  HTTP ${res.status}: ${fullUrl.slice(0, 80)}`);
     } catch (err) {
-      log(PHASE, `  요청 실패 (시도 ${attempt + 1}): ${err.message}`);
+      log(PHASE, `  요청 실패 (시도 ${attempt + 1}): ${err instanceof Error ? err.message : String(err)}`);
       if (attempt < MAX_RETRIES - 1) {
         await sleep(RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)]);
       }
@@ -186,10 +203,19 @@ async function apiGet(url, params = {}, needAuth = true) {
 }
 
 // ── 단지 검색 ────────────────────────────────────────────────
+/**
+ * @param {string | null | undefined} name
+ * @returns {string}
+ */
 export function cleanName(name) {
   return (name || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * @param {string} name
+ * @param {string | null | undefined} region
+ * @returns {Promise<{ complexNo: string, complexName: string, score: number } | null>}
+ */
 async function searchComplex(name, region) {
   const keyword = cleanName(name);
   const data = await apiGet(NAVER_SEARCH_API, { keyword }, false);
@@ -225,12 +251,20 @@ async function searchComplex(name, region) {
 }
 
 // ── 단지 상세 → totalHouseholdCount ──────────────────────────
+/**
+ * @param {string | number} complexNo
+ * @returns {Promise<any>}
+ */
 async function getComplexDetail(complexNo) {
   const url = `${NAVER_COMPLEX_API}/${complexNo}`;
   return apiGet(url);
 }
 
 // ── Supabase 보정 대상 조회 ──────────────────────────────────
+/**
+ * @param {SupabaseClient} sb
+ * @returns {Promise<Array<any>>}
+ */
 async function getTargets(sb) {
   // molit 보정 이후 남은 대상: units <= 1 AND unit_source IS NULL (molit 미커버)
   const { data, error } = await sb
@@ -244,6 +278,13 @@ async function getTargets(sb) {
 }
 
 // ── Supabase UPDATE ──────────────────────────────────────────
+/**
+ * @param {SupabaseClient} sb
+ * @param {string} aptId
+ * @param {number} newUnits
+ * @param {number | null | undefined} unsold
+ * @returns {Promise<boolean>}
+ */
 async function updateUnits(sb, aptId, newUnits, unsold) {
   const unsoldRate = newUnits > 0 && unsold != null
     ? Math.round((unsold / newUnits) * 1000) / 10
@@ -355,5 +396,10 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+if (isCLI) main().catch(err => {
+  const msg = err instanceof Error ? err.message : String(err);
+  logError(PHASE, msg);
+  process.exit(1);
+});

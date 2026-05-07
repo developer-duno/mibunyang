@@ -47,6 +47,8 @@
     "scripts/collectors/data-fill.mjs",
     "scripts/collectors/population.mjs",
     "scripts/collectors/population.test.mjs",
+    "scripts/collectors/naver-units.mjs",
+    "scripts/collectors/naver-units.test.mjs",
     "scripts/collectors/migration.test.mjs",
     "scripts/collectors/noise-estimate.test.mjs",
     "scripts/collectors/noxious.test.mjs",
