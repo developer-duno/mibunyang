@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { SORT_OPTIONS, VALID_SORT_KEYS, EXPERT_SORT_OPTIONS } from "./sortOptions";
 

@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from 'vitest';
 import { SUB_CONTEXT, PRODUCT_MAX } from './subContext';
 import {
@@ -18,26 +19,28 @@ describe('SUB_CONTEXT', () => {
   Object.entries(SUB_CONTEXT).forEach(([cat, subs]) => {
     Object.entries(subs).forEach(([name, ctx]) => {
       if (ctx.interpret === null) return; // benefit은 null
+      const fn = /** @type {(v: number | null) => string} */ (ctx.interpret);
+      const benchmark = /** @type {string} */ (ctx.benchmark);
 
       it(`${cat}.${name}: interpret(null) 에러 없이 동작`, () => {
-        expect(() => ctx.interpret(null)).not.toThrow();
+        expect(() => fn(null)).not.toThrow();
       });
 
       it(`${cat}.${name}: interpret(0) 에러 없이 동작`, () => {
-        expect(() => ctx.interpret(0)).not.toThrow();
+        expect(() => fn(0)).not.toThrow();
       });
 
       it(`${cat}.${name}: interpret(100) 문자열 반환`, () => {
-        expect(typeof ctx.interpret(100)).toBe('string');
+        expect(typeof fn(100)).toBe('string');
       });
 
       it(`${cat}.${name}: interpret(50) 문자열 반환`, () => {
-        expect(typeof ctx.interpret(50)).toBe('string');
+        expect(typeof fn(50)).toBe('string');
       });
 
       it(`${cat}.${name}: benchmark 문자열 존재`, () => {
-        expect(typeof ctx.benchmark).toBe('string');
-        expect(ctx.benchmark.length).toBeGreaterThan(0);
+        expect(typeof benchmark).toBe('string');
+        expect(benchmark.length).toBeGreaterThan(0);
       });
     });
   });
@@ -60,7 +63,7 @@ describe('SUB_CONTEXT', () => {
 
   // interpret 3단계 검증 (높음/보통/낮음)
   it('price.적정가 괴리도: 70→높음, 40→보통, 30→낮음', () => {
-    const fn = SUB_CONTEXT.price["적정가 괴리도"].interpret;
+    const fn = /** @type {(v: number) => string} */ (SUB_CONTEXT.price["적정가 괴리도"].interpret);
     expect(fn(70)).toContain("저렴");
     expect(fn(40)).toContain("적정");
     expect(fn(30)).toContain("비쌈");
@@ -100,8 +103,9 @@ describe('engine↔subContext 키 정합성', () => {
 
   Object.entries(scoreFns).forEach(([cat, fn]) => {
     it(`${cat}: engine subs 이름이 모두 SUB_CONTEXT에 존재`, () => {
-      const result = fn(makeTestApt());
-      const ctxKeys = new Set(Object.keys(SUB_CONTEXT[cat] || {}));
+      const result = fn(/** @type {any} */ (makeTestApt()));
+      const SC = /** @type {Record<string, Record<string, unknown>>} */ (/** @type {unknown} */ (SUB_CONTEXT));
+      const ctxKeys = new Set(Object.keys(SC[cat] || {}));
       for (const sub of result.subs) {
         expect(ctxKeys.has(sub.name)).toBe(true);
       }

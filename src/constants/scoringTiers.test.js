@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * scoringTiers 상수 테스트
  *
