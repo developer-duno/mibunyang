@@ -1,3 +1,5 @@
+// @ts-check
+/** @type {Record<string, string>} */
 const BUILDER_CORP_CODES = {
   "GS건설": "00120030",
   "현대건설": "00164478",
@@ -17,6 +19,7 @@ const BUILDER_CORP_CODES = {
   "쌍용건설": "00138206",
 };
 
+/** @param {number} debtRatio */
 function estimateCreditGrade(debtRatio) {
   if (debtRatio <= 100) return "A";
   if (debtRatio <= 150) return "A-";
@@ -26,11 +29,16 @@ function estimateCreditGrade(debtRatio) {
   return "CCC";
 }
 
+/** @param {any} str */
 function parseAmount(str) {
   if (!str) return 0;
   return parseFloat(str.replace(/,/g, "")) || 0;
 }
 
+/**
+ * @param {any} builders
+ * @returns {{ error: string } | { builders: string[] }}
+ */
 function validateBuilders(builders) {
   if (!Array.isArray(builders) || builders.length === 0) {
     return { error: "builders array required" };
@@ -39,6 +47,7 @@ function validateBuilders(builders) {
     return { error: "max 100 builders allowed" };
   }
 
+  /** @type {string[]} */
   const normalized = [];
   for (const builder of builders) {
     if (typeof builder !== "string") {
@@ -53,6 +62,10 @@ function validateBuilders(builders) {
   return { builders: normalized };
 }
 
+/**
+ * @param {string} dartKey
+ * @param {string} corpCode
+ */
 async function fetchFinancials(dartKey, corpCode) {
   // 보고서 코드 순서: 사업보고서 → 반기 → 1분기 → 3분기
   const reprtCodes = ["11011", "11012", "11013", "11014"];
@@ -68,13 +81,13 @@ async function fetchFinancials(dartKey, corpCode) {
         if (json.status !== "000" || !json.list) continue;
 
         // 연결재무제표(CFS) 우선, 없으면 별도(OFS)
-        let items = json.list.filter(x => x.fs_div === "CFS" && x.sj_div === "BS");
+        let items = json.list.filter((/** @type {any} */ x) => x.fs_div === "CFS" && x.sj_div === "BS");
         if (items.length === 0) {
-          items = json.list.filter(x => x.fs_div === "OFS" && x.sj_div === "BS");
+          items = json.list.filter((/** @type {any} */ x) => x.fs_div === "OFS" && x.sj_div === "BS");
         }
 
-        const debt = items.find(x => x.account_nm === "부채총계");
-        const equity = items.find(x => x.account_nm === "자본총계");
+        const debt = items.find((/** @type {any} */ x) => x.account_nm === "부채총계");
+        const equity = items.find((/** @type {any} */ x) => x.account_nm === "자본총계");
 
         if (debt && equity) {
           const debtAmt = parseAmount(debt.thstrm_amount);
@@ -101,14 +114,16 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     return;
   }
 
-  const validation = validateBuilders(req.body?.builders);
-  if (validation.error) {
+  const body = /** @type {any} */ (req.body);
+  const validation = validateBuilders(body?.builders);
+  if ("error" in validation) {
     res.status(400).json({ ok: false, error: validation.error });
     return;
   }
   const builders = validation.builders;
 
   try {
+    /** @type {Record<string, { debtRatio: number, creditGrade: string }>} */
     const data = {};
     // 배치 처리: 5개씩 (DART API 분당 제한 방지)
     for (let i = 0; i < builders.length; i += 5) {
@@ -135,7 +150,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600");
     res.json({ ok: true, data });
   } catch (err) {
-    console.error("DART API error:", err.message);
+    console.error("DART API error:", err instanceof Error ? err.message : String(err));
     res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
 }});

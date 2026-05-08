@@ -1,6 +1,8 @@
+// @ts-check
 import { resolveBuilder } from "../../src/constants/brands.js";
 import { withHandler } from "../_lib/handler.js";
 
+/** @type {Record<string, string>} */
 const REGION_MAP = {
   "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
   "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
@@ -12,6 +14,7 @@ const REGION_MAP = {
   "제주특별자치도": "제주", "제주도": "제주",
 };
 
+/** @param {any} addr */
 function parseAddress(addr) {
   if (!addr) return { region: null, gu: null, dong: null };
   const parts = addr.trim().split(/\s+/);
@@ -22,12 +25,19 @@ function parseAddress(addr) {
   return { region, gu, dong };
 }
 
+/**
+ * @param {any} apiKey
+ * @param {Set<string>} manageNoSet
+ * @param {any} isRemndr
+ */
 async function fetchUnitDetails(apiKey, manageNoSet, isRemndr) {
   const endpoint = isRemndr
     ? APPLYHOME_MDL_ENDPOINTS[0]
     : APPLYHOME_MDL_ENDPOINTS[1];
+  /** @type {Record<string, { area: number | null, price: number | null, totalUnits: number }>} */
   const details = {};
   // 벌크 조회: 전체 주택형별 데이터를 페이지 단위로 가져와서 매칭
+  /** @type {any[]} */
   const allUnits = [];
   for (let page = 1; page <= 5; page++) {
     try {
@@ -43,6 +53,7 @@ async function fetchUnitDetails(apiKey, manageNoSet, isRemndr) {
     }
   }
   // manageNo별 그룹핑
+  /** @type {Record<string, any[]>} */
   const grouped = {};
   for (const unit of allUnits) {
     const no = unit.HOUSE_MANAGE_NO;
@@ -52,7 +63,7 @@ async function fetchUnitDetails(apiKey, manageNoSet, isRemndr) {
   }
   // 대표 타입 선정 및 면적/분양가 추출
   for (const [no, units] of Object.entries(grouped)) {
-    const mainType = units.reduce((a, b) =>
+    const mainType = units.reduce((/** @type {any} */ a, /** @type {any} */ b) =>
       (parseInt(b.SUPLY_HSHLDCO || 0, 10) + parseInt(b.SPSPLY_HSHLDCO || 0, 10)) >
       (parseInt(a.SUPLY_HSHLDCO || 0, 10) + parseInt(a.SPSPLY_HSHLDCO || 0, 10))
         ? b
@@ -65,13 +76,17 @@ async function fetchUnitDetails(apiKey, manageNoSet, isRemndr) {
     // 분양가: LTTOT_TOP_AMOUNT (만원 단위)
     const price = parseInt(mainType.LTTOT_TOP_AMOUNT || 0, 10) || null;
     // 총세대수: 모든 주택형의 (일반공급 + 특별공급) 합계
-    const totalUnits = units.reduce((sum, u) =>
+    const totalUnits = units.reduce((/** @type {number} */ sum, /** @type {any} */ u) =>
       sum + (parseInt(u.SUPLY_HSHLDCO || 0, 10) + parseInt(u.SPSPLY_HSHLDCO || 0, 10)), 0);
     details[no] = { area, price, totalUnits };
   }
   return details;
 }
 
+/**
+ * @param {any} kakaoKey
+ * @param {any} address
+ */
 async function geocodeAddress(kakaoKey, address) {
   try {
     const url = `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(address)}&size=1`;
@@ -102,6 +117,7 @@ const APPLYHOME_MDL_ENDPOINTS = [
   `${APPLYHOME_BASE}/getAPTLttotPblancMdl`,
 ];
 
+/** @param {any} apiKey */
 async function tryFetchApartments(apiKey) {
   for (const endpoint of APPLYHOME_ENDPOINTS) {
     try {
@@ -118,7 +134,7 @@ async function tryFetchApartments(apiKey) {
         return { items: json.data, endpoint };
       }
     } catch (e) {
-      console.error("[apartments] fetch error:", e.message);
+      console.error("[apartments] fetch error:", e instanceof Error ? e.message : String(e));
       continue;
     }
   }
@@ -126,6 +142,7 @@ async function tryFetchApartments(apiKey) {
 }
 
 // 청약지역코드 → 지역명 매핑 (SUBSCRPT_AREA_CODE_NM 파싱 실패 시 fallback)
+/** @type {Record<string, string>} */
 const AREA_CODE_REGION = {
   "100": "서울", "200": "부산", "210": "대구", "300": "대전",
   "400": "인천", "410": "경기", "500": "광주", "600": "울산",
@@ -134,6 +151,11 @@ const AREA_CODE_REGION = {
   "820": "전북", "830": "전남", "840": "경북", "850": "경남", "900": "제주",
 };
 
+/**
+ * @param {any} item
+ * @param {any} idx
+ * @param {any} isRemndr
+ */
 function mapItem(item, idx, isRemndr) {
   const name = item.HOUSE_NM || `아파트-${idx}`;
   const addr = item.HSSPLY_ADRES || "";
@@ -204,19 +226,20 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     }
 
     const isRemndr = result.endpoint.includes("getRemndr");
-    let apartments = result.items.map((item, i) => mapItem(item, i, isRemndr));
-    apartments = apartments.filter(a => a.region && a.name);
+    let apartments = result.items.map((/** @type {any} */ item, /** @type {any} */ i) => mapItem(item, i, isRemndr));
+    apartments = apartments.filter((/** @type {any} */ a) => a.region && a.name);
 
     // 주택형별 상세 API로 면적/분양가 보강 (실패 시 기본값 유지)
     try {
-      const manageNoSet = new Set(apartments.map(a => a.id.replace("ah-", "")));
+      /** @type {Set<string>} */
+      const manageNoSet = new Set(apartments.map((/** @type {any} */ a) => a.id.replace("ah-", "")));
       const unitDetails = await fetchUnitDetails(apiKey, manageNoSet, isRemndr);
-      apartments = apartments.map(a => {
+      apartments = apartments.map((/** @type {any} */ a) => {
         const detail = unitDetails[a.id.replace("ah-", "")];
         if (!detail) return a;
         const area = detail.area ?? a.area;
         const price = detail.price ?? a.price;
-        const units = detail.totalUnits > 0 ? detail.totalUnits : a.units;
+        const units = (detail.totalUnits ?? 0) > 0 ? detail.totalUnits : a.units;
         const unsoldRate = units > 0 ? Math.round(a.unsold / units * 1000) / 10 : a.unsoldRate;
         return {
           ...a,
@@ -228,20 +251,21 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
         };
       });
     } catch (e) {
-      console.error("fetchUnitDetails error (ignored):", e.message);
+      console.error("fetchUnitDetails error (ignored):", e instanceof Error ? e.message : String(e));
     }
 
     if (kakaoKey) {
       // 배치 지오코딩 (한 번에 10개씩, Kakao 초당 제한 방지)
+      /** @type {PromiseSettledResult<{ lat: number | null, lng: number | null }>[]} */
       const geocodeResults = [];
       for (let i = 0; i < apartments.length; i += 10) {
         const batch = apartments.slice(i, i + 10);
         const batchResults = await Promise.allSettled(
-          batch.map(a => a._sourceAddr ? geocodeAddress(kakaoKey, a._sourceAddr) : Promise.resolve({ lat: null, lng: null }))
+          batch.map((/** @type {any} */ a) => a._sourceAddr ? geocodeAddress(kakaoKey, a._sourceAddr) : Promise.resolve({ lat: null, lng: null }))
         );
         geocodeResults.push(...batchResults);
       }
-      apartments = apartments.map((a, i) => {
+      apartments = apartments.map((/** @type {any} */ a, /** @type {number} */ i) => {
         const geo = geocodeResults[i];
         if (geo.status === "fulfilled") {
           return { ...a, lat: geo.value.lat, lng: geo.value.lng, _sourceAddr: undefined };
@@ -250,7 +274,7 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
         return rest;
       });
     } else {
-      apartments = apartments.map(({ _sourceAddr, ...rest }) => rest);
+      apartments = apartments.map((/** @type {any} */ { _sourceAddr, ...rest }) => rest);
     }
 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600");
@@ -262,7 +286,7 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {
-    console.error("ApplyHome API error:", err.message);
+    console.error("ApplyHome API error:", err instanceof Error ? err.message : String(err));
     res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
 }});

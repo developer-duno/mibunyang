@@ -1,3 +1,4 @@
+// @ts-check
 import { withHandler } from "../_lib/handler.js";
 import { validateApartmentPayload } from "../_lib/proxyValidation.js";
 
@@ -6,6 +7,10 @@ const RADIUS = 1000;
 const UPSTREAM_TIMEOUT_MS = 3000;
 const APARTMENT_CONCURRENCY = 4;
 
+/**
+ * @param {string} url
+ * @param {RequestInit} [options]
+ */
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
@@ -16,7 +21,13 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+/**
+ * @param {any[]} items
+ * @param {number} limit
+ * @param {(item: any, index: number) => Promise<any>} mapper
+ */
 async function mapWithConcurrency(items, limit, mapper) {
+  /** @type {any[]} */
   const results = [];
   let index = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -29,6 +40,12 @@ async function mapWithConcurrency(items, limit, mapper) {
   return results;
 }
 
+/**
+ * @param {string} apiKey
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} code
+ */
 async function searchCategory(apiKey, lat, lng, code) {
   const url = `${KAKAO_BASE}/search/category.json?category_group_code=${code}&x=${lng}&y=${lat}&radius=${RADIUS}&size=1`;
   const res = await fetchWithTimeout(url, {
@@ -39,6 +56,11 @@ async function searchCategory(apiKey, lat, lng, code) {
   return data.meta?.total_count ?? 0;
 }
 
+/**
+ * @param {string} apiKey
+ * @param {number} lat
+ * @param {number} lng
+ */
 async function searchPark(apiKey, lat, lng) {
   const url = `${KAKAO_BASE}/search/keyword.json?query=${encodeURIComponent("공원")}&x=${lng}&y=${lat}&radius=${RADIUS}&size=1`;
   const res = await fetchWithTimeout(url, {
@@ -49,6 +71,11 @@ async function searchPark(apiKey, lat, lng) {
   return data.meta?.total_count ?? 0;
 }
 
+/**
+ * @param {string} apiKey
+ * @param {number} lat
+ * @param {number} lng
+ */
 async function searchSubway(apiKey, lat, lng) {
   const url = `${KAKAO_BASE}/search/category.json?category_group_code=SW8&x=${lng}&y=${lat}&radius=5000&sort=distance&size=1`;
   const res = await fetchWithTimeout(url, {
@@ -60,6 +87,10 @@ async function searchSubway(apiKey, lat, lng) {
   return Math.round(parseFloat(data.documents[0].distance));
 }
 
+/**
+ * @param {string} apiKey
+ * @param {any} apt
+ */
 async function fetchAllForApartment(apiKey, apt) {
   const keys = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park", "subwayDist"];
   const defaults = [0, 0, 0, 0, 0, 0, 0, 0, 9999];
@@ -74,6 +105,7 @@ async function fetchAllForApartment(apiKey, apt) {
     searchPark(apiKey, apt.lat, apt.lng),
     searchSubway(apiKey, apt.lat, apt.lng),
   ]);
+  /** @type {Record<string, number>} */
   const out = {};
   results.forEach((r, i) => { out[keys[i]] = r.status === "fulfilled" ? r.value : defaults[i]; });
   return out;
@@ -86,18 +118,19 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     return;
   }
 
-  const validation = validateApartmentPayload(req.body, { max: 50, requireCoordinates: true });
+  const validation = validateApartmentPayload(/** @type {any} */ (req.body), { max: 50, requireCoordinates: true });
   if (!validation.ok) {
     res.status(validation.status).json({ ok: false, error: validation.error });
     return;
   }
 
   try {
+    /** @type {Record<string, Record<string, number>>} */
     const results = {};
     await mapWithConcurrency(
       validation.apartments,
       APARTMENT_CONCURRENCY,
-      async (apt) => {
+      async (/** @type {any} */ apt) => {
         results[apt.id] = await fetchAllForApartment(apiKey, apt);
       }
     );
@@ -105,7 +138,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600");
     res.json({ ok: true, data: results, fetchedAt: new Date().toISOString() });
   } catch (err) {
-    console.error("Kakao API error:", err.message);
+    console.error("Kakao API error:", err instanceof Error ? err.message : String(err));
     res.status(502).json({ ok: false, error: "External API error" });
   }
 }});

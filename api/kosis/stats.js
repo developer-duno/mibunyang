@@ -1,6 +1,8 @@
+// @ts-check
 const KOSIS_BASE = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
 
 // C2_NM full names → short region names used in UNSOLD
+/** @type {Record<string, string>} */
 const REGION_NAME_MAP = {
   "서울특별시": "서울",
   "부산광역시": "부산",
@@ -21,6 +23,15 @@ const REGION_NAME_MAP = {
   "제주도": "제주",
 };
 
+/**
+ * @param {string} apiKey
+ * @param {string} orgId
+ * @param {string} tblId
+ * @param {string} prdSe
+ * @param {string} startPrdDe
+ * @param {string} endPrdDe
+ * @param {number} objLevels
+ */
 function buildKosisUrl(apiKey, orgId, tblId, prdSe, startPrdDe, endPrdDe, objLevels) {
   const params = new URLSearchParams({
     method: "getList",
@@ -41,6 +52,15 @@ function buildKosisUrl(apiKey, orgId, tblId, prdSe, startPrdDe, endPrdDe, objLev
   return `${KOSIS_BASE}?${params}`;
 }
 
+/**
+ * @param {string} apiKey
+ * @param {string} orgId
+ * @param {string} tblId
+ * @param {string} prdSe
+ * @param {string} startPrdDe
+ * @param {string} endPrdDe
+ * @param {number} objLevels
+ */
 async function fetchKosis(apiKey, orgId, tblId, prdSe, startPrdDe, endPrdDe, objLevels) {
   const url = buildKosisUrl(apiKey, orgId, tblId, prdSe, startPrdDe, endPrdDe, objLevels);
   const res = await fetch(url);
@@ -54,8 +74,11 @@ function getLatestYear() {
   return String(new Date().getFullYear() - 1);
 }
 
+/** @param {any[]} rows */
 function parseUnsoldData(rows) {
+  /** @type {Record<string, number>} */
   const result = {};
+  /** @type {Record<string, string>} */
   const latest = {};
 
   for (const row of rows) {
@@ -100,6 +123,7 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     const unsoldMap = parseUnsoldData(unsoldRows);
 
     const regions = Object.values(REGION_NAME_MAP);
+    /** @type {Record<string, { unsoldCount: number | null, popGrowthRate: null, avgIncome: null }>} */
     const data = {};
     for (const region of regions) {
       data[region] = {
@@ -112,7 +136,7 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600");
     res.json({ ok: true, data, fetchedAt: new Date().toISOString() });
   } catch (err) {
-    console.error("KOSIS API error:", err.message);
+    console.error("KOSIS API error:", err instanceof Error ? err.message : String(err));
     res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });
   }
 }});

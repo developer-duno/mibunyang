@@ -1,3 +1,4 @@
+// @ts-check
 import { withHandler } from "../_lib/handler.js";
 import { validateApartmentPayload } from "../_lib/proxyValidation.js";
 
@@ -6,6 +7,7 @@ const UPSTREAM_TIMEOUT_MS = 3000;
 const APARTMENT_CONCURRENCY = 6;
 const REGION_CONCURRENCY = 3;
 
+/** @type {Record<string, string>} */
 const EDU_OFFICE_CODE = {
   서울: "B10", 부산: "C10", 대구: "D10", 인천: "E10",
   광주: "F10", 대전: "G10", 울산: "H10", 세종: "I10",
@@ -13,6 +15,10 @@ const EDU_OFFICE_CODE = {
   전북: "P10", 전남: "Q10", 경북: "R10", 경남: "S10", 제주: "T10",
 };
 
+/**
+ * @param {string} url
+ * @param {RequestInit} [options]
+ */
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
@@ -23,7 +29,13 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+/**
+ * @param {any[]} items
+ * @param {number} limit
+ * @param {(item: any, index: number) => Promise<any>} mapper
+ */
 async function mapWithConcurrency(items, limit, mapper) {
+  /** @type {any[]} */
   const results = [];
   let index = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -36,6 +48,10 @@ async function mapWithConcurrency(items, limit, mapper) {
   return results;
 }
 
+/**
+ * @param {string} neisKey
+ * @param {string} regionCode
+ */
 async function fetchSchoolsByRegion(neisKey, regionCode) {
   const schools = [];
   let page = 1;
@@ -67,6 +83,13 @@ async function fetchSchoolsByRegion(neisKey, regionCode) {
   return schools;
 }
 
+/**
+ * @param {string} kakaoKey
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} keyword
+ * @param {number} radius
+ */
 async function searchNearbySchools(kakaoKey, lat, lng, keyword, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
   const res = await fetchWithTimeout(url, {
@@ -80,6 +103,11 @@ async function searchNearbySchools(kakaoKey, lat, lng, keyword, radius) {
   };
 }
 
+/**
+ * @param {{ count: number, nearest: number | null }} elem
+ * @param {{ count: number, nearest: number | null }} middle
+ * @param {{ count: number, nearest: number | null }} high
+ */
 function calcScoreFromKakao(elem, middle, high) {
   let score = 0;
 
@@ -98,10 +126,11 @@ function calcScoreFromKakao(elem, middle, high) {
   return Math.min(score, 100);
 }
 
+/** @param {any[]} guSchools */
 function calcScoreFromNEIS(guSchools) {
-  const elem = guSchools.filter(s => s.type === "초등학교").length;
-  const mid = guSchools.filter(s => s.type === "중학교").length;
-  const high = guSchools.filter(s => s.type === "고등학교").length;
+  const elem = guSchools.filter((/** @type {any} */ s) => s.type === "초등학교").length;
+  const mid = guSchools.filter((/** @type {any} */ s) => s.type === "중학교").length;
+  const high = guSchools.filter((/** @type {any} */ s) => s.type === "고등학교").length;
   const total = elem + mid + high;
 
   const score = Math.min(total * 3, 40) +
@@ -111,10 +140,12 @@ function calcScoreFromNEIS(guSchools) {
   return Math.min(score, 100);
 }
 
+/** @param {number} score */
 function gradeFromScore(score) {
   return score >= 85 ? "최우수" : score >= 70 ? "우수" : score >= 50 ? "보통" : "미흡";
 }
 
+/** @param {PromiseSettledResult<{ count: number, nearest: number | null }>} result */
 function settledValue(result) {
   return result.status === "fulfilled" ? result.value : { count: 0, nearest: null };
 }
@@ -127,7 +158,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     return;
   }
 
-  const validation = validateApartmentPayload(req.body, { max: 50 });
+  const validation = validateApartmentPayload(/** @type {any} */ (req.body), { max: 50 });
   if (!validation.ok) {
     res.status(validation.status).json({ ok: false, error: validation.error });
     return;
@@ -135,9 +166,10 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
   const apartments = validation.apartments;
 
   try {
-    const regions = [...new Set(apartments.map(a => a.region).filter(Boolean))];
+    const regions = [...new Set(apartments.map((/** @type {any} */ a) => a.region).filter(Boolean))];
+    /** @type {Record<string, any[]>} */
     const regionSchools = {};
-    await mapWithConcurrency(regions, REGION_CONCURRENCY, async (region) => {
+    await mapWithConcurrency(regions, REGION_CONCURRENCY, async (/** @type {any} */ region) => {
       const code = EDU_OFFICE_CODE[region];
       if (!code) return;
       try {
@@ -147,8 +179,9 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
       }
     });
 
+    /** @type {Record<string, { schoolScore: number, schoolGrade: string }>} */
     const results = {};
-    await mapWithConcurrency(apartments, APARTMENT_CONCURRENCY, async (apt) => {
+    await mapWithConcurrency(apartments, APARTMENT_CONCURRENCY, async (/** @type {any} */ apt) => {
       if (apt.lat != null && apt.lng != null && kakaoKey) {
         const [elem, middle, high] = await Promise.allSettled([
           searchNearbySchools(kakaoKey, apt.lat, apt.lng, "초등학교", 2000),
@@ -159,7 +192,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
         results[apt.id] = { schoolScore: score, schoolGrade: gradeFromScore(score) };
       } else {
         const schools = regionSchools[apt.region] || [];
-        const guSchools = apt.gu ? schools.filter(s => s.address.includes(apt.gu)) : schools;
+        const guSchools = apt.gu ? schools.filter((/** @type {any} */ s) => s.address.includes(apt.gu)) : schools;
         const score = calcScoreFromNEIS(guSchools);
         results[apt.id] = { schoolScore: score, schoolGrade: gradeFromScore(score) };
       }
@@ -168,7 +201,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600");
     res.json({ ok: true, data: results, fetchedAt: new Date().toISOString() });
   } catch (err) {
-    console.error("Education API error:", err.message);
+    console.error("Education API error:", err instanceof Error ? err.message : String(err));
     res.status(502).json({ ok: false, error: "External API error" });
   }
 }});
