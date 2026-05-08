@@ -1,3 +1,4 @@
+// @ts-check
 import { getSupabase, getMibuyangSupabase } from "./_lib/supabase.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 import { verifyToken } from "./_lib/auth.js";
@@ -13,10 +14,14 @@ export default withHandler({
   handler: { POST: handlePost, GET: handleGet },
 });
 
-// POST — 소비자 상담 신청 (인증 불필요, Rate Limit 적용)
+/**
+ * @param {any} req
+ * @param {any} res
+ */
 async function handlePost(req, res) {
-  const { limited, retryAfter } = await checkRateLimit(req, "consult");
-  if (limited) {
+  const rateLimitResult = await checkRateLimit(req, "consult");
+  if (rateLimitResult.limited) {
+    const retryAfter = rateLimitResult.retryAfter;
     res.setHeader("Retry-After", String(retryAfter));
     return res.status(429).json({ ok: false, error: `요청이 너무 많습니다. ${retryAfter}초 후 다시 시도해주세요.` });
   }
@@ -65,7 +70,10 @@ async function handlePost(req, res) {
   }
 }
 
-// GET — 전문가 상담 목록 조회 (JWT 인증 필수)
+/**
+ * @param {any} req
+ * @param {any} res
+ */
 async function handleGet(req, res) {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith("Bearer ")) {

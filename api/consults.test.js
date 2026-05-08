@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * consults.js 테스트 — 상담 신청 POST/GET, 검증, 인증, 레이트 리밋
  */
@@ -81,7 +82,7 @@ function makeConsultRow(overrides = {}) {
 describe("consults handler", () => {
   // CORS 위임 확인
   it("OPTIONS 시 handleCors가 처리하고 즉시 반환한다", async () => {
-    handleCors.mockReturnValueOnce(true);
+    /** @type {any} */ (handleCors).mockReturnValueOnce(true);
     const res = makeRes();
     await handler({ method: "OPTIONS", headers: {}, body: {} }, res);
     expect(handleCors).toHaveBeenCalled();
@@ -127,7 +128,7 @@ describe("consults handler", () => {
 
   // --- POST 레이트 리밋 ---
   it("POST: 레이트 리밋 초과 시 429를 반환한다", async () => {
-    checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
     await handler(makePostReq(), res);
     expect(res.status).toHaveBeenCalledWith(429);
@@ -164,21 +165,21 @@ describe("consults handler", () => {
   });
 
   it("GET: token without role returns 403", async () => {
-    verifyToken.mockReturnValueOnce({ email: "user@test.com" });
+    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "user@test.com" });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer no-role-token" }, query: {} }, res);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("GET: user role returns 403", async () => {
-    verifyToken.mockReturnValueOnce({ email: "user@test.com", role: "user" });
+    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "user@test.com", role: "user" });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer user-token" }, query: {} }, res);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("GET: 유효한 토큰으로 상담 목록을 반환한다", async () => {
-    verifyToken.mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
+    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
     // snake_case DB 응답 목
     mockLimit.mockResolvedValueOnce({
       data: [makeConsultRow()],
@@ -198,7 +199,7 @@ describe("consults handler", () => {
   });
 
   it("GET: admin role can read consult list", async () => {
-    verifyToken.mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer admin-token" }, query: {} }, res);
     expect(res.status).toHaveBeenCalledWith(200);
@@ -206,7 +207,7 @@ describe("consults handler", () => {
   });
 
   it("GET: Supabase 조회 실패 시 500을 반환한다", async () => {
-    verifyToken.mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
+    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
     mockLimit.mockResolvedValueOnce({ data: null, error: new Error("DB error"), count: 0 });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer valid-token" }, query: {} }, res);

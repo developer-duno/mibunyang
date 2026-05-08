@@ -1,3 +1,4 @@
+// @ts-check
 // /api/subscribers - 분양 시작 알림 신청 (POST) + 철회 (DELETE)
 // spec: docs/superpowers/specs/2026-05-02-upcoming-presale-page-design.md
 // RLS: anon-only INSERT, service_role-only SELECT/UPDATE
@@ -18,6 +19,10 @@ export default withHandler({
   handler: { POST: handlePost, DELETE: handleDelete },
 });
 
+/**
+ * @param {any} req
+ * @param {any} res
+ */
 async function handlePost(req, res) {
   const { phone, region, gu, apartment_id, consent } = req.body || {};
   const regionValue = normalizeOptionalString(region);
@@ -69,11 +74,15 @@ async function handlePost(req, res) {
 
     return res.status(200).json({ ok: true });
   } catch (e) {
-    console.error("[/api/subscribers POST] handler error:", e.message);
+    console.error("[/api/subscribers POST] handler error:", e instanceof Error ? e.message : e);
     return res.status(500).json({ ok: false, error: "서버 오류" });
   }
 }
 
+/**
+ * @param {any} req
+ * @param {any} res
+ */
 async function handleDelete(req, res) {
   const { phone, token } = req.body || {};
 
@@ -118,11 +127,12 @@ async function handleDelete(req, res) {
 
     return res.status(200).json({ ok: true });
   } catch (e) {
-    console.error("[/api/subscribers DELETE] handler error:", e.message);
+    console.error("[/api/subscribers DELETE] handler error:", e instanceof Error ? e.message : e);
     return res.status(500).json({ ok: false, error: "서버 오류" });
   }
 }
 
+/** @param {unknown} phone */
 export function normalizeToE164(phone) {
   if (!phone || typeof phone !== "string") return null;
   const digits = phone.replace(/\D/g, "");
@@ -130,6 +140,7 @@ export function normalizeToE164(phone) {
   return `+82${digits.slice(1)}`;
 }
 
+/** @param {unknown} value */
 function normalizeOptionalString(value) {
   if (value == null) return null;
   if (typeof value !== "string") return value;

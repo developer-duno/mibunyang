@@ -1,3 +1,4 @@
+// @ts-check
 // /api/upcoming — 분양 임박 단지 (분양계획 + 청약중 + 분양중) 목록 + 캘린더 매핑
 // spec: docs/superpowers/specs/2026-05-02-upcoming-presale-page-design.md § 3-1
 
@@ -19,6 +20,10 @@ export default withHandler({
   handler: handleGet,
 });
 
+/**
+ * @param {any} req
+ * @param {any} res
+ */
 async function handleGet(req, res) {
   try {
     const sb = getSupabase();
@@ -37,9 +42,9 @@ async function handleGet(req, res) {
       return res.status(500).json({ ok: false, error: "데이터 조회 실패" });
     }
 
-    const rows = data || [];
+    const rows = /** @type {any[]} */ (data || []);
 
-    // stages 분류 (3개 그룹)
+    /** @type {{ plan: any[], apply: any[], sale: any[] }} */
     const stages = { plan: [], apply: [], sale: [] };
     for (const apt of rows) {
       if (apt.presaleStage === "분양계획") stages.plan.push(apt);
@@ -47,7 +52,7 @@ async function handleGet(req, res) {
       else if (apt.presaleStage === "분양중") stages.sale.push(apt);
     }
 
-    // calendar 매핑 (spec § 3-1-A 정책)
+    /** @type {Record<string, Array<{ id: any, event: string }>>} */
     const calendar = {};
     for (const apt of rows) {
       const dates = extractDates(apt);
@@ -66,7 +71,7 @@ async function handleGet(req, res) {
       fetchedAt: new Date().toISOString(),
     });
   } catch (e) {
-    console.error("[/api/upcoming] handler error:", e.message);
+    console.error("[/api/upcoming] handler error:", e instanceof Error ? e.message : e);
     return res.status(500).json({ ok: false, error: "서버 오류" });
   }
 }
@@ -79,7 +84,9 @@ async function handleGet(req, res) {
  *
  * @returns {Array<{date: string, event: string}>} ISO 날짜(YYYY-MM-DD) + 이벤트 키
  */
+/** @param {any} apt */
 export function extractDates(apt) {
+  /** @type {Array<{date: string, event: string}>} */
   const dates = [];
   const isPlanStage = apt?.presaleStage === "분양계획";
 
@@ -107,6 +114,7 @@ export function extractDates(apt) {
   return dates;
 }
 
+/** @param {unknown} v */
 function parseRecruitDate(v) {
   if (!v || typeof v !== "string") return null;
   const d = new Date(v);
@@ -115,6 +123,10 @@ function parseRecruitDate(v) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * @param {unknown} name
+ * @param {boolean} [isPlanStage]
+ */
 export function inferEventFromName(name, isPlanStage = false) {
   if (!name || typeof name !== "string") {
     return isPlanStage ? "presale_announce" : "etc";
