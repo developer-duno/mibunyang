@@ -1,12 +1,18 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { applyBaseFilters } from "@/lib/filterEngine";
 
 /* ── 테스트 데이터 팩토리 ── */
+/**
+ * @param {Record<string, unknown>} [aptOverrides]
+ * @param {Record<string, unknown>} [resOverrides]
+ * @returns {import('@/types/hooks').ScoredApt}
+ */
 function makeItem(aptOverrides = {}, resOverrides = {}) {
-  return {
+  return /** @type {any} */ ({
     apt: { id: "t1", name: "테스트아파트", region: "서울", gu: "강남구", price: 50000, area: 84, units: 500, builder: "현대건설", ...aptOverrides },
     res: { total: 75, cats: { benefit: { totalWon: 0 } }, ...resOverrides },
-  };
+  });
 }
 
 const DEFAULT_FILTER = {

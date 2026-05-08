@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import {
   MOVEIN_STATUS, MOVEIN_VALUES, TIER_LABELS, TIER_VALUES,
@@ -33,7 +34,7 @@ describe("classify 상수 무결성", () => {
       { completion: null },
     ];
     for (const apt of cases) {
-      expect(validSet.has(classifyMoveIn(apt))).toBe(true);
+      expect(validSet.has(classifyMoveIn(/** @type {import('@/types/scoring').Apt} */ (apt)))).toBe(true);
     }
   });
 
@@ -47,7 +48,7 @@ describe("classify 상수 무결성", () => {
       { builder: null },
     ];
     for (const apt of cases) {
-      expect(validSet.has(classifyTier(apt))).toBe(true);
+      expect(validSet.has(classifyTier(/** @type {import('@/types/scoring').Apt} */ (apt)))).toBe(true);
     }
   });
 

@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from 'vitest';
 
 // @vercel/analytics 모킹
@@ -16,15 +17,15 @@ describe('trackEvent', () => {
   });
 
   it('에러: name이 falsy이면 track() 호출하지 않음', () => {
-    track.mockClear();
-    trackEvent(null, { foo: 'bar' });
+    /** @type {import('vitest').Mock} */ (track).mockClear();
+    trackEvent(/** @type {string} */ (/** @type {unknown} */ (null)), { foo: 'bar' });
     trackEvent('', {});
-    trackEvent(undefined);
+    trackEvent(/** @type {string} */ (/** @type {unknown} */ (undefined)));
     expect(track).not.toHaveBeenCalled();
   });
 
   it('에러: track()이 throw해도 앱이 크래시하지 않음', () => {
-    track.mockImplementationOnce(() => { throw new Error('network'); });
+    /** @type {import('vitest').Mock} */ (track).mockImplementationOnce(() => { throw new Error('network'); });
     expect(() => trackEvent('test_event', {})).not.toThrow();
   });
 });
