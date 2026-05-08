@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * trade-stats.mjs 테스트 — 거래 통계 순수 함수 검증
  *
@@ -7,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -21,7 +22,10 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const { median, monthsAgo, groupByArea, statsKey } = await import("./trade-stats.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
-/** 거래 데이터 팩토리 */
+/** 거래 데이터 팩토리
+ * @param {number} area
+ * @param {number} price
+ */
 function makeTrade(area, price) {
   return { area, price };
 }

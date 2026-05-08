@@ -73,7 +73,8 @@
                     "scripts/collectors/naver-listings.test.mjs",
                     "scripts/collectors/schools-neis.mjs",
                     "scripts/collectors/schools-neis.test.mjs",
-                    "scripts/collectors/trade-stats.mjs"
+                    "scripts/collectors/trade-stats.mjs",
+                    "scripts/collectors/trade-stats.test.mjs"
                 ],
     "exclude":  [
                     "node_modules",
