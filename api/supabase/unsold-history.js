@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * GET /api/supabase/unsold-history?apartment_id=xxx
  * GET /api/supabase/unsold-history?apartment_ids=id1,id2,id3

@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * GET /api/supabase/market-stats-history?region=서울&gu=강남구
  * GET /api/supabase/market-stats-history?region=서울&gu= (시도 단위, gu 빈 문자열)
@@ -18,8 +19,9 @@ export default withHandler({
   rateLimit: "proxy",
   handler: async (req, res) => {
     try {
-      const region = String(req.query.region || "").trim();
-      const gu = String(req.query.gu || "").trim();
+      const query = /** @type {Record<string, unknown>} */ (req.query ?? {});
+      const region = String(query.region || "").trim();
+      const gu = String(query.gu || "").trim();
       if (!region) {
         return res.status(400).json({ ok: false, error: "region 파라미터가 필요합니다" });
       }
