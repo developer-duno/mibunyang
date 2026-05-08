@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * regulation-seed.mjs 테스트 — 규제지역 순수 함수 검증
  *

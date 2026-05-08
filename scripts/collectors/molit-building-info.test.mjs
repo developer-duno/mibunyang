@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * molit-building-info.mjs 테스트 — 건물 상세 수집기 검증
  *

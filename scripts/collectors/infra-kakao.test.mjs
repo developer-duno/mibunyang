@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * infra-kakao.mjs 테스트 — 세마포어 동시성 제어 검증
  *

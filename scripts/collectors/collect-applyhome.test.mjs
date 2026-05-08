@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 
 // collect-applyhome.mjs의 aggregateByApartment 테스트

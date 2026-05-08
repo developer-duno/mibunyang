@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { searchPolice } from "./collect-police.mjs";
 

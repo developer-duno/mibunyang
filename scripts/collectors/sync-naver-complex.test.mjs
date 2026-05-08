@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * sync-naver-complex.mjs 테스트 — 네이버 단지 동기화 순수 함수 검증
  *

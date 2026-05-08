@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * collect-unsold-kosis.mjs 테스트 — KOSIS 미분양 순수 함수 검증
  *

@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * collect-avg-income.mjs 테스트 — KOSIS INH_1C96_04 파서 + 단위 변환 검증
  *

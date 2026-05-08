@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * housing-permits.mjs 테스트 — 주택 인허가 순수 함수 검증
  *

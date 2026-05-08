@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * collect-market-stats.mjs 테스트 — KOSIS 시장통계 순수 함수 검증
  *

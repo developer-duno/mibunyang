@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * naver-presale.mjs 테스트 — 분양정보 수집기 핵심 함수 검증
  *

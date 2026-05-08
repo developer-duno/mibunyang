@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * collect-maintenance.mjs 테스트 — 관리비 수집기 검증
  *

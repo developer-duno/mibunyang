@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * calc-exclusive-ratio.mjs 테스트 — calcRatio 전용률 계산 검증
  */

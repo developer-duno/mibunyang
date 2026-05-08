@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * industry-match.mjs 테스트 — 산업단지 매칭 순수 함수 검증
  *

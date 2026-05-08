@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * molit-units.mjs 테스트 — 세대수(units) 보정 수집기 검증
  *

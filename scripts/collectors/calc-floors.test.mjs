@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * calc-floors.mjs 테스트 — classifyFloors 층수 분류 검증
  */

@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * collect-trades.mjs 테스트 — 법정동코드 조회, XML 파싱 검증
  */

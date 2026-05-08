@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * _molit-api.mjs 테스트 — 국토부 공동주택 API 공유 모듈 검증
  *
