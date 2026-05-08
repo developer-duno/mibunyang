@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 학군 정보 수집기 — Kakao Places + NEIS 교육정보 기반
  *
@@ -26,9 +27,17 @@ const SCHOOLINFO_BASE = "https://www.schoolinfo.go.kr/openApi.do";
 
 /** 학교명 whitelist — 정상 학교는 반드시 "학교"로 끝남 (부속시설·비학교 POI 자동 제외) */
 const SCHOOL_SUFFIX_RE = /(?:초등학교|중학교|고등학교|학교)$/;
+/** @param {string} name */
 export const isSchoolPlace = (name) => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
 
 // ── Kakao Places API ────────────────────────────────────────────
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} keyword
+ * @param {number} radius
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
 async function searchKakao(lat, lng, keyword, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
   const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
@@ -41,12 +50,17 @@ async function searchKakao(lat, lng, keyword, radius) {
 const neisCache = new Map();
 let neisApiCalls = 0;
 
-/** 학교명 정규화 — 매칭용 (공백·괄호 제거) */
+/** 학교명 정규화 — 매칭용 (공백·괄호 제거)
+ * @param {string} name
+ * @returns {string}
+ */
 export function normalizeSchoolName(name) {
   return name.replace(/\s+/g, "").replace(/[()]/g, "");
 }
 
-/** NEIS 학교기본정보 조회 — schoolType, founded, highSchoolType 반환 */
+/** NEIS 학교기본정보 조회 — schoolType, founded, highSchoolType 반환
+ * @param {string} schoolName
+ */
 export async function fetchNeisSchoolInfo(schoolName) {
   if (!NEIS_KEY) return null;
 
@@ -67,7 +81,7 @@ export async function fetchNeisSchoolInfo(schoolName) {
     }
 
     // 정확히 매칭되는 학교 우선, 없으면 첫 번째 결과 사용
-    const exact = rows.find(r => normalizeSchoolName(r.SCHUL_NM) === cacheKey);
+    const exact = rows.find(/** @param {Record<string, any>} r */ (r) => normalizeSchoolName(r.SCHUL_NM) === cacheKey);
     const row = exact || rows[0];
 
     const info = {
@@ -82,7 +96,7 @@ export async function fetchNeisSchoolInfo(schoolName) {
     neisCache.set(cacheKey, info);
     return info;
   } catch (err) {
-    logError(PHASE, `NEIS 조회 실패 (${schoolName}): ${err.message}`);
+    logError(PHASE, `NEIS 조회 실패 (${schoolName}): ${err instanceof Error ? err.message : String(err)}`);
     neisCache.set(cacheKey, null);
     return null;
   }
@@ -97,7 +111,10 @@ export function getAcademicYear() {
 /** classInfo 전용 캐시 — "officeCode|neisCode" → 학급수 */
 const classCache = new Map();
 
-/** NEIS 학급정보 조회 — 학급수(행 수) 반환 */
+/** NEIS 학급정보 조회 — 학급수(행 수) 반환
+ * @param {string} officeCode
+ * @param {string} neisCode
+ */
 export async function fetchNeisClassInfo(officeCode, neisCode) {
   if (!NEIS_KEY || !officeCode || !neisCode) return null;
 
@@ -116,13 +133,16 @@ export async function fetchNeisClassInfo(officeCode, neisCode) {
     classCache.set(cacheKey, count);
     return count;
   } catch (err) {
-    logError(PHASE, `classInfo 실패 (${neisCode}): ${err.message}`);
+    logError(PHASE, `classInfo 실패 (${neisCode}): ${err instanceof Error ? err.message : String(err)}`);
     classCache.set(cacheKey, null);
     return null;
   }
 }
 
-/** nearby_schools 배열에 NEIS 정보 보강 */
+/** nearby_schools 배열에 NEIS 정보 보강
+ * @param {Array<Record<string, any>>} nearbySchools
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
 export async function enrichWithNeis(nearbySchools) {
   if (!NEIS_KEY || nearbySchools.length === 0) return nearbySchools;
 
@@ -163,7 +183,11 @@ let schoolInfoApiCalls = 0;
 /** 학교급 코드 → nearby_schools type 매핑 */
 const SCHULKND_TO_TYPE = { "02": "초", "03": "중", "04": "고" };
 
-/** 학교알리미 지역별 벌크 조회 — 한 학교급의 모든 학교 반환 */
+/** 학교알리미 지역별 벌크 조회 — 한 학교급의 모든 학교 반환
+ * @param {string} sidoCode
+ * @param {string} sggCode
+ * @param {string} schulKndCode
+ */
 export async function fetchStudentBulk(sidoCode, sggCode, schulKndCode) {
   if (!SCHOOLINFO_KEY) return null;
 
@@ -187,12 +211,15 @@ export async function fetchStudentBulk(sidoCode, sggCode, schulKndCode) {
     }
     return map;
   } catch (err) {
-    logError(PHASE, `학교알리미 조회 실패 (${sidoCode}/${sggCode}/${schulKndCode}): ${err.message}`);
+    logError(PHASE, `학교알리미 조회 실패 (${sidoCode}/${sggCode}/${schulKndCode}): ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
 
-/** 지역 캐시 보장 — 초/중/고 3개 학교급을 한번에 캐시 */
+/** 지역 캐시 보장 — 초/중/고 3개 학교급을 한번에 캐시
+ * @param {string} sidoCode
+ * @param {string} sggCode
+ */
 async function ensureStudentCache(sidoCode, sggCode) {
   const cacheKey = `${sidoCode}|${sggCode}`;
   if (studentCache.has(cacheKey)) return studentCache.get(cacheKey);
@@ -207,14 +234,19 @@ async function ensureStudentCache(sidoCode, sggCode) {
   return merged;
 }
 
-/** nearby_schools에 학생수(students) 필드 보강 */
+/** nearby_schools에 학생수(students) 필드 보강
+ * @param {Array<Record<string, any>>} nearbySchools
+ * @param {string | null} sidoCode
+ * @param {string | null} sggCode
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
 export async function enrichWithStudents(nearbySchools, sidoCode, sggCode) {
   if (!SCHOOLINFO_KEY || !sidoCode || !sggCode || nearbySchools.length === 0) return nearbySchools;
 
   const cache = await ensureStudentCache(sidoCode, sggCode);
   if (!cache || cache.size === 0) return nearbySchools;
 
-  return nearbySchools.map(school => {
+  return nearbySchools.map(/** @param {Record<string, any>} school */ (school) => {
     const key = normalizeSchoolName(school.name);
     // 1차: 정확 매칭
     let match = cache.get(key);
@@ -233,7 +265,10 @@ export async function enrichWithStudents(nearbySchools, sidoCode, sggCode) {
   });
 }
 
-/** 학급당 학생수 기반 밀도 보정 — ±5점 범위 */
+/** 학급당 학생수 기반 밀도 보정 — ±5점 범위
+ * @param {Array<Record<string, any>>} allSchools
+ * @returns {number}
+ */
 export function calcDensityBonus(allSchools) {
   let bonus = 0;
   let counted = 0;
@@ -249,7 +284,10 @@ export function calcDensityBonus(allSchools) {
 }
 
 // ── 학군 점수 계산 ──────────────────────────────────────────────
-/** 고교 계열 기반 품질 보정 (NEIS 데이터 있을 때만 작동) */
+/** 고교 계열 기반 품질 보정 (NEIS 데이터 있을 때만 작동)
+ * @param {Array<Record<string, any>>} highSchools
+ * @returns {number}
+ */
 export function calcQualityBonus(highSchools) {
   let bonus = 0;
   for (const s of highSchools) {
@@ -263,6 +301,13 @@ export function calcQualityBonus(highSchools) {
   return bonus;
 }
 
+/**
+ * @param {Array<Record<string, any>>} elem
+ * @param {Array<Record<string, any>>} middle
+ * @param {Array<Record<string, any>>} high
+ * @param {Array<Record<string, any>>} [allSchools]
+ * @returns {number}
+ */
 export function calcScore(elem, middle, high, allSchools) {
   let score = 50;
   // 거리 기반 점수 (기존 로직 유지)
@@ -289,6 +334,7 @@ export function calcScore(elem, middle, high, allSchools) {
   return Math.min(Math.max(score, 0), 100);
 }
 
+/** @param {number} score */
 export function gradeFromScore(score) {
   if (score >= 80) return "A";
   if (score >= 60) return "B";
@@ -328,10 +374,11 @@ async function main() {
       await sleep(100);
 
       // 2단계: nearby_schools 생성 + NEIS 보강
+      /** @type {Array<Record<string, any>>} */
       let nearbySchools = [
-        ...elem.filter(s => isSchoolPlace(s.place_name)).map(s => ({ name: s.place_name, type: "초", distance: Math.round(Number(s.distance)) })),
-        ...middle.filter(s => isSchoolPlace(s.place_name)).map(s => ({ name: s.place_name, type: "중", distance: Math.round(Number(s.distance)) })),
-        ...high.filter(s => isSchoolPlace(s.place_name)).map(s => ({ name: s.place_name, type: "고", distance: Math.round(Number(s.distance)) })),
+        ...elem.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "초", distance: Math.round(Number(s.distance)) })),
+        ...middle.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "중", distance: Math.round(Number(s.distance)) })),
+        ...high.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "고", distance: Math.round(Number(s.distance)) })),
       ].sort((a, b) => a.distance - b.distance);
 
       nearbySchools = await enrichWithNeis(nearbySchools);
@@ -371,7 +418,7 @@ async function main() {
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); skipped++; }
       else updated++;
     } catch (err) {
-      logError(PHASE, `${apt.name}: ${err.message}`);
+      logError(PHASE, `${apt.name}: ${err instanceof Error ? err.message : String(err)}`);
       skipped++;
     }
 
@@ -386,5 +433,6 @@ async function main() {
   if (!dryRun && SCHOOLINFO_KEY) await recordApiQuota(PHASE, "SCHOOLINFO_KEY", schoolInfoApiCalls);
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch(err => { logError(PHASE, err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch(err => { logError(PHASE, err instanceof Error ? err.message : String(err)); process.exit(1); });
