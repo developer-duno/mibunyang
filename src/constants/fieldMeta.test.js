@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from 'vitest';
 import { FIELD_META, FIELD_SECTIONS } from './fieldMeta';
 

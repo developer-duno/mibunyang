@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { FILTER_PRESETS } from "./filterPresets";
 import { VALID_SORT_KEYS } from "./sortOptions";
