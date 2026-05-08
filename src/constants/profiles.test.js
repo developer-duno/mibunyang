@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from 'vitest';
 import { PROFILES } from './profiles';
 
@@ -46,9 +47,10 @@ describe('PROFILES 상수', () => {
 
   it('서로 다른 프로필은 서로 다른 가중치를 가진다', () => {
     const keys = Object.keys(PROFILES);
+    const P = /** @type {Record<string, { w: unknown }>} */ (PROFILES);
     for (let i = 0; i < keys.length; i++) {
       for (let j = i + 1; j < keys.length; j++) {
-        expect(PROFILES[keys[i]].w).not.toEqual(PROFILES[keys[j]].w);
+        expect(P[keys[i]].w).not.toEqual(P[keys[j]].w);
       }
     }
   });

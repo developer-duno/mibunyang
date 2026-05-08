@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * regulations 상수 테스트
  *
@@ -79,10 +80,11 @@ describe('ZONE_TYPE', () => {
 describe('LTV_RATES', () => {
   // 모든 zone에 under9, over9 비율 존재
   it('모든 zone에 under9, over9 비율이 존재한다', () => {
+    const L = /** @type {Record<string, { under9: number; over9: number }>} */ (LTV_RATES);
     ['speculative', 'overheated', 'normal'].forEach(zone => {
-      expect(LTV_RATES[zone]).toHaveProperty('under9');
-      expect(LTV_RATES[zone]).toHaveProperty('over9');
-      expect(LTV_RATES[zone].under9).toBeGreaterThan(LTV_RATES[zone].over9);
+      expect(L[zone]).toHaveProperty('under9');
+      expect(L[zone]).toHaveProperty('over9');
+      expect(L[zone].under9).toBeGreaterThan(L[zone].over9);
     });
   });
 });

@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from 'vitest';
 import { CITY_TIER, REGIONS } from './regions';
 
@@ -11,9 +12,10 @@ describe('CITY_TIER', () => {
 
   Object.entries(CITY_TIER).forEach(([tier, info]) => {
     it(`${tier} 등급: 4개 교통 가중치 모두 0~1 범위`, () => {
+      const I = /** @type {Record<string, number>} */ (/** @type {unknown} */ (info));
       ['subwayW', 'busW', 'icW', 'ktxW'].forEach((k) => {
-        expect(info[k]).toBeGreaterThanOrEqual(0);
-        expect(info[k]).toBeLessThanOrEqual(1);
+        expect(I[k]).toBeGreaterThanOrEqual(0);
+        expect(I[k]).toBeLessThanOrEqual(1);
       });
     });
 
@@ -27,8 +29,9 @@ describe('CITY_TIER', () => {
   });
 
   it('D등급(군)은 subwayW가 가장 낮다', () => {
+    const CT = /** @type {Record<string, { subwayW: number }>} */ (CITY_TIER);
     TIERS.forEach((t) => {
-      expect(CITY_TIER.D.subwayW).toBeLessThanOrEqual(CITY_TIER[t].subwayW);
+      expect(CT.D.subwayW).toBeLessThanOrEqual(CT[t].subwayW);
     });
   });
 });
