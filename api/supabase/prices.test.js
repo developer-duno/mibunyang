@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * supabase/prices.js 테스트 — 분양가 시계열 API (ID 검증, 단일/복수 조회, 캐싱)
  */
@@ -30,7 +31,7 @@ const { default: handler } = await import('./prices.js');
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn() };
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
 }
 
 describe('supabase/prices handler', () => {

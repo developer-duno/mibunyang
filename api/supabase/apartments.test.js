@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * supabase/apartments.js 테스트 — sanitize 함수 null 기본값, 필터링, 캐시 헤더, 배치 페이지네이션
  */
@@ -49,13 +50,14 @@ function makeRes() {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
+    end: vi.fn(),
   };
   return res;
 }
 
 /** req 목 객체 팩토리 */
 function makeReq(query = {}) {
-  return { method: 'GET', query };
+  return { method: 'GET', query, headers: {} };
 }
 
 beforeEach(() => {
@@ -66,7 +68,7 @@ describe('handler', () => {
   // 에러: GET 이외 메서드
   it('GET이 아닌 메서드는 405를 반환한다', async () => {
     const res = makeRes();
-    await handler({ method: 'POST', query: {} }, res);
+    await handler({ method: 'POST', query: {}, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(405);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
   });

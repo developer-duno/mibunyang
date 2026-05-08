@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * supabase/unsold-history.js 테스트 — 미분양 추이 시계열 API (ID 검증, 단일/복수 조회, 캐싱)
  */
@@ -29,7 +30,7 @@ const { default: handler } = await import('./unsold-history.js');
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn() };
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
 }
 
 describe('supabase/unsold-history handler', () => {

@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * supabase/market-stats-history.js 테스트 — region+gu 시계열 API
  */
@@ -31,7 +32,7 @@ beforeEach(() => {
 const { default: handler } = await import("./market-stats-history.js");
 
 function makeRes() {
-  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn() };
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
 }
 
 describe("supabase/market-stats-history handler", () => {
