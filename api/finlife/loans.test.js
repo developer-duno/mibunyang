@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * finlife/loans.js 테스트 — API Key 누락, 정상 응답 파싱, 잘못된 금융권역, 캐싱 헤더
  */
@@ -22,6 +23,7 @@ function makeRes() {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
+    end: vi.fn(),
   };
 }
 

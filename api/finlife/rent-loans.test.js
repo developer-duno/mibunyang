@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * finlife/rent-loans.js 테스트 — 전세자금대출 API 핸들러
  */
@@ -22,6 +23,7 @@ function makeRes() {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
+    end: vi.fn(),
   };
 }
 
