@@ -1,3 +1,4 @@
+// @ts-check
 // @vitest-environment node
 /**
  * auth/verify.js 테스트 — 토큰 유효/만료, 블랙리스트, suspended, 사용자 삭제 403, KV 에러 500
@@ -22,18 +23,19 @@ const { default: handler } = await import('./verify.js');
 const { createToken, createRefreshToken, verifyToken } = await import('../_lib/auth.js');
 const { checkRateLimit } = await import('../_lib/rateLimit.js');
 
-/** res 목 객체 팩토리 */
+/** res 목 객체 팩토리 — ResLike 호환 (any cast) */
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
 /**
  * 유효 토큰 테스트용 KV 모킹 헬퍼
  * isBlacklisted → kv.get(bl:*) = null, user 조회 → kv.get(user:*) = userData
+ * @param {any} userData
  */
 function mockBlacklistThenUser(userData) {
   mockKv.get.mockResolvedValueOnce(null);   // isBlacklisted → false
@@ -166,7 +168,7 @@ describe('auth/verify handler', () => {
 
   // 에러: 429 레이트 리밋
   it('레이트 리밋 초과 시 429를 반환한다', async () => {
-    checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
     await handler({ method: 'POST', body: { token: 'anything' }, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(429);

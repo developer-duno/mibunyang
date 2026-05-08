@@ -1,3 +1,4 @@
+// @ts-check
 // @vitest-environment node
 /**
  * auth/signup.js 테스트 — 필드 검증, 이메일 중복 409, 롤백 처리
@@ -80,7 +81,7 @@ describe('auth/signup handler', () => {
 
   // 에러: 429 레이트 리밋
   it('레이트 리밋 초과 시 429를 반환한다', async () => {
-    checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
     await handler(makeReq(makeValidBody()), res);
     expect(res.status).toHaveBeenCalledWith(429);

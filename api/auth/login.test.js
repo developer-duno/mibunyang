@@ -1,3 +1,4 @@
+// @ts-check
 // @vitest-environment node
 /**
  * auth/login.js 테스트 — 인증 플로우, 429, 이메일 형식, PENDING/REJECTED 상태
@@ -30,13 +31,13 @@ const { default: handler } = await import('./login.js');
 const { checkRateLimit } = await import('../_lib/rateLimit.js');
 const { hashPassword, verifyToken } = await import('../_lib/auth.js');
 
-/** res 목 객체 팩토리 */
+/** res 목 객체 팩토리 — ResLike 호환 (any cast 로 vi.fn 체이닝 흡수) */
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
 /** req 목 객체 팩토리 */
@@ -68,7 +69,7 @@ describe('auth/login handler', () => {
 
   // 에러: 429 레이트 리밋
   it('레이트 리밋 초과 시 429를 반환한다', async () => {
-    checkRateLimit.mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
     await handler(makeReq({ email: 'a@b.com', password: '12345678' }), res);
     expect(res.status).toHaveBeenCalledWith(429);

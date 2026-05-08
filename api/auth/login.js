@@ -1,11 +1,35 @@
+// @ts-check
 import { kv } from "../_lib/redis.js";
 import { verifyPassword, hashPassword, createToken, createRefreshToken } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
 import { isValidEmail } from "../_lib/validators.js";
 import crypto from "crypto";
 
+/**
+ * KV `user:{email}` 레코드 — 5 source (login/signup/verify/kakao/logout) 공통 활용.
+ * 카카오 사용자는 passwordHash/salt 부재, 일반 사용자는 kakaoId/profileImage 부재.
+ * @typedef {Object} UserRecord
+ * @property {string} email
+ * @property {string} name
+ * @property {string} [passwordHash]
+ * @property {string} [salt]
+ * @property {string} [status]
+ * @property {string} [role]
+ * @property {string} [affiliation]
+ * @property {string} [phone]
+ * @property {string} [specialty]
+ * @property {string} [license]
+ * @property {number} [experience]
+ * @property {string} [bio]
+ * @property {string} [kakaoId]
+ * @property {string|null} [profileImage]
+ * @property {string|null} [reviewedAt]
+ * @property {string|null} [reviewNote]
+ * @property {string} [createdAt]
+ */
+
 export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handler: async (req, res) => {
-  const { email, password } = req.body || {};
+  const { email, password } = /** @type {{ email?: unknown, password?: unknown }} */ (req.body ?? {});
 
   if (!email || !password || typeof email !== "string" || typeof password !== "string") {
     return res.status(400).json({ ok: false, error: "이메일과 비밀번호를 입력해주세요" });
@@ -18,8 +42,8 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handl
   }
 
   try {
-    const user = await kv.get(`user:${email.toLowerCase().trim()}`);
-    if (!user) {
+    const user = /** @type {UserRecord | null} */ (await kv.get(`user:${email.toLowerCase().trim()}`));
+    if (!user || !user.passwordHash || !user.salt) {
       return res.status(401).json({ ok: false, error: "이메일 또는 비밀번호가 일치하지 않습니다" });
     }
 
@@ -67,7 +91,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handl
       role,
     });
   } catch (err) {
-    console.error("[auth/login] error:", err.message);
+    console.error("[auth/login] error:", err instanceof Error ? err.message : String(err));
     res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
 }});
