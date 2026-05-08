@@ -5686,3 +5686,108 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 ### 비-작업 (누적, 세션152 신규 0)
 
 (세션142 동일 + 세션149~151 누적 동일 — 변동 없음)
+
+---
+
+## 세션 190 (2026-05-06) — M5b 완료 (e2e 타입 보강 + tsconfig 분리)
+
+> 세션 153~189 박제 누락 상태. 본 항목은 190만 추가. 누락 보강은 별도 sub.
+
+### 산출 (2 커밋 push)
+
+- `a7b5692` chore(ts): e2e/tsconfig.e2e.json 신규 + playwright.config.ts tsconfig 키 (M5b/1)
+- `781855a` chore(ci): typecheck:e2e 스크립트 + CI 단계 추가 (M5b/2)
+
+### 핵심
+
+- e2e/tsconfig.e2e.json (12줄, extends 루트) — strict 검증 진실원천
+- playwright.config.ts L5 `tsconfig: "./e2e/tsconfig.e2e.json"` — playwright 자체 ts-node 와 동기화
+- ci.yml `Typecheck (e2e)` 단계 신규 — push/PR 시점 strict 검증 자동화
+- Phase 3 = **0 errors** (G0 추정 적중, 12 spec 1067줄 strict 적용에도 잠재 오류 0)
+
+### plan v1 → v2 → v3 보강
+
+사용자 7개 지시 두 차례 발동 → 보강 사고 10건 정정:
+- v2 4건 (Playwright 4 옵션만 / tsconfig 키 / eslint e2e 미적용 / e2e.yml pull_request만)
+- v3 6건 (strict 검증 분리 / 5173 사전조건 / SESSION_LOG 의무 / plan 위치 정책 / G5 정밀화 / G6 baseline)
+
+### G0 Sonnet 적정 크기 GATE 신규
+
+- 6 차원 (plan 크기·단일 read·의존성·잠재 오류·동시 토큰·회복 비용) 측정
+- 본 plan = Sonnet 4.6 안정 실행 가능 판정
+- 모든 plan 작성 시 G0 박제 의무 (세션 190 신규)
+
+### 9 GATE 1차 통과
+
+| GATE | 결과 |
+|---|---|
+| G0~G9 | 모두 ✅ |
+
+### 사용자 가치
+
+- 🟢 +1 (M5 1/4 sub 진척)
+- 🟢 +1 (e2e 검증 사각지대 제거 — typecheck:e2e CI)
+- 🟢 +1 (회귀 방어선 — 향후 spec 추가/수정 시 즉시 검출)
+
+### 다음 세션 (191) 우선순위
+
+1. M5a — scripts 자체 (5본체 + 1타입, 위험도 중)
+2. M5c — api 인증 7파일 (위험도 고)
+3. M5d — 잔여 19파일
+
+---
+
+## 세션 206 (2026-05-08) — M5e 완료 (collectors .test.mjs 23건 // @ts-check 일괄)
+
+> 세션 191~205 박제 누락 상태. 본 항목은 206만 추가. 누락 보강은 별도 sub.
+
+### 산출 (1 커밋 push + CI green)
+
+- 커밋 `99b6050` chore(ts): collectors M5e 23 .test.mjs // @ts-check 일괄 활성화 (M5 종결)
+  - 23 파일 +23 lines (`// @ts-check` 1행씩 부착)
+  - run 25540839659 success **4m26s**
+- 활성화 카운트: **18 → 41** (.test.mjs 100% typecheck)
+- M5d 42/42 source 와 짝 → **M5 (scripts TS 마이그레이션) 완전 종결**
+
+### 핵심 발견 — 세션 205 박제값 stale 정정
+
+세션 205 plan v2 시뮬레이션 결과 "1건 부착 = 12 errors / 23건 = 150~250 errors" 였으나, 본 세션 정밀 실측 결과 **0 errors**. plan 단순화 (sub-phase 5분할 → 단일 commit).
+
+**원인 분석**:
+- tsconfig include 만으로는 .mjs 검사 미발동 (`// @ts-check` 가 단일 진실 게이트)
+- `npx tsc --listFiles` 검증: 18 활성 = 18 listFiles 정확 일치
+- 23 미활성 코드 자체는 깨끗 (단순 누락)
+- vitest 41 files / 738 tests pass 보존
+
+### 정밀 분석 표 (Phase 1 시뮬레이션 의무 답습)
+
+| 검증 | 명령 | 결과 |
+|---|---|---|
+| 23건 부착 후 typecheck | `npm run typecheck:scripts` | 0 errors |
+| incremental cache 제거 후 | `rm tsbuildinfo && typecheck` | 0 errors |
+| vitest 런타임 | `npx vitest run scripts/collectors` | 41 / 738 pass |
+| `// @ts-check` 트리거 게이트 | `tsc --listFiles` 비교 | 단독 게이트 |
+
+### plan 정정 (자가 점검 1+2 적용)
+
+- v1 = 단일 commit 단순화 (sub-phase 5분할 거부)
+- 1차 ExitPlanMode 통과 (정정 사고 0건)
+- 사용자 "한번 더 정밀 분석" 지시로 정밀 검증 6차원 추가 (cache / pragma / vitest / tsconfig include 차이 / 18 vs 23 차이 / `// @ts-check` 트리거)
+
+### 사용자 가치
+
+- 🟢 +1 (M5e 종결 — 41/41 .test.mjs 100% typecheck)
+- 🟢 +1 (M5 scripts TS 마이그레이션 완전 종결)
+- 🟢 +1 (세션 205 박제값 stale 정정 — 사고 메모 박제)
+
+### 교훈
+
+1. **시뮬 결과 시간 차로 변할 수 있음** — 세션 205 plan v2 시뮬과 본 세션 시뮬 결과 다름. 메모리는 진실의 원천 아님 (`feedback_memory_not_authoritative.md` 답습)
+2. **`// @ts-check` 가 .mjs 의 단일 트리거** — tsconfig include 만으로는 검사 미발동. 본 세션 신규 발견으로 메모 보강
+3. **단순화의 가치** — 정밀 실측이 sub-phase 5분할 의무를 단일 commit 으로 단순화. 박제값을 추정 근거로 쓰지 않고 실측으로 검증한 결과
+
+### 다음 세션 (207) 우선순위
+
+1. 🥇 M5c — api 인증 7파일 (위험도 고, 별도 plan + 사용자 동의 필수)
+2. 🥈 M6 신규 phase 정의 (사용자 brainstorming)
+3. 🥉 SESSION_LOG 191~205 박제 누락 보강 (별도 sub)
