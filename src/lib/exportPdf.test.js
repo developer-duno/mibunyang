@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 
 // html2canvas와 jspdf를 모킹하여 DOM 없이 테스트

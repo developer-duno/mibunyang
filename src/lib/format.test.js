@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from 'vitest';
 import { fmtPrice, fmtCompletion, maskName, maskPhone, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from './format';
 
@@ -88,7 +89,7 @@ describe('fmtCompletion — 추가 edge cases', () => {
     // 이 형식은 의도된 사용이 아니지만 에러 없이 처리됨
   });
   it('숫자 0 → -', () => {
-    expect(fmtCompletion(0)).toBe('-');
+    expect(fmtCompletion(/** @type {string} */ (/** @type {unknown} */ (0)))).toBe('-');
   });
 });
 
@@ -111,7 +112,7 @@ describe('maskName', () => {
     expect(maskName("")).toBe("");
   });
   it('숫자 등 비문자열 → 빈 문자열', () => {
-    expect(maskName(123)).toBe("");
+    expect(maskName(/** @type {string} */ (/** @type {unknown} */ (123)))).toBe("");
   });
 });
 
