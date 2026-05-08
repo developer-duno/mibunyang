@@ -1,3 +1,4 @@
+// @ts-check
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -8,7 +9,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete global.fetch;
+  delete (/** @type {any} */ (global)).fetch;
   delete process.env.KAKAO_CLIENT_SECRET;
   delete process.env.KAKAO_ALLOWED_ORIGINS;
 });
@@ -27,11 +28,11 @@ vi.mock("../_lib/redis.js", () => ({ kv: mockKv }));
 const { default: handler } = await import("./kakao.js");
 
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
 function mockKakaoFetch({ tokenOk = true, userOk = true, userPayload = {} } = {}) {
@@ -135,7 +136,7 @@ describe("auth/kakao handler", () => {
 
     await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
 
-    const tokenRequestBody = global.fetch.mock.calls[0][1].body;
+    const tokenRequestBody = /** @type {any} */ (global.fetch).mock.calls[0][1].body;
     expect(tokenRequestBody).toContain("client_id=test-kakao-key");
     expect(tokenRequestBody).toContain("client_secret=test-client-secret");
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));

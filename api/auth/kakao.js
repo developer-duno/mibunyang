@@ -1,3 +1,4 @@
+// @ts-check
 import { kv } from "../_lib/redis.js";
 import { createToken, createRefreshToken } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
@@ -27,7 +28,7 @@ function getAllowedOrigins() {
 }
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handler: async (req, res) => {
-  const { code, redirect_uri } = req.body || {};
+  const { code, redirect_uri } = /** @type {{ code?: unknown, redirect_uri?: unknown }} */ (req.body ?? {});
 
   // 1. code + redirect_uri 검증
   if (!code || typeof code !== "string" || code.length < 10 || code.length > 200) {
@@ -187,7 +188,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       ...(role !== "user" && { role }),
     });
   } catch (err) {
-    console.error("[auth/kakao] error:", err.message);
+    console.error("[auth/kakao] error:", err instanceof Error ? err.message : String(err));
     res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
 }});
