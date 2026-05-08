@@ -1,12 +1,17 @@
+// @ts-check
 import { kv } from "../_lib/redis.js";
 import { withHandler } from "../_lib/handler.js";
 import { isValidEmail } from "../_lib/validators.js";
 
-// 단건 review 처리 (내부 헬퍼)
+/**
+ * @param {string} emailRaw
+ * @param {string} action
+ * @param {string} [note]
+ */
 async function reviewOne(emailRaw, action, note) {
   const emailNorm = emailRaw.toLowerCase().trim();
   const key = `user:${emailNorm}`;
-  const user = await kv.get(key);
+  const user = /** @type {{ status?: string, [k: string]: unknown } | null} */ (await kv.get(key));
   if (!user) return { email: emailNorm, ok: false, error: "사용자를 찾을 수 없습니다" };
 
   const newStatus = action === "force-logout" ? "suspended" : action === "approve" ? "approved" : "rejected";
@@ -45,25 +50,24 @@ async function reviewOne(emailRaw, action, note) {
 const MAX_BATCH = 50;
 
 export default withHandler({ method: "POST", admin: true, rateLimit: "admin", handler: async (req, res) => {
-  const { email, emails, action, note } = req.body || {};
-  if (!["approve", "reject", "force-logout"].includes(action)) {
+  const { email, emails, action, note } = /** @type {{ email?: unknown, emails?: unknown, action?: unknown, note?: unknown }} */ (req.body ?? {});
+  if (typeof action !== "string" || !["approve", "reject", "force-logout"].includes(action)) {
     return res.status(400).json({ ok: false, error: "승인/거부/강제로그아웃 액션이 필요합니다" });
   }
+  const noteStr = typeof note === "string" ? note : undefined;
 
-  // 단건 처리 (하위호환)
   if (email && typeof email === "string" && !emails) {
     try {
-      const result = await reviewOne(email, action, note);
+      const result = await reviewOne(email, action, noteStr);
       if (!result.ok) return res.status(404).json({ ok: false, error: result.error });
-      const MSG = { approve: "승인되었습니다", reject: "거부되었습니다", "force-logout": "강제 로그아웃 처리되었습니다" };
-      return res.json({ ok: true, message: MSG[action] });
+      const MSG = /** @type {const} */ ({ approve: "승인되었습니다", reject: "거부되었습니다", "force-logout": "강제 로그아웃 처리되었습니다" });
+      return res.json({ ok: true, message: MSG[/** @type {keyof typeof MSG} */ (action)] });
     } catch (err) {
-      console.error("[admin/review] error:", err.message);
+      console.error("[admin/review] error:", err instanceof Error ? err.message : err);
       return res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
     }
   }
 
-  // 배치 처리
   if (!Array.isArray(emails) || emails.length === 0) {
     return res.status(400).json({ ok: false, error: "이메일 또는 이메일 배열이 필요합니다" });
   }
@@ -74,14 +78,13 @@ export default withHandler({ method: "POST", admin: true, rateLimit: "admin", ha
     return res.status(400).json({ ok: false, error: "유효하지 않은 이메일이 포함되어 있습니다" });
   }
 
-  // 직렬 처리 (KV 동시성 보호)
   const results = [];
   for (const em of emails) {
     try {
-      results.push(await reviewOne(em, action, note));
+      results.push(await reviewOne(em, action, noteStr));
     } catch (err) {
-      console.error("[admin/review] batch error:", em, err.message);
-      results.push({ email: em.toLowerCase().trim(), ok: false, error: "처리 실패" });
+      console.error("[admin/review] batch error:", em, err instanceof Error ? err.message : err);
+      results.push({ email: String(em).toLowerCase().trim(), ok: false, error: "처리 실패" });
     }
   }
 

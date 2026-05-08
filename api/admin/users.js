@@ -1,7 +1,19 @@
+// @ts-check
 import { kv } from "../_lib/redis.js";
 import { withHandler } from "../_lib/handler.js";
 
-// action=stats → 통계 반환 (stats.js 통합 — Vercel Hobby 12함수 제한)
+/**
+ * @typedef {{
+ *   email?: string, name?: string, affiliation?: string, specialty?: string,
+ *   role?: string, kakaoId?: string, createdAt?: string,
+ *   passwordHash?: string, salt?: string, [k: string]: unknown
+ * }} UserRecord
+ */
+
+/**
+ * @param {{ query?: Record<string, string | string[] | undefined>, [k: string]: unknown }} req
+ * @param {{ status: (c: number) => any, json: (b: unknown) => unknown, [k: string]: unknown }} res
+ */
 async function handleStats(req, res) {
   try {
     const [pendingC, approvedC, rejectedC, suspendedC] = await Promise.all([
@@ -19,13 +31,16 @@ async function handleStats(req, res) {
     ]);
     const allEmails = [...new Set([...(p || []), ...(a || []), ...(r || []), ...(s || [])])];
     let kakaoCount = 0, expertCount = 0;
-    const specialtyDist = {}, signupByDate = {};
+    /** @type {Record<string, number>} */
+    const specialtyDist = {};
+    /** @type {Record<string, number>} */
+    const signupByDate = {};
     if (allEmails.length > 0) {
       const results = await Promise.allSettled(allEmails.map(email => kv.get(`user:${email}`)));
       const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
       for (const r of results) {
         if (r.status !== "fulfilled" || !r.value) continue;
-        const user = r.value;
+        const user = /** @type {UserRecord} */ (r.value);
         if (user.kakaoId || user.role === "user") kakaoCount++; else expertCount++;
         if (user.specialty) specialtyDist[user.specialty] = (specialtyDist[user.specialty] || 0) + 1;
         if (user.createdAt) {
@@ -45,25 +60,29 @@ async function handleStats(req, res) {
     }
     res.json({ ok: true, counts, userTypes: { kakao: kakaoCount, expert: expertCount }, specialtyDist, recentSignups });
   } catch (err) {
-    console.error("[admin/users?action=stats] error:", err.message);
+    console.error("[admin/users?action=stats] error:", err instanceof Error ? err.message : err);
     res.status(500).json({ ok: false, error: "통계 조회에 실패했습니다" });
   }
 }
 
 export default withHandler({ method: "GET", admin: true, rateLimit: "admin", handler: async (req, res) => {
-  // 통계 분기
-  if (req.query.action === "stats") return handleStats(req, res);
+  const query = req.query ?? {};
+  if (query.action === "stats") return handleStats(req, res);
 
-  const status = req.query.status || "pending";
+  const statusRaw = query.status ?? "pending";
+  const status = Array.isArray(statusRaw) ? String(statusRaw[0]) : String(statusRaw);
   const allowed = ["pending", "approved", "rejected", "suspended", "all"];
   if (!allowed.includes(status)) {
     return res.status(400).json({ ok: false, error: "잘못된 상태 필터입니다" });
   }
-  const q = typeof req.query.q === "string" ? req.query.q.trim().substring(0, 100).toLowerCase() : "";
-  const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
-  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+  const q = typeof query.q === "string" ? query.q.trim().substring(0, 100).toLowerCase() : "";
+  const limitRaw = Array.isArray(query.limit) ? query.limit[0] : query.limit;
+  const offsetRaw = Array.isArray(query.offset) ? query.offset[0] : query.offset;
+  const limit = Math.min(Math.max(parseInt(String(limitRaw ?? "")) || 20, 1), 100);
+  const offset = Math.max(parseInt(String(offsetRaw ?? "")) || 0, 0);
 
   try {
+    /** @type {string[]} */
     let emails = [];
     if (status === "all") {
       const [p, a, r, s] = await Promise.all([
@@ -83,15 +102,19 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
 
     const results = await Promise.allSettled(
       emails.map(async (email) => {
-        const user = await kv.get(`user:${email}`);
+        const user = /** @type {UserRecord | null} */ (await kv.get(`user:${email}`));
         if (!user) return null;
-        const { passwordHash, salt, ...safe } = user;
-        return safe;
+        const { passwordHash: _ph, salt: _s, ...safe } = user;
+        return /** @type {UserRecord} */ (safe);
       })
     );
-    const users = results.filter(r => r.status === "fulfilled" && r.value).map(r => r.value);
+    const users = /** @type {UserRecord[]} */ (
+      results
+        .filter(/** @returns {r is PromiseFulfilledResult<UserRecord>} */ (r) => r.status === "fulfilled" && !!r.value)
+        .map(r => r.value)
+    );
 
-    const sorted = users.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const sorted = users.sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
     const filtered = q
       ? sorted.filter(u => [u.name, u.email, u.affiliation, u.specialty].some(f => f && String(f).toLowerCase().includes(q)))
       : sorted;
@@ -99,7 +122,7 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
     const paged = filtered.slice(offset, offset + limit);
     res.json({ ok: true, users: paged, total });
   } catch (err) {
-    console.error("[admin/users] error:", err.message);
+    console.error("[admin/users] error:", err instanceof Error ? err.message : err);
     res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
   }
 }});

@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * admin/review.js 테스트 — 상태 전환, 롤백 시나리오
  */
@@ -33,11 +34,11 @@ const { verifyAdminToken } = await import('../_lib/adminAuth.js');
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
 /** req 목 객체 팩토리 */
@@ -55,7 +56,7 @@ describe('admin/review handler', () => {
 
   // 에러: 관리자 인증 실패
   it('관리자 인증 실패 시 401을 반환한다', async () => {
-    verifyAdminToken.mockReturnValueOnce(null);
+    /** @type {any} */ (verifyAdminToken).mockReturnValueOnce(null);
     const res = makeRes();
     await handler(makeReq({ email: 'user@test.com', action: 'approve' }), res);
     expect(res.status).toHaveBeenCalledWith(401);
