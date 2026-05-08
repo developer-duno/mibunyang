@@ -112,8 +112,8 @@ export function getAcademicYear() {
 const classCache = new Map();
 
 /** NEIS 학급정보 조회 — 학급수(행 수) 반환
- * @param {string} officeCode
- * @param {string} neisCode
+ * @param {string | null} officeCode
+ * @param {string | null} neisCode
  */
 export async function fetchNeisClassInfo(officeCode, neisCode) {
   if (!NEIS_KEY || !officeCode || !neisCode) return null;

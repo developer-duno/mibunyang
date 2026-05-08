@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * schools-neis.mjs 테스트 — 학군 점수 순수 함수 검증
  *
@@ -10,7 +11,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -28,7 +29,9 @@ process.env.KAKAO_KEY = "test-key";
 const { calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus } = await import("./schools-neis.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
-/** Kakao 검색 결과 팩토리 (distance 포함) */
+/** Kakao 검색 결과 팩토리 (distance 포함)
+ * @param {number} distance
+ */
 function makeSchool(distance) {
   return { place_name: "테스트학교", distance: String(distance) };
 }
