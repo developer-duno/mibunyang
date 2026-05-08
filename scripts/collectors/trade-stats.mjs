@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * 거래 통계 산출 — PIR, PSR, 전세가율, 인근 시세 중위값
  *
@@ -25,6 +26,11 @@ const NATIONAL_MEDIAN_INCOME = 195; // 만원/월 — avg_income null 시 fallba
 // 세종은 gu=null(40건) / gu="행정중심복합도시"(1건) 두 버킷으로 분산돼 있어
 // 한 버킷으로 통합하기 위해 region==="세종" 화이트리스트로 gu 무시.
 // 비세종은 기존 `region:gu` 리터럴과 bit 단위 동일한 키 반환.
+/**
+ * @param {string | null | undefined} region
+ * @param {string | null | undefined} gu
+ * @returns {string | null}
+ */
 export function statsKey(region, gu) {
   if (!region) return null;
   if (region === "세종") return "세종:";
@@ -32,6 +38,10 @@ export function statsKey(region, gu) {
 }
 
 // ── 중위값 헬퍼 ────────────────────────────────────────────────
+/**
+ * @param {number[]} arr
+ * @returns {number | null}
+ */
 export function median(arr) {
   if (!arr.length) return null;
   const sorted = [...arr].sort((a, b) => a - b);
@@ -42,6 +52,7 @@ export function median(arr) {
 }
 
 // ── 날짜 헬퍼 ──────────────────────────────────────────────────
+/** @param {number} n */
 export function monthsAgo(n) {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
@@ -49,6 +60,14 @@ export function monthsAgo(n) {
 }
 
 // ── Supabase 전체 조회 (1000건 페이징) ─────────────────────────
+/**
+ * @param {string} table
+ * @param {string} select
+ * @param {Record<string, any>} [filters]
+ * @param {import("@supabase/supabase-js").SupabaseClient | null} [sb]
+ * @param {Array<{col: string, op: string, val: any}>} [rangeFilters]
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
 async function fetchAll(table, select, filters = {}, sb = null, rangeFilters = []) {
   sb = sb ?? getSupabase();
   const rows = [];
@@ -56,6 +75,7 @@ async function fetchAll(table, select, filters = {}, sb = null, rangeFilters = [
   let from = 0;
 
   while (true) {
+    /** @type {any} */
     let q = sb.from(table).select(select).range(from, from + PAGE - 1);
     for (const [col, val] of Object.entries(filters)) {
       q = q.eq(col, val);
@@ -75,7 +95,13 @@ async function fetchAll(table, select, filters = {}, sb = null, rangeFilters = [
 }
 
 // ── 해제 거래 조회 (fetchAll은 NOT IS NULL 미지원 → 별도 함수) ──
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {string} cutoff
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
 async function fetchCancelledTrades(sb, cutoff) {
+  /** @type {Array<Record<string, any>>} */
   const rows = [];
   const PAGE = 1000;
   let from = 0;
@@ -96,20 +122,23 @@ async function fetchCancelledTrades(sb, cutoff) {
 }
 
 // ── 메인 ─────────────────────────────────────────────────────
-/** 거래 배열 → 면적별 min/avg/max/count 통계 */
+/** 거래 배열 → 면적별 min/avg/max/count 통계
+ * @param {Array<Record<string, any>>} trades
+ */
 export function groupByArea(trades) {
+  /** @type {Map<number, number[]>} */
   const groups = new Map();
   for (const t of trades) {
     const bucket = Math.round(t.area / 5) * 5;
     if (!groups.has(bucket)) groups.set(bucket, []);
-    groups.get(bucket).push(t.price);
+    (groups.get(bucket) ?? []).push(t.price);
   }
   return [...groups.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([area, prices]) => ({
       area,
       min: Math.min(...prices),
-      avg: Math.round(prices.reduce((s, p) => s + p, 0) / prices.length),
+      avg: Math.round(prices.reduce(/** @type {(s: number, p: number) => number} */ ((s, p) => s + p), 0) / prices.length),
       max: Math.max(...prices),
       count: prices.length,
     }));
@@ -143,6 +172,7 @@ async function main() {
     fetchCancelledTrades(sbMibunyang, cutoff6mYM).catch(() => []),
   ]);
   // rawPrices에서 아파트별 최신 가격·면적 매핑 (apartments 테이블에 price/area 컬럼 없음)
+  /** @type {Map<string, Record<string, any>>} */
   const latestPriceMap = new Map();
   for (const p of rawPrices) {
     if (!p.price || p.price <= 0) continue; // price=0 오염 row 방어
@@ -151,7 +181,8 @@ async function main() {
       latestPriceMap.set(p.apartment_id, p);
     }
   }
-  const apartments = rawApts.map(a => {
+  /** @type {Array<Record<string, any>>} */
+  const apartments = rawApts.map(/** @param {Record<string, any>} a */ (a) => {
     const lp = latestPriceMap.get(a.id);
     return { ...a, price: lp?.price ?? null, area: lp?.area ?? null };
   });
@@ -159,6 +190,7 @@ async function main() {
 
   // 2. 인덱스 구축
   // 지역 소득 맵: "region:gu" → avg_income
+  /** @type {Map<string, number>} */
   const incomeMap = new Map();
   for (const r of regions) {
     if (r.avg_income != null) {
@@ -168,17 +200,19 @@ async function main() {
   }
 
   // 거래 그룹: statsKey(region,gu) → trades[]
+  /** @type {Map<string, Array<Record<string, any>>>} */
   const tradesByGu = new Map();
   for (const t of trades) {
     if (t.price == null) continue;
     const key = statsKey(t.region, t.gu);
     if (!key) continue;
     if (!tradesByGu.has(key)) tradesByGu.set(key, []);
-    tradesByGu.get(key).push(t);
+    (tradesByGu.get(key) ?? []).push(t);
   }
 
   // 네이버 단지 → 아파트 매핑, 단지별 구 정보
   // 세종은 sido="세종특별자치시", sigungu=NULL 로 저장돼 있어 region="세종" 로 정규화하고 gu 는 버림.
+  /** @type {Map<string, { region: string, gu: string | null }>} */
   const complexGuMap = new Map();
   for (const nc of naverComplexes) {
     if (!nc.sido) continue;
@@ -188,6 +222,7 @@ async function main() {
   }
 
   // 네이버 매물 그룹: statsKey → articles[]
+  /** @type {Map<string, Array<Record<string, any>>>} */
   const naverByGu = new Map();
   for (const a of naverArticles) {
     const guInfo = complexGuMap.get(a.complex_no);
@@ -195,10 +230,11 @@ async function main() {
     const key = statsKey(guInfo.region, guInfo.gu);
     if (!key) continue;
     if (!naverByGu.has(key)) naverByGu.set(key, []);
-    naverByGu.get(key).push(a);
+    (naverByGu.get(key) ?? []).push(a);
   }
 
   // 시세 이력 그룹: statsKey → price_avg[]
+  /** @type {Map<string, number[]>} */
   const historyByGu = new Map();
   for (const h of priceHistory) {
     const guInfo = complexGuMap.get(h.complex_no);
@@ -206,10 +242,11 @@ async function main() {
     const key = statsKey(guInfo.region, guInfo.gu);
     if (!key) continue;
     if (!historyByGu.has(key)) historyByGu.set(key, []);
-    historyByGu.get(key).push(h.price_avg);
+    (historyByGu.get(key) ?? []).push(h.price_avg);
   }
 
   // 해제 거래 그룹: statsKey → 해제 건수 (매매만)
+  /** @type {Map<string, number>} */
   const cancelByGu = new Map();
   for (const t of cancelledTrades) {
     if (t.trade_type !== "sale" && t.trade_type !== "매매" && t.trade_type != null) continue;
@@ -410,12 +447,13 @@ async function main() {
     }
     const priceByFloor = [...floorGroups.entries()]
       .sort((a, b) => {
+        /** @type {Record<string, number>} */
         const order = { "1-5층": 0, "6-15층": 1, "16층+": 2 };
         return (order[a[0]] ?? 9) - (order[b[0]] ?? 9);
       })
       .map(([group, prices]) => ({
         group,
-        avg: Math.round(prices.reduce((s, p) => s + p, 0) / prices.length),
+        avg: Math.round(prices.reduce(/** @type {(s: number, p: number) => number} */ ((s, p) => s + p), 0) / prices.length),
         count: prices.length,
       }));
 
@@ -496,11 +534,11 @@ async function main() {
   const fromArticles = results.filter(r => r._medianSource === "articles").length;
   const fromHistory = results.filter(r => r._medianSource === "history").length;
   log("summary", `nearby_median: ${withMedian.length}건 (실거래 ${fromTrades}, 매물 ${fromArticles}, 시세이력 ${fromHistory})`);
-  log("summary", `pir: ${withPir.length}건 (평균 ${withPir.length ? (withPir.reduce((s, r) => s + r.pir, 0) / withPir.length).toFixed(1) : "N/A"}년)`);
-  log("summary", `psr: ${withPsr.length}건 (평균 ${withPsr.length ? (withPsr.reduce((s, r) => s + r.psr, 0) / withPsr.length).toFixed(2) : "N/A"})`);
-  log("summary", `jeonse_rate: ${withJeonse.length}건 (평균 ${withJeonse.length ? (withJeonse.reduce((s, r) => s + r.jeonse_rate, 0) / withJeonse.length).toFixed(1) : "N/A"}%)`);
+  log("summary", `pir: ${withPir.length}건 (평균 ${withPir.length ? (withPir.reduce((s, r) => s + (r.pir ?? 0), 0) / withPir.length).toFixed(1) : "N/A"}년)`);
+  log("summary", `psr: ${withPsr.length}건 (평균 ${withPsr.length ? (withPsr.reduce((s, r) => s + (r.psr ?? 0), 0) / withPsr.length).toFixed(2) : "N/A"})`);
+  log("summary", `jeonse_rate: ${withJeonse.length}건 (평균 ${withJeonse.length ? (withJeonse.reduce((s, r) => s + (r.jeonse_rate ?? 0), 0) / withJeonse.length).toFixed(1) : "N/A"}%)`);
   log("summary", `recent_trades_6m: ${withTrades.length}건`);
-  log("summary", `cancel_ratio_6m: ${withCancel.length}건 (평균 ${withCancel.length ? (withCancel.reduce((s, r) => s + r.cancel_ratio_6m, 0) / withCancel.length).toFixed(1) : "N/A"}%)`);
+  log("summary", `cancel_ratio_6m: ${withCancel.length}건 (평균 ${withCancel.length ? (withCancel.reduce((s, r) => s + (r.cancel_ratio_6m ?? 0), 0) / withCancel.length).toFixed(1) : "N/A"}%)`);
   log("summary", `dsr40pass: ${dsrUpdates.filter(d => d.dsr40pass).length}통과 / ${dsrUpdates.filter(d => !d.dsr40pass).length}미통과 (총 ${dsrUpdates.length}건)`);
 
   if (dryRun) {
@@ -508,7 +546,7 @@ async function main() {
 
     if (withPir.length) {
       console.log("\nPIR 상위 10:");
-      for (const r of withPir.sort((a, b) => b.pir - a.pir).slice(0, 10)) {
+      for (const r of withPir.sort((a, b) => (b.pir ?? 0) - (a.pir ?? 0)).slice(0, 10)) {
         const apt = apartments.find((a) => a.id === r.apartment_id);
         console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년, PSR ${r.psr ?? "N/A"}, 전세가율 ${r.jeonse_rate ?? "N/A"}%`);
       }
@@ -516,7 +554,7 @@ async function main() {
 
     if (withPir.length) {
       console.log("\nPIR 하위 10:");
-      for (const r of withPir.sort((a, b) => a.pir - b.pir).slice(0, 10)) {
+      for (const r of withPir.sort((a, b) => (a.pir ?? 0) - (b.pir ?? 0)).slice(0, 10)) {
         const apt = apartments.find((a) => a.id === r.apartment_id);
         console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년, PSR ${r.psr ?? "N/A"}, 전세가율 ${r.jeonse_rate ?? "N/A"}%`);
       }
@@ -569,5 +607,6 @@ async function main() {
   }
 }
 
-const isCLI = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-if (isCLI) main().catch((err) => { logError("main", err.message); process.exit(1); });
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch((err) => { logError("main", err instanceof Error ? err.message : String(err)); process.exit(1); });
