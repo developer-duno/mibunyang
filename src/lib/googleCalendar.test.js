@@ -1,3 +1,4 @@
+// @ts-check
 // googleCalendar 빌더 단위 테스트 (spec § 5-4)
 import { describe, it, expect } from "vitest";
 import { buildGoogleCalendarUrl, parseDateLoose, addDaysISO } from "./googleCalendar";
@@ -101,8 +102,8 @@ describe("buildGoogleCalendarUrl — 청약 일정 등록 URL 빌더", () => {
   });
 
   it("region/gu 한쪽만 있어도 details 정상", () => {
-    const url = buildGoogleCalendarUrl({ ...baseApt, gu: null });
-    const decoded = decodeURIComponent(url);
+    const url = buildGoogleCalendarUrl(/** @type {any} */ ({ ...baseApt, gu: null }));
+    const decoded = decodeURIComponent(/** @type {string} */ (url));
     expect(decoded).toContain("서울특별시");
   });
 
@@ -113,7 +114,7 @@ describe("buildGoogleCalendarUrl — 청약 일정 등록 URL 빌더", () => {
       presaleInquiry: null,
     });
     // URLSearchParams 는 공백을 '+' 로 인코딩 → '+' 도 공백으로 풀어 정규화
-    const decoded = decodeURIComponent(url).replace(/\+/g, " ");
+    const decoded = decodeURIComponent(/** @type {string} */ (url)).replace(/\+/g, " ");
     expect(decoded).not.toContain("유형:");
     expect(decoded).not.toContain("문의:");
     expect(decoded).toContain("출처: 미분양 비교 엔진");

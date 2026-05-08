@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { geoJsonFeatureToKakaoPaths } from "./geoJsonToKakaoPaths";
 
@@ -23,8 +24,8 @@ describe("geoJsonFeatureToKakaoPaths", () => {
     expect(paths).toHaveLength(1);
     expect(paths[0]).toHaveLength(4);
     // [lng, lat] → LatLng(lat, lng) 뒤집기 검증
-    expect(paths[0][0].lat).toBe(37.5);
-    expect(paths[0][0].lng).toBe(127.0);
+    expect(/** @type {{ lat: number; lng: number }} */ (paths[0][0]).lat).toBe(37.5);
+    expect(/** @type {{ lat: number; lng: number }} */ (paths[0][0]).lng).toBe(127.0);
   });
 
   it("MultiPolygon 2개 → 2 path (외곽 ring 만)", () => {
@@ -53,7 +54,7 @@ describe("geoJsonFeatureToKakaoPaths", () => {
   it("null/잘못된 geometry → 빈 배열", () => {
     const kakao = makeKakao();
     expect(geoJsonFeatureToKakaoPaths({}, kakao)).toEqual([]);
-    expect(geoJsonFeatureToKakaoPaths({ geometry: null }, kakao)).toEqual([]);
+    expect(geoJsonFeatureToKakaoPaths({ geometry: /** @type {any} */ (null) }, kakao)).toEqual([]);
     expect(geoJsonFeatureToKakaoPaths({ geometry: { type: "Point", coordinates: [127, 37] } }, kakao)).toEqual([]);
     expect(geoJsonFeatureToKakaoPaths(null, kakao)).toEqual([]);
   });

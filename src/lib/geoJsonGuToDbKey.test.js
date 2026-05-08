@@ -1,6 +1,8 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { geoSigunguToByGuKey } from "./geoJsonGuToDbKey";
 
+/** @param {string} code @param {string} name */
 const f = (code, name) => ({ properties: { code, name } });
 
 describe("geoSigunguToByGuKey", () => {
