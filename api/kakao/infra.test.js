@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * kakao/infra.js 테스트 — 카테고리 카운트, 지하철 거리, 에러 기본값
  */
@@ -19,19 +20,25 @@ vi.mock('../_lib/rateLimit.js', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const { default: handler } = await import('./infra.js');
-const { checkRateLimit } = await import('../_lib/rateLimit.js');
+const { default: handlerImport } = await import('./infra.js');
+const { checkRateLimit: checkRateLimitImport } = await import('../_lib/rateLimit.js');
+/** @type {any} */
+const handler = handlerImport;
+/** @type {any} */
+const checkRateLimit = checkRateLimitImport;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
-/** Kakao 카테고리 검색 성공 응답 팩토리 */
+/** Kakao 카테고리 검색 성공 응답 팩토리
+ * @param {number} totalCount
+ */
 function kakaoCategory(totalCount) {
   return {
     ok: true,
@@ -39,7 +46,9 @@ function kakaoCategory(totalCount) {
   };
 }
 
-/** Kakao 키워드 검색 성공 응답 (공원) 팩토리 */
+/** Kakao 키워드 검색 성공 응답 (공원) 팩토리
+ * @param {number} totalCount
+ */
 function kakaoPark(totalCount) {
   return {
     ok: true,
@@ -47,7 +56,9 @@ function kakaoPark(totalCount) {
   };
 }
 
-/** Kakao 지하철 검색 성공 응답 팩토리 */
+/** Kakao 지하철 검색 성공 응답 팩토리
+ * @param {number} distance
+ */
 function kakaoSubway(distance) {
   return {
     ok: true,

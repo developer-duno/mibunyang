@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 beforeEach(() => {
@@ -15,17 +16,25 @@ vi.mock("../_lib/rateLimit.js", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-const { default: handler } = await import("./schools.js");
-const { checkRateLimit } = await import("../_lib/rateLimit.js");
+const { default: handlerImport } = await import("./schools.js");
+const { checkRateLimit: checkRateLimitImport } = await import("../_lib/rateLimit.js");
+/** @type {any} */
+const handler = handlerImport;
+/** @type {any} */
+const checkRateLimit = checkRateLimitImport;
 
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
+/**
+ * @param {number} totalCount
+ * @param {number} [nearestDist]
+ */
 function kakaoSchool(totalCount, nearestDist = 300) {
   return {
     ok: true,
@@ -36,6 +45,7 @@ function kakaoSchool(totalCount, nearestDist = 300) {
   };
 }
 
+/** @param {any[]} [schools] */
 function neisResponse(schools = []) {
   return {
     ok: true,

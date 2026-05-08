@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * kosis/stats.js 테스트 — URL 빌딩, row 파싱, 에러 처리
  */
@@ -18,18 +19,24 @@ vi.mock('../_lib/rateLimit.js', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const { default: handler } = await import('./stats.js');
+const { default: handlerImport } = await import('./stats.js');
+/** @type {any} */
+const handler = handlerImport;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
-/** KOSIS 응답 row 팩토리 */
+/** KOSIS 응답 row 팩토리
+ * @param {string} region
+ * @param {string} period
+ * @param {number} value
+ */
 function makeKosisRow(region, period, value) {
   return {
     C1_NM: '시도별미분양현황',

@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * dart/builders.js 테스트 — estimateCreditGrade 경계값, debtRatio 계산
  */
@@ -41,18 +42,24 @@ vi.mock('../_lib/rateLimit.js', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const { default: handler } = await import('./builders.js');
+const { default: handlerImport } = await import('./builders.js');
+/** @type {any} */
+const handler = handlerImport;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
-/** DART 재무제표 응답 팩토리 */
+/**
+ * DART 재무제표 응답 팩토리
+ * @param {number} debtAmt
+ * @param {number} equityAmt
+ */
 function makeDartResponse(debtAmt, equityAmt) {
   return {
     ok: true,

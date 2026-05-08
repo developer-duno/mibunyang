@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @ts-check
 /**
  * applyhome/apartments.js 테스트 — parseAddress, geocode, 응답 형식
  */
@@ -24,18 +25,22 @@ vi.mock('../../src/constants/brands.js', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const { default: handler } = await import('./apartments.js');
+const { default: handlerImport } = await import('./apartments.js');
+/** @type {any} */
+const handler = handlerImport;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
-/** 청약홈 API 응답 팩토리 */
+/** 청약홈 API 응답 팩토리
+ * @param {any[]} [items]
+ */
 function makeApplyHomeResponse(items = []) {
   return {
     ok: true,
