@@ -1,3 +1,4 @@
+// @ts-check
 // @vitest-environment node
 /**
  * auth/logout.js 테스트 — 정상 로그아웃, 빈 토큰, 만료 토큰, 멱등성
@@ -21,13 +22,13 @@ vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 const { default: handler } = await import('./logout.js');
 const { createToken } = await import('../_lib/auth.js');
 
-/** res 목 객체 팩토리 */
+/** res 목 객체 팩토리 — handler.ts ResLike 와 호환 (any cast 로 vi.fn 체이닝 흡수) */
 function makeRes() {
-  return {
+  return /** @type {any} */ ({
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  };
+  });
 }
 
 describe('auth/logout handler', () => {
