@@ -1,12 +1,13 @@
+// @ts-check
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useShareCallbacks } from './useShareCallbacks';
 
 describe('useShareCallbacks', () => {
   const makeProps = (overrides = {}) => ({
-    scoredMap: new Map([
-      [1, { apt: { name: '테스트아파트', price: 40000 }, res: { total: 85 } }],
-    ]),
+    scoredMap: /** @type {Map<string, import('@/types/hooks').ScoredApt>} */ (new Map([
+      ['1', { apt: { name: '테스트아파트', price: 40000 }, res: { total: 85 } }],
+    ])),
     profile: 'live',
     compIds: [],
     compItems: [],
@@ -27,7 +28,7 @@ describe('useShareCallbacks', () => {
     const openShareSheet = vi.fn();
     const { result } = renderHook(() => useShareCallbacks(makeProps({ openShareSheet })));
 
-    act(() => { result.current.handleShareDetail(1); });
+    act(() => { result.current.handleShareDetail('1'); });
 
     expect(openShareSheet).toHaveBeenCalledTimes(1);
     const call = openShareSheet.mock.calls[0][0];
@@ -40,7 +41,7 @@ describe('useShareCallbacks', () => {
     const openShareSheet = vi.fn();
     const { result } = renderHook(() => useShareCallbacks(makeProps({ openShareSheet })));
 
-    act(() => { result.current.handleShareDetail(999); });
+    act(() => { result.current.handleShareDetail('999'); });
 
     expect(openShareSheet).not.toHaveBeenCalled();
   });
@@ -48,7 +49,7 @@ describe('useShareCallbacks', () => {
   it('handleShareCompare: compIds.length < 2 면 호출 안 함', () => {
     const openShareSheet = vi.fn();
     const { result } = renderHook(() => useShareCallbacks(makeProps({
-      openShareSheet, compIds: [1], compItems: [{ apt: { name: 'A' } }],
+      openShareSheet, compIds: ['1'], compItems: /** @type {import('@/types/hooks').ScoredApt[]} */ ([{ apt: { name: 'A' } }]),
     })));
 
     act(() => { result.current.handleShareCompare(); });
@@ -60,8 +61,8 @@ describe('useShareCallbacks', () => {
     const openShareSheet = vi.fn();
     const { result } = renderHook(() => useShareCallbacks(makeProps({
       openShareSheet,
-      compIds: [1, 2],
-      compItems: [{ apt: { name: 'A' } }, { apt: { name: 'B' } }],
+      compIds: ['1', '2'],
+      compItems: /** @type {import('@/types/hooks').ScoredApt[]} */ ([{ apt: { name: 'A' } }, { apt: { name: 'B' } }]),
     })));
 
     act(() => { result.current.handleShareCompare(); });

@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
@@ -8,6 +9,7 @@ async function renderKakaoHook(showToast = vi.fn(), restKey = 'test-rest-key') {
   return { showToast, ...renderHook(() => useKakaoAuth(showToast)) };
 }
 
+/** @param {string} params */
 function setCallbackUrl(params) {
   window.history.pushState(null, '', `/oauth/kakao/callback?${params}`);
 }
@@ -40,7 +42,8 @@ describe('useKakaoAuth', () => {
     sessionStorage.setItem('kakao_oauth_state', 'state-123');
     setCallbackUrl('code=auth-code&state=state-123');
 
-    let response;
+    /** @type {import('@/types/hooks').KakaoCallbackResult} */
+    let response = /** @type {any} */ (undefined);
     await act(async () => {
       response = await result.current.handleKakaoCallback();
     });
@@ -59,7 +62,8 @@ describe('useKakaoAuth', () => {
     sessionStorage.setItem('kakao_oauth_state', 'saved-state');
     setCallbackUrl('code=auth-code&state=url-state');
 
-    let response;
+    /** @type {import('@/types/hooks').KakaoCallbackResult} */
+    let response = /** @type {any} */ (undefined);
     await act(async () => {
       response = await result.current.handleKakaoCallback();
     });
@@ -72,7 +76,8 @@ describe('useKakaoAuth', () => {
     const { result } = await renderKakaoHook();
     setCallbackUrl('code=auth-code&state=url-state');
 
-    let response;
+    /** @type {import('@/types/hooks').KakaoCallbackResult} */
+    let response = /** @type {any} */ (undefined);
     await act(async () => {
       response = await result.current.handleKakaoCallback();
     });
@@ -86,7 +91,8 @@ describe('useKakaoAuth', () => {
     sessionStorage.setItem('kakao_oauth_state', 'saved-state');
     setCallbackUrl('code=auth-code');
 
-    let response;
+    /** @type {import('@/types/hooks').KakaoCallbackResult} */
+    let response = /** @type {any} */ (undefined);
     await act(async () => {
       response = await result.current.handleKakaoCallback();
     });
@@ -99,7 +105,8 @@ describe('useKakaoAuth', () => {
     const { result, showToast } = await renderKakaoHook();
     setCallbackUrl('error=access_denied&error_description=denied');
 
-    let response;
+    /** @type {import('@/types/hooks').KakaoCallbackResult} */
+    let response = /** @type {any} */ (undefined);
     await act(async () => {
       response = await result.current.handleKakaoCallback();
     });

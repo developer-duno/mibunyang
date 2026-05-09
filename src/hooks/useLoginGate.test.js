@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useLoginGate } from './useLoginGate';
@@ -21,9 +22,9 @@ describe('useLoginGate', () => {
     const detail = { handleOpenDetail: vi.fn() };
     const { result } = renderHook(() => useLoginGate(makeDeps({ isLoggedIn: true, detail })));
 
-    act(() => { result.current.handleDetailGated(42); });
+    act(() => { result.current.handleDetailGated('42'); });
 
-    expect(detail.handleOpenDetail).toHaveBeenCalledWith(42);
+    expect(detail.handleOpenDetail).toHaveBeenCalledWith('42');
     expect(result.current.showLoginPrompt).toBe(false);
   });
 
@@ -31,7 +32,7 @@ describe('useLoginGate', () => {
     const detail = { handleOpenDetail: vi.fn() };
     const { result } = renderHook(() => useLoginGate(makeDeps({ isLoggedIn: false, detail })));
 
-    act(() => { result.current.handleDetailGated(99); });
+    act(() => { result.current.handleDetailGated('99'); });
 
     expect(detail.handleOpenDetail).not.toHaveBeenCalled();
     expect(result.current.showLoginPrompt).toBe(true);
@@ -44,11 +45,11 @@ describe('useLoginGate', () => {
     const { result } = renderHook(() => useLoginGate(makeDeps({ kakao, detail })));
 
     // 비로그인 상태에서 상세 게이트 → pendingDetailId=77 저장
-    act(() => { result.current.handleDetailGated(77); });
+    act(() => { result.current.handleDetailGated('77'); });
     act(() => { result.current.handleKakaoFromPrompt(); });
 
     expect(result.current.showLoginPrompt).toBe(false);
-    expect(kakao.initKakaoLogin).toHaveBeenCalledWith(77);
+    expect(kakao.initKakaoLogin).toHaveBeenCalledWith('77');
   });
 
   it('전문가 로그인 버튼 → 모달 닫히고 expertLogin 탭으로 전환', () => {
