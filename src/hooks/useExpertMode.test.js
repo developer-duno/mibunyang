@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useExpertMode } from './useExpertMode';
 
 describe('useExpertMode', () => {
+  /** @type {import('vitest').Mock} */
   let showToast;
 
   beforeEach(() => {
@@ -38,7 +40,7 @@ describe('useExpertMode', () => {
     });
 
     // 로그인 요청 모킹 (다음 fetch 호출이 로그인)
-    fetch.mockResolvedValueOnce({
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
       ok: true, status: 200,
       json: () => Promise.resolve({ ok: true, token: "abc123", user: { email: "a@b.com" }, role: "expert" }),
     });
@@ -56,7 +58,7 @@ describe('useExpertMode', () => {
   it('로그인 429 → 에러 메시지', async () => {
     const { result } = renderHook(() => useExpertMode(showToast));
 
-    fetch.mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) });
 
     await act(async () => {
       await result.current.handleExpertLogin();
@@ -68,7 +70,7 @@ describe('useExpertMode', () => {
   it('로그인 실패 PENDING 상태', async () => {
     const { result } = renderHook(() => useExpertMode(showToast));
 
-    fetch.mockResolvedValueOnce({
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
       ok: true, status: 403,
       json: () => Promise.resolve({ ok: false, statusCode: "PENDING", error: "승인 대기 중" }),
     });
@@ -83,7 +85,7 @@ describe('useExpertMode', () => {
   it('로그인 실패 REJECTED 상태', async () => {
     const { result } = renderHook(() => useExpertMode(showToast));
 
-    fetch.mockResolvedValueOnce({
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
       ok: true, status: 403,
       json: () => Promise.resolve({ ok: false, statusCode: "REJECTED", error: "가입 거부됨" }),
     });
@@ -98,7 +100,7 @@ describe('useExpertMode', () => {
   it('네트워크 에러 → "서버 연결 실패"', async () => {
     const { result } = renderHook(() => useExpertMode(showToast));
 
-    fetch.mockRejectedValueOnce(new Error("network error"));
+    /** @type {import('vitest').Mock} */ (fetch).mockRejectedValueOnce(new Error("network error"));
 
     await act(async () => {
       await result.current.handleExpertLogin();
@@ -113,7 +115,7 @@ describe('useExpertMode', () => {
     // 8e2b5b7 이전 sessionStorage 잔재 시뮬레이션
     sessionStorage.setItem("expertToken", "stale");
     sessionStorage.setItem("userRole", "admin");
-    fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
     const onLogout = vi.fn();
     const { result } = renderHook(() => useExpertMode(showToast));
 
@@ -131,7 +133,7 @@ describe('useExpertMode', () => {
   it('회원가입 성공', async () => {
     const { result } = renderHook(() => useExpertMode(showToast));
 
-    fetch.mockResolvedValueOnce({
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
       ok: true, status: 201,
       json: () => Promise.resolve({ ok: true }),
     });
@@ -148,7 +150,7 @@ describe('useExpertMode', () => {
   it('회원가입 429 → 에러', async () => {
     const { result } = renderHook(() => useExpertMode(showToast));
 
-    fetch.mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) });
 
     await act(async () => {
       await result.current.handleExpertSignup();

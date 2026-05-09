@@ -6,6 +6,7 @@
  * - 지정된 ms 후에 새 값이 반영되는지
  * - 연속 변경 시 마지막 값만 반영되는지
  */
+// @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useDebouncedValue } from './useDebouncedValue';
