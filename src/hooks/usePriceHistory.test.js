@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * usePriceHistory 래퍼 훅 테스트 — useHistoryData에 올바른 엔드포인트 전달 확인
  */
@@ -7,10 +8,10 @@ import { usePriceHistory } from "./usePriceHistory";
 
 beforeEach(() => {
   vi.restoreAllMocks();
-  vi.spyOn(globalThis, "fetch").mockResolvedValue({
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(/** @type {Response} */ ({
     ok: true,
     json: () => Promise.resolve({ ok: true, data: [{ price: 50000 }] }),
-  });
+  }));
 });
 
 describe("usePriceHistory", () => {

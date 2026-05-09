@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useFilterSort } from './useFilterSort';
 
 // URL location mock 헬퍼
+/** @param {string} search */
 function mockLocationSearch(search) {
   Object.defineProperty(window, "location", {
     value: { ...window.location, search, pathname: "/", origin: "https://test.com" },
