@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useMarketStatsHistory } from "./useMarketStatsHistory";
@@ -9,11 +10,11 @@ const SAMPLE = [
 
 describe("useMarketStatsHistory", () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn(() => Promise.resolve({
+    globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => Promise.resolve(/** @type {Response} */ ({
       ok: true,
       status: 200,
       json: () => Promise.resolve({ ok: true, data: SAMPLE, count: 2 }),
-    }));
+    }))));
   });
   afterEach(() => { vi.restoreAllMocks(); });
 
@@ -38,7 +39,7 @@ describe("useMarketStatsHistory", () => {
   });
 
   it("429 응답 → 한국어 에러 메시지", async () => {
-    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 429 }));
+    globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => Promise.resolve(/** @type {Response} */ ({ ok: false, status: 429 }))));
     const { result } = renderHook(() => useMarketStatsHistory("서울", "강남구"));
     await waitFor(() => expect(result.current.error).toBeTruthy());
     expect(result.current.error).toContain("잠시 후 다시");

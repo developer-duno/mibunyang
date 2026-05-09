@@ -1,10 +1,13 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useConsult } from './useConsult';
 
 // fetch 모킹 팩토리
 function mockFetchSuccess(data = {}) {
-  return vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ ok: true, ...data }) }));
+  return vi.fn(() => Promise.resolve(/** @type {Response} */ ({
+    json: () => Promise.resolve({ ok: true, ...data }),
+  })));
 }
 function mockFetchNetworkError() {
   return vi.fn(() => Promise.reject(new Error("network error")));
@@ -46,7 +49,7 @@ describe('useConsult', () => {
   it('정상 제출 → API POST 호출 + consultSubmitted=true', async () => {
     const showToast = vi.fn();
     globalThis.fetch = mockFetchSuccess();
-    const { result } = renderHook(() => useConsult(showToast, [1, 2]));
+    const { result } = renderHook(() => useConsult(showToast, ["1", "2"]));
     act(() => {
       result.current.setConsultForm((f) => ({ ...f, name: "홍길동", phone: "010-1234-5678" }));
     });
@@ -60,7 +63,7 @@ describe('useConsult', () => {
   it('API 실패 시 localStorage 폴백 저장', async () => {
     const showToast = vi.fn();
     globalThis.fetch = mockFetchNetworkError();
-    const { result } = renderHook(() => useConsult(showToast, [10]));
+    const { result } = renderHook(() => useConsult(showToast, ["10"]));
     act(() => {
       result.current.setConsultForm((f) => ({ ...f, name: "김철수", phone: "010-0000-0000" }));
     });
@@ -71,20 +74,22 @@ describe('useConsult', () => {
     expect(result.current.submittedConsults[0].name).toBe("김**");
     expect(result.current.submittedConsults[0].phone).toBe("010-****-0000");
     expect(showToast).toHaveBeenCalledWith("상담 신청이 저장되었습니다 (오프라인)");
-    const stored = JSON.parse(localStorage.getItem("mibunyang_consults"));
+    const stored = JSON.parse(localStorage.getItem("mibunyang_consults") ?? "[]");
     expect(stored).toHaveLength(1);
   });
 
   // submitting 상태 반환 검증
   it('제출 중 submitting=true 반환', async () => {
     const showToast = vi.fn();
+    /** @type {(value: any) => void} */
     let resolvePromise;
-    globalThis.fetch = vi.fn(() => new Promise(resolve => { resolvePromise = resolve; }));
+    globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => new Promise(resolve => { resolvePromise = resolve; })));
     const { result } = renderHook(() => useConsult(showToast, []));
     act(() => {
       result.current.setConsultForm((f) => ({ ...f, name: "테스트", phone: "010-1111-2222" }));
     });
     // 제출 시작 → submitting=true
+    /** @type {Promise<any> | undefined} */
     let submitPromise;
     act(() => { submitPromise = result.current.handleConsultSubmit(); });
     expect(result.current.submitting).toBe(true);
@@ -101,7 +106,9 @@ describe('useConsult', () => {
     const mockData = [
       { id: 1, name: "고객A", phone: "010-1111-2222", interestedApts: ["apt1"], submittedAt: "2026-03-20T00:00:00Z" },
     ];
-    globalThis.fetch = vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ ok: true, data: mockData }) }));
+    globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => Promise.resolve(/** @type {Response} */ ({
+      json: () => Promise.resolve({ ok: true, data: mockData }),
+    }))));
     const { result } = renderHook(() => useConsult(vi.fn(), []));
     await act(async () => { await result.current.fetchConsults("test-token"); });
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/consults", expect.objectContaining({

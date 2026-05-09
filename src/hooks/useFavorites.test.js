@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useFavorites } from './useFavorites';
@@ -37,7 +38,7 @@ describe('useFavorites', () => {
     const arr = ["apt-1", "apt-2"];
     localStorage.setItem("mibunyang_fav", JSON.stringify(arr));
     renderHook(() => useFavorites(vi.fn()));
-    const backup = JSON.parse(localStorage.getItem("mibunyang_fav_backup"));
+    const backup = JSON.parse(localStorage.getItem("mibunyang_fav_backup") ?? "[]");
     expect(backup).toEqual(arr);
   });
 
@@ -64,7 +65,7 @@ describe('useFavorites', () => {
   it('변경 시 localStorage에 객체 형식으로 저장', () => {
     const { result } = renderHook(() => useFavorites(vi.fn()));
     act(() => { result.current.toggleFavorite("apt-5"); });
-    const saved = JSON.parse(localStorage.getItem("mibunyang_fav"));
+    const saved = JSON.parse(localStorage.getItem("mibunyang_fav") ?? "{}");
     expect(saved).toHaveProperty("apt-5");
     expect(saved["apt-5"]).toHaveProperty("memo", "");
   });
