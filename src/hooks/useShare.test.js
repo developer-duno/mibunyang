@@ -1,21 +1,26 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useShare } from './useShare';
 
 describe('useShare', () => {
+  /** @type {import('vitest').Mock} */
   let showToast;
+  /** @type {any} */
+  let kakao;
 
   beforeEach(() => {
     showToast = vi.fn();
     vi.restoreAllMocks();
-    // Kakao SDK 모킹
-    window.Kakao = {
+    // Kakao SDK 모킹 (any cast — vi.fn() 시그니처 정합 노력 0, test mock 본질)
+    kakao = {
       isInitialized: vi.fn().mockReturnValue(true),
       init: vi.fn(),
       Share: {
         sendDefault: vi.fn(),
       },
     };
+    window.Kakao = kakao;
   });
 
   it('초기 상태: shareSheet 닫힘', () => {
@@ -40,7 +45,7 @@ describe('useShare', () => {
   });
 
   it('shareKakao: SDK 미초기화 → 토스트', () => {
-    window.Kakao.isInitialized.mockReturnValue(false);
+    kakao.isInitialized.mockReturnValue(false);
     const { result } = renderHook(() => useShare(showToast));
     act(() => { result.current.openShareSheet({ title: "t", text: "x", url: "u" }); });
     act(() => { result.current.shareKakao(); });
@@ -50,14 +55,14 @@ describe('useShare', () => {
   it('shareKakao: shareData=null → 무시', () => {
     const { result } = renderHook(() => useShare(showToast));
     act(() => { result.current.shareKakao(); });
-    expect(window.Kakao.Share.sendDefault).not.toHaveBeenCalled();
+    expect(kakao.Share.sendDefault).not.toHaveBeenCalled();
   });
 
   it('shareKakao: 정상 호출', () => {
     const { result } = renderHook(() => useShare(showToast));
     act(() => { result.current.openShareSheet({ title: "아파트", text: "분석", url: "https://x.com" }); });
     act(() => { result.current.shareKakao(); });
-    expect(window.Kakao.Share.sendDefault).toHaveBeenCalled();
+    expect(kakao.Share.sendDefault).toHaveBeenCalled();
     expect(result.current.shareSheetOpen).toBe(false);
   });
 

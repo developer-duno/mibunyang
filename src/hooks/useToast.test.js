@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * useToast 훅 테스트
  *
