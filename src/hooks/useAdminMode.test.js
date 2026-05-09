@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAdminMode } from './useAdminMode';
 
 describe('useAdminMode', () => {
+  /** @type {import('vitest').Mock} */
   let showToast;
 
   beforeEach(() => {
@@ -47,7 +49,7 @@ describe('useAdminMode', () => {
   it('유저 조회 성공', async () => {
     localStorage.setItem("userRole", "admin");
     localStorage.setItem("expertToken", "token");
-    fetch.mockResolvedValue({
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValue({
       ok: true, status: 200,
       json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com", status: "pending" }] }),
     });
@@ -63,7 +65,7 @@ describe('useAdminMode', () => {
     // sessionStorage 잔재 시뮬레이션 (마이그레이션 직후 401 만료 시나리오)
     sessionStorage.setItem("userRole", "admin");
     sessionStorage.setItem("expertToken", "stale");
-    fetch.mockResolvedValue({
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValue({
       ok: false, status: 401,
       json: () => Promise.resolve({ ok: false }),
     });
@@ -84,7 +86,7 @@ describe('useAdminMode', () => {
     localStorage.setItem("expertToken", "token");
 
     // 첫 번째 fetch: 유저 조회
-    fetch
+    /** @type {import('vitest').Mock} */ (fetch)
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com" }] }) })
       // 두 번째 fetch: fetchStats (adminLoggedIn 시 자동 호출)
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true, counts: {} }) })
@@ -106,7 +108,7 @@ describe('useAdminMode', () => {
   it('관리자 로그아웃', async () => {
     localStorage.setItem("userRole", "admin");
     localStorage.setItem("expertToken", "token");
-    fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
     const onLogout = vi.fn();
     const { result } = renderHook(() => useAdminMode(showToast));
 
@@ -124,19 +126,19 @@ describe('useAdminMode', () => {
   it('selectedStatus 변경 시 재조회', async () => {
     localStorage.setItem("userRole", "admin");
     localStorage.setItem("expertToken", "token");
-    fetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, users: [] }) });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, users: [] }) });
 
     const { result } = renderHook(() => useAdminMode(showToast));
     await waitFor(() => expect(result.current.adminLoading).toBe(false));
 
-    const callCountBefore = fetch.mock.calls.length;
+    const callCountBefore = /** @type {import('vitest').Mock} */ (fetch).mock.calls.length;
     act(() => { result.current.setSelectedStatus("approved"); });
-    await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(callCountBefore));
+    await waitFor(() => expect(/** @type {import('vitest').Mock} */ (fetch).mock.calls.length).toBeGreaterThan(callCountBefore));
   });
 
   it('토큰 없으면 fetchUsers 스킵', async () => {
     const { result } = renderHook(() => useAdminMode(showToast));
-    fetch.mockClear();
+    /** @type {import('vitest').Mock} */ (fetch).mockClear();
     await act(async () => { await result.current.fetchUsers("pending"); });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -144,17 +146,17 @@ describe('useAdminMode', () => {
   it('검색 시 q 파라미터가 fetch URL에 포함된다', async () => {
     localStorage.setItem("userRole", "admin");
     localStorage.setItem("expertToken", "token");
-    fetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [], total: 0 }) });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [], total: 0 }) });
 
     const { result } = renderHook(() => useAdminMode(showToast));
     await waitFor(() => expect(result.current.adminLoading).toBe(false));
 
-    fetch.mockClear();
+    /** @type {import('vitest').Mock} */ (fetch).mockClear();
     act(() => { result.current.setSearchQuery("김철수"); });
 
     // 디바운스 300ms 대기
     await waitFor(() => {
-      const calls = fetch.mock.calls;
+      const calls = /** @type {import('vitest').Mock} */ (fetch).mock.calls;
       const hasSearchParam = calls.some(c => c[0].includes("q="));
       expect(hasSearchParam).toBe(true);
     }, { timeout: 1000 });
@@ -163,7 +165,7 @@ describe('useAdminMode', () => {
   it('검색 변경 시 page가 0으로 리셋된다', async () => {
     localStorage.setItem("userRole", "admin");
     localStorage.setItem("expertToken", "token");
-    fetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com" }], total: 30 }) });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com" }], total: 30 }) });
 
     const { result } = renderHook(() => useAdminMode(showToast));
     await waitFor(() => expect(result.current.adminLoading).toBe(false));
@@ -180,7 +182,7 @@ describe('useAdminMode', () => {
   it('totalUsers 응답 반영', async () => {
     localStorage.setItem("userRole", "admin");
     localStorage.setItem("expertToken", "token");
-    fetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com" }], total: 42 }) });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, users: [{ email: "a@b.com" }], total: 42 }) });
 
     const { result } = renderHook(() => useAdminMode(showToast));
     await waitFor(() => expect(result.current.adminLoading).toBe(false));
