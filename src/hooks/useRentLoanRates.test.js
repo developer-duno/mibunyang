@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * useRentLoanRates 훅 테스트 — 전세자금대출 금리 페칭
  */
@@ -10,9 +11,12 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn());
 });
 
-/** 정상 응답 팩토리 */
+/**
+ * 정상 응답 팩토리
+ * @param {any[]} data
+ */
 function mockFetchSuccess(data = []) {
-  fetch.mockResolvedValueOnce({
+  /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
     ok: true,
     json: () => Promise.resolve({ ok: true, data }),
   });
@@ -52,7 +56,7 @@ describe('useRentLoanRates', () => {
 
   // 에러: API 실패
   it('API 실패 시 에러를 설정한다', async () => {
-    fetch.mockResolvedValueOnce({ ok: false, status: 500 });
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({ ok: false, status: 500 });
 
     const { result } = renderHook(() => useRentLoanRates());
 
