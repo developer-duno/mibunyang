@@ -1,9 +1,11 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CompareSheet } from "./CompareSheet";
 import { makeScoredItem } from "@/__tests__/factories";
 
-function makeItem(id, name, total = 75) {
+/** @returns {any} */
+function makeItem(/** @type {any} */ id, /** @type {any} */ name, total = 75) {
   return makeScoredItem(
     { id, name, region: "경기", gu: "수원시", price: 50000 },
     {
@@ -51,7 +53,7 @@ describe("CompareSheet", () => {
   // 종합 점수 표시
   it("종합 점수가 표시됨", () => {
     const items = [makeItem(1, "A", 82), makeItem(2, "B", 63)];
-    render(<CompareSheet items={items} onClose={vi.fn()} />);
+    render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     expect(screen.getByText("82")).toBeInTheDocument();
     expect(screen.getByText("63")).toBeInTheDocument();
   });
@@ -59,7 +61,7 @@ describe("CompareSheet", () => {
   // 최고 점수에 '최고' 하이라이트
   it("최고 종합 점수에 '최고' 라벨 표시", () => {
     const items = [makeItem(1, "A", 80), makeItem(2, "B", 65)];
-    render(<CompareSheet items={items} onClose={vi.fn()} />);
+    render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     expect(screen.getByText("최고")).toBeInTheDocument();
   });
 
@@ -67,7 +69,7 @@ describe("CompareSheet", () => {
   it("닫기 버튼 클릭 시 onClose 호출", () => {
     const onClose = vi.fn();
     const items = [makeItem(1, "A"), makeItem(2, "B")];
-    render(<CompareSheet items={items} onClose={onClose} />);
+    render(<CompareSheet items={items} onClose={onClose} profile={/** @type {any} */ ("live")} />);
     fireEvent.click(screen.getByLabelText("비교 닫기"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -75,20 +77,20 @@ describe("CompareSheet", () => {
   // 공유 버튼 (onShare 제공 시)
   it("onShare 제공 시 공유 버튼 표시", () => {
     const items = [makeItem(1, "A"), makeItem(2, "B")];
-    render(<CompareSheet items={items} onShare={vi.fn()} onClose={vi.fn()} />);
+    render(<CompareSheet items={items} onShare={vi.fn()} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     expect(screen.getByLabelText("비교 결과 공유하기")).toBeInTheDocument();
   });
 
   it("onShare 미제공 시 공유 버튼 미표시", () => {
     const items = [makeItem(1, "A"), makeItem(2, "B")];
-    render(<CompareSheet items={items} onClose={vi.fn()} />);
+    render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     expect(screen.queryByLabelText("비교 결과 공유하기")).toBeNull();
   });
 
   // 카테고리별 점수 행 표시
   it("카테고리별 점수 행이 표시됨", () => {
     const items = [makeItem(1, "A"), makeItem(2, "B")];
-    render(<CompareSheet items={items} onClose={vi.fn()} />);
+    render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     expect(screen.getByText("종합")).toBeInTheDocument();
     expect(screen.getByText("분양가")).toBeInTheDocument();
     expect(screen.getByText("총혜택")).toBeInTheDocument();
@@ -100,7 +102,7 @@ describe("CompareSheet", () => {
   // 3개 비교
   it("3개 아이템도 정상 렌더링", () => {
     const items = [makeItem(1, "A", 80), makeItem(2, "B", 70), makeItem(3, "C", 60)];
-    render(<CompareSheet items={items} onClose={vi.fn()} />);
+    render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     const headers = screen.getAllByRole("columnheader");
     // 항목 헤더(1) + 아파트 3개 = 4
     expect(headers).toHaveLength(4);
@@ -111,7 +113,7 @@ describe("CompareSheet", () => {
   it("종합/카테고리 행에 점수 비례 바가 렌더링됨", () => {
     // 종합 80점 → 바 너비 80%, 카테고리 각 점수에 비례하는 바 존재
     const items = [makeItem(1, "A", 80), makeItem(2, "B", 60)];
-    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} />);
+    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     // 바는 gradient background가 있는 inner div — 최소 8개 (종합 2 + 카테고리 6×2 = 14개)
     const bars = container.querySelectorAll('div[style*="linear-gradient"]');
     expect(bars.length).toBeGreaterThanOrEqual(8);
@@ -132,7 +134,7 @@ describe("CompareSheet", () => {
       ),
       makeItem(2, "B", 50),
     ];
-    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} />);
+    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     // 0% 바 확인 — 렌더링 에러 없이 표시되어야 함
     const zeroBars = container.querySelectorAll('div[style*="width: 0%"]');
     expect(zeroBars.length).toBeGreaterThanOrEqual(1);
@@ -168,7 +170,7 @@ describe("CompareSheet", () => {
 
   it("profile 미전달 시 기본값(실거주) 폴백", () => {
     const items = [makeItem(1, "A단지", 75), makeItem(2, "B단지", 80)];
-    render(<CompareSheet items={items} onClose={vi.fn()} />);
+    render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     expect(screen.getByText(/실거주 기준 추천/)).toBeInTheDocument();
   });
 
@@ -176,7 +178,7 @@ describe("CompareSheet", () => {
 
   it("isLoggedIn=false일 때 점수가 '??'로 표시되고 추천 요약 숨김", () => {
     const items = [makeItem(1, "A", 82), makeItem(2, "B", 63)];
-    render(<CompareSheet items={items} onClose={vi.fn()} profile="live" isLoggedIn={false} />);
+    render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} isLoggedIn={false} />);
     // 실제 점수(82, 63)는 DOM에 없어야 함
     expect(screen.queryByText("82")).toBeNull();
     expect(screen.queryByText("63")).toBeNull();
@@ -193,7 +195,7 @@ describe("CompareSheet", () => {
 
   it("isLoggedIn=false일 때 export/공유 버튼 숨김", () => {
     const items = [makeItem(1, "A"), makeItem(2, "B")];
-    render(<CompareSheet items={items} onShare={vi.fn()} onClose={vi.fn()} isLoggedIn={false} />);
+    render(<CompareSheet items={items} onShare={vi.fn()} onClose={vi.fn()} isLoggedIn={false} profile={/** @type {any} */ ("live")} />);
     expect(screen.queryByLabelText("이미지 내보내기")).toBeNull();
     expect(screen.queryByLabelText("PDF 내보내기")).toBeNull();
     expect(screen.queryByLabelText("비교 결과 공유하기")).toBeNull();

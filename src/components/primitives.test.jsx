@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { Bar, ScoreBadge, Radar, LineChart, SkeletonBox, SkeletonText, SkeletonList } from "./primitives";
@@ -22,7 +23,7 @@ describe("Bar", () => {
     render(<Bar value={150} />);
     const bar = screen.getByRole("progressbar");
     const inner = bar.querySelector("div");
-    expect(inner.style.width).toBe("100%");
+    expect(inner?.style.width).toBe("100%");
   });
 
   // 음수 값은 0%로 클램핑
@@ -30,7 +31,7 @@ describe("Bar", () => {
     render(<Bar value={-10} />);
     const bar = screen.getByRole("progressbar");
     const inner = bar.querySelector("div");
-    expect(inner.style.width).toBe("0%");
+    expect(inner?.style.width).toBe("0%");
   });
 });
 
@@ -58,8 +59,8 @@ describe("ScoreBadge", () => {
   it("size prop이 SVG에 반영", () => {
     const { container } = render(<ScoreBadge score={50} size={80} />);
     const svg = container.querySelector("svg");
-    expect(svg.getAttribute("width")).toBe("80");
-    expect(svg.getAttribute("height")).toBe("80");
+    expect(svg?.getAttribute("width")).toBe("80");
+    expect(svg?.getAttribute("height")).toBe("80");
   });
 });
 
@@ -71,7 +72,7 @@ describe("Radar", () => {
   });
 
   it("null data면 아무것도 렌더링하지 않음", () => {
-    const { container } = render(<Radar data={null} />);
+    const { container } = render(<Radar data={/** @type {any} */ (null)} />);
     expect(container.querySelector("svg")).toBeNull();
   });
 
@@ -93,7 +94,7 @@ describe("Radar", () => {
     const data = [{ l: "A", v: 50 }, { l: "B", v: 60 }];
     const { container } = render(<Radar data={data} size={200} />);
     const svg = container.querySelector("svg");
-    expect(svg.getAttribute("width")).toBe("200");
+    expect(svg?.getAttribute("width")).toBe("200");
   });
 });
 
@@ -115,7 +116,7 @@ describe("LineChart", () => {
     const { container } = render(<LineChart data={chartData} yLabel="테스트 차트" />);
     const svg = container.querySelector("svg");
     expect(svg).toBeInTheDocument();
-    expect(svg.getAttribute("aria-label")).toBe("테스트 차트");
+    expect(svg?.getAttribute("aria-label")).toBe("테스트 차트");
   });
 
   // title 요소 유지 (접근성)
@@ -137,23 +138,23 @@ describe("LineChart", () => {
   it("hit area 클릭 시 툴팁 표시", () => {
     const { container } = render(<LineChart data={chartData} />);
     const hitArea = container.querySelector('circle[data-index="1"]');
-    fireEvent.click(hitArea);
+    fireEvent.click(hitArea ?? document.body);
     // 활성 dot: r=5, stroke=white
     const activeDot = container.querySelector('circle[r="5"]');
     expect(activeDot).toBeInTheDocument();
     // 툴팁 text: fontWeight 600
     const tooltipText = container.querySelector("text[font-weight='600']");
     expect(tooltipText).toBeInTheDocument();
-    expect(tooltipText.textContent).toBe("2월: 120");
+    expect(tooltipText?.textContent).toBe("2월: 120");
   });
 
   // 같은 포인트 재클릭 시 토글 (dismiss)
   it("같은 포인트 재클릭 시 툴팁 dismiss", () => {
     const { container } = render(<LineChart data={chartData} />);
     const hitArea = container.querySelector('circle[data-index="0"]');
-    fireEvent.click(hitArea);
+    fireEvent.click(hitArea ?? document.body);
     expect(container.querySelector('circle[r="5"]')).toBeInTheDocument();
-    fireEvent.click(hitArea);
+    fireEvent.click(hitArea ?? document.body);
     expect(container.querySelector('circle[r="5"]')).toBeNull();
   });
 
@@ -162,7 +163,7 @@ describe("LineChart", () => {
     vi.useFakeTimers();
     const { container } = render(<LineChart data={chartData} />);
     const hitArea = container.querySelector('circle[data-index="1"]');
-    fireEvent.click(hitArea);
+    fireEvent.click(hitArea ?? document.body);
     expect(container.querySelector('circle[r="5"]')).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(3000); });
     expect(container.querySelector('circle[r="5"]')).toBeNull();
@@ -175,7 +176,7 @@ describe("SkeletonBox", () => {
     const { container } = render(<SkeletonBox />);
     const el = container.querySelector("div[aria-hidden='true']");
     expect(el).toBeInTheDocument();
-    expect(el.style.animation).toContain("skeleton-pulse");
+    expect(/** @type {HTMLElement} */ (el)?.style.animation).toContain("skeleton-pulse");
   });
 });
 
@@ -183,13 +184,13 @@ describe("SkeletonText", () => {
   it("lines prop 개수만큼 bar 렌더링 (마지막은 60%)", () => {
     const { container } = render(<SkeletonText lines={4} />);
     const wrapper = container.querySelector("div[aria-hidden='true']");
-    expect(wrapper.children.length).toBe(4);
+    expect(wrapper?.children.length).toBe(4);
   });
 
   it("기본 lines=3 이면 3줄 렌더링", () => {
     const { container } = render(<SkeletonText />);
     const wrapper = container.querySelector("div[aria-hidden='true']");
-    expect(wrapper.children.length).toBe(3);
+    expect(wrapper?.children.length).toBe(3);
   });
 });
 
@@ -197,7 +198,7 @@ describe("SkeletonList", () => {
   it("count prop 개수만큼 카드 렌더링", () => {
     const { container } = render(<SkeletonList count={5} columns={2} />);
     const grid = container.querySelector("div[aria-hidden='true']");
-    expect(grid.children.length).toBe(5);
-    expect(grid.style.gridTemplateColumns).toBe("repeat(2, 1fr)");
+    expect(grid?.children.length).toBe(5);
+    expect(/** @type {HTMLElement} */ (grid)?.style.gridTemplateColumns).toBe("repeat(2, 1fr)");
   });
 });

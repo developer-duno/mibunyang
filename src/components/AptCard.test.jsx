@@ -1,9 +1,11 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { AptCard } from "./AptCard";
 import { makeApt } from "@/__tests__/factories";
 
 // 테스트용 res 데이터 팩토리
+/** @returns {any} */
 function makeRes(overrides = {}) {
   return {
     total: 75,
@@ -19,6 +21,7 @@ function makeRes(overrides = {}) {
   };
 }
 
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     apt: makeApt(),
@@ -69,7 +72,7 @@ describe("AptCard", () => {
     const onDetail = vi.fn();
     render(<AptCard {...makeProps({ onDetail })} />);
     const body = screen.getByText("테스트아파트").closest('[role="button"]');
-    fireEvent.click(body);
+    fireEvent.click(body ?? document.body);
     expect(onDetail).toHaveBeenCalledWith(1);
   });
 
@@ -120,21 +123,21 @@ describe("AptCard", () => {
 
   // 미분양률 30% 이상 경고
   it("unsoldRate 30% 이상이면 미분양 경고 태그 표시", () => {
-    const apt = makeApt({ unsoldRate: 45 });
+    const apt = /** @type {any} */ (makeApt({ unsoldRate: 45 }));
     render(<AptCard {...makeProps({ apt })} />);
     expect(screen.getByText("미분양 45%")).toBeInTheDocument();
   });
 
   // 혐오시설 경고
   it("혐오시설이 있으면 경고 태그 표시", () => {
-    const apt = makeApt({ noxious: ["공장", "묘지"] });
+    const apt = /** @type {any} */ (makeApt({ noxious: ["공장", "묘지"] }));
     render(<AptCard {...makeProps({ apt })} />);
     expect(screen.getByText("혐오시설 2건")).toBeInTheDocument();
   });
 
   // 시공사 신용등급 경고
   it("시공사 신용등급이 안전 등급 밖이면 경고 표시", () => {
-    const apt = makeApt({ builderCreditGrade: "BBB" });
+    const apt = /** @type {any} */ (makeApt({ builderCreditGrade: "BBB" }));
     render(<AptCard {...makeProps({ apt })} />);
     expect(screen.getByText("시공사 BBB")).toBeInTheDocument();
   });
@@ -144,7 +147,7 @@ describe("AptCard", () => {
     const onDetail = vi.fn();
     render(<AptCard {...makeProps({ onDetail })} />);
     const body = screen.getByText("테스트아파트").closest('[role="button"]');
-    fireEvent.keyDown(body, { key: "Enter" });
+    fireEvent.keyDown(body ?? document.body, { key: "Enter" });
     expect(onDetail).toHaveBeenCalledWith(1);
   });
 
@@ -176,19 +179,19 @@ describe("AptCard", () => {
 
   // 무순위 공고 발생 단지 — "추가 모집" 빨간 배지
   it("unsoldEventCount > 0 + ah- 단지면 '추가 모집' 배지 표시", () => {
-    const apt = makeApt({ id: "ah-100", unsoldEventCount: 5 });
+    const apt = /** @type {any} */ (makeApt({ id: "ah-100", unsoldEventCount: 5 }));
     render(<AptCard {...makeProps({ apt })} />);
     expect(screen.getByText("추가 모집")).toBeInTheDocument();
   });
 
   it("unsoldEventCount = 0 이면 '추가 모집' 배지 미표시", () => {
-    const apt = makeApt({ id: "ah-100", unsoldEventCount: 0 });
+    const apt = /** @type {any} */ (makeApt({ id: "ah-100", unsoldEventCount: 0 }));
     render(<AptCard {...makeProps({ apt })} />);
     expect(screen.queryByText("추가 모집")).toBeNull();
   });
 
   it("naver- 단지 (id prefix 가드) 면 '추가 모집' 배지 미표시 (정보 없음)", () => {
-    const apt = makeApt({ id: "naver-9999", unsoldEventCount: 5 });
+    const apt = /** @type {any} */ (makeApt({ id: "naver-9999", unsoldEventCount: 5 }));
     render(<AptCard {...makeProps({ apt })} />);
     expect(screen.queryByText("추가 모집")).toBeNull();
   });
