@@ -1,3 +1,44 @@
+# 세션 224 — 2026-05-11 (Naver post-process 60→90 timeout 1줄 yaml fix + 9 GATE 풀 검증 2 라운드)
+
+**거시 목적**: BACKLOG §🔴 즉시 — Naver Post-Processing 30일 0건 success 사고 봉합. 5/9 run 25610302732 timestamp 실측 후 root cause = 60분 timeout 단독 (audit §2 concurrency 가설은 부분 환각).
+
+**결론**: 1커밋 origin/main push (`052eb44..150044d`). CI run 25636712871 success 3m 41s ✅. yaml +3/-3 1줄 변경.
+
+**작업 흐름**:
+- ExitPlanMode 거부 2회 (사용자 9 GATE 풀 검증 4차 답습 패턴) → plan v3 통과
+- 9 GATE 풀 검증 2 라운드 (서브에이전트 6 회: Plan 1 + Explore 4 + collector-contract 1) → 🟢9 🟡0 🔴0
+- v1→v3 누적 환각 12건 정정 (cron 트리거 시각 / Phase 4 정의 / 10배 확장 / gitignore 정책 / SESSION_LOG stale 등)
+- collector-contract review: 🟢 채택 가능 (batch/upsert/Promise.all/quota/log 5축 PASS, rate limit 🟡 일일 한도 내)
+
+**5교차검증 (WORK_RULES Review §3)**:
+- 빌드: yaml only → vite build 면제 정당화 (src/ 무관)
+- 스코어링: 검증 미실행 (scoring/ 무관)
+- null-safety: 검증 미실행 (src/ 무관)
+- Hook 규칙: 검증 미실행 (hooks/ 무관)
+- 보안: 검증 미실행 (XSS/innerHTML/api 무관)
+- **수집기 계약: PASS (collector-contract 서브에이전트)** — 5/9 run 실측 근거 + transport-tago 행 단위 idempotent + maxTago=10000 quota gate
+
+**박제할 사고 패턴**:
+1. **audit 가설은 단정 근거 아님**: BACKLOG/AUDIT 박제 가설을 plan 근거로 사용 전 gh CLI run log 직접 timestamp 추출 1회 의무. v1 가설 "concurrency.cancel-in-progress: false" → 5/9 timestamp 실측 결과 환각 (group 사용 1개, 대기 0초). [`feedback_audit_hypothesis_partial_hallucination.md`](~/.claude/projects/f--mibunyang/memory/feedback_audit_hypothesis_partial_hallucination.md) 신규
+2. **gitignore 정책 자가 점검 의무**: plan 작성 시 `.claude/*` 의 git 추적 여부 사전 확인. plan v3 commit 2/3 (BACKLOG/AUDIT push) 단계 = gitignore 위반 → 로컬 박제로 정정
+3. **사용자 9 GATE 풀 검증 4차 답습**: 1줄 yaml 변경에도 ExitPlanMode 2회 거부 + 사후 검증 1회. 작업 규모와 무관하게 9 GATE 답습 = 환각 차단 가치 무한대
+4. **plan 박제값 자체도 환각 가능**: plan v3 "SESSION_LOG stale 세션 114" 박제 = grep tail 출력의 마지막 줄 (가장 오래된 세션) 잘못 해석. 실제 최신 = 세션 156 (역순 누적 구조)
+
+**박제 위치**:
+- yaml: 커밋 `150044d` (git 추적, origin/main)
+- BACKLOG ✅ 마킹: 로컬 박제 (gitignore)
+- AUDIT §2 정정 노트: 로컬 박제 (gitignore, blockquote 형식)
+- MEMORY: [`feedback_audit_hypothesis_partial_hallucination.md`](~/.claude/projects/f--mibunyang/memory/feedback_audit_hypothesis_partial_hallucination.md) + MEMORY.md 인덱스 L1
+- SESSION_LOG (본 항목): git 추적
+
+**다음 세션 자리**:
+- Naver cron 다음 run (UTC 19:00 ~ 20:00, KST 04:00~05:00) 결과 모니터링 — `gh run list --workflow=collect-naver-listings.yml --limit 1`
+- 7일 후 success ≥ 5/7 확인
+- 90분 cancelled 2회 연속 발생 시 옵션 D escalate (timeout 90→120)
+- 잔여 M9 (src/App.test.jsx) 별도 plan 후보
+
+---
+
 # 세션 156 — 2026-05-02 (market-stats reader + DetailModal 5지표 시계열 차트)
 
 **거시 목적**: 세션 151 박제 "다음 세션" B안 실행 — market_stats_history 테이블의 region+gu 5지표 시계열을 단지 상세에 LineChart 5개로 노출. 사용자 가치 직접.
