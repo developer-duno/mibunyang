@@ -244,7 +244,9 @@ async function phase2_kosis(apartments) {
   if (!KOSIS_KEY) { log("Phase 2: KOSIS_KEY 없음, 건너뜀"); meta.phases.kosis = { ok: false, reason: "no key" }; return apartments; }
   log("Phase 2: KOSIS 통계 조회...");
   try {
-    // ── 2-A: 시군구별 미분양 현황 (DT_1YL202001E, 월별) ──
+    // ── 2-A: 시군구별 미분양 현황 (DT_MLTM_2082, 월별, MOLIT 국토교통부) ──
+    // 2026-05 이전 통계청(orgId=101) DT_1YL202001E 폐지 → MOLIT(orgId=116) DT_MLTM_2082 로 이전.
+    // collect-unsold-kosis.mjs 가 이미 동일 통계표 사용 중. itmId 동일.
     const now = new Date();
     const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
     const startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
@@ -253,7 +255,7 @@ async function phase2_kosis(apartments) {
     const params = new URLSearchParams({
       method: "getList", apiKey: KOSIS_KEY, format: "json", jsonVD: "Y",
       prdSe: "M", startPrdDe: startMonth, endPrdDe: endMonth,
-      orgId: "101", tblId: "DT_1YL202001E",
+      orgId: "116", tblId: "DT_MLTM_2082",
       itmId: "13103871087T1",
       objL1: "ALL", objL2: "ALL",
     });
