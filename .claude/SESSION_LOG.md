@@ -5832,3 +5832,99 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 1. 🥇 M5c — api 인증 7파일 (위험도 고, 별도 plan + 사용자 동의 필수)
 2. 🥈 M6 신규 phase 정의 (사용자 brainstorming)
 3. 🥉 SESSION_LOG 191~205 박제 누락 보강 (별도 sub)
+
+---
+
+## 세션 225 (2026-05-11) — Naver cron 5/10 첫 90분 timeout 검증 + D-1 collect-applyhome recordApiQuota fix
+
+### 발문 + 9 GATE 풀 검증 답습 (4 차 = 누락 0 도달)
+
+사용자 발문: "위 선택지를 결국 전부 다해야 하는거 아니야? 그러면 각자 진행 했을 때 분명 우선 순위가 있을텐데 순서를 아무렇게나 수정하면 중복 수정을 해야 할 수 있으니 네가 꼼꼼하게 심층 분석해서 작업플랜의 우선순위를 정해줘. 실증한 후에 가장 확실한 방법과 프로젝트 목표에 적합하고 문제 없도록 네가 선택해줘."
+
+본 세션 = 직전 세션 224 의 5/9 19:51 cancelled 60분 timeout 사고 fix (commit 150044d, timeout 60→90) 의 **첫 검증 자리**.
+
+### plan v1→v4 정정 누적 (9 GATE 2 라운드 풀 검증)
+
+| 버전 | 정정 사고 | 9 GATE 결과 |
+|---|---|---|
+| v1 | 4 후보 (A/B/C/D) 초안, D 보류 단정 | 🟡 4건 (Step 진입 / D 보류 / 메모리 backup / GitHub delay 변동) |
+| v2 | D 보류 → D-1 추가 (사용자 의도 95%) + 시간·delay 정정 + 메모리 backup | 🟢9 🟡0 🔴0 (8건 정정) |
+| v3 | 환각 4건 정정 (BACKLOG gitignore / collect-applyhome.yml paths filter / .claude/rules gitignore) | 🟢9 🟡0 🔴0 |
+| v4 | 2차 GATE 검증 신규 3건 (hard timeout 90m / databaseId 동적 추출 / Step 1b 커밋 시점) | 🟢9 🟡0 🔴0 |
+
+ExitPlanMode 2 회 거부 → 4 차 답습 패턴 (직전 세션 dazzling-cascade 동일 패턴 답습).
+
+### Step 1 (B+C 메모리·박제값 stale 정정)
+
+- B. `~/.claude/projects/f--mibunyang/memory/project_kosis_api_failure_session221.md` ✅ 해결됨 블록 추가 + frontmatter 갱신
+- B. MEMORY.md L75 인덱스 정정 ("진단 절차 5단계 박제" → "✅ 세션 222 fix")
+- C. `.claude/NEXT_SESSION.md` L51 plugin 카운트 stale 정정 (4개 → 프로젝트 3개)
+
+### Step 1b (D-1 collect-applyhome recordApiQuota fix)
+
+- 커밋 `816664b` fix(collect-applyhome): recordApiQuota 누락 fix (try/finally + apiCalls 모듈 scope)
+- 변경: scripts/collectors/collect-applyhome.mjs 9+/1- (import + 모듈 scope `let apiCalls = 0` + fetch++ + main try/finally)
+- 답습 패턴: migration.mjs L201-204
+- 검증: dry-run 1263건 정상 처리 / vitest 11 tests pass / typecheck 0 errors
+- 출처: BACKLOG.md 🟡 audit v2 발견 (api_quota 일일 10K 한도 무계측 fix)
+
+### Step 2 (Naver cron 5/10 첫 90분 timeout 검증 모니터링)
+
+- run `25638230275`, startedAt UTC 19:54:07 (cron trigger 19:00 + delay 54m)
+- 직전 5일 (5/5~5/9) 모두 cancelled @ 60m → 5/10 첫 90m timeout fix 적용 run
+- hard timeout 90m = UTC 21:24
+- 모니터링 cadence: 5분 → 20분 → 5분 (cache window 최적화, 18회 한도 안)
+- 12차 체크 결과: UTC 21:08 in_progress 74분 (72분 예상치 +2분 초과)
+
+### Step 3b 결과 — 🔴 cancelled @ 90분 정확 (escalate trigger 발동)
+
+- **run 25638230275 결과**: startedAt 2026-05-10T19:54:07Z → updatedAt 2026-05-10T21:24:26Z = **90분 19초 cancelled**
+- **세션 224 fix (60→90) 효과**: cancelled 한계만 60→90 으로 이동, **실제 실행시간 90분 초과 발견** = 18분 마진 부족
+- **5/9 60m → 5/10 90m 답습 패턴 정확 일치**: timeout 한계까지 정확히 진행 후 cancelled (실행시간 ≥ timeout 한계)
+- **옵션 D escalate trigger 1회차 발동** (BACKLOG 잔여 모니터링: "90분 cancelled 2회 연속 발생 시 옵션 D escalate" 조건 1/2)
+- **다음 세션 spec**: timeout 120m 검증 또는 transport 분리 (sync vs HTTP) 새 root cause 조사
+
+### v3 환각 정정 사고 박제
+
+- v3 plan §A "5/10 cron startedAt 예상 UTC 19:51~20:16" → 실측 UTC 19:54:07 (정합 ✅)
+- v3 plan §A "실행시간 72분 예상" → 실측 90분 19초 cancelled (90분 timeout 한계 = 진짜 실행시간 90분 초과 미실증, 환각)
+- v3 plan §A "본 세션 90~120분 안에 결과 확정 신뢰도 70%" → 실측 본 세션 안에 결과 확정 (88분 만에 결과, 신뢰도 100%)
+
+### 다음 세션 (226) escalate spec 자리 박제
+
+```bash
+# 첫 턴 자동 실행
+gh run view 25638230275 --log-failed 2>&1 | head -100  # 실패 로그 정밀 분석
+gh run list --workflow=collect-naver-listings.yml --limit 3 --json conclusion,startedAt,updatedAt  # 5/10 + 5/11 패턴 확인
+
+# 옵션 D-1: timeout 120m 검증
+# - 5/11 cron 결과 cancelled @ 90m 1 회 더 = 2 회 연속 → timeout 120m
+# - 5/11 cron success = 일회성 spike, 90m 충분 결론
+
+# 옵션 D-2: transport 분리 spec (5/10 90m 한계도 부족 시)
+# - sync (DB upsert) vs transport (HTTP 호출) 비율 측정
+# - HTTP 호출 자체가 90m 초과면 fetch retry / 청크 분할 필요
+```
+
+### X+Z 분석 박제 (다음 세션 자료)
+
+#### BACKLOG 🟡 4건 우선순위 분석
+
+| 항목 | 본 세션 처리 | 다음 세션 우선순위 |
+|---|---|---|
+| D-1 collect-applyhome recordApiQuota | ✅ 816664b | — |
+| D-2 regions.avg_price drop 마이그레이션 | ❌ 보류 (스키마 변경 위험) | 🥇 1순위 |
+| 무순위 이벤트 로그 차수 노출 | ❌ 보류 (누적 1~2개월 후) | 🥈 2순위 |
+| vitest deprecated environmentMatchGlobs | ❌ 보류 (영향 미실증) | 🥉 3순위 |
+
+#### 프로젝트 현황
+
+- 최근 main 5 CI: 4건 success + Naver in_progress (25638230275)
+- 미푸시 커밋: 1건 (816664b)
+- git status: clean (816664b 미푸시만)
+
+### 다음 세션 (226) 우선순위
+
+1. 🥇 본 세션 conclusion 결과 박제 답습 (success/cancelled/failure 분기에 따른 후속 작업)
+2. 🥈 D-2 regions.avg_price drop 마이그레이션 spec (PostgREST 노출 확인 → decision-log → DROP COLUMN → typegen)
+3. 🥉 무순위 이벤트 로그 1차 측정 또는 vitest deprecated 갱신 (여유 시간)
