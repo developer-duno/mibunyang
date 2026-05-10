@@ -13,12 +13,13 @@
  *   MOLIT_KEY (data.go.kr 통합 키 — odcloud.kr 호환)
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, selectAll, upsertBatch } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, selectAll, upsertBatch, recordApiQuota } from "./_shared.mjs";
 
 loadEnv();
 
 const PHASE = "applyhome";
 const API_KEY = process.env.MOLIT_KEY;
+let apiCalls = 0;
 
 const BASE_URL = "https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1/getRemndrLttotPblancCmpet";
 
@@ -43,6 +44,7 @@ async function fetchAllPages() {
 
     const url = `${BASE_URL}?${params}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    apiCalls++;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const json = /** @type {{ data?: ApplyHomeRow[]; totalCount?: number }} */ (await res.json());
@@ -137,6 +139,7 @@ async function main() {
   const sb = getSupabase();
   const rpt = createReporter(PHASE);
 
+  try {
   // 1. 청약홈 API 전체 조회
   log(PHASE, "청약홈 잔여세대 경쟁률 조회 시작...");
   const rows = await fetchAllPages();
@@ -224,6 +227,11 @@ async function main() {
   const result = rpt.summary();
   log(PHASE, "\n=== 완료 ===");
   if (result.fail > 0) process.exit(1);
+  } finally {
+    if (!dryRun && apiCalls > 0) {
+      await recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);
+    }
+  }
 }
 
 const argv1 = process.argv[1];
