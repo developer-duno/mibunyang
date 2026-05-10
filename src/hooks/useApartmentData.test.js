@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
@@ -15,7 +16,7 @@ describe('useApartmentData', () => {
   });
 
   it('성공 시 아파트 데이터와 dataUpdatedAt 반환', async () => {
-    fetchStaticApartments.mockResolvedValue({
+    /** @type {import('vitest').Mock} */ (fetchStaticApartments).mockResolvedValue({
       data: [{ id: 1 }], dataUpdatedAt: "2026-01-01",
     });
     const { result } = renderHook(() => useApartmentData());
@@ -26,7 +27,7 @@ describe('useApartmentData', () => {
   });
 
   it('3회 모두 실패 → 에러 상태', async () => {
-    fetchStaticApartments.mockRejectedValue(new Error("서버 오류"));
+    /** @type {import('vitest').Mock} */ (fetchStaticApartments).mockRejectedValue(new Error("서버 오류"));
 
     const { result } = renderHook(() => useApartmentData());
     await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 });
@@ -35,21 +36,21 @@ describe('useApartmentData', () => {
   }, 20000);
 
   it('dataUpdatedAt 없으면 null', async () => {
-    fetchStaticApartments.mockResolvedValue({ data: [{ id: 1 }] });
+    /** @type {import('vitest').Mock} */ (fetchStaticApartments).mockResolvedValue({ data: [{ id: 1 }] });
     const { result } = renderHook(() => useApartmentData());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.dataUpdatedAt).toBeNull();
   });
 
   it('retry 함수 존재', async () => {
-    fetchStaticApartments.mockResolvedValue({ data: [] });
+    /** @type {import('vitest').Mock} */ (fetchStaticApartments).mockResolvedValue({ data: [] });
     const { result } = renderHook(() => useApartmentData());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(typeof result.current.retry).toBe('function');
   });
 
   it('초기 로딩 상태 = true', () => {
-    fetchStaticApartments.mockReturnValue(new Promise(() => {})); // 영원히 대기
+    /** @type {import('vitest').Mock} */ (fetchStaticApartments).mockReturnValue(new Promise(() => {})); // 영원히 대기
     const { result } = renderHook(() => useApartmentData());
     expect(result.current.loading).toBe(true);
     expect(result.current.apartments).toEqual([]);

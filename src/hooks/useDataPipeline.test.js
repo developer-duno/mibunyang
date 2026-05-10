@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useDataPipeline, VISIBLE_PAGE_SIZE } from "./useDataPipeline";
@@ -50,7 +51,7 @@ const DEFAULT_PROPS = {
 
 function renderPipeline(overrides = {}) {
   return renderHook((props) => useDataPipeline(props), {
-    initialProps: { ...DEFAULT_PROPS, ...overrides },
+    initialProps: /** @type {any} */ ({ ...DEFAULT_PROPS, ...overrides }),
   });
 }
 
@@ -120,7 +121,7 @@ describe("useDataPipeline", () => {
   describe("catsCache", () => {
     it("catsCache.price 있으면 그대로 사용", async () => {
       const { calcCats } = await import("@/scoring/engine");
-      calcCats.mockClear();
+      /** @type {import('vitest').Mock} */ (calcCats).mockClear();
       const apts = [makeApt()]; // catsCache 포함
       renderPipeline({ apartments: apts });
       expect(calcCats).not.toHaveBeenCalled();
@@ -128,7 +129,7 @@ describe("useDataPipeline", () => {
 
     it("catsCache 없으면 calcCats 호출", async () => {
       const { calcCats } = await import("@/scoring/engine");
-      calcCats.mockClear();
+      /** @type {import('vitest').Mock} */ (calcCats).mockClear();
       const apts = [makeApt({ catsCache: null })];
       renderPipeline({ apartments: apts });
       expect(calcCats).toHaveBeenCalledTimes(1);
@@ -190,8 +191,8 @@ describe("useDataPipeline", () => {
     it("sortKey=price → 가격 오름차순", () => {
       const { result } = renderPipeline({ apartments: threeApts, sortKey: "price" });
       const prices = result.current.filtered.map(x => x.apt.price);
-      expect(prices[0]).toBeLessThanOrEqual(prices[1]);
-      expect(prices[1]).toBeLessThanOrEqual(prices[2]);
+      expect(prices[0] ?? 0).toBeLessThanOrEqual(prices[1] ?? 0);
+      expect(prices[1] ?? 0).toBeLessThanOrEqual(prices[2] ?? 0);
     });
 
     it("sortKey=total → 점수 내림차순 (동점 시 동일 순서)", () => {
@@ -271,7 +272,7 @@ describe("useDataPipeline", () => {
       const apts = [makeApt({ id: "ah-99" })];
       const { result } = renderPipeline({ apartments: apts });
       expect(result.current.scoredMap.get("ah-99")).toBeDefined();
-      expect(result.current.scoredMap.get("ah-99").apt.id).toBe("ah-99");
+      expect(result.current.scoredMap.get("ah-99")?.apt.id).toBe("ah-99");
     });
 
     it("compIds에 해당하는 항목만 compItems에 포함", () => {
