@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PriceTable } from "./PriceTable";
@@ -19,30 +20,30 @@ function makeRentByArea(areas = [74, 84, 94]) {
 describe("PriceTable", () => {
   // priceByArea가 빈 배열이면 null 반환 (아무것도 렌더링하지 않음)
   it("priceByArea가 빈 배열이면 아무것도 렌더링하지 않는다", () => {
-    const apt = makeApt({ priceByArea: [] });
-    const { container } = render(<PriceTable apt={apt} />);
+    const apt = /** @type {any} */ (makeApt({ priceByArea: [] }));
+    const { container } = render(<PriceTable apt={/** @type {any} */ (apt)} />);
     expect(container.innerHTML).toBe("");
   });
 
   // priceByArea가 null이면 null 반환
   it("priceByArea가 null이면 아무것도 렌더링하지 않는다", () => {
-    const apt = makeApt({ priceByArea: null });
-    const { container } = render(<PriceTable apt={apt} />);
+    const apt = /** @type {any} */ (makeApt({ priceByArea: null }));
+    const { container } = render(<PriceTable apt={/** @type {any} */ (apt)} />);
     expect(container.innerHTML).toBe("");
   });
 
   // priceByArea가 undefined이면 null 반환
   it("priceByArea가 undefined이면 아무것도 렌더링하지 않는다", () => {
-    const apt = makeApt();
+    const apt = /** @type {any} */ (makeApt());
     // makeApt에 priceByArea가 없으면 undefined
-    const { container } = render(<PriceTable apt={apt} />);
+    const { container } = render(<PriceTable apt={/** @type {any} */ (apt)} />);
     expect(container.innerHTML).toBe("");
   });
 
   // 정상 데이터가 있으면 테이블 렌더링
   it("priceByArea가 있으면 매매 시세 테이블을 렌더링한다", () => {
-    const apt = makeApt({ priceByArea: makePriceByArea(), area: 84 });
-    render(<PriceTable apt={apt} />);
+    const apt = /** @type {any} */ (makeApt({ priceByArea: makePriceByArea(), area: 84 }));
+    render(<PriceTable apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText(/인근 매매 시세/)).toBeTruthy();
     expect(screen.getByText("면적")).toBeTruthy();
     expect(screen.getByText("하한")).toBeTruthy();
@@ -52,8 +53,8 @@ describe("PriceTable", () => {
   // 면적 기준 필터링 테스트 — apt.area ± 10 이내 3개 이상이면 narrow 필터 적용
   it("면적 기준 ±10㎡ 필터가 적용된다", () => {
     const areas = [60, 74, 80, 84, 90, 120];
-    const apt = makeApt({ priceByArea: makePriceByArea(areas), area: 84 });
-    render(<PriceTable apt={apt} />);
+    const apt = /** @type {any} */ (makeApt({ priceByArea: makePriceByArea(areas), area: 84 }));
+    render(<PriceTable apt={/** @type {any} */ (apt)} />);
     // 84 기준 ±10 → 74, 80, 84, 90 (4개, >= 3이므로 narrow 적용)
     // 60㎡, 120㎡는 테이블에 안 나와야 함
     expect(screen.queryByText("60㎡")).toBeNull();
@@ -69,7 +70,7 @@ describe("PriceTable", () => {
       jeonseByArea: [{ area: 84, rate: 72 }],
       area: 84,
     });
-    render(<PriceTable apt={apt} />);
+    render(<PriceTable apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText(/인근 전세 시세/)).toBeTruthy();
     expect(screen.getByText("72%")).toBeTruthy();
   });
@@ -80,8 +81,8 @@ describe("PriceTable", () => {
       { area: 84, min: 40000, avg: 45000, max: 50000, count: 10 },
       { area: 94, min: 42000, avg: 47000, max: 52000, count: 5 },
     ];
-    const apt = makeApt({ priceByArea, area: 84 });
-    render(<PriceTable apt={apt} />);
+    const apt = /** @type {any} */ (makeApt({ priceByArea, area: 84 }));
+    render(<PriceTable apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText(/총 15건/)).toBeTruthy();
   });
 
@@ -90,8 +91,8 @@ describe("PriceTable", () => {
     const priceByArea = [
       { area: 84, min: 40000, avg: 45000, max: 50000, count: null },
     ];
-    const apt = makeApt({ priceByArea, area: 84 });
+    const apt = /** @type {any} */ (makeApt({ priceByArea, area: 84 }));
     // count가 null이면 0으로 처리되어야 크래시 없음
-    expect(() => render(<PriceTable apt={apt} />)).not.toThrow();
+    expect(() => render(<PriceTable apt={/** @type {any} */ (apt)} />)).not.toThrow();
   });
 });

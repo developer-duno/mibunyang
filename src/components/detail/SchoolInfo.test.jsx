@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SchoolInfo } from "./SchoolInfo";
@@ -6,22 +7,22 @@ import { makeApt } from "@/__tests__/factories";
 describe("SchoolInfo", () => {
   // 학교 데이터가 없으면 아무것도 렌더링하지 않음
   it("nearbySchools가 빈 배열이면 아무것도 렌더링하지 않는다", () => {
-    const apt = makeApt({ nearbySchools: [] });
-    const { container } = render(<SchoolInfo apt={apt} />);
+    const apt = /** @type {any} */ (makeApt({ nearbySchools: [] }));
+    const { container } = render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(container.innerHTML).toBe("");
   });
 
   // nearbySchools가 null이면 빈 배열 폴백
   it("nearbySchools가 null이면 아무것도 렌더링하지 않는다", () => {
-    const apt = makeApt({ nearbySchools: null });
-    const { container } = render(<SchoolInfo apt={apt} />);
+    const apt = /** @type {any} */ (makeApt({ nearbySchools: null }));
+    const { container } = render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(container.innerHTML).toBe("");
   });
 
   // nearbySchools가 undefined이면 빈 배열 폴백
   it("nearbySchools가 undefined이면 아무것도 렌더링하지 않는다", () => {
-    const apt = makeApt();
-    const { container } = render(<SchoolInfo apt={apt} />);
+    const apt = /** @type {any} */ (makeApt());
+    const { container } = render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(container.innerHTML).toBe("");
   });
 
@@ -33,7 +34,7 @@ describe("SchoolInfo", () => {
         { name: "영통중학교", type: "중", distance: 800 },
       ],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("학군 정보")).toBeTruthy();
     // 요약에서 초/중 최근접 학교 표시
     expect(screen.getByText("영통초등학교")).toBeTruthy();
@@ -46,7 +47,7 @@ describe("SchoolInfo", () => {
       schoolGrade: null,
       nearbySchools: [{ name: "테스트초등학교", type: "초", distance: 500 }],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(screen.queryByText("최우수")).toBeNull();
     expect(screen.queryByText("우수")).toBeNull();
   });
@@ -57,7 +58,7 @@ describe("SchoolInfo", () => {
       schoolGrade: "최우수",
       nearbySchools: [{ name: "강남초등학교", type: "초", distance: 200 }],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("최우수")).toBeTruthy();
   });
 
@@ -67,7 +68,7 @@ describe("SchoolInfo", () => {
       schoolGrade: "우수",
       nearbySchools: [{ name: "서초초등학교", type: "초", distance: 400 }],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("우수")).toBeTruthy();
   });
 
@@ -76,7 +77,7 @@ describe("SchoolInfo", () => {
     const apt = makeApt({
       nearbySchools: [{ name: "테스트초등학교", type: "초", distance: null }],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("—")).toBeTruthy();
   });
 
@@ -85,7 +86,7 @@ describe("SchoolInfo", () => {
     const apt = makeApt({
       nearbySchools: [{ name: "먼학교", type: "고", distance: 1500 }],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("1.5km")).toBeTruthy();
   });
 
@@ -98,7 +99,7 @@ describe("SchoolInfo", () => {
         { name: "테스트중학교", type: "중", distance: 500 },
       ],
     });
-    const { container } = render(<SchoolInfo apt={apt} />);
+    const { container } = render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     // 접힌 상태: 테이블 없음
     expect(container.querySelector("table")).toBeNull();
     // 버튼 클릭
@@ -118,7 +119,7 @@ describe("SchoolInfo", () => {
         { name: "다른학교", type: "초", distance: 500 },
       ],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     // 확장 테이블 열기
     fireEvent.click(screen.getByText(/전체.*학교 보기/));
     expect(screen.getByText("설립년")).toBeTruthy();
@@ -132,7 +133,7 @@ describe("SchoolInfo", () => {
         { name: "영재고등학교", type: "고", highSchoolType: "과학고", distance: 600 },
       ],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("고(과학고)")).toBeTruthy();
   });
 
@@ -146,7 +147,7 @@ describe("SchoolInfo", () => {
         { name: "사아중학교", type: "중", distance: 600 },
       ],
     });
-    render(<SchoolInfo apt={apt} />);
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     // "초 2 · 중 1 (1km)" 형태
     expect(screen.getByText(/초 2/)).toBeTruthy();
     expect(screen.getByText(/중 1/)).toBeTruthy();

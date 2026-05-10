@@ -1,14 +1,15 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 const mockUseMarketStatsHistory = vi.fn();
 
 vi.mock("@/hooks/useMarketStatsHistory", () => ({
-  useMarketStatsHistory: (...args) => mockUseMarketStatsHistory(...args),
+  useMarketStatsHistory: (/** @type {any[]} */ ...args) => mockUseMarketStatsHistory(...args),
 }));
 
 vi.mock("@/components/primitives", () => ({
-  LineChart: (props) => <div data-testid="line-chart" aria-label={props.yLabel} />,
+  LineChart: (/** @type {any} */ props) => <div data-testid="line-chart" aria-label={props.yLabel} />,
 }));
 
 import { MarketStatsCharts } from "./MarketStatsCharts";
