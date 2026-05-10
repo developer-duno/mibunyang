@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DetailModal } from "./DetailModal";
@@ -21,6 +22,7 @@ function makeItem(overrides = {}) {
   );
 }
 
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     item: makeItem(),
@@ -69,7 +71,7 @@ describe("DetailModal", () => {
     const onClose = vi.fn();
     const { container } = render(<DetailModal {...makeProps({ onClose })} />);
     // 최상위 fixed 배경 div 클릭
-    const overlay = container.firstChild;
+    const overlay = /** @type {Element} */ (container.firstChild);
     fireEvent.click(overlay);
     expect(onClose).toHaveBeenCalledTimes(1);
   });

@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ConsultForm } from "./ConsultForm";
@@ -15,6 +16,7 @@ function makeForm(overrides = {}) {
   };
 }
 
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     scored: [makeScoredItem({ id: 1, name: "A아파트" }), makeScoredItem({ id: 2, name: "B아파트" })],

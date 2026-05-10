@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import WeightEditor from "./WeightEditor";
@@ -7,6 +8,7 @@ import { PROFILES } from "@/constants/profiles";
 const PROFILE_KEYS = Object.keys(PROFILES);
 const CAT_LABELS = ["입지", "상품", "가격", "안전", "혜택", "미래"];
 
+/** @returns {any} */
 function defaultProps(overrides = {}) {
   return {
     profile: "live",
@@ -34,7 +36,7 @@ describe("WeightEditor", () => {
     render(<WeightEditor {...defaultProps()} />);
     // 프로필 이름은 탭 버튼 + 테이블 row 둘 다 등장 → getAllByText 로 검증
     PROFILE_KEYS.forEach(key => {
-      const occurrences = screen.getAllByText(PROFILES[key].name);
+      const occurrences = screen.getAllByText(/** @type {any} */ (PROFILES)[key].name);
       expect(occurrences.length).toBeGreaterThanOrEqual(2); // 탭 + row
     });
   });
@@ -77,7 +79,7 @@ describe("WeightEditor", () => {
     // 첫 input(입지)을 200으로 변경 → 100 초과 입력은 가드로 무시되므로 50으로 변경
     fireEvent.change(inputs[0], { target: { value: "50" } });
     // live 기본 location:40 → 50으로 변경하면 합계는 110
-    const saveBtn = screen.getByText("저장");
+    const saveBtn = /** @type {HTMLButtonElement} */ (screen.getByText("저장"));
     expect(saveBtn.disabled).toBe(true);
     // 합계 안내 메시지 표시 (100% 부족 또는 초과)
     expect(screen.getByText(/100%가 되어야 합니다/)).toBeTruthy();
@@ -90,7 +92,7 @@ describe("WeightEditor", () => {
     // 200 입력 시도 → handleChange L23 가드로 무시됨 (n > 100)
     fireEvent.change(inputs[0], { target: { value: "200" } });
     // input value는 여전히 PROFILES.live.w.location = 40
-    expect(inputs[0].value).toBe("40");
+    expect(/** @type {HTMLInputElement} */ (inputs[0]).value).toBe("40");
   });
 
   it("취소 버튼 클릭 시 편집 모드를 해제한다", () => {
@@ -109,7 +111,7 @@ describe("WeightEditor", () => {
     render(<WeightEditor {...defaultProps({ saveCustomWeights, showToast })} />);
     fireEvent.click(screen.getAllByText("편집")[0]);
     // live 기본 가중치 합계 = 100 → 변경 없이 저장
-    const saveBtn = screen.getByText("저장");
+    const saveBtn = /** @type {HTMLButtonElement} */ (screen.getByText("저장"));
     expect(saveBtn.disabled).toBe(false);
     fireEvent.click(saveBtn);
     expect(saveCustomWeights).toHaveBeenCalledTimes(1);

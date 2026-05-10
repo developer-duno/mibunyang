@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { AdminDashboard } from "./AdminDashboard";
@@ -31,6 +32,7 @@ function makeScored(count = 3) {
 }
 
 describe("AdminDashboard", () => {
+  /** @returns {any} */
   const defaultProps = () => ({
     admin: makeAdmin(),
     onLogout: vi.fn(),
@@ -114,7 +116,7 @@ describe("AdminDashboard", () => {
     const { container } = render(<AdminDashboard {...defaultProps()} admin={admin} />);
     const skeleton = container.querySelector("div[aria-hidden='true']");
     expect(skeleton).toBeTruthy();
-    expect(skeleton.children.length).toBe(3);
+    expect(skeleton?.children.length).toBe(3);
   });
 
   // pending 사용자 — 승인/거부 버튼 표시
@@ -244,7 +246,7 @@ describe("AdminDashboard", () => {
     render(<AdminDashboard {...defaultProps()} />);
     const editButtons = screen.getAllByText("편집");
     fireEvent.click(editButtons[0]);
-    const saveBtn = screen.getByText("저장");
+    const saveBtn = /** @type {HTMLButtonElement} */ (screen.getByText("저장"));
     expect(saveBtn.disabled).toBe(false);
   });
 
@@ -285,9 +287,9 @@ describe("AdminDashboard", () => {
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     // 일괄 버튼 비활성화
-    expect(screen.getByText("일괄 승인").disabled).toBe(true);
-    expect(screen.getByText("일괄 거부").disabled).toBe(true);
+    expect(/** @type {HTMLButtonElement} */ (screen.getByText("일괄 승인")).disabled).toBe(true);
+    expect(/** @type {HTMLButtonElement} */ (screen.getByText("일괄 거부")).disabled).toBe(true);
     // 개별 승인 버튼도 비활성화 (batchLoading)
-    expect(screen.getByText("승인").disabled).toBe(true);
+    expect(/** @type {HTMLButtonElement} */ (screen.getByText("승인")).disabled).toBe(true);
   });
 });
