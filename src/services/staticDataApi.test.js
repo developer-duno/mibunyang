@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // import.meta.env 모킹을 위해 동적 import 사용
 describe('fetchStaticApartments', () => {
-  let fetchStaticApartments;
+  /** @type {(...args: any[]) => Promise<any>} */
+  let fetchStaticApartments = /** @type {any} */ (undefined);
 
   beforeEach(() => {
     vi.restoreAllMocks();

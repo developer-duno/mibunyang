@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { classifyMoveIn, classifyTier } from "@/lib/classify";
 

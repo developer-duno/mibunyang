@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect } from 'vitest';
 import { C, catCol, catBg, SHORT_LABEL, gr } from './index';
 
@@ -29,14 +30,14 @@ describe('catCol / catBg', () => {
   it('catCol: 6개 카테고리 색상', () => {
     CATS.forEach((cat) => {
       expect(catCol).toHaveProperty(cat);
-      expect(catCol[cat]).toMatch(/^#/);
+      expect(/** @type {any} */ (catCol)[cat]).toMatch(/^#/);
     });
   });
 
   it('catBg: 6개 카테고리 배경색', () => {
     CATS.forEach((cat) => {
       expect(catBg).toHaveProperty(cat);
-      expect(catBg[cat]).toMatch(/^#/);
+      expect(/** @type {any} */ (catBg)[cat]).toMatch(/^#/);
     });
   });
 
