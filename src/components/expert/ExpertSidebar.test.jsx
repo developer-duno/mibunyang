@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ExpertSidebar } from "./ExpertSidebar";
@@ -10,6 +11,7 @@ function makeScored(count = 3) {
 }
 
 describe("ExpertSidebar", () => {
+  /** @returns {any} */
   const defaultProps = () => ({
     scored: makeScored(),
     selectedId: 1,

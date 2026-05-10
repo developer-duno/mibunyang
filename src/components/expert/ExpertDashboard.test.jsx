@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ExpertDashboard } from "./ExpertDashboard";
@@ -11,6 +12,7 @@ function makeScored(count = 3) {
 }
 
 describe("ExpertDashboard", () => {
+  /** @returns {any} */
   const defaultProps = () => ({
     scored: makeScored(),
     profile: "live",
