@@ -1,35 +1,46 @@
 {
-  "fetchedAt": "2026-03-07T16:16:45.659Z",
-  "count": 1481,
+  "fetchedAt": "2026-05-08T16:19:47.714Z",
+  "count": 1544,
   "phases": {
     "applyhome": {
       "ok": true,
-      "count": 1481
+      "count": 1544
     },
     "kosis": {
-      "ok": true
+      "ok": false,
+      "reason": "해당 통계표가 존재하지 않습니다."
     },
     "kakao": {
       "ok": true,
-      "enriched": 868
+      "enriched": 749
     },
     "neis": {
       "ok": true,
-      "enriched": 1481
+      "enriched": 1544,
+      "schoolEnriched": 832
     },
     "dart": {
       "ok": true,
-      "builders": 5
+      "builders": 6
     },
     "transport": {
       "ok": true,
-      "enriched": 868
+      "enriched": 749
     },
     "realtrade": {
       "ok": true,
-      "enriched": 978,
-      "apiCalls": 1980
+      "enriched": 1298,
+      "apiCalls": 1776
+    },
+    "naver": {
+      "ok": false,
+      "reason": "no_env"
     }
   },
-  "errors": []
+  "errors": [
+    {
+      "phase": "kosis",
+      "msg": "해당 통계표가 존재하지 않습니다."
+    }
+  ]
 }
