@@ -23,7 +23,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.3",
