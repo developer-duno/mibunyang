@@ -1,3 +1,4 @@
+// @ts-check
 // Tooltip 단위 테스트 — 용어 풀이 + 접근성 (spec § 5-3)
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";

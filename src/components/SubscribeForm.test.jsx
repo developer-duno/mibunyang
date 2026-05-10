@@ -1,3 +1,4 @@
+// @ts-check
 // SubscribeForm 단위 테스트 — 휴대폰 정규식 + 동의 미체크 차단
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -33,7 +34,7 @@ describe("SubscribeForm — 휴대폰 알림 신청", () => {
   });
 
   it("정상 입력 + 동의 → fetch 호출 + 성공 메시지", async () => {
-    globalThis.fetch.mockResolvedValueOnce({
+    /** @type {import('vitest').Mock} */ (globalThis.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true }),
     });
@@ -55,7 +56,7 @@ describe("SubscribeForm — 휴대폰 알림 신청", () => {
   });
 
   it("API 실패 → 에러 메시지", async () => {
-    globalThis.fetch.mockResolvedValueOnce({
+    /** @type {import('vitest').Mock} */ (globalThis.fetch).mockResolvedValueOnce({
       ok: false,
       json: async () => ({ ok: false, error: "Rate limit" }),
     });

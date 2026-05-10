@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { FilterButton } from "./FilterButton";
 
 /* 테스트용 기본 props 팩토리 */
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     label: "지역",

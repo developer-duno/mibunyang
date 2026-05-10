@@ -1,11 +1,14 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { LoginPromptModal } from "./LoginPromptModal";
 
 // @vercel/analytics 모킹
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
-import { track } from "@vercel/analytics";
+import { track as trackOrig } from "@vercel/analytics";
+const track = /** @type {import('vitest').Mock} */ (trackOrig);
 
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     open: true,

@@ -1,9 +1,11 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SortPanel } from "./SortPanel";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
 
 /* 테스트용 기본 props 팩토리 */
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     sortKey: "total",

@@ -1,7 +1,9 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ShareSheet } from "./ShareSheet";
 
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     open: true,

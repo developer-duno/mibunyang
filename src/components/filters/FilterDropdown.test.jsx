@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { FilterDropdown } from "./FilterDropdown";
 
 /* 테스트용 기본 props 팩토리 */
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     isOpen: true,
