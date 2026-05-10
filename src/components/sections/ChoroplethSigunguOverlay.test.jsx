@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, cleanup } from "@testing-library/react";
 import { ChoroplethSigunguOverlay } from "./ChoroplethSigunguOverlay";
@@ -17,19 +18,21 @@ const FAKE_GEOJSON = {
 };
 
 function setupKakao() {
+  /** @type {any[]} */
   const polygons = [];
+  /** @type {any[]} */
   const eventListeners = [];
 
-  const PolygonCtor = vi.fn(function (opts) {
+  const PolygonCtor = vi.fn(/** @type {any} */ (function (/** @type {any} */ opts) {
     this._opts = { ...opts };
-    this.setMap = vi.fn(map => { this._map = map; });
-    this.setOptions = vi.fn(o => { this._opts = { ...this._opts, ...o }; });
+    this.setMap = vi.fn((/** @type {any} */ map) => { this._map = map; });
+    this.setOptions = vi.fn((/** @type {any} */ o) => { this._opts = { ...this._opts, ...o }; });
     polygons.push(this);
-  });
+  }));
 
   const mapInstance = { setBounds: vi.fn() };
 
-  window.kakao = {
+  /** @type {any} */ (window).kakao = {
     maps: {
       Polygon: PolygonCtor,
       LatLng: vi.fn(function (lat, lng) { this.lat = lat; this.lng = lng; }),
@@ -48,7 +51,7 @@ async function flushPromises() {
 
 describe("ChoroplethSigunguOverlay", () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }));
+    globalThis.fetch = /** @type {any} */ (vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) })));
   });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -72,7 +75,7 @@ describe("ChoroplethSigunguOverlay", () => {
     const { eventListeners } = setupKakao();
     const onGuClick = vi.fn();
     // 경남|창원시 평균 점수 데이터 주입
-    const filtered = [{ apt: { region: "경남", gu: "창원시" }, res: { total: 70 } }];
+    const filtered = /** @type {any} */ ([{ apt: { region: "경남", gu: "창원시" }, res: { total: 70 } }]);
     render(<ChoroplethSigunguOverlay mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={filtered} onGuClick={onGuClick} />);
     await flushPromises();
     // 창원 5구 = 5 click listener (강남 1 + 99999 0 = 6 polygons → 6 click listeners 중 5건 창원)
@@ -98,7 +101,7 @@ describe("ChoroplethSigunguOverlay", () => {
 
   it("fetch 실패 → role=alert", async () => {
     setupKakao();
-    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 404 }));
+    globalThis.fetch = /** @type {any} */ (vi.fn(() => Promise.resolve({ ok: false, status: 404 })));
     const { getByRole } = render(<ChoroplethSigunguOverlay mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onGuClick={vi.fn()} />);
     await flushPromises();
     expect(getByRole("alert")).toHaveTextContent("시군구 데이터를 불러올 수 없습니다");

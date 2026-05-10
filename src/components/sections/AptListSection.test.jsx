@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { AptListSection } from "./AptListSection";
 import { makeScoredItem } from "@/__tests__/factories";
 
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     visible: [],

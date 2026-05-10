@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { HeaderSection } from "./HeaderSection";
 
 describe("HeaderSection", () => {
+  /** @type {any} */
   const defaultProps = {
     profile: "live",
     onProfileChange: vi.fn(),
@@ -63,10 +65,10 @@ describe("HeaderSection", () => {
   it("현재 프로필 버튼에 aria-pressed=true", () => {
     render(<HeaderSection {...defaultProps} profile="invest" />);
     const investBtn = screen.getByText("투자").closest("button");
-    expect(investBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(investBtn?.getAttribute("aria-pressed")).toBe("true");
 
     const liveBtn = screen.getByText("실거주").closest("button");
-    expect(liveBtn.getAttribute("aria-pressed")).toBe("false");
+    expect(liveBtn?.getAttribute("aria-pressed")).toBe("false");
   });
 
   // 프로필 버튼 클릭 시 onProfileChange 호출

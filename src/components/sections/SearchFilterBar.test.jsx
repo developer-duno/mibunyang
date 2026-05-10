@@ -1,8 +1,10 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SearchFilterBar } from "./SearchFilterBar";
 
 /* 테스트용 기본 props 팩토리 */
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     filterRegion: "전체",
@@ -32,9 +34,9 @@ function makeProps(overrides = {}) {
 }
 
 /* 드롭다운 열기 헬퍼 — aria-expanded 트리거 버튼 클릭 */
-function openPanel(label) {
+function openPanel(/** @type {string} */ label) {
   const buttons = screen.getAllByRole("button");
-  const btn = buttons.find(b => b.textContent.startsWith(label));
+  const btn = buttons.find(b => b.textContent?.startsWith(label));
   if (btn) fireEvent.click(btn);
 }
 

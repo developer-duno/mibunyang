@@ -1,3 +1,4 @@
+// @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ExpertLoginForm } from "./ExpertLoginForm";
@@ -17,6 +18,7 @@ function makeExpert(overrides = {}) {
   };
 }
 
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     expert: makeExpert(),
@@ -45,7 +47,7 @@ describe("ExpertLoginForm", () => {
   it("로그인 모드에서 폼 제출 시 onLogin 호출", () => {
     const onLogin = vi.fn();
     render(<ExpertLoginForm {...makeProps({ onLogin })} />);
-    fireEvent.submit(screen.getByRole("button", { name: "로그인" }).closest("form"));
+    fireEvent.submit(screen.getByRole("button", { name: "로그인" }).closest("form") ?? document.body);
     expect(onLogin).toHaveBeenCalledTimes(1);
   });
 
@@ -72,7 +74,7 @@ describe("ExpertLoginForm", () => {
     const handleExpertSignup = vi.fn();
     const expert = makeExpert({ authMode: "signup", handleExpertSignup });
     render(<ExpertLoginForm {...makeProps({ expert })} />);
-    fireEvent.submit(screen.getByRole("button", { name: "회원가입" }).closest("form"));
+    fireEvent.submit(screen.getByRole("button", { name: "회원가입" }).closest("form") ?? document.body);
     expect(handleExpertSignup).toHaveBeenCalledTimes(1);
   });
 

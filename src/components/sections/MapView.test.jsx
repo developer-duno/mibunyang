@@ -1,14 +1,16 @@
+// @ts-check
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { MapView } from "./MapView";
 
 // 색칠 모드 lazy chunk fetch 무력화 (테스트 환경에서 ChoroplethView lazy import 막음)
 beforeEach(() => {
-  globalThis.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ features: [] }) }));
+  globalThis.fetch = /** @type {any} */ (vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ features: [] }) })));
 });
 
 /* ── 테스트 데이터 팩토리 ── */
-function makeItem(overrides = {}) {
+/** @returns {any} */
+function makeItem(/** @type {any} */ overrides = {}) {
   return {
     apt: { id: "test-1", name: "테스트아파트", region: "서울", gu: "강남구", lat: 37.5, lng: 127.0, price: 50000, ...overrides.apt },
     res: { total: 75, cats: {}, weights: {}, ...overrides.res },
@@ -18,7 +20,7 @@ function makeItem(overrides = {}) {
 /* ── Kakao Maps SDK 모킹 헬퍼 ── */
 function setupKakao() {
   const mockClusterer = { clear: vi.fn(), addMarkers: vi.fn() };
-  window.kakao = {
+  /** @type {any} */ (window).kakao = {
     maps: {
       load: vi.fn(cb => cb()),
       Map: vi.fn(function() { this.addControl = vi.fn(); this.setBounds = vi.fn(); }),
@@ -71,7 +73,7 @@ describe("MapView", () => {
 
   // SDK 미로드 시 크래시 없음
   it("kakao SDK 없어도 크래시 없이 렌더링", async () => {
-    delete window.kakao;
+    delete (/** @type {any} */ (window)).kakao;
     render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
     await flushPromises();
     // SDK 없으면 markerCount=null → filtered.length만 표시

@@ -1,7 +1,9 @@
+// @ts-check
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { BottomNav } from "./BottomNav";
 
+/** @returns {any} */
 function makeProps(overrides = {}) {
   return {
     tab: "list",
@@ -49,14 +51,14 @@ describe("BottomNav", () => {
   it("현재 탭에 aria-current=page 설정", () => {
     render(<BottomNav {...makeProps({ tab: "list" })} />);
     const listBtn = screen.getByText("목록").closest("button");
-    expect(listBtn.getAttribute("aria-current")).toBe("page");
+    expect(listBtn?.getAttribute("aria-current")).toBe("page");
   });
 
   // 비활성 탭에는 aria-current 없음
   it("비활성 탭에는 aria-current 없음", () => {
     render(<BottomNav {...makeProps({ tab: "list" })} />);
     const infoBtn = screen.getByText("정보").closest("button");
-    expect(infoBtn.getAttribute("aria-current")).toBeNull();
+    expect(infoBtn?.getAttribute("aria-current")).toBeNull();
   });
 
   // 버튼 클릭 시 onNavClick 호출
@@ -73,7 +75,7 @@ describe("BottomNav", () => {
     // 비교 버튼에는 aria-current가 "compare"이므로 설정 안됨 (compare는 특수 처리)
     const compBtn = screen.getByText("비교").closest("button");
     // compare는 aria-current 대상 아님 (["compare", "logout"] 제외)
-    expect(compBtn.getAttribute("aria-current")).toBeNull();
+    expect(compBtn?.getAttribute("aria-current")).toBeNull();
   });
 
   // nav 랜드마크 존재
