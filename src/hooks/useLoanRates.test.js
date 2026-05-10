@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * useLoanRates 훅 테스트 — fetch mock, 로딩/에러 상태, useRef 캐싱
  */
@@ -10,9 +11,12 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn());
 });
 
-/** 정상 응답 팩토리 */
+/**
+ * 정상 응답 팩토리
+ * @param {any[]} data
+ */
 function mockFetchSuccess(data = []) {
-  fetch.mockResolvedValueOnce({
+  /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
     ok: true,
     json: () => Promise.resolve({ ok: true, data }),
   });
@@ -38,7 +42,7 @@ describe('useLoanRates', () => {
 
   // 에러: API 실패
   it('API 실패 시 에러를 설정한다', async () => {
-    fetch.mockResolvedValueOnce({
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
       ok: false,
       status: 500,
     });
@@ -55,7 +59,7 @@ describe('useLoanRates', () => {
 
   // 에러: 네트워크 장애
   it('네트워크 장애 시 에러를 설정한다', async () => {
-    fetch.mockRejectedValueOnce(new Error('Network error'));
+    /** @type {import('vitest').Mock} */ (fetch).mockRejectedValueOnce(new Error('Network error'));
 
     const { result } = renderHook(() => useLoanRates());
 
