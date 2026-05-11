@@ -13,8 +13,9 @@ jobs:
   post-process:
     runs-on: ubuntu-latest
     # 세션118 30→60, 세션224 60→90 (5/9 run 25610302732 실측: sync 45m + transport 27m = 72m + 마진 18m)
+    # 세션227 90→120 (5/8~5/11 4회 연속 cancelled @ timeout = escalate, sync 47.9m + transport 27.5m + infra 9.4m = 84.8m + 마진 35m)
     # root cause = 60분 timeout 단독 (concurrency 충돌 0, group 사용 워크플로 1개)
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
