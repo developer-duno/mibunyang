@@ -1,3 +1,43 @@
+# 세션 227 — 2026-05-11 (Naver D-1 timeout 90→120 응급 + D-2 spec 박제 + 9 GATE v3 풀 검증 3 라운드)
+
+**거시 목적**: 5/11 cron 도 cancelled @ 90m 19s 확정 (4회 연속 escalate). 시나리오 B 진입. D-1 응급 fix (timeout 90→120m) + D-2 workflow 분리 spec 박제 (yml 적용 별도 세션).
+
+**결론**: 2 커밋 push (`d70cbd6..32d2ece`). yml +2/-1 (D-1) + spec 신규 344줄 + cross-link 2줄 (D-2).
+
+**커밋**:
+- `7f69a84` chore(workflow): naver-postprocess timeout 90→120 (5/8~5/11 4회 연속 cancelled @ timeout escalate)
+- `32d2ece` docs(spec): naver workflow 분리 (core + incremental) 설계 + UTC 20:30 schedule trigger
+
+**작업 흐름**:
+- 사전 점검 = 5/11 cron `25638230275` post-process job 90m 19s cancelled 확정 (gh CLI 직접 실측, 3회 연속 → 4회 연속 escalate)
+- 사용자 결정 4건 (AskUserQuestion) → 권장안 채택 (D-1 즉시 + D-2 spec, 신규 파일, 별도 세션 yml, schedule UTC 20:30)
+- ExitPlanMode 거부 2회 → plan v1 → v2 → v3 누적 정정 6건 (KAKAO 13→12 / workflow 35→37 / Pro 한도 480→1600m / 월 사용 2700→1965m 실측 / 최악 vs 평균 구분 / cross-link 1건)
+- 9 GATE v3 풀 검증 3 라운드 (서브에이전트 7 회: Plan 1 + Explore 6) → 🟢9 🟡0 🔴0
+- 자가 점검 1 (맹점·할루시네이션) 박제 오류 6건 정정 (5번째 = sky agent 발견)
+- 사용자 원칙 13건 위반 0 검증 완료
+
+**박제 오류 정정 6건**:
+1. KAKAO_KEY 워크플로 13 → 본인 grep 실측 12개 (utility geocode/reverse 2개 cron 0)
+2. workflow 총 개수 35 (CLAUDE.md stale) → 본인 ls 실측 37개
+3. Pro 한도 초과 480m (v1 박제 오류) → 계산 1600m 정정 (3600 - 2000)
+4. 월 사용 박제 2700m (v2 신규) → 실측 평균 1965m (최근 6일 65.5m/일 × 30) — 최악 vs 평균 구분 박제
+5. 5/11 run 90m 19s vs job 90m 15s — 단위 차 (run startedAt 19:54:07 / job startedAt 19:54:10 = setup 3초 + completedAt 1초 차), 정합 확인
+6. spec cross-link 추가 (메타 spec ↔ split spec 양방향)
+
+**다음 세션 진입 조건 (228)**:
+- 5/12 cron 결과 확정 시점 (KST 5/12 04:54 = UTC 5/11 19:54 + cron 시간)
+- 시나리오 A: success ≤ 100m → D-1 단독 안정화 모니터링 7일
+- 시나리오 B: cancelled @ 120m → D-2 yml 실제 적용 (spec 답습)
+- 시나리오 C: cancelled + step 실패 → 옵션 E (sync 최적화) 우선순위 ↑
+
+**답습 자산 (4건 적중)**:
+- `feedback_audit_hypothesis_partial_hallucination.md` — gh CLI run log 직접 timestamp 추출 의무
+- `feedback_subagent_report_trust.md` — 서브에이전트 모순 시 본인 직접 실측 1회 의무
+- `feedback_cross_repo_schema_audit.md` — D-2 yml 적용 세션 답습 자리
+- 세션 224 `150044d` + 세션 225 `d1bd747` + 세션 226 `d70cbd6` (3 세션 누적 답습)
+
+---
+
 # 세션 224 — 2026-05-11 (Naver post-process 60→90 timeout 1줄 yaml fix + 9 GATE 풀 검증 2 라운드)
 
 **거시 목적**: BACKLOG §🔴 즉시 — Naver Post-Processing 30일 0건 success 사고 봉합. 5/9 run 25610302732 timestamp 실측 후 root cause = 60분 timeout 단독 (audit §2 concurrency 가설은 부분 환각).
@@ -5928,3 +5968,75 @@ gh run list --workflow=collect-naver-listings.yml --limit 3 --json conclusion,st
 1. 🥇 본 세션 conclusion 결과 박제 답습 (success/cancelled/failure 분기에 따른 후속 작업)
 2. 🥈 D-2 regions.avg_price drop 마이그레이션 spec (PostgREST 노출 확인 → decision-log → DROP COLUMN → typegen)
 3. 🥉 무순위 이벤트 로그 1차 측정 또는 vitest deprecated 갱신 (여유 시간)
+
+---
+
+## 세션 226 — Naver postprocess 병목 분석 spec + cross-repo 사고 박제 (2026-05-11)
+
+### 결과 한 줄
+
+4 옵션 우선순위 분석 plan v1→v4 (9 GATE 2 라운드 + 서브에이전트 3 병렬, 환각 정정 누적 19건) 후 옵션 2 spec 박제 (`d70cbd6`). 옵션 1 (regions.avg_price drop) cross-repo 6 위치 발견으로 보류 (1-A 권장, 1-B 180분 cost). 옵션 D-1 (timeout 120m) / D-2 (workflow 분리) / E (sync 47.9m 최적화) 트레이드오프 박제. 5/11 cron 결과 (KST 5/12 04:54) 분기 의무.
+
+### 커밋 1건 (d70cbd6)
+
+```
+docs(spec): naver post-process 90m timeout 병목 분석 + 분리 옵션 설계
+
+세션 224 fix (60→90) 만으로 부족 — 5/10 첫 90m cron 도 cancelled @ 90:19 발견.
+run 25638230275 step-별 timestamp 실측으로 진짜 병목 = sync-naver-complex
+47:52 (전체 53%) 식별. 분리/최적화 옵션 D-1 / D-2 / E 트레이드오프 박제.
+```
+
+변경 = `docs/superpowers/specs/2026-05-11-naver-postprocess-bottleneck-design.md` 신규 (165줄).
+
+### plan v1→v4 정정 누적 19건
+
+**v1 → v2 (5건, cross-repo 영향 발견)**: naver-estate-web frontend 4 위치 → 옵션 1 위험 🟢→🔴 격상 → 1순위 옵션 1 → 옵션 2 (spec) 로 교체
+
+**v2 → v3 (11건, 실증 환각 정정)**:
+- sync 28m → **47:52** (진짜 병목, 전체 53%)
+- geocode 10m → <1초, reverse 5m → 1초
+- infra 10m → 9:26 (정합), transport 27:30 → 27:31 (정합)
+- "5/8~5/10 3회 연속 90m" → 60m 2회 + 90m 1회 (timeout 한계 일치, 시간만 다름)
+- naver-estate-web 영향 4 → 6 위치 (backend FastAPI ORM + serializer 추가)
+- concurrency 단독 ✅ + KAKAO_KEY 9 workflow 공유 ⚠️
+
+**v3 → v4 (3건, 서브에이전트 환각 정정)**:
+- Agent A "memory 디렉토리 없음" 환각 → 본인 ls 직접: 75 파일 존재
+- Agent A "MEMORY.md 없음" 환각 → 본인 head 직접: 21KB 50+ 줄 인덱스 존재
+- 다른 cursor 프로젝트 mibunyang DB 사용 미확인 → 본인 grep: naver-estate-web 단독
+
+### 9 GATE v4 통과 (2 라운드)
+
+| GATE | v3 | v4 | 정정 |
+|---|---|---|---|
+| 0 Sonnet 크기 | 🟢 | 🟢 | 4 수정 + 1 신규 = 5 파일 |
+| 1 영향 범위 | 🟡 | 🟢 | Agent A 환각 → 본인 ls 직접 |
+| 2 실행 순서 | 🟢 | 🟢 | — |
+| 3 완전성 | 🟡 | 🟢 | v3 빈틈 = Agent A 환각 |
+| 4-8 | 🟢×5 | 🟢×5 | — |
+
+**최종**: 🟢 9, 🟡 0, 🔴 0 → 실행 허가 ✅
+
+### Phase 별 작업
+
+- **Phase 1**: 옵션 2 spec 박제 (165줄, `docs/superpowers/specs/2026-05-11-naver-postprocess-bottleneck-design.md`, 커밋 `d70cbd6`)
+- **Phase 2**: BACKLOG.md L64 정정 (🟡 cross-repo 6 위치 명시) + `feedback_cross_repo_schema_audit.md` 신규 박제 + MEMORY.md L1 인덱스 갱신 (gitignore, 미커밋)
+- **Phase 3**: NEXT_SESSION.md 갱신 (5/11 cron 분기 시나리오 A/B + 옵션 1-A/1-B + 7일 누적) + SESSION_LOG 세션 226 헤더 추가 (gitignore, 미커밋)
+- **Phase 4**: session-end-snapshot 자동 발동
+
+### 신규 박제 메모
+
+- `feedback_cross_repo_schema_audit.md` (mibunyang ↔ naver-estate-web 공유 DB 컬럼 drop 전 양 프로젝트 grep 의무, 4 step 검증 절차)
+
+### 답습 메모 적중
+
+- `feedback_subagent_report_trust.md` (서브에이전트 보고 모순 시 본인 직접 실측 1회로 진실 확정) — v3 → v4 정정에서 Agent A 환각 발견
+- `feedback_audit_hypothesis_partial_hallucination.md` (BACKLOG/AUDIT 박제값 plan 근거 사용 전 gh CLI 직접 실측) — v2 → v3 sync 28m → 47:52 정정 답습
+
+### 다음 세션 (227) 진입 조건
+
+- main 브랜치 CI 초록 상태 (d70cbd6)
+- 5/11 cron 결과 확정 (KST 5/12 04:54)
+- 시나리오 A/B/C 분기 후 옵션 D-1/D-2/E 진입 결정
+- 옵션 1-A 보류 유지 또는 1-B (cross-repo PR) 별도 세션 진입 결정
