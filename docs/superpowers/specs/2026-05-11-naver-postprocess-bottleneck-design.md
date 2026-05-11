@@ -1,6 +1,8 @@
 # Naver Post-Processing 90분 timeout 병목 분석 + 분리 옵션 설계
 
 > 작성: 2026-05-11 (세션 226). 출처 = run 25638230275 (5/10 cancelled @ 90m 19s) step-별 timestamp 실측. spec only, 실행은 5/11 cron 결과 + 옵션 D-2/E 비교 후 별도 plan.
+>
+> **세션 227 후속**: 5/11 cron 도 cancelled @ 90m 19s 확정 (4회 연속 escalate). D-1 응급 적용 = `7f69a84` (timeout 90→120m). D-2 본문 spec = [`2026-05-11-naver-workflow-split.md`](./2026-05-11-naver-workflow-split.md) (Core + Incremental 분리 설계, schedule UTC 20:30 단독 trigger).
 
 ## Context
 
