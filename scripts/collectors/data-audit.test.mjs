@@ -26,6 +26,7 @@ function createFullRow(overrides = {}) {
     maxFloor: 25, parkingRatio: 1.2, floorAreaRatio: 250, exclusiveRatio: 78,
     energyGrade: 2, heating: "지역난방", corridorType: "계단식", heatFuel: "도시가스",
     avgMaintenanceCost: 15, primaryDirection: "남향", floors: "15-25", hasPool: false,
+    maintHeat: 10, maintHotwater: 8, maintGas: 5, maintElec: 12, maintWater: 3,
     isRegulated: false, dsr40pass: true,
     discountPct: 5, loanFree: true, balconyFree: true, cashback: 500, benefits: ["발코니무료"],
     hospital: 3, mart: 2, conv: 5, cafe: 8, culture: 1, bank: 4, pharmacy: 3, park: 2,
@@ -142,7 +143,7 @@ describe("computeAudit", () => {
     });
     const audit = computeAudit([row]);
 
-    // building: 12개 중 2개 null → ~83%
+    // building: 17개 (12 + maint 5) 중 2개 null → ~88% (세션 238 W3)
     expect(audit.categories.building.rate).toBeGreaterThanOrEqual(80);
 
     // 필드별 상세

@@ -14,10 +14,10 @@ const { COLLECTORS, SKIP_CATEGORIES } = await import("./data-fill.mjs");
 
 // ── COLLECTORS 구조 검증 ─────────────────────────────────────
 describe("COLLECTORS 수집기 매핑", () => {
-  // 이 테스트가 검증하는 것: Phase 1에 기반 데이터 수집기 포함
-  it("Phase 1에 building, builders, regions 포함", () => {
+  // 이 테스트가 검증하는 것: Phase 1에 기반 데이터 수집기 포함 (세션 238 W3: maintenance 추가)
+  it("Phase 1에 building, builders, regions, maintenance 포함", () => {
     const phase1 = COLLECTORS.filter(c => c.phase === 1).map(c => c.category);
-    expect(phase1).toEqual(["building", "builders", "regions"]);
+    expect(phase1).toEqual(["building", "builders", "regions", "maintenance"]);
   });
 
   // 이 테스트가 검증하는 것: Phase 2는 trade_stats만 (Phase 1 이후 실행)
@@ -44,12 +44,22 @@ describe("COLLECTORS 수집기 매핑", () => {
     expect(byCategory.regions).toContain("MOLIT_KEY");
     expect(byCategory.regions).toContain("KOSIS_KEY");
     expect(byCategory.trade_stats).toEqual([]);
+    // maintenance: collect-maintenance.mjs 가 MOLIT_KEY 요구 (세션 238 W3)
+    expect(byCategory.maintenance).toEqual(["MOLIT_KEY"]);
     // schools: schools-neis.mjs 가 KAKAO_KEY + NEIS_KEY + SCHOOLINFO_KEY 요구
     expect(byCategory.schools).toContain("KAKAO_KEY");
     expect(byCategory.schools).toContain("NEIS_KEY");
     expect(byCategory.schools).toContain("SCHOOLINFO_KEY");
     expect(byCategory.transport).toContain("KAKAO_KEY");
     expect(byCategory.transport).toContain("TAGO_KEY");
+  });
+
+  // 이 테스트가 검증하는 것: maintenance Phase 1 + scripts 단일 + envKeys MOLIT_KEY (세션 238 W3)
+  it("maintenance phase 1 + scripts collect-maintenance.mjs + envKeys MOLIT_KEY", () => {
+    const m = COLLECTORS.find(c => c.category === "maintenance");
+    expect(m?.phase).toBe(1);
+    expect(m?.scripts).toEqual(["collect-maintenance.mjs"]);
+    expect(m?.envKeys).toEqual(["MOLIT_KEY"]);
   });
 
   // 이 테스트가 검증하는 것: 모든 카테고리에 scripts 배열 존재

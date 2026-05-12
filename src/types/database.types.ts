@@ -175,6 +175,11 @@ export type Database = {
           loan_free_pct: number | null
           lot_main: number | null
           lot_sub: number | null
+          maint_elec: number | null
+          maint_gas: number | null
+          maint_heat: number | null
+          maint_hotwater: number | null
+          maint_water: number | null
           max_floor: number | null
           name: string
           naver_avg_floor: number | null
@@ -276,6 +281,11 @@ export type Database = {
           loan_free_pct?: number | null
           lot_main?: number | null
           lot_sub?: number | null
+          maint_elec?: number | null
+          maint_gas?: number | null
+          maint_heat?: number | null
+          maint_hotwater?: number | null
+          maint_water?: number | null
           max_floor?: number | null
           name: string
           naver_avg_floor?: number | null
@@ -377,6 +387,11 @@ export type Database = {
           loan_free_pct?: number | null
           lot_main?: number | null
           lot_sub?: number | null
+          maint_elec?: number | null
+          maint_gas?: number | null
+          maint_heat?: number | null
+          maint_hotwater?: number | null
+          maint_water?: number | null
           max_floor?: number | null
           name?: string
           naver_avg_floor?: number | null
@@ -1894,6 +1909,11 @@ export type Database = {
           lng: number | null
           loanFree: boolean | null
           loanFreePct: number | null
+          maintElec: number | null
+          maintGas: number | null
+          maintHeat: number | null
+          maintHotwater: number | null
+          maintWater: number | null
           mart: number | null
           martDist: number | null
           maxFloor: number | null

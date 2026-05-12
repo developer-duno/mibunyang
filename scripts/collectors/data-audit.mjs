@@ -49,7 +49,8 @@ export const AUDIT_FIELDS = {
   },
   building: {
     collector: "molit-building-info",
-    fields: ["maxFloor", "parkingRatio", "floorAreaRatio", "exclusiveRatio", "energyGrade", "heating", "corridorType", "heatFuel", "avgMaintenanceCost", "primaryDirection", "floors", "hasPool"],
+    fields: ["maxFloor", "parkingRatio", "floorAreaRatio", "exclusiveRatio", "energyGrade", "heating", "corridorType", "heatFuel", "avgMaintenanceCost", "primaryDirection", "floors", "hasPool",
+             "maintHeat", "maintHotwater", "maintGas", "maintElec", "maintWater"],
   },
   risk: {
     collector: "applyhome",
@@ -326,7 +327,7 @@ async function fetchAllFromTable(sb, table, columns, filterCol, filterVal) {
 
 // apartments 컬럼 (core + building + risk + benefits + naver + environment + future)
 const APT_COLS = "id,name,region,gu,dong,address,road_address,district,lat,lng,builder,units,completion,layout," +
-  "max_floor,parking_ratio,floor_area_ratio,exclusive_ratio,energy_grade,heating,corridor_type,heat_fuel,avg_maintenance_cost,primary_direction,floors,has_pool," +
+  "max_floor,parking_ratio,floor_area_ratio,exclusive_ratio,energy_grade,heating,corridor_type,heat_fuel,avg_maintenance_cost,maint_heat,maint_hotwater,maint_gas,maint_elec,maint_water,primary_direction,floors,has_pool," +
   "is_regulated,dsr40pass," +
   "discount_pct,loan_free,balcony_free,cashback,benefits," +
   "view,sunlight,noise,noxious,noxious_dist," +
@@ -348,7 +349,10 @@ function toCamel(row) {
     floor_area_ratio: "floorAreaRatio", exclusive_ratio: "exclusiveRatio",
     energy_grade: "energyGrade", has_pool: "hasPool", is_regulated: "isRegulated",
     corridor_type: "corridorType", heat_fuel: "heatFuel",
-    avg_maintenance_cost: "avgMaintenanceCost", primary_direction: "primaryDirection",
+    avg_maintenance_cost: "avgMaintenanceCost",
+    maint_heat: "maintHeat", maint_hotwater: "maintHotwater",
+    maint_gas: "maintGas", maint_elec: "maintElec", maint_water: "maintWater",
+    primary_direction: "primaryDirection",
     discount_pct: "discountPct", loan_free: "loanFree", balcony_free: "balconyFree",
     noxious_dist: "noxiousDist", transit_dev: "transitDev", dev_dist: "devDist",
     city_dev: "cityDev", industry_dev: "industryDev",
