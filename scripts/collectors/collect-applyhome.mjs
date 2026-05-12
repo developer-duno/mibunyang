@@ -25,7 +25,7 @@ const BASE_URL = "https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1/getRemnd
 
 /**
  * @typedef {{ HOUSE_MANAGE_NO?: string; SUPLY_HSHLDCO?: string | number; REQ_CNT?: string | number; [k: string]: unknown }} ApplyHomeRow
- * @typedef {{ rate: number | null; supply: number; applicants: number }} AggResult
+ * @typedef {{ rate: number | null; supply: number; applicants: number; raw_rows: ApplyHomeRow[] }} AggResult
  */
 
 // ── API 페이지네이션 (odcloud: page/perPage) ─────────────────
@@ -95,7 +95,7 @@ export function aggregateByApartment(rows) {
       ? Math.round((totalApplicants / totalSupply) * 100) / 100
       : null;
 
-    result[no] = { rate, supply: totalSupply, applicants: totalApplicants };
+    result[no] = { rate, supply: totalSupply, applicants: totalApplicants, raw_rows: items };
   }
 
   return result;
@@ -109,7 +109,7 @@ export function aggregateByApartment(rows) {
  */
 export function buildEventsFromAggregated(aggregated, apartments, recordedAt) {
   const aptSet = new Set(apartments.map(a => a.id));
-  /** @type {Array<{ apartment_id: string; house_manage_no: string; supply: number; applicants: number; rate: number | null; recorded_at: string }>} */
+  /** @type {Array<{ apartment_id: string; house_manage_no: string; supply: number; applicants: number; rate: number | null; recorded_at: string; raw_response: ApplyHomeRow[] }>} */
   const events = [];
   for (const [no, agg] of Object.entries(aggregated)) {
     const aptId = `ah-${no}`;
@@ -121,6 +121,7 @@ export function buildEventsFromAggregated(aggregated, apartments, recordedAt) {
       applicants: agg.applicants,
       rate: agg.rate,
       recorded_at: recordedAt,
+      raw_response: agg.raw_rows,
     });
   }
   return events;
@@ -170,7 +171,7 @@ async function main() {
 
   const aptSet = new Set(apartments.map(a => a.id));
   let matched = 0;
-  /** @type {Array<{ apartment_id: string; house_manage_no: string; supply: number; applicants: number; rate: number | null; recorded_at: string }>} */
+  /** @type {Array<{ apartment_id: string; house_manage_no: string; supply: number; applicants: number; rate: number | null; recorded_at: string; raw_response: ApplyHomeRow[] }>} */
   const events = [];   // 시계열 적재용 — apartments.update 성공 시에만 누적
 
   for (const [no, agg] of Object.entries(aggregated)) {
@@ -205,6 +206,7 @@ async function main() {
       applicants: agg.applicants,
       rate: agg.rate,
       recorded_at: new Date().toISOString().slice(0, 10),
+      raw_response: agg.raw_rows,
     });
   }
 

@@ -481,6 +481,7 @@ export type Database = {
           house_manage_no: string
           id: number
           rate: number | null
+          raw_response: Json | null
           recorded_at: string
           supply: number
         }
@@ -491,6 +492,7 @@ export type Database = {
           house_manage_no: string
           id?: number
           rate?: number | null
+          raw_response?: Json | null
           recorded_at?: string
           supply: number
         }
@@ -501,6 +503,7 @@ export type Database = {
           house_manage_no?: string
           id?: number
           rate?: number | null
+          raw_response?: Json | null
           recorded_at?: string
           supply?: number
         }
