@@ -1,3 +1,31 @@
+# 세션 235 — 2026-05-13 (KOSIS Phase 1 사전 검증 + BACKLOG 박제값 절반 환각 확정 + stale 주석 1줄 정정)
+
+**거시 목적**: NEXT_SESSION L37 "cron 도래 후 예상" 박제값 실측 정정 (UTC 17:46 = +1h14m 미도래). 세션 234 동일 분기 답습 회피 위해 사용자 4-Phase 워크플로우 위임 (의존관계 실측 → 순서 결정 → 확정 순서 → 세션 상태 판정) → 옵션 α (W3 KOSIS Phase 1 진행) 승인 → plan v1 메타 plan 거부 4회 → v4 = "S1 KOSIS API 메타 호출 검증 + S2 stale 주석 1줄 정정 + S3 분기 결정" 까지 ExitPlanMode 통과 후 본격 진입.
+
+**결론**: S1 실증 = DT_MLTM_2100 ((新)주택보급률 / 시도 / 연간 / 240 rows) ✅ 실재 확정 / DT_MLTM_2086 (준공후 미분양?) ⚠️ 에러 30 "데이터 없음" = KOSIS 활용신청 미포함 의심 (사용자 콘솔 액션 의무). S2 = 1줄 stale 주석 정정 커밋 `128353a` (DT_1YL202001E → DT_MLTM_2082, 세션 222 답습 박제). 1 커밋 push 의무 + W3 plan 별도 세션 위임 결정.
+
+**핵심 사고 박제 (plan 거부 4회 누적)**:
+
+1. plan v1 환각 — 메타 plan (W3 위임만) 형태 = 9 GATE 형식 채우기 거부. 사용자 의도 = 실 작업 plan + 실측 grep 증거 본문 박제 의무
+2. plan v2 환각 — GATE 1 영향 범위 "ExitPlanMode 통과 후 grep 실행 의무" 박제 = 추측. 실측 grep 결과 원문 본문 박제 의무 (5건 결과 + 정정 대상 vs 역사 보존 분류표 첨부)
+3. plan v3 환각 — GATE 5 보안 grep 결과 src/ 만 박제 + scripts/ 영역 누락. 작업 영역 (S2 가 scripts/collectors/) grep 동시 박제 의무
+4. BACKLOG L187 환각 정정 — "Phase 1 = MOLIT_KEY 재활용" → 실측 = KOSIS_KEY (kosis.kr/openapi endpoint, data.go.kr 별도 시스템)
+
+**S1 KOSIS API 실증 박제 (W3 plan v1 답습 자산)**:
+
+- endpoint = `https://kosis.kr/openapi/Param/statisticsParameterData.do` (답습 자산 collect-unsold-kosis.mjs L155)
+- 파라미터: method=getList / apiKey=KOSIS_KEY / orgId=116 / itmId=ALL / objL1=ALL / objL2=ALL / prdSe + start/endPrdDe
+- DT_MLTM_2100 (新)주택보급률: prdSe='Y' 또는 'A' 양쪽 OK / 시도 단위 / sample = `{C1_NM:"전국", ITM_NM:"가구수", PRD_DE:"2023", UNIT_NM:"천호천가구％", TBL_NM:"(新)주택보급률"}` / itmId 분리 (가구수/주택수/보급률)
+- DT_MLTM_2086: 에러 20 → 30 (objL2 추가해도 데이터 없음 = 활용신청 미포함 의심)
+
+**다음 세션 (236) 첫 턴 사용자 액션 의무**:
+
+- 옵션 A: KOSIS 콘솔 (kosis.kr) 로그인 → 활용신청 → DT_MLTM_2086 (orgId=116) 추가 신청 → 발급 완료 후 본 세션 236 첫 턴에 S1 재시도
+- 옵션 B: DT_MLTM_2086 보류 + DT_MLTM_2100 (주택보급률) 단독 W3 plan v1 진행
+- 옵션 C: KOSIS 검색 페이지 (kosis.kr/statisticsList) 직접 확인 — 본 통계표 자체 데이터 미공급 가능성
+
+---
+
 # 세션 233 (확장) — 2026-05-13 (naver-units 영구 폐기 + molit-units 12건 보정 + ESLint IDE 빨강 fix)
 
 **거시 목적 (확장)**: 첫 turn 4 사고 박제 후 사용자 IDE 빨강 발견 (eslint.config.js 옆 숫자) → ESLint ignore 누락 발견 → 1줄 fix. 그 다음 사용자 cmd 창에 naver-units 수동 실행 발견 → 세션 89 알려진 패턴 답습 (429 + curl_cffi 실패 + 결과 0건) → 사용자 위임 "잘못되는 작업 다시는 실행 안 되게" → naver-units 영구 폐기 (3 파일 -505줄 삭제 + 7 참조 정정) + molit-units 대체 실행 (12건 보정 완료).
