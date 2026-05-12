@@ -2,7 +2,7 @@
 /**
  * KOSIS 시군구별 미분양 세대수 수집기
  *
- * KOSIS 국가통계포털 DT_1YL202001E 테이블에서
+ * KOSIS 국가통계포털 DT_MLTM_2082 테이블에서 (세션 222 통계표 이전: DT_1YL202001E → DT_MLTM_2082)
  * 시군구별 월별 미분양 세대수를 수집하여
  * regions.regional_unsold + apartments.unsold/unsold_rate 업데이트
  *
