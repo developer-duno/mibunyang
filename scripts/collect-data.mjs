@@ -1042,27 +1042,8 @@ async function main() {
     }
   }
 
-  // Phase 1.5: 네이버 세대수 보정 적용
-  try {
-    const naverPath = resolve(ROOT, "public/data/naver-units.json");
-    if (existsSync(naverPath)) {
-      const naver = JSON.parse(readFileSync(naverPath, "utf8"));
-      const corrections = naver.corrections || {};
-      let corrected = 0;
-      apartments = apartments.map(a => {
-        const fix = corrections[a.id];
-        if (fix && fix.units > 1 && (a.units || 0) <= 1) {
-          const unsoldRate = (a.unsold != null && fix.units > 0) ? Math.round(a.unsold / fix.units * 1000) / 10 : a.unsoldRate;
-          corrected++;
-          return { ...a, units: fix.units, unsoldRate, unitSource: "naver" };
-        }
-        return a;
-      });
-      log(`  네이버 보정: ${corrected}건 (총 ${Object.keys(corrections).length}건 보유)`);
-    }
-  } catch (e) { logError("naver-correction", e.message); }
-
   // Phase 2~7: 선택 (실패해도 계속)
+  // 세션 89: naver-units 폐기 (네이버 IP 차단 → molit-units 교체). Phase 1.5 제거됨.
   apartments = await phase2_kosis(apartments);
   apartments = await phase3_kakao(apartments);
   apartments = await phase4_neis(apartments);

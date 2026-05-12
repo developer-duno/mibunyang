@@ -13,8 +13,8 @@ echo "[post-naver] 1/4 sync-naver-complex.mjs 실행..."
 node scripts/collectors/sync-naver-complex.mjs
 echo "[post-naver] 1/4 완료"
 
-# 2. molit-units (세대수 보정 — 국토부 공동주택 API, 네이버 IP 차단 회피)
-# 세션89: naver-units가 집 서버 IP 차단으로 만성 429 → molit-units로 교체
+# 2. molit-units (세대수 보정 — 국토부 공동주택 API)
+# 세션89: 네이버 IP 차단으로 naver-units 폐기 → molit-units 단독 사용 (세션 233 영구 제거)
 echo "[post-naver] 2/4 molit-units.mjs 실행..."
 if node scripts/collectors/molit-units.mjs; then
   echo "[post-naver] 2/4 완료"
