@@ -38,8 +38,15 @@ describe("COLLECTORS 수집기 매핑", () => {
 
     expect(byCategory.building).toEqual(["MOLIT_KEY"]);
     expect(byCategory.builders).toEqual(["DART_KEY"]);
-    expect(byCategory.regions).toEqual(["MOIS_POP_KEY"]);
+    // regions: population.mjs (MOIS_POP_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY)
+    expect(byCategory.regions).toContain("MOIS_POP_KEY");
+    expect(byCategory.regions).toContain("KOSIS_MIGRATION_KEY");
+    expect(byCategory.regions).toContain("MOLIT_KEY");
     expect(byCategory.trade_stats).toEqual([]);
+    // schools: schools-neis.mjs 가 KAKAO_KEY + NEIS_KEY + SCHOOLINFO_KEY 요구
+    expect(byCategory.schools).toContain("KAKAO_KEY");
+    expect(byCategory.schools).toContain("NEIS_KEY");
+    expect(byCategory.schools).toContain("SCHOOLINFO_KEY");
     expect(byCategory.transport).toContain("KAKAO_KEY");
     expect(byCategory.transport).toContain("TAGO_KEY");
   });
