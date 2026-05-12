@@ -1,3 +1,84 @@
+# 세션 231 — 2026-05-12 (Naver D-2 수동 발화 양쪽 success / BACKLOG 환각 2건 정정 / 7일 모니터링 데이터 포인트 1 확보)
+
+**거시 목적**: 세션 230 마무리 후 사용자 명시 옵션 (workflow_dispatch 수동 발화) 으로 D-2 첫 결과를 본 세션 안에 확정. cron 도래 6.08/7.58시간 대기를 피하고 7일 모니터링 trigger 첫 데이터 포인트 조기 확보. 폴링 대기 시간에 BACKLOG 다음 작업 후보 4건 실증 → 2건 환각 발견 + 정정.
+
+**결론**: 본 세션 1 commit (SESSION_LOG + BACKLOG 환각 정정). D-2 분리 효과 실증 (양쪽 timeout 90m hit 안 함, conclusion success). 분기 4종 중 **1번 (양쪽 success)** 매칭 → 7일 모니터링 trigger 박제 유지. 코드 / yml 변경 0건. KAKAO 동시 호출 영향이 schools step 에 +38% 집중 발견 (incremental 마진 16:55, 안전).
+
+**커밋**:
+- `(예정)` docs(session-log): 세션 231 Naver D-2 수동 발화 양쪽 success + BACKLOG 환각 2건 정정
+
+**변경 자리**:
+- `.claude/SESSION_LOG.md`: 세션 231 헤더 prepend (~80 lines)
+- `.claude/BACKLOG.md`: L60·L47-51 환각 정정 (🟡 → ❌ v3 박제, 각각 +4 lines)
+- `.claude/NEXT_SESSION.md`: 본문 정정 (D-2 결과 반영, 트리거 = 5/13 cron 양쪽 결과 + 누적 7일 모니터링)
+
+**D-2 양쪽 run 실측 (gh CLI step-별 timestamp)**:
+
+| Workflow | run ID | 시작 UTC | 종료 UTC | 소요 | conclusion | spec 대비 |
+|---|---|---|---|---|---|---|
+| core | 25736019303 | 12:59:37 | 13:48:59 | **49:22** | success | -6:41 (12% 빠름) |
+| incremental | 25736021525 | 12:59:46 | 14:12:36 | **72:50** | success | +9:50 (16% 느림) |
+
+**core step-별** (49:22 = setup 0:15 + sync 49:04 + Geocode/Reverse 0:00 + Calc 0:03):
+- sync naver complex 49:04 (spec 55:39 -6:35, 12% 빠름) — 동시 발화에도 KAKAO 영향 0 (sync 는 Supabase DB 단독)
+- Geocode/Reverse/Calc 합산 3초 (spec ≈ 4초)
+- 마진: timeout 90m → 실측 49:22 → **40:38 (45%) 여유**
+
+**incremental step-별** (72:50 = setup 0:13 + transport 36:07 + infra 11:18 + schools 25:11):
+- transport 36:07 (spec 35:09 +0:58, 2.8%↑) — TAGO 위주, KAKAO 영향 미미
+- infra 11:18 (spec 10:15 +1:03, 10%↑) — Kakao Places, core sync 와 시간 겹쳐 영향
+- **schools 25:11 (spec 18:13 +6:58, 38% 느림)** — NEIS + Kakao geocode 호출 패턴, core sync 49분 동안 KAKAO 동시 호출 경쟁 영향 정확히 집중
+- 마진: timeout 90m → 실측 72:50 → **17:10 (19%) 여유**
+
+**핵심 발견 — D-2 동시 발화 시 KAKAO 경쟁**:
+- core sync (12% 빠름) + incremental schools (38% 느림) = KAKAO 경쟁 영향이 schools 단계에 집중 발현
+- 본 발화 = 수동 워크플로 동시. **schedule cron 실행 시 KAKAO 경쟁 없음** (core UTC 19:00 + incremental UTC 20:30 분리)
+- 따라서 본 실측의 incremental 73분 = **수동 동시 발화 최악 시나리오 상한**. 실제 cron 발화 시는 spec 63분 근접 예상
+- core 49:22 = 동시 동작에도 spec 보다 빠름 → cron 발화 시도 안전 확정
+
+**BACKLOG 환각 2건 정정 (폴링 대기 시간 활용 실증)**:
+
+후보 4건 실증 결과:
+
+| # | 후보 | 박제 (출처) | 실증 결과 | 정정 |
+|---|---|---|---|---|
+| 1 | applyhome `recordApiQuota` 미호출 | BACKLOG L60 (세션 223 audit v2) | L16 import + L232 `await recordApiQuota(PHASE, "MOLIT_KEY", apiCalls)` + 커밋 `816664b` 이미 적용 | ❌ 환각 확정 (v3 박제) |
+| 2 | KOSIS market-stats prdSe 'Q' 1줄 fix | BACKLOG L47-51 (세션 222 audit v2) | L63 `prdSe: "Q"` + L156 `quarterRe = /^\d{5}$/` + L186-188 startQ/endQ + L203-204 분기 분기 처리 이미 구현 | ❌ 환각 확정 (v3 박제, 후속 액션 1줄 fix 도 환각) |
+| 3 | M9 src/App.test.jsx @ts-check | NEXT_SESSION L51 | 파일 존재 (325줄) + `@ts-check` 없음 + src/ test 중 마지막 1건 | ✅ 유효 (조건부 진행 후보) |
+| 4 | vitest 4 projects 마이그 | BACKLOG TS M0 후속 | `// @ts-expect-error` 임시 보존 정상 동작 + vitest 5 도입 트리거 없음 | ✅ 유효 but **deferred** |
+
+**환각 패턴 분석 (세션 224 audit hypothesis 답습)**:
+- 두 환각 모두 "BACKLOG 박제 = 단정 근거" 사용 시 헛수고 위험
+- 사용자 §11 메모리 진실의 원천 아님 + 자가 점검 1 적용 (코드 직접 Read·Grep 후만 단정) 그대로 발동
+- M9 / vitest 만 살아남음 → **남은 후보 1.5건**
+
+**자가 점검 1+2 결과**:
+- 맹점 0건 (사용자 명시 옵션 = workflow_dispatch + 폴링 대기 활용 + BACKLOG 다음 작업 찾기, 3 영역 모두 처리)
+- 할루시네이션 의심 실측 — gh CLI step-별 timestamp 직접 추출 / BACKLOG 4 후보 코드 grep 직접 / 박제값 출처 커밋 확인 (`816664b`)
+- 부재 단정 0건
+
+**분기 4종 결과 — 1번 (양쪽 success) 매칭**:
+
+| 분기 | 매칭 | 후속 |
+|---|---|---|
+| **1. 양쪽 success** ✅ | **매칭** | 7일 모니터링 trigger 박제 유지, 5/13~5/19 schedule cron 누적 success ≥ 5/7 검증 |
+| 2. core success + incremental cancelled | 불일치 (양쪽 success) | - |
+| 3. core cancelled + incremental success | 불일치 (양쪽 success) | - |
+| 4. 양쪽 cancelled | 불일치 (양쪽 success) | - |
+
+**7일 모니터링 trigger 박제 (세션 232~ 의무)**:
+- **데이터 포인트 1/7 확보 — 본 세션 수동 발화 (양쪽 success)**
+- 5/13 schedule cron 발화 (UTC 19:00 + 20:30) — 자연 분리 패턴 첫 실증
+- 5/14~5/19 누적 6일 → 5/19 후 BACKLOG L26 Naver 🟡 → ✅ 정정 박제 (D-2 정착 결론)
+- 본 수동 발화 동시 실행 결과 = **상한 시나리오**. schedule cron 분리 시 incremental 73분 → 63분 근접 예상
+
+**변경 자리**:
+- `.claude/SESSION_LOG.md`: 세션 231 헤더 prepend (본 블록)
+- `.claude/BACKLOG.md`: L60 (applyhome recordApiQuota) + L47-51 (KOSIS prdSe 'Q') 환각 정정
+- `.claude/NEXT_SESSION.md`: 트리거 정정 (5/13 schedule cron 양쪽 결과 + 누적 7일 모니터링)
+
+---
+
 # 세션 230 — 2026-05-12 (Naver D-2 첫 cron 미도래 마무리 / 7일 모니터링 trigger 박제)
 
 **거시 목적**: 세션 229 D-2 적용 (c045594 core 정정 + 9bbce13 incremental 신규 push) 직후 시작된 본 세션. NEXT_SESSION 박제 트리거 "5/13 D-2 첫 cron 결과 확정"이 현 시점 6.27/7.77시간 뒤 미도래 → 세션 228 답습 ("분기 trigger 미도래 마무리"), 코드 변경 0건.
