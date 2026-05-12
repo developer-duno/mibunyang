@@ -38,10 +38,11 @@ describe("COLLECTORS 수집기 매핑", () => {
 
     expect(byCategory.building).toEqual(["MOLIT_KEY"]);
     expect(byCategory.builders).toEqual(["DART_KEY"]);
-    // regions: population.mjs (MOIS_POP_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY)
+    // regions: population.mjs (MOIS_POP_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY) + collect-housing-supply-ratio.mjs (KOSIS_KEY)
     expect(byCategory.regions).toContain("MOIS_POP_KEY");
     expect(byCategory.regions).toContain("KOSIS_MIGRATION_KEY");
     expect(byCategory.regions).toContain("MOLIT_KEY");
+    expect(byCategory.regions).toContain("KOSIS_KEY");
     expect(byCategory.trade_stats).toEqual([]);
     // schools: schools-neis.mjs 가 KAKAO_KEY + NEIS_KEY + SCHOOLINFO_KEY 요구
     expect(byCategory.schools).toContain("KAKAO_KEY");
@@ -58,10 +59,10 @@ describe("COLLECTORS 수집기 매핑", () => {
     }
   });
 
-  // 이 테스트가 검증하는 것: regions는 3개 스크립트 순차 실행
-  it("regions는 population → migration → housing-permits 3개 순차", () => {
+  // 이 테스트가 검증하는 것: regions는 4개 스크립트 순차 실행 (세션 237 W1: housing-supply-ratio 추가)
+  it("regions는 population → migration → housing-permits → housing-supply-ratio 4개 순차", () => {
     const regions = COLLECTORS.find(c => c.category === "regions");
-    expect(regions?.scripts).toEqual(["population.mjs", "migration.mjs", "housing-permits.mjs"]);
+    expect(regions?.scripts).toEqual(["population.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs"]);
   });
 });
 
