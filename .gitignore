@@ -7,6 +7,8 @@ dist/
 !.claude/commands/**
 !.claude/agents/
 !.claude/agents/**
+!.claude/rules/
+!.claude/rules/**
 .claude/settings.local.json
 .claude/.edit-counter
 .claude/.build-dirty
@@ -55,6 +57,10 @@ schools-neis-errors.txt
 
 # 바이너리/데이터
 *.xlsx
+*.pdf
 
 # 네이버 크롤러 별도 프로젝트
 naver-apt/
+
+# 임시 검증 스크립트 (.env.local 또는 하드코딩 키 사용, 운영 미반영)
+scripts/probes/

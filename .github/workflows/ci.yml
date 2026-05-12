@@ -31,6 +31,9 @@ jobs:
       - name: Typecheck (scripts)
         run: npm run typecheck:scripts
 
+      - name: ETL env-key 3-way audit
+        run: node scripts/audit-env-keys.mjs
+
       - name: Test
         env:
           VITE_FEATURE_UPCOMING: "true"

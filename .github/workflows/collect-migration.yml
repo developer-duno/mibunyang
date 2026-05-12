@@ -35,10 +35,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          MOIS_POP_KEY: ${{ secrets.MOIS_POP_KEY }}
+          KOSIS_MIGRATION_KEY: ${{ secrets.KOSIS_MIGRATION_KEY }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$MOIS_POP_KEY" ]; then
-            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, MOIS_POP_KEY secret 필요"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$KOSIS_MIGRATION_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, KOSIS_MIGRATION_KEY secret 필요"
             exit 1
           fi
           echo "Secrets validated"
@@ -47,7 +47,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          MOIS_POP_KEY: ${{ secrets.MOIS_POP_KEY }}
+          KOSIS_MIGRATION_KEY: ${{ secrets.KOSIS_MIGRATION_KEY }}
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
