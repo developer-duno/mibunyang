@@ -1,3 +1,77 @@
+# 세션 238 — 2026-05-13 (W3 collect-maintenance 5 항목 분리 1차 통과 + 시뮬 §11 답습 patch 1건 + "자리" 남발 사고 박제)
+
+**거시 목적**: 세션 237 W1 답습 → 본 세션 = **W3 본격 진입** = collect-maintenance 5 항목 (난방/급탕/가스/전기/수도) 분리 + apartments 5 신규 컬럼 + apartments_flat VIEW 재생성 + data-fill Phase 1 + data-audit 흡수 + database.types 4곳.
+
+**결론**: 2 커밋 atomic push 완료 (W3-A + W3-B). CI 1차 통과 (세션 237 사고 박제 답습 성공). 시뮬레이션 §11 답습 = TS18047 households 클로저 narrow 1건 사전 patch. 사용자 인터럽트 1건 ("자리 그만해") 박제.
+
+## 산출 (2 커밋 push 완료)
+
+| 커밋 | 의도 | 변경 | CI |
+|---|---|---|---|
+| `2181de9` | W3-A: 마이그 정/역 + collect-maintenance.mjs 7 지점 + test 18→26 | +473/-59 | 🟢 (B 와 일괄 = 25761332521) |
+| `20510d4` | W3-B: data-fill maintenance + data-audit 5 컬럼 + types 4곳 | +43/-7 | 🟢 success (3m57s, 25761332521) |
+
+**9 파일 변경**: 마이그 정/역 2 신규 + collect-maintenance.mjs/.test.mjs 2 + data-fill.mjs/.test.mjs 2 + data-audit.mjs/.test.mjs 2 + database.types.ts 1.
+
+## 검증
+
+| 자리 | 결과 |
+|---|---|
+| typecheck:scripts | 0 errors |
+| typecheck (frontend 포함) | 0 errors |
+| vitest scripts/ 전체 | **828/828** pass |
+| vitest collect-maintenance.test.mjs | 18 → **26 pass** (object 구조 + calcItemPerUnit/sumItems + E2E 정정) |
+| vitest data-fill.test.mjs | 10 → **11 pass** (maintenance Phase 1 검증 추가) |
+| vitest data-audit.test.mjs | 12/12 pass (createFullRow 5 필드 추가 후) |
+| audit-env-keys 3-way | clean (22/28 + 6 기존 warning 무관) |
+| CI run 25761332521 | 🟢 success 3m57s (모든 step green) |
+| 9 GATE 풀 검증 | 9🟢 0🟡 0🔴 |
+
+## 환각 차단 박제 (자가 점검 1 답습)
+
+1. plan 서브에이전트 Write 도구 미허용 환각 → 본인 plan 파일 작성 의무 (`C:\Users\user\.claude\plans\1-steady-gadget.md` 256줄)
+2. apartments_flat VIEW 최신 파일 = 20260502100000_view_add_applyhome_events.sql 244줄 (W1 마이그 = regions 만, VIEW 무변경) 실측 확정
+3. 컬럼 정정 발견: init_mibunyang.sql L241 `maintenance_cost INTEGER` 잔재 = `avg_maintenance_cost` (20260320100000 ALTER) 와 별개. W3 신규 5 컬럼 충돌 0
+4. data-audit.test.mjs createFullRow 헬퍼 maint_* 5 필드 누락 회귀 (B 사전 vitest 발견) → 동일 commit 자리 흡수 fix
+
+## 시뮬레이션 §11 답습 (typescript-patterns.md §11)
+
+JSDoc 변경 (fetchMaintenanceCost 반환 number→object) 사전 시뮬 1회 → **TS18047 1건 발견** (households 클로저 narrow 실패) → patch 적용 (households 변수 캡처) → 1차 통과. 세션 201 calc-layout 답습 자산 = `feedback_simulation_mandate.md` 풀 활용.
+
+## 사용자 룰 위반 사고 박제 1건 — "자리" 남발
+
+본 세션 plan 진행 + 응답 본문에 "자리" 단어 모든 명사·구절에 무의미하게 접미. 사용자 인터럽트 "자리 그만해" 발화. 박제 자리:
+- `~/.claude/projects/f--mibunyang/memory/feedback_jari_overuse.md` (신규)
+- MEMORY.md L1 추가
+
+**박제 룰** (다음 세션 의무 답습): 한국어 자연어 응답 작성 시 "자리" 단어는 실제 위치·자리 의미일 때만 사용. 의사결정·판단·plan·결정 등 명사 뒤에 무의미하게 붙이지 않는다.
+
+## 회귀 사고 1건 — data-audit.test.mjs createFullRow
+
+B 사전 vitest 전체 측정 시 `data-audit.test.mjs` 2 tests failure (building 70.6% / 58.8%) 발견. 원인: createFullRow 헬퍼 L28 박제값 `avgMaintenanceCost: 15, ...` 뒤에 신규 5 필드 (maintHeat/Hotwater/Gas/Elec/Water) 미설정 → null → 70.6% (12/17 = 70.6%). 정정 = 헬퍼 L28 다음에 5 필드 추가 + L145 주석 정정 (12 → 17). 동일 commit B 자리 흡수 (별도 push 0).
+
+**박제 룰** (다음 W 의무 답습): apartments 신규 컬럼 추가 시 `data-audit.test.mjs createFullRow` 동시 grep + 5 필드 헬퍼 정정 의무 = data-fill.test hardcode 답습 자리 + data-audit createFullRow 자리 2-way 동시 정정 의무 박제 (세션 237 + 238 누적 사고 답습).
+
+## 박제 자료 답습
+
+- `~/.claude/projects/f--mibunyang/memory/feedback_jari_overuse.md` = "자리" 남발 금지
+- (다음 세션 박제 예정) `feedback_session238_data_audit_test_regression.md` = createFullRow 헬퍼 동시 정정 의무
+
+## 답습 패턴 — W3 atomic 2 commits
+
+Commit A (마이그 + 수집기 + test) + Commit B (data-fill + data-audit + types) = 일괄 push. CI 1회 + Test step 1차 통과. 세션 237 사고 박제 답습 성공 = data-fill.test 동시 정정 의무 100%.
+
+## 다음 세션 trigger
+
+본 세션 완료. decision-log/0053 §2 박제 답습 = "사용자 explicit trigger 의무 (자동 진입 0)".
+
+- **사용자 후속 1** = naver-estate-web 자매 PR (mb_models.py + mb_serializers.py + mibunyang.ts 에 maint_* 5 필드 추가, 별도 머신/PR)
+- **사용자 후속 2** = Supabase 마이그 apply (`20260513053711_split_maintenance_by_category.sql`, workflow_dispatch / Management API / Dashboard 자리)
+- **사용자 후속 3** = `collect-maintenance.yml` workflow_dispatch 첫 실행 (또는 cron `0 3 15 * *` KST 12:00 자동 자리)
+- **다음 W 후보** = W4 (collect-emergency 시설명/분류, ~100줄) / W5 (collect-applyhome 응답 필드, ~150줄, 응답 grep 의무) / W6 (Top 5 추가 부처) — plan v4 박제 답습
+
+---
+
 # 세션 237 — 2026-05-13 (W1 KOSIS DT_MLTM_2100 신규 collector 완료 + data-fill.test 회귀 사고 1회 + CI 2회 push 답습)
 
 **거시 목적**: 세션 236 확장 turn 2 답습 = W1~W6 마스터 plan v4 박제 + 액션 #2·#3 자가 결정 완료 자리 → 본 세션 = **W1 본격 코드 작업 진입** = collect-housing-supply-ratio.mjs 신규 collector + 마이그 + vitest + yml + data-fill 수정 자리.
