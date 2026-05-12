@@ -1,11 +1,12 @@
-# 세션 231 — 2026-05-12 (Naver D-2 수동 발화 양쪽 success / BACKLOG 환각 2건 정정 / 7일 모니터링 데이터 포인트 1 확보)
+# 세션 231 — 2026-05-12 (Naver D-2 수동 발화 양쪽 success / BACKLOG 환각 2건 정정 / M9 src/ TS화 100% 도달)
 
-**거시 목적**: 세션 230 마무리 후 사용자 명시 옵션 (workflow_dispatch 수동 발화) 으로 D-2 첫 결과를 본 세션 안에 확정. cron 도래 6.08/7.58시간 대기를 피하고 7일 모니터링 trigger 첫 데이터 포인트 조기 확보. 폴링 대기 시간에 BACKLOG 다음 작업 후보 4건 실증 → 2건 환각 발견 + 정정.
+**거시 목적**: 세션 230 마무리 후 사용자 명시 옵션 (workflow_dispatch 수동 발화) 으로 D-2 첫 결과를 본 세션 안에 확정. cron 도래 6.08/7.58시간 대기를 피하고 7일 모니터링 trigger 첫 데이터 포인트 조기 확보. 폴링 대기 시간에 BACKLOG 다음 작업 후보 4건 실증 → 2건 환각 발견 + 정정. CI 1차 success 후 M9 (src/App.test.jsx // @ts-check) 진행 → src/ test 도메인 TS화 100% 도달.
 
-**결론**: 본 세션 1 commit (SESSION_LOG + BACKLOG 환각 정정). D-2 분리 효과 실증 (양쪽 timeout 90m hit 안 함, conclusion success). 분기 4종 중 **1번 (양쪽 success)** 매칭 → 7일 모니터링 trigger 박제 유지. 코드 / yml 변경 0건. KAKAO 동시 호출 영향이 schools step 에 +38% 집중 발견 (incremental 마진 16:55, 안전).
+**결론**: 본 세션 2 commit (SESSION_LOG/BACKLOG 환각 정정 + M9). D-2 분리 효과 실증 (양쪽 timeout 90m hit 안 함, conclusion success). 분기 4종 중 **1번 (양쪽 success)** 매칭 → 7일 모니터링 trigger 박제 유지. KAKAO 동시 호출 영향이 schools step 에 +38% 집중 발견 (incremental 마진 16:55, 안전). M9 = M4~M8 시리즈 src/ TS화 마지막 마침표 (baseline 11 errors → 0, vitest 11 pass, +14/-11 diff).
 
 **커밋**:
-- `(예정)` docs(session-log): 세션 231 Naver D-2 수동 발화 양쪽 success + BACKLOG 환각 2건 정정
+- `26b3cb7` docs(session-log): 세션 231 Naver D-2 수동 발화 양쪽 success + BACKLOG 환각 2건 정정 (+81 lines, CI 25740772664 success)
+- `1c86ef8` chore(ts): src/App.test.jsx // @ts-check 활성화 (M9, src/ TS화 100%) (+14/-11 lines, CI 25741473437 진행)
 
 **변경 자리**:
 - `.claude/SESSION_LOG.md`: 세션 231 헤더 prepend (~80 lines)
@@ -72,10 +73,30 @@
 - 5/14~5/19 누적 6일 → 5/19 후 BACKLOG L26 Naver 🟡 → ✅ 정정 박제 (D-2 정착 결론)
 - 본 수동 발화 동시 실행 결과 = **상한 시나리오**. schedule cron 분리 시 incremental 73분 → 63분 근접 예상
 
+**M9 src/App.test.jsx @ts-check 활성화 (src/ TS화 100% 도달, 1c86ef8)**:
+
+`fetchStaticApartments` 의 vi.fn() mock 시그니처가 import 결과 시그니처와 좁힘 안 됨 (TS2339: `mockResolvedValue` 등 11건). 답습 자산 §3.2 (vi.Mock cast) 적용 — `mockFetch` alias 변수 추가 후 11건 substitution.
+
+| 항목 | 측정값 |
+|---|---|
+| baseline typecheck | 11 errors (단일 패턴 TS2339) |
+| 정정 후 typecheck | **0 errors (전체)** |
+| vitest 회귀 | **11 tests pass** (Test Files 1 passed) |
+| diff | +14/-11 (Edit 3회: L1 ts-check + L97 mockFetch alias + L256 chain 정정) |
+| 잔여 fetchStaticApartments | 4건 (모두 정당 위치: 주석 L62 / mock 정의 L64 / import L95 / alias 변수 L97) |
+
+**시뮬레이션 빈틈 1건 박제** (자가 점검 §11 의무 답습):
+- v2 plan 박제 `sed 's|fetchStaticApartments\.mock|mockFetch.mock|g'` 가 다중 라인 chain (L256-260) 미매칭 → 10/11 substitution 만 처리
+- 잔여 1 error 발견 후 수동 Edit 1회 (L256 `fetchStaticApartments` 단독 → `mockFetch`) 추가 필요 박제
+- 본 사고는 §11 시뮬레이션 의무 정확히 발동 — 사전 측정 → 정정 적용 → 잔여 발견 → 추가 patch v3 사이클로 0 도달
+
+**M4~M8 시리즈 src/ TS화 종결 마침표** — src/ test 도메인 .test.{js,jsx} 100% @ts-check 활성화. 잔여 후보 = vitest 4 projects 마이그 (별도 세션, deferred) + cross-repo PR (별도 세션, 180분+).
+
 **변경 자리**:
 - `.claude/SESSION_LOG.md`: 세션 231 헤더 prepend (본 블록)
 - `.claude/BACKLOG.md`: L60 (applyhome recordApiQuota) + L47-51 (KOSIS prdSe 'Q') 환각 정정
 - `.claude/NEXT_SESSION.md`: 트리거 정정 (5/13 schedule cron 양쪽 결과 + 누적 7일 모니터링)
+- `src/App.test.jsx`: // @ts-check + mockFetch alias + 11건 substitution (M9, +14/-11)
 
 ---
 
