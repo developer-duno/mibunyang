@@ -1,3 +1,52 @@
+# 세션 236 (확장) — 2026-05-13 (W1~W6 마스터 plan 박제 + 3 에이전트 정찰 종합 + 환각 4건 정정 + data.go.kr 충분 활용 plan 추가)
+
+**거시 목적 (확장)**: 사용자 위임 "기존 수집기 심층분석해서 리뉴얼 + 충분히 활용할 수 있도록 plan 추가" → 3 Explore 서브에이전트 병렬 정찰 (활용 매트릭스 + 응답 필드 진단 + 카탈로그 후보) → 종합 보고 받음 → 사용자 추가 위임 "할루시네이션 한번 더 검사" → 자가 점검 1 발동 → 환각 4건 확정 + 정정 → 사용자 옵션 A (W1~W6 마스터 plan) 위임 → plan 파일 (`1-effervescent-zephyr.md`) W1 단독 → W1~W6 확장 작성.
+
+**결론 (확장)**: 코드 변경 0 (사전 박제 + plan 확장 단계). 다음 세션 237 ~ 241+ W1~W6 단계적 진입 (사용자 액션 #1·#2·#3 답습 의무 박제). 자매 메모 1 신규 + MEMORY.md 인덱스 +1줄.
+
+**3 에이전트 정찰 종합 (정찰 박제 자산)**:
+
+| 영역 | 산출 | 환각 | 정정 결과 |
+|---|---|---|---|
+| **기존 수집기 리뉴얼 후보** | 5건 후보 | 2건 환각 (molit-building + transport-tago) | **3건 확정** (collect-maintenance ★★★★★ + collect-emergency ★★★ + collect-applyhome ★★★ — 응답 grep 의무) |
+| **청약 family 신규 endpoint** | 3건 (getAPTLttotPblancCmpet + getUrbtyOfctlLttotPblancCmpet + getOfctlLttotPblancCmpet) | 0 환각 | **3건 확정** (사용자 위임 명시 + data.go.kr 활용신청 확인 의무) |
+| **추가 부처 신규 수집** | Top 5 (성/연령별 인구 + 청약 당첨자 + 공동주택가격 + 어린이집 + 범죄통계) | 0 환각 (확인 의무 박제) | **Top 5 확정** (각 후보 별 활용신청 확인 의무) |
+
+**환각 4건 정정 누적 (자가 점검 1 답습)**:
+
+1. 🔴 **molit-building 건폐율/용적률 "신규 컬럼 추가 자리 ★★★★"** = 환각 — 실측 `building_coverage_ratio` + `floor_area_ratio` **이미 활용 중** (molit-building-info.mjs:101-102/110-111/131-132 + init_mibunyang.sql L26·L212·L415). 본 plan 자리 **제외**.
+2. 🟡 **transport-tago 노선명 ★★** = 부분 환각 — 정류장 정보 (bus_routes/bus_stop_names) 이미 활용 중 (transport-tago.mjs:122·262). 노선번호 응답 = BusSttnInfoInqireService 미포함, BusRouteInfoInqireService 별도 endpoint 의무. **리뉴얼 → 신규 endpoint 후보 이전**.
+3. 🟡 **collect-applyhome 미활용 필드** = 에이전트 1·3 모순 (N-M=0 vs N-M=4). 실측 = typedef 3 필드 destructuring 만 (HOUSE_MANAGE_NO/SUPLY_HSHLDCO/REQ_CNT). 응답 9 필드 = 세션 235 박제 (Playwright 자동화 시), 본 collector 실 응답 sample 호출 0. **W5 사전 검증 의무 박제**.
+4. 🔴 **세션 235 박제 ITM_NM='보급률' UPDATE 대상** (본 세션 첫 턴 발견) = 환각 — DT=0 폐기 series. 정정 = `'보급률(다가구 구분거처 반영)'` (서울 2023=93.6%). 커밋 `511e23e` 박제 정정 완료.
+
+**W1~W6 마스터 plan 박제 (다음 세션 ~ 5 세션 답습 자산)**:
+
+- **W1** = `collect-housing-supply-ratio.mjs` (DT_MLTM_2100 → `regions.housing_supply_level` 신규 컬럼). 신규 4 + 수정 1 = ~350줄. 본 plan v1 박제 자산.
+- **W2** = 청약 family 3 endpoint 통합 (W2-A 아파트 + W2-B 오피스텔 사용자 위임 명시 + W2-C 오피스텔 변형 확인 의무). 신규 6~9 = ~800줄. 사용자 액션 #1 (활용신청 확인) 의존.
+- **W3** = collect-maintenance 5 항목 분리 저장 (★★★★★ 최대 가치). apartments +5 컬럼 또는 신규 테이블. ~300줄.
+- **W4** = collect-emergency 시설명/분류 저장 (★★★). infra +2 컬럼. ~100줄.
+- **W5** = collect-applyhome 응답 필드 확장 (★★★, 응답 grep 의무). applyhome_events +N 컬럼 또는 raw JSONB. ~150줄.
+- **W6** = 추가 부처 Top 5 (단계적 진입, 각 후보 별 활용신청 확인 의무).
+
+**우선순위 (사용자 옵션 A 위임)**: W1 → W3 (maintenance ★★★★★) → W2 (청약) → W4 (emergency) → W5 (applyhome) → W6 (추가 부처).
+
+**활용신청 정책 박제 (data.go.kr vs KOSIS 차이)**:
+
+- **KOSIS** = 인증키 1개로 모든 통계표 자동 활성 (세션 235 Playwright 박제 확정)
+- **data.go.kr / odcloud.kr** = svc 별 활용신청 (MOLIT_KEY 1회 신청에 family 자동 포함 vs 별도 신청 의무 = 사용자 액션 #1 콘솔 확인 의무)
+
+**사용자 액션 의무 박제 (W 진입 선행 조건)**:
+
+- **#1** = data.go.kr SSO 콘솔 로그인 → `ApplyhomeInfoCmpetRtSvc` family (getAPT/getUrbty/getOfctl 3 endpoint) 활용신청 상태 확인
+- **#2** = 신규 컬럼 이름 결정 (W1 `housing_supply_level` 후보 + W2·W3 컬럼 naming convention)
+- **#3** = naver-estate-web cross-repo grep (신규 컬럼 + 신규 테이블 영향 0건 확인)
+
+**본 세션 236 확장 turn 산출 커밋 (예정 1건)**:
+
+- `docs(session-236-extended): W1~W6 마스터 plan 박제 + 리뉴얼 매트릭스 + 환각 4건 정정` — `.claude/SESSION_LOG.md` 박제 (본 자리)
+
+---
+
 # 세션 235 (확장) — 2026-05-13 (KOSIS 활용신청 Playwright 자동화 + 환각 차단 누적 5건 + plan v5 사전 검증 박제)
 
 **거시 목적 (확장)**: 사용자 위임 "KOSIS 활용신청을 Playwright 로 진행" → 자동화 정찰 9 단계 (메인 → 로그인 → 90일 비번 우회 → 활용신청 페이지 진입) 통과 → **활용신청 추가 의무 0 확정** (인증키 1개로 모든 통계표 호출 가능, BACKLOG 가설 환각). 이어서 사용자 위임 "필요한 데이터 전부 받아서 보강 + 오피스텔 분양공고 API 검증" → 2 작업 통합 plan agent 메모 작성 → DT_MLTM_2086 + DT_MLTM_2100 + getUrbtyOfctlLttotPblancCmpet 실측 → **DT_MLTM_2086 환각 정정 3건**.
