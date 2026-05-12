@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * App.jsx 통합 테스트
  *
@@ -94,6 +95,8 @@ vi.mock('@/components/ShareSheet', () => ({
 import { fetchStaticApartments } from '@/services/staticDataApi';
 import App from './App';
 
+const mockFetch = /** @type {import('vitest').Mock} */ (fetchStaticApartments);
+
 describe('App 통합 테스트', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -106,7 +109,7 @@ describe('App 통합 테스트', () => {
   describe('기본 렌더링', () => {
     it('로딩 중 표시 후 데이터 로드 완료 시 아파트 카드가 표시된다', async () => {
       const testData = makeTestApartments();
-      fetchStaticApartments.mockResolvedValue({ data: testData, dataUpdatedAt: '2026-03-18T00:00:00Z' });
+      mockFetch.mockResolvedValue({ data: testData, dataUpdatedAt: '2026-03-18T00:00:00Z' });
 
       render(<App />);
 
@@ -123,7 +126,7 @@ describe('App 통합 테스트', () => {
     });
 
     it('헤더에 "전국 미분양 비교 엔진" 텍스트가 표시된다', async () => {
-      fetchStaticApartments.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
 
       render(<App />);
 
@@ -131,7 +134,7 @@ describe('App 통합 테스트', () => {
     });
 
     it('하단 네비게이션이 렌더링된다', async () => {
-      fetchStaticApartments.mockResolvedValue({ data: [], dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data: [], dataUpdatedAt: null });
 
       render(<App />);
 
@@ -147,7 +150,7 @@ describe('App 통합 테스트', () => {
   describe('프로필 변경', () => {
     it('프로필 버튼 클릭 시 해당 프로필이 활성화된다', async () => {
       const user = userEvent.setup();
-      fetchStaticApartments.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
 
       render(<App />);
 
@@ -169,7 +172,7 @@ describe('App 통합 테스트', () => {
   describe('탭 전환', () => {
     it('정보 탭 클릭 시 InfoPage가 표시된다', async () => {
       const user = userEvent.setup();
-      fetchStaticApartments.mockResolvedValue({ data: [], dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data: [], dataUpdatedAt: null });
 
       render(<App />);
 
@@ -185,7 +188,7 @@ describe('App 통합 테스트', () => {
 
     it('상담 탭 클릭 시 ConsultForm 영역이 표시된다', async () => {
       const user = userEvent.setup();
-      fetchStaticApartments.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
 
       render(<App />);
 
@@ -206,7 +209,7 @@ describe('App 통합 테스트', () => {
 
     it('목록 탭으로 돌아올 수 있다', async () => {
       const user = userEvent.setup();
-      fetchStaticApartments.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
 
       render(<App />);
 
@@ -230,7 +233,7 @@ describe('App 통합 테스트', () => {
   describe('데이터 에러 처리', () => {
     it('데이터 로딩 실패 시 에러 메시지와 재시도 버튼이 표시된다', async () => {
       vi.useFakeTimers();
-      fetchStaticApartments.mockRejectedValue(new Error('네트워크 오류'));
+      mockFetch.mockRejectedValue(new Error('네트워크 오류'));
 
       render(<App />);
 
@@ -250,7 +253,7 @@ describe('App 통합 테스트', () => {
     it('재시도 버튼 클릭 시 다시 데이터 로드를 시도한다', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       // 처음 3번 실패, 이후 성공
-      fetchStaticApartments
+      mockFetch
         .mockRejectedValueOnce(new Error('오류1'))
         .mockRejectedValueOnce(new Error('오류2'))
         .mockRejectedValueOnce(new Error('오류3'))
@@ -286,7 +289,7 @@ describe('App 통합 테스트', () => {
         ...makeTestApartments(),
         { ...makeTestApartments()[0], id: 'apt3', name: '완판아파트', unsoldRate: 0, unsold: 0 },
       ];
-      fetchStaticApartments.mockResolvedValue({ data, dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data, dataUpdatedAt: null });
 
       render(<App />);
 
@@ -304,7 +307,7 @@ describe('App 통합 테스트', () => {
         ...makeTestApartments(),
         { ...makeTestApartments()[0], id: 'apt3', name: '완판아파트', unsoldRate: 0, unsold: 0 },
       ];
-      fetchStaticApartments.mockResolvedValue({ data, dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data, dataUpdatedAt: null });
 
       render(<App />);
 
