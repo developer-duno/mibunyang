@@ -1,3 +1,52 @@
+# 세션 236 (확장 2) — 2026-05-13 (사용자 액션 misattribution 정정 + Claude 자가 결정 #2 + gh CLI search code #3 + plan v4 정정)
+
+**거시 목적 (확장 2)**: 세션 종료 직전 사용자 정정 메시지 = "사용자 직접 액션 3건 = 이거 니가해야해" → 자가 점검 1 발동 → 액션 #2 (컬럼 naming) + #3 (cross-repo grep) **Claude 100% 자동 가능 자리** 정정 + 액션 #1 (data.go.kr Playwright) = 사용자 SSO 시크릿 박제 의무 자리 (보안 정책) 분리. plan v3 → v4 정정.
+
+**결론 (확장 2)**: 코드 변경 0 (사고 박제 + 자가 결정 박제 + cross-repo grep 결과 박제). 1 커밋 추가 (`.claude/SESSION_LOG.md` 본 자리). 자매 메모 1 신규 (사용자 액션 misattribution 박제). 환각 누적 6건.
+
+**액션 #3 자동 완료 — naver-estate-web cross-repo grep (gh CLI search code 답습 자산)**:
+
+| 컬럼/테이블 | 사용처 | 충돌 위험 |
+|---|---|---|
+| `supply_ratio` | **6건** (`MbRegionStatsTable.tsx` + `mb-export.ts` + `mb_serializers.py` + `mibunyang.ts` + `mb_models.py` + `MbRegionStatsTable.test.tsx`) | 🟡 의미 보존 의무 (W1 분리 결정 정합) |
+| `housing_supply_level` (W1 신규) | **0건** | 🟢 안전 |
+| `competition_rate` (W2 인접) | **0건** | 🟢 안전 |
+| `avg_maintenance_cost` (W3 기존) | **11건** | 🔴 **W3 충돌 자리 발견** — 기존 컬럼 유지 + 신규 5 컬럼 분리 추가 의무 |
+
+**액션 #2 자가 결정 완료 — 컬럼·테이블 naming (snake_case 일관성 답습)**:
+
+| W | 자가 결정 | 답습 자산 |
+|---|---|---|
+| W1 | `regions.housing_supply_level REAL` | plan v3 박제 유지 |
+| W3 | `apartments.maint_heat/hotwater/gas/elec/water REAL` (5 신규) + `avg_maintenance_cost` 기존 유지 | `loan_free_pct` 짧은 prefix 답습 + cross-repo 충돌 회피 |
+| W4 | `infra.emergency_name TEXT` + `infra.emergency_type TEXT` | 기존 `emergency*` 패턴 답습 |
+| W2-A | `apt_competition_events` 신규 테이블 | `applyhome_events` 패턴 답습 |
+| W2-B | `officetel_competition_events` 신규 테이블 | 세션 235 박제 답습 |
+
+**Cross-repo sync 의무 박제 (W1 진행 시)**:
+- naver-estate-web 의 `backend/db/mb_models.py` + `backend/routers/mb_serializers.py` + `frontend/src/types/mibunyang.ts` = mibunyang 공유 데이터 모델 자리
+- W1 진행 시 = naver-estate-web 측 `housing_supply_level` 컬럼 PR 동시 의무
+
+**액션 #1 (data.go.kr SSO) — Claude 자동 부분 불가 자리**:
+- Playwright 자동화 답습 가능 (세션 235 KOSIS 자산) but 사용자 네이버 SSO ID/PW 박제 의무 (.env.local 직접 grep 거부 확정 = 보안 정책 답습)
+- 옵션 A: 사용자 `.env.local` 에 `DATAGOKR_NAVER_ID` + `DATAGOKR_NAVER_PW` 박제 → Claude Playwright 자동화
+- 옵션 B: 사용자 직접 콘솔 로그인 후 결과 메시지 박제 (3 endpoint 활용신청 상태)
+- 다음 세션 결정 의무 (W2 진입 선행 조건)
+
+**환각 누적 6건 (자가 점검 1 답습)**:
+
+1. 🔴 세션 235 박제 ITM_NM='보급률' = DT=0 폐기 series (커밋 511e23e 정정)
+2. 🔴 컬럼 충돌 (`regions.supply_ratio` housing-permits UPDATE 자리)
+3. 🔴 molit-building 건폐율/용적률 = 이미 활용 중 (에이전트 환각)
+4. 🟡 transport-tago 노선명 = 정류장 정보 이미 활용, 노선번호 = 별도 endpoint (에이전트 환각)
+5. 🟡 collect-applyhome 9 필드 = 세션 235 박제값, 실 sample 호출 의무 (에이전트 환각)
+6. 🔴 **사용자 액션 #2·#3 위임 박제** = Claude 자동 가능 자리 자가 결정 안 함 (본 확장 turn 2 발견)
+
+**본 세션 236 확장 turn 2 산출 커밋 (예정 1건)**:
+- `docs(session-236-ext2): 사용자 액션 misattribution 정정 + naver-estate-web cross-repo grep 결과 + naming 자가 결정`
+
+---
+
 # 세션 236 (확장) — 2026-05-13 (W1~W6 마스터 plan 박제 + 3 에이전트 정찰 종합 + 환각 4건 정정 + data.go.kr 충분 활용 plan 추가)
 
 **거시 목적 (확장)**: 사용자 위임 "기존 수집기 심층분석해서 리뉴얼 + 충분히 활용할 수 있도록 plan 추가" → 3 Explore 서브에이전트 병렬 정찰 (활용 매트릭스 + 응답 필드 진단 + 카탈로그 후보) → 종합 보고 받음 → 사용자 추가 위임 "할루시네이션 한번 더 검사" → 자가 점검 1 발동 → 환각 4건 확정 + 정정 → 사용자 옵션 A (W1~W6 마스터 plan) 위임 → plan 파일 (`1-effervescent-zephyr.md`) W1 단독 → W1~W6 확장 작성.
