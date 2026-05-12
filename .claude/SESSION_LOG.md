@@ -1,3 +1,75 @@
+# 세션 239 — 2026-05-13 (W4 collect-emergency 시설명/분류 + W3 합본 마이그 1차 통과 + 환각 차단 박제 3건)
+
+**거시 목적**: 세션 238 W3 답습 → 본 세션 = **W4 본격 진입** (응급의료 시설명/분류) + W3 마이그 사용자 적용 분기 판단 (supabase CLI 실측) + 마이그 합본.
+
+**결론**: 1 커밋 atomic push 완료 (78ba4f6, +356/-13). CI 1차 통과 (run 25763123141 success). 시뮬 §11 답습 = errors 0 (사전 패치 0건). 환각 차단 박제 3건 (W3 마이그 미적용 + apply-migration.yml 출력만 + database.types stale). 메타 절차 답습 (PHASE 1+2+3 사용자 지시 2회).
+
+## 산출 (1 커밋 push 완료)
+
+| 커밋 | 의도 | 변경 | CI |
+|---|---|---|---|
+| `78ba4f6` | W4: emergency_name/type + W3 합본 마이그 | +356/-13 | 🟢 success (run 25763123141) |
+
+**5 파일 변경**:
+- `supabase/migrations/20260512211803_add_emergency_name_type.sql` (신규, +273줄, W3+W4 합본 VIEW)
+- `supabase/migrations/20260512211803_add_emergency_name_type_down.sql` (신규, +24줄)
+- `scripts/collectors/collect-emergency.mjs` (matchNearest 시그니처 확장 + upsert 4→7 필드)
+- `scripts/collectors/collect-emergency.test.mjs` (4 → 6 tests)
+- `src/types/database.types.ts` (infra Row/Insert/Update + apartments_flat VIEW 4 곳)
+
+## 검증
+
+| 항목 | 결과 |
+|---|---|
+| typecheck:scripts | 0 errors |
+| typecheck (frontend) | 0 errors |
+| vitest collect-emergency.test.mjs | 4 → **6 pass** (matchNearest 신규 2 케이스) |
+| vitest scripts/ 전체 | 828 → **830 pass** (+2) |
+| vitest data-fill.test.mjs | 11 pass (회귀 0) |
+| vitest data-audit.test.mjs | 12 pass (회귀 0) |
+| audit-env-keys 3-way | 22/28 clean, 0 errors (MOLIT_KEY 무변동) |
+| lint | clean |
+| CI run 25763123141 | 🟢 success |
+| 9 GATE 풀 검증 | 9🟢 0🟡 0🔴 |
+
+## 환각 차단 박제 (자가 점검 1 답습)
+
+1. **W3 마이그 미적용 실증** — 본 세션 첫 턴 `supabase db query --linked` SELECT information_schema.columns 결과 = `rows: []` = apartments 테이블 maint_heat 등 5 컬럼 0건 = W3 마이그 원격 미적용 확정. 세션 238 push 자리는 디스크 박제만 (Dashboard 사용자 안 함). → W4 마이그 = W3+W4 합본 선정
+2. **apply-migration.yml 출력만** — 본문 Read 결과 = SQL 콘솔 출력만 + transport 컬럼 체크 + Dashboard 안내 (실 적용 0). plan v4 단계 1 "Claude 자동 가능" = 부분 환각 정정
+3. **database.types.ts L1144-1149 stale** — emergency_beds/hospital/hospital_dist/level 4 컬럼 = supabase/migrations + scripts/collectors 모두 grep 0건 = 폐기/미사용 (별도 정리, W4 무관)
+
+## 시뮬레이션 §11 답습 (sub-cycle 1회)
+
+matchNearest JSDoc 시그니처 변경 (`{count,dist}` → +`{name,type}`) 사전 시뮬 1회:
+- 백업 (`/tmp/_emergency.bak`) → 정정 (Edit) → 측정 (typecheck:scripts EXIT=0, typecheck EXIT=0) → 즉시 복원 → git diff 변동 0
+- 신규 errors 0건 = plan v2 재설계 의무 0 = plan v1 그대로 통과
+- 세션 201 calc-layout 답습 = `feedback_simulation_mandate.md` 풀 활용
+
+## 메타 절차 답습 (사용자 지시 2회)
+
+사용자가 AskUserQuestion 답변에 "검증 후 의사결정 + 세션 관리" 메타 절차 2회 박제 = "추측 금지, 실증 기반 PHASE 1+2+3 절차로 답하라":
+- 결정 #1 (W3 적용 분기) = PHASE 1 옵션 C (자동 분기) → supabase CLI SELECT → 옵션 B 자동 선정 (W3+W4 합본)
+- 결정 #2 (UI 노출) = 옵션 a (별도 W, 후속) 사용자 선택
+
+## Naver schedule cron 자리 (UTC 5/12 ~ 5/13)
+
+| 워크플로 | cron | 본 세션 결과 |
+|---|---|---|
+| core | `0 19 * * *` | UTC 20:26 발화 (1h26m 지연) → **success** ✅ |
+| incremental | `30 20 * * *` | **schedule 발화 흔적 0건** (UTC 21:25+ 55분 경과) 🟡 |
+
+**incremental 미발화 진단**:
+- yml 추가 시점 = 2026-05-12 KST 21:23 (UTC 12:23, 본 세션 시작 ~9시간 전)
+- 첫 cron 도래 = UTC 20:30 (yml 등록 후 ~8시간 = 자리 충분)
+- 본 세션 마무리 (UTC ~21:25) 도래 55분 경과 + 발화 0
+- 다음 세션 첫 턴 = 2회차 schedule (UTC 5/13 20:30) 도래 후 확인 의무
+
+## 답습 자산 — W4 atomic 1 커밋
+
+W3 답습 자산 (2 커밋 atomic + CI 1회 통과) 단축 = 1 커밋 atomic (W4 ~150줄 vs W3 ~470줄, 1/3). 다음 W5 동일 패턴 (단일 W = 1 커밋 atomic).
+
+---
+
 # 세션 238 — 2026-05-13 (W3 collect-maintenance 5 항목 분리 1차 통과 + 시뮬 §11 답습 patch 1건 + "자리" 남발 사고 박제)
 
 **거시 목적**: 세션 237 W1 답습 → 본 세션 = **W3 본격 진입** = collect-maintenance 5 항목 (난방/급탕/가스/전기/수도) 분리 + apartments 5 신규 컬럼 + apartments_flat VIEW 재생성 + data-fill Phase 1 + data-audit 흡수 + database.types 4곳.
