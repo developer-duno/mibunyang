@@ -1,0 +1,65 @@
+name: Naver Post-Processing (Incremental)
+
+on:
+  schedule:
+    - cron: '30 20 * * *' # UTC 20:30 = KST 05:30 (core UTC 19:00 + 실측 56:03 종료 19:56 후 마진 34분)
+  workflow_dispatch:
+
+concurrency:
+  group: naver-postprocess-incremental
+  cancel-in-progress: false
+
+jobs:
+  post-process-incremental:
+    runs-on: ubuntu-latest
+    # 세션229 D-2 신규 (실측 transport 35:09 + infra 10:15 + schools 18:13 = 63:37 + 마진 26:23)
+    # spec §4 박제 timeout 60m 부족 (-3:37) → 90m 정정
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+          TAGO_KEY: ${{ secrets.TAGO_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$KAKAO_KEY" ] || [ -z "$TAGO_KEY" ]; then
+            echo "::error::Required secrets missing"
+            exit 1
+          fi
+
+      - name: Collect transport (incremental)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+          TAGO_KEY: ${{ secrets.TAGO_KEY }}
+        run: node scripts/collectors/transport-tago.mjs
+
+      - name: Collect infra (incremental)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+        run: node scripts/collectors/infra-kakao.mjs
+
+      - name: Collect schools (incremental)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+        run: node scripts/collectors/schools-neis.mjs
