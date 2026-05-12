@@ -21,4 +21,4 @@ allowed-tools: Bash, Read
 ## 주의
 
 - 수집 중에는 CLAUDE.md "Plan-Guard-Work-Review" 작업 진행 금지 — IP rate limit 공유 때문에 충돌.
-- 심야(02:00) 자동 실행(`scripts/naver-units-night.log`)과 겹치면 건너뛰어.
+- 로컬 파이프라인(`run-naver-local.bat` 월/목 08:00)과 겹치면 건너뛰어. (세션233: naver-units 영구 폐기, 4/6 단계는 molit-units)

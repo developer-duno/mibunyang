@@ -57,7 +57,6 @@ api/                        Vercel Serverless — 규칙: api/CLAUDE.md
 scripts/
 ├── collect-data.mjs        빌드 시 데이터 수집 (1,065줄, 8 Phase)
 ├── migrate-to-supabase.mjs apartments.json → Supabase 마이그레이션
-├── naver-units.py          네이버 세대수 보정
 └── collectors/
     ├── _shared.mjs         공유 유틸 (loadEnv, upsertBatch, fetchWithRetry)
     ├── naver-collect.py  ★ 네이버 인근 매물 수집
@@ -72,7 +71,6 @@ supabase/
 
 .github/workflows/
 ├── daily-deploy.yml        매일 빌드+배포
-├── naver-units.yml         매일 KST 02:00 세대수 보정
 └── collect-naver-listings.yml  매일 KST 04:00 네이버 매물 수집
 ```
 
@@ -98,16 +96,14 @@ GitHub Actions (일/주/월 스케줄)
   │                         ↓
   ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (14개 테이블)
   │                                    ↓
-  ├── naver-collect.py ──────────→ complexes + articles + complex_price_history
-  │                                    ↓
-  └── naver-units.py ────────────→ 세대수 보정 JSON
+  └── naver-collect.py ──────────→ complexes + articles + complex_price_history
 
 로컬 PC (Windows 스케줄러, 매주 월/목 08:00, 한국 IP 필수)
   └── run-naver-local.sh ──────→ 6단계 파이프라인:
       1. naver-collect.py → complexes/articles
       2. sync-naver-complex.mjs → apartments 22필드
       3. naver-presale.mjs → apartments presale_* 19필드 (pre.land POST API, JWT 불필요)
-      4. naver-units.mjs → 세대수 보정
+      4. molit-units.mjs → 세대수 보정 (세션89 교체, 세션233 naver-units 영구 제거)
       5. calc-exclusive-ratio.mjs → 전용률
       6. compute-scores.mjs → cats_cache 갱신
 

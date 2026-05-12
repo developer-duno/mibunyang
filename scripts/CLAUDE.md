@@ -10,9 +10,9 @@
 |------|-----|------|------|------|
 | 청약홈 API | `"applyhome"` | 기본 (부정확할 수 있음) | 주간 | 활성 |
 | 국토부 공동주택 API | `"molit"` | 1차 + 2차 보정 | 매월 + post-naver-collect 시 | 활성 |
-| 네이버 부동산 | `"naver"` | (옛 2차 보정) | - | **중단(IP 차단, 세션89)** |
+| 네이버 부동산 | `"naver"` | (옛 2차 보정) | - | **폐기(세션89 IP 차단 → 세션233 파일 영구 삭제)** |
 
-세션89부터 naver-units가 집 서버 IP Rate Limit으로 연속 실패 → `post-naver-collect.sh` 2/4 단계를 molit-units로 교체. naver-units.mjs 파일 자체는 유지(향후 IP 해제/프록시 도입 시 복구 가능).
+세션89부터 naver-units가 집 서버 IP Rate Limit으로 연속 실패 → `post-naver-collect.sh` 2/4 단계를 molit-units로 교체. **세션233에서 `naver-units.mjs/.test.mjs/.yml` 3 파일 영구 삭제** (1년+ 미사용 + 사용자 cmd 수동 실행 사고 차단). 복구 의무 시 git history `346446a` 이전 커밋 참조.
 
 보정 대상: `units <= 1` 또는 `unsold_rate >= 100%`인 단지.
 보정 시 `unsold_rate` 재계산: `ROUND(unsold / new_units * 100, 1)`.
@@ -70,7 +70,7 @@
 | 5/6 | calc-exclusive-ratio.mjs | 전용률 계산 | O |
 | 6/6 | compute-scores.mjs | cats_cache 스코어링 갱신 | - |
 
-**세션89 변경**: 4/6 단계가 `naver-units.mjs`(네이버 크롤링, IP 차단)에서 `molit-units.mjs`(국토부 API)로 교체됨. 실패 시 WARNING 처리로 5/6, 6/6 계속 진행. `run-naver-local.bat`/`.sh` 양쪽 동일.
+**세션89 변경**: 4/6 단계가 `naver-units.mjs`(네이버 크롤링, IP 차단)에서 `molit-units.mjs`(국토부 API)로 교체됨. **세션233 영구 삭제**. 실패 시 WARNING 처리로 5/6, 6/6 계속 진행. `run-naver-local.bat`/`.sh` 양쪽 동일.
 
 **주의**: compute-scores.mjs는 `node --loader ./scripts/alias-loader.mjs` 필요 (`@/` 별칭)
 
@@ -129,7 +129,6 @@
 |-----|--------|------|--------|---------|
 | 네이버 부동산 | naver-collect.py | 1초 | 3회 | JWT 리셋 + 5*(i+1)초 |
 | 네이버 부동산 | naver-listings.mjs | 1초 | 5회 | JWT 리셋 + [3,5,10,15,20]초 |
-| 네이버 부동산 | naver-units.mjs | 3초 | 3회 | JWT 리셋 + [5,10,20]초 |
 | 네이버 분양 | naver-presale.mjs | 2초 | 3회 | [5,10,20]초 |
 | data.go.kr | molit-* | 0.4초 | 3회 | NonRetryableError / 지수 백오프 |
 | Kakao Places | infra-kakao | 세마포어 5개 | fetchWithRetry | 지수 백오프 |
@@ -188,7 +187,6 @@
 | regulation-seed.test.mjs | 9 |
 | population.test.mjs | 9 |
 | calc-exclusive-ratio.test.mjs | 9 |
-| naver-units.test.mjs | 8 |
 | molit-units.test.mjs | 8 |
 | housing-permits.test.mjs | 6 |
 | infra-kakao.test.mjs | 5 |
