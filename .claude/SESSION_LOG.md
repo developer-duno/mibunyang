@@ -1,3 +1,83 @@
+# 세션 237 — 2026-05-13 (W1 KOSIS DT_MLTM_2100 신규 collector 완료 + data-fill.test 회귀 사고 1회 + CI 2회 push 답습)
+
+**거시 목적**: 세션 236 확장 turn 2 답습 = W1~W6 마스터 plan v4 박제 + 액션 #2·#3 자가 결정 완료 자리 → 본 세션 = **W1 본격 코드 작업 진입** = collect-housing-supply-ratio.mjs 신규 collector + 마이그 + vitest + yml + data-fill 수정 자리.
+
+**결론**: 2 커밋 push 완료 (W1 + fix). CI 1차 failure (data-fill.test.mjs 회귀 가드 사고) → fix 1회 push → CI success 정착. 사고 박제 1건 (자매 test hardcode 답습 의무 누락). 자가 결정 답습 자산 풀 활용.
+
+## 산출 (2 커밋 push 완료)
+
+| 커밋 | 의도 | 변경 | CI |
+|---|---|---|---|
+| `2429cde` | W1 collect-housing-supply-ratio 신규 collector (DT_MLTM_2100) | +358 / -1 (신규 5 + 수정 1) | 🔴 failure (Test step) |
+| `c3b082b` | fix(data-fill.test) — regions scripts 3 → 4 정정 (회귀 가드) | +5 / -4 | 🟢 success (3m47s) |
+
+**신규 5 파일 + 수정 2**:
+
+- `supabase/migrations/20260513044532_add_housing_supply_level.sql` (정 + 역, 18줄)
+- `scripts/collectors/collect-housing-supply-ratio.mjs` (154줄, parseKosisRows + main)
+- `scripts/collectors/collect-housing-supply-ratio.test.mjs` (113줄, 11 tests)
+- `.github/workflows/collect-housing-supply-ratio.yml` (56줄, cron `30 20 1 * *`)
+- `scripts/collectors/data-fill.mjs` (regions phase 1 scripts + envKeys 추가)
+- `scripts/collectors/data-fill.test.mjs` (fix 후 추가, 4 scripts 정정 + KOSIS_KEY expect)
+
+## 검증
+
+| 자리 | 결과 |
+|---|---|
+| typecheck:scripts | 0 errors |
+| audit-env-keys 3-way | clean (collector + yml env + yml validate + data-fill envKeys 4-way) |
+| vitest (housing-supply-ratio.test.mjs) | 11/11 passed (1차) |
+| vitest (data-fill.test.mjs + housing-supply-ratio.test.mjs) | 21/21 passed (fix 후) |
+| 9 GATE 풀 검증 | 9🟢 0🟡 0🔴 |
+| CI run 25758699277 (c3b082b) | success 3m47s |
+
+## 환각 차단 박제 (자가 점검 1 답습)
+
+1. ITM_NM='보급률(다가구 구분거처 반영)' 박제 (세션 235 박제 '보급률' = DT=0 폐기 series 환각 정정 답습)
+2. DT 이상치 가드 (0 / 음수 / >200 제외)
+3. 시도 17 매핑 (REGION_MAP 답습, "전국"/"수도권"/"지방" 집계 행 무시)
+4. KOSIS API 응답 = `Array.isArray(data)` 자리 (collect-unsold-kosis.mjs:169 답습)
+
+## 🔴 사고 박제 1건 — data-fill.test.mjs 회귀 가드 누락
+
+**사건**: 본 W1 commit 2429cde = `data-fill.mjs` 의 `COLLECTORS` 배열 regions phase 1 자리에 `collect-housing-supply-ratio.mjs` + `KOSIS_KEY` 추가. 본인 9 GATE 풀 검증 + vitest 신규 11/11 passed 자리만 검증 자리 → **CI Test step failure** (run 25758392383).
+
+**원인**: `data-fill.test.mjs` L41 (주석) + L62 (test title) + L64 (expect 배열) = 3 scripts hardcode 자리 미정정. 자가 점검 2 답습 자산 = "fixture·테스트·spec 동시 grep" 자리 답습 누락.
+
+**fix** (commit c3b082b): 4 scripts 정정 + KOSIS_KEY toContain expect 추가. 21/21 passed. CI success.
+
+**박제 자리**: `~/.claude/projects/f--mibunyang/memory/feedback_session237_data_fill_test_regression.md` (신규).
+
+**다음 W (W2~W6) 답습 의무**: data-fill.mjs COLLECTORS 배열 수정 자리 = data-fill.test.mjs hardcode grep + vitest 2 파일 자리 (data-fill.test + 신규 W test) 검증 의무.
+
+## Naver schedule 시점 misalignment 진단 (본 세션 첫 턴 답습)
+
+- 본 세션 시작 자리 = KST 04:42 = core cron (UTC 19:00) **+42분 후 자리** + incremental cron (UTC 20:30) **+48분 후 자리** = 양쪽 cron 미도래 자리
+- NEXT_SESSION L223-236 박제 "본 세션 종료 후 발화 확정 자리" 가설 답습 정합 (다음 세션 결과 확인 자리)
+- core 5/11 success run 답습: Sync 55:39 + transport 35:09 + infra 10:15 + schools 18:13 = **총 119:54 (~2h)** ✅ D-2 정착 가능성 박제
+
+## 답습 자산 (W1 코어 자리)
+
+- `collect-unsold-kosis.mjs` (329줄) — typedef + isCLI v2 + fetchWithRetry + recordApiQuota 패턴
+- `housing-permits.mjs:200-209` — `regions` UPDATE gu IS NULL 패턴 (`order by recorded_at desc + limit 1`)
+- `typescript-patterns.md §1.3 §5.2 §3.1` — JSDoc cast / isCLI v2 / importOriginal cast
+- `.claude/rules/secret-naming-audit.md` — 3-way 동기화 자리 (collector ↔ yml ↔ data-fill)
+- 세션 235 S1 KOSIS API 실증 (DT_MLTM_2100 6 ITM_NM × 시도 17 × 연간)
+- 세션 236 자가 결정 #2 (컬럼 naming) + #3 (cross-repo grep, naver-estate-web `housing_supply_level` 0 사용처 답습)
+
+## 다음 세션 자리 (W2~W6 분할 + 사용자 후속 자리)
+
+- 🔴 **사용자 후속 자리 (W1 정착 의무)**:
+  - naver-estate-web 자매 PR (`mb_models.py` + `mb_serializers.py` + `mibunyang.ts` 에 `housing_supply_level` 추가)
+  - Supabase 마이그 apply (`apply-migration.yml` workflow_dispatch 또는 Management API 자리)
+  - KOSIS_KEY = 인증키 1개 모든 통계표 자동 활성 (세션 235 박제 답습, 활용신청 0 자리)
+- W2 = 청약 family 3 endpoint (사용자 액션 #1 결정 의무, data.go.kr SSO 활용신청 확인)
+- W3 = collect-maintenance 5 항목 분리 (★★★★★ 최우선, 액션 #1 무관)
+- W4·W5 = collect-emergency + collect-applyhome 확장 (액션 #1 무관)
+- W6 = 추가 부처 Top 5 (각 후보 별 활용신청 확인 자리)
+
+---
+
 # 세션 236 (확장 2) — 2026-05-13 (사용자 액션 misattribution 정정 + Claude 자가 결정 #2 + gh CLI search code #3 + plan v4 정정)
 
 **거시 목적 (확장 2)**: 세션 종료 직전 사용자 정정 메시지 = "사용자 직접 액션 3건 = 이거 니가해야해" → 자가 점검 1 발동 → 액션 #2 (컬럼 naming) + #3 (cross-repo grep) **Claude 100% 자동 가능 자리** 정정 + 액션 #1 (data.go.kr Playwright) = 사용자 SSO 시크릿 박제 의무 자리 (보안 정책) 분리. plan v3 → v4 정정.
