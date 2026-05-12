@@ -1,3 +1,90 @@
+# 세션 232 — 2026-05-13 (Cron 미도래 정직 종료 / KOSIS_MIGRATION_KEY 3중 사고 박제 / 서브에이전트 3개 병렬 실측)
+
+**거시 목적**: 세션 231 종료 후 다음 세션 첫 턴 = Naver D-2 schedule cron 첫 양쪽 결과 (1순위 트리거). 본 세션 232 시작 시각 UTC 5/12 14:56 → core 도래 (UTC 19:00) 까지 +4 시간 04 분, incremental (UTC 20:30) 까지 +5 시간 34 분 미도래. NEXT_SESSION L78 "KST 5/13 06:35 이후 확인 의무" 충족 불가. 사용자 위임 ("실증한 후에 신중하게 선택") → cron 대기 6 시간 비효율 회피 + BACKLOG 다음 작업 후보 실증 → KOSIS_MIGRATION_KEY 3중 사고 신규 발견 → diagnosis 박제 1 커밋 + 정직 종료.
+
+**결론**: 본 세션 1 commit (docs only — SESSION_LOG + BACKLOG + NEXT_SESSION). 코드/yml 변경 0건. 9 GATE v2 풀 검증 🟢 9/0/0 통과 (plan 1-tidy-floyd.md). 다음 세션 233 첫 턴 트리거 2개 박제 — (1) Naver cron 양쪽 결과 + 분기 4종 (2) collect-migration KOSIS_MIGRATION_KEY fix plan v1 (옵션 1/2/3).
+
+**커밋**:
+
+- 세션 232 docs (해시 미정, push 후 갱신): `docs(session-log): 세션 232 cron 미도래 정직 종료 + KOSIS_MIGRATION_KEY 미주입 사고 박제`
+
+**변경 자리**:
+
+- `.claude/SESSION_LOG.md`: 세션 232 헤더 prepend (본 섹션)
+- `.claude/BACKLOG.md`: 🔴 즉시 섹션에 🟡 신규 1건 prepend (+22 lines)
+- `.claude/NEXT_SESSION.md`: 본문 전체 재작성 (+33 lines, -10 lines, 헤더 232→233 + 🥈 2순위 trigger collect-migration 신규 + KOSIS_KEY 옵션 후보 + 사용자 액션 정정)
+
+**서브에이전트 3개 병렬 실측 (Plan Phase 1+2 GATE 검증)**:
+
+| Agent | 역할 | 핵심 산출 |
+|---|---|---|
+| A | gh CLI raw 증거 수집 | KOSIS_MIGRATION_KEY 미주입 + 1개월 schedule failure 사실 확정 (raw log `[migration] ERROR: KOSIS_MIGRATION_KEY 환경변수 필요` 추출) |
+| B | 코드 grep 영향 범위 실측 | 6 가설 (사실 1~6) 검증. data-fill.mjs L43 envKeys 불일치 신규 발견 (제3 사고) |
+| C | plan 메타 검증 | 7/7 적정 + 잠재 위험 3건 (모두 mitigation 명시) |
+
+**핵심 발견 — collect-migration KOSIS_MIGRATION_KEY 3중 사고 (세션 232 신규 박제)**:
+
+1. **사고 1** — `scripts/collectors/migration.mjs` L33-37: `process.env.KOSIS_MIGRATION_KEY` 만 사용, fallback 없음 (exit(1))
+2. **사고 2** — `.github/workflows/collect-migration.yml` L38/50: `MOIS_POP_KEY` 만 주입, KOSIS_MIGRATION_KEY 부재. migration.mjs 에서 `MOIS_POP_KEY` grep 0건 (이름 불일치)
+3. **사고 3** — `scripts/collectors/data-fill.mjs` L43: `envKeys: ["MOIS_POP_KEY"]` 도 불일치 (orchestration 영향, 옵션 1 적용 시 동시 정정 필요)
+
+**호환성 검증 (Agent B 가설 6)**:
+
+- `migration.mjs` L39 BASE_URL = `https://kosis.kr/openapi/Param/statisticsParameterData.do`
+- `collect-market-stats.mjs` / `collect-unsold-kosis.mjs` 동일 endpoint 사용 (KOSIS_KEY 로 호출)
+- **KOSIS_KEY 호환 가능성 매우 높음** (단, 통계표 DT_1B26001_A01 활용신청 검증 의무)
+
+**실측 timestamps (gh CLI)**:
+
+- 마지막 success: run 23120598953 (2026-03-15 schedule)
+- 첫 failure: run 24481813793 (2026-04-15 UTC 22:32:48, raw log 추출 성공)
+- 다음 발화 = 2026-05-15 UTC 22:00 (KST 5/16 07:00, 본 세션 종료 후 2일+, fix 적용 시 success 확정 트리거)
+
+**Naver schedule cron 시각 차이 (cron 미도래 확정)**:
+
+- 본 세션 232 시작 UTC 5/12 14:56 / 진단 종료 UTC 5/12 15:24 / 본 커밋 시각 UTC 5/12 15:25 (예상)
+- core cron 도래 UTC 5/12 19:00 / 종료 19:49 (예상) — +3h35m 미도래
+- incremental cron 도래 UTC 5/12 20:30 / 종료 21:33 (예상) — +5h05m 미도래
+- 양쪽 결과 동시 확인 가능 = UTC 5/12 21:35 (KST 5/13 06:35) — 본 세션 시간대 (UTC 5/12 14:56~15:25) 6 시간+ 후
+
+**9 GATE v2 풀 검증 (plan 1-tidy-floyd.md)**:
+
+| GATE | 판정 | 비고 |
+|---|---|---|
+| 0 (Sonnet) | 🟢 | 5단계 모두 🟢 (3 modified / 0 신규 / 누적 90줄 docs / 1 관심사) |
+| 1 (영향 범위) | 🟢 | docs only 코드 영향 0 |
+| 2 (실행 순서) | 🟢 | 의존 관계 없음, 1 커밋 |
+| 3 (완전성) | 🟢 | 사용자 요청 4건 모두 매핑 |
+| 4 (적정성) | 🟢 | 과잉/과소 0 |
+| 5 (보안) | 🟢 | secret 값 노출 0 (이름만 명시) |
+| 6 (연동) | 🟢 | 코드 무관 |
+| 7 (롤백) | 🟢 | git revert HEAD 1회 |
+| 8 (UX/확장) | 🟢 | NEXT_SESSION 명확화 / BACKLOG +1 |
+
+**🟢 9 / 🟡 0 / 🔴 0 → 통과 ✅ 실행 허가**
+
+**자가 점검 누적 정정 (CLAUDE.md §12)**:
+
+- plan v1 환각 1건 정정: "raw log fetch 부족" 단정이 환각 (Agent A 가 실제 추출 성공). plan v2 에서 사실 1~7 재박제
+- Agent B 가설 4 신규 발견 흡수: data-fill.mjs L43 envKeys 미스매치 (제3 사고). 박제 §원인 3번 추가
+- Agent C 잠재 위험 3건 mitigation 모두 본 plan §위험 또는 NEXT_SESSION §사전 체크 명시
+- 부재 단정 0건: KOSIS_KEY 호환 = "가능성 매우 높음" + "활용신청 검증 의무" (단정 회피)
+
+**비-작업 (의식적 배제, plan §비-작업 박제)**:
+
+- ❌ collect-migration fix 본 세션 진행 금지 — 다음 세션 plan v1 작성 시 raw log step-별 timestamp 추출 + KOSIS_KEY 활용신청 검증 후만 fix
+- ❌ 다른 BACKLOG 작업 (regions.avg_price cross-repo 등) — 1순위 = Naver cron 결과, cron 도래 시점까지 새 작업 시작 시 충돌
+- ❌ ScheduleWakeup 6시간 대기 — cache miss 6회 + 컨텍스트 비용, 다음 세션 첫 턴이 ROI 우수
+- ❌ M9 후속 작업 — M9 세션 231 완료, src/ TS화 100%, typescript-patterns.md 박제 완료
+
+**세션 232 작업 ROI 결산**:
+
+- 입력: cron 6 시간 대기 vs 진단 + 박제 1 시간 25 분
+- 산출: 1개월 방치 사고 발견 + raw log 실측 + 3 옵션 후보 + 호환성 가설 + 다음 세션 부담 -90%
+- 사용자 위임 "신중 선택" 부합 + 9 GATE 풀 통과 + 자가 점검 정정 누적
+
+---
+
 # 세션 231 — 2026-05-12 (Naver D-2 수동 발화 양쪽 success / BACKLOG 환각 2건 정정 / M9 src/ TS화 100% 도달)
 
 **거시 목적**: 세션 230 마무리 후 사용자 명시 옵션 (workflow_dispatch 수동 발화) 으로 D-2 첫 결과를 본 세션 안에 확정. cron 도래 6.08/7.58시간 대기를 피하고 7일 모니터링 trigger 첫 데이터 포인트 조기 확보. 폴링 대기 시간에 BACKLOG 다음 작업 후보 4건 실증 → 2건 환각 발견 + 정정. CI 1차 success 후 M9 (src/App.test.jsx // @ts-check) 진행 → src/ test 도메인 TS화 100% 도달.
