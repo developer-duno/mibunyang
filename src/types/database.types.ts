@@ -1147,6 +1147,8 @@ export type Database = {
           emergency_hospital: number | null
           emergency_hospital_dist: number | null
           emergency_level: string | null
+          emergency_name: string | null
+          emergency_type: string | null
           hospital: number | null
           hospital_dist: number | null
           mart: number | null
@@ -1195,6 +1197,8 @@ export type Database = {
           emergency_hospital?: number | null
           emergency_hospital_dist?: number | null
           emergency_level?: string | null
+          emergency_name?: string | null
+          emergency_type?: string | null
           hospital?: number | null
           hospital_dist?: number | null
           mart?: number | null
@@ -1243,6 +1247,8 @@ export type Database = {
           emergency_hospital?: number | null
           emergency_hospital_dist?: number | null
           emergency_level?: string | null
+          emergency_name?: string | null
+          emergency_type?: string | null
           hospital?: number | null
           hospital_dist?: number | null
           mart?: number | null
@@ -1879,6 +1885,8 @@ export type Database = {
           elecUsageKwh: number | null
           emergency: number | null
           emergencyDist: number | null
+          emergencyName: string | null
+          emergencyType: string | null
           energyCollectedAt: string | null
           energyGrade: number | null
           exclusiveRatio: number | null

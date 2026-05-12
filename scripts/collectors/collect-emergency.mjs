@@ -63,17 +63,27 @@ export async function fetchEmergencyList() {
  * 단지별 최근접 응급의료기관 매칭
  * @param {EmergencyAptRow} apt
  * @param {EmergencyFacility[]} facilities
- * @returns {{ count: number; dist: number }}
+ * @returns {{ count: number; dist: number; name: string | null; type: string | null }}
  */
 export function matchNearest(apt, facilities) {
   let minDist = Infinity;
   let count = 0;
+  /** @type {EmergencyFacility | null} */
+  let nearest = null;
   for (const f of facilities) {
     const dist = haversine(Number(apt.lat), Number(apt.lng), f.lat, f.lng);
     if (dist <= 10) count++; // 10km 이내 시설 수
-    if (dist < minDist) minDist = dist;
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = f;
+    }
   }
-  return { count, dist: Math.round(minDist * 1000) }; // m 단위
+  return {
+    count,
+    dist: Math.round(minDist * 1000), // m 단위
+    name: nearest?.name ?? null,
+    type: nearest?.type ?? null,
+  };
 }
 
 async function main() {
@@ -100,14 +110,18 @@ async function main() {
   for (let i = 0; i < targets.length; i++) {
     const apt = targets[i];
     try {
-      const { count, dist } = matchNearest(apt, facilities);
+      const { count, dist, name, type } = matchNearest(apt, facilities);
       if (dryRun) {
-        log(PHASE, `  [DRY] ${apt.name}: 응급의료 ${count}개(10km), 최근접 ${dist}m`);
+        log(PHASE, `  [DRY] ${apt.name}: 응급의료 ${count}개(10km), 최근접 ${name ?? "-"} (${type ?? "-"}) ${dist}m`);
         rpt.success(1);
         continue;
       }
       const { error: uErr } = await sb.from("infra").upsert([{
-        apartment_id: apt.id, emergency: count, emergency_dist: dist,
+        apartment_id: apt.id,
+        emergency: count,
+        emergency_dist: dist,
+        emergency_name: name,
+        emergency_type: type,
         updated_at: new Date().toISOString(),
       }], { onConflict: "apartment_id" });
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); }
