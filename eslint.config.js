@@ -47,5 +47,5 @@ export default [
       // M0 에서는 추가 룰 없음. parser 적용만으로 충분.
     },
   },
-  { ignores: ['dist/', 'node_modules/', 'api/', 'scripts/', 'supabase/'] },
+  { ignores: ['dist/', 'node_modules/', 'api/', 'scripts/', 'supabase/', '.vercel/', 'naver-apt/', 'tmp/'] },
 ];
