@@ -40,7 +40,7 @@ export const COLLECTORS = [
   // Phase 1: 기반 데이터
   { category: "building",  phase: 1, scripts: ["molit-building-info.mjs"], args: ["--force"], envKeys: ["MOLIT_KEY"] },
   { category: "builders",  phase: 1, scripts: ["dart-builders.mjs"],       args: [],          envKeys: ["DART_KEY"] },
-  { category: "regions",   phase: 1, scripts: ["population.mjs", "migration.mjs", "housing-permits.mjs"], args: [], envKeys: ["MOIS_POP_KEY", "KOSIS_MIGRATION_KEY", "MOLIT_KEY"] },
+  { category: "regions",   phase: 1, scripts: ["population.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs"], args: [], envKeys: ["MOIS_POP_KEY", "KOSIS_MIGRATION_KEY", "MOLIT_KEY", "KOSIS_KEY"] },
   // Phase 2: 파생 데이터 (Phase 1 완료 후)
   { category: "trade_stats", phase: 2, scripts: ["trade-stats.mjs"],       args: [],          envKeys: [] },
   // Phase 3: Kakao 의존 (순차)
