@@ -1,3 +1,43 @@
+# 세션 230 — 2026-05-12 (Naver D-2 첫 cron 미도래 마무리 / 7일 모니터링 trigger 박제)
+
+**거시 목적**: 세션 229 D-2 적용 (c045594 core 정정 + 9bbce13 incremental 신규 push) 직후 시작된 본 세션. NEXT_SESSION 박제 트리거 "5/13 D-2 첫 cron 결과 확정"이 현 시점 6.27/7.77시간 뒤 미도래 → 세션 228 답습 ("분기 trigger 미도래 마무리"), 코드 변경 0건.
+
+**결론**: 본 세션 1 commit (SESSION_LOG 만, NEXT_SESSION 은 `.gitignore` 로 로컬 박제). D-2 첫 cron 도래 시점·예상 마진 박제 + 다음 세션 트리거를 "확정 결과 보고"로 정정.
+
+**실증값 (gh CLI + workflow yml grep + date UTC 직접 계산)**:
+- 현재 시각: UTC 2026-05-12 12:43:40 / KST 21:43
+- core 다음 cron: `0 19 * * *` → UTC 2026-05-12 19:00 (KST 5/13 04:00), **6.27시간 뒤**, 예상 종료 UTC 19:56 (실측 56:03 + timeout 90m 마진 33:57)
+- incremental 다음 cron: `30 20 * * *` → UTC 2026-05-12 20:30 (KST 5/13 05:30), **7.77시간 뒤**, 예상 종료 UTC 21:33 (실측 63:00 + timeout 90m 마진 27:00, **첫 도래**)
+- 직전 core schedule run = `25695357731` 5/11 20:27 UTC success @ **119:47** (D-1 마지막 120m, 마진 13초 경계선 = D-2 결정 trigger)
+- core 5/2~5/10 9회 비-success (cancelled 7 + failure 2) = D-1 90m 한계 답습 record
+- incremental schedule run = 0건 (커밋 9bbce13 시점 cron 1회 미도래)
+
+**미도래 사유 (자가 진단)**:
+- NEXT_SESSION (세션 229 종료 시점) 박제 ≈ UTC 5/11 ~22:30 시점
+- D-2 첫 core cron 발화 = UTC 5/12 19:00 → 박제~발화 격차 = 약 20.5시간
+- 본 세션 시작 = UTC 5/12 12:43 (격차의 ~69% 시점)
+- 결론: NEXT_SESSION 작성 시 "다음 세션 시작 ≈ D-2 첫 cron 이후" 암묵 가정이 자연 미충족. 세션 228 ("5/11 cron 결과 확정" 미도래) 와 동일 패턴.
+
+**7일 모니터링 trigger 박제 (세션 231~ 의무)**:
+1. **5/13 (UTC 5/12 발화)**: core/incremental 양쪽 success + 실행시간 측정 (`gh run list --workflow=collect-naver-listings.yml --limit 1` + `gh run list --workflow=collect-naver-listings-incremental.yml --limit 1`)
+2. **5/14~5/19 누적**: success ≥ 5/7 → D-2 정착 결론
+3. **분기 트리거 4종**:
+   - 양쪽 success → 7일 모니터링 진행, BACKLOG Naver 항목 ✅ 정정 박제
+   - core success + incremental cancelled @ 90m → incremental 단독 timeout 120m 검토 (옵션 D-3 신규 분기)
+   - core cancelled @ 90m → D-1 fallback (core 단독 120m 복구) 또는 옵션 E sync 최적화 진입
+   - 양쪽 cancelled @ 90m → 옵션 E sync 최적화 즉시 진입 (180~360분 plan)
+
+**자가 점검 1+2 결과**:
+- 맹점 0건 (본 세션 작업 = "마무리" 자체, 신규 spec/구현 0)
+- 할루시네이션 의심값 직접 실측 — 119:47 (세션 229 본인 박제) / cron 표현식 (workflow yml grep) / 다음 발화 시각 (python datetime UTC 계산) / 9회 비-success (BACKLOG L26 + 세션 229 헤더 박제)
+- 부재 단정 0건
+
+**변경 자리**:
+- `.claude/SESSION_LOG.md`: 세션 230 헤더 prepend (~50 lines)
+- `.claude/NEXT_SESSION.md`: 본문 전체 재작성 (세션 225 stale → 세션 231 기준)
+
+---
+
 # 세션 229 — 2026-05-12 (Naver D-2 적용 완료 / 9 GATE v3 풀 5 라운드 / 누적 정정 18건)
 
 **거시 목적**: 5/12 cron success @ 119:47 (D-1 120m 마진 13초 경계선) → 다음 cron 한계 초과 위험 99% → D-2 즉시 적용 (옵션 D-2 spec 박제 답습). 사용자 위임 "실증 후 신중 선택" + ExitPlanMode 5차 거부 → 9 GATE 풀 5 라운드 검증 후 plan v6 통과.
