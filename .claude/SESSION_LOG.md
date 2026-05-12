@@ -1,3 +1,90 @@
+# 세션 240 — 2026-05-13 (B 단계 collector 첫 실행 success + C 단계 naver-estate-web PR #2 7 컬럼 sync + 환각 정정 2건)
+
+**거시 목적**: 세션 239 W3+W4 마이그 apply 완료 → 본 세션 = **B (collector workflow_dispatch 첫 실행) + C (cross-repo 자매 PR 7 컬럼)** 2 단계. A (W5 applyhome) 다음 세션 분리.
+
+**결론**: 본 디스크 커밋 0건 (mibunyang 측 변경 0). naver-estate-web 외부 PR #2 생성 (3 commits, +28/-0). 양 collector workflow_dispatch success + 실 데이터 일부 채움. 환각 정정 2건 (NEXT_SESSION 박제 vs 실측 mb_models/mibunyang.ts 본문). PHASE 1-4 메타 절차 답습 (4 작업 의존관계 실측 → 순서 B → C → A → D 확정).
+
+## 산출
+
+### B 단계 — collector 첫 실행 (mibunyang side)
+
+| run | 결과 | 채움 |
+|---|---|---|
+| collect-maintenance (25765434160) | 🟢 success 19분 | apartments.maint_* 24/2001 (성공 24/스킵 614/실패 0, K-apt 매칭률 3.7%) |
+| collect-emergency (25765439132) | 🟢 success | infra.emergency_name/_type 1000/2001 (50%) |
+
+스킵 614 = K-apt 단지명 매칭 실패 (정상 범위, mibunyang apartments 2001건 ↔ K-apt 관리비 등록 단지 24건만 매칭). 별도 보강은 W3 범위 외.
+
+### C 단계 — naver-estate-web 자매 PR (외부 repo)
+
+- PR #2: https://github.com/developer-duno/naver-estate-web/pull/2
+- branch: `feat/mibunyang-w3-w4-sync`
+- 3 commits:
+  - `b85234d` feat(mb_models): Apartment 5 + Infra 2 (7 컬럼)
+  - `a390ead` feat(mb_serializers): apartment_to_dict 5 + infra_to_dict 2
+  - `ea9c8ae` feat(mibunyang.ts): MbApartment 5 + MbInfra 2
+- 변경: 3 파일, +28/-0
+
+**gh api 직접 commit 패턴 정착** (본 머신 첫 사례):
+1. main HEAD sha 조회 (`gh api repos/.../git/ref/heads/main --jq '.object.sha'`)
+2. 3 파일 현재 sha 조회 (`gh api repos/.../contents/<path> --jq '.sha'`)
+3. branch 생성 (`gh api -X POST repos/.../git/refs -f ref='refs/heads/...' -f sha='<main HEAD>'`)
+4. 3 파일 PUT (`gh api -X PUT repos/.../contents/<path> -f content="$(base64 -w 0 <local>)" -f branch='...' -f sha='<현재 file sha>'`)
+5. PR 생성 (`gh pr create --repo <자매> --base main --head <branch> ...`)
+
+답습 자산: mibunyang ↔ naver-estate-web cross-repo schema sync 향후 W 진행 시 동일 패턴 적용.
+
+## 환각 정정 (자가 점검 1 답습, 누적 2건)
+
+### 1. mibunyang.ts 카멜케이스 단정 = 부분 환각
+
+**박제값** (NEXT_SESSION 세션 239): `frontend/src/types/mibunyang.ts 자리 = maintHeat?: number | null 등 5`
+
+**실측**: 본 파일 interface = **snake_case** (`unsold_rate`, `presale_min_price`, `emergency_hospital` 등 사용 중). 정정 형식 = `maint_heat?: number;` 등 snake_case.
+
+**Why**: NEXT_SESSION 박제 시 mibunyang 측 database.types.ts 의 apartments_flat VIEW 카멜케이스 (maintHeat 등) 와 자매 naver-estate-web 측 ORM/타입 (snake_case) 혼동.
+
+### 2. emergency_* 4 컬럼 폐기 단정 = 부분 환각
+
+**박제값** (NEXT_SESSION 세션 239): `database.types.ts L1144-1149 stale 박제 4 컬럼 (emergency_beds/hospital/hospital_dist/level = 폐기/미사용)`
+
+**실측**: naver-estate-web mb_models.py L243-246 + mb_serializers.py L162-165 + mibunyang.ts L158-161 = 4 컬럼 모두 **현재 활용 중** (V012 박제 답습). mibunyang 측 미사용은 사실이지만 "폐기/미사용" 단정은 자매 프로젝트 누락.
+
+**Why**: 본 프로젝트 grep 0건 = "프로젝트 전체 미사용" 단정 오류. cross-repo 사용처 grep 의무 답습 (세션 226 `feedback_cross_repo_schema_audit.md` 답습 실패).
+
+## 메타 절차 답습 (PHASE 1-4 + PHASE 1-3 2회)
+
+### 1차 — 4 작업 의존관계 실측 + 순서 결정
+
+사용자 지시 = "추측 금지, 실제 파일 의존관계 검색". 본 plan `1-starry-lagoon.md` 작성:
+- PHASE 1: 4 작업 입력/출력 매트릭스 + 의존관계 맵 (상호 의존 0건, 중복 수정 위험 0건 6 쌍 검증)
+- PHASE 2: 의존관계로 결정 불가 → 비용/가치 기준 추가 (B 5분 ★★★★ / C 15분 ★★★★ / A 60~90분 ★★★ / D 180분+ ★★★★★ + 블로커)
+- PHASE 3: 확정 순서 B → C → A (→ D 별도 SSO)
+- PHASE 4: 본 세션 = plan 작성만, 코드 작업 다음 세션 (변경)
+
+### 2차 — SSO 옵션 결정 (D)
+
+사용자 지시 = "실증 결과 기반". 선택 = "별도 세션 보류" (옵션 A/B 모두 미실증 + 본 plan 범위 외 + 보안 정책 답습).
+
+### 3차 — A 입장 결정
+
+사용자 지시 = "실증 결과 + 세션 관리 판정". 선택 = "다음 세션 분리" (B+C 누적 55분 + A 60~90분 = 컨텍스트 부담, 자연 끊김 지점).
+
+## Naver schedule cron 자리 (UTC 5/13)
+
+| 워크플로 | cron | 본 세션 결과 |
+|---|---|---|
+| core | `0 19 * * *` | UTC 5/12 20:26 success 1회만 (5/13 20:30 도래 후 별도) |
+| incremental | `30 20 * * *` | workflow_dispatch 1회만, schedule 발화 0건 (2회차 도래 UTC 5/13 20:30 후 확정) |
+
+다음 세션 첫 턴 = 2회차 도래 후 확인 의무 (세션 239 답습).
+
+## 답습 자산 — B+C 분리 패턴
+
+W3+W4 마이그 apply 후 = (1) collector workflow_dispatch 첫 실행 + (2) cross-repo 자매 PR 가 의존 0건 병렬 가능. 세션 1회 분량 (B 30분 + C 25분 = 55분). 다음 W 진입 (W5/W2/W6) 시 동일 패턴 답습 가능 (마이그 apply 후 즉시 첫 실행 + 자매 PR 동시).
+
+---
+
 # 세션 239 — 2026-05-13 (W4 collect-emergency 시설명/분류 + W3 합본 마이그 1차 통과 + 환각 차단 박제 3건)
 
 **거시 목적**: 세션 238 W3 답습 → 본 세션 = **W4 본격 진입** (응급의료 시설명/분류) + W3 마이그 사용자 적용 분기 판단 (supabase CLI 실측) + 마이그 합본.
