@@ -1,3 +1,54 @@
+# 세션 233 (확장) — 2026-05-13 (naver-units 영구 폐기 + molit-units 12건 보정 + ESLint IDE 빨강 fix)
+
+**거시 목적 (확장)**: 첫 turn 4 사고 박제 후 사용자 IDE 빨강 발견 (eslint.config.js 옆 숫자) → ESLint ignore 누락 발견 → 1줄 fix. 그 다음 사용자 cmd 창에 naver-units 수동 실행 발견 → 세션 89 알려진 패턴 답습 (429 + curl_cffi 실패 + 결과 0건) → 사용자 위임 "잘못되는 작업 다시는 실행 안 되게" → naver-units 영구 폐기 (3 파일 -505줄 삭제 + 7 참조 정정) + molit-units 대체 실행 (12건 보정 완료).
+
+**결론 (확장)**: 본 세션 누적 4 커밋 (5046c62 docs + 636494e lint + f930857 코드 + b50166d 문서). naver-units 1년+ dead code 청산 + IDE 개발 환경 정정 + 실 운영 산출 12건. CI 4건 모두 success. 환각 누적 3건 박제 + 글로벌 메모 2건 신규 + MEMORY.md 인덱스 +2줄.
+
+**추가 커밋 (확장)**:
+
+- `636494e` chore(lint): IDE 빨강 fix — `.vercel/` + `naver-apt/` + `tmp/` ignore 추가 (eslint.config.js +1/-1)
+- `f930857` chore(scripts): naver-units 영구 폐기 — 3 파일 삭제 + 4 참조 정정 (-529 / +3)
+- `b50166d` docs: naver-units 영구 폐기 박제 — 4 문서 정정 (+6 / -18)
+
+**ESLint IDE 빨강 사고 (커밋 636494e)**:
+
+- 원인: VS Code ESLint 확장이 워크스페이스 전체 (`eslint .`) 스캔 → `.vercel/output/static/assets/*.js` 17 minified 파일 + `naver-apt/src/*.mjs` 3 파일 + `tmp/*.mjs/.cjs` 10 파일 = 1300 errors (브라우저 globals "정의 안 됨" 등)
+- CI `npm run lint` = `eslint src/` 만 → 영향 0 (이미 통과 중)
+- fix: `eslint.config.js` L50 ignores 에 3 토큰 추가 (`.vercel/`, `naver-apt/`, `tmp/`)
+- 검증: `npx eslint .` 0 errors + `npm run lint` 0 errors
+
+**naver-units 영구 폐기 사고 (커밋 f930857 + b50166d)**:
+
+- 출처: 사용자 cmd 창 수동 실행 → `[naver-units] Rate limit (연속 1~6회) + fetch 전부 429 → Python curl_cffi 시도 → Python 프록시 실패: Command failed → 검색 결과 없음` 1년 전 사고 답습
+- 세션 89 (2026-03-23) molit-units 교체 후 1년+ dead code (active 호출 0건). naver-units.yml = workflow_dispatch 수동 전용 (스케줄 비활성)
+- 사용자 위임 "잘못되는 작업이 다시는 실행 안 되게 수정 + 불필요한 파일 삭제 OK + 신중하게 선택"
+- 실측 (grep 14건): post-naver-collect.sh L17 주석만 / collect-data.mjs L1047 Phase 1.5 dead code (existsSync 가드, `public/data/naver-units.json` 파일 0건) / 로컬 파이프라인 (run-naver-local.sh/.bat) grep 0건
+- 영구 삭제: `scripts/collectors/naver-units.mjs` (-405) + `naver-units.test.mjs` (-62, 8 tests) + `.github/workflows/naver-units.yml` (-38) = -505줄
+- 참조 정정: tsconfig.scripts.json (-2줄) / collect-data.mjs Phase 1.5 (-19/+2줄) / post-naver-collect.sh L17 (주석 박제 강화) / 4 문서 (scripts/CLAUDE.md, workflows/CLAUDE.md, ARCHITECTURE.md, .claude/commands/collect-naver.md)
+- 회귀 가드: `npm run lint` 0 + `npx tsc --noEmit -p tsconfig.scripts.json` 0 + `npm run test` 2653 tests pass (167 files)
+- 글로벌 메모 신규: `project_naver_units_retired.md` (사고 사슬 + 복구 자산 명세 + 차단 룰 + 답습 자산) + MEMORY.md 인덱스 +1줄
+
+**molit-units 실 운영 실행 (사용자 위임 + 본인 실행)**:
+
+- 사용자 명시 "니가 해 임마" → 본인 자율 실행
+- `node scripts/collectors/molit-units.mjs --dry-run` → 12건 보정 가능 + 40건 매칭 실패 + 9건 건너뛰기 + 43회 API
+- `node scripts/collectors/molit-units.mjs` (force) → **12건 보정 완료** (`apartments.units` UPDATE + `unsold_rate` 재계산 + `api_quota_log` 자동 기록)
+- 40건 매칭 실패 = 신축 분양 단지 (블록명/무순위/한자 단지명) MOLIT 공동주택 API 미등록. 입주 전 단지 = naver/molit 양쪽 데이터 부재 = 알려진 한계
+
+**환각 누적 3건 (첫 turn) 답습 — 본 확장 turn에서 추가 환각 0건**:
+
+- 첫 turn 환각 차단 룰 (NEXT_SESSION 전체 Read + `git check-ignore -v` 1회 의무) 본 확장 turn 답습
+- naver-units 폐기 시 `git check-ignore -v eslint.config.js` 1회 실증 후 추적 활성 확인 → ✅ 차단 룰 작동
+- ESLint fix push 직전 CI `npm run lint` 영향 0 (실측 `package.json` script grep 후 단정) → ✅ 부재 단정 차단
+
+**ROI 재결산 (첫 turn + 확장 turn 누적)**:
+
+- 입력: 첫 turn 환각 차단 1.5 시간 + 확장 turn 3 작업 (lint + naver-units + molit-units) 2 시간 = 3.5 시간
+- 산출: 1년+ dead code 영구 청산 + 사용자 cmd 사고 영구 차단 (file 삭제) + IDE 개발 환경 정정 + 12건 운영 보정 + 글로벌 메모 2건 영구 박제 + 환각 누적 차단 룰 박제
+- 사용자 위임 답습 모두 완수 (재검증 + 사고 차단 + 실증 후 신중 선택 + 글로벌 박제)
+
+---
+
 # 세션 233 — 2026-05-13 (NEXT_SESSION 부분 Read 환각 사고 + plan v1 → v2 재설계 + 9 GATE 2차 재검증)
 
 **거시 목적**: 세션 232 확장 turn 종료 후 첫 turn. 사용자 자동 실행 스크립트 따라 cron 결과 + git status + secret 확인 → cron 미도래 (UTC 5/12 15:48, +3~5 시간 후) 발견 → NEXT_SESSION 박제 stale 단정 후 plan v1 (NEXT_SESSION ~250줄 재작성) 작성 → 9 GATE 1차 검증 통과 ✅ 보고 → 사용자 2차 재검증 요구 → 서브에이전트 3개 병렬 실측 → **plan v1 전제 자체가 환각** 발견 → plan v2 (diff 정정 ~20줄 + SESSION_LOG ~50줄 prepend + 글로벌 메모 박제) 재설계 + 실행.
