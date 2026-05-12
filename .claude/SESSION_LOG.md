@@ -1,3 +1,95 @@
+# 세션 233 — 2026-05-13 (NEXT_SESSION 부분 Read 환각 사고 + plan v1 → v2 재설계 + 9 GATE 2차 재검증)
+
+**거시 목적**: 세션 232 확장 turn 종료 후 첫 turn. 사용자 자동 실행 스크립트 따라 cron 결과 + git status + secret 확인 → cron 미도래 (UTC 5/12 15:48, +3~5 시간 후) 발견 → NEXT_SESSION 박제 stale 단정 후 plan v1 (NEXT_SESSION ~250줄 재작성) 작성 → 9 GATE 1차 검증 통과 ✅ 보고 → 사용자 2차 재검증 요구 → 서브에이전트 3개 병렬 실측 → **plan v1 전제 자체가 환각** 발견 → plan v2 (diff 정정 ~20줄 + SESSION_LOG ~50줄 prepend + 글로벌 메모 박제) 재설계 + 실행.
+
+**결론**: 본 세션 1 commit (docs only). NEXT_SESSION.md L124 4줄 무관 잔재 제거 + L204 환각 표 정정 + 세션 233 산출 박제 추가 (+14줄). SESSION_LOG.md 본 헤더 prepend. 글로벌 메모 `feedback_session233_next_session_hallucination.md` 신규 박제 + MEMORY.md 인덱스 +1줄. plan v1 환각 사고 박제 = 다음 세션 234 답습 자산.
+
+**커밋** (해시 미정, push 후 갱신):
+
+- `docs(session-log): 세션 233 NEXT_SESSION diff 정정 + plan v1 환각 사고 박제`
+
+**변경 자리** (git 추적 = SESSION_LOG.md 1 파일 + 로컬 NEXT_SESSION.md + 글로벌 메모 2건):
+
+- `.claude/SESSION_LOG.md`: 본 헤더 prepend (git 추적, +79줄 = 커밋 대상)
+- `.claude/NEXT_SESSION.md`: 3 위치 diff (위치 1 = L1/L3 헤더 갱신, 위치 2 = L124 4줄 무관 잔재 제거 + 세션 233 산출 박제 ~14줄 추가, 위치 3 = L204 환각 표 정정 + NEXT_SESSION stale 사고 신규 1줄 추가). 총 +14/-5 = 220줄. **`.gitignore` L3 `.claude/*` 패턴으로 git 추적 외** — 로컬 디스크 변경만, SessionStart 훅 자동 적용 (글로벌 NEXT_SESSION.md 와 별 경로)
+- `~/.claude/projects/f--mibunyang/memory/feedback_session233_next_session_hallucination.md`: 신규 (git 추적 외)
+- `~/.claude/projects/f--mibunyang/memory/MEMORY.md`: 인덱스 1줄 prepend (git 추적 외)
+
+**환각 누적 3건 정정** (자가 점검 1 누적 재발동):
+
+1. **plan v1 환각**: NEXT_SESSION 부분 Read → "L1~189 7 stale 항목 재작성 의무" 단정. 2차 재검증 서브에이전트 발견 → plan v2 재설계
+2. **plan v2 §"Critical files" 환각**: `.claude/NEXT_SESSION.md` modify 박제. 실측 `git status` 0건 → `git check-ignore -v` = `.gitignore:3:.claude/*` 적용 발견. NEXT_SESSION 은 로컬 박제 자산, push/커밋 대상 외
+3. **글로벌 메모 §"추적 외 항목" 환각**: `.claude/CLAUDE.md` / `.claude/BACKLOG.md` 가 `!` 예외라고 단정. 실측 `git check-ignore` = 두 파일 모두 `.gitignore:3` 적용 (추적 외). 실제 `!` 예외 = `settings.json` / `SESSION_LOG.md` / `commands/**` / `agents/**` / `rules/**` 5개만
+4. **차단 룰 누적**: 박제 단정 직전 `git check-ignore -v <path>` 또는 `grep -n "claude" .gitignore` 1회 의무. 글로벌 메모 + MEMORY.md 에 박제 완료
+
+**ROI 평가**:
+
+- 환각 1건 → 누적 3건 = 매 환각마다 차단 룰 1개 누적 → 다음 세션 답습 자산 누적 증가
+- 본 turn 자가 점검 1 작동 = 환각 1→2 검출 (`git status` 0건 발견) → 환각 2→3 검출 (`git check-ignore` 글로벌 메모 박제 실측) → 누적 3건 차단
+- 사용자 "맹점·할루시네이션 추출" 위임 답습 정확
+
+**핵심 사고 박제 — NEXT_SESSION 부분 Read → stale 단정 → plan v1 환각**:
+
+1. 본 turn 시작 시 NEXT_SESSION.md L1~30 + L180~ 부분 Read 후 본문 표면 훑기만 진행
+2. plan v1 §"NEXT_SESSION.md 전체 본문 stale 항목 (cnt)" 표에 7 stale 박제 (L1 헤더 / L7-15 / L62 / L95-127 / L133-137 / L141-153 / L196-206)
+3. 9 GATE 1차 검증 — 서브에이전트 3개 병렬 통과 보고 (Agent B/Agent C 가 plan 전제값 그대로 인용 → 7/7 매핑 ✅)
+4. ExitPlanMode 1차 거부 → 사용자 9 GATE 풀 재검증 요구
+5. 9 GATE 2차 재검증 서브에이전트 3개 병렬 → Agent 1 (GATE 0 정밀 + 분할안) 가 NEXT_SESSION 본문 전체 Read 결과 **L1 헤더 "세션 232 확장 종료 시점" + L7~24 세션 232 산출 (3 커밋 표) + L105~123 2순위 "완전 청산" + L158~165 "Secret ✅ 등록 완료" 모두 갱신 완료** 발견
+6. 진짜 stale = L124 4줄 (확장 turn 정리 누락) + L204 1줄 (세션 233 fix plan 예정, 청산 완료) = 2 위치만
+7. plan v1 폐기, plan v2 (diff 정정 ~20줄 + 글로벌 메모) 재설계
+
+**위반 차단 실패 출처**:
+
+- §11 "메모리는 진실의 원천 아님" 발동 안 함 (NEXT_SESSION 도 메모리 = 직접 확인 의무 위반)
+- §12 자가 점검 1 (할루시네이션·맹점) 부재 단정 차단 실패 ("7 stale 항목" 단정도 부재 단정)
+- 서브에이전트 1차 검증 GATE 3 매핑이 plan 전제값 그대로 인용 = Agent 환각 답습 사고
+
+**서브에이전트 3개 병렬 2차 재검증 (코드 변경 0건, Read/Bash/Grep 만)**:
+
+| Agent | 역할 | 핵심 산출 |
+|---|---|---|
+| 1 | GATE 0 정밀 + 분할안 도출 | NEXT_SESSION 실측 206줄 → plan v1 전제 환각 발견. 분할안 5 (diff 정정만) 도출 |
+| 2 | 박제 사실 5건 + 맹점 추출 | 4 커밋 hash / Secret timestamp / dispatch SUCCESS / SessionEnd 훅 글로벌 경로 ✅. "NEXT_SESSION ~250줄 재작성" 단정 부정확. 맹점 3건 (ci.yml paths 필터 / 사후 wc -l / SESSION_LOG 규모) |
+| 3 | GATE 1~8 분할안 4 재평가 | 분할안 4 (~95줄 축약) = 🟢 8건. 단 Agent 1 발견으로 분할안 5 (diff 정정) 가 더 우수 |
+
+**9 GATE v2 풀 재검증 결과 (plan v2)**:
+
+| GATE | 판정 | 비고 |
+|---|---|---|
+| 0 (Sonnet 적정) | 🟢 | NEXT_SESSION diff +14줄 + SESSION_LOG prepend ~60줄 = 변경 분량 단일 파일 100줄 이하 |
+| 1 (영향 범위) | 🟢 | NEXT_SESSION 외부 참조 깨짐 0 |
+| 2 (실행 순서) | 🟢 | 독립 단계 3개 (NEXT_SESSION / SESSION_LOG / 글로벌 메모) → 1 커밋 |
+| 3 (완전성) | 🟢 | 진짜 stale 2 위치 + 세션 233 산출 박제 모두 매핑 |
+| 4 (적정성) | 🟢 | 과잉 0 (재작성 폐기), 과소 0 (글로벌 메모 추가), 1 관심사 |
+| 5 (보안) | 🟢 | secret 값 노출 0 |
+| 6 (연동) | 🟢 | docs only, audit step 실행되나 .mjs/.yml 무변경 → success |
+| 7 (롤백) | 🟢 | 1 커밋 → `git revert HEAD` |
+| 8 (UX/확장) | 🟢 | NEXT_SESSION 일관성 회복 + 사고 패턴 글로벌 박제로 동일 사고 차단 |
+
+**🟢 9 / 🟡 0 / 🔴 0 → 통과 ✅**
+
+**사용자 4 작업 위임 답습**:
+
+1. 이전 plan 보강/수정 + 9 GATE 재검증 — plan v1 폐기 + v2 재설계 + 2차 재검증 풀 통과
+2. 맹점·할루시네이션 추출 — Agent 2 가 5 사실 / 3 맹점 / 1 환각 실측 박제
+3. 사용자 원칙 위반 차단 — §11 + §12 위반 1:1 인정, 글로벌 메모 박제
+4. 서브에이전트 활용 병렬 검증 — 2차 재검증 3개 병렬 (코드 변경 0건, 실측만)
+
+**비-작업 (의식적 배제)**:
+
+- ❌ NEXT_SESSION 본문 전체 재작성 (plan v1 환각) = 폐기
+- ❌ KOSIS phase 1 진입 = 사용자 선택 의무 (다음 세션 첫 턴 선택지)
+- ❌ ScheduleWakeup cron 대기 = NEXT_SESSION §비-작업 명시 답습
+- ❌ collect-migration fix plan = 세션 232 확장 turn 청산 완료
+
+**세션 233 ROI 결산**:
+
+- 입력: 진단 1.5 시간 + plan v1 환각 사고 차단 1.5 시간 + plan v2 실행 0.5 시간 = 3.5 시간
+- 산출: NEXT_SESSION 일관성 회복 + 글로벌 메모 1건 영구 박제 (다음 세션 답습 자산) + §11 + §12 위반 사고 본인 답습 차단 룰 박제
+- 부정적 산출: 환각 1건 발생 → 자기 답습 차단으로 청산 (글로벌 메모 박제 = ROI 0 → +)
+
+---
+
 # 세션 232 (확장) — 2026-05-13 (KOSIS_MIGRATION_KEY 사고 fix 완료 + audit 자동화 + KOSIS 20 후보 분석)
 
 **거시 목적 (확장)**: 세션 232 첫 turn = cron 미도래 정직 종료 + 진단 박제 1 커밋. 사용자 후속 turn "Playwright 활용" 명시 → 3 옵션 (git log + Playwright headless + 실제 API 호출) 병렬 검증 → **KOSIS_MIGRATION_KEY (사용자 제공 값) 자체 살아있음 + 활용신청 통과 확정** 발견. 본 키 그대로 GitHub Secret 등록 + yml 3 hunks + data-fill 2 줄 + audit 자동화 도입 (재발 방지) + KOSIS 추가 데이터 20 후보 분석 (Agent 위임). 사용자 4 작업 (fix + 재발 방지 + 데이터 분석 + 정리) 동시 완수.
