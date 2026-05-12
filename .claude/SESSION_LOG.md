@@ -1,3 +1,41 @@
+# 세션 235 (확장) — 2026-05-13 (KOSIS 활용신청 Playwright 자동화 + 환각 차단 누적 5건 + plan v5 사전 검증 박제)
+
+**거시 목적 (확장)**: 사용자 위임 "KOSIS 활용신청을 Playwright 로 진행" → 자동화 정찰 9 단계 (메인 → 로그인 → 90일 비번 우회 → 활용신청 페이지 진입) 통과 → **활용신청 추가 의무 0 확정** (인증키 1개로 모든 통계표 호출 가능, BACKLOG 가설 환각). 이어서 사용자 위임 "필요한 데이터 전부 받아서 보강 + 오피스텔 분양공고 API 검증" → 2 작업 통합 plan agent 메모 작성 → DT_MLTM_2086 + DT_MLTM_2100 + getUrbtyOfctlLttotPblancCmpet 실측 → **DT_MLTM_2086 환각 정정 3건**.
+
+**결론 (확장)**: 코드 변경 0 (검증 + 환각 정정 단계). Working tree clean. 다음 세션 236 W1~W5 진입 가능 (각 단계 답습 자산 박제 완료).
+
+**KOSIS Playwright 자동화 박제 (답습 자산)**:
+
+1. KOSIS_USER + KOSIS_PASSWORD .env.local 박제 (사용자 추가, 키명 = KOSIS_PASSWORD 정확)
+2. 로그인 흐름 = 메인 (`/index/index.do`) → `로그인` 클릭 (fnLogin()) → ONE-ID (`/oneid/cmmn/login/LoginView.do`) → USR_ID/USR_PW fill + #Login 클릭 → 90일 비번 페이지 → `나중에 변경` 클릭 → 메인 redirect (세션 활성)
+3. 활용신청 페이지 (`/openapi/serviceUse/serviceUseUnityReg_01Detail.do`) 진입 시 OpenAPI 사이트 SSO 별도 의무 = 메인 로그인 후 OpenAPI 인덱스 진입 + 거기서 한 번 더 로그인 (return URL 받음)
+4. 신청 정보 확인: 인증키 `NTBhZGYy...` (KOSIS_KEY 와 동일) + 활용용도 = 웹개발 + 사이트 = 미분양마트.com + 자동승인
+5. **활용신청 폼 = 통계표 ID 입력 필드 0** → KOSIS 활용신청 = 인증키 1개 / 모든 통계표 자동 사용 가능 구조 확정. 통계표별 추가 신청 0 의무
+
+**환각 차단 누적 5건 (본 세션 확장 turn)**:
+
+1. BACKLOG L140 "DT_MLTM_2086 활용신청 미통과" = 환각 (실제: 인증키는 활성, 파라미터 환각이 원인 — prdSe=M 박제 → 본 통계표는 PRD_SE=A 연간만 제공)
+2. plan agent 메모 ITM_NM='주택보급률' 추측 = 환각 (실측 = `'보급률'` 또는 `'보급률(다가구 구분거처 반영)'`)
+3. BACKLOG L140 "DT_MLTM_2086 시도별 준공후 미분양" = 환각 (실측 = 시도별 ❌ 분리, 부문별 (계/민간/공공/(준공후)) = 전국 단일값만)
+4. plan agent Q2 신규 컬럼 `regional_unsold_complete` 안 = 환각 적용 (전국 단일값을 시도 컬럼에 넣을 수 없음 → 신규 테이블 `national_unsold_history` 분리 의무)
+5. plan agent Q3 `ah-${HOUSE_MANAGE_NO}` 답습 = 부분 환각 (오피스텔 단지 = apartments 에 없으므로 별도 테이블 `officetel_competition_events` 의무)
+
+**실측 박제 (다음 세션 236 W1~W5 답습 자산)**:
+
+- DT_MLTM_2100 (新)주택보급률 = ITM_NM 6종 (`가구수`/`주택수`/`보급률`/`가구수(등록센서스)`/`주택수(다가구 구분거처 반영)`/`보급률(다가구 구분거처 반영)`) + 시도 17 + 전국/수도권/지방 + 연간 PRD_SE=A. **regions.supply_ratio UPDATE 대상 = ITM_NM='보급률' + gu IS NULL 시도 17행**.
+- DT_MLTM_2086 미분양현황_종합 = ITM_NM 단일 (`미분양(12월기준)`) + 3 차원 (시도별 17+3 / 부문별 4 / 규모별 5) + 연간 PRD_SE=A.
+- getUrbtyOfctlLttotPblancCmpet 오피스텔 경쟁률 = totalCount=2584 / 9 필드 (CMPET_RATE/HOUSE_MANAGE_NO/HOUSE_TY/MODEL_NO/PBLANC_NO/REQ_CNT/RESIDNT_PRIOR_AT/RESIDNT_PRIOR_SENM/SUPLY_HSHLDCO). 답습 자산 = `collect-applyhome.mjs` family (동일 svc URL prefix, MOLIT_KEY).
+
+**다음 세션 236 W1~W5 분할 plan** (자가 결정 Q1~Q4 답습):
+
+- W1: `collect-housing-supply-ratio.mjs` 신규 (DT_MLTM_2100 ITM_NM='보급률' → regions.supply_ratio UPDATE)
+- W2: `national_unsold_history` 신규 테이블 + `collect-unsold-complete-kosis.mjs` (DT_MLTM_2086 시계열 적재)
+- W3: `officetel_competition_events` 신규 테이블 + `collect-officetel-competition.mjs` (오피스텔 경쟁률 별도 적재, apartments FK 안 함)
+- W4: workflow yml 3개 + data-fill 등록 + audit 검증
+- W5: vitest + dry-run + CI
+
+---
+
 # 세션 235 — 2026-05-13 (KOSIS Phase 1 사전 검증 + BACKLOG 박제값 절반 환각 확정 + stale 주석 1줄 정정)
 
 **거시 목적**: NEXT_SESSION L37 "cron 도래 후 예상" 박제값 실측 정정 (UTC 17:46 = +1h14m 미도래). 세션 234 동일 분기 답습 회피 위해 사용자 4-Phase 워크플로우 위임 (의존관계 실측 → 순서 결정 → 확정 순서 → 세션 상태 판정) → 옵션 α (W3 KOSIS Phase 1 진행) 승인 → plan v1 메타 plan 거부 4회 → v4 = "S1 KOSIS API 메타 호출 검증 + S2 stale 주석 1줄 정정 + S3 분기 결정" 까지 ExitPlanMode 통과 후 본격 진입.
