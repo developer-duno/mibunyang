@@ -1,4 +1,4 @@
-name: Naver Post-Processing
+name: Naver Post-Processing (Core)
 
 on:
   schedule:
@@ -12,10 +12,10 @@ concurrency:
 jobs:
   post-process:
     runs-on: ubuntu-latest
-    # 세션118 30→60, 세션224 60→90 (5/9 run 25610302732 실측: sync 45m + transport 27m = 72m + 마진 18m)
-    # 세션227 90→120 (5/8~5/11 4회 연속 cancelled @ timeout = escalate, sync 47.9m + transport 27.5m + infra 9.4m = 84.8m + 마진 35m)
-    # root cause = 60분 timeout 단독 (concurrency 충돌 0, group 사용 워크플로 1개)
-    timeout-minutes: 120
+    # 세션118 30→60, 세션224 60→90, 세션227 90→120
+    # 세션229 D-2 분리 후 core 단독 sync 55:39 + setup 24s = 56:03 (90m 한도 마진 33:57)
+    # incremental (transport/infra/schools) = .github/workflows/collect-naver-listings-incremental.yml 로 분리
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -32,8 +32,9 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$KAKAO_KEY" ]; then
             echo "::error::Required secrets missing"
             exit 1
           fi
@@ -63,28 +64,3 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/collectors/calc-exclusive-ratio.mjs
-
-      - name: Collect transport (incremental)
-        continue-on-error: true
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
-          TAGO_KEY: ${{ secrets.TAGO_KEY }}
-        run: node scripts/collectors/transport-tago.mjs
-
-      - name: Collect infra (incremental)
-        continue-on-error: true
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
-        run: node scripts/collectors/infra-kakao.mjs
-
-      - name: Collect schools (incremental)
-        continue-on-error: true
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
-        run: node scripts/collectors/schools-neis.mjs
