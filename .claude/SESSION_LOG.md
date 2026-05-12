@@ -22,13 +22,13 @@
 
 **실측 박제 (다음 세션 236 W1~W5 답습 자산)**:
 
-- DT_MLTM_2100 (新)주택보급률 = ITM_NM 6종 (`가구수`/`주택수`/`보급률`/`가구수(등록센서스)`/`주택수(다가구 구분거처 반영)`/`보급률(다가구 구분거처 반영)`) + 시도 17 + 전국/수도권/지방 + 연간 PRD_SE=A. **regions.supply_ratio UPDATE 대상 = ITM_NM='보급률' + gu IS NULL 시도 17행**.
+- DT_MLTM_2100 (新)주택보급률 = ITM_NM 6종 (`가구수`/`주택수`/`보급률`/`가구수(등록센서스)`/`주택수(다가구 구분거처 반영)`/`보급률(다가구 구분거처 반영)`) + 시도 17 + 전국/수도권/지방 + 연간 PRD_SE=A. **세션 236 환각 차단 정정 (plan `1-effervescent-zephyr.md`)** = **신규 컬럼 `regions.housing_supply_level` UPDATE 대상 = `ITM_NM='보급률(다가구 구분거처 반영)'` + gu IS NULL 시도 17행** (구통상 `보급률`/`가구수`/`주택수` 시리즈 = DT=0 폐기 series. `regions.supply_ratio` 는 `housing-permits.mjs` 매월 10일 UPDATE 중, 의미 다름 — 컬럼 분리 의무).
 - DT_MLTM_2086 미분양현황_종합 = ITM_NM 단일 (`미분양(12월기준)`) + 3 차원 (시도별 17+3 / 부문별 4 / 규모별 5) + 연간 PRD_SE=A.
 - getUrbtyOfctlLttotPblancCmpet 오피스텔 경쟁률 = totalCount=2584 / 9 필드 (CMPET_RATE/HOUSE_MANAGE_NO/HOUSE_TY/MODEL_NO/PBLANC_NO/REQ_CNT/RESIDNT_PRIOR_AT/RESIDNT_PRIOR_SENM/SUPLY_HSHLDCO). 답습 자산 = `collect-applyhome.mjs` family (동일 svc URL prefix, MOLIT_KEY).
 
 **다음 세션 236 W1~W5 분할 plan** (자가 결정 Q1~Q4 답습):
 
-- W1: `collect-housing-supply-ratio.mjs` 신규 (DT_MLTM_2100 ITM_NM='보급률' → regions.supply_ratio UPDATE)
+- W1: `collect-housing-supply-ratio.mjs` 신규 (DT_MLTM_2100 `ITM_NM='보급률(다가구 구분거처 반영)'` → **신규 컬럼 `regions.housing_supply_level`** UPDATE — 세션 236 환각 차단 + 컬럼 충돌 박제 적용, plan `1-effervescent-zephyr.md`)
 - W2: `national_unsold_history` 신규 테이블 + `collect-unsold-complete-kosis.mjs` (DT_MLTM_2086 시계열 적재)
 - W3: `officetel_competition_events` 신규 테이블 + `collect-officetel-competition.mjs` (오피스텔 경쟁률 별도 적재, apartments FK 안 함)
 - W4: workflow yml 3개 + data-fill 등록 + audit 검증
