@@ -1,3 +1,75 @@
+# 세션 229 — 2026-05-12 (Naver D-2 적용 완료 / 9 GATE v3 풀 5 라운드 / 누적 정정 18건)
+
+**거시 목적**: 5/12 cron success @ 119:47 (D-1 120m 마진 13초 경계선) → 다음 cron 한계 초과 위험 99% → D-2 즉시 적용 (옵션 D-2 spec 박제 답습). 사용자 위임 "실증 후 신중 선택" + ExitPlanMode 5차 거부 → 9 GATE 풀 5 라운드 검증 후 plan v6 통과.
+
+**결론**: 본 세션 2 commit (`c045594` core 정정 + `9bbce13` incremental 신규). 4 commit 일괄 push (`32d2ece..9bbce13`) origin/main 반영. CI run 25734252650 success @ 3m 46s. Core + Incremental workflow 양쪽 active 활성화. 다음 cron (5/13 KST 04:54) 부터 D-2 분리 자동 실행.
+
+**커밋**:
+- `c045594` feat(workflow): naver-postprocess D-2 split + core timeout 120→90 (90→66줄, +7/-31)
+- `9bbce13` feat(workflow): naver-postprocess incremental yml 신규 + timeout 90m (+65줄 신규)
+
+**변경 자리**:
+- `.github/workflows/collect-naver-listings.yml`: name "(Core)" + timeout 120→90 + Validate secrets KAKAO_KEY 추가 + 4 step (transport/infra/schools) 삭제
+- `.github/workflows/collect-naver-listings-incremental.yml`: 신규 65줄 (cron UTC 20:30, timeout 90m, KAKAO_KEY+TAGO_KEY env, 3 step continue-on-error 답습)
+
+**5/11 cron 5/12 실측 (gh CLI run log 직접 timestamp)**:
+- run 25695357731 success @ 119:47 (UTC 20:27:33 → 22:27:20)
+- step-별: setup 24s + sync 55:39 + Geocode/Reverse/Calc 4s + transport 35:09 + infra 10:15 + schools 18:13 = 119:44 (인계 3초 오차)
+- 메타 spec §A 박제값 대비 변동성 ↑ (sync +16% / transport +27% / infra +9%)
+
+**5/2~5/10 9회 연속 비-success (gh run list --limit 12 실측)**:
+- cancelled 7회 (5/2/5/5/5/6/5/7/5/8/5/9/5/10) + failure 2회 (5/3 25289073433 + 5/4 25340982666)
+- 5/10 = D-1 적용 직전 90m timeout, 5/11 = D-1 적용 후 첫 success
+
+**plan v1→v6 누적 정정 18건 답습 박제**:
+
+v1→v2 (6건, 본인 1:1 환각 정정): 60분 환각 / race 0분 마진 환각 / KAKAO 10000/일 환각 / Phase 3 race row-level 자리 / D-2 spike 위험 / incremental 60m→90m
+
+v2→v3 (3건): feedback memory 2건 인용 / core cancel stale 위험 / Validate secrets KAKAO_KEY 위험
+
+v3→v4 (1건): "8회 연속 cancelled" → "9회 비-success" cross-check 정정
+
+v4→v5 (3건): KAKAO 10,377회 환각 잔재 / 단지 수 1153→1544 stale / 호출 산술 9+3+3=15 × 1544 = 23,160회 (23.2%)
+
+v5→v6 (5건): L9 "데이터 누락 0" → "< 0.5%" 위험표 정합 / L117 변경 자리 "60m, 마진 30m" → "56:03, 마진 33:57" / L135 "60줄+1줄" → "61줄 신규" / L181 "(+60줄)" → "+61줄" / L201 "기존 단지 ~1153" → "~1544"
+
+**9 GATE v3 5 라운드 결과**: GATE 0~8 모두 🟢/🟡 (🔴 0건), 환각 0건 + 사용자 원칙 위반 0건 도달. 본인 자가 점검 1+2 풀 답습 — Agent 호출 전 plan v5 본문 재독 후 잔재 5건 자가 추출.
+
+**산술 정합 (4 라운드 본인 직접 grep)**:
+
+| 항목 | 산술 | 결과 |
+|---|---|---|
+| core 단독 | sync 55:39 + setup 24s | 56:03 (90m 한도 마진 33:57) |
+| incremental 단독 | transport 35:09 + infra 10:15 + schools 18:13 | 63:37 (90m 한도 마진 26:23) |
+| KAKAO 호출/단지 | infra 9 (CATEGORIES 8 + subway 1) + transport 3 (subway/IC/KTX) + schools 3 (초/중/고) | 15 호출/단지 |
+| KAKAO 일일 사용 | 15 × 1544 단지 | 23,160회 = 23.2% (100,000/일 한도) |
+| 단지 수 | apartments.json `count` 필드 | 1544 |
+
+**race condition 차단 (본인 grep 실측)**:
+- sync-naver-complex.mjs → apartments UPDATE (core 단독)
+- infra-kakao.mjs L110 → `infra` upsert (apartments read-only)
+- transport-tago.mjs L268-269 → `transport` + `infra` upsert (apartments read-only)
+- schools-neis.mjs L417 → `schools` upsert (apartments read-only)
+- 결론: 3 incremental collector apartments UPDATE 0 → race 충돌 0 (별개 테이블 분리 설계)
+
+**Phase 2 검증 완전 통과**:
+- gh workflow list: Core 243882550 active + Incremental 275327958 active (양쪽 등록 ✓)
+- gh run view 25734252650: success @ 3m 46s (CI 통과)
+
+**다음 세션 (230) trigger**:
+- KST 5/13 04:54 (UTC 19:00 core cron 시작) + KST 5/13 05:30 (UTC 20:30 incremental cron 시작) 결과 도래 후
+- 첫 명령 = `gh run list --workflow=collect-naver-listings.yml --limit 1 --json conclusion,startedAt,updatedAt,databaseId` (core 결과)
+- 추가 = `gh run list --workflow=collect-naver-listings-incremental.yml --limit 1 --json conclusion,startedAt,updatedAt,databaseId` (incremental 결과)
+- 검증: core ≤ 90m + incremental ≤ 90m + 양쪽 success + apartments 데이터 정상 갱신
+- 7일 누적 모니터링 trigger 박제 — 5/13~5/19 cron 결과 5/7 이상 success
+
+**비-작업 (다음 세션 분리)**:
+- 옵션 E (sync-naver-complex 최적화) 별도 plan (180~360분)
+- `.github/workflows/CLAUDE.md` 박제 37→38개 정정 (별도 plan)
+- regions.avg_price drop / KOSIS DT_MLTM_2082 / naver-units 재활성화 (메타 spec §H 제외)
+
+---
+
 # 세션 228 — 2026-05-11 (마무리 / 시나리오 분기 trigger 미도래 / 9 GATE v3 풀 검증 2 라운드 정정 7건)
 
 **거시 목적**: 5/12 cron (KST 04:54, UTC 19:54) 결과 19시간 후 도래 → 시나리오 A/B/C 분기 trigger 미충족 → 자연 중단점 마무리. 코드 0건 + SESSION_LOG entry 2 commit 분리.
