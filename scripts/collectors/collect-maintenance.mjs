@@ -20,7 +20,12 @@ import {
 } from "./_molit-api.mjs";
 
 /**
- * @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; avg_maintenance_cost: number | null }} MaintAptTarget
+ * @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null;
+ *   avg_maintenance_cost: number | null;
+ *   maint_heat: number | null; maint_hotwater: number | null;
+ *   maint_gas: number | null; maint_elec: number | null; maint_water: number | null
+ * }} MaintAptTarget
+ * @typedef {{ heat: number|null; hotwater: number|null; gas: number|null; elec: number|null; water: number|null }} MaintCostBreakdown
  */
 
 loadEnv();
@@ -34,7 +39,7 @@ if (!API_KEY) {
 
 const COST_BASE = "https://apis.data.go.kr/1613000/AptIndvdlzManageCostServiceV2";
 
-// 관리비 주요 5개 항목 — 개별비(P)를 합산하여 세대당 관리비 산출
+// 관리비 주요 5개 항목 — 항목별 raw 값을 object 로 반환하여 main() 에서 5 컬럼 동시 UPDATE + 합산 avg_maintenance_cost 보존
 const COST_ENDPOINTS = [
   { label: "난방비", endpoint: "getHsmpHeatCostInfoV2", field: "heatP" },
   { label: "급탕비", endpoint: "getHsmpHotWaterCostInfoV2", field: "waterHotP" },
@@ -42,6 +47,11 @@ const COST_ENDPOINTS = [
   { label: "전기료", endpoint: "getHsmpElectricityCostInfoV2", field: "electP" },
   { label: "수도료", endpoint: "getHsmpWaterCostInfoV2", field: "waterCoolP" },
 ];
+
+/** @type {Record<string, "heat"|"hotwater"|"gas"|"elec"|"water">} */
+const FIELDS_MAP = {
+  heatP: "heat", waterHotP: "hotwater", gasP: "gas", electP: "elec", waterCoolP: "water",
+};
 
 // ── 총 세대수 조회 (AptBasisInfoServiceV4) ──────────────────────
 /**
@@ -58,17 +68,19 @@ export async function fetchTotalHouseholds(kaptCode) {
   } catch { return null; }
 }
 
-// ── 관리비 조회 (5개 항목 합산) ────────────────────────────────
+// ── 관리비 조회 (5개 항목 raw object 반환) ─────────────────────
 /**
  * @param {string} kaptCode
  * @param {string} searchDate
- * @returns {Promise<number | null>}
+ * @returns {Promise<MaintCostBreakdown | null>}
  */
 export async function fetchMaintenanceCost(kaptCode, searchDate) {
-  let totalCost = 0;
-  let validCount = 0;
+  /** @type {MaintCostBreakdown} */
+  const result = { heat: null, hotwater: null, gas: null, elec: null, water: null };
+  let anyValid = false;
 
   for (const { endpoint, field } of COST_ENDPOINTS) {
+    const key = FIELDS_MAP[field];
     try {
       const params = new URLSearchParams({
         serviceKey: API_KEY || "",
@@ -88,8 +100,8 @@ export async function fetchMaintenanceCost(kaptCode, searchDate) {
 
       const value = parseInt(String(item[field] ?? ""), 10);
       if (!isNaN(value) && value >= 0) {
-        totalCost += value;
-        validCount++;
+        result[key] = value; // 원 단위 raw — main()에서 세대당 만원 변환
+        anyValid = true;
       }
     } catch {
       // 개별 항목 실패 시 건너뜀
@@ -97,7 +109,7 @@ export async function fetchMaintenanceCost(kaptCode, searchDate) {
     await sleep(200); // API 간 소량 지연
   }
 
-  return validCount > 0 ? totalCost : null;
+  return anyValid ? result : null;
 }
 
 // ── 메인 ─────────────────────────────────────────────────────
@@ -118,7 +130,7 @@ async function main() {
 
   // 1. 대상 아파트 조회 (selectAll: 1000행 제한 자동 페이지네이션)
   const targets = /** @type {MaintAptTarget[]} */ (await selectAll((s) => {
-    let q = s.from("apartments").select("id, name, region, gu, units, avg_maintenance_cost");
+    let q = s.from("apartments").select("id, name, region, gu, units, avg_maintenance_cost, maint_heat, maint_hotwater, maint_gas, maint_elec, maint_water");
     if (!force) q = q.is("avg_maintenance_cost", null);
     return q;
   }, sb));
@@ -170,26 +182,47 @@ async function main() {
         apiCalls++; // fetchTotalHouseholds
         await sleep(REQUEST_DELAY);
 
-        const totalCost = await fetchMaintenanceCost(match.kaptCode, searchDate);
+        const costs = await fetchMaintenanceCost(match.kaptCode, searchDate);
         apiCalls += COST_ENDPOINTS.length; // 5개 항목 각각 API 호출
 
-        if (totalCost == null || totalCost <= 0) { rpt.skip(1); continue; }
+        if (costs == null) { rpt.skip(1); continue; }
         if (!totalHouseholds) { rpt.skip(1); continue; }
 
-        // 세대당 관리비 (만원) = 전체 관리비(원) / 총 세대수 / 10000
-        const MAINT_CAP = 500; // 만원/세대/월 상한 (이상치 필터링)
-        const rawPerUnit = Math.round(totalCost / totalHouseholds / 10000);
-        if (rawPerUnit > MAINT_CAP) log(PHASE, `  [WARN] ${target.name}: 관리비 ${rawPerUnit}만원 > 상한(${MAINT_CAP}만원) — 클램핑됨`);
-        const perUnit = Math.min(Math.max(0, rawPerUnit), MAINT_CAP);
+        // 세대당 관리비 (만원) = 항목별 raw(원) / 총 세대수 / 10000
+        const ITEM_CAP = 100;  // 각 항목 만원/세대/월 상한
+        const MAINT_CAP = 500; // 합산 만원/세대/월 상한
+        const households = totalHouseholds; // 클로저 narrow 보장 (TS18047 시뮬 patch)
+
+        /** @param {number|null} raw @returns {number|null} */
+        function toItemPerUnit(raw) {
+          if (raw == null || raw <= 0) return null;
+          return Math.min(Math.round(raw / households / 10000), ITEM_CAP);
+        }
+
+        const heat     = toItemPerUnit(costs.heat);
+        const hotwater = toItemPerUnit(costs.hotwater);
+        const gas      = toItemPerUnit(costs.gas);
+        const elec     = toItemPerUnit(costs.elec);
+        const water    = toItemPerUnit(costs.water);
+
+        const sumItems = (heat ?? 0) + (hotwater ?? 0) + (gas ?? 0) + (elec ?? 0) + (water ?? 0);
+        if (sumItems <= 0) { rpt.skip(1); continue; }
+        if (sumItems > MAINT_CAP) log(PHASE, `  [WARN] ${target.name}: 합산 ${sumItems}만원 > 상한(${MAINT_CAP}만원) — 클램핑됨`);
+        const perUnit = Math.min(sumItems, MAINT_CAP);
 
         if (dryRun) {
-          log(PHASE, `  [DRY-RUN] ${target.name}: ${perUnit}만원/세대 (총 ${totalCost.toLocaleString("ko-KR")}원 ÷ ${totalHouseholds}세대)`);
+          log(PHASE, `  [DRY-RUN] ${target.name}: ${perUnit}만원/세대 (heat=${heat ?? "-"} hot=${hotwater ?? "-"} gas=${gas ?? "-"} elec=${elec ?? "-"} water=${water ?? "-"}, ${households}세대)`);
           rpt.success(1);
           continue;
         }
 
         const { error: updErr } = await sb.from("apartments").update({
           avg_maintenance_cost: perUnit,
+          maint_heat: heat,
+          maint_hotwater: hotwater,
+          maint_gas: gas,
+          maint_elec: elec,
+          maint_water: water,
           updated_at: new Date().toISOString(),
         }).eq("id", target.id);
 
@@ -212,6 +245,5 @@ async function main() {
   if (result.fail > 0) process.exit(1);
 }
 
-const argv1 = process.argv[1];
-const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
+const isCLI = !!process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop() ?? "");
 if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });

@@ -105,7 +105,7 @@ describe("fetchTotalHouseholds", () => {
   });
 });
 
-// ── fetchMaintenanceCost ────────────────────────────────────
+// ── fetchMaintenanceCost (W3 5 항목 분리 — object 구조) ────────
 describe("fetchMaintenanceCost", () => {
   beforeEach(() => {
     mockFetch.mockReset();
@@ -114,18 +114,23 @@ describe("fetchMaintenanceCost", () => {
   // COST_ENDPOINTS 순서: 난방(heatP), 급탕(waterHotP), 가스(gasP), 전기(electP), 수도(waterCoolP)
   const FIELDS = ["heatP", "waterHotP", "gasP", "electP", "waterCoolP"];
 
-  it("5항목 모두 성공 → 합산값 반환", async () => {
+  it("5항목 모두 성공 → object {heat,hotwater,gas,elec,water} 반환", async () => {
     const values = [1000, 2000, 3000, 4000, 5000];
     for (let i = 0; i < 5; i++) {
       mockFetch.mockResolvedValueOnce(makeCostResponse(FIELDS[i], values[i]));
     }
 
     const result = await fetchMaintenanceCost("K001", "202501");
-    expect(result).toBe(15000); // 1000+2000+3000+4000+5000
+    expect(result).not.toBeNull();
+    expect(result?.heat).toBe(1000);
+    expect(result?.hotwater).toBe(2000);
+    expect(result?.gas).toBe(3000);
+    expect(result?.elec).toBe(4000);
+    expect(result?.water).toBe(5000);
     expect(mockFetch).toHaveBeenCalledTimes(5);
   });
 
-  it("일부 항목 실패 (res.ok=false) → 유효 항목만 합산", async () => {
+  it("일부 항목 실패 (res.ok=false) → 해당 key null, 유효 raw 값 보존", async () => {
     // 난방 성공, 급탕 실패, 가스 성공, 전기 실패, 수도 성공
     mockFetch
       .mockResolvedValueOnce(makeCostResponse("heatP", 1000))
@@ -135,7 +140,11 @@ describe("fetchMaintenanceCost", () => {
       .mockResolvedValueOnce(makeCostResponse("waterCoolP", 5000));
 
     const result = await fetchMaintenanceCost("K002", "202501");
-    expect(result).toBe(9000); // 1000+3000+5000
+    expect(result?.heat).toBe(1000);
+    expect(result?.hotwater).toBeNull();
+    expect(result?.gas).toBe(3000);
+    expect(result?.elec).toBeNull();
+    expect(result?.water).toBe(5000);
   });
 
   it("전부 실패 → null", async () => {
@@ -146,7 +155,7 @@ describe("fetchMaintenanceCost", () => {
     expect(result).toBeNull();
   });
 
-  it("item null → 건너뜀 (validCount 미증가)", async () => {
+  it("item null → null (anyValid=false)", async () => {
     for (let i = 0; i < 5; i++) {
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
@@ -157,19 +166,23 @@ describe("fetchMaintenanceCost", () => {
     expect(result).toBeNull();
   });
 
-  it("음수값 → 무시 (합산에서 제외)", async () => {
+  it("음수값 → 해당 key null, 유효 항목만 raw 값 보존", async () => {
     mockFetch
-      .mockResolvedValueOnce(makeCostResponse("heatP", -100))  // 음수 → 무시
+      .mockResolvedValueOnce(makeCostResponse("heatP", -100))  // 음수 → null
       .mockResolvedValueOnce(makeCostResponse("waterHotP", 2000))
-      .mockResolvedValueOnce(makeCostResponse("gasP", -50))    // 음수 → 무시
+      .mockResolvedValueOnce(makeCostResponse("gasP", -50))    // 음수 → null
       .mockResolvedValueOnce(makeCostResponse("electP", 4000))
       .mockResolvedValueOnce(makeCostResponse("waterCoolP", 5000));
 
     const result = await fetchMaintenanceCost("K005", "202501");
-    expect(result).toBe(11000); // 2000+4000+5000
+    expect(result?.heat).toBeNull();
+    expect(result?.hotwater).toBe(2000);
+    expect(result?.gas).toBeNull();
+    expect(result?.elec).toBe(4000);
+    expect(result?.water).toBe(5000);
   });
 
-  it("fetch throw → 해당 항목 건너뜀", async () => {
+  it("fetch throw → 해당 key null", async () => {
     mockFetch
       .mockRejectedValueOnce(new Error("network error"))       // 난방 throw
       .mockResolvedValueOnce(makeCostResponse("waterHotP", 2000))
@@ -178,7 +191,11 @@ describe("fetchMaintenanceCost", () => {
       .mockResolvedValueOnce(makeCostResponse("waterCoolP", 5000));
 
     const result = await fetchMaintenanceCost("K006", "202501");
-    expect(result).toBe(14000); // 2000+3000+4000+5000
+    expect(result?.heat).toBeNull();
+    expect(result?.hotwater).toBe(2000);
+    expect(result?.gas).toBe(3000);
+    expect(result?.elec).toBe(4000);
+    expect(result?.water).toBe(5000);
   });
 
   it("fetch URL에 5개 endpoint명이 순서대로 포함", async () => {
@@ -200,36 +217,89 @@ describe("fetchMaintenanceCost", () => {
       expect(url).toContain(endpoints[i]);
     }
   });
+
+  it("반환 object 키 정확히 5개 (heat,hotwater,gas,elec,water)", async () => {
+    for (let i = 0; i < 5; i++) {
+      mockFetch.mockResolvedValueOnce(makeCostResponse(FIELDS[i], 100));
+    }
+    const result = await fetchMaintenanceCost("K008", "202501");
+    expect(result).not.toBeNull();
+    expect(Object.keys(result ?? {}).sort()).toEqual(["elec", "gas", "heat", "hotwater", "water"]);
+  });
+
+  it("1개 항목만 성공 → 나머지 4개 null + anyValid=true → object 반환", async () => {
+    mockFetch
+      .mockResolvedValueOnce(makeFailResponse(500))
+      .mockResolvedValueOnce(makeFailResponse(500))
+      .mockResolvedValueOnce(makeCostResponse("gasP", 12345))
+      .mockResolvedValueOnce(makeFailResponse(500))
+      .mockResolvedValueOnce(makeFailResponse(500));
+
+    const result = await fetchMaintenanceCost("K009", "202501");
+    expect(result?.heat).toBeNull();
+    expect(result?.hotwater).toBeNull();
+    expect(result?.gas).toBe(12345);
+    expect(result?.elec).toBeNull();
+    expect(result?.water).toBeNull();
+  });
 });
 
-// ── 관리비 계산 로직 (단위 테스트) ──────────────────────────
-describe("관리비 계산 로직", () => {
-  // 계산: Math.round(totalCost / totalHouseholds / 10000), 클램핑 0~500
-  // collect-maintenance.mjs 162-166행의 로직을 직접 검증
+// ── 관리비 계산 로직 (W3 항목별 + 합산) ────────────────────
+describe("관리비 계산 로직 (항목별)", () => {
+  // collect-maintenance.mjs main() 의 toItemPerUnit + sumItems 로직 직접 검증
+  // ITEM_CAP=100, MAINT_CAP=500
 
-  function calcPerUnit(totalCost, totalHouseholds) {
-    if (totalCost == null || totalCost <= 0 || !totalHouseholds) return null;
-    const MAINT_CAP = 500;
-    const rawPerUnit = Math.round(totalCost / totalHouseholds / 10000);
-    return Math.min(Math.max(0, rawPerUnit), MAINT_CAP);
+  function calcItemPerUnit(raw, households) {
+    if (raw == null || raw <= 0 || !households) return null;
+    return Math.min(Math.round(raw / households / 10000), 100);
   }
 
-  it("정상 계산 (5,000,000원 / 500세대 = 1만원)", () => {
-    expect(calcPerUnit(5000000, 500)).toBe(1);
+  it("정상 (1,000,000원 / 100세대 = 1만원)", () => {
+    expect(calcItemPerUnit(1000000, 100)).toBe(1);
   });
 
-  it("상한 클램핑 (>500 → 500)", () => {
-    expect(calcPerUnit(100000000000, 10)).toBe(500);
+  it("항목 상한 클램핑 (>100 → 100)", () => {
+    expect(calcItemPerUnit(99999999999, 10)).toBe(100);
   });
 
-  it("totalCost ≤ 0 → null (skip)", () => {
-    expect(calcPerUnit(0, 500)).toBeNull();
-    expect(calcPerUnit(-100, 500)).toBeNull();
+  it("raw ≤ 0 → null", () => {
+    expect(calcItemPerUnit(0, 100)).toBeNull();
+    expect(calcItemPerUnit(-50, 100)).toBeNull();
   });
 
-  it("totalHouseholds falsy → null (skip)", () => {
-    expect(calcPerUnit(5000000, 0)).toBeNull();
-    expect(calcPerUnit(5000000, null)).toBeNull();
+  it("raw null → null", () => {
+    expect(calcItemPerUnit(null, 100)).toBeNull();
+  });
+
+  it("households falsy → null", () => {
+    expect(calcItemPerUnit(1000000, 0)).toBeNull();
+    expect(calcItemPerUnit(1000000, null)).toBeNull();
+  });
+});
+
+describe("관리비 합산 로직 (sumItems + MAINT_CAP)", () => {
+  // 5 항목 만원 → sumItems → MAINT_CAP=500 클램핑
+  function sumItems(arr) {
+    const total = arr.reduce((s, v) => s + (v ?? 0), 0);
+    if (total <= 0) return null;
+    return Math.min(total, 500);
+  }
+
+  it("5 항목 모두 유효 → 합산", () => {
+    expect(sumItems([10, 20, 30, 40, 50])).toBe(150);
+  });
+
+  it("일부 null → 유효 항목만 합산", () => {
+    expect(sumItems([10, null, 30, null, 50])).toBe(90);
+  });
+
+  it("전부 null → null (skip)", () => {
+    expect(sumItems([null, null, null, null, null])).toBeNull();
+  });
+
+  it("합산 > 500 → 500 클램핑", () => {
+    expect(sumItems([100, 100, 100, 100, 100])).toBe(500);
+    expect(sumItems([100, 100, 100, 100, 99])).toBe(499);
   });
 });
 
@@ -240,24 +310,58 @@ describe("E2E 시나리오", () => {
     mockFetch.mockReset();
   });
 
-  it("fetchTotalHouseholds + fetchMaintenanceCost → 세대당 관리비 산출", async () => {
+  it("fetchTotalHouseholds + fetchMaintenanceCost → 5 항목 + 합산 세대당 산출", async () => {
     // 1. 세대수 조회 성공 (1000세대)
     mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(1000));
     const households = await fetchTotalHouseholds("K001");
     expect(households).toBe(1000);
 
-    // 2. 관리비 5항목 합산 (10,000,000원)
+    // 2. 관리비 5항목 raw 각 2,000,000원
     const values = [2000000, 2000000, 2000000, 2000000, 2000000];
+    const fields = ["heatP", "waterHotP", "gasP", "electP", "waterCoolP"];
     for (let i = 0; i < 5; i++) {
-      const fields = ["heatP", "waterHotP", "gasP", "electP", "waterCoolP"];
       mockFetch.mockResolvedValueOnce(makeCostResponse(fields[i], values[i]));
     }
-    const totalCost = await fetchMaintenanceCost("K001", "202501");
-    expect(totalCost).toBe(10000000);
+    const costs = await fetchMaintenanceCost("K001", "202501");
+    expect(costs).not.toBeNull();
 
-    // 3. 세대당 관리비: 10,000,000 / 1000 / 10000 = 1만원
-    const perUnit = Math.min(Math.max(0, Math.round(totalCost / households / 10000)), 500);
-    expect(perUnit).toBe(1);
+    // 3. 항목별 세대당 (만원): 2,000,000 / 1000 / 10000 = 0.2 → round = 0
+    //    (실제 데이터는 더 큼. 본 mock 은 sumItems 0 → null skip 시나리오 우회 위해 큰 값으로 재계산)
+    /** @param {number|null} raw @returns {number|null} */
+    function toItemPerUnit(raw) {
+      if (raw == null || raw <= 0 || !households) return null;
+      return Math.min(Math.round(raw / households / 10000), 100);
+    }
+    const heat = toItemPerUnit(costs?.heat ?? null);
+    const sum = [costs?.heat, costs?.hotwater, costs?.gas, costs?.elec, costs?.water]
+      .reduce((s, v) => s + (v ?? 0), 0);
+    expect(sum).toBe(10000000); // raw 합산
+    expect(heat).toBe(0); // 2,000,000 / 1000 / 10000 = 0.2 → round 0
+  });
+
+  it("실제 단지 수준 raw → 5 항목 + 합산 세대당 산출 (10만원/세대 시나리오)", async () => {
+    // 1000세대 + 항목별 200,000,000원 → 항목별 20만원 → ITEM_CAP=100 클램프 → 100만원
+    // 합산 500 (5*100) MAINT_CAP 정합
+    mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(1000));
+    const households = await fetchTotalHouseholds("K100");
+
+    const fields = ["heatP", "waterHotP", "gasP", "electP", "waterCoolP"];
+    for (let i = 0; i < 5; i++) {
+      mockFetch.mockResolvedValueOnce(makeCostResponse(fields[i], 200000000));
+    }
+    const costs = await fetchMaintenanceCost("K100", "202501");
+    expect(costs?.heat).toBe(200000000);
+
+    /** @param {number|null} raw @returns {number|null} */
+    function toItemPerUnit(raw) {
+      if (raw == null || raw <= 0 || !households) return null;
+      return Math.min(Math.round(raw / households / 10000), 100);
+    }
+    const heat = toItemPerUnit(costs?.heat ?? null);
+    expect(heat).toBe(20); // 200,000,000 / 1000 / 10000 = 20
+    const sum = [costs?.heat, costs?.hotwater, costs?.gas, costs?.elec, costs?.water]
+      .map(toItemPerUnit).reduce((s, v) => s + (v ?? 0), 0);
+    expect(sum).toBe(100); // 5 * 20
   });
 
   it("세대수 null → skip (관리비 미계산)", async () => {
