@@ -38,11 +38,13 @@ describe("COLLECTORS 수집기 매핑", () => {
 
     expect(byCategory.building).toEqual(["MOLIT_KEY"]);
     expect(byCategory.builders).toEqual(["DART_KEY"]);
-    // regions: population.mjs (MOIS_POP_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY) + collect-housing-supply-ratio.mjs (KOSIS_KEY)
+    // regions: population.mjs (MOIS_POP_KEY) + population-sex-age.mjs (MOIS_SEX_AGE_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY) + collect-housing-supply-ratio.mjs (KOSIS_KEY) + collect-housing-price.mjs (MOLIT_HOUSING_PRICE_KEY, 세션 245 W6-C)
     expect(byCategory.regions).toContain("MOIS_POP_KEY");
+    expect(byCategory.regions).toContain("MOIS_SEX_AGE_KEY");
     expect(byCategory.regions).toContain("KOSIS_MIGRATION_KEY");
     expect(byCategory.regions).toContain("MOLIT_KEY");
     expect(byCategory.regions).toContain("KOSIS_KEY");
+    expect(byCategory.regions).toContain("MOLIT_HOUSING_PRICE_KEY");
     expect(byCategory.trade_stats).toEqual([]);
     // maintenance: collect-maintenance.mjs 가 MOLIT_KEY 요구 (세션 238 W3)
     expect(byCategory.maintenance).toEqual(["MOLIT_KEY"]);
@@ -69,10 +71,10 @@ describe("COLLECTORS 수집기 매핑", () => {
     }
   });
 
-  // 이 테스트가 검증하는 것: regions는 5개 스크립트 순차 실행 (세션 242 W6-A: population-sex-age 추가)
-  it("regions는 population → population-sex-age → migration → housing-permits → housing-supply-ratio 5개 순차", () => {
+  // 이 테스트가 검증하는 것: regions는 6개 스크립트 순차 실행 (세션 245 W6-C: collect-housing-price 추가)
+  it("regions는 population → population-sex-age → migration → housing-permits → housing-supply-ratio → housing-price 6개 순차", () => {
     const regions = COLLECTORS.find(c => c.category === "regions");
-    expect(regions?.scripts).toEqual(["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs"]);
+    expect(regions?.scripts).toEqual(["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-housing-price.mjs"]);
   });
 });
 
