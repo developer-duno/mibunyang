@@ -1,3 +1,115 @@
+# 세션 249 — 2026-05-13 (B-#3 KOSIS 준공후 미분양 강등 + 차원 검증 룰 신규)
+
+**거시 목적**: 세션 248 NEXT_SESSION 3순위 B-#3 진입. 박제값 "DT_MLTM_2086 시군구별 준공후 미분양, 큰 작업 2~3 세션" vs 세션 235 Playwright 박제 SESSION_LOG L1122 "시도별 분리 불가" 불일치 발견 → 사용자 워크플로 위임 (PHASE 1 4 후보 검증) → 옵션 B 선택 (KOSIS API raw sample 검증 후 시도 17 UPDATE) → 0단계 raw sample 박제 (objL1+objL2 ALL prdSe=A 58 rows) → 교차 cell 부재 확정 → 옵션 C 자동 회귀.
+
+**결론**: **1 커밋 + 4 파일 변경 (docs only)**. NEXT_SESSION.md L38~41 정정 (4건 환각) / BACKLOG.md L141 정정 (시군구→전국 단일 / DT_MLTM_2082 혼동 / apartments 컬럼 환각 / 월간→연간) / `.claude/rules/kosis-dimension-mismatch-guard.md` 신규 (~80줄, 차원 분리 vs 교차 환각 차단 룰) / SESSION_LOG.md 세션 249 항목 (본 자리). 회귀 가드 typecheck 0 / lint 0 / 코드 변경 0건 = CI success 자명.
+
+## 0단계 KOSIS API raw sample 실측 박제 (단정 근거)
+
+```bash
+node --input-type=module -e "... DT_MLTM_2086 objL1=ALL objL2=ALL prdSe=A ..."
+```
+
+응답 = 58 rows, isArray=true, PRD_SE='A' (연간), ITM_NM 단일 `미분양(12월기준)`. **C1_NM 3 group 분리**:
+
+| C1_NM group | rows | C2_NM 종류 | 데이터 단위 |
+|---|---|---|---|
+| `시도별미분양현황` | 40 | 17 시도 + 전국/수도권/지방 (20종) × 2년 | 시도별 (총량만) |
+| `부문별미분양현황` | 8 | 계 / 민간부문 / 공공부문 / **(준공후)** × 2년 | **전국 단일값** |
+| `규모별미분양현황` | 10 | 5 규모 × 2년 | 전국 단일값 |
+
+`(준공후)` raw row: `{ C1_NM: "부문별미분양현황", C2_NM: "(준공후)", C1: "13102871014A.0001" (전국 단일 코드), DT: "10857" }`. **시도 × 부문 교차 cell 부재 확정**. 세션 235 Playwright 박제 (L1122) = raw API 1:1 일치.
+
+## PHASE 1 자가 의사결정
+
+```
+선택: 옵션 C (작업 폐기 + 박제값 정정 + 룰 신규)
+근거: 0단계 raw sample 58 rows 박제 → (준공후) = 부문별 group 전국 단일 1행/년.
+      시도 분리 불가. mibunyang 본질 (단지별 비교) 와 의미 단위 unmatched.
+탈락:
+  옵션 B → KOSIS API 데이터 부재 (교차 cell 0). 진입 자체 불가능
+  옵션 A → 신규 테이블 + UI 6 파일 2~3 세션. UI 활용 범위 미정 = 과설계.
+           향후 별 세션 위임 가능 (단지 단위 본질 unmatched 인정 시)
+```
+
+## 산출 (커밋 1, 4 파일)
+
+### 1. 수정 `.claude/NEXT_SESSION.md` L38~41
+
+B-#3 강등 + 환각 4건 정정:
+- 큰 작업 → 강등 (데이터 단위 unmatched)
+- `regions.unsold_after_completion JSON` 가설 → 부문별 전국 단일 1행 실측 박제
+- UnsoldChart placeholder 환각 → 단지별 secondaryData 작동 박제 정정
+- KOSIS 콘솔 활용신청 선행 → 세션 235 박제 (1키/모든 통계표) 답습 답습 후 raw API 검증 의무
+
+### 2. 수정 `.claude/BACKLOG.md` L141
+
+환각 4건 정정:
+- `(시군구)` → `(전국 단일)`
+- `DT_MLTM_2086 또는 DT_MLTM_2082 분류` → `DT_MLTM_2086 부문별` (DT_MLTM_2082 = 시군구 총량 분리, 본 표 0)
+- `apartments.unsoldAfterCompletion 또는 regions.unsold JSON` → 단지·시군구 단위 본질 unmatched
+- `월간` → `연간` (PRD_SE=A 박제)
+
+### 3. 신규 `.claude/rules/kosis-dimension-mismatch-guard.md` (~80줄)
+
+KOSIS 통계표 차원 분리 vs 교차 환각 차단 룰. 본문:
+- 사고 박제 (세션 249 raw API 박제)
+- 근본 원인 (차원 분리 group rows vs 교차 cells 두 형태)
+- 재발 방지 3중 (raw API sample 박제 / C1_NM 판정 / Playwright 보조)
+- 안티 패턴 4건
+- 답습 자산 (세션 235/236/237/249 누적)
+- 차단 검증 시뮬레이션
+
+### 4. 본 SESSION_LOG.md 세션 249 항목
+
+## 9 GATE 풀 검증 (plan v1 → 본 turn 1차 통과)
+
+| GATE | 항목 | 결과 |
+|---|---|---|
+| 0 | Sonnet 적정 크기 | 🟢 단계당 1 파일, 총 4건 분리 |
+| 1 | 영향 범위 실측 | 🟢 grep 0건 (코드 변경 0) + raw API 박제 1회 |
+| 2 | 실행 순서 & 의존 | 🟢 4 단계 독립, 1 커밋 묶음 |
+| 3 | 완전성 | 🟢 박제값 4 환각 1:1 정정 + 룰 박제 |
+| 4 | 적정성 | 🟢 과잉/과설계/과소 0 (옵션 A·B 회피 = 본질 unmatched 박제) |
+| 5 | 보안 | 🟢 KOSIS_KEY URL 노출 0 (실측 출력에 박제값 없음) |
+| 6 | 프↔백↔DB 일관성 | 🟢 코드/DB 변경 0건 |
+| 7 | 롤백 안전성 | 🟢 git revert 1회 |
+| 8 | UX & 확장성 | 🟢 향후 옵션 A 진입 위임 가능 (NEXT_SESSION 박제) |
+
+## 사고 박제 (다음 세션 차단용)
+
+### 사고 1 — KOSIS 통계표 차원 분리 vs 교차 환각 (본 룰 박제로 종결)
+
+NEXT_SESSION + BACKLOG 박제값 "시군구별 준공후 미분양" + "큰 작업 2~3 세션" = 세션 235 SESSION_LOG L1122 박제 ("시도별 분리 불가") 동기화 0 → 세션 249 plan v1 위험. 본 룰 `.claude/rules/kosis-dimension-mismatch-guard.md` 박제 = 미래 plan 작성 시 KOSIS 통계표 의존 단계 = raw API sample 30+ 행 박제 의무.
+
+### 사고 2 — PHASE 1+2+3 메시지 자가 결정 신호 (misattribution v4 답습 v5)
+
+사용자가 옵션 4건 AskUserQuestion 후 옵션 B 선택 → 0단계 raw sample 검증 결과 부재 확정 시 PHASE 1+2+3 워크플로 메시지 전송 = 자가 의사결정 신호 (세션 243~248 누적 6회 답습). 본 plan 형식 답습 거부 + 즉시 자가 PHASE 1 매트릭스 + 즉시 행동. 본 메시지를 plan 작성 단계로 오해하면 misattribution v5 사고 박제.
+
+### 사고 3 — Explore 서브에이전트 환각 1건 (Agent B "운영 작동" 박제)
+
+세션 249 Phase 1 Explore B = "api/kosis/stats.js L118 DT_MLTM_2086 호출 = 기존 운영 중 + 테스트 통과 = 신규 도입 아님" 박제. 실측 = 세션 236 SESSION_LOG L1160 박제 "DT_MLTM_2086: 에러 30 데이터 없음" 누락. Agent B 가 코드 grep 결과만 봤지 실 호출 결과 박제 미반영. 메모리 룰 §서브에이전트 보고 신뢰도 발동 = Read 1회 직접 실측으로 진실 확정.
+
+## 답습 자산 (다음 세션 사용)
+
+### 1. KOSIS raw API sample 30+ 행 박제 의무 (본 룰 §1)
+
+신규 KOSIS 통계표 의존 단계가 있으면 plan 작성 직전 raw sample 호출 + C1_NM/C2_NM/ITM_NM distinct 박제 의무. plan 본문 박제값 단정 회피.
+
+### 2. PHASE 1 매트릭스 답습 v6 (세션 246~249 누적 4회)
+
+옵션 매트릭스 (실증/목표/안전/단순) × 옵션 안 = 12 cell 표 표준 박제 형식. 사용자 misattribution 위임 메시지 (PHASE 1+2+3) 받으면 즉시 자가 결정 + 행동.
+
+### 3. 옵션 B 분기 조건 박제 (사용자 동의 시점)
+
+옵션 안에 "0단계 검증 결과 X면 옵션 Y 회귀" 분기 명시 박제 = 사용자 재의사결정 위임 비용 회피. 본 세션 = "교차 cell 부재 확정 시 옵션 C 자동 회귀" 사전 동의 박제로 PHASE 1+2+3 메시지에 즉시 옵션 C 진행 가능.
+
+### 4. 메모리 룰 §"메모리는 진실의 원천 아님" 답습 v3
+
+NEXT_SESSION/BACKLOG 박제값 = 외부 시스템 상태 stale 위험 (세션 235 Playwright 박제 vs raw API 1:1 일치 검증 의무). plan v1 작성 직전 실 grep/raw 호출 1회 의무.
+
+---
+
 # 세션 248 — 2026-05-13 (apply-migration.yml stale 사고 종결 옵션 B + 룰 신규 박제)
 
 **거시 목적**: 세션 247 NEXT_SESSION 1순위 = `apply-migration.yml` 명칭 환각 사고 (실제 SQL 실행 0건). PHASE 1 (실증/목표/안전/단순) 4 기준 자가 의사결정 → 옵션 B (워크플로 폐기 + Dashboard SQL Editor 가이드 의무화) 선택. 9 GATE 풀 🟢 9 통과 + Explore 1개 (cross-repo + 회귀 가드 점검) 보고 단독 자원 확정.
