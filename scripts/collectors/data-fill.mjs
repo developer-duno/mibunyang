@@ -40,7 +40,7 @@ export const COLLECTORS = [
   // Phase 1: 기반 데이터
   { category: "building",  phase: 1, scripts: ["molit-building-info.mjs"], args: ["--force"], envKeys: ["MOLIT_KEY"] },
   { category: "builders",  phase: 1, scripts: ["dart-builders.mjs"],       args: [],          envKeys: ["DART_KEY"] },
-  { category: "regions",   phase: 1, scripts: ["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-housing-price.mjs"], args: [], envKeys: ["MOIS_POP_KEY", "MOIS_SEX_AGE_KEY", "KOSIS_MIGRATION_KEY", "MOLIT_KEY", "KOSIS_KEY", "MOLIT_HOUSING_PRICE_KEY"] },
+  { category: "regions",   phase: 1, scripts: ["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-housing-price.mjs"], args: [], envKeys: ["MOIS_POP_KEY", "MOIS_SEX_AGE_KEY", "KOSIS_MIGRATION_KEY", "MOLIT_KEY", "KOSIS_KEY"] },
   { category: "maintenance", phase: 1, scripts: ["collect-maintenance.mjs"], args: [],          envKeys: ["MOLIT_KEY"] },
   // Phase 2: 파생 데이터 (Phase 1 완료 후)
   { category: "trade_stats", phase: 2, scripts: ["trade-stats.mjs"],       args: [],          envKeys: [] },

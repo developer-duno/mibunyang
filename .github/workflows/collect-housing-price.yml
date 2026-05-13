@@ -18,7 +18,7 @@ concurrency:
 jobs:
   collect-housing-price:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30  # 151MB zip 다운로드 + 3.45GB streaming parse (세션 247 W6-C v2)
 
     steps:
       - uses: actions/checkout@v4
@@ -35,19 +35,17 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          MOLIT_HOUSING_PRICE_KEY: ${{ secrets.MOLIT_HOUSING_PRICE_KEY }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$MOLIT_HOUSING_PRICE_KEY" ]; then
-            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, MOLIT_HOUSING_PRICE_KEY secret 필요"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY secret 필요"
             exit 1
           fi
-          echo "Secrets validated"
+          echo "Secrets validated (data.go.kr 3073746 공개 다운로드, API 키 불필요)"
 
       - name: Collect housing price data
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          MOLIT_HOUSING_PRICE_KEY: ${{ secrets.MOLIT_HOUSING_PRICE_KEY }}
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
