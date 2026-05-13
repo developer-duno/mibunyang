@@ -1,3 +1,71 @@
+# 세션 246 — 2026-05-13 (Naver Post-Processing BACKLOG 🟡 → ✅ 강등 docs)
+
+**거시 목적**: 세션 245 NEXT_SESSION 박제 1·2·3순위 모두 사용자 활용신청 대기 영역 (MOLIT_HOUSING_PRICE_KEY 미발급 / MOHW_KEY 미발급 / W2 D-SSO 사용자 콘솔) 로 본 세션 진입 불가. PHASE 1 4 후보 (A. Naver Post 강등 / B-#3. KOSIS 준공후미분양 / C. 무순위 차수 UI / D. vitest 4 projects) 실증 후 PHASE 1 우선순위 (실증/목표/안전/단순) 기준으로 A 선택.
+
+**결론**: **git 커밋 0 + 디스크 docs 3 갱신** (.claude/BACKLOG.md + .claude/SESSION_LOG.md + .claude/NEXT_SESSION.md 모두 .gitignore 자리). 세션 229 D-2 split (커밋 c045594) 으로 이미 해결된 사고를 BACKLOG 가 1주 지각 박제 → BACKLOG drift 패턴 답습 v3 (세션 232 KOSIS_MIGRATION_KEY → 세션 244 강등 → 세션 246 본 사고).
+
+## 산출 (디스크 3 + 커밋 0)
+
+### .claude/BACKLOG.md L45
+
+- 🟡 "Naver Post-Processing 90분 timeout 도 부족" → ✅ "Naver Post-Processing 90분 한계 사고 해결" 강등
+- v1 박제 (세션 225) + 해결 (세션 229 c045594 D-2 split + core 120→90) + 실증 (세션 246 gh CLI 5 run 직접)
+- 답습: BACKLOG drift 패턴 v3
+
+### .claude/SESSION_LOG.md
+
+- 세션 246 헤더 + 본문 (본 항목)
+
+### .claude/NEXT_SESSION.md
+
+- W6-C 첫 가동 1순위 유지 (사용자 활용신청 대기 영역 박제 답습)
+- 본 세션 산출 (Naver Post 강등) 추가
+- 추가 가능 후보 박제 (B-#3 / C / D)
+
+## 4 후보 실증 결과 (PHASE 1)
+
+| 후보 | 실증 결과 | 1순위 (실증) | 2순위 (목표) | 3순위 (안전) | 4순위 (단순) |
+|---|---|---|---|---|---|
+| A. Naver Post 🟡→✅ | gh CLI 5 run 직접 = 5/11 119:47 success / 5/12 48m success / 5/12 dispatch 49m success | ✅ 직접 확인 | △ 운영 모니터링 | ✅ 코드 0 변경 | ✅ docs only |
+| B-#3. KOSIS 준공후미분양 (DT_MLTM_2086) | grep 미구현 + unsoldAfterCompletion 컬럼 미존재 (UnsoldChart 범례만 placeholder) | ✅ 미구현 확인 | ✅ 악성 미분양 분리 | △ Supabase DDL + collector 신규 | ❌ 큰 작업 |
+| C. 무순위 차수 UI | grep presale 대량 + 1263 events / 721 단지 (평균 1.75 공고) | △ 부분 가능 | △ UI 작업 | △ 신규 컴포넌트 + 회귀 | ❌ DetailModal + AptCard + 차트 |
+| D. vitest 4 projects | vitest.config.ts:20-21 `@ts-expect-error` 임시 보존 1줄 | ✅ 확인 | △ M1 trigger | △ projects 패턴 마이그 | ✅ 단일 파일 |
+
+→ A 선택 = 실증 직접 + 안전 (코드 0) + 단순 (docs only). 탈락 사유: B-#3 (KOSIS 활용신청 단위 확인 의무 + 큰 작업) / C (1.75 공고 시계열 빈약 + 큰 UI) / D (M1 trigger 분리 ROI 미달).
+
+## 9 GATE 풀 사전 예측 (자가 점검 2)
+
+| GATE | 예측 | 실측 | 정합 |
+|---|---|---|---|
+| 0 | 🟢 Sonnet 적정 크기 | docs 3 파일 갱신, 코드 0 | ✅ |
+| 1 | 🟢 영향 범위 | gitignore 자리만 | ✅ |
+| 2 | 🟢 실행 순서 | BACKLOG → SESSION_LOG → NEXT_SESSION | ✅ |
+| 3 | 🟢 완전성 | run id + 커밋 해시 + 시간 1:1 박제 | ✅ |
+| 4 | 🟢 적정성 | 코드 0 = scoring/UI 영향 0 | ✅ |
+| 5 | 🟢 보안 | secret 박제 0 | ✅ |
+| 6 | 🟢 일관성 | drift 답습 v3 박제 | ✅ |
+| 7 | 🟢 롤백 | git status clean = N/A | ✅ |
+| 8 | 🟢 UX & 확장성 | docs = UI 변동 0 | ✅ |
+
+ExitPlanMode 1차 통과 + plan 사용자 승인 (no edit).
+
+## 답습 자산 (세션 246 정착)
+
+1. **BACKLOG drift 패턴 답습 v3** — fix 커밋 직후 BACKLOG 박제 동시 의무 (세션 232 / 244 / 246 누적 3회)
+2. **gh CLI 직접 = run 결과 진실의 원천** — BACKLOG/SESSION_LOG 박제값 실증 전 단정 금지 (세션 245 답습 v2)
+3. **사용자 액션 대기 영역 진입 불가 = 다른 작업 PHASE 1 우선순위 의무** — 4 후보 실증 후 1건 선택 패턴 (세션 246 본 패턴)
+4. **NEXT_SESSION 박제값 시간 의존 stale 의무** — D-2 split (세션 229) 박혔으나 NEXT_SESSION 박제 stale 1주 사고 (세션 246 본 사고)
+5. **PHASE 1 우선순위 4 기준 (실증/목표/안전/단순) 적용 패턴** — 사용자 메타 워크플로 답습. 4 후보 매트릭스 + 탈락 사유 박제 형식
+6. **사용자 misattribution 답습 v4** — 사용자 위임 메타 텍스트 3건 동시 (전부 다 / 하나만 / 계속·마무리) = 자가 의사결정 신호. 세션 243/244/245/246 누적 4회 박제
+
+## CI 검증
+
+- 본 세션 git 커밋 0 = CI 영향 0 (gitignore 자리만 변경)
+- 다음 cron monitoring trigger: 2026-05-15 UTC 22:00 collect-migration.yml schedule (NEXT_SESSION 박제 유지)
+- 다음 cron monitoring trigger: 2026-05-13 UTC 20:00 Naver Post Core schedule (강등 docs 후 첫 cron, 자동 trigger)
+
+---
+
 # 세션 245 — 2026-05-13 (W6-C 공동주택가격 regions 신규 컬럼 + collector 골격 + Supabase 적용)
 
 **거시 목적**: 세션 244 NEXT_SESSION 박제 1순위 = W6-C 공동주택가격. data.go.kr MOLIT #15045153 활용신청 사용자 액션 대기 영역이나, 코드 100% atomic 1 커밋 + Supabase DDL 적용으로 다음 세션 첫 가동 자리 완비.
