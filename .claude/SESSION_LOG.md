@@ -1,3 +1,69 @@
+# 세션 244 — 2026-05-13 (BACKLOG ↔ SESSION_LOG drift 발견 → 🟡 KOSIS_MIGRATION_KEY 사고 ✅ 강등)
+
+**거시 목적**: NEXT_SESSION 박제 = W6-D 어린이집 (사용자 활용신청 의존) 1순위. BACKLOG.md 🔴 즉시 자리에 KOSIS_MIGRATION_KEY 사고 (다음 발화 5/15 = D-2) 잠복 상태. 사전 실증 1회로 의사결정.
+
+**결론**: **코드 자리 0**. 사전 실증 (Explore agent 4건 + git log + gh run) 으로 사고 이미 해소 발견 = BACKLOG ↔ SESSION_LOG drift 사고 정직 박제 + BACKLOG 🟡 → ✅ 강등 docs 갱신 (디스크 로컬, git 추적 외부) + NEXT_SESSION 재작성. 9 GATE 풀 🟢 9. 본 SESSION_LOG 헤더 박제 1 커밋만 git 자리.
+
+## 사전 실증 결과 (의사결정 근거)
+
+| 항목 | BACKLOG 박제 (4/15 사고 시점) | 실측 (2026-05-13) | 출처 |
+|---|---|---|---|
+| `collect-migration.yml` L38 | `MOIS_POP_KEY` 만 주입 (불일치) | `KOSIS_MIGRATION_KEY: ${{ secrets.KOSIS_MIGRATION_KEY }}` | Explore agent grep |
+| `data-fill.mjs` L43 envKeys | `["MOIS_POP_KEY"]` 만 | 5개 (MOIS_POP_KEY, MOIS_SEX_AGE_KEY, KOSIS_MIGRATION_KEY, MOLIT_KEY, KOSIS_KEY) | Explore agent grep |
+| GitHub Secret `KOSIS_MIGRATION_KEY` | 미등록 가설 | **2026-05-12 등록 완료** | `gh secret list` |
+| 결정적 커밋 | - | **`1bbf9b4`** "fix(etl): collect-migration KOSIS_MIGRATION_KEY 3-way 동기화 + audit 자동화 도입" | `git log` |
+| workflow_dispatch run | - | **`25746958595` (2026-05-12 16:11 UTC) success** | `gh run list` |
+
+## drift 사고 박제
+
+- 세션 232 확장 turn fix 박힘 → SESSION_LOG.md L886~ 박제 완료
+- BACKLOG.md L11~26 갱신 누락 → 1개월 stale 박제값 잠복
+- 본 세션 244 첫 턴 사전 실증으로 발견 → ✅ 강등 docs 갱신 (룰 §11 박제값 단정 금지 답습)
+
+## 산출 (디스크 + git)
+
+### 디스크 갱신 (git 추적 외부, `.gitignore` L3 `.claude/*` 패턴)
+
+| 파일 | 변경 |
+|---|---|
+| `.claude/BACKLOG.md` L11~26 | 🟡 → ✅ 강등 (사고 해소 증거 박제: `1bbf9b4` + run 25746958595 + secret 2026-05-12 등록) |
+| `.claude/NEXT_SESSION.md` | 재작성 (세션 245 시작점, 5/15 모니터링 trigger 박제, W6-C 1순위) |
+
+### git 커밋 1 (SESSION_LOG.md 헤더 박제만)
+
+- 본 세션 244 헤더 박제 (drift 사고 영구 박제 + 답습 자산 박제)
+- `.claude/SESSION_LOG.md` 가 `.gitignore` 화이트리스트 (`!.claude/SESSION_LOG.md`) 자리
+
+## 9 GATE 풀 (plan 박제 답습)
+
+| GATE | 항목 | 판정 |
+|---|---|---|
+| 0 | Sonnet 크기 | 🟢 (1 atomic 커밋, 2 디스크 파일) |
+| 1 | 영향 범위 실측 | 🟢 (grep 12 매치 + 8 매치) |
+| 2 | 실행 순서 & 의존 | 🟢 (Read → Edit → Edit → commit) |
+| 3 | 완전성 | 🟢 (drift + 모니터링 trigger 박제) |
+| 4 | 적정성 | 🟢 (수술적 변경) |
+| 5 | 보안 | 🟢 (시크릿 노출 0, URL/credential 0) |
+| 6 | 프↔백↔DB 일관성 | 🟢 (N/A — docs 만) |
+| 7 | 롤백 안전성 | 🟢 (git revert 1 명령) |
+| 8 | UX & 확장성 | 🟢 (audit script + CI step 재발 차단) |
+
+## plan 정정 박제 (자가 점검 1+2 사고 답습)
+
+- plan v1 PHASE 2 박제 "BACKLOG.md 만 staged 자리" = 환각 (BACKLOG.md 는 `.gitignore` ignored)
+- 실측: BACKLOG.md + NEXT_SESSION.md 양쪽 `.claude/*` 패턴 = git 추적 외부
+- 정정: SESSION_LOG.md (화이트리스트) 박제만 git 커밋 자리
+- 사고 답습: plan 작성 시 `.gitignore` 화이트리스트/블랙리스트 grep 1회 의무
+
+## 답습 자산 (세션 244 정착)
+
+1. **BACKLOG ↔ SESSION_LOG drift 사고** — fix 박힌 후 SESSION_LOG 갱신 + BACKLOG 갱신 누락 = 1개월 stale 박제값. 다음 세션 plan v1 작성 전 박제값 단정 금지 의무
+2. **사전 실증 1회로 코드 자리 0 발견** — 자가 점검 1+2 작동. plan 작성 진입 직전 grep + git log + gh run 실측 의무
+3. **사용자 의사결정 위임 메타 텍스트 2회 = 자가 의사결정 신호** — misattribution v2 답습. PHASE 1 형식 박제 후 본인 의사결정
+4. **plan 작성 시 `.gitignore` 화이트리스트 grep 의무** — docs 파일 ignored 자리 환각 차단 (본 세션 plan v1 PHASE 2 박제 정정 답습)
+
+---
+
 # 세션 243 — 2026-05-13 (W6-E crime regions 단위 확장 + 사용자 misattribution 재발 박제 + W6-B plan 환각 정정)
 
 **거시 목적**: 세션 242 종료점 4 후보 (PR #2 머지 + W2 D-SSO + W6-E + W6-B) 통합 plan + 실증 결과 기반 의사결정.
