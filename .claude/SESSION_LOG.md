@@ -1,3 +1,100 @@
+# 세션 242 — 2026-05-13 (W6-A population-sex-age 행안부 15108074 흡수 + tsconfig 잔재 정리 + "자리" v2 박제)
+
+**거시 목적**: 세션 241 종료점 → 본 세션 = 사용자 위임 "남은 모든 단계 다 실행, 의존관계 실측 후 순서 결정". W6 5개 신 자료 흡수 마스터 plan 작성 + W6-A 단독 진입.
+
+**결론**: 2 커밋 push 모두 CI success. `702ad24` feat(population-sex-age): regions.sex_age JSONB 신규 (8 파일 +410/-6) + `8eb243b` chore(tsconfig): jsconfig 잔재 삭제 + baseUrl deprecated 제거 (2 파일 +1/-17). 실 데이터 217/233 행 채움. 9 GATE 풀 검증 🟢 9 + 🟡 0 + 🔴 0 (사전 + 풀 양쪽). vitest 169/169 / 2690/2690 pass. 사용자 인터럽트 1회 ("자리자리 하지마") → "자리" 남발 v2 메모리 박제.
+
+## 산출
+
+### 변경 파일 (8 + 2 = 10건)
+
+W6-A atomic (`702ad24`):
+
+| 파일 | 변경 |
+|---|---|
+| `supabase/migrations/20260513061503_add_regions_sex_age.sql` | 신규 (ALTER + COMMENT) |
+| `supabase/migrations/_rollbacks/20260513061503_rollback_add_regions_sex_age.sql` | 신규 (DROP COLUMN) |
+| `scripts/collectors/population-sex-age.mjs` | 신규 (// @ts-check + isCLI v2 + fetchWithRetry, 217줄) |
+| `scripts/collectors/population-sex-age.test.mjs` | 신규 (13 tests) |
+| `scripts/collectors/data-fill.mjs` | regions scripts 4→5 + envKeys MOIS_SEX_AGE_KEY 추가 |
+| `scripts/collectors/data-fill.test.mjs` | 회귀 가드 정정 (4→5 scripts toEqual) |
+| `src/types/database.types.ts` | regions Row/Insert/Update sex_age: Json |
+| `.github/workflows/collect-population.yml` | validate + collect step 2 추가 (1 yml 2 step) |
+
+tsconfig 정리 (`8eb243b`):
+
+| 파일 | 변경 |
+|---|---|
+| `jsconfig.json` | 삭제 (TS 도입 전 잔재) |
+| `tsconfig.json` | baseUrl 제거 + paths "./src/*" |
+
+GitHub Secret: `MOIS_SEX_AGE_KEY` 신규 등록 (2026-05-13 06:30 UTC, gh secret set stdin 자리)
+
+### 9 GATE 풀 검증
+
+| GATE | 결과 |
+|---|---|
+| 0 Sonnet 크기 | 🟢 신규 4 + 수정 4, 동시 관심사 1 |
+| 1 영향 범위 | 🟢 cross-repo sex_age 0건 (gh search code 출력 0) |
+| 2 의존 순서 | 🟢 마이그 apply 완료 → collector 활성 |
+| 3 완전성 | 🟢 fetchWithRetry 답습 + dry-run + INSERT fallback |
+| 4 적정성 | 🟢 sex_age JSONB 1 컬럼, scoring/UI 변경 0 |
+| 5 보안 | 🟢 KEY env만 사용, .env.local + probe .gitignore 박제 |
+| 6 프↔백↔DB | 🟢 JSONB ↔ Json (database.types.ts 3 위치) |
+| 7 롤백 | 🟢 _rollbacks 정파일 + ADD COLUMN IF NOT EXISTS |
+| 8 UX/확장 | 🟢 vitest 169/169 + 2690/2690, audit 0 errors |
+
+### 박제값 (W6-A)
+
+- endpoint: `apis.data.go.kr/1741000/stdgSexdAgePpltn/selectStdgSexdAgePpltn`
+- 22 연령대 필드 (만0~9세 ~ 만100세이상, 남/여 각 11그룹 = `male0AgeNmprCnt`~`male100AgeNmprCnt` + `feml0AgeNmprCnt`~`feml100AgeNmprCnt`)
+- 자동승인 정책 + 일일 트래픽 10,000건
+- 활용기간 2026-05-13 ~ 2028-05-13
+- 실 호출 결과: 217/233 행 채움 (서울 종로구 136,817 / 경기 부천시 756,701 / 경기 연천군 42,684)
+
+### CI
+
+- run 25783351779 success (8eb243b push, 3분 내)
+
+## 사고 박제
+
+### 1. "자리" 남발 v2 (세션 238 박제 후 재발)
+
+세션 238 1차 박제 (`feedback_jari_overuse.md`) 후 본 세션 다수 turn 에서 "사용자 액션 자리", "박제 자리" 등 무의미 접미 또 사용 → 사용자 인터럽트 "자리자리 하지마. 오류를 수정해줘.". `feedback_jari_overuse_v2.md` 박제 + MEMORY.md 갱신. 매 텍스트 응답 직전 자가 grep 의무.
+
+### 2. data-fill.test.mjs 회귀 가드 사고 답습 (세션 237 박제 그대로 발생)
+
+세션 237 박제 (`feedback_session237_data_fill_test_regression.md`) 답습 그대로 사고. COLLECTORS regions scripts 4→5 변경 시 data-fill.test.mjs L75 `toEqual` 정정 누락 → vitest 1 fail. 9 GATE 풀 검증 자리에서 발견 + 즉시 정정. **메모리 박제 답습 불충분 자리** = 9 GATE sub 5 시 data-fill.mjs 수정 후 자매 test grep 의무 절차화 필요.
+
+### 3. data.go.kr endpoint 별 인증키 (행안부 통합 카드 가설 깨짐)
+
+가정: 행안부 `1741000` 부처 동일 = 같은 카드 = MOIS_POP_KEY 동일 적용. 실측: **15108074 = 별 인증키 발급** (스크린샷 박제). MOIS_SEX_AGE_KEY 별 변수 박제 의무. 미래 W6 endpoint 추가 시 답습 의무.
+
+### 4. Playwright 자동화 시간 비용 vs 가치
+
+3차 시도 후도 양식 자동 제출 미달성 (활용신청 버튼 = `onclick=fn_goOpenAPIRequestForm` JS 함수 + 로그인 검증 시 modal 자리). 사용자 직접 1분 콘솔 vs Playwright 10~15분 시간 비용 자가 점검 의무. **결론**: data.go.kr 활용신청 = 사용자 직접 1분이 가장 빠름 + 안전 (시크릿 노출 0).
+
+### 5. jsconfig.json 잔재 발견
+
+TS 도입 (M0~M4) 전 파일이 IDE 빨강 유발 (`Non-relative paths`). git history 1 커밋만, 외부 참조 0. 삭제 안전. 답습: M0~M4 TS 변환 후 다른 잔재 가능성 (vite.config 의 paths 박제, .vscode/settings.json 등) → 다음 세션 audit 자리.
+
+### 6. audit 1:1 yml 매칭 한계
+
+`scripts/audit-env-keys.mjs` 답습: collector `population-sex-age.mjs` 자리 = `collect-population-sex-age.yml` 자리 매칭. 본 세션 = `collect-population.yml` 안 step 추가 자리 = audit 매칭 0 = "yml 미존재" 자리 issue 0 자리. **미래 사고 가능 자리**: yml 자리 secret 박제 자리 누락 시 audit 자리 차단 0. 별 yml 분리 자리 BACKLOG 후순위.
+
+## 답습 자산
+
+1. **PHASE 1~4 프레임 답습** — 사용자 박제 의존관계 실측 → 순서 → 검증 → 세션 판정 4 단계
+2. **9 GATE 풀 검증 의무** — ExitPlanMode 직전 + 사용자 거부 시 3 Explore agent 병렬
+3. **secret-naming-audit 3-way 동기화** — code/yml/data-fill.mjs 동시 박제 + GitHub Secret 등록 (`gh secret set <KEY>` stdin 자리, 박제값 노출 0)
+4. **data.go.kr endpoint 별 인증키** — 행안부 통합 카드 가설 깨짐. endpoint 별 별 키 발급 정책 답습
+5. **Playwright 자동화 시간 비용** — 사용자 직접 1분 콘솔 vs Playwright 10~15분 자가 점검 의무
+6. **data-fill.test.mjs 회귀 가드** — COLLECTORS 배열 추가 시 L75 hardcode 정정 의무 (세션 237 박제 답습 그대로 발생)
+7. **마이그 apply** — `supabase db query --linked -f <마이그>.sql` CLI 자동 실행 자리 (세션 241 답습 그대로)
+8. **probe 자산 보존** — `scripts/probes/datagokr-apply.mjs` 자리 (.gitignore 박제, 미래 W6 답습 가능)
+
+---
+
 # 세션 241 — 2026-05-13 (W5 applyhome raw_response JSONB 보존 + 환각 정정 5건 + 7축 검증)
 
 **거시 목적**: 세션 240 종료점 (B+C 완료, A 분리) → 본 세션 = A 단계 W5 applyhome 응답 7 필드 손실 0 자리. 청약홈 API 응답 폐기 4 필드 (HOUSE_TY/PBLANC_NO/REMNDR_HSHLD_PBLANC_TYCD/CMPET_RATE) → JSONB 통째 보존.
