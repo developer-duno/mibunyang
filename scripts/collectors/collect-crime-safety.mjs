@@ -2,7 +2,9 @@
 /**
  * 행안부 지역안전지수 범죄 등급 수집기 — CSV 파일 기반
  *
- * data.go.kr/15069240 CSV → 시군구별 범죄 안전등급(1~5) → apartments.crime_safety_grade
+ * data.go.kr/15069240 CSV → 시군구별 범죄 안전등급(1~5)
+ *  → apartments.crime_safety_grade (단지 단위)
+ *  → regions.crime_grade (지역 단위, 세션 243 W6-E 신규)
  * CSV 파일: data/crime-safety-index.csv (수동 다운로드, 연 1회 갱신)
  *
  * 사용법:
@@ -15,7 +17,7 @@ import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, REGION_MAP, log, logError, createReporter } from "./_shared.mjs";
 
 /**
- * @typedef {{ id: string; name: string | null; region: string | null; gu: string | null }} CrimeAptRow
+ * @typedef {{ id: string | number; name?: string | null; region: string | null; gu: string | null }} CrimeAptRow
  */
 
 loadEnv();
@@ -138,6 +140,31 @@ async function main() {
 
   log(PHASE, `매칭률: ${matchCount}/${apts.length} (${apts.length ? (matchCount / apts.length * 100).toFixed(1) : 0}%)`);
   const result = rpt.summary();
+
+  // regions UPDATE (세션 243 W6-E): 시군구 단위 crime_grade 채움
+  const { data: regions, error: rErr } = await sb.from("regions").select("id, region, gu").limit(10000);
+  if (rErr) { logError(PHASE, `regions 조회 실패: ${rErr.message}`); }
+  else if (regions) {
+    const rRpt = createReporter(`${PHASE}-regions`);
+    let rMatched = 0;
+    for (const r of regions) {
+      const grade = matchCrimeGrade(r, crimeMap);
+      if (grade == null) { rRpt.skip(1); continue; }
+      rMatched++;
+      if (dryRun) {
+        log(PHASE, `  [DRY-regions] ${r.region} ${r.gu || ""}: ${grade}등급`);
+        rRpt.success(1);
+        continue;
+      }
+      const { error: uErr } = await sb.from("regions").update({ crime_grade: grade }).eq("id", r.id);
+      if (uErr) { logError(PHASE, `regions ${r.region} ${r.gu}: ${uErr.message}`); rRpt.fail(1); }
+      else rRpt.success(1);
+    }
+    log(PHASE, `regions 매칭률: ${rMatched}/${regions.length} (${regions.length ? (rMatched / regions.length * 100).toFixed(1) : 0}%)`);
+    const rResult = rRpt.summary();
+    if (rResult.fail > 0) process.exit(1);
+  }
+
   if (result.fail > 0) process.exit(1);
 }
 

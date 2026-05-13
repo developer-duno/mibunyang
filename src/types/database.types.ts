@@ -1417,6 +1417,7 @@ export type Database = {
           avg_income: number | null
           avg_price: number | null
           avg_price_sqm: number | null
+          crime_grade: number | null
           gu: string | null
           households: number | null
           id: number
@@ -1438,6 +1439,7 @@ export type Database = {
           avg_income?: number | null
           avg_price?: number | null
           avg_price_sqm?: number | null
+          crime_grade?: number | null
           gu?: string | null
           households?: number | null
           id?: number
@@ -1459,6 +1461,7 @@ export type Database = {
           avg_income?: number | null
           avg_price?: number | null
           avg_price_sqm?: number | null
+          crime_grade?: number | null
           gu?: string | null
           households?: number | null
           id?: number
