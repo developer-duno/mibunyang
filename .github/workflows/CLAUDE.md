@@ -60,15 +60,16 @@
 |-----------|------|
 | `monitor-db-size.yml` | Supabase 테이블별 행 수 점검 (매월 1일 KST 06:00) |
 
-### 유틸리티 (5개)
+### 유틸리티 (4개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `apply-migration.yml` | Supabase 마이그레이션 적용 |
 | `seed-data.yml` | 초기 데이터 시딩 |
 | `fill-missing-data.yml` | 빈 데이터 일괄 수집 (16개 수집기 순차) |
 | `geocode-missing.yml` | 좌표 누락 지오코딩 |
 | `reverse-geocode.yml` | 좌표 → 주소 역지오코딩 |
+
+> 세션 248: `apply-migration.yml` 폐기 (실제 SQL 실행 0건 사고). DDL 적용 = 사용자 Dashboard SQL Editor 직접 실행 표준 (supabase/CLAUDE.md "Dashboard SQL Editor 수동 실행" 절 참조).
 
 ---
 

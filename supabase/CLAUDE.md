@@ -114,3 +114,36 @@ DB는 naver-estate-web 기준 컬럼명으로 정규화됨:
 3. **기존 컬럼 타입 변경/삭제 금지** (컬럼 추가만)
 4. CREATE INDEX 시 upsert 성능 영향 고려
 5. ALTER TABLE은 트래픽 저점(KST 02:00~03:00)에 실행
+
+---
+
+## Dashboard SQL Editor 수동 실행 (마이그레이션 표준 절차)
+
+`apply-migration.yml` workflow 는 폐기됨 (세션 248). DDL 적용은 사용자 Dashboard SQL Editor 직접 실행이 표준.
+
+### 절차
+
+1. Supabase Dashboard 접속 → 좌측 SQL Editor
+2. `supabase/migrations/<최신>.sql` 본문 전체 복사
+3. SQL Editor 에 붙여넣기 + 다음 한 줄 추가:
+
+   ```sql
+   NOTIFY pgrst, 'reload schema';
+   ```
+
+4. Run 버튼 → 결과 확인 (에러 0건 + Success 응답)
+5. 후속 collector 호출로 컬럼 채움 검증
+
+### 공유 DB 컨텍스트
+
+mibunyang ↔ naver-estate-web 공유 instance `rwdtljipvmqpazrimyns`. 어느 프로젝트 컨텍스트로 Dashboard 진입해도 동일 적용. 마이그 파일 본문에 RLS/공용 테이블 영향 있으면 위 "공유 DB 규칙" 절 사전 확인 의무.
+
+### Why Dashboard SQL Editor (옵션 B 선택 근거)
+
+- Supabase Management API + PAT secret 자동화 (옵션 A) = PAT 권한 범위 = 발급 계정 모든 프로젝트, 보안 위험 큼
+- supabase CLI db push (옵션 C) = GitHub Actions runner CLI 설치 + 인증 토큰, 복잡도 큼
+- Dashboard 1분 수동 = 안전 + 단순. 마이그 빈도 월 1~2회로 자동화 ROI 낮음
+
+### 사고 답습 (세션 245 → 247)
+
+세션 245 가 `apply-migration.yml` workflow_dispatch run 25797316590 "success" 결과만 보고 "DDL 적용 완료" 박제 → 세션 247 수집 시점에 PG 42703 `column does not exist` 발견. 워크플로 본문 grep 결과 **실제 SQL 실행 0건**. `.claude/rules/workflow-name-hallucination.md` 룰 참조.

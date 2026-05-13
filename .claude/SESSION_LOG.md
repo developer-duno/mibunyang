@@ -1,3 +1,227 @@
+# 세션 248 — 2026-05-13 (apply-migration.yml stale 사고 종결 옵션 B + 룰 신규 박제)
+
+**거시 목적**: 세션 247 NEXT_SESSION 1순위 = `apply-migration.yml` 명칭 환각 사고 (실제 SQL 실행 0건). PHASE 1 (실증/목표/안전/단순) 4 기준 자가 의사결정 → 옵션 B (워크플로 폐기 + Dashboard SQL Editor 가이드 의무화) 선택. 9 GATE 풀 🟢 9 통과 + Explore 1개 (cross-repo + 회귀 가드 점검) 보고 단독 자원 확정.
+
+**결론**: **1 커밋 + docs 4 파일 변경**. apply-migration.yml 삭제 (-72줄) / .github/workflows/CLAUDE.md 동기화 (-1행 + (5개)→(4개) + 폐기 안내 1줄) / supabase/CLAUDE.md "Dashboard SQL Editor 수동 실행" 절 신규 +27줄 / .claude/rules/workflow-name-hallucination.md 신규 +73줄. 회귀 가드 typecheck 0 / lint 0 / 코드 변경 0건 = CI success 자명.
+
+## 산출 (커밋 1, 4 파일)
+
+### 1. 삭제 `.github/workflows/apply-migration.yml` (-72줄)
+
+워크플로 이름이 "Apply DB Migration" 인데 실제 본문은 transport 컬럼 존재 여부 확인 + SQL 콘솔 출력만. **실제 SQL 실행 0**. 세션 245~247 누적 5회 사용 모두 단순 상태 확인용. 자동화 가치 0.
+
+### 2. 수정 `.github/workflows/CLAUDE.md`
+
+- L63 "유틸리티 (5개)" → "(4개)"
+- L67 `apply-migration.yml` 행 삭제
+- 폐기 안내 1줄 추가 (세션 248 박제 + supabase/CLAUDE.md "Dashboard SQL Editor 수동 실행" 절 참조)
+
+### 3. 수정 `supabase/CLAUDE.md` (+27줄)
+
+L117 기존 "마이그레이션 체크리스트" 절 다음에 신규 절 박제:
+
+- `## Dashboard SQL Editor 수동 실행 (마이그레이션 표준 절차)`
+  - 절차 5단계 (Dashboard 접속 → 마이그 파일 복사 → NOTIFY pgrst → Run → collector 검증)
+  - 공유 DB 컨텍스트 (mibunyang ↔ naver-estate-web 공유 instance)
+  - Why Dashboard (옵션 A/B/C 비교 박제)
+  - 사고 답습 (세션 245→247)
+
+### 4. 신규 `.claude/rules/workflow-name-hallucination.md` (+73줄)
+
+기존 `.claude/rules/secret-naming-audit.md` + `typescript-patterns.md` 카테고리 명명 컨벤션 답습. 룰 본문:
+
+- 사고 박제 (세션 245→247 raw 본문)
+- 근본 원인 (워크플로 이름 ≠ 동작 동기화 0)
+- 재발 방지 3중 (본문 grep / raw log / DDL stale 진단)
+- 안티 패턴 4
+- 차단 검증 시뮬레이션 (사고 시나리오 3 → 룰 적용 발동)
+
+## 의사결정 (PHASE 1 자가 판정)
+
+```
+선택: 옵션 B (워크플로 폐기 + supabase/CLAUDE.md 가이드 의무화)
+
+근거:
+  - 실증: apply-migration.yml 본문 grep 결과 실제 SQL 실행 0 (transport 컬럼 확인 + 콘솔 출력만)
+  - 사용 이력: 2026-03 4회 + 세션 245 1회 = 누적 5회 모두 상태 확인. 자동화 가치 0
+  - 최근 마이그 8건 (5/2~5/13) 사용자 Dashboard SQL Editor 패턴 운영 표준화
+  - 안전성: 워크플로 삭제 = -72줄, 사이드이펙트 0 (CI 트리거 무관, cross-repo 영향 0)
+  - 단순성: 사용자 1분 비용 수용 ↔ PAT 보안 검토 (옵션 A) 또는 CLI 의존 (옵션 C) 회피
+
+탈락 A (Management API + PAT): PAT 권한 범위 = 발급 계정 모든 프로젝트, 보안 위험 + 사용자 액션 1건 (PAT 발급)
+                                  자동화 ROI 낮음 (월 1~2회 마이그 빈도)
+탈락 C (supabase CLI db push): B 와 동일 사용자 액션 (CLI 인증 token) + GitHub Actions runner CLI 설치 의존
+                                B 보다 복잡도 큼, 가치 동일
+```
+
+## 9 GATE 풀 검증 (plan v1 1차 통과)
+
+| GATE | 항목 | 결과 |
+|---|---|---|
+| 0 | Sonnet 적정 크기 | 🟢 단계당 1 파일, 총 4건 분리 |
+| 1 | 영향 범위 실측 | 🟢 grep 0건 + Explore 단독 자원 확정 |
+| 2 | 실행 순서 & 의존 | 🟢 5단계 모두 독립, 1 커밋 묶음 |
+| 3 | 완전성 | 🟢 4 요청 1:1 매핑 |
+| 4 | 적정성 | 🟢 과잉/과설계/과소 0 |
+| 5 | 보안 | 🟢 API_KEY/SECRET grep 0건 |
+| 6 | 프↔백↔DB 일관성 | 🟢 코드/DB 변경 0건 |
+| 7 | 롤백 안전성 | 🟢 git revert 1회 |
+| 8 | UX & 확장성 | 🟢 마이그 빈도 월 1~2회 |
+
+## 사고 박제 (다음 세션 차단용)
+
+### 사고 1 — workflow 이름 ≠ 동작 단정 환각 (세션 245→247→248 종결)
+
+세션 245 가 "workflow_dispatch success" 만 보고 "DDL 적용 완료" 박제 → 세션 247 PG 42703 발견 → 세션 248 룰 신규로 종결. 본 룰 `.claude/rules/workflow-name-hallucination.md` 박제 = 미래 plan 작성 시 step 본문 grep + raw log 1회 의무.
+
+### 사고 2 — PHASE 1+2+3 메시지 자가 결정 신호 (misattribution v4 답습)
+
+사용자가 옵션 4건 AskUserQuestion 후 PHASE 1+2+3 검증 워크플로 메시지 전송 = 자가 의사결정 신호 (세션 243/244/245/246/247 누적 5회 답습). plan v1 작성 진입 + 자가 PHASE 1 매트릭스 작성 + ExitPlanMode 호출 의무.
+
+## 답습 자산 (다음 세션 사용)
+
+### 1. 룰 신규 박제 패턴 (`.claude/rules/<category>-<problem>.md` 명명 컨벤션)
+
+기존 `secret-naming-audit.md` / `typescript-patterns.md` 답습. 신규 룰 박제 시:
+
+- 사고 박제 (raw 본문 + 세션 번호)
+- 근본 원인 (동기화 검증 0 또는 비슷)
+- 재발 방지 (1중 ~ 3중, 사고 빈도에 맞춰)
+- 안티 패턴 4건
+- 차단 검증 (사고 시나리오 → 룰 발동 시뮬레이션)
+
+### 2. Dashboard SQL Editor 가이드 박제 위치 (supabase/CLAUDE.md)
+
+기존 "마이그레이션 체크리스트" 절 다음 자연 연결. 마이그 빈도 증가 또는 자동화 검토 시 본 절 갱신 의무.
+
+### 3. PHASE 1 4 기준 (실증/목표/안전/단순) 답습 v5
+
+세션 246 (Naver Post 4 후보) / 세션 247 (W6-C A vs B) / 세션 248 (apply-migration A/B/C) 누적 3회. PHASE 1 매트릭스 박제 형식 (선택/근거/탈락 사유) 표준화.
+
+## 다음 세션 진입 분기
+
+1순위 ✅ 강등 (apply-migration 종결). 다음 진입 후보:
+
+- **W6-D 어린이집** — 사용자 활용신청 1분 액션 필요 (data.go.kr MOHW 15012690 검색 후 진입)
+- **W2 D-SSO** — 사용자 콘솔 액션 필요
+- **B-#3 KOSIS DT_MLTM_2086 준공후 미분양** — 큰 작업 (2~3 세션 분할)
+- **C 무순위 차수 UI** — 시계열 빈약 (1~2개월 누적 후 진입 권장)
+- **D vitest 4 projects** — M1 trigger 동반 권장
+
+---
+
+# 세션 247 — 2026-05-13 (W6-C v2 CSV 다운로드 방식 전환 + 252 시군구 실 수집)
+
+**거시 목적**: 세션 245 NEXT_SESSION 박제 1순위 W6-C "MOLIT_HOUSING_PRICE_KEY 발급 후 진입" 자체가 환각 (data.go.kr ID 15045153 = 404, endpoint AptHousingPriceService 검색 0건). 사용자가 활용신청 페이지 진입 시 404 발견 → WebSearch + WebFetch 실증으로 정확한 자원 추적: A(OpenAPI 15124003 Vworld) vs B(CSV 파일 3073746) 비교. PHASE 1 4 기준 (실증/목표/안전/단순) 으로 B 선택 — 활용신청 불필요 + 시군구 GROUP BY 직결 + 사용자 콘솔 대기 0일.
+
+**결론**: **1 커밋 30b20b9 + DDL 적용 (사용자 Dashboard SQL Editor) + 실 수집 252/252 시군구**. 세션 245 placeholder collector (API 가정) 전면 재작성 — fetch zip + streaming unzip + CSV streaming parse + 시군구 GROUP BY 패턴. unzipper@0.12.3 신규 의존성. 회귀 가드 9 GATE 풀 🟢 9 통과 (typecheck 0 / vitest 36/36 / lint 0 / audit clean / dry-run 252 / 실 수집 252 / DB 확증 252).
+
+## 산출 (커밋 1 + DDL 1)
+
+### 커밋 `30b20b9` — feat(housing-price): W6-C v2
+
+- **7 파일 +393/-166**:
+  - `scripts/collectors/collect-housing-price.mjs` (본문 70%+ 재작성)
+  - `scripts/collectors/collect-housing-price.test.mjs` (영문 키 → 한글 키 + parseCsvLine/rowFromFields 신규 5건, 31→36 tests)
+  - `.github/workflows/collect-housing-price.yml` (MOLIT_HOUSING_PRICE_KEY 제거 + timeout 15→30분)
+  - `package.json` + `package-lock.json` (unzipper@^0.12.3)
+  - `scripts/collectors/data-fill.mjs` (regions envKeys 정정)
+  - `scripts/collectors/data-fill.test.mjs` (회귀 가드 .not.toContain)
+
+### DDL (사용자 Dashboard SQL Editor)
+
+- `ALTER TABLE regions ADD COLUMN IF NOT EXISTS housing_price SMALLINT DEFAULT NULL;`
+- `COMMENT ON COLUMN regions.housing_price IS 'MOLIT 3073746 공동주택공시가격 시군구 평균 (만원/㎡, null=미수집). 정부 산정 공식 가치평가.';`
+- `NOTIFY pgrst, 'reload schema';`
+
+### 실 수집 결과 (상위 10 시군구, 만원/㎡)
+
+- 서울 강남구: 1,520 (sample 173,903)
+- 서울 서초구: 1,489 (126,893)
+- 경기 과천시: 1,281 (22,798)
+- 서울 용산구: 1,194 (61,167)
+- 서울 성동구: 1,068 (73,492)
+- 서울 송파구: 1,046 (210,603)
+- 경기 성남분당구: 929 (139,278)
+- 서울 영등포구: 843 (98,841)
+- 서울 마포구: 827 (112,147)
+- 서울 강동구: 767 (142,488)
+
+## 사고 박제 (다음 세션 차단용)
+
+### 사고 1 — NEXT_SESSION 박제값 stale (W6-C v1 환각)
+
+세션 245 박제 = "data.go.kr #15045153 + endpoint AptHousingPriceService + 사용자 활용신청 후 MOLIT_HOUSING_PRICE_KEY 발급" 자체가 환각. 사용자가 활용신청 페이지 진입 시 404 발견. WebSearch 결과 정확한 자원 ID 추적 — A(15124003 Vworld OpenAPI) / B(3073746 CSV) / C(15058453 공동주택 기본정보, 무관). 박제값 단정 금지, plan v1 작성 직전 grep + WebSearch + WebFetch 의무.
+
+### 사고 2 — apply-migration.yml 명칭 환각 (DDL 미실행)
+
+`.github/workflows/apply-migration.yml` 이름이 "Apply DB Migration" 인데 실제 본문은 transport 새 컬럼 존재 여부 확인 + SQL 콘솔 출력만. **실제 SQL 실행 0**. 세션 245 가 "workflow_dispatch success" 만 보고 "DDL 적용 완료" 박제 → 세션 247 수집 시점에 PG 42703 'column does not exist' 로 발견. 워크플로 이름 ≠ 동작 단정 금지, workflow yml 본문 grep 의무.
+
+### 사고 3 — Node fetch ECONNRESET (data.go.kr User-Agent 차별)
+
+빈 User-Agent 요청 시 data.go.kr 가 ECONNRESET 으로 거부. 브라우저 UA (`Mozilla/5.0 ...`) 명시 의무. curl 은 기본 UA 박혀있어 통과 (실증). 추가 답습 = TLS keep-alive 한계로 transient ECONNRESET 가능성 → 3회 재시도 (지수 백오프) 박제.
+
+### 사고 4 — zip 한글 파일명 mojibake
+
+data.go.kr CSV 압축 파일명이 EUC-KR/CP949 인코딩되어 unzipper UTF-8 가정 시 한글 깨짐. 정규식 매칭 실패. 정정 = `.csv` 확장자 + 압축 해제 크기 최대 entry 자동 선택 (raw 3.22GB >> sample 21MB 압도적 차이).
+
+### 사고 5 — collector main 함수 dead 코드
+
+본문 작성 시 streaming 처리 패턴 검토 중 첫 시도 `rows.push + break` dead 코드를 두 번째 `for await + acc` 패턴 위에 남김. Edit 으로 정정. plan 작성 → 코드 작성 사이 1회 self-review 의무.
+
+## 답습 자산 (다음 세션 사용)
+
+### 1. CSV 다운로드 collector 패턴 (data.go.kr 파일 자원)
+
+```js
+const DOWNLOAD_URL = "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=<ID>&fileDetailSn=1&insertDataPrcus=N";
+const res = await fetch(DOWNLOAD_URL, {
+  redirect: "follow",
+  headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+});
+// 3회 재시도 패턴 박제 (collect-housing-price.mjs streamRows 함수 참조)
+```
+
+### 2. streaming unzip + CSV parse 패턴
+
+```js
+import unzipper from "unzipper";
+import readline from "node:readline";
+
+const buffer = Buffer.from(await res.arrayBuffer());  // 151MB 일괄 로드 OK
+const directory = await unzipper.Open.buffer(buffer);
+const csvEntries = directory.files.filter(f => /\.csv$/i.test(f.path));
+csvEntries.sort((a, b) => b.uncompressedSize - a.uncompressedSize);
+const entry = csvEntries[0];  // 크기 최대 = raw 데이터
+const rl = readline.createInterface({ input: entry.stream(), crlfDelay: Infinity });
+for await (const line of rl) {
+  // CSV 라인 단위 yield → aggregate Map<key, acc> 누적
+}
+```
+
+### 3. DDL 적용 가이드 (사용자 Dashboard SQL Editor)
+
+mibunyang ↔ naver-estate-web 공유 instance (`rwdtljipvmqpazrimyns`). Dashboard SQL Editor 접속 후:
+
+```sql
+-- 마이그 파일 본문 그대로 +
+NOTIFY pgrst, 'reload schema';
+```
+
+PostgREST 캐시 즉시 갱신 효과. apply-migration.yml 워크플로 의존 금지.
+
+### 4. data.go.kr 파일 자원 식별 패턴
+
+`https://www.data.go.kr/data/<ID>/fileData.do` 페이지 HTML fetch → JSON-LD `contentUrl` 추출:
+
+```bash
+curl -s "https://www.data.go.kr/data/<ID>/fileData.do" | grep -oE "contentUrl.: .https://[^\"]+\""
+```
+
+`atchFileId=FILE_xxxxxxxxxxxxx&fileDetailSn=1` 패턴 확정.
+
+---
+
 # 세션 246 — 2026-05-13 (Naver Post-Processing BACKLOG 🟡 → ✅ 강등 docs)
 
 **거시 목적**: 세션 245 NEXT_SESSION 박제 1·2·3순위 모두 사용자 활용신청 대기 영역 (MOLIT_HOUSING_PRICE_KEY 미발급 / MOHW_KEY 미발급 / W2 D-SSO 사용자 콘솔) 로 본 세션 진입 불가. PHASE 1 4 후보 (A. Naver Post 강등 / B-#3. KOSIS 준공후미분양 / C. 무순위 차수 UI / D. vitest 4 projects) 실증 후 PHASE 1 우선순위 (실증/목표/안전/단순) 기준으로 A 선택.
