@@ -1,3 +1,72 @@
+# 세션 245 — 2026-05-13 (W6-C 공동주택가격 regions 신규 컬럼 + collector 골격 + Supabase 적용)
+
+**거시 목적**: 세션 244 NEXT_SESSION 박제 1순위 = W6-C 공동주택가격. data.go.kr MOLIT #15045153 활용신청 사용자 액션 대기 영역이나, 코드 100% atomic 1 커밋 + Supabase DDL 적용으로 다음 세션 첫 가동 자리 완비.
+
+**결론**: **1 커밋 d3b9d61 + Supabase DDL 적용 success**. 7 파일 +462/-5 (신규 5 + 수정 2). 회귀 가드 5단계 모두 통과 (typecheck 0 / vitest 31 pass / audit 24/30 clean / dry-run 의도된 exit 1). 9 GATE 풀 🟢 9 사전 예측 정합 + ExitPlanMode 1차 통과. apply-migration.yml workflow_dispatch run 25797316590 success 로 `regions.housing_price SMALLINT` 적용.
+
+## 산출 (커밋 1 + DDL 1)
+
+### git 커밋 `d3b9d61`
+
+| 파일 | 종류 | 변경 |
+|---|---|---|
+| `supabase/migrations/20260513114533_add_regions_housing_price.sql` | 신규 | +8 (ALTER TABLE + COMMENT) |
+| `supabase/migrations/_rollbacks/20260513114533_rollback_add_regions_housing_price.sql` | 신규 | +3 |
+| `scripts/collectors/collect-housing-price.mjs` | 신규 | +197 (// @ts-check, population-sex-age.mjs 골격) |
+| `scripts/collectors/collect-housing-price.test.mjs` | 신규 | +131 (21 tests, vitest pass) |
+| `.github/workflows/collect-housing-price.yml` | 신규 | +56 (매월 16일 22:00 UTC) |
+| `scripts/collectors/data-fill.mjs` L43 | 수정 | regions 5→6 스크립트, envKeys 5→6 |
+| `scripts/collectors/data-fill.test.mjs` L41·L50·L74 | 수정 | 회귀 가드 정정 (세션 237 박제 답습) |
+
+### Supabase DDL 적용
+
+- `apply-migration.yml` workflow_dispatch run 25797316590 success
+- `regions.housing_price SMALLINT DEFAULT NULL` 컬럼 추가
+- `apartments_flat` VIEW 영향 0 (regions JOIN 컬럼 추가만)
+
+## 9 GATE 풀 사전 예측 정합 검증
+
+| GATE | 사전 예측 | 실측 | 정합 |
+|---|---|---|---|
+| 0 | 🟢 Sonnet 크기 | 7 파일 462+5- | ✅ |
+| 1 | 🟢 영향 범위 | grep 정확 자리 | ✅ |
+| 2 | 🟢 실행 순서 | 마이그→collector→test→workflow→data-fill→audit 순차 | ✅ |
+| 3 | 🟢 완전성 | 시뮬 + 회귀 가드 5단계 | ✅ |
+| 4 | 🟢 적정성 | scoring 영향 0 정확 | ✅ |
+| 5 | 🟢 보안 | secret 박제 0 / .env.local 노출 0 | ✅ |
+| 6 | 🟢 일관성 | regions mibunyang 전용 + VIEW 영향 0 | ✅ |
+| 7 | 🟢 롤백 | _rollbacks/ + git revert | ✅ |
+| 8 | 🟢 UX & 확장성 | scoring 영향 0 = UI 변동 0 | ✅ |
+
+ExitPlanMode 1차 통과 (사전 예측 정합 자체 검증 완료).
+
+## 답습 패턴 100% 사용 → 시뮬레이션 0 errors 사전 예측 정합
+
+- collect-housing-price.mjs = population-sex-age.mjs 골격 100% (`// @ts-check` + JSDoc typedef + isCLI v2 + fetchWithRetry + REGION_MAP + recordApiQuota + createReporter)
+- typecheck 0 errors 사전 예측 정합 ✅ (typescript-patterns.md §11 시뮬레이션 의무 답습)
+
+## 답습 자산 (세션 245 정착)
+
+1. **W6-C 단순 데이터 채움 패턴 정착** — 마이그 + collector + workflow + data-fill + test + audit 6 layer 답습. W6-D/W6-F 도입 시 동일 골격
+2. **활용신청 대기 영역 진입 방식 v2** — 코드 100% atomic 커밋 + 활용신청 다음 세션 분리 (세션 242 W6-A 답습 v2)
+3. **endpoint URL placeholder 박제 의무** — 활용신청 미승인 영역에 BASE_URL placeholder + 다음 세션 검증 의무 명시 (환각 차단)
+4. **apply-migration.yml workflow_dispatch 활용** — supabase MCP/CLI 대안. migration_file 인자로 특정 파일 적용
+5. **9 GATE 사전 예측 박제 정확도 v2** — 사전 예측 🟢 9 → 실측 1회 정합 (ExitPlanMode 1차 통과 패턴 답습)
+6. **사용자 의사결정 위임 메타 텍스트 3건 동시 = 자가 의사결정 신호 v2** — misattribution 답습 v3 (세션 243/244/245 누적)
+
+## 사용자 액션 다음 세션 의존 (# 👤 사용자)
+
+1. data.go.kr MOLIT #15045153 공동주택공시가격 활용신청 (1분 콘솔, <https://www.data.go.kr/data/15045153>)
+2. `gh secret set MOLIT_HOUSING_PRICE_KEY --body "<인증키>"`
+3. `.env.local` 박제 (로컬 dry-run)
+
+## CI 검증
+
+- `gh run 25797278370` (push) = success ✅ (Lint / Typecheck / Typecheck(e2e) / Typecheck(scripts) / ETL audit / Test / Build 모두 통과)
+- `gh run 25797316590` (apply-migration dispatch) = success ✅
+
+---
+
 # 세션 244 — 2026-05-13 (BACKLOG ↔ SESSION_LOG drift 발견 → 🟡 KOSIS_MIGRATION_KEY 사고 ✅ 강등)
 
 **거시 목적**: NEXT_SESSION 박제 = W6-D 어린이집 (사용자 활용신청 의존) 1순위. BACKLOG.md 🔴 즉시 자리에 KOSIS_MIGRATION_KEY 사고 (다음 발화 5/15 = D-2) 잠복 상태. 사전 실증 1회로 의사결정.
