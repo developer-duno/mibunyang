@@ -17,8 +17,7 @@
     "noFallthroughCasesInSwitch": true,
     "allowJs": true,
     "checkJs": false,
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] },
+    "paths": { "@/*": ["./src/*"] },
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/.cache/.tsbuildinfo"
   },
