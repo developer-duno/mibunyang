@@ -69,10 +69,10 @@ describe("COLLECTORS 수집기 매핑", () => {
     }
   });
 
-  // 이 테스트가 검증하는 것: regions는 4개 스크립트 순차 실행 (세션 237 W1: housing-supply-ratio 추가)
-  it("regions는 population → migration → housing-permits → housing-supply-ratio 4개 순차", () => {
+  // 이 테스트가 검증하는 것: regions는 5개 스크립트 순차 실행 (세션 242 W6-A: population-sex-age 추가)
+  it("regions는 population → population-sex-age → migration → housing-permits → housing-supply-ratio 5개 순차", () => {
     const regions = COLLECTORS.find(c => c.category === "regions");
-    expect(regions?.scripts).toEqual(["population.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs"]);
+    expect(regions?.scripts).toEqual(["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs"]);
   });
 });
 

@@ -36,9 +36,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           MOIS_POP_KEY: ${{ secrets.MOIS_POP_KEY }}
+          MOIS_SEX_AGE_KEY: ${{ secrets.MOIS_SEX_AGE_KEY }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$MOIS_POP_KEY" ]; then
-            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, MOIS_POP_KEY secret 필요"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$MOIS_POP_KEY" ] || [ -z "$MOIS_SEX_AGE_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, MOIS_POP_KEY, MOIS_SEX_AGE_KEY secret 필요"
             exit 1
           fi
           echo "Secrets validated"
@@ -54,3 +55,15 @@ jobs:
             ARGS="--dry-run"
           fi
           node scripts/collectors/population.mjs $ARGS
+
+      - name: Collect population sex/age data (W6-A 세션 242)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MOIS_SEX_AGE_KEY: ${{ secrets.MOIS_SEX_AGE_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          node scripts/collectors/population-sex-age.mjs $ARGS

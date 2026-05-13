@@ -1431,6 +1431,7 @@ export type Database = {
           recorded_at: string
           region: string
           regional_unsold: number | null
+          sex_age: Json | null
           supply_ratio: number | null
         }
         Insert: {
@@ -1451,6 +1452,7 @@ export type Database = {
           recorded_at?: string
           region: string
           regional_unsold?: number | null
+          sex_age?: Json | null
           supply_ratio?: number | null
         }
         Update: {
@@ -1471,6 +1473,7 @@ export type Database = {
           recorded_at?: string
           region?: string
           regional_unsold?: number | null
+          sex_age?: Json | null
           supply_ratio?: number | null
         }
         Relationships: []
