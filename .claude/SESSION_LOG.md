@@ -1,3 +1,68 @@
+# 세션 241 — 2026-05-13 (W5 applyhome raw_response JSONB 보존 + 환각 정정 5건 + 7축 검증)
+
+**거시 목적**: 세션 240 종료점 (B+C 완료, A 분리) → 본 세션 = A 단계 W5 applyhome 응답 7 필드 손실 0 자리. 청약홈 API 응답 폐기 4 필드 (HOUSE_TY/PBLANC_NO/REMNDR_HSHLD_PBLANC_TYCD/CMPET_RATE) → JSONB 통째 보존.
+
+**결론**: 1 커밋 `d13eb35` (5 파일 +66/-10, atomic 단일) push CI success 3m39s + workflow_dispatch success 6m10s. applyhome_events.raw_response JSONB 추가 마이그 apply 확정. 실 데이터 1263/1263 채움 (1행 sample = 22 평형 HOUSE_TY + CMPET_RATE 평형별 원본 박제). NEXT_SESSION 박제값 환각 5건 정정 (9 필드 → 7 필드, MODEL_NO/RESIDNT_PRIOR_AT/SENM 부재). plan v5 9 GATE 풀 🟢9 1차 통과 (ExitPlanMode 단번 통과).
+
+## 산출
+
+### 변경 파일 (5건 atomic)
+
+| 파일 | 변경 |
+|---|---|
+| `supabase/migrations/20260513082108_add_applyhome_raw_response.sql` | 신규 (ALTER TABLE + COMMENT) |
+| `supabase/migrations/_rollbacks/20260513082108_rollback_add_applyhome_raw_response.sql` | 신규 (DROP COLUMN) |
+| `scripts/collectors/collect-applyhome.mjs` | AggResult typedef + raw_rows 누적 + events.push raw_response (10줄) |
+| `scripts/collectors/collect-applyhome.test.mjs` | 11 → 13 tests (raw_rows + raw_response 2 신규) (49줄) |
+| `src/types/database.types.ts` | applyhome_events Row/Insert/Update raw_response: Json (3줄) |
+
+### 7축 검증
+
+| # | 자리 | 결과 |
+|---|---|---|
+| 1 | vitest collect-applyhome | 11 → 13 pass |
+| 2 | vitest 전체 | 168 files / 2677 tests pass |
+| 3 | typecheck:scripts | 0 errors |
+| 4 | typecheck (src) | 0 errors |
+| 5 | 마이그 apply | jsonb 컬럼 추가 (직접 ALTER) |
+| 6 | CI run 25768253056 | success 3m39s (11 step) |
+| 7 | workflow_dispatch run 25779839199 | success 6m10s, 1263/1263 raw_response 채움 |
+
+### 환각 정정 (자가 점검 1 답습, 누적 5건)
+
+NEXT_SESSION L29 박제값 (세션 235) vs sample 1000 rows 실측:
+
+| 박제 | 실측 | 결론 |
+|---|---|---|
+| 9 필드 | 7 필드 | 환각 |
+| HOUSE_TY | ✅ 존재 | 보존 |
+| MODEL_NO | ❌ 부재 | 환각 |
+| PBLANC_NO | ✅ 존재 (HOUSE_MANAGE_NO 100% 동일) | 무의미 |
+| RESIDNT_PRIOR_AT | ❌ 부재 | 환각 |
+| RESIDNT_PRIOR_SENM | ❌ 부재 | 환각 |
+
+박제 외 발견 2건: REMNDR_HSHLD_PBLANC_TYCD (100% "01" 무의미) + CMPET_RATE (평형별 원본 "(△N)" 24% / "N.NN" 76%).
+
+**HOUSE_MANAGE_NO 다중 HOUSE_TY = 65% (251/385)** = 평형별 분리는 키 변경 의무. JSONB 통째 보존 (분기 A 사용자 결정) = 미래 분석 + 기존 집계 의미 양립.
+
+## 세션 흐름 (PHASE 1-3 메타 절차 답습)
+
+1. **사전 점검 7 단계 병렬** (NEXT_SESSION 자동 실행) — CI in_progress / Naver schedule success / PR #2 open / DB maint 항목 측정 (박제 24/2001 → 실측 heat 9/elec 24/gas 3/water 23/hotwater 9 편차)
+2. **PHASE 1 최적안 선택**: 옵션 A (W5 진입) + C (수치 환각 정정) 병합 — 실증 결과 박제
+3. **PHASE 2 세션 점검**: ✅ 계속 (CI success / collector 본체 확인 / API_KEY 존재)
+4. **PHASE 3 행동**: applyhome API sample 1000 rows 호출 → 7 필드 박제 → 분기 A 사용자 결정
+5. **plan v5 작성** (`~/.claude/plans/claude-elegant-tome.md`) — 9 GATE 풀 🟢9 + 자가 점검 1+2 통과 + ExitPlanMode 1차
+6. **Phase 2~7 실행**: 마이그 정·역 → collector → vitest → 타입 → 6축 검증 → atomic 단일 커밋 → push → CI → workflow_dispatch 실 데이터
+
+## 답습 자산
+
+1. **박제값 단정 금지** — sample 1회 실 호출 후만 박제 (NEXT_SESSION/메모 stale 가능)
+2. **JSONB raw_response 전략** — 미래 분석 + 기존 집계 의미 양립
+3. **마이그 apply 우회** — `supabase db push` 막힐 때 `supabase db query` 로 본 ALTER 직접
+4. **atomic 단일 커밋 5 파일** — 세션 240/238/237 답습 정합
+
+---
+
 # 세션 240 — 2026-05-13 (B 단계 collector 첫 실행 success + C 단계 naver-estate-web PR #2 7 컬럼 sync + 환각 정정 2건)
 
 **거시 목적**: 세션 239 W3+W4 마이그 apply 완료 → 본 세션 = **B (collector workflow_dispatch 첫 실행) + C (cross-repo 자매 PR 7 컬럼)** 2 단계. A (W5 applyhome) 다음 세션 분리.
