@@ -1,8 +1,8 @@
-# 세션 252 — 2026-05-16 (W6-D 어린이집 옵션 ε cpmsapi021 → regions.childcare JSONB 신규)
+# 세션 252 — 2026-05-16 (W6-D 어린이집 옵션 ε cpmsapi021 → regions.childcare JSONB 신규 + 50 limit 사고 박제)
 
 **거시 목적**: NEXT_SESSION L46~52 박제 답습 W6-D 1순위 진입. 사용자 콘솔 발급 2 인증키 (전국 어린이집 정보 조회 + 어린이집별 기본정보 조회 개발계정 각 1) 박제 + 사용자 응답 = 옵션 ε (cpmsapi021 7필드 시군구 집계 + 옵션 δ 별 세션 분할). plan v2 = 환각 7건 정정 (24필드 → 7필드 / JSON → XML / numOfRows → arcode / 페이징 부재 / 252 시군구 루프 / 환경변수명 자가 결정 / endpoint URL).
 
-**결론**: **2 커밋 (code 1 + docs 1) + 9 파일 (신규 5 + 수정 4)**. 마이그 + ROLLBACK + collector + test + workflow 흡수 + data-fill + audit 통과. typecheck 0 / vitest 2731/2731 / audit clean. 사용자 직접 자리 2건 (👤 Dashboard SQL Editor + 👤 GitHub Secrets) 후 STEP 5 workflow_dispatch 진입 자리.
+**결론**: **2 커밋 (code 1 + docs 1) + 11 파일 (신규 5 + 수정 6)**. 마이그 + ROLLBACK + collector + test + workflow 흡수 + data-fill + audit 통과. typecheck 0 / vitest 2731/2731 / audit clean. 사용자 직접 자리 2건 완료 → workflow_dispatch dry_run success (7m58s, run 25926137115) + 본 실행 success (run 25926882562) + Supabase 검증 244 시군구 채움. **50 limit 사고 발견** (cpmsapi021 시군구당 hard limit 50 → 강남구 500+ 추정의 50건만 응답) → BACKLOG 🔴 박제 + 옵션 δ 우선 진입 자리 정합.
 
 ## 7 단계 본문
 
@@ -29,9 +29,25 @@
 | 6 | 환경변수명 자가 결정 | `CHILDCARE_API_KEY` 사용자 .env.local 박제 (32자 정합) | 실증 호출 1회 |
 | 7 | 기술문서 spec crtelno/crfaxno | **실제 API crtel/crfax** (no `no` suffix) | 2026-05-16 실증 호출 발견 |
 
+## 본 실행 결과 박제 (workflow_dispatch run 25926882562)
+
+- **dry_run** (run 25926137115, 7m58s): 244/256 시군구 집계 + 256 API 호출 + sample 5건 console 정합
+- **본 실행** (run 25926882562, 15m6s): regions 244/244건 childcare 채움 + 256 API 호출 quota 기록
+- **Supabase 검증**: `regions.childcare IS NOT NULL` 606 rows (244 시군구 × 시계열 다중 recorded_at 답습, regions 표준 패턴)
+- **강남구 sample**: count 50 / total_capacity 3,682 / facilities.length 50 / fetched_at 2026-05-15
+
+## 50 limit 사고 박제 (세션 252 발견)
+
+- **사고**: cpmsapi021 시군구당 응답 hard limit 50건. 강남구 (실제 500+ 추정) = 50건만 응답 (90%+ 누락)
+- **검증 방법**: 강남구 11680 직접 호출 → 50 items + 마지막 stcode `11680000512` 절단 박제 (페이징 parameter 자리 0)
+- **영향**: regions.childcare = sample 50건 한정 신호. count/total_capacity = sample 한정 추정값
+- **BACKLOG 🔴 박제**: cpmsapi021 50 limit 사고 + 미래 자리 진입 옵션 4건 (spec PDF 재검증 / Playwright SSO / 운영계정 신청 / 부분 우회)
+- **답습**: 사용자 콘솔 OpenAPI 명세서 박제 ≠ 실 API 실증. 본 세션 환각 #8 = 사용자 박제 자리에서도 사고 발견 답습 v9
+- **옵션 δ 우선 진입 정합**: 단지 비교 (cpmsapi030 stcode 11자 직접 호출) = 50 limit 영향 0. 시군구 비교 (ε) 보다 ROI 높음 확정
+
 ## 답습 자산 (세션 252 정착)
 
-1. **OpenAPI 명세서 박제 ≠ 실 API 응답** — 기술문서 spec 박제 후 dry-run 실증 1회 의무. 본 세션 환각 #7 (crtelno/crfaxno → crtel/crfax) = 명세서 문서 환각 발견 사고
+1. **OpenAPI 명세서 박제 ≠ 실 API 응답** — 기술문서 spec 박제 후 dry-run 실증 1회 의무. 본 세션 환각 #7 (crtelno/crfaxno → crtel/crfax) + #8 (50 limit 응답 hard limit) = 명세서 문서 환각 2건 답습
 2. **256 시군구 GU_LAWD_MAP 답습 패턴** — listAllSgg 함수 = `Object.entries(GU_LAWD_MAP)` 2중 루프. 17 시도 단위 collector 와 분리 박제 자리 (population-sex-age 답습 vs 본 collector 답습)
 3. **XML 정규식 파싱 = xml2js 의존성 회피** — flat 구조 (item × N + 7 leaf tag) 한정 답습 자산. nested 구조 시 의존성 추가 의무
 4. **워크플로 흡수 vs 신규 의사결정 답습** — `collect-childcare.yml` 흡수 (Kakao + 보육정보공개 2단 step) = `collect-population.yml` 답습 정합. 신규 yml 박제 환각 차단
