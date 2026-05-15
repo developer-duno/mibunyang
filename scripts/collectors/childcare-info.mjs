@@ -90,7 +90,7 @@ export function parseChildcareXml(xml) {
  * @param {string} tag
  * @returns {string | null}
  */
-function extractTag(block, tag) {
+export function extractTag(block, tag) {
   // 자기닫는 빈 태그 (<tag />) 우선 검사
   if (new RegExp(`<${tag}\\s*/>`).test(block)) return "";
   const m = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(block);
