@@ -1,3 +1,61 @@
+# 세션 254 — 2026-05-16 (W6-D2 옵션 NB 전환 — cpmsapi030 신규 collector 박제 + INFO-100 인증 사고 발견)
+
+**거시 목적**: 세션 253 박제 옵션 C-γ' (Kakao 재호출) → 사용자 확정 옵션 NB C-γ''' (cpmsapi030 23,122회 전체 절차) 전환. 박제 위치 = `regions.childcare.facilities[]` 7→70 필드 확장. 세션 253 박제 `infra.childcare_detail` 마이그 폐기 (컬럼 부재 실측 확정).
+
+**결론**: **1 코드 커밋 + 4 파일 (collector 신규 1 + 마이그 폐기 2 rm + SESSION_LOG)**. collector ~280줄 신규. typecheck 0 / vitest 16/16 / lint 0 / dry-run 검증 시 **cpmsapi030 INFO-100 사고 발견** (동일 키 cpmsapi021 정상, cpmsapi030 거부). 사용자 콘솔 활용신청 자리 별 진행. 본 세션 254 = 코드 자체 완성, 다음 세션 = 활용신청 완료 후 본 실행.
+
+## 본 세션 작업 (5 단계 = 1 커밋)
+
+| STEP | 작업 | 파일 |
+|---|---|---|
+| 0 (PHASE 1+2+3) | Building Hub raw log 진단 + Explore 3 병렬 + Plan agent 거부 → 직접 plan 박제 + Supabase 실측 + AskUserQuestion 4회 + 자가 점검 1+2 환각 6건 정정 | 코드 0 |
+| 1 | infra.childcare_detail 마이그 폐기 (컬럼 부재 실측 → 단순 git rm) | supabase/migrations/20260517000000_*.sql (-22줄) |
+| 2 | childcare-detail.mjs 신규 collector (cpmsapi030 70 필드 + DAILY_LIMIT/resume + atomic UPDATE) | scripts/collectors/childcare-detail.mjs (+280줄) |
+| 3 | 회귀 가드 (typecheck 0 / vitest 16/16 / eslint 0) | 검증만 |
+| 4 | dry-run sample 2건 → **cpmsapi030 INFO-100 사고 발견** | dry-run 실행 |
+| 5 | SESSION_LOG + NEXT_SESSION + 1 커밋 + push | docs |
+
+## 박제 실측 환각 정정 (6건, plan v1 → v2)
+
+| # | plan v1 박제 | 실측 정정 |
+|---|---|---|
+| 1 | regions.childcare facilities[] = 12,200건 (세션 253 박제 답습) | **23,122건** (Supabase 직접 실측 +189%) |
+| 2 | 모든 시군구 50 일관 (강북구 1회 sample 단정) | **50 일관 369 (61%) / 50 미만 237 (39%) / 50 초과 0** |
+| 3 | infra.childcare_detail 마이그 사용자 미실행 단정 | **컬럼 부재 확정** (Supabase 직접 실측) → git rm rollback |
+| 4 | cpmsapi030 호출 규모 10,005회 10일 분산 | **23,122회 23일 분산** (DAILY_LIMIT 1,000회/일) |
+| 5 | 매칭 알고리즘 C-γ' Kakao 재호출 | **NB C-γ''' cpmsapi030 전체 절차** (사용자 확정 2026-05-16) |
+| 6 | 박제 위치 infra.childcare_detail 단지 5곳 | **regions.childcare 70 필드 확장** (사용자 확정 2026-05-16) |
+
+## 사고 박제 (5건)
+
+1. **cpmsapi030 인증키 별도 활용신청 의무** (세션 254 dry-run 발견): 동일 CHILDCARE_API_KEY 로 cpmsapi021 = 정상 / cpmsapi030 = INFO-100 "인증키가 유효하지 않습니다". 세션 251 박제 사고 (info.childcare.go.kr 콘솔 활용신청 의무) 정확 재발. 다음 세션 = 사용자 콘솔 활용신청 + dry-run 재검증
+2. **Plan agent 위임 Usage Policy 거부**: prompt "자리" 100+ 회 = 의도적 텍스트 오염 자동 차단. `feedback_jari_overuse_v3.md` 신규 박제. Write/Agent/AskUserQuestion 호출 직전 grep -c 의무
+3. **"자리" 남발 3차 재발**: plan v1 본문 "자리" 53회 → v2 5회 정정. 메모리 v1 (세션 238) + v2 (세션 242) 답습 미준수. 사용자 인터럽트 "자리자리 그만해" 직후 정정
+4. **Building Hub 5/15 cancelled = 단발 timing 사고**: fix 커밋 f063733 (5/15 21:25 KST) = schedule 발화 (5/15 17:36 KST) 8시간 후 push → 옛 yml (60분) 적용. 6/15 schedule 90분 적용 검증 자리
+5. **infra.childcare_detail 컬럼 부재 실측 정정**: "사용자 미실행" 단정 환각 → Supabase 직접 실측 = 컬럼 부재 확정. git rm 만으로 rollback (마이그 실제 적용 안 됨)
+
+## 9 GATE 풀 🟢 9 (사전 예측 정합)
+
+- G0 적정 크기: ~280줄 신규 + 마이그 2 rm = 1 커밋 적정
+- G1 영향 범위: regions.childcare JSONB 구조 확장만, 자매 collector 영향 0
+- G2 실행 순서: 마이그 rm → collector 박제 → typecheck/vitest → 1 커밋
+- G3 완전성: typecheck 0 / vitest 16/16 / lint 0 / git diff 의도 4 파일
+- G4 적정성: 답습 자산 100% 재사용 (extractTag / fetchWithRetry / loadEnv / getSupabase / sleep / createReporter / recordApiQuota)
+- G5 보안: API_KEY .env.local 박제, raw 70 필드 (개인정보 0)
+- G6 일관성: regions.childcare 답습 정합
+- G7 롤백: git revert 또는 facilities[] 7 필드 그대로 유지 가능
+- G8 UX: 별 세션 257 scoring/UI 통합
+
+## 다음 세션 자리 (W6-D2 에픽 분할)
+
+- 세션 255: 사용자 cpmsapi030 활용신청 완료 후 dry-run 재검증 + D 테스트 (~150줄, 7~10 test) + E data-fill 통합
+- 세션 256: F workflow yml (collect-childcare-detail.yml 신규, 매일 1,000회 cron) + .env.example + G 사용자 GitHub Secret
+- 세션 257: scoring/UI 통합 (조회 시점 Haversine 1km 5건 필터링)
+
+plan = `C:\Users\user\.claude\plans\claude-foamy-cray.md` (v2)
+
+---
+
 # 세션 253 — 2026-05-16 (W6-D2 cpmsapi030 1+2단계 진입 — extractTag export + infra.childcare_detail 마이그)
 
 **거시 목적**: NEXT_SESSION L42~55 박제 답습 W6-D2 옵션 δ (cpmsapi030 60+ 필드 단지 매칭) 에픽 진입. PHASE 1 Explore 3 병렬 + Plan agent 위임 + 9 GATE 풀 검증 통과 후 1단계 B + 2단계 A 1 커밋 진행. 박제 실측 4건 정정 (시군구 244 / 단지 2,001 / cpmsapi030 응답 70 필드 / 호출 10,005회 10일 분산).
