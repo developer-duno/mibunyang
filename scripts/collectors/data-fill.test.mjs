@@ -38,13 +38,14 @@ describe("COLLECTORS 수집기 매핑", () => {
 
     expect(byCategory.building).toEqual(["MOLIT_KEY"]);
     expect(byCategory.builders).toEqual(["DART_KEY"]);
-    // regions: population.mjs (MOIS_POP_KEY) + population-sex-age.mjs (MOIS_SEX_AGE_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY) + collect-housing-supply-ratio.mjs (KOSIS_KEY) + collect-housing-price.mjs (API 키 불필요, 세션 247 W6-C v2 = data.go.kr 3073746 공개 다운로드) + childcare-info.mjs (CHILDCARE_API_KEY, 세션 252 W6-D ε)
+    // regions: population.mjs (MOIS_POP_KEY) + population-sex-age.mjs (MOIS_SEX_AGE_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY) + collect-housing-supply-ratio.mjs (KOSIS_KEY) + collect-housing-price.mjs (API 키 불필요, 세션 247 W6-C v2 = data.go.kr 3073746 공개 다운로드) + childcare-info.mjs (CHILDCARE_API_KEY, 세션 252 W6-D ε) + childcare-detail.mjs (CHILDCARE_BASIC_API_KEY, 세션 255 W6-D2 — scripts 등재는 세션 256 yml)
     expect(byCategory.regions).toContain("MOIS_POP_KEY");
     expect(byCategory.regions).toContain("MOIS_SEX_AGE_KEY");
     expect(byCategory.regions).toContain("KOSIS_MIGRATION_KEY");
     expect(byCategory.regions).toContain("MOLIT_KEY");
     expect(byCategory.regions).toContain("KOSIS_KEY");
     expect(byCategory.regions).toContain("CHILDCARE_API_KEY");
+    expect(byCategory.regions).toContain("CHILDCARE_BASIC_API_KEY");
     expect(byCategory.regions).not.toContain("MOLIT_HOUSING_PRICE_KEY");
     expect(byCategory.trade_stats).toEqual([]);
     // maintenance: collect-maintenance.mjs 가 MOLIT_KEY 요구 (세션 238 W3)

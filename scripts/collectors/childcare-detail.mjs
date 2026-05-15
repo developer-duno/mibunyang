@@ -148,7 +148,7 @@ export function parseChildcareDetailXml(xml) {
     crtelno: extractTag(block, "crtelno"),
     crfaxno: extractTag(block, "crfaxno"),
     crhome: extractTag(block, "crhome"),
-    crrepname: extractTag(block, "crrepname"),
+    crrepname: extractTag(block, "CRREPNAME"),  // 운영 응답 = 대문자 태그 (extractTag 대소문자 구분)
     nrtrroomcnt: parseInt(extractTag(block, "nrtrroomcnt") ?? "0", 10) || 0,
     nrtrroomsize: parseInt(extractTag(block, "nrtrroomsize") ?? "0", 10) || 0,
     plgrdco: parseInt(extractTag(block, "plgrdco") ?? "0", 10) || 0,
@@ -189,7 +189,7 @@ async function fetchChildcareDetail(arcode, stcode) {
  * stcode/crname 일치. 70 필드 박제 = crtypename 존재로 표시.
  * @param {ExistingFacility} facility
  * @param {ChildcareDetail} detail
- * @returns {ExistingFacility & ChildcareDetail}
+ * @returns {ChildcareDetail & { crtel: string, crfax: string }}
  */
 export function mergeDetailIntoFacility(facility, detail) {
   return {
@@ -240,7 +240,7 @@ async function main() {
     }
     const arcode = firstStcode.slice(0, 5);
 
-    /** @type {Array<ExistingFacility & Partial<ChildcareDetail>>} */
+    /** @type {Array<ExistingFacility | (ChildcareDetail & { crtel: string, crfax: string })>} */
     const updatedFacilities = [];
     let regionChanged = false;
 
@@ -286,7 +286,7 @@ async function main() {
     // dry-run = UPDATE 0
     if (dryRun) {
       if (regionChanged) {
-        const sample = updatedFacilities.find(f => f.crtypename);
+        const sample = /** @type {any} */ (updatedFacilities.find(f => f.crtypename));
         log("dry-run", `${r.region} ${r.gu}: ${facilities.length}건 중 변경 1+ — sample crtypename=${sample?.crtypename}, cctv=${sample?.cctvinstlcnt}, la=${sample?.la}`);
         updatedRegions++;
       }
