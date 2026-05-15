@@ -1,3 +1,135 @@
+# 세션 250 — 2026-05-15 (Building Hub 1시간 timeout 사고 정정 + 모니터링 4번째 trigger 박제)
+
+**거시 목적**: 세션 250 첫 턴 사전 체크 모니터링 trigger 3종 답습 중 신규 발견 — `Collect Building Hub (에너지+인허가)` workflow run 25908487036 (2026-05-15 08:36 schedule) cancelled 사고 발견. 룰 §workflow-name-hallucination 답습 (workflow_dispatch success ≠ 동작 완료) = raw log 직접 검증 후 진입.
+
+**결론**: **1 커밋 + 3 파일 변경 (yml 1줄 + docs 2)**. `collect-building-hub.yml` L12 `timeout-minutes: 60 → 90` (1줄) / SESSION_LOG.md 세션 250 항목 (본 자리) / NEXT_SESSION.md 모니터링 trigger 4번째 항목 추가 (collect-building-hub.yml 다음 schedule = 2026-06-15). 회귀 가드 코드 변경 0 / .test.mjs 22 tests 영향 0 / CI lint/typecheck/vitest 영향 0 = success 자명.
+
+## 0단계 raw log 박제 (단정 근거, 룰 §workflow-name-hallucination 답습)
+
+```bash
+gh run view 25908487036 --log | tail -60
+gh run list --workflow=collect-building-hub.yml --limit 2 --json conclusion,createdAt,startedAt,updatedAt
+```
+
+실측 응답:
+
+| schedule run | startedAt | updatedAt | duration | conclusion | databaseId |
+|---|---|---|---|---|---|
+| 2026-04-15 07:16:18 UTC | 07:16:18 | 08:15:27 | **59분 9초** | success | 24441568520 |
+| 2026-05-15 08:36:29 UTC | 08:36:29 | 09:36:48 | **60분 1초** | **cancelled** | 25908487036 |
+
+raw log 마지막 줄: `2026-05-15T09:36:45.3172075Z ##[error]The operation was canceled.`
+
+job 메타 (`gh run view 25908487036 --json jobs`):
+- step 5 "Run building hub collector" = 08:36:49 start → 09:36:45 cancel = 59m56s 실행
+- collector 출력: `[building-hub] 조회 월: 202603, bjd_code 보유: 2000건` + `[building-hub] 대상: 2000건` 만 출력 → 2000건 처리 중 timeout
+
+## 사고 분류 (3 분류 분기 박제)
+
+| 분류 | 가설 | 실측 결과 |
+|---|---|---|
+| A | yml `timeout-minutes` 미설정 → GitHub Actions 자체 timeout | ❌ — yml L12 `timeout-minutes: 60` 명시 박제 |
+| B | yml `timeout-minutes: 60` 명시 → collector 60분 boundary 초과 | ✅ **확정** |
+| C | collector 본체 무한 루프 또는 API rate limit 무한 대기 | ❌ — L208 `apt.elec_usage_kwh == null` filter 박제 = 정상 진행, force flag 분기 |
+
+분류 B 확정 근거:
+- yml L12 `timeout-minutes: 60` 명시 (60분 명시 timeout)
+- 2026-04-15 = 59분 9초 success (boundary 직전 통과)
+- 2026-05-15 = 60분 1초 cancelled (boundary 1초 초과)
+- collector 본체 L208 force flag 분기 = `elec_usage_kwh == null` 단지만 처리 → 첫 실행 후 누적 미처리 단지 증가 추세
+
+## PHASE 1 자가 의사결정 (4 선택지)
+
+```
+선택: 선택지 1 (yml timeout 60 → 90 증액, 1줄 변경)
+근거: 코드 변경 0 (collector 본체 unchanged) + 다른 collector 패턴 정합
+      - collect-naver-listings.yml = 90 박제 (대형)
+      - collect-naver-listings-incremental.yml = 90 박제 (대형)
+      - collect-schools.yml = 120 박제 (최대)
+      - 60 → 90 = 기존 90 박제 패턴 동등 정합
+탈락:
+  선택지 2 (180분 + collector 배치 보강) → ROI 낮음 (180분 = 3시간 = Free tier 30% 소모 + 2-3 파일 변경)
+  선택지 3 (workflow 분할 에너지/인허가) → 스케줄 변경 영향 + scripts/CLAUDE.md L70 박제값 정정 의무 + 1-2 세션 추가
+  선택지 4 (보류) → 다음 schedule 2026-06-15 동일 cancel 위험
+```
+
+## 산출 (커밋 1, 3 파일)
+
+### 1. 수정 `.github/workflows/collect-building-hub.yml`
+
+```diff
+-    timeout-minutes: 60
++    timeout-minutes: 90
+```
+
+L12 1줄 변경. 30분 여유 = 미래 단지 1.5배 증가 흡수 가능.
+
+### 2. 본 SESSION_LOG.md 세션 250 항목 (본 자리)
+
+### 3. 수정 `.claude/NEXT_SESSION.md`
+
+모니터링 trigger 4번째 항목 추가:
+- 제목: "2026-06-15 KST 15:00 collect-building-hub.yml schedule 발화 결과 (60→90 적용 후 정합 확정)"
+- 검증 명령: `gh run list --workflow=collect-building-hub.yml --limit 2 --json conclusion,createdAt,startedAt,updatedAt`
+- success = boundary 회피 확정 + 답습 자산 정착
+- cancelled = 90분 boundary 도 초과 → 선택지 2 또는 3 재진입 의무
+
+## 9 GATE 풀 검증 (plan v3 → 본 turn 1차 통과)
+
+| GATE | 항목 | 결과 |
+|---|---|---|
+| 0 | Sonnet 적정 크기 | 🟢 3 파일 + 1 commit |
+| 1 | 영향 범위 실측 | 🟢 grep 13곳 모두 깨짐 0 |
+| 2 | 실행 순서 & 의존 | 🟢 4 단계 독립, 1 커밋 묶음 |
+| 3 | 완전성 | 🟢 7 항목 1:1 매핑 |
+| 4 | 적정성 | 🟢 1 관심사 단일 commit, 과잉 0 |
+| 5 | 보안 | 🟢 secrets/credential 영향 0 (grep 검증) |
+| 6 | 프↔백↔DB 일관성 | 🟢 기존 collector yml 패턴 (naver = 90, schools = 120) 정합 |
+| 7 | 롤백 안전성 | 🟢 git revert 1회 |
+| 8 | UX & 확장성 | 🟢 90분 = 1.5배 흡수, 미래 단지 증가 시 선택지 2/3 재진입 가능 |
+
+## 사고 박제 (다음 세션 차단용)
+
+### 사고 1 — 1시간 timeout 사고 분류 B 확정 (월간 schedule 데드존 회피)
+
+세션 232 박제 답습 (`.claude/rules/secret-naming-audit.md` §보조 — 월간 schedule 1회 fail = 1개월 데드존). 본 사고 = 모니터링 trigger 답습 정합으로 사후 발견 (5/16 KST 07:00 collect-migration 모니터링 직전 5/15 KST 17:36 Building Hub 사고 자가 발견). **모니터링 trigger 3종 → 4종 확장 = 미래 collector timeout 사고 자가 차단 답습**.
+
+### 사고 2 — PHASE 1+2+3 워크플로 자가 의사결정 답습 v7 (misattribution v2 차단)
+
+세션 246/247/248/249 누적 4회 답습 + 본 turn = 5회. 사용자 PHASE 1~4 + 9 GATE 풀 검증 메시지 = 자가 의사결정 신호 정착. 본 plan v1→v3 정정 = 사용자 거부 0회, 1차 통과 (세션 248 docs only 패턴 답습 v2).
+
+### 사고 3 — 룰 §workflow-name-hallucination 답습 (raw log 1회 의무)
+
+세션 248 박제 룰 답습 = JSON `conclusion: cancelled` 만 신뢰 금지, raw log + step 본문 + job duration 직접 확인 의무. 본 사고 = 정확히 1시간 boundary cancel = yml `timeout-minutes: 60` 직접 확인 후 분류 B 확정. 룰 미답습 시 분류 A/C 환각 가능.
+
+## 답습 자산 (다음 세션 사용)
+
+### 1. workflow timeout-minutes 박제값 표준 (본 세션 검증)
+
+다른 collector yml 박제값 (`grep timeout-minutes .github/workflows/*.yml`):
+- 90분: collect-naver-listings(-incremental), 본 collect-building-hub (정정 후)
+- 120분: collect-schools (최대)
+- 60분: collect-childcare, collect-environment, collect-maintenance, collect-noxious, collect-police, collect-trades, collect-transport
+- 30분: collect-air-quality, collect-building-info, collect-emergency, collect-housing-price, collect-infra, collect-noise, daily-deploy
+- 15분: collect-housing-permits, collect-industry, collect-market-stats, collect-migration, collect-population, collect-trade-stats, collect-unsold-kosis
+- 10분: calc-exclusive-ratio, calc-layout, collect-applyhome, collect-dart-builders, collect-housing-supply-ratio
+
+→ 미래 신규 collector yml 박제 시 위 박제값 패턴 답습 + 60분 boundary 도달 collector = 90분 우선 검토 의무.
+
+### 2. 1시간 timeout 사고 자가 발견 패턴 (모니터링 trigger 답습)
+
+NEXT_SESSION 모니터링 trigger 3종 → 4종 확장 답습. 매월 schedule cancel/failure 발화 시 raw log 직접 1회 확인 = 다음 schedule 까지 1개월 데드존 회피 (세션 232 박제 답습).
+
+### 3. yml 1줄 변경 = 가장 단순한 정정 패턴 (선택지 1 답습)
+
+collector 본체 변경 없이 timeout 증액 = ROI 최고. 단지 수 증가에 따른 미래 boundary 재도달 시 선택지 2 (배치 보강) 또는 선택지 3 (workflow 분할) 진입 단계별 진입 답습.
+
+### 4. 메모리 룰 §user_action_misattribution v2 답습 v7
+
+세션 246/247/248/249/본 turn 누적 5회 답습. 사용자 PHASE 1~4 + 9 GATE 풀 검증 메시지 = 자가 의사결정 신호 = 본 세션 진입 신호 정합.
+
+---
+
 # 세션 249 — 2026-05-13 (B-#3 KOSIS 준공후 미분양 강등 + 차원 검증 룰 신규)
 
 **거시 목적**: 세션 248 NEXT_SESSION 3순위 B-#3 진입. 박제값 "DT_MLTM_2086 시군구별 준공후 미분양, 큰 작업 2~3 세션" vs 세션 235 Playwright 박제 SESSION_LOG L1122 "시도별 분리 불가" 불일치 발견 → 사용자 워크플로 위임 (PHASE 1 4 후보 검증) → 옵션 B 선택 (KOSIS API raw sample 검증 후 시도 17 UPDATE) → 0단계 raw sample 박제 (objL1+objL2 ALL prdSe=A 58 rows) → 교차 cell 부재 확정 → 옵션 C 자동 회귀.
