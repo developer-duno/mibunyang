@@ -28,7 +28,7 @@
 
 ## 사고 박제 (5건)
 
-1. **cpmsapi030 인증키 별도 활용신청 의무** (세션 254 dry-run 발견): 동일 CHILDCARE_API_KEY 로 cpmsapi021 = 정상 / cpmsapi030 = INFO-100 "인증키가 유효하지 않습니다". 세션 251 박제 사고 (info.childcare.go.kr 콘솔 활용신청 의무) 정확 재발. 다음 세션 = 사용자 콘솔 활용신청 + dry-run 재검증
+1. **cpmsapi030 별 인증키 환각 정정** (세션 254 dry-run 발견 → 사용자 정정): 1차 = collector 가 `CHILDCARE_API_KEY` (cpmsapi021 키) 답습 → INFO-100 "인증키가 유효하지 않습니다". 2차 = 사용자 지적 — cpmsapi030 은 `CHILDCARE_BASIC_API_KEY` (.env.local 박제, 32자, 앞 190895) 별 키. 세션 253 NEXT_SESSION L40 박제값 정확 (CHILDCARE_BASIC_API_KEY) → plan v2 작성 시 "CHILDCARE_API_KEY 답습" 단정 환각. collector 5곳 정정 (env 키명) → dry-run 60건 정상 (서울 강북구 sample crtypename/cctv/la 박제 확인). 응답 값 '01'~'70' = 운영 모드 실제 데이터 (세션 253 사용자 확정 답습 정합, placeholder 환각 폐기)
 2. **Plan agent 위임 Usage Policy 거부**: prompt "자리" 100+ 회 = 의도적 텍스트 오염 자동 차단. `feedback_jari_overuse_v3.md` 신규 박제. Write/Agent/AskUserQuestion 호출 직전 grep -c 의무
 3. **"자리" 남발 3차 재발**: plan v1 본문 "자리" 53회 → v2 5회 정정. 메모리 v1 (세션 238) + v2 (세션 242) 답습 미준수. 사용자 인터럽트 "자리자리 그만해" 직후 정정
 4. **Building Hub 5/15 cancelled = 단발 timing 사고**: fix 커밋 f063733 (5/15 21:25 KST) = schedule 발화 (5/15 17:36 KST) 8시간 후 push → 옛 yml (60분) 적용. 6/15 schedule 90분 적용 검증 자리

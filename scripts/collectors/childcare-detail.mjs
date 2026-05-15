@@ -31,8 +31,8 @@
  *   DAILY_LIMIT=10 node scripts/collectors/childcare-detail.mjs --dry-run  (제한)
  *
  * 필요 env:
- *   CHILDCARE_API_KEY    — info.childcare.go.kr 인증키 (cpmsapi021 동일 키)
- *   DAILY_LIMIT          — 일일 호출 한도 (기본 1000)
+ *   CHILDCARE_BASIC_API_KEY  — info.childcare.go.kr cpmsapi030 인증키 (cpmsapi021 의 CHILDCARE_API_KEY 와 별 키)
+ *   DAILY_LIMIT              — 일일 호출 한도 (기본 1000)
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
@@ -41,7 +41,7 @@ import { extractTag } from "./childcare-info.mjs";
 
 loadEnv();
 
-const API_KEY = process.env.CHILDCARE_API_KEY;
+const API_KEY = process.env.CHILDCARE_BASIC_API_KEY;
 const BASE_URL = "http://api.childcare.go.kr/mediate/rest/cpmsapi030/cpmsapi030/request";
 const DAILY_LIMIT = parseInt(process.env.DAILY_LIMIT ?? "1000", 10);
 
@@ -177,7 +177,7 @@ export function parseChildcareDetailXml(xml) {
  * @returns {Promise<ChildcareDetail | null>}
  */
 async function fetchChildcareDetail(arcode, stcode) {
-  if (!API_KEY) throw new Error("CHILDCARE_API_KEY 환경변수 필요");
+  if (!API_KEY) throw new Error("CHILDCARE_BASIC_API_KEY 환경변수 필요");
   const url = `${BASE_URL}?key=${encodeURIComponent(API_KEY)}&arcode=${arcode}&stcode=${stcode}`;
   const res = await fetchWithRetry(url);
   const xml = await res.text();
@@ -203,7 +203,7 @@ export function mergeDetailIntoFacility(facility, detail) {
 
 async function main() {
   if (!API_KEY) {
-    logError("init", "CHILDCARE_API_KEY 환경변수 필요");
+    logError("init", "CHILDCARE_BASIC_API_KEY 환경변수 필요");
     process.exit(1);
   }
   const dryRun = process.argv.includes("--dry-run");
@@ -316,7 +316,7 @@ async function main() {
 
   log("done", `cpmsapi030 호출 ${processed}회 / resume skip ${skippedFacilities}건 / regions UPDATE ${updatedRegions}건`);
 
-  if (!dryRun) await recordApiQuota("childcare-detail", "CHILDCARE_API_KEY", processed);
+  if (!dryRun) await recordApiQuota("childcare-detail", "CHILDCARE_BASIC_API_KEY", processed);
   const result = rpt.summary();
   if (result.fail > 0) process.exit(1);
 }
