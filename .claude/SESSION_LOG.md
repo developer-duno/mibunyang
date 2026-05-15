@@ -1,3 +1,82 @@
+# 세션 253 — 2026-05-16 (W6-D2 cpmsapi030 1+2단계 진입 — extractTag export + infra.childcare_detail 마이그)
+
+**거시 목적**: NEXT_SESSION L42~55 박제 답습 W6-D2 옵션 δ (cpmsapi030 60+ 필드 단지 매칭) 에픽 진입. PHASE 1 Explore 3 병렬 + Plan agent 위임 + 9 GATE 풀 검증 통과 후 1단계 B + 2단계 A 1 커밋 진행. 박제 실측 4건 정정 (시군구 244 / 단지 2,001 / cpmsapi030 응답 70 필드 / 호출 10,005회 10일 분산).
+
+**결론**: **1 코드 커밋 (8bdc979) + 3 파일 (+24/-1)**. extractTag export 1줄 + infra.childcare_detail JSONB 마이그 + _rollbacks. typecheck 0 / vitest 16/16 / lint 0. 9 GATE 풀 🟢9 통과. push CI 검증 자리. 다음 자리 = 3-C1~C3 + D + E + F + G 별 세션 분할 (plan v1 답습 자리).
+
+## 본 세션 자리 (B + A 2 단계 = 1 커밋)
+
+| STEP | 작업 | 파일 (라인) |
+|---|---|---|
+| 0 (PHASE 1) | Explore 3 병렬 (cpmsapi030 명세 + 매칭 자산 + 4일 분산) + 실측 4건 환각 정정 | 코드 변경 0 |
+| 0 (PHASE 2) | Plan agent 위임 (v1 산출) + 자가 검증 환각 4건 정정 | 코드 변경 0 |
+| 0 (PHASE 3) | 사용자 옵션 B (5건 호출 10,005회) + 환경변수명 (CHILDCARE_BASIC_API_KEY) 응답 박제 | 코드 변경 0 |
+| 0 (PHASE 4) | 9 GATE 풀 검증 (🔴 1건 → 🟢 8 / 🟡 1 정정) + plan 파일 박제 | C:\Users\user\.claude\plans\claude-distributed-steele.md |
+| 1 (B) | extractTag export 1줄 (childcare-info.mjs L93) | scripts/collectors/childcare-info.mjs (+1/-1) |
+| 2 (A) | infra.childcare_detail JSONB 마이그 + _rollbacks | supabase/migrations/20260517000000_*.sql (+19+2) |
+| 3 (검증) | typecheck 0 + vitest 16/16 + lint 0 + 9 GATE 재검증 풀 🟢9 | 코드 변경 0 |
+| 4 (커밋) | 1 코드 커밋 8bdc979 + push (CI 검증 자리) | 8bdc979 |
+
+## cpmsapi030 응답 70 필드 박제 (실 API 1회 호출)
+
+- 위치 6: la / lo / sidoname / sigunname / zipcode / craddr
+- 기본 8: stcode / crname / crtypename / crstatusname / crtelno / crfaxno / crhome / crrepname
+- 시설 6: nrtrroomcnt / nrtrroomsize / plgrdco / cctvinstlcnt / chcrtescnt / crcargbname
+- 정원/현원 2: crcapat / crchcnt
+- 일자 6: crcnfmdt / crpausebegindt / crpauseenddt / crabldt / datastdrdt / crspec
+- CLASS_CNT 11 (반수): 00~05 + M2/M3/M5/SP/TOT
+- CHILD_CNT 11 (아동수): 00~05 + M2/M3/M5/SP/TOT
+- EM_CNT 15 (교직원 자격별): 0Y/1Y/2Y/4Y/6Y/A1~A10/TOT
+- EW_CNT 8 (입소대기): 00~05 + M6/TOT
+
+## 박제 실측 환각 정정 (4건)
+
+| # | NEXT_SESSION 박제값 | 실측 (의무) | 근거 |
+|---|---|---|---|
+| 1 | 시군구 252/256 | **244** | GU_LAWD_MAP 17 시도 × 2중 루프 |
+| 2 | 단지수 3,605 | **2,001** | apartments SELECT count |
+| 3 | (미박제) infra.childcare 답습 | **2,001/2,001 = 100%** | infra NOT NULL count |
+| 4 | cpmsapi030 응답 60+ | **70 필드 확정** | 실 API 1회 호출 박제 |
+
+## Plan agent 환각 자가 검증 (4건)
+
+| # | Plan v1 박제 | 정정 |
+|---|---|---|
+| 1 | "facilities[].la/lo Haversine 매칭" | cpmsapi021 응답 7 필드 = la/lo 부재 = 매칭 알고리즘 옵션 C-γ' (Kakao 재호출) vs C-γ'' (reverse-geocode) 별 세션 의사결정 |
+| 2 | "1,000회 × 200ms = 3분 30초" 추정 | retry 자리 자리 = 4~6분 + timeout-minutes 60 충분 |
+| 3 | sample placeholder 사고 누락 | 본 키 = 디폴트 모드 응답 (01~70 sample) = 7단계 G 운영 키 활성화 의무 |
+| 4 | regions.id = '서울 강남구' 단정 | regions PK = SERIAL (id 1032 자리) → region + gu 컬럼 매칭 |
+
+## 사고 박제
+
+1. **sample placeholder 응답 사고**: 본 키 = sample 01~70 값. 실 70 필드 값 박제 위해 사용자 콘솔 운영 키 활성화 의무 자리
+2. **Plan agent 박제값 단정 환각 4건**: PHASE 2 자가 검증 의무 답습 자리 (작업 진입 직전 실증 1회)
+3. **NEXT_SESSION 박제값 stale v10**: 시군구 252 / 단지 3,605 / 호출 3,857 = 박제값 환각. 매 세션 plan v1 작성 시 SQL 실측 1회 의무 (next-session-grep-mandate §1 답습)
+
+## 9 GATE 풀 🟢 9 (재검증 후)
+
+- G0 적정 크기: 1줄 + 신규 2 파일 = 1 커밋 적정
+- G1 영향 범위: extractTag 7곳 (내부만, 깨짐 0)
+- G2 실행 순서: B → A 독립 (의존 0)
+- G3 완전성: typecheck/vitest/lint/git diff 4건 풀
+- G4 적정성: 답습 자산 100% 재사용 (regions.childcare 마이그 답습)
+- G5 보안: DDL 자리 + 시크릿 0
+- G6 일관성: infra 답습 자산 정합
+- G7 롤백: _rollbacks 박제
+- G8 UX: 별 세션 scoring 통합 명시
+
+## 다음 세션 자리 (W6-D2 에픽 분할)
+
+- 세션 254 자리: 3-C1 Kakao 단지별 5건 매칭 (~120줄, 옵션 C-γ' vs C-γ'' 의사결정 의무)
+- 세션 255 자리: 3-C2 cpmsapi030 호출 + XML 파싱 (~80줄) + 3-C3 DB UPDATE (~50줄)
+- 세션 256 자리: D 테스트 (~150줄) + E data-fill 통합
+- 세션 257 자리: F workflow yml + .env.example + G 운영 키 활성화 (사용자 자리)
+- 세션 258+ 자리: 10일 분산 cron 모니터링 + scoring 통합 (별 세션)
+
+plan = `C:\Users\user\.claude\plans\claude-distributed-steele.md`
+
+---
+
 # 세션 252 — 2026-05-16 (W6-D 어린이집 옵션 ε cpmsapi021 → regions.childcare JSONB 신규 + 50 limit 사고 박제)
 
 **거시 목적**: NEXT_SESSION L46~52 박제 답습 W6-D 1순위 진입. 사용자 콘솔 발급 2 인증키 (전국 어린이집 정보 조회 + 어린이집별 기본정보 조회 개발계정 각 1) 박제 + 사용자 응답 = 옵션 ε (cpmsapi021 7필드 시군구 집계 + 옵션 δ 별 세션 분할). plan v2 = 환각 7건 정정 (24필드 → 7필드 / JSON → XML / numOfRows → arcode / 페이징 부재 / 252 시군구 루프 / 환경변수명 자가 결정 / endpoint URL).
