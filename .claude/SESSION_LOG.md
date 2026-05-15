@@ -1,3 +1,116 @@
+# 세션 252 — 2026-05-16 (W6-D 어린이집 옵션 ε cpmsapi021 → regions.childcare JSONB 신규)
+
+**거시 목적**: NEXT_SESSION L46~52 박제 답습 W6-D 1순위 진입. 사용자 콘솔 발급 2 인증키 (전국 어린이집 정보 조회 + 어린이집별 기본정보 조회 개발계정 각 1) 박제 + 사용자 응답 = 옵션 ε (cpmsapi021 7필드 시군구 집계 + 옵션 δ 별 세션 분할). plan v2 = 환각 7건 정정 (24필드 → 7필드 / JSON → XML / numOfRows → arcode / 페이징 부재 / 252 시군구 루프 / 환경변수명 자가 결정 / endpoint URL).
+
+**결론**: **2 커밋 (code 1 + docs 1) + 9 파일 (신규 5 + 수정 4)**. 마이그 + ROLLBACK + collector + test + workflow 흡수 + data-fill + audit 통과. typecheck 0 / vitest 2731/2731 / audit clean. 사용자 직접 자리 2건 (👤 Dashboard SQL Editor + 👤 GitHub Secrets) 후 STEP 5 workflow_dispatch 진입 자리.
+
+## 7 단계 본문
+
+| STEP | 작업 | 파일 (라인) |
+|---|---|---|
+| 0 (실증) | dry-run 1 시군구 (서울 종로구 arcode=11110) 실 API 호출 → HTTP 200 + 50 items + 7필드 확정 | 코드 변경 0 |
+| 1 (마이그) | regions.childcare JSONB 신규 + ROLLBACK 박제 | supabase/migrations/20260516000534_*.sql (+13) + _rollbacks (+2) |
+| 2 (collector) | cpmsapi021 XML 정규식 파싱 + 256 시군구 GU_LAWD_MAP 답습 + INSERT fallback | scripts/collectors/childcare-info.mjs (+205) |
+| 3 (test) | parseChildcareXml/aggregateChildcare/listAllSgg = 16 tests pass | scripts/collectors/childcare-info.test.mjs (+170) |
+| 4 (orchestration) | data-fill L43 regions entry + collect-childcare.yml 2단 step 흡수 + data-fill.test hardcode 회귀 fix | data-fill.mjs (1 line) + collect-childcare.yml (+17) + data-fill.test.mjs (4 line) |
+| 5 (배포) | 사용자 직접 자리 2건 (Dashboard SQL + GitHub Secrets) 후 workflow_dispatch dry_run → 본 실행 | 다음 turn |
+| 6 (UI/scoring) | 별 세션 분할 권장 (옵션 b) | 본 세션 미진행 |
+| 7 (커밋) | 2 커밋 + push | SESSION_LOG + NEXT_SESSION + BACKLOG |
+
+## 환각 정정 박제 (7건)
+
+| # | plan v1 박제값 | v2 정정값 | 근거 |
+|---|---|---|---|
+| 1 | 응답 24필드 | **7필드** (stcode/crname/crtel/crfax/craddr/crhome/crcapat) | OpenAPI 명세서 P4 + 실 API 응답 |
+| 2 | JSON 응답 | **XML 단일** (JSON 미제공) | 명세서 P4 "교환 데이터 표준 = XML" |
+| 3 | numOfRows/pageNo 페이징 | **arcode 5자 + 페이징 부재** | 명세서 P4 요청 메시지 명세 |
+| 4 | 17 시도 루프 | **256 시군구 루프** (GU_LAWD_MAP 답습) | _shared.mjs L263 + listAllSgg 통합 검증 |
+| 5 | endpoint URL 추정 | `http://api.childcare.go.kr/mediate/rest/cpmsapi021/cpmsapi021/request` | OpenAPI 명세서 P4 + 사용자 박제 |
+| 6 | 환경변수명 자가 결정 | `CHILDCARE_API_KEY` 사용자 .env.local 박제 (32자 정합) | 실증 호출 1회 |
+| 7 | 기술문서 spec crtelno/crfaxno | **실제 API crtel/crfax** (no `no` suffix) | 2026-05-16 실증 호출 발견 |
+
+## 답습 자산 (세션 252 정착)
+
+1. **OpenAPI 명세서 박제 ≠ 실 API 응답** — 기술문서 spec 박제 후 dry-run 실증 1회 의무. 본 세션 환각 #7 (crtelno/crfaxno → crtel/crfax) = 명세서 문서 환각 발견 사고
+2. **256 시군구 GU_LAWD_MAP 답습 패턴** — listAllSgg 함수 = `Object.entries(GU_LAWD_MAP)` 2중 루프. 17 시도 단위 collector 와 분리 박제 자리 (population-sex-age 답습 vs 본 collector 답습)
+3. **XML 정규식 파싱 = xml2js 의존성 회피** — flat 구조 (item × N + 7 leaf tag) 한정 답습 자산. nested 구조 시 의존성 추가 의무
+4. **워크플로 흡수 vs 신규 의사결정 답습** — `collect-childcare.yml` 흡수 (Kakao + 보육정보공개 2단 step) = `collect-population.yml` 답습 정합. 신규 yml 박제 환각 차단
+5. **사용자 응답 = "몰라 네가 다 찾아봐줘" 답습** — 환경변수명 자가 결정 의무 박제 후 dry-run 실증 시 32자 정합 확인. 룰 §"메모리는 진실의 원천 아님" 답습 v9
+6. **사용자 콘솔 스크린샷 박제 답습** — NEXT_SESSION L48 박제값 ("4건 = 2 서비스 × 개발/운영 각 2") 환각 → 실제 = "2 서비스 × 개발계정만 각 1 = 2건" 정정. 룰 next-session-grep-mandate.md §2 답습 v2
+7. **옵션 ε vs δ 분리 박제 답습** — 옵션 ε (시군구 집계 252 호출/회 = 안전) 본 세션 종결, 옵션 δ (단지 매칭 3,857 호출/회 = 한도 초과) BACKLOG 박제 W6-D2 별 세션 분할
+
+## PHASE 1+2+3 + 9 GATE 자가 결정 답습 v9
+
+세션 246~251 + 본 turn 누적 7회 답습. 사용자 PHASE 1+2+3 워크플로 메시지 = 자가 의사결정 신호 정합 정착.
+
+9 GATE 풀 🟢 9:
+- GATE 0 (Opus): collector 205줄 + test 170줄 + 마이그 + workflow 흡수 = Opus 적정 ✅
+- GATE 1 (실증): dry-run HTTP 200 + 50 items 검증 ✅
+- GATE 2 (사고 박제): 환각 7건 정정 본문 박제 + 룰 답습 v9 ✅
+- GATE 3~4 (자가 점검): 5건 plan v1 정정 후 빈틈 0 ✅
+- GATE 5 (회귀 가드): vitest 2731/2731 / typecheck 0 / audit clean ✅
+- GATE 6 (단순): 옵션 ε 선택 매트릭스 4 기준 정합 ✅
+- GATE 7 (사용자 의사결정): 옵션 ε vs δ + Dashboard + Secrets = 4건 ✅
+- GATE 8 (push 직전 검증): 본 STEP 7 = push 전 풀 검증 ✅
+
+---
+
+# 세션 251 — 2026-05-15 (W6-D NEXT_SESSION 환각 5건 정정 + next-session-grep-mandate 룰 신규)
+
+**거시 목적**: 세션 251 첫 turn W6-D 어린이집 진입 의지로 사용자 활용신청 가이드 박제 시 5턴 누적 환각 발생. 사용자 콘솔 스크린샷 (info.childcare.go.kr 보육정보공개 API 4건 발급 2026-04-07 승인) 실증으로 정정. 룰 §11 (진단 전 파일 직접 확인) + §12 (자가 점검 1+2) 답습 미준수 사고 박제.
+
+**결론**: **1 커밋 (27c0403) + 4 파일 변경 (룰 1 신규 + 로컬 3)**. `.claude/rules/next-session-grep-mandate.md` +85줄 신규 (git 반영) + NEXT_SESSION.md L32~38 + L143 환각 4건 정정 + 답습 자산 3건 추가 (gitignore 답습 본인 머신만) + `~/.claude/projects/.../memory/session_2026-05-15_session251_*.md` 신규 + MEMORY.md 1줄. CI run 25919696208 success 확정 (docs only).
+
+## 5턴 누적 환각 박제 (룰 §12 답습 사고 의무)
+
+| turn | 환각 | 실증 정정 |
+|---|---|---|
+| 3 | service ID `15012690` 단정 | NEXT_SESSION L34 박제값 답습 → 실제 = data.go.kr `/data/3065251/openapi.do` (한국사회보장정보원) |
+| 5 | "보건복지부_어린이집 표준 데이터" 제공기관 단정 | data.go.kr 실제 제공기관 = 한국사회보장정보원 (보건복지부 산하 공공기관) |
+| 7 | (b) "어린이집 기본정보" OpenAPI 후보 박제 | 실제 = CSV archived 자료 (2022-07-10), OpenAPI 자리 0 |
+| 9 | data.go.kr 단일 발급 사이트 단정 | 실제 별도 `info.childcare.go.kr` 보육정보공개 API 자체 발급 (사용자 콘솔 스크린샷 박제) |
+| 9 | "활용신청 신규 의무" 박제 | 실제 = 사용자 콘솔 4건 발급 보유 (2026-04-03 신청, 04-07 승인 운영계정 만료 2027-04-07) |
+
+근본 원인 = NEXT_SESSION 박제값 단정 답습 + 본인 메모리 grep 0회 + collect-childcare.mjs 본문 grep 0회.
+
+## 룰 신규 박제 — `.claude/rules/next-session-grep-mandate.md` (+85줄)
+
+3중 grep 의무 (작업 진입 직전):
+
+1. 박제 환경변수명 grep (`.claude/`, `scripts/`, `.env.example`)
+2. 박제 service ID + 사이트명 grep (`.claude/` + `~/.claude/projects/<project>/memory/`)
+3. collector 본문 grep (`head -50 scripts/collectors/<collector>.mjs` + `grep -n "process.env\." ...`)
+
+사용자 콘솔 실증 1회 의무 (활용신청/SSO/시크릿 자리).
+
+도메인 첫 진입 시 메모리 grep 의무 (`~/.claude/projects/<project>/memory/` 답습).
+
+## PHASE 1+2+3 + 9 GATE 자가 결정 답습 v8
+
+세션 246/247/248/249/250 + 본 turn 누적 6회 답습. 사용자 PHASE 1+2+3 워크플로 메시지 = 자가 의사결정 신호 정합 정착.
+
+9 GATE 풀 🟢 9 (사전 예측 정합):
+
+- GATE 0 (Sonnet 적정): 🟢 docs only + 룰 1 신규
+- GATE 1 (실증): 🟢 사용자 콘솔 스크린샷 + grep 4건 실증
+- GATE 2 (사고 박제): 🟢 룰 신규 + 메모리 메모 2건
+- GATE 3~4 (자가 점검 1+2): 🟢 plan 박제 시 grep 1회 + 메모리 검증 답습
+- GATE 5 (회귀 가드): 🟢 코드 변경 0 = lint/typecheck/vitest 영향 0
+- GATE 6 (단순): 🟢 1 커밋 4 파일 (git 1, 로컬 3)
+- GATE 7 (사용자 의사결정): 🟢 PHASE 1+2+3 워크플로 메시지 답습
+- GATE 8 (push 직전 검증): 🟢 CI run 25919696208 success 확정
+
+## 답습 자산 (세션 251 정착)
+
+1. **NEXT_SESSION 박제값 stale 위험 답습 v4** — 세션 244/246/247/248/250 누적 + 본 사고 박제. 작업 진입 직전 NEXT_SESSION 박제값 1건 단정 전 3중 grep 의무 (룰 신규 §1)
+2. **사용자 콘솔 실증 1회 의무 박제** — "활용신청 신규 의무" / "사용자 콘솔 작업 의무" 박제 자리 시 사용자 응답 1회 의무 (룰 신규 §2)
+3. **메모리 grep 도메인 첫 진입 시 의무** — 미박제 도메인 자리 단정 환각 위험 100% 차단 (룰 신규 §3)
+4. **info.childcare.go.kr 별도 발급 사이트 답습** — data.go.kr 와 분리. 보육정보공개 API 2 서비스. 미래 W6-D plan v2 작성 시 발급 페이지 endpoint URL + parameter spec 본문 fetch 1회 의무
+5. **collect-childcare.mjs Kakao Places 기반 작동 답습** — `KAKAO_KEY` 단일 환경변수. 단지 주변 1km 어린이집+유치원 개수/거리. infra 테이블의 `childcare`/`childcare_dist` 컬럼 채움. 보육정보공개 API 추가 시 별도 환경변수 박제 의무
+6. **gitignore negation vs 본인 머신 보유 분리 답습** — `.claude/NEXT_SESSION.md` = gitignore (`.claude/*`) = 본인 머신만 자리 / `.claude/rules/**` = negation 답습 git 반영 / `~/.claude/projects/.../memory/` = 글로벌 메모리 별도 git 0 자리
+
+---
+
 # 세션 250 — 2026-05-15 (Building Hub 1시간 timeout 사고 정정 + 모니터링 4번째 trigger 박제)
 
 **거시 목적**: 세션 250 첫 턴 사전 체크 모니터링 trigger 3종 답습 중 신규 발견 — `Collect Building Hub (에너지+인허가)` workflow run 25908487036 (2026-05-15 08:36 schedule) cancelled 사고 발견. 룰 §workflow-name-hallucination 답습 (workflow_dispatch success ≠ 동작 완료) = raw log 직접 검증 후 진입.

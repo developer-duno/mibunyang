@@ -36,14 +36,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+          CHILDCARE_API_KEY: ${{ secrets.CHILDCARE_API_KEY }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$KAKAO_KEY" ]; then
-            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, KAKAO_KEY secret 필요"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$KAKAO_KEY" ] || [ -z "$CHILDCARE_API_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, KAKAO_KEY, CHILDCARE_API_KEY secret 필요"
             exit 1
           fi
           echo "Secrets validated"
 
-      - name: Collect childcare facilities
+      - name: Collect childcare facilities (Kakao, 단지별 도보권)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -54,3 +55,15 @@ jobs:
             ARGS="--dry-run"
           fi
           node scripts/collectors/collect-childcare.mjs $ARGS
+
+      - name: Collect childcare info data (W6-D 세션 252, 시군구 집계)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CHILDCARE_API_KEY: ${{ secrets.CHILDCARE_API_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          node scripts/collectors/childcare-info.mjs $ARGS
