@@ -11,11 +11,12 @@
 --   CHILD_CNT 11: 00~05 + M2/M3/M5/SP/TOT (연령대별 아동수)
 --   EM_CNT 15:    0Y/1Y/2Y/4Y/6Y/A1~A10/TOT (자격별 교직원수)
 --   EW_CNT 8:     00~05 + M6/TOT (연령대별 입소대기)
--- 보존 정책: 옵션 B-β = 핵심 15 필드 × 5건 = 75 필드 JSONB 박제
+-- 보존 정책 (사용자 확정 2026-05-16): 옵션 B-γ = 70 필드 raw 전체 × 5건 = 350 필드 JSONB 박제 (데이터 최대한 활용)
 -- 의미 단위: 단지별 도보권 1km 어린이집 5건 상세 (옵션 C-γ' Kakao 재호출 매칭).
+-- 응답 사고: 응답 값 01~70 = 운영 모드 정상 응답 (사용자 확정, sample placeholder 환각 폐기).
 -- 시군구 집계 regions.childcare (cpmsapi021, 세션 252) 와 의미 단위 다름.
 -- ROLLBACK: _rollbacks/20260517000000_rollback_add_infra_childcare_detail.sql
 
 ALTER TABLE infra ADD COLUMN IF NOT EXISTS childcare_detail JSONB DEFAULT NULL;
 
-COMMENT ON COLUMN infra.childcare_detail IS '보육정보공개 cpmsapi030 단지별 도보권 1km 어린이집 5건 상세 (facilities[5] × 15필드 + fetched_at). CCTV/보육실수/교직원/연령별 아동수 박제. regions.childcare (cpmsapi021 시군구 집계) 와 의미 단위 다름.';
+COMMENT ON COLUMN infra.childcare_detail IS '보육정보공개 cpmsapi030 단지별 도보권 1km 어린이집 5건 상세 (facilities[5] × 70 raw 필드 + fetched_at). 위치/기본/시설/정원/현원/일자 + CLASS_CNT 11 (연령별 반수) + CHILD_CNT 11 (연령별 아동수) + EM_CNT 15 (자격별 교직원수) + EW_CNT 8 (연령별 입소대기) raw 보존. regions.childcare (cpmsapi021 시군구 집계 7필드) 와 의미 단위 다름.';
