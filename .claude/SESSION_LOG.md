@@ -1,3 +1,60 @@
+# 세션 255 — 2026-05-16 (W6-D2 cpmsapi030 운영키 전환 + 테스트/data-fill + 1 시군구 실측 + collector 버그 2건)
+
+**거시 목적**: 세션 254 박제 childcare-detail.mjs collector 의 D 테스트 + E data-fill 통합 + 1 시군구 실제 실행 (JSONB row size 실측). 작업 중 운영키 전환으로 세션 254 "운영 모드" 박제 환각 정정 + collector 버그 2건 발견.
+
+**결론**: **2 코드 커밋 + 1 시군구 실 수집**. `a5f86dc` 테스트 10건 + tsconfig include + data-fill 동기화 / `5c6bdf1` break outer 버그 수정. 서울 강북구 50 facilities cpmsapi030 운영 호출 → regions UPDATE 1건. childcare JSONB **48.4 KB** (전국 606 환산 ~28.6 MB). vitest 37/37 / typecheck:scripts 0 / eslint 0 / audit 0.
+
+## 본 세션 작업
+
+| STEP | 작업 | 결과 |
+|---|---|---|
+| 0 (PHASE 1+2+3) | Explore 2 병렬 + Plan agent + raw API 실측으로 개발계정 순번 응답 사고 발견 | plan v1→2, AskUserQuestion 4회 |
+| 1 | childcare-detail.test.mjs 신규 (10 test) | parseChildcareDetailXml 8 + mergeDetailIntoFacility 2 |
+| 2 | tsconfig.scripts.json childcare 4 파일 include (세션 254 baseline include 누락 보정) | typecheck 정정 3건 |
+| 3 | CRREPNAME 버그 수정 — 운영 응답 = 대표자명만 대문자 태그 | childcare-detail.mjs L151 |
+| 4 | data-fill.mjs/test.mjs CHILDCARE_BASIC_API_KEY 동기화 (3-way 선반영) | envKeys + 단언 |
+| 5 | **break outer → break 버그 수정** — DAILY_LIMIT 도달 시 시군구 UPDATE 유실 | limitReached 플래그 |
+| 6 | 강북구 50건 실제 실행 + JSONB row size 실측 | UPDATE 1건, 48.4 KB |
+| 7 | SESSION_LOG + NEXT_SESSION + 커밋 3 | docs |
+
+## 사고 박제 (3건)
+
+1. **세션 254 "운영 모드 정상 응답" 박제 = 환각** (세션 255 raw 실측 정정): 세션 254 가 dry-run sample (01~70 순번값) 을 "운영 모드 실제 데이터" 로 박제 (사용자 확정이라며 세션 253 L105 placeholder 의심 폐기). 세션 255 raw API 1회 호출 = 모든 필드 01~70 순번 placeholder 확정 → 당시 키 = info.childcare.go.kr **개발계정 키** (조회 50행 제한 + 순번 응답). 사용자 운영키 교체 후 실 데이터 (구립참행복한어린이집/강북구청장/좌표) 확인. 근본 = 개발계정 vs 운영계정 2단계 — 세션 252 "50 limit 사고" 도 동일 (개발계정 50행 제한). `next-session-grep-mandate.md` + `kosis-dimension-mismatch-guard.md` (raw API 실측 의무) 답습 패턴 일치
+2. **CRREPNAME 대문자 태그 버그**: childcare-detail.mjs L151 `extractTag(block, "crrepname")` 소문자 → 운영 응답은 `<CRREPNAME>` 대문자만 (나머지 72 태그 소문자). extractTag 대소문자 구분 정규식 → crrepname 항상 null. 운영키 raw 응답 실측으로 발견 → `CRREPNAME` 1줄 정정 (공용 extractTag 미변경 = cpmsapi021 영향 0)
+3. **break outer = DAILY_LIMIT 도달 시 시군구 UPDATE 유실**: collector L262 `break outer` 가 시군구 루프 전체 즉시 탈출 → 현재 시군구 atomic UPDATE 건너뜀 → fetch+merge 데이터 통째 유실. L258~261 "atomic UPDATE 보장" 주석과 코드 모순. `break` + limitReached 플래그로 정정 (현재 시군구 UPDATE 완료 후 전체 종료). 1 시군구 실행 준비 중 dry-run regionChanged=false 진단으로 발견
+
+## 박제 실측
+
+| 항목 | 실측 |
+|---|---|
+| 강북구 childcare JSONB 직렬화 | 48.4 KB (facilities 50, facility[0] top-level 키 34) |
+| 전국 606 시군구 환산 | ~28.6 MB (Postgres jsonb 1GB 한계 대비 무관) |
+| class_cnt / em_cnt / ew_cnt 키 | 11 / 16 / 8 (코드 정합) |
+| crstatusname 분포 (강북구 50) | 정상 46 / 재개 4 |
+| childcare-info.test.mjs | 13 test (세션 254 박제 "16/16" = 환각) |
+| EM_KEYS | 16개 (collector L18 주석 "15" = 오류, L98 배열 16 정답) |
+
+## 9 GATE 풀 🟢 9
+
+- G0: 테스트 221줄 + 버그수정 27줄 = 2 커밋 적정 분할 (test / fix 성격 분리)
+- G1: regions.childcare JSONB — 강북구 1행만 UPDATE, 자매 collector 영향 0
+- G2: 테스트 → tsconfig → 버그수정 → 실행 → docs
+- G3: vitest 37/37 / typecheck:scripts 0 / eslint 0 / audit 0 / 실 수집 UPDATE 1
+- G4: 답습 자산 100% (childcare-info.test.mjs mock 패턴 / typescript-patterns §3.1)
+- G5: 운영키 .env.local, 대화 노출 0. GitHub Secret 교체는 사용자 직접
+- G6: data-fill 3-way 동기화 선반영 (scripts 등재는 세션 256 yml)
+- G7: git revert 또는 facilities[] 7 필드 그대로 유지 가능
+- G8: 별 세션 257 scoring/UI
+
+## 다음 세션 자리 (W6-D2 에픽)
+
+- 세션 256: 본 수집 (DAILY_LIMIT 1000 × 23일 cron) + F workflow yml (collect-childcare-detail.yml) + 👤 GitHub Secret CHILDCARE_BASIC_API_KEY
+- 세션 257: scoring/UI 통합 (조회 시점 Haversine 1km)
+
+plan = `C:\Users\user\.claude\plans\1-effervescent-pancake.md`
+
+---
+
 # 세션 254 — 2026-05-16 (W6-D2 옵션 NB 전환 — cpmsapi030 신규 collector 박제 + INFO-100 인증 사고 발견)
 
 **거시 목적**: 세션 253 박제 옵션 C-γ' (Kakao 재호출) → 사용자 확정 옵션 NB C-γ''' (cpmsapi030 23,122회 전체 절차) 전환. 박제 위치 = `regions.childcare.facilities[]` 7→70 필드 확장. 세션 253 박제 `infra.childcare_detail` 마이그 폐기 (컬럼 부재 실측 확정).
@@ -28,7 +85,7 @@
 
 ## 사고 박제 (5건)
 
-1. **cpmsapi030 별 인증키 환각 정정** (세션 254 dry-run 발견 → 사용자 정정): 1차 = collector 가 `CHILDCARE_API_KEY` (cpmsapi021 키) 답습 → INFO-100 "인증키가 유효하지 않습니다". 2차 = 사용자 지적 — cpmsapi030 은 `CHILDCARE_BASIC_API_KEY` (.env.local 박제, 32자, 앞 190895) 별 키. 세션 253 NEXT_SESSION L40 박제값 정확 (CHILDCARE_BASIC_API_KEY) → plan v2 작성 시 "CHILDCARE_API_KEY 답습" 단정 환각. collector 5곳 정정 (env 키명) → dry-run 60건 정상 (서울 강북구 sample crtypename/cctv/la 박제 확인). 응답 값 '01'~'70' = 운영 모드 실제 데이터 (세션 253 사용자 확정 답습 정합, placeholder 환각 폐기)
+1. **cpmsapi030 별 인증키 환각 정정** (세션 254 dry-run 발견 → 사용자 정정): 1차 = collector 가 `CHILDCARE_API_KEY` (cpmsapi021 키) 답습 → INFO-100 "인증키가 유효하지 않습니다". 2차 = 사용자 지적 — cpmsapi030 은 `CHILDCARE_BASIC_API_KEY` (.env.local 박제, 32자, 앞 190895) 별 키. 세션 253 NEXT_SESSION L40 박제값 정확 (CHILDCARE_BASIC_API_KEY) → plan v2 작성 시 "CHILDCARE_API_KEY 답습" 단정 환각. collector 5곳 정정 (env 키명) → dry-run 60건 정상 (서울 강북구 sample crtypename/cctv/la 박제 확인). 응답 값 '01'~'70' = 운영 모드 실제 데이터 (세션 253 사용자 확정 답습 정합, placeholder 환각 폐기) — **⚠️ 세션 255 정정**: 이 마지막 문장이 환각. 세션 255 raw API 실측 = 당시 키 = **개발계정 키** → 응답 01~70 = 개발계정 순번 placeholder 확정. 세션 253 L105 의 placeholder 의심이 정확했고 세션 254 가 잘못 폐기. 세션 255 사용자가 운영키 교체 후 실 데이터 (구립참행복한어린이집 등) 확인
 2. **Plan agent 위임 Usage Policy 거부**: prompt "자리" 100+ 회 = 의도적 텍스트 오염 자동 차단. `feedback_jari_overuse_v3.md` 신규 박제. Write/Agent/AskUserQuestion 호출 직전 grep -c 의무
 3. **"자리" 남발 3차 재발**: plan v1 본문 "자리" 53회 → v2 5회 정정. 메모리 v1 (세션 238) + v2 (세션 242) 답습 미준수. 사용자 인터럽트 "자리자리 그만해" 직후 정정
 4. **Building Hub 5/15 cancelled = 단발 timing 사고**: fix 커밋 f063733 (5/15 21:25 KST) = schedule 발화 (5/15 17:36 KST) 8시간 후 push → 옛 yml (60분) 적용. 6/15 schedule 90분 적용 검증 자리

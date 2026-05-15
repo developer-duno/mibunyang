@@ -75,6 +75,7 @@ grep -rn "<도메인>\|<API명>\|<사이트URL>" ~/.claude/projects/<project>/me
 - 세션 251 본 사고 박제 (NEXT_SESSION L32~38 환각 4건 정정 + 본 룰 신규)
 - 미래 W6-D plan v2 작성 시 = info.childcare.go.kr API endpoint + parameter 발급 페이지 본문 fetch 1회 의무
 - 도메인 새 진입 시 메모리 grep + collector 본문 grep + 사용자 콘솔 실증 3중 의무
+- 세션 255 답습: 세션 254 가 dry-run sample 응답 (필드값 01~70 순번) 을 "운영 모드 실제 데이터" 로 NEXT_SESSION+SESSION_LOG+plan 4 파일 박제 (사용자 확정이라며 세션 253 placeholder 의심 폐기). 세션 255 raw API 1회 호출로 개발계정 순번 placeholder 확정 — **API 응답 내용·태그명은 운영키 raw 실측으로만 단정 가능. dry-run sample/박제값 답습 단정 금지**. 개발계정(테스트, 조회 50행 제한, 순번 응답) vs 운영계정(실서비스, 별 신청+심의) 2단계 인지 의무
 
 ## 차단 검증 (본 룰 적용 후 사고 시뮬레이션)
 
