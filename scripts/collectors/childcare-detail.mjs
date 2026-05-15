@@ -224,9 +224,10 @@ async function main() {
   let processed = 0;       // cpmsapi030 호출 횟수
   let skippedFacilities = 0;  // resume self skip
   let updatedRegions = 0;
+  let limitReached = false;   // DAILY_LIMIT 도달 — 현재 시군구 UPDATE 후 전체 종료
   const rpt = createReporter("childcare-detail");
 
-  outer: for (const r of regions) {
+  for (const r of regions) {
     const facilities = /** @type {ExistingFacility[]} */ (r.childcare?.facilities ?? []);
     if (facilities.length === 0) continue;
 
@@ -252,14 +253,16 @@ async function main() {
         continue;
       }
 
-      // DAILY_LIMIT 도달 시 종료
+      // DAILY_LIMIT 도달 시 현재 시군구 facility 루프 종료
+      // (break = facility 루프만 탈출 → 아래 atomic UPDATE 실행 → 시군구 루프 끝에서 전체 종료)
       if (processed >= DAILY_LIMIT) {
         log("limit", `DAILY_LIMIT ${DAILY_LIMIT} 도달 — 남은 시군구 ${regions.length - updatedRegions}건 다음 cron 분산`);
         updatedFacilities.push(fac);  // 미박제 그대로 유지
         // 남은 facilities 도 그대로 박제 (atomic UPDATE 보장)
         const idx = facilities.indexOf(fac);
         for (let i = idx + 1; i < facilities.length; i++) updatedFacilities.push(facilities[i]);
-        break outer;
+        limitReached = true;
+        break;
       }
 
       try {
@@ -290,11 +293,8 @@ async function main() {
         log("dry-run", `${r.region} ${r.gu}: ${facilities.length}건 중 변경 1+ — sample crtypename=${sample?.crtypename}, cctv=${sample?.cctvinstlcnt}, la=${sample?.la}`);
         updatedRegions++;
       }
-      continue;
-    }
-
-    // 시군구 atomic UPDATE
-    if (regionChanged) {
+    } else if (regionChanged) {
+      // 시군구 atomic UPDATE
       const newChildcare = {
         ...r.childcare,
         facilities: updatedFacilities,
@@ -306,12 +306,15 @@ async function main() {
       if (updErr) {
         logError("update", `${r.region} ${r.gu}: ${updErr.message}`);
         rpt.fail(1);
-        continue;
+      } else {
+        updatedRegions++;
+        rpt.success(1);
+        log("update", `${r.region} ${r.gu}: ${facilities.length}건 (${processed}/${DAILY_LIMIT})`);
       }
-      updatedRegions++;
-      rpt.success(1);
-      log("update", `${r.region} ${r.gu}: ${facilities.length}건 (${processed}/${DAILY_LIMIT})`);
     }
+
+    // DAILY_LIMIT 도달 = 현재 시군구 처리 완료 후 전체 종료
+    if (limitReached) break;
   }
 
   log("done", `cpmsapi030 호출 ${processed}회 / resume skip ${skippedFacilities}건 / regions UPDATE ${updatedRegions}건`);
