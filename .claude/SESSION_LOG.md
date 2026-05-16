@@ -8471,3 +8471,32 @@ run 25638230275 step-별 timestamp 실측으로 진짜 병목 = sync-naver-compl
 - 5/11 cron 결과 확정 (KST 5/12 04:54)
 - 시나리오 A/B/C 분기 후 옵션 D-1/D-2/E 진입 결정
 - 옵션 1-A 보류 유지 또는 1-B (cross-repo PR) 별도 세션 진입 결정
+
+## 세션 258 (2026-05-16) — W6-D2 어린이집 마무리 (수집기 운영 실행 + 데이터 적재)
+
+W6-D2 어린이집 표시 에픽(세션 252~258) **종료**. 코드 변경 0건 — 데이터 적재 + 검증 + 문서만.
+
+### 산출
+
+- `collect-nearby-childcare.mjs` 운영 1회 실행 → `schools.nearby_childcare` **32 단지 적재** (성공 32 / 실패 0, 2.1초). UPDATE 32 / INSERT 0
+- 마이그레이션 `20260516090916_add_schools_nearby_childcare.sql` 은 세션 257↔258 사이 이미 DB 적용됨 (실측 확인 — NEXT_SESSION 1순위 1단계 👤 사용자 선행 완료, NEXT_SESSION 박제 "미적용" stale 1건 정정)
+- docs 커밋 1건 (SESSION_LOG + NEXT_SESSION + BACKLOG)
+
+### 검증
+
+- DB 적재: `schools.nearby_childcare` 채워진 행 32 / 샘플 `ah-2022910193`("칸타빌 수유팰리스") 어린이집 5건 + 70필드(type/capacity/cctv/enrolled/status/dataStdDate + detail 34키) 완전
+- 데이터 흐름 끝단: `/api/supabase/apartments?region=서울&gu=강북구` 직접 호출 → 강북구 9 단지 전부 `nearbyChildcare` 어린이집 5건씩 정상 전달 (DB → apartments_flat VIEW → API 경로 실측)
+- 컴포넌트: `NearbyChildcareSection.test.jsx` 16건 + 회귀 vitest components+collectors **96 파일 1340/1340 pass**
+- UI 육안: 단지 상세 모달은 비로그인 게이트(`isLoggedIn = expert.expertLoggedIn`) → Playwright 자동 진입 불가 → 👤 사용자 카카오 로그인 후 강북구 단지 상세에서 직접 확인
+
+### 좌표 제약 진단 (사용자 의사결정 1회)
+
+- `collect-nearby-childcare` 는 어린이집 좌표(la/lo)로 거리 계산. 현재 전국 어린이집 23,122곳 중 좌표 보유 = **강북구 50곳뿐 (0.2%)** — 세션 255 수동 실측분
+- dry-run 으로 "매칭 32/2001" 사전 확인 → 사용자에게 보고 → "지금 수집기 실행 + 강북구 검증" 선택
+- 전국 좌표는 `collect-childcare-detail.yml` cron (5/17 KST 04:00 첫 발화) 매일 ~1000건 약 23일 누적 → `collect-nearby-childcare.yml` cron (5/17 KST 05:30~) 매일 점진 확대
+
+### 답습 자산
+
+- 수집기 dry-run 으로 작업 규모 사전 확정 → 좌표 0.2% 제약 사전 발견 → 사용자 의사결정
+- 단지 상세 모달 비로그인 게이트 — 가짜 `expertToken` 은 `/api/auth/verify` 가 즉시 제거. UI 검증은 API 응답 실측 + 컴포넌트 테스트로 대체
+- 데이터 흐름 끝단 검증 = vite dev `/api` 프록시로 API 직접 호출
