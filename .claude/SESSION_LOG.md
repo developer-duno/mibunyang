@@ -1,3 +1,63 @@
+# 세션 256 — 2026-05-16 (W6-D2 cpmsapi030 자동수집 워크플로 + data-fill 등재)
+
+**거시 목적**: 세션 255 박제 childcare-detail.mjs collector 의 F 단계 — GitHub Actions 자동수집 워크플로 신규 + data-fill scripts 등재 + workflows 문서 갱신. 605 시군구 어린이집 70 필드 상세를 매일 분산 수집하는 자동화 완성.
+
+**결론**: **1 코드 커밋**. `collect-childcare-detail.yml` 신규 (매일 KST 04:00 cron, DAILY_LIMIT 분산) + data-fill regions scripts 8개로 확장 + workflows CLAUDE.md 갱신. vitest 37/37 / typecheck:scripts 0 / eslint 0 / audit-env-keys 0 (childcare-detail 3-way 정합 확인).
+
+## 본 세션 작업 (1 커밋)
+
+| STEP | 작업 | 파일 |
+|---|---|---|
+| 0 (PHASE 1) | Explore 1 + collect-childcare.yml/applyhome.yml 패턴 답습 + AskUserQuestion 1회 (신규 yml vs 기존 step) | 코드 0 |
+| 1 | collect-childcare-detail.yml 신규 — 매일 cron + Validate secrets + DAILY_LIMIT env | .github/workflows/collect-childcare-detail.yml (+60줄) |
+| 2 | data-fill.mjs regions scripts 에 childcare-detail.mjs 등재 (7→8개) | data-fill.mjs L43 |
+| 3 | data-fill.test.mjs regions scripts 단언 8개 정정 (주석+제목+expect 3곳) | data-fill.test.mjs L41/L76~79 |
+| 4 | workflows CLAUDE.md — 매일 그룹 3개 + Secrets 표 CHILDCARE 2키 보강 | .github/workflows/CLAUDE.md |
+| 5 | 회귀 가드 + SESSION_LOG + 커밋 | docs |
+
+## audit-env-keys 3-way 정합 (childcare-detail.mjs)
+
+```
+code     : CHILDCARE_BASIC_API_KEY
+yml env  : CHILDCARE_BASIC_API_KEY, SUPABASE_SERVICE_KEY, SUPABASE_URL
+yml valid: CHILDCARE_BASIC_API_KEY, SUPABASE_SERVICE_KEY, SUPABASE_URL
+data-fill: ..., CHILDCARE_BASIC_API_KEY, ...
+```
+
+세션 232 secret-naming-audit 룰 §1 정합 — collector 코드 / yml env block / yml Validate step / data-fill envKeys 4지점 동기화.
+
+## 워크플로 설계
+
+- cron `0 19 * * *` (매일 UTC 19:00 = KST 04:00) — collect-childcare.yml (매월 1일 KST 05:00) 과 시각 분리
+- `DAILY_LIMIT` env 주입 (기본 1000, workflow_dispatch input 으로 조정 가능) — childcare-detail.mjs 가 process.env.DAILY_LIMIT 읽음
+- 23,122 facilities ÷ 1000 ≈ 23일 누적 수집. resume skip (crtypename 존재) 으로 중복 호출 0
+- concurrency group `data-collection` (다른 수집 워크플로와 동시 실행 방지)
+
+## 사고 박제 (1건)
+
+1. **.env.example 퍼미션 차단** — `.env*` 파일은 Read/Edit/Bash 모두 권한 거부 (시크릿 노출 방지 정책). `CHILDCARE_API_KEY` (세션 252 누락) + `CHILDCARE_BASIC_API_KEY` 추가는 👤 사용자 직접. git show 로 본문 확인은 가능
+
+## 9 GATE 풀 🟢 9
+
+- G0: yml 60줄 신규 + data-fill 2 + CLAUDE.md = 1 커밋 적정
+- G1: 신규 워크플로 — 기존 38개 영향 0, concurrency group 만 공유
+- G2: yml → data-fill → CLAUDE.md → 검증 → 커밋
+- G3: vitest 37/37 / typecheck:scripts 0 / eslint 0 / audit 0 / yml 구조 7항목
+- G4: collect-childcare.yml + collect-applyhome.yml 패턴 100% 답습
+- G5: CHILDCARE_BASIC_API_KEY = GitHub Secret (사용자 등록), .env.example 사용자 직접
+- G6: data-fill regions scripts 7→8 정합, audit 3-way 통과
+- G7: yml 파일 git rm 1건으로 롤백
+- G8: 별 세션 257 scoring/UI
+
+## 다음 세션 자리 (W6-D2 에픽 마지막)
+
+- 세션 257: scoring 통합 + UI 표시 (조회 시점 Haversine 1km 5건 필터링)
+- 👤 사용자: GitHub Secret CHILDCARE_BASIC_API_KEY 등록 + .env.example 2키 추가
+
+plan = `C:\Users\user\.claude\plans\1-effervescent-pancake.md` (세션 255~256 공용)
+
+---
+
 # 세션 255 — 2026-05-16 (W6-D2 cpmsapi030 운영키 전환 + 테스트/data-fill + 1 시군구 실측 + collector 버그 2건)
 
 **거시 목적**: 세션 254 박제 childcare-detail.mjs collector 의 D 테스트 + E data-fill 통합 + 1 시군구 실제 실행 (JSONB row size 실측). 작업 중 운영키 전환으로 세션 254 "운영 모드" 박제 환각 정정 + collector 버그 2건 발견.

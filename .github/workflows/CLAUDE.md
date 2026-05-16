@@ -4,12 +4,13 @@
 
 ## 워크플로우 목록
 
-### 매일 (2개)
+### 매일 (3개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
 | `collect-naver-listings.yml` | 네이버 후처리 (sync + 전용률 계산) |
 | `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00) |
+| `collect-childcare-detail.yml` | 어린이집 cpmsapi030 70 필드 상세 (KST 04:00, DAILY_LIMIT 분산 ~23일 누적) |
 
 ### CI/CD (2개)
 
@@ -89,3 +90,5 @@
 | `NEIS_KEY` | NEIS 교육정보 (선택, 미등록 시 스킵) | - |
 | `SCHOOLINFO_KEY` | 학교알리미 학생수 (선택) | - |
 | `AIRKOREA_KEY` | 에어코리아 대기질 (선택) | - |
+| `CHILDCARE_API_KEY` | info.childcare.go.kr cpmsapi021 어린이집 목록 (세션 252) | O |
+| `CHILDCARE_BASIC_API_KEY` | info.childcare.go.kr cpmsapi030 어린이집 70 필드 상세 (세션 256) | O |
