@@ -24,7 +24,7 @@
  */
 import {
   loadEnv, getSupabase, log, logError,
-  REGION_LAWD_PREFIX, recordApiQuota, fetchWithRetry,
+  REGION_LAWD_PREFIX, recordApiQuota, recordCollectorRun, fetchWithRetry,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -194,21 +194,24 @@ async function main() {
   // 세션103: KOSIS 호출 자체가 쿼터 1콜 소비이므로 throw 경로에서도 기록 보장
   let apiCalls = 0;
   let failed = 0;
+  let updated = 0;
   try {
     const result = await runCollect(dryRun);
     failed = result.failed;
     apiCalls = result.apiCalls;
+    updated = result.updated;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "KOSIS_MIGRATION_KEY", apiCalls);
     }
+    await recordCollectorRun(PHASE, { ok: updated, fail: failed });
   }
   if (failed > 0) process.exit(1);
 }
 
 /**
  * @param {boolean} dryRun
- * @returns {Promise<{apiCalls: number, failed: number}>}
+ * @returns {Promise<{apiCalls: number, failed: number, updated: number}>}
  */
 async function runCollect(dryRun) {
   const rows = await fetchKosis();
@@ -218,7 +221,7 @@ async function runCollect(dryRun) {
   const { period, entries } = aggregateKosisRows(rows);
   if (!period || entries.length === 0) {
     log(PHASE, "유효 데이터 없음 — 종료");
-    return { apiCalls, failed: 0 };
+    return { apiCalls, failed: 0, updated: 0 };
   }
   log(PHASE, `기준월: ${period}, 유효 entry: ${entries.length}건`);
 
@@ -243,7 +246,7 @@ async function runCollect(dryRun) {
     for (const r of [...guRows].sort((a, b) => a.net_migration - b.net_migration).slice(0, 10)) {
       console.log(`  ${r.region} ${r.gu}: ${r.net_migration.toLocaleString()}명`);
     }
-    return { apiCalls, failed: 0 };
+    return { apiCalls, failed: 0, updated: 0 };
   }
 
   // Supabase UPDATE
@@ -273,7 +276,7 @@ async function runCollect(dryRun) {
 
   log(PHASE, `regions.net_migration UPDATE: ${updated}건 성공 / ${failed}건 실패`);
 
-  return { apiCalls, failed };
+  return { apiCalls, failed, updated };
 }
 
 const argv1 = process.argv[1];

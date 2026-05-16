@@ -26,7 +26,7 @@
  */
 import {
   loadEnv, getSupabase, log, logError,
-  REGION_MAP, recordApiQuota, fetchWithRetry,
+  REGION_MAP, recordApiQuota, recordCollectorRun, fetchWithRetry,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -144,21 +144,24 @@ async function main() {
 
   let apiCalls = 0;
   let failed = 0;
+  let updated = 0;
   try {
     const result = await runCollect(dryRun);
     failed = result.failed;
     apiCalls = result.apiCalls;
+    updated = result.updated;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "KOSIS_MIGRATION_KEY", apiCalls);
     }
+    await recordCollectorRun(PHASE, { ok: updated, fail: failed });
   }
   if (failed > 0) process.exit(1);
 }
 
 /**
  * @param {boolean} dryRun
- * @returns {Promise<{apiCalls: number, failed: number}>}
+ * @returns {Promise<{apiCalls: number, failed: number, updated: number}>}
  */
 async function runCollect(dryRun) {
   const rows = await fetchKosisIncome();
@@ -168,7 +171,7 @@ async function runCollect(dryRun) {
   const { period, entries } = aggregateIncomeRows(rows);
   if (!period || entries.length === 0) {
     log(PHASE, "유효 데이터 없음 — 종료");
-    return { apiCalls, failed: 0 };
+    return { apiCalls, failed: 0, updated: 0 };
   }
   log(PHASE, `기준연도: ${period}, 유효 시도: ${entries.length}건`);
 
@@ -177,7 +180,7 @@ async function runCollect(dryRun) {
     for (const e of [...entries].sort((a, b) => b.avg_income - a.avg_income)) {
       console.log(`  ${e.region}: ${e.avg_income.toLocaleString()}만원/월`);
     }
-    return { apiCalls, failed: 0 };
+    return { apiCalls, failed: 0, updated: 0 };
   }
 
   // Supabase UPDATE (migration.mjs 패턴 동일 — region+gu=null 시도 단위)
@@ -199,7 +202,7 @@ async function runCollect(dryRun) {
   }
 
   log(PHASE, `regions.avg_income UPDATE: ${updated}건 성공 / ${failed}건 실패`);
-  return { apiCalls, failed };
+  return { apiCalls, failed, updated };
 }
 
 const argv1 = process.argv[1];
