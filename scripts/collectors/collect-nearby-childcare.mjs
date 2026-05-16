@@ -23,7 +23,7 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, haversineKm, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, haversineKm, sleep, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -132,19 +132,18 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 단지 로드
-  const { data: apartments, error: aptErr } = await sb
-    .from("apartments")
-    .select("id, region, gu, lat, lng");
-  if (aptErr) throw new Error(`apartments 조회 실패: ${aptErr.message}`);
+  // 단지 로드 (selectAll — Supabase 1000 row 기본 제한 회피)
+  const apartments = await selectAll(
+    /** @param {any} c */ (c) => c.from("apartments").select("id, region, gu, lat, lng"),
+    sb,
+  );
   log("init", `apartments: ${apartments.length}건`);
 
   // regions.childcare 로드
-  const { data: regions, error: regErr } = await sb
-    .from("regions")
-    .select("region, gu, childcare")
-    .not("childcare", "is", null);
-  if (regErr) throw new Error(`regions 조회 실패: ${regErr.message}`);
+  const regions = await selectAll(
+    /** @param {any} c */ (c) => c.from("regions").select("region, gu, childcare").not("childcare", "is", null),
+    sb,
+  );
 
   const facilityMap = buildRegionFacilityMap(/** @type {any} */ (regions));
   log("init", `regions.childcare 시군구: ${facilityMap.size}건`);
