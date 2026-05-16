@@ -15,7 +15,7 @@
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -244,6 +244,7 @@ async function main() {
   log(PHASE, `갱신: ${updated}, 건너뜀: ${skipped}, 실패: ${failed}, API: ${apiCalls}회`);
 
   if (!dryRun) await recordApiQuota("molit-building-info", "MOLIT_KEY", apiCalls);
+  await recordCollectorRun(PHASE, { ok: updated, skip: skipped, fail: failed });
   if (failed > 0) process.exit(1);
 }
 

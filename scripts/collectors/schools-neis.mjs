@@ -9,7 +9,7 @@
  *   node scripts/collectors/schools-neis.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/schools-neis.mjs --limit 100  (처리 건수 제한)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -431,6 +431,7 @@ async function main() {
 
   if (!dryRun && NEIS_KEY) await recordApiQuota(PHASE, "NEIS_KEY", neisApiCalls);
   if (!dryRun && SCHOOLINFO_KEY) await recordApiQuota(PHASE, "SCHOOLINFO_KEY", schoolInfoApiCalls);
+  await recordCollectorRun(PHASE, { ok: updated, skip: skipped });
 }
 
 const argv1 = process.argv[1];

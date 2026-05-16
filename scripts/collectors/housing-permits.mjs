@@ -13,7 +13,7 @@
  *   SUPABASE_URL        — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, today, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, today, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -210,6 +210,7 @@ async function main() {
   }
 
   await recordApiQuota("housing-permits", "MOLIT_KEY", apiCalls);
+  await recordCollectorRun("housing-permits", { ok: updated });
   log("done", `regions 테이블 supply_ratio ${updated}건 업데이트 완료 (${today()})`);
 }
 

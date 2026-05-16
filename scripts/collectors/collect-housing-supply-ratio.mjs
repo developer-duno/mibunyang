@@ -15,7 +15,7 @@
  *   node scripts/collectors/collect-housing-supply-ratio.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-housing-supply-ratio.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
 
 /** @typedef {{ C1_NM: string; ITM_NM: string; PRD_DE: string; DT: string; UNIT_NM?: string }} KosisRow */
 /** @typedef {Record<string, number>} SupplyLevelByRegion */
@@ -151,6 +151,7 @@ async function main() {
   log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
 
   if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
+  await recordCollectorRun(PHASE, { ok: updated });
 
   log(PHASE, "\n=== 완료 ===");
 }

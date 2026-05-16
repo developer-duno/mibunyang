@@ -15,7 +15,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, MIN_SIMILARITY, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -209,6 +209,7 @@ async function main() {
   log(PHASE, `보정: ${corrected}건, 미매칭: ${unmatched}건, 장애: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회`);
 
   if (!dryRun) await recordApiQuota("molit-units", "MOLIT_KEY", apiCalls);
+  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped, fail: failed });
   if (failed > 0) process.exit(1);   // 진짜 장애만 — 미매칭은 정상 종료
 }
 
