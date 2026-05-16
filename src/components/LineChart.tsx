@@ -92,6 +92,8 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
   const toX = (i: number, len: number) => pad.l + (i / (len - 1)) * iw;
   const toY = (v: number) => pad.t + ih - ((v - scaleMin) / rangeY) * ih;
   const makePath = (pts: Array<{ y: number | null }>) => pts.map((d, i) => `${i === 0 ? "M" : "L"}${toX(i, pts.length).toFixed(1)},${toY(d.y as number).toFixed(1)}`).join(" ");
+  const fewPoints = data.length <= 3;
+  const dotR = fewPoints ? "4.5" : "3";
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={yLabel || "추이 차트"} style={{ display: "block" }}>
       <title>{yLabel || "추이 차트"}</title>
@@ -102,7 +104,17 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
       ); })}
       {secondaryData && secondaryData.length >= 2 && <path d={makePath(secondaryData)} fill="none" stroke={secondaryColor} strokeWidth="1.5" strokeDasharray="4 3" opacity=".6" />}
       <path d={makePath(data)} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      {data.map((d, i) => <circle key={i} cx={toX(i, data.length)} cy={toY(d.y as number)} r="3" fill={color}><title>{d.label || `${d.x}: ${d.y}`}</title></circle>)}
+      {data.map((d, i) => <circle key={i} cx={toX(i, data.length)} cy={toY(d.y as number)} r={dotR} fill={color}><title>{d.label || `${d.x}: ${d.y}`}</title></circle>)}
+      {fewPoints && data.map((d, i) => {
+        const cx = toX(i, data.length);
+        const cy = toY(d.y as number);
+        const above = cy > pad.t + 16;
+        return (
+          <text key={`pl${i}`} data-pointlabel="" x={cx} y={above ? cy - 8 : cy + 16} textAnchor="middle" fill={C.text} fontSize={F.micro} fontWeight="600">
+            {(d.y as number).toLocaleString()}
+          </text>
+        );
+      })}
       {/* 투명 hit area — 터치 타겟 확장 */}
       {data.map((_d, i) => <circle key={`h${i}`} cx={toX(i, data.length)} cy={toY(data[i].y as number)} r={HIT_AREA_RADIUS} fill="transparent" data-index={i} onClick={handleDotTap} style={{ cursor: "pointer" }} />)}
       {activeDot != null && activeDot < data.length && (() => {

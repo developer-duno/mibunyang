@@ -196,8 +196,8 @@ describe("LineChart", () => {
     // 활성 dot: r=5, stroke=white
     const activeDot = container.querySelector('circle[r="5"]');
     expect(activeDot).toBeInTheDocument();
-    // 툴팁 text: fontWeight 600
-    const tooltipText = container.querySelector("text[font-weight='600']");
+    // 툴팁 text: fontWeight 600, data-pointlabel 없는 것
+    const tooltipText = container.querySelector("text[font-weight='600']:not([data-pointlabel])");
     expect(tooltipText).toBeInTheDocument();
     expect(tooltipText?.textContent).toBe("2월: 120");
   });
@@ -255,6 +255,45 @@ describe("LineChart", () => {
     for (const l of labels) {
       expect(l).not.toMatch(/\./);
     }
+  });
+
+  // 데이터 3개 이하 → 점 반지름 확대 (r=4.5)
+  it("데이터 3개 이하면 점 반지름이 4.5", () => {
+    const few = [
+      { x: "1월", y: 100 },
+      { x: "2월", y: 120 },
+    ];
+    const { container } = render(<LineChart data={few} />);
+    const dots = [...container.querySelectorAll("circle")].filter(
+      c => c.getAttribute("r") === "4.5" && !c.hasAttribute("data-index")
+    );
+    expect(dots.length).toBe(2);
+  });
+
+  // 데이터 4개 이상 → 점 반지름 기존(r=3)
+  it("데이터 4개 이상이면 점 반지름이 3", () => {
+    const many = [
+      { x: "1월", y: 100 }, { x: "2월", y: 120 },
+      { x: "3월", y: 110 }, { x: "4월", y: 130 },
+    ];
+    const { container } = render(<LineChart data={many} />);
+    const dots = [...container.querySelectorAll("circle")].filter(
+      c => c.getAttribute("r") === "3" && !c.hasAttribute("data-index")
+    );
+    expect(dots.length).toBe(4);
+  });
+
+  // 데이터 3개 이하 → 각 점에 값 라벨 텍스트 상시 표시
+  it("데이터 3개 이하면 각 점 위에 값 라벨 표시", () => {
+    const few = [
+      { x: "1월", y: 1000 },
+      { x: "2월", y: 2000 },
+    ];
+    const { container } = render(<LineChart data={few} />);
+    const valLabels = container.querySelectorAll("text[data-pointlabel]");
+    expect(valLabels.length).toBe(2);
+    expect(valLabels[0].textContent).toBe("1,000");
+    expect(valLabels[1].textContent).toBe("2,000");
   });
 });
 
