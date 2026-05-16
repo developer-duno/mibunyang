@@ -55,11 +55,12 @@
 | `collect-building-hub.yml` | 15일 | 건축HUB 에너지+인허가 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
 
-### 모니터링 (1개)
+### 모니터링 (2개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
 | `monitor-db-size.yml` | Supabase 테이블별 행 수 점검 (매월 1일 KST 06:00) |
+| `monitor-collectors.yml` | 수집기 실패/취소/0건/미발화/NULL급증 텔레그램 알림 (workflow_run 즉시 + 매일 KST 09:00 스윕). 새 collect-*.yml 추가 시 workflow_run.workflows 목록에 name 추가 의무 — `scripts/audit-monitor-coverage.mjs` 가 CI 에서 누락 차단 |
 
 ### 유틸리티 (4개)
 

@@ -34,6 +34,9 @@ jobs:
       - name: ETL env-key 3-way audit
         run: node scripts/audit-env-keys.mjs
 
+      - name: 수집기 감시 커버리지 audit
+        run: node scripts/audit-monitor-coverage.mjs
+
       - name: Test
         env:
           VITE_FEATURE_UPCOMING: "true"
