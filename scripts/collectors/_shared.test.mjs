@@ -2,10 +2,10 @@
 /**
  * _shared.mjs 테스트 — 순수 유틸 함수 검증 (모킹 불필요)
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   resolveBuilder, stringSimilarity, today, sleep,
-  REGION_MAP, VALID_REGIONS, createReporter,
+  REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
 } from "./_shared.mjs";
 
@@ -263,5 +263,52 @@ describe("normalizeGu (세션95 단계 B)", () => {
   it("null/undefined gu → 그대로 (getLawdCd 호환)", () => {
     expect(normalizeGu("경기", null)).toBeNull();
     expect(normalizeGu("세종", undefined)).toBeUndefined();
+  });
+});
+
+describe("recordCollectorRun (수집기 모니터링 에픽 1단계)", () => {
+  // fake Supabase 클라이언트 — insert 인자를 캡처. sbOverride 인자로 주입.
+  /** @param {{ error?: unknown }} [insertResult] */
+  function makeFakeSb(insertResult = { error: null }) {
+    const insert = vi.fn(async () => insertResult);
+    return {
+      sb: /** @type {any} */ ({ from: vi.fn(() => ({ insert })) }),
+      insert,
+    };
+  }
+
+  it("summary() 결과를 collector_runs 에 올바르게 INSERT 한다", async () => {
+    const { sb, insert } = makeFakeSb();
+    await recordCollectorRun("molit-units", { elapsed: "3.2", ok: 10, fail: 0, skip: 2 }, sb);
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(insert).toHaveBeenCalledWith({
+      collector: "molit-units",
+      status: "success",
+      ok_count: 10,
+      fail_count: 0,
+      skip_count: 2,
+      elapsed_sec: 3.2,
+      error_message: null,
+      started_at: null,
+    });
+  });
+
+  it("fail > 0 이면 status 를 failure 로 자동 판정한다", async () => {
+    const { sb, insert } = makeFakeSb();
+    await recordCollectorRun("collect-trades", { ok: 5, fail: 3, skip: 0 }, sb);
+    expect(insert.mock.calls[0][0]).toMatchObject({ status: "failure", fail_count: 3 });
+  });
+
+  it("status 를 명시하면 (partial) 그대로 사용한다", async () => {
+    const { sb, insert } = makeFakeSb();
+    await recordCollectorRun("schools-neis", { status: "partial", ok: 8, fail: 1 }, sb);
+    expect(insert.mock.calls[0][0]).toMatchObject({ status: "partial" });
+  });
+
+  it("insert 가 error 를 반환해도 throw 하지 않는다", async () => {
+    const { sb } = makeFakeSb({ error: { message: "DB 연결 실패" } });
+    await expect(
+      recordCollectorRun("population", { ok: 1, fail: 0 }, sb)
+    ).resolves.toBeUndefined();
   });
 });

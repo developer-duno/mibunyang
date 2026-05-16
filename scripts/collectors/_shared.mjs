@@ -559,6 +559,42 @@ export async function recordApiQuota(collector, apiName, callCount) {
   }
 }
 
+// ── 수집 실행 결과 기록 ──────────────────────────────────────
+// 수집기가 끝날 때 성공/실패/처리건수를 collector_runs 테이블에 1행 INSERT
+/**
+ * @param {string} collector 수집기명 (예: "molit-units")
+ * @param {{ status?: string, ok?: number, fail?: number, skip?: number,
+ *           elapsed?: string|number, errorMessage?: string|null,
+ *           startedAt?: string|null }} result
+ *        createReporter().summary() 반환값 + status/errorMessage/startedAt
+ * @param {import("@supabase/supabase-js").SupabaseClient | null} [sbOverride]
+ *        테스트용 Supabase 클라이언트 주입 (selectAll/upsertBatch 패턴 답습)
+ * @returns {Promise<void>}
+ */
+export async function recordCollectorRun(collector, result, sbOverride = null) {
+  try {
+    const sb = sbOverride ?? getSupabase();
+    const status = result.status
+      ?? ((result.fail ?? 0) > 0 ? "failure" : "success");
+    const { error } = await sb.from("collector_runs").insert({
+      collector,
+      status,
+      ok_count: result.ok ?? null,
+      fail_count: result.fail ?? null,
+      skip_count: result.skip ?? null,
+      elapsed_sec: result.elapsed != null ? Number(result.elapsed) : null,
+      error_message: result.errorMessage ?? null,
+      started_at: result.startedAt ?? null,
+    });
+    if (error) logError("runs", `${collector} 실행 기록 실패: ${error.message}`);
+    else log("runs", `${collector}: ${status} 기록 (성공 ${result.ok ?? 0} 실패 ${result.fail ?? 0})`);
+  } catch (err) {
+    // 실행 기록 실패는 수집 중단하지 않음
+    const msg = err instanceof Error ? err.message : String(err);
+    logError("runs", `${collector} 실행 기록 예외: ${msg}`);
+  }
+}
+
 // ── 수집 리포터 ─────────────────────────────────────────────
 /**
  * @param {string} phase
