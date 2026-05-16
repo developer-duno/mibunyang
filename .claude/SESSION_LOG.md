@@ -8500,3 +8500,32 @@ W6-D2 어린이집 표시 에픽(세션 252~258) **종료**. 코드 변경 0건 
 - 수집기 dry-run 으로 작업 규모 사전 확정 → 좌표 0.2% 제약 사전 발견 → 사용자 의사결정
 - 단지 상세 모달 비로그인 게이트 — 가짜 `expertToken` 은 `/api/auth/verify` 가 즉시 제거. UI 검증은 API 응답 실측 + 컴포넌트 테스트로 대체
 - 데이터 흐름 끝단 검증 = vite dev `/api` 프록시로 API 직접 호출
+
+## 세션 258 확장 — LineChart Y축 눈금 개선 (분양가/미분양 추이 그래프 결함 fix)
+
+사용자가 단지 상세의 분양가/미분양 추이 그래프가 깨져 보인다고 보고. brainstorming → spec → plan → 서브에이전트 5-task 실행.
+
+### 진단 (실측)
+
+- 결함 1 (Y축 눈금 버그): `LineChart.tsx` 의 `rangeY = maxY-minY || 1` + 무조건 4등분 → 모든 값 동일/정수 데이터 시 소수 눈금 + `Math.round` 중복 라벨. 미분양 [1,1] → "1,1,1,0,0", 분양가 [52845,52845] → "52845,52845,52845,52844,52844"
+- 결함 2 (데이터 부족): 수유동 북한산 스카이뷰 실측 prices 2행·unsold_history 2행, 값 안 변함 → 평평한 직선 단조로움. cron 누적 대기 상태
+
+### 산출 (6 커밋, CI success)
+
+- `a02872e` docs(spec) — `docs/superpowers/specs/2026-05-16-linechart-axis-fix-design.md`
+- `6c73df5` docs(plan) — `docs/superpowers/plans/2026-05-16-linechart-axis-fix.md` (5 task TDD)
+- `3e548ab` feat(linechart) — `niceTicks()` Y축 눈금 함수 (모든 값 동일/작은 정수/일반 3분기, min<max + ticks.length>=2 불변식)
+- `aae82ab` fix(linechart) — LineChart 가 niceTicks 사용, 소수 눈금/평평한 직선 정체 해소
+- `ca5a0a2` feat(linechart) — 데이터 3개 이하 시 점 강조(r 3→4.5) + 값 라벨 상시 표시
+- `6db10ad` feat(detail) — PriceChart/UnsoldChart 데이터 6개 미만 시 "누적 중" 안내 문구
+
+### 검증
+
+- vitest: niceTicks 7건 신규 + LineChart 12건(기존 5 + 신규 7) + 컴포넌트 전체 50파일 526건 pass
+- typecheck 0 / lint 0 / build 성공 (vendor 189,637 bytes — 외부 라이브러리 0, 번들 증가 0)
+- 접근법 A 채택 (LineChart.tsx 내 모듈 함수, 외부 차트 라이브러리 미사용 — 사용자 기각)
+
+### 답습 자산
+
+- **vitest stale 캐시 함정**: 이 환경은 vitest 캐시가 stale 되면 "Cannot read properties of undefined (reading 'config')" 에러. 환경 불능 아님 — `npx vitest run <파일> --no-cache` 로 해결. 서브에이전트 Task 1 이 "환경 불능" 부분 환각 보고 → 컨트롤러 직접 `--no-cache` 실측으로 정정
+- 서브에이전트 5-task 실행: 구현 4 + 검증 1, 각 task 후 컨트롤러 직접 실측 검증 (보고 신뢰 금지 답습)
