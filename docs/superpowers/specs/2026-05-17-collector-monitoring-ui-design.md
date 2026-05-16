@@ -98,7 +98,13 @@ export function collectorLabel(name: string): string {
 
 ### 4. 데이터 갱신 카드 (상단 7개)
 
-그대로 둔다 — 이미 한눈에 들어옴. 변경 없음.
+**한글화 (운영자 추가 요청)**: 테이블명 7개(`apartments`, `infra`, `schools`,
+`transport`, `builders`, `trade_stats`, `regions`)도 한글 라벨로. 수집기 카드와
+일관성. `collectorLabels.ts` 에 `tableLabel()` 헬퍼 추가.
+
+**가로 스크롤 (운영자 추가 요청)**: 7개 카드를 줄바꿈하지 않고 가로 한 줄로 두고
+가로 스크롤(`overflowX: auto`)로 넘겨본다. 카드는 `flexShrink: 0` 으로 폭 고정.
+하단 수집기 카드(20개+)는 개수가 많아 3열 그리드 유지 — 가로 스크롤 안 함.
 
 ## 에러/빈 상태 (4단계에서 이미 처리, 유지)
 

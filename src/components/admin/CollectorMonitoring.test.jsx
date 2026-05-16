@@ -115,13 +115,15 @@ describe("CollectorMonitoring", () => {
     expect(screen.getByText("스킵 3")).toBeTruthy();
   });
 
-  it("데이터 갱신 시각 카드를 테이블별로 표시한다", async () => {
+  it("데이터 갱신 시각 카드를 테이블별로 한글 라벨로 표시한다", async () => {
     stubFetch(200, makeResponse());
     render(<CollectorMonitoring showToast={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText("apartments")).toBeTruthy();
+      // apartments → "아파트", regions → "지역 통계"
+      expect(screen.getByText("아파트")).toBeTruthy();
     });
-    expect(screen.getByText("regions")).toBeTruthy();
+    expect(screen.getByText("지역 통계")).toBeTruthy();
+    expect(screen.queryByText("apartments")).toBeNull();
   });
 
   it("partial 응답이면 경고 배너를 표시한다", async () => {

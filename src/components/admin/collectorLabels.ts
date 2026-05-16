@@ -36,3 +36,22 @@ const COLLECTOR_LABELS: Record<string, string> = {
 export function collectorLabel(name: string): string {
   return COLLECTOR_LABELS[name] ?? name;
 }
+
+/**
+ * 데이터 테이블명 → 한글 라벨 (데이터 갱신 시각 카드용).
+ * collector-status API 의 dataFreshness 키와 1:1.
+ */
+const TABLE_LABELS: Record<string, string> = {
+  apartments: "아파트",
+  infra: "주변시설",
+  schools: "학교",
+  transport: "교통",
+  builders: "시공사",
+  trade_stats: "실거래 통계",
+  regions: "지역 통계",
+};
+
+/** 테이블 영어명을 한글 라벨로. 매핑에 없으면 영어 그대로 반환. */
+export function tableLabel(name: string): string {
+  return TABLE_LABELS[name] ?? name;
+}

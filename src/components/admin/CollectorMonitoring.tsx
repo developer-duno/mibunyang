@@ -2,7 +2,7 @@ import { useState, useCallback, type CSSProperties } from "react";
 import { C, F } from "@/theme";
 import { SkeletonList } from "@/components/primitives";
 import { useCollectorMonitoring } from "@/hooks/useCollectorMonitoring";
-import { collectorLabel } from "./collectorLabels";
+import { collectorLabel, tableLabel } from "./collectorLabels";
 import type { ShowToast, CollectorLastRun } from "@/types/admin";
 
 /** 3일/7일 경과 경고 임계값 (밀리초). */
@@ -55,9 +55,13 @@ const S: Record<string, CSSProperties> = {
     background: C.card, borderRadius: 12, padding: "32px 20px", border: `1px solid ${C.border}`,
     textAlign: "center", fontSize: F.base, fontWeight: 700, color: C.text,
   },
-  freshGrid: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 },
+  // 데이터 갱신 카드 — 가로 한 줄 + 가로 스크롤(드래그)로 넘겨봄
+  freshGrid: {
+    display: "flex", gap: 6, marginBottom: 12,
+    overflowX: "auto", paddingBottom: 4,
+  },
   freshCard: {
-    flex: "1 1 90px", minWidth: 90, borderRadius: 8, padding: "8px 6px", textAlign: "center",
+    flexShrink: 0, width: 140, borderRadius: 8, padding: "8px 6px", textAlign: "center",
   },
   freshTable: { fontSize: F.micro, fontWeight: 700, marginBottom: 2 },
   freshTime: { fontSize: 10, fontWeight: 600 },
@@ -143,7 +147,7 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
               const { color, bg } = freshnessColor(iso);
               return (
                 <div key={table} style={{ ...S.freshCard, background: bg, border: `1px solid ${color}30` }}>
-                  <div style={{ ...S.freshTable, color }}>{table}</div>
+                  <div style={{ ...S.freshTable, color }}>{tableLabel(table)}</div>
                   <div style={{ ...S.freshTime, color }}>{fmtTime(iso)}</div>
                 </div>
               );
