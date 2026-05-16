@@ -43,6 +43,11 @@ export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }
         {secondaryData.length >= 2 && <span style={{ fontSize: F.micro, color: C.muted }}>┄ 준공후</span>}
       </div>
       <LineChart data={chartData} color={C.red} height={160} yLabel="미분양 추이" secondaryData={secondaryData.length >= 2 ? secondaryData : undefined} secondaryColor={C.amber} />
+      {chartData.length < 6 && (
+        <div style={{ fontSize: F.micro, color: C.muted, marginTop: 4, textAlign: "center" }}>
+          데이터 {chartData.length}개 · 매월 자동 수집 누적 중
+        </div>
+      )}
     </div>
   );
 });
