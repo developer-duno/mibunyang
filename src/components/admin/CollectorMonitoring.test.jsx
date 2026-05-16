@@ -65,14 +65,54 @@ describe("CollectorMonitoring", () => {
     vi.unstubAllGlobals();
   });
 
-  it("정상 응답이면 수집기명과 상태 배지를 표시한다", async () => {
+  it("수집기 이름을 한글 라벨로 표시한다", async () => {
     stubFetch(200, makeResponse());
     render(<CollectorMonitoring showToast={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText("molit-units")).toBeTruthy();
+      // molit-units → "단지 세대수" 로 매핑
+      expect(screen.getByText("단지 세대수")).toBeTruthy();
     });
-    expect(screen.getByText("성공")).toBeTruthy();
+    expect(screen.queryByText("molit-units")).toBeNull();
     expect(screen.getByText("수집기 모니터링")).toBeTruthy();
+    expect(screen.getByText("성공")).toBeTruthy();
+  });
+
+  it("매핑에 없는 수집기는 영어 이름을 그대로 표시한다", async () => {
+    stubFetch(200, makeResponse({
+      collectors: [{
+        collector: "some-unknown-collector",
+        lastRun: null,
+        recentQuota: [],
+      }],
+    }));
+    render(<CollectorMonitoring showToast={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("some-unknown-collector")).toBeTruthy();
+    });
+  });
+
+  it("접힌 상태에서는 상세(처리 건수)가 보이지 않는다", async () => {
+    stubFetch(200, makeResponse());
+    render(<CollectorMonitoring showToast={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("단지 세대수")).toBeTruthy();
+    });
+    // 펼치기 전에는 "성공 120" 같은 상세가 없음
+    expect(screen.queryByText("성공 120")).toBeNull();
+  });
+
+  it("행을 클릭하면 상세가 펼쳐진다", async () => {
+    stubFetch(200, makeResponse());
+    render(<CollectorMonitoring showToast={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("단지 세대수")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("단지 세대수"));
+    await waitFor(() => {
+      expect(screen.getByText("성공 120")).toBeTruthy();
+    });
+    expect(screen.getByText("실패 0")).toBeTruthy();
+    expect(screen.getByText("스킵 3")).toBeTruthy();
   });
 
   it("데이터 갱신 시각 카드를 테이블별로 표시한다", async () => {
@@ -92,7 +132,7 @@ describe("CollectorMonitoring", () => {
     });
   });
 
-  it("lastRun 이 null 이면 '실행 기록 없음' 배지를 표시한다", async () => {
+  it("lastRun 이 null 이면 '실행 기록 없음' 배지를 표시하고 펼치면 안내 문구가 나온다", async () => {
     stubFetch(200, makeResponse({
       collectors: [{
         collector: "naver-listings",
@@ -102,9 +142,13 @@ describe("CollectorMonitoring", () => {
     }));
     render(<CollectorMonitoring showToast={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText("naver-listings")).toBeTruthy();
+      expect(screen.getByText("네이버 매물")).toBeTruthy();
     });
     expect(screen.getByText("실행 기록 없음")).toBeTruthy();
+    fireEvent.click(screen.getByText("네이버 매물"));
+    await waitFor(() => {
+      expect(screen.getByText(/수집 실행 기록이 아직 없습니다/)).toBeTruthy();
+    });
   });
 
   it("401 응답이면 토스트를 띄우고 에러 메시지를 표시한다", async () => {
@@ -121,7 +165,7 @@ describe("CollectorMonitoring", () => {
     stubFetch(200, makeResponse());
     render(<CollectorMonitoring showToast={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText("molit-units")).toBeTruthy();
+      expect(screen.getByText("단지 세대수")).toBeTruthy();
     });
     const callsBefore = /** @type {any} */ (globalThis.fetch).mock.calls.length;
     fireEvent.click(screen.getByText("새로고침"));

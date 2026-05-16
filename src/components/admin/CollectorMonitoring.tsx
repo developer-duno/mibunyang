@@ -1,7 +1,8 @@
-import type { CSSProperties } from "react";
+import { useState, useCallback, type CSSProperties } from "react";
 import { C, F } from "@/theme";
 import { SkeletonList } from "@/components/primitives";
 import { useCollectorMonitoring } from "@/hooks/useCollectorMonitoring";
+import { collectorLabel } from "./collectorLabels";
 import type { ShowToast, CollectorLastRun } from "@/types/admin";
 
 /** 3일/7일 경과 경고 임계값 (밀리초). */
@@ -60,19 +61,31 @@ const S: Record<string, CSSProperties> = {
   },
   freshTable: { fontSize: F.micro, fontWeight: 700, marginBottom: 2 },
   freshTime: { fontSize: 10, fontWeight: 600 },
-  runCard: {
-    background: C.card, borderRadius: 10, border: `1px solid ${C.border}`,
-    padding: 12, marginBottom: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+  // 수집기 행 — 평소엔 한 줄, 클릭하면 상세 펼침
+  runList: {
+    border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", background: C.card,
   },
-  runHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  runName: { fontSize: F.sm, fontWeight: 700, color: C.text },
-  badge: { fontSize: F.micro, fontWeight: 700, borderRadius: 4, padding: "2px 8px" },
-  runMeta: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6, fontSize: F.micro, color: C.muted },
+  runRow: {
+    display: "flex", alignItems: "center", gap: 8, padding: "9px 12px",
+    cursor: "pointer", borderTop: `1px solid ${C.border}`,
+  },
+  caret: { fontSize: 10, color: C.muted, width: 10, flexShrink: 0 },
+  runName: { fontSize: F.sm, fontWeight: 700, color: C.text, flex: 1, minWidth: 0 },
+  badge: {
+    display: "flex", alignItems: "center", gap: 4, fontSize: F.micro, fontWeight: 700,
+    borderRadius: 4, padding: "2px 8px", flexShrink: 0,
+  },
+  dot: { width: 7, height: 7, borderRadius: "50%", flexShrink: 0 },
+  runTime: { fontSize: F.micro, fontWeight: 600, flexShrink: 0, textAlign: "right", minWidth: 78 },
+  // 펼친 상세
+  detail: { padding: "2px 12px 12px 30px", background: C.bg },
+  runMeta: { display: "flex", gap: 10, flexWrap: "wrap", fontSize: F.micro, color: C.muted },
   runError: {
     marginTop: 6, fontSize: F.micro, fontWeight: 600, color: C.red,
     wordBreak: "break-word", lineHeight: 1.5,
   },
-  quota: { marginTop: 4, fontSize: 10, color: C.muted },
+  quota: { marginTop: 4, fontSize: 10, color: C.muted, wordBreak: "break-word", lineHeight: 1.5 },
+  detailEmpty: { fontSize: F.micro, color: C.muted },
 };
 
 /**
@@ -84,6 +97,17 @@ const S: Record<string, CSSProperties> = {
  */
 export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
   const { data, loading, error, refetch } = useCollectorMonitoring(showToast);
+  // 펼친 수집기 이름 집합 — 여러 개 동시 펼침 가능
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = useCallback((name: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
 
   return (
     <div style={S.section}>
@@ -122,46 +146,72 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
             })}
           </div>
 
-          {/* 수집기별 실행 결과 */}
+          {/* 수집기별 실행 결과 — 평소엔 한 줄, 클릭하면 상세 펼침 */}
           <div style={S.subTitle}>수집기 실행 결과 ({data.collectors.length}개)</div>
           {data.collectors.length === 0 && (
             <div style={S.empty}>수집기 실행 기록이 없습니다</div>
           )}
-          {data.collectors.map((c) => {
-            const badge = statusBadge(c.lastRun);
-            const fresh = freshnessColor(c.lastRun?.finishedAt ?? null);
-            return (
-              <div key={c.collector} style={S.runCard}>
-                <div style={S.runHeader}>
-                  <span style={S.runName}>{c.collector}</span>
-                  <span style={{ ...S.badge, color: badge.color, background: badge.bg }}>{badge.label}</span>
-                </div>
-                {c.lastRun && (
-                  <div style={S.runMeta}>
-                    <span style={{ color: fresh.color, fontWeight: 700 }}>
-                      마지막 실행 {fmtTime(c.lastRun.finishedAt)}
-                    </span>
-                    <span>성공 {c.lastRun.okCount ?? 0}</span>
-                    <span>실패 {c.lastRun.failCount ?? 0}</span>
-                    <span>스킵 {c.lastRun.skipCount ?? 0}</span>
-                    {c.lastRun.elapsedSec != null && (
-                      <span>{c.lastRun.elapsedSec.toFixed(1)}초</span>
+          {data.collectors.length > 0 && (
+            <div style={S.runList}>
+              {data.collectors.map((c, idx) => {
+                const badge = statusBadge(c.lastRun);
+                const fresh = freshnessColor(c.lastRun?.finishedAt ?? null);
+                const isOpen = expanded.has(c.collector);
+                const quotaText = c.recentQuota
+                  .map((q) => `${q.apiName ?? "?"} ${q.callCount ?? 0}건`)
+                  .join(" · ");
+                return (
+                  <div key={c.collector}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isOpen}
+                      onClick={() => toggleExpand(c.collector)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleExpand(c.collector);
+                        }
+                      }}
+                      style={{ ...S.runRow, borderTop: idx === 0 ? "none" : S.runRow.borderTop }}
+                    >
+                      <span style={S.caret}>{isOpen ? "▾" : "▸"}</span>
+                      <span style={S.runName}>{collectorLabel(c.collector)}</span>
+                      <span style={{ ...S.badge, color: badge.color, background: badge.bg }}>
+                        <span style={{ ...S.dot, background: badge.color }} />
+                        {badge.label}
+                      </span>
+                      <span style={{ ...S.runTime, color: fresh.color }}>
+                        {fmtTime(c.lastRun?.finishedAt ?? null)}
+                      </span>
+                    </div>
+                    {isOpen && (
+                      <div style={S.detail}>
+                        {c.lastRun ? (
+                          <div style={S.runMeta}>
+                            <span>성공 {c.lastRun.okCount ?? 0}</span>
+                            <span>실패 {c.lastRun.failCount ?? 0}</span>
+                            <span>스킵 {c.lastRun.skipCount ?? 0}</span>
+                            {c.lastRun.elapsedSec != null && (
+                              <span>{c.lastRun.elapsedSec.toFixed(1)}초</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={S.detailEmpty}>
+                            수집 실행 기록이 아직 없습니다 (API 호출 기록만 있음)
+                          </div>
+                        )}
+                        {c.lastRun?.errorMessage && (
+                          <div style={S.runError}>{c.lastRun.errorMessage}</div>
+                        )}
+                        {quotaText && <div style={S.quota}>API 호출: {quotaText}</div>}
+                      </div>
                     )}
                   </div>
-                )}
-                {c.lastRun?.errorMessage && (
-                  <div style={S.runError}>{c.lastRun.errorMessage}</div>
-                )}
-                {c.recentQuota.length > 0 && (
-                  <div style={S.quota}>
-                    API 호출: {c.recentQuota
-                      .map((q) => `${q.apiName ?? "?"} ${q.callCount ?? 0}건`)
-                      .join(" · ")}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </div>
