@@ -129,7 +129,8 @@ async function main() {
 
   // 3. 시도별 API 조회 + 매칭
   let corrected = 0;
-  let failed = 0;
+  let failed = 0;      // 진짜 장애 (API/DB 에러) — exit code 결정
+  let unmatched = 0;   // 이름 매칭/데이터 부재 — 정상 범주
   let skipped = 0;
   let apiCalls = 0;
 
@@ -165,7 +166,7 @@ async function main() {
       });
       if (!match) {
         log(PHASE, `    → 매칭 실패 (유사도 < ${MIN_SIMILARITY})`);
-        failed++;
+        unmatched++;
         continue;
       }
 
@@ -179,7 +180,7 @@ async function main() {
         apiCalls++;
         if (!detail) {
           log(PHASE, `    → 상세 조회 실패`);
-          failed++;
+          unmatched++;
           continue;
         }
 
@@ -205,10 +206,10 @@ async function main() {
   }
 
   log(PHASE, `\n=== 완료 ===`);
-  log(PHASE, `보정: ${corrected}건, 실패: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회`);
+  log(PHASE, `보정: ${corrected}건, 미매칭: ${unmatched}건, 장애: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회`);
 
   if (!dryRun) await recordApiQuota("molit-units", "MOLIT_KEY", apiCalls);
-  if (failed > 0) process.exit(1);
+  if (failed > 0) process.exit(1);   // 진짜 장애만 — 미매칭은 정상 종료
 }
 
 const argv1 = process.argv[1];
