@@ -61,13 +61,17 @@ const S: Record<string, CSSProperties> = {
   },
   freshTable: { fontSize: F.micro, fontWeight: 700, marginBottom: 2 },
   freshTime: { fontSize: 10, fontWeight: 600 },
-  // 수집기 행 — 평소엔 한 줄, 클릭하면 상세 펼침
-  runList: {
-    border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", background: C.card,
+  // 수집기 그리드 — 넓은 화면 3열 / 중간 2열 / 좁은 화면 1열 (minmax 자동 조절)
+  runGrid: {
+    display: "grid", gap: 8,
+    gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+  },
+  // 수집기 카드 셀 — 평소엔 한 줄, 클릭하면 그 칸 안에서 상세 펼침
+  runCell: {
+    border: `1px solid ${C.border}`, borderRadius: 8, background: C.card, overflow: "hidden",
   },
   runRow: {
-    display: "flex", alignItems: "center", gap: 8, padding: "9px 12px",
-    cursor: "pointer", borderTop: `1px solid ${C.border}`,
+    display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer",
   },
   caret: { fontSize: 10, color: C.muted, width: 10, flexShrink: 0 },
   runName: { fontSize: F.sm, fontWeight: 700, color: C.text, flex: 1, minWidth: 0 },
@@ -76,9 +80,9 @@ const S: Record<string, CSSProperties> = {
     borderRadius: 4, padding: "2px 8px", flexShrink: 0,
   },
   dot: { width: 7, height: 7, borderRadius: "50%", flexShrink: 0 },
-  runTime: { fontSize: F.micro, fontWeight: 600, flexShrink: 0, textAlign: "right", minWidth: 78 },
-  // 펼친 상세
-  detail: { padding: "2px 12px 12px 30px", background: C.bg },
+  runTime: { fontSize: F.micro, fontWeight: 600, flexShrink: 0, textAlign: "right", minWidth: 70 },
+  // 펼친 상세 — 카드 칸 안에서 아래로 늘어남
+  detail: { padding: "2px 12px 12px 30px", background: C.bg, borderTop: `1px solid ${C.border}` },
   runMeta: { display: "flex", gap: 10, flexWrap: "wrap", fontSize: F.micro, color: C.muted },
   runError: {
     marginTop: 6, fontSize: F.micro, fontWeight: 600, color: C.red,
@@ -152,8 +156,8 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
             <div style={S.empty}>수집기 실행 기록이 없습니다</div>
           )}
           {data.collectors.length > 0 && (
-            <div style={S.runList}>
-              {data.collectors.map((c, idx) => {
+            <div style={S.runGrid}>
+              {data.collectors.map((c) => {
                 const badge = statusBadge(c.lastRun);
                 const fresh = freshnessColor(c.lastRun?.finishedAt ?? null);
                 const isOpen = expanded.has(c.collector);
@@ -161,7 +165,7 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
                   .map((q) => `${q.apiName ?? "?"} ${q.callCount ?? 0}건`)
                   .join(" · ");
                 return (
-                  <div key={c.collector}>
+                  <div key={c.collector} style={S.runCell}>
                     <div
                       role="button"
                       tabIndex={0}
@@ -173,7 +177,7 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
                           toggleExpand(c.collector);
                         }
                       }}
-                      style={{ ...S.runRow, borderTop: idx === 0 ? "none" : S.runRow.borderTop }}
+                      style={S.runRow}
                     >
                       <span style={S.caret}>{isOpen ? "▾" : "▸"}</span>
                       <span style={S.runName}>{collectorLabel(c.collector)}</span>

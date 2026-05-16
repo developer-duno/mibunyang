@@ -84,6 +84,10 @@ export function collectorLabel(name: string): string {
 **상태 관리**: 펼친 항목 id 를 `useState<Set<string>>` 로. 여러 개 동시 펼침 가능.
 `toggleExpand(name)` 콜백.
 
+**레이아웃 (운영자 추가 요청)**: 행을 세로 1열로 길게 나열하지 않고 **CSS Grid 다열**로
+배치한다. 넓은 화면 3열 / 중간 2열 / 좁은 화면 1열 (`gridTemplateColumns` +
+`minmax`). 펼침은 그 칸(grid cell) 안에서 아래로 늘어난다 — 다른 칸 높이에 영향 없음.
+
 **접근성** (컴포넌트 규칙 답습): 행에 `role="button"`, `tabIndex={0}`,
 `onKeyDown`(Enter/Space → toggle), `aria-expanded`.
 
