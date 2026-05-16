@@ -1,3 +1,39 @@
+# 세션 259 — 2026-05-16 (KOSIS 주택보급률 #4 미완 완성 — 운영 적재)
+
+**거시 목적**: BACKLOG `📦 KOSIS 추가 데이터 보강` #4 (新)주택보급률. 세션 237 W1 에 collector·test·워크플로·data-fill 등재 모두 작성됐으나 한 번도 동작하지 않은 미완 방치 작업을 운영 적재로 종료.
+
+**결론**: **docs only 1 커밋** (코드 변경 0건). `housing_supply_level` 컬럼 마이그레이션이 세션 237 작성 후 Dashboard 적용 누락 → collector 가 `column does not exist` (PG 42703) 로 중단된 상태였음. 마이그 적용 → collector 운영 실행 → `regions.housing_supply_level` 17 시도 76행 적재. vitest 11/11 pass.
+
+## 진단 (실측)
+
+- `collect-housing-supply-ratio.mjs --dry-run` → KOSIS `DT_MLTM_2100` 240건 정상 응답, 17 시도 보급률 파싱 정상 → 그러나 `regions` 조회에서 `column regions.housing_supply_level does not exist` 로 중단
+- 원인: 세션 237 마이그 `20260513044532_add_housing_supply_level.sql` 작성만 되고 Dashboard 적용 누락 (`housing_price` 도 schema.sql 미반영 — 프로젝트가 schema.sql 을 마이그와 동기화 안 하는 관행)
+- 워크플로 run 0건 = secret 미등록 아님 (`KOSIS_KEY` 2026-03-16 등록 확인). 5/13 작성 후 첫 cron(6/1) 미도래 — 정상
+
+## 본 세션 작업 (1 커밋, 코드 0건)
+
+| 단계 | 작업 | 주체 |
+|---|---|---|
+| 1 | 마이그 `ALTER TABLE regions ADD COLUMN housing_supply_level REAL` + `NOTIFY pgrst` Dashboard SQL Editor 실행 | 👤 사용자 |
+| 2 | `node scripts/collectors/collect-housing-supply-ratio.mjs` 운영 실행 → `regions 갱신: 76건 / 76건 대상`, 에러 0 | Claude |
+| 3 | 적재 검증 — 17 시도 전부 채워짐, 값 93.9~114.4% (KOSIS dry-run 실측값 일치) | Claude |
+
+## 검증
+
+- 1단계: `housing_supply_level` select → PG 42703 사라짐
+- 2단계: collector 로그 `regions 갱신: 76건 / 76건 대상` + `recordApiQuota` 1건
+- 3단계: 17 시도 적재 (서울 93.9 / 부산 102.5 / … / 경북 114.4)
+- 회귀 가드: `npx vitest run collect-housing-supply-ratio.test.mjs --no-cache` 11/11 pass
+- 9 GATE(0~8) 풀 검증 🟢 9 — ExitPlanMode 1회 거부 후 GATE 검증 추가하여 1차 통과
+
+## 답습 자산
+
+- **"세션 N에 작성됐고 CI pass" ≠ "동작한다"** — 세션 237 collector 는 코드·테스트·CI 모두 green 이었으나 마이그 Dashboard 적용 누락으로 운영 0회. NEXT_SESSION "#4 작업량 가장 가벼움" 박제도 "완성 작업"으로 오해 유발. plan 진입 시 dry-run 실측으로 미완 상태 확정 (`.claude/rules/workflow-name-hallucination.md` 답습 — 이름·기록 ≠ 동작)
+- 미완 점검 패턴: collector 가 쓰는 컬럼명 `grep` → DB 실제 컬럼 select → PG 42703 재현 여부로 "작성됨 vs 동작함" 판정
+- `housing_price` (세션 245 W6-C) 도 동일 구조 — 마이그 작성만 됐고 schema.sql 미반영. 두 컬럼 모두 schema.sql 미동기화 = 프로젝트 관행 확정
+
+---
+
 # 세션 257 — 2026-05-16 (W6-D2 어린이집 상세 표시 — scoring/UI 통합, 에픽 마지막)
 
 **거시 목적**: 세션 254~256이 수집한 어린이집 70 필드 상세(`regions.childcare.facilities[]`)를 단지 상세 화면에 노출. W6-D2 에픽 마지막 단계.
