@@ -81,6 +81,13 @@ export interface SchoolInfoProps {
 }
 
 /**
+ * NearbyChildcareSection props (세션 257 W6-D2).
+ */
+export interface NearbyChildcareSectionProps {
+  apt: Apt;
+}
+
+/**
  * PriceTable props (86줄).
  */
 export interface PriceTableProps {

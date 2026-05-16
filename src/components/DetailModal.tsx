@@ -6,6 +6,7 @@ import { CatPanel } from "./CatPanel";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
+import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
 import { DataSections } from "./detail/DataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
@@ -140,6 +141,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
 
         <SchoolInfo apt={apt} />
+
+        <NearbyChildcareSection apt={apt} />
 
         <PresaleInfo apt={apt} />
 
