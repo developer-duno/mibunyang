@@ -123,6 +123,48 @@ export interface ScoreBreakdownPreviewProps {
 }
 
 /**
+ * 수집기 모니터링 (모니터링 에픽 4단계).
+ * api/admin/collector-status.js 의 JSDoc typedef 와 1:1.
+ */
+
+/** collector_runs 최근 1행 — 한 수집기의 마지막 실행 결과. */
+export interface CollectorLastRun {
+  status: string; // "success" | "failure" | "partial"
+  okCount: number | null;
+  failCount: number | null;
+  skipCount: number | null;
+  elapsedSec: number | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+/** api_quota_log 한 행 — 수집기의 API 호출 기록. */
+export interface CollectorQuotaEntry {
+  logDate: string | null;
+  apiName: string | null;
+  callCount: number | null;
+  recordedAt: string | null;
+}
+
+/** 수집기 1개의 모니터링 상태 묶음. */
+export interface CollectorStatusItem {
+  collector: string;
+  lastRun: CollectorLastRun | null;
+  recentQuota: CollectorQuotaEntry[];
+}
+
+/** GET /api/admin/collector-status 응답 전체. */
+export interface CollectorStatusResponse {
+  ok: boolean;
+  fetchedAt: string;
+  partial: boolean;
+  errors: string[];
+  collectors: CollectorStatusItem[];
+  dataFreshness: Record<string, string | null>;
+}
+
+/**
  * WeightTable props (97줄, 5×6 행렬 표).
  */
 export interface WeightTableProps {

@@ -5,6 +5,7 @@ import WeightEditor from "./WeightEditor";
 import { SkeletonList } from "@/components/primitives";
 import { STATUS_TABS } from "./constants";
 import { StatsSection } from "./StatsSection";
+import { CollectorMonitoring } from "./CollectorMonitoring";
 import { UserList } from "./UserList";
 import type { AdminDashboardProps } from "@/types/components/AdminDashboard.types";
 
@@ -48,6 +49,9 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       {/* Stats Section */}
       {admin.stats && <StatsSection stats={admin.stats} />}
       {admin.statsLoading && <SkeletonList count={4} columns={2} />}
+
+      {/* Collector Monitoring Section */}
+      <CollectorMonitoring showToast={showToast} />
 
       {/* Expert Applications Section */}
       <div style={{ marginBottom: 12 }}>
