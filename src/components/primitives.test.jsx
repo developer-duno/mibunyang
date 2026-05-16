@@ -223,6 +223,39 @@ describe("LineChart", () => {
     expect(container.querySelector('circle[r="5"]')).toBeNull();
     vi.useRealTimers();
   });
+
+  // 모든 값이 동일해도 선이 차트 가운데에 그려진다 (가장자리에 안 붙음)
+  it("모든 y 동일 시 선이 차트 가장자리에 붙지 않는다", () => {
+    const flat = [
+      { x: "1월", y: 52845 },
+      { x: "2월", y: 52845 },
+    ];
+    const { container } = render(<LineChart data={flat} height={160} />);
+    const path = container.querySelector("path[stroke]");
+    expect(path).toBeInTheDocument();
+    const d = path?.getAttribute("d") ?? "";
+    const ys = [...d.matchAll(/[ML][\d.]+,([\d.]+)/g)].map(m => parseFloat(m[1]));
+    // height 160, pad.t=16, pad.b=28 → 내부 영역 16~132. 가운데 ≈ 74
+    for (const y of ys) {
+      expect(y).toBeGreaterThan(30);
+      expect(y).toBeLessThan(120);
+    }
+  });
+
+  // 정수 데이터의 Y축 눈금 텍스트에 소수점이 없다
+  it("정수 데이터 Y축 눈금에 소수점 라벨 없음", () => {
+    const intData = [
+      { x: "1월", y: 1 },
+      { x: "2월", y: 1 },
+    ];
+    const { container } = render(<LineChart data={intData} height={160} />);
+    const labels = [...container.querySelectorAll("text")]
+      .map(t => t.textContent)
+      .filter(t => t && /^\d/.test(t));
+    for (const l of labels) {
+      expect(l).not.toMatch(/\./);
+    }
+  });
 });
 
 describe("SkeletonBox", () => {

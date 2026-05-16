@@ -85,20 +85,20 @@ export const LineChart = memo(function LineChart({ data: _data = [], color = C.b
   const pad = { t: 16, r: 12, b: 28, l: 44 };
   const w = 300, h = height;
   const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
-  const allY = [...data.map(d => d.y), ...(secondaryData || []).map(d => d.y).filter(v => v != null)];
-  const minY = Math.min(...allY), maxY = Math.max(...allY);
-  const rangeY = maxY - minY || 1;
+  const allY = [...data.map(d => d.y), ...(secondaryData || []).map(d => d.y).filter(v => v != null)] as number[];
+  const dataMinY = Math.min(...allY), dataMaxY = Math.max(...allY);
+  const { ticks, min: scaleMin, max: scaleMax } = niceTicks(dataMinY, dataMaxY);
+  const rangeY = scaleMax - scaleMin;  // niceTicks 불변식 → 항상 > 0
   const toX = (i: number, len: number) => pad.l + (i / (len - 1)) * iw;
-  const toY = (v: number) => pad.t + ih - ((v - minY) / rangeY) * ih;
+  const toY = (v: number) => pad.t + ih - ((v - scaleMin) / rangeY) * ih;
   const makePath = (pts: Array<{ y: number | null }>) => pts.map((d, i) => `${i === 0 ? "M" : "L"}${toX(i, pts.length).toFixed(1)},${toY(d.y as number).toFixed(1)}`).join(" ");
-  const gridLines = 4;
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={yLabel || "추이 차트"} style={{ display: "block" }}>
       <title>{yLabel || "추이 차트"}</title>
       {/* 빈 영역 터치 시 dismiss */}
       <rect x="0" y="0" width={w} height={h} fill="transparent" onClick={handleDismiss} />
-      {Array.from({ length: gridLines + 1 }, (_, i) => { const y = pad.t + (ih / gridLines) * i; const val = maxY - (rangeY / gridLines) * i; return (
-        <g key={i}><line x1={pad.l} y1={y} x2={w - pad.r} y2={y} stroke="#E5E7EB" strokeWidth=".5" /><text x={pad.l - 4} y={y} textAnchor="end" dy="0.35em" fill={C.muted} fontSize={F.micro}>{Math.round(val).toLocaleString()}</text></g>
+      {ticks.map((val, i) => { const y = toY(val); return (
+        <g key={i}><line x1={pad.l} y1={y} x2={w - pad.r} y2={y} stroke="#E5E7EB" strokeWidth=".5" /><text x={pad.l - 4} y={y} textAnchor="end" dy="0.35em" fill={C.muted} fontSize={F.micro}>{val.toLocaleString()}</text></g>
       ); })}
       {secondaryData && secondaryData.length >= 2 && <path d={makePath(secondaryData)} fill="none" stroke={secondaryColor} strokeWidth="1.5" strokeDasharray="4 3" opacity=".6" />}
       <path d={makePath(data)} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
