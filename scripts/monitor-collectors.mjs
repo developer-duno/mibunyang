@@ -205,6 +205,16 @@ async function main() {
   /** @type {Issue[]} */
   let issues = [];
 
+  if (mode === "test") {
+    // 전송 경로 검증용 — 점검 없이 테스트 메시지 1건만 보낸다.
+    const result = await sendTelegram(
+      "✅ <b>수집기 감시 알림</b>\n알림 시스템이 정상 설치되었습니다. 이 메시지가 보이면 텔레그램 연동 완료.",
+    );
+    console.log(result.sent ? "[monitor] 테스트 메시지 전송 성공" : `[monitor] 전송 실패: ${result.reason}`);
+    if (!result.sent) process.exit(1);
+    return;
+  }
+
   if (mode === "run") {
     // workflow_run 트리거 — 방금 끝난 run 1개만 점검 (①②)
     const eventPath = process.env.GITHUB_EVENT_PATH;

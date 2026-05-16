@@ -43,6 +43,15 @@ on:
   schedule:
     - cron: '0 0 * * *' # 매일 UTC 00:00 = KST 09:00 — daily 전체 스윕
   workflow_dispatch:
+    inputs:
+      mode:
+        description: '실행 모드 (daily=전체 스윕 / test=텔레그램 전송 테스트)'
+        required: false
+        type: choice
+        default: daily
+        options:
+          - daily
+          - test
 
 jobs:
   monitor:
@@ -70,5 +79,5 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             node scripts/monitor-collectors.mjs --mode=run
           else
-            node scripts/monitor-collectors.mjs --mode=daily
+            node scripts/monitor-collectors.mjs --mode=${{ inputs.mode || 'daily' }}
           fi
