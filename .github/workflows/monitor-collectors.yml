@@ -1,0 +1,74 @@
+name: Monitor Collectors
+
+# 수집기 감시 — 실패/취소/0건/미발화/NULL급증을 텔레그램으로 알림.
+# workflow_run: 수집기가 끝나면 즉시 점검. schedule: 하루 1회 전체 스윕.
+# workflow_run.workflows 는 와일드카드 미지원 → collect-*.yml 의 name 필드 31개 명시 나열.
+# 새 수집기 추가 시 이 목록 누락은 scripts/audit-monitor-coverage.mjs (CI) 가 차단.
+
+on:
+  workflow_run:
+    workflows:
+      - "Air Quality Collection"
+      - "Average Income Data Collection"
+      - "Building Info Collection (MOLIT)"
+      - "Childcare Detail Collection"
+      - "Childcare Facilities Collection"
+      - "Collect Applyhome Competition Rate"
+      - "Collect Building Hub (에너지+인허가)"
+      - "Collect MOLIT Units"
+      - "Collect Maintenance Cost"
+      - "Collect Trades (국토부 실거래)"
+      - "DART 시공사 재무 수집"
+      - "Emergency Medical Facilities Collection"
+      - "Environment Data Collection"
+      - "Housing Permits Data Collection"
+      - "Housing Price Data Collection"
+      - "Industry Complex Matching"
+      - "Infra Facilities Collection"
+      - "KOSIS Housing Supply Level Collection"
+      - "KOSIS Market Stats Collection"
+      - "KOSIS Unsold Collection"
+      - "Migration Data Collection"
+      - "Naver Post-Processing (Core)"
+      - "Naver Post-Processing (Incremental)"
+      - "Nearby Childcare Collection"
+      - "Noxious Facility Collection"
+      - "Police Station Collection"
+      - "Population Data Collection"
+      - "School District Collection"
+      - "Trade Stats Calculation"
+      - "Transport Accessibility Collection"
+      - "소음 추정 수집"
+    types: [completed]
+  schedule:
+    - cron: '0 0 * * *' # 매일 UTC 00:00 = KST 09:00 — daily 전체 스윕
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Run monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            node scripts/monitor-collectors.mjs --mode=run
+          else
+            node scripts/monitor-collectors.mjs --mode=daily
+          fi
