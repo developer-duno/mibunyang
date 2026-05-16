@@ -143,7 +143,7 @@ describe("computeAudit", () => {
     });
     const audit = computeAudit([row]);
 
-    // building: 17개 (12 + maint 5) 중 2개 null → ~88% (세션 238 W3)
+    // building: 12개 중 2개 null → ~83% (세션 258: maint 5필드 → maintenance 카테고리 분리)
     expect(audit.categories.building.rate).toBeGreaterThanOrEqual(80);
 
     // 필드별 상세
@@ -155,9 +155,9 @@ describe("computeAudit", () => {
 
 // ── AUDIT_FIELDS 구조 테스트 ─────────────────────────────────
 describe("AUDIT_FIELDS", () => {
-  // 이 테스트가 검증하는 것: 16개 카테고리 정의 (14 기존 + energy + competition)
-  it("16개 카테고리 존재", () => {
-    expect(Object.keys(AUDIT_FIELDS)).toHaveLength(16);
+  // 이 테스트가 검증하는 것: 17개 카테고리 정의 (14 기존 + energy + competition + maintenance, 세션 258)
+  it("17개 카테고리 존재", () => {
+    expect(Object.keys(AUDIT_FIELDS)).toHaveLength(17);
   });
 
   // 이 테스트가 검증하는 것: 각 카테고리에 collector와 fields 존재
@@ -166,5 +166,14 @@ describe("AUDIT_FIELDS", () => {
       expect(def.collector, `${cat}.collector 누락`).toBeTruthy();
       expect(def.fields.length, `${cat}.fields 비어있음`).toBeGreaterThan(0);
     }
+  });
+
+  // 이 테스트가 검증하는 것: maintenance 카테고리 신규 (세션 258 — building에서 maint 5필드 분리)
+  it("maintenance 카테고리에 collector + maint 5필드", () => {
+    const m = AUDIT_FIELDS.maintenance;
+    expect(m.collector).toBe("collect-maintenance");
+    expect(m.fields).toEqual(["maintHeat", "maintHotwater", "maintGas", "maintElec", "maintWater"]);
+    // building에서 maint 필드 제거됐는지 — 이중 카운트 방지
+    expect(AUDIT_FIELDS.building.fields).not.toContain("maintHeat");
   });
 });

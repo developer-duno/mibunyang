@@ -36,7 +36,7 @@ const PERMANENT_NULL = new Set(["quakeDesign", "greenBldg"]);
 /** @type {Record<string, number>} */
 const MASKED_DEFAULTS = { subwayDist: 9999, icDist: 99, ktxDist: 99 };
 
-// ── AUDIT_FIELDS: 14 카테고리, ~85 필드 ──────────────────────
+// ── AUDIT_FIELDS: 17 카테고리, ~85 필드 ──────────────────────
 /** @type {Record<string, AuditFieldEntry>} */
 export const AUDIT_FIELDS = {
   core: {
@@ -49,8 +49,11 @@ export const AUDIT_FIELDS = {
   },
   building: {
     collector: "molit-building-info",
-    fields: ["maxFloor", "parkingRatio", "floorAreaRatio", "exclusiveRatio", "energyGrade", "heating", "corridorType", "heatFuel", "avgMaintenanceCost", "primaryDirection", "floors", "hasPool",
-             "maintHeat", "maintHotwater", "maintGas", "maintElec", "maintWater"],
+    fields: ["maxFloor", "parkingRatio", "floorAreaRatio", "exclusiveRatio", "energyGrade", "heating", "corridorType", "heatFuel", "avgMaintenanceCost", "primaryDirection", "floors", "hasPool"],
+  },
+  maintenance: {
+    collector: "collect-maintenance",
+    fields: ["maintHeat", "maintHotwater", "maintGas", "maintElec", "maintWater"],
   },
   risk: {
     collector: "applyhome",

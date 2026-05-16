@@ -38,7 +38,7 @@ describe("COLLECTORS 수집기 매핑", () => {
 
     expect(byCategory.building).toEqual(["MOLIT_KEY"]);
     expect(byCategory.builders).toEqual(["DART_KEY"]);
-    // regions: population.mjs (MOIS_POP_KEY) + population-sex-age.mjs (MOIS_SEX_AGE_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY) + collect-housing-supply-ratio.mjs (KOSIS_KEY) + collect-housing-price.mjs (API 키 불필요, 세션 247 W6-C v2 = data.go.kr 3073746 공개 다운로드) + childcare-info.mjs (CHILDCARE_API_KEY, 세션 252 W6-D ε) + childcare-detail.mjs (CHILDCARE_BASIC_API_KEY, 세션 256 W6-D2)
+    // regions: population.mjs (MOIS_POP_KEY) + population-sex-age.mjs (MOIS_SEX_AGE_KEY) + migration.mjs (KOSIS_MIGRATION_KEY) + housing-permits.mjs (MOLIT_KEY) + collect-housing-supply-ratio.mjs (KOSIS_KEY) + collect-housing-price.mjs (API 키 불필요, 세션 247 W6-C v2 = data.go.kr 3073746 공개 다운로드) + childcare-info.mjs (CHILDCARE_API_KEY, 세션 252 W6-D ε) + childcare-detail.mjs (CHILDCARE_BASIC_API_KEY, 세션 256 W6-D2) + collect-avg-income.mjs (KOSIS_MIGRATION_KEY 공유, 세션 258)
     expect(byCategory.regions).toContain("MOIS_POP_KEY");
     expect(byCategory.regions).toContain("MOIS_SEX_AGE_KEY");
     expect(byCategory.regions).toContain("KOSIS_MIGRATION_KEY");
@@ -73,10 +73,10 @@ describe("COLLECTORS 수집기 매핑", () => {
     }
   });
 
-  // 이 테스트가 검증하는 것: regions는 8개 스크립트 순차 실행 (세션 252 ε: childcare-info / 세션 256 W6-D2: childcare-detail 추가)
-  it("regions는 population → population-sex-age → migration → housing-permits → housing-supply-ratio → housing-price → childcare-info → childcare-detail 8개 순차", () => {
+  // 이 테스트가 검증하는 것: regions는 9개 스크립트 순차 실행 (세션 252 ε: childcare-info / 세션 256 W6-D2: childcare-detail / 세션 258: collect-avg-income 추가)
+  it("regions는 population → population-sex-age → migration → housing-permits → housing-supply-ratio → housing-price → childcare-info → childcare-detail → collect-avg-income 9개 순차", () => {
     const regions = COLLECTORS.find(c => c.category === "regions");
-    expect(regions?.scripts).toEqual(["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-housing-price.mjs", "childcare-info.mjs", "childcare-detail.mjs"]);
+    expect(regions?.scripts).toEqual(["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-housing-price.mjs", "childcare-info.mjs", "childcare-detail.mjs", "collect-avg-income.mjs"]);
   });
 });
 
