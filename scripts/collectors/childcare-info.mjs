@@ -29,7 +29,7 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, GU_LAWD_MAP, today, recordApiQuota, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, GU_LAWD_MAP, today, recordApiQuota, recordCollectorRun, sleep } from "./_shared.mjs";
 
 loadEnv();
 
@@ -226,6 +226,7 @@ async function main() {
   const result = rpt.summary();
 
   if (!dryRun) await recordApiQuota("childcare-info", "CHILDCARE_API_KEY", apiCalls);
+  await recordCollectorRun("childcare-info", result);
   if (result.fail > 0) process.exit(1);
 }
 

@@ -9,7 +9,7 @@
  *   node scripts/collectors/collect-childcare.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-childcare.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -107,6 +107,7 @@ async function main() {
   }
 
   const result = rpt.summary();
+  await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
 }
 

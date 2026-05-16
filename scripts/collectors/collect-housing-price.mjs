@@ -16,7 +16,7 @@
 import { Buffer } from "node:buffer";
 import readline from "node:readline";
 import unzipper from "unzipper";
-import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun, REGION_MAP, today } from "./_shared.mjs";
 
 loadEnv();
 
@@ -293,6 +293,7 @@ async function main() {
   const result = rpt.summary();
 
   // API 키 사용 안 함 → recordApiQuota 호출 안 함 (data.go.kr 공개 다운로드)
+  await recordCollectorRun("housing-price", result);
   if (result.fail > 0) process.exit(1);
 }
 

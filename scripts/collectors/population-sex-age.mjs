@@ -15,7 +15,7 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, fetchWithRetry } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun, fetchWithRetry } from "./_shared.mjs";
 
 loadEnv();
 
@@ -234,6 +234,7 @@ async function main() {
   const result = rpt.summary();
 
   if (!dryRun) await recordApiQuota("population-sex-age", "MOIS_SEX_AGE_KEY", SIDO_CODES.length);
+  await recordCollectorRun("population-sex-age", result);
   if (result.fail > 0) process.exit(1);
 }
 

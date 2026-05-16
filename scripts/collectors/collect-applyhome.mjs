@@ -13,7 +13,7 @@
  *   MOLIT_KEY (data.go.kr 통합 키 — odcloud.kr 호환)
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, selectAll, upsertBatch, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, selectAll, upsertBatch, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -228,6 +228,7 @@ async function main() {
   log(PHASE, `매칭: ${matched}/${aptNos.length}건`);
   const result = rpt.summary();
   log(PHASE, "\n=== 완료 ===");
+  await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
   } finally {
     if (!dryRun && apiCalls > 0) {

@@ -13,7 +13,7 @@
  *   node scripts/collectors/collect-market-stats.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-market-stats.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, createReporter, sleep, REGION_MAP, upsertBatch, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, sleep, REGION_MAP, upsertBatch, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -287,6 +287,7 @@ async function main() {
 
   const result = rpt.summary();
   log(PHASE, "=== 완료 ===");
+  await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
 }
 

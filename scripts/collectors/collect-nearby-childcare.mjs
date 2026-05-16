@@ -23,7 +23,7 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, haversineKm, sleep, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun, haversineKm, sleep, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -219,6 +219,7 @@ async function main() {
   log("done", `schools.nearby_childcare: UPDATE ${matched.length - toInsert.length} / INSERT ${toInsert.length}`);
 
   const summary = rpt.summary();
+  await recordCollectorRun("collect-nearby-childcare", summary);
   if (summary.fail > 0) process.exit(1);
 }
 

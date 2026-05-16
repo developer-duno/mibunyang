@@ -8,7 +8,7 @@
  *   node scripts/collectors/infra-kakao.mjs              (Supabase UPDATE)
  *   node scripts/collectors/infra-kakao.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, createSemaphore } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordCollectorRun, createSemaphore } from "./_shared.mjs";
 
 loadEnv();
 
@@ -130,6 +130,7 @@ async function main() {
   rpt.success(updated);
   rpt.skip(skipped);
   const result = rpt.summary();
+  await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
 }
 

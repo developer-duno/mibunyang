@@ -14,7 +14,7 @@
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { loadEnv, getSupabase, REGION_MAP, log, logError, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, REGION_MAP, log, logError, createReporter, recordCollectorRun } from "./_shared.mjs";
 
 /**
  * @typedef {{ id: string | number; name?: string | null; region: string | null; gu: string | null }} CrimeAptRow
@@ -142,6 +142,8 @@ async function main() {
   const result = rpt.summary();
 
   // regions UPDATE (세션 243 W6-E): 시군구 단위 crime_grade 채움
+  let regionsFailed = false;
+  let rResult = { elapsed: "0", ok: 0, fail: 0, skip: 0, total: 0 };
   const { data: regions, error: rErr } = await sb.from("regions").select("id, region, gu").limit(10000);
   if (rErr) { logError(PHASE, `regions 조회 실패: ${rErr.message}`); }
   else if (regions) {
@@ -161,11 +163,19 @@ async function main() {
       else rRpt.success(1);
     }
     log(PHASE, `regions 매칭률: ${rMatched}/${regions.length} (${regions.length ? (rMatched / regions.length * 100).toFixed(1) : 0}%)`);
-    const rResult = rRpt.summary();
-    if (rResult.fail > 0) process.exit(1);
+    rResult = rRpt.summary();
+    regionsFailed = rResult.fail > 0;
   }
 
-  if (result.fail > 0) process.exit(1);
+  // apartments + regions 두 단계 합산 1행 기록
+  await recordCollectorRun(PHASE, {
+    elapsed: result.elapsed,
+    ok: result.ok + rResult.ok,
+    fail: result.fail + rResult.fail,
+    skip: result.skip + rResult.skip,
+  });
+
+  if (result.fail > 0 || regionsFailed) process.exit(1);
 }
 
 // isCLI 패턴 — 직접 실행 시 main(), import 시 미실행

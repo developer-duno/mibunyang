@@ -36,7 +36,7 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, recordApiQuota, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, recordApiQuota, recordCollectorRun, sleep } from "./_shared.mjs";
 import { extractTag } from "./childcare-info.mjs";
 
 loadEnv();
@@ -321,6 +321,7 @@ async function main() {
 
   if (!dryRun) await recordApiQuota("childcare-detail", "CHILDCARE_BASIC_API_KEY", processed);
   const result = rpt.summary();
+  await recordCollectorRun("childcare-detail", result);
   if (result.fail > 0) process.exit(1);
 }
 

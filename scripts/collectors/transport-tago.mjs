@@ -9,7 +9,7 @@
  *   node scripts/collectors/transport-tago.mjs              (Supabase UPDATE)
  *   node scripts/collectors/transport-tago.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, recordCollectorRun, createReporter } from "./_shared.mjs";
 
 /**
  * @typedef {{ place_name?: string, category_name?: string, distance?: string|number, x?: string|number, y?: string|number }} KakaoDoc
@@ -282,6 +282,7 @@ async function main() {
   log(PHASE, `TAGO API 호출: ${actualTagoCalls}회`);
 
   if (!dryRun) await recordApiQuota("transport-tago", "TAGO_KEY", actualTagoCalls);
+  await recordCollectorRun("transport-tago", result);
   if (result.fail > 0) process.exit(1);
 }
 

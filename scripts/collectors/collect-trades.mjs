@@ -12,7 +12,7 @@
  */
 import {
   loadEnv, getMibuyangSupabase, log, logError, sleep,
-  upsertBatch, createReporter, recordApiQuota, fetchWithRetry,
+  upsertBatch, createReporter, recordApiQuota, recordCollectorRun, fetchWithRetry,
   getLawdCd, normalizeGu,
 } from "./_shared.mjs";
 
@@ -315,6 +315,7 @@ async function main() {
   rpt.success(inserted);
   rpt.fail(uniqueRows.length - inserted);
   const result = rpt.summary();
+  await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
 }
 

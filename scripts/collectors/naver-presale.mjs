@@ -18,7 +18,7 @@ import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 import {
-  loadEnv, getSupabase, log, logError, createReporter,
+  loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
   upsertBatch, stringSimilarity, sleep, REGION_MAP, VALID_REGIONS,
   resolveBuilder,
 } from "./_shared.mjs";
@@ -787,7 +787,8 @@ async function main() {
     log(PHASE, `[DRY-RUN] 업데이트 ${updateRows.length}건, 신규 ${insertRows.length}건, prices ${priceRows.length}건 (미저장)`);
   }
 
-  reporter.summary();
+  const result = reporter.summary();
+  await recordCollectorRun(PHASE, result);
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)

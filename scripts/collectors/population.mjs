@@ -13,7 +13,7 @@
  *   SUPABASE_URL     — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -272,6 +272,7 @@ async function main() {
   const result = rpt.summary();
 
   if (!dryRun) await recordApiQuota("population", "MOIS_POP_KEY", apiCalls);
+  await recordCollectorRun("population", result);
   if (result.fail > 0) process.exit(1);
 }
 

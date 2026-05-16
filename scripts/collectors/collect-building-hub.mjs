@@ -33,7 +33,7 @@
  * 전제조건:
  *   reverse-geocode.mjs --force 실행 후 bjd_code가 채워져 있어야 함
  */
-import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota, recordCollectorRun, selectAll } from "./_shared.mjs";
 import { REQUEST_DELAY } from "./_molit-api.mjs";
 
 loadEnv();
@@ -246,6 +246,7 @@ async function main() {
   if (!dryRun) await recordApiQuota("collect-building-hub", "MOLIT_KEY", apiCalls);
 
   log(PHASE, "\n=== 완료 ===");
+  await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
 }
 

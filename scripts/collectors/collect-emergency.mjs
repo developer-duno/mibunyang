@@ -9,7 +9,7 @@
  *   node scripts/collectors/collect-emergency.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-emergency.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, createReporter, recordApiQuota, haversineKm } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, createReporter, recordApiQuota, recordCollectorRun, haversineKm } from "./_shared.mjs";
 
 loadEnv();
 
@@ -136,6 +136,7 @@ async function main() {
 
   await recordApiQuota(PHASE, "data.go.kr/emergency", apiCalls);
   const result = rpt.summary();
+  await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
 }
 

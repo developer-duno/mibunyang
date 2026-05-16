@@ -20,4 +20,9 @@ CREATE TABLE IF NOT EXISTS collector_runs (
 CREATE INDEX IF NOT EXISTS idx_collector_runs_recent
   ON collector_runs (collector, finished_at DESC);
 
+-- RLS: 읽기는 공개, 쓰기는 service_role 만 (market_stats_history 선례 답습)
+ALTER TABLE collector_runs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read" ON collector_runs FOR SELECT USING (true);
+CREATE POLICY "Service write" ON collector_runs FOR ALL USING (auth.role() = 'service_role');
+
 COMMENT ON TABLE collector_runs IS '수집기 1회 실행 결과 (recordCollectorRun 적재). 관리자 모니터링 화면용.';
