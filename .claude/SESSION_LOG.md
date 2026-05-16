@@ -1,3 +1,60 @@
+# 세션 257 — 2026-05-16 (W6-D2 어린이집 상세 표시 — scoring/UI 통합, 에픽 마지막)
+
+**거시 목적**: 세션 254~256이 수집한 어린이집 70 필드 상세(`regions.childcare.facilities[]`)를 단지 상세 화면에 노출. W6-D2 에픽 마지막 단계.
+
+**결론**: **4 커밋**. 단지별 1km 내 어린이집 5건을 배치 수집기가 `schools.nearby_childcare` JSONB 에 적재 → API → DetailModal 어린이집 패널(클릭 펼침). scoring 미변경(회귀 0). typecheck 0 / typecheck:scripts 0 / eslint 0 / audit-env-keys clean / vitest components 514/514 + 수집기 8/8 / build 성공.
+
+## 본 세션 작업 (4 커밋)
+
+| 커밋 | 작업 | 파일 |
+|---|---|---|
+| `ae892a7` | DB 마이그레이션 — schools.nearby_childcare JSONB + apartments_flat VIEW 재생성 + 역마이그 + Apt 타입 + API 전달 | 마이그 2 / scoring.ts / apartments.js |
+| `ffb2163` | collect-nearby-childcare.mjs 신규 (Haversine 1km 5건) + 워크플로 + data-fill schools 등재 + tsconfig + apartments.test | 수집기 2 / yml / data-fill / tsconfig / test |
+| `ec06ed0` | NearbyChildcareSection 컴포넌트 + 테스트 + DetailModal 연결 | 컴포넌트 2 / DetailModal / detail.ts |
+| `ceb5c94` | fix — apartments 조회 selectAll (Supabase 1000 row 제한) | collect-nearby-childcare.mjs |
+
+## 결정된 범위 (brainstorming, 사용자 확정)
+
+1. **UI 표시만** — scoring 미변경. 어린이집 점수(infra 서브 childcare, 1km 개수, weight 0.10)는 그대로. 5 프로필 가중치 불변
+2. **Haversine 배치 수집 단계** — 학교(nearby_schools) 패턴 답습. 수집기가 미리 골라 JSONB 저장, API/UI 는 읽기만
+3. **로직+UI 전체 구축** — 데이터는 childcare-detail cron 이 23일간 채우면 자동 반영
+4. **빈 데이터 = "업데이트 예정" 라벨** + 자료기준일(datastdrdt) 표기
+5. **클릭 펼침** — 모달 안 모달 회피 (GATE 4), SchoolInfo accordion 패턴
+
+## 아키텍처
+
+```
+regions.childcare.facilities[] (시군구 70 필드)
+  → collect-nearby-childcare.mjs (단지별 Haversine 1km 5건)
+  → schools.nearby_childcare JSONB
+  → apartments_flat VIEW (sc.nearby_childcare)
+  → api/supabase/apartments.js → apt.nearbyChildcare
+  → NearbyChildcareSection (DetailModal 내, 행 펼침)
+```
+
+## 9-GATE 검증 (plan v1 → v2, 🔴 3건 정정)
+
+- GATE 0 🔴 → 12파일 1커밋 → 4커밋 분할
+- GATE 4·8 🔴 → ChildcareDetailModal(모달 안 모달) 폐기 → accordion 펼침
+- GATE 2 🟡 → collect-nearby-childcare 를 regions(phase 1) 아닌 schools(phase 3) 등재
+- 정정 후 🟢 9 (서브에이전트 2 병렬 검증)
+
+## 사고 박제 (3건)
+
+1. **regions 시계열 row 중복** — 같은 시군구가 recorded_at 별 여러 row. childcare-detail 이 그중 1개 row(rid=1032 강북구)에만 70 필드 박음. 수집기는 `buildRegionFacilityMap` 으로 좌표 보유 facility 최다 row 선택. plan v1 미인지 → 작업 중 raw 실측 발견
+2. **schools upsert 회귀 위험** — schools 테이블에 school_score/nearby_schools 보유 1992 row 존재. `upsertBatch` 전체 컬럼 덮어쓰기 시 NULL 손실. → 매칭 단지만 `update({ nearby_childcare })` 부분 갱신 + 없으면 insert 로 정정 (GATE 5 데이터 손실 차단)
+3. **selectAll 1000 row 제한** — apartments `.select()` 가 Supabase 기본 1000 row 만 반환 → 1001번째 단지 누락. selectAll 페이지네이션 누락 → fix 커밋 (ceb5c94). dry-run 1000 → 2001 검증
+
+## 다음 단계 (미완 — 마이그레이션 의존)
+
+- 마이그레이션 `20260516090916_add_schools_nearby_childcare.sql` Dashboard SQL Editor 직접 실행 (👤 사용자) — `.claude/rules/workflow-name-hallucination.md` 답습
+- 적용 후 `node scripts/collectors/collect-nearby-childcare.mjs` 운영 실행 → 강북구 32 단지 schools.nearby_childcare 적재
+- 강북구 단지 상세 UI 육안 검증 (어린이집 패널 + 펼침 + 자료기준일)
+
+## 9 GATE 풀 🟢 9 (plan v2)
+
+---
+
 # 세션 256 — 2026-05-16 (W6-D2 cpmsapi030 자동수집 워크플로 + data-fill 등재)
 
 **거시 목적**: 세션 255 박제 childcare-detail.mjs collector 의 F 단계 — GitHub Actions 자동수집 워크플로 신규 + data-fill scripts 등재 + workflows 문서 갱신. 605 시군구 어린이집 70 필드 상세를 매일 분산 수집하는 자동화 완성.
