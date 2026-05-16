@@ -246,6 +246,7 @@ function sanitizeInfra(row) {
     schoolScore: row.schoolScore ?? 50,
     schoolGrade: row.schoolGrade ?? "",
     nearbySchools: row.nearbySchools ?? [],
+    nearbyChildcare: row.nearbyChildcare ?? [],
   };
 }
 

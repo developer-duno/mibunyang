@@ -8,6 +8,25 @@
  */
 
 /**
+ * 단지별 1km 내 어린이집 상세 1건 — apt.nearbyChildcare 원소 (세션 257 W6-D2).
+ *
+ * collect-nearby-childcare.mjs 가 regions.childcare.facilities[] 에서 Haversine 으로 골라 채움.
+ * 기초 필드(name/distance/capacity)는 항상, 70 필드(type/cctv/enrolled/status/dataStdDate/detail)는
+ * childcare-detail cron 미도달 시군구면 null/빈 객체.
+ */
+export interface NearbyChildcare {
+  name: string;
+  distance: number;
+  capacity?: number | null;
+  type?: string | null;
+  enrolled?: number | null;
+  cctv?: number | null;
+  status?: string | null;
+  dataStdDate?: string | null;
+  detail?: Record<string, unknown> | null;
+}
+
+/**
  * 원본 아파트 객체 (DB SELECT 또는 sanitize 결과).
  *
  * sanitize() 후의 a 객체 = 모든 위험·가격·인프라 필드 num()/str() 처리 완료.
@@ -100,6 +119,7 @@ export interface Apt {
   sunlight?: string;
   schoolGrade?: string;
   naverSchoolWalkMin?: number | null;
+  nearbyChildcare?: NearbyChildcare[] | null;
 
   // 미래가치 (개발)
   transitDev?: string;
