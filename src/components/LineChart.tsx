@@ -1,6 +1,54 @@
 import { memo, useState, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { C, F } from "@/theme";
 
+/** Y축 눈금 스케일 — niceTicks 반환 타입. */
+export type NiceScale = { ticks: number[]; min: number; max: number };
+
+/** 원시 간격을 1·2·5·10 의 10^n 배수 중 가까운 "nice" 값으로 올림. */
+function niceStep(raw: number): number {
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const nice = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return nice * mag;
+}
+
+/**
+ * Y축 눈금 계산. 항상 min<max + ticks.length>=2 보장 (rangeY=0 방어).
+ * - 모든 값 동일: 값을 중앙에 두고 위아래 여백 (작은 정수는 ±1 정수 눈금)
+ * - 작은 정수 범위(<=10): 정수 1단위 눈금 (소수 눈금 제거)
+ * - 일반: 1·2·5·10 nice step 으로 4~5 눈금
+ */
+export function niceTicks(minY: number, maxY: number): NiceScale {
+  // 1) 모든 값 동일
+  if (maxY === minY) {
+    const v = minY;
+    if (Number.isInteger(v) && Math.abs(v) <= 10) {
+      const min = Math.max(0, v - 1), max = v + 1;
+      const ticks: number[] = [];
+      for (let t = min; t <= max; t++) ticks.push(t);
+      return { ticks, min, max };
+    }
+    const pad = Math.max(1, Math.abs(v) * 0.001);
+    const mag = Math.pow(10, Math.floor(Math.log10(pad)));
+    const step = Math.ceil(pad / mag) * mag;
+    return { ticks: [v - step, v, v + step], min: v - step, max: v + step };
+  }
+  // 2) 작은 정수 범위
+  if (Number.isInteger(minY) && Number.isInteger(maxY) && maxY - minY <= 10) {
+    const min = Math.floor(minY), max = Math.ceil(maxY);
+    const ticks: number[] = [];
+    for (let t = min; t <= max; t++) ticks.push(t);
+    return { ticks, min, max };
+  }
+  // 3) 일반 — nice step
+  const step = niceStep((maxY - minY) / 4);
+  const min = Math.floor(minY / step) * step;
+  const max = Math.ceil(maxY / step) * step;
+  const ticks: number[] = [];
+  for (let t = min; t <= max + 1e-9; t += step) ticks.push(Math.round(t * 1e6) / 1e6);
+  return { ticks, min, max };
+}
+
 const TOOLTIP_DISMISS_MS = 3000;
 const HIT_AREA_RADIUS = 16;
 

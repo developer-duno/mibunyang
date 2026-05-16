@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { Bar, ScoreBadge, Radar, LineChart, SkeletonBox, SkeletonText, SkeletonList } from "./primitives";
+import { niceTicks } from "./LineChart";
 
 describe("Bar", () => {
   // null/undefined value는 0으로 폴백
@@ -95,6 +96,59 @@ describe("Radar", () => {
     const { container } = render(<Radar data={data} size={200} />);
     const svg = container.querySelector("svg");
     expect(svg?.getAttribute("width")).toBe("200");
+  });
+});
+
+describe("niceTicks", () => {
+  // 불변식: 항상 min < max 이고 ticks 2개 이상
+  it("모든 반환값이 min<max + ticks.length>=2 불변식 만족", () => {
+    for (const [a, b] of [[1, 1], [52845, 52845], [0, 1], [100, 120], [1, 5], [0, 0], [3, 3]]) {
+      const r = niceTicks(a, b);
+      expect(r.min).toBeLessThan(r.max);
+      expect(r.ticks.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  // 작은 정수 동일값 → 값 중앙 + 정수 눈금
+  it("niceTicks(1,1) → 정수 눈금 [0,1,2], 1이 중앙", () => {
+    const r = niceTicks(1, 1);
+    expect(r.ticks).toEqual([0, 1, 2]);
+    expect(r.min).toBe(0);
+    expect(r.max).toBe(2);
+  });
+
+  // 큰 동일값 → 값 중앙 + 위아래 여백 (소수 눈금 정체 방지)
+  it("niceTicks(52845,52845) → 3 눈금, 52845가 가운데", () => {
+    const r = niceTicks(52845, 52845);
+    expect(r.ticks).toContain(52845);
+    expect(r.ticks.length).toBe(3);
+    expect(r.min).toBeLessThan(52845);
+    expect(r.max).toBeGreaterThan(52845);
+  });
+
+  // 작은 정수 범위 → 정수 눈금만 (소수 눈금 제거)
+  it("niceTicks(0,1) → 정수 눈금 [0,1]", () => {
+    expect(niceTicks(0, 1).ticks).toEqual([0, 1]);
+  });
+
+  // 미분양 0건 지속 케이스
+  it("niceTicks(0,0) → [0,1] 정수 눈금", () => {
+    const r = niceTicks(0, 0);
+    expect(r.ticks).toEqual([0, 1]);
+  });
+
+  // 일반 데이터 → nice step (5 또는 10 배수 간격)
+  it("niceTicks(100,120) → 5 단위 nice 눈금", () => {
+    const r = niceTicks(100, 120);
+    expect(r.ticks).toEqual([100, 105, 110, 115, 120]);
+  });
+
+  // 정수 데이터 11 이상 범위 → nice step 적용 (정수 1단위 분기 벗어남)
+  it("niceTicks(0,40) → nice step 눈금, 첫 눈금 0", () => {
+    const r = niceTicks(0, 40);
+    expect(r.ticks[0]).toBe(0);
+    expect(r.min).toBe(0);
+    expect(r.ticks.length).toBeGreaterThanOrEqual(4);
   });
 });
 
