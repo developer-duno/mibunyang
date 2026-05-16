@@ -31,14 +31,14 @@
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
-| `collect-unsold-kosis.yml` | 1일 | KOSIS 시군구별 미분양 |
+| `collect-unsold-kosis.yml` | 8일 | KOSIS 시군구별 미분양 (세션260: 1일→8일 분산) |
 | `collect-infra.yml` | 1일 | Kakao Places 인프라 |
-| `collect-transport.yml` | 1일 | Kakao Places 교통 |
+| `collect-transport.yml` | 4일 | Kakao Places 교통 (세션260: 1일→4일 분산) |
 | `collect-schools.yml` | 2일 | NEIS 학교 (세션118: 1일→2일 이동 + school-collection 그룹 분리) |
 | `collect-noise.yml` | 1일 | 소음 추정 |
 | `collect-environment.yml` | 1일 | 환경/혐오시설 |
-| `collect-noxious.yml` | 1일 | 혐오시설 거리 |
-| `collect-industry.yml` | 1일 | 산업단지 매칭 |
+| `collect-noxious.yml` | 3일 | 혐오시설 거리 (세션260: 1일→3일 분산, 60분 장시간 작업) |
+| `collect-industry.yml` | 7일 | 산업단지 매칭 (세션260: 1일→7일 분산) |
 | `collect-childcare.yml` | 1일 | Kakao 어린이집/유치원 |
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
 | `collect-emergency.yml` | 2일 | 응급의료기관 |

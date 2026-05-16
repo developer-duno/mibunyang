@@ -2,7 +2,7 @@ name: KOSIS Housing Supply Level Collection
 
 on:
   schedule:
-    - cron: '30 20 1 * *' # 매월 1일 UTC 20:30 = KST 05:30 (collect-unsold-kosis 와 30분 분리)
+    - cron: '30 20 1 * *' # 매월 1일 UTC 20:30 = KST 05:30 (세션 260: collect-unsold-kosis 8일 이동 — 매월 1일 20:30 단독)
   workflow_dispatch:
     inputs:
       dry_run:

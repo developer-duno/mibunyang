@@ -8565,3 +8565,43 @@ W6-D2 어린이집 표시 에픽(세션 252~258) **종료**. 코드 변경 0건 
 
 - **vitest stale 캐시 함정**: 이 환경은 vitest 캐시가 stale 되면 "Cannot read properties of undefined (reading 'config')" 에러. 환경 불능 아님 — `npx vitest run <파일> --no-cache` 로 해결. 서브에이전트 Task 1 이 "환경 불능" 부분 환각 보고 → 컨트롤러 직접 `--no-cache` 실측으로 정정
 - 서브에이전트 5-task 실행: 구현 4 + 검증 1, 각 task 후 컨트롤러 직접 실측 검증 (보고 신뢰 금지 답습)
+
+## 세션 260 (2026-05-16) — 수집기 운영 건강성 점검: 매월 1일 cron 동시 충돌 분산
+
+NEXT_SESSION 1순위 "수집기 운영 건강성 점검 5건" 진입. worktree `collector-cron-spread` 에서 작업. 5건 전수 실증 후 실제 운영 손해가 진행 중인 #2 1건만 코드 변경.
+
+### 5건 실증 진단 결과
+
+| # | 항목 | 실측 | 판정 |
+|---|---|---|---|
+| 1 | data-fill 미등재 collector | data-audit `competition` 카테고리는 `collector: "collect-applyhome"` 인데 data-fill COLLECTORS 미등재. air-quality/emergency/trades 는 AUDIT_FIELDS 카테고리 자체 부재 | applyhome 만 버그 후보 — 의도 미확정, 별도 세션 |
+| 2 | 매월 1일 cron 부담 | `collect-transport` schedule run 4/1·5/1 **2개월 연속 cancelled** (`jobs:[]` = job 시작 전 취소) | concurrency group 직렬화 — **실재 사고, 본 세션 fix** |
+| 3 | 월간 schedule 데드존 | 룰 답습 | monitor 보강 — 별도 세션 |
+| 4 | 컬럼별 NULL 모니터 | `monitor-db-size.yml` 행수만 점검. `data-audit.mjs` 에 NULL 비율 로직 완비 (`--json`) | data-audit 재활용 신규 — 별도 세션 |
+| 5 | crime-safety 자동화 | OpenAPI 부재 | 보류 확정 |
+
+### 근본 원인 (NEXT_SESSION §2 가설 정정)
+
+NEXT_SESSION §2 는 "API 쿼터/Actions 동시성 부담" 으로 추정했으나 실측 결과 **쿼터 무관**. 34개 yml 전수 grep — 거의 모든 수집 워크플로가 `concurrency: group: data-collection` + `cancel-in-progress: false` 공유. GitHub 공식 문서 확정: `cancel-in-progress: false` + 기본 `queue: single` → 같은 group 에 새 run 진입 시 기존 pending run 취소. 매월 1일 03:00~05:30 KST 10개 수집 워크플로 집중 → 직렬 큐 뒤쪽 run 이 앞 pending 을 밀어내며 취소. 동일 시각 충돌 3쌍 (18:00 infra+noxious / 19:00 transport+industry / 20:00 childcare+unsold-kosis).
+
+기각안: `queue: max` 전환 — 34개 yml 전부 수정 + 큐 지연 → cron 일자 분산이 더 정확.
+
+### 산출 (1 커밋, 코드 로직 0줄)
+
+- yml 4개 cron 일자 분산: `collect-noxious` 1→3일 / `collect-transport` 1→4일 / `collect-industry` 1→7일 / `collect-unsold-kosis` 1→8일
+- `collect-housing-supply-ratio.yml` 주석 stale 정정 (unsold-kosis 8일 이동으로 "30분 분리" 의미 소멸)
+- `.github/workflows/CLAUDE.md` 매월 표 4행 일자 동기화
+- 6 파일 +9/-9, 코드(.mjs/.js) 변동 0건
+
+### 검증
+
+- cron 재파싱: noxious=3 transport=4 industry=7 unsold-kosis=8 / 빈 일자 3·4·7·8 기존 cron 0건 확인
+- `post-naver-collect.sh:27` 의 `collect-unsold-kosis.mjs` 직접 호출은 yml schedule 과 무관 — 영향 0 (grep 확인)
+- Review: 코드 변경 0 → simplify 대상 없음. `collector-contract` 서브에이전트 PASS — 수집기 계약(C1~C5) 영향 0건. 보안/null/스코어링/Hook = 코드 0건 해당 없음
+- 9 GATE(0~8) 풀 검증 🟢9
+
+### 답습 자산
+
+- **워크플로 cancelled = 그 달 데이터 0회** — `jobs:[]` 인 cancelled run 은 concurrency 큐에서 시작 전 취소. transport 2개월 연속 = 교통 데이터 2개월 미수집. conclusion 만 보지 말고 jobs 배열 + raw log 확인 (룰 `workflow-name-hallucination.md` §2 답습)
+- **NEXT_SESSION 박제값 stale** — §2 "API 쿼터" 추정이 실측으로 concurrency group 문제로 정정. NEXT_SESSION 가설은 단정 근거 아님, raw 실측 의무
+- **GitHub Actions concurrency**: `cancel-in-progress: false` 라도 기본 `queue: single` 이면 pending run 이 새 run 에 밀려 취소. 직렬 보장 ≠ 큐 보존. 공식 문서 확인 필수

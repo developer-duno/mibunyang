@@ -2,7 +2,7 @@ name: Industry Complex Matching
 
 on:
   schedule:
-    - cron: '0 19 1 * *' # 매월 1일 UTC 19:00 = KST 04:00
+    - cron: '0 19 7 * *' # 매월 7일 UTC 19:00 = KST 04:00 (세션 260: 1일 cron 동시 충돌 분산 — transport 와 동일 시각 충돌 분리)
   workflow_dispatch:
     inputs:
       dry_run:

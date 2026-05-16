@@ -2,7 +2,7 @@ name: Transport Accessibility Collection
 
 on:
   schedule:
-    - cron: '0 19 1 * *' # 매월 1일 UTC 19:00 = KST 04:00
+    - cron: '0 19 4 * *' # 매월 4일 UTC 19:00 = KST 04:00 (세션 260: 1일 cron 동시 충돌 분산 — data-collection 큐 대기 중 취소 재발 차단)
   workflow_dispatch:
     inputs:
       dry_run:

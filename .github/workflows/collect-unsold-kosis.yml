@@ -2,7 +2,7 @@ name: KOSIS Unsold Collection
 
 on:
   schedule:
-    - cron: '0 20 1 * *' # 매월 1일 UTC 20:00 = KST 05:00
+    - cron: '0 20 8 * *' # 매월 8일 UTC 20:00 = KST 05:00 (세션 260: 1일 cron 동시 충돌 분산 — childcare 와 동일 시각 충돌 분리)
   workflow_dispatch:
     inputs:
       dry_run:
