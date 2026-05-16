@@ -207,6 +207,7 @@ describe('sanitize (null → 기본값)', () => {
     expect(responseData.benefits).toEqual([]);
     expect(responseData.noxious).toEqual([]);
     expect(responseData.nearbySchools).toEqual([]);
+    expect(responseData.nearbyChildcare).toEqual([]);
     expect(responseData.nearbyFacilities).toEqual([]);
     expect(responseData.priceByArea).toEqual([]);
   });
@@ -378,7 +379,7 @@ describe('sanitize (null → 기본값)', () => {
       'bankDist', 'pharmacyDist', 'park', 'subwayDist', 'nearbyFacilities',
       'childcare', 'childcareDist', 'emergency', 'emergencyDist', 'police', 'policeDist',
       // 대기질/치안/학군
-      'airQuality', 'crimeSafetyGrade', 'schoolScore', 'schoolGrade', 'nearbySchools',
+      'airQuality', 'crimeSafetyGrade', 'schoolScore', 'schoolGrade', 'nearbySchools', 'nearbyChildcare',
       // 교통
       'busRoutes', 'icDist', 'ktxDist', 'subwayName', 'subwayLines', 'busStopNames',
       // 건설사/지역

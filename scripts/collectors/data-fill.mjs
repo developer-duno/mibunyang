@@ -46,7 +46,7 @@ export const COLLECTORS = [
   { category: "trade_stats", phase: 2, scripts: ["trade-stats.mjs"],       args: [],          envKeys: [] },
   // Phase 3: Kakao 의존 (순차)
   { category: "infra",      phase: 3, scripts: ["infra-kakao.mjs"],        args: [],          envKeys: ["KAKAO_KEY"] },
-  { category: "schools",    phase: 3, scripts: ["schools-neis.mjs"],       args: [],          envKeys: ["KAKAO_KEY", "NEIS_KEY", "SCHOOLINFO_KEY"] },
+  { category: "schools",    phase: 3, scripts: ["schools-neis.mjs", "collect-nearby-childcare.mjs"], args: [], envKeys: ["KAKAO_KEY", "NEIS_KEY", "SCHOOLINFO_KEY"] },
   { category: "transport",  phase: 3, scripts: ["transport-tago.mjs"],     args: [],          envKeys: ["KAKAO_KEY", "TAGO_KEY"] },
   { category: "environment", phase: 3, scripts: ["environment.mjs"],       args: [],          envKeys: ["KAKAO_KEY"] },
 ];
