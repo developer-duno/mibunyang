@@ -153,8 +153,7 @@ export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb 
 
     // 429 재시도 루프
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const res = await client
-        .from(table)
+      const res = await /** @type {any} */ (client.from(table))
         .upsert(batch, { onConflict: conflictCol, ignoreDuplicates: false });
       error = res.error;
 
@@ -174,8 +173,7 @@ export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb 
       let retryOk = 0, retryFail = 0;
       for (const row of batch) {
         if (retryOk + retryFail > 0) await sleep(50);
-        const { error: e2 } = await client
-          .from(table)
+        const { error: e2 } = await /** @type {any} */ (client.from(table))
           .upsert([row], { onConflict: conflictCol, ignoreDuplicates: false });
         if (!e2) { inserted++; retryOk++; }
         else retryFail++;
