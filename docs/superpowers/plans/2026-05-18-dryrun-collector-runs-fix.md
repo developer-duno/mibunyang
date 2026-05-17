@@ -30,9 +30,24 @@
 `collect-housing-price` / `population` / `population-sex-age` / `collect-avg-income`
 (housing-permits 는 `recordApiQuota` 도 가드 밖 — 본 plan 범위 밖, BACKLOG 기록.)
 
+### ⚠️ 긴급도 (맹점 재검토에서 확정 — 실측)
+`monitor-collectors.mjs` 의 `checkEmptyRuns` 는 `fetchLatestCollectorRuns` 가 주는
+**collector별 최신 행 1건**(`latest`)을 입력받음(L553·554). `migration` 의 `collector_runs`
+최신 행이 `ok=0` dry-run 행인 한 — **monitor daily cron(매일 KST 09:00)이 돌 때마다 이
+알림이 재발**. `migration` 다음 정상 실행 = 6/16, `housing-supply-ratio` = 6/1 →
+**지금부터 6월까지 매일 오탐 알림**. 따라서 Task 3 의 오염 행 정리는 "청소"가 아니라
+**매일 오는 알림을 멈추는 조치** — 본 plan 에서 Task 1 로 올림 (아래 Task 순서 정정됨).
+
 ### 세션 263 메모 정정
 세션 263 메모는 "dry-run 잔재, 다음 cron 자동 해소"라 했으나 — cron 이 정상 행을 덮는 건
-맞지만 **근본 원인(dry-run 이 collector_runs 오염)은 미해결**. monitor dry 실행마다 재발.
+맞지만 다음 cron 이 6월이라 **그 전까지 매일 재발**. 근본 원인(dry-run 이 collector_runs
+오염)도 미해결 — monitor dry 실행마다 재발.
+
+### finished_at 컬럼 (실측 확인)
+`recordCollectorRun` INSERT 객체(`_shared.mjs:578~586`)는 `finished_at` 을 안 넣음 —
+DB 컬럼 default(`now()`)가 채움. `collector_runs` 스키마 실측: `id, collector, status,
+ok_count, fail_count, skip_count, elapsed_sec, error_message, started_at, finished_at`.
+Task 3 의 `finished_at` 범위 DELETE 는 이 default 값 기준이라 정상 동작.
 
 ## 수정 방향 (사용자 결정: `_shared` 함수 1곳)
 
@@ -49,6 +64,58 @@
 |---|---|---|
 | `scripts/collectors/_shared.mjs` | `recordCollectorRun` dry-run skip | 수정 ~6줄 |
 | `scripts/collectors/_shared.test.mjs` | dry-run skip 회귀 테스트 | 수정 +2 케이스 |
+
+---
+
+## Task 0: 긴급 — 오염 행 정리 (매일 오는 알림 즉시 차단)
+
+**Files:** 없음 (운영 DB DELETE 1회). 커밋 없음.
+
+> 이 Task 를 맨 앞에 두는 이유: `migration`/`housing-supply-ratio` 의 `collector_runs`
+> 최신 행이 `ok=0` dry-run 행이라 monitor daily cron 이 **매일 오탐 알림 발송 중**.
+> 다음 정상 cron(6/1·6/16) 전까지 매일 재발 → 즉시 차단 필요. Task 1·2(재발 방지)는
+> 그 다음.
+
+- [ ] **Step 1: 삭제 대상 사전 확인 (DELETE 전 필수)**
+
+Run:
+```bash
+node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();const {data}=await sb.from('collector_runs').select('id,collector,status,ok_count,fail_count,skip_count,finished_at').in('collector',['migration','kosis-housing-supply-ratio']).gte('finished_at','2026-05-16T23:00:00Z').lt('finished_at','2026-05-17T00:00:00Z');console.log(JSON.stringify(data,null,2));"
+```
+Expected: `migration`·`kosis-housing-supply-ratio` 각 1행, 전부 `ok_count: 0`. (status 는 success.)
+> 결과가 위와 다르면 — 예컨대 `ok_count > 0` 행이 섞였거나 행이 3개+면 — **DELETE 중단하고
+> 사용자에게 실제 조회 결과 보고**. dry-run 잔재가 아닌 정상 행을 지우면 안 됨.
+
+- [ ] **Step 2: 오염 행 삭제**
+
+Step 1 조회가 "`ok_count=0` 2행"으로 확인된 경우에만 실행:
+```bash
+node --input-type=module -e "
+import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';
+loadEnv();const sb=getSupabase();
+for(const c of ['migration','kosis-housing-supply-ratio']){
+  const {data,error}=await sb.from('collector_runs').delete()
+    .eq('collector',c).eq('ok_count',0)
+    .gte('finished_at','2026-05-16T23:00:00Z').lt('finished_at','2026-05-17T00:00:00Z')
+    .select('collector,finished_at');
+  console.log(c, error ? 'ERR '+error.message : '삭제 '+(data?.length??0)+'행');
+}
+"
+```
+Expected: 각 collector `삭제 1행`.
+
+- [ ] **Step 3: 알림 차단 확인**
+
+삭제 후 두 collector 의 `collector_runs` 행이 0건이 됨 → `checkEmptyRuns` 가 점검 대상에서
+제외(행 없으면 collector 인지 못 함) → 다음 정상 cron(6/1·6/16)까지 알림 안 옴.
+
+Run:
+```bash
+node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();for(const c of ['migration','kosis-housing-supply-ratio']){const {count}=await sb.from('collector_runs').select('id',{count:'exact',head:true}).eq('collector',c);console.log(c+':',count,'행');}"
+```
+Expected: 두 collector 모두 `0 행`.
+> 참고: 행 0건 = 그 collector 가 monitor 사각지대가 되지만, 다음 cron 이 6월이라 그 전까지
+> 어차피 새 데이터 없음 → 실질 모니터링 손실 0. cron 이 정상 행을 쌓으면 자동 복구.
 
 ---
 
@@ -180,36 +247,12 @@ dry-run 실행이 ok=0 행을 남겨 monitor ②번 NULL 점검 오탐 발생.
 
 ---
 
-## Task 3: 오염 행 정리 + 전체 회귀 + push
+## Task 3: 전체 회귀 + push
 
-- [ ] **Step 1: 기존 오염 행 정리 (5/16 23:37 dry-run 잔재)**
+> 오염 행 정리는 Task 0 에서 완료됨 — 이 Task 는 재발 방지 코드(Task 1·2)의 회귀
+> 검증 + push 만.
 
-`collector_runs` 의 `migration`·`kosis-housing-supply-ratio` `2026-05-16T23:37` `ok=0` 행을 삭제.
-이 행들은 dry-run 산물이라 운영 데이터 아님.
-
-Run:
-```bash
-node --input-type=module -e "
-import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';
-loadEnv();const sb=getSupabase();
-for(const c of ['migration','kosis-housing-supply-ratio']){
-  const {data,error}=await sb.from('collector_runs').delete()
-    .eq('collector',c).eq('ok_count',0)
-    .gte('finished_at','2026-05-16T23:00:00Z').lt('finished_at','2026-05-17T00:00:00Z')
-    .select('collector,finished_at');
-  console.log(c, error ? 'ERR '+error.message : '삭제 '+(data?.length??0)+'행');
-}
-"
-```
-Expected: 각 collector `삭제 1행`. (`finished_at` 컬럼명이 다르면 — `collector_runs` 스키마 먼저 `select('*').limit(1)` 로 확인 후 정확한 타임스탬프 컬럼 사용.)
-
-> ⚠️ 이 Step 은 운영 DB DELETE — 실행 전 동일 조건 `select` 로 삭제 대상이 정확히 그 2행인지 확인:
-> ```bash
-> node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();const {data}=await sb.from('collector_runs').select('collector,status,ok_count,finished_at').in('collector',['migration','kosis-housing-supply-ratio']).gte('finished_at','2026-05-16T23:00:00Z').lt('finished_at','2026-05-17T00:00:00Z');console.log(JSON.stringify(data,null,2));"
-> ```
-> 조회 결과가 `ok_count=0` 2행이면 삭제 진행, 아니면 중단하고 사용자에게 보고.
-
-- [ ] **Step 2: 전체 회귀 가드**
+- [ ] **Step 1: 전체 회귀 가드**
 
 Run:
 ```bash
@@ -218,29 +261,30 @@ npm run typecheck:scripts
 ```
 Expected: 전부 PASS / 0 에러.
 
-- [ ] **Step 3: push**
+- [ ] **Step 2: push**
 
 ```bash
 git push
 ```
 
-- [ ] **Step 4: CI 확인**
+- [ ] **Step 3: CI 확인**
 
 Run: `gh run list --branch main --limit 1 --json conclusion,status`
 Expected: CI 완료 후 `conclusion: success`.
 
-- [ ] **Step 5: 재발 차단 검증 (시뮬레이션)**
+- [ ] **Step 4: 재발 차단 검증 (시뮬레이션)**
 
-monitor 를 dry-run 으로 돌려도 이제 collector_runs 오염이 없는지 확인. 단 monitor 자체는
-collector 를 호출하지 않으므로(monitor 는 collector_runs 를 *읽기*만 함) — 실제 검증은
-임의 collector dry-run 후 행 미생성 확인:
+임의 collector 를 dry-run 으로 돌린 뒤 `collector_runs` 에 행이 안 생기는지 확인.
+Task 0 에서 `kosis-housing-supply-ratio` 행을 이미 0건으로 만들었으므로 — dry-run 후에도
+계속 0건이면 수정이 동작한 것:
 
 Run:
 ```bash
 node scripts/collectors/collect-housing-supply-ratio.mjs --dry-run > /dev/null 2>&1
-node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();const {data}=await sb.from('collector_runs').select('finished_at').eq('collector','kosis-housing-supply-ratio').order('finished_at',{ascending:false}).limit(1);console.log('최신 행:',data?.[0]?.finished_at ?? '없음');"
+node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();const {count}=await sb.from('collector_runs').select('id',{count:'exact',head:true}).eq('collector','kosis-housing-supply-ratio');console.log('kosis-housing-supply-ratio 행:',count);"
 ```
-Expected: 최신 행 타임스탬프가 방금 dry-run 시각이 **아님** (dry-run 이 행을 안 남김).
+Expected: `kosis-housing-supply-ratio 행: 0` (dry-run 이 행을 안 남겨 Task 0 이후 그대로 0건).
+> 수정 전이었다면 dry-run 이 `ok=0` 행 1개를 추가해 `1` 이 나옴 — 0 이면 수정 검증 완료.
 
 ---
 
@@ -248,9 +292,10 @@ Expected: 최신 행 타임스탬프가 방금 dry-run 시각이 **아님** (dry
 
 | Task | 검증 | 통과 기준 |
 |---|---|---|
+| 0 | 오염 행 정리 | 사전 select 로 ok=0 2행 확인 → 삭제 → 두 collector 0행 |
 | 1 | 테스트 실패 확인 | dry-run skip 테스트 FAIL (구현 전) |
 | 2 | 테스트 통과 + dry-run 실측 | vitest PASS + `migration --dry-run` 로그에 skip 출력 |
-| 3 | 오염 행 정리 + CI | 2행 삭제 + CI success + dry-run 후 행 미생성 |
+| 3 | 회귀 + CI + 시뮬 | vitest/typecheck PASS + CI success + dry-run 후 행 미생성 |
 
 ## 명시적 비-작업 (YAGNI)
 
