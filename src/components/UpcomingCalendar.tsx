@@ -1,4 +1,4 @@
-// 분양예정 캘린더 — react-day-picker v9 wrapper
+// 분양예정 캘린더 — react-day-picker v10 wrapper
 // spec § 4-2 + § 6-1 (4색 점: 분양예정/청약시작/마감/발표) + § 6-2 (D-day)
 
 import { memo, useMemo } from "react";
