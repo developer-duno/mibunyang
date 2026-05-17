@@ -32,6 +32,7 @@ export const ChoroplethView = memo(function ChoroplethView({
   const polygonsRef = useRef<any[]>([]);
   const [geoData, setGeoData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [level, setLevel] = useState(13);
   const showSigungu = level <= 8;
   // 줌 임계값 디바운스 미적용: level 8↔9 경계 진동은 사용자 의도적 1단계 줌 입출 시에만,
@@ -58,15 +59,16 @@ export const ChoroplethView = memo(function ChoroplethView({
     };
   }, [ready, mapInstance]);
 
-  // 1. GeoJSON 1회 fetch
+  // 1. GeoJSON 1회 fetch — retryKey 증가 시 재시도
   useEffect(() => {
     let cancelled = false;
+    setError(null);
     fetch("/geo/sido.geojson")
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(d => { if (!cancelled) setGeoData(d); })
       .catch(e => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
-  }, []);
+  }, [retryKey]);
 
   // 2. 폴리곤 그리기 + cleanup
   useEffect(() => {
@@ -127,9 +129,10 @@ export const ChoroplethView = memo(function ChoroplethView({
   if (error) return (
     <div
       role="alert"
-      style={{ position: "absolute", top: 8, right: 8, background: C.redLight, color: C.red, padding: "6px 10px", borderRadius: 6, fontSize: F.xs, zIndex: 10, border: `1px solid ${C.redBorder}` }}
+      style={{ position: "absolute", top: 8, right: 8, background: C.redLight, color: C.red, padding: "6px 10px", borderRadius: 6, fontSize: F.xs, zIndex: 10, border: `1px solid ${C.redBorder}`, display: "flex", alignItems: "center", gap: 8 }}
     >
       지도 데이터를 불러올 수 없습니다
+      <button onClick={() => setRetryKey(k => k + 1)} style={{ fontSize: F.xs, padding: "2px 8px", borderRadius: 4, border: `1px solid ${C.redBorder}`, background: C.white, color: C.red, cursor: "pointer" }}>재시도</button>
     </div>
   );
 
