@@ -13,8 +13,8 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
 });
 
 const {
-  checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge,
-  checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
+  checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
+  checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
 
@@ -122,6 +122,60 @@ describe("checkStaleWorkflows — ③ 미발화", () => {
     const issues = checkStaleWorkflows([{ name: "A", lastRunAt: null }], now);
     expect(issues).toHaveLength(1);
     expect(issues[0].detail).toMatch(/한 번도 없음/);
+  });
+
+  it("최근 run 에 흔적이 없어도 lastRunAt=null 이면 stale 로 잡힌다 — 데드존 회귀", () => {
+    // 월간 cron 워크플로가 오래 죽어 최근 run 목록에서 사라진 상황을 재현.
+    const issues = checkStaleWorkflows(
+      [{ name: "Migration Data Collection", lastRunAt: null }],
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].detail).toMatch(/한 번도 없음/);
+  });
+
+  it("배열에 일간·월간이 섞여도 오래된 것만 골라낸다", () => {
+    const issues = checkStaleWorkflows(
+      [
+        { name: "Naver Post-Processing (Core)", lastRunAt: "2026-05-16T00:00:00Z" }, // 1일 전 — 정상
+        { name: "Migration Data Collection", lastRunAt: "2026-03-01T00:00:00Z" }, // 77일 전 — stale
+        { name: "Collect Maintenance Cost", lastRunAt: null }, // 기록 없음 — stale
+      ],
+      now,
+    );
+    expect(issues).toHaveLength(2);
+    expect(issues.map((i) => i.collector).sort()).toEqual([
+      "Collect Maintenance Cost",
+      "Migration Data Collection",
+    ]);
+  });
+});
+
+describe("buildStaleCheckList — ③ 점검 대상 + run 시각 병합", () => {
+  it("monitor.yml 배열 전체를 대상으로 하되 recentRuns 의 시각을 우선 쓴다", () => {
+    const wfList = buildStaleCheckList(
+      ["A", "B", "C"],
+      [{ name: "A", created_at: "2026-05-16T00:00:00Z" }],
+      { B: "2026-04-01T00:00:00Z" },
+    );
+    expect(wfList).toEqual([
+      { name: "A", lastRunAt: "2026-05-16T00:00:00Z" }, // recentRuns 값
+      { name: "B", lastRunAt: "2026-04-01T00:00:00Z" }, // supplement 값
+      { name: "C", lastRunAt: null }, // 어디에도 없음
+    ]);
+  });
+
+  it("recentRuns 에 같은 워크플로가 여러 건이면 최신(첫 등장)만 쓴다", () => {
+    const wfList = buildStaleCheckList(
+      ["A"],
+      [
+        { name: "A", created_at: "2026-05-16T00:00:00Z" }, // 첫 등장 = 최신
+        { name: "A", created_at: "2026-05-10T00:00:00Z" },
+      ],
+      {},
+    );
+    expect(wfList).toEqual([{ name: "A", lastRunAt: "2026-05-16T00:00:00Z" }]);
   });
 });
 
