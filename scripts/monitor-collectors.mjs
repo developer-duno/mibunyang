@@ -387,12 +387,54 @@ async function main() {
   let issues = [];
 
   if (mode === "test") {
-    // 전송 경로 검증용 — 점검 없이 테스트 메시지 1건만 보낸다.
-    const result = await sendTelegram(
-      "✅ <b>수집기 감시 알림</b>\n알림 시스템이 정상 설치되었습니다. 이 메시지가 보이면 텔레그램 연동 완료.",
+    // 전송 경로 검증용 — 점검 없이 새 알림 포맷 샘플을 보낸다.
+    // 실제 이상이 아니라 "알림이 이렇게 보인다" 를 확인하는 예시 데이터.
+    const nowIso = new Date().toISOString();
+    /** @type {Issue[]} */
+    const samples = [
+      {
+        kind: "fail",
+        collector: "School District Collection",
+        detail: "워크플로 실행이 failure 상태로 끝났습니다.",
+        url: "https://github.com/developer-duno/mibunyang/actions",
+        at: nowIso,
+      },
+      {
+        kind: "empty",
+        collector: "molit-units",
+        detail: "success 인데 처리 0건 (ok 0 · skip 0 · fail 0)",
+        lines: [
+          "이번 실행은 success 로 끝났지만 처리 건수가 0건입니다 (성공 0 · 건너뜀 0 · 실패 0).",
+          "지난 정상 실행(5/13 17:21 KST)에서는 1263건을 처리했는데, 이번엔 0건입니다.",
+        ],
+        at: nowIso,
+      },
+      {
+        kind: "nulls",
+        collector: "교통 (transport-tago)",
+        detail: "전체 채움률 61.7% (8641/14007) — 기대 최저 95% 미달",
+        lines: [
+          "이 항목은 7개 세부 데이터로 이뤄집니다. 채움률이 낮은 것:",
+          "  · KTX거리 0% (0/2001)",
+          "  · IC거리 6.9% (139/2001)",
+          "  · 지하철노선 78% (1560/2001)",
+        ],
+      },
+    ];
+    const header = await sendTelegram(
+      "✅ <b>수집기 감시 알림 — 테스트</b>\n아래는 실제 이상이 아니라 알림이 어떻게 보이는지 확인하는 예시 3건입니다.",
     );
-    console.log(result.sent ? "[monitor] 테스트 메시지 전송 성공" : `[monitor] 전송 실패: ${result.reason}`);
-    if (!result.sent) process.exit(1);
+    let allSent = header.sent;
+    if (!header.sent) console.log(`[monitor] 헤더 전송 실패: ${header.reason}`);
+    for (const issue of samples) {
+      const result = await sendTelegram(formatIssue(issue));
+      if (!result.sent) {
+        allSent = false;
+        console.log(`[monitor] 샘플(${issue.kind}) 전송 실패: ${result.reason}`);
+      }
+    }
+    console.log(allSent ? "[monitor] 테스트 샘플 전송 성공" : "[monitor] 일부 전송 실패");
+    if (!allSent) process.exit(1);
     return;
   }
 
