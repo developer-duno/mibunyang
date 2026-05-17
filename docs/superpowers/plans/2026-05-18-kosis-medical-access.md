@@ -636,7 +636,11 @@ git commit -m "ci: collect-medical-access 워크플로 (매월 13일)"
 - [ ] **Step 2: data-fill 테스트 회귀 확인**
 
 Run: `npx vitest run scripts/collectors/data-fill.test.mjs --no-cache`
-Expected: PASS (scripts 배열은 toEqual 검사 대상 아님, envKeys 무변경 — 회귀 없음)
+> ⚠️ 실행 정정 (커밋 `ffef054`): plan 작성 시 "scripts 배열은 toEqual 검사 대상 아님"
+> 이라 단정했으나 **거짓** — `data-fill.test.mjs` L80 에 `regions?.scripts` 를
+> `toEqual` 로 검사하는 테스트가 실재. `data-fill.mjs` scripts 배열 수정 시
+> `data-fill.test.mjs` 의 주석·it() 설명·toEqual 배열 3곳 **동시 정정 필수**
+> (세션 237·266 답습 — COLLECTORS 수정 시 자매 test 회귀 가드).
 
 - [ ] **Step 3: 커밋**
 
