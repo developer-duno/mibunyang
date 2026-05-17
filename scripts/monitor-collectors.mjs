@@ -6,7 +6,7 @@
  *   ① 실패/취소  — GitHub Actions run conclusion
  *   ② 데이터 0건 — collector_runs 의 ok/skip 모두 0
  *   ③ 미발화      — 마지막 run 이 35일+ 전 (월간 cron 1주기 초과)
- *   ④ NULL 급증   — regions 핵심 컬럼 NULL 비율 > 임계값
+ *   ④ NULL 급증   — regions 핵심 컬럼 + apartments 19 카테고리 NULL 비율 점검
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
@@ -19,6 +19,7 @@
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
 import { loadEnv, getSupabase } from "./collectors/_shared.mjs";
+import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssue } from "./notify-telegram.mjs";
 
 loadEnv();
@@ -31,6 +32,27 @@ const NULL_RATE_THRESHOLD = 0.4;
 const BAD_CONCLUSIONS = ["failure", "cancelled", "timed_out"];
 /** ④ NULL 점검 대상 — regions 핵심 컬럼. */
 const REGION_KEY_COLUMNS = ["net_migration", "crime_grade"];
+/**
+ * ④ apartments 19 카테고리 중 NULL 점검 대상 — 카테고리별 기대 최저 rate(%).
+ * 현재 rate 가 이 값 아래로 떨어지면 수집기 고장 의심. 의도적 저율 카테고리
+ * (benefits 수기입력 / maintenance·builders·future·energy 부분수집 / naver 로컬전용 /
+ * regions VIEW측 미수집컬럼)는 점검 안 함 — 정상인데 매일 오탐 방지.
+ * 값 출처: data-audit --json 실측(2026-05-17) - 안전 마진 15~20%p.
+ */
+const AUDIT_CATEGORY_BASELINE = {
+  core: 70,
+  price: 75,
+  building: 50,
+  risk: 90,
+  infra: 70,
+  transport: 45,
+  schools: 90,
+  trade_stats: 75,
+  environment: 65,
+  competition: 45,
+  air: 90,
+  safety: 60,
+};
 
 /**
  * @typedef {{ kind: "fail"|"empty"|"stale"|"nulls", collector: string, detail: string, url?: string }} Issue
@@ -125,6 +147,30 @@ export function checkNullSurge(columnStats) {
         kind: "nulls",
         collector: `regions.${stat.column}`,
         detail: `NULL ${(nullRate * 100).toFixed(0)}% (${stat.total - stat.filled}/${stat.total}) — 임계 ${(NULL_RATE_THRESHOLD * 100).toFixed(0)}% 초과`,
+      });
+    }
+  }
+  return issues;
+}
+
+/**
+ * ④ data-audit 카테고리 통계에서 NULL 급증을 찾는다.
+ * baseline 에 등재된 카테고리만 점검하고, rate 가 기대 최저값 아래면 이상.
+ * @param {Record<string, { collector: string, filled: number, total: number, rate: number }>} categories
+ * @param {Record<string, number>} baseline 카테고리별 기대 최저 rate(%)
+ * @returns {Issue[]}
+ */
+export function checkCategoryNullSurge(categories, baseline) {
+  /** @type {Issue[]} */
+  const issues = [];
+  for (const [cat, minRate] of Object.entries(baseline)) {
+    const stat = categories[cat];
+    if (!stat || stat.total === 0) continue;
+    if (stat.rate < minRate) {
+      issues.push({
+        kind: "nulls",
+        collector: `${cat} 카테고리 (${stat.collector})`,
+        detail: `채움률 ${stat.rate}% (${stat.filled}/${stat.total}) — 기대 최저 ${minRate}% 미달`,
       });
     }
   }
@@ -245,8 +291,10 @@ async function main() {
     const wfList = [...lastRunByWf.entries()].map(([name, lastRunAt]) => ({ name, lastRunAt }));
     issues = issues.concat(checkStaleWorkflows(wfList));
 
-    // ④ NULL 급증
+    // ④ NULL 급증 — regions 핵심 컬럼 + apartments 19 카테고리
     issues = issues.concat(checkNullSurge(await fetchRegionColumnStats()));
+    const audit = computeAudit(await fetchAllFromView(getSupabase(), null));
+    issues = issues.concat(checkCategoryNullSurge(audit.categories, AUDIT_CATEGORY_BASELINE));
   }
 
   if (issues.length === 0) {
