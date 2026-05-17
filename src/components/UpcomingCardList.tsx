@@ -97,6 +97,7 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
         }
       }}
     >
+      {/* 부모 div 의 aria-label 이 단지명을 안내하므로 의도적으로 빈 alt (장식 이미지) */}
       <img
         src={apt.presaleImageUrl || PLACEHOLDER_IMG}
         alt=""
