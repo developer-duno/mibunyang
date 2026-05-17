@@ -49,6 +49,9 @@ function createFullRow(overrides = {}) {
     cancelRatio6m: 2.5,
     popGrowth: 1.2, supplyRatio: 95, netMigration: 500,
     priceIndex: 102, avgPriceSqm: 850, newSupply: 5000, initialSaleRate: 95, landCostRatio: 55,
+    airQuality: { pm25: 15, pm10: 30, grade: "좋음", station: "강남구" },
+    crimeSafetyGrade: 2, emergency: 3, emergencyDist: 800,
+    emergencyName: "강남세브란스병원", emergencyType: "지역응급의료센터",
     dataReliability: 85,
     ...overrides,
   };
@@ -155,9 +158,9 @@ describe("computeAudit", () => {
 
 // ── AUDIT_FIELDS 구조 테스트 ─────────────────────────────────
 describe("AUDIT_FIELDS", () => {
-  // 이 테스트가 검증하는 것: 17개 카테고리 정의 (14 기존 + energy + competition + maintenance, 세션 258)
-  it("17개 카테고리 존재", () => {
-    expect(Object.keys(AUDIT_FIELDS)).toHaveLength(17);
+  // 이 테스트가 검증하는 것: 19개 카테고리 정의 (17 기존 + air + safety, 세션 262)
+  it("19개 카테고리 존재", () => {
+    expect(Object.keys(AUDIT_FIELDS)).toHaveLength(19);
   });
 
   // 이 테스트가 검증하는 것: 각 카테고리에 collector와 fields 존재
@@ -175,5 +178,14 @@ describe("AUDIT_FIELDS", () => {
     expect(m.fields).toEqual(["maintHeat", "maintHotwater", "maintGas", "maintElec", "maintWater"]);
     // building에서 maint 필드 제거됐는지 — 이중 카운트 방지
     expect(AUDIT_FIELDS.building.fields).not.toContain("maintHeat");
+  });
+
+  // 이 테스트가 검증하는 것: air/safety 카테고리 신규 (세션 262 — 미감사 3필드 감사 편입)
+  it("air/safety 카테고리에 collector + 신규 6필드", () => {
+    expect(AUDIT_FIELDS.air.collector).toBe("collect-air-quality");
+    expect(AUDIT_FIELDS.air.fields).toEqual(["airQuality"]);
+    expect(AUDIT_FIELDS.safety.fields).toEqual([
+      "crimeSafetyGrade", "emergency", "emergencyDist", "emergencyName", "emergencyType",
+    ]);
   });
 });

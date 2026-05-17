@@ -36,7 +36,7 @@ const PERMANENT_NULL = new Set(["quakeDesign", "greenBldg"]);
 /** @type {Record<string, number>} */
 const MASKED_DEFAULTS = { subwayDist: 9999, icDist: 99, ktxDist: 99 };
 
-// ── AUDIT_FIELDS: 17 카테고리, ~85 필드 ──────────────────────
+// ── AUDIT_FIELDS: 19 카테고리, ~91 필드 ──────────────────────
 /** @type {Record<string, AuditFieldEntry>} */
 export const AUDIT_FIELDS = {
   core: {
@@ -119,6 +119,14 @@ export const AUDIT_FIELDS = {
   competition: {
     collector: "collect-applyhome",
     fields: ["competitionRate", "competitionSupply", "competitionApplicants"],
+  },
+  air: {
+    collector: "collect-air-quality",
+    fields: ["airQuality"],
+  },
+  safety: {
+    collector: "crime-safety+emergency",
+    fields: ["crimeSafetyGrade", "emergency", "emergencyDist", "emergencyName", "emergencyType"],
   },
 };
 
@@ -328,12 +336,13 @@ async function fetchAllFromTable(sb, table, columns, filterCol, filterVal) {
   return allRows;
 }
 
-// apartments 컬럼 (core + building + risk + benefits + naver + environment + future)
+// apartments 컬럼 (core + building + risk + benefits + naver + environment + future + air/safety)
 const APT_COLS = "id,name,region,gu,dong,address,road_address,district,lat,lng,builder,units,completion,layout," +
   "max_floor,parking_ratio,floor_area_ratio,exclusive_ratio,energy_grade,heating,corridor_type,heat_fuel,avg_maintenance_cost,maint_heat,maint_hotwater,maint_gas,maint_elec,maint_water,primary_direction,floors,has_pool," +
   "is_regulated,dsr40pass," +
   "discount_pct,loan_free,balcony_free,cashback,benefits," +
   "view,sunlight,noise,noxious,noxious_dist," +
+  "air_quality,crime_safety_grade," +
   "transit_dev,dev_dist,city_dev,industry_dev," +
   "naver_nearby_median,naver_nearby_avg,naver_jeonse_rate,naver_sell_count,naver_jeonse_count," +
   "naver_wolse_count,naver_build_year,naver_avg_floor,naver_school_walk_min,naver_nearby_count," +
@@ -357,7 +366,9 @@ function toCamel(row) {
     maint_gas: "maintGas", maint_elec: "maintElec", maint_water: "maintWater",
     primary_direction: "primaryDirection",
     discount_pct: "discountPct", loan_free: "loanFree", balcony_free: "balconyFree",
-    noxious_dist: "noxiousDist", transit_dev: "transitDev", dev_dist: "devDist",
+    noxious_dist: "noxiousDist",
+    air_quality: "airQuality", crime_safety_grade: "crimeSafetyGrade",
+    transit_dev: "transitDev", dev_dist: "devDist",
     city_dev: "cityDev", industry_dev: "industryDev",
     naver_nearby_median: "naverNearbyMedian", naver_nearby_avg: "naverNearbyAvg",
     naver_jeonse_rate: "naverJeonseRate", naver_sell_count: "naverSellCount",
@@ -413,7 +424,7 @@ export async function fetchAllFromView(sb, regionFilter) {
   log(PHASE, "  관련 테이블 7개 병렬 조회...");
   const [prices, infra, schools, transport, builders, regions, tradeStats] = await Promise.all([
     fetchAllFromTable(sb, "prices", "apartment_id,area,price,pp", null, null),
-    fetchAllFromTable(sb, "infra", "apartment_id,hospital,mart,conv,cafe,culture,bank,pharmacy,park,hospital_dist,mart_dist,conv_dist,cafe_dist,culture_dist,bank_dist,pharmacy_dist,park_dist,subway_dist,nearby_facilities", null, null),
+    fetchAllFromTable(sb, "infra", "apartment_id,hospital,mart,conv,cafe,culture,bank,pharmacy,park,hospital_dist,mart_dist,conv_dist,cafe_dist,culture_dist,bank_dist,pharmacy_dist,park_dist,subway_dist,nearby_facilities,emergency,emergency_dist,emergency_name,emergency_type", null, null),
     fetchAllFromTable(sb, "schools", "apartment_id,school_score,school_grade,nearby_schools", null, null),
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
     fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
@@ -442,6 +453,8 @@ export async function fetchAllFromView(sb, regionFilter) {
     cafe_dist: "cafeDist", culture_dist: "cultureDist", bank_dist: "bankDist",
     pharmacy_dist: "pharmacyDist", park_dist: "parkDist", subway_dist: "subwayDist",
     nearby_facilities: "nearbyFacilities",
+    emergency: "emergency", emergency_dist: "emergencyDist",
+    emergency_name: "emergencyName", emergency_type: "emergencyType",
   });
 
   // merge schools
