@@ -39,7 +39,7 @@ const REGION_KEY_COLUMNS = ["net_migration", "crime_grade"];
  * regions VIEW측 미수집컬럼)는 점검 안 함 — 정상인데 매일 오탐 방지.
  * 값 출처: data-audit --json 실측(2026-05-17) - 안전 마진 15~20%p.
  */
-const AUDIT_CATEGORY_BASELINE = {
+export const AUDIT_CATEGORY_BASELINE = {
   core: 70,
   price: 75,
   building: 50,
@@ -53,6 +53,16 @@ const AUDIT_CATEGORY_BASELINE = {
   air: 90,
   safety: 60,
 };
+
+/**
+ * ④ NULL 점검에서 의도적으로 제외하는 카테고리 — 수기입력·부분수집·로컬전용.
+ * AUDIT_CATEGORY_BASELINE(점검 12) + 이 배열(제외 7) = data-audit AUDIT_FIELDS
+ * 19 카테고리 전체. 둘의 합집합 정합은 monitor-collectors.test.mjs 가 강제한다.
+ * data-audit 에 카테고리 추가 시 둘 중 하나에 반드시 등재해야 테스트 통과.
+ */
+export const EXCLUDED_AUDIT_CATEGORIES = [
+  "benefits", "maintenance", "builders", "energy", "future", "naver", "regions",
+];
 
 /**
  * ④ 알림 표시용 한글 라벨 — 카테고리(점검 대상 12개)·regions 컬럼.
