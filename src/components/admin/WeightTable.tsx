@@ -47,6 +47,7 @@ export const WeightTable = memo(function WeightTable({
                   <input
                     type="number"
                     min={0} max={100}
+                    aria-label={`${p.name} ${CAT_LABELS[k]} 가중치`}
                     value={draft[k] ?? 0}
                     onChange={e => onChange(k, e.target.value)}
                     style={{
