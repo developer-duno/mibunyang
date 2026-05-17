@@ -79,7 +79,6 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     const kakao = (window as any).kakao.maps;
     clustererRef.current.clear();
     // filtered 변경 시 이전 선택 정리 — 새 filtered 에서 사라진 단지의 selected 카드가 남는 것 방지
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelected(null);
 
     const markers: unknown[] = [];
