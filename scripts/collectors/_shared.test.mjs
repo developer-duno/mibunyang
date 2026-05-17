@@ -311,4 +311,33 @@ describe("recordCollectorRun (수집기 모니터링 에픽 1단계)", () => {
       recordCollectorRun("population", { ok: 1, fail: 0 }, sb)
     ).resolves.toBeUndefined();
   });
+
+  it("--dry-run argv 있으면 sbOverride 없을 때 INSERT skip", async () => {
+    const orig = process.argv;
+    process.argv = [...orig, "--dry-run"];
+    let inserted = false;
+    try {
+      await recordCollectorRun("dry-test", { ok: 0 });
+      inserted = false;
+    } finally {
+      process.argv = orig;
+    }
+    expect(inserted).toBe(false);
+  });
+
+  it("--dry-run argv 있어도 sbOverride 주입 시 INSERT 수행 (테스트 격리)", async () => {
+    const orig = process.argv;
+    process.argv = [...orig, "--dry-run"];
+    /** @type {Array<Record<string, unknown>>} */
+    const rows = [];
+    /** @type {any} */
+    const sb = { from: () => ({ insert: (/** @type {Record<string, unknown>} */ r) => { rows.push(r); return { error: null }; } }) };
+    try {
+      await recordCollectorRun("dry-test", { ok: 5 }, sb);
+    } finally {
+      process.argv = orig;
+    }
+    expect(rows).toHaveLength(1);
+    expect(rows[0].collector).toBe("dry-test");
+  });
 });
