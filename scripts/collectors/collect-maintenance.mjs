@@ -9,6 +9,7 @@
  *   node scripts/collectors/collect-maintenance.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-maintenance.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/collect-maintenance.mjs --force      (이미 데이터 있는 것도 재수집)
+ *   node scripts/collectors/collect-maintenance.mjs --limit=1000 (대상 N개만 — API 일일 한도 분산)
  *
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
@@ -129,11 +130,21 @@ async function main() {
   log(PHASE, `조회 월: ${searchDate}`);
 
   // 1. 대상 아파트 조회 (selectAll: 1000행 제한 자동 페이지네이션)
-  const targets = /** @type {MaintAptTarget[]} */ (await selectAll((s) => {
+  // maint_* 5컬럼 중 하나라도 NULL이면 대상 (avg_maintenance_cost만 있고 항목별은 빈 단지 포함)
+  // updated_at 오래된 순 — --limit 사용 시 cron 회차마다 다른 단지가 채워지도록
+  let targets = /** @type {MaintAptTarget[]} */ (await selectAll((s) => {
     let q = s.from("apartments").select("id, name, region, gu, units, avg_maintenance_cost, maint_heat, maint_hotwater, maint_gas, maint_elec, maint_water");
-    if (!force) q = q.is("avg_maintenance_cost", null);
-    return q;
+    if (!force) q = q.or("maint_heat.is.null,maint_hotwater.is.null,maint_gas.is.null,maint_elec.is.null,maint_water.is.null");
+    return q.order("updated_at", { ascending: true, nullsFirst: true });
   }, sb));
+
+  // --limit=N: 한 회차 대상 수 제한 (API 일일 한도 분산). 단지당 ~6회 호출.
+  const limitArg = process.argv.find((a) => a.startsWith("--limit="));
+  const limit = limitArg ? parseInt(limitArg.replace("--limit=", ""), 10) : 0;
+  if (limit > 0 && targets.length > limit) {
+    log(PHASE, `대상 ${targets.length}건 중 --limit=${limit} 적용`);
+    targets = targets.slice(0, limit);
+  }
   log(PHASE, `대상: ${targets.length}건`);
   if (!targets.length) { log(PHASE, "대상 없음, 종료"); return; }
 
@@ -170,7 +181,7 @@ async function main() {
 
     for (const target of regionTargets) {
       const match = findBestMatch(target.name, target.gu, aptList, {
-        guField: "kaptName", guBonus: 0.1, attachScore: false,
+        guField: "address", guBonus: 0.15, attachScore: false,
       });
       if (!match?.kaptCode) { rpt.skip(1); continue; }
 

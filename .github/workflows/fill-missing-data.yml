@@ -188,4 +188,6 @@ jobs:
           [ "${{ steps.trades.outcome }}" = "failure" ] && FAILS=$((FAILS+1)) && echo "❌ collect-trades 실패"
           [ "${{ steps.stats.outcome }}" = "failure" ] && FAILS=$((FAILS+1)) && echo "❌ trade-stats 실패"
           echo "Phase 5: ${FAILS}건 실패"
-          [ $FAILS -gt 0 ] && exit 1
+          if [ $FAILS -gt 0 ]; then
+            exit 1
+          fi

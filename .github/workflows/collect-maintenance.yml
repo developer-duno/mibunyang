@@ -36,8 +36,9 @@ jobs:
 
       - name: Collect maintenance cost
         run: |
-          ARGS=""
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then ARGS="--dry-run"; fi
+          # --limit=1000: 단지당 ~6회 API 호출 → ~6000회/회차 (data.go.kr 일일 1만 한도 분산)
+          ARGS="--limit=1000"
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
           node scripts/collectors/collect-maintenance.mjs $ARGS
         env:
           MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
