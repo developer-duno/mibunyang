@@ -10,7 +10,7 @@ import type { PriceAreaRow } from "@/types/detail";
 
 export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProps) {
   const [showLegal, setShowLegal] = useState(false);
-  const { rates: rentRates } = useRentLoanRates() as { rates: Array<{ rateMin?: number | null }> };
+  const { rates: rentRates, loading: rentLoading } = useRentLoanRates() as { rates: Array<{ rateMin?: number | null }>; loading: boolean };
 
   const zone = getZone(apt.region, apt.gu);
   const zoneName = (ZONE_TYPE as Record<string, string>)[zone];
@@ -69,7 +69,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
                   <td style={tdStyle}>{fmtPrice(r.min)}</td>
                   <td style={tdStyle}>{r.rentAvg ? fmtPrice(r.rentAvg) : "-"}</td>
                   <td style={{ ...tdStyle, color: r.gap != null ? (r.gap > 0 ? C.red : C.green) : C.muted }}>{r.gap != null ? (r.gap === 0 ? "0만" : (r.gap > 0 ? "+" : "-") + fmtPrice(Math.abs(r.gap))) : "-"}</td>
-                  <td style={{ ...tdStyle, color: r.monthlyInterest != null ? C.amber : C.muted }}>{r.monthlyInterest != null ? `${fmtPrice(r.monthlyInterest)}/월` : "-"}</td>
+                  <td style={{ ...tdStyle, color: r.monthlyInterest != null ? C.amber : C.muted }}>{r.monthlyInterest != null ? `${fmtPrice(r.monthlyInterest)}/월` : (rentLoading ? "…" : "-")}</td>
                   <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: C.blue }}>{fmtPrice(r.ltv)}</td>
                 </tr>
               ))}</tbody>
