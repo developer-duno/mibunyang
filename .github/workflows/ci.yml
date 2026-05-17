@@ -37,6 +37,9 @@ jobs:
       - name: 수집기 감시 커버리지 audit
         run: node scripts/audit-monitor-coverage.mjs
 
+      - name: 수집기 매칭 패턴 audit
+        run: node scripts/audit-collector-patterns.mjs
+
       - name: Test
         env:
           VITE_FEATURE_UPCOMING: "true"

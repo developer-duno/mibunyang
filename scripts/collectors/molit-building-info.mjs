@@ -210,7 +210,7 @@ async function main() {
 
     for (const target of regionTargets) {
       const match = findBestMatch(target.name, target.gu, aptList, {
-        guField: "kaptName", guBonus: 0.1, attachScore: false,
+        guField: "address", guBonus: 0.15, attachScore: false,
       });
       if (!match) {
         skipped++;
