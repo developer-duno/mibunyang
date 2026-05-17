@@ -76,6 +76,7 @@ rate" 를 박는다. 현재 rate 가 baseline 아래로 떨어질 때만 알림.
 | core | 84.5% | 70 | 단지 기본정보 |
 | price | 90% | 75 | 분양가 |
 | building | 67% | 50 | 건물 상세 (부분 필드 多) |
+| risk | 99% | 90 | 규제/DSR (안정적 자동수집) |
 | infra | 87.7% | 70 | Kakao 인프라 |
 | transport | 61.7% | 45 | 교통 (의도적 NULL 多) |
 | schools | 99.2% | 90 | NEIS 학군 |
@@ -85,10 +86,13 @@ rate" 를 박는다. 현재 rate 가 baseline 아래로 떨어질 때만 알림.
 | air | 99.2% | 90 | 대기질 |
 | safety | 79% | 60 | 범죄/응급의료 |
 
-**제외** (점검 안 함 — 의도적 저율/수기입력):
+점검 대상 12개. 제외 7개.
+
+**제외** (점검 안 함 — 의도적 저율/수기입력/로컬전용):
 `benefits`(수기), `maintenance`(부분 매칭), `builders`(DART 부분), `energy`(주거용
-데이터 부재), `future`(부분 수집), `regions`(apartments-VIEW 측 regions 카테고리는
-priceIndex 등 미수집 컬럼 포함 — regions 테이블 직접 점검은 기존 ④번이 담당).
+데이터 부재), `future`(부분 수집), `naver`(로컬 전용 수집 — 집 서버 IP 의존, rate
+변동 큼), `regions`(apartments-VIEW 측 regions 카테고리는 priceIndex 등 미수집 컬럼
+포함 — regions 테이블 직접 점검은 기존 ④번이 담당).
 
 > baseline 값은 plan 작성 시 실측 재확인 후 확정. 위 값은 2026-05-17 1회 실측 기준
 > 초안. CLAUDE.md `next-session-grep-mandate` §1 — plan 진입 시 `data-audit --json`
