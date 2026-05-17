@@ -536,12 +536,19 @@ export function today() {
  * @param {string} collector
  * @param {string} apiName
  * @param {number} callCount
+ * @param {import("@supabase/supabase-js").SupabaseClient | null} [sbOverride] 테스트용 Supabase 클라이언트 주입. 주입 시 --dry-run argv 무시하고 항상 기록.
  * @returns {Promise<void>}
  */
-export async function recordApiQuota(collector, apiName, callCount) {
+export async function recordApiQuota(collector, apiName, callCount, sbOverride = null) {
   if (!callCount || callCount <= 0) return;
+  // dry-run 실행은 api_quota_log 오염 방지를 위해 기록 skip.
+  // sbOverride(테스트 클라이언트 주입) 가 있으면 argv 무관하게 항상 기록 — 테스트 격리.
+  if (!sbOverride && process.argv.includes("--dry-run")) {
+    log("quota", `${collector}: dry-run — api_quota_log 기록 skip`);
+    return;
+  }
   try {
-    const sb = getSupabase();
+    const sb = sbOverride ?? getSupabase();
     const { error } = await sb.from("api_quota_log").insert({
       log_date: today(),
       collector,
