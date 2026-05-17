@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DavidAnson/markdownlint/main/schema/markdownlint-config-schema.json",
+  "comment": "mibunyang 문서 스타일 규칙. 한글 문서·압축형 표·복사용 명령어 관행과 충돌하는 규칙은 끄고, 실질 가독성 규칙만 유지.",
+
+  "MD013": false,
+  "MD060": false,
+
+  "MD033": false,
+  "MD024": { "siblings_only": true },
+  "MD041": false,
+  "MD025": false,
+
+  "MD004": { "style": "dash" },
+  "MD029": { "style": "ordered" },
+  "MD049": { "style": "asterisk" },
+  "MD007": { "indent": 2 },
+
+  "MD031": true,
+  "MD032": true,
+  "MD022": true,
+  "MD040": true,
+  "MD009": true,
+  "MD012": true,
+  "MD047": true,
+  "MD058": true
+}

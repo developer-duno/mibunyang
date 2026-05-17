@@ -13,12 +13,15 @@
 ## 배경 — 진단 (실측 증거)
 
 ### 사고 출처
+
 2026-05-18 직전 작업(`recordCollectorRun` dry-run 수정, 커밋 `5d1c7b5`~`89cbbba`)의
 **맹점 재검토**에서 발견. 그 plan 은 `recordApiQuota` 의 동일 버그를 "별개 사안,
 housing-permits 1개"로 잘못 분리했음 — 실측 결과 정정.
 
 ### 실측 — `recordApiQuota` dry-run 가드 밖 호출 4개
+
 `recordApiQuota` 호출처 24곳 중 20곳은 `if (!dryRun)` 가드 안. **4곳이 가드 밖**:
+
 - `scripts/collectors/collect-air-quality.mjs:159`
 - `scripts/collectors/collect-emergency.mjs:137`
 - `scripts/collectors/collect-trades.mjs:312`
@@ -28,6 +31,7 @@ housing-permits 1개"로 잘못 분리했음 — 실측 결과 정정.
 → `recordApiQuota` 가 `api_quota_log` 에 가짜 행 INSERT.
 
 ### `recordCollectorRun` 버그와의 관계 — 같은 종류, 다른 심각도
+
 - **같은 점**: 둘 다 `_shared.mjs` 함수, dry-run 실행이 DB 테이블 오염. 같은 수정 패턴.
 - **다른 점**: `recordCollectorRun` 오염 → monitor ②번이 오탐 알림(🔴). `recordApiQuota`
   오염 → monitor 는 `api_quota_log` 를 점검 안 함(`grep` 0건) → 알림 없음. 대신
@@ -35,6 +39,7 @@ housing-permits 1개"로 잘못 분리했음 — 실측 결과 정정.
   흐려짐 → 🟡 데이터 정확도 문제.
 
 ### `recordApiQuota` 현재 구조 (실측)
+
 ```javascript
 export async function recordApiQuota(collector, apiName, callCount) {
   if (!callCount || callCount <= 0) return;
@@ -43,6 +48,7 @@ export async function recordApiQuota(collector, apiName, callCount) {
     const { error } = await sb.from("api_quota_log").insert({ ... });
     ...
 ```
+
 - `recordCollectorRun` 과 달리 `sbOverride` 인자 **없음** → 단위 테스트 0건
   (BACKLOG 세션 261 메모 `recordApiQuota 테스트 불가 — sb 인자 미지원` 에 박제됨).
 - 호출처 24곳 전부 `recordApiQuota(collector, apiName, callCount)` 3인자 형태.
@@ -65,6 +71,7 @@ export async function recordApiQuota(collector, apiName, callCount) {
 ## Task 1: recordApiQuota 테스트 작성 (TDD — 실패 먼저)
 
 **Files:**
+
 - Modify: `scripts/collectors/_shared.test.mjs` (`describe("recordCollectorRun ...")` 블록 **다음**에 새 describe)
 
 - [ ] **Step 1: 새 describe 블록 추가**
@@ -128,11 +135,13 @@ describe("recordApiQuota (dry-run 가드)", () => {
 
 Run: `npx vitest run scripts/collectors/_shared.test.mjs --no-cache`
 Expected: 신규 3건 중 최소 1·3번 FAIL.
+
 - 1번(`sbOverride 주입`) — 현재 `recordApiQuota` 는 `sbOverride` 인자가 없어 `getSupabase()`를
   호출 → fake `sb` 무시 → `rows` 0건 → FAIL.
 - 3번(`--dry-run skip`) — 현재 dry-run 가드 없어 `getSupabase()` 호출 → skip 로그 없음 → FAIL.
 - 2번(`callCount 0`)은 PASS 할 수 있음 — 기존 `if (!callCount || callCount <= 0) return` 가드가
   `getSupabase` 전이라. 그래도 무방.
+
 > `Cannot read properties of undefined (reading 'config')` → `--no-cache` 누락, 재실행.
 
 - [ ] **Step 3: 커밋**
@@ -147,6 +156,7 @@ git commit -m "test(shared): recordApiQuota dry-run 가드 + sbOverride 테스�
 ## Task 2: recordApiQuota argv 가드 + sbOverride 구현
 
 **Files:**
+
 - Modify: `scripts/collectors/_shared.mjs` (`recordApiQuota` 함수)
 
 - [ ] **Step 1: 함수 시그니처 + 본문 수정**
@@ -190,6 +200,7 @@ FAIL 시 → 실패 테스트명·메시지 보고 후 BLOCKED.
 - [ ] **Step 3: 회귀 가드 검증 (테스트가 진짜 가드인지)**
 
 Task 1 의 3번 테스트가 실제 회귀 가드인지 입증:
+
 1. `_shared.mjs` 의 `recordApiQuota` dry-run 가드(`if (!sbOverride && process.argv.includes("--dry-run")) { ... return; }`)를 임시 주석 처리
 2. `npx vitest run scripts/collectors/_shared.test.mjs --no-cache` → 3번 테스트가 **FAIL 해야 함**
 3. 가드 주석 복원
@@ -230,10 +241,12 @@ recordCollectorRun(89cbbba) 과 동일 패턴 — 함수에 argv 가드 + sbOver
 - [ ] **Step 1: 전체 회귀 가드**
 
 Run:
+
 ```bash
 npx vitest run scripts/collectors/_shared.test.mjs --no-cache
 npm run typecheck:scripts
 ```
+
 Expected: 전부 PASS / 0 에러.
 
 - [ ] **Step 2: push**
@@ -252,10 +265,12 @@ Expected: CI 완료 후 `conclusion: success`.
 가드 밖이던 collector 를 dry-run 으로 돌린 뒤 `api_quota_log` 에 오늘자 행이 안 생기는지 확인:
 
 Run:
+
 ```bash
 node scripts/collectors/collect-emergency.mjs --dry-run > /dev/null 2>&1
 node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();const today=new Date().toISOString().slice(0,10);const {count}=await sb.from('api_quota_log').select('id',{count:'exact',head:true}).eq('collector','collect-emergency').eq('log_date',today);console.log('collect-emergency 오늘자 행:',count);"
 ```
+
 Expected: `collect-emergency 오늘자 행: 0` (dry-run 이 행을 안 남김).
 > ⚠️ 이 검증 전에 오늘 `collect-emergency` 가 실제(non-dry) 실행된 적 없어야 정확. 만약 0 이
 > 아니면 — 오늘 cron 실행이 있었는지 `gh run list --workflow=collect-air-quality.yml` 등으로
@@ -283,9 +298,11 @@ Expected: `collect-emergency 오늘자 행: 0` (dry-run 이 행을 안 남김).
 - `api_quota_log` 의 **과거 오염 행**(dry-run 으로 이미 박힌 가짜 쿼터 기록)은 본 plan 이
   정리하지 않음. `recordCollectorRun` 사례(Task 0 오염 행 정리)와 달리 — `api_quota_log` 는
   날짜별 누적이고 monitor 알림과 무관해 긴급도 낮음. 필요 시 별도 조회 후 판단:
+
   ```bash
   node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();const {data}=await sb.from('api_quota_log').select('log_date,collector,call_count').in('collector',['collect-air-quality','collect-emergency','collect-trades','housing-permits']).order('log_date',{ascending:false}).limit(20);console.log(JSON.stringify(data,null,2));"
   ```
+
   → dry-run 시각과 겹치는 의심 행이 있으면 그때 정리. 본 plan 은 재발 방지에 집중.
 - BACKLOG 세션 261 `recordApiQuota 테스트 불가 — sb 인자 미지원` 항목 — 본 plan Task 2
   완료로 해소됨. BACKLOG 갱신 권장.
