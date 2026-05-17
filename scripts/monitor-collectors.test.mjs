@@ -12,8 +12,11 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge, checkCategoryNullSurge } =
-  await import("./monitor-collectors.mjs");
+const {
+  checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge,
+  checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
+} = await import("./monitor-collectors.mjs");
+const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
 
 describe("checkFailedRuns — ① 실패/취소", () => {
   it("conclusion 이 failure/cancelled/timed_out 이면 이상", () => {
@@ -221,5 +224,37 @@ describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
     );
     expect(issues[0].collector).toBe("unknownCat (x)");
     expect(issues[0].lines?.join("\n")).toContain("weirdField");
+  });
+
+  it("필드가 7개 이상이면 lines 의 필드 줄은 6개로 절단된다", () => {
+    /** @type {Record<string, { category: string, field: string, filled: number, missing: number }>} */
+    const fields = {};
+    for (let i = 0; i < 8; i++) {
+      fields[`core.f${i}`] = { category: "core", field: `f${i}`, filled: i * 100, missing: 800 };
+    }
+    const issues = checkCategoryNullSurge(
+      { core: { collector: "applyhome", filled: 1000, total: 2000, rate: 50 } },
+      baseline,
+      fields,
+    );
+    // lines[0] = 머리말, 이후가 필드 줄. 8개 입력 → 6개로 절단
+    const fieldLines = (issues[0].lines ?? []).filter((l) => l.startsWith("  · "));
+    expect(fieldLines).toHaveLength(6);
+  });
+});
+
+describe("AUDIT_CATEGORY_BASELINE 키 정합성 — data-audit 카테고리 drift 차단", () => {
+  it("점검 12 + 제외 7 = data-audit AUDIT_FIELDS 19 카테고리와 정확히 일치", () => {
+    const checked = Object.keys(AUDIT_CATEGORY_BASELINE);
+    const monitored = new Set([...checked, ...EXCLUDED_AUDIT_CATEGORIES]);
+    const auditCats = new Set(Object.keys(AUDIT_FIELDS));
+    // 양방향 — monitor 가 모르는 카테고리도, 사라진 카테고리도 빨강
+    expect([...monitored].sort()).toEqual([...auditCats].sort());
+  });
+
+  it("점검 키와 제외 키는 서로 겹치지 않는다", () => {
+    const checked = new Set(Object.keys(AUDIT_CATEGORY_BASELINE));
+    const overlap = EXCLUDED_AUDIT_CATEGORIES.filter((c) => checked.has(c));
+    expect(overlap).toEqual([]);
   });
 });
