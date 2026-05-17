@@ -4,7 +4,7 @@
  * 대상: sendTelegram (전송/스킵/실패), formatIssue (메시지 포맷)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendTelegram, formatIssue, toKst } from "./notify-telegram.mjs";
+import { sendTelegram, formatIssue, toKst, buildMessages } from "./notify-telegram.mjs";
 
 describe("sendTelegram", () => {
   beforeEach(() => {
@@ -144,5 +144,37 @@ describe("toKst", () => {
     expect(toKst(undefined)).toBe("");
     expect(toKst(null)).toBe("");
     expect(toKst("not-a-date")).toBe("");
+  });
+});
+
+describe("buildMessages", () => {
+  it("이슈 0건이면 빈 배열", () => {
+    expect(buildMessages([])).toEqual([]);
+  });
+
+  it("이슈 여러 건을 한 통으로 합친다 — 헤더에 건수 포함", () => {
+    const msgs = buildMessages([
+      { kind: "fail", collector: "A", detail: "d" },
+      { kind: "empty", collector: "B", detail: "d" },
+      { kind: "nulls", collector: "C", detail: "d" },
+    ]);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toContain("이상 3건");
+    // 세 이슈가 모두 한 통에
+    expect(msgs[0]).toContain("수집기 실패");
+    expect(msgs[0]).toContain("데이터 0건 수집");
+    expect(msgs[0]).toContain("NULL 급증");
+  });
+
+  it("한 통이 4000자를 넘으면 이슈 경계에서 여러 통으로 나눈다", () => {
+    // 긴 이슈 여러 건 — 합치면 4000자 초과
+    const bigLines = Array(80).fill("  · 긴긴긴긴긴긴긴긴긴긴긴 필드명 12.3% (1600/13000)");
+    const many = Array(10)
+      .fill(0)
+      .map((_, i) => ({ kind: /** @type {const} */ ("nulls"), collector: `C${i}`, detail: "d", lines: bigLines }));
+    const msgs = buildMessages(many);
+    expect(msgs.length).toBeGreaterThan(1);
+    // 모든 통이 한도 이하 — 이슈가 통 사이에 잘리지 않음
+    for (const m of msgs) expect(m.length).toBeLessThanOrEqual(4000);
   });
 });

@@ -115,3 +115,37 @@ export function formatIssue(issue) {
   out.push(ACTION_GUIDE[issue.kind]);
   return out.join("\n");
 }
+
+/** 텔레그램 1개 메시지 글자수 한도(4096). 여유를 둬 4000 에서 자른다. */
+const TELEGRAM_MAX_CHARS = 4000;
+/** 이슈와 이슈 사이 구분선. */
+const ISSUE_SEPARATOR = "\n\n———\n\n";
+
+/**
+ * 이슈 목록을 텔레그램 메시지 문자열로 합친다.
+ * 평소엔 1통으로 모으고, 한도를 넘으면 이슈 경계에서 여러 통으로 나눈다
+ * (이슈 1건이 통 사이에 잘리지 않는다).
+ * @param {Array<{ kind: "fail"|"empty"|"stale"|"nulls", collector: string, detail: string, url?: string, lines?: string[], at?: string }>} issues
+ * @returns {string[]} 전송할 메시지 배열 (이슈 0건이면 빈 배열)
+ */
+export function buildMessages(issues) {
+  if (issues.length === 0) return [];
+  const header = `🛎 <b>수집기 감시 — 이상 ${issues.length}건</b>`;
+  const blocks = issues.map(formatIssue);
+
+  /** @type {string[]} */
+  const messages = [];
+  let current = header;
+  for (const block of blocks) {
+    const candidate = `${current}${ISSUE_SEPARATOR}${block}`;
+    if (candidate.length <= TELEGRAM_MAX_CHARS) {
+      current = candidate;
+      continue;
+    }
+    // 한도 초과 — 지금까지 모은 통을 닫고 새 통 시작
+    messages.push(current);
+    current = block;
+  }
+  messages.push(current);
+  return messages;
+}

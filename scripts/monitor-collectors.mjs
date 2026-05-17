@@ -20,7 +20,7 @@
  */
 import { loadEnv, getSupabase } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
-import { sendTelegram, formatIssue, toKst } from "./notify-telegram.mjs";
+import { sendTelegram, formatIssue, buildMessages, toKst } from "./notify-telegram.mjs";
 
 loadEnv();
 
@@ -421,16 +421,17 @@ async function main() {
         ],
       },
     ];
-    const header = await sendTelegram(
-      "✅ <b>수집기 감시 알림 — 테스트</b>\n아래는 실제 이상이 아니라 알림이 어떻게 보이는지 확인하는 예시 3건입니다.",
-    );
-    let allSent = header.sent;
-    if (!header.sent) console.log(`[monitor] 헤더 전송 실패: ${header.reason}`);
-    for (const issue of samples) {
-      const result = await sendTelegram(formatIssue(issue));
+    // 운영 알림과 동일하게 한 통으로 합쳐 보낸다. 맨 앞에 테스트 안내를 덧붙임.
+    const messages = buildMessages(samples);
+    messages[0] =
+      "✅ <b>수집기 감시 알림 — 테스트</b>\n아래는 실제 이상이 아니라 알림이 어떻게 보이는지 확인하는 예시입니다.\n\n" +
+      messages[0];
+    let allSent = true;
+    for (const text of messages) {
+      const result = await sendTelegram(text);
       if (!result.sent) {
         allSent = false;
-        console.log(`[monitor] 샘플(${issue.kind}) 전송 실패: ${result.reason}`);
+        console.log(`[monitor] 전송 실패: ${result.reason}`);
       }
     }
     console.log(allSent ? "[monitor] 테스트 샘플 전송 성공" : "[monitor] 일부 전송 실패");
@@ -484,9 +485,10 @@ async function main() {
   }
 
   console.log(`[monitor] 이상 ${issues.length}건 발견 (mode=${mode})`);
-  for (const issue of issues) {
-    const text = formatIssue(issue);
-    console.log(text);
+  // 한 통으로 모아 보낸다. 4000자 넘으면 buildMessages 가 이슈 경계에서 나눈다.
+  const messages = buildMessages(issues);
+  for (const issue of issues) console.log(formatIssue(issue));
+  for (const text of messages) {
     const result = await sendTelegram(text);
     if (!result.sent) console.log(`  [전송 스킵] ${result.reason}`);
   }
