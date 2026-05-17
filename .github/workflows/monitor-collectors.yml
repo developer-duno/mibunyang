@@ -27,6 +27,7 @@ on:
       - "Infra Facilities Collection"
       - "KOSIS Fertility Rate Collection"
       - "KOSIS Housing Supply Level Collection"
+      - "KOSIS Medical Access Collection"
       - "KOSIS Market Stats Collection"
       - "KOSIS Unsold Collection"
       - "Migration Data Collection"
