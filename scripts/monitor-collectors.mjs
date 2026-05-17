@@ -55,6 +55,76 @@ const AUDIT_CATEGORY_BASELINE = {
 };
 
 /**
+ * ④ 알림 표시용 한글 라벨 — 카테고리(점검 대상 12개)·regions 컬럼.
+ * data-audit 에는 라벨이 없어 알림 레이어에서만 한글화한다. 누락 시 영어 키 그대로.
+ * @type {Record<string, string>}
+ */
+const KO_CATEGORY = {
+  core: "기본정보",
+  price: "분양가",
+  building: "건물정보",
+  risk: "규제·대출",
+  infra: "생활인프라",
+  transport: "교통",
+  schools: "학군",
+  trade_stats: "실거래 통계",
+  environment: "주거환경",
+  competition: "청약경쟁률",
+  air: "대기질",
+  safety: "안전·치안",
+  // regions 핵심 컬럼 (checkNullSurge)
+  net_migration: "순이동인구",
+  crime_grade: "범죄안전등급",
+};
+
+/**
+ * ④ 알림 표시용 한글 라벨 — 점검 대상 12개 카테고리에 속한 필드.
+ * 알림의 "채움률 낮은 필드" 목록에 쓰인다. 누락 시 영어 키 그대로.
+ * @type {Record<string, string>}
+ */
+const KO_FIELD = {
+  // core
+  name: "단지명", region: "시도", gu: "시군구", dong: "읍면동", address: "지번주소",
+  roadAddress: "도로명주소", district: "행정구역", lat: "위도", lng: "경도",
+  builder: "시공사", units: "세대수", completion: "준공연도", layout: "평면구성",
+  // price
+  area: "공급면적", price: "분양가", pp: "평당가",
+  // building
+  maxFloor: "최고층", parkingRatio: "주차대수비", floorAreaRatio: "용적률",
+  exclusiveRatio: "전용률", energyGrade: "에너지등급", heating: "난방방식",
+  corridorType: "복도유형", heatFuel: "난방연료", avgMaintenanceCost: "평균관리비",
+  primaryDirection: "주향", floors: "층수정보", hasPool: "수영장유무",
+  // risk
+  isRegulated: "규제지역여부", dsr40pass: "DSR40통과",
+  // infra
+  hospital: "병원수", mart: "마트수", conv: "편의점수", cafe: "카페수",
+  culture: "문화시설수", bank: "은행수", pharmacy: "약국수", park: "공원수",
+  hospitalDist: "병원거리", martDist: "마트거리", convDist: "편의점거리",
+  cafeDist: "카페거리", cultureDist: "문화시설거리", bankDist: "은행거리",
+  pharmacyDist: "약국거리", parkDist: "공원거리", nearbyFacilities: "주변시설",
+  // transport
+  subwayDist: "지하철거리", busRoutes: "버스노선수", icDist: "IC거리", ktxDist: "KTX거리",
+  subwayName: "지하철역명", subwayLines: "지하철노선", busStopNames: "버스정류장명",
+  // schools
+  schoolScore: "학군점수", schoolGrade: "학군등급", nearbySchools: "주변학교",
+  // trade_stats
+  nearbyMedian: "주변실거래중위가", recentTrades6m: "최근6개월거래수",
+  jeonseRate: "전세가율", pir: "PIR", psr: "PSR", avgFloor: "평균거래층",
+  nearbyBuildYear: "주변연식", floorRange: "거래층범위", priceByArea: "면적별매매가",
+  rentByArea: "면적별월세", jeonseByArea: "면적별전세가", priceByFloor: "층별매매가",
+  cancelRatio6m: "최근6개월해제율",
+  // environment
+  view: "조망", sunlight: "일조", noise: "소음", noxious: "유해시설", noxiousDist: "유해시설거리",
+  // competition
+  competitionRate: "청약경쟁률", competitionSupply: "공급세대", competitionApplicants: "청약자수",
+  // air
+  airQuality: "대기질지수",
+  // safety
+  crimeSafetyGrade: "범죄안전등급", emergency: "응급의료시설", emergencyDist: "응급의료시설거리",
+  emergencyName: "응급의료시설명", emergencyType: "응급의료시설종류",
+};
+
+/**
  * @typedef {object} Issue
  * @property {"fail"|"empty"|"stale"|"nulls"} kind
  * @property {string} collector
@@ -168,9 +238,11 @@ export function checkNullSurge(columnStats) {
     if (stat.total === 0) continue;
     const nullRate = (stat.total - stat.filled) / stat.total;
     if (nullRate > NULL_RATE_THRESHOLD) {
+      const ko = KO_CATEGORY[stat.column];
+      const label = ko ? `${ko} (regions.${stat.column})` : `regions.${stat.column}`;
       issues.push({
         kind: "nulls",
-        collector: `regions.${stat.column}`,
+        collector: label,
         detail: `NULL ${(nullRate * 100).toFixed(0)}% (${stat.total - stat.filled}/${stat.total}) — 임계 ${(NULL_RATE_THRESHOLD * 100).toFixed(0)}% 초과`,
       });
     }
@@ -212,15 +284,17 @@ export function checkCategoryNullSurge(categories, baseline, fields = {}) {
     /** @type {string[]} */
     const lines = [];
     if (catFields.length > 0) {
-      lines.push(`이 카테고리는 ${catFields.length}개 필드를 담습니다. 채움률이 낮은 필드:`);
+      lines.push(`이 항목은 ${catFields.length}개 세부 데이터로 이뤄집니다. 채움률이 낮은 것:`);
       for (const f of catFields.slice(0, NULL_DETAIL_FIELD_LIMIT)) {
-        lines.push(`  · ${f.field} ${f.rate}% (${f.filled}/${f.total})`);
+        const koField = KO_FIELD[f.field] ?? f.field;
+        lines.push(`  · ${koField} ${f.rate}% (${f.filled}/${f.total})`);
       }
     }
 
+    const koCat = KO_CATEGORY[cat] ?? cat;
     issues.push({
       kind: "nulls",
-      collector: `${cat} 카테고리 (${stat.collector})`,
+      collector: `${koCat} (${stat.collector})`,
       detail: `전체 채움률 ${stat.rate}% (${stat.filled}/${stat.total}) — 기대 최저 ${minRate}% 미달`,
       lines,
     });

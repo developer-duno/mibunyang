@@ -129,7 +129,7 @@ describe("checkNullSurge — ④ NULL 급증", () => {
     ]);
     expect(issues).toHaveLength(1);
     expect(issues[0].kind).toBe("nulls");
-    expect(issues[0].collector).toBe("regions.net_migration");
+    expect(issues[0].collector).toBe("순이동인구 (regions.net_migration)");
     expect(issues[0].detail).toMatch(/50%/);
   });
 
@@ -156,7 +156,7 @@ describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
     );
     expect(issues).toHaveLength(1);
     expect(issues[0].kind).toBe("nulls");
-    expect(issues[0].collector).toBe("core 카테고리 (applyhome)");
+    expect(issues[0].collector).toBe("기본정보 (applyhome)");
     expect(issues[0].detail).toMatch(/50%/);
     expect(issues[0].detail).toMatch(/70%/);
   });
@@ -197,9 +197,12 @@ describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
     );
     expect(issues).toHaveLength(1);
     const body = issues[0].lines?.join("\n") ?? "";
-    expect(body).toMatch(/2개 필드를 담습니다/); // core 필드만 — other 제외
-    // completion(10%)이 name(100%)보다 먼저 = 낮은 순 정렬
-    expect(body.indexOf("completion")).toBeLessThan(body.indexOf("name"));
+    expect(body).toMatch(/2개 세부 데이터/); // core 필드만 — other 제외
+    // 필드명은 한글 라벨로 — completion→준공연도, name→단지명
+    expect(body).toContain("준공연도");
+    expect(body).toContain("단지명");
+    // 준공연도(10%)가 단지명(100%)보다 먼저 = 낮은 순 정렬
+    expect(body.indexOf("준공연도")).toBeLessThan(body.indexOf("단지명"));
   });
 
   it("fields 가 없으면 lines 는 빈 배열 — 하위호환", () => {
@@ -208,5 +211,15 @@ describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
       baseline,
     );
     expect(issues[0].lines).toEqual([]);
+  });
+
+  it("라벨 없는 카테고리·필드는 영어 키를 그대로 쓴다 — 누락 안전", () => {
+    const issues = checkCategoryNullSurge(
+      { unknownCat: { collector: "x", filled: 1, total: 100, rate: 1 } },
+      { unknownCat: 70 },
+      { "unknownCat.weirdField": { category: "unknownCat", field: "weirdField", filled: 1, missing: 99 } },
+    );
+    expect(issues[0].collector).toBe("unknownCat (x)");
+    expect(issues[0].lines?.join("\n")).toContain("weirdField");
   });
 });
