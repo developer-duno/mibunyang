@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   resolveBuilder, stringSimilarity, today, sleep,
-  REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun,
+  REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
 } from "./_shared.mjs";
 
@@ -353,5 +353,45 @@ describe("recordCollectorRun (수집기 모니터링 에픽 1단계)", () => {
     }
     expect(rows).toHaveLength(1);
     expect(rows[0].collector).toBe("dry-test");
+  });
+});
+
+describe("recordApiQuota (dry-run 가드)", () => {
+  it("sbOverride 주입 시 api_quota_log 에 INSERT", async () => {
+    /** @type {Array<Record<string, unknown>>} */
+    const rows = [];
+    /** @type {any} */
+    const sb = { from: () => ({ insert: (/** @type {Record<string, unknown>} */ r) => { rows.push(r); return { error: null }; } }) };
+    await recordApiQuota("quota-test", "TEST_KEY", 5, sb);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].collector).toBe("quota-test");
+    expect(rows[0].call_count).toBe(5);
+  });
+
+  it("callCount 0 이면 INSERT 안 함 (기존 가드 유지)", async () => {
+    /** @type {Array<Record<string, unknown>>} */
+    const rows = [];
+    /** @type {any} */
+    const sb = { from: () => ({ insert: (/** @type {Record<string, unknown>} */ r) => { rows.push(r); return { error: null }; } }) };
+    await recordApiQuota("quota-test", "TEST_KEY", 0, sb);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("--dry-run argv 있으면 sbOverride 없이 getSupabase 호출 안 함 (console spy)", async () => {
+    const orig = process.argv;
+    process.argv = [...orig, "--dry-run"];
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await recordApiQuota("quota-test", "TEST_KEY", 5);
+    } finally {
+      process.argv = orig;
+    }
+    const logMsgs = logSpy.mock.calls.map((c) => c.join(" "));
+    const errMsgs = errSpy.mock.calls.map((c) => c.join(" "));
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+    expect(logMsgs.some((m) => m.includes("dry-run"))).toBe(true);
+    expect(errMsgs.some((m) => m.includes("SUPABASE"))).toBe(false);
   });
 });
