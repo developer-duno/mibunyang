@@ -84,10 +84,14 @@ unmatched 시군구 → `logError` 기록하되 중단 안 함. 외부 API 장�
 | 3 | `data-fill.mjs` + `data-audit.mjs` + `monitor-collectors.yml` (수정 3) | 등록·감사 | 1 |
 
 - 단계 1 후 사용자가 Dashboard 적용 → 단계 2 운영 실행 가능(PG 42703 회피).
-- 단계 3 `data-audit.mjs`: `AUDIT_FIELDS`에 의료 카테고리 추가 +
-  (선택) 기존 누락된 `fertility_rate`도 함께 등재 — 9-GATE GATE 3 빈틈 보강.
-- `data-fill.test.mjs`: 실측상 scripts 배열은 `toEqual` 검사 대상 아님(phase/envKeys만),
-  `KOSIS_KEY`도 이미 등재됨 → **변경 불필요 가능성 높음**. 구현 중 vitest로 확인 후 결정.
+- 단계 3 `data-audit.mjs`: `regions` 카테고리는 이미 존재 → **3곳 동시 수정** 필요
+  (세션 262 답습 — AUDIT_FIELDS 만으론 부족):
+  1. L431 `fetchAllFromTable(sb, "regions", "region,pop_growth,...")` select 절에
+     `doctors_per_1k,hospital_beds_per_1k` 컬럼 추가
+  2. L483~ merge 로직 (regions row → flat row 매핑)에 2필드 추가
+  3. `AUDIT_FIELDS.regions.fields` 배열에 카멜케이스 `doctorsPer1k`/`hospitalBedsPer1k` 추가
+- `data-fill.test.mjs`: 실측 확정 — scripts 배열은 `toEqual` 검사 대상 아님(phase/envKeys만),
+  `KOSIS_KEY`도 이미 등재됨 → **변경 불필요**.
 
 ## 테스트
 
@@ -101,8 +105,9 @@ scripts/audit-env-keys.mjs`.
 
 ## 워크플로
 
-`collect-medical-access.yml` — 매월 cron(미사용 일자, 합계출산율 9일과 겹치지 않게
-예: 11일) + `Validate secrets`(`KOSIS_KEY`/`SUPABASE_URL`/`SUPABASE_SERVICE_KEY`) +
+`collect-medical-access.yml` — 매월 13일 cron(미사용 일자, 실측 확정 — 11일은
+`collect-building-info.yml` `0 16 11` ~8,500 API 호출과 충돌, 빈 일자 13·14·17~28) +
+`Validate secrets`(`KOSIS_KEY`/`SUPABASE_URL`/`SUPABASE_SERVICE_KEY`) +
 `concurrency: data-collection` + `workflow_dispatch`(dry_run). `monitor-collectors.yml`
 workflows 배열에 name 등재(세션 265·266 답습).
 
