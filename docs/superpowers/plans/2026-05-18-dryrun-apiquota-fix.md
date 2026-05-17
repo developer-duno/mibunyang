@@ -69,7 +69,13 @@ export async function recordApiQuota(collector, apiName, callCount) {
 
 - [ ] **Step 1: 새 describe 블록 추가**
 
-`scripts/collectors/_shared.test.mjs` 의 `describe("recordCollectorRun (수집기 모니터링 에픽 1단계)", ...)` 블록이 끝나는 `});` **다음 줄**에 아래 describe 추가. (파일 끝부분. import 에 `recordApiQuota` 가 없으면 상단 import 구문에 추가 — 현재 `recordCollectorRun` 이 import 된 같은 구문에.)
+**먼저** — `scripts/collectors/_shared.test.mjs` 상단 import 구문에 `recordApiQuota` 를
+**반드시 추가**. 실측 확인됨(L8): 현재 import 에 `recordCollectorRun` 은 있고
+`recordApiQuota` 는 **없음**. `recordCollectorRun` 이 든 같은 import 구문에
+`recordApiQuota` 를 추가하지 않으면 신규 테스트가 `ReferenceError` 로 실패.
+
+그 다음, `describe("recordCollectorRun (수집기 모니터링 에픽 1단계)", ...)` 블록이
+끝나는 `});` **다음 줄**에 아래 describe 추가 (파일 끝부분).
 
 ```javascript
 describe("recordApiQuota (dry-run 가드)", () => {
