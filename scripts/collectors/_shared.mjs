@@ -566,10 +566,17 @@ export async function recordApiQuota(collector, apiName, callCount) {
  *           startedAt?: string|null }} result
  *        createReporter().summary() 반환값 + status/errorMessage/startedAt
  * @param {import("@supabase/supabase-js").SupabaseClient | null} [sbOverride]
- *        테스트용 Supabase 클라이언트 주입 (selectAll/upsertBatch 패턴 답습)
+ *        테스트용 Supabase 클라이언트 주입 (selectAll/upsertBatch 패턴 답습).
+ *        주입 시 --dry-run argv 무시하고 항상 기록.
  * @returns {Promise<void>}
  */
 export async function recordCollectorRun(collector, result, sbOverride = null) {
+  // dry-run 실행은 collector_runs 오염 방지를 위해 기록 skip.
+  // sbOverride(테스트 클라이언트 주입) 가 있으면 argv 무관하게 항상 기록 — 테스트 격리.
+  if (!sbOverride && process.argv.includes("--dry-run")) {
+    log("runs", `${collector}: dry-run — collector_runs 기록 skip`);
+    return;
+  }
   try {
     const sb = sbOverride ?? getSupabase();
     const status = result.status
