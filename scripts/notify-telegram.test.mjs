@@ -4,7 +4,7 @@
  * 대상: sendTelegram (전송/스킵/실패), formatIssue (메시지 포맷)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendTelegram, formatIssue } from "./notify-telegram.mjs";
+import { sendTelegram, formatIssue, toKst } from "./notify-telegram.mjs";
 
 describe("sendTelegram", () => {
   beforeEach(() => {
@@ -98,8 +98,51 @@ describe("formatIssue", () => {
     expect(msg).toContain("NULL 급증");
   });
 
-  it("url 이 없으면 화살표 줄을 넣지 않는다", () => {
+  it("url 이 없으면 url 화살표 줄을 넣지 않는다", () => {
     const msg = formatIssue({ kind: "empty", collector: "molit-units", detail: "ok 0" });
-    expect(msg).not.toContain("→");
+    expect(msg).not.toContain("→ http");
+  });
+
+  it("조치 가이드를 kind 에 맞게 본문에 넣는다", () => {
+    const fail = formatIssue({ kind: "fail", collector: "x", detail: "d" });
+    expect(fail).toContain("[조치]");
+    expect(fail).toMatch(/Re-run/);
+    const nulls = formatIssue({ kind: "nulls", collector: "x", detail: "d" });
+    expect(nulls).toMatch(/스키마 변경/);
+  });
+
+  it("lines 가 있으면 상세 줄을 본문에 펼친다", () => {
+    const msg = formatIssue({
+      kind: "nulls",
+      collector: "core 카테고리 (applyhome)",
+      detail: "전체 채움률 50%",
+      lines: ["이 카테고리는 13개 필드를 담습니다. 채움률이 낮은 필드:", "  · completion 12.3% (1600/13000)"],
+    });
+    expect(msg).toContain("13개 필드를 담습니다");
+    expect(msg).toContain("completion 12.3%");
+  });
+
+  it("at 이 있으면 KST 시각 줄을 넣는다", () => {
+    const msg = formatIssue({ kind: "fail", collector: "x", detail: "d", at: "2026-05-17T03:00:00Z" });
+    expect(msg).toMatch(/시각: .*KST/);
+  });
+
+  it("collector 의 < > & 를 HTML 이스케이프한다", () => {
+    const msg = formatIssue({ kind: "fail", collector: "Collect Trades & <Stats>", detail: "d" });
+    expect(msg).toContain("Collect Trades &amp; &lt;Stats&gt;");
+    expect(msg).not.toContain("& <Stats>");
+  });
+});
+
+describe("toKst", () => {
+  it("ISO 시각을 KST 표기로 바꾼다", () => {
+    // 2026-05-17T03:00:00Z = KST 12:00
+    expect(toKst("2026-05-17T03:00:00Z")).toMatch(/12:00 KST/);
+  });
+
+  it("빈 값·파싱 불가는 빈 문자열", () => {
+    expect(toKst(undefined)).toBe("");
+    expect(toKst(null)).toBe("");
+    expect(toKst("not-a-date")).toBe("");
   });
 });

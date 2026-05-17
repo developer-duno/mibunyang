@@ -74,6 +74,24 @@ describe("checkEmptyRuns — ② 데이터 0건", () => {
     ]);
     expect(issues).toHaveLength(1);
   });
+
+  it("직전 정상 실행 맵이 있으면 비교 문장을 lines 에 넣는다", () => {
+    const issues = checkEmptyRuns(
+      [{ collector: "molit-units", status: "success", ok_count: 0, skip_count: 0, fail_count: 0 }],
+      { "molit-units": { okCount: 1263, finishedAt: "2026-05-13T08:21:00Z" } },
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines?.join("\n")).toMatch(/1263건을 처리했는데/);
+    expect(issues[0].at).toBeUndefined(); // finished_at 미지정 → undefined
+  });
+
+  it("직전 정상 실행 맵이 없어도 이번 실행 요약 문장은 lines 에 들어간다", () => {
+    const issues = checkEmptyRuns([
+      { collector: "A", status: "success", ok_count: 0, skip_count: 0, fail_count: 2 },
+    ]);
+    expect(issues[0].lines?.[0]).toMatch(/처리 건수가 0건/);
+    expect(issues[0].detail).toMatch(/fail 2/);
+  });
 });
 
 describe("checkStaleWorkflows — ③ 미발화", () => {
@@ -165,5 +183,30 @@ describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
       baseline,
     );
     expect(issues).toHaveLength(0);
+  });
+
+  it("fields 가 있으면 필드별 채움률을 낮은 순으로 lines 에 펼친다", () => {
+    const issues = checkCategoryNullSurge(
+      { core: { collector: "applyhome", filled: 1000, total: 2000, rate: 50 } },
+      baseline,
+      {
+        "core.name": { category: "core", field: "name", filled: 1000, missing: 0 },
+        "core.completion": { category: "core", field: "completion", filled: 100, missing: 900 },
+        "other.x": { category: "other", field: "x", filled: 0, missing: 1000 },
+      },
+    );
+    expect(issues).toHaveLength(1);
+    const body = issues[0].lines?.join("\n") ?? "";
+    expect(body).toMatch(/2개 필드를 담습니다/); // core 필드만 — other 제외
+    // completion(10%)이 name(100%)보다 먼저 = 낮은 순 정렬
+    expect(body.indexOf("completion")).toBeLessThan(body.indexOf("name"));
+  });
+
+  it("fields 가 없으면 lines 는 빈 배열 — 하위호환", () => {
+    const issues = checkCategoryNullSurge(
+      { core: { collector: "applyhome", filled: 1000, total: 2000, rate: 50 } },
+      baseline,
+    );
+    expect(issues[0].lines).toEqual([]);
   });
 });
