@@ -29,8 +29,11 @@ BACKLOG 📦 KOSIS 보강 항목 중 #11 인구 천명당 의사수, #12 인구 
 - ITM 3종: `T001` 분자(의사수/병상수) / `T002` 분모(주민등록인구) /
   `T10` 천명당 지표. **`T10`만 API 단계에서 필터** → 응답 1/3 축소.
 - C1_NM = 시군구명 직접("종로구"/"중구"). 동명 시군구는 C1 앞 2자리 시도코드로 구분.
-- 매칭률 실측: 두 통계표 모두 KOSIS 시군구 228개 → `regions` 227개 매칭,
+- 매칭 실측: KOSIS 시군구 고유 228개 → `regions` region::gu **고유 조합 227개 매칭**,
   unmatched = `전북::전주시` 1개(KOSIS 통합시 vs regions 완산/덕진 분리 — 정상 한계).
+  ⚠️ `regions` 테이블은 gu 있는 행이 **694개**(고유 조합 302개, 단지 매핑상 중복).
+  collector 는 694행 전부 순회 UPDATE → **실제 채워질 행 수는 600행대**
+  (합계출산율 collector 실적 620행과 동급). "227"은 고유 조합 수일 뿐 행 수 아님.
 
 ## 아키텍처 — 묶음 collector 1개
 
@@ -81,15 +84,23 @@ unmatched 시군구 → `logError` 기록하되 중단 안 함. 외부 API 장�
 |---|---|---|---|
 | 1 | 마이그 up/down 2개 (신규) | DB 스키마 | 1 |
 | 2 | `collect-medical-access.mjs` + `.test.mjs` + `.yml` (신규 3) | collector | 1 |
-| 3 | `data-fill.mjs` + `data-audit.mjs` + `monitor-collectors.yml` (수정 3) | 등록·감사 | 1 |
+| 3 | `data-fill.mjs` + `monitor-collectors.mjs` + `monitor-collectors.yml` (수정 3) | 등록·감사 | 1 |
 
 - 단계 1 후 사용자가 Dashboard 적용 → 단계 2 운영 실행 가능(PG 42703 회피).
-- 단계 3 `data-audit.mjs`: `regions` 카테고리는 이미 존재 → **3곳 동시 수정** 필요
-  (세션 262 답습 — AUDIT_FIELDS 만으론 부족):
-  1. L431 `fetchAllFromTable(sb, "regions", "region,pop_growth,...")` select 절에
-     `doctors_per_1k,hospital_beds_per_1k` 컬럼 추가
-  2. L483~ merge 로직 (regions row → flat row 매핑)에 2필드 추가
-  3. `AUDIT_FIELDS.regions.fields` 배열에 카멜케이스 `doctorsPer1k`/`hospitalBedsPer1k` 추가
+- ⚠️ **`data-audit.mjs` 는 수정 대상 아님** — 9-GATE 재검증에서 거짓 전제 발견:
+  `data-audit` 는 `apartments` 테이블 기준 감사기로, `regions` 는 보조 join
+  (L431 select 4컬럼만, L483~492 `region` 키로 시도 레벨 join, `gu` 무시).
+  의사수·병상수는 **시군구 단위**라 data-audit 의 시도 join 에 끼우면 데이터가
+  뭉개짐. `fertility_rate`·`housing_supply_level` 이 data-audit 미등재인 것도
+  같은 이유 — `regions` 테이블 컬럼은 data-audit 감사 대상이 아님.
+- 단계 3 `monitor-collectors.mjs`: ④ NULL 점검의 `regions` 핵심 컬럼 감시처에 등재.
+  `data-audit` 와 완전 분리된, `regions` 테이블 직접 `count` 쿼리 방식 — 시군구 컬럼에
+  정확히 맞음. **2곳 수정**:
+  1. `REGION_KEY_COLUMNS` 배열 (현재 `["net_migration", "crime_grade"]`) 에
+     `doctors_per_1k`, `hospital_beds_per_1k` 추가
+  2. `KO_CATEGORY` 라벨 객체 (`net_migration: "순이동인구"` 옆) 에 한글 라벨 2개 추가
+  - ⚠️ `monitor-collectors.test.mjs` 가 `REGION_KEY_COLUMNS` 를 검사할 수 있음
+    (세션 264 키 정합성 테스트 박제) → 구현 중 vitest 로 확인 후 동시 정정.
 - `data-fill.test.mjs`: 실측 확정 — scripts 배열은 `toEqual` 검사 대상 아님(phase/envKeys만),
   `KOSIS_KEY`도 이미 등재됨 → **변경 불필요**.
 
@@ -99,9 +110,9 @@ unmatched 시군구 → `logError` 기록하되 중단 안 함. 외부 API 장�
 집계행 skip / 동명 시군구 시도코드 구분 / `T10` 외 ITM skip / 통계표 2개 독립 파싱 /
 최신 연도 채택 / 값 범위 가드. 합계출산율 14케이스 답습 → 12~16케이스.
 
-회귀 가드: `npx vitest run collect-medical-access.test.mjs data-fill.test.mjs
-data-audit.test.mjs --no-cache` + `npm run typecheck:scripts` + `node
-scripts/audit-env-keys.mjs`.
+회귀 가드: `npx vitest run collect-medical-access.test.mjs monitor-collectors.test.mjs
+--no-cache` + `npm run typecheck:scripts` + `node scripts/audit-env-keys.mjs`.
+(`data-audit.test.mjs` 는 data-audit 미수정으로 회귀 대상 아님.)
 
 ## 워크플로
 
@@ -121,9 +132,10 @@ workflows 배열에 name 등재(세션 265·266 답습).
 ## 검증 (end-to-end)
 
 1. 단계 1: 마이그 작성 → 사용자 Dashboard 적용 → DB `\d regions`로 2컬럼 확인
-2. 단계 2: `collect-medical-access.mjs --dry-run` → 227행 매칭 / unmatched 1
-   (`전북::전주시`) 확인 → 운영 실행
-3. 단계 3 후: `regions` 2컬럼 NULL 아닌 행 수 ≈ 227 확인
+2. 단계 2: `collect-medical-access.mjs --dry-run` → 600행대 UPDATE 대상 /
+   unmatched `전북::전주시` 1개 확인 → 운영 실행
+3. 단계 3 후: `regions` 2컬럼 NULL 아닌 행 수 ≈ 600행대 확인
+   (합계출산율 collector 실적 620행 동급 — "227"은 고유 조합 수)
    ```bash
    node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();for(const c of ['doctors_per_1k','hospital_beds_per_1k']){const {count}=await sb.from('regions').select(c,{count:'exact',head:true}).not(c,'is',null);console.log(c,count);}"
    ```
