@@ -21,11 +21,14 @@
 import { loadEnv, getSupabase } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssue, buildMessages, toKst } from "./notify-telegram.mjs";
+import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
 
 loadEnv();
 
 /** 미발화 판정 임계 — 마지막 run 이 이 일수보다 오래되면 이상 (월간 cron 1주기+여유). */
 const STALE_DAYS = 35;
+/** ③ 점검 대상 워크플로 목록 출처 — monitor.yml 자신의 workflow_run.workflows 배열. */
+const MONITOR_YML_PATH = ".github/workflows/monitor-collectors.yml";
 /** NULL 급증 판정 임계 — 핵심 컬럼 NULL 비율이 이 값을 넘으면 이상. */
 const NULL_RATE_THRESHOLD = 0.4;
 /** 이상 run 으로 보는 conclusion. */
@@ -237,6 +240,29 @@ export function checkStaleWorkflows(workflows, now = new Date()) {
 }
 
 /**
+ * ③ 점검 대상 집합 + run 시각을 병합해 checkStaleWorkflows 입력을 만든다.
+ * 점검 대상은 "최근에 돈 워크플로"가 아니라 monitor.yml 이 감시하는 전체 집합이라,
+ * 월간 워크플로가 오래 죽어 최근 run 에서 사라져도 lastRunAt=null 로 남아 stale 로 잡힌다.
+ * @param {string[]} monitoredNames monitor.yml workflow_run.workflows 배열
+ * @param {Array<{ name?: string, created_at?: string }>} recentRuns fetchRecentRuns 결과
+ * @param {Record<string, string>} supplement fetchLastRunForWorkflows 결과 (누락분 보충)
+ * @returns {Array<{ name: string, lastRunAt: string|null }>}
+ */
+export function buildStaleCheckList(monitoredNames, recentRuns, supplement) {
+  /** @type {Map<string, string>} */
+  const lastRunByWf = new Map();
+  for (const run of recentRuns) {
+    if (run.name && run.created_at && !lastRunByWf.has(run.name)) {
+      lastRunByWf.set(run.name, run.created_at);
+    }
+  }
+  return monitoredNames.map((name) => ({
+    name,
+    lastRunAt: lastRunByWf.get(name) ?? supplement[name] ?? null,
+  }));
+}
+
+/**
  * ④ 컬럼별 (total, filled) 카운트에서 NULL 급증을 찾는다.
  * @param {Array<{ column: string, total: number, filled: number }>} columnStats
  * @returns {Issue[]}
@@ -336,6 +362,67 @@ async function fetchRecentRuns(perPage = 50) {
   if (!res.ok) return [];
   const json = /** @type {{ workflow_runs?: any[] }} */ (await res.json());
   return json.workflow_runs ?? [];
+}
+
+/**
+ * monitor.yml 의 workflow_run.workflows 배열(③ 점검 대상 전체)을 읽는다.
+ * 파일 읽기·파싱 실패 시 빈 배열 — 점검을 막지 않는 안전 degrade.
+ * @returns {Promise<string[]>}
+ */
+async function fetchMonitoredWorkflowNames() {
+  try {
+    const { readFile } = await import("node:fs/promises");
+    return extractMonitoredWorkflows(await readFile(MONITOR_YML_PATH, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 최근 run 목록에 흔적이 없는 워크플로의 마지막 run 시각을 개별 조회한다.
+ * 워크플로 id 매핑 1회 + 누락 이름별 runs?per_page=1 호출. run 0건이면 결과에서 누락.
+ * @param {string[]} names 보충 조회할 워크플로 name 목록
+ * @returns {Promise<Record<string, string>>} name → 마지막 run created_at
+ */
+async function fetchLastRunForWorkflows(names) {
+  if (names.length === 0) return {};
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) return {};
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+  };
+  // name → workflow id 매핑 (1회)
+  const wfRes = await fetch(
+    `https://api.github.com/repos/${repo}/actions/workflows?per_page=100`,
+    { headers, signal: AbortSignal.timeout(20000) },
+  );
+  if (!wfRes.ok) return {};
+  const wfJson = /** @type {{ workflows?: Array<{ id: number, name: string }> }} */ (
+    await wfRes.json()
+  );
+  /** @type {Map<string, number>} */
+  const idByName = new Map();
+  for (const wf of wfJson.workflows ?? []) idByName.set(wf.name, wf.id);
+
+  /** @type {Record<string, string>} */
+  const result = {};
+  for (const name of names) {
+    const id = idByName.get(name);
+    if (id === undefined) continue; // 워크플로 자체가 없음 → null 로 남음
+    const runRes = await fetch(
+      `https://api.github.com/repos/${repo}/actions/workflows/${id}/runs?per_page=1`,
+      { headers, signal: AbortSignal.timeout(20000) },
+    );
+    if (!runRes.ok) continue;
+    const runJson = /** @type {{ workflow_runs?: Array<{ created_at?: string }> }} */ (
+      await runRes.json()
+    );
+    const last = (runJson.workflow_runs ?? [])[0];
+    if (last?.created_at) result[name] = last.created_at;
+  }
+  return result;
 }
 
 /**
@@ -465,20 +552,18 @@ async function main() {
     issues = issues.concat(checkEmptyRuns(latest, prevOk));
   } else {
     // daily 스윕 — 전체 점검 (①②③④)
-    const runs = await fetchRecentRuns(50);
+    const runs = await fetchRecentRuns(100); // 50→100: ①탐지 폭 + ③시각 병합 모수 확대
     issues = issues.concat(checkFailedRuns(runs));
     const { latest, prevOk } = await fetchLatestCollectorRuns();
     issues = issues.concat(checkEmptyRuns(latest, prevOk));
 
-    // ③ 미발화 — 워크플로별 마지막 run 시각
-    /** @type {Map<string, string>} */
-    const lastRunByWf = new Map();
-    for (const run of runs) {
-      if (run.name && !lastRunByWf.has(run.name)) {
-        lastRunByWf.set(run.name, run.created_at);
-      }
-    }
-    const wfList = [...lastRunByWf.entries()].map(([name, lastRunAt]) => ({ name, lastRunAt }));
+    // ③ 미발화 — monitor.yml workflows 배열(점검 대상 전체) 기준.
+    // 최근 run 에 흔적이 없는 워크플로(=오래 죽은 월간 cron)는 개별 조회로 보충.
+    const monitoredNames = await fetchMonitoredWorkflowNames();
+    const seenNames = new Set(runs.map((r) => r.name).filter(Boolean));
+    const missingNames = monitoredNames.filter((n) => !seenNames.has(n));
+    const supplement = await fetchLastRunForWorkflows(missingNames);
+    const wfList = buildStaleCheckList(monitoredNames, runs, supplement);
     issues = issues.concat(checkStaleWorkflows(wfList));
 
     // ④ NULL 급증 — regions 핵심 컬럼 + apartments 19 카테고리
