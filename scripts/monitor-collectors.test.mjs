@@ -12,7 +12,7 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge } =
+const { checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge, checkCategoryNullSurge } =
   await import("./monitor-collectors.mjs");
 
 describe("checkFailedRuns — ① 실패/취소", () => {
@@ -124,6 +124,46 @@ describe("checkNullSurge — ④ NULL 급증", () => {
 
   it("total 0 이면 나눗셈 회피 — 이상 아님", () => {
     const issues = checkNullSurge([{ column: "x", total: 0, filled: 0 }]);
+    expect(issues).toHaveLength(0);
+  });
+});
+
+describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
+  const baseline = { core: 70, infra: 70 };
+
+  it("rate 가 기대 최저값 미만이면 이상", () => {
+    const issues = checkCategoryNullSurge(
+      { core: { collector: "applyhome", filled: 1000, total: 2000, rate: 50 } },
+      baseline,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("nulls");
+    expect(issues[0].collector).toBe("core 카테고리 (applyhome)");
+    expect(issues[0].detail).toMatch(/50%/);
+    expect(issues[0].detail).toMatch(/70%/);
+  });
+
+  it("rate 가 기대 최저값 이상이면 정상", () => {
+    const issues = checkCategoryNullSurge(
+      { infra: { collector: "infra-kakao", filled: 1800, total: 2000, rate: 90 } },
+      baseline,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("baseline 에 없는 카테고리는 무시 — 이상 아님", () => {
+    const issues = checkCategoryNullSurge(
+      { benefits: { collector: "applyhome", filled: 0, total: 2000, rate: 0 } },
+      baseline,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("total 0 이면 무시 — 이상 아님", () => {
+    const issues = checkCategoryNullSurge(
+      { core: { collector: "applyhome", filled: 0, total: 0, rate: 0 } },
+      baseline,
+    );
     expect(issues).toHaveLength(0);
   });
 });
