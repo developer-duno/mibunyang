@@ -34,7 +34,7 @@ const NULL_RATE_THRESHOLD = 0.4;
 /** 이상 run 으로 보는 conclusion. */
 const BAD_CONCLUSIONS = ["failure", "cancelled", "timed_out"];
 /** ④ NULL 점검 대상 — regions 핵심 컬럼. */
-const REGION_KEY_COLUMNS = ["net_migration", "crime_grade"];
+const REGION_KEY_COLUMNS = ["net_migration", "crime_grade", "doctors_per_1k", "hospital_beds_per_1k"];
 /**
  * ④ apartments 19 카테고리 중 NULL 점검 대상 — 카테고리별 기대 최저 rate(%).
  * 현재 rate 가 이 값 아래로 떨어지면 수집기 고장 의심. 의도적 저율 카테고리
@@ -88,6 +88,8 @@ const KO_CATEGORY = {
   // regions 핵심 컬럼 (checkNullSurge)
   net_migration: "순이동인구",
   crime_grade: "범죄안전등급",
+  doctors_per_1k: "인구천명당 의사수",
+  hospital_beds_per_1k: "인구천명당 병상수",
 };
 
 /**
