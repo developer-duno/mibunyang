@@ -73,10 +73,10 @@ describe("COLLECTORS 수집기 매핑", () => {
     }
   });
 
-  // 이 테스트가 검증하는 것: regions는 9개 스크립트 순차 실행 (세션 252 ε: childcare-info / 세션 256 W6-D2: childcare-detail / 세션 258: collect-avg-income 추가)
-  it("regions는 population → population-sex-age → migration → housing-permits → housing-supply-ratio → housing-price → childcare-info → childcare-detail → collect-avg-income 9개 순차", () => {
+  // 이 테스트가 검증하는 것: regions는 10개 스크립트 순차 실행 (세션 252 ε: childcare-info / 세션 256 W6-D2: childcare-detail / 세션 258: collect-avg-income / 세션 265: collect-fertility-rate 추가)
+  it("regions는 population → population-sex-age → migration → housing-permits → housing-supply-ratio → fertility-rate → housing-price → childcare-info → childcare-detail → collect-avg-income 10개 순차", () => {
     const regions = COLLECTORS.find(c => c.category === "regions");
-    expect(regions?.scripts).toEqual(["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-housing-price.mjs", "childcare-info.mjs", "childcare-detail.mjs", "collect-avg-income.mjs"]);
+    expect(regions?.scripts).toEqual(["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-fertility-rate.mjs", "collect-housing-price.mjs", "childcare-info.mjs", "childcare-detail.mjs", "collect-avg-income.mjs"]);
   });
 });
 

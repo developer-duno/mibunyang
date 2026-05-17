@@ -25,6 +25,7 @@ on:
       - "Housing Price Data Collection"
       - "Industry Complex Matching"
       - "Infra Facilities Collection"
+      - "KOSIS Fertility Rate Collection"
       - "KOSIS Housing Supply Level Collection"
       - "KOSIS Market Stats Collection"
       - "KOSIS Unsold Collection"
