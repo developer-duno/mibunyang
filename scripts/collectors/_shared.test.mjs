@@ -312,17 +312,31 @@ describe("recordCollectorRun (수집기 모니터링 에픽 1단계)", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("--dry-run argv 있으면 sbOverride 없을 때 INSERT skip", async () => {
+  it("--dry-run argv 있으면 sbOverride 없이 getSupabase 호출 안 함 (INSERT skip)", async () => {
+    // dry-run 가드가 동작하면: console.log 에 'dry-run 기록 skip' 만 찍히고
+    // getSupabase() 까지 도달 안 함 → SUPABASE 키 부재 에러(console.error)가 없어야 함.
+    // 가드를 되돌리면 getSupabase() 가 throw → console.error 에 'SUPABASE' 메시지 발생 → 두 expect 모두 FAIL.
     const orig = process.argv;
     process.argv = [...orig, "--dry-run"];
-    let inserted = false;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    /** @type {string[]} */
+    let logMsgs = [];
+    /** @type {string[]} */
+    let errMsgs = [];
     try {
       await recordCollectorRun("dry-test", { ok: 0 });
-      inserted = false;
     } finally {
+      logMsgs = logSpy.mock.calls.map(c => c.join(" "));
+      errMsgs = errSpy.mock.calls.map(c => c.join(" "));
       process.argv = orig;
+      logSpy.mockRestore();
+      errSpy.mockRestore();
     }
-    expect(inserted).toBe(false);
+    // dry-run skip 메시지가 찍혔다 = 조기 return 경로 진입
+    expect(logMsgs.some(m => m.includes("dry-run"))).toBe(true);
+    // SUPABASE 키 부재 에러가 없다 = getSupabase() 미호출 (DB 접근 시도 안 함)
+    expect(errMsgs.some(m => m.includes("SUPABASE"))).toBe(false);
   });
 
   it("--dry-run argv 있어도 sbOverride 주입 시 INSERT 수행 (테스트 격리)", async () => {
