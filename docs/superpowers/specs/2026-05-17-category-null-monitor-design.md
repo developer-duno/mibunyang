@@ -166,6 +166,11 @@ monitor-collectors.mjs (daily 모드)
 - 기존 ④번(regions) 점검 미변경 — 회귀 0.
 - `// @ts-check` 모드 — `data-audit` import 시 typecheck 통과 확인 의무
   (CLAUDE.md `typescript-patterns.md` §11 시뮬레이션).
+- **키 drift 위험**: `AUDIT_CATEGORY_BASELINE` 은 `AUDIT_FIELDS` 의 카테고리 키를
+  수기 복제한다. data-audit 에 신규 카테고리가 추가되면 monitor 가 모르고 조용히
+  커버리지 구멍이 생긴다 (silent gap). 세션 264 에서 `EXCLUDED_AUDIT_CATEGORIES`
+  명시 상수 + `monitor-collectors.test.mjs` 정합성 테스트(점검 12 + 제외 7 =
+  AUDIT_FIELDS 19 양방향)로 차단 — data-audit 카테고리 변경 시 즉시 빨강.
 
 ## 명시적 비-작업
 
@@ -174,3 +179,8 @@ monitor-collectors.mjs (daily 모드)
 - 카테고리별 시계열 추세 분석 (지난 NULL률 대비 증가폭) — 현재는 절대값 baseline
   만. 추세는 별도 후보.
 - UI 노출 (`data-audit` 결과의 관리자 페이지 표시 등)
+
+> **알려진 잔여 한계**: `regions` 카테고리의 비핵심 컬럼(`popGrowth`/`supplyRatio`/
+> `newSupply`/`initialSaleRate`/`landCostRatio`)은 이번 점검에도, 기존 ④번
+> regions 컬럼 점검(`net_migration`/`crime_grade` 2개)에도 들어가지 않는다.
+> regions 카테고리 전체가 점검 제외이기 때문. 필요 시 별도 후보로 다룬다.

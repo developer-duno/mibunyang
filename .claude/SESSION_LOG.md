@@ -8605,3 +8605,53 @@ NEXT_SESSION §2 는 "API 쿼터/Actions 동시성 부담" 으로 추정했으�
 - **워크플로 cancelled = 그 달 데이터 0회** — `jobs:[]` 인 cancelled run 은 concurrency 큐에서 시작 전 취소. transport 2개월 연속 = 교통 데이터 2개월 미수집. conclusion 만 보지 말고 jobs 배열 + raw log 확인 (룰 `workflow-name-hallucination.md` §2 답습)
 - **NEXT_SESSION 박제값 stale** — §2 "API 쿼터" 추정이 실측으로 concurrency group 문제로 정정. NEXT_SESSION 가설은 단정 근거 아님, raw 실측 의무
 - **GitHub Actions concurrency**: `cancel-in-progress: false` 라도 기본 `queue: single` 이면 pending run 이 새 run 에 밀려 취소. 직렬 보장 ≠ 큐 보존. 공식 문서 확인 필수
+
+## 세션 262 (2026-05-17) — data-audit 미감사 필드 3개 감사 편입 (air/safety 카테고리)
+
+**거시 목적**: 세션 261 작업 C 조사에서 발견한 사각지대 해소. `collect-air-quality`/`collect-crime-safety`/`collect-emergency` 세 수집기가 별도 cron 으로 `air_quality`/`crime_safety_grade`/`emergency` 4필드를 쌓는데, `data-audit.mjs` AUDIT_FIELDS 17 카테고리 어디에도 없어 그 컬럼 NULL률이 감사·모니터링에 안 잡히던 문제.
+
+**결론**: 1 커밋 `e479653` push CI success. AUDIT_FIELDS 에 `air`(airQuality) + `safety`(crimeSafetyGrade/emergency 4필드) 2 카테고리 추가. 17→19 카테고리.
+
+## plan 전제 정정 (실증으로 발견)
+
+plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제했으나 **실측 결과 틀림** — `data-audit.mjs` 는 VIEW 가 아닌 **테이블별 개별 쿼리 + 메모리 merge**(`fetchAllFromTable` + `mergeRelated`) 방식. AUDIT_FIELDS 카테고리만 추가하니 전 단지 0% 산출(쿼리 자체 누락).
+
+→ 3곳 동시 정정 의무 발견:
+- `APT_COLS` 에 `air_quality,crime_safety_grade` 추가 (apartments 직속)
+- `toCamel` map 에 `air_quality→airQuality` / `crime_safety_grade→crimeSafetyGrade`
+- infra 쿼리 컬럼 + `mergeRelated` colMap 에 `emergency`/`emergency_dist`/`emergency_name`/`emergency_type` 4개 추가
+
+## 검증
+
+- typecheck 0 errors / `npx vitest run data-audit.test.mjs --no-cache` 14 pass
+- 실제 `node scripts/collectors/data-audit.mjs` 실행 → `air 99.2%` / `safety 79%`. `emergencyName`/`emergencyType` 50%(1000/2001) 산출 — `collect-emergency` W4 부분 매칭 상태를 audit 가 정확히 포착(사각지대 해소 효과 확인)
+
+## 답습 (세션 262)
+
+- **`data-audit.mjs` 는 VIEW 가 아닌 테이블별 개별 쿼리 방식** — 미래 audit 필드 추가 시 AUDIT_FIELDS 만으로 부족. `APT_COLS`/`toCamel` map/관련 테이블 쿼리·`mergeRelated` colMap 동시 정정 의무. NEXT_SESSION 의 "VIEW 노출 여부 확인" 전제는 audit 작업에 무관(VIEW 안 씀)
+- `infra.emergency_name`/`emergency_type` 베이스 컬럼은 존재하나 `apartments_flat` VIEW 에는 미노출(마이그 `20260512211803` VIEW CREATE 부분 Dashboard 미적용 — DDL stale, 세션 259 답습). audit 는 VIEW 를 안 쓰므로 영향 없음. 향후 프론트/스코어링이 emergencyName/Type VIEW 경유 사용 시 별도 작업 필요
+
+## 세션 263 (2026-05-17) — #4 컬럼별 NULL 비율 모니터 (검증 후 push)
+
+**거시 목적**: `monitor-collectors.mjs` ④번 NULL 점검이 `regions` 2개 컬럼만 봐 `apartments` 계열 19 카테고리가 조용히 망가져도 알림이 안 가던 사각지대 해소.
+
+**결론**: 5 커밋 `e479653`~`13c3ee2` push CI run `25982461554` success. 세션 262 종료 시 미push 상태로 코드·테스트·plan/spec 까지 이미 완성 → 세션 263 은 신규 코드 0건, 검증 후 push 만 수행.
+
+- `monitor-collectors.mjs` ④번이 regions 2컬럼 → +apartments 19 카테고리(`checkCategoryNullSurge` + `AUDIT_CATEGORY_BASELINE` 12 카테고리 baseline)
+- 검증(전부 실측): typecheck:scripts 0 / vitest `monitor-collectors.test.mjs` 17/17 / 실제 DB 2001 단지 `computeAudit` → 12 점검 카테고리 전부 baseline 위 안전 (ALERT 0건)
+- 설계·plan: `docs/superpowers/specs/2026-05-17-category-null-monitor-{design,plan}.md`
+
+## 세션 264 (2026-05-17) — #4 NULL 모니터 키 drift 가드 보강
+
+**거시 목적**: 세션 263 완성 구현 검증 + 발견한 빈틈 1건 보강. `AUDIT_CATEGORY_BASELINE`(monitor, 점검 12) 이 `AUDIT_FIELDS`(data-audit, 19 카테고리) 를 수기 복제하는데 둘을 잇는 정합성 검증이 없어, 미래에 data-audit 에 카테고리가 추가되면 monitor 가 모르고 조용히 커버리지 구멍이 생기는 silent coverage gap.
+
+**결론**: 3 커밋 (`5a130af` 제외 상수 + `bc5263f` 테스트 + docs) push.
+
+- **검증 (전부 실측)**: typecheck:scripts 0 / vitest `monitor-collectors.test.mjs` 22/22 / baseline 12 카테고리 vs 현재 DB 2001 단지 → ALERT 0건 (오탐 없음, 최소 마진 risk 9.0p) / `monitor-collectors.mjs --mode=daily` 실행 → ④번 카테고리 점검 회귀 0
+- **보강**: `monitor-collectors.mjs` 에 `EXCLUDED_AUDIT_CATEGORIES`(제외 7) 명시 상수 + `AUDIT_CATEGORY_BASELINE`/제외 상수 `export`. `monitor-collectors.test.mjs` 에 키 정합성 테스트(점검 12 + 제외 7 = `AUDIT_FIELDS` 19 양방향 일치 + 교집합 0) + `NULL_DETAIL_FIELD_LIMIT`(6) 절단 테스트 추가 (vitest 22→25)
+- **drift 차단 시뮬레이션**: `EXCLUDED_AUDIT_CATEGORIES` 에서 키 1개 임시 삭제 → 정합성 테스트 정확히 빨강(1 failed) 확인 → 복원, git diff 잔재 0
+
+## 답습 (세션 264)
+
+- **plan v1 전제값 검증 = stale 발견** — NEXT_SESSION L92-94 가 #4 를 "1순위 미완"으로 박제했으나 세션 263 에서 이미 완성·push 됨. NEXT_SESSION 헤더가 "세션 262"에 머물러 세션 263 산출을 미반영. `next-session-grep-mandate` §1 답습 — 작업 진입 직전 커밋 이력(`git log | grep`) + 메모리 grep 으로 박제값 stale 확인
+- **수기 복제 상수는 정합성 테스트로 강제** — 두 파일에 같은 키 집합이 손으로 복제되면 drift 무방어. 한쪽을 진실 소스로 두고 다른 쪽이 그것과 일치하는지 테스트로 박으면 즉시 빨강. `secret-naming-audit.md` 3-way 동기화 사고 답습과 동류 패턴
