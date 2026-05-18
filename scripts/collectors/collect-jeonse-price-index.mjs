@@ -86,6 +86,15 @@ export function parseKabRows(rows, regionGuMap) {
       continue;
     }
 
+    // 시도행 제외 — C2 코드가 prefix 키 자체(a7/b6/c8 등)면 시도 단위 집계행.
+    // 세종/제주는 시도명+접미사("세종시"/"제주시")가 regions.gu 에 존재해
+    // 시도행이 시군구로 오매칭 → 중복 키 발생. 세부행정구(c801 등)만 시군구.
+    if (Object.prototype.hasOwnProperty.call(KAB_REGION_PREFIX, code)) {
+      skipped++;
+      if (row.C2_NM) unmatchedSet.add(row.C2_NM);
+      continue;
+    }
+
     // region 의 regions.gu 집합에서 C2_NM + 접미사 매칭 → 정식 gu 명 확정
     const guSet = regionGuMap.get(region);
     let gu = null;

@@ -130,6 +130,22 @@ describe("parseKabRows (DT_30404_B013 전세가격지수)", () => {
     expect(result.unmatched).toContain("서울");
   });
 
+  it("시도행 C2 코드 = KAB_REGION_PREFIX 키 → 시군구명과 우연 일치해도 제외 (제주/세종 충돌)", () => {
+    // c8=제주(시도행) / c801=제주시(세부행정구). 둘 다 C2_NM='제주',
+    // regions.gu 에 '제주시' 존재 → 'c8' 도 '제주'+'시' 매칭되어 중복 키 발생.
+    // 시도행 코드(c8)는 명시 제외 → c801 만 매칭.
+    const map = makeRegionGuMap({ 제주: ["제주시", "서귀포시"] });
+    const result = parseKabRows(
+      [
+        makeRow("아파트", "c8", "제주", "202601", 103.2),
+        makeRow("아파트", "c801", "제주", "202601", 103.1),
+      ],
+      map,
+    );
+    expect(result.matched).toHaveLength(1);
+    expect(result.matched[0]?.jeonse_price_index).toBe(103.1);
+  });
+
   it("권역행(C2='a701' 강북권역) → 미매칭", () => {
     const result = parseKabRows(
       [makeRow("아파트", "a701", "강북권역", "202601", 100)],
