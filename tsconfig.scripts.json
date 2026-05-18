@@ -81,6 +81,8 @@
                     "scripts/collectors/collect-nearby-childcare.test.mjs",
                     "scripts/collectors/collect-jeonse-price-index.mjs",
                     "scripts/collectors/collect-jeonse-price-index.test.mjs",
+                    "scripts/collectors/collect-regional-economy.mjs",
+                    "scripts/collectors/collect-regional-economy.test.mjs",
                     "scripts/monitor-collectors.mjs",
                     "scripts/monitor-collectors.test.mjs"
                 ],

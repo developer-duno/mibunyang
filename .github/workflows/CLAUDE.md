@@ -27,7 +27,7 @@
 | `calc-exclusive-ratio.yml` | 전용률 계산 (일요일) |
 | `calc-layout.yml` | 평면구조 추정 (일요일) |
 
-### 매월 (24개)
+### 매월 (25개)
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
@@ -55,6 +55,7 @@
 | `collect-building-hub.yml` | 15일 | 건축HUB 에너지+인허가 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
 | `collect-jeonse-price-index.yml` | 17일 | KOSIS 전세가격지수 (DT_30404_B013, 시군구 월간) |
+| `collect-regional-economy.yml` | 11일 | KOSIS 시도 경제·교육 지표 (GRDP/사교육비/사교육참여율/실업률) |
 
 ### 모니터링 (2개)
 
