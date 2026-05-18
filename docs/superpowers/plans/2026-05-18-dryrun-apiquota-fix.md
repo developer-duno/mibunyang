@@ -295,14 +295,16 @@ Expected: `collect-emergency 오늘자 행: 0` (dry-run 이 행을 안 남김).
 
 ## 한계 / 후속
 
-- `api_quota_log` 의 **과거 오염 행**(dry-run 으로 이미 박힌 가짜 쿼터 기록)은 본 plan 이
-  정리하지 않음. `recordCollectorRun` 사례(Task 0 오염 행 정리)와 달리 — `api_quota_log` 는
-  날짜별 누적이고 monitor 알림과 무관해 긴급도 낮음. 필요 시 별도 조회 후 판단:
-
-  ```bash
-  node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();const {data}=await sb.from('api_quota_log').select('log_date,collector,call_count').in('collector',['collect-air-quality','collect-emergency','collect-trades','housing-permits']).order('log_date',{ascending:false}).limit(20);console.log(JSON.stringify(data,null,2));"
-  ```
-
-  → dry-run 시각과 겹치는 의심 행이 있으면 그때 정리. 본 plan 은 재발 방지에 집중.
+- `api_quota_log` 과거 행 조사 — **정리 불필요 (2026-05-18 후속 검토)**:
+  - 실효 가드밖 collector 는 air-quality·emergency 2개뿐. trades·housing-permits
+    는 dry-run 시 `recordApiQuota` 호출 전 early return(`collect-trades.mjs:282`
+    / `housing-permits.mjs:185`) — 본 plan 의 "가드밖 4개" 진단을 정정.
+  - air-quality 10행·emergency 3행 실측 결과 dry-run 오염으로 **확정된 행 0개**.
+    air-quality 4/02 5행이 2분 간격 연속 실행으로 비정상 패턴이나, dry-run 증거가
+    `api_quota_log`·`collector_runs`(4월 데이터 부재)·`apartments.air_quality`
+    (덮어쓰기) 어디에도 없음. 일반 디버깅 실행이었다면 실제 호출 기록이므로 삭제
+    시 데이터 은폐 — 보존 결정.
+  - 신규 오염은 본 plan 의 `recordApiQuota` 가드로 차단됨. VIEW `api_quota_daily`
+    집계는 시간이 지나며 자연 정확화.
 - BACKLOG 세션 261 `recordApiQuota 테스트 불가 — sb 인자 미지원` 항목 — 본 plan Task 2
-  완료로 해소됨. BACKLOG 갱신 권장.
+  완료로 해소됨. BACKLOG 갱신 완료 (`.claude/BACKLOG.md:48` ✅).
