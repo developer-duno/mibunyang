@@ -361,7 +361,10 @@ async function fetchRecentRuns(perPage = 50) {
       signal: AbortSignal.timeout(20000),
     },
   );
-  if (!res.ok) return [];
+  // 조용히 [] 반환 금지 — 403(권한 누락) 을 "실행 0건" 으로 오판해 미발화 오탐 발생.
+  if (!res.ok) {
+    throw new Error(`GitHub API /actions/runs ${res.status} — actions:read 권한 확인`);
+  }
   const json = /** @type {{ workflow_runs?: any[] }} */ (await res.json());
   return json.workflow_runs ?? [];
 }
@@ -400,7 +403,10 @@ async function fetchLastRunForWorkflows(names) {
     `https://api.github.com/repos/${repo}/actions/workflows?per_page=100`,
     { headers, signal: AbortSignal.timeout(20000) },
   );
-  if (!wfRes.ok) return {};
+  // 조용히 {} 반환 금지 — 403 을 "전 워크플로 미발화" 로 오판 (세션 271 사고).
+  if (!wfRes.ok) {
+    throw new Error(`GitHub API /actions/workflows ${wfRes.status} — actions:read 권한 확인`);
+  }
   const wfJson = /** @type {{ workflows?: Array<{ id: number, name: string }> }} */ (
     await wfRes.json()
   );
@@ -417,7 +423,11 @@ async function fetchLastRunForWorkflows(names) {
       `https://api.github.com/repos/${repo}/actions/workflows/${id}/runs?per_page=1`,
       { headers, signal: AbortSignal.timeout(20000) },
     );
-    if (!runRes.ok) continue;
+    // HTTP 에러는 throw — continue 로 삼키면 그 워크플로가 미발화로 오판된다.
+    // (워크플로가 진짜 run 0건이면 200 + workflow_runs:[] 이라 아래에서 정상 처리)
+    if (!runRes.ok) {
+      throw new Error(`GitHub API /workflows/${id}/runs ${runRes.status} — actions:read 권한 확인`);
+    }
     const runJson = /** @type {{ workflow_runs?: Array<{ created_at?: string }> }} */ (
       await runRes.json()
     );

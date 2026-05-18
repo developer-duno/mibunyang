@@ -57,6 +57,13 @@ on:
           - daily
           - test
 
+# GITHUB_TOKEN 권한 명시 — 미선언 시 actions 스코프 누락 가능.
+# monitor 가 /actions/runs·/actions/workflows 로 수집기 마지막 run 시각을 조회 →
+# actions:read 없으면 403 → 미발화 오탐 (세션 271 사고).
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
