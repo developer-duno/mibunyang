@@ -29,6 +29,7 @@ on:
       - "KOSIS Housing Supply Level Collection"
       - "KOSIS Medical Access Collection"
       - "KOSIS Market Stats Collection"
+      - "KOSIS Sale Price Index Collection"
       - "KOSIS Unsold Collection"
       - "Migration Data Collection"
       - "Naver Post-Processing (Core)"

@@ -1,0 +1,56 @@
+name: KOSIS Sale Price Index Collection
+
+on:
+  schedule:
+    - cron: '30 20 16 1,4,7,10 *' # 1·4·7·10월 16일 UTC 20:30 = KST 익일 05:30
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (미리보기만, DB 미저장)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: data-collection
+  cancel-in-progress: false
+
+jobs:
+  collect-sale-price-index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KOSIS_KEY: ${{ secrets.KOSIS_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$KOSIS_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, KOSIS_KEY secret 필요"
+            exit 1
+          fi
+          echo "Secrets validated"
+
+      - name: Collect KOSIS sale price index
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          KOSIS_KEY: ${{ secrets.KOSIS_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          node scripts/collectors/collect-sale-price-index.mjs $ARGS
