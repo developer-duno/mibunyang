@@ -78,7 +78,9 @@
                     "scripts/collectors/childcare-detail.mjs",
                     "scripts/collectors/childcare-detail.test.mjs",
                     "scripts/collectors/collect-nearby-childcare.mjs",
-                    "scripts/collectors/collect-nearby-childcare.test.mjs"
+                    "scripts/collectors/collect-nearby-childcare.test.mjs",
+                    "scripts/collectors/collect-jeonse-price-index.mjs",
+                    "scripts/collectors/collect-jeonse-price-index.test.mjs"
                 ],
     "exclude":  [
                     "node_modules",
