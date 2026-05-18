@@ -2,7 +2,7 @@ name: Trade Stats Calculation
 
 on:
   schedule:
-    - cron: '0 21 * * 0' # 매주 일요일 UTC 21:00 = KST 06:00
+    - cron: '0 16 * * 0' # 매주 일요일 UTC 16:00 = KST 월 01:00 (fill-missing-data 21:00·calc 22~23시 무더기 회피 — 일요일 빈 슬롯 단독 발화)
   workflow_dispatch:
     inputs:
       dry_run:
