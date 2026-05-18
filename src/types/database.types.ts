@@ -1293,6 +1293,7 @@ export type Database = {
           land_cost_ratio: number | null
           new_supply: number | null
           price_index: number | null
+          sale_price_index: number | null
           recorded_at: string
           region: string
         }
@@ -1305,6 +1306,7 @@ export type Database = {
           land_cost_ratio?: number | null
           new_supply?: number | null
           price_index?: number | null
+          sale_price_index?: number | null
           recorded_at?: string
           region: string
         }
@@ -1317,6 +1319,7 @@ export type Database = {
           land_cost_ratio?: number | null
           new_supply?: number | null
           price_index?: number | null
+          sale_price_index?: number | null
           recorded_at?: string
           region?: string
         }
