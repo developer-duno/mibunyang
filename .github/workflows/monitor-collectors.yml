@@ -26,6 +26,7 @@ on:
       - "Industry Complex Matching"
       - "Infra Facilities Collection"
       - "KOSIS Fertility Rate Collection"
+      - "KOSIS Jeonse Price Index Collection"
       - "KOSIS Housing Supply Level Collection"
       - "KOSIS Medical Access Collection"
       - "KOSIS Market Stats Collection"

@@ -173,6 +173,7 @@
 | collect-maintenance.test.mjs | 18 |
 | geocode-missing.test.mjs | 17 |
 | noise-estimate.test.mjs | 15 |
+| collect-jeonse-price-index.test.mjs | 16 |
 | collect-market-stats.test.mjs | 14 |
 | molit-building-info.test.mjs | 14 |
 | calc-layout.test.mjs | 14 |
