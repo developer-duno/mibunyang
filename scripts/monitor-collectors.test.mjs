@@ -44,6 +44,25 @@ describe("checkFailedRuns — ① 실패/취소", () => {
     ]);
     expect(issues).toHaveLength(0);
   });
+
+  it("allowedNames 주면 목록에 없는 워크플로(CI 등)는 실패해도 무시", () => {
+    const issues = checkFailedRuns(
+      [
+        { name: "CI", status: "completed", conclusion: "failure" },
+        { name: "Air Quality Collection", status: "completed", conclusion: "failure" },
+      ],
+      ["Air Quality Collection"],
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].collector).toBe("Air Quality Collection");
+  });
+
+  it("allowedNames 미지정 시 전체 점검 (하위호환)", () => {
+    const issues = checkFailedRuns([
+      { name: "CI", status: "completed", conclusion: "failure" },
+    ]);
+    expect(issues).toHaveLength(1);
+  });
 });
 
 describe("checkEmptyRuns — ② 데이터 0건", () => {
@@ -135,6 +154,26 @@ describe("checkStaleWorkflows — ③ 미발화", () => {
     expect(issues[0].detail).toMatch(/한 번도 없음/);
   });
 
+  it("lastRunAt=null 이어도 워크플로 생성이 35일 이내면 미발화 아님 (첫 cron 대기)", () => {
+    const issues = checkStaleWorkflows(
+      [
+        // 5/13 생성 — now(5/17) 기준 4일 전, 첫 cron 아직. 미발화 아님.
+        { name: "KOSIS Jeonse Price Index Collection", lastRunAt: null, createdAt: "2026-05-13T00:00:00Z" },
+      ],
+      now,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("lastRunAt=null 이고 생성도 35일 초과면 미발화 (진짜 죽은 워크플로)", () => {
+    const issues = checkStaleWorkflows(
+      [{ name: "Migration Data Collection", lastRunAt: null, createdAt: "2026-01-01T00:00:00Z" }],
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toMatch(/한 번도 없음/);
+  });
+
   it("배열에 일간·월간이 섞여도 오래된 것만 골라낸다", () => {
     const issues = checkStaleWorkflows(
       [
@@ -158,12 +197,18 @@ describe("buildStaleCheckList — ③ 점검 대상 + run 시각 병합", () => 
       ["A", "B", "C"],
       [{ name: "A", created_at: "2026-05-16T00:00:00Z" }],
       { B: "2026-04-01T00:00:00Z" },
+      { A: "2026-01-01T00:00:00Z", B: "2026-01-01T00:00:00Z", C: "2026-01-01T00:00:00Z" },
     );
     expect(wfList).toEqual([
-      { name: "A", lastRunAt: "2026-05-16T00:00:00Z" }, // recentRuns 값
-      { name: "B", lastRunAt: "2026-04-01T00:00:00Z" }, // supplement 값
-      { name: "C", lastRunAt: null }, // 어디에도 없음
+      { name: "A", lastRunAt: "2026-05-16T00:00:00Z", createdAt: "2026-01-01T00:00:00Z" },
+      { name: "B", lastRunAt: "2026-04-01T00:00:00Z", createdAt: "2026-01-01T00:00:00Z" },
+      { name: "C", lastRunAt: null, createdAt: "2026-01-01T00:00:00Z" },
     ]);
+  });
+
+  it("createdAtByWf 미지정 시 createdAt 은 null (하위호환)", () => {
+    const wfList = buildStaleCheckList(["A"], [], {});
+    expect(wfList).toEqual([{ name: "A", lastRunAt: null, createdAt: null }]);
   });
 
   it("recentRuns 에 같은 워크플로가 여러 건이면 최신(첫 등장)만 쓴다", () => {
@@ -175,7 +220,7 @@ describe("buildStaleCheckList — ③ 점검 대상 + run 시각 병합", () => 
       ],
       {},
     );
-    expect(wfList).toEqual([{ name: "A", lastRunAt: "2026-05-16T00:00:00Z" }]);
+    expect(wfList).toEqual([{ name: "A", lastRunAt: "2026-05-16T00:00:00Z", createdAt: null }]);
   });
 });
 

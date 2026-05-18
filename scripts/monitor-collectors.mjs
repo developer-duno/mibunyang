@@ -154,14 +154,19 @@ const KO_FIELD = {
 /**
  * ① GitHub Actions run 목록에서 실패/취소를 찾는다.
  * @param {Array<{ name?: string, conclusion?: string|null, status?: string, html_url?: string, created_at?: string }>} runs
+ * @param {string[]} [allowedNames] 주면 이 목록(monitor.yml 감시 대상)에 든
+ *   워크플로만 점검 — CI 등 비-수집기 실패를 "수집기 실패" 로 오인하지 않음.
+ *   미지정 시 전체 점검 (하위호환).
  * @returns {Issue[]}
  */
-export function checkFailedRuns(runs) {
+export function checkFailedRuns(runs, allowedNames) {
   /** @type {Issue[]} */
   const issues = [];
+  const allowSet = allowedNames ? new Set(allowedNames) : null;
   for (const run of runs) {
     if (run.status !== "completed") continue;
     if (!run.conclusion || !BAD_CONCLUSIONS.includes(run.conclusion)) continue;
+    if (allowSet && !(run.name && allowSet.has(run.name))) continue;
     issues.push({
       kind: "fail",
       collector: run.name ?? "(이름 없음)",
@@ -216,7 +221,9 @@ export function checkEmptyRuns(rows, prevByCollector = {}) {
 
 /**
  * ③ 워크플로별 마지막 run 시각에서 미발화를 찾는다.
- * @param {Array<{ name: string, lastRunAt: string|null }>} workflows
+ * @param {Array<{ name: string, lastRunAt: string|null, createdAt?: string|null }>} workflows
+ *   createdAt = 워크플로 파일 생성일. lastRunAt=null 이어도 생성이 35일 이내면
+ *   첫 cron 대기 중인 신규 워크플로 → 미발화 아님 (오탐 차단).
  * @param {Date} now 기준 시각 (테스트 주입용)
  * @returns {Issue[]}
  */
@@ -225,6 +232,11 @@ export function checkStaleWorkflows(workflows, now = new Date()) {
   const issues = [];
   for (const wf of workflows) {
     if (!wf.lastRunAt) {
+      // 신규 워크플로 — 생성 35일 이내면 첫 cron 아직, 미발화 아님.
+      if (wf.createdAt) {
+        const sinceCreated = (now.getTime() - new Date(wf.createdAt).getTime()) / 86400000;
+        if (sinceCreated <= STALE_DAYS) continue;
+      }
       issues.push({ kind: "stale", collector: wf.name, detail: "실행 기록이 한 번도 없음" });
       continue;
     }
@@ -248,9 +260,10 @@ export function checkStaleWorkflows(workflows, now = new Date()) {
  * @param {string[]} monitoredNames monitor.yml workflow_run.workflows 배열
  * @param {Array<{ name?: string, created_at?: string }>} recentRuns fetchRecentRuns 결과
  * @param {Record<string, string>} supplement fetchLastRunForWorkflows 결과 (누락분 보충)
- * @returns {Array<{ name: string, lastRunAt: string|null }>}
+ * @param {Record<string, string>} [createdAtByWf] 워크플로 생성일 맵 (신규 워크플로 오탐 차단)
+ * @returns {Array<{ name: string, lastRunAt: string|null, createdAt: string|null }>}
  */
-export function buildStaleCheckList(monitoredNames, recentRuns, supplement) {
+export function buildStaleCheckList(monitoredNames, recentRuns, supplement, createdAtByWf = {}) {
   /** @type {Map<string, string>} */
   const lastRunByWf = new Map();
   for (const run of recentRuns) {
@@ -261,6 +274,7 @@ export function buildStaleCheckList(monitoredNames, recentRuns, supplement) {
   return monitoredNames.map((name) => ({
     name,
     lastRunAt: lastRunByWf.get(name) ?? supplement[name] ?? null,
+    createdAt: createdAtByWf[name] ?? null,
   }));
 }
 
@@ -438,6 +452,35 @@ async function fetchLastRunForWorkflows(names) {
 }
 
 /**
+ * 워크플로별 파일 생성일(created_at)을 조회한다.
+ * 신규 워크플로(첫 cron 대기 중)를 미발화 오탐에서 제외하는 데 쓴다.
+ * @returns {Promise<Record<string, string>>} name → 워크플로 created_at
+ */
+async function fetchWorkflowCreatedAt() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) return {};
+  const res = await fetch(
+    `https://api.github.com/repos/${repo}/actions/workflows?per_page=100`,
+    {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(20000),
+    },
+  );
+  // 조용히 {} 반환 금지 — 403 을 "전 워크플로 신규 아님" 으로 오판 (세션 271 사고).
+  if (!res.ok) {
+    throw new Error(`GitHub API /actions/workflows ${res.status} — actions:read 권한 확인`);
+  }
+  const json = /** @type {{ workflows?: Array<{ name: string, created_at: string }> }} */ (
+    await res.json()
+  );
+  /** @type {Record<string, string>} */
+  const result = {};
+  for (const wf of json.workflows ?? []) result[wf.name] = wf.created_at;
+  return result;
+}
+
+/**
  * regions 핵심 컬럼별 (total, filled) 을 조회한다.
  * @returns {Promise<Array<{ column: string, total: number, filled: number }>>}
  */
@@ -564,18 +607,21 @@ async function main() {
     issues = issues.concat(checkEmptyRuns(latest, prevOk));
   } else {
     // daily 스윕 — 전체 점검 (①②③④)
+    // monitor.yml 감시 대상 — ① 실패 알림을 이 목록 워크플로로 한정 (CI 등 비-수집기 제외).
+    const monitoredNames = await fetchMonitoredWorkflowNames();
     const runs = await fetchRecentRuns(100); // 50→100: ①탐지 폭 + ③시각 병합 모수 확대
-    issues = issues.concat(checkFailedRuns(runs));
+    issues = issues.concat(checkFailedRuns(runs, monitoredNames));
     const { latest, prevOk } = await fetchLatestCollectorRuns();
     issues = issues.concat(checkEmptyRuns(latest, prevOk));
 
     // ③ 미발화 — monitor.yml workflows 배열(점검 대상 전체) 기준.
     // 최근 run 에 흔적이 없는 워크플로(=오래 죽은 월간 cron)는 개별 조회로 보충.
-    const monitoredNames = await fetchMonitoredWorkflowNames();
+    // 워크플로 생성일도 조회 — 신규 워크플로(첫 cron 대기)를 오탐에서 제외.
     const seenNames = new Set(runs.map((r) => r.name).filter(Boolean));
     const missingNames = monitoredNames.filter((n) => !seenNames.has(n));
     const supplement = await fetchLastRunForWorkflows(missingNames);
-    const wfList = buildStaleCheckList(monitoredNames, runs, supplement);
+    const createdAtByWf = await fetchWorkflowCreatedAt();
+    const wfList = buildStaleCheckList(monitoredNames, runs, supplement, createdAtByWf);
     issues = issues.concat(checkStaleWorkflows(wfList));
 
     // ④ NULL 급증 — regions 핵심 컬럼 + apartments 19 카테고리
