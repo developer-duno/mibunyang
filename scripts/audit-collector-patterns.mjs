@@ -85,7 +85,13 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(err => {
-  console.error("audit script error:", err);
-  process.exit(2);
-});
+// isCLI 가드 — 직접 실행 시에만 main(). import(테스트가 findKaptNameMisuse 만
+// 가져올 때) 시 main() 미실행 → vitest 워커에서 process.exit 호출 방지.
+const argv1 = process.argv[1];
+const isCLI = !!argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) {
+  main().catch(err => {
+    console.error("audit script error:", err);
+    process.exit(2);
+  });
+}
