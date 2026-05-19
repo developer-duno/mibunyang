@@ -47,6 +47,14 @@ describe("useMarketStatsHistory", () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it("non-Error 예외(문자열 throw) → String(err) 로 error 설정", async () => {
+    globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => Promise.reject("문자열에러")));
+    const { result } = renderHook(() => useMarketStatsHistory("서울", "강남구"));
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(result.current.error).toBe("문자열에러");
+    expect(result.current.loading).toBe(false);
+  });
+
   it("retry() 호출 → fetch 재호출 (tick +1)", async () => {
     const { result } = renderHook(() => useMarketStatsHistory("서울", "강남구"));
     await waitFor(() => expect(result.current.loading).toBe(false));
