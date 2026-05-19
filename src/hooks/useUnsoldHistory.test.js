@@ -5,9 +5,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useUnsoldHistory } from "./useUnsoldHistory";
+import { _clearHistoryCache } from "./useHistoryData";
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  _clearHistoryCache();
   vi.spyOn(globalThis, "fetch").mockResolvedValue(/** @type {Response} */ ({
     ok: true,
     json: () => Promise.resolve({ ok: true, data: [{ unsold_count: 50 }] }),
