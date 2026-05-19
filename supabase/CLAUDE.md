@@ -117,6 +117,24 @@ DB는 naver-estate-web 기준 컬럼명으로 정규화됨:
 
 ---
 
+## 보안 표준 — VIEW·함수 신규 정의 시 (세션 276 박제)
+
+Supabase Advisor `security_definer_view`(WARN)·`function_search_path_mutable`(ERROR)를
+사전 차단하려면 신규 정의 시 아래를 의무 적용:
+
+- **VIEW**: `CREATE VIEW name WITH (security_invoker = on) AS ...` — 미명시 시 기본값
+  `off`(definer)라 anon 이 RLS 우회 조회. base 테이블 RLS 정책을 조회자 권한으로 평가.
+- **함수**: `CREATE FUNCTION ... LANGUAGE plpgsql SET search_path = '' AS $$ ... $$;` —
+  `''` 이 Supabase 권장값(`public, pg_temp` 아님). 본문이 public 테이블/함수를 무자격
+  참조하면 깨지므로 스키마 한정자(`public.foo`) 명시. `NOW()` 등 pg_catalog 내장은 무관.
+- 기존 VIEW 옵션 변경은 `ALTER VIEW name SET (security_invoker = on)` — `DROP VIEW` 는
+  GRANT 권한을 동반 삭제하므로 옵션만 바꿀 땐 금지.
+- 마이그 적용: `20260519130000_fix_security_definer.sql` 답습 (ALTER VIEW + CREATE OR
+  REPLACE FUNCTION + `NOTIFY pgrst, 'reload schema';`). 트리거는 함수 OID 참조 →
+  CREATE OR REPLACE FUNCTION 만으로 재바인딩 불필요.
+
+---
+
 ## 마이그레이션 적용 (Dashboard 수동 또는 supabase CLI 단발 적용)
 
 `apply-migration.yml` workflow 는 폐기됨 (세션 248).
