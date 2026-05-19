@@ -16,6 +16,13 @@
  * 요청 parameter: key (인증키 string 32) + arcode (시군구코드 string 5)
  * 응답 형식: REST + XML (JSON 미제공) — 페이징 없음, 시군구 1건당 N items 단일 응답
  *
+ * 결과코드 (명세서): ERROR-100 필수항목 누락 / ERROR-200 서버에러 / INFO-100 인증키 무효 /
+ *   INFO-200 검색결과 없음 / INFO-300 일 요청 초과 / INFO-400 키 만료.
+ *   INFO-200 은 정상 0건 skip, 나머지는 throw (월간 cron 데드존 차단 — secret-naming-audit.md).
+ *
+ * 계정 2단계: 개발계정 키 = 시군구당 50행 제한. 운영계정 키 = 전수 응답.
+ *   세션 252~274 "50 limit 사고" = 개발계정 키 사용 탓 (API 결함 아님, 세션 255 진단).
+ *
  * 의미 단위: 시군구 집계 (count + total_capacity + facilities raw 리스트).
  * 단지별 도보권 인프라 = infra.childcare/childcare_dist (Kakao POI) 보존 (의미 다름).
  * 별 세션 분할: W6-D2 옵션 δ (cpmsapi030 60+ 필드 단지 매칭).
@@ -98,6 +105,22 @@ export function extractTag(block, tag) {
 }
 
 /**
+ * 응답 XML 에서 결과코드 검사. INFO-200(검색결과 없음)은 정상 0건이므로 통과,
+ * 그 외 에러코드는 throw 한다.
+ * 명세서에 결과코드 응답 XML 구조 예시가 없어 태그명을 특정하지 않고
+ * 응답 본문 전체에서 코드 문자열을 탐지한다 (운영키 raw 실측으로 정밀화 가능).
+ * @param {string} xml
+ * @returns {void}
+ */
+export function assertNoErrorCode(xml) {
+  const codeRe = /\b((?:ERROR|INFO)-\d{3})\b/;
+  const m = codeRe.exec(xml);
+  if (!m) return;                 // 결과코드 없음 = 정상 item 응답
+  if (m[1] === "INFO-200") return; // 검색결과 없음 = 정상 0건
+  throw new Error(`API 결과코드 ${m[1]}`);
+}
+
+/**
  * 시군구코드 (arcode 5자) 별 API 호출.
  * @param {string} arcode  - 5자 시군구코드
  * @returns {Promise<ChildcareItem[]>}
@@ -107,6 +130,7 @@ async function fetchChildcare(arcode) {
   const url = `${BASE_URL}?key=${encodeURIComponent(API_KEY)}&arcode=${arcode}`;
   const res = await fetchWithRetry(url);
   const xml = await res.text();
+  assertNoErrorCode(xml);
   return parseChildcareXml(xml);
 }
 
@@ -150,8 +174,9 @@ async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const fetchedAt = today();
 
-  const sggList = listAllSgg();
-  log("init", `대상: ${sggList.length}개 시군구 (arcode 단위)`);
+  // dry-run 은 sample 5개만 호출 (운영키 일일 한도 1,000 보호 — 검증+운영 같은 날 가능)
+  const sggList = dryRun ? listAllSgg().slice(0, 5) : listAllSgg();
+  log("init", `대상: ${sggList.length}개 시군구 (arcode 단위)${dryRun ? " — dry-run sample" : ""}`);
 
   /** @type {Array<{region: string, gu: string, agg: ChildcareAggregate}>} */
   const rows = [];

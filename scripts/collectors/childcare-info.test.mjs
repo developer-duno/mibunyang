@@ -9,7 +9,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { parseChildcareXml, aggregateChildcare, listAllSgg } = await import("./childcare-info.mjs");
+const { parseChildcareXml, aggregateChildcare, listAllSgg, assertNoErrorCode } = await import("./childcare-info.mjs");
 
 describe("parseChildcareXml", () => {
   // sample 응답 박제 (2026-05-16 실 API 호출 서울 종로구 arcode=11110 응답)
@@ -168,5 +168,42 @@ describe("listAllSgg", () => {
     for (const s of list) {
       expect(s.arcode).toMatch(/^\d{5}$/);
     }
+  });
+});
+
+describe("assertNoErrorCode", () => {
+  it("정상 item 응답 = 통과 (결과코드 없음)", () => {
+    const ok = `<response><item><stcode>11110000001</stcode><crname>가</crname></item></response>`;
+    expect(() => assertNoErrorCode(ok)).not.toThrow();
+  });
+
+  it("INFO-200 (검색결과 없음) = 통과 (정상 0건)", () => {
+    const empty = `<response><resultCode>INFO-200</resultCode></response>`;
+    expect(() => assertNoErrorCode(empty)).not.toThrow();
+  });
+
+  it("INFO-300 (일 요청 초과) = throw", () => {
+    const over = `<response><resultCode>INFO-300</resultCode></response>`;
+    expect(() => assertNoErrorCode(over)).toThrow(/INFO-300/);
+  });
+
+  it("INFO-400 (키 만료) = throw", () => {
+    const expired = `<response><resultCode>INFO-400</resultCode></response>`;
+    expect(() => assertNoErrorCode(expired)).toThrow(/INFO-400/);
+  });
+
+  it("INFO-100 (인증키 무효) = throw", () => {
+    const badKey = `<response><resultCode>INFO-100</resultCode></response>`;
+    expect(() => assertNoErrorCode(badKey)).toThrow(/INFO-100/);
+  });
+
+  it("ERROR-100 (필수항목 누락) = throw", () => {
+    const err = `<response><code>ERROR-100</code></response>`;
+    expect(() => assertNoErrorCode(err)).toThrow(/ERROR-100/);
+  });
+
+  it("태그명에 무관 — 본문 어디에 있어도 탐지", () => {
+    const loose = `오류: INFO-300 일 요청 건수를 초과하였습니다`;
+    expect(() => assertNoErrorCode(loose)).toThrow(/INFO-300/);
   });
 });
