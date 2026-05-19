@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv } from "./collectors/_shared.mjs";
+import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry } from "./collectors/_shared.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -90,42 +90,27 @@ async function phase1_applyhome() {
   if (!APPLYHOME_KEY) throw new Error("APPLYHOME_KEY not configured");
 
   log("Phase 1: 청약홈 목록 조회...");
-  const endpoints = [
-    `${APPLYHOME_BASE}/getRemndrLttotPblancDetail`,
-    `${APPLYHOME_BASE}/getAPTLttotPblancDetail`,
-  ];
+  // getRemndr 단일 엔드포인트 고정 — 잔여세대/추가모집(미분양) 공고. fallback 사고 방지
+  const usedEndpoint = `${APPLYHOME_BASE}/getRemndrLttotPblancDetail`;
 
   let items = [];
-  let usedEndpoint = null;
-  for (const ep of endpoints) {
-    try {
-      // 첫 페이지로 전체 건수 확인
-      const firstUrl = `${ep}?page=1&perPage=1000&returnType=JSON&serviceKey=${encodeURIComponent(APPLYHOME_KEY)}`;
-      const firstRes = await fetch(firstUrl);
-      if (!firstRes.ok) continue;
-      const firstJson = await firstRes.json();
-      if (!firstJson.data?.length) continue;
-      items = firstJson.data;
-      usedEndpoint = ep;
-      const totalCount = firstJson.matchCount || firstJson.totalCount || 0;
-      // 추가 페이지 fetch
-      if (totalCount > 1000) {
-        const totalPages = Math.ceil(totalCount / 1000);
-        for (let page = 2; page <= totalPages; page++) {
-          try {
-            const url = `${ep}?page=${page}&perPage=1000&returnType=JSON&serviceKey=${encodeURIComponent(APPLYHOME_KEY)}`;
-            const res = await fetch(url);
-            if (!res.ok) break;
-            const json = await res.json();
-            if (!json.data?.length) break;
-            items = items.concat(json.data);
-          } catch { break; }
-        }
-      }
-      log(`  총 ${totalCount}건 중 ${items.length}건 수신`);
-      break;
-    } catch { continue; }
+  // 첫 페이지로 전체 건수 확인 (fetchWithRetry: 일시 장애 시 3회 재시도, 소진 시 throw)
+  const firstUrl = `${usedEndpoint}?page=1&perPage=1000&returnType=JSON&serviceKey=${encodeURIComponent(APPLYHOME_KEY)}`;
+  const firstJson = await (await fetchWithRetry(firstUrl)).json();
+  if (!firstJson.data?.length) throw new Error("청약홈 API 빈 응답");
+  items = firstJson.data;
+  const totalCount = firstJson.matchCount || firstJson.totalCount || 0;
+  // 추가 페이지 fetch
+  if (totalCount > 1000) {
+    const totalPages = Math.ceil(totalCount / 1000);
+    for (let page = 2; page <= totalPages; page++) {
+      const url = `${usedEndpoint}?page=${page}&perPage=1000&returnType=JSON&serviceKey=${encodeURIComponent(APPLYHOME_KEY)}`;
+      const json = await (await fetchWithRetry(url)).json();
+      if (!json.data?.length) break;
+      items = items.concat(json.data);
+    }
   }
+  log(`  총 ${totalCount}건 중 ${items.length}건 수신`);
   if (!items.length) throw new Error("청약홈 API에서 데이터를 가져올 수 없습니다");
 
   // [DEBUG] API 응답 필드 전수 확인 (첫 항목)
