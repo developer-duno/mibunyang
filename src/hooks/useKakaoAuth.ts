@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { KakaoCallbackResult, UseKakaoAuthReturn } from "@/types/hooks";
 
 /**
@@ -21,7 +21,9 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
   const [kakaoLoading, setKakaoLoading] = useState<boolean>(false);
   const [kakaoError, setKakaoError] = useState<string>("");
   const showToastRef = useRef<(_msg: string) => void>(showToast);
-  showToastRef.current = showToast;
+  useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
 
   /** 카카오 인가 URL로 이동 (pendingDetailId: 로그인 후 복귀할 상세 ID) */
   const initKakaoLogin = useCallback((pendingDetailId?: string | null) => {

@@ -26,7 +26,10 @@ export default [
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-empty': 'warn',
       'react-hooks/refs': 'warn',
-      'react-hooks/set-state-in-effect': 'warn',
+      // set-state-in-effect: 경고 10건이 모두 AbortController 기반 비동기 데이터
+      // 페칭 등 정당한 패턴 (useHistoryData 팩토리 등). React 19 실험 룰이 이 훅
+      // 아키텍처에 과민 → off. ref 안티패턴은 react-hooks/refs 가 계속 잡음.
+      'react-hooks/set-state-in-effect': 'off',
     },
     settings: { react: { version: 'detect' } },
   },

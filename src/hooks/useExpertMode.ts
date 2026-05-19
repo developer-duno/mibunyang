@@ -37,8 +37,10 @@ export function useExpertMode(showToast: ShowToast) {
 
   const authFormRef = useRef(authForm);
   const showToastRef = useRef(showToast);
-  authFormRef.current = authForm;
-  showToastRef.current = showToast;
+  useEffect(() => {
+    authFormRef.current = authForm;
+    showToastRef.current = showToast;
+  }, [authForm, showToast]);
 
   const handleExpertLogin = useCallback(async () => {
     const form = authFormRef.current;
