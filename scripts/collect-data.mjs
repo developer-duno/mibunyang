@@ -1074,8 +1074,20 @@ async function main() {
   // 내부 필드 제거
   apartments = apartments.map(({ _regionalUnsold, _avgIncome, _kosisEstimated, ...rest }) => rest);
 
+  // list 1.66MB (가격배열 4개 제외) + prices 11.35MB (id + 4 배열) 분리 출력 + 원본 13MB 유지 (롤백 안전)
+  const listData = apartments.map(({ priceByArea, rentByArea, jeonseByArea, priceByFloor, ...rest }) => rest);
+  const pricesData = apartments.map(a => ({
+    id: a.id,
+    priceByArea: a.priceByArea ?? null,
+    rentByArea: a.rentByArea ?? null,
+    jeonseByArea: a.jeonseByArea ?? null,
+    priceByFloor: a.priceByFloor ?? null,
+  }));
+
   const output = { ok: true, data: apartments, count: apartments.length, fetchedAt };
   writeFileSync(resolve(outDir, "apartments.json"), JSON.stringify(output));
+  writeFileSync(resolve(outDir, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt }));
+  writeFileSync(resolve(outDir, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt }));
   writeFileSync(resolve(outDir, "meta.json"), JSON.stringify(meta, null, 2));
 
   const elapsed = Math.round((Date.now() - startTime) / 1000);

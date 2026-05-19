@@ -4,9 +4,31 @@ import { fmtPrice } from "@/lib/format";
 import { thStyle, tdStyle } from "./tableStyles";
 import type { PriceTableProps, PriceAreaRow } from "@/types/detail";
 
-export const PriceTable = memo(function PriceTable({ apt }: PriceTableProps) {
+export const PriceTable = memo(function PriceTable({ apt, isLoading, error }: PriceTableProps) {
   const allSell = (apt.priceByArea as PriceAreaRow[] | undefined) ?? [];
-  if (allSell.length === 0) return null;
+  // 가격배열 미로드 — apartments-prices.json lazy fetch 동안 placeholder 또는 에러 메시지
+  if (allSell.length === 0) {
+    if (isLoading) {
+      return (
+        <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>인근 매매 시세</div>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{ height: 14, background: C.slate100, borderRadius: 4, marginBottom: 6 }} aria-hidden="true" />
+          ))}
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4 }}>가격 정보를 불러오는 중…</div>
+        </div>
+      );
+    }
+    if (error) {
+      return (
+        <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 4 }}>인근 매매 시세</div>
+          <div style={{ fontSize: F.xs, color: C.red }}>가격 정보를 불러오지 못했습니다. 새로고침해 주세요.</div>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const allRent = (apt.rentByArea as PriceAreaRow[] | undefined) ?? [];
   const aptArea = Number(apt.area ?? 0);
@@ -51,7 +73,7 @@ export const PriceTable = memo(function PriceTable({ apt }: PriceTableProps) {
         <tbody>{sellRows.map((p, i) => {
           const isSimilar = Math.abs(p.area - aptArea) <= 5;
           return (
-          <tr key={i} style={{ background: isSimilar ? C.indigoLight : "transparent" }}>
+          <tr key={i} data-testid="price-table-row" style={{ background: isSimilar ? C.indigoLight : "transparent" }}>
             <td style={{ ...tdStyle, fontWeight: 600 }}>{isSimilar ? "★ " : ""}{p.area}㎡</td>
             <td style={tdStyle}>{fmtPrice(p.min)}</td>
             <td style={{ ...tdStyle, fontWeight: 700, color: C.blue }}>{fmtPrice(p.avg)}</td>

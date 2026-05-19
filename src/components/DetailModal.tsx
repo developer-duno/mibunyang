@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { C, F, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { ScoreBadge, Radar } from "./primitives";
@@ -14,6 +14,7 @@ import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { MarketStatsCharts } from "./detail/MarketStatsCharts";
 import { IconClose } from "./icons";
+import { fetchApartmentPrices, type PriceArrays } from "@/services/staticDataApi";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
 
 const UNSOLD_WARN_THRESHOLD = 15;
@@ -38,6 +39,10 @@ const DM_S = {
 export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult }: DetailModalProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocusRef = useRef<Element | null>(null);
+  // 가격배열 lazy fetch (apartments-prices.json) 상태 — DetailModal 첫 열림 시 1회 9.7MB fetch + 모듈 Map 캐시
+  const [prices, setPrices] = useState<PriceArrays | null>(null);
+  const [pricesLoading, setPricesLoading] = useState(false);
+  const [pricesError, setPricesError] = useState<string | null>(null);
   useEffect(() => {
     if (!item) return;
     prevFocusRef.current = document.activeElement;
@@ -68,6 +73,36 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
     // 포커스가 닫기 버튼으로 튀거나 body overflow 가 깜박이는 것 방지. exhaustive-deps 의도적 위반.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!item, onClose]);
+
+  // 가격배열 lazy fetch — item 변경 시마다 (캐시 hit 으로 안전)
+  useEffect(() => {
+    if (!item) { setPrices(null); setPricesError(null); setPricesLoading(false); return; }
+    const aptId = item.apt.id as string;
+    // Supabase 분기 가드 — apartments_flat VIEW 는 priceByArea 항상 응답 (null 가능).
+    // null/배열 모두 "이미 들어온 응답" 이므로 fetch skip. Apt 타입에 priceByArea 미정의 → 캐스팅 1회.
+    if ((item.apt as { priceByArea?: unknown }).priceByArea !== undefined) {
+      setPrices(null); setPricesError(null); return;
+    }
+    let cancelled = false;
+    setPricesLoading(true);
+    setPricesError(null);
+    fetchApartmentPrices(aptId)
+      .then(p => { if (!cancelled) { setPrices(p); setPricesLoading(false); } })
+      .catch(err => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[DetailModal] prices fetch 실패", msg);
+        setPricesError(msg);
+        setPricesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [item]);
+  // 가격배열 병합 — useMemo + item?.apt.id deps 로 item ref 변경마다 무효화 차단.
+  // hook 순서 보장 위해 conditional return 이전에 호출. item 미정의 시 빈 객체 반환.
+  const mergedApt = useMemo(
+    () => (item && prices ? { ...item.apt, ...prices } : item?.apt),
+    [item?.apt.id, item?.apt, prices],
+  );
 
   if (!item) return null;
   const { apt, res } = item;
@@ -136,7 +171,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           </div>
         )}
 
-        <PriceTable apt={apt} />
+        <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
 
@@ -146,11 +181,11 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         <PresaleInfo apt={apt} />
 
-        <LoanAnalysis apt={apt} />
+        <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
 
         <MarketStatsCharts region={apt.region} gu={apt.gu} />
 
-        <DataSections apt={apt} />
+        <DataSections apt={mergedApt ?? apt} />
         {onConsult && (
           <button onClick={() => onConsult(apt.id as string)} style={{
             width: "100%", background: C.blue, color: C.white, border: "none", borderRadius: 8,

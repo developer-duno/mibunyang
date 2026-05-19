@@ -8,7 +8,7 @@ import { LoanRatesSection } from "./LoanRatesSection";
 import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
 import type { PriceAreaRow } from "@/types/detail";
 
-export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProps) {
+export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }: LoanAnalysisProps) {
   const [showLegal, setShowLegal] = useState(false);
   const { rates: rentRates, loading: rentLoading } = useRentLoanRates() as { rates: Array<{ rateMin?: number | null }>; loading: boolean };
 
@@ -57,6 +57,12 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
             <div style={{ fontSize: F.base, fontWeight: 800, color: C.red }}>{fmtPrice(needCash)}</div>
           </div>
         </div>
+        {!hasDetail && isLoading && (
+          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4 }}>가격 정보를 불러오는 중…</div>
+        )}
+        {!hasDetail && !isLoading && error && (
+          <div style={{ fontSize: F.xs, color: C.red, marginTop: 4 }}>가격 정보를 불러오지 못했습니다. 새로고침해 주세요.</div>
+        )}
         {hasDetail && (
           <>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>

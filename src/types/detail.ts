@@ -89,9 +89,12 @@ export interface NearbyChildcareSectionProps {
 
 /**
  * PriceTable props (86줄).
+ * isLoading / error: 가격배열 lazy fetch (apartments-prices.json) 진행 상태.
  */
 export interface PriceTableProps {
   apt: Apt;
+  isLoading?: boolean;
+  error?: string | null;
 }
 
 /**
