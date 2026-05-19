@@ -1,3 +1,70 @@
+# 세션 279 — 2026-05-20 (apartments.json 13MB → list 1.66MB + prices 11.35MB lazy 분리 + Vercel Brotli 198KB/858KB 적용)
+
+**거시 목적**: BACKLOG 🟢 1순위 `apartments.json 13MB → 목록 경량 분리` 마감. 세션 278 brainstorming 으로 옵션 A 확정 + 코드 10 파일 + 2 신규 JSON 작성 완료 상태에서 본 세션 진입 — 검증 + 커밋 + push + 운영 배포 + 박제.
+
+**결론**: **3 커밋 push** (6714fa7 + b57de6b + 7eb2a2e). 첫 LCP 페이로드 1MB → **198KB** (Brotli 적용 후 -80%). DetailModal 첫 클릭 시만 prices 858KB lazy fetch + 모듈 Map 캐시.
+
+## 사고 박제 (자가 점검 1+2 v3 4회 반복)
+
+본 세션 사용자 5번 지시 누적 자가 점검 — 환각 사냥 깊이 박제.
+
+### 1차 자가 점검 (사용자 옵션 B "코드 리뷰부터 처음 다시" 선택 후)
+- 12 파일 (10 modified + 2 untracked) 전수 Read
+- 발견 4건: NEXT_SESSION 박제값 drift (list 3.9 → 1.66MB, prices 9.7 → 11.35MB) + collect-data.mjs L1077 주석 stale + DetailModal L82~85 Supabase 가드 단정 의심
+- 실측 검증: typecheck 0 / vitest 190 files 2993 pass 95s / vite build 887ms
+
+### 2차 자가 점검 (사용자 "맹점/환각 끝까지" 지시 후)
+- 서브에이전트 3개 (Explore A/B/C) 병렬 환각 사냥 + 직접 실측 6건 (다수결 금지 답습)
+- 발견 12건 분류: 본 PR 정정 4건 + 별 PR 박제 4건 + 검증 후 OK 4건
+- plan v1 → v2 정정 (commit msg "외부 도구 18 파일" 단정 / gzip "기대값 ~400KB" 단정 → 정확한 grep + 실측)
+
+### 3차 사고 (운영 배포 후 환각 발견)
+- 6714fa7 push 후 Vercel 배포 → prod URL gzip 실측 → list/prices 정적 자산 부재 → **SPA fallback (index.html 2005B) 사고**
+- 원인: plan v2 자가 점검 #9 "npx vite build 안전 답습 ✅" 환각 — 로컬 검증만 통과. Vercel build 시 prebuild.mjs L8 `if (process.env.VERCEL) exit(0)` → collect 0회 → list/prices 미생성
+- 정정 b57de6b: scripts/split-apartments-json.mjs 신규 + prebuild.mjs L8 VERCEL 분기에서 split 호출 (API 호출 0, git tracked apartments.json 만 분리)
+
+### 4차 사고 (b57de6b 빌드 실패)
+- Vercel 빌드 로그 raw 1회 의무 답습 → `Cannot find module '/vercel/path0/scripts/split-apartments-json.mjs'`
+- 원인: `.vercelignore` L7~10 `scripts/` 전체 ignore + `!scripts/prebuild.mjs` 1 파일 whitelist 패턴. split-apartments-json.mjs 미포함
+- 정정 7eb2a2e: `.vercelignore` L11 `!scripts/split-apartments-json.mjs` 1줄 추가
+
+## 본 세션 작업 (3 커밋)
+
+| # | 커밋 | 파일 | 내용 |
+|---|---|---|---|
+| 1 | 6714fa7 | 11 (10 코드 + .gitignore) | 분리 코드 + 운영 데이터 gitignore |
+| 2 | b57de6b | 3 (prebuild + split + spec) | Vercel SPA fallback 정정 + spec 박제 |
+| 3 | 7eb2a2e | 1 (.vercelignore) | whitelist 누락 정정 |
+
+## 운영 실측 (Vercel Brotli 자동 압축)
+
+| 자산 | 원본 | Brotli 후 | 압축률 |
+|---|---|---|---|
+| `apartments-list.json` | 1.66MB | **198KB** | -88.4% |
+| `apartments-prices.json` | 11.35MB | **858KB** | -92.6% |
+
+- 첫 진입 페이로드: 1MB → **198KB** (~-80%)
+- DetailModal 첫 클릭 시만 prices 858KB lazy fetch
+- 모듈 Map 캐시 (useHistoryData 패턴 답습) → 같은 단지 재진입 시 즉시
+
+## 답습 자산 (다음 세션 의무)
+
+- `feedback_subagent_report_trust` — 서브에이전트 3개 보고 후 직접 실측 6건 (다수결 금지, 정확히 동작)
+- `next-session-grep-mandate` — NEXT_SESSION 박제값 grep + 실측 (1.66MB / 11.35MB) drift 발견
+- `feedback_gitignore_negation_pattern` — 단계 2-검증 cycle (git check-ignore -v) 박제
+- `feedback_npm_build_runs_etl` — **본 세션 환각 핵심** — "Vercel build = prebuild skip = list/prices 부재" 답습 누락 → SPA fallback 사고
+- `feedback_simulation_mandate` — VERCEL=1 환경 simulate 의무 → b57de6b 후속 sim 시뮬레이션 1회 성공 (시뮬은 OK 였지만 `.vercelignore` 차단 발견 못 함)
+- **신규 박제 의무**: `.vercelignore` whitelist 패턴 시 신규 scripts 파일 추가 시 동시 정정 의무 (새 메모 파일 박제)
+
+## 잔여 (BACKLOG 박제)
+
+- 🟡 DetailModal Supabase 가드 환각 (null !== undefined → fetch skip)
+- 🟢 dataUpdatedAt vs fetchedAt drift / 4 collector --json stale / ARCHITECTURE.md stale / 모바일 OOM
+
+참조: `docs/superpowers/specs/2026-05-20-apartments-json-split-design.md`
+
+---
+
 # 세션 259 — 2026-05-16 (KOSIS 주택보급률 #4 미완 완성 — 운영 적재)
 
 **거시 목적**: BACKLOG `📦 KOSIS 추가 데이터 보강` #4 (新)주택보급률. 세션 237 W1 에 collector·test·워크플로·data-fill 등재 모두 작성됐으나 한 번도 동작하지 않은 미완 방치 작업을 운영 적재로 종료.
