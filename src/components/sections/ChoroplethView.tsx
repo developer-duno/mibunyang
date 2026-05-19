@@ -5,6 +5,7 @@ import { gr, C, F } from "@/theme";
 import { geoJsonFeatureToKakaoPaths } from "@/lib/geoJsonToKakaoPaths";
 import { SkeletonText } from "../primitives";
 import { ChoroplethLegend } from "./ChoroplethLegend";
+import { getKakaoMaps } from "./kakaoMapHelpers";
 import type { ChoroplethViewProps } from "@/types/components/ChoroplethView.types";
 
 const ChoroplethSigunguOverlay = lazy(() =>
@@ -42,7 +43,7 @@ export const ChoroplethView = memo(function ChoroplethView({
   // 0. 줌 이벤트 리스너 (level 동기화)
   useEffect(() => {
     if (!ready || !mapInstance) return;
-    const kakao = (window as any).kakao?.maps;
+    const kakao = getKakaoMaps();
     if (!kakao?.event) return;
     const handler = () => setLevel((mapInstance as any).getLevel());
     kakao.event.addListener(mapInstance, "zoom_changed", handler);
@@ -73,7 +74,7 @@ export const ChoroplethView = memo(function ChoroplethView({
   // 2. 폴리곤 그리기 + cleanup
   useEffect(() => {
     if (!ready || !mapInstance || !geoData) return;
-    const kakao = (window as any).kakao?.maps;
+    const kakao = getKakaoMaps();
     if (!kakao?.Polygon) return;
 
     // 시군구 모드일 땐 시도 폴리곤 전부 cleanup 후 종료

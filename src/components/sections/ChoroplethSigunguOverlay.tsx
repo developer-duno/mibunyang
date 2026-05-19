@@ -3,6 +3,7 @@ import { gr, C, F } from "@/theme";
 import { useRegionAverages } from "@/hooks/useRegionAverages";
 import { geoJsonFeatureToKakaoPaths } from "@/lib/geoJsonToKakaoPaths";
 import { geoSigunguToByGuKey } from "@/lib/geoJsonGuToDbKey";
+import { getKakaoMaps } from "./kakaoMapHelpers";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
@@ -49,7 +50,7 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
   // 2. 폴리곤 그리기 + cleanup
   useEffect(() => {
     if (!ready || !mapInstance || !geoData) return;
-    const kakao = (window as any).kakao?.maps;
+    const kakao = getKakaoMaps();
     if (!kakao?.Polygon) return;
 
     polygonsRef.current.forEach(p => p.setMap(null));

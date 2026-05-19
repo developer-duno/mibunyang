@@ -4,7 +4,7 @@ import { InfraOverlay } from "./InfraOverlay";
 import { SelectedAptCard } from "./SelectedAptCard";
 import {
   MAP_DEFAULTS, CLUSTER_OPTS, MY_LOC_LEVEL, GEO_TIMEOUT,
-  shortPrice, buildMarkerSvg, loadKakaoMapSdk,
+  shortPrice, buildMarkerSvg, loadKakaoMapSdk, getKakaoMaps,
 } from "./kakaoMapHelpers";
 import type { MapViewProps } from "@/types/components/MapView.types";
 import type { Apt } from "@/types/scoring";
@@ -31,17 +31,18 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     loadKakaoMapSdk()
       .then(() => {
         if (cancelled) return;
-        const kakao = (window as any).kakao;
-        kakao.maps.load(() => {
+        const maps = getKakaoMaps();
+        if (!maps) return;
+        maps.load(() => {
           if (cancelled || !mapRef.current || mapInstanceRef.current) return;
-          const map = new kakao.maps.Map(mapRef.current, {
-            center: new kakao.maps.LatLng(MAP_DEFAULTS.lat, MAP_DEFAULTS.lng),
+          const map = new maps.Map(mapRef.current, {
+            center: new maps.LatLng(MAP_DEFAULTS.lat, MAP_DEFAULTS.lng),
             level: MAP_DEFAULTS.level,
           });
-          map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+          map.addControl(new maps.ZoomControl(), maps.ControlPosition.RIGHT);
           mapInstanceRef.current = map;
           setMapInstance(map);
-          clustererRef.current = new kakao.maps.MarkerClusterer({
+          clustererRef.current = new maps.MarkerClusterer({
             map,
             averageCenter: true,
             minLevel: CLUSTER_OPTS.minLevel,
@@ -76,7 +77,8 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   // 마커 업데이트 — point 모드에서만 동작 (color 모드는 event handler 가 clear 처리)
   useEffect(() => {
     if (!ready || !clustererRef.current || mode !== "point") return;
-    const kakao = (window as any).kakao.maps;
+    const kakao = getKakaoMaps();
+    if (!kakao) return;
     clustererRef.current.clear();
     // filtered 변경 시 이전 선택 정리 — 새 filtered 에서 사라진 단지의 selected 카드가 남는 것 방지
     setSelected(null);
@@ -133,7 +135,8 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     if (!ready || !mapInstance || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const kakao = (window as any).kakao.maps;
+        const kakao = getKakaoMaps();
+        if (!kakao) return;
         const loc = new kakao.LatLng(pos.coords.latitude, pos.coords.longitude);
         if (myLocMarkerRef.current) myLocMarkerRef.current.setPosition(loc);
         else {

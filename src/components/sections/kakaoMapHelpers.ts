@@ -33,6 +33,43 @@ export function buildMarkerSvg(total: number, gradeColor: string, priceLabel: st
   return { w, h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="${gradeColor}"/><circle cx="14" cy="13" r="9" fill="#fff"/><text x="14" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="${gradeColor}">${total}</text></svg>` };
 }
 
+/**
+ * Kakao Maps SDK 표면 타입. 외부 SDK 라 정밀 타입 정의 불가 —
+ * 생성자/메서드를 느슨하게 선언해 `(window as any)` 캐스트를 이 파일 1곳에 격리.
+ * 생성자 인자는 `...args: any[]` — 타입 격리 목적이지 호출부 인자 강제 narrow 가 아님.
+ */
+export interface KakaoMaps {
+  Map: new (..._args: any[]) => any;
+  LatLng: new (..._args: any[]) => any;
+  LatLngBounds: new (..._args: any[]) => any;
+  Marker: new (..._args: any[]) => any;
+  MarkerImage: new (..._args: any[]) => any;
+  MarkerClusterer: new (..._args: any[]) => any;
+  Polygon: new (..._args: any[]) => any;
+  Size: new (..._args: any[]) => any;
+  Point: new (..._args: any[]) => any;
+  ZoomControl: new (..._args: any[]) => any;
+  ControlPosition: { RIGHT: number };
+  event: {
+    // addListener/removeListener 는 kakao 버전마다 인자 수가 다르다 → rest 파라미터.
+    // removeListener 는 일부 버전 미지원이라 옵셔널(?:).
+    addListener: (..._args: unknown[]) => unknown;
+    removeListener?: (..._args: unknown[]) => void;
+  };
+  services: {
+    Places: new (..._args: any[]) => any;
+    Status: { OK: string };
+    SortBy: { DISTANCE: string };
+  };
+  load: (_callback: () => void) => void;
+}
+
+/** window.kakao.maps 를 타입 안전하게 반환. SDK 미로드 시 null. */
+export function getKakaoMaps(): KakaoMaps | null {
+  const k = (window as unknown as { kakao?: { maps?: KakaoMaps } }).kakao;
+  return k?.maps ?? null;
+}
+
 /** Kakao Maps SDK를 동적 로드 (환경변수 기반, index.html 하드코딩 제거) */
 export function loadKakaoMapSdk(): Promise<void> {
   return new Promise((resolve, reject) => {

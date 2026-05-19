@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useRef, useCallback } from "react";
 import { C, F } from "@/theme";
+import { getKakaoMaps } from "./kakaoMapHelpers";
 
 /**
  * 인프라 카테고리 정의
@@ -35,12 +36,12 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: I
 
   // 카테고리 마커 검색 + 표시
   const searchAndShow = useCallback((categoryCode: string, emoji: string) => {
-    if (!mapInstance || !(window as any).kakao?.maps?.services) return;
+    const kakao = getKakaoMaps();
+    if (!mapInstance || !kakao?.services) return;
     // 기존 마커 제거
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
-    const kakao = (window as any).kakao.maps;
     const ps = new kakao.services.Places();
     const center = (mapInstance as any).getCenter();
 
@@ -74,13 +75,14 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: I
 
     // 지도 이동 시 debounce로 재검색
     if (!mapInstance) return;
-    const kakao = (window as any).kakao.maps;
+    const kakao = getKakaoMaps();
+    if (!kakao) return;
     const listener = kakao.event.addListener(mapInstance, "idle", () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = setTimeout(() => searchAndShow(cat.code, cat.emoji), INFRA_DEBOUNCE_MS);
     });
     return () => {
-      kakao.event.removeListener(listener);
+      kakao.event.removeListener?.(listener);
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
