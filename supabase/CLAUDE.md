@@ -117,32 +117,44 @@ DB는 naver-estate-web 기준 컬럼명으로 정규화됨:
 
 ---
 
-## Dashboard SQL Editor 수동 실행 (마이그레이션 표준 절차)
+## 마이그레이션 적용 (Dashboard 수동 또는 supabase CLI 단발 적용)
 
-`apply-migration.yml` workflow 는 폐기됨 (세션 248). DDL 적용은 사용자 Dashboard SQL Editor 직접 실행이 표준.
+`apply-migration.yml` workflow 는 폐기됨 (세션 248).
 
-### 절차
+### 방법 A — supabase CLI 단발 적용 (세션 274 답습, 로컬 작업 시 권장)
+
+로컬에 `supabase` CLI 가 로그인 + 프로젝트 LINKED 돼 있으면 (`supabase projects list`
+에 `rwdtljipvmqpazrimyns` ● LINKED):
+
+```bash
+# 적용 직전 상태 확인
+supabase db query --linked --file /tmp/precheck.sql
+# 신규 마이그만 단발 적용
+supabase db query --linked --file supabase/migrations/<최신>.sql
+```
+
+> ⚠️ `supabase db push` 는 **금지**. push 는 마이그 히스토리상 미적용 마이그를 *전부*
+> 재시도 → 과거의 깨진 마이그(예: 공유 테이블 부재로 실패한 `20260320170000`)까지
+> 다시 돌려 실패. 신규 SQL 만 `db query --file` 로 직접 적용.
+> 시뮬레이션이 필요하면 SQL 을 `BEGIN; ... ROLLBACK;` 으로 감싸 적용 후 검증 → DB 변경 0.
+
+### 방법 B — Dashboard SQL Editor 수동 실행
+
+CLI 가 없거나 사용자가 직접 적용할 때:
 
 1. Supabase Dashboard 접속 → 좌측 SQL Editor
-2. `supabase/migrations/<최신>.sql` 본문 전체 복사
-3. SQL Editor 에 붙여넣기 + 다음 한 줄 추가:
-
-   ```sql
-   NOTIFY pgrst, 'reload schema';
-   ```
-
+2. `supabase/migrations/<최신>.sql` 본문 전체 복사 → 붙여넣기
+3. 마지막 줄에 `NOTIFY pgrst, 'reload schema';` 추가 (마이그에 이미 있으면 생략)
 4. Run 버튼 → 결과 확인 (에러 0건 + Success 응답)
 5. 후속 collector 호출로 컬럼 채움 검증
 
 ### 공유 DB 컨텍스트
 
-mibunyang ↔ naver-estate-web 공유 instance `rwdtljipvmqpazrimyns`. 어느 프로젝트 컨텍스트로 Dashboard 진입해도 동일 적용. 마이그 파일 본문에 RLS/공용 테이블 영향 있으면 위 "공유 DB 규칙" 절 사전 확인 의무.
-
-### Why Dashboard SQL Editor (옵션 B 선택 근거)
-
-- Supabase Management API + PAT secret 자동화 (옵션 A) = PAT 권한 범위 = 발급 계정 모든 프로젝트, 보안 위험 큼
-- supabase CLI db push (옵션 C) = GitHub Actions runner CLI 설치 + 인증 토큰, 복잡도 큼
-- Dashboard 1분 수동 = 안전 + 단순. 마이그 빈도 월 1~2회로 자동화 ROI 낮음
+mibunyang ↔ naver-estate-web 공유 instance `rwdtljipvmqpazrimyns`. 어느 프로젝트
+컨텍스트로 진입해도 동일 적용. 마이그 본문에 RLS/공용 테이블 영향 있으면 위 "공유 DB
+규칙" 절 사전 확인 의무. 공용 테이블(complexes/articles/complex_price_history) 의
+RLS·정책은 **naver-estate-web 소유** (`V007`/`V001` 마이그) — mibunyang 에서 정책
+생성 금지.
 
 ### 사고 답습 (세션 245 → 247)
 
