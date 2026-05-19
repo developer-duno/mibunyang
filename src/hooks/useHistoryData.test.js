@@ -1,11 +1,12 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { useHistoryData } from "./useHistoryData";
+import { useHistoryData, _clearHistoryCache } from "./useHistoryData";
 
 describe("useHistoryData", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    _clearHistoryCache();
   });
 
   afterEach(() => {

@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
-import { useMarketStatsHistory } from "./useMarketStatsHistory";
+import { useMarketStatsHistory, _clearMarketStatsCache } from "./useMarketStatsHistory";
 
 const SAMPLE = [
   { region: "서울", gu: "강남구", base_month: "202503", price_index: 105.2 },
@@ -10,6 +10,7 @@ const SAMPLE = [
 
 describe("useMarketStatsHistory", () => {
   beforeEach(() => {
+    _clearMarketStatsCache();
     globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => Promise.resolve(/** @type {Response} */ ({
       ok: true,
       status: 200,
@@ -43,6 +44,14 @@ describe("useMarketStatsHistory", () => {
     const { result } = renderHook(() => useMarketStatsHistory("서울", "강남구"));
     await waitFor(() => expect(result.current.error).toBeTruthy());
     expect(result.current.error).toContain("잠시 후 다시");
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("non-Error 예외(문자열 throw) → String(err) 로 error 설정", async () => {
+    globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => Promise.reject("문자열에러")));
+    const { result } = renderHook(() => useMarketStatsHistory("서울", "강남구"));
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(result.current.error).toBe("문자열에러");
     expect(result.current.loading).toBe(false);
   });
 

@@ -5,9 +5,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { usePriceHistory } from "./usePriceHistory";
+import { _clearHistoryCache } from "./useHistoryData";
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  _clearHistoryCache();
   vi.spyOn(globalThis, "fetch").mockResolvedValue(/** @type {Response} */ ({
     ok: true,
     json: () => Promise.resolve({ ok: true, data: [{ price: 50000 }] }),

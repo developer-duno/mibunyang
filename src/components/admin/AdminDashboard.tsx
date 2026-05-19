@@ -62,7 +62,7 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       {/* 검색 */}
       <div style={{ position: "relative", marginBottom: 12 }}>
         <input
-          type="text" placeholder="이름, 이메일, 소속 검색..." value={admin.searchQuery}
+          type="text" aria-label="사용자 검색" placeholder="이름, 이메일, 소속 검색..." value={admin.searchQuery}
           onChange={e => admin.setSearchQuery(e.target.value)}
           style={{
             width: "100%", padding: "8px 32px 8px 12px", fontSize: F.base, borderRadius: 8,
