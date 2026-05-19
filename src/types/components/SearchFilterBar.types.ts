@@ -41,7 +41,7 @@ export interface SearchFilterBarProps {
   filteredLength: number;
   scoredLength: number;
   onShareFilters?: () => void;
-  onApplyPreset?: (_p: any) => void;
+  onApplyPreset?: (_p: Record<string, string | boolean>) => void;
   onSavePreset?: (_name: string) => void;
   onDeletePreset?: (_name: string) => void;
   customPresets?: FilterPreset[];

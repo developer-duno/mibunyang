@@ -6,17 +6,15 @@
 import { memo, useState, useCallback } from "react";
 import { C, F } from "@/theme";
 import { FILTER_PRESETS } from "@/constants/filterPresets";
-
-type Preset = { name?: string; key?: string; label?: string; desc?: string; values?: Record<string, unknown>; filters?: Record<string, unknown>; [k: string]: unknown };
-type HistoryItem = { name?: string; ts?: number; sig?: string; count?: number; filters?: Record<string, unknown>; [key: string]: unknown };
+import type { FilterPreset, FilterHistoryEntry } from "@/types/hooks";
 
 type PresetPanelProps = {
-  customPresets?: Preset[];
-  onApplyPreset: (_preset: Preset) => void;
+  customPresets?: FilterPreset[];
+  onApplyPreset?: (_preset: Record<string, string | boolean>) => void;
   onSavePreset?: (_name: string) => void;
   onDeletePreset?: (_name: string) => void;
-  filterHistory?: HistoryItem[];
-  onApplyHistory?: (_h: HistoryItem) => void;
+  filterHistory?: FilterHistoryEntry[];
+  onApplyHistory?: (_h: FilterHistoryEntry) => void;
   onClearHistory?: () => void;
   activeFilterCount: number;
   closePanel: () => void;
@@ -54,8 +52,8 @@ export const PresetPanel = memo(function PresetPanel({
       <div>
         <div style={{ fontSize: F.micro, color: C.muted, fontWeight: 600, marginBottom: 4 }}>추천 프리셋</div>
         <div style={{ display: "flex", gap: 3, flexWrap: "wrap" as const }}>
-          {(FILTER_PRESETS as Preset[]).map((p: Preset) => (
-            <button key={p.key as string} onClick={() => { onApplyPreset((p.values ?? p) as Preset); closePanel(); }} title={p.desc} style={{
+          {FILTER_PRESETS.map((p) => (
+            <button key={p.key} onClick={() => { onApplyPreset?.(p.values); closePanel(); }} title={p.desc} style={{
               flex: "1 0 auto", fontSize: F.xs, fontWeight: 600, padding: "4px 8px", height: 30,
               background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`,
               borderRadius: 5, cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap" as const,
@@ -68,14 +66,14 @@ export const PresetPanel = memo(function PresetPanel({
         <div>
           <div style={{ fontSize: F.micro, color: C.muted, fontWeight: 600, marginBottom: 4 }}>내 프리셋</div>
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap" as const }}>
-            {customPresets.map((p: Preset) => (
-              <span key={p.key as string} style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
-                <button onClick={() => { onApplyPreset((p.values ?? p) as Preset); closePanel(); }} title={p.desc} style={{
+            {customPresets.map((p) => (
+              <span key={p.key} style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+                <button onClick={() => { onApplyPreset?.(p.values); closePanel(); }} title={p.desc} style={{
                   fontSize: F.xs, fontWeight: 600, padding: "4px 8px", height: 30,
                   background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
                   borderRadius: "5px 0 0 5px", cursor: "pointer", whiteSpace: "nowrap" as const,
                 }}>{p.label}</button>
-                <button onClick={() => { if (onDeletePreset) { onDeletePreset(p.key as string); showToast("프리셋이 삭제되었습니다"); } }} aria-label={`${p.label} 삭제`} style={{
+                <button onClick={() => { if (onDeletePreset) { onDeletePreset(p.key); showToast("프리셋이 삭제되었습니다"); } }} aria-label={`${p.label} 삭제`} style={{
                   fontSize: 9, padding: "4px 5px", height: 30, background: C.greenLight, color: C.green,
                   border: `1px solid ${C.green}`, borderLeft: "none", borderRadius: "0 5px 5px 0", cursor: "pointer",
                 }}>✕</button>
@@ -111,7 +109,7 @@ export const PresetPanel = memo(function PresetPanel({
             border: `1px solid ${C.border}`, borderRadius: 4, background: C.slate100, color: C.slate600, cursor: "pointer",
           }}>
             <option value="" disabled>히스토리 ({(filterHistory ?? []).length})</option>
-            {filterHistory.map((h: HistoryItem, i: number) => (
+            {filterHistory.map((h, i) => (
               <option key={h.sig ?? `h-${i}`} value={i}>필터 {h.count ?? 0}개{h.ts ? ` · ${new Date(h.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : ""}</option>
             ))}
           </select>

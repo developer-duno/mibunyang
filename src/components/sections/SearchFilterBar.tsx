@@ -145,13 +145,13 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       <FilterDropdown isOpen={openPanel === "preset"} label="추천" isDesktop={isDesktop}>
         <PresetPanel
           key={openPanel === "preset" ? "open" : "closed"}
-          customPresets={customPresets as any}
-          onApplyPreset={onApplyPreset as any}
-          onSavePreset={onSavePreset as any}
-          onDeletePreset={onDeletePreset as any}
-          filterHistory={filterHistory as any}
-          onApplyHistory={onApplyHistory as any}
-          onClearHistory={onClearHistory as any}
+          customPresets={customPresets}
+          onApplyPreset={onApplyPreset}
+          onSavePreset={onSavePreset}
+          onDeletePreset={onDeletePreset}
+          filterHistory={filterHistory}
+          onApplyHistory={onApplyHistory}
+          onClearHistory={onClearHistory}
           activeFilterCount={activeFilterCount}
           closePanel={closePanel}
           showToast={showToast}
