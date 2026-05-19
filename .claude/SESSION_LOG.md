@@ -8655,3 +8655,144 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 
 - **plan v1 전제값 검증 = stale 발견** — NEXT_SESSION L92-94 가 #4 를 "1순위 미완"으로 박제했으나 세션 263 에서 이미 완성·push 됨. NEXT_SESSION 헤더가 "세션 262"에 머물러 세션 263 산출을 미반영. `next-session-grep-mandate` §1 답습 — 작업 진입 직전 커밋 이력(`git log | grep`) + 메모리 grep 으로 박제값 stale 확인
 - **수기 복제 상수는 정합성 테스트로 강제** — 두 파일에 같은 키 집합이 손으로 복제되면 drift 무방어. 한쪽을 진실 소스로 두고 다른 쪽이 그것과 일치하는지 테스트로 박으면 즉시 빨강. `secret-naming-audit.md` 3-way 동기화 사고 답습과 동류 패턴
+
+## 세션 265 (2026-05-17) — 월간 schedule 데드존 monitor 보강
+
+**거시 목적**: `checkStaleWorkflows` 가 "최근 50 run 등장 워크플로"만 점검 대상으로 삼아, 월간 cron 워크플로가 35일+ 죽으면 최근 run 에서 사라져 stale 알림 데드존 발생.
+
+**결론**: 2 커밋 `f965a6c`/`7d1dd54` 미push. 점검 대상을 `monitor.yml workflows` 배열(31개) 전체로 교체 (`extractMonitoredWorkflows` 재사용 → audit(CI)+stale 단일 진실 출처). vitest 25→29.
+
+**답습**: 이름 같은 점검 함수 ≠ 동작. 입력 흐름 grep 의무.
+
+## 세션 266 (2026-05-18) — KOSIS 합계출산율 collector 신규
+
+**거시 목적**: regions 표 fertility_rate 컬럼 미수집. KOSIS DT_1B81A17 시군구 단위 수집.
+
+**결론**: 1 커밋 `6524eea` 미push. `collect-fertility-rate.mjs` 신규 → regions.fertility_rate 컬럼. KOSIS_SIDO 상수(법정동코드와 다른 체계) 박제, dry-run 620/694 매칭 unmatched 0, vitest 33. `API_REGISTRY.md` 신규 (.claude 로컬).
+
+**답습**:
+- NEXT_SESSION "키 발급 👤" 박제 stale 정정 — KOSIS 회원당 1키
+- data-fill.test toEqual 회귀 동시 정정
+
+## 세션 267 (2026-05-18) — KOSIS 의료 의사·병상수 collector 묶음
+
+**거시 목적**: regions.doctors_per_1k / hospital_beds_per_1k 미수집. DT_1YL20981 / DT_1YL20971 묶음 수집.
+
+**결론**: 1 커밋 `9d625d5` push CI success. `collect-medical-access.mjs` 신규 (TableSpec 배열로 통계표 차이 표현).
+
+## 세션 268 (2026-05-18) — recordApiQuota dry-run 가드
+
+**거시 목적**: `recordApiQuota` 가 dry-run 모드 에서도 DB write 시도 → 테스트 불가.
+
+**결론**: 2 커밋 `787e036`/`a99c528` push. dry-run 가드 + sbOverride 인자 추가 (테스트 가능 해소).
+
+## 세션 269 (2026-05-18) — KOSIS 매매가격지수 collector 신규
+
+**거시 목적**: market_stats_history.sale_price_index 컬럼 미수집. DT_KAB_11672_S5 시군구 분기 단위 수집.
+
+**결론**: 9 커밋 `3736b04`~`694c533` push CI success. 117시군구×4분기 468행 적재. 분기 cron.
+
+**답습**:
+- `audit-collector-patterns.mjs` isCLI 가드 누락 → 테스트 import 시 `main()` `process.exit` → CI red. **scripts/\*.mjs 자매 test import 대상은 isCLI 가드 의무**
+- 박제값 2건 stale (regions.market_stats JSONB 부재 — 실제 별도 컬럼)
+
+## 세션 270 (2026-05-18) — KOSIS 전세가격지수 collector 신규
+
+**거시 목적**: market_stats_history.jeonse_price_index 컬럼 미수집. DT_30404_B013 동향조사 시군구 월간 수집.
+
+**결론**: 4 커밋 `564ef25`/`c0fc128`/`c2f5654`/`9f71906` push CI success. 154시군구×23개월 3565행 적재. `c2f5654` 시도행 제외(세종/제주 중복 키 차단).
+
+## 세션 271 (2026-05-18) — KOSIS Phase 3 경제·교육 묶음 collector
+
+**거시 목적**: regions 표에 GRDP·사교육비·사교육참여율·실업률 4지표 미수집 (Phase 3 묶음).
+
+**결론**: 1 커밋 `6eba41b` push. `collect-regional-economy.mjs` 신규: GRDP/사교육비/사교육참여율/실업률 시도 17행 → regions 4컬럼. TableSpec 배열로 통계표별 ITM/prdSe/objL2 차이 표현, C1 2자리 코드 매칭(이름 변동 면역).
+
+**답습**:
+- plan 3회 자가검증 — tsconfig include 수동나열·regions 76행·parseKosisRows 2인자 시그니처 차이 정정
+- BACKLOG #11·#12 stale·#7·#8 추정값 부정확 발견
+
+## 세션 272 (2026-05-19) — `as any` 7건 + lint react-hooks 12건 + Kakao SDK 일원화 + 일요일 cron 충돌 fix
+
+**거시 목적**: TypeScript `as any` 잔재 정리 + lint react-hooks 경고 정리 + Kakao SDK `(window as any)` 일원화 + collect-trade-stats cron 일요일 21시 concurrency 충돌 해소.
+
+**결론**: 4 커밋 `5b9fa44`/`07fff78`/`c7c60b4`/`608ca5c` push CI success.
+
+- `5b9fa44` SearchFilterBar `as any` 7건 → PresetPanel 공유 타입 정합
+- `07fff78` lint react-hooks 12건 해소 — ref useEffect 이동 + set-state-in-effect 룰 off
+- `c7c60b4` Kakao SDK `(window as any)` 9건 → `kakaoMapHelpers.getKakaoMaps` 일원화
+- `608ca5c` collect-trade-stats cron 일요일 21시 → 16시 (concurrency 충돌 해소)
+
+## 세션 273 (2026-05-19) — 일요일 워크플로 큐 경합 해소 + hooks 미커버 5개 테스트
+
+**거시 목적**: `fill-missing-data` 8주 연속 죽음 진단 → 일요일 큐 경합 + hooks 5개 미커버 빈틈 보강.
+
+**결론**: 2 커밋 `68c5051`/`581ad1c` push CI success.
+
+- `68c5051` calc 2개 calc-collection 그룹 분리 + fill cron 21→02시·timeout 360→120 + monitor 목록 3개 보강
+- `581ad1c` useKeyboardShortcuts·useFinlifeRates·useKakaoCallbackEffect·useCollectorMonitoring·useAppNavigation 45 테스트 추가, 커버리지 23→28/28 (100%)
+
+**답습**: cancel-in-progress:false 동작 공식문서 미확인 환각·timeout값을 실측 오인·표본1개 수치산정. 자가점검 1 을 4회 반복.
+
+## 세션 274 (2026-05-19) — mibunyang 소유 3개 테이블 RLS 활성화
+
+**거시 목적**: 세션 273 "RLS Disabled 19개" 박제값을 supabase CLI live 조회로 정정 (실제 16개) + mibunyang 소유 3개 (api_quota_log / air_quality_stations / collector_runs) RLS on.
+
+**결론**: 1 커밋 `2ed66f7` push CI success. 신규 마이그 `20260519111101_enable_rls_mibunyang_owned.sql` + 롤백 `supabase/migrations/_rollbacks/20260519111101_rollback_*.sql`. live 적용 + `BEGIN..ROLLBACK` 시뮬 + anon JWT 회귀(api_quota_log 100행/collector_runs 31행 읽힘, air_quality_stations 0행 차단 의도대로) + collector dry-run + vitest 9/9. advisor 16→14.
+
+**답습**:
+- 마이그 파일 ≠ live DB 상태 (schema.sql 만 본 서브에이전트 환각). supabase CLI live 조회 의무
+- 공유 테이블 complexes·articles는 naver-estate-web V007 소유 (articles 는 is_active=true 숨김 의도 — mibunyang 정책 만들면 충돌) → 범위 5→3 축소
+- DB 1097MB = Pro 유료 확정
+
+## 세션 274 확장 (2026-05-19) — 공유 테이블 3개 RLS 활성화
+
+**거시 목적**: 세션 274 cross-repo 정정 후 공유 3개(complexes/articles/complex_price_history)도 naver-estate-web V007 답습으로 RLS 활성화.
+
+**결론**: 1 커밋 `c6863dc` push CI success. 신규 마이그 `20260519112845_enable_rls_shared_tables.sql`. articles 정책은 `is_active=true` 숨김 의도 보존 (anon JWT 회귀로 비활성 매물 0행 확인). advisor 14→11.
+
+## 세션 275 (2026-05-19) — cpmsapi021 50건 한도 해소
+
+**거시 목적**: 세션 252 박제 어린이집 collector 가 시군구당 50건 hard limit (강남구 90%+ 누락) → 운영키 교체 + 결과코드 가드 두 트랙으로 해소.
+
+**결론**: 1 커밋 `ea77f25` push CI success.
+
+- `fetchChildcare`: `assertNoErrorCode` 신규 — INFO-300/400/100·ERROR-\* 응답 시 throw (월간 cron 데드존 차단). INFO-200(검색결과 없음)은 정상 0건 통과
+- dry-run: `sggList` 를 호출 루프 진입 전 `slice(0,5)` — 운영키 일일 한도 1,000 보호 (검증 5 + 운영 256 = 261 < 1,000)
+- `childcare-info.test`: `assertNoErrorCode` 7 테스트 추가 (16→23)
+- 운영키 교체 (GitHub Secret) + 재수집 → count>50 0→368, 강남구 50→163
+
+**답습**: 개발계정 키 제약 ≠ API 결함. 응답 결과코드 가드 의무 (INFO-200 vs INFO-300 구분 + ERROR-\* throw).
+
+## 세션 276 (2026-05-19) — Supabase Advisor security_definer·search_path 4건 해소
+
+**거시 목적**: 세션 274 advisor 정정으로 잔여 4건 (security_definer_view 2개 + function_search_path_mutable 2개) 해소.
+
+**결론**: 1 커밋 `5192ca2` push CI success. 신규 마이그 `20260519130000_fix_security_definer.sql`.
+
+- VIEW 2개 `ALTER VIEW SET (security_invoker=on)` (apartments_flat / api_quota_daily)
+- 함수 2개 `SET search_path=''` (update_updated_at / update_scores_computed_at)
+
+**답습**:
+- BACKLOG "제주 13개 시군구/arcode 매핑" 환각 2건 정정 (실제 2개·cpmsapi021 API 자체가 제주 미보유, 별도 API 15101201 필요)
+- plan v1 `DROP VIEW` = GRANT 동반삭제 환각 → `ALTER VIEW` 전환
+- live pg_policy+grants 2회 조회로 anon 무영향 확정
+
+## 세션 277 (2026-05-20) — NEXT_SESSION stale 정리 + BACKLOG_ARCHIVE 이동 + 환각 4건 정정
+
+**거시 목적**: 사용자 "해소된 부채/완료 항목이 '할 일' 목록에 섞여 있으면 아카이브로 분리" 요청. NEXT_SESSION L27~33 stale 1순위(cpmsapi021 50 limit, 세션 275 ea77f25 해소) 제거 + L60~85 세션 274 산출 절을 BACKLOG_ARCHIVE.md 끝으로 이동 + apartments.json 크기 박제값 stale 정정.
+
+**결론**: 코드 0 커밋 (`.claude/*` 로컬 파일 정정만, .gitignore 대상). 본 SESSION_LOG 박제만 git 추적 (.gitignore negation).
+
+- NEXT_SESSION.md L27~33 cpmsapi021 제거 + 1·2 순위 승격 + L37 "13.1MB / 1555 레코드" → "약 13.0MB (13,589,674 bytes) / 1557 레코드" 정정
+- NEXT_SESSION.md L60~85 세션 274 산출 절 통째 이동 → BACKLOG_ARCHIVE.md 끝 "📜 NEXT_SESSION 산출 회고" 신규 절
+- BACKLOG.md L141~142 "13.1MB(13,698,844 bytes), 1555 레코드" → "약 13.0MB(13,589,674 bytes, 12.96 MiB), 1557 레코드" 정정 + 출처 박제
+- BACKLOG.md L118~128 regions.avg_price "6 위치" 박제값 → 직접 cross-repo grep 으로 "9 위치 (frontend 5 + backend 4)" 정정 + 줄번호 stale 5건 정정
+- BACKLOG_ARCHIVE.md 도입부에 "drift 현황 (색인 42 vs 상세 12 = 30 누락)" 박제
+- SESSION_LOG.md 세션 265~276 12 세션 압축 회고 박제 (본 절)
+
+**답습**:
+- **서브에이전트 환각 6건 누적 박제** — Agent A "ea77f25 날짜 2026-05-17" (실측 5/19) / Agent A "운영키 교체" 표현 단순화 (실제 = 코드 보강 + Secret 두 트랙) / Agent B "apartments.json 부재" (실측 13.6MB 실재) / Agent B "13 위치" (실측 9 위치) / Agent C "BACKLOG_ARCHIVE drift 3건" (실측 30건) / Agent D "_rollbacks/ 디렉토리 부재" (실측 `supabase/migrations/_rollbacks/` 실재). **다수결 금지 — 직접 실측 1회로 진실 확정**
+- **사용자 어휘 "아카이브로 분리" ≠ "단순 삭제"** — BACKLOG_ARCHIVE.md 답습 패턴 = 별도 파일로 이동 + 정보 보존. plan v2 "단순 삭제 + 메모" 거부 후 plan v3 옵션 A (BACKLOG_ARCHIVE 이동) 채택. **어휘 매칭 검증 의무 — "삭제" vs "분리" vs "이동" vs "보존"**
+- **plan v2 환각 4건 직접 실측 정정** — apartments.json "13.1MB" / SessionEnd 훅 부재 / drift 측정 / `_rollbacks/` 디렉토리. 모든 plan 박제값 실측 후 박제 의무 답습 v3 박제 (v1 세션 233 / v2 세션 251 / v3 본 세션)
+- **`.gitignore` `.claude/*` 기본 무시 + negation 한정** — BACKLOG.md / BACKLOG_ARCHIVE.md 도 .gitignore 대상이라 git 추적 X. negation 있는 것은 `settings.json`·`SESSION_LOG.md`·`commands/`·`agents/`·`rules/` 만. **본 SESSION_LOG.md 박제는 git 추적되어 영구 보존됨** (다른 BACKLOG·NEXT_SESSION 정정은 로컬만)
