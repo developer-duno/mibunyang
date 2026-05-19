@@ -12,7 +12,7 @@ on:
         default: false
 
 concurrency:
-  group: data-collection
+  group: calc-collection # data-collection 큐(fill-missing-data Phase 5 6h 점유)와 분리 — 외부 API 미사용·멱등 계산
   cancel-in-progress: false
 
 jobs:

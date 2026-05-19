@@ -23,9 +23,9 @@
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `collect-trade-stats.yml` | 거래 통계 산출 (일요일) |
-| `calc-exclusive-ratio.yml` | 전용률 계산 (일요일) |
-| `calc-layout.yml` | 평면구조 추정 (일요일) |
+| `collect-trade-stats.yml` | 거래 통계 산출 (일요일 16:00 UTC) |
+| `calc-exclusive-ratio.yml` | 전용률 계산 (일요일 22:00 UTC, 세션273: calc-collection 그룹 분리 — data-collection 큐 경합 회피) |
+| `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리) |
 
 ### 매월 (25개)
 
@@ -69,7 +69,7 @@
 | 워크플로우 | 설명 |
 |-----------|------|
 | `seed-data.yml` | 초기 데이터 시딩 |
-| `fill-missing-data.yml` | 빈 데이터 일괄 수집 (16개 수집기 순차) |
+| `fill-missing-data.yml` | 빈 데이터 일괄 수집 (16개 수집기 순차, 세션273: cron 일요일 21시→02시 UTC 이동 + Phase 5 timeout 360→120분) |
 | `geocode-missing.yml` | 좌표 누락 지오코딩 |
 | `reverse-geocode.yml` | 좌표 → 주소 역지오코딩 |
 

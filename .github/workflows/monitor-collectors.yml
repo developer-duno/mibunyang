@@ -2,8 +2,9 @@ name: Monitor Collectors
 
 # 수집기 감시 — 실패/취소/0건/미발화/NULL급증을 텔레그램으로 알림.
 # workflow_run: 수집기가 끝나면 즉시 점검. schedule: 하루 1회 전체 스윕.
-# workflow_run.workflows 는 와일드카드 미지원 → collect-*.yml 의 name 필드 31개 명시 나열.
-# 새 수집기 추가 시 이 목록 누락은 scripts/audit-monitor-coverage.mjs (CI) 가 차단.
+# workflow_run.workflows 는 와일드카드 미지원 → collect-*.yml name 필드 + calc/fill 비-수집기 명시 나열.
+# 새 수집기 추가 시 collect-*.yml 목록 누락은 scripts/audit-monitor-coverage.mjs (CI) 가 차단
+# (calc-*.yml·fill-missing-data.yml 은 audit 범위 밖 — 아래 목록에 수동 유지).
 
 on:
   workflow_run:
@@ -44,6 +45,10 @@ on:
       - "Trade Stats Calculation"
       - "Transport Accessibility Collection"
       - "소음 추정 수집"
+      # ── 계산·일괄채우기 워크플로 (collect-* 아님 — audit 범위 밖, 수동 유지) ──
+      - "Fill Missing Data"
+      - "Exclusive Ratio Calculation"
+      - "Layout Estimation"
     types: [completed]
   schedule:
     - cron: '0 0 * * *' # 매일 UTC 00:00 = KST 09:00 — daily 전체 스윕

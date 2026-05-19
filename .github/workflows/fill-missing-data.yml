@@ -2,7 +2,7 @@ name: Fill Missing Data
 
 on:
   schedule:
-    - cron: '0 21 * * 0' # 매주 일요일 UTC 21:00 = KST 월 06:00
+    - cron: '0 2 * * 0' # 매주 일요일 UTC 02:00 = KST 일 11:00 (data-collection 빈 슬롯 — calc 22~23시·trade-stats 16시와 분리)
   workflow_dispatch:
     inputs:
       dry_run:
@@ -152,12 +152,12 @@ jobs:
       - name: "${{ matrix.script.name }}"
         run: node scripts/collectors/${{ matrix.script.cmd }}.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
-  # ── Phase 5: 실거래 (별도 job — 단독으로도 5시간+ 소요) ──
+  # ── Phase 5: 실거래 (collect-trades ~58분 + trade-stats ~2분, 마진 포함 120분) ──
   fill-trades:
     needs: [phase1-coords, phase2-calc, phase3-external, phase4-independent]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 120
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
