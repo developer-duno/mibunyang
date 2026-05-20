@@ -43,9 +43,11 @@ async function fetchFromSupabase(): Promise<StaticApartmentsResponse> {
 async function fetchFromJson(): Promise<StaticApartmentsResponse> {
   const res = await fetch("/data/apartments-list.json");
   if (!res.ok) throw new Error(`Static data fetch failed: ${res.status}`);
-  const json = await res.json() as StaticApartmentsResponse;
+  // 정적 JSON 은 collect-data.mjs 출력 `fetchedAt` (ETL 수집 시각) 만 가짐.
+  // Supabase 분기 응답의 `dataUpdatedAt` 과 의미 동등 (= 데이터 마지막 갱신 시각) — 매핑.
+  const json = await res.json() as { ok: boolean; data: Apt[]; dataUpdatedAt?: string | null; fetchedAt?: string | null };
   if (!json.ok || !json.data?.length) throw new Error("Static data empty");
-  return json;
+  return { ok: json.ok, data: json.data, dataUpdatedAt: json.dataUpdatedAt ?? json.fetchedAt ?? null };
 }
 
 export interface PriceArrays {

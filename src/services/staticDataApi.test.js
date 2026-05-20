@@ -56,7 +56,7 @@ describe('fetchStaticApartments', () => {
         }),
       );
       const result = await fetchStaticApartments();
-      expect(result).toEqual(jsonData);
+      expect(result).toEqual({ ...jsonData, dataUpdatedAt: null });
     });
 
     it('양쪽 모두 실패 → 에러 throw', async () => {
@@ -116,8 +116,31 @@ describe('fetchStaticApartments', () => {
         json: () => Promise.resolve(mockData),
       }));
       const result = await fetchStaticApartments();
-      expect(result).toEqual(mockData);
+      // fetchFromJson 매핑: dataUpdatedAt 없으면 null 채움 (Supabase 분기와 키 정합)
+      expect(result).toEqual({ ...mockData, dataUpdatedAt: null });
       expect(fetch).toHaveBeenCalledWith("/data/apartments-list.json");
+    });
+
+    it('JSON fetchedAt → dataUpdatedAt 매핑 (collect-data.mjs 응답)', async () => {
+      const jsonData = { ok: true, data: [{ id: 1 }], count: 1, fetchedAt: "2026-05-20T16:57:53.976Z" };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(jsonData),
+      }));
+      const result = await fetchStaticApartments();
+      expect(result.dataUpdatedAt).toBe("2026-05-20T16:57:53.976Z");
+      expect(result.data).toEqual([{ id: 1 }]);
+    });
+
+    it('JSON dataUpdatedAt 우선 (Supabase 분기 응답 호환)', async () => {
+      const jsonData = { ok: true, data: [{ id: 1 }], dataUpdatedAt: "2026-05-01", fetchedAt: "2026-05-20" };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(jsonData),
+      }));
+      const result = await fetchStaticApartments();
+      // dataUpdatedAt 가 우선 (Supabase 분기처럼 명시되면 그것을 쓰고, 정적 JSON 만 fetchedAt 폴백)
+      expect(result.dataUpdatedAt).toBe("2026-05-01");
     });
 
     it('JSON 실패 → 에러 throw', async () => {
