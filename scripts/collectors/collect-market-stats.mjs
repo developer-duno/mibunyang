@@ -29,6 +29,7 @@ const KOSIS_KEY = process.env.KOSIS_KEY;
  * @property {(s: string, r?: number) => number} parse
  * @property {number} minExpected
  * @property {string} label
+ * @property {number} [lookbackMonths]
  */
 
 /**
@@ -57,7 +58,7 @@ const KOSIS_KEY = process.env.KOSIS_KEY;
 // 지표별 설정
 /** @type {Indicator[]} */
 const INDICATORS = [
-  { col: "price_index",       tblId: "DT_41401N_006", prdSe: "M", objLevels: 2, parse: parseFloat, minExpected: 10, label: "분양가격지수" },
+  { col: "price_index",       tblId: "DT_41401N_006", prdSe: "M", objLevels: 2, parse: parseFloat, minExpected: 10, label: "분양가격지수", lookbackMonths: 24 },
   { col: "avg_price_sqm",     tblId: "DT_41401N_005", prdSe: "M", objLevels: 2, parse: parseInt,   minExpected: 10, label: "평균분양가격" },
   { col: "new_supply",        tblId: "DT_41401N_007", prdSe: "M", objLevels: 1, parse: parseInt,   minExpected: 10, label: "신규분양세대수" },
   { col: "initial_sale_rate", tblId: "DT_41401N_008", prdSe: "Q", objLevels: 1, parse: parseFloat, minExpected: 5,  label: "초기분양률" },
@@ -180,8 +181,6 @@ async function main() {
   // 기간 설정
   const now = new Date();
   const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-  const startMonth = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, "0")}`;
   // 분기용: 최근 8분기 (데이터 1~2분기 지연 감안)
   const curQ = Math.ceil((now.getMonth() + 1) / 3);
   const endQ = `${now.getFullYear()}${curQ}`;
@@ -200,10 +199,13 @@ async function main() {
   /** @type {Record<string, HistoryRow>} */
   const historyMap = {}; // key = "region::base_month" → wide row (5지표 merge)
   for (const ind of INDICATORS) {
-    const start = ind.prdSe === "Q" ? startQ : startMonth;
+    const lookback = ind.lookbackMonths ?? 5;
+    const lookbackDate = new Date(now.getFullYear(), now.getMonth() - lookback, 1);
+    const indStartMonth = `${lookbackDate.getFullYear()}${String(lookbackDate.getMonth() + 1).padStart(2, "0")}`;
+    const start = ind.prdSe === "Q" ? startQ : indStartMonth;
     const end = ind.prdSe === "Q" ? endQ : endMonth;
 
-    log(PHASE, `\n[${ind.label}] ${ind.tblId} (${ind.prdSe}) ${start}~${end}`);
+    log(PHASE, `\n[${ind.label}] ${ind.tblId} (${ind.prdSe}) ${start}~${end} lookback=${lookback}개월`);
 
     /** @type {unknown} */
     let data;
