@@ -1,3 +1,67 @@
+# 세션 281 — 2026-05-20 (4 후보 진행 — A 문서 stale 정정 + B JSON 폴백 dataUpdatedAt drift 정정 + D 보류 + E playwright webServer.env + Supabase 가드 회귀 spec, 3 커밋)
+
+**거시 목적**: 세션 280 NEXT_SESSION L8-38 박제 4 후보 (A·B·D·E) 통합 진행. 사용자 명시 "전부다 우선순위 + 서브에이전트 + 맹점·할루시네이션 철저 탐색".
+
+**결론**: **3 커밋 push** (a898541 + a4c6d8d + 3a325f7). CI 결과: A success / B success / E in_progress (작성 시점). 작업 D 는 구조 불일치 발견 후 보류 → NEXT_SESSION 이관. **누적 환각 8건 정정** (3 sub Phase 1 + 1 sub Phase 2 + 4 sub Phase 3 + 1 작업 진입 직전 grep).
+
+## plan 진화 (v1 → v2 → v3 → 작업 진입 grep)
+
+| 라운드 | 검증 | 환각 정정 |
+|---|---|---|
+| Phase 1 (3 Explore sub) | A docs · B drift · D+E 캐시/e2e | Agent C webServer 미구성 보고 정정 |
+| Phase 2 (1 Plan sub) | 우선순위 산정 | ETL 키 변경 환각 정정 (api/CLAUDE.md fetchedAt 표준 보존) |
+| Phase 3 (4 Explore sub 병렬, 사용자 요청) | plan v2 박제값 + 가정 철저 검증 | A L95 박제값 / B 의미론 분리 / D 효과 안내 / E 본질 재정의 / 세션 280 사고 답습 누락 |
+| 작업 D 진입 직전 grep | staticDataApi.ts L60-103 본문 Read | **D 의도-구현 불일치 8번째 환각** (max=50 + 전체 1557 단지 cache.set → 1507 evict 회귀) |
+
+## 작업 A — ARCHITECTURE.md stale 정정 (1 커밋 a898541)
+
+[ARCHITECTURE.md](ARCHITECTURE.md) L95 `apartments.json (787KB, 1,481건)` → 분리 후 `list 1.66MB (Brotli 198KB) + prices 11.35MB (Brotli 858KB), 1,557건`. L112 + L126 동시 정정. docs only · 위험 0.
+
+## 작업 B — JSON 폴백 dataUpdatedAt drift 정정 (1 커밋 a4c6d8d)
+
+[src/services/staticDataApi.ts L43-49](src/services/staticDataApi.ts#L43-L49) `fetchFromJson()` 응답 매핑 = `dataUpdatedAt: json.dataUpdatedAt ?? json.fetchedAt ?? null` 양방 지원. mock fixture 회귀 fix 2건 + 신규 test 2건 + vitest 3003/3003 pass · typecheck 0 errors. api/CLAUDE.md `fetchedAt` 표준 보존 (25+ 자리 영향 0).
+
+## 작업 D 보류 — 구조 불일치 환각 (NEXT_SESSION 이관)
+
+[src/services/staticDataApi.ts L60-103](src/services/staticDataApi.ts#L60-L103) 현재 구조 = `pricesCache: Map` + `loadPricesOnce()` 가 11.35MB 전체 fetch + 1557 단지 모두 cache.set + `pricesLoaded=true` flag. plan v3 의 LRU max=50 도입 시 1507 단지 evict → cache miss 시 null 반환 회귀. 사용자 옵션 1 (D 보류 + E 진행) 선택. 본질 해결 = per-id lazy fetch (별도 spec, 다음 세션 이상 범위).
+
+## 작업 E — playwright webServer.env + Supabase 가드 spec (1 커밋 3a325f7)
+
+**두 효과:**
+
+1. [playwright.config.ts L27-39](playwright.config.ts#L27-L39) webServer.env 4변수 추가 (process.env passthrough). 기존 사고: e2e.yml L29 `VITE_USE_SUPABASE: "true"` 주입에도 playwright 의 webServer.command (npm run dev) 가 환경변수 미수신 → **CI e2e 가 의도 (Supabase 모드) 와 다르게 JSON fallback 으로 12 spec 실행 중**. webServer.env 명시로 의도-실제 정합. Phase 3 Agent 4 발견.
+2. [e2e/detail-modal-supabase-guard.spec.ts](e2e/detail-modal-supabase-guard.spec.ts) 신규 (81줄). 세션 280 커밋 B (0557e1a) priceByArea null/배열/undefined 가드 정정 회귀 가드. page.route mock + abort callback 패턴.
+
+위험: 다른 11 e2e spec 회귀 (VITE_USE_SUPABASE=true 환경 가정 안 함). 로컬 dry-run 어려움 (Supabase 키 의존) → CI 결과 모니터링 의무.
+
+## 답습 자산 (누적 8건 환각 박제)
+
+| # | 환각 자리 | 정정 |
+|---|---|---|
+| 1 | Phase 1 Agent C "playwright webServer 미구성" | 실측 L27-31 구성 완료 |
+| 2 | Phase 2 Plan agent "ETL 키 변경" | api/CLAUDE.md `fetchedAt` 표준 25+ 자리 영향 → 변경 금지 |
+| 3 | Phase 3 A 작업 L95 박제 "787KB vs 1.7MB" | ARCHITECTURE.md 자체가 분리 전부터 stale, 실측 13MB |
+| 4 | Phase 3 B 작업 의미론 | 정적 = ETL 시각 / Supabase = DB row.updated_at, 사용자 UI 동등 의미 명시 |
+| 5 | Phase 3 D 작업 효과 안내 부정확 | max=50 × 7.3KB = 365KB · 본질 해결은 후속 spec |
+| 6 | Phase 3 E 작업 본질 | "회귀 spec 추가" 가 아니라 "CI e2e 의도-실제 불일치 수정" |
+| 7 | Phase 3 세션 280 사고 답습 누락 | 박제값 ↔ 구현 grep 의무 신규 박제 |
+| 8 | 작업 D 진입 직전 grep | LRU + 전체 fetch + cache.set 1557 = 1507 evict 회귀 |
+
+## 신규 답습 의무 (v3 박제)
+
+각 작업 진입 직전:
+1. **박제값 ↔ 실측 1회 grep** — plan 의 모든 박제값을 실측과 비교 (예: `ls -lh public/data/`)
+2. **구현 직후 정합 1회 grep** — 변경 후 박제 자리 실제 변경 본문이 plan 정합
+
+이걸 안 해서 세션 280 (커밋 C 운영 사고) + 본 세션 plan v1→v2→v3 (환각 7건) + 작업 진입 시 8번째 환각 발견. 답습 의무로 차단.
+
+## 다음 세션 (282) 이관
+
+- **D 본질 해결 spec** = per-id lazy fetch (별도 API endpoint 또는 supabase prices.js 확장 + UI 정정). 큰 작업, 별도 plan 필요
+- **E CI 결과 모니터링** — 다른 11 spec 회귀 발생 여부 + 신규 supabase-guard spec 통과 확인
+
+---
+
 # 세션 280 — 2026-05-20 (MarketStatsCharts 3층 사고 정정 — API 시도 폴백 + UI null 가드 + DetailModal 빈 배열 가드, 3 커밋)
 
 **거시 목적**: 세션 279 분리 검증 사용자 스크린샷 3장 확인 → PriceTable 정상 + 새 발견 "지역 시장 추이 차트 5개 평평한 0 선" → 3층 누적 사고 해소.
