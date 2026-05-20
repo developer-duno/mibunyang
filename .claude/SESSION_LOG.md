@@ -1,3 +1,110 @@
+# 세션 280 — 2026-05-20 (MarketStatsCharts 3층 사고 정정 — API 시도 폴백 + UI null 가드 + DetailModal 빈 배열 가드, 3 커밋)
+
+**거시 목적**: 세션 279 분리 검증 사용자 스크린샷 3장 확인 → PriceTable 정상 + 새 발견 "지역 시장 추이 차트 5개 평평한 0 선" → 3층 누적 사고 해소.
+
+**결론**: **3 커밋 push** (29a6f01 + 0557e1a + 7423fc9). 모두 CI success + 운영 검증 통과. 인천 서구 → `fallback:true` + 시도 평균 데이터 (avg_price_sqm:6020 / new_supply:619) 정상 응답. UI 헤더 "(인천 시도 평균)" 표시 + 5 차트 정상 렌더.
+
+## 3층 사고 진단 (3 서브에이전트 환각 검증 → 9-GATE 검증 → 운영 발견 → 4 단계 누적)
+
+### 1층 — 데이터층 (KOSIS 통계 시도 단위 한계, 정정 아님)
+
+KOSIS DT_41401N_005~009 (분양가/지수/공급/초기분양율/택지비율) 5종 통계는 시도 단위만 제공. [collect-market-stats.mjs:161-166](scripts/collectors/collect-market-stats.mjs#L161-L166) 가 `C2_NM != "전체" continue` + `gu: ""` 강제 적재 — collector 의도된 디자인.
+
+### 2층 — API 폴백 부재 (정정 1 + 운영 사고 정정 3)
+
+[api/supabase/market-stats-history.js](api/supabase/market-stats-history.js) 가 `WHERE gu='서구'` 정확 매칭 → 빈 응답. **gu="" 시도 자동 폴백** + `fallback:boolean` flag 추가. 커밋 A 1차 정정.
+
+⚠️ **커밋 A 운영 검증 후 환각 발견 (커밋 C 긴급 정정)**:
+- prod 호출 결과 `fallback:false` + count:23 (NULL-only 23행)
+- 원인: 커밋 A 폴백 트리거 `data.length === 0` 만 → 행 있지만 모두 NULL 인 경우 누락
+- 정정: `hasAnyMetricValue(rows)` 헬퍼 추가 — 5필드 중 1+ 유효 값 행 있는지 검사. 빈 응답 + NULL-only 행 둘 다 폴백 발동
+
+### 3층 — UI null→0 강제 변환 (정정 2)
+
+[MarketStatsCharts.tsx](src/components/detail/MarketStatsCharts.tsx) L86 `Number(d?.[m.key])` = `Number(null)=0` + `Number.isFinite(0)=true` → null 도 y=0 점 누적 → LineChart 가 정상 동작으로 평평한 y=0 선 5개 렌더.
+
+정정:
+- `hasRenderableMetric` useMemo — `raw == null` 명시적 제외 후 metric 별 length>=2 검사 (1 metric 이라도 렌더 가능해야 차트 분기)
+- L106 차트 데이터 생성부도 동일 null 명시 제외
+- 헤더 분기: `fallback=true` 시 "(인천 시도 평균)" / `fallback=false` 시 기존 `(인천 서구)`
+
+### 동반 정정 — DetailModal Supabase 가드 (커밋 B, Agent A 발견)
+
+[DetailModal.tsx:82-85](src/components/DetailModal.tsx#L82-L85) `priceByArea !== undefined` 만 skip → 빈 배열 `[]` 도 fetch 발동 → e2e VITE_USE_SUPABASE=true 환경 11.35MB 불필요 로드. 정정: `null / 배열 (빈 배열 포함) / 알 수 없는 형태` 모두 skip / `undefined` 만 fetch 발동.
+
+## 자가 점검 1+2 v3 5회 반복 (사용자 4번 지시 + 운영 사고 1번 정정)
+
+### 1차 (사용자 "맹점/할루시네이션 끝까지" 지시 후)
+- 서브에이전트 3개 (Agent A: 옵션 B / Agent B: 옵션 D / Agent C: 데이터층) 병렬 환각 사냥
+- 발견 8건: plan v1 → v2 정정
+- 핵심 정정: 옵션 D + 옵션 E "분리 단정" → 통합 의무 (사고 은폐 위험)
+
+### 2차 (사용자 9-GATE 검증 지시)
+- 서브에이전트 3개 (GATE 0+1+2 / 3+4+5 / 6+7+8) 병렬 검증
+- 결과: GATE 3 🔴 + GATE 5건 🟡 → plan v2 → v3 정정 6건
+- 핵심: 1 커밋 → 2 커밋 분리 / corner case 가드 / 타입 3곳 / 폴백 로그
+
+### 3차 (작업 진입 직전 0단계 검증)
+- KOSIS raw API 호출 + 다른 시군구 5건 NULL 비율 실측
+- Agent C 단정 ("시도 단위 한계") 검증 정확 ✅
+- 서울 시도 (gu="") 직접 응답 = avg_price_sqm:16606 등 실데이터 확인
+
+### 4차 (vitest 빨강 발견)
+- 18행 모두 null + 1행 모든 값 corner case 테스트 빨강
+- 원인: `Number(null)=0` 강제 변환이 `hasRenderableMetric` 내부에도 발현
+- 정정: `raw == null` 명시 제외 (hasRenderableMetric + L106 차트 생성부 둘 다)
+- baseQuery 환각 — `.order()` 후 `.eq()` chain 불가 → `runQuery(guValue)` 패턴 전환
+
+### 5차 (커밋 A push 후 운영 검증 환각 발견)
+- prod 응답 `fallback:false` + 23행 NULL → 폴백 발동 안 함
+- 원인: plan v3 0단계 "23행 모두 NULL" 박제했는데 폴백 트리거 단정 `data.length === 0` 만 → 박제값과 구현 불일치 1턴 누락
+- 커밋 C 긴급 정정: `hasAnyMetricValue` 헬퍼 추가
+
+## 변경 파일 (8 파일 누적, 3 커밋)
+
+| 커밋 | 파일 | 변경 |
+|---|---|---|
+| 29a6f01 (A) | api/supabase/market-stats-history.js | 시도 폴백 + fallback flag (~20줄) |
+| 29a6f01 (A) | api/supabase/market-stats-history.test.js | 폴백 케이스 1건 (~25줄) |
+| 29a6f01 (A) | src/types/hooks.ts | UseMarketStatsHistoryReturn.fallback (1줄) |
+| 29a6f01 (A) | src/hooks/useMarketStatsHistory.ts | fallback state + cache + 반환 (~10줄) |
+| 29a6f01 (A) | src/hooks/useMarketStatsHistory.test.js | fallback 케이스 1건 (~15줄) |
+| 29a6f01 (A) | src/components/detail/MarketStatsCharts.tsx | hasRenderableMetric + 헤더 분기 + null 가드 2자리 (~25줄) |
+| 29a6f01 (A) | src/components/detail/MarketStatsCharts.test.jsx | 4 케이스 신규 + 기존 5 mock 정정 (~80줄) |
+| 0557e1a (B) | src/components/DetailModal.tsx | priceByArea 가드 정정 (~10줄) |
+| 7423fc9 (C) | api/supabase/market-stats-history.js | hasAnyMetricValue 헬퍼 + 폴백 트리거 정정 (~20줄) |
+| 7423fc9 (C) | api/supabase/market-stats-history.test.js | NULL-only 행 폴백 케이스 1건 (~20줄) |
+
+총 +234줄, -37줄.
+
+## 검증 결과 (각 커밋 후)
+
+| 검증 | 결과 |
+|---|---|
+| vitest 전체 | 3001/3001 통과 (1 추가) |
+| typecheck | 0 errors |
+| lint | 0 errors (1 기존 warning, 본 작업 무관) |
+| vite build (VERCEL skip) | 686~730ms success |
+| CI (커밋 A/B/C) | 모두 success |
+| Monitor Collectors | success (커밋 C 후) |
+| prod API 인천 서구 | `fallback:true` + 시도 평균 데이터 (avg_price_sqm:6020 / new_supply:619) |
+
+## 사고 답습 자산 (재발 방지)
+
+### 박제값과 구현 불일치 1턴 누락 (커밋 C 사고)
+
+plan v3 0단계 검증에서 "인천 서구 23행 모두 NULL" 박제했는데 API 구현은 `data.length === 0` 만 폴백 트리거. **0단계 검증 결과를 구현 단계 직전 1회 더 grep 해서 트리거 조건 정합 검증 의무**. 운영 검증 단계까지 가서야 발견.
+
+### Number(null) = 0 강제 변환 다중 자리 동시 정정 의무
+
+`Number(null) = 0` + `Number.isFinite(0) = true` 강제 변환은 hasRenderableMetric 가드 + L106 차트 생성부 + LineChart 자체 가드 (length<2 만 검사) 3 자리에서 발현. **null 명시 제외 (`raw == null`) 패턴은 같은 컴포넌트 내 모든 Number 변환 자리에 동시 적용 의무**.
+
+### 폴백 트리거 조건 박제값과 구현 불일치
+
+API 폴백 트리거 조건 박제 시 "빈 응답" 뿐 아니라 "행은 있지만 모든 metric NULL" 도 명시 의무. KOSIS 통계처럼 collector 가 base_month 별 wide row 만들면서 시군구는 행만 채우는 패턴 흔함.
+
+---
+
 # 세션 279 — 2026-05-20 (apartments.json 13MB → list 1.66MB + prices 11.35MB lazy 분리 + Vercel Brotli 198KB/858KB 적용)
 
 **거시 목적**: BACKLOG 🟢 1순위 `apartments.json 13MB → 목록 경량 분리` 마감. 세션 278 brainstorming 으로 옵션 A 확정 + 코드 10 파일 + 2 신규 JSON 작성 완료 상태에서 본 세션 진입 — 검증 + 커밋 + push + 운영 배포 + 박제.
