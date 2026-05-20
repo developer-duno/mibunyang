@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from "react";
 import type { CSSProperties } from "react";
 import { PROFILES } from "@/constants/profiles";
+import { isFeatureUpcoming } from "@/constants/featureFlags";
 import { C, F } from "@/theme";
 import { IconHelp } from "@/components/icons";
 import type { Profile } from "@/types/scoring";
@@ -103,7 +104,7 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
 
-  const upcomingEnabled = import.meta.env.VITE_FEATURE_UPCOMING === "true";
+  const upcomingEnabled = isFeatureUpcoming();
   const upcomingLabel = upcomingCount != null && upcomingCount > 0
     ? `📅 곧 분양 ${upcomingCount}개`
     : "📅 곧 분양";

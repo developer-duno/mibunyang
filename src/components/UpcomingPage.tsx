@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react
 import { C, F } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { SkeletonBox, SkeletonList } from "@/components/primitives";
+import { isFeatureUpcoming } from "@/constants/featureFlags";
 import type { UpcomingPageProps } from "@/types/components/UpcomingPage.types";
 import type { UpcomingApiResponse } from "@/types/upcoming";
 
@@ -25,7 +26,7 @@ const STAGE_TABS: StageTab[] = [
 
 export function UpcomingPage({ onOpenDetail, onBackToMain }: UpcomingPageProps) {
   // Feature Flag 가드 — App.jsx pathname 검사가 1차 차단하지만 직접 마운트 케이스 방어
-  const flagOn = import.meta.env.VITE_FEATURE_UPCOMING === "true";
+  const flagOn = isFeatureUpcoming();
 
   const { isDesktop } = useResponsive();
   const [data, setData] = useState<UpcomingApiResponse | null>(null);

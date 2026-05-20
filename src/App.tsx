@@ -1,6 +1,7 @@
 // App.tsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
 import { useState, useEffect, useCallback, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
+import { isFeatureUpcoming } from "@/constants/featureFlags";
 import { C } from "@/theme";
 import type { Profile } from "@/types/scoring";
 import type { CustomWeights } from "@/types/admin";
@@ -64,7 +65,7 @@ export default function App() {
   // § 5-5: 헤더 CTA "곧 분양 N개" — Feature Flag ON 일 때만 1회 fetch (Vercel CDN 5분 캐시)
   const [upcomingCount, setUpcomingCount] = useState<number | null>(null);
   useEffect(() => {
-    if (import.meta.env.VITE_FEATURE_UPCOMING !== "true") return;
+    if (!isFeatureUpcoming()) return;
     let cancelled = false;
     fetch("/api/upcoming")
       .then(r => (r.ok ? r.json() : null))
@@ -80,7 +81,7 @@ export default function App() {
     if (window.location.pathname.startsWith("/oauth/kakao/callback")) return "kakaoCallback";
     if (window.location.pathname.startsWith("/upcoming")) {
       // Feature Flag OFF 시 메인으로 fallback (URL도 /로 정리)
-      if (import.meta.env.VITE_FEATURE_UPCOMING !== "true") {
+      if (!isFeatureUpcoming()) {
         try { window.history.replaceState(null, "", "/"); } catch { /* noop */ }
         return "list";
       }

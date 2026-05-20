@@ -1,10 +1,11 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
+import { isFeatureUpcoming } from "@/constants/featureFlags";
 import type { BottomNavProps } from "@/types/upcoming";
 
 export const BottomNav = memo(function BottomNav({ tab, expertLoggedIn, showComp, onNavClick, containerMaxWidth, isDesktop }: BottomNavProps) {
   if (isDesktop) return null;
-  const upcomingEnabled = import.meta.env.VITE_FEATURE_UPCOMING === "true";
+  const upcomingEnabled = isFeatureUpcoming();
   const navItems = expertLoggedIn
     ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "지도", k: "map" }, { l: "로그아웃", k: "logout" }]
     : [
