@@ -6,8 +6,13 @@ const ENDPOINT = "/api/supabase/market-stats-history";
 // region+gu 별 시장통계 시계열 캐시. SPA 세션 동안 유지(TTL 없음).
 // MarketStatsCharts 도 DetailModal 안이라 모듈 레벨 Map 이어야 재오픈 시 재fetch 제거.
 const marketStatsCache = new Map<string, MarketStatsRow[]>();
+// fallback flag 도 cache hit 시 복원 — UI 헤더 "(시도 평균)" 표시 일관성 보장.
+const marketStatsFallbackCache = new Map<string, boolean>();
 /** 테스트 격리용 — vitest beforeEach 에서 비운다. */
-export function _clearMarketStatsCache(): void { marketStatsCache.clear(); }
+export function _clearMarketStatsCache(): void {
+  marketStatsCache.clear();
+  marketStatsFallbackCache.clear();
+}
 
 /**
  * region+gu 시장통계 시계열 fetch 훅 (useHistoryData 패턴 답습).
@@ -21,6 +26,7 @@ export function useMarketStatsHistory(region: string, gu: string): UseMarketStat
   const [data, setData] = useState<MarketStatsRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fallback, setFallback] = useState(false);
   const guKey = gu || "";
 
   const load = useCallback(async (signal?: AbortSignal, forceRefresh = false) => {
@@ -29,7 +35,13 @@ export function useMarketStatsHistory(region: string, gu: string): UseMarketStat
     if (!forceRefresh) {
       const cached = marketStatsCache.get(cacheKey);
       // 빈 배열은 캐시 히트로 보지 않음 (늦게 적재되는 시계열 고착 방지).
-      if (cached && cached.length > 0) { setData(cached); setLoading(false); setError(null); return; }
+      if (cached && cached.length > 0) {
+        setData(cached);
+        setFallback(marketStatsFallbackCache.get(cacheKey) ?? false);
+        setLoading(false);
+        setError(null);
+        return;
+      }
     }
     setLoading(true);
     setError(null);
@@ -41,11 +53,14 @@ export function useMarketStatsHistory(region: string, gu: string): UseMarketStat
         if (res.status === 429) throw new Error("요청이 너무 많습니다. 잠시 후 다시 시도해주세요");
         throw new Error(`API 오류 (${res.status})`);
       }
-      const json = await res.json() as { ok?: boolean; data?: unknown; error?: string };
+      const json = await res.json() as { ok?: boolean; data?: unknown; error?: string; fallback?: boolean };
       if (!json.ok) throw new Error(json.error || "데이터 조회 실패");
       const rows = Array.isArray(json.data) ? json.data as MarketStatsRow[] : [];
+      const isFallback = json.fallback === true;
       marketStatsCache.set(cacheKey, rows);
+      marketStatsFallbackCache.set(cacheKey, isFallback);
       setData(rows);
+      setFallback(isFallback);
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
       const message = err instanceof Error ? err.message : String(err);
@@ -68,5 +83,5 @@ export function useMarketStatsHistory(region: string, gu: string): UseMarketStat
     return () => ac.abort();
   }, [load]);
 
-  return { data, loading, error, retry };
+  return { data, loading, error, retry, fallback };
 }

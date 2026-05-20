@@ -59,7 +59,7 @@ describe("supabase/market-stats-history handler", () => {
     expect(res2.status).toHaveBeenCalledWith(400);
   });
 
-  it("정상 region+gu → 200 + 데이터 + Cache-Control", async () => {
+  it("정상 region+gu → 200 + 데이터 + fallback:false + Cache-Control", async () => {
     const res = makeRes();
     await handler({ method: "GET", query: { region: "서울", gu: "강남구" }, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(200);
@@ -67,6 +67,7 @@ describe("supabase/market-stats-history handler", () => {
       ok: true,
       data: mockData,
       count: 2,
+      fallback: false,
       fetchedAt: expect.any(String),
     }));
     expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", expect.stringContaining("s-maxage=3600"));
@@ -75,11 +76,49 @@ describe("supabase/market-stats-history handler", () => {
     expect(mockQuery.order).toHaveBeenCalledWith("base_month", { ascending: true });
   });
 
-  it("gu 빈 문자열 (시도 단위) → 200 + .eq('gu', '')", async () => {
+  it("gu 빈 문자열 (시도 단위) → 200 + .eq('gu', '') + fallback:false", async () => {
     const res = makeRes();
     await handler({ method: "GET", query: { region: "서울", gu: "" }, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(mockQuery.eq).toHaveBeenCalledWith("gu", "");
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ fallback: false }));
+  });
+
+  it("gu='서구' 빈 응답 → gu='' 시도 폴백 + fallback:true", async () => {
+    const fallbackRows = [
+      { region: "인천", gu: "", base_month: "202501", price_index: null, avg_price_sqm: 100, new_supply: 20, initial_sale_rate: null, land_cost_ratio: 35 },
+      { region: "인천", gu: "", base_month: "202502", price_index: null, avg_price_sqm: 110, new_supply: 30, initial_sale_rate: null, land_cost_ratio: 36 },
+    ];
+    // 1차 (gu="서구"): 빈 응답 → 2차 (gu=""): 시도 데이터
+    mockOrder
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: fallbackRows, error: null });
+    const res = makeRes();
+    await handler({ method: "GET", query: { region: "인천", gu: "서구" }, headers: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      ok: true,
+      data: fallbackRows,
+      count: 2,
+      fallback: true,
+    }));
+    expect(mockQuery.eq).toHaveBeenCalledWith("gu", "서구");
+    expect(mockQuery.eq).toHaveBeenCalledWith("gu", "");
+  });
+
+  it("gu='' (시도 직접 조회) 빈 응답이어도 폴백 발동 X", async () => {
+    mockOrder.mockResolvedValueOnce({ data: [], error: null });
+    const res = makeRes();
+    await handler({ method: "GET", query: { region: "강원", gu: "" }, headers: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      data: [],
+      count: 0,
+      fallback: false,
+    }));
+    // 폴백 발동 안 함 → eq("gu", ...) 호출 1회만 (1차 gu="")
+    const guCalls = mockQuery.eq.mock.calls.filter((/** @type {any[]} */ c) => c[0] === "gu");
+    expect(guCalls).toHaveLength(1);
   });
 
   it("Supabase error → 500 시장통계 메시지", async () => {

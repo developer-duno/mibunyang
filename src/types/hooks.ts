@@ -216,12 +216,14 @@ export interface MarketStatsRow {
 
 /**
  * useMarketStatsHistory 반환 — MarketStatsCharts.tsx L37 어셔션 유지 (회수 별도 sub).
+ * fallback: API 가 시도(gu="") 자동 폴백 응답 시 true (UI 헤더 "시도 평균" 표시 분기).
  */
 export interface UseMarketStatsHistoryReturn {
   data: MarketStatsRow[];
   loading: boolean;
   error: string | null;
   retry: () => void;
+  fallback: boolean;
 }
 
 /**

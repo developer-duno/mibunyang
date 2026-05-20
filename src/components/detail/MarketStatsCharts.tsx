@@ -34,7 +34,7 @@ const monthLabel = (yyyymm: unknown) => {
  * - region 미설정 / loading / error 시 null (조용한 숨김)
  */
 export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }: MarketStatsChartsProps) {
-  const { data, loading, error, retry } = useMarketStatsHistory(region ?? "", gu ?? "") as { data: MarketRow[] | null; loading: boolean; error: unknown; retry: () => void };
+  const { data, loading, error, retry, fallback } = useMarketStatsHistory(region ?? "", gu ?? "") as { data: MarketRow[] | null; loading: boolean; error: unknown; retry: () => void; fallback: boolean };
 
   // 모든 차트가 같은 x축 라벨 사용
   const xLabels = useMemo(
@@ -42,21 +42,23 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
     [data]
   );
 
-  if (!region) return null;
-  if (loading) return (
-    <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: F.sm, marginTop: 16 }}>
-      시장 통계를 불러오는 중...
-    </div>
-  );
-  if (error) return (
-    <div style={{ height: 96, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16 }}>
-      <span style={{ color: C.muted, fontSize: F.sm }}>시장 통계를 불러올 수 없습니다</span>
-      <button onClick={retry} style={{ fontSize: F.xs, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.slate100, color: C.slate600, cursor: "pointer" }}>다시시도</button>
-    </div>
-  );
+  // 각 metric 별로 유효 값이 2개 이상 있어야 차트 렌더 가능. 1개 이상 metric 이 그릴 수
+  // 있어야 진짜 데이터 있음. data.length>=2 인데 5필드 모두 null 인 경우 + 1행만 값 있는
+  // corner case (chartData.length<2 → 미렌더) 모두 안내 박스로 분기.
+  // null/undefined 명시적 제외 — Number(null)=0 강제 변환 + isFinite(0)=true 통과 사고 방지.
+  const hasRenderableMetric = useMemo(() => {
+    if (!Array.isArray(data)) return false;
+    return METRICS.some(m => {
+      const cnt = data.reduce((c: number, d: MarketRow) => {
+        const raw = d?.[m.key];
+        if (raw == null) return c;
+        return c + (Number.isFinite(Number(raw)) ? 1 : 0);
+      }, 0);
+      return cnt >= 2;
+    });
+  }, [data]);
 
-  // 5/5 cron 전 데이터 0건 = 명시적 안내 (사용자 결정)
-  if (!Array.isArray(data) || data.length < 2) return (
+  const guideBox = (
     <div
       role="status"
       style={{
@@ -74,16 +76,39 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
     </div>
   );
 
+  if (!region) return null;
+  if (loading) return (
+    <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: F.sm, marginTop: 16 }}>
+      시장 통계를 불러오는 중...
+    </div>
+  );
+  if (error) return (
+    <div style={{ height: 96, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16 }}>
+      <span style={{ color: C.muted, fontSize: F.sm }}>시장 통계를 불러올 수 없습니다</span>
+      <button onClick={retry} style={{ fontSize: F.xs, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.slate100, color: C.slate600, cursor: "pointer" }}>다시시도</button>
+    </div>
+  );
+
+  // 데이터 0건 (5/5 cron 전) + 행 있지만 모든 metric 미렌더 corner case 모두 안내 박스
+  if (!Array.isArray(data) || data.length < 2) return guideBox;
+  if (!hasRenderableMetric) return guideBox;
+
+  // 폴백 응답 (API 가 gu="" 시도 자동 폴백) 시 헤더에 "시도 평균" 명시
+  const headerSuffix = fallback ? " 시도 평균" : (gu ? ` ${gu}` : "");
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
       <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>
-        지역 시장 추이 ({region}{gu ? ` ${gu}` : ""})
+        지역 시장 추이 ({region}{headerSuffix})
       </div>
       {METRICS.map(m => {
         type ChartPoint = { x: string; y: number; label: string };
         const chartData: ChartPoint[] = data
           .map((d: MarketRow, i: number) => {
-            const v = Number(d?.[m.key]);
+            // null/undefined 명시적 제외 — Number(null)=0 + isFinite(0)=true 강제 변환 사고 방지
+            const raw = d?.[m.key];
+            if (raw == null) return null;
+            const v = Number(raw);
             if (!Number.isFinite(v)) return null;
             return { x: xLabels[i] || "", y: v, label: `${xLabels[i] || ""}: ${v.toLocaleString()} ${m.unit}` };
           })

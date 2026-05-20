@@ -5,7 +5,11 @@
  *
  * market_stats_history 테이블에서 region+gu 조합의 5지표 시계열 반환.
  * 5지표: price_index / avg_price_sqm / new_supply / initial_sale_rate / land_cost_ratio.
- * 응답: { ok: true, data: [...], count: N, fetchedAt: "..." }
+ * 응답: { ok: true, data: [...], count: N, fallback: boolean, fetchedAt: "..." }
+ *
+ * KOSIS DT_41401N_005~009 5지표는 시도 단위만 제공 (collect-market-stats.mjs L161:
+ * C2_NM != "전체" continue + L166: gu="" 강제 적재). gu="서구" 등 시군구 쿼리는
+ * 빈 응답 → 시도 (gu="") 자동 폴백으로 사용자에게 시도 평균 데이터 표시.
  */
 import { withHandler } from "../_lib/handler.js";
 import { getSupabase } from "../_lib/supabase.js";
@@ -30,12 +34,27 @@ export default withHandler({
       }
 
       const supabase = getSupabase();
-      const { data, error } = await supabase
+      const runQuery = (/** @type {string} */ guValue) => supabase
         .from("market_stats_history")
         .select(SELECT)
         .eq("region", region)
-        .eq("gu", gu)
+        .eq("gu", guValue)
         .order("base_month", { ascending: true });
+
+      let { data, error } = await runQuery(gu);
+      let fallback = false;
+
+      // 시도 폴백 — KOSIS 통계 시도 단위 한계로 시군구 쿼리 빈 응답 시 gu="" 자동 조회
+      if (!error && (!data || data.length === 0) && gu) {
+        const fb = await runQuery("");
+        if (!fb.error) {
+          console.info(`[market-stats] Fallback hit: region="${region}" gu="${gu}" → gu=""`);
+          data = fb.data;
+          fallback = true;
+        } else {
+          console.error(`[market-stats] Fallback error: region="${region}"`, fb.error);
+        }
+      }
 
       if (error) {
         console.error("Supabase market_stats_history query error:", error);
@@ -47,6 +66,7 @@ export default withHandler({
         ok: true,
         data: data || [],
         count: (data || []).length,
+        fallback,
         fetchedAt: new Date().toISOString(),
       });
     } catch (err) {
