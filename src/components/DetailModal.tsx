@@ -78,9 +78,17 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   useEffect(() => {
     if (!item) { setPrices(null); setPricesError(null); setPricesLoading(false); return; }
     const aptId = item.apt.id as string;
-    // Supabase 분기 가드 — apartments_flat VIEW 는 priceByArea 항상 응답 (null 가능).
-    // null/배열 모두 "이미 들어온 응답" 이므로 fetch skip. Apt 타입에 priceByArea 미정의 → 캐스팅 1회.
-    if ((item.apt as { priceByArea?: unknown }).priceByArea !== undefined) {
+    // Supabase 분기 가드 — apartments_flat VIEW 가 단지별로 priceByArea 를 다른 형태로 응답:
+    //   - null: trade_stats LEFT JOIN miss (가격 데이터 미수집 단지)
+    //   - 배열 (빈 배열 포함): trade_stats 응답 완료 (거래 0건 = 빈 배열)
+    //   - undefined: 정적 분기 (USE_SUPABASE=false) apartments-list.json 에 priceByArea 미수록
+    // null/배열 모두 "이미 응답 받은 상태" → fetch skip. undefined 만 fetch 발동 (정적 lazy).
+    const priceByArea = (item.apt as { priceByArea?: unknown }).priceByArea;
+    if (priceByArea === null || Array.isArray(priceByArea)) {
+      setPrices(null); setPricesError(null); return;
+    }
+    if (priceByArea !== undefined) {
+      // 미래 타입 변경 대비 — 알 수 없는 형태도 fetch skip
       setPrices(null); setPricesError(null); return;
     }
     let cancelled = false;
