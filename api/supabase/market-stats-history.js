@@ -17,6 +17,23 @@ import { getSupabase } from "../_lib/supabase.js";
 const SELECT = "region,gu,base_month,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio";
 const REGION_MAX = 20;
 const GU_MAX = 30;
+const METRIC_FIELDS = ["price_index", "avg_price_sqm", "new_supply", "initial_sale_rate", "land_cost_ratio"];
+
+/**
+ * 응답 행 중 5필드가 하나라도 유효 값을 가진 행이 있는지 검사.
+ * 시군구 쿼리가 행은 있으나 모두 NULL 인 경우 시도 폴백 트리거.
+ * @param {Array<Record<string, unknown>> | null | undefined} rows
+ * @returns {boolean}
+ */
+function hasAnyMetricValue(rows) {
+  if (!rows || rows.length === 0) return false;
+  for (const row of rows) {
+    for (const f of METRIC_FIELDS) {
+      if (row[f] != null) return true;
+    }
+  }
+  return false;
+}
 
 export default withHandler({
   method: "GET",
@@ -44,8 +61,10 @@ export default withHandler({
       let { data, error } = await runQuery(gu);
       let fallback = false;
 
-      // 시도 폴백 — KOSIS 통계 시도 단위 한계로 시군구 쿼리 빈 응답 시 gu="" 자동 조회
-      if (!error && (!data || data.length === 0) && gu) {
+      // 시도 폴백 — KOSIS 통계 시도 단위 한계로 시군구 쿼리 (1) 빈 응답 또는 (2) 행은
+      // 있지만 5필드 모두 NULL 인 경우 gu="" 자동 조회. (2) 케이스 = collector 가
+      // base_month 별 wide row 만들면서 시군구는 행만 채우고 값은 비워두는 사고.
+      if (!error && gu && !hasAnyMetricValue(data)) {
         const fb = await runQuery("");
         if (!fb.error) {
           console.info(`[market-stats] Fallback hit: region="${region}" gu="${gu}" → gu=""`);

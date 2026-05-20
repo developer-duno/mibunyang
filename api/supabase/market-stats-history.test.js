@@ -106,6 +106,29 @@ describe("supabase/market-stats-history handler", () => {
     expect(mockQuery.eq).toHaveBeenCalledWith("gu", "");
   });
 
+  it("gu='서구' 행 23개 모두 metric NULL → gu='' 시도 폴백", async () => {
+    // 운영 사고 패턴 (인천 서구 23행 모두 NULL) — 빈 응답 아님에도 폴백 필수
+    const nullRows = Array.from({ length: 18 }, (_, i) => ({
+      region: "인천", gu: "서구",
+      base_month: `2024${String(i + 1).padStart(2, "0")}`,
+      price_index: null, avg_price_sqm: null, new_supply: null,
+      initial_sale_rate: null, land_cost_ratio: null,
+    }));
+    const fallbackRows = [
+      { region: "인천", gu: "", base_month: "202501", price_index: null, avg_price_sqm: 100, new_supply: 20, initial_sale_rate: null, land_cost_ratio: 35 },
+    ];
+    mockOrder
+      .mockResolvedValueOnce({ data: nullRows, error: null })
+      .mockResolvedValueOnce({ data: fallbackRows, error: null });
+    const res = makeRes();
+    await handler({ method: "GET", query: { region: "인천", gu: "서구" }, headers: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      data: fallbackRows,
+      fallback: true,
+    }));
+  });
+
   it("gu='' (시도 직접 조회) 빈 응답이어도 폴백 발동 X", async () => {
     mockOrder.mockResolvedValueOnce({ data: [], error: null });
     const res = makeRes();
