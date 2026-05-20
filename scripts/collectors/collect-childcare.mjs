@@ -24,12 +24,12 @@ const KAKAO_KEY = process.env.KAKAO_KEY;
 /**
  * exit code 임계값 — 1% 초과 fail 시에만 exit 1.
  * 일시적 Supabase statement timeout 1건 같은 자리에서 전체 run fail 차단.
- * @param {number} success
+ * @param {number} ok
  * @param {number} fail
  * @returns {boolean} true = exit 1 (정상 종료 차단)
  */
-export function shouldExitFail(success, fail) {
-  const failRate = success > 0 ? fail / success : (fail > 0 ? 1 : 0);
+export function shouldExitFail(ok, fail) {
+  const failRate = ok > 0 ? fail / ok : (fail > 0 ? 1 : 0);
   return failRate > 0.01;
 }
 
@@ -127,7 +127,7 @@ async function main() {
 
   const result = rpt.summary();
   await recordCollectorRun(PHASE, result);
-  if (shouldExitFail(result.success, result.fail)) process.exit(1);
+  if (shouldExitFail(result.ok, result.fail)) process.exit(1);
 }
 
 const argv1 = process.argv[1];
