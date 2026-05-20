@@ -22,6 +22,18 @@ const KAKAO_KEY = process.env.KAKAO_KEY;
  */
 
 /**
+ * exit code 임계값 — 1% 초과 fail 시에만 exit 1.
+ * 일시적 Supabase statement timeout 1건 같은 자리에서 전체 run fail 차단.
+ * @param {number} success
+ * @param {number} fail
+ * @returns {boolean} true = exit 1 (정상 종료 차단)
+ */
+export function shouldExitFail(success, fail) {
+  const failRate = success > 0 ? fail / success : (fail > 0 ? 1 : 0);
+  return failRate > 0.01;
+}
+
+/**
  * Kakao 키워드 검색 (반경 내 시설 조회)
  * @param {number} lat
  * @param {number} lng
@@ -90,10 +102,17 @@ async function main() {
         continue;
       }
 
-      const { error: uErr } = await sb.from("infra").upsert([{
+      const payload = [{
         apartment_id: apt.id, childcare: count, childcare_dist: dist,
         updated_at: new Date().toISOString(),
-      }], { onConflict: "apartment_id" });
+      }];
+      let uErr = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { error } = await sb.from("infra").upsert(payload, { onConflict: "apartment_id" });
+        if (!error) { uErr = null; break; }
+        uErr = error;
+        if (attempt === 0) await sleep(1000);
+      }
 
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); }
       else rpt.success(1);
@@ -108,7 +127,7 @@ async function main() {
 
   const result = rpt.summary();
   await recordCollectorRun(PHASE, result);
-  if (result.fail > 0) process.exit(1);
+  if (shouldExitFail(result.success, result.fail)) process.exit(1);
 }
 
 const argv1 = process.argv[1];
