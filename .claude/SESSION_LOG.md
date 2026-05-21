@@ -1,3 +1,34 @@
+# 세션 287 — 2026-05-22 (regions 시계열 stale NULL 32 행 cleanup — 세션 285 SIDO 환각 잔재 정리, 1 DB op + 1 docs 커밋)
+
+**거시 목적**: 세션 286 마무리 직후 SessionStart 사전 체크 ⑧번 (세종/강원/전북 중복 행 분포 측정) 에서 41쌍 중복 발견 → 진단 결과 시계열 누적 (recorded_at 별 1행) 정상 설계지만 2026-01-01 행이 세션 285 이전 SIDO_CODES 환각으로 적재된 빈 NULL 행 (32 행) 으로 확정.
+
+**결론**: **1 DB op + 1 docs 커밋**. 사고 아닌 잔재 정리. `regions` 790→758 행.
+
+## 진단 → 정정 (자가 점검 1+2 답습)
+
+| 단계 | 결과 |
+|---|---|
+| 사전 체크 ⑧ | (region, gu) 페어 41쌍 중복 발견 + region NULL 9쌍 (실제 region NULL = 0, gu NULL 시도 집계 행) |
+| 진단 v1 (환각) | "collector upsert 키 사고 → 중복 INSERT" → 환각 |
+| collector 본문 grep (population.mjs L256-280) | UPDATE 키 = region+gu+recorded_at 3-key, 매칭 0건 시 INSERT → 시계열 누적 정상 설계 확정 |
+| 진단 v2 (정정) | 2026-01-01 행 = 세션 285 이전 SIDO 환각으로 적재된 빈 NULL 행. **시계열 의미 0**. 32 행 stale |
+| DELETE (정밀 조건) | `regions WHERE region IN ('세종','강원','전북') AND recorded_at='2026-01-01' AND population IS NULL AND pop_growth IS NULL` → 정확히 32 행 |
+| 사후 검증 | 전체 790→758, 세종/강원/전북 잔여 46 행 (값 44 / NULL 2건 = 2026-05-15 별 사고 가능성) |
+
+## 답습 자산
+
+| 사고 | 정착 |
+|---|---|
+| "중복 행" 판정 환각 (시계열 설계 미고려) | 시계열 테이블 (recorded_at 키) 의 중복 판정은 **collector upsert 키 grep 1회 의무** 박제. plan 룰 §11 답습 |
+| SESSION_LOG drift 282~286 미등재 (6 세션) | 본 entry 1건 추가 + BACKLOG 후속 박제 (다음 세션 cleanup) |
+
+## 잔여 자리
+
+- 세종/강원/전북 2026-05-15 NULL 2 행 — 별 사고. monitor-collectors 잡힐 가능성 (추후)
+- SESSION_LOG drift 5건 (세션 282~286) — BACKLOG 후속 (메모리 답습 자산 그대로 SESSION_LOG 흡수 가능)
+
+---
+
 # 세션 281 — 2026-05-20 (4 후보 진행 — A 문서 stale 정정 + B JSON 폴백 dataUpdatedAt drift 정정 + D 보류 + E playwright webServer.env + Supabase 가드 회귀 spec, 3 커밋)
 
 **거시 목적**: 세션 280 NEXT_SESSION L8-38 박제 4 후보 (A·B·D·E) 통합 진행. 사용자 명시 "전부다 우선순위 + 서브에이전트 + 맹점·할루시네이션 철저 탐색".
