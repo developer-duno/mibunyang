@@ -114,9 +114,16 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 아파트 목록 조회
-  const { data: apts, error } = await sb.from("apartments").select("id, name, region, gu").limit(10000);
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  // 아파트 목록 조회 (페이지네이션 1000 행/배치)
+  const PAGE_SIZE = 1000;
+  const apts = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await sb.from("apartments").select("id, name, region, gu").range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    apts.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
   log(PHASE, `대상: ${apts.length}건`);
 
   const rpt = createReporter(PHASE);
@@ -144,9 +151,18 @@ async function main() {
   // regions UPDATE (세션 243 W6-E): 시군구 단위 crime_grade 채움
   let regionsFailed = false;
   let rResult = { elapsed: "0", ok: 0, fail: 0, skip: 0, total: 0 };
-  const { data: regions, error: rErr } = await sb.from("regions").select("id, region, gu").limit(10000);
+  const regions = [];
+  /** @type {{ message: string } | null} */
+  let rErr = null;
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await sb.from("regions").select("id, region, gu").range(offset, offset + PAGE_SIZE - 1);
+    if (error) { rErr = error; break; }
+    if (!data || data.length === 0) break;
+    regions.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
   if (rErr) { logError(PHASE, `regions 조회 실패: ${rErr.message}`); }
-  else if (regions) {
+  else if (regions.length) {
     const rRpt = createReporter(`${PHASE}-regions`);
     let rMatched = 0;
     for (const r of regions) {

@@ -191,10 +191,17 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
-  const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng").limit(10000);
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  const PAGE_SIZE = 1000;
+  const apts = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await sb.from("apartments").select("id, name, lat, lng").range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    apts.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
 
-  const withCoords = (apts || []).filter(a => a.lat && a.lng);
+  const withCoords = apts.filter(a => a.lat && a.lng);
 
   let targets = withCoords;
   if (!forceAll) {

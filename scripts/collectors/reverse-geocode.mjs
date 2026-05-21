@@ -76,12 +76,19 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 좌표 있는 단지 조회 (address가 없거나 --force)
-  let query = sb.from("apartments").select("id, name, dong, gu, region, lat, lng, address").limit(10000);
-  if (!force) query = query.is("address", null);
-  query = query.not("lat", "is", null).not("lng", "is", null);
-  const { data: apts, error } = await query;
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  // 좌표 있는 단지 조회 (address가 없거나 --force) — 페이지네이션 1000 행/배치
+  const PAGE_SIZE = 1000;
+  const apts = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    let q = sb.from("apartments").select("id, name, dong, gu, region, lat, lng, address");
+    if (!force) q = q.is("address", null);
+    q = q.not("lat", "is", null).not("lng", "is", null).range(offset, offset + PAGE_SIZE - 1);
+    const { data, error } = await q;
+    if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    apts.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
 
   log(PHASE, `대상: ${apts.length}건`);
   if (apts.length === 0) { log(PHASE, "모든 단지에 주소 있음"); return; }

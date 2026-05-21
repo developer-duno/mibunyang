@@ -127,9 +127,16 @@ async function main() {
   }
   log(PHASE, `측정소 ${allStations.length}건 조회 완료 (API ${apiCalls}회)`);
 
-  // 2. 단지 목록 조회
-  const { data: apts, error } = await sb.from("apartments").select("id, name, lat, lng").limit(10000);
-  if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+  // 2. 단지 목록 조회 — 페이지네이션 1000 행/배치
+  const PAGE_SIZE = 1000;
+  const apts = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await sb.from("apartments").select("id, name, lat, lng").range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    apts.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
   const targets = apts.filter(a => a.lat && a.lng);
   log(PHASE, `대상: ${targets.length}건`);
 

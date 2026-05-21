@@ -119,9 +119,17 @@ async function main() {
     log("load", `apartments.json: ${apartments.length}건`);
   } else {
     const sb = getSupabase();
-    const { data, error } = await sb.from("apartments").select("id, name, lat, lng, view").limit(10000);
-    if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
-    apartments = /** @type {EnvAptRow[]} */ (data || []);
+    const PAGE_SIZE = 1000;
+    /** @type {EnvAptRow[]} */
+    const acc = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error } = await sb.from("apartments").select("id, name, lat, lng, view").range(offset, offset + PAGE_SIZE - 1);
+      if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
+      if (!data || data.length === 0) break;
+      acc.push(.../** @type {EnvAptRow[]} */ (/** @type {unknown} */ (data)));
+      if (data.length < PAGE_SIZE) break;
+    }
+    apartments = acc;
     log("load", `Supabase apartments: ${apartments.length}건`);
   }
 

@@ -49,13 +49,19 @@ async function main() {
   const regulated = buildRegulatedSet(zones);
   log("regulation", `규제지역: ${regulated.size}개 시군구`);
 
-  // 전체 아파트 조회
-  const { data: apts, error } = await sb
-    .from("apartments")
-    .select("id, region, gu, is_regulated")
-    .limit(10000);
-
-  if (error) throw error;
+  // 전체 아파트 조회 — 페이지네이션 1000 행/배치
+  const PAGE_SIZE = 1000;
+  const apts = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await sb
+      .from("apartments")
+      .select("id, region, gu, is_regulated")
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    apts.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
 
   let updated = 0;
   for (const apt of apts) {

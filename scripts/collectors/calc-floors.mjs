@@ -28,15 +28,21 @@ export function classifyFloors(maxFloor) {
 async function main() {
   const sb = getSupabase();
 
-  // max_floor가 있고 floors가 없는 단지 조회
-  const { data: apts, error } = await sb
-    .from("apartments")
-    .select("id, max_floor, floors")
-    .not("max_floor", "is", null)
-    .gt("max_floor", 0)
-    .limit(10000);
-
-  if (error) throw error;
+  // max_floor가 있고 floors가 없는 단지 조회 — 페이지네이션 1000 행/배치
+  const PAGE_SIZE = 1000;
+  const apts = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await sb
+      .from("apartments")
+      .select("id, max_floor, floors")
+      .not("max_floor", "is", null)
+      .gt("max_floor", 0)
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    apts.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
 
   const targets = apts.filter(a => !a.floors);
   log("calc-floors", `대상: ${targets.length}건 (전체 max_floor 보유: ${apts.length}건)`);
