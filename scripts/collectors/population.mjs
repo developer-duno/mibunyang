@@ -23,10 +23,14 @@ const API_KEY = process.env.MOIS_POP_KEY;
 const BASE_URL = "https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus";
 
 // 전국 17 시도 법정동코드 (10자리)
+// 세션 285 raw API 응답 검증 박제 — 3 코드 정정 (영구 누락 사고):
+//   3600000000 → 3611000000 (세종, 이전 빈 응답)
+//   4200000000 → 5100000000 (강원, 이전 빈 응답)
+//   4500000000 → 5200000000 (전북, 이전 빈 응답)
 const SIDO_CODES = [
   "1100000000","2600000000","2700000000","2800000000","2900000000",
-  "3000000000","3100000000","3600000000","4100000000","4200000000",
-  "4300000000","4400000000","4500000000","4600000000","4700000000",
+  "3000000000","3100000000","3611000000","4100000000","5100000000",
+  "4300000000","4400000000","5200000000","4600000000","4700000000",
   "4800000000","5000000000",
 ];
 
@@ -60,8 +64,11 @@ async function fetchPopulation(year, month) {
 
       const json = await res.json();
       const items = json?.Response?.items?.item;
-      if (items && Array.isArray(items)) {
+      // 행안부 API: 응답 row 가 1개면 객체, 여러개면 배열 (세종 등 1행 시도 케이스)
+      if (Array.isArray(items)) {
         allItems.push(...items);
+      } else if (items && typeof items === "object") {
+        allItems.push(items);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -93,23 +100,25 @@ function resolveRegion(fullName) {
 
 // ── 시군구명 파싱 ────────────────────────────────────────────
 /**
- * @param {string} adminNm
+ * 행안부 API 응답 (ctpvNm + sggNm) → region 약칭 + gu 표기.
+ * population-sex-age.mjs v2 답습. sggNm 그대로 박힘 (자치구 분리 유지).
+ *
+ * 입력 예:
+ *   ("경기도", "수원시")        → { region: "경기", gu: "수원시" }        (시 합계)
+ *   ("경기도", "수원시 팔달구") → { region: "경기", gu: "수원시 팔달구" } (자치구)
+ *   ("서울특별시", "강남구")    → { region: "서울", gu: "강남구" }
+ *   ("세종특별자치시", "")      → { region: "세종", gu: "세종시" }
+ *
+ * @param {string | null | undefined} ctpvNm
+ * @param {string | null | undefined} sggNm
  * @returns {{region: string, gu: string} | null}
  */
-function parseGu(adminNm) {
-  // "서울특별시 강남구" → { region: "서울", gu: "강남구" }
-  // "경기도 수원시 팔달구" → { region: "경기", gu: "수원시" }
-  const parts = adminNm.trim().split(/\s+/);
-  if (parts.length < 2) return null;
-
-  const region = resolveRegion(parts[0]);
+function parseGu(ctpvNm, sggNm) {
+  const region = resolveRegion(ctpvNm);
   if (!region) return null;
-
-  // 세종은 gu 없음
   if (region === "세종") return { region, gu: "세종시" };
-
-  const gu = parts[1]; // "강남구", "수원시" 등
-  return { region, gu };
+  if (!sggNm) return null;
+  return { region, gu: sggNm };
 }
 
 // ── 메인 ─────────────────────────────────────────────────────
@@ -145,8 +154,7 @@ async function main() {
   // 2. 전년도 데이터 맵 생성 (시군구명 → 인구)
   const prevMap = new Map();
   for (const item of prevItems) {
-    const adminNm = [item.ctpvNm, item.sggNm].filter(Boolean).join(" ") || item.admNm || "";
-    const parsed = parseGu(adminNm);
+    const parsed = parseGu(item.ctpvNm, item.sggNm);
     if (parsed) {
       const key = `${parsed.region}:${parsed.gu}`;
       const pop = parseInt(String(item.totNmprCnt || item.totPpltn || "0").replace(/,/g, ""), 10);
@@ -157,8 +165,7 @@ async function main() {
   // 3. 증감률 계산
   const rows = [];
   for (const item of curItems) {
-    const adminNm = [item.ctpvNm, item.sggNm].filter(Boolean).join(" ") || item.admNm || "";
-    const parsed = parseGu(adminNm);
+    const parsed = parseGu(item.ctpvNm, item.sggNm);
     if (!parsed) continue;
 
     const key = `${parsed.region}:${parsed.gu}`;
@@ -179,9 +186,19 @@ async function main() {
   }
 
   // 4. 시도 단위 집계 (gu=null)
+  // 행안부 API 가 같은 시도에 시 합계 ("수원시") + 자치구 ("수원시 팔달구") 둘 다 응답하므로
+  // 자치구 보유 시도는 시 합계 행을 누적에서 제외 (중복 차단). 서울/세종 등 자치구가 단어 1개인
+  // 시도는 그대로 누적.
+  /** @type {Set<string>} */
+  const hasGuLevel = new Set();
+  for (const r of rows) {
+    if (r.gu && r.gu.includes(" ")) hasGuLevel.add(r.region);
+  }
   /** @type {Record<string, {curPop: number, prevPop: number}>} */
   const regionAgg = {};
   for (const r of rows) {
+    if (!r.gu) continue;
+    if (hasGuLevel.has(r.region) && !r.gu.includes(" ")) continue;
     if (!regionAgg[r.region]) regionAgg[r.region] = { curPop: 0, prevPop: 0 };
     regionAgg[r.region].curPop += r.population;
     const key = `${r.region}:${r.gu}`;

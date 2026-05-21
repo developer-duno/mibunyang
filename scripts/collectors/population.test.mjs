@@ -38,28 +38,37 @@ describe("resolveRegion", () => {
 });
 
 describe("parseGu", () => {
-  // 정상: "서울특별시 강남구"
-  it("'서울특별시 강남구' 파싱", () => {
-    const result = parseGu("서울특별시 강남구");
-    expect(result).toEqual({ region: "서울", gu: "강남구" });
+  // 자치구 직접 (서울 등)
+  it("(서울특별시, '강남구') — 자치구 직접 (sggNm 단어 1개)", () => {
+    expect(parseGu("서울특별시", "강남구")).toEqual({ region: "서울", gu: "강남구" });
   });
 
-  // 경기도 시군구 (3단어)
-  it("'경기도 수원시 팔달구' 파싱 — 2번째 토큰을 gu로", () => {
-    const result = parseGu("경기도 수원시 팔달구");
-    expect(result).not.toBeNull();
-    expect(result?.region).toBe("경기");
-    expect(result?.gu).toBe("수원시");
+  // 경기도 자치구 — sggNm 그대로
+  it("(경기도, '수원시 팔달구') — 자치구 단위 (sggNm 그대로)", () => {
+    expect(parseGu("경기도", "수원시 팔달구")).toEqual({ region: "경기", gu: "수원시 팔달구" });
+  });
+
+  // 경기도 시 합계 — sggNm 단어 1개
+  it("(경기도, '수원시') — 시 합계 행", () => {
+    expect(parseGu("경기도", "수원시")).toEqual({ region: "경기", gu: "수원시" });
   });
 
   // 세종 특수 처리
-  it("세종특별자치시 → 세종 + 세종시", () => {
-    const result = parseGu("세종특별자치시 어진동");
-    expect(result).toEqual({ region: "세종", gu: "세종시" });
+  it("(세종특별자치시, anything) → 세종 + 세종시", () => {
+    expect(parseGu("세종특별자치시", "")).toEqual({ region: "세종", gu: "세종시" });
+    expect(parseGu("세종특별자치시", "어진동")).toEqual({ region: "세종", gu: "세종시" });
   });
 
-  // 파싱 불가
-  it("단일 단어 입력은 null을 반환한다", () => {
-    expect(parseGu("서울")).toBeNull();
+  // sggNm 부재 + 비세종 시 null
+  it("sggNm 부재 + 비세종 시 null", () => {
+    expect(parseGu("경기도", null)).toBeNull();
+    expect(parseGu("경기도", "")).toBeNull();
+    expect(parseGu("경기도", undefined)).toBeNull();
+  });
+
+  // ctpvNm 매칭 불가 시 null
+  it("ctpvNm 매칭 불가 시 null", () => {
+    expect(parseGu("미지의땅", "수원시")).toBeNull();
+    expect(parseGu(null, "강남구")).toBeNull();
   });
 });
