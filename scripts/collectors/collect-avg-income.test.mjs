@@ -65,7 +65,16 @@ describe("aggregateIncomeRows", () => {
     ];
     const { period, entries } = aggregateIncomeRows(rows);
     expect(period).toBe("2022");
-    expect(entries).toEqual([{ region: "서울", gu: null, avg_income: 218 }]);
+    expect(entries).toEqual([{ region: "서울", gu: null, avg_income: 218, recorded_at: "2022-01-01" }]);
+  });
+
+  it("recorded_at 은 period(YYYY) → YYYY-01-01 변환", () => {
+    const rows = [
+      mkRow("11", "서울특별시", "2024", "1인당 가계총처분가능소득", "32224"),
+      mkRow("21", "부산광역시", "2024", "1인당 가계총처분가능소득", "26157"),
+    ];
+    const { entries } = aggregateIncomeRows(rows);
+    expect(entries.every(e => e.recorded_at === "2024-01-01")).toBe(true);
   });
 
   it("1인당 가계총처분가능소득 ITM_NM 만 채택 — GRDP·총소득·민간소비 제외", () => {

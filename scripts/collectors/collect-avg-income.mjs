@@ -54,6 +54,7 @@ const TARGET_ITM_NM = "1인당 가계총처분가능소득";
  * @property {string} region
  * @property {string|null} gu
  * @property {number} avg_income
+ * @property {string} recorded_at
  */
 
 // ── 단위 변환: 천원/년 → 만원/월 ───────────────────────────
@@ -87,6 +88,7 @@ export function aggregateIncomeRows(rows) {
 
   /** @type {IncomeEntry[]} */
   const entries = [];
+  const recordedAt = `${latestPrd}-01-01`;
   for (const r of typedRows) {
     if (r.PRD_DE !== latestPrd) continue;
     if (r.ITM_NM !== TARGET_ITM_NM) continue;
@@ -98,7 +100,7 @@ export function aggregateIncomeRows(rows) {
     const avgIncome = thousandWonYearToManWonMonth(r.DT);
     if (avgIncome == null) continue;
 
-    entries.push({ region, gu: null, avg_income: avgIncome });
+    entries.push({ region, gu: null, avg_income: avgIncome, recorded_at: recordedAt });
   }
   return { period: latestPrd, entries };
 }
@@ -183,25 +185,41 @@ async function runCollect(dryRun) {
     return { apiCalls, failed: 0, updated: 0 };
   }
 
-  // Supabase UPDATE (migration.mjs 패턴 동일 — region+gu=null 시도 단위)
+  // Supabase UPDATE-or-INSERT (population.mjs L237-261 답습 — 소유 컬럼 보존 + recorded_at 매칭)
   const sb = getSupabase();
   let updated = 0, failed = 0;
 
   for (const e of entries) {
-    const { error } = await sb
+    const { data: updRows, error: updErr } = await sb
       .from("regions")
       .update({ avg_income: e.avg_income })
       .eq("region", e.region)
-      .is("gu", null);
-    if (error) {
-      logError(PHASE, `${e.region}: ${error.message}`);
+      .is("gu", null)
+      .eq("recorded_at", e.recorded_at)
+      .select("id");
+    if (updErr) {
+      logError(PHASE, `UPDATE ${e.region}: ${updErr.message}`);
       failed++;
-    } else {
-      updated++;
+      continue;
     }
+
+    if (!updRows || updRows.length === 0) {
+      const { error: insErr } = await sb.from("regions").insert([{
+        region: e.region,
+        gu: null,
+        avg_income: e.avg_income,
+        recorded_at: e.recorded_at,
+      }]);
+      if (insErr) {
+        logError(PHASE, `INSERT ${e.region}: ${insErr.message}`);
+        failed++;
+        continue;
+      }
+    }
+    updated++;
   }
 
-  log(PHASE, `regions.avg_income UPDATE: ${updated}건 성공 / ${failed}건 실패`);
+  log(PHASE, `regions.avg_income UPSERT: ${updated}건 성공 / ${failed}건 실패 (recorded_at=${entries[0]?.recorded_at})`);
   return { apiCalls, failed, updated };
 }
 
