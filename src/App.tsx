@@ -74,7 +74,14 @@ export default function App() {
         const t = j.totals || {};
         setUpcomingCount((t.plan || 0) + (t.apply || 0) + (t.sale || 0));
       })
-      .catch(() => { /* 헤더 라벨 fallback 동작, 사용자 영향 없음 */ });
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        // upcomingCount = null 유지 → HeaderSection 옵셔널 prop 호환, 헤더 라벨만 fallback
+        console.warn("[App] /api/upcoming fetch 실패, 헤더 라벨 fallback", err);
+        trackEvent("upcoming_fetch_error", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
     return () => { cancelled = true; };
   }, []);
   const [tab, setTab] = useState(() => {
