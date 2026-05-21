@@ -540,6 +540,50 @@ describe('scoreLocation — 도보통학 보정', () => {
   });
 });
 
+describe('scoreLocation — 교통 sentinel + busRoutes 클램핑 (세션 288)', () => {
+  it('subwayDist 9000+ → info 라벨 "지하철 없음"', () => {
+    const r = scoreLocation(makeApt({ subwayDist: 9999 }));
+    const transport = r.subs.find(s => s.name === "교통");
+    expect(transport?.info).toContain("지하철 없음");
+    expect(transport?.detail).toContain("지하철 없음");
+  });
+  it('subwayDist < 9000 → "지하철 N m" 라벨', () => {
+    const r = scoreLocation(makeApt({ subwayDist: 500 }));
+    const transport = r.subs.find(s => s.name === "교통");
+    expect(transport?.info).toContain("지하철 500m");
+  });
+  it('busRoutes FULL_BUS_ROUTES 상한 클램핑 (100 ≤ 15와 동일 가중)', () => {
+    const at15 = scoreLocation(makeApt({ busRoutes: 15 }));
+    const at100 = scoreLocation(makeApt({ busRoutes: 100 }));
+    // FULL_BUS_ROUTES 이상에서는 rawBus = 30 으로 동일 클램핑
+    expect(at100.subs.find(s => s.name === "교통")?.score ?? 0)
+      .toBe(at15.subs.find(s => s.name === "교통")?.score ?? 0);
+  });
+  it('busRoutes 적을수록 교통 점수 하락 (단조성)', () => {
+    const few = scoreLocation(makeApt({ busRoutes: 0 }));
+    const many = scoreLocation(makeApt({ busRoutes: 15 }));
+    expect(many.subs.find(s => s.name === "교통")?.score ?? 0)
+      .toBeGreaterThan(few.subs.find(s => s.name === "교통")?.score ?? 0);
+  });
+});
+
+describe('scorePrice — fairPrice 3단 폴백 라벨 보강 (세션 288)', () => {
+  it('nearbyMedian 부재 + avgPriceSqm 폴백 → 신뢰도 detail "폴백차감15"', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: 12000 }));
+    const rel = r.subs.find(s => s.name === "데이터 신뢰도");
+    expect(rel?.detail).toContain("폴백차감");
+  });
+  it('nearbyMedian 부재 + avgPriceSqm/presalePp 둘 다 null → fairPrice 0 분기', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: null, presalePp: null }));
+    expect(r.fairPrice).toBe(0);
+    expect(r.subs[0].info).toBe("데이터 부재");
+  });
+  it('폴백 사용 시 괴리도 detail 에 "광역 시도 평균 기준" 경고', () => {
+    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: 12000 }));
+    expect(r.subs[0].detail).toContain("광역 시도 평균 기준");
+  });
+});
+
 describe('scoreRisk — 초기분양률 (initSc)', () => {
   it('initialSaleRate null → 중립 60점 (100-40)', () => {
     const r = scoreRisk(makeApt({ initialSaleRate: null }));
