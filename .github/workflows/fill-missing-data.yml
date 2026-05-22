@@ -62,6 +62,8 @@ jobs:
           fi
 
   # ── Phase 2: 순수 계산 (병렬, 외부 API 없음) ──────────────
+  # 외부 cron 박힌 collector 는 fill 매트릭스 제외 — sub-step 동시 실행 충돌 회피
+  # (세션 291 박제: calc-exclusive-ratio + calc-layout + industry-match 가 외부 cron 발화 시 같은 collector 동시 실행 → cancelled 8 주 연속 사고)
   phase2-calc:
     needs: phase1-coords
     if: always()
@@ -72,10 +74,7 @@ jobs:
       matrix:
         script:
           - { name: "네이버 동기화", cmd: "sync-naver-complex" }
-          - { name: "전용률 계산", cmd: "calc-exclusive-ratio" }
-          - { name: "평면구조 추정", cmd: "calc-layout" }
           - { name: "층수 계산", cmd: "calc-floors" }
-          - { name: "산업단지 매칭", cmd: "industry-match" }
           - { name: "규제지역 적용", cmd: "regulation-seed" }
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

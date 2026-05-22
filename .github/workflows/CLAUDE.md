@@ -69,7 +69,7 @@
 | 워크플로우 | 설명 |
 |-----------|------|
 | `seed-data.yml` | 초기 데이터 시딩 |
-| `fill-missing-data.yml` | 빈 데이터 일괄 수집 (16개 수집기 순차, 세션273: cron 일요일 21시→02시 UTC 이동 + Phase 5 timeout 360→120분) |
+| `fill-missing-data.yml` | 빈 데이터 일괄 수집 (5 phase 직렬 + 매트릭스 병렬, 세션273: Phase 5 timeout 360→120분, **세션291**: cron 일요일 21시→02시 UTC 이동 commit `68c5051` (실제 박제) + phase2-calc 매트릭스 6→3 항목 (외부 cron 박힌 calc-exclusive-ratio·calc-layout·industry-match 제외, A-1 sub-step 동시 실행 cancelled 정정)) |
 | `geocode-missing.yml` | 좌표 누락 지오코딩 |
 | `reverse-geocode.yml` | 좌표 → 주소 역지오코딩 |
 
