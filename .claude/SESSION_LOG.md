@@ -1,3 +1,61 @@
+# 세션 293 — 2026-05-22 (A-1 검증 + KAKAO_KEY 변수명 통일 + console.* 4 자리 DEV 가드)
+
+**거시 목적**: NEXT_SESSION 박제 3 후보 (A-1 검증 + Kakao 키 노출 + console.* 8 자리) 진입. Phase 1 Explore 3 병렬 결과 박제값 환각 3 건 발견 → 자가 결정 후 plan v2 진입.
+
+**결론**: 1 fix 커밋 origin/main push (`2dd66f5..eec2642`). CI run 26271812068 **success** ✅. workflow_dispatch 3 발화 = calc-layout / calc-exclusive-ratio **success** + fill-missing-data phase2-calc 3 항목 cancelled 0 = **A-1 fix 작동 확정**.
+
+| 작업 | 산출 | 검증 |
+|---|---|---|
+| A workflow_dispatch 즉시 검증 | run 26271531141 (calc-layout) + 26271536466 (calc-exclusive-ratio) | 모두 success ✅ (코드 변경 0) |
+| B KAKAO_KEY 변수명 통일 | noise-estimate.mjs 3 + collect-noise.yml 1 + fill-missing-data.yml 2 (총 6 정정) | audit-env-keys 30 clean / fill-missing-data noise-estimate + environment job success |
+| C console.* DEV 가드 4 자리 | App / DetailModal / useHistoryData / useMarketStatsHistory (각 1 자리) | vitest 3020/3020 pass (회귀 0) |
+
+**커밋 1**: `eec2642` (7 파일 +16/-10) "fix(infra+ui): KAKAO_KEY 변수명 통일 + production console.* 4건 DEV 가드"
+
+## Phase 1 Explore 결과 = NEXT_SESSION 박제값 환각 3 건 정정
+
+| NEXT_SESSION 박제값 | 실측 결과 | 정정 |
+|---|---|---|
+| A-1 = 5/24 schedule 대기 (58~61시간 후) | workflow_dispatch trigger 박힘 | 즉시 검증 옵션 추가 |
+| Kakao 키 클라이언트 노출 위험 | OAuth client_id = Kakao 공식 공개 표준 ([Login REST API](https://developers.kakao.com/docs/latest/ko/kakaologin/rest-api)). 토큰 교환 이미 서버 분리 | 위험 자리 = 환각, noise-estimate.mjs 변수명 불일치만 정정 |
+| console.* 8 자리 | 실측 12 자리 (5 보호 + 2 의도 영역 + 4 가드 박제 필요) | 8 → 4 자리로 정정 |
+
+`.claude/rules/next-session-grep-mandate.md` §1 답습 효과 확정 (NEXT_SESSION 박제값 단정 금지 + 메모리/collector/사용자 콘솔 grep 의무).
+
+## B 자세히
+
+- **GitHub Secret 진실 = `KAKAO_KEY`** (`.github/workflows/CLAUDE.md` 답습 확정). `KAKAO_REST_KEY` = noise-estimate.mjs 만을 위한 historical 별칭
+- 4 파일 동시 정정 = `.claude/rules/secret-naming-audit.md` §"3-way 동기화" 답습 (code + workflow + orchestrator)
+- orchestrator (`data-fill.mjs`) 에 noise-estimate.mjs 등록 0 건 = drift 0 확정 (audit-env-keys 30 clean 신호)
+- src/hooks/useKakaoAuth.ts 의 `VITE_KAKAO_REST_API_KEY` = Vite client 환경변수 = Kakao OAuth client_id 표준 = 의도된 공개 자리 = 정정 제외
+
+## C 자세히
+
+- 운영 코드 console.* 실측 12 자리:
+  - 5 자리 = `import.meta.env.DEV` 또는 `IS_DEV` 가드 이미 박힘 (보호됨)
+  - 2 자리 = `analytics.ts:26` (trackEvent vendor fail catch) + `engine.ts:104` (scoring safe() exception) = **production 운영 진단 신호 의도 영역 보존**
+  - 4 자리 = fetch 실패 fallback 알림 = production 콘솔 노이즈 = DEV 가드 박제
+- 답습 패턴 = `staticDataApi.ts:25` (`if (import.meta.env.DEV) { console.warn(...) }`)
+- analytics/engine catch 블록 = 사용자가 콘솔 열어 production 진단할 자리 = 가드 박으면 운영 사고 발견 못 함 = 미래가치 + 실증 근거 박제
+
+## 사고 박제 (자가 점검 1 + 2 답습 효과)
+
+| 사고 | 정정 |
+|---|---|
+| plan v1 noise-estimate.mjs "1 줄 변경" 박제 | 실측 = 3 자리 + workflow yml 2 파일 3 자리 = **6 자리 동시 정정 의무**. plan v1 박제값 환각 (workflow yml 별칭 매핑 파악 0) |
+| Edit 도구 첫 시도 collect-noise.yml "성공" 보고 후 실측 미적용 | Read 안 한 파일 Edit 거부 정상 동작. Read 후 재시도 정정 |
+| NEXT_SESSION Kakao 키 "위험" 박제값 단정 | Kakao OAuth REST API 키 = client_id 표준 공개 자리. 위험 자리 = 환각. 미래 collector 추가 시 변수명 사고만 정리 의무로 정정 |
+| NEXT_SESSION console.* "8 자리" 박제값 | 실측 12 자리 중 4 자리만 진짜 가드 박제 대상. 8 - 4 = 4 자리 분류 환각 |
+| plan v2 Phase 3 (`.env.local` 권한 거부 미예측) | 정상 동작 (시크릿 보호). secret 이름 변경 0 = 사용자 작업 의무 0 = 안전 |
+
+### 답습 룰
+
+- **plan 박제값 (NEXT_SESSION/MEMORY) workflow 본문 grep 의무 답습** — workflow yml 별칭 매핑 (`KAKAO_REST_KEY: ${{ secrets.KAKAO_KEY }}`) 같은 historical 구조는 본문 읽어야 발견 가능. plan v1 박제값 단정 후 6 자리 환각
+- **Vite client 환경변수 vs Node server 환경변수 분리 답습** — `VITE_*` prefix 변수 = 의도된 클라이언트 inline embedding (Vite 공식). 보안 환각 차단 위해 grep 결과 + 사용 패턴 + OAuth 표준 cross-check 의무
+- **fill-missing-data run job 단위 신호 박제** — phase2-calc 3 항목 cancelled 0 = A-1 fix 작동 확정. 전체 conclusion 기다리지 않고 job 단위 success 추적으로 운영 신호 1차 확정 답습
+
+---
+
 # 세션 292 — 2026-05-22 (A-2 monitor 분기 cron false positive + B dataUpdatedAt drift 묶음)
 
 **거시 목적**: A-1 fix 효과 검증 cron (5/24 22:00 UTC) 미도래 시점에 NEXT_SESSION 5 후보 중 A-2 + B 묶음 진입. monitor 알람 노이즈 차단 + JSON 출력 키 정합 (SourceOfTruth 명시).
