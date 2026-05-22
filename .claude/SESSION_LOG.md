@@ -9328,3 +9328,41 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **사용자 어휘 "아카이브로 분리" ≠ "단순 삭제"** — BACKLOG_ARCHIVE.md 답습 패턴 = 별도 파일로 이동 + 정보 보존. plan v2 "단순 삭제 + 메모" 거부 후 plan v3 옵션 A (BACKLOG_ARCHIVE 이동) 채택. **어휘 매칭 검증 의무 — "삭제" vs "분리" vs "이동" vs "보존"**
 - **plan v2 환각 4건 직접 실측 정정** — apartments.json "13.1MB" / SessionEnd 훅 부재 / drift 측정 / `_rollbacks/` 디렉토리. 모든 plan 박제값 실측 후 박제 의무 답습 v3 박제 (v1 세션 233 / v2 세션 251 / v3 본 세션)
 - **`.gitignore` `.claude/*` 기본 무시 + negation 한정** — BACKLOG.md / BACKLOG_ARCHIVE.md 도 .gitignore 대상이라 git 추적 X. negation 있는 것은 `settings.json`·`SESSION_LOG.md`·`commands/`·`agents/`·`rules/` 만. **본 SESSION_LOG.md 박제는 git 추적되어 영구 보존됨** (다른 BACKLOG·NEXT_SESSION 정정은 로컬만)
+
+## 세션 291 (2026-05-22) — A-1 calc-exclusive-ratio 8 주 연속 cancelled 근본 정정
+
+**거시 목적**: 세션 290 마무리 박제 알람 2건 중 A-1 (calc-exclusive-ratio 2026-04-19 / 04-26 / 05-17 일요일 22:00 UTC cron 발화 후 ~55~58 분 후 cancelled, 8 주 연속) 근본 원인 진단 + 정정. 사용자 PHASE 1~4 워크플로 명시 적용 + 자가 점검 1 발동 + 3 Explore 서브에이전트 병렬 환각 5건 정정.
+
+**결론**: 1 fix 커밋 `c086772` push CI in_progress. `.github/workflows/fill-missing-data.yml` phase2-calc matrix 6→3 항목 축소 (외부 cron 박힌 calc-exclusive-ratio + calc-layout + industry-match 제외) + `.github/workflows/CLAUDE.md` L72 박제값 stale 정정.
+
+**진짜 원인 (v3 가설)**: fill-missing-data 의 phase2-calc matrix 가 calc-exclusive-ratio + calc-layout + industry-match 를 sub-step 으로 호출 + 동시에 외부 cron (calc-exclusive-ratio.yml / calc-layout.yml / collect-industry.yml) 도 발화 → 같은 collector 동시 실행 → DB lock 또는 ETL collision 또는 GitHub Actions runner 자원 경합 → cancelled.
+
+**timeline 정밀 박제** (5/17 사례):
+- 21:44 fill schedule 발화 (구 cron `0 21 * * 0`, 5/19 commit `68c5051` 이전이라 미정정)
+- 21:44~ phase1-coords 30 분 → phase2-calc matrix 병렬 (calc-exclusive-ratio + calc-layout sub-step 실행 중)
+- 22:00 외부 calc-exclusive-ratio.yml cron 발화 시도 → 22:54 시작 (54 분 큐 대기)
+- 23:53 외부 cron cancelled (fill 의 sub-step 이 같은 collector 점유 중)
+
+**plan v1·v2·v3·v4 누적 환각 5건 정정** (자가 점검 1 발동 + 3 Explore 병렬 결과):
+1. A-1 v1 환각: "calc-collection 그룹 점유자 충돌" → 22:00~22:54 점유자 0 명 실측 → 폐기
+2. A-1 v2 환각: "fill sub-step 동시 실행 cancelled" → 시간 모순 발견 → 폐기
+3. A-1 v3 진실 박제: phase2-calc matrix + 외부 cron 동시 발화
+4. B 영역 v1 환각: "BACKLOG L205-210 stale 의심" → Agent B 실측 결과 **B 사고 실재** (staticDataApi.ts L50 fallback 은 사후 fix commit `a4c6d8d`, 정식 요구사항 아님)
+5. CLAUDE.md L73 박제값 stale: "세션 273 cron 21→02 이동" → 실제 commit `68c5051` 5/19 박제 (5/17 사고 시점 미완) → L72 정정
+
+**해결책 옵션 결정 (사용자 위임 후 본인 결정)**: 옵션 1 (호출 제거) 채택. 미래가치 + 실효성 기준:
+- 옵션 1 = 근본 정정 ("한 collector = 한 cron" 원칙 답습)
+- 옵션 2 (concurrency 좁힘) = 증상 처리, cancel 잔존
+- 옵션 3 (1+2) = 옵션 1 충분 → 옵션 2 추가 불필요
+
+**phase2-calc 매트릭스 정정** (6→3 항목):
+- 제거: `calc-exclusive-ratio` (외부 cron `calc-exclusive-ratio.yml`) + `calc-layout` (외부 cron `calc-layout.yml`) + `industry-match` (외부 cron `collect-industry.yml`)
+- 유지: `sync-naver-complex` + `calc-floors` + `regulation-seed` (외부 cron 없음, fill 내부 호출만)
+
+**답습**:
+- **PHASE 1~4 사용자 워크플로 정합** — 추측 0 / 박제값 답습 0 / grep 의무 100% (PHASE 1 의존관계 grep 18 회 + PHASE 2 4 규칙 + PHASE 3 운영 신호 가중치 + PHASE 4 ✅ 계속)
+- **자가 점검 1 + 3 Explore 병렬 → plan v1·v2·v3 환각 5건 정정**. plan 박제값 단정 금지 답습 + 사용자 명시 발동 시 즉시 grep
+- **NEXT_SESSION 박제값 stale 검출** — `collect-data.mjs` 경로 환각 (실제 `scripts/` 직접) + CLAUDE.md L73 박제값 stale
+- **next-session-grep-mandate.md 룰 답습 의무 v3** — 5 후보 박제값 단정 전 grep 의무 (세션 251 v1 / 세션 254 v2 / 세션 291 v3)
+- **B 영역 운영 사고 실재 확정** — 다음 세션 진입 후순위 (collect-data.mjs L1087 `dataUpdatedAt: fetchedAt` 동시 박제)
+- **다음 일요일 (2026-05-24) 22:00 UTC calc-exclusive-ratio cron 발화 success 검증 의무** — monitoring trigger 박제
