@@ -19,6 +19,8 @@ if (!existsSync(SRC)) {
 const src = JSON.parse(readFileSync(SRC, "utf8"));
 const apartments = Array.isArray(src.data) ? src.data : [];
 const fetchedAt = src.fetchedAt ?? null;
+// 세션 292 양쪽 키 박제 답습 — apartments.json 에 dataUpdatedAt 박혀 있으면 우선, 없으면 fetchedAt 답습.
+const dataUpdatedAt = src.dataUpdatedAt ?? fetchedAt;
 
 const listData = apartments.map(({ priceByArea, rentByArea, jeonseByArea, priceByFloor, ...rest }) => rest);
 const pricesData = apartments.map(a => ({
@@ -29,7 +31,7 @@ const pricesData = apartments.map(a => ({
   priceByFloor: a.priceByFloor ?? null,
 }));
 
-writeFileSync(resolve(DATA_DIR, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt }));
-writeFileSync(resolve(DATA_DIR, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt }));
+writeFileSync(resolve(DATA_DIR, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt, dataUpdatedAt }));
+writeFileSync(resolve(DATA_DIR, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt, dataUpdatedAt }));
 
 console.log(`[split] apartments.json (${apartments.length} 단지) → list + prices 2 파일 분리 완료`);

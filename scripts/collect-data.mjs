@@ -1084,10 +1084,12 @@ async function main() {
     priceByFloor: a.priceByFloor ?? null,
   }));
 
-  const output = { ok: true, data: apartments, count: apartments.length, fetchedAt };
+  // 양쪽 키 동시 박힘 (세션 292) — 정적 JSON 출력 시점 = ETL 수집 = 데이터 갱신 시점 동일.
+  // staticDataApi.ts L48-50 fallback 의존 제거 + Supabase 분기 응답 (dataUpdatedAt) 과 키 정합.
+  const output = { ok: true, data: apartments, count: apartments.length, fetchedAt, dataUpdatedAt: fetchedAt };
   writeFileSync(resolve(outDir, "apartments.json"), JSON.stringify(output));
-  writeFileSync(resolve(outDir, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt }));
-  writeFileSync(resolve(outDir, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt }));
+  writeFileSync(resolve(outDir, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
+  writeFileSync(resolve(outDir, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
   writeFileSync(resolve(outDir, "meta.json"), JSON.stringify(meta, null, 2));
 
   const elapsed = Math.round((Date.now() - startTime) / 1000);
