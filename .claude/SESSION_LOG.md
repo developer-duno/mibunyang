@@ -1,3 +1,51 @@
+# 세션 292 — 2026-05-22 (A-2 monitor 분기 cron false positive + B dataUpdatedAt drift 묶음)
+
+**거시 목적**: A-1 fix 효과 검증 cron (5/24 22:00 UTC) 미도래 시점에 NEXT_SESSION 5 후보 중 A-2 + B 묶음 진입. monitor 알람 노이즈 차단 + JSON 출력 키 정합 (SourceOfTruth 명시).
+
+**결론**: 2 커밋 origin/main push (`03f0ac7..89831d7`). CI run 26270770351 in_progress (push 시점).
+
+| 작업 | 커밋 | 파일 | 검증 |
+|---|---|---|---|
+| A-2 monitor 분기 cron stale 임계 분리 | `90ff8b0` | monitor.mjs (+20/-4) + monitor.test.mjs (+20/-0) | vitest 36 통과, typecheck:scripts 0 errors |
+| B JSON 3 출력 + split 자매 dataUpdatedAt 동시 박제 | `89831d7` | collect-data.mjs (+5/-3) + split.mjs (+4/-2) + staticDataApi.ts (+2/-2) | vitest 49 통과 (staticDataApi+useApartmentData+useDataPipeline) |
+
+## A-2 세부
+
+- `QUARTERLY_CRON_WORKFLOWS = ["DART 시공사 재무 수집", "KOSIS Sale Price Index Collection"]` 화이트리스트 박제
+- `QUARTERLY_STALE_DAYS = 100` (91 일 분기 + 9 일 여유)
+- `checkStaleWorkflows` 분기 cron 인지 분기 + 메시지 동적 (`cycleLabel`)
+- monitor-collectors.test.mjs it 2건 추가 (정상 79일 + 이상 105일)
+- 답습 주석 5줄 박제 — 신규 분기 cron 추가 시 화이트리스트 1줄 박제 의무
+- plan v3 정정: 룰 신규 박제 폐기 (`.claude/rules/` 현재 N=6, 글로벌 §13 N>5 서브폴더 분리 트리거 부담 회피)
+
+## B 세부
+
+- `scripts/collect-data.mjs` L1087/L1089/L1090 — `dataUpdatedAt: fetchedAt` 동시 박제 (정적 JSON 출력 시점 = ETL 수집 = 데이터 갱신 시점)
+- `scripts/split-apartments-json.mjs` Vercel prebuild 호출 자매 — L21 `dataUpdatedAt = src.dataUpdatedAt ?? fetchedAt` + L32/L33 출력 양쪽 키
+- `src/services/staticDataApi.ts` L46-47 주석 갱신 — "양쪽 키 동시 박힘, fallback 보존" 명시
+- fallback (L48-50 `json.dataUpdatedAt ?? json.fetchedAt ?? null`) **유지** — 과거 JSON CDN 캐시 + Supabase 분기 응답 호환
+
+## 사고 박제 (서브에이전트 3 병렬 검증 + plan v1→v3 누적 환각 정정 6 건)
+
+| 라운드 | 환각 | 정정 |
+|---|---|---|
+| plan v1 → v2 | split-apartments-json.mjs L21/L32/L33 누락 (Vercel prebuild 호출 자매) | v2 B 단계 2 추가 |
+| plan v1 → v2 | G4 🟡 "vitest 없음" 환각 (실측 staticDataApi.test.js L124-143 박혀 있음) | v2 G4 🟢 승격 |
+| plan v2 → v3 (Agent B) | `api/supabase/apartments.js` "부재" 보고 | 본 세션 grep 으로 박혀 있음 재확정 (Agent 환각) |
+| plan v2 → v3 (Agent C) | `audit-monitor-coverage.mjs` + `.github/workflows/CLAUDE.md` "부재" 보고 | 본 세션 grep 으로 모두 박혀 있음 재확정 (Agent 환각 2) |
+| plan v2 → v3 (Agent C 진짜 발견) | `.claude/rules/` N=6 → 7 부담 트리거 | quarterly-cron-whitelist.md 룰 신규 박제 폐기, monitor.mjs 본문 주석 + 메모 대체 |
+| plan v2 → v3 (Agent B 진짜 발견) | `public/data/meta.json` L2 fetchedAt 박힘 | UI 사용처 0 → 정정 안 함 (과투자 회피) |
+
+**누적 정정 = 6 건** (서브에이전트 환각 3 + plan v1→v2 누락 2 + plan v2→v3 과투자 회피 1).
+
+### 답습 룰
+
+- **서브에이전트 환각 의심 시 본 세션 grep 으로 재확정 의무** — Agent 가 "파일 부재" 보고 시 직접 `test -f` / `grep -n` 으로 단정 검증. 본 세션 환각 3건 모두 직접 grep 으로 재확정해 정정.
+- **`.claude/rules/` N>5 서브폴더 분리 트리거** — 글로벌 CLAUDE.md §13. 본 세션 N=6 → 7 추가 부담 발견 시 룰 신규 박제 회피 + monitor.mjs 본문 주석 + 사고 메모 대체.
+- **Vercel prebuild 호출 자매 파일** — `scripts/prebuild.mjs` 가 VERCEL 환경에서 `split-apartments-json.mjs` 호출. collect-data 정정 시 split 자매 동시 정정 의무 답습.
+
+---
+
 # 세션 290 — 2026-05-22 (자아 정리 묶음 6 영역 + README 84줄 신규 작성 + monitor 알람 2건 발견)
 
 **거시 목적**: SessionStart 사전 체크 ⑤번 자아 정립 잔여 6 영역 (A~F) 일괄 정리. 외부인 GitHub 진입성 회복 + stale 답습 사고 차단. 본 세션 진행 중 monitor-collectors 알람 2건 동시 발생 → 다음 세션 후보 A 로 이전.
