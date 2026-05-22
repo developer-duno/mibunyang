@@ -27,6 +27,18 @@ loadEnv();
 
 /** 미발화 판정 임계 — 마지막 run 이 이 일수보다 오래되면 이상 (월간 cron 1주기+여유). */
 const STALE_DAYS = 35;
+/**
+ * 분기 cron 워크플로 — STALE_DAYS=35 단순 비교로 false positive 발생 (분기 = 91 일 간격).
+ * 본 화이트리스트에 박힌 워크플로는 QUARTERLY_STALE_DAYS(=100) 임계 적용.
+ * 신규 분기 cron 워크플로 추가 시 이 배열에 workflow `name` 1 줄 박제 + monitor-collectors.test.mjs 회귀 답습.
+ * 세션 292 박제: dart-builders + sale-price-index 2 개로 출발 (`0 3 15 1,4,7,10 *`, `30 20 16 1,4,7,10 *`).
+ */
+export const QUARTERLY_CRON_WORKFLOWS = [
+  "DART 시공사 재무 수집",
+  "KOSIS Sale Price Index Collection",
+];
+/** 분기 cron 미발화 판정 임계 — 91 일 1주기 + 9 일 여유. */
+const QUARTERLY_STALE_DAYS = 100;
 /** ③ 점검 대상 워크플로 목록 출처 — monitor.yml 자신의 workflow_run.workflows 배열. */
 const MONITOR_YML_PATH = ".github/workflows/monitor-collectors.yml";
 /** NULL 급증 판정 임계 — 핵심 컬럼 NULL 비율이 이 값을 넘으면 이상. */
@@ -231,21 +243,25 @@ export function checkStaleWorkflows(workflows, now = new Date()) {
   /** @type {Issue[]} */
   const issues = [];
   for (const wf of workflows) {
+    // 분기 cron 워크플로면 100일 임계, 그 외 35일 임계 (분기 cron false positive 차단, 세션 292).
+    const isQuarterly = QUARTERLY_CRON_WORKFLOWS.includes(wf.name);
+    const threshold = isQuarterly ? QUARTERLY_STALE_DAYS : STALE_DAYS;
     if (!wf.lastRunAt) {
-      // 신규 워크플로 — 생성 35일 이내면 첫 cron 아직, 미발화 아님.
+      // 신규 워크플로 — 생성 임계 이내면 첫 cron 아직, 미발화 아님.
       if (wf.createdAt) {
         const sinceCreated = (now.getTime() - new Date(wf.createdAt).getTime()) / 86400000;
-        if (sinceCreated <= STALE_DAYS) continue;
+        if (sinceCreated <= threshold) continue;
       }
       issues.push({ kind: "stale", collector: wf.name, detail: "실행 기록이 한 번도 없음" });
       continue;
     }
     const ageDays = (now.getTime() - new Date(wf.lastRunAt).getTime()) / 86400000;
-    if (ageDays > STALE_DAYS) {
+    if (ageDays > threshold) {
+      const cycleLabel = isQuarterly ? "분기 cron 1주기" : "월간 cron 1주기";
       issues.push({
         kind: "stale",
         collector: wf.name,
-        detail: `마지막 실행이 ${Math.floor(ageDays)}일 전입니다 (${STALE_DAYS}일 초과 — 월간 cron 1주기를 넘김).`,
+        detail: `마지막 실행이 ${Math.floor(ageDays)}일 전입니다 (${threshold}일 초과 — ${cycleLabel}를 넘김).`,
         at: wf.lastRunAt,
       });
     }

@@ -15,6 +15,7 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
 const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
+  QUARTERLY_CRON_WORKFLOWS,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
 
@@ -188,6 +189,25 @@ describe("checkStaleWorkflows — ③ 미발화", () => {
       "Collect Maintenance Cost",
       "Migration Data Collection",
     ]);
+  });
+
+  // 분기 cron 워크플로 — 91 일 간격 (1/4/7/10월 발화) false positive 차단 (세션 292).
+  it("분기 cron 워크플로는 80일 전이어도 정상 (35일 초과해도 미발화 아님)", () => {
+    const issues = checkStaleWorkflows(
+      [{ name: "DART 시공사 재무 수집", lastRunAt: "2026-02-27T00:00:00Z" }], // 79일 전 — 분기 cron 임계 100일 안
+      now,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("분기 cron 워크플로도 100일 초과면 stale (진짜 죽음)", () => {
+    const issues = checkStaleWorkflows(
+      [{ name: "DART 시공사 재무 수집", lastRunAt: "2026-02-01T00:00:00Z" }], // 105일 전 — 임계 초과
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].detail).toMatch(/분기 cron/);
   });
 });
 
