@@ -1,3 +1,31 @@
+# 세션 288 — 2026-05-22 (수집기 페이지네이션·env·로깅·테스트 4 영역 보강, 4 커밋 push)
+
+**거시 목적**: BACKLOG 박제 누락 자리 4개 일괄 정리. 세션 287 cleanup 후 운영 안전성·문서·테스트 자산 다중 보강. 4 커밋 모두 CI success.
+
+## 4 보강 자리
+
+| 커밋 | 영역 | 자리 |
+|---|---|---|
+| `9e6e3c1` | docs | `.env.example` 누락 9 키 보강 — MOIS_POP_KEY / KOSIS_MIGRATION_KEY / TAGO_KEY 등. 신규 협업자 셋업 자리 누락 차단 |
+| `01d0dd4` | perf | `transport-tago` + `calc-layout` 등 15 collectors `limit(10000)` → `range` 페이지네이션 A+B 16건. Supabase 10000 행 한도 회피 + 미래 100k+ 행 안전 |
+| `140eebf` | fix | `src/App.tsx` L81 `/api/upcoming` silent catch → `console.warn` + `trackEvent("upcoming_fetch_error")` 로깅. 운영 진단 자리 (silent 사고 차단) |
+| `d0a10b7` | test | `src/scoring/engine.test.js` L543·L570 미박제 2 describe 보강 — 교통 sentinel + fairPrice 폴백 회귀 가드 |
+
+## 답습 자산
+
+| 사고 | 정착 |
+|---|---|
+| `.env.example` 키 누락 자리 = 신규 collector 추가 시 동시 박제 의무 답습 | `secret-naming-audit.md` 룰 답습 (3-way 동기화 의무) |
+| `limit(10000)` 패턴 = Supabase 기본 한도 함정 | `range(offset, offset+999)` 페이지네이션 답습 자리, 15 collectors 일괄 정정 |
+| silent catch → trackEvent 로깅 | analytics 답습 자리 (운영 진단 자산 누적) |
+
+## 잔여 자리
+
+- 세션 288 메모리 파일 부재 — 본 SESSION_LOG entry 가 진실의 원천
+- 세션 289 (본 cleanup) 자가 entry 박제 자리 = SessionEnd 훅 자동 prepend 답습
+
+---
+
 # 세션 287 — 2026-05-22 (regions 시계열 stale NULL 32 행 cleanup — 세션 285 SIDO 환각 잔재 정리, 1 DB op + 1 docs 커밋)
 
 **거시 목적**: 세션 286 마무리 직후 SessionStart 사전 체크 ⑧번 (세종/강원/전북 중복 행 분포 측정) 에서 41쌍 중복 발견 → 진단 결과 시계열 누적 (recorded_at 별 1행) 정상 설계지만 2026-01-01 행이 세션 285 이전 SIDO_CODES 환각으로 적재된 빈 NULL 행 (32 행) 으로 확정.
@@ -26,6 +54,195 @@
 
 - 세종/강원/전북 2026-05-15 NULL 2 행 — 별 사고. monitor-collectors 잡힐 가능성 (추후)
 - SESSION_LOG drift 5건 (세션 282~286) — BACKLOG 후속 (메모리 답습 자산 그대로 SESSION_LOG 흡수 가능)
+
+---
+
+# 세션 286 — 2026-05-21 (옵션 A md 정리 + 자매 SIDO_CODES drift 동시 fix — 자가 점검 1 발동 환각 10건 정정, 3 git 커밋 + 3 로컬)
+
+**거시 목적**: 세션 285 root fix 직후 잔여 자매 drift (`population-sex-age.mjs` + `naver-presale.mjs`) 동시 정정 + 룰 박제 + md 정리 통합. 사용자 ExitPlanMode 1차 거부 후 자가 점검 1 (맹점·할루시네이션) 발동 = 환각 10건 발견.
+
+## 3 git 커밋
+
+| 커밋 | 자리 |
+|---|---|
+| `67b24c8` | docs(rules): `parsegu-normalization.md` 신규 (110줄, §4 자매 SIDO 매핑 변수 박제 시 grep 의무) |
+| `efb5fb6` | fix: `population-sex-age.mjs` L26-31 SIDO_CODES 환각 3건 자매 정정 (세종/강원/전북) |
+| `d9202f1` | fix: `naver-presale.mjs` L47 세종 `3600000000` → `3611000000` 환각 정정 |
+
+## 3 로컬 수정 (gitignored — `.claude/*` + `AGENTS.md`)
+
+- `.claude/BACKLOG.md` L152-159 (🟡 표기 충돌 root fix) 삭제 + L10 색인 1줄 추가
+- `.claude/BACKLOG_ARCHIVE.md` 세션 285 절 추가
+- `.claude/DB_QUALITY.md` 2026-05-21 부분 재측정 절 추가
+- `AGENTS.md` rm (gitignored)
+
+## 핵심 사고 박제 (자가 점검 1 발동)
+
+3 Explore Agent 병렬 + 본인 grep 동시 = 환각 10건:
+
+1. "1년+ 영구 누락" → 실제 61일 (2026-03-21 `09e25fef` ~ 2026-05-21 `78a862d`)
+2. `parseGu()` L99-113 → 실제 L116-122
+3. **`population-sex-age.mjs` v2 답습 자산 자체가 drift** (L26-31 옛 SIDO_CODES 3건 미정정)
+4. **`naver-presale.mjs` L47 세종 `3600000000` 환각** (강원/전북은 이미 정정 자리)
+5. DB_QUALITY 4 지표 vs 기존 7+ 지표 박제 답습 의무
+6. regions 박제값 454 → 790 (DB_QUALITY 구식)
+7. schools 1971 → 1994 (23건 차이)
+8. childcare 분모 770 → 790
+9. AGENTS.md L43-58 phantom refs (실제 부재 자매)
+10. BACKLOG_ARCHIVE 형식 답습
+
+## .gitignore 답습 사고
+
+Plan v2 작성 시 4 docs 커밋 박제했으나 작업 진입 직후 `.gitignore` L3 `.claude/*` 발견 → 실제 git 커밋 = 4 중 1 (rules) + code 2 = **3 git 커밋**. 로컬 수정 3 자리.
+
+## 답습 자산
+
+- 자가 점검 1 = ExitPlanMode 거부 시 + plan v1 박제 후 즉시 발동 의무
+- `.gitignore` 답습 = `.claude/*` + `AGENTS.md` 명시 gitignore (글로벌 §13 답습)
+- 자매 SIDO 매핑 변수 박제 시 grep 의무 (`.claude/rules/parsegu-normalization.md` §4)
+- `population-sex-age.mjs` ↔ `naver-presale.mjs` ↔ `population.mjs` 3 자매 SIDO 매핑 동기화 의무
+
+## 잔여 자리
+
+- 중복 행 (region+gu 페어에 NULL 행 + 값 행) 사고 진단 → 세션 287 cleanup 으로 해결 (stale NULL 32 행 DELETE)
+- 화성시 4 자치구 행 보존 정책 명문화
+- `/db-quality` 슬래시 전수 재측정 (trade_stats / regions.population 비율 / schools.nearby_schools)
+
+---
+
+# 세션 285 — 2026-05-21 (population.mjs 세 사고 통합 정정 — parseGu 자치구 분리 + SIDO_CODES 환각 3건 + items 양형, 1 커밋 push)
+
+**거시 목적**: 세션 284 진단 (parseGu root cause) 다음 세션 작업 자리 완결. `population.mjs` 누적 세 사고 통합 정정. 커밋 `78a862d` push 완료 (Population + Monitor + CI 3 워크플로 success).
+
+## 세 사고 통합 정정
+
+| # | 사고 | 정정 |
+|---|---|---|
+| 1 | `parseGu()` 자치구 정보 손실 | 기존 `[ctpvNm, sggNm].join(" ").split(/\s+/)[1]` → 정정 `parseGu(ctpvNm, sggNm)` 시그니처 (population-sex-age.mjs v2 답습). 시도 단위 집계 hasGuLevel 플래그로 중복 차단 |
+| 2 | SIDO_CODES 환각 3건 (61일 누락, 2026-03-21 `09e25fef` ~ 2026-05-21) | 세종 `3600000000` → `3611000000` / 강원 `4200000000` → `5100000000` / 전북 `4500000000` → `5200000000` |
+| 3 | 1행 응답 객체 처리 | `items.item` 객체/배열 양형 가드 (Array.isArray 가드 + 단일 객체일 때 `[items]` 변환) |
+
+## 실측 효과
+
+- regions 752 → 790 (+38 행)
+- 자치구 (region, gu 공백) 행 pop_growth 채워진: 0 → 35 / 41
+- 신규 시도 단위: 세종 391,072 / 강원 1,506,843 / 전북 622,915 (이전 NULL)
+
+## 답습 자산
+
+- `.claude/rules/parsegu-normalization.md` (세션 286 박제) §1·2·3·4 답습 원천
+- `scripts/collectors/population.mjs` L116-122 parseGu 정형 답습 원천
+- 자매 drift 박제 (세션 286 동시 fix 완결)
+
+## 잔여 자리
+
+- 중복 행 — 같은 region+gu 페어에 NULL 행 + 값 행 공존 (세션 287 cleanup 해결)
+- 화성시 4 자치구 행 (sex_age/crime_grade 보존용) 잔존
+- 자매 SIDO_CODES drift 2건 → 세션 286 동시 fix 완결
+
+---
+
+# 세션 284 — 2026-05-21 (collect-avg-income recorded_at 매칭 키 fix + regions 18 비법정 자치구 DELETE + parseGu root cause 진단, 1 커밋 + 1 DB op)
+
+**거시 목적**: 세션 283 박제 "의심도 낮음" 환각 정정 + 비법정 자치구 행 일괄 정리 + population.mjs parseGu root cause 진단 (세션 285 작업 자리 박제).
+
+## 작업 (3 영역)
+
+### A. `collect-avg-income.mjs` recorded_at 매칭 키 fix (커밋 `b9bca57`)
+
+- 기존: UPDATE WHERE (region, gu=null) 만 매칭 → 매년 KOSIS 공표 시 17 시도 행 덮어쓰기
+- 정정: `aggregateIncomeRows` entries 에 `recorded_at: ${period}-01-01` 추가 + UPDATE-or-INSERT 패턴 (population.mjs L237-261 답습)
+- 효과: 매년 KOSIS 공표 시 신규 행 INSERT, 기존 행 보존
+- vitest 19 → 20 (recorded_at 회귀 가드 1건 신규)
+
+### B. regions 18 비법정 자치구 행 DELETE (no-commit DB op)
+
+- 대상: 용인 3 + 창원 5 + 포항 2 + 전주 2 + 천안 2 + 청주 4 = 18 행 (recorded_at=2026-01)
+- 보존: 화성시 4 (효행/만세/동탄/병점, recorded_at=2026-03) — sex_age JSONB + crime_grade=4 자치구 단위 데이터
+- 정리 후: regions 770 → 752, unique 시군구 302 → 284, childcare NULL 58 → 40
+
+### C. CHILDCARE_API_KEY 운영계정 키 응답 확인 (진단만)
+
+- 세션 283 박제 "NOT NULL 50건만" stale → 실측 = 606/770 (78.7%), 서울 강남구 163 facilities (50 한도 초과 = 운영키 응답 명백)
+- 운영키 갱신 자리 이미 완료 (시점 불명)
+
+### D. `population.mjs` parseGu root cause 진단 (세션 285 작업 자리 박제)
+
+- 행안부 API 비법정 표기 그대로 추출 → 세종/강원/전북 빈 응답 + 시도 + 시 단위 자르기 사고
+- 세션 285 정정 자리: `_shared.mjs` 신규 `normalizeAdminGu(region, rawGu)` 함수 후보 + parseGu 시그니처 정정
+
+## 답습 자산
+
+- 세션 283 BACKLOG "의심도 낮음" 박제 = 환각 → BACKLOG 박제값 단정 금지 답습 (룰 §"메모리는 진실의 원천 아님")
+- `population.mjs` L237-261 UPDATE-or-INSERT 패턴 = collect-avg-income 답습 원천
+- 시계열 테이블 (recorded_at 키) 의 매칭 키 grep 1회 의무 박제
+
+## 잔여 자리
+
+- 세션 285 root fix (parseGu 정정 + SIDO_CODES 3건) → 다음 세션 완결
+- 6/1 collect-childcare schedule 검증 (사고 A·B 정정 효과)
+
+---
+
+# 세션 283 — 2026-05-21 (collect-childcare 5/1 schedule run failure 정정 — 사고 A·B 통합 fix, 3 커밋 push)
+
+**거시 목적**: 5/1 collect-childcare schedule run conclusion=failure 진단 (raw log `gh run view 25232444155`) → 사고 A (Supabase statement timeout) + 사고 B (Step 1 fail 시 Step 2 skip) 통합 정정.
+
+## 3 git 커밋
+
+| 커밋 | 자리 |
+|---|---|
+| `e8b72de` | fix(collect-childcare): Supabase upsert 2회 retry + exit 1% 임계값 (1건 fail 도 전체 fail 차단 자리) |
+| `b3d3992` | fix(workflow): `collect-childcare.yml` Step 2 `if: always()` 추가 — Step 1 fail 시에도 시군구 집계 실행 |
+| `d4400b7` | fix(collect-childcare): createReporter summary 반환 키 `result.success` → `result.ok` 정정 |
+
+## 사고 진단 (raw log 답습)
+
+- A: 만강아파트 1건 Supabase upsert → statement timeout → exit 1
+- B: Step 1 fail 시 Step 2 (시군구 집계) skip — 누적 실패 위험
+- C: createReporter summary 반환 키 불일치 (`result.success` vs 실제 `result.ok`) — 사고 A 정정 후 발견 자매 사고
+
+## 답습 자산
+
+- Supabase upsert 2회 retry + 1% 임계값 패턴 = 다른 collector 답습 자리
+- `if: always()` 워크플로 답습 = 다중 step 의존 차단 패턴
+- raw log 1회 의무 (`workflow-name-hallucination.md` §2 답습)
+
+## 잔여 자리
+
+- 6/1 schedule run conclusion=success + Step 2 시군구 집계 실행 검증 (다음 세션)
+- 세션 283 "의심도 낮음" 박제값 = 세션 284 환각 정정 (collect-avg-income recorded_at 사고)
+
+---
+
+# 세션 282 — 2026-05-20 (collect-market-stats DT_41401N_006 lookback 24개월 fix — KOSIS 공표 지연 적재 누락 정정, 1 커밋 push)
+
+**거시 목적**: 4/5, 5/5 collect-market-stats schedule run 분양가격지수 fail 진단 → KOSIS DT_41401N_006 마지막 공표 = 202510 (~6개월 지연) + cron now-5개월 호출 윈도우가 빈 구간만 호출 사고. lookback 24개월 fix.
+
+## 작업 (커밋 `b312d62`)
+
+- INDICATOR typedef 에 `lookbackMonths?: number` 옵션 추가
+- INDICATORS[0] (분양가격지수) 만 24 적용
+- main() 의 단일 startMonth/startDate 제거 + indicator 별 lookback 분기
+- log 1줄 보강 (schedule run 적용 확인 자리)
+
+## 실측 효과 (운영 1회 백필)
+
+- `market_stats_history.price_index` 0 → 294 행 유효 (인천 시계열 18개월 202405~202510 정상 적재)
+- prod API 인천 서구: `count` 22 / `fallback=true` / `price_index` 18 행 LineChart 표시
+- vitest 14/14 회귀 통과
+- 5/5 schedule run 비교: 실패 1 → 0
+
+## 답습 자산
+
+- 자매 collector `collect-jeonse-price-index.mjs:138` 24개월 lookback 답습 (월간 KOSIS)
+- KOSIS 공표 지연 통계 = lookback 24개월 표준 자리
+- 6/5 schedule run 검증 자리 (BACKLOG L166-170 박제)
+
+## 잔여 자리
+
+- 6/5 collect-market-stats schedule run conclusion=success + `[분양가격지수] DT_41401N_006 (M) 202406~202606 lookback=24개월` 출력 박제 (BACKLOG L166-170)
+- TLS handshake 별도 plan 트리거 자리 (fail 시)
 
 ---
 
