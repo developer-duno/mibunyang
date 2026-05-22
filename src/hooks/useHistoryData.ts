@@ -55,7 +55,9 @@ export function useHistoryData(endpoint: string, apartmentId: string | null | un
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[useHistoryData:${endpoint}]`, { apartmentId, error: message });
+      if (import.meta.env.DEV) {
+        console.error(`[useHistoryData:${endpoint}]`, { apartmentId, error: message });
+      }
       setError(message);
     } finally {
       if (!signal?.aborted) setLoading(false);

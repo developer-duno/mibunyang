@@ -27,7 +27,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          KAKAO_REST_KEY: ${{ secrets.KAKAO_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
         run: |
           ARGS=""
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then

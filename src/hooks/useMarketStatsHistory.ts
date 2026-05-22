@@ -64,7 +64,9 @@ export function useMarketStatsHistory(region: string, gu: string): UseMarketStat
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[useMarketStatsHistory] ${region}/${guKey}:`, message);
+      if (import.meta.env.DEV) {
+        console.error(`[useMarketStatsHistory] ${region}/${guKey}:`, message);
+      }
       setError(message);
     } finally {
       if (!signal?.aborted) setLoading(false);

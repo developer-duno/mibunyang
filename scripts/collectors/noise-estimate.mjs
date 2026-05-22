@@ -16,7 +16,7 @@
  *   node scripts/collectors/noise-estimate.mjs --dry-run (미리보기만)
  *
  * 필요 환경변수:
- *   SUPABASE_URL, SUPABASE_SERVICE_KEY, KAKAO_REST_KEY
+ *   SUPABASE_URL, SUPABASE_SERVICE_KEY, KAKAO_KEY
  */
 import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
 
@@ -100,10 +100,10 @@ async function findNearestRoad(kakaoKey, lat, lng) {
 // ── 메인 ─────────────────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
-  const kakaoKey = process.env.KAKAO_REST_KEY;
+  const kakaoKey = process.env.KAKAO_KEY;
 
   if (!kakaoKey) {
-    logError("init", "KAKAO_REST_KEY 환경변수 필요");
+    logError("init", "KAKAO_KEY 환경변수 필요");
     process.exit(1);
   }
 

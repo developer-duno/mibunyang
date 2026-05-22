@@ -77,7 +77,9 @@ export default function App() {
       .catch((err: unknown) => {
         if (cancelled) return;
         // upcomingCount = null 유지 → HeaderSection 옵셔널 prop 호환, 헤더 라벨만 fallback
-        console.warn("[App] /api/upcoming fetch 실패, 헤더 라벨 fallback", err);
+        if (import.meta.env.DEV) {
+          console.warn("[App] /api/upcoming fetch 실패, 헤더 라벨 fallback", err);
+        }
         trackEvent("upcoming_fetch_error", {
           message: err instanceof Error ? err.message : String(err),
         });

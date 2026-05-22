@@ -99,7 +99,9 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
       .catch(err => {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
-        console.warn("[DetailModal] prices fetch 실패", msg);
+        if (import.meta.env.DEV) {
+          console.warn("[DetailModal] prices fetch 실패", msg);
+        }
         setPricesError(msg);
         setPricesLoading(false);
       });
