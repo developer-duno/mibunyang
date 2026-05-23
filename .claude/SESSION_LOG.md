@@ -9516,3 +9516,35 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **next-session-grep-mandate.md 룰 답습 의무 v3** — 5 후보 박제값 단정 전 grep 의무 (세션 251 v1 / 세션 254 v2 / 세션 291 v3)
 - **B 영역 운영 사고 실재 확정** — 다음 세션 진입 후순위 (collect-data.mjs L1087 `dataUpdatedAt: fetchedAt` 동시 박제)
 - **다음 일요일 (2026-05-24) 22:00 UTC calc-exclusive-ratio cron 발화 success 검증 의무** — monitoring trigger 박제
+
+## 세션 295 (2026-05-23) — R1 transport-tago root cause 분석 종결
+
+**거시 목적**: 세션 294 timeout 90→120 fix 임시 완화 자리 정확 정정 의무. transport-tago 2.1배 느림 root cause 분석 + 코드/API 결함 자리 단정 검증.
+
+**결론**: 코드 0줄. R1 분석 종결 = **코드/API 결함 0 + 세션 294 fix 가 정확한 정정 자리** 확정. docs only 1 커밋 (SESSION_LOG entry 295 + BACKLOG 자리 정리 + 신규 룰 박제).
+
+**진짜 진앙 (v2 정정 박제)**:
+- v1 환각: "apartments 단지 수 1000→2001 폭증 (네이버 신규 추가)" — `apartments.created_at` 답습 결과 30일+ 이전 자리 (2026-04-07 마지막). 신규 추가 0
+- v2 정정: `git log -- scripts/collectors/transport-tago.mjs` 답습 결과 커밋 `01d0dd4` (2026-05-22 07:42) `limit(10000) → range 페이지네이션` 자리 박제 → transport-tago L194 fetch 자리 1000 → 2001 단지 전체 답습
+
+**raw log 실측 (gh run view --log)**:
+- run 26252961067 (5/21 success): 전체 1000건 → 미수집 524건, 2281.7초, 단지 당 4.35초
+- run 26311529575 (5/22 cancelled): 전체 2001건 → 미수집 1001건, 4476.5초, 단지 당 4.47초
+- 단지 당 시간 거의 일정 (3% 증가 = 노이즈), 단지 수 1.9배 증가 = 처리 시간 1.96배 증가
+
+**핵심 발견 (의도된 자리)**:
+
+| 시점 | collector 자리 | 답습 단지 | transport step |
+|---|---|---|---|
+| 5/22 07:42 이전 | `.limit(10000)` (환각) | 실제 1000건만 | ~520 단지 / 45분 |
+| 5/22 07:42 이후 | `.range()` 페이지네이션 | 2001건 전체 | ~1001 단지 / 75분 |
+| 5/22 20:55 첫 schedule | timeout 90분 자리 | 1001 단지 | **74:40 + infra 도중 = boundary 초과 cancelled** |
+| 5/23 (세션 294) | timeout 90→120 fix | 1001 단지 | 정상 답습 가능 자리 |
+
+**답습**:
+- **자가 점검 1 발동 v3** — v1 환각 (단지 폭증 = 네이버 신규 추가) 박제 단정 직전 `apartments.created_at` 실측 → 30일+ 이전 박제 자리 → v2 정정. `git log` 답습 의무 박제
+- **collector 본문 변경 시점 = root cause 진앙** — timeout fix 자리 답습 시 `git log -- <collector>` 1회 의무 박제
+- **PostgREST max_rows=1000 자리** — Supabase JS `.limit(10000)` 환각 자리. 정정 자리 = `.range()` 페이지네이션 답습 (커밋 `01d0dd4` 16건 일괄 정정 자리)
+- **transport-tago 단지 당 4.35~4.47초 = sleep 100ms × 4 + Kakao 3호출 + TAGO 1호출** — 코드 결함 0, API rate limit 0. 향후 batch size 조정 자리 무의미 (sleep 자체가 의도된 자리)
+- **세션 294 timeout 90→120 fix 가 정답** — 회귀 자리 없음. transport-tago root cause 분석 = "단지 수 늘어남 (의도된 fix)" 답습으로 종결
+- **신규 룰 박제** — `.claude/rules/collector-timeout-rootcause-analysis.md` (timeout 사고 진앙 답습 시 collector git log + raw run log + apartments.created_at + collector_runs 4-way 답습 의무)
