@@ -1,3 +1,68 @@
+# 세션 299 — 2026-05-24 (4 후보 우선순위 정리 + G MEMORY.md 1차 압축)
+
+**거시 목적**: 세션 298 NEXT_SESSION 8 후보 박제 답습 + 사용자 위임 ("전부다 우선순위 파악, 서브에이전트 적절 사용") → A·B·C·G 4 후보 우선순위 결정. B·A·C 모두 schedule 발화 대기 영역 = 본 세션 진입 불가 확정 → **G (MEMORY.md 1차 압축) 단일 작업**.
+
+**결론**: 코드 변경 0건. docs only — MEMORY.md 9 줄 축약 + 1 줄 삭제 (41709 → 40226 bytes, 1483 bytes 감축 3.6%). 1차 압축 목표 미달 (plan 박제 "~36KB" → 실측 39KB) → 2차 압축 별 세션 의무 박제. SESSION_LOG + NEXT_SESSION 갱신.
+
+| 작업 | 산출 | 검증 |
+|---|---|---|
+| MEMORY.md 9 줄 축약 + L87 1 줄 삭제 | 1483 bytes 감축 | wc -c 40226 (124줄) |
+| SESSION_LOG + NEXT_SESSION 갱신 | docs | 세션 299 entry + B/A/C 검증 분기 박제 |
+
+## Phase 1 답습 실측 박제
+
+### 사전 체크 (5/24 03:50 KST)
+
+- 저장소: 1ea7dda CI success / clean / origin/main 동기
+- MEMORY.md 41709 bytes (한계 24400) — 9 줄 축약 결과 40226 (3.6% 감축)
+- 4 후보 schedule 시점:
+  - B (Naver listings) = 5/24 05:30 KST 발화 대기 (5/23 schedule 흔적 0 — scheduler 일시 미발화 확정)
+  - A (fill-missing-data) = 5/24 11:00 KST cron 발화 대기 (8주 만성, 1ea7dda fix 후 첫 발화)
+  - C (calc-exclusive-ratio) = 5/24 22:00 UTC = 5/25 07:00 KST 발화 대기 (세션 291 schedule fix 검증 의무)
+  - G (MEMORY.md) = 즉시 진입 가능
+
+### 서브에이전트 3 병렬 답습 결과
+
+| 후보 | 답습값 |
+|---|---|
+| B (Naver) | 5/23 cron 미발화 = GitHub scheduler 일시 지연. yml 본문 정상 (cron `30 20 * * *`, timeout 120). 5/24 05:30 KST 발화 결과 대기 |
+| C (calc-exclusive-ratio) | 5/23 14:26 dispatch cancelled = fill-missing-data + calc 동시 trigger → fill phase3-external "The operation was canceled". calc 본체 126분 정상 완료. 세션 291 fix = schedule 분리만 처리 ✓, dispatch 동시 trigger 미해결 |
+| G (MEMORY) | 125줄 / 평균 333.7 chars / 200+ chars 초과 112줄 (89.6%). 1차 압축 14줄 대상 (종결 에픽 + stale feedback) |
+
+## G 1차 압축 박제 (9 줄 축약 + 1 줄 삭제)
+
+| 줄 | 원본 chars | 축약 후 chars | 의도 |
+|---|---|---|---|
+| L87 (세션 189 카운트 정정) | 158 | 0 (삭제) | L79 M4 도메인 줄과 중복 |
+| L84 (세션 185 M4c) | 365 | 95 | M4 100% 종결 |
+| L88 (세션 190 M5b) | 365 | 110 | M5 phase 종결 |
+| L112 (세션 207 M5c) | 286 | 98 | M5 종결 |
+| L55 (Vercel Pro) | 258 | 80 | 12개 한도 비활성 stale |
+| L71 (push 금지) | 187 | 95 | M0 종료 후 stale |
+| L75 (grep 실측) | 156 | 95 | 운영 정착 |
+| L57 (도메인 단정 금지) | 265 | 95 | 단정 위험 줄 정정 |
+| L52 (대기 작업) | 168 | 90 | 세션 85+ |
+| L68 (청약홈 5%) | 214 | 100 | 분기 1회 재측정 |
+| L81 (node 좀비) | 195 | 95 | OS 재시작 |
+
+**결과**: 41709 → 40226 bytes (1483 감축, 3.6%). 한계 24400 도달까지 **15826 bytes 추가 감축 의무** (2차 압축 별 세션).
+
+## 다음 세션 의무 (5/25 KST 이후 진입 자리)
+
+- **B 검증** (5/24 05:30 KST) — Naver listings schedule 발화 결과. success ✅ → R1' 종결 + BACKLOG ARCHIVE / cancelled ❌ → root cause 재진단
+- **A 검증** (5/24 11:00 KST) — fill-missing-data cron 발화 결과. success ✅ → 8주 만성 종결 / cancelled ❌ → noxious 진앙 재분석
+- **C 검증** (5/24 22:00 UTC) — calc-exclusive-ratio + calc-layout schedule. success ✅ → 세션 291 fix 검증 종결
+- **G 2차 압축** — 39KB → 24.4KB. 최장 8 줄 (783/664/596/570/556/553/551/539 chars) 답습 후 축약 의무
+- **MEMORY.md drift 의무 정정** — plan 박제 "예상 14% 감축" 실측 3.6% 차이 자기 진단 박제 (서브에이전트 G "전략 1+2 1.8KB" 박제값 단정 후 실측 정정 사고)
+
+## 환각 차단 박제
+
+- ❌ plan v1 "예상 결과 41.7KB → ~36KB" 박제값 단정 — 실측 3.6% 감축 (12% 차이 환각) → 본 세션 정정 박제. 자가 점검 1 발동 — 서브에이전트 G "전략 1만 1.8KB" 박제 답습 시 실측 검증 0회 단정 사고
+- ❌ "M4/M5 에픽 종결 단정" — MEMORY 인덱스 답습. 메모 파일 자체 (session_*.md) 보존 박제 — 인덱스 압축만 안전
+- ❌ "fill schedule 5/24 11:00 KST 발화 후 즉시 진입" — 본 세션 5/24 03:50 KST = 약 7시간 대기 영역. NEXT_SESSION 분기 박제 의무
+
+---
+
 # 세션 298 — 2026-05-24 (G noxious 정확 fix + R1' A 검증 안내 + 진단 4-way 박제)
 
 **거시 목적**: 세션 297 NEXT_SESSION 8 후보 박제 — 사전 체크 4-way 답습 결과 박제값보다 시급한 사고 2건 (A 5/22 cancelled + G-1 fill 8주 만성) 발견. 사용자 의사결정 위임 ("미래가치+실증") → R3 묶음 (R1' A 검증 + R2 G-1 fix) 자체 선택. plan v3 + 별 fix plan 후 ExitPlanMode 1차 통과.
