@@ -1,3 +1,63 @@
+# 세션 298 — 2026-05-24 (G noxious 정확 fix + R1' A 검증 안내 + 진단 4-way 박제)
+
+**거시 목적**: 세션 297 NEXT_SESSION 8 후보 박제 — 사전 체크 4-way 답습 결과 박제값보다 시급한 사고 2건 (A 5/22 cancelled + G-1 fill 8주 만성) 발견. 사용자 의사결정 위임 ("미래가치+실증") → R3 묶음 (R1' A 검증 + R2 G-1 fix) 자체 선택. plan v3 + 별 fix plan 후 ExitPlanMode 1차 통과.
+
+**결론**: 1 yml fix 커밋 (fill-missing-data.yml L96 timeout 60→120) + docs 갱신. R1' A 는 b313b56 fix 자체로 종결 (코드 0건), 5/25 KST schedule 자연 검증. G-1 noxious fix 효과 = 일요일 02:00 UTC cron 또는 workflow_dispatch 자연 검증.
+
+| 작업 | 산출 | 검증 |
+|---|---|---|
+| fill-missing-data.yml L96 timeout 60→120 | 1줄 fix | A workflow L18 timeout 120 답습 |
+| SESSION_LOG + NEXT_SESSION + workflows/CLAUDE.md 박제 갱신 | docs | 세션 298 entry + 다음 세션 검증 의무 박제 |
+
+## Phase 1 답습 실측 박제 (4-way root cause)
+
+### A (Naver listings 5/22 run 26311529575 cancelled)
+
+| 신호 | 답습값 |
+|---|---|
+| §1 raw log 마지막 step | `Collect infra (incremental)` 1350/2001 (67%) `##[error]The operation was canceled.` |
+| 총 소요 | 20:55:34 → 22:25:48 = 90분 14초 (workflow timeout 90 boundary 직격) |
+| §2 직전 5/21 run 26252961067 success | infra 1000 단지 / 20분 25초 = 단지 당 1.225초 |
+| 5/22 cancelled infra | 2001 단지 (2배) / 1350 처리 = 단지 당 0.677초 (5/21 보다 빠름) |
+| §3 collector 본문 변경 | naver-listings-incremental.mjs 미변경. transport-tago 01d0dd4. **b313b56 timeout 90→120 fix push = 5/23 23:25 KST** = 5/22 cancelled 이후 push (박제값 환각 1건 정정) |
+| §5 추가 | transport-tago 74분 36초 정상 완료 + infra ~21분 = 합산 ~95분 → timeout 90 직격 |
+
+**진앙 확정 (90%)**: transport-tago + infra 합산 ~95분이 b313b56 fix 전 timeout 90 직격. b313b56 fix 자체로 종결. 5/24~5/25 KST schedule 자연 검증.
+
+### G-1 (fill-missing-data 8주 만성)
+
+| 신호 | 답습값 |
+|---|---|
+| §1 5/22 run 26271540758 failure | `phase4-independent (migration)` `KOSIS_MIGRATION_KEY 환경변수 필요` exit 1 (b313b56 fix 직접 대상) |
+| §1 5/23 run 26335205400 cancelled | `phase3-external (noxious, KAKAO_KEY)` 60분 boundary 14:26:52→15:27:06 = 60분 14초 |
+| §2 직전 success | 8주 연속 없음 (3/29~5/23 10 run 모두 비-success) |
+| §3 본문 변경 시도 3회 | 5/19 68c5051 + 5/22 c086772 + 5/23 b313b56 — 3회 부분 진앙 fix |
+| workflow 본문 | fill-missing-data.yml L96 phase3-external timeout-minutes: 60 |
+
+**진앙 확정 (85%)**: 진앙 2개 — KOSIS_MIGRATION_KEY 누락 (b313b56 5/23 fix 완료) + noxious + transport-tago phase3-external job 60분 boundary 직격. 본 세션 fix = L96 60 → 120 (A workflow 답습).
+
+## R3 (R1' + R2) 자체 결정 근거
+
+사용자 의사결정 위임 ("미래가치+실증") → R3 묶음 선택:
+
+1. **실증** — R1' 코드 0건, R2 yml 1줄. 묶어도 위험 동일
+2. **미래가치** — 8주 만성 G-1 즉시 해소가 가장 큰 개선. A 검증은 NEXT_SESSION 박제 답습 의무 (별 세션 보류 시 또 stale 위험)
+3. **사용자 편의** — 한 plan 안 두 사고 종결이 다음 세션 진입 비용 0
+
+## 환각 차단 박제
+
+- ❌ "5/22 timeout fix 후 재발" → b313b56 push 시각 답습 = 5/23 23:25 KST → 인과 무
+- ❌ "G-1 = KOSIS 누락 단일 진앙" → 5/23 fix 후 noxious boundary 노출로 진앙 2개 확정
+- ❌ "8주 만성 = 본문 결함 단일" → fix 시도 3회 모두 부분 진앙 fix. 풀 답습 의무
+
+## 다음 세션 의무
+
+- A R1' 검증: 5/24~5/25 KST naver-listings-incremental schedule 결과 답습
+- G-1 R2 fix 효과 검증: 일요일 02:00 UTC fill-missing-data cron 또는 workflow_dispatch 자연 검증
+- 세션 297 G 항목 = 본 세션 R2 fix 로 종결 → BACKLOG drift 0
+
+---
+
 # 세션 297 — 2026-05-24 (jari 4차 재발 + 자가 점검 1 4차 발동 + plan 6회 환각 누적 박제)
 
 **거시 목적**: 세션 296 NEXT_SESSION 5 후보 (A·B·C·D·E) 박제. 본 세션 진입 사전 체크 = A·B 5/25 KST 진입 의무 (본 세션 불가), 사용자 답변 = "D + E + F 묶음" → "네가 결정해줘. 미래가치+실증". 첫 턴부터 "자리" 남발 → 사용자 인터럽트 "자리자리 하지마" + ExitPlanMode 4차 거부 = 자가 점검 1 4차 발동 + plan v0~v6 재작성 누적 환각 6+ 회 박제. **자가 결정 = plan 폐기 + docs only 마무리**.
