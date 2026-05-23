@@ -44,6 +44,20 @@ raw log (gh run view 24481813793 --log-failed):
 // 4. mismatch 발견 시 exit 1 + 어느 위치 빠졌는지 표시
 ```
 
+#### 한계 박제 (세션 294 발견)
+
+현재 audit-env-keys.mjs 는 **1대1 매칭 자리** (`collect-X.yml` ↔ `X.mjs`) 만 답습. 다음 자리 답습 0:
+
+- `fill-missing-data.yml` 의 phase4-independent matrix (`{ cmd: "migration" }`) — collector 명이 yml 파일명에 박혀 있지 않음 자리
+- `data-fill.mjs` orchestrator 의 envKeys 배열은 답습되지만 matrix yml 자체의 env block 누락은 미답습
+
+**세션 294 사고**: `fill-missing-data.yml` L141 env block 에 `KOSIS_MIGRATION_KEY` 누락. audit 결과 `30/36 clean ✅` 통과했는데도 phase4-independent → migration 실 발화 시 `[migration] ERROR: KOSIS_MIGRATION_KEY 환경변수 필요` exit 1.
+
+**미래 보강 자리** (별 세션 진입 의무):
+- audit 에 matrix orchestrator (fill-missing-data.yml) 답습 자리 추가
+- yml 의 `strategy.matrix.script[].cmd` 자리 grep → 각 cmd 의 collector 의 envVars vs orchestrator yml env block 교차 검증
+- 빈틈 0 자리 도달 시 본 한계 박제 줄 삭제 의무
+
 ### 2. CI 단계 추가 (`.github/workflows/ci.yml`)
 
 ```yaml

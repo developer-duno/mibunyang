@@ -1,3 +1,47 @@
+# 세션 294 — 2026-05-23 (Fill #2 env block KOSIS_MIGRATION_KEY 누락 + Naver Post timeout 90→120 묶음)
+
+**거시 목적**: 직전 세션 293 NEXT_SESSION 박제 = D `collect-data --json stale` BACKLOG 강등 docs 였으나 첫 turn 사전 체크 직후 사용자 텔레그램 누적 알림 7건 답습 (5/21~5/23). 진단 결과 진짜 사고 2건 (#1 + #2) 확정 → 본 세션 진입 자리 변경.
+
+**결론**: 3 파일 +25/-3 정정 (yml 2 + 룰 1). 사고 #1 Naver Post timeout 90→120 + #2 Fill phase4 env block KOSIS_MIGRATION_KEY 누락 + Validate secrets step phase4 신규 + secret-naming-audit 룰 §1 한계 박제 보강.
+
+| 작업 | 산출 | 검증 |
+|---|---|---|
+| #1 Naver Post timeout 90→120 | collect-naver-listings-incremental.yml L15-17 정정 +1줄/-1줄 + spec 박제 주석 답습 (transport 35:09 → 74:48 2.1배 느림 박제) | 다음 일요일 5/25 22:30 UTC schedule 발화 success 검증 의무 |
+| #2 Fill env block + Validate step | fill-missing-data.yml L142 KOSIS_MIGRATION_KEY 추가 + Validate secrets step phase4 신규 (6 secret 동시 검증) | gh workflow run fill-missing-data.yml -f dry_run=true 발화 후 phase4-independent migration step success 의무 |
+| #3 secret-naming-audit 한계 박제 | secret-naming-audit.md §1 +14줄 (matrix orchestrator 답습 한계 + 미래 보강 자리 박제) | audit 30/36 clean 그대로 (한계 자리 답습 정확) |
+
+## Phase 1 답습 실측 박제
+
+| # | 사고 | run | 진단 |
+|---|---|---|---|
+| #1 | Naver Post-Processing cancelled (5/23 05:55 KST) | 26311529575 | timeout 90분 boundary 초과. transport-tago 74:48 (예상 35:09 → **2.1배 느림**) + infra-kakao 15:16 cancelled (1350/2001 박제 자리). raw log 답습 = `30→60→90→120` 선형 진행, 재처리 환각 차단 (Agent #1 진단 정정) |
+| #2 | Fill Missing Data failure (5/22 15:09 KST) | 26271540758 | phase4-independent → migration step. fill-missing-data.yml L141 env block 에 `KOSIS_MIGRATION_KEY` 누락. raw log = `[migration] ERROR: KOSIS_MIGRATION_KEY 환경변수 필요` |
+| #3 | Exclusive Ratio cancelled (5/18 07:54) | 26005113667 | 세션 291 c086772 (5/22 06:08 push) 정정 이전 stale 알림. 5/22 workflow_dispatch 답습 success 박제 |
+| #4 | Trade Stats / Childcare / Fill cancelled (5/18) | - | #3 동일 stale |
+| #5 | DART 35~36일 미발화 | - | 세션 292 90ff8b0 (분기 cron 화이트리스트) 답습 효과 = monitor run 26277277417 (5/22 08:31) raw log 답습 = DART 알림 박제 0건. 사용자 5/22 10:11 알림 = fix 이전 stale 메시지 클라이언트 답습 |
+
+## 자가 점검 1 (맹점·할루시네이션) 박제
+
+| 자리 | 답습 |
+|---|---|
+| Agent #1 "transport 1001건 재처리 환각" | 본 turn raw log grep 답습 = `30→60→90→120` 선형 진행, 재처리 0건 확정 |
+| Agent #3 DART "분기 cron 정상 = 무시" | 본 turn monitor.mjs L36-41 + 5/22 08:31 monitor run raw log 답습 = fix 효과 확인 (DART 알림 박제 0건). 사용자 알림 = stale 메시지 답습 |
+| Agent #2 KOSIS_MIGRATION_KEY 누락 단정 | 본 turn yml L141 직접 Read + audit-env-keys 실행 결과 `30/36 clean` 답습 = audit 한계 자리 (matrix orchestrator 미답습) 발견 |
+| audit-env-keys 한계 단정 자리 | 본 turn audit-env-keys.mjs L19-21 직접 Read = `WORKFLOWS_DIR`/`COLLECTORS_DIR`/`DATA_FILL` 답습 자리. matrix yml 답습 0 확정 |
+
+## 알림 노이즈 판정 박제
+
+5/21 13:24 + 5/22 10:11 알림 = 세션 291/292 fix 이전 (5/22 06:08 push) 자리 stale. 사용자가 받은 메시지는 텔레그램 클라이언트 답습 자리 (fix 이후 monitor run 에서 박제 0건 확인). **fix 효과 정확** 자리.
+
+## 다음 세션 진입 자리 후보
+
+1. **A-1 마감 docs (5/25 KST 07:00 이후)** — 세션 291 c086772 fix 효과 schedule 발화 검증. calc-exclusive-ratio + calc-layout + fill schedule success 답습 후 8주 사고 종결 entry 박제
+2. **#1 transport-tago 2.1배 느림 root cause 분석** — 신규 데이터 자리? rate limit? batch size? (별 세션 진입)
+3. **D BACKLOG 강등 docs** — 본 세션 보류 자리 (직전 세션 293 NEXT_SESSION 답습)
+4. **audit-env-keys matrix orchestrator 답습 보강** — 룰 §1 한계 박제 자리 정착 (별 세션, ~50줄)
+
+---
+
 # 세션 293 — 2026-05-22 (A-1 검증 + KAKAO_KEY 변수명 통일 + console.* 4 자리 DEV 가드)
 
 **거시 목적**: NEXT_SESSION 박제 3 후보 (A-1 검증 + Kakao 키 노출 + console.* 8 자리) 진입. Phase 1 Explore 3 병렬 결과 박제값 환각 3 건 발견 → 자가 결정 후 plan v2 진입.

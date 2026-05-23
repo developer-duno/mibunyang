@@ -139,6 +139,7 @@ jobs:
       MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
       MOIS_POP_KEY: ${{ secrets.MOIS_POP_KEY }}
       DART_KEY: ${{ secrets.DART_KEY }}
+      KOSIS_MIGRATION_KEY: ${{ secrets.KOSIS_MIGRATION_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -146,6 +147,12 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
+      - name: Validate secrets
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$MOLIT_KEY" ] || [ -z "$MOIS_POP_KEY" ] || [ -z "$DART_KEY" ] || [ -z "$KOSIS_MIGRATION_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY, MOLIT_KEY, MOIS_POP_KEY, DART_KEY, KOSIS_MIGRATION_KEY secret 필요"
+            exit 1
+          fi
       - name: "${{ matrix.script.name }}"
         run: node scripts/collectors/${{ matrix.script.cmd }}.mjs ${{ inputs.dry_run == true && '--dry-run' || '' }}
 
