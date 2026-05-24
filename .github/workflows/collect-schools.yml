@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: false
+      limit:
+        description: '처리 건수 제한 (사전 검증용, 빈 값 = 전체)'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: school-collection
@@ -65,5 +70,8 @@ jobs:
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="--dry-run"
+          fi
+          if [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
           fi
           node scripts/collectors/schools-neis.mjs $ARGS
