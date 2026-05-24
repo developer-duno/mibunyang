@@ -106,7 +106,23 @@ jobs:
   });
 
   it("validate step 없음 — validateRefs 빈 Set", async () => {
-    const noValidate = FIXTURE_OK.replace(/- name: Validate secrets[\s\S]*?exit 1\n\s+fi\n/, "");
+    const noValidate = `name: Fill Missing Data
+
+jobs:
+  phase4-independent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - { name: "전입출 순이동", cmd: "migration" }
+    env:
+      SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+      KOSIS_MIGRATION_KEY: \${{ secrets.KOSIS_MIGRATION_KEY }}
+    steps:
+      - run: node scripts/collectors/migration.mjs
+`;
     const file = path.join(TMP, "no-validate.yml");
     await writeFile(file, noValidate, "utf-8");
 

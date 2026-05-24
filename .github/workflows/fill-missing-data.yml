@@ -109,6 +109,8 @@ jobs:
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
       TAGO_KEY: ${{ secrets.TAGO_KEY }}
+      NEIS_KEY: ${{ secrets.NEIS_KEY }}
+      SCHOOLINFO_KEY: ${{ secrets.SCHOOLINFO_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

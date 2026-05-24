@@ -15,6 +15,7 @@
  */
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import yaml from "js-yaml";
 
 const COLLECTORS_DIR = "scripts/collectors";
 const WORKFLOWS_DIR = ".github/workflows";
@@ -73,6 +74,7 @@ async function extractYmlEnvVars(file) {
 
 /**
  * matrix orchestrator yml 답습 → matrix script 항목별 env 매핑
+ * js-yaml 답습 (정규식 fragile 회피, YAML 1.2 spec 준수)
  * @param {string} file
  * @returns {Promise<Map<string, {envBlock: Set<string>, validateRefs: Set<string>}>>}
  */
@@ -81,37 +83,39 @@ export async function extractMatrixJobs(file) {
   /** @type {Map<string, {envBlock: Set<string>, validateRefs: Set<string>}>} */
   const result = new Map();
 
-  const jobBlockPattern = /^ {2}([a-z][a-z0-9-]*):\n([\s\S]*?)(?=^ {2}[a-z]|^[a-z]|$(?![\s\S]))/gm;
-  let m;
-  while ((m = RegExp.prototype.exec.call(jobBlockPattern, text)) !== null) {
-    const jobBody = m[2];
+  /** @type {any} */
+  const doc = yaml.load(text, { schema: yaml.FAILSAFE_SCHEMA });
+  if (!doc || typeof doc !== "object" || !doc.jobs) return result;
+
+  for (const jobName of Object.keys(doc.jobs)) {
+    const job = doc.jobs[jobName];
+    const scripts = job?.strategy?.matrix?.script;
+    if (!Array.isArray(scripts) || scripts.length === 0) continue;
 
     /** @type {string[]} */
-    const scriptNames = [];
-    const scriptPattern = /-\s*\{\s*name:\s*"[^"]*",\s*cmd:\s*"([^"]+)"/g;
-    let cm;
-    while ((cm = RegExp.prototype.exec.call(scriptPattern, jobBody)) !== null) {
-      scriptNames.push(cm[1]);
-    }
+    const scriptNames = scripts
+      .map((/** @type {any} */ s) => s?.cmd)
+      .filter((/** @type {any} */ v) => typeof v === "string");
     if (scriptNames.length === 0) continue;
 
     /** @type {Set<string>} */
     const envBlock = new Set();
-    /** @type {Set<string>} */
-    const validateRefs = new Set();
-
-    const envPattern = /^\s*([A-Z][A-Z0-9_]*)\s*:\s*\$\{\{\s*secrets\.([A-Z][A-Z0-9_]*)\s*\}\}/gm;
-    let em;
-    while ((em = RegExp.prototype.exec.call(envPattern, jobBody)) !== null) {
-      if (!SECRET_PATTERN.test(em[1])) continue;
-      envBlock.add(em[1]);
+    if (job.env && typeof job.env === "object") {
+      for (const key of Object.keys(job.env)) {
+        if (SECRET_PATTERN.test(key)) envBlock.add(key);
+      }
     }
 
-    const validatePattern = /-z\s+"?\$([A-Z][A-Z0-9_]*)"?/g;
-    let vm;
-    while ((vm = RegExp.prototype.exec.call(validatePattern, jobBody)) !== null) {
-      if (!SECRET_PATTERN.test(vm[1])) continue;
-      validateRefs.add(vm[1]);
+    /** @type {Set<string>} */
+    const validateRefs = new Set();
+    const steps = Array.isArray(job.steps) ? job.steps : [];
+    for (const step of steps) {
+      const runText = typeof step?.run === "string" ? step.run : "";
+      const validateRe = /-z\s+"?\$([A-Z][A-Z0-9_]*)"?/g;
+      let vm;
+      while ((vm = RegExp.prototype.exec.call(validateRe, runText)) !== null) {
+        if (SECRET_PATTERN.test(vm[1])) validateRefs.add(vm[1]);
+      }
     }
 
     for (const name of scriptNames) {
@@ -218,6 +222,54 @@ async function main() {
     });
   }
 
+  // ── matrix orchestrator 추가 audit (세션 294 사고 대응) ─────
+  /** @type {{collector: string, orchestrator: string, codeKeys: string[], ymlEnvKeys: string[], validateKeys: string[], issues: string[]}[]} */
+  const matrixReports = [];
+
+  for (const orchYml of MATRIX_ORCHESTRATORS) {
+    /** @type {Map<string, {envBlock: Set<string>, validateRefs: Set<string>}>} */
+    let matrixJobs;
+    try {
+      matrixJobs = await extractMatrixJobs(orchYml);
+    } catch (err) {
+      console.warn(`⚠️ matrix orchestrator 답습 실패: ${orchYml} — ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+
+    for (const [name, { envBlock, validateRefs }] of matrixJobs) {
+      const mjs = `${name}.mjs`;
+      if (!collectorMjs.includes(mjs)) {
+        console.warn(`⚠️ matrix script "${name}" 의 ${mjs} 본문 부재 (${path.basename(orchYml)})`);
+        continue;
+      }
+
+      const codePath = path.join(COLLECTORS_DIR, mjs);
+      const codeKeys = await extractCodeEnvVars(codePath);
+      if (codeKeys.size === 0) continue;
+
+      /** @type {string[]} */
+      const issues = [];
+      for (const k of codeKeys) {
+        if (!envBlock.has(k)) {
+          issues.push(`❌ matrix yml env block 누락: ${k} (in ${path.basename(orchYml)}, script=${name})`);
+          errorCount++;
+        }
+        if (envBlock.has(k) && !validateRefs.has(k)) {
+          issues.push(`⚠️ matrix yml validate step 미참조: ${k} (script=${name})`);
+        }
+      }
+
+      matrixReports.push({
+        collector: mjs,
+        orchestrator: path.basename(orchYml),
+        codeKeys: [...codeKeys].sort(),
+        ymlEnvKeys: [...envBlock].sort(),
+        validateKeys: [...validateRefs].sort(),
+        issues,
+      });
+    }
+  }
+
   // 출력
   console.log("=== ETL env-key 3-way audit ===");
   for (const r of reports) {
@@ -230,8 +282,20 @@ async function main() {
     for (const issue of r.issues) console.log(`  ${issue}`);
   }
 
-  const cleanCount = reports.filter(r => r.issues.length === 0).length;
-  console.log(`\n=== summary: ${cleanCount}/${reports.length} clean, ${errorCount} errors ===`);
+  // matrix orchestrator audit 출력
+  for (const r of matrixReports) {
+    if (r.issues.length === 0) continue;
+    console.log(`\n[${r.collector} (matrix in ${r.orchestrator})]`);
+    console.log(`  code     : ${r.codeKeys.join(", ")}`);
+    console.log(`  yml env  : ${r.ymlEnvKeys.join(", ") || "(empty)"}`);
+    console.log(`  yml valid: ${r.validateKeys.join(", ") || "(none)"}`);
+    for (const issue of r.issues) console.log(`  ${issue}`);
+  }
+
+  const cleanCount = reports.filter(r => r.issues.length === 0).length
+    + matrixReports.filter(r => r.issues.length === 0).length;
+  const totalCount = reports.length + matrixReports.length;
+  console.log(`\n=== summary: ${cleanCount}/${totalCount} clean, ${errorCount} errors ===`);
 
   if (errorCount > 0) {
     console.log("\n❌ audit failed. 위 ❌ 항목을 yml env block 또는 data-fill envKeys 에 추가하세요.");

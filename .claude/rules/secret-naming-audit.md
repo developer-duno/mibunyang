@@ -44,19 +44,24 @@ raw log (gh run view 24481813793 --log-failed):
 // 4. mismatch 발견 시 exit 1 + 어느 위치 빠졌는지 표시
 ```
 
-#### 한계 박제 (세션 294 발견)
+#### matrix orchestrator 답습 (세션 304 보강 완료)
 
-현재 audit-env-keys.mjs 는 **1대1 매칭 자리** (`collect-X.yml` ↔ `X.mjs`) 만 답습. 다음 자리 답습 0:
+세션 232 → 294 동일 사고 (`KOSIS_MIGRATION_KEY` env block 누락) 3년 2회 재발 차단. audit-env-keys.mjs 에 `MATRIX_ORCHESTRATORS` 상수 + `extractMatrixJobs()` 함수 추가. matrix yml 안의 각 script 항목 (예: `{ cmd: "migration" }`) 별 envBlock vs collector codeKeys 교차 검증.
 
-- `fill-missing-data.yml` 의 phase4-independent matrix (`{ cmd: "migration" }`) — collector 명이 yml 파일명에 박혀 있지 않음 자리
-- `data-fill.mjs` orchestrator 의 envKeys 배열은 답습되지만 matrix yml 자체의 env block 누락은 미답습
+답습 범위:
+- `.github/workflows/fill-missing-data.yml` 의 phase2-calc / phase3-external / phase4-independent matrix
+- `data-fill.mjs` orchestrator envKeys 는 기존 `extractDataFillEnvKeys()` 가 답습 중 (변경 0)
 
-**세션 294 사고**: `fill-missing-data.yml` L141 env block 에 `KOSIS_MIGRATION_KEY` 누락. audit 결과 `30/36 clean ✅` 통과했는데도 phase4-independent → migration 실 발화 시 `[migration] ERROR: KOSIS_MIGRATION_KEY 환경변수 필요` exit 1.
+새 matrix orchestrator yml 추가 시: `scripts/audit-env-keys.mjs` 의 `MATRIX_ORCHESTRATORS` 배열에 yml 경로 1줄 추가 (사람 박제).
 
-**미래 보강 자리** (별 세션 진입 의무):
-- audit 에 matrix orchestrator (fill-missing-data.yml) 답습 자리 추가
-- yml 의 `strategy.matrix.script[].cmd` 자리 grep → 각 cmd 의 collector 의 envVars vs orchestrator yml env block 교차 검증
-- 빈틈 0 자리 도달 시 본 한계 박제 줄 삭제 의무
+구현 답습:
+- `js-yaml@4.1.1` (transitive via ESLint, MIT) — 정규식 fragile 회피 (`\Z` JS 미지원 사고 답습), FAILSAFE_SCHEMA 옵션 (strings/arrays/objects 만, GitHub Actions secrets 안전)
+- §15 GitHub 오픈소스 답습 룰 정착 — README/사용설명 답습 후 부분 옵션 답습 (`{ schema: yaml.FAILSAFE_SCHEMA }`)
+
+검증:
+- `scripts/audit-env-keys.test.mjs` — vitest fixture 기반 회귀 가드 4 test
+- 세션 304 재현 시뮬 1회 (KOSIS_MIGRATION_KEY env block 일시 제거 → audit exit 1 검출 + ❌ matrix yml env block 누락 메시지 → 복원 → exit 0)
+- 신규 사고 동시 발견 + 정정: `schools-neis.mjs` NEIS_KEY/SCHOOLINFO_KEY phase3-external env block 누락 → 2 secrets 추가 (실 사고 가능성 0 자리 박제, GitHub Secrets 자리 박힘 = NEIS_KEY/SCHOOLINFO_KEY)
 
 ### 2. CI 단계 추가 (`.github/workflows/ci.yml`)
 
