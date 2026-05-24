@@ -999,6 +999,38 @@ async function phase9_naver(apartments) {
 }
 
 // ============================================================
+// Output helper
+// ============================================================
+
+/**
+ * 4 JSON 출력 (apartments + list + prices + meta).
+ * collect-data 본 흐름과 --from-supabase-only 모드 둘 다 호출.
+ * @param {object[]} apartments — 출력할 단지 배열 (이미 내부 필드 제거된 상태)
+ * @param {string} fetchedAt — ISO 시각 (apartments + list + prices 의 fetchedAt/dataUpdatedAt 박힘)
+ */
+function writeOutputs(apartments, fetchedAt) {
+  const outDir = resolve(ROOT, "public/data");
+  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+
+  // list 1.66MB (가격배열 4개 제외) + prices 11.35MB (id + 4 배열) 분리 출력 + 원본 13MB 유지 (롤백 안전)
+  const listData = apartments.map(({ priceByArea, rentByArea, jeonseByArea, priceByFloor, ...rest }) => rest);
+  const pricesData = apartments.map(a => ({
+    id: a.id,
+    priceByArea: a.priceByArea ?? null,
+    rentByArea: a.rentByArea ?? null,
+    jeonseByArea: a.jeonseByArea ?? null,
+    priceByFloor: a.priceByFloor ?? null,
+  }));
+
+  // 양쪽 키 동시 박힘 (세션 292) — staticDataApi.ts L48-50 fallback 의존 제거 + Supabase 분기 응답과 키 정합.
+  const output = { ok: true, data: apartments, count: apartments.length, fetchedAt, dataUpdatedAt: fetchedAt };
+  writeFileSync(resolve(outDir, "apartments.json"), JSON.stringify(output));
+  writeFileSync(resolve(outDir, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
+  writeFileSync(resolve(outDir, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
+  writeFileSync(resolve(outDir, "meta.json"), JSON.stringify(meta, null, 2));
+}
+
+// ============================================================
 // Main
 // ============================================================
 async function main() {
@@ -1064,9 +1096,6 @@ async function main() {
   apartments = await phase9_naver(apartments);
 
   // JSON 출력
-  const outDir = resolve(ROOT, "public/data");
-  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-
   const fetchedAt = new Date().toISOString();
   meta.fetchedAt = fetchedAt;
   meta.count = apartments.length;
@@ -1074,23 +1103,7 @@ async function main() {
   // 내부 필드 제거
   apartments = apartments.map(({ _regionalUnsold, _avgIncome, _kosisEstimated, ...rest }) => rest);
 
-  // list 1.66MB (가격배열 4개 제외) + prices 11.35MB (id + 4 배열) 분리 출력 + 원본 13MB 유지 (롤백 안전)
-  const listData = apartments.map(({ priceByArea, rentByArea, jeonseByArea, priceByFloor, ...rest }) => rest);
-  const pricesData = apartments.map(a => ({
-    id: a.id,
-    priceByArea: a.priceByArea ?? null,
-    rentByArea: a.rentByArea ?? null,
-    jeonseByArea: a.jeonseByArea ?? null,
-    priceByFloor: a.priceByFloor ?? null,
-  }));
-
-  // 양쪽 키 동시 박힘 (세션 292) — 정적 JSON 출력 시점 = ETL 수집 = 데이터 갱신 시점 동일.
-  // staticDataApi.ts L48-50 fallback 의존 제거 + Supabase 분기 응답 (dataUpdatedAt) 과 키 정합.
-  const output = { ok: true, data: apartments, count: apartments.length, fetchedAt, dataUpdatedAt: fetchedAt };
-  writeFileSync(resolve(outDir, "apartments.json"), JSON.stringify(output));
-  writeFileSync(resolve(outDir, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
-  writeFileSync(resolve(outDir, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
-  writeFileSync(resolve(outDir, "meta.json"), JSON.stringify(meta, null, 2));
+  writeOutputs(apartments, fetchedAt);
 
   const elapsed = Math.round((Date.now() - startTime) / 1000);
   log(`완료! ${apartments.length}건, ${elapsed}초 소요`);
