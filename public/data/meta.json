@@ -1,22 +1,22 @@
 {
-  "fetchedAt": "2026-05-19T16:57:53.976Z",
-  "count": 1557,
+  "fetchedAt": "2026-05-24T07:18:10.794Z",
+  "count": 1565,
   "phases": {
     "applyhome": {
       "ok": true,
-      "count": 1557
+      "count": 1565
     },
     "kosis": {
       "ok": true
     },
     "kakao": {
       "ok": true,
-      "enriched": 749
+      "enriched": 610
     },
     "neis": {
       "ok": true,
-      "enriched": 1557,
-      "schoolEnriched": 859
+      "enriched": 1565,
+      "schoolEnriched": 795
     },
     "dart": {
       "ok": true,
@@ -24,11 +24,11 @@
     },
     "transport": {
       "ok": true,
-      "enriched": 749
+      "enriched": 610
     },
     "realtrade": {
       "ok": true,
-      "enriched": 1311,
+      "enriched": 1318,
       "apiCalls": 1788
     },
     "naver": {
