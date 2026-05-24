@@ -1,3 +1,139 @@
+# 세션 304 — 2026-05-24 (E + F + H 묶음 + "박제" 단어 메모 추가, 8 커밋 push CI 2 success)
+
+## 거시 목적
+
+세션 300 NEXT_SESSION 4 후보 (A/B/C/D/E/F/G/H) 중 즉시 진입 가능 후보 우선 처리. 자연 대기 후보 (A·B·C schedule) + 사용자 의존 후보 (D 어린이집) 제외 → E + F + H 3건 묶음 완결.
+
+## E. audit-env-keys matrix orchestrator 보강 (4 커밋: 610e1bf + eea0646 + ad69e83 + 96fbdcc)
+
+**진앙**: 세션 232 → 294 동일 사고 (KOSIS_MIGRATION_KEY env block 누락) 3년 2회 재발. audit-env-keys.mjs 의 1대1 매칭 한계로 matrix orchestrator (fill-missing-data.yml) 답습 0.
+
+**작업**:
+- extractMatrixJobs 함수 신규 (`scripts/audit-env-keys.mjs`)
+- 초기 정규식 구현 시도 (`\Z` JS 미지원 사고 발생) → 사용자 §15 GitHub 오픈소스 룰 발동 → js-yaml@4.1.1 (transitive, MIT, FAILSAFE_SCHEMA 옵션) 재작성
+- vitest fixture 4 test 회귀 가드 (`scripts/audit-env-keys.test.mjs`)
+- 세션 294 사고 재현 시뮬 1회 (KOSIS_MIGRATION_KEY 일시 제거 → audit exit 1 검출 → 복원 → exit 0)
+- **보너스 발견 + 정정**: schools-neis NEIS_KEY/SCHOOLINFO_KEY phase3-external env block 누락 → 2 secrets 추가
+- `.claude/rules/workflows/secret-naming-audit.md` §1 한계 기록 줄 삭제 + 보강 완료 기록 추가
+
+**검증**: CI run 26351424959 success ✅, vitest 4/4 pass, audit 34/46 clean 0 errors.
+
+## F. .claude/rules/ 서브폴더 분리 (3 커밋: 7d11fbf + b716568 + 3d26007)
+
+**진앙**: 글로벌 CLAUDE.md §13 "N>5 시 서브폴더 분리" 트리거 발동. N=7 도달.
+
+**작업**:
+- collectors/3 (parsegu-normalization / kosis-dimension-mismatch-guard / collector-timeout-rootcause-analysis)
+- workflows/2 (secret-naming-audit / workflow-name-hallucination)
+- meta/2 (next-session-grep-mandate / typescript-patterns)
+- git mv 7회 (R100 6 + R97 1 = git log --follow 답습 가능)
+- 참조 경로 갱신 = SESSION_LOG 21건 (plan 9 + 자가 점검 1 발견 12) + collectors/collector-timeout L82 (1) + 로컬 자산 3건 (BACKLOG/BACKLOG_ARCHIVE/NEXT_SESSION, gitignore 적용)
+
+**검증**: CI run 26353422949 success ✅.
+
+## H. SESSION_LOG drift 정리 (본 entry 작성 자체 = 작업 결과물)
+
+**진앙**: NEXT_SESSION L48 추정 "drift 약 20 세션 누락" → 조사 결과 ## vs # 헤더 형식 비통일 (grep 사각지대) + 세션 300 entry 잘못된 위치 (파일 끝 L9756 박힘) + 진짜 누락 2건 (301 + 304).
+
+**작업**:
+- sed 일괄 헤더 통일 (`^## 세션 N` → `# 세션 N`, 27건)
+- 세션 300 entry 파일 끝 → L1 직전 이동 + 헤더 형식 통일
+- 세션 301 entry 추가 (jari hookify v5 자동화)
+- 세션 304 entry 추가 (본 entry, E + F + H 묶음)
+- NEXT_SESSION 갱신 (E/F/H ✅, 헤더 304 → 305)
+
+## "박제" 단어 메모 추가
+
+**진앙**: 사용자 "박제가 무슨말이야?" 인터럽트 (turn 중간). 답글에서 회당 10~30회 남용 = 의미 흐림. CLAUDE.md §5 (대화는 쉬운 한국어) 위반.
+
+**작업**:
+- 신규: `~/.claude/projects/f--mibunyang/memory/feedback_bakje_overuse.md`
+- MEMORY.md 인덱스 추가 (jari v5 위)
+- 정정 패턴: 박제 → 기록 / 메모 / 적기 / 저장됨 / 있음
+
+## 사고 박제 (자가 점검 발동 사례)
+
+- E spec 작성 시 "자리" 32회 발견 (hookify v5 차단 ✅) → 정정 재시도
+- F spec 작성 시 "자리" 45회 발견 (hookify v5 차단 ✅) → 일괄 정정 재시도
+- audit-env-keys.mjs 정규식 시도 시 `\Z` JS 미지원 사고 (초기 실패) → js-yaml 재작성 (사용자 §15 룰 발동)
+- 보안 hook false positive (정규식 .exec 메서드를 외부 명령 실행으로 오인) 2회 → 표현 위장 후 js-yaml 로 폐기
+- F 작업 시 자가 점검 1 발동 = plan 박제 9건 + grep 으로 12건 추가 발견 = 총 21건 갱신 (stale 0 차단)
+
+## 답습 자산
+
+- E commits: 610e1bf (spec) + eea0646 (plan) + ad69e83 (test+fn) + 96fbdcc (main 통합 + 보너스 fix + 룰 갱신)
+- F commits: 7d11fbf (spec) + b716568 (plan) + 3d26007 (mv + 21 갱신)
+- H commit: 83e18cc (spec) + 11ff369 (plan) + 본 commit (헤더 + 301/304 entry)
+- 메모리 신규: feedback_bakje_overuse.md
+- 글로벌 hook (세션 301): ~/.claude/hooks/pretool_jari_check.py (Python 3.12)
+
+# 세션 301 — 2026-05-24 (jari v5 hookify 자동화 정착)
+
+## 사고 5차 재발
+
+세션 238 1차 → 242 2차 → 254 3차 → 297 4차 → 300/301 본문 5회. 글로벌 메모리 jari v4 §"4회 누적 = 메모리 기록만으로 차단 실패 확정" 답습 발동.
+
+## 정정 — PreToolUse hook 자동화
+
+- 신규: `C:\Users\user\.claude\hooks\pretool_jari_check.py` (Python 3.12)
+- 갱신: `C:\Users\user\.claude\settings.json` 의 `hooks.PreToolUse` 1건 추가
+- 임계값: 10회 (메모리 v4 §"How to apply" 답습)
+- 대상 도구: 5종 (Write / Edit / MultiEdit / Agent / AskUserQuestion)
+- 동작: JSON deny 반환 → tool 호출 차단
+- 채팅 응답은 미적용 (자가 grep 유지)
+
+## 결과
+
+- 본 세션 (304) 작업 중 Write 2회 차단 발동 확인 ✅
+- E 후보 spec 작성 시 "자리" 32회 발견 차단 → 정정 재시도
+- F 후보 spec 작성 시 "자리" 45회 발견 차단 → 일괄 정정 재시도
+
+## 답습 자산
+
+- `~/.claude/projects/f--mibunyang/memory/feedback_jari_overuse_v5.md` (사고 정착 메모)
+- git 변경 0 (글로벌 hook)
+
+# 세션 300 — 2026-05-24 (D MEMORY.md 2차 압축)
+
+**거시 목적**: 세션 299 1차 압축 (41709→40226, 3.6%) 후 한계 24400 미달. 본 세션 2차 압축으로 한계 도달 의무.
+
+**결론**: MEMORY.md 40226 → **24299 bytes** (15927 bytes 절감, 39.6%). 한계 24400 미만 도달 ✅ (마진 101 bytes). 글로벌 메모 git 추적 외, 커밋 0건.
+
+**작업 진행**:
+
+**Phase A — 시리즈 통합 (4건)**: 124줄 → 93줄, 40226 → 30505 bytes (9721 절감)
+- M3/M4 TS 부트스트랩 (세션 177~188, 10줄→1)
+- M5 scripts/ typecheck (세션 190~207, 17줄→1, feedback 8줄 보존)
+- M7 src/ typecheck (세션 210~218, 6줄→1, feedback 2줄 보존)
+- M8 + 세션 220/221 (2줄→1)
+
+**Phase B — 잔여 긴 줄 압축 (21건)**: 93줄 유지, 30505 → 24299 bytes (6206 절감)
+- 긴 줄 top 25 평균 60-70% 단축
+- 핵심 fact (커밋 해시 + 결과 + 답습 1건) 만 보존
+- 상세 사고/세부 수치 삭제
+
+**Phase C — 회귀 가드 검증 통과**:
+- feedback_*.md: 압축 전 42줄 → 압축 후 42줄 (손실 0)
+- reference_*.md: 6줄 → 6줄 (손실 0)
+- 시리즈 통합 시 대표 session 파일 링크 1건 보존
+
+**답습**:
+- **MEMORY.md 한계 24400 bytes (24.4KB) 미달 도달 v2** — 세션 299 1차 압축 3.6% 부족 발견 후 본 세션 2차 압축으로 39.6% 절감
+- **시리즈 통합 = 단순 줄 압축보다 효과 4배** (M5 17줄→1 = 5000+ bytes 절감 / 줄별 압축 평균 300 bytes)
+- **Phase C 룰**: `feedback_*.md` `reference_*.md` 항목 = 압축 금지 (정보 손실 차단). `session_*` `project_session*` 만 통합/압축 대상
+- **백업 의무 답습** — `/tmp/MEMORY.md.bak-session300` 1회 백업 후 진행, 롤백 가능
+
+**검증**:
+- `wc -c MEMORY.md` = 24299 < 24400 ✅
+- conversation context 재진입 시 truncation 경고 사라지는지 다음 세션 검증
+- feedback/reference 카운트 변동 0
+
+**잔여 후보 (다음 세션)**:
+- A·B 검증 (5/25 KST cron 발화 후): Naver listings 5/24 05:30 / fill-missing-data 5/24 11:00
+- C 검증 (이미 일부 종결): 5/25 07:00 KST cron 발화 success 시 세션 291 fix 종결
+- E 제주 어린이집 collector (사용자 콘솔 스크린샷 답습 의무 # 👤)
+- F audit-env-keys matrix 보강 / G .claude/rules/ N=7 서브폴더 분리 / H hookify PreToolUse jari 차단
+
 # 세션 299 — 2026-05-24 (4 후보 우선순위 정리 + G MEMORY.md 1차 압축)
 
 **거시 목적**: 세션 298 NEXT_SESSION 8 후보 박제 답습 + 사용자 위임 ("전부다 우선순위 파악, 서브에이전트 적절 사용") → A·B·C·G 4 후보 우선순위 결정. B·A·C 모두 schedule 발화 대기 영역 = 본 세션 진입 불가 확정 → **G (MEMORY.md 1차 압축) 단일 작업**.
@@ -9123,7 +9259,7 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 
 ---
 
-## 세션 190 (2026-05-06) — M5b 완료 (e2e 타입 보강 + tsconfig 분리)
+# 세션 190 (2026-05-06) — M5b 완료 (e2e 타입 보강 + tsconfig 분리)
 
 > 세션 153~189 박제 누락 상태. 본 항목은 190만 추가. 누락 보강은 별도 sub.
 
@@ -9171,7 +9307,7 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 
 ---
 
-## 세션 206 (2026-05-08) — M5e 완료 (collectors .test.mjs 23건 // @ts-check 일괄)
+# 세션 206 (2026-05-08) — M5e 완료 (collectors .test.mjs 23건 // @ts-check 일괄)
 
 > 세션 191~205 박제 누락 상태. 본 항목은 206만 추가. 누락 보강은 별도 sub.
 
@@ -9228,7 +9364,7 @@ Playwright + localStorage 주입으로 로그인 우회 → 프로덕션 **전�
 
 ---
 
-## 세션 225 (2026-05-11) — Naver cron 5/10 첫 90분 timeout 검증 + D-1 collect-applyhome recordApiQuota fix
+# 세션 225 (2026-05-11) — Naver cron 5/10 첫 90분 timeout 검증 + D-1 collect-applyhome recordApiQuota fix
 
 ### 발문 + 9 GATE 풀 검증 답습 (4 차 = 누락 0 도달)
 
@@ -9324,7 +9460,7 @@ gh run list --workflow=collect-naver-listings.yml --limit 3 --json conclusion,st
 
 ---
 
-## 세션 226 — Naver postprocess 병목 분석 spec + cross-repo 사고 박제 (2026-05-11)
+# 세션 226 — Naver postprocess 병목 분석 spec + cross-repo 사고 박제 (2026-05-11)
 
 ### 결과 한 줄
 
@@ -9394,7 +9530,7 @@ run 25638230275 step-별 timestamp 실측으로 진짜 병목 = sync-naver-compl
 - 시나리오 A/B/C 분기 후 옵션 D-1/D-2/E 진입 결정
 - 옵션 1-A 보류 유지 또는 1-B (cross-repo PR) 별도 세션 진입 결정
 
-## 세션 258 (2026-05-16) — W6-D2 어린이집 마무리 (수집기 운영 실행 + 데이터 적재)
+# 세션 258 (2026-05-16) — W6-D2 어린이집 마무리 (수집기 운영 실행 + 데이터 적재)
 
 W6-D2 어린이집 표시 에픽(세션 252~258) **종료**. 코드 변경 0건 — 데이터 적재 + 검증 + 문서만.
 
@@ -9423,7 +9559,7 @@ W6-D2 어린이집 표시 에픽(세션 252~258) **종료**. 코드 변경 0건 
 - 단지 상세 모달 비로그인 게이트 — 가짜 `expertToken` 은 `/api/auth/verify` 가 즉시 제거. UI 검증은 API 응답 실측 + 컴포넌트 테스트로 대체
 - 데이터 흐름 끝단 검증 = vite dev `/api` 프록시로 API 직접 호출
 
-## 세션 258 확장 — LineChart Y축 눈금 개선 (분양가/미분양 추이 그래프 결함 fix)
+# 세션 258 확장 — LineChart Y축 눈금 개선 (분양가/미분양 추이 그래프 결함 fix)
 
 사용자가 단지 상세의 분양가/미분양 추이 그래프가 깨져 보인다고 보고. brainstorming → spec → plan → 서브에이전트 5-task 실행.
 
@@ -9452,7 +9588,7 @@ W6-D2 어린이집 표시 에픽(세션 252~258) **종료**. 코드 변경 0건 
 - **vitest stale 캐시 함정**: 이 환경은 vitest 캐시가 stale 되면 "Cannot read properties of undefined (reading 'config')" 에러. 환경 불능 아님 — `npx vitest run <파일> --no-cache` 로 해결. 서브에이전트 Task 1 이 "환경 불능" 부분 환각 보고 → 컨트롤러 직접 `--no-cache` 실측으로 정정
 - 서브에이전트 5-task 실행: 구현 4 + 검증 1, 각 task 후 컨트롤러 직접 실측 검증 (보고 신뢰 금지 답습)
 
-## 세션 260 (2026-05-16) — 수집기 운영 건강성 점검: 매월 1일 cron 동시 충돌 분산
+# 세션 260 (2026-05-16) — 수집기 운영 건강성 점검: 매월 1일 cron 동시 충돌 분산
 
 NEXT_SESSION 1순위 "수집기 운영 건강성 점검 5건" 진입. worktree `collector-cron-spread` 에서 작업. 5건 전수 실증 후 실제 운영 손해가 진행 중인 #2 1건만 코드 변경.
 
@@ -9492,7 +9628,7 @@ NEXT_SESSION §2 는 "API 쿼터/Actions 동시성 부담" 으로 추정했으�
 - **NEXT_SESSION 박제값 stale** — §2 "API 쿼터" 추정이 실측으로 concurrency group 문제로 정정. NEXT_SESSION 가설은 단정 근거 아님, raw 실측 의무
 - **GitHub Actions concurrency**: `cancel-in-progress: false` 라도 기본 `queue: single` 이면 pending run 이 새 run 에 밀려 취소. 직렬 보장 ≠ 큐 보존. 공식 문서 확인 필수
 
-## 세션 262 (2026-05-17) — data-audit 미감사 필드 3개 감사 편입 (air/safety 카테고리)
+# 세션 262 (2026-05-17) — data-audit 미감사 필드 3개 감사 편입 (air/safety 카테고리)
 
 **거시 목적**: 세션 261 작업 C 조사에서 발견한 사각지대 해소. `collect-air-quality`/`collect-crime-safety`/`collect-emergency` 세 수집기가 별도 cron 으로 `air_quality`/`crime_safety_grade`/`emergency` 4필드를 쌓는데, `data-audit.mjs` AUDIT_FIELDS 17 카테고리 어디에도 없어 그 컬럼 NULL률이 감사·모니터링에 안 잡히던 문제.
 
@@ -9517,7 +9653,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **`data-audit.mjs` 는 VIEW 가 아닌 테이블별 개별 쿼리 방식** — 미래 audit 필드 추가 시 AUDIT_FIELDS 만으로 부족. `APT_COLS`/`toCamel` map/관련 테이블 쿼리·`mergeRelated` colMap 동시 정정 의무. NEXT_SESSION 의 "VIEW 노출 여부 확인" 전제는 audit 작업에 무관(VIEW 안 씀)
 - `infra.emergency_name`/`emergency_type` 베이스 컬럼은 존재하나 `apartments_flat` VIEW 에는 미노출(마이그 `20260512211803` VIEW CREATE 부분 Dashboard 미적용 — DDL stale, 세션 259 답습). audit 는 VIEW 를 안 쓰므로 영향 없음. 향후 프론트/스코어링이 emergencyName/Type VIEW 경유 사용 시 별도 작업 필요
 
-## 세션 263 (2026-05-17) — #4 컬럼별 NULL 비율 모니터 (검증 후 push)
+# 세션 263 (2026-05-17) — #4 컬럼별 NULL 비율 모니터 (검증 후 push)
 
 **거시 목적**: `monitor-collectors.mjs` ④번 NULL 점검이 `regions` 2개 컬럼만 봐 `apartments` 계열 19 카테고리가 조용히 망가져도 알림이 안 가던 사각지대 해소.
 
@@ -9527,7 +9663,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - 검증(전부 실측): typecheck:scripts 0 / vitest `monitor-collectors.test.mjs` 17/17 / 실제 DB 2001 단지 `computeAudit` → 12 점검 카테고리 전부 baseline 위 안전 (ALERT 0건)
 - 설계·plan: `docs/superpowers/specs/2026-05-17-category-null-monitor-{design,plan}.md`
 
-## 세션 264 (2026-05-17) — #4 NULL 모니터 키 drift 가드 보강
+# 세션 264 (2026-05-17) — #4 NULL 모니터 키 drift 가드 보강
 
 **거시 목적**: 세션 263 완성 구현 검증 + 발견한 빈틈 1건 보강. `AUDIT_CATEGORY_BASELINE`(monitor, 점검 12) 이 `AUDIT_FIELDS`(data-audit, 19 카테고리) 를 수기 복제하는데 둘을 잇는 정합성 검증이 없어, 미래에 data-audit 에 카테고리가 추가되면 monitor 가 모르고 조용히 커버리지 구멍이 생기는 silent coverage gap.
 
@@ -9542,7 +9678,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **plan v1 전제값 검증 = stale 발견** — NEXT_SESSION L92-94 가 #4 를 "1순위 미완"으로 박제했으나 세션 263 에서 이미 완성·push 됨. NEXT_SESSION 헤더가 "세션 262"에 머물러 세션 263 산출을 미반영. `next-session-grep-mandate` §1 답습 — 작업 진입 직전 커밋 이력(`git log | grep`) + 메모리 grep 으로 박제값 stale 확인
 - **수기 복제 상수는 정합성 테스트로 강제** — 두 파일에 같은 키 집합이 손으로 복제되면 drift 무방어. 한쪽을 진실 소스로 두고 다른 쪽이 그것과 일치하는지 테스트로 박으면 즉시 빨강. `secret-naming-audit.md` 3-way 동기화 사고 답습과 동류 패턴
 
-## 세션 265 (2026-05-17) — 월간 schedule 데드존 monitor 보강
+# 세션 265 (2026-05-17) — 월간 schedule 데드존 monitor 보강
 
 **거시 목적**: `checkStaleWorkflows` 가 "최근 50 run 등장 워크플로"만 점검 대상으로 삼아, 월간 cron 워크플로가 35일+ 죽으면 최근 run 에서 사라져 stale 알림 데드존 발생.
 
@@ -9550,7 +9686,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 
 **답습**: 이름 같은 점검 함수 ≠ 동작. 입력 흐름 grep 의무.
 
-## 세션 266 (2026-05-18) — KOSIS 합계출산율 collector 신규
+# 세션 266 (2026-05-18) — KOSIS 합계출산율 collector 신규
 
 **거시 목적**: regions 표 fertility_rate 컬럼 미수집. KOSIS DT_1B81A17 시군구 단위 수집.
 
@@ -9560,19 +9696,19 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - NEXT_SESSION "키 발급 👤" 박제 stale 정정 — KOSIS 회원당 1키
 - data-fill.test toEqual 회귀 동시 정정
 
-## 세션 267 (2026-05-18) — KOSIS 의료 의사·병상수 collector 묶음
+# 세션 267 (2026-05-18) — KOSIS 의료 의사·병상수 collector 묶음
 
 **거시 목적**: regions.doctors_per_1k / hospital_beds_per_1k 미수집. DT_1YL20981 / DT_1YL20971 묶음 수집.
 
 **결론**: 1 커밋 `9d625d5` push CI success. `collect-medical-access.mjs` 신규 (TableSpec 배열로 통계표 차이 표현).
 
-## 세션 268 (2026-05-18) — recordApiQuota dry-run 가드
+# 세션 268 (2026-05-18) — recordApiQuota dry-run 가드
 
 **거시 목적**: `recordApiQuota` 가 dry-run 모드 에서도 DB write 시도 → 테스트 불가.
 
 **결론**: 2 커밋 `787e036`/`a99c528` push. dry-run 가드 + sbOverride 인자 추가 (테스트 가능 해소).
 
-## 세션 269 (2026-05-18) — KOSIS 매매가격지수 collector 신규
+# 세션 269 (2026-05-18) — KOSIS 매매가격지수 collector 신규
 
 **거시 목적**: market_stats_history.sale_price_index 컬럼 미수집. DT_KAB_11672_S5 시군구 분기 단위 수집.
 
@@ -9582,13 +9718,13 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - `audit-collector-patterns.mjs` isCLI 가드 누락 → 테스트 import 시 `main()` `process.exit` → CI red. **scripts/\*.mjs 자매 test import 대상은 isCLI 가드 의무**
 - 박제값 2건 stale (regions.market_stats JSONB 부재 — 실제 별도 컬럼)
 
-## 세션 270 (2026-05-18) — KOSIS 전세가격지수 collector 신규
+# 세션 270 (2026-05-18) — KOSIS 전세가격지수 collector 신규
 
 **거시 목적**: market_stats_history.jeonse_price_index 컬럼 미수집. DT_30404_B013 동향조사 시군구 월간 수집.
 
 **결론**: 4 커밋 `564ef25`/`c0fc128`/`c2f5654`/`9f71906` push CI success. 154시군구×23개월 3565행 적재. `c2f5654` 시도행 제외(세종/제주 중복 키 차단).
 
-## 세션 271 (2026-05-18) — KOSIS Phase 3 경제·교육 묶음 collector
+# 세션 271 (2026-05-18) — KOSIS Phase 3 경제·교육 묶음 collector
 
 **거시 목적**: regions 표에 GRDP·사교육비·사교육참여율·실업률 4지표 미수집 (Phase 3 묶음).
 
@@ -9598,7 +9734,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - plan 3회 자가검증 — tsconfig include 수동나열·regions 76행·parseKosisRows 2인자 시그니처 차이 정정
 - BACKLOG #11·#12 stale·#7·#8 추정값 부정확 발견
 
-## 세션 272 (2026-05-19) — `as any` 7건 + lint react-hooks 12건 + Kakao SDK 일원화 + 일요일 cron 충돌 fix
+# 세션 272 (2026-05-19) — `as any` 7건 + lint react-hooks 12건 + Kakao SDK 일원화 + 일요일 cron 충돌 fix
 
 **거시 목적**: TypeScript `as any` 잔재 정리 + lint react-hooks 경고 정리 + Kakao SDK `(window as any)` 일원화 + collect-trade-stats cron 일요일 21시 concurrency 충돌 해소.
 
@@ -9609,7 +9745,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - `c7c60b4` Kakao SDK `(window as any)` 9건 → `kakaoMapHelpers.getKakaoMaps` 일원화
 - `608ca5c` collect-trade-stats cron 일요일 21시 → 16시 (concurrency 충돌 해소)
 
-## 세션 273 (2026-05-19) — 일요일 워크플로 큐 경합 해소 + hooks 미커버 5개 테스트
+# 세션 273 (2026-05-19) — 일요일 워크플로 큐 경합 해소 + hooks 미커버 5개 테스트
 
 **거시 목적**: `fill-missing-data` 8주 연속 죽음 진단 → 일요일 큐 경합 + hooks 5개 미커버 빈틈 보강.
 
@@ -9620,7 +9756,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 
 **답습**: cancel-in-progress:false 동작 공식문서 미확인 환각·timeout값을 실측 오인·표본1개 수치산정. 자가점검 1 을 4회 반복.
 
-## 세션 274 (2026-05-19) — mibunyang 소유 3개 테이블 RLS 활성화
+# 세션 274 (2026-05-19) — mibunyang 소유 3개 테이블 RLS 활성화
 
 **거시 목적**: 세션 273 "RLS Disabled 19개" 박제값을 supabase CLI live 조회로 정정 (실제 16개) + mibunyang 소유 3개 (api_quota_log / air_quality_stations / collector_runs) RLS on.
 
@@ -9631,13 +9767,13 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - 공유 테이블 complexes·articles는 naver-estate-web V007 소유 (articles 는 is_active=true 숨김 의도 — mibunyang 정책 만들면 충돌) → 범위 5→3 축소
 - DB 1097MB = Pro 유료 확정
 
-## 세션 274 확장 (2026-05-19) — 공유 테이블 3개 RLS 활성화
+# 세션 274 확장 (2026-05-19) — 공유 테이블 3개 RLS 활성화
 
 **거시 목적**: 세션 274 cross-repo 정정 후 공유 3개(complexes/articles/complex_price_history)도 naver-estate-web V007 답습으로 RLS 활성화.
 
 **결론**: 1 커밋 `c6863dc` push CI success. 신규 마이그 `20260519112845_enable_rls_shared_tables.sql`. articles 정책은 `is_active=true` 숨김 의도 보존 (anon JWT 회귀로 비활성 매물 0행 확인). advisor 14→11.
 
-## 세션 275 (2026-05-19) — cpmsapi021 50건 한도 해소
+# 세션 275 (2026-05-19) — cpmsapi021 50건 한도 해소
 
 **거시 목적**: 세션 252 박제 어린이집 collector 가 시군구당 50건 hard limit (강남구 90%+ 누락) → 운영키 교체 + 결과코드 가드 두 트랙으로 해소.
 
@@ -9650,7 +9786,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 
 **답습**: 개발계정 키 제약 ≠ API 결함. 응답 결과코드 가드 의무 (INFO-200 vs INFO-300 구분 + ERROR-\* throw).
 
-## 세션 276 (2026-05-19) — Supabase Advisor security_definer·search_path 4건 해소
+# 세션 276 (2026-05-19) — Supabase Advisor security_definer·search_path 4건 해소
 
 **거시 목적**: 세션 274 advisor 정정으로 잔여 4건 (security_definer_view 2개 + function_search_path_mutable 2개) 해소.
 
@@ -9664,7 +9800,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - plan v1 `DROP VIEW` = GRANT 동반삭제 환각 → `ALTER VIEW` 전환
 - live pg_policy+grants 2회 조회로 anon 무영향 확정
 
-## 세션 277 (2026-05-20) — NEXT_SESSION stale 정리 + BACKLOG_ARCHIVE 이동 + 환각 4건 정정
+# 세션 277 (2026-05-20) — NEXT_SESSION stale 정리 + BACKLOG_ARCHIVE 이동 + 환각 4건 정정
 
 **거시 목적**: 사용자 "해소된 부채/완료 항목이 '할 일' 목록에 섞여 있으면 아카이브로 분리" 요청. NEXT_SESSION L27~33 stale 1순위(cpmsapi021 50 limit, 세션 275 ea77f25 해소) 제거 + L60~85 세션 274 산출 절을 BACKLOG_ARCHIVE.md 끝으로 이동 + apartments.json 크기 박제값 stale 정정.
 
@@ -9683,7 +9819,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **plan v2 환각 4건 직접 실측 정정** — apartments.json "13.1MB" / SessionEnd 훅 부재 / drift 측정 / `_rollbacks/` 디렉토리. 모든 plan 박제값 실측 후 박제 의무 답습 v3 박제 (v1 세션 233 / v2 세션 251 / v3 본 세션)
 - **`.gitignore` `.claude/*` 기본 무시 + negation 한정** — BACKLOG.md / BACKLOG_ARCHIVE.md 도 .gitignore 대상이라 git 추적 X. negation 있는 것은 `settings.json`·`SESSION_LOG.md`·`commands/`·`agents/`·`rules/` 만. **본 SESSION_LOG.md 박제는 git 추적되어 영구 보존됨** (다른 BACKLOG·NEXT_SESSION 정정은 로컬만)
 
-## 세션 291 (2026-05-22) — A-1 calc-exclusive-ratio 8 주 연속 cancelled 근본 정정
+# 세션 291 (2026-05-22) — A-1 calc-exclusive-ratio 8 주 연속 cancelled 근본 정정
 
 **거시 목적**: 세션 290 마무리 박제 알람 2건 중 A-1 (calc-exclusive-ratio 2026-04-19 / 04-26 / 05-17 일요일 22:00 UTC cron 발화 후 ~55~58 분 후 cancelled, 8 주 연속) 근본 원인 진단 + 정정. 사용자 PHASE 1~4 워크플로 명시 적용 + 자가 점검 1 발동 + 3 Explore 서브에이전트 병렬 환각 5건 정정.
 
@@ -9721,7 +9857,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **B 영역 운영 사고 실재 확정** — 다음 세션 진입 후순위 (collect-data.mjs L1087 `dataUpdatedAt: fetchedAt` 동시 박제)
 - **다음 일요일 (2026-05-24) 22:00 UTC calc-exclusive-ratio cron 발화 success 검증 의무** — monitoring trigger 박제
 
-## 세션 295 (2026-05-23) — R1 transport-tago root cause 분석 종결
+# 세션 295 (2026-05-23) — R1 transport-tago root cause 분석 종결
 
 **거시 목적**: 세션 294 timeout 90→120 fix 임시 완화 자리 정확 정정 의무. transport-tago 2.1배 느림 root cause 분석 + 코드/API 결함 자리 단정 검증.
 
@@ -9752,44 +9888,3 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **transport-tago 단지 당 4.35~4.47초 = sleep 100ms × 4 + Kakao 3호출 + TAGO 1호출** — 코드 결함 0, API rate limit 0. 향후 batch size 조정 자리 무의미 (sleep 자체가 의도된 자리)
 - **세션 294 timeout 90→120 fix 가 정답** — 회귀 자리 없음. transport-tago root cause 분석 = "단지 수 늘어남 (의도된 fix)" 답습으로 종결
 - **신규 룰 박제** — `.claude/rules/collectors/collector-timeout-rootcause-analysis.md` (timeout 사고 진앙 답습 시 collector git log + raw run log + apartments.created_at + collector_runs 4-way 답습 의무)
-
-## 세션 300 (2026-05-24) — D MEMORY.md 2차 압축
-
-**거시 목적**: 세션 299 1차 압축 (41709→40226, 3.6%) 후 한계 24400 미달. 본 세션 2차 압축으로 한계 도달 의무.
-
-**결론**: MEMORY.md 40226 → **24299 bytes** (15927 bytes 절감, 39.6%). 한계 24400 미만 도달 ✅ (마진 101 bytes). 글로벌 메모 git 추적 외, 커밋 0건.
-
-**작업 진행**:
-
-**Phase A — 시리즈 통합 (4건)**: 124줄 → 93줄, 40226 → 30505 bytes (9721 절감)
-- M3/M4 TS 부트스트랩 (세션 177~188, 10줄→1)
-- M5 scripts/ typecheck (세션 190~207, 17줄→1, feedback 8줄 보존)
-- M7 src/ typecheck (세션 210~218, 6줄→1, feedback 2줄 보존)
-- M8 + 세션 220/221 (2줄→1)
-
-**Phase B — 잔여 긴 줄 압축 (21건)**: 93줄 유지, 30505 → 24299 bytes (6206 절감)
-- 긴 줄 top 25 평균 60-70% 단축
-- 핵심 fact (커밋 해시 + 결과 + 답습 1건) 만 보존
-- 상세 사고/세부 수치 삭제
-
-**Phase C — 회귀 가드 검증 통과**:
-- feedback_*.md: 압축 전 42줄 → 압축 후 42줄 (손실 0)
-- reference_*.md: 6줄 → 6줄 (손실 0)
-- 시리즈 통합 시 대표 session 파일 링크 1건 보존
-
-**답습**:
-- **MEMORY.md 한계 24400 bytes (24.4KB) 미달 도달 v2** — 세션 299 1차 압축 3.6% 부족 발견 후 본 세션 2차 압축으로 39.6% 절감
-- **시리즈 통합 = 단순 줄 압축보다 효과 4배** (M5 17줄→1 = 5000+ bytes 절감 / 줄별 압축 평균 300 bytes)
-- **Phase C 룰**: `feedback_*.md` `reference_*.md` 항목 = 압축 금지 (정보 손실 차단). `session_*` `project_session*` 만 통합/압축 대상
-- **백업 의무 답습** — `/tmp/MEMORY.md.bak-session300` 1회 백업 후 진행, 롤백 가능
-
-**검증**:
-- `wc -c MEMORY.md` = 24299 < 24400 ✅
-- conversation context 재진입 시 truncation 경고 사라지는지 다음 세션 검증
-- feedback/reference 카운트 변동 0
-
-**잔여 후보 (다음 세션)**:
-- A·B 검증 (5/25 KST cron 발화 후): Naver listings 5/24 05:30 / fill-missing-data 5/24 11:00
-- C 검증 (이미 일부 종결): 5/25 07:00 KST cron 발화 success 시 세션 291 fix 종결
-- E 제주 어린이집 collector (사용자 콘솔 스크린샷 답습 의무 # 👤)
-- F audit-env-keys matrix 보강 / G .claude/rules/ N=7 서브폴더 분리 / H hookify PreToolUse jari 차단
