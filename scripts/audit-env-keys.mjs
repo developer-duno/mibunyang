@@ -20,6 +20,10 @@ const COLLECTORS_DIR = "scripts/collectors";
 const WORKFLOWS_DIR = ".github/workflows";
 const DATA_FILL = "scripts/collectors/data-fill.mjs";
 
+const MATRIX_ORCHESTRATORS = [
+  ".github/workflows/fill-missing-data.yml",
+];
+
 const SECRET_PATTERN = /^[A-Z][A-Z0-9_]*_(KEY|TOKEN|URL|SECRET)$/;
 
 // 알려진 시스템 환경변수 (audit 제외)
@@ -65,6 +69,57 @@ async function extractYmlEnvVars(file) {
   }
 
   return { envBlock, validateRefs };
+}
+
+/**
+ * matrix orchestrator yml 답습 → matrix script 항목별 env 매핑
+ * @param {string} file
+ * @returns {Promise<Map<string, {envBlock: Set<string>, validateRefs: Set<string>}>>}
+ */
+export async function extractMatrixJobs(file) {
+  const text = await readFile(file, "utf-8");
+  /** @type {Map<string, {envBlock: Set<string>, validateRefs: Set<string>}>} */
+  const result = new Map();
+
+  const jobBlockPattern = /^ {2}([a-z][a-z0-9-]*):\n([\s\S]*?)(?=^ {2}[a-z]|^[a-z]|$(?![\s\S]))/gm;
+  let m;
+  while ((m = RegExp.prototype.exec.call(jobBlockPattern, text)) !== null) {
+    const jobBody = m[2];
+
+    /** @type {string[]} */
+    const scriptNames = [];
+    const scriptPattern = /-\s*\{\s*name:\s*"[^"]*",\s*cmd:\s*"([^"]+)"/g;
+    let cm;
+    while ((cm = RegExp.prototype.exec.call(scriptPattern, jobBody)) !== null) {
+      scriptNames.push(cm[1]);
+    }
+    if (scriptNames.length === 0) continue;
+
+    /** @type {Set<string>} */
+    const envBlock = new Set();
+    /** @type {Set<string>} */
+    const validateRefs = new Set();
+
+    const envPattern = /^\s*([A-Z][A-Z0-9_]*)\s*:\s*\$\{\{\s*secrets\.([A-Z][A-Z0-9_]*)\s*\}\}/gm;
+    let em;
+    while ((em = RegExp.prototype.exec.call(envPattern, jobBody)) !== null) {
+      if (!SECRET_PATTERN.test(em[1])) continue;
+      envBlock.add(em[1]);
+    }
+
+    const validatePattern = /-z\s+"?\$([A-Z][A-Z0-9_]*)"?/g;
+    let vm;
+    while ((vm = RegExp.prototype.exec.call(validatePattern, jobBody)) !== null) {
+      if (!SECRET_PATTERN.test(vm[1])) continue;
+      validateRefs.add(vm[1]);
+    }
+
+    for (const name of scriptNames) {
+      result.set(name, { envBlock, validateRefs });
+    }
+  }
+
+  return result;
 }
 
 /** @returns {Promise<Map<string, Set<string>>>} */
