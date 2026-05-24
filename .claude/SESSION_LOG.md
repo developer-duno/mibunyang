@@ -1,3 +1,84 @@
+# 세션 305 — 2026-05-24~25 (P0 운영 사이트 5일 stale 해소 + billing 사고 복구 + 자동화 spec/plan 준비, 4 커밋 + feat 브랜치)
+
+## 거시 목적
+
+사전 체크 중 (A) molit-units 5/6+4/6 schedule 2회 연속 failure 진단으로 시작. 진행 중 P0 발견 — 운영 사이트 `mibunyang-peach.vercel.app` 의 `/data/meta.json` `fetchedAt` 2026-05-19T16:57:53Z 5일 박힘 (사용자 UI "2026-05-19 업데이트" 표시 = 신뢰도 직격). 본 세션은 P0 즉시 해소 + 재발 차단 자동화 spec/plan 완결 + 다음 세션의 plan 실행 준비.
+
+## 결론
+
+- **P0 즉시 해소**: `673a050` 로컬 working tree fresh ETL (1565 단지, 5/24 07:18 UTC) commit + push. prod `mibunyang-peach.vercel.app/data/meta.json` fetchedAt 5/19→5/24 갱신 확정.
+- **molit-units root fix 검증**: 커밋 `3fc141b` (5/17) 의 `failed → failed + unmatched` 분리가 정확한 정정 자리 확정. 로컬 dry-run 보정 19 / 미매칭 40 / 장애 0 / exit 0. 원격 production run `26364555405` 도 동일 success.
+- **billing 차단 사고 + 복구**: 본 세션 발화 중 GitHub Actions billing limit ($40.08/$80) 도달 → 모든 워크플로 2초 fail. 사용자 결제 후 retry 가동 4건 (molit-units / Monitor Collectors × 2 / Daily Data Refresh) 모두 success.
+- **spec v3 + plan 작성**: `feat/data-freshness-automation` 브랜치 생성. plan 56 step (11 task, Phase 1~5) 실행은 다음 세션.
+
+## 커밋
+
+- `673a050` data(session305): apartments.json 1557→1565 (+8 신규 분양) + meta 05-24 갱신 — P0 즉시 해소
+- `7416dac` docs(spec): 데이터 신선도 자동화 v1
+- `fadfec4` docs(spec): data-freshness v3 — 자가 검증 9건 정정 + 빈도 재결정
+- `8b92f95` docs(plan): 데이터 신선도 자동화 실행 계획 — Phase 1~5 + 11 task + 56 step
+
+## 4-Phase 진행 흐름
+
+### Phase 1 — 사전 체크 + (A) molit-units 진단
+
+본 세션 처음 의도. workflows/CLAUDE.md § Exit Code 정책 답습으로 옛 코드의 `failed > 0 → exit 1` 가 "이름 매칭 실패" ~40건도 포함해 매월 false-failure 발생 확인. 커밋 `3fc141b` (5/17) 가 이미 root fix (failed → failed + unmatched 분리, scripts/collectors/molit-units.mjs L209+L213). 5/6+4/6 schedule 2회 연속 failure 는 fix 커밋 이전 옛 코드가 도는 schedule run 이라 false-failure. 6/6 다음 schedule 부터 exit 0 예상.
+
+### Phase 2 — 3 Explore 병렬 (Vercel stale + trade-stats + Fill cancelled)
+
+Explore A/B/C 보고 결과:
+
+- **Explore A "Vercel deploy hook 만료" 가설 ❌** — daily-deploy 매일 success + secret 박힘. 진앙 = `scripts/prebuild.mjs` L8-13 Vercel 환경에서 collect-data 스킵 + `.github/workflows/` 어디에도 `git add`/`git commit`/`git push` 0건. **ETL 결과 자동 push 흐름 부재 = 사용자 수동 commit 의존**.
+- **Explore B "concurrency 충돌" 부분 환각** — fill-missing-data 02 UTC vs trade-stats 16 UTC = 14h 차이로 concurrency 가설 약함. 진앙 = 5/3 `npm ci` lock 불일치 (`@emnapi/core@1.10.0` + `@emnapi/runtime@1.10.0` + `@emnapi/wasi-threads@1.2.1` 누락). 4건 cancelled 는 21:50 UTC 발화 (cron `0 16 * * 0` vs 실제 발화 5시간 50분 지연 = GitHub Actions high-load).
+- **Explore C 정확** — Fill Missing Data run `26353355165` cancelled 3건 (sync-naver-complex 30:00 / molit-building-info 60:15 / schools-neis 120:14) 모두 timeout 직격. cascade failure (fill-trades 2초 만에 failure).
+
+### Phase 3 — P0 즉시 해소
+
+`git status` 답습 결과 로컬 working tree 의 `public/data/{apartments,meta}.json` modified (5/24 07:18 UTC fresh ETL 1565 단지). 즉 사용자 로컬에서 ETL 도는데 commit 안 한 상태 5일 누적. `673a050` 명시 commit + push 로 prod 갱신.
+
+### Phase 4 — billing 차단 사고 + 복구
+
+`673a050` push 직후 CI 빨강. `gh run view 26356004269 --verbose` 답습 결과 GitHub 메시지: "*The job was not started because recent account payments have failed or your spending limit needs to be increased*". Timeline: 5/24 06:38 마지막 success → 07:44 첫 차단 (본 세션 molit-units workflow_dispatch) → 08:10 push CI 차단. 사용자 화면 캡처 ($40.08/$80 사용, 5개 예산 모두 "사용 중단") 답습. 사용자 결제 후 즉시 retry 가동 — molit-units (26364555405) + Monitor Collectors × 2 + daily-deploy (26364582432) 모두 success 재가동.
+
+## Brainstorming + writing-plans (자동화 spec/plan)
+
+### 빈도 결정 — 자가 검증 9건 발견 (v2 → v3 정정)
+
+사용자 "내가보는것보다 니가 더 잘 검토하고 검증해야해" 명시 → 자가 점검 1 발동 v4:
+
+- C-1 SUPABASE_ANON_KEY 박제 누락 (collect-data Phase 9 필수, SERVICE_KEY 와 다름)
+- C-4 매일 cron 빈도 사용자 실측 (9-10일 1회) 과 9배 어긋남 + collect-data 외부 API ~20,000회/회 + MOLIT 일일 한도 10,000회 위협
+- C-5 `git diff --quiet` skip 로직 무용 (fetchedAt 항상 갱신)
+- C-7 count -5% 임계값 false positive 위험 → 절대값 -200 으로 보수화
+- C-10 notify-telegram.test (180줄) + collect-data.test (494줄) 이미 박힘 (신규 표기 환각)
+- 기타 4건 (compute-scores 41s 실측 / branch protection 0건 / TS errors / 코드 위치 박제 정확성)
+
+### `apartments_flat` VIEW 답습 = 핵심 자산 발견
+
+`supabase/migrations/20260315000000_add_price_arrays.sql` 의 VIEW 가 이미 모든 필드 join 박힘 + **camelCase 매핑 (`AS "camelCase"`) + psr/pir/dataReliability SQL 계산 + naver 모두 박힘**. collect-data 의 Phase 1~9 우회 = `--from-supabase-only` 모드 코드 ~50줄 추가만 필요. 글로벌 메모 `feedback_view_alias_source_of_truth.md` (VIEW 별칭 진실의 원천 룰) 답습 자산 재활용.
+
+### plan 56 step bite-sized 작성
+
+Phase 1 (텔레그램 알림 conclusion 분기) → Phase 2 (ci.yml paths-ignore) → Phase 3 (collect-data --from-supabase-only + writeOutputs helper + 회귀 가드) → Phase 4 (daily-deploy.yml refresh-data job + trigger-deploy 삭제) → Phase 5 (1주 운영 검증 + VERCEL_DEPLOY_HOOK 폐기). 각 step 2~5분 bite-sized, 모든 코드 + 테스트 + commit 명령 박제.
+
+## 답습
+
+- **사용자 위임 결정 패턴** — "프로젝트 목적에 부합하고 사용자 입장에서 사용하기 편하게 네가 결정해줘. 미래가치와 실증을 근거로 결정해줘" 명시 → 자가 판단 의무 (빈도 / Hard fail / 라벨 / 순서 4번 발동)
+- **자가 검증 1+2 발동 v4** — spec v2 작성 후 사용자 "검증해" → grep + 실측 + 공식 문서로 4건 환각 발견 → v2 정정. 그 후 "내가보는것보다 니가 더 잘 검토" → 9건 환각 추가 발견 → v3 재설계. **사용자 명시 발동 시 즉시 grep + 실측 의무**
+- **Vercel git auto-deploy + Deploy Hook 동시 발화 시 dedup 없음** — 공식 문서 (`vercel.com/docs/deploy-hooks` "Other Optimizations" 절) 답습 + 실측 (14h 사이 production deploy 12회) → trigger-deploy job 삭제 의무 박제
+- **`scripts/prebuild.mjs` L8-13 Vercel 환경 collect-data 스킵** — 글로벌 메모 `feedback_npm_build_runs_etl.md` 답습 + 진앙 진단 정착
+- **billing 차단 시 silent monitor failure 위험** — monitor-collectors 자체가 billing 차단 시 알림 0건. 별도 외부 모니터 (UptimeRobot 등) 후순위 spec 박제 (Out of Scope)
+- **collect-data 외부 API ~20,000회/회 (Phase 1~7 청약홈/KOSIS/KAKAO/NEIS/DART/MOLIT)** — 매일 cron 자동화 안티 패턴. apartments_flat VIEW SELECT 1회 우회 정착
+- **신규 룰 박제 후보** — `Vercel git auto-deploy + Deploy Hook 이중 발화 룰` (workflow-name-hallucination.md 답습 패턴 확장 후보. 다음 세션 plan 실행 후 박제)
+
+## 다음 세션 의무
+
+- `feat/data-freshness-automation` 브랜치에서 plan 56 step subagent-driven 실행
+- Phase 1~4 순차 (Phase 5 는 7일 운영 검증이라 자연 분리)
+- 완결 후 PR → main merge → Phase 5 monitor 시작
+
+---
+
 # 세션 304 — 2026-05-24 (E + F + H 묶음 + "박제" 단어 메모 추가, 8 커밋 push CI 2 success)
 
 ## 거시 목적
