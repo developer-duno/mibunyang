@@ -70,6 +70,7 @@ describe("formatIssue", () => {
     const msg = formatIssue({
       kind: "fail",
       collector: "collect-transport",
+      conclusion: "failure",
       detail: "cancelled · 5/17 04:00 시작",
       url: "https://github.com/x/y/actions/runs/123",
     });
@@ -104,11 +105,62 @@ describe("formatIssue", () => {
   });
 
   it("조치 가이드를 kind 에 맞게 본문에 넣는다", () => {
-    const fail = formatIssue({ kind: "fail", collector: "x", detail: "d" });
+    const fail = formatIssue({ kind: "fail", collector: "x", conclusion: "failure", detail: "d" });
     expect(fail).toContain("[조치]");
     expect(fail).toMatch(/Re-run/);
     const nulls = formatIssue({ kind: "nulls", collector: "x", detail: "d" });
     expect(nulls).toMatch(/스키마 변경/);
+  });
+
+  it("conclusion=failure → '🔴 수집기 실패' + Re-run 가이드", () => {
+    const msg = formatIssue({
+      kind: "fail",
+      collector: "Collect Trades",
+      conclusion: "failure",
+      detail: "워크플로 실행이 실패 상태로 끝났습니다.",
+      url: "https://github.com/x/y/actions/runs/123",
+    });
+    expect(msg).toContain("🔴 <b>수집기 실패</b>");
+    expect(msg).toContain("실패 상태로 끝났습니다");
+    expect(msg).toMatch(/Re-run/);
+  });
+
+  it("conclusion=cancelled → '🔴 수집기 취소' + concurrency 가이드", () => {
+    const msg = formatIssue({
+      kind: "fail",
+      collector: "Fill Missing Data",
+      conclusion: "cancelled",
+      detail: "워크플로 실행이 취소 상태로 끝났습니다.",
+      url: "https://github.com/x/y/actions/runs/456",
+    });
+    expect(msg).toContain("🔴 <b>수집기 취소</b>");
+    expect(msg).toContain("취소 상태로 끝났습니다");
+    expect(msg).toMatch(/concurrency 큐|billing 한도/);
+    expect(msg).not.toMatch(/Re-run/);
+  });
+
+  it("conclusion=timed_out → '🔴 수집기 시간 초과' + timeout 가이드", () => {
+    const msg = formatIssue({
+      kind: "fail",
+      collector: "Building Info Collection",
+      conclusion: "timed_out",
+      detail: "워크플로 실행이 시간 초과 상태로 끝났습니다.",
+      url: "https://github.com/x/y/actions/runs/789",
+    });
+    expect(msg).toContain("🔴 <b>수집기 시간 초과</b>");
+    expect(msg).toContain("시간 초과 상태로 끝났습니다");
+    expect(msg).toMatch(/timeout-minutes|단지 당 처리 시간/);
+    expect(msg).not.toMatch(/Re-run/);
+  });
+
+  it("conclusion 없는 fail 은 '수집기 이상' fallback + Re-run 가이드 사용", () => {
+    const msg = formatIssue({
+      kind: "fail",
+      collector: "Unknown Workflow",
+      detail: "어떤 이상",
+    });
+    expect(msg).toContain("🔴 <b>수집기 이상</b>");
+    expect(msg).toMatch(/Re-run/);
   });
 
   it("lines 가 있으면 상세 줄을 본문에 펼친다", () => {
@@ -154,7 +206,7 @@ describe("buildMessages", () => {
 
   it("이슈 여러 건을 한 통으로 합친다 — 헤더에 건수 포함", () => {
     const msgs = buildMessages([
-      { kind: "fail", collector: "A", detail: "d" },
+      { kind: "fail", collector: "A", conclusion: "failure", detail: "d" },
       { kind: "empty", collector: "B", detail: "d" },
       { kind: "nulls", collector: "C", detail: "d" },
     ]);

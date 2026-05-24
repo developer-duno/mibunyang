@@ -1,20 +1,40 @@
+// @vitest-environment node
 /**
  * collect-data.mjs 순수 함수 테스트
  * 대상: resolveBuilder, isValidGu, parseAddress, mapItem, getLawdCd (5개)
  * estimateCreditGrade는 dart-builders.test.mjs에 13케이스 기존재 → 제외
+ *
+ * NOTE: // @vitest-environment node 어노테이션 필수 — 이 어노테이션이 없으면
+ *   vi.mock("fs") 가 collect-data.mjs 내부의 ESM static import writeFileSync 를
+ *   가로채지 못해 supabaseOnlyMode 테스트가 실제 public/data/*.json 을 오염시킴.
+ *   environmentMatchGlobs("node") 로는 불충분 — 파일 단위 어노테이션 필요.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// writeFileSync 호이스트 스파이 — supabaseOnlyMode 테스트에서 실제 파일 오염 차단
+// mockCreateClient — supabaseOnlyMode 테스트에서 per-test 설정 가능한 createClient 스파이
+const { writeFileSpy, mockCreateClient } = vi.hoisted(() => ({
+  writeFileSpy: vi.fn(),
+  mockCreateClient: vi.fn(),
+}));
 
 // 모듈 초기화 부수효과 차단
-vi.mock("@supabase/supabase-js", () => ({ createClient: vi.fn() }));
+vi.mock("@supabase/supabase-js", () => ({ createClient: mockCreateClient }));
 vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
   const orig = await importOriginal();
   return { ...orig, loadEnv: vi.fn() };
+});
+// fs.writeFileSync 스텁 — 실제 public/data/*.json 오염 차단 (supabaseOnlyMode 테스트 전용)
+// @vitest-environment node 어노테이션이 있어야 collect-data.mjs ESM binding 에도 적용됨
+vi.mock("fs", async () => {
+  const real = /** @type {any} */ (await vi.importActual("fs"));
+  return { ...real, writeFileSync: writeFileSpy };
 });
 
 const {
   resolveBuilder, isValidGu, parseAddress, mapItem, getLawdCd,
   AREA_CODE_REGION, BUILDER_ALIASES, VALID_REGIONS, GU_LAWD_MAP, REGION_LAWD_PREFIX,
+  supabaseOnlyMode,
 } = await import("./collect-data.mjs");
 
 // ============================================================
@@ -490,5 +510,99 @@ describe("상수 무결성", () => {
         expect(code).toMatch(/^\d{5}$/);
       }
     }
+  });
+});
+
+// ============================================================
+// supabaseOnlyMode (3케이스)
+// ============================================================
+describe("supabaseOnlyMode", () => {
+  beforeEach(() => {
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_ANON_KEY;
+    writeFileSpy.mockReset();
+    mockCreateClient.mockReset();
+    vi.restoreAllMocks();
+    // vi.resetModules() 제거 — @vitest-environment node + 상단 top-level import 로 대체.
+    // vi.doMock + vi.resetModules 패턴은 fs mock 을 무력화시키므로 사용 금지.
+  });
+
+  it("SUPABASE_URL/ANON_KEY 없으면 process.exit(1)", async () => {
+    // env 없으면 supabaseOnlyMode 은 process.exit(1) 즉시 호출
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("exit called");
+    });
+    await expect(supabaseOnlyMode()).rejects.toThrow("exit called");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    // fs.writeFileSync 는 exit 이전에 도달하지 않음 — 방어적 확인
+    expect(writeFileSpy).not.toHaveBeenCalled();
+  });
+
+  it("apartments_flat SELECT 결과로 4 JSON 파일 출력 + 외부 fetch 0회", async () => {
+    process.env.SUPABASE_URL = "https://test.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "test-anon";
+
+    // global fetch mock — 호출되면 fail
+    const fetchSpy = vi.fn(() => Promise.reject(new Error("fetch must not be called")));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    // supabase client mock — apartments_flat 1565 rows (>= MIN_COUNT, 회귀 가드도 통과)
+    const mockRows = Array.from({ length: 1565 }, (_, i) => ({
+      id: `ah-${i}`,
+      name: `테스트단지${i}`,
+      region: "서울",
+      count: 100,
+      psr: 1.0,
+      pir: 5.0,
+      dataReliability: 80,
+      priceByArea: { 84: 50000 },
+      rentByArea: null,
+      jeonseByArea: null,
+      priceByFloor: null,
+    }));
+
+    // selectAll 이 호출하는 queryFn(client).range() 가 데이터 반환
+    const rangeMock = vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }).mockResolvedValue({ data: [], error: null });
+    const selectMock = vi.fn(() => ({ range: rangeMock }));
+    const fromMock = vi.fn(() => ({ select: selectMock }));
+    mockCreateClient.mockReturnValue({ from: fromMock });
+
+    await supabaseOnlyMode();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fromMock).toHaveBeenCalledWith("apartments_flat");
+
+    // 4 파일 write 호출 확인 (실제 디스크 쓰기 0회 — vi.mock("fs") 스파이가 가로챔)
+    expect(writeFileSpy).toHaveBeenCalledTimes(4);
+    const callPaths = writeFileSpy.mock.calls.map(c => c[0]);
+    expect(callPaths.some(p => String(p).endsWith("apartments.json"))).toBe(true);
+    expect(callPaths.some(p => String(p).endsWith("apartments-list.json"))).toBe(true);
+    expect(callPaths.some(p => String(p).endsWith("apartments-prices.json"))).toBe(true);
+    expect(callPaths.some(p => String(p).endsWith("meta.json"))).toBe(true);
+
+    // meta.json write 의 body 검증 (JSON.stringify 결과에서 count + supabaseOnly 추출)
+    const metaCall = writeFileSpy.mock.calls.find(c => String(c[0]).endsWith("meta.json"));
+    const meta = JSON.parse(metaCall[1]);
+    expect(meta.count).toBe(1565);
+    expect(meta.phases.supabaseOnly).toEqual({ ok: true, count: 1565 });
+  });
+
+  it("count < 1000 이면 회귀 가드 fail (process.exit(1))", async () => {
+    process.env.SUPABASE_URL = "https://test.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "test-anon";
+
+    const mockRows = Array.from({ length: 500 }, (_, i) => ({ id: `ah-${i}` }));
+    const rangeMock = vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }).mockResolvedValue({ data: [], error: null });
+    const fromMock = vi.fn(() => ({ select: () => ({ range: rangeMock }) }));
+    mockCreateClient.mockReturnValue({ from: fromMock });
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("exit called");
+    });
+
+    await expect(supabaseOnlyMode()).rejects.toThrow("exit called");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    // fs.writeFileSync 는 exit 이전에 도달하지 않음 — 방어적 확인
+    expect(writeFileSpy).not.toHaveBeenCalled();
   });
 });

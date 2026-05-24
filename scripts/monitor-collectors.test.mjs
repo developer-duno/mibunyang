@@ -20,16 +20,22 @@ const {
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
 
 describe("checkFailedRuns — ① 실패/취소", () => {
-  it("conclusion 이 failure/cancelled/timed_out 이면 이상", () => {
+  it("conclusion 이 failure/cancelled/timed_out 이면 이상 + 각각 conclusion 필드 박힘", () => {
     const issues = checkFailedRuns([
       { name: "A", status: "completed", conclusion: "failure", html_url: "u1" },
       { name: "B", status: "completed", conclusion: "cancelled", html_url: "u2" },
       { name: "C", status: "completed", conclusion: "timed_out", html_url: "u3" },
     ]);
     expect(issues).toHaveLength(3);
-    expect(issues[0].kind).toBe("fail");
-    expect(issues[0].collector).toBe("A");
-    expect(issues[0].url).toBe("u1");
+    for (const issue of issues) {
+      expect(issue.kind).toBe("fail");
+    }
+    expect(issues[0].conclusion).toBe("failure");
+    expect(issues[1].conclusion).toBe("cancelled");
+    expect(issues[2].conclusion).toBe("timed_out");
+    expect(issues[0].detail).toContain("실패 상태로");
+    expect(issues[1].detail).toContain("취소 상태로");
+    expect(issues[2].detail).toContain("시간 초과 상태로");
   });
 
   it("success 는 이상 아님", () => {

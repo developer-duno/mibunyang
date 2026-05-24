@@ -582,6 +582,7 @@ describe("supabaseOnlyMode", () => {
     delete process.env.SUPABASE_URL;
     delete process.env.SUPABASE_ANON_KEY;
     vi.restoreAllMocks();
+    vi.resetModules(); // meta module-level singleton 격리 (collect-data.mjs L23 `const meta = {...}`)
   });
 
   it("SUPABASE_URL/ANON_KEY 없으면 process.exit(1)", async () => {
@@ -839,6 +840,14 @@ cat .github/workflows/daily-deploy.yml
 
 기존 박제 줄 정확히 파악.
 
+- [ ] **Step 4.1.1.5: SUPABASE_ANON_KEY 등록 확인**
+
+```bash
+gh secret list --json name --jq '.[] | select(.name == "SUPABASE_ANON_KEY") | .name'
+```
+
+Expected: `SUPABASE_ANON_KEY` 출력 (Phase 9 가 이미 사용 중이므로 등록됐을 가능성 높음). 미등록 시 사용자에게 `gh secret set SUPABASE_ANON_KEY --body "<값>"` 등록 요청 + 1회 응답 대기 후 진행.
+
 - [ ] **Step 4.1.2: Modify daily-deploy.yml**
 
 `.github/workflows/daily-deploy.yml` 전체를 다음으로 교체:
@@ -1038,6 +1047,12 @@ Expected:
 
 실패 시 텔레그램 알림 도착 확인. 텔레그램 새 알림 0건 + run 0건 = monitor 자체 문제 (별도 spec 영역).
 
+**UI 위치 확인 (브라우저 검증)**:
+- `dataFreshnessText` = `useDataPipeline.ts:149` 에서 `dataUpdatedAt.slice(0, 10) + " 업데이트"` 형식 생성
+- 표시 위치 = `src/components/sections/AptListSection.tsx:55` (목록 상단 `{filteredLength}개 단지 · YYYY-MM-DD 업데이트 · {프로필명}` 형식)
+- FAQSection L16 "마지막 업데이트 일시는 목록 상단에 표시됩니다" 답습 자리
+- 브라우저에서 `mibunyang-peach.vercel.app` 열고 목록 상단 라벨이 오늘 날짜로 갱신됐는지 시각 확인
+
 - [ ] **Step 5.1.2: 1주 후 종합 평가**
 
 7일 후 다음 데이터 정리:
@@ -1049,6 +1064,18 @@ gh run list --workflow=daily-deploy.yml --limit 8 --json conclusion,createdAt --
 Expected: 7개 run 모두 success. failure 0건 또는 ≤ 1건 (transient Supabase 장애 등).
 
 stale 사고 0건 확인 후 spec 종결.
+
+- [ ] **Step 5.1.3: 회귀 가드 임계값 재검토**
+
+7일 daily diff 실측 + 임계값 자연성 평가:
+
+```bash
+gh run list --workflow=daily-deploy.yml --limit 8 --json conclusion,databaseId --jq '.[] | .databaseId' | while read id; do
+  gh run view "$id" --log 2>&1 | grep -oE "count 전일 대비 [+-]?[0-9]+" | head -1
+done
+```
+
+Expected: daily diff 평균 +0~+8건, 표준편차 ~10. 현재 임계값 -200 (1565 × 12.8%) 이 너무 보수적이면 -50 (3.2%) 까지 조정 검토. 별 commit 으로 `scripts/collect-data.mjs` 의 `MIN_COUNT` + diff 임계값 정정. 1개월 누적 데이터로 재검토 (false positive 0 확인 시 -50 채택, 1건 이상 발생 시 유지).
 
 ---
 
