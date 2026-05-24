@@ -1,39 +1,10 @@
 {
-  "fetchedAt": "2026-05-24T07:18:10.794Z",
-  "count": 1565,
+  "fetchedAt": "2026-05-24T20:03:24.801Z",
+  "count": 1424,
   "phases": {
-    "applyhome": {
+    "supabaseOnly": {
       "ok": true,
-      "count": 1565
-    },
-    "kosis": {
-      "ok": true
-    },
-    "kakao": {
-      "ok": true,
-      "enriched": 610
-    },
-    "neis": {
-      "ok": true,
-      "enriched": 1565,
-      "schoolEnriched": 795
-    },
-    "dart": {
-      "ok": true,
-      "builders": 6
-    },
-    "transport": {
-      "ok": true,
-      "enriched": 610
-    },
-    "realtrade": {
-      "ok": true,
-      "enriched": 1318,
-      "apiCalls": 1788
-    },
-    "naver": {
-      "ok": false,
-      "reason": "no_env"
+      "count": 1424
     }
   },
   "errors": []
