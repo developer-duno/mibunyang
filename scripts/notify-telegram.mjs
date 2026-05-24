@@ -78,9 +78,20 @@ function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** 이슈 종류별 조치 가이드 — 알림을 받은 사람이 다음에 할 일 한 줄. */
+/** conclusion 영문 → 한글 라벨 (GitHub Actions UI 영문 1:1 매핑). */
+export const CONCLUSION_LABEL = {
+  failure: "실패",
+  cancelled: "취소",
+  timed_out: "시간 초과",
+};
+
+/** 이슈 종류별 조치 가이드 — fail 은 conclusion 별 분기, 나머지는 단일 문자열. */
 const ACTION_GUIDE = {
-  fail: "[조치] 위 run 로그에서 실패한 단계를 확인한 뒤 워크플로를 다시 실행(Re-run)하세요.",
+  fail: {
+    failure: "[조치] run 로그에서 실패한 단계 확인 후 다시 실행(Re-run)하세요.",
+    cancelled: "[조치] concurrency 큐 또는 GitHub Actions billing 한도를 확인하세요. 자동 재시도가 도착하는 경우도 많으니 1시간 후 재평가하세요.",
+    timed_out: "[조치] run 로그의 단지 당 처리 시간을 확인 후 timeout-minutes 조정 또는 데이터 분할을 검토하세요.",
+  },
   empty: "[조치] 수집기 소스(API·크롤링) 응답을 점검하세요 — 원본이 0건인지, 파이프라인이 끊겼는지 확인.",
   stale: "[조치] 워크플로 cron 트리거와 Actions 활성화 상태를 점검하고, 필요하면 수동으로 1회 실행하세요.",
   nulls: "[조치] 해당 수집기의 최근 run 로그와 소스 API 변경 여부를 확인하세요 (필드 누락·스키마 변경 의심).",
@@ -92,6 +103,7 @@ const ACTION_GUIDE = {
  *   kind: "fail" | "empty" | "stale" | "nulls",
  *   collector: string,
  *   detail: string,
+ *   conclusion?: "failure" | "cancelled" | "timed_out",
  *   url?: string,
  *   lines?: string[],
  *   at?: string,
@@ -100,19 +112,23 @@ const ACTION_GUIDE = {
  */
 export function formatIssue(issue) {
   const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉" }[issue.kind];
-  const title = {
-    fail: "수집기 실패",
-    empty: "데이터 0건 수집",
-    stale: "수집기 미발화",
-    nulls: "NULL 급증",
-  }[issue.kind];
+  const conclusionKey = issue.conclusion;
+  const title = issue.kind === "fail"
+    ? `수집기 ${(conclusionKey ? /** @type {any} */ (CONCLUSION_LABEL)[conclusionKey] : undefined) ?? "이상"}`
+    : { empty: "데이터 0건 수집", stale: "수집기 미발화", nulls: "NULL 급증" }[issue.kind];
   const out = [`${emoji} <b>${title}</b>`, escapeHtml(issue.collector), escapeHtml(issue.detail)];
   // 상세 줄 — 점검 함수가 미리 만든 사람 말 문장들
   for (const line of issue.lines ?? []) out.push(escapeHtml(line));
   const kst = toKst(issue.at);
   if (kst) out.push(`시각: ${kst}`);
   if (issue.url) out.push(`→ ${issue.url}`);
-  out.push(ACTION_GUIDE[issue.kind]);
+
+  // 조치 가이드: fail 만 conclusion 별 분기, 나머지 kind 는 단일 문자열.
+  const guide = issue.kind === "fail"
+    ? (conclusionKey ? /** @type {any} */ (ACTION_GUIDE.fail)[conclusionKey] : undefined) ?? ACTION_GUIDE.fail.failure
+    : ACTION_GUIDE[issue.kind];
+  out.push(guide);
+
   return out.join("\n");
 }
 
