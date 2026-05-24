@@ -20,7 +20,7 @@
  */
 import { loadEnv, getSupabase } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
-import { sendTelegram, formatIssue, buildMessages, toKst } from "./notify-telegram.mjs";
+import { sendTelegram, formatIssue, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
 
 loadEnv();
@@ -156,6 +156,7 @@ const KO_FIELD = {
  * @property {"fail"|"empty"|"stale"|"nulls"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
+ * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
  * @property {string} [url]
  * @property {string[]} [lines] 본문에 펼칠 상세 줄 (점검 함수가 만든 사람 말 문장)
  * @property {string} [at] 이슈 발생 ISO 시각 (formatIssue 가 KST 로 변환)
@@ -182,7 +183,8 @@ export function checkFailedRuns(runs, allowedNames) {
     issues.push({
       kind: "fail",
       collector: run.name ?? "(이름 없음)",
-      detail: `워크플로 실행이 ${run.conclusion} 상태로 끝났습니다.`,
+      conclusion: /** @type {"failure"|"cancelled"|"timed_out"} */ (run.conclusion),
+      detail: `워크플로 실행이 ${/** @type {any} */ (CONCLUSION_LABEL)[run.conclusion] ?? run.conclusion} 상태로 끝났습니다.`,
       url: run.html_url,
       at: run.created_at,
     });
@@ -563,7 +565,24 @@ async function main() {
       {
         kind: "fail",
         collector: "School District Collection",
-        detail: "워크플로 실행이 failure 상태로 끝났습니다.",
+        conclusion: "failure",
+        detail: "워크플로 실행이 실패 상태로 끝났습니다.",
+        url: "https://github.com/developer-duno/mibunyang/actions",
+        at: nowIso,
+      },
+      {
+        kind: "fail",
+        collector: "Fill Missing Data",
+        conclusion: "cancelled",
+        detail: "워크플로 실행이 취소 상태로 끝났습니다.",
+        url: "https://github.com/developer-duno/mibunyang/actions",
+        at: nowIso,
+      },
+      {
+        kind: "fail",
+        collector: "Building Info Collection (MOLIT)",
+        conclusion: "timed_out",
+        detail: "워크플로 실행이 시간 초과 상태로 끝났습니다.",
         url: "https://github.com/developer-duno/mibunyang/actions",
         at: nowIso,
       },
