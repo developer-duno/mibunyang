@@ -9752,3 +9752,44 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **transport-tago 단지 당 4.35~4.47초 = sleep 100ms × 4 + Kakao 3호출 + TAGO 1호출** — 코드 결함 0, API rate limit 0. 향후 batch size 조정 자리 무의미 (sleep 자체가 의도된 자리)
 - **세션 294 timeout 90→120 fix 가 정답** — 회귀 자리 없음. transport-tago root cause 분석 = "단지 수 늘어남 (의도된 fix)" 답습으로 종결
 - **신규 룰 박제** — `.claude/rules/collector-timeout-rootcause-analysis.md` (timeout 사고 진앙 답습 시 collector git log + raw run log + apartments.created_at + collector_runs 4-way 답습 의무)
+
+## 세션 300 (2026-05-24) — D MEMORY.md 2차 압축
+
+**거시 목적**: 세션 299 1차 압축 (41709→40226, 3.6%) 후 한계 24400 미달. 본 세션 2차 압축으로 한계 도달 의무.
+
+**결론**: MEMORY.md 40226 → **24299 bytes** (15927 bytes 절감, 39.6%). 한계 24400 미만 도달 ✅ (마진 101 bytes). 글로벌 메모 git 추적 외, 커밋 0건.
+
+**작업 진행**:
+
+**Phase A — 시리즈 통합 (4건)**: 124줄 → 93줄, 40226 → 30505 bytes (9721 절감)
+- M3/M4 TS 부트스트랩 (세션 177~188, 10줄→1)
+- M5 scripts/ typecheck (세션 190~207, 17줄→1, feedback 8줄 보존)
+- M7 src/ typecheck (세션 210~218, 6줄→1, feedback 2줄 보존)
+- M8 + 세션 220/221 (2줄→1)
+
+**Phase B — 잔여 긴 줄 압축 (21건)**: 93줄 유지, 30505 → 24299 bytes (6206 절감)
+- 긴 줄 top 25 평균 60-70% 단축
+- 핵심 fact (커밋 해시 + 결과 + 답습 1건) 만 보존
+- 상세 사고/세부 수치 삭제
+
+**Phase C — 회귀 가드 검증 통과**:
+- feedback_*.md: 압축 전 42줄 → 압축 후 42줄 (손실 0)
+- reference_*.md: 6줄 → 6줄 (손실 0)
+- 시리즈 통합 시 대표 session 파일 링크 1건 보존
+
+**답습**:
+- **MEMORY.md 한계 24400 bytes (24.4KB) 미달 도달 v2** — 세션 299 1차 압축 3.6% 부족 발견 후 본 세션 2차 압축으로 39.6% 절감
+- **시리즈 통합 = 단순 줄 압축보다 효과 4배** (M5 17줄→1 = 5000+ bytes 절감 / 줄별 압축 평균 300 bytes)
+- **Phase C 룰**: `feedback_*.md` `reference_*.md` 항목 = 압축 금지 (정보 손실 차단). `session_*` `project_session*` 만 통합/압축 대상
+- **백업 의무 답습** — `/tmp/MEMORY.md.bak-session300` 1회 백업 후 진행, 롤백 가능
+
+**검증**:
+- `wc -c MEMORY.md` = 24299 < 24400 ✅
+- conversation context 재진입 시 truncation 경고 사라지는지 다음 세션 검증
+- feedback/reference 카운트 변동 0
+
+**잔여 후보 (다음 세션)**:
+- A·B 검증 (5/25 KST cron 발화 후): Naver listings 5/24 05:30 / fill-missing-data 5/24 11:00
+- C 검증 (이미 일부 종결): 5/25 07:00 KST cron 발화 success 시 세션 291 fix 종결
+- E 제주 어린이집 collector (사용자 콘솔 스크린샷 답습 의무 # 👤)
+- F audit-env-keys matrix 보강 / G .claude/rules/ N=7 서브폴더 분리 / H hookify PreToolUse jari 차단
