@@ -93,7 +93,7 @@ jobs:
     needs: phase1-coords
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 180 # 세션306: schools-neis 120분 부족 cancelled (5/24 run 26353355165 raw 박제) → 180분
+    timeout-minutes: 360 # 세션306 보강: 5% 사전 검증 (run 26373894169) = 50건 8분 39초 → 1990건 약 5시간 45분 추정. 180분 부족 확정, 360분으로 안전 마진 15분
     strategy:
       fail-fast: false
       matrix:
