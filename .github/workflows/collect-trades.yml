@@ -23,7 +23,7 @@ concurrency:
 jobs:
   collect-trades:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120 # 세션306: 5/6 60분 cancelled (raw 박제, 5/6 거래 491k vs 4/6 289k = 1.7배 자연 증가) → 120분
 
     steps:
       - uses: actions/checkout@v4
