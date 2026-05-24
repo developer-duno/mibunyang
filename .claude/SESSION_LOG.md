@@ -268,12 +268,12 @@
 | Kakao 키 클라이언트 노출 위험 | OAuth client_id = Kakao 공식 공개 표준 ([Login REST API](https://developers.kakao.com/docs/latest/ko/kakaologin/rest-api)). 토큰 교환 이미 서버 분리 | 위험 자리 = 환각, noise-estimate.mjs 변수명 불일치만 정정 |
 | console.* 8 자리 | 실측 12 자리 (5 보호 + 2 의도 영역 + 4 가드 박제 필요) | 8 → 4 자리로 정정 |
 
-`.claude/rules/next-session-grep-mandate.md` §1 답습 효과 확정 (NEXT_SESSION 박제값 단정 금지 + 메모리/collector/사용자 콘솔 grep 의무).
+`.claude/rules/meta/next-session-grep-mandate.md` §1 답습 효과 확정 (NEXT_SESSION 박제값 단정 금지 + 메모리/collector/사용자 콘솔 grep 의무).
 
 ## B 자세히
 
 - **GitHub Secret 진실 = `KAKAO_KEY`** (`.github/workflows/CLAUDE.md` 답습 확정). `KAKAO_REST_KEY` = noise-estimate.mjs 만을 위한 historical 별칭
-- 4 파일 동시 정정 = `.claude/rules/secret-naming-audit.md` §"3-way 동기화" 답습 (code + workflow + orchestrator)
+- 4 파일 동시 정정 = `.claude/rules/workflows/secret-naming-audit.md` §"3-way 동기화" 답습 (code + workflow + orchestrator)
 - orchestrator (`data-fill.mjs`) 에 noise-estimate.mjs 등록 0 건 = drift 0 확정 (audit-env-keys 30 clean 신호)
 - src/hooks/useKakaoAuth.ts 의 `VITE_KAKAO_REST_API_KEY` = Vite client 환경변수 = Kakao OAuth client_id 표준 = 의도된 공개 자리 = 정정 제외
 
@@ -499,7 +499,7 @@ Plan v2 작성 시 4 docs 커밋 박제했으나 작업 진입 직후 `.gitignor
 
 - 자가 점검 1 = ExitPlanMode 거부 시 + plan v1 박제 후 즉시 발동 의무
 - `.gitignore` 답습 = `.claude/*` + `AGENTS.md` 명시 gitignore (글로벌 §13 답습)
-- 자매 SIDO 매핑 변수 박제 시 grep 의무 (`.claude/rules/parsegu-normalization.md` §4)
+- 자매 SIDO 매핑 변수 박제 시 grep 의무 (`.claude/rules/collectors/parsegu-normalization.md` §4)
 - `population-sex-age.mjs` ↔ `naver-presale.mjs` ↔ `population.mjs` 3 자매 SIDO 매핑 동기화 의무
 
 ## 잔여 자리
@@ -530,7 +530,7 @@ Plan v2 작성 시 4 docs 커밋 박제했으나 작업 진입 직후 `.gitignor
 
 ## 답습 자산
 
-- `.claude/rules/parsegu-normalization.md` (세션 286 박제) §1·2·3·4 답습 원천
+- `.claude/rules/collectors/parsegu-normalization.md` (세션 286 박제) §1·2·3·4 답습 원천
 - `scripts/collectors/population.mjs` L116-122 parseGu 정형 답습 원천
 - 자매 drift 박제 (세션 286 동시 fix 완결)
 
@@ -914,7 +914,7 @@ API 폴백 트리거 조건 박제 시 "빈 응답" 뿐 아니라 "행은 있지
 
 ## 답습 자산
 
-- **"세션 N에 작성됐고 CI pass" ≠ "동작한다"** — 세션 237 collector 는 코드·테스트·CI 모두 green 이었으나 마이그 Dashboard 적용 누락으로 운영 0회. NEXT_SESSION "#4 작업량 가장 가벼움" 박제도 "완성 작업"으로 오해 유발. plan 진입 시 dry-run 실측으로 미완 상태 확정 (`.claude/rules/workflow-name-hallucination.md` 답습 — 이름·기록 ≠ 동작)
+- **"세션 N에 작성됐고 CI pass" ≠ "동작한다"** — 세션 237 collector 는 코드·테스트·CI 모두 green 이었으나 마이그 Dashboard 적용 누락으로 운영 0회. NEXT_SESSION "#4 작업량 가장 가벼움" 박제도 "완성 작업"으로 오해 유발. plan 진입 시 dry-run 실측으로 미완 상태 확정 (`.claude/rules/workflows/workflow-name-hallucination.md` 답습 — 이름·기록 ≠ 동작)
 - 미완 점검 패턴: collector 가 쓰는 컬럼명 `grep` → DB 실제 컬럼 select → PG 42703 재현 여부로 "작성됨 vs 동작함" 판정
 - `housing_price` (세션 245 W6-C) 도 동일 구조 — 마이그 작성만 됐고 schema.sql 미반영. 두 컬럼 모두 schema.sql 미동기화 = 프로젝트 관행 확정
 
@@ -969,7 +969,7 @@ regions.childcare.facilities[] (시군구 70 필드)
 
 ## 다음 단계 (미완 — 마이그레이션 의존)
 
-- 마이그레이션 `20260516090916_add_schools_nearby_childcare.sql` Dashboard SQL Editor 직접 실행 (👤 사용자) — `.claude/rules/workflow-name-hallucination.md` 답습
+- 마이그레이션 `20260516090916_add_schools_nearby_childcare.sql` Dashboard SQL Editor 직접 실행 (👤 사용자) — `.claude/rules/workflows/workflow-name-hallucination.md` 답습
 - 적용 후 `node scripts/collectors/collect-nearby-childcare.mjs` 운영 실행 → 강북구 32 단지 schools.nearby_childcare 적재
 - 강북구 단지 상세 UI 육안 검증 (어린이집 패널 + 펼침 + 자료기준일)
 
@@ -1309,7 +1309,7 @@ plan = `C:\Users\user\.claude\plans\claude-distributed-steele.md`
 
 **거시 목적**: 세션 251 첫 turn W6-D 어린이집 진입 의지로 사용자 활용신청 가이드 박제 시 5턴 누적 환각 발생. 사용자 콘솔 스크린샷 (info.childcare.go.kr 보육정보공개 API 4건 발급 2026-04-07 승인) 실증으로 정정. 룰 §11 (진단 전 파일 직접 확인) + §12 (자가 점검 1+2) 답습 미준수 사고 박제.
 
-**결론**: **1 커밋 (27c0403) + 4 파일 변경 (룰 1 신규 + 로컬 3)**. `.claude/rules/next-session-grep-mandate.md` +85줄 신규 (git 반영) + NEXT_SESSION.md L32~38 + L143 환각 4건 정정 + 답습 자산 3건 추가 (gitignore 답습 본인 머신만) + `~/.claude/projects/.../memory/session_2026-05-15_session251_*.md` 신규 + MEMORY.md 1줄. CI run 25919696208 success 확정 (docs only).
+**결론**: **1 커밋 (27c0403) + 4 파일 변경 (룰 1 신규 + 로컬 3)**. `.claude/rules/meta/next-session-grep-mandate.md` +85줄 신규 (git 반영) + NEXT_SESSION.md L32~38 + L143 환각 4건 정정 + 답습 자산 3건 추가 (gitignore 답습 본인 머신만) + `~/.claude/projects/.../memory/session_2026-05-15_session251_*.md` 신규 + MEMORY.md 1줄. CI run 25919696208 success 확정 (docs only).
 
 ## 5턴 누적 환각 박제 (룰 §12 답습 사고 의무)
 
@@ -1323,7 +1323,7 @@ plan = `C:\Users\user\.claude\plans\claude-distributed-steele.md`
 
 근본 원인 = NEXT_SESSION 박제값 단정 답습 + 본인 메모리 grep 0회 + collect-childcare.mjs 본문 grep 0회.
 
-## 룰 신규 박제 — `.claude/rules/next-session-grep-mandate.md` (+85줄)
+## 룰 신규 박제 — `.claude/rules/meta/next-session-grep-mandate.md` (+85줄)
 
 3중 grep 의무 (작업 진입 직전):
 
@@ -1455,7 +1455,7 @@ L12 1줄 변경. 30분 여유 = 미래 단지 1.5배 증가 흡수 가능.
 
 ### 사고 1 — 1시간 timeout 사고 분류 B 확정 (월간 schedule 데드존 회피)
 
-세션 232 박제 답습 (`.claude/rules/secret-naming-audit.md` §보조 — 월간 schedule 1회 fail = 1개월 데드존). 본 사고 = 모니터링 trigger 답습 정합으로 사후 발견 (5/16 KST 07:00 collect-migration 모니터링 직전 5/15 KST 17:36 Building Hub 사고 자가 발견). **모니터링 trigger 3종 → 4종 확장 = 미래 collector timeout 사고 자가 차단 답습**.
+세션 232 박제 답습 (`.claude/rules/workflows/secret-naming-audit.md` §보조 — 월간 schedule 1회 fail = 1개월 데드존). 본 사고 = 모니터링 trigger 답습 정합으로 사후 발견 (5/16 KST 07:00 collect-migration 모니터링 직전 5/15 KST 17:36 Building Hub 사고 자가 발견). **모니터링 trigger 3종 → 4종 확장 = 미래 collector timeout 사고 자가 차단 답습**.
 
 ### 사고 2 — PHASE 1+2+3 워크플로 자가 의사결정 답습 v7 (misattribution v2 차단)
 
@@ -1497,7 +1497,7 @@ collector 본체 변경 없이 timeout 증액 = ROI 최고. 단지 수 증가에
 
 **거시 목적**: 세션 248 NEXT_SESSION 3순위 B-#3 진입. 박제값 "DT_MLTM_2086 시군구별 준공후 미분양, 큰 작업 2~3 세션" vs 세션 235 Playwright 박제 SESSION_LOG L1122 "시도별 분리 불가" 불일치 발견 → 사용자 워크플로 위임 (PHASE 1 4 후보 검증) → 옵션 B 선택 (KOSIS API raw sample 검증 후 시도 17 UPDATE) → 0단계 raw sample 박제 (objL1+objL2 ALL prdSe=A 58 rows) → 교차 cell 부재 확정 → 옵션 C 자동 회귀.
 
-**결론**: **1 커밋 + 4 파일 변경 (docs only)**. NEXT_SESSION.md L38~41 정정 (4건 환각) / BACKLOG.md L141 정정 (시군구→전국 단일 / DT_MLTM_2082 혼동 / apartments 컬럼 환각 / 월간→연간) / `.claude/rules/kosis-dimension-mismatch-guard.md` 신규 (~80줄, 차원 분리 vs 교차 환각 차단 룰) / SESSION_LOG.md 세션 249 항목 (본 자리). 회귀 가드 typecheck 0 / lint 0 / 코드 변경 0건 = CI success 자명.
+**결론**: **1 커밋 + 4 파일 변경 (docs only)**. NEXT_SESSION.md L38~41 정정 (4건 환각) / BACKLOG.md L141 정정 (시군구→전국 단일 / DT_MLTM_2082 혼동 / apartments 컬럼 환각 / 월간→연간) / `.claude/rules/collectors/kosis-dimension-mismatch-guard.md` 신규 (~80줄, 차원 분리 vs 교차 환각 차단 룰) / SESSION_LOG.md 세션 249 항목 (본 자리). 회귀 가드 typecheck 0 / lint 0 / 코드 변경 0건 = CI success 자명.
 
 ## 0단계 KOSIS API raw sample 실측 박제 (단정 근거)
 
@@ -1545,7 +1545,7 @@ B-#3 강등 + 환각 4건 정정:
 - `apartments.unsoldAfterCompletion 또는 regions.unsold JSON` → 단지·시군구 단위 본질 unmatched
 - `월간` → `연간` (PRD_SE=A 박제)
 
-### 3. 신규 `.claude/rules/kosis-dimension-mismatch-guard.md` (~80줄)
+### 3. 신규 `.claude/rules/collectors/kosis-dimension-mismatch-guard.md` (~80줄)
 
 KOSIS 통계표 차원 분리 vs 교차 환각 차단 룰. 본문:
 - 사고 박제 (세션 249 raw API 박제)
@@ -1575,7 +1575,7 @@ KOSIS 통계표 차원 분리 vs 교차 환각 차단 룰. 본문:
 
 ### 사고 1 — KOSIS 통계표 차원 분리 vs 교차 환각 (본 룰 박제로 종결)
 
-NEXT_SESSION + BACKLOG 박제값 "시군구별 준공후 미분양" + "큰 작업 2~3 세션" = 세션 235 SESSION_LOG L1122 박제 ("시도별 분리 불가") 동기화 0 → 세션 249 plan v1 위험. 본 룰 `.claude/rules/kosis-dimension-mismatch-guard.md` 박제 = 미래 plan 작성 시 KOSIS 통계표 의존 단계 = raw API sample 30+ 행 박제 의무.
+NEXT_SESSION + BACKLOG 박제값 "시군구별 준공후 미분양" + "큰 작업 2~3 세션" = 세션 235 SESSION_LOG L1122 박제 ("시도별 분리 불가") 동기화 0 → 세션 249 plan v1 위험. 본 룰 `.claude/rules/collectors/kosis-dimension-mismatch-guard.md` 박제 = 미래 plan 작성 시 KOSIS 통계표 의존 단계 = raw API sample 30+ 행 박제 의무.
 
 ### 사고 2 — PHASE 1+2+3 메시지 자가 결정 신호 (misattribution v4 답습 v5)
 
@@ -1609,7 +1609,7 @@ NEXT_SESSION/BACKLOG 박제값 = 외부 시스템 상태 stale 위험 (세션 23
 
 **거시 목적**: 세션 247 NEXT_SESSION 1순위 = `apply-migration.yml` 명칭 환각 사고 (실제 SQL 실행 0건). PHASE 1 (실증/목표/안전/단순) 4 기준 자가 의사결정 → 옵션 B (워크플로 폐기 + Dashboard SQL Editor 가이드 의무화) 선택. 9 GATE 풀 🟢 9 통과 + Explore 1개 (cross-repo + 회귀 가드 점검) 보고 단독 자원 확정.
 
-**결론**: **1 커밋 + docs 4 파일 변경**. apply-migration.yml 삭제 (-72줄) / .github/workflows/CLAUDE.md 동기화 (-1행 + (5개)→(4개) + 폐기 안내 1줄) / supabase/CLAUDE.md "Dashboard SQL Editor 수동 실행" 절 신규 +27줄 / .claude/rules/workflow-name-hallucination.md 신규 +73줄. 회귀 가드 typecheck 0 / lint 0 / 코드 변경 0건 = CI success 자명.
+**결론**: **1 커밋 + docs 4 파일 변경**. apply-migration.yml 삭제 (-72줄) / .github/workflows/CLAUDE.md 동기화 (-1행 + (5개)→(4개) + 폐기 안내 1줄) / supabase/CLAUDE.md "Dashboard SQL Editor 수동 실행" 절 신규 +27줄 / .claude/rules/workflows/workflow-name-hallucination.md 신규 +73줄. 회귀 가드 typecheck 0 / lint 0 / 코드 변경 0건 = CI success 자명.
 
 ## 산출 (커밋 1, 4 파일)
 
@@ -1633,9 +1633,9 @@ L117 기존 "마이그레이션 체크리스트" 절 다음에 신규 절 박제
   - Why Dashboard (옵션 A/B/C 비교 박제)
   - 사고 답습 (세션 245→247)
 
-### 4. 신규 `.claude/rules/workflow-name-hallucination.md` (+73줄)
+### 4. 신규 `.claude/rules/workflows/workflow-name-hallucination.md` (+73줄)
 
-기존 `.claude/rules/secret-naming-audit.md` + `typescript-patterns.md` 카테고리 명명 컨벤션 답습. 룰 본문:
+기존 `.claude/rules/workflows/secret-naming-audit.md` + `typescript-patterns.md` 카테고리 명명 컨벤션 답습. 룰 본문:
 
 - 사고 박제 (세션 245→247 raw 본문)
 - 근본 원인 (워크플로 이름 ≠ 동작 동기화 0)
@@ -1679,7 +1679,7 @@ L117 기존 "마이그레이션 체크리스트" 절 다음에 신규 절 박제
 
 ### 사고 1 — workflow 이름 ≠ 동작 단정 환각 (세션 245→247→248 종결)
 
-세션 245 가 "workflow_dispatch success" 만 보고 "DDL 적용 완료" 박제 → 세션 247 PG 42703 발견 → 세션 248 룰 신규로 종결. 본 룰 `.claude/rules/workflow-name-hallucination.md` 박제 = 미래 plan 작성 시 step 본문 grep + raw log 1회 의무.
+세션 245 가 "workflow_dispatch success" 만 보고 "DDL 적용 완료" 박제 → 세션 247 PG 42703 발견 → 세션 248 룰 신규로 종결. 본 룰 `.claude/rules/workflows/workflow-name-hallucination.md` 박제 = 미래 plan 작성 시 step 본문 grep + raw log 1회 의무.
 
 ### 사고 2 — PHASE 1+2+3 메시지 자가 결정 신호 (misattribution v4 답습)
 
@@ -2593,7 +2593,7 @@ Commit A (마이그 + 수집기 + test) + Commit B (data-fill + data-audit + typ
 - `collect-unsold-kosis.mjs` (329줄) — typedef + isCLI v2 + fetchWithRetry + recordApiQuota 패턴
 - `housing-permits.mjs:200-209` — `regions` UPDATE gu IS NULL 패턴 (`order by recorded_at desc + limit 1`)
 - `typescript-patterns.md §1.3 §5.2 §3.1` — JSDoc cast / isCLI v2 / importOriginal cast
-- `.claude/rules/secret-naming-audit.md` — 3-way 동기화 자리 (collector ↔ yml ↔ data-fill)
+- `.claude/rules/workflows/secret-naming-audit.md` — 3-way 동기화 자리 (collector ↔ yml ↔ data-fill)
 - 세션 235 S1 KOSIS API 실증 (DT_MLTM_2100 6 ITM_NM × 시도 17 × 연간)
 - 세션 236 자가 결정 #2 (컬럼 naming) + #3 (cross-repo grep, naver-estate-web `housing_supply_level` 0 사용처 답습)
 
@@ -2936,8 +2936,8 @@ Commit A (마이그 + 수집기 + test) + Commit B (data-fill + data-audit + typ
 - `scripts/audit-env-keys.mjs`: 신규 (3-way 자동 검증, 22/28 clean, 0 errors)
 - `scripts/collectors/data-fill.mjs`: regions envKeys 3 키 + schools envKeys 3 키 (audit 발견 사고 동시 fix)
 - `scripts/collectors/data-fill.test.mjs`: toEqual → toContain + 키 검증 추가 (8 줄)
-- `.claude/rules/secret-naming-audit.md`: 신규 (사고 박제 + 재발 방지 절차)
-- `.claude/rules/typescript-patterns.md`: 신규 추적 (기존 로컬 박제 → git 이전)
+- `.claude/rules/workflows/secret-naming-audit.md`: 신규 (사고 박제 + 재발 방지 절차)
+- `.claude/rules/meta/typescript-patterns.md`: 신규 추적 (기존 로컬 박제 → git 이전)
 - `.gitignore`: `.claude/rules/` 추적 활성화 + `*.pdf` + `scripts/probes/` 차단
 - `.claude/BACKLOG.md` (로컬): KOSIS 추가 데이터 20 후보 + 5 phase 진행 순서 prepend
 
@@ -9751,7 +9751,7 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **PostgREST max_rows=1000 자리** — Supabase JS `.limit(10000)` 환각 자리. 정정 자리 = `.range()` 페이지네이션 답습 (커밋 `01d0dd4` 16건 일괄 정정 자리)
 - **transport-tago 단지 당 4.35~4.47초 = sleep 100ms × 4 + Kakao 3호출 + TAGO 1호출** — 코드 결함 0, API rate limit 0. 향후 batch size 조정 자리 무의미 (sleep 자체가 의도된 자리)
 - **세션 294 timeout 90→120 fix 가 정답** — 회귀 자리 없음. transport-tago root cause 분석 = "단지 수 늘어남 (의도된 fix)" 답습으로 종결
-- **신규 룰 박제** — `.claude/rules/collector-timeout-rootcause-analysis.md` (timeout 사고 진앙 답습 시 collector git log + raw run log + apartments.created_at + collector_runs 4-way 답습 의무)
+- **신규 룰 박제** — `.claude/rules/collectors/collector-timeout-rootcause-analysis.md` (timeout 사고 진앙 답습 시 collector git log + raw run log + apartments.created_at + collector_runs 4-way 답습 의무)
 
 ## 세션 300 (2026-05-24) — D MEMORY.md 2차 압축
 

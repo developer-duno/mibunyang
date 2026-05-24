@@ -79,7 +79,7 @@ console.log('apartments created in last 30 days:', count);
 - 세션 294 timeout 90→120 fix 커밋 `b313b56` (`collect-naver-listings-incremental.yml`)
 - 세션 295 본 룰 박제 시점 = R1 분석 종결 자리 확정
 - 커밋 `01d0dd4` (2026-05-22) PostgREST max_rows=1000 fix 16건 일괄 정정 자리 — 답습 자산 (cross-collector 영향 자리)
-- `.claude/rules/secret-naming-audit.md` §"운영 모니터링 (월간 schedule)" 절 답습 (월간 cron 데드 존 박제)
+- `.claude/rules/workflows/secret-naming-audit.md` §"운영 모니터링 (월간 schedule)" 절 답습 (월간 cron 데드 존 박제)
 
 ## 차단 검증 (본 룰 적용 후 사고 시뮬레이션)
 
