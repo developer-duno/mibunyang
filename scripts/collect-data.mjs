@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry } from "./collectors/_shared.mjs";
+import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll } from "./collectors/_shared.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -1031,9 +1031,79 @@ function writeOutputs(apartments, fetchedAt) {
 }
 
 // ============================================================
+// Supabase-Only Mode
+// ============================================================
+
+/**
+ * --from-supabase-only 모드 — apartments_flat VIEW 1회 SELECT 로 외부 API 호출 0회.
+ * Phase 1~9 흐름 우회. 매일 cron 자동화 안전.
+ * 호출 전 사전 상태: 환경변수 SUPABASE_URL + SUPABASE_ANON_KEY 박힘 필수.
+ * meta 모듈 변수는 본 함수 안에서 fetchedAt/count/phases.supabaseOnly 박힘.
+ * @returns {Promise<void>}
+ */
+export async function supabaseOnlyMode() {
+  log("=== Supabase-Only 모드 (외부 API 호출 0회) ===");
+
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    logError("supabase-only", "SUPABASE_URL / SUPABASE_ANON_KEY 환경변수 필수");
+    process.exit(1);
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // apartments_flat VIEW — camelCase + psr/pir/dataReliability + naver 모두 박힘
+  log("apartments_flat SELECT...");
+  const apartments = await selectAll(
+    (s) => s.from("apartments_flat").select("*"),
+    supabase,
+  );
+  log(`  ${apartments.length}건 로드`);
+
+  // 회귀 가드 — count 절대값
+  const MIN_COUNT = 1000;
+  if (apartments.length < MIN_COUNT) {
+    logError("supabase-only", `count ${apartments.length} < ${MIN_COUNT} — 회귀 가드 발동`);
+    process.exit(1);
+  }
+
+  // 전일 대비 -200 이상 감소 검출 (기존 apartments.json 박힘 시)
+  const cachedPath = resolve(ROOT, "public/data/apartments.json");
+  if (existsSync(cachedPath)) {
+    try {
+      const prev = JSON.parse(readFileSync(cachedPath, "utf8"));
+      const prevCount = prev.count ?? 0;
+      const diff = apartments.length - prevCount;
+      if (diff <= -200) {
+        logError("supabase-only", `count 전일 대비 ${diff} 감소 (이전 ${prevCount} → 신규 ${apartments.length}) — 회귀 가드 발동`);
+        process.exit(1);
+      }
+      log(`  전일 대비 count 변동: ${diff >= 0 ? "+" : ""}${diff} (${prevCount} → ${apartments.length})`);
+    } catch (err) {
+      log(`  cached apartments.json 파싱 실패 (회귀 가드 비교 스킵): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // JSON 출력
+  const fetchedAt = new Date().toISOString();
+  meta.fetchedAt = fetchedAt;
+  meta.count = apartments.length;
+  meta.phases.supabaseOnly = { ok: true, count: apartments.length };
+
+  writeOutputs(apartments, fetchedAt);
+  log(`완료! ${apartments.length}건 출력`);
+}
+
+// ============================================================
 // Main
 // ============================================================
 async function main() {
+  if (process.argv.includes("--from-supabase-only")) {
+    await supabaseOnlyMode();
+    return;
+  }
+
   const startTime = Date.now();
   log("데이터 수집 시작...");
 
