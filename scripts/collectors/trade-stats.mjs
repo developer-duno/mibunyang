@@ -13,7 +13,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY  — Supabase service_role 키
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore } from "./_shared.mjs";
 
 loadEnv();
 
@@ -593,16 +593,16 @@ async function main() {
 
   log("done", `trade_stats 테이블 ${upserted}/${results.length}건 upsert 완료`);
 
-  // 6. DSR 40% 통과 여부 → apartments 테이블 업데이트
+  // 6. DSR 40% 통과 여부 → apartments 테이블 업데이트 (동시 10 병렬)
+  // 세션 309: 직렬 for-loop (1960 row × 150ms = ~5분, timeout 15분 boundary 도달) → createSemaphore(10) 병렬 (~30초).
   if (dsrUpdates.length > 0) {
-    let dsrOk = 0;
-    for (const { id, dsr40pass } of dsrUpdates) {
-      const { error: e } = await sbMibunyang
-        .from("apartments")
-        .update({ dsr40pass })
-        .eq("id", id);
-      if (!e) dsrOk++;
-    }
+    const limit = createSemaphore(10);
+    const dsrResults = await Promise.all(
+      dsrUpdates.map(({ id, dsr40pass }) =>
+        limit(() => sbMibunyang.from("apartments").update({ dsr40pass }).eq("id", id))
+      )
+    );
+    const dsrOk = dsrResults.filter((/** @type {any} */ r) => !r.error).length;
     log("done", `apartments.dsr40pass ${dsrOk}/${dsrUpdates.length}건 업데이트 완료`);
   }
 }

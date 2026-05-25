@@ -73,6 +73,8 @@ console.log('apartments created in last 30 days:', count);
 - ❌ "단지 당 시간 = 4초 = 의도된 sleep × 4 + API 호출 = 정상" 단정 — sleep 자체가 너무 긴 자리도 가능 자리. 옛 collector_runs 값과 비교 의무
 - ❌ "apartments 신규 추가 없으면 collector fetch 변경" 단정 — `git log` 답습 1회 의무 (다른 collector 의 PostgREST max_rows fix 자리 같은 cross-collector 영향 가능)
 - ❌ "BACKLOG '별 세션 자리 root cause 분석' 박제값 답습 단정" — 실측 4-way 답습 의무, 박제값 환각 가능 자리
+- ❌ "Supabase update 직렬 for-loop = 단순 코드 패턴" — 1000+ row 자리 시 timeout 진앙 가능성. `_shared.mjs createSemaphore(N)` + `Promise.all` 답습 자산 답습 의무 (세션 309 박제: trade-stats.mjs L596-607 직렬 1960 row × 150ms = 4분 54초 → semaphore(10) 30초)
+- ❌ "cancelled run N건 같은 원인 단정" — 각 run 의 step 시간 (job duration) 답습 의무. 15분 boundary 도달 vs 57~58분 cancel = 서로 다른 원인 (timeout vs 큐 충돌, 세션 309 박제)
 
 ## 답습 자산
 
@@ -80,6 +82,7 @@ console.log('apartments created in last 30 days:', count);
 - 세션 295 본 룰 박제 시점 = R1 분석 종결 자리 확정
 - 커밋 `01d0dd4` (2026-05-22) PostgREST max_rows=1000 fix 16건 일괄 정정 자리 — 답습 자산 (cross-collector 영향 자리)
 - `.claude/rules/workflows/secret-naming-audit.md` §"운영 모니터링 (월간 schedule)" 절 답습 (월간 cron 데드 존 박제)
+- 세션 309 trade-stats.mjs DSR batch fix (`createSemaphore(10)` + `Promise.all`) — Supabase 직렬 update timeout 진앙 정정 답습 자산. `docs/superpowers/specs/2026-05-25-trade-stats-dsr-batch-fix-design.md` 박제 (박힘 환각 7건 정정 + 진단 자리)
 
 ## 차단 검증 (본 룰 적용 후 사고 시뮬레이션)
 

@@ -18,7 +18,7 @@ concurrency:
 jobs:
   collect-trade-stats:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30 # 세션 309: 15 → 30. DSR batch fix 후 자연 증가 2배까지 안전망 (이전 14분 56초 boundary 사고 답습).
 
     steps:
       - uses: actions/checkout@v4
