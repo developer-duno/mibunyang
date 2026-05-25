@@ -69,6 +69,9 @@
 - ⏸️ inline style 호이스팅 — 부분 처리 후 보류 (세션149~152, 세션264 archive ⏸️절)
 - ✅ SESSION_LOG.md drift 282~286 + 288 6 세션 흡수 — 메모리 3 파일 + git commit message + BACKLOG 본문에서 추출 (세션289, 1 docs 커밋)
 - ✅ transport-tago 2.1배 느림 root cause 분석 종결 — 코드/API 결함 0 + 세션 294 timeout 90→120 fix 가 정답 (세션 295, docs only; 진앙=커밋 `01d0dd4` PostgREST max_rows fix, 단지 1000→2001 의도된 자리)
+- ✅ audit-env-keys matrix orchestrator 답습 보강 (세션 304+308, 커밋 `96fbdcc`+`58f5983`; MATRIX_ORCHESTRATORS 상수 + extractMatrixJobs() + js-yaml FAILSAFE_SCHEMA; vitest 4 test; fill-missing-data.yml Phase 3+4+5 폐기로 phase2-calc 3 job 만 잔존)
+- ✅ dataUpdatedAt vs fetchedAt drift fix (세션 280/281/292, 커밋 `89831d7`+`a4c6d8d`; collect-data.mjs L1026 양쪽 키 동시 박제 + staticDataApi.ts L46-47 fallback 듀얼 방어; staticDataApi.test.js 회귀 가드 4건)
+- ✅ ARCHITECTURE.md/CLAUDE.md/README.md 박제값 일괄 정정 (세션 313; apartments 1500→2001 / App.jsx→App.tsx 다중 / memo 36→45 / api 21→23 / workflows 35→47 / Vercel KV→Upstash Redis / collect-data 1065→1193줄 / src/lib/*Api 5건 stale 정정)
 
 ---
 
@@ -210,13 +213,6 @@
   - 별 세션 분할 권장. 가중치 의사결정 (PSR sub-score 입력 영향, 사용자 결정 필요)
   - regions JSONB → calcCats.ts 신규 scoreChildcare.ts 통합
 
-- 🟢 **dataUpdatedAt vs fetchedAt 필드 drift** (세션 279 발견, 본 PR 이전부터 존재)
-  - JSON 출력 (`collect-data.mjs` L1089) = `fetchedAt`
-  - 타입 + hook 기대 (`staticDataApi.ts` L16 / `useApartmentData.ts` L21) = `dataUpdatedAt`
-  - 런타임 `updAt = undefined` → `setDataUpdatedAt(null)` → UI dataFreshnessText 표시 안 됨
-  - 정정안: collect-data.mjs Phase 7 출력 시 `dataUpdatedAt: fetchedAt` 동시 박제 또는 staticDataApi 에서 fallback
-  - 규모: 1~2 파일 정정 + vitest 회귀
-
 - 🟢 **4 collector `--json` 모드 시 list/prices stale** (세션 279 발견)
   - environment / industry-match / noxious / transit-match 가 `--json` 호출 시 apartments.json 만 갱신 → list/prices 동기화 0
   - 운영 cron 미사용 (`.github/workflows/collect-{environment,industry,noxious}.yml` `$ARGS` 빈값 = Supabase 모드)
@@ -229,18 +225,6 @@
   - 세션 294 timeout 90→120 fix = 정확한 정정 자리 (회귀 자리 없음, 의도된 단지 수 자리)
   - 답습 자산: `.claude/rules/collectors/collector-timeout-rootcause-analysis.md` 신규 (4-way 답습 의무 박제)
   - 진단 사고: v1 환각 "단지 폭증 (네이버 신규)" → `apartments.created_at` 실측 30일 신규 0 → v2 정정 (`git log -- <collector>` 답습 후 진앙 자리 확정)
-
-- 🟡 **audit-env-keys matrix orchestrator 답습 보강** (세션 294 발견)
-  - audit-env-keys.mjs 가 1대1 매칭 (`collect-X.yml` ↔ `X.mjs`) 만 답습 → `fill-missing-data.yml` 의 phase4-independent matrix 답습 0
-  - 사고: fill-missing-data.yml L141 env block KOSIS_MIGRATION_KEY 누락. audit `30/36 clean ✅` 통과 + 실 발화 시 exit 1
-  - 정정안: audit 에 matrix yml 답습 자리 추가. `strategy.matrix.script[].cmd` 답습 + 각 cmd collector envVars vs orchestrator env block 교차 검증
-  - 규모: 1 세션, audit-env-keys.mjs +~50줄 + 테스트 답습
-
-- 🟢 **ARCHITECTURE.md L95/L126 박제값 stale** (세션 279 발견)
-  - L95: `apartments.json (787KB, 1,481건)` → 실제 13MB / 1,557건
-  - L126: `AptCard 1,481개 재채점` → 실제 1,557개
-  - 본 PR 신규 사고 아님 (이전부터 stale)
-  - 정정안: 1 파일 갱신 + 첫 LCP 효과 (-87.2%) 박제
 
 - 🟢 **모바일 저사양 단말 OOM 위험** (세션 279 발견, 본 PR 부수)
   - prices.json 11.35MB 모듈 Map 캐시 영구 보존 (1557 단지 × 4 배열). SPA 종료까지 메모리 반환 0

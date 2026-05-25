@@ -47,7 +47,7 @@
 
 ## 주요 컴포넌트 구조
 
-### App.jsx (~442줄, 2026-04-19 실측)
+### App.tsx (430줄, 2026-05-26 실측)
 
 Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 

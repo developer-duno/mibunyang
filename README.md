@@ -11,7 +11,7 @@
 | API | Vercel Serverless 23개 배포 함수 (api/ 루트) |
 | DB | Supabase PostgreSQL 15 테이블 + 2 VIEW |
 | 인증 | SHA-256+salt, HMAC-SHA256 JWT, 카카오 OAuth |
-| 캐싱 | Vercel KV (Upstash Redis) |
+| 캐싱 | Upstash Redis (서버리스) |
 | 수집 | GitHub Actions 47개 워크플로우 (수집 44 + CI/E2E/Monitor 3) + Windows 스케줄러 |
 | 테스트 | Vitest + Playwright E2E 13 spec |
 | 모니터링 | Vercel Analytics + Speed Insights |
@@ -40,8 +40,8 @@ npm run migrate:dry       # Supabase 마이그 dry-run
 
 ```text
 src/
-├── App.tsx                512줄 메인
-├── components/            36개 memo 컴포넌트
+├── App.tsx                430줄 메인
+├── components/            45개 memo 컴포넌트
 ├── hooks/                 useDataPipeline 등 13훅
 ├── scoring/               6 카테고리 가중치 엔진
 ├── constants/             타입·상수
