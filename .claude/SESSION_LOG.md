@@ -1,14 +1,73 @@
-# 세션 308 — 2026-05-25 (fill-missing-data Phase 1 PR #11, ? 커밋)
+# 세션 309 — 2026-05-25 (trade-stats DSR batch fix, 박힘 환각 7건 정정)
+
+## 거시 목적
+
+세션 308 PR #11 머지 = `trade_stats` 갱신이 `collect-trade-stats.yml` 자체 cron 만 남음. NEXT_SESSION + BACKLOG = P0 "3회 연속 cancelled 진단 (5/24/17/10)". 실측 4-way 답습 + 서브에이전트 3개 병렬 결과 = 박힘 환각 7건 발견 + 정정. 진짜 진앙 = DSR 직렬 update for-loop 코드 결함.
+
+## 결론
+
+- 진짜 진앙 = `scripts/collectors/trade-stats.mjs` L596-607 DSR 직렬 update for-loop (1960 row × Supabase RTT 150ms = 4분 54초 = job timeout 15분 boundary 도달 cancel)
+- 정정 = `createSemaphore(10)` + `Promise.all` (직렬 4분 54초 → 병렬 ~30초, 10배 단축)
+- 안전망 = `collect-trade-stats.yml` timeout-minutes 15 → 30 (자연 증가 2배 대비)
+- 검증 = vitest 25/25 + eslint 0 + typecheck 0 + dry-run 정상 (dsrUpdates = 1960건 plan 박힘 일치)
+- 5/17 + 5/10 cancelled = 옛 cron `0 21` 큐 충돌 별 사고 (5/18 fix 정정 완료) — plan v1 "9주+ 같은 원인" 환각 정정
+
+## 박힘 환각 7건 정정 (자가 점검 1+2 누적)
+
+1. "9주+ cancelled 같은 원인" → 실측 = 5/17/5/10 (57~58분, 큐 충돌, 5/18 fix 완료) + 5/24 (15분, DSR 직렬, 별 사고)
+2. "post-job cleanup cancel = DB 영향 0" → step 본문 timeout, apartments.dsr40pass 41건 미반영
+3. "5/24 큐 충돌" → 5/24 단독 발화 ✓ (큐 충돌 0)
+4. "DB 자체 stale" → trade_stats 정상, apartments.dsr40pass 만 1960/2001 = 98%
+5. "timeout 단순 늘리기 = 정답" → 코드 root fix 의무
+6. "dsrUpdates.length = 2001 (전체)" → 실측 = 1960 (조건부: `pir > 0 && aptPrice > 0`)
+7. "Promise.all BATCH=100 청크" → `createSemaphore(10)` 답습 자산 박힘 (infra-kakao 답습)
+
+## 변경 (6 git 추적 + 2 로컬 박힘)
+
+git 추적 6 파일:
+
+- `scripts/collectors/trade-stats.mjs` (L596-607 DSR 루프 → `createSemaphore(10)` + `Promise.all`)
+- `.github/workflows/collect-trade-stats.yml` (timeout-minutes 15 → 30)
+- `.claude/rules/collectors/collector-timeout-rootcause-analysis.md` (안티 패턴 2건 + 답습 자산 1건 추가)
+- `docs/superpowers/specs/2026-05-25-trade-stats-dsr-batch-fix-design.md` (신규)
+- `.claude/SESSION_LOG.md` (본 절 신규)
+
+git 추적 외부 (gitignore negation 미박힘, 로컬 답습 박힘):
+
+- `.claude/BACKLOG.md` (P0 trade-stats 자리 제거)
+- `.claude/NEXT_SESSION.md` (세션 310 = 5/31 + 6/7 자동 발화 실증 답습)
+
+## 답습
+
+- 세션 308 PR #11 머지 (7b6fc72) — Phase 5 폐기 직접 유발
+- `.claude/rules/collectors/collector-timeout-rootcause-analysis.md` 4-way 답습 룰 (본 세션 환각 정정 답습 자산)
+- `.claude/rules/workflows/timeout-rootcause-policy.md` 큐 막힘 가설 환각 룰
+- `scripts/collectors/_shared.mjs createSemaphore(max)` 헬퍼 (infra-kakao.mjs 답습 자산)
+- `scripts/collectors/infra-kakao.mjs createSemaphore(5)` 박힘 패턴
+
+## 검증 일정 (자동 발화 의무)
+
+- 5/31 (일) UTC 16:00 = KST 6/1 월 01:00 = trade-stats 1차 실증 (기대: success + Calculate trade stats step < 12분 + apartments.dsr40pass = 2001/2001 = 100%)
+- 6/7 (일) UTC 16:00 = 2차 실증 (2회 연속 success = spec 종결)
+
+---
+
+# 세션 308 — 2026-05-25 (fill-missing-data Phase 1 PR #11, 1 커밋 머지 + 2차 자아 정립)
 
 ## 거시 목적
 
 세션 307 spec `docs/superpowers/specs/2026-05-25-fill-missing-data-redesign.md` 답습. fill-missing-data.yml Phase 3+4+5 일괄 폐기 + `audit-fill-matrix.mjs` CI 가드 신규. 5/31 (일) KST 11:00 cron 발화 6번째 누적 cancelled 차단 (5/24, 5/23, 5/22, 5/17, 5/10 5건 연속 빨강).
 
+세션 후반 = 사용자 요청 "자아 정립 + md 리뉴얼 + Claude/Anthropic 신기능" 답습. 1차 통합 후 사용자 추가 요청 "더 깊은 분석" → 2차 실측 + 공식 출처 4개 직접 답습 → 1차 환각 13건 발견 + 정정.
+
 ## 결론
 
-- PR #11 머지 (5/25 본 세션)
-- workflow_dispatch dry-run 1회 실증 success
-- 5/31 발화 자동 검증 = 5 일꾼 success + 외부 API 0 + ~30분 이내 종결 기대
+- PR #11 머지 완료 (main 7b6fc72, fast-forward, 8 파일, +324/-109)
+- 커밋 = `58f5983` (`refactor(fill-missing-data): Phase 3+4+5 폐기 + audit-fill-matrix CI 가드 (세션 308)`)
+- workflow_dispatch dry-run run 26378950237 = success (17분 40초, Phase 1 + Phase 2 matrix 3 모두 ✓)
+- CI 4 check (ci/e2e/Vercel/Vercel Preview) 모두 pass
+- annotation = Node.js 20 deprecation warning (별 사고, 6월 2일 강제 24 전환 예정 — BACKLOG 추가 후보)
+- 5/31 발화 자동 검증 의무 = 다음 세션 (309) 첫 진입 답습 의무
 - trade-stats 폐기 직접 유발 = BACKLOG P0 즉시 진입 (세션 309)
 
 ## 변경 (8 git 추적 + 2 로컬 박힘)
