@@ -16,6 +16,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     getMibuyangSupabase: vi.fn(),
     log: vi.fn(),
     logError: vi.fn(),
+    recordCollectorRun: vi.fn(),
   };
 });
 

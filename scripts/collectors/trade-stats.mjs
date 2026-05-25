@@ -13,7 +13,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY  — Supabase service_role 키
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -605,6 +605,8 @@ async function main() {
     const dsrOk = dsrResults.filter((/** @type {any} */ r) => !r.error).length;
     log("done", `apartments.dsr40pass ${dsrOk}/${dsrUpdates.length}건 업데이트 완료`);
   }
+
+  await recordCollectorRun("trade-stats", { ok: upserted, fail: results.length - upserted });
 }
 
 const argv1 = process.argv[1];
