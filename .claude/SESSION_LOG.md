@@ -1,3 +1,58 @@
+# 세션 308 — 2026-05-25 (fill-missing-data Phase 1 PR #11, ? 커밋)
+
+## 거시 목적
+
+세션 307 spec `docs/superpowers/specs/2026-05-25-fill-missing-data-redesign.md` 답습. fill-missing-data.yml Phase 3+4+5 일괄 폐기 + `audit-fill-matrix.mjs` CI 가드 신규. 5/31 (일) KST 11:00 cron 발화 6번째 누적 cancelled 차단 (5/24, 5/23, 5/22, 5/17, 5/10 5건 연속 빨강).
+
+## 결론
+
+- PR #11 머지 (5/25 본 세션)
+- workflow_dispatch dry-run 1회 실증 success
+- 5/31 발화 자동 검증 = 5 일꾼 success + 외부 API 0 + ~30분 이내 종결 기대
+- trade-stats 폐기 직접 유발 = BACKLOG P0 즉시 진입 (세션 309)
+
+## 변경 (8 git 추적 + 2 로컬 박힘)
+
+git 추적 8 파일:
+
+- `.github/workflows/fill-missing-data.yml` (-108줄, Phase 3+4+5 폐기)
+- `scripts/audit-fill-matrix.mjs` (신규, ~80줄)
+- `scripts/audit-fill-matrix.test.mjs` (신규, ~40줄)
+- `.github/workflows/ci.yml` (+3줄, audit step 추가)
+- `.github/workflows/CLAUDE.md` (유틸리티 절 정정)
+- `.claude/rules/workflows/timeout-rootcause-policy.md` (신규 절)
+- `.claude/SESSION_LOG.md` (본 절 신규)
+- `docs/superpowers/plans/2026-05-25-fill-missing-data-redesign-phase1.md` (신규)
+
+git 추적 외부 (gitignore negation 미박힘, 로컬 답습 박힘):
+
+- `.claude/BACKLOG.md` (✅ 색인 + 🔴 P0 신규 + 🟢 후순위)
+- `.claude/NEXT_SESSION.md` (세션 309 다음 작업)
+
+## 답습
+
+- 세션 307 spec 박힘 (커밋 `c00c837`)
+- 세션 306 PR #10 schools-neis 제거 (`7988127`)
+- 세션 291 phase2-calc 매트릭스 6→3 (외부 cron 박힌 calc 제외)
+- 세션 298 phase3-external timeout 60→120
+- 세션 273 calc-collection 그룹 분리 (`68c5051`)
+- `audit-env-keys.mjs` L81 `extractMatrixJobs()` named export 답습 자산
+- `audit-monitor-coverage.test.mjs` 순수 함수 패턴 답습 (TMP fixture 0)
+
+## 자가 점검 1 (환각/맹점)
+
+- `audit-fill-matrix.mjs ~30줄 박힘 가능?` → ~80줄 박힘 (테스트 가능 순수 함수 분리 + isCLI 가드 + 다중 줄 console 메시지). 30→80 마진 정당
+- `test 패턴 = audit-env-keys.test TMP fixture?` → audit-monitor-coverage 순수 함수 패턴 답습 (`findViolations` named export)
+- `monitor-collectors.yml "Fill Missing Data" 이름 유지?` → 변경 0 = monitor 동기화 0
+- `collect-*.yml 36 개 cron 박힘 = audit 성능 OK?` → 36 × 5KB readFile = 1초 미만
+
+## 위험
+
+- 5/31 이전 PR 머지 실패 → 6번째 누적 cancelled. **정정** = 본 세션 머지
+- trade-stats stale 직접 유발 → 세션 309 진단 plan 즉시 진입 (P0 BACKLOG)
+
+---
+
 # 세션 305 — 2026-05-24~25 (P0 운영 사이트 5일 stale 해소 + billing 사고 복구 + 자동화 spec/plan 준비, 4 커밋 + feat 브랜치)
 
 ## 거시 목적

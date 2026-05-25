@@ -69,7 +69,7 @@
 | 워크플로우 | 설명 |
 |-----------|------|
 | `seed-data.yml` | 초기 데이터 시딩 |
-| `fill-missing-data.yml` | 빈 데이터 일괄 수집 (5 phase 직렬 + 매트릭스 병렬, 세션273: Phase 5 timeout 360→120분, **세션291**: cron 일요일 21시→02시 UTC 이동 commit `68c5051` (실제 박제) + phase2-calc 매트릭스 6→3 항목 (외부 cron 박힌 calc-exclusive-ratio·calc-layout·industry-match 제외, A-1 sub-step 동시 실행 cancelled 정정), **세션298**: phase3-external timeout 60→120 (noxious+transport-tago 합산 60분 boundary 직격 8주 만성 cancelled 해소)) |
+| `fill-missing-data.yml` | **Phase 1+2 만 잔존** — Phase 1 좌표 backfill (geocode-missing+reverse-geocode) + Phase 2 matrix 3 일꾼 (sync-naver-complex+calc-floors+regulation-seed). **세션 308 (PR #11)**: Phase 3+4+5 일괄 폐기 — 외부 cron 가진 11 일꾼 (transport-tago/infra-kakao/environment/noise-estimate/noxious/dart-builders/molit-building-info/population/migration/collect-trades/trade-stats) 제외 + `audit-fill-matrix.mjs` CI 가드 신규. 5/31 발화 6번째 누적 cancelled 차단. 직전: 세션 273 calc 그룹 분리, 세션 291 phase2-calc 6→3, 세션 298 phase3 timeout 60→120, 세션 306 schools-neis 제거 |
 | `geocode-missing.yml` | 좌표 누락 지오코딩 |
 | `reverse-geocode.yml` | 좌표 → 주소 역지오코딩 |
 
