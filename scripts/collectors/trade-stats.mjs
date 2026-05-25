@@ -599,7 +599,7 @@ async function main() {
     const limit = createSemaphore(10);
     const dsrResults = await Promise.all(
       dsrUpdates.map(({ id, dsr40pass }) =>
-        limit(() => sbMibunyang.from("apartments").update({ dsr40pass }).eq("id", id))
+        limit(async () => await sbMibunyang.from("apartments").update({ dsr40pass }).eq("id", id))
       )
     );
     const dsrOk = dsrResults.filter((/** @type {any} */ r) => !r.error).length;
