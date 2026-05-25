@@ -26,9 +26,9 @@ jobs:
     timeout-minutes: 120 # 세션306: 5/6 60분 cancelled (raw 박제, 5/6 거래 491k vs 4/6 289k = 1.7배 자연 증가) → 120분
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'npm'
