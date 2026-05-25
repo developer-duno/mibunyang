@@ -54,5 +54,5 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `src/hooks/` | Hook 호출 순서, 의존성 13개, **React 성능 패턴** (useDeferredValue/useTransition) |
 | `api/` | JS null 함정, 한글 인코딩, withHandler, **인증/세션 KV**, **비로그인 블라인드 정책** |
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
-| `.github/workflows/` | 35개 워크플로우 목록, GitHub Secrets, 스케줄 |
+| `.github/workflows/` | 47개 워크플로우 목록, GitHub Secrets, 스케줄 |
 | `supabase/` | 15개 테이블 + 2 VIEW + presale 19컬럼, RLS 정책 |

@@ -92,7 +92,7 @@ constants → scoring → theme → components → hooks → App
 GitHub Actions (일/주/월 스케줄)
   ├── collect-data.mjs ─── 청약홈/카카오/KOSIS/NEIS/DART/국토부
   │                         ↓
-  │                    public/data/apartments-list.json  (1.66MB / Brotli 198KB, 1,557건)
+  │                    public/data/apartments-list.json  (1.66MB / Brotli 198KB, 2,001건)
   │                    public/data/apartments-prices.json (11.35MB / Brotli 858KB, DetailModal lazy)
   │                         ↓
   ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (14개 테이블)
@@ -125,7 +125,7 @@ GitHub Actions (일/주/월 스케줄)
 사용자 조작                    React 상태              useMemo 연쇄              UI 렌더
 ──────────                    ──────────              ──────────              ──────────
 
-프로필 버튼 클릭 ──→ profile ──→ scored ─────────────→ AptCard 1,557개 재채점
+프로필 버튼 클릭 ──→ profile ──→ scored ─────────────→ AptCard 2,001개 재채점
                                    │
 지역 버튼 클릭 ──→ filterRegion ──→ │ ──→ guOptions ──→ 구 버튼 목록 갱신
                   filterGu ───────→ │
