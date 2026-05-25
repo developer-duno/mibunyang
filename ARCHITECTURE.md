@@ -42,9 +42,8 @@ src/
 │   ├── dedup.js            아파트 중복 제거 + siblingIds 생성 (dedupApartments)
 │   └── format.js           가격/날짜 포맷 (fmtPrice, fmtCompletion, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate)
 ├── services/
-│   ├── staticDataApi.js    ★ Supabase API 또는 JSON 폴백
-│   ├── applyhomeApi.js / kakaoApi.js / neisApi.js / kosisApi.js / dartApi.js
-└── App.jsx                 오케스트레이터 (훅 조합 + 렌더 + SORTERS 모듈 상수 + isDesktop prop 스레딩 + trackEvent 이벤트 계측)
+│   └── staticDataApi.ts    ★ Supabase API 또는 JSON 폴백 (src/services/ 단독, 외부 API 클라이언트는 미사용)
+└── App.tsx                 오케스트레이터 (훅 조합 + 렌더 + SORTERS 모듈 상수 + isDesktop prop 스레딩 + trackEvent 이벤트 계측)
 
 api/                        Vercel Serverless — 규칙: api/CLAUDE.md
 ├── _lib/                   handler.js(withHandler HOF), auth.js, adminAuth.js, cors.js, rateLimit.js, supabase.js
@@ -55,7 +54,7 @@ api/                        Vercel Serverless — 규칙: api/CLAUDE.md
 └── applyhome/ kakao/ neis/ kosis/ dart/
 
 scripts/
-├── collect-data.mjs        빌드 시 데이터 수집 (1,065줄, 8 Phase)
+├── collect-data.mjs        빌드 시 데이터 수집 (1,193줄, 8 Phase)
 ├── migrate-to-supabase.mjs apartments.json → Supabase 마이그레이션
 └── collectors/
     ├── _shared.mjs         공유 유틸 (loadEnv, upsertBatch, fetchWithRetry)
@@ -95,7 +94,7 @@ GitHub Actions (일/주/월 스케줄)
   │                    public/data/apartments-list.json  (1.66MB / Brotli 198KB, 2,001건)
   │                    public/data/apartments-prices.json (11.35MB / Brotli 858KB, DetailModal lazy)
   │                         ↓
-  ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (14개 테이블)
+  ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (15개 테이블)
   │                                    ↓
   └── naver-collect.py ──────────→ complexes + articles + complex_price_history
 
@@ -136,7 +135,7 @@ GitHub Actions (일/주/월 스케줄)
 비교 보기 클릭 ──→ showCompOpen ──→ showComp(파생) ──→ CompareSheet 표시/숨김
 ```
 
-### 핵심 useMemo 체인 (App.jsx)
+### 핵심 useMemo 체인 (App.tsx)
 
 ```js
 // 1단계: 전체 아파트 카테고리 채점 (apartments 변경 시 재계산, 지역 중위값 컨텍스트 포함)
@@ -245,7 +244,7 @@ fairPrice = 주변중위가(nearbyMedian) * 연식계수(ageCoeff) * 면적보�
 
 ## 4. 상태 관리 맵
 
-### App.jsx 직접 관리 상태 (4개 + useTransition)
+### App.tsx 직접 관리 상태 (4개 + useTransition)
 
 ```
 State            타입      초기값        변경 트리거
@@ -272,7 +271,7 @@ isPending        boolean   (transition)  useTransition — 프로필 전환 시
 ### 교차 관심사 해결
 
 ```js
-// App.jsx에서 훅 간 연결
+// App.tsx에서 훅 간 연결
 const { handleRegionChange, handleGuChange } = useFilterSort({
   onFilterChange: () => detail.setDetailAptId(null)  // 필터 변경 → 상세 닫기
 });
@@ -547,7 +546,7 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 ┌──────────────────────────────────────────────────────────────┐
 │                    미분양 아파트 데이터                        │
 │                                                              │
-│  apartments (1,500행) ─────────────────────────────────────  │
+│  apartments (2,001행) ─────────────────────────────────────  │
 │       │ id (PK)                                              │
 │       ├──→ prices (시계열, 분양가)                             │
 │       ├──→ unsold_history (시계열, 미분양 추이)                │

@@ -12,6 +12,39 @@
 
 ## 🔴 즉시 — 완료
 
+- ✅ **ARCHITECTURE.md/CLAUDE.md/README.md 박제값 일괄 정정** (세션 313, 본 PR)
+  - 사고: 세션 312 PR #14 가 메모(MEMORY.md, session_*) stale 박제값 (1557→2001, 35→47) 정정했으나 공식 문서 (ARCHITECTURE.md, CLAUDE.md, README.md, src/components/CLAUDE.md) + BACKLOG.md 완료 항목 이관 누락. 세션 313 진입 시 답습 결과 stale 박제값 18건 발견
+  - 원인 진단 (자가 점검 1 적용): plan v1 박제값 환각 7건 발견 (memo "64 파일 / 71 호출" → 실제 src/components/CLAUDE.md L5 "45개, 2026-04-19 실측" 명시 / Vercel KV stale 표현 → Upstash Redis 단독 / 카테고리 박제값 환각 등). 진실의 원천 = src/components/CLAUDE.md L5/L9-15 명시값
+  - fix (5 파일):
+    - `ARCHITECTURE.md` 7건: L45-46 src/lib/*Api stale 5건 통합 정정 (실제 src/services/staticDataApi.ts 단독) / L47/L139/L248/L275 App.jsx→App.tsx / L58 collect-data.mjs 1065→1193줄 / L98 마이그 14→15개 / L550 apartments 1500→2001
+    - `CLAUDE.md` 6건: L21 App.tsx (~430줄) / L23 memo 45 + 카테고리 9+9+10+7+9+5+1 / L24 api 23 / L25 Upstash Redis 단독 / L28 GitHub Actions 47 / L53 memo 45
+    - `README.md` 3건: L14 Upstash Redis / L43 App.tsx 430줄 / L44 memo 45
+    - `src/components/CLAUDE.md` 1건: L50 App.jsx (~442줄) → App.tsx (430줄, 2026-05-26 실측)
+    - `.claude/BACKLOG.md`: ✅ 색인 3건 추가 + 본문 3건 삭제 (#1 audit-env-keys / #2 dataUpdatedAt drift / #3 ARCHITECTURE.md L95/L126)
+  - 검증: 박제값 grep 후 0 hit + DB count 2001 + workflows 47 + App.tsx 430 + api 23 + memo 45 (src/components/CLAUDE.md L5 진실의 원천 일치)
+  - 답습:
+    - 세션 312 PR #14 양식 답습 (메모 정정 패턴)
+    - 자가 점검 1 룰 답습 — plan v1 환각 7건 발견 → v2 재설계 (진실의 원천 grep 의무 박힘)
+    - 룰 패턴 후보: **공식 문서 박제값 정정 시 진실의 원천 (src/components/CLAUDE.md L5 같은 명시값) 우선 grep 의무**
+
+- ✅ **audit-env-keys matrix orchestrator 답습 보강** (세션 304+308, 커밋 `96fbdcc`+`58f5983`)
+  - 사고: 세션 232 KOSIS_MIGRATION_KEY 3-way 사고 답습 자산 audit-env-keys.mjs 가 1대1 매칭만 답습 → `fill-missing-data.yml` 의 phase4-independent matrix 답습 0 → 세션 294 KOSIS_MIGRATION_KEY env block 누락 재발
+  - 원인: matrix orchestrator (sub-step 매트릭스) 답습 자리 미박제. audit `30/36 clean ✅` 통과 + 실 발화 시 exit 1
+  - fix:
+    - 세션 304 (`96fbdcc`): audit-env-keys.mjs 에 `MATRIX_ORCHESTRATORS` 상수 + `extractMatrixJobs()` 함수 추가. js-yaml@4.1.1 FAILSAFE_SCHEMA 답습 (정규식 fragile 회피, `\Z` JS 미지원 사고 답습)
+    - 세션 308 (`58f5983`, PR #11): fill-missing-data.yml Phase 3+4+5 일괄 폐기 (-108줄) + audit-fill-matrix.mjs CI 가드 신규 (collect-*.yml cron 박힘 + fill matrix script 교집합 차단)
+  - 검증: vitest 4 test pass (audit-env-keys.test.mjs + audit-fill-matrix.test.mjs). KOSIS_MIGRATION_KEY 제거 시뮬 → exit 1 정상. 5/31 cron 발화 시점에 phase2-calc 3 job 만 잔존
+  - 답습: `.claude/rules/workflows/secret-naming-audit.md` §"matrix orchestrator 답습" + `.claude/rules/workflows/timeout-rootcause-policy.md` §"세션 307 안티 패턴 11 일꾼 정정"
+
+- ✅ **dataUpdatedAt vs fetchedAt 필드 drift fix** (세션 280/281/292, 커밋 `89831d7`+`a4c6d8d`)
+  - 사고: 세션 279 발견. JSON 출력 (`collect-data.mjs` L1089) = `fetchedAt` ↔ 타입 + hook 기대 (`staticDataApi.ts` L16 / `useApartmentData.ts` L21) = `dataUpdatedAt` 필드명 drift → 런타임 `updAt = undefined` → `setDataUpdatedAt(null)` → UI dataFreshnessText 표시 안 됨 (AptListSection 헤더 "N개 단지 · X 업데이트" 자리 빈 박힘)
+  - 원인: JSON 직렬화 시점 (collect-data.mjs Phase 7) 의 키 명명과 hook 의 기대 키 명명 일치 0. PR #14 메모 정정과 별개 진앙
+  - fix (듀얼 방어):
+    - collect-data.mjs L1026-1029 (`89831d7`): 출력 시 `dataUpdatedAt: fetchedAt` 양쪽 키 동시 박제 (근본 원인 제거)
+    - staticDataApi.ts L46-47 (`a4c6d8d`): fallback `json.dataUpdatedAt ?? json.fetchedAt ?? null` (하위 호환성 보장, CDN 캐시·과거 JSON 호환)
+  - 검증: staticDataApi.test.js L124-143 4건 회귀 가드 (fetchedAt→dataUpdatedAt 매핑) + useDataPipeline.test.js L77-84 (dataFreshnessText 포맷). 최신 JSON (2026-05-24) 양쪽 키 박힘 확인
+  - 답습: 정정 패턴 = 근본 원인 + fallback 듀얼 방어 (단방향 정정 시 CDN 캐시 사고 위험)
+
 - ✅ **collect-migration.yml KOSIS_MIGRATION_KEY 3-way 동기화 fix** (세션 232 발견 → 세션 232 확장 turn fix 박힘, 세션 244 BACKLOG 강등)
   - 사고: 매월 15일 KST 07:00 schedule failure. run id 24481813793 (2026-04-15 UTC 22:32:48). 마지막 success run 23120598953 (2026-03-15)
   - 원인 (실측 3중): migration.mjs `KOSIS_MIGRATION_KEY` 만 + yml `MOIS_POP_KEY` 만 주입 + data-fill envKeys 도 동일 불일치

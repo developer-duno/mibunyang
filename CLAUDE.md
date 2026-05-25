@@ -18,14 +18,14 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 
 | 레이어 | 기술 | 핵심 모듈 |
 |--------|------|----------|
-| **프론트** | React 19 + Vite 8 (Rolldown) | App.jsx (~512줄), `@/` 경로 별칭, Pretendard 폰트 |
+| **프론트** | React 19 + Vite 8 (Rolldown) | App.tsx (~430줄), `@/` 경로 별칭, Pretendard 폰트 |
 | **상태/훅** | useMemo 13개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
-| **컴포넌트** | memo() 36개 + icons.jsx (SVG 9개) | 소비자10 + 섹션8 + 상세7 + 필터8 + 전문가9 + 관리자3 |
-| **API** | Vercel Serverless (21개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합) |
+| **컴포넌트** | memo() 45개 + icons.tsx (SVG 9개) | 소비자9 + 섹션9 + 상세10 + 필터7 + 전문가9 + 관리자5 + 아이콘1 |
+| **API** | Vercel Serverless (23개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합) |
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth + 전문가/관리자 role 기반 |
-| **캐싱** | Vercel KV (Upstash Redis) | 세션, 토큰 블랙리스트, Rate Limit |
-| **수집** | GitHub Actions (35개) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
+| **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |
+| **수집** | GitHub Actions (47개) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
 | **테스트** | Vitest + Playwright E2E (11 spec) | `npm run test` / `npm run test:e2e` |
 | **모니터링** | Vercel Analytics + Speed Insights | 페이지뷰/Web Vitals/커스텀 이벤트 |
 
@@ -50,7 +50,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | 디렉토리 CLAUDE.md | 핵심 내용 |
 |---|---|
 | `src/scoring/` | 가중치 합계 100, 클램핑, null 처리, 스코어링 파이프라인 |
-| `src/components/` | memo 36개, 접근성, **반응형 레이아웃**, **데스크톱 키보드/테마** |
+| `src/components/` | memo 45개, 접근성, **반응형 레이아웃**, **데스크톱 키보드/테마** |
 | `src/hooks/` | Hook 호출 순서, 의존성 13개, **React 성능 패턴** (useDeferredValue/useTransition) |
 | `api/` | JS null 함정, 한글 인코딩, withHandler, **인증/세션 KV**, **비로그인 블라인드 정책** |
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
