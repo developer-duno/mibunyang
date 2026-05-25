@@ -14,6 +14,7 @@
  */
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
+import { spawnSync } from "node:child_process";
 import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, ROOT } from "./_shared.mjs";
 
 loadEnv();
@@ -113,9 +114,13 @@ async function main() {
   // 1. 아파트 데이터 로드
   /** @type {EnvAptRow[]} */
   let apartments;
+  /** @type {Record<string, unknown> | null} */
+  let rawWrapper = null;
   if (jsonMode) {
     const jsonPath = resolve(ROOT, "public/data/apartments.json");
-    apartments = JSON.parse(readFileSync(jsonPath, "utf8"));
+    const raw = JSON.parse(readFileSync(jsonPath, "utf8"));
+    rawWrapper = raw;
+    apartments = Array.isArray(raw.data) ? raw.data : (Array.isArray(raw) ? raw : []);
     log("load", `apartments.json: ${apartments.length}건`);
   } else {
     const sb = getSupabase();
@@ -183,8 +188,14 @@ async function main() {
       apt.view = u.view;
     }
     const jsonPath = resolve(ROOT, "public/data/apartments.json");
-    writeFileSync(jsonPath, JSON.stringify([...aptMap.values()], null, 2), "utf8");
+    const updatedData = [...aptMap.values()];
+    writeFileSync(jsonPath, JSON.stringify({ ...rawWrapper, data: updatedData, count: updatedData.length }, null, 2), "utf8");
     log("json", `apartments.json 업데이트 완료 (${updates.length}건)`);
+
+    // split-apartments-json 자동 호출 — prebuild.mjs L11 답습 (process.execPath + 절대 경로)
+    const splitScript = resolve(ROOT, "split-apartments-json.mjs");
+    const splitResult = spawnSync(process.execPath, [splitScript], { stdio: "inherit", env: process.env });
+    if (splitResult.status !== 0) logError("split", "split-apartments-json 실패 — apartments-list.json 수동 갱신 필요");
   } else {
     const sb = getSupabase();
     let ok = 0;
