@@ -73,6 +73,7 @@
 - ✅ dataUpdatedAt vs fetchedAt drift fix (세션 280/281/292, 커밋 `89831d7`+`a4c6d8d`; collect-data.mjs L1026 양쪽 키 동시 박제 + staticDataApi.ts L46-47 fallback 듀얼 방어; staticDataApi.test.js 회귀 가드 4건)
 - ✅ ARCHITECTURE.md/CLAUDE.md/README.md 박제값 일괄 정정 (세션 313; apartments 1500→2001 / App.jsx→App.tsx 다중 / memo 36→45 / api 21→23 / workflows 35→47 / Vercel KV→Upstash Redis / collect-data 1065→1193줄 / src/lib/*Api 5건 stale 정정)
 - ✅ 4 collector --json wrapper fix + split 자동 호출 (세션 314; environment/industry-match/transit-match/noxious 4 collector readFileSync wrapper 파싱 + writeFileSync `{...rawWrapper, data, count}` 보존 + spawnSync split-apartments-json 자동 호출. 진앙 = `apartments.json` nested `{ok, data, fetchedAt, dataUpdatedAt}` 구조를 flat array 로 단정한 4 collector 작성 시점 사고 → `.length` undefined + wrapper 손실 + split 0건 사고. 신규 테스트 2파일 7건 (environment.test.mjs 3 + split-apartments-json.test.mjs 4). 운영 cron 미사용 = 로컬 사고만 차단. 답습 자산 = `prebuild.mjs` L2/L11 spawnSync 패턴)
+- ✅ KOSIS #14 범죄율 시도 collector 가설 환각 정정 (세션 315 docs only; regions.crime_grade 758행 중 701행 (92%) 이미 채워짐 = 시도 76 + 시군구 625. CSV 기반 `collect-crime-safety.mjs` 가 시도+시군구 모두 매칭. KOSIS DT_13501N_A120 신규 collector = 불필요. NULL 57행 진짜 잔여 = CSV 갱신 (연1회 수동) 또는 행정구역 개편 분구 18행 보강 별 자리. 자가 점검 1 + 서브에이전트 #3 보고로 박힘 정정)
 
 ---
 
@@ -263,7 +264,6 @@ KOSIS 통계표 검색 API(`statisticsSearch.do`)로 재선정 + raw sample 차�
 
 | # | 후보 | 통계표 추정 | 활용 위치 |
 |---|---|---|---|
-| 14 | 인구 천명당 범죄발생건수 (시도) | `DT_13501N_A120` (orgId=135 경찰청) | regions.crime_rate (collect-crime-safety 교차검증) |
 | 15 | 자가보유율 (시군구) | 인구주택총조사 內 (orgId=101) | regions.home_ownership |
 | 16 | 산업구조 (제조/서비스 비중) | `DT_1IO1004` 후보 (orgId=101) | regions.industry_mix |
 | 17 | 가구소득 5분위 격차 | 가계금융복지조사 內 (orgId=101) | regions.income_inequality |
@@ -277,6 +277,7 @@ KOSIS 통계표 검색 API(`statisticsSearch.do`)로 재선정 + raw sample 차�
 - 시군구별 미분양 (`DT_MLTM_2082`) — `collect-unsold-kosis.mjs` 이미 수집
 - 시군구별 이동자수 (`DT_1B26001_A01`) — `migration.mjs` 이미 수집
 - 시도별 1인당 개인소득 (`INH_1C96_04`) — `collect-avg-income.mjs` 이미 수집
+- 시도별 범죄안전등급 (구 #14 후보) — `data/crime-safety-index.csv` + 세션243 W6-E `collect-crime-safety.mjs` 가 이미 시도+시군구 매칭. regions.crime_grade 758행 중 701행 (92%) 채움 (시도 76 + 시군구 625). KOSIS DT_13501N_A120 신규 collector = 불필요. NULL 57행 진짜 잔여 = CSV 갱신 (연1회 수동) 또는 행정구역 개편 분구 18행 보강 (별 자리) (세션 315 자가 점검 1 발동 결과)
 - 청약 경쟁률 — `collect-applyhome.mjs` presale 무순위로 충분
 - 교통사고율 / 자연재해율 / 학생당 교사수 — ROI 낮음 또는 NEIS 로 산출 가능
 
