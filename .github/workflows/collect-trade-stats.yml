@@ -21,9 +21,9 @@ jobs:
     timeout-minutes: 30 # 세션 309: 15 → 30. DSR batch fix 후 자연 증가 2배까지 안전망 (이전 14분 56초 boundary 사고 답습).
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'npm'
