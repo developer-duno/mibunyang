@@ -329,7 +329,7 @@ monitor-collectors.yml 의 `workflow_run` trigger 가 "Daily Data Refresh" 도 �
 |---|---|---|
 | `apartments_flat` VIEW 의 컬럼 매핑이 collect-data 출력 schema 와 불일치 (snake_case vs camelCase) | refresh-data job 빨강 또는 UI break | Phase 3 구현 시 매핑 함수 박제 + collect-data.test.mjs 로 출력 schema 회귀 가드 |
 | Supabase REST API 일시 불능 (장애) | 그날 prod stale (어제 데이터 유지) | Hard fail 정책 → 텔레그램 알림 → 사용자 대응 또는 다음 날 cron 자동 복구 |
-| 회귀 가드 false positive (정상 변동인데 -200 이상 감소) | 사용자 점검 노이즈 | 임계값 -200 은 보수적 (1565 × 12.8%). 1개월 운영 후 false positive 발생 시 조정 |
+| 회귀 가드 false positive (정상 변동인데 12% 이상 감소) | 사용자 점검 노이즈 | **세션 311 정정**: 1565 박힘값 → 동적 12% (1424 × 12% = 171, 최소 150). apartments_flat = apartments 2001 - dedup 577 = 1424 (`20260502100000_view_add_applyhome_events.sql` `WHERE _dedup_rank = 1`). 1개월 운영 후 false positive 발생 시 0.10 또는 0.08 조정 |
 | Vercel 이 git push 마다 deploy 하지만 build 실패 | prod 미반영 | Vercel 자체 알림 (이미 운영) + 텔레그램 알림 별도 (Daily Data Refresh 자체는 success) |
 | `apartments_flat` VIEW 스키마 변경 시 collect-data 출력 손상 | UI break | UI 가 사용하는 필드 (`dataUpdatedAt` 등) 만 schema 안정성 보장. supabase/CLAUDE.md "공용 테이블 ALTER 전 grep" 룰 답습 |
 | 사용자 로컬 수동 ETL (full Phase 1~9) 흐름이 깨질 위험 | 사용자 작업 마찰 | `--from-supabase-only` 는 신규 모드 분기. 기존 main 함수는 그대로 유지. 로컬 사용자 명령 변경 0건 |

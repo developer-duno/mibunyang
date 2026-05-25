@@ -605,4 +605,47 @@ describe("supabaseOnlyMode", () => {
     // fs.writeFileSync 는 exit 이전에 도달하지 않음 — 방어적 확인
     expect(writeFileSpy).not.toHaveBeenCalled();
   });
+
+  it("동적 임계값: 12% 초과 감소 시 회귀 가드 발동 (세션 311)", async () => {
+    process.env.SUPABASE_URL = "https://test.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "test-anon";
+
+    // 시나리오: 이전 1424 → 신규 1224 (diff -200, 임계값 max(150, ceil(1224*0.12))=150 초과)
+    const mockRows = Array.from({ length: 1224 }, (_, i) => ({ id: `ah-${i}` }));
+    const rangeMock = vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }).mockResolvedValue({ data: [], error: null });
+    const fromMock = vi.fn(() => ({ select: () => ({ range: rangeMock }) }));
+    mockCreateClient.mockReturnValue({ from: fromMock });
+
+    // 실측 public/data/apartments.json (count=1424, git tracked) 가 existsSync=true 박힘 →
+    // JSON.parse(real fs readFileSync) 박힘 → prevCount=1424, diff=-200 → 임계값 -150 초과 → exit(1)
+    // process.exit 가 throw 박힘이라 catch 블록 박힘 → call.length 직접 검증 (rejects.toThrow 불가)
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("exit called");
+    });
+
+    await supabaseOnlyMode();
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    // writeOutputs 도달 0 (catch 후 후속 흐름 진행 박힘이지만 mockRows 만 박힘 검증)
+  });
+
+  it("동적 임계값: 12% 이내 감소 시 통과 (세션 311)", async () => {
+    process.env.SUPABASE_URL = "https://test.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "test-anon";
+
+    // 시나리오: 이전 1424 → 신규 1340 (-84, 5.9% < 12% → 통과)
+    const mockRows = Array.from({ length: 1340 }, (_, i) => ({
+      id: `ah-${i}`,
+      priceByArea: null,
+      rentByArea: null,
+      jeonseByArea: null,
+      priceByFloor: null,
+    }));
+    const rangeMock = vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }).mockResolvedValue({ data: [], error: null });
+    const fromMock = vi.fn(() => ({ select: () => ({ range: rangeMock }) }));
+    mockCreateClient.mockReturnValue({ from: fromMock });
+
+    // 4 JSON write 박힘 (회귀 가드 통과 → writeOutputs 도달)
+    await supabaseOnlyMode();
+    expect(writeFileSpy).toHaveBeenCalledTimes(4);
+  });
 });

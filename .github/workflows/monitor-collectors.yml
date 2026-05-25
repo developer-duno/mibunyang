@@ -49,6 +49,8 @@ on:
       - "Fill Missing Data"
       - "Exclusive Ratio Calculation"
       - "Layout Estimation"
+      # ── 일일 데이터 갱신 (compute-scores + refresh-data, 세션 311 v4 추가) ──
+      - "Daily Data Refresh"
     types: [completed]
   schedule:
     - cron: '0 0 * * *' # 매일 UTC 00:00 = KST 09:00 — daily 전체 스윕

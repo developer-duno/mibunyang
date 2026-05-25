@@ -1068,18 +1068,20 @@ export async function supabaseOnlyMode() {
     process.exit(1);
   }
 
-  // 전일 대비 -200 이상 감소 검출 (기존 apartments.json 박힘 시)
+  // 전일 대비 동적 임계값 감소 검출 (세션 311: 1565 박힘값 → 동적 12% 박힘)
   const cachedPath = resolve(ROOT, "public/data/apartments.json");
   if (existsSync(cachedPath)) {
     try {
       const prev = JSON.parse(readFileSync(cachedPath, "utf8"));
       const prevCount = prev.count ?? 0;
       const diff = apartments.length - prevCount;
-      if (diff <= -200) {
-        logError("supabase-only", `count 전일 대비 ${diff} 감소 (이전 ${prevCount} → 신규 ${apartments.length}) — 회귀 가드 발동`);
+      // 동적 임계값: 현재 row 수의 12% (1424 × 12% = 170, 1565 × 12% = 187). 최소 150 박힘
+      const threshold = Math.max(150, Math.ceil(apartments.length * 0.12));
+      if (diff <= -threshold) {
+        logError("supabase-only", `count 전일 대비 ${diff} 감소 (이전 ${prevCount} → 신규 ${apartments.length}, 임계값 -${threshold}) — 회귀 가드 발동`);
         process.exit(1);
       }
-      log(`  전일 대비 count 변동: ${diff >= 0 ? "+" : ""}${diff} (${prevCount} → ${apartments.length})`);
+      log(`  전일 대비 count 변동: ${diff >= 0 ? "+" : ""}${diff} (${prevCount} → ${apartments.length}, 임계값 -${threshold})`);
     } catch (err) {
       log(`  cached apartments.json 파싱 실패 (회귀 가드 비교 스킵): ${err instanceof Error ? err.message : String(err)}`);
     }
