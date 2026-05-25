@@ -72,6 +72,7 @@
 - ✅ audit-env-keys matrix orchestrator 답습 보강 (세션 304+308, 커밋 `96fbdcc`+`58f5983`; MATRIX_ORCHESTRATORS 상수 + extractMatrixJobs() + js-yaml FAILSAFE_SCHEMA; vitest 4 test; fill-missing-data.yml Phase 3+4+5 폐기로 phase2-calc 3 job 만 잔존)
 - ✅ dataUpdatedAt vs fetchedAt drift fix (세션 280/281/292, 커밋 `89831d7`+`a4c6d8d`; collect-data.mjs L1026 양쪽 키 동시 박제 + staticDataApi.ts L46-47 fallback 듀얼 방어; staticDataApi.test.js 회귀 가드 4건)
 - ✅ ARCHITECTURE.md/CLAUDE.md/README.md 박제값 일괄 정정 (세션 313; apartments 1500→2001 / App.jsx→App.tsx 다중 / memo 36→45 / api 21→23 / workflows 35→47 / Vercel KV→Upstash Redis / collect-data 1065→1193줄 / src/lib/*Api 5건 stale 정정)
+- ✅ 4 collector --json wrapper fix + split 자동 호출 (세션 314; environment/industry-match/transit-match/noxious 4 collector readFileSync wrapper 파싱 + writeFileSync `{...rawWrapper, data, count}` 보존 + spawnSync split-apartments-json 자동 호출. 진앙 = `apartments.json` nested `{ok, data, fetchedAt, dataUpdatedAt}` 구조를 flat array 로 단정한 4 collector 작성 시점 사고 → `.length` undefined + wrapper 손실 + split 0건 사고. 신규 테스트 2파일 7건 (environment.test.mjs 3 + split-apartments-json.test.mjs 4). 운영 cron 미사용 = 로컬 사고만 차단. 답습 자산 = `prebuild.mjs` L2/L11 spawnSync 패턴)
 
 ---
 
@@ -212,12 +213,6 @@
 - 🟢 **W6-D 옵션 ε 후속 — regions.childcare → 스코어링 통합** (UI/scoring)
   - 별 세션 분할 권장. 가중치 의사결정 (PSR sub-score 입력 영향, 사용자 결정 필요)
   - regions JSONB → calcCats.ts 신규 scoreChildcare.ts 통합
-
-- 🟢 **4 collector `--json` 모드 시 list/prices stale** (세션 279 발견)
-  - environment / industry-match / noxious / transit-match 가 `--json` 호출 시 apartments.json 만 갱신 → list/prices 동기화 0
-  - 운영 cron 미사용 (`.github/workflows/collect-{environment,industry,noxious}.yml` `$ARGS` 빈값 = Supabase 모드)
-  - 로컬 `--json` 호출 시만 사고 → 우선순위 낮음
-  - 정정안: 4 collector `--json` 후 `scripts/split-apartments-json.mjs` 자동 호출 또는 폐기
 
 - ✅ **transport-tago 단위 시간 2.1배 느림 root cause 분석** (세션 295 종결)
   - 진앙 자리 확정: 커밋 `01d0dd4` (2026-05-22 07:42) `limit(10000) → range 페이지네이션` 자리 — transport-tago L194 fetch 자리 1000 → 2001 단지 전체 답습
