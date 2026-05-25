@@ -118,3 +118,13 @@ cron 시각 충돌 (같은 일자 + 같은 시각대 내 ±2h 이내) 박힘 시
 | cancelled 4건 보고 "큐 막힘" 가설 단정 | §1 raw log 답습 의무 + §3 cron 충돌 답습 → 가설 폐기 |
 | concurrency 그룹 분리 plan v1 작성 | §3 cron 시각 grep 의무 → 14시간 간격 발견 → plan 폐기 |
 | timeout 60→120 박제 (4-way 답습 0회) | `collector-timeout-rootcause-analysis.md` §1~§4 의무 → 직전 success 비교 (1.7배 자연 증가) 답습 → 정정 정당 |
+
+## 세션 307 안티 패턴 11 일꾼 정정 (NEXT_SESSION 박제 6건 vs 실측 11건)
+
+세션 306 NEXT_SESSION 박힘 "위반 6건" 박제값 답습 plan 진입 시 grep 의무 발동 = 환각 5건 추가 발견 (transport-tago / infra-kakao / noise-estimate / molit-building-info / trade-stats). 본 5건 fill matrix 안 박힘 + collect-*.yml 자체 cron 박힘 → sub-step cancelled 사고 원인 동일.
+
+**재발 방지**: `scripts/audit-fill-matrix.mjs` (CI 가드, 세션 308 PR #11) = collect-*.yml cron 박힘 추출 + fill matrix script 교집합 박힘 시 exit 1. 신규 collector 등록 시 fill matrix 동시 등록 차단.
+
+**trade-stats 별도 진단 의무**: PR #11 머지 = trade-stats 폐기 직접 유발 = `trade_stats` 갱신 흐름 0건. `collect-trade-stats.yml` 자체 cron 3회 연속 cancelled (5/24/17/10) 진단 plan 즉시 진입 (P0 BACKLOG, 세션 309).
+
+**답습 자산**: 세션 308 PR #11 = Phase 3+4+5 일괄 폐기 (-108줄) + audit-fill-matrix.mjs 신규 (CI 가드) + 5/31 dry-run 실증 1회 의무.

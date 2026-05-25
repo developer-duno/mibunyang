@@ -45,6 +45,9 @@ jobs:
       - name: 수집기 매칭 패턴 audit
         run: node scripts/audit-collector-patterns.mjs
 
+      - name: fill matrix 외부 cron 교집합 audit
+        run: node scripts/audit-fill-matrix.mjs
+
       - name: Test
         env:
           VITE_FEATURE_UPCOMING: "true"
