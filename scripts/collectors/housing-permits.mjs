@@ -13,7 +13,7 @@
  *   SUPABASE_URL        — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, today, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, REGION_MAP, today, recordApiQuota, recordCollectorRun, setupGracefulShutdown } from "./_shared.mjs";
 
 loadEnv();
 
@@ -87,6 +87,7 @@ export function resolveRegion(fullName) {
 // ── 메인 ─────────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  const isInterrupted = setupGracefulShutdown("housing-permits");  // 세션 321: graceful shutdown
 
   const now = new Date();
   const curYear = now.getFullYear();
@@ -101,6 +102,7 @@ async function main() {
   let apiCalls = 0;
 
   for (const [region, sidoCd] of Object.entries(SIDO_CODES)) {
+    if (isInterrupted()) break;  // 세션 321: graceful shutdown
     try {
       // 시도 단위로 조회 (sigunguCd에 시도코드만 넣으면 시도 전체)
       const items = await fetchPermits(sidoCd, prevYear);
