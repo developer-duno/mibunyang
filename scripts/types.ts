@@ -70,18 +70,21 @@ export interface ScoreRow {
 }
 
 /**
- * createReporter() 반환 객체 시그니처 (_shared.mjs L463-478).
+ * createReporter() 반환 객체 시그니처 (_shared.mjs L616-).
+ * 세션 321: interrupted() 추가 — graceful shutdown 지원.
  */
 export interface Reporter {
   success(n?: number): void;
   fail(n?: number): void;
   skip(n?: number): void;
+  interrupted(): boolean;
   summary(): {
     elapsed: string;
     ok: number;
     fail: number;
     skip: number;
     total: number;
+    status?: string;
   };
 }
 

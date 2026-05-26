@@ -613,23 +613,61 @@ export async function recordCollectorRun(collector, result, sbOverride = null) {
   }
 }
 
+// ── Graceful shutdown ──────────────────────────────────────
+/**
+ * 세션 321: GitHub Actions timeout (SIGTERM) 받으면 멈춤 신호 박힘.
+ * createReporter 미사용 collector 자리에서 1회 호출:
+ *   const isInterrupted = setupGracefulShutdown(PHASE);
+ *   for (...) {
+ *     if (isInterrupted()) break;
+ *     ...
+ *   }
+ *
+ * @param {string} phase
+ * @returns {() => boolean} interrupted 상태 조회 함수
+ */
+export function setupGracefulShutdown(phase) {
+  let interrupted = false;
+  process.once("SIGTERM", () => {
+    interrupted = true;
+    log(phase, "SIGTERM 받음 — graceful 중단 (다음 루프 반복부터)");
+  });
+  return () => interrupted;
+}
+
 // ── 수집 리포터 ─────────────────────────────────────────────
 /**
+ * Graceful shutdown 지원 (세션 321):
+ * - SIGTERM 받으면 interrupted=true. GitHub Actions timeout 시점에 5초 유예 받음.
+ * - 수집기 main() loop 에서 `if (rpt.interrupted()) break;` 1줄로 graceful 중단.
+ * - summary() = status 자동 판정 (interrupted 시 "partial").
+ *
  * @param {string} phase
- * @returns {import("../types.ts").Reporter}
+ * @returns {import("../types.ts").Reporter & { interrupted: () => boolean }}
  */
 export function createReporter(phase) {
   const startTime = Date.now();
   let ok = 0, fail = 0, skip = 0;
+  let interrupted = false;
+
+  const sigHandler = () => {
+    interrupted = true;
+    log(phase, "SIGTERM 받음 — graceful 중단 (다음 루프 반복부터)");
+  };
+  process.once("SIGTERM", sigHandler);
+
   return {
     success(n = 1) { ok += n; },
     fail(n = 1) { fail += n; },
     skip(n = 1) { skip += n; },
+    interrupted: () => interrupted,
     summary() {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       const total = ok + fail + skip;
-      log(phase, `[완료] ${elapsed}초 | 성공 ${ok} | 실패 ${fail} | 스킵 ${skip} | 총 ${total}건`);
-      return { elapsed, ok, fail, skip, total };
+      const status = interrupted ? "partial" : ((fail > 0) ? "failure" : "success");
+      log(phase, `[완료] ${elapsed}초 | 성공 ${ok} | 실패 ${fail} | 스킵 ${skip} | 총 ${total}건${interrupted ? " (graceful 중단)" : ""}`);
+      process.removeListener("SIGTERM", sigHandler);
+      return { elapsed, ok, fail, skip, total, status };
     },
   };
 }

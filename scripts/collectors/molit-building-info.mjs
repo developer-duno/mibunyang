@@ -15,7 +15,7 @@
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -154,6 +154,7 @@ async function main() {
   const force = process.argv.includes("--force");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
+  const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 321: graceful shutdown
   const sb = getSupabase();
 
   // 1. 대상 아파트 조회 (건물 상세 미수집, selectAll: 1000행 제한 자동 페이지네이션)
@@ -183,6 +184,7 @@ async function main() {
 
   // 3. 지역별 API 호출 → 매칭 → 상세 조회
   for (const [region, regionTargets] of Object.entries(regionGroups)) {
+    if (isInterrupted()) break;  // 세션 321: graceful shutdown (외부 region loop)
     const sidoCode = SIDO_CODE[region];
     if (!sidoCode) { log(PHASE, `  ${region}: 시도코드 매핑 없음, 건너뜀`); skipped += regionTargets.length; continue; }
 
@@ -209,6 +211,7 @@ async function main() {
     log(PHASE, `  API 목록: ${aptList.length}건`);
 
     for (const target of regionTargets) {
+      if (isInterrupted()) break;  // 세션 321: graceful shutdown
       const match = findBestMatch(target.name, target.gu, aptList, {
         guField: "address", guBonus: 0.15, attachScore: false,
       });

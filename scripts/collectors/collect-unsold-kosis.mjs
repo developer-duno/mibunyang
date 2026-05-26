@@ -10,7 +10,7 @@
  *   node scripts/collectors/collect-unsold-kosis.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-unsold-kosis.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown } from "./_shared.mjs";
 
 /** @typedef {{ C1_NM: string; C2_NM: string; PRD_DE: string; DT: string }} KosisRow */
 /** @typedef {Record<string, Record<string, Record<string, number>>>} UnsoldByRegionGuMonth */
@@ -124,6 +124,7 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
   if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
+  const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 321: graceful shutdown
   const sb = getSupabase();
 
   // 월간 데이터 조회 (DT_MLTM_2082 시군구별 미분양, 1~2개월 지연)
@@ -189,6 +190,7 @@ async function main() {
     logError(PHASE, `regions 조회 실패: ${rErr.message}`);
   } else {
     for (const reg of /** @type {Array<{ id: string; region: string; gu: string | null; regional_unsold: number | null }>} */ (regions)) {
+      if (isInterrupted()) break;  // 세션 321: graceful shutdown
       const guMap = unsoldByRegionGu[reg.region];
       if (!guMap) continue;
 

@@ -76,6 +76,7 @@ async function main() {
   const rpt = createReporter(PHASE);
 
   for (let i = 0; i < targets.length; i++) {
+    if (rpt.interrupted()) break;  // 세션 321: graceful shutdown
     const apt = targets[i];
     try {
       const { count, dist } = await searchPolice(apt.lat, apt.lng);
