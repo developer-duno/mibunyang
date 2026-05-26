@@ -6,6 +6,14 @@ dist/
 !.claude/BACKLOG.md
 !.claude/BACKLOG_ARCHIVE.md
 !.claude/SKILLS.md
+!.claude/EASY_WORDS.md
+!.claude/ENV_VARS.md
+!.claude/WORK_RULES.md
+!.claude/META_RULES.md
+!.claude/LOCAL_RESOURCES.md
+!.claude/DB_QUALITY.md
+!.claude/API_REGISTRY.md
+!.claude/CLAUDE_TOOLBOX.md
 !.claude/commands/
 !.claude/commands/**
 !.claude/agents/
