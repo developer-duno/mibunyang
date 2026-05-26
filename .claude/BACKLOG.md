@@ -180,6 +180,23 @@
   - 정정 B: `collect-childcare.yml` Step 2 `if: always()` 추가
   - 검증: 6/1 schedule run conclusion=success + Step 2 시군구 집계 실행 박제 (다음 세션)
 
+- 🟡 **regions.supply_ratio 0% — MOLIT API 사고 진앙 v3** (세션 323 → v3 정정)
+  - v1 환각: "60분 timeout 부족 / 큐 충돌" — 폐기
+  - v2 환각: "사용자 직접 cancel" — 부분 정답 (5/10 + 5/26 cancelled 자리), 단 진짜 0% 진앙 별
+  - **v3 진앙 (실측 확정)**: 세션 323 workflow_dispatch 재발화 (run 26467919257, 5분 success) 결과 17 시도 100% fetchWithRetry 사고. raw MOLIT API 직접 호출 결과 = **HTTP 500 "Unexpected errors"** (data.go.kr 서버 사고)
+  - endpoint: `https://apis.data.go.kr/1613000/ArchPmsService_v2/getApHsptPrmsnLst`
+  - 본인 정정 불가 자리 = data.go.kr 외부 서버 사고. 4/10 success 직전 자리 후 5월 들어 100% 사고
+  - 정정 자리 = (1) MOLIT API 정상화 자연 대기 (2) `gh workflow run "Housing Permits Data Collection"` 재발화 24h 간격 답습 (3) MOLIT 콘솔 자리 답습 (서비스 폐기 / endpoint 변경 가능성)
+  - 6/10 schedule run 자연 답습 = MOLIT API 정상화 여부 자동 답습
+
+- 🟡 **regions.jeonse_rate 0% — 채우는 collector 0건 (orphan 컬럼 가능성)** (세션 323 발견)
+  - 실측: `grep -rn "regions.*jeonse_rate" scripts/collectors/` = 0건
+  - regions 30 컬럼 중 채우는 collector 미존재 자리
+  - 자매 컬럼 박힘: `trade_stats.jeonse_rate` (1949 박힘, `trade-stats.mjs:499`) → 단지별 자리, regions 자리 별
+  - 옵션 A: 컬럼 drop (orphan 확정 시) — `supabase/CLAUDE.md` Dashboard SQL Editor 수동 실행
+  - 옵션 B: trade_stats 시도별 평균 집계 → regions.jeonse_rate 채우는 collector 신규 (1~2세션)
+  - 진단 plan = 별 세션
+
 - 🟡 **6/5 collect-market-stats schedule run 검증** (세션 282 plan v6 가설 검증)
   - lookback 24개월 적용 후 (커밋 `b312d62`) 첫 schedule run = 6/5
   - 검증 자리: workflow run log 의 `분양가격지수: N건 응답, 17개 시도 매핑` + `[분양가격지수] DT_41401N_006 (M) 202406~202606 lookback=24개월` 출력 + conclusion=success

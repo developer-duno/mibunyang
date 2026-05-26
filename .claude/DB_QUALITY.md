@@ -27,7 +27,7 @@
 | `transport` | 8,681 / 14,007 (62%) | 7 컬럼. tago 일부 NULL |
 | `schools` | 5,980 / 6,003 (99.6%) | 3 컬럼 NEIS |
 | `builders` | 342 / 6,003 (5.7%) | **DART 매칭률 낮음** — 시공사명 매칭 한계 |
-| `regions` | 4,231 / 16,008 (26.4%) | 9 컬럼 (세션 322 households 신규 229/758 30% 박힘). avg_income / supply_ratio 등 부분 NULL. 매월 cron 누적 시 households 90%+ 도달 예상 |
+| `regions` | 4,231 / 16,008 (26.4%) | 9 컬럼 (세션 322 households 30% / 세션 323 economy 4 컬럼 grdp_per_capita+education_cost+education_participation+unemployment_rate 0→79/758 박힘 + housing-supply-ratio re-confirm 79/758). avg_income / supply_ratio / jeonse_rate / avg_price 잔여 NULL. 매월 cron 누적 시 households 90%+ 도달 예상 |
 | `trade_stats` | 23,101 / 26,013 (88.8%) | 13 컬럼 trade-stats |
 | `naver` | 11,511 / 20,010 (57.5%) | 10 컬럼 로컬 전용 수집 |
 | `environment` | 8,498 / 10,005 (84.9%) | 5 컬럼 |
