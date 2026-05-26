@@ -43,7 +43,7 @@ export const COLLECTORS = [
   { category: "regions",   phase: 1, scripts: ["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-fertility-rate.mjs", "collect-housing-price.mjs", "childcare-info.mjs", "childcare-detail.mjs", "collect-avg-income.mjs", "collect-medical-access.mjs", "collect-sale-price-index.mjs", "collect-jeonse-price-index.mjs", "collect-regional-economy.mjs"], args: [], envKeys: ["MOIS_POP_KEY", "MOIS_SEX_AGE_KEY", "KOSIS_MIGRATION_KEY", "MOLIT_KEY", "KOSIS_KEY", "CHILDCARE_API_KEY", "CHILDCARE_BASIC_API_KEY"] },
   { category: "maintenance", phase: 1, scripts: ["collect-maintenance.mjs"], args: [],          envKeys: ["MOLIT_KEY"] },
   // Phase 2: 파생 데이터 (Phase 1 완료 후)
-  { category: "trade_stats", phase: 2, scripts: ["trade-stats.mjs"],       args: [],          envKeys: [] },
+  { category: "trade_stats", phase: 2, scripts: ["trade-stats.mjs", "trade-stats-regions.mjs"], args: [], envKeys: [] },
   // Phase 3: Kakao 의존 (순차)
   { category: "infra",      phase: 3, scripts: ["infra-kakao.mjs"],        args: [],          envKeys: ["KAKAO_KEY"] },
   { category: "schools",    phase: 3, scripts: ["schools-neis.mjs", "collect-nearby-childcare.mjs"], args: [], envKeys: ["KAKAO_KEY", "NEIS_KEY", "SCHOOLINFO_KEY"] },
