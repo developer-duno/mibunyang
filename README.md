@@ -24,8 +24,28 @@
 
 ## 시작하기
 
+### 5분 셋업 (신규 머신)
+
 ```bash
+# 1. 저장소 복제
+git clone https://github.com/developer-duno/mibunyang.git
+cd mibunyang
+
+# 2. 의존성 설치
 npm install
+
+# 3. 환경변수 설정 (필수)
+cp .env.example .env.local
+# .env.local 에디터로 열어 SUPABASE_*, KAKAO_*, MOLIT_KEY 채움
+# 키 발급처: .claude/API_REGISTRY.md
+
+# 4. 개발 서버 시작
+npm run dev   # http://localhost:5173
+```
+
+### 자주 쓰는 명령어
+
+```bash
 npm run dev               # localhost:5173 개발 서버
 npm run build             # 정적 빌드 (⚠️ 아래 경고 참고)
 npm run preview           # 빌드 결과 로컬 미리보기
@@ -40,7 +60,13 @@ npm run migrate:dry       # Supabase 마이그 dry-run
 
 > **⚠️ 로컬 `npm run build` 주의**: prebuild 훅 ([scripts/prebuild.mjs](scripts/prebuild.mjs)) 가 `process.env.VERCEL` 미설정 시 `collect-data.mjs` 를 실행합니다. 첫 로컬 빌드는 외부 API 호출로 **5~30분 소요 + apartments.json 덮어쓰기 발생**. Vercel 환경 (`VERCEL=1`) 에서는 split 만 실행. 로컬 빌드 검증만 원하면 `npx vite build` 직접 호출 권장.
 
-환경변수는 [.env.example](.env.example) 참고. Supabase / Kakao OAuth / data.go.kr 등 키 필요.
+### 환경변수 안내
+
+- 예시: [.env.example](.env.example) (필수/선택 구분 + 발급처 주석)
+- 변수별 용도 카탈로그: [.claude/ENV_VARS.md](.claude/ENV_VARS.md)
+- 외부 API 키 발급처 상세: [.claude/API_REGISTRY.md](.claude/API_REGISTRY.md)
+
+**최소 셋업**: SUPABASE_* + KAKAO_* + MOLIT_KEY 만 채워도 앱 실행 가능. 나머지는 미등록 시 해당 기능만 폴백 (예: NEIS_KEY 미등록 → 학교 정보 거리 기반만).
 
 ## 구조
 
@@ -80,7 +106,7 @@ GitHub Actions 가 일/주/월 스케줄로 외부 API (data.go.kr / 청약홈 /
 
 본 저장소는 Claude Code 기반 개발. 진행 상황·작업 규칙·세션 일지는 [.claude/](.claude/) 디렉토리에 누적:
 
-- [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) — 누적 세션 일지 (288+)
+- [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) — 누적 세션 일지 (316+)
 - [.claude/BACKLOG.md](.claude/BACKLOG.md) — 우선순위 백로그
 - [.claude/WORK_RULES.md](.claude/WORK_RULES.md) — Plan → Guard → Work → Review 규칙
 - [.claude/rules/](.claude/rules/) — 사고 박제 카탈로그 (TypeScript / Secret naming / KOSIS 차원 등)
