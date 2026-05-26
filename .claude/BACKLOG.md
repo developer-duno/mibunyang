@@ -79,7 +79,18 @@
 
 ## 🔴 즉시
 
-(세션 309 trade-stats DSR batch fix 완결 — P0 자리 0건 박힘)
+- 🔴 **collector_runs 모니터링 사각지대 — 6개 collector silent fail** (세션 319 진단 완료, 정정 다음 세션)
+  - 증상: `recordCollectorRun` 호출이 코드에 박혀 있는데 `collector_runs` 테이블에 row 0건. 5/15 collect-childcare raw log 마지막 줄 = `[childcare] [완료] 698.3초 | 성공 1000` 직후 `[runs] childcare: success 기록 ...` 출력 부재. catch 메시지도 부재 = silent fail
+  - 영향 6 collector (모두 schedule success 이력 있음): collect-childcare (childcare) / collect-emergency (emergency) / collect-police (police) / collect-unsold-kosis (kosis-unsold) / collect-housing-permits (housing-permits) / molit-building-info (molit-building)
+  - 정상 5 collector (cron 미발화 또는 워크플로 부재): collect-crime-safety (yml 부재) / collect-avg-income / collect-housing-supply-ratio / collect-regional-economy / naver-presale (로컬 단일)
+  - 진앙 가설 (`_shared.mjs` L580-608 답습):
+    - 가설 A: `sb.from("collector_runs").insert(...)` RLS 정책 위반 무음 (그러나 L601 logError 박혀 있으므로 raw log 에 메시지 출력돼야 함)
+    - 가설 B: catch L606 `logError` stdout flush 전에 함수 종료 (`process.exit` 가설)
+    - 가설 C: `_supabase` cached 변수 만료 자리 (1000번 upsert 후 connection 사고)
+  - 모니터링 영향: `monitor-collectors.mjs` ②번 (데이터 0건) ③번 (미발화 35일+) 점검 두 자리 모두 collector_runs 의존 → 6 collector 모니터링 사각지대 완전. 다음 cron fail 시 텔레그램 알림 0건 자리
+  - 다음 세션 진입 시: collect-childcare workflow_dispatch 1회 + raw log 전체 답습 + `recordCollectorRun` console.error 추가 디버그 1회 + 가설 A~C 1건 확정 후 정정
+
+(세션 309 trade-stats DSR batch fix 완결 — 본 P0 박힘 자리에서 신규 사고 발견)
 
 - 🟡 **Supabase RLS — naver-estate-web 전용 11개 테이블 잔여** (세션 274 — mibunyang+공유 해결 완료)
   - 세션 274 실측 정정: 세션 273 "19개" 박제값은 부정확. `supabase db advisors --type
