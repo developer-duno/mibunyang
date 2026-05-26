@@ -74,23 +74,13 @@
 - ✅ ARCHITECTURE.md/CLAUDE.md/README.md 박제값 일괄 정정 (세션 313; apartments 1500→2001 / App.jsx→App.tsx 다중 / memo 36→45 / api 21→23 / workflows 35→47 / Vercel KV→Upstash Redis / collect-data 1065→1193줄 / src/lib/*Api 5건 stale 정정)
 - ✅ 4 collector --json wrapper fix + split 자동 호출 (세션 314; environment/industry-match/transit-match/noxious 4 collector readFileSync wrapper 파싱 + writeFileSync `{...rawWrapper, data, count}` 보존 + spawnSync split-apartments-json 자동 호출. 진앙 = `apartments.json` nested `{ok, data, fetchedAt, dataUpdatedAt}` 구조를 flat array 로 단정한 4 collector 작성 시점 사고 → `.length` undefined + wrapper 손실 + split 0건 사고. 신규 테스트 2파일 7건 (environment.test.mjs 3 + split-apartments-json.test.mjs 4). 운영 cron 미사용 = 로컬 사고만 차단. 답습 자산 = `prebuild.mjs` L2/L11 spawnSync 패턴)
 - ✅ KOSIS #14 범죄율 시도 collector 가설 환각 정정 (세션 315 docs only; regions.crime_grade 758행 중 701행 (92%) 이미 채워짐 = 시도 76 + 시군구 625. CSV 기반 `collect-crime-safety.mjs` 가 시도+시군구 모두 매칭. KOSIS DT_13501N_A120 신규 collector = 불필요. NULL 57행 진짜 잔여 = CSV 갱신 (연1회 수동) 또는 행정구역 개편 분구 18행 보강 별 자리. 자가 점검 1 + 서브에이전트 #3 보고로 박힘 정정)
+- ✅ collector_runs 모니터링 사각지대 — 6 collector silent fail 종결 (세션 319 진단 + 세션 320 정정, PR #25 `cd54e55`; `_shared.mjs` recordCollectorRun 9줄 진단 디버그 추가만으로 사고 자체 박힘. collect-childcare workflow_dispatch run 26449579174 = `[runs] childcare: INSERT 시도 + success 기록` 박힘 + DB row id=83 ok_count=2001 박힘. 진앙 미명확 = race condition 가설 K 추정. 잔여 5 collector = 다음 cron 6/1~6/10 자동 박힘 예상)
 
 ---
 
 ## 🔴 즉시
 
-- 🔴 **collector_runs 모니터링 사각지대 — 6개 collector silent fail** (세션 319 진단 완료, 정정 다음 세션)
-  - 증상: `recordCollectorRun` 호출이 코드에 박혀 있는데 `collector_runs` 테이블에 row 0건. 5/15 collect-childcare raw log 마지막 줄 = `[childcare] [완료] 698.3초 | 성공 1000` 직후 `[runs] childcare: success 기록 ...` 출력 부재. catch 메시지도 부재 = silent fail
-  - 영향 6 collector (모두 schedule success 이력 있음): collect-childcare (childcare) / collect-emergency (emergency) / collect-police (police) / collect-unsold-kosis (kosis-unsold) / collect-housing-permits (housing-permits) / molit-building-info (molit-building)
-  - 정상 5 collector (cron 미발화 또는 워크플로 부재): collect-crime-safety (yml 부재) / collect-avg-income / collect-housing-supply-ratio / collect-regional-economy / naver-presale (로컬 단일)
-  - 진앙 가설 (`_shared.mjs` L580-608 답습):
-    - 가설 A: `sb.from("collector_runs").insert(...)` RLS 정책 위반 무음 (그러나 L601 logError 박혀 있으므로 raw log 에 메시지 출력돼야 함)
-    - 가설 B: catch L606 `logError` stdout flush 전에 함수 종료 (`process.exit` 가설)
-    - 가설 C: `_supabase` cached 변수 만료 자리 (1000번 upsert 후 connection 사고)
-  - 모니터링 영향: `monitor-collectors.mjs` ②번 (데이터 0건) ③번 (미발화 35일+) 점검 두 자리 모두 collector_runs 의존 → 6 collector 모니터링 사각지대 완전. 다음 cron fail 시 텔레그램 알림 0건 자리
-  - 다음 세션 진입 시: collect-childcare workflow_dispatch 1회 + raw log 전체 답습 + `recordCollectorRun` console.error 추가 디버그 1회 + 가설 A~C 1건 확정 후 정정
-
-(세션 309 trade-stats DSR batch fix 완결 — 본 P0 박힘 자리에서 신규 사고 발견)
+(현재 P0 박힘 0건. 다음 진입 후보 = L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
 
 - 🟡 **Supabase RLS — naver-estate-web 전용 11개 테이블 잔여** (세션 274 — mibunyang+공유 해결 완료)
   - 세션 274 실측 정정: 세션 273 "19개" 박제값은 부정확. `supabase db advisors --type
