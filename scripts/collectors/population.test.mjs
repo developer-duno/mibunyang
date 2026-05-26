@@ -10,7 +10,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { resolveRegion, parseGu } = await import("./population.mjs");
+const { resolveRegion, parseGu, parseHouseholds } = await import("./population.mjs");
 
 describe("resolveRegion", () => {
   // 정확 매칭: 풀네임 → 약칭
@@ -70,5 +70,36 @@ describe("parseGu", () => {
   it("ctpvNm 매칭 불가 시 null", () => {
     expect(parseGu("미지의땅", "수원시")).toBeNull();
     expect(parseGu(null, "강남구")).toBeNull();
+  });
+});
+
+describe("parseHouseholds", () => {
+  // 정상값 — 정수 그대로
+  it("'72618' → 72618", () => {
+    expect(parseHouseholds("72618")).toBe(72618);
+  });
+
+  // 콤마 포함 — 콤마 제거 후 정수
+  it("'4,097,562' → 4097562 (콤마 제거)", () => {
+    expect(parseHouseholds("4,097,562")).toBe(4097562);
+  });
+
+  // 숫자 입력
+  it("숫자 1234 → 1234", () => {
+    expect(parseHouseholds(1234)).toBe(1234);
+  });
+
+  // 0 / 음수 / 빈값 / null / undefined → null
+  it("0 / 음수 / 빈값 / null / undefined → null", () => {
+    expect(parseHouseholds("0")).toBeNull();
+    expect(parseHouseholds("-100")).toBeNull();
+    expect(parseHouseholds("")).toBeNull();
+    expect(parseHouseholds(null)).toBeNull();
+    expect(parseHouseholds(undefined)).toBeNull();
+  });
+
+  // NaN 케이스 (비숫자 문자열) → null
+  it("비숫자 문자열 → null", () => {
+    expect(parseHouseholds("abc")).toBeNull();
   });
 });

@@ -82,6 +82,18 @@ async function fetchPopulation(year, month) {
   return allItems;
 }
 
+// ── API 응답 hhCnt → households 정수 ─────────────────────────
+/**
+ * 행안부 stdgPpltnHhStus API 응답 `hhCnt` 필드 → 세대수 정수.
+ * 0 또는 음수 / 빈 값 / NaN 시 null 폴백 (DB 컬럼 nullable).
+ * @param {unknown} hhCnt
+ * @returns {number | null}
+ */
+function parseHouseholds(hhCnt) {
+  const n = parseInt(String(hhCnt ?? "0").replace(/,/g, ""), 10);
+  return n > 0 ? n : null;
+}
+
 // ── 시도명 → 약칭 변환 ──────────────────────────────────────
 /**
  * @param {string | null | undefined} fullName
@@ -181,6 +193,7 @@ async function main() {
       gu: parsed.gu,
       pop_growth: Math.round(growthRate * 10) / 10, // 소수점 1자리
       population: curPop,
+      households: parseHouseholds(item.hhCnt),
       recorded_at: `${curYear}-${String(curMonth).padStart(2, "0")}-01`,
     });
   }
@@ -194,13 +207,14 @@ async function main() {
   for (const r of rows) {
     if (r.gu && r.gu.includes(" ")) hasGuLevel.add(r.region);
   }
-  /** @type {Record<string, {curPop: number, prevPop: number}>} */
+  /** @type {Record<string, {curPop: number, prevPop: number, curHh: number}>} */
   const regionAgg = {};
   for (const r of rows) {
     if (!r.gu) continue;
     if (hasGuLevel.has(r.region) && !r.gu.includes(" ")) continue;
-    if (!regionAgg[r.region]) regionAgg[r.region] = { curPop: 0, prevPop: 0 };
+    if (!regionAgg[r.region]) regionAgg[r.region] = { curPop: 0, prevPop: 0, curHh: 0 };
     regionAgg[r.region].curPop += r.population;
+    if (r.households) regionAgg[r.region].curHh += r.households;
     const key = `${r.region}:${r.gu}`;
     regionAgg[r.region].prevPop += prevMap.get(key) || 0;
   }
@@ -212,6 +226,7 @@ async function main() {
         gu: null,  // 시도 단위 집계 (gu 없음)
         pop_growth: Math.round(((agg.curPop - agg.prevPop) / agg.prevPop) * 100 * 10) / 10,
         population: agg.curPop,
+        households: agg.curHh > 0 ? agg.curHh : null,
         recorded_at: `${curYear}-${String(curMonth).padStart(2, "0")}-01`,
       });
     }
@@ -247,14 +262,14 @@ async function main() {
   }
 
   // 5. Supabase 저장 (Approach C: UPDATE 소유 컬럼만 + conditional INSERT)
-  // population.mjs는 pop_growth, population만 소유. 다른 수집기 컬럼은 보존.
+  // population.mjs는 pop_growth, population, households 소유. 다른 수집기 컬럼은 보존.
   const sb = getSupabase();
   const rpt = createReporter("population");
   let saved = 0;
   for (const row of rows) {
     // population 소유 컬럼만 업데이트 (다른 수집기 컬럼 보존)
     let q = sb.from("regions")
-      .update({ pop_growth: row.pop_growth, population: row.population })
+      .update({ pop_growth: row.pop_growth, population: row.population, households: row.households })
       .eq("region", row.region)
       .eq("recorded_at", row.recorded_at);
     if (row.gu) q = q.eq("gu", row.gu);
@@ -274,6 +289,7 @@ async function main() {
         gu: row.gu,
         pop_growth: row.pop_growth,
         population: row.population,
+        households: row.households,
         recorded_at: row.recorded_at,
       }]);
       if (insErr) {
@@ -299,4 +315,4 @@ const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split
 if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
 
 // 테스트용 순수 함수 export
-export { resolveRegion, parseGu };
+export { resolveRegion, parseGu, parseHouseholds };
