@@ -588,6 +588,7 @@ export async function recordCollectorRun(collector, result, sbOverride = null) {
     const sb = sbOverride ?? getSupabase();
     const status = result.status
       ?? ((result.fail ?? 0) > 0 ? "failure" : "success");
+    log("runs", `${collector}: INSERT 시도 (status=${status})`);
     const { error } = await sb.from("collector_runs").insert({
       collector,
       status,
@@ -598,12 +599,17 @@ export async function recordCollectorRun(collector, result, sbOverride = null) {
       error_message: result.errorMessage ?? null,
       started_at: result.startedAt ?? null,
     });
-    if (error) logError("runs", `${collector} 실행 기록 실패: ${error.message}`);
-    else log("runs", `${collector}: ${status} 기록 (성공 ${result.ok ?? 0} 실패 ${result.fail ?? 0})`);
+    if (error) {
+      const errObj = /** @type {any} */ (error);
+      logError("runs", `${collector} 실행 기록 실패: ${error.message} (code=${errObj.code ?? "?"} details=${errObj.details ?? "?"} hint=${errObj.hint ?? "?"})`);
+    } else {
+      log("runs", `${collector}: ${status} 기록 (성공 ${result.ok ?? 0} 실패 ${result.fail ?? 0})`);
+    }
   } catch (err) {
     // 실행 기록 실패는 수집 중단하지 않음
     const msg = err instanceof Error ? err.message : String(err);
-    logError("runs", `${collector} 실행 기록 예외: ${msg}`);
+    const stack = err instanceof Error ? err.stack : "";
+    logError("runs", `${collector} 실행 기록 예외: ${msg}\n${stack}`);
   }
 }
 
