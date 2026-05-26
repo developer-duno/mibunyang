@@ -138,11 +138,14 @@
 ### trade_stats (2,001건)
 - pir 98.0% / psr 64.1% / jeonse_rate 97.5% / nearby_median 99.2%
 
-### regions (454행 = 시도 62 + 시군구 392)
-- avg_income **62/454 (13.7%)** — 시도 단위만
-- population **420/454 (92.5%)** — 시군구 부분 NULL
-- net_migration / pop_growth **454/454 (100%)** — 세션103 KOSIS 전환 후 전량 채워짐
-- households / jeonse_rate / supply_ratio **0/454 유지** — reader 부재로 우선순위 낮음
+### regions (758행 = 시도 + 시군구 누적, 세션 324 실측)
+- avg_income **62/758 (8.2%)** — 시도 단위만
+- population **420/758 (55.4%)** — 시군구 부분 NULL
+- net_migration / pop_growth **758/758 (100%)** — 세션103 KOSIS 전환 후 전량 채워짐
+- households **229/758 (30.2%)** — 세션 322 fix
+- **jeonse_rate 168/758 (22.2%)** — 세션 324 trade-stats-regions.mjs 신규 collector 박힘 (PR #29, naver-estate-web cross-repo 4 위치 활성 사용)
+- supply_ratio **0/758** — MOLIT housing-permits API 500 자연 회복 대기 (세션 323 진단)
+- 세션 323 신규 4 컬럼 (grdp_per_capita / education_cost / education_participation / unemployment_rate / housing_supply_level) **79/758 (10.4%)** — 시도 단위만
 
 ### apartments.air_quality
 - **1,950/2,001 (97.5%)** — AIRKOREA 정상 수집

@@ -189,13 +189,11 @@
   - 정정 자리 = (1) MOLIT API 정상화 자연 대기 (2) `gh workflow run "Housing Permits Data Collection"` 재발화 24h 간격 답습 (3) MOLIT 콘솔 자리 답습 (서비스 폐기 / endpoint 변경 가능성)
   - 6/10 schedule run 자연 답습 = MOLIT API 정상화 여부 자동 답습
 
-- 🟡 **regions.jeonse_rate 0% — 채우는 collector 0건 (orphan 컬럼 가능성)** (세션 323 발견)
-  - 실측: `grep -rn "regions.*jeonse_rate" scripts/collectors/` = 0건
-  - regions 30 컬럼 중 채우는 collector 미존재 자리
-  - 자매 컬럼 박힘: `trade_stats.jeonse_rate` (1949 박힘, `trade-stats.mjs:499`) → 단지별 자리, regions 자리 별
-  - 옵션 A: 컬럼 drop (orphan 확정 시) — `supabase/CLAUDE.md` Dashboard SQL Editor 수동 실행
-  - 옵션 B: trade_stats 시도별 평균 집계 → regions.jeonse_rate 채우는 collector 신규 (1~2세션)
-  - 진단 plan = 별 세션
+- ✅ **regions.jeonse_rate 0% → 22.2% — 채움 collector 신규 (세션 324 PR #29 머지)**
+  - 세션 323 환각 = "orphan 가능성" → 세션 324 실측 폐기 (naver-estate-web cross-repo 4 위치 활성 사용)
+  - 정정 = `scripts/collectors/trade-stats-regions.mjs` 신규 (trade-stats.mjs 산식 시군구 단위 집계, 표본 ≥ 3 게이트)
+  - 운영 검증 = workflow_dispatch run 26471102001 success → 168/758 (22.2%) 박힘
+  - 잔여 590 시군구 = 표본 부족 (jeonse 거래 < 3) 농어촌 자리 자연 NULL
 
 - 🟡 **6/5 collect-market-stats schedule run 검증** (세션 282 plan v6 가설 검증)
   - lookback 24개월 적용 후 (커밋 `b312d62`) 첫 schedule run = 6/5
