@@ -43,6 +43,7 @@ on:
       - "Population Data Collection"
       - "School District Collection"
       - "Trade Stats Calculation"
+      - "Trade Stats Regions Collection"
       - "Transport Accessibility Collection"
       - "소음 추정 수집"
       # ── 계산·일괄채우기 워크플로 (collect-* 아님 — audit 범위 밖, 수동 유지) ──
