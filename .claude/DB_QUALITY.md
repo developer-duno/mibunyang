@@ -20,14 +20,14 @@
 | `core` | 21,983 / 26,013 (84.5%) | 핵심 메타. `district` 72/2001 (3.6%) 만 낮음 |
 | `price` | 5,401 / 6,003 (90%) | area / price / pp 3 컬럼 |
 | `building` | 18,349 / 24,012 (76.4%) | 12 컬럼. energyGrade 358 (17.9%), exclusiveRatio 871 (43.5%) 잔여 NULL |
-| `maintenance` | 97 / 10,005 (1%) | **5 컬럼 거의 전부 NULL** (maintHeat 9 / maintGas 4 / maintElec 38 등). 데이터 부재 카테고리 |
+| `maintenance` | 1,572 / 10,005 (15.7%) | 세션 319 workflow_dispatch 1회 (run 26450043464, cancelled 1h0m15s) 부분 박힘 = 9→217 (10.8%) maint_heat 추가. 5/17 매칭 정정 효과 확인 (이전 1% → 15.7%, +14.7pt). 잔여 = timeout 60→120 정정 후 다음 cron 6/15 자동 누적 |
 | `risk` | 3,961 / 4,002 (99%) | isRegulated 100% / dsr40pass 1960/2001 (97.9%) |
 | `benefits` | 0 / 10,005 (0%) | **5 컬럼 100% NULL — 의도된 미수집** (시행사 자료 운영자 수기 입력) |
 | `infra` | 29,997 / 34,017 (88.2%) | 17 컬럼 카카오 |
 | `transport` | 8,681 / 14,007 (62%) | 7 컬럼. tago 일부 NULL |
 | `schools` | 5,980 / 6,003 (99.6%) | 3 컬럼 NEIS |
 | `builders` | 342 / 6,003 (5.7%) | **DART 매칭률 낮음** — 시공사명 매칭 한계 |
-| `regions` | 4,002 / 16,008 (25%) | 8 컬럼. avg_income / household / supply_ratio 등 부분 NULL |
+| `regions` | 4,231 / 16,008 (26.4%) | 9 컬럼 (세션 322 households 신규 229/758 30% 박힘). avg_income / supply_ratio 등 부분 NULL. 매월 cron 누적 시 households 90%+ 도달 예상 |
 | `trade_stats` | 23,101 / 26,013 (88.8%) | 13 컬럼 trade-stats |
 | `naver` | 11,511 / 20,010 (57.5%) | 10 컬럼 로컬 전용 수집 |
 | `environment` | 8,498 / 10,005 (84.9%) | 5 컬럼 |
@@ -89,6 +89,8 @@
 | regions 행 | 454 | 790 | +336 (세션 285 효과) |
 | price 충족률 | 64% | 90% | +26pt |
 | schools 충족률 | 100% | 99.6% | -0.4pt (소폭 NULL 발생) |
+| maintenance 충족률 | 1% (5/26 첫 측정) | 15.7% (5/26 후속) | +14.7pt (세션 319 workflow_dispatch 1회 부분 박힘, cancelled 60분 timeout) |
+| regions.households | 0/758 (0%) | 229/758 (30%) | +30pt (세션 322 `2f1ab7e` population.mjs hhCnt 누락 fix, run 26466366919 success 6m51s. 매월 cron 누적 시 미래 90%+ 자연 도달 자연 예상) |
 
 ### 4 핵심 + 19 카테고리 + 17 시도 + 51 필드 = 전수 완료
 
