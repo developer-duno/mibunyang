@@ -1,6 +1,6 @@
 # 미분양 아파트 비교 엔진 v3.0
 
-> React 19 SPA + Supabase PostgreSQL + Vercel Serverless. 6개 카테고리 41+ 지표 AHP 스코어링.
+> **다기준 의사결정 엔진** — 미분양·분양 예정 아파트를 6 카테고리 41+ 지표로 AHP 점수화하고 5가지 사용자 프로필 가중치 (실거주·투자·신혼·교육·은퇴) 를 적용해 개인 맞춤 추천 제공. 같은 단지여도 프로필마다 다른 점수. React 19 SPA + Vercel Serverless + Supabase PostgreSQL.
 
 ## 즉시 알아야 할 것 (항상 로드 가치)
 

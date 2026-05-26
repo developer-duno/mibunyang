@@ -5,6 +5,40 @@
 
 ---
 
+## 0. 프로젝트 본질
+
+**다기준 의사결정 엔진 (AHP — Analytic Hierarchy Process)** 을 미분양·분양 예정 아파트 도메인에 적용한 React 19 SPA.
+
+| 측면 | 내용 |
+|---|---|
+| **무엇을** | 미분양·분양 예정 아파트 단지 (외부 6 출처: 청약홈·KOSIS·국토부·카카오·NEIS·네이버) |
+| **어떻게** | 6 카테고리 41+ 지표 × 5 사용자 프로필 가중치 = 단지별 0~100 총점 |
+| **누구에게** | 비로그인 (점수 블라인드) / 소비자 (카카오 로그인) / 전문가 (승인, PC 1200px) / 운영자 (혜택·가중치·승인) |
+| **차별점** | 같은 단지여도 프로필마다 다른 점수 + 시세 폴백 시 신뢰도 페널티 + 정직성 UI 표시 |
+
+### 6 카테고리 (가중치 합 =100, scoring/CLAUDE.md 참조)
+
+| 카테고리 | 서브 지표 | 핵심 신호 |
+|---|---|---|
+| **price** (가격 매력도) | 6개 (괴리도·전세가율·PIR·PSR·신뢰도·택지비) | `fairPrice` 3단 폴백 + 신뢰도 −15 페널티 |
+| **location** (입지) | 5개 (인프라·교통·학군·환경·생활편의) | infra 10항목, NEIS 학군, PM2.5/PM10/O3 |
+| **product** (상품성) | 9개 (브랜드·평면·층수·주차 등) | BRAND_TIER 16등급, AGE_PREMIUM 7단계 |
+| **benefit** (혜택) | 10컬럼 (운영자 수기) | 중도금 무이자·할인 등 |
+| **risk** (안전도) | 11개 (해제율·경쟁률·치안·분양률·규제·유동성 등) | crimeSafetyGrade 5등급 + policeDist |
+| **future** (미래가치) | 4개 동적 (교통·도시·산업·인구) | GTX/KTX 키워드 1.2배, 인구 증감 8단계 |
+
+### 5 사용자 프로필 (PROFILES, `src/constants/profiles.ts`)
+
+| 프로필 | location/product/price/risk/benefit/future | 정체성 |
+|---|---|---|
+| **live** 실거주 | 40/20/20/10/5/5 | 살기 좋은 곳 |
+| **invest** 투자 | 15/10/**30**/**25**/10/10 | 수익률 중심 |
+| **newlywed** 신혼 | 30/15/**30**/10/10/5 | 합리적 내 집 |
+| **edu** 교육 | **45**/20/15/10/5/5 | 학군 최우선 |
+| **retire** 은퇴 | **35**/25/20/15/5/0 | 편안한 노후 (future=0) |
+
+---
+
 ## 1. 한눈에 보는 구조
 
 ```
@@ -91,7 +125,7 @@ constants → scoring → theme → components → hooks → App
 GitHub Actions (일/주/월 스케줄)
   ├── collect-data.mjs ─── 청약홈/카카오/KOSIS/NEIS/DART/국토부
   │                         ↓
-  │                    public/data/apartments-list.json  (1.66MB / Brotli 198KB, 2,001건)
+  │                    public/data/apartments-list.json  (1.66MB / Brotli 198KB, 약 2천 단지, 수집기 누적으로 변동)
   │                    public/data/apartments-prices.json (11.35MB / Brotli 858KB, DetailModal lazy)
   │                         ↓
   ├── migrate-to-supabase.mjs ──→ Supabase PostgreSQL (15개 테이블)
@@ -124,7 +158,7 @@ GitHub Actions (일/주/월 스케줄)
 사용자 조작                    React 상태              useMemo 연쇄              UI 렌더
 ──────────                    ──────────              ──────────              ──────────
 
-프로필 버튼 클릭 ──→ profile ──→ scored ─────────────→ AptCard 2,001개 재채점
+프로필 버튼 클릭 ──→ profile ──→ scored ─────────────→ AptCard 전체 재채점
                                    │
 지역 버튼 클릭 ──→ filterRegion ──→ │ ──→ guOptions ──→ 구 버튼 목록 갱신
                   filterGu ───────→ │
@@ -546,7 +580,7 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 ┌──────────────────────────────────────────────────────────────┐
 │                    미분양 아파트 데이터                        │
 │                                                              │
-│  apartments (2,001행) ─────────────────────────────────────  │
+│  apartments (수집기 누적으로 변동, 현재 약 2천 단지) ───────  │
 │       │ id (PK)                                              │
 │       ├──→ prices (시계열, 분양가)                             │
 │       ├──→ unsold_history (시계열, 미분양 추이)                │
