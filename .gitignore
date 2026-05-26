@@ -5,6 +5,7 @@ dist/
 !.claude/SESSION_LOG.md
 !.claude/BACKLOG.md
 !.claude/BACKLOG_ARCHIVE.md
+!.claude/SKILLS.md
 !.claude/commands/
 !.claude/commands/**
 !.claude/agents/
