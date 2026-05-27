@@ -121,3 +121,7 @@ const sggList = dryRun ? listAllSgg().slice(0, 5) : listAllSgg();
 - `regions.childcare` JSONB 크기 대응 (facilities 슬림화) — 재수집 후 크기 실측으로 판단
 - cpmsapi030 (`childcare-detail.mjs`) 은 이미 운영키 — 본 작업 범위 아님
 - W6-D 옵션 ε 후속 (regions.childcare → scoring 통합) — BACKLOG 🟢 별 세션
+
+## 진행 상태
+
+✅ **완료** (2026-05-19 세션 275) — `ea77f25 feat(collectors): childcare-info 결과코드 가드 + dry-run sample 축소`. count>50 0→368, 강남구 50→163.

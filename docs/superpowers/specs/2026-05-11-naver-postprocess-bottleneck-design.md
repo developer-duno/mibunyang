@@ -165,3 +165,7 @@
 - `~/.claude/projects/f--mibunyang/memory/feedback_audit_hypothesis_partial_hallucination.md` (세션 224 audit 가설 환각 박제, gh CLI run log 직접 timestamp 추출 의무)
 - `~/.claude/projects/f--mibunyang/memory/feedback_subagent_report_trust.md` (서브에이전트 보고 모순 시 본인 직접 실측 1회 의무)
 - 세션 224 `150044d` (60→90 timeout fix), 세션 225 `d1bd747` (cron 5/10 cancelled 박제 + escalate trigger 1회차)
+
+## 진행 상태
+
+⏸️ **보류** (2026-05-13 세션 229) — D-1 timeout 90→120 (`7f69a84`) + D-2 split (`c045594`) 완료. 옵션 E (sync 최적화) 미진입.

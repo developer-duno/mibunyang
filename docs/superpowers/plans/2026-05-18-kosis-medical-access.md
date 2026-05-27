@@ -798,3 +798,7 @@ Expected: 두 컬럼 모두 600행대 (합계출산율 620행 동급)
 | Task 4 | audit-env-keys | KOSIS_KEY 3-way 일치 |
 | Task 7 | audit-monitor-coverage | yml name 등재 확인 |
 | Task 8 | CI + 운영 적재 | CI success + 600행대 적재 |
+
+## 진행 상태
+
+✅ **완료** (2026-05-18 세션 268~269) — 짝 spec 동일 (`9d625d5` + `cb120db` monitor 등재).

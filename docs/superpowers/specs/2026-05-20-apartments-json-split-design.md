@@ -135,3 +135,7 @@ PriceTable / LoanAnalysis 에 `isLoading` / `error` props 전달 — 스켈레�
 - `feedback_gitignore_negation_pattern` — 단계 2-검증 cycle 박제 (git check-ignore 1회)
 - `feedback_npm_build_runs_etl` — collect-data.mjs prebuild 답습 차단 → `npx vite build` 만 안전
 - 자가 점검 1+2 v3 — 1차 4건 발견 → 사용자 재지시 → 서브에이전트 3개 + 실측 6건 → 12건 분류
+
+## 진행 상태
+
+✅ **완료** (2026-05-20 세션 279) — `6714fa7`+`b57de6b`+`7eb2a2e` 3 커밋. 13MB→list 198KB/prices 858KB Brotli.

@@ -309,3 +309,7 @@ Expected: `kosis-housing-supply-ratio 행: 0` (dry-run 이 행을 안 남겨 Tas
   미감지. 현재 9개 collector 전부 `process.argv.includes("--dry-run")` 패턴이라 일치 — 안전.
 - 세션 263 메모(`session_2026-05-17_session263_null_monitor_push.md`)의 "다음 cron 자동
   해소" 서술은 부분 정정 대상 — 이 plan 으로 근본 해결됨을 메모에 반영 권장.
+
+## 진행 상태
+
+✅ **완료** (2026-05-18 세션 264) — `5f78a5e fix(shared): recordCollectorRun dry-run 시 collector_runs 기록 skip`.
