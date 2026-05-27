@@ -10143,3 +10143,41 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - **transport-tago 단지 당 4.35~4.47초 = sleep 100ms × 4 + Kakao 3호출 + TAGO 1호출** — 코드 결함 0, API rate limit 0. 향후 batch size 조정 자리 무의미 (sleep 자체가 의도된 자리)
 - **세션 294 timeout 90→120 fix 가 정답** — 회귀 자리 없음. transport-tago root cause 분석 = "단지 수 늘어남 (의도된 fix)" 답습으로 종결
 - **신규 룰 박제** — `.claude/rules/collectors/collector-timeout-rootcause-analysis.md` (timeout 사고 진앙 답습 시 collector git log + raw run log + apartments.created_at + collector_runs 4-way 답습 의무)
+
+## 세션329 (2026-05-27) — graceful break 박힘 PR-A 단순 5 collector + 회귀 가드 신규
+
+**거시 목적**: 세션 327 PR #30 답습 = Naver 야간 배치 3 collector graceful break 박힘 후 잔여 15 collector 보강 의무. 본 세션 = PR 3개 분류별 분할 중 PR-A (단순 5건) 머지.
+
+**진행**:
+- Plan 모드 4-Phase 답습 (Explore 3 병렬 + Plan agent 1 + 자가 점검 1+2 + 사용자 결정 2건)
+- 14 collector 본문 답습 결과 = childcare-info-jeju L98 이미 박힘 발견 → 15 → 14 확정
+- 진앙 정정 2건 (D 분류) = collect-trades L314 + childcare-info L218 = createReporter 가 main loop 뒤 호출 = SIGTERM 핸들러 등록 0회 사고 답습 (세션 327 infra-kakao 패턴 재현)
+
+**PR-A 변경** (PR #32 `256b8a5`):
+- 5 collector × 1줄 박힘: population L270 / population-sex-age L207 / collect-air-quality L146 / collect-applyhome L178 / collect-building-hub L202
+- 신규 `scripts/collectors/_graceful-coverage.test.mjs` (53 테스트) = ALLOWLIST 35건 잠정 + 모든 collector main loop break 박힘 검증
+
+**자가 점검 1 추가 발견**:
+- `collect-maintenance.mjs` (rpt=1 break=0) = PR-B 외 보강 후보 (잠정 ALLOWLIST)
+- `trade-stats-regions.mjs` (setupGracefulShutdown import 박혔으나 호출 0회 회귀) = 별 진단 박힘
+
+**한계 박힘** (`.claude/rules/collectors/graceful-shutdown-coverage.md` §실증 절):
+- 자연 timeout 도달 = 즉시 SIGKILL (grace 0초) → graceful 효과 **0**
+- 수동 `gh run cancel` 시에만 = 5분 grace → graceful 유효
+- 본 보강 = 수동 cancel 대비 보조 기능 + collector_runs status=partial 기록 + 코드 일관성
+
+**검증**:
+- typecheck 0 errors
+- vitest 3126/3126 passed (197 파일, +53 신규)
+- _graceful-coverage.test.mjs 53/53 단독 통과 (regex 보강 = block break `if (...) { ...; break; }` 매칭 추가)
+- CI 모두 pass: ci 3m43s + e2e 3m11s + Vercel + Preview Comments
+
+**답습**:
+- **block break 박힘 형태 답습** = childcare-info-jeju L96~99 다중 줄 block 답습 → regex `[\s\S]{0,200}?break` 보강. 단일 줄 (`if (...) break;`) + block (`if (...) { ...; break; }`) 모두 매칭
+- **Plan agent 보고 검증** = `_shared.test.mjs L400 SIGTERM mock` 박힘 정확 (grep -c 결과 14건 답습 완료). 본문 직접 Read 답습 의무 정착
+- **PR 분할 권장 안 답습** = 분류별 (PR-A 단순 / PR-B 다중 / PR-C 진앙) 사용자 결정 자리
+
+**잔여**:
+- PR-B (다중 loop 7건) = 별 세션 진입 자리 (PHASE 2 답습 결과 컨텍스트 안전 박힘)
+- PR-C (진앙 정정 2건) = PR-B 머지 후 진입
+- 5/28 KST 05:30 자연 cron raw log 답습 의무 = 세션 328 PR #31 NEIS_KEY 정정 종결 검증 (본 PR-A 와 무관)
