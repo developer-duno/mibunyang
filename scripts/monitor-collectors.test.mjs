@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * monitor-collectors.mjs 순수 점검 함수 테스트
- * 대상: checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge
+ * 대상: checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge, checkExternalApiStale
  */
 import { describe, it, expect, vi } from "vitest";
 
@@ -15,7 +15,7 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
 const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
-  QUARTERLY_CRON_WORKFLOWS,
+  QUARTERLY_CRON_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
 
@@ -381,5 +381,82 @@ describe("AUDIT_CATEGORY_BASELINE 키 정합성 — data-audit 카테고리 drif
     const checked = new Set(Object.keys(AUDIT_CATEGORY_BASELINE));
     const overlap = EXCLUDED_AUDIT_CATEGORIES.filter((c) => checked.has(c));
     expect(overlap).toEqual([]);
+  });
+});
+
+describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
+  const now = new Date("2026-05-28T00:00:00Z");
+  /** @type {Array<{ collector: string, stale_days: number, owner: string }>} */
+  const targets = [{ collector: "housing-permits", stale_days: 14, owner: "MOLIT" }];
+
+  it("장기 중단 — 최근 3회 모두 success+ok=0 이고 첫 시각이 stale_days 초과면 이상 박힘", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 0, finished_at: "2026-05-26T00:00:00Z" },
+          { status: "success", ok_count: 0, finished_at: "2026-04-25T00:00:00Z" },
+          { status: "success", ok_count: 0, finished_at: "2026-04-10T00:00:00Z" }, // 48일 전
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("outage");
+    expect(issues[0].collector).toBe("housing-permits");
+    expect(issues[0].detail).toMatch(/MOLIT/);
+    expect(issues[0].detail).toMatch(/48일\+/);
+  });
+
+  it("정상 — 최근 3회 중 1회라도 ok>0 이면 이상 아님 (자연 회복)", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 0, finished_at: "2026-05-27T00:00:00Z" },
+          { status: "success", ok_count: 42, finished_at: "2026-04-10T00:00:00Z" }, // 회복
+          { status: "success", ok_count: 0, finished_at: "2026-03-10T00:00:00Z" },
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("회복 직후 — 최근 1회 ok>0 이면 즉시 정상 (단발 회복 인정)", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 17, finished_at: "2026-05-28T00:00:00Z" }, // 회복
+          { status: "success", ok_count: 0, finished_at: "2026-04-28T00:00:00Z" },
+          { status: "success", ok_count: 0, finished_at: "2026-03-28T00:00:00Z" },
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("신규 collector — 행 수 < 3 이면 점검 skip (오탐 차단)", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 0, finished_at: "2026-05-27T00:00:00Z" },
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("EXTERNAL_API_COLLECTORS 배열 = 4 후보 박힘 (housing-permits/building-hub/transport/schools)", () => {
+    const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
+    expect(names).toEqual(["building-hub", "housing-permits", "schools", "transport"]);
+    for (const c of EXTERNAL_API_COLLECTORS) {
+      expect(c.stale_days).toBeGreaterThan(0);
+      expect(c.owner).toBeTruthy();
+    }
   });
 });
