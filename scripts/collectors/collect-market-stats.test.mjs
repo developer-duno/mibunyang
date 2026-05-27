@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -20,6 +20,8 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
       summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0 })),
     })),
     sleep: vi.fn(),
+    // 세션 330: fetchWithRetry mock (fetchKosisTable 통일 회귀 가드 자리)
+    fetchWithRetry: vi.fn(),
   };
 });
 
@@ -145,5 +147,24 @@ describe("parseAllPeriodsByRegion", () => {
     const result = parseAllPeriodsByRegion(rows, makeIndicator());
     expect(result).toHaveLength(1);
     expect(result[0].base_month).toBe("202602");
+  });
+});
+
+// ── 세션 330: fetchWithRetry 통일 회귀 가드 ──────────────────
+describe("fetchKosisTable fetchWithRetry 사용 (통일 회귀 가드)", () => {
+  it("collect-market-stats.mjs 본문이 fetchWithRetry import 박힘", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve("scripts/collectors/collect-market-stats.mjs"), "utf8");
+    expect(src).toMatch(/import\s*{[^}]*fetchWithRetry[^}]*}\s*from\s*["']\.\/_shared\.mjs["']/);
+  });
+
+  it("collect-market-stats.mjs 본문에 https.request / https.Agent / SSL_OP_LEGACY_SERVER_CONNECT 박힘 0건 (자체 함수 폐기 확인)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve("scripts/collectors/collect-market-stats.mjs"), "utf8");
+    expect(src).not.toMatch(/https\.request\s*\(/);
+    expect(src).not.toMatch(/new\s+https\.Agent\s*\(/);
+    expect(src).not.toMatch(/SSL_OP_LEGACY_SERVER_CONNECT/);
   });
 });
