@@ -35,9 +35,9 @@ loadEnv();
 const sb = getSupabase();
 const { data: runs } = await sb
   .from('collector_runs')
-  .select('phase, started_at, ok_count, fail_count')
-  .eq('phase', 'housing-permits')
-  .order('started_at', { ascending: false })
+  .select('collector, finished_at, status, ok_count, fail_count')
+  .eq('collector', 'housing-permits')
+  .order('finished_at', { ascending: false })
   .limit(5);
 console.log('Last 5 runs:', runs);
 
@@ -53,40 +53,55 @@ console.log('Latest updated:', stale[0]?.updated_at);
 
 마지막 갱신 시간이 **2주+** = 외부 API 장기 중단 의심 확정.
 
-### 2. monitor-collectors.mjs 에 "외부 API 장기 중단" 카테고리 추가
+### 2. monitor-collectors.mjs 에 "외부 API 장기 중단" 카테고리 추가 (세션 334 적용 박힘)
 
-`scripts/collectors/monitor-collectors.mjs` 5번째 점검 추가:
+`scripts/monitor-collectors.mjs` 5번째 점검 박힘 (실측 경로). 컬럼 진실의 원천 = `collector_runs.collector` (NOT phase). PHASE 상수 = recordCollectorRun 입력값 실측 답습.
 
 ```js
-// 점검 ⑤: 외부 API 의존 collector 의 "정상 실행 + 데이터 0건" 탐지
-const EXTERNAL_API_COLLECTORS = [
-  { phase: 'housing-permits', stale_days: 14, owner: 'MOLIT' },
-  { phase: 'transport-tago', stale_days: 14, owner: 'TAGO' },
-  { phase: 'schools-neis', stale_days: 30, owner: 'NEIS' },
-  // 추가 collector 박힘
+// 점검 ⑤: 외부 API 의존 collector 의 "정상 실행 + 데이터 갱신 0건 연속 N회" 탐지
+export const EXTERNAL_API_COLLECTORS = [
+  { collector: "housing-permits", stale_days: 14, owner: "MOLIT 주택건설실적" },
+  { collector: "building-hub",    stale_days: 14, owner: "MOLIT 건축물대장 허브" },
+  { collector: "transport",       stale_days: 14, owner: "TAGO 대중교통" },
+  { collector: "schools",         stale_days: 35, owner: "NEIS 학교정보" },
 ];
 
-for (const { phase, stale_days, owner } of EXTERNAL_API_COLLECTORS) {
-  const { data: runs } = await sb.from('collector_runs')
-    .select('ok_count, fail_count, started_at')
-    .eq('phase', phase)
-    .order('started_at', { ascending: false })
-    .limit(3);
+const OUTAGE_MIN_CONSECUTIVE = 3;
 
-  const allOk = runs.every(r => r.ok_count > 0);
-  const lastRun = new Date(runs[0]?.started_at);
-  const daysSince = (Date.now() - lastRun.getTime()) / 86400_000;
-
-  if (allOk && daysSince > stale_days) {
+export function checkExternalApiStale(targets, runsByCollector, now = new Date()) {
+  const issues = [];
+  for (const { collector, stale_days, owner } of targets) {
+    const rows = runsByCollector[collector] ?? [];
+    if (rows.length < OUTAGE_MIN_CONSECUTIVE) continue; // 신규 collector 오탐 차단
+    const recent = rows.slice(0, OUTAGE_MIN_CONSECUTIVE);
+    // success 인데 ok=0 만 점검 — failure 는 ①, 단발 0건은 ②가 잡음 (중복 회피)
+    const allEmptySuccess = recent.every(
+      (r) => r.status === "success" && (r.ok_count ?? 0) === 0,
+    );
+    if (!allEmptySuccess) continue;
+    const oldest = recent[recent.length - 1];
+    if (!oldest.finished_at) continue;
+    const daysSince = (now.getTime() - new Date(oldest.finished_at).getTime()) / 86400000;
+    if (daysSince <= stale_days) continue;
     issues.push({
-      type: 'external_api_outage',
-      phase,
-      owner,
-      message: `${phase} ${stale_days}일+ 데이터 갱신 0건 + collector 정상 실행 = ${owner} API 장기 중단 의심`,
+      kind: "outage",
+      collector,
+      detail: `${owner} API ${Math.floor(daysSince)}일+ 정상실행+0건 (${OUTAGE_MIN_CONSECUTIVE}회 연속) — 외부 API 장기 중단 의심`,
+      // lines 박힘 (조치 가이드 3건)
+      at: oldest.finished_at,
     });
   }
+  return issues;
 }
 ```
+
+**환각 정정 자산 (v1 → v2, 세션 334 박힘)**:
+- `phase` → `collector` (collector_runs 진실의 원천 컬럼명)
+- `allOk = ok_count > 0` 역방향 환각 → `allEmptySuccess = status==='success' && ok_count===0`
+- `transport-tago` → `transport`, `schools-neis` → `schools` (PHASE 실측)
+- `building-hub` entry 추가 (5/18 ok=0 silent fail 실측)
+- 경로 `scripts/collectors/monitor-collectors.mjs` → `scripts/monitor-collectors.mjs`
+- `type` → `kind`, `'external_api_outage'` → `'outage'` (Issue 타입 정합)
 
 ### 3. 외부 API 장기 중단 발견 시 답습 의무
 

@@ -95,12 +95,13 @@ const ACTION_GUIDE = {
   empty: "[조치] 수집기 소스(API·크롤링) 응답을 점검하세요 — 원본이 0건인지, 파이프라인이 끊겼는지 확인.",
   stale: "[조치] 워크플로 cron 트리거와 Actions 활성화 상태를 점검하고, 필요하면 수동으로 1회 실행하세요.",
   nulls: "[조치] 해당 수집기의 최근 run 로그와 소스 API 변경 여부를 확인하세요 (필드 누락·스키마 변경 의심).",
+  outage: "[조치] raw API 1회 호출(curl)로 500/503/타임아웃 확인 후 외부 공식 공지(점검/장애) grep — 의심 확정 시 BACKLOG.md 1줄 박힘 (룰: .claude/rules/workflows/external-api-outage-policy.md).",
 };
 
 /**
  * 수집기 이상 1건을 텔레그램 메시지 텍스트로 만든다.
  * @param {{
- *   kind: "fail" | "empty" | "stale" | "nulls",
+ *   kind: "fail" | "empty" | "stale" | "nulls" | "outage",
  *   collector: string,
  *   detail: string,
  *   conclusion?: "failure" | "cancelled" | "timed_out",
@@ -111,11 +112,11 @@ const ACTION_GUIDE = {
  * @returns {string}
  */
 export function formatIssue(issue) {
-  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉" }[issue.kind];
+  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨" }[issue.kind];
   const conclusionKey = issue.conclusion;
   const title = issue.kind === "fail"
     ? `수집기 ${(conclusionKey ? /** @type {any} */ (CONCLUSION_LABEL)[conclusionKey] : undefined) ?? "이상"}`
-    : { empty: "데이터 0건 수집", stale: "수집기 미발화", nulls: "NULL 급증" }[issue.kind];
+    : { empty: "데이터 0건 수집", stale: "수집기 미발화", nulls: "NULL 급증", outage: "외부 API 장기 중단" }[issue.kind];
   const out = [`${emoji} <b>${title}</b>`, escapeHtml(issue.collector), escapeHtml(issue.detail)];
   // 상세 줄 — 점검 함수가 미리 만든 사람 말 문장들
   for (const line of issue.lines ?? []) out.push(escapeHtml(line));
@@ -141,7 +142,7 @@ const ISSUE_SEPARATOR = "\n\n———\n\n";
  * 이슈 목록을 텔레그램 메시지 문자열로 합친다.
  * 평소엔 1통으로 모으고, 한도를 넘으면 이슈 경계에서 여러 통으로 나눈다
  * (이슈 1건이 통 사이에 잘리지 않는다).
- * @param {Array<{ kind: "fail"|"empty"|"stale"|"nulls", collector: string, detail: string, url?: string, lines?: string[], at?: string }>} issues
+ * @param {Array<{ kind: "fail"|"empty"|"stale"|"nulls"|"outage", collector: string, detail: string, url?: string, lines?: string[], at?: string }>} issues
  * @returns {string[]} 전송할 메시지 배열 (이슈 0건이면 빈 배열)
  */
 export function buildMessages(issues) {

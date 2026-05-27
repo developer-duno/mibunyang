@@ -2,15 +2,16 @@
 /**
  * 수집기 감시 스크립트 (수집기 실패 텔레그램 알림 시스템).
  *
- * 4가지 이상을 점검해 발견 시 텔레그램으로 알린다:
+ * 5가지 이상을 점검해 발견 시 텔레그램으로 알린다:
  *   ① 실패/취소  — GitHub Actions run conclusion
  *   ② 데이터 0건 — collector_runs 의 ok/skip 모두 0
  *   ③ 미발화      — 마지막 run 이 35일+ 전 (월간 cron 1주기 초과)
  *   ④ NULL 급증   — regions 핵심 컬럼 + apartments 19 카테고리 NULL 비율 점검
+ *   ⑤ 외부 API 장기 중단 — 최근 3회 success+ok=0 누적 + stale_days 초과 (silent fail)
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
- *   --mode=daily  cron — 전체 스윕 (①②③④)
+ *   --mode=daily  cron — 전체 스윕 (①②③④⑤)
  *
  * 필요 환경변수:
  *   TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID — 알림 채널 (없으면 점검만, 전송 스킵)
@@ -153,7 +154,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -161,6 +162,22 @@ const KO_FIELD = {
  * @property {string[]} [lines] 본문에 펼칠 상세 줄 (점검 함수가 만든 사람 말 문장)
  * @property {string} [at] 이슈 발생 ISO 시각 (formatIssue 가 KST 로 변환)
  */
+
+/**
+ * ⑤ 점검 대상 외부 API 의존 collector — silent fail (status=success + ok_count=0) 누적 탐지.
+ * 컬럼 진실의 원천 = collector_runs.collector (NOT phase). PHASE 상수 = recordCollectorRun 입력값.
+ * stale_days = 해당 collector cron 주기 + 1주 여유 (월간=14, NEIS 분기=35).
+ * 신규 외부 API collector 추가 시 이 배열 1줄 박힘 + checkExternalApiStale 회귀 답습 의무.
+ */
+export const EXTERNAL_API_COLLECTORS = [
+  { collector: "housing-permits", stale_days: 14, owner: "MOLIT 주택건설실적" },
+  { collector: "building-hub",    stale_days: 14, owner: "MOLIT 건축물대장 허브" },
+  { collector: "transport",       stale_days: 14, owner: "TAGO 대중교통" },
+  { collector: "schools",         stale_days: 35, owner: "NEIS 학교정보" },
+];
+
+/** ⑤ 외부 API 장기 중단 판정 — 최근 N회 연속 success+ok=0 = silent fail 의심. */
+const OUTAGE_MIN_CONSECUTIVE = 3;
 
 // ── 순수 점검 함수 (fake 데이터로 테스트 가능) ──────────────
 
@@ -372,6 +389,57 @@ export function checkCategoryNullSurge(categories, baseline, fields = {}) {
   return issues;
 }
 
+/**
+ * ⑤ 외부 API 의존 collector 의 "정상 실행 + 데이터 갱신 0건 연속 N회" 탐지.
+ * collector_runs 컬럼 진실의 원천 = `collector` (NOT phase). status=success 인데
+ * ok_count=0 행이 OUTAGE_MIN_CONSECUTIVE 회 누적되면 외부 API 장기 중단 의심.
+ *
+ * checkEmptyRuns 와의 차이:
+ *   - checkEmptyRuns: 최신 1행만 점검 (단발 0건 = 즉시 알림)
+ *   - checkExternalApiStale: 최근 N행 모두 ok=0 + 첫 ok=0 시각 stale_days 초과 시만 알림
+ *     (housing-permits 식 silent partial 누적을 잡되 단발 0건 오탐은 ②가 잡으니 중복 회피)
+ *
+ * @param {Array<{ collector: string, stale_days: number, owner: string }>} targets
+ * @param {Record<string, Array<{ status?: string, ok_count?: number|null, finished_at?: string|null }>>} runsByCollector
+ *   collector 별 최근 N행 (finished_at DESC). 빈 배열이면 점검 skip.
+ * @param {Date} [now] 기준 시각 (테스트 주입용).
+ * @returns {Issue[]}
+ */
+export function checkExternalApiStale(targets, runsByCollector, now = new Date()) {
+  /** @type {Issue[]} */
+  const issues = [];
+  for (const { collector, stale_days, owner } of targets) {
+    const rows = runsByCollector[collector] ?? [];
+    if (rows.length < OUTAGE_MIN_CONSECUTIVE) continue; // 신규 collector 오탐 차단
+    const recent = rows.slice(0, OUTAGE_MIN_CONSECUTIVE);
+    // success 인데 ok=0 만 점검 — failure 는 ①, 단발 0건은 ②가 잡음
+    const allEmptySuccess = recent.every(
+      (r) => r.status === "success" && (r.ok_count ?? 0) === 0,
+    );
+    if (!allEmptySuccess) continue;
+    // 첫 ok=0 시각 = 외부 API 장애 시작 추정 시각
+    const oldest = recent[recent.length - 1];
+    if (!oldest.finished_at) continue;
+    const daysSince = (now.getTime() - new Date(oldest.finished_at).getTime()) / 86400000;
+    if (daysSince <= stale_days) continue;
+    const days = Math.floor(daysSince);
+    issues.push({
+      kind: "outage",
+      collector,
+      detail: `${owner} API ${days}일+ 정상실행+0건 (${OUTAGE_MIN_CONSECUTIVE}회 연속) — 외부 API 장기 중단 의심`,
+      lines: [
+        `최근 ${OUTAGE_MIN_CONSECUTIVE}회 collector_runs 모두 status=success / ok_count=0 입니다.`,
+        `첫 이상 발화: ${toKst(oldest.finished_at) ?? oldest.finished_at} — 외부 ${owner} API 장애 시작 추정.`,
+        `[조치 1] raw API 1회 호출 (curl) — 500/503/타임아웃 확인`,
+        `[조치 2] ${owner} 공식 공지 grep — "점검"/"장애" 키워드`,
+        `[조치 3] 의심 확정 시 BACKLOG.md "외부 API 사고" 1줄 박힘`,
+      ],
+      at: oldest.finished_at,
+    });
+  }
+  return issues;
+}
+
 // ── I/O 래퍼 (실제 API·DB 호출) ─────────────────────────────
 
 /**
@@ -547,6 +615,33 @@ async function fetchLatestCollectorRuns() {
   return { latest: [...latest.values()], prevOk };
 }
 
+/**
+ * ⑤ 외부 API collector 별 최근 N행을 collector_runs 에서 가져온다.
+ * targets 의 collector 값을 IN 쿼리로 묶어 1회 호출.
+ * @param {ReadonlyArray<{ collector: string }>} targets
+ * @param {number} [limitPer]
+ * @returns {Promise<Record<string, Array<{ status: string, ok_count: number|null, finished_at: string|null }>>>}
+ */
+async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) {
+  const sb = getSupabase();
+  const names = targets.map((t) => t.collector);
+  if (names.length === 0) return {};
+  const { data } = await sb
+    .from("collector_runs")
+    .select("collector,status,ok_count,finished_at")
+    .in("collector", names)
+    .order("finished_at", { ascending: false })
+    .limit(names.length * limitPer * 2); // 여유분 2배 = 다른 collector 행 끼어들기 대비
+  const rows = data ?? [];
+  /** @type {Record<string, Array<{ status: string, ok_count: number|null, finished_at: string|null }>>} */
+  const grouped = {};
+  for (const row of rows) {
+    if (!grouped[row.collector]) grouped[row.collector] = [];
+    if (grouped[row.collector].length < limitPer) grouped[row.collector].push(row);
+  }
+  return grouped;
+}
+
 // ── 메인 ────────────────────────────────────────────────────
 
 async function main() {
@@ -607,6 +702,19 @@ async function main() {
           "  · 지하철노선 78% (1560/2001)",
         ],
       },
+      {
+        kind: "outage",
+        collector: "housing-permits",
+        detail: "MOLIT 주택건설실적 API 48일+ 정상실행+0건 (3회 연속) — 외부 API 장기 중단 의심",
+        lines: [
+          "최근 3회 collector_runs 모두 status=success / ok_count=0 입니다.",
+          "첫 이상 발화: 4/10 09:00 KST — 외부 MOLIT 주택건설실적 API 장애 시작 추정.",
+          "[조치 1] raw API 1회 호출 (curl) — 500/503/타임아웃 확인",
+          "[조치 2] MOLIT 주택건설실적 공식 공지 grep — \"점검\"/\"장애\" 키워드",
+          "[조치 3] 의심 확정 시 BACKLOG.md \"외부 API 사고\" 1줄 박힘",
+        ],
+        at: nowIso,
+      },
     ];
     // 운영 알림과 동일하게 한 통으로 합쳐 보낸다. 맨 앞에 테스트 안내를 덧붙임.
     const messages = buildMessages(samples);
@@ -665,6 +773,10 @@ async function main() {
     issues = issues.concat(
       checkCategoryNullSurge(audit.categories, AUDIT_CATEGORY_BASELINE, audit.fields),
     );
+
+    // ⑤ 외부 API 장기 중단 — silent fail (success+ok=0) 연속 누적 탐지
+    const runsByCollector = await fetchExternalApiRuns(EXTERNAL_API_COLLECTORS);
+    issues = issues.concat(checkExternalApiStale(EXTERNAL_API_COLLECTORS, runsByCollector));
   }
 
   if (issues.length === 0) {
