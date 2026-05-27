@@ -1,4 +1,3 @@
-// @ts-check
 // /api/upcoming — 분양 임박 단지 (분양계획 + 청약중 + 분양중) 목록 + 캘린더 매핑
 // spec: docs/superpowers/specs/2026-05-02-upcoming-presale-page-design.md § 3-1
 
@@ -9,7 +8,7 @@ const STAGE_MAP = {
   plan: "분양계획",
   apply: "청약중",
   sale: "분양중",
-};
+} as const;
 const ALL_STAGES = Object.values(STAGE_MAP);
 const DATE_RE = /^\d{4}\.\d{2}\.\d{2}$/;
 
@@ -20,11 +19,7 @@ export default withHandler({
   handler: handleGet,
 });
 
-/**
- * @param {any} req
- * @param {any} res
- */
-async function handleGet(req, res) {
+async function handleGet(req: any, res: any) {
   try {
     const sb = getSupabase();
 
@@ -42,18 +37,16 @@ async function handleGet(req, res) {
       return res.status(500).json({ ok: false, error: "데이터 조회 실패" });
     }
 
-    const rows = /** @type {any[]} */ (data || []);
+    const rows = (data || []) as any[];
 
-    /** @type {{ plan: any[], apply: any[], sale: any[] }} */
-    const stages = { plan: [], apply: [], sale: [] };
+    const stages: { plan: any[]; apply: any[]; sale: any[] } = { plan: [], apply: [], sale: [] };
     for (const apt of rows) {
       if (apt.presaleStage === "분양계획") stages.plan.push(apt);
       else if (apt.presaleStage === "청약중") stages.apply.push(apt);
       else if (apt.presaleStage === "분양중") stages.sale.push(apt);
     }
 
-    /** @type {Record<string, Array<{ id: any, event: string }>>} */
-    const calendar = {};
+    const calendar: Record<string, Array<{ id: any; event: string }>> = {};
     for (const apt of rows) {
       const dates = extractDates(apt);
       for (const { date, event } of dates) {
@@ -81,13 +74,9 @@ async function handleGet(req, res) {
  * - 분양계획 단지의 recruit_date → presale_announce (녹)
  * - 청약중/분양중 단지의 recruit_date → apply_start (노)
  * - schedule.scheduleName 키워드 휴리스틱 → presale_announce/apply_start/apply_end/winner_announce
- *
- * @returns {Array<{date: string, event: string}>} ISO 날짜(YYYY-MM-DD) + 이벤트 키
  */
-/** @param {any} apt */
-export function extractDates(apt) {
-  /** @type {Array<{date: string, event: string}>} */
-  const dates = [];
+export function extractDates(apt: any): Array<{ date: string; event: string }> {
+  const dates: Array<{ date: string; event: string }> = [];
   const isPlanStage = apt?.presaleStage === "분양계획";
 
   // 1) presaleRecruitDate (TEXT) — 분양계획 vs 그 외 단계로 이벤트 키 분리
@@ -114,8 +103,7 @@ export function extractDates(apt) {
   return dates;
 }
 
-/** @param {unknown} v */
-function parseRecruitDate(v) {
+function parseRecruitDate(v: unknown): string | null {
   if (!v || typeof v !== "string") return null;
   const d = new Date(v);
   if (isNaN(d.getTime())) return null;
@@ -123,11 +111,7 @@ function parseRecruitDate(v) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/**
- * @param {unknown} name
- * @param {boolean} [isPlanStage]
- */
-export function inferEventFromName(name, isPlanStage = false) {
+export function inferEventFromName(name: unknown, isPlanStage = false): string {
   if (!name || typeof name !== "string") {
     return isPlanStage ? "presale_announce" : "etc";
   }

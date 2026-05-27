@@ -1,4 +1,3 @@
-// @ts-check
 // /api/subscribers - 분양 시작 알림 신청 (POST) + 철회 (DELETE)
 // spec: docs/superpowers/specs/2026-05-02-upcoming-presale-page-design.md
 // RLS: anon-only INSERT, service_role-only SELECT/UPDATE
@@ -8,7 +7,7 @@ import { getMibuyangSupabase } from "./_lib/supabase.js";
 import { withHandler } from "./_lib/handler.js";
 
 const PHONE_RE = /^01[0-9]-?\d{3,4}-?\d{4}$/;
-const REGION_RE = /^[\uac00-\ud7a3]{2,15}$/;
+const REGION_RE = /^[가-힣]{2,15}$/;
 const APT_ID_RE = /^[a-z]+-\d+$/i;
 const SUBSCRIBER_CONFLICT_TARGET = "phone,region_key,gu_key,apartment_key";
 
@@ -19,11 +18,7 @@ export default withHandler({
   handler: { POST: handlePost, DELETE: handleDelete },
 });
 
-/**
- * @param {any} req
- * @param {any} res
- */
-async function handlePost(req, res) {
+async function handlePost(req: any, res: any) {
   const { phone, region, gu, apartment_id, consent } = req.body || {};
   const regionValue = normalizeOptionalString(region);
   const guValue = normalizeOptionalString(gu);
@@ -79,11 +74,7 @@ async function handlePost(req, res) {
   }
 }
 
-/**
- * @param {any} req
- * @param {any} res
- */
-async function handleDelete(req, res) {
+async function handleDelete(req: any, res: any) {
   const { phone, token } = req.body || {};
 
   if (!phone || typeof phone !== "string") {
@@ -132,16 +123,14 @@ async function handleDelete(req, res) {
   }
 }
 
-/** @param {unknown} phone */
-export function normalizeToE164(phone) {
+export function normalizeToE164(phone: unknown): string | null {
   if (!phone || typeof phone !== "string") return null;
   const digits = phone.replace(/\D/g, "");
   if (!/^010\d{7,8}$/.test(digits) && !/^01[16-9]\d{6,8}$/.test(digits)) return null;
   return `+82${digits.slice(1)}`;
 }
 
-/** @param {unknown} value */
-function normalizeOptionalString(value) {
+function normalizeOptionalString(value: unknown): string | null | unknown {
   if (value == null) return null;
   if (typeof value !== "string") return value;
   const trimmed = value.trim();

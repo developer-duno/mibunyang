@@ -61,6 +61,8 @@ export default function App() {
   }, []);
   const [hideNoUnsold, setHideNoUnsold] = useState(true);
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold(v => !v), []);
+  // useToast 박힘 자리: useState 직후 + 다른 hook 호출보다 위 (L67 useEffect 의 showToast 참조 TDZ 방지)
+  const { toast, showToast } = useToast();
 
   // § 5-5: 헤더 CTA "곧 분양 N개" — Feature Flag ON 일 때만 1회 fetch (Vercel CDN 5분 캐시)
   const [upcomingCount, setUpcomingCount] = useState<number | null>(null);
@@ -83,9 +85,10 @@ export default function App() {
         trackEvent("upcoming_fetch_error", {
           message: err instanceof Error ? err.message : String(err),
         });
+        showToast("곧 분양 데이터 임시 사용 불가");
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [showToast]);
   const [tab, setTab] = useState(() => {
     if (window.location.pathname.startsWith("/oauth/kakao/callback")) return "kakaoCallback";
     if (window.location.pathname.startsWith("/upcoming")) {
@@ -120,7 +123,7 @@ export default function App() {
   });
   // ── 커스텀 훅 13개 ──
   const { isPC, isDesktop } = useResponsive();
-  const { toast, showToast } = useToast();
+  // useToast 는 useState 직후 자리로 이동 (L67 useEffect showToast 참조 TDZ 방지)
   const { favoriteIds, favoriteSet, setFavoriteIds, toggleFavorite } = useFavorites(showToast);
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail]);
