@@ -12,6 +12,7 @@ type CompareSheetProps = {
   profile: string;
   isDesktop?: boolean;
   isLoggedIn?: boolean;
+  showToast?: (msg: string) => void;
 };
 
 const btnStyle = {
@@ -20,7 +21,7 @@ const btnStyle = {
   cursor: "pointer", minHeight: 36, transition: "all .15s",
 };
 
-export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose, profile, isDesktop, isLoggedIn = true }: CompareSheetProps) {
+export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose, profile, isDesktop, isLoggedIn = true, showToast }: CompareSheetProps) {
   const tableRef = useRef<HTMLDivElement>(null);
   const exportingRef = useRef(false);
   const [exporting, setExporting] = useState(false);
@@ -33,10 +34,13 @@ export const CompareSheet = memo(function CompareSheet({ items, onShare, onClose
       const { exportAsImage, exportAsPdf } = await import("@/lib/exportPdf");
       if (type === "pdf") await exportAsPdf(tableRef.current, "compare.pdf");
       else await exportAsImage(tableRef.current, "compare.png");
-    } catch { /* 내보내기 실패 무시 */ }
+    } catch {
+      const fileType = type === "pdf" ? "PDF" : "이미지";
+      showToast?.(`${fileType} 내보내기 실패. 잠시 후 다시 시도해주세요`);
+    }
     exportingRef.current = false;
     setExporting(false);
-  }, []);
+  }, [showToast]);
 
   if (items.length < 2) return null;
   const cats = Object.keys(items[0].res.cats);
