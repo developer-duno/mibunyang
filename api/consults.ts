@@ -1,4 +1,3 @@
-// @ts-check
 import { getSupabase, getMibuyangSupabase } from "./_lib/supabase.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 import { verifyToken } from "./_lib/auth.js";
@@ -14,11 +13,7 @@ export default withHandler({
   handler: { POST: handlePost, GET: handleGet },
 });
 
-/**
- * @param {any} req
- * @param {any} res
- */
-async function handlePost(req, res) {
+async function handlePost(req: any, res: any) {
   const rateLimitResult = await checkRateLimit(req, "consult");
   if (rateLimitResult.limited) {
     const retryAfter = rateLimitResult.retryAfter;
@@ -70,11 +65,7 @@ async function handlePost(req, res) {
   }
 }
 
-/**
- * @param {any} req
- * @param {any} res
- */
-async function handleGet(req, res) {
+async function handleGet(req: any, res: any) {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith("Bearer ")) {
     return res.status(401).json({ ok: false, error: "인증이 필요합니다" });
@@ -102,7 +93,7 @@ async function handleGet(req, res) {
     if (error) throw error;
 
     // snake_case → camelCase 변환
-    const mapped = (data || []).map(r => ({
+    const mapped = (data || []).map((r: any) => ({
       id: r.id,
       name: r.name,
       phone: r.phone,
