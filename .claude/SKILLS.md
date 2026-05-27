@@ -9,6 +9,6 @@
 - **`webapp-testing`** — UI 변경 후 브라우저 검증 (Playwright, **필수**)
 - **`frontend-design`** — 새 컴포넌트/섹션 작성 시 자동 발동. Pretendard · C.borderStrong · memo 45개 구조 일관성 유지
 - **`/code-review:code-review`** — GitHub PR 리뷰 (로컬 5교차검증과는 별개)
-- **`/engineering:tech-debt`** — price 64%/dataReliability 57.4% 같은 품질 갭 전략
+- **`/engineering:tech-debt`** — maintenance 15.7%/builders 5.7%/benefits 0% (의도) 같은 품질 갭 전략 (DB_QUALITY.md 2026-05-26 실측 기준)
 - **`simplify` · `commit`** — 커밋 전 자동 (Review 단계에서 호출)
 - **`session-report` + `/claude-md-management:revise-claude-md`** — 세션 마무리 시
