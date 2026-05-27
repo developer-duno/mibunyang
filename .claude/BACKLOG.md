@@ -89,11 +89,17 @@
   - 답습 자산: `.claude/rules/collectors/graceful-shutdown-coverage.md` §"정확 패턴 3중 의무"
   - 별 PR 일괄 보강 (한 PR 당 5 collector × 1줄 박힘 + 단위 테스트)
 
-- 🟡 **NEIS_KEY / SCHOOLINFO_KEY 미설정 사고** (세션 327 발견, run 26475044298 raw log L22:35:19)
-  - 5/26 schools 단계 시작 메시지 = `⚠️ NEIS_KEY 미설정 — 거리 기반만 사용` + `⚠️ SCHOOLINFO_KEY 미설정 — 학생수 보강 스킵`
-  - GitHub Secrets `NEIS_KEY` / `SCHOOLINFO_KEY` (옵션 키, `.github/workflows/CLAUDE.md` 답습) 미등록 또는 yml env block 누락 가능성
-  - 진단 의무: workflow yml env block grep + GitHub Secrets 답습 + audit-env-keys.mjs 실행
-  - 영향: schools_score 가 거리 기반만 (NEIS 학교 상세 + 학교알리미 학생수 보강 0) = 정확도 저하
+- ✅ **NEIS_KEY / SCHOOLINFO_KEY 미설정 사고** (세션 327 발견 → 세션 328 종결, PR #31)
+  - 진단 결과 = `collect-naver-listings-incremental.yml` Collect schools step env block 누락 (Secrets 등록 ✅, schools-neis.mjs 코드 ✅, 월간 collect-schools.yml ✅)
+  - 정정 = incremental yml step env block 에 NEIS_KEY + SCHOOLINFO_KEY 2 줄 박힘 (`47a1a59`)
+  - 자가 점검 1 = Explore Agent #1 정확 (Secrets ✅ + yml 누락 ❌) vs Agent #2 환각 (Secrets 미등록 ❌). 직접 `gh secret list` 답습 의무 정착
+  - 검증 = 5/28 KST 05:30 자연 cron raw log "⚠️ ... 미설정" 0건 답습 의무
+  - 답습 자산: `.claude/rules/workflows/secret-naming-audit.md` §"yml validate step 의무화" + 보조 BACKLOG 박힘 (audit-env-keys.mjs step 단위 검증 보강 P2)
+
+- 🟡 **audit-env-keys.mjs step 단위 검증 보강** (세션 328 박힘, P2)
+  - 현재 audit = yml 전체 env block 답습 (step 단위 X). 세션 328 사고는 audit 가 못 잡음 (incremental yml 의 schools step 단위 누락)
+  - 정정 안: `scripts/audit-env-keys.mjs` 의 yml 파싱 로직에 step 단위 답습 추가. step 의 `run:` 에 박힌 collector 파일명 추출 → 해당 collector 의 codeKeys 와 step env block 교차 검증
+  - 트리거: 다음 step 단위 누락 사고 발생 시 자동 차단
 
 - 🟡 **13:35~13:36 cancelled 5건 (7~8초) 진단** (세션 327 발견, 사용자 "모름")
   - 5/26 13:35:58 ~ 13:36:08 사이 workflow_dispatch 5건 = Emergency / Police / KOSIS Unsold / Housing Permits / Building Info
