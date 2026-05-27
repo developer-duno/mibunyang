@@ -152,3 +152,7 @@ prices/unsold_history (DB, 행 2~24개)
 - 외부 차트 라이브러리 도입 — 사용자 기각
 - `MarketStatsCharts` 코드 변경 — props 불변, 자동 혜택만
 - 데이터 수집 주기 변경 — cron 누적은 별개 영역
+
+## 진행 상태
+
+✅ **완료** (2026-05-16 세션 258) — `src/components/LineChart.tsx` `niceTicks()` 함수 (L8~50, 140줄) 박힘. Y축 눈금 정상화 + 데이터 부족 표시 "누적 중" 박힘.

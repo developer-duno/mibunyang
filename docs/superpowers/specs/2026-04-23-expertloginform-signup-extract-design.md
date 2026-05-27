@@ -106,3 +106,7 @@ GATE 0~8 전수 🟢9/🟡0/🔴0 통과:
 ## 롤백
 
 단일 커밋 → `git revert <sha>` 1회로 복구. 선례 `de250f7` (PresetPanel) 동일 구조.
+
+## 진행 상태
+
+✅ **완료** (2026-04-23 세션) — `src/components/sections/SignupExtraFields.tsx` (88줄) + `src/components/sections/ExpertLoginForm.tsx` (191→142줄 분리) 코드 적용 박힘.

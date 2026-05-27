@@ -739,3 +739,7 @@ npm run test -- AptCard
   - 트리거: AptCard / 다른 카드 컴포넌트의 memo 회귀 사고 발생 시 또는 분기 점검 작업
   - 발견 경위: 청약홈 무순위 이벤트 로그 작업(2026-05-02 세션 159) 9차 GATE 검증에서 comparator 일관 누락 패턴 식별
 ```
+
+## 진행 상태
+
+✅ **완료** (2026-05-02 세션 159) — `supabase/migrations/20260502000000_*.sql` 마이그 3건 (테이블 + INDEX + VIEW) + `api/supabase/apartments.js` sanitize 화이트리스트 박힘. 1차 적재 1,263단지 완료.
