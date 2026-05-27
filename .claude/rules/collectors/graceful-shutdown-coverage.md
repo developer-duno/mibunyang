@@ -89,12 +89,29 @@ graceful shutdown 미적용 → timeout 까지 강제 종료 시 collector_runs 
 - ❌ `createReporter` 를 loop 끝난 뒤 호출 (`infra-kakao` 세션 327 이전 패턴) — SIGTERM 핸들러 등록 0회
 - ❌ 단위 테스트 0건 (PR #28 세션 321 사고) — `process.emit('SIGTERM')` mock 의무
 
-## 검증 (실증)
+## 검증 (실증) — 세션 327 dry-run 답습
 
-GitHub Actions `cancel-timeout-minutes` 기본값 = 5분 (300s). SIGTERM 후 5분 안에 SIGKILL.
-- transport-tago 단지 당 4초 → SIGTERM 후 다음 단지 진입 전 break = 4초 안 = 안전
-- schools-neis 단지 당 1.2초 → 1.2초 안 = 안전
-- infra-kakao batch 30건 × 0.67초 = 20초 batch 단위 break = 안전
+### GitHub Actions SIGTERM 동작 (timeout-minutes vs gh run cancel)
+
+세션 327 dry-run run 26502989962 (`timeout-minutes: 2` 임시 박힘 + workflow_dispatch) 실측:
+
+- transport step 09:30:18 → 09:32:19 = **정확 2분 1초 후 cancel**
+- **`SIGTERM 받음` 로그 0건 / `[완료] N초 (graceful 중단)` summary 0건 / `[runs] partial` 0건 / collector_runs row 0건**
+- **진앙 = job timeout-minutes 도달 = step 즉시 SIGKILL (grace 0)**. `cancel-timeout-minutes` 기본 5분 = `gh run cancel` 수동 명령 시에만 적용.
+
+### 결론 = graceful break 박힘 효과 자리
+
+| cancel 종류 | grace period | graceful break 효과 |
+|---|---|---|
+| `timeout-minutes` 도달 (자연 timeout) | 0초 (즉시 SIGKILL) | **0** (partial 기록 못함) |
+| `gh run cancel` 수동 명령 | 5분 (cancel-timeout-minutes 기본) | **유효** (단지 처리 끝나면 break) |
+| 다른 step `continue-on-error: true` step fail | step 단위 (다음 step 진행) | N/A |
+
+→ graceful break = **수동 cancel 대비 보조 기능**. 자연 timeout 사고 = **timeout-minutes 늘리기만 유효**.
+
+### 단지 당 처리 시간 (참고)
+
+- transport-tago 4초/단지 / infra-kakao 0.67초/단지 / schools-neis 1.2초/단지 = 수동 cancel grace 5분 안에 break 평가 = 안전
 
 ## 답습 자산
 
