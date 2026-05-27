@@ -18,7 +18,8 @@ jobs:
     #   실측 자연 100% 완료 = transport 68m46s + infra 22m32s + schools 추정 40m41s = 132m.
     #   직전 5/25 success 109m. 자연 변동 ±10% (σ 0.385s/단지, Z-score 0.53 정상 범위).
     #   외부 API 응답 분산 × 3단계 누적 = 마진 50% 의무 → 180m.
-    timeout-minutes: 180
+    # ⚠️ 임시 2분 (graceful break SIGTERM 실증 자리, 본 PR 머지 전 복원 의무)
+    timeout-minutes: 2
 
     steps:
       - uses: actions/checkout@v5
