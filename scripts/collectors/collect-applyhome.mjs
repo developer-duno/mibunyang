@@ -175,6 +175,7 @@ async function main() {
   const events = [];   // 시계열 적재용 — apartments.update 성공 시에만 누적
 
   for (const [no, agg] of Object.entries(aggregated)) {
+    if (rpt.interrupted()) break;
     const aptId = `ah-${no}`;
     if (!aptSet.has(aptId)) continue;
     matched++;

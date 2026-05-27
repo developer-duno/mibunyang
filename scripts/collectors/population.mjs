@@ -267,6 +267,7 @@ async function main() {
   const rpt = createReporter("population");
   let saved = 0;
   for (const row of rows) {
+    if (rpt.interrupted()) break;
     // population 소유 컬럼만 업데이트 (다른 수집기 컬럼 보존)
     let q = sb.from("regions")
       .update({ pop_growth: row.pop_growth, population: row.population, households: row.households })

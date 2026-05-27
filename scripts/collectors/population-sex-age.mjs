@@ -204,6 +204,7 @@ async function main() {
   const rpt = createReporter("population-sex-age");
   let saved = 0;
   for (const row of rows) {
+    if (rpt.interrupted()) break;
     let q = sb.from("regions")
       .update({ sex_age: row.sex_age })
       .eq("region", row.region)
