@@ -5,7 +5,7 @@
 ## 즉시 알아야 할 것 (항상 로드 가치)
 
 - **사용자 대화 시 쉬운 말 원칙** — 자세히는 [.claude/EASY_WORDS.md](.claude/EASY_WORDS.md)
-- **현재 진행 상황** — [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) (세션 1~316 누적) · [.claude/DB_QUALITY.md](.claude/DB_QUALITY.md) · [.claude/BACKLOG.md](.claude/BACKLOG.md) · `.claude/NEXT_SESSION.md` (개인 로컬, git 미추적)
+- **현재 진행 상황** — [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) (세션 1~295 누적, 296+ SESSION_LOG drift P1) · [.claude/DB_QUALITY.md](.claude/DB_QUALITY.md) · [.claude/BACKLOG.md](.claude/BACKLOG.md) · `.claude/NEXT_SESSION.md` (개인 로컬, git 미추적)
 - **새 작업 시작 시 작업 규칙** — [.claude/WORK_RULES.md](.claude/WORK_RULES.md) (Plan→Guard→Work→Review)
 - **CLAUDE.md 본문 편집 전 메타 규칙** — [.claude/META_RULES.md](.claude/META_RULES.md) (비대화 방지, 상한 150줄)
 - **환경변수 / 로컬 자원 / 자주 쓰는 스킬** — [.claude/ENV_VARS.md](.claude/ENV_VARS.md) · [.claude/LOCAL_RESOURCES.md](.claude/LOCAL_RESOURCES.md) · [.claude/SKILLS.md](.claude/SKILLS.md)
@@ -20,7 +20,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | 레이어 | 기술 | 핵심 모듈 |
 |--------|------|----------|
 | **프론트** | React 19 + Vite 8 (Rolldown) | App.tsx (~430줄), `@/` 경로 별칭, Pretendard 폰트 |
-| **상태/훅** | useMemo 13개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
+| **상태/훅** | useMemo 14개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
 | **컴포넌트** | memo() 45개 + icons.tsx (SVG 9개) | 소비자9 + 섹션9 + 상세10 + 필터7 + 전문가9 + 관리자5 + 아이콘1 |
 | **API** | Vercel Serverless (23개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합) |
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |

@@ -1,8 +1,8 @@
 # Hook 규칙
 
-> App.jsx 및 커스텀 훅 수정 시 반드시 이 규칙을 따를 것.
+> App.tsx 및 커스텀 훅 수정 시 반드시 이 규칙을 따를 것.
 
-## Hook 호출 순서 (App.jsx)
+## Hook 호출 순서 (App.tsx)
 
 ```
 useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개)
@@ -108,7 +108,7 @@ useComparison(showToast)
   └── useEffect × 3 (mount 토스트, localStorage 동기화, 크로스탭 storage)
 ```
 
-MAX_COMPARE 방어 4경로: 초기화 / toggleComp / URL딥링크(App.jsx) / 크로스탭storage
+MAX_COMPARE 방어 4경로: 초기화 / toggleComp / URL딥링크(App.tsx) / 크로스탭storage
 
 ## useFavorites 구조 (v2 객체 기반)
 
@@ -142,4 +142,4 @@ useResponsive()
 - useTransition: 정렬 변경 시 startSortTransition (useFilterSort.js)
 - filterOptionCounts: 단일 패스 leave-one-out (5N→1N 최적화)
 - AptListSection: IntersectionObserver 무한 스크롤 + "더 보기" 폴백
-- App.jsx closeDetail 의존성: `[detail]` (React Compiler 호환)
+- App.tsx closeDetail 의존성: `[detail]` (React Compiler 호환)

@@ -60,27 +60,48 @@ describe("graceful shutdown", () => {
 });
 ```
 
-## 적용 현황 (세션 327 답습)
+## 적용 현황 (진실의 원천 = `_graceful-coverage.test.mjs`)
 
-### 완전 적용 (break 박힘) — 4 → 7 collector (세션 327 fix 후)
+### ⚠️ 진실의 원천 명시 (세션 331 정정)
 
-- `collect-unsold-kosis` L127 + L193
-- `housing-permits` L90 + L105
-- `molit-building-info` L157 + L187 + L214 (외부+내부 2중)
-- `trade-stats-regions` L119 + L128 + L177
-- `transport-tago` L215 + L218 (세션 327 신규)
-- `infra-kakao` L87 + L132 (세션 327 신규)
-- `schools-neis` L373 + L374 (세션 327 신규)
+본 md 의 적용 현황 목록은 **stale 위험**. 실제 진실의 원천 = [`scripts/collectors/_graceful-coverage.test.mjs`](../../../scripts/collectors/_graceful-coverage.test.mjs) (vitest 회귀 가드 + ALLOWLIST). md 와 테스트가 drift 시 = 테스트 우선.
 
-### 등록만 (break 0) — 15 collector
+다음 명령으로 break 박힘 collector 실측:
 
-`calc-school-walk` / `collect-housing-price` / `collect-market-stats` / `collect-trades` / `naver-presale` / `population` / `population-sex-age` / `childcare-info` / `childcare-detail` / `childcare-info-jeju` / `collect-nearby-childcare` / `collect-air-quality` / `collect-applyhome` / `collect-building-hub` / `collect-crime-safety`
+```bash
+grep -l "rpt.interrupted\|isInterrupted" scripts/collectors/*.mjs | grep -v test
+```
 
-→ 별 PR 보강 의무 (BACKLOG P1 박힘)
+### 완전 적용 (break 박힘) — 16 collector (2026-05-28 실측)
 
-### 미사용 — 24+ collector
+- `childcare-info-jeju` (PR-A 세션 329)
+- `collect-air-quality`
+- `collect-applyhome`
+- `collect-building-hub`
+- `collect-childcare`
+- `collect-emergency`
+- `collect-police`
+- `collect-unsold-kosis`
+- `housing-permits`
+- `infra-kakao`
+- `molit-building-info`
+- `population`
+- `population-sex-age`
+- `schools-neis`
+- `trade-stats-regions`
+- `transport-tago`
 
-graceful shutdown 미적용 → timeout 까지 강제 종료 시 collector_runs row 0건 = silent fail. 우선순위 낮음.
+### ALLOWLIST (graceful 무관 또는 PR-B/C 미머지) — 11 collector
+
+`_graceful-coverage.test.mjs` ALLOWLIST 본문 답습:
+
+- PR-B 대상 (7건): collect-housing-price / childcare-detail / collect-nearby-childcare / collect-crime-safety / calc-school-walk / collect-market-stats / naver-presale
+- PR-C 대상 (2건): collect-trades / childcare-info
+- 추가 보강 (2건): collect-maintenance / trade-stats-regions setup 호출 0건 회귀
+
+### 미사용 (graceful 불필요 or 우선순위 낮음) — 20+ collector
+
+graceful shutdown 미적용 → timeout 까지 강제 종료 시 collector_runs row 0건 = silent fail. 본 md 적용 현황과 ALLOWLIST 둘 다 stale 발생 시 = `_graceful-coverage.test.mjs` ALLOWLIST 가 진실.
 
 ## 안티 패턴
 
