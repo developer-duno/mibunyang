@@ -348,3 +348,7 @@
   10. M3 대형 컴포넌트 타입 추출 분할 규칙
   11. tsconfig include 에 api 추가 + incremental 캐시
   12. 롤백 시나리오 부분 strict 다운 + M6 이후 긴급 .js 보강
+
+## 진행 상태
+
+✅ **완료** (M0~M8 전부 박힘) — M0 부트스트랩 (세션 172, 커밋 `4f4889f`) / M3·M4 src/ .ts 변환 100% (세션 177~188) / M5 scripts/+api/ typecheck (세션 190~207) / M7 src/ test 100% (세션 210~218) / M8 components test 49/49 (세션 220). src/ TS화 98%.

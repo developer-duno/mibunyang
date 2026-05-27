@@ -634,3 +634,7 @@ SELECT region, COUNT(*) FROM subscribers WHERE opt_out_at IS NULL GROUP BY regio
 | SubscribeForm 의 짧은 폼 패턴 | 메인 ConsultForm.v2 단순화 prototype |
 
 트랙 2 spec 작성 시 본 spec § 4 (UI 컴포넌트) 결과를 prerequisites 로 참조.
+
+## 진행 상태
+
+✅ **완료** (2026-05-02 세션 161) — `src/components/UpcomingPage.tsx` (214줄) + `UpcomingCalendar.tsx` (80줄) + `UpcomingCardList.tsx` (220줄) 신규 + `/upcoming` 라우트 박힘.
