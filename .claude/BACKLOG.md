@@ -154,21 +154,11 @@
 
 ## 🟡 곧
 
-- 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**)
-  - 증상: mibunyang regions 664 행 모두 avg_price NULL
-  - 가설 정정 (세션 226): "컬럼 폐기" → **수집기 부재 + cross-repo 활성 사용**
-  - 컬럼 추가 시점: `20260313024159_init_mibunyang.sql:212` (초기 스키마, 마이그 메시지/주석 부재 = 의도 미정의)
-  - mibunyang 사용처: 0건 (types/database.types.ts auto-typegen 3건만 + scoring 0건; `scorePrice.ts` 는 `avg_price_sqm` 만 폴백)
-  - 🚨 naver-estate-web 사용처: 8 위치 (frontend 5 + backend 3) — 세션 316 직접 grep 재실측 + word boundary `\b`
-    - frontend: `src/types/mibunyang.ts:87` (TS 타입), `src/components/mb/MbRegionStatsTable.tsx:59,60` (모바일 카드 `!= null` 표시/NULL 줄 숨김), `:142` (테이블 NULL → `-` 대시), `src/lib/mb-export.ts:51` (엑셀)
-    - backend FastAPI: `db/mb_models.py:134` (SQLAlchemy ORM `Mapped[int | None]`), `db/price_queries.py:34,68` (SELECT alias; 세션 277 `:63` → 316 `:68` drift, 1.5개월 stale), `routers/mb_serializers.py:88` (응답 직렬화 `r.avg_price` 그대로)
-  - 별 도메인 (무관): `backend/crawler/stats.py:16,43,91` `avg_price` = articles 단지 레벨 평균가 (`regions.avg_price` 와 무관 확정)
-  - UI 사용자 영향: NULL 이미 노출 중 (모바일 줄 숨김 / 테이블 `-` 대시) → 사용자 사고 0 박힘
-  - 옵션 1-A (보류, 권장, **세션 316 채택**): cross-repo 영향 정리 전 drop 금지 — 5~10분 메모 박제만. 답습 자산: 세션 226 plan v4 (옵션 1 보류 + 9 GATE 2 라운드 + 환각 정정 19건)
-  - 옵션 1-B (cross-repo drop): naver-estate-web frontend 5 + backend 3 제거 PR + mibunyang DROP COLUMN — 180분+ 양 프로젝트 동기 배포
-  - 옵션 1-C (강행): backend startup ORM 매핑 실패 위험만 진실 (UI 자리 NULL 이미 안전 폴백 박혀 있음)
-  - 옵션 1-D (미래 후보): `avg_price = avg_price_sqm × 평균면적` 자매 계산. 전제 = 시도·시군구별 분양 평균면적 데이터 (KOSIS 분양면적 통계 별 수집기 또는 `apartments.prices.area` 집계). 1-A 보류 유지 + 미래 진입 후보
-  - 참조: docs/superpowers/specs/2026-05-11-naver-postprocess-bottleneck-design.md §H 비-작업
+- 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**, **세션 334 ADR 승격**)
+  - **정책 결정**: → [docs/decisions/avg_price-policy.md](../docs/decisions/avg_price-policy.md) (세션 334 ADR 박힘)
+  - 채택 = 옵션 1-A (보류) + 미래 후보 = 옵션 1-D (자매 계산)
+  - 재오픈 트리거 3건 박힘 (1-B cross-repo 정리 / 1-D KOSIS 분양면적 수집기 / 1-C ORM 매핑 변경)
+  - 본 메모는 BACKLOG 트리거 자리 박힘 용도. 상세 근거·옵션 비교·답습 자산 = ADR 본문 우선
 
 - 🟡 **무순위 이벤트 로그 차수 노출** (세션 160 1차 적재 완료, 누적 1~2개월 후)
   - DetailModal 무순위 차수·이력 섹션 / AptCard 차수 배지 (count >= 2일 때만) / 시계열 차트 (MarketStatsCharts 패턴 재사용)
