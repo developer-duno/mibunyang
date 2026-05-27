@@ -13,7 +13,7 @@
  *   node scripts/collectors/collect-market-stats.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-market-stats.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, createReporter, sleep, REGION_MAP, upsertBatch, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, sleep, REGION_MAP, upsertBatch, recordApiQuota, recordCollectorRun, fetchWithRetry } from "./_shared.mjs";
 
 loadEnv();
 
@@ -73,9 +73,8 @@ const INDICATORS = [
  * @returns {Promise<unknown>}
  */
 async function fetchKosisTable(indicator, startPrdDe, endPrdDe) {
-  const https = await import("node:https");
-  const tls = await import("node:tls");
-
+  // 세션 330: 자체 https.request + TLS 1.2 legacy → fetchWithRetry 통일 (다른 9개 KOSIS 수집기와 동일 패턴).
+  // 5지표 dry-run 검증 결과 TLS 1.2 legacy 옵션 불필요. fetchWithRetry 의 429/500/503 + ECONNRESET 지수 백오프 3회 자연 적용.
   /** @type {Record<string, string>} */
   const paramObj = {
     method: "getList",
@@ -92,27 +91,10 @@ async function fetchKosisTable(indicator, startPrdDe, endPrdDe) {
   };
   if (indicator.objLevels >= 2) paramObj.objL2 = "ALL";
   const params = new URLSearchParams(paramObj);
-
   const url = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
-  const agent = new https.Agent({
-    secureOptions: /** @type {{ SSL_OP_LEGACY_SERVER_CONNECT: number }} */ (/** @type {unknown} */ (tls)).SSL_OP_LEGACY_SERVER_CONNECT,
-    minVersion: "TLSv1.2",
-    maxVersion: "TLSv1.2",
-  });
 
-  return new Promise((resolve, reject) => {
-    const req = https.request(url, { headers: { "User-Agent": "Mozilla/5.0" }, agent }, (res) => {
-      if (res.statusCode !== 200) return reject(new Error(`KOSIS HTTP ${res.statusCode}`));
-      let body = "";
-      res.on("data", (c) => (body += c));
-      res.on("end", () => {
-        try { resolve(JSON.parse(body)); } catch { reject(new Error("KOSIS JSON 파싱 실패")); }
-      });
-    });
-    req.on("error", reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error("KOSIS 타임아웃")); });
-    req.end();
-  });
+  const res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  return await res.json();
 }
 
 /**
@@ -290,7 +272,9 @@ async function main() {
   const result = rpt.summary();
   log(PHASE, "=== 완료 ===");
   await recordCollectorRun(PHASE, result);
-  if (result.fail > 0) process.exit(1);
+  // 세션 330: 5지표 중 일부만 transient API 사고 시 partial 자연 종료 (텔레그램 알림 노이즈 감소).
+  // success > 0 + fail > 0 = 부분 success (다음 cron 자연 회복 대기). 전부 fail 시만 진짜 사고로 exit 1.
+  if (result.fail > 0 && result.success === 0) process.exit(1);
 }
 
 const argv1 = process.argv[1];
