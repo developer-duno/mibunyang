@@ -13,9 +13,14 @@ jobs:
   post-process-incremental:
     runs-on: ubuntu-latest
     # 세션229 D-2 신규 박제 (실측 transport 35:09 + infra 10:15 + schools 18:13 = 63:37 + 마진 26:23) → 90m 정정
-    # 세션294 정정 (run 26311529575 실측 transport 74:48 + infra 15:16 도중 cancelled, 90:15 boundary 초과)
-    #   → 120m. transport-tago 2.1배 느림 root cause 분석 별 세션 자리 (BACKLOG 박제).
-    timeout-minutes: 120
+    # 세션294 정정 (run 26311529575 실측 transport 74:48 + infra 15:16 도중 cancelled, 90:15 boundary 초과) → 120m
+    # 세션327 정정: 5/26 run 26475044298 = 120m 1초 boundary cancelled.
+    #   실측 자연 100% 완료 = transport 68m46s + infra 22m32s + schools 추정 40m41s = 132m.
+    #   직전 5/25 success 109m. 자연 변동 ±10% (σ 0.385s/단지, Z-score 0.53 정상 범위).
+    #   외부 API 응답 분산 × 3단계 누적 = 마진 50% 의무 → 180m.
+    # 세션327 실증 (run 26502989962, timeout=2 dry-run): job timeout-minutes 도달 = step 즉시 SIGKILL (grace 0).
+    #   graceful break 박힘은 `gh run cancel` 수동 명령 시에만 partial 기록. 자연 timeout = SIGKILL = collector_runs row 0.
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v5

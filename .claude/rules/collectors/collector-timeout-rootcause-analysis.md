@@ -83,6 +83,14 @@ console.log('apartments created in last 30 days:', count);
 - 커밋 `01d0dd4` (2026-05-22) PostgREST max_rows=1000 fix 16건 일괄 정정 자리 — 답습 자산 (cross-collector 영향 자리)
 - `.claude/rules/workflows/secret-naming-audit.md` §"운영 모니터링 (월간 schedule)" 절 답습 (월간 cron 데드 존 박제)
 - 세션 309 trade-stats.mjs DSR batch fix (`createSemaphore(10)` + `Promise.all`) — Supabase 직렬 update timeout 진앙 정정 답습 자산. `docs/superpowers/specs/2026-05-25-trade-stats-dsr-batch-fix-design.md` 박제 (박힘 환각 7건 정정 + 진단 자리)
+- 세션 327 사고 = Plan agent + 본인 환각 누적 **9건** 자가 점검 1 v2/v3 발동 후 정정. 패턴 = "Plan agent → 본인 grep → 추가 의심 발견 → 추가 grep → 9건 정정". raw log + `gh run view --json jobs` step 시간 둘 다 답습 의무. **메모리 박힘 값은 진실의 원천 아님** (예: `collector_runs` 스키마 = `ok_count`/`fail_count`/`skip_count` not `ok`/`fail`/`skip`). PR #28 graceful 박힘 = 46+ collector 중 완전 적용 4건 (9%) — `createReporter` 사용만으로 적용 단정 = 환각
+
+## 안티 패턴 보강 (세션 327)
+
+- ❌ Plan agent 보고 표 + 라인 번호 + 통계 = 환각 위험 100%. 본인 직접 1회 답습 의무
+- ❌ "createReporter 사용 = graceful 적용" 단정. `if (rpt.interrupted()) break;` 명시 박힘 grep 의무
+- ❌ "PR merge = 실전 동작 확인" 단정. workflow_dispatch dry-run 또는 자연 cron 1회 실증 의무
+- ❌ "외부 API 분산 N%" 박힘 단일 표본 단정. N≥10 표본 통계 (평균/σ/Z-score) 답습 의무
 
 ## 차단 검증 (본 룰 적용 후 사고 시뮬레이션)
 
