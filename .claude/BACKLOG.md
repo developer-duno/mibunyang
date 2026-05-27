@@ -83,6 +83,13 @@
 
 (현재 P0 박힘 0건. 다음 진입 후보 = L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
 
+- 🟡 **monitor-collectors 알림 9건 누적 사고 진단** (세션 326 발견, 텔레그램 스크린샷 박힘)
+  - 5/26 22:11~22:36 cancelled 7건 (collect-maintenance / emergency / police / kosis-unsold / housing-permits / building-info / kosis-regional-economy)
+  - 5/27 03:46 housing-permits success 인데 처리 0건 (run 26467919257) → monitor 6회 반복 알림 (5/27 03:46/03:48/04:52/05:36/06:07/08:04/10:13/15:00)
+  - 5/27 06:03 Naver Post-Processing Incremental cancelled (run 26475044298)
+  - 진단 의무: [timeout-rootcause-policy.md](.claude/rules/workflows/timeout-rootcause-policy.md) 답습 — raw log + 직전 success 비교 + git log + apartments.created_at 4-way 답습. 5/26 13:36 7건 묶음 = 큐 경합/billing 한도 가설 가능 자리
+  - housing-permits 0건 = 세션 323 답습 ("MOLIT API 500 진단") 재발 가능성. 별 PR 답습 의무
+
 - 🟡 **Supabase RLS — naver-estate-web 전용 11개 테이블 잔여** (세션 274 — mibunyang+공유 해결 완료)
   - 세션 274 실측 정정: 세션 273 "19개" 박제값은 부정확. `supabase db advisors --type
     security` live 조회 = `rls_disabled_in_public` 16개.

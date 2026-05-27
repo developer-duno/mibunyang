@@ -1,3 +1,63 @@
+# 세션 326 — 2026-05-27 (어린이집 cpmsapi017 collector main 푸시 + 운영 검증 + monitor 9건 사고 발견)
+
+## 거시 목적
+
+세션 325 NEXT_SESSION 답습 = 어린이집 collector + avg_price plan v1 두 갈래 보류. `/decision-session` 스킬 트리거 → 의존관계 실측 → 1단계 (어린이집) 즉시 완결 + 2단계 (avg_price) 별 세션 위임. 자가 점검 1+2 깊이 발동 = Explore Agent 환각 5건 + plan v1 환각 3건 정정 (cpmsapi021 미보유 보완 → cpmsapi017 신규 endpoint, 명령어 템플릿/ 이동 → .gitignore 추가).
+
+## 본 세션 작업 (1 커밋 `b88a3ac`)
+
+| 항목 | 결과 |
+|---|---|
+| Commit | `b88a3ac` (+328/-25, 11 파일) feat(collectors): regions.childcare 제주 cpmsapi017 신규 답습 |
+| Push | `503605d..b88a3ac` main 직푸시 (PR 없음, 사용자 답습 패턴) |
+| CI | green (lint/typecheck/audit-env-keys/audit-fill-matrix/vitest 20 pass/build 모두 ✓, run 26493599988) |
+| workflow_dispatch | 23초 success (run 26493754973) |
+| DB 갱신 | 제주시 count 50→**268** capacity 3472→16661 / 서귀포시 count 50→**99** capacity 3688→6080 / fetched_at 2026-05-27 |
+| 9 GATE 사전 검증 | tsc 0 errors / vitest 20/20 / audit-env-keys clean 31/37 / audit-fill-matrix clean |
+| dry-run 1회 | 사용자 운영 인증키 갱신 후 실행 = 운영계정 정상 동작 확정 (개발계정 50 한도 해소) |
+
+## 자가 점검 1+2 발견·정정 사고 8건
+
+**Explore Agent 환각 (자가 점검 1 차단)**:
+- Agent 1: "변경 행수 +36/-37" → 실측 +23/-25 (Agent 2 정확)
+- Agent 1: "monitor `childcare-info-jeju` NOT FOUND" → 실제 "Childcare Jeju Collection" 등록 (grep 키워드 환각)
+- Agent 1: "서귀포시 NULL" → 실측 count 50 박힘 (개발계정 한도). 운영계정 갱신 후 99 박힘
+
+**plan v1 환각 (자가 점검 2 차단)**:
+- "cpmsapi021 미보유 보완" 표현 환각 → 실제 cpmsapi017 신규 endpoint 자산 (전국 cpmsapi021 답습과 별도)
+- "graceful shutdown setupGracefulShutdown 적용" 박제값 환각 → 실제 rpt.interrupted() 폴링 패턴 (사고 가능성 매우 낮음, 향후 보강 후보)
+
+**사용자 1차 답변 정정**:
+- `명령어 템플릿/` `.claude/commands/ 이동` 1차 답변 = 중복 사고 (이미 .claude/commands/decision-session.md / plan-9gate.md / session-boot.md / tool-discovery.md 동기본 박힘) → 정정 = `.gitignore` 추가
+- `CHILDCARE_JEJU_KEY` Secret 등록 = 사용자 직접 (1차 답변 유지)
+
+**dry-run 박힘 자리 운영 답습**:
+- 사용자 "운영 승인 인증키 갱신" 자체 보고 → dry-run 결과 268 + 99 박힘 = 운영계정 정상 답습
+
+## monitor-collectors 9건 누적 사고 발견 (별 세션 답습 의무)
+
+사용자 텔레그램 스크린샷 5장 박힘:
+- 5/26 22:11~22:36 cancelled 7건 (collect-maintenance / emergency / police / kosis-unsold / housing-permits / building-info / kosis-regional-economy) — 같은 timestamp 묶음 = 큐 경합/billing 한도 가설
+- 5/27 03:46 housing-permits success 인데 처리 0건 (run 26467919257) → monitor 6회 반복 알림 (~15:00 까지)
+- 5/27 06:03 Naver Post-Processing Incremental cancelled (run 26475044298)
+
+본 commit (5/27 05:55) 자체는 무관 (monitor 5/27 06:00 success 답습). 별 PR 진단 의무 = BACKLOG L86 신규 P1 박힘.
+
+## 답습 자산
+
+- `.claude/rules/meta/next-session-grep-mandate.md` — NEXT_SESSION 박제값 단정 금지
+- `.claude/rules/workflows/timeout-rootcause-policy.md` — cancelled 4-way 답습 의무 (별 세션 진입 자리)
+- 세션 252 `childcare-info.mjs` (cpmsapi021 전국) — 답습 함수 (parseChildcareXml/extractTag/assertNoErrorCode/aggregateChildcare) 본 collector 에서 import
+- 세션 255 "개발계정 키 = 시군구당 50행 제한" 진단 — 본 사고 답습 자산
+- 세션 257 `schools.nearby_childcare` (단지 단위 1km 5건) vs 본 작업 `regions.childcare` (시군구 단위) = 독립 자산 (충돌 0)
+- 세션 321 `setupGracefulShutdown` v2 표준 — 본 collector 미적용, 향후 보강 후보
+
+## 다음 세션 진입 의무
+
+1. **🔴 별 PR 진단**: monitor 9건 누적 사고 4-way 답습 (raw log + 직전 success 비교 + git log + 외부 cron 자리)
+2. **🟡 avg_price 1-D Phase 1**: KOSIS 분양면적 raw API 검색 (plan v1 보류, plan v2 작성 의무)
+3. **🟢 답습 후보**: setupGracefulShutdown v2 표준 childcare-info-jeju 적용 (사고 가능성 낮음, 우선순위 낮음)
+
 # 세션 309 — 2026-05-25 (trade-stats DSR batch fix, 박힘 환각 7건 정정)
 
 ## 거시 목적
