@@ -140,3 +140,7 @@ workflows 배열에 name 등재(세션 265·266 답습).
    node --input-type=module -e "import {loadEnv,getSupabase} from './scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();for(const c of ['doctors_per_1k','hospital_beds_per_1k']){const {count}=await sb.from('regions').select(c,{count:'exact',head:true}).not(c,'is',null);console.log(c,count);}"
    ```
 4. CI: push 후 typecheck/vitest/audit-env-keys 통과
+
+## 진행 상태
+
+✅ **완료** (2026-05-18 세션 268~269) — `9d625d5 feat(collector): KOSIS 의료 인프라 묶음 수집기` + `cb120db` monitor 등재.

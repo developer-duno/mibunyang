@@ -342,3 +342,7 @@ jobs:
   - **C**: cancelled + step 실패 → 옵션 E (sync 최적화) 우선순위 ↑ + D-2 보류
 
 사용자 explicit trigger 의무 (자동 진입 0, decision-log/0053 §2 답습).
+
+## 진행 상태
+
+✅ **완료** (2026-05-13 세션 229) — Core (`c045594` 90→66줄) + Incremental (`9bbce13` 신규 65줄) 양쪽 yml 배포. CI 25734252650 success.

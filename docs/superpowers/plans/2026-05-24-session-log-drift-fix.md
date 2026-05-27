@@ -528,3 +528,7 @@ Expected: docs only 변경 = 즉시 success.
 ✅ **Type consistency**: 본 작업 = md 파일 변경 만 = 타입 없음.
 ✅ **Frequent commits**: 단일 commit (docs only, 분리 의의 0).
 ✅ **신규 발견**: spec § 1.1 외 추가 = **세션 300 entry 잘못된 위치 (L9756, 이중 ##)**. Task 2 신규.
+
+## 진행 상태
+
+✅ **완료** (2026-05-24 세션 304) — 짝 spec 동일 (`83e18cc` spec + `11ff369` plan 박힘).

@@ -308,3 +308,7 @@ Expected: `collect-emergency 오늘자 행: 0` (dry-run 이 행을 안 남김).
     집계는 시간이 지나며 자연 정확화.
 - BACKLOG 세션 261 `recordApiQuota 테스트 불가 — sb 인자 미지원` 항목 — 본 plan Task 2
   완료로 해소됨. BACKLOG 갱신 완료 (`.claude/BACKLOG.md:48` ✅).
+
+## 진행 상태
+
+✅ **완료** (2026-05-18 세션 264~265) — `a99c528 fix(shared): recordApiQuota dry-run 시 api_quota_log 기록 skip`.

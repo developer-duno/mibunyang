@@ -20,20 +20,20 @@
 | 2026-05-02-competitor-benchmark-plan.md | ✅ | 5 사이트 해부 (코드 무관 레퍼런스) |
 | 2026-05-02-upcoming-presale-page-design.md | ✅ | /upcoming 라우트 + 3 컴포넌트 |
 | 2026-05-03-ts-bootstrap-design.md | ✅ | M0~M8, src/ TS화 98% |
-| 2026-05-11-naver-postprocess-bottleneck-design.md | ❓ | 본문 답습 의무 |
-| 2026-05-11-naver-workflow-split.md | ❓ | 본문 답습 의무 |
+| 2026-05-11-naver-postprocess-bottleneck-design.md | ⏸️ | D-1 timeout 90→120 (`7f69a84`) + D-2 split (`c045594`) 완료. 옵션 E (sync 최적화) 미진입 |
+| 2026-05-11-naver-workflow-split.md | ✅ | Core (`c045594`) + Incremental (`9bbce13`) 양쪽 yml 배포 (세션 229) |
 | 2026-05-16-linechart-axis-fix-design.md | ✅ | niceTicks() + "누적 중" (세션 258) |
-| 2026-05-17-category-null-monitor-design.md | ❓ | 세션 263~264 답습 후 박힘 |
-| 2026-05-17-category-null-monitor-plan.md | ❓ | 세션 263~264 답습 후 박힘 |
-| 2026-05-17-collector-monitoring-ui-design.md | ❓ | 본문 답습 의무 |
-| 2026-05-18-kosis-medical-access-design.md | ❓ | 본문 답습 의무 |
+| 2026-05-17-category-null-monitor-design.md | ✅ | `bfa3582 feat(monitor)` 19 카테고리 NULL 점검 (세션 263~264) |
+| 2026-05-17-category-null-monitor-plan.md | ✅ | 짝 spec 동일 PR (세션 263~264) |
+| 2026-05-17-collector-monitoring-ui-design.md | ✅ | `3411b00` (한글+가로 스크롤) + `9e10026` (3열 그리드) (세션 257) |
+| 2026-05-18-kosis-medical-access-design.md | ✅ | `9d625d5 feat(collector): KOSIS 의료 인프라` + `cb120db` monitor 등재 (세션 268~269) |
 | 2026-05-18-kosis-sale-price-index-design.md | ✅ | 세션 269 적용 |
-| 2026-05-19-cpmsapi021-prod-key-design.md | ❓ | 본문 답습 의무 |
-| 2026-05-20-apartments-json-split-design.md | ❓ | 본문 답습 의무 |
+| 2026-05-19-cpmsapi021-prod-key-design.md | ✅ | `ea77f25` childcare-info, count>50 0→368 (세션 275) |
+| 2026-05-20-apartments-json-split-design.md | ✅ | `6714fa7`+`b57de6b`+`7eb2a2e` 3 커밋, 13MB→list 198KB (세션 279) |
 | 2026-05-24-audit-env-keys-matrix-boost-design.md | ✅ | 세션 304 답습 자산 |
 | 2026-05-24-jeju-childcare-collector-design.md | ✅ | PR-A 세션 329 박힘 |
 | 2026-05-24-rules-subfolder-split-design.md | ✅ | .claude/rules/<카테고리>/ 박힘 |
-| 2026-05-24-session-log-drift-fix-design.md | ❓ | 본문 답습 의무 |
+| 2026-05-24-session-log-drift-fix-design.md | ✅ | `83e18cc` spec + `11ff369` plan 박힘 (세션 304) |
 | 2026-05-25-data-freshness-automation-design.md | 🟡 | Phase 1~4 박힘, Phase 5 운영 검증 7일 대기 |
 | 2026-05-25-fill-missing-data-redesign.md | ✅ | 세션 308 PR #11 머지 |
 | 2026-05-25-trade-stats-dsr-batch-fix-design.md | ✅ | 세션 309 적용 |
@@ -46,13 +46,13 @@
 | 2026-05-02-applyhome-events-log.md | ✅ | spec 짝 답습 |
 | 2026-05-03-ts-bootstrap-m0.md | ✅ | 세션 172 적용 (커밋 4f4889f) |
 | 2026-05-16-linechart-axis-fix.md | ✅ | spec 짝 답습 |
-| 2026-05-18-dryrun-apiquota-fix.md | ❓ | 본문 답습 의무 |
-| 2026-05-18-dryrun-collector-runs-fix.md | ❓ | 본문 답습 의무 |
-| 2026-05-18-kosis-medical-access.md | ❓ | 본문 답습 의무 |
+| 2026-05-18-dryrun-apiquota-fix.md | ✅ | `a99c528 fix(shared): recordApiQuota dry-run skip` (세션 264~265) |
+| 2026-05-18-dryrun-collector-runs-fix.md | ✅ | `5f78a5e fix(shared): recordCollectorRun dry-run skip` (세션 264) |
+| 2026-05-18-kosis-medical-access.md | ✅ | 짝 spec 동일 (세션 268~269) |
 | 2026-05-18-kosis-sale-price-index.md | ✅ | 세션 269 적용 |
 | 2026-05-24-audit-env-keys-matrix-boost.md | ✅ | 세션 304 적용 |
 | 2026-05-24-rules-subfolder-split.md | ✅ | .claude/rules/<카테고리>/ 박힘 |
-| 2026-05-24-session-log-drift-fix.md | ❓ | 본문 답습 의무 |
+| 2026-05-24-session-log-drift-fix.md | ✅ | 짝 spec 동일 (세션 304) |
 | 2026-05-25-data-freshness-automation.md | 🟡 | Phase 1~4 박힘, Phase 5 운영 검증 7일 대기 |
 | 2026-05-25-fill-missing-data-redesign-phase1.md | ✅ | 세션 308 PR #11 머지 |
 

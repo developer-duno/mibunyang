@@ -184,3 +184,7 @@ monitor-collectors.mjs (daily 모드)
 > `newSupply`/`initialSaleRate`/`landCostRatio`)은 이번 점검에도, 기존 ④번
 > regions 컬럼 점검(`net_migration`/`crime_grade` 2개)에도 들어가지 않는다.
 > regions 카테고리 전체가 점검 제외이기 때문. 필요 시 별도 후보로 다룬다.
+
+## 진행 상태
+
+✅ **완료** (2026-05-17 세션 263~264) — `bfa3582 feat(monitor): data-audit 19 카테고리 NULL 비율 점검 추가` + 4 후속 커밋 (한글/포맷/한 통).
