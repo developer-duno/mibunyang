@@ -273,8 +273,8 @@ async function main() {
   log(PHASE, "=== 완료 ===");
   await recordCollectorRun(PHASE, result);
   // 세션 330: 5지표 중 일부만 transient API 사고 시 partial 자연 종료 (텔레그램 알림 노이즈 감소).
-  // success > 0 + fail > 0 = 부분 success (다음 cron 자연 회복 대기). 전부 fail 시만 진짜 사고로 exit 1.
-  if (result.fail > 0 && result.success === 0) process.exit(1);
+  // ok > 0 + fail > 0 = 부분 success (다음 cron 자연 회복 대기). 전부 fail 시만 진짜 사고로 exit 1.
+  if (result.fail > 0 && result.ok === 0) process.exit(1);
 }
 
 const argv1 = process.argv[1];
