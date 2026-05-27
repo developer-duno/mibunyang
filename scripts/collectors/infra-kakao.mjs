@@ -84,6 +84,7 @@ async function main() {
   const targets = apts.filter(a => a.lat && a.lng);
   log(PHASE, `대상: ${targets.length}건 (좌표 있음)`);
 
+  const rpt = createReporter(PHASE);  // 세션 327: SIGTERM 핸들러 등록을 loop 이전으로 이동 (이전에는 loop 끝난 뒤 호출되어 등록 0회)
   let updated = 0, skipped = 0;
 
   /**
@@ -130,11 +131,11 @@ async function main() {
   // 배치 단위 병렬 실행 (동시 5건)
   const BATCH = 30;
   for (let b = 0; b < targets.length; b += BATCH) {
+    if (rpt.interrupted()) break;  // 세션 327: graceful shutdown (SIGTERM 받으면 다음 배치 전 중단)
     const batch = targets.slice(b, b + BATCH);
     await Promise.all(batch.map((apt, j) => processApt(apt, b + j)));
   }
 
-  const rpt = createReporter(PHASE);
   rpt.success(updated);
   rpt.skip(skipped);
   const result = rpt.summary();

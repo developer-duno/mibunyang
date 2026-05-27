@@ -216,6 +216,7 @@ async function main() {
   let tagoCallCount = 0;
 
   for (let i = 0; i < targets.length; i++) {
+    if (rpt.interrupted()) break;  // 세션 327: graceful shutdown (SIGTERM 받으면 다음 단지 처리 전 중단)
     const apt = targets[i];
     try {
       // busStops 초기값 null = "TAGO 호출 미수행/실패" 로 취급

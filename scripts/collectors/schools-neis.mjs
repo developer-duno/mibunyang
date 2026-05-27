@@ -9,7 +9,7 @@
  *   node scripts/collectors/schools-neis.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/schools-neis.mjs --limit 100  (처리 건수 제한)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota, recordCollectorRun, createReporter } from "./_shared.mjs";
 
 loadEnv();
 
@@ -368,8 +368,10 @@ async function main() {
   log(PHASE, `대상: ${targets.length}건 (좌표 있음${limit < Infinity ? `, limit ${limit}` : ""})`);
 
   let updated = 0, skipped = 0;
+  const rpt = createReporter(PHASE);  // 세션 327: graceful shutdown 등록 (SIGTERM 핸들러)
 
   for (let i = 0; i < targets.length; i++) {
+    if (rpt.interrupted()) break;  // 세션 327: graceful shutdown (SIGTERM 받으면 다음 단지 처리 전 중단)
     const apt = targets[i];
     try {
       // 1단계: Kakao Places 검색 (기존)
@@ -438,7 +440,10 @@ async function main() {
 
   if (!dryRun && NEIS_KEY) await recordApiQuota(PHASE, "NEIS_KEY", neisApiCalls);
   if (!dryRun && SCHOOLINFO_KEY) await recordApiQuota(PHASE, "SCHOOLINFO_KEY", schoolInfoApiCalls);
-  await recordCollectorRun(PHASE, { ok: updated, skip: skipped });
+  rpt.success(updated);
+  rpt.skip(skipped);
+  const result = rpt.summary();  // 세션 327: graceful 중단 시 status=partial 자동 판정
+  await recordCollectorRun(PHASE, result);
 }
 
 const argv1 = process.argv[1];

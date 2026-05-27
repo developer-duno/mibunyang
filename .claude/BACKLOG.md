@@ -83,12 +83,29 @@
 
 (현재 P0 박힘 0건. 다음 진입 후보 = L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
 
-- 🟡 **monitor-collectors 알림 9건 누적 사고 진단** (세션 326 발견, 텔레그램 스크린샷 박힘)
-  - 5/26 22:11~22:36 cancelled 7건 (collect-maintenance / emergency / police / kosis-unsold / housing-permits / building-info / kosis-regional-economy)
-  - 5/27 03:46 housing-permits success 인데 처리 0건 (run 26467919257) → monitor 6회 반복 알림 (5/27 03:46/03:48/04:52/05:36/06:07/08:04/10:13/15:00)
-  - 5/27 06:03 Naver Post-Processing Incremental cancelled (run 26475044298)
-  - 진단 의무: [timeout-rootcause-policy.md](.claude/rules/workflows/timeout-rootcause-policy.md) 답습 — raw log + 직전 success 비교 + git log + apartments.created_at 4-way 답습. 5/26 13:36 7건 묶음 = 큐 경합/billing 한도 가설 가능 자리
-  - housing-permits 0건 = 세션 323 답습 ("MOLIT API 500 진단") 재발 가능성. 별 PR 답습 의무
+- 🟡 **graceful shutdown 신호 등록만 (break 0) 15 collector 일괄 보강** (세션 327 발견)
+  - 본 세션 우선순위 1 = Naver 3 단계 (transport-tago + infra-kakao + schools-neis) 정정 완료
+  - 잔여 우선순위 2 = 15 collector: `calc-school-walk` / `collect-housing-price` / `collect-market-stats` / `collect-trades` / `naver-presale` / `population` / `population-sex-age` / `childcare-info` / `childcare-detail` / `childcare-info-jeju` / `collect-nearby-childcare` / `collect-air-quality` / `collect-applyhome` / `collect-building-hub` / `collect-crime-safety`
+  - 답습 자산: `.claude/rules/collectors/graceful-shutdown-coverage.md` §"정확 패턴 3중 의무"
+  - 별 PR 일괄 보강 (한 PR 당 5 collector × 1줄 박힘 + 단위 테스트)
+
+- 🟡 **NEIS_KEY / SCHOOLINFO_KEY 미설정 사고** (세션 327 발견, run 26475044298 raw log L22:35:19)
+  - 5/26 schools 단계 시작 메시지 = `⚠️ NEIS_KEY 미설정 — 거리 기반만 사용` + `⚠️ SCHOOLINFO_KEY 미설정 — 학생수 보강 스킵`
+  - GitHub Secrets `NEIS_KEY` / `SCHOOLINFO_KEY` (옵션 키, `.github/workflows/CLAUDE.md` 답습) 미등록 또는 yml env block 누락 가능성
+  - 진단 의무: workflow yml env block grep + GitHub Secrets 답습 + audit-env-keys.mjs 실행
+  - 영향: schools_score 가 거리 기반만 (NEIS 학교 상세 + 학교알리미 학생수 보강 0) = 정확도 저하
+
+- 🟡 **13:35~13:36 cancelled 5건 (7~8초) 진단** (세션 327 발견, 사용자 "모름")
+  - 5/26 13:35:58 ~ 13:36:08 사이 workflow_dispatch 5건 = Emergency / Police / KOSIS Unsold / Housing Permits / Building Info
+  - 모두 시작 후 7~8초 만에 cancelled = 사용자 수동 cancel 가능성 OR runner pool 일시 장애 OR billing 한도 가능성
+  - 진단 의무: `gh api /repos/developer-duno/mibunyang/actions/runs` answer 답습 + 사용자 ultrareview / 자동화 스크립트 발화 자리 확인
+  - 별 PR 진단
+
+- ✅ **monitor-collectors 알림 9건 누적 사고** (세션 326 발견 → 세션 327 종결, docs only)
+  - 답습 결과 = monitor 정상 작동 (9개 사고 즉시 감지 결과). 알림 9건 = 사고 아닌 정상 감지
+  - 진앙 4종 분리: (1) housing-permits success 0건 = MOLIT API 500 외부 사고 (세션 323 v3 답습) (2) Naver cancelled = transport-tago 자연 변동 ±10% × timeout 120m 부족 → 180m 정정 (3) maintenance + building-info cancelled = graceful break 0 = 18 collector 패턴 사고 (4) 13:35~13:36 5건 = 별 PR
+  - 본 세션 정정 4건: Naver yml timeout 180 + transport-tago/infra-kakao/schools-neis break 박힘 + _shared.test.mjs SIGTERM mock 4건 + 신규 rule `graceful-shutdown-coverage.md`
+  - 답습 자산: 세션 327 plan v3 (자가 점검 1 v2/v3 발동 후 환각 9건 정정)
 
 - 🟡 **Supabase RLS — naver-estate-web 전용 11개 테이블 잔여** (세션 274 — mibunyang+공유 해결 완료)
   - 세션 274 실측 정정: 세션 273 "19개" 박제값은 부정확. `supabase db advisors --type

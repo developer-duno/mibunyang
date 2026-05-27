@@ -7,6 +7,7 @@ import {
   resolveBuilder, stringSimilarity, today, sleep,
   REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
+  setupGracefulShutdown,
 } from "./_shared.mjs";
 
 describe("resolveBuilder", () => {
@@ -393,5 +394,47 @@ describe("recordApiQuota (dry-run 가드)", () => {
     errSpy.mockRestore();
     expect(logMsgs.some((m) => m.includes("dry-run"))).toBe(true);
     expect(errMsgs.some((m) => m.includes("SUPABASE"))).toBe(false);
+  });
+});
+
+// 세션 327: graceful shutdown 단위 테스트 신규 (PR #28 회귀 가드)
+describe("setupGracefulShutdown", () => {
+  it("SIGTERM 받기 전에는 interrupted=false", () => {
+    const isInterrupted = setupGracefulShutdown("test-setup-1");
+    expect(isInterrupted()).toBe(false);
+  });
+
+  it("SIGTERM emit 후 interrupted=true", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const isInterrupted = setupGracefulShutdown("test-setup-2");
+    expect(isInterrupted()).toBe(false);
+    process.emit("SIGTERM");
+    expect(isInterrupted()).toBe(true);
+    logSpy.mockRestore();
+  });
+});
+
+describe("createReporter graceful shutdown", () => {
+  it("SIGTERM 받기 전에는 rpt.interrupted()=false + summary.status=success", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const rpt = createReporter("test-rpt-1");
+    rpt.success(10);
+    expect(rpt.interrupted()).toBe(false);
+    const sum = rpt.summary();
+    expect(sum.status).toBe("success");
+    expect(sum.ok).toBe(10);
+    logSpy.mockRestore();
+  });
+
+  it("SIGTERM emit 후 rpt.interrupted()=true + summary.status=partial", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const rpt = createReporter("test-rpt-2");
+    rpt.success(5);
+    process.emit("SIGTERM");
+    expect(rpt.interrupted()).toBe(true);
+    const sum = rpt.summary();
+    expect(sum.status).toBe("partial");
+    expect(sum.ok).toBe(5);
+    logSpy.mockRestore();
   });
 });
