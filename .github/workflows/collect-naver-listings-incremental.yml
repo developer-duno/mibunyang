@@ -68,4 +68,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+          NEIS_KEY: ${{ secrets.NEIS_KEY }}
+          SCHOOLINFO_KEY: ${{ secrets.SCHOOLINFO_KEY }}
         run: node scripts/collectors/schools-neis.mjs
