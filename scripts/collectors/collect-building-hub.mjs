@@ -199,6 +199,7 @@ async function main() {
   let sampleLogged = false;
 
   for (let i = 0; i < apts.length; i++) {
+    if (rpt.interrupted()) break;
     const apt = apts[i];
     /** @type {{ elec_usage_kwh?: number | null, gas_usage_mj?: number | null, energy_collected_at?: string | null, updated_at?: string }} */
     const row = {};

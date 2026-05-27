@@ -143,6 +143,7 @@ async function main() {
   // 3. 단지별 매칭 + DB 저장
   const rpt = createReporter(PHASE);
   for (let i = 0; i < targets.length; i++) {
+    if (rpt.interrupted()) break;
     const apt = targets[i];
     try {
       const aq = matchNearestStation(apt, allStations);
