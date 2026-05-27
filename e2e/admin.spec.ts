@@ -109,9 +109,9 @@ async function setupAdminMocks(page: Page) {
 async function loginAsAdmin(page: Page) {
   await setupAdminMocks(page);
   await page.goto("/");
-  await page.waitForLoadState("networkidle");
 
   // 정보 탭 클릭 → InfoPage → 전문가 로그인 버튼
+  // (Playwright 공식 networkidle DISCOURAGED. page.goto default waitUntil='load' + L116/L120 isVisible/toBeVisible 이 진짜 wait)
   const infoTab = page.getByText("정보", { exact: true });
   if (await infoTab.isVisible({ timeout: 3000 }).catch(() => false)) {
     await infoTab.click();
