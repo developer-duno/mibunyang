@@ -1,4 +1,3 @@
-// @ts-check
 import { kv } from "../_lib/redis.js";
 import { hashPassword } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
@@ -8,8 +7,10 @@ const SPECIALTIES = ["부동산 중개", "분양 컨설팅", "감정평가", "�
 
 export default withHandler({ method: "POST", cors: { maxAge: 86400 }, rateLimit: "signup", handler: async (req, res) => {
   const { email, password, name, affiliation, phone, specialty, license, experience, bio } =
-    /** @type {{ email?: unknown, password?: unknown, name?: unknown, affiliation?: unknown, phone?: unknown, specialty?: unknown, license?: unknown, experience?: unknown, bio?: unknown }} */
-    (req.body ?? {});
+    (req.body ?? {}) as {
+      email?: unknown; password?: unknown; name?: unknown; affiliation?: unknown;
+      phone?: unknown; specialty?: unknown; license?: unknown; experience?: unknown; bio?: unknown;
+    };
 
   if (!email || !password || !name || typeof email !== "string" || typeof password !== "string" || typeof name !== "string") {
     return res.status(400).json({ ok: false, error: "이메일, 비밀번호, 이름은 필수입니다" });

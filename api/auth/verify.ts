@@ -1,24 +1,18 @@
-// @ts-check
 import { kv } from "../_lib/redis.js";
 import { verifyToken, createToken, createRefreshToken, verifyRefreshToken } from "../_lib/auth.js";
 import { isBlacklisted, blacklistToken } from "../_lib/tokenBlacklist.js";
 import { withHandler } from "../_lib/handler.js";
 
-/**
- * @typedef {Object} UserRecord
- * @property {string} [email]
- * @property {string} [name]
- * @property {string} [status]
- * @property {string} [role]
- */
+type UserRecord = {
+  email?: string;
+  name?: string;
+  status?: string;
+  role?: string;
+};
 
-/**
- * action=refresh → refresh token rotation (기존 /api/auth/refresh 통합)
- * @param {any} req
- * @param {any} res
- */
-async function handleRefresh(req, res) {
-  const { refreshToken } = /** @type {{ refreshToken?: unknown }} */ (req.body ?? {});
+/** action=refresh → refresh token rotation (기존 /api/auth/refresh 통합) */
+async function handleRefresh(req: any, res: any) {
+  const { refreshToken } = (req.body ?? {}) as { refreshToken?: unknown };
   if (!refreshToken || typeof refreshToken !== "string") {
     return res.status(400).json({ ok: false, error: "refreshToken이 필요합니다" });
   }
@@ -32,10 +26,9 @@ async function handleRefresh(req, res) {
     return res.status(401).json({ ok: false, error: "무효화된 refresh token입니다" });
   }
 
-  /** @type {UserRecord | null | undefined} */
-  let user;
+  let user: UserRecord | null | undefined;
   try {
-    user = /** @type {UserRecord | null} */ (await kv.get(`user:${payload.email}`));
+    user = (await kv.get(`user:${payload.email}`)) as UserRecord | null;
     if (!user || user.status === "rejected" || user.status === "pending" || user.status === "suspended") {
       return res.status(403).json({ ok: false, error: "접근 권한이 없습니다" });
     }
@@ -57,13 +50,9 @@ async function handleRefresh(req, res) {
   res.json({ ok: true, token, refreshToken: newRefreshToken, user: { email: payload.email, name: user.name }, role });
 }
 
-/**
- * 기본: access token 검증
- * @param {any} req
- * @param {any} res
- */
-async function handleVerify(req, res) {
-  const { token } = /** @type {{ token?: unknown }} */ (req.body ?? {});
+/** 기본: access token 검증 */
+async function handleVerify(req: any, res: any) {
+  const { token } = (req.body ?? {}) as { token?: unknown };
   if (!token || typeof token !== "string") {
     return res.status(400).json({ ok: false, error: "토큰이 필요합니다" });
   }
@@ -78,7 +67,7 @@ async function handleVerify(req, res) {
   }
 
   try {
-    const user = /** @type {UserRecord | null} */ (await kv.get(`user:${payload.email}`));
+    const user = (await kv.get(`user:${payload.email}`)) as UserRecord | null;
     if (!user || user.status === "rejected" || user.status === "pending" || user.status === "suspended") {
       return res.status(403).json({ ok: false, reason: "revoked", error: "접근 권한이 없습니다" });
     }
@@ -94,7 +83,7 @@ async function handleVerify(req, res) {
 }
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "verify", handler: async (req, res) => {
-  const { action } = /** @type {{ action?: unknown }} */ (req.body ?? {});
+  const { action } = (req.body ?? {}) as { action?: unknown };
   if (action === "refresh") return handleRefresh(req, res);
   return handleVerify(req, res);
 }});

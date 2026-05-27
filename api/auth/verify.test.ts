@@ -1,7 +1,6 @@
-// @ts-check
 // @vitest-environment node
 /**
- * auth/verify.js 테스트 — 토큰 유효/만료, 블랙리스트, suspended, 사용자 삭제 403, KV 에러 500
+ * auth/verify.ts 테스트 — 토큰 유효/만료, 블랙리스트, suspended, 사용자 삭제 403, KV 에러 500
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -15,7 +14,7 @@ vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
 
-// redis.js 모킹 (verify.js + tokenBlacklist 공통 경로)
+// redis.js 모킹 (verify.ts + tokenBlacklist 공통 경로)
 const mockKv = { get: vi.fn(), set: vi.fn() };
 vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 
@@ -25,19 +24,18 @@ const { checkRateLimit } = await import('../_lib/rateLimit.js');
 
 /** res 목 객체 팩토리 — ResLike 호환 (any cast) */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
 /**
  * 유효 토큰 테스트용 KV 모킹 헬퍼
  * isBlacklisted → kv.get(bl:*) = null, user 조회 → kv.get(user:*) = userData
- * @param {any} userData
  */
-function mockBlacklistThenUser(userData) {
+function mockBlacklistThenUser(userData: any) {
   mockKv.get.mockResolvedValueOnce(null);   // isBlacklisted → false
   mockKv.get.mockResolvedValueOnce(userData); // user 조회
 }
@@ -168,7 +166,7 @@ describe('auth/verify handler', () => {
 
   // 에러: 429 레이트 리밋
   it('레이트 리밋 초과 시 429를 반환한다', async () => {
-    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    (checkRateLimit as any).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
     await handler({ method: 'POST', body: { token: 'anything' }, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(429);

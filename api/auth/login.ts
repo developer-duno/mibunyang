@@ -1,4 +1,3 @@
-// @ts-check
 import { kv } from "../_lib/redis.js";
 import { verifyPassword, hashPassword, createToken, createRefreshToken } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
@@ -8,28 +7,29 @@ import crypto from "crypto";
 /**
  * KV `user:{email}` 레코드 — 5 source (login/signup/verify/kakao/logout) 공통 활용.
  * 카카오 사용자는 passwordHash/salt 부재, 일반 사용자는 kakaoId/profileImage 부재.
- * @typedef {Object} UserRecord
- * @property {string} email
- * @property {string} name
- * @property {string} [passwordHash]
- * @property {string} [salt]
- * @property {string} [status]
- * @property {string} [role]
- * @property {string} [affiliation]
- * @property {string} [phone]
- * @property {string} [specialty]
- * @property {string} [license]
- * @property {number} [experience]
- * @property {string} [bio]
- * @property {string} [kakaoId]
- * @property {string|null} [profileImage]
- * @property {string|null} [reviewedAt]
- * @property {string|null} [reviewNote]
- * @property {string} [createdAt]
  */
+type UserRecord = {
+  email: string;
+  name: string;
+  passwordHash?: string;
+  salt?: string;
+  status?: string;
+  role?: string;
+  affiliation?: string;
+  phone?: string;
+  specialty?: string;
+  license?: string;
+  experience?: number;
+  bio?: string;
+  kakaoId?: string;
+  profileImage?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+  createdAt?: string;
+};
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handler: async (req, res) => {
-  const { email, password } = /** @type {{ email?: unknown, password?: unknown }} */ (req.body ?? {});
+  const { email, password } = (req.body ?? {}) as { email?: unknown; password?: unknown };
 
   if (!email || !password || typeof email !== "string" || typeof password !== "string") {
     return res.status(400).json({ ok: false, error: "이메일과 비밀번호를 입력해주세요" });
@@ -42,7 +42,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handl
   }
 
   try {
-    const user = /** @type {UserRecord | null} */ (await kv.get(`user:${email.toLowerCase().trim()}`));
+    const user = (await kv.get(`user:${email.toLowerCase().trim()}`)) as UserRecord | null;
     if (!user || !user.passwordHash || !user.salt) {
       return res.status(401).json({ ok: false, error: "이메일 또는 비밀번호가 일치하지 않습니다" });
     }

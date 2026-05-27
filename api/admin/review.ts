@@ -1,17 +1,16 @@
-// @ts-check
 import { kv } from "../_lib/redis.js";
 import { withHandler } from "../_lib/handler.js";
 import { isValidEmail } from "../_lib/validators.js";
 
-/**
- * @param {string} emailRaw
- * @param {string} action
- * @param {string} [note]
- */
-async function reviewOne(emailRaw, action, note) {
+type UserRecord = {
+  status?: string;
+  [k: string]: unknown;
+};
+
+async function reviewOne(emailRaw: string, action: string, note?: string) {
   const emailNorm = emailRaw.toLowerCase().trim();
   const key = `user:${emailNorm}`;
-  const user = /** @type {{ status?: string, [k: string]: unknown } | null} */ (await kv.get(key));
+  const user = (await kv.get(key)) as UserRecord | null;
   if (!user) return { email: emailNorm, ok: false, error: "사용자를 찾을 수 없습니다" };
 
   const newStatus = action === "force-logout" ? "suspended" : action === "approve" ? "approved" : "rejected";
@@ -50,7 +49,7 @@ async function reviewOne(emailRaw, action, note) {
 const MAX_BATCH = 50;
 
 export default withHandler({ method: "POST", admin: true, rateLimit: "admin", handler: async (req, res) => {
-  const { email, emails, action, note } = /** @type {{ email?: unknown, emails?: unknown, action?: unknown, note?: unknown }} */ (req.body ?? {});
+  const { email, emails, action, note } = (req.body ?? {}) as { email?: unknown; emails?: unknown; action?: unknown; note?: unknown };
   if (typeof action !== "string" || !["approve", "reject", "force-logout"].includes(action)) {
     return res.status(400).json({ ok: false, error: "승인/거부/강제로그아웃 액션이 필요합니다" });
   }
@@ -60,8 +59,8 @@ export default withHandler({ method: "POST", admin: true, rateLimit: "admin", ha
     try {
       const result = await reviewOne(email, action, noteStr);
       if (!result.ok) return res.status(404).json({ ok: false, error: result.error });
-      const MSG = /** @type {const} */ ({ approve: "승인되었습니다", reject: "거부되었습니다", "force-logout": "강제 로그아웃 처리되었습니다" });
-      return res.json({ ok: true, message: MSG[/** @type {keyof typeof MSG} */ (action)] });
+      const MSG = { approve: "승인되었습니다", reject: "거부되었습니다", "force-logout": "강제 로그아웃 처리되었습니다" } as const;
+      return res.json({ ok: true, message: MSG[action as keyof typeof MSG] });
     } catch (err) {
       console.error("[admin/review] error:", err instanceof Error ? err.message : err);
       return res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });

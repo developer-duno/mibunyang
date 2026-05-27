@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * admin/review.js 테스트 — 상태 전환, 롤백 시나리오
+ * admin/review.ts 테스트 — 상태 전환, 롤백 시나리오
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -34,15 +33,15 @@ const { verifyAdminToken } = await import('../_lib/adminAuth.js');
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
 /** req 목 객체 팩토리 */
-function makeReq(body = {}) {
+function makeReq(body: any = {}) {
   return { method: 'POST', body, headers: { authorization: 'Bearer valid-admin-token' } };
 }
 
@@ -56,7 +55,7 @@ describe('admin/review handler', () => {
 
   // 에러: 관리자 인증 실패
   it('관리자 인증 실패 시 401을 반환한다', async () => {
-    /** @type {any} */ (verifyAdminToken).mockReturnValueOnce(null);
+    (verifyAdminToken as any).mockReturnValueOnce(null);
     const res = makeRes();
     await handler(makeReq({ email: 'user@test.com', action: 'approve' }), res);
     expect(res.status).toHaveBeenCalledWith(401);
@@ -93,7 +92,7 @@ describe('admin/review handler', () => {
     expect(mockKv.sadd).toHaveBeenCalledWith('users:approved', 'user@test.com');
     expect(mockKv.srem).toHaveBeenCalledWith('users:pending', 'user@test.com');
     // kv.set에 status: "approved"가 포함된 객체가 전달되어야 함
-    const savedUser = mockKv.set.mock.calls[0][1];
+    const savedUser = mockKv.set.mock.calls[0][1] as any;
     expect(savedUser.status).toBe('approved');
     expect(savedUser.reviewedAt).toBeTruthy();
   });
@@ -105,7 +104,7 @@ describe('admin/review handler', () => {
     await handler(makeReq({ email: 'user@test.com', action: 'reject', note: '사유' }), res);
     expect(mockKv.sadd).toHaveBeenCalledWith('users:rejected', 'user@test.com');
     expect(mockKv.srem).toHaveBeenCalledWith('users:pending', 'user@test.com');
-    const savedUser = mockKv.set.mock.calls[0][1];
+    const savedUser = mockKv.set.mock.calls[0][1] as any;
     expect(savedUser.reviewNote).toBe('사유');
   });
 
@@ -138,7 +137,7 @@ describe('admin/review handler', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, message: '강제 로그아웃 처리되었습니다' }));
     expect(mockKv.sadd).toHaveBeenCalledWith('users:suspended', 'user@test.com');
     expect(mockKv.srem).toHaveBeenCalledWith('users:approved', 'user@test.com');
-    const savedUser = mockKv.set.mock.calls[0][1];
+    const savedUser = mockKv.set.mock.calls[0][1] as any;
     expect(savedUser.status).toBe('suspended');
     expect(savedUser.reviewNote).toBe('관리자 강제 로그아웃');
   });
@@ -148,7 +147,7 @@ describe('admin/review handler', () => {
     mockKv.get.mockResolvedValue({ email: 'user@test.com', status: 'approved' });
     const res = makeRes();
     await handler(makeReq({ email: 'user@test.com', action: 'force-logout', note: '악의적 사용' }), res);
-    const savedUser = mockKv.set.mock.calls[0][1];
+    const savedUser = mockKv.set.mock.calls[0][1] as any;
     expect(savedUser.reviewNote).toBe('악의적 사용');
   });
 

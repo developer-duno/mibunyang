@@ -1,4 +1,3 @@
-// @ts-check
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -9,7 +8,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete (/** @type {any} */ (global)).fetch;
+  delete (global as any).fetch;
   delete process.env.KAKAO_CLIENT_SECRET;
   delete process.env.KAKAO_ALLOWED_ORIGINS;
 });
@@ -28,11 +27,11 @@ vi.mock("../_lib/redis.js", () => ({ kv: mockKv }));
 const { default: handler } = await import("./kakao.js");
 
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
 function mockKakaoFetch({ tokenOk = true, userOk = true, userPayload = {} } = {}) {
@@ -48,7 +47,7 @@ function mockKakaoFetch({ tokenOk = true, userOk = true, userPayload = {} } = {}
       json: async () => userOk
         ? { id: 12345, kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" } }, ...userPayload }
         : { msg: "user lookup failed", code: -401 },
-    });
+    }) as any;
 }
 
 const VALID_BODY = { code: "AAAAAAAAAAAA", redirect_uri: "http://localhost:5173/oauth/kakao/callback" };
@@ -94,7 +93,7 @@ describe("auth/kakao handler", () => {
 
   it("rejects configured origins when the callback path is different", async () => {
     process.env.KAKAO_ALLOWED_ORIGINS = "https://staging.example.com";
-    global.fetch = vi.fn();
+    global.fetch = vi.fn() as any;
     const res = makeRes();
 
     await handler({
@@ -116,7 +115,7 @@ describe("auth/kakao handler", () => {
 
   it("returns 500 before token exchange when KAKAO_REST_API_KEY is missing", async () => {
     delete process.env.KAKAO_REST_API_KEY;
-    global.fetch = vi.fn();
+    global.fetch = vi.fn() as any;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = makeRes();
 
@@ -136,7 +135,7 @@ describe("auth/kakao handler", () => {
 
     await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
 
-    const tokenRequestBody = /** @type {any} */ (global.fetch).mock.calls[0][1].body;
+    const tokenRequestBody = (global.fetch as any).mock.calls[0][1].body;
     expect(tokenRequestBody).toContain("client_id=test-kakao-key");
     expect(tokenRequestBody).toContain("client_secret=test-client-secret");
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
