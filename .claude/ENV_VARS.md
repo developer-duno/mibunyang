@@ -14,3 +14,6 @@
 | `VITE_KAKAO_JS_KEY` | 카카오 (프론트) | O | 공개 키 |
 | `KAKAO_REDIRECT_URI` | OAuth 콜백 URL | O | |
 | `VITE_USE_SUPABASE` | DB 모드 전환 | - | `true` → Supabase, 아니면 로컬 JSON |
+| `CHILDCARE_API_KEY` | info.childcare.go.kr cpmsapi021 (전국 어린이집) | O | 시군구 집계, 254/256 답습 |
+| `CHILDCARE_BASIC_API_KEY` | info.childcare.go.kr cpmsapi030 (어린이집 70 필드 상세) | O | childcare-detail.mjs |
+| `CHILDCARE_JEJU_KEY` | info.childcare.go.kr cpmsapi017 (제주도 어린이집) | O | 제주시·서귀포시 2개 (cpmsapi021 미보유 보완) |

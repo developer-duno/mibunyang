@@ -14,6 +14,7 @@ on:
       - "Building Info Collection (MOLIT)"
       - "Childcare Detail Collection"
       - "Childcare Facilities Collection"
+      - "Childcare Jeju Collection"
       - "Collect Applyhome Competition Rate"
       - "Collect Building Hub (에너지+인허가)"
       - "Collect MOLIT Units"

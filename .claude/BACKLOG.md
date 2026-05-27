@@ -104,26 +104,18 @@
     VIEW 2개 `ALTER VIEW SET (security_invoker=on)` + 함수 2개 `SET search_path=''`.
     live 검증 — JOIN 9테이블 `USING(true)` 정책+GRANT 보유로 anon 무영향.
 
-- 🟡 **제주 어린이집 미수집 — 별도 API collector 신설 필요** (세션 275 발견, 세션 276 진단 정정)
-  - 증상: 제주시(50110)·서귀포시(50130) 2개 시군구가 cpmsapi021 에서
-    `<errcode>INFO-200</errcode>`(검색결과 없음) 응답 → `regions.childcare` 제주 미수집.
-  - ⚠️ **세션 275 박제값 2건 환각** (세션 276 정정):
-    - "제주 13개 시군구 / 243/256" → 실제 `_shared.mjs` GU_LAWD_MAP 제주 = **2개뿐**
-      (제주시·서귀포시). 정확히는 **254/256 수집**(제주 2개만 미수집).
-    - "원인 = arcode 매핑 불일치" → `listAllSgg()`·GU_LAWD_MAP 제주 arcode **정상**.
-      보정할 arcode 오류 없음.
-  - 진짜 원인 (세션 276 운영키 raw 진단): cpmsapi021(전국 어린이집 정보, 공공데이터
-    15101155)은 제주 데이터를 **API 자체가 미보유**. 제주 arcode 11종(50110/50130/
-    50000/39010 등) 전부 INFO-200, 강남(163)·종로(60) 정상. schools-neis·infra-kakao
-    (좌표기반)·migration·fertility(KOSIS) 등 다른 collector 는 제주 정상 → 어린이집만의
-    문제이고 cpmsapi021 책임 확정.
-  - 해결책: 별도 API `한국사회보장정보원_제주도 어린이집 정보조회`(공공데이터포털
-    15101201) collector 신설. 코드 재활용·간단 해결책 없음 (Kakao Places 는 거리계산용,
-    어린이집 목록 7필드 미제공).
-  - 규모: 신규 collector 1개 + 워크플로 + data-fill 등재. facilities[] 7필드 스키마를
-    cpmsapi021 과 맞춰야 cpmsapi030·collect-nearby-childcare 호환. brainstorming 선행 권장.
-  - 다음 진입 시: 15101201 API 명세(엔드포인트·파라미터·필드) data.go.kr 페이지 또는
-    사용자 콘솔 직접 확인 의무.
+- ✅ **제주 어린이집 미수집 — cpmsapi017 collector 신설 (세션 325)**
+  - 세션 275 발견 + 세션 276 진단 정정 + 세션 325 해결
+  - 신규: `scripts/collectors/childcare-info-jeju.mjs` (cpmsapi017, data.go.kr 15101201)
+  - 신규: `scripts/collectors/childcare-info-jeju.test.mjs` (vitest 9 test)
+  - 신규: `.github/workflows/collect-childcare-jeju.yml` (월 1일 KST 06:00 cron)
+  - 등재: `data-fill.mjs` regions phase 1 + `monitor-collectors.yml` workflows
+  - 박제: `CHILDCARE_JEJU_KEY` 환경변수 (`.env.example` + `ENV_VARS.md`)
+  - arcode 체계 환각 정정: BACKLOG L111 "50110/50130 (법정동 코드)" 박제값 = cpmsapi021
+    체계. cpmsapi017 은 **49xxx 독립 체계** (제주시 49110 / 서귀포시 49130, raw 실측 박힘)
+  - 운영 검증 (개발키): 제주시 50건/3,472정원 + 서귀포시 50건/3,688정원, 6 row UPDATE 박힘
+  - 운영키 발급 후 (data.go.kr 승인심의 1~3일): GitHub Secret 박제 + workflow_dispatch
+    재실행 → 전수 응답 (1000+ 행 추정) 갱신 의무
 
 - 🔴 **차단: `eslint 10` 본 적용** — `eslint-plugin-react@7.37.5` (최신) peer 가 `eslint: ^9.7` 까지만 지원
   - 재오픈 트리거: `npm view eslint-plugin-react@latest peerDependencies` 결과 `^10.0.0` 등장 (세션125 조사)

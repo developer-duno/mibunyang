@@ -86,3 +86,8 @@ naver-apt/
 
 # 임시 검증 스크립트 (.env.local 또는 하드코딩 키 사용, 운영 미반영)
 scripts/probes/
+
+# 임시 audit 출력 + 외부 다운로드 API 명세서 + 사용자 로컬 명령어 사본 (세션 326)
+audit-temp.json
+OpenAPI서비스명세서_*.doc
+명령어 템플릿/
