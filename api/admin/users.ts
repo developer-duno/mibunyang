@@ -1,20 +1,20 @@
-// @ts-check
 import { kv } from "../_lib/redis.js";
 import { withHandler } from "../_lib/handler.js";
 
-/**
- * @typedef {{
- *   email?: string, name?: string, affiliation?: string, specialty?: string,
- *   role?: string, kakaoId?: string, createdAt?: string,
- *   passwordHash?: string, salt?: string, [k: string]: unknown
- * }} UserRecord
- */
+type UserRecord = {
+  email?: string;
+  name?: string;
+  affiliation?: string;
+  specialty?: string;
+  role?: string;
+  kakaoId?: string;
+  createdAt?: string;
+  passwordHash?: string;
+  salt?: string;
+  [k: string]: unknown;
+};
 
-/**
- * @param {{ query?: Record<string, string | string[] | undefined>, [k: string]: unknown }} req
- * @param {{ status: (c: number) => any, json: (b: unknown) => unknown, [k: string]: unknown }} res
- */
-async function handleStats(req, res) {
+async function handleStats(_req: any, res: any) {
   try {
     const [pendingC, approvedC, rejectedC, suspendedC] = await Promise.all([
       kv.scard("users:pending"), kv.scard("users:approved"),
@@ -31,16 +31,14 @@ async function handleStats(req, res) {
     ]);
     const allEmails = [...new Set([...(p || []), ...(a || []), ...(r || []), ...(s || [])])];
     let kakaoCount = 0, expertCount = 0;
-    /** @type {Record<string, number>} */
-    const specialtyDist = {};
-    /** @type {Record<string, number>} */
-    const signupByDate = {};
+    const specialtyDist: Record<string, number> = {};
+    const signupByDate: Record<string, number> = {};
     if (allEmails.length > 0) {
       const results = await Promise.allSettled(allEmails.map(email => kv.get(`user:${email}`)));
       const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
       for (const r of results) {
         if (r.status !== "fulfilled" || !r.value) continue;
-        const user = /** @type {UserRecord} */ (r.value);
+        const user = r.value as UserRecord;
         if (user.kakaoId || user.role === "user") kakaoCount++; else expertCount++;
         if (user.specialty) specialtyDist[user.specialty] = (specialtyDist[user.specialty] || 0) + 1;
         if (user.createdAt) {
@@ -82,8 +80,7 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
   const offset = Math.max(parseInt(String(offsetRaw ?? "")) || 0, 0);
 
   try {
-    /** @type {string[]} */
-    let emails = [];
+    let emails: string[] = [];
     if (status === "all") {
       const [p, a, r, s] = await Promise.all([
         kv.smembers("users:pending"),
@@ -102,17 +99,15 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
 
     const results = await Promise.allSettled(
       emails.map(async (email) => {
-        const user = /** @type {UserRecord | null} */ (await kv.get(`user:${email}`));
+        const user = (await kv.get(`user:${email}`)) as UserRecord | null;
         if (!user) return null;
         const { passwordHash: _ph, salt: _s, ...safe } = user;
-        return /** @type {UserRecord} */ (safe);
+        return safe as UserRecord;
       })
     );
-    const users = /** @type {UserRecord[]} */ (
-      results
-        .filter(/** @returns {r is PromiseFulfilledResult<UserRecord>} */ (r) => r.status === "fulfilled" && !!r.value)
-        .map(r => r.value)
-    );
+    const users = results
+      .filter((r): r is PromiseFulfilledResult<UserRecord> => r.status === "fulfilled" && !!r.value)
+      .map(r => r.value);
 
     const sorted = users.sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
     const filtered = q

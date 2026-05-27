@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * admin/users.js 테스트 — 상태 필터, 비밀번호 제거, 정렬
+ * admin/users.ts 테스트 — 상태 필터, 비밀번호 제거, 정렬
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -32,25 +31,20 @@ const { verifyAdminToken } = await import('../_lib/adminAuth.js');
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
 /** req 목 객체 팩토리 */
-function makeReq(query = {}) {
+function makeReq(query: any = {}) {
   return { method: 'GET', query, headers: { authorization: 'Bearer valid' } };
 }
 
-/**
- * 테스트 사용자 팩토리
- * @param {string} email
- * @param {string} createdAt
- * @param {string} [status]
- */
-function makeUser(email, createdAt, status = 'pending') {
+/** 테스트 사용자 팩토리 */
+function makeUser(email: string, createdAt: string, status: string = 'pending') {
   return {
     email,
     name: email.split('@')[0],
@@ -71,7 +65,7 @@ describe('admin/users handler', () => {
 
   // 에러: 관리자 인증 실패
   it('관리자 인증 실패 시 401을 반환한다', async () => {
-    /** @type {any} */ (verifyAdminToken).mockReturnValueOnce(null);
+    (verifyAdminToken as any).mockReturnValueOnce(null);
     const res = makeRes();
     await handler(makeReq(), res);
     expect(res.status).toHaveBeenCalledWith(401);

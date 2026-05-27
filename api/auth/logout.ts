@@ -1,10 +1,9 @@
-// @ts-check
 import { verifyToken, verifyRefreshToken } from "../_lib/auth.js";
 import { blacklistToken } from "../_lib/tokenBlacklist.js";
 import { withHandler } from "../_lib/handler.js";
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "logout", handler: async (req, res) => {
-  const { token, refreshToken } = /** @type {{ token?: unknown, refreshToken?: unknown }} */ (req.body ?? {});
+  const { token, refreshToken } = (req.body ?? {}) as { token?: unknown; refreshToken?: unknown };
   if (!token || typeof token !== "string") {
     return res.status(400).json({ ok: false, error: "토큰이 필요합니다" });
   }

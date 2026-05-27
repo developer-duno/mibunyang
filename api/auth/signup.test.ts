@@ -1,7 +1,6 @@
-// @ts-check
 // @vitest-environment node
 /**
- * auth/signup.js 테스트 — 필드 검증, 이메일 중복 409, 롤백 처리
+ * auth/signup.ts 테스트 — 필드 검증, 이메일 중복 409, 롤백 처리
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -39,11 +38,11 @@ function makeRes() {
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
     end: vi.fn(),
-  };
+  } as any;
 }
 
 /** 유효한 가입 body 팩토리 */
-function makeValidBody(overrides = {}) {
+function makeValidBody(overrides: Record<string, any> = {}) {
   return {
     email: 'new@test.com',
     password: 'password123',
@@ -59,7 +58,7 @@ function makeValidBody(overrides = {}) {
 }
 
 /** req 목 객체 팩토리 */
-function makeReq(body = {}) {
+function makeReq(body: any = {}) {
   return { method: 'POST', body, headers: { origin: 'http://localhost:3000' } };
 }
 
@@ -81,7 +80,7 @@ describe('auth/signup handler', () => {
 
   // 에러: 429 레이트 리밋
   it('레이트 리밋 초과 시 429를 반환한다', async () => {
-    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    (checkRateLimit as any).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
     await handler(makeReq(makeValidBody()), res);
     expect(res.status).toHaveBeenCalledWith(429);

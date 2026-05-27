@@ -1,7 +1,6 @@
-// @ts-check
 // @vitest-environment node
 /**
- * auth/login.js 테스트 — 인증 플로우, 429, 이메일 형식, PENDING/REJECTED 상태
+ * auth/login.ts 테스트 — 인증 플로우, 429, 이메일 형식, PENDING/REJECTED 상태
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import crypto from 'crypto';
@@ -33,20 +32,20 @@ const { hashPassword, verifyToken } = await import('../_lib/auth.js');
 
 /** res 목 객체 팩토리 — ResLike 호환 (any cast 로 vi.fn 체이닝 흡수) */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
 /** req 목 객체 팩토리 */
-function makeReq(body = {}) {
+function makeReq(body: any = {}) {
   return { method: 'POST', body, headers: {} };
 }
 
 /** 테스트 사용자 데이터 팩토리 */
-function makeUser(overrides = {}) {
+function makeUser(overrides: Record<string, any> = {}) {
   const { hash, salt } = hashPassword('validPass123');
   return {
     email: 'test@example.com',
@@ -69,7 +68,7 @@ describe('auth/login handler', () => {
 
   // 에러: 429 레이트 리밋
   it('레이트 리밋 초과 시 429를 반환한다', async () => {
-    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    (checkRateLimit as any).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
     await handler(makeReq({ email: 'a@b.com', password: '12345678' }), res);
     expect(res.status).toHaveBeenCalledWith(429);
@@ -166,7 +165,7 @@ describe('auth/login handler', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
     // kv.set이 호출되어 PBKDF2로 업그레이드
     expect(mockKv.set).toHaveBeenCalled();
-    const updatedUser = mockKv.set.mock.calls[0][1];
+    const updatedUser = mockKv.set.mock.calls[0][1] as any;
     expect(updatedUser.passwordHash).toHaveLength(128); // PBKDF2
   });
 

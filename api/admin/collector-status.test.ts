@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * admin/collector-status.js 테스트 — 인증, 수집기별 최근 1회 추림, 부분 실패, 빈 데이터
+ * admin/collector-status.ts 테스트 — 인증, 수집기별 최근 1회 추림, 부분 실패, 빈 데이터
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -23,19 +22,15 @@ vi.mock('../_lib/rateLimit.js', () => ({
 /**
  * Supabase 모킹 — 테이블별로 다른 응답을 돌려준다.
  * runs/quota = collector_runs/api_quota_log, 나머지는 freshness 테이블.
- * @type {{ runs:any, quota:any, freshness:Record<string,any> }}
  */
-const mockData = {
+const mockData: { runs: any; quota: any; freshness: Record<string, any> } = {
   runs: { data: [], error: null },
   quota: { data: [], error: null },
   freshness: {},
 };
 
-/**
- * .order().limit() 가 thenable (runs/quota 경로).
- * @param {string} table
- */
-function listChain(table) {
+/** .order().limit() 가 thenable (runs/quota 경로). */
+function listChain(table: string) {
   return {
     select: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
@@ -45,11 +40,8 @@ function listChain(table) {
   };
 }
 
-/**
- * .not().order().limit() 가 thenable (freshness 경로).
- * @param {string} table
- */
-function freshnessChain(table) {
+/** .not().order().limit() 가 thenable (freshness 경로). */
+function freshnessChain(table: string) {
   return {
     select: vi.fn().mockReturnThis(),
     not: vi.fn().mockReturnThis(),
@@ -62,7 +54,7 @@ function freshnessChain(table) {
 
 vi.mock('../_lib/supabase.js', () => ({
   getSupabase: () => ({
-    from: vi.fn((table) => {
+    from: vi.fn((table: string) => {
       if (table === 'collector_runs' || table === 'api_quota_log') return listChain(table);
       return freshnessChain(table);
     }),
@@ -74,11 +66,11 @@ const { verifyAdminToken } = await import('../_lib/adminAuth.js');
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
 /** req 목 객체 팩토리 */
@@ -103,7 +95,7 @@ describe('admin/collector-status handler', () => {
   });
 
   it('관리자 인증 실패 시 401을 반환한다', async () => {
-    /** @type {any} */ (verifyAdminToken).mockReturnValueOnce(null);
+    (verifyAdminToken as any).mockReturnValueOnce(null);
     const res = makeRes();
     await handler(makeReq(), res);
     expect(res.status).toHaveBeenCalledWith(401);
@@ -178,7 +170,7 @@ describe('admin/collector-status handler', () => {
     const res = makeRes();
     await handler(makeReq(), res);
     const body = res.json.mock.calls[0][0];
-    expect(body.collectors.map((/** @type {any} */ c) => c.collector)).toEqual(['a-only', 'b-only']);
+    expect(body.collectors.map((c: any) => c.collector)).toEqual(['a-only', 'b-only']);
     expect(body.collectors[0].recentQuota).toEqual([]);
     expect(body.collectors[1].lastRun).toBeNull();
   });

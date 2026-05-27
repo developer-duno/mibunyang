@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * GET /api/admin/collector-status
  * 수집기 모니터링 — 관리자 화면용. 세 가지를 한 응답에 모은다:
@@ -9,23 +8,29 @@
 import { getSupabase } from "../_lib/supabase.js";
 import { withHandler } from "../_lib/handler.js";
 
-/**
- * @typedef {{
- *   status: string,
- *   okCount: number | null, failCount: number | null, skipCount: number | null,
- *   elapsedSec: number | null, errorMessage: string | null,
- *   startedAt: string | null, finishedAt: string | null
- * }} LastRun
- */
-/**
- * @typedef {{
- *   logDate: string | null, apiName: string | null,
- *   callCount: number | null, recordedAt: string | null
- * }} QuotaEntry
- */
-/**
- * @typedef {{ collector: string, lastRun: LastRun | null, recentQuota: QuotaEntry[] }} CollectorStatus
- */
+type LastRun = {
+  status: string;
+  okCount: number | null;
+  failCount: number | null;
+  skipCount: number | null;
+  elapsedSec: number | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+type QuotaEntry = {
+  logDate: string | null;
+  apiName: string | null;
+  callCount: number | null;
+  recordedAt: string | null;
+};
+
+type CollectorStatus = {
+  collector: string;
+  lastRun: LastRun | null;
+  recentQuota: QuotaEntry[];
+};
 
 /** collector_runs 최근 N행. 수집기 47개 일 1회 기준 충분. */
 const RUN_FETCH_LIMIT = 300;
@@ -38,12 +43,8 @@ const UPDATED_AT_TABLES = ["apartments", "infra", "schools", "transport", "build
 
 /**
  * 테이블의 최신 타임스탬프 1행 조회. 0행이면 null.
- * @param {any} sb
- * @param {string} table
- * @param {string} col
- * @returns {Promise<string | null>}
  */
-async function maxTimestamp(sb, table, col) {
+async function maxTimestamp(sb: any, table: string, col: string): Promise<string | null> {
   const { data, error } = await sb
     .from(table)
     .select(col)
@@ -54,11 +55,7 @@ async function maxTimestamp(sb, table, col) {
   return data?.[0]?.[col] ?? null;
 }
 
-/**
- * @param {Record<string, any>} row
- * @returns {LastRun}
- */
-function toLastRun(row) {
+function toLastRun(row: Record<string, any>): LastRun {
   return {
     status: row.status,
     okCount: row.ok_count ?? null,
@@ -71,11 +68,7 @@ function toLastRun(row) {
   };
 }
 
-/**
- * @param {Record<string, any>} row
- * @returns {QuotaEntry}
- */
-function toQuotaEntry(row) {
+function toQuotaEntry(row: Record<string, any>): QuotaEntry {
   return {
     logDate: row.log_date ?? null,
     apiName: row.api_name ?? null,
@@ -106,15 +99,13 @@ export default withHandler({
         maxTimestamp(sb, "regions", "recorded_at"),
       ]);
 
-      /** @type {string[]} */
-      const errors = [];
+      const errors: string[] = [];
 
       // 수집기별 최근 1행 — finished_at DESC 라 첫 등장이 최근 실행
-      /** @type {Map<string, LastRun>} */
-      const lastRunByCollector = new Map();
+      const lastRunByCollector = new Map<string, LastRun>();
       const runsResult = settled[0];
-      if (runsResult.status === "fulfilled" && !(/** @type {any} */ (runsResult.value).error)) {
-        const runRows = /** @type {Record<string, any>[]} */ (/** @type {any} */ (runsResult.value).data ?? []);
+      if (runsResult.status === "fulfilled" && !(runsResult.value as any).error) {
+        const runRows = ((runsResult.value as any).data ?? []) as Record<string, any>[];
         for (const row of runRows) {
           if (!lastRunByCollector.has(row.collector)) {
             lastRunByCollector.set(row.collector, toLastRun(row));
@@ -124,11 +115,10 @@ export default withHandler({
         errors.push("collector_runs");
       }
 
-      /** @type {Map<string, QuotaEntry[]>} */
-      const quotaByCollector = new Map();
+      const quotaByCollector = new Map<string, QuotaEntry[]>();
       const quotaResult = settled[1];
-      if (quotaResult.status === "fulfilled" && !(/** @type {any} */ (quotaResult.value).error)) {
-        const quotaRows = /** @type {Record<string, any>[]} */ (/** @type {any} */ (quotaResult.value).data ?? []);
+      if (quotaResult.status === "fulfilled" && !(quotaResult.value as any).error) {
+        const quotaRows = ((quotaResult.value as any).data ?? []) as Record<string, any>[];
         for (const row of quotaRows) {
           const list = quotaByCollector.get(row.collector) ?? [];
           if (list.length < MAX_QUOTA_PER_COLLECTOR) {
@@ -141,21 +131,19 @@ export default withHandler({
       }
 
       const collectorNames = new Set([...lastRunByCollector.keys(), ...quotaByCollector.keys()]);
-      /** @type {CollectorStatus[]} */
-      const collectors = [...collectorNames].sort().map((collector) => ({
+      const collectors: CollectorStatus[] = [...collectorNames].sort().map((collector) => ({
         collector,
         lastRun: lastRunByCollector.get(collector) ?? null,
         recentQuota: quotaByCollector.get(collector) ?? [],
       }));
 
-      /** @type {Record<string, string | null>} */
-      const dataFreshness = {};
+      const dataFreshness: Record<string, string | null> = {};
       const freshnessTables = [...UPDATED_AT_TABLES, "regions"];
       for (let i = 0; i < freshnessTables.length; i++) {
         const table = freshnessTables[i];
         const result = settled[2 + i];
         if (result.status === "fulfilled") {
-          dataFreshness[table] = /** @type {string | null} */ (result.value);
+          dataFreshness[table] = result.value as string | null;
         } else {
           dataFreshness[table] = null;
           errors.push(`dataFreshness.${table}`);

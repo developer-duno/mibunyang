@@ -1,4 +1,3 @@
-// @ts-check
 import { kv } from "../_lib/redis.js";
 import { createToken, createRefreshToken } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
@@ -8,6 +7,18 @@ import crypto from "crypto";
  * 카카오 OAuth 콜백 — 인가 코드 교환 + KV 사용자 조회/생성 + JWT 발급
  * POST /api/auth/kakao  { code: string }
  */
+
+type KakaoUser = {
+  email: string;
+  name: string;
+  affiliation?: string;
+  kakaoId?: string;
+  role?: string;
+  status?: string;
+  profileImage?: string | null;
+  createdAt?: string;
+  [k: string]: unknown;
+};
 
 // redirect_uri 화이트리스트 검증 (다중 도메인 대응)
 const ALLOWED_ORIGINS = new Set([
@@ -28,7 +39,7 @@ function getAllowedOrigins() {
 }
 
 export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handler: async (req, res) => {
-  const { code, redirect_uri } = /** @type {{ code?: unknown, redirect_uri?: unknown }} */ (req.body ?? {});
+  const { code, redirect_uri } = (req.body ?? {}) as { code?: unknown; redirect_uri?: unknown };
 
   // 1. code + redirect_uri 검증
   if (!code || typeof code !== "string" || code.length < 10 || code.length > 200) {
@@ -106,13 +117,13 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     const emailNorm = kakaoEmail.toLowerCase().trim();
 
     // 5. KV 조회 — 3분기 처리
-    const existingByKakao = await kv.get(`kakao:${kakaoId}`);
-    let user;
+    const existingByKakao = (await kv.get(`kakao:${kakaoId}`)) as string | null;
+    let user: KakaoUser | null = null;
     let isNew = false;
 
     if (existingByKakao) {
       // A. kakaoId 기존: 이전에 카카오 로그인한 적 있음
-      user = await kv.get(`user:${existingByKakao}`);
+      user = (await kv.get(`user:${existingByKakao}`)) as KakaoUser | null;
       if (!user) {
         // 역참조는 있는데 user 키가 사라진 경우 (비정상) → 신규 생성으로 폴백
         isNew = true;
@@ -121,7 +132,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
 
     if (!isNew && !user) {
       // B. kakaoId 신규 → email로 기존 사용자 검색
-      user = await kv.get(`user:${emailNorm}`);
+      user = (await kv.get(`user:${emailNorm}`)) as KakaoUser | null;
       if (user) {
         // 기존 사용자에 kakaoId 연동
         user.kakaoId = kakaoId;
@@ -148,17 +159,17 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     }
 
     // status set 동기화 — admin 통계/목록의 진실의 원천 (idempotent: 이미 있으면 no-op)
-    // signup.js / review.js 와 동일 패턴. 누락 시 admin 대시보드에서 카카오 가입자 카운트 0
-    await kv.sadd(`users:${user.status || "approved"}`, emailNorm);
+    // signup.ts / review.ts 와 동일 패턴. 누락 시 admin 대시보드에서 카카오 가입자 카운트 0
+    await kv.sadd(`users:${user!.status || "approved"}`, emailNorm);
 
     // 역참조 키 저장 (TTL 90일)
     await kv.set(`kakao:${kakaoId}`, emailNorm, { ex: 90 * 24 * 60 * 60 });
 
     // 6. status 체크
-    if (user.status === "rejected" || user.status === "suspended") {
+    if (user!.status === "rejected" || user!.status === "suspended") {
       return res.status(403).json({ ok: false, error: "접근 권한이 없습니다" });
     }
-    if (user.status === "pending") {
+    if (user!.status === "pending") {
       return res.status(403).json({ ok: false, error: "관리자 승인 대기중입니다", statusCode: "PENDING" });
     }
 
@@ -173,9 +184,9 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     })();
 
     // 8. JWT 발급
-    const role = isAdmin ? "admin" : (user.role || "user");
+    const role = isAdmin ? "admin" : (user!.role || "user");
     const token = createToken(
-      { email: emailNorm, name: user.name, ...(role !== "user" && { role }) },
+      { email: emailNorm, name: user!.name, ...(role !== "user" && { role }) },
       isAdmin ? { ttl: 3600000 } : undefined,
     );
 
@@ -184,7 +195,7 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       ok: true,
       token,
       refreshToken,
-      user: { email: emailNorm, name: user.name, affiliation: user.affiliation || "" },
+      user: { email: emailNorm, name: user!.name, affiliation: user!.affiliation || "" },
       ...(role !== "user" && { role }),
     });
   } catch (err) {
