@@ -181,7 +181,9 @@ async function main() {
   /** @type {Array<{region: string, gu: string, agg: ChildcareAggregate}>} */
   const rows = [];
   let apiCalls = 0;
+  const rpt = createReporter("childcare-info");
   for (const { region, gu, arcode } of sggList) {
+    if (rpt.interrupted()) break;
     try {
       const items = await fetchChildcare(arcode);
       apiCalls++;
@@ -195,6 +197,7 @@ async function main() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       logError("fetch", `  ${region} ${gu} (${arcode}): ${msg}`);
+      rpt.fail(1);
     }
     await sleep(150);  // rate limit 답습 (population-sex-age L144)
   }
@@ -211,13 +214,14 @@ async function main() {
         console.log(`    └ sample: ${f.crname} (${f.stcode}) ${f.crtel} / 정원 ${f.crcapat} / ${f.craddr}`);
       }
     }
+    rpt.summary();
     return;
   }
 
   const sb = getSupabase();
-  const rpt = createReporter("childcare-info");
   let saved = 0;
   for (const row of rows) {
+    if (rpt.interrupted()) break;
     const { data: updated, error: updErr } = await sb.from("regions")
       .update({ childcare: row.agg })
       .eq("region", row.region)

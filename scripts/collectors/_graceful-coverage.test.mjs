@@ -36,9 +36,6 @@ const COLLECTORS_DIR = path.resolve(process.cwd(), "scripts/collectors");
  *   trade-stats-regions (setupGracefulShutdown import 박혔으나 호출 0건 회귀) — 별 진단 박힘
  */
 const ALLOWLIST = new Set([
-  // PR-C 대상 (머지 후 ALLOWLIST 제거)
-  "collect-trades.mjs",
-  "childcare-info.mjs",
   // 추가 보강 후보 (별 PR / 진단 박힘)
   "collect-maintenance.mjs",       // K-apt 관리비, rpt=1 break=0
   "trade-stats-regions.mjs",       // setupGracefulShutdown import 0회 호출 회귀
