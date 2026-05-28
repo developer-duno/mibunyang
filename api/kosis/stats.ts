@@ -1,9 +1,7 @@
-// @ts-check
 const KOSIS_BASE = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
 
 // C2_NM full names → short region names used in UNSOLD
-/** @type {Record<string, string>} */
-const REGION_NAME_MAP = {
+const REGION_NAME_MAP: Record<string, string> = {
   "서울특별시": "서울",
   "부산광역시": "부산",
   "대구광역시": "대구",
@@ -23,16 +21,11 @@ const REGION_NAME_MAP = {
   "제주도": "제주",
 };
 
-/**
- * @param {string} apiKey
- * @param {string} orgId
- * @param {string} tblId
- * @param {string} prdSe
- * @param {string} startPrdDe
- * @param {string} endPrdDe
- * @param {number} objLevels
- */
-function buildKosisUrl(apiKey, orgId, tblId, prdSe, startPrdDe, endPrdDe, objLevels) {
+function buildKosisUrl(
+  apiKey: string, orgId: string, tblId: string,
+  prdSe: string, startPrdDe: string, endPrdDe: string,
+  objLevels: number,
+) {
   const params = new URLSearchParams({
     method: "getList",
     apiKey,
@@ -52,16 +45,11 @@ function buildKosisUrl(apiKey, orgId, tblId, prdSe, startPrdDe, endPrdDe, objLev
   return `${KOSIS_BASE}?${params}`;
 }
 
-/**
- * @param {string} apiKey
- * @param {string} orgId
- * @param {string} tblId
- * @param {string} prdSe
- * @param {string} startPrdDe
- * @param {string} endPrdDe
- * @param {number} objLevels
- */
-async function fetchKosis(apiKey, orgId, tblId, prdSe, startPrdDe, endPrdDe, objLevels) {
+async function fetchKosis(
+  apiKey: string, orgId: string, tblId: string,
+  prdSe: string, startPrdDe: string, endPrdDe: string,
+  objLevels: number,
+) {
   const url = buildKosisUrl(apiKey, orgId, tblId, prdSe, startPrdDe, endPrdDe, objLevels);
   const res = await fetch(url);
   if (!res.ok) throw new Error(`KOSIS ${tblId}: HTTP ${res.status}`);
@@ -74,12 +62,9 @@ function getLatestYear() {
   return String(new Date().getFullYear() - 1);
 }
 
-/** @param {any[]} rows */
-function parseUnsoldData(rows) {
-  /** @type {Record<string, number>} */
-  const result = {};
-  /** @type {Record<string, string>} */
-  const latest = {};
+function parseUnsoldData(rows: any[]) {
+  const result: Record<string, number> = {};
+  const latest: Record<string, string> = {};
 
   for (const row of rows) {
     // Filter: only 시도별미분양현황 rows
@@ -123,8 +108,7 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     const unsoldMap = parseUnsoldData(unsoldRows);
 
     const regions = Object.values(REGION_NAME_MAP);
-    /** @type {Record<string, { unsoldCount: number | null, popGrowthRate: null, avgIncome: null }>} */
-    const data = {};
+    const data: Record<string, { unsoldCount: number | null; popGrowthRate: null; avgIncome: null }> = {};
     for (const region of regions) {
       data[region] = {
         unsoldCount: unsoldMap[region] ?? null,

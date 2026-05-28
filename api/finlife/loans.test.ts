@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * finlife/loans.js 테스트 — API Key 누락, 정상 응답 파싱, 잘못된 금융권역, 캐싱 헤더
+ * finlife/loans.ts 테스트 — API Key 누락, 정상 응답 파싱, 잘못된 금융권역, 캐싱 헤더
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -15,7 +14,8 @@ beforeEach(() => {
   delete process.env.FINLIFE_API_KEY;
 });
 
-const { default: handler } = await import('./loans.js');
+const { default: handlerImport } = await import('./loans.js');
+const handler = handlerImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
@@ -24,7 +24,7 @@ function makeRes() {
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
     end: vi.fn(),
-  };
+  } as any;
 }
 
 /** 정상 finlife API 응답 팩토리 */

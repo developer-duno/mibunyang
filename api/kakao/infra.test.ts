@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * kakao/infra.js 테스트 — 카테고리 카운트, 지하철 거리, 에러 기본값
+ * kakao/infra.ts 테스트 — 카테고리 카운트, 지하철 거리, 에러 기본값
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -22,44 +21,36 @@ vi.stubGlobal('fetch', mockFetch);
 
 const { default: handlerImport } = await import('./infra.js');
 const { checkRateLimit: checkRateLimitImport } = await import('../_lib/rateLimit.js');
-/** @type {any} */
-const handler = handlerImport;
-/** @type {any} */
-const checkRateLimit = checkRateLimitImport;
+const handler = handlerImport as any;
+const checkRateLimit = checkRateLimitImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
-/** Kakao 카테고리 검색 성공 응답 팩토리
- * @param {number} totalCount
- */
-function kakaoCategory(totalCount) {
+/** Kakao 카테고리 검색 성공 응답 팩토리 */
+function kakaoCategory(totalCount: number) {
   return {
     ok: true,
     json: () => Promise.resolve({ meta: { total_count: totalCount } }),
   };
 }
 
-/** Kakao 키워드 검색 성공 응답 (공원) 팩토리
- * @param {number} totalCount
- */
-function kakaoPark(totalCount) {
+/** Kakao 키워드 검색 성공 응답 (공원) 팩토리 */
+function kakaoPark(totalCount: number) {
   return {
     ok: true,
     json: () => Promise.resolve({ meta: { total_count: totalCount } }),
   };
 }
 
-/** Kakao 지하철 검색 성공 응답 팩토리
- * @param {number} distance
- */
-function kakaoSubway(distance) {
+/** Kakao 지하철 검색 성공 응답 팩토리 */
+function kakaoSubway(distance: number) {
   return {
     ok: true,
     json: () => Promise.resolve({

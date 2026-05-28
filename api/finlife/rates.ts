@@ -1,9 +1,8 @@
-// @ts-check
 import { withHandler } from "../_lib/handler.js";
 import { VALID_GROUPS, fetchFinlifeProducts } from "../_lib/finlife.js";
 
 /** 주택담보대출 옵션 매핑 */
-const mapMortgageProduct = /** @type {any} */ ((/** @type {any} */ base, /** @type {any} */ o) => ({
+const mapMortgageProduct = ((base: any, o: any) => ({
   bank: base.bank,
   product: base.product,
   mortgageType: o.mrtg_type_nm ?? "",
@@ -12,10 +11,10 @@ const mapMortgageProduct = /** @type {any} */ ((/** @type {any} */ base, /** @ty
   rateMin: o.lend_rate_min ?? null,
   rateMax: o.lend_rate_max ?? null,
   rateAvg: o.lend_rate_avg ?? null,
-}));
+})) as any;
 
 /** 전세자금대출 옵션 매핑 */
-const mapRentLoanProduct = /** @type {any} */ ((/** @type {any} */ base, /** @type {any} */ o) => ({
+const mapRentLoanProduct = ((base: any, o: any) => ({
   bank: base.bank,
   product: base.product,
   loanLimit: base.loanLimit,
@@ -24,10 +23,9 @@ const mapRentLoanProduct = /** @type {any} */ ((/** @type {any} */ base, /** @ty
   rateMin: o.lend_rate_min ?? null,
   rateMax: o.lend_rate_max ?? null,
   rateAvg: o.lend_rate_avg ?? null,
-}));
+})) as any;
 
-/** @type {Record<string, { endpoint: string, mapProduct: any }>} */
-const TYPES = {
+const TYPES: Record<string, { endpoint: string; mapProduct: any }> = {
   mortgage: { endpoint: "mortgageLoanProductsSearch", mapProduct: mapMortgageProduct },
   rent: { endpoint: "rentHouseLoanProductsSearch", mapProduct: mapRentLoanProduct },
 };
@@ -42,13 +40,13 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     return res.status(500).json({ ok: false, error: "FINLIFE_API_KEY not configured" });
   }
 
-  const type = String(req.query?.type || "").trim();
+  const type = String((req.query as any)?.type || "").trim();
   const config = TYPES[type];
   if (!config) {
     return res.status(400).json({ ok: false, error: "type 파라미터가 필요합니다 (mortgage 또는 rent)" });
   }
 
-  const topFinGrpNo = String(req.query?.topFinGrpNo || "020000").trim();
+  const topFinGrpNo = String((req.query as any)?.topFinGrpNo || "020000").trim();
   if (!VALID_GROUPS.has(topFinGrpNo)) {
     return res.status(400).json({ ok: false, error: "유효하지 않은 금융권역 코드입니다" });
   }

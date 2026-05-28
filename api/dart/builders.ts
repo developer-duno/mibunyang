@@ -1,6 +1,4 @@
-// @ts-check
-/** @type {Record<string, string>} */
-const BUILDER_CORP_CODES = {
+const BUILDER_CORP_CODES: Record<string, string> = {
   "GS건설": "00120030",
   "현대건설": "00164478",
   "대우건설": "00124540",
@@ -19,8 +17,7 @@ const BUILDER_CORP_CODES = {
   "쌍용건설": "00138206",
 };
 
-/** @param {number} debtRatio */
-function estimateCreditGrade(debtRatio) {
+function estimateCreditGrade(debtRatio: number) {
   if (debtRatio <= 100) return "A";
   if (debtRatio <= 150) return "A-";
   if (debtRatio <= 200) return "BBB";
@@ -29,17 +26,12 @@ function estimateCreditGrade(debtRatio) {
   return "CCC";
 }
 
-/** @param {any} str */
-function parseAmount(str) {
+function parseAmount(str: any) {
   if (!str) return 0;
   return parseFloat(str.replace(/,/g, "")) || 0;
 }
 
-/**
- * @param {any} builders
- * @returns {{ error: string } | { builders: string[] }}
- */
-function validateBuilders(builders) {
+function validateBuilders(builders: any): { error: string } | { builders: string[] } {
   if (!Array.isArray(builders) || builders.length === 0) {
     return { error: "builders array required" };
   }
@@ -47,8 +39,7 @@ function validateBuilders(builders) {
     return { error: "max 100 builders allowed" };
   }
 
-  /** @type {string[]} */
-  const normalized = [];
+  const normalized: string[] = [];
   for (const builder of builders) {
     if (typeof builder !== "string") {
       return { error: "builders must contain strings only" };
@@ -62,11 +53,7 @@ function validateBuilders(builders) {
   return { builders: normalized };
 }
 
-/**
- * @param {string} dartKey
- * @param {string} corpCode
- */
-async function fetchFinancials(dartKey, corpCode) {
+async function fetchFinancials(dartKey: string, corpCode: string) {
   // 보고서 코드 순서: 사업보고서 → 반기 → 1분기 → 3분기
   const reprtCodes = ["11011", "11012", "11013", "11014"];
   const years = [2024, 2023];
@@ -81,13 +68,13 @@ async function fetchFinancials(dartKey, corpCode) {
         if (json.status !== "000" || !json.list) continue;
 
         // 연결재무제표(CFS) 우선, 없으면 별도(OFS)
-        let items = json.list.filter((/** @type {any} */ x) => x.fs_div === "CFS" && x.sj_div === "BS");
+        let items = json.list.filter((x: any) => x.fs_div === "CFS" && x.sj_div === "BS");
         if (items.length === 0) {
-          items = json.list.filter((/** @type {any} */ x) => x.fs_div === "OFS" && x.sj_div === "BS");
+          items = json.list.filter((x: any) => x.fs_div === "OFS" && x.sj_div === "BS");
         }
 
-        const debt = items.find((/** @type {any} */ x) => x.account_nm === "부채총계");
-        const equity = items.find((/** @type {any} */ x) => x.account_nm === "자본총계");
+        const debt = items.find((x: any) => x.account_nm === "부채총계");
+        const equity = items.find((x: any) => x.account_nm === "자본총계");
 
         if (debt && equity) {
           const debtAmt = parseAmount(debt.thstrm_amount);
@@ -114,7 +101,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     return;
   }
 
-  const body = /** @type {any} */ (req.body);
+  const body = req.body as any;
   const validation = validateBuilders(body?.builders);
   if ("error" in validation) {
     res.status(400).json({ ok: false, error: validation.error });
@@ -123,8 +110,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
   const builders = validation.builders;
 
   try {
-    /** @type {Record<string, { debtRatio: number, creditGrade: string }>} */
-    const data = {};
+    const data: Record<string, { debtRatio: number; creditGrade: string }> = {};
     // 배치 처리: 5개씩 (DART API 분당 제한 방지)
     for (let i = 0; i < builders.length; i += 5) {
       const batch = builders.slice(i, i + 5);

@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * kosis/stats.js 테스트 — URL 빌딩, row 파싱, 에러 처리
+ * kosis/stats.ts 테스트 — URL 빌딩, row 파싱, 에러 처리
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -20,24 +19,19 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 const { default: handlerImport } = await import('./stats.js');
-/** @type {any} */
-const handler = handlerImport;
+const handler = handlerImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
-/** KOSIS 응답 row 팩토리
- * @param {string} region
- * @param {string} period
- * @param {number} value
- */
-function makeKosisRow(region, period, value) {
+/** KOSIS 응답 row 팩토리 */
+function makeKosisRow(region: string, period: string, value: number) {
   return {
     C1_NM: '시도별미분양현황',
     C2_NM: region,
