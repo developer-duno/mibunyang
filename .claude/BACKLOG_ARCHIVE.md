@@ -13,6 +13,22 @@
 
 ## 🔴 즉시 — 완료
 
+- ✅ **graceful shutdown 15 collector 일괄 보강** (세션 329 PR-A + 330 PR-B + 337 PR-C 누적 머지)
+  - 진앙: 세션 327 박제 시점 "graceful shutdown 신호 등록만 (break 0) 15 collector 잔여" 박힘. 세션 329~337 누적 머지로 정정 완료. BACKLOG L88-92 본문 정정 0건 박힌 stale 환각 잔존.
+  - 세션 341 자가 점검 1 발동 = 진실의 원천 답습 결과 `_graceful-coverage.test.mjs` 53/53 PASS. 15 collector 모두 main loop break 박힘 완전 정정 박힘.
+  - 실측 결과 (BACKLOG L92 박제값 vs 실측):
+    - calc-school-walk break=2 ✅ / collect-housing-price break=1 ✅ / collect-market-stats break=2 ✅ / collect-trades break=1 ✅
+    - naver-presale break=1 ✅ (L685 `reporter.interrupted()` 변수명 박힘 다름 — `rpt` 만 grep 미스 박힘 사고 답습)
+    - population break=1 ✅ / population-sex-age break=1 ✅
+    - childcare-info break=2 ✅ / childcare-detail break=1 ✅ / childcare-info-jeju (세션 329 PR-A 박힘) ✅
+    - collect-nearby-childcare break=2 ✅ / collect-air-quality break=1 ✅ / collect-applyhome break=1 ✅
+    - collect-building-hub break=1 ✅ / collect-crime-safety break=1 ✅
+  - 잔여 (ALLOWLIST 박힘 별 진단 후보, 본 항목 범위 외):
+    - `collect-maintenance.mjs` (rpt=1 break=0, K-apt 관리비 별 진단)
+    - `trade-stats-regions.mjs` (setupGracefulShutdown import 호출 0회 회귀, 별 진단)
+  - 답습 자산: `_graceful-coverage.test.mjs` 53/53 PASS = 진실의 원천 박힘 / `graceful-shutdown-coverage.md` §"정확 패턴 3중 의무"
+  - 세션 341 메모 자산: **BACKLOG 박제값 신뢰 금지 + 회귀 가드 답습 우선 의무**. 머지 후 BACKLOG 본문 정정 0건 박힌 stale 답습 패턴 차단
+
 - ✅ **ARCHITECTURE.md/CLAUDE.md/README.md 박제값 일괄 정정** (세션 313, 본 PR)
   - 사고: 세션 312 PR #14 가 메모(MEMORY.md, session_*) stale 박제값 (1557→2001, 35→47) 정정했으나 공식 문서 (ARCHITECTURE.md, CLAUDE.md, README.md, src/components/CLAUDE.md) + BACKLOG.md 완료 항목 이관 누락. 세션 313 진입 시 답습 결과 stale 박제값 18건 발견
   - 원인 진단 (자가 점검 1 적용): plan v1 박제값 환각 7건 발견 (memo "64 파일 / 71 호출" → 실제 src/components/CLAUDE.md L5 "45개, 2026-04-19 실측" 명시 / Vercel KV stale 표현 → Upstash Redis 단독 / 카테고리 박제값 환각 등). 진실의 원천 = src/components/CLAUDE.md L5/L9-15 명시값

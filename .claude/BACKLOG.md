@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ graceful shutdown 15 collector 일괄 보강 — 세션 329 PR-A + 330 PR-B + 337 PR-C 누적 머지로 완전 완료 (세션 341 실측 답습 결과 = `_graceful-coverage.test.mjs` 53/53 PASS 회귀 가드 박힘. BACKLOG L92 박제값 stale 환각 정정. 잔여 = `collect-maintenance` + `trade-stats-regions` 만 ALLOWLIST 박힘 별 진단 후보)
 - ✅ monitor-collectors §5 schools stale_days 35→14 정정 (세션 339, NEIS 일일 발화 기준 + 세션 338 3주 사고 35일 한계 안에 묻혀 alert 0회 발화한 진앙 해소; `external-api-outage-policy.md` 동시 동기 + `collector-timeout-rootcause-analysis.md` 세션 338 절 신규)
 - ✅ schools-neis 3주 cancelled root fix — 데이터 완결성 resume skip (`buildEnrichedIds` 헬퍼 export) + timeout 180→240 + 단위 테스트 6건 (세션 338, PR #51 머지 main `b76f6a9`; 5/22+5/26+5/27 3주 연속 cancelled 진앙 = NEIS 단지당 5.8초 12배 지연 + resume skip 패턴 부재. Plan v1+v2 환각 10건 검출 = 서브에이전트 3개 + DB 실측 교차 검증 패턴 답습 자산)
 - ✅ Node 20/22 → 24 일괄 통일 — 47 workflow yml + `.nvmrc` (24.14.1) + `engines.node` (>=24.0.0) (세션 312 확인, 커밋 `3cc54d6` 2026-05-10 머지; GitHub Actions Node 20 deprecation 대응 완료, 메모만 stale 박힌 박제값을 본 PR 로 정정)
@@ -84,12 +85,6 @@
 ## 🔴 즉시
 
 (현재 P0 박힘 0건. 다음 진입 후보 = L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
-
-- 🟡 **graceful shutdown 신호 등록만 (break 0) 15 collector 일괄 보강** (세션 327 발견)
-  - 본 세션 우선순위 1 = Naver 3 단계 (transport-tago + infra-kakao + schools-neis) 정정 완료
-  - 잔여 우선순위 2 = 15 collector: `calc-school-walk` / `collect-housing-price` / `collect-market-stats` / `collect-trades` / `naver-presale` / `population` / `population-sex-age` / `childcare-info` / `childcare-detail` / `childcare-info-jeju` / `collect-nearby-childcare` / `collect-air-quality` / `collect-applyhome` / `collect-building-hub` / `collect-crime-safety`
-  - 답습 자산: `.claude/rules/collectors/graceful-shutdown-coverage.md` §"정확 패턴 3중 의무"
-  - 별 PR 일괄 보강 (한 PR 당 5 collector × 1줄 박힘 + 단위 테스트)
 
 - ✅ **NEIS_KEY / SCHOOLINFO_KEY 미설정 사고** (세션 327 발견 → 세션 328 종결, PR #31)
   - 진단 결과 = `collect-naver-listings-incremental.yml` Collect schools step env block 누락 (Secrets 등록 ✅, schools-neis.mjs 코드 ✅, 월간 collect-schools.yml ✅)
