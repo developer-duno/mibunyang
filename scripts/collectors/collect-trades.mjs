@@ -259,7 +259,10 @@ async function main() {
   /** @type {Set<string>} */
   const seen = new Set();
 
+  const rpt = createReporter(PHASE);
+
   for (const rg of regionGuPairs) {
+    if (rpt.interrupted()) break;
     const lawdCd = getLawdCd(rg.region, rg.gu);
     if (!lawdCd) { log(PHASE, "  " + rg.region + " " + rg.gu + ": 법정동코드 없음"); continue; }
 
@@ -311,7 +314,6 @@ async function main() {
 
   await recordApiQuota("collect-trades", "MOLIT_KEY", apiCalls);
 
-  const rpt = createReporter(PHASE);
   rpt.success(inserted);
   rpt.fail(uniqueRows.length - inserted);
   const result = rpt.summary();
