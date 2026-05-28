@@ -61,6 +61,7 @@ async function main() {
   const updates = [];
 
   for (const row of schools) {
+    if (rpt.interrupted()) break;
     const minDist = findNearestElemSchool(row.nearby_schools);
     if (minDist == null) continue;
     const walkMin = calcWalkingMinutes(minDist);
@@ -80,6 +81,7 @@ async function main() {
     rpt.success(updates.length);
   } else {
     for (const u of updates) {
+      if (rpt.interrupted()) break;
       const { error } = await sb.from("apartments").update({
         naver_school_walk_min: u.walkMin,
       }).eq("id", u.id);

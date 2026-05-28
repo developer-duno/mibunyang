@@ -255,6 +255,7 @@ async function main() {
   const rpt = createReporter("housing-price");
   let saved = 0;
   for (const r of aggregated) {
+    if (rpt.interrupted()) break;
     const sm = Math.round(r.avgUnitPrice);
     // SMALLINT 범위 -32768~32767. 만원/㎡ 단위 = 일반 100~5000 범위.
     const clamped = Math.max(0, Math.min(32767, sm));

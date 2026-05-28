@@ -682,6 +682,7 @@ async function main() {
   const tierCounts = { 1: 0, 2: 0, 3: 0, 4: 0, new: 0, none: 0 };
 
   for (let idx = 0; idx < total; idx++) {
+    if (reporter.interrupted()) break;
     const item = uniquePresales[idx];
     const no = item.preSaleComplexNumber;
     const seq = item.announcementPreSaleSequence;
