@@ -1,13 +1,11 @@
 // @vitest-environment node
-// @ts-check
 // /api/upcoming 단위 + 핸들러 통합 테스트
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Supabase chainable mock — .from().select().in() 체인이 select 인자를 캡처
-/** @type {any} */
-let lastSelectArg = null;
+let lastSelectArg: any = null;
 const mockIn = vi.fn();
-const mockSelect = vi.fn((/** @type {any} */ arg) => {
+const mockSelect = vi.fn((arg: any) => {
   lastSelectArg = arg;
   return { in: mockIn };
 });
@@ -40,7 +38,7 @@ describe("upcoming rateLimit", () => {
   });
 
   it("rateLimit 초과 시 429 + Retry-After, Supabase 미조회", async () => {
-    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    (checkRateLimit as any).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const req = { method: "GET", headers: {} };
     const res = makeRes();
     await handler(req, res);
@@ -50,11 +48,12 @@ describe("upcoming rateLimit", () => {
   });
 });
 
-const { default: handler, extractDates, inferEventFromName } = await import("./upcoming.js");
+const { default: handlerImport, extractDates, inferEventFromName } = await import("./upcoming.js");
 const { checkRateLimit } = await import("./_lib/rateLimit.js");
+const handler = handlerImport as any;
 
 function makeRes() {
-  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() } as any;
 }
 
 describe("extractDates — 캘린더 날짜 추출 (spec § 3-1-A·B)", () => {

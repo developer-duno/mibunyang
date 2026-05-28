@@ -1,11 +1,10 @@
 // @vitest-environment node
-// @ts-check
 /**
- * supabase/unsold-history.js 테스트 — 미분양 추이 시계열 API (ID 검증, 단일/복수 조회, 캐싱)
+ * supabase/unsold-history.ts 테스트 — 미분양 추이 시계열 API (ID 검증, 단일/복수 조회, 캐싱)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// rateLimit 모킹 — withHandler의 checkRateLimit 경로 우회 (finlife/loans.test.js 패턴)
+// rateLimit 모킹
 vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
@@ -26,11 +25,12 @@ vi.mock('../_lib/supabase.js', () => ({
 
 beforeEach(() => { vi.clearAllMocks(); });
 
-const { default: handler } = await import('./unsold-history.js');
+const { default: handlerImport } = await import('./unsold-history.js');
+const handler = handlerImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() } as any;
 }
 
 describe('supabase/unsold-history handler', () => {

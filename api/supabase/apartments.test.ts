@@ -1,11 +1,10 @@
 // @vitest-environment node
-// @ts-check
 /**
- * supabase/apartments.js 테스트 — sanitize 함수 null 기본값, 필터링, 캐시 헤더, 배치 페이지네이션
+ * supabase/apartments.ts 테스트 — sanitize 함수 null 기본값, 필터링, 캐시 헤더, 배치 페이지네이션
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// rateLimit 모킹 — withHandler의 checkRateLimit 경로 우회 (finlife/loans.test.js 패턴)
+// rateLimit 모킹 — withHandler의 checkRateLimit 경로 우회
 vi.mock('../_lib/rateLimit.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
@@ -42,7 +41,8 @@ vi.mock('../_lib/supabase.js', () => ({
   }),
 }));
 
-const { default: handler } = await import('./apartments.js');
+const { default: handlerImport } = await import('./apartments.js');
+const handler = handlerImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
@@ -52,11 +52,11 @@ function makeRes() {
     setHeader: vi.fn(),
     end: vi.fn(),
   };
-  return res;
+  return res as any;
 }
 
 /** req 목 객체 팩토리 */
-function makeReq(query = {}) {
+function makeReq(query: any = {}) {
   return { method: 'GET', query, headers: {} };
 }
 

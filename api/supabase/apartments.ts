@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * GET /api/supabase/apartments
  *
@@ -17,14 +16,8 @@ import { validateApartmentListQuery } from "../_lib/proxyValidation.js";
 
 const BATCH_SIZE = 1000;
 
-/**
- * 필터 적용된 새 쿼리 객체 생성 (배치마다 새로 빌드 필요)
- * @param {any} supabase
- * @param {any} region
- * @param {any} gu
- * @param {boolean} withCount
- */
-function buildQuery(supabase, region, gu, withCount) {
+/** 필터 적용된 새 쿼리 객체 생성 (배치마다 새로 빌드 필요) */
+function buildQuery(supabase: any, region: any, gu: any, withCount: boolean) {
   let q = supabase.from("apartments_flat").select("*", withCount ? { count: "exact" } : {}).order("id");
   if (region) q = q.eq("region", region);
   if (gu) q = q.eq("gu", gu);
@@ -113,9 +106,8 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
   }
 }});
 
-/** 추정값 추적 플래그 11개 (ExpertDataCompleteness에서 사용)
- * @param {any} row */
-function sanitizeFallbackFlags(row) {
+/** 추정값 추적 플래그 11개 (ExpertDataCompleteness에서 사용) */
+function sanitizeFallbackFlags(row: any) {
   return {
     _fallbackPir: row.pir == null,
     _fallbackPsr: row.psr == null,
@@ -131,9 +123,8 @@ function sanitizeFallbackFlags(row) {
   };
 }
 
-/** 위치·건물 기본 필드 (unsold/unsoldRate 특수 로직 포함)
- * @param {any} row */
-function sanitizeBasics(row) {
+/** 위치·건물 기본 필드 (unsold/unsoldRate 특수 로직 포함) */
+function sanitizeBasics(row: any) {
   const units = row.units ?? 0;
   return {
     id: row.id,
@@ -174,9 +165,8 @@ function sanitizeBasics(row) {
   };
 }
 
-/** 혜택 10개 (null → 0/false)
- * @param {any} row */
-function sanitizeBenefits(row) {
+/** 혜택 10개 (null → 0/false) */
+function sanitizeBenefits(row: any) {
   return {
     discountPct: row.discountPct ?? 0,
     loanFree: row.loanFree ?? false,
@@ -191,9 +181,8 @@ function sanitizeBenefits(row) {
   };
 }
 
-/** 미래가치 + 환경 9개
- * @param {any} row */
-function sanitizeEnvironment(row) {
+/** 미래가치 + 환경 9개 */
+function sanitizeEnvironment(row: any) {
   return {
     transitDev: row.transitDev ?? null,
     devDist: row.devDist ?? null,
@@ -207,9 +196,8 @@ function sanitizeEnvironment(row) {
   };
 }
 
-/** 분양가 + 인프라 + 대기질·치안·학군 (29개, 위험 필드 → 비관적 기본값)
- * @param {any} row */
-function sanitizeInfra(row) {
+/** 분양가 + 인프라 + 대기질·치안·학군 (29개, 위험 필드 → 비관적 기본값) */
+function sanitizeInfra(row: any) {
   return {
     // 분양가
     area: row.area ?? 0,
@@ -250,9 +238,8 @@ function sanitizeInfra(row) {
   };
 }
 
-/** 교통 6개
- * @param {any} row */
-function sanitizeTransport(row) {
+/** 교통 6개 */
+function sanitizeTransport(row: any) {
   return {
     busRoutes: row.busRoutes ?? 0,
     icDist: row.icDist ?? 99,
@@ -263,9 +250,8 @@ function sanitizeTransport(row) {
   };
 }
 
-/** 건설사 + 지역 + KOSIS 시장 통계 + 청약 경쟁률 (13개)
- * @param {any} row */
-function sanitizeRegion(row) {
+/** 건설사 + 지역 + KOSIS 시장 통계 + 청약 경쟁률 (13개) */
+function sanitizeRegion(row: any) {
   return {
     // 건설사
     builderDebtRatio: row.builderDebtRatio ?? 250,
@@ -290,9 +276,8 @@ function sanitizeRegion(row) {
   };
 }
 
-/** 실거래 위험 필드 + 규제/보증 + 시세 배열 (16개, 네이버 폴백 포함)
- * @param {any} row */
-function sanitizeTransaction(row) {
+/** 실거래 위험 필드 + 규제/보증 + 시세 배열 (16개, 네이버 폴백 포함) */
+function sanitizeTransaction(row: any) {
   return {
     // 실거래 (위험 필드 → 비관적 기본값, 네이버 폴백)
     nearbyMedian: row.nearbyMedian ?? row.naverNearbyMedian ?? null,
@@ -316,9 +301,8 @@ function sanitizeTransaction(row) {
   };
 }
 
-/** 네이버 교차검증 11개 (null 허용 — 미수집 시 null)
- * @param {any} row */
-function sanitizeNaverCross(row) {
+/** 네이버 교차검증 11개 (null 허용 — 미수집 시 null) */
+function sanitizeNaverCross(row: any) {
   return {
     naverNearbyMedian: row.naverNearbyMedian ?? null,
     naverNearbyAvg: row.naverNearbyAvg ?? null,
@@ -334,9 +318,8 @@ function sanitizeNaverCross(row) {
   };
 }
 
-/** 네이버 분양정보 19개 (pre.land.naver.com — null 허용)
- * @param {any} row */
-function sanitizePresale(row) {
+/** 네이버 분양정보 19개 (pre.land.naver.com — null 허용) */
+function sanitizePresale(row: any) {
   return {
     presaleMinPrice: row.presaleMinPrice ?? null,
     presaleMaxPrice: row.presaleMaxPrice ?? null,
@@ -363,9 +346,8 @@ function sanitizePresale(row) {
 /**
  * null → 기본값으로 정리 (기존 JSON 호환 + 스코어링 엔진 안전)
  * CLAUDE.md: "위험 필드 null → 비관적 기본값, 혜택 필드 null → 0"
- * @param {any} row
  */
-function sanitize(row) {
+function sanitize(row: any) {
   return {
     ...sanitizeFallbackFlags(row),
     ...sanitizeBasics(row),

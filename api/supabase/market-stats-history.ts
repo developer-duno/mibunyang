@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * GET /api/supabase/market-stats-history?region=서울&gu=강남구
  * GET /api/supabase/market-stats-history?region=서울&gu= (시도 단위, gu 빈 문자열)
@@ -22,10 +21,8 @@ const METRIC_FIELDS = ["price_index", "avg_price_sqm", "new_supply", "initial_sa
 /**
  * 응답 행 중 5필드가 하나라도 유효 값을 가진 행이 있는지 검사.
  * 시군구 쿼리가 행은 있으나 모두 NULL 인 경우 시도 폴백 트리거.
- * @param {Array<Record<string, unknown>> | null | undefined} rows
- * @returns {boolean}
  */
-function hasAnyMetricValue(rows) {
+function hasAnyMetricValue(rows: Array<Record<string, unknown>> | null | undefined): boolean {
   if (!rows || rows.length === 0) return false;
   for (const row of rows) {
     for (const f of METRIC_FIELDS) {
@@ -40,7 +37,7 @@ export default withHandler({
   rateLimit: "proxy",
   handler: async (req, res) => {
     try {
-      const query = /** @type {Record<string, unknown>} */ (req.query ?? {});
+      const query = (req.query ?? {}) as Record<string, unknown>;
       const region = String(query.region || "").trim();
       const gu = String(query.gu || "").trim();
       if (!region) {
@@ -51,7 +48,7 @@ export default withHandler({
       }
 
       const supabase = getSupabase();
-      const runQuery = (/** @type {string} */ guValue) => supabase
+      const runQuery = (guValue: string) => supabase
         .from("market_stats_history")
         .select(SELECT)
         .eq("region", region)

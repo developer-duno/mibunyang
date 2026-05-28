@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * GET /api/supabase/prices?apartment_id=xxx
  * GET /api/supabase/prices?apartment_ids=id1,id2,id3
@@ -17,5 +16,5 @@ export default createTimeseriesHandler({
   orderBy: "recorded_at",
   errorLabel: "분양가",
   // presale_* house_type은 네이버 분양가 폴백용 내부 데이터 — 프론트 시계열 노출 제외
-  filter: (q) => (/** @type {any} */ (q)).not("house_type", "like", "presale_%"),
+  filter: (q: any) => q.not("house_type", "like", "presale_%"),
 });
