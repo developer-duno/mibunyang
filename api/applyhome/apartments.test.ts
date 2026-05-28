@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * applyhome/apartments.js 테스트 — parseAddress, geocode, 응답 형식
+ * applyhome/apartments.ts 테스트 — parseAddress, geocode, 응답 형식
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -26,22 +25,19 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 const { default: handlerImport } = await import('./apartments.js');
-/** @type {any} */
-const handler = handlerImport;
+const handler = handlerImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
-/** 청약홈 API 응답 팩토리
- * @param {any[]} [items]
- */
-function makeApplyHomeResponse(items = []) {
+/** 청약홈 API 응답 팩토리 */
+function makeApplyHomeResponse(items: any[] = []) {
   return {
     ok: true,
     json: () => Promise.resolve({
@@ -53,7 +49,7 @@ function makeApplyHomeResponse(items = []) {
 }
 
 /** 청약홈 API 항목 팩토리 */
-function makeApplyHomeItem(overrides = {}) {
+function makeApplyHomeItem(overrides: Record<string, any> = {}) {
   return {
     HOUSE_NM: '테스트아파트',
     HSSPLY_ADRES: '경기도 화성시 동탄면 123',

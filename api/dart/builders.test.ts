@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * dart/builders.js 테스트 — estimateCreditGrade 경계값, debtRatio 계산
+ * dart/builders.ts 테스트 — estimateCreditGrade 경계값, debtRatio 계산
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -43,24 +42,19 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 const { default: handlerImport } = await import('./builders.js');
-/** @type {any} */
-const handler = handlerImport;
+const handler = handlerImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return /** @type {any} */ ({
+  return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
-  });
+  } as any;
 }
 
-/**
- * DART 재무제표 응답 팩토리
- * @param {number} debtAmt
- * @param {number} equityAmt
- */
-function makeDartResponse(debtAmt, equityAmt) {
+/** DART 재무제표 응답 팩토리 */
+function makeDartResponse(debtAmt: number, equityAmt: number) {
   return {
     ok: true,
     json: () => Promise.resolve({
@@ -105,8 +99,6 @@ describe('dart/builders handler', () => {
   });
 
   // 정상: debtRatio 계산 및 creditGrade
-  // debtRatio = Math.round(debtAmt / equityAmt * 10) / 10
-  // 예: 부채 5000, 자본 100 → 5000/100 = 50 → Math.round(500)/10 = 50.0
   it('debtRatio를 올바르게 계산하고 creditGrade를 매핑한다', async () => {
     mockFetch.mockResolvedValue(makeDartResponse(5000, 100)); // 50.0
     const res = makeRes();

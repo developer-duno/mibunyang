@@ -1,4 +1,3 @@
-// @ts-check
 import { withHandler } from "../_lib/handler.js";
 import { validateApartmentPayload } from "../_lib/proxyValidation.js";
 
@@ -7,19 +6,14 @@ const UPSTREAM_TIMEOUT_MS = 3000;
 const APARTMENT_CONCURRENCY = 6;
 const REGION_CONCURRENCY = 3;
 
-/** @type {Record<string, string>} */
-const EDU_OFFICE_CODE = {
+const EDU_OFFICE_CODE: Record<string, string> = {
   서울: "B10", 부산: "C10", 대구: "D10", 인천: "E10",
   광주: "F10", 대전: "G10", 울산: "H10", 세종: "I10",
   경기: "J10", 강원: "K10", 충북: "M10", 충남: "N10",
   전북: "P10", 전남: "Q10", 경북: "R10", 경남: "S10", 제주: "T10",
 };
 
-/**
- * @param {string} url
- * @param {RequestInit} [options]
- */
-async function fetchWithTimeout(url, options = {}) {
+async function fetchWithTimeout(url: string, options: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   try {
@@ -29,14 +23,12 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
-/**
- * @param {any[]} items
- * @param {number} limit
- * @param {(item: any, index: number) => Promise<any>} mapper
- */
-async function mapWithConcurrency(items, limit, mapper) {
-  /** @type {any[]} */
-  const results = [];
+async function mapWithConcurrency(
+  items: any[],
+  limit: number,
+  mapper: (item: any, index: number) => Promise<any>,
+) {
+  const results: any[] = [];
   let index = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (index < items.length) {
@@ -48,11 +40,7 @@ async function mapWithConcurrency(items, limit, mapper) {
   return results;
 }
 
-/**
- * @param {string} neisKey
- * @param {string} regionCode
- */
-async function fetchSchoolsByRegion(neisKey, regionCode) {
+async function fetchSchoolsByRegion(neisKey: string, regionCode: string) {
   const schools = [];
   let page = 1;
   const size = 1000;
@@ -83,19 +71,15 @@ async function fetchSchoolsByRegion(neisKey, regionCode) {
   return schools;
 }
 
-/**
- * @param {string} kakaoKey
- * @param {number} lat
- * @param {number} lng
- * @param {string} keyword
- * @param {number} radius
- */
-async function searchNearbySchools(kakaoKey, lat, lng, keyword, radius) {
+async function searchNearbySchools(
+  kakaoKey: string, lat: number, lng: number,
+  keyword: string, radius: number,
+) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
   const res = await fetchWithTimeout(url, {
     headers: { Authorization: `KakaoAK ${kakaoKey}` },
   });
-  if (!res.ok) return { count: 0, nearest: null };
+  if (!res.ok) return { count: 0, nearest: null as number | null };
   const data = await res.json();
   return {
     count: data.meta?.total_count ?? 0,
@@ -103,12 +87,11 @@ async function searchNearbySchools(kakaoKey, lat, lng, keyword, radius) {
   };
 }
 
-/**
- * @param {{ count: number, nearest: number | null }} elem
- * @param {{ count: number, nearest: number | null }} middle
- * @param {{ count: number, nearest: number | null }} high
- */
-function calcScoreFromKakao(elem, middle, high) {
+function calcScoreFromKakao(
+  elem: { count: number; nearest: number | null },
+  middle: { count: number; nearest: number | null },
+  high: { count: number; nearest: number | null },
+) {
   let score = 0;
 
   if (elem.nearest != null && elem.nearest <= 500) score += 25;
@@ -126,11 +109,10 @@ function calcScoreFromKakao(elem, middle, high) {
   return Math.min(score, 100);
 }
 
-/** @param {any[]} guSchools */
-function calcScoreFromNEIS(guSchools) {
-  const elem = guSchools.filter((/** @type {any} */ s) => s.type === "초등학교").length;
-  const mid = guSchools.filter((/** @type {any} */ s) => s.type === "중학교").length;
-  const high = guSchools.filter((/** @type {any} */ s) => s.type === "고등학교").length;
+function calcScoreFromNEIS(guSchools: any[]) {
+  const elem = guSchools.filter((s: any) => s.type === "초등학교").length;
+  const mid = guSchools.filter((s: any) => s.type === "중학교").length;
+  const high = guSchools.filter((s: any) => s.type === "고등학교").length;
   const total = elem + mid + high;
 
   const score = Math.min(total * 3, 40) +
@@ -140,14 +122,12 @@ function calcScoreFromNEIS(guSchools) {
   return Math.min(score, 100);
 }
 
-/** @param {number} score */
-function gradeFromScore(score) {
+function gradeFromScore(score: number) {
   return score >= 85 ? "최우수" : score >= 70 ? "우수" : score >= 50 ? "보통" : "미흡";
 }
 
-/** @param {PromiseSettledResult<{ count: number, nearest: number | null }>} result */
-function settledValue(result) {
-  return result.status === "fulfilled" ? result.value : { count: 0, nearest: null };
+function settledValue(result: PromiseSettledResult<{ count: number; nearest: number | null }>) {
+  return result.status === "fulfilled" ? result.value : { count: 0, nearest: null as number | null };
 }
 
 export default withHandler({ method: "POST", rateLimit: "proxy", handler: async (req, res) => {
@@ -158,7 +138,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
     return;
   }
 
-  const validation = validateApartmentPayload(/** @type {any} */ (req.body), { max: 50 });
+  const validation = validateApartmentPayload(req.body as any, { max: 50 });
   if (!validation.ok) {
     res.status(validation.status).json({ ok: false, error: validation.error });
     return;
@@ -166,10 +146,9 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
   const apartments = validation.apartments;
 
   try {
-    const regions = [...new Set(apartments.map((/** @type {any} */ a) => a.region).filter(Boolean))];
-    /** @type {Record<string, any[]>} */
-    const regionSchools = {};
-    await mapWithConcurrency(regions, REGION_CONCURRENCY, async (/** @type {any} */ region) => {
+    const regions = [...new Set(apartments.map((a: any) => a.region).filter(Boolean))];
+    const regionSchools: Record<string, any[]> = {};
+    await mapWithConcurrency(regions, REGION_CONCURRENCY, async (region: any) => {
       const code = EDU_OFFICE_CODE[region];
       if (!code) return;
       try {
@@ -179,9 +158,8 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
       }
     });
 
-    /** @type {Record<string, { schoolScore: number, schoolGrade: string }>} */
-    const results = {};
-    await mapWithConcurrency(apartments, APARTMENT_CONCURRENCY, async (/** @type {any} */ apt) => {
+    const results: Record<string, { schoolScore: number; schoolGrade: string }> = {};
+    await mapWithConcurrency(apartments, APARTMENT_CONCURRENCY, async (apt: any) => {
       if (apt.lat != null && apt.lng != null && kakaoKey) {
         const [elem, middle, high] = await Promise.allSettled([
           searchNearbySchools(kakaoKey, apt.lat, apt.lng, "초등학교", 2000),
@@ -192,7 +170,7 @@ export default withHandler({ method: "POST", rateLimit: "proxy", handler: async 
         results[apt.id] = { schoolScore: score, schoolGrade: gradeFromScore(score) };
       } else {
         const schools = regionSchools[apt.region] || [];
-        const guSchools = apt.gu ? schools.filter((/** @type {any} */ s) => s.address.includes(apt.gu)) : schools;
+        const guSchools = apt.gu ? schools.filter((s: any) => s.address.includes(apt.gu)) : schools;
         const score = calcScoreFromNEIS(guSchools);
         results[apt.id] = { schoolScore: score, schoolGrade: gradeFromScore(score) };
       }

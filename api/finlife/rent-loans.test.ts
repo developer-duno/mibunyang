@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * finlife/rent-loans.js 테스트 — 전세자금대출 API 핸들러
+ * finlife/rent-loans.ts 테스트 — 전세자금대출 API 핸들러
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -15,7 +14,8 @@ beforeEach(() => {
   delete process.env.FINLIFE_API_KEY;
 });
 
-const { default: handler } = await import('./rent-loans.js');
+const { default: handlerImport } = await import('./rent-loans.js');
+const handler = handlerImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
@@ -24,7 +24,7 @@ function makeRes() {
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
     end: vi.fn(),
-  };
+  } as any;
 }
 
 /** 정상 finlife 전세대출 API 응답 팩토리 */
