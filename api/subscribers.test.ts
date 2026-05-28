@@ -1,4 +1,3 @@
-// @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
 
@@ -20,19 +19,16 @@ vi.mock("./_lib/rateLimit.js", () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ limited: false }),
 }));
 
-const { default: handler, normalizeToE164 } = await import("./subscribers.js");
+const { default: handlerImport, normalizeToE164 } = await import("./subscribers.js");
 const { checkRateLimit } = await import("./_lib/rateLimit.js");
+const handler = handlerImport as any;
 
 function makeRes() {
-  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() } as any;
 }
 
-/**
- * @param {string} phone
- * @param {string} secret
- */
-function makeOptOutToken(phone, secret) {
-  return crypto.createHmac("sha256", secret).update(/** @type {string} */ (normalizeToE164(phone))).digest("hex");
+function makeOptOutToken(phone: string, secret: string) {
+  return crypto.createHmac("sha256", secret).update(normalizeToE164(phone) as string).digest("hex");
 }
 
 beforeEach(() => {
@@ -40,7 +36,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockEq.mockResolvedValue({ error: null });
   mockUpsert.mockResolvedValue({ error: null });
-  /** @type {any} */ (checkRateLimit).mockResolvedValue({ limited: false });
+  (checkRateLimit as any).mockResolvedValue({ limited: false });
 });
 
 afterEach(() => {
@@ -74,7 +70,7 @@ describe("subscribers DELETE opt-out", () => {
 
   it("opts out with a valid token", async () => {
     const phone = "010-1234-5678";
-    const token = makeOptOutToken(phone, /** @type {string} */ (process.env.SUBSCRIBERS_OPT_OUT_SECRET));
+    const token = makeOptOutToken(phone, process.env.SUBSCRIBERS_OPT_OUT_SECRET as string);
     const res = makeRes();
     await handler({
       method: "DELETE",
@@ -156,7 +152,7 @@ describe("subscribers POST signup", () => {
   });
 
   it("returns 429 when subscriber rate limit is exceeded", async () => {
-    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    (checkRateLimit as any).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
 
     await handler({
@@ -202,11 +198,11 @@ describe("normalizeToE164", () => {
   });
 
   it("rejects null", () => {
-    expect(normalizeToE164(null)).toBeNull();
+    expect(normalizeToE164(null as any)).toBeNull();
   });
 
   it("rejects non-strings", () => {
-    expect(normalizeToE164(1012345678)).toBeNull();
+    expect(normalizeToE164(1012345678 as any)).toBeNull();
   });
 
   it("rejects foreign numbers", () => {

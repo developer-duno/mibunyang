@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * consults.js 테스트 — 상담 신청 POST/GET, 검증, 인증, 레이트 리밋
+ * consults.ts 테스트 — 상담 신청 POST/GET, 검증, 인증, 레이트 리밋
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -39,18 +38,19 @@ beforeEach(() => {
   mockLimit.mockResolvedValue({ data: [], error: null, count: 0 });
 });
 
-const { default: handler } = await import("./consults.js");
+const { default: handlerImport } = await import("./consults.js");
 const { handleCors } = await import("./_lib/cors.js");
 const { checkRateLimit } = await import("./_lib/rateLimit.js");
 const { verifyToken } = await import("./_lib/auth.js");
+const handler = handlerImport as any;
 
 /** res 목 객체 팩토리 */
 function makeRes() {
-  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() } as any;
 }
 
 /** 유효한 상담 신청 데이터 팩토리 */
-function makeBody(overrides = {}) {
+function makeBody(overrides: Record<string, any> = {}) {
   return {
     name: "홍길동",
     phone: "010-1234-5678",
@@ -64,12 +64,12 @@ function makeBody(overrides = {}) {
 }
 
 /** POST 요청 팩토리 — 반복 인라인 제거 */
-function makePostReq(bodyOverrides = {}) {
+function makePostReq(bodyOverrides: Record<string, any> = {}) {
   return { method: "POST", headers: {}, body: makeBody(bodyOverrides) };
 }
 
 /** snake_case DB 응답 팩토리 — GET 테스트용 */
-function makeConsultRow(overrides = {}) {
+function makeConsultRow(overrides: Record<string, any> = {}) {
   return {
     id: 1, name: "홍길동", phone: "010-1234-5678",
     interested_apts: ["apt-1"], budget_min: 30000, budget_max: 50000,
@@ -82,7 +82,7 @@ function makeConsultRow(overrides = {}) {
 describe("consults handler", () => {
   // CORS 위임 확인
   it("OPTIONS 시 handleCors가 처리하고 즉시 반환한다", async () => {
-    /** @type {any} */ (handleCors).mockReturnValueOnce(true);
+    (handleCors as any).mockReturnValueOnce(true);
     const res = makeRes();
     await handler({ method: "OPTIONS", headers: {}, body: {} }, res);
     expect(handleCors).toHaveBeenCalled();
@@ -128,7 +128,7 @@ describe("consults handler", () => {
 
   // --- POST 레이트 리밋 ---
   it("POST: 레이트 리밋 초과 시 429를 반환한다", async () => {
-    /** @type {any} */ (checkRateLimit).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    (checkRateLimit as any).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
     const res = makeRes();
     await handler(makePostReq(), res);
     expect(res.status).toHaveBeenCalledWith(429);
@@ -165,21 +165,21 @@ describe("consults handler", () => {
   });
 
   it("GET: token without role returns 403", async () => {
-    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "user@test.com" });
+    (verifyToken as any).mockReturnValueOnce({ email: "user@test.com" });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer no-role-token" }, query: {} }, res);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("GET: user role returns 403", async () => {
-    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "user@test.com", role: "user" });
+    (verifyToken as any).mockReturnValueOnce({ email: "user@test.com", role: "user" });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer user-token" }, query: {} }, res);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("GET: 유효한 토큰으로 상담 목록을 반환한다", async () => {
-    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
+    (verifyToken as any).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
     // snake_case DB 응답 목
     mockLimit.mockResolvedValueOnce({
       data: [makeConsultRow()],
@@ -199,7 +199,7 @@ describe("consults handler", () => {
   });
 
   it("GET: admin role can read consult list", async () => {
-    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer admin-token" }, query: {} }, res);
     expect(res.status).toHaveBeenCalledWith(200);
@@ -207,7 +207,7 @@ describe("consults handler", () => {
   });
 
   it("GET: Supabase 조회 실패 시 500을 반환한다", async () => {
-    /** @type {any} */ (verifyToken).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
+    (verifyToken as any).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
     mockLimit.mockResolvedValueOnce({ data: null, error: new Error("DB error"), count: 0 });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer valid-token" }, query: {} }, res);

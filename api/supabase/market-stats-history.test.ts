@@ -1,7 +1,6 @@
 // @vitest-environment node
-// @ts-check
 /**
- * supabase/market-stats-history.js 테스트 — region+gu 시계열 API
+ * supabase/market-stats-history.ts 테스트 — region+gu 시계열 API
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -29,10 +28,11 @@ beforeEach(() => {
   mockOrder.mockResolvedValue({ data: mockData, error: null });
 });
 
-const { default: handler } = await import("./market-stats-history.js");
+const { default: handlerImport } = await import("./market-stats-history.js");
+const handler = handlerImport as any;
 
 function makeRes() {
-  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() };
+  return { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn(), end: vi.fn() } as any;
 }
 
 describe("supabase/market-stats-history handler", () => {
@@ -140,7 +140,7 @@ describe("supabase/market-stats-history handler", () => {
       fallback: false,
     }));
     // 폴백 발동 안 함 → eq("gu", ...) 호출 1회만 (1차 gu="")
-    const guCalls = mockQuery.eq.mock.calls.filter((/** @type {any[]} */ c) => c[0] === "gu");
+    const guCalls = mockQuery.eq.mock.calls.filter((c: any[]) => c[0] === "gu");
     expect(guCalls).toHaveLength(1);
   });
 
