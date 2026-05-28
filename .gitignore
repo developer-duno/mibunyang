@@ -35,6 +35,9 @@ dist/
 AGENTS.md
 .github/workflows/.claude/
 
+# OMC / ulw-safe 자율 체크포인트·세션 메모리 (로컬 전용, 세션 341 박힘)
+.omc/
+
 # MCP 서버 설정 (project_ref 등 토큰성 정보 노출 방지)
 .mcp.json
 .env
