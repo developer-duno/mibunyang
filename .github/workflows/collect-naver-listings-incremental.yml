@@ -20,7 +20,13 @@ jobs:
     #   외부 API 응답 분산 × 3단계 누적 = 마진 50% 의무 → 180m.
     # 세션327 실증 (run 26502989962, timeout=2 dry-run): job timeout-minutes 도달 = step 즉시 SIGKILL (grace 0).
     #   graceful break 박힘은 `gh run cancel` 수동 명령 시에만 partial 기록. 자연 timeout = SIGKILL = collector_runs row 0.
-    timeout-minutes: 180
+    # 세션338 정정 (run 26538887941 cancelled): 5/22+5/26+5/27 3주 연속 cancelled.
+    #   진앙 = NEIS 교육정보 API 만성 지연 (5/27 = 12배 지연, schools 단지당 약 5.1초).
+    #   schools-neis resume self skip 박힘 (NEIS 보강 완결성 + 30일 이내 skip).
+    #   첫 cron (5/29) 박힘 처리량: skip 1235건 + 처리 766건 = 51분 (12배 지연 지속 시).
+    #   6/27 (30일 후) 전수 갱신: 2001건 × 4초 = 134분 + transport 64 + infra 21 = 219분.
+    #   240m = 마진 21분 (40%) 박힘.
+    timeout-minutes: 240
 
     steps:
       - uses: actions/checkout@v5

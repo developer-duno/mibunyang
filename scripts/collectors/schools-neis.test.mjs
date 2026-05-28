@@ -26,7 +26,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus } = await import("./schools-neis.mjs");
+const { calcScore, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP } = await import("./schools-neis.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** Kakao 검색 결과 팩토리 (distance 포함)
@@ -470,5 +470,63 @@ describe("calcScore 밀도 보정", () => {
     const all = [{ students: 500, classes: 20 }]; // +2
     // 50 + 5 + 7 + 2 = 64
     expect(calcScore([], [], high, all)).toBe(64);
+  });
+});
+
+// ── 세션 338: buildEnrichedIds (resume self skip) ──────────────
+describe("buildEnrichedIds (세션 338)", () => {
+  const NOW = Date.now();
+  const STALE_MS = NOW - STALE_DAYS_FOR_SKIP * 86400000;
+
+  it("nearby_schools schoolType 박힌 + 30일 이내 단지 = enriched (skip 대상)", () => {
+    const rows = [
+      { apartment_id: "A", nearby_schools: [{ name: "초", schoolType: "공립" }], updated_at: new Date(NOW - 86400000).toISOString() },
+    ];
+    const ids = buildEnrichedIds(rows, STALE_MS);
+    expect(ids.has("A")).toBe(true);
+    expect(ids.size).toBe(1);
+  });
+
+  it("nearby_schools 안 schoolType 키 부재 단지 = enriched 아님 (NEIS 미보강 재처리)", () => {
+    const rows = [
+      { apartment_id: "A", nearby_schools: [{ name: "초", distance: 300 }], updated_at: new Date(NOW - 86400000).toISOString() },
+    ];
+    const ids = buildEnrichedIds(rows, STALE_MS);
+    expect(ids.has("A")).toBe(false);
+    expect(ids.size).toBe(0);
+  });
+
+  it("schools 테이블 비어있음 = 빈 Set (전수 처리)", () => {
+    expect(buildEnrichedIds([], STALE_MS).size).toBe(0);
+    expect(buildEnrichedIds(/** @type {any} */ (null), STALE_MS).size).toBe(0);
+  });
+
+  it("updated_at 30일 초과 단지 = enriched 아님 (강제 갱신)", () => {
+    const rows = [
+      { apartment_id: "A", nearby_schools: [{ name: "초", schoolType: "공립" }], updated_at: new Date(NOW - 40 * 86400000).toISOString() },
+    ];
+    const ids = buildEnrichedIds(rows, STALE_MS);
+    expect(ids.has("A")).toBe(false);
+  });
+
+  it("nearby_schools length 0 단지 = enriched 아님 (재처리)", () => {
+    const rows = [
+      { apartment_id: "A", nearby_schools: [], updated_at: new Date(NOW - 86400000).toISOString() },
+    ];
+    const ids = buildEnrichedIds(rows, STALE_MS);
+    expect(ids.has("A")).toBe(false);
+  });
+
+  it("혼합 시나리오 = 보강된 + 미보강 + 만료 동시 박힘", () => {
+    const rows = [
+      { apartment_id: "A", nearby_schools: [{ name: "초", schoolType: "공립" }], updated_at: new Date(NOW - 86400000).toISOString() },        // skip
+      { apartment_id: "B", nearby_schools: [{ name: "초" }], updated_at: new Date(NOW - 86400000).toISOString() },                              // 재처리
+      { apartment_id: "C", nearby_schools: [{ name: "초", schoolType: "공립" }], updated_at: new Date(NOW - 40 * 86400000).toISOString() },     // 재처리 (만료)
+    ];
+    const ids = buildEnrichedIds(rows, STALE_MS);
+    expect(ids.has("A")).toBe(true);
+    expect(ids.has("B")).toBe(false);
+    expect(ids.has("C")).toBe(false);
+    expect(ids.size).toBe(1);
   });
 });
