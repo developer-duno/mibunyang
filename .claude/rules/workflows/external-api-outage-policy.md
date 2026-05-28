@@ -63,7 +63,7 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "housing-permits", stale_days: 14, owner: "MOLIT 주택건설실적" },
   { collector: "building-hub",    stale_days: 14, owner: "MOLIT 건축물대장 허브" },
   { collector: "transport",       stale_days: 14, owner: "TAGO 대중교통" },
-  { collector: "schools",         stale_days: 35, owner: "NEIS 학교정보" },
+  { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
 ];
 
 const OUTAGE_MIN_CONSECUTIVE = 3;
@@ -144,3 +144,16 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
 3. 첫 monitor 발화 1회 dry-run 답습
 
 기존 collector = 다음 운영 monitor (월 1일 cron) 자연 적용.
+
+## stale_days 정정 답습 (세션 339)
+
+- 세션 318~328 housing-permits 1개월+ silent fail 사고 박힘 시점에 schools=35 로 박은 가정 = "NEIS 분기 발화" 환각. 실제 = `collect-naver-listings-incremental.yml` 안 schools step 매일 발화 + 월간 `collect-schools.yml` 자매 동시 동작.
+- 세션 338 사고 (3주 cancelled = 5/22 + 5/26 + 5/27) 가 35일 한계 안에 묻혀 monitor §5 alert 발화 0회. 일일 cron 기준 = 14 (1주 여유 포함) 정정 후 다음 3주+ 사고 시 alert 즉시 박힘.
+- 진실의 원천 = `scripts/monitor-collectors.mjs:176` 의 `EXTERNAL_API_COLLECTORS` 배열. 본 md L63-67 sample 은 그 코드와 동기 의무 (drift 시 코드 우선).
+
+## 차단 검증 (본 룰 적용 후 사고 시뮬레이션) — 보강
+
+| 사고 시나리오 | 본 룰 적용 시 |
+|---|---|
+| 새 외부 API collector `stale_days` 환각 박힘 (cron 주기 미답습) | 본 md §"stale_days 정정 답습" 절 답습 의무 → cron yml grep 1회 후 stale_days 박힘 |
+| 일일 cron collector 가 `stale_days: 35` 박힘 = 3주 사고 묻힘 | 세션 339 정정 답습 자산 → 14 의무 |

@@ -166,14 +166,14 @@ const KO_FIELD = {
 /**
  * ⑤ 점검 대상 외부 API 의존 collector — silent fail (status=success + ok_count=0) 누적 탐지.
  * 컬럼 진실의 원천 = collector_runs.collector (NOT phase). PHASE 상수 = recordCollectorRun 입력값.
- * stale_days = 해당 collector cron 주기 + 1주 여유 (월간=14, NEIS 분기=35).
+ * stale_days = 해당 collector cron 주기 + 1주 여유 (월간/일일=14). NEIS schools = incremental yml 매일 발화 + 월간 collect-schools.yml 자매 = 14 (세션 339 정정, 세션 338 3주 cancelled 사고가 35일 한계 안에 묻힌 진앙 해소).
  * 신규 외부 API collector 추가 시 이 배열 1줄 박힘 + checkExternalApiStale 회귀 답습 의무.
  */
 export const EXTERNAL_API_COLLECTORS = [
   { collector: "housing-permits", stale_days: 14, owner: "MOLIT 주택건설실적" },
   { collector: "building-hub",    stale_days: 14, owner: "MOLIT 건축물대장 허브" },
   { collector: "transport",       stale_days: 14, owner: "TAGO 대중교통" },
-  { collector: "schools",         stale_days: 35, owner: "NEIS 학교정보" },
+  { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
 ];
 
 /** ⑤ 외부 API 장기 중단 판정 — 최근 N회 연속 success+ok=0 = silent fail 의심. */

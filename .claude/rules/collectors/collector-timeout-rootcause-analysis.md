@@ -92,6 +92,24 @@ console.log('apartments created in last 30 days:', count);
 - ❌ "PR merge = 실전 동작 확인" 단정. workflow_dispatch dry-run 또는 자연 cron 1회 실증 의무
 - ❌ "외부 API 분산 N%" 박힘 단일 표본 단정. N≥10 표본 통계 (평균/σ/Z-score) 답습 의무
 
+## 세션 338 schools-neis NEIS 12배 지연 + 데이터 완결성 resume skip (PR #51)
+
+### 진앙
+- `collect-naver-listings-incremental.yml` 3주 연속 cancelled (5/22 + 5/26 + 5/27) — 5/27 run 26538887941 = schools-neis step 180분 timeout 정확 도달 (1110/2001 진행)
+- raw log 답습 (단지당 5.8초) = NEIS 단지당 baseline 약 3.2초의 1.6배 + 누적 효과
+- 진앙 = **NEIS 외부 API 자체 지연** + **resume self skip 패턴 부재** (매일 처음부터 2001건 재처리)
+
+### 답습 패턴 (Plan v1+v2 환각 누적 10건 정정)
+- 서브에이전트 3개 병렬 보고 + DB 직접 실측 교차 검증 의무 (서브에이전트만 단정 = 환각 위험 100%)
+- "시간 기반 skip (30일 이내 무조건 skip)" 단정 환각 → 데이터 완결성 기반 (`schoolType` 키 박힘 + 30일 이내) 정정
+- "NEIS_KEY 미설정으로 누락된 766건 영구 누락" 차단 패턴 = `schoolType` 키 부재 단지 강제 재처리 박힘
+- timeout 정정 근거 = DB 실측 + 12배 지연 + 30일 후 전수 갱신 (2001×4초=134분 + transport 64 + infra 21 = 219분, 마진 21분/40%) 모두 답습 후 240 정정
+
+### 정정 패턴 (답습 자산)
+- `buildEnrichedIds` 헬퍼 함수 export (테스트 가능 + main loop 분리)
+- 단위 테스트 6건 신규 (skip 박힘 / NEIS 미보강 재처리 / 비어있음 / 만료 / length 0 / 혼합 시나리오) = 회귀 가드
+- monitor-collectors.mjs §5 schools `stale_days` 35→14 후속 정정 (세션 339, 본 사고가 35일 한계 안에 묻혀 alert 0회 발화한 진짜 진앙 해소)
+
 ## 차단 검증 (본 룰 적용 후 사고 시뮬레이션)
 
 | 사고 시나리오 | 본 룰 적용 시 |
@@ -100,3 +118,5 @@ console.log('apartments created in last 30 days:', count);
 | `apartments.created_at` 답습 0회 후 "단지 폭증" 환각 단정 | §4 30일 신규 단지 grep 의무 발동 → 박제값 정정 |
 | collector 본문 변경 시점 답습 0회 후 "API rate limit" 단정 | §3 `git log -- <collector>` 의무 발동 → 진짜 진앙 자리 확정 |
 | BACKLOG "별 세션 자리 root cause 분석" 박제값 답습 단정 | §1~§4 4-way 답습 의무 → 박제값 ≠ 실측, 진앙 자리 다를 가능성 답습 |
+| 외부 API 지연 + resume skip 패턴 부재 = 매일 전수 재처리 누적 timeout | 세션 338 §"답습 패턴" 의무 → 데이터 완결성 기반 skip + 누락 단지 강제 재처리 박힘 |
+| monitor `stale_days` 박힘이 사고 한계 안에 묻혀 alert 0회 | 세션 339 정정 답습 → cron 발화 주기 + 1주 여유 = 14 (일일/월간) 의무 |
