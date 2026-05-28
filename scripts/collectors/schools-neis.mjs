@@ -342,6 +342,32 @@ export function gradeFromScore(score) {
   return "D";
 }
 
+// ── 세션 338: resume self skip 헬퍼 ───────────────────────────
+/** schools.updated_at 기준 skip 임계 (일). 30일 = 학교 신설/폐교 변동 추적 마진 */
+export const STALE_DAYS_FOR_SKIP = 30;
+
+/**
+ * schools 테이블 row 배열에서 "NEIS 보강 완료 + staleThreshold 이후 갱신" 단지 ID Set 박힘.
+ * - nearby_schools 안 학교 객체에 schoolType 키 박힘 = NEIS 보강 완료
+ * - schoolType 키 부재 (fetchNeisSchoolInfo L157 조건부 spread) = NEIS_KEY 미설정 박힌 단지 → 재처리
+ * - updated_at < staleThresholdMs = 학교 변동 추적 위해 재처리
+ *
+ * @param {Array<Record<string, any>>} schoolRows
+ * @param {number} staleThresholdMs
+ * @returns {Set<string>}
+ */
+export function buildEnrichedIds(schoolRows, staleThresholdMs) {
+  /** @type {Set<string>} */
+  const ids = new Set();
+  for (const r of schoolRows ?? []) {
+    const arr = Array.isArray(r.nearby_schools) ? r.nearby_schools : [];
+    const hasEnrichment = arr.length > 0 && arr.some(/** @param {Record<string, any>} s */ (s) => s && s.schoolType);
+    const updatedMs = r.updated_at ? new Date(r.updated_at).getTime() : 0;
+    if (hasEnrichment && updatedMs >= staleThresholdMs) ids.add(r.apartment_id);
+  }
+  return ids;
+}
+
 // ── 메인 수집 로직 ──────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
@@ -365,7 +391,29 @@ async function main() {
   }
 
   const targets = apts.filter(a => a.lat && a.lng).slice(0, limit);
-  log(PHASE, `대상: ${targets.length}건 (좌표 있음${limit < Infinity ? `, limit ${limit}` : ""})`);
+
+  // 세션 338: 데이터 완결성 기반 resume self skip
+  //   - nearby_schools 안 학교 객체에 schoolType 키 박힘 = NEIS 보강 완료
+  //   - schoolType 키 부재 (L157 조건부 spread) = NEIS_KEY 미설정 시 박힌 단지 → 강제 재처리
+  //   - 30일 초과 = 학교 신설/폐교 변동 추적 위해 강제 재처리
+  //   - 진앙: 5/22+5/26+5/27 3주 연속 cancelled (NEIS API 12배 지연)
+  const SCHOOLS_PAGE_SIZE = 1000;
+  const staleThresholdMs = Date.now() - STALE_DAYS_FOR_SKIP * 86400000;
+  /** @type {Array<Record<string, any>>} */
+  const allSchoolRows = [];
+  for (let off = 0; ; off += SCHOOLS_PAGE_SIZE) {
+    const { data: schoolRows, error: sErr } = await sb
+      .from("schools")
+      .select("apartment_id, nearby_schools, updated_at")
+      .range(off, off + SCHOOLS_PAGE_SIZE - 1);
+    if (sErr) throw new Error(`schools 조회 실패: ${sErr.message}`);
+    if (!schoolRows || schoolRows.length === 0) break;
+    allSchoolRows.push(.../** @type {Array<Record<string, unknown>>} */ (/** @type {unknown} */ (schoolRows)));
+    if (schoolRows.length < SCHOOLS_PAGE_SIZE) break;
+  }
+  const enrichedIds = buildEnrichedIds(allSchoolRows, staleThresholdMs);
+
+  log(PHASE, `대상: ${targets.length}건 (좌표 있음), NEIS 보강 + 30일 이내 = ${enrichedIds.size}건 skip 예정${limit < Infinity ? `, limit ${limit}` : ""}`);
 
   let updated = 0, skipped = 0;
   const rpt = createReporter(PHASE);  // 세션 327: graceful shutdown 등록 (SIGTERM 핸들러)
@@ -373,6 +421,13 @@ async function main() {
   for (let i = 0; i < targets.length; i++) {
     if (rpt.interrupted()) break;  // 세션 327: graceful shutdown (SIGTERM 받으면 다음 단지 처리 전 중단)
     const apt = targets[i];
+
+    // 세션 338: NEIS 보강 완료 + 30일 이내 단지 skip
+    if (enrichedIds.has(apt.id)) {
+      skipped++;
+      continue;
+    }
+
     try {
       // 1단계: Kakao Places 검색 (기존)
       const elem = await searchKakao(apt.lat, apt.lng, "초등학교", 1000);
@@ -431,7 +486,7 @@ async function main() {
       skipped++;
     }
 
-    if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated})`);
+    if ((i + 1) % 100 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated} skip ${skipped})`);
   }
 
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
