@@ -107,7 +107,7 @@ describe('verifyToken', () => {
   // 정상: 유효한 토큰 검증
   it('유효한 토큰을 검증하고 payload를 반환한다', () => {
     const token = createToken({ email: 'user@test.com', role: 'admin' });
-    const payload = verifyToken(token);
+    const payload = verifyToken(token) as any;
     expect(payload).not.toBeNull();
     expect(payload.email).toBe('user@test.com');
     expect(payload.role).toBe('admin');
@@ -137,7 +137,7 @@ describe('verifyToken', () => {
 
   // 에러: null/undefined 입력
   it('null 입력 시 null을 반환한다', () => {
-    expect(verifyToken(null)).toBeNull();
-    expect(verifyToken(undefined)).toBeNull();
+    expect(verifyToken(null as any)).toBeNull();
+    expect(verifyToken(undefined as any)).toBeNull();
   });
 });
