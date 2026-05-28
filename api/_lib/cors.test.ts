@@ -16,7 +16,7 @@ function makeRes() {
 }
 
 /** req 목 객체 팩토리 */
-function makeReq(origin, method = "GET") {
+function makeReq(origin: string | undefined, method = "GET"): any {
   return { method, headers: { origin } };
 }
 

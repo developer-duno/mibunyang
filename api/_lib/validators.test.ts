@@ -12,7 +12,7 @@ describe('isValidEmail', () => {
     ['a.b+c@d.co.kr'],
     ['user@sub.domain.example'],
     ['a_b-c@example.io'],
-  ])('정상 이메일 %s → true', (v) => {
+  ])('정상 이메일 %s → true', (v: unknown) => {
     expect(isValidEmail(v)).toBe(true);
   });
 
@@ -29,7 +29,7 @@ describe('isValidEmail', () => {
     [123],
     [{}],
     [[]],
-  ])('비정상 이메일 %s → false', (v) => {
+  ])('비정상 이메일 %s → false', (v: unknown) => {
     expect(isValidEmail(v)).toBe(false);
   });
 

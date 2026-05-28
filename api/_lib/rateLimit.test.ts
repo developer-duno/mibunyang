@@ -42,7 +42,7 @@ describe('checkRateLimit', () => {
   it('제한 초과 시 limited=true와 retryAfter를 반환한다', async () => {
     // login 제한: 5회
     mockPipeline.exec.mockResolvedValue([6]);
-    const result = await checkRateLimit(makeReq(), 'login');
+    const result = await checkRateLimit(makeReq(), 'login') as any;
     expect(result.limited).toBe(true);
     expect(result.retryAfter).toBe(300);
   });
@@ -68,7 +68,7 @@ describe('checkRateLimit', () => {
   // 에러: Redis 장애 시 fail-close (보안 우선)
   it('Redis 장애 시 fail-close (limited=true)', async () => {
     mockPipeline.exec.mockRejectedValue(new Error('Redis down'));
-    const result = await checkRateLimit(makeReq(), 'login');
+    const result = await checkRateLimit(makeReq(), 'login') as any;
     expect(result.limited).toBe(true);
     expect(result.retryAfter).toBe(300);
   });

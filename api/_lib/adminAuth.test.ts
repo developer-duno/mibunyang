@@ -17,7 +17,7 @@ const { verifyAdminToken } = await import('./adminAuth.js');
 const { createToken } = await import('./auth.js');
 
 /** req 목 객체 팩토리 */
-function makeReq(authHeader) {
+function makeReq(authHeader: string | undefined): any {
   return { headers: { authorization: authHeader } };
 }
 
@@ -25,7 +25,7 @@ describe('verifyAdminToken', () => {
   // 정상: admin role 토큰 검증
   it('admin role 토큰을 검증하고 payload를 반환한다', async () => {
     const token = createToken({ email: 'admin@test.com', role: 'admin' });
-    const result = await verifyAdminToken(makeReq(`Bearer ${token}`));
+    const result = await verifyAdminToken(makeReq(`Bearer ${token}`)) as any;
     expect(result).not.toBeNull();
     expect(result.email).toBe('admin@test.com');
     expect(result.role).toBe('admin');
@@ -73,7 +73,7 @@ describe('verifyAdminToken', () => {
   it('Redis 장애 시 fail-open (토큰 통과)', async () => {
     mockKv.get.mockRejectedValueOnce(new Error('Redis down'));
     const token = createToken({ email: 'admin@test.com', role: 'admin' });
-    const result = await verifyAdminToken(makeReq(`Bearer ${token}`));
+    const result = await verifyAdminToken(makeReq(`Bearer ${token}`)) as any;
     expect(result).not.toBeNull();
     expect(result.email).toBe('admin@test.com');
   });

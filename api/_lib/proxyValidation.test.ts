@@ -6,7 +6,7 @@ describe("validateApartmentPayload", () => {
   it("normalizes ids, coordinates, and optional region fields", () => {
     const result = validateApartmentPayload({
       apartments: [{ id: " apt-1 ", lat: "37.5", lng: "127.0", region: " 서울 ", gu: " 강남구 " }],
-    }, { requireCoordinates: true });
+    }, { requireCoordinates: true }) as any;
 
     expect(result.ok).toBe(true);
     expect(result.apartments[0]).toMatchObject({
@@ -24,7 +24,7 @@ describe("validateApartmentPayload", () => {
 
   it("rejects payloads over the max size", () => {
     const apartments = Array.from({ length: 2 }, (_, id) => ({ id, lat: 37, lng: 127 }));
-    expect(validateApartmentPayload({ apartments }, { max: 1 }).error).toContain("at most 1");
+    expect((validateApartmentPayload({ apartments }, { max: 1 }) as any).error).toContain("at most 1");
   });
 
   it("rejects missing coordinates when required", () => {
@@ -33,7 +33,7 @@ describe("validateApartmentPayload", () => {
   });
 
   it("rejects coordinates outside valid ranges", () => {
-    const result = validateApartmentPayload({ apartments: [{ id: "apt-1", lat: 91, lng: 127 }] });
+    const result = validateApartmentPayload({ apartments: [{ id: "apt-1", lat: 91, lng: 127 }] }) as any;
     expect(result.error).toContain("lat");
   });
 });
@@ -49,7 +49,7 @@ describe("validateApartmentListQuery", () => {
   });
 
   it("defaults pagination when not explicit", () => {
-    expect(validateApartmentListQuery({}).query).toMatchObject({
+    expect((validateApartmentListQuery({}) as any).query).toMatchObject({
       limit: 10000,
       offset: 0,
       hasExplicitPagination: false,
@@ -57,10 +57,10 @@ describe("validateApartmentListQuery", () => {
   });
 
   it("rejects array query values", () => {
-    expect(validateApartmentListQuery({ limit: ["1", "2"] }).error).toContain("single");
+    expect((validateApartmentListQuery({ limit: ["1", "2"] }) as any).error).toContain("single");
   });
 
   it("rejects out-of-range pagination", () => {
-    expect(validateApartmentListQuery({ offset: "-1" }).error).toContain("out of range");
+    expect((validateApartmentListQuery({ offset: "-1" }) as any).error).toContain("out of range");
   });
 });

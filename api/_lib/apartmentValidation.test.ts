@@ -46,14 +46,14 @@ describe("parseApartmentIds", () => {
 
   // 에러: 빈 파라미터
   it("파라미터 없으면 에러", () => {
-    const result = parseApartmentIds({});
+    const result = parseApartmentIds({}) as any;
     expect(result.error).toBe("apartment_id 또는 apartment_ids 파라미터가 필요합니다");
     expect(result.status).toBe(400);
   });
 
   // 에러: 빈 문자열
   it("빈 문자열 → 에러", () => {
-    const result = parseApartmentIds({ apartment_id: "", apartment_ids: "" });
+    const result = parseApartmentIds({ apartment_id: "", apartment_ids: "" }) as any;
     expect(result.error).toBeDefined();
     expect(result.status).toBe(400);
   });
@@ -61,26 +61,26 @@ describe("parseApartmentIds", () => {
   // 에러: 21개 초과
   it("21개 초과 IDs → 에러", () => {
     const ids = Array.from({ length: 21 }, (_, i) => `ah-${i}`).join(",");
-    const result = parseApartmentIds({ apartment_ids: ids });
+    const result = parseApartmentIds({ apartment_ids: ids }) as any;
     expect(result.error).toBe("apartment_ids는 1~20개 사이여야 합니다");
     expect(result.status).toBe(400);
   });
 
   // 에러: 잘못된 형식
   it("잘못된 ID 형식 → 에러", () => {
-    const result = parseApartmentIds({ apartment_id: "invalid" });
+    const result = parseApartmentIds({ apartment_id: "invalid" }) as any;
     expect(result.error).toBe("잘못된 apartment_id 형식입니다");
   });
 
   // 에러: 복수 중 하나라도 잘못된 형식
   it("복수 IDs 중 잘못된 형식 → 에러", () => {
-    const result = parseApartmentIds({ apartment_ids: "ah-1,INVALID,ah-3" });
+    const result = parseApartmentIds({ apartment_ids: "ah-1,INVALID,ah-3" }) as any;
     expect(result.error).toBe("잘못된 apartment_id 형식입니다");
   });
 
   // 에러: SQL injection 시도
   it("SQL injection 시도 거부", () => {
-    const result = parseApartmentIds({ apartment_id: "ah-1; DROP TABLE apartments" });
+    const result = parseApartmentIds({ apartment_id: "ah-1; DROP TABLE apartments" }) as any;
     expect(result.error).toBeDefined();
     expect(result.status).toBe(400);
   });
@@ -88,7 +88,7 @@ describe("parseApartmentIds", () => {
   // 경계: 20개 정확히 → 통과
   it("20개 IDs → 정상 통과", () => {
     const ids = Array.from({ length: 20 }, (_, i) => `ah-${i}`).join(",");
-    const result = parseApartmentIds({ apartment_ids: ids });
+    const result = parseApartmentIds({ apartment_ids: ids }) as any;
     expect(result.ids).toHaveLength(20);
   });
 });

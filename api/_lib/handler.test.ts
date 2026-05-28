@@ -18,20 +18,28 @@ vi.mock("./adminAuth.js", () => ({
 }));
 
 const { withHandler } = await import("./handler.js");
-const { handleCors } = await import("./cors.js");
-const { checkRateLimit } = await import("./rateLimit.js");
-const { verifyAdminToken } = await import("./adminAuth.js");
+const corsMod = await import("./cors.js");
+const rateLimitMod = await import("./rateLimit.js");
+const adminAuthMod = await import("./adminAuth.js");
+const handleCors = vi.mocked(corsMod.handleCors);
+const checkRateLimit = vi.mocked(rateLimitMod.checkRateLimit);
+const verifyAdminToken = vi.mocked(adminAuthMod.verifyAdminToken);
 
 beforeEach(() => vi.clearAllMocks());
 
 /** res 목 객체 팩토리 */
-function makeRes() {
+function makeRes(): any {
   return {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn(),
     end: vi.fn(),
   };
+}
+
+/** req 목 객체 팩토리 */
+function makeReq(method: string): any {
+  return { method };
 }
 
 describe("withHandler", () => {
@@ -41,7 +49,7 @@ describe("withHandler", () => {
   it("config.cors 생략 시 handleCors를 호출하지 않는다", async () => {
     const inner = vi.fn();
     const handler = withHandler({ method: "GET", handler: inner });
-    await handler({ method: "GET" }, makeRes());
+    await handler(makeReq("GET"), makeRes());
     expect(handleCors).not.toHaveBeenCalled();
     expect(inner).toHaveBeenCalled();
   });
@@ -50,7 +58,7 @@ describe("withHandler", () => {
   it("config.cors = {} 시 handleCors를 올바른 methods로 호출한다", async () => {
     const inner = vi.fn();
     const handler = withHandler({ method: "POST", cors: {}, handler: inner });
-    await handler({ method: "POST" }, makeRes());
+    await handler(makeReq("POST"), makeRes());
     expect(handleCors).toHaveBeenCalledWith(
       { method: "POST" },
       expect.anything(),
@@ -60,8 +68,8 @@ describe("withHandler", () => {
 
   // cors: { maxAge: 86400 } → maxAge 전달
   it("config.cors 옵션(maxAge)이 handleCors에 전달된다", async () => {
-    const handler = withHandler({ method: "POST", cors: { maxAge: 86400 }, handler: vi.fn() });
-    await handler({ method: "POST" }, makeRes());
+    const handler = withHandler({ method: "POST", cors: { maxAge: 86400 }, handler: vi.fn() as any });
+    await handler(makeReq("POST"), makeRes());
     expect(handleCors).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -75,15 +83,15 @@ describe("withHandler", () => {
     const inner = vi.fn();
     const handler = withHandler({ method: "POST", cors: {}, handler: inner });
     const res = makeRes();
-    await handler({ method: "OPTIONS" }, res);
+    await handler(makeReq("OPTIONS"), res);
     expect(inner).not.toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
   });
 
   // 멀티 메서드 → CORS methods 문자열 정확성
   it("method: ['GET','POST'] 시 CORS methods가 'GET, POST, OPTIONS'이다", async () => {
-    const handler = withHandler({ method: ["GET", "POST"], cors: {}, handler: vi.fn() });
-    await handler({ method: "GET" }, makeRes());
+    const handler = withHandler({ method: ["GET", "POST"], cors: {}, handler: vi.fn() as any });
+    await handler(makeReq("GET"), makeRes());
     expect(handleCors).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -95,18 +103,18 @@ describe("withHandler", () => {
 
   // 허용되지 않은 메서드 → 405
   it("허용되지 않은 메서드는 405를 반환한다", async () => {
-    const handler = withHandler({ method: "POST", handler: vi.fn() });
+    const handler = withHandler({ method: "POST", handler: vi.fn() as any });
     const res = makeRes();
-    await handler({ method: "GET" }, res);
+    await handler(makeReq("GET"), res);
     expect(res.status).toHaveBeenCalledWith(405);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: "Method not allowed" });
   });
 
   // cors 미설정 + OPTIONS → 405 (CORS 스킵이므로 method check에서 거부)
   it("config.cors 미설정 + OPTIONS 요청은 405를 반환한다", async () => {
-    const handler = withHandler({ method: "POST", handler: vi.fn() });
+    const handler = withHandler({ method: "POST", handler: vi.fn() as any });
     const res = makeRes();
-    await handler({ method: "OPTIONS" }, res);
+    await handler(makeReq("OPTIONS"), res);
     expect(res.status).toHaveBeenCalledWith(405);
   });
 
@@ -118,7 +126,7 @@ describe("withHandler", () => {
     const inner = vi.fn();
     const handler = withHandler({ method: "POST", rateLimit: "login", handler: inner });
     const res = makeRes();
-    await handler({ method: "POST" }, res);
+    await handler(makeReq("POST"), res);
     expect(checkRateLimit).toHaveBeenCalledWith({ method: "POST" }, "login");
     expect(res.setHeader).toHaveBeenCalledWith("Retry-After", "300");
     expect(res.status).toHaveBeenCalledWith(429);
@@ -127,8 +135,8 @@ describe("withHandler", () => {
 
   // rateLimit 미설정 → checkRateLimit 호출 안 함
   it("config.rateLimit 생략 시 checkRateLimit를 호출하지 않는다", async () => {
-    const handler = withHandler({ method: "GET", handler: vi.fn() });
-    await handler({ method: "GET" }, makeRes());
+    const handler = withHandler({ method: "GET", handler: vi.fn() as any });
+    await handler(makeReq("GET"), makeRes());
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
 
@@ -136,11 +144,11 @@ describe("withHandler", () => {
 
   // admin: true + 인증 실패 → 401
   it("admin 인증 실패 시 401을 반환한다", async () => {
-    verifyAdminToken.mockReturnValueOnce(null);
+    verifyAdminToken.mockResolvedValueOnce(null);
     const inner = vi.fn();
     const handler = withHandler({ method: "GET", admin: true, handler: inner });
     const res = makeRes();
-    await handler({ method: "GET" }, res);
+    await handler(makeReq("GET"), res);
     expect(verifyAdminToken).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: "관리자 인증이 필요합니다" });
@@ -149,8 +157,8 @@ describe("withHandler", () => {
 
   // admin 미설정 → verifyAdminToken 호출 안 함
   it("config.admin 생략 시 verifyAdminToken를 호출하지 않는다", async () => {
-    const handler = withHandler({ method: "GET", handler: vi.fn() });
-    await handler({ method: "GET" }, makeRes());
+    const handler = withHandler({ method: "GET", handler: vi.fn() as any });
+    await handler(makeReq("GET"), makeRes());
     expect(verifyAdminToken).not.toHaveBeenCalled();
   });
 
@@ -159,7 +167,7 @@ describe("withHandler", () => {
   // 단일 핸들러 함수 디스패치
   it("handler가 함수이면 req, res를 전달하여 호출한다", async () => {
     const inner = vi.fn();
-    const req = { method: "POST" };
+    const req = makeReq("POST");
     const res = makeRes();
     const handler = withHandler({ method: "POST", handler: inner });
     await handler(req, res);
@@ -175,7 +183,7 @@ describe("withHandler", () => {
       handler: { GET: getHandler, POST: postHandler },
     });
 
-    const reqGet = { method: "GET" };
+    const reqGet = makeReq("GET");
     const resGet = makeRes();
     await handler(reqGet, resGet);
     expect(getHandler).toHaveBeenCalledWith(reqGet, resGet);
@@ -183,7 +191,7 @@ describe("withHandler", () => {
 
     vi.clearAllMocks();
 
-    const reqPost = { method: "POST" };
+    const reqPost = makeReq("POST");
     const resPost = makeRes();
     await handler(reqPost, resPost);
     expect(postHandler).toHaveBeenCalledWith(reqPost, resPost);
