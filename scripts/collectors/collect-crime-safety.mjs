@@ -130,6 +130,7 @@ async function main() {
   let matchCount = 0;
 
   for (const apt of apts) {
+    if (rpt.interrupted()) break;
     const grade = matchCrimeGrade(apt, crimeMap);
     if (grade == null) { rpt.skip(1); continue; }
 
@@ -166,6 +167,7 @@ async function main() {
     const rRpt = createReporter(`${PHASE}-regions`);
     let rMatched = 0;
     for (const r of regions) {
+      if (rRpt.interrupted()) break;
       const grade = matchCrimeGrade(r, crimeMap);
       if (grade == null) { rRpt.skip(1); continue; }
       rMatched++;

@@ -228,6 +228,7 @@ async function main() {
   const rpt = createReporter("childcare-detail");
 
   for (const r of regions) {
+    if (rpt.interrupted()) break;
     const facilities = /** @type {ExistingFacility[]} */ (r.childcare?.facilities ?? []);
     if (facilities.length === 0) continue;
 

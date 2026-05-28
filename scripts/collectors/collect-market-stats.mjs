@@ -181,6 +181,7 @@ async function main() {
   /** @type {Record<string, HistoryRow>} */
   const historyMap = {}; // key = "region::base_month" → wide row (5지표 merge)
   for (const ind of INDICATORS) {
+    if (rpt.interrupted()) break;
     const lookback = ind.lookbackMonths ?? 5;
     const lookbackDate = new Date(now.getFullYear(), now.getMonth() - lookback, 1);
     const indStartMonth = `${lookbackDate.getFullYear()}${String(lookbackDate.getMonth() + 1).padStart(2, "0")}`;
@@ -228,6 +229,7 @@ async function main() {
     // regions 테이블 UPDATE
     let updated = 0;
     for (const reg of regions) {
+      if (rpt.interrupted()) break;
       const entry = latestByRegion[reg.region];
       if (!entry) continue;
 

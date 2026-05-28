@@ -154,6 +154,7 @@ async function main() {
   const matched = [];
 
   for (const a of apartments) {
+    if (rpt.interrupted()) break;
     const lat = typeof a.lat === "number" ? a.lat : parseFloat(a.lat ?? "");
     const lng = typeof a.lng === "number" ? a.lng : parseFloat(a.lng ?? "");
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -197,6 +198,7 @@ async function main() {
   /** @type {Array<{ apartment_id: string, nearby_childcare: NearbyChildcare[] }>} */
   const toInsert = [];
   for (const m of matched) {
+    if (rpt.interrupted()) break;
     if (existing.has(m.apartment_id)) {
       const { error: updErr } = await sb
         .from("schools")
