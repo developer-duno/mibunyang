@@ -1,9 +1,4 @@
 {
-  "enabledPlugins": {
-    "engineering@knowledge-work-plugins": true,
-    "data@knowledge-work-plugins": true,
-    "session-report@claude-plugins-official": true
-  },
   "permissions": {
     "allow": [
       "Bash(npm run:*)",
@@ -77,5 +72,13 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "engineering@knowledge-work-plugins": true,
+    "data@knowledge-work-plugins": true,
+    "session-report@claude-plugins-official": true,
+    "supabase@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true
   }
 }

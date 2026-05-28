@@ -1,8 +1,26 @@
 # Claude 도구 카탈로그 (mibunyang)
 
-> 작성: 세션 184 (2026-05-05). 갱신: 세션 184 (2026-05-06) — Tier 1 4종 도입 완료.
+> 작성: 세션 184 (2026-05-05). 갱신: 세션 340 (2026-05-28) — supabase + typescript-lsp + security-guidance 3 플러그인 project scope 신규 + stale `.mcp.json` 박힘 정정.
 >
 > **원칙**: 글로벌 자산은 함부로 수정 금지. 사용만 가능. 신규 도입 시 사용자 동의 + 스코프 결정 필수.
+
+---
+
+## 세션 340 적용 결과 (자율 발동 강화)
+
+본 세션 추가:
+- ✅ Supabase MCP read-only 우선 + project_ref scoping (`.mcp.json` 신규)
+- ✅ typescript-lsp 글로벌 의존 설치 (`typescript-language-server` + `typescript`)
+- ✅ security-guidance 도메인 가이드 (`.claude/claude-security-guidance.md` 60줄) + 결정적 패턴 (`.claude/security-patterns.yaml` 13 rule)
+- ✅ WORK_RULES.md §0 Auto-Tool 자율 발동 매트릭스 6 카테고리 신규
+- ✅ 자가 점검 = security-guidance PostToolUse 자동 발화 정상 작동 검증
+
+세션 340 이후 자동 발동:
+- TS 파일 편집 → typescript-lsp 자동 진단
+- 보안 영역 편집 → security-guidance pattern 체크 (model 호출 0건, 비용 0)
+- 턴 종료 시 → security-guidance diff 리뷰 (background, 응답 지연 0)
+- git commit/push 시 → security-guidance 깊이 리뷰 (시간당 20회 cap)
+- DB 조회 표현 → `supabase-readonly` MCP 자동 호출 (첫 OAuth 1회 후)
 
 ---
 
@@ -89,23 +107,29 @@
 
 ## 프로젝트 자산 (`f:\mibunyang\.claude\`) — 살아있음
 
-### 활성 Plugin (4)
+### 활성 Plugin (6) — 세션 340 갱신 (+3)
 
 | 플러그인 | 출처 | 용도 |
 |---|---|---|
 | `engineering@knowledge-work-plugins` | knowledge-work | 디버깅·아키텍처·인시던트 등 10개 skill |
 | `data@knowledge-work-plugins` | knowledge-work | SQL·시각화·분석 10개 skill |
 | `session-report@claude-plugins-official` | 공식 | 세션 토큰/스킬 사용 HTML 리포트 |
-| `document-skills@anthropic-agent-skills` | 공식 anthropics/skills | PDF/DOCX/PPTX/XLSX 생성·분석 (2026-05-06 도입) |
+| `supabase@claude-plugins-official` | 공식 (세션 340 신규, v0.1.9) | Supabase MCP — DB SQL + 스키마 + Edge Function (25 tool, 공식 답습 검증) |
+| `typescript-lsp@claude-plugins-official` | 공식 (세션 340 신규, v1.0.0) | TS 진단 자동 + goto definition + find references (TS 98% 프로젝트 필수). 사전 의무 = `npm i -g typescript-language-server typescript` (세션 340 완료) |
+| `security-guidance@claude-plugins-official` | 공식 (세션 340 신규, v2.0.0) | 3 layer hook — 편집 직후 pattern + 턴 종료 diff 리뷰 + commit/push 깊이 리뷰 (사전 의무 = Python 3.8+, 첫 실행 시 venv 자동 생성) |
 
-### MCP 서버 (2) — `f:\mibunyang\.mcp.json` (gitignored)
+### MCP 서버 (2) — 세션 340 갱신
 
-| 서버 | URL | 인증 | 용도 |
-|---|---|---|---|
-| `vercel` | `https://mcp.vercel.com` | OAuth (`/mcp` 명령) | 배포/env/build read (read-write 가능, 신중) |
-| `supabase` | `https://mcp.supabase.com/mcp?project_ref=rwdtljipvmqpazrimyns&read_only=true` | OAuth (`/mcp` 명령) | mibunyang DB read-only 쿼리 |
+| 서버 | 출처 | URL | 인증 | 용도 |
+|---|---|---|---|---|
+| `plugin:supabase:supabase` | 플러그인 경유 | `https://mcp.supabase.com/mcp` | OAuth 첫 호출 시 자동 | read-write 가능 (Edge Function 배포 등) |
+| `supabase-readonly` | `.mcp.json` 직접 (세션 340 신규) | `https://mcp.supabase.com/mcp?project_ref=rwdtljipvmqpazrimyns&read_only=true` | OAuth | mibunyang 운영 DB 보호 모드 |
 
-settings.json 의 `enabledMcpjsonServers: ["vercel", "supabase"]` 로 활성. 첫 사용 시 Claude Code 재시작 후 `/mcp` 로 OAuth 브라우저 인증 필요.
+**우선순위**: 일상 조회 / 분석 = `supabase-readonly` 권장. 스키마 변경 / 마이그 / Edge Function 배포 = 플러그인 기본 + 사용자 명시 의무.
+
+**Supabase MCP 25 tool 카테고리** (공식 답습): Database 5 (list_tables / list_extensions / list_migrations / apply_migration / execute_sql) + Debugging 2 (get_logs / get_advisors) + Development 3 (get_project_url / get_publishable_keys / generate_typescript_types) + Edge Functions 3 + Account 6 + Docs 1 (search_docs) + Branching 6 + Storage 2.
+
+**Vercel MCP 추가 시**: 글로벌 룰 [mcp-vs-cli.md](../../.claude/rules/mcp-vs-cli.md) 답습 = CLI 우선. Vercel 조회 = `vercel` CLI 직접 호출이 정확 + 안전.
 
 ### Subagents (3) — `Task(subagent_type=...)`
 

@@ -1,0 +1,73 @@
+patterns:
+  # 비밀키 노출 (클라이언트 코드 금지)
+  - rule_name: supabase_service_key_in_client
+    substrings: ["SUPABASE_SERVICE_ROLE_KEY"]
+    paths: ["src/**", "frontend/**"]
+    reminder: "SUPABASE_SERVICE_ROLE_KEY는 서버만 의무. 클라이언트 코드 박힘 = 즉시 사고. api/ 또는 scripts/ 만 답습."
+
+  - rule_name: api_key_in_vite_env
+    regex: "import\\.meta\\.env\\.VITE_.*_(KEY|SECRET|TOKEN|SERVICE)"
+    paths: ["src/**"]
+    reminder: "VITE_ 접두 환경변수는 클라이언트 번들 노출. KEY/SECRET/TOKEN/SERVICE 박힘 금지. 서버 박힘 의무."
+
+  - rule_name: hardcoded_supabase_url
+    regex: "https://[a-z0-9]+\\.supabase\\.co"
+    exclude_paths: ["**/*.test.*", "**/__tests__/**", "docs/**", ".claude/**"]
+    reminder: "Supabase URL = 환경변수 답습 의무. 코드 박힘 금지 (`process.env.SUPABASE_URL` 또는 `import.meta.env.VITE_SUPABASE_URL`)."
+
+  # XSS / DOM
+  - rule_name: unsafe_inner_html
+    regex: "\\.innerHTML\\s*="
+    exclude_paths: ["**/*.test.*", "**/__tests__/**", "scripts/**"]
+    reminder: "innerHTML 박힘 = XSS 위험. dompurify 통과 또는 React 텍스트 자식 박힘 답습 (`<div>{text}</div>`)."
+
+  - rule_name: dangerously_set_inner_html
+    substrings: ["dangerouslySetInnerHTML"]
+    exclude_paths: ["**/*.test.*"]
+    reminder: "dangerouslySetInnerHTML 박힘 시 = dompurify 통과 의무. 누락 시 review 의무."
+
+  - rule_name: eval_or_function
+    regex: "(eval\\(|new Function\\()"
+    reminder: "eval/Function = 동적 코드 실행 사고. 다른 방법 답습 (JSON.parse / Map / object lookup)."
+
+  # SQL
+  - rule_name: raw_sql_user_input
+    regex: "sb\\.rpc\\(.*\\$\\{"
+    reminder: "raw SQL template literal = injection 위험. parameterized rpc 의무."
+
+  # 권한 우회
+  - rule_name: admin_route_without_handler
+    regex: "export default async function.*req:.*VercelRequest"
+    paths: ["api/admin/**"]
+    reminder: "admin 라우트 = withHandler({ admin: true }) 또는 requireAdmin(req) 호출 의무. 누락 시 권한 우회."
+
+  # GitHub Actions
+  - rule_name: workflow_secrets_in_env
+    regex: "env:\\s*\\n.*\\$\\{\\{\\s*env\\."
+    paths: [".github/workflows/**"]
+    reminder: "workflow env 박힘 시 secrets 의무 (`${{ secrets.X }}`). env 박힘 = 시크릿 노출 위험."
+
+  - rule_name: pull_request_target_trigger
+    substrings: ["pull_request_target"]
+    paths: [".github/workflows/**"]
+    reminder: "pull_request_target = 외부 코드 권한 위험. pull_request 우선 답습."
+
+  # 한국어 인코딩 / PII
+  - rule_name: console_log_pii
+    regex: "console\\.(log|error|warn|info)\\(.*\\b(email|phone|kakao_id|user_id|userId)\\b"
+    exclude_paths: ["**/*.test.*", "scripts/**"]
+    reminder: "사용자 PII console 출력 = 로그 누출 사고. 프로덕션 코드 박힘 금지. (이메일 / 전화번호 / 카카오 ID / 사용자 ID)"
+
+  # 외부 API
+  - rule_name: raw_fetch_in_collector
+    regex: "await fetch\\("
+    paths: ["scripts/collectors/**"]
+    exclude_paths: ["scripts/collectors/_shared.mjs", "**/*.test.*"]
+    reminder: "scripts/collectors/ = fetchWithRetry 의무 (`_shared.mjs`). 직접 fetch() = retry / quota / 429 가드 0건 사고."
+
+  # apartments 좌표
+  - rule_name: hardcoded_coordinates_outside_korea
+    regex: "lat:\\s*-?\\d+|lng:\\s*-?\\d+"
+    paths: ["src/**", "api/**"]
+    exclude_paths: ["**/*.test.*", "**/__tests__/**", "**/mocks/**"]
+    reminder: "lat/lng = 한국 범위 의무 (33-39 / 124-132). 범위 이탈 = silent 사고."

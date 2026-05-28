@@ -1,6 +1,72 @@
-# 작업 규칙 (Plan → Guard → Work → Review)
+# 작업 규칙 (0. Auto-Tool → Plan → Guard → Work → Review)
 
-> 새 기능·리팩토링·버그 수정 시작 시 이 파일을 먼저 참조.
+> 새 기능·리팩토링·버그 수정 시작 시 이 파일을 먼저 참조. 진실의 원천 = [CLAUDE_TOOLBOX.md](CLAUDE_TOOLBOX.md) (도구 박힘 카탈로그).
+
+## 0. Auto-Tool 자율 발동 매트릭스 (사용자 메시지 받자마자 0턴 판단)
+
+> Claude 가 사용자 명령 입력 0건이라도 다음 표 답습 의무. 명시 트리거 부재 = 자율 판단.
+
+### 0-A. 작업 모드 발동 (메시지 수신 직후)
+
+| 사용자 메시지 신호 | 자율 발동 도구 | 미발동 시 위반 |
+|---|---|---|
+| "전부" / "다" / "모든" / "전체" / "싹다" / "통째로" | `Skill(ulw-safe)` | 30분+ 노출 / 다중 의사결정 누적 |
+| 30분+ 예상 / 7+ 파일 동시 변경 / 풀스택 / 마이그레이션 | `Skill(ulw-safe)` | 같음 |
+| "X 해줘" + 검증 방법 부재 / "알아서" / "완벽하게" / "잘" | `Skill(goal-setting)` | 무한 루프 / 토큰 낭비 |
+| "Y MCP 추가" / "도구 등록" / "스킬 꺼내" 류 | `Skill(tool-discovery)` | 글로벌 오염 위험 |
+| 새 기능 / 컴포넌트 / 디자인 | `Skill(superpowers:brainstorming)` | 의도 파악 0회 위반 |
+| 버그 / 에러 / "X 안 됨" | `Skill(superpowers:systematic-debugging)` 또는 `Skill(engineering:debug)` | 추측 fix 위반 |
+| 인시던트 / 외부 API 500 / 503 | `Skill(engineering:incident-response)` | 진단 분산 |
+| DB 쿼리 / apartments_flat / 품질 진단 | `Skill(data:sql-queries)` / `Skill(data:explore-data)` | 직접 SQL 답습 위반 |
+| 트렌드 / 세그먼트 / 분포 | `Skill(data:analyze)` | 통계 추측 위반 |
+| 외부 자원 부재 단정 직전 | `feedback_external_resource_existence_check.md` 답습 | 본문 손상 위험 |
+
+### 0-B. 파일 편집 직후 자동 발동 (Edit/Write hook)
+
+| 변경 자리 | 자동 호출 도구 | 무엇을 점검 |
+|---|---|---|
+| `*.ts` / `*.tsx` 편집 | `typescript-lsp` MCP 자동 진단 | 타입 에러 / import 누락 / unused |
+| `src/scoring/` 편집 | `Task(subagent_type=scoring-validator)` 의무 | 가중치 합계 / 클램핑 / null 처리 |
+| `scripts/collectors/*.mjs` 편집 | `Task(subagent_type=collector-contract)` 의무 | 배치 / upsert / Promise.all / 에러 |
+| 수집 / API / 렌더 코드 편집 | `Task(subagent_type=null-safety-checker)` 의무 | optional chain / 기본값 / 숫자 포맷 |
+| 보안 영역 (auth/sql/env) 편집 | `security-guidance` 플러그인 자동 검토 | OWASP Top 10 / 비밀키 노출 |
+| `withHandler` / `api/_lib/` 편집 | `Task(subagent_type=null-safety-checker)` + 보안 직접 점검 | CORS / Rate Limit / Admin / null |
+
+### 0-C. 검색·답습 자율 위임 (탐색 비용 임계)
+
+| 자리 | 자율 위임 도구 | 사유 |
+|---|---|---|
+| 3+ 쿼리 예상 검색 | `Agent(subagent_type=Explore)` | 메인 context 보호 |
+| 모호한 스코프 / 여러 영역 답습 | `Agent(subagent_type=Explore)` 3 병렬 | 의도 파악 우선 |
+| 박제값 (NEXT_SESSION/BACKLOG) 답습 진입 | `next-session-grep-mandate.md` 답습 의무 | 환각 차단 |
+| 외부 공식 문서 답습 | `Agent(subagent_type=oh-my-claudecode:document-specialist)` | 추측 0 / 출처 박힘 |
+| 5+ 관점 동시 검사 | `Agent(subagent_type=oh-my-claudecode:critic)` 3 병렬 + Sonnet | 다관점 + 비용 절약 |
+
+### 0-D. DB / 인프라 자율 호출 (Supabase MCP)
+
+| 사용자 표현 | 자율 발동 자리 |
+|---|---|
+| "DB 에서 ..." / "supabase 에서 ..." / "apartments 테이블 ..." | `plugin:supabase:supabase` MCP 자동 호출 (첫 호출 OAuth 1회) |
+| "SQL 실행" / "스키마 확인" / "마이그 적용" | 같음 |
+| "Edge Function 배포" | 같음 |
+| Vercel 배포 / env 조회 / 빌드 | **`vercel` CLI 직접 호출** ([mcp-vs-cli.md](../rules/mcp-vs-cli.md) 룰 = CLI 우선) |
+
+### 0-E. 커밋 / 머지 자율 발동
+
+| 자리 | 자율 도구 |
+|---|---|
+| 코드 변경 + 사용자 "커밋" 표현 | `Skill(commit-commands:commit)` 또는 `Skill(commit-commands:commit-push-pr)` |
+| 커밋 직전 | `Skill(cross-validate)` (5교차검증 병렬) — Review 절 답습 |
+| PR 직전 | `Skill(code-review medium)` 또는 사용자 명시 시 `ultra` |
+| 머지 직후 | `Skill(claude-md-management:revise-claude-md)` + `Skill(session-report:session-report)` 검토 |
+
+### 0-F. 자율 발동 차단 자리 (의무)
+
+- 사용자 "직접 해줘" / "그냥 X 해" 명시 = 자율 발동 차단
+- 5분 이내 단순 작업 (typo / 1줄 정정 / 단순 grep) = 자율 발동 차단
+- 이미 완료 조건 명확 ("test pass = 완료") = `goal-setting` 차단
+- 자가 점검 1+2 발동 직전 = 자율 발동 보류 (Plan 우선)
+- plan mode 활성 시 = 코드 변경 자율 발동 0건
 
 ## Plan (새 기능/리팩토링 요청 시 자동 진입)
 - 단계당 수정+신규 파일 **3개 이하**
