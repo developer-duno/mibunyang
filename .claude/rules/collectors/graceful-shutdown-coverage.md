@@ -91,13 +91,13 @@ grep -l "rpt.interrupted\|isInterrupted" scripts/collectors/*.mjs | grep -v test
 - `trade-stats-regions`
 - `transport-tago`
 
-### ALLOWLIST (graceful 무관 또는 PR-B/C 미머지) — 11 collector
+### ALLOWLIST (graceful 무관 또는 PR-B/C 미머지) — 10 collector
 
 `_graceful-coverage.test.mjs` ALLOWLIST 본문 답습:
 
 - PR-B 대상 (7건): collect-housing-price / childcare-detail / collect-nearby-childcare / collect-crime-safety / calc-school-walk / collect-market-stats / naver-presale
 - PR-C 대상 (2건): collect-trades / childcare-info
-- 추가 보강 (2건): collect-maintenance / trade-stats-regions setup 호출 0건 회귀
+- 추가 보강 (1건): collect-maintenance (K-apt 관리비, rpt=1 break=0)
 
 ### 미사용 (graceful 불필요 or 우선순위 낮음) — 20+ collector
 

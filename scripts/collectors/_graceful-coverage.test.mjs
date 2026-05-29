@@ -33,12 +33,10 @@ const COLLECTORS_DIR = path.resolve(process.cwd(), "scripts/collectors");
  *
  * 추가 답습 자산:
  *   collect-maintenance (rpt=1 break=0, PR-B 외 추가 보강 후보) — 잠정 ALLOWLIST 박힘
- *   trade-stats-regions (setupGracefulShutdown import 박혔으나 호출 0건 회귀) — 별 진단 박힘
  */
 const ALLOWLIST = new Set([
   // 추가 보강 후보 (별 PR / 진단 박힘)
   "collect-maintenance.mjs",       // K-apt 관리비, rpt=1 break=0
-  "trade-stats-regions.mjs",       // setupGracefulShutdown import 0회 호출 회귀
   // graceful 무관 — calc 단발 변환
   "calc-exclusive-ratio.mjs",
   "calc-floors.mjs",
