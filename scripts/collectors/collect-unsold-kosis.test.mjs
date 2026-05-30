@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -23,7 +23,7 @@ const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProp
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** KOSIS 행 팩토리 */
-function makeRow(c1, c2, period, value) {
+function makeRow(/** @type {any} */ c1, /** @type {any} */ c2, /** @type {any} */ period, /** @type {any} */ value) {
   return { C1_NM: c1, C2_NM: c2, PRD_DE: period, DT: String(value) };
 }
 
@@ -147,8 +147,8 @@ describe("calcProportionalUnsold", () => {
   it("정상 비례배분 계산", () => {
     // 구 미분양 50, 단지 200세대, 구 전체 1000세대 → 10세대, 5%
     const result = calcProportionalUnsold(50, 200, 1000);
-    expect(result.estimated).toBe(10);
-    expect(result.unsoldRate).toBe(5.0);
+    expect(result?.estimated).toBe(10);
+    expect(result?.unsoldRate).toBe(5.0);
   });
 
   it("비정상 unsoldRate > 100% → null", () => {
@@ -160,8 +160,8 @@ describe("calcProportionalUnsold", () => {
   it("정상 범위 내 unsoldRate", () => {
     // 구 미분양 50, 단지 500세대, 구 전체 1000세대 → 25세대, 5%
     const result = calcProportionalUnsold(50, 500, 1000);
-    expect(result.estimated).toBe(25);
-    expect(result.unsoldRate).toBe(5.0);
+    expect(result?.estimated).toBe(25);
+    expect(result?.unsoldRate).toBe(5.0);
   });
 
   it("guUnsold 0 → null", () => {
@@ -184,7 +184,7 @@ describe("calcProportionalUnsold", () => {
     // guUnsold=100, aptUnits=100, totalUnitsInGu=100 → estimated=100, unsoldRate=100.0
     const result = calcProportionalUnsold(100, 100, 100);
     expect(result).not.toBeNull();
-    expect(result.unsoldRate).toBe(100.0);
+    expect(result?.unsoldRate).toBe(100.0);
   });
 
   it("경계값: unsoldRate 100.1% → null", () => {
@@ -202,11 +202,11 @@ describe("fetchWithRetry 통합", () => {
     const { fetchWithRetry } = await import("./_shared.mjs");
     let calls = 0;
     const originalFetch = global.fetch;
-    global.fetch = vi.fn(async () => {
+    global.fetch = /** @type {any} */ (vi.fn(async () => {
       calls++;
       if (calls === 1) throw new Error("read ECONNRESET");
       return { ok: true, json: async () => ({ err: null, result: "ok" }) };
-    });
+    }));
     try {
       const res = await fetchWithRetry("https://example.test/", {}, 3);
       const body = await res.json();

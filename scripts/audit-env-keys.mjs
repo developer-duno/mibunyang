@@ -233,6 +233,7 @@ async function extractDataFillEnvKeys() {
 }
 
 /**
+ * @param {string[]} workflowFiles
  * @param {string} mjsName e.g. "migration.mjs"
  * @returns {string | null}
  */

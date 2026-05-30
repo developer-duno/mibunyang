@@ -21,16 +21,16 @@ describe("matchNearestStation", () => {
   // 정상: 가까운 측정소 매칭
   it("강남 단지는 강남구 측정소 매칭", () => {
     const apt = { lat: 37.510, lng: 127.040 };
-    const result = matchNearestStation(apt, stations);
-    expect(result.station).toBe("강남구");
-    expect(result.pm25).toBe(18);
-    expect(result.grade).toBe("좋음");
-    expect(result.collected_at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const result = matchNearestStation(/** @type {any} */ (apt), stations);
+    expect(result?.station).toBe("강남구");
+    expect(result?.pm25).toBe(18);
+    expect(result?.grade).toBe("좋음");
+    expect(result?.collected_at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   // 에러: 빈 측정소 목록
   it("측정소 0건 시 null 반환", () => {
-    const result = matchNearestStation({ lat: 37.5, lng: 127.0 }, []);
+    const result = matchNearestStation(/** @type {any} */ ({ lat: 37.5, lng: 127.0 }), []);
     expect(result).toBeNull();
   });
 });

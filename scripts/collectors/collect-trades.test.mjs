@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // loadEnv + 외부 API 호출 방지
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
@@ -209,14 +209,14 @@ describe("TRADE_CONFIGS.buildRow", () => {
   });
 
   it("jeonse: deposit = price와 동일", () => {
-    const row = TRADE_CONFIGS.jeonse.buildRow("<item/>", makeBase());
+    const row = /** @type {any} */ (TRADE_CONFIGS.jeonse.buildRow)("<item/>", makeBase());
     expect(row.trade_type).toBe("jeonse");
     expect(row.deposit).toBe(50000);
   });
 
   it("presale: apt_name 포함, deposit null", () => {
     const item = `<item><aptNm>동탄역 캐슬</aptNm></item>`;
-    const row = TRADE_CONFIGS.presale.buildRow(item, makeBase());
+    const row = /** @type {any} */ (TRADE_CONFIGS.presale.buildRow)(item, makeBase());
     expect(row.trade_type).toBe("presale");
     expect(row.apt_name).toBe("동탄역 캐슬");
     expect(row.deposit).toBeNull();
@@ -226,9 +226,9 @@ describe("TRADE_CONFIGS.buildRow", () => {
 // ── TRADE_CONFIGS.validate 검증 ─────────────────────────────
 describe("TRADE_CONFIGS.validate", () => {
   it("sale: price > 0 && area > 0 이면 true", () => {
-    expect(TRADE_CONFIGS.sale.validate(50000, 84.99)).toBe(true);
-    expect(TRADE_CONFIGS.sale.validate(0, 84.99)).toBe(false);
-    expect(TRADE_CONFIGS.sale.validate(50000, 0)).toBe(false);
+    expect(/** @type {any} */ (TRADE_CONFIGS.sale.validate)(50000, 84.99)).toBe(true);
+    expect(/** @type {any} */ (TRADE_CONFIGS.sale.validate)(0, 84.99)).toBe(false);
+    expect(/** @type {any} */ (TRADE_CONFIGS.sale.validate)(50000, 0)).toBe(false);
   });
 
   it("jeonse: deposit > 0 && monthlyRent === 0 && area > 0 이면 true", () => {
@@ -241,7 +241,7 @@ describe("TRADE_CONFIGS.validate", () => {
   });
 
   it("presale: price > 0 && area > 0 이면 true", () => {
-    expect(TRADE_CONFIGS.presale.validate(55000, 84.99)).toBe(true);
-    expect(TRADE_CONFIGS.presale.validate(0, 84.99)).toBe(false);
+    expect(/** @type {any} */ (TRADE_CONFIGS.presale.validate)(55000, 84.99)).toBe(true);
+    expect(/** @type {any} */ (TRADE_CONFIGS.presale.validate)(0, 84.99)).toBe(false);
   });
 });

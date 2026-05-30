@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹 — stringSimilarity는 실제 구현 사용
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -24,12 +24,20 @@ const { matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplex
   await import("./sync-naver-complex.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
-function makeComplex(complexNo, name, lat, lng) {
-  return { complex_no: complexNo, complex_name: name, latitude: lat, longitude: lng };
+/**
+ * @param {string} complexNo @param {string} name
+ * @param {number|null} [lat] @param {number|null} [lng]
+ */
+function makeComplex(complexNo, name, lat = null, lng = null) {
+  return /** @type {any} */ ({ complex_no: complexNo, complex_name: name, latitude: lat, longitude: lng });
 }
 
-function makeApt(id, name, lat, lng) {
-  return { id, name, lat, lng };
+/**
+ * @param {string} id @param {string} name
+ * @param {number|null} [lat] @param {number|null} [lng]
+ */
+function makeApt(id, name, lat = null, lng = null) {
+  return /** @type {any} */ ({ id, name, lat, lng });
 }
 
 // ── median ────────────────────────────────────────────────────
@@ -102,7 +110,7 @@ describe("parseFloor", () => {
   });
 
   it("숫자 타입 입력 → String 변환 후 파싱", () => {
-    expect(parseFloor(10)).toBe(10);
+    expect(parseFloor(/** @type {any} */ (10))).toBe(10);
   });
 });
 

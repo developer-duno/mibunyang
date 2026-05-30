@@ -25,9 +25,12 @@ import {
 
 // ── 테스트 팩토리 ─────────────────────────────────────────────
 
-/** 네이버 complex API 응답 팩토리 */
+/**
+ * 네이버 complex API 응답 팩토리
+ * @param {Record<string, any>} [overrides]
+ */
 function createComplexResponse(overrides = {}) {
-  return {
+  return /** @type {any} */ ({
     build_dtl_cd: 6025041,
     supp_cd: 9033181,
     build_nm: "테스트아파트",
@@ -48,12 +51,15 @@ function createComplexResponse(overrides = {}) {
     ypos: "37.5482353",
     schdl_info: { schdl_cd: "101" },
     ...overrides,
-  };
+  });
 }
 
-/** 리스트 API 응답 항목 팩토리 */
+/**
+ * 리스트 API 응답 항목 팩토리
+ * @param {Record<string, any>} [overrides]
+ */
 function createListItem(overrides = {}) {
-  return {
+  return /** @type {any} */ ({
     preSaleComplexNumber: 6025041,
     announcementPreSaleSequence: 9033181,
     preSaleComplexName: "테스트아파트",
@@ -61,12 +67,15 @@ function createListItem(overrides = {}) {
     scheduleName: "입주자모집공고",
     dateInfo: "2026-03-01",
     ...overrides,
-  };
+  });
 }
 
-/** 기존 아파트 레코드 팩토리 */
+/**
+ * 기존 아파트 레코드 팩토리
+ * @param {Record<string, any>} [overrides]
+ */
 function createApartment(overrides = {}) {
-  return {
+  return /** @type {any} */ ({
     id: "ah-100",
     name: "테스트아파트",
     region: "서울",
@@ -81,7 +90,7 @@ function createApartment(overrides = {}) {
     max_floor: 25,
     completion: "202611",
     ...overrides,
-  };
+  });
 }
 
 // ── parsePresalePrice ─────────────────────────────────────────
@@ -184,30 +193,30 @@ describe("parsePresaleAddress", () => {
   // 정상: "서울시 마포구 서교동 372-8" 파싱
   it("서울시 마포구 서교동을 정확히 분리한다", () => {
     const result = parsePresaleAddress("서울시 마포구 서교동 372-8");
-    expect(result.region).toBe("서울");
-    expect(result.gu).toBe("마포구");
-    expect(result.dong).toBe("서교동");
+    expect(result?.region).toBe("서울");
+    expect(result?.gu).toBe("마포구");
+    expect(result?.dong).toBe("서교동");
   });
 
   // 정상: 도 단위 주소
   it("경기도 성남시 분당구를 파싱한다", () => {
     const result = parsePresaleAddress("경기도 성남시 분당구 야탑동");
-    expect(result.region).toBe("경기");
-    expect(result.gu).toBe("분당구");
+    expect(result?.region).toBe("경기");
+    expect(result?.gu).toBe("분당구");
   });
 
   // null 입력
   it("null 입력 시 모두 null을 반환한다", () => {
     const result = parsePresaleAddress(null);
-    expect(result.region).toBeNull();
-    expect(result.gu).toBeNull();
-    expect(result.dong).toBeNull();
+    expect(result?.region).toBeNull();
+    expect(result?.gu).toBeNull();
+    expect(result?.dong).toBeNull();
   });
 
   // 빈 문자열
   it("빈 문자열은 모두 null을 반환한다", () => {
     const result = parsePresaleAddress("");
-    expect(result.region).toBeNull();
+    expect(result?.region).toBeNull();
   });
 });
 
@@ -285,8 +294,8 @@ describe("matchPresaleToApt", () => {
 
     const result = matchPresaleToApt(row, apts);
     expect(result).not.toBeNull();
-    expect(result.apartment.id).toBe("ah-100");
-    expect(result.confidence).toBe(1.0);
+    expect(result?.apartment.id).toBe("ah-100");
+    expect(result?.confidence).toBe(1.0);
   });
 
   // 2순위: bjd_code + 이름 유사도
@@ -350,7 +359,7 @@ describe("matchPresaleToApt", () => {
 
     const result = matchPresaleToApt(row, apts);
     expect(result).not.toBeNull();
-    expect(result.tier).toBe(4);
+    expect(result?.tier).toBe(4);
   });
 });
 
@@ -364,7 +373,7 @@ describe("matchPresaleToApt 경계값", () => {
       null, createListItem()
     );
     row._name = "가나다라";
-    row._enrich = { lat: 37.5, lng: 126.9, bjd_code: "1111010100" };
+    row._enrich = /** @type {any} */ ({ lat: 37.5, lng: 126.9, bjd_code: "1111010100" });
     const apts = [createApartment({
       bjd_code: "1111010100", name: "가나마바",
       naver_presale_no: null, lat: 35.0, lng: 129.0, region: "부산",
@@ -372,8 +381,8 @@ describe("matchPresaleToApt 경계값", () => {
 
     const result = matchPresaleToApt(row, apts);
     expect(result).not.toBeNull();
-    expect(result.tier).toBe(2);
-    expect(result.confidence).toBe(0.5);
+    expect(result?.tier).toBe(2);
+    expect(result?.confidence).toBe(0.5);
   });
 
   // Tier 2 임계값 미달: "가나다라" vs "가나마바사" → LCS=2, sim=4/9=0.444
@@ -383,7 +392,7 @@ describe("matchPresaleToApt 경계값", () => {
       null, createListItem()
     );
     row._name = "가나다라";
-    row._enrich = { lat: 35.0, lng: 129.0, bjd_code: "1111010100" };
+    row._enrich = /** @type {any} */ ({ lat: 35.0, lng: 129.0, bjd_code: "1111010100" });
     const apts = [createApartment({
       bjd_code: "1111010100", name: "가나마바사",
       naver_presale_no: null, lat: 33.0, lng: 127.0, region: "제주",
@@ -403,7 +412,7 @@ describe("matchPresaleToApt 경계값", () => {
       null, createListItem()
     );
     row._name = "가나다라마";
-    row._enrich = { lat: baseLat, lng: 126.9, bjd_code: "9999999999" };
+    row._enrich = /** @type {any} */ ({ lat: baseLat, lng: 126.9, bjd_code: "9999999999" });
     const apts = [createApartment({
       bjd_code: "8888888888", name: "가나바사아",
       naver_presale_no: null, lat: baseLat + 450 / 111000, lng: 126.9, region: "제주",
@@ -411,8 +420,8 @@ describe("matchPresaleToApt 경계값", () => {
 
     const result = matchPresaleToApt(row, apts);
     expect(result).not.toBeNull();
-    expect(result.tier).toBe(3);
-    expect(result.confidence).toBe(0.4);
+    expect(result?.tier).toBe(3);
+    expect(result?.confidence).toBe(0.4);
   });
 
   // Tier 3 거리 초과 (600m) → 매칭 실패
@@ -423,7 +432,7 @@ describe("matchPresaleToApt 경계값", () => {
       null, createListItem()
     );
     row._name = "가나다라마";
-    row._enrich = { lat: baseLat, lng: 126.9, bjd_code: "9999999999" };
+    row._enrich = /** @type {any} */ ({ lat: baseLat, lng: 126.9, bjd_code: "9999999999" });
     const apts = [createApartment({
       bjd_code: "8888888888", name: "가나바사아",
       naver_presale_no: null, lat: baseLat + 600 / 111000, lng: 126.9, region: "제주",
@@ -440,7 +449,7 @@ describe("matchPresaleToApt 경계값", () => {
       null, createListItem()
     );
     row._name = "가나다라마바사아자차";
-    row._enrich = { lat: 35.0, lng: 129.0, bjd_code: "9999999999", address: "서울시 강남구 역삼동 1" };
+    row._enrich = /** @type {any} */ ({ lat: 35.0, lng: 129.0, bjd_code: "9999999999", address: "서울시 강남구 역삼동 1" });
     const apts = [createApartment({
       bjd_code: "8888888888", name: "가나다라마바사카타파",
       naver_presale_no: null, lat: 33.0, lng: 127.0, region: "서울",
@@ -448,8 +457,8 @@ describe("matchPresaleToApt 경계값", () => {
 
     const result = matchPresaleToApt(row, apts);
     expect(result).not.toBeNull();
-    expect(result.tier).toBe(4);
-    expect(result.confidence).toBe(0.7);
+    expect(result?.tier).toBe(4);
+    expect(result?.confidence).toBe(0.7);
   });
 
   // Tier 4 임계값 미달: "ABCDEFGHIJ" vs "ABCDEFXYZW" → LCS=6, sim=12/20=0.6
@@ -459,7 +468,7 @@ describe("matchPresaleToApt 경계값", () => {
       null, createListItem()
     );
     row._name = "ABCDEFGHIJ";
-    row._enrich = { lat: 35.0, lng: 129.0, bjd_code: "9999999999", address: "서울시 강남구 역삼동 1" };
+    row._enrich = /** @type {any} */ ({ lat: 35.0, lng: 129.0, bjd_code: "9999999999", address: "서울시 강남구 역삼동 1" });
     const apts = [createApartment({
       bjd_code: "8888888888", name: "ABCDEFXYZW",
       naver_presale_no: null, lat: 33.0, lng: 127.0, region: "서울",
@@ -483,9 +492,9 @@ describe("matchPresaleToApt 경계값", () => {
     });
 
     const result = matchPresaleToApt(row, [aptTier2, aptTier1]);
-    expect(result.apartment.id).toBe("tier1-apt");
-    expect(result.tier).toBe(1);
-    expect(result.confidence).toBe(1.0);
+    expect(result?.apartment.id).toBe("tier1-apt");
+    expect(result?.tier).toBe(1);
+    expect(result?.confidence).toBe(1.0);
   });
 
   // 다중 후보 Tier 2: 3개 후보 중 최고 유사도 선택
@@ -495,7 +504,7 @@ describe("matchPresaleToApt 경계값", () => {
       null, createListItem()
     );
     row._name = "래미안원베일리";
-    row._enrich = { lat: 35.0, lng: 129.0, bjd_code: "1165010100" };
+    row._enrich = /** @type {any} */ ({ lat: 35.0, lng: 129.0, bjd_code: "1165010100" });
     const apts = [
       createApartment({ id: "low", bjd_code: "1165010100", name: "래미안", naver_presale_no: null }),
       createApartment({ id: "best", bjd_code: "1165010100", name: "래미안원베일리1차", naver_presale_no: null }),
@@ -504,8 +513,8 @@ describe("matchPresaleToApt 경계값", () => {
 
     const result = matchPresaleToApt(row, apts);
     expect(result).not.toBeNull();
-    expect(result.apartment.id).toBe("best");
-    expect(result.tier).toBe(2);
+    expect(result?.apartment.id).toBe("best");
+    expect(result?.tier).toBe(2);
   });
 });
 
@@ -516,7 +525,7 @@ describe("matchPresaleToApt null/비정상 입력", () => {
   it("_name이 빈 문자열이면 매칭 실패한다", () => {
     const row = toPresaleRow(createComplexResponse(), null, createListItem());
     row._name = "";
-    row._enrich = { lat: 37.548, lng: 126.912, bjd_code: "1144012000", address: "서울시 마포구 서교동" };
+    row._enrich = /** @type {any} */ ({ lat: 37.548, lng: 126.912, bjd_code: "1144012000", address: "서울시 마포구 서교동" });
     const apts = [createApartment({
       bjd_code: "1144012000", region: "서울",
       lat: 37.5485, lng: 126.9125, naver_presale_no: null,
@@ -533,7 +542,7 @@ describe("matchPresaleToApt null/비정상 입력", () => {
       null, createListItem()
     );
     row._name = "가나다라마바사";
-    row._enrich = { lat: NaN, lng: 126.9, bjd_code: "9999999999" };
+    row._enrich = /** @type {any} */ ({ lat: NaN, lng: 126.9, bjd_code: "9999999999" });
     const apts = [createApartment({
       bjd_code: "8888888888", name: "완전다른이름",
       lat: 37.548, lng: 126.912, naver_presale_no: null, region: "제주",
@@ -550,13 +559,13 @@ describe("parsePresaleAddress 특수 주소", () => {
   // 세종특별자치시
   it("세종특별자치시를 정확히 파싱한다", () => {
     const result = parsePresaleAddress("세종특별자치시 어진동 123");
-    expect(result.region).toBe("세종");
+    expect(result?.region).toBe("세종");
   });
 
   // 제주특별자치도
   it("제주특별자치도를 정확히 파싱한다", () => {
     const result = parsePresaleAddress("제주특별자치도 제주시 연동 456");
-    expect(result.region).toBe("제주");
+    expect(result?.region).toBe("제주");
   });
 });
 

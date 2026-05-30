@@ -28,12 +28,13 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const { extractLatestByRegion, parseAllPeriodsByRegion } = await import("./collect-market-stats.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
+/** @param {any} c1 @param {any} c2 @param {any} period @param {any} value */
 function makeRow(c1, c2, period, value) {
   return { C1_NM: c1, C2_NM: c2, PRD_DE: period, DT: String(value) };
 }
 
 function makeIndicator(parseFn = parseFloat) {
-  return { parse: parseFn };
+  return /** @type {any} */ ({ parse: parseFn });
 }
 
 // ── extractLatestByRegion ─────────────────────────────────────

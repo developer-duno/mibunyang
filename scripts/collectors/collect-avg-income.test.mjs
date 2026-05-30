@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
     REGION_MAP: orig.REGION_MAP,
-    fetchWithRetry: (...args) => fetchWithRetryMock(...args),
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
@@ -52,7 +52,7 @@ describe("thousandWonYearToManWonMonth", () => {
 
 // ── aggregateIncomeRows ──────────────────────────────────────
 describe("aggregateIncomeRows", () => {
-  const mkRow = (C1, C1_NM, PRD_DE, ITM_NM, DT) => ({ C1, C1_NM, PRD_DE, ITM_NM, DT });
+  const mkRow = (/** @type {any} */ C1, /** @type {any} */ C1_NM, /** @type {any} */ PRD_DE, /** @type {any} */ ITM_NM, /** @type {any} */ DT) => ({ C1, C1_NM, PRD_DE, ITM_NM, DT });
 
   it("빈 배열 → period null, entries []", () => {
     expect(aggregateIncomeRows([])).toEqual({ period: null, entries: [] });
@@ -176,7 +176,7 @@ describe("aggregateIncomeRows", () => {
     expect(entries.every(e => e.avg_income > 0)).toBe(true);
     // 서울 DT=32224 천원/년 → round(32224/120) = 269 만원/월
     const seoul = entries.find(e => e.region === "서울");
-    expect(seoul.avg_income).toBe(269);
+    expect(seoul?.avg_income).toBe(269);
   });
 });
 

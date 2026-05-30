@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),

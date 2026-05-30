@@ -16,6 +16,6 @@ describe("collect-police", () => {
     const mod = await import("./collect-police.mjs");
     expect(typeof mod.searchPolice).toBe("function");
     // main은 export되지 않음 (내부 함수)
-    expect(mod.main).toBeUndefined();
+    expect(/** @type {any} */ (mod).main).toBeUndefined();
   });
 });

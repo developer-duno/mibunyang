@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -33,8 +33,10 @@ const { createSemaphore } = await import("./infra-kakao.mjs");
 describe("createSemaphore", () => {
   it("동시 1개 제한 — 순차 실행", async () => {
     const sem = createSemaphore(1);
+    /** @type {string[]} */
     const order = [];
 
+    /** @param {string} id @param {number} ms */
     const task = (id, ms) => sem(async () => {
       order.push(`start-${id}`);
       await new Promise(r => setTimeout(r, ms));
@@ -50,8 +52,10 @@ describe("createSemaphore", () => {
 
   it("동시 2개 제한 — 2개까지 병렬", async () => {
     const sem = createSemaphore(2);
+    /** @type {string[]} */
     const order = [];
 
+    /** @param {string} id @param {number} ms */
     const task = (id, ms) => sem(async () => {
       order.push(`start-${id}`);
       await new Promise(r => setTimeout(r, ms));
@@ -83,6 +87,7 @@ describe("createSemaphore", () => {
 
   it("큐 대기 후 순서대로 실행", async () => {
     const sem = createSemaphore(1);
+    /** @type {number[]} */
     const results = [];
 
     await Promise.all([

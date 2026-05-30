@@ -297,13 +297,13 @@ describe("recordCollectorRun (수집기 모니터링 에픽 1단계)", () => {
   it("fail > 0 이면 status 를 failure 로 자동 판정한다", async () => {
     const { sb, insert } = makeFakeSb();
     await recordCollectorRun("collect-trades", { ok: 5, fail: 3, skip: 0 }, sb);
-    expect(insert.mock.calls[0][0]).toMatchObject({ status: "failure", fail_count: 3 });
+    expect(/** @type {any[]} */ (insert.mock.calls[0])[0]).toMatchObject({ status: "failure", fail_count: 3 });
   });
 
   it("status 를 명시하면 (partial) 그대로 사용한다", async () => {
     const { sb, insert } = makeFakeSb();
     await recordCollectorRun("schools-neis", { status: "partial", ok: 8, fail: 1 }, sb);
-    expect(insert.mock.calls[0][0]).toMatchObject({ status: "partial" });
+    expect(/** @type {any[]} */ (insert.mock.calls[0])[0]).toMatchObject({ status: "partial" });
   });
 
   it("insert 가 error 를 반환해도 throw 하지 않는다", async () => {
