@@ -1,6 +1,6 @@
 # TypeScript Patterns — JSDoc + // @ts-check 답습 자산
 
-> M5d~M7 (scripts/collectors + src/) typecheck 활성화 누적 16 패턴. 신규 .js/.mjs/.test.* 파일 // @ts-check 활성화 시 답습 의무.
+> M5d~M7 (scripts/collectors + src/) typecheck 활성화 누적 18 패턴 (세션 350 §15 tsconfig glob 함정 + §16 LSP≠tsc 추가). 신규 .js/.mjs/.test.* 파일 // @ts-check 활성화 시 답습 의무.
 
 ## 사용법
 
@@ -470,3 +470,53 @@ plan 본문에 *"1차 정정 후 N errors 잔여 → 2차 정정 patch"* 명시.
 ## §14. 신규 패턴 추가 시
 
 본 문서 [§N] 섹션에 추가 + 글로벌 메모 새 파일 박제 + [§13] 인덱스 갱신. 16 → N 카운트 업데이트. M8/M9 작업 중 발견 시 즉시 편집 (1 커밋).
+
+---
+
+## §15. tsconfig include glob 은 .gitignore 를 무시한다 (세션 350 박제)
+
+`tsconfig.scripts.json` include 를 개별 파일 열거 → glob (`scripts/**/*.mjs`) 전환 시 **결정적 함정**: TypeScript 의 include/exclude glob 은 `.gitignore` 를 **존중하지 않는다**. gitignore 된 파일 (`scripts/probes/*`, `scripts/_tmp*` 등) 이 검사 대상으로 끌려들어와 검사 대상 외 파일에서 새 에러 폭발.
+
+```jsonc
+// 빨강: glob 만 전환 (gitignore 무시 함정)
+"include": ["scripts/types.ts", "scripts/**/*.mjs"]
+// → probes/datagokr-apply.mjs 등 @ts-check 없는 gitignore 파일도 검사 대상
+
+// 초록: @ts-check 없는 파일 + gitignore 파일 exclude 전부 명시
+"include": ["scripts/types.ts", "scripts/**/*.mjs"],
+"exclude": [
+  "node_modules", "dist", "build", ".vercel",
+  "scripts/collect-data.mjs",                  // @ts-check 없음 (ETL 진입점)
+  "scripts/probes/datagokr-apply.mjs",         // gitignore 대상
+  "scripts/probes/kosis-api-test.mjs", "scripts/probes/kosis-api-test2.mjs",
+  "scripts/_tmp_schoolinfo_probe.mjs"          // gitignore 임시 잔재
+]
+```
+
+**검증 가드 (의무)**: glob 전환 후 `--listFiles` 로 제외 대상이 검사망에 안 들어왔는지 확인.
+
+```bash
+npx tsc --noEmit -p tsconfig.scripts.json --listFiles 2>&1 | grep -E "probes/|_tmp_|collect-data" && echo "FAIL 제외 누락" || echo "OK 제외 정상"
+```
+
+**장점**: glob 전환 = 미래 신규 collector 자동 포함 → "@ts-check 박았는데 include 미등재로 검사 안 받는 거짓 안전" 사각지대 영구 해소. 세션 350 = 거짓 안전 53파일 211에러 발견 (75개 열거 방식의 누적 사각지대).
+
+### 외부 라이브러리 TS7016 (타입 없는 모듈) — 본채는 @types 설치
+
+`import yaml from "js-yaml"` 처럼 `.d.ts` 없는 라이브러리 → TS7016. **본채 (production) 코드면 `@types/*` 설치** (§3.3 "본채는 타입 정확히, any cast 는 .test 한정"). `@ts-ignore` 는 본채 타입 안전 영구 포기라 회피. `@types/js-yaml`·`@types/unzipper` 등 DefinitelyTyped 존재 확인 후 devDependency 추가. 설치 버전이 런타임 버전보다 마이너 뒤처지면 (예: @types/unzipper 0.10 vs unzipper 0.12) §11 시뮬레이션으로 호환 1회 검증.
+
+## §16. LSP/IDE 진단 ≠ tsc -p tsconfig.scripts.json (진실의 원천, 세션 350 박제)
+
+작업 중 IDE/LSP 진단 (`<new-diagnostics>` 또는 plugin lsp_diagnostics) 이 `.mjs` 파일에서 에러를 계속 보고하지만, 실제 `npx tsc --noEmit -p tsconfig.scripts.json` 으로는 **0** 인 경우 발생.
+
+원인: LSP 는 보통 **루트 tsconfig.json (`checkJs: false`)** 기준으로 보거나 stale 상태. scripts 의 `.mjs` 검사는 `tsconfig.scripts.json` (`checkJs: true`) 별도 프로젝트라 LSP 기본 설정과 다름.
+
+**진실의 원천 = `tsc -p tsconfig.scripts.json`**. LSP 진단은 보조 신호. 정정 완료 판정·잔여 에러 카운트는 반드시 tsc 명령으로. (메모리 룰 §"vitest stale 캐시" / §"메모리는 진실의 원천 아님" 답습 — 진단 도구 ≠ 진실의 원천)
+
+```bash
+# 빨강: LSP <new-diagnostics> 보고만 보고 "아직 에러 남음" 단정
+# 초록: tsc 직접 측정
+npx tsc --noEmit -p tsconfig.scripts.json 2>&1 | grep -c "<file>"
+```
+
+> **사건**: 세션 350 — naver-presale.test.mjs factory cast 후 LSP 가 L435/452/460 등 TS2739/TS18047 계속 보고. tsc -p tsconfig.scripts.json 실측 = 0. LSP 추측 폐기 후 tsc 만 기준으로 진행.
