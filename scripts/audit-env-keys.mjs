@@ -27,6 +27,12 @@ const MATRIX_ORCHESTRATORS = [
 
 const SECRET_PATTERN = /^[A-Z][A-Z0-9_]*_(KEY|TOKEN|URL|SECRET)$/;
 
+// validate step 의 빈 값 체크 패턴 — 두 형식 모두 지원:
+//   A. -z "$VAR"               (env 참조)
+//   B. -z "${{ secrets.VAR }}" (Actions 표현식 직접, collect-air-quality/police/schools)
+// 새 RegExp 매번 생성 (lastIndex 재사용 사고 회피)
+const validatePattern = () => /-z\s+"?\$(?:\{\{\s*secrets\.)?([A-Z][A-Z0-9_]*)\}?/g;
+
 // 알려진 시스템 환경변수 (audit 제외)
 const SYSTEM_ENV = new Set([
   "NODE_ENV", "CI", "PATH", "HOME", "USER", "TMPDIR", "TZ",
@@ -62,8 +68,8 @@ async function extractYmlEnvVars(file) {
     envBlock.add(m[1]);
   }
 
-  // validate step shell 의 $VAR 참조 추출 (-z "$X" 패턴)
-  const validateRe = /-z\s+"?\$([A-Z][A-Z0-9_]*)"?/g;
+  // validate step shell 의 빈 값 체크 추출 (-z "$X" + -z "${{ secrets.X }}" 양형)
+  const validateRe = validatePattern();
   while ((m = validateRe.exec(text)) !== null) {
     if (!SECRET_PATTERN.test(m[1])) continue;
     validateRefs.add(m[1]);
@@ -111,7 +117,7 @@ export async function extractMatrixJobs(file) {
     const steps = Array.isArray(job.steps) ? job.steps : [];
     for (const step of steps) {
       const runText = typeof step?.run === "string" ? step.run : "";
-      const validateRe = /-z\s+"?\$([A-Z][A-Z0-9_]*)"?/g;
+      const validateRe = validatePattern();
       let vm;
       while ((vm = RegExp.prototype.exec.call(validateRe, runText)) !== null) {
         if (SECRET_PATTERN.test(vm[1])) validateRefs.add(vm[1]);
@@ -120,6 +126,87 @@ export async function extractMatrixJobs(file) {
 
     for (const name of scriptNames) {
       result.set(name, { envBlock, validateRefs });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * collector → 그 collector 가 등장하는 모든 (yml, step) 의 env 매핑 (역방향).
+ *
+ * 사고 박제: 세션 328 — collect-naver-listings-incremental.yml 의 schools step 에
+ * NEIS_KEY/SCHOOLINFO_KEY 누락. 1:1 매칭(findWorkflowForCollector)은 yml명≠collector명
+ * (collect-transport.yml ↔ transport-tago.mjs) 시 null → 검증 스킵 → clean 오집계.
+ * 모든 yml 의 step.run 을 스캔해 collector 호출을 역방향으로 수집한다.
+ *
+ * env 상속: step > job > workflow. matrix job 은 extractMatrixJobs 담당 → skip.
+ *
+ * @param {string} file
+ * @returns {Promise<Map<string, Array<{yml: string, step: string, envBlock: Set<string>, validateRefs: Set<string>}>>>}
+ */
+export async function extractStepCollectorEnv(file) {
+  const text = await readFile(file, "utf-8");
+  /** @type {Map<string, Array<{yml: string, step: string, envBlock: Set<string>, validateRefs: Set<string>}>>} */
+  const result = new Map();
+
+  /** @type {any} */
+  const doc = yaml.load(text, { schema: yaml.FAILSAFE_SCHEMA });
+  if (!doc || typeof doc !== "object" || !doc.jobs) return result;
+
+  const ymlName = path.basename(file);
+
+  /** @param {any} envObj @returns {Set<string>} */
+  const secretKeys = (envObj) => {
+    /** @type {Set<string>} */
+    const s = new Set();
+    if (envObj && typeof envObj === "object") {
+      for (const k of Object.keys(envObj)) {
+        if (SECRET_PATTERN.test(k)) s.add(k);
+      }
+    }
+    return s;
+  };
+
+  const workflowEnv = secretKeys(doc.env);
+
+  for (const jobName of Object.keys(doc.jobs)) {
+    const job = doc.jobs[jobName];
+    // matrix job 은 extractMatrixJobs 담당 (이중평가 방지)
+    if (job?.strategy?.matrix?.script) continue;
+
+    /** @type {Set<string>} */
+    const jobEnv = new Set([...workflowEnv, ...secretKeys(job?.env)]);
+
+    const steps = Array.isArray(job?.steps) ? job.steps : [];
+
+    // validateRefs: job 의 모든 step.run 의 -z "$X" 누적 (validate step 은 보통 별도 step)
+    /** @type {Set<string>} */
+    const validateRefs = new Set();
+    for (const step of steps) {
+      const runText = typeof step?.run === "string" ? step.run : "";
+      const validateRe = validatePattern();
+      let vm;
+      while ((vm = RegExp.prototype.exec.call(validateRe, runText)) !== null) {
+        if (SECRET_PATTERN.test(vm[1])) validateRefs.add(vm[1]);
+      }
+    }
+
+    for (const step of steps) {
+      const runText = typeof step?.run === "string" ? step.run : "";
+      const stepEnv = secretKeys(step?.env);
+      /** @type {Set<string>} */
+      const effectiveEnv = stepEnv.size > 0 ? new Set([...jobEnv, ...stepEnv]) : jobEnv;
+      const stepName = typeof step?.name === "string" ? step.name : "(unnamed)";
+
+      const collectorRe = /node\s+scripts\/collectors\/([a-z0-9-]+)\.mjs/g;
+      let cm;
+      while ((cm = RegExp.prototype.exec.call(collectorRe, runText)) !== null) {
+        const mjs = `${cm[1]}.mjs`;
+        const arr = result.get(mjs) ?? [];
+        arr.push({ yml: ymlName, step: stepName, envBlock: effectiveEnv, validateRefs });
+        result.set(mjs, arr);
+      }
     }
   }
 
@@ -178,34 +265,77 @@ async function main() {
   // data-fill envKeys 매핑
   const dataFillMap = await extractDataFillEnvKeys();
 
+  // collector → 등장하는 모든 (yml, step) env 역방향 매핑 (세션 328 사고 대응)
+  // 1:1 매칭(yml명=collector명)이 못 잡는 이름 불일치/multi-collector yml 사각지대 차단
+  /** @type {Map<string, Array<{yml: string, step: string, envBlock: Set<string>, validateRefs: Set<string>}>>} */
+  const stepMap = new Map();
+  for (const yml of workflows) {
+    /** @type {Map<string, Array<{yml: string, step: string, envBlock: Set<string>, validateRefs: Set<string>}>>} */
+    let perYml;
+    try {
+      perYml = await extractStepCollectorEnv(yml);
+    } catch (err) {
+      console.warn(`⚠️ step 답습 실패: ${yml} — ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+    for (const [mjs, rows] of perYml) {
+      const arr = stepMap.get(mjs) ?? [];
+      arr.push(...rows);
+      stepMap.set(mjs, arr);
+    }
+  }
+
   for (const mjs of collectorMjs) {
     const codePath = path.join(COLLECTORS_DIR, mjs);
     const codeKeys = await extractCodeEnvVars(codePath);
     if (codeKeys.size === 0) continue; // 환경변수 미사용 = 감사 대상 외
 
-    const ymlFile = findWorkflowForCollector(workflows, mjs);
-    /** @type {Set<string>} */
-    let ymlEnvBlock = new Set();
-    /** @type {Set<string>} */
-    let validateRefs = new Set();
-    if (ymlFile) {
-      const r = await extractYmlEnvVars(ymlFile);
-      ymlEnvBlock = r.envBlock;
-      validateRefs = r.validateRefs;
-    }
-
     const dataFillKeys = dataFillMap.get(mjs) ?? new Set();
+    const stepRows = stepMap.get(mjs) ?? [];
 
     /** @type {string[]} */
     const issues = [];
+    /** @type {Set<string>} */
+    const allYmlEnv = new Set();
+    /** @type {Set<string>} */
+    const allValidate = new Set();
+
+    if (stepRows.length > 0) {
+      // step 경로: 등장하는 모든 (yml, step) 각각 검증
+      for (const row of stepRows) {
+        for (const k of row.envBlock) allYmlEnv.add(k);
+        for (const k of row.validateRefs) allValidate.add(k);
+        for (const k of codeKeys) {
+          if (!row.envBlock.has(k)) {
+            issues.push(`❌ yml env block 누락: ${k} (in ${row.yml}, step="${row.step}")`);
+            errorCount++;
+          } else if (!row.validateRefs.has(k)) {
+            issues.push(`⚠️ yml validate step 미참조: ${k} (in ${row.yml}, step="${row.step}")`);
+          }
+        }
+      }
+    } else {
+      // step 등장 0건 → 기존 1:1 매칭 fallback (그래도 없으면 로컬 전용)
+      const ymlFile = findWorkflowForCollector(workflows, mjs);
+      if (ymlFile) {
+        const r = await extractYmlEnvVars(ymlFile);
+        for (const k of r.envBlock) allYmlEnv.add(k);
+        for (const k of r.validateRefs) allValidate.add(k);
+        for (const k of codeKeys) {
+          if (!r.envBlock.has(k)) {
+            issues.push(`❌ yml env block 누락: ${k} (in ${path.basename(ymlFile)})`);
+            errorCount++;
+          } else if (!r.validateRefs.has(k)) {
+            issues.push(`⚠️ yml validate step 미참조: ${k} (env 만 주입, 빈 값 검증 안 함)`);
+          }
+        }
+      } else {
+        issues.push(`ℹ️ workflow 호출 0건 (로컬 전용 — audit 대상 외)`);
+      }
+    }
+
+    // data-fill envKeys 누락 (mjs 단위, step/fallback 무관)
     for (const k of codeKeys) {
-      if (ymlFile && !ymlEnvBlock.has(k)) {
-        issues.push(`❌ yml env block 누락: ${k} (in ${path.basename(ymlFile)})`);
-        errorCount++;
-      }
-      if (ymlFile && ymlEnvBlock.has(k) && !validateRefs.has(k)) {
-        issues.push(`⚠️ yml validate step 미참조: ${k} (env 만 주입, 빈 값 검증 안 함)`);
-      }
       if (dataFillMap.has(mjs) && !dataFillKeys.has(k)) {
         issues.push(`❌ data-fill envKeys 누락: ${k}`);
         errorCount++;
@@ -215,8 +345,8 @@ async function main() {
     reports.push({
       collector: mjs,
       codeKeys: [...codeKeys].sort(),
-      ymlEnvKeys: [...ymlEnvBlock].sort(),
-      validateKeys: [...validateRefs].sort(),
+      ymlEnvKeys: [...allYmlEnv].sort(),
+      validateKeys: [...allValidate].sort(),
       dataFillKeys: [...dataFillKeys].sort(),
       issues,
     });
