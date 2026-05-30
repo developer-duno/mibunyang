@@ -98,15 +98,24 @@
   - 정정 안: `scripts/audit-env-keys.mjs` 의 yml 파싱 로직에 step 단위 답습 추가. step 의 `run:` 에 박힌 collector 파일명 추출 → 해당 collector 의 codeKeys 와 step env block 교차 검증
   - 트리거: 다음 step 단위 누락 사고 발생 시 자동 차단
 
-- 🟡 **13:35~13:36 cancelled 5건 (7~8초) 진단** (세션 327 발견, 사용자 "모름")
-  - 5/26 13:35:58 ~ 13:36:08 사이 workflow_dispatch 5건 = Emergency / Police / KOSIS Unsold / Housing Permits / Building Info
-  - 모두 시작 후 7~8초 만에 cancelled = 사용자 수동 cancel 가능성 OR runner pool 일시 장애 OR billing 한도 가능성
-  - 진단 의무: `gh api /repos/developer-duno/mibunyang/actions/runs` answer 답습 + 사용자 ultrareview / 자동화 스크립트 발화 자리 확인
-  - 별 PR 진단
+- 🟡 **scripts/CLAUDE.md 테스트 수 박제값 stale** (세션 344 발견, P2, 별 PR)
+  - 실측 stale 3건: `collect-maintenance.test.mjs` 18→27, `schools-neis.test.mjs` 77→83, `collect-market-stats.test.mjs` 14→16
+  - 전체 41개 test 파일 실측 의무 (`grep -cE "^\s*(it|test)\(" scripts/collectors/*.test.mjs`). 범위 커서 별 PR
+  - 트리거: scripts/CLAUDE.md 편집 시 또는 별 정리 세션
+
+- ✅ **13:35~13:36 cancelled 5건 (7~8초) 진단 — 종결** (세션 327 발견 → 세션 344 종결)
+  - 5/26 13:35:58 ~ 13:36:08 workflow_dispatch 5건 = Emergency / Police / KOSIS Unsold / Housing Permits / Building Info
+  - raw 실측: 앞 4건 (Emergency/Police/KOSIS/Housing Permits) = jobs=0 + 7~8초 cancel, triggering_actor=developer-duno (사람), 모두 `data-collection` concurrency 그룹 + `cancel-in-progress: false`. 동시 dispatch 후 **수동 cancel** (concurrency supersede 아님 — pending 슬롯은 새 run 도착 시 직전 것 cancel)
+  - 5번째 building-info 는 별개 사고로 분리 (아래 신규 P1)
+
+- 🟡 **building-info 매월 10일 cron 30분 반복 cancel 진단** (세션 344 발견, P1, 별 세션)
+  - 실측: `collect-building-info.yml` 정기 schedule run 이 매월 10일 정확히 30분(16~17초)에 cancel — 5/10 (25634351927) + 4/10 (24253869654) 둘 다 `event=schedule`. 다음날 5/11·4/11 재시도로만 success. 5/26 dispatch run (26451400957) 도 30분 16초 cancel
+  - timeout-minutes=90 미달 + raw log = 코드 정상 단지 처리 중 외부 cancel (`##[error]The operation was canceled` 직전까지 단지 출력 정상). GitHub 30분 제약 없음 (공식 문서: job 6h, queue 24h)
+  - data.go.kr 매월 10일 ~8,500 쿼터 위험일과 겹침 (`scripts/CLAUDE.md` 쿼터 분배). 진앙 미확정 = 별 세션 raw 답습 의무 (concurrency 큐 대기 51분 + 30분 cancel 패턴 정밀 진단)
 
 - ✅ **monitor-collectors 알림 9건 누적 사고** (세션 326 발견 → 세션 327 종결, docs only)
   - 답습 결과 = monitor 정상 작동 (9개 사고 즉시 감지 결과). 알림 9건 = 사고 아닌 정상 감지
-  - 진앙 4종 분리: (1) housing-permits success 0건 = MOLIT API 500 외부 사고 (세션 323 v3 답습) (2) Naver cancelled = transport-tago 자연 변동 ±10% × timeout 120m 부족 → 180m 정정 (3) maintenance + building-info cancelled = graceful break 0 = 18 collector 패턴 사고 (4) 13:35~13:36 5건 = 별 PR
+  - 진앙 4종 분리: (1) housing-permits success 0건 = MOLIT API 500 외부 사고 (세션 323 v3 답습) (2) Naver cancelled = transport-tago 자연 변동 ±10% × timeout 120m 부족 → 180m 정정 (3) maintenance + building-info cancelled = graceful break 0 = 18 collector 패턴 사고 (4) 13:35~13:36 5건 = 세션 344 종결 (4건 수동 cancel + building-info 30분 별 P1)
   - 본 세션 정정 4건: Naver yml timeout 180 + transport-tago/infra-kakao/schools-neis break 박힘 + _shared.test.mjs SIGTERM mock 4건 + 신규 rule `graceful-shutdown-coverage.md`
   - 답습 자산: 세션 327 plan v3 (자가 점검 1 v2/v3 발동 후 환각 9건 정정)
 

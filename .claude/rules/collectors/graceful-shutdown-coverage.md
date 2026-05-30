@@ -72,32 +72,26 @@ describe("graceful shutdown", () => {
 grep -l "rpt.interrupted\|isInterrupted" scripts/collectors/*.mjs | grep -v test
 ```
 
-### 완전 적용 (break 박힘) — 17 collector (2026-05-31 실측)
+### 완전 적용 (break 박힘) collector — 실측 명령
 
-- `childcare-info-jeju` (PR-A 세션 329)
-- `collect-air-quality`
-- `collect-applyhome`
-- `collect-building-hub`
-- `collect-childcare`
-- `collect-emergency`
-- `collect-maintenance` (PR #55 세션 343, 다중 loop 외부+내부 break 박힘)
-- `collect-police`
-- `collect-unsold-kosis`
-- `housing-permits`
-- `infra-kakao`
-- `molit-building-info`
-- `population`
-- `population-sex-age`
-- `schools-neis`
-- `trade-stats-regions`
-- `transport-tago`
+하드코딩 목록은 stale 재발 (예: "17 collector" 박힘이 작성 당일에도 26 이라 틀린 박제값). 진실의 원천 = `_graceful-coverage.test.mjs` (ALLOWLIST 외 전부 검사 대상 + 통과 = 완전 적용). 실측:
 
-### ALLOWLIST (graceful 무관 또는 PR-B/C 미머지) — 9 collector
+```bash
+# 완전 적용 = createReporter/setupGracefulShutdown + break 박힘 collector
+grep -l "rpt.interrupted\|isInterrupted\|reporter.interrupted" scripts/collectors/*.mjs | grep -v test | wc -l
+# 또는 (회귀 가드 통과 = 완전 적용 증명)
+npx vitest run scripts/collectors/_graceful-coverage.test.mjs
+```
 
-`_graceful-coverage.test.mjs` ALLOWLIST 본문 답습:
+세션 344 추가 적용 (ALLOWLIST 거짓 음성 정정): `trade-stats` + `molit-units` + `naver-listings` + `reverse-geocode` + `geocode-missing` (전부 cron 실행 + main loop + await 인데 graceful 누락 → setupGracefulShutdown + break 박힘). `collect-trades` 내부 loop break 도 추가.
 
-- PR-B 대상 (7건): collect-housing-price / childcare-detail / collect-nearby-childcare / collect-crime-safety / calc-school-walk / collect-market-stats / naver-presale
-- PR-C 대상 (2건): collect-trades / childcare-info
+### ALLOWLIST (graceful 무관 — one-shot / 단발 / calc) — 실측 명령
+
+`_graceful-coverage.test.mjs` 의 ALLOWLIST Set 이 진실의 원천. PR-B (7건) + PR-C (2건) 9 collector 는 세션 330·337 머지로 graceful 적용 완료 + ALLOWLIST 에서 제거됨. 세션 344 거짓 음성 5건도 제거됨. 실측:
+
+```bash
+grep -c '.mjs",' scripts/collectors/_graceful-coverage.test.mjs   # = ALLOWLIST 항목 수
+```
 
 ### 미사용 (graceful 불필요 or 우선순위 낮음) — 20+ collector
 

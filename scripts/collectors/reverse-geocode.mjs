@@ -12,7 +12,7 @@
  *   node scripts/collectors/reverse-geocode.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/reverse-geocode.mjs --force      (이미 주소 있어도 재수행)
  */
-import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown } from "./_shared.mjs";
 
 loadEnv();
 
@@ -75,6 +75,7 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
+  const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 344: graceful shutdown
 
   // 좌표 있는 단지 조회 (address가 없거나 --force) — 페이지네이션 1000 행/배치
   const PAGE_SIZE = 1000;
@@ -96,6 +97,7 @@ async function main() {
   let updated = 0, failed = 0;
 
   for (let i = 0; i < apts.length; i++) {
+    if (isInterrupted()) break;  // 세션 344: graceful shutdown
     const apt = apts[i];
     try {
       // 역지오코딩

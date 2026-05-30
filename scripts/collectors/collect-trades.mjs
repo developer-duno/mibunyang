@@ -267,6 +267,7 @@ async function main() {
     if (!lawdCd) { log(PHASE, "  " + rg.region + " " + rg.gu + ": 법정동코드 없음"); continue; }
 
     for (const type of /** @type {TradeType[]} */ (["sale", "jeonse", "presale"])) {
+      if (rpt.interrupted()) break;  // 세션 344: graceful shutdown (내부 trade type loop)
       const result = await fetchTradeRows(lawdCd, months, type, rg, seen, fallbackUsed);
       rows.push(...result.rows);
       apiCalls += result.apiCalls;

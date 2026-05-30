@@ -15,7 +15,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, MIN_SIMILARITY, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -104,6 +104,7 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
+  const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 344: graceful shutdown
 
   // 1. 보정 대상 조회
   const targets = await getTargets(sb);
@@ -135,6 +136,7 @@ async function main() {
   let apiCalls = 0;
 
   for (const [region, group] of Object.entries(groups)) {
+    if (isInterrupted()) break;  // 세션 344: graceful shutdown (외부 region loop)
     log(PHASE, `\n--- ${region} (${group.sidoCode}) ${group.targets.length}건 ---`);
 
     /** @type {Array<Record<string, unknown>>} */
@@ -158,6 +160,7 @@ async function main() {
     await sleep(REQUEST_DELAY);
 
     for (const target of group.targets) {
+      if (isInterrupted()) break;  // 세션 344: graceful shutdown (내부 target loop)
       log(PHASE, `  [${target.id}] ${target.name}`);
 
       // 이름 매칭

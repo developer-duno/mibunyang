@@ -13,7 +13,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY  — Supabase service_role 키
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun, setupGracefulShutdown } from "./_shared.mjs";
 
 loadEnv();
 
@@ -151,6 +151,7 @@ async function main() {
 
   // 1. 데이터 로드
   const sbMibunyang = getMibuyangSupabase();
+  const isInterrupted = setupGracefulShutdown("trade-stats");  // 세션 344: graceful shutdown (upsert loop 이전 핸들러 등록)
 
   log("load", "데이터 병렬 조회...");
   const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
@@ -572,6 +573,7 @@ async function main() {
   let upserted = 0;
 
   for (let i = 0; i < results.length; i += BATCH) {
+    if (isInterrupted()) break;  // 세션 344: graceful shutdown
     const batch = results.slice(i, i + BATCH).map(({ _medianSource, ...row }) => row);
     const { error } = await sbMibunyang
       .from("trade_stats")
