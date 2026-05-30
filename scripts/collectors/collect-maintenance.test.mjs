@@ -5,6 +5,8 @@
  * 대상: fetchTotalHouseholds, fetchMaintenanceCost, 관리비 계산 로직, E2E 시나리오
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "fs";
+import path from "path";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -20,7 +22,8 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
       success: vi.fn(),
       fail: vi.fn(),
       skip: vi.fn(),
-      summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0 })),
+      interrupted: vi.fn(() => false),
+      summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0, status: "success" })),
     })),
     recordApiQuota: vi.fn(),
   };
@@ -369,5 +372,17 @@ describe("E2E 시나리오", () => {
     const households = await fetchTotalHouseholds("K999");
     expect(households).toBeNull();
     // households가 null이면 main에서 rpt.skip(1) + continue
+  });
+});
+
+// ── graceful shutdown 회귀 가드 (PR #55, 세션 343) ─────────────
+describe("graceful shutdown 박힘 (회귀 가드)", () => {
+  it("collect-maintenance.mjs 본문에 rpt.interrupted break 2 회 박힘 (외부+내부 loop)", () => {
+    const src = readFileSync(
+      path.join(process.cwd(), "scripts/collectors/collect-maintenance.mjs"),
+      "utf8",
+    );
+    const matches = src.match(/if \(rpt\.interrupted\(\)\) break;/g);
+    expect(matches?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 });

@@ -151,6 +151,13 @@
 
 ## 🟡 곧
 
+- 🟡 **5/29 자연 cron 단발 cancelled 사고 모니터링** (세션 343 발견)
+  - run 26602629001 (5/28 21:13 UTC = 5/29 KST 06:13) = transport-tago step 105초 외부 cancel (진행 30/1001 시점)
+  - 진앙 미확정: 사용자 cancel / timeout 자연 도달 / NEIS / API rate limit / workflow_run trigger 모두 부정 (cancel_reason 박힘 없음, event=schedule, 46분<240분)
+  - 남은 가설 = GitHub Actions 인프라 부하 (cron 발화 21:13 UTC = 평소 20:45~20:55 보다 28분 늦음) + runner pool 한계 (manual dispatch 19:25~21:57 동시)
+  - 트리거: 다음 자연 cron 5/31 KST 06:00 답습 의무 → 재발 시 별 진단 PR
+  - 자가 점검 박힘: 본 cancelled 박힘은 세션 342 PR #51 자연 cron 검증 미완 (manual dispatch run 26597102782 만 검증 = schools id=106 success ok=902 skip=1099)
+
 - 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**, **세션 334 ADR 승격**)
   - **정책 결정**: → [docs/decisions/avg_price-policy.md](../docs/decisions/avg_price-policy.md) (세션 334 ADR 박힘)
   - 채택 = 옵션 1-A (보류) + 미래 후보 = 옵션 1-D (자매 계산)

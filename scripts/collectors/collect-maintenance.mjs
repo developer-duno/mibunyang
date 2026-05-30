@@ -159,6 +159,7 @@ async function main() {
 
   // 3. 지역별 단지목록 → kaptCode 매칭 → 관리비 조회
   for (const [region, regionTargets] of Object.entries(regionGroups)) {
+    if (rpt.interrupted()) break;
     const sidoCode = SIDO_CODE[region];
     if (!sidoCode) { log(PHASE, `${region}: 시도코드 없음, 건너뜀`); rpt.skip(regionTargets.length); continue; }
 
@@ -180,6 +181,7 @@ async function main() {
     log(PHASE, `  API 목록: ${aptList.length}건`);
 
     for (const target of regionTargets) {
+      if (rpt.interrupted()) break;
       const match = findBestMatch(target.name, target.gu, aptList, {
         guField: "address", guBonus: 0.15, attachScore: false,
       });

@@ -31,12 +31,8 @@ const COLLECTORS_DIR = path.resolve(process.cwd(), "scripts/collectors");
  *               collect-crime-safety / calc-school-walk / collect-market-stats / naver-presale
  *   PR-C (2건): collect-trades / childcare-info
  *
- * 추가 답습 자산:
- *   collect-maintenance (rpt=1 break=0, PR-B 외 추가 보강 후보) — 잠정 ALLOWLIST 박힘
  */
 const ALLOWLIST = new Set([
-  // 추가 보강 후보 (별 PR / 진단 박힘)
-  "collect-maintenance.mjs",       // K-apt 관리비, rpt=1 break=0
   // graceful 무관 — calc 단발 변환
   "calc-exclusive-ratio.mjs",
   "calc-floors.mjs",
