@@ -9,7 +9,7 @@
  *   node scripts/collectors/geocode-missing.mjs              (Supabase UPDATE)
  *   node scripts/collectors/geocode-missing.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown } from "./_shared.mjs";
 
 loadEnv();
 
@@ -96,6 +96,7 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
+  const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 344: graceful shutdown
 
   // 좌표 없는 단지 조회
   const { data: apts, error } = await sb
@@ -110,6 +111,7 @@ async function main() {
   let geocoded = 0, failed = 0;
 
   for (let i = 0; i < apts.length; i++) {
+    if (isInterrupted()) break;  // 세션 344: graceful shutdown
     const apt = apts[i];
     try {
       const cleanName = apt.name.replace(/\(.*?\)/g, "").trim();

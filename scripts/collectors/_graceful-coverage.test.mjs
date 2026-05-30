@@ -26,11 +26,14 @@ const COLLECTORS_DIR = path.resolve(process.cwd(), "scripts/collectors");
 /**
  * graceful 무관 collector (one-shot / non-loop / 단발 호출 / batch upsert 단일 호출).
  *
- * 본 PR-A 시점 (세션 329) 잠정 박힘. PR-B / PR-C 머지 후 ALLOWLIST 에서 제거 의무:
- *   PR-B (7건): collect-housing-price / childcare-detail / collect-nearby-childcare /
- *               collect-crime-safety / calc-school-walk / collect-market-stats / naver-presale
- *   PR-C (2건): collect-trades / childcare-info
- *
+ * 이력:
+ *   - PR-A (세션 329) / PR-B (세션 330) / PR-C (세션 337): 9 collector
+ *     (collect-housing-price / childcare-detail / collect-nearby-childcare /
+ *      collect-crime-safety / calc-school-walk / collect-market-stats / naver-presale /
+ *      collect-trades / childcare-info) graceful 적용 완료 + ALLOWLIST 에서 제거됨.
+ *   - 세션 344: ALLOWLIST 거짓 음성 5건 (trade-stats / molit-units / naver-listings /
+ *     reverse-geocode / geocode-missing) 발견 — 모두 cron 실행 + main loop + await 인데
+ *     graceful 누락. setupGracefulShutdown + break 박힘 후 ALLOWLIST 에서 제거.
  */
 const ALLOWLIST = new Set([
   // graceful 무관 — calc 단발 변환
@@ -55,15 +58,10 @@ const ALLOWLIST = new Set([
   // graceful 무관 — 단발 / 보조 / 진단
   "data-audit.mjs",
   "data-fill.mjs",
-  "geocode-missing.mjs",
   "migration.mjs",
-  "molit-units.mjs",
-  "naver-listings.mjs",
   "noise-estimate.mjs",
   "regulation-seed.mjs",
-  "reverse-geocode.mjs",
   "sync-naver-complex.mjs",
-  "trade-stats.mjs",
 ]);
 
 const REPORTER_REGEX = /createReporter\s*\(|setupGracefulShutdown\s*\(/;

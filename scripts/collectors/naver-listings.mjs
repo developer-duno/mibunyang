@@ -34,7 +34,7 @@
  *   article_confirm_ymd: string | null; last_seen_at: string;
  * }} ArticleRow
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, upsertBatch, log, logError, today, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, upsertBatch, log, logError, today, selectAll, setupGracefulShutdown } from "./_shared.mjs";
 
 loadEnv();
 
@@ -405,6 +405,7 @@ export function enrichArticleFromDetail(row, detail) {
 
 async function main() {
   const phase = "naver";
+  const isInterrupted = setupGracefulShutdown(phase);  // 세션 344: graceful shutdown
 
   if (dryRun) {
     log(phase, "🔍 --dry-run 모드");
@@ -446,6 +447,7 @@ async function main() {
 
   // 3. 지역별 단지 검색
   for (const [regionKey, apts] of regionGroups) {
+    if (isInterrupted()) break;  // 세션 344: graceful shutdown (region 검색 loop)
     log(phase, `🔎 검색: "${regionKey}" (${apts.length}건)`);
 
     try {
@@ -498,6 +500,7 @@ async function main() {
   let complexCount = 0;
 
   for (const complexRow of allComplexRows) {
+    if (isInterrupted()) break;  // 세션 344: graceful shutdown (complex 매물 loop)
     complexCount++;
     if (complexCount % 50 === 0) {
       log(phase, `  진행: ${complexCount}/${allComplexRows.length} 단지, ${totalArticles} 매물`);
