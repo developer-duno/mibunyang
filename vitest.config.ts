@@ -9,24 +9,37 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
   test: {
-    environment: 'jsdom',
     globals: true,
-    include: [
-      'src/**/*.test.{js,jsx,ts,tsx}',
-      'api/**/*.test.{js,jsx,ts,tsx}',
-      'scripts/**/*.test.{js,mjs,ts,mts}',
-    ],
     setupFiles: ['./src/__tests__/setup.js'],
-    // @ts-expect-error vitest 4 타입에서 environmentMatchGlobs 가 deprecated 됐으나 런타임 동작 유지를 위해 보존. 추후 projects 패턴으로 마이그레이션 예정 (BACKLOG)
-    environmentMatchGlobs: [
-      ['api/**/*.test.{js,jsx,ts,tsx}', 'node'],
-      ['scripts/**/*.test.{js,mjs,ts,mts}', 'node'],
-    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary'],
       include: ['src/**/*.{js,jsx,ts,tsx}'],
       exclude: ['src/**/*.test.{js,jsx,ts,tsx}', 'src/__tests__/**'],
     },
+    // vitest 4 에서 environmentMatchGlobs 제거됨 → projects 로 환경 분기.
+    // 공통 옵션(plugins/alias/globals/setupFiles/coverage)은 루트에 두고
+    // extends: true 로 각 project 에 상속. (setup.js 는 typeof window 가드로 node 안전)
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'jsdom',
+          environment: 'jsdom',
+          include: ['src/**/*.test.{js,jsx,ts,tsx}'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: [
+            'api/**/*.test.{js,jsx,ts,tsx}',
+            'scripts/**/*.test.{js,mjs,ts,mts}',
+          ],
+        },
+      },
+    ],
   },
 });
