@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ 5/29 자연 cron cancelled 모니터링 종결 + 진앙 정정 — 세션 347 (부팅 점검 실측: incremental 자연 cron 5/26·27·28 cancelled → **5/29 success(74분, all step success, 순수 자연 cron)** = 세션 338 PR #51 효과 확인. **진앙 정정** = 5/28 cancelled 는 BACKLOG 가 적은 "transport 105초 외부 cancel / 인프라 부하 가설"이 아니라, raw `gh api jobs` 실측 결과 **세션 342 검증용 manual dispatch(19:25~21:57, 2h31m)가 같은 concurrency 그룹(`naver-postprocess-incremental`, `cancel-in-progress:false`) 점유 → 자연 schedule run 44분 큐 대기 후 manual 종료 2초 뒤 cancel**. 답습 = 검증용 수동 실행은 자연 cron 시각(20:30 UTC)과 겹치지 않게. 부팅 1차 진단 "좀비 run" 은 `currentDate` 메타값 단정 환각(`date -u` 실측 의무). 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md))
 - ✅ audit-env-keys collector→yml 역방향 매칭 재구성 — 세션 346 (P2 였던 "step 단위 보강" 진입 시 자가 점검 1 발동 결과 **더 근본적 사각지대 9건 실측 발견**: `findWorkflowForCollector` 1:1 매칭이 yml명≠collector명(transport-tago↔collect-transport 등) collector 9개를 **검증조차 안 하고 clean 오집계** = 세션 328 사고 진짜 근본 원인. `extractStepCollectorEnv()` 신규로 모든 yml step 의 collector 호출 역방향 수집 + multi-collector/1:N/env 상속 처리 + validate `${{ secrets.X }}` B형 정규식 통일. errorCount 0 유지(9개 전부 실측 누락 0) + 세션328/이름불일치 재현 시뮬 EXIT 1 검출 확인 + vitest 10/10. 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md))
 - ✅ graceful shutdown 15 collector 일괄 보강 — 세션 329 PR-A + 330 PR-B + 337 PR-C 누적 머지로 완전 완료 (세션 341 실측 답습 결과 = `_graceful-coverage.test.mjs` 53/53 PASS 회귀 가드 박힘. BACKLOG L92 박제값 stale 환각 정정. 잔여 = `collect-maintenance` + `trade-stats-regions` 만 ALLOWLIST 박힘 별 진단 후보)
 - ✅ monitor-collectors §5 schools stale_days 35→14 정정 (세션 339, NEIS 일일 발화 기준 + 세션 338 3주 사고 35일 한계 안에 묻혀 alert 0회 발화한 진앙 해소; `external-api-outage-policy.md` 동시 동기 + `collector-timeout-rootcause-analysis.md` 세션 338 절 신규)
@@ -168,13 +169,6 @@
 ---
 
 ## 🟡 곧
-
-- 🟡 **5/29 자연 cron 단발 cancelled 사고 모니터링** (세션 343 발견)
-  - run 26602629001 (5/28 21:13 UTC = 5/29 KST 06:13) = transport-tago step 105초 외부 cancel (진행 30/1001 시점)
-  - 진앙 미확정: 사용자 cancel / timeout 자연 도달 / NEIS / API rate limit / workflow_run trigger 모두 부정 (cancel_reason 박힘 없음, event=schedule, 46분<240분)
-  - 남은 가설 = GitHub Actions 인프라 부하 (cron 발화 21:13 UTC = 평소 20:45~20:55 보다 28분 늦음) + runner pool 한계 (manual dispatch 19:25~21:57 동시)
-  - 트리거: 다음 자연 cron 5/31 KST 06:00 답습 의무 → 재발 시 별 진단 PR
-  - 자가 점검 박힘: 본 cancelled 박힘은 세션 342 PR #51 자연 cron 검증 미완 (manual dispatch run 26597102782 만 검증 = schools id=106 success ok=902 skip=1099)
 
 - 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**, **세션 334 ADR 승격**)
   - **정책 결정**: → [docs/decisions/avg_price-policy.md](../docs/decisions/avg_price-policy.md) (세션 334 ADR 박힘)
