@@ -98,10 +98,10 @@
   - 정정 안: `scripts/audit-env-keys.mjs` 의 yml 파싱 로직에 step 단위 답습 추가. step 의 `run:` 에 박힌 collector 파일명 추출 → 해당 collector 의 codeKeys 와 step env block 교차 검증
   - 트리거: 다음 step 단위 누락 사고 발생 시 자동 차단
 
-- 🟡 **scripts/CLAUDE.md 테스트 수 박제값 stale** (세션 344 발견, P2, 별 PR)
-  - 실측 stale 3건: `collect-maintenance.test.mjs` 18→27, `schools-neis.test.mjs` 77→83, `collect-market-stats.test.mjs` 14→16
-  - 전체 41개 test 파일 실측 의무 (`grep -cE "^\s*(it|test)\(" scripts/collectors/*.test.mjs`). 범위 커서 별 PR
-  - 트리거: scripts/CLAUDE.md 편집 시 또는 별 정리 세션
+- ✅ **scripts/CLAUDE.md 테스트 수 박제값 stale — 종결** (세션 344 발견 → 세션 345 정정)
+  - 세션 344 박제 "stale 3건"은 과소. 실측 = **표 42행 나열 / 실제 55개 파일** (13개 누락) + 다수 수치 stale + `isCLI 34개 → 57개`
+  - 세션 345 전수 정정: 표 → 55행 / **1017 케이스** (vitest 실측). isCLI 박제값 34 → 57. 측정 명령 박힘 (미래 stale 방지)
+  - 답습 2중: (1) BACKLOG 박제값("3건") ≠ 실측 (2) **grep 카운트(931) ≠ vitest 실행 수(1017)** — grep 은 동적 생성 `it()` 못 셈 (`_graceful-coverage` ALLOWLIST 루프 grep 2 → vitest 53). 진실의 원천 = vitest `--reporter=json`
 
 - 🔴 **concurrency 분리 = 금지 (안티 패턴 박제, 세션 344)**
   - 워크플로 분석이 "34개 collector data-collection 단일 큐 직렬화 → collector별 고유 group 분리"를 제안했으나 **하면 안 됨**
@@ -119,10 +119,12 @@
   - raw 실측: 앞 4건 (Emergency/Police/KOSIS/Housing Permits) = jobs=0 + 7~8초 cancel, triggering_actor=developer-duno (사람), 모두 `data-collection` concurrency 그룹 + `cancel-in-progress: false`. 동시 dispatch 후 **수동 cancel** (concurrency supersede 아님 — pending 슬롯은 새 run 도착 시 직전 것 cancel)
   - 5번째 building-info 는 별개 사고로 분리 (아래 신규 P1)
 
-- 🟡 **building-info 매월 10일 cron 30분 반복 cancel 진단** (세션 344 발견, P1, 별 세션)
-  - 실측: `collect-building-info.yml` 정기 schedule run 이 매월 10일 정확히 30분(16~17초)에 cancel — 5/10 (25634351927) + 4/10 (24253869654) 둘 다 `event=schedule`. 다음날 5/11·4/11 재시도로만 success. 5/26 dispatch run (26451400957) 도 30분 16초 cancel
-  - timeout-minutes=90 미달 + raw log = 코드 정상 단지 처리 중 외부 cancel (`##[error]The operation was canceled` 직전까지 단지 출력 정상). GitHub 30분 제약 없음 (공식 문서: job 6h, queue 24h)
-  - data.go.kr 매월 10일 ~8,500 쿼터 위험일과 겹침 (`scripts/CLAUDE.md` 쿼터 분배). 진앙 미확정 = 별 세션 raw 답습 의무 (concurrency 큐 대기 51분 + 30분 cancel 패턴 정밀 진단)
+- ✅ **building-info 매월 10일 cron 30분 반복 cancel 진단 — 종결** (세션 344 발견 → 세션 345 종결)
+  - **진앙 = 옛날 `timeout-minutes: 30`** (이미 PR #26 커밋 `0a9cbd1`, 2026-05-26 14:58 UTC 에서 90 으로 정정 완료). 세션 344 박제 "외부 cancel / 진앙 미확정"은 **이 커밋을 누락한 오진**
+  - 교차 검증 (세션 345, 멀티 에이전트 4-way + git 직접): cancelled run 3건 모두 `0a9cbd1` 이전 생성 → 옛날 30분 timeout 에 걸린 것. (4/10 16:47 UTC / 5/10 16:51 UTC / 5/26 13:36 UTC — 전부 커밋 14:58 UTC 이전)
+  - collect step 런타임 일관 (1793~1800초 ≈ 30분 정각) = 작업량 변동이 아니라 **고정 timeout 경계**. `gh run list --status timed_out` 0건은 옛 버전이 SIGKILL grace 0 으로 cancelled 로 기록됐기 때문 (`graceful-shutdown-coverage.md` 답습)
+  - 5/11·4/11 fallback success = 토요일 skip 경로 (실제 수집 0건). 10일이 일/금이라 fallback 미작동 → 그 달 수집이 사실상 누락됐던 것
+  - **잔여 모니터링 (P2, 신규)**: 90분이 충분한지 미검증. 다음 정기 cron = **6/10** 이 첫 full schedule 검증. 2,000+ 단지를 90분 내 완수하는지 `collector_runs` (status=success + ok_count) 로 확인. 초과 시 timeout 추가 상향 또는 단지 chunk 분할 검토
 
 - ✅ **monitor-collectors 알림 9건 누적 사고** (세션 326 발견 → 세션 327 종결, docs only)
   - 답습 결과 = monitor 정상 작동 (9개 사고 즉시 감지 결과). 알림 9건 = 사고 아닌 정상 감지
