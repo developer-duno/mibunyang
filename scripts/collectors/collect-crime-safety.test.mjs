@@ -75,20 +75,20 @@ describe("matchCrimeGrade", () => {
   ]);
 
   it("region+gu 정확 매칭", () => {
-    expect(matchCrimeGrade({ region: "서울", gu: "종로구" }, crimeMap)).toBe(2);
-    expect(matchCrimeGrade({ region: "경기", gu: "수원시" }, crimeMap)).toBe(4);
+    expect(matchCrimeGrade(/** @type {any} */ ({ region: "서울", gu: "종로구" }), crimeMap)).toBe(2);
+    expect(matchCrimeGrade(/** @type {any} */ ({ region: "경기", gu: "수원시" }), crimeMap)).toBe(4);
   });
 
   it("gu 없는 단지 → region 폴백 매칭", () => {
     // 세종처럼 gu가 null인 경우
-    expect(matchCrimeGrade({ region: "세종", gu: null }, crimeMap)).toBe(1);
+    expect(matchCrimeGrade(/** @type {any} */ ({ region: "세종", gu: null }), crimeMap)).toBe(1);
   });
 
   it("매칭 불가 → null", () => {
-    expect(matchCrimeGrade({ region: "제주", gu: "서귀포시" }, crimeMap)).toBeNull();
+    expect(matchCrimeGrade(/** @type {any} */ ({ region: "제주", gu: "서귀포시" }), crimeMap)).toBeNull();
   });
 
   it("region 없으면 null", () => {
-    expect(matchCrimeGrade({ region: null, gu: "종로구" }, crimeMap)).toBeNull();
+    expect(matchCrimeGrade(/** @type {any} */ ({ region: null, gu: "종로구" }), crimeMap)).toBeNull();
   });
 });

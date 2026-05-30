@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // _shared.mjs — loadEnv/getSupabase 차단, stringSimilarity는 실제 유지
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -29,21 +29,21 @@ const {
 } = await import("./_molit-api.mjs");
 
 // ── 헬퍼 ─────────────────────────────────────────────────────
-function jsonRes(body, status = 200) {
+function jsonRes(/** @type {any} */ body, /** @type {any} */ status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
     text: () => Promise.resolve(JSON.stringify(body)),
   };
 }
-function xmlRes(text, status = 200) {
+function xmlRes(/** @type {any} */ text, /** @type {any} */ status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
     text: () => Promise.resolve(text),
   };
 }
-function errRes(status) {
+function errRes(/** @type {any} */ status) {
   return { ok: false, status, text: () => Promise.resolve("") };
 }
 
@@ -90,14 +90,14 @@ describe("findBestMatch", () => {
   it("완전 일치 시 score ≈ 1.0 반환", () => {
     const match = findBestMatch("래미안 원베일리", null, aptList);
     expect(match).not.toBeNull();
-    expect(match.kaptCode).toBe("K001");
-    expect(match.matchScore).toBeGreaterThanOrEqual(0.9);
+    expect(match?.kaptCode).toBe("K001");
+    expect(match?.matchScore).toBeGreaterThanOrEqual(0.9);
   });
 
   it("유사 매칭 (≥0.5) 시 결과 반환", () => {
     const match = findBestMatch("래미안원베일리아파트", null, aptList);
     expect(match).not.toBeNull();
-    expect(match.kaptCode).toBe("K001");
+    expect(match?.kaptCode).toBe("K001");
   });
 
   it("유사도 < 0.5 이면 null 반환", () => {
@@ -117,11 +117,11 @@ describe("findBestMatch", () => {
     ["attachScore=false → matchScore 없음", "래미안 원베일리", null, { attachScore: false }, false],
   ];
   for (const [label, name, gu, opts, hasScore] of optCases) {
-    it(label, () => {
-      const match = findBestMatch(name, gu, aptList, opts);
+    it(/** @type {any} */ (label), () => {
+      const match = findBestMatch(/** @type {any} */ (name), /** @type {any} */ (gu), aptList, /** @type {any} */ (opts));
       if (hasScore === false) {
         expect(match).not.toBeNull();
-        expect(match.matchScore).toBeUndefined();
+        expect(match?.matchScore).toBeUndefined();
       } else {
         // 매칭 자체만 검증 (보너스 효과는 점수로 간접 확인)
         expect(match).not.toBeNull();
@@ -253,10 +253,10 @@ describe("fetchSidoAptList", () => {
     ["단일 아이템 (비배열) → 배열 래핑", { response: { body: { totalCount: 1, items: { item: { kaptCode: "X" } } } } }, 1],
   ];
   for (const [label, json, expectedLen] of edgeCases) {
-    it(label, async () => {
+    it(/** @type {any} */ (label), async () => {
       mockFetch.mockResolvedValueOnce(jsonRes(json));
       const result = await fetchSidoAptList("test", "11", "key");
-      expect(result).toHaveLength(expectedLen);
+      expect(result).toHaveLength(/** @type {any} */ (expectedLen));
     });
   }
 });

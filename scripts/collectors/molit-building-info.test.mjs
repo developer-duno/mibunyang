@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // _molit-api.mjs 모킹 — molitApiCall 제어
 const mockMolitApiCall = vi.fn();
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, molitApiCall: mockMolitApiCall };
 });
 
@@ -33,6 +33,10 @@ process.env.MOLIT_KEY = "test-key";
 const { extractBuildingInfo, updateBuilding, fetchAptDetail } = await import("./molit-building-info.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
+/**
+ * @param {any} [overrides]
+ * @returns {any}
+ */
 function makeDetail(overrides = {}) {
   return {
     kaptdPcnt: "200",     // 지상 주차
@@ -49,6 +53,10 @@ function makeDetail(overrides = {}) {
   };
 }
 
+/**
+ * @param {any} [updateResult]
+ * @returns {any}
+ */
 function makeMockSb(updateResult = { error: null }) {
   const eq = vi.fn().mockResolvedValue(updateResult);
   const update = vi.fn().mockReturnValue({ eq });
@@ -133,7 +141,7 @@ describe("updateBuilding", () => {
   it("non-null 필드만 UPDATE + updated_at + 성공 반환", async () => {
     const sb = makeMockSb();
     const info = { parking_ratio: 0.7, max_floor: null, energy_grade: 2, heating: null, corridor_type: null };
-    const ok = await updateBuilding(sb, "apt-1", info, false);
+    const ok = await updateBuilding(sb, "apt-1", /** @type {any} */ (info), false);
 
     expect(ok).toBe(true);
     const updateArg = sb.from("apartments").update.mock.calls[0][0];
@@ -148,7 +156,7 @@ describe("updateBuilding", () => {
   it("전부 null → DB 호출 없이 false 반환", async () => {
     const sb = makeMockSb();
     const info = { parking_ratio: null, max_floor: null, energy_grade: null, heating: null, corridor_type: null };
-    const ok = await updateBuilding(sb, "apt-1", info, false);
+    const ok = await updateBuilding(sb, "apt-1", /** @type {any} */ (info), false);
 
     expect(ok).toBe(false);
     expect(sb.from).not.toHaveBeenCalled();
@@ -157,7 +165,7 @@ describe("updateBuilding", () => {
   it("dryRun=true → DB 미호출 + true 반환", async () => {
     const sb = makeMockSb();
     const info = { parking_ratio: 0.5, max_floor: 20, energy_grade: 3, heating: "지역난방", corridor_type: "계단식" };
-    const ok = await updateBuilding(sb, "apt-1", info, true);
+    const ok = await updateBuilding(sb, "apt-1", /** @type {any} */ (info), true);
 
     expect(ok).toBe(true);
     expect(sb.from).not.toHaveBeenCalled();
@@ -166,7 +174,7 @@ describe("updateBuilding", () => {
   it("Supabase 에러 → false + logError 호출", async () => {
     const sb = makeMockSb({ error: { message: "DB 실패" } });
     const info = { parking_ratio: 0.5, max_floor: null, energy_grade: null, heating: null, corridor_type: null };
-    const ok = await updateBuilding(sb, "apt-1", info, false);
+    const ok = await updateBuilding(sb, "apt-1", /** @type {any} */ (info), false);
 
     expect(ok).toBe(false);
   });
@@ -185,8 +193,8 @@ describe("fetchAptDetail", () => {
 
     const detail = await fetchAptDetail("K001");
     expect(detail).not.toBeNull();
-    expect(detail.kaptdaCnt).toBe("500");
-    expect(detail.kaptdPcnt).toBe("100");
+    expect(detail?.kaptdaCnt).toBe("500");
+    expect(detail?.kaptdPcnt).toBe("100");
   });
 
   // 부분 실패 시나리오
@@ -196,14 +204,14 @@ describe("fetchAptDetail", () => {
     ["둘 다 실패 → null", { response: { body: null } }, { response: { body: null } }, null],
   ];
   for (const [label, bassRes, dtlRes, checkField] of partialCases) {
-    it(label, async () => {
+    it(/** @type {string} */ (label), async () => {
       mockMolitApiCall.mockResolvedValueOnce(bassRes).mockResolvedValueOnce(dtlRes);
       const detail = await fetchAptDetail("K001");
       if (checkField === null) {
         expect(detail).toBeNull();
       } else {
         expect(detail).not.toBeNull();
-        expect(detail[checkField]).toBeDefined();
+        expect(/** @type {any} */ (detail)?.[/** @type {string} */ (checkField)]).toBeDefined();
       }
     });
   }
@@ -224,7 +232,7 @@ describe("E2E 시나리오", () => {
     const detail = await fetchAptDetail("K001");
     expect(detail).not.toBeNull();
 
-    const info = extractBuildingInfo(detail);
+    const info = extractBuildingInfo(/** @type {any} */ (detail));
     expect(info.parking_ratio).toBe(1);     // (200+600)/800
     expect(info.max_floor).toBe(30);
     expect(info.energy_grade).toBe(1);

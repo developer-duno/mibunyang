@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // 외부 호출 방지
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
 });
 

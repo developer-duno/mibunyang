@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // _molit-api.mjs 모킹 — molitApiCall 제어
 const mockMolitApiCall = vi.fn();
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, molitApiCall: mockMolitApiCall };
 });
 
@@ -33,6 +33,11 @@ process.env.MOLIT_KEY = "test-key";
 const { getTargets, fetchAptDetail, updateUnits } = await import("./molit-units.mjs");
 
 // ── 헬퍼 ─────────────────────────────────────────────────────
+/**
+ * @param {any} data
+ * @param {any} [error]
+ * @returns {any}
+ */
 function makeMockSbForQuery(data, error = null) {
   // selectAll이 .range()를 호출하므로 체인에 포함
   const range = vi.fn().mockResolvedValue({ data, error });
@@ -42,6 +47,10 @@ function makeMockSbForQuery(data, error = null) {
   return { from, select, or, range };
 }
 
+/**
+ * @param {any} [updateResult]
+ * @returns {any}
+ */
 function makeMockSbForUpdate(updateResult = { error: null }) {
   const eq = vi.fn().mockResolvedValue(updateResult);
   const update = vi.fn().mockReturnValue({ eq });
@@ -66,7 +75,7 @@ describe("getTargets", () => {
     ["data=null → 빈 배열", null, null, false],
   ];
   for (const [label, data, error, shouldThrow] of errorCases) {
-    it(label, async () => {
+    it(/** @type {string} */ (label), async () => {
       const sb = makeMockSbForQuery(data, error);
       if (shouldThrow) {
         await expect(getTargets(sb)).rejects.toThrow("selectAll 조회 실패");
@@ -90,13 +99,13 @@ describe("fetchAptDetail", () => {
     ["응답 전체 null → null", null, null],
   ];
   for (const [label, mockResponse, expectedCnt] of parseCases) {
-    it(label, async () => {
+    it(/** @type {string} */ (label), async () => {
       mockMolitApiCall.mockResolvedValueOnce(mockResponse);
       const detail = await fetchAptDetail("K001");
       if (expectedCnt === null) {
         expect(detail).toBeNull();
       } else {
-        expect(detail.kaptdaCnt).toBe(expectedCnt);
+        expect(detail?.kaptdaCnt).toBe(expectedCnt);
       }
     });
   }
@@ -123,9 +132,9 @@ describe("updateUnits", () => {
     ["unsold=0 → rate 0.0", 500, 0, 0],
   ];
   for (const [label, units, unsold, expectedRate] of rateCases) {
-    it(label, async () => {
+    it(/** @type {string} */ (label), async () => {
       const sb = makeMockSbForUpdate();
-      await updateUnits(sb, "a1", units, unsold, false);
+      await updateUnits(sb, "a1", /** @type {any} */ (units), /** @type {any} */ (unsold), false);
       if (expectedRate === null) {
         // dryRun이 아닌 경우에도 DB 호출은 함
         // unsoldRate 자체만 검증
@@ -144,9 +153,9 @@ describe("updateUnits", () => {
     ["DB 에러 → false", false, { error: { message: "실패" } }, false],
   ];
   for (const [label, dryRun, dbResult, expectedOk] of modeCases) {
-    it(label, async () => {
+    it(/** @type {string} */ (label), async () => {
       const sb = makeMockSbForUpdate(dbResult);
-      const ok = await updateUnits(sb, "a1", 500, 50, dryRun);
+      const ok = await updateUnits(sb, "a1", 500, 50, /** @type {any} */ (dryRun));
       expect(ok).toBe(expectedOk);
       if (dryRun) {
         expect(sb.from).not.toHaveBeenCalled();
@@ -168,7 +177,7 @@ describe("E2E 시나리오", () => {
     const detail = await fetchAptDetail("K001");
     expect(detail).not.toBeNull();
 
-    const kaptdaCnt = parseInt(detail.kaptdaCnt, 10);
+    const kaptdaCnt = parseInt(/** @type {string} */ (detail?.kaptdaCnt), 10);
     expect(kaptdaCnt).toBe(800);
     expect(kaptdaCnt).toBeGreaterThan(1);
 
@@ -191,7 +200,7 @@ describe("E2E 시나리오", () => {
     const detail = await fetchAptDetail("K999");
     expect(detail).not.toBeNull();
 
-    const kaptdaCnt = parseInt(detail.kaptdaCnt || "0", 10);
+    const kaptdaCnt = parseInt(/** @type {string} */ (detail?.kaptdaCnt || "0"), 10);
     // main()에서 isNaN(kaptdaCnt) || kaptdaCnt <= 1 이면 skipped
     expect(isNaN(kaptdaCnt) || kaptdaCnt <= 1).toBe(true);
   });

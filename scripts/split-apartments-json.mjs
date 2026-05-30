@@ -17,6 +17,7 @@ if (!existsSync(SRC)) {
 }
 
 const src = JSON.parse(readFileSync(SRC, "utf8"));
+/** @type {any[]} */
 const apartments = Array.isArray(src.data) ? src.data : [];
 const fetchedAt = src.fetchedAt ?? null;
 // 세션 292 양쪽 키 박제 답습 — apartments.json 에 dataUpdatedAt 박혀 있으면 우선, 없으면 fetchedAt 답습.

@@ -10,7 +10,7 @@ import path from "path";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
     ...orig,
     loadEnv: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // _molit-api.mjs 모킹 — molitApiCall 제어
 const mockMolitApiCall = vi.fn();
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
-  const orig = await importOriginal();
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return { ...orig, molitApiCall: mockMolitApiCall };
 });
 
@@ -46,7 +46,8 @@ process.env.MOLIT_KEY = "test-key";
 const { fetchTotalHouseholds, fetchMaintenanceCost } = await import("./collect-maintenance.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
-/** molitApiCall 응답 팩토리 (fetchTotalHouseholds용) */
+/** molitApiCall 응답 팩토리 (fetchTotalHouseholds용)
+ * @param {any} kaptdaCnt @param {boolean} [useItems] */
 function makeHouseholdsResponse(kaptdaCnt, useItems = false) {
   const item = kaptdaCnt != null ? { kaptdaCnt: String(kaptdaCnt) } : null;
   if (useItems) {
@@ -55,7 +56,8 @@ function makeHouseholdsResponse(kaptdaCnt, useItems = false) {
   return { response: { body: { item } } };
 }
 
-/** fetch 응답 팩토리 (fetchMaintenanceCost용) */
+/** fetch 응답 팩토리 (fetchMaintenanceCost용)
+ * @param {any} field @param {any} value */
 function makeCostResponse(field, value) {
   return {
     ok: true,
@@ -252,6 +254,7 @@ describe("관리비 계산 로직 (항목별)", () => {
   // collect-maintenance.mjs main() 의 toItemPerUnit + sumItems 로직 직접 검증
   // ITEM_CAP=100, MAINT_CAP=500
 
+  /** @param {any} raw @param {any} households */
   function calcItemPerUnit(raw, households) {
     if (raw == null || raw <= 0 || !households) return null;
     return Math.min(Math.round(raw / households / 10000), 100);
@@ -282,8 +285,12 @@ describe("관리비 계산 로직 (항목별)", () => {
 
 describe("관리비 합산 로직 (sumItems + MAINT_CAP)", () => {
   // 5 항목 만원 → sumItems → MAINT_CAP=500 클램핑
+  /** @param {Array<number|null>} arr */
   function sumItems(arr) {
-    const total = arr.reduce((s, v) => s + (v ?? 0), 0);
+    const total = arr.reduce(
+      /** @param {number} s @param {number|null} v */ (s, v) => s + (v ?? 0),
+      0,
+    );
     if (total <= 0) return null;
     return Math.min(total, 500);
   }
@@ -337,7 +344,7 @@ describe("E2E 시나리오", () => {
     }
     const heat = toItemPerUnit(costs?.heat ?? null);
     const sum = [costs?.heat, costs?.hotwater, costs?.gas, costs?.elec, costs?.water]
-      .reduce((s, v) => s + (v ?? 0), 0);
+      .reduce(/** @param {number} s @param {any} v */ (s, v) => s + (v ?? 0), 0);
     expect(sum).toBe(10000000); // raw 합산
     expect(heat).toBe(0); // 2,000,000 / 1000 / 10000 = 0.2 → round 0
   });
@@ -363,7 +370,8 @@ describe("E2E 시나리오", () => {
     const heat = toItemPerUnit(costs?.heat ?? null);
     expect(heat).toBe(20); // 200,000,000 / 1000 / 10000 = 20
     const sum = [costs?.heat, costs?.hotwater, costs?.gas, costs?.elec, costs?.water]
-      .map(toItemPerUnit).reduce((s, v) => s + (v ?? 0), 0);
+      .map(/** @param {any} v */ (v) => toItemPerUnit(v ?? null))
+      .reduce(/** @param {number} s @param {any} v */ (s, v) => s + (v ?? 0), 0);
     expect(sum).toBe(100); // 5 * 20
   });
 

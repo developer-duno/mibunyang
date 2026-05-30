@@ -206,7 +206,7 @@ describe("buildMessages", () => {
 
   it("이슈 여러 건을 한 통으로 합친다 — 헤더에 건수 포함", () => {
     const msgs = buildMessages([
-      { kind: "fail", collector: "A", conclusion: "failure", detail: "d" },
+      /** @type {any} */ ({ kind: "fail", collector: "A", conclusion: "failure", detail: "d" }),
       { kind: "empty", collector: "B", detail: "d" },
       { kind: "nulls", collector: "C", detail: "d" },
     ]);
