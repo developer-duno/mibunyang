@@ -158,6 +158,20 @@
 
 ## 🟡 곧 — 완료
 
+- ✅ **vitest 4 `environmentMatchGlobs` → `projects` 마이그레이션** (세션 348, 2026-05-30)
+  - 진입: BACKLOG "TS M0 후속" 🟡 (세션 172 발견) — `vitest.config.ts` 가 `environmentMatchGlobs`(api/scripts → node 환경 분기)를 `// @ts-expect-error` 1줄로 보존 중. 트리거 = "M1 진입 직전 또는 vitest 5 검토". 세션 348 부팅 점검에서 작업 가능 P0 0건 → 유일한 소규모 안전 작업으로 사용자 선택.
+  - **핵심 실측 발견 (조사 + 직접 grep 교차 검증)**:
+    - `grep -rl environmentMatchGlobs node_modules/vitest/dist/` = **0건** → vitest 4.1.6 에서 옵션 **완전 제거** (deprecated 가 아니라 제거). 즉 이 옵션은 무효였고 **api/scripts 테스트가 의도(node)와 달리 jsdom 에서 돌고 있었음**. baseline 로그의 `Not implemented: navigation to another Document`(jsdom 전용 메시지)가 그 증거.
+    - `grep -rlE 'window|document|render\(|@testing-library/react' api/ scripts/ --include='*.test.*'` = **0건** → api/scripts 가 브라우저 API 미사용 → jsdom 에서 돌아도 사고 0 (그래서 세션 172~347 동안 무사고로 묻힘). jsdom→node 전환이 기능 회귀를 일으키지 않음 확정.
+    - `@/` import 쓰는 src 테스트 = **32 파일** → `extends: true` 누락 시 32개 즉사.
+  - **fix (`vitest.config.ts` +24/-11)**:
+    - 루트 `test` 에서 `environment: 'jsdom'` / `include` 3글롭 / `environmentMatchGlobs` + `// @ts-expect-error` 제거.
+    - 공통 옵션(`globals`/`setupFiles`/`coverage`/루트 `plugins: [react()]`/`resolve.alias`) 루트 1곳 유지.
+    - `test.projects` inline 2개 + 각 `extends: true`: `jsdom`(environment jsdom, include src) / `node`(environment node, include api+scripts).
+  - **함정 (조사 답습)**: `extends: true` = globals + `@` alias(32 파일) + setupFiles **3중 상속의 단일 열쇠** (누락 시 동시 회귀). coverage 는 project-level 미지원 → 루트 필수. 루트 `include` 제거 안 하면 파일 2회 실행. setup.js 는 `typeof window` 가드라 node project 에서 jest-dom import 건너뛰어 안전.
+  - **검증 (회귀 0 실측)**: `vitest run --reporter=json` 전후 동일 = **672 파일 / 3146 케이스 / 100% 통과 / 실패 0** (src 1563 · api 387 · scripts 1196 디렉토리별 완전 일치). typecheck exit 0(`@ts-expect-error` 제거 후 unused directive 에러 0). `vitest list --project jsdom` = src 만 / `--project node` = api+scripts 만 (jsdom 에 잡힌 "api/" 4건은 테스트 *이름* 문자열 `> /api/...` = false positive, 자가 점검 1 로 확인).
+  - **답습 자산**: (1) "deprecated 보존" 박제값 ≠ 실측 — dist grep 으로 "완전 제거" 확정해야 정확. (2) 환경 분기가 죽어있어도 테스트가 그 환경 기능을 안 쓰면 무사고로 수년 묻힘 → grep 으로 실제 사용 여부 실측 의무. (3) projects 마이그레이션 = `extends: true` 단일 열쇠 + coverage 루트 + include 중복 제거 3대 함정. (4) 워크플로 2관점 조사(공식 문서 + 함정) + 직접 grep 교차 검증 패턴.
+
 - ✅ **5/29 자연 cron cancelled 모니터링 종결 + 진앙 정정** (세션 347, 2026-05-30)
   - 진입: 세션 343 이 BACKLOG 🟡 곧에 박은 "5/29 자연 cron 단발 cancelled 모니터링" 항목 (트리거 = "다음 자연 cron 답습 → 재발 시 별 진단 PR")
   - **종결 근거**: `collect-naver-listings-incremental.yml` 자연 cron(schedule) 흐름 = 5/24·25 success → 5/26·27·28 cancelled → **5/29 21:11 run 26662435607 success (job 21:11:45~22:26:07 = 74분, all step success)**. 그날 manual dispatch 0건 = 순수 자연 cron. timeout 240분의 1/3만 사용. 세션 338 PR #51(schools-neis resume skip + timeout 180→240) 효과가 자연 cron 에서 확인됨.
