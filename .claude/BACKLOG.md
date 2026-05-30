@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ audit-env-keys collector→yml 역방향 매칭 재구성 — 세션 346 (P2 였던 "step 단위 보강" 진입 시 자가 점검 1 발동 결과 **더 근본적 사각지대 9건 실측 발견**: `findWorkflowForCollector` 1:1 매칭이 yml명≠collector명(transport-tago↔collect-transport 등) collector 9개를 **검증조차 안 하고 clean 오집계** = 세션 328 사고 진짜 근본 원인. `extractStepCollectorEnv()` 신규로 모든 yml step 의 collector 호출 역방향 수집 + multi-collector/1:N/env 상속 처리 + validate `${{ secrets.X }}` B형 정규식 통일. errorCount 0 유지(9개 전부 실측 누락 0) + 세션328/이름불일치 재현 시뮬 EXIT 1 검출 확인 + vitest 10/10. 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md))
 - ✅ graceful shutdown 15 collector 일괄 보강 — 세션 329 PR-A + 330 PR-B + 337 PR-C 누적 머지로 완전 완료 (세션 341 실측 답습 결과 = `_graceful-coverage.test.mjs` 53/53 PASS 회귀 가드 박힘. BACKLOG L92 박제값 stale 환각 정정. 잔여 = `collect-maintenance` + `trade-stats-regions` 만 ALLOWLIST 박힘 별 진단 후보)
 - ✅ monitor-collectors §5 schools stale_days 35→14 정정 (세션 339, NEIS 일일 발화 기준 + 세션 338 3주 사고 35일 한계 안에 묻혀 alert 0회 발화한 진앙 해소; `external-api-outage-policy.md` 동시 동기 + `collector-timeout-rootcause-analysis.md` 세션 338 절 신규)
 - ✅ schools-neis 3주 cancelled root fix — 데이터 완결성 resume skip (`buildEnrichedIds` 헬퍼 export) + timeout 180→240 + 단위 테스트 6건 (세션 338, PR #51 머지 main `b76f6a9`; 5/22+5/26+5/27 3주 연속 cancelled 진앙 = NEIS 단지당 5.8초 12배 지연 + resume skip 패턴 부재. Plan v1+v2 환각 10건 검출 = 서브에이전트 3개 + DB 실측 교차 검증 패턴 답습 자산)
@@ -92,11 +93,6 @@
   - 자가 점검 1 = Explore Agent #1 정확 (Secrets ✅ + yml 누락 ❌) vs Agent #2 환각 (Secrets 미등록 ❌). 직접 `gh secret list` 답습 의무 정착
   - 검증 = 5/28 KST 05:30 자연 cron raw log "⚠️ ... 미설정" 0건 답습 의무
   - 답습 자산: `.claude/rules/workflows/secret-naming-audit.md` §"yml validate step 의무화" + 보조 BACKLOG 박힘 (audit-env-keys.mjs step 단위 검증 보강 P2)
-
-- 🟡 **audit-env-keys.mjs step 단위 검증 보강** (세션 328 박힘, P2)
-  - 현재 audit = yml 전체 env block 답습 (step 단위 X). 세션 328 사고는 audit 가 못 잡음 (incremental yml 의 schools step 단위 누락)
-  - 정정 안: `scripts/audit-env-keys.mjs` 의 yml 파싱 로직에 step 단위 답습 추가. step 의 `run:` 에 박힌 collector 파일명 추출 → 해당 collector 의 codeKeys 와 step env block 교차 검증
-  - 트리거: 다음 step 단위 누락 사고 발생 시 자동 차단
 
 - ✅ **scripts/CLAUDE.md 테스트 수 박제값 stale — 종결** (세션 344 발견 → 세션 345 정정)
   - 세션 344 박제 "stale 3건"은 과소. 실측 = **표 42행 나열 / 실제 55개 파일** (13개 누락) + 다수 수치 stale + `isCLI 34개 → 57개`

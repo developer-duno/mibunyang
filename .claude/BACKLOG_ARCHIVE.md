@@ -13,6 +13,25 @@
 
 ## 🔴 즉시 — 완료
 
+- ✅ **audit-env-keys collector→yml 역방향 매칭 재구성** (세션 346, P2 "step 단위 보강" 진입 → 자가 점검 1 발동 → 더 근본적 사각지대 발견)
+  - 진입 동기: BACKLOG L96-99 "audit-env-keys.mjs step 단위 검증 보강 (P2)" — 세션 328 사고(incremental.yml schools step 의 NEIS_KEY/SCHOOLINFO_KEY 누락을 audit 가 못 잡음) 후속.
+  - **자가 점검 1 발견 (plan v1 맹점 1건 + 할루시네이션 3건 정정)**:
+    - v1 가정 "현재 audit baseline 31/37 clean = 통과 상태" = **오집계**. `findWorkflowForCollector`(L152) 가 `collect-<base>.yml`/`<base>.yml` 1:1 매칭만 → yml명≠collector명 시 null → `if(ymlFile)` false → issue 미생성 → **❌ 없이 clean 집계**. 즉 "검증 통과"가 아니라 "검증 자체를 안 함".
+    - **미검증 9 collector 실측 (MISS)**: transport-tago(↔collect-transport) / schools-neis(↔collect-schools) / infra-kakao(↔collect-infra) / molit-building-info(↔collect-building-info) / noise-estimate / population-sex-age / childcare-info / childcare-info-jeju + naver-presale(workflow 호출 0건 = 로컬 전용 = 검증 불필요).
+    - 9 MISS 전부 codeKeys ⊆ yml step env (실측 누락 0) → 보강 후 errorCount 0 유지가 정상. 가치 = "미래 누락 방지" + 세션 328 같은 사고 진짜 차단.
+  - **본질 = 1:1 매칭 부재** (v1 "multi-collector 누락"보다 정확). 이름 불일치 + multi-collector yml 둘 다 포함.
+  - fix (`scripts/audit-env-keys.mjs` +152/-22, test +202/-1):
+    - `extractStepCollectorEnv(file)` 신규 export — 모든 yml 의 각 job(matrix job skip)·step.run 에서 `node scripts/collectors/X.mjs` 역방향 추출 → `Map<mjs, Array<{yml, step, envBlock, validateRefs}>>`. env 상속 step > job > workflow. 한 step 2 collector(building-info/childcare) = 1:N 각각 push.
+    - main() 재구성: stepMap 1차 (등장하는 모든 yml-step 각 row 검증) → 미등장 시 기존 1:1 fallback → 그래도 없으면 `ℹ️ 로컬 전용` 분류. ❌ 메시지에 `(in <yml>, step="<name>")` 표기.
+    - validate 정규식 `validatePattern()` 상수 통일 (3곳) — A형 `-z "$X"` + **B형 `-z "${{ secrets.X }}"`** (collect-air-quality/police/schools 가 B형 → 이전 거짓 양성 ⚠️ 제거).
+  - 검증:
+    - audit summary **29/37 clean, 0 errors** (이전 31/37 = 미검증 9 포함된 거짓. 이제 검증 후 진짜 ⚠️ 노출로 clean 감소가 정상)
+    - 세션 328 재현 시뮬 (incremental schools NEIS_KEY 제거) → **EXIT 1** 검출 (이전 audit 은 미검증이라 EXIT 0 이었음) + git diff 0
+    - 이름 불일치 시뮬 (collect-transport TAGO_KEY 제거) → **EXIT 1** 검출 + git diff 0
+    - vitest 10/10 (기존 4 + 신규 6: 세션328 재현 / 이름불일치 / 1:N / job.env fallback / B형 validate / matrix skip) + typecheck:scripts EXIT 0
+    - 잔여 진짜 ⚠️ (errorCount 무관, 별 자리): transport-tago TAGO_KEY / building-hub MOLIT_KEY / dart-builders DART_KEY / noise-estimate·geocode·reverse KAKAO_KEY = env 주입은 하나 Validate secrets step 빈 값 체크 누락. 사고 아님(개선 여지).
+  - 답습 자산: **자가 점검 1 = "audit 이 31 clean 이라 통과" 단정 직전 실제 검증 범위 grep 의무**. "clean 카운트 ≠ 검증 카운트" (미매칭은 미검증인데 clean 집계). 서브에이전트(Explore 3 + Plan 1) + 직접 실측 교차로 9 MISS 확정.
+
 - ✅ **graceful shutdown 15 collector 일괄 보강** (세션 329 PR-A + 330 PR-B + 337 PR-C 누적 머지)
   - 진앙: 세션 327 박제 시점 "graceful shutdown 신호 등록만 (break 0) 15 collector 잔여" 박힘. 세션 329~337 누적 머지로 정정 완료. BACKLOG L88-92 본문 정정 0건 박힌 stale 환각 잔존.
   - 세션 341 자가 점검 1 발동 = 진실의 원천 답습 결과 `_graceful-coverage.test.mjs` 53/53 PASS. 15 collector 모두 main loop break 박힘 완전 정정 박힘.
