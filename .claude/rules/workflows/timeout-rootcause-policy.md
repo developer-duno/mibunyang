@@ -51,6 +51,10 @@ gh run list --workflow=<workflow>.yml --limit 10 --json databaseId,conclusion,cr
 # step 2: raw log 마지막 30줄 답습 (timeout vs 큐 막힘 vs 코드 결함 진단)
 gh run view <id> --log 2>&1 | tail -30
 
+# step 2-b: step별 정확 타이밍 (--log 텍스트로 못 보는 timeout-minutes 도달 vs 외부 cancel 구분, 세션 344)
+gh api repos/{owner}/{repo}/actions/runs/<id>/jobs --jq '.jobs[] | .name + ": " + .started_at + " ~ " + .completed_at'
+gh run list --workflow=<wf>.yml --status timed_out --limit 5   # 자연 timeout(SIGKILL) vs cancelled(외부, grace) 분리
+
 # step 3: 직전 success run 비교 (4-way §2 답습)
 gh run view <prev_success_id> --log | grep "API.*건\|건 수집\|소요" | tail -10
 ```

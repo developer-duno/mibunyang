@@ -103,6 +103,17 @@
   - 전체 41개 test 파일 실측 의무 (`grep -cE "^\s*(it|test)\(" scripts/collectors/*.test.mjs`). 범위 커서 별 PR
   - 트리거: scripts/CLAUDE.md 편집 시 또는 별 정리 세션
 
+- 🔴 **concurrency 분리 = 금지 (안티 패턴 박제, 세션 344)**
+  - 워크플로 분석이 "34개 collector data-collection 단일 큐 직렬화 → collector별 고유 group 분리"를 제안했으나 **하면 안 됨**
+  - 직렬화 = 의도된 data.go.kr 쿼터 보호. 분리 시 매월 10일 building-info(~8,500) + trades(~3,500) = 12,100 > 일일 10,000 → 429/500 폭주 (NonRetryableError 즉시 throw)
+  - 세션 273 calc-collection 분리가 정답 패턴: 쿼터 무관(외부 API 0·멱등) collector만 분리. 쿼터 쓰는 collector는 직렬 유지
+  - "cancelled 줄이려 분리"는 메모리 룰 `timeout-rootcause-policy.md` 경고 "큐 막힘 환각". 대안 = cron 시각 분산(KST 05:00 13개 동시 발화 → 분산, 별 검토)
+
+- 🟡 **reusable workflow(workflow_call) 추출 (세션 344 발견, P2, 별 세션)**
+  - 38개 collect-*.yml 중 30개 표준형(checkout→setup-node@v5→npm ci→Validate secrets→collect)이 ~9K줄 보일러플레이트 중복. workflow_call 0건
+  - 위험: `audit-env-keys.mjs` 3-way secret 검증(`secret-naming-audit.md` 룰)이 reusable 구조와 충돌 → audit 리팩토링 동반(extractReusableWorkflowCalls 추가)
+  - 범위: Phase 1(30 표준형)만 먼저. Group C(naver-listings 4-step / building-info Saturday fallback 등 8개)는 제외. 큰 작업
+
 - ✅ **13:35~13:36 cancelled 5건 (7~8초) 진단 — 종결** (세션 327 발견 → 세션 344 종결)
   - 5/26 13:35:58 ~ 13:36:08 workflow_dispatch 5건 = Emergency / Police / KOSIS Unsold / Housing Permits / Building Info
   - raw 실측: 앞 4건 (Emergency/Police/KOSIS/Housing Permits) = jobs=0 + 7~8초 cancel, triggering_actor=developer-duno (사람), 모두 `data-collection` concurrency 그룹 + `cancel-in-progress: false`. 동시 dispatch 후 **수동 cancel** (concurrency supersede 아님 — pending 슬롯은 새 run 도착 시 직전 것 cancel)
