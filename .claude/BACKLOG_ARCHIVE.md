@@ -158,6 +158,18 @@
 
 ## 🟡 곧 — 완료
 
+- ✅ **5/29 자연 cron cancelled 모니터링 종결 + 진앙 정정** (세션 347, 2026-05-30)
+  - 진입: 세션 343 이 BACKLOG 🟡 곧에 박은 "5/29 자연 cron 단발 cancelled 모니터링" 항목 (트리거 = "다음 자연 cron 답습 → 재발 시 별 진단 PR")
+  - **종결 근거**: `collect-naver-listings-incremental.yml` 자연 cron(schedule) 흐름 = 5/24·25 success → 5/26·27·28 cancelled → **5/29 21:11 run 26662435607 success (job 21:11:45~22:26:07 = 74분, all step success)**. 그날 manual dispatch 0건 = 순수 자연 cron. timeout 240분의 1/3만 사용. 세션 338 PR #51(schools-neis resume skip + timeout 180→240) 효과가 자연 cron 에서 확인됨.
+  - **진앙 정정 (BACKLOG 본문 부정확)**: 세션 343 은 5/28 cancelled(run 26602629001)를 "transport-tago step 105초 외부 cancel / 진앙 미확정 / GitHub 인프라 부하 가설"로 적었으나, raw `gh api .../jobs` 실측 결과 진짜 진앙 = **세션 342 검증용 manual dispatch 가 같은 concurrency 그룹 점유**. 3 run 타임라인 실측:
+    - run 26597102782 (5/28 19:25, workflow_dispatch): job 19:25:37 ~ **21:57:14** (2h31m) → success
+    - run 26602629001 (5/28 21:13, schedule): created 21:13 → **job 21:57:16** (44분 큐 대기) ~ 21:59:25 → **cancelled** (transport step `start=null` = 시작도 못함)
+    - run 26662435607 (5/29 21:11, schedule): job 21:11:45 ~ 22:26:07 (74분) → **success** (그날 manual 0건)
+  - 메커니즘: incremental `concurrency: group: naver-postprocess-incremental`, `cancel-in-progress: false` → 19:25 manual run 이 그룹 점유 중 → 21:13 자연 schedule run 큐 대기 → manual 종료(21:57:14) 2초 후 schedule job 시작 → 2분 만에 cancel(GitHub 큐 정리 동작). 외부 인프라 부하·NEIS 지연 탓 아님.
+  - 5/26·27 cancelled = 세션 338 이 이미 해결한 NEIS 만성 지연 사고 (PR #51 resume skip). 5/29 success 로 해결 확인.
+  - **답습 자산 1**: `cancel-in-progress: false` 그룹에 검증용 manual dispatch 를 자연 cron 발화 시각(20:30 UTC)과 겹치게 돌리면, 그날 자연 cron 이 큐 대기 후 cancel 될 수 있음. → 검증용 수동 실행은 자연 cron 으로 대체하거나 시각 분리. (concurrency 구조 자체 수정 = 별 PR 후보, 이번엔 답습만)
+  - **답습 자산 2 (부팅 환각)**: 세션 347 부팅 1차 진단이 Post-Processing run 을 "24시간 멈춘 좀비", incremental 을 "cron 미발화"로 단정 → `currentDate: 2026-05-31` 메타값만 믿고 시간 계산한 환각(실제 시스템 UTC = 5/30 20:23, run 은 54분째 정상 진행). 사용자 스크린샷 인터럽트로 `gh run cancel` 사고 차단. **날짜·시각 메타값 단정 금지, `date -u` 실측 의무**. + 실행 중 run cancel 은 사용자 확인 의무([[feedback_no_kill_without_confirm]]).
+
 - ✅ **5% 경고 임계값 경험치 측정** (세션 169, 2026-05-03)
   - 측정 신호 1 (GitHub Actions): `gh run list --workflow=collect-applyhome.yml --limit=20` → schedule run 4회 모두 success, 5% 컷 발동 0건 (실패 1건은 Cloudflare 502 인프라 장애, 5% 무관)
   - 측정 신호 2 (DB 누적): `applyhome-zero-supply-ratio.mjs` → 1,263건 중 2건 (0.16%, 5% 의 1/30)
