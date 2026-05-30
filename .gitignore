@@ -16,6 +16,7 @@ dist/
 !.claude/CLAUDE_TOOLBOX.md
 !.claude/claude-security-guidance.md
 !.claude/security-patterns.yaml
+!.claude/GOAL_TEMPLATE.md
 !.claude/commands/
 !.claude/commands/**
 !.claude/agents/
