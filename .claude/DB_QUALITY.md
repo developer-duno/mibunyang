@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-06-01 energy_grade 오염 정정 (세션 358 — kaptdEcnt 승강기대수 오인 + 죽은 코드 제거)
+
+> **데이터 정확성 사고 정정 — 측정 버그 아니라 수집 오인.** `molit-building-info.mjs` 가 국토부 공동주택 상세 API(`getAphusDtlInfoV4`)의 `kaptdEcnt`/`kaptdEcntp` 를 에너지효율등급(1~7)으로 해석했으나, raw API 실측 결과 이 필드는 **승강기 대수(승용)**. 우연히 1~7대인 단지 358건의 승강기 대수가 `energy_grade` 로 오저장되어 화면에 "N등급" 거짓 표시 + 상품성 에너지 점수 왜곡(실 영향 21건). 적대검증 워크플로(7필드 전수 raw 검증 + 3관점 리뷰)로 확정.
+
+### 정정 (세션 358)
+- 수집기 `molit-building-info.mjs` — `energy_grade` 추출 제거 + 건폐율/용적률(`kaptdBcRat`/`kaptdVlRat` = API 응답에 없는 죽은 코드, 실제는 네이버 `sync-naver-complex` 가 채움) 추출 제거. typedef·select·or필터·로그·테스트 동시 정리 (29→22 케이스).
+- DB `apartments.energy_grade` 358건 → NULL (`cleanup-energy-grade.mjs` 일회성, 잔여 0건 검증).
+- `data-audit.mjs` PERMANENT_NULL 에 `energyGrade` 추가 — quakeDesign/greenBldg 와 동일(공공 API 소스 부재 영구 미수집). worst-fields 영구 오탐 제거.
+
+### building 카테고리 충족률 (2026-06-01 실측)
+- 정정 전 78.6% (filled 18879, energyGrade 358 포함) → **정정 후 77.1%** (filled 18521, energyGrade 0/2001). 오염값 제거로 정직하게 하락.
+- building 12필드 중 진짜 약점 = energyGrade(0%, 영구 미수집 확정) + exclusiveRatio(44%) + energy(building-hub) 별개.
+- avgReliability 92 / total 2001 불변 (dataReliability 계산은 energy_grade 미사용).
+
+### 검증
+- `npx vitest run scripts/collectors/molit-building-info.test.mjs` 22/22 + `data-audit.test.mjs` 17/17 + `src/scoring/` 164/164
+- `npx tsc --noEmit -p tsconfig.scripts.json` 0 / `audit-env-keys` 0 errors
+- raw API 실측: `kaptdEcnt` 값 0/5/8/21 = 등급(1~7) 불가, 승강기 대수 확정. `kaptdBcRat`/`kaptdVlRat` 는 Bass 31키 전수 덤프에 부재.
+
+> 진짜 에너지효율등급 소스가 생기면 재오픈. 현재는 NULL 이 정직한 상태 (스코어링 "정보 없음" 폴백).
+
+---
+
 ## 2026-05-31 regions 측정 버그 정정 (세션 351 — data-audit.mjs fetch/merge 5컬럼 누락 수정)
 
 > **측정 정확도 정정 — 실제 수집 증가 아님.** market_stats 5개 컬럼(priceIndex/avgPriceSqm/newSupply/initialSaleRate/landCostRatio)이 DB(regions 시도 레벨)에는 이미 채워져 있었으나, `data-audit.mjs` 가 regions 를 fetch 할 때(L431) 3개 컬럼만 select 하고 merge(L491~)에서도 3개만 할당해 **항상 filled:0 으로 집계**되던 버그를 수정. 부수적으로 merge lookup 을 운영 VIEW `latest_regions` 와 일치(gu IS NULL + recorded_at DESC)시켜 시군구 행이 시도 값을 NULL 로 덮어쓰는 잠재 버그까지 차단.
