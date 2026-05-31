@@ -90,13 +90,18 @@
 
 (다음 진입 후보 = 아래 P1 API 500 근본 진단 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
 
-- 🟡 **`/api/supabase/apartments` + `/api/upcoming` 500 (19초 행) 근본 진단** (세션 351 발견, P1, 별 세션)
-  - **사고**: 두 Vercel 함수가 19~20초 행 후 HTTP 500. 랜딩이 `VITE_USE_SUPABASE=true` 일 때 `/api/supabase/apartments` 를 먼저 호출 → 19초 행 → list.json 폴백 → **첫 카드 23초** (Playwright 실측). `/api/upcoming` 도 동일.
-  - **즉효 완료 (세션 351)**: Vercel 환경변수 `VITE_USE_SUPABASE=false` (Production) + 재배포 → 랜딩 23초 → **웜 0.9초 / 콜드 5초** (API 우회, list.json 직행). 죽은 API 2개 호출 자체가 사라짐.
-  - **진앙 (유력, 미확정)**: `apartments_flat` VIEW (`schema.sql:451` dedup_ranked CTE = `ROW_NUMBER() OVER (PARTITION BY regexp_replace(name,...))` + 7테이블 JOIN) 쿼리가 DB 에서 19초. Supabase REST health 는 0.05초 정상 (프로젝트 살아있음, 연결 OK). VIEW 쿼리만 19초.
-  - **다음 세션 진단 절차**: (a) Supabase **대시보드 SQL Editor** 에서 `EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM apartments_flat LIMIT 1000;` (로컬 `supabase db query` 는 집 IP DB 직결 차단 = "Connection terminated" 로 불가, 대시보드 필수) (b) 어느 CTE/JOIN 이 느린지 + 인덱스 부재 확인 (c) regexp_replace 윈도우 파티션 최적화 또는 인덱스 추가 (d) `select("*")` → 필요 컬럼만 축소 검토 (e) `/api/upcoming` 도 동일 패턴 확인
-  - **재오픈 조건**: 미래 Supabase 모드 재활성화 (실시간 데이터 필요) 시 필수. 현재는 정적 JSON (매일 cron) 으로 충분해 우선순위 P1.
-  - 답습 자산: 세션 351 메모리 + `api/supabase/apartments.ts:21` + `src/services/staticDataApi.ts:11`
+- 🟢 **`/api/supabase/apartments` "19초" 근본 진단 완결 (세션 357 적대검증) — 보류** (세션 351 발견 → 357 진단 종결, P2)
+  - **세션 357 진단 결론 = 죽은 코드 최적화라 보류**. 12 probe 적대검증(wtpjv3c6m + wjormmmc3) + 직접 실측으로 세션 351/356 박제값 다수 정정. 코드 변경 0.
+  - **세션 351 박제값 정정 (3건 할루시네이션)**:
+    - ❌ "VIEW 쿼리가 DB에서 19초" → **실측 82ms** (`supabase db query --linked` EXPLAIN ANALYZE: VIEW LIMIT 1000 = 82ms, count(*) = 11ms). DB는 결백.
+    - ❌ "로컬 `supabase db query` 는 집 IP 차단으로 불가, 대시보드 필수" → **실측 작동함**. `supabase projects list` 에서 mibunyang(`rwdtljipvmqpazrimyns`) LINKED(●) + `db query --linked` EXPLAIN/pg_column_size 다 됨.
+    - ❌ "VITE_USE_SUPABASE=true 일 때 19초" → 현재 Production = **false 확정**(`vercel env pull` + 배포 번들 index-*.js 에 "supabase" 0건 = dead-code-elimination). 랜딩 = 정적 `apartments-list.json` 직행(1.06초).
+  - **진짜 병목 (실측)**: Vercel 함수 TTFB warm 2.5~3초 / cold 4.5초. 분해 = batch1+count(0-999) 1.3~1.5초(지배) + batch2 병렬(1000-1423) 0.6~0.9초 + dataUpdatedAt 순차 25~76ms + stringify 150~205ms. **DB(82ms) 아니라 PostgREST 가 `select("*")` 163컬럼 × 1424행(2001 아님, dedup CTE)을 직렬화하는 서버시간**. 함수=icn1(서울)=Supabase(서울) 네트워크 결백. "23MB 비압축 전송 병목"(세션 356)은 **curl 기본 Accept-Encoding 미전송 측정 아티팩트** — 실브라우저는 `Content-Encoding: br` 2.54MB 받음(전송은 total의 18%뿐).
+  - **컬럼 슬림화 효과 실측** (supabase-js 로컬 재현): `select("*")` 163컬럼 22.98MB = 2.0~2.5초 / catsCache 포함 ~81컬럼 9.8MB = 0.9~1.2초 / catsCache 제외 ~80컬럼 2.19MB = 0.4~0.5초 / 카드raw 20컬럼 0.62MB = 0.22초. **명시 select 자체는 * 와 차이 0(같은 컬럼이면), 효과는 오직 payload bytes(특히 catsCache 7.6MB = 단일 74%) 제거에서 발생.** catsCache 제외 안전 확인(폴백 calcCats 점수 byte 동일, 128ms CPU — `compute-scores.mjs` 가 클라 폴백과 동일 코드로 미리 박은 캐시일 뿐).
+  - **보류 근거 (메타 진단)**: `/api/supabase/apartments` 는 프론트 아무도 호출 안 함(VITE_USE_SUPABASE=false). 진짜 데이터 파이프라인 = `daily-deploy.yml`(매일 KST 03:00 cron)이 `collect-data.mjs --from-supabase-only` 로 VIEW 1회 읽어 정적 JSON 생성 → git push. freshness spec v3(2026-05-25)이 정적 JSON 을 **영구 방향**으로 의도 설계(분양 데이터 분단위 변동 없음). TTFB 2.5→0.9초 개선해도 호출자 0이라 체감 0.
+  - **재오픈 조건**: 미래 Supabase 실시간 모드 실제 도입 시. 그때 구현안 = `api/supabase/apartments.ts:21` `select("*")` → 카드/지도/필터/스코어링 컬럼만 명시 + catsCache 제외(sanitize L366) + 시세4배열 제거(sanitize L297-300, DetailModal lazy fetch 자동 전환) + e2e mock 갱신. 상세 plan = `~/.claude/plans/mibunyang-serene-cray.md` (v2, 단 catsCache 제외로 보강 필요).
+  - **진짜 P1 분리**: `/api/upcoming` 은 `VITE_FEATURE_UPCOMING=true`(현재 라이브 호출, App.tsx:72)라 별개 게이트. 19초 사고가 재발하면 이쪽 진단(현재 라이브 실측 1.5초 200 = 건강). select 슬림화로는 안 고쳐짐.
+  - 답습 자산: 세션 357 메모리 `session_2026-06-01_session357_api_19s_real_diagnosis.md` + `daily-deploy.yml` + `docs/superpowers/specs/2026-05-25-data-freshness-automation-design.md`
 
 - ✅ **`sync-naver-complex` 30분 timeout 반복 cancelled 근본 정정** (세션 354 진단 → 세션 355 정정 + 종결)
   - **사고**: `fill-missing-data.yml` phase2-calc matrix step `sync-naver-complex` 가 매주 일요일 cron 에서 30분 timeout 도달 cancel 반복 (최근 10회 fill: cancelled 6 / failure 3 / success 1).
