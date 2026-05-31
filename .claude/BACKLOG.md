@@ -87,7 +87,15 @@
 
 ## 🔴 즉시
 
-(현재 P0 박힘 0건. 다음 진입 후보 = L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
+(다음 진입 후보 = 아래 P1 API 500 근본 진단 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
+
+- 🟡 **`/api/supabase/apartments` + `/api/upcoming` 500 (19초 행) 근본 진단** (세션 351 발견, P1, 별 세션)
+  - **사고**: 두 Vercel 함수가 19~20초 행 후 HTTP 500. 랜딩이 `VITE_USE_SUPABASE=true` 일 때 `/api/supabase/apartments` 를 먼저 호출 → 19초 행 → list.json 폴백 → **첫 카드 23초** (Playwright 실측). `/api/upcoming` 도 동일.
+  - **즉효 완료 (세션 351)**: Vercel 환경변수 `VITE_USE_SUPABASE=false` (Production) + 재배포 → 랜딩 23초 → **웜 0.9초 / 콜드 5초** (API 우회, list.json 직행). 죽은 API 2개 호출 자체가 사라짐.
+  - **진앙 (유력, 미확정)**: `apartments_flat` VIEW (`schema.sql:451` dedup_ranked CTE = `ROW_NUMBER() OVER (PARTITION BY regexp_replace(name,...))` + 7테이블 JOIN) 쿼리가 DB 에서 19초. Supabase REST health 는 0.05초 정상 (프로젝트 살아있음, 연결 OK). VIEW 쿼리만 19초.
+  - **다음 세션 진단 절차**: (a) Supabase **대시보드 SQL Editor** 에서 `EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM apartments_flat LIMIT 1000;` (로컬 `supabase db query` 는 집 IP DB 직결 차단 = "Connection terminated" 로 불가, 대시보드 필수) (b) 어느 CTE/JOIN 이 느린지 + 인덱스 부재 확인 (c) regexp_replace 윈도우 파티션 최적화 또는 인덱스 추가 (d) `select("*")` → 필요 컬럼만 축소 검토 (e) `/api/upcoming` 도 동일 패턴 확인
+  - **재오픈 조건**: 미래 Supabase 모드 재활성화 (실시간 데이터 필요) 시 필수. 현재는 정적 JSON (매일 cron) 으로 충분해 우선순위 P1.
+  - 답습 자산: 세션 351 메모리 + `api/supabase/apartments.ts:21` + `src/services/staticDataApi.ts:11`
 
 - ✅ **NEIS_KEY / SCHOOLINFO_KEY 미설정 사고** (세션 327 발견 → 세션 328 종결, PR #31)
   - 진단 결과 = `collect-naver-listings-incremental.yml` Collect schools step env block 누락 (Secrets 등록 ✅, schools-neis.mjs 코드 ✅, 월간 collect-schools.yml ✅)
