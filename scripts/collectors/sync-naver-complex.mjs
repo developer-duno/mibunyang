@@ -11,7 +11,7 @@
  *   node scripts/collectors/sync-naver-complex.mjs              (Supabase UPDATE)
  *   node scripts/collectors/sync-naver-complex.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore } from "./_shared.mjs";
 
 /** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} ComplexRow */
 /** @typedef {{ id: string; name: string; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
@@ -129,7 +129,35 @@ export function findNearbyComplexes(apt, spatialGrid, radiusKm = 2) {
   return results;
 }
 
+/** @typedef {{ id: string; name: string; row: Record<string, unknown> }} AptUpdate */
 
+/**
+ * apartments 직렬 update → BATCH 슬라이스 병렬 (trade-stats.mjs L575 답습).
+ * createSemaphore 는 실행 동시성만 제한하므로 whole-array Promise.all 대신
+ * BATCH 슬라이스로 in-flight Promise 수를 BATCH 로 제한 (세션 355 critic 권고).
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {AptUpdate[]} updates
+ * @param {string} label  실패 로그 접두어 (Phase 구분)
+ * @returns {Promise<number>} 성공 건수
+ */
+async function flushUpdates(sb, updates, label) {
+  if (updates.length === 0) return 0;
+  const BATCH = 200;
+  let ok = 0;
+  for (let i = 0; i < updates.length; i += BATCH) {
+    const slice = updates.slice(i, i + BATCH);
+    const limit = createSemaphore(10);
+    const results = await Promise.all(
+      slice.map((u) => limit(async () => await sb.from("apartments").update(u.row).eq("id", u.id)))
+    );
+    for (let j = 0; j < results.length; j++) {
+      const { error } = /** @type {{ error: { message: string } | null }} */ (results[j]);
+      if (error) logError(PHASE, `  ${slice[j].name} ${label ? label + " " : ""}UPDATE 실패: ${error.message}`);
+      else ok++;
+    }
+  }
+  return ok;
+}
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
@@ -229,11 +257,41 @@ async function main() {
   }
   log(PHASE, `articles area/direction: ${(areaRows || []).length}건`);
 
+  // 매칭 1회 계산 후 재사용 (세션 355): complex_links 부재 시 matchApartments 가
+  // complexes(63,535) × apartments(2,001) 이름 유사도 LCS 폴백 → Phase 1·2·4 가
+  // 같은 apartments 전체를 3번 매칭 = 3패스. complex_no → matched apt id[] 를
+  // 1회만 계산해 공유 (3패스 → 1패스).
+  /** @type {Map<string, string[]>} */
+  const matchCache = new Map();
+  for (const cpx of complexes) {
+    const matched = matchApartments(cpx, apartments, complexLinksMap);
+    if (matched.length > 0) matchCache.set(cpx.complex_no, matched.map(a => a.id));
+  }
+  log(PHASE, `매칭 캐시: ${matchCache.size}개 단지 (이후 Phase 재사용)`);
+
+  /**
+   * id → apt 인덱스 (캐시된 id 로 각 Phase 의 aptList 에서 O(1) 룩업)
+   * @template {{ id: string }} T
+   * @param {T[]} list
+   * @returns {Map<string, T>}
+   */
+  const indexById = (list) => {
+    /** @type {Map<string, T>} */
+    const m = new Map();
+    for (const a of list) m.set(a.id, a);
+    return m;
+  };
+
   // ── Phase 1: 단지정보 동기화 ──
   let updated = 0, skipped = 0;
+  /** @type {AptUpdate[]} */
+  const phase1Updates = [];
+  const aptIndexBase = indexById(apartments);
 
   for (const cpx of complexes) {
-    const matchedApts = /** @type {AptBaseRow[]} */ (matchApartments(cpx, apartments, complexLinksMap));
+    const ids = matchCache.get(cpx.complex_no);
+    if (!ids) continue;
+    const matchedApts = /** @type {AptBaseRow[]} */ (ids.map(id => aptIndexBase.get(id)).filter(Boolean));
     if (matchedApts.length === 0) continue;
 
     for (const apt of matchedApts) {
@@ -317,15 +375,11 @@ async function main() {
         continue;
       }
 
-      const { error } = await sbMibunyang.from("apartments").update(row).eq("id", apt.id);
-      if (error) {
-        logError(PHASE, `  ${apt.name} UPDATE 실패: ${error.message}`);
-      } else {
-        updated++;
-      }
+      phase1Updates.push({ id: apt.id, name: apt.name, row });
     }
   }
 
+  updated += await flushUpdates(sbMibunyang, phase1Updates, "");
   log(PHASE, `\n=== Phase 1 완료: 단지정보 갱신 ${updated}, 건너뜀 ${skipped} ===`);
 
   // ── Phase 2: articles 매물 수 집계 → unsold / unsold_rate 업데이트 ──
@@ -371,12 +425,17 @@ async function main() {
       logError(PHASE, `apartments 재조회 실패: ${aErr2Msg ?? "데이터 없음"}`);
     } else {
       let unsoldUpdated = 0;
+      /** @type {AptUpdate[]} */
+      const phase2Updates = [];
+      const aptIndexUnsold = indexById(aptsForUnsold);
 
       for (const cpx of complexes) {
         const cnt = counts[cpx.complex_no];
         if (!cnt) continue;
 
-        const matchedApts = /** @type {AptUnsoldRow[]} */ (matchApartments(cpx, aptsForUnsold, complexLinksMap));
+        const ids = matchCache.get(cpx.complex_no);
+        if (!ids) continue;
+        const matchedApts = /** @type {AptUnsoldRow[]} */ (ids.map(id => aptIndexUnsold.get(id)).filter(Boolean));
         if (matchedApts.length === 0) continue;
 
         for (const apt of matchedApts) {
@@ -404,15 +463,11 @@ async function main() {
             continue;
           }
 
-          const { error } = await sbMibunyang.from("apartments").update(row).eq("id", apt.id);
-          if (error) {
-            logError(PHASE, `  ${apt.name} 매물수 UPDATE 실패: ${error.message}`);
-          } else {
-            unsoldUpdated++;
-          }
+          phase2Updates.push({ id: apt.id, name: apt.name, row });
         }
       }
 
+      unsoldUpdated += await flushUpdates(sbMibunyang, phase2Updates, "매물수");
       log(PHASE, `Phase 2 완료: 매물수 기반 갱신 ${unsoldUpdated}건`);
     }
   }
@@ -486,6 +541,8 @@ async function main() {
     logError(PHASE, `apartments 재조회 실패: ${aErr3Msg ?? "데이터 없음"}`);
   } else {
     let naverUpdated = 0;
+    /** @type {AptUpdate[]} */
+    const phase3Updates = [];
     /** @type {Set<string>} */
     const seen = new Set();
 
@@ -564,14 +621,10 @@ async function main() {
           continue;
         }
 
-        const { error } = await sbMibunyang.from("apartments").update(row).eq("id", apt.id);
-        if (error) {
-          logError(PHASE, `  ${apt.name} naver UPDATE 실패: ${error.message}`);
-        } else {
-          naverUpdated++;
-        }
+        phase3Updates.push({ id: apt.id, name: apt.name, row });
       }
 
+    naverUpdated += await flushUpdates(sbMibunyang, phase3Updates, "naver");
     log(PHASE, `Phase 3 완료: 시세/통계 갱신 ${naverUpdated}건`);
   }
 
@@ -611,11 +664,15 @@ async function main() {
       }
 
       let phase4Updated = 0;
-      // complexes → apartments 매칭 (Phase 1과 동일 방식)
+      /** @type {AptUpdate[]} */
+      const phase4Updates = [];
+      // complexes → apartments 매칭 (Phase 1 매칭 캐시 + 인덱스 재사용)
       for (const cpx of complexes) {
         const agg = complexAgg[cpx.complex_no];
         if (!agg) continue;
-        const matchedApts = /** @type {AptBaseRow[]} */ (matchApartments(cpx, apartments, complexLinksMap));
+        const ids = matchCache.get(cpx.complex_no);
+        if (!ids) continue;
+        const matchedApts = /** @type {AptBaseRow[]} */ (ids.map(id => aptIndexBase.get(id)).filter(Boolean));
         if (matchedApts.length === 0) continue;
 
         for (const apt of matchedApts) {
@@ -631,12 +688,11 @@ async function main() {
           }
           if (Object.keys(row).length === 0) continue;
           if (dryRun) { log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`); phase4Updated++; continue; }
-          const { error } = await sbMibunyang.from("apartments").update(row).eq("id", apt.id);
-          if (error) { logError(PHASE, `  ${apt.name} Phase4 UPDATE 실패: ${error.message}`); }
-          else { phase4Updated++; }
+          phase4Updates.push({ id: apt.id, name: apt.name, row });
         }
       }
 
+      phase4Updated += await flushUpdates(sbMibunyang, phase4Updates, "Phase4");
       log(PHASE, `Phase 4 완료: 관리비/방향 갱신 ${phase4Updated}건`);
     }
   }
