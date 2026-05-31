@@ -18,11 +18,35 @@ import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilar
 /** @typedef {{ id: string; name: string; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; naver_jeonse_count: number | null; naver_wolse_count: number | null }} AptUnsoldRow */
 /** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; naver_nearby_median: number | null; naver_nearby_avg: number | null; naver_jeonse_rate: number | null; naver_build_year: number | null; naver_avg_floor: number | null; naver_nearby_count: number | null; naver_fetched_at: string | null }} AptNaverRow */
 /** @typedef {{ complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null }} ArticleAreaRow */
+/** @typedef {{ complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null; trade_type_name: string | null; floor_info: string | null; numeric_maintenance_cost: number | null }} ArticleRow */
 /** @typedef {{ grid: Record<string, ComplexRow[]>; cellSize: number }} SpatialGrid */
 
 loadEnv();
 
 const PHASE = "sync-naver";
+
+/**
+ * 전건 페이지네이션 fetch. PostgREST max_rows=1000 제한 우회.
+ * 단일 .range(0, 99999) 호출은 1000건만 반환 → 1000행씩 끝까지 누적.
+ * 1페이지 실패 시 throw 대신 { rows: 누적분, error } 반환 (graceful degradation 보존 —
+ * articles fetch 가 실패해도 다른 필드 동기화는 계속).
+ * @param {(sb: any) => any} buildQuery  - sb 받아 .from().select().eq()... 까지 빌드 (.range 제외)
+ * @param {any} sb
+ * @param {number} [page=1000]
+ * @returns {Promise<{ rows: any[]; error: string | null }>}
+ */
+export async function fetchAllPages(buildQuery, sb, page = 1000) {
+  /** @type {any[]} */
+  const rows = [];
+  for (let off = 0; ; off += page) {
+    const { data, error } = await buildQuery(sb).range(off, off + page - 1);
+    if (error) return { rows, error: error.message };
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < page) break;
+  }
+  return { rows, error: null };
+}
 
 /**
  * complex → apartment 매칭 (complex_links 우선, 이름 유사도 폴백)
@@ -241,21 +265,23 @@ async function main() {
   }
   log(PHASE, `apartments: ${apartments.length}건`);
 
-  // articles area/direction 조회 (전용률 + 조망/일조 계산용)
-  const { data: areaRows, error: arErr } = await sbMibunyang
-    .from("articles")
-    .select("complex_no, area1_m2, area2_m2, direction, building_name")
-    .eq("is_active", true)
-    .range(0, 99999);
-  if (arErr) logError(PHASE, `articles area 조회 실패: ${arErr.message}`);
+  // articles 통합 조회 (1회 전건 fetch → Phase 1/2/3b/4 공유) — 같은 is_active=true 전건을
+  // 4번 따로 읽던 것을 8컬럼 1회로 통합 (fetch ~16분 → ~4분). 매칭 캐시(아래)와 독립.
+  const { rows: allArticles, error: artFetchErr } = await fetchAllPages(
+    (s) => s.from("articles").select(
+      "complex_no, area1_m2, area2_m2, direction, building_name, trade_type_name, floor_info, numeric_maintenance_cost",
+    ).eq("is_active", true),
+    sbMibunyang,
+  );
+  if (artFetchErr) logError(PHASE, `articles 통합 조회 실패: ${artFetchErr}`);
+  log(PHASE, `articles 통합: ${allArticles.length}건`);
 
   /** @type {Record<string, ArticleAreaRow[]>} */
   const articlesByComplex = {};
-  for (const r of /** @type {ArticleAreaRow[]} */ (areaRows || [])) {
+  for (const r of /** @type {ArticleRow[]} */ (allArticles)) {
     if (!articlesByComplex[r.complex_no]) articlesByComplex[r.complex_no] = [];
     articlesByComplex[r.complex_no].push(r);
   }
-  log(PHASE, `articles area/direction: ${(areaRows || []).length}건`);
 
   // 매칭 1회 계산 후 재사용 (세션 355): complex_links 부재 시 matchApartments 가
   // complexes(63,535) × apartments(2,001) 이름 유사도 LCS 폴백 → Phase 1·2·4 가
@@ -383,21 +409,19 @@ async function main() {
   log(PHASE, `\n=== Phase 1 완료: 단지정보 갱신 ${updated}, 건너뜀 ${skipped} ===`);
 
   // ── Phase 2: articles 매물 수 집계 → unsold / unsold_rate 업데이트 ──
+  // (통합 fetch 한 allArticles 재사용 — trade_type_name 만 읽음)
   log(PHASE, "\n── Phase 2: 매물 수 기반 미분양 추정 ──");
 
-  const { data: articles, error: artErr } = await sbMibunyang
-    .from("articles")
-    .select("complex_no, trade_type_name")
-    .eq("is_active", true)
-    .range(0, 99999);
-
-  if (artErr) {
-    logError(PHASE, `articles 조회 실패: ${artErr.message}`);
+  // 통합 fetch 실패/부분 시 매물 수가 과소 집계되어 unsold/unsold_rate(핵심 미분양 지표)가
+  // silent 하게 작아짐 → Phase 2 만 스킵 (변경 전 `if(artErr){skip}` 동작 복원).
+  // 다른 Phase(전용률/조망/일조/시세/층수/관리비)는 "계산값 있을 때만 write" 가드라 부분 진행 무해.
+  if (artFetchErr) {
+    logError(PHASE, "Phase 2 스킵 — articles 통합 조회 실패로 매물수 과소 집계 위험");
   } else {
     // 집계: { complex_no: { sell, jeonse, wolse } }
     /** @type {Record<string, { sell: number; jeonse: number; wolse: number }>} */
     const counts = {};
-    for (const row of /** @type {Array<{ complex_no: string; trade_type_name: string }>} */ (articles ?? [])) {
+    for (const row of /** @type {ArticleRow[]} */ (allArticles)) {
       if (!counts[row.complex_no]) counts[row.complex_no] = { sell: 0, jeonse: 0, wolse: 0 };
       if (row.trade_type_name === "매매") counts[row.complex_no].sell++;
       else if (row.trade_type_name === "전세") counts[row.complex_no].jeonse++;
@@ -478,13 +502,13 @@ async function main() {
   // ── Phase 3: 시세/통계 → naver_* 필드 동기화 ──
   log(PHASE, "\n── Phase 3: 시세/통계 → naver_* 필드 동기화 ──");
 
-  // 3-a. complex_price_history 조회 (최근 데이터)
-  const { data: priceRows, error: prErr } = await sbMibunyang
-    .from("complex_price_history")
-    .select("complex_no, trade_type, price_avg")
-    .range(0, 99999);
+  // 3-a. complex_price_history 조회 (최근 데이터) — 전건 페이지네이션
+  const { rows: priceRows, error: prErr } = await fetchAllPages(
+    (s) => s.from("complex_price_history").select("complex_no, trade_type, price_avg"),
+    sbMibunyang,
+  );
 
-  if (prErr) logError(PHASE, `price_history 조회 실패: ${prErr.message}`);
+  if (prErr) logError(PHASE, `price_history 조회 실패: ${prErr}`);
 
   // price_avg를 complex_no + trade_type별로 그룹핑
   /** @type {Record<string, { A1: number[]; B1: number[] }>} */
@@ -499,25 +523,15 @@ async function main() {
   }
   log(PHASE, `시세 데이터: ${Object.keys(priceByComplex).length}개 단지`);
 
-  // 3-b. articles floor_info 조회
-  const { data: floorRows, error: flErr } = await sbMibunyang
-    .from("articles")
-    .select("complex_no, floor_info")
-    .eq("is_active", true)
-    .not("floor_info", "is", null)
-    .range(0, 99999);
-
-  if (flErr) logError(PHASE, `articles floor 조회 실패: ${flErr.message}`);
-
+  // 3-b. articles floor_info 집계 (통합 fetch 한 allArticles 재사용 — floor_info 만 읽음.
+  // parseFloor(null)=null 이 아래 continue 로 스킵되므로 not-null 필터 불필요)
   /** @type {Record<string, number[]>} */
   const floorByComplex = {};
-  if (floorRows) {
-    for (const r of /** @type {Array<{ complex_no: string; floor_info: string | null }>} */ (floorRows)) {
-      const f = parseFloor(r.floor_info);
-      if (f == null) continue;
-      if (!floorByComplex[r.complex_no]) floorByComplex[r.complex_no] = [];
-      floorByComplex[r.complex_no].push(f);
-    }
+  for (const r of /** @type {ArticleRow[]} */ (allArticles)) {
+    const f = parseFloor(r.floor_info);
+    if (f == null) continue;
+    if (!floorByComplex[r.complex_no]) floorByComplex[r.complex_no] = [];
+    floorByComplex[r.complex_no].push(f);
   }
   log(PHASE, `층수 데이터: ${Object.keys(floorByComplex).length}개 단지`);
 
@@ -633,26 +647,13 @@ async function main() {
     log(PHASE, "\n── Phase 4: 관리비/방향 집계 ──");
 
     // complex_no → apartment_id 매핑이 이미 Phase 2에서 구축됨
-    // articles에서 complex_no별 관리비 평균, 방향 최빈값 집계 (페이지네이션)
-    /** @type {Array<{ complex_no: string; numeric_maintenance_cost: number | null; direction: string | null }>} */
-    const articleStats = [];
-    for (let off = 0; ; off += PAGE) {
-      const { data: page, error: asErr } = await sbMibunyang
-        .from("articles")
-        .select("complex_no, numeric_maintenance_cost, direction")
-        .eq("is_active", true)
-        .range(off, off + PAGE - 1);
-      if (asErr) { logError(PHASE, `articles 조회 실패: ${asErr.message}`); break; }
-      if (!page) break;
-      articleStats.push(.../** @type {Array<{ complex_no: string; numeric_maintenance_cost: number | null; direction: string | null }>} */ (page));
-      if (page.length < PAGE) break;
-    }
-
-    if (articleStats.length > 0) {
+    // articles 관리비 평균·방향 최빈값 집계 (통합 fetch 한 allArticles 재사용 —
+    // numeric_maintenance_cost + direction 만 읽음)
+    if (allArticles.length > 0) {
       // complex_no별 집계
       /** @type {Record<string, { costs: number[]; dirs: Record<string, number> }>} */
       const complexAgg = {};
-      for (const art of (articleStats || [])) {
+      for (const art of /** @type {ArticleRow[]} */ (allArticles)) {
         const cn = art.complex_no;
         if (!complexAgg[cn]) complexAgg[cn] = { costs: [], dirs: {} };
         if (art.numeric_maintenance_cost != null && art.numeric_maintenance_cost > 0) {

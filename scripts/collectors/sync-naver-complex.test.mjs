@@ -5,6 +5,8 @@
  * 대상: matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes
  */
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // _shared.mjs 모킹 — stringSimilarity는 실제 구현 사용
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -20,7 +22,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes } =
+const { matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes, fetchAllPages } =
   await import("./sync-naver-complex.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
@@ -254,5 +256,123 @@ describe("findNearbyComplexes", () => {
 
     const result = findNearbyComplexes(apt, spatialGrid, 0.001);
     expect(result).toContain("C1");
+  });
+});
+
+// ── fetchAllPages (PostgREST max_rows=1000 cap 회귀 가드) ──────────
+/**
+ * 체인 가능한 fake Supabase 빌더. allRows 를 .range(lo,hi) 로 슬라이스 반환.
+ * range 호출 인자를 calls 에 기록 (1000씩 증가 검증용).
+ * @param {any[]} allRows
+ * @param {{ errorOnCall?: number; errorMsg?: string }} [opts]
+ */
+function makeFakeSb(allRows, opts = {}) {
+  /** @type {Array<[number, number]>} */
+  const rangeCalls = [];
+  let callIdx = 0;
+  const chain = {
+    from() { return chain; },
+    select() { return chain; },
+    eq() { return chain; },
+    not() { return chain; },
+    /** @param {number} lo @param {number} hi */
+    range(lo, hi) {
+      rangeCalls.push([lo, hi]);
+      callIdx++;
+      if (opts.errorOnCall === callIdx) {
+        return Promise.resolve({ data: null, error: { message: opts.errorMsg ?? "fake error" } });
+      }
+      return Promise.resolve({ data: allRows.slice(lo, hi + 1), error: null });
+    },
+  };
+  return { sb: chain, rangeCalls };
+}
+
+describe("fetchAllPages (max_rows=1000 cap 회귀 가드)", () => {
+  it("2500행 → range(0,999)/(1000,1999)/(2000,2999) 3회 호출 + 전건 2500행 수집", async () => {
+    const rows = Array.from({ length: 2500 }, (_, i) => ({ id: i }));
+    const { sb, rangeCalls } = makeFakeSb(rows);
+    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb);
+    expect(result.error).toBeNull();
+    expect(result.rows.length).toBe(2500); // ← .range(0,99999) 단일 호출로 회귀하면 1000 으로 빨강
+    expect(rangeCalls).toEqual([[0, 999], [1000, 1999], [2000, 2999]]);
+  });
+
+  it("range 인자가 page(1000)씩 증가", async () => {
+    const rows = Array.from({ length: 1500 }, (_, i) => ({ id: i }));
+    const { sb, rangeCalls } = makeFakeSb(rows);
+    await fetchAllPages((s) => s.from("articles").select("id"), sb);
+    expect(rangeCalls.map(([lo]) => lo)).toEqual([0, 1000]);
+  });
+
+  it("정확히 PAGE 배수(2000행) → 빈 페이지 후 종료", async () => {
+    const rows = Array.from({ length: 2000 }, (_, i) => ({ id: i }));
+    const { sb, rangeCalls } = makeFakeSb(rows);
+    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb);
+    expect(result.rows.length).toBe(2000);
+    // 2000행 = 2페이지 가득 → 3번째 빈 페이지 조회 후 종료
+    expect(rangeCalls).toEqual([[0, 999], [1000, 1999], [2000, 2999]]);
+  });
+
+  it("1페이지 error → { rows: 누적분, error } 반환 (graceful degradation 보존)", async () => {
+    const rows = Array.from({ length: 2500 }, (_, i) => ({ id: i }));
+    const { sb } = makeFakeSb(rows, { errorOnCall: 2, errorMsg: "조회 실패" });
+    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb);
+    expect(result.error).toBe("조회 실패");
+    expect(result.rows.length).toBe(1000); // 1페이지(0~999)만 누적 후 2페이지에서 error
+  });
+
+  it("빈 테이블(0행) → { rows: [], error: null }", async () => {
+    const { sb, rangeCalls } = makeFakeSb([]);
+    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb);
+    expect(result.rows).toEqual([]);
+    expect(result.error).toBeNull();
+    expect(rangeCalls).toEqual([[0, 999]]); // 1회 조회 후 빈 결과로 종료
+  });
+
+  it("커스텀 page 크기 적용", async () => {
+    const rows = Array.from({ length: 250 }, (_, i) => ({ id: i }));
+    const { sb, rangeCalls } = makeFakeSb(rows);
+    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb, 100);
+    expect(result.rows.length).toBe(250);
+    expect(rangeCalls).toEqual([[0, 99], [100, 199], [200, 299]]);
+  });
+});
+
+// ── articles 통합 fetch 컬럼 가드 (세션 356) ──────────────────────
+// 4 Phase(area/trade_type/floor/maintenance)가 공유하는 단일 fetch 의 select 에
+// 각 Phase 요구 컬럼이 빠짐없이 포함됐는지 검증. 미래에 Phase 가 새 컬럼을 쓰면서
+// 통합 select 갱신을 깜박하면 silent 로 그 필드 집계가 비는 사고 차단.
+describe("articles 통합 fetch 컬럼 가드", () => {
+  const src = readFileSync(
+    fileURLToPath(new URL("./sync-naver-complex.mjs", import.meta.url)),
+    "utf8",
+  );
+  // 통합 fetch select 문자열 추출 (allArticles 선언 라인 인근)
+  const m = src.match(/allArticles[\s\S]*?\.select\(\s*"([^"]+)"/);
+  const cols = (m?.[1] ?? "").split(",").map((c) => c.trim());
+
+  const REQUIRED = [
+    "complex_no",            // 모든 Phase 그룹핑 키
+    "area1_m2", "area2_m2",  // Phase 1 전용률
+    "direction",             // Phase 1 일조 + Phase 4 방향
+    "building_name",         // Phase 1 조망
+    "trade_type_name",       // Phase 2 매물수
+    "floor_info",            // Phase 3b 평균층수
+    "numeric_maintenance_cost", // Phase 4 관리비
+  ];
+
+  it("통합 select 가 추출됨", () => {
+    expect(cols.length).toBeGreaterThan(0);
+  });
+
+  it.each(REQUIRED)("통합 select 에 %s 컬럼 포함", (col) => {
+    expect(cols).toContain(col);
+  });
+
+  it("articles 별도 fetch 는 heating 1곳만 (Phase 2/3b/4 별도 fetch 제거 확인)", () => {
+    // heating fetch + 통합 fetch = articles 직접 .from("articles") 2곳
+    const fromArticles = (src.match(/\.from\("articles"\)/g) ?? []).length;
+    expect(fromArticles).toBe(2);
   });
 });

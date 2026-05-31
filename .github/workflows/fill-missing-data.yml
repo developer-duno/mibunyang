@@ -67,7 +67,9 @@ jobs:
     needs: phase1-coords
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # sync-naver-complex 가 articles 전건(46만) fetch — articles 1.5배 성장 마진 포함 60분
+    # (세션 356: 통합 fetch 로 28→~17분 단축했으나 미래 증가 대비. core 경로 collect-naver-listings.yml 은 90분)
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

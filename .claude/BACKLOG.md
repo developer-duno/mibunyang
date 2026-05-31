@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ `sync-naver-complex` articles/price 1000건 cap + 4회 fetch 통합 — 세션 356 (`.range(0,99999)` cap 4곳[area/trade_type/**complex_price_history**/floor] → `fetchAllPages` 전건 페이지네이션. 461,751행 중 0.2%만 읽던 데이터 정확성 사고. 추가로 같은 articles 전건을 4번 fetch 하던 비효율 → 8컬럼 1회 통합 fetch[allArticles, matchCache 직후] 로 4 Phase 공유. timeout 30→60. dry-run 실증 before 1000→after 461,466건/시세 25,941단지. vitest 46/46 + tsc 0 + 메모리 적대검증 34배 헤드룸. 박제값 정정 = 세션 355 "Phase4 cap/시세 누락" 오류. 상세 = 🔴 즉시 절)
 - ✅ vitest 4 `environmentMatchGlobs` → `projects` 마이그레이션 — 세션 348 (vitest 4.1.6 dist 에 `environmentMatchGlobs` 0건 실측 = 완전 제거 → 지금까지 api/scripts 테스트가 **node 아닌 jsdom 에서 돌고 있었음**(브라우저 API 미사용이라 무사고). `// @ts-expect-error` 제거 + `test.projects` inline 2개(jsdom=src / node=api+scripts) + 공통 옵션 루트 유지 + 각 `extends: true`. 회귀 0 실측 = 전후 **672 파일 / 3146 케이스 / 100% / src 1563·api 387·scripts 1196 완전 동일** + typecheck 0 + `vitest list --project` 분기 확인. 워크플로 2관점 조사(공식 문서 + 함정) + 직접 실측 교차 검증. 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md))
 - ✅ 5/29 자연 cron cancelled 모니터링 종결 + 진앙 정정 — 세션 347 (부팅 점검 실측: incremental 자연 cron 5/26·27·28 cancelled → **5/29 success(74분, all step success, 순수 자연 cron)** = 세션 338 PR #51 효과 확인. **진앙 정정** = 5/28 cancelled 는 BACKLOG 가 적은 "transport 105초 외부 cancel / 인프라 부하 가설"이 아니라, raw `gh api jobs` 실측 결과 **세션 342 검증용 manual dispatch(19:25~21:57, 2h31m)가 같은 concurrency 그룹(`naver-postprocess-incremental`, `cancel-in-progress:false`) 점유 → 자연 schedule run 44분 큐 대기 후 manual 종료 2초 뒤 cancel**. 답습 = 검증용 수동 실행은 자연 cron 시각(20:30 UTC)과 겹치지 않게. 부팅 1차 진단 "좀비 run" 은 `currentDate` 메타값 단정 환각(`date -u` 실측 의무). 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md))
 - ✅ audit-env-keys collector→yml 역방향 매칭 재구성 — 세션 346 (P2 였던 "step 단위 보강" 진입 시 자가 점검 1 발동 결과 **더 근본적 사각지대 9건 실측 발견**: `findWorkflowForCollector` 1:1 매칭이 yml명≠collector명(transport-tago↔collect-transport 등) collector 9개를 **검증조차 안 하고 clean 오집계** = 세션 328 사고 진짜 근본 원인. `extractStepCollectorEnv()` 신규로 모든 yml step 의 collector 호출 역방향 수집 + multi-collector/1:N/env 상속 처리 + validate `${{ secrets.X }}` B형 정규식 통일. errorCount 0 유지(9개 전부 실측 누락 0) + 세션328/이름불일치 재현 시뮬 EXIT 1 검출 확인 + vitest 10/10. 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md))
@@ -105,10 +106,13 @@
   - **회귀 가드**: tsc -p tsconfig.scripts.json 0 + vitest 30/30 + graceful-coverage 54/54 + 적대 검증 워크플로 confirmed red 0.
   - 답습 자산: 세션 355 메모리 + plan `mibunyang-breezy-rainbow.md` + `collector-timeout-rootcause-analysis.md` §4-way (메모리 ≠ 진실의 원천 — 박제값 "데이터 증가"가 dry-run vs real 오진이었음 답습)
 
-- 🟡 **`sync-naver-complex` articles `.range(0,99999)` 1000건 cap** (세션 355 발견, P2, 별 세션)
-  - **사고**: Phase 1 area/direction + Phase 2 trade_type + Phase 3 floor + Phase 4 maintenance 가 `articles.select(...).range(0,99999)` 단일 호출 — PostgREST `max_rows=1000` 으로 **1000건만 반환** (dry-run `articles area/direction: 1000건` 실측). Phase 1 view/sunlight, Phase 4 관리비/방향 집계가 불완전 데이터 기반.
-  - **정정 후보**: `.range()` → 1000행 페이지네이션 루프 (sync-naver-complex 의 complexes/apartments fetch 가 이미 쓰는 패턴 답습, L146-155). 또는 `selectAll` 헬퍼(`_shared.mjs` L501) 사용.
-  - 답습 자산: 세션 355 메모리
+- ✅ **`sync-naver-complex` articles/price 1000건 cap + articles 4회 fetch 통합** (세션 355 발견 → 세션 356 정정 + 종결)
+  - **사고 (박제값 정정)**: 세션 355 박제 "Phase 1/2/3/4 cap"은 **부분 오류**. 실측 = `.range(0,99999)` 단일 호출 cap = **4곳** (Phase1 area/direction L245 + Phase2 trade_type L388 + **Phase3-a complex_price_history L482** + Phase3-b floor L503). Phase4 maintenance(L640)는 이미 페이지네이션 정상(cap 아님). complex_price_history(시세)가 진짜 4번째 cap(세션 355 누락). PostgREST `max_rows=1000` 으로 articles 461,751행 중 **0.2%(1000건)**, price 338,141행 중 **0.3%** 만 읽어 전 단지 전용률·조망·일조·매물수·미분양율·시세·평균층수가 체계적 왜곡.
+  - **정정 (세션 356, A+B 적대검증 워크플로)**: (A) `fetchAllPages` 헬퍼(전건 페이지네이션) 신설 + cap 4곳 정정. 추가로 같은 `articles eq(is_active,true)` 전건을 **4번 따로 fetch**(area/trade_type/floor/maintenance)하던 비효율을 발견 → **8컬럼 1회 통합 fetch**(`allArticles`, matchCache 직후)로 4 Phase 공유. (B) `fill-missing-data.yml` phase2-calc timeout 30→60 (articles 1.5배 성장 마진).
+  - **실증 (dry-run v1 cap만 vs v2 통합)**: before 1000 → after **461,466건** (461배). 시세 **25,941개 단지**(이전 극소수). 통합 후 dry-run **28분 → 10분15초 (64%↓)**. 고정 5수치 동일 재현(시세 25,941 / Phase3 1,987 완전 일치, 나머지는 articles 실시간 변동 ±0.1%). peak RSS **248MB**(워크플로 적대검증 retained 91MB와 일치 — v1 "1.2GB"는 무관한 별 node 프로세스 오인 정정).
+  - **회귀 가드**: fetchAllPages 6 테스트 + 통합 컬럼 가드 10 테스트(8컬럼 누락 차단) + vitest 46/46 + tsc 0. 메모리 적대검증 = V8 limit 4496MB / 8컬럼 460,986행 retained 91MB / 34배 헤드룸.
+  - 답습 자산: 세션 356 메모리 + plan `mibunyang-tidy-hare.md` + 적대검증 워크플로 (메모리≠진실의원천 — 박제값 "Phase4 cap / 시세 누락" 정정)
+  - **잔여 (별 자리)**: `complex_links` `.range(0,49999)` 미래 cap — 현재 테이블 부재(PGRST205) 0건, 채워지면 1000건 cap. heating fetch(L211, `.not(heating_type null)`)는 다른 필터라 통합 제외(heating_type 0건이라 무관).
 
 - ✅ **NEIS_KEY / SCHOOLINFO_KEY 미설정 사고** (세션 327 발견 → 세션 328 종결, PR #31)
   - 진단 결과 = `collect-naver-listings-incremental.yml` Collect schools step env block 누락 (Secrets 등록 ✅, schools-neis.mjs 코드 ✅, 월간 collect-schools.yml ✅)
