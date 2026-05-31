@@ -428,7 +428,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     fetchAllFromTable(sb, "schools", "apartment_id,school_score,school_grade,nearby_schools", null, null),
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
     fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
-    fetchAllFromTable(sb, "regions", "region,pop_growth,supply_ratio,net_migration", null, null),
+    fetchAllFromTable(sb, "regions", "region,gu,recorded_at,pop_growth,supply_ratio,net_migration,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio", null, null),
     fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m", null, null),
   ]);
 
@@ -480,10 +480,12 @@ export async function fetchAllFromView(sb, regionFilter) {
     debt_ratio: "builderDebtRatio", credit_grade: "builderCreditGrade", hug_guarantee: "hugGuarantee",
   });
 
-  // merge regions (join by region, gu IS NULL = 시도 레벨)
+  // merge regions (VIEW latest_regions 재현: gu IS NULL 시도 레벨 + recorded_at 최신)
   const regionLookup = new Map();
   for (const r of regions) {
-    if (!regionLookup.has(r.region)) regionLookup.set(r.region, r);
+    if (r.gu != null) continue; // 시도 레벨만 (market_stats 5컬럼은 시도 행에만 채워짐)
+    const prev = regionLookup.get(r.region);
+    if (!prev || String(r.recorded_at) > String(prev.recorded_at)) regionLookup.set(r.region, r);
   }
   for (const apt of apts) {
     const r = regionLookup.get(apt.region);
@@ -491,6 +493,11 @@ export async function fetchAllFromView(sb, regionFilter) {
     apt.popGrowth = r.pop_growth;
     apt.supplyRatio = r.supply_ratio;
     apt.netMigration = r.net_migration;
+    apt.priceIndex = r.price_index;
+    apt.avgPriceSqm = r.avg_price_sqm;
+    apt.newSupply = r.new_supply;
+    apt.initialSaleRate = r.initial_sale_rate;
+    apt.landCostRatio = r.land_cost_ratio;
   }
 
   // merge trade_stats

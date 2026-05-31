@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-05-31 regions 측정 버그 정정 (세션 351 — data-audit.mjs fetch/merge 5컬럼 누락 수정)
+
+> **측정 정확도 정정 — 실제 수집 증가 아님.** market_stats 5개 컬럼(priceIndex/avgPriceSqm/newSupply/initialSaleRate/landCostRatio)이 DB(regions 시도 레벨)에는 이미 채워져 있었으나, `data-audit.mjs` 가 regions 를 fetch 할 때(L431) 3개 컬럼만 select 하고 merge(L491~)에서도 3개만 할당해 **항상 filled:0 으로 집계**되던 버그를 수정. 부수적으로 merge lookup 을 운영 VIEW `latest_regions` 와 일치(gu IS NULL + recorded_at DESC)시켜 시군구 행이 시도 값을 NULL 로 덮어쓰는 잠재 버그까지 차단.
+
+### regions 카테고리 정정 (8 필드 기준, 2026-05-31T00:43:45Z 실측)
+
+| 필드 | 수정 전 (filled/2001) | 수정 후 (filled/2001) | 비고 |
+|---|---|---|---|
+| popGrowth | 2001 (100%) | 2001 (100%) | 변동 없음 |
+| netMigration | 2001 (100%) | 2001 (100%) | 변동 없음 |
+| supplyRatio | 0 (0%) | 0 (0%) | **별개 BACKLOG** — MOLIT housing-permits API 사고 (758행 전부 NULL) |
+| priceIndex | 0 (0%) | **2001 (100%)** | 시도 17개 전부 채움 — 측정 버그였음 |
+| avgPriceSqm | 0 (0%) | **2001 (100%)** | 동일 |
+| newSupply | 0 (0%) | **2001 (100%)** | 동일 |
+| initialSaleRate | 0 (0%) | **2001 (100%)** | 동일 |
+| landCostRatio | 0 (0%) | **2001 (100%)** | 동일 |
+
+→ **regions 카테고리 충족률 25% → 87.5% 정정** (filled 4002 → 14007 / total 16008). 8필드 중 supply_ratio 1개만 0%, 나머지 7개 100%.
+→ 아래 5/26 측정의 regions 26.4% 수치는 fetch 누락으로 5개 컬럼이 0 집계된 결과 — 본 측정으로 대체. (헤더 totalApartments 2001 / avgReliability 92 불변 — dataReliability 계산은 priceIndex 등 미사용)
+
+### 실사용 확인 (측정 정정의 가치)
+
+이 5개 컬럼은 dead data 아님 — 전부 AHP 스코어링 입력:
+- `initialSaleRate` 안전도 독립 가중치 0.03 / `landCostRatio` 가격 독립 가중치 0.03
+- `priceIndex`·`newSupply` 서브스코어 보정(±3~5) / `avgPriceSqm` 인근 실거래 없는 단지 적정가(가중치 0.30) 폴백
+- UI: DetailModal → MarketStatsCharts 5개 차트. API: apartments + market-stats-history. collector: `collect-market-stats.mjs` (매월 5일 KOSIS HUG, regions 직접 UPDATE).
+
+### 검증
+- `npx vitest run scripts/collectors/data-audit.test.mjs` — 17 passed (기존 14 + 회귀 가드 3 신규: 5컬럼 merge / 시군구 행 무시 / 최신 recorded_at 선택)
+- `npx tsc --noEmit -p tsconfig.scripts.json` — 에러 0
+- `node scripts/collectors/data-audit.mjs --json` 실측 (위 표)
+
+> 실제 데이터 수집량은 불변. 측정 파이프라인 정확도만 개선.
+
+---
+
 ## 2026-05-26 전수 재측정 (세션 318 — data-audit.mjs --json 1회 실행)
 
 `node scripts/collectors/data-audit.mjs --json` 실행 결과 (2026-05-26T09:18:49Z).

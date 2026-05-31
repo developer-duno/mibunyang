@@ -14,7 +14,7 @@ vi.mock("./_shared.mjs", () => ({
   createReporter: vi.fn(() => ({ success: vi.fn(), fail: vi.fn(), skip: vi.fn(), summary: vi.fn() })),
 }));
 
-const { isFieldNull, computeAudit, AUDIT_FIELDS } = await import("./data-audit.mjs");
+const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView } = await import("./data-audit.mjs");
 
 // 팩토리: 모든 필드가 채워진 아파트 행
 function createFullRow(overrides = {}) {
@@ -187,5 +187,91 @@ describe("AUDIT_FIELDS", () => {
     expect(AUDIT_FIELDS.safety.fields).toEqual([
       "crimeSafetyGrade", "emergency", "emergencyDist", "emergencyName", "emergencyType",
     ]);
+  });
+});
+
+// ── fetchAllFromView regions merge (세션 351 — fetch/merge 5컬럼 누락 회귀 가드) ──
+// 테이블별 mock 응답을 반환하는 Supabase 빌더. fetchAllFromTable 의
+// from(table).select(cols, opts).eq?().range(a,b) → { data, error, count } 체인 재현.
+/** @param {Record<string, Record<string, unknown>[]>} tableRows */
+function makeMockSb(tableRows) {
+  return {
+    from(/** @type {string} */ table) {
+      const rows = tableRows[table] ?? [];
+      const result = { data: rows, error: null, count: rows.length };
+      /** @type {any} */
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        range: () => Promise.resolve(result),
+      };
+      return builder;
+    },
+  };
+}
+
+describe("fetchAllFromView regions merge", () => {
+  // 빈 관련 테이블 7종 (regions 만 케이스별로 덮어씀)
+  const EMPTY_RELATED = {
+    prices: [], infra: [], schools: [], transport: [], builders: [], trade_stats: [],
+  };
+
+  // 이 테스트가 검증하는 것: regions 5개 시장지표 컬럼이 apt 객체에 camelCase 로 merge 되는지
+  // (L431 fetch + L491-493 merge 누락 버그 회귀 가드 — 누락 시 priceIndex 등이 undefined)
+  it("regions 5개 시장지표 컬럼이 priceIndex 등으로 merge 됨", async () => {
+    const sb = makeMockSb({
+      apartments: [{ id: "ah-1", region: "서울" }],
+      ...EMPTY_RELATED,
+      regions: [{
+        region: "서울", gu: null, recorded_at: "2026-03-20",
+        pop_growth: -0.8, supply_ratio: null, net_migration: -167,
+        price_index: 232, avg_price_sqm: 16606, new_supply: 1158,
+        initial_sale_rate: 100, land_cost_ratio: 59,
+      }],
+    });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows).toHaveLength(1);
+    const apt = rows[0];
+    expect(apt.priceIndex).toBe(232);
+    expect(apt.avgPriceSqm).toBe(16606);
+    expect(apt.newSupply).toBe(1158);
+    expect(apt.initialSaleRate).toBe(100);
+    expect(apt.landCostRatio).toBe(59);
+    // 기존 3컬럼도 유지
+    expect(apt.popGrowth).toBe(-0.8);
+    expect(apt.netMigration).toBe(-167);
+  });
+
+  // 이 테스트가 검증하는 것: 시군구 행(gu non-null, price_index NULL)이 시도 행을 덮어쓰지 않음
+  // (VIEW latest_regions 와 일치 — gu IS NULL 필터. 시군구 행이 먼저 와도 시도 값 보존)
+  it("시군구 행이 먼저 와도 시도 행 값을 덮어쓰지 않음", async () => {
+    const sb = makeMockSb({
+      apartments: [{ id: "ah-1", region: "서울" }],
+      ...EMPTY_RELATED,
+      regions: [
+        // 시군구 행이 배열 앞 — price_index NULL (덮어쓰면 안 됨)
+        { region: "서울", gu: "강남구", recorded_at: "2026-03-20", price_index: null, pop_growth: 1.0 },
+        // 시도 행 (gu null) — 진짜 시장지표 보유
+        { region: "서울", gu: null, recorded_at: "2026-03-20", price_index: 232, pop_growth: -0.8 },
+      ],
+    });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    const apt = rows[0];
+    expect(apt.priceIndex).toBe(232); // 시도 행 값, 시군구 NULL 아님
+    expect(apt.popGrowth).toBe(-0.8); // 시도 행 값
+  });
+
+  // 이 테스트가 검증하는 것: 같은 시도에 여러 recorded_at — 최신 행 선택 (VIEW ORDER BY recorded_at DESC)
+  it("같은 시도 다중 recorded_at — 최신 행 선택", async () => {
+    const sb = makeMockSb({
+      apartments: [{ id: "ah-1", region: "서울" }],
+      ...EMPTY_RELATED,
+      regions: [
+        { region: "서울", gu: null, recorded_at: "2026-01-01", price_index: 100 }, // 구
+        { region: "서울", gu: null, recorded_at: "2026-03-20", price_index: 232 }, // 최신
+      ],
+    });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows[0].priceIndex).toBe(232);
   });
 });
