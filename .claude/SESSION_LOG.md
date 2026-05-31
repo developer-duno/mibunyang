@@ -10181,3 +10181,14 @@ plan v1 은 "`data-audit` 가 `apartments_flat` VIEW 를 쿼리한다"고 전제
 - PR-B (다중 loop 7건) = 별 세션 진입 자리 (PHASE 2 답습 결과 컨텍스트 안전 박힘)
 - PR-C (진앙 정정 2건) = PR-B 머지 후 진입
 - 5/28 KST 05:30 자연 cron raw log 답습 의무 = 세션 328 PR #31 NEIS_KEY 정정 종결 검증 (본 PR-A 와 무관)
+
+---
+
+# 세션 353 (2026-05-31) — 청약홈 공식 분양 일정·평형 Phase 1 (PR #66)
+
+세션 352 plan(별도 테이블) 적대 검증 4 워크플로로 근본 재설계. 평형·청약 일정 12종이 100% 비어있어 신규 정보 적재를 Phase 1로 승격. 3 PR: 마이그2(`presale_schedule_official` + `applyhome_unit_supply`) + 수집기(`collect-applyhome-detail.mjs`, sim≥0.85+region 4중 게이트) + 화면(`presale-detail` API + `usePresaleDetail` + `PresaleInfo` 일정 타임라인 + `ExpertUnitPlaceholder` 평형표). apartments base 비파괴 = 미분양 244 stage 불변. 회귀 가드 tsc 0 + vitest 신규 19 + 프론트 415 + build + audit 3종.
+
+# 세션 354 (2026-05-31) — PR #66 머지 + sync-naver-complex timeout 진앙 진단
+
+- **PR #66 머지**: main `ce230d8` squash + 브랜치 삭제. 미분양 보호 회귀 가드 통과(presale_stage 분양중367/미분양244/분양계획56/청약중61 불변) + DB 적재 일정 393/평형 2206. 수집기 apartments select만(L225), write 신규 2테이블만 = 직접 grep 교차 검증. dry-run(run 26713031370) success = Detail 2777 + Mdl 14157 수신, 매칭 일정 393/평형 2206 (DB와 일치, 멱등성 확인).
+- **별건 사고 진단**: `sync-naver-complex` 30분 timeout 반복 cancelled 진앙 = 직렬 Supabase update 확정 (4-way: 5/25 success 17분 vs 5/31 cancel 30분+, git 9de9241, 4 Phase 전부 complexes 63,535 × apt 중첩 + await update 직렬 L320/407/567/634, Promise.all/semaphore 0건). 가설 D(concurrency 35워크플로 그룹 축출) 부정 = 5/31 일요일 cron fill 단독. 조치 = timeout 30→60 즉효 + semaphore batch 근본 → BACKLOG P1 등록.

@@ -97,6 +97,13 @@
   - **재오픈 조건**: 미래 Supabase 모드 재활성화 (실시간 데이터 필요) 시 필수. 현재는 정적 JSON (매일 cron) 으로 충분해 우선순위 P1.
   - 답습 자산: 세션 351 메모리 + `api/supabase/apartments.ts:21` + `src/services/staticDataApi.ts:11`
 
+- 🟡 **`sync-naver-complex` 30분 timeout 반복 cancelled 근본 정정** (세션 354 진단, P1, 별 세션)
+  - **사고**: `fill-missing-data.yml` phase2-calc matrix step `sync-naver-complex` 가 매주 일요일 cron 에서 30분 timeout 도달 cancel 반복 (최근 10회 fill: cancelled 6 / failure 3 / success 1). 5/31 run 26701652483 = 정확히 30분(03:01:17~03:31:32) 도달 = 자연 timeout.
+  - **진앙 (확정, 4-way 답습)**: 직전 success 5/25 = 17분 11초 vs 5/31 = 30분+ 초과 (데이터 증가). 코드 = `scripts/collectors/sync-naver-complex.mjs` 4개 Phase 전부 `for(complexes 63,535) × for(matchedApts)` 중첩 + 각 단계 `await sb.from("apartments").update(row).eq("id", apt.id)` **직렬** (L320·L407·L567·L634). `Promise.all`/`createSemaphore` 0건 → 세션 309 trade-stats 직렬 update timeout 진앙과 동형.
+  - **조치 2갈래**: (즉효) phase2-calc step `timeout-minutes: 30 → 60` (fill-missing-data.yml L70 — 17분 작업이라 60분 마진 충분). (근본) 4개 Phase 직렬 update 를 `createSemaphore(10)` + `Promise.all` batch 전환 (`trade-stats.mjs` L596-607 답습, 17분→수십초 기대).
+  - **가설 D(concurrency 축출) 부정**: `data-collection` 그룹 35개 워크플로 공유하나 5/31 일요일 cron 은 fill 단독. 정확 30분 도달 = 자연 timeout 이지 그룹 축출 아님.
+  - 답습 자산: 세션 354 메모리 + `.claude/rules/collectors/collector-timeout-rootcause-analysis.md` §4-way + `.claude/rules/workflows/timeout-rootcause-policy.md`
+
 - ✅ **NEIS_KEY / SCHOOLINFO_KEY 미설정 사고** (세션 327 발견 → 세션 328 종결, PR #31)
   - 진단 결과 = `collect-naver-listings-incremental.yml` Collect schools step env block 누락 (Secrets 등록 ✅, schools-neis.mjs 코드 ✅, 월간 collect-schools.yml ✅)
   - 정정 = incremental yml step env block 에 NEIS_KEY + SCHOOLINFO_KEY 2 줄 박힘 (`47a1a59`)
@@ -246,6 +253,15 @@
 ---
 
 ## 🟢 여유
+
+- 🟢 **청약홈 Phase 2 — 날짜 정밀화(경로 A) + drift 가드** (세션 354 등록, Phase 1 PR #66 후속)
+  - 날짜 정밀화: `recruit_date` 53건이 `YYYY-MM`(월만) → 청약홈 일정 ISO 날짜로 정밀화 (728 중 672 이미 ISO 라 효과 53건으로 작음)
+  - drift 가드: `naver-presale.mjs:725` 가 ISO 날짜를 `YYYY-MM` 로 덮어쓰는 회귀 차단
+  - 효과 작음 → 우선순위 낮음. 경쟁률 미분양 시그널(Phase 3)이 더 가치 클 수 있음
+
+- 🟢 **청약홈 Phase 3 — 경쟁률(미분양 시그널) + 외부 소스 확장** (세션 354 등록)
+  - 청약홈 잔여세대/경쟁률 → 미분양 시그널 (미분양 전문 서비스에 직접 가치)
+  - 외부 소스: LH(`15058530`)·경기도 미분양(`15057206`)·당첨가점(`15110812`) — 전부 data.go.kr **활용신청 미신청**(raw 확인). 진입 시 활용신청 선행 필요 `# 👤 사용자`
 
 - 🟢 **fill-missing-data.yml 개명** (`backfill-new-apartments.yml`) + `monitor-collectors.yml` `workflow_run.workflows` 동기화 — spec Phase 3, 6/14 발화 2회 success 후 별도 PR (세션 307 spec out-of-scope)
 
