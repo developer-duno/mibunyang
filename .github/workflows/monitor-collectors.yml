@@ -16,6 +16,7 @@ on:
       - "Childcare Facilities Collection"
       - "Childcare Jeju Collection"
       - "Collect Applyhome Competition Rate"
+      - "Collect Applyhome Detail (Schedule + Units)"
       - "Collect Building Hub (에너지+인허가)"
       - "Collect MOLIT Units"
       - "Collect Maintenance Cost"

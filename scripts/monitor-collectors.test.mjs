@@ -451,9 +451,9 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 4 후보 박힘 (housing-permits/building-hub/transport/schools)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 5 후보 박힘 (housing-permits/building-hub/transport/schools/applyhome-detail)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
-    expect(names).toEqual(["building-hub", "housing-permits", "schools", "transport"]);
+    expect(names).toEqual(["applyhome-detail", "building-hub", "housing-permits", "schools", "transport"]);
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);
       expect(c.owner).toBeTruthy();

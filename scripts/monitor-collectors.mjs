@@ -174,6 +174,7 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "building-hub",    stale_days: 14, owner: "MOLIT 건축물대장 허브" },
   { collector: "transport",       stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
+  { collector: "applyhome-detail", stale_days: 38, owner: "청약홈 분양일정·평형 (월 13일 cron + 1주 여유)" },
 ];
 
 /** ⑤ 외부 API 장기 중단 판정 — 최근 N회 연속 success+ok=0 = silent fail 의심. */

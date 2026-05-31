@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useRef } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics";
+import { usePresaleDetail, type PresaleScheduleOfficial } from "@/hooks/usePresaleDetail";
 import type { PresaleInfoProps } from "@/types/components/PresaleInfo.types";
 
 const STAGE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -12,9 +13,27 @@ const STAGE_COLORS: Record<string, { bg: string; color: string }> = {
 
 interface InfoItem { l: string; v: string }
 
+// 청약홈 공식 일정 타임라인 항목 (있는 것만 순서대로 노출)
+function buildTimeline(s: PresaleScheduleOfficial): Array<{ l: string; v: string }> {
+  const fmt = (d: string | null) => (d ? d.replace(/-/g, ".").slice(2) : null); // "2026-05-29" → "26.05.29"
+  const rows: Array<{ l: string; v: string }> = [];
+  const push = (l: string, d: string | null) => { const v = fmt(d); if (v) rows.push({ l, v }); };
+  push("모집공고", s.recruit_date);
+  push("특별공급", s.special_receipt_bgnde);
+  push("1순위", s.general_rank1_bgnde);
+  push("2순위", s.general_rank2_bgnde);
+  push("당첨발표", s.winner_announce_date);
+  push("계약", s.contract_bgnde);
+  if (s.move_in_ym && /^\d{6}$/.test(s.move_in_ym)) {
+    rows.push({ l: "입주예정", v: `${s.move_in_ym.slice(0, 4)}.${s.move_in_ym.slice(4)}` });
+  }
+  return rows;
+}
+
 export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) {
   const tracked = useRef(false);
   const [imgErr, setImgErr] = useState(false);
+  const { schedule } = usePresaleDetail(apt.id);
 
   useEffect(() => {
     if (apt.presaleStage && !tracked.current) {
@@ -132,6 +151,37 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
           수집: {new Date(apt.presaleFetchedAt as string).toLocaleDateString("ko-KR")}
         </div>
       )}
+
+      {/* 청약홈 공식 일정 타임라인 (presale_schedule_official) */}
+      {schedule && (() => {
+        const timeline = buildTimeline(schedule);
+        if (timeline.length === 0) return null;
+        return (
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` }}>
+            <div style={{ fontSize: F.xs, fontWeight: 700, color: C.purple, marginBottom: 6 }}>
+              청약홈 공식 일정
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
+              {timeline.map((item, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
+                  <span style={{ fontSize: F.xs, color: C.muted }}>{item.l}</span>
+                  <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{item.v}</span>
+                </div>
+              ))}
+            </div>
+            {schedule.pblanc_url && (
+              <div style={{ marginTop: 6 }}>
+                <a
+                  href={schedule.pblanc_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: F.xs, color: C.blue, fontWeight: 600, textDecoration: "underline" }}
+                >청약홈 공고 보기</a>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 });
