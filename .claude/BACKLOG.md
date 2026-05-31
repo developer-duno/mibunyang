@@ -97,12 +97,18 @@
   - **재오픈 조건**: 미래 Supabase 모드 재활성화 (실시간 데이터 필요) 시 필수. 현재는 정적 JSON (매일 cron) 으로 충분해 우선순위 P1.
   - 답습 자산: 세션 351 메모리 + `api/supabase/apartments.ts:21` + `src/services/staticDataApi.ts:11`
 
-- 🟡 **`sync-naver-complex` 30분 timeout 반복 cancelled 근본 정정** (세션 354 진단, P1, 별 세션)
-  - **사고**: `fill-missing-data.yml` phase2-calc matrix step `sync-naver-complex` 가 매주 일요일 cron 에서 30분 timeout 도달 cancel 반복 (최근 10회 fill: cancelled 6 / failure 3 / success 1). 5/31 run 26701652483 = 정확히 30분(03:01:17~03:31:32) 도달 = 자연 timeout.
-  - **진앙 (확정, 4-way 답습)**: 직전 success 5/25 = 17분 11초 vs 5/31 = 30분+ 초과 (데이터 증가). 코드 = `scripts/collectors/sync-naver-complex.mjs` 4개 Phase 전부 `for(complexes 63,535) × for(matchedApts)` 중첩 + 각 단계 `await sb.from("apartments").update(row).eq("id", apt.id)` **직렬** (L320·L407·L567·L634). `Promise.all`/`createSemaphore` 0건 → 세션 309 trade-stats 직렬 update timeout 진앙과 동형.
-  - **조치 2갈래**: (즉효) phase2-calc step `timeout-minutes: 30 → 60` (fill-missing-data.yml L70 — 17분 작업이라 60분 마진 충분). (근본) 4개 Phase 직렬 update 를 `createSemaphore(10)` + `Promise.all` batch 전환 (`trade-stats.mjs` L596-607 답습, 17분→수십초 기대).
-  - **가설 D(concurrency 축출) 부정**: `data-collection` 그룹 35개 워크플로 공유하나 5/31 일요일 cron 은 fill 단독. 정확 30분 도달 = 자연 timeout 이지 그룹 축출 아님.
-  - 답습 자산: 세션 354 메모리 + `.claude/rules/collectors/collector-timeout-rootcause-analysis.md` §4-way + `.claude/rules/workflows/timeout-rootcause-policy.md`
+- ✅ **`sync-naver-complex` 30분 timeout 반복 cancelled 근본 정정** (세션 354 진단 → 세션 355 정정 + 종결)
+  - **사고**: `fill-missing-data.yml` phase2-calc matrix step `sync-naver-complex` 가 매주 일요일 cron 에서 30분 timeout 도달 cancel 반복 (최근 10회 fill: cancelled 6 / failure 3 / success 1).
+  - **세션 354 진앙 오진 정정 (세션 355 적대 검증)**: 세션 354 "직전 success 5/25 17분 vs 5/31 30분 = 데이터 증가 + 직렬 update 진앙"은 **부분 오진**. (1) 5/25 success 는 `--dry-run`(쓰기 0건)이었고 5/31 이 real 첫 실행 — 데이터 증가 아니라 dry-run vs real 차이. (2) 진짜 주 병목 = **`complex_links` 테이블 mibunyang DB 부재** (`PGRST205`). `matchApartments` 가 항상 이름 유사도 LCS 폴백 → complexes 63,535 × apartments 2,001 = 1억2716만 회 `stringSimilarity`(O(글자수²) DP) 를 Phase 1·4 에서 2번 반복 (dry-run 실측: Phase1 매칭 441초 + Phase4 매칭 398초 = 839초). 직렬 update 는 부차적(Phase3 ~251ms/건).
+  - **정정 (세션 355, 방향 C)**: (1) **매칭 1회 계산 후 Map 재사용** (3패스→1패스, `complex_no → matched id[]` 캐시 + id 인덱스 룩업). (2) 직렬 update → `createSemaphore(10)` + BATCH=200 슬라이스 `Promise.all` (whole-array 금지 — matched pair 19,763 = trade-stats 10배라 critic 권고). timeout 30 유지(yml 무변경).
+  - **실증 (dry-run)**: before 1048초(17.5분) → after 794초(13.2분). 매칭 통합 839→335초(−504초). real 추정 ~11분 << 30분.
+  - **회귀 가드**: tsc -p tsconfig.scripts.json 0 + vitest 30/30 + graceful-coverage 54/54 + 적대 검증 워크플로 confirmed red 0.
+  - 답습 자산: 세션 355 메모리 + plan `mibunyang-breezy-rainbow.md` + `collector-timeout-rootcause-analysis.md` §4-way (메모리 ≠ 진실의 원천 — 박제값 "데이터 증가"가 dry-run vs real 오진이었음 답습)
+
+- 🟡 **`sync-naver-complex` articles `.range(0,99999)` 1000건 cap** (세션 355 발견, P2, 별 세션)
+  - **사고**: Phase 1 area/direction + Phase 2 trade_type + Phase 3 floor + Phase 4 maintenance 가 `articles.select(...).range(0,99999)` 단일 호출 — PostgREST `max_rows=1000` 으로 **1000건만 반환** (dry-run `articles area/direction: 1000건` 실측). Phase 1 view/sunlight, Phase 4 관리비/방향 집계가 불완전 데이터 기반.
+  - **정정 후보**: `.range()` → 1000행 페이지네이션 루프 (sync-naver-complex 의 complexes/apartments fetch 가 이미 쓰는 패턴 답습, L146-155). 또는 `selectAll` 헬퍼(`_shared.mjs` L501) 사용.
+  - 답습 자산: 세션 355 메모리
 
 - ✅ **NEIS_KEY / SCHOOLINFO_KEY 미설정 사고** (세션 327 발견 → 세션 328 종결, PR #31)
   - 진단 결과 = `collect-naver-listings-incremental.yml` Collect schools step env block 누락 (Secrets 등록 ✅, schools-neis.mjs 코드 ✅, 월간 collect-schools.yml ✅)
