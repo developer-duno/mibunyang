@@ -2,17 +2,42 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PresaleInfo } from "./PresaleInfo";
+import { usePresaleDetail } from "@/hooks/usePresaleDetail";
 import { makeApt } from "@/__tests__/factories";
 
 // analytics mock (trackEvent 호출 방지)
 vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 
+// usePresaleDetail mock — 기본은 schedule 없음(jsdom fetch 불가 대체). 케이스별로 주입.
+vi.mock("@/hooks/usePresaleDetail", () => ({
+  usePresaleDetail: vi.fn(() => ({ schedule: null, units: [], loading: false, error: null })),
+}));
+
 describe("PresaleInfo", () => {
-  // presaleStage가 null이면 아무것도 렌더링하지 않음
-  it("presaleStage가 null이면 null을 반환한다", () => {
+  // presaleStage·schedule 둘 다 없으면 아무것도 렌더링하지 않음.
+  // (mock 기본값 schedule=null → presaleStage null + schedule null이라 일정-only 분기도 null 반환)
+  it("presaleStage가 null이고 schedule도 없으면 null을 반환한다", () => {
     const apt = /** @type {any} */ (makeApt({ presaleStage: null }));
     const { container } = render(<PresaleInfo apt={apt} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  // 게이트 분리: presaleStage가 null이어도 청약홈 일정(schedule)이 있으면 일정-only 카드 노출.
+  // (6/13 cron 적재 ah- 단지 = presaleStage 영구 NULL이라 이 분기로만 일정이 보임)
+  it("presaleStage가 null이어도 schedule이 있으면 청약홈 일정 카드를 표시한다", () => {
+    vi.mocked(usePresaleDetail).mockReturnValueOnce(
+      /** @type {any} */ ({
+        schedule: { house_manage_no: "2026000123", recruit_date: "2026-05-19", general_rank1_bgnde: "2026-05-26", winner_announce_date: "2026-06-02", pblanc_url: "https://applyhome.example/x" },
+        units: [], loading: false, error: null,
+      })
+    );
+    const apt = /** @type {any} */ (makeApt({ presaleStage: null }));
+    render(<PresaleInfo apt={apt} />);
+    expect(screen.getByText("청약홈 공식 분양 일정")).toBeTruthy();
+    expect(screen.getByText("모집공고")).toBeTruthy();
+    expect(screen.getByText("청약홈 공고 보기")).toBeTruthy();
+    // 네이버 분양정보 본문은 안 뜸 (presaleStage 없음)
+    expect(screen.queryByText("네이버 분양정보")).toBeNull();
   });
 
   // presaleStage가 있으면 섹션 표시
