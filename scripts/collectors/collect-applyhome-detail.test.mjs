@@ -46,6 +46,18 @@ describe("addrToRegion — 주소 → region 약칭", () => {
     expect(addrToRegion("부산광역시 동래구")).toBe("부산");
     expect(addrToRegion("경기도 성남시 성남낙생지구")).toBe("경기");
   });
+  it("시도명에 다른 시도 약칭이 부분문자열로 들어가도 정확 (세션 360 버그 가드)", () => {
+    // 이전 버그: addr 전체에서 약칭 "광주" 매칭 → "경기도 광주시"가 광주광역시로 오파싱
+    expect(addrToRegion("경기도 광주시 탄벌동")).toBe("경기");
+    expect(addrToRegion("광주광역시 북구")).toBe("광주");
+    expect(addrToRegion("경기 광주시")).toBe("경기"); // 약칭 head + 부분문자열 함정
+  });
+  it("특별자치시/도 + 약칭 head 정규화", () => {
+    expect(addrToRegion("세종특별자치시")).toBe("세종");
+    expect(addrToRegion("강원특별자치도 춘천시")).toBe("강원");
+    expect(addrToRegion("전북특별자치도 전주시")).toBe("전북");
+    expect(addrToRegion("광주 북구")).toBe("광주");
+  });
   it("null → null", () => {
     expect(addrToRegion(null)).toBeNull();
     expect(addrToRegion("")).toBeNull();
