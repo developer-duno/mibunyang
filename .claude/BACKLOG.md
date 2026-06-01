@@ -206,8 +206,14 @@
   - **세션 359 진단 정정**: "정규화(LCS 한계)가 병목"은 세션 360 적대 검증(6-probe 워크플로 + 라이브 재측정 2회)으로 **데이터 반증**. 정규화 회수 효과 ~0건 (미매칭 384 중 정규화로 잡을 수 있는 건 ≤8건, 긴 단지명은 음차 1글자 차이여도 이미 sim 0.92 통과). 미매칭 384 중 **235(61%)는 임대/공공주택** = 청약홈 *분양* API 구조적 부재.
   - **진짜 진앙 (라이브 재측정 2회 확정)**: `collect-applyhome-detail.mjs:225` 매칭 후보를 `presale_stage NOT NULL`(728)로 제한 → 청약홈 공고 있는데 분양 단계 미태깅된 단지가 통째로 빠짐. 제약 제거 시 매칭 **393→916 rows / 344→810 distinct (+466 단지, 2.4배)**, 신규 483 중 482가 명백 분양(sim 1.0 정답, 임대 1건뿐).
   - **세션 360 PR 처리**: 후보 쿼리 전체 apartments 확대 + region 파싱 버그(`경기도 광주시`→광주광역시 오파싱) 동반 수정. 적재는 별도 테이블만(apartments base 불변, 미분양 보호). 회귀 가드 = vitest 3180 + typecheck 0 + region 버그 fixture 2건.
-  - **잔여 검증 (P2)**: dry-run AFTER 회수 실측은 청약홈 odcloud API 데이터 비움(`totalCount:0`, 외부 일시장애)으로 이월 → `collect-applyhome-detail.yml` cron 정상화 첫 실행에서 `collector_runs` matched ~916 자동 검증.
-  - 답습: 세션 355 LCS 폴백 + 세션 353 청약홈 매칭 개선 + **세션 360 = "정규화 진단이 적대 검증으로 반증, 진짜 진앙은 후보 쿼리 제약"** (이름 변형보다 후보 누락이 지배적 진앙). 메가단지 블록코드(D1-2BL) LCS 변별 약점은 별 항목.
+  - **세션 361 라이브 검증 완료 (회수 효과 입증)**: API 정상화(`totalCount:2777`) 후 라이브 dry-run(DB 쓰기 0, 26초) 실측 = **일정 매칭 931 rows / 평형 5397 rows / 실패 0** (예측 916 → 실측 931, 거의 일치). upsert 멱등성 확인(onConflict = 테이블 UNIQUE 일치). MOLIT 쿼터 무위험(오늘 5/10000). **지금 강제 적재 안 함 → 6/13 정기 cron이 새 코드로 자동 적재 + `collector_runs` matched ~931 자동 검증** (강제 적재 vs cron 차이 = 전문가 평형 12일 일찍뿐, 데이터 관리 위생상 cron 우선).
+  - 답습: 세션 355 LCS 폴백 + 세션 353 청약홈 매칭 개선 + **세션 360 = "정규화 진단이 적대 검증으로 반증, 진짜 진앙은 후보 쿼리 제약"** (이름 변형보다 후보 누락이 지배적 진앙) + **세션 361 = "v1 지금 적재 / v2 100% 죽은코드 둘 다 검증 부실 → 라이브 env + 전수 grep으로만 진실"**. 메가단지 블록코드(D1-2BL) LCS 변별 약점은 별 항목.
+
+- 🟢 **청약홈 *일정* 타임라인이 일반 화면 미노출 — 평형은 노출됨 (세션 361 라이브 검증 발견)**
+  - **노출 경로 2개** (전수 grep + 직접 Read 실측): (1) 평형 `applyhome_unit_supply` → 전문가 페이지 `ExpertUnitPlaceholder`([ExpertDashboard.tsx:119](../src/components/expert/ExpertDashboard.tsx#L119) → `usePresaleDetail(apt.id)` → `/api/supabase/presale-detail`) = **USE_SUPABASE 게이트 없음**, `unitRows.length>0`만 조건 → ✅ **프로덕션 노출됨**. (2) 일정 `presale_schedule_official` → 일반 단지상세 `PresaleInfo`([PresaleInfo.tsx:45](../src/components/detail/PresaleInfo.tsx#L45) `if(!apt.presaleStage) return null`) → ❌ **미노출**.
+  - **진앙**: 프로덕션 `VITE_USE_SUPABASE="false"`(세션 361 `vercel env pull` 라이브 확인, 2일 전 변경됐으나 false 유지) → 정적 JSON(`apartments-list.json`)에 `presaleStage` 키 부재(라이브 51키 중 0) → 일반 단지상세에서 청약홈 일정 타임라인 전 단지 미노출. `/upcoming`(FEATURE_UPCOMING=true 라이브)은 `api/upcoming.ts`가 apartments base만 읽어 청약홈 테이블 미사용.
+  - **재오픈 트리거**: (1) `collect-data.mjs`가 정적 JSON에 `presaleStage` 추가 (2) `USE_SUPABASE=true` 전환 (단 세션 351 랜딩 23초 VIEW 병목 선결 필요). 평형 노출은 이미 정상 → 일정만 갭.
+  - 측정 근거: `presale_stage` NULL 1273/2001(63.6%). 적재 344 distinct 중 134(39%)가 presaleStage NULL. 우선순위 낮음(평형은 노출, 일정만 부분 갭).
 
 - 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**, **세션 334 ADR 승격**)
   - **정책 결정**: → [docs/decisions/avg_price-policy.md](../docs/decisions/avg_price-policy.md) (세션 334 ADR 박힘)
