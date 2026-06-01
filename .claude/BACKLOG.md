@@ -202,6 +202,12 @@
 
 ## 🟡 곧
 
+- 🟡 **단지명 매칭 정확도 — LCS 한계로 청약홈 384단지(52.7%) 미매칭** (세션 359 구독 AI 활용 조사 중 발견, docs only)
+  - **병목**: 모든 매칭이 `_shared.mjs:474 stringSimilarity`(LCS, 의미·음운 인식 0)에 의존. `cleanName`/`normName` 정규식이 괄호 1종만 처리. 한국어 단지명 변형 미처리 = `e편한세상`↔`이편한세상`(음차, LCS 0.800), `무순위2차`/`임의공급`/`계약취소주택` 접미, 전각공백(DB 10건), `N차`(226건)/`N단지`(63건)/괄호(303건). 매칭 진입점 4곳: `sync-naver-complex.mjs:58`(complex_links 부재로 LCS 폴백 유일) / `_molit-api.mjs:173 findBestMatch`(MIN_SIMILARITY 0.5) / `naver-presale.mjs:411`(정규화 0, raw) / `collect-applyhome-detail.mjs:101`(sim≥0.85 게이트).
+  - **규모 실측 (2026-06-01)**: 청약홈 공식 일정 매칭 728 분양단지 중 **344(47.3%)만 성공 = 384 미매칭** → 일정/평형 미적재 직접 원인. unit_source NULL 523(26%) / heat_fuel NULL 541(27%).
+  - **권고 (§2 oss-first — AI 보다 룰 먼저)**: (1단계) `normName`/`cleanName` 에 음차 정규화 + 분양 접미 토큰 제거 + 전각→반각 + 차수/단지 분리 추가 → 0.800·0.848 임계 미달 케이스 상당수 공짜 회수. (2단계, 선택) 룰 후 잔여 회색지대(sim 0.55~0.85, region 게이트 통과 쌍)만 LLM 의미 판정. 단 청약홈 매칭은 클라우드 cron(`collect-applyhome-detail.yml` ubuntu-latest)이라 구독 CLI 불가 = 종량 또는 로컬 분리. 공간 게이트(좌표/bjd_code/region) 유지 의무(동명이지역 오매칭 차단). 검증 = `--dry-run` before/after 매칭 건수.
+  - 답습: 세션 355 LCS 폴백 사고(complex_links 부재) + 세션 353 청약홈 매칭률 17.7%→59% 개선 패턴 + 한국어는 fuzzysort(ASCII 전용) 부적합이라 룰 직접 작성 정당
+
 - 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**, **세션 334 ADR 승격**)
   - **정책 결정**: → [docs/decisions/avg_price-policy.md](../docs/decisions/avg_price-policy.md) (세션 334 ADR 박힘)
   - 채택 = 옵션 1-A (보류) + 미래 후보 = 옵션 1-D (자매 계산)
@@ -280,6 +286,11 @@
   - 외부 소스: LH(`15058530`)·경기도 미분양(`15057206`)·당첨가점(`15110812`) — 전부 data.go.kr **활용신청 미신청**(raw 확인). 진입 시 활용신청 선행 필요 `# 👤 사용자`
 
 - 🟢 **fill-missing-data.yml 개명** (`backfill-new-apartments.yml`) + `monitor-collectors.yml` `workflow_run.workflows` 동기화 — spec Phase 3, 6/14 발화 2회 success 후 별도 PR (세션 307 spec out-of-scope)
+
+- 🟢 **register-naver-task.ps1 과잉 권한 정리 — `-RunLevel Highest` → `Limited`** (세션 359 구독 AI 조사 중 발견, 보안 위생)
+  - `scripts/register-naver-task.ps1:33` 이 네이버 로컬 수집 스케줄러를 **관리자 상승 토큰**(`-RunLevel Highest`)으로 등록. 그러나 6단계 수집(HTTP fetch + Supabase upsert + 산술)은 일반 권한으로 충분 = 불필요한 과잉 권한. 우리 보안 가이드(`.claude/claude-security-guidance.md`)의 최소 권한 원칙 위반.
+  - 정정: `New-ScheduledTaskPrincipal -RunLevel Limited -LogonType Interactive` 로 재등록 (구독 CLI 설명서 함정 #4 답습 — Highest 는 구독 토큰도 못 읽음). 단 LogonType Interactive 면 PC 로그인 시각에만 발화 = 무인 자동화 신뢰성 트레이드오프 → 현재 월/목 08:00 발화가 로그인 상태에서 도는지 확인 후 결정.
+  - 우선순위 낮음 (현재 수집 정상 동작 중, 보안 위생 차원). 구독 CLI 미도입이면 Highest→Limited 단독으로도 가치 있음.
 
 - ✅ **apartments.json 약 13.0MB 단일 파일 — 목록용 경량 분리** (세션 279 완료)
   - 분리: `apartments.json` 13MB 원본 유지 + `apartments-list.json` 1.66MB + `apartments-prices.json` 11.35MB 신규
