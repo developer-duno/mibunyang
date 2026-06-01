@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef, type CSSProperties } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics";
@@ -30,6 +30,43 @@ function buildTimeline(s: PresaleScheduleOfficial): Array<{ l: string; v: string
   return rows;
 }
 
+// DataSections.tsx:54 DS_S.container 와 동일 — 일정-only 카드 컨테이너
+const SCHEDULE_CARD: CSSProperties = { background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` };
+
+// 청약홈 공식 일정 타임라인 렌더. 항목이 없으면 null.
+// showInnerHeader=false 면 보조 헤더("청약홈 공식 일정")를 생략 — 일정-only 카드에서 바깥 카드 헤더와 중복 방지.
+function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean) {
+  const timeline = buildTimeline(s);
+  if (timeline.length === 0) return null;
+  return (
+    <div style={showInnerHeader ? { marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` } : undefined}>
+      {showInnerHeader && (
+        <div style={{ fontSize: F.xs, fontWeight: 700, color: C.purple, marginBottom: 6 }}>
+          청약홈 공식 일정
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
+        {timeline.map((item, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
+            <span style={{ fontSize: F.xs, color: C.muted }}>{item.l}</span>
+            <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{item.v}</span>
+          </div>
+        ))}
+      </div>
+      {s.pblanc_url && (
+        <div style={{ marginTop: 6 }}>
+          <a
+            href={s.pblanc_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: F.xs, color: C.blue, fontWeight: 600, textDecoration: "underline" }}
+          >청약홈 공고 보기</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) {
   const tracked = useRef(false);
   const [imgErr, setImgErr] = useState(false);
@@ -42,7 +79,20 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
     }
   }, [apt.presaleStage, apt.presaleImageUrl]);
 
-  if (!apt.presaleStage) return null;
+  // presaleStage 없으면 네이버 분양정보 본문은 못 그림(전부 presaleStage 가정).
+  // 단 청약홈 공식 일정(schedule)은 presaleStage 무관 — 있으면 일정-only 카드로 분리 노출.
+  // (6/13 cron 적재 ah- 단지: presaleStage 영구 NULL이라 이 분기로만 일정이 보임)
+  if (!apt.presaleStage) {
+    if (!schedule) return null;
+    const timelineEl = renderTimeline(schedule, false);
+    if (!timelineEl) return null;
+    return (
+      <div style={SCHEDULE_CARD}>
+        <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>청약홈 공식 분양 일정</div>
+        {timelineEl}
+      </div>
+    );
+  }
 
   const stageStyle = STAGE_COLORS[String(apt.presaleStage)] ?? { bg: C.purpleLight, color: C.purple };
   const presaleUrl = apt.naverPresaleNo && apt.naverPresaleSeq
@@ -153,35 +203,7 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
       )}
 
       {/* 청약홈 공식 일정 타임라인 (presale_schedule_official) */}
-      {schedule && (() => {
-        const timeline = buildTimeline(schedule);
-        if (timeline.length === 0) return null;
-        return (
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` }}>
-            <div style={{ fontSize: F.xs, fontWeight: 700, color: C.purple, marginBottom: 6 }}>
-              청약홈 공식 일정
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
-              {timeline.map((item, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
-                  <span style={{ fontSize: F.xs, color: C.muted }}>{item.l}</span>
-                  <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{item.v}</span>
-                </div>
-              ))}
-            </div>
-            {schedule.pblanc_url && (
-              <div style={{ marginTop: 6 }}>
-                <a
-                  href={schedule.pblanc_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: F.xs, color: C.blue, fontWeight: 600, textDecoration: "underline" }}
-                >청약홈 공고 보기</a>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {schedule && renderTimeline(schedule, true)}
     </div>
   );
 });
