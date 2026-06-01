@@ -174,6 +174,14 @@ mibunyang ↔ naver-estate-web 공유 instance `rwdtljipvmqpazrimyns`. 어느 �
 RLS·정책은 **naver-estate-web 소유** (`V007`/`V001` 마이그) — mibunyang 에서 정책
 생성 금지.
 
+⚠️ **2026-06-02 (naver V031): 공유 4테이블(articles/complexes/trades/
+complex_price_history) anon·authenticated SELECT 가 차단됨.** 외부가 공개 anon key 로
+매물 전량을 긁어 공유 Supabase micro 인스턴스 RAM 을 압박(PostgREST 부하 1위 실증)한 것 +
+B2B 모델 유출 봉합. mibunyang 은 공유 테이블을 **service_role(`SUPABASE_SERVICE_KEY`)
+단독**으로만 접근하므로 영향 0 (collector `_shared.mjs` 확인). 혹 mibunyang 브라우저/anon
+경로로 이 4테이블을 읽으려 하면 42501 로 막힘 — service_role 경유로 전환할 것. 차단 원본 =
+naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
+
 ### 사고 답습 (세션 245 → 247)
 
 세션 245 가 `apply-migration.yml` workflow_dispatch run 25797316590 "success" 결과만 보고 "DDL 적용 완료" 박제 → 세션 247 수집 시점에 PG 42703 `column does not exist` 발견. 워크플로 본문 grep 결과 **실제 SQL 실행 0건**. `.claude/rules/workflow-name-hallucination.md` 룰 참조.
