@@ -1,11 +1,14 @@
 // @ts-check
 /**
- * 국토부 공동주택 기본정보 → 건물 상세 (주차, 최고층, 에너지, 내진, 녹색건축) 수집기
+ * 국토부 공동주택 기본정보 → 건물 상세 (주차, 최고층, 난방방식, 복도유형) 수집기
  *
  * API: 국토교통부 공동주택 서비스
  *   - AptListService3 (#15057332): 시도별 단지 목록
  *   - AptBasisInfoServiceV4: 단지 기본 정보 (getAphusBassInfoV4)
- *   - AptBasisInfoServiceV4: 단지 상세 정보 (getAphusDtlInfoV4) — 주차, 에너지, 내진 등
+ *   - AptBasisInfoServiceV4: 단지 상세 정보 (getAphusDtlInfoV4) — 주차, 난방, 복도 등
+ *
+ * 세션 358 정정: energy_grade(kaptdEcnt=승강기대수 오인) + 건폐율/용적률(kaptdBcRat/
+ * kaptdVlRat=응답에 없는 죽은 코드) 추출 제거. 건폐율/용적률은 네이버(sync-naver-complex)가 채움.
  *
  * 사용법:
  *   node scripts/collectors/molit-building-info.mjs              (Supabase UPDATE)
@@ -22,9 +25,9 @@ import {
 } from "./_molit-api.mjs";
 
 /**
- * @typedef {{ id: string; name: string; region: string | null; gu: string | null; address: string | null; parking_ratio: number | null; max_floor: number | null; energy_grade: number | null; building_coverage_ratio: number | null; floor_area_ratio: number | null }} BuildingAptTarget
+ * @typedef {{ id: string; name: string; region: string | null; gu: string | null; address: string | null; parking_ratio: number | null; max_floor: number | null }} BuildingAptTarget
  * @typedef {Record<string, unknown>} BuildingDetail
- * @typedef {{ parking_ratio: number | null; max_floor: number | null; energy_grade: number | null; heating: string | null; corridor_type: string | null; building_coverage_ratio: number | null; floor_area_ratio: number | null }} BuildingInfo
+ * @typedef {{ parking_ratio: number | null; max_floor: number | null; heating: string | null; corridor_type: string | null }} BuildingInfo
  */
 
 loadEnv();
@@ -76,13 +79,10 @@ export function extractBuildingInfo(detail) {
     ? Math.round((totalParking / totalHouseholds) * 100) / 100
     : null;
 
-  // 에너지 효율 등급: V4에서 kaptdEcnt(Dtl) 또는 kaptdEcntp(Bass)
-  const energyStr = detail.kaptdEcnt ?? detail.kaptdEcntp ?? null;
-  let energyGrade = null;
-  if (energyStr != null) {
-    const n = safeInt(energyStr);
-    if (n && n >= 1 && n <= 7) energyGrade = n;
-  }
+  // 에너지 효율 등급: 수집 안 함 (세션 358 정정).
+  // kaptdEcnt/kaptdEcntp 는 에너지등급이 아니라 "승강기 대수(승용)" 필드 — raw API 실측
+  // 결과 값 분포 0/5/8/21 = 등급(1~7) 불가. 주거용 아파트 에너지효율등급은 공공
+  // data.go.kr API 미제공 (scripts/CLAUDE.md "BldEngyHubService 한계" 참조).
 
   // 최고층: V4에서 ktownFlrNo가 실제 최고층
   const highFloor = safeInt(detail.ktownFlrNo) || null;
@@ -95,20 +95,16 @@ export function extractBuildingInfo(detail) {
   // 복도유형: Bass에서 codeHallNm (예: "복도식", "계단식", "혼합식")
   const corridor_type = /** @type {string | null} */ (detail.codeHallNm ?? null) || null;
 
-  // 건폐율/용적률: Bass에서 kaptdBcRat / kaptdVlRat (%)
-  /** @param {unknown} v */
-  const safeFloat = (v) => { const n = parseFloat(String(v ?? "")); return isNaN(n) ? null : Math.round(n * 100) / 100; };
-  const building_coverage_ratio = safeFloat(detail.kaptdBcRat);
-  const floor_area_ratio = safeFloat(detail.kaptdVlRat);
+  // 건폐율/용적률: 수집 안 함 (세션 358 정정).
+  // kaptdBcRat/kaptdVlRat 는 getAphus*InfoV4 응답에 존재하지 않아 항상 null = 죽은 코드였음
+  // (raw API Bass 31개 키 전수 덤프로 확인). 실제 building_coverage_ratio/floor_area_ratio 는
+  // 네이버(complexes 테이블) → sync-naver-complex.mjs L328-330/L363-364 가 채움.
 
   return {
     parking_ratio: parkingRatio,
     max_floor: highFloor,
-    energy_grade: energyGrade,
     heating,
     corridor_type,
-    building_coverage_ratio,
-    floor_area_ratio,
   };
 }
 
@@ -125,11 +121,8 @@ export async function updateBuilding(sb, aptId, info, dryRun) {
   const row = {};
   if (info.parking_ratio != null) row.parking_ratio = info.parking_ratio;
   if (info.max_floor != null) row.max_floor = info.max_floor;
-  if (info.energy_grade != null) row.energy_grade = info.energy_grade;
   if (info.heating != null) row.heating = info.heating;
   if (info.corridor_type != null) row.corridor_type = info.corridor_type;
-  if (info.building_coverage_ratio != null) row.building_coverage_ratio = info.building_coverage_ratio;
-  if (info.floor_area_ratio != null) row.floor_area_ratio = info.floor_area_ratio;
 
   if (Object.keys(row).length === 0) return false;
 
@@ -160,9 +153,9 @@ async function main() {
   // 1. 대상 아파트 조회 (건물 상세 미수집, selectAll: 1000행 제한 자동 페이지네이션)
   const data = /** @type {BuildingAptTarget[] | null} */ (await selectAll((s) => {
     let q = s.from("apartments")
-      .select("id, name, region, gu, address, parking_ratio, max_floor, energy_grade, building_coverage_ratio, floor_area_ratio");
+      .select("id, name, region, gu, address, parking_ratio, max_floor");
     if (!force) {
-      q = q.or("energy_grade.is.null,parking_ratio.is.null,max_floor.is.null,building_coverage_ratio.is.null,floor_area_ratio.is.null");
+      q = q.or("parking_ratio.is.null,max_floor.is.null");
     }
     return q;
   }, sb));
@@ -230,7 +223,7 @@ async function main() {
         if (!detail) { log(PHASE, `    ${target.name}: 상세 조회 실패`); failed++; continue; }
 
         const info = extractBuildingInfo(detail);
-        log(PHASE, `    ${target.name}: parking=${info.parking_ratio}, floor=${info.max_floor}, energy=${info.energy_grade}, bcr=${info.building_coverage_ratio}, far=${info.floor_area_ratio}`);
+        log(PHASE, `    ${target.name}: parking=${info.parking_ratio}, floor=${info.max_floor}, heating=${info.heating}, corridor=${info.corridor_type}`);
 
         const ok = await updateBuilding(sb, target.id, info, dryRun);
         if (ok) updated++;

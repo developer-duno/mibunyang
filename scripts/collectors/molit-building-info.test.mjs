@@ -43,12 +43,8 @@ function makeDetail(overrides = {}) {
     kaptdPcntu: "500",    // 지하 주차
     kaptdaCnt: "1000",    // 세대수
     ktownFlrNo: "25",     // 최고층
-    kaptdEcnt: "2",       // 에너지 등급 (Dtl)
-    kaptdEcntp: null,     // 에너지 등급 (Bass 폴백)
     codeHeatNm: "개별난방",
     codeHallNm: "복도식",
-    kaptdBcRat: "18.5",   // 건폐율
-    kaptdVlRat: "249.7",  // 용적률
     ...overrides,
   };
 }
@@ -66,21 +62,12 @@ function makeMockSb(updateResult = { error: null }) {
 
 // ── extractBuildingInfo ──────────────────────────────────────
 describe("extractBuildingInfo", () => {
-  it("기본값으로 7개 필드 모두 정확히 추출", () => {
+  it("기본값으로 4개 필드 모두 정확히 추출", () => {
     const info = extractBuildingInfo(makeDetail());
     expect(info.parking_ratio).toBe(0.7);
     expect(info.max_floor).toBe(25);
-    expect(info.energy_grade).toBe(2);
     expect(info.heating).toBe("개별난방");
     expect(info.corridor_type).toBe("복도식");
-    expect(info.building_coverage_ratio).toBe(18.5);
-    expect(info.floor_area_ratio).toBe(249.7);
-  });
-
-  it("건폐율/용적률 null 처리", () => {
-    const info = extractBuildingInfo(makeDetail({ kaptdBcRat: null, kaptdVlRat: undefined }));
-    expect(info.building_coverage_ratio).toBeNull();
-    expect(info.floor_area_ratio).toBeNull();
   });
 
   // parking_ratio 엣지케이스
@@ -106,21 +93,6 @@ describe("extractBuildingInfo", () => {
     });
   }
 
-  // energy_grade 범위 + 폴백
-  const energyCases = [
-    ["유효 1", { kaptdEcnt: "1", kaptdEcntp: null }, 1],
-    ["유효 7", { kaptdEcnt: "7", kaptdEcntp: null }, 7],
-    ["범위 초과 8 → null", { kaptdEcnt: "8", kaptdEcntp: null }, null],
-    ["0 → null", { kaptdEcnt: "0", kaptdEcntp: null }, null],
-    ["양쪽 null → null", { kaptdEcnt: null, kaptdEcntp: null }, null],
-    ["Ecntp 폴백 3 → 3", { kaptdEcnt: null, kaptdEcntp: "3" }, 3],
-  ];
-  for (const [label, overrides, expected] of energyCases) {
-    it(`energy_grade — ${label}`, () => {
-      expect(extractBuildingInfo(makeDetail(overrides)).energy_grade).toBe(expected);
-    });
-  }
-
   // heating + corridor 엣지케이스
   const textCases = [
     ["정상값", "개별난방", "복도식", "개별난방", "복도식"],
@@ -140,22 +112,22 @@ describe("extractBuildingInfo", () => {
 describe("updateBuilding", () => {
   it("non-null 필드만 UPDATE + updated_at + 성공 반환", async () => {
     const sb = makeMockSb();
-    const info = { parking_ratio: 0.7, max_floor: null, energy_grade: 2, heating: null, corridor_type: null };
+    const info = { parking_ratio: 0.7, max_floor: null, heating: "개별난방", corridor_type: null };
     const ok = await updateBuilding(sb, "apt-1", /** @type {any} */ (info), false);
 
     expect(ok).toBe(true);
     const updateArg = sb.from("apartments").update.mock.calls[0][0];
     expect(updateArg.parking_ratio).toBe(0.7);
-    expect(updateArg.energy_grade).toBe(2);
+    expect(updateArg.heating).toBe("개별난방");
     expect(updateArg.updated_at).toBeDefined();
     // null 필드는 포함되지 않아야 함
     expect(updateArg).not.toHaveProperty("max_floor");
-    expect(updateArg).not.toHaveProperty("heating");
+    expect(updateArg).not.toHaveProperty("corridor_type");
   });
 
   it("전부 null → DB 호출 없이 false 반환", async () => {
     const sb = makeMockSb();
-    const info = { parking_ratio: null, max_floor: null, energy_grade: null, heating: null, corridor_type: null };
+    const info = { parking_ratio: null, max_floor: null, heating: null, corridor_type: null };
     const ok = await updateBuilding(sb, "apt-1", /** @type {any} */ (info), false);
 
     expect(ok).toBe(false);
@@ -164,7 +136,7 @@ describe("updateBuilding", () => {
 
   it("dryRun=true → DB 미호출 + true 반환", async () => {
     const sb = makeMockSb();
-    const info = { parking_ratio: 0.5, max_floor: 20, energy_grade: 3, heating: "지역난방", corridor_type: "계단식" };
+    const info = { parking_ratio: 0.5, max_floor: 20, heating: "지역난방", corridor_type: "계단식" };
     const ok = await updateBuilding(sb, "apt-1", /** @type {any} */ (info), true);
 
     expect(ok).toBe(true);
@@ -173,7 +145,7 @@ describe("updateBuilding", () => {
 
   it("Supabase 에러 → false + logError 호출", async () => {
     const sb = makeMockSb({ error: { message: "DB 실패" } });
-    const info = { parking_ratio: 0.5, max_floor: null, energy_grade: null, heating: null, corridor_type: null };
+    const info = { parking_ratio: 0.5, max_floor: null, heating: null, corridor_type: null };
     const ok = await updateBuilding(sb, "apt-1", /** @type {any} */ (info), false);
 
     expect(ok).toBe(false);
@@ -227,7 +199,7 @@ describe("E2E 시나리오", () => {
     // fetchAptDetail → bass + dtl 성공
     mockMolitApiCall
       .mockResolvedValueOnce({ response: { body: { item: { kaptdaCnt: "800", ktownFlrNo: "30", codeHeatNm: "지역난방", codeHallNm: "혼합식" } } } })
-      .mockResolvedValueOnce({ response: { body: { item: { kaptdPcnt: "200", kaptdPcntu: "600", kaptdEcnt: "1" } } } });
+      .mockResolvedValueOnce({ response: { body: { item: { kaptdPcnt: "200", kaptdPcntu: "600" } } } });
 
     const detail = await fetchAptDetail("K001");
     expect(detail).not.toBeNull();
@@ -235,7 +207,6 @@ describe("E2E 시나리오", () => {
     const info = extractBuildingInfo(/** @type {any} */ (detail));
     expect(info.parking_ratio).toBe(1);     // (200+600)/800
     expect(info.max_floor).toBe(30);
-    expect(info.energy_grade).toBe(1);
     expect(info.heating).toBe("지역난방");
     expect(info.corridor_type).toBe("혼합식");
 

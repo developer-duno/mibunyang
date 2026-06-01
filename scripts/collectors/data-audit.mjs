@@ -29,8 +29,11 @@ loadEnv();
 const PHASE = "data-audit";
 const BATCH_SIZE = 1000;
 
-// ── 영구 미수집 필드 (V4 API에서 제거됨) ─────────────────────
-const PERMANENT_NULL = new Set(["quakeDesign", "greenBldg"]);
+// ── 영구 미수집 필드 (공공 API 소스 부재) ─────────────────────
+// quakeDesign/greenBldg: V4 API에서 제거됨.
+// energyGrade: 세션 358 정정 — kaptdEcnt(승강기대수) 오인 제거. 주거용 아파트
+//   에너지효율등급은 공공 data.go.kr API 미제공 (scripts/CLAUDE.md "BldEngyHubService 한계").
+const PERMANENT_NULL = new Set(["quakeDesign", "greenBldg", "energyGrade"]);
 
 // ── 특수 null 판정 (VIEW COALESCE/기본값 마스킹) ──────────────
 /** @type {Record<string, number>} */

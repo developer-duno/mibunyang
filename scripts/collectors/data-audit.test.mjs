@@ -128,7 +128,8 @@ describe("computeAudit", () => {
     // core 카테고리: 모든 필드 채움
     expect(audit.categories.core.rate).toBe(100);
     expect(audit.categories.price.rate).toBe(100);
-    expect(audit.categories.building.rate).toBe(100);
+    // building: energyGrade 영구 미수집(PERMANENT_NULL, 세션 358) → 12필드 중 11필드만 채움 = 91.7%
+    expect(audit.categories.building.rate).toBeCloseTo(91.7, 0);
 
     // 지역별
     expect(audit.regions["서울"].apartments).toBe(1);

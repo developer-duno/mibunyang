@@ -24,7 +24,7 @@
 | 파일 | 역할 | isCLI |
 |------|------|-------|
 | `_molit-api.mjs` | 공유 모듈 (API 호출, 매칭, 페이지네이션, NonRetryableError) | - |
-| `molit-building-info.mjs` | 건물 상세 (주차/층수/에너지/난방/복도) | O |
+| `molit-building-info.mjs` | 건물 상세 (주차/층수/난방/복도) | O |
 | `molit-units.mjs` | 세대수 보정 (units, unsold_rate) | O |
 | `collect-maintenance.mjs` | 관리비 수집 (5항목 합산) | O |
 
@@ -155,11 +155,11 @@
 
 ## 테스트 현황 (수집기)
 
-> 진실의 원천 = **vitest 실행 수** (grep 은 동적 생성 `it()` 을 못 셈 — `_graceful-coverage` ALLOWLIST 루프 53건 / `molit-building-info` 29건 등). 표는 stale 위험.
+> 진실의 원천 = **vitest 실행 수** (grep 은 동적 생성 `it()` 을 못 셈 — `_graceful-coverage` ALLOWLIST 루프 53건 등). 표는 stale 위험.
 > 재측정: `npx vitest run scripts/collectors/ --reporter=json --outputFile=$TMP/c.json` 후 `testResults[].assertionResults.length` 파일별 합산.
-> 세션 345 정정: 박제 42행/grep 수치 stale → vitest 실측 55행/**1017 케이스**.
+> 세션 345 정정: 박제 42행/grep 수치 stale → vitest 실측 55행/1017 케이스. 세션 358: molit-building-info 29→22(energy 7케이스 제거) + data-audit 14→17 = **1013 케이스**.
 
-**55개 파일 · 1017 케이스** (2026-05-31 vitest 실측)
+**55개 파일 · 1013 케이스** (2026-06-01 vitest 실측)
 
 | 파일 | 테스트 수 |
 |------|----------|
@@ -171,7 +171,6 @@
 | collect-trades.test.mjs | 35 |
 | sync-naver-complex.test.mjs | 30 |
 | _molit-api.test.mjs | 30 |
-| molit-building-info.test.mjs | 29 |
 | transport-tago.test.mjs | 28 |
 | collect-maintenance.test.mjs | 27 |
 | migration.test.mjs | 27 |
@@ -180,6 +179,7 @@
 | collect-housing-price.test.mjs | 25 |
 | childcare-info.test.mjs | 23 |
 | collect-building-hub.test.mjs | 22 |
+| molit-building-info.test.mjs | 22 |
 | collect-avg-income.test.mjs | 20 |
 | geocode-missing.test.mjs | 17 |
 | collect-jeonse-price-index.test.mjs | 17 |
@@ -189,7 +189,7 @@
 | molit-units.test.mjs | 15 |
 | collect-regional-economy.test.mjs | 15 |
 | calc-layout.test.mjs | 14 |
-| data-audit.test.mjs | 14 |
+| data-audit.test.mjs | 17 |
 | population-sex-age.test.mjs | 13 |
 | collect-applyhome.test.mjs | 13 |
 | collect-sale-price-index.test.mjs | 13 |
