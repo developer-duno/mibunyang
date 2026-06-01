@@ -80,12 +80,17 @@ export function normName(s) {
 }
 
 // ── 주소 → region 약칭 (HSSPLY_ADRES 시도 첫 토큰) ──
+// head(시도명 토큰)만으로 판정 + 정식명 우선(긴 키 먼저) 매칭.
+// 세션 360 버그 정정: 이전엔 addr 전체에서 약칭 부분문자열을 잡아
+// "경기도 광주시"가 광주광역시로 오파싱 → region 게이트에서 경기 단지 오차단.
 /** @param {string | null | undefined} addr @returns {string | null} */
 export function addrToRegion(addr) {
   if (!addr) return null;
   const head = addr.trim().split(/\s+/)[0] || "";
-  for (const [full, short] of Object.entries(REGION_MAP)) {
-    if (head.includes(short) || addr.includes(full)) return short;
+  // 정식명(예: "경기도")이 약칭(예: "경기")보다 먼저 매칭되도록 긴 키 우선 정렬
+  const entries = Object.entries(REGION_MAP).sort((a, b) => b[0].length - a[0].length);
+  for (const [full, short] of entries) {
+    if (head === full || head.startsWith(full)) return short;
   }
   const stripped = head.replace(/(특별자치|특별|광역)?(시|도)$/, "");
   return stripped || null;
@@ -220,12 +225,15 @@ async function main() {
       process.exit(1);
     }
 
-    // 2. 분양 단지 로드 (presale_stage 보유 = 분양 관련 단지)
+    // 2. 매칭 후보 로드 (전체 apartments)
+    //    presale_stage NOT NULL 제약 제거 — 청약홈 공고가 있는데 분양 단계 미태깅된
+    //    단지가 후보에서 빠지던 진앙 정정 (세션 360, +466 단지 회수). 적재는 별도
+    //    테이블(presale_schedule_official/applyhome_unit_supply)에만 = apartments base 불변.
     const apts = /** @type {AptRow[]} */ (await selectAll(
-      (s) => s.from("apartments").select("id, name, region").not("presale_stage", "is", null),
+      (s) => s.from("apartments").select("id, name, region"),
       sb,
     ));
-    log(PHASE, `분양 단지: ${apts.length}건`);
+    log(PHASE, `매칭 후보 단지: ${apts.length}건`);
 
     // 3. Detail 매칭 (sim>=0.85 AND region 일치) → house_manage_no별 apartment_id 맵
     /** @type {Map<string, string>} */

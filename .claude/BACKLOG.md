@@ -202,11 +202,12 @@
 
 ## 🟡 곧
 
-- 🟡 **단지명 매칭 정확도 — LCS 한계로 청약홈 384단지(52.7%) 미매칭** (세션 359 구독 AI 활용 조사 중 발견, docs only)
-  - **병목**: 모든 매칭이 `_shared.mjs:474 stringSimilarity`(LCS, 의미·음운 인식 0)에 의존. `cleanName`/`normName` 정규식이 괄호 1종만 처리. 한국어 단지명 변형 미처리 = `e편한세상`↔`이편한세상`(음차, LCS 0.800), `무순위2차`/`임의공급`/`계약취소주택` 접미, 전각공백(DB 10건), `N차`(226건)/`N단지`(63건)/괄호(303건). 매칭 진입점 4곳: `sync-naver-complex.mjs:58`(complex_links 부재로 LCS 폴백 유일) / `_molit-api.mjs:173 findBestMatch`(MIN_SIMILARITY 0.5) / `naver-presale.mjs:411`(정규화 0, raw) / `collect-applyhome-detail.mjs:101`(sim≥0.85 게이트).
-  - **규모 실측 (2026-06-01)**: 청약홈 공식 일정 매칭 728 분양단지 중 **344(47.3%)만 성공 = 384 미매칭** → 일정/평형 미적재 직접 원인. unit_source NULL 523(26%) / heat_fuel NULL 541(27%).
-  - **권고 (§2 oss-first — AI 보다 룰 먼저)**: (1단계) `normName`/`cleanName` 에 음차 정규화 + 분양 접미 토큰 제거 + 전각→반각 + 차수/단지 분리 추가 → 0.800·0.848 임계 미달 케이스 상당수 공짜 회수. (2단계, 선택) 룰 후 잔여 회색지대(sim 0.55~0.85, region 게이트 통과 쌍)만 LLM 의미 판정. 단 청약홈 매칭은 클라우드 cron(`collect-applyhome-detail.yml` ubuntu-latest)이라 구독 CLI 불가 = 종량 또는 로컬 분리. 공간 게이트(좌표/bjd_code/region) 유지 의무(동명이지역 오매칭 차단). 검증 = `--dry-run` before/after 매칭 건수.
-  - 답습: 세션 355 LCS 폴백 사고(complex_links 부재) + 세션 353 청약홈 매칭률 17.7%→59% 개선 패턴 + 한국어는 fuzzysort(ASCII 전용) 부적합이라 룰 직접 작성 정당
+- 🟢 **청약홈 매칭 회수 — 진짜 진앙은 후보 쿼리 presale_stage 제약 (세션 360 PR, 진단 정정)**
+  - **세션 359 진단 정정**: "정규화(LCS 한계)가 병목"은 세션 360 적대 검증(6-probe 워크플로 + 라이브 재측정 2회)으로 **데이터 반증**. 정규화 회수 효과 ~0건 (미매칭 384 중 정규화로 잡을 수 있는 건 ≤8건, 긴 단지명은 음차 1글자 차이여도 이미 sim 0.92 통과). 미매칭 384 중 **235(61%)는 임대/공공주택** = 청약홈 *분양* API 구조적 부재.
+  - **진짜 진앙 (라이브 재측정 2회 확정)**: `collect-applyhome-detail.mjs:225` 매칭 후보를 `presale_stage NOT NULL`(728)로 제한 → 청약홈 공고 있는데 분양 단계 미태깅된 단지가 통째로 빠짐. 제약 제거 시 매칭 **393→916 rows / 344→810 distinct (+466 단지, 2.4배)**, 신규 483 중 482가 명백 분양(sim 1.0 정답, 임대 1건뿐).
+  - **세션 360 PR 처리**: 후보 쿼리 전체 apartments 확대 + region 파싱 버그(`경기도 광주시`→광주광역시 오파싱) 동반 수정. 적재는 별도 테이블만(apartments base 불변, 미분양 보호). 회귀 가드 = vitest 3180 + typecheck 0 + region 버그 fixture 2건.
+  - **잔여 검증 (P2)**: dry-run AFTER 회수 실측은 청약홈 odcloud API 데이터 비움(`totalCount:0`, 외부 일시장애)으로 이월 → `collect-applyhome-detail.yml` cron 정상화 첫 실행에서 `collector_runs` matched ~916 자동 검증.
+  - 답습: 세션 355 LCS 폴백 + 세션 353 청약홈 매칭 개선 + **세션 360 = "정규화 진단이 적대 검증으로 반증, 진짜 진앙은 후보 쿼리 제약"** (이름 변형보다 후보 누락이 지배적 진앙). 메가단지 블록코드(D1-2BL) LCS 변별 약점은 별 항목.
 
 - 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**, **세션 334 ADR 승격**)
   - **정책 결정**: → [docs/decisions/avg_price-policy.md](../docs/decisions/avg_price-policy.md) (세션 334 ADR 박힘)
