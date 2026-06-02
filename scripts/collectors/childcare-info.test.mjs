@@ -9,7 +9,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { parseChildcareXml, aggregateChildcare, listAllSgg, assertNoErrorCode } = await import("./childcare-info.mjs");
+const { parseChildcareXml, aggregateChildcare, listAllSgg, assertNoErrorCode, pickLatestPerKey } = await import("./childcare-info.mjs");
 
 describe("parseChildcareXml", () => {
   // sample 응답 박제 (2026-05-16 실 API 호출 서울 종로구 arcode=11110 응답)
@@ -205,5 +205,38 @@ describe("assertNoErrorCode", () => {
   it("태그명에 무관 — 본문 어디에 있어도 탐지", () => {
     const loose = `오류: INFO-300 일 요청 건수를 초과하였습니다`;
     expect(() => assertNoErrorCode(loose)).toThrow(/INFO-300/);
+  });
+});
+
+describe("pickLatestPerKey", () => {
+  it("같은 (region,gu) 다중 스냅샷 → 최신 recorded_at id 1개만", () => {
+    const regions = [
+      { id: 1, region: "경기", gu: "남양주시", recorded_at: "2026-01-01" },
+      { id: 2, region: "경기", gu: "남양주시", recorded_at: "2026-03-01" },
+      { id: 3, region: "경기", gu: "남양주시", recorded_at: "2026-02-01" },
+    ];
+    const map = pickLatestPerKey(regions);
+    expect(map.size).toBe(1);
+    expect(map.get("경기|남양주시")?.id).toBe(2);  // 2026-03-01 = 최신
+    expect(map.get("경기|남양주시")?.recorded_at).toBe("2026-03-01");
+  });
+
+  it("단일 행 → 그 id", () => {
+    const map = pickLatestPerKey([{ id: 7, region: "서울", gu: "종로구", recorded_at: "2026-05-01" }]);
+    expect(map.get("서울|종로구")?.id).toBe(7);
+  });
+
+  it("빈 입력 → 빈 Map", () => {
+    expect(pickLatestPerKey([]).size).toBe(0);
+  });
+
+  it("gu null (시도 집계행) 제외 — childcare 는 시군구 단위만", () => {
+    const regions = [
+      { id: 10, region: "서울", gu: null, recorded_at: "2026-05-01" },
+      { id: 11, region: "서울", gu: "강남구", recorded_at: "2026-05-01" },
+    ];
+    const map = pickLatestPerKey(regions);
+    expect(map.size).toBe(1);
+    expect(map.has("서울|강남구")).toBe(true);
   });
 });

@@ -166,6 +166,30 @@ export function listAllSgg() {
   return list;
 }
 
+/**
+ * regions 시계열 다중행 중 (region, gu) 별 최신 recorded_at 행 1건만 추리기.
+ * regions 는 UNIQUE(region, COALESCE(gu,''), recorded_at) 시계열 → 같은 (region, gu) 가 여러 행.
+ * PostgREST PATCH 는 order/limit 을 무시하므로 (childcare-info 가 모든 행 덮어쓰던 버그 원인),
+ * id PK 로 1행만 좁히기 위해 메모리에서 최신행 id 를 추린다.
+ * trade-stats-regions.mjs pickLatestPerKey 와 동일 패턴 (import 시 무관 collector 의 top-level
+ * loadEnv 사이드이펙트 결합을 피하려 독립 구현). childcare 는 gu 가 항상 존재해 인라인 키로 자족.
+ * @param {Array<{id: number, region: string, gu: string | null, recorded_at: string}>} regions
+ * @returns {Map<string, {id: number, recorded_at: string}>}  key = `${region}|${gu}`
+ */
+export function pickLatestPerKey(regions) {
+  /** @type {Map<string, {id: number, recorded_at: string}>} */
+  const latest = new Map();
+  for (const r of regions) {
+    if (!r.region || !r.gu) continue;  // childcare 는 시군구(gu) 단위만 — 시도행(gu null) 제외
+    const key = `${r.region}|${r.gu}`;
+    const prev = latest.get(key);
+    if (!prev || r.recorded_at > prev.recorded_at) {
+      latest.set(key, { id: r.id, recorded_at: r.recorded_at });
+    }
+  }
+  return latest;
+}
+
 async function main() {
   if (!API_KEY) {
     logError("init", "CHILDCARE_API_KEY 환경변수 필요 (info.childcare.go.kr cpmsapi021 인증키)");
@@ -219,22 +243,32 @@ async function main() {
   }
 
   const sb = getSupabase();
+
+  // regions 시계열 전수 조회 → (region, gu) 별 최신행 id 맵 구축.
+  // PostgREST PATCH 가 order/limit 을 무시해 .eq(region).eq(gu) 가 모든 과거 스냅샷을 덮어쓰던
+  // 버그(쓰기량 2.5배 → statement timeout → 트랜잭션 abort) 차단 — id PK 로 최신행 1개만 갱신.
+  const { data: allRegions, error: regErr } = await sb.from("regions")
+    .select("id, region, gu, recorded_at")
+    .order("recorded_at", { ascending: false });
+  if (regErr) throw new Error(`regions 조회 실패: ${regErr.message}`);
+  const latestMap = pickLatestPerKey(allRegions ?? []);
+
   let saved = 0;
   for (const row of rows) {
     if (rpt.interrupted()) break;
-    const { data: updated, error: updErr } = await sb.from("regions")
-      .update({ childcare: row.agg })
-      .eq("region", row.region)
-      .eq("gu", row.gu)
-      .select("id");
+    const latest = latestMap.get(`${row.region}|${row.gu}`);
 
-    if (updErr) {
-      logError("regions", `UPDATE 빨강 ${row.region} ${row.gu}: ${updErr.message}`);
-      rpt.fail(1);
-      continue;
-    }
-
-    if (!updated || updated.length === 0) {
+    if (latest) {
+      // 최신행 1개만 UPDATE (id PK)
+      const { error: updErr } = await sb.from("regions")
+        .update({ childcare: row.agg })
+        .eq("id", latest.id);
+      if (updErr) {
+        logError("regions", `UPDATE 빨강 ${row.region} ${row.gu}: ${updErr.message}`);
+        rpt.fail(1);
+        continue;
+      }
+    } else {
       // 행 없음 = INSERT (childcare 만 박제, 다른 컬럼 default null)
       const { error: insErr } = await sb.from("regions").insert([{
         region: row.region,

@@ -215,6 +215,16 @@
   - 재오픈 트리거 3건 박힘 (1-B cross-repo 정리 / 1-D KOSIS 분양면적 수집기 / 1-C ORM 매핑 변경)
   - 본 메모는 BACKLOG 트리거 자리 박힘 용도. 상세 근거·옵션 비교·답습 자산 = ADR 본문 우선
 
+- 🟡 **migration / housing-permits regions UPDATE 동종 버그 — recorded_at 매칭 없이 전체행 덮어쓰기** (세션 367 PR #76 재검증서 발견)
+  - `migration.mjs:259-275` `.update({net_migration}).eq("region").eq("gu")` (recorded_at 無) → 같은 시도행 전체 스냅샷 동기화(서울 5행 전부 net_migration=-167 실측). L253-255 주석이 "동의한 운영"이라 명시 = **의도된 설계**(시계열 포기). `housing-permits.mjs:204-208` `.order(recorded_at).limit(1)` = PostgREST PATCH가 order/limit 무시 → 동일 전체행 UPDATE 버그(단 현재 supply_ratio 0건이라 손상 없음).
+  - **childcare-info(JSONB 8.9MB→timeout 사고)와 달리 net_migration/supply_ratio = 작은 숫자라 timeout 무위험.** 스코어링은 `latest_regions` VIEW(최신행)만 봐서 **현재값 정확 = 화면 영향 0**. childcare PR #76 범위 밖(범위 폭발 금지).
+  - 옵션: migration "의도된 시계열 포기"가 정말 맞는지 정책 재확인 후 pickLatestPerKey 적용 여부 결정 / housing-permits는 외부 API 복구 전 코드만 선제 id PK 수정. 우선순위 낮음(현재 영향 0).
+
+- 🟡 **regions.childcare 좌표 톱니 구조 — 월간 info가 detail 보강분 주기적 전멸** (세션 367 발견, 버그 1차 차단 후 잔여)
+  - 진단: `childcare-detail` 매일 04:00 좌표(la/lo) ~23일 누적 보강 → `collect-nearby-childcare` 05:30 회수→schools 적재 → **월간 `childcare-info` 매월 1일 05:00 이 facilities 를 7필드(좌표 없음)로 덮어써 좌표 전멸** = 톱니 패턴. 매월 nearby 회복까지 ~23일 저점.
+  - 세션 367 PR 로 info 가 **최신행 1개만** 덮도록 차단 → 과거행 좌표 보존돼 완화(현 버그보다 개선). 단 최신행 좌표는 여전히 매월 전멸 → detail 재보강 대기.
+  - 잔여 옵션: (a) childcare-info 가 기존 facilities 좌표/70필드 merge 후 7필드 갱신 (b) detail 을 최신행 한정 처리. **현재 화면 영향 0**(schools.nearby_childcare 588건 스냅샷 보존) → 우선순위 낮음.
+
 - 🟡 **무순위 이벤트 로그 차수 노출** (세션 160 1차 적재 완료, 누적 1~2개월 후)
   - DetailModal 무순위 차수·이력 섹션 / AptCard 차수 배지 (count >= 2일 때만) / 시계열 차트 (MarketStatsCharts 패턴 재사용)
   - 트리거: 같은 apartment_id 2회+ 행 발생
