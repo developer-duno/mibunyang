@@ -215,10 +215,11 @@
   - 재오픈 트리거 3건 박힘 (1-B cross-repo 정리 / 1-D KOSIS 분양면적 수집기 / 1-C ORM 매핑 변경)
   - 본 메모는 BACKLOG 트리거 자리 박힘 용도. 상세 근거·옵션 비교·답습 자산 = ADR 본문 우선
 
-- 🟡 **migration / housing-permits regions UPDATE 동종 버그 — recorded_at 매칭 없이 전체행 덮어쓰기** (세션 367 PR #76 재검증서 발견)
-  - `migration.mjs:259-275` `.update({net_migration}).eq("region").eq("gu")` (recorded_at 無) → 같은 시도행 전체 스냅샷 동기화(서울 5행 전부 net_migration=-167 실측). L253-255 주석이 "동의한 운영"이라 명시 = **의도된 설계**(시계열 포기). `housing-permits.mjs:204-208` `.order(recorded_at).limit(1)` = PostgREST PATCH가 order/limit 무시 → 동일 전체행 UPDATE 버그(단 현재 supply_ratio 0건이라 손상 없음).
-  - **childcare-info(JSONB 8.9MB→timeout 사고)와 달리 net_migration/supply_ratio = 작은 숫자라 timeout 무위험.** 스코어링은 `latest_regions` VIEW(최신행)만 봐서 **현재값 정확 = 화면 영향 0**. childcare PR #76 범위 밖(범위 폭발 금지).
-  - 옵션: migration "의도된 시계열 포기"가 정말 맞는지 정책 재확인 후 pickLatestPerKey 적용 여부 결정 / housing-permits는 외부 API 복구 전 코드만 선제 id PK 수정. 우선순위 낮음(현재 영향 0).
+- ✅ **housing-permits regions UPDATE 동종 버그 — id PK 최신행만 UPDATE 선제 수정** (세션 367 발견 → 세션 368 PR)
+  - `housing-permits.mjs` `.eq("region").is("gu",null).order(recorded_at).limit(1)` = PostgREST PATCH 가 order/limit 무시 → 같은 시도 전체 스냅샷 UPDATE 버그였음. `pickLatestRegionId` (export, 인라인 독립 구현 — childcare PR #76 패턴 답습, trade-stats import 사이드이펙트 회피) 로 시도별 최신행 id 추려 `.eq("id", latestId)` 로 좁힘. 회귀 테스트 5건 + 실 DB 실증(서울 5스냅샷 중 id=36@2026-03-20 최신만 선택 확인).
+  - 선제 수정 근거: 현재 supply_ratio 0건(MOLIT API 500 장기 사고)이라 미발동이나, **API 복구 시 과거 시계열 영구 오염 차단** + "최신 1건만" 의도를 코드에 정확히 표현(거짓 안전 `.order().limit(1)` 제거). 화면 영향은 `latest_regions` VIEW(최신행)라 전후 0.
+- 🟢 **migration regions UPDATE 전체행 동기화 — 의도된 설계로 유지(수정 보류)** (세션 367 발견, 세션 368 정책 확정)
+  - `migration.mjs:259-275` `.update({net_migration}).eq("region").eq("gu")` (recorded_at 無) → 같은 시도행 전체 스냅샷 동기화(서울 5행 전부 net_migration=-167 실측). **L253-255 주석이 "regions 는 region+gu 당 여러 recorded_at 스냅샷이 동일 최신값으로 동기화되는 구조로 운영"으로 명문화 = 의도된 설계**(세션103 collector-contract 지적으로 `.order().limit(1)` 이미 제거). housing-permits 와 달리 "최신 1건" 의도 주석이 없고 "전체 동기화 의도" 주석이 명시됨 → 버그 아님. net_migration=작은 숫자 timeout 무위험 + latest_regions VIEW 최신행만 봐 화면 영향 0. 정책 재확인 없이는 손대지 않음(손대면 회귀).
 
 - 🟡 **regions.childcare 좌표 톱니 구조 — 월간 info가 detail 보강분 주기적 전멸** (세션 367 발견, 버그 1차 차단 후 잔여)
   - 진단: `childcare-detail` 매일 04:00 좌표(la/lo) ~23일 누적 보강 → `collect-nearby-childcare` 05:30 회수→schools 적재 → **월간 `childcare-info` 매월 1일 05:00 이 facilities 를 7필드(좌표 없음)로 덮어써 좌표 전멸** = 톱니 패턴. 매월 nearby 회복까지 ~23일 저점.
@@ -308,10 +309,10 @@
 
 - 🟢 **fill-missing-data.yml 개명** (`backfill-new-apartments.yml`) + `monitor-collectors.yml` `workflow_run.workflows` 동기화 — spec Phase 3, 6/14 발화 2회 success 후 별도 PR (세션 307 spec out-of-scope)
 
-- 🟢 **register-naver-task.ps1 과잉 권한 정리 — `-RunLevel Highest` → `Limited`** (세션 359 구독 AI 조사 중 발견, 보안 위생)
-  - `scripts/register-naver-task.ps1:33` 이 네이버 로컬 수집 스케줄러를 **관리자 상승 토큰**(`-RunLevel Highest`)으로 등록. 그러나 6단계 수집(HTTP fetch + Supabase upsert + 산술)은 일반 권한으로 충분 = 불필요한 과잉 권한. 우리 보안 가이드(`.claude/claude-security-guidance.md`)의 최소 권한 원칙 위반.
-  - 정정: `New-ScheduledTaskPrincipal -RunLevel Limited -LogonType Interactive` 로 재등록 (구독 CLI 설명서 함정 #4 답습 — Highest 는 구독 토큰도 못 읽음). 단 LogonType Interactive 면 PC 로그인 시각에만 발화 = 무인 자동화 신뢰성 트레이드오프 → 현재 월/목 08:00 발화가 로그인 상태에서 도는지 확인 후 결정.
-  - 우선순위 낮음 (현재 수집 정상 동작 중, 보안 위생 차원). 구독 CLI 미도입이면 Highest→Limited 단독으로도 가치 있음.
+- ✅ **register-naver-task.ps1 과잉 권한 정리 — `Highest` → `Limited` 코드 적용** (세션 359 발견 → 세션 368 PR)
+  - `scripts/register-naver-task.ps1` 이 네이버 로컬 수집 스케줄러를 관리자 상승 토큰(`-RunLevel Highest`)으로 등록하던 것을 `New-ScheduledTaskPrincipal -LogonType Interactive -RunLevel Limited` 로 변경. 6단계 수집(HTTP fetch + Supabase upsert + 산술)은 일반 권한으로 충분 = 최소 권한 원칙 충족.
+  - 실증 근거: 같은 PC 의 `naver-units-night` + `LuxuryResale_*` 작업 9개가 이미 Interactive+Limited 로 정상 동작 중(`Get-ScheduledTask` 실측). 네이버 수집은 한국 IP 로컬 PC 가 켜져 있어야만 의미 → 무인 부팅 실행 요건 없음 = Interactive 트레이드오프 무해. 추가 실측: `MibunyangNaverCollect` 작업이 현재 미등록 상태라 코드 변경이 운영에 즉시 영향 0(다음 등록부터 적용).
+  - **👤 재등록은 사용자가 관리자 PowerShell 에서 1회 실행**: `powershell -ExecutionPolicy Bypass -File scripts\register-naver-task.ps1`
 
 - ✅ **apartments.json 약 13.0MB 단일 파일 — 목록용 경량 분리** (세션 279 완료)
   - 분리: `apartments.json` 13MB 원본 유지 + `apartments-list.json` 1.66MB + `apartments-prices.json` 11.35MB 신규

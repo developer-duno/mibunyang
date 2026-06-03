@@ -84,6 +84,32 @@ export function resolveRegion(fullName) {
   return null;
 }
 
+// ── 시도별 최신 스냅샷 id 추출 ────────────────────────────
+/**
+ * regions 는 region 당 여러 recorded_at 시계열 스냅샷을 가지며 PK 는 id.
+ * PostgREST PATCH 는 order/limit 을 무시하므로 (`.eq("region").is("gu", null).order().limit(1)`
+ * 은 같은 시도의 모든 스냅샷을 덮어쓰는 버그 — childcare-info PR #76 과 동종) supply_ratio 를
+ * "최신 1건만" 갱신하려면 메모리에서 최신행 id 를 추려 `.eq("id", ...)` 로 좁혀야 한다.
+ * housing-permits 는 시도행(gu null)만 갱신하므로 키 = region 하나로 자족.
+ * @param {Array<{id: number, region: string, recorded_at: string}>} sidoRows  gu IS NULL 행만 전달
+ * @returns {Map<string, number>}  region → 최신 스냅샷 id
+ */
+export function pickLatestRegionId(sidoRows) {
+  /** @type {Map<string, {id: number, recorded_at: string}>} */
+  const latest = new Map();
+  for (const r of sidoRows) {
+    if (!r.region) continue;
+    const prev = latest.get(r.region);
+    if (!prev || r.recorded_at > prev.recorded_at) {
+      latest.set(r.region, { id: r.id, recorded_at: r.recorded_at });
+    }
+  }
+  /** @type {Map<string, number>} */
+  const idMap = new Map();
+  for (const [region, { id }] of latest) idMap.set(region, id);
+  return idMap;
+}
+
 // ── 메인 ─────────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
@@ -133,11 +159,11 @@ async function main() {
 
   log("fetch", `총 ${totalFetched}건 조회 완료`);
 
-  // 2. 기존 regions 데이터에서 가구 수 가져오기 (supply_ratio 계산용)
+  // 2. 기존 regions 데이터에서 가구 수 + 최신 스냅샷 id 가져오기 (supply_ratio 계산/갱신용)
   const sb = getSupabase();
   const { data: regionData, error: rErr } = await sb
     .from("regions")
-    .select("region, households, population")
+    .select("id, region, households, population, recorded_at")
     .is("gu", null)
     .order("recorded_at", { ascending: false });
 
@@ -146,14 +172,19 @@ async function main() {
     process.exit(1);
   }
 
-  // 시도별 최신 가구 수
+  const sidoRows = /** @type {Array<{ id: number; region: string; households: number | null; population: number | null; recorded_at: string }>} */ (regionData);
+
+  // 시도별 최신 가구 수 (정렬이 recorded_at DESC 라 첫 등장이 최신)
   /** @type {Record<string, number>} */
   const householdMap = {};
-  for (const r of /** @type {Array<{ region: string; households: number | null; population: number | null }>} */ (regionData)) {
+  for (const r of sidoRows) {
     if (householdMap[r.region] === undefined) {
       householdMap[r.region] = r.households || r.population || 0; // 가구수 없으면 인구수 사용
     }
   }
+
+  // 시도별 최신 스냅샷 id (supply_ratio 를 최신행 1개에만 기록 — PostgREST PATCH order/limit 무시 회피)
+  const latestIdMap = pickLatestRegionId(sidoRows);
 
   // 3. supply_ratio 계산 + 업데이트 rows
   /** @type {Array<{ region: string; gu: null; supply_ratio: number | null; recorded_at: string }>} */
@@ -195,21 +226,25 @@ async function main() {
     return;
   }
 
-  // 4. Supabase 업데이트 (기존 행의 supply_ratio만 갱신)
-  let updated = 0;
+  // 4. Supabase 업데이트 (시도별 최신 스냅샷 1행의 supply_ratio만 갱신)
+  let updated = 0, skipped = 0;
   for (const r of rows) {
     if (r.supply_ratio == null) continue;
+    const latestId = latestIdMap.get(r.region);
+    if (latestId === undefined) {
+      // regions 에 해당 시도행 자체가 없음 (집계 collector 미수집) — 새 행 생성은 본 collector 책임 아님
+      skipped++;
+      continue;
+    }
     const { error } = await sb
       .from("regions")
       .update({ supply_ratio: r.supply_ratio })
-      .eq("region", r.region)
-      .is("gu", null)
-      .order("recorded_at", { ascending: false })
-      .limit(1);
+      .eq("id", latestId);
 
     if (error) logError("upsert", `${r.region}: ${error.message}`);
     else updated++;
   }
+  if (skipped > 0) log("upsert", `${skipped}개 시도 regions 행 부재로 건너뜀`);
 
   await recordApiQuota("housing-permits", "MOLIT_KEY", apiCalls);
   await recordCollectorRun("housing-permits", { ok: updated });
