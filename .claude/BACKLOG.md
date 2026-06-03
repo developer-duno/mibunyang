@@ -206,7 +206,7 @@
   - **세션 359 진단 정정**: "정규화(LCS 한계)가 병목"은 세션 360 적대 검증(6-probe 워크플로 + 라이브 재측정 2회)으로 **데이터 반증**. 정규화 회수 효과 ~0건 (미매칭 384 중 정규화로 잡을 수 있는 건 ≤8건, 긴 단지명은 음차 1글자 차이여도 이미 sim 0.92 통과). 미매칭 384 중 **235(61%)는 임대/공공주택** = 청약홈 *분양* API 구조적 부재.
   - **진짜 진앙 (라이브 재측정 2회 확정)**: `collect-applyhome-detail.mjs:225` 매칭 후보를 `presale_stage NOT NULL`(728)로 제한 → 청약홈 공고 있는데 분양 단계 미태깅된 단지가 통째로 빠짐. 제약 제거 시 매칭 **393→916 rows / 344→810 distinct (+466 단지, 2.4배)**, 신규 483 중 482가 명백 분양(sim 1.0 정답, 임대 1건뿐).
   - **세션 360 PR 처리**: 후보 쿼리 전체 apartments 확대 + region 파싱 버그(`경기도 광주시`→광주광역시 오파싱) 동반 수정. 적재는 별도 테이블만(apartments base 불변, 미분양 보호). 회귀 가드 = vitest 3180 + typecheck 0 + region 버그 fixture 2건.
-  - **잔여 검증 (P2)**: dry-run AFTER 회수 실측은 청약홈 odcloud API 데이터 비움(`totalCount:0`, 외부 일시장애)으로 이월 → `collect-applyhome-detail.yml` cron 정상화 첫 실행에서 `collector_runs` matched ~916 자동 검증.
+  - **잔여 검증 (P2)**: 세션 360 dry-run AFTER 는 청약홈 odcloud `totalCount:0` 외부 일시장애로 이월됐으나 **세션 370 라이브 실측 = odcloud 회복**(getAPTLttotPblancDetail HTTP 200 totalCount 2777 / Mdl 14157) → 6/13 cron(`30 2 13 * *`) 정상 실행에서 `collector_runs` matched ~916 자동 검증.
   - 답습: 세션 355 LCS 폴백 + 세션 353 청약홈 매칭 개선 + **세션 360 = "정규화 진단이 적대 검증으로 반증, 진짜 진앙은 후보 쿼리 제약"** (이름 변형보다 후보 누락이 지배적 진앙). 메가단지 블록코드(D1-2BL) LCS 변별 약점은 별 항목.
 
 - 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**, **세션 334 ADR 승격**)
@@ -221,10 +221,10 @@
 - 🟢 **migration regions UPDATE 전체행 동기화 — 의도된 설계로 유지(수정 보류)** (세션 367 발견, 세션 368 정책 확정)
   - `migration.mjs:259-275` `.update({net_migration}).eq("region").eq("gu")` (recorded_at 無) → 같은 시도행 전체 스냅샷 동기화(서울 5행 전부 net_migration=-167 실측). **L253-255 주석이 "regions 는 region+gu 당 여러 recorded_at 스냅샷이 동일 최신값으로 동기화되는 구조로 운영"으로 명문화 = 의도된 설계**(세션103 collector-contract 지적으로 `.order().limit(1)` 이미 제거). housing-permits 와 달리 "최신 1건" 의도 주석이 없고 "전체 동기화 의도" 주석이 명시됨 → 버그 아님. net_migration=작은 숫자 timeout 무위험 + latest_regions VIEW 최신행만 봐 화면 영향 0. 정책 재확인 없이는 손대지 않음(손대면 회귀).
 
-- 🟡 **regions.childcare 좌표 톱니 구조 — 월간 info가 detail 보강분 주기적 전멸** (세션 367 발견, 버그 1차 차단 후 잔여)
-  - 진단: `childcare-detail` 매일 04:00 좌표(la/lo) ~23일 누적 보강 → `collect-nearby-childcare` 05:30 회수→schools 적재 → **월간 `childcare-info` 매월 1일 05:00 이 facilities 를 7필드(좌표 없음)로 덮어써 좌표 전멸** = 톱니 패턴. 매월 nearby 회복까지 ~23일 저점.
-  - 세션 367 PR 로 info 가 **최신행 1개만** 덮도록 차단 → 과거행 좌표 보존돼 완화(현 버그보다 개선). 단 최신행 좌표는 여전히 매월 전멸 → detail 재보강 대기.
-  - 잔여 옵션: (a) childcare-info 가 기존 facilities 좌표/70필드 merge 후 7필드 갱신 (b) detail 을 최신행 한정 처리. **현재 화면 영향 0**(schools.nearby_childcare 588건 스냅샷 보존) → 우선순위 낮음.
+- ✅ **regions.childcare 좌표 톱니 구조 — merge 보존으로 차단 (세션 367 발견 → 세션 370 PR)**
+  - 진단: `childcare-detail` 매일 04:00 좌표(la/lo) ~23일 누적 보강 → `collect-nearby-childcare` 05:30 회수→schools 적재 → **`childcare-info` 가 발화할 때마다(월간 cron + 수동 dispatch, 5/19·5/26·6/01·6/02 실측) facilities 를 7필드(좌표 없음)로 덮어써 좌표 전멸** = 톱니 패턴. nearby ok_count 5/25=484→5/26=115→6/01=423→6/02=100 붕괴 실증.
+  - 세션 367 PR(#76)은 "최신행 1개만" 덮도록 좁혔으나 최신행 좌표는 여전히 매번 전멸(최신행 좌표 0/246키 실측). **세션 370 = 옵션 (a) 채택**: `mergePreserveCoords(newAgg, prevChildcare)` 헬퍼 신규(childcare-info.mjs export, jeju import) — UPDATE 직전 기존 최신행 facility 의 좌표/70필드를 stcode 기준 보존, 7필드만 신규 갱신. count/total_capacity/fetched_at 는 신규 집계값. info + jeju 양쪽 동시 적용(자매 동종 버그). 단위 테스트 5건 + 실 DB merge 실증(경기 과천시 좌표 58개 전수 보존). 화면(NearbyChildcareSection)·scoring 경로 불변, JSONB 스키마 불변.
+  - 효과: 최신행이 항상 좌표 보유 → nearby 매칭이 매번 100 붕괴 없이 590+ 유지 + detail ~23일 재축적이 리셋되지 않아 좌표 커버리지 단조 증가. 사후 검증 = 머지 후 다음 info 발화 시 최신행 좌표 보유율 0%→상승(다음 세션 cron 관측).
 
 - 🟡 **무순위 이벤트 로그 차수 노출** (세션 160 1차 적재 완료, 누적 1~2개월 후)
   - DetailModal 무순위 차수·이력 섹션 / AptCard 차수 배지 (count >= 2일 때만) / 시계열 차트 (MarketStatsCharts 패턴 재사용)
@@ -288,10 +288,9 @@
 
 ## 🟢 여유
 
-- 🟢 **청약홈 Phase 2 — 날짜 정밀화(경로 A) + drift 가드** (세션 354 등록, Phase 1 PR #66 후속)
-  - 날짜 정밀화: `recruit_date` 53건이 `YYYY-MM`(월만) → 청약홈 일정 ISO 날짜로 정밀화 (728 중 672 이미 ISO 라 효과 53건으로 작음)
-  - drift 가드: `naver-presale.mjs:725` 가 ISO 날짜를 `YYYY-MM` 로 덮어쓰는 회귀 차단
-  - 효과 작음 → 우선순위 낮음. 경쟁률 미분양 시그널(Phase 3)이 더 가치 클 수 있음
+- 🟢 **청약홈 Phase 2 — 날짜 정밀화 + drift 가드 — 세션 370 적대 검증으로 REFUTED (진행 안 함)**
+  - 세션 354 등록 = `recruit_date` 53건 `YYYY-MM`(월만)을 청약홈 ISO 일정으로 정밀화 + `naver-presale.mjs` drift 가드.
+  - **세션 370 정정 (DB 실측)**: (1) **두 recruit_date 혼동** — `apartments.presale_recruit_date`(유일 writer naver-presale.mjs:339, 화면 "분양시기")와 `presale_schedule_official.recruit_date`(writer collect-applyhome-detail.mjs:153, 별도 테이블/화면)는 서로 다른 컬럼. (2) **drift 가드 = 막을 대상 부재** — naver-presale 는 presale_schedule_official 미접근, collect-applyhome-detail 은 apartments base 컬럼 미수정(별도 테이블만 upsert) → 청약홈 ISO 가 presale_recruit_date 를 덮어쓰는 경로 0건. (3) **정밀화 = net-harmful** — 53건 중 청약홈 매칭 27건, 그 중 year+month 일치(안전) 11 / year 불일치(오염) 13(힐스테이트 탑석 2026-05→2022-06-17 등 2020~2022 과거값). naive fill 시 네이버가 정확히 잡은 "2026 분양 예정"을 과거로 오염. **진행하지 말 것** (세션 364 "5년 과거 매칭 오염" 재현).
 
 - 🟢 **청약홈 Phase 3 — 경쟁률(미분양 시그널) + 외부 소스 확장** (세션 354 등록, **세션 365 검증 정정**)
   - 청약홈 잔여세대/경쟁률 → 미분양 시그널 (미분양 전문 서비스에 직접 가치)
@@ -305,7 +304,8 @@
   - **"86% 미분양 보유"는 의미 오해**: unsold_rate의 73%가 실은 네이버 2차시장 재판매 매물 밀도(`sync-naver-complex.mjs:474-477`, 매일 갱신)지 1차 청약 미분양 아님. unsold_rate>100% 단지 109개 = "미분양율"일 수 없는 증거. competitionRate(과거 청약)↔unsoldRate(현재 재판매)는 다른 시점·다른 시장 → "둘 다 있으면 모순" 불성립.
   - **정량 효과 무의미**: compSc 5→35 = invest 프로필조차 종합 -0.675/100점, 602단지 순위 변동 노이즈. busywork 신호.
   - **음수 구간은 죽은 코드 아님 (제거 금지)**: `scoreRisk.ts:92-93` 음수 분기는 최초 커밋 `38d40de`에서 "절벽 방지"용 의도 설계 + 마이그 `20260326000000` COMMENT 가 `<0: 미달비율`을 **DB 컬럼 계약**으로 명문화. 제거 시 회귀.
-  - **진짜 검토 거리는 스코어링 아님** (별 작업): (a) AptCard "추가 모집" 빨강 배지가 competition_rate 무시하고 단순 존재로 켜짐 + applyhome_events 라이브 전부 eventCount==1 ("재출현=미분양" 마이그 가정 0건) → 배지 색/조건이 진짜 모순 자리. (b) competition_supply×unsold_rate 교차 분기 (probe3 권고). 둘 다 별 세션.
+  - **진짜 검토 거리는 스코어링 아님** (별 작업): (a) AptCard "추가 모집" 빨강 배지가 competition_rate 무시하고 단순 존재로 켜짐 + applyhome_events 라이브 전부 eventCount==1 → 세션 366이 "진짜 모순 자리"로 의심. (b) competition_supply×unsold_rate 교차 분기 (probe3 권고). 둘 다 별 세션.
+  - **세션 369·370 정정 (REFUTED, 코드 0)**: (a) AptCard 배지는 **모순 아님** — 데이터 출처 `collect-applyhome.mjs:24 BASE_URL=getRemndrLttotPblancCmpet`(잔여세대/무순위 경쟁률)라 모든 event 가 정의상 무순위 공고(=미분양 시그널). "추가 모집" 라벨은 원 분양 외 추가 모집 1건만으로 의미 정확(eventCount>=2 미요구). 빨강은 다른 경고 배지와 색 의미 일관. 스펙(2026-05-02-applyhome-events-log-design.md L51·L105)이 경쟁률↔무순위 공고 "합치지 말 것" + "추가 모집=가시 라벨" 명시. 세션 366이 든 두 신호(경쟁률 스냅샷 vs 무순위 시계열 이벤트)를 혼동. **세션 369 평가(정합) 유지가 정답.**
 
 - 🟢 **fill-missing-data.yml 개명** (`backfill-new-apartments.yml`) + `monitor-collectors.yml` `workflow_run.workflows` 동기화 — spec Phase 3, 6/14 발화 2회 success 후 별도 PR (세션 307 spec out-of-scope)
 
