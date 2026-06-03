@@ -16,6 +16,7 @@ const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
   QUARTERLY_CRON_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
+  dedupKey, filterUnsent,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
 
@@ -120,6 +121,74 @@ describe("checkEmptyRuns — ② 데이터 0건", () => {
     ]);
     expect(issues[0].lines?.[0]).toMatch(/처리 건수가 0건/);
     expect(issues[0].detail).toMatch(/fail 2/);
+  });
+
+  it("신선도 가드: maxAgeHours 초과한 옛 0건 행은 제외 (run 모드 스팸 차단)", () => {
+    const now = new Date("2026-06-03T12:00:00Z");
+    const issues = checkEmptyRuns(
+      [{ collector: "housing-permits", status: "success", ok_count: 0, skip_count: 0, finished_at: "2026-05-26T18:46:08Z" }],
+      {},
+      { maxAgeHours: 36, now },
+    );
+    expect(issues).toHaveLength(0); // 8일 전 행 → 제외
+  });
+
+  it("신선도 가드: maxAgeHours 이내 0건 행은 정상 점검", () => {
+    const now = new Date("2026-06-03T12:00:00Z");
+    const issues = checkEmptyRuns(
+      [{ collector: "A", status: "success", ok_count: 0, skip_count: 0, finished_at: "2026-06-03T06:00:00Z" }],
+      {},
+      { maxAgeHours: 36, now },
+    );
+    expect(issues).toHaveLength(1); // 6시간 전 → 점검
+  });
+
+  it("신선도 가드 미지정(daily 하위호환): 옛 행도 점검 (나이 무관)", () => {
+    const issues = checkEmptyRuns([
+      { collector: "housing-permits", status: "success", ok_count: 0, skip_count: 0, finished_at: "2020-01-01T00:00:00Z" },
+    ]);
+    expect(issues).toHaveLength(1);
+  });
+});
+
+describe("dedupKey / filterUnsent — 알림 dedup (텔레그램 스팸 차단)", () => {
+  /** @type {any} */
+  const empty526 = { kind: "empty", collector: "housing-permits", at: "2026-05-26T18:46:08Z" };
+  /** @type {any} */
+  const empty527 = { kind: "empty", collector: "housing-permits", at: "2026-05-27T18:46:08Z" };
+  /** @type {any} */
+  const nullsNoAt = { kind: "nulls", collector: "regions.net_migration" };
+
+  it("dedupKey = kind|collector|at 안정 키", () => {
+    expect(dedupKey(empty526)).toBe("empty|housing-permits|2026-05-26T18:46:08Z");
+  });
+
+  it("같은 stale 행(at 불변) = 같은 키 → 재발송 1건만", () => {
+    expect(dedupKey(empty526)).toBe(dedupKey({ ...empty526 }));
+  });
+
+  it("새 run(at 변경)이 다시 0건 = 새 키 → 재알림 대상", () => {
+    expect(dedupKey(empty526)).not.toBe(dedupKey(empty527));
+  });
+
+  it("at 없는 이슈 = kind|collector| 만으로 키", () => {
+    expect(dedupKey(nullsNoAt)).toBe("nulls|regions.net_migration|");
+  });
+
+  it("filterUnsent: 이미 보낸 키 제외, 새 이슈만 반환", () => {
+    const sent = new Set([dedupKey(empty526)]);
+    const fresh = filterUnsent([empty526, empty527], sent);
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0].at).toBe("2026-05-27T18:46:08Z");
+  });
+
+  it("filterUnsent: 전부 이미 보냈으면 빈 배열", () => {
+    const sent = new Set([dedupKey(empty526), dedupKey(empty527)]);
+    expect(filterUnsent([empty526, empty527], sent)).toHaveLength(0);
+  });
+
+  it("filterUnsent: 보낸 키 없으면 전부 통과", () => {
+    expect(filterUnsent([empty526, empty527], new Set())).toHaveLength(2);
   });
 });
 

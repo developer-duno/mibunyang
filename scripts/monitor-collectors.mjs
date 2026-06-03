@@ -180,6 +180,31 @@ export const EXTERNAL_API_COLLECTORS = [
 /** ⑤ 외부 API 장기 중단 판정 — 최근 N회 연속 success+ok=0 = silent fail 의심. */
 const OUTAGE_MIN_CONSECUTIVE = 3;
 
+// ── 알림 dedup (텔레그램 스팸 차단) ──────────────
+// monitor 는 workflow_run(수집기 ~40개 완료마다) + 매일 cron 으로 발화 → dedup 없으면
+// 같은 stale 이슈(예: housing-permits 5/26 0건)를 매번 재알림. 안정 키로 1회만 발송.
+
+/**
+ * 이슈의 안정 dedup 키. 같은 사실(같은 kind·collector·발생시각)은 같은 키 → 1회만 알림.
+ * at(발생 ISO 시각)이 핵심: 같은 stale 행은 at 불변이라 같은 키, 새 run(at 변경)이 다시 0건이면 새 키.
+ * at 없는 이슈(nulls 등)는 kind|collector 만으로 dedup(하루 단위 daily 스윕이라 충분).
+ * @param {Issue} issue
+ * @returns {string}
+ */
+export function dedupKey(issue) {
+  return `${issue.kind}|${issue.collector}|${issue.at ?? ""}`;
+}
+
+/**
+ * 이미 발송한 키(sentKeys)에 없는 이슈만 남긴다. 새 이슈(미발송)만 반환.
+ * @param {Issue[]} issues
+ * @param {Set<string>} sentKeys 이미 보낸 dedupKey 집합
+ * @returns {Issue[]}
+ */
+export function filterUnsent(issues, sentKeys) {
+  return issues.filter((i) => !sentKeys.has(dedupKey(i)));
+}
+
 // ── 순수 점검 함수 (fake 데이터로 테스트 가능) ──────────────
 
 /**
@@ -216,9 +241,14 @@ export function checkFailedRuns(runs, allowedNames) {
  * @param {Array<{ collector?: string, status?: string, ok_count?: number|null, skip_count?: number|null, fail_count?: number|null, finished_at?: string|null }>} rows
  * @param {Record<string, { okCount: number, finishedAt: string }>} [prevByCollector]
  *   수집기별 직전 정상 실행(ok>0). 있으면 "지난번엔 N건" 비교 문장을 만든다.
+ * @param {{ maxAgeHours?: number, now?: Date }} [opts]
+ *   maxAgeHours 주면 최신 0건 행이 그보다 오래됐을 때 ② 에서 제외(→ ⑤ checkExternalApiStale 또는 ③ stale 이 단독 처리).
+ *   외부 API 장기 중단(housing-permits 식)으로 새 run 자체가 없는 stale 0건 행을 매번 ② 로 재알림하던 스팸 차단.
+ *   미지정 시 나이 무관 전부 점검(하위호환 — 기존 daily 동작).
  * @returns {Issue[]}
  */
-export function checkEmptyRuns(rows, prevByCollector = {}) {
+export function checkEmptyRuns(rows, prevByCollector = {}, opts = {}) {
+  const { maxAgeHours, now = new Date() } = opts;
   /** @type {Issue[]} */
   const issues = [];
   for (const row of rows) {
@@ -226,6 +256,11 @@ export function checkEmptyRuns(rows, prevByCollector = {}) {
     const ok = row.ok_count ?? 0;
     const skip = row.skip_count ?? 0;
     if (ok === 0 && skip === 0) {
+      // 신선도 가드: 최신 0건 행이 너무 오래됐으면 ② 가 매번 재알림하지 않도록 제외.
+      if (maxAgeHours != null && row.finished_at) {
+        const ageH = (now.getTime() - new Date(row.finished_at).getTime()) / 3600000;
+        if (ageH > maxAgeHours) continue;
+      }
       const name = row.collector ?? "(이름 없음)";
       const fail = row.fail_count ?? 0;
       /** @type {string[]} */
@@ -643,6 +678,49 @@ async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) 
   return grouped;
 }
 
+/**
+ * 이미 발송한 알림 키 집합을 monitor_alert_state 에서 읽는다.
+ * 조회 실패(테이블 없음 등)는 throw 하지 않고 빈 Set 반환 — dedup 실패가 알림 자체를 막으면 안 됨
+ * (notify-telegram 철학: 알림 인프라 오류가 감시를 멈추면 안 됨).
+ * @param {string[]} keys 이번에 점검된 이슈 키들 (이 중 이미 보낸 것만 조회)
+ * @returns {Promise<Set<string>>}
+ */
+async function fetchSentAlertKeys(keys) {
+  if (keys.length === 0) return new Set();
+  try {
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from("monitor_alert_state")
+      .select("alert_key")
+      .in("alert_key", keys);
+    if (error) {
+      console.log(`[monitor] dedup 상태 조회 실패(알림은 계속): ${error.message}`);
+      return new Set();
+    }
+    return new Set((data ?? []).map((r) => r.alert_key));
+  } catch (err) {
+    console.log(`[monitor] dedup 상태 조회 오류(알림은 계속): ${err instanceof Error ? err.message : String(err)}`);
+    return new Set();
+  }
+}
+
+/**
+ * 발송한 이슈 키를 monitor_alert_state 에 upsert. 기록 실패는 무시(다음에 중복 알림 1회 가능할 뿐).
+ * @param {Issue[]} issues 실제 발송한 이슈들
+ * @returns {Promise<void>}
+ */
+async function recordSentAlerts(issues) {
+  if (issues.length === 0) return;
+  try {
+    const sb = getSupabase();
+    const rows = issues.map((i) => ({ alert_key: dedupKey(i), kind: i.kind, collector: i.collector }));
+    const { error } = await sb.from("monitor_alert_state").upsert(rows, { onConflict: "alert_key" });
+    if (error) console.log(`[monitor] dedup 상태 기록 실패(다음 중복 1회 가능): ${error.message}`);
+  } catch (err) {
+    console.log(`[monitor] dedup 상태 기록 오류: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 // ── 메인 ────────────────────────────────────────────────────
 
 async function main() {
@@ -746,9 +824,11 @@ async function main() {
         issues = issues.concat(checkFailedRuns([wr]));
       }
     }
-    // run 모드도 collector_runs 최근분으로 0건 점검 (방금 끝난 수집기 반영)
+    // run 모드도 collector_runs 최근분으로 0건 점검 (방금 끝난 수집기 반영).
+    // 신선도 가드 36h: 다른 수집기 완료로 트리거됐을 때 housing-permits 식 옛 stale 0건 행을
+    // 매번 ② 로 재알림하던 스팸 차단. 옛 행은 daily 스윕의 ⑤(checkExternalApiStale)가 단독 처리.
     const { latest, prevOk } = await fetchLatestCollectorRuns();
-    issues = issues.concat(checkEmptyRuns(latest, prevOk));
+    issues = issues.concat(checkEmptyRuns(latest, prevOk, { maxAgeHours: 36 }));
   } else {
     // daily 스윕 — 전체 점검 (①②③④)
     // monitor.yml 감시 대상 — ① 실패 알림을 이 목록 워크플로로 한정 (CI 등 비-수집기 제외).
@@ -785,14 +865,34 @@ async function main() {
     return;
   }
 
+  // dedup: run 모드(수집기 ~40개 완료마다 발화)는 같은 이슈를 매번 재알림하므로
+  // 이미 보낸 키는 skip. daily(매일 1회 스윕)는 ③stale·④NULL 같은 지속 상태를
+  // 하루 1회 리마인드하는 게 의도라 dedup 미적용 — 하루 1회는 도배 아님.
+  if (mode === "run") {
+    const keys = issues.map(dedupKey);
+    const sentKeys = await fetchSentAlertKeys(keys);
+    const fresh = filterUnsent(issues, sentKeys);
+    const skipped = issues.length - fresh.length;
+    if (skipped > 0) console.log(`[monitor] 이미 알린 이상 ${skipped}건 재발송 skip (dedup)`);
+    issues = fresh;
+    if (issues.length === 0) {
+      console.log("[monitor] 새 이상 없음 (전부 이미 알림, mode=run)");
+      return;
+    }
+  }
+
   console.log(`[monitor] 이상 ${issues.length}건 발견 (mode=${mode})`);
   // 한 통으로 모아 보낸다. 4000자 넘으면 buildMessages 가 이슈 경계에서 나눈다.
   const messages = buildMessages(issues);
   for (const issue of issues) console.log(formatIssue(issue));
+  let anySent = false;
   for (const text of messages) {
     const result = await sendTelegram(text);
-    if (!result.sent) console.log(`  [전송 스킵] ${result.reason}`);
+    if (result.sent) anySent = true;
+    else console.log(`  [전송 스킵] ${result.reason}`);
   }
+  // 발송 성공 시에만 dedup 키 기록 (전송 실패 시 다음 발화에서 재시도되도록).
+  if (mode === "run" && anySent) await recordSentAlerts(issues);
 }
 
 const argv1 = process.argv[1];
