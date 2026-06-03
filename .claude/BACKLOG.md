@@ -296,7 +296,7 @@
 - 🟢 **청약홈 Phase 3 — 경쟁률(미분양 시그널) + 외부 소스 확장** (세션 354 등록, **세션 365 검증 정정**)
   - 청약홈 잔여세대/경쟁률 → 미분양 시그널 (미분양 전문 서비스에 직접 가치)
   - **세션 365 정정**: 세션 364 "경쟁률 미시작 🟢"은 stale. 수집·점수 파이프라인 **작동 중** — `collect-applyhome.mjs:85-95` net(Σ신청/Σ공급) 계산이 청약홈 공식 CMPET_RATE와 단일평형 일치(불일치 0), DB 1261단지 중 1257(99.7%) 정확. `scoreRisk.ts:86` 0.09 가중치로 점수 반영 중. 극단값(디에이치 337818:1 등)은 무순위 줍줍 진짜 경쟁률(언론 일치, 오염 아님).
-  - **잔여 = 화면 노출만**: 일반 상세(DataSections)·카드(AptCard) 렌더 0건, 전문가 뷰(ExpertFieldTable)만 노출. 노출 시 극단값 포맷(만 단위 콤마) 가드 동반. 게이트는 `competitionRate != null` 단독(presaleStage 묶지 말 것 — 82% 누락). **세션 366 정정**: 세션 365 "competitionRate↔unsoldRate 시점 모순 41%(294단지)"는 무효 — unsoldRate 73%가 네이버 2차시장 재판매 밀도라 다른 시장·다른 시점, "모순"이 성립 안 함. 경쟁률은 과거 청약 수요 신호, unsoldRate는 현재 재판매 밀도로 서로 다른 축 → 동시 노출 시 "모순"이 아니라 "다른 정보"로 표기.
+  - **✅ 화면 노출 = 세션 369 PR #78 완료** (main `991b12e`): 일반 상세(DataSections)에 "청약 경쟁 현황" 전용 섹션 신규(competitionRate/Supply/Applicants). 극단값 포맷 `fmtCompetitionRate` 공유 헬퍼(`src/lib/format.ts`, `>=1000:1` 정수+천단위 콤마 `437,995:1`)로 fieldMeta·scoreRisk 통일(drift 차단). 게이트 = `competitionRate != null` 단독 + `hideWhenEmpty`로 경쟁률 없는 49.5% 단지는 섹션 숨김(presaleStage 안 묶음 — 82% 누락 회피). 전체 vitest 3198 + tsc 0 + lint 0. AptCard 카드 배지는 미노출(요청 범위 밖). **세션 366 정정**: 세션 365 "competitionRate↔unsoldRate 시점 모순 41%(294단지)"는 무효 — unsoldRate 73%가 네이버 2차시장 재판매 밀도라 다른 시장·다른 시점, "모순"이 성립 안 함. 경쟁률은 과거 청약 수요 신호, unsoldRate는 현재 재판매 밀도로 서로 다른 축 → 동시 노출 시 "모순"이 아니라 "다른 정보"로 표기.
   - 외부 소스: LH(`15058530`)·경기도 미분양(`15057206`)·당첨가점(`15110812`) — 전부 data.go.kr **활용신청 미신청**(raw 확인). 진입 시 활용신청 선행 필요 `# 👤 사용자`
 
 - 🟢 **scoreRisk 무순위 경쟁률 안전 채점 — 세션 366 적대 검증으로 "현행 정당" 확정 (수정 보류)**
