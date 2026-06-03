@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from 'vitest';
-import { fmtPrice, fmtCompletion, maskName, maskPhone, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from './format';
+import { fmtPrice, fmtCompletion, maskName, maskPhone, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate, fmtCompetitionRate } from './format';
 
 // 가격 포맷팅 테스트
 describe('fmtPrice', () => {
@@ -179,5 +179,29 @@ describe('fmtRecruitDate', () => {
   });
   it('null → "—"', () => {
     expect(fmtRecruitDate(null)).toBe("—");
+  });
+});
+
+// --- 청약 경쟁률 포맷팅 테스트 ---
+describe('fmtCompetitionRate', () => {
+  it('극단값 1000:1↑ → 정수 + 천단위 콤마', () => {
+    expect(fmtCompetitionRate(437995)).toBe("437,995:1");
+    expect(fmtCompetitionRate(1000)).toBe("1,000:1");
+  });
+  it('1000 미만 → 소수 1자리', () => {
+    expect(fmtCompetitionRate(5.2)).toBe("5.2:1");
+    expect(fmtCompetitionRate(8.58)).toBe("8.6:1");
+    expect(fmtCompetitionRate(999.9)).toBe("999.9:1");
+  });
+  it('0 → "0.0:1"', () => {
+    expect(fmtCompetitionRate(0)).toBe("0.0:1");
+  });
+  it('음수 → "미달 N%"', () => {
+    expect(fmtCompetitionRate(-0.3)).toBe("미달 30%");
+    expect(fmtCompetitionRate(-1)).toBe("미달 100%");
+  });
+  it('null/undefined → "미수집"', () => {
+    expect(fmtCompetitionRate(null)).toBe("미수집");
+    expect(fmtCompetitionRate(undefined)).toBe("미수집");
   });
 });

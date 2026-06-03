@@ -12,6 +12,7 @@ import {
   LISTING_FLOOD_THRESHOLD, LISTING_WARN_THRESHOLD, LISTING_FLOOD_PENALTY, LISTING_WARN_PENALTY,
   PUBLIC_PRESALE_BONUS, NEW_SUPPLY_HIGH, NEW_SUPPLY_LOW, NEW_SUPPLY_HIGH_ADJ, NEW_SUPPLY_LOW_ADJ,
 } from "@/constants/scoringTiers";
+import { fmtCompetitionRate } from "@/lib/format";
 import type { Apt, Res } from "@/types/scoring";
 
 /**
@@ -104,7 +105,7 @@ export function scoreRisk(apt: Apt): Res {
     total: safety, riskRaw: Math.round(risk),
     subs: [
       { name: "미분양률", score: 100 - unsoldSc, info: units <= 1 ? "세대수 미확인 (중립)" : `${unsoldRate}%`, detail: units <= 1 ? "세대수 미확인 (중립 40점)" : `${unsoldRate}% (안전 5%↓, 주의 15~30%, 위험 50%↑)` },
-      { name: "경쟁률", score: 100 - compSc, info: apt.competitionRate != null ? (apt.competitionRate < 0 ? `미달 ${(Math.abs(apt.competitionRate) * 100).toFixed(0)}%` : `${apt.competitionRate.toFixed(1)}:1`) : "정보 없음", detail: apt.competitionRate != null ? (apt.competitionRate < 0 ? `미달 ${(Math.abs(apt.competitionRate) * 100).toFixed(0)}% (신청부족)` : `${apt.competitionRate.toFixed(1)}:1 (인기 10↑, 적정 3↑, 약 1↑, 미달 0↓)`) : "경쟁률 데이터 없음 (중립 40점)" },
+      { name: "경쟁률", score: 100 - compSc, info: apt.competitionRate != null ? fmtCompetitionRate(apt.competitionRate) : "정보 없음", detail: apt.competitionRate != null ? (apt.competitionRate < 0 ? `${fmtCompetitionRate(apt.competitionRate)} (신청부족)` : `${fmtCompetitionRate(apt.competitionRate)} (인기 10↑, 적정 3↑, 약 1↑, 미달 0↓)`) : "경쟁률 데이터 없음 (중립 40점)" },
       { name: "거래량", score: 100 - liqSc, info: `6개월 ${recentTrades6m}건`, detail: `6개월 ${recentTrades6m}건 (활발 30↑, 보통 15↑, 부진 5↓)` },
       { name: "대출/잔금", score: 100 - loanSc, info: apt.dsr40pass ? "DSR통과" : "주의", detail: apt.dsr40pass ? "DSR 40% 통과 (자금조달 양호)" : "DSR 미통과 (대출 곤란 주의)" },
       { name: "시공사 재무", score: 100 - Math.round(finSc), info: builderCreditGrade || "정보 없음", detail: `${builderCreditGrade || "미확인"} (AA↑안전, A보통, BBB↓주의, 부채율 ${builderDebtRatio}%)` },

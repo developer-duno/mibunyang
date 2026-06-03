@@ -19,8 +19,8 @@ describe("DataSections", () => {
     expect(screen.queryByText("단지 기본정보")).toBeNull();
   });
 
-  // 클릭하면 6개 섹션 제목 표시
-  it("토글 클릭 시 6개 데이터 섹션 제목을 표시한다", () => {
+  // 클릭하면 상시 표시 섹션 제목 표시 (경쟁률은 hideWhenEmpty라 기본 makeApt에선 숨김)
+  it("토글 클릭 시 상시 데이터 섹션 제목을 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<DataSections apt={/** @type {any} */ (apt)} />);
     fireEvent.click(screen.getByText("공공데이터 상세"));
@@ -30,6 +30,32 @@ describe("DataSections", () => {
     expect(screen.getByText("시장/투자 지표")).toBeTruthy();
     expect(screen.getByText("네이버 교차검증")).toBeTruthy();
     expect(screen.getByText("네이버 분양정보")).toBeTruthy();
+  });
+
+  // 청약 경쟁 현황 — 값 있으면 전용 섹션 + 콤마 포맷 표시
+  it("경쟁률이 있으면 '청약 경쟁 현황' 섹션과 콤마 포맷 값을 표시한다", () => {
+    const apt = /** @type {any} */ (makeApt({ competitionRate: 437995, competitionSupply: 300, competitionApplicants: 12000000 }));
+    render(<DataSections apt={/** @type {any} */ (apt)} />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    expect(screen.getByText("청약 경쟁 현황")).toBeTruthy();
+    expect(screen.getByText("437,995:1")).toBeTruthy();
+  });
+
+  // 청약 경쟁 현황 — 3필드 모두 없으면 섹션 자체를 숨김 (hideWhenEmpty)
+  it("경쟁률 3필드가 모두 없으면 '청약 경쟁 현황' 섹션을 숨긴다 (hideWhenEmpty)", () => {
+    const apt = /** @type {any} */ (makeApt()); // competitionRate 미설정
+    render(<DataSections apt={/** @type {any} */ (apt)} />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    expect(screen.queryByText("청약 경쟁 현황")).toBeNull();
+  });
+
+  // 청약 경쟁 현황 — presaleStage=null이어도 경쟁률 있으면 노출 (세션365 게이트 준수)
+  it("presaleStage=null이어도 경쟁률 있으면 노출한다", () => {
+    const apt = /** @type {any} */ (makeApt({ presaleStage: null, competitionRate: 5.2 }));
+    render(<DataSections apt={/** @type {any} */ (apt)} />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    expect(screen.getByText("청약 경쟁 현황")).toBeTruthy();
+    expect(screen.getByText("5.2:1")).toBeTruthy();
   });
 
   // 출처 표시
