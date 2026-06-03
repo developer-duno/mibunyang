@@ -35,6 +35,11 @@ const DATA_SECTIONS: DataSection[] = [
     grid: ["crimeSafetyGrade", "police", "policeDist", "airQuality", "noxiousDist"],
   },
   {
+    title: "청약 경쟁 현황",
+    grid: ["competitionRate", "competitionSupply", "competitionApplicants"],
+    hideWhenEmpty: true,
+  },
+  {
     title: "네이버 교차검증",
     grid: ["naverNearbyMedian", "naverJeonseRate", "naverSellCount", "naverJeonseCount",
            "naverWolseCount", "naverSchoolWalkMin", "naverNearbyCount", "naverFetchedAt"],
@@ -105,6 +110,7 @@ export const DataSections = memo(function DataSections({ apt }: DataSectionsProp
           {DATA_SECTIONS.map((section, si) => {
             const allFields: string[] = [...(section.highlight || []), ...(section.grid || []), ...(section.pairs || []).flat().filter((x): x is string => typeof x === "string")];
             const hasAny = allFields.some(f => apt[f] != null);
+            if (section.hideWhenEmpty && !hasAny) return null;
             return (
               <div key={si} style={{ marginTop: si > 0 ? 12 : 0 }}>
                 <div style={DS_S.sectionTitle}>{section.title}</div>

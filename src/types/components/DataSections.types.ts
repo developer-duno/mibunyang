@@ -20,4 +20,6 @@ export interface DataSection {
   highlight?: readonly string[];
   pairs?: ReadonlyArray<readonly [string, string | null]>;
   grid?: readonly string[];
+  /** true면 섹션의 모든 필드가 null일 때 "데이터 수집 중..." 대신 섹션 자체를 숨김 (청약 경쟁률 등 부분 보유 필드용) */
+  hideWhenEmpty?: boolean;
 }

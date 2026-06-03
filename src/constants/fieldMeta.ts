@@ -1,5 +1,5 @@
 import { BRAND_TIER, LAYOUT_SCORE } from "./brands";
-import { fmtPrice, fmtCompletion, fmtRecruitDate, fmtPresaleSchedule } from "@/lib/format";
+import { fmtPrice, fmtCompletion, fmtRecruitDate, fmtPresaleSchedule, fmtCompetitionRate } from "@/lib/format";
 
 // fmt/isEstimated 등 함수의 v/apt 매개변수는 동적 dict — DB row 타입 박제는 BACKLOG-M4c-fieldMeta-apt-type.
 // 좁힘 보류 — `any` 사용. 호출처 호환성 우선.
@@ -64,7 +64,7 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   floorRange: { label: "거래 층수 범위", section: "가격", fmt: v => v ?? "미수집" },
   cancelRatio6m: { label: "계약해제율", section: "안전", unit: "%", fmt: v => v != null ? `${v}%` : "미수집", isEstimated: (v, apt) => apt?._fallbackCancelRatio6m },
   // ── 청약 경쟁률 ──
-  competitionRate: { label: "청약 경쟁률", section: "안전", fmt: v => v != null ? (v < 0 ? `미달 ${(Math.abs(v) * 100).toFixed(0)}%` : `${v.toFixed(1)}:1`) : "미수집", isNotApplicable: presaleNA },
+  competitionRate: { label: "청약 경쟁률", section: "안전", fmt: v => fmtCompetitionRate(v), isNotApplicable: presaleNA },
   competitionSupply: { label: "공급세대수(청약)", section: "안전", unit: "세대", fmt: v => v != null ? nk(v, "세대") : "미수집", isNotApplicable: presaleNA },
   competitionApplicants: { label: "청약신청수", section: "안전", unit: "명", fmt: v => v != null ? nk(v, "명") : "미수집", isNotApplicable: presaleNA },
   // ── 무순위 공고 이벤트 (applyhome_events 시계열 집계) ──

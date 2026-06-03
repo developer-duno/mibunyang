@@ -76,3 +76,11 @@ export const fmtRecruitDate = (v: unknown): string => {
   if (isNaN(d.getTime())) return typeof v === "string" ? v : "—";
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 };
+
+/** 청약 경쟁률 포맷: 1000:1↑ 정수+콤마(437,995:1), 미만 소수1자리(5.2:1), 음수 미달%(미달 30%), null 미수집 */
+export const fmtCompetitionRate = (v: number | null | undefined): string => {
+  if (v == null) return "미수집";
+  if (v < 0) return `미달 ${(Math.abs(v) * 100).toFixed(0)}%`;
+  const rate = v >= 1000 ? Math.round(v).toLocaleString("ko-KR") : v.toFixed(1);
+  return `${rate}:1`;
+};
