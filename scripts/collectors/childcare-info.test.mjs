@@ -9,7 +9,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { parseChildcareXml, aggregateChildcare, listAllSgg, assertNoErrorCode, pickLatestPerKey } = await import("./childcare-info.mjs");
+const { parseChildcareXml, aggregateChildcare, listAllSgg, assertNoErrorCode, pickLatestPerKey, mergePreserveCoords } = await import("./childcare-info.mjs");
 
 describe("parseChildcareXml", () => {
   // sample 응답 박제 (2026-05-16 실 API 호출 서울 종로구 arcode=11110 응답)
@@ -238,5 +238,67 @@ describe("pickLatestPerKey", () => {
     const map = pickLatestPerKey(regions);
     expect(map.size).toBe(1);
     expect(map.has("서울|강남구")).toBe(true);
+  });
+});
+
+describe("mergePreserveCoords", () => {
+  // 신규 집계 (cpmsapi021 7필드, 좌표 없음)
+  const newAgg = {
+    count: 2,
+    total_capacity: 100,
+    facilities: [
+      { stcode: "11110000013", crname: "아동회관어린이집(개명)", crtel: "02-111", crfax: "", craddr: "서울 종로구 1", crhome: "", crcapat: 40 },
+      { stcode: "11110000099", crname: "신규어린이집", crtel: "02-999", crfax: "", craddr: "서울 종로구 9", crhome: "", crcapat: 60 },
+    ],
+    fetched_at: "2026-06-04",
+  };
+  // 기존 최신행 (childcare-detail 이 11110000013 에 좌표/70필드 보강해둠)
+  const prevChildcare = {
+    count: 1,
+    total_capacity: 30,
+    facilities: [
+      { stcode: "11110000013", crname: "아동회관어린이집", crtel: "02-111-OLD", crfax: "", craddr: "서울 종로구 1", crhome: "", crcapat: 30, la: "37.5", lo: "126.9", crtypename: "국공립", cctvinstlcnt: 5 },
+    ],
+    fetched_at: "2026-05-01",
+  };
+
+  it("stcode 일치 시 기존 좌표·70필드 보존 + 7필드는 신규값 갱신", () => {
+    const merged = /** @type {any} */ (mergePreserveCoords(newAgg, prevChildcare));
+    const f = merged.facilities.find((/** @type {any} */ x) => x.stcode === "11110000013");
+    // 기존 추가 필드 보존
+    expect(f.la).toBe("37.5");
+    expect(f.lo).toBe("126.9");
+    expect(f.crtypename).toBe("국공립");
+    expect(f.cctvinstlcnt).toBe(5);
+    // 7필드는 신규값으로 갱신
+    expect(f.crname).toBe("아동회관어린이집(개명)");
+    expect(f.crtel).toBe("02-111");
+    expect(f.crcapat).toBe(40);
+  });
+
+  it("신규 시설 (기존에 없던 stcode) 은 7필드만 — 좌표 없음", () => {
+    const merged = /** @type {any} */ (mergePreserveCoords(newAgg, prevChildcare));
+    const f = merged.facilities.find((/** @type {any} */ x) => x.stcode === "11110000099");
+    expect(f.crname).toBe("신규어린이집");
+    expect(f.la).toBeUndefined();
+    expect(f.crtypename).toBeUndefined();
+  });
+
+  it("count/total_capacity/fetched_at 는 항상 신규 집계값", () => {
+    const merged = mergePreserveCoords(newAgg, prevChildcare);
+    expect(merged.count).toBe(2);
+    expect(merged.total_capacity).toBe(100);
+    expect(merged.fetched_at).toBe("2026-06-04");
+  });
+
+  it("prevChildcare null → newAgg 그대로 (신규 시설만)", () => {
+    const merged = /** @type {any} */ (mergePreserveCoords(newAgg, null));
+    expect(merged.facilities).toHaveLength(2);
+    expect(merged.facilities[0].la).toBeUndefined();
+  });
+
+  it("prevChildcare.facilities 없음 → newAgg 그대로", () => {
+    const merged = mergePreserveCoords(newAgg, /** @type {any} */ ({ count: 0, total_capacity: 0, fetched_at: "2026-05-01" }));
+    expect(merged.facilities).toHaveLength(2);
   });
 });

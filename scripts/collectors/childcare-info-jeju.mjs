@@ -33,7 +33,7 @@
  *   SUPABASE_SERVICE_KEY
  */
 import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, today, recordApiQuota, recordCollectorRun, sleep } from "./_shared.mjs";
-import { parseChildcareXml, extractTag, assertNoErrorCode, aggregateChildcare, pickLatestPerKey } from "./childcare-info.mjs";
+import { parseChildcareXml, extractTag, assertNoErrorCode, aggregateChildcare, pickLatestPerKey, mergePreserveCoords } from "./childcare-info.mjs";
 
 loadEnv();
 
@@ -137,10 +137,14 @@ async function main() {
   // regions 시계열 전수 → (region, gu) 별 최신행 id 맵 (childcare-info.mjs 와 동일 버그 차단).
   // PostgREST PATCH 가 order/limit 무시 → .eq(region).eq(gu) 가 제주 다중 스냅샷 전부 덮어쓰던 패턴 제거.
   const { data: allRegions, error: regErr } = await sb.from("regions")
-    .select("id, region, gu, recorded_at")
+    .select("id, region, gu, recorded_at, childcare")
     .order("recorded_at", { ascending: false });
   if (regErr) throw new Error(`regions 조회 실패: ${regErr.message}`);
   const latestMap = pickLatestPerKey(allRegions ?? []);
+  // 최신행 id → 기존 childcare 본문 (merge 시 좌표 보존용, childcare-info.mjs 답습).
+  /** @type {Map<number, import("./childcare-info.mjs").ChildcareAggregate | null>} */
+  const prevById = new Map();
+  for (const r of allRegions ?? []) prevById.set(r.id, r.childcare ?? null);
 
   let saved = 0;
   for (const row of rows) {
@@ -148,8 +152,10 @@ async function main() {
     const latest = latestMap.get(`${row.region}|${row.gu}`);
 
     if (latest) {
+      // 기존 좌표·70필드 보존 merge (톱니 차단, childcare-info.mjs 답습).
+      const merged = mergePreserveCoords(row.agg, prevById.get(latest.id));
       const { error: updErr } = await sb.from("regions")
-        .update({ childcare: row.agg })
+        .update({ childcare: merged })
         .eq("id", latest.id);
       if (updErr) {
         logError("regions", `UPDATE 빨강 ${row.region} ${row.gu}: ${updErr.message}`);

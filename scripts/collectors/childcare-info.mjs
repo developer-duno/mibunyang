@@ -152,6 +152,33 @@ export function aggregateChildcare(items, fetchedAt) {
 }
 
 /**
+ * 신규 집계(cpmsapi021 7필드)에 기존 최신행 facility 의 좌표·상세 필드(cpmsapi030 70필드)를
+ * stcode 기준으로 보존 merge. childcare-detail 이 ~23일 누적 보강한 la/lo + crtypename 등을
+ * 월간/수동 info 가 7필드로 통째 덮어 전멸시키던 톱니(좌표 0% → nearby 매칭 100/2001 붕괴) 차단.
+ * - count / total_capacity / fetched_at: 신규 집계값 사용 (현재 시점 정확).
+ * - facilities[]: stcode 일치 시 기존 추가 필드(la/lo/crtypename/cctvinstlcnt 등)는 보존,
+ *   7필드(crname/crtel/crfax/craddr/crhome/crcapat)는 신규값으로 갱신.
+ * - 신규 시설(기존에 없던 stcode): 7필드만 들어가고 다음 childcare-detail cron 에서 70필드 채워짐.
+ * @param {ChildcareAggregate} newAgg  - aggregateChildcare 결과
+ * @param {ChildcareAggregate | null | undefined} prevChildcare - 기존 최신행 childcare JSONB
+ * @returns {ChildcareAggregate}
+ */
+export function mergePreserveCoords(newAgg, prevChildcare) {
+  /** @type {Map<string, ChildcareItem>} */
+  const prevByStcode = new Map();
+  for (const f of prevChildcare?.facilities ?? []) {
+    if (f?.stcode) prevByStcode.set(f.stcode, f);
+  }
+  const facilities = newAgg.facilities.map((nf) => {
+    const prev = prevByStcode.get(nf.stcode);
+    if (!prev) return nf; // 신규 시설 — 7필드만
+    // 기존 추가 필드(좌표/70필드) 먼저 깔고, 신규 7필드로 덮어 갱신값 반영
+    return /** @type {ChildcareItem} */ ({ ...prev, ...nf });
+  });
+  return { ...newAgg, facilities };
+}
+
+/**
  * GU_LAWD_MAP 전체 순회 → {region, gu, arcode} 리스트.
  * @returns {Array<{region: string, gu: string, arcode: string}>}
  */
@@ -248,10 +275,14 @@ async function main() {
   // PostgREST PATCH 가 order/limit 을 무시해 .eq(region).eq(gu) 가 모든 과거 스냅샷을 덮어쓰던
   // 버그(쓰기량 2.5배 → statement timeout → 트랜잭션 abort) 차단 — id PK 로 최신행 1개만 갱신.
   const { data: allRegions, error: regErr } = await sb.from("regions")
-    .select("id, region, gu, recorded_at")
+    .select("id, region, gu, recorded_at, childcare")
     .order("recorded_at", { ascending: false });
   if (regErr) throw new Error(`regions 조회 실패: ${regErr.message}`);
   const latestMap = pickLatestPerKey(allRegions ?? []);
+  // 최신행 id → 기존 childcare 본문 (merge 시 좌표 보존용).
+  /** @type {Map<number, ChildcareAggregate | null>} */
+  const prevById = new Map();
+  for (const r of allRegions ?? []) prevById.set(r.id, r.childcare ?? null);
 
   let saved = 0;
   for (const row of rows) {
@@ -259,9 +290,10 @@ async function main() {
     const latest = latestMap.get(`${row.region}|${row.gu}`);
 
     if (latest) {
-      // 최신행 1개만 UPDATE (id PK)
+      // 최신행 1개만 UPDATE (id PK). 기존 좌표·70필드 보존 merge (톱니 차단).
+      const merged = mergePreserveCoords(row.agg, prevById.get(latest.id));
       const { error: updErr } = await sb.from("regions")
-        .update({ childcare: row.agg })
+        .update({ childcare: merged })
         .eq("id", latest.id);
       if (updErr) {
         logError("regions", `UPDATE 빨강 ${row.region} ${row.gu}: ${updErr.message}`);
