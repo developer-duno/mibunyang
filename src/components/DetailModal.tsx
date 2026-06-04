@@ -13,9 +13,21 @@ import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { MarketStatsCharts } from "./detail/MarketStatsCharts";
+import { StickyJumpNav, JUMP_NAV_HEIGHT, type JumpSection } from "./detail/StickyJumpNav";
 import { IconClose } from "./icons";
 import { fetchApartmentPrices, type PriceArrays } from "@/services/staticDataApi";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
+
+// 목차바 6섹션 정의 — id 는 영문 슬러그 (한글 id CSS.escape 함정 회피, getElementById 안전).
+// 13블록을 6섹션으로 묶되 데이터 삭제·축소 0 (각 블록은 정확히 1섹션 소속).
+const JUMP_SECTIONS: JumpSection[] = [
+  { id: "sec-overview", label: "종합" },
+  { id: "sec-price", label: "시세" },
+  { id: "sec-location", label: "입지" },
+  { id: "sec-presale", label: "분양" },
+  { id: "sec-finance", label: "금융" },
+  { id: "sec-score", label: "점수" },
+];
 
 const UNSOLD_WARN_THRESHOLD = 15;
 
@@ -114,6 +126,45 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
     [item?.apt.id, item?.apt, prices],
   );
 
+  // 목차바(StickyJumpNav) — 스크롤 컨테이너(bodyRef) 안 6 섹션을 IntersectionObserver 로 추적.
+  // 포커스 트랩 effect(위)와 별개 effect 로 분리: 그쪽은 [!!item] sentinel 로 item 변경 무시(포커스
+  // 튐 방지)지만, observer 는 다른 단지 클릭 시 child 섹션 노드가 재생성되므로 [item?.apt.id] 로 재관찰.
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [activeSection, setActiveSection] = useState<string>(JUMP_SECTIONS[0].id);
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root || !item) return;
+    const els = JUMP_SECTIONS
+      .map((s) => root.querySelector<HTMLElement>(`#${s.id}`))
+      .filter((el): el is HTMLElement => el != null);
+    if (els.length === 0) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        // 화면 상단(칩바 아래)에 가장 가까운 가시 섹션을 active 로.
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        const id = visible[0].target.id;
+        if (id) setActiveSection(id);
+      },
+      // root = 모달 내부 스크롤러. 칩바 높이만큼 상단 마진 보정(root:null 금지 — body 가 아니라 div 스크롤).
+      { root, rootMargin: `-${JUMP_NAV_HEIGHT}px 0px -55% 0px`, threshold: 0 },
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [item?.apt.id, item]);
+
+  // 칩 클릭 → 해당 섹션으로 점프. scrollIntoView 단일 경로 + section 의 scrollMarginTop(칩바높이)이
+  // 보정을 전담(scrollTo offsetTop 이중 보정 금지 — 88px 밀림 방지).
+  const handleJump = (id: string) => {
+    const root = bodyRef.current;
+    const el = root?.querySelector<HTMLElement>(`#${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActiveSection(id);
+    }
+  };
+
   if (!item) return null;
   const { apt, res } = item;
   const zone = getZone(apt.region as string, apt.gu as string);
@@ -135,8 +186,12 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             <button ref={closeRef} onClick={onClose} aria-label="닫기" style={DM_S.closeBtn}><IconClose size={18} /></button>
           </div>
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
+        <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
 
+        <StickyJumpNav sections={JUMP_SECTIONS} activeId={activeSection} totalScore={res.total} onJump={handleJump} isDesktop={isDesktop} />
+
+        {/* §1 종합 — ScoreBadge + Radar/핵심지표 + 혜택칩 + 재공고배지 */}
+        <section id="sec-overview" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
         <div style={DM_S.scoreBadgeWrap}>
           <ScoreBadge score={res.total} size={80} />
         </div>
@@ -180,21 +235,36 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회
           </div>
         )}
+        </section>
 
+        {/* §2 시세 — PriceTable + PriceChart + UnsoldChart */}
+        <section id="sec-price" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
         <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
+        </section>
 
+        {/* §3 입지 — SchoolInfo + NearbyChildcare */}
+        <section id="sec-location" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
         <SchoolInfo apt={apt} />
 
         <NearbyChildcareSection apt={apt} />
+        </section>
 
+        {/* §4 분양 — PresaleInfo + MarketStatsCharts(KOSIS 지역 거시통계) */}
+        <section id="sec-presale" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
         <PresaleInfo apt={apt} />
 
-        <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
-
         <MarketStatsCharts region={apt.region} gu={apt.gu} />
+        </section>
 
+        {/* §5 금융 — LoanAnalysis (이 단지 대출 시뮬레이션) */}
+        <section id="sec-finance" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
+        <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
+        </section>
+
+        {/* §6 점수 — DataSections(공공데이터) + 액션버튼 + CatPanel×6 */}
+        <section id="sec-score" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
         <DataSections apt={mergedApt ?? apt} />
         {onConsult && (
           <button onClick={() => onConsult(apt.id as string)} style={{
@@ -219,6 +289,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         </div>
 
         {Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} />)}
+        </section>
 
         </div>
       </div>
