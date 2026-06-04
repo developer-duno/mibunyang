@@ -149,8 +149,12 @@ describe("DetailModal", () => {
 
 // StickyJumpNav(목차바) — 세션 377 PR-1. 데이터 삭제·축소 0 회귀 가드.
 describe("DetailModal StickyJumpNav", () => {
+  const origScrollTo = HTMLElement.prototype.scrollTo;
   beforeEach(() => { document.body.style.overflow = ""; });
-  afterEach(() => { document.body.style.overflow = ""; });
+  afterEach(() => {
+    document.body.style.overflow = "";
+    HTMLElement.prototype.scrollTo = origScrollTo;
+  });
 
   const SECTION_IDS = ["sec-overview", "sec-price", "sec-location", "sec-presale", "sec-finance", "sec-score"];
 
@@ -177,13 +181,27 @@ describe("DetailModal StickyJumpNav", () => {
     expect(screen.getAllByText("75").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("칩 클릭 시 에러 없이 active 전환(scrollIntoView 폴리필 무에러)", () => {
-    // jsdom scrollIntoView 미구현 폴리필
-    Element.prototype.scrollIntoView = vi.fn();
+  it("칩 클릭 시 모달 body 컨테이너 scrollTo 가 호출되고 active 전환", () => {
+    // jsdom HTMLElement.scrollTo 미구현 → mock. 점프가 scrollIntoView(불안정)가 아니라
+    // 컨테이너 직접 scrollTo({top}) 로 일어나는지 검증 (세션 377 PR-2 버그 fix).
+    const scrollToSpy = vi.fn();
+    HTMLElement.prototype.scrollTo = scrollToSpy;
     render(<DetailModal {...makeProps()} />);
     const priceChip = screen.getByRole("button", { name: "시세" });
     fireEvent.click(priceChip);
+    expect(scrollToSpy).toHaveBeenCalledTimes(1);
+    const arg = scrollToSpy.mock.calls[0][0];
+    expect(typeof arg.top).toBe("number");
+    expect(arg.top).toBeGreaterThanOrEqual(0);
+    expect(arg.behavior).toBe("smooth");
     expect(priceChip).toHaveAttribute("aria-current", "true");
+  });
+
+  it("scrollTo 미구현 환경에서도 칩 클릭 무에러", () => {
+    HTMLElement.prototype.scrollTo = /** @type {any} */ (undefined);
+    render(<DetailModal {...makeProps()} />);
+    const chip = screen.getByRole("button", { name: "입지" });
+    expect(() => fireEvent.click(chip)).not.toThrow();
   });
 
   it("13블록 보존 — 핵심 블록이 6섹션 안에 그대로 존재", () => {
