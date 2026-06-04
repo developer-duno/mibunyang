@@ -11,7 +11,7 @@
  *   node scripts/collectors/sync-naver-complex.mjs              (Supabase UPDATE)
  *   node scripts/collectors/sync-naver-complex.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun } from "./_shared.mjs";
 
 /** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} ComplexRow */
 /** @typedef {{ id: string; name: string; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
@@ -162,12 +162,12 @@ export function findNearbyComplexes(apt, spatialGrid, radiusKm = 2) {
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {AptUpdate[]} updates
  * @param {string} label  실패 로그 접두어 (Phase 구분)
- * @returns {Promise<number>} 성공 건수
+ * @returns {Promise<{ ok: number, fail: number }>} 성공·실패 건수 (collector_runs fail 집계용)
  */
-async function flushUpdates(sb, updates, label) {
-  if (updates.length === 0) return 0;
+export async function flushUpdates(sb, updates, label) {
+  if (updates.length === 0) return { ok: 0, fail: 0 };
   const BATCH = 200;
-  let ok = 0;
+  let ok = 0, fail = 0;
   for (let i = 0; i < updates.length; i += BATCH) {
     const slice = updates.slice(i, i + BATCH);
     const limit = createSemaphore(10);
@@ -176,17 +176,25 @@ async function flushUpdates(sb, updates, label) {
     );
     for (let j = 0; j < results.length; j++) {
       const { error } = /** @type {{ error: { message: string } | null }} */ (results[j]);
-      if (error) logError(PHASE, `  ${slice[j].name} ${label ? label + " " : ""}UPDATE 실패: ${error.message}`);
+      if (error) { logError(PHASE, `  ${slice[j].name} ${label ? label + " " : ""}UPDATE 실패: ${error.message}`); fail++; }
       else ok++;
     }
   }
-  return ok;
+  return { ok, fail };
 }
 
-async function main() {
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
+  // collector_runs 집계 (텔레그램 감시 편입, 세션 373) — 조건부 블록 밖 최상위 선언.
+  const startedAt = new Date().toISOString();
+  let totalOk = 0, totalFail = 0;
+  let runStatus = "success";
+  /** @type {string | null} */
+  let errMsg = null;
+
+  try {
   const sb = getSupabase();
   const sbMibunyang = getMibuyangSupabase();
 
@@ -405,8 +413,10 @@ async function main() {
     }
   }
 
-  updated += await flushUpdates(sbMibunyang, phase1Updates, "");
+  const r1 = await flushUpdates(sbMibunyang, phase1Updates, "");
+  updated += r1.ok; totalFail += r1.fail;
   log(PHASE, `\n=== Phase 1 완료: 단지정보 갱신 ${updated}, 건너뜀 ${skipped} ===`);
+  totalOk += updated;
 
   // ── Phase 2: articles 매물 수 집계 → unsold / unsold_rate 업데이트 ──
   // (통합 fetch 한 allArticles 재사용 — trade_type_name 만 읽음)
@@ -491,8 +501,10 @@ async function main() {
         }
       }
 
-      unsoldUpdated += await flushUpdates(sbMibunyang, phase2Updates, "매물수");
+      const r2 = await flushUpdates(sbMibunyang, phase2Updates, "매물수");
+      unsoldUpdated += r2.ok; totalFail += r2.fail;
       log(PHASE, `Phase 2 완료: 매물수 기반 갱신 ${unsoldUpdated}건`);
+      totalOk += unsoldUpdated;
     }
   }
 
@@ -638,8 +650,10 @@ async function main() {
         phase3Updates.push({ id: apt.id, name: apt.name, row });
       }
 
-    naverUpdated += await flushUpdates(sbMibunyang, phase3Updates, "naver");
+    const r3 = await flushUpdates(sbMibunyang, phase3Updates, "naver");
+    naverUpdated += r3.ok; totalFail += r3.fail;
     log(PHASE, `Phase 3 완료: 시세/통계 갱신 ${naverUpdated}건`);
+    totalOk += naverUpdated;
   }
 
   // ── Phase 4: articles 집계 → apartments (관리비, 방향) ──────
@@ -693,12 +707,32 @@ async function main() {
         }
       }
 
-      phase4Updated += await flushUpdates(sbMibunyang, phase4Updates, "Phase4");
+      const r4 = await flushUpdates(sbMibunyang, phase4Updates, "Phase4");
+      phase4Updated += r4.ok; totalFail += r4.fail;
       log(PHASE, `Phase 4 완료: 관리비/방향 갱신 ${phase4Updated}건`);
+      totalOk += phase4Updated;
     }
   }
 
   log(PHASE, "\n=== 전체 동기화 완료 ===");
+  } catch (/** @type {unknown} */ err) {
+    runStatus = "failure";
+    errMsg = err instanceof Error ? err.message : String(err);
+    throw err; // 재던짐 → 진입점 catch 의 logError + exit(1) 보존 (워크플로 failure + 하류 step 스킵)
+  } finally {
+    await recordCollectorRun(PHASE, {
+      status: runStatus,
+      ok: totalOk,
+      fail: totalFail,
+      // skip=0 고정: Phase1 skipped("변경할 필드 없음")는 정상 잡음(상시 수백~1400)이라
+      // skip 으로 넘기면 monitor ②(ok===0 && skip===0)가 영원히 못 잡아 silent fail 감시 무력화.
+      // skip=0 이어야 전 Phase ok=0(DB 쓰기 전부 실패) 시 ②가 즉시 발화. (세션 373 적대검증)
+      skip: 0,
+      errorMessage: errMsg,
+      startedAt,
+      elapsed: ((Date.now() - new Date(startedAt).getTime()) / 1000).toFixed(1),
+    });
+  }
 }
 
 const argv1 = process.argv[1];
