@@ -77,15 +77,16 @@ export default withHandler({ method: "POST", admin: true, rateLimit: "admin", ha
     return res.status(400).json({ ok: false, error: "유효하지 않은 이메일이 포함되어 있습니다" });
   }
 
-  const results = [];
-  for (const em of emails) {
+  // 병렬 처리 — 각 이메일은 자기 `user:${email}` 키만 수정(독립), 공유 집합 sadd/srem은 Redis 원자적.
+  // 각 호출을 try/catch 로 감싸 reject 가 안 나므로 Promise.all 안전. map 순서 = emails 순서 보존.
+  const results = await Promise.all(emails.map(async (em) => {
     try {
-      results.push(await reviewOne(em, action, noteStr));
+      return await reviewOne(em, action, noteStr);
     } catch (err) {
       console.error("[admin/review] batch error:", em, err instanceof Error ? err.message : err);
-      results.push({ email: String(em).toLowerCase().trim(), ok: false, error: "처리 실패" });
+      return { email: String(em).toLowerCase().trim(), ok: false, error: "처리 실패" };
     }
-  }
+  }));
 
   const successCount = results.filter(r => r.ok).length;
   const failCount = results.length - successCount;
