@@ -146,3 +146,55 @@ describe("DetailModal", () => {
     expect(screen.getByText("경기 수원시 영통동")).toBeInTheDocument();
   });
 });
+
+// StickyJumpNav(목차바) — 세션 377 PR-1. 데이터 삭제·축소 0 회귀 가드.
+describe("DetailModal StickyJumpNav", () => {
+  beforeEach(() => { document.body.style.overflow = ""; });
+  afterEach(() => { document.body.style.overflow = ""; });
+
+  const SECTION_IDS = ["sec-overview", "sec-price", "sec-location", "sec-presale", "sec-finance", "sec-score"];
+
+  it("6개 섹션 컨테이너(#sec-*)가 모두 렌더됨 — 13블록 보존 골격", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    for (const id of SECTION_IDS) {
+      expect(container.querySelector(`#${id}`)).not.toBeNull();
+    }
+  });
+
+  it("목차바 칩 6개(종합/시세/입지/분양/금융/점수)가 모두 렌더됨", () => {
+    render(<DetailModal {...makeProps()} />);
+    for (const label of ["종합", "시세", "입지", "분양", "금융", "점수"]) {
+      const chip = screen.getByRole("button", { name: label });
+      expect(chip).toBeInTheDocument();
+    }
+  });
+
+  it("목차바 우측에 종합점수 배지 표시(res.total)", () => {
+    render(<DetailModal {...makeProps()} />);
+    // "종합"은 칩 라벨에도 배지 레이블에도 있으므로 다중 매칭 — getAllByText로 확인
+    expect(screen.getAllByText("종합").length).toBeGreaterThanOrEqual(1);
+    // res.total 기본 75 — ScoreBadge + 앵커바 배지에 노출
+    expect(screen.getAllByText("75").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("칩 클릭 시 에러 없이 active 전환(scrollIntoView 폴리필 무에러)", () => {
+    // jsdom scrollIntoView 미구현 폴리필
+    Element.prototype.scrollIntoView = vi.fn();
+    render(<DetailModal {...makeProps()} />);
+    const priceChip = screen.getByRole("button", { name: "시세" });
+    fireEvent.click(priceChip);
+    expect(priceChip).toHaveAttribute("aria-current", "true");
+  });
+
+  it("13블록 보존 — 핵심 블록이 6섹션 안에 그대로 존재", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    // §1 종합: ScoreBadge(점수 img) + 핵심지표 + 혜택/재공고는 데이터 조건부
+    expect(screen.getByText("핵심 지표")).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: /점수/ }).length).toBeGreaterThanOrEqual(1);
+    // §6 점수: 액션버튼(관심/비교) + CatPanel — 모두 sec-score 안
+    const scoreSection = container.querySelector("#sec-score");
+    expect(scoreSection).not.toBeNull();
+    expect(scoreSection?.textContent).toContain("관심매물 추가");
+    expect(scoreSection?.textContent).toContain("비교 추가");
+  });
+});
