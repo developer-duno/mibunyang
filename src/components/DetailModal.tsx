@@ -154,13 +154,14 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
     return () => obs.disconnect();
   }, [item?.apt.id, item]);
 
-  // 칩 클릭 → 해당 섹션으로 점프. scrollIntoView 단일 경로 + section 의 scrollMarginTop(칩바높이)이
-  // 보정을 전담(scrollTo offsetTop 이중 보정 금지 — 88px 밀림 방지).
+  // 칩 클릭 → 해당 섹션으로 점프. scrollIntoView 는 모달 내부 스크롤러(bodyRef)에서 불안정해
+  // (sticky 칩바·중첩 구조), 컨테이너를 직접 scrollTo 한다. 보정은 칩바 높이만큼 빼서 단일 적용.
+  // el.offsetTop 은 offsetParent 기준이므로 bodyRef 가 position:relative(아래 렌더 style) 여야 정확.
   const handleJump = (id: string) => {
     const root = bodyRef.current;
     const el = root?.querySelector<HTMLElement>(`#${id}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (root && el && typeof root.scrollTo === "function") {
+      root.scrollTo({ top: Math.max(0, el.offsetTop - JUMP_NAV_HEIGHT), behavior: "smooth" });
       setActiveSection(id);
     }
   };
@@ -186,7 +187,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             <button ref={closeRef} onClick={onClose} aria-label="닫기" style={DM_S.closeBtn}><IconClose size={18} /></button>
           </div>
         </div>
-        <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
+        <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
 
         <StickyJumpNav sections={JUMP_SECTIONS} activeId={activeSection} totalScore={res.total} onJump={handleJump} isDesktop={isDesktop} />
 
