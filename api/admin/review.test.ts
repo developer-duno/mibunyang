@@ -189,6 +189,27 @@ describe('admin/review 배치 처리', () => {
     expect(data.results[1].ok).toBe(false);
   });
 
+  // 배치: 병렬 처리에서 결과 순서가 emails 순서와 일치한다 (mock 을 이메일별로 분기 — 호출 순서 무관)
+  it('병렬 처리 시 결과 순서가 입력 emails 순서를 보존한다', async () => {
+    mockKv.get.mockImplementation((key: string) =>
+      key === 'user:miss@test.com'
+        ? Promise.resolve(null) // 두 번째 이메일만 미존재
+        : Promise.resolve({ email: key.replace('user:', ''), status: 'pending' }),
+    );
+    const res = makeRes();
+    await handler(makeReq({ emails: ['ok1@test.com', 'miss@test.com', 'ok2@test.com'], action: 'approve' }), res);
+    const data = res.json.mock.calls[0][0];
+    expect(data.results).toHaveLength(3);
+    expect(data.results[0].email).toBe('ok1@test.com');
+    expect(data.results[0].ok).toBe(true);
+    expect(data.results[1].email).toBe('miss@test.com');
+    expect(data.results[1].ok).toBe(false); // 순서 보존 — 가운데가 실패
+    expect(data.results[2].email).toBe('ok2@test.com');
+    expect(data.results[2].ok).toBe(true);
+    expect(data.successCount).toBe(2);
+    expect(data.failCount).toBe(1);
+  });
+
   // 배치: 빈 배열
   it('빈 emails 배열은 400을 반환한다', async () => {
     const res = makeRes();
