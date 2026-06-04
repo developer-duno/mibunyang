@@ -4,7 +4,7 @@
  *
  * 대상: matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -16,14 +16,16 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     loadEnv: vi.fn(),
     getSupabase: vi.fn(),
     getMibuyangSupabase: vi.fn(),
+    recordCollectorRun: vi.fn(),
     log: vi.fn(),
     logError: vi.fn(),
     stringSimilarity: orig.stringSimilarity,
   };
 });
 
-const { matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes, fetchAllPages } =
+const { matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes, fetchAllPages, flushUpdates, main } =
   await import("./sync-naver-complex.mjs");
+const { getMibuyangSupabase, recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /**
@@ -374,5 +376,77 @@ describe("articles 통합 fetch 컬럼 가드", () => {
     // heating fetch + 통합 fetch = articles 직접 .from("articles") 2곳
     const fromArticles = (src.match(/\.from\("articles"\)/g) ?? []).length;
     expect(fromArticles).toBe(2);
+  });
+});
+
+// ── flushUpdates 반환 형태 (collector_runs fail 집계용, 세션 373) ──────
+describe("flushUpdates {ok, fail} 반환", () => {
+  it("빈 배열 → { ok: 0, fail: 0 }", async () => {
+    expect(await flushUpdates(/** @type {any} */ ({}), [], "")).toEqual({ ok: 0, fail: 0 });
+  });
+
+  it("성공·실패 섞임 → ok·fail 비대칭 정확 집계 (ok≠fail, 스왑 버그 차단)", async () => {
+    // 3건 중 2건 성공·1건 실패 → ok=2, fail=1 (대칭이면 ok↔fail 스왑 버그 못 잡음)
+    let call = 0;
+    const sb = /** @type {any} */ ({
+      from: () => ({
+        update: () => ({
+          eq: () => {
+            call++;
+            return Promise.resolve({ error: call === 2 ? { message: "boom" } : null });
+          },
+        }),
+      }),
+    });
+    const updates = [
+      /** @type {any} */ ({ id: "a", name: "A", row: {} }),
+      /** @type {any} */ ({ id: "b", name: "B", row: {} }),
+      /** @type {any} */ ({ id: "c", name: "C", row: {} }),
+    ];
+    expect(await flushUpdates(sb, updates, "test")).toEqual({ ok: 2, fail: 1 });
+  });
+});
+
+// ── main() collector_runs 기록 (텔레그램 감시 편입, 세션 373) ──────
+describe("main() recordCollectorRun 편입", () => {
+  beforeEach(() => {
+    recordCollectorRun.mockClear();
+    getMibuyangSupabase.mockReset();
+  });
+
+  it("complexes 조회 실패 → throw + status=failure 기록", async () => {
+    // 첫 supabase 호출(complexes select range)에서 에러 반환 → L203 throw
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ ({
+      from: () => ({
+        select: () => ({
+          range: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+        }),
+      }),
+    }));
+
+    await expect(main()).rejects.toThrow("complexes 조회 실패: boom");
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "sync-naver",
+      expect.objectContaining({ status: "failure", errorMessage: "complexes 조회 실패: boom" }),
+    );
+  });
+
+  it("정상 종료(빈 데이터) → status=success / ok=0 / fail=0 기록", async () => {
+    // 모든 select·eq·not 체인이 빈 배열로 resolve → 4 Phase 전부 통과, throw 없음.
+    // .not() 은 thenable(빈 배열) 이자 체인 가능해야 함 (heating 쿼리 L220-222).
+    const emptyResult = { data: [], error: null };
+    const emptyChain = {
+      select: () => emptyChain,
+      eq: () => emptyChain,
+      not: () => Promise.resolve(emptyResult),
+      range: () => Promise.resolve(emptyResult),
+    };
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ ({ from: () => emptyChain }));
+
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "sync-naver",
+      expect.objectContaining({ status: "success", ok: 0, fail: 0, skip: 0 }),
+    );
   });
 });
