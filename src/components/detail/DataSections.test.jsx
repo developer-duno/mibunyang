@@ -162,4 +162,51 @@ describe("DataSections", () => {
     fireEvent.click(screen.getByText("공공데이터 상세"));
     expect(screen.getByText("모집공고 원문 보기")).toBeTruthy();
   });
+
+  // ── 채움률 도넛 (세션 380 PR-2) ──
+
+  // 13. 접힌 상태에서도 헤더 전체 도넛 표시
+  it("접힌 상태에서도 헤더 전체 채움률 도넛(role=img)을 표시한다", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSections apt={/** @type {any} */ (apt)} />);
+    // 토글 미클릭 상태(showData=false)
+    const donut = screen.getByRole("img", { name: /채움률/ });
+    expect(donut).toBeTruthy();
+    expect(donut.getAttribute("aria-label")).toMatch(/전체 채움률 \d+%/);
+  });
+
+  // 14. 펼치면 hasAny 서브섹션마다 도넛 표시 (factory 실측: 4섹션 hasAny)
+  it("펼치면 데이터 있는 서브섹션에 도넛이 붙는다", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSections apt={/** @type {any} */ (apt)} />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    // 헤더 도넛 1 + hasAny 서브섹션 도넛들 → 2개 이상
+    const donuts = screen.getAllByRole("img", { name: /채움률/ });
+    expect(donuts.length).toBeGreaterThan(1);
+    // 생활인프라 섹션 도넛 라벨 존재 (factory가 hospital 등 채움)
+    expect(screen.getByRole("img", { name: /생활인프라.*채움률/ })).toBeTruthy();
+  });
+
+  // 15. 빈 섹션(hasAny=false)은 도넛 안 보임 — "데이터 수집 중..."만
+  it("데이터 없는 섹션은 도넛이 없고 '데이터 수집 중...'만 표시한다", () => {
+    // 네이버 교차검증 필드 전부 null → 그 섹션 hasAny=false
+    const apt = /** @type {any} */ (makeApt({
+      naverNearbyMedian: null, naverJeonseRate: null, naverSellCount: null,
+      naverJeonseCount: null, naverWolseCount: null, naverSchoolWalkMin: null,
+      naverNearbyCount: null, naverFetchedAt: null,
+    }));
+    render(<DataSections apt={/** @type {any} */ (apt)} />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    // "데이터 수집 중..." 존재
+    expect(screen.getAllByText("데이터 수집 중...").length).toBeGreaterThan(0);
+    // 네이버 교차검증 섹션 도넛은 없음 (그 라벨의 도넛 미존재)
+    expect(screen.queryByRole("img", { name: /네이버 교차검증.*채움률/ })).toBeNull();
+  });
+
+  // 16. 토글 버튼은 여전히 1개 (도넛 img라 role 무충돌 — 회귀 가드)
+  it("도넛 추가 후에도 토글 버튼(role=button)은 1개다", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSections apt={/** @type {any} */ (apt)} />);
+    expect(screen.getByRole("button")).toBeTruthy(); // 단수 — 도넛은 img라 충돌 없음
+  });
 });

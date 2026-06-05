@@ -1,29 +1,14 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
+import { computeCompleteness } from "@/lib/completeness";
 import type { ExpertDataCompletenessProps } from "@/types/expert";
 
 export const ExpertDataCompleteness = memo(function ExpertDataCompleteness({ apt }: ExpertDataCompletenessProps) {
-  const FM = FIELD_META as Record<string, { label: string; hidden?: boolean; isNotApplicable?: (_v: unknown, _apt: unknown) => boolean; isEstimated?: (_v: unknown, _apt: unknown) => boolean; isDefault?: (_v: unknown) => boolean; fmt?: (_v: unknown, _apt: unknown) => unknown }>;
-  const allFields = Object.keys(FM).filter(k => !FM[k].hidden);
-  let filled = 0, estimated = 0, defaults = 0, missing = 0, na = 0;
-  const estimatedFields: string[] = [];
-  const defaultFields: string[] = [];
-  const missingFields: string[] = [];
-  const naFields: string[] = [];
-  allFields.forEach(k => {
-    const meta = FM[k];
-    const v = apt[k];
-    // 적용 대상 아님 판정이 최우선 — 분양 중이 아닌 단지는 presale/competition 필드가 애초 평가 대상 아님
-    if (meta.isNotApplicable && meta.isNotApplicable(v, apt)) { na++; naFields.push(meta.label); return; }
-    if (v === undefined || v === null || v === "") { missing++; missingFields.push(meta.label); }
-    else if (meta.isEstimated && meta.isEstimated(v, apt)) { estimated++; estimatedFields.push(meta.label); }
-    else if (meta.isDefault && meta.isDefault(v)) { defaults++; defaultFields.push(`${meta.label} (${meta.fmt ? meta.fmt(v, apt) : v})`); }
-    else { filled++; }
-  });
-  const total = allFields.length;
-  const evalTotal = total - na;
-  const pct = evalTotal > 0 ? Math.round(((filled + estimated * 0.5) / evalTotal) * 100) : 0;
+  // 채움률 계산은 공유 헬퍼로 위임(세션 380) — 소비자 도넛(DataSections)과 같은 로직, drift 0.
+  // 전문가 화면은 전체 비-hidden 필드 모집단.
+  const allFields = Object.keys(FIELD_META).filter(k => !FIELD_META[k].hidden);
+  const { pct, filled, estimated, defaults, missing, na, total, evalTotal, estimatedFields, defaultFields, missingFields, naFields } = computeCompleteness(allFields, apt);
   return (
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, marginBottom: 12 }}>
       <div style={{ fontSize: F.base, fontWeight: 800, color: C.cyan, marginBottom: 10, borderBottom: `2px solid ${C.cyan}`, paddingBottom: 6 }}>데이터 완성도</div>

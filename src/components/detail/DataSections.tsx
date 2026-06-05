@@ -1,10 +1,22 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { C, F } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
 import { fmtPrice } from "@/lib/format";
+import { computeCompleteness } from "@/lib/completeness";
 import { HighlightField } from "./HighlightField";
 import { InfrastructureSection } from "./InfrastructureSection";
+import { CompletenessDonut } from "./CompletenessDonut";
 import type { DataSectionsProps, DataSection } from "@/types/components/DataSections.types";
+
+// 섹션의 평가 대상 필드 키 합집합 (highlight + grid + pairs flat, null distField 제거).
+// 채움률 도넛(헤더 합집합·서브섹션)과 hasAny 게이트가 같은 입력을 쓰게 추출 (세션 380).
+function fieldsOf(section: DataSection): string[] {
+  return [
+    ...(section.highlight || []),
+    ...(section.grid || []),
+    ...(section.pairs || []).flat().filter((x): x is string => typeof x === "string"),
+  ];
+}
 
 const UNSOLD_WARN_THRESHOLD = 15;
 const UNSOLD_SAFE_THRESHOLD = 5;
@@ -92,6 +104,10 @@ function dataValueColor(field: string, value: unknown): string {
 export const DataSections = memo(function DataSections({ apt }: DataSectionsProps) {
   const [showData, setShowData] = useState(false);
 
+  // 헤더 전체 채움률 — 8섹션(DATA_SECTIONS) 필드 합집합 기준(중복 0 실측). lazy fetch 4필드는
+  // 합집합에 없어 fetch 전후 불변. na(presaleNA)는 computeCompleteness가 자동 제외. apt 변경 시만 재계산.
+  const headerPct = useMemo(() => computeCompleteness(DATA_SECTIONS.flatMap(fieldsOf), apt).pct, [apt]);
+
   return (
     <div style={DS_S.container}>
       <div
@@ -102,18 +118,26 @@ export const DataSections = memo(function DataSections({ apt }: DataSectionsProp
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowData(v => !v); } }}
         style={DS_S.toggleHead}
       >
-        <span style={DS_S.toggleTitle}>공공데이터 상세</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={DS_S.toggleTitle}>공공데이터 상세</span>
+          <CompletenessDonut pct={headerPct} size={40} label="전체" />
+        </div>
         <span style={{ fontSize: F.sm, color: C.muted, transition: "transform .2s", transform: showData ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>
       </div>
       {showData && (
         <div style={DS_S.body}>
           {DATA_SECTIONS.map((section, si) => {
-            const allFields: string[] = [...(section.highlight || []), ...(section.grid || []), ...(section.pairs || []).flat().filter((x): x is string => typeof x === "string")];
+            const allFields = fieldsOf(section);
             const hasAny = allFields.some(f => apt[f] != null);
             if (section.hideWhenEmpty && !hasAny) return null;
+            // 빈 섹션(hasAny=false)은 도넛 안 보임 — "데이터 수집 중..."만 (사장님 결정).
+            const sectionPct = hasAny ? computeCompleteness(allFields, apt).pct : null;
             return (
               <div key={si} style={{ marginTop: si > 0 ? 12 : 0 }}>
-                <div style={DS_S.sectionTitle}>{section.title}</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={DS_S.sectionTitle}>{section.title}</div>
+                  {sectionPct != null && <CompletenessDonut pct={sectionPct} size={34} label={section.title} />}
+                </div>
                 {hasAny ? (<>
                   {section.highlight && (
                     <div style={{ ...DS_S.highlightRowBase, marginBottom: section.grid ? 6 : 0 }}>
