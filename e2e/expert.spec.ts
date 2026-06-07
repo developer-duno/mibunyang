@@ -87,4 +87,32 @@ test.describe("전문가 페이지", () => {
       .toBeGreaterThan(before);
     await expect(lastChip).toHaveAttribute("aria-current", "true");
   });
+
+  // 모바일 점프 회귀 가드 (세션 383) — smooth scroll 이 클릭 직후 리렌더+observer 로 취소돼
+  // scrollTop 0 잔존하던 버그(behavior:"auto" 로 수정). 위 데스크톱 테스트는 scrollTo behavior
+  // 를 벗겨 동기화하므로 이 버그를 못 잡았다. 여기선 prod handleJump(auto) 그대로 두고 실제 이동 검증.
+  test("모바일 목차 칩 클릭 시 실제 스크롤 이동 (smooth 취소 회귀 가드)", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginViaToken(page);
+    await page.goto("/");
+
+    const priceChip = page.getByRole("button", { name: "가격" });
+    const hasChips = await priceChip
+      .waitFor({ state: "visible", timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!hasChips) {
+      test.skip(true, "전문가 대시보드 칩 미렌더 — 빈 DB 또는 미진입");
+      return;
+    }
+
+    const body = page.locator("[data-print-content]");
+    const before = await body.evaluate((el) => el.scrollTop);
+    await priceChip.click();
+    // prod 코드 그대로(behavior:"auto") — 즉시 이동하므로 짧은 대기로 충분
+    await expect
+      .poll(() => body.evaluate((el) => el.scrollTop), { timeout: 3000 })
+      .toBeGreaterThan(before + 100);
+    await expect(page.locator("#sec-가격")).toBeInViewport({ timeout: 3000 });
+  });
 });
