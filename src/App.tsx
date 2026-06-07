@@ -406,7 +406,7 @@ export default function App() {
           isComp={compIds.includes(detail.detailAptId)} onComp={toggleComp}
           isFav={favoriteSet.has(detail.detailAptId)} onFav={toggleFavorite}
           onShare={handleShareDetail} isPC={isPC} isDesktop={isDesktop}
-          onConsult={handleConsultFromDetail} /></Suspense>;
+          onConsult={handleConsultFromDetail} profile={profile} /></Suspense>;
       })()}
 
       {/* 로그인 유도 모달 */}

@@ -10,6 +10,7 @@ import type {
   CloseHandler,
   ResponsiveProps,
 } from "@/types/components";
+import type { Profile } from "@/types/scoring";
 
 export interface DetailModalProps extends ResponsiveProps {
   item: CompareItem | null;
@@ -20,4 +21,6 @@ export interface DetailModalProps extends ResponsiveProps {
   onFav: (_id: string) => void;
   onShare?: (_id: string) => void;
   onConsult?: (_id: string) => void;
+  /** 활성 프로필 — 상위 2 카테고리 CatPanel 맞춤 강조용 (세션 382). 미전달 시 강조 0. */
+  profile?: Profile;
 }
