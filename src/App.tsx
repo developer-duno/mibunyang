@@ -339,7 +339,7 @@ export default function App() {
         <ExpertLoginForm expert={expert} onLogin={handleExpertLogin} onBack={() => setTab("info")} onKakaoLogin={() => kakao.initKakaoLogin()} kakaoLoading={kakao.kakaoLoading} />
       ) : tab === "expert" ? (
         <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>대시보드 로딩 중...</div>}>
-          <ExpertDashboard scored={scored} profile={profile} setProfile={setProfile}
+          <ExpertDashboard scored={scored} profile={profile}
             expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt}
             onSwitchToAdmin={admin.adminLoggedIn ? switchToAdmin : undefined} />
         </Suspense>

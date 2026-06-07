@@ -16,34 +16,23 @@ describe("ExpertDashboard", () => {
   const defaultProps = () => ({
     scored: makeScored(),
     profile: "live",
-    setProfile: vi.fn(),
     expandedApt: null,
     setExpandedApt: vi.fn(),
     onSwitchToAdmin: null,
   });
 
-  // 기본 렌더링 — 프로필 버튼 5개 표시
-  it("5개 프로필 버튼을 표시한다", () => {
+  // 프로필 전환 메뉴는 전역 HeaderSection 담당 — 대시보드 내 중복 제거(세션 383)로 여기선 미렌더.
+  it("대시보드 안에 프로필 전환 버튼을 더 이상 표시하지 않는다(전역 HeaderSection 담당)", () => {
     render(<ExpertDashboard {...defaultProps()} />);
-    expect(screen.getByText("실거주")).toBeTruthy();
-    expect(screen.getByText("투자")).toBeTruthy();
-    expect(screen.getByText("신혼부부")).toBeTruthy();
-    expect(screen.getByText("자녀교육")).toBeTruthy();
-    expect(screen.getByText("은퇴")).toBeTruthy();
+    // '실거주' 등 프로필명은 대시보드 헤더 줄에 없음 (전역 헤더로 이동)
+    expect(screen.queryByRole("button", { name: "실거주" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "투자" })).toBeNull();
   });
 
   // scored가 비어있을 때 안내 메시지 표시
   it("scored가 비어있으면 안내 메시지를 표시한다", () => {
     render(<ExpertDashboard {...defaultProps()} scored={[]} />);
     expect(screen.getByText(/사이드바에서 단지를 선택/)).toBeTruthy();
-  });
-
-  // 프로필 클릭 시 setProfile 호출
-  it("프로필 버튼 클릭 시 setProfile을 호출한다", () => {
-    const props = defaultProps();
-    render(<ExpertDashboard {...props} />);
-    fireEvent.click(screen.getByText("투자"));
-    expect(props.setProfile).toHaveBeenCalledWith("invest");
   });
 
   // 인쇄 버튼 표시
@@ -82,13 +71,13 @@ describe("ExpertDashboard", () => {
   });
 });
 
-// StickyJumpNav(목차바) — 세션 382. 요약+9섹션 점프 회귀 가드. (소비자 DetailModal 패턴 답습)
-describe("ExpertDashboard StickyJumpNav", () => {
+// 목차 드롭다운(StickyJumpNav variant="dropdown") — 세션 383. 가로 스크롤 칩바 → 단추+세로 목록.
+// 요약+9섹션 점프 회귀 가드. behavior:"auto"(smooth 취소 race 수정 답습).
+describe("ExpertDashboard 목차 드롭다운", () => {
   /** @returns {any} */
   const props = () => ({
     scored: makeScored(),
     profile: "live",
-    setProfile: vi.fn(),
     expandedApt: null,
     setExpandedApt: vi.fn(),
     onSwitchToAdmin: null,
@@ -97,13 +86,14 @@ describe("ExpertDashboard StickyJumpNav", () => {
   const origScrollTo = HTMLElement.prototype.scrollTo;
   afterEach(() => { HTMLElement.prototype.scrollTo = origScrollTo; });
 
-  // 칩 10개 = 요약 + FIELD_SECTIONS 9섹션
-  const CHIP_LABELS = ["요약", "단지 개요", "가격/시장 지표", "안전도/리스크", "입지/교통/교육/환경", "상품성/건축", "혜택/할인", "미래가치", "네이버 교차검증", "네이버 분양정보"];
+  // 펼치면 10개 항목 = 요약 + FIELD_SECTIONS 9섹션
+  const OPTION_LABELS = ["요약", "단지 개요", "가격/시장 지표", "안전도/리스크", "입지/교통/교육/환경", "상품성/건축", "혜택/할인", "미래가치", "네이버 교차검증", "네이버 분양정보"];
 
-  it("목차바 칩 10개(요약+9섹션)가 모두 렌더됨", () => {
+  it("드롭다운 펼치면 목차 항목 10개(요약+9섹션)가 모두 렌더됨", () => {
     render(<ExpertDashboard {...props()} />);
-    for (const label of CHIP_LABELS) {
-      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /요약/ })); // 단추(기본 active="요약") 펼치기
+    for (const label of OPTION_LABELS) {
+      expect(screen.getByRole("option", { name: label })).toBeTruthy();
     }
   });
 
@@ -114,24 +104,26 @@ describe("ExpertDashboard StickyJumpNav", () => {
     }
   });
 
-  it("칩 클릭 시 컨테이너 scrollTo 호출 + active 전환", () => {
+  it("항목 클릭 시 컨테이너 scrollTo(behavior:auto) 호출 + 목록 닫힘", () => {
     const scrollToSpy = vi.fn();
     HTMLElement.prototype.scrollTo = scrollToSpy;
     render(<ExpertDashboard {...props()} />);
-    const chip = screen.getByRole("button", { name: "안전도/리스크" });
-    fireEvent.click(chip);
+    fireEvent.click(screen.getByRole("button", { name: /요약/ })); // 펼치기
+    fireEvent.click(screen.getByRole("option", { name: "안전도/리스크" }));
     expect(scrollToSpy).toHaveBeenCalledTimes(1);
     const arg = scrollToSpy.mock.calls[0][0];
     expect(typeof arg.top).toBe("number");
-    expect(arg.behavior).toBe("smooth");
-    expect(chip).toHaveAttribute("aria-current", "true");
+    expect(arg.behavior).toBe("auto"); // smooth→auto (세션 383 점프 취소 버그 수정)
+    // 선택 후 목록 닫힘 → option 사라짐
+    expect(screen.queryByRole("option", { name: "안전도/리스크" })).toBeNull();
   });
 
-  it("scrollTo 미구현 환경에서도 칩 클릭 무에러", () => {
+  it("scrollTo 미구현 환경에서도 항목 클릭 무에러", () => {
     HTMLElement.prototype.scrollTo = /** @type {any} */ (undefined);
     render(<ExpertDashboard {...props()} />);
-    const chip = screen.getByRole("button", { name: "가격/시장 지표" });
-    expect(() => fireEvent.click(chip)).not.toThrow();
+    fireEvent.click(screen.getByRole("button", { name: /요약/ })); // 펼치기
+    const option = screen.getByRole("option", { name: "가격/시장 지표" });
+    expect(() => fireEvent.click(option)).not.toThrow();
   });
 
   // 프로필 맞춤 강조 (세션 382) — invest 상위 2 = price(가격), risk(안전)

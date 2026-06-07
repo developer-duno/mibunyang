@@ -49,66 +49,58 @@ test.describe("전문가 페이지", () => {
     await expect(scoring.first()).toBeVisible({ timeout: 3000 });
   });
 
-  // 목차바 칩 점프 — jsdom 단위테스트가 못 증명하는 "실브라우저: 맨 아래 섹션이 viewport 안으로
-  // 들어옴" 검증. 전문가 로그인 시 tab=expert 자동 진입(App.tsx:121), 단지 자동 선택(selectedId).
-  test("전문가 목차바 칩 클릭 시 섹션 노출 + 스크롤 + active", async ({ page }) => {
+  // 목차 드롭다운 점프 (세션 383) — ExpertDashboard 는 variant="dropdown"(가로 스크롤 칩바 →
+  // 단추+세로 목록). 단추 펼침 → 항목 클릭 → 맨 아래 섹션이 viewport 안으로 들어옴 검증.
+  // 전문가 로그인 시 tab=expert 자동 진입, 단지 자동 선택(selectedId).
+  test("전문가 목차 드롭다운 항목 클릭 시 섹션 노출 + 스크롤", async ({ page }) => {
     await loginViaToken(page);
     await page.goto("/");
 
-    const summaryChip = page.getByRole("button", { name: "요약" });
-    const hasChips = await summaryChip
+    // dropdown 단추 = aria-haspopup="listbox". 펼치기 전 active 라벨(기본 "요약") 표시.
+    const navBtn = page.getByRole("button", { name: /요약/ }).and(page.locator('[aria-haspopup="listbox"]'));
+    const hasNav = await navBtn
       .waitFor({ state: "visible", timeout: 15000 })
       .then(() => true)
       .catch(() => false);
-    if (!hasChips) {
-      test.skip(true, "전문가 대시보드 칩 미렌더 — 빈 DB 또는 미진입");
+    if (!hasNav) {
+      test.skip(true, "전문가 대시보드 목차 미렌더 — 빈 DB 또는 미진입");
       return;
     }
 
-    // 헤드리스 Chromium smooth scroll 비결정성 회피 — 컨테이너 scrollTo 의 behavior 인자만 벗겨
-    // 동기 스크롤화(prod handleJump 불변). detail-modal.spec.ts 패치 답습.
     const body = page.locator("[data-print-content]");
-    await body.evaluate((el) => {
-      const orig = el.scrollTo.bind(el);
-      el.scrollTo = (opts?: ScrollToOptions | number, y?: number) => {
-        if (opts && typeof opts === "object") orig({ top: opts.top, left: opts.left ?? 0 });
-        else orig(opts as number, y as number);
-      };
-    });
-
     await expect(page.locator("#sec-분양")).not.toBeInViewport();
     const before = await body.evaluate((el) => el.scrollTop);
-    const lastChip = page.getByRole("button", { name: "네이버 분양정보" });
-    await lastChip.click();
+
+    await navBtn.click(); // 드롭다운 펼치기
+    await page.getByRole("option", { name: "네이버 분양정보" }).click();
 
     await expect(page.locator("#sec-분양")).toBeInViewport({ timeout: 4000 });
     await expect
       .poll(() => body.evaluate((el) => el.scrollTop), { timeout: 4000 })
       .toBeGreaterThan(before);
-    await expect(lastChip).toHaveAttribute("aria-current", "true");
   });
 
   // 모바일 점프 회귀 가드 (세션 383) — smooth scroll 이 클릭 직후 리렌더+observer 로 취소돼
-  // scrollTop 0 잔존하던 버그(behavior:"auto" 로 수정). 위 데스크톱 테스트는 scrollTo behavior
-  // 를 벗겨 동기화하므로 이 버그를 못 잡았다. 여기선 prod handleJump(auto) 그대로 두고 실제 이동 검증.
-  test("모바일 목차 칩 클릭 시 실제 스크롤 이동 (smooth 취소 회귀 가드)", async ({ page }) => {
+  // scrollTop 0 잔존하던 버그(behavior:"auto" 로 수정). prod handleJump(auto) 그대로 두고 실제 이동 검증.
+  test("모바일 목차 드롭다운 항목 클릭 시 실제 스크롤 이동 (smooth 취소 회귀 가드)", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await loginViaToken(page);
     await page.goto("/");
 
-    const priceChip = page.getByRole("button", { name: "가격" });
-    const hasChips = await priceChip
+    const navBtn = page.locator('[aria-haspopup="listbox"]');
+    const hasNav = await navBtn
       .waitFor({ state: "visible", timeout: 15000 })
       .then(() => true)
       .catch(() => false);
-    if (!hasChips) {
-      test.skip(true, "전문가 대시보드 칩 미렌더 — 빈 DB 또는 미진입");
+    if (!hasNav) {
+      test.skip(true, "전문가 대시보드 목차 미렌더 — 빈 DB 또는 미진입");
       return;
     }
 
     const body = page.locator("[data-print-content]");
     const before = await body.evaluate((el) => el.scrollTop);
-    await priceChip.click();
+    await navBtn.click(); // 펼치기
+    await page.getByRole("option", { name: "가격/시장 지표" }).click(); // FIELD_SECTIONS key="가격" label="가격/시장 지표"
     // prod 코드 그대로(behavior:"auto") — 즉시 이동하므로 짧은 대기로 충분
     await expect
       .poll(() => body.evaluate((el) => el.scrollTop), { timeout: 3000 })
