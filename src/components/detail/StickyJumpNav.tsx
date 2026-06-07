@@ -16,10 +16,11 @@ type StickyJumpNavProps = {
   totalScore?: number | null;
   onJump: (_id: string) => void;
   isDesktop?: boolean;
+  noPrint?: boolean;
 };
 
 export const StickyJumpNav = memo(function StickyJumpNav({
-  sections, activeId, totalScore, onJump, isDesktop,
+  sections, activeId, totalScore, onJump, isDesktop, noPrint,
 }: StickyJumpNavProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const activeChipRef = useRef<HTMLButtonElement | null>(null);
@@ -38,6 +39,7 @@ export const StickyJumpNav = memo(function StickyJumpNav({
 
   return (
     <div
+      {...(noPrint ? { "data-no-print": true } : {})}
       style={{
         position: "sticky",
         top: 0,
