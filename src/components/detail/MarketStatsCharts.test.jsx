@@ -57,6 +57,14 @@ describe("MarketStatsCharts", () => {
     expect(screen.getAllByTestId("line-chart")).toHaveLength(5);
   });
 
+  it("정상 데이터면 차트들이 반응형 grid 컨테이너에 담긴다", () => {
+    mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: false });
+    render(<MarketStatsCharts region="서울" gu="강남구" />);
+    const grid = /** @type {HTMLElement} */ (screen.getByTestId("market-charts-grid"));
+    expect(grid.style.display).toBe("grid");
+    expect(grid.style.gridTemplateColumns).toContain("minmax");
+  });
+
   it("18행 모두 null 값만 있으면 안내 박스만 표시한다", () => {
     const nullRows = Array.from({ length: 18 }, (_, i) => ({
       base_month: `2024${String(i + 1).padStart(2, "0")}`,

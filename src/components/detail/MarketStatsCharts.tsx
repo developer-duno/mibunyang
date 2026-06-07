@@ -30,7 +30,7 @@ const monthLabel = (yyyymm: unknown) => {
  *   gu: string — DB 표기 ("강남구") 또는 "" (시도 단위)
  *
  * - 5/5 cron 전 데이터 0건 = amberLight 안내 박스 노출
- * - 정상 시 5개 LineChart 세로 배치 (height 120 × 5 = 누적 600px)
+ * - 정상 시 LineChart 5개를 반응형 grid 배치 (auto-fit minmax 280px — 모바일 1열·PC 이상 2열)
  * - region 미설정 / loading / error 시 null (조용한 숨김)
  */
 export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }: MarketStatsChartsProps) {
@@ -101,29 +101,32 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
       <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>
         지역 시장 추이 ({region}{headerSuffix})
       </div>
-      {METRICS.map(m => {
-        type ChartPoint = { x: string; y: number; label: string };
-        const chartData: ChartPoint[] = data
-          .map((d: MarketRow, i: number) => {
-            // null/undefined 명시적 제외 — Number(null)=0 + isFinite(0)=true 강제 변환 사고 방지
-            const raw = d?.[m.key];
-            if (raw == null) return null;
-            const v = Number(raw);
-            if (!Number.isFinite(v)) return null;
-            return { x: xLabels[i] || "", y: v, label: `${xLabels[i] || ""}: ${v.toLocaleString()} ${m.unit}` };
-          })
-          .filter((x): x is ChartPoint => x !== null);
-        if (chartData.length < 2) return null;
-        return (
-          <div key={m.key}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted, marginBottom: 4 }}>
-              <span style={{ fontWeight: 600 }}>{m.label}</span>
-              <span>{m.unit}</span>
+      {/* 반응형 grid — auto-fit minmax 280px: 모바일 1열, PC 이상 2열 자동. 홀수 마지막 차트는 왼쪽 정렬 */}
+      <div data-testid="market-charts-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+        {METRICS.map(m => {
+          type ChartPoint = { x: string; y: number; label: string };
+          const chartData: ChartPoint[] = data
+            .map((d: MarketRow, i: number) => {
+              // null/undefined 명시적 제외 — Number(null)=0 + isFinite(0)=true 강제 변환 사고 방지
+              const raw = d?.[m.key];
+              if (raw == null) return null;
+              const v = Number(raw);
+              if (!Number.isFinite(v)) return null;
+              return { x: xLabels[i] || "", y: v, label: `${xLabels[i] || ""}: ${v.toLocaleString()} ${m.unit}` };
+            })
+            .filter((x): x is ChartPoint => x !== null);
+          if (chartData.length < 2) return null;
+          return (
+            <div key={m.key}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>{m.label}</span>
+                <span>{m.unit}</span>
+              </div>
+              <LineChart data={chartData} color={m.color} height={120} yLabel={m.label} />
             </div>
-            <LineChart data={chartData} color={m.color} height={120} yLabel={m.label} />
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 });
