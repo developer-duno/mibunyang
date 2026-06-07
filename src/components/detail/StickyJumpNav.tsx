@@ -1,4 +1,5 @@
 import { memo, useRef, useEffect, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { C, F, gr } from "@/theme";
 
 // 상세 모달 목차바 (StickyJumpNav) — 13블록을 6 섹션으로 점프.
@@ -31,6 +32,7 @@ export const StickyJumpNav = memo(function StickyJumpNav({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const activeChipRef = useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // 모바일 가로 스와이프: active 칩이 가로 스크롤 영역 밖이면 자동 정렬.
   // scrollIntoView 미구현 환경(jsdom 등) 가드 — 없으면 정렬만 건너뜀. (chips 전용)
@@ -41,6 +43,25 @@ export const StickyJumpNav = memo(function StickyJumpNav({
     if (!chip || !box || typeof chip.scrollIntoView !== "function") return;
     chip.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [activeId, variant]);
+
+  // dropdown 펼침 시 Escape 닫기 + active 항목 자동 포커스 (키보드 접근성, 세션 383).
+  // role=listbox 선언 시 키보드 지원 의무 — 프로젝트 PresetPanel Escape 패턴 답습.
+  useEffect(() => {
+    if (variant !== "dropdown" || !open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    const idx = Math.max(0, sections.findIndex((s) => s.id === activeId));
+    optionRefs.current[idx]?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, variant, activeId, sections]);
+
+  // dropdown 목록 내 화살표 이동 + Enter/Space 선택 (roving focus).
+  const onListKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, idx: number) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); optionRefs.current[Math.min(idx + 1, sections.length - 1)]?.focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); optionRefs.current[Math.max(idx - 1, 0)]?.focus(); }
+    else if (e.key === "Home") { e.preventDefault(); optionRefs.current[0]?.focus(); }
+    else if (e.key === "End") { e.preventDefault(); optionRefs.current[sections.length - 1]?.focus(); }
+  };
 
   const pad = isDesktop ? 24 : 16;
   const g = gr(totalScore ?? 0);
@@ -79,6 +100,7 @@ export const StickyJumpNav = memo(function StickyJumpNav({
               <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 19 }} />
               <ul
                 role="listbox"
+                aria-label="목차"
                 style={{
                   position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 20,
                   margin: 0, padding: 4, listStyle: "none", background: C.card,
@@ -86,17 +108,20 @@ export const StickyJumpNav = memo(function StickyJumpNav({
                   boxShadow: "0 8px 24px rgba(0,0,0,0.12)", maxHeight: "60dvh", overflowY: "auto",
                 }}
               >
-                {sections.map((s) => {
+                {sections.map((s, i) => {
                   const isActive = s.id === activeId;
                   return (
                     <li key={s.id}>
                       {/* role/aria-selected/onClick 을 같은 엘리먼트(button)에 둔다 — 분리하면
-                          스크린리더·키보드·테스트에서 선택과 클릭이 어긋난다(세션 383). */}
+                          스크린리더·키보드·테스트에서 선택과 클릭이 어긋난다(세션 383).
+                          화살표/Home/End = onListKeyDown roving focus, Enter/Space = button 기본 선택. */}
                       <button
                         type="button"
                         role="option"
                         aria-selected={isActive}
+                        ref={(el) => { optionRefs.current[i] = el; }}
                         onClick={() => { onJump(s.id); setOpen(false); }}
+                        onKeyDown={(e) => onListKeyDown(e, i)}
                         style={{
                           width: "100%", textAlign: "left", background: isActive ? C.blueLight : "transparent",
                           color: isActive ? C.blue : C.text, border: "none", borderRadius: 6,

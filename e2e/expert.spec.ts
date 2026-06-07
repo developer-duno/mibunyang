@@ -107,4 +107,38 @@ test.describe("전문가 페이지", () => {
       .toBeGreaterThan(before + 100);
     await expect(page.locator("#sec-가격")).toBeInViewport({ timeout: 3000 });
   });
+
+  // 목차 드롭다운 키보드 접근성 (세션 383) — role=listbox 계약: Escape 닫기 + 화살표 이동 + Enter 선택.
+  test("목차 드롭다운 키보드 — Escape 닫기 + 화살표 이동 + Enter 점프", async ({ page }) => {
+    await loginViaToken(page);
+    await page.goto("/");
+
+    const navBtn = page.locator('[aria-haspopup="listbox"]');
+    const hasNav = await navBtn
+      .waitFor({ state: "visible", timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!hasNav) {
+      test.skip(true, "전문가 대시보드 목차 미렌더 — 빈 DB 또는 미진입");
+      return;
+    }
+
+    // 1) Escape 로 닫힘
+    await navBtn.click();
+    await expect(page.getByRole("listbox")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("listbox")).toBeHidden();
+
+    // 2) 펼치면 active("요약")에 포커스 → ArrowDown → Enter 로 다음 섹션 점프
+    const body = page.locator("[data-print-content]");
+    const before = await body.evaluate((el) => el.scrollTop);
+    await navBtn.click();
+    await page.keyboard.press("ArrowDown"); // 요약 → 단지 개요
+    await page.keyboard.press("ArrowDown"); // 단지 개요 → 가격/시장 지표
+    await page.keyboard.press("Enter");      // 선택
+    await expect(page.getByRole("listbox")).toBeHidden(); // 선택 후 닫힘
+    await expect
+      .poll(() => body.evaluate((el) => el.scrollTop), { timeout: 3000 })
+      .toBeGreaterThan(before);
+  });
 });
