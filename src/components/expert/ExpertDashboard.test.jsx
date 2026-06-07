@@ -137,4 +137,26 @@ describe("ExpertDashboard 목차 드롭다운", () => {
     render(<ExpertDashboard {...props()} profile="edu" />);
     expect(screen.getAllByText(/★ 중점/).length).toBe(2);
   });
+
+  // 드롭다운 펼친 목록 ★ 강조 (세션 384) — 칩→드롭다운 전환서 빠졌던 명세 surface 복원.
+  // 헤더 배지는 "★ 중점"(풀), 드롭다운은 맨별 "★"(aria-hidden) → /★ 중점/ 카운트와 충돌 0.
+  it("profile='invest' 펼치면 가격·안전 option 에만 ★ 강조 (입지엔 없음)", () => {
+    render(<ExpertDashboard {...props()} profile="invest" />);
+    fireEvent.click(screen.getByRole("button", { name: /요약/ })); // 펼치기
+    // option 접근가능이름은 ★ aria-hidden 이라 라벨 그대로 — name 매치로 정확히 찾음
+    const priceOpt = screen.getByRole("option", { name: "가격/시장 지표" });
+    const riskOpt = screen.getByRole("option", { name: "안전도/리스크" });
+    const locOpt = screen.getByRole("option", { name: "입지/교통/교육/환경" });
+    expect(priceOpt.textContent).toContain("★"); // invest 상위 = price
+    expect(riskOpt.textContent).toContain("★");   // invest 상위 = risk
+    expect(locOpt.textContent).not.toContain("★"); // location 은 상위 아님
+  });
+
+  it("profile='edu' 면 드롭다운 ★ 가 입지·상품성으로 이동 (강조 drift 0)", () => {
+    render(<ExpertDashboard {...props()} profile="edu" />);
+    fireEvent.click(screen.getByRole("button", { name: /요약/ }));
+    expect(screen.getByRole("option", { name: "입지/교통/교육/환경" }).textContent).toContain("★");
+    expect(screen.getByRole("option", { name: "상품성/건축" }).textContent).toContain("★");
+    expect(screen.getByRole("option", { name: "가격/시장 지표" }).textContent).not.toContain("★");
+  });
 });

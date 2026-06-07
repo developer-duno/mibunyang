@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
+import { EmphasisBadge } from "@/components/primitives";
 import { FIELD_META } from "@/constants/fieldMeta";
 import type { ExpertFieldTableProps } from "@/types/expert";
 
@@ -8,7 +9,7 @@ export const ExpertFieldTable = memo(function ExpertFieldTable({ apt, fields, ti
     <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: F.base, fontWeight: 800, color: color || C.indigo, marginBottom: 10, borderBottom: `2px solid ${color || C.indigo}`, paddingBottom: 6 }}>
         <span>{title}</span>
-        {emphasized && <span style={{ fontSize: F.xs, fontWeight: 700, color: color || C.indigo, border: `1px solid ${color || C.indigo}`, padding: "2px 6px", borderRadius: 4 }}>★ 중점</span>}
+        {emphasized && <EmphasisBadge color={color || C.indigo} />}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
         {fields.map(fk => {

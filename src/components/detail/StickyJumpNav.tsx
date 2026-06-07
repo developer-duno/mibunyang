@@ -68,7 +68,8 @@ export const StickyJumpNav = memo(function StickyJumpNav({
 
   // ── dropdown variant: 가로 스크롤 없는 단추 1개 + 펼침 목록 ──
   if (variant === "dropdown") {
-    const activeLabel = sections.find((s) => s.id === activeId)?.label ?? sections[0]?.label ?? "목차";
+    const activeSection = sections.find((s) => s.id === activeId);
+    const activeLabel = activeSection?.label ?? sections[0]?.label ?? "목차";
     return (
       <div
         {...(noPrint ? { "data-no-print": true } : {})}
@@ -92,6 +93,9 @@ export const StickyJumpNav = memo(function StickyJumpNav({
             }}
           >
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{activeLabel}</span>
+            {/* active 섹션이 프로필 상위 카테고리면 펼치지 않아도 ★ 로 강조 신호. 좁은 단추라
+                풀 "★ 중점" 대신 맨별. aria-hidden 으로 접근가능이름(=activeLabel) 불변. */}
+            {activeSection?.highlighted && <span aria-hidden="true" style={{ flexShrink: 0, marginLeft: "auto", paddingLeft: 4, fontSize: F.xs, color: C.blue }}>★</span>}
             <span style={{ flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
           </button>
           {open && (
@@ -123,13 +127,18 @@ export const StickyJumpNav = memo(function StickyJumpNav({
                         onClick={() => { onJump(s.id); setOpen(false); }}
                         onKeyDown={(e) => onListKeyDown(e, i)}
                         style={{
-                          width: "100%", textAlign: "left", background: isActive ? C.blueLight : "transparent",
+                          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                          textAlign: "left", background: isActive ? C.blueLight : "transparent",
                           color: isActive ? C.blue : C.text, border: "none", borderRadius: 6,
                           padding: "9px 12px", fontSize: F.sm, fontWeight: isActive ? 700 : 500,
                           cursor: "pointer", minHeight: 40,
                         }}
                       >
-                        {s.label}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{s.label}</span>
+                        {/* 프로필 상위 카테고리 섹션이면 우측에 ★ 강조(헤더는 "★ 중점" 풀배지, 좁은
+                            드롭다운 행은 맨별). aria-hidden 으로 option 접근가능이름(=s.label) 불변
+                            → getByRole("option",{name}) 셀렉터·e2e 그대로. */}
+                        {s.highlighted && <span aria-hidden="true" style={{ flexShrink: 0, fontSize: F.xs, color: C.blue }}>★</span>}
                       </button>
                     </li>
                   );

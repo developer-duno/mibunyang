@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
 import { C, F, catCol, gr } from "@/theme";
-import { Bar } from "./primitives";
+import { Bar, EmphasisBadge } from "./primitives";
 import { SUB_CONTEXT, PRODUCT_MAX } from "@/constants/subContext";
 import type { Res } from "@/types/scoring";
 
@@ -71,7 +71,7 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized }: CatPanelP
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>{cat.label}</span>
           <span style={{ fontSize: F.sm, fontWeight: 700, color: grade.c, background: grade.bg, padding: "2px 8px", borderRadius: 4 }}>{grade.l}</span>
-          {emphasized && <span style={{ fontSize: F.xs, fontWeight: 700, color: col, background: C.bg, border: `1px solid ${col}`, padding: "2px 6px", borderRadius: 4 }}>★ 중점</span>}
+          {emphasized && <EmphasisBadge color={col} background={C.bg} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: F.lg, fontWeight: 800, color: col }}>{cat.total}</span>
