@@ -65,6 +65,22 @@ describe('FIELD_META', () => {
     expect(FIELD_META.hugGuarantee.fmt(true)).toBe("있음");
   });
 
+  it('builderCreditGrade fmt: 공기업/신탁/조합 + 등급없음 → "해당없음"', () => {
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "SH공사" })).toBe("해당없음");
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "(주)무궁화신탁" })).toBe("해당없음");
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "둔촌주공아파트주택재건축정비사업조합" })).toBe("해당없음");
+  });
+
+  it('builderCreditGrade fmt: 민간 + 등급없음 → "—"', () => {
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "(주)대원" })).toBe("—");
+    expect(FIELD_META.builderCreditGrade.fmt(null, {})).toBe("—");
+  });
+
+  it('builderCreditGrade fmt: 등급 있으면 그대로 표시', () => {
+    expect(FIELD_META.builderCreditGrade.fmt("A", { builder: "GS건설" })).toBe("A");
+    expect(FIELD_META.builderCreditGrade.fmt("A", { builder: "부산도시공사" })).toBe("A");
+  });
+
   it('psr fmt: 숫자 → toFixed(2)', () => {
     expect(FIELD_META.psr.fmt(0.85)).toBe("0.85");
   });

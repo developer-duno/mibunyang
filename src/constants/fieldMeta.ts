@@ -21,6 +21,12 @@ const nk = (v: any, unit: string): string => v != null ? `${v.toLocaleString("ko
 // (세션101: 세션100 NULL률 진단으로 confirmed — 1273/2001 단지가 presaleStage null)
 const presaleNA = (_v: any, apt?: any): boolean => apt?.presaleStage == null;
 
+// 공기업·신탁·조합은 시공사 신용등급 개념 자체가 없음 → "미등록"이 아니라 "해당없음"
+// (세션388 라이브 실측: 미매칭 단지의 51%가 LH/SH·신탁·조합. 판정 정규식 138개사 전수 검증 false positive 0)
+const NO_CREDIT_BUILDER_RE = /(LH공사|SH공사|도시공사|주택도시공사|도시개발공사|개발공사|신탁|자산신탁|토지신탁|조합|정비사업|재개발|재건축|지역주택)/;
+const isBuilderNoCreditGrade = (builder: any): boolean =>
+  typeof builder === "string" && NO_CREDIT_BUILDER_RE.test(builder);
+
 export const FIELD_META: Record<string, FieldMetaEntry> = {
   // ── 섹션1: 단지 개요 ──
   id: { label: "단지 ID", section: "개요", fmt: v => v ?? "—" },
@@ -53,7 +59,7 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   unsoldRate: { label: "미분양률", section: "가격", unit: "%", fmt: v => n(v, "%"), isDefault: v => v === 0, isEstimated: (v, apt) => apt?._fallbackUnsoldRate },
   recentTrades6m: { label: "최근6개월 거래", section: "가격", unit: "건", fmt: v => v != null ? `${v}건` : "미수집" },
   supplyRatio: { label: "공급비율", section: "가격", unit: "%", fmt: v => n(v, "%"), isEstimated: (v, apt) => apt?._fallbackSupplyRatio },
-  builderCreditGrade: { label: "시공사 신용등급", section: "가격", fmt: v => v ?? "—" },
+  builderCreditGrade: { label: "시공사 신용등급", section: "가격", fmt: (v, apt) => v ?? (isBuilderNoCreditGrade(apt?.builder) ? "해당없음" : "—"), isNotApplicable: (v, apt) => v == null && isBuilderNoCreditGrade(apt?.builder) },
   builderDebtRatio: { label: "시공사 부채비율", section: "가격", unit: "%", fmt: v => n(v, "%"), isEstimated: (v, apt) => apt?._fallbackBuilderDebt },
   hugGuarantee: { label: "HUG 보증", section: "가격", fmt: v => v ? "있음" : "없음" },
   isRegulated: { label: "규제지역", section: "가격", fmt: v => v ? "예" : "아니오" },
