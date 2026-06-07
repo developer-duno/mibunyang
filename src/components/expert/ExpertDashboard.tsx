@@ -69,7 +69,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
     );
     els.forEach((el) => obs.observe(el));
     return () => obs.disconnect();
-  }, [selectedId]);
+  }, [selectedId, selectedItem]);
 
   // ExpertSidebar(memo)에 onSelect prop 전달 — 참조 안정화로 불필요 리렌더 방지
   const handleSelect = useCallback((id: string) => {
