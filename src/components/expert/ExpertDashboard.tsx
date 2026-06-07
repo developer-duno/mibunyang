@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect, useCallback, memo } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from "react";
 import { C, F } from "@/theme";
+import { StickyJumpNav, JUMP_NAV_HEIGHT, type JumpSection } from "@/components/detail/StickyJumpNav";
 import { useResponsive } from "@/hooks/useResponsive";
 import { PROFILES } from "@/constants/profiles";
 import { FIELD_SECTIONS } from "@/constants/fieldMeta";
@@ -16,6 +17,12 @@ import type { ExpertSortKey } from "@/types/expert";
 
 const SEC_COLOR: Record<string, string> = { "가격": C.green, "안전": C.red, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan, "교차검증": "#6366F1" };
 
+// 목차바 칩 = 요약 + FIELD_SECTIONS 9섹션 파생(하드코딩 금지 → 섹션 변경 시 자동 반영).
+const EXPERT_JUMP_SECTIONS: JumpSection[] = [
+  { id: "sec-summary", label: "요약" },
+  ...FIELD_SECTIONS.map((s) => ({ id: `sec-${s.key}`, label: s.label })),
+];
+
 export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, setProfile, expandedApt, setExpandedApt, onSwitchToAdmin }: ExpertDashboardProps) {
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState("전체");
@@ -24,6 +31,8 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const { isPC } = useResponsive();
   const isMobile = !isPC;
   const [helpOpen, setHelpOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [activeSection, setActiveSection] = useState<string>(EXPERT_JUMP_SECTIONS[0].id);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -35,11 +44,45 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const selectedId: string | null = expandedApt || (scored.length > 0 ? (scored[0].apt.id ?? null) : null);
   const selectedItem = useMemo(() => scored.find(x => x.apt.id === selectedId), [scored, selectedId]);
 
+  // 목차바 active 추적 — 화면 상단(칩바 아래)에 가장 가까운 가시 섹션. 단지 바뀌면 섹션 노드
+  // 재생성되므로 [selectedId] 로 재관찰. (소비자 DetailModal observer 패턴 답습)
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || !selectedItem) return;
+    const els = EXPERT_JUMP_SECTIONS
+      .map((s) => root.querySelector<HTMLElement>(`#${s.id}`))
+      .filter((el): el is HTMLElement => el != null);
+    if (els.length === 0) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        const id = visible[0].target.id;
+        if (id) setActiveSection(id);
+      },
+      { root, rootMargin: `-${JUMP_NAV_HEIGHT}px 0px -55% 0px`, threshold: 0 },
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [selectedId]);
+
   // ExpertSidebar(memo)에 onSelect prop 전달 — 참조 안정화로 불필요 리렌더 방지
   const handleSelect = useCallback((id: string) => {
     setExpandedApt(id);
     setSidebarOpen(false);
   }, [setExpandedApt]);
+
+  // 칩 클릭 → 해당 섹션으로 점프(컨테이너 직접 scrollTo, 칩바 높이 보정). offsetTop 은 offsetParent
+  // 기준이라 data-print-content 가 position:relative 여야 정확. (소비자 handleJump 답습)
+  const handleJump = useCallback((id: string) => {
+    const root = scrollRef.current;
+    const el = root?.querySelector<HTMLElement>(`#${id}`);
+    if (root && el && typeof root.scrollTo === "function") {
+      root.scrollTo({ top: Math.max(0, el.offsetTop - JUMP_NAV_HEIGHT), behavior: "smooth" });
+      setActiveSection(id);
+    }
+  }, []);
 
   return (
     <div style={{ display: "flex", height: "calc(100dvh - 100px)", position: "relative" }}>
@@ -62,7 +105,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
           sort={sort} setSort={setSort} isMobile={isMobile} onClose={() => setSidebarOpen(false)} />
       </div>
 
-      <div data-print-content style={{ flex: 1, overflowY: "auto", padding: isMobile ? "12px 14px" : "16px 20px" }}>
+      <div ref={scrollRef} data-print-content style={{ flex: 1, overflowY: "auto", position: "relative", padding: isMobile ? "12px 14px" : "16px 20px" }}>
         <div data-no-print style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 4 }}>
           <button onClick={() => setSidebarOpen(true)} aria-label="단지 목록 열기" style={{
             background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 6,
@@ -98,10 +141,15 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
 
         {selectedItem ? (
           <>
+            <StickyJumpNav sections={EXPERT_JUMP_SECTIONS} activeId={activeSection}
+              totalScore={selectedItem.res.total} onJump={handleJump} isDesktop={!isMobile} noPrint />
+
             <ExpertAptHeader apt={selectedItem.apt} res={selectedItem.res} />
 
-            <ExpertScoreBreakdown apt={selectedItem.apt} res={selectedItem.res} profile={profile} />
-            <ExpertScoreSummary res={selectedItem.res} profile={profile} />
+            <div id="sec-summary">
+              <ExpertScoreBreakdown apt={selectedItem.apt} res={selectedItem.res} profile={profile} />
+              <ExpertScoreSummary res={selectedItem.res} profile={profile} />
+            </div>
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "0 12px" }}>
               {FIELD_SECTIONS.map(sec => {
@@ -110,8 +158,10 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
                   : sec.key === "안전" ? ["unsoldRate","recentTrades6m","supplyRatio","popGrowth"]
                   : undefined;
                 return (
-                  <ExpertFieldTable key={sec.key} apt={selectedItem.apt} fields={sec.fields} title={sec.label}
-                    color={SEC_COLOR[sec.key] || C.indigo} exclude={excl} />
+                  <div id={`sec-${sec.key}`} key={sec.key}>
+                    <ExpertFieldTable apt={selectedItem.apt} fields={sec.fields} title={sec.label}
+                      color={SEC_COLOR[sec.key] || C.indigo} exclude={excl} />
+                  </div>
                 );
               })}
             </div>
