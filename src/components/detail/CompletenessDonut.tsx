@@ -9,6 +9,9 @@ type CompletenessDonutProps = { pct: number; size?: number; label?: string };
 
 const donutColor = (pct: number) => (pct >= 80 ? C.green : pct >= 50 ? C.amber : C.red);
 
+// 도넛 링 두께 — 트랙·진행 공통(세션 385: 4→2.5 로 더 얇게, 사장님 요청).
+const DONUT_STROKE = 2.5;
+
 export const CompletenessDonut = memo(function CompletenessDonut({ pct, size = 40, label }: CompletenessDonutProps) {
   const r = size / 2 - 3.5;
   const circ = 2 * Math.PI * r;
@@ -19,8 +22,8 @@ export const CompletenessDonut = memo(function CompletenessDonut({ pct, size = 4
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }} role="img" aria-label={aria}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }} aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#ECEEF4" strokeWidth="4" />
-        <circle data-role="progress" cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="4" strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset .6s ease" }} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#ECEEF4" strokeWidth={DONUT_STROKE} />
+        <circle data-role="progress" cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={DONUT_STROKE} strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset .6s ease" }} />
       </svg>
       <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: F.xs, fontWeight: 800, color, lineHeight: 1 }}>{pct}%</span>
