@@ -215,4 +215,15 @@ describe("DetailModal StickyJumpNav", () => {
     expect(scoreSection?.textContent).toContain("관심매물 추가");
     expect(scoreSection?.textContent).toContain("비교 추가");
   });
+
+  // 프로필 맞춤 강조 (세션 382) — invest 상위 2 = price, risk
+  it("profile='invest' 면 가격·안전 CatPanel 2개만 ★ 중점 배지", () => {
+    render(<DetailModal {...makeProps({ profile: "invest" })} />);
+    expect(screen.getAllByText(/★ 중점/).length).toBe(2);
+  });
+
+  it("profile 미전달이면 강조 배지 없음(기존 동작 보존)", () => {
+    render(<DetailModal {...makeProps()} />);
+    expect(screen.queryByText(/★ 중점/)).toBeNull();
+  });
 });

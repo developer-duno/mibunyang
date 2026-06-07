@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from 'vitest';
-import { PROFILES } from './profiles';
+import { PROFILES, getTopCats } from './profiles';
 
 // 프로필 구조 및 가중치 무결성 검증
 describe('PROFILES 상수', () => {
@@ -53,5 +53,27 @@ describe('PROFILES 상수', () => {
         expect(P[keys[i]].w).not.toEqual(P[keys[j]].w);
       }
     }
+  });
+});
+
+// 프로필 상위 N 카테고리 파생 — 맞춤 강조용 (세션 382)
+describe('getTopCats', () => {
+  it('invest 상위 2 = price, risk', () => {
+    expect(getTopCats(PROFILES.invest.w)).toEqual(['price', 'risk']);
+  });
+  it('edu 상위 2 = location, product', () => {
+    expect(getTopCats(PROFILES.edu.w)).toEqual(['location', 'product']);
+  });
+  it('retire 는 future=0 제외 → location, product', () => {
+    expect(getTopCats(PROFILES.retire.w)).toEqual(['location', 'product']);
+  });
+  it('동점(live: product/price=20)은 카테고리 선언 순서로 — location, product', () => {
+    expect(getTopCats(PROFILES.live.w)).toEqual(['location', 'product']);
+  });
+  it('newlywed 동점(location/price=30) → location, price', () => {
+    expect(getTopCats(PROFILES.newlywed.w)).toEqual(['location', 'price']);
+  });
+  it('n=3 도 동작', () => {
+    expect(getTopCats(PROFILES.invest.w, 3)).toEqual(['price', 'risk', 'location']);
   });
 });

@@ -105,4 +105,15 @@ describe("CatPanel", () => {
     // "-" info인 분양가할인은 하이라이트에 안 나와야 함 (접힌 상태)
     expect(screen.getByText("중도금무이자:")).toBeInTheDocument();
   });
+
+  // 프로필 맞춤 강조 (세션 382)
+  it("emphasized=true 면 '중점' 배지 표시", () => {
+    render(<CatPanel cat={makeCat()} k="price" emphasized />);
+    expect(screen.getByText(/중점/)).toBeInTheDocument();
+  });
+
+  it("emphasized 미전달이면 배지 없음(기존 동작 보존)", () => {
+    render(<CatPanel cat={makeCat()} k="price" />);
+    expect(screen.queryByText(/중점/)).toBeNull();
+  });
 });

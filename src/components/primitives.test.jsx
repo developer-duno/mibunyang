@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { Bar, ScoreBadge, Radar, LineChart, SkeletonBox, SkeletonText, SkeletonList } from "./primitives";
+import { Bar, ScoreBadge, Radar, LineChart, SkeletonBox, SkeletonText, SkeletonList, EmphasisBadge } from "./primitives";
 import { niceTicks } from "./LineChart";
 
 describe("Bar", () => {
@@ -326,5 +326,24 @@ describe("SkeletonList", () => {
     const grid = container.querySelector("div[aria-hidden='true']");
     expect(grid?.children.length).toBe(5);
     expect(/** @type {HTMLElement} */ (grid)?.style.gridTemplateColumns).toBe("repeat(2, 1fr)");
+  });
+});
+
+describe("EmphasisBadge", () => {
+  // "★ 중점" 텍스트 + color 가 텍스트/테두리에 반영
+  it("color 만 주면 배경 없이 '★ 중점' 배지 렌더 (ExpertFieldTable 용)", () => {
+    render(<EmphasisBadge color="#2563EB" />);
+    const badge = screen.getByText("★ 중점");
+    expect(badge).toBeInTheDocument();
+    // jsdom 은 hex 를 rgb 로 정규화 — #2563EB → rgb(37, 99, 235)
+    expect(badge.style.color).toBe("rgb(37, 99, 235)");
+    expect(badge.style.border).toContain("rgb(37, 99, 235)");
+    expect(badge.style.background).toBe(""); // background 미전달 시 투명 (undefined 미방출)
+  });
+
+  it("background 를 주면 채움 적용 (CatPanel 용 byte-for-byte 보존)", () => {
+    render(<EmphasisBadge color="#16A34A" background="#F5F6FA" />);
+    const badge = screen.getByText("★ 중점");
+    expect(badge.style.background).toBe("rgb(245, 246, 250)"); // #F5F6FA 정규화
   });
 });

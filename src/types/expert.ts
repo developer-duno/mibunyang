@@ -96,4 +96,6 @@ export interface ExpertFieldTableProps {
   title: string;
   color?: string;
   exclude?: readonly string[];
+  /** 프로필 상위 카테고리 섹션 — 헤더에 ★ 중점 배지 (세션 382) */
+  emphasized?: boolean;
 }

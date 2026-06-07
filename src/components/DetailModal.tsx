@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { C, F, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
+import { PROFILES, getTopCats } from "@/constants/profiles";
 import { ScoreBadge, Radar } from "./primitives";
 import { CatPanel } from "./CatPanel";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
@@ -48,7 +49,7 @@ const DM_S = {
   actionRow: { display: "flex", gap: 8, marginBottom: 16 },
 };
 
-export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult }: DetailModalProps) {
+export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult, profile }: DetailModalProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocusRef = useRef<Element | null>(null);
   // 가격배열 lazy fetch (apartments-prices.json) 상태 — DetailModal 첫 열림 시 1회 9.7MB fetch + 모듈 Map 캐시
@@ -289,7 +290,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           }}>공유</button>}
         </div>
 
-        {Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} />)}
+        {(() => {
+          const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
+          return Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} emphasized={topCats.includes(k)} />);
+        })()}
         </section>
 
         </div>

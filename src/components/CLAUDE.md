@@ -6,7 +6,7 @@
 
 | 그룹 | 개수 | 위치 | 컴포넌트 |
 |------|------|------|---------|
-| 소비자 | 9 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, primitives.jsx 내부 6개(Bar/ScoreBadge/Radar/Skeleton 3종) |
+| 소비자 | 9 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
 | 섹션 | 9 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay, SelectedAptCard |
 | 상세 | 10 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection |
 | 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
@@ -71,7 +71,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | PresaleInfo | 130 | 네이버 분양정보 (가격카드/일정/링크/Analytics) |
 | DataSections | 152 | 공공데이터 6개 섹션 (세션143 HighlightField·InfrastructureSection 분리 후) |
 
-### 프리미티브 (`primitives.jsx`)
+### 프리미티브 (`primitives.tsx`)
 
 | 컴포넌트 | 역할 |
 |---------|------|
@@ -79,6 +79,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | ScoreBadge | 원형 점수 인디케이터 (SVG circle) |
 | LineChart | 시계열 SVG 라인 차트 (다중 라인, 터치 툴팁 3초 auto-dismiss) |
 | Radar | 6점 레이더 차트 |
+| EmphasisBadge | 프로필 상위 카테고리 "★ 중점" 배지 (CatPanel·ExpertFieldTable 공용, `background?` 옵셔널) |
 
 ### AptCard (143줄)
 
