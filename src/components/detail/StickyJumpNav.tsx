@@ -8,7 +8,7 @@ import { C, F, gr } from "@/theme";
 
 export const JUMP_NAV_HEIGHT = 44;
 
-export type JumpSection = { id: string; label: string };
+export type JumpSection = { id: string; label: string; highlighted?: boolean };
 
 type StickyJumpNavProps = {
   sections: JumpSection[];
@@ -81,7 +81,7 @@ export const StickyJumpNav = memo(function StickyJumpNav({
                 flexShrink: 0,
                 background: isActive ? C.blue : "transparent",
                 color: isActive ? C.white : C.muted,
-                border: "none",
+                border: !isActive && s.highlighted ? `1.5px solid ${C.blue}` : "1.5px solid transparent",
                 borderRadius: 99,
                 padding: "5px 12px",
                 fontSize: F.sm,
