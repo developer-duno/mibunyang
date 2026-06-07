@@ -1,4 +1,20 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// 전문가 로그인 우회 — expertToken 주입 + verify mock({ ok:true })로 게이트 통과(useExpertMode.ts:34·173).
+// detail-modal.spec.ts 의 동일 헬퍼 답습. { valid:true } 로 주면 data.ok=undefined → 로그아웃되니 금지.
+async function loginViaToken(page: Page) {
+  await page.route("**/api/auth/verify", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, user: { id: 1, email: "e2e@test.com", role: "expert" }, role: "expert" }),
+    }),
+  );
+  await page.addInitScript(() => {
+    localStorage.setItem("expertToken", "e2e-test-token");
+    localStorage.setItem("userRole", "expert");
+  });
+}
 
 // 전문가 페이지 — 탭 전환 + 대시보드 렌더링 테스트
 test.describe("전문가 페이지", () => {
@@ -31,5 +47,44 @@ test.describe("전문가 페이지", () => {
     await infoTab.click();
     const scoring = page.getByText("스코어링", { exact: false });
     await expect(scoring.first()).toBeVisible({ timeout: 3000 });
+  });
+
+  // 목차바 칩 점프 — jsdom 단위테스트가 못 증명하는 "실브라우저: 맨 아래 섹션이 viewport 안으로
+  // 들어옴" 검증. 전문가 로그인 시 tab=expert 자동 진입(App.tsx:121), 단지 자동 선택(selectedId).
+  test("전문가 목차바 칩 클릭 시 섹션 노출 + 스크롤 + active", async ({ page }) => {
+    await loginViaToken(page);
+    await page.goto("/");
+
+    const summaryChip = page.getByRole("button", { name: "요약" });
+    const hasChips = await summaryChip
+      .waitFor({ state: "visible", timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!hasChips) {
+      test.skip(true, "전문가 대시보드 칩 미렌더 — 빈 DB 또는 미진입");
+      return;
+    }
+
+    // 헤드리스 Chromium smooth scroll 비결정성 회피 — 컨테이너 scrollTo 의 behavior 인자만 벗겨
+    // 동기 스크롤화(prod handleJump 불변). detail-modal.spec.ts 패치 답습.
+    const body = page.locator("[data-print-content]");
+    await body.evaluate((el) => {
+      const orig = el.scrollTo.bind(el);
+      el.scrollTo = (opts?: ScrollToOptions | number, y?: number) => {
+        if (opts && typeof opts === "object") orig({ top: opts.top, left: opts.left ?? 0 });
+        else orig(opts as number, y as number);
+      };
+    });
+
+    await expect(page.locator("#sec-분양")).not.toBeInViewport();
+    const before = await body.evaluate((el) => el.scrollTop);
+    const lastChip = page.getByRole("button", { name: "네이버 분양정보" });
+    await lastChip.click();
+
+    await expect(page.locator("#sec-분양")).toBeInViewport({ timeout: 4000 });
+    await expect
+      .poll(() => body.evaluate((el) => el.scrollTop), { timeout: 4000 })
+      .toBeGreaterThan(before);
+    await expect(lastChip).toHaveAttribute("aria-current", "true");
   });
 });

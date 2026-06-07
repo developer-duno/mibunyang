@@ -33,6 +33,9 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
   const [helpOpen, setHelpOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [activeSection, setActiveSection] = useState<string>(EXPERT_JUMP_SECTIONS[0].id);
+  // 칩 클릭 점프 중에는 observer 가 active 를 덮어쓰지 않게 잠금(타임스탬프). 마지막 섹션은
+  // 컨테이너를 못 채워 스크롤 후에도 윗 섹션이 viewport 상단에 남아 클릭칩이 active 를 잃는 race 방지.
+  const jumpLockUntil = useRef(0);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -55,6 +58,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
     if (els.length === 0) return;
     const obs = new IntersectionObserver(
       (entries) => {
+        if (Date.now() < jumpLockUntil.current) return; // 칩 점프 직후엔 클릭 active 우선
         const visible = entries.filter((e) => e.isIntersecting);
         if (visible.length === 0) return;
         visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
@@ -79,6 +83,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
     const root = scrollRef.current;
     const el = root?.querySelector<HTMLElement>(`#${id}`);
     if (root && el && typeof root.scrollTo === "function") {
+      jumpLockUntil.current = Date.now() + 800; // smooth 스크롤 안정 동안 observer 억제
       root.scrollTo({ top: Math.max(0, el.offsetTop - JUMP_NAV_HEIGHT), behavior: "smooth" });
       setActiveSection(id);
     }
