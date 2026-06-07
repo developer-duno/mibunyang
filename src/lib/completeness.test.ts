@@ -87,4 +87,32 @@ describe("computeCompleteness", () => {
     // makeApt는 대부분 채움 → 0보다 큼
     expect(r.pct).toBeGreaterThan(0);
   });
+
+  // 9. 공기업/신탁/조합 시공사 + 등급 없음 → 신용등급 na (개념상 해당없음)
+  it("공기업(LH공사) 시공사 + 등급 null이면 신용등급이 na로 분모에서 빠진다", () => {
+    const a = apt({ builder: "LH공사", builderCreditGrade: null });
+    const r = computeCompleteness(["region", "builderCreditGrade"], a);
+    expect(r.na).toBe(1);
+    expect(r.naFields).toContain("시공사 신용등급");
+    expect(r.evalTotal).toBe(1); // region만 평가, builderCreditGrade는 na
+    expect(r.pct).toBe(100);
+  });
+
+  // 10. 민간 시공사 + 등급 없음 → missing (na 아님, 채워야 할 데이터)
+  it("민간 시공사 + 등급 null이면 신용등급이 missing (na 아님)", () => {
+    const a = apt({ builder: "(주)길성종합건설", builderCreditGrade: null });
+    const r = computeCompleteness(["region", "builderCreditGrade"], a);
+    expect(r.na).toBe(0);
+    expect(r.missing).toBe(1);
+    expect(r.missingFields).toContain("시공사 신용등급");
+  });
+
+  // 11. 공기업이라도 등급이 실제로 있으면 filled (na 아님 — v==null 가드)
+  it("등급이 실제로 있으면 공기업이어도 filled로 센다", () => {
+    const a = apt({ builder: "부산도시공사", builderCreditGrade: "A" });
+    const r = computeCompleteness(["builderCreditGrade"], a);
+    expect(r.filled).toBe(1);
+    expect(r.na).toBe(0);
+    expect(r.missing).toBe(0);
+  });
 });
