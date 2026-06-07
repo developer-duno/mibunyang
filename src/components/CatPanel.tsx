@@ -9,6 +9,7 @@ type SubScoreItem = { name: string; score: number; info?: string };
 type CatPanelProps = {
   cat: Res;
   k: string;
+  emphasized?: boolean;
 };
 
 function getDots(score: number, catKey: string, subName: string): number {
@@ -50,7 +51,7 @@ function getHighlights(subs: SubScoreItem[], catKey: string): SubScoreItem[] {
     .slice(0, 3);
 }
 
-export const CatPanel = memo(function CatPanel({ cat, k }: CatPanelProps) {
+export const CatPanel = memo(function CatPanel({ cat, k, emphasized }: CatPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const col = (catCol as Record<string, string>)[k];
   const grade = gr(cat.total);
@@ -58,7 +59,7 @@ export const CatPanel = memo(function CatPanel({ cat, k }: CatPanelProps) {
   const highlights = getHighlights(cat.subs as SubScoreItem[], k);
 
   return (
-    <div style={{ marginBottom: 12, background: C.bg, borderRadius: 10, padding: "10px 12px", border: `1px solid ${C.border}` }}>
+    <div style={{ marginBottom: 12, background: C.bg, borderRadius: 10, padding: "10px 12px", border: emphasized ? `2px solid ${col}` : `1px solid ${C.border}` }}>
       <div
         onClick={() => setExpanded(v => !v)}
         role="button"
@@ -70,6 +71,7 @@ export const CatPanel = memo(function CatPanel({ cat, k }: CatPanelProps) {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>{cat.label}</span>
           <span style={{ fontSize: F.sm, fontWeight: 700, color: grade.c, background: grade.bg, padding: "2px 8px", borderRadius: 4 }}>{grade.l}</span>
+          {emphasized && <span style={{ fontSize: F.xs, fontWeight: 700, color: col, background: C.bg, border: `1px solid ${col}`, padding: "2px 6px", borderRadius: 4 }}>★ 중점</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: F.lg, fontWeight: 800, color: col }}>{cat.total}</span>
