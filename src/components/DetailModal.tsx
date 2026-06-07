@@ -187,12 +187,12 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             <button ref={closeRef} onClick={onClose} aria-label="닫기" style={DM_S.closeBtn}><IconClose size={18} /></button>
           </div>
         </div>
-        <div ref={bodyRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
+        <div ref={bodyRef} data-testid="detail-scroll-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
 
         <StickyJumpNav sections={JUMP_SECTIONS} activeId={activeSection} totalScore={res.total} onJump={handleJump} isDesktop={isDesktop} />
 
         {/* §1 종합 — ScoreBadge + Radar/핵심지표 + 혜택칩 + 재공고배지 */}
-        <section id="sec-overview" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
+        <section id="sec-overview" style={{ margin: 0, padding: 0 }}>
         <div style={DM_S.scoreBadgeWrap}>
           <ScoreBadge score={res.total} size={80} />
         </div>
@@ -239,33 +239,33 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         </section>
 
         {/* §2 시세 — PriceTable + PriceChart + UnsoldChart */}
-        <section id="sec-price" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
+        <section id="sec-price" style={{ margin: 0, padding: 0 }}>
         <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         </section>
 
         {/* §3 입지 — SchoolInfo + NearbyChildcare */}
-        <section id="sec-location" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
+        <section id="sec-location" style={{ margin: 0, padding: 0 }}>
         <SchoolInfo apt={apt} />
 
         <NearbyChildcareSection apt={apt} />
         </section>
 
         {/* §4 분양 — PresaleInfo + MarketStatsCharts(KOSIS 지역 거시통계) */}
-        <section id="sec-presale" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
+        <section id="sec-presale" style={{ margin: 0, padding: 0 }}>
         <PresaleInfo apt={apt} />
 
         <MarketStatsCharts region={apt.region} gu={apt.gu} />
         </section>
 
         {/* §5 금융 — LoanAnalysis (이 단지 대출 시뮬레이션) */}
-        <section id="sec-finance" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
+        <section id="sec-finance" style={{ margin: 0, padding: 0 }}>
         <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         </section>
 
         {/* §6 점수 — DataSections(공공데이터) + 액션버튼 + CatPanel×6 */}
-        <section id="sec-score" style={{ margin: 0, padding: 0, scrollMarginTop: JUMP_NAV_HEIGHT }}>
+        <section id="sec-score" style={{ margin: 0, padding: 0 }}>
         <DataSections apt={mergedApt ?? apt} />
         {onConsult && (
           <button onClick={() => onConsult(apt.id as string)} style={{
