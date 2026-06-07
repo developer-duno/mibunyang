@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef, memo } from "react";
 import { C, F } from "@/theme";
 import { StickyJumpNav, JUMP_NAV_HEIGHT, type JumpSection } from "@/components/detail/StickyJumpNav";
 import { useResponsive } from "@/hooks/useResponsive";
-import { PROFILES } from "@/constants/profiles";
+import { PROFILES, getTopCats } from "@/constants/profiles";
 import { FIELD_SECTIONS } from "@/constants/fieldMeta";
 import { ExpertFieldTable } from "./ExpertFieldTable";
 import { ExpertScoreBreakdown } from "./ExpertScoreBreakdown";
@@ -22,6 +22,9 @@ const EXPERT_JUMP_SECTIONS: JumpSection[] = [
   { id: "sec-summary", label: "요약" },
   ...FIELD_SECTIONS.map((s) => ({ id: `sec-${s.key}`, label: s.label })),
 ];
+
+// scoring 카테고리 key → 전문가 FIELD_SECTIONS key (1:1, fieldMeta 실측). 프로필 강조 매핑용.
+const CAT_TO_SECTION: Record<string, string> = { price: "가격", risk: "안전", location: "입지", product: "상품성", benefit: "혜택", future: "미래" };
 
 export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, setProfile, expandedApt, setExpandedApt, onSwitchToAdmin }: ExpertDashboardProps) {
   const [search, setSearch] = useState("");
@@ -79,15 +82,30 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
 
   // 칩 클릭 → 해당 섹션으로 점프(컨테이너 직접 scrollTo, 칩바 높이 보정). offsetTop 은 offsetParent
   // 기준이라 data-print-content 가 position:relative 여야 정확. (소비자 handleJump 답습)
+  // behavior:"auto"(즉시) 사용 — 세션 383 모바일 실측: smooth 점프가 클릭 직후 setActiveSection
+  // 리렌더 + IntersectionObserver 재진입에 애니메이션이 취소돼 scrollTop 0 잔존("클릭해도 안 감").
+  // auto 는 동기 적용이라 취소 race 자체가 없음(e2e 실측: smooth→0 잔존 vs auto→3822/5788 정확 점프).
   const handleJump = useCallback((id: string) => {
     const root = scrollRef.current;
     const el = root?.querySelector<HTMLElement>(`#${id}`);
     if (root && el && typeof root.scrollTo === "function") {
-      jumpLockUntil.current = Date.now() + 800; // smooth 스크롤 안정 동안 observer 억제
-      root.scrollTo({ top: Math.max(0, el.offsetTop - JUMP_NAV_HEIGHT), behavior: "smooth" });
+      jumpLockUntil.current = Date.now() + 800; // 점프 직후 observer 가 active 덮어쓰는 것 억제
+      root.scrollTo({ top: Math.max(0, el.offsetTop - JUMP_NAV_HEIGHT), behavior: "auto" });
       setActiveSection(id);
     }
   }, []);
+
+  // 프로필 상위 2 카테고리 → 강조할 전문가 섹션 key Set (PROFILES 파생, drift 0). 세션 382.
+  const emphasizedSectionKeys = useMemo(() => {
+    const top = getTopCats(PROFILES[profile].w);
+    return new Set(top.map((c) => CAT_TO_SECTION[c]).filter(Boolean));
+  }, [profile]);
+
+  // EXPERT_JUMP_SECTIONS(정적 id/label)에 highlighted 동적 부착 — 칩 강조용.
+  const jumpSections = useMemo(
+    () => EXPERT_JUMP_SECTIONS.map((s) => ({ ...s, highlighted: emphasizedSectionKeys.has(s.id.replace("sec-", "")) })),
+    [emphasizedSectionKeys],
+  );
 
   return (
     <div style={{ display: "flex", height: "calc(100dvh - 100px)", position: "relative" }}>
@@ -146,7 +164,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
 
         {selectedItem ? (
           <>
-            <StickyJumpNav sections={EXPERT_JUMP_SECTIONS} activeId={activeSection}
+            <StickyJumpNav sections={jumpSections} activeId={activeSection}
               totalScore={selectedItem.res.total} onJump={handleJump} isDesktop={!isMobile} noPrint />
 
             <ExpertAptHeader apt={selectedItem.apt} res={selectedItem.res} />
@@ -165,7 +183,7 @@ export const ExpertDashboard = memo(function ExpertDashboard({ scored, profile, 
                 return (
                   <div id={`sec-${sec.key}`} key={sec.key}>
                     <ExpertFieldTable apt={selectedItem.apt} fields={sec.fields} title={sec.label}
-                      color={SEC_COLOR[sec.key] || C.indigo} exclude={excl} />
+                      color={SEC_COLOR[sec.key] || C.indigo} exclude={excl} emphasized={emphasizedSectionKeys.has(sec.key)} />
                   </div>
                 );
               })}

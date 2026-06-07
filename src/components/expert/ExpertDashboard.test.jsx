@@ -133,4 +133,16 @@ describe("ExpertDashboard StickyJumpNav", () => {
     const chip = screen.getByRole("button", { name: "가격/시장 지표" });
     expect(() => fireEvent.click(chip)).not.toThrow();
   });
+
+  // 프로필 맞춤 강조 (세션 382) — invest 상위 2 = price(가격), risk(안전)
+  it("profile='invest' 면 가격·안전 섹션 헤더에 ★ 중점 배지 2개", () => {
+    render(<ExpertDashboard {...props()} profile="invest" />);
+    // 헤더 배지만 텍스트 "★ 중점" (칩 강조는 테두리라 텍스트 없음)
+    expect(screen.getAllByText(/★ 중점/).length).toBe(2);
+  });
+
+  it("profile='edu' 면 입지·상품성 강조로 이동", () => {
+    render(<ExpertDashboard {...props()} profile="edu" />);
+    expect(screen.getAllByText(/★ 중점/).length).toBe(2);
+  });
 });
