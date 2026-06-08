@@ -13,7 +13,7 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY  — Supabase service_role 키
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun, setupGracefulShutdown } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun, setupGracefulShutdown, REGION_MAP } from "./_shared.mjs";
 
 loadEnv();
 
@@ -212,12 +212,14 @@ async function main() {
   }
 
   // 네이버 단지 → 아파트 매핑, 단지별 구 정보
+  // complexes.sido 는 정식명("대전광역시")인데 apartments.region/trades.region 은 약칭("대전").
+  // REGION_MAP(정식명→약칭)으로 정규화해야 statsKey 가 아파트 키와 일치(세종 외 전 지역 매칭).
   // 세종은 sido="세종특별자치시", sigungu=NULL 로 저장돼 있어 region="세종" 로 정규화하고 gu 는 버림.
   /** @type {Map<string, { region: string, gu: string | null }>} */
   const complexGuMap = new Map();
   for (const nc of naverComplexes) {
     if (!nc.sido) continue;
-    const region = nc.sido === "세종특별자치시" ? "세종" : nc.sido;
+    const region = REGION_MAP[nc.sido] ?? (nc.sido === "세종특별자치시" ? "세종" : nc.sido);
     const gu = region === "세종" ? null : nc.sigungu;
     if (region === "세종" || gu) complexGuMap.set(nc.complex_no, { region, gu });
   }

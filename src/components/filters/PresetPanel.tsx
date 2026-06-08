@@ -74,7 +74,7 @@ export const PresetPanel = memo(function PresetPanel({
                   borderRadius: "5px 0 0 5px", cursor: "pointer", whiteSpace: "nowrap" as const,
                 }}>{p.label}</button>
                 <button onClick={() => { if (onDeletePreset) { onDeletePreset(p.key); showToast("프리셋이 삭제되었습니다"); } }} aria-label={`${p.label} 삭제`} style={{
-                  fontSize: 9, padding: "4px 5px", height: 30, background: C.greenLight, color: C.green,
+                  fontSize: F.micro, padding: "4px 5px", height: 30, background: C.greenLight, color: C.green,
                   border: `1px solid ${C.green}`, borderLeft: "none", borderRadius: "0 5px 5px 0", cursor: "pointer",
                 }}>✕</button>
               </span>
@@ -115,7 +115,7 @@ export const PresetPanel = memo(function PresetPanel({
           </select>
         )}
         {(filterHistory?.length ?? 0) > 0 && onClearHistory && (
-          <button onClick={onClearHistory} aria-label="히스토리 삭제" style={{ background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 4, padding: "0 6px", fontSize: 9, color: C.muted, cursor: "pointer", height: 28, display: "flex", alignItems: "center" }}>지우기</button>
+          <button onClick={onClearHistory} aria-label="히스토리 삭제" style={{ background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 4, padding: "0 6px", fontSize: F.micro, color: C.muted, cursor: "pointer", height: 28, display: "flex", alignItems: "center" }}>지우기</button>
         )}
       </div>
     </div>

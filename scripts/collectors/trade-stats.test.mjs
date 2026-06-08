@@ -21,6 +21,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 });
 
 const { median, monthsAgo, groupByArea, statsKey } = await import("./trade-stats.mjs");
+const { REGION_MAP } = await import("./_shared.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** 거래 데이터 팩토리
@@ -219,5 +220,41 @@ describe("statsKey", () => {
   it("region 없음 → null", () => {
     expect(statsKey(null, "강남구")).toBeNull();
     expect(statsKey("", "강남구")).toBeNull();
+  });
+});
+
+// ── complexGuMap region 정규화 (세션389 회귀 가드) ──────────────
+// complexes.sido 는 정식명("대전광역시")인데 apartments/trades.region 은 약칭("대전").
+// main() 의 complexGuMap 빌드는 REGION_MAP 으로 sido 를 정규화한 뒤 statsKey 를 만든다.
+// 정규화 없이는 비세종 단지가 전부 아파트 키와 불일치 → nearbyBuildYear 가 세종만 채워졌던 버그.
+describe("complexes.sido REGION_MAP 정규화", () => {
+  // main() L220 과 동일한 정규화 로직
+  /** @param {string} sido */
+  const normSido = (sido) =>
+    REGION_MAP[sido] ?? (sido === "세종특별자치시" ? "세종" : sido);
+
+  it("정식명 → 약칭 정규화 (REGION_MAP)", () => {
+    expect(normSido("대전광역시")).toBe("대전");
+    expect(normSido("경기도")).toBe("경기");
+    expect(normSido("강원도")).toBe("강원");
+    expect(normSido("서울특별시")).toBe("서울");
+  });
+
+  it("세종특별자치시 → 세종 (특수 처리 보존)", () => {
+    expect(normSido("세종특별자치시")).toBe("세종");
+  });
+
+  it("정규화된 region 으로 만든 statsKey 가 아파트 키(약칭)와 일치", () => {
+    // 단지(정식명) vs 아파트(약칭) — 정규화 후 키가 같아야 매칭됨
+    const complexKey = statsKey(normSido("대전광역시"), "유성구");
+    const aptKey = statsKey("대전", "유성구");
+    expect(complexKey).toBe(aptKey);
+    expect(complexKey).toBe("대전:유성구");
+  });
+
+  it("정규화 없이는 키 불일치 (버그 재현 — 회귀 방지)", () => {
+    const unnormalizedKey = statsKey("대전광역시", "유성구");
+    const aptKey = statsKey("대전", "유성구");
+    expect(unnormalizedKey).not.toBe(aptKey);
   });
 });

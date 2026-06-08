@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { isFeatureUpcoming } from "@/constants/featureFlags";
-import { C } from "@/theme";
+import { C, F } from "@/theme";
 import type { Profile } from "@/types/scoring";
 import type { CustomWeights } from "@/types/admin";
 
@@ -421,7 +421,7 @@ export default function App() {
       )}
 
       {/* 사업자 정보 */}
-      <footer data-no-print style={{ textAlign: "center", padding: isDesktop ? "16px 12px 24px" : "16px 12px 72px", fontSize: 9, color: C.muted, lineHeight: 1.6, letterSpacing: -0.2 }}>
+      <footer data-no-print style={{ textAlign: "center", padding: isDesktop ? "16px 12px 24px" : "16px 12px 72px", fontSize: F.micro, color: C.muted, lineHeight: 1.6, letterSpacing: -0.2 }}>
         이로움기획 | 대표 김상원 | 사업자등록번호 267-02-01775<br />
         대전광역시 유성구 구암동 606-11 201호
       </footer>
