@@ -24,7 +24,7 @@ export const HighlightField = memo(function HighlightField({ field, apt, dataVal
   return (
     <div style={{ flex: "1 1 calc(50% - 4px)", minWidth: 100, background: C.slate100, borderRadius: 8, padding: "8px 10px" }}>
       <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>{meta.label}</div>
-      {desc && <div style={{ fontSize: 9, color: C.muted, opacity: 0.7, marginBottom: 2 }}>{desc}</div>}
+      {desc && <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>{desc}</div>}
       <div style={{ fontSize: F.base, fontWeight: 800, color }}>{String(meta.fmt ? meta.fmt(val) : val ?? "")}</div>
       {field === "dataReliability" && val != null && <Bar value={Number(val)} color={color} h={4} />}
     </div>

@@ -38,7 +38,7 @@ export const WeightTable = memo(function WeightTable({
           }}>
             <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, display: "flex", alignItems: "center" }}>
               {p.name}
-              {isCustom && <span style={{ fontSize: 9, color: C.amber, marginLeft: 4 }}>수정됨</span>}
+              {isCustom && <span style={{ fontSize: F.micro, color: C.amber, marginLeft: 4 }}>수정됨</span>}
             </div>
 
             {CAT_KEYS.map(k => (

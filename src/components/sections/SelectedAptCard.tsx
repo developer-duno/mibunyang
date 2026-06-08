@@ -23,7 +23,7 @@ export const SelectedAptCard = memo(function SelectedAptCard({ selected, onInfoC
       </div>
       <div style={{ textAlign: "center", flexShrink: 0 }}>
         <div style={{ fontSize: F.xl, fontWeight: 800, color: gr(selected.res.total).c }}>{selected.res.total}</div>
-        <div style={{ fontSize: 9, color: C.muted }}>종합점수</div>
+        <div style={{ fontSize: F.micro, color: C.muted }}>종합점수</div>
       </div>
       <button onClick={onInfoClick} style={{ flexShrink: 0, padding: "8px 12px", fontSize: F.xs, fontWeight: 700, background: C.indigo, color: C.white, border: "none", borderRadius: 6, cursor: "pointer" }}>상세</button>
       <button onClick={onClose} aria-label="닫기" style={{ position: "absolute", top: 6, right: 8, background: "none", border: "none", color: C.muted, cursor: "pointer", display: "flex", alignItems: "center" }}><IconClose size={14} /></button>

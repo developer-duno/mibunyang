@@ -88,7 +88,7 @@ export function StatsSection({ stats }: StatsSectionProps) {
             </div>
           ))}
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: C.muted }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: F.micro, color: C.muted }}>
           <span>{recentSignups[0]?.date.slice(5)}</span>
           <span>{recentSignups[recentSignups.length - 1]?.date.slice(5)}</span>
         </div>
