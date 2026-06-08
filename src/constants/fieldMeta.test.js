@@ -69,6 +69,10 @@ describe('FIELD_META', () => {
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "SH공사" })).toBe("해당없음");
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "(주)무궁화신탁" })).toBe("해당없음");
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "둔촌주공아파트주택재건축정비사업조합" })).toBe("해당없음");
+    // 세션389: LH 정식 법인명 — "토지주택공사" 토큰 추가로 "미등록"→"해당없음"
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "한국토지주택공사" })).toBe("해당없음");
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "한국토지주택공사 경기남부지역본부" })).toBe("해당없음");
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "한국토지주택공사,지에스건설(주),금호건설(주)" })).toBe("해당없음");
   });
 
   it('builderCreditGrade fmt: 민간 + 등급없음 → "—"', () => {
