@@ -16,6 +16,7 @@ const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
   QUARTERLY_CRON_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
+  checkViewRegionStale, VIEW_REGION_STALE_TARGETS,
   dedupKey, filterUnsent,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
@@ -527,5 +528,64 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       expect(c.stale_days).toBeGreaterThan(0);
       expect(c.owner).toBeTruthy();
     }
+  });
+});
+
+describe("checkViewRegionStale — ⑥ VIEW 회귀 (regions 원본 채움 but VIEW NULL)", () => {
+  const targets = [{ viewKey: "regions.netMigration", regionColumn: "net_migration", label: "순이동 (migration)" }];
+
+  it("회귀 박힘 — 원본 ≥20% 채움인데 VIEW ≤5% (세션 391 패턴: 원본 700/1043 vs VIEW 0/1424)", () => {
+    const issues = checkViewRegionStale(
+      { "regions.netMigration": { filled: 0, missing: 1424 } },
+      [{ column: "net_migration", total: 1043, filled: 700 }],
+      targets,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("nulls");
+    expect(issues[0].detail).toMatch(/순이동/);
+    expect(issues[0].detail).toMatch(/회귀 의심/);
+  });
+
+  it("정상 — VIEW 도 채워졌으면 이상 아님 (핫픽스/B안 적용 후 17/17)", () => {
+    const issues = checkViewRegionStale(
+      { "regions.netMigration": { filled: 1424, missing: 0 } },
+      [{ column: "net_migration", total: 1043, filled: 700 }],
+      targets,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("원본부터 0 — supply_ratio 식 원본 부재는 회귀 아님 (regionRate < 20% 면 skip)", () => {
+    const issues = checkViewRegionStale(
+      { "regions.netMigration": { filled: 0, missing: 1424 } },
+      [{ column: "net_migration", total: 1043, filled: 0 }], // 원본도 0
+      targets,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("부분 채움 — VIEW 가 5% 초과면 회귀 아님 (경계)", () => {
+    const issues = checkViewRegionStale(
+      { "regions.netMigration": { filled: 100, missing: 1324 } }, // 7.0%
+      [{ column: "net_migration", total: 1043, filled: 700 }],
+      targets,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("분모 0 / 키 부재 — 조용히 skip (점검 자체를 막지 않음)", () => {
+    expect(checkViewRegionStale({}, [], targets)).toHaveLength(0);
+    expect(checkViewRegionStale(
+      { "regions.netMigration": { filled: 0, missing: 0 } },
+      [{ column: "net_migration", total: 0, filled: 0 }],
+      targets,
+    )).toHaveLength(0);
+  });
+
+  it("VIEW_REGION_STALE_TARGETS 정합 — net_migration 등재 + regionColumn 이 REGION_KEY_COLUMNS 후보", () => {
+    expect(VIEW_REGION_STALE_TARGETS.length).toBeGreaterThanOrEqual(1);
+    const nm = VIEW_REGION_STALE_TARGETS.find((t) => t.regionColumn === "net_migration");
+    expect(nm).toBeTruthy();
+    expect(nm?.viewKey).toBe("regions.netMigration");
   });
 });

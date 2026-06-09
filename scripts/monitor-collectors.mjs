@@ -180,6 +180,18 @@ export const EXTERNAL_API_COLLECTORS = [
 /** ⑤ 외부 API 장기 중단 판정 — 최근 N회 연속 success+ok=0 = silent fail 의심. */
 const OUTAGE_MIN_CONSECUTIVE = 3;
 
+/**
+ * ⑥ VIEW 회귀 점검 대상 — apartments_flat VIEW 노출 컬럼(camelCase viewKey) ↔ regions 원본(snake_case).
+ * regions 를 여러 collector 가 나눠 채우고 VIEW latest_regions 가 그 컬럼을 노출하는 경우만 등재.
+ * net_migration = migration.mjs(후행) 가 population 새 행을 못 채우면 VIEW NULL (세션 391 회귀).
+ * 신규 multi-collector regions 컬럼이 VIEW 에 노출되고 새 recorded_at 행을 후행 collector 가
+ * 채우는 구조면 이 배열에 1줄 추가 의무. regionColumn 은 REGION_KEY_COLUMNS 에도 있어야 조회됨.
+ * @type {Array<{ viewKey: string, regionColumn: string, label: string }>}
+ */
+export const VIEW_REGION_STALE_TARGETS = [
+  { viewKey: "regions.netMigration", regionColumn: "net_migration", label: "순이동 (migration)" },
+];
+
 // ── 알림 dedup (텔레그램 스팸 차단) ──────────────
 // monitor 는 workflow_run(수집기 ~40개 완료마다) + 매일 cron 으로 발화 → dedup 없으면
 // 같은 stale 이슈(예: housing-permits 5/26 0건)를 매번 재알림. 안정 키로 1회만 발송.
@@ -472,6 +484,52 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
       ],
       at: oldest.finished_at,
     });
+  }
+  return issues;
+}
+
+/**
+ * ⑥ VIEW 회귀 — regions 원본엔 채워졌는데 apartments_flat VIEW 노출 컬럼은 NULL.
+ *
+ * 진앙 패턴 (세션 391): population(매월 5일)이 net_migration 없는 새 recorded_at 행을
+ * INSERT → migration(후행 collector)이 그 행을 못 채움 → VIEW latest_regions CTE 가
+ * 최신 recorded_at 행을 골라 NULL 노출. "regions 원본 채움률 ≥ 임계 인데 VIEW 채움률 ≈ 0"
+ * = 멀티 collector 새-recorded_at-행 lag 회귀 신호.
+ *
+ * @param {Record<string, { filled: number, missing: number }>} viewFields
+ *   computeAudit 의 fields — key 예: "regions.netMigration". VIEW(apartments_flat) 기준 채움.
+ * @param {Array<{ column: string, total: number, filled: number }>} regionStats
+ *   fetchRegionColumnStats — regions 원본 테이블 컬럼별 채움 (column = snake_case).
+ * @param {Array<{ viewKey: string, regionColumn: string, label: string }>} [targets]
+ * @returns {Issue[]}
+ */
+export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REGION_STALE_TARGETS) {
+  /** @type {Issue[]} */
+  const issues = [];
+  const regionByCol = new Map(regionStats.map((s) => [s.column, s]));
+  for (const { viewKey, regionColumn, label } of targets) {
+    const vf = viewFields[viewKey];
+    const rs = regionByCol.get(regionColumn);
+    if (!vf || !rs) continue;
+    const viewTotal = vf.filled + vf.missing;
+    if (viewTotal === 0 || (rs.total ?? 0) === 0) continue;
+    const viewRate = vf.filled / viewTotal;
+    const regionRate = rs.filled / rs.total;
+    // 원본은 충분히 채워졌는데(≥20%) VIEW 는 거의 비었으면(≤5%) = VIEW 가 옛 채움값을
+    // 못 가져오는 회귀. supply_ratio 처럼 원본부터 0인 경우는 regionRate 가 낮아 제외됨.
+    if (regionRate >= 0.2 && viewRate <= 0.05) {
+      issues.push({
+        kind: "nulls",
+        collector: label,
+        detail: `${label} VIEW 채움 ${(viewRate * 100).toFixed(1)}% 인데 regions 원본 ${(regionRate * 100).toFixed(1)}% — VIEW latest_regions 최신행 미커버 회귀 의심`,
+        lines: [
+          `apartments_flat.${viewKey} 채움 ${vf.filled}/${viewTotal} 인데 regions.${regionColumn} 원본은 ${rs.filled}/${rs.total} 채워짐.`,
+          `진앙 추정 = population 이 만든 새 recorded_at 행을 ${label} collector 가 못 채움 (세션 391 패턴).`,
+          `[조치 1] 해당 collector 운영 1회 실행 → VIEW 회복 확인`,
+          `[조치 2] VIEW latest_regions 가 컬럼별 최신 non-null 인지 확인 (20260609000000 마이그)`,
+        ],
+      });
+    }
   }
   return issues;
 }
@@ -849,7 +907,8 @@ async function main() {
     issues = issues.concat(checkStaleWorkflows(wfList));
 
     // ④ NULL 급증 — regions 핵심 컬럼 + apartments 19 카테고리
-    issues = issues.concat(checkNullSurge(await fetchRegionColumnStats()));
+    const regionStats = await fetchRegionColumnStats();
+    issues = issues.concat(checkNullSurge(regionStats));
     const audit = computeAudit(await fetchAllFromView(getSupabase(), null));
     issues = issues.concat(
       checkCategoryNullSurge(audit.categories, AUDIT_CATEGORY_BASELINE, audit.fields),
@@ -858,6 +917,9 @@ async function main() {
     // ⑤ 외부 API 장기 중단 — silent fail (success+ok=0) 연속 누적 탐지
     const runsByCollector = await fetchExternalApiRuns(EXTERNAL_API_COLLECTORS);
     issues = issues.concat(checkExternalApiStale(EXTERNAL_API_COLLECTORS, runsByCollector));
+
+    // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
+    issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
   }
 
   if (issues.length === 0) {
