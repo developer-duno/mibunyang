@@ -5,6 +5,48 @@
 
 ---
 
+## 2026-06-09 netMigration VIEW 0% 회귀 정정 (세션 391 — 멀티 collector 새-recorded_at-행 lag)
+
+> **silent 데이터 회귀 — 측정 버그 아니라 cron 순서 결함.** `data-audit.mjs --json` 전수 재측정서
+> apartments_flat VIEW `netMigration` 0% (17 시도 NULL) 발견. 5/31 측정 100%였음. regions **원본**엔
+> net_migration 700행 채워졌으나 VIEW `latest_regions` CTE 가 최신 recorded_at 행(2026-04-01, net_migration NULL)을
+> 골라 노출. population(월5일)이 net_migration 없는 새 행 INSERT → migration(월15일)이 10일 뒤 채움 →
+> 매월 5~15일 VIEW NULL. `scoreFuture.ts` netMigration>0 → popSc+10 보정 808단지(56.7%) silent 누락.
+
+### 6/9 전수 재측정 (data-audit.mjs --json, 1424 VIEW 행 / 2001 apartments)
+
+| 카테고리 | 충족률 | 비고 |
+|---|---|---|
+| benefits | 0% | 의도된 미수집 (운영자 수동) |
+| builders | 5.7% | DART 매칭 한계 (별개) |
+| maintenance | 15.7% | molit 관리비 (별개) |
+| energy | 29% | building-hub 부분 (별개) |
+| future | 30.7% | cityDev/industryDev manual |
+| **regions netMigration** | **0% → 회귀** | **본 정정 대상** |
+| regions supplyRatio | 0% | MOLIT housing-permits 500 (원본 부재, 별개) |
+| regions landCostRatio | 96.9% | 세종 KOSIS 묶음 소스갭 (정상) |
+| avg dataReliability | **89.93** | 5/26 측정 92.4 = 다른 분모(2001), VIEW 변경 무관 (롤백 VIEW 도 89.93 동일 실측) |
+
+### 정정 (세션 391)
+
+1. **핫픽스**: `migration.mjs` 운영 1회 (271건 UPDATE) → VIEW netMigration **0% → 100%** (1424/1424). 멱등 안전.
+2. **B안 (근본)**: `20260609000000_view_regions_latest_nonnull.sql` — latest_regions CTE 를 `DISTINCT ON 1행`
+   → `GROUP BY region` + `(array_agg(col ORDER BY recorded_at DESC) FILTER (WHERE col IS NOT NULL))[1]`
+   컬럼별 최신 non-null. 부수 효과: landCostRatio 세종 34단지도 옛 행 값 회복 (96.9%→100%). security_invoker=on 보존.
+3. **A안 (안전망)**: `collect-migration.yml` cron 15일→6일 (공백 ~10일→~1일 축소).
+4. **회귀가드**: monitor ⑥ `checkViewRegionStale` (원본≥20% but VIEW≤5% 알림) + 6 테스트.
+5. **재발방지**: `.claude/rules/collectors/regions-multicollector-recorded-at-lag.md`.
+
+### 검증
+
+- 핫픽스 후 apartments_flat netMigration 1424/1424 (100%), 시도행 17/17.
+- B안 BEGIN;ROLLBACK 시뮬 → netMigration 1424/1424 + 본 적용. 롤백 VIEW dataReliability 89.93 = 신 VIEW 동일 (영향 0).
+- vitest 84/84 (migration 27 + monitor 57) + tsc scripts 0 errors + monitor ⑥ 라이브 false positive 0 + audit-monitor-coverage 통과.
+
+> 다음 자연 검증 = 7월 5일(population)~6일(migration, 신 cron) 후 netMigration 유지 확인.
+
+---
+
 ## 2026-06-01 energy_grade 오염 정정 (세션 358 — kaptdEcnt 승강기대수 오인 + 죽은 코드 제거)
 
 > **데이터 정확성 사고 정정 — 측정 버그 아니라 수집 오인.** `molit-building-info.mjs` 가 국토부 공동주택 상세 API(`getAphusDtlInfoV4`)의 `kaptdEcnt`/`kaptdEcntp` 를 에너지효율등급(1~7)으로 해석했으나, raw API 실측 결과 이 필드는 **승강기 대수(승용)**. 우연히 1~7대인 단지 358건의 승강기 대수가 `energy_grade` 로 오저장되어 화면에 "N등급" 거짓 표시 + 상품성 에너지 점수 왜곡(실 영향 21건). 적대검증 워크플로(7필드 전수 raw 검증 + 3관점 리뷰)로 확정.

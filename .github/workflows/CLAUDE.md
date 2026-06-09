@@ -50,7 +50,7 @@
 | `collect-housing-permits.yml` | 10일 | 주택 인허가 |
 | `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
 | `collect-applyhome.yml` | 주간 | 청약홈 잔여세대 |
-| `collect-migration.yml` | 15일 | 행안부 전입/전출 |
+| `collect-migration.yml` | 6일 | 행안부 전입/전출 (세션391: 15일→6일, population 5일 직후로 당겨 VIEW netMigration 공백 축소) |
 | `collect-maintenance.yml` | 15일 | 공동주택 관리비 |
 | `collect-building-hub.yml` | 15일 | 건축HUB 에너지+인허가 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |

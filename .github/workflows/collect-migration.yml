@@ -2,7 +2,7 @@ name: Migration Data Collection
 
 on:
   schedule:
-    - cron: '0 22 15 * *' # 매월 15일 UTC 22:00 = KST 07:00
+    - cron: '0 22 6 * *' # 매월 6일 UTC 22:00 = KST 7일 07:00 (세션391: population 5일 직후로 당겨 VIEW netMigration 공백 ~10일→~1일 축소. KOSIS_MIGRATION_KEY = MOLIT_KEY와 별 키라 6일 trades 쿼터 충돌 0. 같은 data-collection 그룹 trades 20:00/molit-units 18:00 뒤 큐 순차)
   workflow_dispatch:
     inputs:
       dry_run:
