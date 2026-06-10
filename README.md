@@ -87,7 +87,7 @@ supabase/                  71 마이그레이션 누적 + 현재 15 테이블 + 
 
 ## 데이터 흐름
 
-GitHub Actions 가 일/주/월 스케줄로 외부 API (data.go.kr / 청약홈 / KOSIS / 카카오 / 네이버 등) 수집 → Supabase 15 테이블 적재. 프론트는 `/api/supabase/apartments` (운영) 또는 `/data/apartments-list.json` (정적 폴백) 로딩.
+GitHub Actions 가 일/주/월 스케줄로 외부 API (data.go.kr / 청약홈 / 카카오 / 네이버 등) 수집 → Supabase 15 테이블 적재. KOSIS 계열 10종은 kosis.kr 해외 IP 차단(세션 288~289)으로 집서버 로컬 러너 (`scripts/kosis-local-runner.mjs`, 매일 05:30 KST) 가 수집. 프론트는 `/api/supabase/apartments` (운영) 또는 `/data/apartments-list.json` (정적 폴백) 로딩.
 
 상세는 [ARCHITECTURE.md](ARCHITECTURE.md) 참고.
 

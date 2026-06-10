@@ -32,11 +32,11 @@ const STALE_DAYS = 35;
  * 분기 cron 워크플로 — STALE_DAYS=35 단순 비교로 false positive 발생 (분기 = 91 일 간격).
  * 본 화이트리스트에 박힌 워크플로는 QUARTERLY_STALE_DAYS(=100) 임계 적용.
  * 신규 분기 cron 워크플로 추가 시 이 배열에 workflow `name` 1 줄 박제 + monitor-collectors.test.mjs 회귀 답습.
- * 세션 292 박제: dart-builders + sale-price-index 2 개로 출발 (`0 3 15 1,4,7,10 *`, `30 20 16 1,4,7,10 *`).
+ * 세션 292 박제: dart-builders + sale-price-index 2 개로 출발. sale-price-index 는 세션 289 에
+ * kosis.kr 차단으로 GH yml 삭제 = 로컬 러너 이전 (EXTERNAL_API_COLLECTORS stale_days 100 이 감시 승계).
  */
 export const QUARTERLY_CRON_WORKFLOWS = [
   "DART 시공사 재무 수집",
-  "KOSIS Sale Price Index Collection",
 ];
 /** 분기 cron 미발화 판정 임계 — 91 일 1주기 + 9 일 여유. */
 const QUARTERLY_STALE_DAYS = 100;
@@ -164,7 +164,8 @@ const KO_FIELD = {
  */
 
 /**
- * ⑤ 점검 대상 외부 API 의존 collector — silent fail (status=success + ok_count=0) 누적 탐지.
+ * ⑤ 점검 대상 외부 API 의존 collector — silent fail (status=success + ok_count=0 + skip_count=0)
+ * 누적 탐지 + 미발화 (최신 행이 stale_days 초과 = 안 돌고 있음) 탐지.
  * 컬럼 진실의 원천 = collector_runs.collector (NOT phase). PHASE 상수 = recordCollectorRun 입력값.
  * stale_days = 해당 collector cron 주기 + 1주 여유 (월간/일일=14). NEIS schools = incremental yml 매일 발화 + 월간 collect-schools.yml 자매 = 14 (세션 339 정정, 세션 338 3주 cancelled 사고가 35일 한계 안에 묻힌 진앙 해소).
  * 신규 외부 API collector 추가 시 이 배열 1줄 박힘 + checkExternalApiStale 회귀 답습 의무.
@@ -175,6 +176,20 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "transport",       stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 38, owner: "청약홈 분양일정·평형 (월 13일 cron + 1주 여유)" },
+  // ── KOSIS 10종 = 집서버 로컬 러너 수집기 (kosis-local-runner.mjs, 매일 05:30 KST 일자 디스패치).
+  //    kosis.kr 해외 IP 차단으로 GH collect-*.yml 10개 삭제 (세션 288~289) — GH run 이 없어
+  //    ③ 워크플로 미발화 점검 대상에서 빠지므로 collector_runs 신선도가 유일한 "안 돌면 알림".
+  //    월간 38 = 31일 주기 + 1주 여유 / sale-price 분기 100 = QUARTERLY_STALE_DAYS 답습.
+  { collector: "kosis-housing-supply-ratio", stale_days: 38,  owner: "KOSIS 주택보급률 (로컬 매월 2일)" },
+  { collector: "market-stats",               stale_days: 38,  owner: "KOSIS 시장통계 (로컬 매월 6일)" },
+  { collector: "migration",                  stale_days: 38,  owner: "KOSIS 순이동 (로컬 매월 7일)" },
+  { collector: "kosis-unsold",               stale_days: 38,  owner: "KOSIS 미분양 (로컬 매월 9일)" },
+  { collector: "kosis-fertility-rate",       stale_days: 38,  owner: "KOSIS 출산율 (로컬 매월 10일)" },
+  { collector: "kosis-regional-economy",     stale_days: 38,  owner: "KOSIS 지역경제 (로컬 매월 12일)" },
+  { collector: "avg-income",                 stale_days: 38,  owner: "KOSIS 평균소득 (로컬 매월 13일)" },
+  { collector: "kosis-medical-access",       stale_days: 38,  owner: "KOSIS 의료접근성 (로컬 매월 14일)" },
+  { collector: "kosis-sale-price-index",     stale_days: 100, owner: "KOSIS 매매가격지수 (로컬 1·4·7·10월 17일)" },
+  { collector: "kosis-jeonse-price-index",   stale_days: 38,  owner: "KOSIS 전세가격지수 (로컬 매월 18일)" },
 ];
 
 /** ⑤ 외부 API 장기 중단 판정 — 최근 N회 연속 success+ok=0 = silent fail 의심. */
@@ -448,7 +463,7 @@ export function checkCategoryNullSurge(categories, baseline, fields = {}) {
  *     (housing-permits 식 silent partial 누적을 잡되 단발 0건 오탐은 ②가 잡으니 중복 회피)
  *
  * @param {Array<{ collector: string, stale_days: number, owner: string }>} targets
- * @param {Record<string, Array<{ status?: string, ok_count?: number|null, finished_at?: string|null }>>} runsByCollector
+ * @param {Record<string, Array<{ status?: string, ok_count?: number|null, skip_count?: number|null, finished_at?: string|null }>>} runsByCollector
  *   collector 별 최근 N행 (finished_at DESC). 빈 배열이면 점검 skip.
  * @param {Date} [now] 기준 시각 (테스트 주입용).
  * @returns {Issue[]}
@@ -459,10 +474,34 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
   for (const { collector, stale_days, owner } of targets) {
     const rows = runsByCollector[collector] ?? [];
     if (rows.length < OUTAGE_MIN_CONSECUTIVE) continue; // 신규 collector 오탐 차단
+
+    // ⑤-b 미발화 — 최신 행이 stale_days 초과 = collector 가 안 돌고 있음.
+    //    GH yml 없는 로컬 러너 수집기(KOSIS 10종)는 ③ 워크플로 점검 대상 밖이라
+    //    이 분기가 유일한 "안 돌면 알림" (세션 289 — 작업 비활성·로그인 안 됨·드라이브 미마운트 무음 차단).
+    const latest = rows[0];
+    if (latest.finished_at) {
+      const idleDays = (now.getTime() - new Date(latest.finished_at).getTime()) / 86400000;
+      if (idleDays > stale_days) {
+        issues.push({
+          kind: "stale",
+          collector,
+          detail: `${owner} 마지막 실행 ${Math.floor(idleDays)}일 전 — ${stale_days}일 주기 초과 (미발화 의심)`,
+          lines: [
+            `최근 collector_runs 행: ${toKst(latest.finished_at) ?? latest.finished_at} — ${stale_days}일 주기를 넘겼습니다.`,
+            `[조치 1] 집서버 작업 확인 — schtasks /query /tn MibunyangKosisLocal (로컬 러너 수집기인 경우)`,
+            `[조치 2] 수동 보충 실행 — node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD`,
+          ],
+          at: latest.finished_at,
+        });
+        continue; // 미발화면 아래 outage 판정은 같은 원인 이중 알림 — skip
+      }
+    }
+
     const recent = rows.slice(0, OUTAGE_MIN_CONSECUTIVE);
-    // success 인데 ok=0 만 점검 — failure 는 ①, 단발 0건은 ②가 잡음
+    // success 인데 ok=0 & skip=0 만 점검 — failure 는 ①, 단발 0건은 ②가 잡음.
+    // skip>0 = 원천 정상 응답 + 변경분만 0 (연간 통계 수집기 fertility 등 평상시 ok=0·skip>0) → outage 아님 (세션 289).
     const allEmptySuccess = recent.every(
-      (r) => r.status === "success" && (r.ok_count ?? 0) === 0,
+      (r) => r.status === "success" && (r.ok_count ?? 0) === 0 && (r.skip_count ?? 0) === 0,
     );
     if (!allEmptySuccess) continue;
     // 첫 ok=0 시각 = 외부 API 장애 시작 추정 시각
@@ -711,28 +750,30 @@ async function fetchLatestCollectorRuns() {
 
 /**
  * ⑤ 외부 API collector 별 최근 N행을 collector_runs 에서 가져온다.
- * targets 의 collector 값을 IN 쿼리로 묶어 1회 호출.
+ * collector 별 개별 쿼리 (Promise.all) — 전역 최신순 IN 쿼리 + limit 은 빈발 collector
+ * (schools 매일 등) 행이 limit 을 점유해 월간 collector 의 최근 3행이 잘리는 silent skip
+ * 결함이 있어 폐기 (세션 289, 대상 5→15 확대로 실재화). 호출은 monitor run 당 1회뿐.
  * @param {ReadonlyArray<{ collector: string }>} targets
  * @param {number} [limitPer]
- * @returns {Promise<Record<string, Array<{ status: string, ok_count: number|null, finished_at: string|null }>>>}
+ * @returns {Promise<Record<string, Array<{ status: string, ok_count: number|null, skip_count: number|null, finished_at: string|null }>>>}
  */
 async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) {
   const sb = getSupabase();
   const names = targets.map((t) => t.collector);
   if (names.length === 0) return {};
-  const { data } = await sb
-    .from("collector_runs")
-    .select("collector,status,ok_count,finished_at")
-    .in("collector", names)
-    .order("finished_at", { ascending: false })
-    .limit(names.length * limitPer * 2); // 여유분 2배 = 다른 collector 행 끼어들기 대비
-  const rows = data ?? [];
-  /** @type {Record<string, Array<{ status: string, ok_count: number|null, finished_at: string|null }>>} */
+  /** @type {Record<string, Array<{ status: string, ok_count: number|null, skip_count: number|null, finished_at: string|null }>>} */
   const grouped = {};
-  for (const row of rows) {
-    if (!grouped[row.collector]) grouped[row.collector] = [];
-    if (grouped[row.collector].length < limitPer) grouped[row.collector].push(row);
-  }
+  await Promise.all(
+    names.map(async (name) => {
+      const { data } = await sb
+        .from("collector_runs")
+        .select("collector,status,ok_count,skip_count,finished_at")
+        .eq("collector", name)
+        .order("finished_at", { ascending: false })
+        .limit(limitPer);
+      if (data && data.length > 0) grouped[name] = data;
+    }),
+  );
   return grouped;
 }
 

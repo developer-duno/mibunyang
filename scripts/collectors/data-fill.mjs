@@ -40,6 +40,8 @@ export const COLLECTORS = [
   // Phase 1: 기반 데이터
   { category: "building",  phase: 1, scripts: ["molit-building-info.mjs"], args: ["--force"], envKeys: ["MOLIT_KEY"] },
   { category: "builders",  phase: 1, scripts: ["dart-builders.mjs"],       args: [],          envKeys: ["DART_KEY"] },
+  // ⚠ regions 의 KOSIS 계열 8종 (migration·housing-supply·fertility·avg-income·medical-access·sale-price·jeonse·regional-economy)
+  //   은 kosis.kr 해외 IP 차단으로 로컬 전용 (세션 289) — GH/원격 러너에서 data-fill 실행 금지.
   { category: "regions",   phase: 1, scripts: ["population.mjs", "population-sex-age.mjs", "migration.mjs", "housing-permits.mjs", "collect-housing-supply-ratio.mjs", "collect-fertility-rate.mjs", "collect-housing-price.mjs", "childcare-info.mjs", "childcare-info-jeju.mjs", "childcare-detail.mjs", "collect-avg-income.mjs", "collect-medical-access.mjs", "collect-sale-price-index.mjs", "collect-jeonse-price-index.mjs", "collect-regional-economy.mjs"], args: [], envKeys: ["MOIS_POP_KEY", "MOIS_SEX_AGE_KEY", "KOSIS_MIGRATION_KEY", "MOLIT_KEY", "KOSIS_KEY", "CHILDCARE_API_KEY", "CHILDCARE_BASIC_API_KEY", "CHILDCARE_JEJU_KEY"] },
   { category: "maintenance", phase: 1, scripts: ["collect-maintenance.mjs"], args: [],          envKeys: ["MOLIT_KEY"] },
   // Phase 2: 파생 데이터 (Phase 1 완료 후)

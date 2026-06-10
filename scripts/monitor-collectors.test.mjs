@@ -521,9 +521,63 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 5 후보 박힘 (housing-permits/building-hub/transport/schools/applyhome-detail)", () => {
+  it("미발화 — 최신 행이 stale_days 초과면 kind=stale 박힘 (로컬 러너 '안 돌면 알림', 세션 289)", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 42, finished_at: "2026-05-10T00:00:00Z" }, // 18일 전 > 14
+          { status: "success", ok_count: 10, finished_at: "2026-04-10T00:00:00Z" },
+          { status: "success", ok_count: 7, finished_at: "2026-03-10T00:00:00Z" },
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].detail).toMatch(/미발화/);
+    expect(issues[0].detail).toMatch(/18일/);
+  });
+
+  it("미발화 + ok=0 동시 — stale 1건만 박힘 (outage 이중 알림 차단)", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 0, finished_at: "2026-05-01T00:00:00Z" }, // 27일 전
+          { status: "success", ok_count: 0, finished_at: "2026-04-01T00:00:00Z" },
+          { status: "success", ok_count: 0, finished_at: "2026-03-01T00:00:00Z" },
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+  });
+
+  it("연간 데이터 무변경 — ok=0 이라도 skip>0 이면 outage 아님 (fertility 등 diff-only 수집기 평상시, 세션 289)", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 0, skip_count: 250, finished_at: "2026-05-26T00:00:00Z" },
+          { status: "success", ok_count: 0, skip_count: 250, finished_at: "2026-04-25T00:00:00Z" },
+          { status: "success", ok_count: 0, skip_count: 251, finished_at: "2026-04-10T00:00:00Z" },
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("EXTERNAL_API_COLLECTORS 배열 = 15 후보 박힘 (기존 5 + KOSIS 로컬 러너 10, 세션 289)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
-    expect(names).toEqual(["applyhome-detail", "building-hub", "housing-permits", "schools", "transport"]);
+    expect(names).toEqual([
+      "applyhome-detail", "avg-income", "building-hub", "housing-permits",
+      "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
+      "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
+      "kosis-unsold", "market-stats", "migration", "schools", "transport",
+    ]);
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);
       expect(c.owner).toBeTruthy();

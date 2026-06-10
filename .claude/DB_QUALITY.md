@@ -33,7 +33,7 @@
 2. **B안 (근본)**: `20260609000000_view_regions_latest_nonnull.sql` — latest_regions CTE 를 `DISTINCT ON 1행`
    → `GROUP BY region` + `(array_agg(col ORDER BY recorded_at DESC) FILTER (WHERE col IS NOT NULL))[1]`
    컬럼별 최신 non-null. 부수 효과: landCostRatio 세종 34단지도 옛 행 값 회복 (96.9%→100%). security_invoker=on 보존.
-3. **A안 (안전망)**: `collect-migration.yml` cron 15일→6일 (공백 ~10일→~1일 축소).
+3. **A안 (안전망)**: `collect-migration.yml` cron 15일→6일 (공백 ~10일→~1일 축소). 세션 289: yml 삭제 (kosis.kr 차단, 로컬 러너 이전) — `kosis-local-runner.mjs` day 7 (05:30 KST) 이 승계, population (GH 5일 20:00 UTC = KST 6일 05:00) 후행 유지.
 4. **회귀가드**: monitor ⑥ `checkViewRegionStale` (원본≥20% but VIEW≤5% 알림) + 6 테스트.
 5. **재발방지**: `.claude/rules/collectors/regions-multicollector-recorded-at-lag.md`.
 

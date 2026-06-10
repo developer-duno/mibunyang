@@ -77,7 +77,8 @@ async function main() {
   }
 
   const due = collectorsDueOn(date);
-  const dateStr = date.toISOString().slice(0, 10);
+  // KST 로컬 날짜 — toISOString() 은 UTC 라 05:30 KST 실행 시 전일로 표기됨 (디스패치 getDate() 와 통일)
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   if (due.length === 0) {
     log(PHASE, `${dateStr}: due 수집기 없음 — 종료`);
     return;
@@ -99,11 +100,13 @@ async function main() {
   }
 
   if (failures.length > 0) {
-    // 알림 실패가 러너를 죽이면 안 됨 (notify-telegram 철학) — best-effort
+    // 알림 실패가 러너를 죽이면 안 됨 (notify-telegram 철학) — best-effort.
+    // sendTelegram 은 throw 하지 않고 {sent,reason} 반환 — 미전송(키 미설정 등)을 로그로 남겨 무음 차단.
     try {
-      await sendTelegram(
+      const res = await sendTelegram(
         `🔴 [kosis-local-runner] ${dateStr} 실패 ${failures.length}/${due.length}: ${failures.join(", ")}\n집서버 F:\\mibunyang 로그 확인 필요`,
       );
+      if (!res.sent) logError(PHASE, `텔레그램 미전송: ${res.reason ?? "unknown"}`);
     } catch {
       /* best-effort */
     }

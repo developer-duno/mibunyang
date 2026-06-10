@@ -27,11 +27,16 @@
 | `calc-exclusive-ratio.yml` | 전용률 계산 (일요일 22:00 UTC, 세션273: calc-collection 그룹 분리 — data-collection 큐 경합 회피) |
 | `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리) |
 
-### 매월 (25개)
+### 매월 (20개)
+
+> **세션 288~289: KOSIS 의존 10개 GH 폐기 → 집서버 로컬 러너 이전.** kosis.kr 이 GitHub 러너(해외
+> Azure IP)를 차단해 `collect-{unsold-kosis,market-stats,migration,jeonse-price-index,regional-economy,fertility-rate,housing-supply-ratio,medical-access,avg-income,sale-price-index}.yml`
+> 10개 삭제. 수집 = `scripts/kosis-local-runner.mjs` (Windows 작업 `MibunyangKosisLocal`, 매일 05:30 KST
+> 일자 디스패치, `scripts/register-kosis-task.ps1` 로 등록). 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS`
+> (collector_runs 신선도 — GH run 없음). 수동 보충 = `node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD`.
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
-| `collect-unsold-kosis.yml` | 8일 | KOSIS 시군구별 미분양 (세션260: 1일→8일 분산) |
 | `collect-infra.yml` | 1일 | Kakao Places 인프라 |
 | `collect-transport.yml` | 4일 | Kakao Places 교통 (세션260: 1일→4일 분산) |
 | `collect-schools.yml` | 2일 | NEIS 학교 (세션118: 1일→2일 이동 + school-collection 그룹 분리) |
@@ -43,19 +48,15 @@
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
 | `collect-emergency.yml` | 2일 | 응급의료기관 |
 | `collect-population.yml` | 5일 | 행안부 인구 증감률 |
-| `collect-market-stats.yml` | 5일 | KOSIS HUG 시장통계 |
 | `collect-trades.yml` | 6일 | 국토부 실거래 (매매/전세/분양권) |
 | `collect-molit-units.yml` | 6일 | 국토부 총세대수 보정 |
 | `collect-building-info.yml` | 10일 | 건축물 상세 (토요일 → 11일 fallback) |
 | `collect-housing-permits.yml` | 10일 | 주택 인허가 |
 | `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
 | `collect-applyhome.yml` | 주간 | 청약홈 잔여세대 |
-| `collect-migration.yml` | 6일 | 행안부 전입/전출 (세션391: 15일→6일, population 5일 직후로 당겨 VIEW netMigration 공백 축소) |
 | `collect-maintenance.yml` | 15일 | 공동주택 관리비 |
 | `collect-building-hub.yml` | 15일 | 건축HUB 에너지+인허가 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
-| `collect-jeonse-price-index.yml` | 17일 | KOSIS 전세가격지수 (DT_30404_B013, 시군구 월간) |
-| `collect-regional-economy.yml` | 11일 | KOSIS 시도 경제·교육 지표 (GRDP/사교육비/사교육참여율/실업률) |
 
 ### 모니터링 (2개)
 
@@ -88,7 +89,7 @@
 | `MOIS_POP_KEY` | 행안부 인구/전입전출 (data.go.kr) | O |
 | `KAKAO_KEY` | Kakao REST API (인프라/역지오코딩) | O |
 | `DART_KEY` | DART 전자공시 (시공사 재무) | O |
-| `KOSIS_KEY` | KOSIS 국가통계포털 (미분양) | O |
+| `KOSIS_KEY` | KOSIS 국가통계포털 — 세션 289 로컬 러너 이전으로 GH 워크플로 사용 0 (집서버 `.env` 만, 시크릿 잔존은 무해) | - |
 | `TAGO_KEY` | TAGO 대중교통 (data.go.kr) | O |
 | `NEIS_KEY` | NEIS 교육정보 (선택, 미등록 시 스킵) | - |
 | `SCHOOLINFO_KEY` | 학교알리미 학생수 (선택) | - |

@@ -10,7 +10,6 @@ on:
   workflow_run:
     workflows:
       - "Air Quality Collection"
-      - "Average Income Data Collection"
       - "Building Info Collection (MOLIT)"
       - "Childcare Detail Collection"
       - "Childcare Facilities Collection"
@@ -28,15 +27,9 @@ on:
       - "Housing Price Data Collection"
       - "Industry Complex Matching"
       - "Infra Facilities Collection"
-      - "KOSIS Fertility Rate Collection"
-      - "KOSIS Jeonse Price Index Collection"
-      - "KOSIS Housing Supply Level Collection"
-      - "KOSIS Medical Access Collection"
-      - "KOSIS Market Stats Collection"
-      - "KOSIS Regional Economy Collection"
-      - "KOSIS Sale Price Index Collection"
-      - "KOSIS Unsold Collection"
-      - "Migration Data Collection"
+      # KOSIS 10종 (KOSIS 8 + Average Income + Migration) = kosis.kr 해외 IP 차단으로
+      # 집서버 로컬 러너 이전 (scripts/kosis-local-runner.mjs, 세션 288~289) — yml 삭제로 목록 제거.
+      # 감시는 monitor-collectors.mjs EXTERNAL_API_COLLECTORS (collector_runs 신선도) 가 승계.
       - "Naver Post-Processing (Core)"
       - "Naver Post-Processing (Incremental)"
       - "Nearby Childcare Collection"
