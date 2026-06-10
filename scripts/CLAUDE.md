@@ -47,6 +47,22 @@
 
 ---
 
+## KOSIS 수집 — 로컬 자동화 (세션 288~289·395)
+
+**kosis.kr 이 해외 클라우드 IP(GitHub 러너)를 차단(2026-06-09~) → 한국 IP 로컬 PC에서만 실행.** GH `collect-*.yml` 10개 삭제됨 (PR #98).
+
+| 구분 | 방식 | 실행 |
+|------|------|------|
+| 자동 수집 | Windows 스케줄러 `MibunyangKosisLocal` → `kosis-local-runner.bat` | 매일 05:30 KST (일자 디스패치: 2·6·7·9·10·12·13·14·17(분기)·18일) |
+| 수동/보충 | `node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD` | 필요시 |
+| 매핑표 확인 | `node scripts/kosis-local-runner.mjs --list` | - |
+
+등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-kosis-task.ps1`
+
+감시: GH run 이 없으므로 monitor ⑤ `EXTERNAL_API_COLLECTORS` 신선도(월간 38일/분기 100일)가 유일한 미발화 알림. KOSIS 수집기 10종 전부 실패 시 `collector_runs` 에 `status=failure` 행 기록 (PR #97·#99 하드닝 — throw·early-return 전 경로).
+
+---
+
 ## 네이버 수집 — 로컬 자동화
 
 **네이버 API는 데이터센터 IP를 차단 → 한국 IP 로컬 PC에서만 실행.**
