@@ -161,81 +161,97 @@ async function fetchTable(spec, startYear, endYear) {
   return parseKosisRows(rows, spec);
 }
 
-async function main() {
+// 세션 394: try/catch/finally 하드닝 — KOSIS 러너 차단(6/9~) 중 실패가
+// collector_runs 에 0행으로 남는 사각 정정 (PR #83 sync-naver 패턴 답습).
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
-  if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
-  const sb = getSupabase();
+  let ok = 0;
+  let skip = 0;
+  let errorMessage = /** @type {string | undefined} */ (undefined);
+  try {
+    if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
-  const now = new Date();
-  const endYear = String(now.getFullYear());
-  const startYear = String(now.getFullYear() - 3);
-  log(PHASE, `KOSIS 경제·교육 지표 조회: ${startYear} ~ ${endYear}`);
+    const sb = getSupabase();
 
-  // 통계표별 수집 → { column: matched }
-  /** @type {Record<string, Record<string, number>>} */
-  const byColumn = {};
-  let totalAggSkipped = 0;
-  for (const spec of TABLES) {
-    const { matched, aggSkipped } = await fetchTable(spec, startYear, endYear);
-    log(PHASE, `${spec.label}: 시도 매칭 ${Object.keys(matched).length}개 / 집계행 skip ${aggSkipped}개`);
-    byColumn[spec.column] = matched;
-    totalAggSkipped += aggSkipped;
-  }
+    const now = new Date();
+    const endYear = String(now.getFullYear());
+    const startYear = String(now.getFullYear() - 3);
+    log(PHASE, `KOSIS 경제·교육 지표 조회: ${startYear} ~ ${endYear}`);
 
-  if (Object.values(byColumn).every(m => Object.keys(m).length === 0)) {
-    log(PHASE, "전 통계표 매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)");
-    return;
-  }
-
-  // regions UPDATE (gu IS NULL 시도 행 — recorded_at 누적으로 약 76행)
-  const { data: regions, error: rErr } = await sb
-    .from("regions")
-    .select("id, region, gu, grdp_per_capita, education_cost, education_participation, unemployment_rate")
-    .is("gu", null);
-
-  if (rErr) {
-    logError(PHASE, `regions 조회 실패: ${rErr.message}`);
-    return;
-  }
-
-  /** @type {Array<{ id: string; region: string; gu: string | null; grdp_per_capita: number | null; education_cost: number | null; education_participation: number | null; unemployment_rate: number | null }>} */
-  const regionsTyped = /** @type {any} */ (regions ?? []);
-
-  let updated = 0;
-  for (const reg of regionsTyped) {
-    /** @type {Record<string, number>} */
-    const patch = {};
+    // 통계표별 수집 → { column: matched }
+    /** @type {Record<string, Record<string, number>>} */
+    const byColumn = {};
+    let totalAggSkipped = 0;
     for (const spec of TABLES) {
-      const value = byColumn[spec.column]?.[reg.region];
-      if (value == null) continue;
-      const old = /** @type {Record<string, number | null>} */ (/** @type {unknown} */ (reg))[spec.column];
-      // GRDP 는 천원 단위 큰 값 → 1 이상 차이, 나머지 % → 0.05 이상 차이일 때만
-      const minDiff = spec.column === "grdp_per_capita" ? 1 : 0.05;
-      if (old == null || Math.abs(old - value) >= minDiff) {
-        patch[spec.column] = value;
+      const { matched, aggSkipped } = await fetchTable(spec, startYear, endYear);
+      log(PHASE, `${spec.label}: 시도 매칭 ${Object.keys(matched).length}개 / 집계행 skip ${aggSkipped}개`);
+      byColumn[spec.column] = matched;
+      totalAggSkipped += aggSkipped;
+    }
+
+    if (Object.values(byColumn).every(m => Object.keys(m).length === 0)) {
+      log(PHASE, "전 통계표 매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)");
+      return;
+    }
+
+    // regions UPDATE (gu IS NULL 시도 행 — recorded_at 누적으로 약 76행)
+    const { data: regions, error: rErr } = await sb
+      .from("regions")
+      .select("id, region, gu, grdp_per_capita, education_cost, education_participation, unemployment_rate")
+      .is("gu", null);
+
+    if (rErr) {
+      logError(PHASE, `regions 조회 실패: ${rErr.message}`);
+      return;
+    }
+
+    /** @type {Array<{ id: string; region: string; gu: string | null; grdp_per_capita: number | null; education_cost: number | null; education_participation: number | null; unemployment_rate: number | null }>} */
+    const regionsTyped = /** @type {any} */ (regions ?? []);
+
+    let updated = 0;
+    for (const reg of regionsTyped) {
+      /** @type {Record<string, number>} */
+      const patch = {};
+      for (const spec of TABLES) {
+        const value = byColumn[spec.column]?.[reg.region];
+        if (value == null) continue;
+        const old = /** @type {Record<string, number | null>} */ (/** @type {unknown} */ (reg))[spec.column];
+        // GRDP 는 천원 단위 큰 값 → 1 이상 차이, 나머지 % → 0.05 이상 차이일 때만
+        const minDiff = spec.column === "grdp_per_capita" ? 1 : 0.05;
+        if (old == null || Math.abs(old - value) >= minDiff) {
+          patch[spec.column] = value;
+        }
       }
-    }
-    if (Object.keys(patch).length === 0) continue;
+      if (Object.keys(patch).length === 0) continue;
 
-    if (dryRun) {
-      log(PHASE, `  [DRY-RUN] regions ${reg.region}: ${JSON.stringify(patch)}`);
-      updated++;
-      continue;
+      if (dryRun) {
+        log(PHASE, `  [DRY-RUN] regions ${reg.region}: ${JSON.stringify(patch)}`);
+        updated++;
+        continue;
+      }
+
+      const { error } = await sb.from("regions").update(patch).eq("id", reg.id);
+      if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
+      else updated++;
     }
 
-    const { error } = await sb.from("regions").update(patch).eq("id", reg.id);
-    if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
-    else updated++;
+    log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
+
+    if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", TABLES.length);
+    ok = updated;
+    skip = totalAggSkipped;
+
+    log(PHASE, "\n=== 완료 ===");
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    await recordCollectorRun(PHASE, errorMessage
+      ? { ok, skip, status: "failure", errorMessage }
+      : { ok, skip });
   }
-
-  log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
-
-  if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", TABLES.length);
-  await recordCollectorRun(PHASE, { ok: updated, skip: totalAggSkipped });
-
-  log(PHASE, "\n=== 완료 ===");
 }
 
 const argv1 = process.argv[1];

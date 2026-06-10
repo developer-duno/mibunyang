@@ -5,7 +5,9 @@
  * 대상: parseKosisRows
  * 환각 차단: 1차원 통계표 C1 길이 2(집계행)/5(시군구) 분기, itmId=T10 외 ITM skip
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
@@ -17,10 +19,14 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
     recordCollectorRun: vi.fn(),
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
-const { parseKosisRows } = await import("./collect-medical-access.mjs");
+process.env.KOSIS_KEY = "test-key";
+
+const { parseKosisRows, main } = await import("./collect-medical-access.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 /**
  * @param {string} c1     C1 코드 (2자리=집계행 / 5자리=시군구)
@@ -138,5 +144,32 @@ describe("parseKosisRows (DT_1YL20981/DT_1YL20971 의료 인프라)", () => {
     ]);
     expect(result.aggSkipped).toBe(2);
     expect(Object.keys(result.matched).sort()).toEqual(["경기::수원시", "서울::종로구"]);
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 394) ──
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS fetch 실패 → rethrow + status=failure 기록", async () => {
+    fetchWithRetryMock.mockRejectedValue(new Error("fetch failed"));
+    await expect(main()).rejects.toThrow(/KOSIS .* fetch failed/);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-medical-access",
+      expect.objectContaining({ status: "failure" }),
+    );
+  });
+
+  it("전 통계표 빈 응답 early-return 도 기록 (ok=0)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-medical-access",
+      { ok: 0, skip: 0 },
+    );
   });
 });

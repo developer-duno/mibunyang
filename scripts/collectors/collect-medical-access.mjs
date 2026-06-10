@@ -138,85 +138,101 @@ async function fetchTable(tblId, startYear, endYear) {
   return parseKosisRows(rows);
 }
 
-async function main() {
+// 세션 394: try/catch/finally 하드닝 — KOSIS 러너 차단(6/9~) 중 실패가
+// collector_runs 에 0행으로 남는 사각 정정 (PR #83 sync-naver 패턴 답습).
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
-  if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
-  const sb = getSupabase();
+  let ok = 0;
+  let skip = 0;
+  let errorMessage = /** @type {string | undefined} */ (undefined);
+  try {
+    if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
-  const now = new Date();
-  const endYear = String(now.getFullYear());
-  const startYear = String(now.getFullYear() - 3);
-  log(PHASE, `KOSIS 의료 인프라 조회: ${startYear} ~ ${endYear}`);
+    const sb = getSupabase();
 
-  // 통계표별 수집 → { column: matched }
-  /** @type {Record<string, Record<string, number>>} */
-  const byColumn = {};
-  let totalUnmatched = 0;
-  for (const { tblId, column, label } of TABLES) {
-    const { matched, unmatched, aggSkipped } = await fetchTable(tblId, startYear, endYear);
-    log(PHASE, `${label}: 시군구 매칭 ${Object.keys(matched).length}개 / 집계행 skip ${aggSkipped}개`);
-    if (unmatched.length > 0) {
-      logError(PHASE, `${label} 매칭 실패 ${unmatched.length}개: ${unmatched.join(", ")}`);
-      totalUnmatched += unmatched.length;
-    }
-    byColumn[column] = matched;
-  }
+    const now = new Date();
+    const endYear = String(now.getFullYear());
+    const startYear = String(now.getFullYear() - 3);
+    log(PHASE, `KOSIS 의료 인프라 조회: ${startYear} ~ ${endYear}`);
 
-  if (Object.values(byColumn).every(m => Object.keys(m).length === 0)) {
-    log(PHASE, "전 통계표 매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)");
-    return;
-  }
-
-  // regions UPDATE (gu 있는 시군구 행)
-  const { data: regions, error: rErr } = await sb
-    .from("regions")
-    .select("id, region, gu, doctors_per_1k, hospital_beds_per_1k")
-    .not("gu", "is", null);
-
-  if (rErr) {
-    logError(PHASE, `regions 조회 실패: ${rErr.message}`);
-    return;
-  }
-
-  /** @type {Array<{ id: string; region: string; gu: string | null; doctors_per_1k: number | null; hospital_beds_per_1k: number | null }>} */
-  const regionsTyped = /** @type {any} */ (regions ?? []);
-
-  let updated = 0;
-  for (const reg of regionsTyped) {
-    const key = `${reg.region}::${reg.gu}`;
-    const doctors = byColumn["doctors_per_1k"]?.[key];
-    const beds = byColumn["hospital_beds_per_1k"]?.[key];
-    if (doctors == null && beds == null) continue;
-
-    /** @type {Record<string, number>} */
-    const patch = {};
-    if (doctors != null && (reg.doctors_per_1k == null || Math.abs(reg.doctors_per_1k - doctors) >= 0.05)) {
-      patch.doctors_per_1k = doctors;
-    }
-    if (beds != null && (reg.hospital_beds_per_1k == null || Math.abs(reg.hospital_beds_per_1k - beds) >= 0.05)) {
-      patch.hospital_beds_per_1k = beds;
-    }
-    if (Object.keys(patch).length === 0) continue;
-
-    if (dryRun) {
-      log(PHASE, `  [DRY-RUN] regions ${reg.region} ${reg.gu}: ${JSON.stringify(patch)}`);
-      updated++;
-      continue;
+    // 통계표별 수집 → { column: matched }
+    /** @type {Record<string, Record<string, number>>} */
+    const byColumn = {};
+    let totalUnmatched = 0;
+    for (const { tblId, column, label } of TABLES) {
+      const { matched, unmatched, aggSkipped } = await fetchTable(tblId, startYear, endYear);
+      log(PHASE, `${label}: 시군구 매칭 ${Object.keys(matched).length}개 / 집계행 skip ${aggSkipped}개`);
+      if (unmatched.length > 0) {
+        logError(PHASE, `${label} 매칭 실패 ${unmatched.length}개: ${unmatched.join(", ")}`);
+        totalUnmatched += unmatched.length;
+      }
+      byColumn[column] = matched;
     }
 
-    const { error } = await sb.from("regions").update(patch).eq("id", reg.id);
-    if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
-    else updated++;
+    if (Object.values(byColumn).every(m => Object.keys(m).length === 0)) {
+      log(PHASE, "전 통계표 매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)");
+      return;
+    }
+
+    // regions UPDATE (gu 있는 시군구 행)
+    const { data: regions, error: rErr } = await sb
+      .from("regions")
+      .select("id, region, gu, doctors_per_1k, hospital_beds_per_1k")
+      .not("gu", "is", null);
+
+    if (rErr) {
+      logError(PHASE, `regions 조회 실패: ${rErr.message}`);
+      return;
+    }
+
+    /** @type {Array<{ id: string; region: string; gu: string | null; doctors_per_1k: number | null; hospital_beds_per_1k: number | null }>} */
+    const regionsTyped = /** @type {any} */ (regions ?? []);
+
+    let updated = 0;
+    for (const reg of regionsTyped) {
+      const key = `${reg.region}::${reg.gu}`;
+      const doctors = byColumn["doctors_per_1k"]?.[key];
+      const beds = byColumn["hospital_beds_per_1k"]?.[key];
+      if (doctors == null && beds == null) continue;
+
+      /** @type {Record<string, number>} */
+      const patch = {};
+      if (doctors != null && (reg.doctors_per_1k == null || Math.abs(reg.doctors_per_1k - doctors) >= 0.05)) {
+        patch.doctors_per_1k = doctors;
+      }
+      if (beds != null && (reg.hospital_beds_per_1k == null || Math.abs(reg.hospital_beds_per_1k - beds) >= 0.05)) {
+        patch.hospital_beds_per_1k = beds;
+      }
+      if (Object.keys(patch).length === 0) continue;
+
+      if (dryRun) {
+        log(PHASE, `  [DRY-RUN] regions ${reg.region} ${reg.gu}: ${JSON.stringify(patch)}`);
+        updated++;
+        continue;
+      }
+
+      const { error } = await sb.from("regions").update(patch).eq("id", reg.id);
+      if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
+      else updated++;
+    }
+
+    log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
+
+    if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", TABLES.length);
+    ok = updated;
+    skip = totalUnmatched;
+
+    log(PHASE, "\n=== 완료 ===");
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    await recordCollectorRun(PHASE, errorMessage
+      ? { ok, skip, status: "failure", errorMessage }
+      : { ok, skip });
   }
-
-  log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
-
-  if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", TABLES.length);
-  await recordCollectorRun(PHASE, { ok: updated, skip: totalUnmatched });
-
-  log(PHASE, "\n=== 완료 ===");
 }
 
 const argv1 = process.argv[1];

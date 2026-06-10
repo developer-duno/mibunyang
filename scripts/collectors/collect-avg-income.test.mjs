@@ -17,6 +17,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     log: vi.fn(),
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
+    recordCollectorRun: vi.fn(),
     REGION_MAP: orig.REGION_MAP,
     fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
@@ -24,8 +25,9 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 process.env.KOSIS_MIGRATION_KEY = "test-key";
 
-const { thousandWonYearToManWonMonth, aggregateIncomeRows, fetchKosisIncome } =
+const { thousandWonYearToManWonMonth, aggregateIncomeRows, fetchKosisIncome, main } =
   await import("./collect-avg-income.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── thousandWonYearToManWonMonth ─────────────────────────────
 describe("thousandWonYearToManWonMonth", () => {
@@ -213,5 +215,34 @@ describe("fetchKosisIncome — fetchWithRetry 위임", () => {
   it("JSON 파싱 실패 시 본문 앞 200자 포함 에러", async () => {
     fetchWithRetryMock.mockResolvedValueOnce({ text: async () => "<html>error page" });
     await expect(fetchKosisIncome()).rejects.toThrow(/KOSIS JSON 파싱 실패/);
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 394) ──
+// 기존 결함: try/finally 에 catch 가 없어 KOSIS throw 시 {ok:0, fail:0} =
+// 가짜 빈 success 행이 기록됐음 → status=failure 명시 기록으로 정정.
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS fetch 실패 → rethrow + status=failure 기록 (가짜 success 행 회귀 가드)", async () => {
+    fetchWithRetryMock.mockRejectedValue(new Error("HTTP 500"));
+    await expect(main()).rejects.toThrow("KOSIS HTTP 500");
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "avg-income",
+      expect.objectContaining({ status: "failure", errorMessage: "KOSIS HTTP 500" }),
+    );
+  });
+
+  it("유효 데이터 없음 → 기존 {ok, fail} 형태 그대로 (status 키 없음)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ text: async () => "[]" });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "avg-income",
+      { ok: 0, fail: 0 },
+    );
   });
 });

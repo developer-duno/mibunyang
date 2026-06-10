@@ -7,7 +7,9 @@
  *           시군구행만 추출(집계/시도/권역/세부행정구 버림), 동명 시군구 구분,
  *           C2_NM 약칭 ↔ regions.gu 정식명 접미사 매칭, 월간 base_month 6자리
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
@@ -20,10 +22,14 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     upsertBatch: vi.fn(),
     recordApiQuota: vi.fn(),
     recordCollectorRun: vi.fn(),
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
-const { parseKabRows } = await import("./collect-jeonse-price-index.mjs");
+process.env.KOSIS_KEY = "test-key";
+
+const { parseKabRows, main } = await import("./collect-jeonse-price-index.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 /**
  * @param {string} c1Nm  C1_NM (주택유형: 종합/아파트/연립다세대/단독주택)
@@ -245,5 +251,32 @@ describe("parseKabRows (DT_30404_B013 전세가격지수)", () => {
       DEFAULT_MAP,
     );
     expect(result.unmatched).toEqual(["강북권역"]);
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 394) ──
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS fetch 실패 → rethrow + status=failure 기록", async () => {
+    fetchWithRetryMock.mockRejectedValue(new Error("fetch failed"));
+    await expect(main()).rejects.toThrow("KOSIS fetch failed");
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-jeonse-price-index",
+      expect.objectContaining({ status: "failure", errorMessage: "KOSIS fetch failed" }),
+    );
+  });
+
+  it("KOSIS 빈 응답 early-return 도 기록 (ok=0)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-jeonse-price-index",
+      { ok: 0, skip: 0 },
+    );
   });
 });
