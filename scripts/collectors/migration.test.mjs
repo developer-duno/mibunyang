@@ -17,6 +17,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     log: vi.fn(),
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
+    recordCollectorRun: vi.fn(),
     REGION_LAWD_PREFIX: orig.REGION_LAWD_PREFIX,
     fetchWithRetry: (/** @type {unknown[]} */ ...args) => fetchWithRetryMock(...args),
   };
@@ -24,7 +25,8 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 process.env.KOSIS_MIGRATION_KEY = "test-key";
 
-const { normalizeC1Name, mapC1, aggregateKosisRows, C1_TO_REGION, fetchKosis } = await import("./migration.mjs");
+const { normalizeC1Name, mapC1, aggregateKosisRows, C1_TO_REGION, fetchKosis, main } = await import("./migration.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── normalizeC1Name ──────────────────────────────────────────
 describe("normalizeC1Name", () => {
@@ -206,5 +208,33 @@ describe("fetchKosis — fetchWithRetry 위임", () => {
       text: async () => JSON.stringify({ err: "30", errMsg: "인증 실패" }),
     });
     await expect(fetchKosis()).rejects.toThrow(/KOSIS 에러 30/);
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 395) ──
+// 기존엔 catch 부재 → throw 시 {ok:0, fail:0} 가짜 빈 success 행 (avg-income 同 quirk).
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS fetch 실패 → rethrow + status=failure 기록 (가짜 success 행 차단)", async () => {
+    fetchWithRetryMock.mockRejectedValue(new Error("HTTP 500"));
+    await expect(main()).rejects.toThrow(/KOSIS HTTP 500/);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "migration",
+      expect.objectContaining({ status: "failure" }),
+    );
+  });
+
+  it("빈 응답 early-return 도 기록 (ok=0, fail=0)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ text: async () => "[]" });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "migration",
+      { ok: 0, fail: 0 },
+    );
   });
 });

@@ -84,80 +84,96 @@ export function parseKabRows(rows) {
   return { matched, unmatched: [...unmatchedSet], skipped };
 }
 
-async function main() {
+// 세션 395: try/catch/finally 하드닝 — KOSIS 실패가 collector_runs 에 0행으로
+// 남는 사각 정정 (PR #97 collect-regional-economy 패턴 답습).
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
-  if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
-  const sb = getSupabase();
-
-  // KOSIS API 호출 (DT_KAB_11672_S5 분기, 1차원 → objL1 만)
-  const now = new Date();
-  const curQ = Math.ceil((now.getMonth() + 1) / 3);
-  const endPrd = `${now.getFullYear()}${curQ}`;
-  const startPrd = `${now.getFullYear() - 2}${curQ}`;
-
-  log(PHASE, `KOSIS 매매가격지수 조회: ${startPrd} ~ ${endPrd}`);
-
-  const params = new URLSearchParams({
-    method: "getList",
-    apiKey: KOSIS_KEY,
-    orgId: "408",
-    tblId: "DT_KAB_11672_S5",
-    itmId: "ALL",
-    objL1: "ALL",
-    prdSe: "Q",
-    startPrdDe: startPrd,
-    endPrdDe: endPrd,
-    format: "json",
-    jsonVD: "Y",
-  });
-
-  const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
-  let data;
+  let ok = 0;
+  let skip = 0;
+  let errorMessage = /** @type {string | undefined} */ (undefined);
   try {
-    const res = await fetchWithRetry(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
+
+    const sb = getSupabase();
+
+    // KOSIS API 호출 (DT_KAB_11672_S5 분기, 1차원 → objL1 만)
+    const now = new Date();
+    const curQ = Math.ceil((now.getMonth() + 1) / 3);
+    const endPrd = `${now.getFullYear()}${curQ}`;
+    const startPrd = `${now.getFullYear() - 2}${curQ}`;
+
+    log(PHASE, `KOSIS 매매가격지수 조회: ${startPrd} ~ ${endPrd}`);
+
+    const params = new URLSearchParams({
+      method: "getList",
+      apiKey: KOSIS_KEY,
+      orgId: "408",
+      tblId: "DT_KAB_11672_S5",
+      itmId: "ALL",
+      objL1: "ALL",
+      prdSe: "Q",
+      startPrdDe: startPrd,
+      endPrdDe: endPrd,
+      format: "json",
+      jsonVD: "Y",
+    });
+
+    const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
+    let data;
     try {
-      data = await res.json();
-    } catch {
-      throw new Error("JSON 파싱 실패");
+      const res = await fetchWithRetry(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("JSON 파싱 실패");
+      }
+    } catch (err) {
+      throw new Error(`KOSIS ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
+
+    const rows = Array.isArray(data) ? data : [];
+    log(PHASE, `KOSIS 응답: ${rows.length}건`);
+
+    if (rows.length === 0) {
+      log(PHASE, "데이터 없음 — 종료");
+      return;
+    }
+
+    const { matched, unmatched, skipped } = parseKabRows(rows);
+    log(PHASE, `시군구 매칭: ${matched.length}개 / skip ${skipped}개`);
+    if (unmatched.length > 0) {
+      logError(PHASE, `시도 미판정 시군구 ${unmatched.length}개: ${unmatched.join(", ")}`);
+    }
+
+    if (matched.length === 0) {
+      log(PHASE, "매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)");
+      return;
+    }
+
+    if (dryRun) {
+      log(PHASE, `[DRY-RUN] market_stats_history upsert: ${matched.length}건 예상`);
+      log(PHASE, `[DRY-RUN] 샘플: ${JSON.stringify(matched.slice(0, 3))}`);
+    } else {
+      const inserted = await upsertBatch("market_stats_history", matched, "region,gu,base_month", 500, sb);
+      log(PHASE, `market_stats_history upsert: ${inserted}건`);
+    }
+
+    if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
+    ok = matched.length;
+    skip = skipped;
+
+    log(PHASE, "\n=== 완료 ===");
   } catch (err) {
-    throw new Error(`KOSIS ${err instanceof Error ? err.message : String(err)}`);
+    errorMessage = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    await recordCollectorRun(PHASE, errorMessage
+      ? { ok, skip, status: "failure", errorMessage }
+      : { ok, skip });
   }
-  if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
-
-  const rows = Array.isArray(data) ? data : [];
-  log(PHASE, `KOSIS 응답: ${rows.length}건`);
-
-  if (rows.length === 0) {
-    log(PHASE, "데이터 없음 — 종료");
-    return;
-  }
-
-  const { matched, unmatched, skipped } = parseKabRows(rows);
-  log(PHASE, `시군구 매칭: ${matched.length}개 / skip ${skipped}개`);
-  if (unmatched.length > 0) {
-    logError(PHASE, `시도 미판정 시군구 ${unmatched.length}개: ${unmatched.join(", ")}`);
-  }
-
-  if (matched.length === 0) {
-    log(PHASE, "매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)");
-    return;
-  }
-
-  if (dryRun) {
-    log(PHASE, `[DRY-RUN] market_stats_history upsert: ${matched.length}건 예상`);
-    log(PHASE, `[DRY-RUN] 샘플: ${JSON.stringify(matched.slice(0, 3))}`);
-  } else {
-    const inserted = await upsertBatch("market_stats_history", matched, "region,gu,base_month", 500, sb);
-    log(PHASE, `market_stats_history upsert: ${inserted}건`);
-  }
-
-  if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
-  await recordCollectorRun(PHASE, { ok: matched.length, skip: skipped });
-
-  log(PHASE, "\n=== 완료 ===");
 }
 
 const argv1 = process.argv[1];

@@ -4,7 +4,9 @@
  *
  * 대상: extractLatestByRegion, parseAllPeriodsByRegion
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fetchWithRetryMock = vi.fn();
 
 // _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -12,20 +14,40 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return {
     ...orig,
     loadEnv: vi.fn(),
-    getSupabase: vi.fn(),
+    // main 테스트용 최소 체이너블 (regions 조회만 — 빈 응답/전 지표 실패 경로는 update/upsert 미도달)
+    getSupabase: vi.fn(() => ({
+      from: () => ({ select: () => ({ is: async () => ({ data: [], error: null }) }) }),
+    })),
     log: vi.fn(),
     logError: vi.fn(),
-    createReporter: vi.fn(() => ({
-      success: vi.fn(), fail: vi.fn(), skip: vi.fn(),
-      summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0 })),
-    })),
+    // 세션 395: stateful 미니 reporter — interrupted 포함 + summary 가 실측 카운트·status 반환
+    // (고정값 mock 이면 main 의 rpt.interrupted() TypeError + failure status 검증 불가)
+    createReporter: vi.fn(() => {
+      let ok = 0, fail = 0, skip = 0;
+      return {
+        success(/** @type {number} */ n = 1) { ok += n; },
+        fail(/** @type {number} */ n = 1) { fail += n; },
+        skip(/** @type {number} */ n = 1) { skip += n; },
+        interrupted: () => false,
+        summary: () => ({
+          elapsed: "0.0", ok, fail, skip, total: ok + fail + skip,
+          status: fail > 0 ? "failure" : "success",
+        }),
+      };
+    }),
     sleep: vi.fn(),
-    // 세션 330: fetchWithRetry mock (fetchKosisTable 통일 회귀 가드 자리)
-    fetchWithRetry: vi.fn(),
+    recordApiQuota: vi.fn(),
+    recordCollectorRun: vi.fn(),
+    upsertBatch: vi.fn(),
+    // 세션 330: fetchWithRetry mock (fetchKosisTable 통일 회귀 가드 자리) — 세션 395 델리게이트 전환
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
-const { extractLatestByRegion, parseAllPeriodsByRegion } = await import("./collect-market-stats.mjs");
+process.env.KOSIS_KEY = "test-key";
+
+const { extractLatestByRegion, parseAllPeriodsByRegion, main } = await import("./collect-market-stats.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** @param {any} c1 @param {any} c2 @param {any} period @param {any} value */
@@ -167,5 +189,41 @@ describe("fetchKosisTable fetchWithRetry 사용 (통일 회귀 가드)", () => {
     expect(src).not.toMatch(/https\.request\s*\(/);
     expect(src).not.toMatch(/new\s+https\.Agent\s*\(/);
     expect(src).not.toMatch(/SSL_OP_LEGACY_SERVER_CONNECT/);
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 395) ──
+// market-stats 는 지표별 fetch 실패를 reporter 가 흡수(throw 아님) → rejects 패턴 불가.
+// 전 지표(5회) 실패 = summary status=failure 기록 + ok=0 이면 process.exit(1) 정책.
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("전 지표 fetch 실패 → status=failure 기록 + exit(1)", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => /** @type {never} */ (undefined));
+    fetchWithRetryMock.mockRejectedValue(new Error("fetch failed"));
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "market-stats",
+      expect.objectContaining({ status: "failure", ok: 0, fail: 5 }),
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it("빈 응답 → summary 그대로 기록 (ok=0, fail=0, success) + exit 미발동", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => /** @type {never} */ (undefined));
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "market-stats",
+      expect.objectContaining({ ok: 0, fail: 0, status: "success" }),
+    );
+    expect(exitSpy).not.toHaveBeenCalled();
+    exitSpy.mockRestore();
   });
 });
