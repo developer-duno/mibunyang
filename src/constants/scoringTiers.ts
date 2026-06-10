@@ -108,7 +108,9 @@ export const LIQUIDITY_TIERS: Tier[] = [
   { min: 30, score: 5 }, { min: 15, score: 20 }, { min: 5, score: 45 },
 ];
 export const LIQUIDITY_LOW_SCORE = 80;
-export const CREDIT_GRADE_SCORES: Record<string, number> = { AA: 0, "AA-": 5, "A+": 10, A: 15, "A-": 20, BBB: 35, BB: 60 };
+// 위험점수(낮을수록 안전). estimateCreditGrade(dart-builders.mjs)가 생성하는 6등급(A,A-,BBB,BB,B,CCC) 전수 커버 필수.
+// B(부채251~350%)·CCC(>350%) 누락 시 scoreRisk의 ?? CREDIT_DEFAULT(30)로 떨어져 BB(60)보다 안전하게 역전됨 (세션392 버그 정정).
+export const CREDIT_GRADE_SCORES: Record<string, number> = { AA: 0, "AA-": 5, "A+": 10, A: 15, "A-": 20, BBB: 35, BB: 60, B: 75, CCC: 90 };
 /** 안전 등급 목록 (AptCard 경고 태그 판정용) */
 export const SAFE_CREDIT_GRADES: string[] = ["AAA", "AA+", "AA", "AA-", "A+", "A", "A-"];
 export const CREDIT_DEFAULT = 30;
