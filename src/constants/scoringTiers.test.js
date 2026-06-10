@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SAFE_CREDIT_GRADES,
+  CREDIT_GRADE_SCORES,
   FUTURE_WEIGHT_MAP,
   PRICE_NO_DATA_DEFAULTS,
   tierMax,
@@ -31,6 +32,33 @@ describe('SAFE_CREDIT_GRADES', () => {
     const expected = ['AAA', 'AA+', 'AA', 'AA-', 'A+', 'A', 'A-'];
     expected.forEach(grade => {
       expect(SAFE_CREDIT_GRADES).toContain(grade);
+    });
+  });
+});
+
+describe('CREDIT_GRADE_SCORES', () => {
+  // estimateCreditGrade(dart-builders.mjs)가 생성하는 등급 6개를 전수 커버해야 한다.
+  // 누락 시 scoreRisk.ts의 `?? CREDIT_DEFAULT(30)` 폴백으로 떨어져 위험 역전 발생.
+  it('estimateCreditGrade가 생성하는 모든 등급(A,A-,BBB,BB,B,CCC)을 포함한다', () => {
+    const generated = ['A', 'A-', 'BBB', 'BB', 'B', 'CCC'];
+    generated.forEach((grade) => {
+      expect(CREDIT_GRADE_SCORES).toHaveProperty(grade);
+    });
+  });
+
+  // B(부채251~350%)·CCC(>350%)는 BB(201~250%)보다 위험 → 위험점수 단조 증가
+  it('위험 등급 순서대로 점수가 단조 증가한다 (AA<A<BBB<BB<B<CCC)', () => {
+    const order = ['AA', 'A', 'BBB', 'BB', 'B', 'CCC'];
+    for (let i = 1; i < order.length; i++) {
+      expect(CREDIT_GRADE_SCORES[order[i]]).toBeGreaterThan(CREDIT_GRADE_SCORES[order[i - 1]]);
+    }
+  });
+
+  // 모든 점수 0~100 범위
+  it('모든 등급 점수가 0~100 범위이다', () => {
+    Object.values(CREDIT_GRADE_SCORES).forEach((v) => {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(100);
     });
   });
 });

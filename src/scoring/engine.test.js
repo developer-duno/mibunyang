@@ -227,6 +227,19 @@ describe('scoreRisk', () => {
     const r = scoreRisk(makeApt({ hugGuarantee: true, builderCreditGrade: "AA", builderDebtRatio: 80 }));
     expect(r.subs.find(s => s.name === "시공사 재무")?.score ?? 0).toBeGreaterThanOrEqual(90);
   });
+  // 신용등급 위험 단조성: CCC(최악) < B < BB < BBB (시공사 재무 안전점수). 동일 조건에서 등급만 변경.
+  // B·CCC가 점수표에 누락되면 CREDIT_DEFAULT(30)로 떨어져 BB(60)보다 안전하게 역전됨 (세션392 버그).
+  // hugGuarantee:true(+0)·debtRatio:100(보정 0)으로 finSc=creditScore만 남겨 등급 차이를 선명히 (false면 +40로 천장 클램프).
+  it('신용등급 CCC -> BB·BBB보다 시공사 재무 위험 높음 (안전점수 낮음)', () => {
+    const fin = (/** @type {string} */ grade) => {
+      const r = scoreRisk(makeApt({ hugGuarantee: true, builderCreditGrade: grade, builderDebtRatio: 100 }));
+      return r.subs.find(s => s.name === "시공사 재무")?.score ?? 0;
+    };
+    // 안전점수(=100-finSc)는 위험할수록 낮음 → CCC < B < BB < BBB
+    expect(fin("CCC")).toBeLessThan(fin("B"));
+    expect(fin("B")).toBeLessThan(fin("BB"));
+    expect(fin("BB")).toBeLessThan(fin("BBB"));
+  });
   it('인구 급감 -> 시장환경 위험', () => {
     expect(scoreRisk(makeApt({ popGrowth: 1.0 })).total).toBeGreaterThan(scoreRisk(makeApt({ popGrowth: -1.0 })).total);
   });
