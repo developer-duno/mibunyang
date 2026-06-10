@@ -140,23 +140,31 @@ export async function fetchKosisIncome() {
 }
 
 // ── 메인 ────────────────────────────────────────────────────
-async function main() {
+// 세션 394: catch 추가 — 기존엔 KOSIS throw 시 {ok:0, fail:0} = 가짜 빈
+// success 행이 기록됐음. status=failure 명시로 정정 (PR #83 패턴 답습).
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   let apiCalls = 0;
   let failed = 0;
   let updated = 0;
+  let errorMessage = /** @type {string | undefined} */ (undefined);
   try {
     const result = await runCollect(dryRun);
     failed = result.failed;
     apiCalls = result.apiCalls;
     updated = result.updated;
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
+    throw err;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "KOSIS_MIGRATION_KEY", apiCalls);
     }
-    await recordCollectorRun(PHASE, { ok: updated, fail: failed });
+    await recordCollectorRun(PHASE, errorMessage
+      ? { ok: updated, fail: failed, status: "failure", errorMessage }
+      : { ok: updated, fail: failed });
   }
   if (failed > 0) process.exit(1);
 }

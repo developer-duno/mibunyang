@@ -5,7 +5,9 @@
  * 대상: parseKosisRows(rows, spec) — medical-access 와 달리 2인자(spec 받음).
  * 환각 차단: C1 2자리 코드 매칭(이름 매칭 금지), ITM_ID=T00 필터, C2 방어 가드.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
@@ -17,10 +19,14 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
     recordCollectorRun: vi.fn(),
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
-const { parseKosisRows } = await import("./collect-regional-economy.mjs");
+process.env.KOSIS_KEY = "test-key";
+
+const { parseKosisRows, main } = await import("./collect-regional-economy.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── spec fixture (TABLES 항목 재사용) ────────────────────────
 /** @type {any} */
@@ -152,5 +158,32 @@ describe("parseKosisRows (KOSIS 시도 경제·교육 지표)", () => {
     const b = parseKosisRows([makeRow("32", "2023", 30000, { c1Nm: "강원특별자치도" })], SPEC_GRDP);
     expect(a.matched["강원"]).toBeCloseTo(30000, 0);
     expect(b.matched["강원"]).toBeCloseTo(30000, 0);
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 394) ──
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS fetch 실패 → rethrow + status=failure 기록", async () => {
+    fetchWithRetryMock.mockRejectedValue(new Error("fetch failed"));
+    await expect(main()).rejects.toThrow(/KOSIS .* fetch failed/);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-regional-economy",
+      expect.objectContaining({ status: "failure" }),
+    );
+  });
+
+  it("전 통계표 빈 응답 early-return 도 기록 (ok=0)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-regional-economy",
+      { ok: 0, skip: 0 },
+    );
   });
 });

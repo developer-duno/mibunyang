@@ -89,107 +89,123 @@ export function parseKosisRows(rows) {
   return { matched, unmatched: [...unmatchedSet], aggSkipped };
 }
 
-async function main() {
+// 세션 394: try/catch/finally 하드닝 — KOSIS 러너 차단(6/9~) 중 실패가
+// collector_runs 에 0행으로 남는 사각 정정 (PR #83 sync-naver 패턴 답습).
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
-  if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
-  const sb = getSupabase();
-
-  // KOSIS API 호출 (DT_1B81A17 연간 전체, itmId=T1, 1차원 → objL1 만)
-  const now = new Date();
-  const endYear = String(now.getFullYear());
-  const startYear = String(now.getFullYear() - 3);
-
-  log(PHASE, `KOSIS 합계출산율 조회: ${startYear} ~ ${endYear}`);
-
-  const params = new URLSearchParams({
-    method: "getList",
-    apiKey: KOSIS_KEY,
-    orgId: "101",
-    tblId: "DT_1B81A17",
-    itmId: "T1",
-    objL1: "ALL",
-    prdSe: "A",
-    startPrdDe: startYear,
-    endPrdDe: endYear,
-    format: "json",
-    jsonVD: "Y",
-  });
-
-  const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
-  let data;
+  let ok = 0;
+  let skip = 0;
+  let errorMessage = /** @type {string | undefined} */ (undefined);
   try {
-    const res = await fetchWithRetry(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
+
+    const sb = getSupabase();
+
+    // KOSIS API 호출 (DT_1B81A17 연간 전체, itmId=T1, 1차원 → objL1 만)
+    const now = new Date();
+    const endYear = String(now.getFullYear());
+    const startYear = String(now.getFullYear() - 3);
+
+    log(PHASE, `KOSIS 합계출산율 조회: ${startYear} ~ ${endYear}`);
+
+    const params = new URLSearchParams({
+      method: "getList",
+      apiKey: KOSIS_KEY,
+      orgId: "101",
+      tblId: "DT_1B81A17",
+      itmId: "T1",
+      objL1: "ALL",
+      prdSe: "A",
+      startPrdDe: startYear,
+      endPrdDe: endYear,
+      format: "json",
+      jsonVD: "Y",
+    });
+
+    const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
+    let data;
     try {
-      data = await res.json();
-    } catch {
-      throw new Error("JSON 파싱 실패");
+      const res = await fetchWithRetry(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("JSON 파싱 실패");
+      }
+    } catch (err) {
+      throw new Error(`KOSIS ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
+
+    const rows = Array.isArray(data) ? data : [];
+    log(PHASE, `KOSIS 응답: ${rows.length}건`);
+
+    if (rows.length === 0) {
+      log(PHASE, "데이터 없음 — 종료");
+      return;
+    }
+
+    const { matched, unmatched, aggSkipped } = parseKosisRows(rows);
+    log(PHASE, `시군구 매칭: ${Object.keys(matched).length}개 / 집계행 skip ${aggSkipped}개`);
+    if (unmatched.length > 0) {
+      logError(PHASE, `매칭 실패 시군구 ${unmatched.length}개: ${unmatched.join(", ")}`);
+    }
+
+    if (Object.keys(matched).length === 0) {
+      log(PHASE, "매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)");
+      return;
+    }
+
+    // regions UPDATE (gu 있는 694행 시군구 단위)
+    const { data: regions, error: rErr } = await sb
+      .from("regions")
+      .select("id, region, gu, fertility_rate")
+      .not("gu", "is", null);
+
+    if (rErr) {
+      logError(PHASE, `regions 조회 실패: ${rErr.message}`);
+      return;
+    }
+
+    /** @type {Array<{ id: string; region: string; gu: string | null; fertility_rate: number | null }>} */
+    const regionsTyped = /** @type {any} */ (regions ?? []);
+
+    let updated = 0;
+    for (const reg of regionsTyped) {
+      const value = matched[`${reg.region}::${reg.gu}`];
+      if (value == null) continue;
+      if (reg.fertility_rate != null && Math.abs(reg.fertility_rate - value) < 0.005) continue;
+
+      if (dryRun) {
+        log(PHASE, `  [DRY-RUN] regions ${reg.region} ${reg.gu}: ${reg.fertility_rate ?? "NULL"} → ${value}`);
+        updated++;
+        continue;
+      }
+
+      const { error } = await sb.from("regions").update({
+        fertility_rate: value,
+      }).eq("id", reg.id);
+
+      if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
+      else updated++;
+    }
+
+    log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
+
+    if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
+    ok = updated;
+    skip = unmatched.length;
+
+    log(PHASE, "\n=== 완료 ===");
   } catch (err) {
-    throw new Error(`KOSIS ${err instanceof Error ? err.message : String(err)}`);
+    errorMessage = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    await recordCollectorRun(PHASE, errorMessage
+      ? { ok, skip, status: "failure", errorMessage }
+      : { ok, skip });
   }
-  if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
-
-  const rows = Array.isArray(data) ? data : [];
-  log(PHASE, `KOSIS 응답: ${rows.length}건`);
-
-  if (rows.length === 0) {
-    log(PHASE, "데이터 없음 — 종료");
-    return;
-  }
-
-  const { matched, unmatched, aggSkipped } = parseKosisRows(rows);
-  log(PHASE, `시군구 매칭: ${Object.keys(matched).length}개 / 집계행 skip ${aggSkipped}개`);
-  if (unmatched.length > 0) {
-    logError(PHASE, `매칭 실패 시군구 ${unmatched.length}개: ${unmatched.join(", ")}`);
-  }
-
-  if (Object.keys(matched).length === 0) {
-    log(PHASE, "매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)");
-    return;
-  }
-
-  // regions UPDATE (gu 있는 694행 시군구 단위)
-  const { data: regions, error: rErr } = await sb
-    .from("regions")
-    .select("id, region, gu, fertility_rate")
-    .not("gu", "is", null);
-
-  if (rErr) {
-    logError(PHASE, `regions 조회 실패: ${rErr.message}`);
-    return;
-  }
-
-  /** @type {Array<{ id: string; region: string; gu: string | null; fertility_rate: number | null }>} */
-  const regionsTyped = /** @type {any} */ (regions ?? []);
-
-  let updated = 0;
-  for (const reg of regionsTyped) {
-    const value = matched[`${reg.region}::${reg.gu}`];
-    if (value == null) continue;
-    if (reg.fertility_rate != null && Math.abs(reg.fertility_rate - value) < 0.005) continue;
-
-    if (dryRun) {
-      log(PHASE, `  [DRY-RUN] regions ${reg.region} ${reg.gu}: ${reg.fertility_rate ?? "NULL"} → ${value}`);
-      updated++;
-      continue;
-    }
-
-    const { error } = await sb.from("regions").update({
-      fertility_rate: value,
-    }).eq("id", reg.id);
-
-    if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
-    else updated++;
-  }
-
-  log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
-
-  if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
-  await recordCollectorRun(PHASE, { ok: updated, skip: unmatched.length });
-
-  log(PHASE, "\n=== 완료 ===");
 }
 
 const argv1 = process.argv[1];
