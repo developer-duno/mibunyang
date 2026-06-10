@@ -54,6 +54,8 @@ for (const reg of regions) {
 ### 2. cron 정렬 (A안, 적용 완료)
 `collect-migration.yml` cron `0 22 15 * *` → `0 22 6 * *` (population 5일 다음날). 공백 ~10일→~1일 축소.
 B안이 근본 해소라 A안은 보조 안전망. KOSIS_MIGRATION_KEY = MOLIT_KEY 와 별 키라 6일 쿼터 충돌 0.
+세션 289: `collect-migration.yml` 삭제 (kosis.kr 해외 IP 차단 → 로컬 러너 이전) — migration 은
+`kosis-local-runner.mjs` day 7 (05:30 KST) 디스패치로 population (KST 6일 05:00 발화) 다음날 유지, 선후행 보존.
 
 ### 3. 회귀가드 monitor (적용 완료)
 `monitor-collectors.mjs` ⑥ `checkViewRegionStale()` + `VIEW_REGION_STALE_TARGETS`: "regions 원본 ≥20% 채움인데

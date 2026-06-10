@@ -98,7 +98,8 @@
   - **영향**: KOSIS 의존 cron 10개 (`grep -l KOSIS .github/workflows/*.yml`) 차례로 실패 예정 — 당장 regional-economy 11일·avg-income 12일·medical-access 13일·jeonse 17일. monitor checkFailedRuns 가 매번 텔레그램 알림 (6/9·6/10 발화 실증).
   - **6월 데이터 채움**: fertility 는 세션 393 로컬 실행으로 완결 (262건 갱신, collector_runs success). 타 KOSIS collector 도 cron 실패 시 로컬 실행으로 채움 가능 (한국 IP 정상).
   - **대응 옵션 (별 세션 결정)**: (a) 일시 차단이면 자연 회복 대기 + 실패 시 로컬 수동 채움 (b) 지속 시 KOSIS collector 들을 로컬 Windows 스케줄러로 이행 (네이버 수집 선례) (c) 러너에서 한국 경유 프록시 — 비권장.
-  - **회복 트리거**: 다음 KOSIS cron success 또는 `gh workflow run collect-unsold-kosis.yml -f dry_run=true` 재프로브 success.
+  - ~~**회복 트리거**: 다음 KOSIS cron success 또는 `gh workflow run collect-unsold-kosis.yml -f dry_run=true` 재프로브 success.~~ → 세션 289 yml 삭제로 무효 (GH 복귀 계획 없음, 재프로브는 로컬 `node scripts/collectors/collect-unsold-kosis.mjs --dry-run`).
+  - **→ 세션 289 종결 (옵션 b 실행)**: GH collect-*.yml 10개 삭제 + monitor 목록 10개 제거 + `EXTERNAL_API_COLLECTORS` 10종 등재 (collector_runs 신선도 "미발화" 분기 신설 + 연간 diff-only 수집기 ok=0·skip>0 outage 오탐 차단 + per-collector fetch 결함 fix) + 집서버 작업 `MibunyangKosisLocal` (매일 05:30 KST, `kosis-local-runner.mjs` 일자 디스패치). 수동 보충 = `node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD`.
   - ~~부수 후보: fertility collector main try/finally 하드닝~~ → **세션 394 완료 (PR #97)**: 이번 주 실패 예정 4개 + fertility = **5개 collector try/catch/finally 하드닝** (fertility·regional-economy·medical-access·jeonse-price-index + avg-income 은 throw 시 `{ok:0,fail:0}` 가짜 빈 success 행 결함 동시 정정). 실패 시 `status=failure`+errorMessage 가 collector_runs 에 기록됨. **라이브 실증 = 6/12 새벽 KST regional-economy cron 실패 시 failure 행 1쿼리 확인**. 잔여 5개 (unsold·market-stats·sale-price-index·housing-supply-ratio 同 사각 + migration 同 avg-income quirk) = 다음 cron 7월이라 여유, 차단 지속 시 같은 패턴 후속.
 
 - 🟢 **`/api/supabase/apartments` "19초" 근본 진단 완결 (세션 357 적대검증) — 보류** (세션 351 발견 → 357 진단 종결, P2)
