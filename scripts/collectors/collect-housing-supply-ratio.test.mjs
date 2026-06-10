@@ -26,7 +26,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 process.env.KOSIS_KEY = "test-key";
 
 const { parseKosisRows, main } = await import("./collect-housing-supply-ratio.mjs");
-const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { recordCollectorRun, getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
 
 /**
  * @param {string} c1
@@ -133,6 +133,7 @@ describe("main() recordCollectorRun 하드닝", () => {
   beforeEach(() => {
     fetchWithRetryMock.mockReset();
     recordCollectorRun.mockClear();
+    getSupabase.mockReset();
   });
 
   it("KOSIS fetch 실패 → rethrow + status=failure 기록", async () => {
@@ -144,13 +145,31 @@ describe("main() recordCollectorRun 하드닝", () => {
     );
   });
 
-  it("빈 응답 early-return 도 기록 (ok=0)", async () => {
+  it("빈 응답 early-return 도 기록 (ok=0, skip=0)", async () => {
     fetchWithRetryMock.mockResolvedValue({ json: async () => [] });
     await main();
     expect(recordCollectorRun).toHaveBeenCalledTimes(1);
     expect(recordCollectorRun).toHaveBeenCalledWith(
       "kosis-housing-supply-ratio",
-      { ok: 0 },
+      { ok: 0, skip: 0 },
+    );
+  });
+
+  it("값 무변경(diff<0.05) → skip 기록 (monitor ⑤ outage 오탐 차단, 세션 395)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+      makeRow("서울", "보급률(다가구 구분거처 반영)", "2023", 93.6),
+    ] });
+    getSupabase.mockReturnValue({
+      from: () => ({ select: () => ({ is: async () => ({
+        data: [{ id: "1", region: "서울", gu: null, housing_supply_level: 93.6 }],
+        error: null,
+      }) }) }),
+    });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-housing-supply-ratio",
+      { ok: 0, skip: 1 },
     );
   });
 });

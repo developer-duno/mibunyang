@@ -62,6 +62,7 @@ export async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   let ok = 0;
+  let skip = 0;
   let errorMessage = /** @type {string | undefined} */ (undefined);
   try {
     if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
@@ -138,7 +139,12 @@ export async function main() {
     for (const reg of regionsTyped) {
       const value = supplyByRegion[reg.region];
       if (value == null) continue;
-      if (reg.housing_supply_level != null && Math.abs(reg.housing_supply_level - value) < 0.05) continue;
+      if (reg.housing_supply_level != null && Math.abs(reg.housing_supply_level - value) < 0.05) {
+        // 세션 395: 무변경 = 원천 정상 응답 신호로 skip 기록 — 연간 통계라 평상시
+        // ok=0 인데 skip 까지 0 이면 monitor ⑤ outage(정상실행+0건 연속) 오탐 (6/1 run 실측).
+        skip++;
+        continue;
+      }
 
       if (dryRun) {
         log(PHASE, `  [DRY-RUN] regions ${reg.region}: ${reg.housing_supply_level ?? "NULL"} → ${value.toFixed(1)}%`);
@@ -154,7 +160,7 @@ export async function main() {
       else updated++;
     }
 
-    log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
+    log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상 (무변경 skip ${skip}건)`);
 
     if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
     ok = updated;
@@ -165,8 +171,8 @@ export async function main() {
     throw err;
   } finally {
     await recordCollectorRun(PHASE, errorMessage
-      ? { ok, status: "failure", errorMessage }
-      : { ok });
+      ? { ok, skip, status: "failure", errorMessage }
+      : { ok, skip });
   }
 }
 
