@@ -30,7 +30,8 @@
       "WebSearch",
       "WebFetch(domain:finlife.fss.or.kr)",
       "WebFetch(domain:docs.claude.com)",
-      "WebFetch(domain:docs.anthropic.com)"
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(node scripts/collectors/trade-stats.mjs)"
     ],
     "deny": [
       "Read(./.env)",
