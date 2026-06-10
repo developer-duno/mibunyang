@@ -152,130 +152,146 @@ export function parseAllPeriodsByRegion(rows, indicator) {
 }
 
 // ── 메인 ─────────────────────────────────────────────────────
-async function main() {
-  if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
+// 세션 395: try/catch/finally 하드닝 — 지표별 fetch 실패는 기존 reporter 가
+// 집계하지만, KOSIS_KEY throw·regions 조회 실패·upsertBatch throw 경로는
+// collector_runs 0행 사각이었음. summary 를 finally 로 이동 + throw 시
+// status=failure 명시 (errorMessage 없으면 summary status(partial 포함) 그대로 통과).
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
-  const sb = getSupabase();
   const rpt = createReporter(PHASE);
+  let errorMessage = /** @type {string | undefined} */ (undefined);
+  let result = /** @type {any} */ (undefined);
+  try {
+    if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
-  // 기간 설정
-  const now = new Date();
-  const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-  // 분기용: 최근 8분기 (데이터 1~2분기 지연 감안)
-  const curQ = Math.ceil((now.getMonth() + 1) / 3);
-  const endQ = `${now.getFullYear()}${curQ}`;
-  const startQ = `${now.getFullYear() - 2}${curQ}`;
+    const sb = getSupabase();
 
-  // 기존 regions 행 조회 (UPDATE 대상)
-  const { data: regions, error: rErr } = await sb
-    .from("regions")
-    .select("id, region, gu")
-    .is("gu", null); // 시도 레벨만 (VIEW latest_regions CTE 조건)
+    // 기간 설정
+    const now = new Date();
+    const endMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+    // 분기용: 최근 8분기 (데이터 1~2분기 지연 감안)
+    const curQ = Math.ceil((now.getMonth() + 1) / 3);
+    const endQ = `${now.getFullYear()}${curQ}`;
+    const startQ = `${now.getFullYear() - 2}${curQ}`;
 
-  if (rErr) { logError(PHASE, `regions 조회 실패: ${rErr.message}`); return; }
-  log(PHASE, `regions 시도 행: ${regions.length}건`);
+    // 기존 regions 행 조회 (UPDATE 대상)
+    const { data: regions, error: rErr } = await sb
+      .from("regions")
+      .select("id, region, gu")
+      .is("gu", null); // 시도 레벨만 (VIEW latest_regions CTE 조건)
 
-  // 지표별 수집
-  /** @type {Record<string, HistoryRow>} */
-  const historyMap = {}; // key = "region::base_month" → wide row (5지표 merge)
-  for (const ind of INDICATORS) {
-    if (rpt.interrupted()) break;
-    const lookback = ind.lookbackMonths ?? 5;
-    const lookbackDate = new Date(now.getFullYear(), now.getMonth() - lookback, 1);
-    const indStartMonth = `${lookbackDate.getFullYear()}${String(lookbackDate.getMonth() + 1).padStart(2, "0")}`;
-    const start = ind.prdSe === "Q" ? startQ : indStartMonth;
-    const end = ind.prdSe === "Q" ? endQ : endMonth;
+    if (rErr) { logError(PHASE, `regions 조회 실패: ${rErr.message}`); return; }
+    log(PHASE, `regions 시도 행: ${regions.length}건`);
 
-    log(PHASE, `\n[${ind.label}] ${ind.tblId} (${ind.prdSe}) ${start}~${end} lookback=${lookback}개월`);
-
-    /** @type {unknown} */
-    let data;
-    try {
-      data = await fetchKosisTable(ind, start, end);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      logError(PHASE, `  ${ind.label} API 실패: ${msg}`);
-      rpt.fail(1);
-      continue;
-    }
-
-    const dataObj = /** @type {{ err?: string, errMsg?: string }} */ (data);
-    if (dataObj && typeof dataObj === "object" && "err" in dataObj && dataObj.err) {
-      logError(PHASE, `  ${ind.label} KOSIS 에러: ${dataObj.errMsg || dataObj.err}`);
-      rpt.fail(1);
-      continue;
-    }
-
-    /** @type {KosisRow[]} */
-    const rows = Array.isArray(data) ? data : [];
-    if (rows.length < ind.minExpected) {
-      logError(PHASE, `  ${ind.label}: ${rows.length}건 < 최소 ${ind.minExpected}건 — itmId/prdSe 확인 필요`);
-    }
-
-    const latestByRegion = extractLatestByRegion(rows, ind);
-
-    const regionCount = Object.keys(latestByRegion).length;
-    log(PHASE, `  ${ind.label}: ${rows.length}건 응답, ${regionCount}개 시도 매핑`);
-
-    // ── market_stats_history 시계열 누적 (병존, regions UPDATE 와 동일 응답 재파싱) ──
-    for (const row of parseAllPeriodsByRegion(rows, ind)) {
-      const key = `${row.region}::${row.base_month}`;
-      if (!historyMap[key]) historyMap[key] = { region: row.region, gu: "", base_month: row.base_month };
-      /** @type {Record<string, unknown>} */ (historyMap[key])[ind.col] = row.value;
-    }
-
-    // regions 테이블 UPDATE
-    let updated = 0;
-    for (const reg of regions) {
+    // 지표별 수집
+    /** @type {Record<string, HistoryRow>} */
+    const historyMap = {}; // key = "region::base_month" → wide row (5지표 merge)
+    for (const ind of INDICATORS) {
       if (rpt.interrupted()) break;
-      const entry = latestByRegion[reg.region];
-      if (!entry) continue;
+      const lookback = ind.lookbackMonths ?? 5;
+      const lookbackDate = new Date(now.getFullYear(), now.getMonth() - lookback, 1);
+      const indStartMonth = `${lookbackDate.getFullYear()}${String(lookbackDate.getMonth() + 1).padStart(2, "0")}`;
+      const start = ind.prdSe === "Q" ? startQ : indStartMonth;
+      const end = ind.prdSe === "Q" ? endQ : endMonth;
 
-      if (dryRun) {
-        log(PHASE, `  [DRY-RUN] ${reg.region}: ${ind.col} = ${entry.value} (${entry.period})`);
-        updated++;
+      log(PHASE, `\n[${ind.label}] ${ind.tblId} (${ind.prdSe}) ${start}~${end} lookback=${lookback}개월`);
+
+      /** @type {unknown} */
+      let data;
+      try {
+        data = await fetchKosisTable(ind, start, end);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        logError(PHASE, `  ${ind.label} API 실패: ${msg}`);
+        rpt.fail(1);
         continue;
       }
 
-      const { error } = await sb.from("regions")
-        .update({ [ind.col]: entry.value })
-        .eq("id", reg.id);
+      const dataObj = /** @type {{ err?: string, errMsg?: string }} */ (data);
+      if (dataObj && typeof dataObj === "object" && "err" in dataObj && dataObj.err) {
+        logError(PHASE, `  ${ind.label} KOSIS 에러: ${dataObj.errMsg || dataObj.err}`);
+        rpt.fail(1);
+        continue;
+      }
 
-      if (error) {
-        logError(PHASE, `  ${reg.region} ${ind.col} UPDATE 실패: ${error.message}`);
+      /** @type {KosisRow[]} */
+      const rows = Array.isArray(data) ? data : [];
+      if (rows.length < ind.minExpected) {
+        logError(PHASE, `  ${ind.label}: ${rows.length}건 < 최소 ${ind.minExpected}건 — itmId/prdSe 확인 필요`);
+      }
+
+      const latestByRegion = extractLatestByRegion(rows, ind);
+
+      const regionCount = Object.keys(latestByRegion).length;
+      log(PHASE, `  ${ind.label}: ${rows.length}건 응답, ${regionCount}개 시도 매핑`);
+
+      // ── market_stats_history 시계열 누적 (병존, regions UPDATE 와 동일 응답 재파싱) ──
+      for (const row of parseAllPeriodsByRegion(rows, ind)) {
+        const key = `${row.region}::${row.base_month}`;
+        if (!historyMap[key]) historyMap[key] = { region: row.region, gu: "", base_month: row.base_month };
+        /** @type {Record<string, unknown>} */ (historyMap[key])[ind.col] = row.value;
+      }
+
+      // regions 테이블 UPDATE
+      let updated = 0;
+      for (const reg of regions) {
+        if (rpt.interrupted()) break;
+        const entry = latestByRegion[reg.region];
+        if (!entry) continue;
+
+        if (dryRun) {
+          log(PHASE, `  [DRY-RUN] ${reg.region}: ${ind.col} = ${entry.value} (${entry.period})`);
+          updated++;
+          continue;
+        }
+
+        const { error } = await sb.from("regions")
+          .update({ [ind.col]: entry.value })
+          .eq("id", reg.id);
+
+        if (error) {
+          logError(PHASE, `  ${reg.region} ${ind.col} UPDATE 실패: ${error.message}`);
+        } else {
+          updated++;
+        }
+      }
+
+      log(PHASE, `  ${ind.label}: ${updated}건 갱신`);
+      rpt.success(updated);
+
+      // KOSIS 부하 방지
+      await sleep(1000);
+    }
+
+    // ── market_stats_history upsert (5지표 병합 wide row) ──
+    const historyRows = Object.values(historyMap);
+    if (historyRows.length > 0) {
+      if (dryRun) {
+        log(PHASE, `[DRY-RUN] market_stats_history: ${historyRows.length}건 예상`);
       } else {
-        updated++;
+        const inserted = await upsertBatch("market_stats_history", historyRows, "region,gu,base_month", 500, sb);
+        log(PHASE, `market_stats_history 저장: ${inserted}건`);
       }
     }
 
-    log(PHASE, `  ${ind.label}: ${updated}건 갱신`);
-    rpt.success(updated);
+    // KOSIS 호출 쿼터 기록 (지표별 1회)
+    if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", INDICATORS.length);
 
-    // KOSIS 부하 방지
-    await sleep(1000);
+    log(PHASE, "=== 완료 ===");
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    result = rpt.summary();
+    await recordCollectorRun(PHASE, errorMessage
+      ? { ...result, status: "failure", errorMessage }
+      : result);
   }
-
-  // ── market_stats_history upsert (5지표 병합 wide row) ──
-  const historyRows = Object.values(historyMap);
-  if (historyRows.length > 0) {
-    if (dryRun) {
-      log(PHASE, `[DRY-RUN] market_stats_history: ${historyRows.length}건 예상`);
-    } else {
-      const inserted = await upsertBatch("market_stats_history", historyRows, "region,gu,base_month", 500, sb);
-      log(PHASE, `market_stats_history 저장: ${inserted}건`);
-    }
-  }
-
-  // KOSIS 호출 쿼터 기록 (지표별 1회)
-  if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", INDICATORS.length);
-
-  const result = rpt.summary();
-  log(PHASE, "=== 완료 ===");
-  await recordCollectorRun(PHASE, result);
   // 세션 330: 5지표 중 일부만 transient API 사고 시 partial 자연 종료 (텔레그램 알림 노이즈 감소).
   // ok > 0 + fail > 0 = 부분 success (다음 cron 자연 회복 대기). 전부 fail 시만 진짜 사고로 exit 1.
+  // (process.exit 는 finally 를 건너뛰므로 반드시 try/finally 종료 후 — 세션 395)
   if (result.fail > 0 && result.ok === 0) process.exit(1);
 }
 

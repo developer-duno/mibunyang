@@ -30,11 +30,10 @@ import {
 loadEnv();
 
 const PHASE = "migration";
+// 세션 395: 키 체크를 모듈 레벨 process.exit → fetchKosis 안 throw 로 이동.
+// 모듈 레벨 exit 는 main/finally 가 아예 못 돌아 키 누락(세션 232 사고 패턴)이
+// collector_runs 에 0행으로 남던 사각 — throw 면 catch 가 failure 행으로 기록.
 const API_KEY = process.env.KOSIS_MIGRATION_KEY;
-if (!API_KEY) {
-  logError(PHASE, "KOSIS_MIGRATION_KEY 환경변수 필요");
-  process.exit(1);
-}
 
 const BASE_URL = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
 
@@ -153,6 +152,7 @@ export function aggregateKosisRows(rows) {
  * @returns {Promise<unknown[]>}
  */
 export async function fetchKosis() {
+  if (!API_KEY) throw new Error("KOSIS_MIGRATION_KEY 환경변수 필요");
   /** @type {Record<string, string>} */
   const paramObj = {
     method: "getList",
@@ -187,7 +187,9 @@ export async function fetchKosis() {
 }
 
 // ── 메인 ────────────────────────────────────────────────────
-async function main() {
+// 세션 395: catch 추가 — 기존엔 KOSIS throw 시 {ok:0, fail:0} = 가짜 빈
+// success 행이 기록됐음 (avg-income 同 quirk). status=failure 명시로 정정.
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
@@ -195,16 +197,22 @@ async function main() {
   let apiCalls = 0;
   let failed = 0;
   let updated = 0;
+  let errorMessage = /** @type {string | undefined} */ (undefined);
   try {
     const result = await runCollect(dryRun);
     failed = result.failed;
     apiCalls = result.apiCalls;
     updated = result.updated;
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
+    throw err;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "KOSIS_MIGRATION_KEY", apiCalls);
     }
-    await recordCollectorRun(PHASE, { ok: updated, fail: failed });
+    await recordCollectorRun(PHASE, errorMessage
+      ? { ok: updated, fail: failed, status: "failure", errorMessage }
+      : { ok: updated, fail: failed });
   }
   if (failed > 0) process.exit(1);
 }

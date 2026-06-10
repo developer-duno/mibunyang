@@ -4,7 +4,9 @@
  *
  * 대상: parseKosisRows, aggregateRegionTotals, calcProportionalUnsold
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fetchWithRetryMock = vi.fn();
 
 // _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -15,11 +17,20 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     getSupabase: vi.fn(),
     log: vi.fn(),
     logError: vi.fn(),
+    recordApiQuota: vi.fn(),
+    recordCollectorRun: vi.fn(),
+    upsertBatch: vi.fn(),
+    // main 호출마다 실 SIGTERM 리스너 누적 방지 (반환 함수 = isInterrupted)
+    setupGracefulShutdown: vi.fn(() => () => false),
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
-const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold } =
+process.env.KOSIS_KEY = "test-key";
+
+const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, main } =
   await import("./collect-unsold-kosis.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** KOSIS 행 팩토리 */
@@ -199,7 +210,9 @@ describe("calcProportionalUnsold", () => {
 // 세션118: raw https.request → fetchWithRetry 교체 후 ECONNRESET 재시도 검증.
 describe("fetchWithRetry 통합", () => {
   it("ECONNRESET 1회 → 재시도 후 성공", async () => {
-    const { fetchWithRetry } = await import("./_shared.mjs");
+    // 세션 395: mock factory 가 fetchWithRetry 를 델리게이트로 바꿔 — 본 테스트는
+    // 실물 재시도 동작 검증이므로 importActual 로 원본 확보.
+    const { fetchWithRetry } = /** @type {any} */ (await vi.importActual("./_shared.mjs"));
     let calls = 0;
     const originalFetch = global.fetch;
     global.fetch = /** @type {any} */ (vi.fn(async () => {
@@ -215,5 +228,32 @@ describe("fetchWithRetry 통합", () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 395) ──
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS fetch 실패 → rethrow + status=failure 기록", async () => {
+    fetchWithRetryMock.mockRejectedValue(new Error("fetch failed"));
+    await expect(main()).rejects.toThrow(/KOSIS fetch failed/);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-unsold",
+      expect.objectContaining({ status: "failure" }),
+    );
+  });
+
+  it("빈 응답 early-return 도 기록 (ok=0)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-unsold",
+      { ok: 0 },
+    );
   });
 });

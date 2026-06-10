@@ -55,105 +55,119 @@ export function parseKosisRows(rows) {
   return supplyByRegion;
 }
 
-async function main() {
+// 세션 395: try/catch/finally 하드닝 — KOSIS 실패가 collector_runs 에 0행으로
+// 남는 사각 정정 (PR #97 collect-regional-economy 패턴 답습).
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
-  if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
-  const sb = getSupabase();
-
-  // KOSIS API 호출 (DT_MLTM_2100 연간 전체)
-  const now = new Date();
-  const endYear = String(now.getFullYear());
-  const startYear = String(now.getFullYear() - 3);
-
-  log(PHASE, `KOSIS 주택보급률 조회: ${startYear} ~ ${endYear}`);
-
-  const params = new URLSearchParams({
-    method: "getList",
-    apiKey: KOSIS_KEY,
-    orgId: "116",
-    tblId: "DT_MLTM_2100",
-    itmId: "ALL",
-    objL1: "ALL",
-    prdSe: "A",
-    startPrdDe: startYear,
-    endPrdDe: endYear,
-    format: "json",
-    jsonVD: "Y",
-  });
-
-  const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
-  let data;
+  let ok = 0;
+  let errorMessage = /** @type {string | undefined} */ (undefined);
   try {
-    const res = await fetchWithRetry(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
+
+    const sb = getSupabase();
+
+    // KOSIS API 호출 (DT_MLTM_2100 연간 전체)
+    const now = new Date();
+    const endYear = String(now.getFullYear());
+    const startYear = String(now.getFullYear() - 3);
+
+    log(PHASE, `KOSIS 주택보급률 조회: ${startYear} ~ ${endYear}`);
+
+    const params = new URLSearchParams({
+      method: "getList",
+      apiKey: KOSIS_KEY,
+      orgId: "116",
+      tblId: "DT_MLTM_2100",
+      itmId: "ALL",
+      objL1: "ALL",
+      prdSe: "A",
+      startPrdDe: startYear,
+      endPrdDe: endYear,
+      format: "json",
+      jsonVD: "Y",
+    });
+
+    const apiUrl = `https://kosis.kr/openapi/Param/statisticsParameterData.do?${params}`;
+    let data;
     try {
-      data = await res.json();
-    } catch {
-      throw new Error("JSON 파싱 실패");
+      const res = await fetchWithRetry(apiUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("JSON 파싱 실패");
+      }
+    } catch (err) {
+      throw new Error(`KOSIS ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
+
+    const rows = Array.isArray(data) ? data : [];
+    log(PHASE, `KOSIS 응답: ${rows.length}건`);
+
+    if (rows.length === 0) {
+      log(PHASE, "데이터 없음 — 종료");
+      return;
+    }
+
+    const supplyByRegion = parseKosisRows(rows);
+    const summary = Object.entries(supplyByRegion).map(([r, v]) => `${r}=${v.toFixed(1)}%`).join(", ");
+    log(PHASE, `시도별 주택보급률: ${summary}`);
+
+    if (Object.keys(supplyByRegion).length === 0) {
+      log(PHASE, `ITM_NM='${ITM_NM_FILTER}' 매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)`);
+      return;
+    }
+
+    // regions UPDATE (gu IS NULL 17행, housing-permits 답습 패턴)
+    const { data: regions, error: rErr } = await sb
+      .from("regions")
+      .select("id, region, gu, housing_supply_level")
+      .is("gu", null);
+
+    if (rErr) {
+      logError(PHASE, `regions 조회 실패: ${rErr.message}`);
+      return;
+    }
+
+    /** @type {Array<{ id: string; region: string; gu: string | null; housing_supply_level: number | null }>} */
+    const regionsTyped = /** @type {any} */ (regions ?? []);
+
+    let updated = 0;
+    for (const reg of regionsTyped) {
+      const value = supplyByRegion[reg.region];
+      if (value == null) continue;
+      if (reg.housing_supply_level != null && Math.abs(reg.housing_supply_level - value) < 0.05) continue;
+
+      if (dryRun) {
+        log(PHASE, `  [DRY-RUN] regions ${reg.region}: ${reg.housing_supply_level ?? "NULL"} → ${value.toFixed(1)}%`);
+        updated++;
+        continue;
+      }
+
+      const { error } = await sb.from("regions").update({
+        housing_supply_level: value,
+      }).eq("id", reg.id);
+
+      if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
+      else updated++;
+    }
+
+    log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
+
+    if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
+    ok = updated;
+
+    log(PHASE, "\n=== 완료 ===");
   } catch (err) {
-    throw new Error(`KOSIS ${err instanceof Error ? err.message : String(err)}`);
+    errorMessage = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    await recordCollectorRun(PHASE, errorMessage
+      ? { ok, status: "failure", errorMessage }
+      : { ok });
   }
-  if (data.err) throw new Error(`KOSIS 에러: ${data.errMsg || data.err}`);
-
-  const rows = Array.isArray(data) ? data : [];
-  log(PHASE, `KOSIS 응답: ${rows.length}건`);
-
-  if (rows.length === 0) {
-    log(PHASE, "데이터 없음 — 종료");
-    return;
-  }
-
-  const supplyByRegion = parseKosisRows(rows);
-  const summary = Object.entries(supplyByRegion).map(([r, v]) => `${r}=${v.toFixed(1)}%`).join(", ");
-  log(PHASE, `시도별 주택보급률: ${summary}`);
-
-  if (Object.keys(supplyByRegion).length === 0) {
-    log(PHASE, `ITM_NM='${ITM_NM_FILTER}' 매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)`);
-    return;
-  }
-
-  // regions UPDATE (gu IS NULL 17행, housing-permits 답습 패턴)
-  const { data: regions, error: rErr } = await sb
-    .from("regions")
-    .select("id, region, gu, housing_supply_level")
-    .is("gu", null);
-
-  if (rErr) {
-    logError(PHASE, `regions 조회 실패: ${rErr.message}`);
-    return;
-  }
-
-  /** @type {Array<{ id: string; region: string; gu: string | null; housing_supply_level: number | null }>} */
-  const regionsTyped = /** @type {any} */ (regions ?? []);
-
-  let updated = 0;
-  for (const reg of regionsTyped) {
-    const value = supplyByRegion[reg.region];
-    if (value == null) continue;
-    if (reg.housing_supply_level != null && Math.abs(reg.housing_supply_level - value) < 0.05) continue;
-
-    if (dryRun) {
-      log(PHASE, `  [DRY-RUN] regions ${reg.region}: ${reg.housing_supply_level ?? "NULL"} → ${value.toFixed(1)}%`);
-      updated++;
-      continue;
-    }
-
-    const { error } = await sb.from("regions").update({
-      housing_supply_level: value,
-    }).eq("id", reg.id);
-
-    if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
-    else updated++;
-  }
-
-  log(PHASE, `regions 갱신: ${updated}건 / ${regionsTyped.length}건 대상`);
-
-  if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
-  await recordCollectorRun(PHASE, { ok: updated });
-
-  log(PHASE, "\n=== 완료 ===");
 }
 
 const argv1 = process.argv[1];

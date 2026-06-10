@@ -6,7 +6,9 @@
  * 환각 차단: C1 코드 앞 2자리(부동산원 자체 시도 순번) 판정, 동명 시군구 구분,
  *           8개 시도 외 코드 skip, 분기 base_month 형식
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
@@ -19,10 +21,14 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     upsertBatch: vi.fn(),
     recordApiQuota: vi.fn(),
     recordCollectorRun: vi.fn(),
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
-const { parseKabRows } = await import("./collect-sale-price-index.mjs");
+process.env.KOSIS_KEY = "test-key";
+
+const { parseKabRows, main } = await import("./collect-sale-price-index.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 /**
  * @param {string} c1     C1 코드 (SSNNN 5자리)
@@ -137,5 +143,32 @@ describe("parseKabRows (DT_KAB_11672_S5 매매가격지수)", () => {
     expect(result.matched.find((m) => m.region === "서울")?.sale_price_index).toBe(100);
     expect(result.matched.find((m) => m.region === "경기")?.sale_price_index).toBe(107);
     expect(result.unmatched).toEqual([]);
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 395) ──
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS fetch 실패 → rethrow + status=failure 기록", async () => {
+    fetchWithRetryMock.mockRejectedValue(new Error("fetch failed"));
+    await expect(main()).rejects.toThrow(/KOSIS fetch failed/);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-sale-price-index",
+      expect.objectContaining({ status: "failure" }),
+    );
+  });
+
+  it("빈 응답 early-return 도 기록 (ok=0, skip=0)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-sale-price-index",
+      { ok: 0, skip: 0 },
+    );
   });
 });

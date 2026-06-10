@@ -5,7 +5,9 @@
  * 대상: parseKosisRows
  * 환각 차단: ITM_NM='보급률(다가구 구분거처 반영)' 필터 (세션 236 정정 박제)
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
@@ -16,10 +18,15 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     log: vi.fn(),
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
+    recordCollectorRun: vi.fn(),
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
   };
 });
 
-const { parseKosisRows } = await import("./collect-housing-supply-ratio.mjs");
+process.env.KOSIS_KEY = "test-key";
+
+const { parseKosisRows, main } = await import("./collect-housing-supply-ratio.mjs");
+const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 /**
  * @param {string} c1
@@ -118,5 +125,32 @@ describe("parseKosisRows (DT_MLTM_2100 주택보급률)", () => {
     expect(Object.keys(result)).toHaveLength(17);
     expect(result["서울"]).toBeCloseTo(90.0, 1);
     expect(result["제주"]).toBeCloseTo(98.0, 1);
+  });
+});
+
+// ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 395) ──
+describe("main() recordCollectorRun 하드닝", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS fetch 실패 → rethrow + status=failure 기록", async () => {
+    fetchWithRetryMock.mockRejectedValue(new Error("fetch failed"));
+    await expect(main()).rejects.toThrow(/KOSIS fetch failed/);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-housing-supply-ratio",
+      expect.objectContaining({ status: "failure" }),
+    );
+  });
+
+  it("빈 응답 early-return 도 기록 (ok=0)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-housing-supply-ratio",
+      { ok: 0 },
+    );
   });
 });
