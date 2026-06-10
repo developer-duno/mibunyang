@@ -318,6 +318,12 @@
   - **진짜 검토 거리는 스코어링 아님** (별 작업): (a) AptCard "추가 모집" 빨강 배지가 competition_rate 무시하고 단순 존재로 켜짐 + applyhome_events 라이브 전부 eventCount==1 → 세션 366이 "진짜 모순 자리"로 의심. (b) competition_supply×unsold_rate 교차 분기 (probe3 권고). 둘 다 별 세션.
   - **세션 369·370 정정 (REFUTED, 코드 0)**: (a) AptCard 배지는 **모순 아님** — 데이터 출처 `collect-applyhome.mjs:24 BASE_URL=getRemndrLttotPblancCmpet`(잔여세대/무순위 경쟁률)라 모든 event 가 정의상 무순위 공고(=미분양 시그널). "추가 모집" 라벨은 원 분양 외 추가 모집 1건만으로 의미 정확(eventCount>=2 미요구). 빨강은 다른 경고 배지와 색 의미 일관. 스펙(2026-05-02-applyhome-events-log-design.md L51·L105)이 경쟁률↔무순위 공고 "합치지 말 것" + "추가 모집=가시 라벨" 명시. 세션 366이 든 두 신호(경쟁률 스냅샷 vs 무순위 시계열 이벤트)를 혼동. **세션 369 평가(정합) 유지가 정답.**
 
+- 🟢 **KOSIS 를 Claude Managed Agents cron 으로 이전 검토 — 보류 (세션 397 공식 문서 조사)**
+  - 동기: kosis.kr 해외 IP 차단으로 집서버 Windows 스케줄러 이전(세션 288~289). 앤트로픽 Managed Agents "scheduled deployment(cron)" 신기능(2026-06-09)으로 대체 가능한가.
+  - **결론 = 보류**. 공식 문서 직독: (1) 기본 cloud sandbox 는 앤트로픽 관리 인프라(리전 `inference_geo` 미지원) → KOSIS 막힐 위험. (2) **self-hosted sandbox** 면 "network egress never leave your environment" = 집 IP(한국) 사용 가능하나 집서버에 worker(always-on `ant beta:worker poll` 또는 webhook-triggered SDK) 상주 필요(현 스케줄러는 새벽 1회 발화로 충분 = 더 단순). (3) Claude Code 구독과 별개 = **토큰 + 세션 실행시간 과금**($0.08/session-hour, ms 단위; 현 집서버+GH 무료). (4) 베타(`managed-agents-2026-04-01`). (5) KOSIS 수집기는 단순 fetch 스크립트 = AI 자율 판단 불필요 = 오버킬.
+  - 재오픈 트리거: (a) Managed Agents GA + 한국 리전 egress 지원 (b) KOSIS 수집에 AI 판단(통계표 자동 선정 등) 필요 발생.
+  - 출처: platform.claude.com/docs/en/managed-agents/{self-hosted-sandboxes,overview} · /about-claude/pricing
+
 - 🟢 **fill-missing-data.yml 개명** (`backfill-new-apartments.yml`) + `monitor-collectors.yml` `workflow_run.workflows` 동기화 — spec Phase 3, 6/14 발화 2회 success 후 별도 PR (세션 307 spec out-of-scope)
 
 - ✅ **register-naver-task.ps1 과잉 권한 정리 — `Highest` → `Limited` 코드 적용** (세션 359 발견 → 세션 368 PR)
