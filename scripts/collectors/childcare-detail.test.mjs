@@ -13,7 +13,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { parseChildcareDetailXml, mergeDetailIntoFacility } = await import("./childcare-detail.mjs");
+const { parseChildcareDetailXml, mergeDetailIntoFacility, isNetworkError } = await import("./childcare-detail.mjs");
 
 describe("parseChildcareDetailXml", () => {
   // cpmsapi030 응답 = 단일 item 블록 (1 stcode = 1 시설). 70 필드 현실값 sample.
@@ -205,5 +205,34 @@ describe("mergeDetailIntoFacility", () => {
     const merged = mergeDetailIntoFacility(facility, /** @type {any} */ (detail));
     expect(merged.crtel).toBe("");
     expect(merged.crfax).toBe("");
+  });
+});
+
+describe("isNetworkError (circuit breaker 판정)", () => {
+  it("fetch failed = 네트워크 실패 (해외 IP 차단 raw 로그 메시지)", () => {
+    expect(isNetworkError("fetch failed")).toBe(true);
+    expect(isNetworkError("세종 세종시 36110000291: fetch failed")).toBe(true);
+  });
+
+  it("재시도 소진 = 네트워크 실패 (fetchWithRetry 종결 메시지)", () => {
+    expect(isNetworkError("fetchWithRetry: 3회 재시도 소진")).toBe(true);
+  });
+
+  it("Node 시스템 에러 코드 = 네트워크 실패", () => {
+    for (const code of ["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]) {
+      expect(isNetworkError(`request to ... failed, reason: ${code}`)).toBe(true);
+    }
+  });
+
+  it("timeout/aborted = 네트워크 실패 (AbortSignal.timeout)", () => {
+    expect(isNetworkError("The operation was aborted due to timeout")).toBe(true);
+    expect(isNetworkError("This operation was aborted")).toBe(true);
+  });
+
+  it("HTTP 4xx/5xx = 네트워크 실패 아님 (시설별 개별 사정 — circuit 대상 아님)", () => {
+    expect(isNetworkError("HTTP 404")).toBe(false);
+    expect(isNetworkError("HTTP 500")).toBe(false);
+    expect(isNetworkError("응답 부재")).toBe(false);
+    expect(isNetworkError("CHILDCARE_BASIC_API_KEY 환경변수 필요")).toBe(false);
   });
 });

@@ -44,6 +44,29 @@ loadEnv();
 const API_KEY = process.env.CHILDCARE_BASIC_API_KEY;
 const BASE_URL = "http://api.childcare.go.kr/mediate/rest/cpmsapi030/cpmsapi030/request";
 const DAILY_LIMIT = parseInt(process.env.DAILY_LIMIT ?? "1000", 10);
+// 한 시군구에서 연속 네트워크 실패가 이 횟수에 도달하면 그 시군구를 건너뛴다.
+// GH 러너(해외 IP) 가 api.childcare.go.kr(평문 HTTP) 에 막히면 같은 arcode 전 facility 가
+// 호출당 ~30s×3 재시도로 매달려 60분 timeout 으로 잘린다(세션 398 raw 로그: 세종 fetch failed 연쇄).
+// 시도 자체가 진행으로 안 잡혀 DAILY_LIMIT 종료조건도 발동 못 했다 → 조기 중단으로 출혈 차단.
+const NET_FAIL_CIRCUIT = parseInt(process.env.NET_FAIL_CIRCUIT ?? "3", 10);
+// 연속으로 이 수만큼 시군구가 통째로 네트워크 차단(circuit trip + 성공 0)되면 전역 종료.
+// 해외 IP 전면 차단(KOSIS 6/9 사고) 시 947 시군구를 각 3회씩 두드려 timeout 되는 것을 차단.
+const GLOBAL_DEAD_CIRCUIT = parseInt(process.env.GLOBAL_DEAD_CIRCUIT ?? "5", 10);
+
+/**
+ * fetch 실패 메시지가 네트워크 레벨 실패(연결 불가/타임아웃/재시도 소진)인지 판정.
+ * HTTP 4xx/5xx(서버가 응답은 한 경우)와 구분 — 후자는 시설별 개별 사정이라 circuit 대상 아님.
+ * @param {string} msg
+ * @returns {boolean}
+ */
+export function isNetworkError(msg) {
+  return (
+    /fetch failed/i.test(msg) ||
+    /재시도 소진/.test(msg) ||
+    /ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(msg) ||
+    /\b(timeout|aborted)\b/i.test(msg)
+  );
+}
 
 /**
  * @typedef {Object} ChildcareDetail
@@ -221,10 +244,12 @@ async function main() {
   log("init", `regions NOT NULL childcare: ${regions.length}건`);
 
   // 시군구 단위 처리 (atomic UPDATE)
-  let processed = 0;       // cpmsapi030 호출 횟수
+  let processed = 0;       // cpmsapi030 성공 호출 횟수 (쿼터 기록용)
+  let attempted = 0;       // cpmsapi030 시도 횟수 (성공+실패) — DAILY_LIMIT 종료조건 기준
   let skippedFacilities = 0;  // resume self skip
   let updatedRegions = 0;
   let limitReached = false;   // DAILY_LIMIT 도달 — 현재 시군구 UPDATE 후 전체 종료
+  let consecutiveDeadRegions = 0;  // 성공 0건으로 circuit 끊긴 시군구 연속 횟수 (전역 차단 감지)
   const rpt = createReporter("childcare-detail");
 
   for (const r of regions) {
@@ -245,6 +270,8 @@ async function main() {
     /** @type {Array<ExistingFacility | (ChildcareDetail & { crtel: string, crfax: string })>} */
     const updatedFacilities = [];
     let regionChanged = false;
+    let consecutiveNetFails = 0;  // 이 시군구 연속 네트워크 실패 (circuit breaker)
+    let regionCircuitTripped = false;  // 이 시군구가 네트워크 circuit 으로 끊겼나
 
     for (const fac of facilities) {
       // resume self skip: 70 필드 박제 표시 = crtypename 존재
@@ -256,7 +283,8 @@ async function main() {
 
       // DAILY_LIMIT 도달 시 현재 시군구 facility 루프 종료
       // (break = facility 루프만 탈출 → 아래 atomic UPDATE 실행 → 시군구 루프 끝에서 전체 종료)
-      if (processed >= DAILY_LIMIT) {
+      // 시도(attempted) 기준 — 실패 호출도 진행으로 쳐야 네트워크 차단 시에도 종료조건이 발동한다.
+      if (attempted >= DAILY_LIMIT) {
         log("limit", `DAILY_LIMIT ${DAILY_LIMIT} 도달 — 남은 시군구 ${regions.length - updatedRegions}건 다음 cron 분산`);
         updatedFacilities.push(fac);  // 미박제 그대로 유지
         // 남은 facilities 도 그대로 박제 (atomic UPDATE 보장)
@@ -269,6 +297,8 @@ async function main() {
       try {
         const detail = await fetchChildcareDetail(arcode, fac.stcode);
         processed++;
+        attempted++;
+        consecutiveNetFails = 0;  // 성공 = circuit 리셋
         await sleep(300);  // rate limit (population-sex-age L144 답습)
 
         if (!detail) {
@@ -282,8 +312,25 @@ async function main() {
         regionChanged = true;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        attempted++;  // 실패도 시도로 집계 — DAILY_LIMIT 종료조건이 네트워크 차단 시에도 발동하게
         logError("fetch", `${r.region} ${r.gu} ${fac.stcode}: ${msg}`);
         updatedFacilities.push(fac);  // 실패 시 기존 유지
+
+        // 네트워크 레벨 실패(해외 IP 차단 등)는 같은 arcode 전체에 번지므로 연속 N회면 시군구 skip.
+        // HTTP 4xx/5xx(시설별 개별 사정)는 circuit 대상 아님 — facility 단위로 계속 진행.
+        if (isNetworkError(msg)) {
+          consecutiveNetFails++;
+          if (consecutiveNetFails >= NET_FAIL_CIRCUIT) {
+            logError("circuit", `${r.region} ${r.gu}: 연속 네트워크 실패 ${consecutiveNetFails}회 — 시군구 skip (해외 IP 차단 의심)`);
+            regionCircuitTripped = true;
+            // 남은 facilities 미박제 그대로 유지 (atomic UPDATE 보존, 다음 cron 재시도)
+            const idx = facilities.indexOf(fac);
+            for (let i = idx + 1; i < facilities.length; i++) updatedFacilities.push(facilities[i]);
+            break;
+          }
+        } else {
+          consecutiveNetFails = 0;  // 비네트워크 에러 = circuit 리셋
+        }
       }
     }
 
@@ -314,11 +361,23 @@ async function main() {
       }
     }
 
+    // 전역 dead-region circuit: circuit 으로 끊긴 시군구가 성공 0건이면 dead 로 집계,
+    // 성공이 1건이라도 있으면 리셋(네트워크 살아있음). 연속 dead 가 임계 도달 = 전면 차단 → 전역 종료.
+    if (regionCircuitTripped && !regionChanged) {
+      consecutiveDeadRegions++;
+      if (consecutiveDeadRegions >= GLOBAL_DEAD_CIRCUIT) {
+        logError("circuit", `연속 ${consecutiveDeadRegions}개 시군구 전면 네트워크 차단 — 전역 종료 (api.childcare.go.kr 해외 IP 차단 의심, 다음 cron 재시도)`);
+        break;
+      }
+    } else if (regionChanged) {
+      consecutiveDeadRegions = 0;  // 성공한 시군구 = 네트워크 정상, 전역 circuit 리셋
+    }
+
     // DAILY_LIMIT 도달 = 현재 시군구 처리 완료 후 전체 종료
     if (limitReached) break;
   }
 
-  log("done", `cpmsapi030 호출 ${processed}회 / resume skip ${skippedFacilities}건 / regions UPDATE ${updatedRegions}건`);
+  log("done", `cpmsapi030 시도 ${attempted}회 (성공 ${processed}) / resume skip ${skippedFacilities}건 / regions UPDATE ${updatedRegions}건`);
 
   if (!dryRun) await recordApiQuota("childcare-detail", "CHILDCARE_BASIC_API_KEY", processed);
   const result = rpt.summary();
