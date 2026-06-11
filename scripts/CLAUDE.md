@@ -175,7 +175,7 @@
 > 재측정: `npx vitest run scripts/collectors/ --reporter=json --outputFile=$TMP/c.json` 후 `testResults[].assertionResults.length` 파일별 합산.
 > 세션 345 정정: 박제 42행/grep 수치 stale → vitest 실측 55행/1017 케이스. 세션 358: molit-building-info 29→22(energy 7케이스 제거) + data-audit 14→17 = **1013 케이스**.
 
-**55개 파일 · 1013 케이스** (2026-06-01 vitest 실측)
+**56개 파일 · 1099 케이스** (2026-06-11 vitest 실측 — `scripts/collectors/` 범위)
 
 | 파일 | 테스트 수 |
 |------|----------|
@@ -219,7 +219,7 @@
 | collect-housing-supply-ratio.test.mjs | 11 |
 | data-fill.test.mjs | 11 |
 | reverse-geocode.test.mjs | 10 |
-| childcare-detail.test.mjs | 10 |
+| childcare-detail.test.mjs | 15 |
 | regulation-seed.test.mjs | 9 |
 | calc-exclusive-ratio.test.mjs | 9 |
 | childcare-info-jeju.test.mjs | 9 |
