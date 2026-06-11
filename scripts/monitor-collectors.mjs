@@ -190,6 +190,13 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "kosis-medical-access",       stale_days: 38,  owner: "KOSIS 의료접근성 (로컬 매월 14일)" },
   { collector: "kosis-sale-price-index",     stale_days: 100, owner: "KOSIS 매매가격지수 (로컬 1·4·7·10월 17일)" },
   { collector: "kosis-jeonse-price-index",   stale_days: 38,  owner: "KOSIS 전세가격지수 (로컬 매월 18일)" },
+  // ── childcare 3종 = 집서버 로컬 러너 수집기 (childcare-local-runner.mjs, 매일 04:30 KST 전부 실행).
+  //    api.childcare.go.kr 해외 IP 차단으로 GH collect-childcare-detail/jeju.yml 삭제 +
+  //    collect-childcare.yml info step 제거 (세션 399) — GH run 이 없어 collector_runs 신선도가
+  //    유일한 "안 돌면 알림". 매일 발화 = 14 (1주 여유).
+  { collector: "childcare-detail",     stale_days: 14, owner: "어린이집 상세 cpmsapi030 (로컬 매일)" },
+  { collector: "childcare-info",       stale_days: 14, owner: "어린이집 정보 cpmsapi021 (로컬 매일)" },
+  { collector: "childcare-info-jeju",  stale_days: 14, owner: "제주 어린이집 cpmsapi017 (로컬 매일)" },
 ];
 
 /** ⑤ 외부 API 장기 중단 판정 — 최근 N회 연속 success+ok=0 = silent fail 의심. */

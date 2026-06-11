@@ -63,6 +63,22 @@
 
 ---
 
+## childcare 수집 — 로컬 자동화 (세션 399)
+
+**`api.childcare.go.kr`(평문 HTTP)이 해외 클라우드 IP(GitHub 러너)를 차단 → 한국 IP 로컬 PC에서만 실행.** GH `collect-childcare-detail.yml`·`collect-childcare-jeju.yml` 삭제 + `collect-childcare.yml` 의 info step 제거(Kakao step 만 GH 잔존).
+
+| 구분 | 방식 | 실행 |
+|------|------|------|
+| 자동 수집 | Windows 스케줄러 `MibunyangChildcareLocal` → `childcare-local-runner.bat` | 매일 04:30 KST (3종 전부: childcare-detail/info/info-jeju) |
+| 수동/보충 | `node scripts/childcare-local-runner.mjs` | 필요시 |
+| 대상 확인 | `node scripts/childcare-local-runner.mjs --list` | - |
+
+등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-childcare-task.ps1`
+
+KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실행 — detail 은 `DAILY_LIMIT` 1000/일 누적(~23일), info(243건)/jeju(2건)는 양이 적어 매일 최신 유지. 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS`(childcare-detail/info/info-jeju, stale_days 14). 시간 분리 = childcare 04:30 / KOSIS 05:30 / naver 02:00·08:00. detail 의 circuit breaker(세션 398)는 로컬(한국 IP)에선 차단이 없어 발동 안 함 = 무해(외부 장애 시 안전망으로 보존).
+
+---
+
 ## 네이버 수집 — 로컬 자동화
 
 **네이버 API는 데이터센터 IP를 차단 → 한국 IP 로컬 PC에서만 실행.**

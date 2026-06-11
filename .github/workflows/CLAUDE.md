@@ -4,13 +4,14 @@
 
 ## 워크플로우 목록
 
-### 매일 (3개)
+### 매일 (2개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
 | `collect-naver-listings.yml` | 네이버 후처리 (sync + 전용률 계산) |
 | `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00) |
-| `collect-childcare-detail.yml` | 어린이집 cpmsapi030 70 필드 상세 (KST 04:00, DAILY_LIMIT 분산 ~23일 누적) |
+
+> 세션 399: `collect-childcare-detail.yml` 삭제 → 집서버 로컬 러너 이전 (아래 KOSIS 절 옆 childcare 절 참조).
 
 ### CI/CD (2개)
 
@@ -34,6 +35,12 @@
 > 10개 삭제. 수집 = `scripts/kosis-local-runner.mjs` (Windows 작업 `MibunyangKosisLocal`, 매일 05:30 KST
 > 일자 디스패치, `scripts/register-kosis-task.ps1` 로 등록). 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS`
 > (collector_runs 신선도 — GH run 없음). 수동 보충 = `node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD`.
+>
+> **세션 399: childcare 3종(api.childcare.go.kr 평문 HTTP) GH 폐기 → 집서버 로컬 러너 이전.** 해외
+> Azure IP 차단으로 `collect-childcare-detail.yml`·`collect-childcare-jeju.yml` 삭제 +
+> `collect-childcare.yml` 의 info step 제거(Kakao step 만 GH 잔존). 수집 = `scripts/childcare-local-runner.mjs`
+> (Windows 작업 `MibunyangChildcareLocal`, 매일 04:30 KST 3종 전부 실행, `scripts/register-childcare-task.ps1` 로
+> 등록). 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS` (childcare-detail/info/info-jeju, collector_runs 신선도).
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
@@ -44,7 +51,7 @@
 | `collect-environment.yml` | 1일 | 환경/혐오시설 |
 | `collect-noxious.yml` | 3일 | 혐오시설 거리 (세션260: 1일→3일 분산, 60분 장시간 작업) |
 | `collect-industry.yml` | 7일 | 산업단지 매칭 (세션260: 1일→7일 분산) |
-| `collect-childcare.yml` | 1일 | Kakao 어린이집/유치원 |
+| `collect-childcare.yml` | 1일 | Kakao 어린이집/유치원 (info step 은 세션 399 로컬 이전) |
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
 | `collect-emergency.yml` | 2일 | 응급의료기관 |
 | `collect-population.yml` | 5일 | 행안부 인구 증감률 |

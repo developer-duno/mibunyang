@@ -570,10 +570,12 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 15 후보 박힘 (기존 5 + KOSIS 로컬 러너 10, 세션 289)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 18 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
-      "applyhome-detail", "avg-income", "building-hub", "housing-permits",
+      "applyhome-detail", "avg-income", "building-hub",
+      "childcare-detail", "childcare-info", "childcare-info-jeju",
+      "housing-permits",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
       "kosis-unsold", "market-stats", "migration", "schools", "transport",
