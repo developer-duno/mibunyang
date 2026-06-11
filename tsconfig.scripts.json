@@ -25,9 +25,7 @@
                     "scripts/check-naver-status.mjs",
                     "scripts/monitors/applyhome-event-recurrence.mjs",
                     "scripts/monitors/applyhome-zero-supply-ratio.mjs",
-                    "scripts/probes/datagokr-apply.mjs",
-                    "scripts/probes/kosis-api-test.mjs",
-                    "scripts/probes/kosis-api-test2.mjs",
+                    "scripts/probes",
                     "scripts/_tmp_schoolinfo_probe.mjs"
                 ]
 }
