@@ -54,6 +54,32 @@ const NET_FAIL_CIRCUIT = parseInt(process.env.NET_FAIL_CIRCUIT ?? "3", 10);
 const GLOBAL_DEAD_CIRCUIT = parseInt(process.env.GLOBAL_DEAD_CIRCUIT ?? "5", 10);
 
 /**
+ * cpmsapi030 응답 XML 의 결과코드가 "오늘 더 호출 불가"(쿼터 초과 INFO-300 / 키 만료 INFO-400)
+ * 인지 검사. 해당 시 throw — 호출부가 "응답 부재 skip"(시설 개별 사정)과 구분해 전역 종료한다.
+ * INFO-200(검색결과 없음)·기타 코드는 통과시켜 기존 null 흐름(해당 시설만 skip)을 유지.
+ *
+ * 사고 답습(세션 400): 가드 부재 시 INFO-300 응답에 <item> 이 없어 parseChildcareDetailXml 이
+ * null 반환 → "응답 부재 skip" + processed++ 로 묻혀 1000건 쿼터 초과를 success 로 기록(데이터
+ * 0건인데 모니터 정상 표시). childcare-info.mjs assertNoErrorCode 답습 + detail 전역종료 특성 반영.
+ * @param {string} xml
+ * @throws {QuotaExceededError} INFO-300/INFO-400 시
+ */
+export function assertNoQuotaError(xml) {
+  const m = /\b(INFO-(?:300|400))\b/.exec(xml);
+  if (m) throw new QuotaExceededError(m[1]);
+}
+
+/** 일 요청 초과(INFO-300) 또는 키 만료(INFO-400) — 오늘 더 호출 불가, 전역 종료 신호. */
+export class QuotaExceededError extends Error {
+  /** @param {string} code */
+  constructor(code) {
+    super(`cpmsapi030 ${code} (일 요청 초과/키 만료) — 오늘 더 호출 불가`);
+    this.name = "QuotaExceededError";
+    this.code = code;
+  }
+}
+
+/**
  * fetch 실패 메시지가 네트워크 레벨 실패(연결 불가/타임아웃/재시도 소진)인지 판정.
  * HTTP 4xx/5xx(서버가 응답은 한 경우)와 구분 — 후자는 시설별 개별 사정이라 circuit 대상 아님.
  * @param {string} msg
@@ -204,6 +230,7 @@ async function fetchChildcareDetail(arcode, stcode) {
   const url = `${BASE_URL}?key=${encodeURIComponent(API_KEY)}&arcode=${arcode}&stcode=${stcode}`;
   const res = await fetchWithRetry(url);
   const xml = await res.text();
+  assertNoQuotaError(xml);  // INFO-300/400 = 전역 종료 신호 (응답 부재 skip 과 구분)
   return parseChildcareDetailXml(xml);
 }
 
@@ -249,6 +276,7 @@ async function main() {
   let skippedFacilities = 0;  // resume self skip
   let updatedRegions = 0;
   let limitReached = false;   // DAILY_LIMIT 도달 — 현재 시군구 UPDATE 후 전체 종료
+  let quotaExhausted = false;  // INFO-300/400 (일 요청 초과/키 만료) — 즉시 전역 종료, 다음 cron 재시도
   let consecutiveDeadRegions = 0;  // 성공 0건으로 circuit 끊긴 시군구 연속 횟수 (전역 차단 감지)
   const rpt = createReporter("childcare-detail");
 
@@ -311,6 +339,16 @@ async function main() {
         updatedFacilities.push(mergeDetailIntoFacility(fac, detail));
         regionChanged = true;
       } catch (e) {
+        // INFO-300/400 (일 요청 초과/키 만료) = 오늘 더 호출 불가 → 즉시 전역 종료.
+        // "응답 부재 skip"(시설 개별 사정)과 달리 success 로 묻지 않고 미박제 그대로 다음 cron 재시도.
+        if (e instanceof QuotaExceededError) {
+          logError("quota", `${r.region} ${r.gu}: ${e.message} — 전역 종료 (다음 cron 재시도)`);
+          updatedFacilities.push(fac);  // 미박제 그대로 유지
+          const idx = facilities.indexOf(fac);
+          for (let i = idx + 1; i < facilities.length; i++) updatedFacilities.push(facilities[i]);
+          quotaExhausted = true;
+          break;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         attempted++;  // 실패도 시도로 집계 — DAILY_LIMIT 종료조건이 네트워크 차단 시에도 발동하게
         logError("fetch", `${r.region} ${r.gu} ${fac.stcode}: ${msg}`);
@@ -373,11 +411,11 @@ async function main() {
       consecutiveDeadRegions = 0;  // 성공한 시군구 = 네트워크 정상, 전역 circuit 리셋
     }
 
-    // DAILY_LIMIT 도달 = 현재 시군구 처리 완료 후 전체 종료
-    if (limitReached) break;
+    // DAILY_LIMIT 도달 또는 쿼터 초과(INFO-300/400) = 전체 종료
+    if (limitReached || quotaExhausted) break;
   }
 
-  log("done", `cpmsapi030 시도 ${attempted}회 (성공 ${processed}) / resume skip ${skippedFacilities}건 / regions UPDATE ${updatedRegions}건`);
+  log("done", `cpmsapi030 시도 ${attempted}회 (성공 ${processed}) / resume skip ${skippedFacilities}건 / regions UPDATE ${updatedRegions}건${quotaExhausted ? " / 쿼터 초과 조기 종료" : ""}`);
 
   if (!dryRun) await recordApiQuota("childcare-detail", "CHILDCARE_BASIC_API_KEY", processed);
   const result = rpt.summary();

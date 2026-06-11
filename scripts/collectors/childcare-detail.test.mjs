@@ -13,7 +13,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { parseChildcareDetailXml, mergeDetailIntoFacility, isNetworkError } = await import("./childcare-detail.mjs");
+const { parseChildcareDetailXml, mergeDetailIntoFacility, isNetworkError, assertNoQuotaError, QuotaExceededError } = await import("./childcare-detail.mjs");
 
 describe("parseChildcareDetailXml", () => {
   // cpmsapi030 응답 = 단일 item 블록 (1 stcode = 1 시설). 70 필드 현실값 sample.
@@ -234,5 +234,42 @@ describe("isNetworkError (circuit breaker 판정)", () => {
     expect(isNetworkError("HTTP 500")).toBe(false);
     expect(isNetworkError("응답 부재")).toBe(false);
     expect(isNetworkError("CHILDCARE_BASIC_API_KEY 환경변수 필요")).toBe(false);
+  });
+});
+
+describe("assertNoQuotaError (INFO-300/400 전역 종료 신호)", () => {
+  // 사고 답습(세션 400): 가드 부재 시 INFO-300 응답이 <item> 없어 null → "응답 부재 skip" 로 묻혀
+  // 1000건 쿼터 초과가 success 로 기록됨(데이터 0건인데 모니터 정상). 실 응답 형태 답습.
+  it("INFO-300 (일 요청 1000건 초과) = QuotaExceededError throw", () => {
+    const xml = `<response><errmsg>일 요청 건수(1000건)를 초과하였습니다.</errmsg><errcode>INFO-300</errcode></response>`;
+    expect(() => assertNoQuotaError(xml)).toThrow(QuotaExceededError);
+    try {
+      assertNoQuotaError(xml);
+    } catch (e) {
+      expect(/** @type {any} */ (e).code).toBe("INFO-300");
+    }
+  });
+
+  it("INFO-400 (키 만료) = QuotaExceededError throw", () => {
+    const xml = `<response><errcode>INFO-400</errcode></response>`;
+    expect(() => assertNoQuotaError(xml)).toThrow(QuotaExceededError);
+  });
+
+  it("정상 detail 응답 (item 블록) = throw 없음", () => {
+    const xml = `<response><item><stcode>11110000013</stcode><crname>정상</crname></item></response>`;
+    expect(() => assertNoQuotaError(xml)).not.toThrow();
+  });
+
+  it("INFO-200 (검색결과 없음) = throw 없음 (시설 개별 사정, 응답 부재 skip 유지)", () => {
+    // INFO-200 은 그 시설만 detail 없음 → null 반환 → "응답 부재 skip" 으로 처리되어야 함.
+    const xml = `<response><errcode>INFO-200</errcode></response>`;
+    expect(() => assertNoQuotaError(xml)).not.toThrow();
+  });
+
+  it("QuotaExceededError = name/code 보존", () => {
+    const err = new QuotaExceededError("INFO-300");
+    expect(err.name).toBe("QuotaExceededError");
+    expect(err.code).toBe("INFO-300");
+    expect(err).toBeInstanceOf(Error);
   });
 });

@@ -1,0 +1,6 @@
+# Windows 배치 파일은 항상 CRLF 로 체크아웃 — cmd 가 LF 파일의 한글 주석을 명령으로
+# 잘못 파싱해 작업 스케줄러 발화가 실패하는 사고 차단 (세션 400: childcare-local-runner.bat
+# 이 Write 로 LF 생성돼 6/12 자동 발화 실패 재현). .gitattributes 없으면 autocrlf 만으로는
+# Write 직생성 파일이 LF 로 남아 재발 → 명시 eol=crlf 로 영구 보장.
+*.bat text eol=crlf
+*.cmd text eol=crlf
