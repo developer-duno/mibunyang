@@ -284,6 +284,7 @@
   - 본인 정정 불가 자리 = data.go.kr 외부 서버 사고. 4/10 success 직전 자리 후 5월 들어 100% 사고
   - 정정 자리 = (1) MOLIT API 정상화 자연 대기 (2) `gh workflow run "Housing Permits Data Collection"` 재발화 24h 간격 답습 (3) MOLIT 콘솔 자리 답습 (서비스 폐기 / endpoint 변경 가능성)
   - 6/10 schedule run 자연 답습 = MOLIT API 정상화 여부 자동 답습
+  - **세션 403 화면 거짓 표시 정직화 완료**: 전 단지 supplyRatio NULL → api `?? 150` 비관적 폴백을 화면이 "공급량 150%" 실측값처럼 표시하던 거짓 정정. scoreRisk.ts 공급량/시공사재무 sub 가 `_fallbackSupplyRatio`/`_fallbackBuilderDebt` 플래그 읽어 "정보 없음"/"부채율 미수집" 정직 표시. **점수 불변**(비관적 폴백 정책 유지, 사장님 결정). 데이터는 여전히 MOLIT API HTTP 500 복구 대기 (6/11 raw 호출 재확인). 회귀 가드 = engine.test.js 신규 2건 (NULL→정직표시 + 정상값 회귀). builderDebtRatio NULL 도 동종 정정 동시 박힘.
 
 - ✅ **regions.jeonse_rate 0% → 22.2% — 채움 collector 신규 (세션 324 PR #29 머지)**
   - 세션 323 환각 = "orphan 가능성" → 세션 324 실측 폐기 (naver-estate-web cross-repo 4 위치 활성 사용)

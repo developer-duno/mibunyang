@@ -61,6 +61,8 @@ export interface Apt {
   crimeSafetyGrade?: number | null;
   builderDebtRatio?: number;
   supplyRatio?: number;
+  _fallbackSupplyRatio?: boolean;
+  _fallbackBuilderDebt?: boolean;
   popGrowth?: number | null;
   netMigration?: number | null;
   dataReliability?: number;

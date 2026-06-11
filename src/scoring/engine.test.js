@@ -251,6 +251,35 @@ describe('scoreRisk', () => {
   it('cancelRatio6m 낮음 -> 안전 점수 높음', () => {
     expect(scoreRisk(makeApt({ cancelRatio6m: 2 })).total).toBeGreaterThan(scoreRisk(makeApt({ cancelRatio6m: 30 })).total);
   });
+  // 공급비율·시공사부채 NULL 정직 표시 (세션403): api sanitize가 ?? 150/?? 250 비관적 폴백으로 채우되
+  // _fallbackX 플래그를 세팅함. 점수는 폴백값으로 채점(불변)하되 화면 sub info/detail은 폴백 수치를 숨기고 정직 표시.
+  it('supplyRatio NULL(_fallbackSupplyRatio) -> 공급량 점수 불변 + info "150%" 숨김', () => {
+    const filled = scoreRisk(makeApt({ supplyRatio: 150 }));
+    const nullish = scoreRisk(makeApt({ supplyRatio: 150, _fallbackSupplyRatio: true }));
+    const sFilled = filled.subs.find(s => s.name === "공급량");
+    const sNull = nullish.subs.find(s => s.name === "공급량");
+    // 점수 불변 (폴백값 150 기준 채점 동일)
+    expect(sNull?.score).toBe(sFilled?.score);
+    // 정직 표시: 폴백 수치 "150%" 노출 금지 + "정보 없음"
+    expect(sNull?.info).not.toContain("150");
+    expect(sNull?.info).toBe("정보 없음");
+    expect(sNull?.detail).not.toContain("150%");
+    // 정상값(플래그 false)은 현행 "150%" 표시 유지 (회귀 방지)
+    expect(sFilled?.info).toContain("150");
+  });
+  it('builderDebtRatio NULL(_fallbackBuilderDebt) -> 시공사 재무 점수 불변 + detail "250%" 숨김', () => {
+    const filled = scoreRisk(makeApt({ builderDebtRatio: 250, builderCreditGrade: "BBB" }));
+    const nullish = scoreRisk(makeApt({ builderDebtRatio: 250, builderCreditGrade: "BBB", _fallbackBuilderDebt: true }));
+    const sFilled = filled.subs.find(s => s.name === "시공사 재무");
+    const sNull = nullish.subs.find(s => s.name === "시공사 재무");
+    // 점수 불변 (폴백값 250 기준 채점 동일)
+    expect(sNull?.score).toBe(sFilled?.score);
+    // 정직 표시: 폴백 부채율 "250%" 노출 금지 (credit grade 부분은 유지)
+    expect(sNull?.detail).not.toContain("250%");
+    expect(sNull?.detail).toContain("미수집");
+    // 정상값은 현행 "250%" 표시 유지 (회귀 방지)
+    expect(sFilled?.detail).toContain("250%");
+  });
 });
 
 // scoreRisk 내부 10개 서브 가중치 합 = 1.00 검증
