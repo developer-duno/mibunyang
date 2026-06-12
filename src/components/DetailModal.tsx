@@ -271,7 +271,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         {/* §6 점수 — DataSections(공공데이터) + 액션버튼 + CatPanel×6 */}
         <section id="sec-score" style={{ margin: 0, padding: 0 }}>
-        <DataSections apt={mergedApt ?? apt} />
+        <DataSections apt={mergedApt ?? apt} adminMode={adminLoggedIn} profile={profile} />
         {onConsult && (
           <button onClick={() => onConsult(apt.id as string)} style={{
             width: "100%", background: C.blue, color: C.white, border: "none", borderRadius: 8,
