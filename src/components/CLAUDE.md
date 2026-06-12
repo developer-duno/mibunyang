@@ -67,7 +67,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
-| DetailModal | 130 | 모달 컨테이너 (isDesktop 760px, ARIA dialog) |
+| DetailModal | 342 | 모달 컨테이너 (isDesktop 760px, ARIA dialog). 세션 407 D1: 6 콘텐츠 교체 탭(activeTab+visited keepMounted, 관리자=전 패널 마운트) + CTA sticky bottom 바(탭 무관 항상 노출, 모달 마지막 포커서블 불변식) |
 | PriceChart | 43 | 분양가 추이 SVG (usePriceHistory + siblingIds) |
 | UnsoldChart | 45 | 미분양 추이 SVG (useUnsoldHistory + siblingIds) |
 | PresaleInfo | 130 | 네이버 분양정보 (가격카드/일정/링크/Analytics) |
