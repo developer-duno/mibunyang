@@ -90,7 +90,8 @@ export const StickyJumpNav = memo(function StickyJumpNav({
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 transition: "background .15s, color .15s",
-                minHeight: 30,
+                // 탭 전환(세션 407 D1)으로 칩이 비활성 콘텐츠의 유일한 진입로로 승격 — 터치 타겟 36px+ (접근성 규칙)
+                minHeight: 36,
               }}
             >
               {s.label}
