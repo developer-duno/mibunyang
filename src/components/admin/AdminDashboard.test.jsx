@@ -36,7 +36,6 @@ describe("AdminDashboard", () => {
   const defaultProps = () => ({
     admin: makeAdmin(),
     onLogout: vi.fn(),
-    onSwitchToExpert: vi.fn(),
     profile: "live",
     setProfile: vi.fn(),
     customWeights: {},
@@ -64,18 +63,23 @@ describe("AdminDashboard", () => {
     });
   });
 
-  // 전문가 보기 버튼 표시
-  it("전문가 보기 버튼을 표시한다", () => {
+  // 세션 405: 전문가 보기 버튼·onSwitchToExpert 제거 가드 (단지 분석은 상세 모달 관리자 인사이트)
+  it("전문가 보기 버튼이 없다 (세션 405 폐지 가드)", () => {
     render(<AdminDashboard {...defaultProps()} />);
-    expect(screen.getByText("전문가 보기")).toBeTruthy();
+    expect(screen.queryByText("전문가 보기")).toBeNull();
   });
 
-  // 전문가 보기 클릭 시 onSwitchToExpert 호출
-  it("전문가 보기 버튼 클릭 시 onSwitchToExpert를 호출한다", () => {
-    const props = defaultProps();
-    render(<AdminDashboard {...props} />);
-    fireEvent.click(screen.getByText("전문가 보기"));
-    expect(props.onSwitchToExpert).toHaveBeenCalled();
+  // 회원 관리 섹션 (구 "전문가 신청 관리" 개명)
+  it("회원 관리 섹션을 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    expect(screen.getByText("회원 관리")).toBeTruthy();
+    expect(screen.queryByText("전문가 신청 관리")).toBeNull();
+  });
+
+  // 상담 요청 목록 섹션 (세션 405 이관)
+  it("상담 요청 목록 섹션을 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    expect(screen.getByText("상담 요청 목록")).toBeTruthy();
   });
 
   // 로그아웃 버튼 표시 및 클릭
@@ -226,12 +230,6 @@ describe("AdminDashboard", () => {
     // 상태 탭의 "정지됨"과 배지의 "정지됨" 둘 다 존재
     const badges = screen.getAllByText("정지됨");
     expect(badges.length).toBeGreaterThanOrEqual(2); // 탭 + 배지
-  });
-
-  // onSwitchToExpert가 null이면 전문가 보기 버튼 미표시
-  it("onSwitchToExpert가 null이면 전문가 보기 버튼을 표시하지 않는다", () => {
-    render(<AdminDashboard {...defaultProps()} onSwitchToExpert={null} />);
-    expect(screen.queryByText("전문가 보기")).toBeNull();
   });
 
   // 가중치 편집 버튼 표시

@@ -35,7 +35,7 @@ const S = {
   alertTag: { fontSize: F.sm, padding: "3px 8px", borderRadius: 4, fontWeight: 600 },
 };
 
-export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop, isLoggedIn = true }: AptCardProps) {
+export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, isDesktop, isLoggedIn = true }: AptCardProps) {
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = ((apt.noxious as string[] | undefined) || []).length;
@@ -154,9 +154,6 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         <button onClick={() => onDetail(apt.id as string)} style={dynStyles.detailBtn}>상세보기</button>
         <button onClick={e => { e.stopPropagation(); onFav(apt.id as string); }} style={dynStyles.favBtn}>{isFav ? "관심 해제" : "관심매물"}</button>
         <button onClick={e => { e.stopPropagation(); onComp(apt.id as string); }} style={dynStyles.compBtn}>{isComp ? "비교 중" : "비교"}</button>
-        {onExpertView && (
-          <button onClick={e => { e.stopPropagation(); onExpertView(apt); }} style={{ ...S.btnBase, background: C.indigo, color: C.white, border: "1.5px solid transparent", fontWeight: 700 }}>전문가</button>
-        )}
       </div>
     </div>
   );
@@ -166,7 +163,6 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (prev.isComp !== next.isComp || prev.isFav !== next.isFav) return false;
   if (prev.isDesktop !== next.isDesktop) return false;
   if (prev.isLoggedIn !== next.isLoggedIn) return false;
-  if (!!prev.onExpertView !== !!next.onExpertView) return false;
   // alertRow 6배지 신호 — 누락 시 데이터 갱신돼도 카드 안 다시 그림
   // (BACKLOG 🟢: AptCard memo comparator 6필드 — 세션168)
   const pa = prev.apt, na = next.apt;

@@ -2,7 +2,7 @@
  * AdminDashboard 컴포넌트 props 타입 (M3d).
  *
  * AdminDashboard.jsx L10:
- *   memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }))
+ *   memo(function AdminDashboard({ admin, onLogout, profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }))
  */
 import type { Profile } from "@/types/scoring";
 import type { AdminMode, AdminScoredItem, CustomWeights, ShowToast } from "@/types/admin";
@@ -10,7 +10,6 @@ import type { AdminMode, AdminScoredItem, CustomWeights, ShowToast } from "@/typ
 export interface AdminDashboardProps {
   admin: AdminMode;
   onLogout: () => void;
-  onSwitchToExpert?: () => void;
   profile: Profile;
   setProfile: (_v: Profile) => void;
   customWeights: CustomWeights;

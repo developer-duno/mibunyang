@@ -43,13 +43,14 @@ export function StatsSection({ stats }: StatsSectionProps) {
           )}
           {kakaoRatio < 100 && (
             <div style={{ flex: 1, background: C.indigo, display: "flex", alignItems: "center", justifyContent: "center", fontSize: F.micro, fontWeight: 700, color: C.white, minWidth: (100 - kakaoRatio) > 10 ? "auto" : 0 }}>
-              {(100 - kakaoRatio) > 15 ? `전문가 ${userTypes.expert}` : ""}
+              {(100 - kakaoRatio) > 15 ? `이메일 가입 ${userTypes.expert}` : ""}
             </div>
           )}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3, fontSize: F.micro, color: C.muted }}>
           <span>카카오 {userTypes.kakao}명 ({kakaoRatio}%)</span>
-          <span>전문가 {userTypes.expert}명 ({100 - kakaoRatio}%)</span>
+          {/* API 필드명 userTypes.expert 는 보존 (PR-3 범위 밖) — 라벨만 정정 (세션 405) */}
+          <span>이메일 가입 {userTypes.expert}명 ({100 - kakaoRatio}%)</span>
         </div>
       </div>
 

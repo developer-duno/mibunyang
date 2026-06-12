@@ -21,7 +21,6 @@ export interface ScoringResult {
 export type DetailHandler = (_apt: Apt) => void;
 export type CompareHandler = (_apt: Apt) => void;
 export type FavoriteHandler = (_apt: Apt) => void;
-export type ExpertViewHandler = (_apt: Apt, _res: ScoringResult) => void;
 
 /**
  * 반응형 상태 prop (대부분 컴포넌트 공통).

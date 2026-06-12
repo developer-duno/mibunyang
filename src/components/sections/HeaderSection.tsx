@@ -99,7 +99,7 @@ const HELP_SECTIONS = [
 /**
  * 헤더 섹션 — 데스크톱: 고정 상단 바 + 네비 / 모바일: 블루 그라디언트
  */
-export const HeaderSection = memo(function HeaderSection({ profile, onProfileChange, apartmentCount, isDesktop, tab, onNavClick, showComp, compCount, expertLoggedIn, containerMaxWidth, upcomingCount }: HeaderSectionProps) {
+export const HeaderSection = memo(function HeaderSection({ profile, onProfileChange, apartmentCount, isDesktop, tab, onNavClick, showComp, compCount, adminLoggedIn, isLoggedIn, containerMaxWidth, upcomingCount }: HeaderSectionProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
@@ -109,11 +109,11 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
     ? `📅 곧 분양 ${upcomingCount}개`
     : "📅 곧 분양";
   const homeEnabled = isFeatureHome();
-  const navItems = expertLoggedIn
+  // 세션 405: 네비 분기 축 = adminLoggedIn (구 expertLoggedIn = 토큰 보유 — 카카오 손님 오노출 quirk 해소)
+  const navItems = adminLoggedIn
     ? [
         ...(homeEnabled ? [{ l: "홈", k: "home" }] : []),
-        { l: "대시보드", k: "expert" },
-        { l: "상담목록", k: "expertConsults" },
+        { l: "관리자", k: "admin" },
         { l: "소비자뷰", k: "list" },
         { l: "지도", k: "map" },
         ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),
@@ -162,7 +162,8 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
                 }}>{n.l}{n.k === "compare" && compCount >= 2 ? `(${compCount})` : ""}</button>
               );
             })}
-            {expertLoggedIn && (
+            {/* 데스크톱 유일 로그아웃 — isLoggedIn(공용 토큰 축) 게이트 보존 (카카오 손님 포함, 세션 405 적대검증) */}
+            {isLoggedIn && (
               <button onClick={() => onNavClick("logout")} style={HS_S.desktopLogoutBtn}>로그아웃</button>
             )}
             <button onClick={toggleHelp} aria-label="도움말" style={{

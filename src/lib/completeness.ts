@@ -1,8 +1,8 @@
 import { FIELD_META, type FieldMetaEntry } from "@/constants/fieldMeta";
 import type { Apt } from "@/types/scoring";
 
-// 데이터 채움률 공유 계산 — ExpertDataCompleteness 인라인 로직(세션 380 추출).
-// 전문가 화면(전체 비-hidden 필드)·소비자 도넛(DATA_SECTIONS 섹션별)이 같은 함수를 호출해 drift 0.
+// 데이터 채움률 공유 계산 — 구 전문가 대시보드 인라인 로직(세션 380 추출, 세션 405 폐지 후에도 공유 lib 유지).
+// 관리자 인사이트(전체 비-hidden 필드, DataSections adminMode)·소비자 도넛(DATA_SECTIONS 섹션별)이 같은 함수를 호출해 drift 0.
 // 모집단(fields)을 호출처가 결정 — 분류·가중·0나눗셈 가드는 한 곳에서만.
 
 export type CompletenessResult = {

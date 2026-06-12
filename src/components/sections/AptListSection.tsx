@@ -32,7 +32,6 @@ type AptListSectionProps = {
   onResetRegion?: () => void;
   dataLoading?: boolean;
   dataFreshnessText?: string | null;
-  onExpertView?: (_apt: Apt) => void;
   onResetAll?: () => void;
   isLoggedIn?: boolean;
 };
@@ -46,7 +45,7 @@ export const AptListSection = memo(function AptListSection({
   moveInFilter, builderTier, minScore,
   onResetBudget, onResetRegion,
   dataLoading, dataFreshnessText,
-  onExpertView, onResetAll, isLoggedIn,
+  onResetAll, isLoggedIn,
 }: AptListSectionProps) {
   return (
     <>
@@ -107,7 +106,7 @@ export const AptListSection = memo(function AptListSection({
             onDetail={onDetail}
             isComp={compIds.includes(item.apt.id ?? "")} onComp={onComp}
             isFav={favoriteSet.has(item.apt.id ?? "")} onFav={onFav}
-            profileWeights={pw} onExpertView={onExpertView} isDesktop={isDesktop} isLoggedIn={isLoggedIn} />
+            profileWeights={pw} isDesktop={isDesktop} isLoggedIn={isLoggedIn} />
         ))}
       </div>
       {visibleCount < filteredLength && (

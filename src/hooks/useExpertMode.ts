@@ -1,19 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
-export interface ExpertAuthForm {
+// 공용 인증 훅 (세션 405 전문가 role 폐지 후) — 이름과 expertToken localStorage 키는 역사적.
+// 카카오 손님·관리자가 같은 토큰 축을 사용하므로 키 변경 금지 (변경 시 기존 로그인 세션 전부 무효화).
+// 가입(signup)·승인(authStatus) 흐름은 전문가 폐지와 함께 제거 — 비밀번호 로그인은 관리자 전용.
+
+export interface AuthForm {
   email: string;
   password: string;
-  name: string;
-  affiliation: string;
-  phone: string;
-  specialty: string;
-  license: string;
-  experience: string;
-  bio: string;
 }
 
-export type AuthMode = "login" | "signup";
-export type AuthStatus = "pending" | "rejected" | null;
 type ShowToast = (_msg: string) => void;
 
 export interface ExpertUser {
@@ -23,17 +18,14 @@ export interface ExpertUser {
   [key: string]: unknown;
 }
 
-const EMPTY_FORM: ExpertAuthForm = { email: "", password: "", name: "", affiliation: "", phone: "", specialty: "", license: "", experience: "", bio: "" };
+const EMPTY_FORM: AuthForm = { email: "", password: "" };
 
 export function useExpertMode(showToast: ShowToast) {
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [authForm, setAuthForm] = useState<ExpertAuthForm>({ ...EMPTY_FORM });
+  const [authForm, setAuthForm] = useState<AuthForm>({ ...EMPTY_FORM });
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(null);
   const [expertLoggedIn, setExpertLoggedIn] = useState(() => { try { return !!localStorage.getItem("expertToken"); } catch { return false; } });
   const [authUser, setAuthUser] = useState<ExpertUser | null>(null);
-  const [expertExpandedApt, setExpertExpandedApt] = useState<string | null>(null);
 
   const authFormRef = useRef(authForm);
   const showToastRef = useRef(showToast);
@@ -46,7 +38,6 @@ export function useExpertMode(showToast: ShowToast) {
     const form = authFormRef.current;
     setAuthLoading(true);
     setAuthError("");
-    setAuthStatus(null);
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -65,13 +56,8 @@ export function useExpertMode(showToast: ShowToast) {
         setExpertLoggedIn(true);
         setAuthUser(data.user);
         setAuthForm({ ...EMPTY_FORM });
-        showToast("전문가 모드로 전환되었습니다");
-        return { ok: true, role: data.role || "expert" };
-      }
-      if (data.statusCode === "PENDING") {
-        setAuthStatus("pending");
-      } else if (data.statusCode === "REJECTED") {
-        setAuthStatus("rejected");
+        showToast("로그인되었습니다");
+        return { ok: true, role: data.role || "user" };
       }
       setAuthError(data.error || "로그인 실패");
       showToast(data.error || "로그인 실패");
@@ -85,41 +71,6 @@ export function useExpertMode(showToast: ShowToast) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- showToast는 useToast의 useCallback([])로 평생 불변이라 deps 누락 안전 (P-4)
   }, []);
-
-  const handleExpertSignup = useCallback(async () => {
-    const form = authFormRef.current;
-    setAuthLoading(true);
-    setAuthError("");
-    setAuthStatus(null);
-    try {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (res.status === 429) {
-        setAuthError("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
-        showToast("요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
-        return false;
-      }
-      const data = await res.json();
-      if (data.ok) {
-        showToast("가입 신청 완료! 관리자 승인 후 이용 가능합니다");
-        setAuthMode("login");
-        setAuthForm(f => ({ ...EMPTY_FORM, email: f.email }));
-        return true;
-      }
-      setAuthError(data.error || "가입 실패");
-      showToast(data.error || "가입 실패");
-      return false;
-    } catch {
-      setAuthError("서버 연결 실패");
-      showToast("서버 연결에 실패했습니다");
-      return false;
-    } finally {
-      setAuthLoading(false);
-    }
-  }, [showToast]);
 
   const handleExpertLogout = useCallback(async (onLogout?: () => void) => {
     const token = localStorage.getItem("expertToken");
@@ -139,11 +90,9 @@ export function useExpertMode(showToast: ShowToast) {
     localStorage.removeItem("userRole");
     sessionStorage.removeItem("expertToken");
     sessionStorage.removeItem("userRole");
-    setExpertExpandedApt(null);
     setAuthUser(null);
     setAuthForm({ ...EMPTY_FORM });
     setAuthError("");
-    setAuthStatus(null);
     onLogout?.();
     showToast("로그아웃되었습니다");
   }, [showToast]);
@@ -213,11 +162,10 @@ export function useExpertMode(showToast: ShowToast) {
   }, [showToast]);
 
   return {
-    authMode, setAuthMode,
     authForm, setAuthForm,
-    authLoading, authError, authStatus,
+    authLoading, authError,
     authUser, setAuthUser,
-    expertLoggedIn, setExpertLoggedIn, expertExpandedApt, setExpertExpandedApt,
-    handleExpertLogin, handleExpertSignup, handleExpertLogout,
+    expertLoggedIn, setExpertLoggedIn,
+    handleExpertLogin, handleExpertLogout,
   };
 }

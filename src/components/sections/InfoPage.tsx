@@ -12,13 +12,21 @@ const tipBox = { background: C.blueLight, borderRadius: 8, padding: "8px 10px", 
 const tipText = { fontSize: F.xs, color: C.blue, lineHeight: 1.6 };
 
 /**
- * InfoPage - 스코어링 엔진 구조 + 소비자용 사용 가이드 + FAQ
- * Props:
- *   expertLoggedIn: boolean - 전문가 로그인 상태
- *   onExpertLoginClick: () => void - 전문가 로그인 탭 이동
+ * InfoPage - 스코어링 엔진 구조 + 소비자용 사용 가이드 + FAQ + 로그인/로그아웃 입구 (세션 405)
+ * - 비로그인: 카카오 로그인 카드 (능동 로그인 입구 — 구 전문가 폼의 카카오 버튼 대체)
+ * - 로그인(카카오 손님 포함): 작은 로그아웃 버튼 — 모바일 유일 로그아웃 경로
+ * - 관리자 미로그인: 맨 아래 작은 "관리자 로그인" 텍스트 링크 (관리자 유일 입구)
  */
-type InfoPageProps = { expertLoggedIn: boolean; onExpertLoginClick: () => void; onConsultClick: () => void };
-export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginClick, onConsultClick }: InfoPageProps) {
+type InfoPageProps = {
+  isLoggedIn: boolean;
+  adminLoggedIn: boolean;
+  onAdminLoginClick: () => void;
+  onKakaoLogin: () => void;
+  kakaoLoading?: boolean;
+  onLogout: () => void;
+  onConsultClick: () => void;
+};
+export const InfoPage = memo(function InfoPage({ isLoggedIn, adminLoggedIn, onAdminLoginClick, onKakaoLogin, kakaoLoading, onLogout, onConsultClick }: InfoPageProps) {
   return (
     <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
 
@@ -55,18 +63,42 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
 
       <FAQSection />
 
-      {/* 전문가 로그인 CTA */}
-      {!expertLoggedIn && (
+      {/* 로그인 / 로그아웃 (세션 405 — 구 전문가 CTA 카드 대체) */}
+      {!isLoggedIn ? (
         <div style={cardStyle}>
-          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>파트너 전문가 전용</div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>로그인</div>
           <div style={{ fontSize: F.sm, color: C.sub, lineHeight: 1.6, marginBottom: 10 }}>
-            부동산 전문가라면 69개 세부 지표, 스코어 산출 과정, 데이터 완성도를 상세히 확인할 수 있는 전문가 대시보드를 이용하세요.
-            모든 카테고리의 서브스코어와 계산 근거를 투명하게 제공합니다.
+            로그인하면 단지 점수와 상세 분석을 모두 볼 수 있어요.
           </div>
-          <button onClick={onExpertLoginClick} style={{
-            width: "100%", background: C.indigoLight, border: `1.5px solid ${C.indigo}`, color: C.indigo, fontSize: F.base, fontWeight: 700,
-            cursor: "pointer", padding: "12px", borderRadius: 6, minHeight: 44
-          }}>전문가 로그인</button>
+          <button type="button" onClick={onKakaoLogin} disabled={kakaoLoading} style={{
+            width: "100%", minHeight: 44, padding: "12px", fontSize: F.base, fontWeight: 700,
+            background: kakaoLoading ? "#E5D85C" : "#FEE500", color: "#191919",
+            border: "none", borderRadius: 6, cursor: kakaoLoading ? "default" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path fillRule="evenodd" clipRule="evenodd" d="M9 1C4.58 1 1 3.79 1 7.21c0 2.17 1.44 4.08 3.62 5.18l-.93 3.4c-.08.3.26.54.52.36l4.07-2.68c.24.02.47.03.72.03 4.42 0 8-2.79 8-6.22S13.42 1 9 1z" fill="#191919"/>
+            </svg>
+            {kakaoLoading ? "처리 중..." : "카카오로 시작하기"}
+          </button>
+        </div>
+      ) : (
+        <div style={cardStyle}>
+          <div style={{ fontSize: F.sm, color: C.sub, marginBottom: 8 }}>로그인 상태입니다.</div>
+          <button type="button" onClick={onLogout} style={{
+            background: C.slate100, border: `1px solid ${C.border}`, color: C.sub, fontSize: F.sm, fontWeight: 600,
+            cursor: "pointer", padding: "10px 16px", borderRadius: 6, minHeight: 40
+          }}>로그아웃</button>
+        </div>
+      )}
+
+      {/* 관리자 입구 — 손님 눈에 띄지 않는 작은 텍스트 링크 (세션 405 결정) */}
+      {!adminLoggedIn && (
+        <div style={{ textAlign: "center", padding: "4px 0 12px" }}>
+          <button type="button" onClick={onAdminLoginClick} style={{
+            background: "transparent", border: "none", color: C.muted, fontSize: F.xs,
+            cursor: "pointer", padding: "8px 12px",
+          }}>관리자 로그인</button>
         </div>
       )}
     </div>

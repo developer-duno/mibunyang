@@ -14,7 +14,6 @@ function makeProps(overrides = {}) {
     open: true,
     onClose: vi.fn(),
     onKakaoLogin: vi.fn(),
-    onExpertLogin: vi.fn(),
     kakaoLoading: false,
     trigger: "detail",
     ...overrides,
@@ -46,14 +45,10 @@ describe("LoginPromptModal", () => {
     expect(onKakaoLogin).toHaveBeenCalledOnce();
   });
 
-  // 전문가 로그인 클릭 → 이벤트 + 콜백
-  it("전문가 로그인 클릭 → login_prompt_expert_click + onExpertLogin", () => {
-    const onExpertLogin = vi.fn();
-    render(<LoginPromptModal {...makeProps({ onExpertLogin })} />);
-    track.mockClear();
-    fireEvent.click(screen.getByText("전문가 계정으로 로그인"));
-    expect(track).toHaveBeenCalledWith("login_prompt_expert_click", { trigger: "detail" });
-    expect(onExpertLogin).toHaveBeenCalledOnce();
+  // 세션 405: 카카오 단독 — 전문가 로그인 버튼 제거 가드
+  it("전문가 로그인 버튼이 없다 (카카오 단독 가드)", () => {
+    render(<LoginPromptModal {...makeProps()} />);
+    expect(screen.queryByText("전문가 계정으로 로그인")).toBeNull();
   });
 
   // 나중에 하기 클릭 → dismiss 이벤트 + onClose

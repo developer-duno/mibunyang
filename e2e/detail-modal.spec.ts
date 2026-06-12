@@ -10,12 +10,13 @@ async function loginViaToken(page: Page) {
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, user: { id: 1, email: "e2e@test.com", role: "expert" }, role: "expert" }),
+      body: JSON.stringify({ ok: true, user: { id: 1, email: "e2e@test.com", role: "user" }, role: "user" }),
     }),
   );
   await page.addInitScript(() => {
+    // expertToken = 공용 인증 토큰 키 (세션 405 전문가 role 폐지 후에도 카카오 손님·관리자 공용)
     localStorage.setItem("expertToken", "e2e-test-token");
-    localStorage.setItem("userRole", "expert");
+    localStorage.setItem("userRole", "user");
   });
 }
 
@@ -26,18 +27,17 @@ function firstCard(page: Page) {
   return page.locator('[role="button"]').filter({ hasText: "㎡" }).first();
 }
 
-// 상세 모달 — 열기/닫기/섹션 렌더링 테스트 (전문가 로그인 우회 후 진짜 DetailModal 검증)
+// 상세 모달 — 열기/닫기/섹션 렌더링 테스트 (로그인 게이트 우회 후 진짜 DetailModal 검증)
 test.describe("상세 모달", () => {
   test.beforeEach(async ({ page }) => {
     await loginViaToken(page); // goto 이전 등록 필수 (addInitScript)
     await page.goto("/");
 
-    // 전문가 로그인 시 앱이 전문가 대시보드(tab="expert")로 자동 진입(App.tsx 초기 tab + useAppNavigation).
-    // 소비자 상세 모달은 소비자 목록(list) 화면 기능이므로 "소비자뷰" 버튼으로 전환해야 카드가 보인다.
-    // 데스크톱(Desktop Chrome)에선 BottomNav가 null이라 이 버튼은 HeaderSection(L115)에만 존재.
-    const consumerTab = page.getByRole("button", { name: "소비자뷰" });
-    if (await consumerTab.isVisible().catch(() => false)) {
-      await consumerTab.click();
+    // role "user" = 일반 손님 → 초기 탭이 곧 목록/홈 (세션 405 — 구 전문가 대시보드 자동 진입·소비자뷰 전환 불필요).
+    // 통합 홈 플래그 ON 환경이면 목록 탭으로 전환해 카드를 노출.
+    const listTab = page.getByRole("button", { name: "목록" });
+    if (await listTab.isVisible().catch(() => false)) {
+      await listTab.click();
     }
 
     const card = firstCard(page);

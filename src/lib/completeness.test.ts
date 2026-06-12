@@ -71,8 +71,8 @@ describe("computeCompleteness", () => {
     expect(r.pct).toBe(100);
   });
 
-  // 8. ExpertDataCompleteness 동일성 — 전체 비-hidden 필드 기준 (drift 가드)
-  it("전체 비-hidden 필드 기준 pct는 ExpertDataCompleteness와 동일 로직", () => {
+  // 8. 관리자 완성도(구 ExpertDataCompleteness, 현 DataSections adminMode) 동일성 — 전체 비-hidden 필드 기준 (drift 가드)
+  it("전체 비-hidden 필드 기준 pct는 관리자 완성도 블록과 동일 로직", () => {
     const allFields = Object.keys(FIELD_META).filter(
       (k) => !(FIELD_META as Record<string, { hidden?: boolean }>)[k].hidden,
     );

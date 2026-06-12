@@ -130,7 +130,7 @@ export interface UseApartmentDataReturn {
 /**
  * useLoginGate 반환 — App.jsx L140~144 분해.
  */
-export type LoginTrigger = "detail" | "expert" | "map" | null;
+export type LoginTrigger = "detail" | "map" | null;
 export interface UseLoginGateReturn {
   showLoginPrompt: boolean;
   setShowLoginPrompt: (_v: boolean) => void;
@@ -138,28 +138,6 @@ export interface UseLoginGateReturn {
   setLoginTrigger: (_v: LoginTrigger) => void;
   handleDetailGated: (_aptId: string) => void;
   handleKakaoFromPrompt: () => void;
-  handleExpertFromPrompt: () => void;
-}
-
-/**
- * useExpertMode 반환 — useAdminMode 와 별도, 전문가 로그인 도메인.
- * (.js 훅 — 향후 정밀화)
- */
-export interface UseExpertModeReturn {
-  expertLoggedIn: boolean;
-  setExpertLoggedIn: (_v: boolean) => void;
-  showExpertLogin: boolean;
-  setShowExpertLogin: (_v: boolean) => void;
-  expertLoading: boolean;
-  expertError: string | null;
-  handleExpertLogin: (_email: string, _password: string) => Promise<boolean>;
-  handleExpertLogout: (_resetCb?: () => void) => void;
-  consultsLoading: boolean;
-  consults: Array<Record<string, unknown>>;
-  consultsError: string | null;
-  fetchConsults: () => Promise<void>;
-  // 기타 동적 필드
-  [key: string]: unknown;
 }
 
 /**
@@ -344,7 +322,6 @@ export interface UseAppNavigationArgs {
     expertLoggedIn: boolean;
     handleExpertLogin: () => Promise<{ ok: boolean; role?: string } | undefined>;
     handleExpertLogout: (_resetCb: () => void) => void;
-    setExpertExpandedApt: (_id: string | null) => void;
     [key: string]: unknown;
   };
   admin: import("./admin").AdminMode;
@@ -352,7 +329,6 @@ export interface UseAppNavigationArgs {
     consultSubmitted: boolean;
     setConsultSubmitted: (_v: boolean) => void;
     setConsultForm: (_form: import("@/hooks/useConsult").ConsultForm | ((_prev: import("@/hooks/useConsult").ConsultForm) => import("@/hooks/useConsult").ConsultForm)) => void;
-    fetchConsults: (_token: string) => void;
     [key: string]: unknown;
   };
   detail: {
@@ -371,12 +347,9 @@ export interface UseAppNavigationArgs {
  * useAppNavigation 반환 — App.jsx 에서 분해.
  */
 export interface UseAppNavigationReturn {
-  handleExpertLogin: () => Promise<void>;
-  handleExpertLogout: () => void;
-  switchToAdmin: () => void;
-  switchToExpert: () => void;
+  handleAdminLogin: () => Promise<void>;
+  handleLogout: () => void;
   switchToInfo: () => void;
-  handleExpertView: (_apt: import("./scoring").Apt) => void;
   handleConsultFromDetail: (_aptId: string) => void;
   handleNavClick: (_k: string) => void;
 }

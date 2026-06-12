@@ -74,14 +74,15 @@ describe('useKakaoCallbackEffect', () => {
     expect(args.setTab).toHaveBeenCalledWith('admin');
   });
 
-  // expert 로그인 → expert 탭
-  it('expert 로그인 시 expert 탭으로 이동한다', async () => {
+  // 레거시 expert role → 일반 손님 취급 (세션 405 전문가 폐지)
+  it('expert role 잔존 레코드 로그인 시 일반 손님(list/home)으로 이동한다', async () => {
     const args = makeArgs({ ok: true, token: 't', role: 'expert' });
     renderHook(() => useKakaoCallbackEffect(args));
 
     await waitFor(() => {
-      expect(args.setTab).toHaveBeenCalledWith('expert');
+      expect(args.setTab).toHaveBeenCalledWith('list'); // featureFlag OFF 테스트 환경 = list
     });
+    expect(args.setTab).not.toHaveBeenCalledWith('expert');
     expect(args.admin.setAdminLoggedIn).not.toHaveBeenCalled();
   });
 

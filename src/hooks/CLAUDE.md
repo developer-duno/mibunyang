@@ -60,10 +60,10 @@ useDataPipeline({ apartments, profile, customWeights, ...필터상태, compIds, 
 ```
 useAppNavigation({ tab, setTab, expert, admin, consult, detail, compIds, ... })
   ├── useRef 2개 (consultRef, budgetRef — stale closure 방지)
-  ├── useCallback 7개 (handleExpertLogin/Logout, switchTo*, handleNavClick ...)
+  ├── useCallback 5개 (handleAdminLogin/handleLogout, switchToInfo, handleConsultFromDetail, handleNavClick)
   ├── useEffect: admin 동기화 (verify 실패 감지)
-  ├── useEffect: 전문가 상담 목록 fetch
-  └── return { handleExpertLogin, handleExpertLogout, switchTo*, handleNavClick }
+  └── return { handleAdminLogin, handleLogout, switchToInfo, handleConsultFromDetail, handleNavClick }
+  (세션 405: 전문가 탭·상담 fetch effect 폐지 — 상담 열람은 AdminConsults 자체 fetch)
 ```
 
 ---
@@ -79,8 +79,8 @@ const showComp = showCompOpen && compIds.length >= 2;
 
 | 훅 | 패턴 | 설명 |
 |----|------|------|
-| useExpertMode.handleExpertLogin() | 반환값 | App에서 `if (success) setTab("expert")` |
-| useExpertMode.handleExpertLogout(cb) | 콜백 파라미터 | App에서 탭/비교 초기화 전달 |
+| useExpertMode.handleExpertLogin() | 반환값 | useAppNavigation.handleAdminLogin 에서 `role==="admin"` 이면 admin 탭 (세션 405) |
+| useExpertMode.handleExpertLogout(cb) | 콜백 파라미터 | handleLogout 에서 탭/비교 초기화 전달 (카카오·관리자 공용) |
 | useFilterSort({ onFilterChange }) | 콜백 옵션 | App에서 `() => setDetailAptId(null)` 전달 |
 
 ---

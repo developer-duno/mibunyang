@@ -1,7 +1,7 @@
 import { useCallback, useRef, useEffect } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { isFeatureHome } from "@/constants/featureFlags";
 import type { UseAppNavigationArgs, UseAppNavigationReturn } from "@/types/hooks";
-import type { Apt } from "@/types/scoring";
 
 /**
  * 탭 전환/인증 네비게이션 훅
@@ -22,8 +22,8 @@ export function useAppNavigation({
     budgetRef.current = { budgetMin, budgetMax };
   }, [budgetMin, budgetMax]);
 
-  // ── 전문가 로그인/로그아웃 ──
-  const handleExpertLogin = useCallback(async () => {
+  // ── 관리자 로그인 / 공용 로그아웃 (세션 405 — 비밀번호 로그인은 관리자 전용) ──
+  const handleAdminLogin = useCallback(async () => {
     const result = await expert.handleExpertLogin();
     if (result?.ok) {
       if (result.role === "admin") {
@@ -31,25 +31,19 @@ export function useAppNavigation({
         admin.setAdminLoggedIn(true);
         setTab("admin");
       } else {
-        localStorage.setItem("userRole", "expert");
-        setTab("expert");
+        // 레거시 비admin 계정 과도기 — 일반 손님 취급 (PR-3 에서 백엔드가 401 로 차단)
+        if (result.role) localStorage.setItem("userRole", result.role);
+        setTab(isFeatureHome() ? "home" : "list");
       }
     }
   }, [admin, expert, setTab]);
 
-  const handleExpertLogout = useCallback(() => {
+  const handleLogout = useCallback(() => {
     expert.handleExpertLogout(() => { setTab("list"); setShowCompOpen(false); });
   }, [expert, setShowCompOpen, setTab]);
 
   // ── 탭 전환 ──
-  const switchToAdmin = useCallback(() => setTab("admin"), [setTab]);
-  const switchToExpert = useCallback(() => setTab("expert"), [setTab]);
   const switchToInfo = useCallback(() => setTab("info"), [setTab]);
-
-  const handleExpertView = useCallback((apt: Apt) => {
-    expert.setExpertExpandedApt(apt.id ?? null);
-    setTab("expert");
-  }, [expert, setTab]);
 
   const handleConsultFromDetail = useCallback((aptId: string) => {
     consult.setConsultForm(prev => ({
@@ -61,7 +55,7 @@ export function useAppNavigation({
   }, [consult, detail, setTab]);
 
   const handleNavClick = useCallback((k: string) => {
-    if (k === "logout") return handleExpertLogout();
+    if (k === "logout") return handleLogout();
     trackEvent("tab_switch", { tab: k, previous_tab: tab });
     if (k === "list") { setTab("list"); setShowCompOpen(false); return; }
     // 비로그인 시 map 차단 (compare는 비로그인 허용)
@@ -85,28 +79,20 @@ export function useAppNavigation({
       }
     }
     setTab(k);
-  }, [compIds.length, handleExpertLogout, isLoggedIn, onLoginRequired, setShowCompOpen, setTab, showToast, tab]);
+  }, [compIds.length, handleLogout, isLoggedIn, onLoginRequired, setShowCompOpen, setTab, showToast, tab]);
 
   // ── useEffect: verify 실패 시 admin 상태 동기화 ──
   useEffect(() => {
     if (!expert.expertLoggedIn && admin.adminLoggedIn) {
       admin.setAdminLoggedIn(false);
-      if (tab === "admin" || tab === "expert") setTab("list");
+      if (tab === "admin") setTab("list");
     }
   }, [admin, expert.expertLoggedIn, setTab, tab]);
 
-  // ── useEffect: 전문가 로그인 시 상담 목록 서버 조회 ──
-  useEffect(() => {
-    if (expert.expertLoggedIn && tab === "expertConsults") {
-      const token = localStorage.getItem("expertToken");
-      if (token) consult.fetchConsults(token);
-    }
-  }, [consult, expert.expertLoggedIn, tab]);
-
   return {
-    handleExpertLogin, handleExpertLogout,
-    switchToAdmin, switchToExpert, switchToInfo,
-    handleExpertView, handleConsultFromDetail,
+    handleAdminLogin, handleLogout,
+    switchToInfo,
+    handleConsultFromDetail,
     handleNavClick,
   };
 }

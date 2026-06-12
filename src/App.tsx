@@ -11,7 +11,6 @@ import type { UpcomingApiResponse } from "@/types/upcoming";
 const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
 const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));
 const ConsultForm = lazy(() => import("@/components/ConsultForm").then(m => ({ default: m.ConsultForm })));
-const ExpertDashboard = lazy(() => import("@/components/expert/ExpertDashboard").then(m => ({ default: m.ExpertDashboard })));
 const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 const MapView = lazy(() => import("@/components/sections/MapView").then(m => ({ default: m.MapView })));
 const UpcomingPage = lazy(() => import("@/components/UpcomingPage").then(m => ({ default: m.UpcomingPage })));
@@ -39,7 +38,7 @@ import { LoginPromptModal } from "@/components/LoginPromptModal";
 import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
 import { HeaderSection } from "@/components/sections/HeaderSection";
-import { ExpertLoginForm } from "@/components/sections/ExpertLoginForm";
+import { AdminLoginForm } from "@/components/sections/AdminLoginForm";
 import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
 import { AptListSection } from "@/components/sections/AptListSection";
 import { trackEvent } from "@/lib/analytics";
@@ -128,7 +127,6 @@ export default function App() {
     }
     if (!token) return isFeatureHome() ? "home" : "list";
     if (role === "admin") return "admin";
-    if (role === "expert") return "expert";
     return isFeatureHome() ? "home" : "list";
   });
   // ── 커스텀 훅 13개 ──
@@ -168,14 +166,14 @@ export default function App() {
   const {
     showLoginPrompt, setShowLoginPrompt,
     loginTrigger, setLoginTrigger,
-    handleDetailGated, handleKakaoFromPrompt, handleExpertFromPrompt,
-  } = useLoginGate({ isLoggedIn, detail, kakao, setTab });
+    handleDetailGated, handleKakaoFromPrompt,
+  } = useLoginGate({ isLoggedIn, detail, kakao });
 
   // ── 탭 전환/인증 네비게이션 ──
   const {
-    handleExpertLogin,
-    switchToAdmin, switchToExpert, switchToInfo,
-    handleExpertView, handleConsultFromDetail,
+    handleAdminLogin,
+    switchToInfo,
+    handleConsultFromDetail,
     handleNavClick,
   } = useAppNavigation({
     tab, setTab, expert, admin, consult, detail,
@@ -187,7 +185,7 @@ export default function App() {
   useKakaoCallbackEffect({ tab, kakao, expert, admin, detail, setTab, showToast });
 
   // ── containerMaxWidth ──
-  const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
+  const containerMaxWidth = (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
 
   // ── 공유 콜백 3종 (scoredMapRef 내부 관리) ──
   const { handleShareDetail, handleShareCompare, handleShareFilters } = useShareCallbacks({
@@ -268,7 +266,7 @@ export default function App() {
 
       <HeaderSection profile={profile} onProfileChange={setProfile} apartmentCount={apartments.length}
         isDesktop={isDesktop} tab={tab} onNavClick={handleNavClick} showComp={showComp} compCount={compIds.length}
-        expertLoggedIn={expert.expertLoggedIn} containerMaxWidth={containerMaxWidth}
+        adminLoggedIn={admin.adminLoggedIn} isLoggedIn={isLoggedIn} containerMaxWidth={containerMaxWidth}
         upcomingCount={upcomingCount} />
 
       {dataLoading && (
@@ -338,7 +336,6 @@ export default function App() {
             moveInFilter={moveInFilter} builderTier={builderTier} minScore={minScore}
             onResetBudget={handleBudgetReset} onResetRegion={() => handleRegionChange("전체")}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
-            onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}
             onResetAll={handleResetAll}
             isLoggedIn={isLoggedIn}
           />
@@ -350,7 +347,10 @@ export default function App() {
           </Suspense>
         </div>
       ) : tab === "info" ? (
-        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} onConsultClick={() => handleNavClick("consult")} />
+        <InfoPage isLoggedIn={isLoggedIn} adminLoggedIn={admin.adminLoggedIn}
+          onAdminLoginClick={() => setTab("adminLogin")} onKakaoLogin={() => kakao.initKakaoLogin(null)}
+          kakaoLoading={kakao.kakaoLoading} onLogout={() => handleNavClick("logout")}
+          onConsultClick={() => handleNavClick("consult")} />
       ) : tab === "consult" ? (
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}>
@@ -358,18 +358,12 @@ export default function App() {
               onSubmit={consult.handleConsultSubmit} submitted={consult.consultSubmitted} showToast={showToast} />
           </Suspense>
         </div>
-      ) : tab === "expertLogin" ? (
-        <ExpertLoginForm expert={expert} onLogin={handleExpertLogin} onBack={() => setTab("info")} onKakaoLogin={() => kakao.initKakaoLogin()} kakaoLoading={kakao.kakaoLoading} />
-      ) : tab === "expert" ? (
-        <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>대시보드 로딩 중...</div>}>
-          <ExpertDashboard scored={scored} profile={profile}
-            expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt}
-            onSwitchToAdmin={admin.adminLoggedIn ? switchToAdmin : undefined} />
-        </Suspense>
+      ) : tab === "adminLogin" ? (
+        <AdminLoginForm auth={expert} onLogin={handleAdminLogin} onBack={() => setTab("info")} />
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>관리자 패널 로딩 중...</div>}>
-            <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} showToast={showToast} />
+            <AdminDashboard admin={admin} onLogout={switchToInfo} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} showToast={showToast} />
           </Suspense>
         ) : null
       ) : tab === "upcoming" ? (
@@ -386,39 +380,6 @@ export default function App() {
             <div style={{ fontSize: 12, color: C.muted }}>잠시만 기다려주세요</div>
           </div>
         </div>
-      ) : tab === "expertConsults" ? (
-        <div style={{ padding: "0 16px" }}>
-          <div style={{ background: C.indigoLight, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.indigo }}>상담 요청 목록</span>
-            <span style={{ fontSize: 11, color: C.indigo }}>{consult.submittedConsults.length}건</span>
-          </div>
-
-          {consult.submittedConsults.length === 0 ? (
-            <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>아직 상담 요청이 없습니다</div>
-              <div style={{ fontSize: 12, color: C.muted }}>소비자가 상담을 신청하면 여기에 표시됩니다</div>
-            </div>
-          ) : (
-            consult.submittedConsults.map((c) => {
-              const aptNames = c.interestedApts.map(id => { const found = apartments.find(a => a.id === id); return found ? found.name : id; });
-              return (
-                <div key={c.id} style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{c.name}</span>
-                    <span style={{ fontSize: 10, color: C.muted }}>{c.submittedAt ? new Date(c.submittedAt).toLocaleString("ko-KR") : ""}</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.8 }}>
-                    <div>연락처: {c.phone}</div>
-                    <div>상담유형: {c.consultType}</div>
-                    <div>관심단지: {aptNames.join(", ")}</div>
-                    {(c.budgetMin || c.budgetMax) && <div>예산: {c.budgetMin || "?"} ~ {c.budgetMax || "?"}만원</div>}
-                    {c.message && <div>메시지: {c.message}</div>}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
       ) : null}
 
       {/* 상세 분석 모달 */}
@@ -434,7 +395,7 @@ export default function App() {
 
       {/* 로그인 유도 모달 */}
       <LoginPromptModal open={showLoginPrompt} onClose={() => { setShowLoginPrompt(false); setLoginTrigger(null); }}
-        onKakaoLogin={handleKakaoFromPrompt} onExpertLogin={handleExpertFromPrompt} kakaoLoading={kakao.kakaoLoading} trigger={loginTrigger} />
+        onKakaoLogin={handleKakaoFromPrompt} kakaoLoading={kakao.kakaoLoading} trigger={loginTrigger} />
 
       {/* 토스트 */}
       <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} isPC={isPC} />
@@ -450,7 +411,7 @@ export default function App() {
       </footer>
 
       {/* 하단 네비 */}
-      <BottomNav tab={tab} expertLoggedIn={expert.expertLoggedIn} showComp={showComp} onNavClick={handleNavClick} containerMaxWidth={containerMaxWidth} isDesktop={isDesktop} />
+      <BottomNav tab={tab} adminLoggedIn={admin.adminLoggedIn} showComp={showComp} onNavClick={handleNavClick} containerMaxWidth={containerMaxWidth} isDesktop={isDesktop} />
     </div>
   );
 }

@@ -7,11 +7,12 @@
 | 그룹 | 개수 | 위치 | 컴포넌트 |
 |------|------|------|---------|
 | 소비자 | 9 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
-| 섹션 | 9 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay, SelectedAptCard |
+| 섹션 | 9 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), AdminLoginForm, InfoPage, BottomNav, MapView, InfraOverlay, SelectedAptCard |
 | 상세 | 12 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
 | 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
-| 전문가 | 9 | `expert/` | ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide |
-| 관리자 | 5 | `admin/` | AdminDashboard, AdminHelpGuide, WeightEditor, WeightTable, ScoreBreakdownPreview (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
+| 관리자 | 6 | `admin/` | AdminDashboard, AdminHelpGuide, AdminConsults, WeightEditor, WeightTable, ScoreBreakdownPreview (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
+
+> **전문가 그룹(`expert/` 9개)은 세션 405 에 폐지** — 자료는 상세 모달 관리자 인사이트(AdminScoreBreakdown·AdminUnitSupply·DataSections adminMode)와 AdminConsults/AdminHelpGuide 로 이식. 결정 문서: `docs/superpowers/specs/2026-06-12-expert-role-abolition-decision.md` |
 | 아이콘 | 1 | `icons.jsx` | 내부 공용 memo 1개 (IconClose 등 9개 아이콘은 순수 SVG 함수, memo 래핑 안 함) |
 
 - 반드시 `memo(function Name(...) { ... })` 패턴 유지
@@ -36,11 +37,11 @@
 
 ---
 
-## 전문가 페이지 규칙
+## 관리자 인사이트 규칙 (세션 405 — 구 전문가 페이지 규칙 승계)
 
-- PC 버전 우선 (maxWidth 1200px+, 2컬럼 그리드)
-- 모든 138개 필드 개별 표시 필수 (fieldMeta.ts 9섹션 합산: 21+12+18+33+10+10+4+11+19)
-- 스코어링 중간 계산 과정 투명 표시
+- 모든 신규 블록은 `adminLoggedIn` 게이트 + lazy import — 소비자 화면/번들 영향 0 (게이트 가드 테스트 의무)
+- 모든 138개 필드 개별 표시 필수 (DataSections adminMode, fieldMeta.ts 9섹션 합산: 21+12+18+33+10+10+4+11+19)
+- 스코어링 중간 계산 과정 투명 표시 (AdminScoreBreakdown — 적정가 과정·기여도·가중 합계)
 - catKeys는 `Object.keys(res.cats)` 동적 추출 (하드코딩 금지)
 
 ---

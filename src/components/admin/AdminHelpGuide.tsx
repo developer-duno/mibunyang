@@ -23,12 +23,18 @@ export const AdminHelpGuide = memo(function AdminHelpGuide({ open, onClose }: Ad
       </div>
 
       <div style={card}>
-        <div style={title}>전문가 승인 관리</div>
+        <div style={title}>회원 관리</div>
         <div style={desc}>
-          <div style={item}><span style={label}>워크플로우</span> — 전문가 가입 신청 → 대기중(Pending) → 관리자 승인/거부. 거부된 신청은 필요 시 재승인할 수 있습니다.</div>
-          <div style={item}><span style={label}>상태 탭</span> — 대기중/승인됨/거부됨/전체 탭으로 필터링합니다. 각 탭의 숫자 뱃지로 현황을 파악하세요.</div>
-          <div style={item}><span style={label}>신청자 정보</span> — 이름, 이메일, 소속, 전문 분야, 자격증, 경력, 자기소개를 확인한 뒤 승인 여부를 결정합니다.</div>
-          <div style={item}><span style={label}>승인 시 주의</span> — 승인된 전문가는 즉시 전문가 대시보드에 접근할 수 있으며, 69개 세부 데이터와 상담 목록을 볼 수 있습니다.</div>
+          <div style={item}><span style={label}>회원 목록</span> — 카카오 가입 손님과 과거 이메일 가입 계정을 한 화면에서 확인합니다. 이름·이메일·소속으로 검색할 수 있습니다.</div>
+          <div style={item}><span style={label}>상태 탭</span> — 대기중/승인됨/거부됨/전체 탭으로 필터링합니다. 각 탭의 숫자 뱃지로 현황을 파악하세요. (대기중·거부됨은 구 전문가 가입 잔존분 — 신규 가입은 폐지됨)</div>
+          <div style={item}><span style={label}>계정 정지</span> — 문제 계정은 정지 처리할 수 있습니다. 정지된 계정은 로그인이 차단됩니다.</div>
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={title}>상담 요청 목록</div>
+        <div style={desc}>
+          <div style={item}><span style={label}>열람</span> — 소비자가 상담 신청하면 이 대시보드의 &apos;상담 요청 목록&apos; 섹션에 표시됩니다. 이름, 연락처, 관심 단지, 예산, 상담 유형, 메시지를 확인하세요.</div>
         </div>
       </div>
 
@@ -58,7 +64,7 @@ export const AdminHelpGuide = memo(function AdminHelpGuide({ open, onClose }: Ad
       <div style={card}>
         <div style={title}>기타</div>
         <div style={desc}>
-          <div style={item}><span style={label}>전문가 보기</span> — &apos;전문가 보기&apos; 버튼으로 전문가 대시보드로 돌아가 단지 분석을 확인할 수 있습니다.</div>
+          <div style={item}><span style={label}>소비자뷰</span> — 하단/상단 네비의 &apos;소비자뷰&apos;로 손님이 보는 화면을 그대로 확인할 수 있습니다.</div>
           <div style={item}><span style={label}>데이터 수집 주기</span> — 미분양 현황: 매일 / 실거래: 매월 / 인프라·학교·교통: 매월 / 네이버 시세: 주 2회. 자동 수집되며 별도 관리가 필요 없습니다.</div>
         </div>
       </div>
