@@ -3,9 +3,12 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TopPicksWidget } from "./TopPicksWidget";
 
-/** 최소 ScoredApt — AptCard 무가드 접근 지점(res.total/res.cats 6키의 label·total·subs) 충족 */
+/**
+ * 최소 ScoredApt — AptCard 무가드 접근 지점(res.total/res.cats 6키의 label·total·subs) 충족
+ * @param {string} id @param {string} name @param {number} total
+ */
 function makeScored(id, name, total) {
-  const cat = (label, t) => ({ label, total: t, subs: [] });
+  const cat = (/** @type {string} */ label, /** @type {number} */ t) => ({ label, total: t, subs: [] });
   return /** @type {any} */ ({
     apt: { id, name, region: "경기", gu: "수원시", price: 50000, area: 84, noxious: [] },
     res: {
