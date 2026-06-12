@@ -50,7 +50,7 @@ const DM_S = {
   benefitsChipRow: { display: "flex", flexWrap: "wrap" as const, gap: 4 },
   benefitsChip: { fontSize: F.sm, color: C.amber, background: C.white, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.amberBorder}` },
   republishBadge: { display: "inline-flex", alignItems: "center", gap: 4, fontSize: F.sm, color: C.amber, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 6, padding: "3px 8px", marginBottom: 8 },
-  actionRow: { display: "flex", gap: 8, marginBottom: 16 },
+  actionRow: { display: "flex", gap: 8 },
 };
 
 export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult, profile, adminLoggedIn = false }: DetailModalProps) {
@@ -183,7 +183,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           </div>
         </div>
         {/* data-print-content: 관리자 인쇄 시 App print CSS 가 스크롤 해제·전체 펼침 (세션 405) */}
-        <div ref={bodyRef} data-testid="detail-scroll-body" data-print-content style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
+        {/* 하단 패딩은 CTA sticky 바가 자체 패딩으로 담당 (바닥 밀착을 위해 스크롤러 하단 패딩 0) */}
+        <div ref={bodyRef} data-testid="detail-scroll-body" data-print-content style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px" : "0 16px" }}>
 
         <StickyJumpNav sections={JUMP_SECTIONS} activeId={activeTab} totalScore={res.total} onJump={handleTabChange} isDesktop={isDesktop} noPrint />
 
@@ -296,9 +297,22 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         </section>
         )}
 
-        {/* CTA 공통 영역 — 탭 무관 항상 노출 (사장님 결정 2026-06-13, 세션 407 D1: 구 §6 에서 이동).
-            포커스 트랩 불변식: 이 블록이 모달 내 마지막 포커서블 + 항상 가시여야 한다 — 트랩(위 handleKey)이
-            display:none 패널 내부 요소를 first/last 경계로 잡아 포커스가 탈출하는 것을 DOM 순서로 차단. */}
+        {/* CTA 공통 영역 — 탭 무관 항상 노출 + sticky bottom (사장님 결정 2026-06-13 ×2).
+            sticky 기본 동작 = 콘텐츠가 화면보다 길면 하단에 반투명으로 겹쳐 떠 있고, 짧으면 콘텐츠 끝
+            제자리 — 길이 측정 분기 없이 두 경우 자동. 좌우 negative margin = 스크롤러 패딩 전폭 덮기
+            (StickyJumpNav 패턴). 포커스 트랩 불변식: 이 블록이 모달 내 마지막 포커서블 + 항상 가시 —
+            트랩(위 handleKey)이 display:none 패널 내부 요소를 경계로 잡아 탈출하는 것을 DOM 순서로 차단. */}
+        <div data-testid="detail-cta-bar" style={{
+          position: "sticky",
+          bottom: 0,
+          zIndex: 10,
+          margin: `12px ${isDesktop ? -24 : -16}px 0`,
+          padding: `10px ${isDesktop ? 24 : 16}px calc(12px + env(safe-area-inset-bottom, 0px))`,
+          background: `${C.card}EB`,
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          borderTop: `1px solid ${C.border}`,
+        }}>
         {onConsult && (
           <button onClick={() => onConsult(apt.id as string)} style={{
             width: "100%", background: C.blue, color: C.white, border: "none", borderRadius: 8,
@@ -319,6 +333,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             flex: 1, background: C.slate100, color: C.slate600,
             border: "1.5px solid transparent", borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? F.md : F.base, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>공유</button>}
+        </div>
         </div>
 
         </div>

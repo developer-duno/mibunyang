@@ -265,6 +265,16 @@ describe("DetailModal StickyJumpNav", () => {
     expect(screen.queryByText("이 매물 상담하기")).toBeNull();
   });
 
+  // CTA sticky 바 (세션 407 사장님 지시) — 내용 길면 하단 반투명 겹침, 짧으면 제자리 = sticky 기본 동작
+  it("CTA 바는 sticky bottom + 반투명 배경 (긴 내용에서 하단에 떠 있음)", () => {
+    render(<DetailModal {...makeProps()} />);
+    const bar = screen.getByTestId("detail-cta-bar");
+    expect(bar.style.position).toBe("sticky");
+    expect(bar.style.bottom).toBe("0px");
+    // 반투명(EB = 92% alpha) — 완전 불투명/완전 투명 회귀 가드
+    expect(bar.style.background).toContain("rgba");
+  });
+
   // 프로필 맞춤 강조 (세션 382) — invest 상위 2 = price, risk. CatPanel 은 점수 탭 안 (점수 탭만 방문 상태에서 카운트).
   it("profile='invest' 면 점수 탭에서 가격·안전 CatPanel 2개만 ★ 중점 배지", () => {
     render(<DetailModal {...makeProps({ profile: "invest" })} />);
