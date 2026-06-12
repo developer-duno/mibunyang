@@ -220,6 +220,13 @@
 
 ## 🟡 곧
 
+- 🟡 **비로그인 블라인드 정책 기존 구멍 2건 — DetailModal ungated 진입** (세션 403 적대검증 부산물)
+  - `?detail=` 딥링크(App.tsx L213-219) + UpcomingPage 상세(App.tsx L355) — 둘 다 비로그인 도달 가능 + 렌더 무게이트(L402-410). 홈 IA 작업과 무관한 기존 동작. 정책 의도(공유 링크는 의도적 공개?) 확인 후 fix 또는 의도 박제
+  - 동반: AptCard 비로그인 부분 누설 — Bar가 실점수를 aria-valuenow·width%로 DOM 노출(primitives.tsx L10-11) + "안전 N등급" 텍스트(AptCard.tsx L107) 노출. 점수 "??" 블라인드가 시각 텍스트만 가림
+  - 출처: 통합 홈 IA spec 적대검증(8프로브×2라운드) blind-policy 프로브 — `docs/superpowers/specs/2026-06-11-unified-home-ia-design.md` §9
+
+- 🟢 **루트 CLAUDE.md 박제값 stale 2건** (세션 403 적대검증 실측): "Playwright E2E (11 spec)" → 실측 13 spec / 번들 "index 172KB" → ~185KB(189,340B). 다음 CLAUDE.md 정비 시 일괄
+
 - 🟢 **청약홈 매칭 회수 — 진짜 진앙은 후보 쿼리 presale_stage 제약 (세션 360 PR, 진단 정정)**
   - **세션 359 진단 정정**: "정규화(LCS 한계)가 병목"은 세션 360 적대 검증(6-probe 워크플로 + 라이브 재측정 2회)으로 **데이터 반증**. 정규화 회수 효과 ~0건 (미매칭 384 중 정규화로 잡을 수 있는 건 ≤8건, 긴 단지명은 음차 1글자 차이여도 이미 sim 0.92 통과). 미매칭 384 중 **235(61%)는 임대/공공주택** = 청약홈 *분양* API 구조적 부재.
   - **진짜 진앙 (라이브 재측정 2회 확정)**: `collect-applyhome-detail.mjs:225` 매칭 후보를 `presale_stage NOT NULL`(728)로 제한 → 청약홈 공고 있는데 분양 단계 미태깅된 단지가 통째로 빠짐. 제약 제거 시 매칭 **393→916 rows / 344→810 distinct (+466 단지, 2.4배)**, 신규 483 중 482가 명백 분양(sim 1.0 정답, 임대 1건뿐).
