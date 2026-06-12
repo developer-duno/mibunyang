@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ 전문가 역할 완전 폐지 3-PR — 세션 405 (PR #101 이식[상세 모달 관리자 인사이트: AdminScoreBreakdown·DataSections adminMode 138필드·AdminUnitSupply 청약홈 평형 표·인쇄] → #102 철거[expert/ 18파일 -2,600줄, AdminLoginForm·AdminConsults·InfoPage 카카오 카드+관리자 링크, 네비 축 adminLoggedIn — 카카오 손님 전문가 네비 오노출 quirk 해소, "회원 관리" 개명] → #103 백엔드[signup 폐지·login 비admin generic 401·isAdminEmail 단일 출처·refresh expert→user 강등·consults admin 단독·create-admin-user.mjs 잠금 방지]. 자료 소실 0 — 귀속 맵 = `docs/superpowers/specs/2026-06-12-expert-role-abolition-decision.md`. spec v3 추록 = M2 재산정)
 - ✅ energy_grade 오염 정정 — kaptdEcnt(승강기대수) 에너지등급 오인 + 죽은 코드 제거 — 세션 358 (데이터 품질 점검 중 발견. `molit-building-info.mjs` 가 국토부 공동주택 상세 API 의 `kaptdEcnt`/`kaptdEcntp`[= 승강기 대수]를 에너지효율등급 1~7로 오인 → 우연히 1~7대 단지 358건 오저장 + 화면 "N등급" 거짓 표시. raw API 실측[값 0/5/8/21=등급 불가] + 적대검증 워크플로[7필드 전수 raw 검증 → 오인 3건/정상 4건]로 확정. 정정: 수집기 energy_grade + 건폐율/용적률[`kaptdBcRat`/`kaptdVlRat`=API 응답에 없는 죽은 코드, 실제는 네이버 `sync-naver-complex` 가 채움] 추출 제거 + DB 358건 NULL[`cleanup-energy-grade.mjs`] + `data-audit.mjs` PERMANENT_NULL 에 energyGrade 추가[worst-fields 오탐 제거]. 3관점 적대 리뷰 = 회귀 0/blocker 0/high 2 confirmed[PERMANENT_NULL·cleanup 커밋]. vitest molit 22/22 + data-audit 17/17 + scoring 164/164 + tsc 0. building 78.6%→77.1%[오염 제거 정직 하락]. 상세 = DB_QUALITY.md 2026-06-01 절. **잔여**: 승강기 대수 신규 수집은 활용처 불분명[스코어링·화면·DB 컬럼 0]이라 비권장.)
 - ✅ `sync-naver-complex` articles/price 1000건 cap + 4회 fetch 통합 — 세션 356 (`.range(0,99999)` cap 4곳[area/trade_type/**complex_price_history**/floor] → `fetchAllPages` 전건 페이지네이션. 461,751행 중 0.2%만 읽던 데이터 정확성 사고. 추가로 같은 articles 전건을 4번 fetch 하던 비효율 → 8컬럼 1회 통합 fetch[allArticles, matchCache 직후] 로 4 Phase 공유. timeout 30→60. dry-run 실증 before 1000→after 461,466건/시세 25,941단지. vitest 46/46 + tsc 0 + 메모리 적대검증 34배 헤드룸. 박제값 정정 = 세션 355 "Phase4 cap/시세 누락" 오류. 상세 = 🔴 즉시 절)
 - ✅ vitest 4 `environmentMatchGlobs` → `projects` 마이그레이션 — 세션 348 (vitest 4.1.6 dist 에 `environmentMatchGlobs` 0건 실측 = 완전 제거 → 지금까지 api/scripts 테스트가 **node 아닌 jsdom 에서 돌고 있었음**(브라우저 API 미사용이라 무사고). `// @ts-expect-error` 제거 + `test.projects` inline 2개(jsdom=src / node=api+scripts) + 공통 옵션 루트 유지 + 각 `extends: true`. 회귀 0 실측 = 전후 **672 파일 / 3146 케이스 / 100% / src 1563·api 387·scripts 1196 완전 동일** + typecheck 0 + `vitest list --project` 분기 확인. 워크플로 2관점 조사(공식 문서 + 함정) + 직접 실측 교차 검증. 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md))
@@ -221,6 +222,12 @@
 ---
 
 ## 🟡 곧
+
+- 🟡 **소비자 목록 단지명 텍스트 검색 추가** (세션 405 전문가 폐지 부산물) — 구 ExpertSidebar 의 "단지명/지역 검색"이 프로젝트 유일의 이름 검색이었음(SearchFilterBar 에 input 0 실측). 사이드바 철거로 소실 → 일반 손님에게도 가치 있는 기능이라 SearchFilterBar 에 검색 input 신설 후보. 출처 = 폐지 결정 문서 누락 감사 #7
+
+- 🟢 **consults 열람 페이지네이션** (세션 405) — GET /api/consults limit 100 고정. AdminConsults 이관 후 100건 초과분 silent 잘림. 상담 누적 시 페이지네이션 또는 limit 상향
+
+- 🟢 **expertToken 키·useExpertMode 명칭 정리** (세션 405 의도적 보류) — 공용 인증 축의 역사적 이름. localStorage 키 변경은 기존 로그인 세션 전부 무효화라 마이그레이션 코드 동반 필수(App.tsx sessionStorage 이관 전례 답습). 훅 rename 은 18+ 파일 churn — 별도 세션
 
 - 🟡 **비로그인 블라인드 정책 기존 구멍 2건 — DetailModal ungated 진입** (세션 403 적대검증 부산물)
   - `?detail=` 딥링크(App.tsx L213-219) + UpcomingPage 상세(App.tsx L355) — 둘 다 비로그인 도달 가능 + 렌더 무게이트(L402-410). 홈 IA 작업과 무관한 기존 동작. 정책 의도(공유 링크는 의도적 공개?) 확인 후 fix 또는 의도 박제
