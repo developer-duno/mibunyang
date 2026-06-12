@@ -96,7 +96,7 @@
 - 🔴 **상세 모달 IA 개편 — Progressive Disclosure D2~D3** (세션 406 사장님 지시: "너무 길고 루즈해, 카테고리 구분해서 클릭으로 점점 확대")
   - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (C안 + 세션 407 D1 추록: CTA 항상 노출·keepMounted·수용사항)
   - ✅ D1 완료 = 세션 407 PR #106 (`321fd6e`) — 점프 앵커 → 콘텐츠 교체 탭. keepMounted(첫 방문 마운트 후 display:none — 금융 useRef 캐시 훅 refetch·presale_view 중복·펼침 소실 차단), 관리자 전 패널 마운트(인쇄 보존, print media 실증), CTA 공통 영역(사장님 결정). 적대검증 2라운드 9 probe — "App 상시 마운트" 할루시네이션·visited 시딩 누락·jsdom scrollTo 가드 함정·PriceTable null e2e 함정 적발 후 구현
-  - D2 = 종합 요약 대시보드 + 점수 4중 중복 통합 + 관리자 탭 분리 (정보 귀속 맵 전수 박제 의무) / D3 = ARIA tablist·애니메이션·analytics(detail_tab_*)
+  - **D2 순서 확정 (세션 407 사장님 위임 → 데이터 제자리 먼저)**: D2a = DataSections 8섹션 해체·주제별 탭 재배분 (생활인프라·교통·치안환경→입지 / 시장지표·네이버교차·층별가→시세 / 청약경쟁·분양정보→분양 / 단지기본→종합 / 점수 탭 = 순수 점수만 + 4중 중복 통합) → D2b = 종합 요약 대시보드 + 관리자 탭 분리. 근거 = 입지 탭 빈약을 사장님 실화면 확인(실측: 입지성 데이터 3섹션 전부 점수 탭 "공공데이터 상세" 접힘에 묻힘) + 미니카드는 탭이 채워져야 미리보기 역할(D2a 선행 의존). 정보 귀속 맵 전수 박제 의무 / D3 = ARIA tablist·애니메이션·analytics(detail_tab_*)
   - ⚠️ 구현 진입 시 적대검증 워크플로 1회 의무 (plan 버전마다 재검증 — 세션 407 답습)
   - 후속 (D1 수용사항): 금융 훅(useRentLoanRates/useLoanRates) useRef→모듈 캐시 승격(선택) / `loan-rates.spec` 커버리지 부활(현재도 비로그인 게이트로 죽은 커버리지 — 로그인 mock+금융 칩 선행 필요)
 

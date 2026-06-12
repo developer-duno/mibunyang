@@ -57,6 +57,14 @@ test.describe("상세 모달", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
   });
 
+  // CTA sticky 바 (세션 407) — 콘텐츠 길이·스크롤 위치와 무관하게 모달 열린 직후 화면 안에 있어야 함.
+  test("CTA 바 — 모달 열린 직후 스크롤 없이 화면 안 (sticky bottom)", async ({ page }) => {
+    await firstCard(page).click();
+    const modal = page.locator('[role="dialog"]');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+    await expect(modal.getByTestId("detail-cta-bar")).toBeInViewport();
+  });
+
   test("모달에 단지 정보 섹션 렌더링", async ({ page }) => {
     await firstCard(page).click();
     const modal = page.locator('[role="dialog"]');
