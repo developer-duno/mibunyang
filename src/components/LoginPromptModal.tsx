@@ -5,18 +5,17 @@ import type { LoginTrigger } from "@/types/hooks";
 
 /**
  * 로그인 유도 모달 — 비로그인 사용자가 상세/비교/지도/관심매물 접근 시 표시
- * Props: open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading
+ * Props: open, onClose, onKakaoLogin, kakaoLoading (세션 405 — 카카오 단독, 관리자 입구는 InfoPage)
  */
 type LoginPromptModalProps = {
   open: boolean;
   onClose: () => void;
   onKakaoLogin: () => void;
-  onExpertLogin: () => void;
   kakaoLoading?: boolean;
   trigger?: LoginTrigger;
 };
 
-export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, onKakaoLogin, onExpertLogin, kakaoLoading, trigger }: LoginPromptModalProps) {
+export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, onKakaoLogin, kakaoLoading, trigger }: LoginPromptModalProps) {
   useEffect(() => {
     if (open) trackEvent("login_prompt_shown", { trigger: trigger || "unknown" });
   }, [open, trigger]);
@@ -72,19 +71,6 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
             <path fillRule="evenodd" clipRule="evenodd" d="M9 1C4.58 1 1 3.79 1 7.21c0 2.17 1.44 4.08 3.62 5.18l-.93 3.4c-.08.3.26.54.52.36l4.07-2.68c.24.02.47.03.72.03 4.42 0 8-2.79 8-6.22S13.42 1 9 1z" fill="#191919"/>
           </svg>
           {kakaoLoading ? "처리 중..." : "카카오로 시작하기"}
-        </button>
-
-        {/* 전문가 로그인 링크 */}
-        <button
-          type="button"
-          onClick={() => { trackEvent("login_prompt_expert_click", { trigger }); onExpertLogin(); }}
-          style={{
-            background: "transparent", border: "none",
-            color: C.muted, fontSize: F.sm, cursor: "pointer",
-            padding: "8px 0", width: "100%",
-          }}
-        >
-          전문가 계정으로 로그인
         </button>
 
         {/* 닫기 */}

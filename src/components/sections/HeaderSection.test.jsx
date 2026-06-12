@@ -14,7 +14,8 @@ describe("HeaderSection", () => {
     onNavClick: vi.fn(),
     showComp: false,
     compCount: 0,
-    expertLoggedIn: false,
+    adminLoggedIn: false,
+    isLoggedIn: false,
     containerMaxWidth: 520,
   };
 
@@ -108,14 +109,23 @@ describe("HeaderSection", () => {
     }).not.toThrow();
   });
 
-  // 전문가 로그인 상태에서도 '곧 분양' 메뉴 노출 (운영자 본인 사용성 — 세션 168 사용자 보고)
-  it("expertLoggedIn=true 분기에도 '📅 곧 분양 N개' 노출", () => {
-    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} expertLoggedIn={true} upcomingCount={392} />);
+  // 관리자 로그인 상태에서도 '곧 분양' 메뉴 노출 (운영자 본인 사용성 — 세션 168 답습, 세션 405 admin 축 전환)
+  it("adminLoggedIn=true 분기에도 '📅 곧 분양 N개' 노출 + 관리자 네비", () => {
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} adminLoggedIn={true} isLoggedIn={true} upcomingCount={392} />);
     expect(screen.getByText("📅 곧 분양 392개")).toBeInTheDocument();
-    // 동시에 전문가 전용 메뉴도 그대로
-    expect(screen.getByText("대시보드")).toBeInTheDocument();
-    expect(screen.getByText("상담목록")).toBeInTheDocument();
+    // 관리자 네비 (구 전문가 메뉴 대체)
+    expect(screen.getByText("관리자")).toBeInTheDocument();
     expect(screen.getByText("소비자뷰")).toBeInTheDocument();
+    expect(screen.queryByText("대시보드")).toBeNull();
+    expect(screen.queryByText("상담목록")).toBeNull();
+  });
+
+  // 데스크톱 로그아웃 — isLoggedIn(공용 토큰 축) 게이트 (카카오 손님 포함, 세션 405 적대검증 보존)
+  it("카카오 손님(isLoggedIn=true, adminLoggedIn=false)도 데스크톱 로그아웃 버튼이 보인다", () => {
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} isLoggedIn={true} />);
+    expect(screen.getByText("로그아웃")).toBeInTheDocument();
+    // 네비는 게스트 분기 (관리자 항목 미노출)
+    expect(screen.queryByText("관리자")).toBeNull();
   });
 
   // 통합 홈 (VITE_FEATURE_HOME) — 데스크톱 네비 홈 항목

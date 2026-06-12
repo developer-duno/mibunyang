@@ -7,7 +7,7 @@ import { BottomNav } from "./BottomNav";
 function makeProps(overrides = {}) {
   return {
     tab: "list",
-    expertLoggedIn: false,
+    adminLoggedIn: false,
     showComp: false,
     onNavClick: vi.fn(),
     containerMaxWidth: 520,
@@ -38,13 +38,24 @@ describe("BottomNav", () => {
     expect(screen.getByText("정보")).toBeInTheDocument();
   });
 
-  // 전문가 로그인 시 — 다른 4개 네비 항목
-  it("전문가 로그인 시 대시보드/상담목록/소비자뷰/로그아웃 표시", () => {
-    render(<BottomNav {...makeProps({ expertLoggedIn: true, tab: "expert" })} />);
-    expect(screen.getByText("대시보드")).toBeInTheDocument();
-    expect(screen.getByText("상담목록")).toBeInTheDocument();
+  // 관리자 로그인 시 — 관리자 네비 (세션 405 — 구 전문가 네비 대체)
+  it("관리자 로그인 시 관리자/소비자뷰/지도/로그아웃 표시", () => {
+    render(<BottomNav {...makeProps({ adminLoggedIn: true, tab: "admin" })} />);
+    expect(screen.getByText("관리자")).toBeInTheDocument();
     expect(screen.getByText("소비자뷰")).toBeInTheDocument();
+    expect(screen.getByText("지도")).toBeInTheDocument();
     expect(screen.getByText("로그아웃")).toBeInTheDocument();
+    expect(screen.queryByText("대시보드")).toBeNull();
+    expect(screen.queryByText("상담목록")).toBeNull();
+  });
+
+  // 카카오 손님(토큰 보유, adminLoggedIn=false) = 게스트 네비 — 전문가 네비 오노출 quirk 해소 가드 (세션 405)
+  it("카카오 손님은 게스트 네비를 본다 (관리자 항목 미노출)", () => {
+    render(<BottomNav {...makeProps({ adminLoggedIn: false })} />);
+    expect(screen.getByText("목록")).toBeInTheDocument();
+    expect(screen.queryByText("관리자")).toBeNull();
+    expect(screen.queryByText("소비자뷰")).toBeNull();
+    expect(screen.queryByText("로그아웃")).toBeNull();
   });
 
   // 활성 탭에 aria-current="page"
@@ -84,10 +95,10 @@ describe("BottomNav", () => {
     expect(screen.getByLabelText("메인 내비게이션")).toBeInTheDocument();
   });
 
-  // 전문가 로그아웃 클릭
+  // 관리자 로그아웃 클릭
   it("로그아웃 클릭 시 onNavClick('logout') 호출", () => {
     const onNavClick = vi.fn();
-    render(<BottomNav {...makeProps({ expertLoggedIn: true, tab: "expert", onNavClick })} />);
+    render(<BottomNav {...makeProps({ adminLoggedIn: true, tab: "admin", onNavClick })} />);
     fireEvent.click(screen.getByText("로그아웃"));
     expect(onNavClick).toHaveBeenCalledWith("logout");
   });
@@ -118,9 +129,9 @@ describe("BottomNav", () => {
       expect(screen.queryByText("📅 곧 분양")).toBeNull();
     });
 
-    it("VITE_FEATURE_UPCOMING=true 전문가 로그인 시 '📅 곧 분양' 미표시", () => {
+    it("VITE_FEATURE_UPCOMING=true 관리자 로그인 시 '📅 곧 분양' 미표시 (모바일 관리자 네비)", () => {
       vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
-      render(<BottomNav {...makeProps({ expertLoggedIn: true, tab: "expert" })} />);
+      render(<BottomNav {...makeProps({ adminLoggedIn: true, tab: "admin" })} />);
       expect(screen.queryByText("📅 곧 분양")).toBeNull();
     });
   });
@@ -155,11 +166,11 @@ describe("BottomNav", () => {
       expect(onNavClick).toHaveBeenCalledWith("home");
     });
 
-    it("ON 전문가: 홈 포함 6탭", () => {
+    it("ON 관리자: 홈 포함 5탭 (홈·관리자·소비자뷰·지도·로그아웃)", () => {
       vi.stubEnv("VITE_FEATURE_HOME", "true");
-      render(<BottomNav {...makeProps({ expertLoggedIn: true, tab: "expert" })} />);
+      render(<BottomNav {...makeProps({ adminLoggedIn: true, tab: "admin" })} />);
       expect(screen.getByText("홈")).toBeInTheDocument();
-      expect(screen.getAllByRole("button")).toHaveLength(6);
+      expect(screen.getAllByRole("button")).toHaveLength(5);
     });
 
     it("OFF: 비교·상담 보존 (회귀 가드)", () => {

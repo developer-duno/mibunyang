@@ -52,14 +52,9 @@ describe('useLoginGate', () => {
     expect(kakao.initKakaoLogin).toHaveBeenCalledWith('77');
   });
 
-  it('관리자 로그인 버튼 → 모달 닫히고 adminLogin 탭으로 전환 (세션 405 개명)', () => {
-    const setTab = vi.fn();
-    const { result } = renderHook(() => useLoginGate(makeDeps({ setTab })));
-
-    act(() => { result.current.setShowLoginPrompt(true); });
-    act(() => { result.current.handleExpertFromPrompt(); });
-
-    expect(result.current.showLoginPrompt).toBe(false);
-    expect(setTab).toHaveBeenCalledWith('adminLogin');
+  // 세션 405: 모달은 카카오 단독 — handleExpertFromPrompt 제거 가드 (관리자 입구 = InfoPage 링크)
+  it('handleExpertFromPrompt 가 제거되었다 (카카오 단독 가드)', () => {
+    const { result } = renderHook(() => useLoginGate(makeDeps()));
+    expect(/** @type {any} */ (result.current).handleExpertFromPrompt).toBeUndefined();
   });
 });

@@ -130,7 +130,7 @@ export interface UseApartmentDataReturn {
 /**
  * useLoginGate 반환 — App.jsx L140~144 분해.
  */
-export type LoginTrigger = "detail" | "expert" | "map" | null;
+export type LoginTrigger = "detail" | "map" | null;
 export interface UseLoginGateReturn {
   showLoginPrompt: boolean;
   setShowLoginPrompt: (_v: boolean) => void;
@@ -138,7 +138,6 @@ export interface UseLoginGateReturn {
   setLoginTrigger: (_v: LoginTrigger) => void;
   handleDetailGated: (_aptId: string) => void;
   handleKakaoFromPrompt: () => void;
-  handleExpertFromPrompt: () => void;
 }
 
 /**

@@ -166,8 +166,8 @@ export default function App() {
   const {
     showLoginPrompt, setShowLoginPrompt,
     loginTrigger, setLoginTrigger,
-    handleDetailGated, handleKakaoFromPrompt, handleExpertFromPrompt,
-  } = useLoginGate({ isLoggedIn, detail, kakao, setTab });
+    handleDetailGated, handleKakaoFromPrompt,
+  } = useLoginGate({ isLoggedIn, detail, kakao });
 
   // ── 탭 전환/인증 네비게이션 ──
   const {
@@ -266,7 +266,7 @@ export default function App() {
 
       <HeaderSection profile={profile} onProfileChange={setProfile} apartmentCount={apartments.length}
         isDesktop={isDesktop} tab={tab} onNavClick={handleNavClick} showComp={showComp} compCount={compIds.length}
-        expertLoggedIn={expert.expertLoggedIn} containerMaxWidth={containerMaxWidth}
+        adminLoggedIn={admin.adminLoggedIn} isLoggedIn={isLoggedIn} containerMaxWidth={containerMaxWidth}
         upcomingCount={upcomingCount} />
 
       {dataLoading && (
@@ -347,7 +347,10 @@ export default function App() {
           </Suspense>
         </div>
       ) : tab === "info" ? (
-        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("adminLogin")} onConsultClick={() => handleNavClick("consult")} />
+        <InfoPage isLoggedIn={isLoggedIn} adminLoggedIn={admin.adminLoggedIn}
+          onAdminLoginClick={() => setTab("adminLogin")} onKakaoLogin={() => kakao.initKakaoLogin(null)}
+          kakaoLoading={kakao.kakaoLoading} onLogout={() => handleNavClick("logout")}
+          onConsultClick={() => handleNavClick("consult")} />
       ) : tab === "consult" ? (
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}>
@@ -392,7 +395,7 @@ export default function App() {
 
       {/* 로그인 유도 모달 */}
       <LoginPromptModal open={showLoginPrompt} onClose={() => { setShowLoginPrompt(false); setLoginTrigger(null); }}
-        onKakaoLogin={handleKakaoFromPrompt} onExpertLogin={handleExpertFromPrompt} kakaoLoading={kakao.kakaoLoading} trigger={loginTrigger} />
+        onKakaoLogin={handleKakaoFromPrompt} kakaoLoading={kakao.kakaoLoading} trigger={loginTrigger} />
 
       {/* 토스트 */}
       <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} isPC={isPC} />
@@ -408,7 +411,7 @@ export default function App() {
       </footer>
 
       {/* 하단 네비 */}
-      <BottomNav tab={tab} expertLoggedIn={expert.expertLoggedIn} showComp={showComp} onNavClick={handleNavClick} containerMaxWidth={containerMaxWidth} isDesktop={isDesktop} />
+      <BottomNav tab={tab} adminLoggedIn={admin.adminLoggedIn} showComp={showComp} onNavClick={handleNavClick} containerMaxWidth={containerMaxWidth} isDesktop={isDesktop} />
     </div>
   );
 }

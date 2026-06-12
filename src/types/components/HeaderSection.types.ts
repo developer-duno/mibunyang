@@ -4,7 +4,7 @@
  * HeaderSection.jsx L98:
  *   memo(function HeaderSection({
  *     profile, onProfileChange, apartmentCount, isDesktop, tab, onNavClick,
- *     showComp, compCount, expertLoggedIn, containerMaxWidth, upcomingCount
+ *     showComp, compCount, adminLoggedIn, isLoggedIn, containerMaxWidth, upcomingCount
  *   }))
  */
 import type { Profile } from "@/types/scoring";
@@ -18,7 +18,10 @@ export interface HeaderSectionProps {
   onNavClick: (_key: string) => void;
   showComp: boolean;
   compCount: number;
-  expertLoggedIn: boolean;
+  /** 관리자 네비 분기 (세션 405 — role 축) */
+  adminLoggedIn: boolean;
+  /** 데스크톱 로그아웃 버튼 게이트 (공용 토큰 축 — 카카오 손님 포함) */
+  isLoggedIn: boolean;
   containerMaxWidth: number;
   upcomingCount?: number | null;
 }
