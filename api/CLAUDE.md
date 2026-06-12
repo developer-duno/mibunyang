@@ -49,7 +49,7 @@ export default withHandler({
 |------|------|--------|
 | C (method only) | `{ method: "GET", handler }` | supabase/*, kakao, neis, dart, kosis, applyhome |
 | B (admin) | `{ method: "GET", admin: true, handler }` | admin/users, admin/review |
-| A (CORS+RL) | `{ method: "POST", cors: {}, rateLimit: "login", handler }` | auth/login, auth/signup, auth/verify |
+| A (CORS+RL) | `{ method: "POST", cors: {}, rateLimit: "login", handler }` | auth/login, auth/verify, auth/kakao |
 | Mixed | `{ method: ["GET","POST"], handler: { POST, GET } }` | consults |
 
 ---
@@ -66,12 +66,14 @@ export default withHandler({
 - 에러 응답: `{ ok: false, error: "메시지" }` (400/500)
 - RLS: "Public read" 정책 (인증 불필요)
 
-## 인증 시스템
+## 인증 시스템 (세션 405 — 관리자+손님 2축)
 
-- SHA-256 + salt 해싱 (`api/_lib/auth.js`)
+- PBKDF2 해싱 (`api/_lib/auth.ts`, 레거시 SHA-256 자동 마이그레이션)
 - HMAC-SHA256 JWT
-- 전문가: status 기반 접근제어 (pending → approved)
-- 관리자: `api/_lib/adminAuth.js` — verifyAdminToken
+- **비밀번호 로그인 = 관리자 전용** — `isAdminEmail()` (ADMIN_EMAIL env, timingSafeEqual 단일 출처. login/verify refresh/kakao 공유). 비admin = generic 401
+- 가입(signup) 폐지 — 관리자 계정 생성/재설정은 `scripts/create-admin-user.mjs` (수동 1회성)
+- 관리자 API 가드: `api/_lib/adminAuth.ts` — verifyAdminToken
+- 상담 열람(GET /api/consults) = role admin 단독
 
 ---
 
@@ -116,7 +118,7 @@ export default withHandler({
 - 로그아웃: 서버 토큰 무효화 + 프론트 sessionStorage 삭제
 - 카카오 신규 사용자: role:"user", status:"approved" (승인 불필요)
 - 카카오 KV: `user:{email}` + `kakao:{kakaoId}→email` 역참조 (TTL 90일)
-- 카카오 탭 라우팅: role="user"→list, "expert"→expert, "admin"→admin
+- 카카오 탭 라우팅: role="admin"→admin, 그 외 전부 일반 손님(home/list — 레거시 expert record 도 user 정규화, 세션 405)
 
 ## 비로그인 블라인드 정책
 

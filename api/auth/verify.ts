@@ -1,5 +1,5 @@
 import { kv } from "../_lib/redis.js";
-import { verifyToken, createToken, createRefreshToken, verifyRefreshToken } from "../_lib/auth.js";
+import { verifyToken, createToken, createRefreshToken, verifyRefreshToken, isAdminEmail } from "../_lib/auth.js";
 import { isBlacklisted, blacklistToken } from "../_lib/tokenBlacklist.js";
 import { withHandler } from "../_lib/handler.js";
 
@@ -39,7 +39,9 @@ async function handleRefresh(req: any, res: any) {
   // 이전 refresh token 블랙리스트 (rotation)
   await blacklistToken(refreshToken, payload);
 
-  const role = user.role || "expert";
+  // 세션 405: role 재발급 = ADMIN_EMAIL 파생 단일 출처 (레거시 expert record → "user" 강등).
+  // handleVerify(아래)는 payload 에코만 — 잔존 expert 토큰은 만료 + consults admin 조임으로 무해.
+  const role = isAdminEmail(payload.email) ? "admin" : "user";
   const isAdmin = role === "admin";
   const token = createToken(
     { email: payload.email, name: user.name, ...(role !== "user" && { role }) },

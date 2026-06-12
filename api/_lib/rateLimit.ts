@@ -1,6 +1,6 @@
 import { kv } from "./redis.js";
 
-const LIMITS: Record<string, number> = { login: 5, signup: 5, verify: 20, consult: 10, admin: 30, logout: 10, proxy: 30, kakao: 10, subscribers: 5 };
+const LIMITS: Record<string, number> = { login: 5, verify: 20, consult: 10, admin: 30, logout: 10, proxy: 30, kakao: 10, subscribers: 5 };
 const DEFAULT_MAX = 5;
 const WINDOW_SEC = 300; // 5분
 

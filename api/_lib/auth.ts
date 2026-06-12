@@ -28,6 +28,19 @@ export function verifyPassword(password: string, storedHash: string, salt: strin
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(storedHash, "hex"));
 }
 
+/**
+ * ADMIN_EMAIL 환경변수와 timing-safe 비교 — 관리자 판별 단일 출처 (세션 405).
+ * login.ts / verify.ts(refresh) / kakao.ts 공용. ADMIN_EMAIL 미설정 시 항상 false.
+ */
+export function isAdminEmail(email: string | undefined | null): boolean {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!adminEmail || !email) return false;
+  const a = Buffer.from(email.toLowerCase().trim());
+  const b = Buffer.from(adminEmail.toLowerCase().trim());
+  if (a.length !== b.length) return false;
+  try { return crypto.timingSafeEqual(a, b); } catch { return false; }
+}
+
 function getSecret(): string {
   const secret = process.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET environment variable is not set");

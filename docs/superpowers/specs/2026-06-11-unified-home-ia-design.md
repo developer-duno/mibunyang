@@ -147,3 +147,15 @@ MapView onSelect(신설) ──→ 홈 selectedApt ──→ SelectedAptCard + �
 - DetailModal ungated 진입 기존 2건: `?detail=` 딥링크(App.tsx L213-219)·UpcomingPage(L355) — 비로그인 도달 가능 (기존 구멍, 홈 IA와 무관)
 - AptCard 비로그인 부분 누설: Bar가 실점수를 aria-valuenow·width%로 DOM 노출(primitives.tsx L10-11) + "안전 N등급" 텍스트
 - 루트 CLAUDE.md stale 2건: "Playwright E2E (11 spec)" → 실측 13 / index 172KB → ~185KB
+
+---
+
+## v3 추록 (2026-06-12, 세션 405 — 전문가 역할 폐지 반영. 본문 비파괴 추록)
+
+사장님 결정으로 **전문가 role 완전 폐지** (PR #101 이식 → #102 철거 → #103 백엔드). 결정·귀속 맵 = `2026-06-12-expert-role-abolition-decision.md`. 본문 중 무효화된 항목:
+
+- **D3(전문가 위젯 2종) 무효** — 전문가 대시보드 자체가 폐지. 단, 자료는 상세 모달 관리자 인사이트(AdminScoreBreakdown·AdminUnitSupply·DataSections adminMode)로 이식돼 살아 있어, **"관리자 위젯"(인사이트의 홈 위젯판)으로 전환 가능성은 열려 있음** — M2 진입 시 사장님 결정.
+- §1 네비 표의 "전문가 6탭" 행 무효 → 관리자 분기 = 홈(flag)·관리자·소비자뷰·지도·로그아웃. 숨은 탭 expertLogin → adminLogin.
+- §1 "expertLoggedIn 토큰 축" 경고 해소 — 네비 분기 축이 adminLoggedIn(role)로 교체돼 카카오 손님 오노출 quirk 종결.
+- **M2 재산정** = MapView height/onSelect/compact prop + 미니지도 임베드 + SelectedAptCard 동기 (전문가 위젯 2종 제외, 관리자 위젯 여부는 별도 결정).
+- 미해결 §8 "전문가 모바일 6탭 폭" 항목 무효 (관리자 5탭).

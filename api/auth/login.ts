@@ -1,8 +1,7 @@
 import { kv } from "../_lib/redis.js";
-import { verifyPassword, hashPassword, createToken, createRefreshToken } from "../_lib/auth.js";
+import { verifyPassword, hashPassword, createToken, createRefreshToken, isAdminEmail } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
 import { isValidEmail } from "../_lib/validators.js";
-import crypto from "crypto";
 
 /**
  * KV `user:{email}` 레코드 — 5 source (login/signup/verify/kakao/logout) 공통 활용.
@@ -58,30 +57,18 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "login", handl
       await kv.set(`user:${email.toLowerCase().trim()}`, { ...user, passwordHash: hash, salt });
     }
 
-    const isAdmin = (() => {
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (!adminEmail) return false;
-      const a = Buffer.from(user.email);
-      const b = Buffer.from(adminEmail.toLowerCase().trim());
-      if (a.length !== b.length) return false;
-      try { return crypto.timingSafeEqual(a, b); } catch { return false; }
-    })();
-
+    // 세션 405: 비밀번호 로그인 = 관리자 전용. 비admin(레거시 전문가 가입 계정 포함)은
+    // 계정 존재 비노출을 위해 generic 401 (손님은 카카오 로그인 단독).
+    const isAdmin = isAdminEmail(user.email);
     if (!isAdmin) {
-      const status = user.status ?? "approved";
-      if (status === "pending") {
-        return res.status(403).json({ ok: false, error: "관리자 승인 대기중입니다. 승인 후 이용 가능합니다.", statusCode: "PENDING" });
-      }
-      if (status === "rejected") {
-        return res.status(403).json({ ok: false, error: "가입 신청이 거부되었습니다. 관리자에게 문의해주세요.", statusCode: "REJECTED" });
-      }
+      return res.status(401).json({ ok: false, error: "이메일 또는 비밀번호가 일치하지 않습니다" });
     }
 
-    const role = isAdmin ? "admin" : "expert";
+    const role = "admin";
     const token = createToken({
       email: user.email, name: user.name,
       role,
-    }, isAdmin ? { ttl: 3600000 } : undefined);
+    }, { ttl: 3600000 });
     const refreshToken = createRefreshToken(user.email);
     res.json({
       ok: true,

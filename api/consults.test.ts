@@ -178,8 +178,8 @@ describe("consults handler", () => {
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it("GET: 유효한 토큰으로 상담 목록을 반환한다", async () => {
-    (verifyToken as any).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
+  it("GET: 유효한 관리자 토큰으로 상담 목록을 반환한다", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
     // snake_case DB 응답 목
     mockLimit.mockResolvedValueOnce({
       data: [makeConsultRow()],
@@ -198,16 +198,16 @@ describe("consults handler", () => {
     expect(responseData.count).toBe(1);
   });
 
-  it("GET: admin role can read consult list", async () => {
-    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+  // 세션 405: expert role 폐지 — 잔존 expert 토큰도 403 (관리자 단독)
+  it("GET: 잔존 expert role 토큰은 403을 반환한다", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
     const res = makeRes();
-    await handler({ method: "GET", headers: { authorization: "Bearer admin-token" }, query: {} }, res);
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+    await handler({ method: "GET", headers: { authorization: "Bearer legacy-expert-token" }, query: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("GET: Supabase 조회 실패 시 500을 반환한다", async () => {
-    (verifyToken as any).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
     mockLimit.mockResolvedValueOnce({ data: null, error: new Error("DB error"), count: 0 });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer valid-token" }, query: {} }, res);

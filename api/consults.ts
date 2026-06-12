@@ -79,7 +79,8 @@ async function handleGet(req: any, res: any) {
     return res.status(401).json({ ok: false, error: "로그아웃된 토큰입니다" });
   }
 
-  if (payload.role !== "expert" && payload.role !== "admin") {
+  // 세션 405: 상담 열람 = 관리자 단독 (expert role 폐지 — 잔존 expert 토큰도 차단)
+  if (payload.role !== "admin") {
     return res.status(403).json({ ok: false, error: "Forbidden" });
   }
 
