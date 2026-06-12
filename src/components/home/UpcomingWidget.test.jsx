@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { UpcomingWidget } from "./UpcomingWidget";
 
+/** @param {number} days */
 function isoDaysFromNow(days) {
   const d = new Date(Date.now() + days * 86400000);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -37,7 +38,7 @@ describe("UpcomingWidget", () => {
   it("YYYY-MM(월 단위, 미래)도 임박 목록 포함 — 그 달 1일 해석 (라이브 46행 형식)", () => {
     const data = makeData();
     const future = new Date(Date.now() + 90 * 86400000);
-    data.stages.apply = [{ id: "u4", name: "월단위단지", region: "대전", presaleStage: "청약중", presaleRecruitDate: `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, "0")}` }];
+    data.stages.apply = /** @type {any} */ ([{ id: "u4", name: "월단위단지", region: "대전", presaleStage: "청약중", presaleRecruitDate: `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, "0")}` }]);
     render(<UpcomingWidget data={data} error={false} onRetry={vi.fn()} onExpand={vi.fn()} />);
     expect(screen.getByText("월단위단지")).toBeInTheDocument();
   });
