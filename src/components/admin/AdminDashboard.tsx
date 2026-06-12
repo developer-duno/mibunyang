@@ -10,7 +10,7 @@ import { AdminConsults } from "./AdminConsults";
 import { UserList } from "./UserList";
 import type { AdminDashboardProps } from "@/types/components/AdminDashboard.types";
 
-export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, onSwitchToExpert, profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }: AdminDashboardProps) {
+export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }: AdminDashboardProps) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
@@ -31,12 +31,6 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
             border: `1px solid ${C.purple}`, borderRadius: 6,
             padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
           }}>도움말</button>
-          {onSwitchToExpert && (
-            <button onClick={onSwitchToExpert} style={{
-              background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`, borderRadius: 6,
-              padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
-            }}>전문가 보기</button>
-          )}
           <button onClick={handleLogoutClick} style={{
             background: C.redLight, color: C.red, border: `1px solid #FECACA`, borderRadius: 6,
             padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
@@ -59,9 +53,9 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
       {/* Consults Section (세션 405 구 expertConsults 탭 이관) */}
       <AdminConsults aptNames={aptNames} />
 
-      {/* Expert Applications Section */}
+      {/* Members Section (세션 405 "전문가 신청 관리" 개명 — 카카오 손님 목록·계정 정지 겸용) */}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text, marginBottom: 4 }}>전문가 신청 관리</div>
+        <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text, marginBottom: 4 }}>회원 관리</div>
         <div style={{ fontSize: F.xs, color: C.muted }}>전체 {admin.totalUsers}건</div>
       </div>
 

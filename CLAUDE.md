@@ -21,10 +21,10 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 |--------|------|----------|
 | **프론트** | React 19 + Vite 8 (Rolldown) | App.tsx (~430줄), `@/` 경로 별칭, Pretendard 폰트 |
 | **상태/훅** | useMemo 14개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
-| **컴포넌트** | memo() 45개 + icons.tsx (SVG 9개) | 소비자9 + 섹션9 + 상세10 + 필터7 + 전문가9 + 관리자5 + 아이콘1 |
+| **컴포넌트** | memo() 44개 + icons.tsx (SVG 9개) | 소비자9 + 섹션9 + 상세12 + 필터7 + 관리자6 + 아이콘1 (전문가 그룹 세션 405 폐지 — 관리자 인사이트로 이식) |
 | **API** | Vercel Serverless (23개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합) |
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
-| **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth + 전문가/관리자 role 기반 |
+| **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지 |
 | **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |
 | **수집** | GitHub Actions (47개) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
 | **테스트** | Vitest + Playwright E2E (13 spec) | `npm run test` / `npm run test:e2e` |
