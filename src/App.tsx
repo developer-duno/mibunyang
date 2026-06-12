@@ -1,7 +1,8 @@
 // App.tsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
 import { useState, useEffect, useCallback, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { isFeatureUpcoming } from "@/constants/featureFlags";
+import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
+import { HomePage } from "@/components/home/HomePage";
 import { C, F } from "@/theme";
 import type { Profile } from "@/types/scoring";
 import type { CustomWeights } from "@/types/admin";
@@ -104,7 +105,7 @@ export default function App() {
       // Feature Flag OFF 시 메인으로 fallback (URL도 /로 정리)
       if (!isFeatureUpcoming()) {
         try { window.history.replaceState(null, "", "/"); } catch { /* noop */ }
-        return "list";
+        return isFeatureHome() ? "home" : "list";
       }
       return "upcoming";
     }
@@ -125,10 +126,10 @@ export default function App() {
         }
       } catch { /* storage 접근 실패 시 무시 */ }
     }
-    if (!token) return "list";
+    if (!token) return isFeatureHome() ? "home" : "list";
     if (role === "admin") return "admin";
     if (role === "expert") return "expert";
-    return "list";
+    return isFeatureHome() ? "home" : "list";
   });
   // ── 커스텀 훅 13개 ──
   const { isPC, isDesktop } = useResponsive();
@@ -228,7 +229,13 @@ export default function App() {
     if (detailId) detail.setDetailAptId(detailId);
     if (compareStr) {
       const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
-      if (ids.length >= 2) { setCompIds(ids); setShowCompOpen(true); }
+      if (ids.length >= 2) {
+        setCompIds(ids); setShowCompOpen(true);
+        // CompareSheet 는 list 탭 전용 렌더 — home 기본 탭에선 list 로 페어 전환.
+        // ?detail= 복합 링크는 detail 우선(!detailId): 탭 전환 시 useDetailModal 모달닫힘 충돌 회피.
+        // 복합 링크의 비교 시트 열림 상태는 유실 수용(compIds 보존 — 목록의 'N개 비교 보기' 버튼으로 재개)
+        if (!detailId && isFeatureHome()) setTab("list");
+      }
     }
     if (detailId || compareStr) {
       const cleanParams = new URLSearchParams(window.location.search);
@@ -306,7 +313,14 @@ export default function App() {
         </div>
       )}
 
-      {tab === "list" ? (
+      {tab === "home" ? (
+        <HomePage scored={scored} pw={pw}
+          upcomingData={upcomingData} upcomingError={upcomingError} onRetryUpcoming={retryUpcoming}
+          isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC}
+          dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
+          onNavClick={handleNavClick} onDetail={handleDetailGated}
+          onFav={toggleFavorite} favoriteSet={favoriteSet} onComp={toggleComp} compIds={compIds} />
+      ) : tab === "list" ? (
         <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           {compIds.length >= 2 && (
             <button onClick={() => { const wasOpen = showComp; setShowCompOpen(!showCompOpen); if (wasOpen) window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{
@@ -362,7 +376,7 @@ export default function App() {
         <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>분양예정 페이지 로딩 중...</div>}>
           <UpcomingPage
             onOpenDetail={detail.handleOpenDetail}
-            onBackToMain={() => { setTab("list"); try { window.history.pushState(null, "", "/"); } catch { /* noop */ } }}
+            onBackToMain={() => { setTab(isFeatureHome() ? "home" : "list"); try { window.history.pushState(null, "", "/"); } catch { /* noop */ } }}
           />
         </Suspense>
       ) : tab === "kakaoCallback" ? (

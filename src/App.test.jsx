@@ -5,7 +5,7 @@
  * 13개 훅 + 9개 useMemo를 사용하는 App 컴포넌트의 스모크 테스트.
  * 핵심 동작(렌더링, 프로필 변경, 탭 전환, 에러 표시)을 검증합니다.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -323,6 +323,65 @@ describe('App 통합 테스트', () => {
       await waitFor(() => {
         expect(screen.getByText(/완판아파트/)).toBeInTheDocument();
       });
+    });
+  });
+
+  // 8. 통합 홈 (VITE_FEATURE_HOME ON) — OFF 경로는 위 기존 테스트 전체가 회귀 가드
+  describe('VITE_FEATURE_HOME flag ON', () => {
+    beforeEach(() => {
+      // CI 는 VITE_FEATURE_UPCOMING=true 라 App 이 /api/upcoming fetch 실행 — 실 fetch reject 의 act 밖 setState flaky 방지
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ ok: true, stages: { plan: [], apply: [], sale: [] }, totals: { plan: 0, apply: 0, sale: 0 }, calendar: {} }),
+      }));
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    });
+
+    it('초기 탭이 홈 — 위젯판 렌더 + D5 잠금 (비로그인)', async () => {
+      vi.stubEnv('VITE_FEATURE_HOME', 'true');
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByText('📊 시장 요약')).toBeInTheDocument();
+      });
+      expect(screen.getByText('로그인하면 지도가 열려요')).toBeInTheDocument();
+    });
+
+    it('?compare= 딥링크: list 탭 전환 + 비교 시트 열림 (홈이 기본 탭이어도 보존)', async () => {
+      vi.stubEnv('VITE_FEATURE_HOME', 'true');
+      window.history.replaceState(null, '', '/?compare=apt1,apt2');
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByText(/2개 비교/)).toBeInTheDocument();
+      });
+      window.history.replaceState(null, '', '/');
+    });
+
+    it('?detail= 딥링크: 홈 기본 탭에서도 상세 모달 열림 (전역 렌더 무변경 회귀)', async () => {
+      vi.stubEnv('VITE_FEATURE_HOME', 'true');
+      window.history.replaceState(null, '', '/?detail=apt1');
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+      window.history.replaceState(null, '', '/');
+    });
+
+    it('홈 추천 카드 상세 클릭: 비로그인 → LoginPromptModal (handleDetailGated 게이트)', async () => {
+      vi.stubEnv('VITE_FEATURE_HOME', 'true');
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByText('⭐ 추천 TOP 3')).toBeInTheDocument();
+      });
+      const detailBtn = screen.getAllByText('상세보기')[0];
+      await act(async () => { detailBtn.click(); });
+      expect(screen.getByRole('dialog', { name: '로그인 안내' })).toBeInTheDocument();
     });
   });
 });

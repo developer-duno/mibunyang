@@ -96,6 +96,18 @@ describe('useKakaoCallbackEffect', () => {
     expect(args.setTab).toHaveBeenCalledWith('list');
   });
 
+  // VITE_FEATURE_HOME ON: 일반 유저 착지가 home (로그인 직후 홈 = 지도 위젯 열린 첫 경험, spec §1)
+  it('VITE_FEATURE_HOME=true 면 user 로그인 착지가 home 이다', async () => {
+    vi.stubEnv('VITE_FEATURE_HOME', 'true');
+    const args = makeArgs({ ok: true, token: 't', role: 'user' });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(args.setTab).toHaveBeenCalledWith('home');
+    });
+    vi.unstubAllEnvs();
+  });
+
   // result.ok=false → list 탭 fallback, 토큰 미저장
   it('콜백 실패 시 list 탭으로 fallback 하고 토큰을 저장하지 않는다', async () => {
     const args = makeArgs({ ok: false });

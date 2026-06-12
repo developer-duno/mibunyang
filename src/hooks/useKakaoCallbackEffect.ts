@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { isFeatureHome } from "@/constants/featureFlags";
 import type { UseKakaoAuthReturn } from "@/types/hooks";
 import type { AdminMode } from "@/types/admin";
 import type { ExpertUser } from "./useExpertMode";
@@ -39,12 +40,12 @@ export function useKakaoCallbackEffect({ tab, kakao, expert, admin, detail, setT
         else if (role === "expert") { setTab("expert"); }
         else {
           if (result.pendingDetail) { detail.setDetailAptId(result.pendingDetail); }
-          setTab("list");
+          setTab(isFeatureHome() ? "home" : "list"); // 로그인 직후 홈 = 지도 위젯 열린 첫 경험 (spec §1)
         }
         showToast("로그인 성공");
         trackEvent("kakao_login", { role, isNew: !result.user?.affiliation });
       } else {
-        setTab("list");
+        setTab(isFeatureHome() ? "home" : "list");
       }
       try { window.history.replaceState(null, "", "/"); } catch { /* noop: history.replaceState 미지원 환경 무시 */ }
     });
