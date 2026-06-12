@@ -638,3 +638,11 @@ SELECT region, COUNT(*) FROM subscribers WHERE opt_out_at IS NULL GROUP BY regio
 ## 진행 상태
 
 ✅ **완료** (2026-05-02 세션 161) — `src/components/UpcomingPage.tsx` (214줄) + `UpcomingCalendar.tsx` (80줄) + `UpcomingCardList.tsx` (220줄) 신규 + `/upcoming` 라우트 박힘.
+
+---
+
+## 세션 406 추록 (2026-06-13) — 호갱노노 패턴 적용 (본문 비파괴)
+
+사장님 결정 (호갱노노 모바일 분양 화면 답습, 4종 전부): ① **지역 칩 가로 스크롤** (`RegionChipBar` 신규 — REGIONS 키 순서, regionFilter 적용 전 모집단 universe) ② **★ 관심지역** (localStorage `mibunyang_favRegions`, 편집 모드 칩 — long-press 미사용) ③ **분양결과 탭** (`PresaleResultList` 신규 — scored prop 기반 새 fetch 0, **청약홈 잔여세대 경쟁률** 기준 캡션 명시·"1순위" 표기 금지, 미달 = rate<1, 진행 중(분양계획/청약중) 단지 제외, 경쟁률 desc — 최신순 불가: recruitDate 18%뿐) ④ **카드 강조줄** (주소/강조 2줄 분리 — 모집일 indigo·분양가 굵게).
+
+수용 박제: result 탭 = 상태5 게이트 안 (API 로딩/에러/빈 시 미노출) / 탭 카운트 = 지역 필터 반영 클라 계산 (상태 게이트 totalCount 와 분리) / result 탭에서 캘린더·SubscribeForm·date 해제 칩 숨김 / 헤더 "전국 N개" = stage 3종 설명 유지 / region×캘린더 전국 기준 불일치 = 기존 동작. 적대검증 wf_20aec4dc (6 probe, major 5 정정).

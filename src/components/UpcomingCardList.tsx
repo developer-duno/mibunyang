@@ -120,10 +120,17 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
             {apt.name}
           </span>
         </div>
+        {/* 주소줄 + 강조줄 분리 (호갱노노 답습 — 세션 406). 모집일 null/자유텍스트는 기존 ternary 생략 패턴 보존 */}
         <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.5 }}>
-          {apt.presaleRecruitDate ? `${fmtRecruitDate(apt.presaleRecruitDate)} · ` : ""}
-          {apt.region} {apt.gu || ""} ·{" "}
-          {apt.presaleMinPrice ? fmtPrice(apt.presaleMinPrice) : "분양가 미공개"}
+          {apt.region} {apt.gu || ""}
+        </div>
+        <div style={{ fontSize: F.xs, lineHeight: 1.5 }}>
+          {apt.presaleRecruitDate && (
+            <span style={{ color: C.indigo, fontWeight: 700 }}>{fmtRecruitDate(apt.presaleRecruitDate)} 모집 · </span>
+          )}
+          {apt.presaleMinPrice
+            ? <span style={{ color: C.text, fontWeight: 700 }}>{fmtPrice(apt.presaleMinPrice)}</span>
+            : <span style={{ color: C.muted }}>분양가 미공개</span>}
         </div>
         {(apt.presaleHousingType || apt.presaleType) && (
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
