@@ -11,6 +11,8 @@ import type { UpcomingApiResponse } from "@/types/upcoming";
 
 type HomePageProps = {
   scored: ScoredApt[];
+  /** 미니지도 입력 — 지도 탭과 동일(필터 적용분) = "크게 보기" 핀 연속성. 잔존 필터·hideNoUnsold 무표시 적용은 수용 (plan 406) */
+  filtered: ScoredApt[];
   pw: ProfileWeights;
   upcomingData: UpcomingApiResponse | null;
   upcomingError: boolean;
@@ -32,7 +34,7 @@ type HomePageProps = {
  * 통합 홈 (D1 C안 위젯판) — spec §1·§2. 위젯 단위 독립.
  * 펼치기는 전부 onNavClick(handleNavClick) 경유. 전문가 위젯 2종은 M2.
  */
-export const HomePage = memo(function HomePage({ scored, pw, upcomingData, upcomingError, onRetryUpcoming, isLoggedIn, isDesktop, isPC, dataLoading, dataFreshnessText, onNavClick, onDetail, onFav, favoriteSet, onComp, compIds }: HomePageProps) {
+export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingData, upcomingError, onRetryUpcoming, isLoggedIn, isDesktop, isPC, dataLoading, dataFreshnessText, onNavClick, onDetail, onFav, favoriteSet, onComp, compIds }: HomePageProps) {
   const upcomingEnabled = isFeatureUpcoming();
   const pad = isDesktop ? "0 24px" : "0 16px"; // App.tsx L301·L324 list/map 탭 패딩과 통일
 
@@ -47,7 +49,7 @@ export const HomePage = memo(function HomePage({ scored, pw, upcomingData, upcom
   return (
     <div style={{ padding: pad }}>
       <div data-testid="home-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, alignItems: "start" }}>
-        <MapEntryWidget isLoggedIn={isLoggedIn} onExpand={() => onNavClick("map")} />
+        <MapEntryWidget isLoggedIn={isLoggedIn} onExpand={() => onNavClick("map")} filtered={filtered} onDetail={onDetail} />
         {upcomingEnabled && (
           <UpcomingWidget data={upcomingData} error={upcomingError} onRetry={onRetryUpcoming} onExpand={() => onNavClick("upcoming")} />
         )}

@@ -2,11 +2,12 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 컴포넌트 (45개, 2026-04-19 실측)
+## memo() 컴포넌트 (51개, 2026-06-13 실측)
 
 | 그룹 | 개수 | 위치 | 컴포넌트 |
 |------|------|------|---------|
 | 소비자 | 9 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
+| 홈 | 6 | `home/` | HomePage, WidgetCard, MapEntryWidget(M2: 로그인 시 MapView compact 미니지도 임베드 + 뷰포트 진입 lazy), UpcomingWidget, TopPicksWidget, MarketSummaryWidget (세션 404 M1 신설, 세션 406 표 등재) |
 | 섹션 | 9 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), AdminLoginForm, InfoPage, BottomNav, MapView, InfraOverlay, SelectedAptCard |
 | 상세 | 12 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
 | 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
@@ -59,7 +60,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | HeaderSection | 166 | 데스크톱: 상단 바 60px / 모바일: 그라디언트 + HelpModal |
 | SearchFilterBar | 196 | 드롭다운 오케스트레이터 (6개 FilterButton + 패널 + 칩 + undo) |
 | AptListSection | 53 | 카드 그리드 (isDesktop 3컬럼/isPC 2컬럼) |
-| MapView | 216 | Kakao Map (마커+클러스터+현위치+인프라) |
+| MapView | ~240 | Kakao Map (마커+클러스터+현위치+인프라). M2 prop 3종: `height`(루트 높이 오버라이드)·`compact`(위젯 모드 — 컨트롤 숨김+휠줌 차단, 마운트 시 고정)·`onSelect`(선택 미러, ref 격리 — 마커 effect deps 추가 금지) |
 | BottomNav | 36 | 하단 네비 (isDesktop → null) |
 
 ### 상세 컴포넌트 (`detail/`)

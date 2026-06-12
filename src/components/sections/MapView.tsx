@@ -14,7 +14,7 @@ type FilteredItem = { apt: Apt; res: ScoringResult };
 
 const ChoroplethView = lazy(() => import("./ChoroplethView").then(m => ({ default: m.ChoroplethView })));
 
-export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop }: MapViewProps) {
+export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const clustererRef = useRef<{ clear: () => void; addMarkers: (_m: unknown[]) => void } | null>(null);
@@ -24,6 +24,17 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"point" | "choropleth">("point");
   const [mapInstance, setMapInstance] = useState<unknown>(null);
+
+  // compact 는 마운트 시 고정 — init effect(deps []) 안에서 읽으므로 ref 캡처.
+  // deps 에 compact 를 넣으면 cleanup 이 JS ref 만 해제(지도 destroy API 없음)하고
+  // 같은 div 에 두 번째 지도가 중첩 생성되는 함정 (plan 함정 박제).
+  const compactRef = useRef(compact);
+
+  // onSelect 미러 — selected 감시 단일 지점으로 4개 setSelected 경로 전부 커버.
+  // 마커 effect deps 에 onSelect 를 넣으면 인라인 콜백 전달 시 마커 전체 재생성 → ref 격리.
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => { onSelectRef.current = onSelect; });
+  useEffect(() => { onSelectRef.current?.(selected); }, [selected]);
 
   // Kakao Maps SDK 동적 로드 + 지도 초기화
   useEffect(() => {
@@ -39,7 +50,12 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
             center: new maps.LatLng(MAP_DEFAULTS.lat, MAP_DEFAULTS.lng),
             level: MAP_DEFAULTS.level,
           });
-          map.addControl(new maps.ZoomControl(), maps.ControlPosition.RIGHT);
+          if (compactRef.current) {
+            // 위젯 모드: 줌 컨트롤 생략 + 휠 줌 차단 (280px 위젯이 홈 페이지 스크롤을 가로채는 것 방지)
+            map.setZoomable(false);
+          } else {
+            map.addControl(new maps.ZoomControl(), maps.ControlPosition.RIGHT);
+          }
           mapInstanceRef.current = map;
           setMapInstance(map);
           clustererRef.current = new maps.MarkerClusterer({
@@ -157,7 +173,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   }, [ready, mapInstance]);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)", borderRadius: isDesktop ? 12 : 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
+    <div style={{ position: "relative", width: "100%", height: height ?? (isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)"), borderRadius: isDesktop ? 12 : 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
       {error && (
         <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.9)", zIndex: 20 }}>
@@ -168,10 +184,10 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
           </div>
         </div>
       )}
-      {/* 인프라 오버레이 토글 */}
-      <InfraOverlay mapInstance={mapInstance} ready={ready} />
+      {/* 인프라 오버레이 토글 — compact(위젯) 모드에선 숨김 */}
+      {!compact && <InfraOverlay mapInstance={mapInstance} ready={ready} />}
       {/* 현위치 버튼 */}
-      {ready && navigator.geolocation && (
+      {!compact && ready && navigator.geolocation && (
         <button onClick={handleMyLocation} aria-label="현위치" style={{ position: "absolute", bottom: 16, right: 12, width: 36, height: 36, borderRadius: "50%", background: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, fontSize: F.lg }}>
           📍
         </button>
@@ -181,14 +197,17 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
         <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "4px 10px", fontSize: F.xs, fontWeight: 700, color: C.indigo, boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}>
           {mode === "choropleth" ? `${filtered.length}개 단지` : markerCount == null ? `${filtered.length}개 단지` : markerCount === filtered.length ? `${filtered.length}개 단지` : `${markerCount} / ${filtered.length}개 단지`}
         </div>
-        <button
-          onClick={handleModeToggle}
-          aria-pressed={mode === "choropleth"}
-          aria-label="지도 모드 토글"
-          style={{ background: "rgba(255,255,255,0.92)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 10px", fontSize: F.xs, fontWeight: 700, color: C.indigo, cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}
-        >
-          {mode === "point" ? "🎨 색칠" : "📍 점"}
-        </button>
+        {/* 모드토글 — compact 에선 숨김 (point 모드 고정 진입로 차단). 결과수 badge 는 유지 (spec 숨김 목록 미포함) */}
+        {!compact && (
+          <button
+            onClick={handleModeToggle}
+            aria-pressed={mode === "choropleth"}
+            aria-label="지도 모드 토글"
+            style={{ background: "rgba(255,255,255,0.92)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 10px", fontSize: F.xs, fontWeight: 700, color: C.indigo, cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}
+          >
+            {mode === "point" ? "🎨 색칠" : "📍 점"}
+          </button>
+        )}
       </div>
       {/* 색칠 모드: ChoroplethView lazy 렌더 */}
       {mode === "choropleth" && (

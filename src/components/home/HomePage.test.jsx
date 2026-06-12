@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { HomePage } from "./HomePage";
 
 const baseProps = () => ({
-  scored: [], pw: /** @type {any} */ ({}),
+  scored: [], filtered: [], pw: /** @type {any} */ ({}),
   upcomingData: null, upcomingError: false, onRetryUpcoming: vi.fn(),
   isLoggedIn: false, isDesktop: false, isPC: false,
   dataLoading: false, dataFreshnessText: null,
