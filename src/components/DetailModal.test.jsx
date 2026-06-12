@@ -158,6 +158,7 @@ describe("DetailModal StickyJumpNav", () => {
   });
 
   const SECTION_IDS = ["sec-overview", "sec-price", "sec-location", "sec-presale", "sec-finance", "sec-score"];
+  /** @type {Record<string, string>} */
   const TAB_LABELS = { "sec-overview": "종합", "sec-price": "시세", "sec-location": "입지", "sec-presale": "분양", "sec-finance": "금융", "sec-score": "점수" };
 
   it("소비자 첫 렌더는 종합 탭만 마운트 — 6 칩 순회 클릭 시 각 섹션 마운트 (정보 소실 0 골격)", () => {
