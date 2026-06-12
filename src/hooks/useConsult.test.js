@@ -101,27 +101,11 @@ describe('useConsult', () => {
     expect(result.current.submitting).toBe(false);
   });
 
-  // 전문가용 fetchConsults 검증
-  it('fetchConsults: 서버에서 상담 목록 조회', async () => {
-    const mockData = [
-      { id: 1, name: "고객A", phone: "010-1111-2222", interestedApts: ["apt1"], submittedAt: "2026-03-20T00:00:00Z" },
-    ];
-    globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => Promise.resolve(/** @type {Response} */ ({
-      json: () => Promise.resolve({ ok: true, data: mockData }),
-    }))));
+  // 세션 405: 서버 상담 목록 조회는 AdminConsults(관리자 대시보드)로 이관 — 훅에서 제거 가드
+  it('fetchConsults 가 훅에서 제거되었다 (AdminConsults 이관 가드)', () => {
     const { result } = renderHook(() => useConsult(vi.fn(), []));
-    await act(async () => { await result.current.fetchConsults("test-token"); });
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/consults", expect.objectContaining({
-      headers: { Authorization: "Bearer test-token" },
-    }));
-    expect(result.current.submittedConsults).toHaveLength(1);
-    expect(result.current.submittedConsults[0].name).toBe("고객A");
-  });
-
-  it('fetchConsults: 네트워크 오류 시 기존 상태 유지', async () => {
-    globalThis.fetch = mockFetchNetworkError();
-    const { result } = renderHook(() => useConsult(vi.fn(), []));
-    await act(async () => { await result.current.fetchConsults("test-token"); });
-    expect(result.current.submittedConsults).toHaveLength(0);
+    expect(/** @type {any} */ (result.current).fetchConsults).toBeUndefined();
+    // 오프라인 폴백 저장소는 보존
+    expect(Array.isArray(result.current.submittedConsults)).toBe(true);
   });
 });

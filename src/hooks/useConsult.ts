@@ -54,20 +54,7 @@ export function useConsult(showToast: (_msg: string) => void, favoriteIds: strin
     }
   }, [showToast, favoriteIds, consultForm, submitting, submittedConsults]);
 
-  // 전문가용: 서버에서 상담 목록 조회
-  const fetchConsults = useCallback(async (token: string) => {
-    try {
-      const res = await fetch("/api/consults", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json() as { ok?: boolean; data?: SubmittedConsult[] };
-      if (json.ok && Array.isArray(json.data)) {
-        setSubmittedConsults(json.data);
-      }
-    } catch {
-      // 네트워크 오류 시 기존 상태 유지
-    }
-  }, []);
-
-  return { consultForm, setConsultForm, consultSubmitted, setConsultSubmitted, submitting, submittedConsults, handleConsultSubmit, fetchConsults };
+  // 서버 상담 목록 조회(fetchConsults)는 세션 405 에 AdminConsults(관리자 대시보드) 자체 fetch 로 이관.
+  // submittedConsults 는 handleConsultSubmit 오프라인 폴백 저장소로 보존.
+  return { consultForm, setConsultForm, consultSubmitted, setConsultSubmitted, submitting, submittedConsults, handleConsultSubmit };
 }

@@ -330,7 +330,6 @@ export interface UseAppNavigationArgs {
     consultSubmitted: boolean;
     setConsultSubmitted: (_v: boolean) => void;
     setConsultForm: (_form: import("@/hooks/useConsult").ConsultForm | ((_prev: import("@/hooks/useConsult").ConsultForm) => import("@/hooks/useConsult").ConsultForm)) => void;
-    fetchConsults: (_token: string) => void;
     [key: string]: unknown;
   };
   detail: {

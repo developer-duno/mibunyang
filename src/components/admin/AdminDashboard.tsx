@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useMemo } from "react";
 import { C, F } from "@/theme";
 import { AdminHelpGuide } from "./AdminHelpGuide";
 import WeightEditor from "./WeightEditor";
@@ -6,6 +6,7 @@ import { SkeletonList } from "@/components/primitives";
 import { STATUS_TABS } from "./constants";
 import { StatsSection } from "./StatsSection";
 import { CollectorMonitoring } from "./CollectorMonitoring";
+import { AdminConsults } from "./AdminConsults";
 import { UserList } from "./UserList";
 import type { AdminDashboardProps } from "@/types/components/AdminDashboard.types";
 
@@ -14,6 +15,8 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
 
   const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
   const handleLogoutClick = useCallback(() => admin.handleAdminLogout(onLogout), [admin, onLogout]);
+  // 상담 관심단지 id → 이름 (Apt.id/name 옵셔널 — ?? "" 폴백, useDataPipeline.ts:110 답습)
+  const aptNames = useMemo(() => new Map<string, string>(scored.map(s => [s.apt.id ?? "", s.apt.name ?? ""])), [scored]);
 
   return (
     <div style={{ padding: "0 16px" }}>
@@ -52,6 +55,9 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, on
 
       {/* Collector Monitoring Section */}
       <CollectorMonitoring showToast={showToast} />
+
+      {/* Consults Section (세션 405 구 expertConsults 탭 이관) */}
+      <AdminConsults aptNames={aptNames} />
 
       {/* Expert Applications Section */}
       <div style={{ marginBottom: 12 }}>
