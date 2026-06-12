@@ -103,6 +103,15 @@ async function setupAdminMocks(page: Page) {
       body: JSON.stringify({ ok: true, message: "처리되었습니다" }),
     });
   });
+
+  // consults API — 상담 요청 목록 (세션 405 AdminConsults 섹션이 마운트 시 fetch)
+  await page.route("**/api/consults", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
 }
 
 /** 로그인 폼을 통해 admin으로 진입 */
@@ -110,13 +119,13 @@ async function loginAsAdmin(page: Page) {
   await setupAdminMocks(page);
   await page.goto("/");
 
-  // 정보 탭 클릭 → InfoPage → 전문가 로그인 버튼
+  // 정보 탭 클릭 → InfoPage → 관리자 로그인 링크 (세션 405 — 구 전문가 로그인 버튼 대체, 관리자 유일 입구)
   // (Playwright 공식 networkidle DISCOURAGED. page.goto default waitUntil='load' + L116/L120 isVisible/toBeVisible 이 진짜 wait)
   const infoTab = page.getByText("정보", { exact: true });
   if (await infoTab.isVisible({ timeout: 3000 }).catch(() => false)) {
     await infoTab.click();
   }
-  const loginCta = page.getByText("전문가 로그인", { exact: false });
+  const loginCta = page.getByText("관리자 로그인", { exact: false });
   await expect(loginCta).toBeVisible({ timeout: 5000 });
   await loginCta.click();
 
@@ -147,9 +156,9 @@ test.describe("관리자 대시보드", () => {
     await expect(page.locator("button", { hasText: "정지됨" })).toBeVisible();
     await expect(page.locator("button", { hasText: "전체" })).toBeVisible();
 
-    // 가중치 관리 + 전문가 신청 관리 섹션 확인
+    // 가중치 관리 + 회원 관리 섹션 확인 (세션 405 개명 — 도움말 카드와 중복 가능해 first)
     await expect(page.getByText("가중치 관리")).toBeVisible();
-    await expect(page.getByText("전문가 신청 관리")).toBeVisible();
+    await expect(page.getByText("회원 관리").first()).toBeVisible();
   });
 
   test("상태 탭 필터링 — 각 탭 클릭 시 사용자 목록 변경", async ({ page }) => {
@@ -294,7 +303,7 @@ test.describe("관리자 대시보드", () => {
     // 도움말 버튼 → 패널 열기 (AdminDashboard 내부 버튼, HeaderSection의 IconHelp 제외)
     await page.getByText("도움말", { exact: true }).click();
     await expect(page.getByText("관리자 도움말")).toBeVisible({ timeout: 3000 });
-    await expect(page.getByText("전문가 승인 관리")).toBeVisible();
+    await expect(page.getByText("단지 상세 분석", { exact: false })).toBeVisible(); // 세션 405 신규 카드
 
     // 닫기 버튼 → 패널 닫기
     await page.getByRole("button", { name: "닫기" }).click();
