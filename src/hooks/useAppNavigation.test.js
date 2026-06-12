@@ -51,56 +51,55 @@ describe('useAppNavigation', () => {
     localStorage.clear();
   });
 
-  // expert 로그인 → expert 탭 + userRole=expert
-  it('handleExpertLogin: expert 결과면 expert 탭으로 전환한다', async () => {
+  // 레거시 비admin(expert) 결과 → 일반 손님 취급 (세션 405 — PR-3 에서 백엔드가 401 차단)
+  it('handleAdminLogin: 비admin 결과면 list/home 으로 폴스루한다', async () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
-    await result.current.handleExpertLogin();
-    expect(args.setTab).toHaveBeenCalledWith('expert');
-    expect(localStorage.getItem('userRole')).toBe('expert');
+    await result.current.handleAdminLogin();
+    expect(args.setTab).toHaveBeenCalledWith('list'); // featureFlag OFF 테스트 환경 = list
+    expect(args.setTab).not.toHaveBeenCalledWith('expert');
+    expect(localStorage.getItem('userRole')).toBe('expert'); // 서버 role 그대로 보존
   });
 
   // admin 로그인 → admin 탭 + setAdminLoggedIn + userRole=admin
-  it('handleExpertLogin: admin 결과면 admin 탭으로 전환한다', async () => {
+  it('handleAdminLogin: admin 결과면 admin 탭으로 전환한다', async () => {
     const args = makeArgs({
       expert: {
         expertLoggedIn: false,
         handleExpertLogin: vi.fn().mockResolvedValue({ ok: true, role: 'admin' }),
         handleExpertLogout: vi.fn(),
-        setExpertExpandedApt: vi.fn(),
       },
     });
     const { result } = renderHook(() => useAppNavigation(args));
 
-    await result.current.handleExpertLogin();
+    await result.current.handleAdminLogin();
     expect(args.admin.setAdminLoggedIn).toHaveBeenCalledWith(true);
     expect(args.setTab).toHaveBeenCalledWith('admin');
     expect(localStorage.getItem('userRole')).toBe('admin');
   });
 
   // 로그인 실패(ok=false) → 탭 미전환
-  it('handleExpertLogin: ok=false 면 탭을 전환하지 않는다', async () => {
+  it('handleAdminLogin: ok=false 면 탭을 전환하지 않는다', async () => {
     const args = makeArgs({
       expert: {
         expertLoggedIn: false,
         handleExpertLogin: vi.fn().mockResolvedValue({ ok: false }),
         handleExpertLogout: vi.fn(),
-        setExpertExpandedApt: vi.fn(),
       },
     });
     const { result } = renderHook(() => useAppNavigation(args));
 
-    await result.current.handleExpertLogin();
+    await result.current.handleAdminLogin();
     expect(args.setTab).not.toHaveBeenCalled();
   });
 
   // 로그아웃 → expert.handleExpertLogout 에 reset 콜백 전달, 콜백 실행 시 list 탭
-  it('handleExpertLogout: reset 콜백이 list 탭으로 되돌린다', () => {
+  it('handleLogout: reset 콜백이 list 탭으로 되돌린다', () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
-    result.current.handleExpertLogout();
+    result.current.handleLogout();
     expect(args.expert.handleExpertLogout).toHaveBeenCalledTimes(1);
 
     // 전달된 reset 콜백을 직접 실행 → list 탭 + 비교창 닫기

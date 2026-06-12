@@ -38,7 +38,7 @@ import { LoginPromptModal } from "@/components/LoginPromptModal";
 import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
 import { HeaderSection } from "@/components/sections/HeaderSection";
-import { ExpertLoginForm } from "@/components/sections/ExpertLoginForm";
+import { AdminLoginForm } from "@/components/sections/AdminLoginForm";
 import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
 import { AptListSection } from "@/components/sections/AptListSection";
 import { trackEvent } from "@/lib/analytics";
@@ -171,7 +171,7 @@ export default function App() {
 
   // ── 탭 전환/인증 네비게이션 ──
   const {
-    handleExpertLogin,
+    handleAdminLogin,
     switchToInfo,
     handleConsultFromDetail,
     handleNavClick,
@@ -347,7 +347,7 @@ export default function App() {
           </Suspense>
         </div>
       ) : tab === "info" ? (
-        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} onConsultClick={() => handleNavClick("consult")} />
+        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("adminLogin")} onConsultClick={() => handleNavClick("consult")} />
       ) : tab === "consult" ? (
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}>
@@ -355,8 +355,8 @@ export default function App() {
               onSubmit={consult.handleConsultSubmit} submitted={consult.consultSubmitted} showToast={showToast} />
           </Suspense>
         </div>
-      ) : tab === "expertLogin" ? (
-        <ExpertLoginForm expert={expert} onLogin={handleExpertLogin} onBack={() => setTab("info")} onKakaoLogin={() => kakao.initKakaoLogin()} kakaoLoading={kakao.kakaoLoading} />
+      ) : tab === "adminLogin" ? (
+        <AdminLoginForm auth={expert} onLogin={handleAdminLogin} onBack={() => setTab("info")} />
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>관리자 패널 로딩 중...</div>}>

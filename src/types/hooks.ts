@@ -349,8 +349,8 @@ export interface UseAppNavigationArgs {
  * useAppNavigation 반환 — App.jsx 에서 분해.
  */
 export interface UseAppNavigationReturn {
-  handleExpertLogin: () => Promise<void>;
-  handleExpertLogout: () => void;
+  handleAdminLogin: () => Promise<void>;
+  handleLogout: () => void;
   switchToInfo: () => void;
   handleConsultFromDetail: (_aptId: string) => void;
   handleNavClick: (_k: string) => void;

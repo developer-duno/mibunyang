@@ -31,7 +31,7 @@ export function useLoginGate({ isLoggedIn, detail, kakao, setTab }: UseLoginGate
 
   const handleExpertFromPrompt = useCallback(() => {
     setShowLoginPrompt(false);
-    setTab("expertLogin");
+    setTab("adminLogin");
   }, [setTab]);
 
   return {

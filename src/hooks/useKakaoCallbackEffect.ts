@@ -37,8 +37,8 @@ export function useKakaoCallbackEffect({ tab, kakao, expert, admin, detail, setT
         expert.setExpertLoggedIn(true);
         expert.setAuthUser((result.user ?? null) as ExpertUser | null);
         if (role === "admin") { admin.setAdminLoggedIn(true); setTab("admin"); }
-        else if (role === "expert") { setTab("expert"); }
         else {
+          // role "expert" 잔존 레코드도 일반 손님 취급 (세션 405 전문가 폐지)
           if (result.pendingDetail) { detail.setDetailAptId(result.pendingDetail); }
           setTab(isFeatureHome() ? "home" : "list"); // 로그인 직후 홈 = 지도 위젯 열린 첫 경험 (spec §1)
         }

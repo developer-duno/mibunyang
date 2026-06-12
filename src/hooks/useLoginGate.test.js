@@ -52,7 +52,7 @@ describe('useLoginGate', () => {
     expect(kakao.initKakaoLogin).toHaveBeenCalledWith('77');
   });
 
-  it('전문가 로그인 버튼 → 모달 닫히고 expertLogin 탭으로 전환', () => {
+  it('관리자 로그인 버튼 → 모달 닫히고 adminLogin 탭으로 전환 (세션 405 개명)', () => {
     const setTab = vi.fn();
     const { result } = renderHook(() => useLoginGate(makeDeps({ setTab })));
 
@@ -60,6 +60,6 @@ describe('useLoginGate', () => {
     act(() => { result.current.handleExpertFromPrompt(); });
 
     expect(result.current.showLoginPrompt).toBe(false);
-    expect(setTab).toHaveBeenCalledWith('expertLogin');
+    expect(setTab).toHaveBeenCalledWith('adminLogin');
   });
 });

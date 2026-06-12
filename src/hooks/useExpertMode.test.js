@@ -21,7 +21,6 @@ describe('useExpertMode', () => {
   it('초기 상태: 로그아웃', () => {
     const { result } = renderHook(() => useExpertMode(showToast));
     expect(result.current.expertLoggedIn).toBe(false);
-    expect(result.current.authMode).toBe("login");
     expect(result.current.authError).toBe("");
   });
 
@@ -42,7 +41,7 @@ describe('useExpertMode', () => {
     // 로그인 요청 모킹 (다음 fetch 호출이 로그인)
     /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
       ok: true, status: 200,
-      json: () => Promise.resolve({ ok: true, token: "abc123", user: { email: "a@b.com" }, role: "expert" }),
+      json: () => Promise.resolve({ ok: true, token: "abc123", user: { email: "a@b.com" }, role: "admin" }),
     });
 
     let loginResult;
@@ -50,9 +49,10 @@ describe('useExpertMode', () => {
       loginResult = await result.current.handleExpertLogin();
     });
 
-    expect(loginResult).toEqual({ ok: true, role: "expert" });
+    expect(loginResult).toEqual({ ok: true, role: "admin" });
     expect(result.current.expertLoggedIn).toBe(true);
     expect(localStorage.getItem("expertToken")).toBe("abc123");
+    expect(showToast).toHaveBeenCalledWith("로그인되었습니다");
   });
 
   it('로그인 429 → 에러 메시지', async () => {
@@ -67,34 +67,19 @@ describe('useExpertMode', () => {
     expect(result.current.authError).toContain("너무 많습니다");
   });
 
-  it('로그인 실패 PENDING 상태', async () => {
+  it('로그인 실패(비admin 401 등) → 서버 에러 메시지 표시', async () => {
     const { result } = renderHook(() => useExpertMode(showToast));
 
     /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
-      ok: true, status: 403,
-      json: () => Promise.resolve({ ok: false, statusCode: "PENDING", error: "승인 대기 중" }),
+      ok: false, status: 401,
+      json: () => Promise.resolve({ ok: false, error: "이메일 또는 비밀번호가 일치하지 않습니다" }),
     });
 
     await act(async () => {
       await result.current.handleExpertLogin();
     });
 
-    expect(result.current.authStatus).toBe("pending");
-  });
-
-  it('로그인 실패 REJECTED 상태', async () => {
-    const { result } = renderHook(() => useExpertMode(showToast));
-
-    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
-      ok: true, status: 403,
-      json: () => Promise.resolve({ ok: false, statusCode: "REJECTED", error: "가입 거부됨" }),
-    });
-
-    await act(async () => {
-      await result.current.handleExpertLogin();
-    });
-
-    expect(result.current.authStatus).toBe("rejected");
+    expect(result.current.authError).toBe("이메일 또는 비밀번호가 일치하지 않습니다");
   });
 
   it('네트워크 에러 → "서버 연결 실패"', async () => {
@@ -130,33 +115,12 @@ describe('useExpertMode', () => {
     expect(showToast).toHaveBeenCalledWith("로그아웃되었습니다");
   });
 
-  it('회원가입 성공', async () => {
+  // 세션 405: 회원가입(handleExpertSignup)·authMode·authStatus 는 전문가 폐지로 제거됨
+  it('가입 API 가 훅에서 제거되었다 (전문가 폐지 가드)', () => {
     const { result } = renderHook(() => useExpertMode(showToast));
-
-    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
-      ok: true, status: 201,
-      json: () => Promise.resolve({ ok: true }),
-    });
-
-    let signupResult;
-    await act(async () => {
-      signupResult = await result.current.handleExpertSignup();
-    });
-
-    expect(signupResult).toBe(true);
-    expect(result.current.authMode).toBe("login");
-  });
-
-  it('회원가입 429 → 에러', async () => {
-    const { result } = renderHook(() => useExpertMode(showToast));
-
-    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) });
-
-    await act(async () => {
-      await result.current.handleExpertSignup();
-    });
-
-    expect(result.current.authError).toContain("너무 많습니다");
+    expect(/** @type {any} */ (result.current).handleExpertSignup).toBeUndefined();
+    expect(/** @type {any} */ (result.current).authMode).toBeUndefined();
+    expect(/** @type {any} */ (result.current).authStatus).toBeUndefined();
   });
 
   it('authForm 상태 변경', () => {
@@ -165,11 +129,5 @@ describe('useExpertMode', () => {
       result.current.setAuthForm({ ...result.current.authForm, email: "new@email.com" });
     });
     expect(result.current.authForm.email).toBe("new@email.com");
-  });
-
-  it('authMode 변경 (login ↔ signup)', () => {
-    const { result } = renderHook(() => useExpertMode(showToast));
-    act(() => { result.current.setAuthMode("signup"); });
-    expect(result.current.authMode).toBe("signup");
   });
 });
