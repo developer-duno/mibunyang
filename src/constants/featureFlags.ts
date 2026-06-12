@@ -4,3 +4,6 @@
 // 추가 시 vite-env.d.ts 의 ImportMetaEnv 타입도 동시 박제 의무.
 export const isFeatureUpcoming = (): boolean =>
   import.meta.env.VITE_FEATURE_UPCOMING === "true";
+
+export const isFeatureHome = (): boolean =>
+  import.meta.env.VITE_FEATURE_HOME === "true";

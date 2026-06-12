@@ -1,7 +1,7 @@
 import { memo, useState, useCallback } from "react";
 import type { CSSProperties } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { isFeatureUpcoming } from "@/constants/featureFlags";
+import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
 import { C, F } from "@/theme";
 import { IconHelp } from "@/components/icons";
 import type { Profile } from "@/types/scoring";
@@ -85,9 +85,9 @@ const HELP_SECTIONS = [
   { title: "사용 가이드", items: [
     { t: "검색·필터", d: "단지명·건설사·지역명 검색 (초성 지원). 시/도·시군구 필터, 예산 범위(억) 설정" },
     { t: "프로필", d: "실거주·투자·신혼·교육·은퇴 5개 관점 전환. 프로필에 따라 순위가 달라집니다" },
-    { t: "비교", d: "카드 체크로 2~4개 선택 → 하단 '비교' 탭에서 나란히 비교" },
+    { t: "비교", d: "카드 체크로 2~4개 선택 → 목록 상단 '비교 보기' 버튼으로 나란히 비교" },
     { t: "상세 분석", d: "카드 터치 → 인근 시세, 학군, 대출 분석(LTV/DSR/갭투자) 확인" },
-    { t: "상담", d: "하단 '상담' 탭에서 관심 단지·예산과 함께 신청하면 전문가가 연락" },
+    { t: "상담", d: "상담 신청 화면(정보 페이지의 '상담 신청하기')에서 관심 단지·예산과 함께 신청하면 전문가가 연락" },
   ]},
   { title: "자주 묻는 질문", items: [
     { t: "등급 기준", d: "S(90+) A(80~89) B(65~79) C(50~64) D(50미만). 프로필에 따라 달라집니다" },
@@ -108,8 +108,10 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
   const upcomingLabel = upcomingCount != null && upcomingCount > 0
     ? `📅 곧 분양 ${upcomingCount}개`
     : "📅 곧 분양";
+  const homeEnabled = isFeatureHome();
   const navItems = expertLoggedIn
     ? [
+        ...(homeEnabled ? [{ l: "홈", k: "home" }] : []),
         { l: "대시보드", k: "expert" },
         { l: "상담목록", k: "expertConsults" },
         { l: "소비자뷰", k: "list" },
@@ -117,6 +119,8 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
         ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),
       ]
     : [
+        // 데스크톱은 비교·상담 유지 (D4 표 — 5탭 재배열은 모바일 BottomNav 만)
+        ...(homeEnabled ? [{ l: "홈", k: "home" }] : []),
         { l: "목록", k: "list" },
         { l: "지도", k: "map" },
         ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),

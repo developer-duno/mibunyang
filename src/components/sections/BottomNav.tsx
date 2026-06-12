@@ -1,26 +1,39 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
-import { isFeatureUpcoming } from "@/constants/featureFlags";
+import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
 import type { BottomNavProps } from "@/types/upcoming";
 
 export const BottomNav = memo(function BottomNav({ tab, expertLoggedIn, showComp, onNavClick, containerMaxWidth, isDesktop }: BottomNavProps) {
   if (isDesktop) return null;
   const upcomingEnabled = isFeatureUpcoming();
+  const homeEnabled = isFeatureHome();
   const navItems = expertLoggedIn
-    ? [{ l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "지도", k: "map" }, { l: "로그아웃", k: "logout" }]
-    : [
-        { l: "목록", k: "list" },
-        { l: "지도", k: "map" },
-        ...(upcomingEnabled ? [{ l: "📅 곧 분양", k: "upcoming" }] : []),
-        { l: "비교", k: "compare" },
-        { l: "상담", k: "consult" },
-        { l: "정보", k: "info" },
-      ];
+    ? [
+        ...(homeEnabled ? [{ l: "홈", k: "home" }] : []),
+        { l: "대시보드", k: "expert" }, { l: "상담목록", k: "expertConsults" }, { l: "소비자뷰", k: "list" }, { l: "지도", k: "map" }, { l: "로그아웃", k: "logout" },
+      ]
+    : homeEnabled
+      ? [
+          // D4 확정: 홈·목록·지도·📅곧분양·정보 5탭. 비교 = 목록 안 버튼 / 상담 = 정보 페이지 진입
+          { l: "홈", k: "home" },
+          { l: "목록", k: "list" },
+          { l: "지도", k: "map" },
+          ...(upcomingEnabled ? [{ l: "📅 곧 분양", k: "upcoming" }] : []),
+          { l: "정보", k: "info" },
+        ]
+      : [
+          { l: "목록", k: "list" },
+          { l: "지도", k: "map" },
+          ...(upcomingEnabled ? [{ l: "📅 곧 분양", k: "upcoming" }] : []),
+          { l: "비교", k: "compare" },
+          { l: "상담", k: "consult" },
+          { l: "정보", k: "info" },
+        ];
 
   return (
     <nav aria-label="메인 내비게이션" data-no-print style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: containerMaxWidth, background: expertLoggedIn ? C.indigoLight : C.white, borderTop: `1px solid ${expertLoggedIn ? C.indigo + "30" : C.border}`, padding: "8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px", display: "flex", justifyContent: "space-around", zIndex: 100, boxShadow: "0 -2px 10px rgba(0,0,0,0.05)", transition: "max-width .3s" }}>
       {navItems.map(n => {
-        const isActive = n.k === "compare" ? (showComp && tab === "list") : (tab === n.k && !(n.k === "list" && showComp));
+        const isActive = n.k === "compare" ? (showComp && tab === "list") : (tab === n.k && !(!homeEnabled && n.k === "list" && showComp));
         const activeColor = expertLoggedIn ? C.indigo : C.blue;
         return (
           <button key={n.k} aria-current={(!["compare", "logout"].includes(n.k) && tab === n.k) ? "page" : undefined} onClick={() => onNavClick(n.k)} style={{

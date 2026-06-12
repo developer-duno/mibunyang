@@ -1,10 +1,12 @@
 // App.tsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
 import { useState, useEffect, useCallback, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { isFeatureUpcoming } from "@/constants/featureFlags";
+import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
+import { HomePage } from "@/components/home/HomePage";
 import { C, F } from "@/theme";
 import type { Profile } from "@/types/scoring";
 import type { CustomWeights } from "@/types/admin";
+import type { UpcomingApiResponse } from "@/types/upcoming";
 
 const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
 const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));
@@ -64,21 +66,25 @@ export default function App() {
   // useToast 박힘 자리: useState 직후 + 다른 hook 호출보다 위 (L67 useEffect 의 showToast 참조 TDZ 방지)
   const { toast, showToast } = useToast();
 
-  // § 5-5: 헤더 CTA "곧 분양 N개" — Feature Flag ON 일 때만 1회 fetch (Vercel CDN 5분 캐시)
-  const [upcomingCount, setUpcomingCount] = useState<number | null>(null);
+  // § 5-5 + 홈 위젯: /api/upcoming 전체 응답 보관 (헤더 라벨 + 곧분양 위젯 공유, fetch 1회 불변)
+  const [upcomingData, setUpcomingData] = useState<UpcomingApiResponse | null>(null);
+  const [upcomingError, setUpcomingError] = useState(false);
+  const [upcomingRetryTick, setUpcomingRetryTick] = useState(0);
   useEffect(() => {
     if (!isFeatureUpcoming()) return;
     let cancelled = false;
+    setUpcomingError(false); // retry 시 스켈레톤 복귀 (retry 는 error 상태=data null 에서만 발화 — data 리셋 불필요)
     fetch("/api/upcoming")
       .then(r => (r.ok ? r.json() : null))
       .then(j => {
-        if (cancelled || !j?.ok) return;
-        const t = j.totals || {};
-        setUpcomingCount((t.plan || 0) + (t.apply || 0) + (t.sale || 0));
+        if (cancelled) return;
+        if (!j?.ok) { setUpcomingError(true); return; } // HTTP 에러·ok:false 통일 — 헤더 count 는 기존과 동일 null 유지
+        setUpcomingData(j as UpcomingApiResponse);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        // upcomingCount = null 유지 → HeaderSection 옵셔널 prop 호환, 헤더 라벨만 fallback
+        setUpcomingError(true);
+        // upcomingData = null 유지 → HeaderSection 옵셔널 prop 호환, 헤더 라벨만 fallback
         if (import.meta.env.DEV) {
           console.warn("[App] /api/upcoming fetch 실패, 헤더 라벨 fallback", err);
         }
@@ -88,14 +94,18 @@ export default function App() {
         showToast("곧 분양 데이터 임시 사용 불가");
       });
     return () => { cancelled = true; };
-  }, [showToast]);
+  }, [showToast, upcomingRetryTick]);
+  const retryUpcoming = useCallback(() => setUpcomingRetryTick(t => t + 1), []);
+  const upcomingCount = upcomingData
+    ? (upcomingData.totals?.plan || 0) + (upcomingData.totals?.apply || 0) + (upcomingData.totals?.sale || 0)
+    : null;
   const [tab, setTab] = useState(() => {
     if (window.location.pathname.startsWith("/oauth/kakao/callback")) return "kakaoCallback";
     if (window.location.pathname.startsWith("/upcoming")) {
       // Feature Flag OFF 시 메인으로 fallback (URL도 /로 정리)
       if (!isFeatureUpcoming()) {
         try { window.history.replaceState(null, "", "/"); } catch { /* noop */ }
-        return "list";
+        return isFeatureHome() ? "home" : "list";
       }
       return "upcoming";
     }
@@ -116,10 +126,10 @@ export default function App() {
         }
       } catch { /* storage 접근 실패 시 무시 */ }
     }
-    if (!token) return "list";
+    if (!token) return isFeatureHome() ? "home" : "list";
     if (role === "admin") return "admin";
     if (role === "expert") return "expert";
-    return "list";
+    return isFeatureHome() ? "home" : "list";
   });
   // ── 커스텀 훅 13개 ──
   const { isPC, isDesktop } = useResponsive();
@@ -219,7 +229,13 @@ export default function App() {
     if (detailId) detail.setDetailAptId(detailId);
     if (compareStr) {
       const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
-      if (ids.length >= 2) { setCompIds(ids); setShowCompOpen(true); }
+      if (ids.length >= 2) {
+        setCompIds(ids); setShowCompOpen(true);
+        // CompareSheet 는 list 탭 전용 렌더 — home 기본 탭에선 list 로 페어 전환.
+        // ?detail= 복합 링크는 detail 우선(!detailId): 탭 전환 시 useDetailModal 모달닫힘 충돌 회피.
+        // 복합 링크의 비교 시트 열림 상태는 유실 수용(compIds 보존 — 목록의 'N개 비교 보기' 버튼으로 재개)
+        if (!detailId && isFeatureHome()) setTab("list");
+      }
     }
     if (detailId || compareStr) {
       const cleanParams = new URLSearchParams(window.location.search);
@@ -297,7 +313,14 @@ export default function App() {
         </div>
       )}
 
-      {tab === "list" ? (
+      {tab === "home" ? (
+        <HomePage scored={scored} pw={pw}
+          upcomingData={upcomingData} upcomingError={upcomingError} onRetryUpcoming={retryUpcoming}
+          isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC}
+          dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
+          onNavClick={handleNavClick} onDetail={handleDetailGated}
+          onFav={toggleFavorite} favoriteSet={favoriteSet} onComp={toggleComp} compIds={compIds} />
+      ) : tab === "list" ? (
         <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           {compIds.length >= 2 && (
             <button onClick={() => { const wasOpen = showComp; setShowCompOpen(!showCompOpen); if (wasOpen) window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{
@@ -327,7 +350,7 @@ export default function App() {
           </Suspense>
         </div>
       ) : tab === "info" ? (
-        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} />
+        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} onConsultClick={() => handleNavClick("consult")} />
       ) : tab === "consult" ? (
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}>
@@ -353,7 +376,7 @@ export default function App() {
         <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>분양예정 페이지 로딩 중...</div>}>
           <UpcomingPage
             onOpenDetail={detail.handleOpenDetail}
-            onBackToMain={() => { setTab("list"); try { window.history.pushState(null, "", "/"); } catch { /* noop */ } }}
+            onBackToMain={() => { setTab(isFeatureHome() ? "home" : "list"); try { window.history.pushState(null, "", "/"); } catch { /* noop */ } }}
           />
         </Suspense>
       ) : tab === "kakaoCallback" ? (

@@ -28,7 +28,7 @@ export function useComparison(showToast: (_msg: string) => void): UseComparisonR
     });
   }, [showToast]);
   useEffect(() => {
-    if (initCountRef.current > 0) showToast(`이전 비교 ${initCountRef.current}개 복원됨 · 비교 탭에서 확인`);
+    if (initCountRef.current > 0) showToast(`이전 비교 ${initCountRef.current}개 복원됨 · 목록에서 확인`);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(compIds)); }

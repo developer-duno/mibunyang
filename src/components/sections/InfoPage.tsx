@@ -17,8 +17,8 @@ const tipText = { fontSize: F.xs, color: C.blue, lineHeight: 1.6 };
  *   expertLoggedIn: boolean - 전문가 로그인 상태
  *   onExpertLoginClick: () => void - 전문가 로그인 탭 이동
  */
-type InfoPageProps = { expertLoggedIn: boolean; onExpertLoginClick: () => void };
-export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginClick }: InfoPageProps) {
+type InfoPageProps = { expertLoggedIn: boolean; onExpertLoginClick: () => void; onConsultClick: () => void };
+export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginClick, onConsultClick }: InfoPageProps) {
   return (
     <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
 
@@ -34,6 +34,19 @@ export const InfoPage = memo(function InfoPage({ expertLoggedIn, onExpertLoginCl
             <b>핵심 흐름:</b> 프로필 선택 → 필터로 조건 설정 → 카드 비교 → 상세 분석 → 상담 신청
           </div>
         </div>
+      </div>
+
+      {/* 2. 전문가 상담 진입 — 모바일 5탭에서 상담 탭이 빠지는 대신 정보 페이지가 정식 입구 (spec D4) */}
+      <div style={cardStyle}>
+        <div style={titleStyle}>전문가 상담 신청</div>
+        <div style={guideDesc}>
+          관심 단지와 예산을 남기면 전문가가 연락드립니다.
+          관심매물로 등록한 단지는 자동으로 상담 목록에 포함됩니다.
+        </div>
+        <button onClick={onConsultClick} style={{
+          width: "100%", background: C.blue, border: "none", color: C.white, fontSize: F.base, fontWeight: 700,
+          cursor: "pointer", padding: "12px", borderRadius: 6, minHeight: 44, marginTop: 8
+        }}>상담 신청하기</button>
       </div>
 
       <GuideSections />
