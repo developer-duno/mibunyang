@@ -371,6 +371,7 @@ export default function App() {
           <UpcomingPage
             onOpenDetail={detail.handleOpenDetail}
             onBackToMain={() => { setTab(isFeatureHome() ? "home" : "list"); try { window.history.pushState(null, "", "/"); } catch { /* noop */ } }}
+            scored={scored} dataLoading={dataLoading}
           />
         </Suspense>
       ) : tab === "kakaoCallback" ? (

@@ -2,11 +2,11 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 컴포넌트 (51개, 2026-06-13 실측)
+## memo() 컴포넌트 (53개, 2026-06-13 실측)
 
 | 그룹 | 개수 | 위치 | 컴포넌트 |
 |------|------|------|---------|
-| 소비자 | 9 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
+| 소비자 | 11 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, RegionChipBar(지역 칩+★관심지역, 세션 406), PresaleResultList(분양결과 — 잔여세대 경쟁률, "1순위" 표기 금지, 세션 406), primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
 | 홈 | 6 | `home/` | HomePage, WidgetCard, MapEntryWidget(M2: 로그인 시 MapView compact 미니지도 임베드 + 뷰포트 진입 lazy), UpcomingWidget, TopPicksWidget, MarketSummaryWidget (세션 404 M1 신설, 세션 406 표 등재) |
 | 섹션 | 9 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), AdminLoginForm, InfoPage, BottomNav, MapView, InfraOverlay, SelectedAptCard |
 | 상세 | 12 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |

@@ -72,4 +72,26 @@ test.describe("/upcoming — 분양 임박 페이지 회귀 방지", () => {
     await expect(page.getByText("테스트 분양단지")).toBeVisible();
     await expect(page.getByText(/★ 점수 78\.5/)).toBeVisible();
   });
+
+  // 세션 406: 지역 칩 + 분양결과 탭 (호갱노노 패턴). 분양결과 데이터는 scored(정적 JSON 또는
+  // CI Supabase 경로) — 환경 따라 0건 가능하므로 단언은 탭 진입 + (행 또는 빈 상태) 양쪽 안전
+  test("지역 칩 렌더 + 분양결과 탭 진입 (크래시 0)", async ({ page }) => {
+    await mockUpcomingOk(page, {
+      stages: { plan: [], apply: [], sale: [SAMPLE_APT_WITH_SCORE] },
+      totals: { plan: 0, apply: 0, sale: 1 },
+    });
+    await page.goto("/upcoming");
+    await expect(page.getByText("테스트 분양단지")).toBeVisible();
+    // 지역 칩 바
+    await expect(page.getByRole("group", { name: "지역 필터" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "전국" })).toBeVisible();
+    // 분양결과 탭 진입 — 캡션(데이터 있음) 또는 빈 상태 둘 중 하나는 노출
+    await page.getByRole("button", { name: /분양결과/ }).click();
+    await expect(
+      page.getByText("청약홈 잔여세대 경쟁률 기준", { exact: false })
+        .or(page.getByText("해당 지역 분양 결과가 없습니다."))
+    ).toBeVisible({ timeout: 10000 });
+    // 거짓 표시 가드: "1순위" 문구 금지 (데이터 = 잔여세대 경쟁률)
+    await expect(page.getByText(/1순위 경쟁률/)).toHaveCount(0);
+  });
 });

@@ -58,6 +58,9 @@ export interface Apt {
   recentTrades6m?: number;
   cancelRatio6m?: number | null;
   competitionRate?: number | null;
+  // 청약홈 잔여세대 경쟁률 동반 필드 (정보성 — 스코어링 미사용, sanitize 무관)
+  competitionSupply?: number | null;
+  competitionApplicants?: number | null;
   crimeSafetyGrade?: number | null;
   builderDebtRatio?: number;
   supplyRatio?: number;
