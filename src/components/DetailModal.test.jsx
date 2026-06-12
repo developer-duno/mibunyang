@@ -147,7 +147,8 @@ describe("DetailModal", () => {
   });
 });
 
-// StickyJumpNav(목차바) — 세션 377 PR-1. 데이터 삭제·축소 0 회귀 가드.
+// StickyJumpNav(탭바) — 세션 377 PR-1 점프 앵커 → 세션 407 D1 콘텐츠 교체 탭. 데이터 삭제·축소 0 회귀 가드.
+// 가시성 단언은 toBeVisible/not.toBeVisible (getByText 단독 금지 — display:none 패널 텍스트도 매칭되는 함정).
 describe("DetailModal StickyJumpNav", () => {
   const origScrollTo = HTMLElement.prototype.scrollTo;
   beforeEach(() => { document.body.style.overflow = ""; });
@@ -157,15 +158,27 @@ describe("DetailModal StickyJumpNav", () => {
   });
 
   const SECTION_IDS = ["sec-overview", "sec-price", "sec-location", "sec-presale", "sec-finance", "sec-score"];
+  const TAB_LABELS = { "sec-overview": "종합", "sec-price": "시세", "sec-location": "입지", "sec-presale": "분양", "sec-finance": "금융", "sec-score": "점수" };
 
-  it("6개 섹션 컨테이너(#sec-*)가 모두 렌더됨 — 13블록 보존 골격", () => {
+  it("소비자 첫 렌더는 종합 탭만 마운트 — 6 칩 순회 클릭 시 각 섹션 마운트 (정보 소실 0 골격)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
+    expect(container.querySelector("#sec-overview")).not.toBeNull();
+    for (const id of SECTION_IDS.slice(1)) {
+      expect(container.querySelector(`#${id}`)).toBeNull();
+    }
     for (const id of SECTION_IDS) {
+      fireEvent.click(screen.getByRole("button", { name: TAB_LABELS[id] }));
       expect(container.querySelector(`#${id}`)).not.toBeNull();
     }
   });
 
-  it("목차바 칩 6개(종합/시세/입지/분양/금융/점수)가 모두 렌더됨", () => {
+  it("소비자 첫 렌더(클릭 0회)에 종합 탭 콘텐츠 가시 — visited 시딩 가드", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    expect(container.querySelector("#sec-overview")).toBeVisible();
+    expect(screen.getByText("핵심 지표")).toBeVisible();
+  });
+
+  it("탭바 칩 6개(종합/시세/입지/분양/금융/점수)가 모두 렌더됨", () => {
     render(<DetailModal {...makeProps()} />);
     for (const label of ["종합", "시세", "입지", "분양", "금융", "점수"]) {
       const chip = screen.getByRole("button", { name: label });
@@ -173,58 +186,102 @@ describe("DetailModal StickyJumpNav", () => {
     }
   });
 
-  it("목차바 우측에 종합점수 배지 표시(res.total)", () => {
+  it("탭바 우측에 종합점수 배지 표시(res.total)", () => {
     render(<DetailModal {...makeProps()} />);
     // "종합"은 칩 라벨에도 배지 레이블에도 있으므로 다중 매칭 — getAllByText로 확인
     expect(screen.getAllByText("종합").length).toBeGreaterThanOrEqual(1);
-    // res.total 기본 75 — ScoreBadge + 앵커바 배지에 노출
+    // res.total 기본 75 — ScoreBadge + 탭바 배지에 노출
     expect(screen.getAllByText("75").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("칩 클릭 시 모달 body 컨테이너 scrollTo 가 호출되고 active 전환", () => {
-    // jsdom HTMLElement.scrollTo 미구현 → mock. 점프가 scrollIntoView(불안정)가 아니라
-    // 컨테이너 직접 scrollTo({top}) 로 일어나는지 검증 (세션 377 PR-2 버그 fix).
+  it("칩 클릭 시 탭 전환 — 새 탭 visible + 이전 탭 hidden(DOM 유지) + scrollTo({top:0}) + aria-current", () => {
+    // jsdom HTMLElement.scrollTo 미구현 → mock. 스크롤 점프가 아니라 콘텐츠 교체 + 스크롤 top 리셋 검증.
     const scrollToSpy = vi.fn();
     HTMLElement.prototype.scrollTo = scrollToSpy;
-    render(<DetailModal {...makeProps()} />);
+    const { container } = render(<DetailModal {...makeProps()} />);
     const priceChip = screen.getByRole("button", { name: "시세" });
     fireEvent.click(priceChip);
-    expect(scrollToSpy).toHaveBeenCalledTimes(1);
-    const arg = scrollToSpy.mock.calls[0][0];
-    expect(typeof arg.top).toBe("number");
-    expect(arg.top).toBeGreaterThanOrEqual(0);
-    expect(arg.behavior).toBe("smooth");
     expect(priceChip).toHaveAttribute("aria-current", "true");
+    expect(container.querySelector("#sec-price")).toBeVisible();
+    // keepMounted: 떠난 종합 탭은 DOM 유지 + display:none
+    expect(container.querySelector("#sec-overview")).not.toBeNull();
+    expect(container.querySelector("#sec-overview")).not.toBeVisible();
+    expect(scrollToSpy).toHaveBeenCalledWith({ top: 0 });
   });
 
-  it("scrollTo 미구현 환경에서도 칩 클릭 무에러", () => {
+  it("scrollTo 미구현 환경에서도 칩 클릭 시 탭 전환됨 (무에러 + 콘텐츠 도달)", () => {
+    // setActiveTab/visited 가 scrollTo typeof 가드 밖임을 검증 — 가드 안이면 jsdom·구형 브라우저에서
+    // 비활성 탭 콘텐츠 도달 불가 (세션 407 적대검증 R2 적발).
     HTMLElement.prototype.scrollTo = /** @type {any} */ (undefined);
-    render(<DetailModal {...makeProps()} />);
+    const { container } = render(<DetailModal {...makeProps()} />);
     const chip = screen.getByRole("button", { name: "입지" });
     expect(() => fireEvent.click(chip)).not.toThrow();
+    expect(container.querySelector("#sec-location")).toBeVisible();
   });
 
-  it("13블록 보존 — 핵심 블록이 6섹션 안에 그대로 존재", () => {
+  it("keepMounted — 방문 탭은 전환 후 DOM 유지 + hidden, 미방문 탭은 미마운트", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
-    // §1 종합: ScoreBadge(점수 img) + 핵심지표 + 혜택/재공고는 데이터 조건부
+    fireEvent.click(screen.getByRole("button", { name: "시세" }));
+    fireEvent.click(screen.getByRole("button", { name: "금융" }));
+    const price = container.querySelector("#sec-price");
+    expect(price).not.toBeNull();
+    expect(price).not.toBeVisible();
+    expect(container.querySelector("#sec-finance")).toBeVisible();
+    expect(container.querySelector("#sec-location")).toBeNull();
+    expect(container.querySelector("#sec-presale")).toBeNull();
+    expect(container.querySelector("#sec-score")).toBeNull();
+  });
+
+  it("13블록 보존 — CTA 는 탭 무관 항상 가시 + 점수 탭 전환 시 CatPanel 존재", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    // §1 종합(기본 탭): ScoreBadge(점수 img) + 핵심지표
     expect(screen.getByText("핵심 지표")).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /점수/ }).length).toBeGreaterThanOrEqual(1);
-    // §6 점수: 액션버튼(관심/비교) + CatPanel — 모두 sec-score 안
+    // CTA 공통 영역 — 탭 패널 밖이라 어느 탭에서도 가시 (사장님 결정 2026-06-13)
+    expect(screen.getByText("관심매물 추가")).toBeVisible();
+    expect(screen.getByText("비교 추가")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "시세" }));
+    expect(screen.getByText("관심매물 추가")).toBeVisible();
+    // §6 점수 탭: DataSections + CatPanel(가격 매력도 라벨)
+    fireEvent.click(screen.getByRole("button", { name: "점수" }));
     const scoreSection = container.querySelector("#sec-score");
     expect(scoreSection).not.toBeNull();
-    expect(scoreSection?.textContent).toContain("관심매물 추가");
-    expect(scoreSection?.textContent).toContain("비교 추가");
+    expect(scoreSection?.textContent).toContain("가격 매력도");
   });
 
-  // 프로필 맞춤 강조 (세션 382) — invest 상위 2 = price, risk
-  it("profile='invest' 면 가격·안전 CatPanel 2개만 ★ 중점 배지", () => {
+  it("onConsult 제공 시 '이 매물 상담하기' 버튼 가시 + 클릭 시 apt.id 콜백", () => {
+    const onConsult = vi.fn();
+    render(<DetailModal {...makeProps({ onConsult })} />);
+    const btn = screen.getByText("이 매물 상담하기");
+    expect(btn).toBeVisible();
+    fireEvent.click(btn);
+    // factories makeApt id: 1 (number) — `as string` 캐스트는 런타임 무변환
+    expect(onConsult).toHaveBeenCalledWith(1);
+  });
+
+  it("onConsult 부재 시 상담하기 버튼 미렌더", () => {
+    render(<DetailModal {...makeProps()} />);
+    expect(screen.queryByText("이 매물 상담하기")).toBeNull();
+  });
+
+  // 프로필 맞춤 강조 (세션 382) — invest 상위 2 = price, risk. CatPanel 은 점수 탭 안 (점수 탭만 방문 상태에서 카운트).
+  it("profile='invest' 면 점수 탭에서 가격·안전 CatPanel 2개만 ★ 중점 배지", () => {
     render(<DetailModal {...makeProps({ profile: "invest" })} />);
+    fireEvent.click(screen.getByRole("button", { name: "점수" }));
     expect(screen.getAllByText(/★ 중점/).length).toBe(2);
   });
 
-  it("profile 미전달이면 강조 배지 없음(기존 동작 보존)", () => {
+  it("profile 미전달이면 점수 탭에서도 강조 배지 없음(기존 동작 보존)", () => {
     render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "점수" }));
     expect(screen.queryByText(/★ 중점/)).toBeNull();
+  });
+
+  it("adminLoggedIn=true 면 클릭 없이 6개 탭 패널 전부 마운트 — 인쇄 전체 펼침 보존", () => {
+    const { container } = render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
+    for (const id of SECTION_IDS) {
+      expect(container.querySelector(`#${id}`)).not.toBeNull();
+    }
   });
 
   // 관리자 인사이트 레이어 게이트 (세션 405 전문가 대시보드 이식)
