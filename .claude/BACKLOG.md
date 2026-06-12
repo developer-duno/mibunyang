@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ 통합 홈 M2 미니지도 + 곧분양 호갱노노 패턴 4종 — 세션 406 (PR #104 MapView prop 3종[height/compact/onSelect — ref 격리]·MapEntryWidget 280px 임베드·spec v4 추록[관리자 위젯 안 살림] → PR #105 RegionChipBar 지역칩+★관심지역·PresaleResultList 분양결과[잔여세대 경쟁률 — "1순위" 표기 금지, 적대검증 적발]·UpcomingPage result 탭·카드 강조줄. 적대검증 2회 14 probe major 6 정정. vitest 3,325·e2e 8/8)
 - ✅ 전문가 역할 완전 폐지 3-PR — 세션 405 (PR #101 이식[상세 모달 관리자 인사이트: AdminScoreBreakdown·DataSections adminMode 138필드·AdminUnitSupply 청약홈 평형 표·인쇄] → #102 철거[expert/ 18파일 -2,600줄, AdminLoginForm·AdminConsults·InfoPage 카카오 카드+관리자 링크, 네비 축 adminLoggedIn — 카카오 손님 전문가 네비 오노출 quirk 해소, "회원 관리" 개명] → #103 백엔드[signup 폐지·login 비admin generic 401·isAdminEmail 단일 출처·refresh expert→user 강등·consults admin 단독·create-admin-user.mjs 잠금 방지]. 자료 소실 0 — 귀속 맵 = `docs/superpowers/specs/2026-06-12-expert-role-abolition-decision.md`. spec v3 추록 = M2 재산정)
 - ✅ energy_grade 오염 정정 — kaptdEcnt(승강기대수) 에너지등급 오인 + 죽은 코드 제거 — 세션 358 (데이터 품질 점검 중 발견. `molit-building-info.mjs` 가 국토부 공동주택 상세 API 의 `kaptdEcnt`/`kaptdEcntp`[= 승강기 대수]를 에너지효율등급 1~7로 오인 → 우연히 1~7대 단지 358건 오저장 + 화면 "N등급" 거짓 표시. raw API 실측[값 0/5/8/21=등급 불가] + 적대검증 워크플로[7필드 전수 raw 검증 → 오인 3건/정상 4건]로 확정. 정정: 수집기 energy_grade + 건폐율/용적률[`kaptdBcRat`/`kaptdVlRat`=API 응답에 없는 죽은 코드, 실제는 네이버 `sync-naver-complex` 가 채움] 추출 제거 + DB 358건 NULL[`cleanup-energy-grade.mjs`] + `data-audit.mjs` PERMANENT_NULL 에 energyGrade 추가[worst-fields 오탐 제거]. 3관점 적대 리뷰 = 회귀 0/blocker 0/high 2 confirmed[PERMANENT_NULL·cleanup 커밋]. vitest molit 22/22 + data-audit 17/17 + scoring 164/164 + tsc 0. building 78.6%→77.1%[오염 제거 정직 하락]. 상세 = DB_QUALITY.md 2026-06-01 절. **잔여**: 승강기 대수 신규 수집은 활용처 불분명[스코어링·화면·DB 컬럼 0]이라 비권장.)
 - ✅ `sync-naver-complex` articles/price 1000건 cap + 4회 fetch 통합 — 세션 356 (`.range(0,99999)` cap 4곳[area/trade_type/**complex_price_history**/floor] → `fetchAllPages` 전건 페이지네이션. 461,751행 중 0.2%만 읽던 데이터 정확성 사고. 추가로 같은 articles 전건을 4번 fetch 하던 비효율 → 8컬럼 1회 통합 fetch[allArticles, matchCache 직후] 로 4 Phase 공유. timeout 30→60. dry-run 실증 before 1000→after 461,466건/시세 25,941단지. vitest 46/46 + tsc 0 + 메모리 적대검증 34배 헤드룸. 박제값 정정 = 세션 355 "Phase4 cap/시세 누락" 오류. 상세 = 🔴 즉시 절)
@@ -90,7 +91,20 @@
 
 ## 🔴 즉시
 
-(다음 진입 후보 = 아래 P1 API 500 근본 진단 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
+(다음 진입 후보 = **상세 모달 IA 개편 D1** (사장님 직접 지시) 또는 아래 P1 API 500 근본 진단 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
+
+- 🔴 **상세 모달 IA 개편 — Progressive Disclosure D1~D3** (세션 406 사장님 지시: "너무 길고 루즈해, 카테고리 구분해서 클릭으로 점점 확대")
+  - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (벤치마킹 호갱노노·아실·네이버·토스 + C안 하이브리드 추천)
+  - D1 = 점프 앵커 → 콘텐츠 교체 탭 (정보 소실 0 재배치) / D2 = 종합 요약 대시보드 + 점수 4중 중복 통합 + 관리자 탭 분리 / D3 = 다듬기
+  - ⚠️ 구현 진입 시 적대검증 워크플로 1회 의무 + 정보 귀속 맵 전수 박제 (전문가 폐지 결정문서 패턴)
+
+- 🟡 **/api/consults 500 검증 잔여** (세션 406 발견·조치 — 사장님 스크린샷 콘솔에서 관리자 대시보드 500 확인)
+  - 진앙 실측 = Vercel production 에 `SUPABASE_SERVICE_KEY` 미설정 → `getMibuyangSupabase()` throw → catch 500. DB·쿼리는 로컬 service key 프로브로 정상 확인 (consults 0행, submitted_at 정렬 OK)
+  - 조치 완료 = `vercel env add SUPABASE_SERVICE_KEY production` (2026-06-13). **다음 배포부터 적용** — 적용 후 관리자 대시보드 새로고침으로 /api/consults 200 확인 잔여. `api/subscribers.ts` 도 같은 키 사용 = 동시 치유
+
+- 🟡 **분양결과 ungated 상세 진입 정량** (세션 406 적대검증 부산물) — `/upcoming?stage=result` 가 비로그인 상세 직진입 모집단을 ~484 → ~1,129 (+645, 전체 45%) 확대. 기존 `?detail=`·UpcomingPage 구멍과 같은 축 — 게이트 일괄 결정 시 함께
+
+- 🟢 **통합 홈 M3 다듬기** (spec 2026-06-11 §6) — setBounds 전국 리셋 억제·홈↔지도 탭 center/level 연속성·home_* analytics·320px overflow(`minmax(min(300px,100%),1fr)`)·미니지도 빈 상태 placeholder
 
 - ✅ **KOSIS OpenAPI GitHub 러너 전면 불통 (6/9~) — 로컬 이전 + 6/12 첫 자연발화 success 실증으로 종결** (세션 393 진단 → 395 이전 → 403 실증)
   - **세션 403 최종 실증 (6/12 05:30 KST 자연 발화)**: `MibunyangKosisLocal` 정확 발화 + regional-economy collector_runs **success** + KOSIS API 4표 정상 응답(36/270/270/54건)·시도 17개 매칭. ok=0 은 **멱등 skip 정상**(collect-regional-economy.mjs L222-227 minDiff 임계 — 6/10 선행 적재 ok=17 과 값 동일). 스케줄러 LastTaskResult=0·NextRun 6/13. 세션 394 하드닝의 failure-행 검증은 실패 상황 자체가 발생하지 않아 미발동(정상)
