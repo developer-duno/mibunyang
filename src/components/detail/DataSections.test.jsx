@@ -209,4 +209,50 @@ describe("DataSections", () => {
     render(<DataSections apt={/** @type {any} */ (apt)} />);
     expect(screen.getByRole("button")).toBeTruthy(); // 단수 — 도넛은 img라 충돌 없음
   });
+
+  // ── 관리자 모드 (세션 405 구 ExpertFieldTable·ExpertDataCompleteness 이식) ──
+  it("adminMode 미전달(기본)이면 138필드 토글·관리자 완성도가 없다 — 소비자 무변경 가드", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSections apt={/** @type {any} */ (apt)} />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    expect(screen.queryByText("전체 138필드 보기")).toBeNull();
+    expect(screen.queryByTestId("admin-completeness")).toBeNull();
+    expect(screen.queryByTestId("admin-full-fields")).toBeNull();
+  });
+
+  it("adminMode=true 펼침 시 138필드 토글 버튼과 관리자 기준 완성도(필드명 목록 포함)가 보인다", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSections apt={/** @type {any} */ (apt)} adminMode />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    expect(screen.getByText("전체 138필드 보기")).toBeTruthy();
+    expect(screen.getByTestId("admin-completeness")).toBeTruthy();
+    // 관리자 기준 라벨 (소비자 78필드 도넛과 모집단 다름 명시 — 세션 380 답습)
+    expect(screen.getByText(/데이터 완성도 — 관리자 기준 \d+필드/)).toBeTruthy();
+    // 필드명 목록 4종 중 최소 1종은 표시 (makeApt 기본값엔 미수집 필드 존재 — 복수 종 동시 표시 허용)
+    expect(screen.getAllByText(/미등록 필드:|기본값 필드:|지역추정 필드:|적용 대상 아님 필드:/).length).toBeGreaterThan(0);
+  });
+
+  it("138필드 토글 ON 이면 9섹션 전수 표가 8섹션 요약을 대체하고, 부가 블록(출처)은 유지된다", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSections apt={/** @type {any} */ (apt)} adminMode profile="live" />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    fireEvent.click(screen.getByText("전체 138필드 보기"));
+    expect(screen.getByTestId("admin-full-fields")).toBeTruthy();
+    // 요약 전용 8섹션 제목은 사라지고 FIELD_SECTIONS 9섹션 라벨이 보임
+    expect(screen.queryByText("단지 기본정보")).toBeNull();
+    // 부가 블록(출처 footer)은 전수 모드에서도 유지
+    expect(screen.getByText(/출처: 청약홈/)).toBeTruthy();
+    // 토글 라벨이 "요약 보기"로 전환
+    expect(screen.getByText("요약 보기")).toBeTruthy();
+  });
+
+  it("138필드 토글을 다시 누르면 요약(8섹션)으로 복귀한다", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSections apt={/** @type {any} */ (apt)} adminMode />);
+    fireEvent.click(screen.getByText("공공데이터 상세"));
+    fireEvent.click(screen.getByText("전체 138필드 보기"));
+    fireEvent.click(screen.getByText("요약 보기"));
+    expect(screen.queryByTestId("admin-full-fields")).toBeNull();
+    expect(screen.getByText("단지 기본정보")).toBeTruthy();
+  });
 });

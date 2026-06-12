@@ -43,6 +43,19 @@ export const AdminHelpGuide = memo(function AdminHelpGuide({ open, onClose }: Ad
       </div>
 
       <div style={card}>
+        <div style={title}>단지 상세 분석 (관리자 인사이트 — 세션 405 구 전문가 대시보드 이식)</div>
+        <div style={desc}>
+          <div style={item}><span style={label}>진입</span> — 목록/지도/홈 어디서든 단지를 열면 상세 화면에 관리자 전용 분석 블록이 함께 표시됩니다 (관리자 로그인 시에만 보임, 손님 화면 영향 없음).</div>
+          <div style={item}><span style={label}>적정가 계산</span> — 인근 실거래 중위가에 입주연차 계수, 면적 보정, 브랜드 보정을 적용하여 적정 추정가를 산출합니다. 분양가와의 괴리도(%)가 가격 점수의 핵심 지표입니다.</div>
+          <div style={item}><span style={label}>총점 계산</span> — 카테고리별 점수(0~100) × 프로필 가중치(%) = 기여도. 6개 기여도를 합산하여 최종 총점이 됩니다. &apos;점수 산출 과정 (관리자)&apos; 블록에서 전 과정을 확인할 수 있습니다.</div>
+          <div style={item}><span style={label}>138필드 전수 표</span> — &apos;공공데이터 상세&apos;를 펼치면 &apos;전체 138필드 보기&apos; 단추가 보입니다. 9개 섹션의 모든 세부 필드와 기본값(⚠)·미수집 여부를 검수할 수 있습니다.</div>
+          <div style={item}><span style={label}>데이터 완성도</span> — 실제 데이터(수집값, 신뢰도 최고) / 지역 추정(시군구 평균 대체) / 기본값(보수적 비관값, 점수에 불리) / 미등록(향후 수집 시 자동 반영) 4분류와 해당 필드 이름 목록이 표시됩니다. 80% 이상 녹색, 50~79% 주황, 50% 미만 빨강.</div>
+          <div style={item}><span style={label}>평형별 공급</span> — 분양 구역의 &apos;동/호수 현황 (관리자)&apos; 블록에서 청약홈 평형별 일반/특별공급 세대수와 최고가를 확인합니다.</div>
+          <div style={item}><span style={label}>인쇄</span> — &apos;점수 산출 과정 (관리자)&apos; 블록의 인쇄 버튼으로 현재 분석 결과를 PDF/종이로 출력할 수 있습니다.</div>
+        </div>
+      </div>
+
+      <div style={card}>
         <div style={title}>기타</div>
         <div style={desc}>
           <div style={item}><span style={label}>전문가 보기</span> — &apos;전문가 보기&apos; 버튼으로 전문가 대시보드로 돌아가 단지 분석을 확인할 수 있습니다.</div>

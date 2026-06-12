@@ -23,4 +23,6 @@ export interface DetailModalProps extends ResponsiveProps {
   onConsult?: (_id: string) => void;
   /** 활성 프로필 — 상위 2 카테고리 CatPanel 맞춤 강조용 (세션 382). 미전달 시 강조 0. */
   profile?: Profile;
+  /** 관리자 인사이트 레이어 게이트 (세션 405 전문가 대시보드 이식). 기본 false = 소비자 화면 무변경. */
+  adminLoggedIn?: boolean;
 }

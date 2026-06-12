@@ -8,7 +8,7 @@
 |------|------|------|---------|
 | 소비자 | 9 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
 | 섹션 | 9 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), ExpertLoginForm, InfoPage, BottomNav, MapView, InfraOverlay, SelectedAptCard |
-| 상세 | 10 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection |
+| 상세 | 12 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
 | 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
 | 전문가 | 9 | `expert/` | ExpertFieldTable, ExpertScoreBreakdown, ExpertScoreSummary, ExpertUnitPlaceholder, ExpertDataCompleteness, ExpertSidebar, ExpertAptHeader, ExpertDashboard, ExpertHelpGuide |
 | 관리자 | 5 | `admin/` | AdminDashboard, AdminHelpGuide, WeightEditor, WeightTable, ScoreBreakdownPreview (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
@@ -69,7 +69,9 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | PriceChart | 43 | 분양가 추이 SVG (usePriceHistory + siblingIds) |
 | UnsoldChart | 45 | 미분양 추이 SVG (useUnsoldHistory + siblingIds) |
 | PresaleInfo | 130 | 네이버 분양정보 (가격카드/일정/링크/Analytics) |
-| DataSections | 152 | 공공데이터 6개 섹션 (세션143 HighlightField·InfrastructureSection 분리 후) |
+| DataSections | 152 | 공공데이터 6개 섹션 (세션143 HighlightField·InfrastructureSection 분리 후). adminMode prop = 관리자 138필드 전수 표 토글 + 관리자 기준 완성도 (세션 405) |
+| AdminScoreBreakdown | 150 | 관리자: 적정가 산출 과정·가중치 기여도·최종 가중 합계·도시등급·인쇄 (구 ExpertScoreBreakdown+Summary 이식, 세션 405) |
+| AdminUnitSupply | 76 | 관리자: 동/호수 3칸 + 청약홈 평형별 공급 표 (구 ExpertUnitPlaceholder 이식, usePresaleDetail units 유일 소비처) |
 
 ### 프리미티브 (`primitives.tsx`)
 

@@ -4,10 +4,14 @@
  * DataSections.jsx L84:
  *   memo(function DataSections({ apt }))
  */
-import type { Apt } from "@/types/scoring";
+import type { Apt, Profile } from "@/types/scoring";
 
 export interface DataSectionsProps {
   apt: Apt;
+  /** 관리자 모드 (세션 405 전문가 대시보드 이식) — 138필드 전수 표 토글 + 138필드 기준 완성도. 기본 false = 기존 화면 무변경. */
+  adminMode?: boolean;
+  /** 관리자 138필드 표의 프로필 상위 카테고리 ★ 중점 배지용 (구 ExpertDashboard 세션 382 답습). */
+  profile?: Profile;
 }
 
 /**
