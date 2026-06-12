@@ -142,27 +142,6 @@ export interface UseLoginGateReturn {
 }
 
 /**
- * useExpertMode 반환 — useAdminMode 와 별도, 전문가 로그인 도메인.
- * (.js 훅 — 향후 정밀화)
- */
-export interface UseExpertModeReturn {
-  expertLoggedIn: boolean;
-  setExpertLoggedIn: (_v: boolean) => void;
-  showExpertLogin: boolean;
-  setShowExpertLogin: (_v: boolean) => void;
-  expertLoading: boolean;
-  expertError: string | null;
-  handleExpertLogin: (_email: string, _password: string) => Promise<boolean>;
-  handleExpertLogout: (_resetCb?: () => void) => void;
-  consultsLoading: boolean;
-  consults: Array<Record<string, unknown>>;
-  consultsError: string | null;
-  fetchConsults: () => Promise<void>;
-  // 기타 동적 필드
-  [key: string]: unknown;
-}
-
-/**
  * 공유 데이터 (useShare openShareSheet 인자) — M4b 2차.
  * useShareCallbacks.ts L5 ShareSheetData 와 동일 형태 (구조형 타입 호환).
  */
@@ -344,7 +323,6 @@ export interface UseAppNavigationArgs {
     expertLoggedIn: boolean;
     handleExpertLogin: () => Promise<{ ok: boolean; role?: string } | undefined>;
     handleExpertLogout: (_resetCb: () => void) => void;
-    setExpertExpandedApt: (_id: string | null) => void;
     [key: string]: unknown;
   };
   admin: import("./admin").AdminMode;
@@ -373,10 +351,7 @@ export interface UseAppNavigationArgs {
 export interface UseAppNavigationReturn {
   handleExpertLogin: () => Promise<void>;
   handleExpertLogout: () => void;
-  switchToAdmin: () => void;
-  switchToExpert: () => void;
   switchToInfo: () => void;
-  handleExpertView: (_apt: import("./scoring").Apt) => void;
   handleConsultFromDetail: (_aptId: string) => void;
   handleNavClick: (_k: string) => void;
 }

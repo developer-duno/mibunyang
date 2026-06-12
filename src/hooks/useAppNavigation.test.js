@@ -110,27 +110,13 @@ describe('useAppNavigation', () => {
     expect(args.setShowCompOpen).toHaveBeenCalledWith(false);
   });
 
-  // switchTo* 단순 탭 전환
-  it('switchToAdmin/Expert/Info 가 해당 탭으로 전환한다', () => {
+  // switchToInfo 단순 탭 전환 (switchToAdmin/Expert·handleExpertView 는 세션 405 전문가 폐지로 제거)
+  it('switchToInfo 가 info 탭으로 전환한다', () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
-    result.current.switchToAdmin();
-    result.current.switchToExpert();
     result.current.switchToInfo();
-    expect(args.setTab).toHaveBeenNthCalledWith(1, 'admin');
-    expect(args.setTab).toHaveBeenNthCalledWith(2, 'expert');
-    expect(args.setTab).toHaveBeenNthCalledWith(3, 'info');
-  });
-
-  // handleExpertView → 단지 id 확장 + expert 탭
-  it('handleExpertView: 단지를 확장하고 expert 탭으로 전환한다', () => {
-    const args = makeArgs();
-    const { result } = renderHook(() => useAppNavigation(args));
-
-    result.current.handleExpertView(/** @type {any} */ ({ id: 'apt-7' }));
-    expect(args.expert.setExpertExpandedApt).toHaveBeenCalledWith('apt-7');
-    expect(args.setTab).toHaveBeenCalledWith('expert');
+    expect(args.setTab).toHaveBeenCalledWith('info');
   });
 
   // handleConsultFromDetail → 관심단지 추가 + 상세 닫기 + consult 탭

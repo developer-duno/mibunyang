@@ -11,7 +11,6 @@ import type { UpcomingApiResponse } from "@/types/upcoming";
 const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
 const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));
 const ConsultForm = lazy(() => import("@/components/ConsultForm").then(m => ({ default: m.ConsultForm })));
-const ExpertDashboard = lazy(() => import("@/components/expert/ExpertDashboard").then(m => ({ default: m.ExpertDashboard })));
 const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 const MapView = lazy(() => import("@/components/sections/MapView").then(m => ({ default: m.MapView })));
 const UpcomingPage = lazy(() => import("@/components/UpcomingPage").then(m => ({ default: m.UpcomingPage })));
@@ -128,7 +127,6 @@ export default function App() {
     }
     if (!token) return isFeatureHome() ? "home" : "list";
     if (role === "admin") return "admin";
-    if (role === "expert") return "expert";
     return isFeatureHome() ? "home" : "list";
   });
   // ── 커스텀 훅 13개 ──
@@ -174,8 +172,8 @@ export default function App() {
   // ── 탭 전환/인증 네비게이션 ──
   const {
     handleExpertLogin,
-    switchToAdmin, switchToExpert, switchToInfo,
-    handleExpertView, handleConsultFromDetail,
+    switchToInfo,
+    handleConsultFromDetail,
     handleNavClick,
   } = useAppNavigation({
     tab, setTab, expert, admin, consult, detail,
@@ -187,7 +185,7 @@ export default function App() {
   useKakaoCallbackEffect({ tab, kakao, expert, admin, detail, setTab, showToast });
 
   // ── containerMaxWidth ──
-  const containerMaxWidth = (expert.expertLoggedIn && (tab === "expert" || tab === "expertConsults")) || (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
+  const containerMaxWidth = (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
 
   // ── 공유 콜백 3종 (scoredMapRef 내부 관리) ──
   const { handleShareDetail, handleShareCompare, handleShareFilters } = useShareCallbacks({
@@ -338,7 +336,6 @@ export default function App() {
             moveInFilter={moveInFilter} builderTier={builderTier} minScore={minScore}
             onResetBudget={handleBudgetReset} onResetRegion={() => handleRegionChange("전체")}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
-            onExpertView={expert.expertLoggedIn ? handleExpertView : undefined}
             onResetAll={handleResetAll}
             isLoggedIn={isLoggedIn}
           />
@@ -360,16 +357,10 @@ export default function App() {
         </div>
       ) : tab === "expertLogin" ? (
         <ExpertLoginForm expert={expert} onLogin={handleExpertLogin} onBack={() => setTab("info")} onKakaoLogin={() => kakao.initKakaoLogin()} kakaoLoading={kakao.kakaoLoading} />
-      ) : tab === "expert" ? (
-        <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>대시보드 로딩 중...</div>}>
-          <ExpertDashboard scored={scored} profile={profile}
-            expandedApt={expert.expertExpandedApt} setExpandedApt={expert.setExpertExpandedApt}
-            onSwitchToAdmin={admin.adminLoggedIn ? switchToAdmin : undefined} />
-        </Suspense>
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>관리자 패널 로딩 중...</div>}>
-            <AdminDashboard admin={admin} onLogout={switchToInfo} onSwitchToExpert={switchToExpert} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} showToast={showToast} />
+            <AdminDashboard admin={admin} onLogout={switchToInfo} profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} showToast={showToast} />
           </Suspense>
         ) : null
       ) : tab === "upcoming" ? (
@@ -385,39 +376,6 @@ export default function App() {
             <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 }}>카카오 로그인 처리 중...</div>
             <div style={{ fontSize: 12, color: C.muted }}>잠시만 기다려주세요</div>
           </div>
-        </div>
-      ) : tab === "expertConsults" ? (
-        <div style={{ padding: "0 16px" }}>
-          <div style={{ background: C.indigoLight, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.indigo }}>상담 요청 목록</span>
-            <span style={{ fontSize: 11, color: C.indigo }}>{consult.submittedConsults.length}건</span>
-          </div>
-
-          {consult.submittedConsults.length === 0 ? (
-            <div style={{ background: C.card, borderRadius: 12, padding: "40px 20px", border: `1px solid ${C.border}`, textAlign: "center" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>아직 상담 요청이 없습니다</div>
-              <div style={{ fontSize: 12, color: C.muted }}>소비자가 상담을 신청하면 여기에 표시됩니다</div>
-            </div>
-          ) : (
-            consult.submittedConsults.map((c) => {
-              const aptNames = c.interestedApts.map(id => { const found = apartments.find(a => a.id === id); return found ? found.name : id; });
-              return (
-                <div key={c.id} style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{c.name}</span>
-                    <span style={{ fontSize: 10, color: C.muted }}>{c.submittedAt ? new Date(c.submittedAt).toLocaleString("ko-KR") : ""}</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.8 }}>
-                    <div>연락처: {c.phone}</div>
-                    <div>상담유형: {c.consultType}</div>
-                    <div>관심단지: {aptNames.join(", ")}</div>
-                    {(c.budgetMin || c.budgetMax) && <div>예산: {c.budgetMin || "?"} ~ {c.budgetMax || "?"}만원</div>}
-                    {c.message && <div>메시지: {c.message}</div>}
-                  </div>
-                </div>
-              );
-            })
-          )}
         </div>
       ) : null}
 

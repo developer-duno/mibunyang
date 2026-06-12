@@ -3,7 +3,7 @@ import { C, F } from "@/theme";
 
 // 데이터 채움률 도넛 (세션 380 PR-2) — primitives.tsx ScoreBadge circle 패턴 복제(본문 수정 아님).
 // ScoreBadge는 gr(score) 등급색 + "점수+등급"이라 재사용 불가 → 채움률 전용 신규.
-// 색은 80/50 임계값(ExpertDataCompleteness 동일 기준). 가운데 "N%" 텍스트.
+// 색은 80/50 임계값(관리자 완성도 블록 — DataSections adminMode — 동일 기준). 가운데 "N%" 텍스트.
 
 type CompletenessDonutProps = { pct: number; size?: number; label?: string };
 

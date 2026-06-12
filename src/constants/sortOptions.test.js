@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import { SORT_OPTIONS, VALID_SORT_KEYS, EXPERT_SORT_OPTIONS } from "./sortOptions";
+import { SORT_OPTIONS, VALID_SORT_KEYS } from "./sortOptions";
 
 describe("SORT_OPTIONS", () => {
   // 정렬 옵션 7개 정의 확인
@@ -16,13 +16,12 @@ describe("SORT_OPTIONS", () => {
 
   // 각 옵션의 필수 필드 존재
   SORT_OPTIONS.forEach(opt => {
-    it(`${opt.key}: 필수 필드 존재 (pcLabel, mobileLabel, ac, bg, pas, expert)`, () => {
+    it(`${opt.key}: 필수 필드 존재 (pcLabel, mobileLabel, ac, bg, pas)`, () => {
       expect(typeof opt.pcLabel).toBe("string");
       expect(typeof opt.mobileLabel).toBe("string");
       expect(typeof opt.ac).toBe("string");
       expect(typeof opt.bg).toBe("string");
       expect(typeof opt.pas).toBe("string");
-      expect(typeof opt.expert).toBe("boolean");
     });
   });
 
@@ -50,20 +49,5 @@ describe("VALID_SORT_KEYS", () => {
     expect(VALID_SORT_KEYS.has("benefit")).toBe(true);
     expect(VALID_SORT_KEYS.has("invalid")).toBe(false);
     expect(VALID_SORT_KEYS.has("")).toBe(false);
-  });
-});
-
-describe("EXPERT_SORT_OPTIONS", () => {
-  // 전문가용 subset 5개
-  it("expert=true인 옵션만 포함 (5개)", () => {
-    expect(EXPERT_SORT_OPTIONS).toHaveLength(5);
-    expect(EXPERT_SORT_OPTIONS.every(o => o.expert)).toBe(true);
-  });
-
-  // benefit, newest 미포함
-  it("benefit, newest 미포함", () => {
-    const keys = EXPERT_SORT_OPTIONS.map(o => o.key);
-    expect(keys).not.toContain("benefit");
-    expect(keys).not.toContain("newest");
   });
 });

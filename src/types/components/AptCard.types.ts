@@ -1,9 +1,9 @@
 /**
  * AptCard 컴포넌트 props 타입 분할 (M3a a-1, AptCard 181줄 분할 강제).
  *
- * AptCard.jsx L37: memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, onExpertView, isDesktop, isLoggedIn = true }))
+ * AptCard.jsx L37: memo(function AptCard({ apt, res, rank, onDetail, isComp, onComp, isFav, onFav, profileWeights, isDesktop, isLoggedIn = true }))
  *
- * 호출처 실측 (App.jsx): onDetail/onComp/onFav 모두 apt.id (string) 전달, onExpertView (apt) 객체.
+ * 호출처 실측 (App.jsx): onDetail/onComp/onFav 모두 apt.id (string) 전달.
  */
 import type { Apt } from "@/types/scoring";
 import type {
@@ -23,5 +23,4 @@ export interface AptCardProps extends ResponsiveProps, AuthProps {
   isFav: boolean;
   onFav: (_id: string) => void;
   profileWeights: Weights;
-  onExpertView?: (_apt: Apt) => void;
 }

@@ -33,7 +33,6 @@ export function useExpertMode(showToast: ShowToast) {
   const [authStatus, setAuthStatus] = useState<AuthStatus>(null);
   const [expertLoggedIn, setExpertLoggedIn] = useState(() => { try { return !!localStorage.getItem("expertToken"); } catch { return false; } });
   const [authUser, setAuthUser] = useState<ExpertUser | null>(null);
-  const [expertExpandedApt, setExpertExpandedApt] = useState<string | null>(null);
 
   const authFormRef = useRef(authForm);
   const showToastRef = useRef(showToast);
@@ -139,7 +138,6 @@ export function useExpertMode(showToast: ShowToast) {
     localStorage.removeItem("userRole");
     sessionStorage.removeItem("expertToken");
     sessionStorage.removeItem("userRole");
-    setExpertExpandedApt(null);
     setAuthUser(null);
     setAuthForm({ ...EMPTY_FORM });
     setAuthError("");
@@ -217,7 +215,7 @@ export function useExpertMode(showToast: ShowToast) {
     authForm, setAuthForm,
     authLoading, authError, authStatus,
     authUser, setAuthUser,
-    expertLoggedIn, setExpertLoggedIn, expertExpandedApt, setExpertExpandedApt,
+    expertLoggedIn, setExpertLoggedIn,
     handleExpertLogin, handleExpertSignup, handleExpertLogout,
   };
 }
