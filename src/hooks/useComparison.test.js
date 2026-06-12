@@ -97,7 +97,7 @@ describe('useComparison', () => {
     localStorage.setItem('mibunyang_comp', JSON.stringify(["1", "2", "3"]));
     const showToast = vi.fn();
     renderHook(() => useComparison(showToast));
-    expect(showToast).toHaveBeenCalledWith('이전 비교 3개 복원됨 · 비교 탭에서 확인');
+    expect(showToast).toHaveBeenCalledWith('이전 비교 3개 복원됨 · 목록에서 확인');
   });
 
   it('localStorage 비어있으면 복원 토스트 미표시', () => {

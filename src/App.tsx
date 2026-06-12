@@ -350,7 +350,7 @@ export default function App() {
           </Suspense>
         </div>
       ) : tab === "info" ? (
-        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} />
+        <InfoPage expertLoggedIn={expert.expertLoggedIn} onExpertLoginClick={() => setTab("expertLogin")} onConsultClick={() => handleNavClick("consult")} />
       ) : tab === "consult" ? (
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}>

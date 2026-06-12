@@ -130,7 +130,7 @@ export const GuideSections = memo(function GuideSections() {
           </div>
           <div style={tipBox}>
             <div style={tipText}>
-              비교 목록은 브라우저에 자동 저장됩니다. 다음 방문 시 이전 비교가 복원되며, &apos;비교 탭에서 확인&apos; 안내가 표시됩니다.
+              비교 목록은 브라우저에 자동 저장됩니다. 다음 방문 시 이전 비교가 복원됩니다.
             </div>
           </div>
         </div>
@@ -165,7 +165,8 @@ export const GuideSections = memo(function GuideSections() {
       <div style={cardStyle}>
         <div style={titleStyle}>상담 신청</div>
         <div style={guideDesc}>
-          하단 &apos;상담&apos; 탭에서 이름, 연락처, 관심 단지, 예산 범위, 상담 유형(방문상담/전화상담/온라인상담)을 입력하고 신청하세요.
+          상담 신청 화면에서 이름, 연락처, 관심 단지, 예산 범위, 상담 유형(방문상담/전화상담/온라인상담)을 입력하고 신청하세요.
+          정보 페이지의 &apos;상담 신청하기&apos; 버튼으로 들어갈 수 있습니다.
           관심매물로 등록한 단지가 자동으로 관심 단지 목록에 추가됩니다.
           상세 분석 모달에서 &apos;이 매물 상담하기&apos; 버튼을 눌러도 해당 단지가 포함된 상담 신청으로 바로 이동합니다.
         </div>
