@@ -91,12 +91,14 @@
 
 ## 🔴 즉시
 
-(다음 진입 후보 = **상세 모달 IA 개편 D1** (사장님 직접 지시) 또는 아래 P1 API 500 근본 진단 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
+(다음 진입 후보 = **상세 모달 IA 개편 D2** (D1 완료 — 세션 407) 또는 아래 P1 API 500 근본 진단 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
 
-- 🔴 **상세 모달 IA 개편 — Progressive Disclosure D1~D3** (세션 406 사장님 지시: "너무 길고 루즈해, 카테고리 구분해서 클릭으로 점점 확대")
-  - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (벤치마킹 호갱노노·아실·네이버·토스 + C안 하이브리드 추천)
-  - D1 = 점프 앵커 → 콘텐츠 교체 탭 (정보 소실 0 재배치) / D2 = 종합 요약 대시보드 + 점수 4중 중복 통합 + 관리자 탭 분리 / D3 = 다듬기
-  - ⚠️ 구현 진입 시 적대검증 워크플로 1회 의무 + 정보 귀속 맵 전수 박제 (전문가 폐지 결정문서 패턴)
+- 🔴 **상세 모달 IA 개편 — Progressive Disclosure D2~D3** (세션 406 사장님 지시: "너무 길고 루즈해, 카테고리 구분해서 클릭으로 점점 확대")
+  - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (C안 + 세션 407 D1 추록: CTA 항상 노출·keepMounted·수용사항)
+  - ✅ D1 완료 = 세션 407 PR #106 (`321fd6e`) — 점프 앵커 → 콘텐츠 교체 탭. keepMounted(첫 방문 마운트 후 display:none — 금융 useRef 캐시 훅 refetch·presale_view 중복·펼침 소실 차단), 관리자 전 패널 마운트(인쇄 보존, print media 실증), CTA 공통 영역(사장님 결정). 적대검증 2라운드 9 probe — "App 상시 마운트" 할루시네이션·visited 시딩 누락·jsdom scrollTo 가드 함정·PriceTable null e2e 함정 적발 후 구현
+  - D2 = 종합 요약 대시보드 + 점수 4중 중복 통합 + 관리자 탭 분리 (정보 귀속 맵 전수 박제 의무) / D3 = ARIA tablist·애니메이션·analytics(detail_tab_*)
+  - ⚠️ 구현 진입 시 적대검증 워크플로 1회 의무 (plan 버전마다 재검증 — 세션 407 답습)
+  - 후속 (D1 수용사항): 금융 훅(useRentLoanRates/useLoanRates) useRef→모듈 캐시 승격(선택) / `loan-rates.spec` 커버리지 부활(현재도 비로그인 게이트로 죽은 커버리지 — 로그인 mock+금융 칩 선행 필요)
 
 - 🟡 **/api/consults 500 검증 잔여** (세션 406 발견·조치 — 사장님 스크린샷 콘솔에서 관리자 대시보드 500 확인)
   - 진앙 실측 = Vercel production 에 `SUPABASE_SERVICE_KEY` 미설정 → `getMibuyangSupabase()` throw → catch 500. DB·쿼리는 로컬 service key 프로브로 정상 확인 (consults 0행, submitted_at 정렬 OK)
