@@ -1,9 +1,10 @@
 import { test, expect } from "@playwright/test";
+import { gotoListTab } from "./helpers";
 
 // 스켈레톤 로딩 + 빈 상태 + 필터 초기화 테스트
 test.describe("스켈레톤 & 빈 상태", () => {
 
-  test("로딩 시 스켈레톤 6카드 표시", async ({ page }) => {
+  test("로딩 시 스켈레톤 표시 (목록 6카드 / HOME ON 홈 4카드)", async ({ page }) => {
     // API 응답을 3초 지연시켜 로딩 상태 포착
     await page.route("**/api/supabase/apartments*", async (route) => {
       await new Promise((r) => setTimeout(r, 3000));
@@ -14,11 +15,13 @@ test.describe("스켈레톤 & 빈 상태", () => {
     const skeletons = page.locator('[style*="skeleton-pulse"]');
     await expect(skeletons.first()).toBeVisible({ timeout: 5000 });
     const count = await skeletons.count();
-    expect(count).toBe(6);
+    // VITE_FEATURE_HOME ON = 초기화면 홈 SkeletonList 4개 / OFF = 목록 카드 스켈레톤 6개
+    expect([4, 6]).toContain(count);
   });
 
   test("필터로 0건 시 빈 상태 메시지 표시", async ({ page }) => {
     await page.goto("/");
+    await gotoListTab(page); // HOME ON 시 홈엔 SearchFilterBar 없음 — 목록 진입 보정
     const hasCards = await page
       .locator('[role="button"]')
       .first()
@@ -57,6 +60,7 @@ test.describe("스켈레톤 & 빈 상태", () => {
 
   test("필터 초기화 후 카드 복원", async ({ page }) => {
     await page.goto("/");
+    await gotoListTab(page); // HOME ON 시 홈엔 SearchFilterBar 없음 — 목록 진입 보정
     const hasCards = await page
       .locator('[role="button"]')
       .first()

@@ -1,9 +1,11 @@
 import { test, expect } from "@playwright/test";
+import { gotoListTab } from "./helpers";
 
 // 아파트 목록 — 필터/정렬/검색 테스트
 test.describe("아파트 목록", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
+    await gotoListTab(page); // HOME ON 시 초기 탭이 홈 — 목록 검증은 목록 탭에서 (silent skip 방지)
     const hasCards = await page.locator('[role="button"]').first().isVisible({ timeout: 15000 }).catch(() => false);
     if (!hasCards) {
       test.skip(true, "카드 데이터 없음 — 빈 DB");
