@@ -1,7 +1,7 @@
 import { memo, useState, useCallback } from "react";
 import type { CSSProperties } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { isFeatureUpcoming } from "@/constants/featureFlags";
+import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
 import { C, F } from "@/theme";
 import { IconHelp } from "@/components/icons";
 import type { Profile } from "@/types/scoring";
@@ -108,8 +108,10 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
   const upcomingLabel = upcomingCount != null && upcomingCount > 0
     ? `📅 곧 분양 ${upcomingCount}개`
     : "📅 곧 분양";
+  const homeEnabled = isFeatureHome();
   const navItems = expertLoggedIn
     ? [
+        ...(homeEnabled ? [{ l: "홈", k: "home" }] : []),
         { l: "대시보드", k: "expert" },
         { l: "상담목록", k: "expertConsults" },
         { l: "소비자뷰", k: "list" },
@@ -117,6 +119,8 @@ export const HeaderSection = memo(function HeaderSection({ profile, onProfileCha
         ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),
       ]
     : [
+        // 데스크톱은 비교·상담 유지 (D4 표 — 5탭 재배열은 모바일 BottomNav 만)
+        ...(homeEnabled ? [{ l: "홈", k: "home" }] : []),
         { l: "목록", k: "list" },
         { l: "지도", k: "map" },
         ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),

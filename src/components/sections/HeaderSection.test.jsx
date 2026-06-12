@@ -1,5 +1,5 @@
 // @ts-check
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { HeaderSection } from "./HeaderSection";
 
@@ -116,5 +116,31 @@ describe("HeaderSection", () => {
     expect(screen.getByText("대시보드")).toBeInTheDocument();
     expect(screen.getByText("상담목록")).toBeInTheDocument();
     expect(screen.getByText("소비자뷰")).toBeInTheDocument();
+  });
+
+  // 통합 홈 (VITE_FEATURE_HOME) — 데스크톱 네비 홈 항목
+  describe("VITE_FEATURE_HOME flag", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("ON 데스크톱: '홈' 네비 렌더 + 클릭 시 onNavClick('home')", () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      const onNavClick = vi.fn();
+      render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} onNavClick={onNavClick} />);
+      fireEvent.click(screen.getByRole("button", { name: "홈" }));
+      expect(onNavClick).toHaveBeenCalledWith("home");
+    });
+
+    it("ON 데스크톱: 비교·상담은 유지 (D4 — 재배열은 모바일만)", () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
+      expect(screen.getByText("비교")).toBeInTheDocument();
+      expect(screen.getByText("상담")).toBeInTheDocument();
+    });
+
+    it("OFF: '홈' 미노출 (회귀 가드)", () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "");
+      render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
+      expect(screen.queryByRole("button", { name: "홈" })).toBeNull();
+    });
   });
 });

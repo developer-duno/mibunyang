@@ -124,4 +124,50 @@ describe("BottomNav", () => {
       expect(screen.queryByText("📅 곧 분양")).toBeNull();
     });
   });
+
+  // ── homeEnabled (VITE_FEATURE_HOME) 분기 — D4 5탭 ─────────────────────
+  describe("VITE_FEATURE_HOME flag", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("ON 일반 사용자: 홈·목록·지도·정보 + 비교/상담 미노출 (D4 5탭)", () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      render(<BottomNav {...makeProps()} />);
+      expect(screen.getByText("홈")).toBeInTheDocument();
+      expect(screen.queryByText("비교")).toBeNull();
+      expect(screen.queryByText("상담")).toBeNull();
+      expect(screen.getByText("정보")).toBeInTheDocument();
+    });
+
+    it("ON + UPCOMING ON: 5탭 전체 (홈·목록·지도·📅·정보)", () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
+      render(<BottomNav {...makeProps()} />);
+      expect(screen.getAllByRole("button")).toHaveLength(5);
+    });
+
+    it("ON 홈 클릭: onNavClick('home')", () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      const onNavClick = vi.fn();
+      render(<BottomNav {...makeProps({ onNavClick })} />);
+      fireEvent.click(screen.getByText("홈"));
+      expect(onNavClick).toHaveBeenCalledWith("home");
+    });
+
+    it("ON 전문가: 홈 포함 6탭", () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      render(<BottomNav {...makeProps({ expertLoggedIn: true, tab: "expert" })} />);
+      expect(screen.getByText("홈")).toBeInTheDocument();
+      expect(screen.getAllByRole("button")).toHaveLength(6);
+    });
+
+    it("OFF: 비교·상담 보존 (회귀 가드)", () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "");
+      render(<BottomNav {...makeProps()} />);
+      expect(screen.queryByText("홈")).toBeNull();
+      expect(screen.getByText("비교")).toBeInTheDocument();
+      expect(screen.getByText("상담")).toBeInTheDocument();
+    });
+  });
 });
