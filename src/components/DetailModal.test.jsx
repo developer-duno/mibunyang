@@ -226,4 +226,16 @@ describe("DetailModal StickyJumpNav", () => {
     render(<DetailModal {...makeProps()} />);
     expect(screen.queryByText(/★ 중점/)).toBeNull();
   });
+
+  // 관리자 인사이트 레이어 게이트 (세션 405 전문가 대시보드 이식)
+  it("adminLoggedIn=true 면 점수 산출 과정(AdminScoreBreakdown)이 lazy 렌더된다", async () => {
+    render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
+    expect(await screen.findByTestId("admin-score-breakdown")).toBeInTheDocument();
+  });
+
+  it("adminLoggedIn 미전달(기본 false)이면 관리자 블록이 없다 — 소비자 화면 무변경 가드", () => {
+    render(<DetailModal {...makeProps()} />);
+    expect(screen.queryByTestId("admin-score-breakdown")).toBeNull();
+    expect(screen.queryByText("점수 산출 과정 (관리자)")).toBeNull();
+  });
 });

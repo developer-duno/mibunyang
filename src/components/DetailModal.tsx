@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { C, F, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { PROFILES, getTopCats } from "@/constants/profiles";
@@ -18,6 +18,9 @@ import { StickyJumpNav, JUMP_NAV_HEIGHT, type JumpSection } from "./detail/Stick
 import { IconClose } from "./icons";
 import { fetchApartmentPrices, type PriceArrays } from "@/services/staticDataApi";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
+
+// 관리자 인사이트 레이어 (세션 405 전문가 대시보드 이식) — adminLoggedIn 일 때만 로드 (소비자 번들 영향 0)
+const AdminScoreBreakdown = lazy(() => import("./detail/AdminScoreBreakdown").then(m => ({ default: m.AdminScoreBreakdown })));
 
 // 목차바 6섹션 정의 — id 는 영문 슬러그 (한글 id CSS.escape 함정 회피, getElementById 안전).
 // 13블록을 6섹션으로 묶되 데이터 삭제·축소 0 (각 블록은 정확히 1섹션 소속).
@@ -49,7 +52,7 @@ const DM_S = {
   actionRow: { display: "flex", gap: 8, marginBottom: 16 },
 };
 
-export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult, profile }: DetailModalProps) {
+export const DetailModal = memo(function DetailModal({ item, onClose, isComp, onComp, isFav, onFav, onShare, isPC, isDesktop, onConsult, profile, adminLoggedIn = false }: DetailModalProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocusRef = useRef<Element | null>(null);
   // 가격배열 lazy fetch (apartments-prices.json) 상태 — DetailModal 첫 열림 시 1회 9.7MB fetch + 모듈 Map 캐시
@@ -188,7 +191,8 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             <button ref={closeRef} onClick={onClose} aria-label="닫기" style={DM_S.closeBtn}><IconClose size={18} /></button>
           </div>
         </div>
-        <div ref={bodyRef} data-testid="detail-scroll-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
+        {/* data-print-content: 관리자 인쇄 시 App print CSS 가 스크롤 해제·전체 펼침 (세션 405) */}
+        <div ref={bodyRef} data-testid="detail-scroll-body" data-print-content style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
 
         <StickyJumpNav sections={JUMP_SECTIONS} activeId={activeSection} totalScore={res.total} onJump={handleJump} isDesktop={isDesktop} />
 
@@ -294,6 +298,13 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
           return Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} emphasized={topCats.includes(k)} />);
         })()}
+
+        {/* 관리자 인사이트 — 점수 산출 과정 분해 (구 전문가 대시보드 이식, 세션 405) */}
+        {adminLoggedIn && (
+          <Suspense fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}>
+            <AdminScoreBreakdown apt={apt} res={res} profile={profile} />
+          </Suspense>
+        )}
         </section>
 
         </div>
