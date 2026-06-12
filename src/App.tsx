@@ -201,7 +201,7 @@ export default function App() {
   useEffect(() => {
     const style = document.createElement("style");
     style.id = "print-styles";
-    style.textContent = `@media print { nav[aria-label] { display: none !important; } [data-no-print] { display: none !important; } [data-sidebar] { display: none !important; } [data-print-content] { flex: none !important; width: 100% !important; overflow: visible !important; height: auto !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
+    style.textContent = `@media print { nav[aria-label] { display: none !important; } [data-no-print] { display: none !important; } [data-sidebar] { display: none !important; } [data-print-content] { flex: none !important; width: 100% !important; overflow: visible !important; height: auto !important; } [data-print-content] [data-tab-panel] { display: block !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
     document.head.appendChild(style);
     return () => { const el = document.getElementById("print-styles"); if (el) el.remove(); };
   }, []);

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { memo, useEffect, useMemo, useRef, useState, lazy, Suspense, type CSSProperties } from "react";
 import { C, F, SHORT_LABEL } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { PROFILES, getTopCats } from "@/constants/profiles";
@@ -14,7 +14,7 @@ import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { MarketStatsCharts } from "./detail/MarketStatsCharts";
-import { StickyJumpNav, JUMP_NAV_HEIGHT, type JumpSection } from "./detail/StickyJumpNav";
+import { StickyJumpNav, type JumpSection } from "./detail/StickyJumpNav";
 import { IconClose } from "./icons";
 import { fetchApartmentPrices, type PriceArrays } from "@/services/staticDataApi";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
@@ -23,8 +23,8 @@ import type { DetailModalProps } from "@/types/components/DetailModal.types";
 const AdminScoreBreakdown = lazy(() => import("./detail/AdminScoreBreakdown").then(m => ({ default: m.AdminScoreBreakdown })));
 const AdminUnitSupply = lazy(() => import("./detail/AdminUnitSupply").then(m => ({ default: m.AdminUnitSupply })));
 
-// 목차바 6섹션 정의 — id 는 영문 슬러그 (한글 id CSS.escape 함정 회피, getElementById 안전).
-// 13블록을 6섹션으로 묶되 데이터 삭제·축소 0 (각 블록은 정확히 1섹션 소속).
+// 탭바 6섹션 정의 — id 는 영문 슬러그 (한글 id CSS.escape 함정 회피).
+// 13블록을 6탭으로 묶되 데이터 삭제·축소 0 (각 블록은 정확히 1탭 소속, 세션 407 D1: 점프 앵커 → 콘텐츠 교체 탭).
 const JUMP_SECTIONS: JumpSection[] = [
   { id: "sec-overview", label: "종합" },
   { id: "sec-price", label: "시세" },
@@ -131,45 +131,35 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
     [item?.apt.id, item?.apt, prices],
   );
 
-  // 목차바(StickyJumpNav) — 스크롤 컨테이너(bodyRef) 안 6 섹션을 IntersectionObserver 로 추적.
-  // 포커스 트랩 effect(위)와 별개 effect 로 분리: 그쪽은 [!!item] sentinel 로 item 변경 무시(포커스
-  // 튐 방지)지만, observer 는 다른 단지 클릭 시 child 섹션 노드가 재생성되므로 [item?.apt.id] 로 재관찰.
+  // 탭 상태 (세션 407 D1) — activeTab = 현재 콘텐츠 교체 탭, visited = 방문 탭 누적(keepMounted).
+  // 한 번 마운트된 패널은 display:none 으로 유지: 떠난 탭의 fetch 훅 인스턴스 캐시(useRef 캐시인
+  // useLoanRates/useRentLoanRates 포함)·trackEvent dedup·펼침 상태가 모달 열림 세션 동안 보존된다.
+  // 리셋 effect 없음 — App 이 detailAptId 조건부 렌더라 닫힘 = 언마운트 = state 자연 소멸.
+  // 불변식: activeTab ∈ visited (초기 시딩 + handleTabChange 가 둘을 동시 갱신).
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [activeSection, setActiveSection] = useState<string>(JUMP_SECTIONS[0].id);
-  useEffect(() => {
-    const root = bodyRef.current;
-    if (!root || !item) return;
-    const els = JUMP_SECTIONS
-      .map((s) => root.querySelector<HTMLElement>(`#${s.id}`))
-      .filter((el): el is HTMLElement => el != null);
-    if (els.length === 0) return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        // 화면 상단(칩바 아래)에 가장 가까운 가시 섹션을 active 로.
-        const visible = entries.filter((e) => e.isIntersecting);
-        if (visible.length === 0) return;
-        visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        const id = visible[0].target.id;
-        if (id) setActiveSection(id);
-      },
-      // root = 모달 내부 스크롤러. 칩바 높이만큼 상단 마진 보정(root:null 금지 — body 가 아니라 div 스크롤).
-      { root, rootMargin: `-${JUMP_NAV_HEIGHT}px 0px -55% 0px`, threshold: 0 },
-    );
-    els.forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
-  }, [item?.apt.id, item]);
+  const [activeTab, setActiveTab] = useState<string>(JUMP_SECTIONS[0].id);
+  const [visited, setVisited] = useState<Set<string>>(() => new Set([JUMP_SECTIONS[0].id]));
 
-  // 칩 클릭 → 해당 섹션으로 점프. scrollIntoView 는 모달 내부 스크롤러(bodyRef)에서 불안정해
-  // (sticky 칩바·중첩 구조), 컨테이너를 직접 scrollTo 한다. 보정은 칩바 높이만큼 빼서 단일 적용.
-  // el.offsetTop 은 offsetParent 기준이므로 bodyRef 가 position:relative(아래 렌더 style) 여야 정확.
-  const handleJump = (id: string) => {
+  // 칩 클릭 = 탭 전환. setActiveTab/visited 는 무조건 실행(가드 밖) — scrollTo 미구현 환경
+  // (jsdom·구형 브라우저)에서도 탭 전환은 일어나야 비활성 패널 콘텐츠에 도달 가능.
+  // scrollTo 는 탭 전환 시 이전 탭의 스크롤 잔류 방지용 top:0 리셋(instant)만.
+  const handleTabChange = (id: string) => {
+    setActiveTab(id);
+    setVisited(prev => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
     const root = bodyRef.current;
-    const el = root?.querySelector<HTMLElement>(`#${id}`);
-    if (root && el && typeof root.scrollTo === "function") {
-      root.scrollTo({ top: Math.max(0, el.offsetTop - JUMP_NAV_HEIGHT), behavior: "smooth" });
-      setActiveSection(id);
-    }
+    if (root && typeof root.scrollTo === "function") root.scrollTo({ top: 0 });
   };
+
+  // 패널 마운트/표시 규칙 — 관리자는 전부 즉시 마운트(인쇄 "전체 펼침" 보존), 소비자는 첫 방문 시
+  // 마운트 후 keepMounted. 표시는 activeTab 만 (나머지 display:none — print CSS 가 인쇄 시 펼침).
+  const isPanelMounted = (id: string) => adminLoggedIn || visited.has(id);
+  const panelStyle = (id: string): CSSProperties =>
+    ({ margin: 0, padding: 0, display: activeTab === id ? undefined : "none" });
 
   if (!item) return null;
   const { apt, res } = item;
@@ -195,10 +185,11 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {/* data-print-content: 관리자 인쇄 시 App print CSS 가 스크롤 해제·전체 펼침 (세션 405) */}
         <div ref={bodyRef} data-testid="detail-scroll-body" data-print-content style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px 24px 24px" : `0 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px` }}>
 
-        <StickyJumpNav sections={JUMP_SECTIONS} activeId={activeSection} totalScore={res.total} onJump={handleJump} isDesktop={isDesktop} />
+        <StickyJumpNav sections={JUMP_SECTIONS} activeId={activeTab} totalScore={res.total} onJump={handleTabChange} isDesktop={isDesktop} noPrint />
 
-        {/* §1 종합 — ScoreBadge + Radar/핵심지표 + 혜택칩 + 재공고배지 */}
-        <section id="sec-overview" style={{ margin: 0, padding: 0 }}>
+        {/* §1 종합 탭 — ScoreBadge + Radar/핵심지표 + 혜택칩 + 재공고배지 */}
+        {isPanelMounted("sec-overview") && (
+        <section id="sec-overview" data-tab-panel style={panelStyle("sec-overview")}>
         <div style={DM_S.scoreBadgeWrap}>
           <ScoreBadge score={res.total} size={80} />
         </div>
@@ -243,23 +234,29 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
           </div>
         )}
         </section>
+        )}
 
-        {/* §2 시세 — PriceTable + PriceChart + UnsoldChart */}
-        <section id="sec-price" style={{ margin: 0, padding: 0 }}>
+        {/* §2 시세 탭 — PriceTable + PriceChart + UnsoldChart */}
+        {isPanelMounted("sec-price") && (
+        <section id="sec-price" data-tab-panel style={panelStyle("sec-price")}>
         <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         </section>
+        )}
 
-        {/* §3 입지 — SchoolInfo + NearbyChildcare */}
-        <section id="sec-location" style={{ margin: 0, padding: 0 }}>
+        {/* §3 입지 탭 — SchoolInfo + NearbyChildcare */}
+        {isPanelMounted("sec-location") && (
+        <section id="sec-location" data-tab-panel style={panelStyle("sec-location")}>
         <SchoolInfo apt={apt} />
 
         <NearbyChildcareSection apt={apt} />
         </section>
+        )}
 
-        {/* §4 분양 — PresaleInfo + MarketStatsCharts(KOSIS 지역 거시통계) */}
-        <section id="sec-presale" style={{ margin: 0, padding: 0 }}>
+        {/* §4 분양 탭 — PresaleInfo + MarketStatsCharts(KOSIS 지역 거시통계) */}
+        {isPanelMounted("sec-presale") && (
+        <section id="sec-presale" data-tab-panel style={panelStyle("sec-presale")}>
         <PresaleInfo apt={apt} />
 
         {/* 관리자 인사이트 — 동/호수 + 청약홈 평형별 공급 표 (구 전문가 대시보드 이식, 세션 405) */}
@@ -271,15 +268,37 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         <MarketStatsCharts region={apt.region} gu={apt.gu} />
         </section>
+        )}
 
-        {/* §5 금융 — LoanAnalysis (이 단지 대출 시뮬레이션) */}
-        <section id="sec-finance" style={{ margin: 0, padding: 0 }}>
+        {/* §5 금융 탭 — LoanAnalysis (이 단지 대출 시뮬레이션) */}
+        {isPanelMounted("sec-finance") && (
+        <section id="sec-finance" data-tab-panel style={panelStyle("sec-finance")}>
         <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         </section>
+        )}
 
-        {/* §6 점수 — DataSections(공공데이터) + 액션버튼 + CatPanel×6 */}
-        <section id="sec-score" style={{ margin: 0, padding: 0 }}>
+        {/* §6 점수 탭 — DataSections(공공데이터) + CatPanel×6 + 관리자 점수 분해 */}
+        {isPanelMounted("sec-score") && (
+        <section id="sec-score" data-tab-panel style={panelStyle("sec-score")}>
         <DataSections apt={mergedApt ?? apt} adminMode={adminLoggedIn} profile={profile} />
+
+        {(() => {
+          const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
+          return Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} emphasized={topCats.includes(k)} />);
+        })()}
+
+        {/* 관리자 인사이트 — 점수 산출 과정 분해 (구 전문가 대시보드 이식, 세션 405) */}
+        {adminLoggedIn && (
+          <Suspense fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}>
+            <AdminScoreBreakdown apt={apt} res={res} profile={profile} />
+          </Suspense>
+        )}
+        </section>
+        )}
+
+        {/* CTA 공통 영역 — 탭 무관 항상 노출 (사장님 결정 2026-06-13, 세션 407 D1: 구 §6 에서 이동).
+            포커스 트랩 불변식: 이 블록이 모달 내 마지막 포커서블 + 항상 가시여야 한다 — 트랩(위 handleKey)이
+            display:none 패널 내부 요소를 first/last 경계로 잡아 포커스가 탈출하는 것을 DOM 순서로 차단. */}
         {onConsult && (
           <button onClick={() => onConsult(apt.id as string)} style={{
             width: "100%", background: C.blue, color: C.white, border: "none", borderRadius: 8,
@@ -301,19 +320,6 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             border: "1.5px solid transparent", borderRadius: 8, padding: isDesktop ? "12px 0" : "10px 0", fontSize: isDesktop ? F.md : F.base, fontWeight: 700, cursor: "pointer", minHeight: 44, transition: "all .15s"
           }}>공유</button>}
         </div>
-
-        {(() => {
-          const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
-          return Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} emphasized={topCats.includes(k)} />);
-        })()}
-
-        {/* 관리자 인사이트 — 점수 산출 과정 분해 (구 전문가 대시보드 이식, 세션 405) */}
-        {adminLoggedIn && (
-          <Suspense fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}>
-            <AdminScoreBreakdown apt={apt} res={res} profile={profile} />
-          </Suspense>
-        )}
-        </section>
 
         </div>
       </div>

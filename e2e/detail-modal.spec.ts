@@ -77,14 +77,24 @@ test.describe("상세 모달", () => {
   });
 
   // prices lazy fetch (apartments-prices.json) 후 PriceTable 첫 행 실제 렌더 검증.
-  // hardcoded waitForTimeout 금지 — testid 명시 selector 로 flaky 방지.
-  test("DetailModal — prices lazy fetch 후 PriceTable 행 렌더", async ({ page }) => {
+  // 세션 407 D1: PriceTable 은 시세 탭 소속 — 칩 클릭 선행. #sec-price 단언은 데이터 무관 non-skip
+  // 가드라 칩 클릭 수정이 누락되면 즉시 fail (silent-skip 함정 차단). 행 단언만 데이터 의존 skip 유지.
+  test("DetailModal — 시세 탭: 칩 클릭 후 섹션 마운트 + prices lazy fetch 행 렌더", async ({ page }) => {
     await firstCard(page).click();
     const modal = page.locator('[role="dialog"]');
     await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await modal.getByRole("button", { name: "시세" }).click();
+    // non-skip 가드: 시세 탭 패널은 데이터 유무와 무관하게 마운트·가시 (탭 전환 자체의 회귀 가드)
+    await expect(modal.locator("#sec-price")).toBeVisible({ timeout: 4000 });
+
     // 가격 데이터가 있는 단지일 때만 PriceTable 행이 표시. 데이터 없으면 skip.
+    // isVisible({timeout}) 은 timeout 무시·즉시 평가라 오스킵 함정(파일 헤더) — waitFor 패턴 사용.
     const row = modal.locator('[data-testid="price-table-row"]').first();
-    const visible = await row.isVisible({ timeout: 15000 }).catch(() => false);
+    const visible = await row
+      .waitFor({ state: "visible", timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
     if (!visible) {
       test.skip(true, "첫 단지에 가격 데이터 없음");
       return;
@@ -92,44 +102,27 @@ test.describe("상세 모달", () => {
     await expect(row).toBeVisible();
   });
 
-  // 목차바(StickyJumpNav) 칩 점프 — jsdom 단위테스트(scrollTo 호출+aria-current mock)가 못 증명하는
-  // "실브라우저 레이아웃: 맨 아래 섹션이 실제로 viewport 안으로 들어옴"을 검증.
-  test("목차바 '점수' 칩 클릭 시 섹션 노출 + 실제 스크롤 + active 전환", async ({ page }) => {
+  // 탭바(StickyJumpNav) — 세션 407 D1: 점프 앵커 → 콘텐츠 교체 탭. 스크롤 단언은 의미 소멸로 삭제,
+  // 실브라우저 고유 가치 = "비활성 패널이 실제로 숨고(keepMounted display:none) 새 패널이 보인다".
+  test("탭바 '점수' 칩 클릭 시 콘텐츠 교체 — 점수 탭 노출 + 종합 탭 숨김 + active 전환", async ({ page }) => {
     await firstCard(page).click();
     const modal = page.locator('[role="dialog"]');
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    const body = modal.locator('[data-testid="detail-scroll-body"]');
-    await expect(body).toBeVisible();
+    // 클릭 전: 기본 탭(종합) 가시, 점수 탭 미마운트(not.toBeVisible 은 부재도 pass)
+    await expect(modal.locator("#sec-overview")).toBeVisible();
+    await expect(modal.locator("#sec-score")).not.toBeVisible();
 
-    // 헤드리스 Chromium은 scrollTo({behavior:"smooth"})를 비결정적으로 처리(scrollTop이 0~부분진행
-    // 사이를 오감 — reducedMotion 으로도 instant 화 안 됨, 실측 확인). 검증 대상은 "handleJump가
-    // offsetTop-44 좌표로 스크롤을 건다"이지 smooth 애니메이션 자체가 아니므로, 컨테이너 scrollTo의
-    // behavior 인자만 벗겨 동기 스크롤로 만든다(prod handleJump는 불변 — UX 영향 0).
-    await body.evaluate((el) => {
-      const orig = el.scrollTo.bind(el);
-      el.scrollTo = (opts?: ScrollToOptions | number, y?: number) => {
-        if (opts && typeof opts === "object") orig({ top: opts.top, left: opts.left ?? 0 });
-        else orig(opts as number, y as number);
-      };
-    });
-
-    // 클릭 전: 맨 아래 섹션은 아직 viewport 밖(점프가 실제 레이아웃 변화를 일으킴을 before/after 로 증명).
-    await expect(modal.locator("#sec-score")).not.toBeInViewport();
-
-    const before = await body.evaluate((el) => el.scrollTop);
     const scoreChip = modal.getByRole("button", { name: "점수" });
     await scoreChip.click();
 
-    // 축1(레이아웃 사실, e2e 고유가치): 점프 후 맨 아래 섹션이 viewport 안으로 들어옴.
-    await expect(modal.locator("#sec-score")).toBeInViewport({ timeout: 4000 });
+    // 축1: 점수 탭 콘텐츠 마운트·가시 (DataSections + CatPanel)
+    await expect(modal.locator("#sec-score")).toBeVisible({ timeout: 4000 });
 
-    // 축2(실제 스크롤 증명): 컨테이너 scrollTop 이 클릭 전보다 커짐. instant 패치라 결정적.
-    await expect
-      .poll(() => body.evaluate((el) => el.scrollTop), { timeout: 4000 })
-      .toBeGreaterThan(before);
+    // 축2(콘텐츠 교체 증명): 종합 탭은 DOM 에 남되(keepMounted) 화면에서 숨음.
+    await expect(modal.locator("#sec-overview")).not.toBeVisible();
 
-    // 축3(active): handleJump 가 클릭 즉시 setActiveSection → 클릭칩 aria-current 전환(스크롤 타이밍 무관).
+    // 축3(active): handleTabChange 가 클릭 즉시 setActiveTab → 클릭칩 aria-current 전환.
     await expect(scoreChip).toHaveAttribute("aria-current", "true");
   });
 });
