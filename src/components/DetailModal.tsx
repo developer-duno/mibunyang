@@ -21,6 +21,7 @@ import type { DetailModalProps } from "@/types/components/DetailModal.types";
 
 // 관리자 인사이트 레이어 (세션 405 전문가 대시보드 이식) — adminLoggedIn 일 때만 로드 (소비자 번들 영향 0)
 const AdminScoreBreakdown = lazy(() => import("./detail/AdminScoreBreakdown").then(m => ({ default: m.AdminScoreBreakdown })));
+const AdminUnitSupply = lazy(() => import("./detail/AdminUnitSupply").then(m => ({ default: m.AdminUnitSupply })));
 
 // 목차바 6섹션 정의 — id 는 영문 슬러그 (한글 id CSS.escape 함정 회피, getElementById 안전).
 // 13블록을 6섹션으로 묶되 데이터 삭제·축소 0 (각 블록은 정확히 1섹션 소속).
@@ -260,6 +261,13 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {/* §4 분양 — PresaleInfo + MarketStatsCharts(KOSIS 지역 거시통계) */}
         <section id="sec-presale" style={{ margin: 0, padding: 0 }}>
         <PresaleInfo apt={apt} />
+
+        {/* 관리자 인사이트 — 동/호수 + 청약홈 평형별 공급 표 (구 전문가 대시보드 이식, 세션 405) */}
+        {adminLoggedIn && (
+          <Suspense fallback={<div style={{ padding: 12, fontSize: F.sm, color: C.muted }}>평형별 공급 로딩 중...</div>}>
+            <AdminUnitSupply apt={apt} />
+          </Suspense>
+        )}
 
         <MarketStatsCharts region={apt.region} gu={apt.gu} />
         </section>
