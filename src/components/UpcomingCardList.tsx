@@ -7,7 +7,7 @@ import { C, F } from "@/theme";
 import { fmtPrice, fmtRecruitDate } from "@/lib/format";
 import { Tooltip, extractTerm } from "./Tooltip";
 import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
-import type { UpcomingCardListProps, UpcomingCardProps, DdayInfo } from "@/types/components/UpcomingCardList.types";
+import type { UpcomingCardListProps, UpcomingCardProps } from "@/types/components/UpcomingCardList.types";
 
 interface StageStyle { bg: string; color: string; label: string }
 
@@ -28,22 +28,9 @@ const chipStyle: CSSProperties = {
   border: `1px solid ${C.border}`,
 };
 
-/**
- * D-day 계산 — spec § 6-2
- */
-export function computeDday(recruitDate: string | null | undefined, today: Date = new Date()): DdayInfo | null {
-  if (!recruitDate || typeof recruitDate !== "string") return null;
-  const d = new Date(recruitDate);
-  if (isNaN(d.getTime())) return null;
-  const diffMs = d.setHours(0, 0, 0, 0) - new Date(today).setHours(0, 0, 0, 0);
-  const days = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  if (days < -7) return null; // 1주 이상 지난 단지는 D-day 표시 X
-  if (days < 0) return { label: `D+${Math.abs(days)}`, color: C.muted };
-  if (days === 0) return { label: "오늘 청약", color: C.red };
-  if (days <= 3) return { label: `D-${days}`, color: C.amber };
-  if (days <= 7) return { label: `D-${days}`, color: C.text };
-  return { label: `D-${days}`, color: C.muted };
-}
+// 테스트 하위호환용 re-export — 신규 소비처는 @/lib/dday 에서 직접 import (lazy 청크 보호)
+import { computeDday } from "@/lib/dday";
+export { computeDday };
 
 export const UpcomingCardList = memo(function UpcomingCardList({ items, onSubscribe, onOpenDetail, isMobile }: UpcomingCardListProps) {
   if (!items || items.length === 0) {
