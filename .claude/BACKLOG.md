@@ -91,7 +91,8 @@
 
 (다음 진입 후보 = 아래 P1 API 500 근본 진단 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
 
-- 🔴 **KOSIS OpenAPI GitHub 러너 전면 불통 (6/9~) — KOSIS 의존 workflow 10개 영향** (세션 393 진단)
+- ✅ **KOSIS OpenAPI GitHub 러너 전면 불통 (6/9~) — 로컬 이전 + 6/12 첫 자연발화 success 실증으로 종결** (세션 393 진단 → 395 이전 → 403 실증)
+  - **세션 403 최종 실증 (6/12 05:30 KST 자연 발화)**: `MibunyangKosisLocal` 정확 발화 + regional-economy collector_runs **success** + KOSIS API 4표 정상 응답(36/270/270/54건)·시도 17개 매칭. ok=0 은 **멱등 skip 정상**(collect-regional-economy.mjs L222-227 minDiff 임계 — 6/10 선행 적재 ok=17 과 값 동일). 스케줄러 LastTaskResult=0·NextRun 6/13. 세션 394 하드닝의 failure-행 검증은 실패 상황 자체가 발생하지 않아 미발동(정상)
   - **증거 (4연속 실측)**: fertility schedule 6/9 22:02Z fail + dispatch 6/10 12:53Z·12:56Z fail + **unsold-kosis dry-run 12:58Z fail** (2 collector, 다른 통계표, 저녁 시간대) — 전부 `KOSIS fetch failed` ~36초 (connection-level, fetchWithRetry 3회 소진). 같은 시각 **로컬(한국 IP) 동일 호출 3회 전부 성공** (768행 <1초).
   - **진단**: 시간대 장애창 아님 (세션 393 초기 가설 폐기). KOSIS 가 GitHub 러너(Azure 해외 데이터센터 IP) 대역 차단/불안정 추정 — KOSIS 포럼에 "IDC 대역 차단" 관행 언급, 공식 공지 부재 (2026-02-05 HTTP 폐지+분당 호출 제한 공지가 최근 강화 흐름). 마지막 러너 성공 = unsold 6/8 21:29Z → 차단 시작 6/8 밤~6/9 사이.
   - **과거 사고 재해석**: 4/1 unsold ECONNRESET + 5/5 market-stats TLS 단절 (새벽) = 동일 계열의 간헐 전조 가능.
@@ -108,6 +109,7 @@
   - **→ 코드 가드 완료 (세션 398, 커밋 `4e566c8`)**: `isNetworkError()` 헬퍼 + `attempted` 카운터(실패 포함 종료조건) + 시군구 circuit(연속 3 네트워크 실패→skip) + 전역 circuit(연속 5 시군구 전면차단→종료). 최악 전면차단 시 5×3×~36s≈9분 종료. 테스트 +5(15/15) + graceful 54/54 + tsc 0. **출혈(60분 낭비)만 멈춤 — 세종 데이터는 여전히 GH 에서 못 채움**.
   - **→ 로컬 이전 완료 (세션 399)**: `childcare-local-runner.mjs`(매일 3종 전부) + `.bat` + `register-childcare-task.ps1`(작업 `MibunyangChildcareLocal`, 매일 04:30 KST) + `childcare-local-runner.test.mjs`(5건). GH 정리 = `collect-childcare-detail.yml`·`collect-childcare-jeju.yml` 삭제 + `collect-childcare.yml` info step 제거(Kakao step 보존) + monitor-collectors.yml workflow_run 에서 Detail/Jeju name 제거 + `EXTERNAL_API_COLLECTORS` 3종 등재(stale_days 14). 이전 직후 즉시 운영 수집 1회 실증.
   - **조사 결론 (plan 단계 확정)**: info(cpmsapi021)/jeju(cpmsapi017)도 detail 과 **동일 endpoint `http://api.childcare.go.kr`** = 같은 해외 IP 차단. collect-childcare(Kakao `dapi.kakao.com`)·nearby-childcare(외부 API 없음, DB 가공)는 **해외 IP 안전 → GH 잔존**. KOSIS 러너와 **별도 러너**(KOSIS=월간 일자 디스패치 vs childcare=매일 전부, 스케줄 철학 다름 + 고장 격리). 사용자 결정 = info/jeju 도 "매월 말고 매일"(양 적어 부담 0). circuit breaker(세션 398)는 로컬 무해라 보존.
+  - **세션 403 최종 실증 (6/12 04:30 KST 첫 자연 발화)**: 3종 전부 success — detail ok=4(쿼터 리셋 후 회복)·info 243·jeju 2, fail 0. 러너 로그 "3개 전부 성공"(깨진 한글 0) + LastTaskResult=0 + NextRun 6/13. 세션 400 CRLF fix 후 자연 발화 체인 완전 정상.
 
 - 🟢 **`/api/supabase/apartments` "19초" 근본 진단 완결 (세션 357 적대검증) — 보류** (세션 351 발견 → 357 진단 종결, P2)
   - **세션 357 진단 결론 = 죽은 코드 최적화라 보류**. 12 probe 적대검증(wtpjv3c6m + wjormmmc3) + 직접 실측으로 세션 351/356 박제값 다수 정정. 코드 변경 0.
@@ -225,7 +227,7 @@
   - 동반: AptCard 비로그인 부분 누설 — Bar가 실점수를 aria-valuenow·width%로 DOM 노출(primitives.tsx L10-11) + "안전 N등급" 텍스트(AptCard.tsx L107) 노출. 점수 "??" 블라인드가 시각 텍스트만 가림
   - 출처: 통합 홈 IA spec 적대검증(8프로브×2라운드) blind-policy 프로브 — `docs/superpowers/specs/2026-06-11-unified-home-ia-design.md` §9
 
-- 🟢 **루트 CLAUDE.md 박제값 stale 2건** (세션 403 적대검증 실측): "Playwright E2E (11 spec)" → 실측 13 spec / 번들 "index 172KB" → ~185KB(189,340B). 다음 CLAUDE.md 정비 시 일괄
+- ✅ **루트 CLAUDE.md 박제값 stale 2건 정정 완료** (세션 403 적대검증 실측 → 같은 세션 마무리에서 즉시 정정): "11 spec"→13 / "index 172KB"→~185KB
 
 - 🟢 **청약홈 매칭 회수 — 진짜 진앙은 후보 쿼리 presale_stage 제약 (세션 360 PR, 진단 정정)**
   - **세션 359 진단 정정**: "정규화(LCS 한계)가 병목"은 세션 360 적대 검증(6-probe 워크플로 + 라이브 재측정 2회)으로 **데이터 반증**. 정규화 회수 효과 ~0건 (미매칭 384 중 정규화로 잡을 수 있는 건 ≤8건, 긴 단지명은 음차 1글자 차이여도 이미 sim 0.92 통과). 미매칭 384 중 **235(61%)는 임대/공공주택** = 청약홈 *분양* API 구조적 부재.

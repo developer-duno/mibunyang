@@ -27,10 +27,10 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth + 전문가/관리자 role 기반 |
 | **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |
 | **수집** | GitHub Actions (47개) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
-| **테스트** | Vitest + Playwright E2E (11 spec) | `npm run test` / `npm run test:e2e` |
+| **테스트** | Vitest + Playwright E2E (13 spec) | `npm run test` / `npm run test:e2e` |
 | **모니터링** | Vercel Analytics + Speed Insights | 페이지뷰/Web Vitals/커스텀 이벤트 |
 
-번들: vendor 190KB / index 172KB / html2canvas+jsPDF 200+400KB(dynamic import).
+번들: vendor 190KB / index ~185KB / html2canvas+jsPDF 200+400KB(dynamic import).
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 
