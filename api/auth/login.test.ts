@@ -112,50 +112,47 @@ describe('auth/login handler', () => {
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
-  // 정상: 로그인 성공
-  it('정상 로그인 시 토큰과 사용자 정보를 반환한다', async () => {
+  // 정상: 관리자 로그인 성공 (세션 405 — 비밀번호 로그인은 관리자 전용)
+  it('관리자 로그인 시 토큰과 사용자 정보를 반환한다', async () => {
+    process.env.ADMIN_EMAIL = 'test@example.com';
     mockKv.get.mockResolvedValue(makeUser());
     const res = makeRes();
     await handler(makeReq({ email: 'test@example.com', password: 'validPass123' }), res);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       ok: true,
       token: expect.any(String),
+      role: 'admin',
       user: expect.objectContaining({ email: 'test@example.com' }),
     }));
   });
 
-  it('approved expert login includes role=expert in response and token', async () => {
+  // 세션 405: 비admin 계정(레거시 전문가 가입 포함) = generic 401 (계정 존재 비노출)
+  it('비admin 계정은 올바른 비밀번호여도 generic 401을 반환한다', async () => {
     mockKv.get.mockResolvedValue(makeUser());
     const res = makeRes();
     await handler(makeReq({ email: 'test@example.com', password: 'validPass123' }), res);
-    const response = res.json.mock.calls[0][0];
-    expect(response.role).toBe('expert');
-    expect(verifyToken(response.token)).toEqual(expect.objectContaining({
-      email: 'test@example.com',
-      role: 'expert',
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      ok: false,
+      error: '이메일 또는 비밀번호가 일치하지 않습니다',
     }));
   });
 
-  // 에러: PENDING 상태 사용자
-  it('PENDING 상태 사용자는 403을 반환한다', async () => {
-    mockKv.get.mockResolvedValue(makeUser({ status: 'pending' }));
-    const res = makeRes();
-    await handler(makeReq({ email: 'test@example.com', password: 'validPass123' }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 'PENDING' }));
+  it('레거시 pending/rejected 계정도 statusCode 노출 없이 401', async () => {
+    for (const status of ['pending', 'rejected']) {
+      vi.clearAllMocks();
+      mockKv.get.mockResolvedValue(makeUser({ status }));
+      const res = makeRes();
+      await handler(makeReq({ email: 'test@example.com', password: 'validPass123' }), res);
+      expect(res.status).toHaveBeenCalledWith(401);
+      const body = res.json.mock.calls[0][0];
+      expect(body.statusCode).toBeUndefined();
+    }
   });
 
-  // 에러: REJECTED 상태 사용자
-  it('REJECTED 상태 사용자는 403을 반환한다', async () => {
-    mockKv.get.mockResolvedValue(makeUser({ status: 'rejected' }));
-    const res = makeRes();
-    await handler(makeReq({ email: 'test@example.com', password: 'validPass123' }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 'REJECTED' }));
-  });
-
-  // 정상: 레거시 SHA-256 → PBKDF2 자동 마이그레이션
-  it('레거시 SHA-256 해시 사용자의 비밀번호를 PBKDF2로 업그레이드한다', async () => {
+  // 정상: 레거시 SHA-256 → PBKDF2 자동 마이그레이션 (admin 계정 기준 — 비admin 은 이후 401)
+  it('레거시 SHA-256 해시 관리자의 비밀번호를 PBKDF2로 업그레이드한다', async () => {
+    process.env.ADMIN_EMAIL = 'test@example.com';
     const salt = 'legacy-test-salt';
     const password = 'validPass123';
     const legacyHash = crypto.createHash('sha256').update(salt + password).digest('hex');

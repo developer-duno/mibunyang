@@ -130,19 +130,33 @@ describe('auth/verify handler', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ role: 'admin' }));
   });
 
-  it('refresh issues role=expert for approved expert without stored role', async () => {
+  // 세션 405: refresh role = ADMIN_EMAIL 파생 — 레거시 expert record 는 "user" 강등
+  it('refresh: 레거시 expert record 는 role=user 로 강등 재발급한다', async () => {
     const refreshToken = createRefreshToken('expert@test.com');
     mockKv.get.mockResolvedValueOnce(null);
-    mockKv.get.mockResolvedValueOnce({ email: 'expert@test.com', name: 'Expert', status: 'approved' });
+    mockKv.get.mockResolvedValueOnce({ email: 'expert@test.com', name: 'Expert', status: 'approved', role: 'expert' });
     mockKv.set.mockResolvedValueOnce('OK');
     const res = makeRes();
     await handler({ method: 'POST', body: { action: 'refresh', refreshToken }, headers: {} }, res);
     const response = res.json.mock.calls[0][0];
-    expect(response.role).toBe('expert');
-    expect(verifyToken(response.token)).toEqual(expect.objectContaining({
-      email: 'expert@test.com',
-      role: 'expert',
-    }));
+    expect(response.role).toBe('user');
+    // role "user" 는 토큰 페이로드에 미포함 (role !== "user" 조건)
+    expect(verifyToken(response.token)).toEqual(expect.objectContaining({ email: 'expert@test.com' }));
+    expect((verifyToken(response.token) as any)?.role).toBeUndefined();
+  });
+
+  it('refresh: ADMIN_EMAIL 계정은 role=admin 으로 재발급한다', async () => {
+    process.env.ADMIN_EMAIL = 'admin@test.com';
+    const refreshToken = createRefreshToken('admin@test.com');
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce({ email: 'admin@test.com', name: 'Admin', status: 'approved' });
+    mockKv.set.mockResolvedValueOnce('OK');
+    const res = makeRes();
+    await handler({ method: 'POST', body: { action: 'refresh', refreshToken }, headers: {} }, res);
+    const response = res.json.mock.calls[0][0];
+    expect(response.role).toBe('admin');
+    expect(verifyToken(response.token)).toEqual(expect.objectContaining({ role: 'admin' }));
+    delete process.env.ADMIN_EMAIL;
   });
 
   // 블랙리스트: 로그아웃된 토큰 거부

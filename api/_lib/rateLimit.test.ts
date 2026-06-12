@@ -83,8 +83,8 @@ describe('checkRateLimit', () => {
   // IP 추출: x-real-ip 폴백
   it('x-forwarded-for가 없으면 x-real-ip를 사용한다', async () => {
     mockPipeline.exec.mockResolvedValue([1]);
-    await checkRateLimit({ headers: { 'x-real-ip': '5.6.7.8' } }, 'signup');
-    expect(mockPipeline.incr).toHaveBeenCalledWith('rl:5.6.7.8:signup');
+    await checkRateLimit({ headers: { 'x-real-ip': '5.6.7.8' } }, 'kakao');
+    expect(mockPipeline.incr).toHaveBeenCalledWith('rl:5.6.7.8:kakao');
   });
 
   // IP 추출: 헤더 없으면 "unknown"

@@ -1,7 +1,6 @@
 import { kv } from "../_lib/redis.js";
-import { createToken, createRefreshToken } from "../_lib/auth.js";
+import { createToken, createRefreshToken, isAdminEmail } from "../_lib/auth.js";
 import { withHandler } from "../_lib/handler.js";
-import crypto from "crypto";
 
 /**
  * 카카오 OAuth 콜백 — 인가 코드 교환 + KV 사용자 조회/생성 + JWT 발급
@@ -169,22 +168,16 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     if (user!.status === "rejected" || user!.status === "suspended") {
       return res.status(403).json({ ok: false, error: "접근 권한이 없습니다" });
     }
+    // pending = 구 전문가 가입 잔존 미승인 계정 — 가입 폐지 후에도 차단 보존 (세션 405)
     if (user!.status === "pending") {
       return res.status(403).json({ ok: false, error: "관리자 승인 대기중입니다", statusCode: "PENDING" });
     }
 
-    // 7. 관리자 판별
-    const isAdmin = (() => {
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (!adminEmail) return false;
-      const a = Buffer.from(emailNorm);
-      const b = Buffer.from(adminEmail.toLowerCase().trim());
-      if (a.length !== b.length) return false;
-      try { return crypto.timingSafeEqual(a, b); } catch { return false; }
-    })();
+    // 7. 관리자 판별 — ADMIN_EMAIL 파생 단일 출처 (세션 405, api/_lib/auth.ts 공유)
+    const isAdmin = isAdminEmail(emailNorm);
 
-    // 8. JWT 발급
-    const role = isAdmin ? "admin" : (user!.role || "user");
+    // 8. JWT 발급 — 비admin 은 전부 "user" (레거시 record 의 role "expert" 정규화, 세션 405)
+    const role = isAdmin ? "admin" : "user";
     const token = createToken(
       { email: emailNorm, name: user!.name, ...(role !== "user" && { role }) },
       isAdmin ? { ttl: 3600000 } : undefined,
