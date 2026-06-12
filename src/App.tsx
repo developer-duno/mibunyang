@@ -312,7 +312,7 @@ export default function App() {
       )}
 
       {tab === "home" ? (
-        <HomePage scored={scored} pw={pw}
+        <HomePage scored={scored} filtered={filtered} pw={pw}
           upcomingData={upcomingData} upcomingError={upcomingError} onRetryUpcoming={retryUpcoming}
           isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC}
           dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
