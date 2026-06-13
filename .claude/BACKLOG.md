@@ -255,10 +255,15 @@
   - 동반: AptCard 비로그인 부분 누설 — Bar가 실점수를 aria-valuenow·width%로 DOM 노출(primitives.tsx L10-11) + "안전 N등급" 텍스트(AptCard.tsx L107) 노출. 점수 "??" 블라인드가 시각 텍스트만 가림
   - 출처: 통합 홈 IA spec 적대검증(8프로브×2라운드) blind-policy 프로브 — `docs/superpowers/specs/2026-06-11-unified-home-ia-design.md` §9
 
-- 🟡 **적정가 괴리(deviation) 부호 표기 역방향 불일치 2건** (세션 409 D2b 적대검증 부산물 — catVerdict 작성 중 발굴)
-  - 진실의 원천 = `scorePrice.ts:127` `dev = (fairPrice - price)/fairPrice*100` → **양수 = 분양가가 적정가보다 쌈(저렴)**. 정합 측 = DetailModal 핵심지표 L208(`>0 → 녹색=좋음`) + FAQSection.tsx L19("양수(+)면 시세 대비 저렴") + 세션 409 catVerdict.
-  - **역부호 2곳**: ① `AptCard.tsx:109` `deviation < 0` 일 때 녹색 배지(음수를 좋음으로 — 정반대) ② `GuideSections.tsx:105` "+면 시세보다 비쌈, -면 저렴" (카피 역방향)
-  - 본 PR(D2b) 범위 밖 — 미니카드는 정답 부호만 답습. 후속 정정: AptCard 배지 조건·Guide 카피를 "양수=저렴"으로 통일 (사용자 혼란 방지)
+- ✅ **적정가 괴리(deviation) 부호 표기 역방향 불일치 2건 정정 완료** — 세션 411 (세션 409 D2b 적대검증 부산물 발굴 → 본 세션 해소)
+  - 진실의 원천 = `scorePrice.ts:127` `dev = (fairPrice - price)/fairPrice*100` → **양수 = 분양가가 적정가보다 쌈(저렴)**. 정합 측 = DetailModal 핵심지표 L248(`>0 → 녹색=좋음`) + FAQSection.tsx L19 + catVerdict.ts:31-32 + subContext.ts:17.
+  - **정정 2곳**: ① `AptCard.tsx:109` `< 0`→`> 0` + 표시 `주변대비 +{Math.round}% 저렴`(양수=저렴만 녹색 강조, L108 할인 배지 패턴 답습) ② `GuideSections.tsx:105` 카피 "+면 시세보다 저렴, -면 비쌈"으로 좌우 교체.
+  - 회귀 가드 = AptCard.test.jsx 신규 4건(양수→배지/음수→미표시/null→미표시/"0.0" 데이터부재→미표시). vitest 3395(206파일, +4)·tsc 0·eslint 0. 적대검증 워크플로 5프로브 major 0(부호 방향 전원 정합).
+  - 점수·정렬·엔진 무변경(표현 계층만, deviation 값 불변) — 프론트 번들 배포로 즉시 반영.
+
+- 🟢 **deviation 음수(비쌈) 카드 배지 + 비로그인 블라인드 — 후속 검토** (세션 411 분리)
+  - 음수 deviation(비쌈) 단지는 현재 카드에 배지 미표시(부정 정보는 DetailModal 빨강이 정직 표시). 카드에도 빨강 "비쌈" 배지 노출할지 후속 UX 결정.
+  - deviation 배지(AptCard:109)는 비로그인 누설 — 점수바 DOM(primitives.tsx)·"안전 N등급" 텍스트 누설과 한 묶음(아래 L255 항목)으로 일괄 처리 권장.
 
 - ✅ **루트 CLAUDE.md 박제값 stale 2건 정정 완료** (세션 403 적대검증 실측 → 같은 세션 마무리에서 즉시 정정): "11 spec"→13 / "index 172KB"→~185KB
 

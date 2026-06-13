@@ -177,6 +177,37 @@ describe("AptCard", () => {
     expect(screen.getByText("적정가 -3.5%")).toBeInTheDocument();
   });
 
+  // 세션411: 적정가 괴리(deviation) 부호 — 양수(+)=적정가보다 저렴(좋음). scorePrice.ts:127
+  // dev=((fairPrice-price)/fairPrice)*100. 역부호 회귀 가드 (세션409 적대검증 발굴).
+  it("deviation 양수(저렴)면 녹색 '+N% 저렴' 배지 표시", () => {
+    const res = makeRes();
+    res.cats.price.deviation = "8.4";
+    render(<AptCard {...makeProps({ res })} />);
+    expect(screen.getByText("주변대비 +8% 저렴")).toBeInTheDocument(); // Math.round("8.4")=8
+  });
+
+  it("deviation 음수(비쌈)면 배지 미표시 (역부호 회귀 가드)", () => {
+    const res = makeRes();
+    res.cats.price.deviation = "-8.4";
+    render(<AptCard {...makeProps({ res })} />);
+    expect(screen.queryByText(/주변대비/)).toBeNull();
+  });
+
+  it("deviation null 이면 배지 미표시", () => {
+    const res = makeRes();
+    res.cats.price.deviation = null;
+    render(<AptCard {...makeProps({ res })} />);
+    expect(screen.queryByText(/주변대비/)).toBeNull();
+  });
+
+  it("deviation \"0.0\"(데이터 부재 분기) 이면 배지 미표시", () => {
+    // scorePrice.ts:116 데이터 부재 분기가 fairPrice=0 + deviation="0.0" 산출 → 0>0 false
+    const res = makeRes();
+    res.cats.price.deviation = "0.0";
+    render(<AptCard {...makeProps({ res })} />);
+    expect(screen.queryByText(/주변대비/)).toBeNull();
+  });
+
   // 무순위 공고 발생 단지 — "추가 모집" 빨간 배지
   it("unsoldEventCount > 0 + ah- 단지면 '추가 모집' 배지 표시", () => {
     const apt = /** @type {any} */ (makeApt({ id: "ah-100", unsoldEventCount: 5 }));
