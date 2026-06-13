@@ -1,7 +1,11 @@
 // @ts-check
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { HomePage } from "./HomePage";
+import { trackEvent } from "@/lib/analytics";
+
+// M3: analytics 격리 — trackEvent 호출만 검증 (벤더 @vercel/analytics 무력화)
+vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 
 const baseProps = () => ({
   scored: [], filtered: [], pw: /** @type {any} */ ({}),
@@ -37,5 +41,40 @@ describe("HomePage", () => {
     vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
     render(<HomePage {...baseProps()} />);
     expect(screen.getByText("📅 곧 분양")).toBeInTheDocument();
+  });
+});
+
+describe("HomePage analytics (M3)", () => {
+  afterEach(() => { vi.unstubAllEnvs(); /** @type {any} */ (trackEvent).mockClear(); });
+
+  it("추천 위젯 '전체 목록' 클릭 → home_widget_expand{toppicks} + onNavClick(list)", () => {
+    const onNavClick = vi.fn();
+    render(<HomePage {...baseProps()} onNavClick={onNavClick} />);
+    fireEvent.click(screen.getByText("전체 목록 →"));
+    expect(trackEvent).toHaveBeenCalledWith("home_widget_expand", { widget: "toppicks" });
+    expect(onNavClick).toHaveBeenCalledWith("list");
+  });
+
+  it("지도 위젯 '크게 보기'(로그인) 클릭 → home_widget_expand{map} + onNavClick(map)", () => {
+    const onNavClick = vi.fn();
+    render(<HomePage {...baseProps()} isLoggedIn={true} onNavClick={onNavClick} />);
+    fireEvent.click(screen.getByText("크게 보기 →"));
+    expect(trackEvent).toHaveBeenCalledWith("home_widget_expand", { widget: "map" });
+    expect(onNavClick).toHaveBeenCalledWith("map");
+  });
+
+  it("곧분양 위젯 '전체 일정' 클릭 → home_widget_expand{upcoming} + onNavClick(upcoming)", () => {
+    vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
+    const onNavClick = vi.fn();
+    render(<HomePage {...baseProps()} onNavClick={onNavClick} />);
+    fireEvent.click(screen.getByText("전체 일정 →"));
+    expect(trackEvent).toHaveBeenCalledWith("home_widget_expand", { widget: "upcoming" });
+    expect(onNavClick).toHaveBeenCalledWith("upcoming");
+  });
+
+  it("home-grid 가 320px 안전 minmax(min(300px,100%),1fr) 적용", () => {
+    const { container } = render(<HomePage {...baseProps()} />);
+    const grid = /** @type {HTMLElement} */ (container.querySelector('[data-testid="home-grid"]'));
+    expect(grid.style.gridTemplateColumns).toContain("min(300px, 100%)");
   });
 });

@@ -1,5 +1,6 @@
-import { memo } from "react";
+import { memo, useCallback } from "react";
 import { isFeatureUpcoming } from "@/constants/featureFlags";
+import { trackEvent } from "@/lib/analytics";
 import { SkeletonList } from "@/components/primitives";
 import { MapEntryWidget } from "./MapEntryWidget";
 import { UpcomingWidget } from "./UpcomingWidget";
@@ -38,6 +39,16 @@ export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingD
   const upcomingEnabled = isFeatureUpcoming();
   const pad = isDesktop ? "0 24px" : "0 16px"; // App.tsx L301·L324 list/map 탭 패딩과 통일
 
+  // 홈 위젯 계측 (M3) — 펼치기는 어느 위젯인지, 상세 진입은 홈 출처 표시. 기존 trackEvent 명명 규칙 답습.
+  const expandWidget = useCallback((widget: string, target: string) => {
+    trackEvent("home_widget_expand", { widget });
+    onNavClick(target);
+  }, [onNavClick]);
+  const handleDetail = useCallback((id: string) => {
+    trackEvent("home_detail_open", {});
+    onDetail(id);
+  }, [onDetail]);
+
   if (dataLoading && scored.length === 0) {
     return (
       <div style={{ padding: pad }}>
@@ -48,14 +59,14 @@ export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingD
 
   return (
     <div style={{ padding: pad }}>
-      <div data-testid="home-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, alignItems: "start" }}>
-        <MapEntryWidget isLoggedIn={isLoggedIn} onExpand={() => onNavClick("map")} filtered={filtered} onDetail={onDetail} />
+      <div data-testid="home-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 12, alignItems: "start" }}>
+        <MapEntryWidget isLoggedIn={isLoggedIn} onExpand={() => expandWidget("map", "map")} filtered={filtered} onDetail={handleDetail} />
         {upcomingEnabled && (
-          <UpcomingWidget data={upcomingData} error={upcomingError} onRetry={onRetryUpcoming} onExpand={() => onNavClick("upcoming")} />
+          <UpcomingWidget data={upcomingData} error={upcomingError} onRetry={onRetryUpcoming} onExpand={() => expandWidget("upcoming", "upcoming")} />
         )}
         <MarketSummaryWidget scored={scored} dataFreshnessText={dataFreshnessText} />
         <div style={{ gridColumn: "1 / -1" }}>
-          <TopPicksWidget scored={scored} pw={pw} onDetail={onDetail} onFav={onFav} favoriteSet={favoriteSet} onComp={onComp} compIds={compIds} isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC} onExpand={() => onNavClick("list")} />
+          <TopPicksWidget scored={scored} pw={pw} onDetail={handleDetail} onFav={onFav} favoriteSet={favoriteSet} onComp={onComp} compIds={compIds} isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC} onExpand={() => expandWidget("toppicks", "list")} />
         </div>
       </div>
     </div>

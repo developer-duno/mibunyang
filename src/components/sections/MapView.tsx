@@ -14,7 +14,7 @@ type FilteredItem = { apt: Apt; res: ScoringResult };
 
 const ChoroplethView = lazy(() => import("./ChoroplethView").then(m => ({ default: m.ChoroplethView })));
 
-export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect }: MapViewProps) {
+export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect, getViewport, onViewportChange }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const clustererRef = useRef<{ clear: () => void; addMarkers: (_m: unknown[]) => void } | null>(null);
@@ -36,9 +36,22 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   useEffect(() => { onSelectRef.current = onSelect; });
   useEffect(() => { onSelectRef.current?.(selected); }, [selected]);
 
+  // 뷰포트 보존 (M3) — getViewport()는 init effect(deps [])에서 1회 호출하므로 compactRef 답습 캡처.
+  // onViewportChange 도 ref 미러(onSelectRef 답습) — idle 리스너 deps 오염/마커 재생성 방지.
+  const getViewportRef = useRef(getViewport);
+  const onViewportChangeRef = useRef(onViewportChange);
+  useEffect(() => { onViewportChangeRef.current = onViewportChange; });
+  // 첫 마커 렌더 1회만 자동 fit. viewport(복원값)는 init effect 의 초기 center/level 에만 사용.
+  // ⚠️ didFitRef 를 viewport 로 시드하지 않는 이유(맹점 4): 탭 나가기 전 부산 보다가 경기 필터로
+  // 바꾸고 재진입하면, 복원된 부산 center + fit 생략 = 경기 마커가 화면 밖 빈 지도. 재마운트는 항상
+  // 첫 마커 fit 1회를 허용해 빈 화면 방지. 같은 마운트 내 filtered 변경은 didFitRef true 라 fit 생략(B-1).
+  const didFitRef = useRef(false);
+
   // Kakao Maps SDK 동적 로드 + 지도 초기화
   useEffect(() => {
     let cancelled = false;
+    // idle 리스너 cleanup 용 — addListener 와 동일 (map, handler) 참조로 removeListener.
+    let idleCleanup: (() => void) | null = null;
     loadKakaoMapSdk()
       .then(() => {
         if (cancelled) return;
@@ -46,10 +59,19 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
         if (!maps) return;
         maps.load(() => {
           if (cancelled || !mapRef.current || mapInstanceRef.current) return;
+          const vp = getViewportRef.current?.();
           const map = new maps.Map(mapRef.current, {
-            center: new maps.LatLng(MAP_DEFAULTS.lat, MAP_DEFAULTS.lng),
-            level: MAP_DEFAULTS.level,
+            center: new maps.LatLng(vp?.lat ?? MAP_DEFAULTS.lat, vp?.lng ?? MAP_DEFAULTS.lng),
+            level: vp?.level ?? MAP_DEFAULTS.level,
           });
+          // idle(팬/줌 종료) 시 현재 center/level 끌어올림 — 탭 전환/언마운트 간 보존.
+          const onIdle = () => {
+            const c = (map as any).getCenter();
+            onViewportChangeRef.current?.({ lat: c.getLat(), lng: c.getLng(), level: (map as any).getLevel() });
+          };
+          maps.event.addListener(map, "idle", onIdle);
+          // removeListener 는 일부 kakao 버전 미지원 → 옵셔널 가드 (ChoroplethView 답습).
+          idleCleanup = () => maps.event.removeListener?.(map, "idle", onIdle);
           if (compactRef.current) {
             // 위젯 모드: 줌 컨트롤 생략 + 휠 줌 차단 (280px 위젯이 홈 페이지 스크롤을 가로채는 것 방지)
             map.setZoomable(false);
@@ -76,6 +98,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
       .catch(err => { if (!cancelled) setError(err.message); });
     return () => {
       cancelled = true;
+      if (idleCleanup) idleCleanup();
       if (clustererRef.current) clustererRef.current.clear();
       mapInstanceRef.current = null;
       setMapInstance(null);
@@ -121,10 +144,13 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     clustererRef.current.addMarkers(markers);
     setMarkerCount(markers.length);
 
-    if (markers.length > 0 && mapInstance) {
+    // 첫 마커 렌더 1회만 자동 fit (M3) — 이후 filtered 변경은 마커만 갱신해
+    // 사용자가 수동 조작한 지도 위치가 전국으로 튕기는 것 방지. viewport 복원 시 didFitRef 시드 true.
+    if (markers.length > 0 && mapInstance && !didFitRef.current) {
       const bounds = new kakao.LatLngBounds();
       markers.forEach((m: any) => bounds.extend(m.getPosition()));
       (mapInstance as any).setBounds(bounds);
+      didFitRef.current = true;
     }
   }, [ready, filtered, mode, mapInstance]);
 
