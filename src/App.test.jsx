@@ -363,13 +363,14 @@ describe('App 통합 테스트', () => {
       window.history.replaceState(null, '', '/');
     });
 
-    it('?detail= 딥링크: 홈 기본 탭에서도 상세 모달 열림 (전역 렌더 무변경 회귀)', async () => {
+    it('?detail= 딥링크 (비로그인): 상세 모달 대신 LoginPromptModal (게이트 일괄 차단 세션413)', async () => {
       vi.stubEnv('VITE_FEATURE_HOME', 'true');
       window.history.replaceState(null, '', '/?detail=apt1');
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
+      // 비로그인 → URL 직진입도 게이트(handleDetailGated) 경유 = 로그인 안내 모달
       await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: '로그인 안내' })).toBeInTheDocument();
       });
       window.history.replaceState(null, '', '/');
     });

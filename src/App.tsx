@@ -1,5 +1,5 @@
 // App.tsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
-import { useState, useEffect, useCallback, useTransition, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useTransition, lazy, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
 import { HomePage } from "@/components/home/HomePage";
@@ -169,6 +169,18 @@ export default function App() {
     handleDetailGated, handleKakaoFromPrompt,
   } = useLoginGate({ isLoggedIn, detail, kakao });
 
+  // ── 지도 뷰포트 보존 (M3) — 탭 전환/언마운트 간 center/level 유지 ──
+  // useRef 라 리렌더 0. getViewport 는 MapView 마운트 시 1회 호출(render 중 ref 접근 회피),
+  // handleViewportChange 는 idle 시 끌어올림. 둘 다 안정 콜백이라 MapView memo 재생성 0.
+  // ⚠️ 홈 미니지도(MapEntryWidget)에는 의도적으로 미연결 — compact 모드(setZoomable(false))라
+  // 능동 조작 화면이 아니고, 연결 시 미니지도 첫 fit(전국)이 idle 로 이 ref 를 덮어써 지도 탭
+  // 보존값을 오염시키는 회귀가 생김. 보존 대상은 사용자가 직접 조작하는 지도 탭 한정.
+  const mapViewportRef = useRef<{ lat: number; lng: number; level: number } | null>(null);
+  const getMapViewport = useCallback(() => mapViewportRef.current, []);
+  const handleViewportChange = useCallback((v: { lat: number; lng: number; level: number }) => {
+    mapViewportRef.current = v;
+  }, []);
+
   // ── 탭 전환/인증 네비게이션 ──
   const {
     handleAdminLogin,
@@ -224,7 +236,7 @@ export default function App() {
     const compareStr = params.get("compare");
     const profileParam = params.get("profile");
     if (profileParam && (profileParam in PROFILES)) setProfile(profileParam as Profile);
-    if (detailId) detail.setDetailAptId(detailId);
+    if (detailId) handleDetailGated(detailId);
     if (compareStr) {
       const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
       if (ids.length >= 2) {
@@ -343,7 +355,7 @@ export default function App() {
       ) : tab === "map" ? (
         <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>지도 로딩 중...</div>}>
-            <MapView filtered={filtered} onDetail={detail.handleOpenDetail} isPC={isPC} isDesktop={isDesktop} />
+            <MapView filtered={filtered} onDetail={handleDetailGated} isPC={isPC} isDesktop={isDesktop} getViewport={getMapViewport} onViewportChange={handleViewportChange} />
           </Suspense>
         </div>
       ) : tab === "info" ? (
@@ -369,7 +381,7 @@ export default function App() {
       ) : tab === "upcoming" ? (
         <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>분양예정 페이지 로딩 중...</div>}>
           <UpcomingPage
-            onOpenDetail={detail.handleOpenDetail}
+            onOpenDetail={handleDetailGated}
             onBackToMain={() => { setTab(isFeatureHome() ? "home" : "list"); try { window.history.pushState(null, "", "/"); } catch { /* noop */ } }}
             scored={scored} dataLoading={dataLoading}
           />

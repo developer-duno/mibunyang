@@ -23,8 +23,9 @@ function setupKakao() {
   /** @type {any} */ (window).kakao = {
     maps: {
       load: vi.fn(cb => cb()),
-      Map: vi.fn(function() { this.addControl = vi.fn(); this.setBounds = vi.fn(); this.setZoomable = vi.fn(); }),
-      LatLng: vi.fn(function() {}),
+      // M3: getCenter/getLevel 추가 (idle 콜백이 현재 뷰포트 끌어올림). LatLng(lat,lng) 인자 보존.
+      Map: vi.fn(function() { this.addControl = vi.fn(); this.setBounds = vi.fn(); this.setZoomable = vi.fn(); this.getCenter = vi.fn(() => ({ getLat: () => 35.1, getLng: () => 129.0 })); this.getLevel = vi.fn(() => 7); }),
+      LatLng: vi.fn(function(/** @type {number} */ lat, /** @type {number} */ lng) { this.lat = lat; this.lng = lng; }),
       LatLngBounds: vi.fn(function() { this.extend = vi.fn(); }),
       ZoomControl: vi.fn(function() {}),
       ControlPosition: { RIGHT: 3 },
@@ -33,10 +34,24 @@ function setupKakao() {
       Size: vi.fn(function() {}),
       Point: vi.fn(function() {}),
       MarkerClusterer: vi.fn(function() { this.clear = mockClusterer.clear; this.addMarkers = mockClusterer.addMarkers; }),
-      event: { addListener: vi.fn() },
+      // M3: removeListener 추가 (idle cleanup). ChoroplethView 답습 — 옵셔널 가드 통과 검증.
+      event: { addListener: vi.fn(), removeListener: vi.fn() },
     },
   };
   return mockClusterer;
+}
+
+/** idle 핸들러 추출 — event.addListener mock calls 에서 (map, "idle", handler) */
+function getIdleHandlers() {
+  return /** @type {any} */ (window).kakao.maps.event.addListener.mock.calls
+    .filter((/** @type {any[]} */ c) => c[1] === "idle")
+    .map((/** @type {any[]} */ c) => c[2]);
+}
+
+/** 마지막 생성된 Map 인스턴스 (setBounds 호출 검증용) */
+function lastMapInstance() {
+  const results = /** @type {any} */ (window).kakao.maps.Map.mock.results;
+  return results[results.length - 1]?.value;
 }
 
 /** Promise microtask를 flush하여 비동기 SDK 로드 완료 대기 */
@@ -256,6 +271,84 @@ describe("MapView onSelect (선택 미러)", () => {
     await flushPromises();
     expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
     rerender(<MapView filtered={filtered} onDetail={vi.fn()} onSelect={() => {}} />);
+    await flushPromises();
+    expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ── M3 신규 prop: getViewport / onViewportChange (세션 413 지도 위치 보존) ── */
+
+describe("MapView 뷰포트 보존 (M3)", () => {
+  it("신규 진입(getViewport null) → 첫 마커 fit 1회 setBounds 호출", async () => {
+    setupKakao();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} />);
+    await flushPromises();
+    const map = lastMapInstance();
+    expect(map.setBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it("같은 마운트 내 filtered 재변경 → 첫 fit 후엔 setBounds 추가 호출 0 (B-1 전국 리셋 억제)", async () => {
+    setupKakao();
+    const item1 = makeItem();
+    const { rerender } = render(<MapView filtered={[item1]} onDetail={vi.fn()} getViewport={() => null} />);
+    await flushPromises();
+    const map = lastMapInstance();
+    expect(map.setBounds).toHaveBeenCalledTimes(1); // 첫 마커 fit
+    // filtered 를 다른 배열로 변경 → 마커는 갱신되나 didFitRef true 라 fit 생략
+    rerender(<MapView filtered={[item1, makeItem({ apt: { id: "t2", lat: 36.5, lng: 127.5 } })]} onDetail={vi.fn()} getViewport={() => null} />);
+    await flushPromises();
+    expect(map.setBounds).toHaveBeenCalledTimes(1); // 추가 fit 없음 = 사용자 위치 유지
+  });
+
+  it("viewport 복원 시에도 첫 마커 fit 1회 실행 (맹점4: 빈 화면 방지)", async () => {
+    setupKakao();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => ({ lat: 35.1, lng: 129.0, level: 7 })} />);
+    await flushPromises();
+    const map = lastMapInstance();
+    // 초기 center/level 은 복원값이되, 마커 fit 은 실행 → 재마운트 후 필터 바뀌어도 빈 화면 안 생김
+    expect(map.setBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it("viewport 복원 시 초기 center/level 이 복원값으로 생성", async () => {
+    setupKakao();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => ({ lat: 35.1, lng: 129.0, level: 7 })} />);
+    await flushPromises();
+    // LatLng(35.1, 129.0) 으로 호출 + Map level 7
+    const latLngCalls = /** @type {any} */ (window).kakao.maps.LatLng.mock.calls;
+    expect(latLngCalls.some((/** @type {any[]} */ c) => c[0] === 35.1 && c[1] === 129.0)).toBe(true);
+    const mapOpts = /** @type {any} */ (window).kakao.maps.Map.mock.calls[0][1];
+    expect(mapOpts.level).toBe(7);
+  });
+
+  it("idle 이벤트 발화 → onViewportChange 가 현재 center/level 끌어올림", async () => {
+    setupKakao();
+    const onViewportChange = vi.fn();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} onViewportChange={onViewportChange} />);
+    await flushPromises();
+    const idleHandlers = getIdleHandlers();
+    expect(idleHandlers.length).toBe(1);
+    await act(async () => { idleHandlers[0](); });
+    // mock Map.getCenter = (35.1, 129.0), getLevel = 7
+    expect(onViewportChange).toHaveBeenCalledWith({ lat: 35.1, lng: 129.0, level: 7 });
+  });
+
+  it("언마운트 시 idle removeListener 옵셔널 호출 (cleanup)", async () => {
+    setupKakao();
+    const { unmount } = render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} onViewportChange={vi.fn()} />);
+    await flushPromises();
+    const removeListener = /** @type {any} */ (window).kakao.maps.event.removeListener;
+    unmount();
+    // removeListener(map, "idle", handler) 호출
+    expect(removeListener.mock.calls.some((/** @type {any[]} */ c) => c[1] === "idle")).toBe(true);
+  });
+
+  it("getViewport 인라인 콜백 rerender 에도 마커 재생성 0 (ref 격리 회귀 가드)", async () => {
+    const clusterer = setupKakao();
+    const filtered = [makeItem()];
+    const { rerender } = render(<MapView filtered={filtered} onDetail={vi.fn()} getViewport={() => null} onViewportChange={() => {}} />);
+    await flushPromises();
+    expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
+    rerender(<MapView filtered={filtered} onDetail={vi.fn()} getViewport={() => null} onViewportChange={() => {}} />);
     await flushPromises();
     expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
   });
