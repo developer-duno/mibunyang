@@ -58,3 +58,14 @@
 - **수용 사항**: 소비자 Ctrl+P 인쇄 = 방문 탭만(공식 인쇄 동선은 관리자 전용 — non-goal) / `presale_view` analytics 의미 변화 = "상세 열람"→"분양 탭 첫 열람"(이벤트 볼륨 감소는 정상, 사고 아님) / 분양 탭 미방문 관리자 인쇄물의 lazy 이미지 공백 가능(현행도 유사).
 - **CTA sticky bottom** (세션 407 후속, 사장님 지시): 콘텐츠가 화면보다 길면 하단에 반투명(92% + blur) 겹침, 짧으면 콘텐츠 끝 제자리 — `position: sticky` 기본 동작으로 분기 없이 자동. 스크롤러 하단 패딩은 CTA 바가 담당.
 - **D2 순서 확정** (세션 407 사장님 위임 결정): D2a = DataSections 8섹션 해체·주제별 탭 재배분(인프라·교통·치안환경→입지 / 시장지표·네이버교차·층별가→시세 / 청약경쟁·분양정보→분양 / 단지기본→종합 / 점수 탭 = 순수 점수 + 4중 중복 통합) **먼저** → D2b = 종합 요약 대시보드 + 관리자 탭 분리. 근거 = 입지 탭 빈약(사장님 실화면 확인 + 실측: 입지성 3섹션이 점수 탭에 묻힘), 미니카드는 탭이 채워져야 미리보기 역할.
+
+## 추록 — D2b 구현 (세션 409, 적대검증 2라운드 8축 반영)
+
+§5 미결 항목 확정 + 사장님 위임 결정(AskUserQuestion — "프로젝트 목적·사용 편의·실증·데이터 관리" 기준):
+
+- **카테고리 미니카드 6개** (`CategoryMiniCard.tsx`): 종합 탭에 그리드(isPC 3열 / 그외 2열). 카드 = 카테고리명(`SHORT_LABEL[cat.label]`) + 점수(catCol 색) + 등급(`gr()` 배지) + **결론 1줄**. **6각형 레이더는 제거** — 구현물 적대검증(wf_e7d5f8fd)이 "레이더+미니카드가 같은 6카테고리를 이중 노출 → 종합 탭 +234px = 사장님 '길고 루즈해 해소' 지시와 반대" 적발. 미니카드가 카테고리 시각화+진입 역할을 모두 흡수(점수+등급+결론+점수 탭 진입 = 레이더 상위호환), 같은 데이터 단일 출처 = 표현 drift 0. (위임 결정 = AskUserQuestion 2회 "사용 편의·실증·데이터 관리로 판단" → 레이더 제거 채택)
+- **결론 1줄 생성 규칙** (§5 미결 → 확정, `catVerdict.ts` 단일 출처): 카테고리별 맞춤 문구. 임계 **70/50 = gr() 등급 경계(B+/C)와 inclusive 정렬** (등급 배지와 톤 모순 0). **price 는 적정가 괴리(deviation) 실측 우선** — `fairPrice>0` 일 때만 `dev>0 저렴 / dev<0 비쌈 / dev=0 적정가 수준`(양수=저렴 = `scorePrice.ts:127`·핵심지표 색 규약 일치). `fairPrice=0`(데이터 부재 폴백 `scorePrice.ts:116`)이면 점수 문구. **benefit 은 `noData` 면 "혜택 정보 없음"**(점수축 의미가 할인 환산이라 다름).
+- **미니카드 클릭 = 점수 탭 전환 + 해당 카테고리 자동 펼침**: `CatPanel` 에 `defaultExpanded` prop 추가. DetailModal 이 카테고리별 `jumpSeqs[k]` 단조 증가 → CatPanel `key={`${k}#${seq}`}` 로 **클릭 대상 1개만 리마운트**(펼침), 형제 5개 key 불변 = 손으로 펼친 상태 보존. 같은 카테고리 재클릭도 seq+1 재펼침. 스크롤 이동은 D3.
+- **관리자 탭 분리** (`sec-admin`): AdminScoreBreakdown·AdminUnitSupply·AdminDataAudit 3종을 점수·분양 탭에서 별도 관리자 탭으로 모음. `sections = useMemo(adminLoggedIn ? [...JUMP_SECTIONS, 관리자] : JUMP_SECTIONS)` — 소비자 6탭 / 관리자 7탭. `data-tab-panel` 부여 + `isPanelMounted(adminLoggedIn)` 즉시 마운트 = 인쇄 "전체 펼침" 동선 보존(window.print 버튼은 AdminScoreBreakdown 종속이라 자동 동반). 소비자 화면은 admin 3종이 원래 게이트라 무변경.
+- **적대검증 2라운드 정정**: ★중점 텍스트→"중점" 칩(테스트 카운트 보존) / 단일 슬롯 key 회귀→카테고리별 seq 맵 / deviation "0.0" 데이터 부재→fairPrice 판별 / SHORT_LABEL label 키 / 비강조 테두리 1px(시프트 방지). 별건 발굴 = AptCard·GuideSections deviation 역부호 불일치(BACKLOG 🟡).
+- **D3 (다음)**: 탭 전환 애니메이션 / ARIA tablist / analytics(`detail_tab_*`).

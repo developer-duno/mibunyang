@@ -1,8 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState, lazy, Suspense, type CSSProperties } from "react";
-import { C, F, SHORT_LABEL } from "@/theme";
+import { C, F } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { PROFILES, getTopCats } from "@/constants/profiles";
-import { ScoreBadge, Radar } from "./primitives";
+import { ScoreBadge } from "./primitives";
 import { CatPanel } from "./CatPanel";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { PriceTable } from "./detail/PriceTable";
@@ -10,6 +10,7 @@ import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
 import { DataSectionBlock, NearbyFacilitiesBlock, PriceByFloorBlock, AnnouncementLink } from "./detail/DataSectionBlock";
+import { CategoryMiniCard } from "./detail/CategoryMiniCard";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
@@ -43,7 +44,6 @@ const DM_S = {
   headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   closeBtn: { background: C.slate100, border: "none", borderRadius: "50%", width: 44, height: 44, cursor: "pointer", color: C.muted, display: "flex", alignItems: "center", justifyContent: "center" },
   scoreBadgeWrap: { textAlign: "center" as const, marginBottom: 16 },
-  radarRow: { display: "flex", gap: 8, alignItems: "center", padding: "0 0 12px" },
   metricsHead: { fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 6 },
   metricsRow: { display: "flex", justifyContent: "space-between", padding: "4px 0" },
   metricsLabel: { fontSize: F.base, color: C.muted },
@@ -143,6 +143,23 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   const [activeTab, setActiveTab] = useState<string>(JUMP_SECTIONS[0].id);
   const [visited, setVisited] = useState<Set<string>>(() => new Set([JUMP_SECTIONS[0].id]));
 
+  // 탭 목록 — 관리자 로그인 시에만 "관리자" 탭(sec-admin) 7번째 추가 (세션 409 D2b).
+  // 소비자(adminLoggedIn=false)는 JUMP_SECTIONS 6개 그대로 = 칩·패널 노출 0. 초기 탭은 항상
+  // JUMP_SECTIONS[0](sec-overview) 불변이라 activeTab/visited 초기값(위)과 단일 출처 유지.
+  const sections = useMemo<JumpSection[]>(
+    () => (adminLoggedIn ? [...JUMP_SECTIONS, { id: "sec-admin", label: "관리자" }] : JUMP_SECTIONS),
+    [adminLoggedIn],
+  );
+
+  // 미니카드 → 점수 탭 자동 펼침: 카테고리별 단조 증가 seq. 점프 시 그 카테고리 CatPanel 의 key 만
+  // 바뀌어 1개만 리마운트(=defaultExpanded 재평가=펼침), 형제 5개 key 불변 = 손으로 펼친 상태 보존.
+  // 같은 카테고리 재클릭도 seq+1 로 재펼침. 모달 닫힘 = 언마운트 = 자연 소멸 (세션 409 D2b 적대검증 R2).
+  const [jumpSeqs, setJumpSeqs] = useState<Record<string, number>>({});
+  const handleCategoryJump = (k: string) => {
+    setJumpSeqs(m => ({ ...m, [k]: (m[k] ?? 0) + 1 }));
+    handleTabChange("sec-score");
+  };
+
   // 칩 클릭 = 탭 전환. setActiveTab/visited 는 무조건 실행(가드 밖) — scrollTo 미구현 환경
   // (jsdom·구형 브라우저)에서도 탭 전환은 일어나야 비활성 패널 콘텐츠에 도달 가능.
   // scrollTo 는 탭 전환 시 이전 탭의 스크롤 잔류 방지용 top:0 리셋(instant)만.
@@ -168,7 +185,6 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   const { apt, res } = item;
   const zone = getZone(apt.region as string, apt.gu as string);
   const zoneName = (ZONE_TYPE as Record<string, string>)[zone];
-  const radarData = (Object.values(res.cats) as Array<{ label: string; total: number }>).map((c) => ({ l: (SHORT_LABEL as Record<string, string>)[c.label] || c.label, v: c.total }));
 
   return (
     <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, zIndex: 300, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: isPC ? "center" : "flex-end", justifyContent: "center" }} onClick={onClose} role="dialog" aria-modal="true" aria-label={`${apt.name} 상세 분석`}>
@@ -189,18 +205,19 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {/* 하단 패딩은 CTA sticky 바가 자체 패딩으로 담당 (바닥 밀착을 위해 스크롤러 하단 패딩 0) */}
         <div ref={bodyRef} data-testid="detail-scroll-body" data-print-content style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px" : "0 16px" }}>
 
-        <StickyJumpNav sections={JUMP_SECTIONS} activeId={activeTab} totalScore={res.total} onJump={handleTabChange} isDesktop={isDesktop} noPrint />
+        <StickyJumpNav sections={sections} activeId={activeTab} totalScore={res.total} onJump={handleTabChange} isDesktop={isDesktop} noPrint />
 
-        {/* §1 종합 탭 — ScoreBadge + Radar/핵심지표 + 혜택칩 + 재공고배지 */}
+        {/* §1 종합 탭 — ScoreBadge + 핵심지표 + 카테고리 미니카드 6 + 혜택칩 + 재공고배지 (세션 409 D2b: 레이더 제거) */}
         {isPanelMounted("sec-overview") && (
         <section id="sec-overview" data-tab-panel style={panelStyle("sec-overview")}>
         <div style={DM_S.scoreBadgeWrap}>
           <ScoreBadge score={res.total} size={80} />
         </div>
 
-        <div style={DM_S.radarRow}>
-          <div style={{ flexShrink: 0 }}><Radar data={radarData} size={isDesktop ? 180 : 150} /></div>
-          <div style={{ flex: 1, minWidth: 0 }}>
+        {/* 핵심 지표 — 세션 409 D2b: 6각형 레이더 제거(카테고리 점수는 아래 미니카드와 이중 노출 → 루즈
+            해소, 사장님 지시). 미니카드가 카테고리 시각화+진입 역할을 모두 흡수. 핵심지표는 전폭. */}
+        <div style={{ marginBottom: 12 }}>
+          <div>
             <div style={DM_S.metricsHead}>핵심 지표</div>
             {[
               { l: "지역", v: [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "), c: C.blue },
@@ -237,6 +254,19 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회
           </div>
         )}
+
+        {/* 카테고리 요약 미니카드 6개 (세션 409 D2b) — 점수+등급+결론, 탭하면 점수 탭 해당 카테고리 자동 펼침.
+            레이더(위)는 한눈 균형 비교(시각), 미니카드는 결론+진입(행동)으로 역할 분리. */}
+        {(() => {
+          const overviewTopCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: isPC ? "repeat(3, 1fr)" : "repeat(2, 1fr)", gap: 8, margin: "12px 0" }}>
+              {Object.entries(res.cats).map(([k, c]) => (
+                <CategoryMiniCard key={k} k={k} cat={c} emphasized={overviewTopCats.includes(k)} onJump={() => handleCategoryJump(k)} />
+              ))}
+            </div>
+          );
+        })()}
 
         {/* 단지 기본정보 (핵심지표 중복 4필드 제외 — 세션 408 D2a) */}
         {OVERVIEW_SECTIONS.map(s => <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />)}
@@ -283,12 +313,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {PRESALE_SECTIONS.map(s => <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />)}
         <AnnouncementLink apt={mergedApt ?? apt} />
 
-        {/* 관리자 인사이트 — 동/호수 + 청약홈 평형별 공급 표 (구 전문가 대시보드 이식, 세션 405) */}
-        {adminLoggedIn && (
-          <Suspense fallback={<div style={{ padding: 12, fontSize: F.sm, color: C.muted }}>평형별 공급 로딩 중...</div>}>
-            <AdminUnitSupply apt={apt} />
-          </Suspense>
-        )}
+        {/* 관리자 인사이트(동/호수·평형 공급)는 세션 409 D2b 로 관리자 탭(sec-admin)으로 이동 */}
 
         <MarketStatsCharts region={apt.region} gu={apt.gu} />
         </section>
@@ -301,21 +326,32 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         </section>
         )}
 
-        {/* §6 점수 탭 — CatPanel×6 순수 점수 + 관리자 점수 분해·데이터 검수 (세션 408 D2a: 공공데이터 8섹션 타 탭 분산) */}
+        {/* §6 점수 탭 — CatPanel×6 순수 점수만 (세션 409 D2b: 관리자 인사이트는 sec-admin 탭으로 이동).
+            jumpSeqs[k] key = 종합 탭 미니카드 클릭 시 해당 카테고리 1개만 리마운트(defaultExpanded 펼침). */}
         {isPanelMounted("sec-score") && (
         <section id="sec-score" data-tab-panel style={panelStyle("sec-score")}>
         {(() => {
           const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
-          return Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} emphasized={topCats.includes(k)} />);
+          return Object.entries(res.cats).map(([k, c]) => {
+            const seq = jumpSeqs[k] ?? 0;
+            return <CatPanel key={`${k}#${seq}`} cat={c} k={k} emphasized={topCats.includes(k)} defaultExpanded={seq > 0} />;
+          });
         })()}
-
-        {/* 관리자 인사이트 — 점수 산출 과정 분해 + 138필드 데이터 검수 (구 전문가 대시보드 이식, 세션 405·408) */}
-        {adminLoggedIn && (
-          <Suspense fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}>
-            <AdminScoreBreakdown apt={apt} res={res} profile={profile} />
-          </Suspense>
+        </section>
         )}
-        {adminLoggedIn && <AdminDataAudit apt={mergedApt ?? apt} profile={profile} />}
+
+        {/* §7 관리자 탭 — 점수 산출 과정 + 동/호수·평형 공급 + 138필드 검수 (세션 409 D2b: 점수·분양 탭에서
+            분리, adminLoggedIn 시에만 칩·패널 노출). data-tab-panel = App print CSS 가 인쇄 시 펼침.
+            isPanelMounted(adminLoggedIn)=즉시 마운트 → 현행 "전체 펼쳐 인쇄" 동선 보존. */}
+        {adminLoggedIn && isPanelMounted("sec-admin") && (
+        <section id="sec-admin" data-tab-panel style={panelStyle("sec-admin")}>
+        <Suspense fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}>
+          <AdminScoreBreakdown apt={apt} res={res} profile={profile} />
+        </Suspense>
+        <Suspense fallback={<div style={{ padding: 12, fontSize: F.sm, color: C.muted }}>평형별 공급 로딩 중...</div>}>
+          <AdminUnitSupply apt={apt} />
+        </Suspense>
+        <AdminDataAudit apt={mergedApt ?? apt} profile={profile} />
         </section>
         )}
 

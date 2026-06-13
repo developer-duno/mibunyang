@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ 상세 모달 IA 개편 D2b 종합 요약 대시보드 + 관리자 탭 분리 — 세션 409 (종합 탭에 CategoryMiniCard 6개[점수+등급+결론 1줄+탭하면 점수 탭 해당 카테고리 자동 펼침]로 **6각형 레이더 대체**[구현물 적대검증이 레이더+미니카드 이중 노출 +234px = "길고 루즈" 지시 역행 적발 → 미니카드가 시각화+진입 흡수, 단일 출처] + 관리자 인사이트 3종[AdminScoreBreakdown·AdminUnitSupply·AdminDataAudit]을 점수·분양 탭에서 별도 "관리자" 탭[sec-admin]으로 분리[adminLoggedIn 시만, sections useMemo 7탭]. 신규 2파일[catVerdict.ts 결론 문구 단일출처·CategoryMiniCard.tsx] + CatPanel defaultExpanded prop. 사장님 위임 결정 3건 = 카테고리별 맞춤 문구[price 적정가 괴리 실측]·자동 펼침·레이더 유지+미니카드. 적대검증 2라운드 8축 major 5+1 정정[★중점 텍스트→"중점"칩(테스트 카운트 보존)·단일슬롯 key 회귀→카테고리별 seq 맵(형제 펼침 보존)·deviation "0.0" 데이터부재→fairPrice>0 판별·임계 70/50 gr 경계 정합·sections 단일출처·SHORT_LABEL label키·benefit noData]. 인쇄 동선 보존[sec-admin data-tab-panel + adminLoggedIn 즉시 마운트]. tsc 0·lint 0·vitest catVerdict 27+miniCard 10+CatPanel 14+DetailModal 40. 별건 발굴 = AptCard L109·GuideSections L105 deviation 역부호 불일치 박제[아래 🟡])
 - ✅ 상세 모달 IA 개편 D2a 데이터 재배분 — 세션 408 (구 DataSections 8섹션[단일 토글] 해체 → 주제별 탭 분산: 단지기본→종합·생활인프라/교통/치안환경→입지[빈약 해소]·시장지표/네이버교차/층별가→시세·청약경쟁/분양정보/모집공고→분양. 점수 탭=CatPanel 순수 점수+관리자 검수(AdminDataAudit 138필드). 신규 3파일[dataSections.ts 4그룹상수·DataSectionBlock.tsx 섹션별 접힘+자체박스+부가블록3·AdminDataAudit.tsx]. 사장님 결정 = 섹션별 접기[더보기] 유지[토글 제거 시 입지 탭 가장 김=루즈 재발]. 적대검증 2라운드 15 probe major 6 정정[토글제거 폐기·종합탭 중복 4필드 unsoldRate/completion/dong/roadAddress 제거(핵심지표 중복)·admin fullFields 게이트 이식·컨테이너 박스 일관·부가블록 footer 종합1회]. 정보 소실 0[귀속 맵 전수]. tsc 0·lint 0·vitest 3,336·e2e 6+1skip. 다음 = D2b 종합 요약 대시보드[미니카드]+관리자 탭 분리)
 - ✅ 상세 모달 IA 개편 D1 + CTA sticky — 세션 407 (PR #106 점프 앵커→콘텐츠 교체 탭[activeTab+visited keepMounted — 금융 useRef 캐시 훅 refetch·presale_view 중복·펼침 소실 차단, 관리자 전 패널 마운트=인쇄 보존 print media 실증, jsdom scrollTo undefined→setActiveTab 가드 밖] → PR #107 CTA sticky bottom[길면 반투명 92%+blur 겹침·짧으면 제자리 — 분기 없이 자동, 포커스 트랩 불변식 유지]. 적대검증 2라운드 9 probe — "App 상시 마운트" 할루시네이션·visited 시딩 누락·PriceTable null e2e 함정 적발 후 구현. D2 순서 확정 = D2a 데이터 재배분 먼저[사장님 위임 결정 — 입지 탭 빈약 실측]. vitest 3,331·e2e 6+1skip)
 - ✅ 통합 홈 M2 미니지도 + 곧분양 호갱노노 패턴 4종 — 세션 406 (PR #104 MapView prop 3종[height/compact/onSelect — ref 격리]·MapEntryWidget 280px 임베드·spec v4 추록[관리자 위젯 안 살림] → PR #105 RegionChipBar 지역칩+★관심지역·PresaleResultList 분양결과[잔여세대 경쟁률 — "1순위" 표기 금지, 적대검증 적발]·UpcomingPage result 탭·카드 강조줄. 적대검증 2회 14 probe major 6 정정. vitest 3,325·e2e 8/8)
@@ -98,9 +99,9 @@
 - 🔴 **상세 모달 IA 개편 — Progressive Disclosure D2~D3** (세션 406 사장님 지시: "너무 길고 루즈해, 카테고리 구분해서 클릭으로 점점 확대")
   - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (C안 + 세션 407 D1 추록: CTA 항상 노출·keepMounted·수용사항)
   - ✅ D1 완료 = 세션 407 PR #106 (`321fd6e`) — 점프 앵커 → 콘텐츠 교체 탭. keepMounted(첫 방문 마운트 후 display:none — 금융 useRef 캐시 훅 refetch·presale_view 중복·펼침 소실 차단), 관리자 전 패널 마운트(인쇄 보존, print media 실증), CTA 공통 영역(사장님 결정). 적대검증 2라운드 9 probe — "App 상시 마운트" 할루시네이션·visited 시딩 누락·jsdom scrollTo 가드 함정·PriceTable null e2e 함정 적발 후 구현
-  - **✅ D2a 완료 (세션 408)** = DataSections 8섹션 해체·주제별 탭 재배분 완결 (위 색인 참조). 사장님 결정 = 섹션별 접기(더보기) 유지. 적대검증 2라운드 15 probe major 6 정정. 정보 소실 0. **다음 = D2b**.
-  - **D2b (다음 진입)** = 종합 요약 대시보드(카테고리 미니카드 6 + 핵심지표) + 관리자 탭 분리. 미니카드 = 각 탭이 D2a 로 채워졌으니 미리보기 역할 가능. spec `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` §3 옵션 C. D3 = ARIA tablist·애니메이션·analytics(detail_tab_*)
-  - **D2 순서 (세션 407 사장님 위임 → 데이터 제자리 먼저)**: D2a[완료] = DataSections 8섹션 해체·주제별 탭 재배분 → D2b = 종합 요약 대시보드 + 관리자 탭 분리. 근거 = 입지 탭 빈약을 사장님 실화면 확인 + 미니카드는 탭이 채워져야 미리보기 역할(D2a 선행 의존).
+  - **✅ D2a 완료 (세션 408)** = DataSections 8섹션 해체·주제별 탭 재배분 완결 (위 색인 참조). 사장님 결정 = 섹션별 접기(더보기) 유지. 적대검증 2라운드 15 probe major 6 정정. 정보 소실 0.
+  - **✅ D2b 완료 (세션 409)** = 종합 요약 대시보드(CategoryMiniCard 6) + 관리자 탭(sec-admin) 분리 완결 (위 색인 참조). 미니카드 클릭 시 점수 탭 해당 카테고리 자동 펼침(jumpSeqs key). 적대검증 2라운드 8축 major 5+1 정정. **다음 = D3**.
+  - **D3 (다음 진입)** = 다듬기: 탭 전환 애니메이션·ARIA(role=tablist/tab/tabpanel)·analytics(`detail_tab_*` 이벤트). spec §4 D3. 스크롤 위치 초기화는 D1 에 이미 이동 완료.
   - ⚠️ 구현 진입 시 적대검증 워크플로 1회 의무 (plan 버전마다 재검증 — 세션 407 답습)
   - 후속 (D1 수용사항): 금융 훅(useRentLoanRates/useLoanRates) useRef→모듈 캐시 승격(선택) / `loan-rates.spec` 커버리지 부활(현재도 비로그인 게이트로 죽은 커버리지 — 로그인 mock+금융 칩 선행 필요)
 
@@ -253,6 +254,11 @@
   - `?detail=` 딥링크(App.tsx L213-219) + UpcomingPage 상세(App.tsx L355) — 둘 다 비로그인 도달 가능 + 렌더 무게이트(L402-410). 홈 IA 작업과 무관한 기존 동작. 정책 의도(공유 링크는 의도적 공개?) 확인 후 fix 또는 의도 박제
   - 동반: AptCard 비로그인 부분 누설 — Bar가 실점수를 aria-valuenow·width%로 DOM 노출(primitives.tsx L10-11) + "안전 N등급" 텍스트(AptCard.tsx L107) 노출. 점수 "??" 블라인드가 시각 텍스트만 가림
   - 출처: 통합 홈 IA spec 적대검증(8프로브×2라운드) blind-policy 프로브 — `docs/superpowers/specs/2026-06-11-unified-home-ia-design.md` §9
+
+- 🟡 **적정가 괴리(deviation) 부호 표기 역방향 불일치 2건** (세션 409 D2b 적대검증 부산물 — catVerdict 작성 중 발굴)
+  - 진실의 원천 = `scorePrice.ts:127` `dev = (fairPrice - price)/fairPrice*100` → **양수 = 분양가가 적정가보다 쌈(저렴)**. 정합 측 = DetailModal 핵심지표 L208(`>0 → 녹색=좋음`) + FAQSection.tsx L19("양수(+)면 시세 대비 저렴") + 세션 409 catVerdict.
+  - **역부호 2곳**: ① `AptCard.tsx:109` `deviation < 0` 일 때 녹색 배지(음수를 좋음으로 — 정반대) ② `GuideSections.tsx:105` "+면 시세보다 비쌈, -면 저렴" (카피 역방향)
+  - 본 PR(D2b) 범위 밖 — 미니카드는 정답 부호만 답습. 후속 정정: AptCard 배지 조건·Guide 카피를 "양수=저렴"으로 통일 (사용자 혼란 방지)
 
 - ✅ **루트 CLAUDE.md 박제값 stale 2건 정정 완료** (세션 403 적대검증 실측 → 같은 세션 마무리에서 즉시 정정): "11 spec"→13 / "index 172KB"→~185KB
 
