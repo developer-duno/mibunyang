@@ -17,6 +17,7 @@ import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { MarketStatsCharts } from "./detail/MarketStatsCharts";
+import { HelpHint } from "./HelpHint";
 import { StickyJumpNav, type JumpSection } from "./detail/StickyJumpNav";
 import { IconClose } from "./icons";
 import { fetchApartmentPrices, type PriceArrays } from "@/services/staticDataApi";
@@ -245,7 +246,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             {[
               { l: "지역", v: [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "), c: C.blue },
               { l: "분양가", v: fmtPrice(apt.price) },
-              { l: "적정가 괴리", v: res.cats.price.deviation != null ? `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%` : "—", c: res.cats.price.deviation != null ? (Number(res.cats.price.deviation) > 0 ? C.green : C.red) : C.muted },
+              { l: "적정가 괴리", v: res.cats.price.deviation != null ? `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%` : "—", c: res.cats.price.deviation != null ? (Number(res.cats.price.deviation) > 0 ? C.green : C.red) : C.muted, hint: "주변 시세로 계산한 '적정가'와 실제 분양가를 비교한 거예요. +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요." },
               { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
               { l: "미분양률", v: apt.unsoldRate != null ? `${apt.unsoldRate}%` : "—", c: apt.unsoldRate != null ? (apt.unsoldRate > UNSOLD_WARN_THRESHOLD ? C.red : C.green) : C.muted },
               { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
@@ -253,7 +254,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               { l: "입주", v: fmtCompletion(apt.completion) },
             ].map((r, i) => (
               <div key={i} style={DM_S.metricsRow}>
-                <span style={DM_S.metricsLabel}>{r.l}</span>
+                <span style={{ ...DM_S.metricsLabel, display: "flex", alignItems: "center" }}>{r.l}{(r as { hint?: string }).hint && <HelpHint text={(r as { hint?: string }).hint as string} label={r.l} />}</span>
                 <span style={{ fontSize: F.base, fontWeight: 600, color: r.c || C.text }}>{r.v}</span>
               </div>
             ))}

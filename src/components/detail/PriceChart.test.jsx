@@ -59,4 +59,13 @@ describe("PriceChart", () => {
     expect(screen.getByText("분양가 추이")).toBeTruthy();
     expect(screen.getByTestId("line-chart")).toBeTruthy();
   });
+
+  // ? 도움말 노출
+  it("정상 렌더 시 제목 옆 ? 도움말이 보인다", () => {
+    mockUsePriceHistory.mockReturnValue({ data: makeData(3), loading: false, error: null, retry: vi.fn() });
+    render(<PriceChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    const trigger = screen.getByRole("button", { name: "분양가 추이 풀이 보기" });
+    fireEvent.click(trigger);
+    expect(screen.getByText(/매주 자동으로 모아/)).toBeTruthy();
+  });
 });

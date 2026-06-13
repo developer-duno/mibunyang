@@ -2,7 +2,10 @@ import { memo } from "react";
 import { C, F } from "@/theme";
 import { LineChart } from "@/components/primitives";
 import { useUnsoldHistory } from "@/hooks/useUnsoldHistory";
+import { HelpHint } from "@/components/HelpHint";
 import type { UnsoldChartProps } from "@/types/detail";
+
+const UNSOLD_CHART_HINT = "이 단지의 안 팔린 세대(미분양)가 달마다 어떻게 변했는지예요. 빨강은 전체 미분양, 점선(┄)은 다 지어진 뒤에도 안 팔린 '준공후 미분양'이라 더 주의해서 봐야 해요. 매월 자동 수집.";
 
 /** 미분양 추이 차트 — DetailModal 내 표시 */
 export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }: UnsoldChartProps) {
@@ -38,7 +41,7 @@ export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: F.sm, fontWeight: 700, color: C.text }}>미분양 추이</span>
+        <span style={{ display: "flex", alignItems: "center", fontSize: F.sm, fontWeight: 700, color: C.text }}>미분양 추이<HelpHint text={UNSOLD_CHART_HINT} label="미분양 추이" /></span>
         <span style={{ fontSize: F.micro, color: C.red }}>● 미분양</span>
         {secondaryData.length >= 2 && <span style={{ fontSize: F.micro, color: C.muted }}>┄ 준공후</span>}
       </div>
