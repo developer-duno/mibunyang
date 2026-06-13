@@ -46,6 +46,7 @@ export const OVERVIEW_SECTIONS: DataSection[] = [
     title: "단지 기본정보",
     highlight: ["pp", "dataReliability"],
     grid: ["address", "district", "units", "unsold", "builder", "heating", "heatFuel", "avgMaintenanceCost", "primaryDirection"],
+    hint: "이 단지의 위치·세대수·시공사·관리비 같은 기본 정보예요. 데이터 신뢰도(%)는 우리가 모은 정보가 얼마나 충분한지 보여줘요.",
   },
 ];
 
@@ -59,11 +60,13 @@ export const LOCATION_SECTIONS: DataSection[] = [
       ["culture", null], ["bank", null],
       ["childcare", "childcareDist"], ["emergency", "emergencyDist"],
     ],
+    hint: "걸어서 갈 만한 거리(반경 1km) 안에 병원·마트·편의점·공원 같은 생활시설이 몇 개 있는지예요. 많을수록 생활이 편해요.",
   },
-  { title: "교통 상세", grid: ["subwayDist", "subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"] },
+  { title: "교통 상세", grid: ["subwayDist", "subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"], hint: "가장 가까운 지하철역까지 거리, 버스 노선 수, 고속도로 IC·KTX 거리예요. 지하철이 가까울수록(500m 이내는 초록색) 출퇴근이 편해요." },
   {
     title: "치안/환경",
     grid: ["crimeSafetyGrade", "police", "policeDist", "airQuality", "noxiousDist"],
+    hint: "주변 치안 안전등급, 가까운 경찰관서, 대기질(미세먼지), 혐오시설까지 거리예요. 안전하고 공기 좋은 곳인지 보는 정보예요.",
   },
 ];
 
@@ -73,11 +76,13 @@ export const PRICE_SECTIONS: DataSection[] = [
     title: "시장/투자 지표",
     highlight: ["pir", "psr", "popGrowth"],
     grid: ["recentTrades6m", "nearbyMedian", "nearbyBuildYear", "avgFloor", "floorRange", "netMigration"],
+    hint: "집값이 적정한지 따지는 숫자들이에요. PIR은 '소득 몇 년치를 모아야 집을 사나'(낮을수록 좋음), PSR은 주변 시세 대비 비율, 순이동(+)은 사람이 늘어나는 동네라는 신호예요.",
   },
   {
     title: "네이버 교차검증",
     grid: ["naverNearbyMedian", "naverJeonseRate", "naverSellCount", "naverJeonseCount",
            "naverWolseCount", "naverSchoolWalkMin", "naverNearbyCount", "naverFetchedAt"],
+    hint: "네이버 부동산에서 따로 모은 주변 시세·전세가율·매물 수예요. 우리 데이터와 비교해 시세를 두 번 확인하는 용도예요.",
   },
 ];
 
