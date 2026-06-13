@@ -94,16 +94,16 @@
 
 ## 🔴 즉시
 
-(다음 진입 후보 = **상세 모달 IA 개편 D2** (D1 완료 — 세션 407) 또는 아래 P1 API 500 근본 진단 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
+(다음 진입 후보 = **상세 모달 IA 개편 완결**[D1~D3 세션 407~410] → 아래 🟡 `/api/consults 500` 배포 반영 확인 또는 🟡 AptCard·GuideSections deviation 역부호 불일치 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
 
-- 🔴 **상세 모달 IA 개편 — Progressive Disclosure D2~D3** (세션 406 사장님 지시: "너무 길고 루즈해, 카테고리 구분해서 클릭으로 점점 확대")
-  - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (C안 + 세션 407 D1 추록: CTA 항상 노출·keepMounted·수용사항)
-  - ✅ D1 완료 = 세션 407 PR #106 (`321fd6e`) — 점프 앵커 → 콘텐츠 교체 탭. keepMounted(첫 방문 마운트 후 display:none — 금융 useRef 캐시 훅 refetch·presale_view 중복·펼침 소실 차단), 관리자 전 패널 마운트(인쇄 보존, print media 실증), CTA 공통 영역(사장님 결정). 적대검증 2라운드 9 probe — "App 상시 마운트" 할루시네이션·visited 시딩 누락·jsdom scrollTo 가드 함정·PriceTable null e2e 함정 적발 후 구현
-  - **✅ D2a 완료 (세션 408)** = DataSections 8섹션 해체·주제별 탭 재배분 완결 (위 색인 참조). 사장님 결정 = 섹션별 접기(더보기) 유지. 적대검증 2라운드 15 probe major 6 정정. 정보 소실 0.
-  - **✅ D2b 완료 (세션 409)** = 종합 요약 대시보드(CategoryMiniCard 6) + 관리자 탭(sec-admin) 분리 완결 (위 색인 참조). 미니카드 클릭 시 점수 탭 해당 카테고리 자동 펼침(jumpSeqs key). 적대검증 2라운드 8축 major 5+1 정정. **다음 = D3**.
-  - **D3 (다음 진입)** = 다듬기: 탭 전환 애니메이션·ARIA(role=tablist/tab/tabpanel)·analytics(`detail_tab_*` 이벤트). spec §4 D3. 스크롤 위치 초기화는 D1 에 이미 이동 완료.
-  - ⚠️ 구현 진입 시 적대검증 워크플로 1회 의무 (plan 버전마다 재검증 — 세션 407 답습)
-  - 후속 (D1 수용사항): 금융 훅(useRentLoanRates/useLoanRates) useRef→모듈 캐시 승격(선택) / `loan-rates.spec` 커버리지 부활(현재도 비로그인 게이트로 죽은 커버리지 — 로그인 mock+금융 칩 선행 필요)
+- ✅ **상세 모달 IA 개편 — Progressive Disclosure D1~D3 전체 완결** (세션 406 사장님 지시 "너무 길고 루즈해" → 세션 407~410 4단계 종결)
+  - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (C안 + D1~D3 추록 전부)
+  - ✅ D1 (세션 407 PR #106 `321fd6e`) — 점프 앵커 → 콘텐츠 교체 탭. keepMounted·관리자 전 패널 마운트·CTA 공통 영역.
+  - ✅ D2a (세션 408 PR #108) — DataSections 8섹션 해체·주제별 탭 재배분. 섹션별 접기 유지. 정보 소실 0.
+  - ✅ D2b (세션 409 PR #109) — 종합 요약 대시보드(CategoryMiniCard 6, 레이더 대체) + 관리자 탭(sec-admin) 분리.
+  - **✅ D3 (세션 410 PR #110 `ba9377c`)** = 탭 전환 페이드(panelStyle animation + FADE_KEYFRAMES + print CSS + reduced-motion) + ARIA tablist 정석 role=tab(패널 role=tabpanel·aria-controls isMounted 조건부·roving·화살표 automatic activation) + analytics(`detail_tab_view {tab,previous_tab}`). 적대검증 3+1라운드 = R3 loan-rates.spec 무스코프 tablist 누락·aria-controls dangling·화살표 스크롤 경합 + 구현물 관리자 로그아웃 빈화면 fallback. vitest 3391/tsc 0/eslint 0/build/e2e CI green.
+  - **실서비스 수동검증 5항목 (jsdom 불가, 사장님)**: 페이드 실재 / reduced-motion 0 / 관리자 7패널 인쇄 잔류 0 / 화살표 연타 떨림 0 / axe-core ARIA 위반 0.
+  - 후속 (D1 수용사항, 선택): 금융 훅 useRef→모듈 캐시 승격 / `loan-rates.spec` 커버리지 부활(로그인 mock+금융 칩 선행)
 
 - 🟡 **/api/consults 500 검증 잔여** (세션 406 발견·조치 — 사장님 스크린샷 콘솔에서 관리자 대시보드 500 확인)
   - 진앙 실측 = Vercel production 에 `SUPABASE_SERVICE_KEY` 미설정 → `getMibuyangSupabase()` throw → catch 500. DB·쿼리는 로컬 service key 프로브로 정상 확인 (consults 0행, submitted_at 정렬 OK)
