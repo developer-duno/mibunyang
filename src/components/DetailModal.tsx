@@ -9,7 +9,9 @@ import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
-import { DataSections } from "./detail/DataSections";
+import { DataSectionBlock, NearbyFacilitiesBlock, PriceByFloorBlock, AnnouncementLink } from "./detail/DataSectionBlock";
+import { AdminDataAudit } from "./detail/AdminDataAudit";
+import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
@@ -50,6 +52,7 @@ const DM_S = {
   benefitsChipRow: { display: "flex", flexWrap: "wrap" as const, gap: 4 },
   benefitsChip: { fontSize: F.sm, color: C.amber, background: C.white, padding: "4px 10px", borderRadius: 4, border: `1px solid ${C.amberBorder}` },
   republishBadge: { display: "inline-flex", alignItems: "center", gap: 4, fontSize: F.sm, color: C.amber, background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 6, padding: "3px 8px", marginBottom: 8 },
+  sourceFooter: { fontSize: F.micro, color: C.muted, marginTop: 10, lineHeight: 1.5 },
   actionRow: { display: "flex", gap: 8 },
 };
 
@@ -234,6 +237,14 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회
           </div>
         )}
+
+        {/* 단지 기본정보 (핵심지표 중복 4필드 제외 — 세션 408 D2a) */}
+        {OVERVIEW_SECTIONS.map(s => <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />)}
+
+        {/* 출처 footer — 전 탭 공통 데이터 출처 (종합 탭 1회 고정, 세션 408 D2a) */}
+        <div style={DM_S.sourceFooter}>
+          출처: 청약홈(국토교통부) · 카카오 로컬 API · KOSIS(통계청) · 국토부 실거래가 · NEIS(교육부)
+        </div>
         </section>
         )}
 
@@ -243,6 +254,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
+
+        {/* 시장지표·네이버교차·층별가 (세션 408 D2a) */}
+        {PRICE_SECTIONS.map(s => <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />)}
+        <PriceByFloorBlock apt={mergedApt ?? apt} />
         </section>
         )}
 
@@ -252,6 +267,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         <SchoolInfo apt={apt} />
 
         <NearbyChildcareSection apt={apt} />
+
+        {/* 생활인프라·교통·치안환경 (세션 408 D2a — 입지 탭 빈약 해소) */}
+        {LOCATION_SECTIONS.map(s => <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />)}
+        <NearbyFacilitiesBlock apt={mergedApt ?? apt} />
         </section>
         )}
 
@@ -259,6 +278,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {isPanelMounted("sec-presale") && (
         <section id="sec-presale" data-tab-panel style={panelStyle("sec-presale")}>
         <PresaleInfo apt={apt} />
+
+        {/* 청약경쟁·네이버분양정보 + 국토부 모집공고 원문 (세션 408 D2a) */}
+        {PRESALE_SECTIONS.map(s => <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />)}
+        <AnnouncementLink apt={mergedApt ?? apt} />
 
         {/* 관리자 인사이트 — 동/호수 + 청약홈 평형별 공급 표 (구 전문가 대시보드 이식, 세션 405) */}
         {adminLoggedIn && (
@@ -278,22 +301,21 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         </section>
         )}
 
-        {/* §6 점수 탭 — DataSections(공공데이터) + CatPanel×6 + 관리자 점수 분해 */}
+        {/* §6 점수 탭 — CatPanel×6 순수 점수 + 관리자 점수 분해·데이터 검수 (세션 408 D2a: 공공데이터 8섹션 타 탭 분산) */}
         {isPanelMounted("sec-score") && (
         <section id="sec-score" data-tab-panel style={panelStyle("sec-score")}>
-        <DataSections apt={mergedApt ?? apt} adminMode={adminLoggedIn} profile={profile} />
-
         {(() => {
           const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
           return Object.entries(res.cats).map(([k, c]) => <CatPanel key={k} cat={c} k={k} emphasized={topCats.includes(k)} />);
         })()}
 
-        {/* 관리자 인사이트 — 점수 산출 과정 분해 (구 전문가 대시보드 이식, 세션 405) */}
+        {/* 관리자 인사이트 — 점수 산출 과정 분해 + 138필드 데이터 검수 (구 전문가 대시보드 이식, 세션 405·408) */}
         {adminLoggedIn && (
           <Suspense fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}>
             <AdminScoreBreakdown apt={apt} res={res} profile={profile} />
           </Suspense>
         )}
+        {adminLoggedIn && <AdminDataAudit apt={mergedApt ?? apt} profile={profile} />}
         </section>
         )}
 
