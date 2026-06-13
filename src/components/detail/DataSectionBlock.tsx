@@ -7,6 +7,7 @@ import { fieldsOf, dataValueColor } from "@/lib/dataSections";
 import { HighlightField } from "./HighlightField";
 import { InfrastructureSection } from "./InfrastructureSection";
 import { CompletenessDonut } from "./CompletenessDonut";
+import { HelpHint } from "@/components/HelpHint";
 import type { Apt } from "@/types/scoring";
 import type { DataSection } from "@/types/components/DataSections.types";
 
@@ -51,7 +52,7 @@ export const DataSectionBlock = memo(function DataSectionBlock({
         style={DSB_S.head}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={DSB_S.title}>{section.title}</span>
+          <span style={{ ...DSB_S.title, display: "flex", alignItems: "center" }}>{section.title}{section.hint && <HelpHint text={section.hint} label={section.title} />}</span>
           {sectionPct != null && <CompletenessDonut pct={sectionPct} size={34} label={section.title} />}
         </div>
         <span style={{ fontSize: F.sm, color: C.muted, transition: "transform .2s", transform: open ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>

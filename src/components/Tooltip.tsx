@@ -38,9 +38,11 @@ type TooltipProps = {
   term?: string;
   definition?: string;
   children: ReactNode;
+  // bare=true: children 래퍼의 dashed underline 제거 (? 아이콘 트리거용 — 용어 텍스트가 아닐 때).
+  bare?: boolean;
 };
 
-export const Tooltip = memo(function Tooltip({ term, definition, children }: TooltipProps) {
+export const Tooltip = memo(function Tooltip({ term, definition, children, bare = false }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const containerRef = useRef<HTMLSpanElement>(null);
@@ -76,11 +78,13 @@ export const Tooltip = memo(function Tooltip({ term, definition, children }: Too
             e.preventDefault();
             setOpen(v => !v);
           } else if (e.key === "Escape") {
+            // 모달 안에서 ? 열고 ESC 시 DetailModal document Escape(onClose)까지 전파 방지
+            e.stopPropagation();
             setOpen(false);
           }
         }}
         style={{
-          borderBottom: `1px dashed ${C.muted}`,
+          ...(bare ? {} : { borderBottom: `1px dashed ${C.muted}` }),
           cursor: "help",
           display: "inline-block",
         }}
