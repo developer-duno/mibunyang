@@ -125,3 +125,4 @@ export default withHandler({
 - AptCard: 점수 블러("??") + 상세/지도 LoginPromptModal
 - CompareSheet: 점수 "??" 텍스트 치환 (CSS blur 아닌 DOM 미노출), export/공유 숨김
 - LoginPromptModal Analytics: trigger prop (detail/map), 4개 이벤트
+- **상세 진입 게이트 일괄 (세션 413)**: 모든 상세 진입 경로가 `handleDetailGated`(useLoginGate.ts) 수렴 = 비로그인 시 LoginPromptModal. App.tsx 3 구멍 차단(`?detail=` URL 딥링크·지도 탭 MapView·분양결과/곧분양 UpcomingPage) — 직진입도 일반 목록과 동일 게이트. 신규 상세 진입 경로 추가 시 `detail.handleOpenDetail` 직접 호출 금지, 반드시 `handleDetailGated` 경유

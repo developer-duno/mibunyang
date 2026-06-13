@@ -60,7 +60,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | HeaderSection | 166 | 데스크톱: 상단 바 60px / 모바일: 그라디언트 + HelpModal |
 | SearchFilterBar | 196 | 드롭다운 오케스트레이터 (6개 FilterButton + 패널 + 칩 + undo) |
 | AptListSection | 53 | 카드 그리드 (isDesktop 3컬럼/isPC 2컬럼) |
-| MapView | ~240 | Kakao Map (마커+클러스터+현위치+인프라). M2 prop 3종: `height`(루트 높이 오버라이드)·`compact`(위젯 모드 — 컨트롤 숨김+휠줌 차단, 마운트 시 고정)·`onSelect`(선택 미러, ref 격리 — 마커 effect deps 추가 금지) |
+| MapView | ~240 | Kakao Map (마커+클러스터+현위치+인프라). M2 prop 3종: `height`(루트 높이 오버라이드)·`compact`(위젯 모드 — 컨트롤 숨김+휠줌 차단, 마운트 시 고정)·`onSelect`(선택 미러, ref 격리 — 마커 effect deps 추가 금지). **M3 prop 2종(세션 413)**: `getViewport`(초기 center/level 복원 getter — render 중 ref 접근 회피)·`onViewportChange`(idle 시 현재 center/level 끌어올림, 탭 전환 보존). `didFitRef=false` 첫 마커 fit 1회(전국 리셋 억제) — viewport 는 초기 center/level 에만, 재마운트는 항상 첫 fit(빈 화면 방지). 미니지도(MapEntryWidget)는 의도적 미연결(idle 오염 회귀 방지) |
 | BottomNav | 36 | 하단 네비 (isDesktop → null) |
 
 ### 상세 컴포넌트 (`detail/`)
