@@ -57,6 +57,21 @@ describe("MarketStatsCharts", () => {
     expect(screen.getAllByTestId("line-chart")).toHaveLength(5);
   });
 
+  // 세션 411 — ? 도움말. 차트 5개 + 상단 "지역 시장 추이" = ? 6개. line-chart 개수 불변.
+  it("정상 데이터면 ? 도움말 6개(차트 5 + 상단 1) 표시, line-chart 개수 불변", () => {
+    mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: false });
+    render(<MarketStatsCharts region="서울" gu="강남구" />);
+    expect(screen.getAllByLabelText(/풀이 보기$/)).toHaveLength(6);
+    expect(screen.getAllByTestId("line-chart")).toHaveLength(5); // ? 추가해도 차트 불변
+  });
+
+  it("초기분양율 ? 클릭 시 '보는 법' 설명(role=tooltip) 표시", () => {
+    mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: false });
+    render(<MarketStatsCharts region="서울" gu="강남구" />);
+    fireEvent.click(screen.getByLabelText("초기분양율 풀이 보기"));
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/미분양 위험/);
+  });
+
   it("정상 데이터면 차트들이 반응형 grid 컨테이너에 담긴다", () => {
     mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: false });
     render(<MarketStatsCharts region="서울" gu="강남구" />);

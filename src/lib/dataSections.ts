@@ -87,6 +87,7 @@ export const PRESALE_SECTIONS: DataSection[] = [
     title: "청약 경쟁 현황",
     grid: ["competitionRate", "competitionSupply", "competitionApplicants"],
     hideWhenEmpty: true,
+    hint: "청약에서 몇 대 1로 경쟁했는지예요(예: 5:1). 신청자가 모집보다 적으면 '미달', 정보가 아직 없으면 '미수집'으로 표시돼요. 경쟁이 셀수록 인기 단지예요.",
   },
   {
     title: "네이버 분양정보",
@@ -94,5 +95,6 @@ export const PRESALE_SECTIONS: DataSection[] = [
            "presalePp", "presaleGeneralSupply", "presaleBuildings", "presaleParking",
            "presaleMoveIn", "presaleRecruitDate", "presaleSchedule", "presaleInquiry",
            "presaleFeatures", "presaleFetchedAt"],
+    hint: "네이버 부동산에서 모은 이 단지의 분양 가격·일정·공급 정보예요.",
   },
 ];

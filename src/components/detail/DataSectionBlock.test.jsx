@@ -140,6 +140,30 @@ describe("DataSectionBlock", () => {
     render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} defaultOpen />);
     expect(screen.getByText("영통역")).toBeTruthy();
   });
+
+  // 세션 411 — hint 있는 섹션 헤더에 ? 도움말 + 클릭이 섹션 토글과 분리(stopPropagation)
+  it("hint 있는 섹션('청약 경쟁 현황')은 헤더에 ? 도움말을 표시한다", () => {
+    const apt = /** @type {any} */ (makeApt({ competitionRate: 5.2 }));
+    render(<DataSectionBlock section={/** @type {any} */ (find("청약 경쟁 현황"))} apt={apt} />);
+    expect(screen.getByLabelText("청약 경쟁 현황 풀이 보기")).toBeInTheDocument();
+  });
+
+  it("? 클릭은 섹션을 펼치지 않는다 (stopPropagation — 토글과 분리)", () => {
+    const apt = /** @type {any} */ (makeApt({ competitionRate: 5.2 }));
+    render(<DataSectionBlock section={/** @type {any} */ (find("청약 경쟁 현황"))} apt={apt} />);
+    // 헤더 토글 button = aria-expanded 보유 (? 트리거도 role=button 이라 expanded 로 특정)
+    const toggle = screen.getByRole("button", { expanded: false });
+    fireEvent.click(screen.getByLabelText("청약 경쟁 현황 풀이 보기"));
+    // 섹션은 여전히 접힘(? 클릭이 부모 토글로 전파 안 됨), 도움말만 표시
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/몇 대 1/);
+  });
+
+  it("hint 없는 섹션('교통 상세')은 헤더에 ? 도움말이 없다", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
+    expect(screen.queryByLabelText(/풀이 보기$/)).toBeNull();
+  });
 });
 
 describe("부가블록 3종", () => {
