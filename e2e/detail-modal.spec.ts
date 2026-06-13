@@ -93,7 +93,8 @@ test.describe("상세 모달", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     // exact:true — 세션 409 D2b 종합 탭 미니카드 aria-label("입지 78점 B+ …")이 부분일치로 잡히는 것 차단(칩만)
-    await modal.getByRole("button", { name: "시세", exact: true }).click();
+    // 세션 410 D3: 칩 role=button → role=tab (WAI-ARIA tablist)
+    await modal.getByRole("tab", { name: "시세", exact: true }).click();
     // non-skip 가드: 시세 탭 패널은 데이터 유무와 무관하게 마운트·가시 (탭 전환 자체의 회귀 가드)
     await expect(modal.locator("#sec-price")).toBeVisible({ timeout: 4000 });
 
@@ -123,7 +124,8 @@ test.describe("상세 모달", () => {
     await expect(modal.locator("#sec-score")).not.toBeVisible();
 
     // exact:true — 미니카드 aria-label("입지 78점 …")의 "점"이 부분일치로 잡히는 strict 위반 차단(세션 409 D2b)
-    const scoreChip = modal.getByRole("button", { name: "점수", exact: true });
+    // 세션 410 D3: 칩 role=button → role=tab
+    const scoreChip = modal.getByRole("tab", { name: "점수", exact: true });
     await scoreChip.click();
 
     // 축1: 점수 탭 콘텐츠 마운트·가시 (DataSections + CatPanel)
@@ -132,7 +134,7 @@ test.describe("상세 모달", () => {
     // 축2(콘텐츠 교체 증명): 종합 탭은 DOM 에 남되(keepMounted) 화면에서 숨음.
     await expect(modal.locator("#sec-overview")).not.toBeVisible();
 
-    // 축3(active): handleTabChange 가 클릭 즉시 setActiveTab → 클릭칩 aria-current 전환.
-    await expect(scoreChip).toHaveAttribute("aria-current", "true");
+    // 축3(active): handleTabChange 가 클릭 즉시 setActiveTab → 클릭칩 aria-selected 전환(세션 410 D3 role=tab).
+    await expect(scoreChip).toHaveAttribute("aria-selected", "true");
   });
 });

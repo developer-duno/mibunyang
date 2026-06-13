@@ -54,8 +54,9 @@ test.describe("금리비교 기능", () => {
       await toggle.click();
     }
 
-    // 권역 탭 확인
-    const tablist = page.locator('[role="tablist"]');
+    // 권역 탭 확인 — 세션 410 D3: StickyJumpNav 도 role=tablist 라 무스코프 셀렉터는 2개 매칭.
+    // aria-label="금융권역" 으로 은행권역 tablist 만 명시 타겟(StickyJumpNav="상세 분석 카테고리"와 분리).
+    const tablist = page.getByRole("tablist", { name: "금융권역" });
     const hasTabs = await tablist.isVisible({ timeout: 3000 }).catch(() => false);
     if (hasTabs) {
       const tabs = tablist.locator('[role="tab"]');

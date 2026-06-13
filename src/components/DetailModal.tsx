@@ -20,6 +20,7 @@ import { MarketStatsCharts } from "./detail/MarketStatsCharts";
 import { StickyJumpNav, type JumpSection } from "./detail/StickyJumpNav";
 import { IconClose } from "./icons";
 import { fetchApartmentPrices, type PriceArrays } from "@/services/staticDataApi";
+import { trackEvent } from "@/lib/analytics";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
 
 // 관리자 인사이트 레이어 (세션 405 전문가 대시보드 이식) — adminLoggedIn 일 때만 로드 (소비자 번들 영향 0)
@@ -38,6 +39,12 @@ const JUMP_SECTIONS: JumpSection[] = [
 ];
 
 const UNSOLD_WARN_THRESHOLD = 15;
+
+// 탭 전환 페이드 (세션 410 D3) — 활성 패널 진입 시 opacity 0→1 .18s. display:none→표시 전환 시
+// animation-name 신규 적용으로 keyframe 1회 재생(W3C CSS Animations). prefers-reduced-motion 존중.
+// <style> 은 게이트 밖 항상 렌더 위치에 1회 주입(Skeleton primitives.tsx 패턴 답습).
+const FADE_KEYFRAMES = `@keyframes detailTabFade { from { opacity: 0 } to { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { [data-tab-panel] { animation: none !important } }`;
 
 const DM_S = {
   dragBar: { width: 40, height: 4, background: C.border, borderRadius: 2, margin: "0 auto 12px", cursor: "pointer" },
@@ -151,6 +158,12 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
     [adminLoggedIn],
   );
 
+  // 관리자가 sec-admin 탭을 보던 중 로그아웃 → sections 6개로 축소되며 activeTab 이 사라진 탭을 가리켜
+  // 모든 패널 display:none = 빈 본문. activeTab 이 더 이상 존재하지 않으면 종합 탭으로 복원(세션 410 D3 적대검증).
+  useEffect(() => {
+    if (!sections.some(s => s.id === activeTab)) setActiveTab(JUMP_SECTIONS[0].id);
+  }, [sections, activeTab]);
+
   // 미니카드 → 점수 탭 자동 펼침: 카테고리별 단조 증가 seq. 점프 시 그 카테고리 CatPanel 의 key 만
   // 바뀌어 1개만 리마운트(=defaultExpanded 재평가=펼침), 형제 5개 key 불변 = 손으로 펼친 상태 보존.
   // 같은 카테고리 재클릭도 seq+1 로 재펼침. 모달 닫힘 = 언마운트 = 자연 소멸 (세션 409 D2b 적대검증 R2).
@@ -164,6 +177,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   // (jsdom·구형 브라우저)에서도 탭 전환은 일어나야 비활성 패널 콘텐츠에 도달 가능.
   // scrollTo 는 탭 전환 시 이전 탭의 스크롤 잔류 방지용 top:0 리셋(instant)만.
   const handleTabChange = (id: string) => {
+    // analytics — 탭이 실제 바뀔 때만 발화(같은 탭 재선택 제외). activeTab 은 인라인 함수 클로저라
+    // 클릭 시점의 최신 활성탭 캡처. 미니카드 점프(handleCategoryJump→sec-score)·칩 클릭·화살표 전환
+    // 모두 이 핸들러 경유 = 단일 발화 지점. tab_switch(useAppNavigation) 선례 답습.
+    if (id !== activeTab) trackEvent("detail_tab_view", { tab: id, previous_tab: activeTab });
     setActiveTab(id);
     setVisited(prev => {
       if (prev.has(id)) return prev;
@@ -178,8 +195,12 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   // 패널 마운트/표시 규칙 — 관리자는 전부 즉시 마운트(인쇄 "전체 펼침" 보존), 소비자는 첫 방문 시
   // 마운트 후 keepMounted. 표시는 activeTab 만 (나머지 display:none — print CSS 가 인쇄 시 펼침).
   const isPanelMounted = (id: string) => adminLoggedIn || visited.has(id);
+  // 활성 패널만 페이드 애니메이션 부여 — display:none→표시 전환 시 keyframe 1회 재생(세션 410 D3).
+  // 같은 탭 유지 중 리렌더는 animation 문자열 동일 → 재생 skip(깜빡임 0). 인쇄는 print CSS 가 무효화.
   const panelStyle = (id: string): CSSProperties =>
-    ({ margin: 0, padding: 0, display: activeTab === id ? undefined : "none" });
+    activeTab === id
+      ? { margin: 0, padding: 0, animation: "detailTabFade .18s ease-out" }
+      : { margin: 0, padding: 0, display: "none" };
 
   if (!item) return null;
   const { apt, res } = item;
@@ -205,11 +226,13 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {/* 하단 패딩은 CTA sticky 바가 자체 패딩으로 담당 (바닥 밀착을 위해 스크롤러 하단 패딩 0) */}
         <div ref={bodyRef} data-testid="detail-scroll-body" data-print-content style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative", padding: isDesktop ? "0 24px" : "0 16px" }}>
 
-        <StickyJumpNav sections={sections} activeId={activeTab} totalScore={res.total} onJump={handleTabChange} isDesktop={isDesktop} noPrint />
+        <StickyJumpNav sections={sections} activeId={activeTab} totalScore={res.total} onJump={handleTabChange} isMounted={isPanelMounted} isDesktop={isDesktop} noPrint />
+        {/* 탭 전환 페이드 keyframes — 게이트 밖 항상 렌더 위치 1회 주입 (세션 410 D3) */}
+        <style>{FADE_KEYFRAMES}</style>
 
         {/* §1 종합 탭 — ScoreBadge + 핵심지표 + 카테고리 미니카드 6 + 혜택칩 + 재공고배지 (세션 409 D2b: 레이더 제거) */}
         {isPanelMounted("sec-overview") && (
-        <section id="sec-overview" data-tab-panel style={panelStyle("sec-overview")}>
+        <section id="sec-overview" role="tabpanel" aria-labelledby="tab-sec-overview" data-tab-panel style={panelStyle("sec-overview")}>
         <div style={DM_S.scoreBadgeWrap}>
           <ScoreBadge score={res.total} size={80} />
         </div>
@@ -280,7 +303,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         {/* §2 시세 탭 — PriceTable + PriceChart + UnsoldChart */}
         {isPanelMounted("sec-price") && (
-        <section id="sec-price" data-tab-panel style={panelStyle("sec-price")}>
+        <section id="sec-price" role="tabpanel" aria-labelledby="tab-sec-price" data-tab-panel style={panelStyle("sec-price")}>
         <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
@@ -293,7 +316,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         {/* §3 입지 탭 — SchoolInfo + NearbyChildcare */}
         {isPanelMounted("sec-location") && (
-        <section id="sec-location" data-tab-panel style={panelStyle("sec-location")}>
+        <section id="sec-location" role="tabpanel" aria-labelledby="tab-sec-location" data-tab-panel style={panelStyle("sec-location")}>
         <SchoolInfo apt={apt} />
 
         <NearbyChildcareSection apt={apt} />
@@ -306,7 +329,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         {/* §4 분양 탭 — PresaleInfo + MarketStatsCharts(KOSIS 지역 거시통계) */}
         {isPanelMounted("sec-presale") && (
-        <section id="sec-presale" data-tab-panel style={panelStyle("sec-presale")}>
+        <section id="sec-presale" role="tabpanel" aria-labelledby="tab-sec-presale" data-tab-panel style={panelStyle("sec-presale")}>
         <PresaleInfo apt={apt} />
 
         {/* 청약경쟁·네이버분양정보 + 국토부 모집공고 원문 (세션 408 D2a) */}
@@ -321,7 +344,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
 
         {/* §5 금융 탭 — LoanAnalysis (이 단지 대출 시뮬레이션) */}
         {isPanelMounted("sec-finance") && (
-        <section id="sec-finance" data-tab-panel style={panelStyle("sec-finance")}>
+        <section id="sec-finance" role="tabpanel" aria-labelledby="tab-sec-finance" data-tab-panel style={panelStyle("sec-finance")}>
         <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         </section>
         )}
@@ -329,7 +352,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {/* §6 점수 탭 — CatPanel×6 순수 점수만 (세션 409 D2b: 관리자 인사이트는 sec-admin 탭으로 이동).
             jumpSeqs[k] key = 종합 탭 미니카드 클릭 시 해당 카테고리 1개만 리마운트(defaultExpanded 펼침). */}
         {isPanelMounted("sec-score") && (
-        <section id="sec-score" data-tab-panel style={panelStyle("sec-score")}>
+        <section id="sec-score" role="tabpanel" aria-labelledby="tab-sec-score" data-tab-panel style={panelStyle("sec-score")}>
         {(() => {
           const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
           return Object.entries(res.cats).map(([k, c]) => {
@@ -344,7 +367,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             분리, adminLoggedIn 시에만 칩·패널 노출). data-tab-panel = App print CSS 가 인쇄 시 펼침.
             isPanelMounted(adminLoggedIn)=즉시 마운트 → 현행 "전체 펼쳐 인쇄" 동선 보존. */}
         {adminLoggedIn && isPanelMounted("sec-admin") && (
-        <section id="sec-admin" data-tab-panel style={panelStyle("sec-admin")}>
+        <section id="sec-admin" role="tabpanel" aria-labelledby="tab-sec-admin" data-tab-panel style={panelStyle("sec-admin")}>
         <Suspense fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}>
           <AdminScoreBreakdown apt={apt} res={res} profile={profile} />
         </Suspense>

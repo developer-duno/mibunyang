@@ -30,7 +30,7 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }: LoanRate
       {showRates && (
         <div style={{ marginTop: 8 }}>
           {/* 금융권역 탭 */}
-          <div role="tablist" style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+          <div role="tablist" aria-label="금융권역" style={{ display: "flex", gap: 4, marginBottom: 8 }}>
             {LOAN_GROUPS.map(g => (
               <button
                 key={g.code}
