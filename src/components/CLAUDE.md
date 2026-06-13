@@ -67,7 +67,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
-| DetailModal | ~370 | 모달 컨테이너 (isDesktop 760px, ARIA dialog). 세션 407 D1: 콘텐츠 교체 탭(activeTab+visited keepMounted, 관리자=전 패널 마운트) + CTA sticky bottom 바. 세션 408 D2a: 공공데이터 8섹션 주제별 탭 분산. **세션 409 D2b**: 종합 탭에 CategoryMiniCard 6개(점수+결론, 클릭 시 점수 탭 해당 카테고리 자동 펼침 — jumpSeqs[k] 단조 증가 key 로 1개만 리마운트). 관리자 인사이트 3종(AdminScoreBreakdown·AdminUnitSupply·AdminDataAudit)을 점수·분양 탭에서 **관리자 탭(sec-admin)**으로 분리 — sections useMemo 로 adminLoggedIn 시에만 7번째 탭 추가, 소비자는 6탭. CatPanel 은 점수 탭에서 순수 점수만 |
+| DetailModal | ~390 | 모달 컨테이너 (isDesktop 760px, ARIA dialog). 세션 407 D1: 콘텐츠 교체 탭(activeTab+visited keepMounted, 관리자=전 패널 마운트) + CTA sticky bottom 바. 세션 408 D2a: 공공데이터 8섹션 주제별 탭 분산. 세션 409 D2b: 종합 탭에 CategoryMiniCard 6개(점수+결론, 클릭 시 점수 탭 해당 카테고리 자동 펼침 — jumpSeqs[k] 단조 증가 key 로 1개만 리마운트). 관리자 인사이트 3종을 **관리자 탭(sec-admin)**으로 분리(sections useMemo, 소비자 6탭/관리자 7탭). **세션 410 D3**: 탭 전환 페이드(panelStyle animation + FADE_KEYFRAMES `<style>` + print CSS 무효화 + reduced-motion) + **ARIA tablist 정석 role=tab**(패널 role=tabpanel+aria-labelledby, isMounted 조건부 aria-controls) + analytics(handleTabChange 에서 `detail_tab_view {tab,previous_tab}`) + 관리자 로그아웃 시 빈 화면 fallback(sections.some(activeTab)). CatPanel 은 점수 탭에서 순수 점수만 |
 | PriceChart | 43 | 분양가 추이 SVG (usePriceHistory + siblingIds) |
 | UnsoldChart | 45 | 미분양 추이 SVG (useUnsoldHistory + siblingIds) |
 | PresaleInfo | 130 | 네이버 분양정보 (가격카드/일정/링크/Analytics) |

@@ -69,3 +69,15 @@
 - **관리자 탭 분리** (`sec-admin`): AdminScoreBreakdown·AdminUnitSupply·AdminDataAudit 3종을 점수·분양 탭에서 별도 관리자 탭으로 모음. `sections = useMemo(adminLoggedIn ? [...JUMP_SECTIONS, 관리자] : JUMP_SECTIONS)` — 소비자 6탭 / 관리자 7탭. `data-tab-panel` 부여 + `isPanelMounted(adminLoggedIn)` 즉시 마운트 = 인쇄 "전체 펼침" 동선 보존(window.print 버튼은 AdminScoreBreakdown 종속이라 자동 동반). 소비자 화면은 admin 3종이 원래 게이트라 무변경.
 - **적대검증 2라운드 정정**: ★중점 텍스트→"중점" 칩(테스트 카운트 보존) / 단일 슬롯 key 회귀→카테고리별 seq 맵 / deviation "0.0" 데이터 부재→fairPrice 판별 / SHORT_LABEL label 키 / 비강조 테두리 1px(시프트 방지). 별건 발굴 = AptCard·GuideSections deviation 역부호 불일치(BACKLOG 🟡).
 - **D3 (다음)**: 탭 전환 애니메이션 / ARIA tablist / analytics(`detail_tab_*`).
+
+## 추록 — D3 구현 완료 (세션 410, 적대검증 3+1 라운드, PR #110 머지)
+
+§4 D3 3종 + IA 개편 전체 완결. 사장님 결정(AskUserQuestion): ARIA=정석 role=tab / 애니메이션=은은한 페이드 / 화살표=automatic activation.
+
+- **탭 전환 페이드** (`DetailModal.tsx`): 활성 패널만 `panelStyle` 에 `animation: "detailTabFade .18s ease-out"` 부여 — display:none→표시 전환 시 keyframe 1회 재생(W3C CSS Animations 실측). `FADE_KEYFRAMES` 모듈 상수 + `<style>` 게이트 밖 1회 주입(StickyJumpNav 직후, primitives.tsx Skeleton 패턴). `@media (prefers-reduced-motion: reduce)` 존중. 인쇄는 App print CSS `[data-tab-panel] { animation: none !important; opacity: 1 !important }` 무효화(이중 안전망).
+- **ARIA tablist (정석 role=tab)** (`StickyJumpNav.tsx`): 칩 래퍼 `role="tablist" aria-label="상세 분석 카테고리"`. 칩 `role="tab"` + `aria-selected` + `id={`tab-${id}`}` + `aria-controls={isMounted(id)?id:undefined}`(미마운트 패널 dangling 차단) + roving `tabIndex={isActive?0:-1}`. ←/→ 화살표 automatic activation(`handleChipKeyDown`, `focus({preventScroll:true})` = scrollIntoView effect 경합 방지). 패널 7곳 `role="tabpanel"` + `aria-labelledby`(tabIndex 부여 안 함 — 내부 포커서블 보유). chipRefs 배열 + setChipRef useMemo(activeChipRef 폐기, 인라인 ref 매 렌더 detach 회피). LoanRatesSection tablist 와 `aria-label="금융권역"` 분리.
+- **analytics**: `handleTabChange` 에서 `trackEvent("detail_tab_view", { tab, previous_tab })` — 탭 실제 변경 시만(가드). `useAppNavigation tab_switch` 선례 답습. 칩·화살표·미니카드 점프 모두 이 핸들러 단일 경유.
+- **적대검증 4라운드 발굴·정정**: R3 = ① `loan-rates.spec.ts` 무스코프 `[role="tablist"]` 2개 매칭(plan v1 완전 누락) → aria-label 스코프 한정 ② aria-controls dangling ③ 화살표 focus 스크롤 경합. 구현물 = **관리자 탭 보던 중 로그아웃 시 빈 화면**(sections 축소로 activeTab 사라짐) → `useEffect(() => { if (!sections.some(s=>s.id===activeTab)) setActiveTab(JUMP_SECTIONS[0].id) })` fallback.
+- **회귀 가드**: vitest 206파일 3391 it green(DetailModal 40→50) / tsc 0 / eslint 0 errors / build / e2e detail-modal·loan-rates CI green.
+- **실서비스 수동검증 (jsdom 불가, 머지 후 사장님)**: ① 페이드 실재 ② reduced-motion 시 0 ③ 관리자 7패널 인쇄 잔류 0 ④ 화살표 연타 칩바 떨림 0 ⑤ axe-core ARIA 위반 0.
+- **IA 개편 전체 완료** — D1(탭 전환)·D2a(데이터 재배분)·D2b(미니카드+관리자 탭)·D3(다듬기) 4단계 종결.
