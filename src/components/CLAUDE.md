@@ -2,14 +2,14 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 컴포넌트 (세션 408 D2a 후 detail +4 순증: 구 DataSections 1 삭제 → DataSectionBlock+부가블록3+AdminDataAudit 5 추가, 2026-06-13 실측)
+## memo() 컴포넌트 (세션 409 D2b 후 detail +1: CategoryMiniCard 신규 → 14개, 2026-06-13 실측)
 
 | 그룹 | 개수 | 위치 | 컴포넌트 |
 |------|------|------|---------|
 | 소비자 | 11 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, RegionChipBar(지역 칩+★관심지역, 세션 406), PresaleResultList(분양결과 — 잔여세대 경쟁률, "1순위" 표기 금지, 세션 406), primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
 | 홈 | 6 | `home/` | HomePage, WidgetCard, MapEntryWidget(M2: 로그인 시 MapView compact 미니지도 임베드 + 뷰포트 진입 lazy), UpcomingWidget, TopPicksWidget, MarketSummaryWidget (세션 404 M1 신설, 세션 406 표 등재) |
 | 섹션 | 9 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), AdminLoginForm, InfoPage, BottomNav, MapView, InfraOverlay, SelectedAptCard |
-| 상세 | 13 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, **DataSectionBlock**(공공데이터 섹션 1개=자체 접힘+자체 박스+부가블록 3종, 세션 408 D2a — 구 DataSections 해체), HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply, **AdminDataAudit**(138필드 표+관리자 완성도+fullFields 토글 — 점수 탭, 세션 408) (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
+| 상세 | 14 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, **DataSectionBlock**(공공데이터 섹션 1개=자체 접힘+자체 박스+부가블록 3종, 세션 408 D2a — 구 DataSections 해체), **CategoryMiniCard**(종합 탭 카테고리 요약 미니카드 — 점수+등급+결론 1줄[catVerdict]+탭하면 점수 탭 자동 펼침, 세션 409 D2b), HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply, **AdminDataAudit**(138필드 표+관리자 완성도+fullFields 토글 — 세션 408. 세션 409 D2b 로 AdminScoreBreakdown·AdminUnitSupply 와 함께 관리자 탭[sec-admin]으로 이동) (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
 | 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
 | 관리자 | 6 | `admin/` | AdminDashboard, AdminHelpGuide, AdminConsults, WeightEditor, WeightTable, ScoreBreakdownPreview (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
 
@@ -67,7 +67,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
-| DetailModal | ~360 | 모달 컨테이너 (isDesktop 760px, ARIA dialog). 세션 407 D1: 6 콘텐츠 교체 탭(activeTab+visited keepMounted, 관리자=전 패널 마운트) + CTA sticky bottom 바(탭 무관 항상 노출, 모달 마지막 포커서블 불변식). **세션 408 D2a**: 공공데이터 8섹션을 주제별 탭 분산(단지기본→종합·인프라/교통/치안→입지·시장지표/네이버교차→시세·청약경쟁/분양정보→분양), 점수 탭=CatPanel 순수 점수+관리자 검수. 종합탭 중복 4필드(unsoldRate·completion·dong·roadAddress) 핵심지표와 중복 제거 |
+| DetailModal | ~370 | 모달 컨테이너 (isDesktop 760px, ARIA dialog). 세션 407 D1: 콘텐츠 교체 탭(activeTab+visited keepMounted, 관리자=전 패널 마운트) + CTA sticky bottom 바. 세션 408 D2a: 공공데이터 8섹션 주제별 탭 분산. **세션 409 D2b**: 종합 탭에 CategoryMiniCard 6개(점수+결론, 클릭 시 점수 탭 해당 카테고리 자동 펼침 — jumpSeqs[k] 단조 증가 key 로 1개만 리마운트). 관리자 인사이트 3종(AdminScoreBreakdown·AdminUnitSupply·AdminDataAudit)을 점수·분양 탭에서 **관리자 탭(sec-admin)**으로 분리 — sections useMemo 로 adminLoggedIn 시에만 7번째 탭 추가, 소비자는 6탭. CatPanel 은 점수 탭에서 순수 점수만 |
 | PriceChart | 43 | 분양가 추이 SVG (usePriceHistory + siblingIds) |
 | UnsoldChart | 45 | 미분양 추이 SVG (useUnsoldHistory + siblingIds) |
 | PresaleInfo | 130 | 네이버 분양정보 (가격카드/일정/링크/Analytics) |

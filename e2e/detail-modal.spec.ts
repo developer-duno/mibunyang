@@ -92,7 +92,8 @@ test.describe("상세 모달", () => {
     const modal = page.locator('[role="dialog"]');
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    await modal.getByRole("button", { name: "시세" }).click();
+    // exact:true — 세션 409 D2b 종합 탭 미니카드 aria-label("입지 78점 B+ …")이 부분일치로 잡히는 것 차단(칩만)
+    await modal.getByRole("button", { name: "시세", exact: true }).click();
     // non-skip 가드: 시세 탭 패널은 데이터 유무와 무관하게 마운트·가시 (탭 전환 자체의 회귀 가드)
     await expect(modal.locator("#sec-price")).toBeVisible({ timeout: 4000 });
 
@@ -121,7 +122,8 @@ test.describe("상세 모달", () => {
     await expect(modal.locator("#sec-overview")).toBeVisible();
     await expect(modal.locator("#sec-score")).not.toBeVisible();
 
-    const scoreChip = modal.getByRole("button", { name: "점수" });
+    // exact:true — 미니카드 aria-label("입지 78점 …")의 "점"이 부분일치로 잡히는 strict 위반 차단(세션 409 D2b)
+    const scoreChip = modal.getByRole("button", { name: "점수", exact: true });
     await scoreChip.click();
 
     // 축1: 점수 탭 콘텐츠 마운트·가시 (DataSections + CatPanel)

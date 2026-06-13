@@ -10,6 +10,9 @@ type CatPanelProps = {
   cat: Res;
   k: string;
   emphasized?: boolean;
+  /** 초기 펼침 여부 (세션 409 D2b) — 종합 탭 미니카드 클릭 시 해당 카테고리 자동 펼침용.
+      미전달 시 false(기존 동작). 부모가 key 를 바꿔 리마운트할 때마다 이 값으로 재초기화. */
+  defaultExpanded?: boolean;
 };
 
 function getDots(score: number, catKey: string, subName: string): number {
@@ -51,8 +54,8 @@ function getHighlights(subs: SubScoreItem[], catKey: string): SubScoreItem[] {
     .slice(0, 3);
 }
 
-export const CatPanel = memo(function CatPanel({ cat, k, emphasized }: CatPanelProps) {
-  const [expanded, setExpanded] = useState(false);
+export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpanded }: CatPanelProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   const col = (catCol as Record<string, string>)[k];
   const grade = gr(cat.total);
   const ctx = (SUB_CONTEXT as unknown as Record<string, Record<string, { interpret?: ((_sc: number) => string) | null; benchmark?: string | null }>>)[k] || {};

@@ -116,4 +116,15 @@ describe("CatPanel", () => {
     render(<CatPanel cat={makeCat()} k="price" />);
     expect(screen.queryByText(/중점/)).toBeNull();
   });
+
+  // defaultExpanded (세션 409 D2b) — 종합 탭 미니카드 클릭 시 해당 카테고리 자동 펼침용.
+  it("defaultExpanded=true 면 초기 aria-expanded=true (미니카드 자동 펼침)", () => {
+    render(<CatPanel cat={makeCat()} k="price" defaultExpanded />);
+    expect(screen.getByRole("button").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("defaultExpanded 미전달이면 초기 aria-expanded=false (기존 동작 보존)", () => {
+    render(<CatPanel cat={makeCat()} k="price" />);
+    expect(screen.getByRole("button").getAttribute("aria-expanded")).toBe("false");
+  });
 });

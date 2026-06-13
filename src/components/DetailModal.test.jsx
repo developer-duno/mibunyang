@@ -10,7 +10,7 @@ function makeItem(overrides = {}) {
     {},
     {
       cats: {
-        price: { label: "가격 매력도", total: 70, deviation: "-3.2", subs: [{ info: "-3.2%", name: "적정가괴리", score: 70 }] },
+        price: { label: "가격 매력도", total: 70, fairPrice: 48000, deviation: "-3.2", subs: [{ info: "-3.2%", name: "적정가괴리", score: 70 }] },
         location: { label: "입지·생활권", total: 80, subs: [{ info: "역세권", name: "지하철", score: 80 }] },
         product: { label: "상품성", total: 65, subs: [] },
         benefit: { label: "혜택·할인", total: 60, totalWon: 0, rate: 0, subs: [] },
@@ -158,8 +158,10 @@ describe("DetailModal StickyJumpNav", () => {
   });
 
   const SECTION_IDS = ["sec-overview", "sec-price", "sec-location", "sec-presale", "sec-finance", "sec-score"];
+  // 관리자 로그인 시 7번째 관리자 탭(sec-admin) 추가 (세션 409 D2b). 소비자는 SECTION_IDS 6개 그대로.
+  const ADMIN_SECTION_IDS = [...SECTION_IDS, "sec-admin"];
   /** @type {Record<string, string>} */
-  const TAB_LABELS = { "sec-overview": "종합", "sec-price": "시세", "sec-location": "입지", "sec-presale": "분양", "sec-finance": "금융", "sec-score": "점수" };
+  const TAB_LABELS = { "sec-overview": "종합", "sec-price": "시세", "sec-location": "입지", "sec-presale": "분양", "sec-finance": "금융", "sec-score": "점수", "sec-admin": "관리자" };
 
   it("소비자 첫 렌더는 종합 탭만 마운트 — 6 칩 순회 클릭 시 각 섹션 마운트 (정보 소실 0 골격)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
@@ -179,11 +181,19 @@ describe("DetailModal StickyJumpNav", () => {
     expect(screen.getByText("핵심 지표")).toBeVisible();
   });
 
-  it("탭바 칩 6개(종합/시세/입지/분양/금융/점수)가 모두 렌더됨", () => {
+  it("탭바 칩 6개(종합/시세/입지/분양/금융/점수)가 모두 렌더됨 — 소비자(adminLoggedIn=false)", () => {
     render(<DetailModal {...makeProps()} />);
     for (const label of ["종합", "시세", "입지", "분양", "금융", "점수"]) {
       const chip = screen.getByRole("button", { name: label });
       expect(chip).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: "관리자" })).toBeNull();
+  });
+
+  it("adminLoggedIn=true 면 탭바 칩 7개(관리자 포함) — 세션 409 D2b", () => {
+    render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
+    for (const label of ["종합", "시세", "입지", "분양", "금융", "점수", "관리자"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
   });
 
@@ -311,15 +321,17 @@ describe("DetailModal StickyJumpNav", () => {
     expect(screen.queryByText(/★ 중점/)).toBeNull();
   });
 
-  it("adminLoggedIn=true 면 클릭 없이 6개 탭 패널 전부 마운트 — 인쇄 전체 펼침 보존", () => {
+  it("adminLoggedIn=true 면 클릭 없이 7개 탭 패널 전부 마운트(관리자 탭 포함) — 인쇄 전체 펼침 보존", () => {
     const { container } = render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
-    for (const id of SECTION_IDS) {
+    for (const id of ADMIN_SECTION_IDS) {
       expect(container.querySelector(`#${id}`)).not.toBeNull();
     }
+    // 관리자 탭 패널도 data-tab-panel 부여 — App print CSS 가 인쇄 시 펼침 (세션 409 D2b)
+    expect(container.querySelector("#sec-admin")?.getAttribute("data-tab-panel")).not.toBeNull();
   });
 
-  // 관리자 인사이트 레이어 게이트 (세션 405 전문가 대시보드 이식)
-  it("adminLoggedIn=true 면 점수 산출 과정(AdminScoreBreakdown)이 lazy 렌더된다", async () => {
+  // 관리자 인사이트 레이어 게이트 (세션 405 전문가 대시보드 이식, 세션 409 D2b 관리자 탭 이동)
+  it("adminLoggedIn=true 면 점수 산출 과정(AdminScoreBreakdown)이 lazy 렌더된다 (즉시 마운트)", async () => {
     render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
     expect(await screen.findByTestId("admin-score-breakdown")).toBeInTheDocument();
   });
@@ -328,5 +340,81 @@ describe("DetailModal StickyJumpNav", () => {
     render(<DetailModal {...makeProps()} />);
     expect(screen.queryByTestId("admin-score-breakdown")).toBeNull();
     expect(screen.queryByText("점수 산출 과정 (관리자)")).toBeNull();
+  });
+
+  // 세션 409 D2b — 종합 탭 카테고리 미니카드
+  it("종합 탭에 카테고리 미니카드 6개가 결론과 함께 보인다", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    // 6 카테고리 미니카드 = role=button 중 aria-label 에 '점수 탭에서 상세 보기' 포함
+    const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
+    expect(cards.length).toBe(6);
+    // 결론 문구 샘플: location 80점 → '입지 우수', price deviation '-3.2' → '비쌈'
+    expect(overview.textContent).toContain("입지 우수");
+    expect(overview.textContent).toContain("적정가 대비 3% 비쌈");
+  });
+
+  it("미니카드 클릭 시 점수 탭으로 전환 + 해당 카테고리 CatPanel 자동 펼침", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    // 입지(location) 미니카드 — aria-label 로 식별
+    const locCard = /** @type {any} */ ([...overview.querySelectorAll('[role="button"]')].find(
+      el => el.getAttribute("aria-label")?.startsWith("입지 "),
+    ));
+    fireEvent.click(locCard);
+    // 점수 탭 전환
+    expect(container.querySelector("#sec-score")).toBeVisible();
+    // 해당 CatPanel(입지·생활권) 자동 펼침 = aria-expanded true
+    const scoreSection = /** @type {any} */ (container.querySelector("#sec-score"));
+    const locPanel = /** @type {any} */ ([...scoreSection.querySelectorAll('[role="button"][aria-expanded]')].find(
+      el => el.textContent.includes("입지·생활권"),
+    ));
+    expect(locPanel.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("A 카테고리 점프 → B 카테고리 점프 후에도 A CatPanel 펼침 보존 (형제 상태 — 적대검증 R2)", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    /** @param {string} prefix */
+    const cardByLabel = (prefix) => /** @type {any} */ ([...overview.querySelectorAll('[role="button"]')].find(
+      el => el.getAttribute("aria-label")?.startsWith(prefix),
+    ));
+    fireEvent.click(cardByLabel("입지 "));   // A = location
+    fireEvent.click(cardByLabel("안전 "));   // B = risk (SHORT_LABEL '안전도'→'안전')
+    const scoreSection = /** @type {any} */ (container.querySelector("#sec-score"));
+    /** @param {string} txt */
+    const panelByText = (txt) => /** @type {any} */ ([...scoreSection.querySelectorAll('[role="button"][aria-expanded]')].find(
+      el => el.textContent.includes(txt),
+    ));
+    // 둘 다 펼침 유지 (key 단조 증가 = A key 회귀 0)
+    expect(panelByText("입지·생활권").getAttribute("aria-expanded")).toBe("true");
+    expect(panelByText("안전도").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  // 세션 409 D2b — 관리자 탭 분리
+  it("adminLoggedIn=false 면 관리자 탭 칩이 없다 (소비자 6칩)", () => {
+    render(<DetailModal {...makeProps()} />);
+    expect(screen.queryByRole("button", { name: "관리자" })).toBeNull();
+    for (const label of ["종합", "시세", "입지", "분양", "금융", "점수"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it("adminLoggedIn=true 면 관리자 탭 칩 노출(7칩) + 점수/분양 탭엔 admin 블록 없고 관리자 탭에 3종", () => {
+    const { container } = render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
+    // 7번째 칩
+    expect(screen.getByRole("button", { name: "관리자" })).toBeInTheDocument();
+    // 점수 탭엔 admin 블록 없음 (순수 CatPanel)
+    const score = container.querySelector("#sec-score");
+    expect(score?.querySelector('[data-testid="admin-score-breakdown"]')).toBeNull();
+    expect(score?.querySelector('[data-testid="admin-completeness"]')).toBeNull();
+    // 분양 탭엔 AdminUnitSupply 없음
+    const presale = container.querySelector("#sec-presale");
+    expect(presale?.querySelector('[data-testid="admin-unit-supply"]')).toBeNull();
+    // 관리자 탭에 3종 (즉시 마운트)
+    const admin = container.querySelector("#sec-admin");
+    expect(admin?.querySelector('[data-testid="admin-score-breakdown"]')).not.toBeNull();
+    expect(admin?.querySelector('[data-testid="admin-unit-supply"]')).not.toBeNull();
+    expect(admin?.querySelector('[data-testid="admin-completeness"]')).not.toBeNull();
   });
 });
