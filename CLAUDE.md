@@ -21,7 +21,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 |--------|------|----------|
 | **프론트** | React 19 + Vite 8 (Rolldown) | App.tsx (~430줄), `@/` 경로 별칭, Pretendard 폰트 |
 | **상태/훅** | useMemo 14개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
-| **컴포넌트** | memo() 44개 + icons.tsx (SVG 9개) | 소비자9 + 섹션9 + 상세12 + 필터7 + 관리자6 + 아이콘1 (전문가 그룹 세션 405 폐지 — 관리자 인사이트로 이식) |
+| **컴포넌트** | memo() 54개 + icons.tsx (SVG 9개) | 소비자11 + 홈6 + 섹션9 + 상세14 + 필터7 + 관리자6 + 아이콘1 (상세 D2a/D2b 증가, 전문가 그룹 세션 405 폐지 — 관리자 인사이트로 이식) |
 | **API** | Vercel Serverless (23개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합) |
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지 |
@@ -51,7 +51,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | 디렉토리 CLAUDE.md | 핵심 내용 |
 |---|---|
 | `src/scoring/` | 가중치 합계 100, 클램핑, null 처리, 스코어링 파이프라인 |
-| `src/components/` | memo 45개, 접근성, **반응형 레이아웃**, **데스크톱 키보드/테마** |
+| `src/components/` | memo 54개, 접근성, **반응형 레이아웃**, **데스크톱 키보드/테마** |
 | `src/hooks/` | Hook 호출 순서, 의존성 13개, **React 성능 패턴** (useDeferredValue/useTransition) |
 | `api/` | JS null 함정, 한글 인코딩, withHandler, **인증/세션 KV**, **비로그인 블라인드 정책** |
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |

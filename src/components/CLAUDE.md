@@ -71,7 +71,9 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | PriceChart | 43 | 분양가 추이 SVG (usePriceHistory + siblingIds) |
 | UnsoldChart | 45 | 미분양 추이 SVG (useUnsoldHistory + siblingIds) |
 | PresaleInfo | 130 | 네이버 분양정보 (가격카드/일정/링크/Analytics) |
-| DataSections | 152 | 공공데이터 6개 섹션 (세션143 HighlightField·InfrastructureSection 분리 후). adminMode prop = 관리자 138필드 전수 표 토글 + 관리자 기준 완성도 (세션 405) |
+| DataSectionBlock | ~120 | 공공데이터 섹션 1개 렌더(자체 접힘 더보기 + 자체 박스 + 부가블록 3종 NearbyFacilities/PriceByFloor/AnnouncementLink). 섹션 정의·fieldsOf·dataValueColor 는 `@/lib/dataSections`(4그룹 상수 OVERVIEW/LOCATION/PRICE/PRESALE). 세션 408 D2a 로 구 DataSections.tsx(152줄, 단일 토글 8섹션) 해체 |
+| CategoryMiniCard | ~70 | 종합 탭 카테고리 요약 미니카드 — 점수+등급(gr)+결론 1줄(`@/constants/catVerdict` catVerdict). 클릭 시 점수 탭 해당 카테고리 자동 펼침(DetailModal jumpSeqs key). 강조=테두리+"중점" 칩(★ 없음). 세션 409 D2b |
+| AdminDataAudit | ~115 | 관리자: 138필드 전수 표(FIELD_SECTIONS 9섹션 fullFields 토글) + 관리자 기준 완성도 + ★중점 강조. 구 DataSections adminMode 분리(세션 408 D2a). 세션 409 D2b 로 관리자 탭(sec-admin) 소속 |
 | AdminScoreBreakdown | 150 | 관리자: 적정가 산출 과정·가중치 기여도·최종 가중 합계·도시등급·인쇄 (구 ExpertScoreBreakdown+Summary 이식, 세션 405) |
 | AdminUnitSupply | 76 | 관리자: 동/호수 3칸 + 청약홈 평형별 공급 표 (구 ExpertUnitPlaceholder 이식, usePresaleDetail units 유일 소비처) |
 
