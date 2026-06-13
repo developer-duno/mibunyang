@@ -2,7 +2,10 @@ import { memo } from "react";
 import { C, F } from "@/theme";
 import { LineChart } from "@/components/primitives";
 import { usePriceHistory } from "@/hooks/usePriceHistory";
+import { HelpHint } from "@/components/HelpHint";
 import type { PriceChartProps } from "@/types/detail";
+
+const PRICE_CHART_HINT = "이 단지(같은 분양 묶음)의 분양가가 시간에 따라 어떻게 바뀌었는지예요. 단위는 만원이고, 매주 자동으로 모아 쌓고 있어요.";
 
 /** 분양가 추이 차트 — DetailModal 내 표시 */
 export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }: PriceChartProps) {
@@ -38,7 +41,7 @@ export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }: 
 
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6 }}>분양가 추이</div>
+      <div style={{ display: "flex", alignItems: "center", fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 6 }}>분양가 추이<HelpHint text={PRICE_CHART_HINT} label="분양가 추이" /></div>
       <LineChart data={chartData} color={C.green} height={160} yLabel="분양가 추이" />
       {chartData.length < 6 && (
         <div style={{ fontSize: F.micro, color: C.muted, marginTop: 4, textAlign: "center" }}>
