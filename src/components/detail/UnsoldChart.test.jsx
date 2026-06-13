@@ -61,4 +61,13 @@ describe("UnsoldChart", () => {
     expect(screen.getByText("┄ 준공후")).toBeTruthy();
     expect(screen.getByTestId("line-chart")).toBeTruthy();
   });
+
+  // ? 도움말 노출
+  it("정상 렌더 시 제목 옆 ? 도움말이 보인다", () => {
+    mockUseUnsoldHistory.mockReturnValue({ data: makeData(3, true), loading: false, error: null, retry: vi.fn() });
+    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    const trigger = screen.getByRole("button", { name: "미분양 추이 풀이 보기" });
+    fireEvent.click(trigger);
+    expect(screen.getByText(/준공후 미분양/)).toBeTruthy();
+  });
 });
