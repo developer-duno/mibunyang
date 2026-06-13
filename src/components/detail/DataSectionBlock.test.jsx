@@ -37,10 +37,12 @@ describe("DataSectionBlock", () => {
   });
 
   // aria-expanded 토글
+  // 세션 412: 교통 상세에 hint 추가 → 헤더 토글 + ? 트리거 둘 다 role=button.
+  // 헤더 토글은 aria-expanded 보유로 특정(? 트리거는 expanded 속성 없음).
   it("aria-expanded가 클릭으로 변경된다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
-    const toggle = screen.getByRole("button");
+    const toggle = screen.getByRole("button", { expanded: false });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -50,7 +52,7 @@ describe("DataSectionBlock", () => {
   it("Enter 키로 펼칠 수 있다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
-    fireEvent.keyDown(screen.getByRole("button"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("button", { expanded: false }), { key: "Enter" });
     expect(screen.getByText("영통역")).toBeTruthy();
   });
 
@@ -58,7 +60,7 @@ describe("DataSectionBlock", () => {
   it("Space 키로 펼칠 수 있다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
-    fireEvent.keyDown(screen.getByRole("button"), { key: " " });
+    fireEvent.keyDown(screen.getByRole("button", { expanded: false }), { key: " " });
     expect(screen.getByText("영통역")).toBeTruthy();
   });
 
@@ -159,9 +161,12 @@ describe("DataSectionBlock", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent(/몇 대 1/);
   });
 
-  it("hint 없는 섹션('교통 상세')은 헤더에 ? 도움말이 없다", () => {
+  // 세션 412: 모든 실제 섹션이 hint 를 가지므로, hint 없는 섹션 객체를 직접 주입해
+  // DataSectionBlock 의 조건부 렌더(section.hint && <HelpHint/>)를 정직하게 검증.
+  it("hint 없는 섹션은 헤더에 ? 도움말이 없다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
+    const noHintSection = /** @type {any} */ ({ title: "테스트 섹션", grid: ["subwayName", "subwayLines"] });
+    render(<DataSectionBlock section={noHintSection} apt={apt} />);
     expect(screen.queryByLabelText(/풀이 보기$/)).toBeNull();
   });
 });
