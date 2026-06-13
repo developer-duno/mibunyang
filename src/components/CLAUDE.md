@@ -2,18 +2,18 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 컴포넌트 (53개, 2026-06-13 실측)
+## memo() 컴포넌트 (세션 408 D2a 후 detail +4 순증: 구 DataSections 1 삭제 → DataSectionBlock+부가블록3+AdminDataAudit 5 추가, 2026-06-13 실측)
 
 | 그룹 | 개수 | 위치 | 컴포넌트 |
 |------|------|------|---------|
 | 소비자 | 11 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, RegionChipBar(지역 칩+★관심지역, 세션 406), PresaleResultList(분양결과 — 잔여세대 경쟁률, "1순위" 표기 금지, 세션 406), primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
 | 홈 | 6 | `home/` | HomePage, WidgetCard, MapEntryWidget(M2: 로그인 시 MapView compact 미니지도 임베드 + 뷰포트 진입 lazy), UpcomingWidget, TopPicksWidget, MarketSummaryWidget (세션 404 M1 신설, 세션 406 표 등재) |
 | 섹션 | 9 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), AdminLoginForm, InfoPage, BottomNav, MapView, InfraOverlay, SelectedAptCard |
-| 상세 | 12 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, DataSections, HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
+| 상세 | 13 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, **DataSectionBlock**(공공데이터 섹션 1개=자체 접힘+자체 박스+부가블록 3종, 세션 408 D2a — 구 DataSections 해체), HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply, **AdminDataAudit**(138필드 표+관리자 완성도+fullFields 토글 — 점수 탭, 세션 408) (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
 | 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
 | 관리자 | 6 | `admin/` | AdminDashboard, AdminHelpGuide, AdminConsults, WeightEditor, WeightTable, ScoreBreakdownPreview (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
 
-> **전문가 그룹(`expert/` 9개)은 세션 405 에 폐지** — 자료는 상세 모달 관리자 인사이트(AdminScoreBreakdown·AdminUnitSupply·DataSections adminMode)와 AdminConsults/AdminHelpGuide 로 이식. 결정 문서: `docs/superpowers/specs/2026-06-12-expert-role-abolition-decision.md` |
+> **전문가 그룹(`expert/` 9개)은 세션 405 에 폐지** — 자료는 상세 모달 관리자 인사이트(AdminScoreBreakdown·AdminUnitSupply·AdminDataAudit 138필드 표[세션 408 D2a 로 구 DataSections adminMode 분리])와 AdminConsults/AdminHelpGuide 로 이식. 결정 문서: `docs/superpowers/specs/2026-06-12-expert-role-abolition-decision.md` |
 | 아이콘 | 1 | `icons.jsx` | 내부 공용 memo 1개 (IconClose 등 9개 아이콘은 순수 SVG 함수, memo 래핑 안 함) |
 
 - 반드시 `memo(function Name(...) { ... })` 패턴 유지
@@ -41,7 +41,7 @@
 ## 관리자 인사이트 규칙 (세션 405 — 구 전문가 페이지 규칙 승계)
 
 - 모든 신규 블록은 `adminLoggedIn` 게이트 + lazy import — 소비자 화면/번들 영향 0 (게이트 가드 테스트 의무)
-- 모든 138개 필드 개별 표시 필수 (DataSections adminMode, fieldMeta.ts 9섹션 합산: 21+12+18+33+10+10+4+11+19)
+- 모든 138개 필드 개별 표시 필수 (AdminDataAudit, fieldMeta.ts 9섹션 합산: 21+12+18+33+10+10+4+11+19)
 - 스코어링 중간 계산 과정 투명 표시 (AdminScoreBreakdown — 적정가 과정·기여도·가중 합계)
 - catKeys는 `Object.keys(res.cats)` 동적 추출 (하드코딩 금지)
 
@@ -67,7 +67,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
-| DetailModal | 342 | 모달 컨테이너 (isDesktop 760px, ARIA dialog). 세션 407 D1: 6 콘텐츠 교체 탭(activeTab+visited keepMounted, 관리자=전 패널 마운트) + CTA sticky bottom 바(탭 무관 항상 노출, 모달 마지막 포커서블 불변식) |
+| DetailModal | ~360 | 모달 컨테이너 (isDesktop 760px, ARIA dialog). 세션 407 D1: 6 콘텐츠 교체 탭(activeTab+visited keepMounted, 관리자=전 패널 마운트) + CTA sticky bottom 바(탭 무관 항상 노출, 모달 마지막 포커서블 불변식). **세션 408 D2a**: 공공데이터 8섹션을 주제별 탭 분산(단지기본→종합·인프라/교통/치안→입지·시장지표/네이버교차→시세·청약경쟁/분양정보→분양), 점수 탭=CatPanel 순수 점수+관리자 검수. 종합탭 중복 4필드(unsoldRate·completion·dong·roadAddress) 핵심지표와 중복 제거 |
 | PriceChart | 43 | 분양가 추이 SVG (usePriceHistory + siblingIds) |
 | UnsoldChart | 45 | 미분양 추이 SVG (useUnsoldHistory + siblingIds) |
 | PresaleInfo | 130 | 네이버 분양정보 (가격카드/일정/링크/Analytics) |

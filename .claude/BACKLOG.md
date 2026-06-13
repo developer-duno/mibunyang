@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ 상세 모달 IA 개편 D2a 데이터 재배분 — 세션 408 (구 DataSections 8섹션[단일 토글] 해체 → 주제별 탭 분산: 단지기본→종합·생활인프라/교통/치안환경→입지[빈약 해소]·시장지표/네이버교차/층별가→시세·청약경쟁/분양정보/모집공고→분양. 점수 탭=CatPanel 순수 점수+관리자 검수(AdminDataAudit 138필드). 신규 3파일[dataSections.ts 4그룹상수·DataSectionBlock.tsx 섹션별 접힘+자체박스+부가블록3·AdminDataAudit.tsx]. 사장님 결정 = 섹션별 접기[더보기] 유지[토글 제거 시 입지 탭 가장 김=루즈 재발]. 적대검증 2라운드 15 probe major 6 정정[토글제거 폐기·종합탭 중복 4필드 unsoldRate/completion/dong/roadAddress 제거(핵심지표 중복)·admin fullFields 게이트 이식·컨테이너 박스 일관·부가블록 footer 종합1회]. 정보 소실 0[귀속 맵 전수]. tsc 0·lint 0·vitest 3,336·e2e 6+1skip. 다음 = D2b 종합 요약 대시보드[미니카드]+관리자 탭 분리)
 - ✅ 상세 모달 IA 개편 D1 + CTA sticky — 세션 407 (PR #106 점프 앵커→콘텐츠 교체 탭[activeTab+visited keepMounted — 금융 useRef 캐시 훅 refetch·presale_view 중복·펼침 소실 차단, 관리자 전 패널 마운트=인쇄 보존 print media 실증, jsdom scrollTo undefined→setActiveTab 가드 밖] → PR #107 CTA sticky bottom[길면 반투명 92%+blur 겹침·짧으면 제자리 — 분기 없이 자동, 포커스 트랩 불변식 유지]. 적대검증 2라운드 9 probe — "App 상시 마운트" 할루시네이션·visited 시딩 누락·PriceTable null e2e 함정 적발 후 구현. D2 순서 확정 = D2a 데이터 재배분 먼저[사장님 위임 결정 — 입지 탭 빈약 실측]. vitest 3,331·e2e 6+1skip)
 - ✅ 통합 홈 M2 미니지도 + 곧분양 호갱노노 패턴 4종 — 세션 406 (PR #104 MapView prop 3종[height/compact/onSelect — ref 격리]·MapEntryWidget 280px 임베드·spec v4 추록[관리자 위젯 안 살림] → PR #105 RegionChipBar 지역칩+★관심지역·PresaleResultList 분양결과[잔여세대 경쟁률 — "1순위" 표기 금지, 적대검증 적발]·UpcomingPage result 탭·카드 강조줄. 적대검증 2회 14 probe major 6 정정. vitest 3,325·e2e 8/8)
 - ✅ 전문가 역할 완전 폐지 3-PR — 세션 405 (PR #101 이식[상세 모달 관리자 인사이트: AdminScoreBreakdown·DataSections adminMode 138필드·AdminUnitSupply 청약홈 평형 표·인쇄] → #102 철거[expert/ 18파일 -2,600줄, AdminLoginForm·AdminConsults·InfoPage 카카오 카드+관리자 링크, 네비 축 adminLoggedIn — 카카오 손님 전문가 네비 오노출 quirk 해소, "회원 관리" 개명] → #103 백엔드[signup 폐지·login 비admin generic 401·isAdminEmail 단일 출처·refresh expert→user 강등·consults admin 단독·create-admin-user.mjs 잠금 방지]. 자료 소실 0 — 귀속 맵 = `docs/superpowers/specs/2026-06-12-expert-role-abolition-decision.md`. spec v3 추록 = M2 재산정)
@@ -97,7 +98,9 @@
 - 🔴 **상세 모달 IA 개편 — Progressive Disclosure D2~D3** (세션 406 사장님 지시: "너무 길고 루즈해, 카테고리 구분해서 클릭으로 점점 확대")
   - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (C안 + 세션 407 D1 추록: CTA 항상 노출·keepMounted·수용사항)
   - ✅ D1 완료 = 세션 407 PR #106 (`321fd6e`) — 점프 앵커 → 콘텐츠 교체 탭. keepMounted(첫 방문 마운트 후 display:none — 금융 useRef 캐시 훅 refetch·presale_view 중복·펼침 소실 차단), 관리자 전 패널 마운트(인쇄 보존, print media 실증), CTA 공통 영역(사장님 결정). 적대검증 2라운드 9 probe — "App 상시 마운트" 할루시네이션·visited 시딩 누락·jsdom scrollTo 가드 함정·PriceTable null e2e 함정 적발 후 구현
-  - **D2 순서 확정 (세션 407 사장님 위임 → 데이터 제자리 먼저)**: D2a = DataSections 8섹션 해체·주제별 탭 재배분 (생활인프라·교통·치안환경→입지 / 시장지표·네이버교차·층별가→시세 / 청약경쟁·분양정보→분양 / 단지기본→종합 / 점수 탭 = 순수 점수만 + 4중 중복 통합) → D2b = 종합 요약 대시보드 + 관리자 탭 분리. 근거 = 입지 탭 빈약을 사장님 실화면 확인(실측: 입지성 데이터 3섹션 전부 점수 탭 "공공데이터 상세" 접힘에 묻힘) + 미니카드는 탭이 채워져야 미리보기 역할(D2a 선행 의존). 정보 귀속 맵 전수 박제 의무 / D3 = ARIA tablist·애니메이션·analytics(detail_tab_*)
+  - **✅ D2a 완료 (세션 408)** = DataSections 8섹션 해체·주제별 탭 재배분 완결 (위 색인 참조). 사장님 결정 = 섹션별 접기(더보기) 유지. 적대검증 2라운드 15 probe major 6 정정. 정보 소실 0. **다음 = D2b**.
+  - **D2b (다음 진입)** = 종합 요약 대시보드(카테고리 미니카드 6 + 핵심지표) + 관리자 탭 분리. 미니카드 = 각 탭이 D2a 로 채워졌으니 미리보기 역할 가능. spec `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` §3 옵션 C. D3 = ARIA tablist·애니메이션·analytics(detail_tab_*)
+  - **D2 순서 (세션 407 사장님 위임 → 데이터 제자리 먼저)**: D2a[완료] = DataSections 8섹션 해체·주제별 탭 재배분 → D2b = 종합 요약 대시보드 + 관리자 탭 분리. 근거 = 입지 탭 빈약을 사장님 실화면 확인 + 미니카드는 탭이 채워져야 미리보기 역할(D2a 선행 의존).
   - ⚠️ 구현 진입 시 적대검증 워크플로 1회 의무 (plan 버전마다 재검증 — 세션 407 답습)
   - 후속 (D1 수용사항): 금융 훅(useRentLoanRates/useLoanRates) useRef→모듈 캐시 승격(선택) / `loan-rates.spec` 커버리지 부활(현재도 비로그인 게이트로 죽은 커버리지 — 로그인 mock+금융 칩 선행 필요)
 

@@ -243,11 +243,34 @@ describe("DetailModal StickyJumpNav", () => {
     expect(screen.getByText("비교 추가")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "시세" }));
     expect(screen.getByText("관심매물 추가")).toBeVisible();
-    // §6 점수 탭: DataSections + CatPanel(가격 매력도 라벨)
+    // §6 점수 탭: CatPanel(가격 매력도 라벨) — 세션 408 D2a: DataSections 8섹션은 타 탭 분산, 점수 탭은 순수 점수만
     fireEvent.click(screen.getByRole("button", { name: "점수" }));
     const scoreSection = container.querySelector("#sec-score");
     expect(scoreSection).not.toBeNull();
     expect(scoreSection?.textContent).toContain("가격 매력도");
+  });
+
+  // 세션 408 D2a — 공공데이터 재배분: 입지 탭에 교통 상세 섹션, 시세 탭에 시장/투자 지표 헤더
+  it("입지 탭에 '교통 상세' 데이터 섹션 헤더가 보인다 (D2a 입지 탭 빈약 해소)", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "입지" }));
+    const loc = container.querySelector("#sec-location");
+    expect(loc?.textContent).toContain("교통 상세");
+    expect(loc?.textContent).toContain("생활인프라 (반경 1km)");
+  });
+
+  it("시세 탭에 '시장/투자 지표' 데이터 섹션 헤더가 보인다 (D2a)", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "시세" }));
+    const price = container.querySelector("#sec-price");
+    expect(price?.textContent).toContain("시장/투자 지표");
+  });
+
+  it("점수 탭에 '공공데이터' 단일 토글이 더 이상 없다 (D2a — 8섹션 타 탭 분산)", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "점수" }));
+    const score = container.querySelector("#sec-score");
+    expect(score?.textContent).not.toContain("공공데이터 상세");
   });
 
   it("onConsult 제공 시 '이 매물 상담하기' 버튼 가시 + 클릭 시 apt.id 콜백", () => {
