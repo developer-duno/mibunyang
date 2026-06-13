@@ -2,7 +2,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DetailModal } from "./DetailModal";
+import { trackEvent } from "@/lib/analytics";
 import { makeScoredItem } from "@/__tests__/factories";
+
+// analytics mock — DetailModal 의 detail_tab_view 발화 카운트 단언용. 이 mock 은 PresaleInfo 의
+// presale_view(분양 탭 방문 시 발화)도 no-op 시키나, presale_view 커버리지는 PresaleInfo.test.jsx 소유.
+vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 
 // 최소한의 cats 구조 (DetailModal에서 cats 데이터가 필요)
 function makeItem(overrides = {}) {
@@ -151,7 +156,7 @@ describe("DetailModal", () => {
 // 가시성 단언은 toBeVisible/not.toBeVisible (getByText 단독 금지 — display:none 패널 텍스트도 매칭되는 함정).
 describe("DetailModal StickyJumpNav", () => {
   const origScrollTo = HTMLElement.prototype.scrollTo;
-  beforeEach(() => { document.body.style.overflow = ""; });
+  beforeEach(() => { document.body.style.overflow = ""; vi.mocked(trackEvent).mockClear(); });
   afterEach(() => {
     document.body.style.overflow = "";
     HTMLElement.prototype.scrollTo = origScrollTo;
@@ -170,7 +175,7 @@ describe("DetailModal StickyJumpNav", () => {
       expect(container.querySelector(`#${id}`)).toBeNull();
     }
     for (const id of SECTION_IDS) {
-      fireEvent.click(screen.getByRole("button", { name: TAB_LABELS[id] }));
+      fireEvent.click(screen.getByRole("tab", { name: TAB_LABELS[id] }));
       expect(container.querySelector(`#${id}`)).not.toBeNull();
     }
   });
@@ -184,16 +189,16 @@ describe("DetailModal StickyJumpNav", () => {
   it("탭바 칩 6개(종합/시세/입지/분양/금융/점수)가 모두 렌더됨 — 소비자(adminLoggedIn=false)", () => {
     render(<DetailModal {...makeProps()} />);
     for (const label of ["종합", "시세", "입지", "분양", "금융", "점수"]) {
-      const chip = screen.getByRole("button", { name: label });
+      const chip = screen.getByRole("tab", { name: label });
       expect(chip).toBeInTheDocument();
     }
-    expect(screen.queryByRole("button", { name: "관리자" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "관리자" })).toBeNull();
   });
 
   it("adminLoggedIn=true 면 탭바 칩 7개(관리자 포함) — 세션 409 D2b", () => {
     render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
     for (const label of ["종합", "시세", "입지", "분양", "금융", "점수", "관리자"]) {
-      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
     }
   });
 
@@ -210,9 +215,9 @@ describe("DetailModal StickyJumpNav", () => {
     const scrollToSpy = vi.fn();
     HTMLElement.prototype.scrollTo = scrollToSpy;
     const { container } = render(<DetailModal {...makeProps()} />);
-    const priceChip = screen.getByRole("button", { name: "시세" });
+    const priceChip = screen.getByRole("tab", { name: "시세" });
     fireEvent.click(priceChip);
-    expect(priceChip).toHaveAttribute("aria-current", "true");
+    expect(priceChip).toHaveAttribute("aria-selected", "true");
     expect(container.querySelector("#sec-price")).toBeVisible();
     // keepMounted: 떠난 종합 탭은 DOM 유지 + display:none
     expect(container.querySelector("#sec-overview")).not.toBeNull();
@@ -225,15 +230,15 @@ describe("DetailModal StickyJumpNav", () => {
     // 비활성 탭 콘텐츠 도달 불가 (세션 407 적대검증 R2 적발).
     HTMLElement.prototype.scrollTo = /** @type {any} */ (undefined);
     const { container } = render(<DetailModal {...makeProps()} />);
-    const chip = screen.getByRole("button", { name: "입지" });
+    const chip = screen.getByRole("tab", { name: "입지" });
     expect(() => fireEvent.click(chip)).not.toThrow();
     expect(container.querySelector("#sec-location")).toBeVisible();
   });
 
   it("keepMounted — 방문 탭은 전환 후 DOM 유지 + hidden, 미방문 탭은 미마운트", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "시세" }));
-    fireEvent.click(screen.getByRole("button", { name: "금융" }));
+    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
+    fireEvent.click(screen.getByRole("tab", { name: "금융" }));
     const price = container.querySelector("#sec-price");
     expect(price).not.toBeNull();
     expect(price).not.toBeVisible();
@@ -251,10 +256,10 @@ describe("DetailModal StickyJumpNav", () => {
     // CTA 공통 영역 — 탭 패널 밖이라 어느 탭에서도 가시 (사장님 결정 2026-06-13)
     expect(screen.getByText("관심매물 추가")).toBeVisible();
     expect(screen.getByText("비교 추가")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "시세" }));
+    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
     expect(screen.getByText("관심매물 추가")).toBeVisible();
     // §6 점수 탭: CatPanel(가격 매력도 라벨) — 세션 408 D2a: DataSections 8섹션은 타 탭 분산, 점수 탭은 순수 점수만
-    fireEvent.click(screen.getByRole("button", { name: "점수" }));
+    fireEvent.click(screen.getByRole("tab", { name: "점수" }));
     const scoreSection = container.querySelector("#sec-score");
     expect(scoreSection).not.toBeNull();
     expect(scoreSection?.textContent).toContain("가격 매력도");
@@ -263,7 +268,7 @@ describe("DetailModal StickyJumpNav", () => {
   // 세션 408 D2a — 공공데이터 재배분: 입지 탭에 교통 상세 섹션, 시세 탭에 시장/투자 지표 헤더
   it("입지 탭에 '교통 상세' 데이터 섹션 헤더가 보인다 (D2a 입지 탭 빈약 해소)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "입지" }));
+    fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     const loc = container.querySelector("#sec-location");
     expect(loc?.textContent).toContain("교통 상세");
     expect(loc?.textContent).toContain("생활인프라 (반경 1km)");
@@ -271,14 +276,14 @@ describe("DetailModal StickyJumpNav", () => {
 
   it("시세 탭에 '시장/투자 지표' 데이터 섹션 헤더가 보인다 (D2a)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "시세" }));
+    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
     const price = container.querySelector("#sec-price");
     expect(price?.textContent).toContain("시장/투자 지표");
   });
 
   it("점수 탭에 '공공데이터' 단일 토글이 더 이상 없다 (D2a — 8섹션 타 탭 분산)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "점수" }));
+    fireEvent.click(screen.getByRole("tab", { name: "점수" }));
     const score = container.querySelector("#sec-score");
     expect(score?.textContent).not.toContain("공공데이터 상세");
   });
@@ -311,13 +316,13 @@ describe("DetailModal StickyJumpNav", () => {
   // 프로필 맞춤 강조 (세션 382) — invest 상위 2 = price, risk. CatPanel 은 점수 탭 안 (점수 탭만 방문 상태에서 카운트).
   it("profile='invest' 면 점수 탭에서 가격·안전 CatPanel 2개만 ★ 중점 배지", () => {
     render(<DetailModal {...makeProps({ profile: "invest" })} />);
-    fireEvent.click(screen.getByRole("button", { name: "점수" }));
+    fireEvent.click(screen.getByRole("tab", { name: "점수" }));
     expect(screen.getAllByText(/★ 중점/).length).toBe(2);
   });
 
   it("profile 미전달이면 점수 탭에서도 강조 배지 없음(기존 동작 보존)", () => {
     render(<DetailModal {...makeProps()} />);
-    fireEvent.click(screen.getByRole("button", { name: "점수" }));
+    fireEvent.click(screen.getByRole("tab", { name: "점수" }));
     expect(screen.queryByText(/★ 중점/)).toBeNull();
   });
 
@@ -394,16 +399,16 @@ describe("DetailModal StickyJumpNav", () => {
   // 세션 409 D2b — 관리자 탭 분리
   it("adminLoggedIn=false 면 관리자 탭 칩이 없다 (소비자 6칩)", () => {
     render(<DetailModal {...makeProps()} />);
-    expect(screen.queryByRole("button", { name: "관리자" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "관리자" })).toBeNull();
     for (const label of ["종합", "시세", "입지", "분양", "금융", "점수"]) {
-      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
     }
   });
 
   it("adminLoggedIn=true 면 관리자 탭 칩 노출(7칩) + 점수/분양 탭엔 admin 블록 없고 관리자 탭에 3종", () => {
     const { container } = render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
     // 7번째 칩
-    expect(screen.getByRole("button", { name: "관리자" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "관리자" })).toBeInTheDocument();
     // 점수 탭엔 admin 블록 없음 (순수 CatPanel)
     const score = container.querySelector("#sec-score");
     expect(score?.querySelector('[data-testid="admin-score-breakdown"]')).toBeNull();
@@ -416,5 +421,100 @@ describe("DetailModal StickyJumpNav", () => {
     expect(admin?.querySelector('[data-testid="admin-score-breakdown"]')).not.toBeNull();
     expect(admin?.querySelector('[data-testid="admin-unit-supply"]')).not.toBeNull();
     expect(admin?.querySelector('[data-testid="admin-completeness"]')).not.toBeNull();
+  });
+
+  // 세션 410 D3 — analytics detail_tab_view 발화 (탭 전환 시, useAppNavigation tab_switch 선례 답습)
+  it("칩 클릭으로 탭 전환 시 detail_tab_view 발화(tab + previous_tab)", () => {
+    render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
+    expect(vi.mocked(trackEvent)).toHaveBeenCalledWith("detail_tab_view", { tab: "sec-price", previous_tab: "sec-overview" });
+  });
+
+  it("같은 탭 재클릭 시 detail_tab_view 미발화 (id===activeTab 가드)", () => {
+    render(<DetailModal {...makeProps()} />);
+    // 기본 활성 = 종합. 종합 칩을 눌러도 전환 없음 → 미발화
+    fireEvent.click(screen.getByRole("tab", { name: "종합" }));
+    expect(vi.mocked(trackEvent)).not.toHaveBeenCalledWith("detail_tab_view", expect.anything());
+  });
+
+  it("초기 렌더(종합 탭 기본 활성)는 detail_tab_view 발화 0", () => {
+    render(<DetailModal {...makeProps()} />);
+    expect(vi.mocked(trackEvent)).not.toHaveBeenCalledWith("detail_tab_view", expect.anything());
+  });
+
+  it("미니카드 클릭 시 detail_tab_view 1발화(tab:sec-score) — handleTabChange 경유", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    const locCard = /** @type {any} */ ([...overview.querySelectorAll('[role="button"]')].find(
+      el => el.getAttribute("aria-label")?.startsWith("입지 "),
+    ));
+    fireEvent.click(locCard);
+    expect(vi.mocked(trackEvent)).toHaveBeenCalledWith("detail_tab_view", { tab: "sec-score", previous_tab: "sec-overview" });
+  });
+
+  // 세션 410 D3 — 탭 전환 페이드 애니메이션 (활성 패널만 animation, 비활성은 display:none)
+  it("활성 패널은 detailTabFade 애니메이션, 비활성 패널은 animation 없음", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
+    const price = /** @type {any} */ (container.querySelector("#sec-price"));
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    // 활성(시세) = 페이드, 비활성(종합) = display:none + animation 없음
+    expect(price.style.animation).toContain("detailTabFade");
+    expect(overview.style.display).toBe("none");
+    expect(overview.style.animation).toBe("");
+  });
+
+  // 세션 410 D3 — ARIA tablist roving tabindex + 화살표 키보드 이동
+  it("탭 칩은 role=tab + tablist, 활성 칩만 tabIndex=0 나머지 -1 (roving)", () => {
+    render(<DetailModal {...makeProps()} />);
+    // tablist 1개 (StickyJumpNav — name 으로 LoanRatesSection 과 구분)
+    expect(screen.getByRole("tablist", { name: "상세 분석 카테고리" })).toBeInTheDocument();
+    const overviewChip = screen.getByRole("tab", { name: "종합" });
+    const priceChip = screen.getByRole("tab", { name: "시세" });
+    // 기본 활성 = 종합 → tabIndex 0, 나머지 -1
+    expect(overviewChip).toHaveAttribute("tabindex", "0");
+    expect(priceChip).toHaveAttribute("tabindex", "-1");
+    expect(overviewChip).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("활성 칩에서 ArrowRight → 다음 탭(시세) 활성 + 포커스 이동", () => {
+    render(<DetailModal {...makeProps()} />);
+    const overviewChip = screen.getByRole("tab", { name: "종합" });
+    fireEvent.keyDown(overviewChip, { key: "ArrowRight" });
+    const priceChip = screen.getByRole("tab", { name: "시세" });
+    expect(priceChip).toHaveAttribute("aria-selected", "true");
+    expect(document.activeElement).toBe(priceChip);
+  });
+
+  it("첫 탭에서 ArrowLeft → 마지막 탭(점수)으로 순환", () => {
+    render(<DetailModal {...makeProps()} />);
+    const overviewChip = screen.getByRole("tab", { name: "종합" });
+    fireEvent.keyDown(overviewChip, { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "점수" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("미방문 탭 칩은 aria-controls 미부여(dangling 차단), 방문 후 부여", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    // 종합만 마운트 → 종합 칩만 aria-controls, 시세 칩은 미부여
+    expect(screen.getByRole("tab", { name: "종합" })).toHaveAttribute("aria-controls", "sec-overview");
+    expect(screen.getByRole("tab", { name: "시세" })).not.toHaveAttribute("aria-controls");
+    // 시세 방문 후 → 시세 칩에 aria-controls 부여
+    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
+    expect(screen.getByRole("tab", { name: "시세" })).toHaveAttribute("aria-controls", "sec-price");
+    expect(container.querySelector("#sec-price")).toHaveAttribute("role", "tabpanel");
+    expect(container.querySelector("#sec-price")).toHaveAttribute("aria-labelledby", "tab-sec-price");
+  });
+
+  // 세션 410 D3 적대검증 — 관리자 탭 보던 중 로그아웃 시 빈 화면 방지(종합 탭 복원)
+  it("관리자 탭 활성 중 adminLoggedIn=false 전환 시 종합 탭으로 복원 (빈 화면 방지)", () => {
+    const { container, rerender } = render(<DetailModal {...makeProps({ adminLoggedIn: true, profile: "live" })} />);
+    // 관리자 탭으로 전환
+    fireEvent.click(screen.getByRole("tab", { name: "관리자" }));
+    expect(container.querySelector("#sec-admin")).toBeVisible();
+    // 로그아웃 — adminLoggedIn=false 로 리렌더
+    rerender(<DetailModal {...makeProps({ adminLoggedIn: false, profile: "live" })} />);
+    // 관리자 탭 사라지고 종합 탭으로 복원 → 본문 비지 않음
+    expect(screen.queryByRole("tab", { name: "관리자" })).toBeNull();
+    expect(container.querySelector("#sec-overview")).toBeVisible();
   });
 });
