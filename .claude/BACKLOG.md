@@ -94,7 +94,11 @@
 
 ## 🔴 즉시
 
-(다음 진입 후보 = **상세 모달 IA 개편 완결**[D1~D3 세션 407~410] → 아래 🟡 `/api/consults 500` 배포 반영 확인 또는 🟡 AptCard·GuideSections deviation 역부호 불일치 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
+(다음 진입 후보 = 🟡 `/api/consults 500` 배포 반영 확인 또는 🟢 다른 탭(시세·입지·금융) ? 도움말 확장[세션 411 HelpHint 패턴 정착] 또는 L137 차단 `eslint 10` peer 사고 또는 L144 regions.avg_price)
+
+- ✅ **분양 탭 그래프·섹션 "보는 법" ? 도움말 + 확장 가능 HelpHint 패턴** — 세션 411 PR #112 (지역 시장 추이 그래프 5[평균분양가격·분양가격지수·신규공급·초기분양율·택지비율] + 섹션 2[청약경쟁·네이버분양정보] + 상단 안내 = ? 8개. 신규 `HelpHint.tsx`[`<HelpHint text label/>` 한 줄, Tooltip+IconHelp 재사용] + 카피 데이터구조 hint 필드[METRICS.hint·DataSection.hint] = 다른 탭은 hint만 채우면 자동 ?. Tooltip bare? prop + Escape stopPropagation 보강. **적대검증 개별 프로브 직독 교차로 카피 major 2 정정**[평균분양가 "평당"→"㎡당 천원" ~3.3배 왜곡·청약경쟁 "%"→"N:1 미달/미수집"] + 접근성 4[term 전달 동음해소·터치타깃]. vitest 3403[+8]·tsc 0·eslint 0)
+
+- 🟢 **다른 탭 ? 도움말 확장** (세션 411 HelpHint 패턴 정착 → 후속) — 시세 탭(PriceChart·UnsoldChart·적정가 괴리 핵심지표 DetailModal:247-259 인라인 배열)·입지·금융 탭 그래프·지표에 `<HelpHint text label/>` 추가. 섹션은 dataSections hint 만 채우면 자동, 차트/인라인 표는 JSX 한 줄씩. 사장님 "이번엔 분양 탭만, 나중에 전부" 후속.
 
 - ✅ **상세 모달 IA 개편 — Progressive Disclosure D1~D3 전체 완결** (세션 406 사장님 지시 "너무 길고 루즈해" → 세션 407~410 4단계 종결)
   - spec = `docs/superpowers/specs/2026-06-13-detail-modal-progressive-disclosure.md` (C안 + D1~D3 추록 전부)
