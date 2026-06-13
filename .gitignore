@@ -97,3 +97,6 @@ scripts/probes/
 audit-temp.json
 OpenAPI서비스명세서_*.doc
 명령어 템플릿/
+
+# Serena MCP 로컬 메타데이터 (언어서버 설정·캐시·메모리 — 도구 자동 생성, 소스 아님)
+.serena/
