@@ -159,5 +159,8 @@ export function useDataPipeline({
     scoredMap, compItems, pw,
     activeFilterCount, regionOptions, filterOptionCounts, dataFreshnessText,
     isFilterPending,
+    // 지도 region-fit 신호 (세션 417) — 원시 filterRegion/Gu 가 아니라 deferred 값.
+    // 원시값은 한 박자 빨라 filtered 가 아직 옛 지역일 때 fit 이 엉뚱한 곳에 줌되는 stale 함정 회피.
+    deferredRegion, deferredGu,
   };
 }
