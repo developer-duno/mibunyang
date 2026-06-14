@@ -4,8 +4,9 @@ import { InfraOverlay } from "./InfraOverlay";
 import { SelectedAptCard } from "./SelectedAptCard";
 import {
   MAP_DEFAULTS, CLUSTER_OPTS, MY_LOC_LEVEL, GEO_TIMEOUT,
-  shortPrice, buildMarkerSvg, loadKakaoMapSdk, getKakaoMaps,
+  loadKakaoMapSdk, getKakaoMaps,
 } from "./kakaoMapHelpers";
+import { shortPrice, buildMarkerSvg } from "./markerSvg";
 import type { MapViewProps } from "@/types/components/MapView.types";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
@@ -36,6 +37,48 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   useEffect(() => { onSelectRef.current = onSelect; });
   useEffect(() => { onSelectRef.current?.(selected); }, [selected]);
 
+  // 선택 마커 강조 — selected 변화 시 setImage 만 교체(마커 전체 재생성 금지). 클러스터러에 담긴
+  // 마커라 setImage 후 redraw() 필요(auto-redraw 미보장). 전국 뷰(레벨≥5)는 클러스터 묶임이라
+  // 강조가 클러스터 아이콘 뒤 → 줌인(개별 마커 풀림) 시 보임(정상). deps=[selected] 만 — 마커 effect
+  // 와 분리해 전체 재생성 회피. markerByIdRef 는 마커 effect 가 채우므로 stale 자동 차단.
+  useEffect(() => {
+    const kakao = getKakaoMaps();
+    if (!kakao) return;
+    const restore = (id: string | null) => {
+      if (!id) return;
+      const m = markerByIdRef.current.get(id) as any;
+      if (m && m.__normalImage) m.setImage(m.__normalImage);
+    };
+    // 이전 강조 복원 (id 가 바뀐 경우만)
+    let changed = false;
+    if (highlightedIdRef.current && highlightedIdRef.current !== selected?.apt.id) {
+      restore(highlightedIdRef.current);
+      highlightedIdRef.current = null;
+      changed = true;
+    }
+    if (!selected || !selected.apt.id) {
+      // 복원이 실제 일어났을 때만 redraw (불필요한 매 선택해제 redraw 회피)
+      if (changed) (clustererRef.current as any)?.redraw?.();
+      return;
+    }
+    const marker = markerByIdRef.current.get(selected.apt.id) as any;
+    if (!marker) {
+      if (changed) (clustererRef.current as any)?.redraw?.();
+      return; // stale/filtered 교체로 사라진 마커 — no-op
+    }
+    const { apt, res } = selected;
+    const { w, h, svg } = buildMarkerSvg(res.total, gr(res.total).c, shortPrice(apt.price), true);
+    marker.setImage(new kakao.MarkerImage(
+      `data:image/svg+xml,${encodeURIComponent(svg)}`,
+      new kakao.Size(w, h),
+      { offset: new kakao.Point(w / 2, h) },
+    ));
+    if (marker.setZIndex) marker.setZIndex(50);
+    highlightedIdRef.current = selected.apt.id;
+    // 클러스터러가 setImage 변경을 화면에 반영하도록 redraw (개별 마커 풀린 상태에서 즉시 강조).
+    (clustererRef.current as any)?.redraw?.();
+  }, [selected]);
+
   // 뷰포트 보존 (M3) — getViewport()는 init effect(deps [])에서 1회 호출하므로 compactRef 답습 캡처.
   // onViewportChange 도 ref 미러(onSelectRef 답습) — idle 리스너 deps 오염/마커 재생성 방지.
   const getViewportRef = useRef(getViewport);
@@ -46,6 +89,11 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   // 바꾸고 재진입하면, 복원된 부산 center + fit 생략 = 경기 마커가 화면 밖 빈 지도. 재마운트는 항상
   // 첫 마커 fit 1회를 허용해 빈 화면 방지. 같은 마운트 내 filtered 변경은 didFitRef true 라 fit 생략(B-1).
   const didFitRef = useRef(false);
+
+  // 선택 마커 강조 — 마커 effect 가 매 run 재채움(apt.id → marker). filtered 교체 시 옛 detach 마커
+  // 참조 차단(stale write 방지). 강조 effect 는 이 ref 로 선택 마커를 찾아 setImage 교체.
+  const markerByIdRef = useRef<Map<string, unknown>>(new Map());
+  const highlightedIdRef = useRef<string | null>(null);
 
   // Kakao Maps SDK 동적 로드 + 지도 초기화
   useEffect(() => {
@@ -90,6 +138,7 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
               width: "44px", height: "44px", background: C.indigo, borderRadius: "50%",
               color: C.white, textAlign: "center", fontWeight: "700", fontSize: "13px",
               lineHeight: "44px", opacity: "0.9",
+              border: "2px solid rgba(255,255,255,0.85)", boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
             }],
           });
           setReady(true);
@@ -121,6 +170,9 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
     clustererRef.current.clear();
     // filtered 변경 시 이전 선택 정리 — 새 filtered 에서 사라진 단지의 selected 카드가 남는 것 방지
     setSelected(null);
+    // 마커 매핑 재채움 — 옛 detach 마커 참조 차단(강조 effect stale write 방지)
+    markerByIdRef.current = new Map();
+    highlightedIdRef.current = null;
 
     const markers: unknown[] = [];
     for (const item of filtered) {
@@ -129,17 +181,17 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
       const pos = new kakao.LatLng(apt.lat, apt.lng);
       const grade = gr(res.total);
       const { w, h, svg } = buildMarkerSvg(res.total, grade.c, shortPrice(apt.price));
-      const marker = new kakao.Marker({
-        position: pos,
-        title: apt.name,
-        image: new kakao.MarkerImage(
-          `data:image/svg+xml,${encodeURIComponent(svg)}`,
-          new kakao.Size(w, h),
-          { offset: new kakao.Point(w / 2, h) }
-        ),
-      });
+      const normalImage = new kakao.MarkerImage(
+        `data:image/svg+xml,${encodeURIComponent(svg)}`,
+        new kakao.Size(w, h),
+        { offset: new kakao.Point(w / 2, h) }
+      );
+      const marker = new kakao.Marker({ position: pos, title: apt.name, image: normalImage });
+      // 강조 복원용 — 일반 이미지를 마커 객체에 보관(강조 해제 시 setImage 로 되돌림)
+      (marker as any).__normalImage = normalImage;
       kakao.event.addListener(marker, "click", () => setSelected(item));
       markers.push(marker);
+      if (apt.id) markerByIdRef.current.set(apt.id, marker);
     }
     clustererRef.current.addMarkers(markers);
     setMarkerCount(markers.length);

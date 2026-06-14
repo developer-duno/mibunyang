@@ -19,7 +19,7 @@ function makeItem(/** @type {any} */ overrides = {}) {
 
 /* ── Kakao Maps SDK 모킹 헬퍼 ── */
 function setupKakao() {
-  const mockClusterer = { clear: vi.fn(), addMarkers: vi.fn() };
+  const mockClusterer = { clear: vi.fn(), addMarkers: vi.fn(), redraw: vi.fn() };
   /** @type {any} */ (window).kakao = {
     maps: {
       load: vi.fn(cb => cb()),
@@ -29,11 +29,13 @@ function setupKakao() {
       LatLngBounds: vi.fn(function() { this.extend = vi.fn(); }),
       ZoomControl: vi.fn(function() {}),
       ControlPosition: { RIGHT: 3 },
-      Marker: vi.fn(function() { this.getPosition = vi.fn(() => ({ getLat: () => 37, getLng: () => 127 })); }),
+      // 세션 416: 선택 마커 강조용 setImage/setZIndex 추가 (없으면 강조 effect 가 기존 click 테스트까지 붕괴)
+      Marker: vi.fn(function() { this.getPosition = vi.fn(() => ({ getLat: () => 37, getLng: () => 127 })); this.setImage = vi.fn(); this.setZIndex = vi.fn(); }),
       MarkerImage: vi.fn(function() {}),
       Size: vi.fn(function() {}),
       Point: vi.fn(function() {}),
-      MarkerClusterer: vi.fn(function() { this.clear = mockClusterer.clear; this.addMarkers = mockClusterer.addMarkers; }),
+      // 세션 416: 강조 effect 가 clusterer.redraw() 호출 (setImage auto-redraw 미보장)
+      MarkerClusterer: vi.fn(function() { this.clear = mockClusterer.clear; this.addMarkers = mockClusterer.addMarkers; this.redraw = mockClusterer.redraw; }),
       // M3: removeListener 추가 (idle cleanup). ChoroplethView 답습 — 옵셔널 가드 통과 검증.
       event: { addListener: vi.fn(), removeListener: vi.fn() },
     },
@@ -351,5 +353,49 @@ describe("MapView 뷰포트 보존 (M3)", () => {
     rerender(<MapView filtered={filtered} onDetail={vi.fn()} getViewport={() => null} onViewportChange={() => {}} />);
     await flushPromises();
     expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ── 세션 416: 선택 마커 강조 (setImage 교체 + redraw, 마커 전체 재생성 0) ── */
+
+describe("MapView 선택 마커 강조", () => {
+  it("핀 클릭(선택) → setImage 강조 교체 + clusterer.redraw + addMarkers 추가 호출 0", async () => {
+    const clusterer = setupKakao();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} />);
+    await flushPromises();
+    expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
+    // 생성된 마커 인스턴스 — setImage 강조 확인
+    const markerInst = /** @type {any} */ (window).kakao.maps.Marker.mock.instances[0];
+    // 핀 클릭 → setSelected(item) → 강조 effect
+    await act(async () => { getMarkerClickHandlers()[0](); });
+    expect(markerInst.setImage).toHaveBeenCalled(); // 강조 이미지로 교체
+    expect(markerInst.setZIndex).toHaveBeenCalledWith(50);
+    expect(clusterer.redraw).toHaveBeenCalled();
+    // 마커 전체 재생성 안 함 = addMarkers 여전히 1회
+    expect(clusterer.addMarkers).toHaveBeenCalledTimes(1);
+  });
+
+  it("선택 해제(카드 닫기) → 강조 마커 일반 이미지 복원", async () => {
+    setupKakao();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} />);
+    await flushPromises();
+    const markerInst = /** @type {any} */ (window).kakao.maps.Marker.mock.instances[0];
+    await act(async () => { getMarkerClickHandlers()[0](); });
+    const callsAfterSelect = markerInst.setImage.mock.calls.length;
+    // 카드 닫기 → setSelected(null) → 복원 setImage 1회 추가
+    fireEvent.click(screen.getByLabelText("닫기"));
+    await flushPromises();
+    expect(markerInst.setImage.mock.calls.length).toBeGreaterThan(callsAfterSelect);
+  });
+
+  it("선택 상태에서 filtered 교체 → 마커 재생성(addMarkers 2회) + stale 강조 no-op (크래시 없음)", async () => {
+    const clusterer = setupKakao();
+    const { rerender } = render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} />);
+    await flushPromises();
+    await act(async () => { getMarkerClickHandlers()[0](); });
+    // filtered 교체 → 마커 effect 재실행(clear + addMarkers 2회) + markerByIdRef 재채움
+    rerender(<MapView filtered={[makeItem({ apt: { id: "t2", lat: 36.5, lng: 127.5 } })]} onDetail={vi.fn()} />);
+    await flushPromises();
+    expect(clusterer.addMarkers).toHaveBeenCalledTimes(2);
   });
 });
