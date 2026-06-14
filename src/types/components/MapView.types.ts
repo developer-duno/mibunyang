@@ -20,4 +20,6 @@ export interface MapViewProps {
   deferredRegion?: string;
   /** 지도 region-fit 신호 (세션 417) — 구/군 변경 시 더 클로즈업. "전체" 가 아니면 그 구 단지로 fit */
   deferredGu?: string;
+  /** 전체화면 모드 (세션 417) — 테두리·라운드 제거(부모 App 이 100vw 전체폭 적용). 높이 calc 는 불변 */
+  fullscreen?: boolean;
 }

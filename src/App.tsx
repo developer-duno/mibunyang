@@ -353,11 +353,12 @@ export default function App() {
           />
         </div>
       ) : tab === "map" ? (
-        // 지도 탭만 좌우 여백 축소(8px) — 지도를 더 넓게(세션 417). root maxWidth(containerMaxWidth)는
-        // 헤더·BottomNav·목록 탭 공유라 안 건드림(국소 변경). 다른 탭은 0 24px / 0 16px 유지.
-        <div style={{ padding: "0 8px" }}>
+        // 지도 탭 전체화면(세션 417) — root maxWidth(containerMaxWidth) 안에 갇히던 지도를 화면 꽉 채움.
+        // width 100vw + margin-left calc 로 중앙 기준 전체폭 복원(root 는 헤더·BottomNav 공유라 안 건드림).
+        // 헤더(데스크톱 fixed 60px)·BottomNav 는 유지 — 지도가 그 사이 전체 영역을 채움(MapView 높이 calc).
+        <div style={{ width: "100vw", marginLeft: "calc(-50vw + 50%)" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>지도 로딩 중...</div>}>
-            <MapView filtered={filtered} onDetail={handleDetailGated} isPC={isPC} isDesktop={isDesktop} getViewport={getMapViewport} onViewportChange={handleViewportChange} deferredRegion={deferredRegion} deferredGu={deferredGu} />
+            <MapView filtered={filtered} onDetail={handleDetailGated} isPC={isPC} isDesktop={isDesktop} getViewport={getMapViewport} onViewportChange={handleViewportChange} deferredRegion={deferredRegion} deferredGu={deferredGu} fullscreen />
           </Suspense>
         </div>
       ) : tab === "info" ? (

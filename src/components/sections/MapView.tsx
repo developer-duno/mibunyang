@@ -24,7 +24,7 @@ const GU_FIT_MIN_LEVEL = 4;
 // region-fit 시 좌측/상단 필터·선택카드가 마커를 가리지 않게 padding 확보 (top,right,bottom,left).
 const FIT_PADDING = { top: 40, right: 24, bottom: 40, left: 24 };
 
-export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect, getViewport, onViewportChange, deferredRegion, deferredGu }: MapViewProps) {
+export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect, getViewport, onViewportChange, deferredRegion, deferredGu, fullscreen }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const clustererRef = useRef<{ clear: () => void; addMarkers: (_m: unknown[]) => void } | null>(null);
@@ -45,6 +45,11 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   const onSelectRef = useRef(onSelect);
   useEffect(() => { onSelectRef.current = onSelect; });
   useEffect(() => { onSelectRef.current?.(selected); }, [selected]);
+
+  // onDetail 미러 — 마커 click 콜백이 최신 onDetail 을 참조하되 마커 effect deps 에 onDetail 을
+  // 넣지 않아 마커 전체 재생성 회피(onSelectRef 답습, 세션 417 마커 클릭 1단계화).
+  const onDetailRef = useRef(onDetail);
+  useEffect(() => { onDetailRef.current = onDetail; });
 
   // 선택 마커 강조 — selected 변화 시 setImage 만 교체(마커 전체 재생성 금지). 클러스터러에 담긴
   // 마커라 setImage 후 redraw() 필요(auto-redraw 미보장). 전국 뷰(레벨≥5)는 클러스터 묶임이라
@@ -204,7 +209,13 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
       const marker = new kakao.Marker({ position: pos, title: apt.name, image: normalImage });
       // 강조 복원용 — 일반 이미지를 마커 객체에 보관(강조 해제 시 setImage 로 되돌림)
       (marker as any).__normalImage = normalImage;
-      kakao.event.addListener(marker, "click", () => setSelected(item));
+      // 마커 클릭 = 선택 강조(setSelected) + 바로 상세 진입(onDetail). 세션 417: 사장님 "말풍선
+      // 눌러도 안 들어간다" — 카드만 뜨던 2단계를 1단계로. 비로그인이면 onDetail(=handleDetailGated)이
+      // 로그인 모달을 띄움(정책 유지). setSelected 는 강조·선택카드 유지용(세션 416).
+      kakao.event.addListener(marker, "click", () => {
+        setSelected(item);
+        if (onDetailRef.current && item.apt.id) onDetailRef.current(item.apt.id);
+      });
       markers.push(marker);
       if (apt.id) markerByIdRef.current.set(apt.id, marker);
     }
@@ -285,7 +296,16 @@ export const MapView = memo(function MapView({ filtered, onDetail, isPC, isDeskt
   }, [ready, mapInstance]);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: height ?? (isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)"), borderRadius: isDesktop ? 12 : 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
+    <div style={{
+      position: "relative", width: "100%",
+      // 높이는 기존 3분기 calc 유지 — 헤더+필터바+BottomNav 를 반영한 검증값(세션 413~417). 전체화면도
+      // 같은 calc(필터바가 지도 위에 그대로 차지하므로 동일). 전체화면은 전체폭(App 100vw)+테두리/라운드
+      // 제거로 "꽉 찬" 체감을 줌(세션 417). 매직넘버 높이 재계산은 잘림 위험이라 calc 불변.
+      height: height ?? (isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)"),
+      borderRadius: fullscreen ? 0 : isDesktop ? 12 : 10,
+      overflow: "hidden",
+      border: fullscreen ? "none" : `1px solid ${C.border}`,
+    }}>
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
       {error && (
         <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.9)", zIndex: 20 }}>

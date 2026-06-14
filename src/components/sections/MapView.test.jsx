@@ -208,6 +208,26 @@ describe("MapView height prop", () => {
     await flushPromises();
     expect(/** @type {HTMLElement} */ (container.firstChild).style.height).toBe("calc(100dvh - 140px)");
   });
+
+  it("fullscreen 시 테두리·라운드 제거, 높이 calc 는 불변 (세션 417 전체화면)", async () => {
+    setupKakao();
+    const { container } = render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} fullscreen />);
+    await flushPromises();
+    const root = /** @type {HTMLElement} */ (container.firstChild);
+    // jsdom 은 border:none 을 borderStyle:none 으로 정규화(border shorthand 읽기는 medium)
+    expect(root.style.borderStyle).toBe("none"); // 전체화면은 테두리 없음
+    expect(root.style.borderRadius).toBe("0px"); // 라운드 제거
+    expect(root.style.height).toBe("calc(100dvh - 140px)"); // 높이 calc 는 불변(잘림 방지)
+  });
+
+  it("fullscreen 미전달(기본) 시 테두리·라운드 유지", async () => {
+    setupKakao();
+    const { container } = render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    const root = /** @type {HTMLElement} */ (container.firstChild);
+    expect(root.style.borderRadius).toBe("10px"); // 모바일 기본 라운드
+    expect(root.style.borderStyle).not.toBe("none"); // 테두리 있음(solid)
+  });
 });
 
 describe("MapView onSelect (선택 미러)", () => {
@@ -229,6 +249,16 @@ describe("MapView onSelect (선택 미러)", () => {
     await act(async () => { getMarkerClickHandlers()[0](); });
     // 순서 단언: [mount null, 핀클릭 item]
     expect(onSelect.mock.calls.map(c => c[0])).toEqual([null, item]);
+  });
+
+  it("핀 클릭 → onDetail(id) 바로 호출 (세션 417 1단계화 — 카드만 뜨던 2단계 제거)", async () => {
+    setupKakao();
+    const onDetail = vi.fn();
+    const item = makeItem({ apt: { id: "click-1" } });
+    render(<MapView filtered={[item]} onDetail={onDetail} />);
+    await flushPromises();
+    await act(async () => { getMarkerClickHandlers()[0](); });
+    expect(onDetail).toHaveBeenCalledWith("click-1"); // 마커 클릭 = 바로 상세 진입
   });
 
   it("핀 클릭 후 filtered 교체 → onSelect(null) 전파", async () => {
