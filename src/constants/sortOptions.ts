@@ -23,6 +23,7 @@ export const SORT_OPTIONS: SortOption[] = [
   { key: "safe",       pcLabel: "안전",     mobileLabel: "안전순",     ac: C.red,      bg: C.redLight,    pas: "#FEF2F2" },
   { key: "benefit",    pcLabel: "혜택순",   mobileLabel: "혜택순",     ac: "#7C3AED",  bg: "#EDE9FE",     pas: "#F5F3FF" },
   { key: "newest",     pcLabel: "최신순",   mobileLabel: "최신순",     ac: C.slate600, bg: C.slate100,    pas: "#F8FAFC" },
+  { key: "unsoldRate", pcLabel: "미분양많은순", mobileLabel: "미분양순", ac: C.amber,  bg: C.amberLight,  pas: "#FFFBEB" },
 ];
 
 /** localStorage / URL 파라미터 검증용 Set */

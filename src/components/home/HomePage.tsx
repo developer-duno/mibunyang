@@ -6,7 +6,7 @@ import { MapEntryWidget } from "./MapEntryWidget";
 import { UpcomingWidget } from "./UpcomingWidget";
 import { TopPicksWidget } from "./TopPicksWidget";
 import { MarketSummaryWidget } from "./MarketSummaryWidget";
-import type { ScoredApt } from "@/types/hooks";
+import type { ScoredApt, SortKey } from "@/types/hooks";
 import type { ProfileWeights } from "@/types/scoring";
 import type { UpcomingApiResponse } from "@/types/upcoming";
 
@@ -24,6 +24,8 @@ type HomePageProps = {
   dataLoading: boolean;
   dataFreshnessText: string | null;
   onNavClick: (_k: string) => void;
+  /** 시장 요약 칸 클릭 — 탭 이동 + (옵션) 정렬 적용. App 의 setSortKey + handleNavClick 배선 */
+  onMarketNav: (_target: string, _sort?: SortKey) => void;
   onDetail: (_id: string) => void;
   onFav: (_id: string) => void;
   favoriteSet: Set<string>;
@@ -35,7 +37,7 @@ type HomePageProps = {
  * 통합 홈 (D1 C안 위젯판) — spec §1·§2. 위젯 단위 독립.
  * 펼치기는 전부 onNavClick(handleNavClick) 경유. 전문가 위젯 2종은 M2.
  */
-export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingData, upcomingError, onRetryUpcoming, isLoggedIn, isDesktop, isPC, dataLoading, dataFreshnessText, onNavClick, onDetail, onFav, favoriteSet, onComp, compIds }: HomePageProps) {
+export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingData, upcomingError, onRetryUpcoming, isLoggedIn, isDesktop, isPC, dataLoading, dataFreshnessText, onNavClick, onMarketNav, onDetail, onFav, favoriteSet, onComp, compIds }: HomePageProps) {
   const upcomingEnabled = isFeatureUpcoming();
   const pad = isDesktop ? "0 24px" : "0 16px"; // App.tsx L301·L324 list/map 탭 패딩과 통일
 
@@ -48,6 +50,11 @@ export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingD
     trackEvent("home_detail_open", {});
     onDetail(id);
   }, [onDetail]);
+  // 시장 요약 칸 클릭 — 어느 칸인지 계측 + 탭 이동(+정렬). expandWidget 명명 답습.
+  const handleMarketNav = useCallback((cell: string, nav: { target: string; sort?: SortKey }) => {
+    trackEvent("home_market_nav", { cell });
+    onMarketNav(nav.target, nav.sort);
+  }, [onMarketNav]);
 
   if (dataLoading && scored.length === 0) {
     return (
@@ -64,7 +71,7 @@ export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingD
         {upcomingEnabled && (
           <UpcomingWidget data={upcomingData} error={upcomingError} onRetry={onRetryUpcoming} onExpand={() => expandWidget("upcoming", "upcoming")} />
         )}
-        <MarketSummaryWidget scored={scored} dataFreshnessText={dataFreshnessText} />
+        <MarketSummaryWidget scored={scored} dataFreshnessText={dataFreshnessText} onCellNav={handleMarketNav} />
         <div style={{ gridColumn: "1 / -1" }}>
           <TopPicksWidget scored={scored} pw={pw} onDetail={handleDetail} onFav={onFav} favoriteSet={favoriteSet} onComp={onComp} compIds={compIds} isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC} onExpand={() => expandWidget("toppicks", "list")} />
         </div>

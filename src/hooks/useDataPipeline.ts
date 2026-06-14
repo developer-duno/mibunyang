@@ -18,6 +18,11 @@ const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
   safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total,
   benefit: (a, b) => (Number(b.res.cats.benefit?.totalWon ?? 0)) - (Number(a.res.cats.benefit?.totalWon ?? 0)),
   newest: (a, b) => String(b.apt.updatedAt ?? "").localeCompare(String(a.apt.updatedAt ?? "")),
+  // 미분양 많은 순 (미분양 전문 서비스 관점) — null 은 -1 로 0% 단지보다도 뒤, 동률은 종합점수 tie-break
+  unsoldRate: (a, b) => {
+    const ra = a.apt.unsoldRate ?? -1, rb = b.apt.unsoldRate ?? -1;
+    return ra === rb ? b.res.total - a.res.total : rb - ra;
+  },
 };
 
 /**

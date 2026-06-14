@@ -53,11 +53,17 @@ export const UpcomingWidget = memo(function UpcomingWidget({ data, error, onRetr
         </div>
       ) : !data ? (
         <SkeletonBox height={72} />
+      ) : thisWeekCount === 0 && imminent.length === 0 ? (
+        // 완전 빈상태 — "0건" + "없습니다" 2줄 겹침 제거, 단일 안내 한 줄
+        <div style={{ textAlign: "center", padding: "16px 0" }}>
+          <div style={{ fontSize: 24, marginBottom: 6 }} aria-hidden="true">🗓️</div>
+          <div style={{ fontSize: F.sm, color: C.muted }}>예정된 청약 일정이 없습니다</div>
+        </div>
       ) : (
         <>
           <div style={{ fontSize: F.sm, color: C.sub }}>이번 주 일정 {thisWeekCount}건</div>
           {imminent.length === 0 ? (
-            <div style={{ fontSize: F.xs, color: C.muted, padding: "8px 0" }}>예정된 청약 일정이 없습니다</div>
+            <div style={{ fontSize: F.xs, color: C.muted, padding: "8px 0" }}>임박한 청약은 없어요</div>
           ) : (
             imminent.map(apt => {
               const dday = computeDday(apt.presaleRecruitDate);

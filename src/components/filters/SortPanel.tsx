@@ -1,5 +1,5 @@
 /**
- * 정렬 옵션 패널 — 7가지 정렬을 색상별 버튼 리스트로 표시
+ * 정렬 옵션 패널 — 8가지 정렬을 색상별 버튼 리스트로 표시
  * 선택 시 onSortChange + 패널 자동 닫기(onClose)
  */
 import { memo } from "react";
