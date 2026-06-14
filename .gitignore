@@ -100,3 +100,6 @@ OpenAPI서비스명세서_*.doc
 
 # Serena MCP 로컬 메타데이터 (언어서버 설정·캐시·메모리 — 도구 자동 생성, 소스 아님)
 .serena/
+
+# Playwright MCP 스냅샷 산출물 (세션 414)
+.playwright-mcp/
