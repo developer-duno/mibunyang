@@ -16,4 +16,8 @@ export interface MapViewProps {
   getViewport?: () => { lat: number; lng: number; level: number } | null;
   /** idle 시 현재 center/level 끌어올림 (M3) — 탭 전환/언마운트 간 위치 보존. ref 미러로 마커 effect 격리 */
   onViewportChange?: (_v: { lat: number; lng: number; level: number }) => void;
+  /** 지도 region-fit 신호 (세션 417) — 시/도 변경 시 그 지역 단지로 자동 클로즈업. deferred 값(stale 회피). 미니지도 compact 에는 미연결(idle 보존 ref 오염 방지) */
+  deferredRegion?: string;
+  /** 지도 region-fit 신호 (세션 417) — 구/군 변경 시 더 클로즈업. "전체" 가 아니면 그 구 단지로 fit */
+  deferredGu?: string;
 }

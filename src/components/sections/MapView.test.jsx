@@ -24,7 +24,8 @@ function setupKakao() {
     maps: {
       load: vi.fn(cb => cb()),
       // M3: getCenter/getLevel 추가 (idle 콜백이 현재 뷰포트 끌어올림). LatLng(lat,lng) 인자 보존.
-      Map: vi.fn(function() { this.addControl = vi.fn(); this.setBounds = vi.fn(); this.setZoomable = vi.fn(); this.getCenter = vi.fn(() => ({ getLat: () => 35.1, getLng: () => 129.0 })); this.getLevel = vi.fn(() => 7); }),
+      // 세션 417: region-fit 의 과도줌 클램프용 setLevel 추가. getLevel 은 기본 7(클램프 테스트는 인스턴스에서 재설정).
+      Map: vi.fn(function() { this.addControl = vi.fn(); this.setBounds = vi.fn(); this.setLevel = vi.fn(); this.setZoomable = vi.fn(); this.getCenter = vi.fn(() => ({ getLat: () => 35.1, getLng: () => 129.0 })); this.getLevel = vi.fn(() => 7); }),
       LatLng: vi.fn(function(/** @type {number} */ lat, /** @type {number} */ lng) { this.lat = lat; this.lng = lng; }),
       LatLngBounds: vi.fn(function() { this.extend = vi.fn(); }),
       ZoomControl: vi.fn(function() {}),
@@ -300,6 +301,151 @@ describe("MapView 뷰포트 보존 (M3)", () => {
     rerender(<MapView filtered={[item1, makeItem({ apt: { id: "t2", lat: 36.5, lng: 127.5 } })]} onDetail={vi.fn()} getViewport={() => null} />);
     await flushPromises();
     expect(map.setBounds).toHaveBeenCalledTimes(1); // 추가 fit 없음 = 사용자 위치 유지
+  });
+
+  // ── 세션 417: 지역/시군구 변경 시 클로즈업(region-fit) ──
+  it("지역(deferredRegion) 변경 시 그 지역 단지로 setBounds 추가 호출 (클로즈업)", async () => {
+    setupKakao();
+    const seoul = makeItem({ apt: { id: "s1", region: "서울", gu: "강남구", lat: 37.5, lng: 127.0 } });
+    const { rerender } = render(
+      <MapView filtered={[seoul]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" deferredGu="전체" />,
+    );
+    await flushPromises();
+    const map = lastMapInstance();
+    expect(map.setBounds).toHaveBeenCalledTimes(1); // 첫 마커 fit
+    // "전체" → "대전" 변경 + filtered 가 대전 단지로 교체 → region-fit 발화
+    const daejeon = makeItem({ apt: { id: "d1", region: "대전", gu: "유성구", lat: 36.35, lng: 127.38 } });
+    rerender(
+      <MapView filtered={[daejeon]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="대전" deferredGu="전체" />,
+    );
+    await flushPromises();
+    expect(map.setBounds).toHaveBeenCalledTimes(2); // region-fit 추가 1회
+    // padding 인자 동반 (top,right,bottom,left)
+    expect(map.setBounds.mock.calls[1].length).toBe(5);
+  });
+
+  it("구(deferredGu) 변경 시 그 구 단지로 setBounds 추가 호출 (더 클로즈업)", async () => {
+    setupKakao();
+    const daejeonAll = makeItem({ apt: { id: "d1", region: "대전", gu: "전체", lat: 36.35, lng: 127.38 } });
+    const { rerender } = render(
+      <MapView filtered={[daejeonAll]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="대전" deferredGu="전체" />,
+    );
+    await flushPromises();
+    const map = lastMapInstance();
+    const before = map.setBounds.mock.calls.length;
+    // "전체" → "유성구" 변경
+    const yuseong = makeItem({ apt: { id: "y1", region: "대전", gu: "유성구", lat: 36.36, lng: 127.36 } });
+    rerender(
+      <MapView filtered={[yuseong]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="대전" deferredGu="유성구" />,
+    );
+    await flushPromises();
+    expect(map.setBounds.mock.calls.length).toBe(before + 1); // gu-fit 발화
+  });
+
+  it("지역 미변경(필터-only 변경)이면 region-fit 발화 0 (수동 위치 보존)", async () => {
+    setupKakao();
+    const item1 = makeItem({ apt: { id: "a1", region: "서울", gu: "강남구" } });
+    const { rerender } = render(
+      <MapView filtered={[item1]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="서울" deferredGu="강남구" />,
+    );
+    await flushPromises();
+    const map = lastMapInstance();
+    expect(map.setBounds).toHaveBeenCalledTimes(1); // 첫 fit
+    // region/gu 그대로, filtered 만 다른 배열 (예산 등 필터 변경 시뮬)
+    rerender(
+      <MapView filtered={[item1, makeItem({ apt: { id: "a2", region: "서울", gu: "강남구", lat: 37.6, lng: 127.1 } })]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="서울" deferredGu="강남구" />,
+    );
+    await flushPromises();
+    expect(map.setBounds).toHaveBeenCalledTimes(1); // region-fit 발화 0 = 위치 유지
+  });
+
+  it("지역 → 전체 초기화 시 region-fit 발화 0 (전국 강제 리셋 방지)", async () => {
+    setupKakao();
+    const seoul = makeItem({ apt: { id: "s1", region: "서울", gu: "강남구" } });
+    const { rerender } = render(
+      <MapView filtered={[seoul]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="서울" deferredGu="전체" />,
+    );
+    await flushPromises();
+    const map = lastMapInstance();
+    expect(map.setBounds).toHaveBeenCalledTimes(1);
+    // "서울" → "전체" 되돌림
+    rerender(
+      <MapView filtered={[seoul, makeItem({ apt: { id: "g1", region: "경기", gu: "전체", lat: 37.4, lng: 127.2 } })]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" deferredGu="전체" />,
+    );
+    await flushPromises();
+    expect(map.setBounds).toHaveBeenCalledTimes(1); // "전체" 는 fit 안 함
+  });
+
+  it("region-fit 시 과도 줌인이면 최소 레벨로 setLevel 클램프", async () => {
+    setupKakao();
+    const seoul = makeItem({ apt: { id: "s1", region: "서울", gu: "강남구", lat: 37.5, lng: 127.0 } });
+    const { rerender } = render(
+      <MapView filtered={[seoul]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" deferredGu="전체" />,
+    );
+    await flushPromises();
+    const map = lastMapInstance();
+    // setBounds 후 getLevel 이 과도 줌인(2 < REGION_FIT_MIN_LEVEL 8)을 반환하도록 재설정
+    map.getLevel = vi.fn(() => 2);
+    const daejeon = makeItem({ apt: { id: "d1", region: "대전", gu: "전체", lat: 36.35, lng: 127.38 } });
+    rerender(
+      <MapView filtered={[daejeon]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="대전" deferredGu="전체" />,
+    );
+    await flushPromises();
+    // 시/도 최소 레벨 8 로 클램프
+    expect(map.setLevel).toHaveBeenCalledWith(8);
+  });
+
+  it("region-fit 시 이미 충분히 넓으면(level >= minLv) setLevel 안 함 (불필요 축소 방지)", async () => {
+    setupKakao();
+    const seoul = makeItem({ apt: { id: "s1", region: "서울", gu: "강남구" } });
+    const { rerender } = render(
+      <MapView filtered={[seoul]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" deferredGu="전체" />,
+    );
+    await flushPromises();
+    const map = lastMapInstance();
+    // setBounds 후 getLevel 이 minLv(8) 이상(10)을 반환 → 클램프 불필요
+    map.getLevel = vi.fn(() => 10);
+    const daejeon = makeItem({ apt: { id: "d1", region: "대전", gu: "전체", lat: 36.35, lng: 127.38 } });
+    rerender(
+      <MapView filtered={[daejeon]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="대전" deferredGu="전체" />,
+    );
+    await flushPromises();
+    expect(map.setLevel).not.toHaveBeenCalled(); // 이미 넓으니 강제 축소 안 함
+  });
+
+  it("구 fit 과도 줌인 시 GU 최소 레벨 4 로 클램프 (개별 마커 풀림)", async () => {
+    setupKakao();
+    const daejeonAll = makeItem({ apt: { id: "d1", region: "대전", gu: "전체", lat: 36.35, lng: 127.38 } });
+    const { rerender } = render(
+      <MapView filtered={[daejeonAll]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="대전" deferredGu="전체" />,
+    );
+    await flushPromises();
+    const map = lastMapInstance();
+    // 구로 좁히면 단지 적어 과도 줌인(2 < 4) → GU_FIT_MIN_LEVEL 4 로 클램프
+    map.getLevel = vi.fn(() => 2);
+    const yuseong = makeItem({ apt: { id: "y1", region: "대전", gu: "유성구", lat: 36.36, lng: 127.36 } });
+    rerender(
+      <MapView filtered={[yuseong]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="대전" deferredGu="유성구" />,
+    );
+    await flushPromises();
+    expect(map.setLevel).toHaveBeenCalledWith(4); // 구는 더 클로즈업(클러스터 경계 5보다 아래)
+  });
+
+  it("deferredRegion 미전달(undefined)이면 gu 변경에도 region-fit 발화 0 (truthy 가드)", async () => {
+    setupKakao();
+    const item1 = makeItem({ apt: { id: "a1", region: "서울", gu: "강남구" } });
+    // deferredRegion 안 줌(undefined) + deferredGu 만 변경 시뮬 — App 은 항상 둘 다 주지만 가드 방어 검증
+    const { rerender } = render(
+      <MapView filtered={[item1]} onDetail={vi.fn()} getViewport={() => null} deferredGu="전체" />,
+    );
+    await flushPromises();
+    const map = lastMapInstance();
+    expect(map.setBounds).toHaveBeenCalledTimes(1); // 첫 fit
+    rerender(
+      <MapView filtered={[item1, makeItem({ apt: { id: "a2", region: "서울", gu: "역삼동", lat: 37.5, lng: 127.04 } })]} onDetail={vi.fn()} getViewport={() => null} deferredGu="역삼동" />,
+    );
+    await flushPromises();
+    expect(map.setBounds).toHaveBeenCalledTimes(1); // deferredRegion undefined → region-fit 미발화
   });
 
   it("viewport 복원 시에도 첫 마커 fit 1회 실행 (맹점4: 빈 화면 방지)", async () => {

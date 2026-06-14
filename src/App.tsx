@@ -153,7 +153,7 @@ export default function App() {
     visibleCount, setVisibleCount,
     scoredMap, compItems, pw,
     activeFilterCount, regionOptions, filterOptionCounts, dataFreshnessText,
-    isFilterPending,
+    isFilterPending, deferredRegion, deferredGu,
   } = useDataPipeline({
     apartments, profile, customWeights,
     filterRegion, filterGu, sortKey, moveInFilter, builderTier,
@@ -353,9 +353,11 @@ export default function App() {
           />
         </div>
       ) : tab === "map" ? (
-        <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
+        // 지도 탭만 좌우 여백 축소(8px) — 지도를 더 넓게(세션 417). root maxWidth(containerMaxWidth)는
+        // 헤더·BottomNav·목록 탭 공유라 안 건드림(국소 변경). 다른 탭은 0 24px / 0 16px 유지.
+        <div style={{ padding: "0 8px" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>지도 로딩 중...</div>}>
-            <MapView filtered={filtered} onDetail={handleDetailGated} isPC={isPC} isDesktop={isDesktop} getViewport={getMapViewport} onViewportChange={handleViewportChange} />
+            <MapView filtered={filtered} onDetail={handleDetailGated} isPC={isPC} isDesktop={isDesktop} getViewport={getMapViewport} onViewportChange={handleViewportChange} deferredRegion={deferredRegion} deferredGu={deferredGu} />
           </Suspense>
         </div>
       ) : tab === "info" ? (

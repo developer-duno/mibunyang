@@ -102,6 +102,9 @@ export interface UseDataPipelineReturn {
   } | null;
   dataFreshnessText: string | null;
   isFilterPending: boolean;
+  /** 지도 region-fit 신호 (세션 417) — deferred 값(원시 filterRegion/Gu stale 회피) */
+  deferredRegion: string;
+  deferredGu: string;
 }
 
 /**
