@@ -328,7 +328,7 @@ export default function App() {
           upcomingData={upcomingData} upcomingError={upcomingError} onRetryUpcoming={retryUpcoming}
           isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC}
           dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
-          onNavClick={handleNavClick} onDetail={handleDetailGated}
+          onNavClick={handleNavClick} onMarketNav={(target, sort) => { if (sort) setSortKey(sort); handleNavClick(target); }} onDetail={handleDetailGated}
           onFav={toggleFavorite} favoriteSet={favoriteSet} onComp={toggleComp} compIds={compIds} />
       ) : tab === "list" ? (
         <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>

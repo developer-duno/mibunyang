@@ -42,9 +42,21 @@ describe("UpcomingWidget", () => {
     render(<UpcomingWidget data={data} error={false} onRetry={vi.fn()} onExpand={vi.fn()} />);
     expect(screen.getByText("월단위단지")).toBeInTheDocument();
   });
-  it("빈 stages: '예정된 청약 일정이 없습니다' (위젯 5상태 — 빈)", () => {
+  it("완전 빈상태(이번주 0 + 임박 0): 단일 '예정된 청약 일정이 없습니다' (0건 줄 겹침 제거)", () => {
     render(<UpcomingWidget data={makeData({ stages: { plan: [], apply: [], sale: [] }, calendar: {} })} error={false} onRetry={vi.fn()} onExpand={vi.fn()} />);
     expect(screen.getByText("예정된 청약 일정이 없습니다")).toBeInTheDocument();
+    expect(screen.queryByText(/이번 주 일정/)).toBeNull(); // 빈상태에선 "0건" 줄 미노출
+  });
+  it("이번주 일정은 있으나 임박 청약 없음: '이번 주 일정 N건' + '임박한 청약은 없어요'", () => {
+    // calendar 에 이번주 이벤트 1건 두되, stages 의 recruitDate 는 전부 과거/null → imminent 0
+    const iso = isoDaysFromNow(1);
+    const data = makeData({
+      stages: { plan: [{ id: "p1", name: "과거단지", region: "경기", presaleStage: "분양계획", presaleRecruitDate: isoDaysFromNow(-30) }], apply: [], sale: [] },
+      calendar: { [iso]: [{ id: "p1", event: "apply_start" }] },
+    });
+    render(<UpcomingWidget data={data} error={false} onRetry={vi.fn()} onExpand={vi.fn()} />);
+    expect(screen.getByText(/이번 주 일정 1건/)).toBeInTheDocument();
+    expect(screen.getByText("임박한 청약은 없어요")).toBeInTheDocument();
   });
   it("로딩(data=null, error=false): 스켈레톤 / 실패(error=true): 재시도", () => {
     const { container, unmount } = render(<UpcomingWidget data={null} error={false} onRetry={vi.fn()} onExpand={vi.fn()} />);

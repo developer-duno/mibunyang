@@ -12,7 +12,7 @@ const baseProps = () => ({
   upcomingData: null, upcomingError: false, onRetryUpcoming: vi.fn(),
   isLoggedIn: false, isDesktop: false, isPC: false,
   dataLoading: false, dataFreshnessText: null,
-  onNavClick: vi.fn(), onDetail: vi.fn(),
+  onNavClick: vi.fn(), onMarketNav: vi.fn(), onDetail: vi.fn(),
   onFav: vi.fn(), favoriteSet: new Set(), onComp: vi.fn(), compIds: [],
 });
 
@@ -70,6 +70,15 @@ describe("HomePage analytics (M3)", () => {
     fireEvent.click(screen.getByText("전체 일정 →"));
     expect(trackEvent).toHaveBeenCalledWith("home_widget_expand", { widget: "upcoming" });
     expect(onNavClick).toHaveBeenCalledWith("upcoming");
+  });
+
+  it("시장요약 '미분양률 중위' 칸 클릭 → home_market_nav{미분양률 중위} + onMarketNav(list, unsoldRate)", () => {
+    const onMarketNav = vi.fn();
+    // scored=[] 로 추천 위젯의 AptCard 렌더 회피(시장요약 칸 nav 는 값과 무관하게 항상 button)
+    render(<HomePage {...baseProps()} onMarketNav={onMarketNav} />);
+    fireEvent.click(screen.getByRole("button", { name: /미분양률 중위/ }));
+    expect(trackEvent).toHaveBeenCalledWith("home_market_nav", { cell: "미분양률 중위" });
+    expect(onMarketNav).toHaveBeenCalledWith("list", "unsoldRate");
   });
 
   it("home-grid 가 320px 안전 minmax(min(300px,100%),1fr) 적용", () => {
