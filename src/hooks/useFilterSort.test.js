@@ -28,6 +28,34 @@ describe('useFilterSort', () => {
     expect(result.current.budgetMax).toBe("");
   });
 
+  it('검색어 기본값은 빈 문자열', () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.searchQuery).toBe("");
+  });
+
+  it('handleSearchChange 로 검색어 변경', () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => { result.current.handleSearchChange("래미안"); });
+    expect(result.current.searchQuery).toBe("래미안");
+  });
+
+  it('handleResetAll 이 검색어도 비움', () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => { result.current.handleSearchChange("래미안"); });
+    expect(result.current.searchQuery).toBe("래미안");
+    act(() => { result.current.handleResetAll(); });
+    expect(result.current.searchQuery).toBe("");
+  });
+
+  it('검색어는 URL 에 동기화하지 않음 (일시적 탐색)', () => {
+    const replaceSpy = vi.spyOn(window.history, "replaceState");
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => { result.current.handleSearchChange("래미안"); });
+    // URL 직렬화 대상이 아니므로 검색어로 인한 replaceState 호출 시 search 에 검색어가 안 실림
+    const calledWithSearch = replaceSpy.mock.calls.some(c => String(c[2] ?? "").includes("래미안"));
+    expect(calledWithSearch).toBe(false);
+  });
+
   it('localStorage에서 sortKey 복원', () => {
     localStorage.setItem("mibunyang_sort", "price");
     const { result } = renderHook(() => useFilterSort({}));

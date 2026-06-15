@@ -46,6 +46,7 @@ const DEFAULT_PROPS = {
   showFavOnly: false, favoriteSet: new Set(),
   budgetMin: "", budgetMax: "", areaMin: "", areaMax: "",
   unitsMin: "", unitsMax: "", minScore: "", benefitOnly: false,
+  searchQuery: "",
   hideNoUnsold: false, compIds: [], dataUpdatedAt: "2026-04-10T00:00:00Z",
 };
 
@@ -315,6 +316,46 @@ describe("useDataPipeline", () => {
     it("필터 적용 시 카운트 증가", () => {
       const { result } = renderPipeline({ filterRegion: "서울", budgetMin: "3" });
       expect(result.current.activeFilterCount).toBe(2);
+    });
+
+    it("검색어가 있으면 카운트 +1", () => {
+      const { result } = renderPipeline({ searchQuery: "래미안" });
+      expect(result.current.activeFilterCount).toBe(1);
+    });
+
+    it("공백만 입력한 검색어는 카운트 0 (trim 기준)", () => {
+      const { result } = renderPipeline({ searchQuery: "   " });
+      expect(result.current.activeFilterCount).toBe(0);
+    });
+  });
+
+  /* ── 검색어 필터 ── */
+  describe("searchQuery 필터", () => {
+    const apts = [
+      makeApt({ id: "ah-1", name: "래미안 강남", region: "서울", gu: "강남구" }),
+      makeApt({ id: "ah-2", name: "푸르지오 인천", region: "인천", gu: "서구" }),
+    ];
+
+    it("검색어로 단지명 매칭만 남김", () => {
+      const { result } = renderPipeline({ apartments: apts, searchQuery: "래미안" });
+      expect(result.current.filtered).toHaveLength(1);
+      expect(result.current.filtered[0].apt.id).toBe("ah-1");
+    });
+
+    it("지역으로도 매칭", () => {
+      const { result } = renderPipeline({ apartments: apts, searchQuery: "인천" });
+      expect(result.current.filtered).toHaveLength(1);
+      expect(result.current.filtered[0].apt.id).toBe("ah-2");
+    });
+
+    it("빈 검색어는 전체 통과", () => {
+      const { result } = renderPipeline({ apartments: apts, searchQuery: "" });
+      expect(result.current.filtered).toHaveLength(2);
+    });
+
+    it("공백만 입력하면 전체 통과(정규화 후 빈쿼리)", () => {
+      const { result } = renderPipeline({ apartments: apts, searchQuery: "   " });
+      expect(result.current.filtered).toHaveLength(2);
     });
   });
 

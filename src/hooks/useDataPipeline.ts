@@ -4,6 +4,7 @@ import { REGIONS } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
 import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { applyBaseFilters } from "@/lib/filterEngine";
+import { matchesQuery, normalizeQuery } from "@/lib/searchMatch";
 import type { Cats, ProfileWeights } from "@/types/scoring";
 import type { UseDataPipelineArgs, UseDataPipelineReturn, ScoredApt, SortKey } from "@/types/hooks";
 
@@ -34,7 +35,7 @@ export function useDataPipeline({
   filterRegion, filterGu, sortKey, moveInFilter, builderTier,
   showFavOnly, favoriteSet, budgetMin, budgetMax,
   areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly,
-  hideNoUnsold, compIds, dataUpdatedAt,
+  searchQuery, hideNoUnsold, compIds, dataUpdatedAt,
 }: UseDataPipelineArgs): UseDataPipelineReturn {
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
 
@@ -44,8 +45,11 @@ export function useDataPipeline({
   const deferredSortKey = useDeferredValue(sortKey);
   const deferredMoveIn = useDeferredValue(moveInFilter);
   const deferredTier = useDeferredValue(builderTier);
+  const deferredSearch = useDeferredValue(searchQuery);
+  const normalizedSearch = useMemo(() => normalizeQuery(deferredSearch), [deferredSearch]);
   const isFilterPending = deferredRegion !== filterRegion || deferredGu !== filterGu
-    || deferredSortKey !== sortKey || deferredMoveIn !== moveInFilter || deferredTier !== builderTier;
+    || deferredSortKey !== sortKey || deferredMoveIn !== moveInFilter || deferredTier !== builderTier
+    || deferredSearch !== searchQuery;
 
   const guOptions = useMemo<string[]>(() => {
     if (filterRegion === "전체") {
@@ -104,9 +108,10 @@ export function useDataPipeline({
     if (deferredGu !== "전체") list = list.filter(x => x.apt.gu === deferredGu);
     if (deferredMoveIn !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === deferredMoveIn);
     if (deferredTier !== "전체") list = list.filter(x => classifyTier(x.apt) === deferredTier);
+    if (normalizedSearch) list = list.filter(x => matchesQuery(x.apt, normalizedSearch));
     if (hideNoUnsold) list = list.filter(x => (x.apt.unsoldRate ?? 0) > 0);
     return [...list].sort(SORTERS[deferredSortKey] || SORTERS.total);
-  }, [scored, baseFilterArgs, deferredRegion, deferredGu, deferredSortKey, deferredMoveIn, deferredTier, hideNoUnsold]);
+  }, [scored, baseFilterArgs, deferredRegion, deferredGu, deferredSortKey, deferredMoveIn, deferredTier, normalizedSearch, hideNoUnsold]);
 
   // filtered 가 새로 생성되면 페이지네이션을 첫 30개로 리셋 — 외부 상태(필터 결과) 동기화의 정당한 effect 사용
   useEffect(() => { setVisibleCount(VISIBLE_PAGE_SIZE); }, [filtered]);
@@ -117,8 +122,8 @@ export function useDataPipeline({
   const pw = useMemo<ProfileWeights>(() => customWeights[profile] ?? (PROFILES as Record<string, { w: ProfileWeights }>)[profile].w, [profile, customWeights]);
 
   const activeFilterCount = useMemo(() =>
-    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly].filter(Boolean).length,
-    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly]
+    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly, searchQuery.trim()].filter(Boolean).length,
+    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchQuery]
   );
 
   const regionOptions = useMemo<string[]>(() => {

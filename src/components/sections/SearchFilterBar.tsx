@@ -25,6 +25,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   filterGu, onGuChange, guOptions,
   budgetMin, onBudgetMinChange, budgetMax, onBudgetMaxChange, onBudgetReset,
   sortKey, onSortChange,
+  searchQuery = "", onSearchChange,
   isDesktop,
   showFavOnly, onToggleFavOnly, favCount,
   areaMin, onAreaMinChange, areaMax, onAreaMaxChange,
@@ -93,6 +94,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         <FilterButton label="정렬" summary={sortLabel} isOpen={openPanel === "sort"} isActive={!!sortLabel} onClick={() => togglePanel("sort")} />
         <FilterButton label="추천" isOpen={openPanel === "preset"} isActive={false} onClick={() => togglePanel("preset")} />
         <FilterButton label="상세" isOpen={openPanel === "detail"} isActive={detailActive} onClick={() => togglePanel("detail")} />
+        <FilterButton label="검색" summary={searchQuery.trim() ? searchQuery : undefined} isOpen={openPanel === "search"} isActive={!!searchQuery.trim()} onClick={() => togglePanel("search")} />
         <div style={{ flex: 1 }} />
         {/* 건수 배지 */}
         {filteredLength != null && <span key={filteredLength} style={{
@@ -160,11 +162,23 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       <FilterDropdown isOpen={openPanel === "detail"} label="상세" isDesktop={isDesktop}>
         <DetailPanel minScore={minScore} onMinScoreChange={onMinScoreChange} builderTier={builderTier} onBuilderTierChange={onBuilderTierChange} benefitOnly={benefitOnly} onToggleBenefitOnly={onToggleBenefitOnly} filterOptionCounts={filterOptionCounts} />
       </FilterDropdown>
+      <FilterDropdown isOpen={openPanel === "search"} label="검색" isDesktop={isDesktop}>
+        <input
+          value={searchQuery}
+          onChange={e => onSearchChange?.(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") closePanel(); }}
+          placeholder="단지명·지역 검색 (예: 래미안, 대전)"
+          aria-label="단지명·지역 검색"
+          autoFocus
+          style={{ width: "100%", height: 38, padding: "0 12px", fontSize: F.base, border: `1px solid ${C.border}`, borderRadius: 8, boxSizing: "border-box" }}
+        />
+      </FilterDropdown>
 
       {/* 2행: 활성 필터 칩 + 초기화 + 공유 */}
       {activeFilterCount > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap", flex: 1 }}>
+            {searchQuery.trim() && <span role="button" tabIndex={0} aria-label="검색어 해제" onClick={() => onSearchChange?.("")} onKeyDown={onChipKeyDown(() => onSearchChange?.(""))} style={chipStyle}>검색: {searchQuery} ✕</span>}
             {showFavOnly && <span role="button" tabIndex={0} aria-label="관심 필터 해제" onClick={onToggleFavOnly} onKeyDown={onChipKeyDown(onToggleFavOnly)} style={chipStyle}>관심 ✕</span>}
             {filterRegion !== "전체" && <span role="button" tabIndex={0} aria-label={`${filterRegion} 필터 해제`} onClick={() => onRegionChange("전체")} onKeyDown={onChipKeyDown(() => onRegionChange("전체"))} style={chipStyle}>{filterRegion} ✕</span>}
             {(budgetMin || budgetMax) && <span role="button" tabIndex={0} aria-label="예산 필터 해제" onClick={onBudgetReset} onKeyDown={onChipKeyDown(onBudgetReset)} style={chipStyle}>{budgetMin || "0"}~{budgetMax || "∞"}억 ✕</span>}

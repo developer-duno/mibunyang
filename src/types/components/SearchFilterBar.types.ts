@@ -37,6 +37,8 @@ export interface SearchFilterBarProps {
   onToggleHideNoUnsold?: () => void;
   sortKey: SortKey;
   onSortChange: (_v: SortKey) => void;
+  searchQuery?: string;
+  onSearchChange?: (_v: string) => void;
   filterOptionCounts?: NonNullable<UseDataPipelineReturn["filterOptionCounts"]>;
   filteredLength: number;
   scoredLength: number;
