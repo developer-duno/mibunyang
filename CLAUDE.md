@@ -39,7 +39,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지 |
 | **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |
-| **수집** | GitHub Actions (47개) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
+| **수집** | GitHub Actions (38개, KOSIS·childcare 로컬 이전) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
 | **테스트** | Vitest + Playwright E2E (13 spec) | `npm run test` / `npm run test:e2e` |
 | **모니터링** | Vercel Analytics + Speed Insights | 페이지뷰/Web Vitals/커스텀 이벤트 |
 
@@ -68,5 +68,5 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `src/hooks/` | Hook 호출 순서, 의존성 13개, **React 성능 패턴** (useDeferredValue/useTransition) |
 | `api/` | JS null 함정, 한글 인코딩, withHandler, **인증/세션 KV**, **비로그인 블라인드 정책** |
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
-| `.github/workflows/` | 47개 워크플로우 목록, GitHub Secrets, 스케줄 |
+| `.github/workflows/` | 38개 워크플로우 목록, GitHub Secrets, 스케줄 |
 | `supabase/` | 15개 테이블 + 2 VIEW + presale 19컬럼, RLS 정책 |
