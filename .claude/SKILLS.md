@@ -25,6 +25,14 @@
 - **`/data:analyze`** — price/unsoldRate 트렌드/세그먼트 조사
 - **`/data:validate-data` · `/data:statistical-analysis`** — 데이터 품질 검증 / 분석 공유 직전 (NULL률·이상치·denominator shift)
 
+## 프로젝트 전용 스킬 (`.claude/skills/`, 자율 발동)
+
+> 세션 418: cross-validate·db-quality·score-recalc 를 command → **skill 승격** (커맨드는 자동발동 불가, 스킬은 `description`/`when_to_use` 매칭으로 타이핑 0 자율 발동 — [auto-tool-usage.md](../../../Users/user/.claude/rules/auto-tool-usage.md) 공식 메커니즘).
+
+- **`cross-validate`** — 커밋/PR 직전 simplify + 5교차검증 병렬 (빌드·스코어링·null·Hook·보안)
+- **`db-quality`** — apartments_flat 품질 지표 재측정 + 세션 318 기준 회귀 점검
+- **`score-recalc`** — 스코어 재계산 + PROFILES 5종 가중치 합계 sanity
+
 ## UI / 리뷰 / 마무리
 
 - **`webapp-testing`** — UI 변경 후 브라우저 검증 (Playwright, **필수**)

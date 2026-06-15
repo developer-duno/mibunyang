@@ -7,12 +7,15 @@
 - **중복 금지**: 확정 사실은 SESSION_LOG로 이관 후 memory에서 삭제. 같은 사실 두 곳 작성 금지.
 - CLAUDE.md "현재 진행 상황"은 한 줄 요약만 — 상세는 SESSION_LOG.
 
-## 프로젝트 전용 슬래시 커맨드 (`.claude/commands/`)
+## 프로젝트 전용 커맨드 (`.claude/commands/`)
 
 - `/collect-naver` — 네이버 수집 + post-naver-collect 파이프라인
-- `/score-recalc` — 점수 재계산 + PROFILES 가중치 합 sanity
-- `/cross-validate` — simplify + 5교차검증 병렬 (Review 단계 자동화)
-- `/db-quality` — apartments_flat 품질 지표 재측정
+
+## 프로젝트 전용 스킬 (`.claude/skills/`, 자율 발동 — 세션 418 command→skill 승격)
+
+- `score-recalc` — 점수 재계산 + PROFILES 가중치 합 sanity
+- `cross-validate` — simplify + 5교차검증 병렬 (Review 단계 자동화)
+- `db-quality` — apartments_flat 품질 지표 재측정
 
 ## 프로젝트 전용 서브에이전트 (`.claude/agents/`)
 

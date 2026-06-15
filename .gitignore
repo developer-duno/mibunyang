@@ -3,6 +3,7 @@ dist/
 .claude/*
 !.claude/settings.json
 !.claude/SESSION_LOG.md
+!.claude/SESSION_LOG_ARCHIVE_2026H1.md
 !.claude/BACKLOG.md
 !.claude/BACKLOG_ARCHIVE.md
 !.claude/SKILLS.md
@@ -23,6 +24,8 @@ dist/
 !.claude/agents/**
 !.claude/rules/
 !.claude/rules/**
+!.claude/skills/
+!.claude/skills/**
 .claude/settings.local.json
 .claude/.edit-counter
 .claude/.build-dirty
@@ -81,6 +84,8 @@ schools-neis-errors.txt
 # 바이너리/데이터
 *.xlsx
 *.pdf
+*.doc
+*.docx
 
 # 운영 데이터 (collect-data.mjs Phase 7 출력 — Vercel 정적 자산)
 # 원본 apartments.json 은 추적 유지 (외부 collector 4 파일 호환). 분리 출력 2 파일만 신규 ignore.
