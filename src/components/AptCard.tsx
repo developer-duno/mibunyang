@@ -92,7 +92,9 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
                 <span style={S.catLabel}>{(SHORT_LABEL as Record<string, string>)[c.label] || c.label}</span>
                 <span style={{ fontSize: F.base, fontWeight: 700, color: (catCol as Record<string, string>)[k], ...(isLoggedIn ? {} : { filter: "blur(4px)" }) }}>{isLoggedIn ? c.total : "??"}</span>
               </div>
-              <Bar value={c.total} color={(catCol as Record<string, string>)[k]} h={5} />
+              {isLoggedIn
+                ? <Bar value={c.total} color={(catCol as Record<string, string>)[k]} h={5} />
+                : <div aria-hidden="true" style={{ height: 5, background: "#ECEEF4", borderRadius: 99 }} />}
             </div>
           ))}
         </div>
@@ -104,9 +106,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             <span style={S.infoTag}>{res.cats.price.subs[0].detail}</span>
           ) : null}
           {res.cats.location.subs[0]?.info && <span style={S.infoTag}>{res.cats.location.subs[0].info}</span>}
-          <span style={S.infoTag}>안전 {gr(res.cats.risk?.total ?? 0).l}등급</span>
+          <span style={S.infoTag}>안전 {isLoggedIn ? gr(res.cats.risk?.total ?? 0).l : "?"}등급</span>
           {(apt.discountPct ?? 0) > 0 && <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>할인 {apt.discountPct}%</span>}
           {res.cats.price?.deviation != null && Number(res.cats.price.deviation) > 0 && <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>주변대비 +{Math.round(Number(res.cats.price.deviation))}% 저렴</span>}
+          {res.cats.price?.deviation != null && Number(res.cats.price.deviation) < 0 && <span style={{ ...S.infoTag, background: C.redLight, color: C.red, fontWeight: 700 }}>주변대비 {Math.abs(Math.round(Number(res.cats.price.deviation)))}% 비쌈</span>}
         </div>
 
         {benefitWon > 0 ? (

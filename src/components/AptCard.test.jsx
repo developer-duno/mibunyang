@@ -186,11 +186,19 @@ describe("AptCard", () => {
     expect(screen.getByText("주변대비 +8% 저렴")).toBeInTheDocument(); // Math.round("8.4")=8
   });
 
-  it("deviation 음수(비쌈)면 배지 미표시 (역부호 회귀 가드)", () => {
+  it("deviation 음수(비쌈)면 빨강 '비쌈' 배지 표시 + '저렴' 미표시 (세션420 A)", () => {
     const res = makeRes();
     res.cats.price.deviation = "-8.4";
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.queryByText(/주변대비/)).toBeNull();
+    expect(screen.getByText("주변대비 8% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round("-8.4"))=8
+    expect(screen.queryByText(/저렴/)).toBeNull(); // 음수는 저렴 배지 안 뜸 (상호배타)
+  });
+
+  it("deviation 양수(저렴)면 '비쌈' 배지 미표시 (세션420 A 상호배타)", () => {
+    const res = makeRes();
+    res.cats.price.deviation = "8.4";
+    render(<AptCard {...makeProps({ res })} />);
+    expect(screen.queryByText(/비쌈/)).toBeNull();
   });
 
   it("deviation null 이면 배지 미표시", () => {
@@ -200,12 +208,31 @@ describe("AptCard", () => {
     expect(screen.queryByText(/주변대비/)).toBeNull();
   });
 
-  it("deviation \"0.0\"(데이터 부재 분기) 이면 배지 미표시", () => {
-    // scorePrice.ts:116 데이터 부재 분기가 fairPrice=0 + deviation="0.0" 산출 → 0>0 false
+  it("deviation \"0.0\"(데이터 부재 분기) 이면 배지 미표시 (저렴·비쌈 둘 다)", () => {
+    // scorePrice.ts:116 데이터 부재 분기가 fairPrice=0 + deviation="0.0" 산출 → 0>0 false, 0<0 false
     const res = makeRes();
     res.cats.price.deviation = "0.0";
     render(<AptCard {...makeProps({ res })} />);
     expect(screen.queryByText(/주변대비/)).toBeNull();
+  });
+
+  // 세션420 C: 비로그인 점수 계열 블라인드 (api/CLAUDE.md "점수 블라인드" 정책 정합)
+  it("비로그인이면 카테고리 점수바(progressbar) 미노출, 로그인이면 노출", () => {
+    const { rerender } = render(<AptCard {...makeProps({ isLoggedIn: false })} />);
+    // 비로그인: 카테고리 점수바(Bar=role progressbar) DOM 부재 — 실점수 width%·aria-valuenow 누설 차단
+    expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
+    // 로그인: 상위 3개 카테고리 점수바 노출
+    rerender(<AptCard {...makeProps({ isLoggedIn: true })} />);
+    expect(screen.getAllByRole("progressbar").length).toBeGreaterThan(0);
+  });
+
+  it("비로그인이면 '안전 ?등급', 로그인이면 실제 등급 노출 (세션420 C)", () => {
+    const res = makeRes(); // risk.total=85 → gr=A
+    const { rerender } = render(<AptCard {...makeProps({ res, isLoggedIn: false })} />);
+    expect(screen.getByText("안전 ?등급")).toBeInTheDocument();
+    expect(screen.queryByText("안전 A등급")).toBeNull();
+    rerender(<AptCard {...makeProps({ res, isLoggedIn: true })} />);
+    expect(screen.getByText("안전 A등급")).toBeInTheDocument();
   });
 
   // 무순위 공고 발생 단지 — "추가 모집" 빨간 배지
