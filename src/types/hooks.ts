@@ -61,6 +61,7 @@ export interface UseDataPipelineArgs {
   unitsMax: string;
   minScore: string;
   benefitOnly: boolean;
+  searchQuery: string;
   hideNoUnsold: boolean;
   compIds: string[];
   dataUpdatedAt?: string | null;
@@ -284,6 +285,8 @@ export interface UseFilterSortReturn {
   builderTier: string;
   benefitOnly: boolean;
   showFavOnly: boolean;
+  searchQuery: string;
+  handleSearchChange: (_v: string) => void;
   handleRegionChange: (_r: string) => void;
   handleGuChange: (_g: string) => void;
   handleBudgetMinChange: (_v: string) => void;

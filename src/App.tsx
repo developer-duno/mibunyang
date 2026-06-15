@@ -135,7 +135,7 @@ export default function App() {
   const { favoriteIds, favoriteSet, setFavoriteIds, toggleFavorite } = useFavorites(showToast);
   const detail = useDetailModal(tab);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, searchQuery, handleSearchChange, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending } = useFilterSort({ onFilterChange: closeDetail });
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const expert = useExpertMode(showToast);
@@ -159,7 +159,7 @@ export default function App() {
     filterRegion, filterGu, sortKey, moveInFilter, builderTier,
     showFavOnly, favoriteSet, budgetMin, budgetMax,
     areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly,
-    hideNoUnsold, compIds, dataUpdatedAt,
+    searchQuery, hideNoUnsold, compIds, dataUpdatedAt,
   });
 
   // ── 비로그인 게이트 (LoginPromptModal 관련 3 state + 3 핸들러) ──
@@ -300,6 +300,7 @@ export default function App() {
             filterGu={filterGu} onGuChange={handleGuChange} guOptions={guOptions}
             budgetMin={budgetMin} onBudgetMinChange={handleBudgetMinChange} budgetMax={budgetMax} onBudgetMaxChange={handleBudgetMaxChange} onBudgetReset={handleBudgetReset}
             sortKey={sortKey} onSortChange={setSortKey}
+            searchQuery={searchQuery} onSearchChange={handleSearchChange}
             isDesktop={isDesktop}
             showFavOnly={showFavOnly} onToggleFavOnly={toggleFavOnly} favCount={favoriteIds.length}
             areaMin={areaMin} onAreaMinChange={handleAreaMinChange} areaMax={areaMax} onAreaMaxChange={handleAreaMaxChange}
@@ -346,6 +347,7 @@ export default function App() {
             pw={pw} profile={profile} isPC={isPC} isDesktop={isDesktop} isPending={isPending || isFilterPending || isSortPending}
             budgetMin={budgetMin} budgetMax={budgetMax} filterRegion={filterRegion}
             moveInFilter={moveInFilter} builderTier={builderTier} minScore={minScore}
+            searchQuery={searchQuery} onResetSearch={() => handleSearchChange("")}
             onResetBudget={handleBudgetReset} onResetRegion={() => handleRegionChange("전체")}
             dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
             onResetAll={handleResetAll}

@@ -44,6 +44,16 @@ describe("AptListSection", () => {
     expect(screen.getByText("예산 범위에 맞는 단지가 없습니다")).toBeInTheDocument();
   });
 
+  // 검색어로 빈 결과 — 검색어 메시지 + 해제 버튼
+  it("검색어로 결과 0건이면 검색어 빈 메시지 + 검색 해제 버튼", () => {
+    const onResetSearch = vi.fn();
+    render(<AptListSection {...makeProps({ searchQuery: "래미안", onResetSearch })} />);
+    expect(screen.getByText("'래미안'에 맞는 단지가 없습니다")).toBeInTheDocument();
+    const resetBtn = screen.getByText("검색 해제");
+    fireEvent.click(resetBtn);
+    expect(onResetSearch).toHaveBeenCalled();
+  });
+
   // 더 보기 버튼 — visibleCount < filteredLength일 때만 표시
   it("더 보기 버튼이 남은 항목이 있을 때만 표시", () => {
     const items = [makeScoredItem({ id: 1 }), makeScoredItem({ id: 2 })];

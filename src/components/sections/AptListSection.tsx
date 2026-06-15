@@ -28,6 +28,8 @@ type AptListSectionProps = {
   moveInFilter: string;
   builderTier: string;
   minScore: string | number;
+  searchQuery?: string;
+  onResetSearch?: () => void;
   onResetBudget?: () => void;
   onResetRegion?: () => void;
   dataLoading?: boolean;
@@ -43,6 +45,7 @@ export const AptListSection = memo(function AptListSection({
   pw, profile, isPC, isDesktop, isPending,
   budgetMin, budgetMax, filterRegion,
   moveInFilter, builderTier, minScore,
+  searchQuery = "", onResetSearch,
   onResetBudget, onResetRegion,
   dataLoading, dataFreshnessText,
   onResetAll, isLoggedIn,
@@ -76,10 +79,11 @@ export const AptListSection = memo(function AptListSection({
 
       {filteredLength === 0 && !dataLoading && (
         <div style={{ textAlign: "center", padding: "48px 24px", color: C.muted }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>{(budgetMin || budgetMax) ? "\uD83D\uDCB0" : "\uD83D\uDDFA\uFE0F"}</div>
-          <div style={{ fontSize: F.base, fontWeight: 700, marginBottom: 4, color: C.text }}>{(budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 조건에 맞는 미분양 단지가 없습니다"}</div>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>{searchQuery.trim() ? "\uD83D\uDD0D" : (budgetMin || budgetMax) ? "\uD83D\uDCB0" : "\uD83D\uDDFA\uFE0F"}</div>
+          <div style={{ fontSize: F.base, fontWeight: 700, marginBottom: 4, color: C.text }}>{searchQuery.trim() ? `'${searchQuery.trim()}'에 맞는 단지가 없습니다` : (budgetMin || budgetMax) ? "예산 범위에 맞는 단지가 없습니다" : "해당 조건에 맞는 미분양 단지가 없습니다"}</div>
           <div style={{ fontSize: F.sm, lineHeight: 1.6, marginBottom: 8 }}>적용된 필터를 확인해주세요</div>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 6, marginBottom: 12 }}>
+            {searchQuery.trim() && <span style={{ fontSize: F.xs, padding: "3px 10px", borderRadius: 12, background: C.slate100, color: C.text, fontWeight: 600 }}>검색: {searchQuery.trim()}</span>}
             {filterRegion !== "전체" && <span style={{ fontSize: F.xs, padding: "3px 10px", borderRadius: 12, background: C.indigoLight, color: C.indigo, fontWeight: 600 }}>{filterRegion}</span>}
             {(budgetMin || budgetMax) && <span style={{ fontSize: F.xs, padding: "3px 10px", borderRadius: 12, background: C.amberLight, color: C.amber, fontWeight: 600 }}>{budgetMin || "0"}~{budgetMax || "\u221E"}\uc5B5</span>}
             {moveInFilter !== "전체" && <span style={{ fontSize: F.xs, padding: "3px 10px", borderRadius: 12, background: C.greenLight, color: C.green, fontWeight: 600 }}>{moveInFilter}</span>}
@@ -87,6 +91,9 @@ export const AptListSection = memo(function AptListSection({
             {minScore && <span style={{ fontSize: F.xs, padding: "3px 10px", borderRadius: 12, background: C.slate100, color: C.text, fontWeight: 600 }}>{minScore}점 이상</span>}
           </div>
           <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+            {searchQuery.trim() && onResetSearch && (
+              <button onClick={onResetSearch} style={{ padding: "6px 14px", fontSize: F.sm, fontWeight: 600, background: C.slate100, color: C.text, border: "none", borderRadius: 6, cursor: "pointer" }}>검색 해제</button>
+            )}
             {(budgetMin || budgetMax) && onResetBudget && (
               <button onClick={onResetBudget} style={{ padding: "6px 14px", fontSize: F.sm, fontWeight: 600, background: C.amberLight, color: C.amber, border: "none", borderRadius: 6, cursor: "pointer" }}>예산 해제</button>
             )}

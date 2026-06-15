@@ -133,6 +133,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
   const [minScore, setMinScore] = useState<string>(() => urlInit?.minScore ?? "");
   const [builderTier, setBuilderTier] = useState<string>(() => urlInit?.builderTier ?? "전체");
   const [benefitOnly, setBenefitOnly] = useState<boolean>(() => (urlInit?.benefitOnly as boolean) ?? false);
+  // 단지명·지역 검색어 — URL/undo/preset 미참여(일시적 탐색), resetFilters 만 비움
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   // URL 동기화 (debounce 300ms, replaceState)
   const isInitialLoad = useRef<boolean>(true);
@@ -153,6 +155,7 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     return () => clearTimeout(timer);
   }, [filterRegion, filterGu, sortKey, budgetMin, budgetMax, minScore, builderTier, benefitOnly, areaMin, areaMax, unitsMin, unitsMax, moveInFilter]);
 
+  const handleSearchChange = useCallback((val: string) => { setSearchQuery(val); onFilterChange?.(); }, [onFilterChange]);
   const handleMoveInChange = useCallback((val: string) => { setMoveInFilter(val); onFilterChange?.(); }, [onFilterChange]);
   const handleMinScoreChange = useCallback((val: string) => { setMinScore(val); onFilterChange?.(); }, [onFilterChange]);
   const handleBuilderTierChange = useCallback((val: string) => { setBuilderTier(val); onFilterChange?.(); }, [onFilterChange]);
@@ -186,6 +189,7 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       SETTERS[stateKey]?.(val);
     }
     setShowFavOnly(false);
+    setSearchQuery(""); // 초기화/프리셋/히스토리 적용 시 검색어도 비움 (셋 다 resetFilters 경유)
     const sk = (overrides.sortKey as string) || "total";
     try { localStorage.setItem("mibunyang_sort", sk); } catch { /* ignore storage errors */ }
     onFilterChange?.();
@@ -339,5 +343,5 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     applySnapshot(next);
   }, [getCurrentSnapshot, applySnapshot]);
 
-  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending };
+  return { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, searchQuery, handleSearchChange, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending };
 }

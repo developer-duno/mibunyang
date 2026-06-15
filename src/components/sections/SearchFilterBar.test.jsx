@@ -20,6 +20,8 @@ function makeProps(overrides = {}) {
     onBudgetReset: vi.fn(),
     sortKey: "total",
     onSortChange: vi.fn(),
+    searchQuery: "",
+    onSearchChange: vi.fn(),
     isDesktop: false,
     showFavOnly: false,
     onToggleFavOnly: vi.fn(),
@@ -93,6 +95,35 @@ describe("SearchFilterBar", () => {
     render(<SearchFilterBar {...makeProps()} />);
     openPanel("금액");
     expect(screen.queryByLabelText("예산 초기화")).toBeNull();
+  });
+
+  // 검색 드롭다운 → 단지명 input
+  it("검색 드롭다운 열면 단지명 검색 input 렌더링", () => {
+    render(<SearchFilterBar {...makeProps()} />);
+    openPanel("검색");
+    expect(screen.getByLabelText("단지명·지역 검색")).toBeInTheDocument();
+  });
+
+  it("검색 input 변경 시 onSearchChange 호출", () => {
+    const onSearchChange = vi.fn();
+    render(<SearchFilterBar {...makeProps({ onSearchChange })} />);
+    openPanel("검색");
+    fireEvent.change(screen.getByLabelText("단지명·지역 검색"), { target: { value: "래미안" } });
+    expect(onSearchChange).toHaveBeenCalledWith("래미안");
+  });
+
+  it("검색어 있으면 활성 칩 표시 + 해제 콜백", () => {
+    const onSearchChange = vi.fn();
+    render(<SearchFilterBar {...makeProps({ searchQuery: "래미안", activeFilterCount: 1, onSearchChange })} />);
+    const chip = screen.getByLabelText("검색어 해제");
+    expect(chip).toHaveTextContent("검색: 래미안");
+    fireEvent.click(chip);
+    expect(onSearchChange).toHaveBeenCalledWith("");
+  });
+
+  it("공백만 입력한 검색어는 활성 칩 미표시", () => {
+    render(<SearchFilterBar {...makeProps({ searchQuery: "   ", activeFilterCount: 0 })} />);
+    expect(screen.queryByLabelText("검색어 해제")).toBeNull();
   });
 
   // 결과 카운트 배지 표시 (드롭다운 열기 불필요)
