@@ -38,6 +38,7 @@
 - fetchWithRetry: Retry-After 헤더 + 지수 백오프 (429/500/503)
 - upsertBatch: 배치 100ms + 429 재시도 (attempt+1)^2초
 - recordApiQuota: api_quota_log 기록
+- **today(): KST 고정 YYYY-MM-DD** (세션 419) — `Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul"})`. ⚠️ GitHub Actions=UTC 러너라 `new Date().toISOString().slice(0,10)` 직접 쓰면 KST 02:00~08:00 발화 시 recorded_at 하루 밀림. **시계열 recorded_at·collected_at 저장은 today() 의무**(직접 toISOString 금지). TZ env 안 씀(코드 고정이 본질 — TZ env는 cron 발화 안 바꿈+월경계 시프트 잠복위험). datetime(시각포함, presale_fetched_at 등)은 timestamptz 컬럼이라 toISOString 유지 OK
 
 ### Exit Code 정책
 
