@@ -5,11 +5,24 @@
 ## 즉시 알아야 할 것 (항상 로드 가치)
 
 - **사용자 대화 시 쉬운 말 원칙** — 자세히는 [.claude/EASY_WORDS.md](.claude/EASY_WORDS.md)
-- **현재 진행 상황** — [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) (세션 1~295 누적, 296+ SESSION_LOG drift P1) · [.claude/DB_QUALITY.md](.claude/DB_QUALITY.md) · [.claude/BACKLOG.md](.claude/BACKLOG.md) · `.claude/NEXT_SESSION.md` (개인 로컬, git 미추적)
+- **현재 진행 상황** — 세션 296+ 이력은 글로벌 메모리 `~/.claude/projects/f--mibunyang/memory/` (MEMORY.md 인덱스 + session_*.md) 가 진실의 원천. 과거 세션 1~354 = [.claude/SESSION_LOG_ARCHIVE_2026H1.md](.claude/SESSION_LOG_ARCHIVE_2026H1.md) · [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) (스텁) · [.claude/DB_QUALITY.md](.claude/DB_QUALITY.md) · [.claude/BACKLOG.md](.claude/BACKLOG.md) · `.claude/NEXT_SESSION.md` (개인 로컬, git 미추적)
 - **새 작업 시작 시 작업 규칙** — [.claude/WORK_RULES.md](.claude/WORK_RULES.md) (Plan→Guard→Work→Review)
 - **CLAUDE.md 본문 편집 전 메타 규칙** — [.claude/META_RULES.md](.claude/META_RULES.md) (비대화 방지, 상한 150줄)
 - **환경변수 / 로컬 자원 / 자주 쓰는 스킬** — [.claude/ENV_VARS.md](.claude/ENV_VARS.md) · [.claude/LOCAL_RESOURCES.md](.claude/LOCAL_RESOURCES.md) · [.claude/SKILLS.md](.claude/SKILLS.md)
 - **외부 API 키 발급처 + 도구 카탈로그** — [.claude/API_REGISTRY.md](.claude/API_REGISTRY.md) · [.claude/CLAUDE_TOOLBOX.md](.claude/CLAUDE_TOOLBOX.md)
+
+## 명령 (검증 가드)
+
+```bash
+npm run dev               # localhost:5173
+npm run build             # 빌드 (⚠️ prebuild 가 public/data JSON 재생성 → 커밋 금지, git checkout 원복)
+npm run test              # vitest 단위 (src 113 spec)
+npm run test:e2e          # Playwright E2E (e2e 13 spec)
+npm run lint              # eslint src/
+npm run typecheck         # tsc --noEmit (src) — typecheck:scripts / typecheck:e2e 별도
+```
+
+> CI(`ci.yml`) = lint → typecheck×3 → audit×4(env-key·monitor·collector·fill-matrix) → test → build. 머지 전 전부 green 필수.
 
 ## 아키텍처 개요
 
@@ -26,7 +39,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지 |
 | **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |
-| **수집** | GitHub Actions (47개) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
+| **수집** | GitHub Actions (38개, KOSIS·childcare 로컬 이전) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
 | **테스트** | Vitest + Playwright E2E (13 spec) | `npm run test` / `npm run test:e2e` |
 | **모니터링** | Vercel Analytics + Speed Insights | 페이지뷰/Web Vitals/커스텀 이벤트 |
 
@@ -55,5 +68,5 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `src/hooks/` | Hook 호출 순서, 의존성 13개, **React 성능 패턴** (useDeferredValue/useTransition) |
 | `api/` | JS null 함정, 한글 인코딩, withHandler, **인증/세션 KV**, **비로그인 블라인드 정책** |
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
-| `.github/workflows/` | 47개 워크플로우 목록, GitHub Secrets, 스케줄 |
+| `.github/workflows/` | 38개 워크플로우 목록, GitHub Secrets, 스케줄 |
 | `supabase/` | 15개 테이블 + 2 VIEW + presale 19컬럼, RLS 정책 |

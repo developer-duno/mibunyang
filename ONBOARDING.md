@@ -9,9 +9,9 @@
 
 - **프론트**: React 19 SPA (Vite 8 Rolldown)
 - **백엔드**: Vercel Serverless (23 함수) + Supabase PostgreSQL (15 테이블 + 2 VIEW)
-- **수집**: GitHub Actions (47 워크플로) + Windows 스케줄러 (네이버 한국 IP)
-- **인증**: SHA-256+salt, HMAC-SHA256 JWT + 카카오 OAuth + 전문가/관리자 role
-- **테스트**: Vitest 3044+ + Playwright E2E 11 spec
+- **수집**: GitHub Actions (38 워크플로, KOSIS·childcare 로컬 이전으로 감소) + Windows 스케줄러 (네이버 한국 IP)
+- **인증**: SHA-256+salt, HMAC-SHA256 JWT + 카카오 OAuth + 관리자 role (전문가 role 세션 405 폐지)
+- **테스트**: Vitest 3400+ + Playwright E2E 13 spec (+ 시각 baseline `PW_VISUAL=1`)
 
 ## 5분 진입 단계
 
@@ -28,7 +28,7 @@ git log --oneline -10                  # 최근 작업 답습
 | 우선순위 | 파일 | 답습 목적 |
 |---|---|---|
 | 1 | [CLAUDE.md](CLAUDE.md) | 아키텍처 + 즉시 알아야 할 것 |
-| 2 | [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) | 최근 세션 진행 답습 |
+| 2 | 글로벌 메모리 `~/.claude/projects/f--mibunyang/memory/MEMORY.md` | 최근 세션 진행 (세션 296+ 진실의 원천). 과거 1~354 = [.claude/SESSION_LOG_ARCHIVE_2026H1.md](.claude/SESSION_LOG_ARCHIVE_2026H1.md) |
 | 3 | [.claude/BACKLOG.md](.claude/BACKLOG.md) | 활성 P0~P3 우선순위 |
 | 4 | [.claude/NEXT_SESSION.md](.claude/NEXT_SESSION.md) | 다음 작업 (로컬, git 미추적) |
 | 5 | [docs/superpowers/INDEX.md](docs/superpowers/INDEX.md) | spec/plan 35 파일 색인 |
@@ -48,7 +48,7 @@ git log --oneline -10                  # 최근 작업 답습
 ```
 mibunyang/
 ├── src/                # React 프론트 (TS화 98%)
-│   ├── components/    # 컴포넌트 (memo 45개 + icons.tsx)
+│   ├── components/    # 컴포넌트 (memo 54개 + icons.tsx)
 │   ├── scoring/       # 점수 엔진 (6 카테고리 41+ 지표)
 │   ├── hooks/         # useDataPipeline + 13 useMemo 체인
 │   └── theme/         # Pretendard + tokens
@@ -56,15 +56,15 @@ mibunyang/
 ├── scripts/            # 수집기 47 + audit + 기타
 │   └── collectors/    # 외부 API 수집
 ├── supabase/           # 마이그 + RLS 정책
-├── .github/workflows/  # 47 워크플로
-├── e2e/                # Playwright 11 spec
+├── .github/workflows/  # 38 워크플로
+├── e2e/                # Playwright 13 spec (+ visual.spec.ts 시각 baseline)
 ├── docs/superpowers/   # spec/plan 35 파일 ([INDEX.md](docs/superpowers/INDEX.md))
 └── .claude/            # 프로젝트 메모리 + 룰
     ├── rules/
     │   ├── collectors/    # 수집기 룰 (parseGu·KOSIS·graceful·timeout)
     │   ├── workflows/     # 워크플로 룰 (secret/timeout/outage)
     │   └── meta/          # 메타 룰 (NEXT_SESSION grep·TS 패턴)
-    └── SESSION_LOG.md     # 세션 1~331 누적
+    └── SESSION_LOG.md     # 스텁 (세션 1~354 = SESSION_LOG_ARCHIVE_2026H1.md, 296+ = 글로벌 메모리)
 ```
 
 각 디렉토리의 `CLAUDE.md` 파일 답습 의무 (서브디렉토리 작업 시 자동 로드).
@@ -90,7 +90,7 @@ mibunyang/
 
 1. ✅ 본 ONBOARDING.md 답습 완료
 2. ⬜ [CLAUDE.md](CLAUDE.md) 본문 답습
-3. ⬜ [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) 최근 10 세션 답습
+3. ⬜ 글로벌 메모리 `~/.claude/projects/f--mibunyang/memory/MEMORY.md` 최근 세션 답습
 4. ⬜ [.claude/BACKLOG.md](.claude/BACKLOG.md) 활성 우선순위 답습
 5. ⬜ [docs/superpowers/INDEX.md](docs/superpowers/INDEX.md) ✅/❓ 분류 답습
 6. ⬜ 사용자 요청 확정 → [.claude/WORK_RULES.md](.claude/WORK_RULES.md) 답습 후 plan 진입

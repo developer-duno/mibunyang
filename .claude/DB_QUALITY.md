@@ -1,6 +1,6 @@
 # DB 품질 스냅샷
 
-> 측정일별 누적. `/db-quality` 슬래시 커맨드 결과 append.
+> 측정일별 누적. `db-quality` 스킬(자율 발동) 결과 append.
 > CLAUDE.md 본문에 측정값 두지 말 것 — 전부 이 파일
 
 ---
@@ -195,7 +195,7 @@
 
 ### 4 핵심 + 19 카테고리 + 17 시도 + 51 필드 = 전수 완료
 
-> 다음 전수 재측정 = 7일 후 또는 collector 대규모 변경 후. 답습 자산 = `/db-quality` 슬래시 커맨드 결과.
+> 다음 전수 재측정 = 7일 후 또는 collector 대규모 변경 후. 답습 자산 = `db-quality` 스킬(자율 발동) 결과.
 
 ---
 
@@ -224,7 +224,7 @@
 - apartments.air_quality (표본 1000): **998/1000 (99.8%)**
 - apartments.cats_cache NULL (표본 1000): **1/1000 (0.1%)**
 
-> 4 핵심 + 2 부분 표본 재측정. 전수 재측정 = `/db-quality` 슬래시 또는 별도 세션 의무. trade_stats / regions.population 비율 / schools.nearby_schools / timeseries 행 수 미박제.
+> 4 핵심 + 2 부분 표본 재측정. 전수 재측정 = `db-quality` 스킬(자율 발동) 또는 별도 세션 의무. trade_stats / regions.population 비율 / schools.nearby_schools / timeseries 행 수 미박제.
 
 ---
 

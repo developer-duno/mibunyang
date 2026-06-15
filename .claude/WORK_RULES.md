@@ -111,18 +111,18 @@ DB 스키마 → 타입 → API → 훅/유틸 → 하위 컴포넌트 → 메�
 
 ## Review (커밋 전 자동 수행)
 1. **simplify** 스킬 — 변경 코드 재사용성/품질/효율 리뷰
-2. **5교차검증 병렬 에이전트** — Task 도구로 **동일 메시지에서 동시 기동** (또는 `/cross-validate` 슬래시 커맨드 사용):
+2. **5교차검증 병렬 에이전트** — `Skill(cross-validate)` 자율 발동 (커밋 직전 description 매칭) 또는 Task 도구로 **동일 메시지에서 동시 기동**:
    - **빌드**: 메인 agent가 `npx vite build` 실행 + import 누락 + 번들 크기
    - **스코어링**: `Task(subagent_type="scoring-validator")` — 전용 서브에이전트 호출 **필수**. 메인이 직접 grep 금지
    - **null 안전성**: `Task(subagent_type="null-safety-checker")` — 전용 서브에이전트 호출 **필수**
    - **Hook 규칙**: 메인 agent가 직접 검사 (호출 순서·의존성·조건부 호출)
    - **보안**: 메인 agent가 직접 검사 (XSS·인젝션·env 노출·innerHTML·withHandler)
    - 수집기 관련 변경 시 추가로 `Task(subagent_type="collector-contract")` 호출
-3. **SESSION_LOG.md 교차검증 섹션에 어느 에이전트가 찍었는지 기록** (예: "스코어링: PASS (scoring-validator)"). 에이전트 호출 이력이 없으면 "검증 미실행"으로 표기
+3. **세션 메모리에 교차검증 섹션 기록** (글로벌 `~/.claude/projects/f--mibunyang/memory/session_*.md`) — 어느 에이전트가 찍었는지 (예: "스코어링: PASS (scoring-validator)"). 에이전트 호출 이력이 없으면 "검증 미실행"으로 표기
 4. console.log 잔재 제거
 5. `git commit` + `git push` (자동)
 6. CLAUDE.md "현재 진행 상황" 업데이트
-7. `.claude/SESSION_LOG.md` 업데이트 (날짜별 누적, 삭제 금지, .gitignore 금지)
+7. 세션 일지 = 글로벌 메모리 `~/.claude/projects/f--mibunyang/memory/session_*.md` 에 기록 (한 세션 = 한 파일) + `MEMORY.md` 인덱스 1줄. **`.claude/SESSION_LOG.md` 누적 금지** (세션 296+ drift 재발 방지 — 세션 418 다이어트)
 
 **금지**: 전용 에이전트가 존재하는 축(스코어링, null 안전성, 수집기 계약)을 메인 agent가 **직접 검사하는 것 금지**. 전용 에이전트가 있는데 우회하면 커버리지 누락·결과 비교 불가·SESSION_LOG 추적 불가.
 
