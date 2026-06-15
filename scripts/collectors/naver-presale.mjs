@@ -20,7 +20,7 @@ import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
   upsertBatch, stringSimilarity, sleep, REGION_MAP, VALID_REGIONS,
-  resolveBuilder,
+  resolveBuilder, today,
 } from "./_shared.mjs";
 
 /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
@@ -383,7 +383,7 @@ export function toPresalePriceRow(complex, apartmentId) {
     pp: pp ?? null,
     house_type: "presale_min",
     supply_count: null,
-    recorded_at: new Date().toISOString().slice(0, 10),
+    recorded_at: today(), // KST 고정 (presale_fetched_at datetime 은 timestamptz 라 그대로)
   };
 }
 

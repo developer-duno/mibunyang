@@ -214,6 +214,15 @@ describe("checkStaleWorkflows — ③ 미발화", () => {
     expect(issues).toHaveLength(0);
   });
 
+  it("lastRunAt 이 미래여도(시계 오차) 음수 ageDays 없이 정상 처리 — 음수 가드", () => {
+    // 미래 시각 → 옛 코드는 ageDays<0 으로 비교가 깨질 수 있음. Math.max(0,...) 가드로 stale 아님 안정.
+    const issues = checkStaleWorkflows(
+      [{ name: "A", lastRunAt: "2026-06-01T00:00:00Z" }], // now(05-17) 보다 미래
+      now,
+    );
+    expect(issues).toHaveLength(0); // ageDays=0 → 35일 이내 → 미발화 아님
+  });
+
   it("실행 기록이 한 번도 없으면 이상", () => {
     const issues = checkStaleWorkflows([{ name: "A", lastRunAt: null }], now);
     expect(issues).toHaveLength(1);

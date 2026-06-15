@@ -524,10 +524,14 @@ export function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// ── 오늘 날짜 ──────────────────────────────────────────────
-/** @returns {string} */
+// ── 오늘 날짜 (KST 고정) ────────────────────────────────────
+// 환경 무관 KST 날짜 — Intl en-CA = YYYY-MM-DD. GitHub Actions(UTC 러너)에서도 KST 보장.
+// 수집기 cron 이 KST 02:00~08:00 발화인데 UTC toISOString 은 그 시각 전날을 줘서 recorded_at 이
+// 하루 밀리던 결함(세션 419) 정정. TZ env 에 의존하지 않고 코드에서 고정(이중 안전망 불필요).
+const KST_DATE_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" });
+/** @returns {string} KST 기준 YYYY-MM-DD */
 export function today() {
-  return new Date().toISOString().slice(0, 10);
+  return KST_DATE_FMT.format(new Date());
 }
 
 // ── API 쿼터 로깅 ───────────────────────────────────────────
