@@ -9,7 +9,7 @@
  *   node scripts/collectors/collect-air-quality.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-air-quality.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordApiQuota, recordCollectorRun, haversineKm } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordApiQuota, recordCollectorRun, haversineKm, today } from "./_shared.mjs";
 
 loadEnv();
 
@@ -95,7 +95,7 @@ export function matchNearestStation(apt, stations) {
   return {
     pm10: nearest.pm10, pm25: nearest.pm25, o3: nearest.o3,
     grade: nearest.grade, station: nearest.station,
-    collected_at: new Date().toISOString().slice(0, 10),
+    collected_at: today(), // KST 고정
   };
 }
 

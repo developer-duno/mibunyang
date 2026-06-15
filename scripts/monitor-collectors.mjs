@@ -292,7 +292,7 @@ export function checkEmptyRuns(rows, prevByCollector = {}, opts = {}) {
     if (ok === 0 && skip === 0) {
       // 신선도 가드: 최신 0건 행이 너무 오래됐으면 ② 가 매번 재알림하지 않도록 제외.
       if (maxAgeHours != null && row.finished_at) {
-        const ageH = (now.getTime() - new Date(row.finished_at).getTime()) / 3600000;
+        const ageH = Math.max(0, (now.getTime() - new Date(row.finished_at).getTime()) / 3600000);
         if (ageH > maxAgeHours) continue;
       }
       const name = row.collector ?? "(이름 없음)";
@@ -338,13 +338,13 @@ export function checkStaleWorkflows(workflows, now = new Date()) {
     if (!wf.lastRunAt) {
       // 신규 워크플로 — 생성 임계 이내면 첫 cron 아직, 미발화 아님.
       if (wf.createdAt) {
-        const sinceCreated = (now.getTime() - new Date(wf.createdAt).getTime()) / 86400000;
+        const sinceCreated = Math.max(0, (now.getTime() - new Date(wf.createdAt).getTime()) / 86400000);
         if (sinceCreated <= threshold) continue;
       }
       issues.push({ kind: "stale", collector: wf.name, detail: "실행 기록이 한 번도 없음" });
       continue;
     }
-    const ageDays = (now.getTime() - new Date(wf.lastRunAt).getTime()) / 86400000;
+    const ageDays = Math.max(0, (now.getTime() - new Date(wf.lastRunAt).getTime()) / 86400000);
     if (ageDays > threshold) {
       const cycleLabel = isQuarterly ? "분기 cron 1주기" : "월간 cron 1주기";
       issues.push({
@@ -487,7 +487,7 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
     //    이 분기가 유일한 "안 돌면 알림" (세션 289 — 작업 비활성·로그인 안 됨·드라이브 미마운트 무음 차단).
     const latest = rows[0];
     if (latest.finished_at) {
-      const idleDays = (now.getTime() - new Date(latest.finished_at).getTime()) / 86400000;
+      const idleDays = Math.max(0, (now.getTime() - new Date(latest.finished_at).getTime()) / 86400000);
       if (idleDays > stale_days) {
         issues.push({
           kind: "stale",
@@ -514,7 +514,7 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
     // 첫 ok=0 시각 = 외부 API 장애 시작 추정 시각
     const oldest = recent[recent.length - 1];
     if (!oldest.finished_at) continue;
-    const daysSince = (now.getTime() - new Date(oldest.finished_at).getTime()) / 86400000;
+    const daysSince = Math.max(0, (now.getTime() - new Date(oldest.finished_at).getTime()) / 86400000);
     if (daysSince <= stale_days) continue;
     const days = Math.floor(daysSince);
     issues.push({

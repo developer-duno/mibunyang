@@ -10,7 +10,7 @@
  *   node scripts/collectors/collect-unsold-kosis.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-unsold-kosis.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today } from "./_shared.mjs";
 
 /** @typedef {{ C1_NM: string; C2_NM: string; PRD_DE: string; DT: string }} KosisRow */
 /** @typedef {Record<string, Record<string, Record<string, number>>>} UnsoldByRegionGuMonth */
@@ -293,7 +293,7 @@ export async function main() {
     const allMonthsMap = parseKosisRowsAllMonths(rows);
     /** @type {Array<{ apartment_id: string; base_month: string; unsold_count: number; post_completion_unsold: number | null; change: number | null; recorded_at: string }>} */
     const historyRows = [];
-    const todayDate = new Date().toISOString().slice(0, 10);
+    const todayDate = today(); // KST 고정 (루프 밖 1회 — 자정 경계 중복 0)
     for (const apt of apartmentsTyped) {
       if (!apt.region || !apt.gu || !apt.units || apt.units <= 1) continue;
       const monthMap = allMonthsMap[apt.region]?.[apt.gu];

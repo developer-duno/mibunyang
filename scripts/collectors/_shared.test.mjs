@@ -69,9 +69,44 @@ describe("stringSimilarity", () => {
   });
 });
 
-describe("today", () => {
+describe("today (KST 고정)", () => {
   it("YYYY-MM-DD 형식을 반환한다", () => {
     expect(today()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  // 환경 무관 증명 — UTC 자정 직전(=KST 익일)에 today() 가 KST 날짜를 줘야 한다.
+  // GitHub Actions(UTC 러너)에서 KST 05:30~08:00 발화 시 recorded_at 하루 밀림 차단의 핵심 보증.
+  it("UTC 23:30 (= KST 익일 08:30) 에 KST 날짜를 반환한다", () => {
+    vi.useFakeTimers();
+    try {
+      // 2026-06-15T23:30:00Z = KST 2026-06-16 08:30 → today() 는 06-16 이어야 함
+      vi.setSystemTime(new Date("2026-06-15T23:30:00Z"));
+      expect(today()).toBe("2026-06-16");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("UTC 14:59 (= KST 동일일 23:59) 에 KST 날짜를 반환한다", () => {
+    vi.useFakeTimers();
+    try {
+      // 2026-06-16T14:59:00Z = KST 2026-06-16 23:59 → today() 는 06-16 (UTC toISOString 도 06-16, 경계 안)
+      vi.setSystemTime(new Date("2026-06-16T14:59:00Z"));
+      expect(today()).toBe("2026-06-16");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("UTC 15:00 (= KST 익일 00:00) 에 KST 익일 날짜를 반환한다 (UTC 와 갈리는 경계)", () => {
+    vi.useFakeTimers();
+    try {
+      // 2026-06-16T15:00:00Z = UTC 06-16 BUT KST 2026-06-17 00:00 → today() 는 06-17 (UTC toISOString 이면 06-16 = 옛 버그)
+      vi.setSystemTime(new Date("2026-06-16T15:00:00Z"));
+      expect(today()).toBe("2026-06-17");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

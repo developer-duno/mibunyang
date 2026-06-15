@@ -13,7 +13,7 @@
  *   MOLIT_KEY (data.go.kr 통합 키 — odcloud.kr 호환)
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, selectAll, upsertBatch, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, selectAll, upsertBatch, recordApiQuota, recordCollectorRun, today } from "./_shared.mjs";
 
 loadEnv();
 
@@ -206,7 +206,7 @@ async function main() {
       supply: agg.supply,
       applicants: agg.applicants,
       rate: agg.rate,
-      recorded_at: new Date().toISOString().slice(0, 10),
+      recorded_at: today(), // KST 고정
       raw_response: agg.raw_rows,
     });
   }
