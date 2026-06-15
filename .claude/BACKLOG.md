@@ -262,9 +262,9 @@
 
 - 🟢 **expertToken 키·useExpertMode 명칭 정리** (세션 405 의도적 보류) — 공용 인증 축의 역사적 이름. localStorage 키 변경은 기존 로그인 세션 전부 무효화라 마이그레이션 코드 동반 필수(App.tsx sessionStorage 이관 전례 답습). 훅 rename 은 18+ 파일 churn — 별도 세션
 
-- 🟡 **비로그인 블라인드 정책 기존 구멍 2건 — DetailModal ungated 진입** (세션 403 적대검증 부산물)
-  - `?detail=` 딥링크(App.tsx L213-219) + UpcomingPage 상세(App.tsx L355) — 둘 다 비로그인 도달 가능 + 렌더 무게이트(L402-410). 홈 IA 작업과 무관한 기존 동작. 정책 의도(공유 링크는 의도적 공개?) 확인 후 fix 또는 의도 박제
-  - 동반: AptCard 비로그인 부분 누설 — Bar가 실점수를 aria-valuenow·width%로 DOM 노출(primitives.tsx L10-11) + "안전 N등급" 텍스트(AptCard.tsx L107) 노출. 점수 "??" 블라인드가 시각 텍스트만 가림
+- ✅ **비로그인 블라인드 정책 기존 구멍 2건 — 둘 다 해소** (세션 403 적대검증 부산물)
+  - DetailModal ungated 진입(`?detail=` 딥링크 + UpcomingPage 상세) → **세션 413 해소**: 모든 상세 진입이 `handleDetailGated` 수렴(비로그인 시 LoginPromptModal). 세션 414 라이브 3경로 모달 검증.
+  - AptCard 점수 계열 누설(Bar aria-valuenow·width% + "안전 N등급") → **세션 420 해소** (위 L276 항목, PR #123).
   - 출처: 통합 홈 IA spec 적대검증(8프로브×2라운드) blind-policy 프로브 — `docs/superpowers/specs/2026-06-11-unified-home-ia-design.md` §9
 
 - ✅ **적정가 괴리(deviation) 부호 표기 역방향 불일치 2건 정정 완료** — 세션 411 (세션 409 D2b 적대검증 부산물 발굴 → 본 세션 해소)
@@ -273,9 +273,11 @@
   - 회귀 가드 = AptCard.test.jsx 신규 4건(양수→배지/음수→미표시/null→미표시/"0.0" 데이터부재→미표시). vitest 3395(206파일, +4)·tsc 0·eslint 0. 적대검증 워크플로 5프로브 major 0(부호 방향 전원 정합).
   - 점수·정렬·엔진 무변경(표현 계층만, deviation 값 불변) — 프론트 번들 배포로 즉시 반영.
 
-- 🟢 **deviation 음수(비쌈) 카드 배지 + 비로그인 블라인드 — 후속 검토** (세션 411 분리)
-  - 음수 deviation(비쌈) 단지는 현재 카드에 배지 미표시(부정 정보는 DetailModal 빨강이 정직 표시). 카드에도 빨강 "비쌈" 배지 노출할지 후속 UX 결정.
-  - deviation 배지(AptCard:109)는 비로그인 누설 — 점수바 DOM(primitives.tsx)·"안전 N등급" 텍스트 누설과 한 묶음(아래 L255 항목)으로 일괄 처리 권장.
+- ✅ **deviation 음수(비쌈) 카드 배지 + 비로그인 점수 계열 블라인드 정합 완료** — 세션 420 (세션 411 분리 → 한 묶음 해소, PR #123 `e9ef544`)
+  - A: 음수 deviation 단지에 빨강 `주변대비 N% 비쌈` 배지(저렴 초록 배지 대칭). `AptCard.tsx:110` 인라인 span(`C.redLight/C.red`), `Math.abs(Math.round(...))`. 양수/null/"0.0"과 상호배타.
+  - C: 비로그인 점수 계열 2곳 차단 — ① 카테고리 점수바 Bar(L95) → 비로그인 시 회색 `aria-hidden` placeholder div(종합 ScoreBadge `??` div 답습, Bar 컴포넌트 불변=타 5소비처 영향 0) ② "안전 N등급"(L107) → `안전 ?등급` 글자 치환. 적정가·입지·deviation 배지는 점수 아님 → 유지(사장님 결정).
+  - 회귀 가드 = AptCard.test.jsx +4(음수→비쌈[기존 "음수 미표시" 대조군 함정 `/주변대비/`→`/저렴/` 정정]·양수 상호배타·비로그인 progressbar 부재·안전 ?등급). vitest 3481(210파일,+4)·tsc 0·eslint 0·vite build 0. 표현 계층만(점수·정렬·엔진 불변).
+  - 설계: `docs/superpowers/specs/2026-06-15-deviation-badge-and-blind-policy-design.md`
 
 - ✅ **루트 CLAUDE.md 박제값 stale 2건 정정 완료** (세션 403 적대검증 실측 → 같은 세션 마무리에서 즉시 정정): "11 spec"→13 / "index 172KB"→~185KB
 

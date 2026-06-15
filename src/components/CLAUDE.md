@@ -93,6 +93,8 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 - `isFav`: 관심매물 하이라이트 (border 색상)
 - `moveInDone` (준공 + 미분양 0%): opacity 0.55
 - alertRow 배지: 분양중/분양예정 + 입주상태 + 미분양 + 시공사신용 + 혐오시설
+- infoRow 배지(세션 420): deviation 양수→초록 "주변대비 +N% 저렴" / 음수→빨강 "주변대비 N% 비쌈"(`Math.abs`, 상호배타). 적정가·입지·할인도 여기.
+- `isLoggedIn` 블라인드(점수 계열만, 정책 api/CLAUDE.md "점수 블라인드"): 종합 ScoreBadge→`??` div / 카테고리 점수숫자→blur+`??` / **카테고리 Bar→aria-hidden 회색 placeholder**(세션 420, Bar 컴포넌트 불변=호출처만) / **"안전 N등급"→"안전 ?등급"**(세션 420). 적정가·입지·deviation 배지는 점수 아니라 노출 유지.
 
 ---
 
