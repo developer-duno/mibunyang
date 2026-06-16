@@ -297,6 +297,43 @@ describe("AptCard", () => {
     expect(screen.queryByText("추가 모집")).toBeNull();
   });
 
+  // 치안 우수 배지 (세션 423) — 1·2등급 안전 단지 강점 노출, 위험(4·5)과 상호배타
+  it("치안 1등급이면 '치안우수' 배지 표시 (치안위험 미표시)", () => {
+    const apt = /** @type {any} */ (makeApt({ crimeSafetyGrade: 1 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("치안우수")).toBeInTheDocument();
+    expect(screen.queryByText("치안위험")).toBeNull();
+    expect(screen.queryByText("치안주의")).toBeNull();
+  });
+
+  it("치안 2등급이면 '치안우수' 배지 표시", () => {
+    const apt = /** @type {any} */ (makeApt({ crimeSafetyGrade: 2 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("치안우수")).toBeInTheDocument();
+  });
+
+  it("치안 5등급이면 '치안위험' 빨강 (치안우수 미표시, 기존 동작 회귀 가드)", () => {
+    const apt = /** @type {any} */ (makeApt({ crimeSafetyGrade: 5 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("치안위험")).toBeInTheDocument();
+    expect(screen.queryByText("치안우수")).toBeNull();
+  });
+
+  it("치안 3등급이면 두 배지 모두 미표시 (상호배타 경계)", () => {
+    const apt = /** @type {any} */ (makeApt({ crimeSafetyGrade: 3 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.queryByText("치안우수")).toBeNull();
+    expect(screen.queryByText("치안위험")).toBeNull();
+    expect(screen.queryByText("치안주의")).toBeNull();
+  });
+
+  it("crimeSafetyGrade null 이면 치안 배지 미표시", () => {
+    const apt = /** @type {any} */ (makeApt({ crimeSafetyGrade: null }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.queryByText("치안우수")).toBeNull();
+    expect(screen.queryByText("치안위험")).toBeNull();
+  });
+
   // memo comparator — alertRow 6필드 변경 시 카드 다시 그림 (BACKLOG 🟢)
   // 같은 apt.id 로 6필드 중 하나만 바꿨을 때 새 배지가 화면에 반영되어야 함
   describe("memo comparator — alertRow 6필드 변경 시 리렌더 (회귀 방지)", () => {

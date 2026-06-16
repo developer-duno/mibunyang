@@ -24,6 +24,8 @@ const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
     const ra = a.apt.unsoldRate ?? -1, rb = b.apt.unsoldRate ?? -1;
     return ra === rb ? b.res.total - a.res.total : rb - ra;
   },
+  // 대단지 순 (세대수 많은 순) — 인프라·관리비·환금성 선호, null=0 으로 미보유 단지 뒤로 (세션 423)
+  units: (a, b) => (Number(a.apt.units ?? 0) === Number(b.apt.units ?? 0)) ? b.res.total - a.res.total : Number(b.apt.units ?? 0) - Number(a.apt.units ?? 0),
 };
 
 /**
