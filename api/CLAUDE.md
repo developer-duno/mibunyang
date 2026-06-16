@@ -73,7 +73,7 @@ export default withHandler({
 - **비밀번호 로그인 = 관리자 전용** — `isAdminEmail()` (ADMIN_EMAIL env, timingSafeEqual 단일 출처. login/verify refresh/kakao 공유). 비admin = generic 401
 - 가입(signup) 폐지 — 관리자 계정 생성/재설정은 `scripts/create-admin-user.mjs` (수동 1회성)
 - 관리자 API 가드: `api/_lib/adminAuth.ts` — verifyAdminToken
-- 상담 열람(GET /api/consults) = role admin 단독
+- 상담 열람(GET /api/consults) = role admin 단독. **페이지네이션(세션 425)**: `offset`/`limit` 쿼리(기본 50/상한 100) + `.range(offset, offset+limit-1)` + `.order("submitted_at",desc).order("id",desc)` tiebreaker. 응답 `count`(전체)=`count ?? 0` 폴백(supabase count=number|null). 프론트 AdminConsults "더 보기"로 append + id dedup
 
 ---
 
