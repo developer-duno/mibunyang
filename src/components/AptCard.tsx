@@ -125,7 +125,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           </div>
         )}
 
-        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade as string)) || (apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4) || (Number(apt.unsoldEventCount ?? 0) > 0 && (apt.id as string)?.startsWith("ah-"))) && (
+        {(apt.completion || (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD || noxCount > 0 || apt.presaleStage || (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade as string)) || (apt.crimeSafetyGrade != null && (apt.crimeSafetyGrade >= 4 || apt.crimeSafetyGrade <= 2)) || (Number(apt.unsoldEventCount ?? 0) > 0 && (apt.id as string)?.startsWith("ah-"))) && (
           <div style={S.alertRow}>
             {apt.presaleStage ? (() => {
               const sm: Record<string, { bg: string; color: string }> = { "분양중": { bg: C.greenLight, color: C.green }, "분양예정": { bg: C.blueLight, color: C.blue } };
@@ -147,6 +147,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             )}
             {apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4 && (
               <span style={{ ...S.alertTag, background: apt.crimeSafetyGrade >= 5 ? C.redLight : C.amberLight, color: apt.crimeSafetyGrade >= 5 ? C.red : C.amber }}>{apt.crimeSafetyGrade >= 5 ? "치안위험" : "치안주의"}</span>
+            )}
+            {/* 치안 우수(1·2등급) — 안전한 단지의 강점 노출 (세션 423, 위험 배지와 상호배타: 3등급은 둘 다 미표시) */}
+            {apt.crimeSafetyGrade != null && apt.crimeSafetyGrade <= 2 && (
+              <span style={{ ...S.alertTag, background: C.greenLight, color: C.green }}>치안우수</span>
             )}
             {/* 무순위 공고 발생 단지 — ah- 단지만 (다른 prefix는 0의 의미가 "정보 없음") */}
             {Number(apt.unsoldEventCount ?? 0) > 0 && (apt.id as string)?.startsWith("ah-") && (
