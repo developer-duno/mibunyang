@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { C, F } from "@/theme";
+import { TOKEN_KEY } from "@/lib/authToken";
 import type { SubmittedConsult } from "@/hooks/useConsult";
 
 /**
@@ -27,7 +28,7 @@ export const AdminConsults = memo(function AdminConsults({ aptNames }: AdminCons
   useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("expertToken");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) { setError("인증이 필요합니다"); setLoading(false); return; }
     fetch(`/api/consults?offset=0&limit=${PAGE_SIZE}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
@@ -42,7 +43,7 @@ export const AdminConsults = memo(function AdminConsults({ aptNames }: AdminCons
 
   const handleLoadMore = useCallback(() => {
     if (loadingMore) return; // 중복 클릭 가드
-    const token = localStorage.getItem("expertToken");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
     setLoadingMore(true);
     fetch(`/api/consults?offset=${consults.length}&limit=${PAGE_SIZE}`, { headers: { Authorization: `Bearer ${token}` } })

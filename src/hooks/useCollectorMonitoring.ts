@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { TOKEN_KEY } from "@/lib/authToken";
 import type { CollectorStatusResponse, ShowToast } from "@/types/admin";
 
 /**
@@ -21,7 +22,7 @@ export function useCollectorMonitoring(showToast: ShowToast): {
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchStatus = useCallback(async (): Promise<void> => {
-    const token = localStorage.getItem("expertToken");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
       setError("관리자 인증이 필요합니다");
       return;

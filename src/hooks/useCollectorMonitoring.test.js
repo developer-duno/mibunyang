@@ -41,7 +41,7 @@ describe('useCollectorMonitoring', () => {
 
   // 정상 응답 → data 채움 + Bearer 헤더
   it('정상 응답 시 data 를 채우고 Bearer 토큰을 보낸다', async () => {
-    localStorage.setItem('expertToken', 'tok-1');
+    localStorage.setItem('authToken', 'tok-1');
     const payload = { ok: true, collectors: [{ name: 'x', status: 'ok' }] };
     /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce(mockRes(200, payload));
 
@@ -60,7 +60,7 @@ describe('useCollectorMonitoring', () => {
 
   // 429 → 토스트 + error
   it('429 응답 시 요청 과다 토스트와 error 를 세팅한다', async () => {
-    localStorage.setItem('expertToken', 'tok-1');
+    localStorage.setItem('authToken', 'tok-1');
     /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce(mockRes(429, {}));
 
     const showToast = vi.fn();
@@ -74,7 +74,7 @@ describe('useCollectorMonitoring', () => {
 
   // 401 → 세션 만료 토스트 + error
   it('401 응답 시 세션 만료 토스트와 error 를 세팅한다', async () => {
-    localStorage.setItem('expertToken', 'tok-1');
+    localStorage.setItem('authToken', 'tok-1');
     /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce(mockRes(401, { ok: false }));
 
     const showToast = vi.fn();
@@ -88,7 +88,7 @@ describe('useCollectorMonitoring', () => {
 
   // json.ok=false → json.error 메시지
   it('json.ok=false 면 json.error 메시지를 세팅한다', async () => {
-    localStorage.setItem('expertToken', 'tok-1');
+    localStorage.setItem('authToken', 'tok-1');
     /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce(
       mockRes(200, { ok: false, error: '권한이 없습니다' }),
     );
@@ -103,7 +103,7 @@ describe('useCollectorMonitoring', () => {
 
   // fetch 거부 (네트워크) → 서버 연결 실패 error
   it('네트워크 오류 시 서버 연결 실패 error 를 세팅한다', async () => {
-    localStorage.setItem('expertToken', 'tok-1');
+    localStorage.setItem('authToken', 'tok-1');
     /** @type {import('vitest').Mock} */ (fetch).mockRejectedValueOnce(new Error('network down'));
 
     const showToast = vi.fn();
@@ -116,7 +116,7 @@ describe('useCollectorMonitoring', () => {
 
   // refetch → fetch 재호출
   it('refetch 호출 시 fetch 를 다시 실행한다', async () => {
-    localStorage.setItem('expertToken', 'tok-1');
+    localStorage.setItem('authToken', 'tok-1');
     /** @type {import('vitest').Mock} */ (fetch).mockResolvedValue(
       mockRes(200, { ok: true, collectors: [] }),
     );

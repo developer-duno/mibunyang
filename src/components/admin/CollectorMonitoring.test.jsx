@@ -58,7 +58,7 @@ function stubFetch(status, body) {
 describe("CollectorMonitoring", () => {
   beforeEach(() => {
     localStorage.clear();
-    localStorage.setItem("expertToken", "admin-token");
+    localStorage.setItem("authToken", "admin-token");
   });
 
   afterEach(() => {

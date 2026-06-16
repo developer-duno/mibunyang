@@ -20,7 +20,7 @@ import { useComparison, MAX_COMPARE } from "@/hooks/useComparison";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useDetailModal } from "@/hooks/useDetailModal";
 import { useConsult } from "@/hooks/useConsult";
-import { useExpertMode } from "@/hooks/useExpertMode";
+import { useAuth } from "@/hooks/useAuth";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
@@ -42,6 +42,7 @@ import { AdminLoginForm } from "@/components/sections/AdminLoginForm";
 import { SearchFilterBar } from "@/components/sections/SearchFilterBar";
 import { AptListSection } from "@/components/sections/AptListSection";
 import { trackEvent } from "@/lib/analytics";
+import { getAuthToken } from "@/lib/authToken";
 
 export default function App() {
   // ── useState + useTransition ──
@@ -108,24 +109,10 @@ export default function App() {
       }
       return "upcoming";
     }
-    // 8e2b5b7 이전 sessionStorage 잔재 자동 마이그레이션 (1회성)
-    let token = localStorage.getItem("expertToken");
-    let role = localStorage.getItem("userRole");
-    if (!token) {
-      try {
-        const sToken = sessionStorage.getItem("expertToken");
-        const sRole = sessionStorage.getItem("userRole");
-        if (sToken) {
-          localStorage.setItem("expertToken", sToken);
-          if (sRole) localStorage.setItem("userRole", sRole);
-          sessionStorage.removeItem("expertToken");
-          sessionStorage.removeItem("userRole");
-          token = sToken;
-          role = sRole;
-        }
-      } catch { /* storage 접근 실패 시 무시 */ }
-    }
+    // 토큰 키 자동 이관(구 expertToken → authToken, 세션 426) + 8e2b5b7 이전 sessionStorage 잔재까지 getAuthToken 이 처리
+    const token = getAuthToken();
     if (!token) return isFeatureHome() ? "home" : "list";
+    const role = localStorage.getItem("userRole");
     if (role === "admin") return "admin";
     return isFeatureHome() ? "home" : "list";
   });
@@ -138,12 +125,12 @@ export default function App() {
   const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, searchQuery, handleSearchChange, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending } = useFilterSort({ onFilterChange: closeDetail });
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
-  const expert = useExpertMode(showToast);
+  const auth = useAuth(showToast);
   const kakao = useKakaoAuth(showToast);
   const admin = useAdminMode(showToast);
 
-  // 로그인 여부 파생 (카카오 또는 전문가)
-  const isLoggedIn = expert.expertLoggedIn;
+  // 로그인 여부 파생 (카카오 또는 관리자 — 같은 authToken 축)
+  const isLoggedIn = auth.loggedIn;
   const { apartments, loading: dataLoading, error: dataError, retry: retryData, dataUpdatedAt } = useApartmentData();
   const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, isMobile } = useShare(showToast);
 
@@ -188,13 +175,13 @@ export default function App() {
     handleConsultFromDetail,
     handleNavClick,
   } = useAppNavigation({
-    tab, setTab, expert, admin, consult, detail,
+    tab, setTab, auth, admin, consult, detail,
     compIds, setShowCompOpen, showToast,
     budgetMin, budgetMax, isLoggedIn, onLoginRequired: () => { setLoginTrigger("map"); setShowLoginPrompt(true); },
   });
 
   // ── 카카오 OAuth 콜백 useEffect ──
-  useKakaoCallbackEffect({ tab, kakao, expert, admin, detail, setTab, showToast });
+  useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, setTab, showToast });
 
   // ── containerMaxWidth ──
   const containerMaxWidth = (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
@@ -376,7 +363,7 @@ export default function App() {
           </Suspense>
         </div>
       ) : tab === "adminLogin" ? (
-        <AdminLoginForm auth={expert} onLogin={handleAdminLogin} onBack={() => setTab("info")} />
+        <AdminLoginForm auth={auth} onLogin={handleAdminLogin} onBack={() => setTab("info")} />
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>관리자 패널 로딩 중...</div>}>

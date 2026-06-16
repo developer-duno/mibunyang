@@ -8,7 +8,7 @@ import type { UseAppNavigationArgs, UseAppNavigationReturn } from "@/types/hooks
  * useCallback 7개 + useRef 2개 + useEffect 2개
  */
 export function useAppNavigation({
-  tab, setTab, expert, admin, consult, detail,
+  tab, setTab, auth, admin, consult, detail,
   compIds, setShowCompOpen, showToast,
   budgetMin, budgetMax, isLoggedIn, onLoginRequired,
 }: UseAppNavigationArgs): UseAppNavigationReturn {
@@ -24,7 +24,7 @@ export function useAppNavigation({
 
   // ── 관리자 로그인 / 공용 로그아웃 (세션 405 — 비밀번호 로그인은 관리자 전용) ──
   const handleAdminLogin = useCallback(async () => {
-    const result = await expert.handleExpertLogin();
+    const result = await auth.handleLogin();
     if (result?.ok) {
       if (result.role === "admin") {
         localStorage.setItem("userRole", "admin");
@@ -36,11 +36,11 @@ export function useAppNavigation({
         setTab(isFeatureHome() ? "home" : "list");
       }
     }
-  }, [admin, expert, setTab]);
+  }, [admin, auth, setTab]);
 
   const handleLogout = useCallback(() => {
-    expert.handleExpertLogout(() => { setTab("list"); setShowCompOpen(false); });
-  }, [expert, setShowCompOpen, setTab]);
+    auth.handleLogout(() => { setTab("list"); setShowCompOpen(false); });
+  }, [auth, setShowCompOpen, setTab]);
 
   // ── 탭 전환 ──
   const switchToInfo = useCallback(() => setTab("info"), [setTab]);
@@ -83,11 +83,11 @@ export function useAppNavigation({
 
   // ── useEffect: verify 실패 시 admin 상태 동기화 ──
   useEffect(() => {
-    if (!expert.expertLoggedIn && admin.adminLoggedIn) {
+    if (!auth.loggedIn && admin.adminLoggedIn) {
       admin.setAdminLoggedIn(false);
       if (tab === "admin") setTab("list");
     }
-  }, [admin, expert.expertLoggedIn, setTab, tab]);
+  }, [admin, auth.loggedIn, setTab, tab]);
 
   return {
     handleAdminLogin, handleLogout,

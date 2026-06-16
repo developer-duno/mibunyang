@@ -319,15 +319,15 @@ export interface UseFilterSortReturn {
 
 /**
  * useAppNavigation 인자 — App.jsx L150 호출 객체.
- * expert/admin/consult/detail 4 도메인 + 추가 필드.
+ * auth/admin/consult/detail 4 도메인 + 추가 필드.
  */
 export interface UseAppNavigationArgs {
   tab: string;
   setTab: (_v: string) => void;
-  expert: {
-    expertLoggedIn: boolean;
-    handleExpertLogin: () => Promise<{ ok: boolean; role?: string } | undefined>;
-    handleExpertLogout: (_resetCb: () => void) => void;
+  auth: {
+    loggedIn: boolean;
+    handleLogin: () => Promise<{ ok: boolean; role?: string } | undefined>;
+    handleLogout: (_resetCb: () => void) => void;
     [key: string]: unknown;
   };
   admin: import("./admin").AdminMode;

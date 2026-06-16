@@ -1,8 +1,8 @@
 import { memo, type Dispatch, type SetStateAction } from "react";
 import { C, F } from "@/theme";
-import type { AuthForm } from "@/hooks/useExpertMode";
+import type { AuthForm } from "@/hooks/useAuth";
 
-// useExpertMode() 반환값 중 본 컴포넌트가 사용하는 필드만 선언.
+// useAuth() 반환값 중 본 컴포넌트가 사용하는 필드만 선언.
 type AuthState = {
   authForm: AuthForm;
   setAuthForm: Dispatch<SetStateAction<AuthForm>>;

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { TOKEN_KEY, getAuthToken, clearAuthTokens } from "@/lib/authToken";
 import type {
   AdminMode,
   AdminUser,
@@ -35,19 +36,9 @@ type StatsResponse = {
 export function useAdminMode(showToast: ShowToast): AdminMode {
   const [adminLoggedIn, setAdminLoggedIn] = useState<boolean>(() => {
     try {
-      // 정상 경로: localStorage 에서 admin 인증 확인
-      if (localStorage.getItem("userRole") === "admin" && !!localStorage.getItem("expertToken")) return true;
-      // 마이그레이션: 8e2b5b7 이전에 sessionStorage 에 박혀있던 토큰 자동 이관 (1회성)
-      const sToken = sessionStorage.getItem("expertToken");
-      const sRole = sessionStorage.getItem("userRole");
-      if (sRole === "admin" && sToken) {
-        localStorage.setItem("expertToken", sToken);
-        localStorage.setItem("userRole", sRole);
-        sessionStorage.removeItem("expertToken");
-        sessionStorage.removeItem("userRole");
-        return true;
-      }
-      return false;
+      // getAuthToken 이 구 expertToken(localStorage/sessionStorage) → authToken 1회 이관까지 처리 (세션 426)
+      const token = getAuthToken();
+      return !!token && localStorage.getItem("userRole") === "admin";
     } catch { return false; }
   });
   const [adminLoading, setAdminLoading] = useState<boolean>(false);
@@ -65,7 +56,7 @@ export function useAdminMode(showToast: ShowToast): AdminMode {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchUsers = useCallback(async (status: UserStatusFilter, search = "", pg = 0): Promise<void> => {
-    const token = localStorage.getItem("expertToken");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
@@ -89,10 +80,7 @@ export function useAdminMode(showToast: ShowToast): AdminMode {
       } else {
         if (res.status === 401) {
           setAdminLoggedIn(false);
-          localStorage.removeItem("expertToken");
-          localStorage.removeItem("userRole");
-          sessionStorage.removeItem("expertToken");
-          sessionStorage.removeItem("userRole");
+          clearAuthTokens();
           showToast("관리자 세션이 만료되었습니다");
         }
       }
@@ -119,7 +107,7 @@ export function useAdminMode(showToast: ShowToast): AdminMode {
   }, [fetchUsers, selectedStatus, searchQuery]);
 
   const handleReview = useCallback(async (email: string, action: "approve" | "reject" | "force-logout", note?: string): Promise<void> => {
-    const token = localStorage.getItem("expertToken");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
     setReviewLoading(email);
     try {
@@ -161,7 +149,7 @@ export function useAdminMode(showToast: ShowToast): AdminMode {
 
   // 일괄 처리
   const handleBatchReview = useCallback(async (action: "approve" | "reject", note?: string): Promise<void> => {
-    const token = localStorage.getItem("expertToken");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token || selectedEmails.size === 0) return;
     setBatchLoading(true);
     try {
@@ -190,7 +178,7 @@ export function useAdminMode(showToast: ShowToast): AdminMode {
   }, [showToast, fetchUsers, selectedStatus, searchQuery, page, selectedEmails, clearSelectedEmails]);
 
   const fetchStats = useCallback(async (): Promise<void> => {
-    const token = localStorage.getItem("expertToken");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
     setStatsLoading(true);
     try {
@@ -212,7 +200,7 @@ export function useAdminMode(showToast: ShowToast): AdminMode {
   }, []);
 
   const handleAdminLogout = useCallback(async (onLogout?: () => void): Promise<void> => {
-    const token = localStorage.getItem("expertToken");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       try {
         await fetch("/api/auth/logout", {
@@ -223,10 +211,7 @@ export function useAdminMode(showToast: ShowToast): AdminMode {
       } catch { /* best-effort — 세션 삭제는 항상 실행 */ }
     }
     setAdminLoggedIn(false);
-    localStorage.removeItem("expertToken");
-    localStorage.removeItem("userRole");
-    sessionStorage.removeItem("expertToken");
-    sessionStorage.removeItem("userRole");
+    clearAuthTokens();
     setUsers([]);
     onLogout?.();
     showToast("로그아웃되었습니다");
