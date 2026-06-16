@@ -141,6 +141,8 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
         // 기존 사용자에 kakaoId 연동
         user.kakaoId = kakaoId;
         if (kakaoProfileImage) user.profileImage = kakaoProfileImage;
+        // 레거시 사용자(consentMarketing 필드 없음) DB 일관성 — 이미 set 중이라 추가 write 0 (세션 427)
+        if (user.consentMarketing !== true && user.consentMarketing !== false) user.consentMarketing = null;
         await kv.set(`user:${emailNorm}`, user);
       } else {
         isNew = true;
@@ -203,7 +205,9 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       user: { email: emailNorm, name: user!.name, affiliation: user!.affiliation || "" },
       ...(role !== "user" && { role }),
       isNew,                                         // 프론트에서 신규 여부 판별 (마케팅 동의 팝업)
-      needsMarketingConsent: user!.consentMarketing === null, // null = 아직 선택 안 함
+      // 동의 미선택 = boolean 이 아닌 모든 값. 신규(null) + 레거시 사용자(필드 자체 없음 → undefined)
+      // 둘 다 포착해야 함. `=== null` 은 undefined 를 놓쳐 본 커밋 이전 가입자에게 모달이 영영 안 뜸. (세션 427 적대검증)
+      needsMarketingConsent: user!.consentMarketing !== true && user!.consentMarketing !== false,
     });
   } catch (err) {
     console.error("[auth/kakao] error:", err instanceof Error ? err.message : String(err));

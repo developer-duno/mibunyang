@@ -212,6 +212,33 @@ describe("auth/kakao handler", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
   });
 
+  // 적대검증 회귀 가드: 레거시 사용자(consentMarketing 필드 없음) 도 동의 모달 표시 (세션 427)
+  // `=== null` 이었다면 undefined 라 false 가 나와 모달이 영영 안 뜨는 버그
+  it("레거시 사용자(consentMarketing 없음) 재로그인 시 needsMarketingConsent=true", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce("kakao@test.com");
+    mockKv.get.mockResolvedValueOnce({
+      email: "kakao@test.com", name: "Tester", kakaoId: "12345", status: "approved",
+      // consentMarketing 필드 없음 (본 커밋 이전 가입자)
+    });
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ needsMarketingConsent: true }));
+  });
+
+  // 이미 동의/거부 선택한 사용자는 모달 미표시 (consentMarketing=false 도 "선택함")
+  it("동의 거부(consentMarketing=false) 사용자 재로그인 시 needsMarketingConsent=false", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce("kakao@test.com");
+    mockKv.get.mockResolvedValueOnce({
+      email: "kakao@test.com", name: "Tester", kakaoId: "12345", status: "approved",
+      consentMarketing: false,
+    });
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ needsMarketingConsent: false }));
+  });
+
   it("links an existing email user to Kakao id", async () => {
     mockKakaoFetch();
     mockKv.get.mockResolvedValueOnce(null);
@@ -252,5 +279,17 @@ describe("auth/kakao handler", () => {
     const res = makeRes();
     await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  // 회귀 가드: ADMIN_EMAIL 카카오 로그인 시 role:"admin" 응답 (세션 427 적대검증)
+  it("ADMIN_EMAIL 카카오 로그인 시 role:admin 을 반환한다", async () => {
+    process.env.ADMIN_EMAIL = "kakao@test.com";
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, role: "admin" }));
+    delete process.env.ADMIN_EMAIL;
   });
 });
