@@ -305,6 +305,28 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         {/* §2 시세 탭 — PriceTable + PriceChart + UnsoldChart */}
         {isPanelMounted("sec-price") && (
         <section id="sec-price" role="tabpanel" aria-labelledby="tab-sec-price" data-tab-panel style={panelStyle("sec-price")}>
+        {/* 주변 시세 대비 위치 게이지 (세션 430) — deviation 양수=저렴(scorePrice.ts 진실원천), -30~+30% 클램프, 0 중앙 */}
+        {res.cats.price?.deviation != null && (() => {
+          const dev = Number(res.cats.price.deviation);
+          if (!Number.isFinite(dev)) return null;
+          const clamped = Math.max(-30, Math.min(30, dev));
+          const pct = 50 + (clamped / 30) * 50;
+          const isGood = dev > 0;
+          return (
+            <div style={{ background: C.bg, borderRadius: 10, padding: "12px 14px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>주변 시세 대비 위치</div>
+              <div style={{ position: "relative", height: 12, background: C.slate100, borderRadius: 6, margin: "4px 0 6px" }}>
+                <div style={{ position: "absolute", left: "50%", top: 0, width: 2, height: "100%", background: C.muted, transform: "translateX(-1px)" }} />
+                <div style={{ position: "absolute", left: `${pct}%`, top: "50%", width: 14, height: 14, borderRadius: "50%", background: isGood ? C.green : C.red, border: `2px solid ${C.card}`, transform: "translate(-50%,-50%)" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted }}>
+                <span>30% 비쌈</span>
+                <span style={{ fontWeight: 700, color: isGood ? C.green : C.red }}>{isGood ? `+${Math.round(dev)}% 저렴` : dev < 0 ? `${Math.abs(Math.round(dev))}% 비쌈` : "주변과 비슷"}</span>
+                <span>30% 저렴</span>
+              </div>
+            </div>
+          );
+        })()}
         <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
         <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
         <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />

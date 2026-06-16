@@ -61,6 +61,7 @@ export interface UseDataPipelineArgs {
   unitsMax: string;
   minScore: string;
   benefitOnly: boolean;
+  subwayOnly: boolean;
   searchQuery: string;
   hideNoUnsold: boolean;
   compIds: string[];
@@ -85,6 +86,7 @@ export interface UseDataPipelineReturn {
     unitsMax: string;
     minScore: string;
     benefitOnly: boolean;
+    subwayOnly: boolean;
   };
   filtered: ScoredApt[];
   visible: ScoredApt[];
@@ -295,6 +297,7 @@ export interface UseFilterSortReturn {
   minScore: string;
   builderTier: string;
   benefitOnly: boolean;
+  subwayOnly: boolean;
   showFavOnly: boolean;
   searchQuery: string;
   handleSearchChange: (_v: string) => void;
@@ -313,6 +316,7 @@ export interface UseFilterSortReturn {
   handleMinScoreChange: (_v: string) => void;
   handleBuilderTierChange: (_v: string) => void;
   toggleBenefitOnly: () => void;
+  toggleSubwayOnly: () => void;
   getShareURL: () => string;
   handleResetAll: () => void;
   applyPreset: (_preset: Record<string, string | boolean>) => void;

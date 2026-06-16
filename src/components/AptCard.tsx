@@ -41,6 +41,11 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   const g = gr(res.total);
   const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = ((apt.noxious as string[] | undefined) || []).length;
+    const subwayDist = apt.subwayDist as number | null | undefined;
+    const subwayName = apt.subwayName as string | null | undefined;
+    const noxiousDist = apt.noxiousDist as number | null | undefined;
+    // 혐오시설 안심 — 가장 가까운 혐오시설도 1km 밖이면 안심 칩으로 "혐오시설 N건" 경고 대체 (세션 430)
+    const noxSafe = noxiousDist != null && noxiousDist > 1000;
     const completionPast = apt.completion ? apt.completion < NOW_YM : false;
     const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
@@ -113,6 +118,24 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           {res.cats.price?.deviation != null && Number(res.cats.price.deviation) > 0 && <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>주변대비 +{Math.round(Number(res.cats.price.deviation))}% 저렴</span>}
           {res.cats.price?.deviation != null && Number(res.cats.price.deviation) < 0 && <span style={{ ...S.infoTag, background: C.redLight, color: C.red, fontWeight: 700 }}>주변대비 {Math.abs(Math.round(Number(res.cats.price.deviation)))}% 비쌈</span>}
           {PRESALE_ACTIVE_STAGES.has(apt.presaleStage as string) && Number(apt.competitionRate ?? 0) > 0 && <span style={{ ...S.infoTag, background: C.indigoLight, color: C.indigo, fontWeight: 700 }}>청약 {fmtCompetitionRate(Number(apt.competitionRate))}</span>}
+          {/* 역세권 거리 칩 (세션 430) — subwayDist 9999=역없음 제외, ≤500m 만 "역세권" 강조 */}
+          {subwayDist != null && subwayDist < 9000 && (
+            <span style={subwayDist <= 500 ? { ...S.infoTag, background: C.blueLight, color: C.blue, fontWeight: 700 } : S.infoTag}>
+              {subwayName ? `${subwayName} ` : ""}{subwayDist}m{subwayDist <= 500 ? " 역세권" : ""}
+            </span>
+          )}
+          {/* 전세가율 칩 (세션 430) — ≥70% 초록(전세 수요 강세), <50% 주황(매매 대비 낮음) */}
+          {apt.jeonseRate != null && (
+            <span style={Number(apt.jeonseRate) >= 70 ? { ...S.infoTag, background: C.greenLight, color: C.green } : Number(apt.jeonseRate) < 50 ? { ...S.infoTag, background: C.amberLight, color: C.amber } : S.infoTag}>
+              전세가율 {apt.jeonseRate}%
+            </span>
+          )}
+          {/* 주차 여유도 칩 (세션 430) — ≥1.5 초록(여유), <1 주황(부족) */}
+          {apt.parkingRatio != null && (
+            <span style={Number(apt.parkingRatio) >= 1.5 ? { ...S.infoTag, background: C.greenLight, color: C.green } : Number(apt.parkingRatio) < 1 ? { ...S.infoTag, background: C.amberLight, color: C.amber } : S.infoTag}>
+              주차 {apt.parkingRatio}대/세대
+            </span>
+          )}
         </div>
 
         {benefitWon > 0 ? (
@@ -142,7 +165,11 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             {Boolean(apt.builderCreditGrade) && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade as string) && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>시공사 {String(apt.builderCreditGrade)}</span>
             )}
-            {noxCount > 0 && (
+            {/* 혐오시설 안심(>1km) 이면 초록 안심 칩, 아니면 기존 빨강 경고 (세션 430, 상호배타) */}
+            {noxCount > 0 && noxSafe && (
+              <span style={{ ...S.alertTag, background: C.greenLight, color: C.green }}>혐오시설 안심(1km+)</span>
+            )}
+            {noxCount > 0 && !noxSafe && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>혐오시설 {noxCount}건</span>
             )}
             {apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4 && (
@@ -183,6 +210,12 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (pa.crimeSafetyGrade !== na.crimeSafetyGrade) return false;
   if (pa.builderCreditGrade !== na.builderCreditGrade) return false;
   if (pa.unsoldEventCount !== na.unsoldEventCount) return false;
+  // infoRow/alertRow 칩 신호 (세션 430) — 역세권·전세가율·주차·혐오안심
+  if (pa.subwayDist !== na.subwayDist) return false;
+  if (pa.subwayName !== na.subwayName) return false;
+  if (pa.jeonseRate !== na.jeonseRate) return false;
+  if (pa.parkingRatio !== na.parkingRatio) return false;
+  if (pa.noxiousDist !== na.noxiousDist) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
   return true;

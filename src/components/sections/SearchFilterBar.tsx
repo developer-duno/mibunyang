@@ -34,6 +34,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   minScore, onMinScoreChange,
   builderTier, onBuilderTierChange,
   benefitOnly, onToggleBenefitOnly,
+  subwayOnly, onToggleSubwayOnly,
   hideNoUnsold, onToggleHideNoUnsold,
   activeFilterCount,
   filteredLength, scoredLength,
@@ -82,7 +83,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   const budgetSummary = (budgetMin || budgetMax) ? `${budgetMin || "0"}~${budgetMax || "∞"}억` : undefined;
   const areaSummary = (areaMin || areaMax) ? `${areaMin || "0"}~${areaMax || "∞"}㎡` : (unitsMin || unitsMax) ? "세대수" : moveInFilter !== "전체" ? moveInFilter : undefined;
   const sortLabel = sortKey !== "total" ? SORT_OPTIONS.find(s => s.key === sortKey)?.pcLabel : undefined;
-  const detailActive = !!(minScore || builderTier !== "전체" || benefitOnly);
+  const detailActive = !!(minScore || builderTier !== "전체" || benefitOnly || subwayOnly);
 
   return (
     <div ref={barRef} data-no-print style={{ background: C.card, borderRadius: isDesktop ? 12 : 10, padding: isDesktop ? "12px 16px" : "8px 10px", border: `1px solid ${C.border}`, margin: isDesktop ? "12px 0 10px" : "8px 0 6px", boxShadow: C.shadowSm }}>
@@ -160,7 +161,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         />
       </FilterDropdown>
       <FilterDropdown isOpen={openPanel === "detail"} label="상세" isDesktop={isDesktop}>
-        <DetailPanel minScore={minScore} onMinScoreChange={onMinScoreChange} builderTier={builderTier} onBuilderTierChange={onBuilderTierChange} benefitOnly={benefitOnly} onToggleBenefitOnly={onToggleBenefitOnly} filterOptionCounts={filterOptionCounts} />
+        <DetailPanel minScore={minScore} onMinScoreChange={onMinScoreChange} builderTier={builderTier} onBuilderTierChange={onBuilderTierChange} benefitOnly={benefitOnly} onToggleBenefitOnly={onToggleBenefitOnly} subwayOnly={subwayOnly} onToggleSubwayOnly={onToggleSubwayOnly} filterOptionCounts={filterOptionCounts} />
       </FilterDropdown>
       <FilterDropdown isOpen={openPanel === "search"} label="검색" isDesktop={isDesktop}>
         <input
@@ -188,6 +189,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
             {minScore && <span role="button" tabIndex={0} aria-label="점수 필터 해제" onClick={() => onMinScoreChange("")} onKeyDown={onChipKeyDown(() => onMinScoreChange(""))} style={chipStyle}>{minScore}점+ ✕</span>}
             {builderTier !== "전체" && <span role="button" tabIndex={0} aria-label={`${builderTier} 필터 해제`} onClick={() => onBuilderTierChange("전체")} onKeyDown={onChipKeyDown(() => onBuilderTierChange("전체"))} style={chipStyle}>{builderTier} ✕</span>}
             {benefitOnly && <span role="button" tabIndex={0} aria-label="혜택 필터 해제" onClick={onToggleBenefitOnly} onKeyDown={onChipKeyDown(onToggleBenefitOnly)} style={chipStyle}>혜택 ✕</span>}
+            {subwayOnly && <span role="button" tabIndex={0} aria-label="역세권 필터 해제" onClick={onToggleSubwayOnly} onKeyDown={onChipKeyDown(onToggleSubwayOnly)} style={chipStyle}>역세권 ✕</span>}
           </div>
           {onResetAll && (
             <button onClick={onResetAll} aria-label="전체 필터 초기화" style={{

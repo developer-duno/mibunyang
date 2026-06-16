@@ -48,7 +48,7 @@ export function useDataPipeline({
   apartments, profile, customWeights,
   filterRegion, filterGu, sortKey, moveInFilter, builderTier,
   showFavOnly, favoriteSet, budgetMin, budgetMax,
-  areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly,
+  areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, subwayOnly,
   searchQuery, hideNoUnsold, compIds, dataUpdatedAt,
 }: UseDataPipelineArgs): UseDataPipelineReturn {
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
@@ -113,8 +113,8 @@ export function useDataPipeline({
 
   const baseFilterArgs = useMemo(() => ({
     showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax,
-    unitsMin, unitsMax, minScore, benefitOnly,
-  }), [showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly]);
+    unitsMin, unitsMax, minScore, benefitOnly, subwayOnly,
+  }), [showFavOnly, favoriteSet, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, subwayOnly]);
 
   const filtered = useMemo(() => {
     let list = applyBaseFilters(scored, baseFilterArgs);
@@ -136,8 +136,8 @@ export function useDataPipeline({
   const pw = useMemo<ProfileWeights>(() => customWeights[profile] ?? (PROFILES as Record<string, { w: ProfileWeights }>)[profile].w, [profile, customWeights]);
 
   const activeFilterCount = useMemo(() =>
-    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly, searchQuery.trim()].filter(Boolean).length,
-    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, searchQuery]
+    [showFavOnly, filterRegion !== "전체", budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter !== "전체", minScore, builderTier !== "전체", benefitOnly, subwayOnly, searchQuery.trim()].filter(Boolean).length,
+    [showFavOnly, filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, subwayOnly, searchQuery]
   );
 
   const regionOptions = useMemo<string[]>(() => {
