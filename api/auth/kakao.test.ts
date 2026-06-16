@@ -151,9 +151,51 @@ describe("auth/kakao handler", () => {
     expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
       kakaoId: "12345",
       status: "approved",
+      consentMarketing: null,  // 세션 427: 신규는 미선택 → 동의 모달 신호
+      phoneNumber: null,       // 세션 427: 비즈앱 심사 전 null
     }));
     // 회귀 가드: admin 통계의 진실의 원천인 users:{status} set 동기화 누락 방지
     expect(mockKv.sadd).toHaveBeenCalledWith("users:approved", "kakao@test.com");
+  });
+
+  it("신규 가입 시 needsMarketingConsent=true + isNew=true 응답 (세션 427)", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      ok: true,
+      isNew: true,
+      needsMarketingConsent: true,
+    }));
+  });
+
+  it("카카오 phone_number 응답 시 신규 사용자에 phoneNumber 저장 (비즈앱 심사 후, 세션 427)", async () => {
+    mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" }, phone_number: "+82 10-1234-5678" } } });
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
+      phoneNumber: "+82 10-1234-5678",
+    }));
+  });
+
+  it("기존 사용자 phoneNumber 없을 때 카카오 phone 새로 받으면 채움 (심사 후 재로그인, 세션 427)", async () => {
+    mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" }, phone_number: "+82 10-9999-8888" } } });
+    mockKv.get.mockResolvedValueOnce("kakao@test.com");
+    mockKv.get.mockResolvedValueOnce({
+      email: "kakao@test.com", name: "Tester", kakaoId: "12345", status: "approved",
+      consentMarketing: true, phoneNumber: null,
+    });
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
+      phoneNumber: "+82 10-9999-8888",
+    }));
+    // 이미 동의 선택한 기존 사용자는 동의 모달 미표시
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ needsMarketingConsent: false }));
   });
 
   it("reuses an existing Kakao-linked user", async () => {

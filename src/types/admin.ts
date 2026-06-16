@@ -70,6 +70,7 @@ export interface AdminMode {
 export interface AdminStats {
   counts: Record<string, number> & { total?: number };
   userTypes: { kakao: number; expert: number };
+  marketing?: { consent: number; withPhone: number }; // 세션 427: 마케팅 동의자·전화번호 보유자
   specialtyDist: Record<string, number>;
   recentSignups: Array<{ date: string; count: number }>;
 }

@@ -15,6 +15,9 @@ type KakaoUser = {
   role?: string;
   status?: string;
   profileImage?: string | null;
+  phoneNumber?: string | null;       // 카카오 비즈앱 심사 완료 후 채워짐 (그 전까지 null)
+  consentMarketing?: boolean | null; // null=아직 선택 안 함, true=동의, false=거부
+  consentMarketingAt?: string | null;
   createdAt?: string;
   [k: string]: unknown;
 };
@@ -104,6 +107,8 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     const kakaoEmail = userData.kakao_account?.email;
     const kakaoNickname = userData.kakao_account?.profile?.nickname || "사용자";
     const kakaoProfileImage = userData.kakao_account?.profile?.profile_image_url || null;
+    // 전화번호: 카카오 비즈앱 심사 완료 후 채워짐. 심사 전엔 undefined → null로 저장.
+    const kakaoPhone: string | null = userData.kakao_account?.phone_number ?? null;
 
     // 4. 이메일 필수 체크
     if (!kakaoEmail) {
@@ -152,8 +157,15 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
         role: "user",
         status: "approved",
         profileImage: kakaoProfileImage,
+        phoneNumber: kakaoPhone,       // 비즈앱 심사 전 null, 심사 후 자동 채워짐
+        consentMarketing: null,        // 신규: 아직 선택 안 함 → 프론트에서 팝업 표시
+        consentMarketingAt: null,
         createdAt: new Date().toISOString(),
       };
+      await kv.set(`user:${emailNorm}`, user);
+    } else if (user && kakaoPhone && !user.phoneNumber) {
+      // 기존 사용자 전화번호 업데이트 (비즈앱 심사 후 새로 받아온 경우)
+      user.phoneNumber = kakaoPhone;
       await kv.set(`user:${emailNorm}`, user);
     }
 
@@ -190,6 +202,8 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       refreshToken,
       user: { email: emailNorm, name: user!.name, affiliation: user!.affiliation || "" },
       ...(role !== "user" && { role }),
+      isNew,                                         // 프론트에서 신규 여부 판별 (마케팅 동의 팝업)
+      needsMarketingConsent: user!.consentMarketing === null, // null = 아직 선택 안 함
     });
   } catch (err) {
     console.error("[auth/kakao] error:", err instanceof Error ? err.message : String(err));

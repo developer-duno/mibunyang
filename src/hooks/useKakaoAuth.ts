@@ -46,6 +46,11 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
       response_type: "code",
       state,
     });
+    // 전화번호 수집: 카카오 비즈앱 심사 완료 후 VITE_KAKAO_PHONE_SCOPE=true 로 켜면 동의 화면에 노출.
+    // 심사 전 켜면 카카오가 에러를 반환하므로 기본 비활성. (세션 427)
+    if (import.meta.env.VITE_KAKAO_PHONE_SCOPE === "true") {
+      params.set("scope", "account_email profile_nickname phone_number");
+    }
     window.location.href = `https://kauth.kakao.com/oauth/authorize?${params}`;
   }, [kakaoLoading]);
 
@@ -106,7 +111,7 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
         // pendingDetail 복원
         let pendingDetail = null;
         try { pendingDetail = sessionStorage.getItem("kakao_pending_detail"); sessionStorage.removeItem("kakao_pending_detail"); } catch { /* noop: sessionStorage 미가용 무시 */ }
-        return { ok: true, token: data.token, refreshToken: data.refreshToken, user: data.user, role: data.role || "user", pendingDetail };
+        return { ok: true, token: data.token, refreshToken: data.refreshToken, user: data.user, role: data.role || "user", pendingDetail, needsMarketingConsent: !!data.needsMarketingConsent };
       }
 
       setKakaoError(data.error || "카카오 로그인 실패");

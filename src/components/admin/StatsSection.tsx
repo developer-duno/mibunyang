@@ -3,7 +3,7 @@ import { STATUS_TABS, SPECIALTY_BADGE } from "./constants";
 import type { StatsSectionProps } from "@/types/admin";
 
 export function StatsSection({ stats }: StatsSectionProps) {
-  const { counts, userTypes, specialtyDist, recentSignups } = stats;
+  const { counts, userTypes, marketing, specialtyDist, recentSignups } = stats;
   const maxSignup = Math.max(...recentSignups.map(d => d.count), 1);
   const userTotal = (userTypes.kakao || 0) + (userTypes.expert || 0);
   const kakaoRatio = userTotal > 0 ? Math.round((userTypes.kakao / userTotal) * 100) : 0;
@@ -53,6 +53,23 @@ export function StatsSection({ stats }: StatsSectionProps) {
           <span>이메일 가입 {userTypes.expert}명 ({100 - kakaoRatio}%)</span>
         </div>
       </div>
+
+      {/* 마케팅 동의 / 연락처 보유 (세션 427) */}
+      {marketing && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: F.xs, fontWeight: 700, color: C.sub, marginBottom: 4 }}>마케팅·연락처</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ flex: 1, background: C.greenLight, borderRadius: 8, padding: "10px 8px", textAlign: "center", border: `1px solid ${C.green}20` }}>
+              <div style={{ fontSize: F.xl, fontWeight: 800, color: C.green }}>{marketing.consent}</div>
+              <div style={{ fontSize: F.micro, color: C.green, fontWeight: 600, marginTop: 2 }}>마케팅 동의</div>
+            </div>
+            <div style={{ flex: 1, background: C.purpleLight, borderRadius: 8, padding: "10px 8px", textAlign: "center", border: `1px solid ${C.purple}20` }}>
+              <div style={{ fontSize: F.xl, fontWeight: 800, color: C.purple }}>{marketing.withPhone}</div>
+              <div style={{ fontSize: F.micro, color: C.purple, fontWeight: 600, marginTop: 2 }}>전화번호 보유</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 전문 분야 분포 */}
       {Object.keys(specialtyDist).length > 0 && (

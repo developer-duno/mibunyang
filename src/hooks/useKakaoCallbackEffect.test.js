@@ -131,4 +131,39 @@ describe('useKakaoCallbackEffect', () => {
     });
     expect(args.setTab).toHaveBeenCalledWith('list');
   });
+
+  // 신규 카카오 가입(needsMarketingConsent) → 마케팅 동의 모달 콜백 호출 (세션 427)
+  it('user + needsMarketingConsent 면 onNeedsMarketingConsent 콜백을 호출한다', async () => {
+    const onNeedsMarketingConsent = vi.fn();
+    const args = makeArgs({ ok: true, token: 't', role: 'user', needsMarketingConsent: true }, { onNeedsMarketingConsent });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(onNeedsMarketingConsent).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // 기존 사용자(needsMarketingConsent=false) → 동의 모달 콜백 미호출
+  it('needsMarketingConsent 가 false 면 동의 모달 콜백을 호출하지 않는다', async () => {
+    const onNeedsMarketingConsent = vi.fn();
+    const args = makeArgs({ ok: true, token: 't', role: 'user', needsMarketingConsent: false }, { onNeedsMarketingConsent });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(args.setTab).toHaveBeenCalledWith('list');
+    });
+    expect(onNeedsMarketingConsent).not.toHaveBeenCalled();
+  });
+
+  // admin 은 needsMarketingConsent 여도 동의 모달 미호출 (admin 분기에서 return 안 하지만 else 블록 밖)
+  it('admin 은 needsMarketingConsent 여도 동의 모달 콜백을 호출하지 않는다', async () => {
+    const onNeedsMarketingConsent = vi.fn();
+    const args = makeArgs({ ok: true, token: 't', role: 'admin', needsMarketingConsent: true }, { onNeedsMarketingConsent });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(args.admin.setAdminLoggedIn).toHaveBeenCalledWith(true);
+    });
+    expect(onNeedsMarketingConsent).not.toHaveBeenCalled();
+  });
 });

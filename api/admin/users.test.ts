@@ -23,6 +23,7 @@ vi.mock('../_lib/rateLimit.js', () => ({
 const mockKv = {
   get: vi.fn(),
   smembers: vi.fn().mockResolvedValue([]),
+  scard: vi.fn().mockResolvedValue(0),
 };
 vi.mock('../_lib/redis.js', () => ({ kv: mockKv }));
 
@@ -221,5 +222,31 @@ describe('admin/users handler', () => {
     const longQ = 'a'.repeat(200);
     await handler(makeReq({ status: 'pending', q: longQ }), res);
     expect(res.json).toHaveBeenCalledWith({ ok: true, users: [], total: 0 });
+  });
+
+  // 통계: 마케팅 동의자·전화번호 보유자 카운트 (세션 427)
+  it('action=stats 시 마케팅 동의자·전화번호 보유자 통계를 반환한다', async () => {
+    // scard 호출 순서: pending, approved, rejected, suspended, consent_marketing
+    mockKv.scard
+      .mockResolvedValueOnce(0)  // pending
+      .mockResolvedValueOnce(2)  // approved
+      .mockResolvedValueOnce(0)  // rejected
+      .mockResolvedValueOnce(0)  // suspended
+      .mockResolvedValueOnce(1); // consent_marketing
+    // smembers: pending, approved, rejected, suspended
+    mockKv.smembers
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(['a@test.com', 'b@test.com'])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mockKv.get
+      .mockResolvedValueOnce({ email: 'a@test.com', kakaoId: '1', role: 'user', consentMarketing: true, phoneNumber: '+82 10-1111-2222', createdAt: '2025-01-01' })
+      .mockResolvedValueOnce({ email: 'b@test.com', kakaoId: '2', role: 'user', consentMarketing: false, phoneNumber: null, createdAt: '2025-01-02' });
+    const res = makeRes();
+    await handler(makeReq({ action: 'stats' }), res);
+    const body = res.json.mock.calls[0][0];
+    expect(body.ok).toBe(true);
+    expect(body.marketing).toEqual({ consent: 1, withPhone: 1 });
+    expect(mockKv.scard).toHaveBeenCalledWith('users:consent_marketing');
   });
 });
