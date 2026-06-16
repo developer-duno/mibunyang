@@ -92,7 +92,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 - `isDesktop`: shadowMd, borderRadius 16, fontSize 16
 - `isFav`: 관심매물 하이라이트 (border 색상)
 - `moveInDone` (준공 + 미분양 0%): opacity 0.55
-- alertRow 배지: 분양중/분양예정 + 입주상태 + 미분양 + 시공사신용 + 혐오시설
+- alertRow 배지: 분양중/분양예정 + 입주상태 + 미분양 + 시공사신용 + 혐오시설 + 치안(위험/주의/**우수**) + 추가모집. **치안우수(세션 423)**: `crimeSafetyGrade<=2`(1·2등급) 초록 `C.green` "치안우수" — 현재 위험(`>=4`)만 빨강이라 안전 강점 미표시였음. 위험(`>=4`)과 **상호배타**(3등급은 둘 다 미표시). alertRow 렌더 조건에 `<=2`도 추가(혐오시설 없는 순수안전 단지도 노출). comparator는 `crimeSafetyGrade` 이미 추적(추가 불필요).
 - infoRow 배지(세션 420): deviation 양수→초록 "주변대비 +N% 저렴" / 음수→빨강 "주변대비 N% 비쌈"(`Math.abs`, 상호배타). 적정가·입지·할인도 여기. **청약 경쟁률(세션 422)**: `PRESALE_ACTIVE_STAGES`(분양중/청약중/분양계획)+`competitionRate>0`일 때만 `C.indigo` "청약 N:1"(`fmtCompetitionRate` 위임, 천단위 콤마). **미분양 단계 제외**(미분양% 배지와 동시노출 모순 차단). comparator에 `competitionRate` 비교 1줄. `fieldMeta.ts presaleNA`(미분양 포함 4종)는 재사용 안 함.
 - `isLoggedIn` 블라인드(점수 계열만, 정책 api/CLAUDE.md "점수 블라인드"): 종합 ScoreBadge→`??` div / 카테고리 점수숫자→blur+`??` / **카테고리 Bar→aria-hidden 회색 placeholder**(세션 420, Bar 컴포넌트 불변=호출처만) / **"안전 N등급"→"안전 ?등급"**(세션 420). 적정가·입지·deviation 배지는 점수 아니라 노출 유지.
 
