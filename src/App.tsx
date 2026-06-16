@@ -420,7 +420,10 @@ export default function App() {
       {/* 사업자 정보 */}
       <footer data-no-print style={{ textAlign: "center", padding: isDesktop ? "16px 12px 24px" : "16px 12px 72px", fontSize: F.micro, color: C.muted, lineHeight: 1.6, letterSpacing: -0.2 }}>
         이로움기획 | 대표 김상원 | 사업자등록번호 267-02-01775<br />
-        대전광역시 유성구 구암동 606-11 201호
+        대전광역시 유성구 계룡로38번길 92, 201호 (구암동, 황제빌라)<br />
+        <a href="tel:010-9829-8888" style={{ color: C.muted, textDecoration: "none" }}>전화 010-9829-8888</a>
+        {" | "}
+        <a href="mailto:kyh11kyh@gmail.com" style={{ color: C.muted, textDecoration: "none" }}>이메일 kyh11kyh@gmail.com</a>
       </footer>
 
       {/* 하단 네비 */}
