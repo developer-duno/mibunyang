@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
 import { useComparison, MAX_COMPARE } from "@/hooks/useComparison";
 import { useFavorites } from "@/hooks/useFavorites";
+import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
 import { useDetailModal } from "@/hooks/useDetailModal";
 import { useConsult } from "@/hooks/useConsult";
 import { useAuth } from "@/hooks/useAuth";
@@ -122,7 +123,9 @@ export default function App() {
   const { isPC, isDesktop } = useResponsive();
   // useToast 는 useState 직후 자리로 이동 (L67 useEffect showToast 참조 TDZ 방지)
   const { favoriteIds, favoriteSet, setFavoriteIds, toggleFavorite } = useFavorites(showToast);
-  const detail = useDetailModal(tab);
+  // 최근 본 단지 — useDetailModal 앞 선언(TDZ): recordView 를 상세 진입 단일 지점에 주입
+  const { recentIds, recordView, clearRecent } = useRecentlyViewed(showToast);
+  const detail = useDetailModal(tab, recordView);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail]);
   const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, searchQuery, handleSearchChange, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending } = useFilterSort({ onFilterChange: closeDetail });
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
@@ -186,7 +189,7 @@ export default function App() {
   const { consentOpen, consentSubmitting, openConsent, submitConsent } = useMarketingConsent(showToast);
 
   // ── 카카오 OAuth 콜백 useEffect ──
-  useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, setTab, showToast, onNeedsMarketingConsent: openConsent });
+  useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, recordView, setTab, showToast, onNeedsMarketingConsent: openConsent });
 
   // ── containerMaxWidth ──
   const containerMaxWidth = (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
@@ -322,7 +325,8 @@ export default function App() {
           isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC}
           dataLoading={dataLoading} dataFreshnessText={dataFreshnessText}
           onNavClick={handleNavClick} onMarketNav={(target, sort) => { if (sort) setSortKey(sort); handleNavClick(target); }} onDetail={handleDetailGated}
-          onFav={toggleFavorite} favoriteSet={favoriteSet} onComp={toggleComp} compIds={compIds} />
+          onFav={toggleFavorite} favoriteSet={favoriteSet} onComp={toggleComp} compIds={compIds}
+          recentIds={recentIds} scoredMap={scoredMap} onClearRecent={clearRecent} />
       ) : tab === "list" ? (
         <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           {compIds.length >= 2 && (

@@ -14,7 +14,17 @@ const baseProps = () => ({
   dataLoading: false, dataFreshnessText: null,
   onNavClick: vi.fn(), onMarketNav: vi.fn(), onDetail: vi.fn(),
   onFav: vi.fn(), favoriteSet: new Set(), onComp: vi.fn(), compIds: [],
+  recentIds: [], scoredMap: new Map(), onClearRecent: vi.fn(),
 });
+
+/** 최소 ScoredApt — RecentlyViewedWidget 카드 렌더용 (TopPicksWidget.test 답습) */
+function makeScored(/** @type {string} */ id, /** @type {string} */ name) {
+  const cat = (/** @type {string} */ label, /** @type {number} */ t) => ({ label, total: t, subs: [] });
+  return /** @type {any} */ ({
+    apt: { id, name, region: "경기", gu: "수원시", price: 50000, area: 84, noxious: [] },
+    res: { total: 80, cats: { price: cat("가격", 70), location: cat("입지", 60), product: cat("상품성", 55), benefit: { label: "혜택", total: 50, subs: [], totalWon: 0 }, risk: cat("안전", 65), future: cat("미래", 45) } },
+  });
+}
 
 describe("HomePage", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -41,6 +51,23 @@ describe("HomePage", () => {
     vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
     render(<HomePage {...baseProps()} />);
     expect(screen.getByText("📅 곧 분양")).toBeInTheDocument();
+  });
+
+  it("최근 본 단지 없음(recentIds=[]): 위젯 미노출", () => {
+    render(<HomePage {...baseProps()} />);
+    expect(screen.queryByText("👀 최근 본 단지")).toBeNull();
+  });
+
+  it("최근 본 단지 있음(scoredMap 매칭): 위젯 노출 + 카드 렌더", () => {
+    const s = makeScored("a1", "최근단지");
+    render(<HomePage {...baseProps()} recentIds={["a1"]} scoredMap={new Map([["a1", s]])} />);
+    expect(screen.getByText("👀 최근 본 단지")).toBeInTheDocument();
+    expect(screen.getByText(/최근단지/)).toBeInTheDocument();
+  });
+
+  it("최근 본 id 가 scoredMap 에 전부 없으면(삭제된 단지) 위젯 미노출", () => {
+    render(<HomePage {...baseProps()} recentIds={["gone-1"]} scoredMap={new Map()} />);
+    expect(screen.queryByText("👀 최근 본 단지")).toBeNull();
   });
 });
 

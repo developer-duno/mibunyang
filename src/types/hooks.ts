@@ -189,6 +189,16 @@ export interface UseFavoritesReturn {
 }
 
 /**
+ * useRecentlyViewed 반환 — 최근 본 단지 (순서 의미 있음: 최근이 맨 앞).
+ * localStorage 기반, useFavorites 패턴 답습. 로그인 시 상세 진입에서만 기록.
+ */
+export interface UseRecentlyViewedReturn {
+  recentIds: string[];
+  recordView: (_id: string) => void;
+  clearRecent: () => void;
+}
+
+/**
  * 시장 통계 시계열 1행 — KOSIS 컬럼 동적 (avg_price_sqm/price_index/...).
  */
 export interface MarketStatsRow {

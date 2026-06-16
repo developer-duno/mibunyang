@@ -27,6 +27,7 @@ function makeArgs(callbackResult, override = {}) {
     auth: { setLoggedIn: vi.fn(), setAuthUser: vi.fn() },
     admin: { setAdminLoggedIn: vi.fn() },
     detail: { setDetailAptId: vi.fn() },
+    recordView: vi.fn(),
     setTab: vi.fn(),
     showToast: vi.fn(),
     ...override,
@@ -95,6 +96,19 @@ describe('useKakaoCallbackEffect', () => {
       expect(args.detail.setDetailAptId).toHaveBeenCalledWith('apt-99');
     });
     expect(args.setTab).toHaveBeenCalledWith('list');
+    // 로그인 후 복원되는 상세도 "본 단지"로 기록 (cross-validate 발견 — 정책 일관)
+    expect(args.recordView).toHaveBeenCalledWith('apt-99');
+  });
+
+  // pendingDetail 없으면 recordView 미호출
+  it('pendingDetail 없으면 recordView 를 호출하지 않는다', async () => {
+    const args = makeArgs({ ok: true, token: 't', role: 'user' });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(args.setTab).toHaveBeenCalledWith('list');
+    });
+    expect(args.recordView).not.toHaveBeenCalled();
   });
 
   // VITE_FEATURE_HOME ON: 일반 유저 착지가 home (로그인 직후 홈 = 지도 위젯 열린 첫 경험, spec §1)
