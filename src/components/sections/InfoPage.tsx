@@ -81,6 +81,12 @@ export const InfoPage = memo(function InfoPage({ isLoggedIn, adminLoggedIn, onAd
             </svg>
             {kakaoLoading ? "처리 중..." : "카카오로 시작하기"}
           </button>
+          {/* 개인정보 수집 안내 (카카오 동의항목과 화면 일치 — 심사 기준) */}
+          <div style={{ fontSize: F.micro, color: C.muted, lineHeight: 1.5, marginTop: 8 }}>
+            카카오 로그인 시 닉네임·이메일(필수), 전화번호·프로필 사진(선택)을 수집합니다.
+            전화번호는 맞춤 분양 정보 안내 및 상담 연결에 사용되며, 동의하지 않아도 이용할 수 있어요.{" "}
+            <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: C.muted, textDecoration: "underline" }}>개인정보 처리방침</a>
+          </div>
         </div>
       ) : (
         <div style={cardStyle}>
