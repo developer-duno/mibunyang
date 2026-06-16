@@ -1,11 +1,13 @@
 import { memo, useMemo } from "react";
 import { C, F, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
-import { fmtPrice, fmtCompletion } from "@/lib/format";
+import { fmtPrice, fmtCompletion, fmtCompetitionRate } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 import type { AptCardProps } from "@/types/components/AptCard.types";
 
 const UNSOLD_ALERT_THRESHOLD = 30;
+/* 청약 경쟁률 배지 노출 단계 — 청약 진행/예정만 (미분양 제외, 모순 표시 차단) */
+const PRESALE_ACTIVE_STAGES = new Set(["분양중", "청약중", "분양계획"]);
 /* ── 모듈 레벨 상수 (렌더마다 재생성 방지) ── */
 const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
@@ -110,6 +112,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           {(apt.discountPct ?? 0) > 0 && <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>할인 {apt.discountPct}%</span>}
           {res.cats.price?.deviation != null && Number(res.cats.price.deviation) > 0 && <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>주변대비 +{Math.round(Number(res.cats.price.deviation))}% 저렴</span>}
           {res.cats.price?.deviation != null && Number(res.cats.price.deviation) < 0 && <span style={{ ...S.infoTag, background: C.redLight, color: C.red, fontWeight: 700 }}>주변대비 {Math.abs(Math.round(Number(res.cats.price.deviation)))}% 비쌈</span>}
+          {PRESALE_ACTIVE_STAGES.has(apt.presaleStage as string) && Number(apt.competitionRate ?? 0) > 0 && <span style={{ ...S.infoTag, background: C.indigoLight, color: C.indigo, fontWeight: 700 }}>청약 {fmtCompetitionRate(Number(apt.competitionRate))}</span>}
         </div>
 
         {benefitWon > 0 ? (
@@ -172,6 +175,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (pa.completion !== na.completion) return false;
   if (pa.unsoldRate !== na.unsoldRate) return false;
   if (pa.presaleStage !== na.presaleStage) return false;
+  if (pa.competitionRate !== na.competitionRate) return false;
   if (pa.crimeSafetyGrade !== na.crimeSafetyGrade) return false;
   if (pa.builderCreditGrade !== na.builderCreditGrade) return false;
   if (pa.unsoldEventCount !== na.unsoldEventCount) return false;

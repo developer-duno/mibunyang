@@ -310,6 +310,7 @@
   - 트리거: 같은 apartment_id 2회+ 행 발생
   - **측정 스크립트**: `node scripts/monitors/applyhome-event-recurrence.mjs` (세션 168 박제)
   - 1차 적재 결과: 1263 events / 721 단지 보유 (단지당 평균 1.75 공고 — 시계열은 누적 후)
+  - **세션 422 실측 정정 (2026-06-16)**: `applyhome-event-recurrence.mjs` 라이브 실행 = 1263 events / **고유 단지 1263개 / 단지당 평균 1.00회 / 2회+ 누적 단지 0개**. 박제 "721 단지/평균 1.75"는 stale. 충돌 키 `apartment_id,house_manage_no` 라 차수 누적 구조는 정상이나 아직 같은 단지 2번째 무순위 공고 미발생 → **차수 노출 작업 보류 유지** (스크립트 자체 판정 "📭 2회+ 단지 없음"). 트리거 = 다음 적재에서 2회+ 단지 ≥5개
   - 참조: `docs/superpowers/specs/2026-05-02-applyhome-events-log-design.md` § 명시적 비-작업
 
 - ✅ **collect-avg-income.mjs recorded_at 매칭 키 fix 완료** (세션 284 진단·정정)
