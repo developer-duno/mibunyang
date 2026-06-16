@@ -1,5 +1,5 @@
 /**
- * 상세 필터 패널 — 최소점수 + 시공사등급 + 혜택 토글
+ * 상세 필터 패널 — 최소점수 + 시공사등급 + 혜택 토글 + 역세권 토글
  * 기존 SearchFilterBar 5행에서 추출
  */
 import { memo } from "react";
@@ -14,6 +14,8 @@ type DetailPanelProps = {
   onBuilderTierChange: (_v: string) => void;
   benefitOnly: boolean;
   onToggleBenefitOnly: () => void;
+  subwayOnly: boolean;
+  onToggleSubwayOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
 };
 
@@ -21,9 +23,10 @@ export const DetailPanel = memo(function DetailPanel({
   minScore, onMinScoreChange,
   builderTier, onBuilderTierChange,
   benefitOnly, onToggleBenefitOnly,
+  subwayOnly, onToggleSubwayOnly,
   filterOptionCounts,
 }: DetailPanelProps) {
-  const hasFilter = minScore || builderTier !== "전체" || benefitOnly;
+  const hasFilter = minScore || builderTier !== "전체" || benefitOnly || subwayOnly;
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const }}>
       <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
@@ -48,8 +51,14 @@ export const DetailPanel = memo(function DetailPanel({
         border: benefitOnly ? `1.5px solid ${C.amber}` : `1px solid ${C.border}`, borderRadius: 5,
         cursor: "pointer", transition: "all .15s",
       }}>혜택</button>
+      <button onClick={onToggleSubwayOnly} aria-label="역세권 매물만(500m 이내)" aria-pressed={subwayOnly} style={{
+        flexShrink: 0, height: 30, padding: "0 10px", fontSize: F.xs, fontWeight: subwayOnly ? 700 : 500,
+        background: subwayOnly ? C.blueLight : C.slate100, color: subwayOnly ? C.blue : C.slate600,
+        border: subwayOnly ? `1.5px solid ${C.blue}` : `1px solid ${C.border}`, borderRadius: 5,
+        cursor: "pointer", transition: "all .15s",
+      }}>역세권</button>
       {hasFilter && (
-        <button onClick={() => { onMinScoreChange(""); onBuilderTierChange("전체"); if (benefitOnly) onToggleBenefitOnly(); }} aria-label="점수/시공사/혜택 초기화" style={resetBtn(30)}><IconClose size={12} /></button>
+        <button onClick={() => { onMinScoreChange(""); onBuilderTierChange("전체"); if (benefitOnly) onToggleBenefitOnly(); if (subwayOnly) onToggleSubwayOnly(); }} aria-label="점수/시공사/혜택/역세권 초기화" style={resetBtn(30)}><IconClose size={12} /></button>
       )}
     </div>
   );

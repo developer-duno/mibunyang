@@ -33,6 +33,8 @@ export interface SearchFilterBarProps {
   onBuilderTierChange: (_v: string) => void;
   benefitOnly: boolean;
   onToggleBenefitOnly: () => void;
+  subwayOnly: boolean;
+  onToggleSubwayOnly: () => void;
   hideNoUnsold?: boolean;
   onToggleHideNoUnsold?: () => void;
   sortKey: SortKey;

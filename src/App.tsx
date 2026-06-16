@@ -127,7 +127,7 @@ export default function App() {
   const { recentIds, recordView, clearRecent } = useRecentlyViewed(showToast);
   const detail = useDetailModal(tab, recordView);
   const closeDetail = useCallback(() => detail.setDetailAptId(null), [detail]);
-  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, searchQuery, handleSearchChange, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending } = useFilterSort({ onFilterChange: closeDetail });
+  const { filterRegion, filterGu, sortKey, setSortKey, handleRegionChange, handleGuChange, budgetMin, handleBudgetMinChange, budgetMax, handleBudgetMaxChange, handleBudgetReset, showFavOnly, toggleFavOnly, areaMin, handleAreaMinChange, areaMax, handleAreaMaxChange, unitsMin, handleUnitsMinChange, unitsMax, handleUnitsMaxChange, handleAreaUnitsReset, moveInFilter, handleMoveInChange, minScore, handleMinScoreChange, builderTier, handleBuilderTierChange, benefitOnly, toggleBenefitOnly, subwayOnly, toggleSubwayOnly, searchQuery, handleSearchChange, getShareURL, handleResetAll, applyPreset, customPresets, saveCustomPreset, deleteCustomPreset, filterHistory, applyHistory, clearHistory, undo, redo, canUndo, canRedo, isSortPending } = useFilterSort({ onFilterChange: closeDetail });
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const consult = useConsult(showToast, favoriteIds);
   const auth = useAuth(showToast);
@@ -150,7 +150,7 @@ export default function App() {
     apartments, profile, customWeights,
     filterRegion, filterGu, sortKey, moveInFilter, builderTier,
     showFavOnly, favoriteSet, budgetMin, budgetMax,
-    areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly,
+    areaMin, areaMax, unitsMin, unitsMax, minScore, benefitOnly, subwayOnly,
     searchQuery, hideNoUnsold, compIds, dataUpdatedAt,
   });
 
@@ -304,6 +304,7 @@ export default function App() {
             minScore={minScore} onMinScoreChange={handleMinScoreChange}
             builderTier={builderTier} onBuilderTierChange={handleBuilderTierChange}
             benefitOnly={benefitOnly} onToggleBenefitOnly={toggleBenefitOnly}
+            subwayOnly={subwayOnly} onToggleSubwayOnly={toggleSubwayOnly}
             hideNoUnsold={hideNoUnsold} onToggleHideNoUnsold={toggleHideNoUnsold}
             activeFilterCount={activeFilterCount}
             filteredLength={filtered.length} scoredLength={scored.length}

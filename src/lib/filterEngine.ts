@@ -18,6 +18,7 @@ export interface FilterState {
   unitsMax?: string | number | null;
   minScore?: string | number | null;
   benefitOnly?: boolean;
+  subwayOnly?: boolean;
 }
 
 /**
@@ -52,6 +53,11 @@ export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[]
     const benefit = x.res.cats?.benefit as { totalWon?: number } | undefined;
     return (benefit?.totalWon ?? 0) > 0;
   });
+
+  // 역세권만 (≤500m, 9999=역없음 제외) — AptCard 역세권 강조 기준(<=500)과 동일
+  if (f.subwayOnly) out = out.filter(
+    x => (x.apt.subwayDist != null) && (x.apt.subwayDist as number) <= 500
+  );
 
   return out;
 }

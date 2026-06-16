@@ -175,6 +175,28 @@ describe("전체 초기화 + 프리셋", () => {
     expect(result.current.minScore).toBe("70");
     expect(result.current.builderTier).toBe("1군");
   });
+
+  // 세션 430 회귀 가드 — 역세권 필터 켠 채 커스텀 프리셋 저장 시 subwayOnly 가 담겨야 함
+  // (saveCustomPreset snap 객체에 subwayOnly 누락 시 프리셋에 절대 저장 안 되던 결함)
+  it("saveCustomPreset — subwayOnly=true 저장 후 applyPreset 으로 복원", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => { result.current.toggleSubwayOnly(); });
+    expect(result.current.subwayOnly).toBe(true);
+    act(() => { result.current.saveCustomPreset("역세권만") });
+    const saved = /** @type {any} */ (result.current.customPresets.find(p => p.label === "역세권만"));
+    expect(saved?.values.subwayOnly).toBe(true);
+    // 끄고 → 프리셋 재적용 → 다시 켜져야 함
+    act(() => { result.current.toggleSubwayOnly(); });
+    expect(result.current.subwayOnly).toBe(false);
+    act(() => { result.current.applyPreset(saved.values); });
+    expect(result.current.subwayOnly).toBe(true);
+  });
+
+  it("applyPreset — subwayOnly 적용", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => { result.current.applyPreset({ subwayOnly: true }); });
+    expect(result.current.subwayOnly).toBe(true);
+  });
 });
 
 describe("URL 필터 역직렬화 (Phase 1)", () => {

@@ -13,6 +13,8 @@ function makeProps(overrides = {}) {
     onBuilderTierChange: vi.fn(),
     benefitOnly: false,
     onToggleBenefitOnly: vi.fn(),
+    subwayOnly: false,
+    onToggleSubwayOnly: vi.fn(),
     filterOptionCounts: null,
     ...overrides,
   };
@@ -76,16 +78,45 @@ describe("DetailPanel", () => {
     expect(screen.getByLabelText("혜택 있는 매물만")).toHaveAttribute("aria-pressed", "false");
   });
 
+  // 역세권 토글 버튼 렌더링 (세션 430)
+  it("역세권 토글 버튼 렌더링", () => {
+    render(<DetailPanel {...makeProps()} />);
+    expect(screen.getByLabelText("역세권 매물만(500m 이내)")).toBeInTheDocument();
+  });
+
+  // 역세권 토글 클릭 시 onToggleSubwayOnly 콜백 (세션 430)
+  it("역세권 토글 클릭 시 onToggleSubwayOnly 호출", () => {
+    const onToggleSubwayOnly = vi.fn();
+    render(<DetailPanel {...makeProps({ onToggleSubwayOnly })} />);
+    fireEvent.click(screen.getByLabelText("역세권 매물만(500m 이내)"));
+    expect(onToggleSubwayOnly).toHaveBeenCalledTimes(1);
+  });
+
+  // subwayOnly=true → aria-pressed=true + 초기화 버튼 노출 (세션 430)
+  it("subwayOnly=true이면 aria-pressed=true이고 초기화 버튼 표시", () => {
+    render(<DetailPanel {...makeProps({ subwayOnly: true })} />);
+    expect(screen.getByLabelText("역세권 매물만(500m 이내)")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("점수/시공사/혜택/역세권 초기화")).toBeInTheDocument();
+  });
+
+  // 초기화 클릭 시 subwayOnly=true면 onToggleSubwayOnly 호출 (세션 430)
+  it("초기화 클릭 시 subwayOnly=true면 onToggleSubwayOnly 호출", () => {
+    const onToggleSubwayOnly = vi.fn();
+    render(<DetailPanel {...makeProps({ subwayOnly: true, onToggleSubwayOnly })} />);
+    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권 초기화"));
+    expect(onToggleSubwayOnly).toHaveBeenCalledTimes(1);
+  });
+
   // 필터 미설정 시 초기화 버튼 미표시
   it("모든 필터 기본값이면 초기화 버튼 미표시", () => {
     render(<DetailPanel {...makeProps()} />);
-    expect(screen.queryByLabelText("점수/시공사/혜택 초기화")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("점수/시공사/혜택/역세권 초기화")).not.toBeInTheDocument();
   });
 
   // minScore 설정 시 초기화 버튼 표시
   it("점수 필터 설정 시 초기화 버튼 표시", () => {
     render(<DetailPanel {...makeProps({ minScore: "60" })} />);
-    expect(screen.getByLabelText("점수/시공사/혜택 초기화")).toBeInTheDocument();
+    expect(screen.getByLabelText("점수/시공사/혜택/역세권 초기화")).toBeInTheDocument();
   });
 
   // 초기화 클릭 시 onMinScoreChange("") + onBuilderTierChange("전체") + onToggleBenefitOnly(if benefitOnly) 호출
@@ -94,7 +125,7 @@ describe("DetailPanel", () => {
     const onBuilderTierChange = vi.fn();
     const onToggleBenefitOnly = vi.fn();
     render(<DetailPanel {...makeProps({ minScore: "60", benefitOnly: true, onMinScoreChange, onBuilderTierChange, onToggleBenefitOnly })} />);
-    fireEvent.click(screen.getByLabelText("점수/시공사/혜택 초기화"));
+    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권 초기화"));
     expect(onMinScoreChange).toHaveBeenCalledWith("");
     expect(onBuilderTierChange).toHaveBeenCalledWith("전체");
     expect(onToggleBenefitOnly).toHaveBeenCalledTimes(1);
@@ -104,7 +135,7 @@ describe("DetailPanel", () => {
   it("benefitOnly=false 상태에서 초기화 시 onToggleBenefitOnly 호출 안됨", () => {
     const onToggleBenefitOnly = vi.fn();
     render(<DetailPanel {...makeProps({ minScore: "60", benefitOnly: false, onToggleBenefitOnly })} />);
-    fireEvent.click(screen.getByLabelText("점수/시공사/혜택 초기화"));
+    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권 초기화"));
     expect(onToggleBenefitOnly).not.toHaveBeenCalled();
   });
 
