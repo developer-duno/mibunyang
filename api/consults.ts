@@ -84,13 +84,21 @@ async function handleGet(req: any, res: any) {
     return res.status(403).json({ ok: false, error: "Forbidden" });
   }
 
+  // 페이지네이션 — limit/offset 쿼리 파라미터 (admin/users.ts 클램프 패턴 답습)
+  const query = req.query ?? {};
+  const limitRaw = Array.isArray(query.limit) ? query.limit[0] : query.limit;
+  const offsetRaw = Array.isArray(query.offset) ? query.offset[0] : query.offset;
+  const limit = Math.min(Math.max(parseInt(String(limitRaw ?? "")) || 50, 1), 100);
+  const offset = Math.max(parseInt(String(offsetRaw ?? "")) || 0, 0);
+
   try {
     const sb = getMibuyangSupabase();
     const { data, error, count } = await sb
       .from("consults")
       .select("*", { count: "exact" })
       .order("submitted_at", { ascending: false })
-      .limit(100);
+      .order("id", { ascending: false }) // tiebreaker — submitted_at 동일값 페이징 순서 안정화
+      .range(offset, offset + limit - 1);
     if (error) throw error;
 
     // snake_case → camelCase 변환
@@ -107,7 +115,7 @@ async function handleGet(req: any, res: any) {
       submittedAt: r.submitted_at,
     }));
 
-    return res.status(200).json({ ok: true, data: mapped, count });
+    return res.status(200).json({ ok: true, data: mapped, count: count ?? 0 });
   } catch (err) {
     console.error("consult list error:", err);
     return res.status(500).json({ ok: false, error: "상담 목록 조회에 실패했습니다" });

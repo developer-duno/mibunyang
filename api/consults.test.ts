@@ -21,10 +21,11 @@ vi.mock("./_lib/tokenBlacklist.js", () => ({
   isBlacklisted: vi.fn().mockResolvedValue(false),
 }));
 
-// Supabase chainable mock
+// Supabase chainable mock — handleGet: .select().order().order().range() (세션 425 페이지네이션)
 const mockInsert = vi.fn().mockResolvedValue({ error: null });
-const mockLimit = vi.fn().mockResolvedValue({ data: [], error: null, count: 0 });
-const mockOrder = vi.fn().mockReturnValue({ limit: mockLimit });
+const mockRange = vi.fn().mockResolvedValue({ data: [], error: null, count: 0 });
+const mockOrder2 = vi.fn().mockReturnValue({ range: mockRange }); // id tiebreaker (2번째 order)
+const mockOrder = vi.fn().mockReturnValue({ order: mockOrder2 });
 const mockSelect = vi.fn().mockReturnValue({ order: mockOrder });
 
 vi.mock("./_lib/supabase.js", () => ({
@@ -35,7 +36,9 @@ vi.mock("./_lib/supabase.js", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mockInsert.mockResolvedValue({ error: null });
-  mockLimit.mockResolvedValue({ data: [], error: null, count: 0 });
+  mockRange.mockResolvedValue({ data: [], error: null, count: 0 });
+  mockOrder2.mockReturnValue({ range: mockRange });
+  mockOrder.mockReturnValue({ order: mockOrder2 });
 });
 
 const { default: handlerImport } = await import("./consults.js");
@@ -181,7 +184,7 @@ describe("consults handler", () => {
   it("GET: 유효한 관리자 토큰으로 상담 목록을 반환한다", async () => {
     (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
     // snake_case DB 응답 목
-    mockLimit.mockResolvedValueOnce({
+    mockRange.mockResolvedValueOnce({
       data: [makeConsultRow()],
       error: null,
       count: 1,
@@ -198,6 +201,39 @@ describe("consults handler", () => {
     expect(responseData.count).toBe(1);
   });
 
+  // 세션 425: 페이지네이션 — offset/limit 파라미터 → range 호출 인자
+  it("GET: 기본 limit 50, offset 0 → range(0, 49) 호출", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    const res = makeRes();
+    await handler({ method: "GET", headers: { authorization: "Bearer valid-token" }, query: {} }, res);
+    expect(mockRange).toHaveBeenCalledWith(0, 49);
+  });
+
+  it("GET: offset=50 → range(50, 99) 호출 (더보기 2페이지)", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    const res = makeRes();
+    await handler({ method: "GET", headers: { authorization: "Bearer valid-token" }, query: { offset: "50" } }, res);
+    expect(mockRange).toHaveBeenCalledWith(50, 99);
+  });
+
+  it("GET: limit/offset 클램프 — 음수·초과·NaN 방어", async () => {
+    (verifyToken as any).mockReturnValue({ email: "admin@test.com", role: "admin" });
+    // limit 상한 100 초과 → 100, offset 음수 → 0
+    await handler({ method: "GET", headers: { authorization: "Bearer t" }, query: { limit: "500", offset: "-10" } }, makeRes());
+    expect(mockRange).toHaveBeenLastCalledWith(0, 99);
+    // limit NaN → 기본 50, offset NaN → 0
+    await handler({ method: "GET", headers: { authorization: "Bearer t" }, query: { limit: "abc", offset: "xyz" } }, makeRes());
+    expect(mockRange).toHaveBeenLastCalledWith(0, 49);
+  });
+
+  it("GET: count 가 null 이면 응답 count 0 으로 폴백", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    mockRange.mockResolvedValueOnce({ data: [], error: null, count: null });
+    const res = makeRes();
+    await handler({ method: "GET", headers: { authorization: "Bearer valid-token" }, query: {} }, res);
+    expect(res.json.mock.calls[0][0].count).toBe(0);
+  });
+
   // 세션 405: expert role 폐지 — 잔존 expert 토큰도 403 (관리자 단독)
   it("GET: 잔존 expert role 토큰은 403을 반환한다", async () => {
     (verifyToken as any).mockReturnValueOnce({ email: "expert@test.com", role: "expert" });
@@ -208,7 +244,7 @@ describe("consults handler", () => {
 
   it("GET: Supabase 조회 실패 시 500을 반환한다", async () => {
     (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
-    mockLimit.mockResolvedValueOnce({ data: null, error: new Error("DB error"), count: 0 });
+    mockRange.mockResolvedValueOnce({ data: null, error: new Error("DB error"), count: 0 });
     const res = makeRes();
     await handler({ method: "GET", headers: { authorization: "Bearer valid-token" }, query: {} }, res);
     expect(res.status).toHaveBeenCalledWith(500);
