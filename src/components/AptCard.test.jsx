@@ -216,6 +216,49 @@ describe("AptCard", () => {
     expect(screen.queryByText(/주변대비/)).toBeNull();
   });
 
+  // 세션422: 청약 경쟁률 배지 — 분양중/청약중/분양계획 + competitionRate>0 일 때만 (미분양 제외)
+  it("분양중 + competitionRate>0 이면 '청약 N:1' 배지 표시", () => {
+    const apt = /** @type {any} */ (makeApt({ presaleStage: "분양중", competitionRate: 477.8 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("청약 477.8:1")).toBeInTheDocument();
+  });
+
+  it("미분양 단계면 competitionRate>0 라도 청약 배지 미표시 (게이트 제외)", () => {
+    const apt = /** @type {any} */ (makeApt({ presaleStage: "미분양", competitionRate: 155 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.queryByText(/청약 /)).toBeNull();
+  });
+
+  it("presaleStage=null 이면 청약 배지 미표시", () => {
+    const apt = /** @type {any} */ (makeApt({ presaleStage: null, competitionRate: 50 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.queryByText(/청약 /)).toBeNull();
+  });
+
+  it("competitionRate=null 또는 0 이면 청약 배지 미표시 (분양중이어도)", () => {
+    const aptNull = /** @type {any} */ (makeApt({ presaleStage: "분양중", competitionRate: null }));
+    const { rerender } = render(<AptCard {...makeProps({ apt: aptNull })} />);
+    expect(screen.queryByText(/청약 /)).toBeNull();
+    const aptZero = /** @type {any} */ (makeApt({ presaleStage: "분양중", competitionRate: 0 }));
+    rerender(<AptCard {...makeProps({ apt: aptZero })} />);
+    expect(screen.queryByText(/청약 /)).toBeNull();
+  });
+
+  it("극단값 competitionRate=437995 → '청약 437,995:1' (천단위 콤마, fmtCompetitionRate 위임)", () => {
+    const apt = /** @type {any} */ (makeApt({ presaleStage: "청약중", competitionRate: 437995 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("청약 437,995:1")).toBeInTheDocument();
+  });
+
+  it("competitionRate 변경 시 카드 리렌더 (memo comparator 회귀 방지)", () => {
+    const aptInitial = /** @type {any} */ (makeApt({ id: "naver-200", presaleStage: "분양중", competitionRate: null }));
+    const aptUpdated = /** @type {any} */ (makeApt({ id: "naver-200", presaleStage: "분양중", competitionRate: 50 }));
+    const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+    expect(screen.queryByText(/청약 /)).toBeNull();
+    rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+    expect(screen.getByText("청약 50.0:1")).toBeInTheDocument();
+  });
+
   // 세션420 C: 비로그인 점수 계열 블라인드 (api/CLAUDE.md "점수 블라인드" 정책 정합)
   it("비로그인이면 카테고리 점수바(progressbar) 미노출, 로그인이면 노출", () => {
     const { rerender } = render(<AptCard {...makeProps({ isLoggedIn: false })} />);
