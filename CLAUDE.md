@@ -34,7 +34,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 |--------|------|----------|
 | **프론트** | React 19 + Vite 8 (Rolldown) | App.tsx (~430줄), `@/` 경로 별칭, Pretendard 폰트 |
 | **상태/훅** | useMemo 14개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
-| **컴포넌트** | memo() 54개 + icons.tsx (SVG 9개) | 소비자11 + 홈6 + 섹션9 + 상세14 + 필터7 + 관리자6 + 아이콘1 (상세 D2a/D2b 증가, 전문가 그룹 세션 405 폐지 — 관리자 인사이트로 이식) |
+| **컴포넌트** | memo() 55개 + icons.tsx (SVG 9개) | 소비자11 + 홈7 + 섹션9 + 상세14 + 필터7 + 관리자6 + 아이콘1 (홈 RecentlyViewedWidget 세션 429 신규, 상세 D2a/D2b 증가, 전문가 그룹 세션 405 폐지 — 관리자 인사이트로 이식) |
 | **API** | Vercel Serverless (24개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합). Redis 순단 fail-open 차등(login·subscribers만 fail-close, 세션 427) |
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지. 손님 마케팅 수신 동의·전화번호(선택, VITE_KAKAO_PHONE_SCOPE 토글) 수집 세션 427 |
