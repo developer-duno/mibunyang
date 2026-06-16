@@ -54,23 +54,42 @@ describe('checkRateLimit', () => {
     expect(result.limited).toBe(false);
   });
 
-  // 정상: 다른 엔드포인트 제한
-  it('verify 엔드포인트는 20회 제한이다', async () => {
-    mockPipeline.exec.mockResolvedValue([20]);
+  // 정상: 다른 엔드포인트 제한 (단체 와이파이 공유 IP 대비 60회로 상향, 세션 427)
+  it('verify 엔드포인트는 60회 제한이다', async () => {
+    mockPipeline.exec.mockResolvedValue([60]);
     const result = await checkRateLimit(makeReq(), 'verify');
     expect(result.limited).toBe(false);
 
-    mockPipeline.exec.mockResolvedValue([21]);
+    mockPipeline.exec.mockResolvedValue([61]);
     const result2 = await checkRateLimit(makeReq(), 'verify');
     expect(result2.limited).toBe(true);
   });
 
-  // 에러: Redis 장애 시 fail-close (보안 우선)
-  it('Redis 장애 시 fail-close (limited=true)', async () => {
+  // 에러: Redis 장애 시 차등 fail 정책 (세션 427)
+  // login·subscribers = fail-close (brute-force / 공개 쓰기 보호), 그 외 = fail-open (가용성 우선, SPOF 제거)
+  it('Redis 장애 시 login은 fail-close (limited=true)', async () => {
     mockPipeline.exec.mockRejectedValue(new Error('Redis down'));
     const result = await checkRateLimit(makeReq(), 'login') as any;
     expect(result.limited).toBe(true);
     expect(result.retryAfter).toBe(300);
+  });
+
+  it('Redis 장애 시 subscribers는 fail-close (limited=true)', async () => {
+    mockPipeline.exec.mockRejectedValue(new Error('Redis down'));
+    const result = await checkRateLimit(makeReq(), 'subscribers') as any;
+    expect(result.limited).toBe(true);
+  });
+
+  it('Redis 장애 시 verify는 fail-open (limited=false)', async () => {
+    mockPipeline.exec.mockRejectedValue(new Error('Redis down'));
+    const result = await checkRateLimit(makeReq(), 'verify');
+    expect(result.limited).toBe(false);
+  });
+
+  it('Redis 장애 시 proxy는 fail-open (limited=false)', async () => {
+    mockPipeline.exec.mockRejectedValue(new Error('Redis down'));
+    const result = await checkRateLimit(makeReq(), 'proxy');
+    expect(result.limited).toBe(false);
   });
 
   // IP 추출: x-forwarded-for의 마지막 IP 사용
