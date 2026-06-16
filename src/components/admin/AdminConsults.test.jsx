@@ -10,7 +10,7 @@ const NAMES = new Map([["apt-1", "테스트아파트"]]);
 describe("AdminConsults", () => {
   beforeEach(() => {
     localStorage.clear();
-    localStorage.setItem("expertToken", "admin-token");
+    localStorage.setItem("authToken", "admin-token");
   });
 
   it("상담 목록을 fetch 해 카드로 표시한다 (관심단지 id→이름 매핑)", async () => {

@@ -2,9 +2,9 @@
  * useAppNavigation 훅 테스트
  *
  * 탭 전환/인증 네비게이션 훅의 동작을 검증합니다.
- * - handleExpertLogin: 결과 role 에 따라 admin/expert 탭 + userRole 저장
- * - handleExpertLogout: expert.handleExpertLogout 에 reset 콜백 전달
- * - switchTo* / handleExpertView: 단순 탭 전환
+ * - handleLogin: 결과 role 에 따라 admin 탭 + userRole 저장 (비admin 은 list/home 폴스루)
+ * - handleLogout: auth.handleLogout 에 reset 콜백 전달
+ * - switchToInfo: 단순 탭 전환
  * - handleNavClick: logout/list/map(비로그인 차단)/compare/consult 분기
  *
  * admin 은 AdminMode 전체 타입이지만 본 훅이 쓰는 필드만 mock → 객체에 any cast.
@@ -21,11 +21,10 @@ function makeArgs(override = {}) {
   const base = {
     tab: 'list',
     setTab: vi.fn(),
-    expert: {
-      expertLoggedIn: false,
-      handleExpertLogin: vi.fn().mockResolvedValue({ ok: true, role: 'expert' }),
-      handleExpertLogout: vi.fn(),
-      setExpertExpandedApt: vi.fn(),
+    auth: {
+      loggedIn: false,
+      handleLogin: vi.fn().mockResolvedValue({ ok: true, role: 'expert' }),
+      handleLogout: vi.fn(),
     },
     admin: { adminLoggedIn: false, setAdminLoggedIn: vi.fn() },
     consult: {
@@ -65,10 +64,10 @@ describe('useAppNavigation', () => {
   // admin 로그인 → admin 탭 + setAdminLoggedIn + userRole=admin
   it('handleAdminLogin: admin 결과면 admin 탭으로 전환한다', async () => {
     const args = makeArgs({
-      expert: {
-        expertLoggedIn: false,
-        handleExpertLogin: vi.fn().mockResolvedValue({ ok: true, role: 'admin' }),
-        handleExpertLogout: vi.fn(),
+      auth: {
+        loggedIn: false,
+        handleLogin: vi.fn().mockResolvedValue({ ok: true, role: 'admin' }),
+        handleLogout: vi.fn(),
       },
     });
     const { result } = renderHook(() => useAppNavigation(args));
@@ -82,10 +81,10 @@ describe('useAppNavigation', () => {
   // 로그인 실패(ok=false) → 탭 미전환
   it('handleAdminLogin: ok=false 면 탭을 전환하지 않는다', async () => {
     const args = makeArgs({
-      expert: {
-        expertLoggedIn: false,
-        handleExpertLogin: vi.fn().mockResolvedValue({ ok: false }),
-        handleExpertLogout: vi.fn(),
+      auth: {
+        loggedIn: false,
+        handleLogin: vi.fn().mockResolvedValue({ ok: false }),
+        handleLogout: vi.fn(),
       },
     });
     const { result } = renderHook(() => useAppNavigation(args));
@@ -94,22 +93,22 @@ describe('useAppNavigation', () => {
     expect(args.setTab).not.toHaveBeenCalled();
   });
 
-  // 로그아웃 → expert.handleExpertLogout 에 reset 콜백 전달, 콜백 실행 시 list 탭
+  // 로그아웃 → auth.handleLogout 에 reset 콜백 전달, 콜백 실행 시 list 탭
   it('handleLogout: reset 콜백이 list 탭으로 되돌린다', () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
     result.current.handleLogout();
-    expect(args.expert.handleExpertLogout).toHaveBeenCalledTimes(1);
+    expect(args.auth.handleLogout).toHaveBeenCalledTimes(1);
 
     // 전달된 reset 콜백을 직접 실행 → list 탭 + 비교창 닫기
-    const resetCb = args.expert.handleExpertLogout.mock.calls[0][0];
+    const resetCb = args.auth.handleLogout.mock.calls[0][0];
     resetCb();
     expect(args.setTab).toHaveBeenCalledWith('list');
     expect(args.setShowCompOpen).toHaveBeenCalledWith(false);
   });
 
-  // switchToInfo 단순 탭 전환 (switchToAdmin/Expert·handleExpertView 는 세션 405 전문가 폐지로 제거)
+  // switchToInfo 단순 탭 전환 (switchToAdmin/Expert 는 세션 405 전문가 폐지로 제거)
   it('switchToInfo 가 info 탭으로 전환한다', () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
@@ -129,13 +128,13 @@ describe('useAppNavigation', () => {
     expect(args.setTab).toHaveBeenCalledWith('consult');
   });
 
-  // handleNavClick logout → handleExpertLogout 경유
+  // handleNavClick logout → handleLogout 경유
   it('handleNavClick: logout 키는 로그아웃을 호출한다', () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
     result.current.handleNavClick('logout');
-    expect(args.expert.handleExpertLogout).toHaveBeenCalledTimes(1);
+    expect(args.auth.handleLogout).toHaveBeenCalledTimes(1);
   });
 
   // handleNavClick map (비로그인) → onLoginRequired 호출 + 탭 미전환
@@ -179,15 +178,14 @@ describe('useAppNavigation', () => {
     expect(args.setShowCompOpen).toHaveBeenCalledWith(false);
   });
 
-  // useEffect: expert 로그아웃됐는데 admin 켜져 있으면 admin 상태 동기화
-  it('expert 로그아웃 + admin 켜짐 상태면 admin 을 끄고 list 로 보낸다', () => {
+  // useEffect: 로그아웃됐는데 admin 켜져 있으면 admin 상태 동기화
+  it('로그아웃 + admin 켜짐 상태면 admin 을 끄고 list 로 보낸다', () => {
     const args = makeArgs({
       tab: 'admin',
-      expert: {
-        expertLoggedIn: false,
-        handleExpertLogin: vi.fn(),
-        handleExpertLogout: vi.fn(),
-        setExpertExpandedApt: vi.fn(),
+      auth: {
+        loggedIn: false,
+        handleLogin: vi.fn(),
+        handleLogout: vi.fn(),
       },
       admin: { adminLoggedIn: true, setAdminLoggedIn: vi.fn() },
     });

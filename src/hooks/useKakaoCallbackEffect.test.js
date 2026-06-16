@@ -24,7 +24,7 @@ function makeArgs(callbackResult, override = {}) {
   return {
     tab: 'kakaoCallback',
     kakao: { handleKakaoCallback: vi.fn().mockResolvedValue(callbackResult) },
-    expert: { setExpertLoggedIn: vi.fn(), setAuthUser: vi.fn() },
+    auth: { setLoggedIn: vi.fn(), setAuthUser: vi.fn() },
     admin: { setAdminLoggedIn: vi.fn() },
     detail: { setDetailAptId: vi.fn() },
     setTab: vi.fn(),
@@ -56,10 +56,10 @@ describe('useKakaoCallbackEffect', () => {
     await waitFor(() => {
       expect(args.setTab).toHaveBeenCalledWith('list');
     });
-    expect(localStorage.getItem('expertToken')).toBe('tok-1');
+    expect(localStorage.getItem('authToken')).toBe('tok-1');
     expect(localStorage.getItem('refreshToken')).toBe('ref-1');
     expect(localStorage.getItem('userRole')).toBe('user');
-    expect(args.expert.setExpertLoggedIn).toHaveBeenCalledWith(true);
+    expect(args.auth.setLoggedIn).toHaveBeenCalledWith(true);
     expect(args.showToast).toHaveBeenCalledWith('로그인 성공');
   });
 
@@ -117,8 +117,8 @@ describe('useKakaoCallbackEffect', () => {
     await waitFor(() => {
       expect(args.setTab).toHaveBeenCalledWith('list');
     });
-    expect(localStorage.getItem('expertToken')).toBeNull();
-    expect(args.expert.setExpertLoggedIn).not.toHaveBeenCalled();
+    expect(localStorage.getItem('authToken')).toBeNull();
+    expect(args.auth.setLoggedIn).not.toHaveBeenCalled();
   });
 
   // role 누락 → user 로 간주

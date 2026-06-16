@@ -79,8 +79,8 @@ const showComp = showCompOpen && compIds.length >= 2;
 
 | 훅 | 패턴 | 설명 |
 |----|------|------|
-| useExpertMode.handleExpertLogin() | 반환값 | useAppNavigation.handleAdminLogin 에서 `role==="admin"` 이면 admin 탭 (세션 405) |
-| useExpertMode.handleExpertLogout(cb) | 콜백 파라미터 | handleLogout 에서 탭/비교 초기화 전달 (카카오·관리자 공용) |
+| useAuth.handleLogin() | 반환값 | useAppNavigation.handleAdminLogin 에서 `role==="admin"` 이면 admin 탭 (세션 405, 명칭 정리 426) |
+| useAuth.handleLogout(cb) | 콜백 파라미터 | handleLogout 에서 탭/비교 초기화 전달 (카카오·관리자 공용) |
 | useFilterSort({ onFilterChange }) | 콜백 옵션 | App에서 `() => setDetailAptId(null)` 전달 |
 
 ---
