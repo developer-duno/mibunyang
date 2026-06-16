@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useDeferredValue } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { REGIONS } from "@/constants/regions";
 import { calcCats, computeRegionalMedians } from "@/scoring/engine";
-import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
+import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES, NOW_YM } from "@/lib/classify";
 import { applyBaseFilters } from "@/lib/filterEngine";
 import { matchesQuery, normalizeQuery } from "@/lib/searchMatch";
 import type { Cats, ProfileWeights } from "@/types/scoring";
@@ -26,6 +26,18 @@ const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
   },
   // 대단지 순 (세대수 많은 순) — 인프라·관리비·환금성 선호, null=0 으로 미보유 단지 뒤로 (세션 423)
   units: (a, b) => (Number(a.apt.units ?? 0) === Number(b.apt.units ?? 0)) ? b.res.total - a.res.total : Number(b.apt.units ?? 0) - Number(a.apt.units ?? 0),
+  // 입주 빠른순 — "지금 들어갈 집 먼저" (세션 424). 준공완료(즉시입주 가능, 미분양 핵심)→곧 입주예정→미정/null.
+  // rank 0=준공완료(completion<NOW, 최근 완공 먼저) / 1=예정(>=NOW, 가까운 미래 먼저) / 2=미정·null(맨뒤).
+  // /^\d{6}$/ 로 "미정"(한글)·빈문자열·null 모두 rank 2 일관 처리. 동률은 종합점수 tie-break (units 패턴).
+  moveInSoon: (a, b) => {
+    const ca = a.apt.completion ?? "", cb = b.apt.completion ?? "";
+    const ra = /^\d{6}$/.test(ca) ? (ca < NOW_YM ? 0 : 1) : 2;
+    const rb = /^\d{6}$/.test(cb) ? (cb < NOW_YM ? 0 : 1) : 2;
+    if (ra !== rb) return ra - rb;
+    if (ra === 0) return ca === cb ? b.res.total - a.res.total : cb.localeCompare(ca);
+    if (ra === 1) return ca === cb ? b.res.total - a.res.total : ca.localeCompare(cb);
+    return b.res.total - a.res.total;
+  },
 };
 
 /**

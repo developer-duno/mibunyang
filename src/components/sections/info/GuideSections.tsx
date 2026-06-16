@@ -79,7 +79,7 @@ export const GuideSections = memo(function GuideSections() {
 
       {/* 4. 정렬 */}
       <div style={cardStyle}>
-        <div style={titleStyle}>정렬 (8가지)</div>
+        <div style={titleStyle}>정렬 (10가지)</div>
         {[
           { title: "종합순", desc: "현재 프로필의 가중치로 계산된 총점 높은 순. 기본 정렬입니다." },
           { title: "저가순", desc: "분양가가 낮은 순서. 예산이 제한적일 때 유용합니다." },
@@ -89,6 +89,8 @@ export const GuideSections = memo(function GuideSections() {
           { title: "혜택순", desc: "분양가 할인, 무이자, 옵션 등 혜택 금액이 큰 순서입니다." },
           { title: "최신순", desc: "데이터가 최근 업데이트된 순서입니다." },
           { title: "미분양많은순", desc: "미분양률이 높은 순서. 미분양 물량이 많은 단지를 먼저 보고 싶을 때 유용합니다." },
+          { title: "대단지순", desc: "세대수가 많은 순서. 대단지를 선호할 때 유용합니다." },
+          { title: "입주빠른순", desc: "지금 입주 가능한 단지(준공 후 미분양)부터, 곧 입주 예정 순으로 정렬합니다." },
         ].map((item, i) => (
           <div key={i} style={guideItem}>
             <div style={guideTitle}>{item.title}</div>

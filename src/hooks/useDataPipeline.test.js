@@ -216,6 +216,29 @@ describe("useDataPipeline", () => {
       expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 20 > 12 > 5 > null
     });
 
+    it("sortKey=moveInSoon → 준공완료(최근순) → 예정(가까운순) → 미정/null 맨뒤 (세션 424)", () => {
+      // NOW_YM 기준 과거/미래 동적 생성 (시간 흐름에 안정). YYYYMM 고정폭.
+      const yy = new Date().getFullYear();
+      const past1 = `${yy - 1}05`;   // 작년 5월 (준공완료, 더 오래됨)
+      const past2 = `${yy - 1}11`;   // 작년 11월 (준공완료, 더 최근)
+      const future1 = `${yy + 1}03`; // 내년 3월 (예정, 더 가까움)
+      const future2 = `${yy + 3}06`; // 3년 후 (예정, 더 먼 미래)
+      const apts = [
+        makeApt({ id: "ah-fut-far", region: "서울", price: 30000, completion: future2 }),
+        makeApt({ id: "ah-undecided", region: "서울", price: 30000, completion: "미정" }),
+        makeApt({ id: "ah-past-old", region: "서울", price: 30000, completion: past1 }),
+        makeApt({ id: "ah-null", region: "서울", price: 30000, completion: null }),
+        makeApt({ id: "ah-fut-near", region: "서울", price: 30000, completion: future1 }),
+        makeApt({ id: "ah-past-recent", region: "서울", price: 30000, completion: past2 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, sortKey: "moveInSoon" });
+      const order = result.current.filtered.map(x => x.apt.id);
+      // 준공완료(최근 먼저): past2 > past1 → 예정(가까운 먼저): future1 > future2 → 미정·null 맨뒤(입력 순서 안정)
+      expect(order.slice(0, 4)).toEqual(["ah-past-recent", "ah-past-old", "ah-fut-near", "ah-fut-far"]);
+      // 미정("미정")·null 은 정규식 미일치라 rank 2 (맨 뒤 2칸), 동률 종합점수 → 안정 정렬로 입력 순서
+      expect(order.slice(4).sort()).toEqual(["ah-null", "ah-undecided"]);
+    });
+
     it("filterRegion 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울" });
       expect(result.current.filtered.every(x => x.apt.region === "서울")).toBe(true);

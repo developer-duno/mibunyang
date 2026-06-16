@@ -25,6 +25,7 @@ export const SORT_OPTIONS: SortOption[] = [
   { key: "newest",     pcLabel: "최신순",   mobileLabel: "최신순",     ac: C.slate600, bg: C.slate100,    pas: "#F8FAFC" },
   { key: "unsoldRate", pcLabel: "미분양많은순", mobileLabel: "미분양순", ac: C.amber,  bg: C.amberLight,  pas: "#FFFBEB" },
   { key: "units",      pcLabel: "대단지",   mobileLabel: "대단지순",   ac: C.cyan,     bg: C.cyanLight,   pas: "#ECFEFF" },
+  { key: "moveInSoon", pcLabel: "입주빠른순", mobileLabel: "입주빠른순", ac: C.blue,    bg: C.blueLight,   pas: "#EEF3FF" },
 ];
 
 /** localStorage / URL 파라미터 검증용 Set */
