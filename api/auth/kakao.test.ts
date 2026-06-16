@@ -151,9 +151,51 @@ describe("auth/kakao handler", () => {
     expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
       kakaoId: "12345",
       status: "approved",
+      consentMarketing: null,  // 세션 427: 신규는 미선택 → 동의 모달 신호
+      phoneNumber: null,       // 세션 427: 비즈앱 심사 전 null
     }));
     // 회귀 가드: admin 통계의 진실의 원천인 users:{status} set 동기화 누락 방지
     expect(mockKv.sadd).toHaveBeenCalledWith("users:approved", "kakao@test.com");
+  });
+
+  it("신규 가입 시 needsMarketingConsent=true + isNew=true 응답 (세션 427)", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      ok: true,
+      isNew: true,
+      needsMarketingConsent: true,
+    }));
+  });
+
+  it("카카오 phone_number 응답 시 신규 사용자에 phoneNumber 저장 (비즈앱 심사 후, 세션 427)", async () => {
+    mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" }, phone_number: "+82 10-1234-5678" } } });
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
+      phoneNumber: "+82 10-1234-5678",
+    }));
+  });
+
+  it("기존 사용자 phoneNumber 없을 때 카카오 phone 새로 받으면 채움 (심사 후 재로그인, 세션 427)", async () => {
+    mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" }, phone_number: "+82 10-9999-8888" } } });
+    mockKv.get.mockResolvedValueOnce("kakao@test.com");
+    mockKv.get.mockResolvedValueOnce({
+      email: "kakao@test.com", name: "Tester", kakaoId: "12345", status: "approved",
+      consentMarketing: true, phoneNumber: null,
+    });
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
+      phoneNumber: "+82 10-9999-8888",
+    }));
+    // 이미 동의 선택한 기존 사용자는 동의 모달 미표시
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ needsMarketingConsent: false }));
   });
 
   it("reuses an existing Kakao-linked user", async () => {
@@ -168,6 +210,33 @@ describe("auth/kakao handler", () => {
     const res = makeRes();
     await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+  });
+
+  // 적대검증 회귀 가드: 레거시 사용자(consentMarketing 필드 없음) 도 동의 모달 표시 (세션 427)
+  // `=== null` 이었다면 undefined 라 false 가 나와 모달이 영영 안 뜨는 버그
+  it("레거시 사용자(consentMarketing 없음) 재로그인 시 needsMarketingConsent=true", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce("kakao@test.com");
+    mockKv.get.mockResolvedValueOnce({
+      email: "kakao@test.com", name: "Tester", kakaoId: "12345", status: "approved",
+      // consentMarketing 필드 없음 (본 커밋 이전 가입자)
+    });
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ needsMarketingConsent: true }));
+  });
+
+  // 이미 동의/거부 선택한 사용자는 모달 미표시 (consentMarketing=false 도 "선택함")
+  it("동의 거부(consentMarketing=false) 사용자 재로그인 시 needsMarketingConsent=false", async () => {
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce("kakao@test.com");
+    mockKv.get.mockResolvedValueOnce({
+      email: "kakao@test.com", name: "Tester", kakaoId: "12345", status: "approved",
+      consentMarketing: false,
+    });
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ needsMarketingConsent: false }));
   });
 
   it("links an existing email user to Kakao id", async () => {
@@ -210,5 +279,17 @@ describe("auth/kakao handler", () => {
     const res = makeRes();
     await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  // 회귀 가드: ADMIN_EMAIL 카카오 로그인 시 role:"admin" 응답 (세션 427 적대검증)
+  it("ADMIN_EMAIL 카카오 로그인 시 role:admin 을 반환한다", async () => {
+    process.env.ADMIN_EMAIL = "kakao@test.com";
+    mockKakaoFetch();
+    mockKv.get.mockResolvedValueOnce(null);
+    mockKv.get.mockResolvedValueOnce(null);
+    const res = makeRes();
+    await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, role: "admin" }));
+    delete process.env.ADMIN_EMAIL;
   });
 });

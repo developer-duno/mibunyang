@@ -31,10 +31,12 @@ import { useKakaoAuth } from "@/hooks/useKakaoAuth";
 import { useLoginGate } from "@/hooks/useLoginGate";
 import { useShareCallbacks } from "@/hooks/useShareCallbacks";
 import { useKakaoCallbackEffect } from "@/hooks/useKakaoCallbackEffect";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 import { ShareSheet } from "@/components/ShareSheet";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
+import { MarketingConsentModal } from "@/components/MarketingConsentModal";
 import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
 import { HeaderSection } from "@/components/sections/HeaderSection";
@@ -180,8 +182,11 @@ export default function App() {
     budgetMin, budgetMax, isLoggedIn, onLoginRequired: () => { setLoginTrigger("map"); setShowLoginPrompt(true); },
   });
 
+  // ── 마케팅 수신 동의 모달 (카카오 신규 가입 직후) ──
+  const { consentOpen, consentSubmitting, openConsent, submitConsent } = useMarketingConsent(showToast);
+
   // ── 카카오 OAuth 콜백 useEffect ──
-  useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, setTab, showToast });
+  useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, setTab, showToast, onNeedsMarketingConsent: openConsent });
 
   // ── containerMaxWidth ──
   const containerMaxWidth = (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
@@ -401,6 +406,9 @@ export default function App() {
       {/* 로그인 유도 모달 */}
       <LoginPromptModal open={showLoginPrompt} onClose={() => { setShowLoginPrompt(false); setLoginTrigger(null); }}
         onKakaoLogin={handleKakaoFromPrompt} kakaoLoading={kakao.kakaoLoading} trigger={loginTrigger} />
+
+      {/* 마케팅 수신 동의 모달 (카카오 신규 가입 직후) */}
+      <MarketingConsentModal open={consentOpen} onSubmit={submitConsent} submitting={consentSubmitting} />
 
       {/* 토스트 */}
       <ShareSheet open={shareSheetOpen} onKakao={shareKakao} onSMS={shareSMS} onCopy={shareCopy} onClose={closeShareSheet} isMobile={isMobile} isPC={isPC} />

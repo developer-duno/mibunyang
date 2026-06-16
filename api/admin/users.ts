@@ -8,6 +8,8 @@ type UserRecord = {
   specialty?: string;
   role?: string;
   kakaoId?: string;
+  phoneNumber?: string | null;
+  consentMarketing?: boolean | null;
   createdAt?: string;
   passwordHash?: string;
   salt?: string;
@@ -16,9 +18,10 @@ type UserRecord = {
 
 async function handleStats(_req: any, res: any) {
   try {
-    const [pendingC, approvedC, rejectedC, suspendedC] = await Promise.all([
+    const [pendingC, approvedC, rejectedC, suspendedC, marketingConsentC] = await Promise.all([
       kv.scard("users:pending"), kv.scard("users:approved"),
       kv.scard("users:rejected"), kv.scard("users:suspended"),
+      kv.scard("users:consent_marketing"),
     ]);
     const counts = {
       pending: pendingC || 0, approved: approvedC || 0,
@@ -30,7 +33,7 @@ async function handleStats(_req: any, res: any) {
       kv.smembers("users:rejected"), kv.smembers("users:suspended"),
     ]);
     const allEmails = [...new Set([...(p || []), ...(a || []), ...(r || []), ...(s || [])])];
-    let kakaoCount = 0, expertCount = 0;
+    let kakaoCount = 0, expertCount = 0, phoneCount = 0;
     const specialtyDist: Record<string, number> = {};
     const signupByDate: Record<string, number> = {};
     if (allEmails.length > 0) {
@@ -40,6 +43,7 @@ async function handleStats(_req: any, res: any) {
         if (r.status !== "fulfilled" || !r.value) continue;
         const user = r.value as UserRecord;
         if (user.kakaoId || user.role === "user") kakaoCount++; else expertCount++;
+        if (user.phoneNumber) phoneCount++;
         if (user.specialty) specialtyDist[user.specialty] = (specialtyDist[user.specialty] || 0) + 1;
         if (user.createdAt) {
           const created = new Date(user.createdAt).getTime();
@@ -56,7 +60,7 @@ async function handleStats(_req: any, res: any) {
       const dateKey = d.toISOString().slice(0, 10);
       recentSignups.push({ date: dateKey, count: signupByDate[dateKey] || 0 });
     }
-    res.json({ ok: true, counts, userTypes: { kakao: kakaoCount, expert: expertCount }, specialtyDist, recentSignups });
+    res.json({ ok: true, counts, userTypes: { kakao: kakaoCount, expert: expertCount }, marketing: { consent: marketingConsentC || 0, withPhone: phoneCount }, specialtyDist, recentSignups });
   } catch (err) {
     console.error("[admin/users?action=stats] error:", err instanceof Error ? err.message : err);
     res.status(500).json({ ok: false, error: "통계 조회에 실패했습니다" });

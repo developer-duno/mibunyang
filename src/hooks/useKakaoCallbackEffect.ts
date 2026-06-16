@@ -18,6 +18,7 @@ interface UseKakaoCallbackEffectArgs {
   detail: { setDetailAptId: (_id: string | null) => void };
   setTab: (_tab: string) => void;
   showToast: (_msg: string) => void;
+  onNeedsMarketingConsent?: () => void; // 신규 카카오 가입 시 마케팅 동의 모달 열기
 }
 
 /**
@@ -26,7 +27,7 @@ interface UseKakaoCallbackEffectArgs {
  * 의도적으로 [tab]만 deps: kakao/auth/admin/detail 참조 변경 시 재실행 방지
  * (모두 useCallback/useState 안정 참조지만, 의미론적으로 탭 전환 시점만 트리거)
  */
-export function useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, setTab, showToast }: UseKakaoCallbackEffectArgs): void {
+export function useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, setTab, showToast, onNeedsMarketingConsent }: UseKakaoCallbackEffectArgs): void {
   useEffect(() => {
     if (tab !== "kakaoCallback") return;
     kakao.handleKakaoCallback().then(result => {
@@ -42,6 +43,8 @@ export function useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, setTab
           // role "expert" 잔존 레코드도 일반 손님 취급 (세션 405 전문가 폐지)
           if (result.pendingDetail) { detail.setDetailAptId(result.pendingDetail); }
           setTab(isFeatureHome() ? "home" : "list"); // 로그인 직후 홈 = 지도 위젯 열린 첫 경험 (spec §1)
+          // 신규 가입(또는 동의 미선택) 손님이면 마케팅 동의 모달 — 관리자는 제외
+          if (result.needsMarketingConsent) onNeedsMarketingConsent?.();
         }
         showToast("로그인 성공");
         trackEvent("kakao_login", { role, isNew: !result.user?.affiliation });

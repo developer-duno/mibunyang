@@ -13,6 +13,7 @@
 | `VITE_KAKAO_REST_API_KEY` | 카카오 OAuth authorize client_id (프론트) | O | `useKakaoAuth.ts:12`. **production만 설정** — preview/git 배포엔 없어 "카카오 로그인을 사용할 수 없습니다"(정상, 버그 아님) |
 | `VITE_KAKAO_JS_KEY` | 카카오 (프론트) | O | 공개 키 |
 | `KAKAO_REDIRECT_URI` | OAuth 콜백 URL | O | `https://www.미분양아파트.com/oauth/kakao/callback`. **정식 도메인 = `미분양아파트.com`**(xn--hg3bi2ac4o1ig57cnoa.com)만 카카오 콘솔 등록 → **카카오 로그인은 이 도메인에서만**. `mibunyang-peach.vercel.app`(vercel 기본 alias)는 미등록=KOE006(비로그인 검증만). 세션 416 박제 |
+| `VITE_KAKAO_PHONE_SCOPE` | 카카오 전화번호 scope 토글 (프론트) | - | `true` 일 때만 authorize scope 에 `phone_number` 추가. **카카오 비즈앱 심사+동의항목 활성화 후에만 켤 것** — 심사 전 켜면 카카오 에러. 기본 미설정=OFF=기존 동작. 가이드: `docs/kakao-phone-consent-setup.md`. 세션 427 |
 | `VITE_USE_SUPABASE` | DB 모드 전환 | - | `true` → Supabase, 아니면 로컬 JSON |
 
 ## data.go.kr (공공데이터포털) — 발급처 1

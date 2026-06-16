@@ -15,6 +15,9 @@ type KakaoUser = {
   role?: string;
   status?: string;
   profileImage?: string | null;
+  phoneNumber?: string | null;       // 카카오 비즈앱 심사 완료 후 채워짐 (그 전까지 null)
+  consentMarketing?: boolean | null; // null=아직 선택 안 함, true=동의, false=거부
+  consentMarketingAt?: string | null;
   createdAt?: string;
   [k: string]: unknown;
 };
@@ -104,6 +107,8 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     const kakaoEmail = userData.kakao_account?.email;
     const kakaoNickname = userData.kakao_account?.profile?.nickname || "사용자";
     const kakaoProfileImage = userData.kakao_account?.profile?.profile_image_url || null;
+    // 전화번호: 카카오 비즈앱 심사 완료 후 채워짐. 심사 전엔 undefined → null로 저장.
+    const kakaoPhone: string | null = userData.kakao_account?.phone_number ?? null;
 
     // 4. 이메일 필수 체크
     if (!kakaoEmail) {
@@ -136,6 +141,8 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
         // 기존 사용자에 kakaoId 연동
         user.kakaoId = kakaoId;
         if (kakaoProfileImage) user.profileImage = kakaoProfileImage;
+        // 레거시 사용자(consentMarketing 필드 없음) DB 일관성 — 이미 set 중이라 추가 write 0 (세션 427)
+        if (user.consentMarketing !== true && user.consentMarketing !== false) user.consentMarketing = null;
         await kv.set(`user:${emailNorm}`, user);
       } else {
         isNew = true;
@@ -152,8 +159,15 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
         role: "user",
         status: "approved",
         profileImage: kakaoProfileImage,
+        phoneNumber: kakaoPhone,       // 비즈앱 심사 전 null, 심사 후 자동 채워짐
+        consentMarketing: null,        // 신규: 아직 선택 안 함 → 프론트에서 팝업 표시
+        consentMarketingAt: null,
         createdAt: new Date().toISOString(),
       };
+      await kv.set(`user:${emailNorm}`, user);
+    } else if (user && kakaoPhone && !user.phoneNumber) {
+      // 기존 사용자 전화번호 업데이트 (비즈앱 심사 후 새로 받아온 경우)
+      user.phoneNumber = kakaoPhone;
       await kv.set(`user:${emailNorm}`, user);
     }
 
@@ -190,6 +204,10 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       refreshToken,
       user: { email: emailNorm, name: user!.name, affiliation: user!.affiliation || "" },
       ...(role !== "user" && { role }),
+      isNew,                                         // 프론트에서 신규 여부 판별 (마케팅 동의 팝업)
+      // 동의 미선택 = boolean 이 아닌 모든 값. 신규(null) + 레거시 사용자(필드 자체 없음 → undefined)
+      // 둘 다 포착해야 함. `=== null` 은 undefined 를 놓쳐 본 커밋 이전 가입자에게 모달이 영영 안 뜸. (세션 427 적대검증)
+      needsMarketingConsent: user!.consentMarketing !== true && user!.consentMarketing !== false,
     });
   } catch (err) {
     console.error("[auth/kakao] error:", err instanceof Error ? err.message : String(err));
