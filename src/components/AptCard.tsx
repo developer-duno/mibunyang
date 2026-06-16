@@ -72,7 +72,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
         <div style={S.header}>
           <div style={S.nameWrap}>
             <div style={S.nameRow}>
-              <span style={dynStyles.rank}>{rank}위</span>
+              {rank > 0 && <span style={dynStyles.rank}>{rank}위</span>}
               <span title={String(apt.name ?? "")} style={{ ...dynStyles.nameText, color: C.text }}>{String(apt.name ?? "")}</span>
             </div>
             <div style={S.tagRow}>

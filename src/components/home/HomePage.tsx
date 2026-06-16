@@ -5,6 +5,7 @@ import { SkeletonList } from "@/components/primitives";
 import { MapEntryWidget } from "./MapEntryWidget";
 import { UpcomingWidget } from "./UpcomingWidget";
 import { TopPicksWidget } from "./TopPicksWidget";
+import { RecentlyViewedWidget } from "./RecentlyViewedWidget";
 import { MarketSummaryWidget } from "./MarketSummaryWidget";
 import type { ScoredApt, SortKey } from "@/types/hooks";
 import type { ProfileWeights } from "@/types/scoring";
@@ -31,15 +32,21 @@ type HomePageProps = {
   favoriteSet: Set<string>;
   onComp: (_id: string) => void;
   compIds: string[];
+  /** 최근 본 단지 — id 배열(최근순) + id→ScoredApt 복원 Map + 지우기 */
+  recentIds: string[];
+  scoredMap: Map<string, ScoredApt>;
+  onClearRecent: () => void;
 };
 
 /**
  * 통합 홈 (D1 C안 위젯판) — spec §1·§2. 위젯 단위 독립.
  * 펼치기는 전부 onNavClick(handleNavClick) 경유. 전문가 위젯 2종은 M2.
  */
-export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingData, upcomingError, onRetryUpcoming, isLoggedIn, isDesktop, isPC, dataLoading, dataFreshnessText, onNavClick, onMarketNav, onDetail, onFav, favoriteSet, onComp, compIds }: HomePageProps) {
+export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingData, upcomingError, onRetryUpcoming, isLoggedIn, isDesktop, isPC, dataLoading, dataFreshnessText, onNavClick, onMarketNav, onDetail, onFav, favoriteSet, onComp, compIds, recentIds, scoredMap, onClearRecent }: HomePageProps) {
   const upcomingEnabled = isFeatureUpcoming();
   const pad = isDesktop ? "0 24px" : "0 16px"; // App.tsx L301·L324 list/map 탭 패딩과 통일
+  // 최근 본 단지: 데이터에 살아있는 단지가 1개+ 일 때만 위젯 노출 (빈 위젯 자리 차지 방지)
+  const hasRecent = recentIds.some(id => scoredMap.has(id));
 
   // 홈 위젯 계측 (M3) — 펼치기는 어느 위젯인지, 상세 진입은 홈 출처 표시. 기존 trackEvent 명명 규칙 답습.
   const expandWidget = useCallback((widget: string, target: string) => {
@@ -72,6 +79,11 @@ export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingD
           <UpcomingWidget data={upcomingData} error={upcomingError} onRetry={onRetryUpcoming} onExpand={() => expandWidget("upcoming", "upcoming")} />
         )}
         <MarketSummaryWidget scored={scored} dataFreshnessText={dataFreshnessText} onCellNav={handleMarketNav} />
+        {hasRecent && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <RecentlyViewedWidget recentIds={recentIds} scoredMap={scoredMap} pw={pw} onDetail={handleDetail} onFav={onFav} favoriteSet={favoriteSet} onComp={onComp} compIds={compIds} isLoggedIn={isLoggedIn} isDesktop={isDesktop} onClear={onClearRecent} />
+          </div>
+        )}
         <div style={{ gridColumn: "1 / -1" }}>
           <TopPicksWidget scored={scored} pw={pw} onDetail={handleDetail} onFav={onFav} favoriteSet={favoriteSet} onComp={onComp} compIds={compIds} isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC} onExpand={() => expandWidget("toppicks", "list")} />
         </div>
