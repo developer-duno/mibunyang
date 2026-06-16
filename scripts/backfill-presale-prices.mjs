@@ -13,7 +13,7 @@
  * 롤백:
  *   DELETE FROM prices WHERE house_type = 'presale_min';
  */
-import { loadEnv, getSupabase, upsertBatch } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, upsertBatch, today } from "./collectors/_shared.mjs";
 
 loadEnv();
 
@@ -41,7 +41,7 @@ async function main() {
 
   log(`presale_min_price 보유 아파트: ${rows.length}건`);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const recordedDate = today(); // KST 고정 (toISOString=UTC 하루 밀림 방지, scripts/CLAUDE.md)
   const priceRows = rows.map((r) => ({
     apartment_id: r.id,
     area: null,
@@ -50,11 +50,11 @@ async function main() {
     pp: r.presale_pp ?? null,
     house_type: "presale_min",
     supply_count: null,
-    recorded_at: today,
+    recorded_at: recordedDate,
   }));
 
   if (dryRun) {
-    log(`[DRY-RUN] 저장 대상 ${priceRows.length}건 (recorded_at=${today})`);
+    log(`[DRY-RUN] 저장 대상 ${priceRows.length}건 (recorded_at=${recordedDate})`);
     if (priceRows.length > 0) {
       log(`샘플 3건: ${JSON.stringify(priceRows.slice(0, 3), null, 2)}`);
     }

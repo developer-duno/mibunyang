@@ -255,8 +255,8 @@
 
 ## 🟡 곧
 
-- 🟢 **backfill-presale-prices.mjs today() 통일** (세션 419 코드리뷰 부산물) — prices 테이블 형제 writer(house_type='presale_min', conflict key에 recorded_at 포함)인데 naver-presale은 세션419에 today()(KST)로 바뀐 반면 backfill은 여전히 UTC `new Date().toISOString().slice(0,10)`. KST 00:00~09:00 구간엔 두 writer recorded_at 하루 달라 중복 행 가능. **단 backfill은 어떤 cron·파이프라인에도 없는 일회성 수동 도구(grep 0건)라 실해 0** — 일관성 위해 today() 통일 권장(L44/53/73)
-- 🟢 **monitor 음수가드 테스트 차별성 강화** (세션 419 코드리뷰 부산물) — monitor-collectors.test.mjs 새 음수가드 테스트가 비차별적(lastRunAt 미래여도 옛 코드도 `ageDays<0 > threshold`=false라 통과). `>threshold` 비교에선 음수가 항상 미만이라 가드는 순수 방어. 5개 Math.max 중 checkStaleWorkflows 1곳만 테스트, 나머지 4곳(ageH·sinceCreated·idleDays·daysSince) 음수 입력 전용 테스트 없음. 가드가 실제 막는 걸 증명하려면 표시 깨짐(Math.floor 음수) 케이스 테스트 추가
+- ✅ **backfill-presale-prices.mjs today() 통일 완료** (세션 419 부산물 → 세션 421 해소) — `new Date().toISOString().slice(0,10)`(UTC) → `today()`(KST 고정, `_shared.mjs`) 통일. 로컬 변수 `today`→`recordedDate` 개명(헬퍼명 충돌 회피), import에 `today` 추가(L16/44/53/57). prices 형제 writer(naver-presale)와 recorded_at 시간축 일치. dry-run 실증 recorded_at=오늘 KST·tsc:scripts 0. **일회성 수동 도구(cron 0건)라 실해는 0, 일관성용**
+- ❌ **monitor 음수가드 테스트 추가 — 폐기(헛돌이 확정, 세션 421)** — 세션 419 부산물로 "4곳(ageH·sinceCreated·idleDays·daysSince) 음수 입력 전용 테스트로 가드가 막는 걸 증명" 제안했으나, 세션 421 적대검증(5에이전트 만장일치 + node 줄별 실증)으로 **전부 헛돌이 확정 → 테스트 추가 0건**. 근거: 음수(미래 시각)와 0(Math.max 클램프)이 항상 양수 임계값(maxAgeHours 36·STALE_DAYS 35·stale_days≥14)의 **같은 쪽**에 떨어져 가드 제거해도 분기 불변(guardRemovalChangesBranch=false). 음수는 비교에서 먼저 걸러져 `Math.floor()` 표시 라인 **도달 불가**(사용자 노출 경로 없음). 미래-시각 테스트는 가드 제거 후에도 항상 통과 → 회귀 못 잡음. 5개 Math.max(0,..) 가드 = **방어적 no-op 확정**(제거 안전하나 cosmetic 보험이라 유지). 기존 L217 ageDays 테스트도 같은 이유로 inert. 양수-일수 표기 정확성은 기존 미발화 테스트가 이미 커버. 시간대 회귀 걱정이면 가드가 아니라 finished_at/recorded_at 저장 시간축 일치(timezone) 검증이 진짜 가치(별개)
 
 - 🟢 **consults 열람 페이지네이션** (세션 405) — GET /api/consults limit 100 고정. AdminConsults 이관 후 100건 초과분 silent 잘림. 상담 누적 시 페이지네이션 또는 limit 상향
 
