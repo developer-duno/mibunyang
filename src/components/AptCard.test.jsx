@@ -360,4 +360,45 @@ describe("AptCard", () => {
     }
   });
 
+  // 맞춤 추천 이유 칩 (세션 432) — 프로필 최우선 카테고리가 긍정일 때만 노출
+  describe("맞춤 추천 이유 칩", () => {
+    const EDU_W = { location: 45, product: 20, price: 15, risk: 10, benefit: 5, future: 5 };
+    const INVEST_W = { location: 15, product: 10, price: 30, risk: 25, benefit: 10, future: 10 };
+
+    it("자녀교육(입지 최우선) + 입지 우수 → '입지 우수' 칩 노출", () => {
+      // makeRes 기본 location.total=80(>=70 우수)
+      render(<AptCard {...makeProps({ profileWeights: EDU_W })} />);
+      expect(screen.getByText(/입지 우수/)).toBeInTheDocument();
+    });
+
+    it("투자(가격 최우선) + 가격 비쌈(deviation<0) → 칩 미노출 (부정 게이트)", () => {
+      const cats = makeRes().cats;
+      cats.price = { ...cats.price, total: 60, fairPrice: 50000, deviation: -8 };
+      render(<AptCard {...makeProps({ profileWeights: INVEST_W, res: makeRes({ cats }) })} />);
+      // price total>=50 이지만 deviation<0 이라 부정 → 칩 미노출
+      expect(screen.queryByText(/적정가 대비/)).toBeNull();
+      expect(screen.queryByText(/가격 매력/)).toBeNull();
+    });
+
+    it("최우선 카테고리 점수 미흡(<50) → 칩 미노출 (부정 문구도 숨김)", () => {
+      const cats = makeRes().cats;
+      cats.location = { ...cats.location, total: 40 };
+      render(<AptCard {...makeProps({ profileWeights: EDU_W, res: makeRes({ cats }) })} />);
+      expect(screen.queryByText(/입지 우수/)).toBeNull();
+      expect(screen.queryByText(/입지 아쉬움/)).toBeNull();
+    });
+
+    it("비로그인(isLoggedIn=false) → 칩 미노출 (점수 블라인드)", () => {
+      render(<AptCard {...makeProps({ profileWeights: EDU_W, isLoggedIn: false })} />);
+      expect(screen.queryByText(/입지 우수/)).toBeNull();
+    });
+
+    it("투자(가격 최우선) + 가격 매력(deviation>0) → '적정가 대비 N% 저렴' 칩 노출", () => {
+      const cats = makeRes().cats;
+      cats.price = { ...cats.price, total: 75, fairPrice: 50000, deviation: 12 };
+      render(<AptCard {...makeProps({ profileWeights: INVEST_W, res: makeRes({ cats }) })} />);
+      expect(screen.getByText(/적정가 대비 12% 저렴/)).toBeInTheDocument();
+    });
+  });
+
 });
