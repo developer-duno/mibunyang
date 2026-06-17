@@ -5,6 +5,7 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { IconClose } from "@/components/icons";
+import { HelpHint } from "@/components/HelpHint";
 import { numInput, tilde, resetBtn, selectBase } from "./filterStyles";
 
 /* 면적 프리셋 — 소형/중형/대형 */
@@ -70,6 +71,13 @@ export const AreaPanel = memo(function AreaPanel({
         <span style={tilde}>~</span>
         <input type="number" inputMode="numeric" min="0" value={unitsMax} onChange={e => onUnitsMaxChange(e.target.value)} placeholder="최대" aria-label="최대 세대수" style={numInput(unitsMax, 30)} />
         <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
+        <span style={{ ...tilde, fontWeight: 600, display: "flex", alignItems: "center" }}>
+          입주
+          <HelpHint
+            text="입주예정: 아직 다 짓는 중이에요 / 미입주: 다 지었는데 안 팔린 집(준공 후 미분양)이 남아 있어요 / 입주완료: 다 짓고 분양도 끝났어요"
+            label="입주 상태"
+          />
+        </span>
         <select value={moveInFilter} onChange={e => onMoveInChange(e.target.value)} aria-label="입주 상태" style={{
           ...selectBase, flex: "0 0 auto", padding: "4px 20px 4px 6px", fontSize: F.xs, height: 30, borderRadius: 5,
           fontWeight: moveInFilter !== "전체" ? 700 : 500,
