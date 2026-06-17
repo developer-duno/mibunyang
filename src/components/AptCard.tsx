@@ -3,6 +3,8 @@ import { C, F, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice, fmtCompletion, fmtCompetitionRate } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
+import { getTopCats } from "@/constants/profiles";
+import { catVerdict } from "@/constants/catVerdict";
 import type { AptCardProps } from "@/types/components/AptCard.types";
 
 const UNSOLD_ALERT_THRESHOLD = 30;
@@ -31,6 +33,7 @@ const S = {
   catLabel: { fontSize: F.sm, color: C.muted },
   infoRow: { display: "flex", gap: 4, flexWrap: "wrap" as const, marginTop: 6 },
   infoTag: { fontSize: F.sm, padding: "3px 7px", borderRadius: 3, background: C.bg, color: C.sub },
+  reasonChip: { marginTop: 8, display: "inline-block", fontSize: F.sm, fontWeight: 600, padding: "3px 9px", borderRadius: 4, background: C.greenLight, color: C.green },
   alertRow: { marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" as const },
   btnRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 },
   btnBase: { borderRadius: 6, padding: "8px 10px", fontSize: F.base, cursor: "pointer", flex: 1, minHeight: 36, transition: "all .15s" },
@@ -70,6 +73,24 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
     [res.cats, profileWeights]
   );
 
+  // 맞춤 추천 이유 — 프로필 최우선 카테고리가 "긍정(양호 이상)"일 때만 결론 1줄 (catVerdict). 부정/데이터부재면 null.
+  const recommendReason = useMemo(() => {
+    const topKey = getTopCats(profileWeights as unknown as Record<string, number>, 1)[0];
+    if (!topKey) return null;
+    const cat = (res.cats as unknown as Record<string, { total: number; deviation?: unknown; fairPrice?: unknown; noData?: boolean }>)[topKey];
+    if (!cat) return null;
+    // 긍정 판정: total>=50. price 는 deviation<0(비쌈) 모순(116건) 차단 — 부호 우선. benefit noData 제외.
+    const positive =
+      topKey === "price"
+        ? (Number(cat.fairPrice) || 0) > 0
+          ? (cat.deviation != null ? Number(cat.deviation) >= 0 : cat.total >= 50)
+          : cat.total >= 50
+        : topKey === "benefit"
+          ? !cat.noData && cat.total >= 50
+          : cat.total >= 50;
+    return positive ? catVerdict(topKey, cat as never) : null;
+  }, [profileWeights, res.cats]);
+
   return (
     <div style={dynStyles.wrapper}>
       <div style={dynStyles.bar} />
@@ -91,6 +112,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
             : <div style={{ width: 56, height: 56, borderRadius: "50%", background: C.slate100, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: C.muted, filter: "blur(2px)" }}>??</div>
           }
         </div>
+
+        {isLoggedIn && recommendReason && (
+          <div style={S.reasonChip}>✓ {recommendReason}</div>
+        )}
 
         <div style={isDesktop ? { ...S.grid, gap: "10px 14px" } : S.grid}>
           {(topCats as Array<[string, { label: string; total: number }]>).map(([k, c]) => (
