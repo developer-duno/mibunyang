@@ -120,4 +120,17 @@ describe("AreaPanel", () => {
     expect(options[2].textContent).toBe("미입주 (2)");
     expect(options[3].textContent).toBe("입주완료 (1)");
   });
+
+  // 입주 라벨 + 도움말(HelpHint) 노출 — "미입주 = 준공 후 미분양" 설명 (세션 431)
+  it("입주 라벨 옆 도움말 아이콘 + 클릭 시 설명 노출", () => {
+    render(<AreaPanel {...makeProps()} />);
+    // 라벨 텍스트 ("입주" 정확 매치 — option 의 "입주예정" 등은 별도)
+    expect(screen.getByText("입주")).toBeInTheDocument();
+    // HelpHint → Tooltip 트리거 (aria-label "입주 상태 풀이 보기")
+    const trigger = screen.getByLabelText("입주 상태 풀이 보기");
+    expect(trigger).toBeInTheDocument();
+    // 클릭 시 "준공 후 미분양" 설명 노출
+    fireEvent.click(trigger);
+    expect(screen.getByText(/준공 후 미분양/)).toBeInTheDocument();
+  });
 });

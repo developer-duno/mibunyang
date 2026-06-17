@@ -20,7 +20,7 @@ const DEFAULT_FILTER = {
   budgetMin: "", budgetMax: "",
   areaMin: "", areaMax: "",
   unitsMin: "", unitsMax: "",
-  minScore: "", benefitOnly: false,
+  minScore: "", benefitOnly: false, subwayOnly: false,
 };
 
 describe("applyBaseFilters", () => {
@@ -105,6 +105,51 @@ describe("applyBaseFilters", () => {
     const items = [makeItem({ area: null })];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, areaMin: "60" });
     expect(result).toHaveLength(0);
+  });
+
+  // 역세권 필터 (subwayOnly) — 세션 430 추가 칩의 필터링 로직 직접 검증 (세션 431)
+  // subwayDist <= 500m 통과, 경계값 500 포함
+  it("subwayOnly=true이면 subwayDist<=500만 통과 (경계 500 포함)", () => {
+    const items = [
+      makeItem({ id: "near", subwayDist: 300 }),
+      makeItem({ id: "edge", subwayDist: 500 }),
+      makeItem({ id: "far", subwayDist: 800 }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: true });
+    expect(result).toHaveLength(2);
+    expect(result.map(x => x.apt.id)).toEqual(["near", "edge"]);
+  });
+
+  // subwayDist=null이면 제외
+  it("subwayOnly=true이면 subwayDist=null 단지 제외", () => {
+    const items = [
+      makeItem({ id: "null", subwayDist: null }),
+      makeItem({ id: "near", subwayDist: 300 }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: true });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("near");
+  });
+
+  // subwayDist=9999(역없음 sentinel) / >500 제외
+  it("subwayOnly=true이면 subwayDist=9999(역없음)·>500 제외", () => {
+    const items = [
+      makeItem({ id: "none", subwayDist: 9999 }),
+      makeItem({ id: "near", subwayDist: 400 }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: true });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("near");
+  });
+
+  // subwayOnly=false면 거리 무관 전부 통과 (무영향)
+  it("subwayOnly=false이면 subwayDist 무관 전부 통과", () => {
+    const items = [
+      makeItem({ id: "far", subwayDist: 9999 }),
+      makeItem({ id: "nullable", subwayDist: null }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: false });
+    expect(result).toHaveLength(2);
   });
 
 });
