@@ -33,7 +33,7 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({ apt, res,
   const fairPrice = nearbyMedian > 0 ? Math.round(nearbyMedian * ageCoeff * areaAdj * brand.adj) : 0;
   const devPct = fairPrice > 0 ? ((fairPrice - aptPrice) / fairPrice * 100).toFixed(1) : "N/A";
 
-  // 도시등급 (구 ExpertAptHeader L11-12 이식 — fieldMeta 138필드에 없는 유일한 헤더 정보)
+  // 도시등급 (구 ExpertAptHeader L11-12 이식 — fieldMeta 141필드에 없는 유일한 헤더 정보)
   const tier = (apt.region ? (REGIONS as Record<string, { tier: string; gus: string[] }>)[apt.region]?.tier : null) || "C";
   const cityLabel = (CITY_TIER as Record<string, { label: string }>)[tier]?.label || tier;
 

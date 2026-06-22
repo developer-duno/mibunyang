@@ -1892,6 +1892,7 @@ export type Database = {
           devDist: number | null
           discountPct: number | null
           district: string | null
+          doctorsPer1k: number | null
           dong: string | null
           dsr40pass: boolean | null
           elecUsageKwh: number | null
@@ -1902,6 +1903,7 @@ export type Database = {
           energyCollectedAt: string | null
           energyGrade: number | null
           exclusiveRatio: number | null
+          fertilityRate: number | null
           floorAreaRatio: number | null
           floorRange: string | null
           floors: string | null
@@ -1912,6 +1914,7 @@ export type Database = {
           heatFuel: string | null
           heating: string | null
           hospital: number | null
+          hospitalBedsPer1k: number | null
           hospitalDist: number | null
           hugGuarantee: boolean | null
           icDist: number | null

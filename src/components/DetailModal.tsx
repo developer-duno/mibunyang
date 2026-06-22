@@ -386,7 +386,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
         </section>
         )}
 
-        {/* §7 관리자 탭 — 점수 산출 과정 + 동/호수·평형 공급 + 138필드 검수 (세션 409 D2b: 점수·분양 탭에서
+        {/* §7 관리자 탭 — 점수 산출 과정 + 동/호수·평형 공급 + 141필드 검수 (세션 409 D2b: 점수·분양 탭에서
             분리, adminLoggedIn 시에만 칩·패널 노출). data-tab-panel = App print CSS 가 인쇄 시 펼침.
             isPanelMounted(adminLoggedIn)=즉시 마운트 → 현행 "전체 펼쳐 인쇄" 동선 보존. */}
         {adminLoggedIn && isPanelMounted("sec-admin") && (
