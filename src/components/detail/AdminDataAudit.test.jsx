@@ -17,19 +17,19 @@ describe("AdminDataAudit", () => {
     expect(screen.getAllByText(/미등록 필드:|기본값 필드:|지역추정 필드:|적용 대상 아님 필드:/).length).toBeGreaterThan(0);
   });
 
-  // 138필드 토글 버튼 — 기본 접힘
-  it("기본 상태에서 '전체 138필드 보기' 버튼은 있고 전수 표는 숨김", () => {
+  // 141필드 토글 버튼 — 기본 접힘
+  it("기본 상태에서 '전체 141필드 보기' 버튼은 있고 전수 표는 숨김", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<AdminDataAudit apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("전체 138필드 보기")).toBeTruthy();
+    expect(screen.getByText("전체 141필드 보기")).toBeTruthy();
     expect(screen.queryByTestId("admin-full-fields")).toBeNull();
   });
 
-  // 138필드 토글 ON → 전수 표 + 버튼 라벨 전환
-  it("'전체 138필드 보기' 클릭 시 9섹션 전수 표가 보이고 라벨이 '요약 보기'로 전환된다", () => {
+  // 141필드 토글 ON → 전수 표 + 버튼 라벨 전환
+  it("'전체 141필드 보기' 클릭 시 9섹션 전수 표가 보이고 라벨이 '요약 보기'로 전환된다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<AdminDataAudit apt={/** @type {any} */ (apt)} profile="live" />);
-    fireEvent.click(screen.getByText("전체 138필드 보기"));
+    fireEvent.click(screen.getByText("전체 141필드 보기"));
     expect(screen.getByTestId("admin-full-fields")).toBeTruthy();
     expect(screen.getByText("요약 보기")).toBeTruthy();
   });
@@ -38,7 +38,7 @@ describe("AdminDataAudit", () => {
   it("'요약 보기' 재클릭 시 전수 표가 사라진다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<AdminDataAudit apt={/** @type {any} */ (apt)} />);
-    fireEvent.click(screen.getByText("전체 138필드 보기"));
+    fireEvent.click(screen.getByText("전체 141필드 보기"));
     fireEvent.click(screen.getByText("요약 보기"));
     expect(screen.queryByTestId("admin-full-fields")).toBeNull();
   });
@@ -47,7 +47,7 @@ describe("AdminDataAudit", () => {
   it("토글 버튼 aria-pressed가 클릭으로 변경된다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<AdminDataAudit apt={/** @type {any} */ (apt)} />);
-    const btn = screen.getByRole("button", { name: /138필드/ });
+    const btn = screen.getByRole("button", { name: /141필드/ });
     expect(btn.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(btn);
     expect(btn.getAttribute("aria-pressed")).toBe("true");

@@ -7,8 +7,8 @@ import { EmphasisBadge } from "@/components/primitives";
 import type { Apt, Profile } from "@/types/scoring";
 
 // 관리자 데이터 검수 (세션 408 D2a — 구 DataSections adminMode 부분 추출, 점수 탭 전용).
-// 138필드 전수 표(FIELD_SECTIONS 9섹션) + 관리자 기준 완성도 + ★중점 강조. DATA_SECTIONS 무관.
-// 펼침 게이트: 부모(점수 탭)가 adminLoggedIn 게이트 → 즉시 노출. fullFields 토글로 138표 접힘/펼침.
+// 141필드 전수 표(FIELD_SECTIONS 9섹션) + 관리자 기준 완성도 + ★중점 강조. DATA_SECTIONS 무관.
+// 펼침 게이트: 부모(점수 탭)가 adminLoggedIn 게이트 → 즉시 노출. fullFields 토글로 141표 접힘/펼침.
 
 // 구 ExpertDashboard L18·L26-27 이식 그대로.
 const ADMIN_SEC_COLOR: Record<string, string> = { "가격": C.green, "안전": C.red, "입지": C.blue, "상품성": C.purple, "혜택": C.amber, "미래": C.cyan, "교차검증": "#6366F1" };
@@ -50,7 +50,7 @@ function AdminFieldSection({ apt, fields, title, color, exclude, emphasized }: {
   );
 }
 
-// 구 ExpertDataCompleteness 전체 이식 — 138필드(비-hidden 전수) 기준 진행바 + 5분류 + 필드명 목록 4종(검수 핵심)
+// 구 ExpertDataCompleteness 전체 이식 — 141필드(비-hidden 전수) 기준 진행바 + 5분류 + 필드명 목록 4종(검수 핵심)
 function AdminCompleteness({ apt }: { apt: Apt }) {
   const allFields = Object.keys(FIELD_META).filter(k => !FIELD_META[k].hidden);
   const { pct, filled, estimated, defaults, missing, na, total, evalTotal, estimatedFields, defaultFields, missingFields, naFields } = computeCompleteness(allFields, apt);
@@ -81,10 +81,10 @@ function AdminCompleteness({ apt }: { apt: Apt }) {
 }
 
 export const AdminDataAudit = memo(function AdminDataAudit({ apt, profile }: { apt: Apt; profile?: Profile }) {
-  // 138필드 전수 표 토글 (구 DataSections fullFields, 세션 405 ExpertDashboard 이식) — 기본 접힘.
+  // 141필드 전수 표 토글 (구 DataSections fullFields, 세션 405 ExpertDashboard 이식) — 기본 접힘.
   const [fullFields, setFullFields] = useState(false);
 
-  // 프로필 상위 2 카테고리 → 강조할 138필드 섹션 key Set (구 ExpertDashboard L99-102 이식, 세션 382)
+  // 프로필 상위 2 카테고리 → 강조할 141필드 섹션 key Set (구 ExpertDashboard L99-102 이식, 세션 382)
   const emphasizedSectionKeys = useMemo(() => {
     if (!profile || !PROFILES[profile]) return new Set<string>();
     const top = getTopCats(PROFILES[profile].w) as string[];
@@ -97,7 +97,7 @@ export const AdminDataAudit = memo(function AdminDataAudit({ apt, profile }: { a
         background: fullFields ? C.indigo : C.indigoLight, color: fullFields ? C.white : C.indigo,
         border: `1px solid ${C.indigo}`, borderRadius: 6, padding: "6px 12px",
         fontSize: F.xs, fontWeight: 700, cursor: "pointer", minHeight: 36,
-      }}>{fullFields ? "요약 보기" : "전체 138필드 보기"}</button>
+      }}>{fullFields ? "요약 보기" : "전체 141필드 보기"}</button>
       <AdminCompleteness apt={apt} />
       {fullFields && (
         <div data-testid="admin-full-fields">

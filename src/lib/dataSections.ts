@@ -75,8 +75,8 @@ export const PRICE_SECTIONS: DataSection[] = [
   {
     title: "시장/투자 지표",
     highlight: ["pir", "psr", "popGrowth"],
-    grid: ["recentTrades6m", "nearbyMedian", "nearbyBuildYear", "avgFloor", "floorRange", "netMigration"],
-    hint: "집값이 적정한지 따지는 숫자들이에요. PIR은 '소득 몇 년치를 모아야 집을 사나'(낮을수록 좋음), PSR은 주변 시세 대비 비율, 순이동(+)은 사람이 늘어나는 동네라는 신호예요.",
+    grid: ["recentTrades6m", "nearbyMedian", "nearbyBuildYear", "avgFloor", "floorRange", "netMigration", "fertilityRate", "doctorsPer1k", "hospitalBedsPer1k"],
+    hint: "집값이 적정한지 따지는 숫자들이에요. PIR은 '소득 몇 년치를 모아야 집을 사나'(낮을수록 좋음), PSR은 주변 시세 대비 비율, 순이동(+)은 사람이 늘어나는 동네라는 신호예요. 합계출산율이 높으면 젊은 가구가 모이는 활기찬 동네, 의사·병상수는 동네 의료 접근성을 보여줘요.",
   },
   {
     title: "네이버 교차검증",

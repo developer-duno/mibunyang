@@ -99,7 +99,7 @@ export const SkeletonList = memo(function SkeletonList({ count = 3, columns = 1 
 
 // 프로필 상위 카테고리 강조 배지 — "★ 중점". 단일 atom (세션 384 통합, drift 0).
 // background 는 옵셔널 — CatPanel 은 카드 bg(C.bg)와 같은 채움을 보존하려고 넘기고,
-// DataSections adminMode 138필드 표(구 전문가 표)는 채움 없이(투명) 쓴다. spread 로 background:undefined 미방출.
+// DataSections adminMode 141필드 표(구 전문가 표)는 채움 없이(투명) 쓴다. spread 로 background:undefined 미방출.
 type EmphasisBadgeProps = { color: string; background?: string };
 export const EmphasisBadge = memo(function EmphasisBadge({ color, background }: EmphasisBadgeProps) {
   return (

@@ -37,7 +37,7 @@ export function computeCompleteness(fields: string[], apt: Apt): CompletenessRes
   let total = 0;
   for (const k of fields) {
     const meta = FM[k];
-    if (!meta) continue; // meta 없는 필드는 평가 모집단에서 제외(실발동 0 — DATA_SECTIONS·138 전부 meta 보유)
+    if (!meta) continue; // meta 없는 필드는 평가 모집단에서 제외(실발동 0 — DATA_SECTIONS·141 전부 meta 보유)
     total++;
     const v = apt[k];
     // 적용 대상 아님이 최우선 — 분양 중 아닌 단지는 presale/competition 필드가 평가 대상 아님
