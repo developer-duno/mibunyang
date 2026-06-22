@@ -161,6 +161,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               주차 {apt.parkingRatio}대/세대
             </span>
           )}
+          {/* 복도유형 칩 (세션 433) — 복도식만 주황(소음·프라이버시 약점 신호). 계단식(70%)·혼합식은 흔하거나 중립이라 생략 */}
+          {apt.corridorType === "복도식" && (
+            <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>복도식</span>
+          )}
         </div>
 
         {benefitWon > 0 ? (
@@ -241,6 +245,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (pa.jeonseRate !== na.jeonseRate) return false;
   if (pa.parkingRatio !== na.parkingRatio) return false;
   if (pa.noxiousDist !== na.noxiousDist) return false;
+  if (pa.corridorType !== na.corridorType) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
   return true;

@@ -401,4 +401,24 @@ describe("AptCard", () => {
     });
   });
 
+  describe("복도유형 칩 (세션 433)", () => {
+    it("복도식 → '복도식' 칩 노출 (소음·프라이버시 약점 신호)", () => {
+      const apt = /** @type {any} */ (makeApt({ corridorType: "복도식" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("복도식")).toBeInTheDocument();
+    });
+
+    it("계단식 → 칩 미노출 (70% 다수라 변별력 0)", () => {
+      const apt = /** @type {any} */ (makeApt({ corridorType: "계단식" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText("복도식")).toBeNull();
+    });
+
+    it("corridorType null → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ corridorType: null }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText("복도식")).toBeNull();
+    });
+  });
+
 });
