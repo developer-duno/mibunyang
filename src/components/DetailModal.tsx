@@ -11,6 +11,7 @@ import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
 import { DataSectionBlock, NearbyFacilitiesBlock, PriceByFloorBlock, AnnouncementLink } from "./detail/DataSectionBlock";
 import { CategoryMiniCard } from "./detail/CategoryMiniCard";
+import { ProfileWeightBar } from "./detail/ProfileWeightBar";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
@@ -291,6 +292,10 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
             </div>
           );
         })()}
+
+        {/* 프로필 가중치 막대 — "왜 이 점수인지" 새 정보축 (세션 434 점수 근거 투명화 A+B).
+            손님이 보는 상세 모달은 로그인 전제(useDetailModal 단일 진입) → 블라인드 무관. profile 있을 때만. */}
+        {profile && <ProfileWeightBar weights={PROFILES[profile].w} cats={res.cats} />}
 
         {/* 단지 기본정보 (핵심지표 중복 4필드 제외 — 세션 408 D2a) */}
         {OVERVIEW_SECTIONS.map(s => <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />)}

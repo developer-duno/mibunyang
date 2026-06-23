@@ -150,6 +150,18 @@ describe("DetailModal", () => {
     expect(screen.getByText("핵심 지표")).toBeInTheDocument();
     expect(screen.getByText("경기 수원시 영통동")).toBeInTheDocument();
   });
+
+  // 프로필 가중치 막대 (세션 434 점수 근거 투명화 A+B) — profile 전달 시 노출
+  it("profile 전달 시 프로필 가중치 막대 노출", () => {
+    render(<DetailModal {...makeProps({ profile: "live" })} />);
+    expect(screen.getByText("이 점수는 당신의 프로필 기준으로 계산됐어요")).toBeInTheDocument();
+    expect(screen.getByTestId("weight-bar-summary")).toBeInTheDocument();
+  });
+
+  it("profile 미전달 시 가중치 막대 미노출", () => {
+    render(<DetailModal {...makeProps()} />);
+    expect(screen.queryByText("이 점수는 당신의 프로필 기준으로 계산됐어요")).toBeNull();
+  });
 });
 
 // StickyJumpNav(탭바) — 세션 377 PR-1 점프 앵커 → 세션 407 D1 콘텐츠 교체 탭. 데이터 삭제·축소 0 회귀 가드.
