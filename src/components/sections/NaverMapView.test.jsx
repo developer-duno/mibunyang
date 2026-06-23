@@ -112,4 +112,39 @@ describe("NaverMapView", () => {
     expect(screen.queryByLabelText("현위치")).toBeNull();
     delete (/** @type {any} */ (window.navigator).geolocation);
   });
+
+  // GPS 첫 진입 자동 동네 표시 (세션 435) — 카카오와 동일 조건.
+  it("첫 진입(지역 미선택+뷰포트 없음)에 GPS 성공 → setCenter+setZoom", async () => {
+    setupNaver();
+    const captured = /** @type {any} */ ({});
+    Object.defineProperty(window.navigator, "geolocation", {
+      value: { getCurrentPosition: vi.fn((s) => { captured.success = s; }) }, configurable: true,
+    });
+    render(<NaverMapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" />);
+    await flushPromises();
+    expect(captured.success).toBeTypeOf("function");
+    const inst = /** @type {any} */ (window).naver.maps.Map.mock.results.at(-1).value;
+    captured.success({ coords: { latitude: 37.49, longitude: 127.03 } });
+    expect(inst.setCenter).toHaveBeenCalled();
+    expect(inst.setZoom).toHaveBeenCalledWith(15); // NAVER_MY_LOC_ZOOM
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  it("지역 선택 상태면 GPS 자동 발동 안 함", async () => {
+    setupNaver();
+    Object.defineProperty(window.navigator, "geolocation", { value: { getCurrentPosition: vi.fn() }, configurable: true });
+    render(<NaverMapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="서울" />);
+    await flushPromises();
+    expect(window.navigator.geolocation.getCurrentPosition).not.toHaveBeenCalled();
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  it("복원 뷰포트 있으면 GPS 자동 발동 안 함", async () => {
+    setupNaver();
+    Object.defineProperty(window.navigator, "geolocation", { value: { getCurrentPosition: vi.fn() }, configurable: true });
+    render(<NaverMapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => ({ lat: 35.1, lng: 129.0, level: 7 })} deferredRegion="전체" />);
+    await flushPromises();
+    expect(window.navigator.geolocation.getCurrentPosition).not.toHaveBeenCalled();
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
 });

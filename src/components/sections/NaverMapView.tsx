@@ -180,6 +180,38 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
     );
   }, [ready, mapInstance]);
 
+  // GPS 첫 진입 자동 동네 표시 (세션 435) — 카카오 KakaoMapView 와 동일 조건/폴백.
+  const autoLocatedRef = useRef(false);
+  useEffect(() => {
+    if (autoLocatedRef.current) return;
+    if (!ready || !mapInstance) return;
+    if (compactRef.current) return;
+    if (!navigator.geolocation) return;
+    if (deferredRegion && deferredRegion !== "전체") return;
+    if (getViewportRef.current?.()) return;
+    autoLocatedRef.current = true;
+    // 마커 effect(위 선언)가 먼저 첫 fit 수행 → GPS 거부여도 전국 마커 fit 상태(빈화면 0). 성공 시만 동네 이동.
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const maps = getNaverMaps();
+        if (!maps || !mapInstanceRef.current) return;
+        if (deferredRegion && deferredRegion !== "전체") return; // 콜백 사이 지역 선택 시 덮어쓰기 방지
+        const loc = new maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+        const blueDot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
+        myLocMarkerRef.current = new maps.Marker({
+          position: loc,
+          map: mapInstanceRef.current,
+          icon: { content: `<img src="${blueDot}" width="20" height="20" style="display:block" />`, anchor: new maps.Point(10, 10) },
+          zIndex: 100,
+        });
+        (mapInstance as any).setCenter(loc);
+        (mapInstance as any).setZoom(NAVER_MY_LOC_ZOOM);
+      },
+      () => { /* 거부/실패 → 전국 마커 fit 유지(폴백). 조용히 무시 */ },
+      { enableHighAccuracy: false, timeout: 5000 },
+    );
+  }, [ready, mapInstance, deferredRegion]);
+
   const handleInfoClick = useCallback(() => {
     if (selected && onDetail && selected.apt.id) onDetail(selected.apt.id);
   }, [selected, onDetail]);

@@ -295,6 +295,43 @@ export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isP
     );
   }, [ready, mapInstance]);
 
+  // GPS 첫 진입 자동 동네 표시 (세션 435) — 손님이 지역도 안 고르고 복원 뷰포트도 없는 "진짜 첫 방문"
+  // 이면 자기 동네로 자동 이동. 권한 거부/실패/미지원이면 기존 동작(첫 마커 fit)으로 폴백.
+  const autoLocatedRef = useRef(false);
+  useEffect(() => {
+    if (autoLocatedRef.current) return;
+    if (!ready || !mapInstance || mode !== "point") return;
+    if (compactRef.current) return;                                   // 위젯 미니지도 제외
+    if (!navigator.geolocation) return;                               // 미지원 → 폴백(첫 마커 fit)
+    const region = deferredRegion;
+    if (region && region !== "전체") return;                          // 손님이 지역 골랐으면 그 선택 우선
+    if (getViewportRef.current?.()) return;                           // 복원 뷰포트 있으면(탭 재진입) 그대로
+    autoLocatedRef.current = true;
+    // 순서: 마커 effect(위에 선언)가 먼저 실행돼 첫 fit(전국 마커 bounds)을 이미 수행 → didFitRef=true.
+    // 따라서 GPS 거부/실패여도 화면은 전국 마커 fit 상태(빈화면 0). GPS 성공 시에만 동네로 setCenter.
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const kakao = getKakaoMaps();
+        if (!kakao || !mapInstanceRef.current) return;                // 언마운트 후 콜백 가드
+        // GPS 콜백 도착 사이 손님이 지역을 골랐으면(deferredRegion 변경) 그 선택 우선 — 덮어쓰기 방지.
+        if (deferredRegion && deferredRegion !== "전체") return;
+        const loc = new kakao.LatLng(pos.coords.latitude, pos.coords.longitude);
+        const blueDot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
+        myLocMarkerRef.current = new kakao.Marker({
+          position: loc,
+          image: new kakao.MarkerImage(blueDot, new kakao.Size(20, 20), { offset: new kakao.Point(10, 10) }),
+          zIndex: 100,
+        });
+        myLocMarkerRef.current.setMap(mapInstance);
+        (mapInstance as any).setCenter(loc);
+        (mapInstance as any).setLevel(MY_LOC_LEVEL);
+        // 동네로 이동했으니 이후 filtered 변경 시 전국 리셋 방지(didFitRef 유지 — 마커 effect 가 이미 true 세팅).
+      },
+      () => { /* 거부/실패 → 전국 마커 fit 상태 유지(폴백). 조용히 무시 */ },
+      { enableHighAccuracy: false, timeout: GEO_TIMEOUT },
+    );
+  }, [ready, mapInstance, mode, deferredRegion]);
+
   return (
     <div style={{
       position: "relative", width: "100%",
