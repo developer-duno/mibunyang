@@ -55,7 +55,9 @@ export const MapView = memo(function MapView(props: MapViewProps) {
   if (!showToggle) return mapEl;
 
   return (
-    <div style={{ position: "relative" }}>
+    // width 100% — App 지도 탭 전체화면(100vw 컨테이너) 안에서 토글 래퍼가 콘텐츠 폭으로 줄어
+    // 지도가 화면을 안 채우던 것 방지(세션 435 전체화면 레이아웃). 자식 지도는 자체 width:100%.
+    <div style={{ position: "relative", width: "100%" }}>
       {mapEl}
       {showToggle && (
         <div role="group" aria-label="지도 종류 선택" style={{ position: "absolute", top: 8, right: props.compact ? 8 : 48, display: "flex", gap: 0, zIndex: 11, background: "rgba(255,255,255,0.92)", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.12)" }}>
