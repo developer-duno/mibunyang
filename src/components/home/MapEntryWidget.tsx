@@ -59,7 +59,7 @@ export const MapEntryWidget = memo(function MapEntryWidget({ isLoggedIn, onExpan
         <div ref={sentinelRef} data-testid="map-widget">
           {mapVisible ? (
             <Suspense fallback={<MapSkeleton />}>
-              <MapView filtered={filtered} onDetail={onDetail} compact height={MAP_HEIGHT} />
+              <MapView filtered={filtered} onDetail={onDetail} compact autoLocate height={MAP_HEIGHT} />
             </Suspense>
           ) : (
             <MapSkeleton />

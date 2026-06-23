@@ -22,4 +22,7 @@ export interface MapViewProps {
   deferredGu?: string;
   /** 전체화면 모드 (세션 417) — 테두리·라운드 제거(부모 App 이 100vw 전체폭 적용). 높이 calc 는 불변 */
   fullscreen?: boolean;
+  /** GPS 첫 진입 자동 동네 표시 허용 (세션 435) — compact(위젯)는 기본 GPS 비발동인데, 홈 미니지도에서
+      사장님 요청으로 내 지역 표시가 필요할 때 명시 허용. 미전달/false 면 기존 동작(non-compact 만 자동 발동) */
+  autoLocate?: boolean;
 }

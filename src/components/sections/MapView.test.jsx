@@ -653,4 +653,22 @@ describe("MapView GPS 자동 동네 표시", () => {
     expect(() => render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" />)).not.toThrow();
     await flushPromises();
   });
+
+  it("compact(위젯)는 기본 GPS 미발동", async () => {
+    setupKakao();
+    stubGeo();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" compact />);
+    await flushPromises();
+    expect(window.navigator.geolocation.getCurrentPosition).not.toHaveBeenCalled();
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  it("compact + autoLocate 면 GPS 발동 (홈 미니지도 내 지역, 세션 435)", async () => {
+    setupKakao();
+    stubGeo();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" compact autoLocate />);
+    await flushPromises();
+    expect(window.navigator.geolocation.getCurrentPosition).toHaveBeenCalled();
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
 });

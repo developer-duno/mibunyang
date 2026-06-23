@@ -24,7 +24,7 @@ const GU_FIT_MIN_LEVEL = 4;
 // region-fit 시 좌측/상단 필터·선택카드가 마커를 가리지 않게 padding 확보 (top,right,bottom,left).
 const FIT_PADDING = { top: 40, right: 24, bottom: 40, left: 24 };
 
-export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect, getViewport, onViewportChange, deferredRegion, deferredGu, fullscreen }: MapViewProps) {
+export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect, getViewport, onViewportChange, deferredRegion, deferredGu, fullscreen, autoLocate }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const clustererRef = useRef<{ clear: () => void; addMarkers: (_m: unknown[]) => void } | null>(null);
@@ -301,7 +301,7 @@ export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isP
   useEffect(() => {
     if (autoLocatedRef.current) return;
     if (!ready || !mapInstance || mode !== "point") return;
-    if (compactRef.current) return;                                   // 위젯 미니지도 제외
+    if (compactRef.current && !autoLocate) return;                    // 위젯은 기본 제외, autoLocate 면 허용(홈 미니지도, 세션 435)
     if (!navigator.geolocation) return;                               // 미지원 → 폴백(첫 마커 fit)
     const region = deferredRegion;
     if (region && region !== "전체") return;                          // 손님이 지역 골랐으면 그 선택 우선
@@ -330,7 +330,7 @@ export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isP
       () => { /* 거부/실패 → 전국 마커 fit 상태 유지(폴백). 조용히 무시 */ },
       { enableHighAccuracy: false, timeout: GEO_TIMEOUT },
     );
-  }, [ready, mapInstance, mode, deferredRegion]);
+  }, [ready, mapInstance, mode, deferredRegion, autoLocate]);
 
   return (
     <div style={{

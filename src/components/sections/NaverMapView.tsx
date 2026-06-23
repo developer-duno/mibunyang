@@ -21,7 +21,7 @@ type FilteredItem = { apt: Apt; res: ScoringResult };
  *
  * 회귀 0 보장: 이 컴포넌트는 신규라 기존 카카오 경로/테스트에 영향 0. provider 'naver' 일 때만 마운트.
  */
-export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect, getViewport, onViewportChange, deferredRegion, deferredGu, fullscreen }: MapViewProps) {
+export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isPC, isDesktop, height, compact, onSelect, getViewport, onViewportChange, deferredRegion, deferredGu, fullscreen, autoLocate }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const markersRef = useRef<unknown[]>([]);
@@ -216,7 +216,7 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
   useEffect(() => {
     if (autoLocatedRef.current) return;
     if (!ready || !mapInstance) return;
-    if (compactRef.current) return;
+    if (compactRef.current && !autoLocate) return;                    // 위젯 기본 제외, autoLocate 면 허용(홈 미니지도)
     if (!navigator.geolocation) return;
     if (deferredRegion && deferredRegion !== "전체") return;
     if (getViewportRef.current?.()) return;
@@ -241,7 +241,7 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
       () => { /* 거부/실패 → 전국 마커 fit 유지(폴백). 조용히 무시 */ },
       { enableHighAccuracy: false, timeout: 5000 },
     );
-  }, [ready, mapInstance, deferredRegion]);
+  }, [ready, mapInstance, deferredRegion, autoLocate]);
 
   const handleInfoClick = useCallback(() => {
     if (selected && onDetail && selected.apt.id) onDetail(selected.apt.id);
