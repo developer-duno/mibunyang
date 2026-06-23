@@ -1,7 +1,11 @@
 // @ts-check
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
-import { MapView } from "./MapView";
+// 네이버 키 미설정(카카오 패스스루) 전제 — 다른 테스트 파일의 stubEnv 누수와 무관하게 키 비움 명시.
+// 동적 import 라야 stub 이 naverMapHelpers 모듈 평가보다 먼저 적용됨(정적 import 는 hoisting 으로 먼저 굳음).
+vi.stubEnv("VITE_NAVER_MAP_CLIENT_ID", "");
+afterAll(() => vi.unstubAllEnvs());
+const { MapView } = await import("./MapView");
 
 // 색칠 모드 lazy chunk fetch 무력화 (테스트 환경에서 ChoroplethView lazy import 막음)
 beforeEach(() => {
@@ -25,13 +29,13 @@ function setupKakao() {
       load: vi.fn(cb => cb()),
       // M3: getCenter/getLevel 추가 (idle 콜백이 현재 뷰포트 끌어올림). LatLng(lat,lng) 인자 보존.
       // 세션 417: region-fit 의 과도줌 클램프용 setLevel 추가. getLevel 은 기본 7(클램프 테스트는 인스턴스에서 재설정).
-      Map: vi.fn(function() { this.addControl = vi.fn(); this.setBounds = vi.fn(); this.setLevel = vi.fn(); this.setZoomable = vi.fn(); this.getCenter = vi.fn(() => ({ getLat: () => 35.1, getLng: () => 129.0 })); this.getLevel = vi.fn(() => 7); }),
+      Map: vi.fn(function() { this.addControl = vi.fn(); this.setBounds = vi.fn(); this.setLevel = vi.fn(); this.setCenter = vi.fn(); this.setZoomable = vi.fn(); this.getCenter = vi.fn(() => ({ getLat: () => 35.1, getLng: () => 129.0 })); this.getLevel = vi.fn(() => 7); }),
       LatLng: vi.fn(function(/** @type {number} */ lat, /** @type {number} */ lng) { this.lat = lat; this.lng = lng; }),
       LatLngBounds: vi.fn(function() { this.extend = vi.fn(); }),
       ZoomControl: vi.fn(function() {}),
       ControlPosition: { RIGHT: 3 },
       // 세션 416: 선택 마커 강조용 setImage/setZIndex 추가 (없으면 강조 effect 가 기존 click 테스트까지 붕괴)
-      Marker: vi.fn(function() { this.getPosition = vi.fn(() => ({ getLat: () => 37, getLng: () => 127 })); this.setImage = vi.fn(); this.setZIndex = vi.fn(); }),
+      Marker: vi.fn(function() { this.getPosition = vi.fn(() => ({ getLat: () => 37, getLng: () => 127 })); this.setImage = vi.fn(); this.setZIndex = vi.fn(); this.setMap = vi.fn(); this.setPosition = vi.fn(); }),
       MarkerImage: vi.fn(function() {}),
       Size: vi.fn(function() {}),
       Point: vi.fn(function() {}),
@@ -573,5 +577,80 @@ describe("MapView 선택 마커 강조", () => {
     rerender(<MapView filtered={[makeItem({ apt: { id: "t2", lat: 36.5, lng: 127.5 } })]} onDetail={vi.fn()} />);
     await flushPromises();
     expect(clusterer.addMarkers).toHaveBeenCalledTimes(2);
+  });
+});
+
+// GPS 첫 진입 자동 동네 표시 (세션 435) — 카카오 경로(MapView 키 미설정 → KakaoMapView 패스스루).
+describe("MapView GPS 자동 동네 표시", () => {
+  /** geolocation mock 설치 — getCurrentPosition 의 success/error 콜백을 직접 잡아 발화 */
+  function stubGeo() {
+    const captured = /** @type {any} */ ({});
+    Object.defineProperty(window.navigator, "geolocation", {
+      value: {
+        getCurrentPosition: vi.fn((success, error) => { captured.success = success; captured.error = error; }),
+      },
+      configurable: true,
+    });
+    return captured;
+  }
+
+  it("첫 진입(지역 미선택+뷰포트 없음)에 GPS 성공 → 동네로 setCenter+setLevel", async () => {
+    setupKakao();
+    const geo = stubGeo();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" />);
+    await flushPromises();
+    expect(geo.success).toBeTypeOf("function");
+    const map = lastMapInstance();
+    geo.success({ coords: { latitude: 37.49, longitude: 127.03 } });
+    expect(map.setCenter).toHaveBeenCalled();
+    expect(map.setLevel).toHaveBeenCalledWith(6); // MY_LOC_LEVEL
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  it("지역 선택 상태(deferredRegion≠전체)면 GPS 자동 발동 안 함", async () => {
+    setupKakao();
+    stubGeo();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="서울" />);
+    await flushPromises();
+    expect(window.navigator.geolocation.getCurrentPosition).not.toHaveBeenCalled();
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  it("복원 뷰포트 있으면(탭 재진입) GPS 자동 발동 안 함", async () => {
+    setupKakao();
+    stubGeo();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => ({ lat: 35.1, lng: 129.0, level: 7 })} deferredRegion="전체" />);
+    await flushPromises();
+    expect(window.navigator.geolocation.getCurrentPosition).not.toHaveBeenCalled();
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  it("GPS 거부 시 크래시 없이 기존 전국 fit 유지 (폴백)", async () => {
+    setupKakao();
+    const geo = stubGeo();
+    render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" />);
+    await flushPromises();
+    const map = lastMapInstance();
+    expect(map.setBounds).toHaveBeenCalled(); // 마커 effect 가 먼저 전국 fit
+    expect(() => geo.error({ code: 1 })).not.toThrow(); // 거부 콜백 — no-op
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  it("자동 발동은 1회만 (재렌더해도 getCurrentPosition 추가 호출 0)", async () => {
+    setupKakao();
+    stubGeo();
+    const { rerender } = render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" />);
+    await flushPromises();
+    rerender(<MapView filtered={[makeItem({ apt: { id: "t2" } })]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" />);
+    await flushPromises();
+    expect(window.navigator.geolocation.getCurrentPosition).toHaveBeenCalledTimes(1);
+    delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  it("geolocation 미지원이면 자동 발동 안 함 (크래시 0)", async () => {
+    setupKakao();
+    delete (/** @type {any} */ (window.navigator).geolocation);
+    expect(() => render(<MapView filtered={[makeItem()]} onDetail={vi.fn()} getViewport={() => null} deferredRegion="전체" />)).not.toThrow();
+    await flushPromises();
   });
 });
