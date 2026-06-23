@@ -49,6 +49,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
     const noxiousDist = apt.noxiousDist as number | null | undefined;
     // 혐오시설 안심 — 가장 가까운 혐오시설도 1km 밖이면 안심 칩으로 "혐오시설 N건" 경고 대체 (세션 430)
     const noxSafe = noxiousDist != null && noxiousDist > 1000;
+    // 카드 칩 신규 (세션 437) — 표현계층 전용, 점수·엔진 무변경
+    const schoolWalk = apt.naverSchoolWalkMin as number | null | undefined;
+    const exclRatio = apt.exclusiveRatio as number | null | undefined;
+    const heatFuel = apt.heatFuel as string | null | undefined;
     const completionPast = apt.completion ? apt.completion < NOW_YM : false;
     const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
@@ -165,6 +169,22 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           {apt.corridorType === "복도식" && (
             <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>복도식</span>
           )}
+          {/* 초등학교 도보거리 칩 (세션 437) — ≤5분 초록 강조(걸어서 가까움), 6분~ 회색 중립. null 숨김 */}
+          {schoolWalk != null && (
+            <span style={schoolWalk <= 5 ? { ...S.infoTag, background: C.greenLight, color: C.green } : S.infoTag}>
+              초등 도보 {schoolWalk}분
+            </span>
+          )}
+          {/* 전용률 칩 (세션 437) — ≥80% 초록 강조(실사용 면적 넓음, 점수 '우수' 티어), <80% 회색 중립. null 숨김 */}
+          {exclRatio != null && (
+            <span style={exclRatio >= 80 ? { ...S.infoTag, background: C.greenLight, color: C.green } : S.infoTag}>
+              전용률 {exclRatio}%
+            </span>
+          )}
+          {/* 난방연료 칩 (세션 437) — LPG만 주황(도시가스보다 난방비 높음 약점 신호). 도시가스(다수)·null 생략 */}
+          {heatFuel === "LPG" && (
+            <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>LPG난방</span>
+          )}
         </div>
 
         {benefitWon > 0 ? (
@@ -246,6 +266,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (pa.parkingRatio !== na.parkingRatio) return false;
   if (pa.noxiousDist !== na.noxiousDist) return false;
   if (pa.corridorType !== na.corridorType) return false;
+  // infoRow 칩 신호 (세션 437) — 초등도보·전용률·난방연료
+  if (pa.naverSchoolWalkMin !== na.naverSchoolWalkMin) return false;
+  if (pa.exclusiveRatio !== na.exclusiveRatio) return false;
+  if (pa.heatFuel !== na.heatFuel) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
   return true;

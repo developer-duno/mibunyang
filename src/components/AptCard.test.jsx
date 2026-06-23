@@ -421,4 +421,64 @@ describe("AptCard", () => {
     });
   });
 
+  describe("초등 도보거리 칩 (세션 437)", () => {
+    it("≤5분 → '초등 도보 N분' 칩 노출 (초록 강조)", () => {
+      const apt = /** @type {any} */ (makeApt({ naverSchoolWalkMin: 3 }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("초등 도보 3분")).toBeInTheDocument();
+    });
+
+    it("6분~ → 칩 노출 (회색 중립)", () => {
+      const apt = /** @type {any} */ (makeApt({ naverSchoolWalkMin: 10 }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("초등 도보 10분")).toBeInTheDocument();
+    });
+
+    it("naverSchoolWalkMin null → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ naverSchoolWalkMin: null }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/초등 도보/)).toBeNull();
+    });
+  });
+
+  describe("전용률 칩 (세션 437)", () => {
+    it("≥80% → '전용률 N%' 칩 노출 (초록 강조)", () => {
+      const apt = /** @type {any} */ (makeApt({ exclusiveRatio: 82 }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("전용률 82%")).toBeInTheDocument();
+    });
+
+    it("<80% → 칩 노출 (회색 중립)", () => {
+      const apt = /** @type {any} */ (makeApt({ exclusiveRatio: 75 }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("전용률 75%")).toBeInTheDocument();
+    });
+
+    it("exclusiveRatio null → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ exclusiveRatio: null }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/전용률/)).toBeNull();
+    });
+  });
+
+  describe("난방연료 칩 (세션 437)", () => {
+    it("LPG → 'LPG난방' 칩 노출 (주황 약점 신호)", () => {
+      const apt = /** @type {any} */ (makeApt({ heatFuel: "LPG" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("LPG난방")).toBeInTheDocument();
+    });
+
+    it("도시가스 → 칩 미노출 (다수라 생략)", () => {
+      const apt = /** @type {any} */ (makeApt({ heatFuel: "도시가스" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText("LPG난방")).toBeNull();
+    });
+
+    it("heatFuel null → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ heatFuel: null }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText("LPG난방")).toBeNull();
+    });
+  });
+
 });
