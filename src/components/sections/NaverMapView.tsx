@@ -26,6 +26,8 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
   const mapInstanceRef = useRef<unknown>(null);
   const markersRef = useRef<unknown[]>([]);
   const markerByIdRef = useRef<Map<string, unknown>>(new Map());
+  // 선택 마커 강조 — 현재 강조 중인 단지 id 추적(카카오 KakaoMapView highlightedIdRef 답습).
+  const highlightedIdRef = useRef<string | null>(null);
   const myLocMarkerRef = useRef<any>(null);
   // 클러스터러 — 로드 성공 시 마커를 숫자로 묶음. 실패 시 null → 개별 마커 폴백(카카오 동등).
   const clustererRef = useRef<any>(null);
@@ -125,6 +127,7 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
     for (const m of markersRef.current) (m as any)?.setMap?.(null);
     markersRef.current = [];
     markerByIdRef.current = new Map();
+    highlightedIdRef.current = null; // 옛 강조 id 차단 — filtered 교체 시 stale 복원 시도 방지(카카오 답습)
     setSelected(null);
 
     const useCluster = !!clustererRef.current;
@@ -135,16 +138,19 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
       const pos = new maps.LatLng(apt.lat, apt.lng);
       const grade = gr(res.total);
       const { w, h, svg } = buildMarkerSvg(res.total, grade.c, shortPrice(apt.price));
+      const normalIcon = {
+        content: `<img src="data:image/svg+xml,${encodeURIComponent(svg)}" width="${w}" height="${h}" style="display:block" />`,
+        anchor: new maps.Point(w / 2, h),
+      };
       const marker = new maps.Marker({
         position: pos,
         // 클러스터러가 관리할 땐 map 미지정(클러스터러가 setMap 제어). 폴백 시에만 map 직접 부착.
         ...(useCluster ? {} : { map: mapInstance }),
         title: apt.name,
-        icon: {
-          content: `<img src="data:image/svg+xml,${encodeURIComponent(svg)}" width="${w}" height="${h}" style="display:block" />`,
-          anchor: new maps.Point(w / 2, h),
-        },
+        icon: normalIcon,
       });
+      // 강조 해제 시 복원용 — 일반 아이콘을 마커 객체에 보관(카카오 __normalImage 답습, 네이버는 icon 객체).
+      (marker as any).__normalIcon = normalIcon;
       maps.Event.addListener(marker, "click", () => {
         setSelected(item);
         if (onDetailRef.current && item.apt.id) onDetailRef.current(item.apt.id);
@@ -184,6 +190,37 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
       }
     }
   }, [ready, filtered, mapInstance, deferredRegion, deferredGu]);
+
+  // 선택 마커 강조 (카카오 KakaoMapView 강조 effect 이식, 세션 438) — selected 변화 시 setIcon 만 교체
+  // (마커 전체 재생성 금지). 네이버는 개별 마커 객체에 setIcon 호출이 즉시 반영돼 클러스터러 redraw
+  // 명시 호출 불필요(카카오는 redraw() 필요 — 공개 메서드 차이). 클러스터에 묶여 숨은 마커는 줌인해
+  // 풀려야 강조 보임(카카오 동일). deps=[selected] 만 — 마커 effect 와 분리해 전체 재생성 회피.
+  // markerByIdRef·highlightedIdRef 는 마커 effect 가 매 run 재채움/리셋하므로 stale 자동 차단.
+  useEffect(() => {
+    const maps = getNaverMaps();
+    if (!maps) return;
+    const restore = (id: string | null) => {
+      if (!id) return;
+      const m = markerByIdRef.current.get(id) as any;
+      if (m && m.__normalIcon) m.setIcon(m.__normalIcon);
+    };
+    // 이전 강조 복원 (id 가 바뀐 경우만)
+    if (highlightedIdRef.current && highlightedIdRef.current !== selected?.apt.id) {
+      restore(highlightedIdRef.current);
+      highlightedIdRef.current = null;
+    }
+    if (!selected || !selected.apt.id) return;
+    const marker = markerByIdRef.current.get(selected.apt.id) as any;
+    if (!marker) return; // stale/filtered 교체로 사라진 마커 — no-op
+    const { apt, res } = selected;
+    const { w, h, svg } = buildMarkerSvg(res.total, gr(res.total).c, shortPrice(apt.price), true);
+    marker.setIcon({
+      content: `<img src="data:image/svg+xml,${encodeURIComponent(svg)}" width="${w}" height="${h}" style="display:block" />`,
+      anchor: new maps.Point(w / 2, h),
+    });
+    if (marker.setZIndex) marker.setZIndex(50);
+    highlightedIdRef.current = selected.apt.id;
+  }, [selected]);
 
   // 현위치 버튼 핸들러 (카카오 KakaoMapView handleMyLocation 답습 — 네이버 API)
   const handleMyLocation = useCallback(() => {

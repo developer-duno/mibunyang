@@ -28,7 +28,8 @@ function setupNaver() {
       }),
       LatLng: vi.fn(function(/** @type {number} */ lat, /** @type {number} */ lng) { this.lat = () => lat; this.lng = () => lng; }),
       LatLngBounds: vi.fn(function() { this.extend = vi.fn(); }),
-      Marker: vi.fn(function() { this.getPosition = vi.fn(() => ({ lat: () => 37.5, lng: () => 127.0 })); this.setMap = vi.fn(); this.setPosition = vi.fn(); }),
+      // 세션 438: 선택 마커 강조용 setIcon/setZIndex 추가 (없으면 강조 effect 가 기존 click 테스트까지 붕괴 — 카카오 세션 416 박제)
+      Marker: vi.fn(function() { this.getPosition = vi.fn(() => ({ lat: () => 37.5, lng: () => 127.0 })); this.setMap = vi.fn(); this.setPosition = vi.fn(); this.setIcon = vi.fn(); this.setZIndex = vi.fn(); }),
       Point: vi.fn(function() {}),
       Size: vi.fn(function() {}),
       Event: { addListener: vi.fn(() => ({})), removeListener: vi.fn() },
@@ -173,6 +174,52 @@ describe("NaverMapView", () => {
     await flushPromises(); // SDK 로드 → 클러스터 로드(실패) → finally setReady 체인 2단계 대기
     // 폴백: Marker 가 생성되고 (개별 map 부착) 크래시 0
     expect(/** @type {any} */ (window).naver.maps.Marker).toHaveBeenCalled();
+    expect(screen.getByText("1개 단지")).toBeInTheDocument();
+  });
+
+  /* ── 세션 438: 선택 마커 강조 (setIcon 교체, 마커 전체 재생성 0 — 카카오 MapView.test 답습) ── */
+
+  // 마커 click 핸들러 추출 헬퍼 (위 click 테스트 답습)
+  function getClickHandler() {
+    const calls = /** @type {any} */ (window).naver.maps.Event.addListener.mock.calls;
+    return calls.find((/** @type {any[]} */ c) => c[1] === "click")?.[2];
+  }
+
+  it("마커 click(선택) → setIcon 강조 교체 + setZIndex(50)", async () => {
+    setupNaver();
+    render(<NaverMapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    const markerInst = /** @type {any} */ (window).naver.maps.Marker.mock.results.at(-1).value;
+    const clickHandler = getClickHandler();
+    expect(clickHandler).toBeTypeOf("function");
+    act(() => clickHandler());
+    expect(markerInst.setIcon).toHaveBeenCalled();        // 강조 아이콘으로 교체
+    expect(markerInst.setZIndex).toHaveBeenCalledWith(50);
+  });
+
+  it("선택 해제(카드 닫기) → 강조 마커 일반 아이콘 복원", async () => {
+    setupNaver();
+    render(<NaverMapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    const markerInst = /** @type {any} */ (window).naver.maps.Marker.mock.results.at(-1).value;
+    const clickHandler = getClickHandler();
+    act(() => clickHandler());                              // 선택 → 강조 setIcon
+    const callsAfterSelect = markerInst.setIcon.mock.calls.length;
+    // SelectedAptCard 닫기 버튼 → onClose → setSelected(null) → 복원 setIcon 1회 추가
+    act(() => { screen.getByLabelText("닫기").click(); });
+    expect(markerInst.setIcon.mock.calls.length).toBeGreaterThan(callsAfterSelect);
+  });
+
+  it("선택 상태에서 filtered 교체 → 마커 재생성 + stale 강조 no-op (크래시 0)", async () => {
+    setupNaver();
+    const { rerender } = render(<NaverMapView filtered={[makeItem()]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    const clickHandler = getClickHandler();
+    act(() => clickHandler());                              // 단지 선택(강조)
+    // filtered 를 다른 단지로 교체 — 옛 선택 단지는 사라짐. 강조 effect 가 stale 마커 못 찾아도 크래시 0.
+    rerender(<NaverMapView filtered={[makeItem({ apt: { id: "t99" } })]} onDetail={vi.fn()} isPC={false} />);
+    await flushPromises();
+    // 새 단지 마커가 그려지고 결과수 정상 = 크래시 없이 진행됨
     expect(screen.getByText("1개 단지")).toBeInTheDocument();
   });
 });
