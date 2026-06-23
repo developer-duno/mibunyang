@@ -41,6 +41,19 @@ function scoreColor(score: number, catKey: string, subName: string): string {
   return n >= 70 ? C.green : n >= 40 ? C.amber : C.red;
 }
 
+// 서브지표 강/약 부호 기호 (세션 434 점수 근거 투명화 C) — 색맹 접근성: 색만 의존하지 않고 기호 병행.
+// non-product 는 interpret 임계가 raw 70/40 이고 normalizeScore 도 raw 그대로라 부호·문구 톤 정확 일치.
+// product 는 제외(null) — PRODUCT_MAX 키가 영문인데 subName 은 한글이라 normalizeScore 가 max=10 폴백,
+//   interpret 의 raw-max 임계(예: 브랜드 15, 내진 5)와 어긋나 부호↔문구 모순 발생(세션 434 적대검증 실측).
+// benefit 은 점수축이 달라(할인 환산) 강/약 단정 안 함 → 중립 ■.
+function scoreSign(score: number, catKey: string): { mark: string; label: string } | null {
+  if (catKey === "product") return null;
+  if (catKey === "benefit") return { mark: "■", label: "정보" };
+  if (score >= 70) return { mark: "▲", label: "강점" };
+  if (score >= 40) return { mark: "■", label: "보통" };
+  return { mark: "▼", label: "약점" };
+}
+
 function getHighlights(subs: SubScoreItem[], catKey: string): SubScoreItem[] {
   if (catKey === "benefit") {
     return subs.filter(s => s.info !== "-").slice(0, 3);
@@ -93,7 +106,14 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
               <span style={{ fontSize: F.xs, color: C.muted, flexShrink: 0 }}>·</span>
               <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}:</span>
               <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{s.info}</span>
-              {interp && <span style={{ fontSize: F.sm, color: scoreColor(s.score, k, s.name) }}>→ {interp}</span>}
+              {interp && (() => {
+                const sign = scoreSign(s.score, k);
+                return (
+                  <span style={{ fontSize: F.sm, color: scoreColor(s.score, k, s.name) }}>
+                    {sign && <span aria-label={sign.label} style={{ marginRight: 2 }}>{sign.mark}</span>}→ {interp}
+                  </span>
+                );
+              })()}
             </div>
           );
         })}
@@ -115,7 +135,14 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     {renderDots(dots)}
-                    {interp && <span style={{ fontSize: F.sm, color: sc2 }}>{interp}</span>}
+                    {interp && (() => {
+                      const sign = scoreSign(s.score, k);
+                      return (
+                        <span style={{ fontSize: F.sm, color: sc2 }}>
+                          {sign && <span aria-label={sign.label} style={{ marginRight: 2 }}>{sign.mark}</span>}{interp}
+                        </span>
+                      );
+                    })()}
                   </div>
                   {sc?.benchmark && <span style={{ fontSize: F.xs, color: C.muted }}>기준: {sc.benchmark}</span>}
                 </div>
