@@ -535,3 +535,9 @@ KOSIS 통계표 검색 API(`statisticsSearch.do`)로 재선정 + raw sample 차�
 ## TS M0 후속 — vitest 4 projects 마이그레이션
 
 - ✅ **`environmentMatchGlobs` → `projects` 마이그레이션 완료** (세션 348) — 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md) 색인 참조
+
+## 🟢 네이버 지도 후속 (세션 435 — 라이브 동작 후 개선 후보)
+
+- **네이버 마커 1424개 클러스터 성능 실측** — 클러스터(MarkerClustering.js)로 묶이나 저사양 모바일 전국 줌에서 버벅임 가능. 실측 후 gridSize/maxZoom 튜닝 검토. (카카오는 내장 클러스터러라 검증됨)
+- **Vercel Preview 환경변수 `VITE_NAVER_MAP_CLIENT_ID`** — production·development는 추가됨. Preview는 vercel CLI 가 git-branch 인자 요구(action_required)라 미추가. PR 미리보기에서 네이버 지도 필요 시 Vercel 대시보드에서 수동 추가.
+- **색칠(choropleth)·인프라 오버레이 네이버화** — 1차 범위 밖(카카오 고정). 네이버 점 보기만 토글. 폴리곤(kakao.Polygon)·로컬검색(kakao.services categorySearch)이 네이버 v3 API 차이 커 거대 작업. 손님 요구 시 별 세션.
