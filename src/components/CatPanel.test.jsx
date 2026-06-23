@@ -127,4 +127,41 @@ describe("CatPanel", () => {
     render(<CatPanel cat={makeCat()} k="price" />);
     expect(screen.getByRole("button").getAttribute("aria-expanded")).toBe("false");
   });
+
+  // 서브지표 강/약 부호 기호 (세션 434 점수 근거 투명화 C) — 색맹 접근성: 색만 의존 않고 기호 병행.
+  // interpret 이 있어야(SUB_CONTEXT 매칭 서브명) 부호가 뜸. price "전세가율" 사용.
+  it("score>=70 서브는 ▲ 강점 기호 + aria-label", () => {
+    render(<CatPanel cat={makeCat({ subs: [{ name: "전세가율", score: 80, info: "75%" }] })} k="price" />);
+    expect(screen.getByText("▲")).toBeInTheDocument();
+    expect(screen.getByLabelText("강점")).toBeInTheDocument();
+  });
+
+  it("40~69 서브는 ■ 보통 기호", () => {
+    render(<CatPanel cat={makeCat({ subs: [{ name: "전세가율", score: 55, info: "60%" }] })} k="price" />);
+    expect(screen.getByText("■")).toBeInTheDocument();
+    expect(screen.getByLabelText("보통")).toBeInTheDocument();
+  });
+
+  it("score<40 서브는 ▼ 약점 기호", () => {
+    render(<CatPanel cat={makeCat({ subs: [{ name: "전세가율", score: 20, info: "40%" }] })} k="price" />);
+    // ▼ 는 펼침 화살표(헤더)와 텍스트 겹침 — aria-label 로 부호만 단언
+    const sign = screen.getByLabelText("약점");
+    expect(sign.textContent).toBe("▼");
+  });
+
+  it("부호는 색만 아니라 aria-label 병행 (WCAG 색맹 접근성)", () => {
+    render(<CatPanel cat={makeCat({ subs: [{ name: "전세가율", score: 80, info: "75%" }] })} k="price" />);
+    const labeled = screen.getByLabelText("강점");
+    expect(labeled.textContent).toBe("▲");
+  });
+
+  // product 는 부호 미표시 (세션 434 적대검증) — PRODUCT_MAX 키 영문 vs subName 한글 불일치로
+  // normalizeScore 가 max=10 폴백 → interpret 의 raw-max 임계와 어긋남. 모순 회피 위해 product 제외.
+  it("product 카테고리는 부호 미표시 (interpret 척도 불일치 회피)", () => {
+    render(<CatPanel cat={makeCat({ label: "상품성", subs: [{ name: "주차", score: 12, info: "1.5대" }] })} k="product" defaultExpanded />);
+    // product 는 ▲■▼ 부호 안 뜸 (interpret 문구는 떠도 부호 없음)
+    expect(screen.queryByLabelText("강점")).toBeNull();
+    expect(screen.queryByLabelText("보통")).toBeNull();
+    expect(screen.queryByLabelText("약점")).toBeNull();
+  });
 });
