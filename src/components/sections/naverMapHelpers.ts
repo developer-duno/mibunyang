@@ -57,3 +57,37 @@ export function loadNaverMapSdk(): Promise<void> {
     document.head.appendChild(s);
   });
 }
+
+/** MarkerClustering 생성자 표면 타입 (naver 공식 marker-tools, naver.maps 의존). */
+export type MarkerClusteringCtor = new (..._args: any[]) => {
+  setMarkers: (_markers: unknown[]) => void;
+  setMap: (_map: unknown | null) => void;
+};
+
+/** window.MarkerClustering 반환 (미로드 시 null). */
+export function getMarkerClustering(): MarkerClusteringCtor | null {
+  return (window as unknown as { MarkerClustering?: MarkerClusteringCtor }).MarkerClustering ?? null;
+}
+
+/**
+ * 네이버 마커 클러스터링 라이브러리(public/vendor/MarkerClustering.js, 공식 marker-tools)를 동적 로드.
+ * naver.maps SDK 로드 후 호출 의무(라이브러리가 naver.maps.OverlayView 상속). self origin 이라 CSP 추가 0.
+ * 로드 실패 시 reject — 호출처(NaverMapView)가 개별 마커로 폴백.
+ */
+export function loadNaverMarkerClustering(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (getMarkerClustering()) { resolve(); return; }
+    const existing = document.querySelector("script[src*='vendor/MarkerClustering']");
+    if (existing) {
+      if (getMarkerClustering()) { resolve(); return; }
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("MarkerClustering 로드 실패")));
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "/vendor/MarkerClustering.js";
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("MarkerClustering 로드 실패"));
+    document.head.appendChild(s);
+  });
+}

@@ -34,7 +34,9 @@ function setupNaver() {
       Event: { addListener: vi.fn(() => ({})), removeListener: vi.fn() },
     },
   };
-  // script onload 즉시 발화하도록 createElement 스텁
+  // MarkerClustering 전역 mock — 클러스터 경로 검증(setMarkers 호출). 실제 라이브러리는 public/vendor 로드.
+  /** @type {any} */ (window).MarkerClustering = vi.fn(function() { this.setMarkers = vi.fn(); this.setMap = vi.fn(); });
+  // script onload 즉시 발화하도록 createElement 스텁 (SDK·클러스터 둘 다)
   const origCreate = document.createElement.bind(document);
   vi.spyOn(document, "createElement").mockImplementation((/** @type {any} */ tag) => {
     const el = origCreate(tag);
@@ -51,6 +53,7 @@ async function flushPromises() {
 
 beforeEach(() => {
   delete (/** @type {any} */ (window).naver);
+  delete (/** @type {any} */ (window).MarkerClustering);
   vi.restoreAllMocks();
 });
 
@@ -148,5 +151,28 @@ describe("NaverMapView", () => {
     await flushPromises();
     expect(window.navigator.geolocation.getCurrentPosition).not.toHaveBeenCalled();
     delete (/** @type {any} */ (window.navigator).geolocation);
+  });
+
+  // 클러스터 (세션 435 — 카카오 동등 숫자 묶기)
+  it("클러스터러 로드 시 마커를 setMarkers 로 넘김 (개별 map 부착 안 함)", async () => {
+    setupNaver();
+    render(<NaverMapView filtered={[makeItem(), makeItem({ apt: { id: "t2" } })]} onDetail={vi.fn()} />);
+    await flushPromises();
+    // MarkerClustering 인스턴스의 setMarkers 가 마커 배열로 호출됨
+    const inst = /** @type {any} */ (window).MarkerClustering.mock.results.at(-1).value;
+    expect(inst.setMarkers).toHaveBeenCalled();
+    expect(inst.setMarkers.mock.calls.at(-1)[0]).toHaveLength(2);
+  });
+
+  it("클러스터러 로드 실패 시 개별 마커 폴백 (setMap 으로 직접 부착)", async () => {
+    // MarkerClustering 전역을 비워 로드돼도 생성자 없음 → clustererRef null → 폴백
+    setupNaver();
+    delete (/** @type {any} */ (window).MarkerClustering);
+    render(<NaverMapView filtered={[makeItem()]} onDetail={vi.fn()} />);
+    await flushPromises();
+    await flushPromises(); // SDK 로드 → 클러스터 로드(실패) → finally setReady 체인 2단계 대기
+    // 폴백: Marker 가 생성되고 (개별 map 부착) 크래시 0
+    expect(/** @type {any} */ (window).naver.maps.Marker).toHaveBeenCalled();
+    expect(screen.getByText("1개 단지")).toBeInTheDocument();
   });
 });

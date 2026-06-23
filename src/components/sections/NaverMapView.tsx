@@ -3,7 +3,7 @@ import { C, F, gr } from "@/theme";
 import { SelectedAptCard } from "./SelectedAptCard";
 import {
   NAVER_MAP_DEFAULTS, NAVER_REGION_FIT_MAX_ZOOM, NAVER_GU_FIT_MAX_ZOOM, NAVER_MY_LOC_ZOOM,
-  loadNaverMapSdk, getNaverMaps,
+  loadNaverMapSdk, getNaverMaps, loadNaverMarkerClustering, getMarkerClustering,
 } from "./naverMapHelpers";
 import { shortPrice, buildMarkerSvg } from "./markerSvg";
 import type { MapViewProps } from "@/types/components/MapView.types";
@@ -27,6 +27,8 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
   const markersRef = useRef<unknown[]>([]);
   const markerByIdRef = useRef<Map<string, unknown>>(new Map());
   const myLocMarkerRef = useRef<any>(null);
+  // 클러스터러 — 로드 성공 시 마커를 숫자로 묶음. 실패 시 null → 개별 마커 폴백(카카오 동등).
+  const clustererRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<FilteredItem | null>(null);
   const [markerCount, setMarkerCount] = useState<number | null>(null);
@@ -72,14 +74,38 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
         const listener = maps.Event.addListener(map, "idle", onIdle);
         idleCleanup = () => maps.Event.removeListener?.(listener);
         mapInstanceRef.current = map;
-        setMapInstance(map);
-        setReady(true);
+        // 클러스터 라이브러리 로드 시도 — 성공 시 마커를 숫자로 묶음(카카오 동등). 실패해도 진행(개별 마커 폴백).
+        return loadNaverMarkerClustering()
+          .then(() => {
+            if (cancelled) return;
+            const Clustering = getMarkerClustering();
+            if (Clustering) {
+              // 카카오 MarkerClusterer 스타일 동등 — 인디고 원 + 흰 테두리 + 개수 텍스트. minClusterSize 2.
+              clustererRef.current = new Clustering({
+                map, markers: [], disableClickZoom: false, minClusterSize: 2, maxZoom: 11, gridSize: 120,
+                icons: [{
+                  content: `<div style="width:44px;height:44px;line-height:44px;text-align:center;border-radius:50%;background:${C.indigo};color:#fff;font-weight:700;font-size:13px;border:2px solid rgba(255,255,255,0.85);box-shadow:0 2px 6px rgba(0,0,0,0.3);opacity:0.92;"></div>`,
+                  size: { width: 44, height: 44 }, anchor: { x: 22, y: 22 },
+                }],
+                indexGenerator: [10, 100, 200, 500, 1000],
+                stylingFunction: (clusterMarker: any, count: number) => {
+                  const el = clusterMarker.getElement().querySelector("div");
+                  if (el) el.textContent = String(count);
+                },
+              });
+            }
+          })
+          .catch(() => { /* 클러스터 로드 실패 → clustererRef null → 개별 마커 폴백 */ })
+          .finally(() => {
+            if (!cancelled) { setMapInstance(map); setReady(true); }
+          });
       })
       .catch(err => { if (!cancelled) setError(err.message); });
     return () => {
       cancelled = true;
       if (idleCleanup) idleCleanup();
-      // 마커 detach
+      // 클러스터러·마커 detach
+      if (clustererRef.current) { clustererRef.current.setMarkers([]); clustererRef.current.setMap(null); clustererRef.current = null; }
       for (const m of markersRef.current) (m as any)?.setMap?.(null);
       markersRef.current = [];
       const inst = mapInstanceRef.current as any;
@@ -94,12 +120,14 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
     if (!ready || !mapInstance) return;
     const maps = getNaverMaps();
     if (!maps) return;
-    // 기존 마커 detach
+    // 기존 마커 detach — 클러스터러 관리 마커는 setMarkers([])로, 폴백은 개별 setMap(null).
+    if (clustererRef.current) clustererRef.current.setMarkers([]);
     for (const m of markersRef.current) (m as any)?.setMap?.(null);
     markersRef.current = [];
     markerByIdRef.current = new Map();
     setSelected(null);
 
+    const useCluster = !!clustererRef.current;
     const markers: unknown[] = [];
     for (const item of filtered) {
       const { apt, res } = item;
@@ -109,7 +137,8 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
       const { w, h, svg } = buildMarkerSvg(res.total, grade.c, shortPrice(apt.price));
       const marker = new maps.Marker({
         position: pos,
-        map: mapInstance,
+        // 클러스터러가 관리할 땐 map 미지정(클러스터러가 setMap 제어). 폴백 시에만 map 직접 부착.
+        ...(useCluster ? {} : { map: mapInstance }),
         title: apt.name,
         icon: {
           content: `<img src="data:image/svg+xml,${encodeURIComponent(svg)}" width="${w}" height="${h}" style="display:block" />`,
@@ -124,6 +153,8 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
       if (apt.id) markerByIdRef.current.set(apt.id, marker);
     }
     markersRef.current = markers;
+    // 클러스터러가 있으면 마커를 넘겨 숫자로 묶음(카카오 동등). 없으면 위에서 개별 map 부착됨(폴백).
+    if (useCluster) clustererRef.current.setMarkers(markers);
     setMarkerCount(markers.length);
 
     const regionChanged = deferredRegion !== prevRegionRef.current;
