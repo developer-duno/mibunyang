@@ -1,10 +1,11 @@
 // @ts-check
 // MapView provider 라우터(토글) 테스트 — 네이버 키 설정 환경 (세션 435).
 // 기존 MapView.test.jsx 는 키 미설정(카카오 패스스루) 전제라 분리.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 vi.stubEnv("VITE_NAVER_MAP_CLIENT_ID", "test-naver-key");
+afterAll(() => vi.unstubAllEnvs()); // 파일 경계 누수 방지(MapView.test 오염 차단)
 
 // 두 지도 컴포넌트를 가벼운 스텁으로 — 라우터 분기/토글만 검증(SDK 로드 무관).
 vi.mock("./KakaoMapView", () => ({ KakaoMapView: () => <div data-testid="kakao-view" /> }));

@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import { C, F } from "@/theme";
 import { KakaoMapView } from "./KakaoMapView";
 import { NaverMapView } from "./NaverMapView";
@@ -6,6 +6,7 @@ import { NAVER_MAP_KEY } from "./naverMapHelpers";
 import type { MapViewProps } from "@/types/components/MapView.types";
 
 type Provider = "kakao" | "naver";
+type Viewport = { lat: number; lng: number; level: number };
 const PROVIDER_KEY = "mibunyang_mapProvider";
 
 function readProvider(): Provider {
@@ -38,7 +39,17 @@ export const MapView = memo(function MapView(props: MapViewProps) {
   // 네이버 키 미설정이면 무조건 카카오(가드) — 토글도 숨김.
   const active: Provider = hasNaverKey ? provider : "kakao";
 
-  const mapEl = active === "naver" ? <NaverMapView {...props} /> : <KakaoMapView {...props} />;
+  // provider 별 뷰포트 격리 (세션 435 적대검증 ⑤) — 카카오 level(클수록 축소)과 네이버 zoom(클수록 확대)은
+  // 좌표계가 반대라 한 ref 를 공유하면 토글 시 줌이 엉킨다. 카카오는 App 의 getViewport/onViewportChange 를
+  // 그대로 쓰고(기존 보존 동작 무손상), 네이버는 자체 격리 ref 만 사용(서로 안 섞임).
+  const naverViewportRef = useRef<Viewport | null>(null);
+  const getNaverViewport = useCallback(() => naverViewportRef.current, []);
+  const setNaverViewport = useCallback((v: Viewport) => { naverViewportRef.current = v; }, []);
+
+  // 전환 시 컴포넌트 교체(key=provider) — 한 슬롯에 다른 좌표계 지도가 in-place 잔존하는 것 방지.
+  const mapEl = active === "naver"
+    ? <NaverMapView key="naver" {...props} getViewport={getNaverViewport} onViewportChange={setNaverViewport} />
+    : <KakaoMapView key="kakao" {...props} />;
 
   // 토글 없으면(키 미설정·위젯) 래퍼 없이 그대로 — 기존 테스트의 container.firstChild(지도 루트 div) 가정 보존.
   if (!showToggle) return mapEl;

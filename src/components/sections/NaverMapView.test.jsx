@@ -1,9 +1,11 @@
 // @ts-check
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 
 // 네이버 키를 mock — naverMapHelpers 가 import.meta.env 읽기 전에 설정 (NaverMapView import 보다 먼저).
 vi.stubEnv("VITE_NAVER_MAP_CLIENT_ID", "test-naver-key");
+// 파일 경계 누수 방지 — 정리 안 하면 같은 worker 의 MapView.test 가 키 설정 상태로 보여 토글 래퍼가 생김.
+afterAll(() => vi.unstubAllEnvs());
 
 const { NaverMapView } = await import("./NaverMapView");
 

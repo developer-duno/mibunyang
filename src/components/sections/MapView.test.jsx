@@ -1,7 +1,11 @@
 // @ts-check
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
-import { MapView } from "./MapView";
+// 네이버 키 미설정(카카오 패스스루) 전제 — 다른 테스트 파일의 stubEnv 누수와 무관하게 키 비움 명시.
+// 동적 import 라야 stub 이 naverMapHelpers 모듈 평가보다 먼저 적용됨(정적 import 는 hoisting 으로 먼저 굳음).
+vi.stubEnv("VITE_NAVER_MAP_CLIENT_ID", "");
+afterAll(() => vi.unstubAllEnvs());
+const { MapView } = await import("./MapView");
 
 // 색칠 모드 lazy chunk fetch 무력화 (테스트 환경에서 ChoroplethView lazy import 막음)
 beforeEach(() => {
