@@ -4,6 +4,9 @@
  * 대상: checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge, checkExternalApiStale
  */
 import { describe, it, expect, vi } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 // 모듈 초기화 부수효과 차단 (loadEnv / Supabase)
 vi.mock("@supabase/supabase-js", () => ({ createClient: vi.fn() }));
@@ -587,11 +590,50 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       "housing-permits",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
-      "kosis-unsold", "market-stats", "migration", "schools", "transport",
+      "kosis-unsold", "market-stats", "migration", "schools", "transport-tago",
     ]);
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);
       expect(c.owner).toBeTruthy();
+    }
+  });
+});
+
+describe("EXTERNAL_API_COLLECTORS 라벨 ↔ recordCollectorRun 기록명 동기화 (드리프트 차단, 세션 439)", () => {
+  // 각 collector .mjs 에서 recordCollectorRun 첫 인자 라벨을 정적 추출.
+  // 두 형태 resolve: recordCollectorRun(PHASE) → const PHASE="..." 값 / recordCollectorRun("리터럴").
+  // monitor EXTERNAL_API_COLLECTORS 의 collector 키는 이 기록명과 정확히 일치해야 ⑤ 점검이 매칭됨.
+  // 세션 439 사고: transport-tago.mjs 가 "transport-tago" 를 기록하는데 배열은 "transport" 라
+  // fetchExternalApiRuns(.eq("collector","transport")) 가 0행 → ⑤ 외부 API 침묵 탐지 영구 무력.
+  function extractRecordedLabels() {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), "collectors");
+    /** @type {Set<string>} */
+    const labels = new Set();
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".mjs") || f.includes(".test.")) continue;
+      const src = readFileSync(join(dir, f), "utf8");
+      const phaseM = src.match(/const\s+PHASE\s*=\s*["'`]([^"'`]+)["'`]/);
+      const phase = phaseM ? phaseM[1] : null;
+      for (const m of src.matchAll(/recordCollectorRun\(\s*([^,)]+)/g)) {
+        const arg = m[1].trim();
+        if (arg === "PHASE") {
+          if (phase) labels.add(phase);
+        } else {
+          const lit = arg.match(/^["'`]([^"'`]+)["'`]$/);
+          if (lit) labels.add(lit[1]);
+        }
+      }
+    }
+    return labels;
+  }
+
+  it("각 collector 키가 실제 collector .mjs 의 recordCollectorRun 기록명에 존재한다", () => {
+    const recorded = extractRecordedLabels();
+    for (const { collector } of EXTERNAL_API_COLLECTORS) {
+      expect(
+        recorded.has(collector),
+        `EXTERNAL_API '${collector}' 가 어떤 collector .mjs 의 recordCollectorRun 기록명에도 없음 — 라벨 드리프트 (monitor ⑤ 영구 무력)`,
+      ).toBe(true);
     }
   });
 });

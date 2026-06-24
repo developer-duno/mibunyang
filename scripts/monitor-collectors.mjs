@@ -166,14 +166,17 @@ const KO_FIELD = {
 /**
  * ⑤ 점검 대상 외부 API 의존 collector — silent fail (status=success + ok_count=0 + skip_count=0)
  * 누적 탐지 + 미발화 (최신 행이 stale_days 초과 = 안 돌고 있음) 탐지.
- * 컬럼 진실의 원천 = collector_runs.collector (NOT phase). PHASE 상수 = recordCollectorRun 입력값.
+ * 컬럼 진실의 원천 = collector_runs.collector (NOT phase). ⚠️ collector 키는 각 .mjs 의
+ * recordCollectorRun 첫 인자와 정확히 일치해야 함 — 대부분 PHASE 상수이나 일부(transport-tago 등)는
+ * 리터럴을 따로 박으니 PHASE 값과 다를 수 있음. 신규/수정 시 recordCollectorRun 인자 직독 의무
+ * (세션 439: "transport" 라벨 ≠ 기록명 "transport-tago" 드리프트로 ⑤ 영구 무력 사고).
  * stale_days = 해당 collector cron 주기 + 1주 여유 (월간/일일=14). NEIS schools = incremental yml 매일 발화 + 월간 collect-schools.yml 자매 = 14 (세션 339 정정, 세션 338 3주 cancelled 사고가 35일 한계 안에 묻힌 진앙 해소).
  * 신규 외부 API collector 추가 시 이 배열 1줄 박힘 + checkExternalApiStale 회귀 답습 의무.
  */
 export const EXTERNAL_API_COLLECTORS = [
   { collector: "housing-permits", stale_days: 14, owner: "MOLIT 주택건설실적" },
   { collector: "building-hub",    stale_days: 14, owner: "MOLIT 건축물대장 허브" },
-  { collector: "transport",       stale_days: 14, owner: "TAGO 대중교통" },
+  { collector: "transport-tago",  stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 38, owner: "청약홈 분양일정·평형 (월 13일 cron + 1주 여유)" },
   // ── KOSIS 10종 = 집서버 로컬 러너 수집기 (kosis-local-runner.mjs, 매일 05:30 KST 일자 디스패치).
