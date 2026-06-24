@@ -34,8 +34,10 @@
 | `src/scoring/` 편집 | `Task(subagent_type=scoring-validator)` 의무 | 가중치 합계 / 클램핑 / null 처리 |
 | `scripts/collectors/*.mjs` 편집 | `Task(subagent_type=collector-contract)` 의무 | 배치 / upsert / Promise.all / 에러 |
 | 수집 / API / 렌더 코드 편집 | `Task(subagent_type=null-safety-checker)` 의무 | optional chain / 기본값 / 숫자 포맷 |
-| 보안 영역 (auth/sql/env) 편집 | `security-guidance` 플러그인 자동 검토 | OWASP Top 10 / 비밀키 노출 |
-| `withHandler` / `api/_lib/` 편집 | `Task(subagent_type=null-safety-checker)` + 보안 직접 점검 | CORS / Rate Limit / Admin / null |
+| 보안 영역 (auth/sql/env) 편집 | `Task(subagent_type=security-reviewer)` (세션 439 로컬 핀) + `security-guidance` 플러그인 | XSS·env/secret 노출·인젝션·CORS / OWASP Top 10 |
+| `withHandler` / `api/_lib/` 편집 | `Task(subagent_type=null-safety-checker)` + `Task(subagent_type=code-reviewer)` (세션 439) | withHandler 순서 / 블라인드 / CORS / RateLimit / Admin / null |
+| `supabase/migrations/*.sql` / DB 스키마 편집 | `Task(subagent_type=migration-safety)` (세션 439 로컬 핀) | 공용 테이블 ALTER·security_invoker·롤백·Dashboard 수동 |
+| 커밋/PR 직전 도메인 코드리뷰 | `Task(subagent_type=code-reviewer)` (세션 439) | 표현계층 무변경·memo comparator·블라인드 정책 |
 | catch / try / fallback / silent 처리 변경 | `Task(subagent_type=pr-review-toolkit:silent-failure-hunter)` | 빈 catch / 무로그 fallback (collector_runs silent fail 도메인) |
 
 ### 0-C. 검색·답습 자율 위임 (탐색 비용 임계)

@@ -32,6 +32,9 @@
 - **`cross-validate`** — 커밋/PR 직전 simplify + 5교차검증 병렬 (빌드·스코어링·null·Hook·보안)
 - **`db-quality`** — apartments_flat 품질 지표 재측정 + 세션 318 기준 회귀 점검
 - **`score-recalc`** — 스코어 재계산 + PROFILES 5종 가중치 합계 sanity
+- **`release`** (세션 439) — PR 머지 후 Vercel 배포 확인 + production(`미분양아파트.com`) 라이브 검증 + 👤 잔여 정리. 머지 직후 자동 발동
+- **`worktree-cleanup`** (세션 439) — stale worktree·고아 디렉토리 안전 정리 (메타 확인·미머지 점검 후 PowerShell Remove-Item). worktree 작업 종료 후
+- **`backlog-archive`** (세션 439) — BACKLOG 완료 색인(✅) ARCHIVE 이동 (손실 0 검증). BACKLOG 100KB+ 또는 색인 누적 시
 
 ## UI / 리뷰 / 마무리
 
