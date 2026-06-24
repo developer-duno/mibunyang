@@ -38,10 +38,29 @@
       "Read(./.env.*)",
       "Bash(rm -rf:*)",
       "Bash(git push --force:*)",
-      "Bash(git reset --hard:*)"
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fdx:*)",
+      "Bash(npx supabase db reset:*)",
+      "Bash(npx supabase db push:*)",
+      "Bash(supabase db reset:*)",
+      "Bash(npx vercel --prod:*)",
+      "Bash(vercel --prod:*)",
+      "Bash(npx vercel deploy --prod:*)"
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-dangerous-bash.sh"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
@@ -68,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -f .claude/.build-dirty ]; then echo '[hook] 다수 편집 감지 — npx vite build 권장' >&2; fi; rm -f .claude/.build-dirty .claude/.edit-counter; exit 0"
+            "command": "if [ -f .claude/.build-dirty ]; then echo '[hook] 다수 편집 감지 — npx vite build 권장' >&2; fi; if [ -f .claude/.ts-dirty ]; then OUT=$(npx tsc --noEmit 2>&1); [ $? -ne 0 ] && { echo '[ts-check] 세션 종료 tsc 오류:' >&2; echo \"$OUT\" | tail -8 >&2; }; fi; rm -f .claude/.build-dirty .claude/.edit-counter .claude/.ts-dirty; exit 0"
           }
         ]
       }
