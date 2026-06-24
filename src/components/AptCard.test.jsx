@@ -481,4 +481,39 @@ describe("AptCard", () => {
     });
   });
 
+  describe("교통호재 칩 (세션 440)", () => {
+    it("transitDev 있고 devDist≤2km → '🚆 노선 역' 칩 노출 (파랑 강조, 라벨=2토큰)", () => {
+      const apt = /** @type {any} */ (makeApt({ transitDev: "GTX-A 동탄역 공사중", devDist: 1.5 }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("🚆 GTX-A 동탄역")).toBeInTheDocument();
+    });
+
+    it("devDist>2km → 칩 미노출 (멀면 점수도 낮음, 거짓 강조 차단)", () => {
+      const apt = /** @type {any} */ (makeApt({ transitDev: "GTX-A 동탄역 공사중", devDist: 3.5 }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/🚆/)).toBeNull();
+    });
+
+    it("transitDev '없음' → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ transitDev: "없음", devDist: 1 }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/🚆/)).toBeNull();
+    });
+
+    it("transitDev null → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ transitDev: null, devDist: 1 }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/🚆/)).toBeNull();
+    });
+
+    it("devDist 변경(3.5→1.5) 시 카드 리렌더 (comparator 회귀 가드)", () => {
+      const aptInitial = /** @type {any} */ (makeApt({ transitDev: "GTX-A 동탄역 공사중", devDist: 3.5 }));
+      const aptUpdated = /** @type {any} */ (makeApt({ transitDev: "GTX-A 동탄역 공사중", devDist: 1.5 }));
+      const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+      expect(screen.queryByText(/🚆/)).toBeNull();
+      rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+      expect(screen.getByText("🚆 GTX-A 동탄역")).toBeInTheDocument();
+    });
+  });
+
 });
