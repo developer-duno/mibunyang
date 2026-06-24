@@ -56,6 +56,8 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
     // 교통호재 칩 (세션 440) — devDist ≤2km 일 때만 강조(멀면 점수도 낮음, 거짓 강조 차단). null/"없음" 숨김
     const transitDev = apt.transitDev as string | null | undefined;
     const devDist = apt.devDist as number | null | undefined;
+    // DSR 통과 칩 (세션 440) — true(소수 10.8%)만 초록 강점. false(다수)·null 생략
+    const dsr40pass = apt.dsr40pass as boolean | null | undefined;
     const completionPast = apt.completion ? apt.completion < NOW_YM : false;
     const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
@@ -194,6 +196,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               🚆 {transitDev.split(" ").slice(0, 2).join(" ")}
             </span>
           )}
+          {/* DSR 통과 칩 (세션 440) — true(소수 10.8%)만 초록 강점(자금조달 양호). false(다수)·null 생략 */}
+          {dsr40pass === true && (
+            <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>DSR 통과</span>
+          )}
         </div>
 
         {benefitWon > 0 ? (
@@ -279,9 +285,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (pa.naverSchoolWalkMin !== na.naverSchoolWalkMin) return false;
   if (pa.exclusiveRatio !== na.exclusiveRatio) return false;
   if (pa.heatFuel !== na.heatFuel) return false;
-  // infoRow 칩 신호 (세션 440) — 교통호재(transitDev+devDist)
+  // infoRow 칩 신호 (세션 440) — 교통호재(transitDev+devDist) + DSR 통과
   if (pa.transitDev !== na.transitDev) return false;
   if (pa.devDist !== na.devDist) return false;
+  if (pa.dsr40pass !== na.dsr40pass) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
   return true;
