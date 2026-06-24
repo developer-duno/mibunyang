@@ -1,0 +1,38 @@
+# Dependabot — 의존성 보안 취약점 자동 알림 + 주간 업데이트 PR (세션 440)
+# 비공개 저장소 무료 기능. 라이브 서비스(미분양아파트.com) 보안·데이터 수집 의존성 추적.
+# minor/patch 는 그룹 1 PR 로 묶어 PR 폭주 방지, major 만 개별(호환성 검토 필요).
+# 참고: 프로젝트는 npm `--legacy-peer-deps`(eslint^10 등 peer 미지원, 세션 439 박제) —
+#       Dependabot 이 peer 충돌로 일부 PR 을 스킵할 수 있음. major PR 은 머지 전 CI 확인 의무.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

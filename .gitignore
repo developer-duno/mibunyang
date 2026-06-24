@@ -15,6 +15,7 @@ dist/
 !.claude/DB_QUALITY.md
 !.claude/API_REGISTRY.md
 !.claude/CLAUDE_TOOLBOX.md
+!.claude/PLATFORM_FEATURES.md
 !.claude/claude-security-guidance.md
 !.claude/security-patterns.yaml
 !.claude/GOAL_TEMPLATE.md
