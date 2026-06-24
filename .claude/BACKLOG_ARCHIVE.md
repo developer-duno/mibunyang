@@ -376,3 +376,45 @@ plan: `C:\Users\user\.claude\plans\claude-velvety-map.md`
 - 자매 SIDO_CODES drift 2건 (population-sex-age.mjs L26-31 + naver-presale.mjs L47 세종) — **세션 286 동시 fix** (별도 커밋 2건)
 
 plan: 세션 284 진단 다음 세션 작업 자리
+
+---
+
+## 세션 ~271 이하 완료 색인 (세션 439 감사 — BACKLOG 비대 정리로 이동)
+
+- ✅ 미션 1 공개 API 보안 — rateLimit proxy + dompurify (세션119)
+- ✅ KOSIS Phase 2-A tblId DT_1YL202001E → DT_MLTM_2082 fix (세션222, 커밋 `4c0ffc9`)
+- ✅ Naver Post-Processing 90분 한계 해결 — D-2 split (세션229, 커밋 `c045594`)
+- ❌ MOLIT_KEY 401 — 환각 정정, 운영 영향 0 (로컬 .env 만 영향)
+- ❌ collect-market-stats KOSIS — 환각 정정, KOSIS 측 갱신 지연만 잔존
+- ❌ api_quota 5일 침묵 — False Alarm 확정 (cron 무발화 정상 패턴)
+- ❌ collect-applyhome recordApiQuota — 환각 정정, 커밋 `816664b` 이미 적용
+- ✅ 5% 경고 임계값 경험치 측정 — 보수적 적절 (세션169)
+- ✅ @vercel/kv 3 제거 + @upstash/redis 단독 (세션130, 커밋 `4a90768`)
+- ✅ @vercel/analytics 2 메이저 업그레이드 (세션119, 커밋 `22434c2`)
+- ✅ Node 환경 핀 engines + .nvmrc (세션125, 커밋 `6520ec9`)
+- ✅ @supabase/supabase-js 2.98→2.103 (세션119, 커밋 `73b3295`)
+- ✅ admin/review.js 이메일 RFC 5322 정규식 → isValidEmail() (세션119)
+- ✅ App.jsx 442→354줄 4훅 분리 (세션120)
+- ✅ api/supabase/apartments.js sanitize() 7헬퍼 분리 (세션119)
+- ✅ React.memo comparator 일괄 점검 — AptCard 6필드 + 4파일 안전 확인 (세션159~170, 커밋 `d74b295`)
+- ✅ E2E Playwright webkit 미설치 인프라 이슈 (세션162, PR #4 `927193e`)
+- ✅ LoanRatesSection 금리 탭 Skeleton (세션122)
+- ✅ AdminDashboard 로딩 UI (세션122)
+- ✅ 저장 액션 토스트 피드백 4지점 (세션121)
+- ✅ AdminDashboard 412줄 3분할 (세션138)
+- ✅ InfoPage.jsx 267→60줄 4분할 (세션140)
+- ✅ src/scoring/ JSDoc 7파일 12식별자 (세션122~124)
+- ✅ prices.js ↔ unsold-history.js → createTimeseriesHandler 팩토리 (세션121)
+- ✅ collect-building-hub.mjs HpPermitService 미구독 확정 (세션139)
+- ✅ W6-D 어린이집 cpmsapi021 → regions.childcare JSONB (세션252)
+- ✅ cpmsapi021 50건 한도 해소 — 개발계정 키 제약 확인 + 운영키 교체 후 재수집 (세션275, 커밋 `ea77f25`; count>50 0→368, 강남구 50→163)
+- ✅ W6-D2 cpmsapi030 70필드 단지 매칭 — schools.nearby_childcare (세션252~258)
+- ✅ KOSIS #4 (新)주택보급률 시도 → regions.housing_supply_level (세션259, 커밋 `8f7db36`)
+- ❌ KOSIS #3 준공후 미분양 — 종결 (시군구 단위 unmatched 확정, 세션249)
+- ✅ recordCollectorRun 미호출 8개 수집기 보강 (2026-05-17, 커밋 `10965d4`+`7ba94f3`)
+- ✅ recordApiQuota dry-run 가드 + sbOverride 인자 (테스트 불가 해소) (세션268, 커밋 `787e036`+`a99c528`)
+- ✅ KOSIS #1 매매가격지수 시군구 → market_stats_history.sale_price_index (세션269, 커밋 `2ccf094`~`694c533`; 117시군구×4분기 468행 적재)
+- ✅ KOSIS #2 전세가격지수 시군구 → market_stats_history.jeonse_price_index (세션270; DT_30404_B013 동향조사, 154시군구×23개월 3565행 적재)
+- ✅ KOSIS #5 합계출산율 시군구 → regions.fertility_rate (세션266, 커밋 `6524eea`; DT_1B81A17)
+- ✅ KOSIS #11·#12 의료 의사/병상수 시군구 → regions.doctors_per_1k/hospital_beds_per_1k (세션267, 커밋 `9d625d5`; DT_1YL20981/DT_1YL20971 묶음 collect-medical-access.mjs)
+- ✅ KOSIS Phase 3 시도 경제·교육 4지표 → regions 4컬럼 (세션271, 커밋 `6eba41b`; #6 GRDP INH_1C96_02 / #9 사교육비 DT_1PE105 / #10 사교육참여율 DT_1PE107 / #13 실업률 DT_1DA7104S 묶음 collect-regional-economy.mjs)

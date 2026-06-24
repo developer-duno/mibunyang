@@ -104,10 +104,14 @@ DB 스키마 → 타입 → API → 훅/유틸 → 하위 컴포넌트 → 메�
 - "영향 없음" 판정은 **grep 결과 기반**만 인정
 
 ## Work
+- **feature 브랜치 강제** (세션 439 감사) — 코드 변경 작업은 `main` 에서 직접 하지 말고 `fix/`·`feat/`·`chore/` 브랜치에서. 작업 시작 시 `git branch --show-current` 가 `main` 이면 먼저 브랜치 생성(`git checkout -b <type>/<주제>-s<세션>`). main 직접 push 는 `.claude/hooks/guard-dangerous-bash.sh` 가 차단(exit 2).
+  - 머지: `gh pr create` → CI/e2e/Vercel green → `gh pr merge --squash --delete-branch` → `git checkout main && git pull`.
+  - 단순 문서 1줄·조회는 브랜치 불필요(판단).
 - 계획에 없는 파일 수정/리팩토링 금지 (하고 싶으면 "범위 초과" 표시 후 승인 대기)
 - 단계 끝날 때마다 `npx vite build`
 - 에러 자동 수정 **3회 실패** 시 중단+보고
 - 새 코드에 한국어 주석으로 목적 설명, 기존 네이밍/패턴 따를 것
+- **`public/data/*.json` 커밋 금지** — prebuild/build 산출물. `git checkout public/data` 로 원복. `git add public/data` 는 guard hook 차단.
 
 ## Review (커밋 전 자동 수행)
 1. **simplify** 스킬 — 변경 코드 재사용성/품질/효율 리뷰

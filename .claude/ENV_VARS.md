@@ -56,3 +56,12 @@
 | `NEIS_KEY` | schools-neis | - | 나이스 교육정보 개방포털 |
 | `SCHOOLINFO_KEY` | schools-neis | - | 학교알리미 학생수 |
 | `DART_KEY` | dart-builders | O (DART 활성 시) | OpenDART 시공사 신용 |
+
+## MCP 서버 운영 메모 (세션 439 감사 기록)
+
+- **프로젝트 `.mcp.json`** = `supabase-readonly`(HTTP, read_only) 1개만. MCP 최소주의 — "신기해서 붙인 도구" 0.
+- **`settings.local.json` `disabledMcpjsonServers`** = `["vercel", "supabase", "supabase-readonly"]` 로 셋 다 **개인 로컬에서 비활성**. 이유:
+  - **CLI 우선 원칙** (`.claude/rules/mcp-vs-cli.md`, 글로벌) — Supabase/Vercel 조회·배포는 로컬 CLI(`npx supabase`·`npx vercel`·`gh`)가 MCP 보다 정확. `.env`/앱에 인증 context 이미 잡힘.
+  - 세션 38 사고 답습: Supabase MCP 가 organization 첫 프로젝트만 반환해 30분 헛다리 → 사장님 "mcp 보다 cli 가 낫지 않아?" 지적.
+- **DB 조회는 코드로**: `getSupabase()` (`scripts/collectors/_shared.mjs`) + service key 로 직접 쿼리하는 패턴이 표준. read_only MCP 는 필요 시 local 에서 다시 켤 수 있게 `.mcp.json` 에 정의만 보존.
+- **마이그레이션 적용**: Dashboard SQL Editor 수동 실행이 표준 (`.claude/rules/workflows/workflow-name-hallucination.md`). CLI `supabase db push` 는 `settings.json` deny.

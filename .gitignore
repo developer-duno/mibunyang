@@ -26,9 +26,12 @@ dist/
 !.claude/rules/**
 !.claude/skills/
 !.claude/skills/**
+!.claude/hooks/
+!.claude/hooks/**
 .claude/settings.local.json
 .claude/.edit-counter
 .claude/.build-dirty
+.claude/.ts-dirty
 .claude/worktrees/
 .claude/*.bak-*
 .claude-memory/
