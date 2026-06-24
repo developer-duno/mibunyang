@@ -516,4 +516,33 @@ describe("AptCard", () => {
     });
   });
 
+  describe("DSR 통과 칩 (세션 440)", () => {
+    it("dsr40pass=true → 'DSR 통과' 칩 노출 (초록 강점)", () => {
+      const apt = /** @type {any} */ (makeApt({ dsr40pass: true }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("DSR 통과")).toBeInTheDocument();
+    });
+
+    it("dsr40pass=false → 칩 미노출 (다수라 생략)", () => {
+      const apt = /** @type {any} */ (makeApt({ dsr40pass: false }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText("DSR 통과")).toBeNull();
+    });
+
+    it("dsr40pass null → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ dsr40pass: null }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText("DSR 통과")).toBeNull();
+    });
+
+    it("dsr40pass 변경(false→true) 시 카드 리렌더 (comparator 회귀 가드)", () => {
+      const aptInitial = /** @type {any} */ (makeApt({ dsr40pass: false }));
+      const aptUpdated = /** @type {any} */ (makeApt({ dsr40pass: true }));
+      const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+      expect(screen.queryByText("DSR 통과")).toBeNull();
+      rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+      expect(screen.getByText("DSR 통과")).toBeInTheDocument();
+    });
+  });
+
 });
