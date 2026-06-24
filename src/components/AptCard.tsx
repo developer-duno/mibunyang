@@ -53,6 +53,9 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
     const schoolWalk = apt.naverSchoolWalkMin as number | null | undefined;
     const exclRatio = apt.exclusiveRatio as number | null | undefined;
     const heatFuel = apt.heatFuel as string | null | undefined;
+    // 교통호재 칩 (세션 440) — devDist ≤2km 일 때만 강조(멀면 점수도 낮음, 거짓 강조 차단). null/"없음" 숨김
+    const transitDev = apt.transitDev as string | null | undefined;
+    const devDist = apt.devDist as number | null | undefined;
     const completionPast = apt.completion ? apt.completion < NOW_YM : false;
     const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
@@ -185,6 +188,12 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           {heatFuel === "LPG" && (
             <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>LPG난방</span>
           )}
+          {/* 교통호재 칩 (세션 440) — devDist≤2km 일 때만 파랑 강조(GTX/신설노선 미래가치). 라벨=노선+역 2토큰. 멀면 숨김(점수도 낮음)·"없음"/null 숨김 */}
+          {transitDev && transitDev !== "없음" && devDist != null && devDist <= 2 && (
+            <span style={{ ...S.infoTag, background: C.blueLight, color: C.blue, fontWeight: 700 }}>
+              🚆 {transitDev.split(" ").slice(0, 2).join(" ")}
+            </span>
+          )}
         </div>
 
         {benefitWon > 0 ? (
@@ -270,6 +279,9 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (pa.naverSchoolWalkMin !== na.naverSchoolWalkMin) return false;
   if (pa.exclusiveRatio !== na.exclusiveRatio) return false;
   if (pa.heatFuel !== na.heatFuel) return false;
+  // infoRow 칩 신호 (세션 440) — 교통호재(transitDev+devDist)
+  if (pa.transitDev !== na.transitDev) return false;
+  if (pa.devDist !== na.devDist) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
   return true;
