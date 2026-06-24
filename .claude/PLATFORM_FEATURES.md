@@ -33,6 +33,16 @@
 - `--legacy-peer-deps` 환경(eslint^10 등 peer 미지원, 세션 439 박제) → Dependabot 이 peer 충돌 PR 을 스킵 가능.
 - major 업데이트 PR 은 개별로 뜸 → CI 통과 + 호환성 검토 후 머지. minor/patch 는 그룹 1 PR.
 - PR 라벨 `dependencies`(+`github-actions`) 로 식별.
+- **eslint 10(@eslint/js 10) major 는 머지 금지** — 플러그인 peer 미지원, CI 실패(세션 440 #160·#161 CI FAILURE 확인 후 close). eslint 9 유지.
+- 동시 다수 PR 머지 시 lockfile/workflow 파일 충돌 빈발 → 순차 머지 + 충돌 시 `@dependabot rebase` 코멘트. github-actions PR 들은 같은 38 워크플로 파일을 건드려 서로 충돌.
+
+### ⚠️ Dependabot ↔ 집서버 로컬 러너 의존성 전파 (세션 440 인프라 검토)
+- IP 차단 수집(kosis·childcare·naver)은 **GitHub Actions 아닌 집서버(한국 IP) Windows 스케줄러**가 `kosis-local-runner.mjs`/`childcare-local-runner.mjs` → `spawnSync` 로 collector 실행. collector 는 `_shared.mjs` 의 `@supabase/supabase-js` 사용.
+- 따라서 Dependabot 의 npm 업데이트(예 supabase-js)는 **집서버가 `git pull` + `npm install` 할 때만** 반영됨. 집서버에서 옛 의존성으로 계속 돌 수 있는 drift 지점.
+- **GitHub Actions action 버전업(setup-node v6 등)은 집서버 로컬 러너와 무관**(로컬은 시스템 node 직접 실행, actions 안 씀).
+- setup-node v6 유일 breaking="자동 캐시 npm 한정" → 모든 워크플로가 이미 `cache:'npm'` 명시라 **무영향**. upload-artifact v7·checkout v7 도 현 사용 패턴(persist-credentials·playwright-report 업로드)에 breaking 없음.
+- Cloudflare Tunnel 설정은 **레포 밖**(머신 레벨 cloudflared) → 세션 440 어떤 변경도 Tunnel·집서버 접근에 영향 0.
+- 공유 인프라(supabase DB·data.go.kr·집서버 IP)는 코드가 각 프로젝트 독립 → supabase-js 버전업이 naver-estate-web 에 영향 0(각자 package.json).
 
 ## Vercel 활성 기능 (이미 켜짐 — 세션 440 변경 0)
 
