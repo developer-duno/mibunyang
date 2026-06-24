@@ -58,6 +58,8 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
     const devDist = apt.devDist as number | null | undefined;
     // DSR 통과 칩 (세션 440) — true(소수 10.8%)만 초록 강점. false(다수)·null 생략
     const dsr40pass = apt.dsr40pass as boolean | null | undefined;
+    // 학군 등급 칩 (세션 441) — C(보통, 실측 3.4% 소수)만 주황 약점. A(84% 다수)·B·D(0건)·null 숨김
+    const schoolGrade = apt.schoolGrade as string | null | undefined;
     const completionPast = apt.completion ? apt.completion < NOW_YM : false;
     const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
@@ -200,6 +202,12 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           {dsr40pass === true && (
             <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>DSR 통과</span>
           )}
+          {/* 학군 등급 칩 (세션 441) — C(보통)만 주황 약점 칩. 라이브 실측 분포 A=84.4%·B=12.2%·C=3.4%·D=0%:
+              A 는 다수(84%)라 강조하면 노이즈, D 는 0건. C(3.4% 소수)가 유일한 변별 신호=교육 중시 손님에게 상대적 약점.
+              A·B(양호 다수)·D·null 숨김. schoolGrade=schools-neis A/B/C/D */}
+          {schoolGrade === "C" && (
+            <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>학군 C</span>
+          )}
         </div>
 
         {benefitWon > 0 ? (
@@ -289,6 +297,8 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (pa.transitDev !== na.transitDev) return false;
   if (pa.devDist !== na.devDist) return false;
   if (pa.dsr40pass !== na.dsr40pass) return false;
+  // infoRow 칩 신호 (세션 441) — 학군 등급 (A 강점 / D 약점)
+  if (pa.schoolGrade !== na.schoolGrade) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
   return true;

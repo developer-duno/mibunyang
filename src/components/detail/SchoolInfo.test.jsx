@@ -48,28 +48,46 @@ describe("SchoolInfo", () => {
       nearbySchools: [{ name: "테스트초등학교", type: "초", distance: 500 }],
     });
     render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
-    expect(screen.queryByText("최우수")).toBeNull();
-    expect(screen.queryByText("우수")).toBeNull();
+    expect(screen.queryByText("A")).toBeNull();
+    expect(screen.queryByText("B")).toBeNull();
+    expect(screen.queryByText("C")).toBeNull();
+    expect(screen.queryByText("D")).toBeNull();
   });
 
-  // schoolGrade가 "최우수"이면 배지 표시
-  it("schoolGrade가 '최우수'이면 배지를 표시한다", () => {
+  // 학군 등급 배지 — schools-neis gradeFromScore 가 쓰는 A/B/C/D (세션 441 색 버그 수정)
+  // A=초록(우수) / B=파랑(양호) / C=주황(보통) / D=빨강(미흡)
+  it("schoolGrade가 'A'이면 배지를 초록으로 표시한다", () => {
     const apt = makeApt({
-      schoolGrade: "최우수",
+      schoolGrade: "A",
       nearbySchools: [{ name: "강남초등학교", type: "초", distance: 200 }],
     });
     render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("최우수")).toBeTruthy();
+    const badge = screen.getByText("A");
+    expect(badge).toBeTruthy();
+    // 초록 강조 (#16A34A) — 이전엔 항상 회색으로 떨어지던 버그
+    expect(badge.style.color).toBe("rgb(22, 163, 74)");
   });
 
-  // schoolGrade가 "우수"이면 배지 표시
-  it("schoolGrade가 '우수'이면 배지를 표시한다", () => {
+  it("schoolGrade가 'B'이면 배지를 파랑으로 표시한다", () => {
     const apt = makeApt({
-      schoolGrade: "우수",
+      schoolGrade: "B",
       nearbySchools: [{ name: "서초초등학교", type: "초", distance: 400 }],
     });
     render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("우수")).toBeTruthy();
+    const badge = screen.getByText("B");
+    expect(badge).toBeTruthy();
+    expect(badge.style.color).toBe("rgb(37, 99, 235)");
+  });
+
+  it("schoolGrade가 'D'이면 배지를 빨강으로 표시한다", () => {
+    const apt = makeApt({
+      schoolGrade: "D",
+      nearbySchools: [{ name: "변두리초등학교", type: "초", distance: 600 }],
+    });
+    render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+    const badge = screen.getByText("D");
+    expect(badge).toBeTruthy();
+    expect(badge.style.color).toBe("rgb(220, 38, 38)");
   });
 
   // distance가 null인 경우 "—" 표시
