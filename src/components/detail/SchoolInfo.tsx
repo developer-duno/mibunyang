@@ -12,6 +12,15 @@ const SCHOOL_SUFFIX_RE = /(?:초등학교|중학교|고등학교|학교)$/;
 const SCHOOL_TYPES = Object.freeze(["초", "중", "고"]);
 const isSchool = (name: unknown): name is string => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
 
+// 학군 등급 배지 색 (세션 441) — schoolGrade 는 schools-neis gradeFromScore 가 쓴 A/B/C/D.
+// A 초록(우수) · B 파랑(양호) · C 주황(보통) · D 빨강(미흡). 미지값(레거시 등)은 회색 폴백.
+const GRADE_COLOR: Record<string, { c: string; bg: string }> = {
+  A: { c: C.green, bg: C.greenLight },
+  B: { c: C.blue, bg: C.blueLight },
+  C: { c: C.amber, bg: C.amberLight },
+  D: { c: C.red, bg: C.redLight },
+};
+
 export const SchoolInfo = memo(function SchoolInfo({ apt }: SchoolInfoProps) {
   const schools = ((apt.nearbySchools as SchoolRow[] | undefined) ?? []).filter(s => isSchool(s.name));
   const [expanded, setExpanded] = useState(false);
@@ -26,7 +35,10 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }: SchoolInfoProps) {
     <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>학군 정보</span>
-        {apt.schoolGrade && <span style={{ fontSize: F.xs, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: apt.schoolGrade === "최우수" ? C.greenLight : apt.schoolGrade === "우수" ? C.blueLight : C.slate100, color: apt.schoolGrade === "최우수" ? C.green : apt.schoolGrade === "우수" ? C.blue : C.muted }}>{apt.schoolGrade}</span>}
+        {apt.schoolGrade && (() => {
+          const gc = GRADE_COLOR[apt.schoolGrade as string] ?? { c: C.muted, bg: C.slate100 };
+          return <span style={{ fontSize: F.xs, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: gc.bg, color: gc.c }}>{apt.schoolGrade}</span>;
+        })()}
         {counts.length > 0 && <span style={{ fontSize: F.xs, color: C.muted }}>{counts.join(" · ")} (1km)</span>}
       </div>
 

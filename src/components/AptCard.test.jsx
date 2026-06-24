@@ -545,4 +545,45 @@ describe("AptCard", () => {
     });
   });
 
+  describe("학군 등급 칩 (세션 441)", () => {
+    it("schoolGrade='A' → '학군 A' 칩 노출 (초록 강점)", () => {
+      const apt = /** @type {any} */ (makeApt({ schoolGrade: "A" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("학군 A")).toBeInTheDocument();
+    });
+
+    it("schoolGrade='D' → '학군 D' 칩 노출 (빨강 약점)", () => {
+      const apt = /** @type {any} */ (makeApt({ schoolGrade: "D" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("학군 D")).toBeInTheDocument();
+    });
+
+    it("schoolGrade='B' → 칩 미노출 (중간 다수라 생략)", () => {
+      const apt = /** @type {any} */ (makeApt({ schoolGrade: "B" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/학군 [AD]/)).toBeNull();
+    });
+
+    it("schoolGrade='C' → 칩 미노출 (중간이라 생략)", () => {
+      const apt = /** @type {any} */ (makeApt({ schoolGrade: "C" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/학군 [AD]/)).toBeNull();
+    });
+
+    it("schoolGrade null → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ schoolGrade: null }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/학군 [AD]/)).toBeNull();
+    });
+
+    it("schoolGrade 변경(B→A) 시 카드 리렌더 (comparator 회귀 가드)", () => {
+      const aptInitial = /** @type {any} */ (makeApt({ schoolGrade: "B" }));
+      const aptUpdated = /** @type {any} */ (makeApt({ schoolGrade: "A" }));
+      const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+      expect(screen.queryByText("학군 A")).toBeNull();
+      rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+      expect(screen.getByText("학군 A")).toBeInTheDocument();
+    });
+  });
+
 });
