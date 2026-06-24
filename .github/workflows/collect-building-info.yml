@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@v5
         if: steps.check-day.outputs.skip != 'true'
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         if: steps.check-day.outputs.skip != 'true'
         with:
           node-version: '24'
