@@ -1,0 +1,57 @@
+name: Purge Old Consults
+
+# 보존기간(365일) 경과 상담 기록 자동 파기 (PIPA §21 — 세션 443 D4)
+# privacy.html "상담 신청 정보는 신청일로부터 1년간 보관 후 파기" 약속 이행.
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # 매일 UTC 19:00 = KST 04:30 (상담 적은 새벽)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (파기 대상 건수만, 실제 삭제 안 함)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: data-collection
+  cancel-in-progress: false
+
+jobs:
+  purge-consults:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "::error::SUPABASE_URL, SUPABASE_SERVICE_KEY secret 필요"
+            exit 1
+          fi
+          echo "Secrets validated"
+
+      - name: Purge old consults
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          node scripts/purge-old-consults.mjs $ARGS
