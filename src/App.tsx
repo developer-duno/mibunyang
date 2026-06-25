@@ -185,11 +185,11 @@ export default function App() {
     budgetMin, budgetMax, isLoggedIn, onLoginRequired: () => { setLoginTrigger("map"); setShowLoginPrompt(true); },
   });
 
-  // ── 마케팅 수신 동의 모달 (카카오 신규 가입 직후) ──
-  const { consentOpen, consentSubmitting, openConsent, submitConsent } = useMarketingConsent(showToast);
+  // ── 마케팅 수신 동의 모달 (카카오 신규 가입 직후) + 정보 탭 토글 (D3) ──
+  const { consentOpen, consentSubmitting, consentMarketing, openConsent, submitConsent, initConsent } = useMarketingConsent(showToast);
 
   // ── 카카오 OAuth 콜백 useEffect ──
-  useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, recordView, setTab, showToast, onNeedsMarketingConsent: openConsent });
+  useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, recordView, setTab, showToast, onNeedsMarketingConsent: openConsent, onConsentLoaded: initConsent });
 
   // ── containerMaxWidth ──
   const containerMaxWidth = (admin.adminLoggedIn && tab === "admin") ? 1200 : isDesktop ? 1200 : isPC ? 960 : 520;
@@ -364,7 +364,9 @@ export default function App() {
         <InfoPage isLoggedIn={isLoggedIn} adminLoggedIn={admin.adminLoggedIn}
           onAdminLoginClick={() => setTab("adminLogin")} onKakaoLogin={() => kakao.initKakaoLogin(null)}
           kakaoLoading={kakao.kakaoLoading} onLogout={() => handleNavClick("logout")}
-          onConsultClick={() => handleNavClick("consult")} />
+          onConsultClick={() => handleNavClick("consult")}
+          consentMarketing={consentMarketing} consentSubmitting={consentSubmitting}
+          onToggleMarketingConsent={() => submitConsent(consentMarketing !== true)} />
       ) : tab === "consult" ? (
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}>

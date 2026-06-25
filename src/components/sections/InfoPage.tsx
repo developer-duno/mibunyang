@@ -25,8 +25,11 @@ type InfoPageProps = {
   kakaoLoading?: boolean;
   onLogout: () => void;
   onConsultClick: () => void;
+  consentMarketing?: boolean | null; // 현재 마케팅 동의 상태 (true/false/null) — D3
+  consentSubmitting?: boolean;        // 동의 토글 처리 중
+  onToggleMarketingConsent?: () => void; // 마케팅 동의 켜기/끄기
 };
-export const InfoPage = memo(function InfoPage({ isLoggedIn, adminLoggedIn, onAdminLoginClick, onKakaoLogin, kakaoLoading, onLogout, onConsultClick }: InfoPageProps) {
+export const InfoPage = memo(function InfoPage({ isLoggedIn, adminLoggedIn, onAdminLoginClick, onKakaoLogin, kakaoLoading, onLogout, onConsultClick, consentMarketing, consentSubmitting, onToggleMarketingConsent }: InfoPageProps) {
   return (
     <div style={{ padding: "0 16px", maxWidth: 640, margin: "0 auto" }}>
 
@@ -91,6 +94,43 @@ export const InfoPage = memo(function InfoPage({ isLoggedIn, adminLoggedIn, onAd
       ) : (
         <div style={cardStyle}>
           <div style={{ fontSize: F.sm, color: C.sub, marginBottom: 8 }}>로그인 상태입니다.</div>
+
+          {/* 마케팅 수신 동의 토글 (D3) — 일반 손님만. privacy.html "언제든 철회 가능" 약속 이행 */}
+          {!adminLoggedIn && onToggleMarketingConsent && (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+              padding: "12px 14px", marginBottom: 10,
+              background: C.bg, borderRadius: 8, border: `1px solid ${C.border}`,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: F.sm, fontWeight: 600, color: C.text }}>마케팅 정보 수신</div>
+                <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.5, marginTop: 2 }}>
+                  신규 분양 알림·맞춤 추천·이벤트 소식{consentMarketing === true ? " 받는 중" : consentMarketing === false ? " 받지 않음" : " 미선택"}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={consentMarketing === true}
+                aria-label="마케팅 정보 수신 동의"
+                disabled={consentSubmitting}
+                onClick={onToggleMarketingConsent}
+                style={{
+                  flexShrink: 0, width: 52, height: 30, borderRadius: 15, border: "none",
+                  background: consentMarketing === true ? C.green : C.borderStrong,
+                  cursor: consentSubmitting ? "default" : "pointer", position: "relative",
+                  transition: "background .15s", opacity: consentSubmitting ? 0.6 : 1,
+                }}
+              >
+                <span style={{
+                  position: "absolute", top: 3, left: consentMarketing === true ? 25 : 3,
+                  width: 24, height: 24, borderRadius: "50%", background: C.white,
+                  transition: "left .15s", boxShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                }} />
+              </button>
+            </div>
+          )}
+
           <button type="button" onClick={onLogout} style={{
             background: C.slate100, border: `1px solid ${C.border}`, color: C.sub, fontSize: F.sm, fontWeight: 600,
             cursor: "pointer", padding: "10px 16px", borderRadius: 6, minHeight: 40

@@ -80,6 +80,39 @@ describe("InfoPage", () => {
     expect(screen.queryByText(/카카오로 시작하기/)).toBeNull();
   });
 
+  // 마케팅 수신 동의 토글 (D3) — privacy.html "언제든 철회 가능" 약속 이행
+  it("로그인 일반 손님이면 마케팅 동의 토글 노출 + 동의 상태 반영", () => {
+    render(<InfoPage {...makeProps({ isLoggedIn: true, consentMarketing: true, onToggleMarketingConsent: vi.fn() })} />);
+    const sw = screen.getByRole("switch", { name: "마케팅 정보 수신 동의" });
+    expect(sw).toBeTruthy();
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText(/받는 중/)).toBeTruthy();
+  });
+
+  it("마케팅 동의 거부(false) 상태면 토글 꺼짐 표시", () => {
+    render(<InfoPage {...makeProps({ isLoggedIn: true, consentMarketing: false, onToggleMarketingConsent: vi.fn() })} />);
+    const sw = screen.getByRole("switch", { name: "마케팅 정보 수신 동의" });
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText(/받지 않음/)).toBeTruthy();
+  });
+
+  it("토글 클릭 시 onToggleMarketingConsent 호출", () => {
+    const onToggle = vi.fn();
+    render(<InfoPage {...makeProps({ isLoggedIn: true, consentMarketing: false, onToggleMarketingConsent: onToggle })} />);
+    fireEvent.click(screen.getByRole("switch", { name: "마케팅 정보 수신 동의" }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("비로그인이면 마케팅 동의 토글 숨김", () => {
+    render(<InfoPage {...makeProps({ isLoggedIn: false, onToggleMarketingConsent: vi.fn() })} />);
+    expect(screen.queryByRole("switch", { name: "마케팅 정보 수신 동의" })).toBeNull();
+  });
+
+  it("관리자 로그인이면 마케팅 동의 토글 숨김 (손님 전용)", () => {
+    render(<InfoPage {...makeProps({ isLoggedIn: true, adminLoggedIn: true, consentMarketing: true, onToggleMarketingConsent: vi.fn() })} />);
+    expect(screen.queryByRole("switch", { name: "마케팅 정보 수신 동의" })).toBeNull();
+  });
+
   // 관리자 입구 — 작은 텍스트 링크 (관리자 유일 입구, 세션 405 결정)
   it("관리자 미로그인이면 '관리자 로그인' 링크 표시 + 클릭 시 onAdminLoginClick 호출", () => {
     const onAdminLoginClick = vi.fn();

@@ -232,6 +232,7 @@ export interface KakaoCallbackResult {
   role?: string;
   pendingDetail?: string | null;
   needsMarketingConsent?: boolean; // 신규 가입(또는 미선택) 시 마케팅 동의 모달 표시 신호
+  consentMarketing?: boolean | null; // 현재 마케팅 동의 상태 (true/false/null) — 정보 탭 토글 표시용 (D3)
   error?: string;
   statusCode?: number;
 }

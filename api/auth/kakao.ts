@@ -208,6 +208,9 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       // 동의 미선택 = boolean 이 아닌 모든 값. 신규(null) + 레거시 사용자(필드 자체 없음 → undefined)
       // 둘 다 포착해야 함. `=== null` 은 undefined 를 놓쳐 본 커밋 이전 가입자에게 모달이 영영 안 뜸. (세션 427 적대검증)
       needsMarketingConsent: user!.consentMarketing !== true && user!.consentMarketing !== false,
+      // 현재 마케팅 동의 상태 — 정보 탭 토글 UI 가 켜짐/꺼짐 표시에 사용 (D3, 세션 443).
+      // true=동의 / false=거부 / null=미선택(needsMarketingConsent 로도 포착).
+      consentMarketing: user!.consentMarketing ?? null,
     });
   } catch (err) {
     console.error("[auth/kakao] error:", err instanceof Error ? err.message : String(err));
