@@ -27,10 +27,13 @@ const mockRange = vi.fn().mockResolvedValue({ data: [], error: null, count: 0 })
 const mockOrder2 = vi.fn().mockReturnValue({ range: mockRange }); // id tiebreaker (2번째 order)
 const mockOrder = vi.fn().mockReturnValue({ order: mockOrder2 });
 const mockSelect = vi.fn().mockReturnValue({ order: mockOrder });
+// handleDelete: .delete().eq()
+const mockDeleteEq = vi.fn().mockResolvedValue({ error: null });
+const mockDelete = vi.fn().mockReturnValue({ eq: mockDeleteEq });
 
 vi.mock("./_lib/supabase.js", () => ({
   getSupabase: vi.fn(() => ({ from: vi.fn(() => ({ insert: mockInsert })) })),
-  getMibuyangSupabase: vi.fn(() => ({ from: vi.fn(() => ({ select: mockSelect })) })),
+  getMibuyangSupabase: vi.fn(() => ({ from: vi.fn(() => ({ select: mockSelect, delete: mockDelete })) })),
 }));
 
 beforeEach(() => {
@@ -39,6 +42,8 @@ beforeEach(() => {
   mockRange.mockResolvedValue({ data: [], error: null, count: 0 });
   mockOrder2.mockReturnValue({ range: mockRange });
   mockOrder.mockReturnValue({ order: mockOrder2 });
+  mockDeleteEq.mockResolvedValue({ error: null });
+  mockDelete.mockReturnValue({ eq: mockDeleteEq });
 });
 
 const { default: handlerImport } = await import("./consults.js");
@@ -62,6 +67,7 @@ function makeBody(overrides: Record<string, any> = {}) {
     budgetMax: "50000",
     consultType: "방문상담",
     message: "상담 희망합니다",
+    consent: true,
     ...overrides,
   };
 }
@@ -93,6 +99,27 @@ describe("consults handler", () => {
   });
 
   // --- POST 검증 에러 ---
+  it("POST: 개인정보 동의(consent) 없으면 400을 반환한다 (PIPA §15)", async () => {
+    const res = makeRes();
+    await handler(makePostReq({ consent: undefined }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ ok: false, error: "개인정보 수집·이용 동의가 필요합니다" });
+  });
+
+  it("POST: consent 가 true 가 아니면(false) 400을 반환한다", async () => {
+    const res = makeRes();
+    await handler(makePostReq({ consent: false }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("POST: 정상 신청 시 insert 에 consent_at 이 포함된다", async () => {
+    const res = makeRes();
+    await handler(makePostReq(), res);
+    expect(res.status).toHaveBeenCalledWith(201);
+    const inserted = mockInsert.mock.calls[0][0];
+    expect(inserted.consent_at).toEqual(expect.any(String));
+  });
+
   it("POST: 이름 미입력 시 400을 반환한다", async () => {
     const res = makeRes();
     await handler(makePostReq({ name: "" }), res);
@@ -250,10 +277,58 @@ describe("consults handler", () => {
     expect(res.status).toHaveBeenCalledWith(500);
   });
 
+  // --- DELETE (관리자 상담 기록 파기, 세션 442) ---
+  it("DELETE: 인증 헤더 없이 요청 시 401을 반환한다", async () => {
+    const res = makeRes();
+    await handler({ method: "DELETE", headers: {}, query: { id: "1" } }, res);
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it("DELETE: 비관리자(user) 토큰은 403을 반환한다", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "user@test.com", role: "user" });
+    const res = makeRes();
+    await handler({ method: "DELETE", headers: { authorization: "Bearer user-token" }, query: { id: "1" } }, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("DELETE: 관리자 + 유효 id 면 200 + delete().eq(id) 호출", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    const res = makeRes();
+    await handler({ method: "DELETE", headers: { authorization: "Bearer valid-token" }, query: { id: "7" } }, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ ok: true });
+    expect(mockDeleteEq).toHaveBeenCalledWith("id", 7);
+  });
+
+  it("DELETE: 관리자지만 id 가 없거나 비정수면 400을 반환한다", async () => {
+    (verifyToken as any).mockReturnValue({ email: "admin@test.com", role: "admin" });
+    await handler({ method: "DELETE", headers: { authorization: "Bearer t" }, query: {} }, makeRes());
+    expect(mockDeleteEq).not.toHaveBeenCalled();
+    const res2 = makeRes();
+    await handler({ method: "DELETE", headers: { authorization: "Bearer t" }, query: { id: "abc" } }, res2);
+    expect(res2.status).toHaveBeenCalledWith(400);
+  });
+
+  it("DELETE: body 로 id 를 받아도 동작한다", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    const res = makeRes();
+    await handler({ method: "DELETE", headers: { authorization: "Bearer valid-token" }, body: { id: 3 }, query: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockDeleteEq).toHaveBeenCalledWith("id", 3);
+  });
+
+  it("DELETE: Supabase 삭제 실패 시 500을 반환한다", async () => {
+    (verifyToken as any).mockReturnValueOnce({ email: "admin@test.com", role: "admin" });
+    mockDeleteEq.mockResolvedValueOnce({ error: new Error("DB error") });
+    const res = makeRes();
+    await handler({ method: "DELETE", headers: { authorization: "Bearer valid-token" }, query: { id: "1" } }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+
   // --- 기타 ---
   it("지원하지 않는 메서드는 405를 반환한다", async () => {
     const res = makeRes();
-    await handler({ method: "DELETE", headers: {} }, res);
+    await handler({ method: "PUT", headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(405);
   });
 });

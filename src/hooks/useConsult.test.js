@@ -45,13 +45,25 @@ describe('useConsult', () => {
     expect(showToast).toHaveBeenCalledWith("이름과 연락처를 입력해주세요");
   });
 
+  // PIPA §15: 개인정보 동의 미체크 시 제출 차단 (fetch 미호출)
+  it('동의 미체크 시 검증 실패 + fetch 미호출', async () => {
+    const showToast = vi.fn();
+    globalThis.fetch = mockFetchSuccess();
+    const { result } = renderHook(() => useConsult(showToast, ["1"]));
+    act(() => { result.current.setConsultForm((f) => ({ ...f, name: "홍길동", phone: "010-1234-5678", consent: false })); });
+    await act(async () => { await result.current.handleConsultSubmit(); });
+    expect(showToast).toHaveBeenCalledWith("개인정보 수집·이용 동의가 필요합니다");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(result.current.consultSubmitted).toBe(false);
+  });
+
   // API 성공 케이스
   it('정상 제출 → API POST 호출 + consultSubmitted=true', async () => {
     const showToast = vi.fn();
     globalThis.fetch = mockFetchSuccess();
     const { result } = renderHook(() => useConsult(showToast, ["1", "2"]));
     act(() => {
-      result.current.setConsultForm((f) => ({ ...f, name: "홍길동", phone: "010-1234-5678" }));
+      result.current.setConsultForm((f) => ({ ...f, name: "홍길동", phone: "010-1234-5678", consent: true }));
     });
     await act(async () => { await result.current.handleConsultSubmit(); });
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/consults", expect.objectContaining({ method: "POST" }));
@@ -65,7 +77,7 @@ describe('useConsult', () => {
     globalThis.fetch = mockFetchNetworkError();
     const { result } = renderHook(() => useConsult(showToast, ["10"]));
     act(() => {
-      result.current.setConsultForm((f) => ({ ...f, name: "김철수", phone: "010-0000-0000" }));
+      result.current.setConsultForm((f) => ({ ...f, name: "김철수", phone: "010-0000-0000", consent: true }));
     });
     await act(async () => { await result.current.handleConsultSubmit(); });
     expect(result.current.consultSubmitted).toBe(true);
@@ -86,7 +98,7 @@ describe('useConsult', () => {
     globalThis.fetch = /** @type {typeof fetch} */ (vi.fn(() => new Promise(resolve => { resolvePromise = resolve; })));
     const { result } = renderHook(() => useConsult(showToast, []));
     act(() => {
-      result.current.setConsultForm((f) => ({ ...f, name: "테스트", phone: "010-1111-2222" }));
+      result.current.setConsultForm((f) => ({ ...f, name: "테스트", phone: "010-1111-2222", consent: true }));
     });
     // 제출 시작 → submitting=true
     /** @type {Promise<any> | undefined} */

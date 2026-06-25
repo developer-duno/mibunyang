@@ -1,8 +1,14 @@
-// CORS 허용 Origin (프로덕션 + Vercel 프리뷰 + 로컬)
-const ALLOWED_ORIGINS = [
-  /^https:\/\/mibunyang[.-].*\.vercel\.app$/,
-  /^https?:\/\/localhost(:\d+)?$/,
-];
+// CORS 허용 Origin.
+// 프리뷰 정규식은 Vercel 배포 URL 패턴 `<project>-<hash>-<team-slug>.vercel.app` 에 맞춰
+// 팀 슬러그(developer-dunos-projects)를 앵커링한다. 옛 `mibunyang[.-].*` 는 공격자가
+// `mibunyang-evil.vercel.app`·`mibunyang.attacker.vercel.app` 같은 임의 프로젝트를
+// vercel.app 에 무료 배포해 매칭 origin 을 만들 수 있어 좁혔다(세션 442 보안 감사 #5).
+// 프로덕션 도메인(미분양아파트.com)·`mibunyang.vercel.app` 은 VERCEL_URL env 매칭으로 통과.
+const PREVIEW_ORIGIN = /^https:\/\/mibunyang-[a-z0-9-]+-developer-dunos-projects\.vercel\.app$/;
+// localhost 는 개발/프리뷰 환경에서만 허용(프로덕션 번들에서 제외, 세션 442 #6).
+const LOCALHOST_ORIGIN = /^https?:\/\/localhost(:\d+)?$/;
+const IS_PRODUCTION = process.env.VERCEL_ENV === "production";
+const ALLOWED_ORIGINS = IS_PRODUCTION ? [PREVIEW_ORIGIN] : [PREVIEW_ORIGIN, LOCALHOST_ORIGIN];
 
 type ReqLike = {
   headers: { origin?: string };

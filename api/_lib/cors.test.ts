@@ -32,10 +32,23 @@ describe("getAllowedOrigin", () => {
     expect(getAllowedOrigin(req)).toBe("http://localhost");
   });
 
-  // 정상: Vercel 프리뷰 URL 허용
-  it("Vercel 프리뷰 URL을 허용한다", () => {
-    const req = makeReq("https://mibunyang-abc123.vercel.app");
-    expect(getAllowedOrigin(req)).toBe("https://mibunyang-abc123.vercel.app");
+  // 정상: Vercel 프리뷰 URL 허용 (팀 슬러그 앵커링 — 세션 442 #5)
+  it("Vercel 프리뷰 URL(팀 슬러그 포함)을 허용한다", () => {
+    const req = makeReq("https://mibunyang-abc123-developer-dunos-projects.vercel.app");
+    expect(getAllowedOrigin(req)).toBe("https://mibunyang-abc123-developer-dunos-projects.vercel.app");
+  });
+
+  // 보안: 공격자가 만들 수 있는 vercel.app 서브도메인 차단 (세션 442 #5)
+  it("팀 슬러그 없는 mibunyang-*.vercel.app 은 차단한다", () => {
+    expect(getAllowedOrigin(makeReq("https://mibunyang-evil.vercel.app"))).toBeNull();
+  });
+
+  it("점 서브도메인 mibunyang.attacker.vercel.app 은 차단한다", () => {
+    expect(getAllowedOrigin(makeReq("https://mibunyang.attacker.vercel.app"))).toBeNull();
+  });
+
+  it("팀 슬러그를 위조한 다른 팀 프리뷰는 차단한다", () => {
+    expect(getAllowedOrigin(makeReq("https://mibunyang-abc-evil-team.vercel.app"))).toBeNull();
   });
 
   // 정상: VERCEL_URL 환경변수 일치

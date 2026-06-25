@@ -9,6 +9,7 @@ export interface ConsultForm {
   budgetMax: string;
   consultType: string;
   message: string;
+  consent: boolean;
 }
 
 export interface SubmittedConsult extends ConsultForm {
@@ -17,7 +18,7 @@ export interface SubmittedConsult extends ConsultForm {
 }
 
 export function useConsult(showToast: (_msg: string) => void, favoriteIds: string[]) {
-  const [consultForm, setConsultForm] = useState<ConsultForm>({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
+  const [consultForm, setConsultForm] = useState<ConsultForm>({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "", consent: false });
   const [consultSubmitted, setConsultSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedConsults, setSubmittedConsults] = useState<SubmittedConsult[]>([]);
@@ -25,6 +26,10 @@ export function useConsult(showToast: (_msg: string) => void, favoriteIds: strin
   const handleConsultSubmit = useCallback(async () => {
     if (!consultForm.name?.trim() || !consultForm.phone?.trim()) {
       showToast("이름과 연락처를 입력해주세요");
+      return;
+    }
+    if (consultForm.consent !== true) {
+      showToast("개인정보 수집·이용 동의가 필요합니다");
       return;
     }
     if (submitting) return;
