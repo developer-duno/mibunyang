@@ -80,6 +80,7 @@
 | `fill-missing-data.yml` | **Phase 1+2 만 잔존** — Phase 1 좌표 backfill (geocode-missing+reverse-geocode) + Phase 2 matrix 3 일꾼 (sync-naver-complex+calc-floors+regulation-seed). **세션 308 (PR #11)**: Phase 3+4+5 일괄 폐기 — 외부 cron 가진 11 일꾼 (transport-tago/infra-kakao/environment/noise-estimate/noxious/dart-builders/molit-building-info/population/migration/collect-trades/trade-stats) 제외 + `audit-fill-matrix.mjs` CI 가드 신규. 5/31 발화 6번째 누적 cancelled 차단. 직전: 세션 273 calc 그룹 분리, 세션 291 phase2-calc 6→3, 세션 298 phase3 timeout 60→120, 세션 306 schools-neis 제거 |
 | `geocode-missing.yml` | 좌표 누락 지오코딩 |
 | `reverse-geocode.yml` | 좌표 → 주소 역지오코딩 |
+| `purge-consults.yml` | 보존기간(365일) 경과 상담 자동 파기 (매일 KST 04:30, PIPA §21 — 세션 443 D4). `collect-*` 패턴 밖이라 monitor/audit 무관, 실패 시 `collector_runs` status=failure 기록 |
 
 > 세션 248: `apply-migration.yml` 폐기 (실제 SQL 실행 0건 사고). DDL 적용 = 사용자 Dashboard SQL Editor 직접 실행 표준 (supabase/CLAUDE.md "Dashboard SQL Editor 수동 실행" 절 참조).
 
