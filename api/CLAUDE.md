@@ -122,6 +122,13 @@ export default withHandler({
 
 ## 비로그인 블라인드 정책
 
+> ⚠️ **블라인드 = UX 로그인 유도이지 서버측 데이터 보호가 아님 (세션 442 보안 감사 #4).**
+> `GET /api/supabase/apartments` 는 인증 없이(`rateLimit:"proxy"` 만) `catsCache`(점수)와 전체
+> 상세를 반환한다. 클라의 "??" 블러는 브라우저가 이미 받은 데이터 위 표시 처리일 뿐, `curl`·
+> DevTools 로 우회 가능하다. 이는 의도된 제품 결정(점수는 공개, 로그인은 UX 유인) — 노출 데이터는
+> 공개 부동산 분석값이라 비밀·PII 아님. **점수/상세를 진짜로 보호해야 하면** 이 엔드포인트에 JWT
+> 게이트를 걸고 미인증 응답에서 `catsCache` 등 점수 필드를 strip 해야 한다(현재 미적용).
+
 - AptCard: 점수 블러("??") + 상세/지도 LoginPromptModal
 - CompareSheet: 점수 "??" 텍스트 치환 (CSS blur 아닌 DOM 미노출), export/공유 숨김
 - LoginPromptModal Analytics: trigger prop (detail/map), 4개 이벤트

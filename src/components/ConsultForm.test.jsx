@@ -69,16 +69,41 @@ describe("ConsultForm", () => {
     expect(showToast).toHaveBeenCalledWith("목록에서 관심매물을 1개 이상 추가해주세요");
   });
 
-  // 유효한 폼 제출 시 onSubmit 호출
+  // 유효한 폼 제출 시 onSubmit 호출 (동의 포함)
   it("유효한 폼 제출 시 onSubmit 호출", () => {
     const onSubmit = vi.fn();
     render(<ConsultForm {...makeProps({
-      form: makeForm({ name: "홍길동", phone: "010-1234-5678" }),
+      form: makeForm({ name: "홍길동", phone: "010-1234-5678", consent: true }),
       favoriteIds: [1],
       onSubmit,
     })} />);
     fireEvent.click(screen.getByText("상담 신청하기"));
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  // 개인정보 동의 미체크 시 제출 차단 (PIPA §15)
+  it("동의 미체크 시 상담 신청하면 토스트 + onSubmit 미호출", () => {
+    const showToast = vi.fn();
+    const onSubmit = vi.fn();
+    render(<ConsultForm {...makeProps({
+      form: makeForm({ name: "홍길동", phone: "010-1234-5678", consent: false }),
+      favoriteIds: [1],
+      onSubmit,
+      showToast,
+    })} />);
+    fireEvent.click(screen.getByText("상담 신청하기"));
+    expect(showToast).toHaveBeenCalledWith("개인정보 수집·이용 동의가 필요합니다");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // 동의 체크박스 렌더링 + 클릭 시 updateField 호출
+  it("개인정보 동의 체크박스 렌더링 및 토글", () => {
+    const setForm = vi.fn();
+    render(<ConsultForm {...makeProps({ form: makeForm({ name: "홍길동", phone: "010-1234-5678" }), setForm })} />);
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox).toBeInTheDocument();
+    fireEvent.click(checkbox);
+    expect(setForm).toHaveBeenCalledWith(expect.objectContaining({ consent: true }));
   });
 
   // 관심매물 빈 상태 안내

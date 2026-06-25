@@ -93,6 +93,35 @@ describe("AdminConsults", () => {
     expect(screen.queryByText(/더 보기/)).toBeNull();
   });
 
+  it("삭제 버튼 클릭 → confirm 후 DELETE 호출 + 행 제거", async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce({ json: () => Promise.resolve({ ok: true, count: 1, data: [row("c1")] }) })
+      .mockResolvedValueOnce({ json: () => Promise.resolve({ ok: true }) });
+    vi.stubGlobal("fetch", f);
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    render(<AdminConsults aptNames={NAMES} />);
+    expect(await screen.findByText("고객c1")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("고객c1 상담 기록 삭제"));
+    // DELETE 호출 URL 검증
+    await waitFor(() => expect(f).toHaveBeenCalledTimes(2));
+    expect(f.mock.calls[1][0]).toBe("/api/consults?id=c1");
+    expect(f.mock.calls[1][1]).toMatchObject({ method: "DELETE", headers: { Authorization: "Bearer admin-token" } });
+    // 행 제거 확인
+    await waitFor(() => expect(screen.queryByText("고객c1")).toBeNull());
+  });
+
+  it("삭제 confirm 취소 시 DELETE 미발화", async () => {
+    const f = vi.fn().mockResolvedValueOnce({ json: () => Promise.resolve({ ok: true, count: 1, data: [row("c1")] }) });
+    vi.stubGlobal("fetch", f);
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    render(<AdminConsults aptNames={NAMES} />);
+    expect(await screen.findByText("고객c1")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("고객c1 상담 기록 삭제"));
+    // confirm=false → 추가 fetch 없음 (최초 1회만)
+    await waitFor(() => expect(f).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("고객c1")).toBeTruthy();
+  });
+
   it("더 보기 응답에 경계 중복 id 가 섞여도 화면 중복 0 (dedup)", async () => {
     const f = vi.fn()
       .mockResolvedValueOnce({ json: () => Promise.resolve({ ok: true, count: 3, data: [row("c1"), row("c2")] }) })

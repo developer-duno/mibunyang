@@ -44,6 +44,7 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
     if (!String(form.name ?? "").trim()) { showToast("이름을 입력해주세요"); return; }
     if (!String(form.phone ?? "").trim()) { showToast("연락처를 입력해주세요"); return; }
     if (favoriteIds.length === 0) { showToast("목록에서 관심매물을 1개 이상 추가해주세요"); return; }
+    if (form.consent !== true) { showToast("개인정보 수집·이용 동의가 필요합니다"); return; }
     onSubmit();
   };
 
@@ -132,6 +133,20 @@ export const ConsultForm = memo(function ConsultForm({ scored, favoriteIds, setF
           <label htmlFor="consult-msg" style={labelStyle}>추가 메시지</label>
           <textarea id="consult-msg" placeholder="궁금한 점이나 요청 사항을 적어주세요" value={form.message} onChange={e => updateField("message", e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
         </div>
+
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: F.xs, color: C.sub, margin: "4px 0 16px", cursor: "pointer", lineHeight: 1.5 }}>
+          <input
+            type="checkbox"
+            checked={form.consent === true}
+            onChange={e => updateField("consent", e.target.checked)}
+            aria-required="true"
+            style={{ marginTop: 2, minWidth: 16, minHeight: 16 }}
+          />
+          <span>
+            <span style={{ color: C.red }} aria-hidden="true">*</span> 상담 연결을 위해 이름·연락처 등 개인정보 수집·이용에 동의합니다.{" "}
+            <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: C.indigo, textDecoration: "underline" }}>개인정보 처리방침</a>에 따라 보관·관리됩니다.
+          </span>
+        </label>
 
         <button onClick={handleSubmit} disabled={submitted} style={{
           width: "100%", padding: "14px", fontSize: F.base, fontWeight: 800, color: C.white, background: submitted ? C.muted : C.indigo,

@@ -69,7 +69,7 @@ export function useAppNavigation({
       const b = budgetRef.current;
       if (c.consultSubmitted) {
         c.setConsultSubmitted(false);
-        c.setConsultForm({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "" });
+        c.setConsultForm({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "", consent: false });
       } else {
         c.setConsultForm(prev => ({
           ...prev,

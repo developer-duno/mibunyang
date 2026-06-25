@@ -64,6 +64,28 @@ export const AdminConsults = memo(function AdminConsults({ aptNames }: AdminCons
       .finally(() => { if (mountedRef.current) setLoadingMore(false); });
   }, [loadingMore, consults.length]);
 
+  const handleDelete = useCallback((id: string | undefined) => {
+    if (id == null) return;
+    if (!window.confirm("이 상담 기록을 삭제할까요? 개인정보(이름·연락처)가 영구 삭제됩니다.")) return;
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    fetch(`/api/consults?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then((j: { ok?: boolean; error?: string }) => {
+        if (!mountedRef.current) return;
+        if (j.ok) {
+          setConsults(cur => cur.filter(c => c.id !== id));
+          setTotal(t => (typeof t === "number" ? Math.max(0, t - 1) : t));
+        } else {
+          setError(j.error || "삭제에 실패했습니다");
+        }
+      })
+      .catch(() => { if (mountedRef.current) setError("서버 연결 실패"); });
+  }, []);
+
   const hasMore = total != null && consults.length < total;
 
   return (
@@ -88,9 +110,17 @@ export const AdminConsults = memo(function AdminConsults({ aptNames }: AdminCons
             const names = c.interestedApts.map(id => aptNames.get(id) ?? id);
             return (
               <div key={c.id} style={{ background: C.card, borderRadius: 10, border: `1px solid ${C.border}`, padding: 14, marginBottom: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
                   <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>{c.name}</span>
-                  <span style={{ fontSize: F.micro, color: C.muted }}>{c.submittedAt ? new Date(c.submittedAt).toLocaleString("ko-KR") : ""}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: F.micro, color: C.muted }}>{c.submittedAt ? new Date(c.submittedAt).toLocaleString("ko-KR") : ""}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(c.id)}
+                      aria-label={`${c.name} 상담 기록 삭제`}
+                      style={{ fontSize: F.xs, fontWeight: 600, color: C.red, background: C.redLight, border: `1px solid ${C.redBorder}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", minHeight: 28 }}
+                    >삭제</button>
+                  </div>
                 </div>
                 <div style={{ fontSize: F.xs, color: C.sub, lineHeight: 1.8 }}>
                   <div>연락처: {c.phone}</div>
