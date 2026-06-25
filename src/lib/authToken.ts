@@ -44,6 +44,7 @@ export function clearAuthTokens(): void {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(LEGACY_TOKEN_KEY);
     localStorage.removeItem("userRole");
+    localStorage.removeItem("mibunyang_consent_marketing"); // 마케팅 동의 상태 (D3) — 손님 전환 시 stale 방지
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(LEGACY_TOKEN_KEY);
     sessionStorage.removeItem("userRole");
