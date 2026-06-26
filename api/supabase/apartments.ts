@@ -146,10 +146,13 @@ function sanitizeBasics(row: any) {
     layout: row.layout ?? null,
     floors: row.floors ?? null,
     units,
-    unsold: (row.unsold != null && units > 1 && row.unsold >= units) ? null : (row.unsold ?? null),
-    // 세션 445: 미분양률 무력화 경계를 VIEW·정적 JSON·collect-data 와 동일하게 ">100 → null" 로 통일.
-    //   기존 `unsold>=units → null` + `?? 50` 폴백은 3 emit point 가 100 에서 불일치 + 폭발값을 50 으로
-    //   가려 점수가 임의로 매겨지던 진앙. units<=1 또는 unsoldRate>100 이면 null(중립), 그 외 raw.
+    // 세션 446: unsold(미분양 세대수)는 raw 보존 (collect-data·VIEW 와 동일). 기존 `unsold>=units → null`
+    //   무력화는 세대수를 null 화해 '미분양만 보기' 필터에서 사라지거나 '입주완료'로 둔갑시키던 잠복 P1
+    //   (세션445 AptCard moveInDone 함정과 동형). 폭발한 건 률(units=회차 공급분 오류)이지 세대수가 아님.
+    unsold: row.unsold ?? null,
+    // 세션 445: 미분양률(률) 무력화 경계를 VIEW·정적 JSON·collect-data 와 동일하게 ">100 → null" 로 통일.
+    //   기존 `?? 50` 폴백은 폭발값을 50 으로 가려 점수가 임의로 매겨지던 진앙. units<=1 또는
+    //   unsoldRate>100 이면 null(중립), 그 외 raw.
     unsoldRate: units <= 1 ? null
       : (row.unsoldRate != null && row.unsoldRate > 100) ? null
       : (row.unsoldRate ?? null),
