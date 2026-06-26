@@ -570,6 +570,11 @@ async function main() {
       timestamp: new Date().toISOString(),
       totalApartments: audit.total,
       avgReliability: audit.avgReliability,
+      // ⚠️ 착시 경고 (세션446): 아래 필드들은 값이 sentinel(측정 반경 밖 = 정상 데이터)일 때
+      //   미수집으로 집계됨. 이 필드의 낮은 채움률은 silent fail 이 아니라 "유의미하게 가까운 값"
+      //   비율이다. 0%/저채움을 사고로 단정하기 전 base 테이블 직독 교차 의무
+      //   (.claude/rules/meta/tool-output-illusion-guard.md).
+      _maskedFields: MASKED_DEFAULTS,
       categories: audit.categories,
       fields: Object.fromEntries(
         Object.entries(audit.fields).map(([k, v]) => [k, { filled: v.filled, missing: v.missing }])
