@@ -1,6 +1,23 @@
 // @ts-check
 import { describe, it, expect } from 'vitest';
-import { fmtPrice, fmtCompletion, maskName, maskPhone, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate, fmtCompetitionRate } from './format';
+import { fmtPrice, fmtCompletion, maskName, maskPhone, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate, fmtCompetitionRate, fmtUnsoldRate } from './format';
+
+describe('fmtUnsoldRate — 100% 캡 (세션 444)', () => {
+  it('정상 범위는 그대로 표시', () => {
+    expect(fmtUnsoldRate(45)).toBe('45%');
+    expect(fmtUnsoldRate(0)).toBe('0%');
+    expect(fmtUnsoldRate(100)).toBe('100%');
+  });
+  it('100% 초과는 "100%+" 로 캡 (units 잔여공급분 오류 방어)', () => {
+    expect(fmtUnsoldRate(818.2)).toBe('100%+');
+    expect(fmtUnsoldRate(7100)).toBe('100%+');
+    expect(fmtUnsoldRate(101)).toBe('100%+');
+  });
+  it('null/undefined 는 "-"', () => {
+    expect(fmtUnsoldRate(null)).toBe('-');
+    expect(fmtUnsoldRate(undefined)).toBe('-');
+  });
+});
 
 // 가격 포맷팅 테스트
 describe('fmtPrice', () => {
