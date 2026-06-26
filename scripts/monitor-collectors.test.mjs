@@ -637,7 +637,29 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 18 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399)", () => {
+  it("maintenance 미발화 — cancelled run 은 collector_runs 행 0건 → 마지막 success(5/17) 가 stale_days(38) 초과 시 stale 박힘 (세션 447 사고 재현)", () => {
+    // collect-maintenance.yml 5/26·6/15 cancelled = recordCollectorRun 전 SIGKILL → 행 0건.
+    // 따라서 latest collector_runs 는 5/17 success 에 고정 → 6/27 기준 ~40일 > 38 → ⑤-b 발화.
+    // ③ checkStaleWorkflows 는 cancelled 의 GH created_at 으로 "신선" 마스킹돼 못 잡음 = ⑤ 가 유일.
+    const issues = checkExternalApiStale(
+      [{ collector: "maintenance", stale_days: 38, owner: "국토부 공동주택 관리비 (월 15일 cron + 1주 여유)" }],
+      {
+        maintenance: [
+          { status: "success", ok_count: 3, finished_at: "2026-05-17T07:15:52Z" }, // 41일 전 > 38
+          { status: "success", ok_count: 5, finished_at: "2026-04-15T05:22:46Z" },
+          { status: "success", ok_count: 8, finished_at: "2026-03-15T00:00:00Z" },
+        ],
+      },
+      new Date("2026-06-27T00:00:00Z"),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].collector).toBe("maintenance");
+    expect(issues[0].detail).toMatch(/미발화/);
+    expect(issues[0].detail).toMatch(/40일/);
+  });
+
+  it("EXTERNAL_API_COLLECTORS 배열 = 19 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "applyhome-detail", "avg-income", "building-hub",
@@ -645,7 +667,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       "housing-permits",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
-      "kosis-unsold", "market-stats", "migration", "schools", "transport-tago",
+      "kosis-unsold", "maintenance", "market-stats", "migration", "schools", "transport-tago",
     ]);
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);

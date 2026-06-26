@@ -43,7 +43,7 @@ vi.stubGlobal("fetch", mockFetch);
 // MOLIT_KEY 설정 — process.exit 방지
 process.env.MOLIT_KEY = "test-key";
 
-const { fetchTotalHouseholds, fetchMaintenanceCost } = await import("./collect-maintenance.mjs");
+const { fetchTotalHouseholds, fetchMaintenanceCost, budgetExceeded } = await import("./collect-maintenance.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** molitApiCall 응답 팩토리 (fetchTotalHouseholds용)
@@ -392,5 +392,52 @@ describe("graceful shutdown 박힘 (회귀 가드)", () => {
     );
     const matches = src.match(/if \(rpt\.interrupted\(\)\) break;/g);
     expect(matches?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ── wall-clock budget (세션 447) ─────────────────────────────
+describe("budgetExceeded — 벽시계 예산 판정", () => {
+  const startedAt = 1_000_000; // 임의 기준 시각 (ms)
+
+  it("예산 미초과 — false", () => {
+    // 100분 예산, 50분 경과
+    expect(budgetExceeded(startedAt, 100, startedAt + 50 * 60_000)).toBe(false);
+  });
+
+  it("예산 초과 — true", () => {
+    // 100분 예산, 101분 경과
+    expect(budgetExceeded(startedAt, 100, startedAt + 101 * 60_000)).toBe(true);
+  });
+
+  it("정확히 경계(=예산) — true (>=)", () => {
+    expect(budgetExceeded(startedAt, 100, startedAt + 100 * 60_000)).toBe(true);
+  });
+
+  it("예산 0 = 비활성(무제한) — 아무리 경과해도 false", () => {
+    expect(budgetExceeded(startedAt, 0, startedAt + 9999 * 60_000)).toBe(false);
+  });
+
+  it("예산 음수 = 비활성 — false", () => {
+    expect(budgetExceeded(startedAt, -1, startedAt + 9999 * 60_000)).toBe(false);
+  });
+});
+
+describe("wall-clock budget 박힘 (회귀 가드)", () => {
+  const src = readFileSync(
+    path.join(process.cwd(), "scripts/collectors/collect-maintenance.mjs"),
+    "utf8",
+  );
+
+  it("본문에 budgetExceeded break 2 회 박힘 (외부 region + 내부 단지 loop)", () => {
+    const matches = src.match(/if \(budgetExceeded\(startedAt, budgetMin\)\) \{ budgetHit = true; break; \}/g);
+    expect(matches?.length ?? 0).toBe(2);
+  });
+
+  it("내부 loop 가 budgetHit 로 끊긴 뒤 region loop 도 종료 (외부 break)", () => {
+    expect(src).toMatch(/if \(budgetHit\) break;/);
+  });
+
+  it("기본 예산 100분 (120분 job timeout 미만 — SIGKILL 레이스 회피)", () => {
+    expect(src).toMatch(/DEFAULT_BUDGET_MIN = 100/);
   });
 });
