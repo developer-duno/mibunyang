@@ -10,6 +10,7 @@
  *   node scripts/collectors/collect-maintenance.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/collect-maintenance.mjs --force      (이미 데이터 있는 것도 재수집)
  *   node scripts/collectors/collect-maintenance.mjs --limit=1000 (대상 N개만 — API 일일 한도 분산)
+ *   node scripts/collectors/collect-maintenance.mjs --budget-min=100 (벽시계 예산 분 — 기본 100, 0=무제한)
  *
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
@@ -113,6 +114,23 @@ export async function fetchMaintenanceCost(kaptCode, searchDate) {
   return anyValid ? result : null;
 }
 
+// ── wall-clock budget ────────────────────────────────────────
+// job timeout-minutes(120) 미만으로 자체 종료해 graceful break 가 SIGKILL(grace 0) 레이스를 이기게 함.
+// 외부 MOLIT API 지연 시 단지당 hang(최대 ~80s)이 누적돼 런이 부풀어도 partial 데이터 + collector_runs
+// 행을 남기고 종료 → updated_at 오름차순 + --limit resume 설계로 다음 회차에 남은 단지가 채워짐 (세션 447).
+const DEFAULT_BUDGET_MIN = 100; // 120분 job timeout 대비 20분 여유
+
+/**
+ * @param {number} startedAt  main() 시작 시각 (Date.now())
+ * @param {number} budgetMin  예산 (분)
+ * @param {number} [nowMs]    현재 시각 (테스트 주입용)
+ * @returns {boolean}
+ */
+export function budgetExceeded(startedAt, budgetMin, nowMs = Date.now()) {
+  if (budgetMin <= 0) return false; // 0 이하 = 비활성(무제한)
+  return (nowMs - startedAt) >= budgetMin * 60_000;
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
@@ -122,6 +140,11 @@ async function main() {
   const sb = getSupabase();
   const rpt = createReporter(PHASE);
   let apiCalls = 0;
+
+  const startedAt = Date.now();
+  const budgetArg = process.argv.find((a) => a.startsWith("--budget-min="));
+  const budgetMin = budgetArg ? parseInt(budgetArg.replace("--budget-min=", ""), 10) : DEFAULT_BUDGET_MIN;
+  let budgetHit = false;
 
   // 조회 월 (2개월 전 — 관리비 데이터 지연 반영)
   const now = new Date();
@@ -160,6 +183,7 @@ async function main() {
   // 3. 지역별 단지목록 → kaptCode 매칭 → 관리비 조회
   for (const [region, regionTargets] of Object.entries(regionGroups)) {
     if (rpt.interrupted()) break;
+    if (budgetExceeded(startedAt, budgetMin)) { budgetHit = true; break; }
     const sidoCode = SIDO_CODE[region];
     if (!sidoCode) { log(PHASE, `${region}: 시도코드 없음, 건너뜀`); rpt.skip(regionTargets.length); continue; }
 
@@ -182,6 +206,7 @@ async function main() {
 
     for (const target of regionTargets) {
       if (rpt.interrupted()) break;
+      if (budgetExceeded(startedAt, budgetMin)) { budgetHit = true; break; }
       const match = findBestMatch(target.name, target.gu, aptList, {
         guField: "address", guBonus: 0.15, attachScore: false,
       });
@@ -247,6 +272,11 @@ async function main() {
         rpt.fail(1);
       }
     }
+    if (budgetHit) break; // 내부 loop 가 예산 초과로 끊겼으면 region loop 도 종료
+  }
+
+  if (budgetHit) {
+    log(PHASE, `\n[budget] ${budgetMin}분 예산 초과 — graceful 종료 (남은 단지는 다음 회차 resume, 세션 447)`);
   }
 
   const result = rpt.summary();
