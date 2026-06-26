@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>분양 알림 수신거부 | 미분양아파트</title>
+  <style>
+    body { font-family: -apple-system, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; color: #1B1F2B; line-height: 1.7; max-width: 480px; margin: 0 auto; padding: 48px 20px 80px; background: #fff; }
+    h1 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+    p { font-size: 15px; color: #1B1F2B; }
+    .meta { color: #6B7280; font-size: 13px; margin-bottom: 28px; }
+    .card { border: 1px solid #E8EAF0; border-radius: 12px; padding: 20px; margin-top: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    .phone { font-size: 16px; font-weight: 700; color: #2563EB; }
+    button { width: 100%; padding: 14px; font-size: 15px; font-weight: 700; color: #fff; background: #DC2626; border: none; border-radius: 8px; cursor: pointer; margin-top: 16px; min-height: 48px; }
+    button:disabled { background: #9CA3AF; cursor: not-allowed; }
+    .status { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 14px; }
+    .status.success { background: #EDFCF2; color: #16A34A; border: 1px solid #A7F3D0; }
+    .status.error { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; }
+    .status.info { background: #EEF3FF; color: #2563EB; border: 1px solid #C3D6FD; }
+    .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #E8EAF0; color: #6B7280; font-size: 13px; }
+    a { color: #2563EB; }
+  </style>
+</head>
+<body>
+  <h1>🔕 분양 알림 수신거부</h1>
+  <p class="meta">미분양아파트 분양 시작 알림(카카오 알림톡) 수신을 거부합니다.</p>
+
+  <div class="card">
+    <div id="content">
+      <p>아래 휴대폰 번호로 받던 분양 시작 알림을 더 이상 받지 않으시려면 버튼을 눌러주세요.</p>
+      <p class="phone" id="phoneDisplay">—</p>
+      <button id="optOutBtn" disabled>수신거부 처리</button>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>이로움기획 · 미분양아파트</p>
+    <p>수신거부 후에도 이미 신청한 상담 등 다른 서비스에는 영향이 없습니다. 문의: <a href="mailto:kyh11kyh@gmail.com">kyh11kyh@gmail.com</a></p>
+  </div>
+
+  <script src="/unsubscribe.js"></script>
+</body>
+</html>
