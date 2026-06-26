@@ -278,14 +278,18 @@ export function checkFailedRuns(runs, allowedNames) {
  * @param {Array<{ collector?: string, status?: string, ok_count?: number|null, skip_count?: number|null, fail_count?: number|null, finished_at?: string|null }>} rows
  * @param {Record<string, { okCount: number, finishedAt: string }>} [prevByCollector]
  *   수집기별 직전 정상 실행(ok>0). 있으면 "지난번엔 N건" 비교 문장을 만든다.
- * @param {{ maxAgeHours?: number, now?: Date }} [opts]
+ * @param {{ maxAgeHours?: number, now?: Date, externalApiCollectors?: Set<string> }} [opts]
  *   maxAgeHours 주면 최신 0건 행이 그보다 오래됐을 때 ② 에서 제외(→ ⑤ checkExternalApiStale 또는 ③ stale 이 단독 처리).
  *   외부 API 장기 중단(housing-permits 식)으로 새 run 자체가 없는 stale 0건 행을 매번 ② 로 재알림하던 스팸 차단.
+ *   externalApiCollectors 주면 그 집합에 든 collector 의 0건은 ② 에서 제외 — 외부 API 의존 수집기
+ *   (housing-permits·KOSIS 식)는 "데이터 부재가 정상"이라 0건이 흔하고, 진짜 장기 중단은 ⑤
+ *   (checkExternalApiStale)가 stale_days 임계로 단독 판정한다. 둘 다 울리면 매일 중복 노이즈
+ *   (세션 444: 운영 daily 가 housing-permits·kosis 2종을 정상 0건인데 매일 ② 로 알림하던 사고).
  *   미지정 시 나이 무관 전부 점검(하위호환 — 기존 daily 동작).
  * @returns {Issue[]}
  */
 export function checkEmptyRuns(rows, prevByCollector = {}, opts = {}) {
-  const { maxAgeHours, now = new Date() } = opts;
+  const { maxAgeHours, now = new Date(), externalApiCollectors } = opts;
   /** @type {Issue[]} */
   const issues = [];
   for (const row of rows) {
@@ -293,12 +297,14 @@ export function checkEmptyRuns(rows, prevByCollector = {}, opts = {}) {
     const ok = row.ok_count ?? 0;
     const skip = row.skip_count ?? 0;
     if (ok === 0 && skip === 0) {
+      const name = row.collector ?? "(이름 없음)";
+      // 외부 API 의존 수집기는 0건이 정상(데이터 부재). 진짜 장기 중단은 ⑤가 단독 판정 → ② 제외.
+      if (externalApiCollectors && externalApiCollectors.has(name)) continue;
       // 신선도 가드: 최신 0건 행이 너무 오래됐으면 ② 가 매번 재알림하지 않도록 제외.
       if (maxAgeHours != null && row.finished_at) {
         const ageH = Math.max(0, (now.getTime() - new Date(row.finished_at).getTime()) / 3600000);
         if (ageH > maxAgeHours) continue;
       }
-      const name = row.collector ?? "(이름 없음)";
       const fail = row.fail_count ?? 0;
       /** @type {string[]} */
       const lines = [
@@ -584,6 +590,16 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
 }
 
 // ── I/O 래퍼 (실제 API·DB 호출) ─────────────────────────────
+
+/**
+ * GitHub Actions REST(actions/runs·workflows)를 호출할 인증이 있는지 — Actions 러너는
+ * GITHUB_REPOSITORY/GITHUB_TOKEN 을 기본 주입하지만 로컬 PC 에는 없다. 둘 다 있어야
+ * ①실패·③미발화 점검이 의미 있다(없으면 빈 결과 → 전 워크플로 미발화 오탐).
+ * @returns {boolean}
+ */
+export function hasGithubApiAuth() {
+  return Boolean(process.env.GITHUB_REPOSITORY && process.env.GITHUB_TOKEN);
+}
 
 /**
  * GitHub REST 로 최근 워크플로 run 목록을 가져온다.
@@ -939,23 +955,40 @@ async function main() {
     const { latest, prevOk } = await fetchLatestCollectorRuns();
     issues = issues.concat(checkEmptyRuns(latest, prevOk, { maxAgeHours: 36 }));
   } else {
-    // daily 스윕 — 전체 점검 (①②③④)
-    // monitor.yml 감시 대상 — ① 실패 알림을 이 목록 워크플로로 한정 (CI 등 비-수집기 제외).
-    const monitoredNames = await fetchMonitoredWorkflowNames();
-    const runs = await fetchRecentRuns(100); // 50→100: ①탐지 폭 + ③시각 병합 모수 확대
-    issues = issues.concat(checkFailedRuns(runs, monitoredNames));
-    const { latest, prevOk } = await fetchLatestCollectorRuns();
-    issues = issues.concat(checkEmptyRuns(latest, prevOk));
+    // daily 스윕 — 전체 점검 (①②③④⑤⑥)
+    // ⚠️ ①③ 은 GitHub Actions REST(actions/runs·workflows)에 의존한다. 로컬 PC 처럼
+    //    GITHUB_REPOSITORY/GITHUB_TOKEN 이 없으면 fetchRecentRuns 가 [] 를 반환해
+    //    "모든 워크플로가 한 번도 안 돔" 으로 오판 → 미발화 알림이 전부 오탐 발송된다
+    //    (로컬 점검이 운영 텔레그램으로 가짜 알림을 쏘는 사고). 인증이 있을 때만 ①③ 실행.
+    if (hasGithubApiAuth()) {
+      // monitor.yml 감시 대상 — ① 실패 알림을 이 목록 워크플로로 한정 (CI 등 비-수집기 제외).
+      const monitoredNames = await fetchMonitoredWorkflowNames();
+      const runs = await fetchRecentRuns(100); // 50→100: ①탐지 폭 + ③시각 병합 모수 확대
+      issues = issues.concat(checkFailedRuns(runs, monitoredNames));
 
-    // ③ 미발화 — monitor.yml workflows 배열(점검 대상 전체) 기준.
-    // 최근 run 에 흔적이 없는 워크플로(=오래 죽은 월간 cron)는 개별 조회로 보충.
-    // 워크플로 생성일도 조회 — 신규 워크플로(첫 cron 대기)를 오탐에서 제외.
-    const seenNames = new Set(runs.map((r) => r.name).filter(Boolean));
-    const missingNames = monitoredNames.filter((n) => !seenNames.has(n));
-    const supplement = await fetchLastRunForWorkflows(missingNames);
-    const createdAtByWf = await fetchWorkflowCreatedAt();
-    const wfList = buildStaleCheckList(monitoredNames, runs, supplement, createdAtByWf);
-    issues = issues.concat(checkStaleWorkflows(wfList));
+      // ③ 미발화 — monitor.yml workflows 배열(점검 대상 전체) 기준.
+      // 최근 run 에 흔적이 없는 워크플로(=오래 죽은 월간 cron)는 개별 조회로 보충.
+      // 워크플로 생성일도 조회 — 신규 워크플로(첫 cron 대기)를 오탐에서 제외.
+      const seenNames = new Set(runs.map((r) => r.name).filter(Boolean));
+      const missingNames = monitoredNames.filter((n) => !seenNames.has(n));
+      const supplement = await fetchLastRunForWorkflows(missingNames);
+      const createdAtByWf = await fetchWorkflowCreatedAt();
+      const wfList = buildStaleCheckList(monitoredNames, runs, supplement, createdAtByWf);
+      issues = issues.concat(checkStaleWorkflows(wfList));
+    } else {
+      console.log(
+        "[monitor] GITHUB_REPOSITORY/GITHUB_TOKEN 없음 — ①실패·③미발화 점검 skip " +
+          "(로컬 실행: GitHub run 이력을 못 읽어 미발화 오탐이 나므로 건너뜀). " +
+          "②0건·④NULL·⑤외부API·⑥VIEW 점검은 collector_runs/DB 기반이라 계속 진행.",
+      );
+    }
+
+    // ② success 인데 0건 — collector_runs 기반이라 로컬에서도 정상 점검.
+    // 외부 API 의존 수집기(housing-permits·KOSIS 식)는 0건이 정상이라 ② 에서 제외 — 진짜
+    // 장기 중단은 아래 ⑤가 stale_days 임계로 단독 판정(중복 노이즈 차단, 세션 444).
+    const externalApiNames = new Set(EXTERNAL_API_COLLECTORS.map((c) => c.collector));
+    const { latest, prevOk } = await fetchLatestCollectorRuns();
+    issues = issues.concat(checkEmptyRuns(latest, prevOk, { externalApiCollectors: externalApiNames }));
 
     // ④ NULL 급증 — regions 핵심 컬럼 + apartments 19 카테고리
     const regionStats = await fetchRegionColumnStats();
