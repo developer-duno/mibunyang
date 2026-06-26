@@ -221,15 +221,28 @@ describe('sanitize (null → 기본값)', () => {
     expect(res.json.mock.calls[0][0].data[0].unsoldRate).toBeNull();
   });
 
-  // unsoldRate: 100% 초과는 null (세션 445 — VIEW·JSON·collect-data 와 동일 경계). unsold 도 null.
-  it('unsoldRate > 100%이면 null이다 (회차 폭발값 무력화)', async () => {
+  // 세션 446: 무력화 대상은 unsoldRate(률)뿐. unsold(세대수)는 raw 보존 (collect-data·VIEW 와 동일).
+  it('unsoldRate > 100%이면 unsoldRate만 null, unsold(세대수)는 raw 보존', async () => {
     const row = { id: 1, name: 'Test', region: '경기', units: 100, unsold: 200, unsoldRate: 200 };
     mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
     const res = makeRes();
     await handler(makeReq(), res);
     const d = res.json.mock.calls[0][0].data[0];
     expect(d.unsoldRate).toBeNull();
-    expect(d.unsold).toBeNull();
+    expect(d.unsold).toBe(200);
+  });
+
+  // 세션 446: 회차 폭발 패턴(용인 칸타빌 — units=회차 공급분 17, unsold=단지 전체 미분양 39).
+  //   unsoldRate(130%)는 무력화(null)되지만 unsold(39 세대)는 raw 보존 → '미분양만 보기'에서
+  //   사라지거나 '입주완료' 둔갑하던 잠복 P1 차단 (세션445 AptCard moveInDone 함정과 동형).
+  it('회차 폭발 단지도 unsold(세대수)는 raw 보존 (입주완료 둔갑·미분양만보기 누락 방지)', async () => {
+    const row = { id: 1, name: 'Test', region: '경기', units: 17, unsold: 39, unsoldRate: 130 };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.unsoldRate).toBeNull();
+    expect(d.unsold).toBe(39);
   });
 
   // 세션 445: 100% 이하는 그대로 (?? 50 폴백 제거 — raw 값 정직 통과). 100 정확히는 유지.
