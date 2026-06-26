@@ -60,6 +60,10 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
     const dsr40pass = apt.dsr40pass as boolean | null | undefined;
     // 학군 등급 칩 (세션 441) — C(보통, 실측 3.4% 소수)만 주황 약점. A(84% 다수)·B·D(0건)·null 숨김
     const schoolGrade = apt.schoolGrade as string | null | undefined;
+    // 향(向) 칩 (세션 444) — 북쪽 계열(북향·북동향·북서향, 실측 1.9% 희소)만 주황 약점.
+    // 남쪽 계열 93%(남 58.9%·남동 19.5%·남서 14.9%)는 다수라 강조 노이즈 → 숨김. null·동/서향(중립)도 숨김.
+    const primaryDirection = apt.primaryDirection as string | null | undefined;
+    const isNorthFacing = primaryDirection != null && primaryDirection.startsWith("북");
     const completionPast = apt.completion ? apt.completion < NOW_YM : false;
     const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
@@ -208,6 +212,12 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
           {schoolGrade === "C" && (
             <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>학군 C</span>
           )}
+          {/* 향 칩 (세션 444) — 북쪽 계열만 주황 약점(채광·난방 불리). 라이브 실측 분포:
+              남 58.9%·남동 19.5%·남서 14.9%(남쪽 93%)·동 3.2%·서 1.5%·북서 0.9%·북동 0.6%·북 0.4%(북쪽 1.9%).
+              남쪽 다수라 강조하면 노이즈, 북쪽(1.9% 희소)이 유일한 변별 신호. 라벨=실제 방향 그대로. 동/서·null 숨김 */}
+          {isNorthFacing && (
+            <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>{primaryDirection}</span>
+          )}
         </div>
 
         {benefitWon > 0 ? (
@@ -299,6 +309,8 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
   if (pa.dsr40pass !== na.dsr40pass) return false;
   // infoRow 칩 신호 (세션 441) — 학군 등급 (A 강점 / D 약점)
   if (pa.schoolGrade !== na.schoolGrade) return false;
+  // infoRow 칩 신호 (세션 444) — 향 (북쪽 계열 약점 칩)
+  if (pa.primaryDirection !== na.primaryDirection) return false;
   const pk = prev.profileWeights, nk = next.profileWeights;
   if (pk !== nk && (!pk || !nk || pk.price !== nk.price || pk.location !== nk.location || pk.product !== nk.product || pk.risk !== nk.risk || pk.benefit !== nk.benefit || pk.future !== nk.future)) return false;
   return true;

@@ -421,6 +421,38 @@ describe("AptCard", () => {
     });
   });
 
+  describe("향 칩 (세션 444) — 북쪽 계열만 약점", () => {
+    it("북향 → '북향' 칩 노출 (1.9% 희소 약점)", () => {
+      const apt = /** @type {any} */ (makeApt({ primaryDirection: "북향" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("북향")).toBeInTheDocument();
+    });
+
+    it("북동향 → '북동향' 칩 노출 (북쪽 계열 = startsWith 북)", () => {
+      const apt = /** @type {any} */ (makeApt({ primaryDirection: "북동향" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.getByText("북동향")).toBeInTheDocument();
+    });
+
+    it("남향 → 칩 미노출 (58.9% 다수, 강조 노이즈)", () => {
+      const apt = /** @type {any} */ (makeApt({ primaryDirection: "남향" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText("남향")).toBeNull();
+    });
+
+    it("동향 → 칩 미노출 (중립, 북쪽 아님)", () => {
+      const apt = /** @type {any} */ (makeApt({ primaryDirection: "동향" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText("동향")).toBeNull();
+    });
+
+    it("primaryDirection null → 칩 미노출", () => {
+      const apt = /** @type {any} */ (makeApt({ primaryDirection: null }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/향$/)).toBeNull();
+    });
+  });
+
   describe("초등 도보거리 칩 (세션 437)", () => {
     it("≤5분 → '초등 도보 N분' 칩 노출 (초록 강조)", () => {
       const apt = /** @type {any} */ (makeApt({ naverSchoolWalkMin: 3 }));
