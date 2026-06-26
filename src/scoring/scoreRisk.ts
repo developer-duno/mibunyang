@@ -43,13 +43,16 @@ import type { Apt, Res } from "@/types/scoring";
  */
 export function scoreRisk(apt: Apt): Res {
   const units = (apt.units ?? 0) as number;
-  const unsoldRate = (apt.unsoldRate ?? 50) as number;
+  // unsoldRate null = 미분양률 데이터 미확인 (청약홈 회차 폭발값이 100% 초과로 무력화된 경우 포함, 세션 445).
+  //   sanitize(engine.ts)가 null 을 보존 → 여기서 units<=1 과 동일하게 중립(UNSOLD_UNKNOWN_SCORE) 처리.
+  const unsoldRate = apt.unsoldRate as number | null;
   const recentTrades6m = (apt.recentTrades6m ?? 0) as number;
   const supplyRatio = (apt.supplyRatio ?? 150) as number;
   const builderDebtRatio = (apt.builderDebtRatio ?? 250) as number;
   const builderCreditGrade = apt.builderCreditGrade as string | undefined;
 
-  const unsoldSc: number = units <= 1 ? UNSOLD_UNKNOWN_SCORE : tierMax(unsoldRate, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE);
+  const unsoldUnknown = units <= 1 || unsoldRate == null;
+  const unsoldSc: number = unsoldUnknown ? UNSOLD_UNKNOWN_SCORE : tierMax(unsoldRate, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE);
   let liqSc: number = tierMin(recentTrades6m, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE);
   // 매물 과잉 페널티: naverSellCount 기반
   const listingPen = apt.naverSellCount != null && apt.naverSellCount > LISTING_FLOOD_THRESHOLD ? LISTING_FLOOD_PENALTY
@@ -104,7 +107,7 @@ export function scoreRisk(apt: Apt): Res {
   return {
     total: safety, riskRaw: Math.round(risk),
     subs: [
-      { name: "미분양률", score: 100 - unsoldSc, info: units <= 1 ? "세대수 미확인 (중립)" : `${unsoldRate}%`, detail: units <= 1 ? "세대수 미확인 (중립 40점)" : `${unsoldRate}% (안전 5%↓, 주의 15~30%, 위험 50%↑)` },
+      { name: "미분양률", score: 100 - unsoldSc, info: unsoldUnknown ? "세대수 미확인 (중립)" : `${unsoldRate}%`, detail: unsoldUnknown ? "세대수 미확인 (중립 40점)" : `${unsoldRate}% (안전 5%↓, 주의 15~30%, 위험 50%↑)` },
       { name: "경쟁률", score: 100 - compSc, info: apt.competitionRate != null ? fmtCompetitionRate(apt.competitionRate) : "정보 없음", detail: apt.competitionRate != null ? (apt.competitionRate < 0 ? `${fmtCompetitionRate(apt.competitionRate)} (신청부족)` : `${fmtCompetitionRate(apt.competitionRate)} (인기 10↑, 적정 3↑, 약 1↑, 미달 0↓)`) : "경쟁률 데이터 없음 (중립 40점)" },
       { name: "거래량", score: 100 - liqSc, info: `6개월 ${recentTrades6m}건`, detail: `6개월 ${recentTrades6m}건 (활발 30↑, 보통 15↑, 부진 5↓)` },
       { name: "대출/잔금", score: 100 - loanSc, info: apt.dsr40pass ? "DSR통과" : "주의", detail: apt.dsr40pass ? "DSR 40% 통과 (자금조달 양호)" : "DSR 미통과 (대출 곤란 주의)" },

@@ -54,7 +54,10 @@ export interface Apt {
   landCostRatio?: number | null;
 
   // 위험 (sanitize 후 num + 비관 폴백)
-  unsoldRate?: number;
+  // unsold = 미분양 세대 수(원시), unsoldRate = 미분양률(%). 100% 초과 폭발값은 null 로 무력화(세션 445).
+  //   "미분양 단지 여부" 판정은 unsoldRate(null 가능) 가 아니라 unsold(수) 로 해야 함(R1/R2 회귀 가드).
+  unsold?: number | null;
+  unsoldRate?: number | null;
   recentTrades6m?: number;
   cancelRatio6m?: number | null;
   competitionRate?: number | null;

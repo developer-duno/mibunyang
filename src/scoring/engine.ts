@@ -12,9 +12,11 @@ type RegionMedian = NonNullable<ScoringContext["regionMedians"]>[string];
 
 /**
  * null 안전 레이어 + 한글 NFC 정규화.
- * 위험 필드 null → 비관적 기본값(unsoldRate:50, builderDebtRatio:250, supplyRatio:150, dataReliability:30).
+ * 위험 필드 null → 비관적 기본값(builderDebtRatio:250, supplyRatio:150, dataReliability:30).
+ * 단 unsoldRate 는 null 보존(세션 445) — 100% 초과 폭발값 무력화분을 지역 중위값으로 되채우지 않고
+ *   scoreRisk 가 "미분양률 미확인=중립"으로 처리하게 둔다.
  * 혜택 필드 null → 0, 가격/시장 필드 null → null 유지 (서브스코어 내부에서 재평가).
- * rm(regionMedians[region]) 우선 → 지역 중위값으로 위험 필드 폴백.
+ * rm(regionMedians[region]) 우선 → 지역 중위값으로 위험 필드 폴백(unsoldRate 제외).
  * `??` 전용 (||는 0/"" 오판 유발로 금지, src/scoring/CLAUDE.md).
  */
 function sanitize(apt: Apt, rm?: RegionMedian): Apt {
@@ -27,7 +29,10 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     ...apt,
     // 위험 필드 → 지역 중위값 우선, 없으면 비관적 기본값
     pir: num(apt.pir, null), psr: num(apt.psr, null),
-    unsoldRate: num(apt.unsoldRate, rm?.unsoldRate ?? 50), recentTrades6m: num(apt.recentTrades6m, 0), cancelRatio6m: num(apt.cancelRatio6m, null),
+    // unsoldRate null 보존 (세션 445): 지역 중위값 되채움 금지. null = "미분양률 미확인"
+    //   → scoreRisk 가 units<=1 과 동일하게 중립(UNSOLD_UNKNOWN_SCORE) 처리. 100% 초과 폭발값을
+    //   VIEW/JSON 에서 null 로 무력화한 단지가 지역 중위값 기반 임의 등급으로 오채점되던 것 방지.
+    unsoldRate: num(apt.unsoldRate, null), recentTrades6m: num(apt.recentTrades6m, 0), cancelRatio6m: num(apt.cancelRatio6m, null),
     competitionRate: num(apt.competitionRate, null),
     crimeSafetyGrade: apt.crimeSafetyGrade != null ? num(apt.crimeSafetyGrade, null) : null,
     builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, rm?.supplyRatio ?? 150),

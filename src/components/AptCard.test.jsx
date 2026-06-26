@@ -136,6 +136,21 @@ describe("AptCard", () => {
     expect(screen.queryByText(/818/)).toBeNull();
   });
 
+  // 세션 445 회귀: 회차 폭발 단지(unsoldRate 무력화 null + unsold 잔여 보존)가 과거 입주월이어도
+  //   "입주완료"로 둔갑하면 안 됨. moveInDone 판정은 unsold(수) 기준 (classify.ts:33 일치).
+  it("과거 입주월 + unsold>0 + unsoldRate=null → '입주완료' 둔갑 안 함 (미분양 단지 유지)", () => {
+    const apt = /** @type {any} */ (makeApt({ completion: "202001", unsold: 39, unsoldRate: null }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.queryByText(/입주완료/)).toBeNull();
+  });
+
+  // 과거 입주월 + unsold=0 → 진짜 입주완료 (정상 동작)
+  it("과거 입주월 + unsold=0 → '입주완료' 배지 표시", () => {
+    const apt = /** @type {any} */ (makeApt({ completion: "202001", unsold: 0, unsoldRate: 0 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText(/입주완료/)).toBeInTheDocument();
+  });
+
   // 혐오시설 경고
   it("혐오시설이 있으면 경고 태그 표시", () => {
     const apt = /** @type {any} */ (makeApt({ noxious: ["공장", "묘지"] }));

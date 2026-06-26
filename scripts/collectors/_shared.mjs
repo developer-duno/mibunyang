@@ -534,6 +534,21 @@ export function today() {
   return KST_DATE_FMT.format(new Date());
 }
 
+// ── 미분양률 클램프 (세션 445) ──────────────────────────────
+/**
+ * 미분양률 100% 초과는 데이터 신뢰 불가(청약홈 잔여세대 공고의 "이번 회차 공급분"이
+ * 분모로 들어가 폭발한 값)라 null 로 무력화한다. 미분양은 본질적으로 전체 세대수를
+ * 넘을 수 없으므로 229%·2900% 같은 값은 진짜 미분양률이 아님 → "세대수 미확인(중립)"
+ * 으로 취급. 100 이하(100 포함)는 그대로 둔다.
+ * 점수(scoreRisk)·중위값·정렬이 전부 이 null 을 중립 처리하도록 단일 경계(>100)로 통일.
+ * @param {number | null | undefined} rate
+ * @returns {number | null}
+ */
+export function clampUnsoldRate(rate) {
+  if (rate == null) return null;
+  return rate > 100 ? null : rate;
+}
+
 // ── API 쿼터 로깅 ───────────────────────────────────────────
 // data.go.kr 등 일일 한도 API 사용량을 api_quota_log 테이블에 기록
 /**

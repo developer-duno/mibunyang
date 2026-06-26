@@ -329,6 +329,25 @@ describe("mapItem", () => {
     expect(apt.unsoldRate).toBeNull();
   });
 
+  // 세션 445: 청약홈 회차 공급분(작은 units)이 분모로 들어가 100% 초과 폭발 → 무력화(null).
+  //   용인 칸타빌 (임의공급 3차) 실측: units=3 unsold=39 → 1300% → null.
+  it("회차 폭발값(>100%)은 unsoldRate=null 무력화 (unsold 수는 보존)", () => {
+    const apt = mapItem(createApplyhomeItem({
+      TOT_SUPLY_HSHLDCO: "3",
+      REMNDR_HSHLDCO: "39",
+    }), 0, false);
+    expect(apt.unsold).toBe(39);   // unsold 수 자체는 보존 (미분양 단지 식별용)
+    expect(apt.unsoldRate).toBeNull(); // 1300% → 무력화
+  });
+
+  it("정확히 100%는 유지 (전량 미분양 = 가능값)", () => {
+    const apt = mapItem(createApplyhomeItem({
+      TOT_SUPLY_HSHLDCO: "50",
+      REMNDR_HSHLDCO: "50",
+    }), 0, false);
+    expect(apt.unsoldRate).toBe(100);
+  });
+
   // builder fallback
   it("CNSTRCT_ENTRPS_NM 우선, BSNS_MBY_NM fallback", () => {
     const apt = mapItem(createApplyhomeItem({

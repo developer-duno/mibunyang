@@ -7,7 +7,7 @@ import {
   resolveBuilder, stringSimilarity, today, sleep,
   REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
-  setupGracefulShutdown,
+  setupGracefulShutdown, clampUnsoldRate,
 } from "./_shared.mjs";
 
 describe("resolveBuilder", () => {
@@ -107,6 +107,25 @@ describe("today (KST 고정)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("clampUnsoldRate (세션 445 — 100% 초과 무력화)", () => {
+  it("100% 초과는 null (폭발값 무력화)", () => {
+    expect(clampUnsoldRate(229.4)).toBe(null);
+    expect(clampUnsoldRate(2900)).toBe(null);
+    expect(clampUnsoldRate(100.1)).toBe(null);
+  });
+
+  it("100 이하(100 포함)는 그대로", () => {
+    expect(clampUnsoldRate(100)).toBe(100);
+    expect(clampUnsoldRate(7.2)).toBe(7.2);
+    expect(clampUnsoldRate(0)).toBe(0);
+  });
+
+  it("null/undefined 입력은 null 출력", () => {
+    expect(clampUnsoldRate(null)).toBe(null);
+    expect(clampUnsoldRate(undefined)).toBe(null);
   });
 });
 

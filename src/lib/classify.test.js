@@ -38,6 +38,18 @@ describe("classify 상수 무결성", () => {
     }
   });
 
+  // 세션 445 R2 회귀: unsoldRate 가 null 로 무력화돼도 unsold(수)가 남으면 미입주.
+  //   과거 미입주 판정이 unsoldRate>0 이라 클램프 null 단지가 입주완료로 오분류되던 회귀 방지.
+  it("입주월 지남 + unsold>0 + unsoldRate=null → 미입주 (입주완료 오분류 방지)", () => {
+    const apt = /** @type {import('@/types/scoring').Apt} */ ({ completion: "202001", unsold: 39, unsoldRate: null });
+    expect(classifyMoveIn(apt)).toBe("미입주");
+  });
+
+  it("입주월 지남 + unsold=0 → 입주완료", () => {
+    const apt = /** @type {import('@/types/scoring').Apt} */ ({ completion: "202001", unsold: 0, unsoldRate: null });
+    expect(classifyMoveIn(apt)).toBe("입주완료");
+  });
+
   // classifyTier 반환값이 항상 TIER_VALUES 중 하나
   it("classifyTier 반환값은 TIER_VALUES 중 하나", () => {
     const validSet = new Set(TIER_VALUES);

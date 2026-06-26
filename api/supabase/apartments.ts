@@ -147,9 +147,12 @@ function sanitizeBasics(row: any) {
     floors: row.floors ?? null,
     units,
     unsold: (row.unsold != null && units > 1 && row.unsold >= units) ? null : (row.unsold ?? null),
+    // 세션 445: 미분양률 무력화 경계를 VIEW·정적 JSON·collect-data 와 동일하게 ">100 → null" 로 통일.
+    //   기존 `unsold>=units → null` + `?? 50` 폴백은 3 emit point 가 100 에서 불일치 + 폭발값을 50 으로
+    //   가려 점수가 임의로 매겨지던 진앙. units<=1 또는 unsoldRate>100 이면 null(중립), 그 외 raw.
     unsoldRate: units <= 1 ? null
-      : (row.unsold != null && row.unsold >= units) ? null
-      : (row.unsoldRate ?? 50),
+      : (row.unsoldRate != null && row.unsoldRate > 100) ? null
+      : (row.unsoldRate ?? null),
     updatedAt: row.updatedAt ?? null,
     completion: row.completion ?? "",
     heating: row.heating ?? null,

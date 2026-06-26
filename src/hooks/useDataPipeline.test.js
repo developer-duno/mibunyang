@@ -216,6 +216,20 @@ describe("useDataPipeline", () => {
       expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 20 > 12 > 5 > null
     });
 
+    // 세션 445 R1 회귀: hideNoUnsold("미분양만 보기")는 unsold(수) 기준.
+    //   unsoldRate 가 100% 초과 폭발값이라 null 로 무력화돼도 unsold>0 이면 목록에 남아야 한다
+    //   (과거 unsoldRate>0 필터라 클램프 null 단지가 미분양 목록에서 사라지던 회귀 방지).
+    it("hideNoUnsold=true → unsold>0 단지는 unsoldRate=null 이어도 남는다", () => {
+      const apts = [
+        makeApt({ id: "ah-clamped", region: "서울", price: 30000, unsold: 39, unsoldRate: null }),
+        makeApt({ id: "ah-sold", region: "서울", price: 30000, unsold: 0, unsoldRate: 0 }),
+        makeApt({ id: "ah-normal", region: "서울", price: 30000, unsold: 5, unsoldRate: 5 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, hideNoUnsold: true });
+      const ids = result.current.filtered.map(x => x.apt.id).sort();
+      expect(ids).toEqual(["ah-clamped", "ah-normal"]); // 미분양 0 단지만 빠짐
+    });
+
     it("sortKey=moveInSoon → 준공완료(최근순) → 예정(가까운순) → 미정/null 맨뒤 (세션 424)", () => {
       // NOW_YM 기준 과거/미래 동적 생성 (시간 흐름에 안정). YYYYMM 고정폭.
       const yy = new Date().getFullYear();
