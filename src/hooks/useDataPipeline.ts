@@ -38,10 +38,12 @@ const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
     if (ra === 1) return ca === cb ? b.res.total - a.res.total : ca.localeCompare(cb);
     return b.res.total - a.res.total;
   },
-  // 역세권 가까운순 (subwayDist 오름차순, 채움률 100%) — 가까운 단지 먼저. null=Infinity 로 맨뒤, 동률은 종합점수 tie-break (세션 444)
+  // 역세권 가까운순 (subwayDist 오름차순) — 가까운 단지 먼저. 9999=수집기 "역 없음" sentinel(245건/17%)
+  // 이라 null 과 함께 Infinity 로 정규화해 맨뒤. 동률은 종합점수 tie-break (세션 444)
   subwayNear: (a, b) => {
-    const da = a.apt.subwayDist ?? Infinity, db = b.apt.subwayDist ?? Infinity;
-    return da === db ? b.res.total - a.res.total : Number(da) - Number(db);
+    const norm = (d: number | null | undefined) => (d == null || d >= 9999 ? Infinity : Number(d));
+    const da = norm(a.apt.subwayDist), db = norm(b.apt.subwayDist);
+    return da === db ? b.res.total - a.res.total : da - db;
   },
   // 전세가율 높은순 (jeonseRate 내림차순, 채움률 99.4%) — 전세 끼고 투자(갭) 유리. null=-1 로 맨뒤, 동률은 종합점수 tie-break (세션 444)
   jeonseHigh: (a, b) => {
