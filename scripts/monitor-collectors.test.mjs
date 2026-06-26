@@ -3,7 +3,7 @@
  * monitor-collectors.mjs 순수 점검 함수 테스트
  * 대상: checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, checkNullSurge, checkExternalApiStale
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -20,7 +20,7 @@ const {
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
   QUARTERLY_CRON_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS,
-  dedupKey, filterUnsent,
+  dedupKey, filterUnsent, hasGithubApiAuth,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
 
@@ -153,6 +153,33 @@ describe("checkEmptyRuns — ② 데이터 0건", () => {
     ]);
     expect(issues).toHaveLength(1);
   });
+
+  it("외부 API 수집기는 ②에서 제외 — 0건이 정상, ⑤가 단독 판정 (중복 노이즈 차단, 세션 444)", () => {
+    const external = new Set(["housing-permits", "kosis-fertility-rate"]);
+    const issues = checkEmptyRuns(
+      [
+        { collector: "housing-permits", status: "success", ok_count: 0, skip_count: 0 },
+        { collector: "kosis-fertility-rate", status: "success", ok_count: 0, skip_count: 0 },
+      ],
+      {},
+      { externalApiCollectors: external },
+    );
+    expect(issues).toHaveLength(0); // 둘 다 외부 API → ②에서 제외
+  });
+
+  it("외부 API 집합에 없는 일반 수집기 0건은 ②가 그대로 점검 (진짜 신호 보존)", () => {
+    const external = new Set(["housing-permits"]);
+    const issues = checkEmptyRuns(
+      [
+        { collector: "housing-permits", status: "success", ok_count: 0, skip_count: 0 }, // 제외
+        { collector: "molit-units", status: "success", ok_count: 0, skip_count: 0 },     // 점검
+      ],
+      {},
+      { externalApiCollectors: external },
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].collector).toBe("molit-units");
+  });
 });
 
 describe("dedupKey / filterUnsent — 알림 dedup (텔레그램 스팸 차단)", () => {
@@ -193,6 +220,34 @@ describe("dedupKey / filterUnsent — 알림 dedup (텔레그램 스팸 차단)"
 
   it("filterUnsent: 보낸 키 없으면 전부 통과", () => {
     expect(filterUnsent([empty526, empty527], new Set())).toHaveLength(2);
+  });
+});
+
+describe("hasGithubApiAuth — 로컬 실행 시 ①③ skip 가드 (가짜 미발화 알림 차단, 세션 444)", () => {
+  const orig = { repo: process.env.GITHUB_REPOSITORY, token: process.env.GITHUB_TOKEN };
+  afterEach(() => {
+    if (orig.repo === undefined) delete process.env.GITHUB_REPOSITORY;
+    else process.env.GITHUB_REPOSITORY = orig.repo;
+    if (orig.token === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = orig.token;
+  });
+
+  it("GITHUB_REPOSITORY + GITHUB_TOKEN 둘 다 있으면 true (Actions 러너)", () => {
+    process.env.GITHUB_REPOSITORY = "developer-duno/mibunyang";
+    process.env.GITHUB_TOKEN = "ghs_x";
+    expect(hasGithubApiAuth()).toBe(true);
+  });
+
+  it("둘 다 없으면 false (로컬 PC — ①③ 점검 skip → 미발화 오탐 차단)", () => {
+    delete process.env.GITHUB_REPOSITORY;
+    delete process.env.GITHUB_TOKEN;
+    expect(hasGithubApiAuth()).toBe(false);
+  });
+
+  it("repo 만 있고 token 없으면 false (부분 인증도 안전하게 skip)", () => {
+    process.env.GITHUB_REPOSITORY = "developer-duno/mibunyang";
+    delete process.env.GITHUB_TOKEN;
+    expect(hasGithubApiAuth()).toBe(false);
   });
 });
 
