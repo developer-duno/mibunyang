@@ -223,6 +223,28 @@ describe('scoreRisk', () => {
   it('세대수 <= 1 -> 미분양률 중립', () => {
     expect(scoreRisk(makeApt({ units: 1 })).subs.find(s => s.name === "미분양률")?.info).toContain("미확인");
   });
+  // 세션 445: unsoldRate null(=100% 초과 폭발값 무력화) → units>1 이어도 중립 처리.
+  it('unsoldRate null -> 미분양률 중립 (세대수>1 이어도)', () => {
+    const r = scoreRisk(makeApt({ units: 300, unsoldRate: null }));
+    expect(r.subs.find(s => s.name === "미분양률")?.info).toContain("미확인");
+  });
+  // 회귀: 229% 폭발값은 예전엔 최고 미분양 위험으로 채점됐으나, null 무력화 후 중립이라
+  //   "위험 50%↑" 등급(점수 낮음)이 아니라 중립 점수가 나와야 한다.
+  it('unsoldRate null(무력화) -> 폭발값 50% 보다 미분양률 안전점수 높음', () => {
+    const cleared = scoreRisk(makeApt({ units: 300, unsoldRate: null }));
+    const exploded = scoreRisk(makeApt({ units: 300, unsoldRate: 50 }));
+    const clearedSub = cleared.subs.find(s => s.name === "미분양률")?.score ?? 0;
+    const explodedSub = exploded.subs.find(s => s.name === "미분양률")?.score ?? 0;
+    expect(clearedSub).toBeGreaterThan(explodedSub); // 중립(60) > 위험구간(<60)
+  });
+  // sanitize(engine)가 unsoldRate null 을 지역 중위값으로 되채우지 않아야 한다 (세션 445).
+  //   되채우면 calcCats 의 미분양률 sub 가 "미확인" 이 아니라 중위값 등급으로 나옴.
+  it('calcCats: unsoldRate null + 지역 중위값 존재 -> 중위값 되채움 안 함 (미확인 유지)', () => {
+    const ctx = { regionMedians: { 경기: { pir: 5, psr: 0.8, unsoldRate: 10, supplyRatio: 100, maint: 0 } } };
+    const cats = calcCats(makeApt({ region: "경기", units: 300, unsoldRate: null }), /** @type {any} */ (ctx));
+    const sub = cats.risk.subs.find(s => s.name === "미분양률");
+    expect(sub?.info).toContain("미확인");
+  });
   it('HUG+AA -> 시공사 재무 위험 낮음', () => {
     const r = scoreRisk(makeApt({ hugGuarantee: true, builderCreditGrade: "AA", builderDebtRatio: 80 }));
     expect(r.subs.find(s => s.name === "시공사 재무")?.score ?? 0).toBeGreaterThanOrEqual(90);
@@ -381,6 +403,8 @@ describe('computeRegionalMedians', () => {
     const m = computeRegionalMedians(apts);
     expect(m["경기"].pir).toBe(5);
     expect(m["경기"].psr).toBe(0.8);
+    // 세션 445: unsoldRate null(=폭발값 무력화) 단지는 지역 중위값 분모에서 제외 → 20 단독.
+    expect(m["경기"].unsoldRate).toBe(20);
   });
 });
 

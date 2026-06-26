@@ -221,8 +221,8 @@ describe('sanitize (null → 기본값)', () => {
     expect(res.json.mock.calls[0][0].data[0].unsoldRate).toBeNull();
   });
 
-  // unsoldRate: unsold >= units이면 null (잘못된 데이터)
-  it('unsold >= units이면 unsoldRate는 null이다', async () => {
+  // unsoldRate: 100% 초과는 null (세션 445 — VIEW·JSON·collect-data 와 동일 경계). unsold 도 null.
+  it('unsoldRate > 100%이면 null이다 (회차 폭발값 무력화)', async () => {
     const row = { id: 1, name: 'Test', region: '경기', units: 100, unsold: 200, unsoldRate: 200 };
     mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
     const res = makeRes();
@@ -230,6 +230,24 @@ describe('sanitize (null → 기본값)', () => {
     const d = res.json.mock.calls[0][0].data[0];
     expect(d.unsoldRate).toBeNull();
     expect(d.unsold).toBeNull();
+  });
+
+  // 세션 445: 100% 이하는 그대로 (?? 50 폴백 제거 — raw 값 정직 통과). 100 정확히는 유지.
+  it('unsoldRate 100 이하는 그대로 통과한다 (?? 50 폴백 제거)', async () => {
+    const row = { id: 1, name: 'Test', region: '경기', units: 100, unsold: 30, unsoldRate: 30 };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    expect(res.json.mock.calls[0][0].data[0].unsoldRate).toBe(30);
+  });
+
+  // 세션 445: units>1 인데 raw unsoldRate 가 null 이면 null 유지 (예전엔 50 으로 채웠음 → 점수 임의 등급).
+  it('units>1 + unsoldRate null이면 null 유지 (50 폴백 안 함)', async () => {
+    const row = { id: 1, name: 'Test', region: '경기', units: 100, unsold: 10, unsoldRate: null };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    expect(res.json.mock.calls[0][0].data[0].unsoldRate).toBeNull();
   });
 
   // _fallback 플래그 테스트

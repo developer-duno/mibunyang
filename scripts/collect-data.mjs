@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll } from "./collectors/_shared.mjs";
+import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate } from "./collectors/_shared.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -77,7 +77,8 @@ function mapItem(item, idx, isRemndr) {
     lat: null, lng: null,
     area: 84, price: null, pp: null,
     units, unsold,
-    unsoldRate: (unsold != null && units > 0) ? Math.round(unsold / units * 1000) / 10 : null,
+    // 100% 초과는 청약홈 회차 공급분이 분모로 들어간 폭발값 → 무력화(null) (세션 445).
+    unsoldRate: clampUnsoldRate((unsold != null && units > 0) ? Math.round(unsold / units * 1000) / 10 : null),
     builder: resolveBuilder(item.CNSTRCT_ENTRPS_NM || item.BSNS_MBY_NM || null),
     completion: item.MVN_PREARNGE_YM || null,
     heating: item.HEAT_MTHD_NM || null,
@@ -165,7 +166,8 @@ ${JSON.stringify(items[0], null, 2)}`);
       const totalUnits = units.reduce((sum, u) =>
         sum + (parseInt(u.SUPLY_HSHLDCO || 0) + parseInt(u.SPSPLY_HSHLDCO || 0)), 0);
       const finalUnits = totalUnits > 0 ? totalUnits : a.units;
-      const unsoldRate = (a.unsold != null && finalUnits > 0) ? Math.round(a.unsold / finalUnits * 1000) / 10 : a.unsoldRate;
+      // 100% 초과 폭발값 무력화 (세션 445) — 재계산 못 하면 mapItem 에서 이미 클램프된 a.unsoldRate 유지.
+      const unsoldRate = (a.unsold != null && finalUnits > 0) ? clampUnsoldRate(Math.round(a.unsold / finalUnits * 1000) / 10) : a.unsoldRate;
       const M2_TO_PYEONG = 3.3058;
       return { ...a, area, price, units: finalUnits, unsoldRate, pp: price && area ? Math.round(price / area * M2_TO_PYEONG) : null };
     });

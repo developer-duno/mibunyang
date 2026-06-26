@@ -6,8 +6,9 @@ import { classifyMoveIn, classifyTier } from "@/lib/classify";
 const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
 /* ── 테스트 데이터 팩토리 ── */
+// 세션 445: classifyMoveIn 은 미입주 판정을 unsold(수)로 함 (unsoldRate 는 폭발값 무력화로 null 가능).
 function makeApt(overrides = {}) {
-  return { completion: "202501", unsoldRate: 10, builder: "현대건설", region: "서울", gu: "강남구", ...overrides };
+  return { completion: "202501", unsold: 5, unsoldRate: 10, builder: "현대건설", region: "서울", gu: "강남구", ...overrides };
 }
 
 describe("classifyMoveIn — 입주 상태 분류", () => {
@@ -16,14 +17,19 @@ describe("classifyMoveIn — 입주 상태 분류", () => {
     expect(classifyMoveIn(makeApt({ completion: "209912" }))).toBe("입주예정");
   });
 
-  // 정상 케이스: 과거 + unsoldRate > 0 → 미입주
-  it("과거 completion + unsoldRate > 0 → '미입주'", () => {
-    expect(classifyMoveIn(makeApt({ completion: "202001", unsoldRate: 5 }))).toBe("미입주");
+  // 정상 케이스: 과거 + unsold > 0 → 미입주 (세션 445: unsold 수 기준)
+  it("과거 completion + unsold > 0 → '미입주'", () => {
+    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: 3 }))).toBe("미입주");
   });
 
-  // 정상 케이스: 과거 + unsoldRate === 0 → 입주완료
-  it("과거 completion + unsoldRate === 0 → '입주완료'", () => {
-    expect(classifyMoveIn(makeApt({ completion: "202001", unsoldRate: 0 }))).toBe("입주완료");
+  // 정상 케이스: 과거 + unsold === 0 → 입주완료
+  it("과거 completion + unsold === 0 → '입주완료'", () => {
+    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: 0 }))).toBe("입주완료");
+  });
+
+  // 세션 445: unsoldRate 폭발값 무력화(null)여도 unsold>0 이면 미입주 (입주완료 오분류 방지)
+  it("과거 completion + unsold > 0 + unsoldRate null → '미입주'", () => {
+    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: 39, unsoldRate: null }))).toBe("미입주");
   });
 
   // 에러 케이스: completion null → null
@@ -36,14 +42,14 @@ describe("classifyMoveIn — 입주 상태 분류", () => {
     expect(classifyMoveIn(makeApt({ completion: "" }))).toBeNull();
   });
 
-  // 경계값: unsoldRate null → 0 취급 → 입주완료
-  it("과거 completion + unsoldRate null → '입주완료'", () => {
-    expect(classifyMoveIn(makeApt({ completion: "202001", unsoldRate: null }))).toBe("입주완료");
+  // 경계값: unsold null → 0 취급 → 입주완료
+  it("과거 completion + unsold null → '입주완료'", () => {
+    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: null }))).toBe("입주완료");
   });
 
-  // 경계값: unsoldRate undefined → 0 취급 → 입주완료
-  it("과거 completion + unsoldRate undefined → '입주완료'", () => {
-    expect(classifyMoveIn(makeApt({ completion: "202001", unsoldRate: undefined }))).toBe("입주완료");
+  // 경계값: unsold undefined → 0 취급 → 입주완료
+  it("과거 completion + unsold undefined → '입주완료'", () => {
+    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: undefined }))).toBe("입주완료");
   });
 
   // 경계값: completion === NOW_YM (이번 달) → 입주예정

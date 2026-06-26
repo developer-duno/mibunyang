@@ -30,7 +30,9 @@ export const TIER_VALUES: string[] = Object.values(TIER_LABELS);
 export function classifyMoveIn(apt: Apt): string | null {
   if (!apt.completion) return null;
   if (apt.completion >= NOW_YM) return MOVEIN_STATUS.SCHEDULED;
-  if ((apt.unsoldRate ?? 0) > 0) return MOVEIN_STATUS.NOT_MOVED;
+  // 미입주 판정은 unsold(수)로 — unsoldRate 는 100% 초과 폭발값이 null 로 무력화돼 있을 수 있어
+  //   미분양 단지가 입주완료로 오분류되던 회귀 방지 (세션 445). 단지 잔여 미분양이 남았으면 미입주.
+  if ((apt.unsold ?? 0) > 0) return MOVEIN_STATUS.NOT_MOVED;
   return MOVEIN_STATUS.COMPLETED;
 }
 

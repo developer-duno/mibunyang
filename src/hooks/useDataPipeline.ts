@@ -135,7 +135,9 @@ export function useDataPipeline({
     if (deferredMoveIn !== "전체") list = list.filter(x => classifyMoveIn(x.apt) === deferredMoveIn);
     if (deferredTier !== "전체") list = list.filter(x => classifyTier(x.apt) === deferredTier);
     if (normalizedSearch) list = list.filter(x => matchesQuery(x.apt, normalizedSearch));
-    if (hideNoUnsold) list = list.filter(x => (x.apt.unsoldRate ?? 0) > 0);
+    // "미분양만 보기"는 unsold(수)로 — unsoldRate 는 100% 초과 폭발값이 null 로 무력화돼 있을 수 있어
+    //   미분양 단지가 목록에서 사라지던 회귀 방지 (세션 445). 잔여 미분양 세대가 있으면 표시.
+    if (hideNoUnsold) list = list.filter(x => (Number(x.apt.unsold ?? 0)) > 0);
     return [...list].sort(SORTERS[deferredSortKey] || SORTERS.total);
   }, [scored, baseFilterArgs, deferredRegion, deferredGu, deferredSortKey, deferredMoveIn, deferredTier, normalizedSearch, hideNoUnsold]);
 
@@ -161,7 +163,8 @@ export function useDataPipeline({
   const filterOptionCounts = useMemo(() => {
     if (!scored.length) return null;
     let base = applyBaseFilters(scored, baseFilterArgs);
-    if (hideNoUnsold) base = base.filter(x => (x.apt.unsoldRate ?? 0) > 0);
+    // filtered(L140)과 동일하게 unsold(수) 기준 — 카운트 배지가 실제 필터 결과와 일치하도록 (세션 445).
+    if (hideNoUnsold) base = base.filter(x => (Number(x.apt.unsold ?? 0)) > 0);
     // 단일 패스 leave-one-out 카운트 (5N→1N 최적화)
     const regionCounts = Object.create(null);
     const guCounts = Object.create(null);
