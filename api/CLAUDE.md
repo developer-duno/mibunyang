@@ -10,7 +10,8 @@ null < 50   // true
 ```
 
 API에서 null 반환 시 **위험 단지가 안전하게 표시됨**. `sanitize()` 필수:
-- 위험 필드 null → 비관적 기본값 (unsoldRate:50, pir:10, psr:1.5)
+- 위험 필드 null → 비관적 기본값 (pir:10, psr:1.5 등)
+- **단 `unsoldRate` 는 null 보존**(세션 445): `unsoldRate > 100 → null` 무력화(청약홈 회차 폭발값) + `?? 50` 폴백 제거. null = "미분양률 미확인" → 점수 엔진(scoreRisk)이 units≤1 과 동일하게 중립(UNSOLD_UNKNOWN_SCORE) 처리. 4 emit point(clampUnsoldRate·collect-data·api·VIEW) + fmtUnsoldRate 전부 `>100` 단일 경계.
 - 혜택 필드 null → 0
 - 문자열 키 null → 최저 등급
 - presale 19필드: `?? null` (정보성, 스코어링 미사용)

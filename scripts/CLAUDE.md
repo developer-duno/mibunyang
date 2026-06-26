@@ -26,6 +26,19 @@
 `fmtUnsoldRate`(100% 초과 → "100%+" 캡, 손님 화면 AptCard·DetailModal)로 방어. 관리자
 AdminUnitSupply 는 raw 진단값 유지.
 
+**세션 445 — 100% 초과 무력화(null) + 점수 배선**: 화면 캡(`fmtUnsoldRate`)은 문자열만 고쳐
+점수·중위값·정렬은 폭발값을 그대로 썼다(7% 저미분양 단지가 최고 위험으로 오채점). 회차 통합은
+데이터상 대부분 불가(52건 중 37건 진짜 세대수 신호 0, dedup 정규화가 같은 단지를 분리)라
+**왜곡 무력화**로 처방: `_shared.mjs clampUnsoldRate(rate)`(>100 → null, 100 이하 유지)를 단일
+경계로 4 emit point 통일 — `collect-data.mjs`(정적 JSON emit 2곳)·`api/supabase/apartments.ts`
+(라이브 API)·VIEW 마이그(`20260627000000`, `CASE WHEN unsold_rate>100 THEN NULL`)·화면 캡.
+점수는 `engine.ts` sanitize 가 unsoldRate null 을 지역 중위값으로 되채우지 않고(`num(apt.unsoldRate,
+null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`(중립) 처리.
+**미분양 단지 여부 판정**(classify 미입주·hideNoUnsold 필터·AptCard moveInDone)은 unsoldRate(%)가
+아니라 **`unsold`(수)** 로 — 클램프 null 단지가 목록서 사라지거나 입주완료로 둔갑하던 회귀 방지.
+**⚠️ production 점수는 cats_cache precompute → VIEW 마이그 적용 후 daily-deploy 의
+`compute-scores → collect-data --from-supabase-only` 1회 실행으로 자동 정합**(별 절차 불필요).
+
 ---
 
 ## MOLIT 수집기 모듈
