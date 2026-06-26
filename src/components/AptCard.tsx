@@ -65,7 +65,9 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
     const primaryDirection = apt.primaryDirection as string | null | undefined;
     const isNorthFacing = primaryDirection != null && primaryDirection.startsWith("북");
     const completionPast = apt.completion ? apt.completion < NOW_YM : false;
-    const moveInDone = completionPast && (apt.unsoldRate ?? 0) === 0;
+    // 준공 + 미분양 0 = 입주완료(회색). 미분양 판정은 unsold(수)로 — unsoldRate 는 100% 초과 폭발값이
+    //   null 로 무력화돼 있을 수 있어, 미분양 단지가 "입주완료"로 둔갑하던 회귀 방지 (세션 445, classify.ts:33 일치).
+    const moveInDone = completionPast && (Number(apt.unsold ?? 0)) === 0;
   const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
 
   // 상태 의존 스타일만 useMemo로 계산
