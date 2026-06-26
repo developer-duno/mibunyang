@@ -8,6 +8,18 @@ export const fmtPrice = (v: number | null | undefined): string => {
   return `${man.toLocaleString()}만`;
 };
 
+/**
+ * 미분양률 표시 — 100% 초과는 데이터 신뢰 불가(전체 세대수에 청약홈 잔여공급분이
+ * 들어가 분모가 작아진 경우)라 "100%+" 로 캡한다. 미분양은 본질적으로 전체 세대수를
+ * 넘을 수 없으므로 2900% 같은 값은 표시 오류. collector(molit-units)가 진짜 세대수로
+ * 보정하나 이름 매칭 실패분은 캡으로 방어 (세션 444).
+ */
+export const fmtUnsoldRate = (v: number | null | undefined): string => {
+  if (v == null) return "-";
+  if (v > 100) return "100%+";
+  return `${v}%`;
+};
+
 /** 이름 마스킹 (예: "홍길동" → "홍**", null → "") */
 export const maskName = (name: string | null | undefined): string => {
   if (!name || typeof name !== "string") return "";

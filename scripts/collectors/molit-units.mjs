@@ -62,6 +62,24 @@ export async function fetchAptDetail(kaptCode) {
   return body?.item ?? body?.items?.item ?? null;
 }
 
+/**
+ * 단지 상세에서 보정용 세대수를 결정한다. kaptdaCnt(공동주택 세대수) 우선,
+ * 0/누락이면 hoCnt(호수)로 폴백 — 임의공급·계약취소·블록 단위 등 특수 물량은
+ * kaptdaCnt=0 으로 응답하나 hoCnt 는 채워져 있다. kaptdaCnt>1 인 정상 단지는
+ * hoCnt 와 동일(실측 4/4)이라 폴백이 회귀를 만들지 않는다 (세션 444).
+ * @param {Record<string, unknown> | null | undefined} detail
+ * @returns {{ units: number, field: string }} units<=1 이면 보정 불가
+ */
+export function resolveUnits(detail) {
+  const kaptdaCnt = parseInt(String(detail?.kaptdaCnt ?? "0"), 10);
+  const hoCnt = parseInt(String(detail?.hoCnt ?? "0"), 10);
+  const validKaptda = !isNaN(kaptdaCnt) && kaptdaCnt > 1;
+  const validHo = !isNaN(hoCnt) && hoCnt > 1;
+  if (validKaptda) return { units: kaptdaCnt, field: "kaptdaCnt" };
+  if (validHo) return { units: hoCnt, field: "hoCnt(폴백)" };
+  return { units: 0, field: `kaptdaCnt=${kaptdaCnt} hoCnt=${hoCnt}` };
+}
+
 // ── 3. 보정 적용 ────────────────────────────────────────────
 /**
  * @param {SupabaseClient} sb
@@ -187,17 +205,18 @@ async function main() {
           continue;
         }
 
-        const kaptdaCnt = parseInt(String(detail.kaptdaCnt ?? "0"), 10);
-        if (isNaN(kaptdaCnt) || kaptdaCnt <= 1) {
-          log(PHASE, `    → 세대수 ${kaptdaCnt} (보정 불가)`);
+        // 세대수: kaptdaCnt(공동주택 세대수) 우선, 0/누락이면 hoCnt(호수)로 폴백.
+        const { units: newUnits, field: usedField } = resolveUnits(detail);
+        if (newUnits <= 1) {
+          log(PHASE, `    → 세대수 보정 불가 (${usedField})`);
           skipped++;
           continue;
         }
 
-        log(PHASE, `    → 세대수: ${kaptdaCnt}`);
+        log(PHASE, `    → 세대수: ${newUnits} (${usedField})`);
 
         // 보정 적용
-        const ok = await updateUnits(sb, target.id, kaptdaCnt, target.unsold, dryRun);
+        const ok = await updateUnits(sb, target.id, newUnits, target.unsold, dryRun);
         if (ok) corrected++;
         else failed++;
 

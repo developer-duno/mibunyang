@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, F, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
-import { fmtPrice, fmtCompletion, fmtCompetitionRate } from "@/lib/format";
+import { fmtPrice, fmtCompletion, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 import { getTopCats } from "@/constants/profiles";
 import { catVerdict } from "@/constants/catVerdict";
@@ -242,7 +242,7 @@ export const AptCard = memo(function AptCard({ apt, res, rank, onDetail, isComp,
               return <span style={{ ...S.alertTag, background: b.bg, color: b.color }}>{b.text}</span>;
             })() : null}
             {(apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD && (
-              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {String(apt.unsoldRate)}%</span>
+              <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>미분양 {fmtUnsoldRate(apt.unsoldRate as number)}</span>
             )}
             {Boolean(apt.builderCreditGrade) && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade as string) && (
               <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>시공사 {String(apt.builderCreditGrade)}</span>

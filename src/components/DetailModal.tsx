@@ -4,7 +4,7 @@ import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { PROFILES, getTopCats } from "@/constants/profiles";
 import { ScoreBadge } from "./primitives";
 import { CatPanel } from "./CatPanel";
-import { fmtPrice, fmtCompletion } from "@/lib/format";
+import { fmtPrice, fmtCompletion, fmtUnsoldRate } from "@/lib/format";
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
@@ -249,7 +249,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
               { l: "분양가", v: fmtPrice(apt.price) },
               { l: "적정가 괴리", v: res.cats.price.deviation != null ? `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%` : "—", c: res.cats.price.deviation != null ? (Number(res.cats.price.deviation) > 0 ? C.green : C.red) : C.muted, hint: "주변 시세로 계산한 '적정가'와 실제 분양가를 비교한 거예요. +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요." },
               { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
-              { l: "미분양률", v: apt.unsoldRate != null ? `${apt.unsoldRate}%` : "—", c: apt.unsoldRate != null ? (apt.unsoldRate > UNSOLD_WARN_THRESHOLD ? C.red : C.green) : C.muted },
+              { l: "미분양률", v: fmtUnsoldRate(apt.unsoldRate as number | null), c: apt.unsoldRate != null ? (apt.unsoldRate > UNSOLD_WARN_THRESHOLD ? C.red : C.green) : C.muted },
               { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
               { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
               { l: "입주", v: fmtCompletion(apt.completion) },

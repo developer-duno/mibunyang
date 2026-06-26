@@ -30,7 +30,7 @@ vi.mock("./_molit-api.mjs", async (importOriginal) => {
 // MOLIT_KEY 설정 — process.exit 방지
 process.env.MOLIT_KEY = "test-key";
 
-const { getTargets, fetchAptDetail, updateUnits } = await import("./molit-units.mjs");
+const { getTargets, fetchAptDetail, updateUnits, resolveUnits } = await import("./molit-units.mjs");
 
 // ── 헬퍼 ─────────────────────────────────────────────────────
 /**
@@ -85,6 +85,33 @@ describe("getTargets", () => {
       }
     });
   }
+});
+
+// ── resolveUnits (kaptdaCnt 우선 + hoCnt 폴백, 세션 444) ──────
+describe("resolveUnits — 세대수 결정 (kaptdaCnt 우선, 0이면 hoCnt 폴백)", () => {
+  it("kaptdaCnt>1 이면 kaptdaCnt 사용 (정상 단지)", () => {
+    expect(resolveUnits({ kaptdaCnt: "500", hoCnt: "500" })).toEqual({ units: 500, field: "kaptdaCnt" });
+  });
+
+  it("kaptdaCnt=0 이고 hoCnt>1 이면 hoCnt 폴백 (임의공급·특수 물량)", () => {
+    // 주안 극동스타클래스 실측: kaptdaCnt=0, hoCnt=249
+    expect(resolveUnits({ kaptdaCnt: "0", hoCnt: "249" })).toEqual({ units: 249, field: "hoCnt(폴백)" });
+  });
+
+  it("kaptdaCnt>1 이면 hoCnt 와 달라도 kaptdaCnt 우선 (회귀 방지)", () => {
+    expect(resolveUnits({ kaptdaCnt: "920", hoCnt: "1000" }).units).toBe(920);
+  });
+
+  it("둘 다 0/1 이면 보정 불가 (units 0)", () => {
+    expect(resolveUnits({ kaptdaCnt: "0", hoCnt: "1" }).units).toBe(0);
+    expect(resolveUnits({ kaptdaCnt: "1", hoCnt: "0" }).units).toBe(0);
+  });
+
+  it("필드 누락·null detail 도 안전 (units 0)", () => {
+    expect(resolveUnits({}).units).toBe(0);
+    expect(resolveUnits(null).units).toBe(0);
+    expect(resolveUnits({ kaptdaCnt: "abc", hoCnt: "xyz" }).units).toBe(0);
+  });
 });
 
 // ── fetchAptDetail ───────────────────────────────────────────

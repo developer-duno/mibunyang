@@ -128,6 +128,14 @@ describe("AptCard", () => {
     expect(screen.getByText("미분양 45%")).toBeInTheDocument();
   });
 
+  // 미분양률 100% 초과는 "100%+" 로 캡 (units 잔여공급분 오류 방어, 세션 444)
+  it("unsoldRate 100% 초과면 '미분양 100%+' 로 캡 표시 (818% 같은 이상값 숨김)", () => {
+    const apt = /** @type {any} */ (makeApt({ unsoldRate: 818.2 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("미분양 100%+")).toBeInTheDocument();
+    expect(screen.queryByText(/818/)).toBeNull();
+  });
+
   // 혐오시설 경고
   it("혐오시설이 있으면 경고 태그 표시", () => {
     const apt = /** @type {any} */ (makeApt({ noxious: ["공장", "묘지"] }));

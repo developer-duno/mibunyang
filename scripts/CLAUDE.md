@@ -17,6 +17,15 @@
 보정 대상: `units <= 1` 또는 `unsold_rate >= 100%`인 단지.
 보정 시 `unsold_rate` 재계산: `ROUND(unsold / new_units * 100, 1)`.
 
+**세대수 필드 = kaptdaCnt 우선, 0이면 hoCnt(호수) 폴백** (세션 444 `resolveUnits()`): 국토부
+`getAphusBassInfoV4` 응답에서 `kaptdaCnt`(공동주택 세대수)를 우선 쓰되, 임의공급·계약취소·블록
+단위 등 특수 물량은 `kaptdaCnt=0` 으로 응답하므로 `hoCnt`(호수)로 폴백한다. `kaptdaCnt>1` 인
+정상 단지는 둘이 동일(실측 4/4)이라 폴백이 회귀를 만들지 않는다. 폴백 없으면 청약홈 "이번 회차
+잔여공급분"(units=4·11 등 소량)이 분모로 남아 `unsold/units` 가 818%·7100% 로 폭발(사장님 지적).
+단, **이름 매칭 실패분**(원주혁신도시·세종 블록 등 ~46건)은 hoCnt 폴백으로도 못 풀어 화면측
+`fmtUnsoldRate`(100% 초과 → "100%+" 캡, 손님 화면 AptCard·DetailModal)로 방어. 관리자
+AdminUnitSupply 는 raw 진단값 유지.
+
 ---
 
 ## MOLIT 수집기 모듈
