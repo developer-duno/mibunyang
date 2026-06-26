@@ -239,6 +239,33 @@ describe("useDataPipeline", () => {
       expect(order.slice(4).sort()).toEqual(["ah-null", "ah-undecided"]);
     });
 
+    it("sortKey=subwayNear → 역세권 가까운순(오름차순), null·9999(역없음 sentinel)은 맨 뒤 (세션 444)", () => {
+      const apts = [
+        makeApt({ id: "ah-a", region: "서울", price: 30000, subwayDist: 800 }),
+        makeApt({ id: "ah-b", region: "서울", price: 30000, subwayDist: 150 }),
+        makeApt({ id: "ah-c", region: "서울", price: 30000, subwayDist: null }),
+        makeApt({ id: "ah-d", region: "서울", price: 30000, subwayDist: 400 }),
+        makeApt({ id: "ah-e", region: "서울", price: 30000, subwayDist: 9999 }), // 역 없음 sentinel → 맨뒤
+      ];
+      const { result } = renderPipeline({ apartments: apts, sortKey: "subwayNear" });
+      const order = result.current.filtered.map(x => x.apt.id);
+      // 150 < 400 < 800 < (null·9999 = Infinity, 동률 종합점수 tie-break → 안정 정렬로 입력 순서 c,e)
+      expect(order.slice(0, 3)).toEqual(["ah-b", "ah-d", "ah-a"]);
+      expect(order.slice(3).sort()).toEqual(["ah-c", "ah-e"]);
+    });
+
+    it("sortKey=jeonseHigh → 전세가율 높은순(내림차순), null 은 맨 뒤 (세션 444)", () => {
+      const apts = [
+        makeApt({ id: "ah-a", region: "서울", price: 30000, jeonseRate: 60 }),
+        makeApt({ id: "ah-b", region: "서울", price: 30000, jeonseRate: 85 }),
+        makeApt({ id: "ah-c", region: "서울", price: 30000, jeonseRate: null }),
+        makeApt({ id: "ah-d", region: "서울", price: 30000, jeonseRate: 72 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, sortKey: "jeonseHigh" });
+      const order = result.current.filtered.map(x => x.apt.id);
+      expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 85 > 72 > 60 > null(-1)
+    });
+
     it("filterRegion 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울" });
       expect(result.current.filtered.every(x => x.apt.region === "서울")).toBe(true);

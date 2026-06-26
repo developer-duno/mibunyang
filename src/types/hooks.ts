@@ -27,7 +27,7 @@ export interface CatsCacheItem {
 /**
  * 정렬 키 — useDataPipeline.SORTERS 의 키.
  */
-export type SortKey = "total" | "price" | "priceScore" | "location" | "safe" | "benefit" | "newest" | "unsoldRate" | "units" | "moveInSoon";
+export type SortKey = "total" | "price" | "priceScore" | "location" | "safe" | "benefit" | "newest" | "unsoldRate" | "units" | "moveInSoon" | "subwayNear" | "jeonseHigh";
 
 /**
  * 입주 시기 분류 — classifyMoveIn 반환.

@@ -53,7 +53,7 @@ describe("InfoPage", () => {
     render(<InfoPage {...makeProps()} />);
     expect(screen.getByText("프로필 선택 (5가지)")).toBeInTheDocument();
     expect(screen.getByText("검색과 필터")).toBeInTheDocument();
-    expect(screen.getByText("정렬 (10가지)")).toBeInTheDocument();
+    expect(screen.getByText("정렬 (12가지)")).toBeInTheDocument();
     expect(screen.getByText("단지 카드 읽는 법")).toBeInTheDocument();
     expect(screen.getByText("관심매물")).toBeInTheDocument();
     expect(screen.getByText("지도 뷰")).toBeInTheDocument();
