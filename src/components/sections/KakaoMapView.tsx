@@ -335,7 +335,7 @@ export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isP
   return (
     <MapShell ref={mapRef} isPC={isPC} isDesktop={isDesktop} height={height} fullscreen={fullscreen} error={error}>
       {/* 인프라 오버레이 토글 — compact(위젯) 모드에선 숨김 */}
-      {!compact && <InfraOverlay mapInstance={mapInstance} ready={ready} />}
+      {!compact && <InfraOverlay mapInstance={mapInstance} ready={ready} selectedApt={selected ? { lat: Number(selected.apt.lat) || null, lng: Number(selected.apt.lng) || null } : null} />}
       {/* 현위치 버튼 */}
       {!compact && ready && navigator.geolocation && (
         <MyLocationButton onClick={handleMyLocation} />
