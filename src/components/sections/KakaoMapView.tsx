@@ -6,7 +6,8 @@ import {
   MAP_DEFAULTS, CLUSTER_OPTS, MY_LOC_LEVEL, GEO_TIMEOUT,
   loadKakaoMapSdk, getKakaoMaps,
 } from "./kakaoMapHelpers";
-import { shortPrice, buildMarkerSvg } from "./markerSvg";
+import { shortPrice, buildMarkerSvg, MY_LOCATION_DOT_SVG } from "./markerSvg";
+import { MapShell, MyLocationButton } from "./mapShared";
 import { lazyNamed } from "@/utils/lazyNamed";
 import type { MapViewProps } from "@/types/components/MapView.types";
 import type { Apt } from "@/types/scoring";
@@ -280,10 +281,9 @@ export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isP
         const loc = new kakao.LatLng(pos.coords.latitude, pos.coords.longitude);
         if (myLocMarkerRef.current) myLocMarkerRef.current.setPosition(loc);
         else {
-          const blueDot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
           myLocMarkerRef.current = new kakao.Marker({
             position: loc,
-            image: new kakao.MarkerImage(blueDot, new kakao.Size(20, 20), { offset: new kakao.Point(10, 10) }),
+            image: new kakao.MarkerImage(MY_LOCATION_DOT_SVG, new kakao.Size(20, 20), { offset: new kakao.Point(10, 10) }),
             zIndex: 100,
           });
           myLocMarkerRef.current.setMap(mapInstance);
@@ -317,10 +317,9 @@ export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isP
         // GPS 콜백 도착 사이 손님이 지역을 골랐으면(deferredRegion 변경) 그 선택 우선 — 덮어쓰기 방지.
         if (deferredRegion && deferredRegion !== "전체") return;
         const loc = new kakao.LatLng(pos.coords.latitude, pos.coords.longitude);
-        const blueDot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
         myLocMarkerRef.current = new kakao.Marker({
           position: loc,
-          image: new kakao.MarkerImage(blueDot, new kakao.Size(20, 20), { offset: new kakao.Point(10, 10) }),
+          image: new kakao.MarkerImage(MY_LOCATION_DOT_SVG, new kakao.Size(20, 20), { offset: new kakao.Point(10, 10) }),
           zIndex: 100,
         });
         myLocMarkerRef.current.setMap(mapInstance);
@@ -334,33 +333,12 @@ export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isP
   }, [ready, mapInstance, mode, deferredRegion, autoLocate]);
 
   return (
-    <div style={{
-      position: "relative", width: "100%",
-      // 높이는 기존 3분기 calc 유지 — 헤더+필터바+BottomNav 를 반영한 검증값(세션 413~417). 전체화면도
-      // 같은 calc(필터바가 지도 위에 그대로 차지하므로 동일). 전체화면은 전체폭(App 100vw)+테두리/라운드
-      // 제거로 "꽉 찬" 체감을 줌(세션 417). 매직넘버 높이 재계산은 잘림 위험이라 calc 불변.
-      height: height ?? (isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)"),
-      borderRadius: fullscreen ? 0 : isDesktop ? 12 : 10,
-      overflow: "hidden",
-      border: fullscreen ? "none" : `1px solid ${C.border}`,
-    }}>
-      <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
-      {error && (
-        <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.9)", zIndex: 20 }}>
-          <div style={{ textAlign: "center", color: C.muted, fontSize: F.base }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🗺️</div>
-            <div>지도를 불러올 수 없습니다</div>
-            <div style={{ fontSize: F.xs, marginTop: 4 }}>{error}</div>
-          </div>
-        </div>
-      )}
+    <MapShell ref={mapRef} isPC={isPC} isDesktop={isDesktop} height={height} fullscreen={fullscreen} error={error}>
       {/* 인프라 오버레이 토글 — compact(위젯) 모드에선 숨김 */}
       {!compact && <InfraOverlay mapInstance={mapInstance} ready={ready} />}
       {/* 현위치 버튼 */}
       {!compact && ready && navigator.geolocation && (
-        <button onClick={handleMyLocation} aria-label="현위치" style={{ position: "absolute", bottom: 16, right: 12, width: 36, height: 36, borderRadius: "50%", background: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, fontSize: F.lg }}>
-          📍
-        </button>
+        <MyLocationButton onClick={handleMyLocation} />
       )}
       {/* 좌상단: 결과수 + 모드 토글 */}
       <div style={{ position: "absolute", top: 8, left: 8, display: "flex", gap: 6, zIndex: 10 }}>
@@ -394,6 +372,6 @@ export const KakaoMapView = memo(function KakaoMapView({ filtered, onDetail, isP
       )}
       {/* 선택된 아파트 정보 카드 */}
       <SelectedAptCard selected={selected} onInfoClick={handleInfoClick} onClose={() => setSelected(null)} />
-    </div>
+    </MapShell>
   );
 });
