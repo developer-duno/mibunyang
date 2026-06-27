@@ -24,7 +24,8 @@ function setupKakao() {
       event: { addListener: vi.fn(() => ({})), removeListener: vi.fn() },
     },
   };
-  return { categorySearch };
+  const ev = /** @type {any} */ (window).kakao.maps.event;
+  return { categorySearch, addListener: ev.addListener, removeListener: ev.removeListener };
 }
 
 /** mapInstance mock — getCenter 는 화면 중앙(35,128) 반환 */
@@ -97,5 +98,27 @@ describe("InfraOverlay", () => {
     act(() => { fireEvent.click(screen.getAllByRole("button")[0]); });
     expect(mapInstance.getCenter).toHaveBeenCalled();
     void categorySearch;
+  });
+
+  // 회귀 가드 (세션 448 production 크래시): 토글 끄기/전환 시 idle 리스너 cleanup —
+  // 카카오 removeListener 는 (target, type, handler) 3인자. addListener 반환값 1개를 넘기면
+  // production 카카오에서 "Cannot read properties of undefined (reading 'removeListener')" 크래시.
+  it("토글 끄기(cleanup) 시 removeListener 가 (mapInstance, 'idle', 핸들러) 3인자로 호출", () => {
+    const { addListener, removeListener } = setupKakao();
+    const mapInstance = makeMapInstance();
+    render(<InfraOverlay mapInstance={mapInstance} ready selectedApt={null} />);
+    // 토글 켜기 → idle addListener 등록
+    act(() => { fireEvent.click(screen.getAllByRole("button")[0]); });
+    const idleCall = addListener.mock.calls.find((/** @type {any[]} */ c) => c[1] === "idle");
+    expect(idleCall).toBeTruthy();
+    const handler = idleCall[2];
+    // 토글 다시 끄기 → effect cleanup 실행
+    act(() => { fireEvent.click(screen.getAllByRole("button")[0]); });
+    // removeListener 가 addListener 와 동일한 (target, type, handler) 시그니처로 호출돼야 함
+    const removeCall = removeListener.mock.calls.find((/** @type {any[]} */ c) => c[1] === "idle");
+    expect(removeCall).toBeTruthy();
+    expect(removeCall[0]).toBe(mapInstance);
+    expect(removeCall[1]).toBe("idle");
+    expect(removeCall[2]).toBe(handler);
   });
 });
