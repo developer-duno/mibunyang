@@ -83,12 +83,15 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready, sel
     if (!mapInstance) return;
     const kakao = getKakaoMaps();
     if (!kakao) return;
-    const listener = kakao.event.addListener(mapInstance, "idle", () => {
+    // 핸들러를 변수로 — removeListener 는 (target, type, handler) 3인자(카카오 공식). addListener 반환값을
+    // 넘기면 production 카카오에서 크래시(Cannot read 'removeListener' of undefined). KakaoMapView 답습.
+    const onIdle = () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = setTimeout(() => searchAndShow(cat.code, cat.emoji, cat.radius), INFRA_DEBOUNCE_MS);
-    });
+    };
+    kakao.event.addListener(mapInstance, "idle", onIdle);
     return () => {
-      kakao.event.removeListener?.(listener);
+      kakao.event.removeListener?.(mapInstance, "idle", onIdle);
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
