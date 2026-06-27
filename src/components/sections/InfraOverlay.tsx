@@ -1,50 +1,56 @@
 import { memo, useState, useEffect, useRef, useCallback } from "react";
 import { C, F } from "@/theme";
 import { getKakaoMaps } from "./kakaoMapHelpers";
+import { INFRA_CATEGORIES } from "./infraCategories";
 
-/**
- * 인프라 카테고리 정의
- * code: Kakao Places 카테고리 그룹 코드
- * emoji: 마커 아이콘
- */
-const INFRA_SEARCH_RADIUS = 3000;
 const INFRA_MAX_RESULTS = 15;
 const INFRA_DEBOUNCE_MS = 500;
-
-const INFRA_CATEGORIES = [
-  { key: "subway", label: "지하철", code: "SW8", emoji: "🚇" },
-  { key: "hospital", label: "병원", code: "HP8", emoji: "🏥" },
-  { key: "mart", label: "마트", code: "MT1", emoji: "🛒" },
-  { key: "school", label: "학교", code: "SC4", emoji: "🏫" },
-];
 
 type InfraOverlayProps = {
   mapInstance: unknown;
   ready: boolean;
+  /** 선택된 단지 좌표 — 있으면 이 단지 기준, 없으면 화면 중앙(getCenter) 기준 (세션 448) */
+  selectedApt?: { lat: number | null; lng: number | null } | null;
 };
 
 /**
- * InfraOverlay — 지도 위 인프라 마커 토글
+ * InfraOverlay — 지도 위 인프라 마커 토글 (세션 448: 8 카테고리 + 단지 기준 검색)
  * Props:
  *   mapInstance: kakao.maps.Map 인스턴스
  *   ready: boolean — 지도 준비 여부
+ *   selectedApt: 선택 단지 좌표(우선 기준점). null/좌표없음이면 화면 중앙 폴백
+ *
+ * 카카오 Places categorySearch 실시간. 우리 DB엔 주변시설 좌표 미저장이라 실시간만 가능(실측 확정).
+ * 카테고리 정의는 infraCategories.ts 단일 출처. 마커는 독립 레이어(KakaoMapView 마커 effect 무관).
  */
-export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: InfraOverlayProps) {
+export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready, selectedApt }: InfraOverlayProps) {
   const [active, setActive] = useState<string | null>(null);
   const markersRef = useRef<any[]>([]);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 검색 기준점: 선택 단지 좌표 우선, 없으면 화면 중앙(getCenter) 폴백
+  const getSearchCenter = useCallback(() => {
+    const kakao = getKakaoMaps();
+    if (!kakao) return null;
+    if (selectedApt && selectedApt.lat != null && selectedApt.lng != null) {
+      return new kakao.LatLng(selectedApt.lat, selectedApt.lng);
+    }
+    if (!mapInstance) return null;
+    return (mapInstance as any).getCenter();
+  }, [mapInstance, selectedApt]);
+
   // 카테고리 마커 검색 + 표시
-  const searchAndShow = useCallback((categoryCode: string, emoji: string) => {
+  const searchAndShow = useCallback((categoryCode: string, emoji: string, radius: number) => {
     const kakao = getKakaoMaps();
     if (!mapInstance || !kakao?.services) return;
     // 기존 마커 제거
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
-    const ps = new kakao.services.Places();
-    const center = (mapInstance as any).getCenter();
+    const center = getSearchCenter();
+    if (!center) return;
 
+    const ps = new kakao.services.Places();
     ps.categorySearch(categoryCode, (data: any[], status: string) => {
       if (status !== kakao.services.Status.OK) return;
       const newMarkers = data.map((place: any) => {
@@ -59,10 +65,10 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: I
         return marker;
       });
       markersRef.current = newMarkers;
-    }, { location: center, radius: INFRA_SEARCH_RADIUS, size: INFRA_MAX_RESULTS, sort: kakao.services.SortBy.DISTANCE });
-  }, [mapInstance]);
+    }, { location: center, radius, size: INFRA_MAX_RESULTS, sort: kakao.services.SortBy.DISTANCE });
+  }, [mapInstance, getSearchCenter]);
 
-  // 활성 카테고리 변경 시 검색
+  // 활성 카테고리 또는 선택 단지 변경 시 검색
   useEffect(() => {
     if (!ready || !active) {
       markersRef.current.forEach(m => m.setMap(null));
@@ -71,7 +77,7 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: I
     }
     const cat = INFRA_CATEGORIES.find(c => c.key === active);
     if (!cat) return;
-    searchAndShow(cat.code, cat.emoji);
+    searchAndShow(cat.code, cat.emoji, cat.radius);
 
     // 지도 이동 시 debounce로 재검색
     if (!mapInstance) return;
@@ -79,7 +85,7 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: I
     if (!kakao) return;
     const listener = kakao.event.addListener(mapInstance, "idle", () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = setTimeout(() => searchAndShow(cat.code, cat.emoji), INFRA_DEBOUNCE_MS);
+      searchDebounceRef.current = setTimeout(() => searchAndShow(cat.code, cat.emoji, cat.radius), INFRA_DEBOUNCE_MS);
     });
     return () => {
       kakao.event.removeListener?.(listener);
@@ -87,7 +93,7 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: I
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
     };
-  }, [ready, active, mapInstance, searchAndShow]);
+  }, [ready, active, mapInstance, searchAndShow, selectedApt?.lat, selectedApt?.lng]);
 
   const toggle = useCallback((key: string) => {
     setActive(prev => prev === key ? null : key);
@@ -98,6 +104,7 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready }: I
       {INFRA_CATEGORIES.map(cat => (
         <button
           key={cat.key}
+          type="button"
           onClick={() => toggle(cat.key)}
           aria-pressed={active === cat.key}
           title={cat.label}
