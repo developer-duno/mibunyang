@@ -1,11 +1,12 @@
-import { memo, useState, useRef, useEffect, lazy, Suspense } from "react";
+import { memo, useState, useRef, useEffect, Suspense } from "react";
 import { C, F } from "@/theme";
 import { WidgetCard } from "./WidgetCard";
+import { lazyNamed } from "@/utils/lazyNamed";
 import type { ScoredApt } from "@/types/hooks";
 
 // App.tsx 와 동일 모듈 경로 dynamic import → 동일 async chunk 공유 (메인 번들 무영향).
 // ⚠️ MapView.tsx 의 값 정적 import 금지 — 1건이라도 생기면 chunk 인라인되어 분리 무효 (plan 함정 박제).
-const MapView = lazy(() => import("@/components/sections/MapView").then(m => ({ default: m.MapView })));
+const MapView = lazyNamed(() => import("@/components/sections/MapView"), "MapView");
 
 // 스켈레톤·Suspense fallback·지도 전부 동일 높이 = CLS 0.
 // spec 하한 ~260px + SelectedAptCard ~64px 점유 고려 → 280px.

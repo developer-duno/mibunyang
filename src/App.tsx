@@ -1,19 +1,20 @@
 // App.tsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
-import { useState, useEffect, useRef, useCallback, useTransition, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useTransition, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
 import { HomePage } from "@/components/home/HomePage";
+import { lazyNamed } from "@/utils/lazyNamed";
 import { C, F } from "@/theme";
 import type { Profile } from "@/types/scoring";
 import type { CustomWeights } from "@/types/admin";
 import type { UpcomingApiResponse } from "@/types/upcoming";
 
-const CompareSheet = lazy(() => import("@/components/CompareSheet").then(m => ({ default: m.CompareSheet })));
-const DetailModal = lazy(() => import("@/components/DetailModal").then(m => ({ default: m.DetailModal })));
-const ConsultForm = lazy(() => import("@/components/ConsultForm").then(m => ({ default: m.ConsultForm })));
-const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
-const MapView = lazy(() => import("@/components/sections/MapView").then(m => ({ default: m.MapView })));
-const UpcomingPage = lazy(() => import("@/components/UpcomingPage").then(m => ({ default: m.UpcomingPage })));
+const CompareSheet = lazyNamed(() => import("@/components/CompareSheet"), "CompareSheet");
+const DetailModal = lazyNamed(() => import("@/components/DetailModal"), "DetailModal");
+const ConsultForm = lazyNamed(() => import("@/components/ConsultForm"), "ConsultForm");
+const AdminDashboard = lazyNamed(() => import("@/components/admin/AdminDashboard"), "AdminDashboard");
+const MapView = lazyNamed(() => import("@/components/sections/MapView"), "MapView");
+const UpcomingPage = lazyNamed(() => import("@/components/UpcomingPage"), "UpcomingPage");
 import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
 import { useComparison, MAX_COMPARE } from "@/hooks/useComparison";

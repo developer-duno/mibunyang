@@ -10,6 +10,12 @@ type UserRecord = {
   role?: string;
 };
 
+/** 접근 거부 status (rejected/pending/suspended) 또는 user 부재 — handleRefresh·handleVerify 공유 조건.
+ *  ⚠️ kakao.ts 는 pending 을 statusCode:"PENDING" 으로 따로 처리하므로 이 헬퍼와 합치지 않음. */
+function isAccessDenied(user: UserRecord | null | undefined): boolean {
+  return !user || user.status === "rejected" || user.status === "pending" || user.status === "suspended";
+}
+
 /** action=refresh → refresh token rotation (기존 /api/auth/refresh 통합) */
 async function handleRefresh(req: any, res: any) {
   const { refreshToken } = (req.body ?? {}) as { refreshToken?: unknown };
@@ -29,7 +35,7 @@ async function handleRefresh(req: any, res: any) {
   let user: UserRecord | null | undefined;
   try {
     user = (await kv.get(`user:${payload.email}`)) as UserRecord | null;
-    if (!user || user.status === "rejected" || user.status === "pending" || user.status === "suspended") {
+    if (isAccessDenied(user)) {
       return res.status(403).json({ ok: false, error: "접근 권한이 없습니다" });
     }
   } catch {
@@ -44,12 +50,12 @@ async function handleRefresh(req: any, res: any) {
   const role = isAdminEmail(payload.email) ? "admin" : "user";
   const isAdmin = role === "admin";
   const token = createToken(
-    { email: payload.email, name: user.name, ...(role !== "user" && { role }) },
+    { email: payload.email, name: user?.name, ...(role !== "user" && { role }) },
     { ttl: isAdmin ? 3600000 : 86400000 }
   );
   const newRefreshToken = createRefreshToken(payload.email);
 
-  res.json({ ok: true, token, refreshToken: newRefreshToken, user: { email: payload.email, name: user.name }, role });
+  res.json({ ok: true, token, refreshToken: newRefreshToken, user: { email: payload.email, name: user?.name }, role });
 }
 
 /** 기본: access token 검증 */
@@ -70,7 +76,7 @@ async function handleVerify(req: any, res: any) {
 
   try {
     const user = (await kv.get(`user:${payload.email}`)) as UserRecord | null;
-    if (!user || user.status === "rejected" || user.status === "pending" || user.status === "suspended") {
+    if (isAccessDenied(user)) {
       return res.status(403).json({ ok: false, reason: "revoked", error: "접근 권한이 없습니다" });
     }
   } catch {

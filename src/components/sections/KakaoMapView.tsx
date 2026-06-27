@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useState, useCallback, lazy, Suspense } from "react";
+import { memo, useRef, useEffect, useState, useCallback, Suspense } from "react";
 import { C, F, gr } from "@/theme";
 import { InfraOverlay } from "./InfraOverlay";
 import { SelectedAptCard } from "./SelectedAptCard";
@@ -7,13 +7,14 @@ import {
   loadKakaoMapSdk, getKakaoMaps,
 } from "./kakaoMapHelpers";
 import { shortPrice, buildMarkerSvg } from "./markerSvg";
+import { lazyNamed } from "@/utils/lazyNamed";
 import type { MapViewProps } from "@/types/components/MapView.types";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
 type FilteredItem = { apt: Apt; res: ScoringResult };
 
-const ChoroplethView = lazy(() => import("./ChoroplethView").then(m => ({ default: m.ChoroplethView })));
+const ChoroplethView = lazyNamed(() => import("./ChoroplethView"), "ChoroplethView");
 
 // 지역 선택 시 클로즈업 fit 의 최소 줌 레벨 (카카오는 level 클수록 축소 — 세션 416 박제).
 // 단지 1개만 남아도 "길 하나만 보이는" 과도 줌인 방지용 하한. 시/도=광역 유지, 구/군=더 클로즈업.

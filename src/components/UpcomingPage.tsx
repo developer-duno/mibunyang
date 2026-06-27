@@ -3,9 +3,10 @@
 // 5상태 (로딩 / 빈데이터 / API실패 / Feature Flag OFF / 정상) + 모바일 1컬럼 stack
 // 세션 406: 지역 칩 + ★관심지역 + 분양결과(잔여세대 경쟁률) 탭 + 카드 강조줄
 
-import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { C, F } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
+import { lazyNamed } from "@/utils/lazyNamed";
 import { SkeletonBox, SkeletonList } from "@/components/primitives";
 import { isFeatureUpcoming } from "@/constants/featureFlags";
 import { REGIONS } from "@/constants/regions";
@@ -14,9 +15,9 @@ import { PresaleResultList } from "@/components/PresaleResultList";
 import type { UpcomingPageProps } from "@/types/components/UpcomingPage.types";
 import type { UpcomingApiResponse, UpcomingApt } from "@/types/upcoming";
 
-const UpcomingCalendar = lazy(() => import("@/components/UpcomingCalendar").then(m => ({ default: m.UpcomingCalendar })));
-const UpcomingCardList = lazy(() => import("@/components/UpcomingCardList").then(m => ({ default: m.UpcomingCardList })));
-const SubscribeForm = lazy(() => import("@/components/SubscribeForm").then(m => ({ default: m.SubscribeForm })));
+const UpcomingCalendar = lazyNamed(() => import("@/components/UpcomingCalendar"), "UpcomingCalendar");
+const UpcomingCardList = lazyNamed(() => import("@/components/UpcomingCardList"), "UpcomingCardList");
+const SubscribeForm = lazyNamed(() => import("@/components/SubscribeForm"), "SubscribeForm");
 
 type StageTabKey = "all" | "plan" | "apply" | "sale" | "result";
 interface StageTab { key: StageTabKey; label: string }

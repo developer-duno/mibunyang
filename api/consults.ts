@@ -1,7 +1,7 @@
 import { getSupabase, getMibuyangSupabase } from "./_lib/supabase.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
-import { verifyToken } from "./_lib/auth.js";
-import { isBlacklisted } from "./_lib/tokenBlacklist.js";
+import { requireAdminGate } from "./_lib/adminAuth.js";
+import { parsePagination } from "./_lib/validators.js";
 import { withHandler } from "./_lib/handler.js";
 
 const VALID_CONSULT_TYPES = ["방문상담", "전화상담", "온라인상담"];
@@ -72,30 +72,15 @@ async function handlePost(req: any, res: any) {
 }
 
 async function handleGet(req: any, res: any) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith("Bearer ")) {
-    return res.status(401).json({ ok: false, error: "인증이 필요합니다" });
-  }
-  const token = auth.slice(7);
-  const payload = verifyToken(token);
-  if (!payload) {
-    return res.status(401).json({ ok: false, error: "유효하지 않은 토큰입니다" });
-  }
-  if (await isBlacklisted(token)) {
-    return res.status(401).json({ ok: false, error: "로그아웃된 토큰입니다" });
+  // 세션 405: 상담 열람 = 관리자 단독 (expert role 폐지 — 잔존 expert 토큰도 차단).
+  // 단계별 응답(401 인증/토큰/로그아웃 + 403 Forbidden)은 requireAdminGate 가 그대로 보존.
+  const gate = await requireAdminGate(req);
+  if (!gate.ok) {
+    return res.status(gate.status).json({ ok: false, error: gate.error });
   }
 
-  // 세션 405: 상담 열람 = 관리자 단독 (expert role 폐지 — 잔존 expert 토큰도 차단)
-  if (payload.role !== "admin") {
-    return res.status(403).json({ ok: false, error: "Forbidden" });
-  }
-
-  // 페이지네이션 — limit/offset 쿼리 파라미터 (admin/users.ts 클램프 패턴 답습)
-  const query = req.query ?? {};
-  const limitRaw = Array.isArray(query.limit) ? query.limit[0] : query.limit;
-  const offsetRaw = Array.isArray(query.offset) ? query.offset[0] : query.offset;
-  const limit = Math.min(Math.max(parseInt(String(limitRaw ?? "")) || 50, 1), 100);
-  const offset = Math.max(parseInt(String(offsetRaw ?? "")) || 0, 0);
+  // 페이지네이션 — limit/offset 쿼리 파라미터 (admin/users.ts 와 공용 헬퍼)
+  const { limit, offset } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
   try {
     const sb = getMibuyangSupabase();
@@ -131,20 +116,9 @@ async function handleGet(req: any, res: any) {
 // 상담 기록 삭제 = 관리자 단독 (개인정보 파기 — PIPA §21 보유기간 경과/요청 시 파기).
 // handleGet 과 동일 게이트(Bearer + verifyToken + isBlacklisted + role==="admin").
 async function handleDelete(req: any, res: any) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith("Bearer ")) {
-    return res.status(401).json({ ok: false, error: "인증이 필요합니다" });
-  }
-  const token = auth.slice(7);
-  const payload = verifyToken(token);
-  if (!payload) {
-    return res.status(401).json({ ok: false, error: "유효하지 않은 토큰입니다" });
-  }
-  if (await isBlacklisted(token)) {
-    return res.status(401).json({ ok: false, error: "로그아웃된 토큰입니다" });
-  }
-  if (payload.role !== "admin") {
-    return res.status(403).json({ ok: false, error: "Forbidden" });
+  const gate = await requireAdminGate(req);
+  if (!gate.ok) {
+    return res.status(gate.status).json({ ok: false, error: gate.error });
   }
 
   // id 검증 — SERIAL PK (양의 정수). query 또는 body 어디서든 받되 정수만 허용.

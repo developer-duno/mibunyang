@@ -1,4 +1,5 @@
 import { kv } from "../_lib/redis.js";
+import { parsePagination } from "../_lib/validators.js";
 import { withHandler } from "../_lib/handler.js";
 
 type UserRecord = {
@@ -78,10 +79,7 @@ export default withHandler({ method: "GET", admin: true, rateLimit: "admin", han
     return res.status(400).json({ ok: false, error: "잘못된 상태 필터입니다" });
   }
   const q = typeof query.q === "string" ? query.q.trim().substring(0, 100).toLowerCase() : "";
-  const limitRaw = Array.isArray(query.limit) ? query.limit[0] : query.limit;
-  const offsetRaw = Array.isArray(query.offset) ? query.offset[0] : query.offset;
-  const limit = Math.min(Math.max(parseInt(String(limitRaw ?? "")) || 20, 1), 100);
-  const offset = Math.max(parseInt(String(offsetRaw ?? "")) || 0, 0);
+  const { limit, offset } = parsePagination(query, { defaultLimit: 20, maxLimit: 100 });
 
   try {
     let emails: string[] = [];
