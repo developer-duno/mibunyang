@@ -1,6 +1,6 @@
-// 지도 공용 presentational 조각 (세션 448) — KakaoMapView·NaverMapView 가 SDK 무관하게 100% 동일하게
-// 중복하던 화면 껍데기만 추출. SDK 로직(마커·강조·클러스터·줌·choropleth)은 각 컴포넌트에 그대로 남김.
-// 순수 표현계층이라 동작 보존 — 두 컴포넌트의 기존 JSX/스타일을 글자 그대로 옮겼다.
+// 지도 공용 presentational 조각 (세션 448) — KakaoMapView 의 화면 껍데기 추출(세션 448 당시엔
+// NaverMapView 와 공유했고 세션 449 네이버 제거 후 KakaoMapView 단독 소비). SDK 로직(마커·강조·
+// 클러스터·줌·choropleth)은 컴포넌트에 그대로 남김. 순수 표현계층이라 동작 보존.
 
 import { memo, forwardRef } from "react";
 import type { ReactNode } from "react";
