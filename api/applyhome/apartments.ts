@@ -180,6 +180,59 @@ function mapItem(item: any, idx: any, isRemndr: any) {
   };
 }
 
+// 주택형별 상세 API로 면적/분양가/세대수 보강 (실패 시 입력 그대로 — 기존 try/catch ignore 보존).
+async function enhanceWithUnitDetails(apartments: any[], apiKey: any, isRemndr: any): Promise<any[]> {
+  try {
+    const manageNoSet: Set<string> = new Set(apartments.map((a: any) => a.id.replace("ah-", "")));
+    const unitDetails = await fetchUnitDetails(apiKey, manageNoSet, isRemndr);
+    return apartments.map((a: any) => {
+      const detail = unitDetails[a.id.replace("ah-", "")];
+      if (!detail) return a;
+      const area = detail.area ?? a.area;
+      const price = detail.price ?? a.price;
+      const units = (detail.totalUnits ?? 0) > 0 ? detail.totalUnits : a.units;
+      const unsoldRate = units > 0 ? Math.round(a.unsold / units * 1000) / 10 : a.unsoldRate;
+      return {
+        ...a,
+        area,
+        price,
+        units,
+        unsoldRate,
+        pp: price && area ? Math.round(price / area * 3.3058) : null, // M2_TO_PYEONG
+      };
+    });
+  } catch (e) {
+    console.error("fetchUnitDetails error (ignored):", e instanceof Error ? e.message : String(e));
+    return apartments;
+  }
+}
+
+// 배치 지오코딩 (한 번에 10개씩, Kakao 초당 제한 방지). kakaoKey 없으면 _sourceAddr 만 제거.
+async function geocodeBatch(apartments: any[], kakaoKey: any): Promise<any[]> {
+  if (!kakaoKey) {
+    return apartments.map((a: any) => {
+      const { _sourceAddr, ...rest } = a;
+      return rest;
+    });
+  }
+  const geocodeResults: PromiseSettledResult<{ lat: number | null; lng: number | null }>[] = [];
+  for (let i = 0; i < apartments.length; i += 10) {
+    const batch = apartments.slice(i, i + 10);
+    const batchResults = await Promise.allSettled(
+      batch.map((a: any) => a._sourceAddr ? geocodeAddress(kakaoKey, a._sourceAddr) : Promise.resolve({ lat: null, lng: null }))
+    );
+    geocodeResults.push(...batchResults);
+  }
+  return apartments.map((a: any, i: number) => {
+    const geo = geocodeResults[i];
+    if (geo.status === "fulfilled") {
+      return { ...a, lat: geo.value.lat, lng: geo.value.lng, _sourceAddr: undefined };
+    }
+    const { _sourceAddr, ...rest } = a;
+    return rest;
+  });
+}
+
 export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (req, res) => {
   const apiKey = process.env.APPLYHOME_KEY;
   const kakaoKey = process.env.KAKAO_KEY;
@@ -207,54 +260,8 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     let apartments: any[] = result.items.map((item: any, i: any) => mapItem(item, i, isRemndr));
     apartments = apartments.filter((a: any) => a.region && a.name);
 
-    // 주택형별 상세 API로 면적/분양가 보강 (실패 시 기본값 유지)
-    try {
-      const manageNoSet: Set<string> = new Set(apartments.map((a: any) => a.id.replace("ah-", "")));
-      const unitDetails = await fetchUnitDetails(apiKey, manageNoSet, isRemndr);
-      apartments = apartments.map((a: any) => {
-        const detail = unitDetails[a.id.replace("ah-", "")];
-        if (!detail) return a;
-        const area = detail.area ?? a.area;
-        const price = detail.price ?? a.price;
-        const units = (detail.totalUnits ?? 0) > 0 ? detail.totalUnits : a.units;
-        const unsoldRate = units > 0 ? Math.round(a.unsold / units * 1000) / 10 : a.unsoldRate;
-        return {
-          ...a,
-          area,
-          price,
-          units,
-          unsoldRate,
-          pp: price && area ? Math.round(price / area * 3.3058) : null, // M2_TO_PYEONG
-        };
-      });
-    } catch (e) {
-      console.error("fetchUnitDetails error (ignored):", e instanceof Error ? e.message : String(e));
-    }
-
-    if (kakaoKey) {
-      // 배치 지오코딩 (한 번에 10개씩, Kakao 초당 제한 방지)
-      const geocodeResults: PromiseSettledResult<{ lat: number | null; lng: number | null }>[] = [];
-      for (let i = 0; i < apartments.length; i += 10) {
-        const batch = apartments.slice(i, i + 10);
-        const batchResults = await Promise.allSettled(
-          batch.map((a: any) => a._sourceAddr ? geocodeAddress(kakaoKey, a._sourceAddr) : Promise.resolve({ lat: null, lng: null }))
-        );
-        geocodeResults.push(...batchResults);
-      }
-      apartments = apartments.map((a: any, i: number) => {
-        const geo = geocodeResults[i];
-        if (geo.status === "fulfilled") {
-          return { ...a, lat: geo.value.lat, lng: geo.value.lng, _sourceAddr: undefined };
-        }
-        const { _sourceAddr, ...rest } = a;
-        return rest;
-      });
-    } else {
-      apartments = apartments.map((a: any) => {
-        const { _sourceAddr, ...rest } = a;
-        return rest;
-      });
-    }
+    apartments = await enhanceWithUnitDetails(apartments, apiKey, isRemndr);
+    apartments = await geocodeBatch(apartments, kakaoKey);
 
     res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600");
     res.json({

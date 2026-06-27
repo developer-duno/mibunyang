@@ -73,8 +73,8 @@ export default withHandler({
 - HMAC-SHA256 JWT
 - **비밀번호 로그인 = 관리자 전용** — `isAdminEmail()` (ADMIN_EMAIL env, timingSafeEqual 단일 출처. login/verify refresh/kakao 공유). 비admin = generic 401
 - 가입(signup) 폐지 — 관리자 계정 생성/재설정은 `scripts/create-admin-user.mjs` (수동 1회성)
-- 관리자 API 가드: `api/_lib/adminAuth.ts` — verifyAdminToken
-- 상담 열람(GET /api/consults) = role admin 단독. **페이지네이션(세션 425)**: `offset`/`limit` 쿼리(기본 50/상한 100) + `.range(offset, offset+limit-1)` + `.order("submitted_at",desc).order("id",desc)` tiebreaker. 응답 `count`(전체)=`count ?? 0` 폴백(supabase count=number|null). 프론트 AdminConsults "더 보기"로 append + id dedup
+- 관리자 API 가드: `api/_lib/adminAuth.ts` — `verifyAdminToken`(withHandler `admin:true` 미들웨어용, generic 401) / `requireAdminGate`(세션 447 — consults 처럼 **단계별 응답**(401 인증/토큰/로그아웃 + 403 Forbidden)을 노출해야 하는 핸들러용 discriminated 결과)
+- 상담 열람(GET /api/consults) = role admin 단독(`requireAdminGate`로 게이트, 세션 447). **페이지네이션(세션 425)**: `offset`/`limit` 쿼리(기본 50/상한 100) — `api/_lib/validators.ts parsePagination(query,{defaultLimit,maxLimit})` 공용 헬퍼(세션 447, admin/users 와 공유). `.range(offset, offset+limit-1)` + `.order("submitted_at",desc).order("id",desc)` tiebreaker. 응답 `count`(전체)=`count ?? 0` 폴백(supabase count=number|null). 프론트 AdminConsults "더 보기"로 append + id dedup
 
 ---
 

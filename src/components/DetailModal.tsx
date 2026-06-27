@@ -1,4 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState, lazy, Suspense, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, useState, Suspense, type CSSProperties } from "react";
+import { lazyNamed } from "@/utils/lazyNamed";
 import { C, F } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { PROFILES, getTopCats } from "@/constants/profiles";
@@ -26,8 +27,8 @@ import { trackEvent } from "@/lib/analytics";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
 
 // 관리자 인사이트 레이어 (세션 405 전문가 대시보드 이식) — adminLoggedIn 일 때만 로드 (소비자 번들 영향 0)
-const AdminScoreBreakdown = lazy(() => import("./detail/AdminScoreBreakdown").then(m => ({ default: m.AdminScoreBreakdown })));
-const AdminUnitSupply = lazy(() => import("./detail/AdminUnitSupply").then(m => ({ default: m.AdminUnitSupply })));
+const AdminScoreBreakdown = lazyNamed(() => import("./detail/AdminScoreBreakdown"), "AdminScoreBreakdown");
+const AdminUnitSupply = lazyNamed(() => import("./detail/AdminUnitSupply"), "AdminUnitSupply");
 
 // 탭바 6섹션 정의 — id 는 영문 슬러그 (한글 id CSS.escape 함정 회피).
 // 13블록을 6탭으로 묶되 데이터 삭제·축소 0 (각 블록은 정확히 1탭 소속, 세션 407 D1: 점프 앵커 → 콘텐츠 교체 탭).

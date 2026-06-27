@@ -9,7 +9,7 @@
  *   node scripts/collectors/collect-police.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-police.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordCollectorRun, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -60,15 +60,8 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
-  const PAGE_SIZE = 1000;
-  const apts = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await sb.from("apartments").select("id, name, lat, lng").range(offset, offset + PAGE_SIZE - 1);
-    if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
-    if (!data || data.length === 0) break;
-    apts.push(...data);
-    if (data.length < PAGE_SIZE) break;
-  }
+  // 단지 목록 조회 — selectAll 공유 헬퍼(1000행/배치 자동 페이지네이션)
+  const apts = await selectAll((s) => s.from("apartments").select("id, name, lat, lng"), sb);
 
   const targets = apts.filter(a => a.lat && a.lng);
   log(PHASE, `대상: ${targets.length}건 (좌표 있음), 반경 ${RADIUS}m`);

@@ -13,7 +13,7 @@ beforeEach(() => {
 const mockKv = { get: vi.fn().mockResolvedValue(null), set: vi.fn() };
 vi.mock('./redis.js', () => ({ kv: mockKv }));
 
-const { verifyAdminToken } = await import('./adminAuth.js');
+const { verifyAdminToken, requireAdminGate } = await import('./adminAuth.js');
 const { createToken } = await import('./auth.js');
 
 /** req 목 객체 팩토리 */
@@ -76,5 +76,50 @@ describe('verifyAdminToken', () => {
     const result = await verifyAdminToken(makeReq(`Bearer ${token}`)) as any;
     expect(result).not.toBeNull();
     expect(result.email).toBe('admin@test.com');
+  });
+});
+
+// requireAdminGate = consults handleGet/handleDelete 공유 게이트. 단계별 status/error 보존이 핵심.
+describe('requireAdminGate — 단계별 응답 보존', () => {
+  it('admin 토큰이면 ok:true + payload 반환', async () => {
+    const token = createToken({ email: 'admin@test.com', role: 'admin' });
+    const r = await requireAdminGate(makeReq(`Bearer ${token}`));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.payload.email).toBe('admin@test.com');
+  });
+
+  it('헤더 없음 → 401 "인증이 필요합니다"', async () => {
+    const r = await requireAdminGate({ headers: {} });
+    expect(r).toEqual({ ok: false, status: 401, error: '인증이 필요합니다' });
+  });
+
+  it('Bearer 아님 → 401 "인증이 필요합니다"', async () => {
+    const token = createToken({ email: 'admin@test.com', role: 'admin' });
+    const r = await requireAdminGate(makeReq(`Token ${token}`));
+    expect(r).toEqual({ ok: false, status: 401, error: '인증이 필요합니다' });
+  });
+
+  it('잘못된 토큰 → 401 "유효하지 않은 토큰입니다"', async () => {
+    const r = await requireAdminGate(makeReq('Bearer invalid-token'));
+    expect(r).toEqual({ ok: false, status: 401, error: '유효하지 않은 토큰입니다' });
+  });
+
+  it('블랙리스트 토큰 → 401 "로그아웃된 토큰입니다"', async () => {
+    mockKv.get.mockResolvedValueOnce(1); // isBlacklisted → true
+    const token = createToken({ email: 'admin@test.com', role: 'admin' });
+    const r = await requireAdminGate(makeReq(`Bearer ${token}`));
+    expect(r).toEqual({ ok: false, status: 401, error: '로그아웃된 토큰입니다' });
+  });
+
+  it('비-admin role → 403 "Forbidden"', async () => {
+    const token = createToken({ email: 'user@test.com', role: 'user' });
+    const r = await requireAdminGate(makeReq(`Bearer ${token}`));
+    expect(r).toEqual({ ok: false, status: 403, error: 'Forbidden' });
+  });
+
+  it('role 없는 토큰 → 403 "Forbidden"', async () => {
+    const token = createToken({ email: 'user@test.com' });
+    const r = await requireAdminGate(makeReq(`Bearer ${token}`));
+    expect(r).toEqual({ ok: false, status: 403, error: 'Forbidden' });
   });
 });

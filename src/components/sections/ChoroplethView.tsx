@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { memo, useEffect, useRef, useState, Suspense } from "react";
 import { useRegionAverages } from "@/hooks/useRegionAverages";
 import { geoSidoToDbName } from "@/constants/regionGeoMapping";
 import { gr, C, F } from "@/theme";
@@ -6,11 +6,10 @@ import { geoJsonFeatureToKakaoPaths } from "@/lib/geoJsonToKakaoPaths";
 import { SkeletonText } from "../primitives";
 import { ChoroplethLegend } from "./ChoroplethLegend";
 import { getKakaoMaps } from "./kakaoMapHelpers";
+import { lazyNamed } from "@/utils/lazyNamed";
 import type { ChoroplethViewProps } from "@/types/components/ChoroplethView.types";
 
-const ChoroplethSigunguOverlay = lazy(() =>
-  import("./ChoroplethSigunguOverlay").then(m => ({ default: m.ChoroplethSigunguOverlay }))
-);
+const ChoroplethSigunguOverlay = lazyNamed(() => import("./ChoroplethSigunguOverlay"), "ChoroplethSigunguOverlay");
 
 /**
  * ChoroplethView — 색칠 지도(시도 17개 폴리곤)
