@@ -1,6 +1,6 @@
 // 지도 마커 SVG 빌더 + 가격 포맷 + 크기 상수 — 순수 모듈(import.meta.env 의존 0).
 // kakaoMapHelpers.ts 에서 분리(세션 416) — node/미리보기에서 직접 import 가능 = 디자인 미리보기 drift 0.
-// 소비처: KakaoMapView·NaverMapView (세션 448 blueDot 상수 추가 시 정정 — markerSvg 는 둘 다 import 중).
+// 소비처: KakaoMapView (세션 449 네이버 제거 전엔 NaverMapView 도 import 했음).
 
 export const MARKER_WITH_PRICE = { w: 54, h: 48 } as const;
 export const MARKER_NO_PRICE = { w: 32, h: 42 } as const;

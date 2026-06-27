@@ -508,8 +508,9 @@ KOSIS 통계표 검색 API(`statisticsSearch.do`)로 재선정 + raw sample 차�
 
 - ✅ **`environmentMatchGlobs` → `projects` 마이그레이션 완료** (세션 348) — 상세 = [BACKLOG_ARCHIVE.md](BACKLOG_ARCHIVE.md) 색인 참조
 
-## 🟢 네이버 지도 후속 (세션 435 — 라이브 동작 후 개선 후보)
+## ✅ 네이버 지도 — 세션 449에 전면 제거 (카카오 단일화)
+
+> **세션 449**: 네이버 지도(NaverMapView·naverMapHelpers·MarkerClustering.js·provider 토글)를 전면 제거하고 카카오 단일화. 근거 = 네이버 v3 POI API 부재로 구조적 열위 + 두 SDK·줌 좌표계 반대로 버그 표면 2배(세션 448 production 크래시) > 입증된 가치(사용률 미계측). 아래 후속 후보들은 전부 무효(네이버 자체가 사라짐). `VITE_NAVER_MAP_CLIENT_ID`(vite-env·CSP) 제거 완료. 👤 잔여 = `.env.example`·Vercel 대시보드 환경변수 수동 정리(있으면, 남겨도 무해).
 
 - ✅ **네이버 마커 1424개 클러스터 성능 실측 — 측정 완료, 버벅임 없음 종결** (세션 436, 사장님 라이브 측정). production 데스크톱 크롬 전국 줌(최대 부하, 클러스터 원 20+개)에서 idle FPS **61(부드러움)** 일관. 팬/줌 순간만 일시 10~34 dip 후 즉시 61 회복(`MarkerClustering.js:413 _onIdle → _redraw` 전체 재계산 1프레임, 코드 진단 예측 지점). 정적 분석상 네이버 gridSize 120 > 카카오 60 = 오히려 더 공격적으로 묶음 → 튜닝 불필요 확정. 저사양 모바일은 dip이 더 깊을 수 있으나 사용자 보고 트리거 대기(현재 정상). **부산물: nelo 텔레메트리 CSP 차단 발견** — 네이버 SDK 가 `kr-col-ext.nelo.navercorp.com`(로그수집)으로 보내는 통신이 connect-src 미등재로 차단. 공식 확인 = NELO(로그분석 인프라)·DNS 차단리스트 등재 추적 도메인 = 지도 기능 무해. 사장님 결정 = **차단 유지**(손님 사용기록 네이버 유출 0, 콘솔 에러는 손님 미노출). 코드 변경 0.
-- **Vercel Preview 환경변수 `VITE_NAVER_MAP_CLIENT_ID`** — production·development는 추가됨. Preview는 vercel CLI 가 git-branch 인자 요구(action_required)라 미추가. PR 미리보기에서 네이버 지도 필요 시 Vercel 대시보드에서 수동 추가.
-- **색칠(choropleth)·인프라 오버레이 네이버화** — 1차 범위 밖(카카오 고정). 네이버 점 보기만 토글. 폴리곤(kakao.Polygon)·로컬검색(kakao.services categorySearch)이 네이버 v3 API 차이 커 거대 작업. 손님 요구 시 별 세션.
+- ~~Vercel Preview 환경변수 `VITE_NAVER_MAP_CLIENT_ID`~~ · ~~색칠·인프라 오버레이 네이버화~~ — 세션 449 네이버 제거로 둘 다 무효.
