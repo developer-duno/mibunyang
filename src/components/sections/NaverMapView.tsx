@@ -5,7 +5,8 @@ import {
   NAVER_MAP_DEFAULTS, NAVER_REGION_FIT_MAX_ZOOM, NAVER_GU_FIT_MAX_ZOOM, NAVER_MY_LOC_ZOOM,
   loadNaverMapSdk, getNaverMaps, loadNaverMarkerClustering, getMarkerClustering,
 } from "./naverMapHelpers";
-import { shortPrice, buildMarkerSvg } from "./markerSvg";
+import { shortPrice, buildMarkerSvg, MY_LOCATION_DOT_SVG } from "./markerSvg";
+import { MapShell, MyLocationButton } from "./mapShared";
 import type { MapViewProps } from "@/types/components/MapView.types";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
@@ -232,11 +233,10 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
         const loc = new maps.LatLng(pos.coords.latitude, pos.coords.longitude);
         if (myLocMarkerRef.current) myLocMarkerRef.current.setPosition(loc);
         else {
-          const blueDot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
           myLocMarkerRef.current = new maps.Marker({
             position: loc,
             map: mapInstanceRef.current,
-            icon: { content: `<img src="${blueDot}" width="20" height="20" style="display:block" />`, anchor: new maps.Point(10, 10) },
+            icon: { content: `<img src="${MY_LOCATION_DOT_SVG}" width="20" height="20" style="display:block" />`, anchor: new maps.Point(10, 10) },
             zIndex: 100,
           });
         }
@@ -265,11 +265,10 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
         if (!maps || !mapInstanceRef.current) return;
         if (deferredRegion && deferredRegion !== "전체") return; // 콜백 사이 지역 선택 시 덮어쓰기 방지
         const loc = new maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-        const blueDot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
         myLocMarkerRef.current = new maps.Marker({
           position: loc,
           map: mapInstanceRef.current,
-          icon: { content: `<img src="${blueDot}" width="20" height="20" style="display:block" />`, anchor: new maps.Point(10, 10) },
+          icon: { content: `<img src="${MY_LOCATION_DOT_SVG}" width="20" height="20" style="display:block" />`, anchor: new maps.Point(10, 10) },
           zIndex: 100,
         });
         (mapInstance as any).setCenter(loc);
@@ -285,28 +284,10 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
   }, [selected, onDetail]);
 
   return (
-    <div style={{
-      position: "relative", width: "100%",
-      height: height ?? (isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)"),
-      borderRadius: fullscreen ? 0 : isDesktop ? 12 : 10,
-      overflow: "hidden",
-      border: fullscreen ? "none" : `1px solid ${C.border}`,
-    }}>
-      <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
-      {error && (
-        <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.9)", zIndex: 20 }}>
-          <div style={{ textAlign: "center", color: C.muted, fontSize: F.base }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🗺️</div>
-            <div>지도를 불러올 수 없습니다</div>
-            <div style={{ fontSize: F.xs, marginTop: 4 }}>{error}</div>
-          </div>
-        </div>
-      )}
+    <MapShell ref={mapRef} isPC={isPC} isDesktop={isDesktop} height={height} fullscreen={fullscreen} error={error}>
       {/* 현위치 버튼 */}
       {!compact && ready && navigator.geolocation && (
-        <button type="button" onClick={handleMyLocation} aria-label="현위치" style={{ position: "absolute", bottom: 16, right: 12, width: 36, height: 36, borderRadius: "50%", background: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, fontSize: F.lg }}>
-          📍
-        </button>
+        <MyLocationButton onClick={handleMyLocation} />
       )}
       {/* 좌상단 결과수 */}
       <div style={{ position: "absolute", top: 8, left: 8, display: "flex", gap: 6, zIndex: 10 }}>
@@ -315,6 +296,6 @@ export const NaverMapView = memo(function NaverMapView({ filtered, onDetail, isP
         </div>
       </div>
       <SelectedAptCard selected={selected} onInfoClick={handleInfoClick} onClose={() => setSelected(null)} />
-    </div>
+    </MapShell>
   );
 });

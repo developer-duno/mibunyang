@@ -1,12 +1,17 @@
 // 지도 마커 SVG 빌더 + 가격 포맷 + 크기 상수 — 순수 모듈(import.meta.env 의존 0).
 // kakaoMapHelpers.ts 에서 분리(세션 416) — node/미리보기에서 직접 import 가능 = 디자인 미리보기 drift 0.
-// 소비처: MapView.tsx 1곳.
+// 소비처: KakaoMapView·NaverMapView (세션 448 blueDot 상수 추가 시 정정 — markerSvg 는 둘 다 import 중).
 
 export const MARKER_WITH_PRICE = { w: 54, h: 48 } as const;
 export const MARKER_NO_PRICE = { w: 32, h: 42 } as const;
 // 선택 강조: 일반 대비 1.15배 + 흰 테두리 두껍게(2.5) + zIndex 위로(MapView). 색 변형 없음(gr 등급색 유지).
 export const MARKER_WITH_PRICE_SEL = { w: 62, h: 55 } as const;
 export const MARKER_NO_PRICE_SEL = { w: 37, h: 48 } as const;
+
+// 현위치(GPS) 파란 점 data-URI — 카카오/네이버 handleMyLocation·GPS autoLocate 4곳 인라인 중복을 1곳으로
+// (세션 448). 카카오는 new MarkerImage(이 값,...), 네이버는 <img src="이 값"> — 문자열만 공유, SDK 사용 방식 불변.
+export const MY_LOCATION_DOT_SVG =
+  `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
 
 /** 만원 → 짧은 가격 문자열 (마커용) */
 export function shortPrice(v: number | null | undefined): string {
