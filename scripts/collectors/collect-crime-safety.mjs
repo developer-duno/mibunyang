@@ -14,7 +14,7 @@
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { loadEnv, getSupabase, REGION_MAP, log, logError, createReporter, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, REGION_MAP, log, logError, createReporter, recordCollectorRun, selectAll } from "./_shared.mjs";
 
 /**
  * @typedef {{ id: string | number; name?: string | null; region: string | null; gu: string | null }} CrimeAptRow
@@ -114,16 +114,9 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 아파트 목록 조회 (페이지네이션 1000 행/배치)
-  const PAGE_SIZE = 1000;
-  const apts = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await sb.from("apartments").select("id, name, region, gu").range(offset, offset + PAGE_SIZE - 1);
-    if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
-    if (!data || data.length === 0) break;
-    apts.push(...data);
-    if (data.length < PAGE_SIZE) break;
-  }
+  // 아파트 목록 조회 — selectAll 공유 헬퍼(1000행/배치 자동 페이지네이션)
+  const PAGE_SIZE = 1000; // 아래 regions 루프(에러 시 throw 대신 graceful 계속)에서 계속 사용
+  const apts = await selectAll((s) => s.from("apartments").select("id, name, region, gu"), sb);
   log(PHASE, `대상: ${apts.length}건`);
 
   const rpt = createReporter(PHASE);
