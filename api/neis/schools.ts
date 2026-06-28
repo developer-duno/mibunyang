@@ -1,8 +1,8 @@
 import { withHandler } from "../_lib/handler.js";
 import { validateApartmentPayload } from "../_lib/proxyValidation.js";
+import { fetchWithTimeout, mapWithConcurrency } from "../_lib/concurrency.js";
 
 const NEIS_BASE = "https://open.neis.go.kr/hub/schoolInfo";
-const UPSTREAM_TIMEOUT_MS = 3000;
 const APARTMENT_CONCURRENCY = 6;
 const REGION_CONCURRENCY = 3;
 
@@ -12,33 +12,6 @@ const EDU_OFFICE_CODE: Record<string, string> = {
   경기: "J10", 강원: "K10", 충북: "M10", 충남: "N10",
   전북: "P10", 전남: "Q10", 경북: "R10", 경남: "S10", 제주: "T10",
 };
-
-async function fetchWithTimeout(url: string, options: RequestInit = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function mapWithConcurrency(
-  items: any[],
-  limit: number,
-  mapper: (item: any, index: number) => Promise<any>,
-) {
-  const results: any[] = [];
-  let index = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (index < items.length) {
-      const current = index++;
-      results[current] = await mapper(items[current], current);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
 
 async function fetchSchoolsByRegion(neisKey: string, regionCode: string) {
   const schools = [];
