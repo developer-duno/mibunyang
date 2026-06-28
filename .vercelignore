@@ -9,6 +9,7 @@ scripts/
 scripts/**
 !scripts/prebuild.mjs
 !scripts/split-apartments-json.mjs
+!scripts/postbuild-prerender.mjs
 *.py
 
 # 수집기 전용 API — GitHub Actions에서만 사용 (프론트엔드 미호출)
