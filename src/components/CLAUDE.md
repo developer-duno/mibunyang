@@ -2,15 +2,19 @@
 
 > UI 컴포넌트 수정 시 반드시 이 규칙을 따를 것.
 
-## memo() 컴포넌트 (세션 434 후 detail +1: ProfileWeightBar 신규 → 15개, 2026-06-23 실측)
+## memo() 컴포넌트
+
+> ⚠️ **개수는 휘발성 = 드리프트 단골** (세션 452·456 교훈). 아래 숫자는 박제값이 아니라 참고용 —
+> 진실의 원천은 실측: `grep -lE "memo\(function|= memo" src/components/<그룹>/*.tsx | grep -v test | wc -l`.
+> 컴포넌트가 늘면 숫자만 고치지 말고 이 실측 명령으로 확인. (2026-06-29 세션456 실측 반영)
 
 | 그룹 | 개수 | 위치 | 컴포넌트 |
 |------|------|------|---------|
-| 소비자 | 12 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, RegionChipBar(지역 칩+★관심지역, 세션 406), PresaleResultList(분양결과 — 잔여세대 경쟁률, "1순위" 표기 금지, 세션 406), **HelpHint**(제목 옆 ? 도움말 — Tooltip+IconHelp 재사용, `<HelpHint text label/>` 한 줄로 어느 탭이든 재사용, 세션 411), primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
+| 소비자 | 18 | `src/components/` | CatPanel, AptCard, CompareSheet, ShareSheet, ConsultForm, DetailModal, LoginPromptModal, LineChart, RegionChipBar(지역 칩+★관심지역, 세션 406), PresaleResultList(분양결과 — 잔여세대 경쟁률, "1순위" 표기 금지, 세션 406), **HelpHint**(제목 옆 ? 도움말 — Tooltip+IconHelp 재사용, `<HelpHint text label/>` 한 줄로 어느 탭이든 재사용, 세션 411), primitives.tsx 내부(Bar/ScoreBadge/Radar/EmphasisBadge/Skeleton 3종) |
 | 홈 | 7 | `home/` | HomePage, WidgetCard, MapEntryWidget(M2: 로그인 시 MapView compact 미니지도 임베드 + 뷰포트 진입 lazy), UpcomingWidget(세션 415 빈상태 정리 — 완전빈 단일안내/부분빈 "임박한 청약은 없어요"), TopPicksWidget, MarketSummaryWidget(세션 415 칸별 클릭 동선 — onCellNav prop, nav 있는 칸만 button, home_market_nav 계측), **RecentlyViewedWidget**(최근 본 단지 가로 스크롤 위젯 — localStorage·MAX_RECENT 8·rank=0 순위배지 숨김·삭제단지 스킵·지우기 버튼, 세션 429) (세션 404 M1 신설, 세션 406 표 등재) |
-| 섹션 | 10 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), AdminLoginForm, InfoPage, BottomNav, **MapView**(카카오 지도 패스스루 — `<KakaoMapView {...props}/>` memo 래퍼. 세션 435~448 네이버/카카오 provider 토글이 있었으나 세션 449에 네이버 전면 제거[v3 POI API 부재·두 SDK 버그표면 2배]. App·MapEntryWidget 의 import 경로·번들 청크 분리·MapView.test.jsx 보존 위해 파일 유지, 세션 449), **KakaoMapView**(구 MapView 본문 — 점 보기 마커+클러스터+색칠/인프라+현위치+GPS 자동 동네, 세션 435 분리), **InfraOverlay**(지도 위 주변시설 아이콘 토글 — 8 카테고리[지하철·병원·마트·학교·학원·편의점·약국·카페], 카카오 Places categorySearch 실시간, **단지 선택 시 그 단지 좌표 기준** 검색·미선택 시 화면중앙 폴백, 카테고리 단일출처 `infraCategories.ts`, 카카오 전용, 세션 448), SelectedAptCard (+ 비-memo 헬퍼 `markerSvg.ts`[buildMarkerSvg·shortPrice·MARKER_* 상수·**MY_LOCATION_DOT_SVG**(현위치 파란점, 세션 448 4곳→1), import.meta.env 0 순수 모듈 — 세션 416 분리]·`kakaoMapHelpers.ts`[KAKAO_KEY·SDK·getKakaoMaps]·**`mapShared.tsx`**[지도 공용 표현계층 — `MapShell`(forwardRef 루트 div+높이 3분기 calc+border/radius fullscreen 분기+error 오버레이, mapRef 위임)·`MyLocationButton`(memo, 📍 현위치 버튼), 카카오 지도 껍데기 추출, SDK 로직 무관, 세션 448]) |
-| 상세 | 15 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, **DataSectionBlock**(공공데이터 섹션 1개=자체 접힘+자체 박스+부가블록 3종, 세션 408 D2a — 구 DataSections 해체), **CategoryMiniCard**(종합 탭 카테고리 요약 미니카드 — 점수+등급+결론 1줄[catVerdict]+탭하면 점수 탭 자동 펼침, 세션 409 D2b), **ProfileWeightBar**(종합 탭 "왜 이 점수인지" 가중치 막대 — getTopCats 상위3 카테고리 가중치% 가로막대[기여분 숫자 미표시·비중만]+강점/보완 1줄[최고/최저 total, benefit noData 제외], 세션 434), HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply, **AdminDataAudit**(138필드 표+관리자 완성도+fullFields 토글 — 세션 408. 세션 409 D2b 로 AdminScoreBreakdown·AdminUnitSupply 와 함께 관리자 탭[sec-admin]으로 이동) (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
-| 필터 | 7 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel |
+| 섹션 | 14 | `sections/` | HeaderSection, SearchFilterBar, AptListSection(내부 2개), AdminLoginForm, InfoPage, BottomNav, **MapView**(카카오 지도 패스스루 — `<KakaoMapView {...props}/>` memo 래퍼. 세션 435~448 네이버/카카오 provider 토글이 있었으나 세션 449에 네이버 전면 제거[v3 POI API 부재·두 SDK 버그표면 2배]. App·MapEntryWidget 의 import 경로·번들 청크 분리·MapView.test.jsx 보존 위해 파일 유지, 세션 449), **KakaoMapView**(구 MapView 본문 — 점 보기 마커+클러스터+색칠/인프라+현위치+GPS 자동 동네, 세션 435 분리), **InfraOverlay**(지도 위 주변시설 아이콘 토글 — 8 카테고리[지하철·병원·마트·학교·학원·편의점·약국·카페], 카카오 Places categorySearch 실시간, **단지 선택 시 그 단지 좌표 기준** 검색·미선택 시 화면중앙 폴백, 카테고리 단일출처 `infraCategories.ts`, 카카오 전용, 세션 448), SelectedAptCard (+ 비-memo 헬퍼 `markerSvg.ts`[buildMarkerSvg·shortPrice·MARKER_* 상수·**MY_LOCATION_DOT_SVG**(현위치 파란점, 세션 448 4곳→1), import.meta.env 0 순수 모듈 — 세션 416 분리]·`kakaoMapHelpers.ts`[KAKAO_KEY·SDK·getKakaoMaps]·**`mapShared.tsx`**[지도 공용 표현계층 — `MapShell`(forwardRef 루트 div+높이 3분기 calc+border/radius fullscreen 분기+error 오버레이, mapRef 위임)·`MyLocationButton`(memo, 📍 현위치 버튼), 카카오 지도 껍데기 추출, SDK 로직 무관, 세션 448]) |
+| 상세 | 19 | `detail/` | PriceTable, PriceChart, UnsoldChart, SchoolInfo, PresaleInfo, LoanAnalysis, LoanRatesSection, **DataSectionBlock**(공공데이터 섹션 1개=자체 접힘+자체 박스+부가블록 3종, 세션 408 D2a — 구 DataSections 해체), **CategoryMiniCard**(종합 탭 카테고리 요약 미니카드 — 점수+등급+결론 1줄[catVerdict]+탭하면 점수 탭 자동 펼침, 세션 409 D2b), **ProfileWeightBar**(종합 탭 "왜 이 점수인지" 가중치 막대 — getTopCats 상위3 카테고리 가중치% 가로막대[기여분 숫자 미표시·비중만]+강점/보완 1줄[최고/최저 total, benefit noData 제외], 세션 434), HighlightField, InfrastructureSection, AdminScoreBreakdown, AdminUnitSupply, **AdminDataAudit**(138필드 표+관리자 완성도+fullFields 토글 — 세션 408. 세션 409 D2b 로 AdminScoreBreakdown·AdminUnitSupply 와 함께 관리자 탭[sec-admin]으로 이동) (관리자 인사이트 — 세션 405 전문가 대시보드 이식, adminLoggedIn 게이트+lazy) |
+| 필터 | 8 | `filters/` | FilterButton, FilterDropdown, RegionPanel, BudgetPanel, AreaPanel, SortPanel, DetailPanel, PresetPanel |
 | 관리자 | 6 | `admin/` | AdminDashboard, AdminHelpGuide, AdminConsults, WeightEditor, WeightTable, ScoreBreakdownPreview (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
 
 > **전문가 그룹(`expert/` 9개)은 세션 405 에 폐지** — 자료는 상세 모달 관리자 인사이트(AdminScoreBreakdown·AdminUnitSupply·AdminDataAudit 138필드 표[세션 408 D2a 로 구 DataSections adminMode 분리])와 AdminConsults/AdminHelpGuide 로 이식. 결정 문서: `docs/superpowers/specs/2026-06-12-expert-role-abolition-decision.md` |
@@ -41,7 +45,7 @@
 ## 관리자 인사이트 규칙 (세션 405 — 구 전문가 페이지 규칙 승계)
 
 - 모든 신규 블록은 `adminLoggedIn` 게이트 + lazy import — 소비자 화면/번들 영향 0 (게이트 가드 테스트 의무)
-- 모든 138개 필드 개별 표시 필수 (AdminDataAudit, fieldMeta.ts 9섹션 합산: 21+12+18+33+10+10+4+11+19)
+- 모든 필드 개별 표시 필수 (AdminDataAudit, fieldMeta.ts `FIELD_SECTIONS` 9섹션 전수 — 정확한 개수·섹션 구성은 fieldMeta.ts 가 진실의 원천, 박제 금지)
 - 스코어링 중간 계산 과정 투명 표시 (AdminScoreBreakdown — 적정가 과정·기여도·가중 합계)
 - catKeys는 `Object.keys(res.cats)` 동적 추출 (하드코딩 금지)
 
@@ -49,7 +53,7 @@
 
 ## 주요 컴포넌트 구조
 
-### App.tsx (430줄, 2026-05-26 실측)
+### App.tsx
 
 Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 
@@ -58,7 +62,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | 컴포넌트 | 줄 | 역할 |
 |---------|-----|------|
 | HeaderSection | 166 | 데스크톱: 상단 바 60px / 모바일: 그라디언트 + HelpModal |
-| SearchFilterBar | ~205 | 드롭다운 오케스트레이터 (7개 FilterButton[지역/금액/면적/정렬/추천/상세/**검색**] + 패널 + 칩 + undo). 검색=단지명·지역 input(세션 419, `searchMatch.ts` 부분일치, 펼쳐지는 드롭다운, 활성판정 trim·표시 raw, 칩 "검색: X ✕") |
+| SearchFilterBar | ~590 | 드롭다운 오케스트레이터 (7개 FilterButton[지역/금액/면적/정렬/추천/상세/**검색**] + 패널 + 칩 + undo). 검색=단지명·지역 input(세션 419, `searchMatch.ts` 부분일치, 펼쳐지는 드롭다운, 활성판정 trim·표시 raw, 칩 "검색: X ✕") |
 | AptListSection | 53 | 카드 그리드 (isDesktop 3컬럼/isPC 2컬럼) |
 | KakaoMapView | ~290 | Kakao Map (마커+클러스터+현위치+인프라). `MapView` 는 이 컴포넌트로 패스스루(세션 449). 마커 SVG는 `markerSvg.ts buildMarkerSvg`(세션 416 분리 — 둥근 말풍선+흰 테두리+도형 그림자 rgba(0,0,0,0.22), 가격배지/무가격핀, selected 인자로 강조 1.15배). M2 prop 3종: `height`·`compact`(위젯 모드 — 컨트롤 숨김+휠줌 차단)·`onSelect`(선택 미러, ref 격리 — 마커 effect deps 추가 금지). **M3 prop 2종(세션 413)**: `getViewport`·`onViewportChange`. `didFitRef=false` 첫 마커 fit 1회(전국 리셋 억제). **선택 마커 강조(세션 416)**: `markerByIdRef`(apt.id→marker) 마커 effect 매 run 재채움[stale 차단]+강조 effect `deps=[selected]`만[전체 재생성 회피]+`__normalImage` 보관[복원]+`setImage` 강조+`setZIndex(50)`+`clusterer.redraw()`[복원/강조 실제 시만, setImage auto-redraw 미보장]. 전국뷰(레벨≥5)=클러스터 묶임이라 강조는 줌인 시 보임. 미니지도(MapEntryWidget)는 의도적 미연결(idle 오염 회귀 방지). **세션 417 prop 3종**: `deferredRegion`·`deferredGu`(지역/시군구 변경 시 그 지역 단지로 자동 클로즈업 — 마커 effect 내 didFitRef 옆 `else if` 분기, `prevRegionRef`/`prevGuRef` "직전과 다를 때만" fit[정렬/예산엔 발화 0=수동 위치 보존], setBounds padding 40/24/40/24+과도줌 클램프 시도 `REGION_FIT_MIN_LEVEL=8`/구 `GU_FIT_MIN_LEVEL=4`[클러스터 경계 5보다 아래=개별 마커 풀림], "전체"는 fit 안 함. 원시 filterRegion/Gu 아닌 deferred[stale 회피]. 미니지도엔 미연결)·`fullscreen`(전체화면 — border:none+radius0, 높이 calc 불변[필터바 위 그대로=잘림 방지]. App 지도 탭 div `width:100vw+marginLeft:calc(-50vw+50%)` 풀블리드+index.html `html,body overflow-x:hidden`[가로 스크롤바 방지]). **마커 클릭 1단계화(세션 417)**: click=`setSelected`(강조)+`onDetailRef.current`(바로 상세) 둘 다. `onDetailRef` 미러(onSelectRef 답습)=마커 effect deps 오염 0. 비로그인→handleDetailGated 로그인 모달 |
 | BottomNav | 36 | 하단 네비 (isDesktop → null) |
@@ -89,7 +93,7 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 | Radar | 6점 레이더 차트 |
 | EmphasisBadge | 프로필 상위 카테고리 "★ 중점" 배지 (CatPanel·ExpertFieldTable 공용, `background?` 옵셔널) |
 
-### AptCard (185줄)
+### AptCard
 
 - `isDesktop`: shadowMd, borderRadius 16, fontSize 16
 - `isFav`: 관심매물 하이라이트 (border 색상)
