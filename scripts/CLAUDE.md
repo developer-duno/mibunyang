@@ -50,7 +50,7 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 | `molit-units.mjs` | 세대수 보정 (units, unsold_rate) | O |
 | `collect-maintenance.mjs` | 관리비 수집 (5항목 합산) | O |
 
-- **isCLI 패턴**: `process.argv[1] && import.meta.url.endsWith(...)` — 57개 파일 (테스트 시 main() 방지, 2026-05-31 실측 `grep -lE "const isCLI" scripts/**/*.mjs | grep -v test`)
+- **isCLI 패턴**: `process.argv[1] && import.meta.url.endsWith(...)` — 53개 파일 (테스트 시 main() 방지, 2026-06-29 실측 `grep -l "const isCLI" scripts/**/*.mjs | grep -v test | wc -l`)
 - **NonRetryableError**: 4xx/XML 에러 즉시 throw, 429/500/503만 재시도
 - **`molitApiCall` opts override (세션 451)**: 기본 timeout/retry = 공유 상수 `MOLIT_TIMEOUT_MS=30000` × `MOLIT_MAX_RETRIES=3`. 호출처가 선택적 6번째 인자 `{ timeoutMs?, maxRetries? }` 로 좁힐 수 있음(기본=상수 → molit-units·molit-building-info 무변경). **collect-maintenance 의 `fetchTotalHouseholds` 는 `{ timeoutMs: 8000, maxRetries: 1 }`** — households 호출 30s×3(≈93초) hang 이 단지당 최악 ~135초의 진앙이라 cost endpoint(8s/무재시도) 톤에 맞춰 좁힘. 전역 상수는 3 collector 공유라 **변경 금지**(cross-collector 회귀), maintenance-local opts 로만.
 
@@ -215,7 +215,7 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 > 재측정: `npx vitest run scripts/collectors/ --reporter=json --outputFile=$TMP/c.json` 후 `testResults[].assertionResults.length` 파일별 합산.
 > 세션 345 정정: 박제 42행/grep 수치 stale → vitest 실측 55행/1017 케이스. 세션 358: molit-building-info 29→22(energy 7케이스 제거) + data-audit 14→17 = **1013 케이스**.
 
-**56개 파일 · 1104 케이스** (2026-06-11 vitest 실측 — `scripts/collectors/` 범위)
+**56개 파일** (진실의 원천 = 위 vitest 실행 수 — 케이스 수는 박제하지 말고 재측정. 2026-06-29 기준 ~1127 케이스)
 
 | 파일 | 테스트 수 |
 |------|----------|

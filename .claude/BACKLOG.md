@@ -379,6 +379,8 @@
 
 - ✅ **fill-missing-data.yml 개명** (`backfill-new-apartments.yml`) + `monitor-collectors.yml` `workflow_run.workflows` 동기화 (세션 453, 동작 보존) — `name: Fill Missing Data → Backfill New Apartments` + workflow_run 매칭 동기화(파일명 아닌 name 으로 매칭) + audit-env-keys.mjs/audit-fill-matrix.mjs 경로 갱신. spec `2026-05-25-fill-missing-data-redesign.md` Phase 3 완결
 
+- ✅ **코드 단순화 4건 + naver-listings 죽은코드 제거** (세션 456, PR #199, main `9f6e183`, 동작 100% 보존) — AI 49 에이전트 전수 코드 냄새 진단(SAFE 7/RISKY 22/FALSE 16) 후 안전 정리만. **A** naver-listings.mjs 로컬 중복 `sleep` 제거→`_shared` import 통일 / **B** kakao/infra.ts `keys`·`defaults` 별도배열→`[{key,fallback}]` 객체배열 짝 보장 / **C** SearchFilterBar undo/redo 버튼 인라인스타일 중복→`undoRedoBtnStyle` 헬퍼 / **D** AptCard 추천이유 3중삼항→if-else 평탄화 / **F** naver-listings 죽은코드 제거(`getComplexDetail`·`NAVER_COMPLEX_API`·미사용 `sb`·import). **검증** vitest 3777 변경전후 동일·typecheck0·lint0·build0·infra esbuild0·CI/e2e/Vercel green. **보류** E(useDataPipeline matcher 분리)=현재 명확+의도된 leave-one-out 성능패턴(과한 단순화 경계). 사고 1건=CI format:check 누락(회귀가드에 미포함→정정, [[format-check-in-guard]] 메모). 동작·점수·DB 무변경.
+
 - ✅ **register-naver-task.ps1 과잉 권한 정리 — `Highest` → `Limited` 코드 적용** (세션 359 발견 → 세션 368 PR)
   - `scripts/register-naver-task.ps1` 이 네이버 로컬 수집 스케줄러를 관리자 상승 토큰(`-RunLevel Highest`)으로 등록하던 것을 `New-ScheduledTaskPrincipal -LogonType Interactive -RunLevel Limited` 로 변경. 6단계 수집(HTTP fetch + Supabase upsert + 산술)은 일반 권한으로 충분 = 최소 권한 원칙 충족.
   - 실증 근거: 같은 PC 의 `naver-units-night` + `LuxuryResale_*` 작업 9개가 이미 Interactive+Limited 로 정상 동작 중(`Get-ScheduledTask` 실측). 네이버 수집은 한국 IP 로컬 PC 가 켜져 있어야만 의미 → 무인 부팅 실행 요건 없음 = Interactive 트레이드오프 무해. 추가 실측: `MibunyangNaverCollect` 작업이 현재 미등록 상태라 코드 변경이 운영에 즉시 영향 0(다음 등록부터 적용).
