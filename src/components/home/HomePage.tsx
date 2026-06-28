@@ -42,26 +42,57 @@ type HomePageProps = {
  * 통합 홈 (D1 C안 위젯판) — spec §1·§2. 위젯 단위 독립.
  * 펼치기는 전부 onNavClick(handleNavClick) 경유. 전문가 위젯 2종은 M2.
  */
-export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingData, upcomingError, onRetryUpcoming, isLoggedIn, isDesktop, isPC, dataLoading, dataFreshnessText, onNavClick, onMarketNav, onDetail, onFav, favoriteSet, onComp, compIds, recentIds, scoredMap, onClearRecent }: HomePageProps) {
+export const HomePage = memo(function HomePage({
+  scored,
+  filtered,
+  pw,
+  upcomingData,
+  upcomingError,
+  onRetryUpcoming,
+  isLoggedIn,
+  isDesktop,
+  isPC,
+  dataLoading,
+  dataFreshnessText,
+  onNavClick,
+  onMarketNav,
+  onDetail,
+  onFav,
+  favoriteSet,
+  onComp,
+  compIds,
+  recentIds,
+  scoredMap,
+  onClearRecent,
+}: HomePageProps) {
   const upcomingEnabled = isFeatureUpcoming();
   const pad = isDesktop ? "0 24px" : "0 16px"; // App.tsx L301·L324 list/map 탭 패딩과 통일
   // 최근 본 단지: 데이터에 살아있는 단지가 1개+ 일 때만 위젯 노출 (빈 위젯 자리 차지 방지)
-  const hasRecent = recentIds.some(id => scoredMap.has(id));
+  const hasRecent = recentIds.some((id) => scoredMap.has(id));
 
   // 홈 위젯 계측 (M3) — 펼치기는 어느 위젯인지, 상세 진입은 홈 출처 표시. 기존 trackEvent 명명 규칙 답습.
-  const expandWidget = useCallback((widget: string, target: string) => {
-    trackEvent("home_widget_expand", { widget });
-    onNavClick(target);
-  }, [onNavClick]);
-  const handleDetail = useCallback((id: string) => {
-    trackEvent("home_detail_open", {});
-    onDetail(id);
-  }, [onDetail]);
+  const expandWidget = useCallback(
+    (widget: string, target: string) => {
+      trackEvent("home_widget_expand", { widget });
+      onNavClick(target);
+    },
+    [onNavClick]
+  );
+  const handleDetail = useCallback(
+    (id: string) => {
+      trackEvent("home_detail_open", {});
+      onDetail(id);
+    },
+    [onDetail]
+  );
   // 시장 요약 칸 클릭 — 어느 칸인지 계측 + 탭 이동(+정렬). expandWidget 명명 답습.
-  const handleMarketNav = useCallback((cell: string, nav: { target: string; sort?: SortKey }) => {
-    trackEvent("home_market_nav", { cell });
-    onMarketNav(nav.target, nav.sort);
-  }, [onMarketNav]);
+  const handleMarketNav = useCallback(
+    (cell: string, nav: { target: string; sort?: SortKey }) => {
+      trackEvent("home_market_nav", { cell });
+      onMarketNav(nav.target, nav.sort);
+    },
+    [onMarketNav]
+  );
 
   if (dataLoading && scored.length === 0) {
     return (
@@ -73,19 +104,61 @@ export const HomePage = memo(function HomePage({ scored, filtered, pw, upcomingD
 
   return (
     <div style={{ padding: pad }}>
-      <div data-testid="home-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 12, alignItems: "start" }}>
-        <MapEntryWidget isLoggedIn={isLoggedIn} onExpand={() => expandWidget("map", "map")} filtered={filtered} onDetail={handleDetail} />
+      <div
+        data-testid="home-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))",
+          gap: 12,
+          alignItems: "start",
+        }}
+      >
+        <MapEntryWidget
+          isLoggedIn={isLoggedIn}
+          onExpand={() => expandWidget("map", "map")}
+          filtered={filtered}
+          onDetail={handleDetail}
+        />
         {upcomingEnabled && (
-          <UpcomingWidget data={upcomingData} error={upcomingError} onRetry={onRetryUpcoming} onExpand={() => expandWidget("upcoming", "upcoming")} />
+          <UpcomingWidget
+            data={upcomingData}
+            error={upcomingError}
+            onRetry={onRetryUpcoming}
+            onExpand={() => expandWidget("upcoming", "upcoming")}
+          />
         )}
         <MarketSummaryWidget scored={scored} dataFreshnessText={dataFreshnessText} onCellNav={handleMarketNav} />
         {hasRecent && (
           <div style={{ gridColumn: "1 / -1" }}>
-            <RecentlyViewedWidget recentIds={recentIds} scoredMap={scoredMap} pw={pw} onDetail={handleDetail} onFav={onFav} favoriteSet={favoriteSet} onComp={onComp} compIds={compIds} isLoggedIn={isLoggedIn} isDesktop={isDesktop} onClear={onClearRecent} />
+            <RecentlyViewedWidget
+              recentIds={recentIds}
+              scoredMap={scoredMap}
+              pw={pw}
+              onDetail={handleDetail}
+              onFav={onFav}
+              favoriteSet={favoriteSet}
+              onComp={onComp}
+              compIds={compIds}
+              isLoggedIn={isLoggedIn}
+              isDesktop={isDesktop}
+              onClear={onClearRecent}
+            />
           </div>
         )}
         <div style={{ gridColumn: "1 / -1" }}>
-          <TopPicksWidget scored={scored} pw={pw} onDetail={handleDetail} onFav={onFav} favoriteSet={favoriteSet} onComp={onComp} compIds={compIds} isLoggedIn={isLoggedIn} isDesktop={isDesktop} isPC={isPC} onExpand={() => expandWidget("toppicks", "list")} />
+          <TopPicksWidget
+            scored={scored}
+            pw={pw}
+            onDetail={handleDetail}
+            onFav={onFav}
+            favoriteSet={favoriteSet}
+            onComp={onComp}
+            compIds={compIds}
+            isLoggedIn={isLoggedIn}
+            isDesktop={isDesktop}
+            isPC={isPC}
+            onExpand={() => expandWidget("toppicks", "list")}
+          />
         </div>
       </div>
     </div>

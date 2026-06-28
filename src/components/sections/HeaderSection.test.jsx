@@ -111,7 +111,16 @@ describe("HeaderSection", () => {
 
   // 관리자 로그인 상태에서도 '곧 분양' 메뉴 노출 (운영자 본인 사용성 — 세션 168 답습, 세션 405 admin 축 전환)
   it("adminLoggedIn=true 분기에도 '📅 곧 분양 N개' 노출 + 관리자 네비", () => {
-    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} adminLoggedIn={true} isLoggedIn={true} upcomingCount={392} />);
+    render(
+      <HeaderSection
+        {...defaultProps}
+        isDesktop={true}
+        containerMaxWidth={1200}
+        adminLoggedIn={true}
+        isLoggedIn={true}
+        upcomingCount={392}
+      />
+    );
     expect(screen.getByText("📅 곧 분양 392개")).toBeInTheDocument();
     // 관리자 네비 (구 전문가 메뉴 대체)
     expect(screen.getByText("관리자")).toBeInTheDocument();

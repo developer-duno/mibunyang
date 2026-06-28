@@ -47,7 +47,9 @@ describe("AdminScoreBreakdown", () => {
 
   it("존재하지 않는 프로필이면 크래시 없이 렌더링한다", () => {
     const { apt, res } = /** @type {any} */ (makeScoredItem());
-    expect(() => render(<AdminScoreBreakdown apt={apt} res={res} profile={/** @type {any} */ ("unknown")} />)).not.toThrow();
+    expect(() =>
+      render(<AdminScoreBreakdown apt={apt} res={res} profile={/** @type {any} */ ("unknown")} />)
+    ).not.toThrow();
   });
 
   it("기여도(점수 x 가중치)를 올바르게 표시한다", () => {

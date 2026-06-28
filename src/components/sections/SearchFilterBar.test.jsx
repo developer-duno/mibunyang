@@ -38,7 +38,7 @@ function makeProps(overrides = {}) {
 /* 드롭다운 열기 헬퍼 — aria-expanded 트리거 버튼 클릭 */
 function openPanel(/** @type {string} */ label) {
   const buttons = screen.getAllByRole("button");
-  const btn = buttons.find(b => b.textContent?.startsWith(label));
+  const btn = buttons.find((b) => b.textContent?.startsWith(label));
   if (btn) fireEvent.click(btn);
 }
 
@@ -48,8 +48,8 @@ describe("SearchFilterBar", () => {
     render(<SearchFilterBar {...makeProps()} />);
     const buttons = screen.getAllByRole("button");
     const labels = ["지역", "금액", "면적", "정렬", "추천", "상세"];
-    labels.forEach(label => {
-      expect(buttons.some(b => b.textContent.startsWith(label))).toBe(true);
+    labels.forEach((label) => {
+      expect(buttons.some((b) => b.textContent.startsWith(label))).toBe(true);
     });
   });
 
@@ -140,23 +140,23 @@ describe("SearchFilterBar", () => {
 
   // 지역 옵션 카운트 표시
   it("시/도 드롭다운에 옵션별 건수 표시", () => {
-    const counts = { regionCounts: { "서울": 100, "경기": 50 }, guCounts: {}, moveInCounts: {}, tierCounts: {} };
+    const counts = { regionCounts: { 서울: 100, 경기: 50 }, guCounts: {}, moveInCounts: {}, tierCounts: {} };
     render(<SearchFilterBar {...makeProps({ filterOptionCounts: counts })} />);
     openPanel("지역");
     const regionSelect = screen.getByLabelText("시/도");
     const options = regionSelect.querySelectorAll("option");
-    const seoulOpt = [...options].find(o => o.textContent.includes("서울"));
+    const seoulOpt = [...options].find((o) => o.textContent.includes("서울"));
     expect(seoulOpt?.textContent).toBe("서울 (100)");
   });
 
   // 0건 옵션 disabled
   it("0건 옵션이 disabled 처리됨", () => {
-    const counts = { regionCounts: { "서울": 100, "경기": 0 }, guCounts: {}, moveInCounts: {}, tierCounts: {} };
+    const counts = { regionCounts: { 서울: 100, 경기: 0 }, guCounts: {}, moveInCounts: {}, tierCounts: {} };
     render(<SearchFilterBar {...makeProps({ filterOptionCounts: counts })} />);
     openPanel("지역");
     const regionSelect = screen.getByLabelText("시/도");
     const options = regionSelect.querySelectorAll("option");
-    const gyeonggiOpt = [...options].find(o => o.textContent.includes("경기"));
+    const gyeonggiOpt = [...options].find((o) => o.textContent.includes("경기"));
     expect(gyeonggiOpt?.disabled).toBe(true);
   });
 
@@ -181,9 +181,15 @@ describe("SearchFilterBar", () => {
   // ── 활성 필터 칩 키보드 접근성 (a11y 보강) ──────────────────────
   describe("활성 필터 칩 키보드 접근성", () => {
     it("활성 칩이 role=button + tabIndex=0 + aria-label 부여됨", () => {
-      render(<SearchFilterBar {...makeProps({
-        showFavOnly: true, activeFilterCount: 1, favCount: 3,
-      })} />);
+      render(
+        <SearchFilterBar
+          {...makeProps({
+            showFavOnly: true,
+            activeFilterCount: 1,
+            favCount: 3,
+          })}
+        />
+      );
       const chip = screen.getByRole("button", { name: "관심 필터 해제" });
       expect(chip.getAttribute("tabindex")).toBe("0");
       expect(chip.tagName).toBe("SPAN");
@@ -191,9 +197,15 @@ describe("SearchFilterBar", () => {
 
     it("Enter 키 입력 시 onClick 콜백 호출 (관심 칩)", () => {
       const onToggleFavOnly = vi.fn();
-      render(<SearchFilterBar {...makeProps({
-        showFavOnly: true, activeFilterCount: 1, onToggleFavOnly,
-      })} />);
+      render(
+        <SearchFilterBar
+          {...makeProps({
+            showFavOnly: true,
+            activeFilterCount: 1,
+            onToggleFavOnly,
+          })}
+        />
+      );
       const chip = screen.getByRole("button", { name: "관심 필터 해제" });
       fireEvent.keyDown(chip, { key: "Enter" });
       expect(onToggleFavOnly).toHaveBeenCalledTimes(1);
@@ -201,9 +213,15 @@ describe("SearchFilterBar", () => {
 
     it("Space 키 입력 시 onClick 콜백 호출 (지역 칩)", () => {
       const onRegionChange = vi.fn();
-      render(<SearchFilterBar {...makeProps({
-        filterRegion: "서울", activeFilterCount: 1, onRegionChange,
-      })} />);
+      render(
+        <SearchFilterBar
+          {...makeProps({
+            filterRegion: "서울",
+            activeFilterCount: 1,
+            onRegionChange,
+          })}
+        />
+      );
       const chip = screen.getByRole("button", { name: "서울 필터 해제" });
       fireEvent.keyDown(chip, { key: " " });
       expect(onRegionChange).toHaveBeenCalledWith("전체");
@@ -211,9 +229,15 @@ describe("SearchFilterBar", () => {
 
     it("다른 키 입력 시 onClick 콜백 미호출 (회귀 가드)", () => {
       const onBudgetReset = vi.fn();
-      render(<SearchFilterBar {...makeProps({
-        budgetMin: "3", activeFilterCount: 1, onBudgetReset,
-      })} />);
+      render(
+        <SearchFilterBar
+          {...makeProps({
+            budgetMin: "3",
+            activeFilterCount: 1,
+            onBudgetReset,
+          })}
+        />
+      );
       const chip = screen.getByRole("button", { name: "예산 필터 해제" });
       fireEvent.keyDown(chip, { key: "a" });
       fireEvent.keyDown(chip, { key: "Tab" });

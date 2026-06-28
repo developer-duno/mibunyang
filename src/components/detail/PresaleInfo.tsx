@@ -6,18 +6,24 @@ import { usePresaleDetail, type PresaleScheduleOfficial } from "@/hooks/usePresa
 import type { PresaleInfoProps } from "@/types/components/PresaleInfo.types";
 
 const STAGE_COLORS: Record<string, { bg: string; color: string }> = {
-  "분양중": { bg: C.greenLight, color: C.green },
-  "분양예정": { bg: C.blueLight, color: C.blue },
-  "계약": { bg: C.amberLight, color: C.amber },
+  분양중: { bg: C.greenLight, color: C.green },
+  분양예정: { bg: C.blueLight, color: C.blue },
+  계약: { bg: C.amberLight, color: C.amber },
 };
 
-interface InfoItem { l: string; v: string }
+interface InfoItem {
+  l: string;
+  v: string;
+}
 
 // 청약홈 공식 일정 타임라인 항목 (있는 것만 순서대로 노출)
 function buildTimeline(s: PresaleScheduleOfficial): Array<{ l: string; v: string }> {
   const fmt = (d: string | null) => (d ? d.replace(/-/g, ".").slice(2) : null); // "2026-05-29" → "26.05.29"
   const rows: Array<{ l: string; v: string }> = [];
-  const push = (l: string, d: string | null) => { const v = fmt(d); if (v) rows.push({ l, v }); };
+  const push = (l: string, d: string | null) => {
+    const v = fmt(d);
+    if (v) rows.push({ l, v });
+  };
   push("모집공고", s.recruit_date);
   push("특별공급", s.special_receipt_bgnde);
   push("1순위", s.general_rank1_bgnde);
@@ -31,7 +37,13 @@ function buildTimeline(s: PresaleScheduleOfficial): Array<{ l: string; v: string
 }
 
 // DataSections.tsx:54 DS_S.container 와 동일 — 일정-only 카드 컨테이너
-const SCHEDULE_CARD: CSSProperties = { background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` };
+const SCHEDULE_CARD: CSSProperties = {
+  background: C.bg,
+  borderRadius: 10,
+  padding: "10px 12px",
+  marginBottom: 10,
+  border: `1px solid ${C.border}`,
+};
 
 // 청약홈 공식 일정 타임라인 렌더. 항목이 없으면 null.
 // showInnerHeader=false 면 보조 헤더("청약홈 공식 일정")를 생략 — 일정-only 카드에서 바깥 카드 헤더와 중복 방지.
@@ -41,13 +53,14 @@ function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean) {
   return (
     <div style={showInnerHeader ? { marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` } : undefined}>
       {showInnerHeader && (
-        <div style={{ fontSize: F.xs, fontWeight: 700, color: C.purple, marginBottom: 6 }}>
-          청약홈 공식 일정
-        </div>
+        <div style={{ fontSize: F.xs, fontWeight: 700, color: C.purple, marginBottom: 6 }}>청약홈 공식 일정</div>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
         {timeline.map((item, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
+          <div
+            key={i}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}
+          >
             <span style={{ fontSize: F.xs, color: C.muted }}>{item.l}</span>
             <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{item.v}</span>
           </div>
@@ -60,7 +73,9 @@ function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean) {
             target="_blank"
             rel="noopener noreferrer"
             style={{ fontSize: F.xs, color: C.blue, fontWeight: 600, textDecoration: "underline" }}
-          >청약홈 공고 보기</a>
+          >
+            청약홈 공고 보기
+          </a>
         </div>
       )}
     </div>
@@ -95,28 +110,48 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
   }
 
   const stageStyle = STAGE_COLORS[String(apt.presaleStage)] ?? { bg: C.purpleLight, color: C.purple };
-  const presaleUrl = apt.naverPresaleNo && apt.naverPresaleSeq
-    ? `https://pre.land.naver.com/complexes/${apt.naverPresaleNo}/${apt.naverPresaleSeq}`
-    : null;
+  const presaleUrl =
+    apt.naverPresaleNo && apt.naverPresaleSeq
+      ? `https://pre.land.naver.com/complexes/${apt.naverPresaleNo}/${apt.naverPresaleSeq}`
+      : null;
 
   const generalSupply = Number(apt.presaleGeneralSupply ?? NaN);
   const buildings = Number(apt.presaleBuildings ?? NaN);
   const parking = Number(apt.presaleParking ?? NaN);
-  const infoItems: InfoItem[] = ([
+  const infoItems: InfoItem[] = [
     Number.isFinite(generalSupply) && { l: "일반분양", v: `${generalSupply.toLocaleString("ko-KR")}세대` },
     Number.isFinite(buildings) && { l: "동수", v: `${buildings}동` },
     Number.isFinite(parking) && { l: "주차대수", v: `${parking.toLocaleString("ko-KR")}대` },
     apt.presaleHousingType && { l: "주택유형", v: String(apt.presaleHousingType) },
     apt.presaleMoveIn && { l: "입주시기", v: String(apt.presaleMoveIn) },
     apt.presaleRecruitDate && { l: "분양시기", v: fmtRecruitDate(apt.presaleRecruitDate) },
-  ].filter(Boolean) as InfoItem[]);
+  ].filter(Boolean) as InfoItem[];
 
   return (
-    <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+    <div
+      style={{
+        background: C.bg,
+        borderRadius: 10,
+        padding: "10px 12px",
+        marginBottom: 10,
+        border: `1px solid ${C.border}`,
+      }}
+    >
       {/* 헤더: 제목 + 단계 배지 */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>네이버 분양정보</span>
-        <span style={{ fontSize: F.xs, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: stageStyle.bg, color: stageStyle.color }}>{apt.presaleStage}</span>
+        <span
+          style={{
+            fontSize: F.xs,
+            fontWeight: 700,
+            padding: "2px 8px",
+            borderRadius: 4,
+            background: stageStyle.bg,
+            color: stageStyle.color,
+          }}
+        >
+          {apt.presaleStage}
+        </span>
         {apt.presaleType && <span style={{ fontSize: F.xs, color: C.muted }}>{apt.presaleType}</span>}
       </div>
 
@@ -135,14 +170,36 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
       {/* 가격 범위 카드 */}
       {(apt.presaleMinPrice != null || apt.presaleMaxPrice != null) && (
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
+          <div
+            style={{
+              flex: 1,
+              background: C.card,
+              borderRadius: 8,
+              padding: "8px 10px",
+              textAlign: "center",
+              border: `1px solid ${C.border}`,
+            }}
+          >
             <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>분양가 범위</div>
-            <div style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>{fmtPriceRange(apt.presaleMinPrice as number | null, apt.presaleMaxPrice as number | null)}</div>
+            <div style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>
+              {fmtPriceRange(apt.presaleMinPrice as number | null, apt.presaleMaxPrice as number | null)}
+            </div>
           </div>
           {apt.presalePp != null && (
-            <div style={{ flex: 1, background: C.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${C.border}` }}>
+            <div
+              style={{
+                flex: 1,
+                background: C.card,
+                borderRadius: 8,
+                padding: "8px 10px",
+                textAlign: "center",
+                border: `1px solid ${C.border}`,
+              }}
+            >
               <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>평당가</div>
-              <div style={{ fontSize: F.base, fontWeight: 800, color: C.blue }}>{fmtPrice(apt.presalePp as number)}</div>
+              <div style={{ fontSize: F.base, fontWeight: 800, color: C.blue }}>
+                {fmtPrice(apt.presalePp as number)}
+              </div>
             </div>
           )}
         </div>
@@ -152,7 +209,10 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
       {infoItems.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
           {infoItems.map((item, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
+            <div
+              key={i}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}
+            >
               <span style={{ fontSize: F.xs, color: C.muted }}>{item.l}</span>
               <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{item.v}</span>
             </div>
@@ -163,14 +223,16 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
       {/* 일정 */}
       {Boolean(apt.presaleSchedule) && (
         <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
-          <span style={{ fontWeight: 600 }}>일정: </span>{fmtPresaleSchedule(apt.presaleSchedule)}
+          <span style={{ fontWeight: 600 }}>일정: </span>
+          {fmtPresaleSchedule(apt.presaleSchedule)}
         </div>
       )}
 
       {/* 특징 */}
       {Boolean(apt.presaleFeatures) && (
         <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
-          <span style={{ fontWeight: 600 }}>특징: </span>{String(apt.presaleFeatures)}
+          <span style={{ fontWeight: 600 }}>특징: </span>
+          {String(apt.presaleFeatures)}
         </div>
       )}
 
@@ -178,7 +240,12 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
       {Boolean(apt.presaleInquiry) && (
         <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
           <span style={{ fontWeight: 600 }}>분양문의: </span>
-          <a href={`tel:${String(apt.presaleInquiry).replace(/[^\d+\-()]/g, "")}`} style={{ color: C.blue, textDecoration: "none" }}>{String(apt.presaleInquiry)}</a>
+          <a
+            href={`tel:${String(apt.presaleInquiry).replace(/[^\d+\-()]/g, "")}`}
+            style={{ color: C.blue, textDecoration: "none" }}
+          >
+            {String(apt.presaleInquiry)}
+          </a>
         </div>
       )}
 
@@ -191,7 +258,9 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
             rel="noopener noreferrer"
             onClick={() => trackEvent("presale_naver_click", { presaleNo: apt.naverPresaleNo })}
             style={{ fontSize: F.sm, color: C.blue, fontWeight: 600, textDecoration: "underline" }}
-          >네이버 분양정보 보기</a>
+          >
+            네이버 분양정보 보기
+          </a>
         </div>
       )}
 

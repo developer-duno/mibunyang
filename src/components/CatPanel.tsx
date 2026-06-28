@@ -25,13 +25,14 @@ function renderDots(n: number) {
   const filled = Math.max(0, Math.min(n, 5));
   return (
     <span style={{ fontSize: F.xs, letterSpacing: 1, color: C.muted }} aria-label={`${filled}/5점`}>
-      {"●".repeat(filled)}{"○".repeat(5 - filled)}
+      {"●".repeat(filled)}
+      {"○".repeat(5 - filled)}
     </span>
   );
 }
 
 function normalizeScore(score: number, catKey: string, subName: string): number {
-  if (catKey === "product") return Math.round(score / ((PRODUCT_MAX as Record<string, number>)[subName] || 10) * 100);
+  if (catKey === "product") return Math.round((score / ((PRODUCT_MAX as Record<string, number>)[subName] || 10)) * 100);
   return score;
 }
 
@@ -56,7 +57,7 @@ function scoreSign(score: number, catKey: string): { mark: string; label: string
 
 function getHighlights(subs: SubScoreItem[], catKey: string): SubScoreItem[] {
   if (catKey === "benefit") {
-    return subs.filter(s => s.info !== "-").slice(0, 3);
+    return subs.filter((s) => s.info !== "-").slice(0, 3);
   }
   return [...subs]
     .sort((a, b) => {
@@ -71,53 +72,101 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   const col = (catCol as Record<string, string>)[k];
   const grade = gr(cat.total);
-  const ctx = (SUB_CONTEXT as unknown as Record<string, Record<string, { interpret?: ((_sc: number) => string) | null; benchmark?: string | null }>>)[k] || {};
+  const ctx =
+    (
+      SUB_CONTEXT as unknown as Record<
+        string,
+        Record<string, { interpret?: ((_sc: number) => string) | null; benchmark?: string | null }>
+      >
+    )[k] || {};
   const highlights = getHighlights(cat.subs as SubScoreItem[], k);
 
   return (
-    <div style={{ marginBottom: 12, background: C.bg, borderRadius: 10, padding: "10px 12px", border: emphasized ? `2px solid ${col}` : `1px solid ${C.border}` }}>
+    <div
+      style={{
+        marginBottom: 12,
+        background: C.bg,
+        borderRadius: 10,
+        padding: "10px 12px",
+        border: emphasized ? `2px solid ${col}` : `1px solid ${C.border}`,
+      }}
+    >
       <div
-        onClick={() => setExpanded(v => !v)}
+        onClick={() => setExpanded((v) => !v)}
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(v => !v); } }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>{cat.label}</span>
-          <span style={{ fontSize: F.sm, fontWeight: 700, color: grade.c, background: grade.bg, padding: "2px 8px", borderRadius: 4 }}>{grade.l}</span>
+          <span
+            style={{
+              fontSize: F.sm,
+              fontWeight: 700,
+              color: grade.c,
+              background: grade.bg,
+              padding: "2px 8px",
+              borderRadius: 4,
+            }}
+          >
+            {grade.l}
+          </span>
           {emphasized && <EmphasisBadge color={col} background={C.bg} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: F.lg, fontWeight: 800, color: col }}>{cat.total}</span>
-          <span style={{ fontSize: F.sm, color: C.muted, transition: "transform .2s", transform: expanded ? "rotate(180deg)" : "rotate(0)", display: "inline-block" }}>▼</span>
+          <span
+            style={{
+              fontSize: F.sm,
+              color: C.muted,
+              transition: "transform .2s",
+              transform: expanded ? "rotate(180deg)" : "rotate(0)",
+              display: "inline-block",
+            }}
+          >
+            ▼
+          </span>
         </div>
       </div>
 
       <Bar value={cat.total} color={col} h={5} />
 
-      {highlights.length > 0 && <div style={{ marginTop: 6 }}>
-        {highlights.map((s) => {
-          const sc = ctx[s.name];
-          const interp = sc?.interpret?.(s.score);
-          return (
-            <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 0" }}>
-              <span style={{ fontSize: F.xs, color: C.muted, flexShrink: 0 }}>·</span>
-              <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}:</span>
-              <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{s.info}</span>
-              {interp && (() => {
-                const sign = scoreSign(s.score, k);
-                return (
-                  <span style={{ fontSize: F.sm, color: scoreColor(s.score, k, s.name) }}>
-                    {sign && <span aria-label={sign.label} style={{ marginRight: 2 }}>{sign.mark}</span>}→ {interp}
-                  </span>
-                );
-              })()}
-            </div>
-          );
-        })}
-      </div>}
+      {highlights.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          {highlights.map((s) => {
+            const sc = ctx[s.name];
+            const interp = sc?.interpret?.(s.score);
+            return (
+              <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 0" }}>
+                <span style={{ fontSize: F.xs, color: C.muted, flexShrink: 0 }}>·</span>
+                <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}:</span>
+                <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{s.info}</span>
+                {interp &&
+                  (() => {
+                    const sign = scoreSign(s.score, k);
+                    return (
+                      <span style={{ fontSize: F.sm, color: scoreColor(s.score, k, s.name) }}>
+                        {sign && (
+                          <span aria-label={sign.label} style={{ marginRight: 2 }}>
+                            {sign.mark}
+                          </span>
+                        )}
+                        → {interp}
+                      </span>
+                    );
+                  })()}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {expanded && (
         <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
@@ -127,7 +176,10 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
             const interp = sc?.interpret?.(s.score);
             const sc2 = scoreColor(s.score, k, s.name);
             return (
-              <div key={s.name} style={{ padding: "6px 0", borderBottom: i < cat.subs.length - 1 ? `1px solid ${C.border}` : "none" }}>
+              <div
+                key={s.name}
+                style={{ padding: "6px 0", borderBottom: i < cat.subs.length - 1 ? `1px solid ${C.border}` : "none" }}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}</span>
                   <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{s.info}</span>
@@ -135,14 +187,20 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     {renderDots(dots)}
-                    {interp && (() => {
-                      const sign = scoreSign(s.score, k);
-                      return (
-                        <span style={{ fontSize: F.sm, color: sc2 }}>
-                          {sign && <span aria-label={sign.label} style={{ marginRight: 2 }}>{sign.mark}</span>}{interp}
-                        </span>
-                      );
-                    })()}
+                    {interp &&
+                      (() => {
+                        const sign = scoreSign(s.score, k);
+                        return (
+                          <span style={{ fontSize: F.sm, color: sc2 }}>
+                            {sign && (
+                              <span aria-label={sign.label} style={{ marginRight: 2 }}>
+                                {sign.mark}
+                              </span>
+                            )}
+                            {interp}
+                          </span>
+                        );
+                      })()}
                   </div>
                   {sc?.benchmark && <span style={{ fontSize: F.xs, color: C.muted }}>기준: {sc.benchmark}</span>}
                 </div>

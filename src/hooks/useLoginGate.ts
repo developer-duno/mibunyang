@@ -16,12 +16,18 @@ export function useLoginGate({ isLoggedIn, detail, kakao }: UseLoginGateArgs): U
   const [loginTrigger, setLoginTrigger] = useState<LoginTrigger>(null);
   const [pendingDetailId, setPendingDetailId] = useState<string | null>(null);
 
-  const handleDetailGated = useCallback((aptId: string) => {
-    if (isLoggedIn) { detail.handleOpenDetail(aptId); return; }
-    setPendingDetailId(aptId);
-    setLoginTrigger("detail");
-    setShowLoginPrompt(true);
-  }, [isLoggedIn, detail]);
+  const handleDetailGated = useCallback(
+    (aptId: string) => {
+      if (isLoggedIn) {
+        detail.handleOpenDetail(aptId);
+        return;
+      }
+      setPendingDetailId(aptId);
+      setLoginTrigger("detail");
+      setShowLoginPrompt(true);
+    },
+    [isLoggedIn, detail]
+  );
 
   const handleKakaoFromPrompt = useCallback(() => {
     setShowLoginPrompt(false);
@@ -29,8 +35,11 @@ export function useLoginGate({ isLoggedIn, detail, kakao }: UseLoginGateArgs): U
   }, [kakao, pendingDetailId]);
 
   return {
-    showLoginPrompt, setShowLoginPrompt,
-    loginTrigger, setLoginTrigger,
-    handleDetailGated, handleKakaoFromPrompt,
+    showLoginPrompt,
+    setShowLoginPrompt,
+    loginTrigger,
+    setLoginTrigger,
+    handleDetailGated,
+    handleKakaoFromPrompt,
   };
 }

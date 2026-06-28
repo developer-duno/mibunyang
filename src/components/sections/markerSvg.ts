@@ -10,8 +10,7 @@ export const MARKER_NO_PRICE_SEL = { w: 37, h: 48 } as const;
 
 // 현위치(GPS) 파란 점 data-URI — 카카오/네이버 handleMyLocation·GPS autoLocate 4곳 인라인 중복을 1곳으로
 // (세션 448). 카카오는 new MarkerImage(이 값,...), 네이버는 <img src="이 값"> — 문자열만 공유, SDK 사용 방식 불변.
-export const MY_LOCATION_DOT_SVG =
-  `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
+export const MY_LOCATION_DOT_SVG = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285F4" stroke="#fff" stroke-width="3"/></svg>')}`;
 
 /** 만원 → 짧은 가격 문자열 (마커용) */
 export function shortPrice(v: number | null | undefined): string {
@@ -37,12 +36,7 @@ const SHADOW = "rgba(0,0,0,0.22)";
  * 좌표 불변식: 그림자 최하단 ≤ H, 꼬리 끝점 y == H(= MarkerImage offset.y, 핀 끝이 좌표에 꽂힘).
  * stroke 가 SVG 밖으로 잘리지 않게 본체 rect 는 x=1, width=W-2(stroke 절반 0.75/1.25 < 1 여백).
  */
-export function buildMarkerSvg(
-  total: number,
-  gradeColor: string,
-  priceLabel: string,
-  selected = false,
-): MarkerSvg {
+export function buildMarkerSvg(total: number, gradeColor: string, priceLabel: string, selected = false): MarkerSvg {
   if (priceLabel) {
     const { w, h } = selected ? MARKER_WITH_PRICE_SEL : MARKER_WITH_PRICE;
     const sw = selected ? 2.5 : 1.5; // stroke-width

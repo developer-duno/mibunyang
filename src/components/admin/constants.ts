@@ -19,9 +19,9 @@ export const STATUS_TABS: StatusTab[] = [
 export const SPECIALTY_BADGE: Record<string, { color: string; bg: string }> = {
   "부동산 중개": { color: "#1D4ED8", bg: "#DBEAFE" },
   "분양 컨설팅": { color: "#7C3AED", bg: "#EDE9FE" },
-  "감정평가": { color: "#059669", bg: "#D1FAE5" },
+  감정평가: { color: "#059669", bg: "#D1FAE5" },
   "건축/설계": { color: "#EA580C", bg: "#FFF7ED" },
-  "기타": { color: C.muted, bg: C.slate100 },
+  기타: { color: C.muted, bg: C.slate100 },
 };
 
 export const STATUS_LABELS: Record<string, string> = {

@@ -187,15 +187,17 @@ describe("AptCard", () => {
   });
 
   // 세션112: price=0 classifyNoPrice detail 노출 (info="데이터 부재"이고 detail 있으면 detail 표시)
-  it("price.subs[0].info=\"데이터 부재\" + detail 있으면 detail 문구 표시", () => {
+  it('price.subs[0].info="데이터 부재" + detail 있으면 detail 문구 표시', () => {
     const res = makeRes();
-    res.cats.price.subs = [{ info: "데이터 부재", name: "적정가괴리", score: 30, detail: "정비사업 — 조합원 물량, 분양가 미정" }];
+    res.cats.price.subs = [
+      { info: "데이터 부재", name: "적정가괴리", score: 30, detail: "정비사업 — 조합원 물량, 분양가 미정" },
+    ];
     render(<AptCard {...makeProps({ res })} />);
     expect(screen.getByText("정비사업 — 조합원 물량, 분양가 미정")).toBeInTheDocument();
     expect(screen.queryByText(/적정가 데이터 부재/)).toBeNull();
   });
 
-  it("price.subs[0].info=정상값이면 \"적정가 {info}\" 형식 유지 (회귀 방지)", () => {
+  it('price.subs[0].info=정상값이면 "적정가 {info}" 형식 유지 (회귀 방지)', () => {
     render(<AptCard {...makeProps()} />);
     expect(screen.getByText("적정가 -3.5%")).toBeInTheDocument();
   });
@@ -231,7 +233,7 @@ describe("AptCard", () => {
     expect(screen.queryByText(/주변대비/)).toBeNull();
   });
 
-  it("deviation \"0.0\"(데이터 부재 분기) 이면 배지 미표시 (저렴·비쌈 둘 다)", () => {
+  it('deviation "0.0"(데이터 부재 분기) 이면 배지 미표시 (저렴·비쌈 둘 다)', () => {
     // scorePrice.ts:116 데이터 부재 분기가 fairPrice=0 + deviation="0.0" 산출 → 0>0 false, 0<0 false
     const res = makeRes();
     res.cats.price.deviation = "0.0";
@@ -635,5 +637,4 @@ describe("AptCard", () => {
       expect(screen.getByText("학군 C")).toBeInTheDocument();
     });
   });
-
 });

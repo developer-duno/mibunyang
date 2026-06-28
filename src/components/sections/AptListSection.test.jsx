@@ -96,7 +96,11 @@ describe("AptListSection", () => {
       makeScoredItem({ id: 10, name: "서울아파트A", region: "서울" }),
       makeScoredItem({ id: 11, name: "서울아파트B", region: "서울" }),
     ];
-    render(<AptListSection {...makeProps({ visible: seoulItems, filteredLength: 2, visibleCount: 2, filterRegion: "서울" })} />);
+    render(
+      <AptListSection
+        {...makeProps({ visible: seoulItems, filteredLength: 2, visibleCount: 2, filterRegion: "서울" })}
+      />
+    );
     expect(screen.getByText(/서울아파트A/)).toBeInTheDocument();
     expect(screen.getByText(/서울아파트B/)).toBeInTheDocument();
     expect(screen.getByText(/2개 단지/)).toBeInTheDocument();
@@ -104,8 +108,9 @@ describe("AptListSection", () => {
 
   // 빈 지역 — 0건
   it("존재하지 않는 지역으로 필터하면 빈 상태 표시", () => {
-    render(<AptListSection {...makeProps({ visible: [], filteredLength: 0, visibleCount: 0, filterRegion: "제주" })} />);
+    render(
+      <AptListSection {...makeProps({ visible: [], filteredLength: 0, visibleCount: 0, filterRegion: "제주" })} />
+    );
     expect(screen.getByText("해당 조건에 맞는 미분양 단지가 없습니다")).toBeInTheDocument();
   });
-
 });

@@ -43,12 +43,20 @@ describe("AdminLoginForm", () => {
   });
 
   it("authError 가 있으면 에러 배너를 표시한다", () => {
-    render(<AdminLoginForm auth={/** @type {any} */ (makeAuth({ authError: "이메일 또는 비밀번호가 일치하지 않습니다" }))} onLogin={vi.fn()} onBack={vi.fn()} />);
+    render(
+      <AdminLoginForm
+        auth={/** @type {any} */ (makeAuth({ authError: "이메일 또는 비밀번호가 일치하지 않습니다" }))}
+        onLogin={vi.fn()}
+        onBack={vi.fn()}
+      />
+    );
     expect(screen.getByText("이메일 또는 비밀번호가 일치하지 않습니다")).toBeTruthy();
   });
 
   it("authLoading 이면 제출 버튼이 비활성·'처리 중...' 표시", () => {
-    render(<AdminLoginForm auth={/** @type {any} */ (makeAuth({ authLoading: true }))} onLogin={vi.fn()} onBack={vi.fn()} />);
+    render(
+      <AdminLoginForm auth={/** @type {any} */ (makeAuth({ authLoading: true }))} onLogin={vi.fn()} onBack={vi.fn()} />
+    );
     const btn = screen.getByRole("button", { name: "처리 중..." });
     expect(/** @type {HTMLButtonElement} */ (btn).disabled).toBe(true);
   });

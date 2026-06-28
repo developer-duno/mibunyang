@@ -30,7 +30,10 @@ type ChoroplethSigunguOverlayProps = {
  * - hover 0.55→0.8, click → setBounds + onGuClick(byGuKey) → 점 보기 복귀
  */
 export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
-  mapInstance, ready, filtered, onGuClick,
+  mapInstance,
+  ready,
+  filtered,
+  onGuClick,
 }: ChoroplethSigunguOverlayProps) {
   const polygonsRef = useRef<any[]>([]);
   const [geoData, setGeoData] = useState<any>(null);
@@ -41,10 +44,16 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
   useEffect(() => {
     let cancelled = false;
     fetch("/geo/sigungu.geojson")
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => { if (!cancelled) setGeoData(d); })
-      .catch(e => { if (!cancelled) setError(e.message); });
-    return () => { cancelled = true; };
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => {
+        if (!cancelled) setGeoData(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 2. 폴리곤 그리기 + cleanup
@@ -53,10 +62,10 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
     const kakao = getKakaoMaps();
     if (!kakao?.Polygon) return;
 
-    polygonsRef.current.forEach(p => p.setMap(null));
+    polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
 
-    for (const feature of (geoData.features || [])) {
+    for (const feature of geoData.features || []) {
       const key = geoSigunguToByGuKey(feature);
       if (!key) continue;
       const stat = byGu[key];
@@ -90,19 +99,31 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
     }
 
     return () => {
-      polygonsRef.current.forEach(p => p.setMap(null));
+      polygonsRef.current.forEach((p) => p.setMap(null));
       polygonsRef.current = [];
     };
   }, [ready, mapInstance, geoData, byGu, onGuClick]);
 
-  if (error) return (
-    <div
-      role="alert"
-      style={{ position: "absolute", top: 8, right: 8, background: C.redLight, color: C.red, padding: "6px 10px", borderRadius: 6, fontSize: F.xs, zIndex: 10, border: `1px solid ${C.redBorder}` }}
-    >
-      시군구 데이터를 불러올 수 없습니다
-    </div>
-  );
+  if (error)
+    return (
+      <div
+        role="alert"
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 8,
+          background: C.redLight,
+          color: C.red,
+          padding: "6px 10px",
+          borderRadius: 6,
+          fontSize: F.xs,
+          zIndex: 10,
+          border: `1px solid ${C.redBorder}`,
+        }}
+      >
+        시군구 데이터를 불러올 수 없습니다
+      </div>
+    );
 
   // 시도 ChoroplethView 가 범례·Skeleton 담당, 시군구 오버레이는 폴리곤만
   return null;

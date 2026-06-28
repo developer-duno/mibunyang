@@ -14,21 +14,36 @@ function makeScored(id, name, total) {
     res: {
       total,
       cats: {
-        price: cat("가격", 70), location: cat("입지", 60), product: cat("상품성", 55),
+        price: cat("가격", 70),
+        location: cat("입지", 60),
+        product: cat("상품성", 55),
         benefit: { label: "혜택", total: 50, subs: [], totalWon: 0 },
-        risk: cat("안전", 65), future: cat("미래", 45),
+        risk: cat("안전", 65),
+        future: cat("미래", 45),
       },
     },
   });
 }
 const baseProps = () => ({
   pw: /** @type {any} */ ({}),
-  onDetail: vi.fn(), onFav: vi.fn(), favoriteSet: new Set(), onComp: vi.fn(), compIds: [],
-  isLoggedIn: true, isDesktop: false, isPC: false, onExpand: vi.fn(),
+  onDetail: vi.fn(),
+  onFav: vi.fn(),
+  favoriteSet: new Set(),
+  onComp: vi.fn(),
+  compIds: [],
+  isLoggedIn: true,
+  isDesktop: false,
+  isPC: false,
+  onExpand: vi.fn(),
 });
 
 describe("TopPicksWidget", () => {
-  const scored = [makeScored("a1", "일위단지", 90), makeScored("a2", "이위단지", 80), makeScored("a3", "삼위단지", 70), makeScored("a4", "사위단지", 60)];
+  const scored = [
+    makeScored("a1", "일위단지", 90),
+    makeScored("a2", "이위단지", 80),
+    makeScored("a3", "삼위단지", 70),
+    makeScored("a4", "사위단지", 60),
+  ];
 
   it("점수 내림차순 상위 3개만 렌더", () => {
     render(<TopPicksWidget {...baseProps()} scored={[...scored].reverse()} />);

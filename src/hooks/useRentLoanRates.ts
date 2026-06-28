@@ -4,7 +4,9 @@ import { useFinlifeRates } from "./useFinlifeRates";
 
 type SingleCacheRef = MutableRefObject<unknown>;
 const getSingleCached = (ref: SingleCacheRef) => ref.current;
-const setSingleCached = (ref: SingleCacheRef, _grp: string | null, data: unknown) => { ref.current = data; };
+const setSingleCached = (ref: SingleCacheRef, _grp: string | null, data: unknown) => {
+  ref.current = data;
+};
 
 /**
  * 금융감독원 finlife 전세자금대출 금리 데이터 페칭 훅.

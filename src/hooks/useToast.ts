@@ -10,6 +10,11 @@ export function useToast() {
     setToast(msg);
     toastRef.current = setTimeout(() => setToast(""), TOAST_DISMISS_MS);
   }, []);
-  useEffect(() => () => { if (toastRef.current) clearTimeout(toastRef.current); }, []);
+  useEffect(
+    () => () => {
+      if (toastRef.current) clearTimeout(toastRef.current);
+    },
+    []
+  );
   return { toast, showToast };
 }

@@ -27,7 +27,12 @@ const ChoroplethSigunguOverlay = lazyNamed(() => import("./ChoroplethSigunguOver
  * - hover: fillOpacity 0.65 → 0.85
  */
 export const ChoroplethView = memo(function ChoroplethView({
-  mapInstance, ready, filtered, onSidoClick, isPC, isDesktop,
+  mapInstance,
+  ready,
+  filtered,
+  onSidoClick,
+  isPC,
+  isDesktop,
 }: ChoroplethViewProps) {
   const polygonsRef = useRef<any[]>([]);
   const [geoData, setGeoData] = useState<any>(null);
@@ -46,9 +51,7 @@ export const ChoroplethView = memo(function ChoroplethView({
     if (!kakao?.event) return;
     const handler = () => setLevel((mapInstance as any).getLevel());
     kakao.event.addListener(mapInstance, "zoom_changed", handler);
-    const initialSyncId = typeof (mapInstance as any).getLevel === "function"
-      ? window.setTimeout(handler, 0)
-      : null;
+    const initialSyncId = typeof (mapInstance as any).getLevel === "function" ? window.setTimeout(handler, 0) : null;
     return () => {
       if (initialSyncId != null) window.clearTimeout(initialSyncId);
       // kakao SDK 의 event.removeListener 는 일부 버전 미지원. 옵셔널 호출 가드.
@@ -64,10 +67,16 @@ export const ChoroplethView = memo(function ChoroplethView({
     let cancelled = false;
     setError(null);
     fetch("/geo/sido.geojson")
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => { if (!cancelled) setGeoData(d); })
-      .catch(e => { if (!cancelled) setError(e.message); });
-    return () => { cancelled = true; };
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => {
+        if (!cancelled) setGeoData(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [retryKey]);
 
   // 2. 폴리곤 그리기 + cleanup
@@ -78,15 +87,15 @@ export const ChoroplethView = memo(function ChoroplethView({
 
     // 시군구 모드일 땐 시도 폴리곤 전부 cleanup 후 종료
     if (showSigungu) {
-      polygonsRef.current.forEach(p => p.setMap(null));
+      polygonsRef.current.forEach((p) => p.setMap(null));
       polygonsRef.current = [];
       return;
     }
 
-    polygonsRef.current.forEach(p => p.setMap(null));
+    polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
 
-    for (const feature of (geoData.features || [])) {
+    for (const feature of geoData.features || []) {
       const geoName = feature?.properties?.name;
       const dbName = geoSidoToDbName(geoName);
       if (!dbName) continue;
@@ -121,26 +130,66 @@ export const ChoroplethView = memo(function ChoroplethView({
     }
 
     return () => {
-      polygonsRef.current.forEach(p => p.setMap(null));
+      polygonsRef.current.forEach((p) => p.setMap(null));
       polygonsRef.current = [];
     };
   }, [ready, mapInstance, geoData, byRegion, onSidoClick, showSigungu]);
 
-  if (error) return (
-    <div
-      role="alert"
-      style={{ position: "absolute", top: 8, right: 8, background: C.redLight, color: C.red, padding: "6px 10px", borderRadius: 6, fontSize: F.xs, zIndex: 10, border: `1px solid ${C.redBorder}`, display: "flex", alignItems: "center", gap: 8 }}
-    >
-      지도 데이터를 불러올 수 없습니다
-      <button onClick={() => setRetryKey(k => k + 1)} style={{ fontSize: F.xs, padding: "2px 8px", borderRadius: 4, border: `1px solid ${C.redBorder}`, background: C.white, color: C.red, cursor: "pointer" }}>재시도</button>
-    </div>
-  );
+  if (error)
+    return (
+      <div
+        role="alert"
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 8,
+          background: C.redLight,
+          color: C.red,
+          padding: "6px 10px",
+          borderRadius: 6,
+          fontSize: F.xs,
+          zIndex: 10,
+          border: `1px solid ${C.redBorder}`,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        지도 데이터를 불러올 수 없습니다
+        <button
+          onClick={() => setRetryKey((k) => k + 1)}
+          style={{
+            fontSize: F.xs,
+            padding: "2px 8px",
+            borderRadius: 4,
+            border: `1px solid ${C.redBorder}`,
+            background: C.white,
+            color: C.red,
+            cursor: "pointer",
+          }}
+        >
+          재시도
+        </button>
+      </div>
+    );
 
-  if (!geoData) return (
-    <div style={{ position: "absolute", top: 8, right: 8, zIndex: 10, width: 160, background: "rgba(255,255,255,0.92)", padding: "6px 8px", borderRadius: 6 }}>
-      <SkeletonText lines={1} width="100%" />
-    </div>
-  );
+  if (!geoData)
+    return (
+      <div
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 8,
+          zIndex: 10,
+          width: 160,
+          background: "rgba(255,255,255,0.92)",
+          padding: "6px 8px",
+          borderRadius: 6,
+        }}
+      >
+        <SkeletonText lines={1} width="100%" />
+      </div>
+    );
 
   return (
     <>

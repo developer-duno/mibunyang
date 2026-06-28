@@ -8,13 +8,27 @@ import { trackEvent } from "@/lib/analytics";
 vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 
 const baseProps = () => ({
-  scored: [], filtered: [], pw: /** @type {any} */ ({}),
-  upcomingData: null, upcomingError: false, onRetryUpcoming: vi.fn(),
-  isLoggedIn: false, isDesktop: false, isPC: false,
-  dataLoading: false, dataFreshnessText: null,
-  onNavClick: vi.fn(), onMarketNav: vi.fn(), onDetail: vi.fn(),
-  onFav: vi.fn(), favoriteSet: new Set(), onComp: vi.fn(), compIds: [],
-  recentIds: [], scoredMap: new Map(), onClearRecent: vi.fn(),
+  scored: [],
+  filtered: [],
+  pw: /** @type {any} */ ({}),
+  upcomingData: null,
+  upcomingError: false,
+  onRetryUpcoming: vi.fn(),
+  isLoggedIn: false,
+  isDesktop: false,
+  isPC: false,
+  dataLoading: false,
+  dataFreshnessText: null,
+  onNavClick: vi.fn(),
+  onMarketNav: vi.fn(),
+  onDetail: vi.fn(),
+  onFav: vi.fn(),
+  favoriteSet: new Set(),
+  onComp: vi.fn(),
+  compIds: [],
+  recentIds: [],
+  scoredMap: new Map(),
+  onClearRecent: vi.fn(),
 });
 
 /** 최소 ScoredApt — RecentlyViewedWidget 카드 렌더용 (TopPicksWidget.test 답습) */
@@ -22,7 +36,17 @@ function makeScored(/** @type {string} */ id, /** @type {string} */ name) {
   const cat = (/** @type {string} */ label, /** @type {number} */ t) => ({ label, total: t, subs: [] });
   return /** @type {any} */ ({
     apt: { id, name, region: "경기", gu: "수원시", price: 50000, area: 84, noxious: [] },
-    res: { total: 80, cats: { price: cat("가격", 70), location: cat("입지", 60), product: cat("상품성", 55), benefit: { label: "혜택", total: 50, subs: [], totalWon: 0 }, risk: cat("안전", 65), future: cat("미래", 45) } },
+    res: {
+      total: 80,
+      cats: {
+        price: cat("가격", 70),
+        location: cat("입지", 60),
+        product: cat("상품성", 55),
+        benefit: { label: "혜택", total: 50, subs: [], totalWon: 0 },
+        risk: cat("안전", 65),
+        future: cat("미래", 45),
+      },
+    },
   });
 }
 
@@ -72,7 +96,10 @@ describe("HomePage", () => {
 });
 
 describe("HomePage analytics (M3)", () => {
-  afterEach(() => { vi.unstubAllEnvs(); /** @type {any} */ (trackEvent).mockClear(); });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    /** @type {any} */ (trackEvent).mockClear();
+  });
 
   it("추천 위젯 '전체 목록' 클릭 → home_widget_expand{toppicks} + onNavClick(list)", () => {
     const onNavClick = vi.fn();

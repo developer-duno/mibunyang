@@ -32,9 +32,12 @@ export function computeRegionalMedians(apartments: Apt[]): RegionalMedians {
     if (!groups[r]) groups[r] = { pir: [], psr: [], unsoldRate: [], supplyRatio: [], maint: [] };
     if (apt.pir != null && Number.isFinite(Number(apt.pir))) groups[r].pir.push(Number(apt.pir));
     if (apt.psr != null && Number.isFinite(Number(apt.psr))) groups[r].psr.push(Number(apt.psr));
-    if (apt.unsoldRate != null && Number.isFinite(Number(apt.unsoldRate))) groups[r].unsoldRate.push(Number(apt.unsoldRate));
-    if (apt.supplyRatio != null && Number.isFinite(Number(apt.supplyRatio))) groups[r].supplyRatio.push(Number(apt.supplyRatio));
-    if (apt.avgMaintenanceCost != null && apt.avgMaintenanceCost > 0) groups[r].maint.push(Number(apt.avgMaintenanceCost));
+    if (apt.unsoldRate != null && Number.isFinite(Number(apt.unsoldRate)))
+      groups[r].unsoldRate.push(Number(apt.unsoldRate));
+    if (apt.supplyRatio != null && Number.isFinite(Number(apt.supplyRatio)))
+      groups[r].supplyRatio.push(Number(apt.supplyRatio));
+    if (apt.avgMaintenanceCost != null && apt.avgMaintenanceCost > 0)
+      groups[r].maint.push(Number(apt.avgMaintenanceCost));
   }
   const median = (arr: number[]): number | null => {
     if (!arr.length) return null;

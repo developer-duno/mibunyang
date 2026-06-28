@@ -40,42 +40,49 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready, sel
   }, [mapInstance, selectedApt]);
 
   // 카테고리 마커 검색 + 표시
-  const searchAndShow = useCallback((categoryCode: string, emoji: string, radius: number) => {
-    const kakao = getKakaoMaps();
-    if (!mapInstance || !kakao?.services) return;
-    // 기존 마커 제거
-    markersRef.current.forEach(m => m.setMap(null));
-    markersRef.current = [];
+  const searchAndShow = useCallback(
+    (categoryCode: string, emoji: string, radius: number) => {
+      const kakao = getKakaoMaps();
+      if (!mapInstance || !kakao?.services) return;
+      // 기존 마커 제거
+      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current = [];
 
-    const center = getSearchCenter();
-    if (!center) return;
+      const center = getSearchCenter();
+      if (!center) return;
 
-    const ps = new kakao.services.Places();
-    ps.categorySearch(categoryCode, (data: any[], status: string) => {
-      if (status !== kakao.services.Status.OK) return;
-      const newMarkers = data.map((place: any) => {
-        const svgIcon = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="13" fill="#fff" stroke="${C.indigo}" stroke-width="2"/><text x="14" y="15" text-anchor="middle" font-size="14" dy="0.35em">${emoji}</text></svg>`)}`;
-        const marker = new kakao.Marker({
-          position: new kakao.LatLng(place.y, place.x),
-          title: place.place_name,
-          image: new kakao.MarkerImage(svgIcon, new kakao.Size(28, 28), { offset: new kakao.Point(14, 14) }),
-          zIndex: 5,
-        });
-        marker.setMap(mapInstance);
-        return marker;
-      });
-      markersRef.current = newMarkers;
-    }, { location: center, radius, size: INFRA_MAX_RESULTS, sort: kakao.services.SortBy.DISTANCE });
-  }, [mapInstance, getSearchCenter]);
+      const ps = new kakao.services.Places();
+      ps.categorySearch(
+        categoryCode,
+        (data: any[], status: string) => {
+          if (status !== kakao.services.Status.OK) return;
+          const newMarkers = data.map((place: any) => {
+            const svgIcon = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="13" fill="#fff" stroke="${C.indigo}" stroke-width="2"/><text x="14" y="15" text-anchor="middle" font-size="14" dy="0.35em">${emoji}</text></svg>`)}`;
+            const marker = new kakao.Marker({
+              position: new kakao.LatLng(place.y, place.x),
+              title: place.place_name,
+              image: new kakao.MarkerImage(svgIcon, new kakao.Size(28, 28), { offset: new kakao.Point(14, 14) }),
+              zIndex: 5,
+            });
+            marker.setMap(mapInstance);
+            return marker;
+          });
+          markersRef.current = newMarkers;
+        },
+        { location: center, radius, size: INFRA_MAX_RESULTS, sort: kakao.services.SortBy.DISTANCE }
+      );
+    },
+    [mapInstance, getSearchCenter]
+  );
 
   // 활성 카테고리 또는 선택 단지 변경 시 검색
   useEffect(() => {
     if (!ready || !active) {
-      markersRef.current.forEach(m => m.setMap(null));
+      markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
       return;
     }
-    const cat = INFRA_CATEGORIES.find(c => c.key === active);
+    const cat = INFRA_CATEGORIES.find((c) => c.key === active);
     if (!cat) return;
     searchAndShow(cat.code, cat.emoji, cat.radius);
 
@@ -93,18 +100,20 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready, sel
     return () => {
       kakao.event.removeListener?.(mapInstance, "idle", onIdle);
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-      markersRef.current.forEach(m => m.setMap(null));
+      markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
     };
   }, [ready, active, mapInstance, searchAndShow, selectedApt?.lat, selectedApt?.lng]);
 
   const toggle = useCallback((key: string) => {
-    setActive(prev => prev === key ? null : key);
+    setActive((prev) => (prev === key ? null : key));
   }, []);
 
   return (
-    <div style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 4, zIndex: 10 }}>
-      {INFRA_CATEGORIES.map(cat => (
+    <div
+      style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 4, zIndex: 10 }}
+    >
+      {INFRA_CATEGORIES.map((cat) => (
         <button
           key={cat.key}
           type="button"
@@ -112,13 +121,18 @@ export const InfraOverlay = memo(function InfraOverlay({ mapInstance, ready, sel
           aria-pressed={active === cat.key}
           title={cat.label}
           style={{
-            width: 36, height: 36, borderRadius: 8,
+            width: 36,
+            height: 36,
+            borderRadius: 8,
             background: active === cat.key ? C.indigo : C.white,
             color: active === cat.key ? C.white : C.text,
             border: `1px solid ${active === cat.key ? C.indigo : C.border}`,
             boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
-            cursor: "pointer", fontSize: F.lg,
-            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+            fontSize: F.lg,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           {cat.emoji}

@@ -23,5 +23,7 @@ export function trackEvent(name: string, props?: Record<string, unknown>): void 
     } else {
       track(name);
     }
-  } catch (e) { console.warn("[analytics]", e); }
+  } catch (e) {
+    console.warn("[analytics]", e);
+  }
 }

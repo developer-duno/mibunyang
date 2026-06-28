@@ -31,7 +31,13 @@ describe("CategoryMiniCard", () => {
   });
 
   it("price 카테고리는 deviation 실측 결론", () => {
-    render(<CategoryMiniCard k="price" cat={mk({ label: "가격 매력도", total: 40, fairPrice: 50000, deviation: "12.3" })} onJump={vi.fn()} />);
+    render(
+      <CategoryMiniCard
+        k="price"
+        cat={mk({ label: "가격 매력도", total: 40, fairPrice: 50000, deviation: "12.3" })}
+        onJump={vi.fn()}
+      />
+    );
     expect(screen.getByText("적정가 대비 12% 저렴")).toBeInTheDocument();
   });
 

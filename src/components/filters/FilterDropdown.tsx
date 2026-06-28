@@ -6,7 +6,12 @@ import { memo } from "react";
 import { C } from "@/theme";
 import type { FilterDropdownProps } from "@/types/filters";
 
-export const FilterDropdown = memo(function FilterDropdown({ isOpen, children, label, isDesktop }: FilterDropdownProps) {
+export const FilterDropdown = memo(function FilterDropdown({
+  isOpen,
+  children,
+  label,
+  isDesktop,
+}: FilterDropdownProps) {
   if (!isOpen) return null;
   return (
     <div

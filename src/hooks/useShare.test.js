@@ -1,9 +1,9 @@
 // @ts-check
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useShare } from './useShare';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import { useShare } from "./useShare";
 
-describe('useShare', () => {
+describe("useShare", () => {
   /** @type {import('vitest').Mock} */
   let showToast;
   /** @type {any} */
@@ -23,66 +23,90 @@ describe('useShare', () => {
     window.Kakao = kakao;
   });
 
-  it('초기 상태: shareSheet 닫힘', () => {
+  it("초기 상태: shareSheet 닫힘", () => {
     const { result } = renderHook(() => useShare(showToast));
     expect(result.current.shareSheetOpen).toBe(false);
     expect(result.current.shareData).toBeNull();
   });
 
-  it('openShareSheet → 열림 + 데이터 설정', () => {
+  it("openShareSheet → 열림 + 데이터 설정", () => {
     const { result } = renderHook(() => useShare(showToast));
     const data = { title: "테스트", text: "내용", url: "https://test.com" };
-    act(() => { result.current.openShareSheet(data); });
+    act(() => {
+      result.current.openShareSheet(data);
+    });
     expect(result.current.shareSheetOpen).toBe(true);
     expect(result.current.shareData).toEqual(data);
   });
 
-  it('closeShareSheet → 닫힘', () => {
+  it("closeShareSheet → 닫힘", () => {
     const { result } = renderHook(() => useShare(showToast));
-    act(() => { result.current.openShareSheet({ title: "t", text: "x", url: "u" }); });
-    act(() => { result.current.closeShareSheet(); });
+    act(() => {
+      result.current.openShareSheet({ title: "t", text: "x", url: "u" });
+    });
+    act(() => {
+      result.current.closeShareSheet();
+    });
     expect(result.current.shareSheetOpen).toBe(false);
   });
 
-  it('shareKakao: SDK 미초기화 → 토스트', () => {
+  it("shareKakao: SDK 미초기화 → 토스트", () => {
     kakao.isInitialized.mockReturnValue(false);
     const { result } = renderHook(() => useShare(showToast));
-    act(() => { result.current.openShareSheet({ title: "t", text: "x", url: "u" }); });
-    act(() => { result.current.shareKakao(); });
+    act(() => {
+      result.current.openShareSheet({ title: "t", text: "x", url: "u" });
+    });
+    act(() => {
+      result.current.shareKakao();
+    });
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining("카카오 SDK"));
   });
 
-  it('shareKakao: shareData=null → 무시', () => {
+  it("shareKakao: shareData=null → 무시", () => {
     const { result } = renderHook(() => useShare(showToast));
-    act(() => { result.current.shareKakao(); });
+    act(() => {
+      result.current.shareKakao();
+    });
     expect(kakao.Share.sendDefault).not.toHaveBeenCalled();
   });
 
-  it('shareKakao: 정상 호출', () => {
+  it("shareKakao: 정상 호출", () => {
     const { result } = renderHook(() => useShare(showToast));
-    act(() => { result.current.openShareSheet({ title: "아파트", text: "분석", url: "https://x.com" }); });
-    act(() => { result.current.shareKakao(); });
+    act(() => {
+      result.current.openShareSheet({ title: "아파트", text: "분석", url: "https://x.com" });
+    });
+    act(() => {
+      result.current.shareKakao();
+    });
     expect(kakao.Share.sendDefault).toHaveBeenCalled();
     expect(result.current.shareSheetOpen).toBe(false);
   });
 
-  it('shareCopy: clipboard 성공 → 토스트', async () => {
+  it("shareCopy: clipboard 성공 → 토스트", async () => {
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
     const { result } = renderHook(() => useShare(showToast));
-    act(() => { result.current.openShareSheet({ title: "t", text: "x", url: "https://test.com" }); });
-    await act(async () => { await result.current.shareCopy(); });
+    act(() => {
+      result.current.openShareSheet({ title: "t", text: "x", url: "https://test.com" });
+    });
+    await act(async () => {
+      await result.current.shareCopy();
+    });
     expect(showToast).toHaveBeenCalledWith("링크가 복사되었습니다");
   });
 
-  it('shareCopy: shareData=null → 무시', async () => {
+  it("shareCopy: shareData=null → 무시", async () => {
     const { result } = renderHook(() => useShare(showToast));
-    await act(async () => { await result.current.shareCopy(); });
+    await act(async () => {
+      await result.current.shareCopy();
+    });
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  it('shareSMS: shareData=null → 무시', () => {
+  it("shareSMS: shareData=null → 무시", () => {
     const { result } = renderHook(() => useShare(showToast));
-    act(() => { result.current.shareSMS(); });
+    act(() => {
+      result.current.shareSMS();
+    });
     // window.location.href 변경 없음 확인
   });
 });

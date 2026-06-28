@@ -78,13 +78,18 @@ describe("CollectorMonitoring", () => {
   });
 
   it("매핑에 없는 수집기는 영어 이름을 그대로 표시한다", async () => {
-    stubFetch(200, makeResponse({
-      collectors: [{
-        collector: "some-unknown-collector",
-        lastRun: null,
-        recentQuota: [],
-      }],
-    }));
+    stubFetch(
+      200,
+      makeResponse({
+        collectors: [
+          {
+            collector: "some-unknown-collector",
+            lastRun: null,
+            recentQuota: [],
+          },
+        ],
+      })
+    );
     render(<CollectorMonitoring showToast={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText("some-unknown-collector")).toBeTruthy();
@@ -135,13 +140,18 @@ describe("CollectorMonitoring", () => {
   });
 
   it("lastRun 이 null 이면 '실행 기록 없음' 배지를 표시하고 펼치면 안내 문구가 나온다", async () => {
-    stubFetch(200, makeResponse({
-      collectors: [{
-        collector: "naver-listings",
-        lastRun: null,
-        recentQuota: [{ logDate: "2026-05-17", apiName: "naver", callCount: 30, recordedAt: recentIso() }],
-      }],
-    }));
+    stubFetch(
+      200,
+      makeResponse({
+        collectors: [
+          {
+            collector: "naver-listings",
+            lastRun: null,
+            recentQuota: [{ logDate: "2026-05-17", apiName: "naver", callCount: 30, recordedAt: recentIso() }],
+          },
+        ],
+      })
+    );
     render(<CollectorMonitoring showToast={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText("네이버 매물")).toBeTruthy();

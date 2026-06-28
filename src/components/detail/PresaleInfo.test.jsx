@@ -27,8 +27,16 @@ describe("PresaleInfo", () => {
   it("presaleStage가 null이어도 schedule이 있으면 청약홈 일정 카드를 표시한다", () => {
     vi.mocked(usePresaleDetail).mockReturnValueOnce(
       /** @type {any} */ ({
-        schedule: { house_manage_no: "2026000123", recruit_date: "2026-05-19", general_rank1_bgnde: "2026-05-26", winner_announce_date: "2026-06-02", pblanc_url: "https://applyhome.example/x" },
-        units: [], loading: false, error: null,
+        schedule: {
+          house_manage_no: "2026000123",
+          recruit_date: "2026-05-19",
+          general_rank1_bgnde: "2026-05-26",
+          winner_announce_date: "2026-06-02",
+          pblanc_url: "https://applyhome.example/x",
+        },
+        units: [],
+        loading: false,
+        error: null,
       })
     );
     const apt = /** @type {any} */ (makeApt({ presaleStage: null }));
@@ -42,10 +50,15 @@ describe("PresaleInfo", () => {
 
   // presaleStage가 있으면 섹션 표시
   it("presaleStage가 있으면 네이버 분양정보를 표시한다", () => {
-    const apt = /** @type {any} */ (makeApt({
-      presaleStage: "분양중", presaleType: "민간분양",
-      presaleMinPrice: 30000, presaleMaxPrice: 50000, presalePp: 2000,
-    }));
+    const apt = /** @type {any} */ (
+      makeApt({
+        presaleStage: "분양중",
+        presaleType: "민간분양",
+        presaleMinPrice: 30000,
+        presaleMaxPrice: 50000,
+        presalePp: 2000,
+      })
+    );
     render(<PresaleInfo apt={apt} />);
     expect(screen.getByText("네이버 분양정보")).toBeTruthy();
     expect(screen.getByText("분양중")).toBeTruthy();
@@ -53,9 +66,13 @@ describe("PresaleInfo", () => {
 
   // 가격 범위 표시
   it("분양가 범위를 올바르게 표시한다", () => {
-    const apt = /** @type {any} */ (makeApt({
-      presaleStage: "분양중", presaleMinPrice: 30000, presaleMaxPrice: 50000,
-    }));
+    const apt = /** @type {any} */ (
+      makeApt({
+        presaleStage: "분양중",
+        presaleMinPrice: 30000,
+        presaleMaxPrice: 50000,
+      })
+    );
     render(<PresaleInfo apt={apt} />);
     expect(screen.getByText("분양가 범위")).toBeTruthy();
   });
@@ -69,9 +86,13 @@ describe("PresaleInfo", () => {
 
   // 네이버 링크 표시
   it("naverPresaleNo + naverPresaleSeq가 있으면 링크를 표시한다", () => {
-    const apt = /** @type {any} */ (makeApt({
-      presaleStage: "분양중", naverPresaleNo: "6025041", naverPresaleSeq: "9033181",
-    }));
+    const apt = /** @type {any} */ (
+      makeApt({
+        presaleStage: "분양중",
+        naverPresaleNo: "6025041",
+        naverPresaleSeq: "9033181",
+      })
+    );
     render(<PresaleInfo apt={apt} />);
     expect(screen.getByText("네이버 분양정보 보기")).toBeTruthy();
   });

@@ -21,24 +21,38 @@ export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClos
       {(SORT_OPTIONS as SortOption[]).map((s: SortOption) => {
         const selected = sortKey === s.key;
         return (
-          <button key={s.key} onClick={() => { onSortChange(s.key); onClose(); }}
+          <button
+            key={s.key}
+            onClick={() => {
+              onSortChange(s.key);
+              onClose();
+            }}
             aria-current={selected ? "true" : undefined}
             style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "6px 10px", fontSize: F.sm,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 10px",
+              fontSize: F.sm,
               fontWeight: selected ? 700 : 500,
               background: selected ? s.bg : "transparent",
               color: selected ? s.ac : "#475569",
               border: selected ? `1.5px solid ${s.ac}` : "1.5px solid transparent",
-              borderRadius: 6, cursor: "pointer", transition: "all .15s",
+              borderRadius: 6,
+              cursor: "pointer",
+              transition: "all .15s",
               textAlign: "left" as const,
             }}
           >
-            <span style={{
-              width: 8, height: 8, borderRadius: "50%",
-              background: selected ? s.ac : "#CBD5E1",
-              flexShrink: 0,
-            }} />
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: selected ? s.ac : "#CBD5E1",
+                flexShrink: 0,
+              }}
+            />
             {s.mobileLabel}
           </button>
         );

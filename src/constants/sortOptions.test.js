@@ -10,12 +10,12 @@ describe("SORT_OPTIONS", () => {
 
   // 키 중복 없음 검증
   it("키 중복 없음", () => {
-    const keys = SORT_OPTIONS.map(o => o.key);
+    const keys = SORT_OPTIONS.map((o) => o.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
   // 각 옵션의 필수 필드 존재
-  SORT_OPTIONS.forEach(opt => {
+  SORT_OPTIONS.forEach((opt) => {
     it(`${opt.key}: 필수 필드 존재 (pcLabel, mobileLabel, ac, bg, pas)`, () => {
       expect(typeof opt.pcLabel).toBe("string");
       expect(typeof opt.mobileLabel).toBe("string");
@@ -27,8 +27,21 @@ describe("SORT_OPTIONS", () => {
 
   // 하드코딩 키 목록과 일치 (세션 415: unsoldRate / 세션 423: units / 세션 424: moveInSoon / 세션 444: subwayNear·jeonseHigh 추가)
   it("정렬 키 목록과 일치", () => {
-    const expectedKeys = ["total", "price", "priceScore", "location", "safe", "benefit", "newest", "unsoldRate", "units", "moveInSoon", "subwayNear", "jeonseHigh"];
-    expect(SORT_OPTIONS.map(o => o.key)).toEqual(expectedKeys);
+    const expectedKeys = [
+      "total",
+      "price",
+      "priceScore",
+      "location",
+      "safe",
+      "benefit",
+      "newest",
+      "unsoldRate",
+      "units",
+      "moveInSoon",
+      "subwayNear",
+      "jeonseHigh",
+    ];
+    expect(SORT_OPTIONS.map((o) => o.key)).toEqual(expectedKeys);
   });
 });
 

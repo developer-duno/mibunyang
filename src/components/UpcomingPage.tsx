@@ -20,7 +20,10 @@ const UpcomingCardList = lazyNamed(() => import("@/components/UpcomingCardList")
 const SubscribeForm = lazyNamed(() => import("@/components/SubscribeForm"), "SubscribeForm");
 
 type StageTabKey = "all" | "plan" | "apply" | "sale" | "result";
-interface StageTab { key: StageTabKey; label: string }
+interface StageTab {
+  key: StageTabKey;
+  label: string;
+}
 
 const STAGE_TABS: StageTab[] = [
   { key: "all", label: "전체" },
@@ -47,12 +50,18 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
     try {
       const v = localStorage.getItem("mibunyang_favRegions");
       return v ? JSON.parse(v) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   });
   const toggleFavRegion = useCallback((r: string) => {
-    setFavRegions(prev => {
-      const next = prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r];
-      try { localStorage.setItem("mibunyang_favRegions", JSON.stringify(next)); } catch { /* noop */ }
+    setFavRegions((prev) => {
+      const next = prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r];
+      try {
+        localStorage.setItem("mibunyang_favRegions", JSON.stringify(next));
+      } catch {
+        /* noop */
+      }
       return next;
     });
   }, []);
@@ -62,7 +71,7 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const stage = params.get("stage");
-    if (stage && STAGE_TABS.some(t => t.key === stage)) setActiveTab(stage as StageTabKey);
+    if (stage && STAGE_TABS.some((t) => t.key === stage)) setActiveTab(stage as StageTabKey);
     const date = params.get("date");
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) setSelectedDate(date);
   }, []);
@@ -91,20 +100,21 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
 
   // 지역 필터 헬퍼 — region null 가드 포함
   const byRegion = useCallback(
-    (arr: UpcomingApt[]) => (regionFilter === "전국" ? arr : arr.filter(a => a.region === regionFilter)),
-    [regionFilter],
+    (arr: UpcomingApt[]) => (regionFilter === "전국" ? arr : arr.filter((a) => a.region === regionFilter)),
+    [regionFilter]
   );
 
   // 필터링: activeTab + regionFilter + selectedDate (result 탭은 별도 — resultItems)
   const filteredItems = useMemo(() => {
     if (!data || !data.stages) return [];
-    let items = activeTab === "all" || activeTab === "result"
-      ? [...byRegion(data.stages.plan), ...byRegion(data.stages.apply), ...byRegion(data.stages.sale)]
-      : byRegion(data.stages[activeTab as "plan" | "apply" | "sale"] || []);
+    let items =
+      activeTab === "all" || activeTab === "result"
+        ? [...byRegion(data.stages.plan), ...byRegion(data.stages.apply), ...byRegion(data.stages.sale)]
+        : byRegion(data.stages[activeTab as "plan" | "apply" | "sale"] || []);
 
     if (selectedDate && data.calendar?.[selectedDate]) {
-      const idsOnDate = new Set(data.calendar[selectedDate].map(e => e.id));
-      items = items.filter(apt => idsOnDate.has(apt.id));
+      const idsOnDate = new Set(data.calendar[selectedDate].map((e) => e.id));
+      items = items.filter((apt) => idsOnDate.has(apt.id));
     }
     return items;
   }, [data, activeTab, selectedDate, byRegion]);
@@ -112,14 +122,17 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
   // 분양결과 — 청약홈 잔여세대 경쟁률 보유 + 결과 확정 전(분양계획/청약중) 제외.
   // selectedDate 미적용 (캘린더 무관 — 교차 시 항상 0건 함정). 최신순 불가(recruitDate 18%뿐) → 경쟁률 desc
   const resultItemsAll = useMemo(
-    () => scored
-      .filter(x => x.apt.competitionRate != null && x.apt.presaleStage !== "분양계획" && x.apt.presaleStage !== "청약중")
-      .sort((a, b) => Number(b.apt.competitionRate) - Number(a.apt.competitionRate)),
-    [scored],
+    () =>
+      scored
+        .filter(
+          (x) => x.apt.competitionRate != null && x.apt.presaleStage !== "분양계획" && x.apt.presaleStage !== "청약중"
+        )
+        .sort((a, b) => Number(b.apt.competitionRate) - Number(a.apt.competitionRate)),
+    [scored]
   );
   const resultItems = useMemo(
-    () => (regionFilter === "전국" ? resultItemsAll : resultItemsAll.filter(x => x.apt.region === regionFilter)),
-    [resultItemsAll, regionFilter],
+    () => (regionFilter === "전국" ? resultItemsAll : resultItemsAll.filter((x) => x.apt.region === regionFilter)),
+    [resultItemsAll, regionFilter]
   );
 
   // 칩 universe = regionFilter 적용 전 모집단 (순환 의존 차단 — 적대검증 wf_20aec4dc).
@@ -131,7 +144,7 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
     }
     for (const { apt } of resultItemsAll) if (apt.region) rs.add(apt.region);
     const order = Object.keys(REGIONS);
-    return [...order.filter(r => rs.has(r)), ...[...rs].filter(r => !order.includes(r)).sort()];
+    return [...order.filter((r) => rs.has(r)), ...[...rs].filter((r) => !order.includes(r)).sort()];
   }, [data, resultItemsAll]);
 
   // 탭 카운트 — 지역 필터 반영 클라 계산 (리스트와 일치). 상태 게이트용 totalCount(서버 totals)와 분리
@@ -142,11 +155,14 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
     return { all: plan + apply + sale, plan, apply, sale, result: resultItems.length };
   }, [data, byRegion, resultItems]);
 
-  const handleDayClick = useCallback((day: Date | undefined) => {
-    if (!day) return;
-    const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-    setSelectedDate(iso === selectedDate ? null : iso);
-  }, [selectedDate]);
+  const handleDayClick = useCallback(
+    (day: Date | undefined) => {
+      if (!day) return;
+      const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      setSelectedDate(iso === selectedDate ? null : iso);
+    },
+    [selectedDate]
+  );
 
   const handleSubscribe = useCallback((aptId: string) => {
     setSubscribeAptId(aptId);
@@ -171,9 +187,7 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
       {/* 헤더 */}
       <div style={{ background: C.text, color: "white", padding: 16, borderRadius: 10, marginBottom: 12 }}>
         <div style={{ fontSize: F.lg, fontWeight: 800, marginBottom: 4 }}>📅 곧 분양 시작</div>
-        <div style={{ fontSize: F.sm, color: "#cbd5e1" }}>
-          전국 {totalCount}개 분양예정·청약중·분양중 단지를 한눈에
-        </div>
+        <div style={{ fontSize: F.sm, color: "#cbd5e1" }}>전국 {totalCount}개 분양예정·청약중·분양중 단지를 한눈에</div>
       </div>
 
       {/* === 상태 2: 로딩 === */}
@@ -186,41 +200,79 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
 
       {/* === 상태 3: API 실패 === */}
       {!loading && error && (
-        <div style={{ padding: 24, textAlign: "center", background: C.redLight, border: `1px solid ${C.redBorder}`, borderRadius: 10 }}>
+        <div
+          style={{
+            padding: 24,
+            textAlign: "center",
+            background: C.redLight,
+            border: `1px solid ${C.redBorder}`,
+            borderRadius: 10,
+          }}
+        >
           <div style={{ fontSize: F.base, color: C.red, marginBottom: 8 }}>데이터를 불러오지 못했습니다</div>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12 }}>{error}</div>
           <button
             type="button"
             onClick={fetchData}
-            style={{ padding: "8px 16px", background: C.red, color: "white", border: "none", borderRadius: 4, fontSize: F.sm, fontWeight: 700, cursor: "pointer" }}
-          >다시 시도</button>
+            style={{
+              padding: "8px 16px",
+              background: C.red,
+              color: "white",
+              border: "none",
+              borderRadius: 4,
+              fontSize: F.sm,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            다시 시도
+          </button>
         </div>
       )}
 
       {/* === 상태 4: 빈 데이터 === */}
       {!loading && !error && totalCount === 0 && (
         <div style={{ padding: 32, textAlign: "center", background: C.bg, borderRadius: 10 }}>
-          <div style={{ fontSize: F.base, color: C.muted, marginBottom: 8 }}>
-            현재 분양 임박 단지가 없습니다.
-          </div>
+          <div style={{ fontSize: F.base, color: C.muted, marginBottom: 8 }}>현재 분양 임박 단지가 없습니다.</div>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12 }}>
             매월 5일 KOSIS 데이터 갱신 후 재확인 부탁드립니다.
           </div>
           <button
             type="button"
             onClick={onBackToMain}
-            style={{ padding: "8px 16px", background: C.blue, color: "white", border: "none", borderRadius: 4, fontSize: F.sm, fontWeight: 700, cursor: "pointer" }}
-          >메인으로</button>
+            style={{
+              padding: "8px 16px",
+              background: C.blue,
+              color: "white",
+              border: "none",
+              borderRadius: 4,
+              fontSize: F.sm,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            메인으로
+          </button>
         </div>
       )}
 
       {/* === 상태 5: 정상 === */}
       {!loading && !error && totalCount > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: isDesktop && activeTab !== "result" ? "320px 1fr" : "1fr", gap: 12 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isDesktop && activeTab !== "result" ? "320px 1fr" : "1fr",
+            gap: 12,
+          }}
+        >
           {/* 분양결과 탭은 캘린더 무관 — 숨김 (적대검증 정정 7) */}
           {activeTab !== "result" && (
             <Suspense fallback={<SkeletonBox height={300} />}>
-              <UpcomingCalendar calendar={data?.calendar ?? null} selectedDate={selectedDate} onDayClick={handleDayClick} />
+              <UpcomingCalendar
+                calendar={data?.calendar ?? null}
+                selectedDate={selectedDate}
+                onDayClick={handleDayClick}
+              />
             </Suspense>
           )}
 
@@ -236,7 +288,7 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
 
             {/* 필터 탭 */}
             <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-              {STAGE_TABS.map(tab => {
+              {STAGE_TABS.map((tab) => {
                 const count = tabCounts[tab.key];
                 const active = activeTab === tab.key;
                 return (
@@ -246,21 +298,37 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
                     onClick={() => setActiveTab(tab.key)}
                     aria-pressed={active}
                     style={{
-                      fontSize: F.xs, fontWeight: 700, padding: "6px 12px",
+                      fontSize: F.xs,
+                      fontWeight: 700,
+                      padding: "6px 12px",
                       background: active ? C.blue : C.card,
                       color: active ? "white" : C.text,
                       border: `1px solid ${active ? C.blue : C.border}`,
-                      borderRadius: 4, cursor: "pointer", minHeight: 36,
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      minHeight: 36,
                     }}
-                  >{tab.label} {count}</button>
+                  >
+                    {tab.label} {count}
+                  </button>
                 );
               })}
               {activeTab !== "result" && selectedDate && (
                 <button
                   type="button"
                   onClick={() => setSelectedDate(null)}
-                  style={{ fontSize: F.xs, padding: "6px 10px", background: C.amberLight, color: C.amber, border: `1px solid ${C.amberBorder}`, borderRadius: 4, cursor: "pointer" }}
-                >{selectedDate} 해제</button>
+                  style={{
+                    fontSize: F.xs,
+                    padding: "6px 10px",
+                    background: C.amberLight,
+                    color: C.amber,
+                    border: `1px solid ${C.amberBorder}`,
+                    borderRadius: 4,
+                    cursor: "pointer",
+                  }}
+                >
+                  {selectedDate} 해제
+                </button>
               )}
             </div>
 

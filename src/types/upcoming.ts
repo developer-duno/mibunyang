@@ -13,12 +13,7 @@ export type PresaleStage = "분양계획" | "청약중" | "분양중";
 /**
  * 캘린더 이벤트 종류 — spec § 6-1 4색 매핑.
  */
-export type CalendarEventType =
-  | "presale_announce"
-  | "apply_start"
-  | "apply_end"
-  | "winner_announce"
-  | "etc";
+export type CalendarEventType = "presale_announce" | "apply_start" | "apply_end" | "winner_announce" | "etc";
 
 /**
  * /api/upcoming 응답의 단지 항목.

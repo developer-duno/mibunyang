@@ -13,25 +13,42 @@ type MarketingConsentModalProps = {
   submitting?: boolean;
 };
 
-export const MarketingConsentModal = memo(function MarketingConsentModal({ open, onSubmit, submitting }: MarketingConsentModalProps) {
+export const MarketingConsentModal = memo(function MarketingConsentModal({
+  open,
+  onSubmit,
+  submitting,
+}: MarketingConsentModalProps) {
   const [checked, setChecked] = useState(false);
 
   if (!open) return null;
 
   return (
     <div
-      role="dialog" aria-modal="true" aria-label="마케팅 수신 동의"
+      role="dialog"
+      aria-modal="true"
+      aria-label="마케팅 수신 동의"
       style={{
-        position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
-        background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        zIndex: 9999, padding: 16,
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        background: "rgba(0,0,0,0.5)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: 16,
       }}
     >
       <div
         style={{
-          background: C.card, borderRadius: 16, padding: "28px 24px",
-          maxWidth: 380, width: "100%",
+          background: C.card,
+          borderRadius: 16,
+          padding: "28px 24px",
+          maxWidth: 380,
+          width: "100%",
           border: `1px solid ${C.border}`,
         }}
       >
@@ -41,28 +58,35 @@ export const MarketingConsentModal = memo(function MarketingConsentModal({ open,
           가입을 환영합니다!
         </div>
         <div style={{ fontSize: F.base, color: C.muted, lineHeight: 1.6, marginBottom: 20, textAlign: "center" }}>
-          새로운 분양·미분양 정보와 혜택 소식을<br />
+          새로운 분양·미분양 정보와 혜택 소식을
+          <br />
           가장 먼저 받아보시겠어요?
         </div>
 
         {/* 동의 체크박스 */}
         <label
           style={{
-            display: "flex", alignItems: "flex-start", gap: 10,
-            padding: "14px 16px", borderRadius: 10,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            padding: "14px 16px",
+            borderRadius: 10,
             background: checked ? C.greenLight : C.bg,
             border: `1px solid ${checked ? C.greenBorder : C.border}`,
-            cursor: "pointer", marginBottom: 18, transition: "background .15s, border-color .15s",
+            cursor: "pointer",
+            marginBottom: 18,
+            transition: "background .15s, border-color .15s",
           }}
         >
           <input
             type="checkbox"
             checked={checked}
-            onChange={e => setChecked(e.target.checked)}
+            onChange={(e) => setChecked(e.target.checked)}
             style={{ width: 18, height: 18, marginTop: 1, accentColor: C.green, cursor: "pointer", flexShrink: 0 }}
           />
           <span style={{ fontSize: F.sm, color: C.text, lineHeight: 1.5 }}>
-            <strong>(선택)</strong> 마케팅 정보 수신에 동의합니다.<br />
+            <strong>(선택)</strong> 마케팅 정보 수신에 동의합니다.
+            <br />
             <span style={{ color: C.muted, fontSize: F.xs }}>
               신규 분양 알림, 맞춤 추천, 이벤트 소식을 받습니다. 언제든 철회할 수 있어요.
             </span>
@@ -73,16 +97,26 @@ export const MarketingConsentModal = memo(function MarketingConsentModal({ open,
         <button
           type="button"
           disabled={submitting}
-          onClick={() => { trackEvent("marketing_consent", { consent: checked }); onSubmit(checked); }}
+          onClick={() => {
+            trackEvent("marketing_consent", { consent: checked });
+            onSubmit(checked);
+          }}
           style={{
-            width: "100%", minHeight: 44, padding: "12px 16px",
+            width: "100%",
+            minHeight: 44,
+            padding: "12px 16px",
             background: submitting ? C.slate100 : C.green,
-            color: submitting ? C.muted : C.white, fontSize: F.md, fontWeight: 700,
-            border: "none", borderRadius: 8, cursor: submitting ? "default" : "pointer",
-            marginBottom: 10, transition: "background .15s",
+            color: submitting ? C.muted : C.white,
+            fontSize: F.md,
+            fontWeight: 700,
+            border: "none",
+            borderRadius: 8,
+            cursor: submitting ? "default" : "pointer",
+            marginBottom: 10,
+            transition: "background .15s",
           }}
         >
-          {submitting ? "처리 중..." : (checked ? "동의하고 시작하기" : "동의 없이 시작하기")}
+          {submitting ? "처리 중..." : checked ? "동의하고 시작하기" : "동의 없이 시작하기"}
         </button>
 
         <div style={{ fontSize: F.micro, color: C.muted, textAlign: "center", lineHeight: 1.5 }}>

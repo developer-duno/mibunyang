@@ -52,7 +52,15 @@ describe("NearbyChildcareSection", () => {
   it("행 클릭 시 상세 정보가 펼쳐진다", () => {
     const apt = makeApt({
       nearbyChildcare: [
-        { name: "구립참행복어린이집", distance: 320, type: "국공립", capacity: 80, enrolled: 75, cctv: 12, dataStdDate: "2026-02-01" },
+        {
+          name: "구립참행복어린이집",
+          distance: 320,
+          type: "국공립",
+          capacity: 80,
+          enrolled: 75,
+          cctv: 12,
+          dataStdDate: "2026-02-01",
+        },
       ],
     });
     render(<NearbyChildcareSection apt={/** @type {any} */ (apt)} />);

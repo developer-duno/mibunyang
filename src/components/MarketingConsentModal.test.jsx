@@ -19,7 +19,9 @@ function makeProps(overrides = {}) {
 }
 
 describe("MarketingConsentModal", () => {
-  beforeEach(() => { track.mockClear(); });
+  beforeEach(() => {
+    track.mockClear();
+  });
 
   it("open=false → null", () => {
     const { container } = render(<MarketingConsentModal {...makeProps({ open: false })} />);

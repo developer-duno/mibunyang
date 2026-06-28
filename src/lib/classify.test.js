@@ -1,9 +1,6 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import {
-  MOVEIN_STATUS, MOVEIN_VALUES, TIER_LABELS, TIER_VALUES,
-  classifyMoveIn, classifyTier,
-} from "@/lib/classify";
+import { MOVEIN_STATUS, MOVEIN_VALUES, TIER_LABELS, TIER_VALUES, classifyMoveIn, classifyTier } from "@/lib/classify";
 
 /* ── 상수 무결성 테스트: 값 변경 시 필터/카운트 깨짐 방지 ── */
 
@@ -53,12 +50,7 @@ describe("classify 상수 무결성", () => {
   // classifyTier 반환값이 항상 TIER_VALUES 중 하나
   it("classifyTier 반환값은 TIER_VALUES 중 하나", () => {
     const validSet = new Set(TIER_VALUES);
-    const cases = [
-      { builder: "현대건설" },
-      { builder: "한화건설" },
-      { builder: "무명건설" },
-      { builder: null },
-    ];
+    const cases = [{ builder: "현대건설" }, { builder: "한화건설" }, { builder: "무명건설" }, { builder: null }];
     for (const apt of cases) {
       expect(validSet.has(classifyTier(/** @type {import('@/types/scoring').Apt} */ (apt)))).toBe(true);
     }

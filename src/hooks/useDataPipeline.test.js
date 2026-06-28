@@ -31,23 +31,45 @@ function makeCats(overrides = {}) {
 
 function makeApt(overrides = {}) {
   return {
-    id: "ah-1", name: "테스트아파트", region: "서울", gu: "강남구",
-    price: 50000, area: 84, units: 500, builder: "현대건설",
-    completion: "202706", unsoldRate: 10, updatedAt: "2026-04-01",
+    id: "ah-1",
+    name: "테스트아파트",
+    region: "서울",
+    gu: "강남구",
+    price: 50000,
+    area: 84,
+    units: 500,
+    builder: "현대건설",
+    completion: "202706",
+    unsoldRate: 10,
+    updatedAt: "2026-04-01",
     catsCache: makeCats(),
     ...overrides,
   };
 }
 
 const DEFAULT_PROPS = {
-  apartments: [], profile: "live", customWeights: {},
-  filterRegion: "전체", filterGu: "전체", sortKey: "total",
-  moveInFilter: "전체", builderTier: "전체",
-  showFavOnly: false, favoriteSet: new Set(),
-  budgetMin: "", budgetMax: "", areaMin: "", areaMax: "",
-  unitsMin: "", unitsMax: "", minScore: "", benefitOnly: false,
+  apartments: [],
+  profile: "live",
+  customWeights: {},
+  filterRegion: "전체",
+  filterGu: "전체",
+  sortKey: "total",
+  moveInFilter: "전체",
+  builderTier: "전체",
+  showFavOnly: false,
+  favoriteSet: new Set(),
+  budgetMin: "",
+  budgetMax: "",
+  areaMin: "",
+  areaMax: "",
+  unitsMin: "",
+  unitsMax: "",
+  minScore: "",
+  benefitOnly: false,
   searchQuery: "",
-  hideNoUnsold: false, compIds: [], dataUpdatedAt: "2026-04-10T00:00:00Z",
+  hideNoUnsold: false,
+  compIds: [],
+  dataUpdatedAt: "2026-04-10T00:00:00Z",
 };
 
 function renderPipeline(overrides = {}) {
@@ -65,10 +87,21 @@ describe("useDataPipeline", () => {
       const { result } = renderPipeline();
       const keys = Object.keys(result.current);
       const required = [
-        "guOptions", "catsCache", "scored", "filtered", "visible",
-        "visibleCount", "setVisibleCount", "scoredMap", "compItems", "pw",
-        "activeFilterCount", "regionOptions", "filterOptionCounts",
-        "dataFreshnessText", "isFilterPending",
+        "guOptions",
+        "catsCache",
+        "scored",
+        "filtered",
+        "visible",
+        "visibleCount",
+        "setVisibleCount",
+        "scoredMap",
+        "compItems",
+        "pw",
+        "activeFilterCount",
+        "regionOptions",
+        "filterOptionCounts",
+        "dataFreshnessText",
+        "isFilterPending",
       ];
       for (const k of required) {
         expect(keys).toContain(k);
@@ -99,14 +132,11 @@ describe("useDataPipeline", () => {
       expect(result.current.guOptions).toContain("강남구");
       expect(result.current.guOptions).toContain("서초구");
       // 중복 제거
-      expect(result.current.guOptions.filter(g => g === "강남구")).toHaveLength(1);
+      expect(result.current.guOptions.filter((g) => g === "강남구")).toHaveLength(1);
     });
 
     it("특정 region 선택 시 해당 gu만 반환", () => {
-      const apts = [
-        makeApt({ region: "서울", gu: "강남구" }),
-        makeApt({ id: "ah-2", region: "경기", gu: "성남시" }),
-      ];
+      const apts = [makeApt({ region: "서울", gu: "강남구" }), makeApt({ id: "ah-2", region: "경기", gu: "성남시" })];
       const { result } = renderPipeline({ apartments: apts, filterRegion: "서울" });
       expect(result.current.guOptions).toContain("강남구");
       expect(result.current.guOptions).not.toContain("성남시");
@@ -191,14 +221,14 @@ describe("useDataPipeline", () => {
 
     it("sortKey=price → 가격 오름차순", () => {
       const { result } = renderPipeline({ apartments: threeApts, sortKey: "price" });
-      const prices = result.current.filtered.map(x => x.apt.price);
+      const prices = result.current.filtered.map((x) => x.apt.price);
       expect(prices[0] ?? 0).toBeLessThanOrEqual(prices[1] ?? 0);
       expect(prices[1] ?? 0).toBeLessThanOrEqual(prices[2] ?? 0);
     });
 
     it("sortKey=total → 점수 내림차순 (동점 시 동일 순서)", () => {
       const { result } = renderPipeline({ apartments: threeApts, sortKey: "total" });
-      const totals = result.current.filtered.map(x => x.res.total);
+      const totals = result.current.filtered.map((x) => x.res.total);
       for (let i = 0; i < totals.length - 1; i++) {
         expect(totals[i]).toBeGreaterThanOrEqual(totals[i + 1]);
       }
@@ -212,7 +242,7 @@ describe("useDataPipeline", () => {
         makeApt({ id: "ah-d", region: "서울", price: 30000, unsoldRate: 12 }),
       ];
       const { result } = renderPipeline({ apartments: apts, sortKey: "unsoldRate" });
-      const order = result.current.filtered.map(x => x.apt.id);
+      const order = result.current.filtered.map((x) => x.apt.id);
       expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 20 > 12 > 5 > null
     });
 
@@ -226,15 +256,15 @@ describe("useDataPipeline", () => {
         makeApt({ id: "ah-normal", region: "서울", price: 30000, unsold: 5, unsoldRate: 5 }),
       ];
       const { result } = renderPipeline({ apartments: apts, hideNoUnsold: true });
-      const ids = result.current.filtered.map(x => x.apt.id).sort();
+      const ids = result.current.filtered.map((x) => x.apt.id).sort();
       expect(ids).toEqual(["ah-clamped", "ah-normal"]); // 미분양 0 단지만 빠짐
     });
 
     it("sortKey=moveInSoon → 준공완료(최근순) → 예정(가까운순) → 미정/null 맨뒤 (세션 424)", () => {
       // NOW_YM 기준 과거/미래 동적 생성 (시간 흐름에 안정). YYYYMM 고정폭.
       const yy = new Date().getFullYear();
-      const past1 = `${yy - 1}05`;   // 작년 5월 (준공완료, 더 오래됨)
-      const past2 = `${yy - 1}11`;   // 작년 11월 (준공완료, 더 최근)
+      const past1 = `${yy - 1}05`; // 작년 5월 (준공완료, 더 오래됨)
+      const past2 = `${yy - 1}11`; // 작년 11월 (준공완료, 더 최근)
       const future1 = `${yy + 1}03`; // 내년 3월 (예정, 더 가까움)
       const future2 = `${yy + 3}06`; // 3년 후 (예정, 더 먼 미래)
       const apts = [
@@ -246,7 +276,7 @@ describe("useDataPipeline", () => {
         makeApt({ id: "ah-past-recent", region: "서울", price: 30000, completion: past2 }),
       ];
       const { result } = renderPipeline({ apartments: apts, sortKey: "moveInSoon" });
-      const order = result.current.filtered.map(x => x.apt.id);
+      const order = result.current.filtered.map((x) => x.apt.id);
       // 준공완료(최근 먼저): past2 > past1 → 예정(가까운 먼저): future1 > future2 → 미정·null 맨뒤(입력 순서 안정)
       expect(order.slice(0, 4)).toEqual(["ah-past-recent", "ah-past-old", "ah-fut-near", "ah-fut-far"]);
       // 미정("미정")·null 은 정규식 미일치라 rank 2 (맨 뒤 2칸), 동률 종합점수 → 안정 정렬로 입력 순서
@@ -262,7 +292,7 @@ describe("useDataPipeline", () => {
         makeApt({ id: "ah-e", region: "서울", price: 30000, subwayDist: 9999 }), // 역 없음 sentinel → 맨뒤
       ];
       const { result } = renderPipeline({ apartments: apts, sortKey: "subwayNear" });
-      const order = result.current.filtered.map(x => x.apt.id);
+      const order = result.current.filtered.map((x) => x.apt.id);
       // 150 < 400 < 800 < (null·9999 = Infinity, 동률 종합점수 tie-break → 안정 정렬로 입력 순서 c,e)
       expect(order.slice(0, 3)).toEqual(["ah-b", "ah-d", "ah-a"]);
       expect(order.slice(3).sort()).toEqual(["ah-c", "ah-e"]);
@@ -276,24 +306,24 @@ describe("useDataPipeline", () => {
         makeApt({ id: "ah-d", region: "서울", price: 30000, jeonseRate: 72 }),
       ];
       const { result } = renderPipeline({ apartments: apts, sortKey: "jeonseHigh" });
-      const order = result.current.filtered.map(x => x.apt.id);
+      const order = result.current.filtered.map((x) => x.apt.id);
       expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 85 > 72 > 60 > null(-1)
     });
 
     it("filterRegion 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울" });
-      expect(result.current.filtered.every(x => x.apt.region === "서울")).toBe(true);
+      expect(result.current.filtered.every((x) => x.apt.region === "서울")).toBe(true);
     });
 
     it("filterGu 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울", filterGu: "강남구" });
-      expect(result.current.filtered.every(x => x.apt.gu === "강남구")).toBe(true);
+      expect(result.current.filtered.every((x) => x.apt.gu === "강남구")).toBe(true);
     });
 
     it("hideNoUnsold → unsoldRate 0 제외", () => {
       const { result } = renderPipeline({ apartments: threeApts, hideNoUnsold: true });
-      expect(result.current.filtered.every(x => (x.apt.unsoldRate ?? 0) > 0)).toBe(true);
-      expect(result.current.filtered.some(x => x.apt.id === "ah-2")).toBe(false);
+      expect(result.current.filtered.every((x) => (x.apt.unsoldRate ?? 0) > 0)).toBe(true);
+      expect(result.current.filtered.some((x) => x.apt.id === "ah-2")).toBe(false);
     });
   });
 
@@ -304,19 +334,17 @@ describe("useDataPipeline", () => {
     });
 
     it("아파트 수 > PAGE_SIZE → visible은 PAGE_SIZE 이하", () => {
-      const manyApts = Array.from({ length: 50 }, (_, i) =>
-        makeApt({ id: `ah-${i}` })
-      );
+      const manyApts = Array.from({ length: 50 }, (_, i) => makeApt({ id: `ah-${i}` }));
       const { result } = renderPipeline({ apartments: manyApts });
       expect(result.current.visible.length).toBeLessThanOrEqual(VISIBLE_PAGE_SIZE);
     });
 
     it("setVisibleCount로 확장", () => {
-      const manyApts = Array.from({ length: 50 }, (_, i) =>
-        makeApt({ id: `ah-${i}` })
-      );
+      const manyApts = Array.from({ length: 50 }, (_, i) => makeApt({ id: `ah-${i}` }));
       const { result } = renderPipeline({ apartments: manyApts });
-      act(() => { result.current.setVisibleCount(50); });
+      act(() => {
+        result.current.setVisibleCount(50);
+      });
       expect(result.current.visible.length).toBe(50);
     });
   });
@@ -329,10 +357,7 @@ describe("useDataPipeline", () => {
     });
 
     it("정상 데이터 → 4개 카운트 객체 반환", () => {
-      const apts = [
-        makeApt({ id: "ah-1", region: "서울" }),
-        makeApt({ id: "ah-2", region: "경기" }),
-      ];
+      const apts = [makeApt({ id: "ah-1", region: "서울" }), makeApt({ id: "ah-2", region: "경기" })];
       const { result } = renderPipeline({ apartments: apts });
       const counts = result.current.filterOptionCounts;
       expect(counts).not.toBeNull();
@@ -353,14 +378,10 @@ describe("useDataPipeline", () => {
     });
 
     it("compIds에 해당하는 항목만 compItems에 포함", () => {
-      const apts = [
-        makeApt({ id: "ah-1" }),
-        makeApt({ id: "ah-2" }),
-        makeApt({ id: "ah-3" }),
-      ];
+      const apts = [makeApt({ id: "ah-1" }), makeApt({ id: "ah-2" }), makeApt({ id: "ah-3" })];
       const { result } = renderPipeline({ apartments: apts, compIds: ["ah-1", "ah-3"] });
       expect(result.current.compItems).toHaveLength(2);
-      expect(result.current.compItems.map(x => x.apt.id)).toEqual(["ah-1", "ah-3"]);
+      expect(result.current.compItems.map((x) => x.apt.id)).toEqual(["ah-1", "ah-3"]);
     });
 
     it("존재하지 않는 compIds → 빈 배열", () => {
@@ -431,10 +452,7 @@ describe("useDataPipeline", () => {
     });
 
     it("아파트 region 기반 옵션 생성", () => {
-      const apts = [
-        makeApt({ region: "서울" }),
-        makeApt({ id: "ah-2", region: "경기" }),
-      ];
+      const apts = [makeApt({ region: "서울" }), makeApt({ id: "ah-2", region: "경기" })];
       const { result } = renderPipeline({ apartments: apts });
       expect(result.current.regionOptions[0]).toBe("전체");
       expect(result.current.regionOptions).toContain("서울");

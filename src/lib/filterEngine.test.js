@@ -10,17 +10,33 @@ import { applyBaseFilters } from "@/lib/filterEngine";
  */
 function makeItem(aptOverrides = {}, resOverrides = {}) {
   return /** @type {any} */ ({
-    apt: { id: "t1", name: "테스트아파트", region: "서울", gu: "강남구", price: 50000, area: 84, units: 500, builder: "현대건설", ...aptOverrides },
+    apt: {
+      id: "t1",
+      name: "테스트아파트",
+      region: "서울",
+      gu: "강남구",
+      price: 50000,
+      area: 84,
+      units: 500,
+      builder: "현대건설",
+      ...aptOverrides,
+    },
     res: { total: 75, cats: { benefit: { totalWon: 0 } }, ...resOverrides },
   });
 }
 
 const DEFAULT_FILTER = {
-  showFavOnly: false, favoriteSet: new Set(),
-  budgetMin: "", budgetMax: "",
-  areaMin: "", areaMax: "",
-  unitsMin: "", unitsMax: "",
-  minScore: "", benefitOnly: false, subwayOnly: false,
+  showFavOnly: false,
+  favoriteSet: new Set(),
+  budgetMin: "",
+  budgetMax: "",
+  areaMin: "",
+  areaMax: "",
+  unitsMin: "",
+  unitsMax: "",
+  minScore: "",
+  benefitOnly: false,
+  subwayOnly: false,
 };
 
 describe("applyBaseFilters", () => {
@@ -48,7 +64,11 @@ describe("applyBaseFilters", () => {
 
   // 예산 역전 시 자동 스왑
   it("budgetMin > budgetMax이면 자동 스왑", () => {
-    const items = [makeItem({ price: 30000 }), makeItem({ id: "t2", price: 50000 }), makeItem({ id: "t3", price: 70000 })];
+    const items = [
+      makeItem({ price: 30000 }),
+      makeItem({ id: "t2", price: 50000 }),
+      makeItem({ id: "t3", price: 70000 }),
+    ];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, budgetMin: "6", budgetMax: "4" });
     // 스왑: effectiveMin=4, effectiveMax=6 → 40000 <= price <= 60000
     expect(result).toHaveLength(1);
@@ -117,15 +137,12 @@ describe("applyBaseFilters", () => {
     ];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: true });
     expect(result).toHaveLength(2);
-    expect(result.map(x => x.apt.id)).toEqual(["near", "edge"]);
+    expect(result.map((x) => x.apt.id)).toEqual(["near", "edge"]);
   });
 
   // subwayDist=null이면 제외
   it("subwayOnly=true이면 subwayDist=null 단지 제외", () => {
-    const items = [
-      makeItem({ id: "null", subwayDist: null }),
-      makeItem({ id: "near", subwayDist: 300 }),
-    ];
+    const items = [makeItem({ id: "null", subwayDist: null }), makeItem({ id: "near", subwayDist: 300 })];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: true });
     expect(result).toHaveLength(1);
     expect(result[0].apt.id).toBe("near");
@@ -133,10 +150,7 @@ describe("applyBaseFilters", () => {
 
   // subwayDist=9999(역없음 sentinel) / >500 제외
   it("subwayOnly=true이면 subwayDist=9999(역없음)·>500 제외", () => {
-    const items = [
-      makeItem({ id: "none", subwayDist: 9999 }),
-      makeItem({ id: "near", subwayDist: 400 }),
-    ];
+    const items = [makeItem({ id: "none", subwayDist: 9999 }), makeItem({ id: "near", subwayDist: 400 })];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: true });
     expect(result).toHaveLength(1);
     expect(result[0].apt.id).toBe("near");
@@ -144,12 +158,8 @@ describe("applyBaseFilters", () => {
 
   // subwayOnly=false면 거리 무관 전부 통과 (무영향)
   it("subwayOnly=false이면 subwayDist 무관 전부 통과", () => {
-    const items = [
-      makeItem({ id: "far", subwayDist: 9999 }),
-      makeItem({ id: "nullable", subwayDist: null }),
-    ];
+    const items = [makeItem({ id: "far", subwayDist: 9999 }), makeItem({ id: "nullable", subwayDist: null })];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: false });
     expect(result).toHaveLength(2);
   });
-
 });

@@ -15,7 +15,13 @@ type LoginPromptModalProps = {
   trigger?: LoginTrigger;
 };
 
-export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, onKakaoLogin, kakaoLoading, trigger }: LoginPromptModalProps) {
+export const LoginPromptModal = memo(function LoginPromptModal({
+  open,
+  onClose,
+  onKakaoLogin,
+  kakaoLoading,
+  trigger,
+}: LoginPromptModalProps) {
   useEffect(() => {
     if (open) trackEvent("login_prompt_shown", { trigger: trigger || "unknown" });
   }, [open, trigger]);
@@ -24,70 +30,118 @@ export const LoginPromptModal = memo(function LoginPromptModal({ open, onClose, 
 
   return (
     <div
-      role="dialog" aria-modal="true" aria-label="로그인 안내"
+      role="dialog"
+      aria-modal="true"
+      aria-label="로그인 안내"
       style={{
-        position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
-        background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        zIndex: 9999, padding: 16,
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        background: "rgba(0,0,0,0.5)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: 16,
       }}
-      onClick={() => { trackEvent("login_prompt_dismissed", { trigger }); onClose(); }}
+      onClick={() => {
+        trackEvent("login_prompt_dismissed", { trigger });
+        onClose();
+      }}
     >
       <div
         style={{
-          background: C.card, borderRadius: 16, padding: "32px 24px",
-          maxWidth: 360, width: "100%", textAlign: "center",
+          background: C.card,
+          borderRadius: 16,
+          padding: "32px 24px",
+          maxWidth: 360,
+          width: "100%",
+          textAlign: "center",
           border: `1px solid ${C.border}`,
         }}
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* 안내 아이콘 */}
         <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
 
-        <div style={{ fontSize: F.xl, fontWeight: 800, color: C.text, marginBottom: 8 }}>
-          로그인이 필요합니다
-        </div>
+        <div style={{ fontSize: F.xl, fontWeight: 800, color: C.text, marginBottom: 8 }}>로그인이 필요합니다</div>
         <div style={{ fontSize: F.base, color: C.muted, lineHeight: 1.6, marginBottom: 24 }}>
-          점수 분석과 상세 정보를<br />
+          점수 분석과 상세 정보를
+          <br />
           이용하려면 로그인해주세요.
         </div>
 
         {/* 카카오 로그인 버튼 */}
         <button
           type="button"
-          onClick={() => { trackEvent("login_prompt_kakao_click", { trigger }); onKakaoLogin(); }}
+          onClick={() => {
+            trackEvent("login_prompt_kakao_click", { trigger });
+            onKakaoLogin();
+          }}
           disabled={kakaoLoading}
           style={{
-            width: "100%", minHeight: 44, padding: "12px 16px",
+            width: "100%",
+            minHeight: 44,
+            padding: "12px 16px",
             background: kakaoLoading ? "#E5D85C" : "#FEE500",
-            color: "#191919", fontSize: F.md, fontWeight: 700,
-            border: "none", borderRadius: 8, cursor: kakaoLoading ? "default" : "pointer",
-            marginBottom: 12, transition: "background .15s",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            color: "#191919",
+            fontSize: F.md,
+            fontWeight: 700,
+            border: "none",
+            borderRadius: 8,
+            cursor: kakaoLoading ? "default" : "pointer",
+            marginBottom: 12,
+            transition: "background .15s",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
           }}
         >
           {/* 카카오 로고 SVG */}
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path fillRule="evenodd" clipRule="evenodd" d="M9 1C4.58 1 1 3.79 1 7.21c0 2.17 1.44 4.08 3.62 5.18l-.93 3.4c-.08.3.26.54.52.36l4.07-2.68c.24.02.47.03.72.03 4.42 0 8-2.79 8-6.22S13.42 1 9 1z" fill="#191919"/>
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M9 1C4.58 1 1 3.79 1 7.21c0 2.17 1.44 4.08 3.62 5.18l-.93 3.4c-.08.3.26.54.52.36l4.07-2.68c.24.02.47.03.72.03 4.42 0 8-2.79 8-6.22S13.42 1 9 1z"
+              fill="#191919"
+            />
           </svg>
           {kakaoLoading ? "처리 중..." : "카카오로 시작하기"}
         </button>
 
         {/* 개인정보 수집 안내 (카카오 동의항목과 화면 일치 — 심사 기준) */}
         <div style={{ fontSize: F.micro, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
-          카카오 로그인 시 닉네임·이메일(필수), 전화번호·프로필 사진(선택)을 수집합니다.
-          전화번호는 맞춤 분양 정보 안내 및 상담 연결에 사용되며, 동의하지 않아도 이용할 수 있어요.{" "}
-          <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: C.muted, textDecoration: "underline" }}>개인정보 처리방침</a>
+          카카오 로그인 시 닉네임·이메일(필수), 전화번호·프로필 사진(선택)을 수집합니다. 전화번호는 맞춤 분양 정보 안내
+          및 상담 연결에 사용되며, 동의하지 않아도 이용할 수 있어요.{" "}
+          <a
+            href="/privacy.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: C.muted, textDecoration: "underline" }}
+          >
+            개인정보 처리방침
+          </a>
         </div>
 
         {/* 닫기 */}
         <button
           type="button"
-          onClick={() => { trackEvent("login_prompt_dismissed", { trigger }); onClose(); }}
+          onClick={() => {
+            trackEvent("login_prompt_dismissed", { trigger });
+            onClose();
+          }}
           style={{
-            background: "transparent", border: "none",
-            color: C.muted, fontSize: F.xs, cursor: "pointer",
-            padding: "4px 0", marginTop: 4,
+            background: "transparent",
+            border: "none",
+            color: C.muted,
+            fontSize: F.xs,
+            cursor: "pointer",
+            padding: "4px 0",
+            marginTop: 4,
           }}
         >
           나중에 하기

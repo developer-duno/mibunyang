@@ -15,7 +15,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 afterEach(() => {
-  delete (/** @type {any} */ (globalThis)).fetch;
+  delete (/** @type {any} */ (globalThis).fetch);
 });
 
 describe("useMarketingConsent", () => {
@@ -30,7 +30,9 @@ describe("useMarketingConsent", () => {
     globalThis.fetch = /** @type {any} */ (vi.fn());
     const { result } = renderHook(() => useMarketingConsent(vi.fn()));
     act(() => result.current.openConsent());
-    await act(async () => { await result.current.submitConsent(true); });
+    await act(async () => {
+      await result.current.submitConsent(true);
+    });
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(result.current.consentOpen).toBe(false);
   });
@@ -41,7 +43,9 @@ describe("useMarketingConsent", () => {
     const showToast = vi.fn();
     const { result } = renderHook(() => useMarketingConsent(showToast));
     act(() => result.current.openConsent());
-    await act(async () => { await result.current.submitConsent(true); });
+    await act(async () => {
+      await result.current.submitConsent(true);
+    });
 
     const call = /** @type {any} */ (globalThis.fetch).mock.calls[0];
     expect(call[0]).toBe("/api/auth/kakao-consent");
@@ -55,7 +59,9 @@ describe("useMarketingConsent", () => {
     globalThis.fetch = /** @type {any} */ (vi.fn().mockResolvedValue({ json: async () => ({ ok: true }) }));
     const showToast = vi.fn();
     const { result } = renderHook(() => useMarketingConsent(showToast));
-    await act(async () => { await result.current.submitConsent(false); });
+    await act(async () => {
+      await result.current.submitConsent(false);
+    });
     expect(JSON.parse(/** @type {any} */ (globalThis.fetch).mock.calls[0][1].body).consent).toBe(false);
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("마케팅 수신을 거부하셨습니다"));
     expect(result.current.consentOpen).toBe(false);
@@ -66,10 +72,14 @@ describe("useMarketingConsent", () => {
     localStorage.setItem("authToken", "tok-1");
     globalThis.fetch = /** @type {any} */ (vi.fn().mockResolvedValue({ json: async () => ({ ok: true }) }));
     const { result } = renderHook(() => useMarketingConsent(vi.fn()));
-    await act(async () => { await result.current.submitConsent(true); });
+    await act(async () => {
+      await result.current.submitConsent(true);
+    });
     expect(result.current.consentMarketing).toBe(true);
     expect(localStorage.getItem("mibunyang_consent_marketing")).toBe("true");
-    await act(async () => { await result.current.submitConsent(false); });
+    await act(async () => {
+      await result.current.submitConsent(false);
+    });
     expect(result.current.consentMarketing).toBe(false);
     expect(localStorage.getItem("mibunyang_consent_marketing")).toBe("false");
   });
@@ -94,7 +104,9 @@ describe("useMarketingConsent", () => {
     globalThis.fetch = /** @type {any} */ (vi.fn().mockResolvedValue({ json: async () => ({ ok: false }) }));
     const showToast = vi.fn();
     const { result } = renderHook(() => useMarketingConsent(showToast));
-    await act(async () => { await result.current.submitConsent(true); });
+    await act(async () => {
+      await result.current.submitConsent(true);
+    });
     // ok:false 면 consentMarketing 미갱신 (null 유지) + 무피드백 방지 토스트 (D3)
     expect(result.current.consentMarketing).toBe(null);
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("잠시 후 다시 시도해주세요"));
@@ -106,7 +118,9 @@ describe("useMarketingConsent", () => {
     const showToast = vi.fn();
     const { result } = renderHook(() => useMarketingConsent(showToast));
     act(() => result.current.openConsent());
-    await act(async () => { await result.current.submitConsent(true); });
+    await act(async () => {
+      await result.current.submitConsent(true);
+    });
     expect(result.current.consentOpen).toBe(false);
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("잠시 후 다시 시도해주세요"));
   });

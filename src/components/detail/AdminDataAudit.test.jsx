@@ -14,7 +14,9 @@ describe("AdminDataAudit", () => {
     // 관리자 기준 라벨 (소비자 도넛과 모집단 다름 명시 — 세션 380 답습)
     expect(screen.getByText(/데이터 완성도 — 관리자 기준 \d+필드/)).toBeTruthy();
     // 필드명 목록 4종 중 최소 1종 (makeApt 기본값에 미수집 필드 존재)
-    expect(screen.getAllByText(/미등록 필드:|기본값 필드:|지역추정 필드:|적용 대상 아님 필드:/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/미등록 필드:|기본값 필드:|지역추정 필드:|적용 대상 아님 필드:/).length).toBeGreaterThan(
+      0
+    );
   });
 
   // 141필드 토글 버튼 — 기본 접힘

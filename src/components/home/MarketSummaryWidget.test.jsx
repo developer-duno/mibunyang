@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MarketSummaryWidget } from "./MarketSummaryWidget";
 
-const mk = (/** @type {string} */ id, /** @type {number | null} */ price, /** @type {number | null} */ unsoldRate) => /** @type {any} */ ({ apt: { id, name: `n${id}`, region: "경기", price, unsoldRate }, res: { total: 50, cats: {} } });
+const mk = (/** @type {string} */ id, /** @type {number | null} */ price, /** @type {number | null} */ unsoldRate) =>
+  /** @type {any} */ ({ apt: { id, name: `n${id}`, region: "경기", price, unsoldRate }, res: { total: 50, cats: {} } });
 
 describe("MarketSummaryWidget", () => {
   it("단지 수·분양가 중위(억)·미분양률 중위(%) 집계", () => {

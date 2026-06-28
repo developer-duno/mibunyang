@@ -51,10 +51,7 @@ export function buildGoogleCalendarUrl(apt: Apt | null | undefined, opts: BuildO
   if (!startISO) return null;
 
   const sched = apt.presaleSchedule as { dateInfo?: unknown } | null | undefined;
-  const endISO =
-    parseDateLoose(opts.endDate) ||
-    parseDateLoose(sched?.dateInfo) ||
-    addDaysISO(startISO, 3);
+  const endISO = parseDateLoose(opts.endDate) || parseDateLoose(sched?.dateInfo) || addDaysISO(startISO, 3);
 
   if (!endISO) return null;
 

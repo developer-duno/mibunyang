@@ -147,9 +147,7 @@ describe("SchoolInfo", () => {
   // highSchoolType 표시 — 요약에서 확인 가능
   it("highSchoolType이 있으면 구분에 함께 표시한다", () => {
     const apt = makeApt({
-      nearbySchools: [
-        { name: "영재고등학교", type: "고", highSchoolType: "과학고", distance: 600 },
-      ],
+      nearbySchools: [{ name: "영재고등학교", type: "고", highSchoolType: "과학고", distance: 600 }],
     });
     render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("고(과학고)")).toBeTruthy();

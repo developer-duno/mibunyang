@@ -26,34 +26,40 @@ export function useFinlifeRates<R extends MutableRefObject<unknown>>(
   topFinGrpNo: string,
   cacheRef: R,
   getCached: (_ref: R) => unknown,
-  setCached: (_ref: R, _data: unknown) => void,
+  setCached: (_ref: R, _data: unknown) => void
 ): UseFinlifeRatesReturn {
   const [rates, setRates] = useState<FinlifeRate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (signal: AbortSignal) => {
-    const cached = getCached(cacheRef);
-    if (cached) { setRates(cached as FinlifeRate[]); return; }
-    setLoading(true);
-    setError(null);
-    try {
-      const sep = apiPath.includes("?") ? "&" : "?";
-      const res = await fetch(`${apiPath}${sep}topFinGrpNo=${topFinGrpNo}`, { signal });
-      if (signal?.aborted) return;
-      if (!res.ok) throw new Error(`API 오류 (${res.status})`);
-      const json = await res.json() as { ok?: boolean; data?: FinlifeRate[]; error?: string };
-      if (!json.ok) throw new Error(json.error || "금리 데이터 조회 실패");
-      const data = json.data ?? [];
-      setCached(cacheRef, data);
-      setRates(data);
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
-      if (err instanceof Error) setError(err.message);
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [apiPath, topFinGrpNo, getCached, setCached, cacheRef]);
+  const load = useCallback(
+    async (signal: AbortSignal) => {
+      const cached = getCached(cacheRef);
+      if (cached) {
+        setRates(cached as FinlifeRate[]);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const sep = apiPath.includes("?") ? "&" : "?";
+        const res = await fetch(`${apiPath}${sep}topFinGrpNo=${topFinGrpNo}`, { signal });
+        if (signal?.aborted) return;
+        if (!res.ok) throw new Error(`API 오류 (${res.status})`);
+        const json = (await res.json()) as { ok?: boolean; data?: FinlifeRate[]; error?: string };
+        if (!json.ok) throw new Error(json.error || "금리 데이터 조회 실패");
+        const data = json.data ?? [];
+        setCached(cacheRef, data);
+        setRates(data);
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        if (err instanceof Error) setError(err.message);
+      } finally {
+        if (!signal?.aborted) setLoading(false);
+      }
+    },
+    [apiPath, topFinGrpNo, getCached, setCached, cacheRef]
+  );
 
   useEffect(() => {
     const ac = new AbortController();

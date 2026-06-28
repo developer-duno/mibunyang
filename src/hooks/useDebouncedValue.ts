@@ -6,7 +6,9 @@ export function useDebouncedValue<T>(value: T, ms: number = 300): T {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     timerRef.current = setTimeout(() => setDebounced(value), ms);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [value, ms]);
   return debounced;
 }

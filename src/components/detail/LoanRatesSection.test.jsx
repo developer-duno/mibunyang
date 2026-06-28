@@ -16,7 +16,10 @@ vi.mock("@/hooks/useLoanRates", () => ({
 }));
 
 const makeApt = (overrides = {}) => ({
-  price: 50000, region: "경기", gu: "수원시", area: 84,
+  price: 50000,
+  region: "경기",
+  gu: "수원시",
+  area: 84,
   _ltvBase: 35000,
   ...overrides,
 });

@@ -72,11 +72,14 @@ export const Tooltip = memo(function Tooltip({ term, definition, children, bare 
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setOpen(v => !v);
+            setOpen((v) => !v);
           } else if (e.key === "Escape") {
             // 모달 안에서 ? 열고 ESC 시 DetailModal document Escape(onClose)까지 전파 방지
             e.stopPropagation();

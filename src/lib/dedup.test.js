@@ -37,10 +37,7 @@ describe("dedupApartments", () => {
 
   // #3: 다른 이름 → 병합 안 됨
   it("다른 이름의 단지는 병합하지 않음", () => {
-    const input = [
-      makeApt({ id: "ah-001", name: "래미안" }),
-      makeApt({ id: "ah-002", name: "힐스테이트" }),
-    ];
+    const input = [makeApt({ id: "ah-001", name: "래미안" }), makeApt({ id: "ah-002", name: "힐스테이트" })];
     const result = dedupApartments(input);
     expect(result).toHaveLength(2);
   });
@@ -57,10 +54,7 @@ describe("dedupApartments", () => {
 
   // #5: NULL gu/dong 처리 → COALESCE 동작
   it("NULL gu/dong도 정상 그룹화", () => {
-    const input = [
-      makeApt({ id: "ah-001", gu: null, dong: null }),
-      makeApt({ id: "ah-002", gu: null, dong: null }),
-    ];
+    const input = [makeApt({ id: "ah-001", gu: null, dong: null }), makeApt({ id: "ah-002", gu: null, dong: null })];
     const result = dedupApartments(input);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("ah-002");
@@ -110,11 +104,7 @@ describe("dedupApartments", () => {
 
   // #11: siblingIds는 정렬됨
   it("siblingIds는 오름차순 정렬", () => {
-    const input = [
-      makeApt({ id: "ah-zzz" }),
-      makeApt({ id: "ah-aaa" }),
-      makeApt({ id: "ah-mmm" }),
-    ];
+    const input = [makeApt({ id: "ah-zzz" }), makeApt({ id: "ah-aaa" }), makeApt({ id: "ah-mmm" })];
     const result = dedupApartments(input);
     expect(result[0].siblingIds).toEqual(["ah-aaa", "ah-mmm", "ah-zzz"]);
   });

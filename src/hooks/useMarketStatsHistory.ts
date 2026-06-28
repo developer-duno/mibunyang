@@ -29,49 +29,52 @@ export function useMarketStatsHistory(region: string, gu: string): UseMarketStat
   const [fallback, setFallback] = useState(false);
   const guKey = gu || "";
 
-  const load = useCallback(async (signal?: AbortSignal, forceRefresh = false) => {
-    if (!region) return;
-    const cacheKey = `${region}|${guKey}`;
-    if (!forceRefresh) {
-      const cached = marketStatsCache.get(cacheKey);
-      // 빈 배열은 캐시 히트로 보지 않음 (늦게 적재되는 시계열 고착 방지).
-      if (cached && cached.length > 0) {
-        setData(cached);
-        setFallback(marketStatsFallbackCache.get(cacheKey) ?? false);
-        setLoading(false);
-        setError(null);
-        return;
+  const load = useCallback(
+    async (signal?: AbortSignal, forceRefresh = false) => {
+      if (!region) return;
+      const cacheKey = `${region}|${guKey}`;
+      if (!forceRefresh) {
+        const cached = marketStatsCache.get(cacheKey);
+        // 빈 배열은 캐시 히트로 보지 않음 (늦게 적재되는 시계열 고착 방지).
+        if (cached && cached.length > 0) {
+          setData(cached);
+          setFallback(marketStatsFallbackCache.get(cacheKey) ?? false);
+          setLoading(false);
+          setError(null);
+          return;
+        }
       }
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const url = `${ENDPOINT}?region=${encodeURIComponent(region)}&gu=${encodeURIComponent(guKey)}`;
-      const res = await fetch(url, { signal });
-      if (signal?.aborted) return;
-      if (!res.ok) {
-        if (res.status === 429) throw new Error("요청이 너무 많습니다. 잠시 후 다시 시도해주세요");
-        throw new Error(`API 오류 (${res.status})`);
+      setLoading(true);
+      setError(null);
+      try {
+        const url = `${ENDPOINT}?region=${encodeURIComponent(region)}&gu=${encodeURIComponent(guKey)}`;
+        const res = await fetch(url, { signal });
+        if (signal?.aborted) return;
+        if (!res.ok) {
+          if (res.status === 429) throw new Error("요청이 너무 많습니다. 잠시 후 다시 시도해주세요");
+          throw new Error(`API 오류 (${res.status})`);
+        }
+        const json = (await res.json()) as { ok?: boolean; data?: unknown; error?: string; fallback?: boolean };
+        if (!json.ok) throw new Error(json.error || "데이터 조회 실패");
+        const rows = Array.isArray(json.data) ? (json.data as MarketStatsRow[]) : [];
+        const isFallback = json.fallback === true;
+        marketStatsCache.set(cacheKey, rows);
+        marketStatsFallbackCache.set(cacheKey, isFallback);
+        setData(rows);
+        setFallback(isFallback);
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        const message = err instanceof Error ? err.message : String(err);
+        if (import.meta.env.DEV) {
+          console.error(`[useMarketStatsHistory] ${region}/${guKey}:`, message);
+        }
+        setError(message);
+      } finally {
+        if (!signal?.aborted) setLoading(false);
       }
-      const json = await res.json() as { ok?: boolean; data?: unknown; error?: string; fallback?: boolean };
-      if (!json.ok) throw new Error(json.error || "데이터 조회 실패");
-      const rows = Array.isArray(json.data) ? json.data as MarketStatsRow[] : [];
-      const isFallback = json.fallback === true;
-      marketStatsCache.set(cacheKey, rows);
-      marketStatsFallbackCache.set(cacheKey, isFallback);
-      setData(rows);
-      setFallback(isFallback);
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
-      const message = err instanceof Error ? err.message : String(err);
-      if (import.meta.env.DEV) {
-        console.error(`[useMarketStatsHistory] ${region}/${guKey}:`, message);
-      }
-      setError(message);
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [region, guKey]);
+    },
+    [region, guKey]
+  );
 
   const retry = useCallback(() => {
     const ac = new AbortController();

@@ -15,9 +15,7 @@ describe("geoSigunguToByGuKey", () => {
     const codes = ["38111", "38112", "38113", "38114", "38115"];
     const names = ["창원시의창구", "창원시성산구", "창원시마산합포구", "창원시마산회원구", "창원시진해구"];
     const keys = codes.map((c, i) => geoSigunguToByGuKey(f(c, names[i])));
-    expect(keys).toEqual([
-      "경남|창원시", "경남|창원시", "경남|창원시", "경남|창원시", "경남|창원시",
-    ]);
+    expect(keys).toEqual(["경남|창원시", "경남|창원시", "경남|창원시", "경남|창원시", "경남|창원시"]);
   });
 
   it("청주 2구 모두 같은 키 (충북|청주시 합산)", () => {
@@ -42,8 +40,8 @@ describe("geoSigunguToByGuKey", () => {
     expect(geoSigunguToByGuKey(null)).toBe(null);
     expect(geoSigunguToByGuKey({})).toBe(null);
     expect(geoSigunguToByGuKey(f("", "강남구"))).toBe(null);
-    expect(geoSigunguToByGuKey(f("1", "강남구"))).toBe(null);   // code 1자리
+    expect(geoSigunguToByGuKey(f("1", "강남구"))).toBe(null); // code 1자리
     expect(geoSigunguToByGuKey(f("99999", "외계구"))).toBe(null); // 매핑 없는 prefix
-    expect(geoSigunguToByGuKey(f("11680", ""))).toBe(null);     // 빈 name
+    expect(geoSigunguToByGuKey(f("11680", ""))).toBe(null); // 빈 name
   });
 });

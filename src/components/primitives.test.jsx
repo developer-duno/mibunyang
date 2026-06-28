@@ -1,7 +1,16 @@
 // @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { Bar, ScoreBadge, Radar, LineChart, SkeletonBox, SkeletonText, SkeletonList, EmphasisBadge } from "./primitives";
+import {
+  Bar,
+  ScoreBadge,
+  Radar,
+  LineChart,
+  SkeletonBox,
+  SkeletonText,
+  SkeletonList,
+  EmphasisBadge,
+} from "./primitives";
 import { niceTicks } from "./LineChart";
 
 describe("Bar", () => {
@@ -92,7 +101,10 @@ describe("Radar", () => {
   });
 
   it("size prop이 SVG에 반영", () => {
-    const data = [{ l: "A", v: 50 }, { l: "B", v: 60 }];
+    const data = [
+      { l: "A", v: 50 },
+      { l: "B", v: 60 },
+    ];
     const { container } = render(<Radar data={data} size={200} />);
     const svg = container.querySelector("svg");
     expect(svg?.getAttribute("width")).toBe("200");
@@ -102,7 +114,15 @@ describe("Radar", () => {
 describe("niceTicks", () => {
   // 불변식: 항상 min < max 이고 ticks 2개 이상
   it("모든 반환값이 min<max + ticks.length>=2 불변식 만족", () => {
-    for (const [a, b] of [[1, 1], [52845, 52845], [0, 1], [100, 120], [1, 5], [0, 0], [3, 3]]) {
+    for (const [a, b] of [
+      [1, 1],
+      [52845, 52845],
+      [0, 1],
+      [100, 120],
+      [1, 5],
+      [0, 0],
+      [3, 3],
+    ]) {
       const r = niceTicks(a, b);
       expect(r.min).toBeLessThan(r.max);
       expect(r.ticks.length).toBeGreaterThanOrEqual(2);
@@ -184,7 +204,7 @@ describe("LineChart", () => {
   // 투명 hit area circle 존재
   it("투명 hit area circle이 데이터 수만큼 존재", () => {
     const { container } = render(<LineChart data={chartData} />);
-    const hitAreas = container.querySelectorAll('circle[data-index]');
+    const hitAreas = container.querySelectorAll("circle[data-index]");
     expect(hitAreas.length).toBe(chartData.length);
   });
 
@@ -219,7 +239,9 @@ describe("LineChart", () => {
     const hitArea = container.querySelector('circle[data-index="1"]');
     fireEvent.click(hitArea ?? document.body);
     expect(container.querySelector('circle[r="5"]')).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(3000); });
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
     expect(container.querySelector('circle[r="5"]')).toBeNull();
     vi.useRealTimers();
   });
@@ -234,7 +256,7 @@ describe("LineChart", () => {
     const path = container.querySelector("path[stroke]");
     expect(path).toBeInTheDocument();
     const d = path?.getAttribute("d") ?? "";
-    const ys = [...d.matchAll(/[ML][\d.]+,([\d.]+)/g)].map(m => parseFloat(m[1]));
+    const ys = [...d.matchAll(/[ML][\d.]+,([\d.]+)/g)].map((m) => parseFloat(m[1]));
     // height 160, pad.t=16, pad.b=28 → 내부 영역 16~132. 가운데 ≈ 74
     for (const y of ys) {
       expect(y).toBeGreaterThan(30);
@@ -249,9 +271,7 @@ describe("LineChart", () => {
       { x: "2월", y: 1 },
     ];
     const { container } = render(<LineChart data={intData} height={160} />);
-    const labels = [...container.querySelectorAll("text")]
-      .map(t => t.textContent)
-      .filter(t => t && /^\d/.test(t));
+    const labels = [...container.querySelectorAll("text")].map((t) => t.textContent).filter((t) => t && /^\d/.test(t));
     for (const l of labels) {
       expect(l).not.toMatch(/\./);
     }
@@ -265,7 +285,7 @@ describe("LineChart", () => {
     ];
     const { container } = render(<LineChart data={few} />);
     const dots = [...container.querySelectorAll("circle")].filter(
-      c => c.getAttribute("r") === "4.5" && !c.hasAttribute("data-index")
+      (c) => c.getAttribute("r") === "4.5" && !c.hasAttribute("data-index")
     );
     expect(dots.length).toBe(2);
   });
@@ -273,12 +293,14 @@ describe("LineChart", () => {
   // 데이터 4개 이상 → 점 반지름 기존(r=3)
   it("데이터 4개 이상이면 점 반지름이 3", () => {
     const many = [
-      { x: "1월", y: 100 }, { x: "2월", y: 120 },
-      { x: "3월", y: 110 }, { x: "4월", y: 130 },
+      { x: "1월", y: 100 },
+      { x: "2월", y: 120 },
+      { x: "3월", y: 110 },
+      { x: "4월", y: 130 },
     ];
     const { container } = render(<LineChart data={many} />);
     const dots = [...container.querySelectorAll("circle")].filter(
-      c => c.getAttribute("r") === "3" && !c.hasAttribute("data-index")
+      (c) => c.getAttribute("r") === "3" && !c.hasAttribute("data-index")
     );
     expect(dots.length).toBe(4);
   });

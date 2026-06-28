@@ -4,10 +4,14 @@ import { render, screen, fireEvent } from "@testing-library/react";
 
 // 훅 모킹
 const mockUsePriceHistory = vi.fn();
-vi.mock("@/hooks/usePriceHistory", () => ({ usePriceHistory: (/** @type {any[]} */ ...args) => mockUsePriceHistory(...args) }));
+vi.mock("@/hooks/usePriceHistory", () => ({
+  usePriceHistory: (/** @type {any[]} */ ...args) => mockUsePriceHistory(...args),
+}));
 
 // LineChart 모킹 — 나머지 primitives는 실제 export 유지 불필요 (PriceChart는 LineChart만 사용)
-vi.mock("@/components/primitives", () => ({ LineChart: (/** @type {any} */ props) => <div data-testid="line-chart" aria-label={props.yLabel} /> }));
+vi.mock("@/components/primitives", () => ({
+  LineChart: (/** @type {any} */ props) => <div data-testid="line-chart" aria-label={props.yLabel} />,
+}));
 
 import { PriceChart } from "./PriceChart";
 
@@ -19,7 +23,9 @@ function makeData(count = 3) {
 }
 
 describe("PriceChart", () => {
-  beforeEach(() => { mockUsePriceHistory.mockReset(); });
+  beforeEach(() => {
+    mockUsePriceHistory.mockReset();
+  });
 
   // apartmentId가 falsy이면 null
   it("apartmentId 없음 → null", () => {

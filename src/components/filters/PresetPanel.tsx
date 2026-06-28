@@ -53,11 +53,30 @@ export const PresetPanel = memo(function PresetPanel({
         <div style={{ fontSize: F.micro, color: C.muted, fontWeight: 600, marginBottom: 4 }}>추천 프리셋</div>
         <div style={{ display: "flex", gap: 3, flexWrap: "wrap" as const }}>
           {FILTER_PRESETS.map((p) => (
-            <button key={p.key} onClick={() => { onApplyPreset?.(p.values); closePanel(); }} title={p.desc} style={{
-              flex: "1 0 auto", fontSize: F.xs, fontWeight: 600, padding: "4px 8px", height: 30,
-              background: C.indigoLight, color: C.indigo, border: `1px solid ${C.indigo}`,
-              borderRadius: 5, cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap" as const,
-            }}>{p.label}</button>
+            <button
+              key={p.key}
+              onClick={() => {
+                onApplyPreset?.(p.values);
+                closePanel();
+              }}
+              title={p.desc}
+              style={{
+                flex: "1 0 auto",
+                fontSize: F.xs,
+                fontWeight: 600,
+                padding: "4px 8px",
+                height: 30,
+                background: C.indigoLight,
+                color: C.indigo,
+                border: `1px solid ${C.indigo}`,
+                borderRadius: 5,
+                cursor: "pointer",
+                transition: "all .15s",
+                whiteSpace: "nowrap" as const,
+              }}
+            >
+              {p.label}
+            </button>
           ))}
         </div>
       </div>
@@ -68,15 +87,49 @@ export const PresetPanel = memo(function PresetPanel({
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap" as const }}>
             {customPresets.map((p) => (
               <span key={p.key} style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
-                <button onClick={() => { onApplyPreset?.(p.values); closePanel(); }} title={p.desc} style={{
-                  fontSize: F.xs, fontWeight: 600, padding: "4px 8px", height: 30,
-                  background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
-                  borderRadius: "5px 0 0 5px", cursor: "pointer", whiteSpace: "nowrap" as const,
-                }}>{p.label}</button>
-                <button onClick={() => { if (onDeletePreset) { onDeletePreset(p.key); showToast("프리셋이 삭제되었습니다"); } }} aria-label={`${p.label} 삭제`} style={{
-                  fontSize: F.micro, padding: "4px 5px", height: 30, background: C.greenLight, color: C.green,
-                  border: `1px solid ${C.green}`, borderLeft: "none", borderRadius: "0 5px 5px 0", cursor: "pointer",
-                }}>✕</button>
+                <button
+                  onClick={() => {
+                    onApplyPreset?.(p.values);
+                    closePanel();
+                  }}
+                  title={p.desc}
+                  style={{
+                    fontSize: F.xs,
+                    fontWeight: 600,
+                    padding: "4px 8px",
+                    height: 30,
+                    background: C.greenLight,
+                    color: C.green,
+                    border: `1px solid ${C.green}`,
+                    borderRadius: "5px 0 0 5px",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap" as const,
+                  }}
+                >
+                  {p.label}
+                </button>
+                <button
+                  onClick={() => {
+                    if (onDeletePreset) {
+                      onDeletePreset(p.key);
+                      showToast("프리셋이 삭제되었습니다");
+                    }
+                  }}
+                  aria-label={`${p.label} 삭제`}
+                  style={{
+                    fontSize: F.micro,
+                    padding: "4px 5px",
+                    height: 30,
+                    background: C.greenLight,
+                    color: C.green,
+                    border: `1px solid ${C.green}`,
+                    borderLeft: "none",
+                    borderRadius: "0 5px 5px 0",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
               </span>
             ))}
           </div>
@@ -84,38 +137,148 @@ export const PresetPanel = memo(function PresetPanel({
       )}
       {/* 프리셋 저장 + 히스토리 */}
       <div style={{ display: "flex", gap: 3, alignItems: "center", flexWrap: "wrap" }}>
-        {activeFilterCount > 0 && onSavePreset && (
-          showPresetInput ? (
+        {activeFilterCount > 0 &&
+          onSavePreset &&
+          (showPresetInput ? (
             <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-              <input type="text" value={presetName} onChange={e => setPresetName(e.target.value)}
-                maxLength={12} placeholder="이름 (12자)" autoFocus
-                onKeyDown={e => { if (e.key === "Enter") handlePresetSave(); if (e.key === "Escape") { setShowPresetInput(false); setPresetName(""); } }}
-                style={{ width: 80, fontSize: F.micro, height: 28, padding: "2px 6px", border: `1px solid ${C.green}`, borderRadius: 4, outline: "none", background: C.greenLight }} />
-              <button onClick={handlePresetSave} style={{ fontSize: F.micro, fontWeight: 600, padding: "3px 6px", height: 28, background: C.green, color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>저장</button>
-              <button onClick={() => { setShowPresetInput(false); setPresetName(""); }} style={{ fontSize: F.micro, padding: "3px 4px", height: 28, background: C.slate100, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 4, cursor: "pointer" }}>취소</button>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                maxLength={12}
+                placeholder="이름 (12자)"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handlePresetSave();
+                  if (e.key === "Escape") {
+                    setShowPresetInput(false);
+                    setPresetName("");
+                  }
+                }}
+                style={{
+                  width: 80,
+                  fontSize: F.micro,
+                  height: 28,
+                  padding: "2px 6px",
+                  border: `1px solid ${C.green}`,
+                  borderRadius: 4,
+                  outline: "none",
+                  background: C.greenLight,
+                }}
+              />
+              <button
+                onClick={handlePresetSave}
+                style={{
+                  fontSize: F.micro,
+                  fontWeight: 600,
+                  padding: "3px 6px",
+                  height: 28,
+                  background: C.green,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                }}
+              >
+                저장
+              </button>
+              <button
+                onClick={() => {
+                  setShowPresetInput(false);
+                  setPresetName("");
+                }}
+                style={{
+                  fontSize: F.micro,
+                  padding: "3px 4px",
+                  height: 28,
+                  background: C.slate100,
+                  color: C.muted,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 4,
+                  cursor: "pointer",
+                }}
+              >
+                취소
+              </button>
             </div>
           ) : (
-            <button onClick={() => setShowPresetInput(true)} aria-label="현재 필터를 프리셋으로 저장" style={{
-              fontSize: F.micro, fontWeight: 600, padding: "3px 8px", height: 28,
-              background: C.greenLight, color: C.green, border: `1px solid ${C.green}`,
-              borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap",
-            }}>+ 프리셋 저장</button>
-          )
-        )}
+            <button
+              onClick={() => setShowPresetInput(true)}
+              aria-label="현재 필터를 프리셋으로 저장"
+              style={{
+                fontSize: F.micro,
+                fontWeight: 600,
+                padding: "3px 8px",
+                height: 28,
+                background: C.greenLight,
+                color: C.green,
+                border: `1px solid ${C.green}`,
+                borderRadius: 4,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              + 프리셋 저장
+            </button>
+          ))}
         {(filterHistory?.length ?? 0) > 0 && filterHistory && (
-          <select key={historyKey} onChange={e => { const i = Number(e.target.value); if (filterHistory[i]) { onApplyHistory?.(filterHistory[i]); setHistoryKey(k => k + 1); closePanel(); } }} defaultValue="" aria-label="필터 히스토리" style={{
-            WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
-            flex: 1, fontSize: F.micro, height: 28, padding: "2px 20px 2px 6px",
-            border: `1px solid ${C.border}`, borderRadius: 4, background: C.slate100, color: C.slate600, cursor: "pointer",
-          }}>
-            <option value="" disabled>히스토리 ({(filterHistory ?? []).length})</option>
+          <select
+            key={historyKey}
+            onChange={(e) => {
+              const i = Number(e.target.value);
+              if (filterHistory[i]) {
+                onApplyHistory?.(filterHistory[i]);
+                setHistoryKey((k) => k + 1);
+                closePanel();
+              }
+            }}
+            defaultValue=""
+            aria-label="필터 히스토리"
+            style={{
+              WebkitAppearance: "none",
+              MozAppearance: "none",
+              appearance: "none",
+              flex: 1,
+              fontSize: F.micro,
+              height: 28,
+              padding: "2px 20px 2px 6px",
+              border: `1px solid ${C.border}`,
+              borderRadius: 4,
+              background: C.slate100,
+              color: C.slate600,
+              cursor: "pointer",
+            }}
+          >
+            <option value="" disabled>
+              히스토리 ({(filterHistory ?? []).length})
+            </option>
             {filterHistory.map((h, i) => (
-              <option key={h.sig ?? `h-${i}`} value={i}>필터 {h.count ?? 0}개{h.ts ? ` · ${new Date(h.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : ""}</option>
+              <option key={h.sig ?? `h-${i}`} value={i}>
+                필터 {h.count ?? 0}개
+                {h.ts ? ` · ${new Date(h.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : ""}
+              </option>
             ))}
           </select>
         )}
         {(filterHistory?.length ?? 0) > 0 && onClearHistory && (
-          <button onClick={onClearHistory} aria-label="히스토리 삭제" style={{ background: C.slate100, border: `1px solid ${C.border}`, borderRadius: 4, padding: "0 6px", fontSize: F.micro, color: C.muted, cursor: "pointer", height: 28, display: "flex", alignItems: "center" }}>지우기</button>
+          <button
+            onClick={onClearHistory}
+            aria-label="히스토리 삭제"
+            style={{
+              background: C.slate100,
+              border: `1px solid ${C.border}`,
+              borderRadius: 4,
+              padding: "0 6px",
+              fontSize: F.micro,
+              color: C.muted,
+              cursor: "pointer",
+              height: 28,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            지우기
+          </button>
         )}
       </div>
     </div>

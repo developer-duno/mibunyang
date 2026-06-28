@@ -56,8 +56,7 @@ interface ScheduleItem {
   dateInfo?: string;
   schdl_info?: string;
 }
-const isScheduleItem = (x: unknown): x is ScheduleItem =>
-  typeof x === "object" && x !== null;
+const isScheduleItem = (x: unknown): x is ScheduleItem => typeof x === "object" && x !== null;
 
 /** presaleSchedule JSONB → 문자열 (배열/객체/문자열 모두 처리) */
 export const fmtPresaleSchedule = (schedule: unknown): string => {
@@ -66,7 +65,7 @@ export const fmtPresaleSchedule = (schedule: unknown): string => {
   if (Array.isArray(schedule)) {
     const items = (schedule as unknown[])
       .filter((s): s is ScheduleItem => isScheduleItem(s) && Boolean(s.scheduleName || s.dateInfo))
-      .map(s => `${s.scheduleName ?? ""} ${s.dateInfo ?? ""}`.trim());
+      .map((s) => `${s.scheduleName ?? ""} ${s.dateInfo ?? ""}`.trim());
     return items.length > 0 ? items.join(", ") : "—";
   }
   if (isScheduleItem(schedule)) {

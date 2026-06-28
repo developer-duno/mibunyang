@@ -42,7 +42,7 @@ export function useCollectorMonitoring(showToast: ShowToast): {
         setError("요청이 너무 많습니다");
         return;
       }
-      const json = await res.json() as CollectorStatusResponse & { error?: string };
+      const json = (await res.json()) as CollectorStatusResponse & { error?: string };
       if (res.status === 401) {
         showToast("관리자 세션이 만료되었습니다");
         setError("관리자 세션이 만료되었습니다");

@@ -30,10 +30,21 @@ interface UseKakaoCallbackEffectArgs {
  * 의도적으로 [tab]만 deps: kakao/auth/admin/detail 참조 변경 시 재실행 방지
  * (모두 useCallback/useState 안정 참조지만, 의미론적으로 탭 전환 시점만 트리거)
  */
-export function useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, recordView, setTab, showToast, onNeedsMarketingConsent, onConsentLoaded }: UseKakaoCallbackEffectArgs): void {
+export function useKakaoCallbackEffect({
+  tab,
+  kakao,
+  auth,
+  admin,
+  detail,
+  recordView,
+  setTab,
+  showToast,
+  onNeedsMarketingConsent,
+  onConsentLoaded,
+}: UseKakaoCallbackEffectArgs): void {
   useEffect(() => {
     if (tab !== "kakaoCallback") return;
-    kakao.handleKakaoCallback().then(result => {
+    kakao.handleKakaoCallback().then((result) => {
       if (result?.ok) {
         if (result.token) localStorage.setItem(TOKEN_KEY, result.token);
         if (result.refreshToken) localStorage.setItem("refreshToken", result.refreshToken);
@@ -41,10 +52,15 @@ export function useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, record
         localStorage.setItem("userRole", role);
         auth.setLoggedIn(true);
         auth.setAuthUser((result.user ?? null) as AuthUser | null);
-        if (role === "admin") { admin.setAdminLoggedIn(true); setTab("admin"); }
-        else {
+        if (role === "admin") {
+          admin.setAdminLoggedIn(true);
+          setTab("admin");
+        } else {
           // role "expert" 잔존 레코드도 일반 손님 취급 (세션 405 전문가 폐지)
-          if (result.pendingDetail) { detail.setDetailAptId(result.pendingDetail); recordView?.(result.pendingDetail); }
+          if (result.pendingDetail) {
+            detail.setDetailAptId(result.pendingDetail);
+            recordView?.(result.pendingDetail);
+          }
           setTab(isFeatureHome() ? "home" : "list"); // 로그인 직후 홈 = 지도 위젯 열린 첫 경험 (spec §1)
           // 현재 마케팅 동의 상태를 정보 탭 토글 초기화에 전달 (D3) — 관리자는 제외
           onConsentLoaded?.(result.consentMarketing ?? null);
@@ -56,7 +72,11 @@ export function useKakaoCallbackEffect({ tab, kakao, auth, admin, detail, record
       } else {
         setTab(isFeatureHome() ? "home" : "list");
       }
-      try { window.history.replaceState(null, "", "/"); } catch { /* noop: history.replaceState 미지원 환경 무시 */ }
+      try {
+        window.history.replaceState(null, "", "/");
+      } catch {
+        /* noop: history.replaceState 미지원 환경 무시 */
+      }
     });
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 }

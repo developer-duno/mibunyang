@@ -24,10 +24,22 @@ type RecentlyViewedWidgetProps = {
  * 최근 본 단지 — 최근순(맨 앞 = 가장 최근). onDetail 은 반드시 handleDetailGated(홈 상세 게이트 정책).
  * recentIds 중 데이터 갱신으로 사라진 단지(scoredMap 부재)는 스킵. rank=0 으로 순위 배지 숨김.
  */
-export const RecentlyViewedWidget = memo(function RecentlyViewedWidget({ recentIds, scoredMap, pw, onDetail, onFav, favoriteSet, onComp, compIds, isLoggedIn, isDesktop, onClear }: RecentlyViewedWidgetProps) {
+export const RecentlyViewedWidget = memo(function RecentlyViewedWidget({
+  recentIds,
+  scoredMap,
+  pw,
+  onDetail,
+  onFav,
+  favoriteSet,
+  onComp,
+  compIds,
+  isLoggedIn,
+  isDesktop,
+  onClear,
+}: RecentlyViewedWidgetProps) {
   const items = useMemo(
-    () => recentIds.map(id => scoredMap.get(id)).filter((x): x is ScoredApt => Boolean(x)),
-    [recentIds, scoredMap],
+    () => recentIds.map((id) => scoredMap.get(id)).filter((x): x is ScoredApt => Boolean(x)),
+    [recentIds, scoredMap]
   );
 
   return (
@@ -37,18 +49,41 @@ export const RecentlyViewedWidget = memo(function RecentlyViewedWidget({ recentI
       ) : (
         <>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button onClick={onClear} aria-label="최근 본 단지 지우기" style={{ background: "transparent", border: "none", color: C.muted, fontSize: F.sm, fontWeight: 600, cursor: "pointer", padding: "4px 6px", minHeight: 36 }}>
+            <button
+              onClick={onClear}
+              aria-label="최근 본 단지 지우기"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: C.muted,
+                fontSize: F.sm,
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: "4px 6px",
+                minHeight: 36,
+              }}
+            >
               지우기
             </button>
           </div>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch" }}>
-            {items.map(item => (
+          <div
+            style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch" }}
+          >
+            {items.map((item) => (
               <div key={item.apt.id} style={{ flex: "0 0 auto", width: isDesktop ? 300 : 260 }}>
-                <AptCard apt={item.apt} res={item.res} rank={0}
+                <AptCard
+                  apt={item.apt}
+                  res={item.res}
+                  rank={0}
                   onDetail={onDetail}
-                  isComp={compIds.includes(item.apt.id ?? "")} onComp={onComp}
-                  isFav={favoriteSet.has(item.apt.id ?? "")} onFav={onFav}
-                  profileWeights={pw} isDesktop={isDesktop} isLoggedIn={isLoggedIn} />
+                  isComp={compIds.includes(item.apt.id ?? "")}
+                  onComp={onComp}
+                  isFav={favoriteSet.has(item.apt.id ?? "")}
+                  onFav={onFav}
+                  profileWeights={pw}
+                  isDesktop={isDesktop}
+                  isLoggedIn={isLoggedIn}
+                />
               </div>
             ))}
           </div>

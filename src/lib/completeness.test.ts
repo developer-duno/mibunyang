@@ -74,15 +74,14 @@ describe("computeCompleteness", () => {
   // 8. 관리자 완성도(구 ExpertDataCompleteness, 현 DataSections adminMode) 동일성 — 전체 비-hidden 필드 기준 (drift 가드)
   it("전체 비-hidden 필드 기준 pct는 관리자 완성도 블록과 동일 로직", () => {
     const allFields = Object.keys(FIELD_META).filter(
-      (k) => !(FIELD_META as Record<string, { hidden?: boolean }>)[k].hidden,
+      (k) => !(FIELD_META as Record<string, { hidden?: boolean }>)[k].hidden
     );
     const a = apt();
     const r = computeCompleteness(allFields, a);
     // ExpertDataCompleteness.tsx와 동일: evalTotal = total - na, pct = round((filled+estimated*0.5)/evalTotal*100)
     expect(r.total).toBe(allFields.length);
     expect(r.evalTotal).toBe(r.total - r.na);
-    const expected =
-      r.evalTotal > 0 ? Math.round(((r.filled + r.estimated * 0.5) / r.evalTotal) * 100) : 0;
+    const expected = r.evalTotal > 0 ? Math.round(((r.filled + r.estimated * 0.5) / r.evalTotal) * 100) : 0;
     expect(r.pct).toBe(expected);
     // makeApt는 대부분 채움 → 0보다 큼
     expect(r.pct).toBeGreaterThan(0);

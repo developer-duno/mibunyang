@@ -1,8 +1,12 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import {
-  buildMarkerSvg, shortPrice,
-  MARKER_WITH_PRICE, MARKER_NO_PRICE, MARKER_WITH_PRICE_SEL, MARKER_NO_PRICE_SEL,
+  buildMarkerSvg,
+  shortPrice,
+  MARKER_WITH_PRICE,
+  MARKER_NO_PRICE,
+  MARKER_WITH_PRICE_SEL,
+  MARKER_NO_PRICE_SEL,
 } from "./markerSvg";
 
 describe("shortPrice", () => {

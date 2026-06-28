@@ -28,7 +28,7 @@ describe("RegionChipBar", () => {
 
   it("★ 관심지역은 맨 앞 정렬 + ★ prefix", () => {
     render(<RegionChipBar {...baseProps()} favorites={["세종"]} />);
-    const labels = screen.getAllByRole("button").map(b => b.textContent);
+    const labels = screen.getAllByRole("button").map((b) => b.textContent);
     // 전국 → ★ 세종 → 서울 → 대전 → ★ 편집
     expect(labels[0]).toBe("전국");
     expect(labels[1]).toBe("★ 세종");

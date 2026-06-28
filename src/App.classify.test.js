@@ -8,7 +8,15 @@ const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).p
 /* ── 테스트 데이터 팩토리 ── */
 // 세션 445: classifyMoveIn 은 미입주 판정을 unsold(수)로 함 (unsoldRate 는 폭발값 무력화로 null 가능).
 function makeApt(overrides = {}) {
-  return { completion: "202501", unsold: 5, unsoldRate: 10, builder: "현대건설", region: "서울", gu: "강남구", ...overrides };
+  return {
+    completion: "202501",
+    unsold: 5,
+    unsoldRate: 10,
+    builder: "현대건설",
+    region: "서울",
+    gu: "강남구",
+    ...overrides,
+  };
 }
 
 describe("classifyMoveIn — 입주 상태 분류", () => {

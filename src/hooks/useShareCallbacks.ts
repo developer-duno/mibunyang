@@ -39,24 +39,43 @@ interface UseShareCallbacksReturn {
  * handleShareDetail / handleShareCompare / handleShareFilters + scoredMapRef
  */
 export function useShareCallbacks({
-  scoredMap, profile, compIds, compItems, openShareSheet, getShareURL,
-  filterRegion, budgetMin, budgetMax, areaMin, areaMax,
-  unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly,
+  scoredMap,
+  profile,
+  compIds,
+  compItems,
+  openShareSheet,
+  getShareURL,
+  filterRegion,
+  budgetMin,
+  budgetMax,
+  areaMin,
+  areaMax,
+  unitsMin,
+  unitsMax,
+  moveInFilter,
+  minScore,
+  builderTier,
+  benefitOnly,
 }: UseShareCallbacksArgs): UseShareCallbacksReturn {
   const scoredMapRef = useRef(scoredMap);
-  useEffect(() => { scoredMapRef.current = scoredMap; }, [scoredMap]);
+  useEffect(() => {
+    scoredMapRef.current = scoredMap;
+  }, [scoredMap]);
 
-  const handleShareDetail = useCallback((aptId: string) => {
-    const item = scoredMapRef.current.get(aptId);
-    if (!item) return;
-    const base = getShareURL();
-    const sep = base.includes("?") ? "&" : "?";
-    openShareSheet({
-      title: `${item.apt.name} - 미분양 분석`,
-      text: `${item.apt.name} ${item.res.total}점 · ${fmtPrice(item.apt.price)}`,
-      url: `${base}${sep}detail=${aptId}&profile=${profile}`,
-    });
-  }, [profile, openShareSheet, getShareURL]);
+  const handleShareDetail = useCallback(
+    (aptId: string) => {
+      const item = scoredMapRef.current.get(aptId);
+      if (!item) return;
+      const base = getShareURL();
+      const sep = base.includes("?") ? "&" : "?";
+      openShareSheet({
+        title: `${item.apt.name} - 미분양 분석`,
+        text: `${item.apt.name} ${item.res.total}점 · ${fmtPrice(item.apt.price)}`,
+        url: `${base}${sep}detail=${aptId}&profile=${profile}`,
+      });
+    },
+    [profile, openShareSheet, getShareURL]
+  );
 
   const handleShareCompare = useCallback(() => {
     if (compIds.length < 2) return;
@@ -64,7 +83,7 @@ export function useShareCallbacks({
     const sep = base.includes("?") ? "&" : "?";
     openShareSheet({
       title: `미분양 ${compIds.length}개 단지 비교`,
-      text: compItems.map(x => x.apt.name).join(" vs "),
+      text: compItems.map((x) => x.apt.name).join(" vs "),
       url: `${base}${sep}compare=${compIds.join(",")}&profile=${profile}`,
     });
   }, [compIds, compItems, profile, openShareSheet, getShareURL]);
@@ -79,13 +98,29 @@ export function useShareCallbacks({
       minScore && `${minScore}점+`,
       builderTier !== "전체" && builderTier,
       benefitOnly && "혜택",
-    ].filter(Boolean).join(" · ");
+    ]
+      .filter(Boolean)
+      .join(" · ");
     openShareSheet({
       title: "미분양 필터 공유",
       text: activeFilters || "전체 조건",
       url: getShareURL(),
     });
-  }, [filterRegion, budgetMin, budgetMax, areaMin, areaMax, unitsMin, unitsMax, moveInFilter, minScore, builderTier, benefitOnly, openShareSheet, getShareURL]);
+  }, [
+    filterRegion,
+    budgetMin,
+    budgetMax,
+    areaMin,
+    areaMax,
+    unitsMin,
+    unitsMax,
+    moveInFilter,
+    minScore,
+    builderTier,
+    benefitOnly,
+    openShareSheet,
+    getShareURL,
+  ]);
 
   return { handleShareDetail, handleShareCompare, handleShareFilters };
 }

@@ -27,37 +27,39 @@ export interface FilterState {
  */
 export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[] {
   let out = list;
-  if (f.showFavOnly) out = out.filter(x => f.favoriteSet?.has(x.apt.id ?? ""));
+  if (f.showFavOnly) out = out.filter((x) => f.favoriteSet?.has(x.apt.id ?? ""));
 
   // 예산 범위 (역전 시 자동 스왑)
   const bMinRaw = f.budgetMin !== "" && f.budgetMin != null ? Number(f.budgetMin) : null;
   const bMaxRaw = f.budgetMax !== "" && f.budgetMax != null ? Number(f.budgetMax) : null;
   const bMin = bMinRaw != null && Number.isFinite(bMinRaw) ? bMinRaw : null;
   const bMax = bMaxRaw != null && Number.isFinite(bMaxRaw) ? bMaxRaw : null;
-  const effectiveMin = (bMin != null && bMax != null && bMin > bMax) ? bMax : bMin;
-  const effectiveMax = (bMin != null && bMax != null && bMin > bMax) ? bMin : bMax;
-  if (effectiveMin != null) out = out.filter(x => (x.apt.price ?? 0) >= effectiveMin * MANWON_PER_EUK);
-  if (effectiveMax != null) out = out.filter(x => (x.apt.price ?? 0) <= effectiveMax * MANWON_PER_EUK);
+  const effectiveMin = bMin != null && bMax != null && bMin > bMax ? bMax : bMin;
+  const effectiveMax = bMin != null && bMax != null && bMin > bMax ? bMin : bMax;
+  if (effectiveMin != null) out = out.filter((x) => (x.apt.price ?? 0) >= effectiveMin * MANWON_PER_EUK);
+  if (effectiveMax != null) out = out.filter((x) => (x.apt.price ?? 0) <= effectiveMax * MANWON_PER_EUK);
 
   // 면적·세대수
-  if (f.areaMin) out = out.filter(x => (x.apt.area ?? 0) >= Number(f.areaMin));
-  if (f.areaMax) out = out.filter(x => (x.apt.area ?? Infinity) <= Number(f.areaMax));
-  if (f.unitsMin) out = out.filter(x => (x.apt.units ?? 0) >= Number(f.unitsMin));
-  if (f.unitsMax) out = out.filter(x => (x.apt.units ?? Infinity) <= Number(f.unitsMax));
+  if (f.areaMin) out = out.filter((x) => (x.apt.area ?? 0) >= Number(f.areaMin));
+  if (f.areaMax) out = out.filter((x) => (x.apt.area ?? Infinity) <= Number(f.areaMax));
+  if (f.unitsMin) out = out.filter((x) => (x.apt.units ?? 0) >= Number(f.unitsMin));
+  if (f.unitsMax) out = out.filter((x) => (x.apt.units ?? Infinity) <= Number(f.unitsMax));
 
   // 최소 점수
-  if (f.minScore) { const ms = Number(f.minScore); if (Number.isFinite(ms)) out = out.filter(x => x.res.total >= ms); }
+  if (f.minScore) {
+    const ms = Number(f.minScore);
+    if (Number.isFinite(ms)) out = out.filter((x) => x.res.total >= ms);
+  }
 
   // 혜택 유무
-  if (f.benefitOnly) out = out.filter(x => {
-    const benefit = x.res.cats?.benefit as { totalWon?: number } | undefined;
-    return (benefit?.totalWon ?? 0) > 0;
-  });
+  if (f.benefitOnly)
+    out = out.filter((x) => {
+      const benefit = x.res.cats?.benefit as { totalWon?: number } | undefined;
+      return (benefit?.totalWon ?? 0) > 0;
+    });
 
   // 역세권만 (≤500m, 9999=역없음 제외) — AptCard 역세권 강조 기준(<=500)과 동일
-  if (f.subwayOnly) out = out.filter(
-    x => (x.apt.subwayDist != null) && (x.apt.subwayDist as number) <= 500
-  );
+  if (f.subwayOnly) out = out.filter((x) => x.apt.subwayDist != null && (x.apt.subwayDist as number) <= 500);
 
   return out;
 }

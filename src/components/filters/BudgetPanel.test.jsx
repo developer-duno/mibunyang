@@ -27,7 +27,7 @@ describe("BudgetPanel", () => {
   // 4개 프리셋 버튼 렌더링 (3/5/7/10억 이하)
   it("4개 프리셋 버튼 렌더링", () => {
     render(<BudgetPanel {...makeProps()} />);
-    ["3억 이하", "5억 이하", "7억 이하", "10억 이하"].forEach(label => {
+    ["3억 이하", "5억 이하", "7억 이하", "10억 이하"].forEach((label) => {
       expect(screen.getByText(label)).toBeInTheDocument();
     });
   });

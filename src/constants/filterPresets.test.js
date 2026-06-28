@@ -19,7 +19,7 @@ describe("FILTER_PRESETS", () => {
   });
 
   it("key 중복 없음", () => {
-    const keys = FILTER_PRESETS.map(p => p.key);
+    const keys = FILTER_PRESETS.map((p) => p.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 

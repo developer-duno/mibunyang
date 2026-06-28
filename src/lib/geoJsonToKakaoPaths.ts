@@ -21,15 +21,14 @@ type Ring = Array<[number, number]>;
  */
 export function geoJsonFeatureToKakaoPaths(
   feature: GeoJsonGeometryFeature | null | undefined,
-  kakao: KakaoMapsLatLngFactory | null | undefined,
+  kakao: KakaoMapsLatLngFactory | null | undefined
 ): unknown[][] {
   const geom = feature?.geometry;
   if (!geom || !kakao?.LatLng) return [];
   const { type, coordinates } = geom;
   if (!Array.isArray(coordinates)) return [];
 
-  const ringToPath = (ring: Ring): unknown[] =>
-    ring.map(([lng, lat]) => new kakao.LatLng(lat, lng));
+  const ringToPath = (ring: Ring): unknown[] => ring.map(([lng, lat]) => new kakao.LatLng(lat, lng));
 
   if (type === "Polygon") {
     if (coordinates.length === 0) return [];
@@ -38,7 +37,7 @@ export function geoJsonFeatureToKakaoPaths(
   if (type === "MultiPolygon") {
     return (coordinates as unknown[])
       .filter((poly): poly is Ring[] => Array.isArray(poly) && poly.length > 0)
-      .map(poly => ringToPath(poly[0] as Ring));
+      .map((poly) => ringToPath(poly[0] as Ring));
   }
   return [];
 }

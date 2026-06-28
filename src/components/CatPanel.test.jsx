@@ -158,7 +158,13 @@ describe("CatPanel", () => {
   // product 는 부호 미표시 (세션 434 적대검증) — PRODUCT_MAX 키 영문 vs subName 한글 불일치로
   // normalizeScore 가 max=10 폴백 → interpret 의 raw-max 임계와 어긋남. 모순 회피 위해 product 제외.
   it("product 카테고리는 부호 미표시 (interpret 척도 불일치 회피)", () => {
-    render(<CatPanel cat={makeCat({ label: "상품성", subs: [{ name: "주차", score: 12, info: "1.5대" }] })} k="product" defaultExpanded />);
+    render(
+      <CatPanel
+        cat={makeCat({ label: "상품성", subs: [{ name: "주차", score: 12, info: "1.5대" }] })}
+        k="product"
+        defaultExpanded
+      />
+    );
     // product 는 ▲■▼ 부호 안 뜸 (interpret 문구는 떠도 부호 없음)
     expect(screen.queryByLabelText("강점")).toBeNull();
     expect(screen.queryByLabelText("보통")).toBeNull();

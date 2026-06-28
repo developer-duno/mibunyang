@@ -23,21 +23,30 @@ type StickyJumpNavProps = {
 };
 
 export const StickyJumpNav = memo(function StickyJumpNav({
-  sections, activeId, totalScore, onJump, isMounted, isDesktop, noPrint,
+  sections,
+  activeId,
+  totalScore,
+  onJump,
+  isMounted,
+  isDesktop,
+  noPrint,
 }: StickyJumpNavProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // 칩 ref 배열 — 화살표 키보드 이동 시 다음 칩 focus + active 칩 scrollIntoView 용 (세션 410 D3).
   const chipRefs = useRef<(HTMLButtonElement | null)[]>([]);
   // 인덱스별 안정 ref 콜백(useMemo 1회 생성) — 인라인 화살표 ref 의 매 렌더 detach/attach 회피.
   const setChipRef = useMemo(
-    () => sections.map((_, i) => (el: HTMLButtonElement | null) => { chipRefs.current[i] = el; }),
-    [sections],
+    () =>
+      sections.map((_, i) => (el: HTMLButtonElement | null) => {
+        chipRefs.current[i] = el;
+      }),
+    [sections]
   );
 
   // 모바일 가로 스와이프: active 칩이 가로 스크롤 영역 밖이면 자동 정렬.
   // scrollIntoView 미구현 환경(jsdom 등) 가드 — 없으면 정렬만 건너뜀.
   useEffect(() => {
-    const chip = chipRefs.current[sections.findIndex(s => s.id === activeId)];
+    const chip = chipRefs.current[sections.findIndex((s) => s.id === activeId)];
     const box = scrollRef.current;
     if (!chip || !box || typeof chip.scrollIntoView !== "function") return;
     chip.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });

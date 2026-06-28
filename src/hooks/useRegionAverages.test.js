@@ -13,13 +13,15 @@ describe("useRegionAverages", () => {
   });
 
   it("단일 단지 → byRegion + byGu 각각 1건, avg = 점수", () => {
-    const scored = [
-      { apt: { region: "서울", gu: "강남구" }, res: { total: 87, cats } },
-    ];
+    const scored = [{ apt: { region: "서울", gu: "강남구" }, res: { total: 87, cats } }];
     const { result } = renderHook(() => useRegionAverages(scored));
     expect(result.current.byRegion["서울"]).toEqual({ sum: 87, count: 1, avg: 87 });
     expect(result.current.byGu["서울|강남구"]).toMatchObject({
-      sum: 87, count: 1, region: "서울", gu: "강남구", avg: 87,
+      sum: 87,
+      count: 1,
+      region: "서울",
+      gu: "강남구",
+      avg: 87,
     });
   });
 
@@ -51,10 +53,10 @@ describe("useRegionAverages", () => {
   it("region/gu null 또는 res.total 비숫자 → 스킵 (집계 무영향)", () => {
     const scored = /** @type {any} */ ([
       { apt: { region: "서울", gu: "강남구" }, res: { total: 90, cats } },
-      { apt: { region: null, gu: "강남구" }, res: { total: 50, cats } },           // region null
-      { apt: { region: "서울", gu: null }, res: { total: 40, cats } },              // gu null → byRegion 만 반영
-      { apt: { region: "서울", gu: "서초구" }, res: { total: NaN, cats } },         // total NaN
-      { apt: { region: "서울", gu: "송파구" }, res: { total: undefined, cats } },  // total undefined
+      { apt: { region: null, gu: "강남구" }, res: { total: 50, cats } }, // region null
+      { apt: { region: "서울", gu: null }, res: { total: 40, cats } }, // gu null → byRegion 만 반영
+      { apt: { region: "서울", gu: "서초구" }, res: { total: NaN, cats } }, // total NaN
+      { apt: { region: "서울", gu: "송파구" }, res: { total: undefined, cats } }, // total undefined
     ]);
     const { result } = renderHook(() => useRegionAverages(scored));
     // 서울 byRegion: 90 + 40 = 130, count=2, avg=65

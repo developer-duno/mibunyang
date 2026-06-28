@@ -12,7 +12,7 @@ export interface DedupCandidate {
 }
 
 export function dedupApartments<T extends DedupCandidate>(
-  apartments: T[] | null | undefined,
+  apartments: T[] | null | undefined
 ): Array<T & { siblingIds: string[] }> {
   if (!apartments?.length) return [];
 

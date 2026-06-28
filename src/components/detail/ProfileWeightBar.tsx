@@ -30,14 +30,22 @@ export const ProfileWeightBar = memo(function ProfileWeightBar({ weights, cats }
   const maxW = Math.max(...topCats.map((k) => weights[k]), 1);
 
   // 강점(최고 total)·보완(최저 total) — benefit noData 는 점수축이 달라(할인 환산) 후보 제외(오도 회피).
-  const candidates = CAT_KEYS
-    .map((k) => ({ k, cat: cats[k] }))
-    .filter(({ k, cat }) => !(k === "benefit" && cat.noData));
+  const candidates = CAT_KEYS.map((k) => ({ k, cat: cats[k] })).filter(
+    ({ k, cat }) => !(k === "benefit" && cat.noData)
+  );
   const best = candidates.reduce((a, b) => (b.cat.total > a.cat.total ? b : a));
   const worst = candidates.reduce((a, b) => (b.cat.total < a.cat.total ? b : a));
 
   return (
-    <div style={{ background: C.bg, borderRadius: 10, padding: "12px 14px", margin: "12px 0", border: `1px solid ${C.border}` }}>
+    <div
+      style={{
+        background: C.bg,
+        borderRadius: 10,
+        padding: "12px 14px",
+        margin: "12px 0",
+        border: `1px solid ${C.border}`,
+      }}
+    >
       <div style={{ fontSize: F.sm, fontWeight: 700, color: C.text, marginBottom: 10 }}>
         이 점수는 당신의 프로필 기준으로 계산됐어요
       </div>
@@ -53,7 +61,9 @@ export const ProfileWeightBar = memo(function ProfileWeightBar({ weights, cats }
               <div style={{ flex: 1, height: 8, background: C.card, borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ width: `${(w / maxW) * 100}%`, height: "100%", background: col, borderRadius: 4 }} />
               </div>
-              <span style={{ fontSize: F.xs, fontWeight: 700, color: col, width: 34, textAlign: "right", flexShrink: 0 }}>
+              <span
+                style={{ fontSize: F.xs, fontWeight: 700, color: col, width: 34, textAlign: "right", flexShrink: 0 }}
+              >
                 {w}%
               </span>
             </div>

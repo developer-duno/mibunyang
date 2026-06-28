@@ -27,7 +27,19 @@ export interface CatsCacheItem {
 /**
  * 정렬 키 — useDataPipeline.SORTERS 의 키.
  */
-export type SortKey = "total" | "price" | "priceScore" | "location" | "safe" | "benefit" | "newest" | "unsoldRate" | "units" | "moveInSoon" | "subwayNear" | "jeonseHigh";
+export type SortKey =
+  | "total"
+  | "price"
+  | "priceScore"
+  | "location"
+  | "safe"
+  | "benefit"
+  | "newest"
+  | "unsoldRate"
+  | "units"
+  | "moveInSoon"
+  | "subwayNear"
+  | "jeonseHigh";
 
 /**
  * 입주 시기 분류 — classifyMoveIn 반환.
@@ -228,7 +240,7 @@ export interface KakaoCallbackResult {
   ok: boolean;
   token?: string;
   refreshToken?: string;
-  user?: { affiliation?: string;[key: string]: unknown };
+  user?: { affiliation?: string; [key: string]: unknown };
   role?: string;
   pendingDetail?: string | null;
   needsMarketingConsent?: boolean; // 신규 가입(또는 미선택) 시 마케팅 동의 모달 표시 신호
@@ -350,7 +362,11 @@ export interface UseAppNavigationArgs {
   consult: {
     consultSubmitted: boolean;
     setConsultSubmitted: (_v: boolean) => void;
-    setConsultForm: (_form: import("@/hooks/useConsult").ConsultForm | ((_prev: import("@/hooks/useConsult").ConsultForm) => import("@/hooks/useConsult").ConsultForm)) => void;
+    setConsultForm: (
+      _form:
+        | import("@/hooks/useConsult").ConsultForm
+        | ((_prev: import("@/hooks/useConsult").ConsultForm) => import("@/hooks/useConsult").ConsultForm)
+    ) => void;
     [key: string]: unknown;
   };
   detail: {

@@ -23,47 +23,68 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
   const str = (v: unknown, fallback = ""): string => (v ?? fallback).toString().trim().normalize("NFC");
   const num = <T extends number | null>(v: unknown, fallback: T): number | T => {
     const n = Number(v);
-    return (v == null || Number.isNaN(n)) ? fallback : n;
+    return v == null || Number.isNaN(n) ? fallback : n;
   };
   return {
     ...apt,
     // 위험 필드 → 지역 중위값 우선, 없으면 비관적 기본값
-    pir: num(apt.pir, null), psr: num(apt.psr, null),
+    pir: num(apt.pir, null),
+    psr: num(apt.psr, null),
     // unsoldRate null 보존 (세션 445): 지역 중위값 되채움 금지. null = "미분양률 미확인"
     //   → scoreRisk 가 units<=1 과 동일하게 중립(UNSOLD_UNKNOWN_SCORE) 처리. 100% 초과 폭발값을
     //   VIEW/JSON 에서 null 로 무력화한 단지가 지역 중위값 기반 임의 등급으로 오채점되던 것 방지.
-    unsoldRate: num(apt.unsoldRate, null), recentTrades6m: num(apt.recentTrades6m, 0), cancelRatio6m: num(apt.cancelRatio6m, null),
+    unsoldRate: num(apt.unsoldRate, null),
+    recentTrades6m: num(apt.recentTrades6m, 0),
+    cancelRatio6m: num(apt.cancelRatio6m, null),
     competitionRate: num(apt.competitionRate, null),
     crimeSafetyGrade: apt.crimeSafetyGrade != null ? num(apt.crimeSafetyGrade, null) : null,
-    builderDebtRatio: num(apt.builderDebtRatio, 250), supplyRatio: num(apt.supplyRatio, rm?.supplyRatio ?? 150),
+    builderDebtRatio: num(apt.builderDebtRatio, 250),
+    supplyRatio: num(apt.supplyRatio, rm?.supplyRatio ?? 150),
     popGrowth: apt.popGrowth != null ? num(apt.popGrowth, null) : null,
     netMigration: apt.netMigration != null ? num(apt.netMigration, null) : null,
     dataReliability: num(apt.dataReliability, 30),
     // 가격/시장 필드
-    jeonseRate: num(apt.jeonseRate, null), nearbyMedian: num(apt.nearbyMedian, null),
-    price: num(apt.price, 0), area: num(apt.area, 84),
+    jeonseRate: num(apt.jeonseRate, null),
+    nearbyMedian: num(apt.nearbyMedian, null),
+    price: num(apt.price, 0),
+    area: num(apt.area, 84),
     // 교통 필드
-    subwayDist: num(apt.subwayDist, 9999), busRoutes: num(apt.busRoutes, 0),
-    icDist: num(apt.icDist, 99), ktxDist: num(apt.ktxDist, 99),
+    subwayDist: num(apt.subwayDist, 9999),
+    busRoutes: num(apt.busRoutes, 0),
+    icDist: num(apt.icDist, 99),
+    ktxDist: num(apt.ktxDist, 99),
     // 인프라 필드
     noise: num(apt.noise, 75),
-    hospital: num(apt.hospital, 0), mart: num(apt.mart, 0), conv: num(apt.conv, 0),
-    park: num(apt.park, 0), cafe: num(apt.cafe, 0), culture: num(apt.culture, 0),
-    bank: num(apt.bank, 0), pharmacy: num(apt.pharmacy, 0),
+    hospital: num(apt.hospital, 0),
+    mart: num(apt.mart, 0),
+    conv: num(apt.conv, 0),
+    park: num(apt.park, 0),
+    cafe: num(apt.cafe, 0),
+    culture: num(apt.culture, 0),
+    bank: num(apt.bank, 0),
+    pharmacy: num(apt.pharmacy, 0),
     // 혜택 필드 → 0
-    discountPct: num(apt.discountPct, 0), loanFreePct: num(apt.loanFreePct, 0),
-    optionValue: num(apt.optionValue, 0), balconyValue: num(apt.balconyValue, 0),
+    discountPct: num(apt.discountPct, 0),
+    loanFreePct: num(apt.loanFreePct, 0),
+    optionValue: num(apt.optionValue, 0),
+    balconyValue: num(apt.balconyValue, 0),
     cashback: num(apt.cashback, 0),
     // 상품성 필드
-    units: num(apt.units, 0), parkingRatio: num(apt.parkingRatio, 0.5),
-    floorAreaRatio: num(apt.floorAreaRatio, 300), exclusiveRatio: num(apt.exclusiveRatio, 60),
+    units: num(apt.units, 0),
+    parkingRatio: num(apt.parkingRatio, 0.5),
+    floorAreaRatio: num(apt.floorAreaRatio, 300),
+    exclusiveRatio: num(apt.exclusiveRatio, 60),
     maxFloor: num(apt.maxFloor, 10),
     devDist: num(apt.devDist, 99),
     // 한글 문자열 NFC 정규화 (API-2)
-    region: str(apt.region), gu: str(apt.gu),
+    region: str(apt.region),
+    gu: str(apt.gu),
     builder: str(apt.builder, "기타"),
-    transitDev: str(apt.transitDev), cityDev: str(apt.cityDev), industryDev: str(apt.industryDev),
-    view: str(apt.view), sunlight: str(apt.sunlight),
+    transitDev: str(apt.transitDev),
+    cityDev: str(apt.cityDev),
+    industryDev: str(apt.industryDev),
+    view: str(apt.view),
+    sunlight: str(apt.sunlight),
     schoolGrade: str(apt.schoolGrade),
     // 관리비/방향 (Phase 4 수집 데이터)
     avgMaintenanceCost: num(apt.avgMaintenanceCost, 0),
@@ -104,7 +125,9 @@ export function calcCats(apt: Apt, ctx?: ScoringContext): Cats {
   const rm = ctx?.regionMedians?.[region];
   const a = sanitize(apt, rm);
   const safe = (fn: () => Res): Res => {
-    try { return fn(); } catch (e) {
+    try {
+      return fn();
+    } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? e;
       console.error("[scoring] safe() caught:", msg);
       return { total: 0, subs: [], totalWon: 0, rate: "0", deviation: 0, fairPrice: 0, riskRaw: 0 };
@@ -129,7 +152,11 @@ export function calcCats(apt: Apt, ctx?: ScoringContext): Cats {
  *   // 가중치 불변식: Object.values(weights).reduce((a,b) => a+b) === 100
  *   const { total, cats, weights } = calcAll(apt, "live", { regionMedians });
  */
-export function calcAll(apt: Apt, profile: Profile | string, ctx?: ScoringContext): {
+export function calcAll(
+  apt: Apt,
+  profile: Profile | string,
+  ctx?: ScoringContext
+): {
   total: number;
   cats: Cats;
   weights: ProfileWeights;
@@ -139,15 +166,20 @@ export function calcAll(apt: Apt, profile: Profile | string, ctx?: ScoringContex
   const cats = calcCats(apt, ctx);
   const total = (Object.keys(cats) as Array<keyof Cats>).reduce((s, k) => {
     const ct = cats[k].total;
-    return s + (Number.isFinite(ct) ? ct * (w[k as keyof ProfileWeights]) / 100 : 0);
+    return s + (Number.isFinite(ct) ? (ct * w[k as keyof ProfileWeights]) / 100 : 0);
   }, 0);
   return { total: Math.round(Math.max(0, Math.min(total, 100))), cats, weights: w };
 }
 
 // re-export: 기존 @/scoring/engine import 경로 호환성 유지
 export {
-  getAgeCoeff, getAreaAdj,
-  scorePrice, scoreLocation, scoreProduct,
-  scoreBenefit, scoreRisk, scoreFuture,
+  getAgeCoeff,
+  getAreaAdj,
+  scorePrice,
+  scoreLocation,
+  scoreProduct,
+  scoreBenefit,
+  scoreRisk,
+  scoreFuture,
   computeRegionalMedians,
 };

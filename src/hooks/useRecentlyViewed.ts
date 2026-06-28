@@ -11,7 +11,9 @@ function loadRecent(): string[] {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]") as unknown;
     if (!Array.isArray(raw)) return [];
     return raw.filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, MAX_RECENT);
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -25,9 +27,9 @@ export function useRecentlyViewed(showToast?: (_msg: string) => void): UseRecent
   // 본 단지를 맨 앞으로 — 이미 있으면 제거 후 앞에 (중복 제거 + 최근순 유지)
   const recordView = useCallback((id: string) => {
     if (!id) return;
-    setRecentIds(prev => {
+    setRecentIds((prev) => {
       if (prev[0] === id) return prev; // 같은 단지 연속 열람 = no-op (리렌더 방지)
-      return [id, ...prev.filter(x => x !== id)].slice(0, MAX_RECENT);
+      return [id, ...prev.filter((x) => x !== id)].slice(0, MAX_RECENT);
     });
   }, []);
 
@@ -38,8 +40,9 @@ export function useRecentlyViewed(showToast?: (_msg: string) => void): UseRecent
 
   // localStorage 저장 (quota exceeded 시 토스트) — useComparison.ts L68 2단계 분리 (DOMException 호환)
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recentIds)); }
-    catch (e) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(recentIds));
+    } catch (e) {
       const name = (e as { name?: string })?.name;
       if (name === "QuotaExceededError") showToast?.("저장 실패: 저장소가 가득 찼습니다");
     }
@@ -54,7 +57,9 @@ export function useRecentlyViewed(showToast?: (_msg: string) => void): UseRecent
         if (Array.isArray(raw)) {
           setRecentIds(raw.filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, MAX_RECENT));
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
     window.addEventListener("storage", h);
     return () => window.removeEventListener("storage", h);

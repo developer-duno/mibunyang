@@ -14,9 +14,7 @@ const distToBarValue = (dist: number) => (1000 - dist) / 10;
 // 생활인프라 2열 그리드 (개수>0 우선 정렬)
 // pairs: [[countField, distField|null], ...]
 export const InfrastructureSection = memo(function InfrastructureSection({ pairs, apt }: InfrastructureSectionProps) {
-  const sorted = [...pairs].sort(
-    (a, b) => (Number(apt[b[0]] ?? 0) > 0 ? 1 : 0) - (Number(apt[a[0]] ?? 0) > 0 ? 1 : 0)
-  );
+  const sorted = [...pairs].sort((a, b) => (Number(apt[b[0]] ?? 0) > 0 ? 1 : 0) - (Number(apt[a[0]] ?? 0) > 0 ? 1 : 0));
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px", alignItems: "start" }}>
       {sorted.map(([countF, distF]) => {
@@ -32,7 +30,9 @@ export const InfrastructureSection = memo(function InfrastructureSection({ pairs
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: F.xs, color: C.muted }}>{meta.label}</span>
               <span style={{ fontSize: F.xs, fontWeight: 600, color: dimmed ? C.muted : C.text }}>
-                {count}{meta.unit ?? ""}{dist != null ? ` (${String(dist)}m)` : ""}
+                {count}
+                {meta.unit ?? ""}
+                {dist != null ? ` (${String(dist)}m)` : ""}
               </span>
             </div>
             {showBar && (

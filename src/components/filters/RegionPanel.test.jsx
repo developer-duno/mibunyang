@@ -76,7 +76,7 @@ describe("RegionPanel", () => {
 
   // filterOptionCounts에 카운트가 있으면 표시
   it("filterOptionCounts.regionCounts 카운트가 option에 표시", () => {
-    const counts = { regionCounts: { "서울": 5, "경기": 3 }, guCounts: {} };
+    const counts = { regionCounts: { 서울: 5, 경기: 3 }, guCounts: {} };
     render(<RegionPanel {...makeProps({ filterOptionCounts: counts })} />);
     const select = screen.getByLabelText("시/도");
     const options = select.querySelectorAll("option");
