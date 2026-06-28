@@ -22,7 +22,7 @@ const WORKFLOWS_DIR = ".github/workflows";
 const DATA_FILL = "scripts/collectors/data-fill.mjs";
 
 const MATRIX_ORCHESTRATORS = [
-  ".github/workflows/fill-missing-data.yml",
+  ".github/workflows/backfill-new-apartments.yml",
 ];
 
 const SECRET_PATTERN = /^[A-Z][A-Z0-9_]*_(KEY|TOKEN|URL|SECRET)$/;

@@ -4,7 +4,7 @@ name: Monitor Collectors
 # workflow_run: 수집기가 끝나면 즉시 점검. schedule: 하루 1회 전체 스윕.
 # workflow_run.workflows 는 와일드카드 미지원 → collect-*.yml name 필드 + calc/fill 비-수집기 명시 나열.
 # 새 수집기 추가 시 collect-*.yml 목록 누락은 scripts/audit-monitor-coverage.mjs (CI) 가 차단
-# (calc-*.yml·fill-missing-data.yml 은 audit 범위 밖 — 아래 목록에 수동 유지).
+# (calc-*.yml·backfill-new-apartments.yml 은 audit 범위 밖 — 아래 목록에 수동 유지).
 
 on:
   workflow_run:
@@ -40,7 +40,7 @@ on:
       - "Transport Accessibility Collection"
       - "소음 추정 수집"
       # ── 계산·일괄채우기 워크플로 (collect-* 아님 — audit 범위 밖, 수동 유지) ──
-      - "Fill Missing Data"
+      - "Backfill New Apartments"
       - "Exclusive Ratio Calculation"
       - "Layout Estimation"
       # ── 일일 데이터 갱신 (compute-scores + refresh-data, 세션 311 v4 추가) ──
