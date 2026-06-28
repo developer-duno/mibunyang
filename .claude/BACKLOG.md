@@ -377,7 +377,7 @@
   - 재오픈 트리거: (a) Managed Agents GA + 한국 리전 egress 지원 (b) KOSIS 수집에 AI 판단(통계표 자동 선정 등) 필요 발생.
   - 출처: platform.claude.com/docs/en/managed-agents/{self-hosted-sandboxes,overview} · /about-claude/pricing
 
-- 🟢 **fill-missing-data.yml 개명** (`backfill-new-apartments.yml`) + `monitor-collectors.yml` `workflow_run.workflows` 동기화 — spec Phase 3, 6/14 발화 2회 success 후 별도 PR (세션 307 spec out-of-scope)
+- ✅ **fill-missing-data.yml 개명** (`backfill-new-apartments.yml`) + `monitor-collectors.yml` `workflow_run.workflows` 동기화 (세션 453, 동작 보존) — `name: Fill Missing Data → Backfill New Apartments` + workflow_run 매칭 동기화(파일명 아닌 name 으로 매칭) + audit-env-keys.mjs/audit-fill-matrix.mjs 경로 갱신. spec `2026-05-25-fill-missing-data-redesign.md` Phase 3 완결
 
 - ✅ **register-naver-task.ps1 과잉 권한 정리 — `Highest` → `Limited` 코드 적용** (세션 359 발견 → 세션 368 PR)
   - `scripts/register-naver-task.ps1` 이 네이버 로컬 수집 스케줄러를 관리자 상승 토큰(`-RunLevel Highest`)으로 등록하던 것을 `New-ScheduledTaskPrincipal -LogonType Interactive -RunLevel Limited` 로 변경. 6단계 수집(HTTP fetch + Supabase upsert + 산술)은 일반 권한으로 충분 = 최소 권한 원칙 충족.
