@@ -27,7 +27,8 @@ describe("CatPanel", () => {
 
   it("초기 상태에서 aria-expanded=false", () => {
     render(<CatPanel cat={makeCat()} k="price" />);
-    const toggle = screen.getByRole("button");
+    // 헤더 토글 버튼만 aria-expanded 를 가짐 (도움말 ? 버튼과 구별, 세션: HelpHint 도입)
+    const toggle = screen.getByRole("button", { expanded: false });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 
@@ -46,7 +47,7 @@ describe("CatPanel", () => {
   // 펼치기/접기 토글
   it("클릭하면 펼쳐지고 다시 클릭하면 접힘", () => {
     render(<CatPanel cat={makeCat()} k="price" />);
-    const toggle = screen.getByRole("button");
+    const toggle = screen.getByRole("button", { expanded: false });
 
     // 펼치기
     fireEvent.click(toggle);
@@ -60,14 +61,14 @@ describe("CatPanel", () => {
   // 키보드 접근성 (Enter/Space)
   it("Enter 키로 펼침 토글", () => {
     render(<CatPanel cat={makeCat()} k="price" />);
-    const toggle = screen.getByRole("button");
+    const toggle = screen.getByRole("button", { expanded: false });
     fireEvent.keyDown(toggle, { key: "Enter" });
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("Space 키로 펼침 토글", () => {
     render(<CatPanel cat={makeCat()} k="price" />);
-    const toggle = screen.getByRole("button");
+    const toggle = screen.getByRole("button", { expanded: false });
     fireEvent.keyDown(toggle, { key: " " });
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
@@ -76,7 +77,7 @@ describe("CatPanel", () => {
   it("펼치면 모든 서브지표가 표시됨", () => {
     const cat = makeCat();
     render(<CatPanel cat={cat} k="price" />);
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
 
     // 펼친 상태에서 모든 서브지표 이름 확인
     cat.subs.forEach((s) => {
@@ -120,12 +121,13 @@ describe("CatPanel", () => {
   // defaultExpanded (세션 409 D2b) — 종합 탭 미니카드 클릭 시 해당 카테고리 자동 펼침용.
   it("defaultExpanded=true 면 초기 aria-expanded=true (미니카드 자동 펼침)", () => {
     render(<CatPanel cat={makeCat()} k="price" defaultExpanded />);
-    expect(screen.getByRole("button").getAttribute("aria-expanded")).toBe("true");
+    // 헤더 토글만 aria-expanded 보유 (도움말 ? 버튼 제외)
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
   });
 
   it("defaultExpanded 미전달이면 초기 aria-expanded=false (기존 동작 보존)", () => {
     render(<CatPanel cat={makeCat()} k="price" />);
-    expect(screen.getByRole("button").getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
   });
 
   // 서브지표 강/약 부호 기호 (세션 434 점수 근거 투명화 C) — 색맹 접근성: 색만 의존 않고 기호 병행.
@@ -169,5 +171,18 @@ describe("CatPanel", () => {
     expect(screen.queryByLabelText("강점")).toBeNull();
     expect(screen.queryByLabelText("보통")).toBeNull();
     expect(screen.queryByLabelText("약점")).toBeNull();
+  });
+
+  // 카테고리 제목 옆 도움말(?) — 손님이 카테고리 의미를 이해하도록 (catHelp 단일 출처)
+  it("카테고리 제목 옆에 도움말 트리거를 노출한다", () => {
+    render(<CatPanel cat={makeCat({ label: "가격 매력도" })} k="price" />);
+    expect(screen.getByLabelText("가격 매력도 풀이 보기")).toBeInTheDocument();
+  });
+
+  it("도움말을 클릭하면 카테고리 설명이 나타난다", () => {
+    render(<CatPanel cat={makeCat({ label: "가격 매력도" })} k="price" />);
+    fireEvent.click(screen.getByLabelText("가격 매력도 풀이 보기"));
+    // catHelp("price") 고유 문구 — 서브지표 "적정가괴리" 와 겹치지 않게 "합리적" 으로 특정
+    expect(screen.getByText(/합리적/)).toBeInTheDocument();
   });
 });

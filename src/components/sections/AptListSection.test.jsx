@@ -24,6 +24,9 @@ function makeProps(overrides = {}) {
     budgetMin: "",
     budgetMax: "",
     filterRegion: "전체",
+    moveInFilter: "전체",
+    builderTier: "전체",
+    minScore: "",
     dataLoading: false,
     dataFreshnessText: "",
 
@@ -112,5 +115,29 @@ describe("AptListSection", () => {
       <AptListSection {...makeProps({ visible: [], filteredLength: 0, visibleCount: 0, filterRegion: "제주" })} />
     );
     expect(screen.getByText("해당 조건에 맞는 미분양 단지가 없습니다")).toBeInTheDocument();
+  });
+
+  // 0건 안내 — 활성 필터가 여러 개면 "여러 조건이 겹쳐 있다"고 알려 손님이 원인 파악
+  it("0건 + 활성 필터 2개 이상이면 여러 조건 안내를 표시", () => {
+    render(
+      <AptListSection
+        {...makeProps({
+          visible: [],
+          filteredLength: 0,
+          visibleCount: 0,
+          filterRegion: "제주",
+          minScore: 80,
+        })}
+      />
+    );
+    expect(screen.getByText(/여러 조건/)).toBeInTheDocument();
+  });
+
+  // 0건 + 활성 필터 정확히 1개면 "겹침" 문구가 아니라 단일 안내
+  it("0건 + 활성 필터 1개면 여러 조건 문구를 표시하지 않는다", () => {
+    render(
+      <AptListSection {...makeProps({ visible: [], filteredLength: 0, visibleCount: 0, filterRegion: "제주" })} />
+    );
+    expect(screen.queryByText(/여러 조건/)).toBeNull();
   });
 });
