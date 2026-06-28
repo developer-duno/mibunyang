@@ -1,7 +1,7 @@
 name: Collect Maintenance Cost
 on:
   schedule:
-    - cron: '0 3 15 * *'   # 매월 15일 12:00 KST
+    - cron: '0 3 15-19 * *'   # 매월 15~19일 12:00 KST (5일 연속 — 미채움 ~1415건을 --limit=600×5회차로 며칠 내 완납, 15~19일은 다른 MOLIT 수집기 없는 빈 날이라 쿼터 충돌 0)
   workflow_dispatch:
     inputs:
       dry_run:
@@ -36,8 +36,8 @@ jobs:
 
       - name: Collect maintenance cost
         run: |
-          # --limit=1000: 단지당 ~6회 API 호출 → ~6000회/회차 (data.go.kr 일일 1만 한도 분산)
-          ARGS="--limit=1000"
+          # --limit=600: 단지당 ~6회 API 호출 → ~3600회/회차 (data.go.kr 일일 1만 한도 분산)
+          ARGS="--limit=600"
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
           node scripts/collectors/collect-maintenance.mjs $ARGS
         env:

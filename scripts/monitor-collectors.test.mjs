@@ -642,7 +642,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     // 따라서 latest collector_runs 는 5/17 success 에 고정 → 6/27 기준 ~40일 > 38 → ⑤-b 발화.
     // ③ checkStaleWorkflows 는 cancelled 의 GH created_at 으로 "신선" 마스킹돼 못 잡음 = ⑤ 가 유일.
     const issues = checkExternalApiStale(
-      [{ collector: "maintenance", stale_days: 38, owner: "국토부 공동주택 관리비 (월 15일 cron + 1주 여유)" }],
+      [{ collector: "maintenance", stale_days: 38, owner: "국토부 공동주택 관리비 (월 15~19일 cron + 1주 여유)" }],
       {
         maintenance: [
           { status: "success", ok_count: 3, finished_at: "2026-05-17T07:15:52Z" }, // 41일 전 > 38
