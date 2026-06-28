@@ -34,7 +34,7 @@
  *   article_confirm_ymd: string | null; last_seen_at: string;
  * }} ArticleRow
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, upsertBatch, log, logError, today, selectAll, setupGracefulShutdown } from "./_shared.mjs";
+import { loadEnv, getMibuyangSupabase, upsertBatch, log, logError, selectAll, setupGracefulShutdown, sleep } from "./_shared.mjs";
 
 loadEnv();
 
@@ -47,7 +47,6 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
 // ── 상수 (Python constants.py 포트) ────────────────────────
 const NAVER_BASE = "https://new.land.naver.com";
 const NAVER_SEARCH_API = `${NAVER_BASE}/api/search`;
-const NAVER_COMPLEX_API = `${NAVER_BASE}/api/complexes`;
 const NAVER_ARTICLES_API = `${NAVER_BASE}/api/articles/complex`;
 const NAVER_ARTICLE_DETAIL_API = `${NAVER_BASE}/api/articles`;
 
@@ -98,11 +97,6 @@ async function throttle() {
     await sleep(MIN_INTERVAL - elapsed);
   }
   lastRequestTime = Date.now();
-}
-
-/** @param {number} ms */
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
 }
 
 /** 캐시 조회 @param {string} key */
@@ -260,13 +254,6 @@ async function getArticleDetail(articleNo) {
   return requestWithRetry(`${NAVER_ARTICLE_DETAIL_API}/${articleNo}`, {}, true);
 }
 
-/** 단지 상세 @param {string} complexId */
-async function getComplexDetail(complexId) {
-  return requestWithRetry(`${NAVER_COMPLEX_API}/${complexId}`, {}, true, complexId);
-}
-
-
-
 // ── 가격 파싱 (Python _parse_price_str 포트) ───────────────
 
 /** "2억 5,000" → 25000, "5천" → 5000, "2억 3천" → 23000 (만원) @param {string | null | undefined} str */
@@ -412,7 +399,6 @@ async function main() {
   }
 
   // 1. Supabase에서 미분양 아파트 좌표 조회
-  const sb = getSupabase();
   const sbMibunyang = getMibuyangSupabase();
   // selectAll: 1000행 제한 자동 페이지네이션
   const apartments = await selectAll(

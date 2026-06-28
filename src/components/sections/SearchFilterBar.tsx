@@ -136,6 +136,22 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   const sortLabel = sortKey !== "total" ? SORT_OPTIONS.find((s) => s.key === sortKey)?.pcLabel : undefined;
   const detailActive = !!(minScore || builderTier !== "전체" || benefitOnly || subwayOnly);
 
+  /* undo/redo 버튼 공용 스타일 (active = canUndo/canRedo, undefined → 비활성) */
+  const undoRedoBtnStyle = (active?: boolean) => ({
+    flexShrink: 0,
+    height: 36,
+    width: 36,
+    fontSize: F.base,
+    background: active ? C.slate100 : "#F1F5F9",
+    color: active ? C.slate600 : "#CBD5E1",
+    border: `1px solid ${active ? C.border : "#E2E8F0"}`,
+    borderRadius: 6,
+    cursor: active ? "pointer" : "default",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  });
+
   return (
     <div
       ref={barRef}
@@ -269,46 +285,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         {/* undo/redo */}
         {(canUndo || canRedo) && (
           <>
-            <button
-              onClick={onUndo}
-              disabled={!canUndo}
-              aria-label="필터 되돌리기"
-              style={{
-                flexShrink: 0,
-                height: 36,
-                width: 36,
-                fontSize: F.base,
-                background: canUndo ? C.slate100 : "#F1F5F9",
-                color: canUndo ? C.slate600 : "#CBD5E1",
-                border: `1px solid ${canUndo ? C.border : "#E2E8F0"}`,
-                borderRadius: 6,
-                cursor: canUndo ? "pointer" : "default",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+            <button onClick={onUndo} disabled={!canUndo} aria-label="필터 되돌리기" style={undoRedoBtnStyle(canUndo)}>
               ↩
             </button>
-            <button
-              onClick={onRedo}
-              disabled={!canRedo}
-              aria-label="필터 다시실행"
-              style={{
-                flexShrink: 0,
-                height: 36,
-                width: 36,
-                fontSize: F.base,
-                background: canRedo ? C.slate100 : "#F1F5F9",
-                color: canRedo ? C.slate600 : "#CBD5E1",
-                border: `1px solid ${canRedo ? C.border : "#E2E8F0"}`,
-                borderRadius: 6,
-                cursor: canRedo ? "pointer" : "default",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+            <button onClick={onRedo} disabled={!canRedo} aria-label="필터 다시실행" style={undoRedoBtnStyle(canRedo)}>
               ↪
             </button>
           </>

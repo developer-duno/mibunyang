@@ -185,16 +185,20 @@ export const AptCard = memo(
       )[topKey];
       if (!cat) return null;
       // 긍정 판정: total>=50. price 는 deviation<0(비쌈) 모순(116건) 차단 — 부호 우선. benefit noData 제외.
-      const positive =
-        topKey === "price"
-          ? (Number(cat.fairPrice) || 0) > 0
+      let positive: boolean;
+      if (topKey === "price") {
+        // 적정가 산출됐으면 deviation 부호 우선(비쌈=음수 차단), 없으면 total 로 판정
+        positive =
+          (Number(cat.fairPrice) || 0) > 0
             ? cat.deviation != null
               ? Number(cat.deviation) >= 0
               : cat.total >= 50
-            : cat.total >= 50
-          : topKey === "benefit"
-            ? !cat.noData && cat.total >= 50
             : cat.total >= 50;
+      } else if (topKey === "benefit") {
+        positive = !cat.noData && cat.total >= 50;
+      } else {
+        positive = cat.total >= 50;
+      }
       return positive ? catVerdict(topKey, cat as never) : null;
     }, [profileWeights, res.cats]);
 
