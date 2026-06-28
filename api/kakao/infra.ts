@@ -38,8 +38,17 @@ async function searchSubway(apiKey: string, lat: number, lng: number) {
 }
 
 async function fetchAllForApartment(apiKey: string, apt: any) {
-  const keys = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park", "subwayDist"];
-  const defaults = [0, 0, 0, 0, 0, 0, 0, 0, 9999];
+  const fields = [
+    { key: "hospital", fallback: 0 },
+    { key: "mart", fallback: 0 },
+    { key: "conv", fallback: 0 },
+    { key: "cafe", fallback: 0 },
+    { key: "culture", fallback: 0 },
+    { key: "bank", fallback: 0 },
+    { key: "pharmacy", fallback: 0 },
+    { key: "park", fallback: 0 },
+    { key: "subwayDist", fallback: 9999 },
+  ];
   const results = await Promise.allSettled([
     searchCategory(apiKey, apt.lat, apt.lng, "HP8"),
     searchCategory(apiKey, apt.lat, apt.lng, "MT1"),
@@ -52,7 +61,7 @@ async function fetchAllForApartment(apiKey: string, apt: any) {
     searchSubway(apiKey, apt.lat, apt.lng),
   ]);
   const out: Record<string, number> = {};
-  results.forEach((r, i) => { out[keys[i]] = r.status === "fulfilled" ? r.value : defaults[i]; });
+  results.forEach((r, i) => { out[fields[i].key] = r.status === "fulfilled" ? r.value : fields[i].fallback; });
   return out;
 }
 
