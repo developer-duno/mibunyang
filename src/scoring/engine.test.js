@@ -1,6 +1,7 @@
 // @ts-check
 import { describe, it, expect } from 'vitest';
 import { PROFILES } from '@/constants/profiles';
+import { INFRA_CONFIG } from '@/constants/scoringTiers';
 import {
   getAgeCoeff, getAreaAdj,
   scorePrice, scoreLocation, scoreProduct,
@@ -144,6 +145,22 @@ describe('scoreLocation', () => {
   });
   it('미등록 지역도 에러 없이 계산', () => {
     expect(scoreLocation(makeApt({ region: "미등록" })).total).toBeGreaterThanOrEqual(0);
+  });
+  // --- 세션 454: 가중치 합 1.0 불변식 (scoreLocation.ts L102/L93 + INFRA_CONFIG) ---
+  it('외부 5항목 가중치 합 = 1.00 (transport·school·infra·env·noxSafe)', () => {
+    // scoreLocation.ts L102: 0.30 + 0.25 + 0.20 + 0.10 + 0.15
+    const w = [0.30, 0.25, 0.20, 0.10, 0.15];
+    expect(Math.round(w.reduce((a, b) => a + b, 0) * 100) / 100).toBe(1.00);
+  });
+  it('대기질 복합 가중치 합 = 1.00 (PM2.5·PM10·O3)', () => {
+    // scoreLocation.ts L93: 0.40 + 0.35 + 0.25
+    const w = [0.40, 0.35, 0.25];
+    expect(Math.round(w.reduce((a, b) => a + b, 0) * 100) / 100).toBe(1.00);
+  });
+  it('INFRA_CONFIG 10항목 weight 합 = 1.00', () => {
+    const sum = INFRA_CONFIG.reduce((a, c) => a + c.weight, 0);
+    expect(Math.round(sum * 100) / 100).toBe(1.00);
+    expect(INFRA_CONFIG).toHaveLength(10);
   });
 });
 
@@ -406,6 +423,47 @@ describe('computeRegionalMedians', () => {
     // 세션 445: unsoldRate null(=폭발값 무력화) 단지는 지역 중위값 분모에서 제외 → 20 단독.
     expect(m["경기"].unsoldRate).toBe(20);
   });
+  // --- 세션 454: edge case 보강 (computeRegionalMedians.ts L31/L37/L40/L43) ---
+  it('짝수 개수 -> 중앙 2개 평균', () => {
+    const apts = /** @type {any} */ ([
+      { region: "서울", pir: 4 }, { region: "서울", pir: 6 },
+      { region: "서울", pir: 8 }, { region: "서울", pir: 10 },
+    ]);
+    // 정렬 [4,6,8,10], 중앙 2개(6,8) 평균 = 7
+    expect(computeRegionalMedians(apts)["서울"].pir).toBe(7);
+  });
+  it('단일 원소 -> 그 값', () => {
+    const apts = /** @type {any} */ ([{ region: "부산", psr: 1.5 }]);
+    expect(computeRegionalMedians(apts)["부산"].psr).toBe(1.5);
+  });
+  it('region null/빈문자 -> "기타" 버킷 (L31)', () => {
+    const apts = /** @type {any} */ ([
+      { region: null, pir: 5 }, { region: "", pir: 7 },
+    ]);
+    const m = computeRegionalMedians(apts);
+    // 둘 다 "기타" 버킷 → [5,7] 평균 6
+    expect(m["기타"].pir).toBe(6);
+    expect(m[""]).toBeUndefined();
+  });
+  it('NaN/음수 필터 — pir 등 Number.isFinite, maint 는 >0 만 (L33-37)', () => {
+    const apts = /** @type {any} */ ([
+      { region: "대전", pir: NaN, psr: -1, avgMaintenanceCost: -100 },
+      { region: "대전", pir: 5, psr: 0.9, avgMaintenanceCost: 0 },
+      { region: "대전", pir: 7, psr: 1.1, avgMaintenanceCost: 200 },
+    ]);
+    const m = computeRegionalMedians(apts);
+    // pir: NaN 제외 → [5,7] 평균 6. psr: -1 은 Number.isFinite 통과(음수도 finite)라 [-1,0.9,1.1] 중앙값 0.9.
+    expect(m["대전"].pir).toBe(6);
+    expect(m["대전"].psr).toBe(0.9);
+    // maint: -100·0 제외(>0 만), 200 단독 → 200
+    expect(m["대전"].maint).toBe(200);
+  });
+  it('해당 지역 모든 값 null -> 각 필드 null (L40)', () => {
+    const apts = /** @type {any} */ ([{ region: "광주", pir: null, psr: null }]);
+    const m = computeRegionalMedians(apts);
+    expect(m["광주"].pir).toBeNull();
+    expect(m["광주"].psr).toBeNull();
+  });
 });
 
 describe('calcCats', () => {
@@ -421,6 +479,22 @@ describe('calcCats', () => {
   });
   it('대부분 null인 아파트도 에러 없이 계산', () => {
     Object.values(calcCats(/** @type {any} */ ({ id: 99, name: "널단지", region: "경기", builder: null, price: null }), {})).forEach(c => {
+      expect(c.total).toBeGreaterThanOrEqual(0);
+      expect(c.total).toBeLessThanOrEqual(100);
+    });
+  });
+  // --- 세션 454: sanitize null 안전성 보강 (engine.ts L22-95) ---
+  it('한글 NFC 정규화 — 분해형(NFD) region 도 조합형과 동일 결과 (str L23)', () => {
+    // 분해형 "경기"(NFD, 5글자)는 === 로는 조합형 "경기"(2글자)와 불일치하나,
+    // sanitize str() 의 .normalize("NFC") 가 통일 → regionMedians["경기"] 키 매칭 작동.
+    const rm = { "경기": { pir: 5, psr: 0.8, unsoldRate: 15, supplyRatio: 100, maint: 0 } };
+    const composed = calcCats(makeApt({ region: "경기", pir: null }), { regionMedians: rm });
+    const decomposed = calcCats(makeApt({ region: "경기".normalize("NFD"), pir: null }), { regionMedians: rm });
+    // pir null → 지역 중위값(5) 되채움. NFC 통일 덕에 두 입력이 같은 버킷 매칭 → price 카테고리 동일.
+    expect(decomposed.price.total).toBe(composed.price.total);
+  });
+  it('num() — price=NaN 도 throw 없이 0~100 (L24-26 NaN→fallback)', () => {
+    Object.values(calcCats(makeApt({ price: NaN, area: NaN }), {})).forEach(c => {
       expect(c.total).toBeGreaterThanOrEqual(0);
       expect(c.total).toBeLessThanOrEqual(100);
     });
