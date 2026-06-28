@@ -12,7 +12,7 @@ type CompareSheetProps = {
   profile: string;
   isDesktop?: boolean;
   isLoggedIn?: boolean;
-  showToast?: (msg: string) => void;
+  showToast?: (_msg: string) => void;
 };
 
 const btnStyle = {

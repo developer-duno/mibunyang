@@ -141,6 +141,7 @@ export const DetailModal = memo(function DetailModal({ item, onClose, isComp, on
   // hook 순서 보장 위해 conditional return 이전에 호출. item 미정의 시 빈 객체 반환.
   const mergedApt = useMemo(
     () => (item && prices ? { ...item.apt, ...prices } : item?.apt),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- item?.apt 가 item ref 변경을 추적(item 바뀌면 apt 도 새 ref)하므로 단지 전환 무효화 충분. item 본문 추가 불필요.
     [item?.apt.id, item?.apt, prices],
   );
 
