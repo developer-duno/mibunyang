@@ -1,7 +1,9 @@
 import { memo, useState } from "react";
 import { C, F, catCol, gr } from "@/theme";
 import { Bar, EmphasisBadge } from "./primitives";
+import { HelpHint } from "./HelpHint";
 import { SUB_CONTEXT, PRODUCT_MAX } from "@/constants/subContext";
+import { catHelp } from "@/constants/catHelp";
 import type { Res } from "@/types/scoring";
 
 type SubScoreItem = { name: string; score: number; info?: string };
@@ -106,6 +108,7 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>{cat.label}</span>
+          <HelpHint text={catHelp(k)} label={cat.label} />
           <span
             style={{
               fontSize: F.sm,

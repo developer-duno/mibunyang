@@ -139,7 +139,18 @@ export const AptListSection = memo(function AptListSection({
                 ? "예산 범위에 맞는 단지가 없습니다"
                 : "해당 조건에 맞는 미분양 단지가 없습니다"}
           </div>
-          <div style={{ fontSize: F.sm, lineHeight: 1.6, marginBottom: 8 }}>적용된 필터를 확인해주세요</div>
+          <div style={{ fontSize: F.sm, lineHeight: 1.6, marginBottom: 8 }}>
+            {[
+              searchQuery.trim(),
+              filterRegion !== "전체",
+              budgetMin || budgetMax,
+              moveInFilter !== "전체",
+              builderTier !== "전체",
+              minScore,
+            ].filter(Boolean).length >= 2
+              ? "여러 조건이 겹쳐 있어요. 아래 필터를 하나씩 풀어보세요"
+              : "적용된 필터를 확인해주세요"}
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 6, marginBottom: 12 }}>
             {searchQuery.trim() && (
               <span
