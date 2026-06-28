@@ -215,6 +215,30 @@ describe("molitApiCall", () => {
       .rejects.toThrow("AbortError");
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
+
+  // ── opts override (세션 451: collector-local timeout/retry 축소) ──
+  // 공유 상수(MOLIT_TIMEOUT_MS=30000 / MOLIT_MAX_RETRIES=3) 를 호출처에서 좁힐 수 있어야 함.
+  // molit-units·molit-building-info 는 opts 미전달 = 기존 30s×3 그대로(cross-collector 회귀 0).
+  it("opts.maxRetries=1 → 500 에러 시 1회만 호출 후 throw", async () => {
+    mockFetch.mockResolvedValue(errRes(500));
+    await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key", { maxRetries: 1 }))
+      .rejects.toThrow("재시도 소진");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("opts 미전달 (기본) → 기존 3회 재시도 보존 (cross-collector 회귀 가드)", async () => {
+    mockFetch.mockResolvedValue(errRes(500));
+    await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key"))
+      .rejects.toThrow("재시도 소진");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("opts.maxRetries=2 → 2회 호출 후 throw", async () => {
+    mockFetch.mockResolvedValue(errRes(503));
+    await expect(molitApiCall("test", API_LIST_BASE, "ep", {}, "key", { maxRetries: 2 }))
+      .rejects.toThrow("재시도 소진");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ── fetchSidoAptList ─────────────────────────────────────────

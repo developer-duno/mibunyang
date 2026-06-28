@@ -62,7 +62,9 @@ const FIELDS_MAP = {
  */
 export async function fetchTotalHouseholds(kaptCode) {
   try {
-    const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY || "");
+    // 8s/1retry 로 좁힘(cost endpoint 톤 일치) — 공유 상수 30s×3 은 hang 누적의 진앙(세션 451).
+    // _molit-api 전역 상수는 molit-units·molit-building-info 공유라 maintenance-local opts 로만 좁힌다.
+    const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY || "", { timeoutMs: 8000, maxRetries: 1 });
     const body = /** @type {{ response?: { body?: { item?: Record<string, unknown>; items?: { item?: Record<string, unknown> } } } }} */ (json);
     const item = body?.response?.body?.item ?? body?.response?.body?.items?.item;
     const cnt = parseInt(String(item?.kaptdaCnt ?? ""), 10);

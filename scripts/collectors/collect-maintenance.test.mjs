@@ -108,6 +108,15 @@ describe("fetchTotalHouseholds", () => {
     expect(result).toBeNull();
     expect(mockMolitApiCall).toHaveBeenCalledTimes(1);
   });
+
+  // 세션 451: households 호출도 8s/1retry 로 좁혀 hang 누적 차단 (cost endpoint 톤 일치).
+  // 공유 상수(_molit-api MOLIT_TIMEOUT_MS=30000/MOLIT_MAX_RETRIES=3) 전역 변경 없이 maintenance-local opts 만.
+  it("molitApiCall 에 8s timeout + 1 retry opts 를 전달 (hang 누적 차단)", async () => {
+    mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(500));
+    await fetchTotalHouseholds("K010");
+    const opts = mockMolitApiCall.mock.calls[0][5];
+    expect(opts).toEqual({ timeoutMs: 8000, maxRetries: 1 });
+  });
 });
 
 // ── fetchMaintenanceCost (W3 5 항목 분리 — object 구조) ────────
