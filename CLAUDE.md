@@ -43,7 +43,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지. 손님 마케팅 수신 동의·전화번호(선택, VITE_KAKAO_PHONE_SCOPE 토글) 수집 세션 427 |
 | **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |
 | **수집** | GitHub Actions (38개, KOSIS·childcare 로컬 이전) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
-| **테스트** | Vitest + Playwright E2E (13 spec) | `npm run test` / `npm run test:e2e` |
+| **테스트** | Vitest + Playwright E2E | `npm run test` / `npm run test:e2e` |
 | **모니터링** | Vercel Analytics + Speed Insights | 페이지뷰/Web Vitals/커스텀 이벤트 |
 
 번들: vendor 190KB / index ~185KB / html2canvas+jsPDF 200+400KB(dynamic import).
@@ -67,7 +67,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | 디렉토리 CLAUDE.md | 핵심 내용 |
 |---|---|
 | `src/scoring/` | 가중치 합계 100, 클램핑, null 처리, 스코어링 파이프라인 |
-| `src/components/` | memo 54개, 접근성, **반응형 레이아웃**, **데스크톱 키보드/테마** |
+| `src/components/` | React.memo 컴포넌트군, 접근성, **반응형 레이아웃**, **데스크톱 키보드/테마** |
 | `src/hooks/` | Hook 호출 순서, 의존성 13개, **React 성능 패턴** (useDeferredValue/useTransition) |
 | `api/` | JS null 함정, 한글 인코딩, withHandler, **인증/세션 KV**, **비로그인 블라인드 정책** |
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
