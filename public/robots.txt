@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# 네이버 검색 로봇 (구글 Googlebot 과 별개)
+User-agent: Yeti
+Allow: /
+
+Sitemap: https://www.xn--hg3bi2ac4o1ig57cnoa.com/sitemap.xml
