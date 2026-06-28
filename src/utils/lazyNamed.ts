@@ -11,9 +11,6 @@ import { lazy, type ComponentType } from "react";
  * @param factory  () => import("경로 리터럴") — named export 들을 담은 모듈 Promise
  * @param name     default 로 매핑할 named export 키
  */
-export function lazyNamed<K extends string>(
-  factory: () => Promise<Record<K, ComponentType<any>>>,
-  name: K,
-) {
+export function lazyNamed<K extends string>(factory: () => Promise<Record<K, ComponentType<any>>>, name: K) {
   return lazy(() => factory().then((m) => ({ default: m[name] })));
 }

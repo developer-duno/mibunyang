@@ -37,7 +37,7 @@ describe("Tooltip — 표시 + 접근성", () => {
     render(
       <Tooltip term="민영">
         <span data-testid="trigger">민영주택</span>
-      </Tooltip>,
+      </Tooltip>
     );
     expect(screen.getByTestId("trigger")).toBeDefined();
     // 초기 상태에서는 tooltip role 미노출
@@ -48,7 +48,7 @@ describe("Tooltip — 표시 + 접근성", () => {
     const { container } = render(
       <Tooltip term="알 수 없는 용어">
         <span>알 수 없음</span>
-      </Tooltip>,
+      </Tooltip>
     );
     // 사전 미등록 → children 만 노출, tooltip ARIA 없음
     expect(container.querySelector('[role="button"]')).toBeNull();
@@ -58,7 +58,7 @@ describe("Tooltip — 표시 + 접근성", () => {
     render(
       <Tooltip term="1순위">
         <span>1순위</span>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole("button");
     fireEvent.mouseEnter(trigger);
@@ -70,7 +70,7 @@ describe("Tooltip — 표시 + 접근성", () => {
     render(
       <Tooltip term="특별공급">
         <span>특별공급</span>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole("button");
     fireEvent.focus(trigger);
@@ -81,7 +81,7 @@ describe("Tooltip — 표시 + 접근성", () => {
     render(
       <Tooltip term="민영">
         <span>민영</span>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole("button");
     fireEvent.keyDown(trigger, { key: "Enter" });
@@ -94,7 +94,7 @@ describe("Tooltip — 표시 + 접근성", () => {
     render(
       <Tooltip term="민영">
         <span>민영</span>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole("button");
     fireEvent.focus(trigger);
@@ -107,7 +107,7 @@ describe("Tooltip — 표시 + 접근성", () => {
     render(
       <Tooltip term="민영">
         <span>민영</span>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole("button");
     expect(trigger.getAttribute("aria-describedby")).toBeNull();
@@ -119,7 +119,7 @@ describe("Tooltip — 표시 + 접근성", () => {
     render(
       <Tooltip term="알수없음" definition="직접 정의">
         <span>커스텀</span>
-      </Tooltip>,
+      </Tooltip>
     );
     const trigger = screen.getByRole("button");
     fireEvent.mouseEnter(trigger);

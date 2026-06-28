@@ -24,10 +24,7 @@ export async function exportAsImage(element: HTMLElement, filename: string = "co
 
 /** DOM 요소 → PDF 다운로드 */
 export async function exportAsPdf(element: HTMLElement, filename: string = "compare.pdf"): Promise<void> {
-  const [canvas, { jsPDF }] = await Promise.all([
-    captureElement(element),
-    import("jspdf"),
-  ]);
+  const [canvas, { jsPDF }] = await Promise.all([captureElement(element), import("jspdf")]);
   const imgData = canvas.toDataURL("image/png");
   const pdfW = A4_WIDTH_MM;
   const pdfH = (canvas.height * pdfW) / canvas.width;
@@ -40,6 +37,8 @@ export async function exportAsPdf(element: HTMLElement, filename: string = "comp
   pdf.addImage(imgData, "PNG", (pageW - finalW) / 2, 10, finalW, finalH);
   pdf.setFontSize(8);
   pdf.setTextColor(150);
-  pdf.text(`미분양 비교 엔진 v3.0 — ${new Date().toLocaleDateString("ko-KR")}`, pageW / 2, pageH - 5, { align: "center" });
+  pdf.text(`미분양 비교 엔진 v3.0 — ${new Date().toLocaleDateString("ko-KR")}`, pageW / 2, pageH - 5, {
+    align: "center",
+  });
   pdf.save(filename);
 }

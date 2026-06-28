@@ -35,7 +35,9 @@ export const PresaleResultList = memo(function PresaleResultList({ items, onOpen
 
   return (
     <div>
-      <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 6 }}>청약홈 잔여세대 경쟁률 기준 · 경쟁률 높은 순</div>
+      <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 6 }}>
+        청약홈 잔여세대 경쟁률 기준 · 경쟁률 높은 순
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {items.slice(0, visibleCount).map(({ apt }) => {
           const rate = Number(apt.competitionRate);
@@ -55,19 +57,39 @@ export const PresaleResultList = memo(function PresaleResultList({ items, onOpen
                   onOpenDetail?.(apt.id ?? "");
                 }
               }}
-              style={{ padding: "10px 12px", background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, cursor: "pointer", minHeight: 44 }}
+              style={{
+                padding: "10px 12px",
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                cursor: "pointer",
+                minHeight: 44,
+              }}
             >
-              <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div
+                style={{
+                  fontSize: F.base,
+                  fontWeight: 700,
+                  color: C.text,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {apt.name}
               </div>
               <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
-                {apt.region} {apt.gu || ""} · 전용 {apt.area != null ? Number(apt.area).toFixed(1) : "-"}㎡ · 분양가 {fmtPrice(apt.price)}
+                {apt.region} {apt.gu || ""} · 전용 {apt.area != null ? Number(apt.area).toFixed(1) : "-"}㎡ · 분양가{" "}
+                {fmtPrice(apt.price)}
               </div>
               <div style={{ fontSize: F.sm, fontWeight: 700, color: C.indigo, marginTop: 4 }}>
                 {isShort ? <span style={{ color: C.red }}>미달 | </span> : null}
                 청약 경쟁률 {fmtRate(rate)}
                 {supply != null && applicants != null && (
-                  <span style={{ fontSize: F.xs, fontWeight: 400, color: C.muted }}> · 공급 {Number(supply).toLocaleString()}세대 · 신청 {Number(applicants).toLocaleString()}명</span>
+                  <span style={{ fontSize: F.xs, fontWeight: 400, color: C.muted }}>
+                    {" "}
+                    · 공급 {Number(supply).toLocaleString()}세대 · 신청 {Number(applicants).toLocaleString()}명
+                  </span>
                 )}
               </div>
             </div>
@@ -78,8 +100,18 @@ export const PresaleResultList = memo(function PresaleResultList({ items, onOpen
         <div style={{ textAlign: "center", padding: "12px 0" }}>
           <button
             type="button"
-            onClick={() => setVisibleCount(v => v + PAGE)}
-            style={{ padding: "10px 32px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, fontSize: F.base, fontWeight: 600, cursor: "pointer", minHeight: 44 }}
+            onClick={() => setVisibleCount((v) => v + PAGE)}
+            style={{
+              padding: "10px 32px",
+              borderRadius: 8,
+              border: `1px solid ${C.border}`,
+              background: C.card,
+              color: C.text,
+              fontSize: F.base,
+              fontWeight: 600,
+              cursor: "pointer",
+              minHeight: 44,
+            }}
           >
             더 보기 ({items.length - visibleCount}개 남음)
           </button>

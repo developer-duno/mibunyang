@@ -13,10 +13,7 @@ export function normalizeQuery(q: string): string {
  * 단지명·지역·구 중 하나라도 정규화된 검색어를 부분 포함하면 true.
  * @param normalizedQuery normalizeQuery 를 거친 값. 빈 문자열이면 전체 통과.
  */
-export function matchesQuery(
-  apt: { name?: string; region?: string; gu?: string },
-  normalizedQuery: string,
-): boolean {
+export function matchesQuery(apt: { name?: string; region?: string; gu?: string }, normalizedQuery: string): boolean {
   if (!normalizedQuery) return true;
   // name/region/gu 모두 optional + gu 일부 누락 → ?? "" 폴백 필수(undefined 메서드 호출 방지)
   const hay = `${apt.name ?? ""}${apt.region ?? ""}${apt.gu ?? ""}`.toLowerCase().replace(WS, "");

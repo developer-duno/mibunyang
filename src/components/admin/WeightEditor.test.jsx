@@ -35,7 +35,7 @@ describe("WeightEditor", () => {
   it("모든 프로필 탭을 표시한다", () => {
     render(<WeightEditor {...defaultProps()} />);
     // 프로필 이름은 탭 버튼 + 테이블 row 둘 다 등장 → getAllByText 로 검증
-    PROFILE_KEYS.forEach(key => {
+    PROFILE_KEYS.forEach((key) => {
       const occurrences = screen.getAllByText(/** @type {any} */ (PROFILES)[key].name);
       expect(occurrences.length).toBeGreaterThanOrEqual(2); // 탭 + row
     });
@@ -43,7 +43,7 @@ describe("WeightEditor", () => {
 
   it("6 카테고리 헤더(입지/상품/가격/안전/혜택/미래)를 표시한다", () => {
     render(<WeightEditor {...defaultProps()} />);
-    CAT_LABELS.forEach(label => {
+    CAT_LABELS.forEach((label) => {
       // 헤더에서 해당 라벨이 최소 1회 등장 (헤더 + 미리보기에서 중복 가능)
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     });

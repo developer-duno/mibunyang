@@ -10,10 +10,12 @@ import { _clearHistoryCache } from "./useHistoryData";
 beforeEach(() => {
   vi.restoreAllMocks();
   _clearHistoryCache();
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(/** @type {Response} */ ({
-    ok: true,
-    json: () => Promise.resolve({ ok: true, data: [{ price: 50000 }] }),
-  }));
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    /** @type {Response} */ ({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, data: [{ price: 50000 }] }),
+    })
+  );
 });
 
 describe("usePriceHistory", () => {
@@ -22,10 +24,7 @@ describe("usePriceHistory", () => {
     const { result } = renderHook(() => usePriceHistory("ah-100"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("/api/supabase/prices"),
-      expect.any(Object),
-    );
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/supabase/prices"), expect.any(Object));
   });
 
   // 데이터 반환 확인
@@ -43,10 +42,7 @@ describe("usePriceHistory", () => {
     renderHook(() => usePriceHistory("ah-1", ["ah-1", "ah-2"]));
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining("apartment_ids="),
-        expect.any(Object),
-      );
+      expect(fetch).toHaveBeenCalledWith(expect.stringContaining("apartment_ids="), expect.any(Object));
     });
   });
 });

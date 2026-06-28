@@ -82,7 +82,8 @@ describe("LoanAnalysis", () => {
   // priceByArea가 있으면 상세 테이블 표시 (월이자 열 포함)
   it("priceByArea가 있으면 면적별 테이블에 월이자 열을 표시한다", () => {
     const apt = makeApt({
-      price: 50000, area: 84,
+      price: 50000,
+      area: 84,
       priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
       rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
     });
@@ -119,7 +120,8 @@ describe("LoanAnalysis", () => {
   // 전세대출 데이터 없으면 안내 메시지 표시
   it("전세 데이터 없으면 안내 메시지를 표시한다", () => {
     const apt = makeApt({
-      price: 50000, area: 84,
+      price: 50000,
+      area: 84,
       priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
       rentByArea: null,
     });
@@ -132,7 +134,8 @@ describe("LoanAnalysis", () => {
     // gap = 48000 - 25000 = 23000만원, rate = 3.8%
     // 월이자 = 23000 * 3.8 / 100 / 12 = 72.8 → 73만원
     const apt = makeApt({
-      price: 50000, area: 84,
+      price: 50000,
+      area: 84,
       priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
       rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
     });

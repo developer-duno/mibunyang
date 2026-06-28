@@ -1,25 +1,26 @@
 // @ts-check
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useFilterSort } from './useFilterSort';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import { useFilterSort } from "./useFilterSort";
 
 // URL location mock 헬퍼
 /** @param {string} search */
 function mockLocationSearch(search) {
   Object.defineProperty(window, "location", {
     value: { ...window.location, search, pathname: "/", origin: "https://test.com" },
-    writable: true, configurable: true,
+    writable: true,
+    configurable: true,
   });
 }
 
-describe('useFilterSort', () => {
+describe("useFilterSort", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
     mockLocationSearch("");
   });
 
-  it('기본 상태: 전체/전체/total', () => {
+  it("기본 상태: 전체/전체/total", () => {
     const { result } = renderHook(() => useFilterSort({}));
     expect(result.current.filterRegion).toBe("전체");
     expect(result.current.filterGu).toBe("전체");
@@ -28,35 +29,43 @@ describe('useFilterSort', () => {
     expect(result.current.budgetMax).toBe("");
   });
 
-  it('검색어 기본값은 빈 문자열', () => {
+  it("검색어 기본값은 빈 문자열", () => {
     const { result } = renderHook(() => useFilterSort({}));
     expect(result.current.searchQuery).toBe("");
   });
 
-  it('handleSearchChange 로 검색어 변경', () => {
+  it("handleSearchChange 로 검색어 변경", () => {
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.handleSearchChange("래미안"); });
+    act(() => {
+      result.current.handleSearchChange("래미안");
+    });
     expect(result.current.searchQuery).toBe("래미안");
   });
 
-  it('handleResetAll 이 검색어도 비움', () => {
+  it("handleResetAll 이 검색어도 비움", () => {
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.handleSearchChange("래미안"); });
+    act(() => {
+      result.current.handleSearchChange("래미안");
+    });
     expect(result.current.searchQuery).toBe("래미안");
-    act(() => { result.current.handleResetAll(); });
+    act(() => {
+      result.current.handleResetAll();
+    });
     expect(result.current.searchQuery).toBe("");
   });
 
-  it('검색어는 URL 에 동기화하지 않음 (일시적 탐색)', () => {
+  it("검색어는 URL 에 동기화하지 않음 (일시적 탐색)", () => {
     const replaceSpy = vi.spyOn(window.history, "replaceState");
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.handleSearchChange("래미안"); });
+    act(() => {
+      result.current.handleSearchChange("래미안");
+    });
     // URL 직렬화 대상이 아니므로 검색어로 인한 replaceState 호출 시 search 에 검색어가 안 실림
-    const calledWithSearch = replaceSpy.mock.calls.some(c => String(c[2] ?? "").includes("래미안"));
+    const calledWithSearch = replaceSpy.mock.calls.some((c) => String(c[2] ?? "").includes("래미안"));
     expect(calledWithSearch).toBe(false);
   });
 
-  it('localStorage에서 sortKey 복원', () => {
+  it("localStorage에서 sortKey 복원", () => {
     localStorage.setItem("mibunyang_sort", "price");
     const { result } = renderHook(() => useFilterSort({}));
     expect(result.current.sortKey).toBe("price");
@@ -68,46 +77,62 @@ describe('useFilterSort', () => {
     expect(result.current.sortKey).toBe("total");
   });
 
-  it('sortKey 변경 시 localStorage 저장', () => {
+  it("sortKey 변경 시 localStorage 저장", () => {
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.setSortKey("price"); });
+    act(() => {
+      result.current.setSortKey("price");
+    });
     expect(result.current.sortKey).toBe("price");
     expect(localStorage.getItem("mibunyang_sort")).toBe("price");
   });
 
   it('지역 변경 → 구 "전체" 리셋', () => {
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.handleGuChange("강남구"); });
+    act(() => {
+      result.current.handleGuChange("강남구");
+    });
     expect(result.current.filterGu).toBe("강남구");
-    act(() => { result.current.handleRegionChange("서울"); });
+    act(() => {
+      result.current.handleRegionChange("서울");
+    });
     expect(result.current.filterGu).toBe("전체");
     expect(result.current.filterRegion).toBe("서울");
   });
 
-  it('지역 변경 시 onFilterChange 콜백 호출', () => {
+  it("지역 변경 시 onFilterChange 콜백 호출", () => {
     const onFilterChange = vi.fn();
     const { result } = renderHook(() => useFilterSort({ onFilterChange }));
-    act(() => { result.current.handleRegionChange("서울"); });
+    act(() => {
+      result.current.handleRegionChange("서울");
+    });
     expect(onFilterChange).toHaveBeenCalledTimes(1);
   });
 
-  it('예산 변경 시 onFilterChange 콜백 호출', () => {
+  it("예산 변경 시 onFilterChange 콜백 호출", () => {
     const onFilterChange = vi.fn();
     const { result } = renderHook(() => useFilterSort({ onFilterChange }));
-    act(() => { result.current.handleBudgetMinChange("10000"); });
+    act(() => {
+      result.current.handleBudgetMinChange("10000");
+    });
     expect(onFilterChange).toHaveBeenCalledTimes(1);
   });
 
-  it('예산 초기화', () => {
+  it("예산 초기화", () => {
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.handleBudgetMinChange("10000"); });
-    act(() => { result.current.handleBudgetMaxChange("50000"); });
-    act(() => { result.current.handleBudgetReset(); });
+    act(() => {
+      result.current.handleBudgetMinChange("10000");
+    });
+    act(() => {
+      result.current.handleBudgetMaxChange("50000");
+    });
+    act(() => {
+      result.current.handleBudgetReset();
+    });
     expect(result.current.budgetMin).toBe("");
     expect(result.current.budgetMax).toBe("");
   });
 
-  it('getShareURL 반환', () => {
+  it("getShareURL 반환", () => {
     const { result } = renderHook(() => useFilterSort({}));
     expect(typeof result.current.getShareURL).toBe("function");
   });
@@ -132,7 +157,9 @@ describe("전체 초기화 + 프리셋", () => {
       result.current.handleUnitsMinChange("500");
       result.current.handleMoveInChange("입주예정");
     });
-    act(() => { result.current.handleResetAll(); });
+    act(() => {
+      result.current.handleResetAll();
+    });
     expect(result.current.filterRegion).toBe("전체");
     expect(result.current.filterGu).toBe("전체");
     expect(result.current.sortKey).toBe("total");
@@ -148,14 +175,22 @@ describe("전체 초기화 + 프리셋", () => {
   it("handleResetAll 시 onFilterChange 콜백 호출", () => {
     const onFilterChange = vi.fn();
     const { result } = renderHook(() => useFilterSort({ onFilterChange }));
-    act(() => { result.current.handleResetAll(); });
+    act(() => {
+      result.current.handleResetAll();
+    });
     expect(onFilterChange).toHaveBeenCalled();
   });
 
   it("applyPreset — 프리셋 값 적용", () => {
     const { result } = renderHook(() => useFilterSort({}));
     act(() => {
-      result.current.applyPreset({ budgetMax: "5", areaMin: "60", areaMax: "85", benefitOnly: true, sortKey: "benefit" });
+      result.current.applyPreset({
+        budgetMax: "5",
+        areaMin: "60",
+        areaMax: "85",
+        benefitOnly: true,
+        sortKey: "benefit",
+      });
     });
     expect(result.current.budgetMax).toBe("5");
     expect(result.current.areaMin).toBe("60");
@@ -169,8 +204,12 @@ describe("전체 초기화 + 프리셋", () => {
 
   it("applyPreset — 기존 필터 초기화 후 적용", () => {
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.handleRegionChange("서울"); });
-    act(() => { result.current.applyPreset({ minScore: "70", builderTier: "1군" }); });
+    act(() => {
+      result.current.handleRegionChange("서울");
+    });
+    act(() => {
+      result.current.applyPreset({ minScore: "70", builderTier: "1군" });
+    });
     expect(result.current.filterRegion).toBe("전체");
     expect(result.current.minScore).toBe("70");
     expect(result.current.builderTier).toBe("1군");
@@ -180,21 +219,31 @@ describe("전체 초기화 + 프리셋", () => {
   // (saveCustomPreset snap 객체에 subwayOnly 누락 시 프리셋에 절대 저장 안 되던 결함)
   it("saveCustomPreset — subwayOnly=true 저장 후 applyPreset 으로 복원", () => {
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.toggleSubwayOnly(); });
+    act(() => {
+      result.current.toggleSubwayOnly();
+    });
     expect(result.current.subwayOnly).toBe(true);
-    act(() => { result.current.saveCustomPreset("역세권만") });
-    const saved = /** @type {any} */ (result.current.customPresets.find(p => p.label === "역세권만"));
+    act(() => {
+      result.current.saveCustomPreset("역세권만");
+    });
+    const saved = /** @type {any} */ (result.current.customPresets.find((p) => p.label === "역세권만"));
     expect(saved?.values.subwayOnly).toBe(true);
     // 끄고 → 프리셋 재적용 → 다시 켜져야 함
-    act(() => { result.current.toggleSubwayOnly(); });
+    act(() => {
+      result.current.toggleSubwayOnly();
+    });
     expect(result.current.subwayOnly).toBe(false);
-    act(() => { result.current.applyPreset(saved.values); });
+    act(() => {
+      result.current.applyPreset(saved.values);
+    });
     expect(result.current.subwayOnly).toBe(true);
   });
 
   it("applyPreset — subwayOnly 적용", () => {
     const { result } = renderHook(() => useFilterSort({}));
-    act(() => { result.current.applyPreset({ subwayOnly: true }); });
+    act(() => {
+      result.current.applyPreset({ subwayOnly: true });
+    });
     expect(result.current.subwayOnly).toBe(true);
   });
 });

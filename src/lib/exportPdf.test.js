@@ -3,15 +3,17 @@ import { describe, it, expect, vi } from "vitest";
 
 // html2canvas와 jspdf를 모킹하여 DOM 없이 테스트
 vi.mock("html2canvas", () => ({
-  default: vi.fn(() => Promise.resolve({
-    toDataURL: () => "data:image/png;base64,fake",
-    width: 800,
-    height: 600,
-  })),
+  default: vi.fn(() =>
+    Promise.resolve({
+      toDataURL: () => "data:image/png;base64,fake",
+      width: 800,
+      height: 600,
+    })
+  ),
 }));
 
 vi.mock("jspdf", () => ({
-  jsPDF: vi.fn(function() {
+  jsPDF: vi.fn(function () {
     this.internal = { pageSize: { getWidth: () => 297, getHeight: () => 210 } };
     this.addImage = vi.fn();
     this.setFontSize = vi.fn();

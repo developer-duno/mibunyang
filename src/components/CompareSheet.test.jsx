@@ -113,7 +113,9 @@ describe("CompareSheet", () => {
   it("종합/카테고리 행에 점수 비례 바가 렌더링됨", () => {
     // 종합 80점 → 바 너비 80%, 카테고리 각 점수에 비례하는 바 존재
     const items = [makeItem(1, "A", 80), makeItem(2, "B", 60)];
-    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
+    const { container } = render(
+      <CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />
+    );
     // 바는 gradient background가 있는 inner div — 최소 8개 (종합 2 + 카테고리 6×2 = 14개)
     const bars = container.querySelectorAll('div[style*="linear-gradient"]');
     expect(bars.length).toBeGreaterThanOrEqual(8);
@@ -123,18 +125,23 @@ describe("CompareSheet", () => {
     const items = [
       makeScoredItem(
         { id: 1, name: "A", region: "경기", gu: "수원시", price: 50000 },
-        { total: 0, cats: {
-          price: { label: "가격 매력도", total: 0, subs: [] },
-          location: { label: "입지·생활권", total: null, subs: [] },
-          product: { label: "상품성", total: 0, subs: [] },
-          benefit: { label: "혜택·할인", total: 0, totalWon: 0, subs: [] },
-          risk: { label: "안전도", total: 0, subs: [] },
-          future: { label: "미래가치", total: 0, subs: [] },
-        }}
+        {
+          total: 0,
+          cats: {
+            price: { label: "가격 매력도", total: 0, subs: [] },
+            location: { label: "입지·생활권", total: null, subs: [] },
+            product: { label: "상품성", total: 0, subs: [] },
+            benefit: { label: "혜택·할인", total: 0, totalWon: 0, subs: [] },
+            risk: { label: "안전도", total: 0, subs: [] },
+            future: { label: "미래가치", total: 0, subs: [] },
+          },
+        }
       ),
       makeItem(2, "B", 50),
     ];
-    const { container } = render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
+    const { container } = render(
+      <CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />
+    );
     // 0% 바 확인 — 렌더링 에러 없이 표시되어야 함
     const zeroBars = container.querySelectorAll('div[style*="width: 0%"]');
     expect(zeroBars.length).toBeGreaterThanOrEqual(1);
@@ -195,7 +202,15 @@ describe("CompareSheet", () => {
 
   it("isLoggedIn=false일 때 export/공유 버튼 숨김", () => {
     const items = [makeItem(1, "A"), makeItem(2, "B")];
-    render(<CompareSheet items={items} onShare={vi.fn()} onClose={vi.fn()} isLoggedIn={false} profile={/** @type {any} */ ("live")} />);
+    render(
+      <CompareSheet
+        items={items}
+        onShare={vi.fn()}
+        onClose={vi.fn()}
+        isLoggedIn={false}
+        profile={/** @type {any} */ ("live")}
+      />
+    );
     expect(screen.queryByLabelText("이미지 내보내기")).toBeNull();
     expect(screen.queryByLabelText("PDF 내보내기")).toBeNull();
     expect(screen.queryByLabelText("비교 결과 공유하기")).toBeNull();

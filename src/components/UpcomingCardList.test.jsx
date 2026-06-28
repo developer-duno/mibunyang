@@ -57,15 +57,22 @@ import { UpcomingCardList } from "./UpcomingCardList";
 /** @returns {any} */
 function makeUpcomingApt(/** @type {any} */ overrides = {}) {
   return {
-    id: "u1", name: "강조테스트단지", region: "대전", gu: "유성구",
-    presaleStage: "분양계획", presaleRecruitDate: "2026-07-01", presaleMinPrice: 41800,
+    id: "u1",
+    name: "강조테스트단지",
+    region: "대전",
+    gu: "유성구",
+    presaleStage: "분양계획",
+    presaleRecruitDate: "2026-07-01",
+    presaleMinPrice: 41800,
     ...overrides,
   };
 }
 
 describe("UpcomingCard 강조줄 (호갱노노 답습 — 세션 406)", () => {
   it("모집일은 indigo 강조 + 분양가는 굵게, 주소줄 분리", () => {
-    render(<UpcomingCardList items={[makeUpcomingApt()]} onSubscribe={vi.fn()} onOpenDetail={vi.fn()} isMobile={false} />);
+    render(
+      <UpcomingCardList items={[makeUpcomingApt()]} onSubscribe={vi.fn()} onOpenDetail={vi.fn()} isMobile={false} />
+    );
     const recruit = screen.getByText(/2026\.07\.01 모집/);
     expect(recruit.style.color).toBe("rgb(67, 56, 202)"); // C.indigo #4338CA
     expect(recruit.style.fontWeight).toBe("700");
@@ -74,7 +81,14 @@ describe("UpcomingCard 강조줄 (호갱노노 답습 — 세션 406)", () => {
   });
 
   it("모집일 null → 강조줄에서 생략 (기존 ternary 패턴 보존)", () => {
-    render(<UpcomingCardList items={[makeUpcomingApt({ presaleRecruitDate: null, presaleMinPrice: null })]} onSubscribe={vi.fn()} onOpenDetail={vi.fn()} isMobile={false} />);
+    render(
+      <UpcomingCardList
+        items={[makeUpcomingApt({ presaleRecruitDate: null, presaleMinPrice: null })]}
+        onSubscribe={vi.fn()}
+        onOpenDetail={vi.fn()}
+        isMobile={false}
+      />
+    );
     expect(screen.queryByText(/모집/)).toBeNull();
     expect(screen.getByText("분양가 미공개")).toBeInTheDocument();
   });

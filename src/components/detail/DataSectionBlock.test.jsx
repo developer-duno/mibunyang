@@ -8,7 +8,7 @@ import { makeApt } from "@/__tests__/factories";
 // 그룹 상수에서 제목으로 섹션 찾기 (구 DATA_SECTIONS 단언을 섹션 단위로 이전)
 /** @param {string} title */
 const find = (title) =>
-  [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS, ...PRESALE_SECTIONS].find(s => s.title === title);
+  [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS, ...PRESALE_SECTIONS].find((s) => s.title === title);
 
 describe("DataSectionBlock", () => {
   // 헤더(제목) 항상 표시 — 접힌 상태에서도
@@ -73,11 +73,18 @@ describe("DataSectionBlock", () => {
 
   // 빈 섹션 — 도넛 없음 + 펼치면 "데이터 수집 중..."
   it("모든 필드가 null인 섹션은 도넛이 없고, 펼치면 '데이터 수집 중...'만 표시한다", () => {
-    const apt = /** @type {any} */ (makeApt({
-      naverNearbyMedian: null, naverJeonseRate: null, naverSellCount: null,
-      naverJeonseCount: null, naverWolseCount: null, naverSchoolWalkMin: null,
-      naverNearbyCount: null, naverFetchedAt: null,
-    }));
+    const apt = /** @type {any} */ (
+      makeApt({
+        naverNearbyMedian: null,
+        naverJeonseRate: null,
+        naverSellCount: null,
+        naverJeonseCount: null,
+        naverWolseCount: null,
+        naverSchoolWalkMin: null,
+        naverNearbyCount: null,
+        naverFetchedAt: null,
+      })
+    );
     render(<DataSectionBlock section={/** @type {any} */ (find("네이버 교차검증"))} apt={apt} />);
     // 도넛 없음
     expect(screen.queryByRole("img", { name: /네이버 교차검증.*채움률/ })).toBeNull();
@@ -96,7 +103,9 @@ describe("DataSectionBlock", () => {
 
   // hideWhenEmpty — 경쟁률 있으면 노출 + 콤마 포맷
   it("경쟁률이 있으면 '청약 경쟁 현황' 섹션과 콤마 포맷 값을 표시한다", () => {
-    const apt = /** @type {any} */ (makeApt({ competitionRate: 437995, competitionSupply: 300, competitionApplicants: 12000000 }));
+    const apt = /** @type {any} */ (
+      makeApt({ competitionRate: 437995, competitionSupply: 300, competitionApplicants: 12000000 })
+    );
     render(<DataSectionBlock section={/** @type {any} */ (find("청약 경쟁 현황"))} apt={apt} />);
     expect(screen.getByText("청약 경쟁 현황")).toBeTruthy();
     fireEvent.click(screen.getByText("청약 경쟁 현황"));
@@ -173,9 +182,14 @@ describe("DataSectionBlock", () => {
 
 describe("부가블록 3종", () => {
   it("NearbyFacilitiesBlock — nearbyFacilities가 있으면 표시", () => {
-    const apt = /** @type {any} */ (makeApt({
-      nearbyFacilities: [{ name: "이마트", dist: 200 }, { name: "올리브영", dist: 450 }],
-    }));
+    const apt = /** @type {any} */ (
+      makeApt({
+        nearbyFacilities: [
+          { name: "이마트", dist: 200 },
+          { name: "올리브영", dist: 450 },
+        ],
+      })
+    );
     render(<NearbyFacilitiesBlock apt={apt} />);
     expect(screen.getByText("이마트")).toBeTruthy();
     expect(screen.getByText("200m")).toBeTruthy();
@@ -188,9 +202,11 @@ describe("부가블록 3종", () => {
   });
 
   it("PriceByFloorBlock — priceByFloor가 있으면 층별 매매가 표시", () => {
-    const apt = /** @type {any} */ (makeApt({
-      priceByFloor: [{ group: "저층", avg: 50000, count: 3 }],
-    }));
+    const apt = /** @type {any} */ (
+      makeApt({
+        priceByFloor: [{ group: "저층", avg: 50000, count: 3 }],
+      })
+    );
     render(<PriceByFloorBlock apt={apt} />);
     expect(screen.getByText("층별 매매가 (주변 실거래)")).toBeTruthy();
     expect(screen.getByText("저층")).toBeTruthy();

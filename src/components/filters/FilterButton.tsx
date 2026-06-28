@@ -7,25 +7,41 @@ import { C, F } from "@/theme";
 import { IconChevronDown } from "@/components/icons";
 import type { FilterButtonProps } from "@/types/filters";
 
-export const FilterButton = memo(function FilterButton({ label, summary, isOpen, isActive, onClick }: FilterButtonProps) {
+export const FilterButton = memo(function FilterButton({
+  label,
+  summary,
+  isOpen,
+  isActive,
+  onClick,
+}: FilterButtonProps) {
   const active = isOpen || isActive;
   return (
     <button
       onClick={onClick}
       aria-expanded={isOpen}
       style={{
-        height: 36, padding: "0 10px", fontSize: F.sm,
+        height: 36,
+        padding: "0 10px",
+        fontSize: F.sm,
         fontWeight: active ? 700 : 500,
         background: isOpen ? C.indigoLight : isActive ? C.indigoLight : C.slate100,
         color: isOpen ? C.indigo : isActive ? C.indigo : C.slate600,
         border: active ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-        borderRadius: 6, cursor: "pointer",
-        display: "flex", alignItems: "center", gap: 4,
-        whiteSpace: "nowrap", flexShrink: 0, transition: "all .15s",
+        borderRadius: 6,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+        transition: "all .15s",
       }}
     >
-      {label}{summary ? `: ${summary}` : ""}
-      <span style={{ display: "inline-flex", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>
+      {label}
+      {summary ? `: ${summary}` : ""}
+      <span
+        style={{ display: "inline-flex", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}
+      >
         <IconChevronDown size={11} />
       </span>
     </button>

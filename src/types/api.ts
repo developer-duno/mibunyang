@@ -50,7 +50,4 @@ export type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;
  *
  * 정식 변환 시 (M2c-4) handler.ts 가 `@vercel/node` 임포트 추가 가능.
  */
-export type ApiHandler = (
-  _req: unknown,
-  _res: unknown,
-) => Promise<unknown> | unknown;
+export type ApiHandler = (_req: unknown, _res: unknown) => Promise<unknown> | unknown;

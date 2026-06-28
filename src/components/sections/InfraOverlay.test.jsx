@@ -12,15 +12,22 @@ function setupKakao() {
   /** @type {any} */ (window).kakao = {
     maps: {
       services: {
-        Places: vi.fn(function () { this.categorySearch = categorySearch; }),
+        Places: vi.fn(function () {
+          this.categorySearch = categorySearch;
+        }),
         Status: { OK: "OK" },
         SortBy: { DISTANCE: "DISTANCE" },
       },
-      Marker: vi.fn(function () { this.setMap = vi.fn(); }),
+      Marker: vi.fn(function () {
+        this.setMap = vi.fn();
+      }),
       MarkerImage: vi.fn(function () {}),
       Size: vi.fn(function () {}),
       Point: vi.fn(function () {}),
-      LatLng: vi.fn(function (/** @type {number} */ lat, /** @type {number} */ lng) { this.lat = lat; this.lng = lng; }),
+      LatLng: vi.fn(function (/** @type {number} */ lat, /** @type {number} */ lng) {
+        this.lat = lat;
+        this.lng = lng;
+      }),
       event: { addListener: vi.fn(() => ({})), removeListener: vi.fn() },
     },
   };
@@ -72,7 +79,9 @@ describe("InfraOverlay", () => {
     const mapInstance = makeMapInstance();
     render(<InfraOverlay mapInstance={mapInstance} ready selectedApt={{ lat: 37.5, lng: 127.0 }} />);
     // 카테고리 토글 켜기 → 검색 발화
-    act(() => { fireEvent.click(screen.getAllByRole("button")[0]); });
+    act(() => {
+      fireEvent.click(screen.getAllByRole("button")[0]);
+    });
     expect(categorySearch).toHaveBeenCalled();
     // 검색 옵션의 location 이 selectedApt 좌표(LatLng(37.5,127.0))여야 함 (화면중앙 getCenter 아님)
     const opts = /** @type {any} */ (categorySearch.mock.calls.at(-1))[2];
@@ -85,7 +94,9 @@ describe("InfraOverlay", () => {
     const { categorySearch } = setupKakao();
     const mapInstance = makeMapInstance();
     render(<InfraOverlay mapInstance={mapInstance} ready selectedApt={null} />);
-    act(() => { fireEvent.click(screen.getAllByRole("button")[0]); });
+    act(() => {
+      fireEvent.click(screen.getAllByRole("button")[0]);
+    });
     expect(mapInstance.getCenter).toHaveBeenCalled();
     const opts = /** @type {any} */ (categorySearch.mock.calls.at(-1))[2];
     expect(opts.location.__center).toBe(true); // getCenter 반환값
@@ -95,7 +106,9 @@ describe("InfraOverlay", () => {
     const { categorySearch } = setupKakao();
     const mapInstance = makeMapInstance();
     render(<InfraOverlay mapInstance={mapInstance} ready selectedApt={{ lat: null, lng: null }} />);
-    act(() => { fireEvent.click(screen.getAllByRole("button")[0]); });
+    act(() => {
+      fireEvent.click(screen.getAllByRole("button")[0]);
+    });
     expect(mapInstance.getCenter).toHaveBeenCalled();
     void categorySearch;
   });
@@ -108,12 +121,16 @@ describe("InfraOverlay", () => {
     const mapInstance = makeMapInstance();
     render(<InfraOverlay mapInstance={mapInstance} ready selectedApt={null} />);
     // 토글 켜기 → idle addListener 등록
-    act(() => { fireEvent.click(screen.getAllByRole("button")[0]); });
+    act(() => {
+      fireEvent.click(screen.getAllByRole("button")[0]);
+    });
     const idleCall = addListener.mock.calls.find((/** @type {any[]} */ c) => c[1] === "idle");
     expect(idleCall).toBeTruthy();
     const handler = idleCall[2];
     // 토글 다시 끄기 → effect cleanup 실행
-    act(() => { fireEvent.click(screen.getAllByRole("button")[0]); });
+    act(() => {
+      fireEvent.click(screen.getAllByRole("button")[0]);
+    });
     // removeListener 가 addListener 와 동일한 (target, type, handler) 시그니처로 호출돼야 함
     const removeCall = removeListener.mock.calls.find((/** @type {any[]} */ c) => c[1] === "idle");
     expect(removeCall).toBeTruthy();

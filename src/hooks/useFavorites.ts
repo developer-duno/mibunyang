@@ -13,11 +13,17 @@ function loadFavorites(): Record<string, FavoriteEntry> {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") as unknown;
     if (Array.isArray(raw)) {
       // v1→v2 마이그레이션: 배열→객체
-      try { localStorage.setItem(BACKUP_KEY, JSON.stringify(raw)); } catch { /* backup 실패 무시 */ }
-      return Object.fromEntries((raw as string[]).map(id => [id, makeEntry()]));
+      try {
+        localStorage.setItem(BACKUP_KEY, JSON.stringify(raw));
+      } catch {
+        /* backup 실패 무시 */
+      }
+      return Object.fromEntries((raw as string[]).map((id) => [id, makeEntry()]));
     }
     return typeof raw === "object" && raw !== null ? (raw as Record<string, FavoriteEntry>) : {};
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }
 
 export function useFavorites(showToast?: (_msg: string) => void): UseFavoritesReturn {
@@ -29,7 +35,7 @@ export function useFavorites(showToast?: (_msg: string) => void): UseFavoritesRe
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
 
   const toggleFavorite = useCallback((id: string) => {
-    setFavoritesObj(prev => {
+    setFavoritesObj((prev) => {
       const removing = id in prev;
       trackEvent("favorite_toggle", { action: removing ? "remove" : "add" });
       if (removing) {
@@ -44,7 +50,7 @@ export function useFavorites(showToast?: (_msg: string) => void): UseFavoritesRe
   // setFavoriteIds — 하위 호환 래퍼 (배열 또는 함수 인자 지원)
   const setFavoriteIds = useCallback((idsOrFn: string[] | ((_prev: string[]) => string[])) => {
     if (typeof idsOrFn === "function") {
-      setFavoritesObj(prev => {
+      setFavoritesObj((prev) => {
         const prevIds = Object.keys(prev);
         const nextIds = idsOrFn(prevIds);
         if (!Array.isArray(nextIds)) return prev;
@@ -55,7 +61,7 @@ export function useFavorites(showToast?: (_msg: string) => void): UseFavoritesRe
         return next;
       });
     } else if (Array.isArray(idsOrFn)) {
-      setFavoritesObj(prev => {
+      setFavoritesObj((prev) => {
         const next: Record<string, FavoriteEntry> = {};
         for (const id of idsOrFn) {
           next[id] = prev[id] || makeEntry();
@@ -67,8 +73,9 @@ export function useFavorites(showToast?: (_msg: string) => void): UseFavoritesRe
 
   // localStorage 저장 (quota exceeded 시 토스트) — useComparison.ts 답습 2단계 분리 (DOMException 호환)
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(favoritesObj)); }
-    catch (e) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(favoritesObj));
+    } catch (e) {
       const name = (e as { name?: string })?.name;
       if (name === "QuotaExceededError") showToast?.("저장 실패: 저장소가 가득 찼습니다");
     }
@@ -81,11 +88,13 @@ export function useFavorites(showToast?: (_msg: string) => void): UseFavoritesRe
       try {
         const raw = JSON.parse(e.newValue || "{}") as unknown;
         if (Array.isArray(raw)) {
-          setFavoritesObj(Object.fromEntries((raw as string[]).map(id => [id, makeEntry()])));
+          setFavoritesObj(Object.fromEntries((raw as string[]).map((id) => [id, makeEntry()])));
         } else if (typeof raw === "object" && raw !== null) {
           setFavoritesObj(raw as Record<string, FavoriteEntry>);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
     window.addEventListener("storage", h);
     return () => window.removeEventListener("storage", h);

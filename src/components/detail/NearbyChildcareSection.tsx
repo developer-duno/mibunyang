@@ -4,8 +4,8 @@ import { C, F } from "@/theme";
 import type { NearbyChildcareSectionProps } from "@/types/detail";
 import type { NearbyChildcare } from "@/types/scoring";
 
-const fmtDist = (d: number) => d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${d}m`;
-const distColor = (d: number) => d <= 500 ? C.green : d <= 1000 ? C.blue : C.muted;
+const fmtDist = (d: number) => (d >= 1000 ? `${(d / 1000).toFixed(1)}km` : `${d}m`);
+const distColor = (d: number) => (d <= 500 ? C.green : d <= 1000 ? C.blue : C.muted);
 
 /** 미수집(null) 필드 — "업데이트 예정" 회색 라벨로 표시 (정보 부재 아님을 명시). */
 const PENDING = "업데이트 예정";
@@ -49,9 +49,11 @@ function ChildcareDetailRows({ c }: { c: NearbyChildcare }) {
       {rows.map(([label, val], i) => (
         <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <span style={{ fontSize: F.xs, color: C.muted }}>{label}</span>
-          {val == null
-            ? <span style={pendingStyle}>{PENDING}</span>
-            : <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{val}</span>}
+          {val == null ? (
+            <span style={pendingStyle}>{PENDING}</span>
+          ) : (
+            <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{val}</span>
+          )}
         </div>
       ))}
     </div>
@@ -70,7 +72,15 @@ export const NearbyChildcareSection = memo(function NearbyChildcareSection({ apt
   if (list.length === 0) return null;
 
   return (
-    <div style={{ background: C.bg, borderRadius: 10, padding: "10px 12px", marginBottom: 10, border: `1px solid ${C.border}` }}>
+    <div
+      style={{
+        background: C.bg,
+        borderRadius: 10,
+        padding: "10px 12px",
+        marginBottom: 10,
+        border: `1px solid ${C.border}`,
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>어린이집</span>
         <span style={{ fontSize: F.xs, color: C.muted }}>{list.length}곳 (1km)</span>
@@ -84,15 +94,53 @@ export const NearbyChildcareSection = memo(function NearbyChildcareSection({ apt
             <button
               onClick={() => setOpenIdx(open ? null : i)}
               aria-expanded={open}
-              style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+              style={{
+                width: "100%",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 0",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                <span style={{ fontSize: F.sm, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                {c.type
-                  ? <span style={{ fontSize: F.xs, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: badge.bg, color: badge.fg, flexShrink: 0 }}>{c.type}</span>
-                  : <span style={{ ...pendingStyle, flexShrink: 0 }}>{PENDING}</span>}
+                <span
+                  style={{
+                    fontSize: F.sm,
+                    fontWeight: 600,
+                    color: C.text,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.name}
+                </span>
+                {c.type ? (
+                  <span
+                    style={{
+                      fontSize: F.xs,
+                      fontWeight: 700,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: badge.bg,
+                      color: badge.fg,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {c.type}
+                  </span>
+                ) : (
+                  <span style={{ ...pendingStyle, flexShrink: 0 }}>{PENDING}</span>
+                )}
               </div>
-              <span style={{ fontSize: F.sm, fontWeight: 600, color: distColor(c.distance), flexShrink: 0 }}>{fmtDist(c.distance)}</span>
+              <span style={{ fontSize: F.sm, fontWeight: 600, color: distColor(c.distance), flexShrink: 0 }}>
+                {fmtDist(c.distance)}
+              </span>
             </button>
             {open && (
               <div style={{ paddingBottom: 8 }}>

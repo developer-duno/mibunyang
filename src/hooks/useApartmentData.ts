@@ -20,9 +20,15 @@ export function useApartmentData(): UseApartmentDataReturn {
       try {
         const { data, dataUpdatedAt: updAt } = await fetchStaticApartments();
         if (signal?.aborted) return;
-        const normalized: Apt[] = data.map((a: Apt) => a.region && a.region.includes(",") ? { ...a, region: a.region.split(",")[0].trim() } : a);
+        const normalized: Apt[] = data.map((a: Apt) =>
+          a.region && a.region.includes(",") ? { ...a, region: a.region.split(",")[0].trim() } : a
+        );
         const seen = new Set<string>();
-        const idDeduped = normalized.filter((a: Apt) => { if (!a.id || seen.has(a.id)) return false; seen.add(a.id); return true; });
+        const idDeduped = normalized.filter((a: Apt) => {
+          if (!a.id || seen.has(a.id)) return false;
+          seen.add(a.id);
+          return true;
+        });
         setApartments(dedupApartments(idDeduped as Array<Apt & { id: string }>));
         setDataUpdatedAt(updAt ?? null);
         setError(null);
@@ -31,7 +37,7 @@ export function useApartmentData(): UseApartmentDataReturn {
       } catch (err) {
         if (signal?.aborted) return;
         if (attempt < MAX_RETRIES - 1) {
-          await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
           if (signal?.aborted) return;
         } else {
           if (err instanceof Error) setError(err.message);
@@ -41,7 +47,9 @@ export function useApartmentData(): UseApartmentDataReturn {
     }
   }, []);
 
-  const retry = useCallback(() => { load(); }, [load]);
+  const retry = useCallback(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     const ac = new AbortController();

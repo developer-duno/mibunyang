@@ -26,9 +26,7 @@ function makeAdmin(overrides = {}) {
 }
 
 function makeScored(count = 3) {
-  return Array.from({ length: count }, (_, i) =>
-    makeScoredItem({ id: i + 1, name: `아파트${i + 1}` })
-  );
+  return Array.from({ length: count }, (_, i) => makeScoredItem({ id: i + 1, name: `아파트${i + 1}` }));
 }
 
 describe("AdminDashboard", () => {
@@ -126,10 +124,15 @@ describe("AdminDashboard", () => {
   // pending 사용자 — 승인/거부 버튼 표시
   it("pending 사용자에게 승인/거부 버튼을 표시한다", () => {
     const admin = makeAdmin({
-      users: [{
-        email: "test@test.com", name: "테스트", status: "pending",
-        specialty: "부동산 중개", createdAt: "2025-01-01",
-      }],
+      users: [
+        {
+          email: "test@test.com",
+          name: "테스트",
+          status: "pending",
+          specialty: "부동산 중개",
+          createdAt: "2025-01-01",
+        },
+      ],
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     expect(screen.getByText("승인")).toBeTruthy();
@@ -139,10 +142,15 @@ describe("AdminDashboard", () => {
   // 승인 버튼 클릭 시 handleReview 호출
   it("승인 버튼 클릭 시 handleReview를 올바른 인자로 호출한다", () => {
     const admin = makeAdmin({
-      users: [{
-        email: "test@test.com", name: "테스트", status: "pending",
-        specialty: "부동산 중개", createdAt: "2025-01-01",
-      }],
+      users: [
+        {
+          email: "test@test.com",
+          name: "테스트",
+          status: "pending",
+          specialty: "부동산 중개",
+          createdAt: "2025-01-01",
+        },
+      ],
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     fireEvent.click(screen.getByText("승인"));
@@ -152,10 +160,15 @@ describe("AdminDashboard", () => {
   // 거부 버튼 클릭 시 handleReview 호출
   it("거부 버튼 클릭 시 handleReview를 올바른 인자로 호출한다", () => {
     const admin = makeAdmin({
-      users: [{
-        email: "test@test.com", name: "테스트", status: "pending",
-        specialty: "부동산 중개", createdAt: "2025-01-01",
-      }],
+      users: [
+        {
+          email: "test@test.com",
+          name: "테스트",
+          status: "pending",
+          specialty: "부동산 중개",
+          createdAt: "2025-01-01",
+        },
+      ],
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     fireEvent.click(screen.getByText("거부"));
@@ -165,10 +178,15 @@ describe("AdminDashboard", () => {
   // rejected 사용자에게 재승인 버튼 표시
   it("rejected 사용자에게 재승인 버튼을 표시한다", () => {
     const admin = makeAdmin({
-      users: [{
-        email: "rejected@test.com", name: "거부됨", status: "rejected",
-        specialty: "감정평가", createdAt: "2025-01-01",
-      }],
+      users: [
+        {
+          email: "rejected@test.com",
+          name: "거부됨",
+          status: "rejected",
+          specialty: "감정평가",
+          createdAt: "2025-01-01",
+        },
+      ],
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     expect(screen.getByText("재승인")).toBeTruthy();
@@ -177,10 +195,15 @@ describe("AdminDashboard", () => {
   // approved 사용자에게 강제 로그아웃 버튼 표시
   it("approved 사용자에게 강제 로그아웃 버튼을 표시한다", () => {
     const admin = makeAdmin({
-      users: [{
-        email: "approved@test.com", name: "승인유저", status: "approved",
-        specialty: "부동산 중개", createdAt: "2025-01-01",
-      }],
+      users: [
+        {
+          email: "approved@test.com",
+          name: "승인유저",
+          status: "approved",
+          specialty: "부동산 중개",
+          createdAt: "2025-01-01",
+        },
+      ],
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     expect(screen.getByText("강제 로그아웃")).toBeTruthy();
@@ -189,10 +212,15 @@ describe("AdminDashboard", () => {
   // 강제 로그아웃 클릭 시 handleReview 호출
   it("강제 로그아웃 버튼 클릭 시 handleReview를 force-logout으로 호출한다", () => {
     const admin = makeAdmin({
-      users: [{
-        email: "approved@test.com", name: "승인유저", status: "approved",
-        specialty: "부동산 중개", createdAt: "2025-01-01",
-      }],
+      users: [
+        {
+          email: "approved@test.com",
+          name: "승인유저",
+          status: "approved",
+          specialty: "부동산 중개",
+          createdAt: "2025-01-01",
+        },
+      ],
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     fireEvent.click(screen.getByText("강제 로그아웃"));
@@ -202,10 +230,15 @@ describe("AdminDashboard", () => {
   // suspended 사용자에게 재승인 버튼 표시
   it("suspended 사용자에게 재승인 버튼을 표시한다", () => {
     const admin = makeAdmin({
-      users: [{
-        email: "suspended@test.com", name: "정지유저", status: "suspended",
-        specialty: "감정평가", createdAt: "2025-01-01",
-      }],
+      users: [
+        {
+          email: "suspended@test.com",
+          name: "정지유저",
+          status: "suspended",
+          specialty: "감정평가",
+          createdAt: "2025-01-01",
+        },
+      ],
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     expect(screen.getByText("재승인")).toBeTruthy();
@@ -221,10 +254,15 @@ describe("AdminDashboard", () => {
   // suspended 사용자 상태 배지 표시
   it("suspended 사용자의 상태 배지를 정지됨으로 표시한다", () => {
     const admin = makeAdmin({
-      users: [{
-        email: "sus@test.com", name: "정지유저", status: "suspended",
-        specialty: "기타", createdAt: "2025-01-01",
-      }],
+      users: [
+        {
+          email: "sus@test.com",
+          name: "정지유저",
+          status: "suspended",
+          specialty: "기타",
+          createdAt: "2025-01-01",
+        },
+      ],
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
     // 상태 탭의 "정지됨"과 배지의 "정지됨" 둘 다 존재
@@ -263,9 +301,7 @@ describe("AdminDashboard", () => {
   // 일괄 처리: 선택 시 일괄 승인/거부 버튼 표시
   it("이메일이 선택되면 일괄 승인/거부 버튼을 표시한다", () => {
     const admin = makeAdmin({
-      users: [
-        { email: "a@test.com", name: "A", status: "pending", specialty: "기타", createdAt: "2025-01-01" },
-      ],
+      users: [{ email: "a@test.com", name: "A", status: "pending", specialty: "기타", createdAt: "2025-01-01" }],
       selectedEmails: new Set(["a@test.com"]),
     });
     render(<AdminDashboard {...defaultProps()} admin={admin} />);
@@ -277,9 +313,7 @@ describe("AdminDashboard", () => {
   // 일괄 처리: batchLoading 중 버튼 비활성화
   it("batchLoading 중 일괄/개별 버튼이 비활성화된다", () => {
     const admin = makeAdmin({
-      users: [
-        { email: "a@test.com", name: "A", status: "pending", specialty: "기타", createdAt: "2025-01-01" },
-      ],
+      users: [{ email: "a@test.com", name: "A", status: "pending", specialty: "기타", createdAt: "2025-01-01" }],
       selectedEmails: new Set(["a@test.com"]),
       batchLoading: true,
     });

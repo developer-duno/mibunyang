@@ -1,27 +1,27 @@
 // @ts-check
-import { describe, it, expect } from 'vitest';
-import { FIELD_META, FIELD_SECTIONS } from './fieldMeta';
+import { describe, it, expect } from "vitest";
+import { FIELD_META, FIELD_SECTIONS } from "./fieldMeta";
 
-describe('FIELD_META', () => {
+describe("FIELD_META", () => {
   const keys = Object.keys(FIELD_META);
 
-  it('104개 이상 필드 정의', () => {
+  it("104개 이상 필드 정의", () => {
     expect(keys.length).toBeGreaterThanOrEqual(104);
   });
 
   // 모든 필드: label·section·fmt 스키마 검증
-  it('모든 필드에 label(string)·section(string)·fmt(function) 존재', () => {
+  it("모든 필드에 label(string)·section(string)·fmt(function) 존재", () => {
     for (const key of keys) {
       const meta = FIELD_META[key];
-      expect(typeof meta.label, `필드 ${key}: label이 string이 아님`).toBe('string');
+      expect(typeof meta.label, `필드 ${key}: label이 string이 아님`).toBe("string");
       expect(meta.label.length, `필드 ${key}: label이 빈 문자열`).toBeGreaterThan(0);
-      expect(typeof meta.section, `필드 ${key}: section이 string이 아님`).toBe('string');
-      expect(typeof meta.fmt, `필드 ${key}: fmt가 function이 아님`).toBe('function');
+      expect(typeof meta.section, `필드 ${key}: section이 string이 아님`).toBe("string");
+      expect(typeof meta.fmt, `필드 ${key}: fmt가 function이 아님`).toBe("function");
     }
   });
 
   // fmt 함수 null 안전성 검증 — 가장 중요
-  it('모든 fmt 함수가 null/undefined/0 입력에 에러 없이 동작', () => {
+  it("모든 fmt 함수가 null/undefined/0 입력에 에러 없이 동작", () => {
     const edgeCases = [null, undefined, 0];
     for (const key of keys) {
       const { fmt } = FIELD_META[key];
@@ -32,11 +32,11 @@ describe('FIELD_META', () => {
   });
 
   // 특수 케이스
-  it('builder fmt: BRAND_TIER 시공사 포맷팅', () => {
+  it("builder fmt: BRAND_TIER 시공사 포맷팅", () => {
     expect(FIELD_META.builder.fmt("현대건설")).toContain("1군Super");
   });
 
-  it('builder fmt: 미등록 시공사 → (기타)', () => {
+  it("builder fmt: 미등록 시공사 → (기타)", () => {
     expect(FIELD_META.builder.fmt("무명건설")).toContain("기타");
   });
 
@@ -68,11 +68,15 @@ describe('FIELD_META', () => {
   it('builderCreditGrade fmt: 공기업/신탁/조합 + 등급없음 → "해당없음"', () => {
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "SH공사" })).toBe("해당없음");
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "(주)무궁화신탁" })).toBe("해당없음");
-    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "둔촌주공아파트주택재건축정비사업조합" })).toBe("해당없음");
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "둔촌주공아파트주택재건축정비사업조합" })).toBe(
+      "해당없음"
+    );
     // 세션389: LH 정식 법인명 — "토지주택공사" 토큰 추가로 "미등록"→"해당없음"
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "한국토지주택공사" })).toBe("해당없음");
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "한국토지주택공사 경기남부지역본부" })).toBe("해당없음");
-    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "한국토지주택공사,지에스건설(주),금호건설(주)" })).toBe("해당없음");
+    expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "한국토지주택공사,지에스건설(주),금호건설(주)" })).toBe(
+      "해당없음"
+    );
   });
 
   it('builderCreditGrade fmt: 민간 + 등급없음 → "—"', () => {
@@ -80,17 +84,17 @@ describe('FIELD_META', () => {
     expect(FIELD_META.builderCreditGrade.fmt(null, {})).toBe("—");
   });
 
-  it('builderCreditGrade fmt: 등급 있으면 그대로 표시', () => {
+  it("builderCreditGrade fmt: 등급 있으면 그대로 표시", () => {
     expect(FIELD_META.builderCreditGrade.fmt("A", { builder: "GS건설" })).toBe("A");
     expect(FIELD_META.builderCreditGrade.fmt("A", { builder: "부산도시공사" })).toBe("A");
   });
 
-  it('psr fmt: 숫자 → toFixed(2)', () => {
+  it("psr fmt: 숫자 → toFixed(2)", () => {
     expect(FIELD_META.psr.fmt(0.85)).toBe("0.85");
   });
 
   // 분양정보 필드 테스트
-  it('presaleSchedule fmt: JSONB 객체 → 문자열', () => {
+  it("presaleSchedule fmt: JSONB 객체 → 문자열", () => {
     const schedule = { scheduleName: "입주자모집공고", dateInfo: "2026-03-01" };
     const result = FIELD_META.presaleSchedule.fmt(schedule);
     expect(result).toContain("입주자모집공고");
@@ -101,13 +105,13 @@ describe('FIELD_META', () => {
   });
 });
 
-describe('FIELD_SECTIONS', () => {
-  it('9개 섹션 존재', () => {
+describe("FIELD_SECTIONS", () => {
+  it("9개 섹션 존재", () => {
     expect(FIELD_SECTIONS).toHaveLength(9);
   });
 
   // 모든 섹션: fields가 FIELD_META에 존재 + 중복 없음
-  it('모든 섹션의 fields가 FIELD_META에 존재하고 중복 없음', () => {
+  it("모든 섹션의 fields가 FIELD_META에 존재하고 중복 없음", () => {
     for (const section of FIELD_SECTIONS) {
       const unique = new Set(section.fields);
       expect(unique.size, `섹션 "${section.key}": 중복 필드 발견`).toBe(section.fields.length);
@@ -117,7 +121,7 @@ describe('FIELD_SECTIONS', () => {
     }
   });
 
-  it('hidden 아닌 모든 FIELD_META 키가 FIELD_SECTIONS에 포함', () => {
+  it("hidden 아닌 모든 FIELD_META 키가 FIELD_SECTIONS에 포함", () => {
     const allSectionFields = FIELD_SECTIONS.flatMap((s) => s.fields);
     for (const key of Object.keys(FIELD_META)) {
       if (FIELD_META[key].hidden) continue; // hidden 필드는 섹션 미포함 허용

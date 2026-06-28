@@ -6,14 +6,21 @@ import { makeApt } from "@/__tests__/factories";
 
 // 테스트용 매매 시세 데이터 생성
 function makePriceByArea(areas = [74, 84, 94]) {
-  return areas.map(area => ({
-    area, min: 40000 + area * 100, avg: 45000 + area * 100, max: 50000 + area * 100, count: 5,
+  return areas.map((area) => ({
+    area,
+    min: 40000 + area * 100,
+    avg: 45000 + area * 100,
+    max: 50000 + area * 100,
+    count: 5,
   }));
 }
 
 function makeRentByArea(areas = [74, 84, 94]) {
-  return areas.map(area => ({
-    area, min: 20000, avg: 25000, max: 30000,
+  return areas.map((area) => ({
+    area,
+    min: 20000,
+    avg: 25000,
+    max: 30000,
   }));
 }
 
@@ -88,9 +95,7 @@ describe("PriceTable", () => {
 
   // count가 null인 경우 안전하게 처리
   it("count가 null인 항목도 안전하게 처리한다", () => {
-    const priceByArea = [
-      { area: 84, min: 40000, avg: 45000, max: 50000, count: null },
-    ];
+    const priceByArea = [{ area: 84, min: 40000, avg: 45000, max: 50000, count: null }];
     const apt = /** @type {any} */ (makeApt({ priceByArea, area: 84 }));
     // count가 null이면 0으로 처리되어야 크래시 없음
     expect(() => render(<PriceTable apt={/** @type {any} */ (apt)} />)).not.toThrow();

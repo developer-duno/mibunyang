@@ -14,7 +14,9 @@ export const HelpHint = memo(function HelpHint({ text, label }: { text: string; 
   if (!text) return null;
   return (
     <Tooltip definition={text} term={label} bare>
-      <span style={{ display: "inline-flex", alignItems: "center", padding: 4, marginLeft: 2, verticalAlign: "middle" }}>
+      <span
+        style={{ display: "inline-flex", alignItems: "center", padding: 4, marginLeft: 2, verticalAlign: "middle" }}
+      >
         <IconHelp size={14} color={C.muted} />
       </span>
     </Tooltip>

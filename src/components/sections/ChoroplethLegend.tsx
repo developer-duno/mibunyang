@@ -42,11 +42,13 @@ export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop
         zIndex: 10,
       }}
     >
-      {TIERS.map(t => {
+      {TIERS.map((t) => {
         const g = gr(t.score);
         return (
           <div key={t.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: boxSize, height: boxSize, background: g.c, borderRadius: 2, display: "inline-block" }} />
+            <span
+              style={{ width: boxSize, height: boxSize, background: g.c, borderRadius: 2, display: "inline-block" }}
+            />
             <span>{t.label}</span>
           </div>
         );

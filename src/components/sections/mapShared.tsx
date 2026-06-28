@@ -12,7 +12,28 @@ import { C, F } from "@/theme";
  */
 export const MyLocationButton = memo(function MyLocationButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} aria-label="현위치" style={{ position: "absolute", bottom: 16, right: 12, width: 36, height: 36, borderRadius: "50%", background: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.15)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, fontSize: F.lg }}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="현위치"
+      style={{
+        position: "absolute",
+        bottom: 16,
+        right: 12,
+        width: 36,
+        height: 36,
+        borderRadius: "50%",
+        background: C.white,
+        border: `1px solid ${C.border}`,
+        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 10,
+        fontSize: F.lg,
+      }}
+    >
       📍
     </button>
   );
@@ -38,21 +59,37 @@ interface MapShellProps {
  */
 export const MapShell = forwardRef<HTMLDivElement, MapShellProps>(function MapShell(
   { isPC, isDesktop, height, fullscreen, error, children },
-  mapRef,
+  mapRef
 ) {
   return (
-    <div style={{
-      position: "relative", width: "100%",
-      // 높이는 두 지도 공통 3분기 calc 유지 — 헤더+필터바+BottomNav 반영 검증값(세션 413~417). 전체화면도
-      // 같은 calc(필터바가 지도 위 그대로 차지). 매직넘버 높이 재계산은 잘림 위험이라 calc 불변.
-      height: height ?? (isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)"),
-      borderRadius: fullscreen ? 0 : isDesktop ? 12 : 10,
-      overflow: "hidden",
-      border: fullscreen ? "none" : `1px solid ${C.border}`,
-    }}>
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        // 높이는 두 지도 공통 3분기 calc 유지 — 헤더+필터바+BottomNav 반영 검증값(세션 413~417). 전체화면도
+        // 같은 calc(필터바가 지도 위 그대로 차지). 매직넘버 높이 재계산은 잘림 위험이라 calc 불변.
+        height: height ?? (isDesktop ? "calc(100dvh - 120px)" : isPC ? "calc(100dvh - 180px)" : "calc(100dvh - 140px)"),
+        borderRadius: fullscreen ? 0 : isDesktop ? 12 : 10,
+        overflow: "hidden",
+        border: fullscreen ? "none" : `1px solid ${C.border}`,
+      }}
+    >
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
       {error && (
-        <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.9)", zIndex: 20 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(255,255,255,0.9)",
+            zIndex: 20,
+          }}
+        >
           <div style={{ textAlign: "center", color: C.muted, fontSize: F.base }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>🗺️</div>
             <div>지도를 불러올 수 없습니다</div>

@@ -51,11 +51,20 @@ export function getKakaoMaps(): KakaoMaps | null {
 export function loadKakaoMapSdk(): Promise<void> {
   return new Promise((resolve, reject) => {
     const w = window as Window & { kakao?: { maps?: { load?: unknown } } };
-    if (w.kakao?.maps) { resolve(); return; }
-    if (!KAKAO_MAP_KEY) { reject(new Error("VITE_KAKAO_JS_KEY 미설정")); return; }
+    if (w.kakao?.maps) {
+      resolve();
+      return;
+    }
+    if (!KAKAO_MAP_KEY) {
+      reject(new Error("VITE_KAKAO_JS_KEY 미설정"));
+      return;
+    }
     const existing = document.querySelector("script[src*='dapi.kakao.com/v2/maps']");
     if (existing) {
-      if (w.kakao?.maps?.load) { resolve(); return; }
+      if (w.kakao?.maps?.load) {
+        resolve();
+        return;
+      }
       existing.addEventListener("load", () => resolve());
       existing.addEventListener("error", () => reject(new Error("Kakao Maps SDK 로드 실패")));
       return;

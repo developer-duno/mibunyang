@@ -35,7 +35,7 @@ async function fetchFromSupabase(): Promise<StaticApartmentsResponse> {
     if (res.status === 429) throw new Error("요청이 너무 많습니다. 잠시 후 새로고침하세요");
     throw new Error(`Supabase API failed: ${res.status}`);
   }
-  const json = await res.json() as StaticApartmentsResponse;
+  const json = (await res.json()) as StaticApartmentsResponse;
   if (!json.ok || !json.data?.length) throw new Error("Supabase data empty");
   return json;
 }
@@ -45,7 +45,12 @@ async function fetchFromJson(): Promise<StaticApartmentsResponse> {
   if (!res.ok) throw new Error(`Static data fetch failed: ${res.status}`);
   // 정적 JSON 은 양쪽 키 동시 박힘 (`fetchedAt` + `dataUpdatedAt` 동일값, 세션 292 이후).
   // fallback 은 과거 JSON CDN 캐시 + Supabase 분기 응답 호환 위함 — 미래에도 보존.
-  const json = await res.json() as { ok: boolean; data: Apt[]; dataUpdatedAt?: string | null; fetchedAt?: string | null };
+  const json = (await res.json()) as {
+    ok: boolean;
+    data: Apt[];
+    dataUpdatedAt?: string | null;
+    fetchedAt?: string | null;
+  };
   if (!json.ok || !json.data?.length) throw new Error("Static data empty");
   return { ok: json.ok, data: json.data, dataUpdatedAt: json.dataUpdatedAt ?? json.fetchedAt ?? null };
 }
@@ -77,7 +82,7 @@ async function loadPricesOnce(): Promise<void> {
   pricesPromise = (async () => {
     const res = await fetch("/data/apartments-prices.json");
     if (!res.ok) throw new Error(`Prices fetch failed: ${res.status}`);
-    const json = await res.json() as { ok: boolean; data: Array<{ id: string } & PriceArrays> };
+    const json = (await res.json()) as { ok: boolean; data: Array<{ id: string } & PriceArrays> };
     if (!json.ok || !Array.isArray(json.data)) throw new Error("Prices data empty");
     for (const row of json.data) {
       const { id, ...rest } = row;
@@ -90,8 +95,9 @@ async function loadPricesOnce(): Promise<void> {
 
 export async function fetchApartmentPrices(id: string): Promise<PriceArrays | null> {
   if (!pricesLoaded) {
-    try { await loadPricesOnce(); }
-    catch (err) {
+    try {
+      await loadPricesOnce();
+    } catch (err) {
       // 재시도 허용: pricesPromise = null reset → 다음 호출 시 새 fetch.
       // 본 라인이 없으면 다음 호출 시 if(pricesPromise) return pricesPromise 가 rejected Promise 를
       // 반환해 무한 throw loop 가 된다.

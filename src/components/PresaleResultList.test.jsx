@@ -7,9 +7,15 @@ import { PresaleResultList } from "./PresaleResultList";
 function makeItem(/** @type {any} */ overrides = {}) {
   return {
     apt: {
-      id: "r1", name: "결과단지", region: "대전", gu: "유성구",
-      area: 84.9948, price: 41800,
-      competitionRate: 8.58, competitionSupply: 50, competitionApplicants: 429,
+      id: "r1",
+      name: "결과단지",
+      region: "대전",
+      gu: "유성구",
+      area: 84.9948,
+      price: 41800,
+      competitionRate: 8.58,
+      competitionSupply: 50,
+      competitionApplicants: 429,
       ...overrides,
     },
     res: { total: 70, cats: {} },

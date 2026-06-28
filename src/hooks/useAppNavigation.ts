@@ -8,9 +8,19 @@ import type { UseAppNavigationArgs, UseAppNavigationReturn } from "@/types/hooks
  * useCallback 7개 + useRef 2개 + useEffect 2개
  */
 export function useAppNavigation({
-  tab, setTab, auth, admin, consult, detail,
-  compIds, setShowCompOpen, showToast,
-  budgetMin, budgetMax, isLoggedIn, onLoginRequired,
+  tab,
+  setTab,
+  auth,
+  admin,
+  consult,
+  detail,
+  compIds,
+  setShowCompOpen,
+  showToast,
+  budgetMin,
+  budgetMax,
+  isLoggedIn,
+  onLoginRequired,
 }: UseAppNavigationArgs): UseAppNavigationReturn {
   // ── useRef (stale closure 방지) ──
   const consultRef = useRef(consult);
@@ -39,47 +49,78 @@ export function useAppNavigation({
   }, [admin, auth, setTab]);
 
   const handleLogout = useCallback(() => {
-    auth.handleLogout(() => { setTab("list"); setShowCompOpen(false); });
+    auth.handleLogout(() => {
+      setTab("list");
+      setShowCompOpen(false);
+    });
   }, [auth, setShowCompOpen, setTab]);
 
   // ── 탭 전환 ──
   const switchToInfo = useCallback(() => setTab("info"), [setTab]);
 
-  const handleConsultFromDetail = useCallback((aptId: string) => {
-    consult.setConsultForm(prev => ({
-      ...prev,
-      interestedApts: prev.interestedApts.includes(aptId) ? prev.interestedApts : [...prev.interestedApts, aptId],
-    }));
-    detail.setDetailAptId(null);
-    setTab("consult");
-  }, [consult, detail, setTab]);
+  const handleConsultFromDetail = useCallback(
+    (aptId: string) => {
+      consult.setConsultForm((prev) => ({
+        ...prev,
+        interestedApts: prev.interestedApts.includes(aptId) ? prev.interestedApts : [...prev.interestedApts, aptId],
+      }));
+      detail.setDetailAptId(null);
+      setTab("consult");
+    },
+    [consult, detail, setTab]
+  );
 
-  const handleNavClick = useCallback((k: string) => {
-    if (k === "logout") return handleLogout();
-    trackEvent("tab_switch", { tab: k, previous_tab: tab });
-    if (k === "list") { setTab("list"); setShowCompOpen(false); return; }
-    // 비로그인 시 map 차단 (compare는 비로그인 허용)
-    if (!isLoggedIn && k === "map") { onLoginRequired?.(); return; }
-    if (k === "compare") {
-      if (compIds.length < 2) { showToast("카드에서 2개 이상 선택해주세요"); setTab("list"); return; }
-      setShowCompOpen(true); setTab("list"); return;
-    }
-    if (k === "consult") {
-      const c = consultRef.current;
-      const b = budgetRef.current;
-      if (c.consultSubmitted) {
-        c.setConsultSubmitted(false);
-        c.setConsultForm({ name: "", phone: "", interestedApts: [], budgetMin: "", budgetMax: "", consultType: "방문상담", message: "", consent: false });
-      } else {
-        c.setConsultForm(prev => ({
-          ...prev,
-          budgetMin: prev.budgetMin || (b.budgetMin ? String(Number(b.budgetMin) * 10000) : ""),
-          budgetMax: prev.budgetMax || (b.budgetMax ? String(Number(b.budgetMax) * 10000) : ""),
-        }));
+  const handleNavClick = useCallback(
+    (k: string) => {
+      if (k === "logout") return handleLogout();
+      trackEvent("tab_switch", { tab: k, previous_tab: tab });
+      if (k === "list") {
+        setTab("list");
+        setShowCompOpen(false);
+        return;
       }
-    }
-    setTab(k);
-  }, [compIds.length, handleLogout, isLoggedIn, onLoginRequired, setShowCompOpen, setTab, showToast, tab]);
+      // 비로그인 시 map 차단 (compare는 비로그인 허용)
+      if (!isLoggedIn && k === "map") {
+        onLoginRequired?.();
+        return;
+      }
+      if (k === "compare") {
+        if (compIds.length < 2) {
+          showToast("카드에서 2개 이상 선택해주세요");
+          setTab("list");
+          return;
+        }
+        setShowCompOpen(true);
+        setTab("list");
+        return;
+      }
+      if (k === "consult") {
+        const c = consultRef.current;
+        const b = budgetRef.current;
+        if (c.consultSubmitted) {
+          c.setConsultSubmitted(false);
+          c.setConsultForm({
+            name: "",
+            phone: "",
+            interestedApts: [],
+            budgetMin: "",
+            budgetMax: "",
+            consultType: "방문상담",
+            message: "",
+            consent: false,
+          });
+        } else {
+          c.setConsultForm((prev) => ({
+            ...prev,
+            budgetMin: prev.budgetMin || (b.budgetMin ? String(Number(b.budgetMin) * 10000) : ""),
+            budgetMax: prev.budgetMax || (b.budgetMax ? String(Number(b.budgetMax) * 10000) : ""),
+          }));
+        }
+      }
+      setTab(k);
+    },
+    [compIds.length, handleLogout, isLoggedIn, onLoginRequired, setShowCompOpen, setTab, showToast, tab]
+  );
 
   // ── useEffect: verify 실패 시 admin 상태 동기화 ──
   useEffect(() => {
@@ -90,7 +131,8 @@ export function useAppNavigation({
   }, [admin, auth.loggedIn, setTab, tab]);
 
   return {
-    handleAdminLogin, handleLogout,
+    handleAdminLogin,
+    handleLogout,
     switchToInfo,
     handleConsultFromDetail,
     handleNavClick,

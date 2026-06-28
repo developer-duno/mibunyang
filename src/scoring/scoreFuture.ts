@@ -9,13 +9,37 @@ const TRANSIT_PLANNED = ["계획", "착공", "공사중", "추진", "확정", "�
 /** 고가치 교통(GTX/KTX 등). 매칭 시 trSc × 1.2 보너스 (상한 100). */
 const TRANSIT_HIGH = ["GTX", "KTX역", "SRT", "지하철연장", "신설역", "광역급행", "BRT", "트램", "경전철", "도시철도"];
 /** 고가치 도시개발. citySc 80. `includes()` 부분 매칭 주의: "신도" → "신도시"+"신도심" 모두 매칭. */
-const CITY_HIGH = ["테크노", "주거타운", "신도시", "신도심", "복합도시", "재건축", "혁신",
-                   "스마트시티", "자족도시", "행정중심", "경제자유구역", "국가산단"];
+const CITY_HIGH = [
+  "테크노",
+  "주거타운",
+  "신도시",
+  "신도심",
+  "복합도시",
+  "재건축",
+  "혁신",
+  "스마트시티",
+  "자족도시",
+  "행정중심",
+  "경제자유구역",
+  "국가산단",
+];
 /** 중가치 도시개발. citySc 50. 미매칭 시 30. */
-const CITY_MID = ["재생", "리모델링", "관광", "산업단지", "공항", "특구", "메디컬",
-                  "역세권개발", "도시정비", "택지개발", "물류단지", "연구단지"];
+const CITY_MID = [
+  "재생",
+  "리모델링",
+  "관광",
+  "산업단지",
+  "공항",
+  "특구",
+  "메디컬",
+  "역세권개발",
+  "도시정비",
+  "택지개발",
+  "물류단지",
+  "연구단지",
+];
 /** `keywords.some(k => str.includes(k))` 부분 매칭. str=null 호출 금지(상위에서 가드). */
-const matchAny = (str: string, keywords: string[]): boolean => keywords.some(k => str.includes(k));
+const matchAny = (str: string, keywords: string[]): boolean => keywords.some((k) => str.includes(k));
 
 /**
  * 미래가치 점수 (0~100). 4축(교통·도시·인구·산업) 동적 가중치 합산.
@@ -47,25 +71,45 @@ export function scoreFuture(apt: Apt): Res {
   const devDist = (apt.devDist ?? 99) as number;
 
   // 교통개발 (기본 40%)
-  let trSc = (!transitDev || transitDev === "없음") ? 0
-    : matchAny(transitDev, TRANSIT_ACTIVE) ? (devDist <= 1 ? 100 : devDist <= 2 ? 70 : 40)
-    : matchAny(transitDev, TRANSIT_PLANNED) ? (devDist <= 1 ? 60 : devDist <= 3 ? 40 : 20) : 10;
+  let trSc =
+    !transitDev || transitDev === "없음"
+      ? 0
+      : matchAny(transitDev, TRANSIT_ACTIVE)
+        ? devDist <= 1
+          ? 100
+          : devDist <= 2
+            ? 70
+            : 40
+        : matchAny(transitDev, TRANSIT_PLANNED)
+          ? devDist <= 1
+            ? 60
+            : devDist <= 3
+              ? 40
+              : 20
+          : 10;
   if (trSc > 0 && matchAny(transitDev, TRANSIT_HIGH)) trSc = Math.min(Math.round(trSc * 1.2), 100);
 
   // 도시개발 (기본 30%)
-  const citySc = (!cityDev || cityDev === "") ? 0
-    : matchAny(cityDev, CITY_HIGH) ? 80
-    : matchAny(cityDev, CITY_MID) ? 50 : 30;
+  const citySc =
+    !cityDev || cityDev === "" ? 0 : matchAny(cityDev, CITY_HIGH) ? 80 : matchAny(cityDev, CITY_MID) ? 50 : 30;
 
   // 인구 (기본 30%) — 한국 현실 기반 7단계
-  let popSc = apt.popGrowth == null ? 35
-    : apt.popGrowth >= 1.0 ? 95
-    : apt.popGrowth >= 0.5 ? 80
-    : apt.popGrowth >= 0 ? 65
-    : apt.popGrowth >= -0.3 ? 50
-    : apt.popGrowth >= -0.8 ? 35
-    : apt.popGrowth >= -2.0 ? 20
-    : 10;
+  let popSc =
+    apt.popGrowth == null
+      ? 35
+      : apt.popGrowth >= 1.0
+        ? 95
+        : apt.popGrowth >= 0.5
+          ? 80
+          : apt.popGrowth >= 0
+            ? 65
+            : apt.popGrowth >= -0.3
+              ? 50
+              : apt.popGrowth >= -0.8
+                ? 35
+                : apt.popGrowth >= -2.0
+                  ? 20
+                  : 10;
   if (apt.netMigration != null && apt.netMigration > 0) popSc = Math.min(popSc + 10, 100);
   if (apt.netMigration != null && apt.netMigration <= -5000) popSc = Math.max(popSc - 5, 0);
 
@@ -88,10 +132,35 @@ export function scoreFuture(apt: Apt): Res {
   return {
     total: Math.round(Math.max(0, Math.min(total, 100))),
     subs: [
-      { name: "교통개발", score: Math.round(trSc), info: transitDev || "없음", detail: transitDev ? `${transitDev} (GTX/KTX역 ×1.2배, 1km내 100점, 2km 70점)` : "교통개발 없음 (0점)" },
-      { name: "도시개발", score: Math.round(citySc), info: cityDev || "없음", detail: cityDev ? `${cityDev} (신도시/테크노 80점, 재생/특구 50점, 기타 30점)` : "도시개발 없음 (0점)" },
-      { name: "인구", score: Math.round(popSc), info: pg != null ? `${pg > 0 ? "+" : ""}${pg}%` : "정보 없음", detail: pg != null ? `${pg > 0 ? "+" : ""}${pg}% (성장 +1%↑=95점, 안정 0%↑=65점, 감소 -2%↓=10점)` : "데이터 없음 (기본 35점)" },
-      { name: "산업개발", score: Math.round(indSc), info: hasInd ? (Array.isArray(indDev) ? indDev.join(", ") : String(indDev)) : "없음", detail: hasInd ? `${Array.isArray(indDev) ? indDev.join(", ") : String(indDev)} (국가산단 80점, 산업단지 55점, 기타 35점)` : "산업개발 없음 (0점)" },
+      {
+        name: "교통개발",
+        score: Math.round(trSc),
+        info: transitDev || "없음",
+        detail: transitDev ? `${transitDev} (GTX/KTX역 ×1.2배, 1km내 100점, 2km 70점)` : "교통개발 없음 (0점)",
+      },
+      {
+        name: "도시개발",
+        score: Math.round(citySc),
+        info: cityDev || "없음",
+        detail: cityDev ? `${cityDev} (신도시/테크노 80점, 재생/특구 50점, 기타 30점)` : "도시개발 없음 (0점)",
+      },
+      {
+        name: "인구",
+        score: Math.round(popSc),
+        info: pg != null ? `${pg > 0 ? "+" : ""}${pg}%` : "정보 없음",
+        detail:
+          pg != null
+            ? `${pg > 0 ? "+" : ""}${pg}% (성장 +1%↑=95점, 안정 0%↑=65점, 감소 -2%↓=10점)`
+            : "데이터 없음 (기본 35점)",
+      },
+      {
+        name: "산업개발",
+        score: Math.round(indSc),
+        info: hasInd ? (Array.isArray(indDev) ? indDev.join(", ") : String(indDev)) : "없음",
+        detail: hasInd
+          ? `${Array.isArray(indDev) ? indDev.join(", ") : String(indDev)} (국가산단 80점, 산업단지 55점, 기타 35점)`
+          : "산업개발 없음 (0점)",
+      },
     ],
   };
 }

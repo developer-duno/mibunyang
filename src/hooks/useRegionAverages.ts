@@ -1,8 +1,15 @@
 import { useMemo } from "react";
 import type { ScoredApt } from "@/types/hooks";
 
-interface RegionBucket { sum: number; count: number; avg: number; }
-interface GuBucket extends RegionBucket { region: string; gu: string; }
+interface RegionBucket {
+  sum: number;
+  count: number;
+  avg: number;
+}
+interface GuBucket extends RegionBucket {
+  region: string;
+  gu: string;
+}
 
 export interface UseRegionAveragesReturn {
   byRegion: Record<string, RegionBucket>;
@@ -38,13 +45,9 @@ export function useRegionAverages(scored: ScoredApt[]): UseRegionAveragesReturn 
       }
     }
     const finalizeRegion = (m: Record<string, RegionAccum>): Record<string, RegionBucket> =>
-      Object.fromEntries(
-        Object.entries(m).map(([k, v]) => [k, { ...v, avg: Math.round(v.sum / v.count) }])
-      );
+      Object.fromEntries(Object.entries(m).map(([k, v]) => [k, { ...v, avg: Math.round(v.sum / v.count) }]));
     const finalizeGu = (m: Record<string, GuAccum>): Record<string, GuBucket> =>
-      Object.fromEntries(
-        Object.entries(m).map(([k, v]) => [k, { ...v, avg: Math.round(v.sum / v.count) }])
-      );
+      Object.fromEntries(Object.entries(m).map(([k, v]) => [k, { ...v, avg: Math.round(v.sum / v.count) }]));
     return { byRegion: finalizeRegion(byRegion), byGu: finalizeGu(byGu) };
   }, [scored]);
 }

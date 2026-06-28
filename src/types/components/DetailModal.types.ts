@@ -5,11 +5,7 @@
  *
  * 호출처 실측: onComp/onFav/onShare/onConsult 모두 apt.id (string) 전달.
  */
-import type {
-  CompareItem,
-  CloseHandler,
-  ResponsiveProps,
-} from "@/types/components";
+import type { CompareItem, CloseHandler, ResponsiveProps } from "@/types/components";
 import type { Profile } from "@/types/scoring";
 
 export interface DetailModalProps extends ResponsiveProps {

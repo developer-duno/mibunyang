@@ -5,7 +5,10 @@ import { geoJsonFeatureToKakaoPaths } from "./geoJsonToKakaoPaths";
 // kakao.LatLng fake — 인자 그대로 보존해서 좌표 뒤집기 검증 가능
 function makeKakao() {
   return {
-    LatLng: vi.fn(function (lat, lng) { this.lat = lat; this.lng = lng; }),
+    LatLng: vi.fn(function (lat, lng) {
+      this.lat = lat;
+      this.lng = lng;
+    }),
   };
 }
 
@@ -16,7 +19,12 @@ describe("geoJsonFeatureToKakaoPaths", () => {
       geometry: {
         type: "Polygon",
         coordinates: [
-          [[127.0, 37.5], [127.1, 37.5], [127.1, 37.6], [127.0, 37.5]],
+          [
+            [127.0, 37.5],
+            [127.1, 37.5],
+            [127.1, 37.6],
+            [127.0, 37.5],
+          ],
         ],
       },
     };
@@ -34,8 +42,20 @@ describe("geoJsonFeatureToKakaoPaths", () => {
       geometry: {
         type: "MultiPolygon",
         coordinates: [
-          [[[127.0, 37.5], [127.1, 37.5], [127.1, 37.6]]],
-          [[[126.5, 33.5], [126.6, 33.5], [126.6, 33.6]]],
+          [
+            [
+              [127.0, 37.5],
+              [127.1, 37.5],
+              [127.1, 37.6],
+            ],
+          ],
+          [
+            [
+              [126.5, 33.5],
+              [126.6, 33.5],
+              [126.6, 33.6],
+            ],
+          ],
         ],
       },
     };

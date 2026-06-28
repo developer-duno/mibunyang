@@ -14,7 +14,7 @@ const KAKAO_REST_KEY: string = import.meta.env.VITE_KAKAO_REST_API_KEY || "";
 function generateState(): string {
   const arr = new Uint8Array(16);
   crypto.getRandomValues(arr);
-  return Array.from(arr, b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthReturn {
@@ -26,33 +26,38 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
   }, [showToast]);
 
   /** 카카오 인가 URL로 이동 (pendingDetailId: 로그인 후 복귀할 상세 ID) */
-  const initKakaoLogin = useCallback((pendingDetailId?: string | null) => {
-    if (!KAKAO_REST_KEY) {
-      showToastRef.current("카카오 로그인을 사용할 수 없습니다");
-      return;
-    }
-    if (kakaoLoading) return; // 중복 클릭 방지
+  const initKakaoLogin = useCallback(
+    (pendingDetailId?: string | null) => {
+      if (!KAKAO_REST_KEY) {
+        showToastRef.current("카카오 로그인을 사용할 수 없습니다");
+        return;
+      }
+      if (kakaoLoading) return; // 중복 클릭 방지
 
-    const state = generateState();
-    setKakaoLoading(true);
-    try {
-      sessionStorage.setItem("kakao_oauth_state", state);
-      if (pendingDetailId) sessionStorage.setItem("kakao_pending_detail", pendingDetailId);
-    } catch { /* sessionStorage 접근 실패 시 무시 */ }
+      const state = generateState();
+      setKakaoLoading(true);
+      try {
+        sessionStorage.setItem("kakao_oauth_state", state);
+        if (pendingDetailId) sessionStorage.setItem("kakao_pending_detail", pendingDetailId);
+      } catch {
+        /* sessionStorage 접근 실패 시 무시 */
+      }
 
-    const params = new URLSearchParams({
-      client_id: KAKAO_REST_KEY,
-      redirect_uri: `${window.location.origin}/oauth/kakao/callback`,
-      response_type: "code",
-      state,
-    });
-    // 전화번호 수집: 카카오 비즈앱 심사 완료 후 VITE_KAKAO_PHONE_SCOPE=true 로 켜면 동의 화면에 노출.
-    // 심사 전 켜면 카카오가 에러를 반환하므로 기본 비활성. (세션 427)
-    if (import.meta.env.VITE_KAKAO_PHONE_SCOPE === "true") {
-      params.set("scope", "account_email profile_nickname phone_number");
-    }
-    window.location.href = `https://kauth.kakao.com/oauth/authorize?${params}`;
-  }, [kakaoLoading]);
+      const params = new URLSearchParams({
+        client_id: KAKAO_REST_KEY,
+        redirect_uri: `${window.location.origin}/oauth/kakao/callback`,
+        response_type: "code",
+        state,
+      });
+      // 전화번호 수집: 카카오 비즈앱 심사 완료 후 VITE_KAKAO_PHONE_SCOPE=true 로 켜면 동의 화면에 노출.
+      // 심사 전 켜면 카카오가 에러를 반환하므로 기본 비활성. (세션 427)
+      if (import.meta.env.VITE_KAKAO_PHONE_SCOPE === "true") {
+        params.set("scope", "account_email profile_nickname phone_number");
+      }
+      window.location.href = `https://kauth.kakao.com/oauth/authorize?${params}`;
+    },
+    [kakaoLoading]
+  );
 
   /** 콜백 처리 — App.jsx에서 pathname 감지 후 호출 */
   const handleKakaoCallback = useCallback(async (): Promise<KakaoCallbackResult> => {
@@ -80,7 +85,9 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
     try {
       savedState = sessionStorage.getItem("kakao_oauth_state");
       sessionStorage.removeItem("kakao_oauth_state"); // 1회용 즉시 삭제
-    } catch { /* sessionStorage 접근 실패 시 무시 */ }
+    } catch {
+      /* sessionStorage 접근 실패 시 무시 */
+    }
 
     if (!urlState || urlState !== savedState) {
       setKakaoError("보안 검증에 실패했습니다");
@@ -110,8 +117,22 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
       if (data.ok) {
         // pendingDetail 복원
         let pendingDetail = null;
-        try { pendingDetail = sessionStorage.getItem("kakao_pending_detail"); sessionStorage.removeItem("kakao_pending_detail"); } catch { /* noop: sessionStorage 미가용 무시 */ }
-        return { ok: true, token: data.token, refreshToken: data.refreshToken, user: data.user, role: data.role || "user", pendingDetail, needsMarketingConsent: !!data.needsMarketingConsent, consentMarketing: data.consentMarketing ?? null };
+        try {
+          pendingDetail = sessionStorage.getItem("kakao_pending_detail");
+          sessionStorage.removeItem("kakao_pending_detail");
+        } catch {
+          /* noop: sessionStorage 미가용 무시 */
+        }
+        return {
+          ok: true,
+          token: data.token,
+          refreshToken: data.refreshToken,
+          user: data.user,
+          role: data.role || "user",
+          pendingDetail,
+          needsMarketingConsent: !!data.needsMarketingConsent,
+          consentMarketing: data.consentMarketing ?? null,
+        };
       }
 
       setKakaoError(data.error || "카카오 로그인 실패");

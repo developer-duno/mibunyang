@@ -43,45 +43,84 @@ const S: Record<string, CSSProperties> = {
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   title: { fontSize: F.lg, fontWeight: 800, color: C.text },
   refreshBtn: {
-    background: C.purpleLight, color: C.purple, border: `1px solid ${C.purple}`,
-    borderRadius: 6, padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer",
+    background: C.purpleLight,
+    color: C.purple,
+    border: `1px solid ${C.purple}`,
+    borderRadius: 6,
+    padding: "6px 14px",
+    fontSize: F.xs,
+    fontWeight: 700,
+    cursor: "pointer",
   },
   subTitle: { fontSize: F.xs, fontWeight: 700, color: C.sub, marginBottom: 4 },
   banner: {
-    background: C.amberLight, border: `1px solid ${C.amberBorder}`, borderRadius: 8,
-    padding: "8px 12px", fontSize: F.xs, fontWeight: 600, color: C.amber, marginBottom: 10,
+    background: C.amberLight,
+    border: `1px solid ${C.amberBorder}`,
+    borderRadius: 8,
+    padding: "8px 12px",
+    fontSize: F.xs,
+    fontWeight: 600,
+    color: C.amber,
+    marginBottom: 10,
   },
   empty: {
-    background: C.card, borderRadius: 12, padding: "32px 20px", border: `1px solid ${C.border}`,
-    textAlign: "center", fontSize: F.base, fontWeight: 700, color: C.text,
+    background: C.card,
+    borderRadius: 12,
+    padding: "32px 20px",
+    border: `1px solid ${C.border}`,
+    textAlign: "center",
+    fontSize: F.base,
+    fontWeight: 700,
+    color: C.text,
   },
   // 데이터 갱신 카드 — 가로 한 줄 + 가로 스크롤(드래그)로 넘겨봄
   freshGrid: {
-    display: "flex", gap: 6, marginBottom: 12,
-    overflowX: "auto", paddingBottom: 4,
+    display: "flex",
+    gap: 6,
+    marginBottom: 12,
+    overflowX: "auto",
+    paddingBottom: 4,
   },
   freshCard: {
-    flexShrink: 0, width: 140, borderRadius: 8, padding: "8px 6px", textAlign: "center",
+    flexShrink: 0,
+    width: 140,
+    borderRadius: 8,
+    padding: "8px 6px",
+    textAlign: "center",
   },
   freshTable: { fontSize: F.micro, fontWeight: 700, marginBottom: 2 },
   freshTime: { fontSize: 10, fontWeight: 600 },
   // 수집기 그리드 — 넓은 화면 3열 / 중간 2열 / 좁은 화면 1열 (minmax 자동 조절)
   runGrid: {
-    display: "grid", gap: 8,
+    display: "grid",
+    gap: 8,
     gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
   },
   // 수집기 카드 셀 — 평소엔 한 줄, 클릭하면 그 칸 안에서 상세 펼침
   runCell: {
-    border: `1px solid ${C.border}`, borderRadius: 8, background: C.card, overflow: "hidden",
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    background: C.card,
+    overflow: "hidden",
   },
   runRow: {
-    display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "9px 12px",
+    cursor: "pointer",
   },
   caret: { fontSize: 10, color: C.muted, width: 10, flexShrink: 0 },
   runName: { fontSize: F.sm, fontWeight: 700, color: C.text, flex: 1, minWidth: 0 },
   badge: {
-    display: "flex", alignItems: "center", gap: 4, fontSize: F.micro, fontWeight: 700,
-    borderRadius: 4, padding: "2px 8px", flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    fontSize: F.micro,
+    fontWeight: 700,
+    borderRadius: 4,
+    padding: "2px 8px",
+    flexShrink: 0,
   },
   dot: { width: 7, height: 7, borderRadius: "50%", flexShrink: 0 },
   runTime: { fontSize: F.micro, fontWeight: 600, flexShrink: 0, textAlign: "right", minWidth: 70 },
@@ -89,8 +128,12 @@ const S: Record<string, CSSProperties> = {
   detail: { padding: "2px 12px 12px 30px", background: C.bg, borderTop: `1px solid ${C.border}` },
   runMeta: { display: "flex", gap: 10, flexWrap: "wrap", fontSize: F.micro, color: C.muted },
   runError: {
-    marginTop: 6, fontSize: F.micro, fontWeight: 600, color: C.red,
-    wordBreak: "break-word", lineHeight: 1.5,
+    marginTop: 6,
+    fontSize: F.micro,
+    fontWeight: 600,
+    color: C.red,
+    wordBreak: "break-word",
+    lineHeight: 1.5,
   },
   quota: { marginTop: 4, fontSize: 10, color: C.muted, wordBreak: "break-word", lineHeight: 1.5 },
   detailEmpty: { fontSize: F.micro, color: C.muted },
@@ -128,17 +171,11 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
 
       {loading && !data && <SkeletonList count={4} columns={2} />}
 
-      {error && !loading && (
-        <div style={S.empty}>{error}</div>
-      )}
+      {error && !loading && <div style={S.empty}>{error}</div>}
 
       {data && (
         <>
-          {data.partial && (
-            <div style={S.banner}>
-              일부 데이터 조회에 실패했습니다: {data.errors.join(", ")}
-            </div>
-          )}
+          {data.partial && <div style={S.banner}>일부 데이터 조회에 실패했습니다: {data.errors.join(", ")}</div>}
 
           {/* 데이터 갱신 시각 */}
           <div style={S.subTitle}>데이터 갱신 시각</div>
@@ -156,18 +193,14 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
 
           {/* 수집기별 실행 결과 — 평소엔 한 줄, 클릭하면 상세 펼침 */}
           <div style={S.subTitle}>수집기 실행 결과 ({data.collectors.length}개)</div>
-          {data.collectors.length === 0 && (
-            <div style={S.empty}>수집기 실행 기록이 없습니다</div>
-          )}
+          {data.collectors.length === 0 && <div style={S.empty}>수집기 실행 기록이 없습니다</div>}
           {data.collectors.length > 0 && (
             <div style={S.runGrid}>
               {data.collectors.map((c) => {
                 const badge = statusBadge(c.lastRun);
                 const fresh = freshnessColor(c.lastRun?.finishedAt ?? null);
                 const isOpen = expanded.has(c.collector);
-                const quotaText = c.recentQuota
-                  .map((q) => `${q.apiName ?? "?"} ${q.callCount ?? 0}건`)
-                  .join(" · ");
+                const quotaText = c.recentQuota.map((q) => `${q.apiName ?? "?"} ${q.callCount ?? 0}건`).join(" · ");
                 return (
                   <div key={c.collector} style={S.runCell}>
                     <div
@@ -189,9 +222,7 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
                         <span style={{ ...S.dot, background: badge.color }} />
                         {badge.label}
                       </span>
-                      <span style={{ ...S.runTime, color: fresh.color }}>
-                        {fmtTime(c.lastRun?.finishedAt ?? null)}
-                      </span>
+                      <span style={{ ...S.runTime, color: fresh.color }}>{fmtTime(c.lastRun?.finishedAt ?? null)}</span>
                     </div>
                     {isOpen && (
                       <div style={S.detail}>
@@ -200,18 +231,12 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
                             <span>성공 {c.lastRun.okCount ?? 0}</span>
                             <span>실패 {c.lastRun.failCount ?? 0}</span>
                             <span>스킵 {c.lastRun.skipCount ?? 0}</span>
-                            {c.lastRun.elapsedSec != null && (
-                              <span>{c.lastRun.elapsedSec.toFixed(1)}초</span>
-                            )}
+                            {c.lastRun.elapsedSec != null && <span>{c.lastRun.elapsedSec.toFixed(1)}초</span>}
                           </div>
                         ) : (
-                          <div style={S.detailEmpty}>
-                            수집 실행 기록이 아직 없습니다 (API 호출 기록만 있음)
-                          </div>
+                          <div style={S.detailEmpty}>수집 실행 기록이 아직 없습니다 (API 호출 기록만 있음)</div>
                         )}
-                        {c.lastRun?.errorMessage && (
-                          <div style={S.runError}>{c.lastRun.errorMessage}</div>
-                        )}
+                        {c.lastRun?.errorMessage && <div style={S.runError}>{c.lastRun.errorMessage}</div>}
                         {quotaText && <div style={S.quota}>API 호출: {quotaText}</div>}
                       </div>
                     )}

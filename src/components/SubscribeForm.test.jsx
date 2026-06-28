@@ -45,10 +45,13 @@ describe("SubscribeForm — 휴대폰 알림 신청", () => {
     fireEvent.click(screen.getByRole("button", { name: /알림 받기/ }));
 
     await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledWith("/api/subscribers", expect.objectContaining({
-        method: "POST",
-        body: expect.stringContaining("010-1234-5678"),
-      }));
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/subscribers",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("010-1234-5678"),
+        })
+      );
     });
     await waitFor(() => {
       expect(screen.getByText(/알림 신청 완료/)).toBeInTheDocument();

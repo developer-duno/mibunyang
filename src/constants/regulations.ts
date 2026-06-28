@@ -9,9 +9,9 @@ export const ZONE_TYPE: Record<Zone, string> = {
 
 // LTV 비율 (무주택자 기준, 9억 기준 차등)
 export const LTV_RATES: Record<Zone, { under9: number; over9: number }> = {
-  speculative: { under9: 0.40, over9: 0.20 },
-  overheated:  { under9: 0.50, over9: 0.30 },
-  normal:      { under9: 0.70, over9: 0.60 },
+  speculative: { under9: 0.4, over9: 0.2 },
+  overheated: { under9: 0.5, over9: 0.3 },
+  normal: { under9: 0.7, over9: 0.6 },
 };
 
 // region:gu → zone lookup (2023.01 전면 해제 이후 전역 normal)

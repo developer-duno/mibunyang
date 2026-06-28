@@ -55,12 +55,36 @@ export const CategoryMiniCard = memo(function CategoryMiniCard({ k, cat, emphasi
         <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
           <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>{label}</span>
           {emphasized && (
-            <span style={{ fontSize: F.xs, fontWeight: 700, color: col, background: C.card, border: `1px solid ${col}`, borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>중점</span>
+            <span
+              style={{
+                fontSize: F.xs,
+                fontWeight: 700,
+                color: col,
+                background: C.card,
+                border: `1px solid ${col}`,
+                borderRadius: 4,
+                padding: "1px 5px",
+                flexShrink: 0,
+              }}
+            >
+              중점
+            </span>
           )}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
           <span style={{ fontSize: F.lg, fontWeight: 800, color: col, lineHeight: 1 }}>{cat.total}</span>
-          <span style={{ fontSize: F.xs, fontWeight: 700, color: grade.c, background: grade.bg, padding: "1px 5px", borderRadius: 4 }}>{grade.l}</span>
+          <span
+            style={{
+              fontSize: F.xs,
+              fontWeight: 700,
+              color: grade.c,
+              background: grade.bg,
+              padding: "1px 5px",
+              borderRadius: 4,
+            }}
+          >
+            {grade.l}
+          </span>
         </span>
       </div>
       <span style={{ fontSize: F.sm, color: C.muted }}>{verdict}</span>

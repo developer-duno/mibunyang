@@ -15,15 +15,18 @@ describe("useHistoryData", () => {
 
   // 정상 케이스: API 호출 후 데이터 반환
   it("정상 응답 시 data 배열 반환", async () => {
-    const mockData = [{ id: 1, value: 100 }, { id: 2, value: 200 }];
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(/** @type {Response} */ ({
-      ok: true,
-      json: () => Promise.resolve({ ok: true, data: mockData }),
-    }));
-
-    const { result } = renderHook(() =>
-      useHistoryData("/api/supabase/prices", "ah-123")
+    const mockData = [
+      { id: 1, value: 100 },
+      { id: 2, value: 200 },
+    ];
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      /** @type {Response} */ ({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, data: mockData }),
+      })
     );
+
+    const { result } = renderHook(() => useHistoryData("/api/supabase/prices", "ah-123"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.data).toEqual(mockData);
@@ -36,14 +39,14 @@ describe("useHistoryData", () => {
 
   // 에러 케이스: API 실패 시 error 상태
   it("API 에러 시 error 메시지 설정", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(/** @type {Response} */ ({
-      ok: false,
-      status: 500,
-    }));
-
-    const { result } = renderHook(() =>
-      useHistoryData("/api/supabase/unsold-history", "ah-456")
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      /** @type {Response} */ ({
+        ok: false,
+        status: 500,
+      })
     );
+
+    const { result } = renderHook(() => useHistoryData("/api/supabase/unsold-history", "ah-456"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.data).toEqual([]);
@@ -52,20 +55,17 @@ describe("useHistoryData", () => {
 
   // siblingIds 복수 조회
   it("siblingIds 전달 시 apartment_ids 파라미터 사용", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(/** @type {Response} */ ({
-      ok: true,
-      json: () => Promise.resolve({ ok: true, data: [] }),
-    }));
-
-    const { result } = renderHook(() =>
-      useHistoryData("/api/supabase/prices", "ah-1", ["ah-1", "ah-2", "ah-3"])
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      /** @type {Response} */ ({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, data: [] }),
+      })
     );
+
+    const { result } = renderHook(() => useHistoryData("/api/supabase/prices", "ah-1", ["ah-1", "ah-2", "ah-3"]));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("apartment_ids="),
-      expect.any(Object)
-    );
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("apartment_ids="), expect.any(Object));
   });
 
   // apartmentId 없으면 fetch 하지 않음
@@ -79,9 +79,7 @@ describe("useHistoryData", () => {
   it("429 응답 시 한국어 재시도 안내 메시지를 설정한다", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(/** @type {Response} */ ({ ok: false, status: 429 }));
 
-    const { result } = renderHook(() =>
-      useHistoryData("/api/supabase/prices", "ah-999")
-    );
+    const { result } = renderHook(() => useHistoryData("/api/supabase/prices", "ah-999"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("요청이 너무 많습니다. 잠시 후 다시 시도해주세요");

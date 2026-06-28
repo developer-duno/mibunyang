@@ -72,11 +72,15 @@ describe("ConsultForm", () => {
   // 유효한 폼 제출 시 onSubmit 호출 (동의 포함)
   it("유효한 폼 제출 시 onSubmit 호출", () => {
     const onSubmit = vi.fn();
-    render(<ConsultForm {...makeProps({
-      form: makeForm({ name: "홍길동", phone: "010-1234-5678", consent: true }),
-      favoriteIds: [1],
-      onSubmit,
-    })} />);
+    render(
+      <ConsultForm
+        {...makeProps({
+          form: makeForm({ name: "홍길동", phone: "010-1234-5678", consent: true }),
+          favoriteIds: [1],
+          onSubmit,
+        })}
+      />
+    );
     fireEvent.click(screen.getByText("상담 신청하기"));
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
@@ -85,12 +89,16 @@ describe("ConsultForm", () => {
   it("동의 미체크 시 상담 신청하면 토스트 + onSubmit 미호출", () => {
     const showToast = vi.fn();
     const onSubmit = vi.fn();
-    render(<ConsultForm {...makeProps({
-      form: makeForm({ name: "홍길동", phone: "010-1234-5678", consent: false }),
-      favoriteIds: [1],
-      onSubmit,
-      showToast,
-    })} />);
+    render(
+      <ConsultForm
+        {...makeProps({
+          form: makeForm({ name: "홍길동", phone: "010-1234-5678", consent: false }),
+          favoriteIds: [1],
+          onSubmit,
+          showToast,
+        })}
+      />
+    );
     fireEvent.click(screen.getByText("상담 신청하기"));
     expect(showToast).toHaveBeenCalledWith("개인정보 수집·이용 동의가 필요합니다");
     expect(onSubmit).not.toHaveBeenCalled();
@@ -158,10 +166,14 @@ describe("ConsultForm", () => {
 
   // submitted 상태 — 완료 화면
   it("submitted=true이면 완료 화면 표시", () => {
-    render(<ConsultForm {...makeProps({
-      submitted: true,
-      form: makeForm({ name: "홍길동", phone: "010-1234-5678" }),
-    })} />);
+    render(
+      <ConsultForm
+        {...makeProps({
+          submitted: true,
+          form: makeForm({ name: "홍길동", phone: "010-1234-5678" }),
+        })}
+      />
+    );
     expect(screen.getByText("상담 신청이 완료되었습니다")).toBeInTheDocument();
     expect(screen.getByText(/신청자: 홍길동/)).toBeInTheDocument();
   });

@@ -52,19 +52,13 @@ describe("catVerdict — 임계 70/50 이 gr() 등급 경계와 정합", () => {
 
 describe("catVerdict — price 는 적정가 괴리(deviation) 실측 우선", () => {
   it("fairPrice>0 + deviation 양수 → 저렴", () => {
-    expect(catVerdict("price", mk({ total: 40, fairPrice: 50000, deviation: "12.3" }))).toBe(
-      "적정가 대비 12% 저렴",
-    );
+    expect(catVerdict("price", mk({ total: 40, fairPrice: 50000, deviation: "12.3" }))).toBe("적정가 대비 12% 저렴");
   });
   it("fairPrice>0 + deviation 음수 → 비쌈 (절댓값 표기)", () => {
-    expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: "-8.7" }))).toBe(
-      "적정가 대비 9% 비쌈",
-    );
+    expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: "-8.7" }))).toBe("적정가 대비 9% 비쌈");
   });
   it("fairPrice>0 + deviation 0 → '적정가 수준' (진짜 0% 괴리 정직 표기)", () => {
-    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.0" }))).toBe(
-      "적정가 수준",
-    );
+    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.0" }))).toBe("적정가 수준");
   });
   it("fairPrice=0 (데이터 부재 폴백) → deviation '0.0' 무시하고 점수 문구", () => {
     // scorePrice.ts:116 데이터 부재 분기 = fairPrice:0, deviation:"0.0". 부호 분기로 가면 거짓 표시.

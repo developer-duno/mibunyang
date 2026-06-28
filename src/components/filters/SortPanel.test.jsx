@@ -26,7 +26,7 @@ describe("SortPanel", () => {
   // 각 버튼에 mobileLabel 표시
   it("각 버튼에 mobileLabel 텍스트 표시", () => {
     render(<SortPanel {...makeProps()} />);
-    SORT_OPTIONS.forEach(opt => {
+    SORT_OPTIONS.forEach((opt) => {
       expect(screen.getByText(opt.mobileLabel)).toBeInTheDocument();
     });
   });

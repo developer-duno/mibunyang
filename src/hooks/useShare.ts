@@ -26,7 +26,7 @@ export function useShare(showToast: (_msg: string) => void): UseShareReturn {
     }
     if (!shareData) return;
     const buttons: Array<{ title: string; link: { mobileWebUrl: string; webUrl: string } }> = [
-      { title: "분석 결과 보기", link: { mobileWebUrl: shareData.url, webUrl: shareData.url } }
+      { title: "분석 결과 보기", link: { mobileWebUrl: shareData.url, webUrl: shareData.url } },
     ];
     if (KAKAO_CHANNEL_ID) {
       const channelUrl = `https://pf.kakao.com/${KAKAO_CHANNEL_ID}`;
@@ -39,9 +39,9 @@ export function useShare(showToast: (_msg: string) => void): UseShareReturn {
           title: shareData.title,
           description: shareData.text,
           imageUrl: `${window.location.origin}/og-thumbnail.png`,
-          link: { mobileWebUrl: shareData.url, webUrl: shareData.url }
+          link: { mobileWebUrl: shareData.url, webUrl: shareData.url },
         },
-        buttons
+        buttons,
       });
     } catch {
       showToast("카카오톡 공유에 실패했습니다");
@@ -83,7 +83,11 @@ export function useShare(showToast: (_msg: string) => void): UseShareReturn {
 
   useEffect(() => {
     if (KAKAO_JS_KEY && window.Kakao && !window.Kakao.isInitialized()) {
-      try { window.Kakao.init(KAKAO_JS_KEY); } catch { /* SDK init 실패 무시 */ }
+      try {
+        window.Kakao.init(KAKAO_JS_KEY);
+      } catch {
+        /* SDK init 실패 무시 */
+      }
     }
   }, []);
 

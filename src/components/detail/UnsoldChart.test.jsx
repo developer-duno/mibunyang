@@ -4,10 +4,14 @@ import { render, screen, fireEvent } from "@testing-library/react";
 
 // 훅 모킹
 const mockUseUnsoldHistory = vi.fn();
-vi.mock("@/hooks/useUnsoldHistory", () => ({ useUnsoldHistory: (/** @type {any[]} */ ...args) => mockUseUnsoldHistory(...args) }));
+vi.mock("@/hooks/useUnsoldHistory", () => ({
+  useUnsoldHistory: (/** @type {any[]} */ ...args) => mockUseUnsoldHistory(...args),
+}));
 
 // LineChart 모킹
-vi.mock("@/components/primitives", () => ({ LineChart: (/** @type {any} */ props) => <div data-testid="line-chart" aria-label={props.yLabel} /> }));
+vi.mock("@/components/primitives", () => ({
+  LineChart: (/** @type {any} */ props) => <div data-testid="line-chart" aria-label={props.yLabel} />,
+}));
 
 import { UnsoldChart } from "./UnsoldChart";
 
@@ -20,7 +24,9 @@ function makeData(count = 3, withSecondary = false) {
 }
 
 describe("UnsoldChart", () => {
-  beforeEach(() => { mockUseUnsoldHistory.mockReset(); });
+  beforeEach(() => {
+    mockUseUnsoldHistory.mockReset();
+  });
 
   // apartmentId가 falsy이면 null
   it("apartmentId 없음 → null", () => {

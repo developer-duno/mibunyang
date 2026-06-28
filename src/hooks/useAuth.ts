@@ -74,30 +74,32 @@ export function useAuth(showToast: ShowToast) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- showToast는 useToast의 useCallback([])로 평생 불변이라 deps 누락 안전 (P-4)
   }, []);
 
-  const handleLogout = useCallback(async (onLogout?: () => void) => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    const refreshToken = localStorage.getItem("refreshToken");
-    if (token) {
-      try {
-        await fetch("/api/auth/logout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, refreshToken }),
-        });
-      } catch { /* best-effort — 로컬 삭제는 항상 실행 */ }
-    }
-    setLoggedIn(false);
-    clearAuthTokens();
-    localStorage.removeItem("refreshToken");
-    setAuthUser(null);
-    setAuthForm({ ...EMPTY_FORM });
-    setAuthError("");
-    onLogout?.();
-    showToast("로그아웃되었습니다");
-  }, [showToast]);
-
-
-
+  const handleLogout = useCallback(
+    async (onLogout?: () => void) => {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const refreshToken = localStorage.getItem("refreshToken");
+      if (token) {
+        try {
+          await fetch("/api/auth/logout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token, refreshToken }),
+          });
+        } catch {
+          /* best-effort — 로컬 삭제는 항상 실행 */
+        }
+      }
+      setLoggedIn(false);
+      clearAuthTokens();
+      localStorage.removeItem("refreshToken");
+      setAuthUser(null);
+      setAuthForm({ ...EMPTY_FORM });
+      setAuthError("");
+      onLogout?.();
+      showToast("로그아웃되었습니다");
+    },
+    [showToast]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +114,7 @@ export function useAuth(showToast: ShowToast) {
         body: JSON.stringify({ token }),
         signal: abortCtrl.signal,
       })
-        .then(r => {
+        .then((r) => {
           if (r.status === 429 || r.status >= 500) return null;
           return r.json();
         })
@@ -136,7 +138,9 @@ export function useAuth(showToast: ShowToast) {
                   setAuthUser(rd.user);
                   return; // 갱신 성공 — 로그아웃 안 함
                 }
-              } catch { /* refresh 실패 → 아래 로그아웃 */ }
+              } catch {
+                /* refresh 실패 → 아래 로그아웃 */
+              }
             }
             setLoggedIn(false);
             localStorage.removeItem(TOKEN_KEY);
@@ -155,16 +159,28 @@ export function useAuth(showToast: ShowToast) {
     };
     verify();
     const id = setInterval(verify, 15 * 60 * 1000);
-    const onVisibility = () => { if (document.visibilityState === "visible") verify(); };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") verify();
+    };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => { cancelled = true; abortCtrl?.abort(); clearInterval(id); document.removeEventListener("visibilitychange", onVisibility); };
+    return () => {
+      cancelled = true;
+      abortCtrl?.abort();
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [showToast]);
 
   return {
-    authForm, setAuthForm,
-    authLoading, authError,
-    authUser, setAuthUser,
-    loggedIn, setLoggedIn,
-    handleLogin, handleLogout,
+    authForm,
+    setAuthForm,
+    authLoading,
+    authError,
+    authUser,
+    setAuthUser,
+    loggedIn,
+    setLoggedIn,
+    handleLogin,
+    handleLogout,
   };
 }

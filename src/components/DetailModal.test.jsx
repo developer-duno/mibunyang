@@ -15,7 +15,13 @@ function makeItem(overrides = {}) {
     {},
     {
       cats: {
-        price: { label: "가격 매력도", total: 70, fairPrice: 48000, deviation: "-3.2", subs: [{ info: "-3.2%", name: "적정가괴리", score: 70 }] },
+        price: {
+          label: "가격 매력도",
+          total: 70,
+          fairPrice: 48000,
+          deviation: "-3.2",
+          subs: [{ info: "-3.2%", name: "적정가괴리", score: 70 }],
+        },
         location: { label: "입지·생활권", total: 80, subs: [{ info: "역세권", name: "지하철", score: 80 }] },
         product: { label: "상품성", total: 65, subs: [] },
         benefit: { label: "혜택·할인", total: 60, totalWon: 0, rate: 0, subs: [] },
@@ -168,7 +174,10 @@ describe("DetailModal", () => {
 // 가시성 단언은 toBeVisible/not.toBeVisible (getByText 단독 금지 — display:none 패널 텍스트도 매칭되는 함정).
 describe("DetailModal StickyJumpNav", () => {
   const origScrollTo = HTMLElement.prototype.scrollTo;
-  beforeEach(() => { document.body.style.overflow = ""; vi.mocked(trackEvent).mockClear(); });
+  beforeEach(() => {
+    document.body.style.overflow = "";
+    vi.mocked(trackEvent).mockClear();
+  });
   afterEach(() => {
     document.body.style.overflow = "";
     HTMLElement.prototype.scrollTo = origScrollTo;
@@ -178,7 +187,15 @@ describe("DetailModal StickyJumpNav", () => {
   // 관리자 로그인 시 7번째 관리자 탭(sec-admin) 추가 (세션 409 D2b). 소비자는 SECTION_IDS 6개 그대로.
   const ADMIN_SECTION_IDS = [...SECTION_IDS, "sec-admin"];
   /** @type {Record<string, string>} */
-  const TAB_LABELS = { "sec-overview": "종합", "sec-price": "시세", "sec-location": "입지", "sec-presale": "분양", "sec-finance": "금융", "sec-score": "점수", "sec-admin": "관리자" };
+  const TAB_LABELS = {
+    "sec-overview": "종합",
+    "sec-price": "시세",
+    "sec-location": "입지",
+    "sec-presale": "분양",
+    "sec-finance": "금융",
+    "sec-score": "점수",
+    "sec-admin": "관리자",
+  };
 
   it("소비자 첫 렌더는 종합 탭만 마운트 — 6 칩 순회 클릭 시 각 섹션 마운트 (정보 소실 0 골격)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
@@ -375,17 +392,19 @@ describe("DetailModal StickyJumpNav", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
     // 입지(location) 미니카드 — aria-label 로 식별
-    const locCard = /** @type {any} */ ([...overview.querySelectorAll('[role="button"]')].find(
-      el => el.getAttribute("aria-label")?.startsWith("입지 "),
-    ));
+    const locCard = /** @type {any} */ (
+      [...overview.querySelectorAll('[role="button"]')].find((el) => el.getAttribute("aria-label")?.startsWith("입지 "))
+    );
     fireEvent.click(locCard);
     // 점수 탭 전환
     expect(container.querySelector("#sec-score")).toBeVisible();
     // 해당 CatPanel(입지·생활권) 자동 펼침 = aria-expanded true
     const scoreSection = /** @type {any} */ (container.querySelector("#sec-score"));
-    const locPanel = /** @type {any} */ ([...scoreSection.querySelectorAll('[role="button"][aria-expanded]')].find(
-      el => el.textContent.includes("입지·생활권"),
-    ));
+    const locPanel = /** @type {any} */ (
+      [...scoreSection.querySelectorAll('[role="button"][aria-expanded]')].find((el) =>
+        el.textContent.includes("입지·생활권")
+      )
+    );
     expect(locPanel.getAttribute("aria-expanded")).toBe("true");
   });
 
@@ -393,16 +412,20 @@ describe("DetailModal StickyJumpNav", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
     /** @param {string} prefix */
-    const cardByLabel = (prefix) => /** @type {any} */ ([...overview.querySelectorAll('[role="button"]')].find(
-      el => el.getAttribute("aria-label")?.startsWith(prefix),
-    ));
-    fireEvent.click(cardByLabel("입지 "));   // A = location
-    fireEvent.click(cardByLabel("안전 "));   // B = risk (SHORT_LABEL '안전도'→'안전')
+    const cardByLabel = (prefix) =>
+      /** @type {any} */ (
+        [...overview.querySelectorAll('[role="button"]')].find((el) =>
+          el.getAttribute("aria-label")?.startsWith(prefix)
+        )
+      );
+    fireEvent.click(cardByLabel("입지 ")); // A = location
+    fireEvent.click(cardByLabel("안전 ")); // B = risk (SHORT_LABEL '안전도'→'안전')
     const scoreSection = /** @type {any} */ (container.querySelector("#sec-score"));
     /** @param {string} txt */
-    const panelByText = (txt) => /** @type {any} */ ([...scoreSection.querySelectorAll('[role="button"][aria-expanded]')].find(
-      el => el.textContent.includes(txt),
-    ));
+    const panelByText = (txt) =>
+      /** @type {any} */ (
+        [...scoreSection.querySelectorAll('[role="button"][aria-expanded]')].find((el) => el.textContent.includes(txt))
+      );
     // 둘 다 펼침 유지 (key 단조 증가 = A key 회귀 0)
     expect(panelByText("입지·생활권").getAttribute("aria-expanded")).toBe("true");
     expect(panelByText("안전도").getAttribute("aria-expanded")).toBe("true");
@@ -439,7 +462,10 @@ describe("DetailModal StickyJumpNav", () => {
   it("칩 클릭으로 탭 전환 시 detail_tab_view 발화(tab + previous_tab)", () => {
     render(<DetailModal {...makeProps()} />);
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
-    expect(vi.mocked(trackEvent)).toHaveBeenCalledWith("detail_tab_view", { tab: "sec-price", previous_tab: "sec-overview" });
+    expect(vi.mocked(trackEvent)).toHaveBeenCalledWith("detail_tab_view", {
+      tab: "sec-price",
+      previous_tab: "sec-overview",
+    });
   });
 
   it("같은 탭 재클릭 시 detail_tab_view 미발화 (id===activeTab 가드)", () => {
@@ -457,11 +483,14 @@ describe("DetailModal StickyJumpNav", () => {
   it("미니카드 클릭 시 detail_tab_view 1발화(tab:sec-score) — handleTabChange 경유", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
-    const locCard = /** @type {any} */ ([...overview.querySelectorAll('[role="button"]')].find(
-      el => el.getAttribute("aria-label")?.startsWith("입지 "),
-    ));
+    const locCard = /** @type {any} */ (
+      [...overview.querySelectorAll('[role="button"]')].find((el) => el.getAttribute("aria-label")?.startsWith("입지 "))
+    );
     fireEvent.click(locCard);
-    expect(vi.mocked(trackEvent)).toHaveBeenCalledWith("detail_tab_view", { tab: "sec-score", previous_tab: "sec-overview" });
+    expect(vi.mocked(trackEvent)).toHaveBeenCalledWith("detail_tab_view", {
+      tab: "sec-score",
+      previous_tab: "sec-overview",
+    });
   });
 
   // 세션 410 D3 — 탭 전환 페이드 애니메이션 (활성 패널만 animation, 비활성은 display:none)

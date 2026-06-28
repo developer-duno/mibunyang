@@ -14,9 +14,12 @@ function makeScored(id, name, total) {
     res: {
       total,
       cats: {
-        price: cat("가격", 70), location: cat("입지", 60), product: cat("상품성", 55),
+        price: cat("가격", 70),
+        location: cat("입지", 60),
+        product: cat("상품성", 55),
         benefit: { label: "혜택", total: 50, subs: [], totalWon: 0 },
-        risk: cat("안전", 65), future: cat("미래", 45),
+        risk: cat("안전", 65),
+        future: cat("미래", 45),
       },
     },
   });
@@ -24,12 +27,18 @@ function makeScored(id, name, total) {
 
 const baseProps = () => ({
   pw: /** @type {any} */ ({}),
-  onDetail: vi.fn(), onFav: vi.fn(), favoriteSet: new Set(), onComp: vi.fn(), compIds: [],
-  isLoggedIn: true, isDesktop: false, onClear: vi.fn(),
+  onDetail: vi.fn(),
+  onFav: vi.fn(),
+  favoriteSet: new Set(),
+  onComp: vi.fn(),
+  compIds: [],
+  isLoggedIn: true,
+  isDesktop: false,
+  onClear: vi.fn(),
 });
 
 /** @param {ReturnType<typeof makeScored>[]} arr */
-const mapOf = (arr) => new Map(arr.map(s => [s.apt.id, s]));
+const mapOf = (arr) => new Map(arr.map((s) => [s.apt.id, s]));
 
 describe("RecentlyViewedWidget", () => {
   const items = [makeScored("a1", "가단지", 90), makeScored("a2", "나단지", 80), makeScored("a3", "다단지", 70)];

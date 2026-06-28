@@ -15,8 +15,22 @@ vi.mock("@/components/primitives", () => ({
 import { MarketStatsCharts } from "./MarketStatsCharts";
 
 const makeRows = () => [
-  { base_month: "202501", avg_price_sqm: 100, price_index: 101, new_supply: 20, initial_sale_rate: 80, land_cost_ratio: 35 },
-  { base_month: "202502", avg_price_sqm: 110, price_index: 102, new_supply: 30, initial_sale_rate: 82, land_cost_ratio: 36 },
+  {
+    base_month: "202501",
+    avg_price_sqm: 100,
+    price_index: 101,
+    new_supply: 20,
+    initial_sale_rate: 80,
+    land_cost_ratio: 35,
+  },
+  {
+    base_month: "202502",
+    avg_price_sqm: 110,
+    price_index: 102,
+    new_supply: 30,
+    initial_sale_rate: 82,
+    land_cost_ratio: 36,
+  },
 ];
 
 describe("MarketStatsCharts", () => {
@@ -25,13 +39,25 @@ describe("MarketStatsCharts", () => {
   });
 
   it("region이 없으면 렌더링하지 않는다", () => {
-    mockUseMarketStatsHistory.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: [],
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     const { container } = render(<MarketStatsCharts region="" gu="" />);
     expect(container.innerHTML).toBe("");
   });
 
   it("loading 상태를 표시한다", () => {
-    mockUseMarketStatsHistory.mockReturnValue({ data: [], loading: true, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: [],
+      loading: true,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
     expect(screen.getByText("시장 통계를 불러오는 중...")).toBeTruthy();
   });
@@ -46,34 +72,64 @@ describe("MarketStatsCharts", () => {
   });
 
   it("data가 부족하면 안내 상태를 표시한다", () => {
-    mockUseMarketStatsHistory.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: [],
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
     expect(screen.getByRole("status")).toBeTruthy();
   });
 
   it("정상 데이터면 5개 차트를 렌더링한다", () => {
-    mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: makeRows(),
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
     expect(screen.getAllByTestId("line-chart")).toHaveLength(5);
   });
 
   // 세션 411 — ? 도움말. 차트 5개 + 상단 "지역 시장 추이" = ? 6개. line-chart 개수 불변.
   it("정상 데이터면 ? 도움말 6개(차트 5 + 상단 1) 표시, line-chart 개수 불변", () => {
-    mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: makeRows(),
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
     expect(screen.getAllByLabelText(/풀이 보기$/)).toHaveLength(6);
     expect(screen.getAllByTestId("line-chart")).toHaveLength(5); // ? 추가해도 차트 불변
   });
 
   it("초기분양율 ? 클릭 시 '보는 법' 설명(role=tooltip) 표시", () => {
-    mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: makeRows(),
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
     fireEvent.click(screen.getByLabelText("초기분양율 풀이 보기"));
     expect(screen.getByRole("tooltip")).toHaveTextContent(/미분양 위험/);
   });
 
   it("정상 데이터면 차트들이 반응형 grid 컨테이너에 담긴다", () => {
-    mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: makeRows(),
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
     const grid = /** @type {HTMLElement} */ (screen.getByTestId("market-charts-grid"));
     expect(grid.style.display).toBe("grid");
@@ -83,10 +139,19 @@ describe("MarketStatsCharts", () => {
   it("18행 모두 null 값만 있으면 안내 박스만 표시한다", () => {
     const nullRows = Array.from({ length: 18 }, (_, i) => ({
       base_month: `2024${String(i + 1).padStart(2, "0")}`,
-      avg_price_sqm: null, price_index: null, new_supply: null,
-      initial_sale_rate: null, land_cost_ratio: null,
+      avg_price_sqm: null,
+      price_index: null,
+      new_supply: null,
+      initial_sale_rate: null,
+      land_cost_ratio: null,
     }));
-    mockUseMarketStatsHistory.mockReturnValue({ data: nullRows, loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: nullRows,
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="인천" gu="서구" />);
     expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryAllByTestId("line-chart")).toHaveLength(0);
@@ -94,17 +159,43 @@ describe("MarketStatsCharts", () => {
 
   it("부분 null (1필드만 length>=2) 행이면 그 필드만 차트 렌더", () => {
     const partial = [
-      { base_month: "202501", avg_price_sqm: 100, price_index: null, new_supply: null, initial_sale_rate: null, land_cost_ratio: null },
-      { base_month: "202502", avg_price_sqm: 110, price_index: null, new_supply: null, initial_sale_rate: null, land_cost_ratio: null },
+      {
+        base_month: "202501",
+        avg_price_sqm: 100,
+        price_index: null,
+        new_supply: null,
+        initial_sale_rate: null,
+        land_cost_ratio: null,
+      },
+      {
+        base_month: "202502",
+        avg_price_sqm: 110,
+        price_index: null,
+        new_supply: null,
+        initial_sale_rate: null,
+        land_cost_ratio: null,
+      },
     ];
-    mockUseMarketStatsHistory.mockReturnValue({ data: partial, loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: partial,
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="인천" gu="서구" />);
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getAllByTestId("line-chart")).toHaveLength(1);
   });
 
   it("fallback=true 시 헤더에 시도 평균 표시", () => {
-    mockUseMarketStatsHistory.mockReturnValue({ data: makeRows(), loading: false, error: null, retry: vi.fn(), fallback: true });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: makeRows(),
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: true,
+    });
     render(<MarketStatsCharts region="인천" gu="서구" />);
     expect(screen.getByText(/인천.*시도 평균/)).toBeTruthy();
   });
@@ -113,12 +204,28 @@ describe("MarketStatsCharts", () => {
     const cornerRows = [
       ...Array.from({ length: 18 }, (_, i) => ({
         base_month: `2024${String(i + 1).padStart(2, "0")}`,
-        avg_price_sqm: null, price_index: null, new_supply: null,
-        initial_sale_rate: null, land_cost_ratio: null,
+        avg_price_sqm: null,
+        price_index: null,
+        new_supply: null,
+        initial_sale_rate: null,
+        land_cost_ratio: null,
       })),
-      { base_month: "202601", avg_price_sqm: 100, price_index: 101, new_supply: 20, initial_sale_rate: 80, land_cost_ratio: 35 },
+      {
+        base_month: "202601",
+        avg_price_sqm: 100,
+        price_index: 101,
+        new_supply: 20,
+        initial_sale_rate: 80,
+        land_cost_ratio: 35,
+      },
     ];
-    mockUseMarketStatsHistory.mockReturnValue({ data: cornerRows, loading: false, error: null, retry: vi.fn(), fallback: false });
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: cornerRows,
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
     render(<MarketStatsCharts region="인천" gu="서구" />);
     expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryAllByTestId("line-chart")).toHaveLength(0);

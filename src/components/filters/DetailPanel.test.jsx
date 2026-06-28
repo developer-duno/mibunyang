@@ -124,7 +124,17 @@ describe("DetailPanel", () => {
     const onMinScoreChange = vi.fn();
     const onBuilderTierChange = vi.fn();
     const onToggleBenefitOnly = vi.fn();
-    render(<DetailPanel {...makeProps({ minScore: "60", benefitOnly: true, onMinScoreChange, onBuilderTierChange, onToggleBenefitOnly })} />);
+    render(
+      <DetailPanel
+        {...makeProps({
+          minScore: "60",
+          benefitOnly: true,
+          onMinScoreChange,
+          onBuilderTierChange,
+          onToggleBenefitOnly,
+        })}
+      />
+    );
     fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권 초기화"));
     expect(onMinScoreChange).toHaveBeenCalledWith("");
     expect(onBuilderTierChange).toHaveBeenCalledWith("전체");
@@ -146,7 +156,7 @@ describe("DetailPanel", () => {
 
   // filterOptionCounts.tierCounts 카운트 표시
   it("filterOptionCounts.tierCounts 카운트가 옵션에 표시", () => {
-    const counts = { tierCounts: { "1군": 5, "2군": 3, "기타": 2 } };
+    const counts = { tierCounts: { "1군": 5, "2군": 3, 기타: 2 } };
     render(<DetailPanel {...makeProps({ filterOptionCounts: counts })} />);
     const select = screen.getByLabelText("시공사 등급");
     const options = select.querySelectorAll("option");

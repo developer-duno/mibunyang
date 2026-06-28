@@ -19,17 +19,26 @@ vi.mock("@/components/sections/MapView", () => ({
 
 /** IntersectionObserver 즉시 발화 mock — per-test 스코프 (전역 박으면 '진입 전 스켈레톤' 테스트가 깨짐) */
 function stubFiringIO() {
-  vi.stubGlobal("IntersectionObserver", class {
-    /** @param {any} cb */
-    constructor(cb) { this.cb = cb; }
-    /** @param {any} el */
-    observe(el) { this.cb([{ isIntersecting: true, target: el }]); }
-    disconnect() {}
-    unobserve() {}
-  });
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      /** @param {any} cb */
+      constructor(cb) {
+        this.cb = cb;
+      }
+      /** @param {any} el */
+      observe(el) {
+        this.cb([{ isIntersecting: true, target: el }]);
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+  );
 }
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const baseProps = () => ({
   isLoggedIn: true,

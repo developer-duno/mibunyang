@@ -10,13 +10,25 @@ import { AdminConsults } from "./AdminConsults";
 import { UserList } from "./UserList";
 import type { AdminDashboardProps } from "@/types/components/AdminDashboard.types";
 
-export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, profile, setProfile, customWeights, saveCustomWeights, scored, showToast = () => {} }: AdminDashboardProps) {
+export const AdminDashboard = memo(function AdminDashboard({
+  admin,
+  onLogout,
+  profile,
+  setProfile,
+  customWeights,
+  saveCustomWeights,
+  scored,
+  showToast = () => {},
+}: AdminDashboardProps) {
   const [helpOpen, setHelpOpen] = useState(false);
 
-  const toggleHelp = useCallback(() => setHelpOpen(v => !v), []);
+  const toggleHelp = useCallback(() => setHelpOpen((v) => !v), []);
   const handleLogoutClick = useCallback(() => admin.handleAdminLogout(onLogout), [admin, onLogout]);
   // 상담 관심단지 id → 이름 (Apt.id/name 옵셔널 — ?? "" 폴백, useDataPipeline.ts:110 답습)
-  const aptNames = useMemo(() => new Map<string, string>(scored.map(s => [s.apt.id ?? "", s.apt.name ?? ""])), [scored]);
+  const aptNames = useMemo(
+    () => new Map<string, string>(scored.map((s) => [s.apt.id ?? "", s.apt.name ?? ""])),
+    [scored]
+  );
 
   return (
     <div style={{ padding: "0 16px" }}>
@@ -26,22 +38,50 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, pr
           <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text }}>관리자 대시보드</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={toggleHelp} style={{
-            background: helpOpen ? C.purple : C.purpleLight, color: helpOpen ? C.white : C.purple,
-            border: `1px solid ${C.purple}`, borderRadius: 6,
-            padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
-          }}>도움말</button>
-          <button onClick={handleLogoutClick} style={{
-            background: C.redLight, color: C.red, border: `1px solid #FECACA`, borderRadius: 6,
-            padding: "6px 14px", fontSize: F.xs, fontWeight: 700, cursor: "pointer"
-          }}>로그아웃</button>
+          <button
+            onClick={toggleHelp}
+            style={{
+              background: helpOpen ? C.purple : C.purpleLight,
+              color: helpOpen ? C.white : C.purple,
+              border: `1px solid ${C.purple}`,
+              borderRadius: 6,
+              padding: "6px 14px",
+              fontSize: F.xs,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            도움말
+          </button>
+          <button
+            onClick={handleLogoutClick}
+            style={{
+              background: C.redLight,
+              color: C.red,
+              border: `1px solid #FECACA`,
+              borderRadius: 6,
+              padding: "6px 14px",
+              fontSize: F.xs,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            로그아웃
+          </button>
         </div>
       </div>
 
       <AdminHelpGuide open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {/* Weight Editor Section */}
-      <WeightEditor profile={profile} setProfile={setProfile} customWeights={customWeights} saveCustomWeights={saveCustomWeights} scored={scored} showToast={showToast} />
+      <WeightEditor
+        profile={profile}
+        setProfile={setProfile}
+        customWeights={customWeights}
+        saveCustomWeights={saveCustomWeights}
+        scored={scored}
+        showToast={showToast}
+      />
 
       {/* Stats Section */}
       {admin.stats && <StatsSection stats={admin.stats} />}
@@ -62,35 +102,68 @@ export const AdminDashboard = memo(function AdminDashboard({ admin, onLogout, pr
       {/* 검색 */}
       <div style={{ position: "relative", marginBottom: 12 }}>
         <input
-          type="text" aria-label="사용자 검색" placeholder="이름, 이메일, 소속 검색..." value={admin.searchQuery}
-          onChange={e => admin.setSearchQuery(e.target.value)}
+          type="text"
+          aria-label="사용자 검색"
+          placeholder="이름, 이메일, 소속 검색..."
+          value={admin.searchQuery}
+          onChange={(e) => admin.setSearchQuery(e.target.value)}
           style={{
-            width: "100%", padding: "8px 32px 8px 12px", fontSize: F.base, borderRadius: 8,
-            border: `1px solid ${C.border}`, background: C.white, color: C.text,
-            outline: "none", boxSizing: "border-box",
+            width: "100%",
+            padding: "8px 32px 8px 12px",
+            fontSize: F.base,
+            borderRadius: 8,
+            border: `1px solid ${C.border}`,
+            background: C.white,
+            color: C.text,
+            outline: "none",
+            boxSizing: "border-box",
           }}
         />
         {admin.searchQuery && (
-          <button type="button" onClick={() => admin.setSearchQuery("")}
+          <button
+            type="button"
+            onClick={() => admin.setSearchQuery("")}
             style={{
-              position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-              background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: F.base, padding: 0,
+              position: "absolute",
+              right: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: C.muted,
+              fontSize: F.base,
+              padding: 0,
             }}
-          >✕</button>
+          >
+            ✕
+          </button>
         )}
       </div>
 
       {/* Status Tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {STATUS_TABS.map(t => {
+        {STATUS_TABS.map((t) => {
           const active = admin.selectedStatus === t.key;
           return (
-            <button key={t.key} onClick={() => admin.setSelectedStatus(t.key)} style={{
-              flex: 1, padding: "8px 4px", fontSize: F.sm, fontWeight: active ? 700 : 500,
-              background: active ? t.bg : C.white, color: active ? t.color : C.muted,
-              border: active ? `1.5px solid ${t.color}` : `1px solid ${C.border}`,
-              borderRadius: 6, cursor: "pointer", transition: "all .15s"
-            }}>{t.label}</button>
+            <button
+              key={t.key}
+              onClick={() => admin.setSelectedStatus(t.key)}
+              style={{
+                flex: 1,
+                padding: "8px 4px",
+                fontSize: F.sm,
+                fontWeight: active ? 700 : 500,
+                background: active ? t.bg : C.white,
+                color: active ? t.color : C.muted,
+                border: active ? `1.5px solid ${t.color}` : `1px solid ${C.border}`,
+                borderRadius: 6,
+                cursor: "pointer",
+                transition: "all .15s",
+              }}
+            >
+              {t.label}
+            </button>
           );
         })}
       </div>

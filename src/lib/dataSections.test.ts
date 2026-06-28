@@ -12,6 +12,6 @@ describe("dataSections hint", () => {
   });
 
   it("분양 섹션 hint(세션 411)는 그대로 유지된다", () => {
-    expect(PRESALE_SECTIONS.every(s => (s.hint ?? "").length > 10)).toBe(true);
+    expect(PRESALE_SECTIONS.every((s) => (s.hint ?? "").length > 10)).toBe(true);
   });
 });

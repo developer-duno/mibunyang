@@ -21,7 +21,9 @@ function readStoredConsent(): boolean | null {
     const v = localStorage.getItem(CONSENT_KEY);
     if (v === "true") return true;
     if (v === "false") return false;
-  } catch { /* noop: localStorage 미가용 무시 */ }
+  } catch {
+    /* noop: localStorage 미가용 무시 */
+  }
   return null;
 }
 
@@ -29,7 +31,9 @@ function writeStoredConsent(consent: boolean | null): void {
   try {
     if (consent === null) localStorage.removeItem(CONSENT_KEY);
     else localStorage.setItem(CONSENT_KEY, String(consent));
-  } catch { /* noop: localStorage 미가용 무시 */ }
+  } catch {
+    /* noop: localStorage 미가용 무시 */
+  }
 }
 
 export function useMarketingConsent(showToast: ShowToast) {
@@ -38,7 +42,9 @@ export function useMarketingConsent(showToast: ShowToast) {
   // 현재 동의 상태 (true=동의 / false=거부 / null=미선택·비로그인)
   const [consentMarketing, setConsentMarketing] = useState<boolean | null>(readStoredConsent);
   const showToastRef = useRef(showToast);
-  useEffect(() => { showToastRef.current = showToast; }, [showToast]);
+  useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
 
   const openConsent = useCallback(() => setConsentOpen(true), []);
 
@@ -50,7 +56,10 @@ export function useMarketingConsent(showToast: ShowToast) {
 
   const submitConsent = useCallback(async (consent: boolean) => {
     const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) { setConsentOpen(false); return; }
+    if (!token) {
+      setConsentOpen(false);
+      return;
+    }
     setConsentSubmitting(true);
     try {
       const res = await fetch("/api/auth/kakao-consent", {

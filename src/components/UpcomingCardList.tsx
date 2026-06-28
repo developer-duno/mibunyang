@@ -9,7 +9,11 @@ import { Tooltip, extractTerm } from "./Tooltip";
 import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
 import type { UpcomingCardListProps, UpcomingCardProps } from "@/types/components/UpcomingCardList.types";
 
-interface StageStyle { bg: string; color: string; label: string }
+interface StageStyle {
+  bg: string;
+  color: string;
+  label: string;
+}
 
 const STAGE_STYLES: Record<string, StageStyle> = {
   분양계획: { bg: C.greenLight, color: C.green, label: "분양 예정" },
@@ -17,7 +21,8 @@ const STAGE_STYLES: Record<string, StageStyle> = {
   분양중: { bg: C.blueLight, color: C.blue, label: "분양중" },
 };
 
-const PLACEHOLDER_IMG = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'><rect width='60' height='60' fill='%23E8EAF0'/><text x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%236B7280' font-size='10'>🏢</text></svg>";
+const PLACEHOLDER_IMG =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'><rect width='60' height='60' fill='%23E8EAF0'/><text x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%236B7280' font-size='10'>🏢</text></svg>";
 
 const chipStyle: CSSProperties = {
   fontSize: F.xs,
@@ -32,7 +37,12 @@ const chipStyle: CSSProperties = {
 import { computeDday } from "@/lib/dday";
 export { computeDday };
 
-export const UpcomingCardList = memo(function UpcomingCardList({ items, onSubscribe, onOpenDetail, isMobile }: UpcomingCardListProps) {
+export const UpcomingCardList = memo(function UpcomingCardList({
+  items,
+  onSubscribe,
+  onOpenDetail,
+  isMobile,
+}: UpcomingCardListProps) {
   if (!items || items.length === 0) {
     return (
       <div style={{ padding: 32, textAlign: "center", color: C.muted, fontSize: F.base }}>
@@ -43,7 +53,7 @@ export const UpcomingCardList = memo(function UpcomingCardList({ items, onSubscr
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {items.map(apt => (
+      {items.map((apt) => (
         <UpcomingCard
           key={apt.id}
           apt={apt}
@@ -111,12 +121,28 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
             </span>
           )}
           <span
-            style={{ fontSize: F.xs, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: stage.bg, color: stage.color }}
+            style={{
+              fontSize: F.xs,
+              fontWeight: 700,
+              padding: "2px 6px",
+              borderRadius: 4,
+              background: stage.bg,
+              color: stage.color,
+            }}
             aria-label={`분양단계 ${stage.label}`}
           >
             {stage.label}
           </span>
-          <span style={{ fontSize: F.base, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span
+            style={{
+              fontSize: F.base,
+              fontWeight: 700,
+              color: C.text,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {apt.name}
           </span>
         </div>
@@ -128,9 +154,11 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
           {apt.presaleRecruitDate && (
             <span style={{ color: C.indigo, fontWeight: 700 }}>{fmtRecruitDate(apt.presaleRecruitDate)} 모집 · </span>
           )}
-          {apt.presaleMinPrice
-            ? <span style={{ color: C.text, fontWeight: 700 }}>{fmtPrice(apt.presaleMinPrice)}</span>
-            : <span style={{ color: C.muted }}>분양가 미공개</span>}
+          {apt.presaleMinPrice ? (
+            <span style={{ color: C.text, fontWeight: 700 }}>{fmtPrice(apt.presaleMinPrice)}</span>
+          ) : (
+            <span style={{ color: C.muted }}>분양가 미공개</span>
+          )}
         </div>
         {(apt.presaleHousingType || apt.presaleType) && (
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
@@ -147,11 +175,7 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
           </div>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-          {score != null && (
-            <span style={{ fontSize: F.xs, color: C.green }}>
-              ★ 점수 {score.toFixed(1)}
-            </span>
-          )}
+          {score != null && <span style={{ fontSize: F.xs, color: C.green }}>★ 점수 {score.toFixed(1)}</span>}
           {isMobile && calendarUrl && (
             <a
               href={calendarUrl}
@@ -160,10 +184,14 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
               onClick={(e) => e.stopPropagation()}
               aria-label="구글 캘린더에 청약 일정 추가"
               style={{
-                fontSize: F.xs, color: C.blue, textDecoration: "underline",
+                fontSize: F.xs,
+                color: C.blue,
+                textDecoration: "underline",
                 minHeight: 24,
               }}
-            >📅 캘린더 추가</a>
+            >
+              📅 캘린더 추가
+            </a>
           )}
         </div>
       </div>
@@ -172,14 +200,26 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onSubscribe?.(apt.id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSubscribe?.(apt.id);
+            }}
             style={{
-              fontSize: F.xs, fontWeight: 700, padding: "6px 10px",
-              background: C.red, color: "white", border: "none", borderRadius: 4,
-              cursor: "pointer", minHeight: 44, minWidth: 44,
+              fontSize: F.xs,
+              fontWeight: 700,
+              padding: "6px 10px",
+              background: C.red,
+              color: "white",
+              border: "none",
+              borderRadius: 4,
+              cursor: "pointer",
+              minHeight: 44,
+              minWidth: 44,
             }}
             aria-label="알림 신청"
-          >🔔 알림</button>
+          >
+            🔔 알림
+          </button>
           {calendarUrl && (
             <a
               href={calendarUrl}
@@ -188,25 +228,45 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
               onClick={(e) => e.stopPropagation()}
               aria-label="구글 캘린더에 청약 일정 추가"
               style={{
-                fontSize: F.xs, padding: "6px 10px",
-                background: C.card, color: C.text,
-                border: `1px solid ${C.border}`, borderRadius: 4,
-                minHeight: 44, minWidth: 44,
-                textDecoration: "none", textAlign: "center",
-                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: F.xs,
+                padding: "6px 10px",
+                background: C.card,
+                color: C.text,
+                border: `1px solid ${C.border}`,
+                borderRadius: 4,
+                minHeight: 44,
+                minWidth: 44,
+                textDecoration: "none",
+                textAlign: "center",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
-            >📅 캘린더</a>
+            >
+              📅 캘린더
+            </a>
           )}
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onOpenDetail?.(apt.id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenDetail?.(apt.id);
+            }}
             style={{
-              fontSize: F.xs, padding: "6px 10px",
-              background: C.card, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4,
-              cursor: "pointer", minHeight: 44, minWidth: 44,
+              fontSize: F.xs,
+              padding: "6px 10px",
+              background: C.card,
+              color: C.text,
+              border: `1px solid ${C.border}`,
+              borderRadius: 4,
+              cursor: "pointer",
+              minHeight: 44,
+              minWidth: 44,
             }}
             aria-label="단지 상세"
-          >상세</button>
+          >
+            상세
+          </button>
         </div>
       )}
     </div>

@@ -21,7 +21,9 @@ function makeProps(overrides = {}) {
 }
 
 describe("LoginPromptModal", () => {
-  beforeEach(() => { track.mockClear(); });
+  beforeEach(() => {
+    track.mockClear();
+  });
 
   // open=false → 렌더링 없음
   it("open=false → null", () => {

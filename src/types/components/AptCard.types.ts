@@ -6,12 +6,7 @@
  * 호출처 실측 (App.jsx): onDetail/onComp/onFav 모두 apt.id (string) 전달.
  */
 import type { Apt } from "@/types/scoring";
-import type {
-  ScoringResult,
-  ResponsiveProps,
-  AuthProps,
-  Weights,
-} from "@/types/components";
+import type { ScoringResult, ResponsiveProps, AuthProps, Weights } from "@/types/components";
 
 export interface AptCardProps extends ResponsiveProps, AuthProps {
   apt: Apt;

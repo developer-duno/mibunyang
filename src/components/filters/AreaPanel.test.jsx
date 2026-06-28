@@ -112,7 +112,7 @@ describe("AreaPanel", () => {
 
   // filterOptionCounts.moveInCounts 카운트 표시
   it("filterOptionCounts.moveInCounts 카운트가 옵션에 표시", () => {
-    const counts = { moveInCounts: { "입주예정": 3, "미입주": 2, "입주완료": 1 } };
+    const counts = { moveInCounts: { 입주예정: 3, 미입주: 2, 입주완료: 1 } };
     render(<AreaPanel {...makeProps({ filterOptionCounts: counts })} />);
     const select = screen.getByLabelText("입주 상태");
     const options = select.querySelectorAll("option");
