@@ -23,9 +23,10 @@ npm run typecheck         # tsc --noEmit (src)
 npm run typecheck:scripts # tsc -p tsconfig.scripts.json (scripts/*.mjs)
 npm run typecheck:e2e     # tsc -p e2e/tsconfig.e2e.json (e2e/*)
 npm run format            # prettier --write src/
+npm run format:check      # prettier --check src/ (CI 게이트, endOfLine auto 라 로컬 CRLF 도 통과)
 ```
 
-> CI(`ci.yml`) = lint → typecheck×3 → audit×4(env-key·monitor·collector·fill-matrix) → test → build. 머지 전 전부 green 필수.
+> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×4(env-key·monitor·collector·fill-matrix) → test → build. 머지 전 전부 green 필수.
 
 ## 아키텍처 개요
 
