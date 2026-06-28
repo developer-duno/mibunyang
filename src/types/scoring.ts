@@ -71,6 +71,7 @@ export interface Apt {
   _fallbackBuilderDebt?: boolean;
   popGrowth?: number | null;
   netMigration?: number | null;
+  housingSupplyLevel?: number | null;
   dataReliability?: number;
   initialSaleRate?: number | null;
   isRegulated?: boolean | null;

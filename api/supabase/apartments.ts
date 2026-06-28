@@ -267,6 +267,7 @@ function sanitizeRegion(row: any) {
     netMigration: row.netMigration ?? null,
     supplyRatio: row.supplyRatio ?? 150,
     // KOSIS HUG 시장 통계 (정보성, null 허용)
+    housingSupplyLevel: row.housingSupplyLevel ?? null,
     priceIndex: row.priceIndex ?? null,
     avgPriceSqm: row.avgPriceSqm ?? null,
     newSupply: row.newSupply ?? null,
