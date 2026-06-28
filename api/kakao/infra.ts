@@ -1,37 +1,10 @@
 import { withHandler } from "../_lib/handler.js";
 import { validateApartmentPayload } from "../_lib/proxyValidation.js";
+import { fetchWithTimeout, mapWithConcurrency } from "../_lib/concurrency.js";
 
 const KAKAO_BASE = "https://dapi.kakao.com/v2/local";
 const RADIUS = 1000;
-const UPSTREAM_TIMEOUT_MS = 3000;
 const APARTMENT_CONCURRENCY = 4;
-
-async function fetchWithTimeout(url: string, options: RequestInit = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function mapWithConcurrency(
-  items: any[],
-  limit: number,
-  mapper: (item: any, index: number) => Promise<any>,
-) {
-  const results: any[] = [];
-  let index = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (index < items.length) {
-      const current = index++;
-      results[current] = await mapper(items[current], current);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
 
 async function searchCategory(apiKey: string, lat: number, lng: number, code: string) {
   const url = `${KAKAO_BASE}/search/category.json?category_group_code=${code}&x=${lng}&y=${lat}&radius=${RADIUS}&size=1`;
