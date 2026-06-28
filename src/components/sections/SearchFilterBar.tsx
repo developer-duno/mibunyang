@@ -285,20 +285,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         {/* undo/redo */}
         {(canUndo || canRedo) && (
           <>
-            <button
-              onClick={onUndo}
-              disabled={!canUndo}
-              aria-label="필터 되돌리기"
-              style={undoRedoBtnStyle(canUndo)}
-            >
+            <button onClick={onUndo} disabled={!canUndo} aria-label="필터 되돌리기" style={undoRedoBtnStyle(canUndo)}>
               ↩
             </button>
-            <button
-              onClick={onRedo}
-              disabled={!canRedo}
-              aria-label="필터 다시실행"
-              style={undoRedoBtnStyle(canRedo)}
-            >
+            <button onClick={onRedo} disabled={!canRedo} aria-label="필터 다시실행" style={undoRedoBtnStyle(canRedo)}>
               ↪
             </button>
           </>
