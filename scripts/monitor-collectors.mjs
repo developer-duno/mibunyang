@@ -179,10 +179,11 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "transport-tago",  stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 38, owner: "청약홈 분양일정·평형 (월 13일 cron + 1주 여유)" },
-  // maintenance = 국토부 공동주택 관리비 (collect-maintenance.yml, 월 15일 cron). cancelled run 은
-  //   recordCollectorRun 전에 죽어 collector_runs 행 0건 → ③ 워크플로 점검은 GH created_at 으로 "신선" 마스킹.
+  // maintenance = 국토부 공동주택 관리비 (collect-maintenance.yml, 월 15~19일 5일 연속 cron — 세션 450). cancelled
+  //   run 은 recordCollectorRun 전에 죽어 collector_runs 행 0건 → ③ 워크플로 점검은 GH created_at 으로 "신선" 마스킹.
   //   ⑤-b 미발화 분기(collector_runs.finished_at 기준)가 유일하게 "데이터 N일 stale" 을 잡음 (세션 447).
-  { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (월 15일 cron + 1주 여유)" },
+  //   5일 연속이라도 한 묶음 발화(19일 success→다음달 15일 발화 ~26일 간격)라 stale_days:38(=31일+1주)은 적정.
+  { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (월 15~19일 cron + 1주 여유)" },
   // ── KOSIS 10종 = 집서버 로컬 러너 수집기 (kosis-local-runner.mjs, 매일 05:30 KST 일자 디스패치).
   //    kosis.kr 해외 IP 차단으로 GH collect-*.yml 10개 삭제 (세션 288~289) — GH run 이 없어
   //    ③ 워크플로 미발화 점검 대상에서 빠지므로 collector_runs 신선도가 유일한 "안 돌면 알림".

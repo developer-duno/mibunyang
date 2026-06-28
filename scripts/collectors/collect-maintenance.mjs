@@ -93,7 +93,7 @@ export async function fetchMaintenanceCost(kaptCode, searchDate) {
         searchDate,
       });
       const url = `${COST_BASE}/${endpoint}?${params}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) continue;
 
       const json = /** @type {{ response?: { body?: { item?: Record<string, unknown> } } }} */ (await res.json());
