@@ -52,6 +52,7 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 
 - **isCLI 패턴**: `process.argv[1] && import.meta.url.endsWith(...)` — 57개 파일 (테스트 시 main() 방지, 2026-05-31 실측 `grep -lE "const isCLI" scripts/**/*.mjs | grep -v test`)
 - **NonRetryableError**: 4xx/XML 에러 즉시 throw, 429/500/503만 재시도
+- **`molitApiCall` opts override (세션 451)**: 기본 timeout/retry = 공유 상수 `MOLIT_TIMEOUT_MS=30000` × `MOLIT_MAX_RETRIES=3`. 호출처가 선택적 6번째 인자 `{ timeoutMs?, maxRetries? }` 로 좁힐 수 있음(기본=상수 → molit-units·molit-building-info 무변경). **collect-maintenance 의 `fetchTotalHouseholds` 는 `{ timeoutMs: 8000, maxRetries: 1 }`** — households 호출 30s×3(≈93초) hang 이 단지당 최악 ~135초의 진앙이라 cost endpoint(8s/무재시도) 톤에 맞춰 좁힘. 전역 상수는 3 collector 공유라 **변경 금지**(cross-collector 회귀), maintenance-local opts 로만.
 
 ### 공유 모듈 (_shared.mjs)
 
@@ -185,7 +186,7 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 | 네이버 부동산 | naver-collect.py | 1초 | 3회 | JWT 리셋 + 5*(i+1)초 |
 | 네이버 부동산 | naver-listings.mjs | 1초 | 5회 | JWT 리셋 + [3,5,10,15,20]초 |
 | 네이버 분양 | naver-presale.mjs | 2초 | 3회 | [5,10,20]초 |
-| data.go.kr | molit-* | 0.4초 | 3회 | NonRetryableError / 지수 백오프 |
+| data.go.kr | molit-* | 0.4초 | 3회 (기본) | NonRetryableError / 지수 백오프. ⚠️ collect-maintenance `fetchTotalHouseholds` 는 8s/1회 override(세션 451, 위 MOLIT 모듈 절) |
 | Kakao Places | infra-kakao | 세마포어 5개 | fetchWithRetry | 지수 백오프 |
 | DART | dart-builders | fetchWithRetry | 3회 | 지수 백오프 |
 | Supabase | upsertBatch | 100ms/배치 | 3회 | (attempt+1)^2초 |
