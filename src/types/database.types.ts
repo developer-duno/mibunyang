@@ -1910,6 +1910,7 @@ export type Database = {
           hospital: number | null;
           hospitalBedsPer1k: number | null;
           hospitalDist: number | null;
+          housingSupplyLevel: number | null;
           hugGuarantee: boolean | null;
           icDist: number | null;
           id: string | null;

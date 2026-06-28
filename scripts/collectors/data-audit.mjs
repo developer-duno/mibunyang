@@ -88,7 +88,7 @@ export const AUDIT_FIELDS = {
   },
   regions: {
     collector: "population+migration+housing",
-    fields: ["popGrowth", "supplyRatio", "netMigration", "priceIndex", "avgPriceSqm", "newSupply", "initialSaleRate", "landCostRatio"],
+    fields: ["popGrowth", "supplyRatio", "netMigration", "housingSupplyLevel", "priceIndex", "avgPriceSqm", "newSupply", "initialSaleRate", "landCostRatio"],
   },
   trade_stats: {
     collector: "trade-stats",
@@ -496,6 +496,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     apt.popGrowth = r.pop_growth;
     apt.supplyRatio = r.supply_ratio;
     apt.netMigration = r.net_migration;
+    apt.housingSupplyLevel = r.housing_supply_level;
     apt.priceIndex = r.price_index;
     apt.avgPriceSqm = r.avg_price_sqm;
     apt.newSupply = r.new_supply;

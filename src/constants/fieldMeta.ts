@@ -254,6 +254,12 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     unit: "명",
     fmt: (v) => (v != null ? `${v > 0 ? "+" : ""}${v.toLocaleString("ko-KR")}명` : "미수집"),
   },
+  housingSupplyLevel: {
+    label: "주택보급률",
+    section: "가격",
+    unit: "%",
+    fmt: (v) => n(v, "%", "미수집"),
+  },
   // ── 지역 시장 통계 (KOSIS HUG) ──
   priceIndex: {
     label: "분양가격지수",
@@ -577,6 +583,7 @@ export const FIELD_SECTIONS: { key: string; label: string; fields: string[] }[] 
       "avgPriceSqm",
       "landCostRatio",
       "netMigration",
+      "housingSupplyLevel",
     ],
   },
   {

@@ -349,7 +349,7 @@ describe('sanitize (null → 기본값)', () => {
 
   // KOSIS 시장 통계 5개 필드 — 정보성 ?? null
   it('KOSIS 시장 통계 필드가 값 전달 및 null 기본값 동작', async () => {
-    const row = { id: 1, name: 'Test', region: '경기', priceIndex: 232.0, avgPriceSqm: 7312, newSupply: 3279, initialSaleRate: 80.1, landCostRatio: 40 };
+    const row = { id: 1, name: 'Test', region: '경기', priceIndex: 232.0, avgPriceSqm: 7312, newSupply: 3279, initialSaleRate: 80.1, landCostRatio: 40, housingSupplyLevel: 99.4 };
     mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
     const res = makeRes();
     await handler(makeReq(), res);
@@ -360,6 +360,8 @@ describe('sanitize (null → 기본값)', () => {
     expect(d.newSupply).toBe(3279);
     expect(d.initialSaleRate).toBe(80.1);
     expect(d.landCostRatio).toBe(40);
+    // 주택보급률 (세션 457) — 정보성 ?? null, 점수 미반영
+    expect(d.housingSupplyLevel).toBe(99.4);
   });
 
   it('KOSIS 시장 통계 null → null 기본값', async () => {
@@ -373,6 +375,7 @@ describe('sanitize (null → 기본값)', () => {
     expect(d.newSupply).toBeNull();
     expect(d.initialSaleRate).toBeNull();
     expect(d.landCostRatio).toBeNull();
+    expect(d.housingSupplyLevel).toBeNull();
   });
 
   // 리팩토링 회귀 방어: sanitize()가 모든 필드를 반환하는지 전수 검증
@@ -417,7 +420,7 @@ describe('sanitize (null → 기본값)', () => {
       'builderDebtRatio', 'builderCreditGrade',
       'popGrowth', 'netMigration', 'supplyRatio',
       // KOSIS 통계
-      'priceIndex', 'avgPriceSqm', 'newSupply', 'initialSaleRate', 'landCostRatio',
+      'priceIndex', 'avgPriceSqm', 'newSupply', 'initialSaleRate', 'landCostRatio', 'housingSupplyLevel',
       // 청약 경쟁률
       'competitionRate', 'competitionSupply', 'competitionApplicants',
       // 무순위 이벤트
