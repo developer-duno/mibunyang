@@ -16,10 +16,13 @@
 ```bash
 npm run dev               # localhost:5173
 npm run build             # 빌드 (⚠️ prebuild 가 public/data JSON 재생성 → 커밋 금지, git checkout 원복)
-npm run test              # vitest 단위 (src 116 spec)
-npm run test:e2e          # Playwright E2E (e2e 13 spec)
+npm run test              # vitest 단위 (src spec)
+npm run test:e2e          # Playwright E2E (e2e spec)
 npm run lint              # eslint src/
-npm run typecheck         # tsc --noEmit (src) — typecheck:scripts / typecheck:e2e 별도
+npm run typecheck         # tsc --noEmit (src)
+npm run typecheck:scripts # tsc -p tsconfig.scripts.json (scripts/*.mjs)
+npm run typecheck:e2e     # tsc -p e2e/tsconfig.e2e.json (e2e/*)
+npm run format            # prettier --write src/
 ```
 
 > CI(`ci.yml`) = lint → typecheck×3 → audit×4(env-key·monitor·collector·fill-matrix) → test → build. 머지 전 전부 green 필수.
@@ -34,7 +37,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 |--------|------|----------|
 | **프론트** | React 19 + Vite 8 (Rolldown) | App.tsx (~430줄), `@/` 경로 별칭, Pretendard 폰트 |
 | **상태/훅** | useMemo 14개 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
-| **컴포넌트** | memo() 54개 + icons.tsx (SVG 9개) | 소비자11 + 홈7 + 섹션10 + 상세15 + 필터7 + 관리자6 + 아이콘1 (섹션 KakaoMapView 점 보기 지도 + MapView 패스스루 — 네이버 세션 449 전면 제거[카카오 단일화]·GPS 내 동네, 상세 ProfileWeightBar 세션 434 신규, 홈 RecentlyViewedWidget 세션 429 신규, 전문가 그룹 세션 405 폐지) |
+| **컴포넌트** | React.memo 다수 + icons.tsx (SVG) | 소비자/홈/섹션/상세/필터/관리자 그룹 — 섹션 KakaoMapView 점 보기 지도 + MapView 패스스루(네이버 세션 449 전면 제거[카카오 단일화]·GPS 내 동네), 상세 ProfileWeightBar, 홈 RecentlyViewedWidget, 전문가 그룹 세션 405 폐지. 정확한 개수·구성은 `src/components/CLAUDE.md` 참조 |
 | **API** | Vercel Serverless (24개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합). Redis 순단 fail-open 차등(login·subscribers만 fail-close, 세션 427) |
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지. 손님 마케팅 수신 동의·전화번호(선택, VITE_KAKAO_PHONE_SCOPE 토글) 수집 세션 427 |
