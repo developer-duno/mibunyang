@@ -54,34 +54,40 @@ class NonRetryableError extends Error {
 
 // ── API 호출 (재시도 + 선형 백오프) ──────────────────────────
 // phase: 로그 프리픽스, apiKey: 모듈 스코프 대신 파라미터로 주입
+// opts: 호출처가 timeout/retry 를 좁힐 수 있음 (기본 = 공유 상수 30s×3). collect-maintenance 의
+//   fetchTotalHouseholds 는 8s/1retry 로 좁혀 hang 누적을 막음(세션 451). 미전달 시 molit-units·
+//   molit-building-info 는 기존 30s×3 그대로 동작 → cross-collector 회귀 0.
 /**
  * @param {string} phase
  * @param {string} baseUrl
  * @param {string} endpoint
  * @param {Record<string, string>} params
  * @param {string} apiKey
+ * @param {{ timeoutMs?: number; maxRetries?: number }} [opts]
  * @returns {Promise<MolitApiResponse>}
  */
-export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey) {
+export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? MOLIT_TIMEOUT_MS;
+  const maxRetries = opts.maxRetries ?? MOLIT_MAX_RETRIES;
   const qs = new URLSearchParams({ serviceKey: apiKey, type: "json", ...params });
   const url = `${baseUrl}/${endpoint}?${qs}`;
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < MOLIT_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(MOLIT_TIMEOUT_MS) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
 
       // 재시도 가능: 429/500/503
       if (res.status === 429) {
         lastStatus = 429;
-        if (attempt === MOLIT_MAX_RETRIES - 1) break;
+        if (attempt === maxRetries - 1) break;
         await sleep((attempt + 1) * MOLIT_BACKOFF_429_MS);
         continue;
       }
       if (res.status === 500 || res.status === 503) {
         lastStatus = res.status;
-        log(phase, `  API ${res.status} (시도 ${attempt + 1}/${MOLIT_MAX_RETRIES})`);
-        if (attempt === MOLIT_MAX_RETRIES - 1) break;
+        log(phase, `  API ${res.status} (시도 ${attempt + 1}/${maxRetries})`);
+        if (attempt === maxRetries - 1) break;
         await sleep((attempt + 1) * MOLIT_BACKOFF_5XX_MS);
         continue;
       }
@@ -103,13 +109,13 @@ export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey) {
       // NonRetryableError → 즉시 re-throw (재시도 안 함)
       if (err instanceof NonRetryableError) throw err;
       // 타임아웃/네트워크 에러 → 재시도
-      if (attempt === MOLIT_MAX_RETRIES - 1) throw err;
+      if (attempt === maxRetries - 1) throw err;
       lastStatus = 0;
       await sleep((attempt + 1) * MOLIT_BACKOFF_5XX_MS);
     }
   }
   // 429/500/503 재시도 소진
-  throw new Error(`${endpoint}: ${MOLIT_MAX_RETRIES}회 재시도 소진 (마지막 상태: ${lastStatus})`);
+  throw new Error(`${endpoint}: ${maxRetries}회 재시도 소진 (마지막 상태: ${lastStatus})`);
 }
 
 // ── 시도별 단지 목록 조회 (V3: AptListService3 — 페이지네이션) ─
