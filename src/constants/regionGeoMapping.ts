@@ -22,10 +22,6 @@ export const SIDO_GEO_TO_DB: Record<string, string> = {
   제주특별자치도: "제주",
 };
 
-export const SIDO_DB_TO_GEO: Record<string, string> = Object.fromEntries(
-  Object.entries(SIDO_GEO_TO_DB).map(([geo, db]) => [db, geo])
-);
-
 // 시도 2자리 코드 → DB 짧은 이름
 export const SIDO_CODE_TO_DB: Record<string, string> = {
   "11": "서울",
