@@ -31,7 +31,8 @@
       "WebFetch(domain:finlife.fss.or.kr)",
       "WebFetch(domain:docs.claude.com)",
       "WebFetch(domain:docs.anthropic.com)",
-      "Bash(node scripts/collectors/trade-stats.mjs)"
+      "Bash(node scripts/collectors/trade-stats.mjs)",
+      "Bash(git branch:*)"
     ],
     "deny": [
       "Read(./.env)",
