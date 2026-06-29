@@ -115,6 +115,16 @@ describe("AptCard", () => {
     expect(screen.queryByText(/총 혜택/)).toBeNull();
   });
 
+  // 세션 461 — benefits 전 단지 0% 채움이라 noData 박스는 숨김(점수 무관 순수 화면)
+  it("benefit noData여도 '혜택 데이터 미수집' 박스 미표시", () => {
+    const res = makeRes();
+    res.cats.benefit.totalWon = 0;
+    res.cats.benefit.noData = true;
+    render(<AptCard {...makeProps({ res })} />);
+    expect(screen.queryByText(/혜택 데이터 미수집/)).toBeNull();
+    expect(screen.queryByText(/총 혜택/)).toBeNull();
+  });
+
   // 입주 알림
   it("completion이 있으면 입주 알림 표시", () => {
     render(<AptCard {...makeProps()} />);
