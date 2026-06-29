@@ -190,8 +190,6 @@ SELECT
   r.new_supply AS "newSupply",
   r.initial_sale_rate AS "initialSaleRate",
   r.land_cost_ratio AS "landCostRatio",
-  -- 주택보급률 (KOSIS DT_MLTM_2100, 세션 457) — 시도 단위, 화면 표시 전용(점수 미반영)
-  r.housing_supply_level AS "housingSupplyLevel",
   -- 지역 활력 (시군구 단위, 세션 433) — KOSIS 출산율·의료
   rg.fertility_rate AS "fertilityRate",
   rg.doctors_per_1k AS "doctorsPer1k",
@@ -257,7 +255,10 @@ SELECT
   ))) AS "dataReliability",
   -- 신규 2컬럼 (applyhome_events 시계열 집계)
   COALESCE(ae.event_count, 0) AS "unsoldEventCount",
-  ae.last_event_at              AS "lastUnsoldEventAt"
+  ae.last_event_at              AS "lastUnsoldEventAt",
+  -- 주택보급률 (KOSIS DT_MLTM_2100, 세션 457) — 시도 단위, 화면 표시 전용(점수 미반영).
+  --   ⚠️ CREATE OR REPLACE VIEW 는 기존 컬럼 순서 변경 불가(42P16) → 신규 컬럼은 반드시 SELECT 맨 끝.
+  r.housing_supply_level AS "housingSupplyLevel"
 FROM deduped a
 LEFT JOIN latest_prices p ON p.apartment_id = a.id
 LEFT JOIN infra i ON i.apartment_id = a.id
