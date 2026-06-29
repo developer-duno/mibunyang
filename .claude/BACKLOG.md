@@ -237,6 +237,7 @@
 
 ## 🟡 곧
 
+- 🟡 **Supabase Micro 컴퓨트 hang — Small 업그레이드 검토 (세션 460 진단, 👤 사장님 미결정)** — 공유 인스턴스(`rwdtljipvmqpazrimyns`, t4g.micro RAM 1GB)가 2026-06-29 양쪽 collector+Vercel 부하에서 일시 hang → Cloudflare 522 약 2.5h, daily-deploy 1회 failure. 대시보드 Restart로 회복. **근본 해소 = Micro→Small(RAM 2GB, Pro 크레딧 후 순 +$5/월)** — 비용 공유라 협의 필요. 재발 시 진단·업그레이드 절차 = `supabase/CLAUDE.md` "컴퓨트 한계" 절 + 글로벌 메모리 `session_2026-06-30_session460_db_hang_infra.md`. **데이터 다이어트는 반려**(Pro+Disk30% 명분없음, 공유테이블 양쪽 위험). 워치 = hang 재발 빈도. 1회성이면 Micro 유지, 반복되면 Small.
 - ✅ **backfill-presale-prices.mjs today() 통일 완료** (세션 419 부산물 → 세션 421 해소) — `new Date().toISOString().slice(0,10)`(UTC) → `today()`(KST 고정, `_shared.mjs`) 통일. 로컬 변수 `today`→`recordedDate` 개명(헬퍼명 충돌 회피), import에 `today` 추가(L16/44/53/57). prices 형제 writer(naver-presale)와 recorded_at 시간축 일치. dry-run 실증 recorded_at=오늘 KST·tsc:scripts 0. **일회성 수동 도구(cron 0건)라 실해는 0, 일관성용**
 - ❌ **monitor 음수가드 테스트 추가 — 폐기(헛돌이 확정, 세션 421)** — 세션 419 부산물로 "4곳(ageH·sinceCreated·idleDays·daysSince) 음수 입력 전용 테스트로 가드가 막는 걸 증명" 제안했으나, 세션 421 적대검증(5에이전트 만장일치 + node 줄별 실증)으로 **전부 헛돌이 확정 → 테스트 추가 0건**. 근거: 음수(미래 시각)와 0(Math.max 클램프)이 항상 양수 임계값(maxAgeHours 36·STALE_DAYS 35·stale_days≥14)의 **같은 쪽**에 떨어져 가드 제거해도 분기 불변(guardRemovalChangesBranch=false). 음수는 비교에서 먼저 걸러져 `Math.floor()` 표시 라인 **도달 불가**(사용자 노출 경로 없음). 미래-시각 테스트는 가드 제거 후에도 항상 통과 → 회귀 못 잡음. 5개 Math.max(0,..) 가드 = **방어적 no-op 확정**(제거 안전하나 cosmetic 보험이라 유지). 기존 L217 ageDays 테스트도 같은 이유로 inert. 양수-일수 표기 정확성은 기존 미발화 테스트가 이미 커버. 시간대 회귀 걱정이면 가드가 아니라 finished_at/recorded_at 저장 시간축 일치(timezone) 검증이 진짜 가치(별개)
 

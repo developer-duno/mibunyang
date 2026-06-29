@@ -182,6 +182,15 @@ B2B 모델 유출 봉합. mibunyang 은 공유 테이블을 **service_role(`SUPA
 경로로 이 4테이블을 읽으려 하면 42501 로 막힘 — service_role 경유로 전환할 것. 차단 원본 =
 naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
 
+⚠️ **컴퓨트 한계 — Micro 인스턴스 hang (세션 460, 2026-06-29).** 공유 인스턴스(`t4g.micro`,
+RAM 1GB)가 mibunyang + naver-estate-web 양쪽 collector + Vercel 동시 부하에서 일시 hang →
+Cloudflare **522** 응답(약 2.5h). 진단 순서: ① status.supabase.com (전체 장애 여부) ② GitHub
+Actions 같은 DB 읽는 워크플로(daily-deploy 등) 동반 실패 여부 ③ 대시보드 STATUS/CPU/RAM —
+**전부 0% + Unhealthy = 인스턴스 hang**(디스크 초과 아님, Pro 플랜이라 무료티어 한도도 아님).
+즉시 대응 = 대시보드 **Restart**(👤). 근본 해소 = 컴퓨트 **Micro→Small**(RAM 2GB, Pro 크레딧
+적용 후 순 +$5/월) — 비용 공유라 협의 필요, 새벽 수집(KST 03~05:30) 피해 낮에 업그레이드.
+DB 행수·연결수 등 휘발성 수치는 본문에 두지 않음(대시보드 Reports 실측).
+
 ### 사고 답습 (세션 245 → 247)
 
 세션 245 가 `apply-migration.yml` workflow_dispatch run 25797316590 "success" 결과만 보고 "DDL 적용 완료" 박제 → 세션 247 수집 시점에 PG 42703 `column does not exist` 발견. 워크플로 본문 grep 결과 **실제 SQL 실행 0건**. `.claude/rules/workflow-name-hallucination.md` 룰 참조.
