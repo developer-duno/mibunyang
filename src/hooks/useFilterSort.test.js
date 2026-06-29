@@ -246,6 +246,45 @@ describe("전체 초기화 + 프리셋", () => {
     });
     expect(result.current.subwayOnly).toBe(true);
   });
+
+  // 세션 461 회귀 가드 — DSR/비규제 토글 + saveCustomPreset snap 객체에 담기는지
+  // (snapshot 5군데 누락 시 프리셋에 저장 안 되던 결함, 세션 430 패턴 답습)
+  it("toggleDsrPassOnly — 토글 + saveCustomPreset 복원", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleDsrPassOnly();
+    });
+    expect(result.current.dsrPassOnly).toBe(true);
+    act(() => {
+      result.current.saveCustomPreset("DSR만");
+    });
+    const saved = /** @type {any} */ (result.current.customPresets.find((p) => p.label === "DSR만"));
+    expect(saved?.values.dsrPassOnly).toBe(true);
+    act(() => {
+      result.current.toggleDsrPassOnly();
+    });
+    expect(result.current.dsrPassOnly).toBe(false);
+    act(() => {
+      result.current.applyPreset(saved.values);
+    });
+    expect(result.current.dsrPassOnly).toBe(true);
+  });
+
+  it("toggleNonRegulatedOnly — 토글 + applyPreset 적용", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleNonRegulatedOnly();
+    });
+    expect(result.current.nonRegulatedOnly).toBe(true);
+    act(() => {
+      result.current.handleResetAll();
+    });
+    expect(result.current.nonRegulatedOnly).toBe(false);
+    act(() => {
+      result.current.applyPreset({ nonRegulatedOnly: true });
+    });
+    expect(result.current.nonRegulatedOnly).toBe(true);
+  });
 });
 
 describe("URL 필터 역직렬화 (Phase 1)", () => {
@@ -363,5 +402,20 @@ describe("URL 필터 역직렬화 (Phase 2)", () => {
     mockLocationSearch("?amin=abc");
     const { result } = renderHook(() => useFilterSort({}));
     expect(result.current.areaMin).toBe("");
+  });
+
+  // 세션 461 — DSR/비규제 토글 URL 역직렬화 (?dsr=1 / ?unreg=1)
+  it("URL에서 dsrPassOnly, nonRegulatedOnly 읽기", () => {
+    mockLocationSearch("?dsr=1&unreg=1");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.dsrPassOnly).toBe(true);
+    expect(result.current.nonRegulatedOnly).toBe(true);
+  });
+
+  it("dsr/unreg 미지정 → 기본값 false", () => {
+    mockLocationSearch("?region=서울");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.dsrPassOnly).toBe(false);
+    expect(result.current.nonRegulatedOnly).toBe(false);
   });
 });

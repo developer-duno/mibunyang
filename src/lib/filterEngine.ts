@@ -20,6 +20,8 @@ export interface FilterState {
   benefitOnly?: boolean;
   subwayOnly?: boolean;
   schoolGoodOnly?: boolean;
+  dsrPassOnly?: boolean;
+  nonRegulatedOnly?: boolean;
 }
 
 /**
@@ -68,6 +70,12 @@ export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[]
       const g = x.apt.schoolGrade as string | null | undefined;
       return g != null && (g.startsWith("A") || g.startsWith("B"));
     });
+
+  // DSR 통과만 — dsr40pass===true (false·null 제외, 자금조달 양호 단지)
+  if (f.dsrPassOnly) out = out.filter((x) => x.apt.dsr40pass === true);
+
+  // 비규제지역만 — isRegulated !== true (규제지역 제외, 매매·대출 자유)
+  if (f.nonRegulatedOnly) out = out.filter((x) => x.apt.isRegulated !== true);
 
   return out;
 }

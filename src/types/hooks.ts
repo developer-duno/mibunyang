@@ -75,6 +75,8 @@ export interface UseDataPipelineArgs {
   benefitOnly: boolean;
   subwayOnly: boolean;
   schoolGoodOnly: boolean;
+  dsrPassOnly: boolean;
+  nonRegulatedOnly: boolean;
   searchQuery: string;
   hideNoUnsold: boolean;
   compIds: string[];
@@ -101,6 +103,8 @@ export interface UseDataPipelineReturn {
     benefitOnly: boolean;
     subwayOnly: boolean;
     schoolGoodOnly: boolean;
+    dsrPassOnly: boolean;
+    nonRegulatedOnly: boolean;
   };
   filtered: ScoredApt[];
   visible: ScoredApt[];
@@ -314,6 +318,8 @@ export interface UseFilterSortReturn {
   benefitOnly: boolean;
   subwayOnly: boolean;
   schoolGoodOnly: boolean;
+  dsrPassOnly: boolean;
+  nonRegulatedOnly: boolean;
   showFavOnly: boolean;
   searchQuery: string;
   handleSearchChange: (_v: string) => void;
@@ -334,6 +340,8 @@ export interface UseFilterSortReturn {
   toggleBenefitOnly: () => void;
   toggleSubwayOnly: () => void;
   toggleSchoolGoodOnly: () => void;
+  toggleDsrPassOnly: () => void;
+  toggleNonRegulatedOnly: () => void;
   getShareURL: () => string;
   handleResetAll: () => void;
   applyPreset: (_preset: Record<string, string | boolean>) => void;

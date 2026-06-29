@@ -194,6 +194,10 @@ export default function App() {
     toggleSubwayOnly,
     schoolGoodOnly,
     toggleSchoolGoodOnly,
+    dsrPassOnly,
+    toggleDsrPassOnly,
+    nonRegulatedOnly,
+    toggleNonRegulatedOnly,
     searchQuery,
     handleSearchChange,
     getShareURL,
@@ -262,6 +266,8 @@ export default function App() {
     benefitOnly,
     subwayOnly,
     schoolGoodOnly,
+    dsrPassOnly,
+    nonRegulatedOnly,
     searchQuery,
     hideNoUnsold,
     compIds,
@@ -544,6 +550,10 @@ export default function App() {
             onToggleSubwayOnly={toggleSubwayOnly}
             schoolGoodOnly={schoolGoodOnly}
             onToggleSchoolGoodOnly={toggleSchoolGoodOnly}
+            dsrPassOnly={dsrPassOnly}
+            onToggleDsrPassOnly={toggleDsrPassOnly}
+            nonRegulatedOnly={nonRegulatedOnly}
+            onToggleNonRegulatedOnly={toggleNonRegulatedOnly}
             hideNoUnsold={hideNoUnsold}
             onToggleHideNoUnsold={toggleHideNoUnsold}
             activeFilterCount={activeFilterCount}

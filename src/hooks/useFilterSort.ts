@@ -31,6 +31,8 @@ type FilterState = {
   benefitOnly: boolean;
   subwayOnly: boolean;
   schoolGoodOnly: boolean;
+  dsrPassOnly: boolean;
+  nonRegulatedOnly: boolean;
 };
 
 type FilterSnapshot = FilterState & { showFavOnly: boolean };
@@ -47,6 +49,8 @@ const FILTER_URL_MAP: readonly FilterUrlEntry[] = [
   ["benefitOnly", "benefit", false, "bool"],
   ["subwayOnly", "subway", false, "bool"],
   ["schoolGoodOnly", "school", false, "bool"],
+  ["dsrPassOnly", "dsr", false, "bool"],
+  ["nonRegulatedOnly", "unreg", false, "bool"],
   ["areaMin", "amin", "", "num"],
   ["areaMax", "amax", "", "num"],
   ["unitsMin", "umin", "", "num"],
@@ -171,6 +175,10 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
   const [benefitOnly, setBenefitOnly] = useState<boolean>(() => (urlInit?.benefitOnly as boolean) ?? false);
   const [subwayOnly, setSubwayOnly] = useState<boolean>(() => (urlInit?.subwayOnly as boolean) ?? false);
   const [schoolGoodOnly, setSchoolGoodOnly] = useState<boolean>(() => (urlInit?.schoolGoodOnly as boolean) ?? false);
+  const [dsrPassOnly, setDsrPassOnly] = useState<boolean>(() => (urlInit?.dsrPassOnly as boolean) ?? false);
+  const [nonRegulatedOnly, setNonRegulatedOnly] = useState<boolean>(
+    () => (urlInit?.nonRegulatedOnly as boolean) ?? false
+  );
   // 단지명·지역 검색어 — URL/undo/preset 미참여(일시적 탐색), resetFilters 만 비움
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -192,6 +200,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -223,6 +233,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     benefitOnly,
     subwayOnly,
     schoolGoodOnly,
+    dsrPassOnly,
+    nonRegulatedOnly,
     areaMin,
     areaMax,
     unitsMin,
@@ -268,6 +280,14 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
   }, [onFilterChange]);
   const toggleSchoolGoodOnly = useCallback(() => {
     setSchoolGoodOnly((p) => !p);
+    onFilterChange?.();
+  }, [onFilterChange]);
+  const toggleDsrPassOnly = useCallback(() => {
+    setDsrPassOnly((p) => !p);
+    onFilterChange?.();
+  }, [onFilterChange]);
+  const toggleNonRegulatedOnly = useCallback(() => {
+    setNonRegulatedOnly((p) => !p);
     onFilterChange?.();
   }, [onFilterChange]);
   const handleRegionChange = useCallback(
@@ -358,6 +378,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       benefitOnly: setBenefitOnly as AnySetter,
       subwayOnly: setSubwayOnly as AnySetter,
       schoolGoodOnly: setSchoolGoodOnly as AnySetter,
+      dsrPassOnly: setDsrPassOnly as AnySetter,
+      nonRegulatedOnly: setNonRegulatedOnly as AnySetter,
       areaMin: setAreaMin as AnySetter,
       areaMax: setAreaMax as AnySetter,
       unitsMin: setUnitsMin as AnySetter,
@@ -405,6 +427,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -424,6 +448,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     benefitOnly,
     subwayOnly,
     schoolGoodOnly,
+    dsrPassOnly,
+    nonRegulatedOnly,
     areaMin,
     areaMax,
     unitsMin,
@@ -457,6 +483,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
         benefitOnly,
         subwayOnly,
         schoolGoodOnly,
+        dsrPassOnly,
+        nonRegulatedOnly,
         areaMin,
         areaMax,
         unitsMin,
@@ -495,6 +523,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -578,6 +608,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -597,6 +629,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     benefitOnly,
     subwayOnly,
     schoolGoodOnly,
+    dsrPassOnly,
+    nonRegulatedOnly,
     areaMin,
     areaMax,
     unitsMin,
@@ -640,6 +674,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -658,6 +694,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -763,6 +801,10 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     toggleSubwayOnly,
     schoolGoodOnly,
     toggleSchoolGoodOnly,
+    dsrPassOnly,
+    toggleDsrPassOnly,
+    nonRegulatedOnly,
+    toggleNonRegulatedOnly,
     searchQuery,
     handleSearchChange,
     getShareURL,

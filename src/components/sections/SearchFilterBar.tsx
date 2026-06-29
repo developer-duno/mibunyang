@@ -61,6 +61,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onToggleSubwayOnly,
   schoolGoodOnly,
   onToggleSchoolGoodOnly,
+  dsrPassOnly,
+  onToggleDsrPassOnly,
+  nonRegulatedOnly,
+  onToggleNonRegulatedOnly,
   hideNoUnsold,
   onToggleHideNoUnsold,
   activeFilterCount,
@@ -136,7 +140,15 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           ? moveInFilter
           : undefined;
   const sortLabel = sortKey !== "total" ? SORT_OPTIONS.find((s) => s.key === sortKey)?.pcLabel : undefined;
-  const detailActive = !!(minScore || builderTier !== "전체" || benefitOnly || subwayOnly || schoolGoodOnly);
+  const detailActive = !!(
+    minScore ||
+    builderTier !== "전체" ||
+    benefitOnly ||
+    subwayOnly ||
+    schoolGoodOnly ||
+    dsrPassOnly ||
+    nonRegulatedOnly
+  );
 
   /* undo/redo 버튼 공용 스타일 (active = canUndo/canRedo, undefined → 비활성) */
   const undoRedoBtnStyle = (active?: boolean) => ({
@@ -364,6 +376,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           onToggleSubwayOnly={onToggleSubwayOnly}
           schoolGoodOnly={schoolGoodOnly}
           onToggleSchoolGoodOnly={onToggleSchoolGoodOnly}
+          dsrPassOnly={dsrPassOnly}
+          onToggleDsrPassOnly={onToggleDsrPassOnly}
+          nonRegulatedOnly={nonRegulatedOnly}
+          onToggleNonRegulatedOnly={onToggleNonRegulatedOnly}
           filterOptionCounts={filterOptionCounts}
         />
       </FilterDropdown>
@@ -547,6 +563,30 @@ export const SearchFilterBar = memo(function SearchFilterBar({
                 style={chipStyle}
               >
                 학군 양호 ✕
+              </span>
+            )}
+            {dsrPassOnly && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="DSR 통과 필터 해제"
+                onClick={onToggleDsrPassOnly}
+                onKeyDown={onChipKeyDown(onToggleDsrPassOnly)}
+                style={chipStyle}
+              >
+                DSR 통과 ✕
+              </span>
+            )}
+            {nonRegulatedOnly && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="비규제 필터 해제"
+                onClick={onToggleNonRegulatedOnly}
+                onKeyDown={onChipKeyDown(onToggleNonRegulatedOnly)}
+                style={chipStyle}
+              >
+                비규제 ✕
               </span>
             )}
           </div>

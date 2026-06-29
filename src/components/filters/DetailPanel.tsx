@@ -18,6 +18,10 @@ type DetailPanelProps = {
   onToggleSubwayOnly: () => void;
   schoolGoodOnly: boolean;
   onToggleSchoolGoodOnly: () => void;
+  dsrPassOnly: boolean;
+  onToggleDsrPassOnly: () => void;
+  nonRegulatedOnly: boolean;
+  onToggleNonRegulatedOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
 };
 
@@ -32,9 +36,20 @@ export const DetailPanel = memo(function DetailPanel({
   onToggleSubwayOnly,
   schoolGoodOnly,
   onToggleSchoolGoodOnly,
+  dsrPassOnly,
+  onToggleDsrPassOnly,
+  nonRegulatedOnly,
+  onToggleNonRegulatedOnly,
   filterOptionCounts,
 }: DetailPanelProps) {
-  const hasFilter = minScore || builderTier !== "전체" || benefitOnly || subwayOnly || schoolGoodOnly;
+  const hasFilter =
+    minScore ||
+    builderTier !== "전체" ||
+    benefitOnly ||
+    subwayOnly ||
+    schoolGoodOnly ||
+    dsrPassOnly ||
+    nonRegulatedOnly;
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const }}>
       <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
@@ -142,6 +157,46 @@ export const DetailPanel = memo(function DetailPanel({
       >
         학군 양호
       </button>
+      <button
+        onClick={onToggleDsrPassOnly}
+        aria-label="DSR 통과 매물만(자금조달 양호)"
+        aria-pressed={dsrPassOnly}
+        style={{
+          flexShrink: 0,
+          height: 30,
+          padding: "0 10px",
+          fontSize: F.xs,
+          fontWeight: dsrPassOnly ? 700 : 500,
+          background: dsrPassOnly ? C.indigoLight : C.slate100,
+          color: dsrPassOnly ? C.indigo : C.slate600,
+          border: dsrPassOnly ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+          borderRadius: 5,
+          cursor: "pointer",
+          transition: "all .15s",
+        }}
+      >
+        DSR 통과
+      </button>
+      <button
+        onClick={onToggleNonRegulatedOnly}
+        aria-label="비규제지역 매물만(매매·대출 자유)"
+        aria-pressed={nonRegulatedOnly}
+        style={{
+          flexShrink: 0,
+          height: 30,
+          padding: "0 10px",
+          fontSize: F.xs,
+          fontWeight: nonRegulatedOnly ? 700 : 500,
+          background: nonRegulatedOnly ? C.purpleLight : C.slate100,
+          color: nonRegulatedOnly ? C.purple : C.slate600,
+          border: nonRegulatedOnly ? `1.5px solid ${C.purple}` : `1px solid ${C.border}`,
+          borderRadius: 5,
+          cursor: "pointer",
+          transition: "all .15s",
+        }}
+      >
+        비규제
+      </button>
       {hasFilter && (
         <button
           onClick={() => {
@@ -150,8 +205,10 @@ export const DetailPanel = memo(function DetailPanel({
             if (benefitOnly) onToggleBenefitOnly();
             if (subwayOnly) onToggleSubwayOnly();
             if (schoolGoodOnly) onToggleSchoolGoodOnly();
+            if (dsrPassOnly) onToggleDsrPassOnly();
+            if (nonRegulatedOnly) onToggleNonRegulatedOnly();
           }}
-          aria-label="점수/시공사/혜택/역세권/학군 초기화"
+          aria-label="점수/시공사/혜택/역세권/학군/DSR/규제 초기화"
           style={resetBtn(30)}
         >
           <IconClose size={12} />
