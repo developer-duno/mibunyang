@@ -86,8 +86,8 @@ export const LOCATION_SECTIONS: DataSection[] = [
   },
   {
     title: "치안/환경",
-    grid: ["crimeSafetyGrade", "police", "policeDist", "airQuality", "noxiousDist"],
-    hint: "주변 치안 안전등급, 가까운 경찰관서, 대기질(미세먼지), 혐오시설까지 거리예요. 안전하고 공기 좋은 곳인지 보는 정보예요.",
+    grid: ["crimeSafetyGrade", "police", "policeDist", "airQuality", "noxiousDist", "view", "sunlight", "noise"],
+    hint: "주변 치안 안전등급, 가까운 경찰관서, 대기질(미세먼지), 혐오시설까지 거리예요. 조망·일조(햇빛)·소음(dB)은 집의 주거 환경을 보여줘요. 안전하고 공기 좋은 곳인지 보는 정보예요.",
   },
 ];
 
@@ -103,11 +103,12 @@ export const PRICE_SECTIONS: DataSection[] = [
       "avgFloor",
       "floorRange",
       "netMigration",
+      "housingSupplyLevel",
       "fertilityRate",
       "doctorsPer1k",
       "hospitalBedsPer1k",
     ],
-    hint: "집값이 적정한지 따지는 숫자들이에요. PIR은 '소득 몇 년치를 모아야 집을 사나'(낮을수록 좋음), PSR은 주변 시세 대비 비율, 순이동(+)은 사람이 늘어나는 동네라는 신호예요. 합계출산율이 높으면 젊은 가구가 모이는 활기찬 동네, 의사·병상수는 동네 의료 접근성을 보여줘요.",
+    hint: "집값이 적정한지 따지는 숫자들이에요. PIR은 '소득 몇 년치를 모아야 집을 사나'(낮을수록 좋음), PSR은 주변 시세 대비 비율, 순이동(+)은 사람이 늘어나는 동네라는 신호예요. 주택보급률은 가구 수 대비 주택 수(100% 넘으면 집이 가구보다 많음), 합계출산율이 높으면 젊은 가구가 모이는 활기찬 동네, 의사·병상수는 동네 의료 접근성을 보여줘요.",
   },
   {
     title: "네이버 교차검증",
@@ -125,8 +126,13 @@ export const PRICE_SECTIONS: DataSection[] = [
   },
 ];
 
-// 분양 탭 — 청약 경쟁 현황(hideWhenEmpty) + 네이버 분양정보 2섹션.
+// 분양 탭 — 분양 안전지표 + 청약 경쟁 현황(hideWhenEmpty) + 네이버 분양정보 3섹션.
 export const PRESALE_SECTIONS: DataSection[] = [
+  {
+    title: "분양 안전지표",
+    grid: ["cancelRatio6m", "newSupply"],
+    hint: "계약해제율은 분양 계약을 깬 비율(높으면 분양이 잘 안 됐다는 신호), 신규 분양세대수는 이 지역에 새로 풀린 물량이에요. 둘 다 분양이 얼마나 안전한지 따지는 정보예요.",
+  },
   {
     title: "청약 경쟁 현황",
     grid: ["competitionRate", "competitionSupply", "competitionApplicants"],
