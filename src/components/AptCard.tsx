@@ -408,7 +408,8 @@ export const AptCard = memo(
             )}
           </div>
 
-          {benefitWon > 0 ? (
+          {/* 혜택 있는 단지만 녹색 박스. 미수집(전 단지 benefits 0% 채움)은 박스 숨김 — 데이터 채워지면 자동 복원 (세션 461) */}
+          {benefitWon > 0 && (
             <div
               style={{
                 marginTop: 8,
@@ -425,22 +426,6 @@ export const AptCard = memo(
                 총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit?.rate ?? 0}%)
               </span>
             </div>
-          ) : (
-            res.cats.benefit?.noData && (
-              <div
-                style={{
-                  marginTop: 8,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  background: C.slate100,
-                  borderRadius: 8,
-                  padding: "6px 12px",
-                }}
-              >
-                <span style={{ fontSize: F.sm, color: C.muted }}>혜택 데이터 미수집</span>
-              </div>
-            )
           )}
 
           {(apt.completion ||
