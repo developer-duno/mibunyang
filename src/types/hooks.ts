@@ -74,6 +74,7 @@ export interface UseDataPipelineArgs {
   minScore: string;
   benefitOnly: boolean;
   subwayOnly: boolean;
+  schoolGoodOnly: boolean;
   searchQuery: string;
   hideNoUnsold: boolean;
   compIds: string[];
@@ -99,6 +100,7 @@ export interface UseDataPipelineReturn {
     minScore: string;
     benefitOnly: boolean;
     subwayOnly: boolean;
+    schoolGoodOnly: boolean;
   };
   filtered: ScoredApt[];
   visible: ScoredApt[];
@@ -311,6 +313,7 @@ export interface UseFilterSortReturn {
   builderTier: string;
   benefitOnly: boolean;
   subwayOnly: boolean;
+  schoolGoodOnly: boolean;
   showFavOnly: boolean;
   searchQuery: string;
   handleSearchChange: (_v: string) => void;
@@ -330,6 +333,7 @@ export interface UseFilterSortReturn {
   handleBuilderTierChange: (_v: string) => void;
   toggleBenefitOnly: () => void;
   toggleSubwayOnly: () => void;
+  toggleSchoolGoodOnly: () => void;
   getShareURL: () => string;
   handleResetAll: () => void;
   applyPreset: (_preset: Record<string, string | boolean>) => void;

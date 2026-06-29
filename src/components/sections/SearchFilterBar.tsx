@@ -59,6 +59,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onToggleBenefitOnly,
   subwayOnly,
   onToggleSubwayOnly,
+  schoolGoodOnly,
+  onToggleSchoolGoodOnly,
   hideNoUnsold,
   onToggleHideNoUnsold,
   activeFilterCount,
@@ -134,7 +136,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           ? moveInFilter
           : undefined;
   const sortLabel = sortKey !== "total" ? SORT_OPTIONS.find((s) => s.key === sortKey)?.pcLabel : undefined;
-  const detailActive = !!(minScore || builderTier !== "전체" || benefitOnly || subwayOnly);
+  const detailActive = !!(minScore || builderTier !== "전체" || benefitOnly || subwayOnly || schoolGoodOnly);
 
   /* undo/redo 버튼 공용 스타일 (active = canUndo/canRedo, undefined → 비활성) */
   const undoRedoBtnStyle = (active?: boolean) => ({
@@ -360,6 +362,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           onToggleBenefitOnly={onToggleBenefitOnly}
           subwayOnly={subwayOnly}
           onToggleSubwayOnly={onToggleSubwayOnly}
+          schoolGoodOnly={schoolGoodOnly}
+          onToggleSchoolGoodOnly={onToggleSchoolGoodOnly}
           filterOptionCounts={filterOptionCounts}
         />
       </FilterDropdown>
@@ -531,6 +535,18 @@ export const SearchFilterBar = memo(function SearchFilterBar({
                 style={chipStyle}
               >
                 역세권 ✕
+              </span>
+            )}
+            {schoolGoodOnly && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="학군 양호 필터 해제"
+                onClick={onToggleSchoolGoodOnly}
+                onKeyDown={onChipKeyDown(onToggleSchoolGoodOnly)}
+                style={chipStyle}
+              >
+                학군 양호 ✕
               </span>
             )}
           </div>

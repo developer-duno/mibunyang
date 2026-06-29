@@ -37,6 +37,7 @@ const DEFAULT_FILTER = {
   minScore: "",
   benefitOnly: false,
   subwayOnly: false,
+  schoolGoodOnly: false,
 };
 
 describe("applyBaseFilters", () => {
@@ -160,6 +161,33 @@ describe("applyBaseFilters", () => {
   it("subwayOnly=false이면 subwayDist 무관 전부 통과", () => {
     const items = [makeItem({ id: "far", subwayDist: 9999 }), makeItem({ id: "nullable", subwayDist: null })];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, subwayOnly: false });
+    expect(result).toHaveLength(2);
+  });
+
+  // 학군 양호 필터 (schoolGoodOnly) — A·B 등급만 통과 (세션 459)
+  it("schoolGoodOnly=true이면 A·B 등급만 통과, C·D·null 제외", () => {
+    const items = [
+      makeItem({ id: "a", schoolGrade: "A" }),
+      makeItem({ id: "b", schoolGrade: "B" }),
+      makeItem({ id: "c", schoolGrade: "C" }),
+      makeItem({ id: "d", schoolGrade: "D" }),
+      makeItem({ id: "null", schoolGrade: null }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, schoolGoodOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["a", "b"]);
+  });
+
+  // B+ 같은 prefix 변형도 B 로 시작하므로 통과 (startsWith 검증)
+  it("schoolGoodOnly=true이면 B+ 등급(prefix)도 통과", () => {
+    const items = [makeItem({ id: "bplus", schoolGrade: "B+" }), makeItem({ id: "cplus", schoolGrade: "C+" })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, schoolGoodOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["bplus"]);
+  });
+
+  // schoolGoodOnly=false면 등급 무관 전부 통과 (무영향)
+  it("schoolGoodOnly=false이면 schoolGrade 무관 전부 통과", () => {
+    const items = [makeItem({ id: "c", schoolGrade: "C" }), makeItem({ id: "null", schoolGrade: null })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, schoolGoodOnly: false });
     expect(result).toHaveLength(2);
   });
 });

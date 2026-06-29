@@ -19,6 +19,7 @@ export interface FilterState {
   minScore?: string | number | null;
   benefitOnly?: boolean;
   subwayOnly?: boolean;
+  schoolGoodOnly?: boolean;
 }
 
 /**
@@ -60,6 +61,13 @@ export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[]
 
   // 역세권만 (≤500m, 9999=역없음 제외) — AptCard 역세권 강조 기준(<=500)과 동일
   if (f.subwayOnly) out = out.filter((x) => x.apt.subwayDist != null && (x.apt.subwayDist as number) <= 500);
+
+  // 학군 양호(A·B)만 — schoolGrade 가 "A"/"B"로 시작 (B+ 포함, null 제외)
+  if (f.schoolGoodOnly)
+    out = out.filter((x) => {
+      const g = x.apt.schoolGrade as string | null | undefined;
+      return g != null && (g.startsWith("A") || g.startsWith("B"));
+    });
 
   return out;
 }

@@ -1,5 +1,5 @@
 /**
- * 상세 필터 패널 — 최소점수 + 시공사등급 + 혜택 토글 + 역세권 토글
+ * 상세 필터 패널 — 최소점수 + 시공사등급 + 혜택 토글 + 역세권 토글 + 학군 양호 토글
  * 기존 SearchFilterBar 5행에서 추출
  */
 import { memo } from "react";
@@ -16,6 +16,8 @@ type DetailPanelProps = {
   onToggleBenefitOnly: () => void;
   subwayOnly: boolean;
   onToggleSubwayOnly: () => void;
+  schoolGoodOnly: boolean;
+  onToggleSchoolGoodOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
 };
 
@@ -28,9 +30,11 @@ export const DetailPanel = memo(function DetailPanel({
   onToggleBenefitOnly,
   subwayOnly,
   onToggleSubwayOnly,
+  schoolGoodOnly,
+  onToggleSchoolGoodOnly,
   filterOptionCounts,
 }: DetailPanelProps) {
-  const hasFilter = minScore || builderTier !== "전체" || benefitOnly || subwayOnly;
+  const hasFilter = minScore || builderTier !== "전체" || benefitOnly || subwayOnly || schoolGoodOnly;
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const }}>
       <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
@@ -118,6 +122,26 @@ export const DetailPanel = memo(function DetailPanel({
       >
         역세권
       </button>
+      <button
+        onClick={onToggleSchoolGoodOnly}
+        aria-label="학군 양호(A·B등급) 매물만"
+        aria-pressed={schoolGoodOnly}
+        style={{
+          flexShrink: 0,
+          height: 30,
+          padding: "0 10px",
+          fontSize: F.xs,
+          fontWeight: schoolGoodOnly ? 700 : 500,
+          background: schoolGoodOnly ? C.greenLight : C.slate100,
+          color: schoolGoodOnly ? C.green : C.slate600,
+          border: schoolGoodOnly ? `1.5px solid ${C.green}` : `1px solid ${C.border}`,
+          borderRadius: 5,
+          cursor: "pointer",
+          transition: "all .15s",
+        }}
+      >
+        학군 양호
+      </button>
       {hasFilter && (
         <button
           onClick={() => {
@@ -125,8 +149,9 @@ export const DetailPanel = memo(function DetailPanel({
             onBuilderTierChange("전체");
             if (benefitOnly) onToggleBenefitOnly();
             if (subwayOnly) onToggleSubwayOnly();
+            if (schoolGoodOnly) onToggleSchoolGoodOnly();
           }}
-          aria-label="점수/시공사/혜택/역세권 초기화"
+          aria-label="점수/시공사/혜택/역세권/학군 초기화"
           style={resetBtn(30)}
         >
           <IconClose size={12} />

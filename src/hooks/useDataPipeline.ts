@@ -83,6 +83,7 @@ export function useDataPipeline({
   minScore,
   benefitOnly,
   subwayOnly,
+  schoolGoodOnly,
   searchQuery,
   hideNoUnsold,
   compIds,
@@ -174,6 +175,7 @@ export function useDataPipeline({
       minScore,
       benefitOnly,
       subwayOnly,
+      schoolGoodOnly,
     }),
     [
       showFavOnly,
@@ -187,6 +189,7 @@ export function useDataPipeline({
       minScore,
       benefitOnly,
       subwayOnly,
+      schoolGoodOnly,
     ]
   );
 
@@ -245,6 +248,7 @@ export function useDataPipeline({
         builderTier !== "전체",
         benefitOnly,
         subwayOnly,
+        schoolGoodOnly,
         searchQuery.trim(),
       ].filter(Boolean).length,
     [
@@ -261,6 +265,7 @@ export function useDataPipeline({
       builderTier,
       benefitOnly,
       subwayOnly,
+      schoolGoodOnly,
       searchQuery,
     ]
   );
