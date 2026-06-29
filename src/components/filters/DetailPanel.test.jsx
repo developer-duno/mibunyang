@@ -17,6 +17,10 @@ function makeProps(overrides = {}) {
     onToggleSubwayOnly: vi.fn(),
     schoolGoodOnly: false,
     onToggleSchoolGoodOnly: vi.fn(),
+    dsrPassOnly: false,
+    onToggleDsrPassOnly: vi.fn(),
+    nonRegulatedOnly: false,
+    onToggleNonRegulatedOnly: vi.fn(),
     filterOptionCounts: null,
     ...overrides,
   };
@@ -98,27 +102,27 @@ describe("DetailPanel", () => {
   it("subwayOnly=true이면 aria-pressed=true이고 초기화 버튼 표시", () => {
     render(<DetailPanel {...makeProps({ subwayOnly: true })} />);
     expect(screen.getByLabelText("역세권 매물만(500m 이내)")).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByLabelText("점수/시공사/혜택/역세권/학군 초기화")).toBeInTheDocument();
+    expect(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화")).toBeInTheDocument();
   });
 
   // 초기화 클릭 시 subwayOnly=true면 onToggleSubwayOnly 호출 (세션 430)
   it("초기화 클릭 시 subwayOnly=true면 onToggleSubwayOnly 호출", () => {
     const onToggleSubwayOnly = vi.fn();
     render(<DetailPanel {...makeProps({ subwayOnly: true, onToggleSubwayOnly })} />);
-    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군 초기화"));
+    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화"));
     expect(onToggleSubwayOnly).toHaveBeenCalledTimes(1);
   });
 
   // 필터 미설정 시 초기화 버튼 미표시
   it("모든 필터 기본값이면 초기화 버튼 미표시", () => {
     render(<DetailPanel {...makeProps()} />);
-    expect(screen.queryByLabelText("점수/시공사/혜택/역세권/학군 초기화")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화")).not.toBeInTheDocument();
   });
 
   // minScore 설정 시 초기화 버튼 표시
   it("점수 필터 설정 시 초기화 버튼 표시", () => {
     render(<DetailPanel {...makeProps({ minScore: "60" })} />);
-    expect(screen.getByLabelText("점수/시공사/혜택/역세권/학군 초기화")).toBeInTheDocument();
+    expect(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화")).toBeInTheDocument();
   });
 
   // 초기화 클릭 시 onMinScoreChange("") + onBuilderTierChange("전체") + onToggleBenefitOnly(if benefitOnly) 호출
@@ -137,7 +141,7 @@ describe("DetailPanel", () => {
         })}
       />
     );
-    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군 초기화"));
+    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화"));
     expect(onMinScoreChange).toHaveBeenCalledWith("");
     expect(onBuilderTierChange).toHaveBeenCalledWith("전체");
     expect(onToggleBenefitOnly).toHaveBeenCalledTimes(1);
@@ -147,7 +151,7 @@ describe("DetailPanel", () => {
   it("benefitOnly=false 상태에서 초기화 시 onToggleBenefitOnly 호출 안됨", () => {
     const onToggleBenefitOnly = vi.fn();
     render(<DetailPanel {...makeProps({ minScore: "60", benefitOnly: false, onToggleBenefitOnly })} />);
-    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군 초기화"));
+    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화"));
     expect(onToggleBenefitOnly).not.toHaveBeenCalled();
   });
 
@@ -174,14 +178,14 @@ describe("DetailPanel", () => {
   it("schoolGoodOnly=true이면 aria-pressed=true이고 초기화 버튼 표시", () => {
     render(<DetailPanel {...makeProps({ schoolGoodOnly: true })} />);
     expect(screen.getByLabelText("학군 양호(A·B등급) 매물만")).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByLabelText("점수/시공사/혜택/역세권/학군 초기화")).toBeInTheDocument();
+    expect(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화")).toBeInTheDocument();
   });
 
   // 초기화 클릭 시 schoolGoodOnly=true면 onToggleSchoolGoodOnly 호출 (세션 459)
   it("초기화 클릭 시 schoolGoodOnly=true면 onToggleSchoolGoodOnly 호출", () => {
     const onToggleSchoolGoodOnly = vi.fn();
     render(<DetailPanel {...makeProps({ schoolGoodOnly: true, onToggleSchoolGoodOnly })} />);
-    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군 초기화"));
+    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화"));
     expect(onToggleSchoolGoodOnly).toHaveBeenCalledTimes(1);
   });
 
@@ -189,7 +193,7 @@ describe("DetailPanel", () => {
   it("schoolGoodOnly=false 상태에서 초기화 시 onToggleSchoolGoodOnly 호출 안됨", () => {
     const onToggleSchoolGoodOnly = vi.fn();
     render(<DetailPanel {...makeProps({ minScore: "60", schoolGoodOnly: false, onToggleSchoolGoodOnly })} />);
-    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군 초기화"));
+    fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제 초기화"));
     expect(onToggleSchoolGoodOnly).not.toHaveBeenCalled();
   });
 

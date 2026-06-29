@@ -84,6 +84,8 @@ export function useDataPipeline({
   benefitOnly,
   subwayOnly,
   schoolGoodOnly,
+  dsrPassOnly,
+  nonRegulatedOnly,
   searchQuery,
   hideNoUnsold,
   compIds,
@@ -176,6 +178,8 @@ export function useDataPipeline({
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
     }),
     [
       showFavOnly,
@@ -190,6 +194,8 @@ export function useDataPipeline({
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
     ]
   );
 
@@ -249,6 +255,8 @@ export function useDataPipeline({
         benefitOnly,
         subwayOnly,
         schoolGoodOnly,
+        dsrPassOnly,
+        nonRegulatedOnly,
         searchQuery.trim(),
       ].filter(Boolean).length,
     [
@@ -266,6 +274,8 @@ export function useDataPipeline({
       benefitOnly,
       subwayOnly,
       schoolGoodOnly,
+      dsrPassOnly,
+      nonRegulatedOnly,
       searchQuery,
     ]
   );

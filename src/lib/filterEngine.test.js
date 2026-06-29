@@ -38,6 +38,8 @@ const DEFAULT_FILTER = {
   benefitOnly: false,
   subwayOnly: false,
   schoolGoodOnly: false,
+  dsrPassOnly: false,
+  nonRegulatedOnly: false,
 };
 
 describe("applyBaseFilters", () => {
@@ -188,6 +190,42 @@ describe("applyBaseFilters", () => {
   it("schoolGoodOnly=false이면 schoolGrade 무관 전부 통과", () => {
     const items = [makeItem({ id: "c", schoolGrade: "C" }), makeItem({ id: "null", schoolGrade: null })];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, schoolGoodOnly: false });
+    expect(result).toHaveLength(2);
+  });
+
+  // DSR 통과 필터 (dsrPassOnly) — dsr40pass===true만 통과 (false·null 제외, 세션 461)
+  it("dsrPassOnly=true이면 dsr40pass===true만 통과, false·null 제외", () => {
+    const items = [
+      makeItem({ id: "pass", dsr40pass: true }),
+      makeItem({ id: "fail", dsr40pass: false }),
+      makeItem({ id: "null", dsr40pass: null }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, dsrPassOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["pass"]);
+  });
+
+  // dsrPassOnly=false면 dsr40pass 무관 전부 통과 (무영향)
+  it("dsrPassOnly=false이면 dsr40pass 무관 전부 통과", () => {
+    const items = [makeItem({ id: "fail", dsr40pass: false }), makeItem({ id: "null", dsr40pass: null })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, dsrPassOnly: false });
+    expect(result).toHaveLength(2);
+  });
+
+  // 비규제지역 필터 (nonRegulatedOnly) — isRegulated!==true 통과 (false·null 통과, true 제외, 세션 461)
+  it("nonRegulatedOnly=true이면 isRegulated!==true만 통과 (false·null 통과, true 제외)", () => {
+    const items = [
+      makeItem({ id: "free", isRegulated: false }),
+      makeItem({ id: "reg", isRegulated: true }),
+      makeItem({ id: "null", isRegulated: null }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, nonRegulatedOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["free", "null"]);
+  });
+
+  // nonRegulatedOnly=false면 isRegulated 무관 전부 통과 (무영향)
+  it("nonRegulatedOnly=false이면 isRegulated 무관 전부 통과", () => {
+    const items = [makeItem({ id: "reg", isRegulated: true }), makeItem({ id: "free", isRegulated: false })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, nonRegulatedOnly: false });
     expect(result).toHaveLength(2);
   });
 });
