@@ -249,6 +249,8 @@ export const AptCard = memo(
               <ScoreBadge score={res.total} size={56} />
             ) : (
               <div
+                role="img"
+                aria-label="점수 비공개 — 로그인 후 확인 가능"
                 style={{
                   width: 56,
                   height: 56,
@@ -276,6 +278,7 @@ export const AptCard = memo(
                 <div style={S.catHeader}>
                   <span style={S.catLabel}>{(SHORT_LABEL as Record<string, string>)[c.label] || c.label}</span>
                   <span
+                    aria-hidden={isLoggedIn ? undefined : true}
                     style={{
                       fontSize: F.base,
                       fontWeight: 700,

@@ -313,6 +313,22 @@ describe("AptCard", () => {
     expect(screen.getByText("안전 A등급")).toBeInTheDocument();
   });
 
+  // 세션463: 비로그인 블라인드 스크린리더 정합 — 원형 ??는 설명 보유, blur ?? 숫자는 장식(aria-hidden)
+  it("비로그인 점수 원은 role=img+설명 라벨 보유, 로그인이면 블라인드 원 미노출 (세션463)", () => {
+    const { rerender } = render(<AptCard {...makeProps({ isLoggedIn: false })} />);
+    expect(screen.getByRole("img", { name: "점수 비공개 — 로그인 후 확인 가능" })).toBeInTheDocument();
+    rerender(<AptCard {...makeProps({ isLoggedIn: true })} />);
+    expect(screen.queryByRole("img", { name: "점수 비공개 — 로그인 후 확인 가능" })).toBeNull();
+  });
+
+  it("비로그인 카테고리 blur '??' 숫자는 aria-hidden, 로그인 실점수는 aria-hidden 없음 (세션463)", () => {
+    const { rerender } = render(<AptCard {...makeProps({ isLoggedIn: false })} />);
+    const blurred = screen.getAllByText("??").filter((el) => el.getAttribute("aria-hidden") === "true");
+    expect(blurred.length).toBeGreaterThan(0); // topCats 카테고리 blur 숫자들
+    rerender(<AptCard {...makeProps({ isLoggedIn: true })} />);
+    expect(screen.queryAllByText("??")).toHaveLength(0);
+  });
+
   // 무순위 공고 발생 단지 — "추가 모집" 빨간 배지
   it("unsoldEventCount > 0 + ah- 단지면 '추가 모집' 배지 표시", () => {
     const apt = /** @type {any} */ (makeApt({ id: "ah-100", unsoldEventCount: 5 }));
