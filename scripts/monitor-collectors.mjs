@@ -170,12 +170,13 @@ const KO_FIELD = {
  * recordCollectorRun 첫 인자와 정확히 일치해야 함 — 대부분 PHASE 상수이나 일부(transport-tago 등)는
  * 리터럴을 따로 박으니 PHASE 값과 다를 수 있음. 신규/수정 시 recordCollectorRun 인자 직독 의무
  * (세션 439: "transport" 라벨 ≠ 기록명 "transport-tago" 드리프트로 ⑤ 영구 무력 사고).
- * stale_days = 해당 collector cron 주기 + 1주 여유 (월간/일일=14). NEIS schools = incremental yml 매일 발화 + 월간 collect-schools.yml 자매 = 14 (세션 339 정정, 세션 338 3주 cancelled 사고가 35일 한계 안에 묻힌 진앙 해소).
+ * stale_days = 해당 collector cron 주기 + 1주 여유 (일일=14, 월간=38, 분기=100). NEIS schools = incremental yml 매일 발화 + 월간 collect-schools.yml 자매 = 14 (세션 339 정정, 세션 338 3주 cancelled 사고가 35일 한계 안에 묻힌 진앙 해소).
+ * ⚠️ 월간 cron 에 14 를 박으면 ⑤-b 미발화 분기가 발화일+14일부터 다음 발화까지 매일 거짓 경보 + continue 로 진짜 outage 판정까지 가림 (세션 463 정정: housing-permits·building-hub 14→38).
  * 신규 외부 API collector 추가 시 이 배열 1줄 박힘 + checkExternalApiStale 회귀 답습 의무.
  */
 export const EXTERNAL_API_COLLECTORS = [
-  { collector: "housing-permits", stale_days: 14, owner: "MOLIT 주택건설실적" },
-  { collector: "building-hub",    stale_days: 14, owner: "MOLIT 건축물대장 허브" },
+  { collector: "housing-permits", stale_days: 38, owner: "MOLIT 주택건설실적 (월 10일 cron + 1주 여유)" },
+  { collector: "building-hub",    stale_days: 38, owner: "MOLIT 건축물대장 허브 (월 15일 cron + 1주 여유)" },
   { collector: "transport-tago",  stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 38, owner: "청약홈 분양일정·평형 (월 13일 cron + 1주 여유)" },
