@@ -150,6 +150,7 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
 - 세션 318~328 housing-permits 1개월+ silent fail 사고 박힘 시점에 schools=35 로 박은 가정 = "NEIS 분기 발화" 환각. 실제 = `collect-naver-listings-incremental.yml` 안 schools step 매일 발화 + 월간 `collect-schools.yml` 자매 동시 동작.
 - 세션 338 사고 (3주 cancelled = 5/22 + 5/26 + 5/27) 가 35일 한계 안에 묻혀 monitor §5 alert 발화 0회. 일일 cron 기준 = 14 (1주 여유 포함) 정정 후 다음 3주+ 사고 시 alert 즉시 박힘.
 - 진실의 원천 = `scripts/monitor-collectors.mjs:176` 의 `EXTERNAL_API_COLLECTORS` 배열. 본 md L63-67 sample 은 그 코드와 동기 의무 (drift 시 코드 우선).
+- **세션 463 정정 (역방향 사고)**: 세션 339 가 "일일=14" 를 정정하며 남긴 주석 "(월간/일일=14)" 환각이 월간 cron 2종(housing-permits 월 10일·building-hub 월 15일)에 14 로 잔존. monitor 는 매일 발화라 ⑤-b 미발화 분기가 발화일+14일부터 다음 발화까지 **매일 거짓 stale 경보** + `continue` 로 진짜 outage 판정(housing-permits MOLIT 500 장기 중단)까지 가림. 당시 두 collector 의 collector_runs 행이 2개뿐(3행 미만 오탐 차단)이라 미발화 상태로 잠복 — 3번째 발화(7/10·7/15) 후 발화 예정이던 것을 선제 정정 14→38 (applyhome-detail·maintenance·KOSIS 월간 38 답습). 기준 = **일일=14 / 월간=38 / 분기=100**, cron yml grep 후 박힘.
 
 ## 차단 검증 (본 룰 적용 후 사고 시뮬레이션) — 보강
 
