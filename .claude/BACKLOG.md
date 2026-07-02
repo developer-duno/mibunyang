@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ 청약홈 매칭 회수 검증 (P2) — 세션 465 라이브 실증 종결 (2026-07-03). `collector_runs` id=236 `applyhome-detail` 6/13 cron(`30 2 13 * *`) 자연 발화 success **ok=934 fail=0**(예측 ~916 + 이후 신규 공고 자연 증가) + `presale_schedule_official` 라이브 = **984 rows / 859 distinct 단지**(예측 916/810 초과 달성). 세션 360 처방(후보 쿼리 presale_stage 제약 제거 = 전체 apartments 확대) 2.4배 회복(393→934) 실증 확정. 상세 = BACKLOG_ARCHIVE "🟡 곧 — 완료".
 - ✅ 6/5 collect-market-stats schedule run 검증 — 세션 463 실측 종결(가설 확정). run 27041459499 success + 로그 `lookback=24개월`·`분양가격지수: 1785건 응답, 17개 시도 매핑`·`96건 갱신` 기대 출력 전부 일치 = 세션 282 plan v6 가설 확정, 커밋 b312d62 처방 유효(직전 5/5·4/5 failure → 6/5 첫 발화 success). fail 시 트리거였던 TLS handshake 별도 plan 불필요 확정. 상세 = BACKLOG_ARCHIVE "🟡 곧 — 완료".
 - ✅ 마케팅 수신 동의 철회/관리 토글 (정보 탭) — 세션 443 D3 (PR #168, main 235b3cb). privacy.html "마케팅 수신 동의는 언제든지 철회 가능" 약속을 코드로 이행. 기존엔 로그인 직후 1회 모달(MarketingConsentModal)에서만 동의/거부 가능, 나중에 끄는 진입점 0 = 약속 위반 상태. **백엔드 완비(kakao-consent.ts consent:false 철회 처리), 프론트 진입점만 메움**. 표현계층+콜백값 1개(점수·엔진·DB스키마 무변경): kakao.ts 콜백에 consentMarketing 1줄·useMarketingConsent 확장(consentMarketing state+localStorage(mibunyang_consent_marketing) 영속+initConsent+거부/실패 토스트)·useKakaoCallbackEffect onConsentLoaded(일반손님만)·clearAuthTokens consent키 청소(손님 전환 stale 방지)·InfoPage 로그인 일반손님(!adminLoggedIn) 토글행(role=switch+aria-checked+상태 3분기 받는중/받지않음/미선택)·App 배선 submitConsent(consentMarketing!==true). 새로고침 복원=localStorage, 로그인 시 서버값(initConsent)이 진실원천. vitest 55(InfoPage 토글 5+useMarketingConsent 8+실패토스트 2)·tsc0·lint0·build✓·CI/e2e/Vercel green. **5관점 적대검증 워크플로→진성 P0/P1 0건**(종합이 검증자 과장 교정: "관리자 타인동의변경"=거짓 JWT 소유자 본인만·admin게이트 걸면 손님 못씀=self-service 정확 설계, 접근성·null-edge P0=라벨 오류 전부 SAFE). real_p1 1건(null/false 3분기)+무피드백 실패토스트 반영. **잔여=👤 production 정보 탭 마케팅 토글 켜기/끄기 라이브 확인**.
 - ✅ 상담 보존기간(365일) 경과 자동 파기 배치 — 세션 443 D4 (PR #169, main 01a5c80). privacy.html "상담 목적 달성 후 파기"가 구체 일수·자동화 0 → PIPA §21(보유기간 경과 파기)+개인정보 최소화 이행. **보존기간=365일**(부동산 상담 시세·분양일정 민감해 1년 지나면 재활용 가치 거의 없음, 6개월 재상담여지부족·3년 보관리스크↑ 균형점). `scripts/purge-old-consults.mjs`(consults.submitted_at < now-365일 DELETE, 되돌릴 수 없어 ①count 선집계 로그 ②--dry-run ③0건 생략 ④실패시 collector_runs 기록, purgeOldConsults(sb,opts) export 테스트가능, getMibuyangSupabase service_role)+`purge-consults.yml`(매일 KST 04:30 cron+dry_run 입력+Validate secrets, collect-* 패턴 밖이라 monitor/audit 무관)+privacy.html "신청일로부터 1년간 보관 후 파기" 명시+마케팅 철회 경로(정보 탭 토글, D3 연계) 안내. vitest 9(경과삭제/0행안전/dry-run/count·delete 에러/커스텀기간/cutoff)·typecheck:scripts 0(검사망 포함 --listFiles 확인)·lint0·audit 4종 clean·**dry-run 라이브 실증**(컷오프 정확·파기 대상 0건 상담 0행·collector_runs skip). 현재 consults 0행 첫 배포 안전. **잔여=👤 production GitHub Actions Purge Old Consults → dry_run=true 1회 미리보기 권장(이후 매일 자동)**.
@@ -56,6 +57,7 @@
 - 🟡 **/api/consults 500 검증 잔여** (세션 406 발견·조치 — 사장님 스크린샷 콘솔에서 관리자 대시보드 500 확인)
   - 진앙 실측 = Vercel production 에 `SUPABASE_SERVICE_KEY` 미설정 → `getMibuyangSupabase()` throw → catch 500. DB·쿼리는 로컬 service key 프로브로 정상 확인 (consults 0행, submitted_at 정렬 OK)
   - 조치 완료 = `vercel env add SUPABASE_SERVICE_KEY production` (2026-06-13). **다음 배포부터 적용** — 적용 후 관리자 대시보드 새로고침으로 /api/consults 200 확인 잔여. `api/subscribers.ts` 도 같은 키 사용 = 동시 치유
+  - **세션 465 간접 실측 3종 (2026-07-03) = 근본 원인(env 부재) 해소 확정**: (1) `vercel env ls production` = `SUPABASE_SERVICE_KEY` 존재(20d 전 등록 = 6/13 조치 일치, 이후 매일 배포 다수 = 적용 확정) (2) 비인증 GET → 401 "인증이 필요합니다"(핸들러 건강) (3) 단, `consults.ts:77 requireAdminGate` 가 `:86 getMibuyangSupabase()` **앞**이라 비인증 401은 service key 런타임 증명이 아님 — 완전 증명은 관리자 로그인 세션 필요. **잔여 = 👤 관리자 대시보드 새로고침 1클릭 (/api/consults 200 확인)**
 
 - 🟢 **`/api/supabase/apartments` "19초" 근본 진단 완결 (세션 357 적대검증) — 보류** (세션 351 발견 → 357 진단 종결, P2)
   - **세션 357 진단 결론 = 죽은 코드 최적화라 보류**. 12 probe 적대검증(wtpjv3c6m + wjormmmc3) + 직접 실측으로 세션 351/356 박제값 다수 정정. 코드 변경 0.
@@ -112,13 +114,6 @@
 - 🟡 **Supabase Micro 컴퓨트 hang — Small 업그레이드 검토 (세션 460 진단, 👤 사장님 미결정)** — 공유 인스턴스(`rwdtljipvmqpazrimyns`, t4g.micro RAM 1GB)가 2026-06-29 양쪽 collector+Vercel 부하에서 일시 hang → Cloudflare 522 약 2.5h, daily-deploy 1회 failure. 대시보드 Restart로 회복. **근본 해소 = Micro→Small(RAM 2GB, Pro 크레딧 후 순 +$5/월)** — 비용 공유라 협의 필요. 재발 시 진단·업그레이드 절차 = `supabase/CLAUDE.md` "컴퓨트 한계" 절 + 글로벌 메모리 `session_2026-06-30_session460_db_hang_infra.md`. **데이터 다이어트는 반려**(Pro+Disk30% 명분없음, 공유테이블 양쪽 위험). 워치 = hang 재발 빈도. 1회성이면 Micro 유지, 반복되면 Small.
 - ❌ **monitor 음수가드 테스트 추가 — 폐기(헛돌이 확정, 세션 421)** — 세션 419 부산물로 "4곳(ageH·sinceCreated·idleDays·daysSince) 음수 입력 전용 테스트로 가드가 막는 걸 증명" 제안했으나, 세션 421 적대검증(5에이전트 만장일치 + node 줄별 실증)으로 **전부 헛돌이 확정 → 테스트 추가 0건**. 근거: 음수(미래 시각)와 0(Math.max 클램프)이 항상 양수 임계값(maxAgeHours 36·STALE_DAYS 35·stale_days≥14)의 **같은 쪽**에 떨어져 가드 제거해도 분기 불변(guardRemovalChangesBranch=false). 음수는 비교에서 먼저 걸러져 `Math.floor()` 표시 라인 **도달 불가**(사용자 노출 경로 없음). 미래-시각 테스트는 가드 제거 후에도 항상 통과 → 회귀 못 잡음. 5개 Math.max(0,..) 가드 = **방어적 no-op 확정**(제거 안전하나 cosmetic 보험이라 유지). 기존 L217 ageDays 테스트도 같은 이유로 inert. 양수-일수 표기 정확성은 기존 미발화 테스트가 이미 커버. 시간대 회귀 걱정이면 가드가 아니라 finished_at/recorded_at 저장 시간축 일치(timezone) 검증이 진짜 가치(별개)
 
-- 🟢 **청약홈 매칭 회수 — 진짜 진앙은 후보 쿼리 presale_stage 제약 (세션 360 PR, 진단 정정)**
-  - **세션 359 진단 정정**: "정규화(LCS 한계)가 병목"은 세션 360 적대 검증(6-probe 워크플로 + 라이브 재측정 2회)으로 **데이터 반증**. 정규화 회수 효과 ~0건 (미매칭 384 중 정규화로 잡을 수 있는 건 ≤8건, 긴 단지명은 음차 1글자 차이여도 이미 sim 0.92 통과). 미매칭 384 중 **235(61%)는 임대/공공주택** = 청약홈 *분양* API 구조적 부재.
-  - **진짜 진앙 (라이브 재측정 2회 확정)**: `collect-applyhome-detail.mjs:225` 매칭 후보를 `presale_stage NOT NULL`(728)로 제한 → 청약홈 공고 있는데 분양 단계 미태깅된 단지가 통째로 빠짐. 제약 제거 시 매칭 **393→916 rows / 344→810 distinct (+466 단지, 2.4배)**, 신규 483 중 482가 명백 분양(sim 1.0 정답, 임대 1건뿐).
-  - **세션 360 PR 처리**: 후보 쿼리 전체 apartments 확대 + region 파싱 버그(`경기도 광주시`→광주광역시 오파싱) 동반 수정. 적재는 별도 테이블만(apartments base 불변, 미분양 보호). 회귀 가드 = vitest 3180 + typecheck 0 + region 버그 fixture 2건.
-  - **잔여 검증 (P2)**: 세션 360 dry-run AFTER 는 청약홈 odcloud `totalCount:0` 외부 일시장애로 이월됐으나 **세션 370 라이브 실측 = odcloud 회복**(getAPTLttotPblancDetail HTTP 200 totalCount 2777 / Mdl 14157) → 6/13 cron(`30 2 13 * *`) 정상 실행에서 `collector_runs` matched ~916 자동 검증.
-  - 답습: 세션 355 LCS 폴백 + 세션 353 청약홈 매칭 개선 + **세션 360 = "정규화 진단이 적대 검증으로 반증, 진짜 진앙은 후보 쿼리 제약"** (이름 변형보다 후보 누락이 지배적 진앙). 메가단지 블록코드(D1-2BL) LCS 변별 약점은 별 항목.
-
 - 🟡 **regions.avg_price 100% NULL + cross-repo 활성 사용 8 위치** (세션 223 발견, 세션 226 정정, 세션 277 재실측, **세션 316 재실측 + drift 정정**, **세션 334 ADR 승격**)
   - **정책 결정**: → [docs/decisions/avg_price-policy.md](../docs/decisions/avg_price-policy.md) (세션 334 ADR 박힘)
   - 채택 = 옵션 1-A (보류) + 미래 후보 = 옵션 1-D (자매 계산)
@@ -135,6 +130,7 @@
   - 1차 적재 결과: 1263 events / 721 단지 보유 (단지당 평균 1.75 공고 — 시계열은 누적 후)
   - **세션 422 실측 정정 (2026-06-16)**: `applyhome-event-recurrence.mjs` 라이브 실행 = 1263 events / **고유 단지 1263개 / 단지당 평균 1.00회 / 2회+ 누적 단지 0개**. 박제 "721 단지/평균 1.75"는 stale. 충돌 키 `apartment_id,house_manage_no` 라 차수 누적 구조는 정상이나 아직 같은 단지 2번째 무순위 공고 미발생 → **차수 노출 작업 보류 유지** (스크립트 자체 판정 "📭 2회+ 단지 없음"). 트리거 = 다음 적재에서 2회+ 단지 ≥5개
   - **세션 423 재확인**: 손님 가치 UX 후보 평가 시 다시 검토 → 보류 유지 결정 동일 (트리거 미도달)
+  - **세션 465 재측정 (2026-07-03)**: 동일 — 1263 events / 고유 1263 / 평균 1.00 / 2회+ 단지 **0개** → 보류 유지. ⚠️ 부수 관찰: 총량 1263 이 세션 160(5월 초)→422(6/16)→465(7/3) 내내 고정 = 신규 무순위 공고 유입 0. 자연스러운지(수집 필터·upsert 충돌키·API 응답 창) 별도 검증 후보
   - 참조: `docs/superpowers/specs/2026-05-02-applyhome-events-log-design.md` § 명시적 비-작업
 
 - 🟡 **regions.supply_ratio 0% — MOLIT API 사고 진앙 v3** (세션 323 → v3 정정)
