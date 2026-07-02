@@ -18,7 +18,7 @@
 | 관리자 | 6 | `admin/` | AdminDashboard, AdminHelpGuide, AdminConsults, WeightEditor, WeightTable, ScoreBreakdownPreview (단, 세션138 이후 `admin/` 폴더에는 memo 아닌 StatsSection/UserCard/UserList 3개 추가 존재) |
 
 > **전문가 그룹(`expert/` 9개)은 세션 405 에 폐지** — 자료는 상세 모달 관리자 인사이트(AdminScoreBreakdown·AdminUnitSupply·AdminDataAudit 138필드 표[세션 408 D2a 로 구 DataSections adminMode 분리])와 AdminConsults/AdminHelpGuide 로 이식. 결정 문서: `docs/superpowers/specs/2026-06-12-expert-role-abolition-decision.md` |
-| 아이콘 | 1 | `icons.jsx` | 내부 공용 memo 1개 (IconClose 등 9개 아이콘은 순수 SVG 함수, memo 래핑 안 함) |
+| 아이콘 | 1 | `icons.tsx` | 내부 공용 memo 1개 (IconClose 등 9개 아이콘은 순수 SVG 함수, memo 래핑 안 함) |
 
 - 반드시 `memo(function Name(...) { ... })` 패턴 유지
 - memo 효과를 위해 콜백은 `useCallback`으로 안정화 필수
