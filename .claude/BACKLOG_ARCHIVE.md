@@ -158,6 +158,13 @@
 
 ## 🟡 곧 — 완료
 
+- ✅ **6/5 collect-market-stats schedule run 검증 — 가설 확정 종결** (세션 282 등록 → 세션 463 실측, 2026-07-03)
+  - 진입: lookback 24개월 적용(커밋 `b312d62`) 후 첫 schedule run = 6/5. 검증 자리 = run log 의 `분양가격지수: N건 응답, 17개 시도 매핑` + `[분양가격지수] DT_41401N_006 (M) 202406~202606 lookback=24개월` 출력 + conclusion=success.
+  - **세션 463 실측 (gh run 직독)**: run 27041459499 (2026-06-05T21:38Z) conclusion=**success**. 로그 = `[분양가격지수] DT_41401N_006 (M) 202406~202606 lookback=24개월` + `분양가격지수: 1785건 응답, 17개 시도 매핑` + `96건 갱신` — 기대 출력 전부 정확 일치.
+  - 직전 run 대조: 5/5(25402403763) failure + 4/5(24010032799) failure → b312d62 이후 첫 발화인 6/5 success = 처방이 사고를 해소했다는 실증. 이후 매월 5일 schedule 이 자연 회귀 가드.
+  - 판정: 가설 확정 = 사고 단일 해결. fail 시 트리거로 걸어둔 "TLS handshake 별도 plan" 불필요 확정.
+  - 참조: `~/.claude/plans/pwd-f-mibunyang-git-unified-starlight.md` v6 § 6/5 검증
+
 - ✅ **vitest 4 `environmentMatchGlobs` → `projects` 마이그레이션** (세션 348, 2026-05-30)
   - 진입: BACKLOG "TS M0 후속" 🟡 (세션 172 발견) — `vitest.config.ts` 가 `environmentMatchGlobs`(api/scripts → node 환경 분기)를 `// @ts-expect-error` 1줄로 보존 중. 트리거 = "M1 진입 직전 또는 vitest 5 검토". 세션 348 부팅 점검에서 작업 가능 P0 0건 → 유일한 소규모 안전 작업으로 사용자 선택.
   - **핵심 실측 발견 (조사 + 직접 grep 교차 검증)**:
