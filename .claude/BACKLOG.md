@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ 6/5 collect-market-stats schedule run 검증 — 세션 463 실측 종결(가설 확정). run 27041459499 success + 로그 `lookback=24개월`·`분양가격지수: 1785건 응답, 17개 시도 매핑`·`96건 갱신` 기대 출력 전부 일치 = 세션 282 plan v6 가설 확정, 커밋 b312d62 처방 유효(직전 5/5·4/5 failure → 6/5 첫 발화 success). fail 시 트리거였던 TLS handshake 별도 plan 불필요 확정. 상세 = BACKLOG_ARCHIVE "🟡 곧 — 완료".
 - ✅ 마케팅 수신 동의 철회/관리 토글 (정보 탭) — 세션 443 D3 (PR #168, main 235b3cb). privacy.html "마케팅 수신 동의는 언제든지 철회 가능" 약속을 코드로 이행. 기존엔 로그인 직후 1회 모달(MarketingConsentModal)에서만 동의/거부 가능, 나중에 끄는 진입점 0 = 약속 위반 상태. **백엔드 완비(kakao-consent.ts consent:false 철회 처리), 프론트 진입점만 메움**. 표현계층+콜백값 1개(점수·엔진·DB스키마 무변경): kakao.ts 콜백에 consentMarketing 1줄·useMarketingConsent 확장(consentMarketing state+localStorage(mibunyang_consent_marketing) 영속+initConsent+거부/실패 토스트)·useKakaoCallbackEffect onConsentLoaded(일반손님만)·clearAuthTokens consent키 청소(손님 전환 stale 방지)·InfoPage 로그인 일반손님(!adminLoggedIn) 토글행(role=switch+aria-checked+상태 3분기 받는중/받지않음/미선택)·App 배선 submitConsent(consentMarketing!==true). 새로고침 복원=localStorage, 로그인 시 서버값(initConsent)이 진실원천. vitest 55(InfoPage 토글 5+useMarketingConsent 8+실패토스트 2)·tsc0·lint0·build✓·CI/e2e/Vercel green. **5관점 적대검증 워크플로→진성 P0/P1 0건**(종합이 검증자 과장 교정: "관리자 타인동의변경"=거짓 JWT 소유자 본인만·admin게이트 걸면 손님 못씀=self-service 정확 설계, 접근성·null-edge P0=라벨 오류 전부 SAFE). real_p1 1건(null/false 3분기)+무피드백 실패토스트 반영. **잔여=👤 production 정보 탭 마케팅 토글 켜기/끄기 라이브 확인**.
 - ✅ 상담 보존기간(365일) 경과 자동 파기 배치 — 세션 443 D4 (PR #169, main 01a5c80). privacy.html "상담 목적 달성 후 파기"가 구체 일수·자동화 0 → PIPA §21(보유기간 경과 파기)+개인정보 최소화 이행. **보존기간=365일**(부동산 상담 시세·분양일정 민감해 1년 지나면 재활용 가치 거의 없음, 6개월 재상담여지부족·3년 보관리스크↑ 균형점). `scripts/purge-old-consults.mjs`(consults.submitted_at < now-365일 DELETE, 되돌릴 수 없어 ①count 선집계 로그 ②--dry-run ③0건 생략 ④실패시 collector_runs 기록, purgeOldConsults(sb,opts) export 테스트가능, getMibuyangSupabase service_role)+`purge-consults.yml`(매일 KST 04:30 cron+dry_run 입력+Validate secrets, collect-* 패턴 밖이라 monitor/audit 무관)+privacy.html "신청일로부터 1년간 보관 후 파기" 명시+마케팅 철회 경로(정보 탭 토글, D3 연계) 안내. vitest 9(경과삭제/0행안전/dry-run/count·delete 에러/커스텀기간/cutoff)·typecheck:scripts 0(검사망 포함 --listFiles 확인)·lint0·audit 4종 clean·**dry-run 라이브 실증**(컷오프 정확·파기 대상 0건 상담 0행·collector_runs skip). 현재 consults 0행 첫 배포 안전. **잔여=👤 production GitHub Actions Purge Old Consults → dry_run=true 1회 미리보기 권장(이후 매일 자동)**.
 - ✅ 점수 API JWT 게이트(D2) — 세션 443 **실측으로 "변경 없음" 확정(보류 종결)**. 사장님 D2 선택 → 라이브 curl + 직독 + 4관점 적대검증 결과 "API에 JWT 게이트"만으로 보안 효과 0: (1)점수(catsCache)가 production 정적 JSON(/data/apartments-list.json)에 통째 공개 — curl로 점수·등급·근거 텍스트까지 받음(라이브 확인) (2)scoring 엔진이 클라 번들(engine/scoreRisk/scoreLocation)에 있어 catsCache 없으면 calcCats 재계산 → API 게이트 걸어도 정적JSON·클라엔진 양쪽 우회. 게이트 걸면 CDN 1.7MB→함수 20MB 12배+레이턴시=초기로드 5~10초 악화(손님 UX). 명문화는 이미 api/CLAUDE.md L123-131+BACKLOG L132-133에 완료(새 docs/주석 추가는 §2/§3 위반+speculative 부채라 기각). 진짜 보호 대상=PII(상담)는 PR#166+D3/D4로 처리됨. **조치=코드/문서 변경 0**. B2B 유료화 등 트리거 실제 발생 시 BACKLOG L132-133 구현안으로.
@@ -145,12 +146,6 @@
   - 정정 자리 = (1) MOLIT API 정상화 자연 대기 (2) `gh workflow run "Housing Permits Data Collection"` 재발화 24h 간격 답습 (3) MOLIT 콘솔 자리 답습 (서비스 폐기 / endpoint 변경 가능성)
   - 6/10 schedule run 자연 답습 = MOLIT API 정상화 여부 자동 답습
   - **세션 403 화면 거짓 표시 정직화 완료**: 전 단지 supplyRatio NULL → api `?? 150` 비관적 폴백을 화면이 "공급량 150%" 실측값처럼 표시하던 거짓 정정. scoreRisk.ts 공급량/시공사재무 sub 가 `_fallbackSupplyRatio`/`_fallbackBuilderDebt` 플래그 읽어 "정보 없음"/"부채율 미수집" 정직 표시. **점수 불변**(비관적 폴백 정책 유지, 사장님 결정). 데이터는 여전히 MOLIT API HTTP 500 복구 대기 (6/11 raw 호출 재확인). 회귀 가드 = engine.test.js 신규 2건 (NULL→정직표시 + 정상값 회귀). builderDebtRatio NULL 도 동종 정정 동시 박힘.
-
-- 🟡 **6/5 collect-market-stats schedule run 검증** (세션 282 plan v6 가설 검증)
-  - lookback 24개월 적용 후 (커밋 `b312d62`) 첫 schedule run = 6/5
-  - 검증 자리: workflow run log 의 `분양가격지수: N건 응답, 17개 시도 매핑` + `[분양가격지수] DT_41401N_006 (M) 202406~202606 lookback=24개월` 출력 + conclusion=success
-  - 가설 확정 시 = 사고 단일 해결 / fail 시 = TLS handshake 별도 plan 트리거
-  - 참조: `~/.claude/plans/pwd-f-mibunyang-git-unified-starlight.md` v6 § 6/5 검증
 
 ---
 
