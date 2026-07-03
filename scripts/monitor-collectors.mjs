@@ -192,6 +192,13 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⑤-b 미발화 분기(collector_runs.finished_at 기준)가 유일하게 "데이터 N일 stale" 을 잡음 (세션 447).
   //   5일 연속이라도 한 묶음 발화(19일 success→다음달 15일 발화 ~26일 간격)라 stale_days:38(=31일+1주)은 적정.
   { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (월 15~19일 cron + 1주 여유)" },
+  // naver-presale = 네이버 분양정보 pre.land (scripts/collectors/naver-presale.mjs, run-naver-local.sh 3/6 단계).
+  //   네이버 IP 차단으로 한국 IP 로컬 PC 에서만 실행 = Windows 스케줄러 `MibunyangNaverCollect` 월/목 08:00.
+  //   GH run 이 없어 ③ 워크플로 점검 대상 밖 → collector_runs 신선도가 유일한 "안 돌면 알림".
+  //   성공 시 recordCollectorRun("naver-presale") 기록, 실패 시 process.exit(1) 로 행 미기록 →
+  //   ⑤-b 미발화(14일+) 가 "스케줄러 정지"(현 근본 원인 = 4/13~ 정지)를 잡는 신호. 주 2회라 최대
+  //   간격 ~4일 « 14일이므로 정상 주기엔 오탐 0 (childcare 일일=14 답습).
+  { collector: "naver-presale",    stale_days: 14, owner: "네이버 분양정보 pre.land (로컬 월/목 08:00)" },
   // ── KOSIS 10종 = 집서버 로컬 러너 수집기 (kosis-local-runner.mjs, 매일 05:30 KST 일자 디스패치).
   //    kosis.kr 해외 IP 차단으로 GH collect-*.yml 10개 삭제 (세션 288~289) — GH run 이 없어
   //    ③ 워크플로 미발화 점검 대상에서 빠지므로 collector_runs 신선도가 유일한 "안 돌면 알림".

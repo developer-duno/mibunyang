@@ -7,6 +7,7 @@ import { C, F } from "@/theme";
 import { fmtPrice, fmtRecruitDate } from "@/lib/format";
 import { Tooltip, extractTerm } from "./Tooltip";
 import { buildGoogleCalendarUrl } from "@/lib/googleCalendar";
+import { groupUpcoming, isMonthOnly } from "@/lib/upcomingGroups";
 import type { UpcomingCardListProps, UpcomingCardProps } from "@/types/components/UpcomingCardList.types";
 
 interface StageStyle {
@@ -37,12 +38,29 @@ const chipStyle: CSSProperties = {
 import { computeDday } from "@/lib/dday";
 export { computeDday };
 
+const groupHeaderStyle: CSSProperties = {
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
+  background: C.bg,
+  fontSize: F.sm,
+  fontWeight: 800,
+  color: C.text,
+  padding: "8px 4px 6px",
+  borderBottom: `1px solid ${C.border}`,
+  marginTop: 4,
+};
+
 export const UpcomingCardList = memo(function UpcomingCardList({
   items,
   onSubscribe,
   onOpenDetail,
   isMobile,
 }: UpcomingCardListProps) {
+  // 시간축 그룹 (세션 469): "🔥 청약 임박" → "📆 N월 예정" → "📋 일정 미정".
+  // 큰 월 그리드 대신 임박 순 아젠다 (벤치마킹 확정안). 카드 자체는 UpcomingCard 재활용.
+  const groups = useMemo(() => groupUpcoming(items ?? []), [items]);
+
   if (!items || items.length === 0) {
     return (
       <div style={{ padding: 32, textAlign: "center", color: C.muted, fontSize: F.base }}>
@@ -52,15 +70,24 @@ export const UpcomingCardList = memo(function UpcomingCardList({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {items.map((apt) => (
-        <UpcomingCard
-          key={apt.id}
-          apt={apt}
-          onSubscribe={onSubscribe}
-          onOpenDetail={onOpenDetail}
-          isMobile={isMobile}
-        />
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {groups.map((group) => (
+        <div key={group.key}>
+          <div style={groupHeaderStyle}>
+            {group.label} <span style={{ color: C.muted, fontWeight: 600 }}>{group.items.length}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+            {group.items.map((apt) => (
+              <UpcomingCard
+                key={apt.id}
+                apt={apt}
+                onSubscribe={onSubscribe}
+                onOpenDetail={onOpenDetail}
+                isMobile={isMobile}
+              />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -68,7 +95,19 @@ export const UpcomingCardList = memo(function UpcomingCardList({
 
 const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail, isMobile }: UpcomingCardProps) {
   const stage = STAGE_STYLES[String(apt.presaleStage ?? "")] || STAGE_STYLES["분양중"];
-  const dday = useMemo(() => computeDday(apt.presaleRecruitDate), [apt.presaleRecruitDate]);
+  // 월-only(YYYY-MM) 는 D-day 를 계산하면 1일로 강제되어 거짓 정밀도 — "N월 예정" 칩으로 대체(세션 469).
+  const monthOnly = isMonthOnly(apt.presaleRecruitDate);
+  const dday = useMemo(
+    () => (monthOnly ? null : computeDday(apt.presaleRecruitDate)),
+    [monthOnly, apt.presaleRecruitDate]
+  );
+  const monthChip = useMemo(() => {
+    if (!monthOnly) return null;
+    const m = String(apt.presaleRecruitDate)
+      .replace(/\./g, "-")
+      .match(/^\d{4}-(\d{2})/);
+    return m ? `${Number(m[1])}월 예정` : null;
+  }, [monthOnly, apt.presaleRecruitDate]);
   const score = apt.catsCache?.total;
   const calendarUrl = useMemo(() => buildGoogleCalendarUrl(apt), [apt]);
 
@@ -120,6 +159,22 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
               {dday.label}
             </span>
           )}
+          {monthChip && (
+            <span
+              style={{
+                fontSize: F.xs,
+                fontWeight: 800,
+                color: C.indigo,
+                background: C.indigoLight,
+                padding: "2px 6px",
+                borderRadius: 4,
+                marginRight: 2,
+              }}
+              aria-label={`분양 일정 ${monthChip}`}
+            >
+              {monthChip}
+            </span>
+          )}
           <span
             style={{
               fontSize: F.xs,
@@ -146,34 +201,33 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
             {apt.name}
           </span>
         </div>
-        {/* 주소줄 + 강조줄 분리 (호갱노노 답습 — 세션 406). 모집일 null/자유텍스트는 기존 ternary 생략 패턴 보존 */}
-        <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.5 }}>
-          {apt.region} {apt.gu || ""}
-        </div>
-        <div style={{ fontSize: F.xs, lineHeight: 1.5 }}>
-          {apt.presaleRecruitDate && (
-            <span style={{ color: C.indigo, fontWeight: 700 }}>{fmtRecruitDate(apt.presaleRecruitDate)} 모집 · </span>
+        {/* 주소·모집일·분양가·유형칩을 한 줄에 가로로 흘림 (세션 470 — 손실 없이 가로폭 활용해 세로 축소).
+            좁으면 flexWrap 으로 자연 줄바꿈. 월-only 는 상단 "N월 예정" 칩이 안내하므로 거짓 일자 생략. */}
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: F.xs, lineHeight: 1.5 }}
+        >
+          <span style={{ color: C.muted }}>
+            {apt.region} {apt.gu || ""}
+          </span>
+          {apt.presaleRecruitDate && !monthOnly && (
+            <span style={{ color: C.indigo, fontWeight: 700 }}>{fmtRecruitDate(apt.presaleRecruitDate)} 모집</span>
           )}
           {apt.presaleMinPrice ? (
             <span style={{ color: C.text, fontWeight: 700 }}>{fmtPrice(apt.presaleMinPrice)}</span>
           ) : (
             <span style={{ color: C.muted }}>분양가 미공개</span>
           )}
+          {apt.presaleHousingType && (
+            <Tooltip term={extractTerm(apt.presaleHousingType) ?? undefined}>
+              <span style={chipStyle}>{apt.presaleHousingType}</span>
+            </Tooltip>
+          )}
+          {apt.presaleType && apt.presaleType !== apt.presaleHousingType && (
+            <Tooltip term={extractTerm(apt.presaleType) ?? undefined}>
+              <span style={chipStyle}>{apt.presaleType}</span>
+            </Tooltip>
+          )}
         </div>
-        {(apt.presaleHousingType || apt.presaleType) && (
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-            {apt.presaleHousingType && (
-              <Tooltip term={extractTerm(apt.presaleHousingType) ?? undefined}>
-                <span style={chipStyle}>{apt.presaleHousingType}</span>
-              </Tooltip>
-            )}
-            {apt.presaleType && apt.presaleType !== apt.presaleHousingType && (
-              <Tooltip term={extractTerm(apt.presaleType) ?? undefined}>
-                <span style={chipStyle}>{apt.presaleType}</span>
-              </Tooltip>
-            )}
-          </div>
-        )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
           {score != null && <span style={{ fontSize: F.xs, color: C.green }}>★ 점수 {score.toFixed(1)}</span>}
           {isMobile && calendarUrl && (
