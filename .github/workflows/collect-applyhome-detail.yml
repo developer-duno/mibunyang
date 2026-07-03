@@ -2,7 +2,10 @@ name: Collect Applyhome Detail (Schedule + Units)
 
 on:
   schedule:
-    - cron: '30 2 13 * *'  # 매월 13일 11:30 KST (다른 MOLIT collector와 분산: 6일 trades, 10일 building-info)
+    # 세션 467 주간화: 월간(13일)일 땐 신규 공고 일정이 접수 시작 전에 못 들어와 미래 접수일이
+    # 항상 0건 (분양 알림 발송기의 이벤트 소스가 죽음). collect-applyhome seed(월 11:30) 뒤 1시간.
+    # 호출량 = run 당 10~20회 (perPage 1000 전량 페이지네이션 × 2 엔드포인트)라 쿼터 영향 무시 가능.
+    - cron: '30 3 * * 1'  # 매주 월요일 12:30 KST
   workflow_dispatch:
     inputs:
       dry_run:

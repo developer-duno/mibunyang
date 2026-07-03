@@ -43,6 +43,8 @@ on:
       - "Backfill New Apartments"
       - "Exclusive Ratio Calculation"
       - "Layout Estimation"
+      # ── 분양 알림 발송기 (세션 467 — collect-* 아님, audit 범위 밖 수동 유지) ──
+      - "Notify Subscribers (분양 알림 발송)"
       # ── 일일 데이터 갱신 (compute-scores + refresh-data, 세션 311 v4 추가) ──
       - "Daily Data Refresh"
     types: [completed]

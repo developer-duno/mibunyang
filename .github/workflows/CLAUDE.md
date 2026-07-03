@@ -20,13 +20,15 @@
 | `ci.yml` | CI 파이프라인 (린트 + 테스트 + 빌드, push/PR 트리거) |
 | `e2e.yml` | Playwright E2E 테스트 (push/PR 트리거) |
 
-### 매주 (3개)
+### 매주 (5개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
 | `collect-trade-stats.yml` | 거래 통계 산출 (일요일 16:00 UTC) |
 | `calc-exclusive-ratio.yml` | 전용률 계산 (일요일 22:00 UTC, 세션273: calc-collection 그룹 분리 — data-collection 큐 경합 회피) |
 | `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리) |
+| `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
+| `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
 ### 매월 (20개)
 
@@ -104,3 +106,5 @@
 | `AIRKOREA_KEY` | 에어코리아 대기질 (선택) | - |
 | `CHILDCARE_API_KEY` | info.childcare.go.kr cpmsapi021 어린이집 목록 (세션 252) | O |
 | `CHILDCARE_BASIC_API_KEY` | info.childcare.go.kr cpmsapi030 어린이집 70 필드 상세 (세션 256) | O |
+| `SUBSCRIBERS_OPT_OUT_SECRET` | 분양 알림 수신거부 HMAC (Vercel 과 동일 값 유지 의무 — 드리프트 시 문자 속 철회 링크 전부 401, 세션 467) | - |
+| `SOLAPI_API_KEY`/`SOLAPI_API_SECRET`/`SOLAPI_SENDER` | 분양 알림 SMS 실발송 3종 (미등록 = notify-subscribers 자동 dry-run). ⚠️ 주입은 PR3(sendSms 실구현+SMS_ADAPTER_READY=true) 머지 후 — 스텁 상태 live 진입은 코드 게이트가 차단하지만 순서 지키는 게 정석 (세션 467) | - |
