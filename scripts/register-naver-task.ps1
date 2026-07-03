@@ -24,9 +24,16 @@ $Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Thursday -At 8:00
 $Action = New-ScheduledTaskAction -Execute $ScriptPath -WorkingDirectory $WorkDir
 
 # 설정: PC 깨어있을 때만, 최대 2시간
+#  - RestartCount 2 + RestartInterval 10분: 실패 시 10분 뒤 재시도 ×2 (세션 470, 사장님 결정).
+#    naver-collect.py resume(오늘 이미 받은 단지 skip)가 있어 재시도마다 이어서 돎.
+#  - MultipleInstances IgnoreNew: 이미 돌고 있으면 새 발화(재시도 포함) 무시 = 절대 겹침 없음.
+#    naver-collect.py 의 filelock 이 손실행까지 막는 2중 안전망(세션 470 좀비 더미 사고 정정).
 $Settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
+    -RestartCount 2 `
+    -RestartInterval (New-TimeSpan -Minutes 10) `
+    -MultipleInstances IgnoreNew `
     -DontStopOnIdleEnd `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries
