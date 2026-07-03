@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import {
   pickEvents, addDays, normalizeRegionKey, matchPairs, dedupeByPhone,
   maskPhone, optOutToken, buildMessage, isNightKst, kstHour, hasLiveEnv,
+  e164ToLocal, SMS_ADAPTER_READY,
 } from "./notify-subscribers.mjs";
 
 const TODAY = "2026-07-06";
@@ -77,6 +78,12 @@ describe("pickEvents — 접수 시작 D-0~+7, 미래만", () => {
       schedRow({ house_manage_no: "2026000002", special_receipt_bgnde: "2026-07-09" }),
     ];
     expect(pickEvents(rows, TODAY)).toHaveLength(2);
+  });
+  it("특별공급이 과거여도 1순위가 윈도우 안이면 1순위 기준으로 알린다 (리뷰 P2-3)", () => {
+    const rows = [schedRow({ special_receipt_bgnde: "2026-07-05", general_rank1_bgnde: "2026-07-08" })];
+    const events = pickEvents(rows, TODAY);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.receiptDate).toBe("2026-07-08");
   });
 });
 
@@ -161,6 +168,24 @@ describe("optOutToken — api/subscribers.ts DELETE 와 동일 HMAC", () => {
     const e164 = "+821012345678";
     const serverSide = crypto.createHmac("sha256", secret).update(e164).digest("hex");
     expect(optOutToken(secret, e164)).toBe(serverSide);
+  });
+});
+
+describe("e164ToLocal — 수신거부 URL phone 파라미터 계약 (리뷰 P1-2)", () => {
+  it("E.164 를 국내 표기로 되돌린다", () => {
+    expect(e164ToLocal("+821012345678")).toBe("01012345678");
+  });
+  it("변환값은 서버 normalizeToE164 의 수용 패턴(010 시작 digits)을 통과한다", () => {
+    // api/subscribers.ts:126-131 계약 복제 — digits 스트립 후 ^010\d{7,8}$ 이어야 검증 도달
+    const local = e164ToLocal("+821012345678");
+    const digits = local.replace(/\D/g, "");
+    expect(/^010\d{7,8}$/.test(digits)).toBe(true);
+  });
+});
+
+describe("SMS_ADAPTER_READY — 어댑터 스텁 상태 live 차단 (리뷰 P1-1)", () => {
+  it("PR3 전에는 false — Secrets 만 먼저 주입돼도 live 진입 불가", () => {
+    expect(SMS_ADAPTER_READY).toBe(false);
   });
 });
 

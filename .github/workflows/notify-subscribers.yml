@@ -3,7 +3,8 @@ name: Notify Subscribers (분양 알림 발송)
 # 분양 알림 발송기 (세션 467) — subscribers × presale_schedule_official 접수 시작 D-0~7 대조.
 # 매주 월 14:00 KST = collect-applyhome(11:30 seed·경쟁률) → collect-applyhome-detail(12:30 일정)
 # 완료 후. 야간 전송 금지(08~21 KST)는 스크립트 내부 가드가 이중 방어.
-# SOLAPI_* 3종 Secrets 가 없으면 스크립트가 자동 dry-run (계약 후 Secrets 주입 = 활성화 스위치).
+# 활성화 = PR3(sendSms 실구현 + SMS_ADAPTER_READY=true) 머지 + SOLAPI_* 3종 Secrets 주입 둘 다.
+# 어느 한쪽만으로는 live 진입 불가 — 어댑터 스텁 상태에서 Secrets 먼저 넣어도 dry-run 유지 (P1-1 가드).
 # ⚠️ scripts/notify-subscribers.mjs 는 collectors/ 밖이라 audit-env-keys 3-way 자동 가드 대상이
 # 아님 — 아래 env block 과 스크립트 필수 env 검사를 수동 동기화할 것.
 
