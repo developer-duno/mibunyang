@@ -43,6 +43,8 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<StageTabKey>("all");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  // 모바일 캘린더 접기 (세션 469) — 벤치마킹 확정안: 큰 월 그리드 기본 숨김, 토글로 펼침. 데스크톱은 항상 노출.
+  const [showCalendar, setShowCalendar] = useState(false);
   const [subscribeAptId, setSubscribeAptId] = useState<string | null>(null);
   const [regionFilter, setRegionFilter] = useState("전국");
   // ★ 관심지역 — App profile localStorage 패턴 답습 (string[], memo/tags 불필요)
@@ -266,15 +268,53 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
           }}
         >
           {/* 분양결과 탭은 캘린더 무관 — 숨김 (적대검증 정정 7) */}
-          {activeTab !== "result" && (
-            <Suspense fallback={<SkeletonBox height={300} />}>
-              <UpcomingCalendar
-                calendar={data?.calendar ?? null}
-                selectedDate={selectedDate}
-                onDayClick={handleDayClick}
-              />
-            </Suspense>
-          )}
+          {/* 모바일: 큰 월 그리드를 기본 접고 토글로 펼침 (세션 469). 데스크톱: 320px 사이드로 항상 노출. */}
+          {activeTab !== "result" &&
+            (isDesktop ? (
+              <Suspense fallback={<SkeletonBox height={300} />}>
+                <UpcomingCalendar
+                  calendar={data?.calendar ?? null}
+                  selectedDate={selectedDate}
+                  onDayClick={handleDayClick}
+                />
+              </Suspense>
+            ) : (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowCalendar((v) => !v)}
+                  aria-expanded={showCalendar}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 12px",
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 10,
+                    fontSize: F.sm,
+                    fontWeight: 700,
+                    color: C.text,
+                    cursor: "pointer",
+                    minHeight: 44,
+                    marginBottom: showCalendar ? 8 : 0,
+                  }}
+                >
+                  <span>📅 달력으로 보기{selectedDate ? ` · ${selectedDate}` : ""}</span>
+                  <span style={{ color: C.muted }}>{showCalendar ? "▲ 접기" : "▼ 펼치기"}</span>
+                </button>
+                {showCalendar && (
+                  <Suspense fallback={<SkeletonBox height={300} />}>
+                    <UpcomingCalendar
+                      calendar={data?.calendar ?? null}
+                      selectedDate={selectedDate}
+                      onDayClick={handleDayClick}
+                    />
+                  </Suspense>
+                )}
+              </div>
+            ))}
 
           <div>
             {/* 지역 칩 (호갱노노 답습 — 세션 406) */}
