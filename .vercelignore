@@ -9,6 +9,7 @@ scripts/
 scripts/**
 !scripts/prebuild.mjs
 !scripts/split-apartments-json.mjs
+!scripts/static-outputs.mjs
 !scripts/postbuild-prerender.mjs
 *.py
 
