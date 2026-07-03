@@ -47,7 +47,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **테스트** | Vitest + Playwright E2E | `npm run test` / `npm run test:e2e` |
 | **모니터링** | Vercel Analytics + Speed Insights | 페이지뷰/Web Vitals/커스텀 이벤트 |
 
-번들: vendor 190KB / index ~185KB / html2canvas+jsPDF 200+400KB(dynamic import).
+번들: vendor 190KB / index ~212KB (2026-07-03 실측) / html2canvas+jsPDF 200+400KB(dynamic import).
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 
