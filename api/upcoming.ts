@@ -94,23 +94,51 @@ export function todayIso(now: Date = new Date()): string {
 }
 
 /**
- * "곧 분양(분양계획)"인데 청약홈 공식 접수시작일이 이미 지난 = 실제 과거 공고인 단지 ID 집합 (세션 469).
- * presale_schedule_official 에서 분양계획 단지들의 최신 접수시작일(1순위 또는 특별공급)을 조회해,
- * 그 날짜가 오늘보다 과거면 stale 로 판정. 공식 접수일이 없으면(데이터 미보유) 제외하지 않음(네이버 stage 신뢰).
+ * 분양계획 단지의 자체 모집일(presaleRecruitDate)이 오늘보다 과거인지 (세션 470).
+ * - YYYY-MM-DD (일자 확정): 그 날짜가 오늘보다 과거면 true.
+ * - YYYY-MM (월-only, 일자 미상): 그 "월"이 이번 달보다 과거면 true. 이번 달·미래 월은 false
+ *   (미래 곧분양 27건을 살려둠 — 진짜 임박 단지 보호).
+ * - "미정"/자유텍스트/null (파싱 불가): false (fail-open — 날짜를 모르니 과거로 단정 못 함, 사장님 결정).
+ * 청약홈 공식 스케줄이 없는 네이버-only 과거 공고(fail-open 사각)를 자동으로 잡는다.
+ */
+export function recruitDateIsPast(recruitDate: unknown, today: string): boolean {
+  if (!recruitDate || typeof recruitDate !== "string") return false;
+  const s = recruitDate.trim().replace(/\./g, "-");
+  const full = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (full) return s < today; // 일자 확정 → 날짜 직접 비교 (YYYY-MM-DD 사전식 = 시간순)
+  const month = s.match(/^(\d{4})-(\d{2})$/);
+  if (month) return `${month[1]}-${month[2]}` < today.slice(0, 7); // 월-only → 월(YYYY-MM) 비교
+  return false; // 파싱 불가(미정 등) → 제외 안 함
+}
+
+/**
+ * "곧 분양(분양계획)"인데 실제로는 과거 공고인 단지 ID 집합 (세션 469~470).
+ * 네이버 presaleStage 가 stale(수집기 정지 등)이면 과거 공고가 계속 "분양계획"으로 남는다. 두 신호로 교차 제외:
+ *  (A) 청약홈 공식 접수시작일(presale_schedule_official 1순위/특별공급 최신 차수)이 오늘보다 과거 (세션 469).
+ *  (B) 단지 자체 모집일(presaleRecruitDate)의 월/일자가 오늘보다 과거 (세션 470 — 공식 스케줄이 없는
+ *      네이버-only 공고의 fail-open 사각 보완). 매 요청 todayIso() 재계산이라 시간이 지나면 자동 제외.
+ * 둘 다 판정 불가(공식 없음 + 날짜 미상 "미정")면 제외 안 함(네이버 stage 신뢰, 과반제거 위험 0).
  * @param sb Supabase client
- * @param rows apartments_flat 결과 (presaleStage 포함)
+ * @param rows apartments_flat 결과 (presaleStage + presaleRecruitDate 포함)
  * @returns 곧분양에서 빼야 할 apartment_id Set
  */
 export async function findStalePlanIds(sb: any, rows: any[], today: string = todayIso()): Promise<Set<any>> {
   const stale = new Set<any>();
-  const planIds = rows.filter((r) => r?.presaleStage === "분양계획").map((r) => r.id);
-  if (planIds.length === 0) return stale;
+  const planRows = rows.filter((r) => r?.presaleStage === "분양계획");
+  if (planRows.length === 0) return stale;
 
+  // (B) 자체 모집일 과거 판정 — 조회 없이 즉시 (공식 스케줄 부재 사각 보완)
+  for (const r of planRows) {
+    if (recruitDateIsPast(r.presaleRecruitDate, today)) stale.add(r.id);
+  }
+
+  // (A) 청약홈 공식 접수시작일 교차 검증
+  const planIds = planRows.map((r) => r.id);
   const { data, error } = await sb
     .from("presale_schedule_official")
     .select("apartment_id, general_rank1_bgnde, special_receipt_bgnde, recruit_date")
     .in("apartment_id", planIds);
-  if (error || !data) return stale; // 조회 실패 시 규칙 미적용(fail-open — 정상 곧분양 목록 유지)
+  if (error || !data) return stale; // 조회 실패 시 (A) 미적용(fail-open) — (B) 결과는 유지
 
   // 단지별 최신(recruit_date desc) 접수시작일만 판정 — 여러 차수가 있으면 가장 최근 공고 기준
   const latestByApt = new Map<any, { bgn: string | null; recruit: string | null }>();

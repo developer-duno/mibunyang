@@ -53,6 +53,7 @@ const {
   extractDates,
   inferEventFromName,
   findStalePlanIds,
+  recruitDateIsPast,
   todayIso,
 } = await import("./upcoming.js");
 const { checkRateLimit } = await import("./_lib/rateLimit.js");
@@ -241,13 +242,76 @@ describe("findStalePlanIds — 접수시작일 지난 곧분양 제외 (세션 4
     expect(stale.size).toBe(0);
   });
 
-  it("조회 에러 시 fail-open (빈 Set, 정상 곧분양 유지)", async () => {
-    const rows = [{ id: "ap-7", presaleStage: "분양계획" }];
+  it("조회 에러 시 fail-open — 단 자체 모집일 과거(B)는 유지 (세션 470)", async () => {
+    // 공식 조회가 실패해도 (B) 자체 모집일 과거 판정 결과는 남는다.
+    const rows = [
+      { id: "ap-7", presaleStage: "분양계획", presaleRecruitDate: null }, // 날짜 미상 → 유지
+      { id: "ap-8", presaleStage: "분양계획", presaleRecruitDate: "2026-04" }, // 과거 월 → 제외
+    ];
     const sb = {
       from: () => ({ select: () => ({ in: () => Promise.resolve({ data: null, error: { message: "boom" } }) }) }),
     };
     const stale = await findStalePlanIds(sb, rows, "2026-07-03");
-    expect(stale.size).toBe(0);
+    expect(stale.has("ap-7")).toBe(false);
+    expect(stale.has("ap-8")).toBe(true);
+  });
+
+  // 세션 470: 공식 스케줄이 없는 네이버-only 과거 공고를 자체 모집일로 제외 (fail-open 사각 보완)
+  it("공식 스케줄 없어도 자체 모집일이 과거 월 → 제외 (B 규칙)", async () => {
+    const rows = [{ id: "ap-b1", presaleStage: "분양계획", presaleRecruitDate: "2026-04" }];
+    const sb = makeSb([]); // 공식 스케줄 0건
+    const stale = await findStalePlanIds(sb, rows, "2026-07-04");
+    expect(stale.has("ap-b1")).toBe(true);
+  });
+
+  it("자체 모집일이 미래 월 → 유지 (진짜 곧분양 보호)", async () => {
+    const rows = [{ id: "ap-b2", presaleStage: "분양계획", presaleRecruitDate: "2026-11" }];
+    const sb = makeSb([]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-04");
+    expect(stale.has("ap-b2")).toBe(false);
+  });
+
+  it("자체 모집일이 이번 달(경계) → 유지 (당월은 아직 안 지남)", async () => {
+    const rows = [{ id: "ap-b3", presaleStage: "분양계획", presaleRecruitDate: "2026-07" }];
+    const sb = makeSb([]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-04");
+    expect(stale.has("ap-b3")).toBe(false);
+  });
+
+  it("자체 모집일 '미정'(파싱 불가) → 유지 (fail-open, 사장님 결정)", async () => {
+    const rows = [{ id: "ap-b4", presaleStage: "분양계획", presaleRecruitDate: "미정" }];
+    const sb = makeSb([]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-04");
+    expect(stale.has("ap-b4")).toBe(false);
+  });
+});
+
+describe("recruitDateIsPast — 자체 모집일 과거 판정 (세션 470)", () => {
+  const today = "2026-07-04";
+  it("과거 full-date (YYYY-MM-DD) → true", () => {
+    expect(recruitDateIsPast("2026-04-17", today)).toBe(true);
+  });
+  it("과거 month-only (YYYY-MM) → true", () => {
+    expect(recruitDateIsPast("2026-04", today)).toBe(true);
+    expect(recruitDateIsPast("2026.04", today)).toBe(true); // 점 형식도
+  });
+  it("미래 full-date → false", () => {
+    expect(recruitDateIsPast("2026-08-20", today)).toBe(false);
+  });
+  it("미래 month-only → false", () => {
+    expect(recruitDateIsPast("2026-11", today)).toBe(false);
+  });
+  it("이번 달 month-only(경계) → false (당월 유지)", () => {
+    expect(recruitDateIsPast("2026-07", today)).toBe(false);
+  });
+  it("오늘 당일 full-date(경계) → false (당일은 안 지남)", () => {
+    expect(recruitDateIsPast("2026-07-04", today)).toBe(false);
+  });
+  it("파싱 불가('미정')·null·빈문자 → false (fail-open)", () => {
+    expect(recruitDateIsPast("미정", today)).toBe(false);
+    expect(recruitDateIsPast(null, today)).toBe(false);
+    expect(recruitDateIsPast("", today)).toBe(false);
+    expect(recruitDateIsPast("하반기", today)).toBe(false);
   });
 });
 
@@ -341,9 +405,10 @@ describe("handleGet — Supabase select 컬럼명 + 핸들러 분기 (회귀 방
   });
 
   it("presaleStage 별 stages 분류 + calendar 매핑", async () => {
+    // 분양계획 단지는 먼 미래 모집일(2099-05-08) — 세션 470 자체 모집일 과거 제외 규칙에 안 걸리게(당월 지나도 안전)
     mockIn.mockResolvedValueOnce({
       data: [
-        { id: "ap-1", presaleStage: "분양계획", presaleRecruitDate: "2026-05-08", presaleSchedule: null },
+        { id: "ap-1", presaleStage: "분양계획", presaleRecruitDate: "2099-05-08", presaleSchedule: null },
         {
           id: "ap-2",
           presaleStage: "청약중",
@@ -360,7 +425,7 @@ describe("handleGet — Supabase select 컬럼명 + 핸들러 분기 (회귀 방
     const body = res.json.mock.calls[0][0];
     expect(body.totals).toEqual({ plan: 1, apply: 1, sale: 1 });
     // 분양계획 단지는 presale_announce (4번째 색 — spec § 6-1)
-    expect(body.calendar["2026-05-08"]).toEqual([{ id: "ap-1", event: "presale_announce" }]);
+    expect(body.calendar["2099-05-08"]).toEqual([{ id: "ap-1", event: "presale_announce" }]);
     expect(body.calendar["2026-05-20"]).toEqual([{ id: "ap-2", event: "winner_announce" }]);
   });
 });

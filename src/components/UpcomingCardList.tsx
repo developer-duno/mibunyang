@@ -201,35 +201,33 @@ const UpcomingCard = memo(function UpcomingCard({ apt, onSubscribe, onOpenDetail
             {apt.name}
           </span>
         </div>
-        {/* 주소줄 + 강조줄 분리 (호갱노노 답습 — 세션 406). 모집일 null/자유텍스트는 기존 ternary 생략 패턴 보존 */}
-        <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.5 }}>
-          {apt.region} {apt.gu || ""}
-        </div>
-        <div style={{ fontSize: F.xs, lineHeight: 1.5 }}>
-          {/* 월-only 는 상단 "N월 예정" 칩이 이미 안내 — 여기선 거짓 일자(예 2026.04.01) 생략 */}
+        {/* 주소·모집일·분양가·유형칩을 한 줄에 가로로 흘림 (세션 470 — 손실 없이 가로폭 활용해 세로 축소).
+            좁으면 flexWrap 으로 자연 줄바꿈. 월-only 는 상단 "N월 예정" 칩이 안내하므로 거짓 일자 생략. */}
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: F.xs, lineHeight: 1.5 }}
+        >
+          <span style={{ color: C.muted }}>
+            {apt.region} {apt.gu || ""}
+          </span>
           {apt.presaleRecruitDate && !monthOnly && (
-            <span style={{ color: C.indigo, fontWeight: 700 }}>{fmtRecruitDate(apt.presaleRecruitDate)} 모집 · </span>
+            <span style={{ color: C.indigo, fontWeight: 700 }}>{fmtRecruitDate(apt.presaleRecruitDate)} 모집</span>
           )}
           {apt.presaleMinPrice ? (
             <span style={{ color: C.text, fontWeight: 700 }}>{fmtPrice(apt.presaleMinPrice)}</span>
           ) : (
             <span style={{ color: C.muted }}>분양가 미공개</span>
           )}
+          {apt.presaleHousingType && (
+            <Tooltip term={extractTerm(apt.presaleHousingType) ?? undefined}>
+              <span style={chipStyle}>{apt.presaleHousingType}</span>
+            </Tooltip>
+          )}
+          {apt.presaleType && apt.presaleType !== apt.presaleHousingType && (
+            <Tooltip term={extractTerm(apt.presaleType) ?? undefined}>
+              <span style={chipStyle}>{apt.presaleType}</span>
+            </Tooltip>
+          )}
         </div>
-        {(apt.presaleHousingType || apt.presaleType) && (
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-            {apt.presaleHousingType && (
-              <Tooltip term={extractTerm(apt.presaleHousingType) ?? undefined}>
-                <span style={chipStyle}>{apt.presaleHousingType}</span>
-              </Tooltip>
-            )}
-            {apt.presaleType && apt.presaleType !== apt.presaleHousingType && (
-              <Tooltip term={extractTerm(apt.presaleType) ?? undefined}>
-                <span style={chipStyle}>{apt.presaleType}</span>
-              </Tooltip>
-            )}
-          </div>
-        )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
           {score != null && <span style={{ fontSize: F.xs, color: C.green }}>★ 점수 {score.toFixed(1)}</span>}
           {isMobile && calendarUrl && (
