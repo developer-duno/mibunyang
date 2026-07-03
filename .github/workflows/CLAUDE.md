@@ -60,7 +60,7 @@
 | `collect-building-info.yml` | 10일 | 건축물 상세 (토요일 → 11일 fallback) |
 | `collect-housing-permits.yml` | 10일 | 주택 인허가 |
 | `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
-| `collect-applyhome.yml` | 주간 | 청약홈 잔여세대 |
+| `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
 | `collect-maintenance.yml` | 15일 | 공동주택 관리비 |
 | `collect-building-hub.yml` | 15일 | 건축HUB 에너지+인허가 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |

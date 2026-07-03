@@ -30,11 +30,25 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$MOLIT_KEY" ]; then
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$MOLIT_KEY" ] || [ -z "$KAKAO_KEY" ]; then
             echo "::error::Required secrets are not set"
             exit 1
           fi
+
+      # 신규 ah-* seeding 을 경쟁률 수집 앞에 실행 — 같은 run 에서 신규 단지가 즉시
+      # 경쟁률 UPDATE + applyhome_events 적재를 받음 (세션 466, 로스터 3/14 동결 해소)
+      - name: Seed new complexes (ah-*)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MOLIT_KEY: ${{ secrets.MOLIT_KEY }}
+          KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
+        run: |
+          FLAGS=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then FLAGS="--dry-run"; fi
+          node scripts/collectors/collect-applyhome-seed.mjs $FLAGS
 
       - name: Run collector
         env:
