@@ -53,6 +53,13 @@ describe('blacklistToken', () => {
     await blacklistToken('expired-token', payload);
     expect(mockKv.set).not.toHaveBeenCalled();
   });
+
+  // Redis 장애 시 등록 실패도 fail-open — 로그아웃/rotation 이 crash 500 되지 않음 (세션 465)
+  it('kv.set 실패 시 throw 하지 않는다 (best-effort)', async () => {
+    mockKv.set.mockRejectedValueOnce(new Error('Redis down'));
+    const payload = { exp: Date.now() + 3600000 };
+    await expect(blacklistToken('any-token', payload)).resolves.toBeUndefined();
+  });
 });
 
 describe('isBlacklisted', () => {

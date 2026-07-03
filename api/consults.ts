@@ -72,6 +72,16 @@ async function handlePost(req: any, res: any) {
 }
 
 async function handleGet(req: any, res: any) {
+  // 세션 465: 관리자 PII 열람도 rate limit — 자매 admin 엔드포인트(users/review/collector-status)의
+  // rateLimit:"admin"(30회/5분)과 정합. withHandler 는 method 별 rateLimit 미지원이라 POST 수동 패턴 답습.
+  const rateLimitResult = await checkRateLimit(req, "admin");
+  if (rateLimitResult.limited) {
+    res.setHeader("Retry-After", String(rateLimitResult.retryAfter));
+    return res
+      .status(429)
+      .json({ ok: false, error: `요청이 너무 많습니다. ${rateLimitResult.retryAfter}초 후 다시 시도해주세요.` });
+  }
+
   // 세션 405: 상담 열람 = 관리자 단독 (expert role 폐지 — 잔존 expert 토큰도 차단).
   // 단계별 응답(401 인증/토큰/로그아웃 + 403 Forbidden)은 requireAdminGate 가 그대로 보존.
   const gate = await requireAdminGate(req);
@@ -116,6 +126,15 @@ async function handleGet(req: any, res: any) {
 // 상담 기록 삭제 = 관리자 단독 (개인정보 파기 — PIPA §21 보유기간 경과/요청 시 파기).
 // handleGet 과 동일 게이트(Bearer + verifyToken + isBlacklisted + role==="admin").
 async function handleDelete(req: any, res: any) {
+  // 세션 465: 파기(DELETE)도 열람(GET)과 동일 rate limit (미들웨어 순서 RateLimit→Admin 유지)
+  const rateLimitResult = await checkRateLimit(req, "admin");
+  if (rateLimitResult.limited) {
+    res.setHeader("Retry-After", String(rateLimitResult.retryAfter));
+    return res
+      .status(429)
+      .json({ ok: false, error: `요청이 너무 많습니다. ${rateLimitResult.retryAfter}초 후 다시 시도해주세요.` });
+  }
+
   const gate = await requireAdminGate(req);
   if (!gate.ok) {
     return res.status(gate.status).json({ ok: false, error: gate.error });

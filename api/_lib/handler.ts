@@ -78,9 +78,19 @@ export function withHandler(config: WithHandlerConfig): HandlerFn {
     }
 
     // 5. Dispatch — 함수 또는 { GET, POST } 객체
-    if (typeof config.handler === "function") return config.handler(req, res);
-    const methodHandler = config.handler[req.method];
-    if (methodHandler) return methodHandler(req, res);
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    // 최종 안전망 (세션 465): 핸들러의 unhandled rejection 이 Vercel 비JSON crash 500
+    // (FUNCTION_INVOCATION_FAILED) 으로 새던 것 → 표준 { ok:false } 500 보장
+    try {
+      if (typeof config.handler === "function") return await config.handler(req, res);
+      const methodHandler = config.handler[req.method];
+      if (methodHandler) return await methodHandler(req, res);
+      return res.status(405).json({ ok: false, error: "Method not allowed" });
+    } catch (err) {
+      console.error("handler dispatch error:", err instanceof Error ? err.message : err);
+      if (!res.headersSent) {
+        return res.status(500).json({ ok: false, error: "서버 오류가 발생했습니다" });
+      }
+      return;
+    }
   };
 }
