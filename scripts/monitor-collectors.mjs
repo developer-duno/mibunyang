@@ -179,7 +179,11 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "building-hub",    stale_days: 38, owner: "MOLIT 건축물대장 허브 (월 15일 cron + 1주 여유)" },
   { collector: "transport-tago",  stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
-  { collector: "applyhome-detail", stale_days: 38, owner: "청약홈 분양일정·평형 (월 13일 cron + 1주 여유)" },
+  { collector: "applyhome-detail", stale_days: 14, owner: "청약홈 분양일정·평형 (주간 월 cron — 세션 467 주간화)" },
+  // notify-subscribers: 분양 알림 발송기 (scripts/notify-subscribers.mjs — collectors/ 밖, 주간 월 14:00 KST).
+  //   skip=일정 스캔 행 수(984+)를 항상 기록해 대상 0건 주간에도 ⑤-a 빈성공(ok=0&&skip=0) 오탐 없음.
+  //   ⑤-b 미발화(14일+)가 "발송기 안 돎"을 잡는 신호 (세션 467).
+  { collector: "notify-subscribers", stale_days: 14, owner: "분양 알림 발송기 (주간 월 cron)" },
   // applyhome-seed: ok=신규 등록 수 — 신규 공고 0건 주간 3연속이면 ⑤-a "빈 성공" 경보 가능(주평균 ~7건이라
   //   드묾). 발화해도 "신규 무순위 3주째 0" 자체가 유의미 신호라 수용 (세션 466 plan 명시).
   { collector: "applyhome-seed",   stale_days: 14, owner: "청약홈 무순위 신규 ah-* seeding (주간 월 cron)" },

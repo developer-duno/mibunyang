@@ -1,0 +1,61 @@
+name: Notify Subscribers (분양 알림 발송)
+
+# 분양 알림 발송기 (세션 467) — subscribers × presale_schedule_official 접수 시작 D-0~7 대조.
+# 매주 월 14:00 KST = collect-applyhome(11:30 seed·경쟁률) → collect-applyhome-detail(12:30 일정)
+# 완료 후. 야간 전송 금지(08~21 KST)는 스크립트 내부 가드가 이중 방어.
+# SOLAPI_* 3종 Secrets 가 없으면 스크립트가 자동 dry-run (계약 후 Secrets 주입 = 활성화 스위치).
+# ⚠️ scripts/notify-subscribers.mjs 는 collectors/ 밖이라 audit-env-keys 3-way 자동 가드 대상이
+# 아님 — 아래 env block 과 스크립트 필수 env 검사를 수동 동기화할 것.
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'  # 매주 월요일 14:00 KST (UTC 05:00)
+  workflow_dispatch:
+    inputs:
+      live:
+        description: 'Live send (true/false) — false = dry-run 판정만'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: notify
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci
+
+      - name: Validate secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "::error::Required secrets are not set"
+            exit 1
+          fi
+
+      - name: Run notifier
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUBSCRIBERS_OPT_OUT_SECRET: ${{ secrets.SUBSCRIBERS_OPT_OUT_SECRET }}
+          SOLAPI_API_KEY: ${{ secrets.SOLAPI_API_KEY }}
+          SOLAPI_API_SECRET: ${{ secrets.SOLAPI_API_SECRET }}
+          SOLAPI_SENDER: ${{ secrets.SOLAPI_SENDER }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          FLAGS=""
+          # cron 은 항상 --live (Secrets 없으면 스크립트가 dry-run 강등), 수동은 live=true 일 때만
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.live }}" = "true" ]; then
+            FLAGS="--live"
+          fi
+          node scripts/notify-subscribers.mjs $FLAGS

@@ -659,7 +659,39 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues[0].detail).toMatch(/40일/);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 20 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466)", () => {
+  it("notify-subscribers 미발화 — 주간 cron 이 14일+ 침묵하면 ⑤-b stale (발송기 안 돎 신호, 세션 467)", () => {
+    const issues = checkExternalApiStale(
+      [{ collector: "notify-subscribers", stale_days: 14, owner: "분양 알림 발송기 (주간 월 cron)" }],
+      {
+        "notify-subscribers": [
+          { status: "success", ok_count: 0, skip_count: 984, finished_at: "2026-06-15T05:00:00Z" }, // 20일 전 > 14
+          { status: "success", ok_count: 2, skip_count: 980, finished_at: "2026-06-08T05:00:00Z" },
+          { status: "success", ok_count: 0, skip_count: 975, finished_at: "2026-06-01T05:00:00Z" },
+        ],
+      },
+      new Date("2026-07-05T00:00:00Z"),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].collector).toBe("notify-subscribers");
+  });
+
+  it("notify-subscribers 대상 0건 주간 — ok=0 이라도 skip(일정 스캔 행 수)>0 이면 ⑤-a 빈성공 아님 (세션 467 skip 설계)", () => {
+    const issues = checkExternalApiStale(
+      [{ collector: "notify-subscribers", stale_days: 14, owner: "분양 알림 발송기 (주간 월 cron)" }],
+      {
+        "notify-subscribers": [
+          { status: "success", ok_count: 0, skip_count: 984, finished_at: "2026-06-29T05:00:00Z" },
+          { status: "success", ok_count: 0, skip_count: 984, finished_at: "2026-06-22T05:00:00Z" },
+          { status: "success", ok_count: 0, skip_count: 984, finished_at: "2026-06-15T05:00:00Z" },
+        ],
+      },
+      new Date("2026-07-03T00:00:00Z"),
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("EXTERNAL_API_COLLECTORS 배열 = 21 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "applyhome-detail", "applyhome-seed", "avg-income", "building-hub",
@@ -667,7 +699,8 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       "housing-permits",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
-      "kosis-unsold", "maintenance", "market-stats", "migration", "schools", "transport-tago",
+      "kosis-unsold", "maintenance", "market-stats", "migration",
+      "notify-subscribers", "schools", "transport-tago",
     ]);
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);
@@ -683,21 +716,26 @@ describe("EXTERNAL_API_COLLECTORS 라벨 ↔ recordCollectorRun 기록명 동기
   // 세션 439 사고: transport-tago.mjs 가 "transport-tago" 를 기록하는데 배열은 "transport" 라
   // fetchExternalApiRuns(.eq("collector","transport")) 가 0행 → ⑤ 외부 API 침묵 탐지 영구 무력.
   function extractRecordedLabels() {
-    const dir = join(dirname(fileURLToPath(import.meta.url)), "collectors");
+    const scriptsDir = dirname(fileURLToPath(import.meta.url));
+    // collectors/ + scripts/ 최상위 — notify-subscribers.mjs 처럼 collectors/ 밖에 사는
+    // recordCollectorRun 사용자(audit-env-keys·graceful 가드 밖 배치 관행)도 라벨 소스다 (세션 467).
+    const dirs = [join(scriptsDir, "collectors"), scriptsDir];
     /** @type {Set<string>} */
     const labels = new Set();
-    for (const f of readdirSync(dir)) {
-      if (!f.endsWith(".mjs") || f.includes(".test.")) continue;
-      const src = readFileSync(join(dir, f), "utf8");
-      const phaseM = src.match(/const\s+PHASE\s*=\s*["'`]([^"'`]+)["'`]/);
-      const phase = phaseM ? phaseM[1] : null;
-      for (const m of src.matchAll(/recordCollectorRun\(\s*([^,)]+)/g)) {
-        const arg = m[1].trim();
-        if (arg === "PHASE") {
-          if (phase) labels.add(phase);
-        } else {
-          const lit = arg.match(/^["'`]([^"'`]+)["'`]$/);
-          if (lit) labels.add(lit[1]);
+    for (const dir of dirs) {
+      for (const f of readdirSync(dir)) {
+        if (!f.endsWith(".mjs") || f.includes(".test.")) continue;
+        const src = readFileSync(join(dir, f), "utf8");
+        const phaseM = src.match(/const\s+PHASE\s*=\s*["'`]([^"'`]+)["'`]/);
+        const phase = phaseM ? phaseM[1] : null;
+        for (const m of src.matchAll(/recordCollectorRun\(\s*([^,)]+)/g)) {
+          const arg = m[1].trim();
+          if (arg === "PHASE") {
+            if (phase) labels.add(phase);
+          } else {
+            const lit = arg.match(/^["'`]([^"'`]+)["'`]$/);
+            if (lit) labels.add(lit[1]);
+          }
         }
       }
     }
