@@ -7,6 +7,13 @@ import type { LoginTrigger } from "@/types/hooks";
  * 로그인 유도 모달 — 비로그인 사용자가 상세/비교/지도/관심매물 접근 시 표시
  * Props: open, onClose, onKakaoLogin, kakaoLoading (세션 405 — 카카오 단독, 관리자 입구는 InfoPage)
  */
+// trigger 별 카피 (세션 469) — 지도 요청 손님에게 지도 언급 노출. 모듈 레벨 상수라 memo 재생성 무관.
+const PROMPT_COPY = {
+  detail: { title: "로그인이 필요합니다", body: ["점수 분석과 상세 정보를", "이용하려면 로그인해주세요."] },
+  map: { title: "로그인이 필요합니다", body: ["지도에서 단지 위치와 시세를", "확인하려면 로그인해주세요."] },
+} as const;
+const DEFAULT_COPY = PROMPT_COPY.detail; // trigger null → detail 문구 재사용
+
 type LoginPromptModalProps = {
   open: boolean;
   onClose: () => void;
@@ -27,6 +34,8 @@ export const LoginPromptModal = memo(function LoginPromptModal({
   }, [open, trigger]);
 
   if (!open) return null;
+
+  const copy = (trigger && PROMPT_COPY[trigger]) || DEFAULT_COPY;
 
   return (
     <div
@@ -67,11 +76,11 @@ export const LoginPromptModal = memo(function LoginPromptModal({
         {/* 안내 아이콘 */}
         <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
 
-        <div style={{ fontSize: F.xl, fontWeight: 800, color: C.text, marginBottom: 8 }}>로그인이 필요합니다</div>
+        <div style={{ fontSize: F.xl, fontWeight: 800, color: C.text, marginBottom: 8 }}>{copy.title}</div>
         <div style={{ fontSize: F.base, color: C.muted, lineHeight: 1.6, marginBottom: 24 }}>
-          점수 분석과 상세 정보를
+          {copy.body[0]}
           <br />
-          이용하려면 로그인해주세요.
+          {copy.body[1]}
         </div>
 
         {/* 카카오 로그인 버튼 */}

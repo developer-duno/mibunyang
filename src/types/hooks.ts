@@ -249,6 +249,7 @@ export interface KakaoCallbackResult {
   user?: { affiliation?: string; [key: string]: unknown };
   role?: string;
   pendingDetail?: string | null;
+  pendingTab?: string | null; // 로그인 후 복귀할 탭 (예: "map") — 세션 469 지도 복원
   needsMarketingConsent?: boolean; // 신규 가입(또는 미선택) 시 마케팅 동의 모달 표시 신호
   consentMarketing?: boolean | null; // 현재 마케팅 동의 상태 (true/false/null) — 정보 탭 토글 표시용 (D3)
   error?: string;
@@ -261,7 +262,7 @@ export interface KakaoCallbackResult {
 export interface UseKakaoAuthReturn {
   kakaoLoading: boolean;
   kakaoError: string;
-  initKakaoLogin: (_pendingDetailId?: string | null) => void;
+  initKakaoLogin: (_pendingDetailId?: string | null, _pendingTab?: string | null) => void;
   handleKakaoCallback: () => Promise<KakaoCallbackResult>;
 }
 

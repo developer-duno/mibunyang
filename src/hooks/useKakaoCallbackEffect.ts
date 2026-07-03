@@ -61,7 +61,13 @@ export function useKakaoCallbackEffect({
             detail.setDetailAptId(result.pendingDetail);
             recordView?.(result.pendingDetail);
           }
-          setTab(isFeatureHome() ? "home" : "list"); // 로그인 직후 홈 = 지도 위젯 열린 첫 경험 (spec §1)
+          // map 트리거로 로그인한 손님은 지도 탭으로 복귀 (탭이라 홈 착지를 덮음 — 세션 469).
+          // pendingDetail 은 모달이라 setTab 을 덮지 않는 것과 대비.
+          if (result.pendingTab === "map") {
+            setTab("map");
+          } else {
+            setTab(isFeatureHome() ? "home" : "list"); // 로그인 직후 홈 = 지도 위젯 열린 첫 경험 (spec §1)
+          }
           // 현재 마케팅 동의 상태를 정보 탭 토글 초기화에 전달 (D3) — 관리자는 제외
           onConsentLoaded?.(result.consentMarketing ?? null);
           // 신규 가입(또는 동의 미선택) 손님이면 마케팅 동의 모달 — 관리자는 제외
