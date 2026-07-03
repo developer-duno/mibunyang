@@ -48,7 +48,13 @@ describe("upcoming rateLimit", () => {
   });
 });
 
-const { default: handlerImport, extractDates, inferEventFromName } = await import("./upcoming.js");
+const {
+  default: handlerImport,
+  extractDates,
+  inferEventFromName,
+  findStalePlanIds,
+  todayIso,
+} = await import("./upcoming.js");
 const { checkRateLimit } = await import("./_lib/rateLimit.js");
 const handler = handlerImport as any;
 
@@ -140,6 +146,115 @@ describe("extractDates — 캘린더 날짜 추출 (spec § 3-1-A·B)", () => {
     };
     expect(extractDates(apt)[0].event).toBe("presale_announce");
   });
+
+  // 세션 469: 실데이터는 하이픈(YYYY-MM-DD) — 점만 허용하던 버그로 schedule 이벤트가 전량 탈락하던 사각
+  it("presaleSchedule.dateInfo 하이픈 형식(YYYY-MM-DD) → 정상 매핑 (실데이터 형식)", () => {
+    const apt = {
+      presaleStage: "청약중",
+      presaleRecruitDate: null,
+      presaleSchedule: { scheduleName: "1순위 청약", dateInfo: "2026-05-10", schdl_info: null },
+    };
+    expect(extractDates(apt)).toEqual([{ date: "2026-05-10", event: "apply_start" }]);
+  });
+
+  // 세션 469: 월-only(YYYY-MM, 일자 미상) → 1일 강제 아님을 monthOnly 플래그로 명시
+  it("presaleRecruitDate 월-only(YYYY-MM) → date=YYYY-MM-01 + monthOnly:true", () => {
+    const apt = { presaleStage: "분양계획", presaleRecruitDate: "2026-04", presaleSchedule: null };
+    expect(extractDates(apt)).toEqual([{ date: "2026-04-01", event: "presale_announce", monthOnly: true }]);
+  });
+
+  it("dateInfo 월-only(YYYY.MM 점 형식도) → monthOnly:true", () => {
+    const apt = {
+      presaleStage: "분양계획",
+      presaleRecruitDate: null,
+      presaleSchedule: { scheduleName: "모집공고", dateInfo: "2026.05", schdl_info: null },
+    };
+    expect(extractDates(apt)).toEqual([{ date: "2026-05-01", event: "presale_announce", monthOnly: true }]);
+  });
+
+  it("일자 있는 날짜는 monthOnly 플래그 없음", () => {
+    const apt = { presaleStage: "청약중", presaleRecruitDate: "2026-05-08", presaleSchedule: null };
+    const result = extractDates(apt);
+    expect(result[0].monthOnly).toBeUndefined();
+  });
+});
+
+describe("findStalePlanIds — 접수시작일 지난 곧분양 제외 (세션 469)", () => {
+  // presale_schedule_official 를 모킹하는 최소 sb 스텁
+  const makeSb = (scheduleRows: any[]) => ({
+    from: () => ({
+      select: () => ({
+        in: () => Promise.resolve({ data: scheduleRows, error: null }),
+      }),
+    }),
+  });
+
+  it("접수시작일(general_rank1_bgnde)이 오늘보다 과거 → stale 로 제외", async () => {
+    const rows = [{ id: "ap-1", presaleStage: "분양계획" }];
+    const sb = makeSb([{ apartment_id: "ap-1", general_rank1_bgnde: "2026-05-01", recruit_date: "2026-04-01" }]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-03");
+    expect(stale.has("ap-1")).toBe(true);
+  });
+
+  it("접수시작일이 오늘 이후(미래) → 제외 안 함", async () => {
+    const rows = [{ id: "ap-2", presaleStage: "분양계획" }];
+    const sb = makeSb([{ apartment_id: "ap-2", general_rank1_bgnde: "2026-08-01", recruit_date: "2026-07-01" }]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-03");
+    expect(stale.has("ap-2")).toBe(false);
+  });
+
+  it("공식 접수일 없음(데이터 미보유) → 제외 안 함 (네이버 stage 신뢰)", async () => {
+    const rows = [{ id: "ap-3", presaleStage: "분양계획" }];
+    const sb = makeSb([]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-03");
+    expect(stale.has("ap-3")).toBe(false);
+  });
+
+  it("special_receipt_bgnde 만 있어도(1순위 null) 판정", async () => {
+    const rows = [{ id: "ap-4", presaleStage: "분양계획" }];
+    const sb = makeSb([
+      {
+        apartment_id: "ap-4",
+        general_rank1_bgnde: null,
+        special_receipt_bgnde: "2026-06-01",
+        recruit_date: "2026-05-01",
+      },
+    ]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-03");
+    expect(stale.has("ap-4")).toBe(true);
+  });
+
+  it("여러 차수 중 최신(recruit_date desc) 접수일로 판정", async () => {
+    const rows = [{ id: "ap-5", presaleStage: "분양계획" }];
+    const sb = makeSb([
+      { apartment_id: "ap-5", general_rank1_bgnde: "2026-05-01", recruit_date: "2026-04-01" },
+      { apartment_id: "ap-5", general_rank1_bgnde: "2026-08-01", recruit_date: "2026-07-01" }, // 최신 = 미래
+    ]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-03");
+    expect(stale.has("ap-5")).toBe(false); // 최신 차수가 미래라 유지
+  });
+
+  it("분양계획 단지 없으면 빈 Set (쿼리 스킵)", async () => {
+    const rows = [{ id: "ap-6", presaleStage: "분양중" }];
+    const sb = makeSb([]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-03");
+    expect(stale.size).toBe(0);
+  });
+
+  it("조회 에러 시 fail-open (빈 Set, 정상 곧분양 유지)", async () => {
+    const rows = [{ id: "ap-7", presaleStage: "분양계획" }];
+    const sb = {
+      from: () => ({ select: () => ({ in: () => Promise.resolve({ data: null, error: { message: "boom" } }) }) }),
+    };
+    const stale = await findStalePlanIds(sb, rows, "2026-07-03");
+    expect(stale.size).toBe(0);
+  });
+});
+
+describe("todayIso (세션 469)", () => {
+  it("Date → YYYY-MM-DD 로컬", () => {
+    expect(todayIso(new Date(2026, 6, 3))).toBe("2026-07-03"); // month 6 = 7월
+  });
 });
 
 describe("inferEventFromName — 키워드 휴리스틱 (spec § 6-1 4색)", () => {
@@ -222,17 +337,19 @@ describe("handleGet — Supabase select 컬럼명 + 핸들러 분기 (회귀 방
     const req = { method: "GET", headers: {} };
     const res = makeRes();
     await handler(req, res);
-    expect(res.setHeader).toHaveBeenCalledWith(
-      "Cache-Control",
-      "s-maxage=300, stale-while-revalidate=600",
-    );
+    expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
   });
 
   it("presaleStage 별 stages 분류 + calendar 매핑", async () => {
     mockIn.mockResolvedValueOnce({
       data: [
         { id: "ap-1", presaleStage: "분양계획", presaleRecruitDate: "2026-05-08", presaleSchedule: null },
-        { id: "ap-2", presaleStage: "청약중", presaleRecruitDate: null, presaleSchedule: { scheduleName: "당첨자 발표", dateInfo: "2026.05.20" } },
+        {
+          id: "ap-2",
+          presaleStage: "청약중",
+          presaleRecruitDate: null,
+          presaleSchedule: { scheduleName: "당첨자 발표", dateInfo: "2026.05.20" },
+        },
         { id: "ap-3", presaleStage: "분양중", presaleRecruitDate: null, presaleSchedule: null },
       ],
       error: null,
