@@ -16,6 +16,7 @@ export function useAppNavigation({
   detail,
   compIds,
   setShowCompOpen,
+  setFavoriteIds,
   showToast,
   budgetMin,
   budgetMax,
@@ -58,16 +59,16 @@ export function useAppNavigation({
   // ── 탭 전환 ──
   const switchToInfo = useCallback(() => setTab("info"), [setTab]);
 
+  // 세션 465: 상담 폼 표시·검증·제출이 전부 favoriteIds 기준(ConsultForm·useConsult)이라
+  // consultForm.interestedApts 에만 넣으면 해당 단지가 통째로 유실됨 → 관심 단지에 직접 추가
+  // (GuideSections "해당 단지가 포함된 상담 신청으로 바로 이동" 카피와 일치)
   const handleConsultFromDetail = useCallback(
     (aptId: string) => {
-      consult.setConsultForm((prev) => ({
-        ...prev,
-        interestedApts: prev.interestedApts.includes(aptId) ? prev.interestedApts : [...prev.interestedApts, aptId],
-      }));
+      setFavoriteIds((prev) => (prev.includes(aptId) ? prev : [...prev, aptId]));
       detail.setDetailAptId(null);
       setTab("consult");
     },
-    [consult, detail, setTab]
+    [setFavoriteIds, detail, setTab]
   );
 
   const handleNavClick = useCallback(
