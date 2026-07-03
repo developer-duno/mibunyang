@@ -13,7 +13,14 @@ export async function blacklistToken(token: string, payload: AuthPayload): Promi
   if (ttlMs <= 0) return; // 이미 만료된 토큰은 등록 불필요
   const ttlSec = Math.ceil(ttlMs / 1000);
   const hash = hashToken(token);
-  await kv.set(`bl:${hash}`, 1, { ex: ttlSec });
+  try {
+    await kv.set(`bl:${hash}`, 1, { ex: ttlSec });
+  } catch (err) {
+    // Redis 순단 시 로그아웃/refresh rotation 을 crash 500 으로 만들지 않는다 (세션 465).
+    // 블랙리스트는 best-effort 조기 무효화 계층(isBlacklisted fail-open 과 동일 정책) —
+    // JWT 만료가 1차 경계. 실패는 서버 로그로만 남긴다.
+    console.error("blacklistToken set failed (fail-open):", err instanceof Error ? err.message : err);
+  }
 }
 
 /**

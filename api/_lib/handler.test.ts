@@ -197,4 +197,25 @@ describe("withHandler", () => {
     expect(postHandler).toHaveBeenCalledWith(reqPost, resPost);
     expect(getHandler).not.toHaveBeenCalled();
   });
+
+  // 최종 안전망 (세션 465) — 핸들러 reject 가 비JSON crash 500 으로 새지 않고 표준 JSON 500
+  it("handler가 throw/reject 하면 { ok:false } 500 JSON 을 반환한다", async () => {
+    const inner = vi.fn().mockRejectedValue(new Error("boom"));
+    const res = makeRes();
+    const handler = withHandler({ method: "POST", handler: inner });
+    await handler(makeReq("POST"), res); // throw 없이 resolve 되어야 함
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ ok: false, error: "서버 오류가 발생했습니다" });
+  });
+
+  it("이미 응답이 나간 뒤(headersSent) throw 하면 이중 응답을 시도하지 않는다", async () => {
+    const res = makeRes();
+    res.headersSent = true;
+    const inner = vi.fn(async () => {
+      throw new Error("late boom");
+    });
+    const handler = withHandler({ method: "POST", handler: inner });
+    await handler(makeReq("POST"), res);
+    expect(res.status).not.toHaveBeenCalledWith(500);
+  });
 });

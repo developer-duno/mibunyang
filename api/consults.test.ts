@@ -180,6 +180,23 @@ describe("consults handler", () => {
     expect(res.status).toHaveBeenCalledWith(500);
   });
 
+  // --- GET/DELETE rate limit (세션 465 — 자매 admin 엔드포인트 rateLimit:"admin" 정합) ---
+  it("GET: 레이트 리밋 초과 시 429를 반환한다 (인증 검사보다 먼저)", async () => {
+    (checkRateLimit as any).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    const res = makeRes();
+    await handler({ method: "GET", headers: {}, query: {} }, res);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "admin");
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(res.setHeader).toHaveBeenCalledWith("Retry-After", "300");
+  });
+
+  it("DELETE: 레이트 리밋 초과 시 429를 반환한다", async () => {
+    (checkRateLimit as any).mockResolvedValueOnce({ limited: true, retryAfter: 300 });
+    const res = makeRes();
+    await handler({ method: "DELETE", headers: {}, query: { id: "1" } }, res);
+    expect(res.status).toHaveBeenCalledWith(429);
+  });
+
   // --- GET 인증 ---
   it("GET: 인증 헤더 없이 요청 시 401을 반환한다", async () => {
     const res = makeRes();
