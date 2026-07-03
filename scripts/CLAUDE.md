@@ -134,6 +134,13 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 
 **세션89 변경**: 4/6 단계가 `naver-units.mjs`(네이버 크롤링, IP 차단)에서 `molit-units.mjs`(국토부 API)로 교체됨. **세션233 영구 삭제**. 실패 시 WARNING 처리로 5/6, 6/6 계속 진행. `run-naver-local.bat`/`.sh` 양쪽 동일.
 
+**세션470 인프라 개선 (중복방지·resume·재시도·CRLF)**:
+- **중복 실행 방지 (filelock)**: `naver-collect.py` `__main__` 이 `FileLock(ROOT/.naver-collect.lock, timeout=0)` 획득. 이미 돌면 즉시 `sys.exit(0)`(겹침은 실패 아님). 손으로 여러 번 실행해도 2번째부터 종료 = 좀비 더미 방지(같은 IP 다중 수집기 → 네이버 rate-limit 경합 stall 사고 정정). `requirements.txt` filelock, `.gitignore` `.naver-collect.lock`.
+- **resume (이어하기)**: `main()` 이 오늘 이미 `last_seen_at` 찍힌 complex_no(done_cx)를 `SB.select("articles",...)` 로 조회 → 매물·시세 루프 `if cn in done_cx: continue`. 스케줄러 재시도 시 이어서 돎. 다음 발화(월/목)는 날짜 바뀌어 전부 재수집=신선도. `--no-resume` 강제 전체. dry-run/조회실패 시 비활성(fail-open). 저장부(`datetime.now().isoformat()`)와 조회(`datetime.now()`) **동일 축**(timezone-consistency). 세션338 schools `buildEnrichedIds` 답습.
+- **UTF-8 stdout 강제**: `sys.stdout.reconfigure("utf-8")` — cp949 콘솔 한글 print UnicodeEncodeError 방지(배치 chcp 65001 의존 제거).
+- **스케줄러 재시도**: `register-naver-task.ps1` `New-ScheduledTaskSettingsSet` 에 `-RestartCount 2 -RestartInterval 10분 -MultipleInstances IgnoreNew`(실패 시 10분 뒤 ×2, 절대 겹침 없음). filelock 이 손실행까지 막는 2중 안전망. **재등록 필요**: `powershell -ExecutionPolicy Bypass -File F:\mibunyang\scripts\register-naver-task.ps1`(전체경로, `$PSScriptRoot` 기준).
+- **⚠️ `run-naver-local.bat` 은 반드시 CRLF + ASCII**: `.gitattributes *.bat text eol=crlf` 로 checkout 시 CRLF 복원되나 Write 툴 직생성은 LF 잔존 → cmd 오파싱(한글 :: 주석 + chcp 65001 악화)으로 스케줄러 발화 실패. 편집 후 CRLF·pureLF0 실측 의무(세션400·470 2회 재발). run-naver-local.sh(bash)는 정상, .bat 만 취약.
+
 **주의**: compute-scores.mjs는 `node --loader ./scripts/alias-loader.mjs` 필요 (`@/` 별칭)
 
 ### 후처리 파이프라인 (post-naver-collect.sh)
