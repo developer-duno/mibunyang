@@ -290,13 +290,20 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     isDefault: (v) => v === 9999,
   },
   busRoutes: { label: "버스 노선", section: "입지", unit: "개", fmt: (v) => n(v, "개") },
-  icDist: { label: "IC 거리", section: "입지", unit: "km", fmt: (v) => n(v, "km") },
+  icDist: {
+    label: "IC 거리",
+    section: "입지",
+    unit: "km",
+    // 수집 sentinel = 99 (측정 반경 밖, devDist 패턴) — scoreLocation 도 90 이상을 미실측 취급
+    fmt: (v) => (v == null ? "—" : v >= 90 ? "반경 밖" : `${v}km`),
+    isDefault: (v) => v === 99,
+  },
   ktxDist: {
     label: "KTX 거리",
     section: "입지",
     unit: "km",
-    fmt: (v) => (v == null ? "—" : v >= 9000 ? "없음(9999)" : `${v}km`),
-    isDefault: (v) => v === 9999,
+    fmt: (v) => (v == null ? "—" : v >= 90 ? "반경 밖" : `${v}km`),
+    isDefault: (v) => v === 99,
   },
   schoolScore: { label: "학군 점수", section: "입지", fmt: (v) => n(v, "점") },
   schoolGrade: { label: "학군 등급", section: "입지", fmt: (v) => v ?? "—" },
