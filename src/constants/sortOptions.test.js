@@ -3,9 +3,9 @@ import { describe, it, expect } from "vitest";
 import { SORT_OPTIONS, VALID_SORT_KEYS } from "./sortOptions";
 
 describe("SORT_OPTIONS", () => {
-  // 정렬 옵션 12개 정의 확인 (세션 415: 미분양많은순 / 세션 423: 대단지순 / 세션 424: 입주빠른순 / 세션 444: 역세권순·전세율순 추가)
-  it("12개 정렬 옵션 정의", () => {
-    expect(SORT_OPTIONS).toHaveLength(12);
+  // 정렬 옵션 14개 정의 확인 (세션 415: 미분양많은순 / 세션 423: 대단지순 / 세션 424: 입주빠른순 / 세션 444: 역세권순·전세율순 / 세션 474: 관리비순·치안안전 추가)
+  it("14개 정렬 옵션 정의", () => {
+    expect(SORT_OPTIONS).toHaveLength(14);
   });
 
   // 키 중복 없음 검증
@@ -25,7 +25,7 @@ describe("SORT_OPTIONS", () => {
     });
   });
 
-  // 하드코딩 키 목록과 일치 (세션 415: unsoldRate / 세션 423: units / 세션 424: moveInSoon / 세션 444: subwayNear·jeonseHigh 추가)
+  // 하드코딩 키 목록과 일치 (세션 415: unsoldRate / 세션 423: units / 세션 424: moveInSoon / 세션 444: subwayNear·jeonseHigh / 세션 474: maintenanceLow·crimeSafe 추가)
   it("정렬 키 목록과 일치", () => {
     const expectedKeys = [
       "total",
@@ -40,6 +40,8 @@ describe("SORT_OPTIONS", () => {
       "moveInSoon",
       "subwayNear",
       "jeonseHigh",
+      "maintenanceLow",
+      "crimeSafe",
     ];
     expect(SORT_OPTIONS.map((o) => o.key)).toEqual(expectedKeys);
   });
@@ -51,9 +53,9 @@ describe("VALID_SORT_KEYS", () => {
     expect(VALID_SORT_KEYS).toBeInstanceOf(Set);
   });
 
-  // 12개 키 포함 (세션 415: unsoldRate / 세션 423: units / 세션 424: moveInSoon / 세션 444: subwayNear·jeonseHigh 추가)
-  it("12개 키 포함", () => {
-    expect(VALID_SORT_KEYS.size).toBe(12);
+  // 14개 키 포함 (세션 415: unsoldRate / 세션 423: units / 세션 424: moveInSoon / 세션 444: subwayNear·jeonseHigh / 세션 474: maintenanceLow·crimeSafe 추가)
+  it("14개 키 포함", () => {
+    expect(VALID_SORT_KEYS.size).toBe(14);
   });
 
   // 유효 키 검증
@@ -65,6 +67,8 @@ describe("VALID_SORT_KEYS", () => {
     expect(VALID_SORT_KEYS.has("moveInSoon")).toBe(true);
     expect(VALID_SORT_KEYS.has("subwayNear")).toBe(true);
     expect(VALID_SORT_KEYS.has("jeonseHigh")).toBe(true);
+    expect(VALID_SORT_KEYS.has("maintenanceLow")).toBe(true);
+    expect(VALID_SORT_KEYS.has("crimeSafe")).toBe(true);
     expect(VALID_SORT_KEYS.has("invalid")).toBe(false);
     expect(VALID_SORT_KEYS.has("")).toBe(false);
   });

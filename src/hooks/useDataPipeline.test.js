@@ -310,6 +310,30 @@ describe("useDataPipeline", () => {
       expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 85 > 72 > 60 > null(-1)
     });
 
+    it("sortKey=maintenanceLow → 관리비 낮은순(오름차순), null 은 맨 뒤 (세션 474)", () => {
+      const apts = [
+        makeApt({ id: "ah-a", region: "서울", price: 30000, avgMaintenanceCost: 18 }),
+        makeApt({ id: "ah-b", region: "서울", price: 30000, avgMaintenanceCost: 5 }),
+        makeApt({ id: "ah-c", region: "서울", price: 30000, avgMaintenanceCost: null }),
+        makeApt({ id: "ah-d", region: "서울", price: 30000, avgMaintenanceCost: 12 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, sortKey: "maintenanceLow" });
+      const order = result.current.filtered.map((x) => x.apt.id);
+      expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 5 < 12 < 18 < null(Infinity 맨뒤)
+    });
+
+    it("sortKey=crimeSafe → 치안 안전순(등급 오름차순, 1=안전), null 은 맨 뒤 (세션 474)", () => {
+      const apts = [
+        makeApt({ id: "ah-a", region: "서울", price: 30000, crimeSafetyGrade: 4 }),
+        makeApt({ id: "ah-b", region: "서울", price: 30000, crimeSafetyGrade: 1 }),
+        makeApt({ id: "ah-c", region: "서울", price: 30000, crimeSafetyGrade: null }),
+        makeApt({ id: "ah-d", region: "서울", price: 30000, crimeSafetyGrade: 2 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, sortKey: "crimeSafe" });
+      const order = result.current.filtered.map((x) => x.apt.id);
+      expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 1 < 2 < 4 < null(Infinity 맨뒤)
+    });
+
     it("filterRegion 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울" });
       expect(result.current.filtered.every((x) => x.apt.region === "서울")).toBe(true);

@@ -57,6 +57,23 @@ const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
       rb = b.apt.jeonseRate ?? -1;
     return ra === rb ? b.res.total - a.res.total : Number(rb) - Number(ra);
   },
+  // 관리비 낮은순 (avgMaintenanceCost 오름차순, 만원, 채움률 71.3%) — 월 고정비 낮은 집 먼저. 실거주·은퇴 프로필 관심.
+  // null(미수집 452단지)은 Infinity 로 맨뒤(작은값이 앞이라 subwayNear 패턴 답습). 동률은 종합점수 tie-break (세션 474)
+  maintenanceLow: (a, b) => {
+    const norm = (c: number | null | undefined) => (c == null ? Infinity : Number(c));
+    const ca = norm(a.apt.avgMaintenanceCost),
+      cb = norm(b.apt.avgMaintenanceCost);
+    return ca === cb ? b.res.total - a.res.total : ca - cb;
+  },
+  // 치안 안전순 (crimeSafetyGrade 오름차순, 1등급=가장 안전, 채움률 86.9%) — 위험 낮은 동네 먼저. 신혼·교육·은퇴 관심.
+  // ⚠️ safe(res.cats.risk.total 종합점수)와 다름 — 이건 원본 치안 등급값 정렬. null(미수집 207단지)은 Infinity 로 맨뒤.
+  // 동률은 종합점수 tie-break (subwayNear 패턴 답습, 세션 474)
+  crimeSafe: (a, b) => {
+    const norm = (g: number | null | undefined) => (g == null ? Infinity : Number(g));
+    const ga = norm(a.apt.crimeSafetyGrade),
+      gb = norm(b.apt.crimeSafetyGrade);
+    return ga === gb ? b.res.total - a.res.total : ga - gb;
+  },
 };
 
 /**
