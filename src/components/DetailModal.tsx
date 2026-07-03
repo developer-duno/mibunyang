@@ -122,7 +122,7 @@ export const DetailModal = memo(function DetailModal({
 }: DetailModalProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocusRef = useRef<Element | null>(null);
-  // 가격배열 lazy fetch (apartments-prices.json) 상태 — DetailModal 첫 열림 시 1회 9.7MB fetch + 모듈 Map 캐시
+  // 가격배열 lazy fetch (apartments-prices.json) 상태 — DetailModal 첫 열림 시 1회 전량 fetch (2026-07-03 실측 12.3MB/1602단지, 성장 ~+1MB/분기) + 모듈 Map 캐시
   const [prices, setPrices] = useState<PriceArrays | null>(null);
   const [pricesLoading, setPricesLoading] = useState(false);
   const [pricesError, setPricesError] = useState<string | null>(null);
