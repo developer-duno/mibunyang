@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ dependabot #202 minor group (@types/node 26.0.0→26.0.1 · prettier 3.8.4→3.9.1) — 세션 471 머지 (2026-07-04, main 8c7a08f). prettier 3.9.1 이 `src/types/database.types.ts` 1파일 재포맷(conditional-type 괄호+union 한줄접기, 동작·타입 무변경 typecheck0 증명) → CI format:check fail. babel #220 선례로 dependabot 브랜치에 재포맷 커밋 push 후 CI green 재실행 → squash 머지 → main CI success 재확인. 운영 박제: F드라이브 exFAT 는 `npm ci`(전삭제→rolldown .node unlink EPERM) 금지, `npm install`(in-place) 사용. 상세 = 메모리 `session_2026-07-04_session471_dependabot_202.md`.
 - ✅ 청약홈 매칭 회수 검증 (P2) — 세션 465 라이브 실증 종결 (2026-07-03). `collector_runs` id=236 `applyhome-detail` 6/13 cron(`30 2 13 * *`) 자연 발화 success **ok=934 fail=0**(예측 ~916 + 이후 신규 공고 자연 증가) + `presale_schedule_official` 라이브 = **984 rows / 859 distinct 단지**(예측 916/810 초과 달성). 세션 360 처방(후보 쿼리 presale_stage 제약 제거 = 전체 apartments 확대) 2.4배 회복(393→934) 실증 확정. 상세 = BACKLOG_ARCHIVE "🟡 곧 — 완료".
 - ✅ 6/5 collect-market-stats schedule run 검증 — 세션 463 실측 종결(가설 확정). run 27041459499 success + 로그 `lookback=24개월`·`분양가격지수: 1785건 응답, 17개 시도 매핑`·`96건 갱신` 기대 출력 전부 일치 = 세션 282 plan v6 가설 확정, 커밋 b312d62 처방 유효(직전 5/5·4/5 failure → 6/5 첫 발화 success). fail 시 트리거였던 TLS handshake 별도 plan 불필요 확정. 상세 = BACKLOG_ARCHIVE "🟡 곧 — 완료".
 - ✅ 마케팅 수신 동의 철회/관리 토글 (정보 탭) — 세션 443 D3 (PR #168, main 235b3cb). privacy.html "마케팅 수신 동의는 언제든지 철회 가능" 약속을 코드로 이행. 기존엔 로그인 직후 1회 모달(MarketingConsentModal)에서만 동의/거부 가능, 나중에 끄는 진입점 0 = 약속 위반 상태. **백엔드 완비(kakao-consent.ts consent:false 철회 처리), 프론트 진입점만 메움**. 표현계층+콜백값 1개(점수·엔진·DB스키마 무변경): kakao.ts 콜백에 consentMarketing 1줄·useMarketingConsent 확장(consentMarketing state+localStorage(mibunyang_consent_marketing) 영속+initConsent+거부/실패 토스트)·useKakaoCallbackEffect onConsentLoaded(일반손님만)·clearAuthTokens consent키 청소(손님 전환 stale 방지)·InfoPage 로그인 일반손님(!adminLoggedIn) 토글행(role=switch+aria-checked+상태 3분기 받는중/받지않음/미선택)·App 배선 submitConsent(consentMarketing!==true). 새로고침 복원=localStorage, 로그인 시 서버값(initConsent)이 진실원천. vitest 55(InfoPage 토글 5+useMarketingConsent 8+실패토스트 2)·tsc0·lint0·build✓·CI/e2e/Vercel green. **5관점 적대검증 워크플로→진성 P0/P1 0건**(종합이 검증자 과장 교정: "관리자 타인동의변경"=거짓 JWT 소유자 본인만·admin게이트 걸면 손님 못씀=self-service 정확 설계, 접근성·null-edge P0=라벨 오류 전부 SAFE). real_p1 1건(null/false 3분기)+무피드백 실패토스트 반영. **잔여=👤 production 정보 탭 마케팅 토글 켜기/끄기 라이브 확인**.
@@ -114,8 +115,12 @@
     VIEW 2개 `ALTER VIEW SET (security_invoker=on)` + 함수 2개 `SET search_path=''`.
     live 검증 — JOIN 9테이블 `USING(true)` 정책+GRANT 보유로 anon 무영향.
 
-- 🔴 **차단: `eslint 10` 본 적용** — `eslint-plugin-react@7.37.5` (최신) peer 가 `eslint: ^9.7` 까지만 지원
-  - 재오픈 트리거: `npm view eslint-plugin-react@latest peerDependencies` 결과 `^10.0.0` 등장 (세션125 조사)
+- 🔴 **차단: `eslint 10` 본 적용 (dependabot #203 OPEN 유지)** — ⚠️ **진짜 원인 = peer 경고 아님, plugin 런타임 크래시** (세션 471 실패 로그 실측 정정)
+  - 실패 로그(run 28682719274): `eslint-plugin-react/lib/util/version.js` → `TypeError: contextOrFilename.getFilename is not a function` (exit 2). eslint 10 이 구식 `context.getFilename()` 제거 → plugin 이 옛 API 호출 → **Lint 스텝 런타임 크래시**. `--legacy-peer-deps`(우리 CI 설치)로도 못 넘김 (설치는 되나 실행 깨짐). peer `^9.7` 은 증상.
+  - 실측(세션 471): `eslint-plugin-react` latest=7.37.5 · 전 버전 · beta(`next`=7.8.0-rc.0) 전부 eslint 10 지원판 **없음**. `@eslint/js` 도 10 공동 bump 필요(dependabot 은 eslint 만 bump).
+  - **결정(세션 471, 사장님) = #203 그대로 열어둠** = 방치 아니라 업스트림 대기. 프로젝트 영향 0 (eslint 9.39.4 정상 동작).
+  - 재오픈/해소 트리거: `eslint-plugin-react` 가 eslint 10 지원판(= `getFilename` API 크래시 해소 + peer `^10` 수용) 발행 → dependabot 자동 갱신 후 CI green 확인. 확인 명령: `npm view eslint-plugin-react@latest peerDependencies.eslint` 에 `^10` 등장 여부 + 실제 `npm run lint` 크래시 재현 여부 둘 다 실측.
+  - 지금 당장 eslint 10 가려면 유일 길 = `@eslint-react/eslint-plugin`(flat config 네이티브 eslint 10) 교체 + lint 설정 재작성 + 규칙 차이 검증 = 별도 작업(세션 471 미채택).
 
 ---
 
