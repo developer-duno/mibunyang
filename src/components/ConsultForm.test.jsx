@@ -178,10 +178,10 @@ describe("ConsultForm", () => {
     expect(screen.getByText(/신청자: 홍길동/)).toBeInTheDocument();
   });
 
-  // 데모 안내 메시지
-  it("데모 안내 메시지 표시", () => {
+  // 세션 465 실운영 전환: 데모 안내 제거 — 상담은 실제 접수·연락 (사장님 결정)
+  it("데모 안내 메시지가 더 이상 표시되지 않는다 (실운영 전환)", () => {
     render(<ConsultForm {...makeProps()} />);
-    expect(screen.getByText(/데모 버전/)).toBeInTheDocument();
+    expect(screen.queryByText(/데모 버전/)).not.toBeInTheDocument();
   });
 
   // 추가 메시지 필드
