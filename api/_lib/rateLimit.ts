@@ -8,6 +8,8 @@ const WINDOW_SEC = 300; // 5분
 // 그 외(verify·logout·kakao·consult·admin·proxy)는 fail-open: JWT 위조 불가 + 만료, admin 토큰, OAuth,
 // 외부 쿼터 보호 등 2차 방어선이 있어 Redis 순단 동안 rate limit 만 일시 무력화돼도 인증·인가는 안 뚫린다.
 // fail-close 전역 유지 시 Upstash 순단 1회 = 전 API 429 전면 장애(SPOF) → 100명 운영 위험. (세션 427)
+// ⚠️ consult 는 공개 쓰기 표면이지만 의도적으로 fail-open 유지 (세션 465 결정): 상담 신청 = 핵심 전환이라
+// 순단 몇 분간의 스팸 위험(입력 검증+consent 필수+관리자 파기 API 로 정리 가능)보다 리드 유실이 더 큰 손해.
 const FAIL_CLOSE_ENDPOINTS = new Set(["login", "subscribers"]);
 
 type ReqLike = {

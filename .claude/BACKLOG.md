@@ -53,10 +53,12 @@
 ## 🔴 즉시
 
 - 🔴 **신규 단지 유입 양대 경로 동시 사망 — 재고 신선도 3개월 동결 (세션 465 발굴·전건 라이브 실측)**
-  - **(a) 로컬 네이버 파이프라인 정지 (~4/13부터)**: 이 PC 스케줄러에 `MibunyangNaverCollect`(월/목 08:00) 작업 **부재** — Childcare(04:30)·Kosis(05:30)만 존재. 마지막 로그 `scripts/naver-collect-20260413.log`(4/13) / `post-naver-collect.log`(4/11). `apartments` ap-* 최신 created_at = **2026-04-07** 동결. 추정 원인 = 4월 PC 이동 시 재등록 누락(KOSIS/childcare 는 세션 288~289·399 에 이 PC 재등록, naver 는 누락). **복구 = `powershell -ExecutionPolicy Bypass -File scripts/register-naver-task.ps1` 1회** (사장님 승인 후)
+  - **(a) 로컬 네이버 파이프라인 정지 (~4/13부터)**: 이 PC 스케줄러에 `MibunyangNaverCollect`(월/목 08:00) 작업 **부재** — Childcare(04:30)·Kosis(05:30)만 존재. 마지막 로그 `scripts/naver-collect-20260413.log`(4/13) / `post-naver-collect.log`(4/11). `apartments` ap-* 최신 created_at = **2026-04-07** 동결. 추정 원인 = 4월 PC 이동 시 재등록 누락(KOSIS/childcare 는 세션 288~289·399 에 이 PC 재등록, naver 는 누락).
+    - ✅ **세션 465 조치 완료 (사장님 승인)**: `register-naver-task.ps1` 실행 → `MibunyangNaverCollect` **Ready** 등록(월/목 08:00, Limited+Interactive) + 좀비 작업 `naver-units-night`(세션 233 영구 삭제된 naver-units.mjs 를 매일 02:00 호출, 매일 실패 중이던 것) **삭제**. **회복 실증 = 다음 월요일 08:00 발화 후 `collector_runs` 에 sync-naver(08:xx KST 발)·naver-presale 행 확인** — naver-presale 이 계속 침묵이면 run-naver-local.sh:33 실패 삼킴 별도 진단
   - **(b) naver-presale 침묵**: `collector_runs` retention(5/16~) 내 presale 행 **0건** — (a)의 결과이자, `run-naver-local.sh:33` `|| echo "WARNING"` 이 실패를 삼켜 재가동 후에도 실패가 안 보임. 재가동 후 1회 수동 실행으로 raw 에러 확정 + monitor ⑤ 등재 검토
-  - **(c) 청약홈 무순위 신규 공고 113건 미유입**: ah-* 로스터 3/14 동결(1481건) + `collect-applyhome.mjs` 는 기존 단지만 UPDATE(로스터 부재 = skip) + 신규 ah-* 생성 경로 현존 0 (`collect-data.mjs` Supabase 쓰기 0건 + daily-deploy `--from-supabase-only`). **세션 465 독립 재실측**: detail API(getRemndrLttotPblancDetail, MOLIT_KEY HTTP 200) 고유 1608 중 로스터 부재 608, 공고일≥3/14 = **113건**(해운대 마티안 디 에디션 7/1·오남역 서희스타힐스 7/1 등). 처방 후보 = 주간 수집 앞단에 신규 ah-* seeding 단계 — 단 **네이버 ap-* 단지와 물리 중복 dedup 정책 사장님 결정 선행**
-  - 영향: 미분양·무순위 전문 서비스의 신상품 유입이 ~3개월 0. 수집기는 매주 success 라 monitor 로 안 잡히는 silent gap. (a)는 1명령 복구, (c)는 설계 1세션
+  - **(c) 청약홈 무순위 신규 공고 113건 미유입**: ah-* 로스터 3/14 동결(1481건) + `collect-applyhome.mjs` 는 기존 단지만 UPDATE(로스터 부재 = skip) + 신규 ah-* 생성 경로 현존 0 (`collect-data.mjs` Supabase 쓰기 0건 + daily-deploy `--from-supabase-only`). **세션 465 독립 재실측**: detail API(getRemndrLttotPblancDetail, MOLIT_KEY HTTP 200) 고유 1608 중 로스터 부재 608, 공고일≥3/14 = **113건**(해운대 마티안 디 에디션 7/1·오남역 서희스타힐스 7/1 등). 처방 후보 = 주간 수집 앞단에 신규 ah-* seeding 단계
+    - **사장님 결정(세션 465): 다음 세션 설계 착수** — 범위 = seeding collector(변환 로직 api/applyhome/apartments.ts:164 재활용 후보) + **네이버 ap-* 물리 중복 dedup 정책** + 신규 단지 초기 필드 공백 처리(좌표·점수는 geocode-missing 등 후속 수집기 자연 보강) + apartments_flat dedup CTE 상호작용 검증
+  - 영향: 미분양·무순위 전문 서비스의 신상품 유입이 ~3개월 0. 수집기는 매주 success 라 monitor 로 안 잡히는 silent gap. (a)는 조치 완료, (c)는 설계 1세션(다음 세션)
 
 (세션 414 종결: 세션 413 실서비스 검증 + 통합 홈 production ON. 사장님 "실서비스 검증 먼저" → Playwright 라이브 비로그인 검증[게이트 3경로·analytics 200 실측 통과] → 사장님 "통합 홈 켜줘" → `VITE_FEATURE_HOME=true` Vercel production add + 재배포[dpl READY·peach alias] → 라이브 home-grid·home_widget_expand 200 재검증. 다음 진입 후보 = 작업 가능 미해결 항목 소진 상태 → 사장님 신규 방향 지시 대기. eslint 10[🔴 upstream 차단·9.39.4 정상동작]·avg_price[ADR 1-A 보류]·supplyRatio[MOLIT 외부 사고]는 우리 작업 불가. 👤 사장님 잔여 = 지도 위치보존 3항목 수동검증[로그인 필요]·`/api/consults 500` 확인·analytics 대시보드 수신)
 
@@ -122,11 +124,11 @@
   - 라이브 `/data/apartments-list.json` = **raw 15,241,053 bytes / br 전송 1,368,068** (본인 curl 재실측 일치). 필드 합산(워크플로 실측): catsCache 5.34MB(45.7%) + nearbySchools 2.07MB(17.7%) — 목록 화면은 catsCache 의 cat total 6개+price/location subs[0] 만 사용(useDataPipeline:159·AptCard:302-307), 풀 subs·nearbySchools 는 상세 전용. `collect-data.mjs:1018` 설계 의도 'list 1.66MB' 대비 9배 드리프트 (⚠️ **repo 의 public/data 사본은 1.5MB — prebuild 재생성본과 10배 차이**, 배포본이 진실)
   - prices.json = 12.29MB(단지 1개 보려고 전량 fetch, br 424KB — staticDataApi:83)
   - 처방 후보: 목록용 catsCache 슬림(시뮬 5.33→0.47MB) + nearbySchools 상세 분리 + prices 버킷 분할. **데이터 파이프라인+DetailModal fetch 경로 동시 변경 = 설계 1세션, 사장님 승인 후**
-- 🟡 **상담·알림 카피 방침 결정 (세션 465 발굴 — 사장님 방침 필요, 코드 5분)**
-  - **상담 성공 화면 자기모순**: '전문 컨설턴트가 24시간 내 연락드립니다'(ConsultForm:70) 바로 아래 '* 본 서비스는 데모 버전입니다. 실제 상담 연결은 정식 출시 후 제공'(:82, 폼에도 :161) 동시 표시. 실명+전화 동의 받는 화면의 신뢰 문제 — 실운영이면 데모 문구 2곳 삭제 / 데모 유지면 '24시간 연락'을 '정식 출시 후 순차 연락'으로 (FAQ '전문가가 연락' 동기)
-  - **/upcoming 알림 발송 미구현**: SubscribeForm '분양 시작 시 카카오 알림톡으로 알려드립니다'(:91)·'카카오톡으로 안내드립니다'(:70) 확정 약속 ↔ subscribers 읽어 발송하는 코드 저장소 전체 0건(워크플로 2중 grep). 전화번호 수집 목적(알림 발송)과 불일치 — 단기 = '알림 서비스 준비 중, 오픈 시 안내' 정직 카피 / 중기 = 주간 cron 발송 collector
-- 🟡 **api 잔여 2건 — consult fail-open 비대칭(결정) + kakao-consent partial write(후속)** (세션 465, PR #224 범위 밖)
-  - `rateLimit.ts:11` FAIL_CLOSE=login·subscribers 뿐 — 주석의 자기 기준('인증 없는 공개 쓰기 표면')상 같은 표면인 consult POST(익명 이름+전화 insert)만 fail-open. 단 fail-close 시 Redis 순단 동안 정상 손님 상담 신청도 429 차단(전환 손실) — **가용성 vs 스팸방어 트레이드오프 = 사장님 결정** (1줄+테스트 1건)
+- 🟡 **분양 알림 발송 기능 설계 — subscribers × upcoming stage 변화 대조 발송 (세션 465 사장님 "실운영 기준" 결정)**
+  - 결정 경위: 상담 성공 화면 '데모 버전' 문구 2곳(ConsultForm:82·:161)과 '24시간 내 연락' 자기모순 → 사장님 **실운영 기준 정리** 결정 → 데모 문구 2곳 삭제 완료(세션 465 PR). 상담 = 실제 접수·연락 체계로 운영
+  - **잔여 = /upcoming 알림 발송 기능**: SubscribeForm 이 '분양 시작 시 카카오 알림톡으로 알려드립니다'(:91) 약속하는데 subscribers 를 읽어 발송하는 코드 0건(전체 grep). 실운영 기준이므로 약속을 코드로 이행 — 설계 후보 = 주간 cron collector 가 subscribers × upcoming presale stage 변화 대조 → 발송(알림톡은 카카오 비즈메시지 계약 필요 — 문자/이메일 대체 우선 검토). 청약홈 seeding 설계와 별개 세션
+- 🟡 **api 잔여 1건 — kakao-consent partial write(후속)** (세션 465, PR #224 범위 밖)
+  - ~~consult fail-open 비대칭~~ → **세션 465 종결**: 사장님 위임 → **fail-open 유지 + 예외 사유 주석 명문화**(rateLimit.ts). 근거 = 상담 신청은 핵심 전환이라 순단 몇 분의 스팸 위험(입력 검증+consent+관리자 파기 API 존재)보다 리드 유실이 더 큰 손해
   - kakao-consent `kv.set`(user 레코드) 성공 후 `sadd`(통계 집합) 실패 시 admin 통계 과소집계 잔존 — crash 는 PR #224 dispatch 안전망으로 해소, 정합은 롤백 패턴(admin/review.ts:30-44) 답습 후속
 - 🟢 **비로그인 지도 로그인 모달 카피 + 로그인 후 지도 복귀 (세션 465 발굴)**
   - LoginPromptModal 카피가 트리거 무관 고정('점수 분석과 상세 정보를...' :71-75) — 지도 요청 손님에게 지도 언급 0. 카카오 로그인 후 `kakao_pending_detail` 복원은 detail 만 구현 → 지도 의도 유실, 홈 착지(useKakaoCallbackEffect:64)

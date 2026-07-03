@@ -69,18 +69,6 @@ export const ConsultForm = memo(function ConsultForm({
           <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 20 }}>
             전문 컨설턴트가 24시간 내 연락드립니다.
           </div>
-          <div
-            style={{
-              fontSize: F.xs,
-              color: C.muted,
-              background: C.slate100,
-              borderRadius: 6,
-              padding: "8px 12px",
-              marginBottom: 16,
-            }}
-          >
-            * 본 서비스는 데모 버전입니다. 실제 상담 연결은 서비스 정식 출시 후 제공됩니다.
-          </div>
         </div>
       </div>
     );
@@ -146,19 +134,6 @@ export const ConsultForm = memo(function ConsultForm({
         <div style={{ fontSize: F.md, fontWeight: 800, color: C.text, marginBottom: 4 }}>전문가 상담 신청</div>
         <div style={{ fontSize: F.sm, color: C.muted, marginBottom: 16 }}>
           분석 결과를 바탕으로 전문 컨설턴트와 상담하세요
-        </div>
-
-        <div
-          style={{
-            fontSize: F.xs,
-            color: C.muted,
-            background: C.slate100,
-            borderRadius: 6,
-            padding: "8px 12px",
-            marginBottom: 16,
-          }}
-        >
-          * 데모 버전 — 실제 상담 연결은 정식 출시 후 제공됩니다.
         </div>
 
         <div style={sectionStyle}>
