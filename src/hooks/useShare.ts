@@ -20,6 +20,15 @@ export function useShare(showToast: (_msg: string) => void): UseShareReturn {
   }, []);
 
   const shareKakao = useCallback(() => {
+    // defer 로드(세션 465) 대응: Vite 빌드가 module 엔트리를 head 로 올려 React 마운트가
+    // SDK 도착보다 빠를 수 있음 → 마운트 effect(L84)가 놓친 init 을 공유 시점에 재시도
+    if (KAKAO_JS_KEY && window.Kakao && !window.Kakao.isInitialized()) {
+      try {
+        window.Kakao.init(KAKAO_JS_KEY);
+      } catch {
+        /* 아래 가드가 토스트 처리 */
+      }
+    }
     if (!window.Kakao || !window.Kakao.isInitialized()) {
       showToast("카카오 SDK를 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
       return;

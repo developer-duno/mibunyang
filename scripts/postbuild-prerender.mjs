@@ -23,7 +23,7 @@ const DIST_INDEX = resolve(__dirname, "..", "dist", "index.html");
 
 // 봇이 읽을 홈 화면 정적 골격. 사용자 화면엔 React 가 교체하므로 미노출.
 // aria-hidden 불필요(React 가 즉시 비움). 화면에 실제 노출되는 정보만 담아 cloaking 회피.
-const SKELETON = `<div id="root" class="notranslate"><main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif"><h1>전국 미분양 비교 엔진</h1><p>전국 미분양·분양 예정 아파트를 6개 카테고리 34개 지표로 AHP 점수화하고, 실거주·투자·신혼·교육·은퇴 5가지 사용자 프로필 가중치를 적용해 개인 맞춤 추천을 제공하는 다기준 의사결정 엔진입니다.</p><h2>주요 기능</h2><ul><li>전국 미분양 아파트 비교 분석</li><li>분양 예정 단지 정보</li><li>실거주·투자·신혼·교육·은퇴 프로필별 맞춤 점수</li><li>입지·가격·안전도·미래가치·환경 등 다기준 평가</li></ul><p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p></main></div>`;
+const SKELETON = `<div id="root" class="notranslate"><main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif"><h1>전국 미분양 비교 엔진</h1><p>전국 미분양·분양 예정 아파트를 6개 카테고리 41개 지표로 AHP 점수화하고, 실거주·투자·신혼·교육·은퇴 5가지 사용자 프로필 가중치를 적용해 개인 맞춤 추천을 제공하는 다기준 의사결정 엔진입니다.</p><h2>주요 기능</h2><ul><li>전국 미분양 아파트 비교 분석</li><li>분양 예정 단지 정보</li><li>실거주·투자·신혼·교육·은퇴 프로필별 맞춤 점수</li><li>입지·가격·안전도·미래가치·환경 등 다기준 평가</li></ul><p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p></main></div>`;
 
 // #root 빈 div 를 골격으로 교체. class/속성 순서 변경에 견디게 느슨한 매칭
 // (적대검증 권고 — Vite/Rolldown 미래 버전이 속성을 바꿔도 매치되게).

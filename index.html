@@ -3,11 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- 서드파티 조기 커넥션 (세션 465) — CSS(L42)·kakao SDK(body) 모두 crossorigin 리소스라 crossorigin 매칭 -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="preconnect" href="https://t1.kakaocdn.net" crossorigin />
     <meta name="google" content="notranslate" />
-    <meta name="description" content="전국 미분양 아파트를 6개 카테고리 34개 지표로 비교 분석하는 스마트 비교 엔진" />
+    <meta name="description" content="전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석하는 스마트 비교 엔진" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="미분양 비교 엔진 v3.0" />
-    <meta property="og:description" content="전국 미분양 아파트를 6개 카테고리 34개 지표로 비교 분석" />
+    <meta property="og:description" content="전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석" />
     <meta property="og:url" content="https://www.xn--hg3bi2ac4o1ig57cnoa.com/" />
     <meta property="og:image" content="https://www.xn--hg3bi2ac4o1ig57cnoa.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
@@ -15,7 +18,7 @@
     <meta property="og:locale" content="ko_KR" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="미분양 비교 엔진 v3.0" />
-    <meta name="twitter:description" content="전국 미분양 아파트를 6개 카테고리 34개 지표로 비교 분석" />
+    <meta name="twitter:description" content="전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석" />
     <meta name="twitter:image" content="https://www.xn--hg3bi2ac4o1ig57cnoa.com/og-image.png" />
     <link rel="canonical" href="https://www.xn--hg3bi2ac4o1ig57cnoa.com/" />
     <script type="application/ld+json">
@@ -27,14 +30,14 @@
             "name": "미분양 비교 엔진",
             "alternateName": "전국 미분양 비교 엔진",
             "url": "https://www.xn--hg3bi2ac4o1ig57cnoa.com/",
-            "description": "전국 미분양 아파트를 6개 카테고리 34개 지표로 비교 분석하는 스마트 비교 엔진",
+            "description": "전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석하는 스마트 비교 엔진",
             "inLanguage": "ko-KR"
           },
           {
             "@type": "Organization",
             "name": "미분양 비교 엔진",
             "url": "https://www.xn--hg3bi2ac4o1ig57cnoa.com/",
-            "description": "전국 미분양·분양 예정 아파트를 6개 카테고리 34개 지표로 비교 분석"
+            "description": "전국 미분양·분양 예정 아파트를 6개 카테고리 41개 지표로 비교 분석"
           }
         ]
       }
@@ -51,7 +54,9 @@
   </head>
   <body>
     <div id="root" class="notranslate"></div>
-    <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.8.0/kakao.min.js" crossorigin="anonymous"></script>
+    <!-- defer (세션 465): 파서 블로킹 제거 — defer 클래식은 module(main.tsx)보다 문서 순서상 먼저 실행되어
+         React 마운트(useShare init effect) 시점에 window.Kakao 존재 보장은 기존과 동일 -->
+    <script defer src="https://t1.kakaocdn.net/kakao_js_sdk/2.8.0/kakao.min.js" crossorigin="anonymous"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
