@@ -145,8 +145,8 @@ async function main() {
     writeFileSync(jsonPath, JSON.stringify({ ...rawWrapper, data: updatedData, count: updatedData.length }, null, 2), "utf8");
     log("json", `apartments.json 업데이트 완료 (${updates.length}건)`);
 
-    // split-apartments-json 자동 호출 — prebuild.mjs L11 답습
-    const splitScript = resolve(ROOT, "split-apartments-json.mjs");
+    // split-apartments-json 자동 호출 — prebuild.mjs L11 답습 (ROOT=repo 루트라 scripts/ 명시, 세션 468)
+    const splitScript = resolve(ROOT, "scripts", "split-apartments-json.mjs");
     const splitResult = spawnSync(process.execPath, [splitScript], { stdio: "inherit", env: process.env });
     if (splitResult.status !== 0) logError("split", "split-apartments-json 실패 — apartments-list.json 수동 갱신 필요");
   } else {

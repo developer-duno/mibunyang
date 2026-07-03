@@ -121,10 +121,10 @@
 
 ## 🟡 곧
 
-- 🟡 **랜딩 정적 JSON 15.2MB 슬림 + prices.json 상세 열람 전량 fetch — 설계 1세션 (세션 465 발굴·라이브 실측)**
-  - 라이브 `/data/apartments-list.json` = **raw 15,241,053 bytes / br 전송 1,368,068** (본인 curl 재실측 일치). 필드 합산(워크플로 실측): catsCache 5.34MB(45.7%) + nearbySchools 2.07MB(17.7%) — 목록 화면은 catsCache 의 cat total 6개+price/location subs[0] 만 사용(useDataPipeline:159·AptCard:302-307), 풀 subs·nearbySchools 는 상세 전용. `collect-data.mjs:1018` 설계 의도 'list 1.66MB' 대비 9배 드리프트 (⚠️ **repo 의 public/data 사본은 1.5MB — prebuild 재생성본과 10배 차이**, 배포본이 진실)
-  - prices.json = 12.29MB(단지 1개 보려고 전량 fetch, br 424KB — staticDataApi:83)
-  - 처방 후보: 목록용 catsCache 슬림(시뮬 5.33→0.47MB) + nearbySchools 상세 분리 + prices 버킷 분할. **데이터 파이프라인+DetailModal fetch 경로 동시 변경 = 설계 1세션, 사장님 승인 후**
+- 🟡 **랜딩 정적 JSON 슬림 + 상세 해시 버킷 — PR1 완료(세션 468), 잔여 = PR2 prices 정리**
+  - **완료(세션 468, PR1)**: 공유 빌더 `scripts/static-outputs.mjs`(slimCats·buildListData·buildDetailBuckets — collect-data/split 중복 제거) + list 슬림(catsCache subs 축소 + 상세필드 4개 제거) + 상세 해시 버킷 16개 `apartments-detail-16-{i}.json`(`src/utils/bucketHash.mjs` FNV-1a) + `staticDataApi.fetchApartmentDetail`(버킷 lazy·dedup·content-type 가드·FIFO 8) + DetailModal mergedApt/mergedRes 배선 + 4 collector split spawn 경로 버그 수정. **실측: list raw 15.2→5.92MB / br 1.37MB→361KB, 상세 fetch br 424KB→≤69KB.** 설계 원문 `docs/superpowers/specs/2026-07-03-landing-json-slim-bucket-design.md`
+  - **PR2(1~2주 production 안정 후)**: `apartments-prices.json` 생성 중단(buildPricesData·writeOutputs·split) + `fetchApartmentPrices`/PriceArrays export·관련 테스트(staticDataApi.test.js prices describe·detail-modal-supabase-guard prices route) 정리. PR1 이 구 번들 세션 안전 위해 prices 유지 중이라 즉시 삭제 금지 — index.html no-cache 라 재방문 즉시 신번들, 위험창은 열어둔 장기 세션뿐
+  - 잔여 관찰: 다음 daily-deploy(KST 03:00) run 성공 + 버킷 미커밋(`git log -p --stat public/data`) 확인, production 버킷 라이브(curl 0·15 content-type)
 - 🟡 **분양 알림 발송 — PR1(#229 체계)·PR2(#230 가시성·카피) 완료, 잔여 = PR3 실발송 (세션 467)**
   - 완료(세션 467): `scripts/notify-subscribers.mjs`(접수시작 D-0~7 미래만 × 구독자 매칭 × notification_logs 멱등 dedup, SMS_ADAPTER_READY=false + SOLAPI env 이중 게이트로 계약 전 자동 dry-run) + `notify-subscribers.yml`(주간 월 14:00 KST) + applyhome-detail **주간화**(월 13일→매주 월 12:30, 미래 접수일 0건 진앙 해소) + monitor ⑤ 등재 + admin 구독자·발송로그 화면 + SubscribeForm 카피 "카카오 알림톡 또는 문자" 중립화. 설계 원문 = `~/.claude/plans/467-clever-toast.md`
   - 👤 **notification_logs 마이그 Dashboard SQL Editor 적용 대기** (`supabase/migrations/20260703000000`) — 적용 전에도 구독자 0명이라 발송기는 조기 종료(무해), 첫 구독자 생기기 전 적용

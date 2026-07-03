@@ -92,9 +92,11 @@ schools-neis-errors.txt
 *.docx
 
 # 운영 데이터 (collect-data.mjs Phase 7 출력 — Vercel 정적 자산)
-# 원본 apartments.json 은 추적 유지 (외부 collector 4 파일 호환). 분리 출력 2 파일만 신규 ignore.
+# 원본 apartments.json 은 추적 유지 (외부 collector 4 파일 호환). 분리 출력만 신규 ignore.
 public/data/apartments-list.json
 public/data/apartments-prices.json
+# 상세 해시 버킷 (세션 468) — daily-deploy 가 git add public/data/ 통짜라 미등재 시 매일 커밋됨.
+public/data/apartments-detail-*.json
 
 # 네이버 크롤러 별도 프로젝트
 naver-apt/

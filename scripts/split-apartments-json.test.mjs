@@ -5,9 +5,10 @@
  *       flat array 로 apartments.json 덮어쓰면 split L20 src.data = undefined → 0건 사고.
  */
 import { describe, it, expect } from "vitest";
+import { buildListData } from "./static-outputs.mjs";
 
 describe("split-apartments-json wrapper 검증", () => {
-  it("src.data 배열 정상 접근 → list/prices 분리", () => {
+  it("src.data 배열 정상 접근 → 공유 빌더 buildListData 로 분리 (세션 468)", () => {
     const wrapper = {
       ok: true,
       fetchedAt: "2026-01-01T00:00:00Z",
@@ -27,12 +28,8 @@ describe("split-apartments-json wrapper 검증", () => {
     const apartments = Array.isArray(src.data) ? src.data : [];
     expect(apartments).toHaveLength(1);
 
-    const listData = apartments.map(
-      (/** @type {Record<string, unknown>} */ a) => {
-        const { priceByArea, rentByArea, jeonseByArea, priceByFloor, ...rest } = a;
-        return rest;
-      },
-    );
+    // split-apartments-json.mjs 이 호출하는 실제 빌더로 검증(인라인 복제 아님).
+    const listData = /** @type {any[]} */ (buildListData(apartments));
     expect(listData[0].name).toBe("테스트");
     expect(listData[0]).not.toHaveProperty("priceByArea");
     expect(listData[0]).not.toHaveProperty("rentByArea");

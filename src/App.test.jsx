@@ -152,10 +152,11 @@ function makeTestApartments() {
 // --- 모킹 ---
 
 // staticDataApi: fetchStaticApartments 모킹
-// fetchApartmentPrices: DetailModal(lazy) 마운트 시 priceByArea=undefined 면 fetch 발동 — mock 누락 시 VitestMocker 에러
+// fetchApartmentDetail: DetailModal(lazy) 마운트 시 priceByArea=undefined 면 버킷 fetch 발동 — mock 누락 시 VitestMocker 에러
 vi.mock("@/services/staticDataApi", () => ({
   fetchStaticApartments: vi.fn(),
   fetchApartmentPrices: vi.fn().mockResolvedValue(null),
+  fetchApartmentDetail: vi.fn().mockResolvedValue(null),
 }));
 
 // useUserLocation: 위치 감지 비활성화

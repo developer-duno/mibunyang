@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildListData, buildPricesData, buildDetailBuckets, detailBucketName } from "./static-outputs.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -23,16 +24,18 @@ const fetchedAt = src.fetchedAt ?? null;
 // 세션 292 양쪽 키 박제 답습 — apartments.json 에 dataUpdatedAt 박혀 있으면 우선, 없으면 fetchedAt 답습.
 const dataUpdatedAt = src.dataUpdatedAt ?? fetchedAt;
 
-const listData = apartments.map(({ priceByArea, rentByArea, jeonseByArea, priceByFloor, ...rest }) => rest);
-const pricesData = apartments.map(a => ({
-  id: a.id,
-  priceByArea: a.priceByArea ?? null,
-  rentByArea: a.rentByArea ?? null,
-  jeonseByArea: a.jeonseByArea ?? null,
-  priceByFloor: a.priceByFloor ?? null,
-}));
+// 슬림/버킷 로직은 static-outputs.mjs 단일 소스 — collect-data.mjs writeOutputs 와 동일 호출(세션 468).
+const listData = buildListData(apartments);
+const pricesData = buildPricesData(apartments);
+const detailBuckets = buildDetailBuckets(apartments);
 
 writeFileSync(resolve(DATA_DIR, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt, dataUpdatedAt }));
 writeFileSync(resolve(DATA_DIR, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt, dataUpdatedAt }));
+for (const { bucket, data } of detailBuckets) {
+  writeFileSync(
+    resolve(DATA_DIR, detailBucketName(bucket)),
+    JSON.stringify({ ok: true, n: detailBuckets.length, bucket, data, count: data.length, fetchedAt, dataUpdatedAt })
+  );
+}
 
-console.log(`[split] apartments.json (${apartments.length} 단지) → list + prices 2 파일 분리 완료`);
+console.log(`[split] apartments.json (${apartments.length} 단지) → list + prices + 상세 버킷 ${detailBuckets.length}개 분리 완료`);

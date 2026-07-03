@@ -7,6 +7,7 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
 import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate } from "./collectors/_shared.mjs";
+import { buildListData, buildPricesData, buildDetailBuckets, detailBucketName } from "./static-outputs.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -1014,21 +1015,24 @@ function writeOutputs(apartments, fetchedAt) {
   const outDir = resolve(ROOT, "public/data");
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
-  // list 1.66MB (가격배열 4개 제외) + prices 11.35MB (id + 4 배열) 분리 출력 + 원본 13MB 유지 (롤백 안전)
-  const listData = apartments.map(({ priceByArea, rentByArea, jeonseByArea, priceByFloor, ...rest }) => rest);
-  const pricesData = apartments.map(a => ({
-    id: a.id,
-    priceByArea: a.priceByArea ?? null,
-    rentByArea: a.rentByArea ?? null,
-    jeonseByArea: a.jeonseByArea ?? null,
-    priceByFloor: a.priceByFloor ?? null,
-  }));
+  // list 슬림(가격배열 4개 + 상세필드 제거 + catsCache subs 슬림) + prices(구, PR1 전환기 유지)
+  // + 상세 해시 버킷 N개(catsCache full·학교·가격배열) 분리 출력 + 원본 유지(롤백 안전). 세션 468.
+  // 슬림/버킷 로직은 static-outputs.mjs 단일 소스 — split-apartments-json.mjs 와 동일 호출(드리프트 차단).
+  const listData = buildListData(apartments);
+  const pricesData = buildPricesData(apartments);
+  const detailBuckets = buildDetailBuckets(apartments);
 
   // 양쪽 키 동시 박힘 (세션 292) — staticDataApi.ts L48-50 fallback 의존 제거 + Supabase 분기 응답과 키 정합.
   const output = { ok: true, data: apartments, count: apartments.length, fetchedAt, dataUpdatedAt: fetchedAt };
   writeFileSync(resolve(outDir, "apartments.json"), JSON.stringify(output));
   writeFileSync(resolve(outDir, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
   writeFileSync(resolve(outDir, "apartments-prices.json"), JSON.stringify({ ok: true, data: pricesData, count: pricesData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
+  for (const { bucket, data } of detailBuckets) {
+    writeFileSync(
+      resolve(outDir, detailBucketName(bucket)),
+      JSON.stringify({ ok: true, n: detailBuckets.length, bucket, data, count: data.length, fetchedAt, dataUpdatedAt: fetchedAt })
+    );
+  }
   writeFileSync(resolve(outDir, "meta.json"), JSON.stringify(meta, null, 2));
 }
 

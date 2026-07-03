@@ -81,7 +81,9 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
         Record<string, { interpret?: ((_sc: number) => string) | null; benchmark?: string | null }>
       >
     )[k] || {};
-  const highlights = getHighlights(cat.subs as SubScoreItem[], k);
+  // 슬림 catsCache(목록 JSON)는 price/location 외 subs=[] — 버킷 도착 전 과도기 방어 (세션 468).
+  const subs = (cat.subs ?? []) as SubScoreItem[];
+  const highlights = getHighlights(subs, k);
 
   return (
     <div
@@ -173,7 +175,7 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
 
       {expanded && (
         <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-          {(cat.subs as SubScoreItem[]).map((s: SubScoreItem, i: number) => {
+          {subs.map((s: SubScoreItem, i: number) => {
             const sc = ctx[s.name];
             const dots = getDots(s.score, k, s.name);
             const interp = sc?.interpret?.(s.score);
@@ -181,7 +183,7 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
             return (
               <div
                 key={s.name}
-                style={{ padding: "6px 0", borderBottom: i < cat.subs.length - 1 ? `1px solid ${C.border}` : "none" }}
+                style={{ padding: "6px 0", borderBottom: i < subs.length - 1 ? `1px solid ${C.border}` : "none" }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}</span>

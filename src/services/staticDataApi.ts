@@ -7,6 +7,7 @@
  *   3단계: JSON 제거 (Phase 2 완료 후)
  */
 import type { Apt } from "@/types/scoring";
+import { bucketOf, detailBucketName } from "@/utils/bucketHash.mjs";
 
 const USE_SUPABASE: boolean = import.meta.env.VITE_USE_SUPABASE === "true";
 
@@ -62,6 +63,16 @@ export interface PriceArrays {
   priceByFloor: unknown[] | null;
 }
 
+// 상세 버킷 필드 (세션 468) — 목록 JSON 에서 슬림된 상세 전용 필드 + 가격배열 + full catsCache.
+// DetailModal 이 버킷 1개 fetch 로 한 번에 받아 mergedApt/mergedRes 로 복원.
+export interface AptDetailFields extends PriceArrays {
+  catsCache?: unknown;
+  nearbySchools?: unknown[] | null;
+  nearbyChildcare?: unknown[] | null;
+  nearbyFacilities?: unknown[] | null;
+  benefits?: unknown[] | null;
+}
+
 // DetailModal 첫 열림 시 1회 전체 fetch + 모듈 Map 캐시 (useHistoryData 패턴 답습)
 const pricesCache = new Map<string, PriceArrays>();
 let pricesPromise: Promise<void> | null = null;
@@ -106,4 +117,63 @@ export async function fetchApartmentPrices(id: string): Promise<PriceArrays | nu
     }
   }
   return pricesCache.get(id) ?? null;
+}
+
+// ─── 상세 버킷 lazy fetch (세션 468) ───
+// DetailModal 첫 열림 시 id 해시 버킷 1개만 fetch (br ~69KB). 버킷 단위 Map 캐시 +
+// 버킷별 promise dedup + reject 시 reset(fetchApartmentPrices 패턴 답습).
+// FIFO 상한 8버킷 = 최악 누적 ~7MB (세션 279 모바일 OOM 후순위 메모 대응).
+const DETAIL_CACHE_MAX_BUCKETS = 8;
+const detailCache = new Map<number, Map<string, AptDetailFields>>();
+const detailPromise = new Map<number, Promise<void>>();
+
+// vitest 격리 헬퍼 — 모듈 캐시는 테스트 간 공유되므로 beforeEach 에서 비운다.
+export function _clearDetailCache(): void {
+  detailCache.clear();
+  detailPromise.clear();
+}
+
+function evictOldestBucketIfNeeded(): void {
+  while (detailCache.size > DETAIL_CACHE_MAX_BUCKETS) {
+    const oldest = detailCache.keys().next().value; // Map 삽입 순서 = FIFO
+    if (oldest === undefined) break;
+    detailCache.delete(oldest);
+  }
+}
+
+async function loadDetailBucketOnce(bucket: number): Promise<void> {
+  if (detailCache.has(bucket)) return;
+  // detailPromise 는 **진행 중** 요청만 담는다(dedup 용). 성공/실패 후엔 finally 로 비운다 —
+  // FIFO evict 로 캐시에서 밀려난 버킷의 settled promise 가 남아 재fetch 를 막던 버그 방지(세션 468).
+  const inflight = detailPromise.get(bucket);
+  if (inflight) return inflight;
+  const p = (async () => {
+    const res = await fetch(`/data/${detailBucketName(bucket)}`);
+    if (!res.ok) throw new Error(`Detail bucket fetch failed: ${res.status}`);
+    // vercel.json rewrite `/(.*)→/index.html`: 부재 버킷 URL 은 200 + HTML 을 반환한다.
+    // res.ok 는 통과하므로 content-type 으로 걸러 SyntaxError 대신 명시 throw.
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("json")) throw new Error(`Detail bucket not JSON (content-type: ${ct})`);
+    const json = (await res.json()) as { ok: boolean; data: Array<{ id: string } & AptDetailFields> };
+    if (!json.ok || !Array.isArray(json.data)) throw new Error("Detail bucket data empty");
+    const m = new Map<string, AptDetailFields>();
+    for (const row of json.data) {
+      const { id, ...rest } = row;
+      m.set(id, rest);
+    }
+    detailCache.set(bucket, m);
+    evictOldestBucketIfNeeded();
+  })().finally(() => {
+    detailPromise.delete(bucket);
+  });
+  detailPromise.set(bucket, p);
+  return p;
+}
+
+export async function fetchApartmentDetail(id: string): Promise<AptDetailFields | null> {
+  const bucket = bucketOf(id);
+  if (!detailCache.has(bucket)) {
+    await loadDetailBucketOnce(bucket); // 실패 시 throw — finally 가 이미 promise 비움(재시도 허용)
+  }
+  return detailCache.get(bucket)?.get(id) ?? null;
 }
