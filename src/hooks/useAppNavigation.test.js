@@ -36,6 +36,7 @@ function makeArgs(override = {}) {
     detail: { setDetailAptId: vi.fn() },
     compIds: [],
     setShowCompOpen: vi.fn(),
+    setFavoriteIds: vi.fn(),
     showToast: vi.fn(),
     budgetMin: null,
     budgetMax: null,
@@ -117,13 +118,19 @@ describe("useAppNavigation", () => {
     expect(args.setTab).toHaveBeenCalledWith("info");
   });
 
-  // handleConsultFromDetail → 관심단지 추가 + 상세 닫기 + consult 탭
-  it("handleConsultFromDetail: 관심단지 추가 후 consult 탭으로 전환한다", () => {
+  // handleConsultFromDetail → 관심 단지(favorites) 추가 + 상세 닫기 + consult 탭
+  // 세션 465: 상담 폼 표시·검증·제출이 favoriteIds 기준이라 setConsultForm 이 아닌 setFavoriteIds 경유
+  it("handleConsultFromDetail: 관심 단지에 추가 후 consult 탭으로 전환한다", () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
     result.current.handleConsultFromDetail("apt-3");
-    expect(args.consult.setConsultForm).toHaveBeenCalledTimes(1);
+    expect(args.setFavoriteIds).toHaveBeenCalledTimes(1);
+    // 함수형 업데이트 — 미포함 시 추가, 이미 있으면 그대로
+    const updater = args.setFavoriteIds.mock.calls[0][0];
+    expect(updater(["apt-1"])).toEqual(["apt-1", "apt-3"]);
+    expect(updater(["apt-3"])).toEqual(["apt-3"]);
+    expect(args.consult.setConsultForm).not.toHaveBeenCalled();
     expect(args.detail.setDetailAptId).toHaveBeenCalledWith(null);
     expect(args.setTab).toHaveBeenCalledWith("consult");
   });

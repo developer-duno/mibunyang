@@ -306,6 +306,7 @@ export default function App() {
     detail,
     compIds,
     setShowCompOpen,
+    setFavoriteIds,
     showToast,
     budgetMin,
     budgetMax,

@@ -386,6 +386,8 @@ export interface UseAppNavigationArgs {
   };
   compIds: string[];
   setShowCompOpen: (_v: boolean) => void;
+  /** 상세→상담하기 시 해당 단지를 관심 단지에 추가 (useFavorites.setFavoriteIds, 세션 465) */
+  setFavoriteIds: (_idsOrFn: string[] | ((_prev: string[]) => string[])) => void;
   showToast: (_msg: string) => void;
   budgetMin: string | number | null;
   budgetMax: string | number | null;
