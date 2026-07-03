@@ -67,7 +67,7 @@ export const SubscribeForm = memo(function SubscribeForm({ defaultRegion, defaul
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || "신청 실패");
 
-        setMessage({ type: "success", text: "알림 신청 완료! 분양 시작 시 카카오톡으로 안내드립니다." });
+        setMessage({ type: "success", text: "알림 신청 완료! 분양 시작 시 카카오 알림톡 또는 문자로 안내드립니다." });
         setPhone("");
         setConsent(false);
         trackEvent("subscriber_signup", { region, hasApt: !!defaultApt });
@@ -88,7 +88,7 @@ export const SubscribeForm = memo(function SubscribeForm({ defaultRegion, defaul
     >
       <div style={{ fontSize: F.md, fontWeight: 700, color: C.red, marginBottom: 6 }}>🔔 분양 시작 알림 받기</div>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
-        관심 지역의 분양 시작 시 카카오 알림톡으로 알려드립니다. (수신 거부 언제든 가능)
+        관심 지역의 분양 시작 시 카카오 알림톡 또는 문자로 알려드립니다. (수신 거부 언제든 가능)
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -168,8 +168,8 @@ export const SubscribeForm = memo(function SubscribeForm({ defaultRegion, defaul
           style={{ marginTop: 2, minWidth: 16, minHeight: 16 }}
         />
         <span>
-          휴대폰 번호로 분양 시작 알림(카카오 알림톡)을 받는 데 동의합니다. 개인정보보호 정책에 따라 보관·관리되며,
-          언제든지 알림을 거부할 수 있습니다.
+          휴대폰 번호로 분양 시작 알림(카카오 알림톡 또는 문자)을 받는 데 동의합니다. 개인정보보호 정책에 따라
+          보관·관리되며, 언제든지 알림을 거부할 수 있습니다.
         </span>
       </label>
 

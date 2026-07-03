@@ -7,6 +7,7 @@ import { STATUS_TABS } from "./constants";
 import { StatsSection } from "./StatsSection";
 import { CollectorMonitoring } from "./CollectorMonitoring";
 import { AdminConsults } from "./AdminConsults";
+import { AdminSubscribers } from "./AdminSubscribers";
 import { UserList } from "./UserList";
 import type { AdminDashboardProps } from "@/types/components/AdminDashboard.types";
 
@@ -92,6 +93,9 @@ export const AdminDashboard = memo(function AdminDashboard({
 
       {/* Consults Section (세션 405 구 expertConsults 탭 이관) */}
       <AdminConsults aptNames={aptNames} />
+
+      {/* Subscribers Section (세션 467 — 분양 알림 구독자·발송 로그) */}
+      <AdminSubscribers />
 
       {/* Members Section (세션 405 "전문가 신청 관리" 개명 — 카카오 손님 목록·계정 정지 겸용) */}
       <div style={{ marginBottom: 12 }}>
