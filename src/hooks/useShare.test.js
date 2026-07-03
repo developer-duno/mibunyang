@@ -82,6 +82,22 @@ describe("useShare", () => {
     expect(result.current.shareSheetOpen).toBe(false);
   });
 
+  // 세션 465 defer 대응: 마운트 시점에 SDK 부재(마운트 init effect 미발동)여도
+  // 공유 시점 가드가 call-time 상태를 보므로 SDK 도착 후 공유는 정상 동작
+  it("shareKakao: 마운트 때 SDK 부재 → 공유 시점 도착이면 정상 공유 (defer 로드 대응)", () => {
+    delete window.Kakao;
+    const { result } = renderHook(() => useShare(showToast));
+    window.Kakao = kakao; // defer 스크립트 로드 완료 시뮬
+    act(() => {
+      result.current.openShareSheet({ title: "t", text: "x", url: "https://x.com" });
+    });
+    act(() => {
+      result.current.shareKakao();
+    });
+    expect(kakao.Share.sendDefault).toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalledWith(expect.stringContaining("카카오 SDK"));
+  });
+
   it("shareCopy: clipboard 성공 → 토스트", async () => {
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
     const { result } = renderHook(() => useShare(showToast));
