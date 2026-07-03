@@ -114,3 +114,6 @@ OpenAPI서비스명세서_*.doc
 
 # Playwright MCP 스냅샷 산출물 (세션 414)
 .playwright-mcp/
+
+# 네이버 수집기 중복 실행 방지 락 (filelock, 세션 470 — 런타임 산출물)
+.naver-collect.lock

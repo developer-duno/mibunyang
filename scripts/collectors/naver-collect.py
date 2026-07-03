@@ -8,6 +8,15 @@ try:
     from curl_cffi import requests as cffi_requests
 except ImportError: print("pip install curl_cffi",file=sys.stderr);sys.exit(1)
 import httpx
+from filelock import FileLock, Timeout  # 중복 실행 방지 (tox-dev/filelock, stale-lock 자동 처리)
+
+# stdout/stderr 을 UTF-8 로 강제 — Windows 기본 cp949 콘솔에서 한글 print 가
+# UnicodeEncodeError 로 죽는 것 방지(세션 470). 배치의 chcp 65001 에 의존하지 않게 코드에서 고정.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass  # reconfigure 미지원 환경(구 파이썬 등)은 무시 — 있으면 적용, 없으면 기존 동작
 
 ROOT=Path(__file__).resolve().parent.parent.parent
 for ef in [".env.local",".env"]:
@@ -198,6 +207,8 @@ def main():
     pa.add_argument("--limit",type=int,default=0)
     pa.add_argument("--dry-run",action="store_true")
     pa.add_argument("--proxy",type=str,default="")
+    # --no-resume: 오늘 이미 받은 단지도 강제 재수집 (기본은 resume ON = 오늘 받은 단지 건너뜀)
+    pa.add_argument("--no-resume",action="store_true")
     a=pa.parse_args()
     global ss
     proxy_url=a.proxy or os.environ.get("NAVER_PROXY","")
@@ -209,6 +220,21 @@ def main():
     apts=SB.select("apartments","id,name,region,gu,dong,lat,lng",["lat=not.is.null","lng=not.is.null"])
     tgt=apts[:a.limit] if a.limit>0 else apts
     log(f"미분양 {len(tgt)}건 (전체 {len(apts)})")
+    # resume: 오늘(KST) 이미 last_seen_at 이 찍힌 complex_no = 이번 사이클에 이미 수집됨 → 매물·시세 skip.
+    # 멈췄다 재시도(스케줄러 10분 후) 시 이어서 돌게 함. 다음 발화(월/목)는 날짜가 바뀌어 전부 재수집 = 신선도 유지.
+    # DB(articles.last_seen_at)가 진실의 원천 → 체크포인트 파일 동기화 사고 없음(세션 470, schools buildEnrichedIds 답습).
+    done_cx=set()
+    if not a.dry_run and not a.no_resume:
+        # 저장부(L~310 last_seen_at=datetime.now().isoformat())와 동일한 datetime.now() 축을 써서
+        # 시간축 일관성 보장 — 저장·조회 둘 다 로컬 벽시계(집서버=KST) 기준이라 "같은 날짜"로 일치.
+        # (timestamptz 컬럼이 +00:00 딱지를 붙여도 숫자가 같은 축이라 날짜 비교 정확. 저장부가 바뀌면 함께 바꿀 것.)
+        today=datetime.now().strftime("%Y-%m-%d")
+        try:
+            seen_rows=SB.select("articles","complex_no",[f"last_seen_at=gte.{today}T00:00:00","is_active=eq.true"])
+            done_cx={str(r["complex_no"]) for r in seen_rows if r.get("complex_no")}
+            if done_cx:log(f"resume: 오늘 이미 수집한 {len(done_cx)}개 단지 건너뜀 (매물·시세)")
+        except Exception as e:
+            log(f"resume 조회 실패 — 전체 수집으로 진행(fail-open): {e}");done_cx=set()
     # region -> gu cortarNo 캐시
     gu_cache={}
     for rn,cc in REGION_CORTAR.items():
@@ -268,6 +294,7 @@ def main():
     for i,cx in enumerate(cpxs):
         if(i+1)%50==0:log(f"  {i+1}/{len(cpxs)}, {ta}매물")
         cn=cx["complex_no"]
+        if cn in done_cx:continue  # resume: 오늘 이미 수집한 단지 매물 건너뜀
         try:
             sa=set();arts=[];pg=1
             while True:
@@ -301,6 +328,7 @@ def main():
     for i,cx in enumerate(cpxs):
         if(i+1)%50==0:log(f"  시세{i+1}/{len(cpxs)},{tp}")
         cn=cx["complex_no"]
+        if cn in done_cx:continue  # resume: 오늘 이미 수집한 단지 시세 건너뜀
         try:
             rows=[]
             for tt in["A1","B1"]:
@@ -337,4 +365,14 @@ def main():
     log("완료!")
 
 if __name__=="__main__":
-    main()
+    # 중복 실행 방지 — 이미 다른 수집기가 돌고 있으면 즉시 정상 종료(좀비 더미 차단, 세션 470).
+    # timeout=0: 락이 이미 잡혀 있으면 기다리지 않고 바로 Timeout. 프로세스 죽으면 OS 파일락 자동 해제.
+    _lock=FileLock(str(ROOT/".naver-collect.lock"),timeout=0)
+    try:
+        _lock.acquire()
+    except Timeout:
+        log("이미 다른 네이버 수집기가 실행 중 — 중복 방지로 종료");sys.exit(0)  # exit 0 = 정상(겹침 회피는 실패 아님)
+    try:
+        main()
+    finally:
+        _lock.release()
