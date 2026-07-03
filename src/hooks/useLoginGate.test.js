@@ -57,7 +57,26 @@ describe("useLoginGate", () => {
     });
 
     expect(result.current.showLoginPrompt).toBe(false);
-    expect(kakao.initKakaoLogin).toHaveBeenCalledWith("77");
+    // 세션 469: initKakaoLogin 2인자 — detail 게이트라 pendingTab=null
+    expect(kakao.initKakaoLogin).toHaveBeenCalledWith("77", null);
+  });
+
+  // 세션 469: map 게이트 → initKakaoLogin(null, "map") — 로그인 후 지도 복귀
+  it('map trigger → 카카오 시작 시 pendingTab="map" 전달 (지도 복귀)', () => {
+    const kakao = { initKakaoLogin: vi.fn() };
+    const { result } = renderHook(() => useLoginGate(makeDeps({ kakao })));
+
+    // App 의 onLoginRequired 경로 재현: loginTrigger="map" 세팅
+    act(() => {
+      result.current.setLoginTrigger("map");
+      result.current.setShowLoginPrompt(true);
+    });
+    act(() => {
+      result.current.handleKakaoFromPrompt();
+    });
+
+    expect(result.current.showLoginPrompt).toBe(false);
+    expect(kakao.initKakaoLogin).toHaveBeenCalledWith(null, "map");
   });
 
   // 세션 405: 모달은 카카오 단독 — handleExpertFromPrompt 제거 가드 (관리자 입구 = InfoPage 링크)

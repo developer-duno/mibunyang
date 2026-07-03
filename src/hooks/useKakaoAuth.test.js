@@ -172,4 +172,45 @@ describe("useKakaoAuth", () => {
     expect(sessionStorage.getItem("kakao_oauth_state")).toBeNull();
     expect(showToast).toHaveBeenCalled();
   });
+
+  // 세션 469: initKakaoLogin 2번째 인자(pendingTab)를 sessionStorage 에 저장한다
+  it("initKakaoLogin(null, 'map') 은 kakao_pending_tab 을 저장한다", async () => {
+    const { result } = await renderKakaoHook();
+
+    act(() => {
+      result.current.initKakaoLogin(null, "map");
+    });
+
+    expect(sessionStorage.getItem("kakao_pending_tab")).toBe("map");
+  });
+
+  // 세션 469: pendingTab 없이 로그인 시작하면 kakao_pending_tab 을 저장하지 않는다
+  it("initKakaoLogin 을 pendingTab 없이 호출하면 kakao_pending_tab 미저장", async () => {
+    const { result } = await renderKakaoHook();
+
+    act(() => {
+      result.current.initKakaoLogin("apt-1");
+    });
+
+    expect(sessionStorage.getItem("kakao_pending_tab")).toBeNull();
+    expect(sessionStorage.getItem("kakao_pending_detail")).toBe("apt-1");
+  });
+
+  // 세션 469: 콜백 성공 시 kakao_pending_tab 을 반환하고 1회용으로 제거한다
+  it("콜백 성공 시 kakao_pending_tab 을 pendingTab 으로 반환하고 제거한다", async () => {
+    const { result } = await renderKakaoHook();
+    sessionStorage.setItem("kakao_oauth_state", "st-1");
+    sessionStorage.setItem("kakao_pending_tab", "map");
+    setCallbackUrl("code=auth-code&state=st-1");
+
+    /** @type {import('@/types/hooks').KakaoCallbackResult} */
+    let response = /** @type {any} */ (undefined);
+    await act(async () => {
+      response = await result.current.handleKakaoCallback();
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.pendingTab).toBe("map");
+    expect(sessionStorage.getItem("kakao_pending_tab")).toBeNull();
+  });
 });

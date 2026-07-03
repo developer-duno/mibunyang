@@ -25,9 +25,9 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
     showToastRef.current = showToast;
   }, [showToast]);
 
-  /** 카카오 인가 URL로 이동 (pendingDetailId: 로그인 후 복귀할 상세 ID) */
+  /** 카카오 인가 URL로 이동 (pendingDetailId: 복귀할 상세 ID / pendingTab: 복귀할 탭, 예 "map" — 세션 469) */
   const initKakaoLogin = useCallback(
-    (pendingDetailId?: string | null) => {
+    (pendingDetailId?: string | null, pendingTab?: string | null) => {
       if (!KAKAO_REST_KEY) {
         showToastRef.current("카카오 로그인을 사용할 수 없습니다");
         return;
@@ -39,6 +39,7 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
       try {
         sessionStorage.setItem("kakao_oauth_state", state);
         if (pendingDetailId) sessionStorage.setItem("kakao_pending_detail", pendingDetailId);
+        if (pendingTab) sessionStorage.setItem("kakao_pending_tab", pendingTab);
       } catch {
         /* sessionStorage 접근 실패 시 무시 */
       }
@@ -115,11 +116,14 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
       const data = await res.json();
 
       if (data.ok) {
-        // pendingDetail 복원
+        // pendingDetail / pendingTab 복원 (세션 469 — 지도 등 탭 복귀)
         let pendingDetail = null;
+        let pendingTab = null;
         try {
           pendingDetail = sessionStorage.getItem("kakao_pending_detail");
           sessionStorage.removeItem("kakao_pending_detail");
+          pendingTab = sessionStorage.getItem("kakao_pending_tab");
+          sessionStorage.removeItem("kakao_pending_tab");
         } catch {
           /* noop: sessionStorage 미가용 무시 */
         }
@@ -130,6 +134,7 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
           user: data.user,
           role: data.role || "user",
           pendingDetail,
+          pendingTab,
           needsMarketingConsent: !!data.needsMarketingConsent,
           consentMarketing: data.consentMarketing ?? null,
         };

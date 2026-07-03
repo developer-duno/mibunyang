@@ -115,6 +115,42 @@ describe("useKakaoCallbackEffect", () => {
     expect(args.recordView).not.toHaveBeenCalled();
   });
 
+  // 세션 469: pendingTab="map" 이면 로그인 후 지도 탭으로 복귀 (홈 착지 덮음)
+  it("user 로그인 + pendingTab='map' 이면 지도 탭으로 복귀한다", async () => {
+    const args = makeArgs({ ok: true, token: "t", role: "user", pendingTab: "map" });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(args.setTab).toHaveBeenCalledWith("map");
+    });
+    expect(args.setTab).not.toHaveBeenCalledWith("list");
+    expect(args.setTab).not.toHaveBeenCalledWith("home");
+  });
+
+  // 세션 469: VITE_FEATURE_HOME=true 여도 pendingTab="map" 이 홈 착지를 이긴다
+  it("VITE_FEATURE_HOME=true + pendingTab='map' → 홈이 아니라 지도 탭", async () => {
+    vi.stubEnv("VITE_FEATURE_HOME", "true");
+    const args = makeArgs({ ok: true, token: "t", role: "user", pendingTab: "map" });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(args.setTab).toHaveBeenCalledWith("map");
+    });
+    expect(args.setTab).not.toHaveBeenCalledWith("home");
+    vi.unstubAllEnvs();
+  });
+
+  // 세션 469: admin 은 pendingTab 이 있어도 admin 탭 우선 (별도 if 분기라 충돌 없음)
+  it("admin + pendingTab='map' 이어도 admin 탭 우선 (map 무시)", async () => {
+    const args = makeArgs({ ok: true, token: "t", role: "admin", pendingTab: "map" });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(args.setTab).toHaveBeenCalledWith("admin");
+    });
+    expect(args.setTab).not.toHaveBeenCalledWith("map");
+  });
+
   // VITE_FEATURE_HOME ON: 일반 유저 착지가 home (로그인 직후 홈 = 지도 위젯 열린 첫 경험, spec §1)
   it("VITE_FEATURE_HOME=true 면 user 로그인 착지가 home 이다", async () => {
     vi.stubEnv("VITE_FEATURE_HOME", "true");

@@ -68,4 +68,22 @@ describe("LoginPromptModal", () => {
     render(<LoginPromptModal {...makeProps({ trigger: undefined })} />);
     expect(track).toHaveBeenCalledWith("login_prompt_shown", { trigger: "unknown" });
   });
+
+  // 세션 469: trigger 별 카피 분기 (body 는 <br/> 로 분리된 텍스트 노드라 부분일치 매처 사용)
+  it('trigger="map" → 지도 카피 렌더', () => {
+    render(<LoginPromptModal {...makeProps({ trigger: "map" })} />);
+    expect(screen.getByText(/지도에서 단지 위치와 시세를/)).toBeTruthy();
+    expect(screen.queryByText(/점수 분석과 상세 정보를/)).toBeNull();
+  });
+
+  it('trigger="detail" → 기존 상세 카피 렌더', () => {
+    render(<LoginPromptModal {...makeProps({ trigger: "detail" })} />);
+    expect(screen.getByText(/점수 분석과 상세 정보를/)).toBeTruthy();
+    expect(screen.queryByText(/지도에서 단지 위치와 시세를/)).toBeNull();
+  });
+
+  it("trigger 미전달(null) → 기본(상세) 카피 재사용", () => {
+    render(<LoginPromptModal {...makeProps({ trigger: undefined })} />);
+    expect(screen.getByText(/점수 분석과 상세 정보를/)).toBeTruthy();
+  });
 });
