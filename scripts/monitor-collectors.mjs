@@ -180,6 +180,9 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "transport-tago",  stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 38, owner: "청약홈 분양일정·평형 (월 13일 cron + 1주 여유)" },
+  // applyhome-seed: ok=신규 등록 수 — 신규 공고 0건 주간 3연속이면 ⑤-a "빈 성공" 경보 가능(주평균 ~7건이라
+  //   드묾). 발화해도 "신규 무순위 3주째 0" 자체가 유의미 신호라 수용 (세션 466 plan 명시).
+  { collector: "applyhome-seed",   stale_days: 14, owner: "청약홈 무순위 신규 ah-* seeding (주간 월 cron)" },
   // maintenance = 국토부 공동주택 관리비 (collect-maintenance.yml, 월 15~19일 5일 연속 cron — 세션 450). cancelled
   //   run 은 recordCollectorRun 전에 죽어 collector_runs 행 0건 → ③ 워크플로 점검은 GH created_at 으로 "신선" 마스킹.
   //   ⑤-b 미발화 분기(collector_runs.finished_at 기준)가 유일하게 "데이터 N일 stale" 을 잡음 (세션 447).

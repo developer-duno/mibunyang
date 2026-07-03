@@ -17,6 +17,12 @@
 보정 대상: `units <= 1` 또는 `unsold_rate >= 100%`인 단지.
 보정 시 `unsold_rate` 재계산: `ROUND(unsold / new_units * 100, 1)`.
 
+**신규 ah-* seeding (세션 466)**: `collect-applyhome-seed.mjs` (collect-applyhome.yml 앞단 스텝, 주간 월)가
+`getRemndrLttotPblancDetail` 로스터 부재 + 공고일≥since(기본 2026-03-14) 공고를 INSERT. 현행 API 에
+REMNDR_HSHLDCO 부재라 **units=unsold=회차 공급분, unsold_rate=100** 으로 박아 molit-units 보정 대상에
+의도적으로 편입 (월/목 로컬 파이프라인 + 매월 6일 cron 이 실제 세대수로 정정). 등록 전 좌표 정밀 중복
+게이트(이름 유사도 0.85 + region + 좌표 500m — 사장님 결정)로 기존 ap-*/ah-* 물리 중복 차단.
+
 **세대수 필드 = kaptdaCnt 우선, 0이면 hoCnt(호수) 폴백** (세션 444 `resolveUnits()`): 국토부
 `getAphusBassInfoV4` 응답에서 `kaptdaCnt`(공동주택 세대수)를 우선 쓰되, 임의공급·계약취소·블록
 단위 등 특수 물량은 `kaptdaCnt=0` 으로 응답하므로 `hoCnt`(호수)로 폴백한다. `kaptdaCnt>1` 인
