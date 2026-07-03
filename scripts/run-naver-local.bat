@@ -1,25 +1,19 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >/dev/null
-echo [%date% %time%] 네이버 수집 시작 >> "%~dp0..
-aver-collect.log"
-
+chcp 65001 >nul
 cd /d "%~dp0.."
+set "LOG=%~dp0..\naver-collect.log"
+echo [%date% %time%] naver collect start >> "%LOG%"
 
-:: .env.local 환경변수 로드
-if exist .env.local (
-  for /f "usebackq tokens=1,* delims==" %%a in (".env.local") do (
-    set "line=%%a"
-    if not "!line:~0,1!"=="#" (
-      set "%%a=%%b"
-    )
-  )
-)
+REM env is loaded by each step itself (naver-collect.py has its own .env.local parser;
+REM every .mjs calls _shared.mjs loadEnv). No batch env pre-load needed.
+REM Session 470 fix: the old "for /f delims==" loop mis-parsed .env.local and poisoned
+REM os.environ with truncated values -> Python kept them (only-if-unset) -> SUPABASE
+REM missing -> exit 1 -> whole pipeline failed. Removed. Also converted file to CRLF and
+REM ASCII-only comments (chcp 65001 + Korean :: comments made cmd.exe mis-parse lines).
 
-echo === 1/6 네이버 매물 수집 (Python) ===
-:: 세션118 긴급 완화 (cooldown_fix.md ③): Python 런처 폴백 복구
-:: MIBUNYANG_PYTHON env가 설정돼 있으면 그걸 사용, 아니면 py -3 런처로
-:: 고정(단일 `python` 명령은 Windows Store stub 루프 차단 위험 존재).
+echo === 1/6 naver listing collect (Python) ===
+REM Session 118: use MIBUNYANG_PYTHON if set, else py -3 (avoid Windows Store stub loop).
 if defined MIBUNYANG_PYTHON (
   set "PY_CMD=%MIBUNYANG_PYTHON%"
 ) else (
@@ -27,46 +21,45 @@ if defined MIBUNYANG_PYTHON (
 )
 %PY_CMD% scripts/collectors/naver-collect.py
 if errorlevel 1 (
-  echo [%date% %time%] ERROR: naver-collect.py 실패 >> "%~dp0..\naver-collect.log"
+  echo [%date% %time%] ERROR: naver-collect.py failed >> "%LOG%"
   exit /b 1
 )
 
-echo === 2/6 네이버→아파트 동기화 ===
+echo === 2/6 sync naver -> apartments ===
 call node scripts/collectors/sync-naver-complex.mjs
 if errorlevel 1 (
-  echo [%date% %time%] ERROR: sync-naver-complex.mjs 실패 >> "%~dp0..\naver-collect.log"
+  echo [%date% %time%] ERROR: sync-naver-complex.mjs failed >> "%LOG%"
   exit /b 1
 )
 
-echo === 3/6 네이버 분양정보 수집 (pre.land) ===
+echo === 3/6 naver presale info (pre.land) ===
 call node scripts/collectors/naver-presale.mjs
 if errorlevel 1 (
-  echo [%date% %time%] WARNING: naver-presale.mjs 실패 (비필수) >> "%~dp0..\naver-collect.log"
+  echo [%date% %time%] WARNING: naver-presale.mjs failed (non-fatal) >> "%LOG%"
 )
-:: errorlevel 명시적 리셋 (후속 단계 오탐 방지)
+REM reset errorlevel so a non-fatal WARNING above does not fail the next step
 verify >nul
 
-echo === 4/6 세대수 보정 (molit-units, 세션89 교체) ===
+echo === 4/6 units correction (molit-units) ===
 call node scripts/collectors/molit-units.mjs
 if errorlevel 1 (
-  echo [%date% %time%] WARNING: molit-units.mjs 실패 (비필수, 계속 진행) >> "%~dp0..\naver-collect.log"
+  echo [%date% %time%] WARNING: molit-units.mjs failed (non-fatal) >> "%LOG%"
 )
-:: errorlevel 명시적 리셋 (후속 5/6 오탐 방지)
+REM reset errorlevel
 verify >nul
 
-echo === 5/6 전용률 계산 ===
+echo === 5/6 exclusive ratio ===
 call node scripts/collectors/calc-exclusive-ratio.mjs
 if errorlevel 1 (
-  echo [%date% %time%] ERROR: calc-exclusive-ratio.mjs 실패 >> "%~dp0..\naver-collect.log"
+  echo [%date% %time%] ERROR: calc-exclusive-ratio.mjs failed >> "%LOG%"
   exit /b 1
 )
 
-echo === 6/6 스코어 재계산 ===
+echo === 6/6 recompute scores ===
 call node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs
 if errorlevel 1 (
-  echo [%date% %time%] WARNING: compute-scores.mjs 실패 (비필수) >> "%~dp0..\naver-collect.log"
+  echo [%date% %time%] WARNING: compute-scores.mjs failed (non-fatal) >> "%LOG%"
 )
 
-echo [%date% %time%] 네이버 수집 완료 >> "%~dp0..
-aver-collect.log"
-echo 완료!
+echo [%date% %time%] naver collect done >> "%LOG%"
+echo Done!
