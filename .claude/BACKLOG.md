@@ -52,6 +52,12 @@
 
 ## 🔴 즉시
 
+- 🔴 **신규 단지 유입 양대 경로 동시 사망 — 재고 신선도 3개월 동결 (세션 465 발굴·전건 라이브 실측)**
+  - **(a) 로컬 네이버 파이프라인 정지 (~4/13부터)**: 이 PC 스케줄러에 `MibunyangNaverCollect`(월/목 08:00) 작업 **부재** — Childcare(04:30)·Kosis(05:30)만 존재. 마지막 로그 `scripts/naver-collect-20260413.log`(4/13) / `post-naver-collect.log`(4/11). `apartments` ap-* 최신 created_at = **2026-04-07** 동결. 추정 원인 = 4월 PC 이동 시 재등록 누락(KOSIS/childcare 는 세션 288~289·399 에 이 PC 재등록, naver 는 누락). **복구 = `powershell -ExecutionPolicy Bypass -File scripts/register-naver-task.ps1` 1회** (사장님 승인 후)
+  - **(b) naver-presale 침묵**: `collector_runs` retention(5/16~) 내 presale 행 **0건** — (a)의 결과이자, `run-naver-local.sh:33` `|| echo "WARNING"` 이 실패를 삼켜 재가동 후에도 실패가 안 보임. 재가동 후 1회 수동 실행으로 raw 에러 확정 + monitor ⑤ 등재 검토
+  - **(c) 청약홈 무순위 신규 공고 113건 미유입**: ah-* 로스터 3/14 동결(1481건) + `collect-applyhome.mjs` 는 기존 단지만 UPDATE(로스터 부재 = skip) + 신규 ah-* 생성 경로 현존 0 (`collect-data.mjs` Supabase 쓰기 0건 + daily-deploy `--from-supabase-only`). **세션 465 독립 재실측**: detail API(getRemndrLttotPblancDetail, MOLIT_KEY HTTP 200) 고유 1608 중 로스터 부재 608, 공고일≥3/14 = **113건**(해운대 마티안 디 에디션 7/1·오남역 서희스타힐스 7/1 등). 처방 후보 = 주간 수집 앞단에 신규 ah-* seeding 단계 — 단 **네이버 ap-* 단지와 물리 중복 dedup 정책 사장님 결정 선행**
+  - 영향: 미분양·무순위 전문 서비스의 신상품 유입이 ~3개월 0. 수집기는 매주 success 라 monitor 로 안 잡히는 silent gap. (a)는 1명령 복구, (c)는 설계 1세션
+
 (세션 414 종결: 세션 413 실서비스 검증 + 통합 홈 production ON. 사장님 "실서비스 검증 먼저" → Playwright 라이브 비로그인 검증[게이트 3경로·analytics 200 실측 통과] → 사장님 "통합 홈 켜줘" → `VITE_FEATURE_HOME=true` Vercel production add + 재배포[dpl READY·peach alias] → 라이브 home-grid·home_widget_expand 200 재검증. 다음 진입 후보 = 작업 가능 미해결 항목 소진 상태 → 사장님 신규 방향 지시 대기. eslint 10[🔴 upstream 차단·9.39.4 정상동작]·avg_price[ADR 1-A 보류]·supplyRatio[MOLIT 외부 사고]는 우리 작업 불가. 👤 사장님 잔여 = 지도 위치보존 3항목 수동검증[로그인 필요]·`/api/consults 500` 확인·analytics 대시보드 수신)
 
 - 🟡 **/api/consults 500 검증 잔여** (세션 406 발견·조치 — 사장님 스크린샷 콘솔에서 관리자 대시보드 500 확인)
@@ -79,7 +85,8 @@
   - "cancelled 줄이려 분리"는 메모리 룰 `timeout-rootcause-policy.md` 경고 "큐 막힘 환각". 대안 = cron 시각 분산(KST 05:00 13개 동시 발화 → 분산, 별 검토)
 
 - 🟡 **reusable workflow(workflow_call) 추출 (세션 344 발견, P2, 별 세션)**
-  - 38개 collect-*.yml 중 30개 표준형(checkout→setup-node@v5→npm ci→Validate secrets→collect)이 ~9K줄 보일러플레이트 중복. workflow_call 0건
+  - ~~38개 collect-*.yml ~9K줄~~ → **세션 465 실측 정정: collect-*.yml 27개 / 합계 1,525줄 / workflow_call 여전히 0건** (KOSIS 로컬 이전 세션 288-289 + 개명/폐기 세션 308·453 누적으로 모수 1/6 축소 — "큰 작업" 판정 근거 stale, 진입 시 ROI 재산정)
+  - (원문) 표준형(checkout→setup-node@v5→npm ci→Validate secrets→collect) 보일러플레이트 중복. workflow_call 0건
   - 위험: `audit-env-keys.mjs` 3-way secret 검증(`secret-naming-audit.md` 룰)이 reusable 구조와 충돌 → audit 리팩토링 동반(extractReusableWorkflowCalls 추가)
   - 범위: Phase 1(30 표준형)만 먼저. Group C(naver-listings 4-step / building-info Saturday fallback 등 8개)는 제외. 큰 작업
 
@@ -111,6 +118,20 @@
 
 ## 🟡 곧
 
+- 🟡 **랜딩 정적 JSON 15.2MB 슬림 + prices.json 상세 열람 전량 fetch — 설계 1세션 (세션 465 발굴·라이브 실측)**
+  - 라이브 `/data/apartments-list.json` = **raw 15,241,053 bytes / br 전송 1,368,068** (본인 curl 재실측 일치). 필드 합산(워크플로 실측): catsCache 5.34MB(45.7%) + nearbySchools 2.07MB(17.7%) — 목록 화면은 catsCache 의 cat total 6개+price/location subs[0] 만 사용(useDataPipeline:159·AptCard:302-307), 풀 subs·nearbySchools 는 상세 전용. `collect-data.mjs:1018` 설계 의도 'list 1.66MB' 대비 9배 드리프트 (⚠️ **repo 의 public/data 사본은 1.5MB — prebuild 재생성본과 10배 차이**, 배포본이 진실)
+  - prices.json = 12.29MB(단지 1개 보려고 전량 fetch, br 424KB — staticDataApi:83)
+  - 처방 후보: 목록용 catsCache 슬림(시뮬 5.33→0.47MB) + nearbySchools 상세 분리 + prices 버킷 분할. **데이터 파이프라인+DetailModal fetch 경로 동시 변경 = 설계 1세션, 사장님 승인 후**
+- 🟡 **상담·알림 카피 방침 결정 (세션 465 발굴 — 사장님 방침 필요, 코드 5분)**
+  - **상담 성공 화면 자기모순**: '전문 컨설턴트가 24시간 내 연락드립니다'(ConsultForm:70) 바로 아래 '* 본 서비스는 데모 버전입니다. 실제 상담 연결은 정식 출시 후 제공'(:82, 폼에도 :161) 동시 표시. 실명+전화 동의 받는 화면의 신뢰 문제 — 실운영이면 데모 문구 2곳 삭제 / 데모 유지면 '24시간 연락'을 '정식 출시 후 순차 연락'으로 (FAQ '전문가가 연락' 동기)
+  - **/upcoming 알림 발송 미구현**: SubscribeForm '분양 시작 시 카카오 알림톡으로 알려드립니다'(:91)·'카카오톡으로 안내드립니다'(:70) 확정 약속 ↔ subscribers 읽어 발송하는 코드 저장소 전체 0건(워크플로 2중 grep). 전화번호 수집 목적(알림 발송)과 불일치 — 단기 = '알림 서비스 준비 중, 오픈 시 안내' 정직 카피 / 중기 = 주간 cron 발송 collector
+- 🟡 **api 잔여 2건 — consult fail-open 비대칭(결정) + kakao-consent partial write(후속)** (세션 465, PR #224 범위 밖)
+  - `rateLimit.ts:11` FAIL_CLOSE=login·subscribers 뿐 — 주석의 자기 기준('인증 없는 공개 쓰기 표면')상 같은 표면인 consult POST(익명 이름+전화 insert)만 fail-open. 단 fail-close 시 Redis 순단 동안 정상 손님 상담 신청도 429 차단(전환 손실) — **가용성 vs 스팸방어 트레이드오프 = 사장님 결정** (1줄+테스트 1건)
+  - kakao-consent `kv.set`(user 레코드) 성공 후 `sadd`(통계 집합) 실패 시 admin 통계 과소집계 잔존 — crash 는 PR #224 dispatch 안전망으로 해소, 정합은 롤백 패턴(admin/review.ts:30-44) 답습 후속
+- 🟢 **비로그인 지도 로그인 모달 카피 + 로그인 후 지도 복귀 (세션 465 발굴)**
+  - LoginPromptModal 카피가 트리거 무관 고정('점수 분석과 상세 정보를...' :71-75) — 지도 요청 손님에게 지도 언급 0. 카카오 로그인 후 `kakao_pending_detail` 복원은 detail 만 구현 → 지도 의도 유실, 홈 착지(useKakaoCallbackEffect:64)
+  - 처방: trigger 별 카피 분기 + `kakao_pending_tab='map'` 저장→콜백 복원 (기존 pending_detail 패턴 1:1 답습). 로그인 보상 순간의 이탈 마찰 제거
+
 - 🟡 **Supabase Micro 컴퓨트 hang — Small 업그레이드 검토 (세션 460 진단, 👤 사장님 미결정)** — 공유 인스턴스(`rwdtljipvmqpazrimyns`, t4g.micro RAM 1GB)가 2026-06-29 양쪽 collector+Vercel 부하에서 일시 hang → Cloudflare 522 약 2.5h, daily-deploy 1회 failure. 대시보드 Restart로 회복. **근본 해소 = Micro→Small(RAM 2GB, Pro 크레딧 후 순 +$5/월)** — 비용 공유라 협의 필요. 재발 시 진단·업그레이드 절차 = `supabase/CLAUDE.md` "컴퓨트 한계" 절 + 글로벌 메모리 `session_2026-06-30_session460_db_hang_infra.md`. **데이터 다이어트는 반려**(Pro+Disk30% 명분없음, 공유테이블 양쪽 위험). 워치 = hang 재발 빈도. 1회성이면 Micro 유지, 반복되면 Small.
 - ❌ **monitor 음수가드 테스트 추가 — 폐기(헛돌이 확정, 세션 421)** — 세션 419 부산물로 "4곳(ageH·sinceCreated·idleDays·daysSince) 음수 입력 전용 테스트로 가드가 막는 걸 증명" 제안했으나, 세션 421 적대검증(5에이전트 만장일치 + node 줄별 실증)으로 **전부 헛돌이 확정 → 테스트 추가 0건**. 근거: 음수(미래 시각)와 0(Math.max 클램프)이 항상 양수 임계값(maxAgeHours 36·STALE_DAYS 35·stale_days≥14)의 **같은 쪽**에 떨어져 가드 제거해도 분기 불변(guardRemovalChangesBranch=false). 음수는 비교에서 먼저 걸러져 `Math.floor()` 표시 라인 **도달 불가**(사용자 노출 경로 없음). 미래-시각 테스트는 가드 제거 후에도 항상 통과 → 회귀 못 잡음. 5개 Math.max(0,..) 가드 = **방어적 no-op 확정**(제거 안전하나 cosmetic 보험이라 유지). 기존 L217 ageDays 테스트도 같은 이유로 inert. 양수-일수 표기 정확성은 기존 미발화 테스트가 이미 커버. 시간대 회귀 걱정이면 가드가 아니라 finished_at/recorded_at 저장 시간축 일치(timezone) 검증이 진짜 가치(별개)
 
@@ -131,6 +152,7 @@
   - **세션 422 실측 정정 (2026-06-16)**: `applyhome-event-recurrence.mjs` 라이브 실행 = 1263 events / **고유 단지 1263개 / 단지당 평균 1.00회 / 2회+ 누적 단지 0개**. 박제 "721 단지/평균 1.75"는 stale. 충돌 키 `apartment_id,house_manage_no` 라 차수 누적 구조는 정상이나 아직 같은 단지 2번째 무순위 공고 미발생 → **차수 노출 작업 보류 유지** (스크립트 자체 판정 "📭 2회+ 단지 없음"). 트리거 = 다음 적재에서 2회+ 단지 ≥5개
   - **세션 423 재확인**: 손님 가치 UX 후보 평가 시 다시 검토 → 보류 유지 결정 동일 (트리거 미도달)
   - **세션 465 재측정 (2026-07-03)**: 동일 — 1263 events / 고유 1263 / 평균 1.00 / 2회+ 단지 **0개** → 보류 유지. ⚠️ 부수 관찰: 총량 1263 이 세션 160(5월 초)→422(6/16)→465(7/3) 내내 고정 = 신규 무순위 공고 유입 0. 자연스러운지(수집 필터·upsert 충돌키·API 응답 창) 별도 검증 후보
+  - **세션 465 구조 확정 — 트리거 도달 불가능 (세션 422 "차수 누적 구조는 정상" 박제 정정)**: `collect-applyhome.mjs` 집계가 HOUSE_MANAGE_NO 단위(`buildEventsFromAggregated`) + `apartment_id = ah-{no}` 1:1 유도값 + 충돌키 `apartment_id,house_manage_no` → 같은 단지 2번째 무순위 공고가 와도 **같은 키에 upsert = row 불증가**, 평균 1.00 영구 고정. upstream 재확인(4100행 전수, 세션 465 워크플로)도 HOUSE_MANAGE_NO 당 PBLANC_NO 2종+ = 0건. → 측정 스크립트 재실행 무의미. 재오픈 조건 = 이벤트 로그를 공고번호(PBLANC_NO) 단위 적재로 재설계 + 위 🔴 신규 유입 경로 복구와 함께 (그 전까지 본 항목 동결)
   - 참조: `docs/superpowers/specs/2026-05-02-applyhome-events-log-design.md` § 명시적 비-작업
 
 - 🟡 **regions.supply_ratio 0% — MOLIT API 사고 진앙 v3** (세션 323 → v3 정정)
@@ -178,18 +200,19 @@
   - `npm outdated`: eslint 9.39→10.4, @eslint/js 9.39→10.0 (메이저 1개 뒤처짐). 그 외 React/Supabase/Vite 최신.
   - ⚠️ 위 🔴 "eslint 10 본 적용" 차단 항목과 동일 사안 — `eslint-plugin-react` peer 미지원으로 막힘.
 
-- 🟢 **모바일 alertRow 6배지 줄바꿈 시각 회귀** (세션 160 발견)
+- 🟢 **모바일 alertRow 6배지 줄바꿈 시각 회귀** (세션 160 발견, **세션 465 트리거 도달**)
   - 375px (iPhone SE) 에서 6개 배지(분양중/입주예정/미분양/시공사/혐오시설/추가모집) 동시 표시 시 alertRow 높이 측정
-  - flexWrap 자동 줄바꿈 정상 작동 + 카드 높이 폭주 없음 확인
-  - 트리거: 베타테스터 보고 또는 다음 UI 분기 점검
+  - flexWrap 자동 줄바꿈 정상 작동 + 카드 높이 폭주 없음 확인 (당시 6종 인벤토리 기준)
+  - **세션 465 실측**: 배지 인벤토리 6→7슬롯(치안위험/우수 추가) + 로그인 뷰 apartments.json 에서 **6배지 동시 노출 26단지 실존**(5배지 226) — 예: 인천용현 경남아너스빌. 비로그인 랜딩 JSON 은 presaleStage 등 미포함이라 최대 3배지 = 로그인 뷰만 해당. Q3 분기 도달 + 인벤토리 변화 = 재검증 트리거 충족 → Playwright 375px 로 6배지 단지 카드 1회 실측(다음 UI 세션), 문제 시 배지 상한 검토
   - 참조: 12차 GATE 검증 (G8)
 
-- 🟢 **W6-D 옵션 ε 후속 — regions.childcare → 스코어링 통합** (UI/scoring)
-  - 별 세션 분할 권장. 가중치 의사결정 (PSR sub-score 입력 영향, 사용자 결정 필요)
-  - regions JSONB → calcCats.ts 신규 scoreChildcare.ts 통합
+- 🟢 **W6-D 옵션 ε 후속 — childcare 카테고리 승격 여부만 잔여 (세션 465 stale 정정)**
+  - ~~"regions.childcare → 신규 scoreChildcare.ts 통합" (미통합 뉘앙스)~~ → **실측: childcare 신호는 이미 점수 반영 중** — `scoringTiers.ts:52` INFRA sub `{key:"childcare", max:5, weight:0.1}` + `scoreLocation.ts:160-161` detail 노출 + 상세 입지 탭 NearbyChildcareSection(세션 257). 미래 세션이 "미통합"으로 오판해 신규 카테고리 중복 설계 시 **이중 반영 사고** 위험이라 재정의
+  - 잔여 = 별도 top-level 카테고리 승격 + 가중치 재배분 여부 **사장님 결정만** (현행 인프라 sub 유지가 기본값)
 
 - 🟢 **모바일 저사양 단말 OOM 위험** (세션 279 발견, 본 PR 부수)
   - prices.json 11.35MB 모듈 Map 캐시 영구 보존 (1557 단지 × 4 배열). SPA 종료까지 메모리 반환 0
+  - **세션 465 기준선 갱신**: 12,295,731 bytes(12.29MB)/1602단지 = +8.3% 성장(~+1MB/분기). OOM 보고 여전히 0 → 코드 처방(LRU/TTL) 미도달 유지, 15MB 초과 또는 OOM 보고 시 재평가. DetailModal:125 주석 실측 동기 완료(PR #225)
   - 512MB RAM 단말 + 긴 세션 시 OOM 가능성
   - 대안: LRU 캐시 + TTL or sessionStorage 위임
   - 트리거: 사용자 OOM 보고 또는 다음 분기 점검
