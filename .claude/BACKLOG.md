@@ -125,9 +125,11 @@
   - 라이브 `/data/apartments-list.json` = **raw 15,241,053 bytes / br 전송 1,368,068** (본인 curl 재실측 일치). 필드 합산(워크플로 실측): catsCache 5.34MB(45.7%) + nearbySchools 2.07MB(17.7%) — 목록 화면은 catsCache 의 cat total 6개+price/location subs[0] 만 사용(useDataPipeline:159·AptCard:302-307), 풀 subs·nearbySchools 는 상세 전용. `collect-data.mjs:1018` 설계 의도 'list 1.66MB' 대비 9배 드리프트 (⚠️ **repo 의 public/data 사본은 1.5MB — prebuild 재생성본과 10배 차이**, 배포본이 진실)
   - prices.json = 12.29MB(단지 1개 보려고 전량 fetch, br 424KB — staticDataApi:83)
   - 처방 후보: 목록용 catsCache 슬림(시뮬 5.33→0.47MB) + nearbySchools 상세 분리 + prices 버킷 분할. **데이터 파이프라인+DetailModal fetch 경로 동시 변경 = 설계 1세션, 사장님 승인 후**
-- 🟡 **분양 알림 발송 기능 설계 — subscribers × upcoming stage 변화 대조 발송 (세션 465 사장님 "실운영 기준" 결정)**
-  - 결정 경위: 상담 성공 화면 '데모 버전' 문구 2곳(ConsultForm:82·:161)과 '24시간 내 연락' 자기모순 → 사장님 **실운영 기준 정리** 결정 → 데모 문구 2곳 삭제 완료(세션 465 PR). 상담 = 실제 접수·연락 체계로 운영
-  - **잔여 = /upcoming 알림 발송 기능**: SubscribeForm 이 '분양 시작 시 카카오 알림톡으로 알려드립니다'(:91) 약속하는데 subscribers 를 읽어 발송하는 코드 0건(전체 grep). 실운영 기준이므로 약속을 코드로 이행 — 설계 후보 = 주간 cron collector 가 subscribers × upcoming presale stage 변화 대조 → 발송(알림톡은 카카오 비즈메시지 계약 필요 — 문자/이메일 대체 우선 검토). 청약홈 seeding 설계와 별개 세션
+- 🟡 **분양 알림 발송 — PR1(#229 체계)·PR2(#230 가시성·카피) 완료, 잔여 = PR3 실발송 (세션 467)**
+  - 완료(세션 467): `scripts/notify-subscribers.mjs`(접수시작 D-0~7 미래만 × 구독자 매칭 × notification_logs 멱등 dedup, SMS_ADAPTER_READY=false + SOLAPI env 이중 게이트로 계약 전 자동 dry-run) + `notify-subscribers.yml`(주간 월 14:00 KST) + applyhome-detail **주간화**(월 13일→매주 월 12:30, 미래 접수일 0건 진앙 해소) + monitor ⑤ 등재 + admin 구독자·발송로그 화면 + SubscribeForm 카피 "카카오 알림톡 또는 문자" 중립화. 설계 원문 = `~/.claude/plans/467-clever-toast.md`
+  - 👤 **notification_logs 마이그 Dashboard SQL Editor 적용 대기** (`supabase/migrations/20260703000000`) — 적용 전에도 구독자 0명이라 발송기는 조기 종료(무해), 첫 구독자 생기기 전 적용
+  - **PR3(실발송) 선행 결정 2건(사장님)**: ① 솔라피(SMS) 계약+발신번호 등록 ② 구 문구("카카오 알림톡")로 동의한 기존 구독자에게 SMS 발송 소급 허용 여부(리뷰 P2-3 — consent_source 버전 태깅 대안). PR3 범위 = sendSms 솔라피 SDK 실구현 + SMS_ADAPTER_READY=true 플립(테스트 동시 갱신) + UnsubscribePage(`/unsubscribe?p=&t=`) + Secrets 4종 + fail_reason 에 phone 미포함 규율(리뷰 P2-2)
+  - 🟢 후속 소품: AdminConsults·AdminSubscribers mountedRef StrictMode dev 로딩 고착(리뷰 P2-4, production 무영향) / 무순위(ah-*) 알림 event_type 분리(무순위 API 접수일 부재로 v1 제외) / 관찰 = 다음 월 12:30 detail 주간화 첫 발화 후 `special_receipt_bgnde>=오늘` >0 실측 + 14:00 notify 첫 run 텔레그램 요약
 - 🟡 **api 잔여 1건 — kakao-consent partial write(후속)** (세션 465, PR #224 범위 밖)
   - ~~consult fail-open 비대칭~~ → **세션 465 종결**: 사장님 위임 → **fail-open 유지 + 예외 사유 주석 명문화**(rateLimit.ts). 근거 = 상담 신청은 핵심 전환이라 순단 몇 분의 스팸 위험(입력 검증+consent+관리자 파기 API 존재)보다 리드 유실이 더 큰 손해
   - kakao-consent `kv.set`(user 레코드) 성공 후 `sadd`(통계 집합) 실패 시 admin 통계 과소집계 잔존 — crash 는 PR #224 dispatch 안전망으로 해소, 정합은 롤백 패턴(admin/review.ts:30-44) 답습 후속
