@@ -27,7 +27,8 @@ import { MarketStatsCharts } from "./detail/MarketStatsCharts";
 import { HelpHint } from "./HelpHint";
 import { StickyJumpNav, type JumpSection } from "./detail/StickyJumpNav";
 import { IconClose } from "./icons";
-import { fetchApartmentPrices, type PriceArrays } from "@/services/staticDataApi";
+import { fetchApartmentDetail, type AptDetailFields } from "@/services/staticDataApi";
+import type { Apt, Cats, Res } from "@/types/scoring";
 import { trackEvent } from "@/lib/analytics";
 import type { DetailModalProps } from "@/types/components/DetailModal.types";
 
@@ -122,8 +123,9 @@ export const DetailModal = memo(function DetailModal({
 }: DetailModalProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocusRef = useRef<Element | null>(null);
-  // 가격배열 lazy fetch (apartments-prices.json) 상태 — DetailModal 첫 열림 시 1회 전량 fetch (2026-07-03 실측 12.3MB/1602단지, 성장 ~+1MB/분기) + 모듈 Map 캐시
-  const [prices, setPrices] = useState<PriceArrays | null>(null);
+  // 상세 필드 lazy fetch (apartments-detail-16-N.json 버킷 1개, 세션 468) — DetailModal 첫 열림 시
+  // id 해시 버킷 1개만 fetch(br ~69KB) + 버킷 단위 Map 캐시. 가격배열 + 학교/어린이집/혜택 + full catsCache 통합.
+  const [detail, setDetail] = useState<AptDetailFields | null>(null);
   const [pricesLoading, setPricesLoading] = useState(false);
   const [pricesError, setPricesError] = useState<string | null>(null);
   useEffect(() => {
@@ -168,10 +170,10 @@ export const DetailModal = memo(function DetailModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!item, onClose]);
 
-  // 가격배열 lazy fetch — item 변경 시마다 (캐시 hit 으로 안전)
+  // 상세 필드 lazy fetch — item 변경 시마다 (버킷 캐시 hit 으로 안전)
   useEffect(() => {
     if (!item) {
-      setPrices(null);
+      setDetail(null);
       setPricesError(null);
       setPricesLoading(false);
       return;
@@ -181,26 +183,22 @@ export const DetailModal = memo(function DetailModal({
     //   - null: trade_stats LEFT JOIN miss (가격 데이터 미수집 단지)
     //   - 배열 (빈 배열 포함): trade_stats 응답 완료 (거래 0건 = 빈 배열)
     //   - undefined: 정적 분기 (USE_SUPABASE=false) apartments-list.json 에 priceByArea 미수록
-    // null/배열 모두 "이미 응답 받은 상태" → fetch skip. undefined 만 fetch 발동 (정적 lazy).
+    // null/배열 모두 "이미 응답 받은 상태" → fetch skip(Supabase 는 catsCache full·학교도 함께 옴).
+    // undefined 만 버킷 fetch 발동 (정적 lazy).
     const priceByArea = (item.apt as { priceByArea?: unknown }).priceByArea;
-    if (priceByArea === null || Array.isArray(priceByArea)) {
-      setPrices(null);
-      setPricesError(null);
-      return;
-    }
     if (priceByArea !== undefined) {
-      // 미래 타입 변경 대비 — 알 수 없는 형태도 fetch skip
-      setPrices(null);
+      // null/배열/미래 타입 모두 fetch skip — 이미 응답 받은 상태
+      setDetail(null);
       setPricesError(null);
       return;
     }
     let cancelled = false;
     setPricesLoading(true);
     setPricesError(null);
-    fetchApartmentPrices(aptId)
-      .then((p) => {
+    fetchApartmentDetail(aptId)
+      .then((d) => {
         if (!cancelled) {
-          setPrices(p);
+          setDetail(d);
           setPricesLoading(false);
         }
       })
@@ -208,7 +206,7 @@ export const DetailModal = memo(function DetailModal({
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (import.meta.env.DEV) {
-          console.warn("[DetailModal] prices fetch 실패", msg);
+          console.warn("[DetailModal] detail fetch 실패", msg);
         }
         setPricesError(msg);
         setPricesLoading(false);
@@ -217,13 +215,29 @@ export const DetailModal = memo(function DetailModal({
       cancelled = true;
     };
   }, [item]);
-  // 가격배열 병합 — useMemo + item?.apt.id deps 로 item ref 변경마다 무효화 차단.
-  // hook 순서 보장 위해 conditional return 이전에 호출. item 미정의 시 빈 객체 반환.
+  // 상세 필드 병합 — useMemo + item?.apt.id deps 로 item ref 변경마다 무효화 차단.
+  // hook 순서 보장 위해 conditional return 이전에 호출. item 미정의 시 undefined 반환.
+  // 버킷의 가격배열·학교·어린이집·혜택·catsCache(full) 를 목록의 슬림 apt 위에 덮음.
   const mergedApt = useMemo(
-    () => (item && prices ? { ...item.apt, ...prices } : item?.apt),
+    () => (item && detail ? ({ ...item.apt, ...detail } as Apt) : item?.apt),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- item?.apt 가 item ref 변경을 추적(item 바뀌면 apt 도 새 ref)하므로 단지 전환 무효화 충분. item 본문 추가 불필요.
-    [item?.apt.id, item?.apt, prices]
+    [item?.apt.id, item?.apt, detail]
   );
+  // 점수 res 병합 — 목록의 res.cats 는 슬림 subs(price/location subs[0] 만). 버킷의 full catsCache
+  // 로 카테고리별 subs 를 복원한 res 를 CatPanel·AdminScoreBreakdown 에 전달. total/가중치는 scored 유지.
+  const mergedRes = useMemo(() => {
+    const full = detail?.catsCache as Cats | null | undefined;
+    if (!item || !full) return item?.res;
+    const fullCats = full as unknown as Record<string, Res | undefined>;
+    const cats = Object.fromEntries(
+      Object.entries(item.res.cats).map(([k, c]) => {
+        const f = fullCats[k];
+        return [k, f?.subs?.length ? { ...c, subs: f.subs } : c];
+      })
+    ) as Cats;
+    return { ...item.res, cats };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- item?.res 가 item ref 변경 추적, detail 은 버킷 도착 시 재계산.
+  }, [item?.res, detail]);
 
   // 탭 상태 (세션 407 D1) — activeTab = 현재 콘텐츠 교체 탭, visited = 방문 탭 누적(keepMounted).
   // 한 번 마운트된 패널은 display:none 으로 유지: 떠난 탭의 fetch 훅 인스턴스 캐시(useRef 캐시인
@@ -436,11 +450,11 @@ export const DetailModal = memo(function DetailModal({
                 </div>
               </div>
 
-              {Array.isArray(apt.benefits) && apt.benefits.length > 0 && (
+              {Array.isArray((mergedApt ?? apt).benefits) && ((mergedApt ?? apt).benefits as unknown[]).length > 0 && (
                 <div style={DM_S.benefitsBox}>
                   <div style={DM_S.benefitsHead}>혜택 상세</div>
                   <div style={DM_S.benefitsChipRow}>
-                    {(apt.benefits as string[]).map((b: string, i: number) => (
+                    {((mergedApt ?? apt).benefits as string[]).map((b: string, i: number) => (
                       <span key={i} style={DM_S.benefitsChip}>
                         {b}
                       </span>
@@ -594,9 +608,9 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-location")}
             >
-              <SchoolInfo apt={apt} />
+              <SchoolInfo apt={mergedApt ?? apt} />
 
-              <NearbyChildcareSection apt={apt} />
+              <NearbyChildcareSection apt={mergedApt ?? apt} />
 
               {/* 생활인프라·교통·치안환경 (세션 408 D2a — 입지 탭 빈약 해소) */}
               {LOCATION_SECTIONS.map((s) => (
@@ -654,7 +668,8 @@ export const DetailModal = memo(function DetailModal({
             >
               {(() => {
                 const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
-                return Object.entries(res.cats).map(([k, c]) => {
+                // mergedRes = 버킷 도착 시 full subs 로 복원된 res, 미도착 시 슬림 res(subs[0]만).
+                return Object.entries((mergedRes ?? res).cats).map(([k, c]) => {
                   const seq = jumpSeqs[k] ?? 0;
                   return (
                     <CatPanel
@@ -684,7 +699,7 @@ export const DetailModal = memo(function DetailModal({
               <Suspense
                 fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}
               >
-                <AdminScoreBreakdown apt={apt} res={res} profile={profile} />
+                <AdminScoreBreakdown apt={mergedApt ?? apt} res={mergedRes ?? res} profile={profile} />
               </Suspense>
               <Suspense
                 fallback={<div style={{ padding: 12, fontSize: F.sm, color: C.muted }}>평형별 공급 로딩 중...</div>}
