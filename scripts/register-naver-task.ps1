@@ -1,10 +1,18 @@
 ﻿# 네이버 수집 Windows 작업 스케줄러 등록 스크립트
-# 관리자 권한 PowerShell에서 실행:
-#   powershell -ExecutionPolicy Bypass -File scripts\register-naver-task.ps1
+# 관리자 권한 PowerShell에서 실행 (현재 폴더 무관 — 전체 경로로 실행 가능):
+#   powershell -ExecutionPolicy Bypass -File F:\mibunyang\scripts\register-naver-task.ps1
 
 $TaskName = "MibunyangNaverCollect"
-$ScriptPath = (Resolve-Path "scripts\run-naver-local.bat").Path
-$WorkDir = (Resolve-Path ".").Path
+# 경로는 이 스크립트 자신의 위치($PSScriptRoot = scripts\) 기준으로 잡는다.
+# system32 등 다른 폴더에서 -File 로 실행해도 run-naver-local.bat 를 정확히 찾도록 (세션 470 사고 정정:
+# Resolve-Path "scripts\..." 상대경로는 실행 위치가 system32 면 실패 → 빈 액션으로 등록되던 버그).
+$ScriptPath = Join-Path $PSScriptRoot "run-naver-local.bat"
+$WorkDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path  # 프로젝트 루트 (scripts\ 의 상위)
+
+if (-not (Test-Path $ScriptPath)) {
+    Write-Error "run-naver-local.bat 를 찾을 수 없습니다: $ScriptPath"
+    exit 1
+}
 
 # 기존 작업 삭제
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
