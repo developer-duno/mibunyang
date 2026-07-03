@@ -39,7 +39,9 @@ export type SortKey =
   | "units"
   | "moveInSoon"
   | "subwayNear"
-  | "jeonseHigh";
+  | "jeonseHigh"
+  | "maintenanceLow"
+  | "crimeSafe";
 
 /**
  * 입주 시기 분류 — classifyMoveIn 반환.
