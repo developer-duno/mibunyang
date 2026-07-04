@@ -19,7 +19,7 @@ const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
   QUARTERLY_CRON_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
-  checkViewRegionStale, VIEW_REGION_STALE_TARGETS,
+  checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
   dedupKey, filterUnsent, hasGithubApiAuth,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
@@ -809,5 +809,40 @@ describe("checkViewRegionStale — ⑥ VIEW 회귀 (regions 원본 채움 but VI
     const nm = VIEW_REGION_STALE_TARGETS.find((t) => t.regionColumn === "net_migration");
     expect(nm).toBeTruthy();
     expect(nm?.viewKey).toBe("regions.netMigration");
+  });
+
+  it("⑥ housing_supply_level 정상 회귀 가드 — granularity fix 후 regionRate 100% + L434 fix 후 viewRate 100% → 경보 없음", () => {
+    // 세션 478: granularity fix 로 housing regionRate 가 10%(전체행)→100%(시도)로 바뀌어 ⑥ regionRate≥0.2 참.
+    // 동시에 data-audit L434 fix 로 audit viewRate 가 0%→100% 라 viewRate≤0.05 거짓 → 경보 없음.
+    // 둘 중 하나만 고치면 ⑥ 오탐이 나므로 이 케이스가 "두 fix 동반" 을 잠근다.
+    const issues = checkViewRegionStale(
+      { "regions.housingSupplyLevel": { filled: 2154, missing: 0 } }, // L434 fix 후 viewRate 100%
+      [{ column: "housing_supply_level", total: 113, filled: 113 }], // granularity=sido fix 후 regionRate 100%
+      [{ viewKey: "regions.housingSupplyLevel", regionColumn: "housing_supply_level", label: "주택보급률 (KOSIS)" }],
+    );
+    expect(issues).toHaveLength(0);
+  });
+});
+
+describe("REGION_KEY_COLUMNS — ④ NULL 점검 대상 granularity 구조 (세션 478)", () => {
+  it("각 항목이 column + granularity(sido|sigungu|all) 구조 · 5개", () => {
+    expect(REGION_KEY_COLUMNS.length).toBe(5);
+    for (const c of REGION_KEY_COLUMNS) {
+      expect(typeof c.column).toBe("string");
+      expect(["sido", "sigungu", "all"]).toContain(c.granularity);
+    }
+  });
+
+  it("granularity 박제 — 데이터 단위 실측 기준 (시군구 전용은 sigungu, VIEW 미노출은 all)", () => {
+    /** @param {string} col */
+    const g = (col) => REGION_KEY_COLUMNS.find((c) => c.column === col)?.granularity;
+    // 시군구 전용 (medical-access) — 시도로 세면 100% NULL 오탐이라 sigungu 필수
+    expect(g("doctors_per_1k")).toBe("sigungu");
+    expect(g("hospital_beds_per_1k")).toBe("sigungu");
+    // 시도 노출/전용 — VIEW latest_regions
+    expect(g("net_migration")).toBe("sido");
+    expect(g("housing_supply_level")).toBe("sido");
+    // VIEW 미노출 (crime_grade) — 전체행 완결성
+    expect(g("crime_grade")).toBe("all");
   });
 });

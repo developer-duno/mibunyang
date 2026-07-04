@@ -23,6 +23,7 @@ import { loadEnv, getSupabase } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssue, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
+import { buildBriefing, splitRuns } from "./monitor-briefing.mjs";
 
 loadEnv();
 
@@ -46,8 +47,25 @@ const MONITOR_YML_PATH = ".github/workflows/monitor-collectors.yml";
 const NULL_RATE_THRESHOLD = 0.4;
 /** 이상 run 으로 보는 conclusion. */
 const BAD_CONCLUSIONS = ["failure", "cancelled", "timed_out"];
-/** ④ NULL 점검 대상 — regions 핵심 컬럼. */
-const REGION_KEY_COLUMNS = ["net_migration", "housing_supply_level", "crime_grade", "doctors_per_1k", "hospital_beds_per_1k"];
+/**
+ * ④ NULL 점검 대상 — regions 핵심 컬럼 + 세는 단위(granularity).
+ * ⚠️ 컬럼마다 데이터가 사는 지역 단위가 다르다 (세션 478 실측). 전체행(시도 113 + 시군구 997 = 1110)
+ * 으로 일괄 세면 단위 불일치로 오탐 (housing 시도 100% 채움인데 전체행 기준 90% NULL 오탐, 세션 477).
+ * granularity 로 total·filled 를 같은 단위로 쌍 계산해야 정확: "sido"=시도(gu IS NULL)만 /
+ * "sigungu"=시군구(gu IS NOT NULL)만 / "all"=전체행(VIEW 미노출이라 원본 전체 완결성으로 감시).
+ * 신규 regions 컬럼 추가 시: apartments_flat VIEW 가 그 컬럼을 어느 CTE(latest_regions=시도 /
+ * latest_regions_gu=시군구)에서 노출하나 확인 → 그 단위 / VIEW 미노출이면 "all". 라이브 채움률
+ * (시도/시군구 각각)로 교차 검증 후 박제 (소스 `.is("gu",null)` 여부만으로 단정 금지 — 매칭 실패로
+ * 숨는 컬럼 있음). 근거 VIEW: 20260629000000_view_add_housing_supply_level.sql.
+ * @type {Array<{ column: string, granularity: "sido" | "sigungu" | "all" }>}
+ */
+export const REGION_KEY_COLUMNS = [
+  { column: "net_migration", granularity: "sido" },         // 양쪽채움이나 VIEW latest_regions(시도)만 손님 노출
+  { column: "housing_supply_level", granularity: "sido" },  // 시도 전용 (collect-housing-supply-ratio 17행)
+  { column: "crime_grade", granularity: "all" },            // 양쪽채움(collect-crime-safety 전체행 순회·매칭행만 UPDATE), VIEW 미노출
+  { column: "doctors_per_1k", granularity: "sigungu" },     // 시군구 전용 (collect-medical-access)
+  { column: "hospital_beds_per_1k", granularity: "sigungu" }, // 시군구 전용 (collect-medical-access)
+];
 /**
  * ④ apartments 19 카테고리 중 NULL 점검 대상 — 카테고리별 기대 최저 rate(%).
  * 현재 rate 가 이 값 아래로 떨어지면 수집기 고장 의심. 의도적 저율 카테고리
@@ -747,20 +765,39 @@ async function fetchWorkflowCreatedAt() {
 }
 
 /**
- * regions 핵심 컬럼별 (total, filled) 을 조회한다.
+ * regions 핵심 컬럼별 (total, filled) 을 컬럼의 granularity 단위로 조회한다.
+ * ⚠️ total·filled 를 같은 단위 필터로 쌍 계산해야 분모 일치 (세션 478 오탐 fix). 단위별 total 은
+ * 1회씩만 조회하고 캐시 — 컬럼당 재계산 안 함 (sido/sigungu/all 최대 3회 total + 컬럼당 filled 1회).
  * @returns {Promise<Array<{ column: string, total: number, filled: number }>>}
  */
 async function fetchRegionColumnStats() {
   const sb = getSupabase();
-  const { count: total } = await sb.from("regions").select("*", { count: "exact", head: true });
+  /**
+   * granularity 별 단위 필터. @param {any} q PostgrestFilterBuilder (동적 체이닝, TS §4.1 any cast)
+   * @param {"sido" | "sigungu" | "all"} g
+   */
+  const applyGranularity = (q, g) => (g === "sido" ? q.is("gu", null) : g === "sigungu" ? q.not("gu", "is", null) : q);
+
+  /** @type {Partial<Record<"sido" | "sigungu" | "all", number>>} */
+  const totalCache = {};
+  /** @param {"sido" | "sigungu" | "all"} g */
+  const totalFor = async (g) => {
+    if (totalCache[g] == null) {
+      const { count } = await applyGranularity(sb.from("regions").select("*", { count: "exact", head: true }), g);
+      totalCache[g] = count ?? 0;
+    }
+    return totalCache[g] ?? 0;
+  };
+
   /** @type {Array<{ column: string, total: number, filled: number }>} */
   const stats = [];
-  for (const col of REGION_KEY_COLUMNS) {
-    const { count: filled } = await sb
-      .from("regions")
-      .select(col, { count: "exact", head: true })
-      .not(col, "is", null);
-    stats.push({ column: col, total: total ?? 0, filled: filled ?? 0 });
+  for (const { column, granularity } of REGION_KEY_COLUMNS) {
+    const total = await totalFor(granularity);
+    const { count: filled } = await applyGranularity(
+      sb.from("regions").select(column, { count: "exact", head: true }).not(column, "is", null),
+      granularity,
+    );
+    stats.push({ column, total, filled: filled ?? 0 });
   }
   return stats;
 }
@@ -864,6 +901,76 @@ async function recordSentAlerts(issues) {
     if (error) console.log(`[monitor] dedup 상태 기록 실패(다음 중복 1회 가능): ${error.message}`);
   } catch (err) {
     console.log(`[monitor] dedup 상태 기록 오류: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * ok=0 이 정상인(멱등/삭제형) 수집기 집합 — ② 제외 + 브리핑 "갱신 없음(정상)" 표기에 공용.
+ * EXTERNAL_API_COLLECTORS(데이터 부재가 흔한 외부 API 의존) + purge-consults(삭제 대상 0 흔함).
+ * @returns {Set<string>}
+ */
+function idempotentCollectorSet() {
+  return new Set([...EXTERNAL_API_COLLECTORS.map((c) => c.collector), "purge-consults"]);
+}
+
+/**
+ * ★ 매일 아침 현황 브리핑 발송 (세션 478). daily 스윕에서만 호출 — 이상 유무와 무관하게 1통.
+ * ⚠️ CI(GitHub Actions)에서만 텔레그램 발송 — 로컬 실행은 콘솔 출력만(운영 채널 오염 차단, ①③ 가드 철학).
+ * ⚠️ 시간축 UTC 통일 — 24h 윈도우·snapshot_date 전부 UTC (collector_runs.finished_at 이 UTC DEFAULT NOW()).
+ * @param {{ audit: { avgReliability?: number }, externalStaleIssues: Issue[], issueCount: number }} p
+ *   audit = 상위 스코프 computeAudit 재사용(새 쿼리 0) / externalStaleIssues = ⑤ 결과(미발화 목록 추출)
+ * @returns {Promise<void>}
+ */
+async function sendDailyBriefing({ audit, externalStaleIssues, issueCount }) {
+  try {
+    const sb = getSupabase();
+    const now = new Date();
+    const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
+    const { data: runs24h } = await sb
+      .from("collector_runs")
+      .select("collector,status,ok_count")
+      .gte("finished_at", since);
+
+    const todayUtc = now.toISOString().slice(0, 10);
+    const yesterdayUtc = new Date(now.getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const { data: prevRows } = await sb
+      .from("monitor_daily_snapshot")
+      .select("fill_rate")
+      .eq("snapshot_date", yesterdayUtc)
+      .limit(1);
+    const prevSnapshot = prevRows?.[0] ?? null;
+
+    const fillRate = audit.avgReliability != null ? Math.round(audit.avgReliability * 10) / 10 : null;
+    const staleCollectors = externalStaleIssues.filter((i) => i.kind === "stale").map((i) => i.collector);
+    const idempotent = idempotentCollectorSet();
+    // 24h 정상 수집 합 — buildBriefing 과 같은 splitRuns 로 1회만 계산(스냅샷 collected_24h 에 재사용).
+    const { totalOk } = splitRuns(runs24h ?? [], idempotent);
+
+    const text = buildBriefing({
+      runs24h: runs24h ?? [],
+      idempotentCollectors: idempotent,
+      fillRate,
+      prevSnapshot,
+      issueCount,
+      staleCollectors,
+      nowIso: now.toISOString(),
+    });
+
+    if (process.env.GITHUB_ACTIONS) {
+      const result = await sendTelegram(text);
+      if (!result.sent) console.log(`[monitor] 브리핑 전송 스킵: ${result.reason}`);
+    } else {
+      console.log("[monitor] 브리핑(로컬 — 전송 안 함):\n" + text);
+    }
+
+    // 오늘 스냅샷 upsert (PK=snapshot_date 라 하루 여러 발화여도 1행). collected_24h = 정상 수집 ok 합.
+    const { error } = await sb
+      .from("monitor_daily_snapshot")
+      .upsert({ snapshot_date: todayUtc, fill_rate: fillRate, collected_24h: totalOk }, { onConflict: "snapshot_date" });
+    if (error) console.log(`[monitor] 스냅샷 기록 실패(다음 어제대비 1회 누락 가능): ${error.message}`);
+  } catch (err) {
+    // 브리핑 실패가 감시 자체를 멈추면 안 됨 (notify-telegram 철학)
+    console.log(`[monitor] 브리핑 오류(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -1007,9 +1114,10 @@ async function main() {
     // ② success 인데 0건 — collector_runs 기반이라 로컬에서도 정상 점검.
     // 외부 API 의존 수집기(housing-permits·KOSIS 식)는 0건이 정상이라 ② 에서 제외 — 진짜
     // 장기 중단은 아래 ⑤가 stale_days 임계로 단독 판정(중복 노이즈 차단, 세션 444).
-    const externalApiNames = new Set(EXTERNAL_API_COLLECTORS.map((c) => c.collector));
+    // purge-consults(삭제 대상 0 흔함)도 멱등 집합에 포함해 제외 — 매일 ok=0 이 정상인데 ② 가 매일
+    // 오탐하던 것 정정 (세션 478, 브리핑의 "갱신 없음" 판정과 일치).
     const { latest, prevOk } = await fetchLatestCollectorRuns();
-    issues = issues.concat(checkEmptyRuns(latest, prevOk, { externalApiCollectors: externalApiNames }));
+    issues = issues.concat(checkEmptyRuns(latest, prevOk, { externalApiCollectors: idempotentCollectorSet() }));
 
     // ④ NULL 급증 — regions 핵심 컬럼 + apartments 19 카테고리
     const regionStats = await fetchRegionColumnStats();
@@ -1021,10 +1129,15 @@ async function main() {
 
     // ⑤ 외부 API 장기 중단 — silent fail (success+ok=0) 연속 누적 탐지
     const runsByCollector = await fetchExternalApiRuns(EXTERNAL_API_COLLECTORS);
-    issues = issues.concat(checkExternalApiStale(EXTERNAL_API_COLLECTORS, runsByCollector));
+    const externalStaleIssues = checkExternalApiStale(EXTERNAL_API_COLLECTORS, runsByCollector);
+    issues = issues.concat(externalStaleIssues);
 
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
     issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
+
+    // ★ 매일 아침 현황 브리핑 (세션 478) — 이상 유무 무관 daily 마다 1통. L1138 early-return 앞에서
+    //   별도 발송해야 이상 0건 아침에도 나간다. CI 에서만 발송(로컬은 콘솔).
+    await sendDailyBriefing({ audit, externalStaleIssues, issueCount: issues.length });
   }
 
   if (issues.length === 0) {
