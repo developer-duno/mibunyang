@@ -186,6 +186,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
       ref={barRef}
       data-no-print
       style={{
+        position: "relative", // 드롭다운 오버레이(absolute) 기준점 (세션 481)
+        zIndex: 20, // 열린 드롭다운이 아래 카드 위로
         background: C.card,
         borderRadius: isDesktop ? 12 : 10,
         padding: isDesktop ? "12px 16px" : "8px 10px",
@@ -323,6 +325,24 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           </>
         )}
       </div>
+
+      {/* 드롭다운 열림 시 뒤 카드 어둡게 + 클릭 시 닫힘 (세션 481) — fixed 라 바(z20) 아래 전체 화면 */}
+      {openPanel && (
+        <div
+          data-no-print
+          aria-hidden="true"
+          onClick={closePanel}
+          style={{
+            position: "fixed",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 15,
+            background: "rgba(15,20,35,0.16)",
+          }}
+        />
+      )}
 
       {/* 드롭다운 패널 (한번에 하나만) */}
       <FilterDropdown isOpen={openPanel === "region"} label="지역" isDesktop={isDesktop}>
