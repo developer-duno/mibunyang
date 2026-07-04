@@ -41,8 +41,8 @@ type DetailPanelProps = {
   parkNearOnly: boolean;
   onToggleParkNearOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
-  /** PC 2칸 / 모바일 1칸 그리드 판정 (세션 482) */
-  isDesktop?: boolean;
+  /** 태블릿+PC(≥768) 가로 2칸 / 모바일 1칸 그리드 판정 (세션 483) */
+  isPC?: boolean;
 };
 
 /** 토글 버튼 공통 스타일 — 활성 시 color 계열, 비활성 시 slate. 높이 36(터치타겟 규칙) */
@@ -91,7 +91,7 @@ export const DetailPanel = memo(function DetailPanel({
   parkNearOnly,
   onToggleParkNearOnly,
   filterOptionCounts,
-  isDesktop = false,
+  isPC = false,
 }: DetailPanelProps) {
   const hasFilter =
     minScore ||
@@ -124,11 +124,13 @@ export const DetailPanel = memo(function DetailPanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* 4그룹 = PC 2칸 / 모바일 1칸 그리드 (세션 482) */}
+      {/* 4그룹 = 태블릿+PC(isPC ≥768) 가로 2칸 / 좁은 모바일 1칸 (세션 483).
+          ⚠️ auto-fit 은 넓은 PC 에서 4칸까지 벌어져(라이브 실측 1280px→4칸) 사장님 "2칸"과
+          어긋나므로, 정확히 최대 2칸으로 고정. isDesktop(≥1024) 게이팅은 태블릿서 1칸이라 폐기. */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
+          gridTemplateColumns: isPC ? "1fr 1fr" : "1fr",
           gap: 10,
         }}
       >

@@ -542,6 +542,7 @@ export default function App() {
             searchQuery={searchQuery}
             onSearchChange={handleSearchChange}
             isDesktop={isDesktop}
+            isPC={isPC}
             showFavOnly={showFavOnly}
             onToggleFavOnly={toggleFavOnly}
             favCount={favoriteIds.length}
