@@ -537,4 +537,86 @@ describe("URL 필터 역직렬화 (Phase 2)", () => {
     expect(result.current.childcareGoodOnly).toBe(false);
     expect(result.current.parkingGoodOnly).toBe(false);
   });
+
+  // 세션 479 — 병원/공원 도보권 필터 URL 역직렬화 (?hospital=1 / ?park=1)
+  it("URL에서 hospitalNearOnly, parkNearOnly 읽기", () => {
+    mockLocationSearch("?hospital=1&park=1");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.hospitalNearOnly).toBe(true);
+    expect(result.current.parkNearOnly).toBe(true);
+  });
+
+  it("hospital/park 미지정 → 기본값 false", () => {
+    mockLocationSearch("?region=서울");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.hospitalNearOnly).toBe(false);
+    expect(result.current.parkNearOnly).toBe(false);
+  });
+
+  it("toggleHospitalNearOnly — 토글 + 리셋", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleHospitalNearOnly();
+    });
+    expect(result.current.hospitalNearOnly).toBe(true);
+    act(() => {
+      result.current.handleResetAll();
+    });
+    expect(result.current.hospitalNearOnly).toBe(false);
+  });
+
+  it("toggleParkNearOnly — 토글 + 리셋", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleParkNearOnly();
+    });
+    expect(result.current.parkNearOnly).toBe(true);
+    act(() => {
+      result.current.handleResetAll();
+    });
+    expect(result.current.parkNearOnly).toBe(false);
+  });
+
+  // saveCustomPreset 왕복 — 세션 479 C 버그 교훈(신규 필터도 snap 에 담겨야 함)
+  it("saveCustomPreset — hospitalNearOnly=true 저장 후 applyPreset 으로 복원", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleHospitalNearOnly();
+    });
+    expect(result.current.hospitalNearOnly).toBe(true);
+    act(() => {
+      result.current.saveCustomPreset("병원만");
+    });
+    const saved = /** @type {any} */ (result.current.customPresets.find((p) => p.label === "병원만"));
+    expect(saved?.values.hospitalNearOnly).toBe(true);
+    act(() => {
+      result.current.toggleHospitalNearOnly();
+    });
+    expect(result.current.hospitalNearOnly).toBe(false);
+    act(() => {
+      result.current.applyPreset(saved.values);
+    });
+    expect(result.current.hospitalNearOnly).toBe(true);
+  });
+
+  it("saveCustomPreset — parkNearOnly=true 저장 후 applyPreset 으로 복원", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleParkNearOnly();
+    });
+    expect(result.current.parkNearOnly).toBe(true);
+    act(() => {
+      result.current.saveCustomPreset("공원만");
+    });
+    const saved = /** @type {any} */ (result.current.customPresets.find((p) => p.label === "공원만"));
+    expect(saved?.values.parkNearOnly).toBe(true);
+    act(() => {
+      result.current.toggleParkNearOnly();
+    });
+    expect(result.current.parkNearOnly).toBe(false);
+    act(() => {
+      result.current.applyPreset(saved.values);
+    });
+    expect(result.current.parkNearOnly).toBe(true);
+  });
 });

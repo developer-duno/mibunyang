@@ -71,6 +71,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onToggleChildcareGoodOnly,
   parkingGoodOnly,
   onToggleParkingGoodOnly,
+  hospitalNearOnly,
+  onToggleHospitalNearOnly,
+  parkNearOnly,
+  onToggleParkNearOnly,
   hideNoUnsold,
   onToggleHideNoUnsold,
   activeFilterCount,
@@ -156,7 +160,9 @@ export const SearchFilterBar = memo(function SearchFilterBar({
     nonRegulatedOnly ||
     crimeSafeOnly ||
     childcareGoodOnly ||
-    parkingGoodOnly
+    parkingGoodOnly ||
+    hospitalNearOnly ||
+    parkNearOnly
   );
 
   /* undo/redo 버튼 공용 스타일 (active = canUndo/canRedo, undefined → 비활성) */
@@ -395,6 +401,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           onToggleChildcareGoodOnly={onToggleChildcareGoodOnly}
           parkingGoodOnly={parkingGoodOnly}
           onToggleParkingGoodOnly={onToggleParkingGoodOnly}
+          hospitalNearOnly={hospitalNearOnly}
+          onToggleHospitalNearOnly={onToggleHospitalNearOnly}
+          parkNearOnly={parkNearOnly}
+          onToggleParkNearOnly={onToggleParkNearOnly}
           filterOptionCounts={filterOptionCounts}
         />
       </FilterDropdown>
@@ -638,6 +648,30 @@ export const SearchFilterBar = memo(function SearchFilterBar({
                 style={chipStyle}
               >
                 주차넉넉 ✕
+              </span>
+            )}
+            {hospitalNearOnly && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="병원가까움 필터 해제"
+                onClick={onToggleHospitalNearOnly}
+                onKeyDown={onChipKeyDown(onToggleHospitalNearOnly)}
+                style={chipStyle}
+              >
+                병원가까움 ✕
+              </span>
+            )}
+            {parkNearOnly && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="공원가까움 필터 해제"
+                onClick={onToggleParkNearOnly}
+                onKeyDown={onChipKeyDown(onToggleParkNearOnly)}
+                style={chipStyle}
+              >
+                공원가까움 ✕
               </span>
             )}
           </div>

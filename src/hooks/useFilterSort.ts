@@ -36,6 +36,8 @@ type FilterState = {
   crimeSafeOnly: boolean;
   childcareGoodOnly: boolean;
   parkingGoodOnly: boolean;
+  hospitalNearOnly: boolean;
+  parkNearOnly: boolean;
 };
 
 type FilterSnapshot = FilterState & { showFavOnly: boolean };
@@ -57,6 +59,8 @@ const FILTER_URL_MAP: readonly FilterUrlEntry[] = [
   ["crimeSafeOnly", "crimesafe", false, "bool"],
   ["childcareGoodOnly", "childcare", false, "bool"],
   ["parkingGoodOnly", "parking", false, "bool"],
+  ["hospitalNearOnly", "hospital", false, "bool"],
+  ["parkNearOnly", "park", false, "bool"],
   ["areaMin", "amin", "", "num"],
   ["areaMax", "amax", "", "num"],
   ["unitsMin", "umin", "", "num"],
@@ -190,6 +194,10 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     () => (urlInit?.childcareGoodOnly as boolean) ?? false
   );
   const [parkingGoodOnly, setParkingGoodOnly] = useState<boolean>(() => (urlInit?.parkingGoodOnly as boolean) ?? false);
+  const [hospitalNearOnly, setHospitalNearOnly] = useState<boolean>(
+    () => (urlInit?.hospitalNearOnly as boolean) ?? false
+  );
+  const [parkNearOnly, setParkNearOnly] = useState<boolean>(() => (urlInit?.parkNearOnly as boolean) ?? false);
   // 단지명·지역 검색어 — URL/undo/preset 미참여(일시적 탐색), resetFilters 만 비움
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -216,6 +224,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -252,6 +262,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     crimeSafeOnly,
     childcareGoodOnly,
     parkingGoodOnly,
+    hospitalNearOnly,
+    parkNearOnly,
     areaMin,
     areaMax,
     unitsMin,
@@ -317,6 +329,14 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
   }, [onFilterChange]);
   const toggleParkingGoodOnly = useCallback(() => {
     setParkingGoodOnly((p) => !p);
+    onFilterChange?.();
+  }, [onFilterChange]);
+  const toggleHospitalNearOnly = useCallback(() => {
+    setHospitalNearOnly((p) => !p);
+    onFilterChange?.();
+  }, [onFilterChange]);
+  const toggleParkNearOnly = useCallback(() => {
+    setParkNearOnly((p) => !p);
     onFilterChange?.();
   }, [onFilterChange]);
   const handleRegionChange = useCallback(
@@ -412,6 +432,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       crimeSafeOnly: setCrimeSafeOnly as AnySetter,
       childcareGoodOnly: setChildcareGoodOnly as AnySetter,
       parkingGoodOnly: setParkingGoodOnly as AnySetter,
+      hospitalNearOnly: setHospitalNearOnly as AnySetter,
+      parkNearOnly: setParkNearOnly as AnySetter,
       areaMin: setAreaMin as AnySetter,
       areaMax: setAreaMax as AnySetter,
       unitsMin: setUnitsMin as AnySetter,
@@ -464,6 +486,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -488,6 +512,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     crimeSafeOnly,
     childcareGoodOnly,
     parkingGoodOnly,
+    hospitalNearOnly,
+    parkNearOnly,
     areaMin,
     areaMax,
     unitsMin,
@@ -526,6 +552,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
         crimeSafeOnly,
         childcareGoodOnly,
         parkingGoodOnly,
+        hospitalNearOnly,
+        parkNearOnly,
         areaMin,
         areaMax,
         unitsMin,
@@ -569,6 +597,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -657,6 +687,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -681,6 +713,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     crimeSafeOnly,
     childcareGoodOnly,
     parkingGoodOnly,
+    hospitalNearOnly,
+    parkNearOnly,
     areaMin,
     areaMax,
     unitsMin,
@@ -729,6 +763,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -752,6 +788,8 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
       areaMin,
       areaMax,
       unitsMin,
@@ -867,6 +905,10 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     toggleChildcareGoodOnly,
     parkingGoodOnly,
     toggleParkingGoodOnly,
+    hospitalNearOnly,
+    toggleHospitalNearOnly,
+    parkNearOnly,
+    toggleParkNearOnly,
     searchQuery,
     handleSearchChange,
     getShareURL,

@@ -25,6 +25,8 @@ export interface FilterState {
   crimeSafeOnly?: boolean;
   childcareGoodOnly?: boolean;
   parkingGoodOnly?: boolean;
+  hospitalNearOnly?: boolean;
+  parkNearOnly?: boolean;
 }
 
 /**
@@ -96,6 +98,12 @@ export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[]
 
   // 주차 넉넉한 곳만 — parkingRatio ≥ 1.5대/세대 (여유, AptCard "주차 여유" 초록칩 기준과 일치, null 미수집 제외)
   if (f.parkingGoodOnly) out = out.filter((x) => x.apt.parkingRatio != null && (x.apt.parkingRatio as number) >= 1.5);
+
+  // 병원 도보권만 — hospitalDist ≤ 500m (subwayOnly 답습, sentinel 없음이라 null 미수집만 제외)
+  if (f.hospitalNearOnly) out = out.filter((x) => x.apt.hospitalDist != null && (x.apt.hospitalDist as number) <= 500);
+
+  // 공원 도보권만 — parkDist ≤ 500m (subwayOnly 답습, sentinel 없음이라 null 미수집만 제외)
+  if (f.parkNearOnly) out = out.filter((x) => x.apt.parkDist != null && (x.apt.parkDist as number) <= 500);
 
   return out;
 }

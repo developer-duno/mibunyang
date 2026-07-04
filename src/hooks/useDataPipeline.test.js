@@ -346,6 +346,30 @@ describe("useDataPipeline", () => {
       expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 2.0 > 1.4 > 0.8 > null(-Infinity 맨뒤)
     });
 
+    it("sortKey=hospitalNear → 병원 가까운순(거리 오름차순), null 은 맨 뒤 (세션 479)", () => {
+      const apts = [
+        makeApt({ id: "ah-a", region: "서울", price: 30000, hospitalDist: 800 }),
+        makeApt({ id: "ah-b", region: "서울", price: 30000, hospitalDist: 100 }),
+        makeApt({ id: "ah-c", region: "서울", price: 30000, hospitalDist: null }),
+        makeApt({ id: "ah-d", region: "서울", price: 30000, hospitalDist: 300 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, sortKey: "hospitalNear" });
+      const order = result.current.filtered.map((x) => x.apt.id);
+      expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 100 < 300 < 800 < null(Infinity 맨뒤)
+    });
+
+    it("sortKey=parkNear → 공원 가까운순(거리 오름차순), null 은 맨 뒤 (세션 479)", () => {
+      const apts = [
+        makeApt({ id: "ah-a", region: "서울", price: 30000, parkDist: 700 }),
+        makeApt({ id: "ah-b", region: "서울", price: 30000, parkDist: 150 }),
+        makeApt({ id: "ah-c", region: "서울", price: 30000, parkDist: null }),
+        makeApt({ id: "ah-d", region: "서울", price: 30000, parkDist: 400 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, sortKey: "parkNear" });
+      const order = result.current.filtered.map((x) => x.apt.id);
+      expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 150 < 400 < 700 < null(Infinity 맨뒤)
+    });
+
     it("filterRegion 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울" });
       expect(result.current.filtered.every((x) => x.apt.region === "서울")).toBe(true);

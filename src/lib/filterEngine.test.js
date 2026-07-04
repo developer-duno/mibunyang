@@ -290,4 +290,40 @@ describe("applyBaseFilters", () => {
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, parkingGoodOnly: false });
     expect(result).toHaveLength(2);
   });
+
+  // 병원 도보권 필터 (hospitalNearOnly) — hospitalDist <= 500m만 통과 (null 미수집 제외, 세션 479)
+  it("hospitalNearOnly=true이면 hospitalDist<=500만 통과 (>500·null 제외)", () => {
+    const items = [
+      makeItem({ id: "near", hospitalDist: 120 }),
+      makeItem({ id: "edge", hospitalDist: 500 }), // 경계값 포함
+      makeItem({ id: "far", hospitalDist: 800 }), // 초과
+      makeItem({ id: "none", hospitalDist: null }), // 미수집
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, hospitalNearOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["near", "edge"]);
+  });
+
+  it("hospitalNearOnly=false이면 hospitalDist 무관 전부 통과", () => {
+    const items = [makeItem({ id: "far", hospitalDist: 900 }), makeItem({ id: "near", hospitalDist: 100 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, hospitalNearOnly: false });
+    expect(result).toHaveLength(2);
+  });
+
+  // 공원 도보권 필터 (parkNearOnly) — parkDist <= 500m만 통과 (null 미수집 제외, 세션 479)
+  it("parkNearOnly=true이면 parkDist<=500만 통과 (>500·null 제외)", () => {
+    const items = [
+      makeItem({ id: "near", parkDist: 220 }),
+      makeItem({ id: "edge", parkDist: 500 }), // 경계값 포함
+      makeItem({ id: "far", parkDist: 700 }), // 초과
+      makeItem({ id: "none", parkDist: null }), // 미수집
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, parkNearOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["near", "edge"]);
+  });
+
+  it("parkNearOnly=false이면 parkDist 무관 전부 통과", () => {
+    const items = [makeItem({ id: "far", parkDist: 800 }), makeItem({ id: "near", parkDist: 150 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, parkNearOnly: false });
+    expect(result).toHaveLength(2);
+  });
 });

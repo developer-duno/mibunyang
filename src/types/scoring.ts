@@ -87,9 +87,11 @@ export interface Apt {
   // 인프라
   noise?: number;
   hospital?: number;
+  hospitalDist?: number;
   mart?: number;
   conv?: number;
   park?: number;
+  parkDist?: number;
   cafe?: number;
   culture?: number;
   bank?: number;
