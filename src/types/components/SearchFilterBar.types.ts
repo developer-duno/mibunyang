@@ -41,6 +41,10 @@ export interface SearchFilterBarProps {
   onToggleDsrPassOnly: () => void;
   nonRegulatedOnly: boolean;
   onToggleNonRegulatedOnly: () => void;
+  crimeSafeOnly: boolean;
+  onToggleCrimeSafeOnly: () => void;
+  childcareGoodOnly: boolean;
+  onToggleChildcareGoodOnly: () => void;
   hideNoUnsold?: boolean;
   onToggleHideNoUnsold?: () => void;
   sortKey: SortKey;

@@ -228,4 +228,47 @@ describe("applyBaseFilters", () => {
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, nonRegulatedOnly: false });
     expect(result).toHaveLength(2);
   });
+
+  // 치안 안전 필터 (crimeSafeOnly) — crimeSafetyGrade 1~3만 통과 (4·5 위험 + null 미수집 제외, 세션 475)
+  it("crimeSafeOnly=true이면 crimeSafetyGrade 1~3만 통과 (4·5·null 제외)", () => {
+    const items = [
+      makeItem({ id: "g1", crimeSafetyGrade: 1 }),
+      makeItem({ id: "g3", crimeSafetyGrade: 3 }),
+      makeItem({ id: "g4", crimeSafetyGrade: 4 }),
+      makeItem({ id: "g5", crimeSafetyGrade: 5 }),
+      makeItem({ id: "gnull", crimeSafetyGrade: null }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, crimeSafeOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["g1", "g3"]);
+  });
+
+  // crimeSafeOnly=false면 crimeSafetyGrade 무관 전부 통과 (무영향)
+  it("crimeSafeOnly=false이면 crimeSafetyGrade 무관 전부 통과", () => {
+    const items = [makeItem({ id: "g5", crimeSafetyGrade: 5 }), makeItem({ id: "gnull", crimeSafetyGrade: null })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, crimeSafeOnly: false });
+    expect(result).toHaveLength(2);
+  });
+
+  // 육아 인프라 필터 (childcareGoodOnly) — 어린이집 5개+ AND 도보권(≤500m)만 통과 (세션 475)
+  it("childcareGoodOnly=true이면 childcare>=5 AND childcareDist<=500만 통과", () => {
+    const items = [
+      makeItem({ id: "good", childcare: 8, childcareDist: 200 }),
+      makeItem({ id: "few", childcare: 2, childcareDist: 200 }), // 개수 부족
+      makeItem({ id: "far", childcare: 8, childcareDist: 900 }), // 거리 초과
+      makeItem({ id: "nodist", childcare: 8, childcareDist: null }), // 거리 미수집
+      makeItem({ id: "nocount", childcare: null, childcareDist: 200 }), // 개수 미수집
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, childcareGoodOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["good"]);
+  });
+
+  // childcareGoodOnly=false면 childcare 무관 전부 통과 (무영향)
+  it("childcareGoodOnly=false이면 childcare 무관 전부 통과", () => {
+    const items = [
+      makeItem({ id: "few", childcare: 1, childcareDist: 900 }),
+      makeItem({ id: "good", childcare: 8, childcareDist: 100 }),
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, childcareGoodOnly: false });
+    expect(result).toHaveLength(2);
+  });
 });

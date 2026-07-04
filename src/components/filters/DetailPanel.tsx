@@ -22,6 +22,10 @@ type DetailPanelProps = {
   onToggleDsrPassOnly: () => void;
   nonRegulatedOnly: boolean;
   onToggleNonRegulatedOnly: () => void;
+  crimeSafeOnly: boolean;
+  onToggleCrimeSafeOnly: () => void;
+  childcareGoodOnly: boolean;
+  onToggleChildcareGoodOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
 };
 
@@ -40,6 +44,10 @@ export const DetailPanel = memo(function DetailPanel({
   onToggleDsrPassOnly,
   nonRegulatedOnly,
   onToggleNonRegulatedOnly,
+  crimeSafeOnly,
+  onToggleCrimeSafeOnly,
+  childcareGoodOnly,
+  onToggleChildcareGoodOnly,
   filterOptionCounts,
 }: DetailPanelProps) {
   const hasFilter =
@@ -49,7 +57,9 @@ export const DetailPanel = memo(function DetailPanel({
     subwayOnly ||
     schoolGoodOnly ||
     dsrPassOnly ||
-    nonRegulatedOnly;
+    nonRegulatedOnly ||
+    crimeSafeOnly ||
+    childcareGoodOnly;
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const }}>
       <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
@@ -197,6 +207,46 @@ export const DetailPanel = memo(function DetailPanel({
       >
         비규제
       </button>
+      <button
+        onClick={onToggleCrimeSafeOnly}
+        aria-label="치안 안전한 동네만(범죄 1~3등급)"
+        aria-pressed={crimeSafeOnly}
+        style={{
+          flexShrink: 0,
+          height: 30,
+          padding: "0 10px",
+          fontSize: F.xs,
+          fontWeight: crimeSafeOnly ? 700 : 500,
+          background: crimeSafeOnly ? C.cyanLight : C.slate100,
+          color: crimeSafeOnly ? C.cyan : C.slate600,
+          border: crimeSafeOnly ? `1.5px solid ${C.cyan}` : `1px solid ${C.border}`,
+          borderRadius: 5,
+          cursor: "pointer",
+          transition: "all .15s",
+        }}
+      >
+        치안안전
+      </button>
+      <button
+        onClick={onToggleChildcareGoodOnly}
+        aria-label="육아 인프라 좋은 곳만(어린이집 5개+ · 500m 이내)"
+        aria-pressed={childcareGoodOnly}
+        style={{
+          flexShrink: 0,
+          height: 30,
+          padding: "0 10px",
+          fontSize: F.xs,
+          fontWeight: childcareGoodOnly ? 700 : 500,
+          background: childcareGoodOnly ? C.pinkLight : C.slate100,
+          color: childcareGoodOnly ? C.pink : C.slate600,
+          border: childcareGoodOnly ? `1.5px solid ${C.pink}` : `1px solid ${C.border}`,
+          borderRadius: 5,
+          cursor: "pointer",
+          transition: "all .15s",
+        }}
+      >
+        육아인프라
+      </button>
       {hasFilter && (
         <button
           onClick={() => {
@@ -207,8 +257,10 @@ export const DetailPanel = memo(function DetailPanel({
             if (schoolGoodOnly) onToggleSchoolGoodOnly();
             if (dsrPassOnly) onToggleDsrPassOnly();
             if (nonRegulatedOnly) onToggleNonRegulatedOnly();
+            if (crimeSafeOnly) onToggleCrimeSafeOnly();
+            if (childcareGoodOnly) onToggleChildcareGoodOnly();
           }}
-          aria-label="점수/시공사/혜택/역세권/학군/DSR/규제 초기화"
+          aria-label="점수/시공사/혜택/역세권/학군/DSR/규제/치안/육아 초기화"
           style={resetBtn(30)}
         >
           <IconClose size={12} />

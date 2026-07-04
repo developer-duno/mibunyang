@@ -22,6 +22,8 @@ export interface FilterState {
   schoolGoodOnly?: boolean;
   dsrPassOnly?: boolean;
   nonRegulatedOnly?: boolean;
+  crimeSafeOnly?: boolean;
+  childcareGoodOnly?: boolean;
 }
 
 /**
@@ -76,6 +78,20 @@ export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[]
 
   // 비규제지역만 — isRegulated !== true (규제지역 제외, 매매·대출 자유)
   if (f.nonRegulatedOnly) out = out.filter((x) => x.apt.isRegulated !== true);
+
+  // 치안 안전만 — crimeSafetyGrade 1~3등급만 통과 (4·5등급 위험 + null 미수집 제외, AptCard 위험배지 >=4 임계 일치)
+  if (f.crimeSafeOnly)
+    out = out.filter((x) => x.apt.crimeSafetyGrade != null && (x.apt.crimeSafetyGrade as number) <= 3);
+
+  // 육아 인프라 좋은 곳만 — 어린이집 5개+ AND 도보권(≤500m)
+  if (f.childcareGoodOnly)
+    out = out.filter(
+      (x) =>
+        x.apt.childcare != null &&
+        (x.apt.childcare as number) >= 5 &&
+        x.apt.childcareDist != null &&
+        (x.apt.childcareDist as number) <= 500
+    );
 
   return out;
 }

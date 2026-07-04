@@ -103,6 +103,8 @@ export function useDataPipeline({
   schoolGoodOnly,
   dsrPassOnly,
   nonRegulatedOnly,
+  crimeSafeOnly,
+  childcareGoodOnly,
   searchQuery,
   hideNoUnsold,
   compIds,
@@ -197,6 +199,8 @@ export function useDataPipeline({
       schoolGoodOnly,
       dsrPassOnly,
       nonRegulatedOnly,
+      crimeSafeOnly,
+      childcareGoodOnly,
     }),
     [
       showFavOnly,
@@ -213,6 +217,8 @@ export function useDataPipeline({
       schoolGoodOnly,
       dsrPassOnly,
       nonRegulatedOnly,
+      crimeSafeOnly,
+      childcareGoodOnly,
     ]
   );
 
@@ -274,6 +280,8 @@ export function useDataPipeline({
         schoolGoodOnly,
         dsrPassOnly,
         nonRegulatedOnly,
+        crimeSafeOnly,
+        childcareGoodOnly,
         searchQuery.trim(),
       ].filter(Boolean).length,
     [
@@ -293,6 +301,8 @@ export function useDataPipeline({
       schoolGoodOnly,
       dsrPassOnly,
       nonRegulatedOnly,
+      crimeSafeOnly,
+      childcareGoodOnly,
       searchQuery,
     ]
   );

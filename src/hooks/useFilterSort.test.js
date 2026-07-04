@@ -285,6 +285,30 @@ describe("전체 초기화 + 프리셋", () => {
     });
     expect(result.current.nonRegulatedOnly).toBe(true);
   });
+
+  it("toggleCrimeSafeOnly — 토글 + 리셋", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleCrimeSafeOnly();
+    });
+    expect(result.current.crimeSafeOnly).toBe(true);
+    act(() => {
+      result.current.handleResetAll();
+    });
+    expect(result.current.crimeSafeOnly).toBe(false);
+  });
+
+  it("toggleChildcareGoodOnly — 토글 + 리셋", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleChildcareGoodOnly();
+    });
+    expect(result.current.childcareGoodOnly).toBe(true);
+    act(() => {
+      result.current.handleResetAll();
+    });
+    expect(result.current.childcareGoodOnly).toBe(false);
+  });
 });
 
 describe("URL 필터 역직렬화 (Phase 1)", () => {
@@ -417,5 +441,20 @@ describe("URL 필터 역직렬화 (Phase 2)", () => {
     const { result } = renderHook(() => useFilterSort({}));
     expect(result.current.dsrPassOnly).toBe(false);
     expect(result.current.nonRegulatedOnly).toBe(false);
+  });
+
+  // 세션 475 — 치안안전/육아인프라 토글 URL 역직렬화 (?crimesafe=1 / ?childcare=1)
+  it("URL에서 crimeSafeOnly, childcareGoodOnly 읽기", () => {
+    mockLocationSearch("?crimesafe=1&childcare=1");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.crimeSafeOnly).toBe(true);
+    expect(result.current.childcareGoodOnly).toBe(true);
+  });
+
+  it("crimesafe/childcare 미지정 → 기본값 false", () => {
+    mockLocationSearch("?region=서울");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.crimeSafeOnly).toBe(false);
+    expect(result.current.childcareGoodOnly).toBe(false);
   });
 });
