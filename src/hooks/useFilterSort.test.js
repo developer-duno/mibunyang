@@ -321,6 +321,72 @@ describe("전체 초기화 + 프리셋", () => {
     });
     expect(result.current.parkingGoodOnly).toBe(false);
   });
+
+  // 세션 479 회귀 가드 — 치안/육아/주차 필터 켠 채 커스텀 프리셋 저장 시 snap 객체에 담겨야 함
+  // (saveCustomPreset snap 에 crimeSafeOnly/childcareGoodOnly/parkingGoodOnly 누락 시
+  //  프리셋에 절대 저장 안 되던 결함 — 세션 430 subwayOnly · 세션 461 dsr 와 동일 재발 패턴)
+  it("saveCustomPreset — crimeSafeOnly=true 저장 후 applyPreset 으로 복원", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleCrimeSafeOnly();
+    });
+    expect(result.current.crimeSafeOnly).toBe(true);
+    act(() => {
+      result.current.saveCustomPreset("치안만");
+    });
+    const saved = /** @type {any} */ (result.current.customPresets.find((p) => p.label === "치안만"));
+    expect(saved?.values.crimeSafeOnly).toBe(true);
+    act(() => {
+      result.current.toggleCrimeSafeOnly();
+    });
+    expect(result.current.crimeSafeOnly).toBe(false);
+    act(() => {
+      result.current.applyPreset(saved.values);
+    });
+    expect(result.current.crimeSafeOnly).toBe(true);
+  });
+
+  it("saveCustomPreset — childcareGoodOnly=true 저장 후 applyPreset 으로 복원", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleChildcareGoodOnly();
+    });
+    expect(result.current.childcareGoodOnly).toBe(true);
+    act(() => {
+      result.current.saveCustomPreset("육아만");
+    });
+    const saved = /** @type {any} */ (result.current.customPresets.find((p) => p.label === "육아만"));
+    expect(saved?.values.childcareGoodOnly).toBe(true);
+    act(() => {
+      result.current.toggleChildcareGoodOnly();
+    });
+    expect(result.current.childcareGoodOnly).toBe(false);
+    act(() => {
+      result.current.applyPreset(saved.values);
+    });
+    expect(result.current.childcareGoodOnly).toBe(true);
+  });
+
+  it("saveCustomPreset — parkingGoodOnly=true 저장 후 applyPreset 으로 복원", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleParkingGoodOnly();
+    });
+    expect(result.current.parkingGoodOnly).toBe(true);
+    act(() => {
+      result.current.saveCustomPreset("주차만");
+    });
+    const saved = /** @type {any} */ (result.current.customPresets.find((p) => p.label === "주차만"));
+    expect(saved?.values.parkingGoodOnly).toBe(true);
+    act(() => {
+      result.current.toggleParkingGoodOnly();
+    });
+    expect(result.current.parkingGoodOnly).toBe(false);
+    act(() => {
+      result.current.applyPreset(saved.values);
+    });
+    expect(result.current.parkingGoodOnly).toBe(true);
+  });
 });
 
 describe("URL 필터 역직렬화 (Phase 1)", () => {
