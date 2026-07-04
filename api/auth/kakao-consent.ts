@@ -45,14 +45,19 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
 
   user.consentMarketing = consent;
   user.consentMarketingAt = new Date().toISOString();
-  await kv.set(`user:${email}`, user);
 
-  // 동의자 집합 관리 (관리자 통계용)
+  // 동의자 집합(관리자 통계용, admin/users.ts scard 소비처)을 해시보다 먼저 갱신.
+  // 실패 시 해시(kv.set)를 건드리기 전이라 통계-무결성 보존 → 부분 쓰기 0. review.ts:26-33 답습.
   if (consent) {
     await kv.sadd("users:consent_marketing", email);
   } else {
     await kv.srem("users:consent_marketing", email);
   }
+
+  // 집합 성공 후 해시 갱신. 해시 실패 시 집합은 이미 새 값(통계 정확), 해시만 잠시 뒤처짐 —
+  // 단일 op 라 review.ts 식 반대-op 보상은 오히려 drift 를 재생산하므로 롤백 없이 그대로 throw
+  // (withHandler 가 500 응답, 개별 레코드는 재요청 시 자연 치유).
+  await kv.set(`user:${email}`, user);
 
   return res.json({ ok: true });
 }});

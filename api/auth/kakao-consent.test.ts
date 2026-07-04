@@ -102,4 +102,25 @@ describe("auth/kakao-consent handler", () => {
     await handler({ method: "POST", body: { token, consent: true }, headers: {} }, res);
     expect(mockKv.get).toHaveBeenCalledWith("user:kakao@test.com");
   });
+
+  it("sadd 실패 시 500을 반환한다 (해시 미변경)", async () => {
+    const token = createToken({ email: "kakao@test.com" });
+    mockKv.get.mockResolvedValueOnce({ email: "kakao@test.com", name: "Tester", consentMarketing: null });
+    mockKv.sadd.mockRejectedValueOnce(new Error("Redis error"));
+    const res = makeRes();
+    await handler({ method: "POST", body: { token, consent: true }, headers: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    // 집합 먼저라 실패 시 해시(kv.set)는 호출되지 않아야 함 (부분 쓰기 방지 = 순서 계약)
+    expect(mockKv.set).not.toHaveBeenCalled();
+  });
+
+  it("srem 실패 시 500을 반환한다 (해시 미변경)", async () => {
+    const token = createToken({ email: "kakao@test.com" });
+    mockKv.get.mockResolvedValueOnce({ email: "kakao@test.com", name: "Tester", consentMarketing: true });
+    mockKv.srem.mockRejectedValueOnce(new Error("Redis error"));
+    const res = makeRes();
+    await handler({ method: "POST", body: { token, consent: false }, headers: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(mockKv.set).not.toHaveBeenCalled();
+  });
 });
