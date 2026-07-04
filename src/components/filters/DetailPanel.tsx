@@ -140,77 +140,76 @@ export const DetailPanel = memo(function DetailPanel({
         {DETAIL_FILTER_GROUPS.map((group) => {
           const isQuality = group.label === "안전·품질";
           return (
-            <div key={group.label} role="group" aria-label={`${group.label} 필터`}>
+            /* 소제목=행의 첫 항목(왼쪽) + 버튼들이 오른쪽으로 흐름 — 위아래 아닌 "좌우 배치" (세션 483) */
+            <div key={group.label} role="group" aria-label={`${group.label} 필터`} style={groupRow}>
               <div style={groupLabelStyle(group.color)}>{group.label}</div>
-              <div style={groupRow}>
-                {/* 안전·품질 그룹 상단: 최소점수 + 시공사등급 (토글 아님, 인라인 유지) */}
-                {isQuality && (
-                  <>
-                    <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min="0"
-                      max="100"
-                      value={minScore}
-                      onChange={(e) => onMinScoreChange(e.target.value)}
-                      placeholder="점수"
-                      aria-label="최소 종합점수"
-                      style={{ ...numInput(minScore, 30), maxWidth: 60 }}
-                    />
-                    <span style={tilde}>점</span>
-                    <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
-                    <select
-                      value={builderTier}
-                      onChange={(e) => onBuilderTierChange(e.target.value)}
-                      aria-label="시공사 등급"
-                      style={{
-                        ...selectBase,
-                        flex: "0 0 auto",
-                        padding: "4px 20px 4px 6px",
-                        fontSize: F.xs,
-                        height: isDesktop ? 32 : 36,
-                        borderRadius: R.btn,
-                        fontWeight: builderTier !== "전체" ? 700 : 500,
-                        border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-                        background: C.slate100,
-                        color: builderTier !== "전체" ? C.indigo : C.slate600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {["전체", "1군", "2군", "기타"].map((v) => {
-                        const c = filterOptionCounts?.tierCounts?.[v] ?? 0;
-                        const total =
-                          v === "전체"
-                            ? Object.values(filterOptionCounts?.tierCounts ?? {}).reduce(
-                                (s: number, n: number) => s + n,
-                                0
-                              )
-                            : 0;
-                        return (
-                          <option key={v} value={v} disabled={v !== "전체" && c === 0}>
-                            {v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </>
-                )}
-                {group.toggles.map((t) => {
-                  const { value, onToggle } = toggleState[t.key];
-                  return (
-                    <button
-                      key={t.key}
-                      onClick={onToggle}
-                      aria-label={t.ariaLabel}
-                      aria-pressed={value}
-                      style={toggleBtnStyle(value, t.color, isDesktop)}
-                    >
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
+              {/* 안전·품질 그룹: 최소점수 + 시공사등급 (토글 아님, 인라인 유지) */}
+              {isQuality && (
+                <>
+                  <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    max="100"
+                    value={minScore}
+                    onChange={(e) => onMinScoreChange(e.target.value)}
+                    placeholder="점수"
+                    aria-label="최소 종합점수"
+                    style={{ ...numInput(minScore, 30), maxWidth: 60 }}
+                  />
+                  <span style={tilde}>점</span>
+                  <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
+                  <select
+                    value={builderTier}
+                    onChange={(e) => onBuilderTierChange(e.target.value)}
+                    aria-label="시공사 등급"
+                    style={{
+                      ...selectBase,
+                      flex: "0 0 auto",
+                      padding: "4px 20px 4px 6px",
+                      fontSize: F.xs,
+                      height: isDesktop ? 32 : 36,
+                      borderRadius: R.btn,
+                      fontWeight: builderTier !== "전체" ? 700 : 500,
+                      border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+                      background: C.slate100,
+                      color: builderTier !== "전체" ? C.indigo : C.slate600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {["전체", "1군", "2군", "기타"].map((v) => {
+                      const c = filterOptionCounts?.tierCounts?.[v] ?? 0;
+                      const total =
+                        v === "전체"
+                          ? Object.values(filterOptionCounts?.tierCounts ?? {}).reduce(
+                              (s: number, n: number) => s + n,
+                              0
+                            )
+                          : 0;
+                      return (
+                        <option key={v} value={v} disabled={v !== "전체" && c === 0}>
+                          {v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </>
+              )}
+              {group.toggles.map((t) => {
+                const { value, onToggle } = toggleState[t.key];
+                return (
+                  <button
+                    key={t.key}
+                    onClick={onToggle}
+                    aria-label={t.ariaLabel}
+                    aria-pressed={value}
+                    style={toggleBtnStyle(value, t.color, isDesktop)}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
             </div>
           );
         })}

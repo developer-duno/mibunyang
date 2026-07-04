@@ -93,11 +93,12 @@ export const DETAIL_FILTER_GROUPS: readonly FilterGroup[] = [
 /** 전체 토글 개수 (drift 가드 대조군 — useFilterSort FILTER_URL_MAP 의 bool 항목 수와 일치해야 함) */
 export const TOGGLE_FILTER_COUNT = DETAIL_FILTER_GROUPS.reduce((n, g) => n + g.toggles.length, 0);
 
-/** 그룹 소제목 공통 스타일 base (F.micro=10px 하한 준수). 색은 그룹별 groupLabelStyle 이 입힘 (세션 482) */
+/** 그룹 소제목 공통 스타일 base (F.micro=10px 하한 준수). 색은 그룹별 groupLabelStyle 이 입힘 (세션 482).
+ *  세션 483: 소제목이 버튼 행의 첫 항목(좌우 배치)이라 marginBottom 제거 + flexShrink 0. */
 export const GROUP_LABEL_STYLE = {
   fontSize: F.micro,
   fontWeight: 700,
-  marginBottom: 4,
+  flexShrink: 0,
   display: "inline-block",
   padding: "2px 6px",
   borderRadius: 6,
