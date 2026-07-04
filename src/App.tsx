@@ -202,6 +202,8 @@ export default function App() {
     toggleCrimeSafeOnly,
     childcareGoodOnly,
     toggleChildcareGoodOnly,
+    parkingGoodOnly,
+    toggleParkingGoodOnly,
     searchQuery,
     handleSearchChange,
     getShareURL,
@@ -274,6 +276,7 @@ export default function App() {
     nonRegulatedOnly,
     crimeSafeOnly,
     childcareGoodOnly,
+    parkingGoodOnly,
     searchQuery,
     hideNoUnsold,
     compIds,
@@ -565,6 +568,8 @@ export default function App() {
             onToggleCrimeSafeOnly={toggleCrimeSafeOnly}
             childcareGoodOnly={childcareGoodOnly}
             onToggleChildcareGoodOnly={toggleChildcareGoodOnly}
+            parkingGoodOnly={parkingGoodOnly}
+            onToggleParkingGoodOnly={toggleParkingGoodOnly}
             hideNoUnsold={hideNoUnsold}
             onToggleHideNoUnsold={toggleHideNoUnsold}
             activeFilterCount={activeFilterCount}

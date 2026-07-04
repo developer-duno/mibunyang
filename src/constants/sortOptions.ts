@@ -44,6 +44,7 @@ export const SORT_OPTIONS: SortOption[] = [
     pas: "#EDFCF2",
   },
   { key: "crimeSafe", pcLabel: "치안안전", mobileLabel: "치안안전순", ac: C.cyan, bg: C.cyanLight, pas: "#ECFEFF" },
+  { key: "parkingHigh", pcLabel: "주차넉넉", mobileLabel: "주차넉넉순", ac: C.blue, bg: C.blueLight, pas: "#EEF3FF" },
 ];
 
 /** localStorage / URL 파라미터 검증용 Set */

@@ -69,6 +69,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onToggleCrimeSafeOnly,
   childcareGoodOnly,
   onToggleChildcareGoodOnly,
+  parkingGoodOnly,
+  onToggleParkingGoodOnly,
   hideNoUnsold,
   onToggleHideNoUnsold,
   activeFilterCount,
@@ -153,7 +155,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
     dsrPassOnly ||
     nonRegulatedOnly ||
     crimeSafeOnly ||
-    childcareGoodOnly
+    childcareGoodOnly ||
+    parkingGoodOnly
   );
 
   /* undo/redo 버튼 공용 스타일 (active = canUndo/canRedo, undefined → 비활성) */
@@ -390,6 +393,8 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           onToggleCrimeSafeOnly={onToggleCrimeSafeOnly}
           childcareGoodOnly={childcareGoodOnly}
           onToggleChildcareGoodOnly={onToggleChildcareGoodOnly}
+          parkingGoodOnly={parkingGoodOnly}
+          onToggleParkingGoodOnly={onToggleParkingGoodOnly}
           filterOptionCounts={filterOptionCounts}
         />
       </FilterDropdown>
@@ -621,6 +626,18 @@ export const SearchFilterBar = memo(function SearchFilterBar({
                 style={chipStyle}
               >
                 육아인프라 ✕
+              </span>
+            )}
+            {parkingGoodOnly && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="주차넉넉 필터 해제"
+                onClick={onToggleParkingGoodOnly}
+                onKeyDown={onChipKeyDown(onToggleParkingGoodOnly)}
+                style={chipStyle}
+              >
+                주차넉넉 ✕
               </span>
             )}
           </div>

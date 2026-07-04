@@ -334,6 +334,18 @@ describe("useDataPipeline", () => {
       expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 1 < 2 < 4 < null(Infinity 맨뒤)
     });
 
+    it("sortKey=parkingHigh → 주차 넉넉순(내림차순), null 은 맨 뒤 (세션 477)", () => {
+      const apts = [
+        makeApt({ id: "ah-a", region: "서울", price: 30000, parkingRatio: 0.8 }),
+        makeApt({ id: "ah-b", region: "서울", price: 30000, parkingRatio: 2.0 }),
+        makeApt({ id: "ah-c", region: "서울", price: 30000, parkingRatio: null }),
+        makeApt({ id: "ah-d", region: "서울", price: 30000, parkingRatio: 1.4 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, sortKey: "parkingHigh" });
+      const order = result.current.filtered.map((x) => x.apt.id);
+      expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 2.0 > 1.4 > 0.8 > null(-Infinity 맨뒤)
+    });
+
     it("filterRegion 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울" });
       expect(result.current.filtered.every((x) => x.apt.region === "서울")).toBe(true);

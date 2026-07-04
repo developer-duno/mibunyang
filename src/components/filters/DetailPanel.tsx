@@ -26,6 +26,8 @@ type DetailPanelProps = {
   onToggleCrimeSafeOnly: () => void;
   childcareGoodOnly: boolean;
   onToggleChildcareGoodOnly: () => void;
+  parkingGoodOnly: boolean;
+  onToggleParkingGoodOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
 };
 
@@ -48,6 +50,8 @@ export const DetailPanel = memo(function DetailPanel({
   onToggleCrimeSafeOnly,
   childcareGoodOnly,
   onToggleChildcareGoodOnly,
+  parkingGoodOnly,
+  onToggleParkingGoodOnly,
   filterOptionCounts,
 }: DetailPanelProps) {
   const hasFilter =
@@ -59,7 +63,8 @@ export const DetailPanel = memo(function DetailPanel({
     dsrPassOnly ||
     nonRegulatedOnly ||
     crimeSafeOnly ||
-    childcareGoodOnly;
+    childcareGoodOnly ||
+    parkingGoodOnly;
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const }}>
       <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
@@ -247,6 +252,26 @@ export const DetailPanel = memo(function DetailPanel({
       >
         육아인프라
       </button>
+      <button
+        onClick={onToggleParkingGoodOnly}
+        aria-label="주차 넉넉한 곳만(1.5대/세대 이상)"
+        aria-pressed={parkingGoodOnly}
+        style={{
+          flexShrink: 0,
+          height: 30,
+          padding: "0 10px",
+          fontSize: F.xs,
+          fontWeight: parkingGoodOnly ? 700 : 500,
+          background: parkingGoodOnly ? C.blueLight : C.slate100,
+          color: parkingGoodOnly ? C.blue : C.slate600,
+          border: parkingGoodOnly ? `1.5px solid ${C.blue}` : `1px solid ${C.border}`,
+          borderRadius: 5,
+          cursor: "pointer",
+          transition: "all .15s",
+        }}
+      >
+        주차넉넉
+      </button>
       {hasFilter && (
         <button
           onClick={() => {
@@ -259,8 +284,9 @@ export const DetailPanel = memo(function DetailPanel({
             if (nonRegulatedOnly) onToggleNonRegulatedOnly();
             if (crimeSafeOnly) onToggleCrimeSafeOnly();
             if (childcareGoodOnly) onToggleChildcareGoodOnly();
+            if (parkingGoodOnly) onToggleParkingGoodOnly();
           }}
-          aria-label="점수/시공사/혜택/역세권/학군/DSR/규제/치안/육아 초기화"
+          aria-label="점수/시공사/혜택/역세권/학군/DSR/규제/치안/육아/주차 초기화"
           style={resetBtn(30)}
         >
           <IconClose size={12} />

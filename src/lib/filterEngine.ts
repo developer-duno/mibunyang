@@ -24,6 +24,7 @@ export interface FilterState {
   nonRegulatedOnly?: boolean;
   crimeSafeOnly?: boolean;
   childcareGoodOnly?: boolean;
+  parkingGoodOnly?: boolean;
 }
 
 /**
@@ -92,6 +93,9 @@ export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[]
         x.apt.childcareDist != null &&
         (x.apt.childcareDist as number) <= 500
     );
+
+  // 주차 넉넉한 곳만 — parkingRatio ≥ 1.5대/세대 (여유, AptCard "주차 여유" 초록칩 기준과 일치, null 미수집 제외)
+  if (f.parkingGoodOnly) out = out.filter((x) => x.apt.parkingRatio != null && (x.apt.parkingRatio as number) >= 1.5);
 
   return out;
 }

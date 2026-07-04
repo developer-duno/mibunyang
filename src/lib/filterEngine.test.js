@@ -271,4 +271,23 @@ describe("applyBaseFilters", () => {
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, childcareGoodOnly: false });
     expect(result).toHaveLength(2);
   });
+
+  // 주차 넉넉 필터 (parkingGoodOnly) — parkingRatio >= 1.5만 통과 (여유, null 미수집 제외, 세션 477)
+  it("parkingGoodOnly=true이면 parkingRatio>=1.5만 통과 (<1.5·null 제외)", () => {
+    const items = [
+      makeItem({ id: "roomy", parkingRatio: 2.0 }),
+      makeItem({ id: "exact", parkingRatio: 1.5 }), // 경계값 포함
+      makeItem({ id: "tight", parkingRatio: 1.2 }), // 미달
+      makeItem({ id: "none", parkingRatio: null }), // 미수집
+    ];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, parkingGoodOnly: true });
+    expect(result.map((x) => x.apt.id)).toEqual(["roomy", "exact"]);
+  });
+
+  // parkingGoodOnly=false면 parkingRatio 무관 전부 통과 (무영향)
+  it("parkingGoodOnly=false이면 parkingRatio 무관 전부 통과", () => {
+    const items = [makeItem({ id: "tight", parkingRatio: 0.8 }), makeItem({ id: "roomy", parkingRatio: 2.0 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, parkingGoodOnly: false });
+    expect(result).toHaveLength(2);
+  });
 });
