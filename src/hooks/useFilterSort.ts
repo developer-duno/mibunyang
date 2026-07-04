@@ -449,7 +449,7 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
         SETTERS[stateKey]?.(val);
       }
       setShowFavOnly(false);
-      setSearchQuery(""); // 초기화/프리셋/히스토리 적용 시 검색어도 비움 (셋 다 resetFilters 경유)
+      setSearchQuery(""); // 초기화/프리셋 적용 시 검색어도 비움 (둘 다 resetFilters 경유)
       const sk = (overrides.sortKey as string) || "total";
       try {
         localStorage.setItem("mibunyang_sort", sk);
