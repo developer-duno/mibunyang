@@ -33,7 +33,7 @@ function makeProps(overrides = {}) {
     parkNearOnly: false,
     onToggleParkNearOnly: vi.fn(),
     filterOptionCounts: null,
-    isDesktop: false,
+    isPC: false,
     ...overrides,
   };
 }

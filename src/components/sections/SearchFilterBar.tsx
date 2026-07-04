@@ -37,6 +37,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   searchQuery = "",
   onSearchChange,
   isDesktop,
+  isPC,
   showFavOnly,
   onToggleFavOnly,
   favCount,
@@ -426,7 +427,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           parkNearOnly={parkNearOnly}
           onToggleParkNearOnly={onToggleParkNearOnly}
           filterOptionCounts={filterOptionCounts}
-          isDesktop={isDesktop}
+          isPC={isPC}
         />
       </FilterDropdown>
       <FilterDropdown isOpen={openPanel === "search"} label="검색" isDesktop={isDesktop}>
