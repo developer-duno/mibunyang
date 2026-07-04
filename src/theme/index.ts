@@ -50,6 +50,9 @@ export const F: Record<string, number> = {
   xxl: 20, // 메인 제목
 };
 
+/** 모서리 반지름 토큰 — 필터·카드·배지 둥글기 통일(세션 481) */
+export const R = { chip: 7, btn: 8, panel: 10, badge: 6, card: 14 } as const;
+
 export const catCol: Record<Category, string> = {
   price: C.green,
   location: C.blue,
