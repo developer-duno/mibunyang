@@ -43,13 +43,15 @@ type DetailPanelProps = {
   filterOptionCounts?: { tierCounts?: Record<string, number> };
   /** 태블릿+PC(≥768) 가로 2칸 / 모바일 1칸 그리드 판정 (세션 483) */
   isPC?: boolean;
+  /** PC(≥1024, 마우스)만 컨트롤 높이 32 납작 / 태블릿·모바일은 36 터치 (세션 483) */
+  isDesktop?: boolean;
 };
 
-/** 토글 버튼 공통 스타일 — 활성 시 color 계열, 비활성 시 slate. 높이 36(터치타겟 규칙) */
-function toggleBtnStyle(active: boolean, color: ToggleColor) {
+/** 토글 버튼 공통 스타일 — 활성 시 color 계열, 비활성 시 slate. PC 32 / 태블릿·모바일 36 (세션 483) */
+function toggleBtnStyle(active: boolean, color: ToggleColor, isDesktop: boolean) {
   return {
     flexShrink: 0,
-    height: 36,
+    height: isDesktop ? 32 : 36,
     padding: "0 10px",
     fontSize: F.xs,
     fontWeight: active ? 700 : 500,
@@ -92,6 +94,7 @@ export const DetailPanel = memo(function DetailPanel({
   onToggleParkNearOnly,
   filterOptionCounts,
   isPC = false,
+  isDesktop = false,
 }: DetailPanelProps) {
   const hasFilter =
     minScore ||
@@ -166,7 +169,7 @@ export const DetailPanel = memo(function DetailPanel({
                         flex: "0 0 auto",
                         padding: "4px 20px 4px 6px",
                         fontSize: F.xs,
-                        height: 36,
+                        height: isDesktop ? 32 : 36,
                         borderRadius: R.btn,
                         fontWeight: builderTier !== "전체" ? 700 : 500,
                         border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
@@ -201,7 +204,7 @@ export const DetailPanel = memo(function DetailPanel({
                       onClick={onToggle}
                       aria-label={t.ariaLabel}
                       aria-pressed={value}
-                      style={toggleBtnStyle(value, t.color)}
+                      style={toggleBtnStyle(value, t.color, isDesktop)}
                     >
                       {t.label}
                     </button>

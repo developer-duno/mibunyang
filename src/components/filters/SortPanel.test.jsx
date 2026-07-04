@@ -11,6 +11,7 @@ function makeProps(overrides = {}) {
     sortKey: "total",
     onSortChange: vi.fn(),
     onClose: vi.fn(),
+    isDesktop: false,
     ...overrides,
   };
 }

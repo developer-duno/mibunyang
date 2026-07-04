@@ -13,9 +13,16 @@ type SortPanelProps = {
   sortKey: SortKey;
   onSortChange: (_key: SortKey) => void;
   onClose: () => void;
+  /** PC(≥1024, 마우스)만 칩 높이 32 납작 / 태블릿·모바일은 36 터치 (세션 483) */
+  isDesktop?: boolean;
 };
 
-export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClose }: SortPanelProps) {
+export const SortPanel = memo(function SortPanel({
+  sortKey,
+  onSortChange,
+  onClose,
+  isDesktop = false,
+}: SortPanelProps) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 5 }}>
       {(SORT_OPTIONS as SortOption[]).map((s: SortOption) => {
@@ -32,7 +39,7 @@ export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClos
               display: "flex",
               alignItems: "center",
               gap: 6,
-              height: 36, // 터치타겟 규칙(필터/정렬 버튼 36px+), 세션 482 칩화
+              height: isDesktop ? 32 : 36, // PC 납작 32 / 태블릿·모바일 터치 36 (세션 483)
               padding: "0 10px",
               fontSize: F.sm,
               fontWeight: selected ? 700 : 500,
