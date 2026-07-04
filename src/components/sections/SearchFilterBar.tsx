@@ -65,6 +65,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   onToggleDsrPassOnly,
   nonRegulatedOnly,
   onToggleNonRegulatedOnly,
+  crimeSafeOnly,
+  onToggleCrimeSafeOnly,
+  childcareGoodOnly,
+  onToggleChildcareGoodOnly,
   hideNoUnsold,
   onToggleHideNoUnsold,
   activeFilterCount,
@@ -147,7 +151,9 @@ export const SearchFilterBar = memo(function SearchFilterBar({
     subwayOnly ||
     schoolGoodOnly ||
     dsrPassOnly ||
-    nonRegulatedOnly
+    nonRegulatedOnly ||
+    crimeSafeOnly ||
+    childcareGoodOnly
   );
 
   /* undo/redo 버튼 공용 스타일 (active = canUndo/canRedo, undefined → 비활성) */
@@ -380,6 +386,10 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           onToggleDsrPassOnly={onToggleDsrPassOnly}
           nonRegulatedOnly={nonRegulatedOnly}
           onToggleNonRegulatedOnly={onToggleNonRegulatedOnly}
+          crimeSafeOnly={crimeSafeOnly}
+          onToggleCrimeSafeOnly={onToggleCrimeSafeOnly}
+          childcareGoodOnly={childcareGoodOnly}
+          onToggleChildcareGoodOnly={onToggleChildcareGoodOnly}
           filterOptionCounts={filterOptionCounts}
         />
       </FilterDropdown>
@@ -587,6 +597,30 @@ export const SearchFilterBar = memo(function SearchFilterBar({
                 style={chipStyle}
               >
                 비규제 ✕
+              </span>
+            )}
+            {crimeSafeOnly && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="치안안전 필터 해제"
+                onClick={onToggleCrimeSafeOnly}
+                onKeyDown={onChipKeyDown(onToggleCrimeSafeOnly)}
+                style={chipStyle}
+              >
+                치안안전 ✕
+              </span>
+            )}
+            {childcareGoodOnly && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="육아인프라 필터 해제"
+                onClick={onToggleChildcareGoodOnly}
+                onKeyDown={onChipKeyDown(onToggleChildcareGoodOnly)}
+                style={chipStyle}
+              >
+                육아인프라 ✕
               </span>
             )}
           </div>

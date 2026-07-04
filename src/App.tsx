@@ -198,6 +198,10 @@ export default function App() {
     toggleDsrPassOnly,
     nonRegulatedOnly,
     toggleNonRegulatedOnly,
+    crimeSafeOnly,
+    toggleCrimeSafeOnly,
+    childcareGoodOnly,
+    toggleChildcareGoodOnly,
     searchQuery,
     handleSearchChange,
     getShareURL,
@@ -268,6 +272,8 @@ export default function App() {
     schoolGoodOnly,
     dsrPassOnly,
     nonRegulatedOnly,
+    crimeSafeOnly,
+    childcareGoodOnly,
     searchQuery,
     hideNoUnsold,
     compIds,
@@ -555,6 +561,10 @@ export default function App() {
             onToggleDsrPassOnly={toggleDsrPassOnly}
             nonRegulatedOnly={nonRegulatedOnly}
             onToggleNonRegulatedOnly={toggleNonRegulatedOnly}
+            crimeSafeOnly={crimeSafeOnly}
+            onToggleCrimeSafeOnly={toggleCrimeSafeOnly}
+            childcareGoodOnly={childcareGoodOnly}
+            onToggleChildcareGoodOnly={toggleChildcareGoodOnly}
             hideNoUnsold={hideNoUnsold}
             onToggleHideNoUnsold={toggleHideNoUnsold}
             activeFilterCount={activeFilterCount}
