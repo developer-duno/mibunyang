@@ -2,13 +2,11 @@ import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from
 import { VALID_SORT_KEYS } from "@/constants/sortOptions";
 import { MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { trackEvent } from "@/lib/analytics";
-import type { SortKey, UseFilterSortArgs, UseFilterSortReturn, FilterPreset, FilterHistoryEntry } from "@/types/hooks";
+import type { SortKey, UseFilterSortArgs, UseFilterSortReturn, FilterPreset } from "@/types/hooks";
 
 const URL_SYNC_DEBOUNCE_MS = 300;
 
 const LS_CUSTOM_PRESETS = "mibunyang_custom_presets";
-const LS_FILTER_HISTORY = "mibunyang_filter_history";
-const MAX_HISTORY = 10;
 const MAX_UNDO = 20;
 
 type ParserName = "string" | "sortKey" | "num" | "numClamp100" | "tier" | "moveIn" | "bool";
@@ -620,125 +618,6 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     [customPresets]
   );
 
-  /* ── 필터 히스토리 (최근 MAX_HISTORY개, URL 변경 시 자동 저장) ── */
-  const [filterHistory, setFilterHistory] = useState<FilterHistoryEntry[]>(() => {
-    try {
-      const raw = localStorage.getItem(LS_FILTER_HISTORY);
-      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-      return Array.isArray(parsed) ? (parsed as FilterHistoryEntry[]) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const saveToHistory = useCallback((state: FilterState) => {
-    const nonDefault = Object.entries(state).filter(([k, v]) => {
-      const entry = FILTER_URL_MAP.find(([sk]) => sk === k);
-      return entry && v !== entry[2] && v !== "" && v != null && v !== false;
-    });
-    if (nonDefault.length === 0) return;
-    const sig = nonDefault
-      .map(([k, v]) => `${k}:${v}`)
-      .sort()
-      .join("|");
-    setFilterHistory((prev) => {
-      if (prev[0]?.sig === sig) return prev;
-      const entry: FilterHistoryEntry = {
-        sig,
-        values: state as unknown as Record<string, string | boolean>,
-        ts: Date.now(),
-        count: nonDefault.length,
-      };
-      const next = [entry, ...prev.filter((h) => h.sig !== sig)].slice(0, MAX_HISTORY);
-      try {
-        localStorage.setItem(LS_FILTER_HISTORY, JSON.stringify(next));
-      } catch {
-        /* ignore storage errors */
-      }
-      return next;
-    });
-  }, []);
-
-  // URL 동기화 시 히스토리에도 저장 (isHistoryInitial: 초기 로드 방지, skipHistory: undo/redo 오염 방지)
-  const isHistoryInitial = useRef<boolean>(true);
-  const skipHistory = useRef<boolean>(false);
-  useEffect(() => {
-    if (isHistoryInitial.current) {
-      isHistoryInitial.current = false;
-      return;
-    }
-    if (skipHistory.current) {
-      skipHistory.current = false;
-      return;
-    }
-    const state: FilterState = {
-      filterRegion,
-      filterGu,
-      sortKey,
-      budgetMin,
-      budgetMax,
-      minScore,
-      builderTier,
-      benefitOnly,
-      subwayOnly,
-      schoolGoodOnly,
-      dsrPassOnly,
-      nonRegulatedOnly,
-      crimeSafeOnly,
-      childcareGoodOnly,
-      parkingGoodOnly,
-      hospitalNearOnly,
-      parkNearOnly,
-      areaMin,
-      areaMax,
-      unitsMin,
-      unitsMax,
-      moveInFilter,
-    };
-    const timer = setTimeout(() => saveToHistory(state), 500);
-    return () => clearTimeout(timer);
-  }, [
-    filterRegion,
-    filterGu,
-    sortKey,
-    budgetMin,
-    budgetMax,
-    minScore,
-    builderTier,
-    benefitOnly,
-    subwayOnly,
-    schoolGoodOnly,
-    dsrPassOnly,
-    nonRegulatedOnly,
-    crimeSafeOnly,
-    childcareGoodOnly,
-    parkingGoodOnly,
-    hospitalNearOnly,
-    parkNearOnly,
-    areaMin,
-    areaMax,
-    unitsMin,
-    unitsMax,
-    moveInFilter,
-    saveToHistory,
-  ]);
-
-  const applyHistory = useCallback(
-    (entry: FilterHistoryEntry) => {
-      if (entry?.values) resetFilters(entry.values);
-    },
-    [resetFilters]
-  );
-
-  const clearHistory = useCallback(() => {
-    setFilterHistory([]);
-    try {
-      localStorage.removeItem(LS_FILTER_HISTORY);
-    } catch {
-      /* ignore storage errors */
-    }
-  }, []);
-
   /* ── Undo / Redo (MAX_UNDO 스택) ── */
   const undoStack = useRef<FilterSnapshot[]>([]);
   const redoStack = useRef<FilterSnapshot[]>([]);
@@ -823,7 +702,6 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
   const applySnapshot = useCallback(
     (snap: FilterSnapshot) => {
       skipUndo.current = true;
-      skipHistory.current = true;
       for (const [stateKey] of FILTER_URL_MAP) {
         if (stateKey in snap) SETTERS[stateKey]?.(snap[stateKey as keyof FilterSnapshot] as string | boolean);
       }
@@ -917,9 +795,6 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     customPresets,
     saveCustomPreset,
     deleteCustomPreset,
-    filterHistory,
-    applyHistory,
-    clearHistory,
     undo,
     redo,
     canUndo,

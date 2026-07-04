@@ -1,8 +1,8 @@
 // SearchFilterBar 는 6개 FilterButton + 패널 오케스트레이터로
-// props 가 30+ 개 (필터 제어 + 토글 + 프리셋 + 히스토리 + undo/redo).
+// props 가 30+ 개 (필터 제어 + 토글 + 프리셋 + undo/redo).
 // 명시 props 와 escape hatch (`[key: string]: any`) 병기 — 본체 props 체이닝 시 신규 추가 마찰 줄임.
 // 이 catch-all 은 향후 props 정리 후 제거 검토.
-import type { FilterPreset, FilterHistoryEntry, SortKey, UseDataPipelineReturn } from "@/types/hooks";
+import type { FilterPreset, SortKey, UseDataPipelineReturn } from "@/types/hooks";
 
 export interface SearchFilterBarProps {
   filterRegion: string;
@@ -65,9 +65,6 @@ export interface SearchFilterBarProps {
   onSavePreset?: (_name: string) => void;
   onDeletePreset?: (_name: string) => void;
   customPresets?: FilterPreset[];
-  filterHistory?: FilterHistoryEntry[];
-  onApplyHistory?: (_h: FilterHistoryEntry) => void;
-  onClearHistory?: () => void;
   activeFilterCount: number;
   showToast?: (_msg: string) => void;
   isDesktop?: boolean;

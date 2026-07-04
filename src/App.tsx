@@ -216,9 +216,6 @@ export default function App() {
     customPresets,
     saveCustomPreset,
     deleteCustomPreset,
-    filterHistory,
-    applyHistory,
-    clearHistory,
     undo,
     redo,
     canUndo,
@@ -592,9 +589,6 @@ export default function App() {
             customPresets={customPresets}
             onSavePreset={saveCustomPreset}
             onDeletePreset={deleteCustomPreset}
-            filterHistory={filterHistory}
-            onApplyHistory={applyHistory}
-            onClearHistory={clearHistory}
             onUndo={undo}
             onRedo={redo}
             canUndo={canUndo}
