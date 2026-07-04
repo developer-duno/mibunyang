@@ -87,9 +87,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
   customPresets,
   onSavePreset,
   onDeletePreset,
-  filterHistory,
-  onApplyHistory,
-  onClearHistory,
   onUndo,
   onRedo,
   canUndo,
@@ -392,9 +389,6 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           onApplyPreset={onApplyPreset}
           onSavePreset={onSavePreset}
           onDeletePreset={onDeletePreset}
-          filterHistory={filterHistory}
-          onApplyHistory={onApplyHistory}
-          onClearHistory={onClearHistory}
           activeFilterCount={activeFilterCount}
           closePanel={closePanel}
           showToast={showToast}

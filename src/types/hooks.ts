@@ -300,21 +300,11 @@ export interface FilterPreset {
 }
 
 /**
- * 필터 히스토리 항목 — localStorage("mibunyang_filter_history") 저장 단위.
- */
-export interface FilterHistoryEntry {
-  sig: string;
-  values: Record<string, string | boolean>;
-  ts: number;
-  count: number;
-}
-
-/**
- * useFilterSort 반환 — App.jsx L112 분해 (42 키).
+ * useFilterSort 반환 — App.jsx L112 분해 (39 키).
  *
  * FILTER_URL_MAP 13 상태 + showFavOnly + isSortPending + setSortKey
  *  + 14 핸들러 + getShareURL/handleResetAll/applyPreset
- *  + 커스텀 프리셋 3 + 히스토리 3 + Undo/Redo 4 = 42
+ *  + 커스텀 프리셋 3 + Undo/Redo 4 = 39
  */
 export interface UseFilterSortReturn {
   filterRegion: string;
@@ -374,9 +364,6 @@ export interface UseFilterSortReturn {
   customPresets: FilterPreset[];
   saveCustomPreset: (_name: string) => void;
   deleteCustomPreset: (_key: string) => void;
-  filterHistory: FilterHistoryEntry[];
-  applyHistory: (_entry: FilterHistoryEntry) => void;
-  clearHistory: () => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;

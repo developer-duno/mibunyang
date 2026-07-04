@@ -1,21 +1,18 @@
 /**
- * 추천/프리셋 필터 패널 — 기본 + 커스텀 + 저장 input + 히스토리 select
+ * 추천/프리셋 필터 패널 — 기본 + 커스텀 + 저장 input
  * SearchFilterBar 기존 인라인 추천 드롭다운(L146-220)에서 추출
  * 부모는 key={openPanel === "preset" ? "open" : "closed"} 으로 강제 unmount → showPresetInput 자연 초기화
  */
 import { memo, useState, useCallback } from "react";
 import { C, F, R } from "@/theme";
 import { FILTER_PRESETS } from "@/constants/filterPresets";
-import type { FilterPreset, FilterHistoryEntry } from "@/types/hooks";
+import type { FilterPreset } from "@/types/hooks";
 
 type PresetPanelProps = {
   customPresets?: FilterPreset[];
   onApplyPreset?: (_preset: Record<string, string | boolean>) => void;
   onSavePreset?: (_name: string) => void;
   onDeletePreset?: (_name: string) => void;
-  filterHistory?: FilterHistoryEntry[];
-  onApplyHistory?: (_h: FilterHistoryEntry) => void;
-  onClearHistory?: () => void;
   activeFilterCount: number;
   closePanel: () => void;
   showToast?: (_msg: string) => void;
@@ -26,16 +23,12 @@ export const PresetPanel = memo(function PresetPanel({
   onApplyPreset,
   onSavePreset,
   onDeletePreset,
-  filterHistory,
-  onApplyHistory,
-  onClearHistory,
   activeFilterCount,
   closePanel,
   showToast = () => {},
 }: PresetPanelProps) {
   const [showPresetInput, setShowPresetInput] = useState(false);
   const [presetName, setPresetName] = useState("");
-  const [historyKey, setHistoryKey] = useState(0);
 
   const handlePresetSave = useCallback(() => {
     if (presetName.trim() && onSavePreset) {
@@ -221,65 +214,6 @@ export const PresetPanel = memo(function PresetPanel({
               + 프리셋 저장
             </button>
           ))}
-        {(filterHistory?.length ?? 0) > 0 && filterHistory && (
-          <select
-            key={historyKey}
-            onChange={(e) => {
-              const i = Number(e.target.value);
-              if (filterHistory[i]) {
-                onApplyHistory?.(filterHistory[i]);
-                setHistoryKey((k) => k + 1);
-                closePanel();
-              }
-            }}
-            defaultValue=""
-            aria-label="필터 히스토리"
-            style={{
-              WebkitAppearance: "none",
-              MozAppearance: "none",
-              appearance: "none",
-              flex: 1,
-              fontSize: F.micro,
-              height: 28,
-              padding: "2px 20px 2px 6px",
-              border: `1px solid ${C.border}`,
-              borderRadius: R.badge,
-              background: C.slate100,
-              color: C.slate600,
-              cursor: "pointer",
-            }}
-          >
-            <option value="" disabled>
-              히스토리 ({(filterHistory ?? []).length})
-            </option>
-            {filterHistory.map((h, i) => (
-              <option key={h.sig ?? `h-${i}`} value={i}>
-                필터 {h.count ?? 0}개
-                {h.ts ? ` · ${new Date(h.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : ""}
-              </option>
-            ))}
-          </select>
-        )}
-        {(filterHistory?.length ?? 0) > 0 && onClearHistory && (
-          <button
-            onClick={onClearHistory}
-            aria-label="히스토리 삭제"
-            style={{
-              background: C.slate100,
-              border: `1px solid ${C.border}`,
-              borderRadius: R.badge,
-              padding: "0 6px",
-              fontSize: F.micro,
-              color: C.muted,
-              cursor: "pointer",
-              height: 28,
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
-            지우기
-          </button>
-        )}
       </div>
     </div>
   );
