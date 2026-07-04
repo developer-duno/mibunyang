@@ -4,7 +4,7 @@
  */
 import { memo } from "react";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
-import { F } from "@/theme";
+import { C, F } from "@/theme";
 import type { SortKey } from "@/types/hooks";
 
 type SortOption = { key: SortKey; bg: string; ac: string; mobileLabel: string };
@@ -17,7 +17,7 @@ type SortPanelProps = {
 
 export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClose }: SortPanelProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column" as const, gap: 3 }}>
+    <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 5 }}>
       {(SORT_OPTIONS as SortOption[]).map((s: SortOption) => {
         const selected = sortKey === s.key;
         return (
@@ -31,17 +31,18 @@ export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClos
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              padding: "6px 10px",
+              gap: 6,
+              height: 36, // 터치타겟 규칙(필터/정렬 버튼 36px+), 세션 482 칩화
+              padding: "0 10px",
               fontSize: F.sm,
               fontWeight: selected ? 700 : 500,
               background: selected ? s.bg : "transparent",
               color: selected ? s.ac : "#475569",
-              border: selected ? `1.5px solid ${s.ac}` : "1.5px solid transparent",
+              border: selected ? `1.5px solid ${s.ac}` : `1.5px solid ${C.border}`,
               borderRadius: 6,
               cursor: "pointer",
               transition: "all .15s",
-              textAlign: "left" as const,
+              whiteSpace: "nowrap" as const,
             }}
           >
             <span

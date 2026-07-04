@@ -10,7 +10,7 @@ import { IconClose } from "@/components/icons";
 import { numInput, tilde, resetBtn, selectBase } from "./filterStyles";
 import {
   DETAIL_FILTER_GROUPS,
-  GROUP_LABEL_STYLE,
+  groupLabelStyle,
   type ToggleFilterKey,
   type ToggleColor,
 } from "@/constants/filterGroups";
@@ -41,6 +41,8 @@ type DetailPanelProps = {
   parkNearOnly: boolean;
   onToggleParkNearOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
+  /** PC 2칸 / 모바일 1칸 그리드 판정 (세션 482) */
+  isDesktop?: boolean;
 };
 
 /** 토글 버튼 공통 스타일 — 활성 시 color 계열, 비활성 시 slate. 높이 36(터치타겟 규칙) */
@@ -89,6 +91,7 @@ export const DetailPanel = memo(function DetailPanel({
   parkNearOnly,
   onToggleParkNearOnly,
   filterOptionCounts,
+  isDesktop = false,
 }: DetailPanelProps) {
   const hasFilter =
     minScore ||
@@ -121,11 +124,19 @@ export const DetailPanel = memo(function DetailPanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {DETAIL_FILTER_GROUPS.map((group) => {
-        const isQuality = group.label === "안전·품질";
-        return (
-          <div key={group.label} role="group" aria-label={`${group.label} 필터`}>
-            <div style={GROUP_LABEL_STYLE}>{group.label}</div>
+      {/* 4그룹 = PC 2칸 / 모바일 1칸 그리드 (세션 482) */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
+          gap: 10,
+        }}
+      >
+        {DETAIL_FILTER_GROUPS.map((group) => {
+          const isQuality = group.label === "안전·품질";
+          return (
+            <div key={group.label} role="group" aria-label={`${group.label} 필터`}>
+              <div style={groupLabelStyle(group.color)}>{group.label}</div>
             <div style={groupRow}>
               {/* 안전·품질 그룹 상단: 최소점수 + 시공사등급 (토글 아님, 인라인 유지) */}
               {isQuality && (
@@ -194,10 +205,11 @@ export const DetailPanel = memo(function DetailPanel({
                   </button>
                 );
               })}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
       {hasFilter && (
         <button
           onClick={() => {

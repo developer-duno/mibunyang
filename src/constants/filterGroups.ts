@@ -43,12 +43,15 @@ export type ToggleMeta = {
 
 export type FilterGroup = {
   label: string;
+  /** 소제목 색 라벨 색상 (C[color]/C[color+"Light"] 조회, 세션 482) — "색은 소제목이 담당" */
+  color: ToggleColor;
   toggles: readonly ToggleMeta[];
 };
 
 export const DETAIL_FILTER_GROUPS: readonly FilterGroup[] = [
   {
     label: "교통·생활편의",
+    color: "blue",
     toggles: [
       { key: "subwayOnly", label: "역세권", ariaLabel: "역세권 매물만(500m 이내)", color: "blue" },
       { key: "hospitalNearOnly", label: "병원가까움", ariaLabel: "병원 도보권만(500m 이내)", color: "red" },
@@ -57,6 +60,7 @@ export const DETAIL_FILTER_GROUPS: readonly FilterGroup[] = [
   },
   {
     label: "가족·교육",
+    color: "pink",
     toggles: [
       {
         key: "childcareGoodOnly",
@@ -69,6 +73,7 @@ export const DETAIL_FILTER_GROUPS: readonly FilterGroup[] = [
   },
   {
     label: "자금·규제",
+    color: "indigo",
     toggles: [
       { key: "dsrPassOnly", label: "DSR 통과", ariaLabel: "DSR 통과 매물만(자금조달 양호)", color: "indigo" },
       { key: "benefitOnly", label: "혜택", ariaLabel: "혜택 있는 매물만", color: "amber" },
@@ -77,6 +82,7 @@ export const DETAIL_FILTER_GROUPS: readonly FilterGroup[] = [
   },
   {
     label: "안전·품질",
+    color: "green",
     toggles: [
       { key: "crimeSafeOnly", label: "치안안전", ariaLabel: "치안 안전한 동네만(범죄 1~3등급)", color: "cyan" },
       { key: "parkingGoodOnly", label: "주차넉넉", ariaLabel: "주차 넉넉한 곳만(1.5대/세대 이상)", color: "blue" },
@@ -87,10 +93,21 @@ export const DETAIL_FILTER_GROUPS: readonly FilterGroup[] = [
 /** 전체 토글 개수 (drift 가드 대조군 — useFilterSort FILTER_URL_MAP 의 bool 항목 수와 일치해야 함) */
 export const TOGGLE_FILTER_COUNT = DETAIL_FILTER_GROUPS.reduce((n, g) => n + g.toggles.length, 0);
 
-/** 그룹 소제목 스타일 (PresetPanel "추천 프리셋" 소제목 패턴 답습, F.micro=10px 하한 준수) */
+/** 그룹 소제목 공통 스타일 base (F.micro=10px 하한 준수). 색은 그룹별 groupLabelStyle 이 입힘 (세션 482) */
 export const GROUP_LABEL_STYLE = {
   fontSize: F.micro,
-  color: C.muted,
-  fontWeight: 600,
+  fontWeight: 700,
   marginBottom: 4,
+  display: "inline-block",
+  padding: "2px 6px",
+  borderRadius: 6,
 } as const;
+
+/** 그룹 소제목 색 라벨 — base + 그룹 색(글자=C[color], 배경=C[color+"Light"]). "색은 소제목이 담당" (세션 482) */
+export function groupLabelStyle(color: ToggleColor) {
+  return {
+    ...GROUP_LABEL_STYLE,
+    color: C[color],
+    background: C[`${color}Light`],
+  } as const;
+}
