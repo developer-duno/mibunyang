@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DetailPanel } from "./DetailPanel";
+import { DETAIL_FILTER_GROUPS, TOGGLE_FILTER_COUNT } from "@/constants/filterGroups";
 
 /* 테스트용 기본 props 팩토리 */
 /** @returns {any} */
@@ -312,5 +313,50 @@ describe("DetailPanel", () => {
     expect(options[1].textContent).toBe("1군 (5)");
     expect(options[2].textContent).toBe("2군 (3)");
     expect(options[3].textContent).toBe("기타 (2)");
+  });
+});
+
+/* ── 세션 480: 성격별 4그룹 시각 그룹화 ── */
+describe("DetailPanel 그룹화 (세션 480)", () => {
+  // 4그룹 소제목 렌더
+  it("4개 그룹 소제목 렌더", () => {
+    render(<DetailPanel {...makeProps()} />);
+    for (const label of ["교통·생활편의", "가족·교육", "자금·규제", "안전·품질"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  // 각 그룹이 role=group + 그룹명 aria-label (접근성 — ConsultForm/RegionChipBar 패턴)
+  it("각 그룹이 role=group + '<그룹명> 필터' aria-label", () => {
+    render(<DetailPanel {...makeProps()} />);
+    for (const label of ["교통·생활편의", "가족·교육", "자금·규제", "안전·품질"]) {
+      expect(screen.getByRole("group", { name: `${label} 필터` })).toBeInTheDocument();
+    }
+    expect(screen.getAllByRole("group")).toHaveLength(4);
+  });
+
+  // drift 가드: filterGroups 배열 토글 수 = FILTER_URL_MAP bool 항목(10)과 일치
+  it("DETAIL_FILTER_GROUPS 토글 수는 정확히 10개 (drift 가드)", () => {
+    expect(TOGGLE_FILTER_COUNT).toBe(10);
+    const keys = DETAIL_FILTER_GROUPS.flatMap((g) => g.toggles.map((t) => t.key));
+    expect(new Set(keys).size).toBe(10); // 중복 0
+  });
+
+  // drift 가드: 배열의 모든 토글 aria-label 이 실제 버튼으로 렌더됨 (누락 시 버튼 증발 방지)
+  it("모든 그룹 토글이 aria-label 버튼으로 렌더됨", () => {
+    render(<DetailPanel {...makeProps()} />);
+    for (const group of DETAIL_FILTER_GROUPS) {
+      for (const t of group.toggles) {
+        expect(screen.getByLabelText(t.ariaLabel)).toBeInTheDocument();
+      }
+    }
+  });
+
+  // 최소점수·시공사등급은 "안전·품질" 그룹 안에 인라인 (토글 아님)
+  it("최소점수·시공사등급이 안전·품질 그룹 안에 렌더", () => {
+    render(<DetailPanel {...makeProps()} />);
+    const qualityGroup = screen.getByRole("group", { name: "안전·품질 필터" });
+    expect(qualityGroup).toContainElement(screen.getByLabelText("최소 종합점수"));
+    expect(qualityGroup).toContainElement(screen.getByLabelText("시공사 등급"));
   });
 });
