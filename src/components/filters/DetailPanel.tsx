@@ -1,11 +1,19 @@
 /**
- * 상세 필터 패널 — 최소점수 + 시공사등급 + 혜택 토글 + 역세권 토글 + 학군 양호 토글
- * 기존 SearchFilterBar 5행에서 추출
+ * 상세 필터 패널 — 최소점수 + 시공사등급 + 토글 필터 10개
+ * 세션 480: 토글 10개를 성격별 4그룹(교통·생활편의/가족·교육/자금·규제/안전·품질)으로 시각 그룹화.
+ *   그룹 메타·라벨·색은 @/constants/filterGroups (진실의 원천). 동작·색·aria 무변경 = 순수 시각 재배치.
+ *   최소점수(number)·시공사등급(select)은 토글이 아니라 "안전·품질" 그룹 상단에 인라인 유지.
  */
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { IconClose } from "@/components/icons";
 import { numInput, tilde, resetBtn, selectBase } from "./filterStyles";
+import {
+  DETAIL_FILTER_GROUPS,
+  GROUP_LABEL_STYLE,
+  type ToggleFilterKey,
+  type ToggleColor,
+} from "@/constants/filterGroups";
 
 type DetailPanelProps = {
   minScore: number | string;
@@ -34,6 +42,26 @@ type DetailPanelProps = {
   onToggleParkNearOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
 };
+
+/** 토글 버튼 공통 스타일 — 활성 시 color 계열, 비활성 시 slate. 높이 36(터치타겟 규칙) */
+function toggleBtnStyle(active: boolean, color: ToggleColor) {
+  return {
+    flexShrink: 0,
+    height: 36,
+    padding: "0 10px",
+    fontSize: F.xs,
+    fontWeight: active ? 700 : 500,
+    background: active ? C[`${color}Light`] : C.slate100,
+    color: active ? C[color] : C.slate600,
+    border: active ? `1.5px solid ${C[color]}` : `1px solid ${C.border}`,
+    borderRadius: 5,
+    cursor: "pointer",
+    transition: "all .15s",
+  } as const;
+}
+
+/** 그룹 내부 버튼 줄 — flexWrap 유지 (모바일 세로 폭증 방지) */
+const groupRow = { display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const };
 
 export const DetailPanel = memo(function DetailPanel({
   minScore,
@@ -75,253 +103,101 @@ export const DetailPanel = memo(function DetailPanel({
     parkingGoodOnly ||
     hospitalNearOnly ||
     parkNearOnly;
+
+  // key → { value, onToggle } 조회 맵. ⚠️ filterGroups.ts 의 ToggleFilterKey 와 1:1 —
+  // 어긋나면 Record<ToggleFilterKey,...> 타입이 typecheck 에서 잡음 (drift 가드).
+  const toggleState: Record<ToggleFilterKey, { value: boolean; onToggle: () => void }> = {
+    benefitOnly: { value: benefitOnly, onToggle: onToggleBenefitOnly },
+    subwayOnly: { value: subwayOnly, onToggle: onToggleSubwayOnly },
+    schoolGoodOnly: { value: schoolGoodOnly, onToggle: onToggleSchoolGoodOnly },
+    dsrPassOnly: { value: dsrPassOnly, onToggle: onToggleDsrPassOnly },
+    nonRegulatedOnly: { value: nonRegulatedOnly, onToggle: onToggleNonRegulatedOnly },
+    crimeSafeOnly: { value: crimeSafeOnly, onToggle: onToggleCrimeSafeOnly },
+    childcareGoodOnly: { value: childcareGoodOnly, onToggle: onToggleChildcareGoodOnly },
+    parkingGoodOnly: { value: parkingGoodOnly, onToggle: onToggleParkingGoodOnly },
+    hospitalNearOnly: { value: hospitalNearOnly, onToggle: onToggleHospitalNearOnly },
+    parkNearOnly: { value: parkNearOnly, onToggle: onToggleParkNearOnly },
+  };
+
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const }}>
-      <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
-      <input
-        type="number"
-        inputMode="numeric"
-        min="0"
-        max="100"
-        value={minScore}
-        onChange={(e) => onMinScoreChange(e.target.value)}
-        placeholder="점수"
-        aria-label="최소 종합점수"
-        style={{ ...numInput(minScore, 30), maxWidth: 60 }}
-      />
-      <span style={tilde}>점</span>
-      <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
-      <select
-        value={builderTier}
-        onChange={(e) => onBuilderTierChange(e.target.value)}
-        aria-label="시공사 등급"
-        style={{
-          ...selectBase,
-          flex: "0 0 auto",
-          padding: "4px 20px 4px 6px",
-          fontSize: F.xs,
-          height: 30,
-          borderRadius: 5,
-          fontWeight: builderTier !== "전체" ? 700 : 500,
-          border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-          background: C.slate100,
-          color: builderTier !== "전체" ? C.indigo : C.slate600,
-          cursor: "pointer",
-        }}
-      >
-        {["전체", "1군", "2군", "기타"].map((v) => {
-          const c = filterOptionCounts?.tierCounts?.[v] ?? 0;
-          const total =
-            v === "전체"
-              ? Object.values(filterOptionCounts?.tierCounts ?? {}).reduce((s: number, n: number) => s + n, 0)
-              : 0;
-          return (
-            <option key={v} value={v} disabled={v !== "전체" && c === 0}>
-              {v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}
-            </option>
-          );
-        })}
-      </select>
-      <button
-        onClick={onToggleBenefitOnly}
-        aria-label="혜택 있는 매물만"
-        aria-pressed={benefitOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: benefitOnly ? 700 : 500,
-          background: benefitOnly ? C.amberLight : C.slate100,
-          color: benefitOnly ? C.amber : C.slate600,
-          border: benefitOnly ? `1.5px solid ${C.amber}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        혜택
-      </button>
-      <button
-        onClick={onToggleSubwayOnly}
-        aria-label="역세권 매물만(500m 이내)"
-        aria-pressed={subwayOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: subwayOnly ? 700 : 500,
-          background: subwayOnly ? C.blueLight : C.slate100,
-          color: subwayOnly ? C.blue : C.slate600,
-          border: subwayOnly ? `1.5px solid ${C.blue}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        역세권
-      </button>
-      <button
-        onClick={onToggleSchoolGoodOnly}
-        aria-label="학군 양호(A·B등급) 매물만"
-        aria-pressed={schoolGoodOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: schoolGoodOnly ? 700 : 500,
-          background: schoolGoodOnly ? C.greenLight : C.slate100,
-          color: schoolGoodOnly ? C.green : C.slate600,
-          border: schoolGoodOnly ? `1.5px solid ${C.green}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        학군 양호
-      </button>
-      <button
-        onClick={onToggleDsrPassOnly}
-        aria-label="DSR 통과 매물만(자금조달 양호)"
-        aria-pressed={dsrPassOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: dsrPassOnly ? 700 : 500,
-          background: dsrPassOnly ? C.indigoLight : C.slate100,
-          color: dsrPassOnly ? C.indigo : C.slate600,
-          border: dsrPassOnly ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        DSR 통과
-      </button>
-      <button
-        onClick={onToggleNonRegulatedOnly}
-        aria-label="비규제지역 매물만(매매·대출 자유)"
-        aria-pressed={nonRegulatedOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: nonRegulatedOnly ? 700 : 500,
-          background: nonRegulatedOnly ? C.purpleLight : C.slate100,
-          color: nonRegulatedOnly ? C.purple : C.slate600,
-          border: nonRegulatedOnly ? `1.5px solid ${C.purple}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        비규제
-      </button>
-      <button
-        onClick={onToggleCrimeSafeOnly}
-        aria-label="치안 안전한 동네만(범죄 1~3등급)"
-        aria-pressed={crimeSafeOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: crimeSafeOnly ? 700 : 500,
-          background: crimeSafeOnly ? C.cyanLight : C.slate100,
-          color: crimeSafeOnly ? C.cyan : C.slate600,
-          border: crimeSafeOnly ? `1.5px solid ${C.cyan}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        치안안전
-      </button>
-      <button
-        onClick={onToggleChildcareGoodOnly}
-        aria-label="육아 인프라 좋은 곳만(어린이집 5개+ · 500m 이내)"
-        aria-pressed={childcareGoodOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: childcareGoodOnly ? 700 : 500,
-          background: childcareGoodOnly ? C.pinkLight : C.slate100,
-          color: childcareGoodOnly ? C.pink : C.slate600,
-          border: childcareGoodOnly ? `1.5px solid ${C.pink}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        육아인프라
-      </button>
-      <button
-        onClick={onToggleParkingGoodOnly}
-        aria-label="주차 넉넉한 곳만(1.5대/세대 이상)"
-        aria-pressed={parkingGoodOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: parkingGoodOnly ? 700 : 500,
-          background: parkingGoodOnly ? C.blueLight : C.slate100,
-          color: parkingGoodOnly ? C.blue : C.slate600,
-          border: parkingGoodOnly ? `1.5px solid ${C.blue}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        주차넉넉
-      </button>
-      <button
-        onClick={onToggleHospitalNearOnly}
-        aria-label="병원 도보권만(500m 이내)"
-        aria-pressed={hospitalNearOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: hospitalNearOnly ? 700 : 500,
-          background: hospitalNearOnly ? C.redLight : C.slate100,
-          color: hospitalNearOnly ? C.red : C.slate600,
-          border: hospitalNearOnly ? `1.5px solid ${C.red}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        병원가까움
-      </button>
-      <button
-        onClick={onToggleParkNearOnly}
-        aria-label="공원 도보권만(500m 이내)"
-        aria-pressed={parkNearOnly}
-        style={{
-          flexShrink: 0,
-          height: 30,
-          padding: "0 10px",
-          fontSize: F.xs,
-          fontWeight: parkNearOnly ? 700 : 500,
-          background: parkNearOnly ? C.greenLight : C.slate100,
-          color: parkNearOnly ? C.green : C.slate600,
-          border: parkNearOnly ? `1.5px solid ${C.green}` : `1px solid ${C.border}`,
-          borderRadius: 5,
-          cursor: "pointer",
-          transition: "all .15s",
-        }}
-      >
-        공원가까움
-      </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {DETAIL_FILTER_GROUPS.map((group) => {
+        const isQuality = group.label === "안전·품질";
+        return (
+          <div key={group.label} role="group" aria-label={`${group.label} 필터`}>
+            <div style={GROUP_LABEL_STYLE}>{group.label}</div>
+            <div style={groupRow}>
+              {/* 안전·품질 그룹 상단: 최소점수 + 시공사등급 (토글 아님, 인라인 유지) */}
+              {isQuality && (
+                <>
+                  <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    max="100"
+                    value={minScore}
+                    onChange={(e) => onMinScoreChange(e.target.value)}
+                    placeholder="점수"
+                    aria-label="최소 종합점수"
+                    style={{ ...numInput(minScore, 30), maxWidth: 60 }}
+                  />
+                  <span style={tilde}>점</span>
+                  <div style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
+                  <select
+                    value={builderTier}
+                    onChange={(e) => onBuilderTierChange(e.target.value)}
+                    aria-label="시공사 등급"
+                    style={{
+                      ...selectBase,
+                      flex: "0 0 auto",
+                      padding: "4px 20px 4px 6px",
+                      fontSize: F.xs,
+                      height: 36,
+                      borderRadius: 5,
+                      fontWeight: builderTier !== "전체" ? 700 : 500,
+                      border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
+                      background: C.slate100,
+                      color: builderTier !== "전체" ? C.indigo : C.slate600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {["전체", "1군", "2군", "기타"].map((v) => {
+                      const c = filterOptionCounts?.tierCounts?.[v] ?? 0;
+                      const total =
+                        v === "전체"
+                          ? Object.values(filterOptionCounts?.tierCounts ?? {}).reduce(
+                              (s: number, n: number) => s + n,
+                              0
+                            )
+                          : 0;
+                      return (
+                        <option key={v} value={v} disabled={v !== "전체" && c === 0}>
+                          {v === "전체" ? (total ? `전체 (${total})` : "전체") : `${v} (${c})`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </>
+              )}
+              {group.toggles.map((t) => {
+                const { value, onToggle } = toggleState[t.key];
+                return (
+                  <button
+                    key={t.key}
+                    onClick={onToggle}
+                    aria-label={t.ariaLabel}
+                    aria-pressed={value}
+                    style={toggleBtnStyle(value, t.color)}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
       {hasFilter && (
         <button
           onClick={() => {
@@ -339,7 +215,7 @@ export const DetailPanel = memo(function DetailPanel({
             if (parkNearOnly) onToggleParkNearOnly();
           }}
           aria-label="점수/시공사/혜택/역세권/학군/DSR/규제/치안/육아/주차/병원/공원 초기화"
-          style={resetBtn(30)}
+          style={{ ...resetBtn(30), alignSelf: "flex-start" }}
         >
           <IconClose size={12} />
         </button>
