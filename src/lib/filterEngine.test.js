@@ -264,7 +264,10 @@ describe("applyBaseFilters", () => {
 
   // childcareGoodOnly=false면 childcare 무관 전부 통과 (무영향)
   it("childcareGoodOnly=false이면 childcare 무관 전부 통과", () => {
-    const items = [makeItem({ id: "few", childcare: 1, childcareDist: 900 }), makeItem({ id: "good", childcare: 8, childcareDist: 100 })];
+    const items = [
+      makeItem({ id: "few", childcare: 1, childcareDist: 900 }),
+      makeItem({ id: "good", childcare: 8, childcareDist: 100 }),
+    ];
     const result = applyBaseFilters(items, { ...DEFAULT_FILTER, childcareGoodOnly: false });
     expect(result).toHaveLength(2);
   });

@@ -230,7 +230,10 @@ describe("DetailPanel", () => {
   it("childcareGoodOnly=true이면 aria-pressed=true이고 초기화 시 onToggleChildcareGoodOnly 호출", () => {
     const onToggleChildcareGoodOnly = vi.fn();
     render(<DetailPanel {...makeProps({ childcareGoodOnly: true, onToggleChildcareGoodOnly })} />);
-    expect(screen.getByLabelText("육아 인프라 좋은 곳만(어린이집 5개+ · 500m 이내)")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("육아 인프라 좋은 곳만(어린이집 5개+ · 500m 이내)")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     fireEvent.click(screen.getByLabelText("점수/시공사/혜택/역세권/학군/DSR/규제/치안/육아 초기화"));
     expect(onToggleChildcareGoodOnly).toHaveBeenCalledTimes(1);
   });
