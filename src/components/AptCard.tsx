@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { C, F, catCol, gr, SHORT_LABEL } from "@/theme";
+import { C, F, R, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice, fmtCompletion, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
@@ -22,7 +22,7 @@ function completionBadge(completion: string | null | undefined, moveInDone: bool
 /* ── 정적 스타일 ── */
 const S = {
   wrapper: {
-    borderRadius: 14,
+    borderRadius: R.card,
     overflow: "hidden",
     marginBottom: 12,
     boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
@@ -45,21 +45,21 @@ const S = {
   catHeader: { display: "flex", justifyContent: "space-between", marginBottom: 2 },
   catLabel: { fontSize: F.sm, color: C.muted },
   infoRow: { display: "flex", gap: 4, flexWrap: "wrap" as const, marginTop: 6 },
-  infoTag: { fontSize: F.sm, padding: "3px 7px", borderRadius: 3, background: C.bg, color: C.sub },
+  infoTag: { fontSize: F.sm, padding: "3px 7px", borderRadius: R.badge, background: C.bg, color: C.sub },
   reasonChip: {
     marginTop: 8,
     display: "inline-block",
     fontSize: F.sm,
     fontWeight: 600,
     padding: "3px 9px",
-    borderRadius: 4,
+    borderRadius: R.badge,
     background: C.greenLight,
     color: C.green,
   },
   alertRow: { marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" as const },
   btnRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 },
   btnBase: {
-    borderRadius: 6,
+    borderRadius: R.btn,
     padding: "8px 10px",
     fontSize: F.base,
     cursor: "pointer",
@@ -67,7 +67,7 @@ const S = {
     minHeight: 36,
     transition: "all .15s",
   },
-  alertTag: { fontSize: F.sm, padding: "3px 8px", borderRadius: 4, fontWeight: 600 },
+  alertTag: { fontSize: F.sm, padding: "3px 8px", borderRadius: R.badge, fontWeight: 600 },
 };
 
 export const AptCard = memo(
@@ -121,7 +121,7 @@ export const AptCard = memo(
           background: C.card,
           border: `1.5px solid ${isComp ? C.blue : isFav ? C.red : C.border}`,
           ...(moveInDone ? { opacity: 0.55 } : {}),
-          ...(isDesktop ? { boxShadow: C.shadowMd, borderRadius: 16 } : {}),
+          ...(isDesktop ? { boxShadow: C.shadowMd, borderRadius: R.card } : {}),
         },
         body: { ...S.body, ...(isDesktop ? { padding: "16px 20px" } : {}) },
         nameText: { ...S.nameText, ...(isDesktop ? { fontSize: F.xl } : {}) },
@@ -132,7 +132,7 @@ export const AptCard = memo(
           color: C.white,
           background: g.c,
           padding: "3px 8px",
-          borderRadius: 4,
+          borderRadius: R.badge,
           flexShrink: 0,
         },
         detailBtn: {
@@ -236,7 +236,7 @@ export const AptCard = memo(
                         color: i === 0 ? C.blue : C.sub,
                         background: i === 0 ? C.blueLight : C.bg,
                         padding: "3px 8px",
-                        borderRadius: 4,
+                        borderRadius: R.badge,
                         fontWeight: i === 0 ? 700 : 400,
                       }}
                     >
@@ -421,7 +421,7 @@ export const AptCard = memo(
                 gap: 6,
                 background: C.amberLight,
                 border: `1px solid ${C.amberBorder}`,
-                borderRadius: 8,
+                borderRadius: R.btn,
                 padding: "8px 12px",
               }}
             >

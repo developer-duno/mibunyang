@@ -5,7 +5,7 @@
  *   최소점수(number)·시공사등급(select)은 토글이 아니라 "안전·품질" 그룹 상단에 인라인 유지.
  */
 import { memo } from "react";
-import { C, F } from "@/theme";
+import { C, F, R } from "@/theme";
 import { IconClose } from "@/components/icons";
 import { numInput, tilde, resetBtn, selectBase } from "./filterStyles";
 import {
@@ -56,7 +56,7 @@ function toggleBtnStyle(active: boolean, color: ToggleColor) {
     background: active ? C[`${color}Light`] : C.slate100,
     color: active ? C[color] : C.slate600,
     border: active ? `1.5px solid ${C[color]}` : `1px solid ${C.border}`,
-    borderRadius: 5,
+    borderRadius: R.chip,
     cursor: "pointer",
     transition: "all .15s",
   } as const;
@@ -165,7 +165,7 @@ export const DetailPanel = memo(function DetailPanel({
                         padding: "4px 20px 4px 6px",
                         fontSize: F.xs,
                         height: 36,
-                        borderRadius: 5,
+                        borderRadius: R.btn,
                         fontWeight: builderTier !== "전체" ? 700 : 500,
                         border: builderTier !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
                         background: C.slate100,

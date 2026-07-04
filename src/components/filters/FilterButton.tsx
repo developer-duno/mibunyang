@@ -3,7 +3,7 @@
  * 클릭 시 해당 필터 패널을 열고/닫는 공용 버튼
  */
 import { memo } from "react";
-import { C, F } from "@/theme";
+import { C, F, R } from "@/theme";
 import { IconChevronDown } from "@/components/icons";
 import type { FilterButtonProps } from "@/types/filters";
 
@@ -27,7 +27,7 @@ export const FilterButton = memo(function FilterButton({
         background: isOpen ? C.indigoLight : isActive ? C.indigoLight : C.slate100,
         color: isOpen ? C.indigo : isActive ? C.indigo : C.slate600,
         border: active ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-        borderRadius: 6,
+        borderRadius: R.btn,
         cursor: "pointer",
         display: "flex",
         alignItems: "center",

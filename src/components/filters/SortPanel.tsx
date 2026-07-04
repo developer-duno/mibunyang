@@ -4,7 +4,7 @@
  */
 import { memo } from "react";
 import { SORT_OPTIONS } from "@/constants/sortOptions";
-import { C, F } from "@/theme";
+import { C, F, R } from "@/theme";
 import type { SortKey } from "@/types/hooks";
 
 type SortOption = { key: SortKey; bg: string; ac: string; mobileLabel: string };
@@ -39,7 +39,7 @@ export const SortPanel = memo(function SortPanel({ sortKey, onSortChange, onClos
               background: selected ? s.bg : "transparent",
               color: selected ? s.ac : "#475569",
               border: selected ? `1.5px solid ${s.ac}` : `1.5px solid ${C.border}`,
-              borderRadius: 6,
+              borderRadius: R.chip,
               cursor: "pointer",
               transition: "all .15s",
               whiteSpace: "nowrap" as const,

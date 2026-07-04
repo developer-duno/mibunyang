@@ -3,7 +3,7 @@
  * 면적 프리셋(소형/중형/대형) 추가로 사용 편의성 개선
  */
 import { memo } from "react";
-import { C, F } from "@/theme";
+import { C, F, R } from "@/theme";
 import { IconClose } from "@/components/icons";
 import { HelpHint } from "@/components/HelpHint";
 import { numInput, tilde, resetBtn, selectBase } from "./filterStyles";
@@ -93,7 +93,7 @@ export const AreaPanel = memo(function AreaPanel({
                   background: selected ? C.indigoLight : C.slate100,
                   color: selected ? C.indigo : C.slate600,
                   border: selected ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-                  borderRadius: 5,
+                  borderRadius: R.chip,
                   cursor: "pointer",
                   transition: "all .15s",
                 }}
@@ -146,7 +146,7 @@ export const AreaPanel = memo(function AreaPanel({
             padding: "4px 20px 4px 6px",
             fontSize: F.xs,
             height: 30,
-            borderRadius: 5,
+            borderRadius: R.btn,
             fontWeight: moveInFilter !== "전체" ? 700 : 500,
             border: moveInFilter !== "전체" ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
             background: C.slate100,
