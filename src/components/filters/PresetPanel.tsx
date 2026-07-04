@@ -128,7 +128,7 @@ export const PresetPanel = memo(function PresetPanel({
           </div>
         </div>
       )}
-      {/* 프리셋 저장 + 히스토리 */}
+      {/* 프리셋 저장 */}
       <div style={{ display: "flex", gap: 3, alignItems: "center", flexWrap: "wrap" }}>
         {activeFilterCount > 0 &&
           onSavePreset &&

@@ -111,7 +111,6 @@ export const GuideSections = memo(function GuideSections() {
           <div style={guideTitle}>실행 취소 · 다시 실행</div>
           <div style={guideDesc}>
             필터를 변경하면 화살표 버튼(↩ ↪)이 나타납니다. 실수로 필터를 바꿨을 때 이전 상태로 되돌릴 수 있습니다.
-            히스토리 드롭다운으로 과거 필터 조합도 불러올 수 있습니다.
           </div>
         </div>
 
