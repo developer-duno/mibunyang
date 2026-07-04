@@ -82,6 +82,22 @@ const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
       pb = norm(b.apt.parkingRatio);
     return pa === pb ? b.res.total - a.res.total : pb - pa;
   },
+  // 병원 가까운순 (hospitalDist 오름차순, m, 채움률 94.8%) — 응급·의료 접근성 우선. 은퇴·실거주 관심.
+  // sentinel 없음(수집 반경 1km 캡, max 989m) → null 만 Infinity 로 맨뒤(subwayNear 의 9999 분기 불필요). 동률은 종합점수 tie-break (세션 479)
+  hospitalNear: (a, b) => {
+    const norm = (d: number | null | undefined) => (d == null ? Infinity : Number(d));
+    const da = norm(a.apt.hospitalDist),
+      db = norm(b.apt.hospitalDist);
+    return da === db ? b.res.total - a.res.total : da - db;
+  },
+  // 공원 가까운순 (parkDist 오름차순, m, 채움률 95.0%) — 녹지·산책 접근성 우선. 신혼·실거주 관심.
+  // sentinel 없음(수집 반경 1km 캡, max 998m) → null 만 Infinity 로 맨뒤. 동률은 종합점수 tie-break (세션 479)
+  parkNear: (a, b) => {
+    const norm = (d: number | null | undefined) => (d == null ? Infinity : Number(d));
+    const da = norm(a.apt.parkDist),
+      db = norm(b.apt.parkDist);
+    return da === db ? b.res.total - a.res.total : da - db;
+  },
 };
 
 /**
@@ -114,6 +130,8 @@ export function useDataPipeline({
   crimeSafeOnly,
   childcareGoodOnly,
   parkingGoodOnly,
+  hospitalNearOnly,
+  parkNearOnly,
   searchQuery,
   hideNoUnsold,
   compIds,
@@ -211,6 +229,8 @@ export function useDataPipeline({
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
     }),
     [
       showFavOnly,
@@ -230,6 +250,8 @@ export function useDataPipeline({
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
     ]
   );
 
@@ -294,6 +316,8 @@ export function useDataPipeline({
         crimeSafeOnly,
         childcareGoodOnly,
         parkingGoodOnly,
+        hospitalNearOnly,
+        parkNearOnly,
         searchQuery.trim(),
       ].filter(Boolean).length,
     [
@@ -316,6 +340,8 @@ export function useDataPipeline({
       crimeSafeOnly,
       childcareGoodOnly,
       parkingGoodOnly,
+      hospitalNearOnly,
+      parkNearOnly,
       searchQuery,
     ]
   );

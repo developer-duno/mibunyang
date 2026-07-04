@@ -28,6 +28,10 @@ type DetailPanelProps = {
   onToggleChildcareGoodOnly: () => void;
   parkingGoodOnly: boolean;
   onToggleParkingGoodOnly: () => void;
+  hospitalNearOnly: boolean;
+  onToggleHospitalNearOnly: () => void;
+  parkNearOnly: boolean;
+  onToggleParkNearOnly: () => void;
   filterOptionCounts?: { tierCounts?: Record<string, number> };
 };
 
@@ -52,6 +56,10 @@ export const DetailPanel = memo(function DetailPanel({
   onToggleChildcareGoodOnly,
   parkingGoodOnly,
   onToggleParkingGoodOnly,
+  hospitalNearOnly,
+  onToggleHospitalNearOnly,
+  parkNearOnly,
+  onToggleParkNearOnly,
   filterOptionCounts,
 }: DetailPanelProps) {
   const hasFilter =
@@ -64,7 +72,9 @@ export const DetailPanel = memo(function DetailPanel({
     nonRegulatedOnly ||
     crimeSafeOnly ||
     childcareGoodOnly ||
-    parkingGoodOnly;
+    parkingGoodOnly ||
+    hospitalNearOnly ||
+    parkNearOnly;
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" as const }}>
       <span style={{ ...tilde, fontWeight: 600 }}>최소</span>
@@ -272,6 +282,46 @@ export const DetailPanel = memo(function DetailPanel({
       >
         주차넉넉
       </button>
+      <button
+        onClick={onToggleHospitalNearOnly}
+        aria-label="병원 도보권만(500m 이내)"
+        aria-pressed={hospitalNearOnly}
+        style={{
+          flexShrink: 0,
+          height: 30,
+          padding: "0 10px",
+          fontSize: F.xs,
+          fontWeight: hospitalNearOnly ? 700 : 500,
+          background: hospitalNearOnly ? C.redLight : C.slate100,
+          color: hospitalNearOnly ? C.red : C.slate600,
+          border: hospitalNearOnly ? `1.5px solid ${C.red}` : `1px solid ${C.border}`,
+          borderRadius: 5,
+          cursor: "pointer",
+          transition: "all .15s",
+        }}
+      >
+        병원가까움
+      </button>
+      <button
+        onClick={onToggleParkNearOnly}
+        aria-label="공원 도보권만(500m 이내)"
+        aria-pressed={parkNearOnly}
+        style={{
+          flexShrink: 0,
+          height: 30,
+          padding: "0 10px",
+          fontSize: F.xs,
+          fontWeight: parkNearOnly ? 700 : 500,
+          background: parkNearOnly ? C.greenLight : C.slate100,
+          color: parkNearOnly ? C.green : C.slate600,
+          border: parkNearOnly ? `1.5px solid ${C.green}` : `1px solid ${C.border}`,
+          borderRadius: 5,
+          cursor: "pointer",
+          transition: "all .15s",
+        }}
+      >
+        공원가까움
+      </button>
       {hasFilter && (
         <button
           onClick={() => {
@@ -285,8 +335,10 @@ export const DetailPanel = memo(function DetailPanel({
             if (crimeSafeOnly) onToggleCrimeSafeOnly();
             if (childcareGoodOnly) onToggleChildcareGoodOnly();
             if (parkingGoodOnly) onToggleParkingGoodOnly();
+            if (hospitalNearOnly) onToggleHospitalNearOnly();
+            if (parkNearOnly) onToggleParkNearOnly();
           }}
-          aria-label="점수/시공사/혜택/역세권/학군/DSR/규제/치안/육아/주차 초기화"
+          aria-label="점수/시공사/혜택/역세권/학군/DSR/규제/치안/육아/주차/병원/공원 초기화"
           style={resetBtn(30)}
         >
           <IconClose size={12} />
