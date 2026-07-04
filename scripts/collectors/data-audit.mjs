@@ -431,7 +431,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     fetchAllFromTable(sb, "schools", "apartment_id,school_score,school_grade,nearby_schools", null, null),
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
     fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
-    fetchAllFromTable(sb, "regions", "region,gu,recorded_at,pop_growth,supply_ratio,net_migration,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio", null, null),
+    fetchAllFromTable(sb, "regions", "region,gu,recorded_at,pop_growth,supply_ratio,net_migration,housing_supply_level,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio", null, null),
     fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m", null, null),
   ]);
 
