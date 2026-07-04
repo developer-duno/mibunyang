@@ -3,7 +3,7 @@
  * 프리셋은 항상 표시, 선택된 프리셋 하이라이트
  */
 import { memo } from "react";
-import { C, F } from "@/theme";
+import { C, F, R } from "@/theme";
 import { IconClose } from "@/components/icons";
 import { numInput, tilde, resetBtn } from "./filterStyles";
 
@@ -79,7 +79,7 @@ export const BudgetPanel = memo(function BudgetPanel({
                 background: selected ? C.indigoLight : C.slate100,
                 color: selected ? C.indigo : C.slate600,
                 border: selected ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-                borderRadius: 5,
+                borderRadius: R.chip,
                 cursor: "pointer",
                 transition: "all .15s",
               }}

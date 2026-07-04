@@ -4,7 +4,7 @@
  * 부모는 key={openPanel === "preset" ? "open" : "closed"} 으로 강제 unmount → showPresetInput 자연 초기화
  */
 import { memo, useState, useCallback } from "react";
-import { C, F } from "@/theme";
+import { C, F, R } from "@/theme";
 import { FILTER_PRESETS } from "@/constants/filterPresets";
 import type { FilterPreset, FilterHistoryEntry } from "@/types/hooks";
 
@@ -69,7 +69,7 @@ export const PresetPanel = memo(function PresetPanel({
                 background: C.indigoLight,
                 color: C.indigo,
                 border: `1px solid ${C.indigo}`,
-                borderRadius: 5,
+                borderRadius: R.chip,
                 cursor: "pointer",
                 transition: "all .15s",
                 whiteSpace: "nowrap" as const,
@@ -101,7 +101,7 @@ export const PresetPanel = memo(function PresetPanel({
                     background: C.greenLight,
                     color: C.green,
                     border: `1px solid ${C.green}`,
-                    borderRadius: "5px 0 0 5px",
+                    borderRadius: `${R.chip}px 0 0 ${R.chip}px`,
                     cursor: "pointer",
                     whiteSpace: "nowrap" as const,
                   }}
@@ -124,7 +124,7 @@ export const PresetPanel = memo(function PresetPanel({
                     color: C.green,
                     border: `1px solid ${C.green}`,
                     borderLeft: "none",
-                    borderRadius: "0 5px 5px 0",
+                    borderRadius: `0 ${R.chip}px ${R.chip}px 0`,
                     cursor: "pointer",
                   }}
                 >
@@ -161,7 +161,7 @@ export const PresetPanel = memo(function PresetPanel({
                   height: 28,
                   padding: "2px 6px",
                   border: `1px solid ${C.green}`,
-                  borderRadius: 4,
+                  borderRadius: R.badge,
                   outline: "none",
                   background: C.greenLight,
                 }}
@@ -176,7 +176,7 @@ export const PresetPanel = memo(function PresetPanel({
                   background: C.green,
                   color: "#fff",
                   border: "none",
-                  borderRadius: 4,
+                  borderRadius: R.badge,
                   cursor: "pointer",
                 }}
               >
@@ -194,7 +194,7 @@ export const PresetPanel = memo(function PresetPanel({
                   background: C.slate100,
                   color: C.muted,
                   border: `1px solid ${C.border}`,
-                  borderRadius: 4,
+                  borderRadius: R.badge,
                   cursor: "pointer",
                 }}
               >
@@ -213,7 +213,7 @@ export const PresetPanel = memo(function PresetPanel({
                 background: C.greenLight,
                 color: C.green,
                 border: `1px solid ${C.green}`,
-                borderRadius: 4,
+                borderRadius: R.badge,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
               }}
@@ -243,7 +243,7 @@ export const PresetPanel = memo(function PresetPanel({
               height: 28,
               padding: "2px 20px 2px 6px",
               border: `1px solid ${C.border}`,
-              borderRadius: 4,
+              borderRadius: R.badge,
               background: C.slate100,
               color: C.slate600,
               cursor: "pointer",
@@ -267,7 +267,7 @@ export const PresetPanel = memo(function PresetPanel({
             style={{
               background: C.slate100,
               border: `1px solid ${C.border}`,
-              borderRadius: 4,
+              borderRadius: R.badge,
               padding: "0 6px",
               fontSize: F.micro,
               color: C.muted,

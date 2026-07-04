@@ -3,7 +3,7 @@
  * SearchFilterBar에서 추출 — 6개 패널 + 오케스트레이터 공용
  */
 import type { CSSProperties } from "react";
-import { C, F } from "@/theme";
+import { C, F, R } from "@/theme";
 
 /* 배지 pulse 애니메이션 (SSR-safe, 최초 1회 주입) */
 const BADGE_ANIM = "badge-pulse";
@@ -34,7 +34,7 @@ export const numInput = (val: string | number, h = 30): CSSProperties => ({
   padding: "4px 6px",
   fontSize: F.sm,
   border: val ? `1.5px solid ${C.indigo}` : `1px solid ${C.border}`,
-  borderRadius: 5,
+  borderRadius: R.btn,
   outline: "none",
   height: h,
   boxSizing: "border-box",
@@ -45,7 +45,7 @@ export const numInput = (val: string | number, h = 30): CSSProperties => ({
 export const resetBtn = (h = 30): CSSProperties => ({
   background: C.slate100,
   border: `1px solid ${C.border}`,
-  borderRadius: 5,
+  borderRadius: R.badge,
   padding: "0 6px",
   fontSize: F.sm,
   color: C.muted,
@@ -64,7 +64,7 @@ export const tilde: CSSProperties = { fontSize: F.micro, color: C.muted, flexShr
 export const chipStyle: CSSProperties = {
   fontSize: F.sm,
   padding: "3px 8px",
-  borderRadius: 10,
+  borderRadius: R.chip,
   background: C.indigoLight,
   color: C.indigo,
   fontWeight: 600,
