@@ -43,8 +43,8 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<StageTabKey>("all");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  // 모바일 캘린더 접기 (세션 469) — 벤치마킹 확정안: 큰 월 그리드 기본 숨김, 토글로 펼침. 데스크톱은 항상 노출.
-  const [showCalendar, setShowCalendar] = useState(false);
+  // 모바일 캘린더 토글 — 기본 펼침(세션 478 사장님 결정, 세션 469 기본 숨김 뒤집음). 토글로 접기/펼치기. 데스크톱은 항상 노출.
+  const [showCalendar, setShowCalendar] = useState(true);
   const [subscribeAptId, setSubscribeAptId] = useState<string | null>(null);
   const [regionFilter, setRegionFilter] = useState("전국");
   // ★ 관심지역 — App profile localStorage 패턴 답습 (string[], memo/tags 불필요)
