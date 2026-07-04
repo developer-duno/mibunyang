@@ -29,10 +29,22 @@ describe("RegionChipBar", () => {
   it("★ 관심지역은 맨 앞 정렬 + ★ prefix", () => {
     render(<RegionChipBar {...baseProps()} favorites={["세종"]} />);
     const labels = screen.getAllByRole("button").map((b) => b.textContent);
-    // 전국 → ★ 세종 → 서울 → 대전 → ★ 편집
+    // 전국 → ★ 세종 → 서울 → 대전 → ★ 관심지역
     expect(labels[0]).toBe("전국");
     expect(labels[1]).toBe("★ 세종");
-    expect(labels[labels.length - 1]).toBe("★ 편집");
+    expect(labels[labels.length - 1]).toBe("★ 관심지역");
+  });
+
+  it("편집 모드 진입 시 안내 문구 노출, 종료 시 사라짐", () => {
+    const props = baseProps();
+    render(<RegionChipBar {...props} />);
+    // 진입 전 안내 없음
+    expect(screen.queryByText("칩을 눌러 관심 지역을 등록/해제하세요")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "관심지역 편집 모드" }));
+    expect(screen.getByText("칩을 눌러 관심 지역을 등록/해제하세요")).toBeInTheDocument();
+    // 완료 → 안내 사라짐
+    fireEvent.click(screen.getByRole("button", { name: "관심지역 편집 모드" }));
+    expect(screen.queryByText("칩을 눌러 관심 지역을 등록/해제하세요")).not.toBeInTheDocument();
   });
 
   it("편집 모드: 칩 클릭 = onToggleFavorite (onSelect 미발화), 완료로 복귀", () => {

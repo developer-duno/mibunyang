@@ -112,9 +112,16 @@ export const RegionChipBar = memo(function RegionChipBar({
             minHeight: 36,
           }}
         >
-          {editMode ? "완료" : "★ 편집"}
+          {editMode ? "완료" : "★ 관심지역"}
         </button>
       </div>
+      {/* 편집 모드 안내 — 처음 쓰는 손님에게 칩 클릭 = 관심지역 토글임을 알림.
+          overflowX 스크롤 컨테이너 밖(형제)에 둬 지역칩 가로 넘침(세션478 #250) 회귀 방지. */}
+      {editMode && (
+        <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4, paddingLeft: 2 }}>
+          칩을 눌러 관심 지역을 등록/해제하세요
+        </div>
+      )}
       {/* 오른쪽 그라데이션 힌트 — "옆으로 더 있다" 시각 신호. 끝 도달 시 숨김. 클릭 통과. */}
       {!atEnd && (
         <div
