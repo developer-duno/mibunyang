@@ -309,6 +309,18 @@ describe("전체 초기화 + 프리셋", () => {
     });
     expect(result.current.childcareGoodOnly).toBe(false);
   });
+
+  it("toggleParkingGoodOnly — 토글 + 리셋 (세션 477)", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleParkingGoodOnly();
+    });
+    expect(result.current.parkingGoodOnly).toBe(true);
+    act(() => {
+      result.current.handleResetAll();
+    });
+    expect(result.current.parkingGoodOnly).toBe(false);
+  });
 });
 
 describe("URL 필터 역직렬화 (Phase 1)", () => {
@@ -443,18 +455,20 @@ describe("URL 필터 역직렬화 (Phase 2)", () => {
     expect(result.current.nonRegulatedOnly).toBe(false);
   });
 
-  // 세션 475 — 치안안전/육아인프라 토글 URL 역직렬화 (?crimesafe=1 / ?childcare=1)
-  it("URL에서 crimeSafeOnly, childcareGoodOnly 읽기", () => {
-    mockLocationSearch("?crimesafe=1&childcare=1");
+  // 세션 475/477 — 치안안전/육아인프라/주차넉넉 토글 URL 역직렬화 (?crimesafe=1 / ?childcare=1 / ?parking=1)
+  it("URL에서 crimeSafeOnly, childcareGoodOnly, parkingGoodOnly 읽기", () => {
+    mockLocationSearch("?crimesafe=1&childcare=1&parking=1");
     const { result } = renderHook(() => useFilterSort({}));
     expect(result.current.crimeSafeOnly).toBe(true);
     expect(result.current.childcareGoodOnly).toBe(true);
+    expect(result.current.parkingGoodOnly).toBe(true);
   });
 
-  it("crimesafe/childcare 미지정 → 기본값 false", () => {
+  it("crimesafe/childcare/parking 미지정 → 기본값 false", () => {
     mockLocationSearch("?region=서울");
     const { result } = renderHook(() => useFilterSort({}));
     expect(result.current.crimeSafeOnly).toBe(false);
     expect(result.current.childcareGoodOnly).toBe(false);
+    expect(result.current.parkingGoodOnly).toBe(false);
   });
 });

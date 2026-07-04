@@ -41,7 +41,8 @@ export type SortKey =
   | "subwayNear"
   | "jeonseHigh"
   | "maintenanceLow"
-  | "crimeSafe";
+  | "crimeSafe"
+  | "parkingHigh";
 
 /**
  * 입주 시기 분류 — classifyMoveIn 반환.
@@ -81,6 +82,7 @@ export interface UseDataPipelineArgs {
   nonRegulatedOnly: boolean;
   crimeSafeOnly: boolean;
   childcareGoodOnly: boolean;
+  parkingGoodOnly: boolean;
   searchQuery: string;
   hideNoUnsold: boolean;
   compIds: string[];
@@ -111,6 +113,7 @@ export interface UseDataPipelineReturn {
     nonRegulatedOnly: boolean;
     crimeSafeOnly: boolean;
     childcareGoodOnly: boolean;
+    parkingGoodOnly: boolean;
   };
   filtered: ScoredApt[];
   visible: ScoredApt[];
@@ -329,6 +332,7 @@ export interface UseFilterSortReturn {
   nonRegulatedOnly: boolean;
   crimeSafeOnly: boolean;
   childcareGoodOnly: boolean;
+  parkingGoodOnly: boolean;
   showFavOnly: boolean;
   searchQuery: string;
   handleSearchChange: (_v: string) => void;
@@ -353,6 +357,7 @@ export interface UseFilterSortReturn {
   toggleNonRegulatedOnly: () => void;
   toggleCrimeSafeOnly: () => void;
   toggleChildcareGoodOnly: () => void;
+  toggleParkingGoodOnly: () => void;
   getShareURL: () => string;
   handleResetAll: () => void;
   applyPreset: (_preset: Record<string, string | boolean>) => void;

@@ -74,6 +74,14 @@ const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
       gb = norm(b.apt.crimeSafetyGrade);
     return ga === gb ? b.res.total - a.res.total : ga - gb;
   },
+  // 주차 넉넉순 (parkingRatio 내림차순, 대/세대, 채움률 90.5%) — 주차 여유 단지 먼저. 실거주 관심.
+  // null(미수집 149단지)은 -Infinity 로 맨뒤(큰값이 앞이라 jeonseHigh 패턴 답습). 동률은 종합점수 tie-break (세션 477)
+  parkingHigh: (a, b) => {
+    const norm = (p: number | null | undefined) => (p == null ? -Infinity : Number(p));
+    const pa = norm(a.apt.parkingRatio),
+      pb = norm(b.apt.parkingRatio);
+    return pa === pb ? b.res.total - a.res.total : pb - pa;
+  },
 };
 
 /**
@@ -105,6 +113,7 @@ export function useDataPipeline({
   nonRegulatedOnly,
   crimeSafeOnly,
   childcareGoodOnly,
+  parkingGoodOnly,
   searchQuery,
   hideNoUnsold,
   compIds,
@@ -201,6 +210,7 @@ export function useDataPipeline({
       nonRegulatedOnly,
       crimeSafeOnly,
       childcareGoodOnly,
+      parkingGoodOnly,
     }),
     [
       showFavOnly,
@@ -219,6 +229,7 @@ export function useDataPipeline({
       nonRegulatedOnly,
       crimeSafeOnly,
       childcareGoodOnly,
+      parkingGoodOnly,
     ]
   );
 
@@ -282,6 +293,7 @@ export function useDataPipeline({
         nonRegulatedOnly,
         crimeSafeOnly,
         childcareGoodOnly,
+        parkingGoodOnly,
         searchQuery.trim(),
       ].filter(Boolean).length,
     [
@@ -303,6 +315,7 @@ export function useDataPipeline({
       nonRegulatedOnly,
       crimeSafeOnly,
       childcareGoodOnly,
+      parkingGoodOnly,
       searchQuery,
     ]
   );
