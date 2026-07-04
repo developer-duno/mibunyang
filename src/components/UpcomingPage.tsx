@@ -279,7 +279,7 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
                 />
               </Suspense>
             ) : (
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <button
                   type="button"
                   onClick={() => setShowCalendar((v) => !v)}
@@ -316,7 +316,9 @@ export function UpcomingPage({ onOpenDetail, onBackToMain, scored, dataLoading }
               </div>
             ))}
 
-          <div>
+          {/* minWidth:0 = grid/flex 아이템 min-width:auto 기본값 차단 — 내부 RegionChipBar
+              (overflow-x:auto)가 트랙을 밀어내 모바일 가로 넘침 유발하던 것 방지 (세션 478) */}
+          <div style={{ minWidth: 0 }}>
             {/* 지역 칩 (호갱노노 답습 — 세션 406) */}
             <RegionChipBar
               regions={chipRegions}
