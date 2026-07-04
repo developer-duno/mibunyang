@@ -383,7 +383,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
         />
       </FilterDropdown>
       <FilterDropdown isOpen={openPanel === "sort"} label="정렬" isDesktop={isDesktop}>
-        <SortPanel sortKey={sortKey} onSortChange={onSortChange} onClose={closePanel} />
+        <SortPanel sortKey={sortKey} onSortChange={onSortChange} onClose={closePanel} isDesktop={isDesktop} />
       </FilterDropdown>
       <FilterDropdown isOpen={openPanel === "preset"} label="추천" isDesktop={isDesktop}>
         <PresetPanel
@@ -428,6 +428,7 @@ export const SearchFilterBar = memo(function SearchFilterBar({
           onToggleParkNearOnly={onToggleParkNearOnly}
           filterOptionCounts={filterOptionCounts}
           isPC={isPC}
+          isDesktop={isDesktop}
         />
       </FilterDropdown>
       <FilterDropdown isOpen={openPanel === "search"} label="검색" isDesktop={isDesktop}>

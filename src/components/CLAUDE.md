@@ -29,6 +29,7 @@
 
 - ARIA 속성 제거 금지 (role, aria-pressed, aria-selected, aria-current, aria-live)
 - 터치 타겟: 필터/정렬 버튼 minHeight 36px+, 네비 버튼 minHeight 44px+
+  - ⚠️ 36px 는 **터치(모바일·태블릿) 기준**. 데스크톱(isDesktop ≥1024, 마우스)만 32px 납작 허용 — 정렬칩·상세토글·시공사 select 가 `isDesktop ? 32 : 36` (세션 483, 세션 481 목업 "PC만 납작" 합의). 태블릿(isPC 768~1023)은 터치라 36 유지.
 - 폰트 크기: 최소 10px (8px 금지)
 - 색상 대비: C.muted = `#6B7280` (WCAG AA 4.6:1) — 더 밝은 색 변경 금지
 - 키보드 접근: 카드 `tabIndex={0}`, `role="button"`, `onKeyDown` 유지
