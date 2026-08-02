@@ -17,7 +17,7 @@ const MapView = lazyNamed(() => import("@/components/sections/MapView"), "MapVie
 const UpcomingPage = lazyNamed(() => import("@/components/UpcomingPage"), "UpcomingPage");
 import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
-import { useComparison, MAX_COMPARE } from "@/hooks/useComparison";
+import { useComparison } from "@/hooks/useComparison";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
 import { useDetailModal } from "@/hooks/useDetailModal";
@@ -33,6 +33,7 @@ import { useKakaoAuth } from "@/hooks/useKakaoAuth";
 import { useLoginGate } from "@/hooks/useLoginGate";
 import { useShareCallbacks } from "@/hooks/useShareCallbacks";
 import { useKakaoCallbackEffect } from "@/hooks/useKakaoCallbackEffect";
+import { useUrlSync } from "@/hooks/useUrlSync";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
@@ -386,73 +387,20 @@ export default function App() {
     };
   }, []);
 
-  // ── 독립 useEffect: tab="upcoming" ↔ URL "/upcoming" 동기화 ──
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onUpcomingPath = window.location.pathname.startsWith("/upcoming");
-    if (tab === "upcoming" && !onUpcomingPath) {
-      try {
-        window.history.pushState(null, "", "/upcoming");
-      } catch {
-        /* noop */
-      }
-    } else if (tab !== "upcoming" && onUpcomingPath) {
-      try {
-        window.history.pushState(null, "", "/");
-      } catch {
-        /* noop */
-      }
-    }
-  }, [tab]);
-
-  // ── 독립 useEffect: URL 딥링크 복원 ──
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const detailId = params.get("detail");
-    const compareStr = params.get("compare");
-    const profileParam = params.get("profile");
-    if (profileParam && profileParam in PROFILES) setProfile(profileParam as Profile);
-    if (detailId) handleDetailGated(detailId);
-    if (compareStr) {
-      const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
-      if (ids.length >= 2) {
-        setCompIds(ids);
-        setShowCompOpen(true);
-        // CompareSheet 는 list 탭 전용 렌더 — home 기본 탭에선 list 로 페어 전환.
-        // ?detail= 복합 링크는 detail 우선(!detailId): 탭 전환 시 useDetailModal 모달닫힘 충돌 회피.
-        // 복합 링크의 비교 시트 열림 상태는 유실 수용(compIds 보존 — 목록의 'N개 비교 보기' 버튼으로 재개)
-        if (!detailId && isFeatureHome()) setTab("list");
-      }
-    }
-    if (detailId || compareStr) {
-      const cleanParams = new URLSearchParams(window.location.search);
-      cleanParams.delete("detail");
-      cleanParams.delete("compare");
-      const remaining = cleanParams.toString();
-      try {
-        window.history.replaceState(null, "", remaining ? `?${remaining}` : window.location.pathname);
-      } catch {
-        /* noop: history.replaceState 미지원 환경 무시 */
-      }
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── 독립 useEffect: dedup 후 무효 ID 정리 ──
-  useEffect(() => {
-    if (dataLoading || dataError || !apartments.length) return;
-    const validIds = new Set(apartments.map((a) => a.id));
-    setFavoriteIds((ids) => {
-      const next = ids.filter((id) => validIds.has(id));
-      if (next.length === ids.length) return ids;
-      if (ids.length - next.length > 0)
-        showToast(`데이터 변경으로 관심매물 ${ids.length - next.length}개가 정리되었습니다`);
-      return next;
-    });
-    setCompIds((ids) => {
-      const next = ids.filter((id) => validIds.has(id));
-      return next.length === ids.length ? ids : next;
-    });
-  }, [apartments, dataLoading, dataError, setFavoriteIds, setCompIds, showToast]);
+  // ── 독립 useEffect 3개 (URL 동기화 + dedup 정리) — useUrlSync 추출 (세션 485) ──
+  useUrlSync({
+    tab,
+    setTab,
+    setProfile,
+    handleDetailGated,
+    setCompIds,
+    setShowCompOpen,
+    apartments,
+    dataLoading,
+    dataError,
+    setFavoriteIds,
+    showToast,
+  });
 
   // ── JSX ──
   return (
