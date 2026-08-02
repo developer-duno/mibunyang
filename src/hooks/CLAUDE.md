@@ -14,7 +14,8 @@ useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개
   → useKakaoCallbackEffect (void, [tab] deps eslint-disable 유지)
   → useShareCallbacks (callback 3개 + scoredMapRef 내부 관리)
   → useKeyboardShortcuts (void, 데스크톱 가드)
-  → 독립 useEffect 3개 (print CSS, URL 딥링크, 무효 ID 정리)
+  → 독립 useEffect (print CSS)
+  → useUrlSync (void, URL 동기화 3종 — 세션 485 추출)
   → JSX
 ```
 
@@ -68,6 +69,20 @@ useAppNavigation({ tab, setTab, expert, admin, consult, detail, compIds, ... })
 
 ---
 
+## useUrlSync 구조 (세션 485 추출)
+
+```
+useUrlSync({ tab, setTab, setProfile, handleDetailGated, setCompIds, setShowCompOpen,
+             apartments, dataLoading, dataError, setFavoriteIds, showToast })
+  ├── useEffect: tab="upcoming" ↔ URL "/upcoming" 동기화 ([tab])
+  ├── useEffect: URL 딥링크 복원 (detail/compare/profile, [] mount 1회 + eslint-disable 유지)
+  └── useEffect: dedup 후 무효 ID 정리 (관심매물·비교 목록 청소)
+```
+
+App.tsx L389~455 에 있던 독립 useEffect 3개를 **순서·deps·로직 무변경**으로 옮긴 것.
+호출 위치는 원래 자리(`// ── JSX ──` 직전) 유지 — 훅 순서가 바뀌면 Rules of Hooks 위반.
+MAX_COMPARE 딥링크 방어 경로가 App.tsx → 이 훅으로 이동(useComparison 의 4경로 중 1개).
+
 ## 파생 상태 규칙
 
 ```js
@@ -108,7 +123,7 @@ useComparison(showToast)
   └── useEffect × 3 (mount 토스트, localStorage 동기화, 크로스탭 storage)
 ```
 
-MAX_COMPARE 방어 4경로: 초기화 / toggleComp / URL딥링크(App.tsx) / 크로스탭storage
+MAX_COMPARE 방어 4경로: 초기화 / toggleComp / URL딥링크(useUrlSync, 세션 485 이전) / 크로스탭storage
 
 ## useFavorites 구조 (v2 객체 기반)
 

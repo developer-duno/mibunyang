@@ -117,3 +117,9 @@ OpenAPI서비스명세서_*.doc
 
 # 네이버 수집기 중복 실행 방지 락 (filelock, 세션 470 — 런타임 산출물)
 .naver-collect.lock
+
+# Python 바이트코드 캐시 (naver-collect.py 실행 산출물)
+# 세션 485: scripts/collectors/__pycache__/ 가 git status 에 ?? 로 떠 있어
+# `git add -A` 시 딸려 들어갈 위험이 있었다. 전역 패턴으로 차단.
+__pycache__/
+*.pyc
