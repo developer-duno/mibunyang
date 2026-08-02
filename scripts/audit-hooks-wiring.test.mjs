@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { readFile, readdir } from "node:fs/promises";
-import { findUnwiredHooks } from "./audit-hooks-wiring.mjs";
+import { findUnwiredHooks, findHardcodedCdPaths } from "./audit-hooks-wiring.mjs";
 
 describe("findUnwiredHooks", () => {
   it("settings 본문에 이름이 있으면 배선됨 = 빈 배열", () => {
@@ -35,10 +35,58 @@ describe("findUnwiredHooks", () => {
   });
 });
 
+describe("findHardcodedCdPaths", () => {
+  it("세션 485 사고 재현 — Git Bash 드라이브 경로(cd /f/...) 검출", () => {
+    expect(
+      findHardcodedCdPaths([{ name: "a.sh", text: 'set +e\ncd /f/mibunyang || exit 0\necho hi\n' }]),
+    ).toEqual([{ name: "a.sh", line: 2, snippet: "cd /f/mibunyang || exit 0" }]);
+  });
+
+  it("Windows 드라이브 경로(cd C:\\...) 검출", () => {
+    const found = findHardcodedCdPaths([{ name: "b.sh", text: 'cd "C:\\\\proj" || exit 0\n' }]);
+    expect(found).toHaveLength(1);
+    expect(found[0].line).toBe(1);
+  });
+
+  it("스크립트 위치 기준 상대 경로는 대상 아님", () => {
+    expect(
+      findHardcodedCdPaths([
+        { name: "c.sh", text: 'cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 0\n' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("표준 유닉스 경로(cd /tmp)는 오탐하지 않는다", () => {
+    expect(findHardcodedCdPaths([{ name: "d.sh", text: "cd /tmp\ncd /usr/local\n" }])).toEqual([]);
+  });
+
+  it("여러 파일·여러 줄을 모두 수집한다", () => {
+    expect(
+      findHardcodedCdPaths([
+        { name: "e.sh", text: "echo x\ncd /d/repo\n" },
+        { name: "f.sh", text: "cd /e/other\n" },
+      ]),
+    ).toHaveLength(2);
+  });
+
+  it("훅 0건이면 빈 배열", () => {
+    expect(findHardcodedCdPaths([])).toEqual([]);
+  });
+});
+
 describe("실제 레포 배선 상태 (회귀 가드)", () => {
   it(".claude/hooks/*.sh 전부 settings.json 에 배선돼 있다", async () => {
     const files = await readdir(".claude/hooks");
     const settingsText = await readFile(".claude/settings.json", "utf-8");
     expect(findUnwiredHooks(files, settingsText)).toEqual([]);
+  });
+
+  it(".claude/hooks/*.sh 에 머신 고정 절대경로가 없다", async () => {
+    const files = (await readdir(".claude/hooks")).filter((f) => f.endsWith(".sh"));
+    const sources = [];
+    for (const name of files) {
+      sources.push({ name, text: await readFile(`.claude/hooks/${name}`, "utf-8") });
+    }
+    expect(findHardcodedCdPaths(sources)).toEqual([]);
   });
 });
