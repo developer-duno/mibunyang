@@ -4,6 +4,7 @@ import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice, fmtCompletion, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 import { getTopCats } from "@/constants/profiles";
+import type { Category } from "@/constants/profiles";
 import { catVerdict } from "@/constants/catVerdict";
 import type { AptCardProps } from "@/types/components/AptCard.types";
 
@@ -160,18 +161,18 @@ export const AptCard = memo(
       [isComp, isFav, g.c, moveInDone, isDesktop]
     );
 
-    // 상위 3개 카테고리 정렬 메모이제이션 (매 렌더 재정렬 방지)
-    const topCats = useMemo(
-      () =>
-        Object.entries(res.cats)
-          .sort(
-            (a, b) =>
-              ((profileWeights as unknown as Record<string, number>)[b[0]] || 0) -
-              ((profileWeights as unknown as Record<string, number>)[a[0]] || 0)
-          )
-          .slice(0, 3),
-      [res.cats, profileWeights]
-    );
+    // 상위 3개 카테고리 선정 메모이제이션 (매 렌더 재정렬 방지).
+    // getTopCats = 가중치 내림차순 + 동점은 CAT_TIEBREAK_ORDER 로 고정.
+    // 예전 Object.entries(res.cats) 정렬은 동점(예: 실거주 프로필의 상품 20 = 가격 20)에서
+    // catsCache 의 JSON 키 순서에 기대고 있어, 수집기가 대입 순서만 바꿔도 세 번째 칸이
+    // 조용히 뒤바뀌었다(세션 487). 6개를 다 받아 존재하는 것만 추린 뒤 3개로 자른다.
+    const topCats = useMemo(() => {
+      const cats = res.cats as unknown as Record<string, { label: string; total: number } | undefined>;
+      return getTopCats(profileWeights as unknown as Record<Category, number>, 6)
+        .filter((k) => cats[k] != null)
+        .slice(0, 3)
+        .map((k) => [k, cats[k]] as [string, { label: string; total: number }]);
+    }, [res.cats, profileWeights]);
 
     // 맞춤 추천 이유 — 프로필 최우선 카테고리가 "긍정(양호 이상)"일 때만 결론 1줄 (catVerdict). 부정/데이터부재면 null.
     const recommendReason = useMemo(() => {

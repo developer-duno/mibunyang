@@ -3,6 +3,7 @@ import { lazyNamed } from "@/utils/lazyNamed";
 import { C, F } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { PROFILES, getTopCats } from "@/constants/profiles";
+import { orderedCatEntries } from "@/constants/catOrder";
 import { ScoreBadge } from "./primitives";
 import { CatPanel } from "./CatPanel";
 import { fmtPrice, fmtCompletion, fmtUnsoldRate } from "@/lib/format";
@@ -480,7 +481,7 @@ export const DetailModal = memo(function DetailModal({
                       margin: "12px 0",
                     }}
                   >
-                    {Object.entries(res.cats).map(([k, c]) => (
+                    {orderedCatEntries(res.cats as unknown as Record<string, Res>).map(([k, c]) => (
                       <CategoryMiniCard
                         key={k}
                         k={k}
@@ -669,7 +670,7 @@ export const DetailModal = memo(function DetailModal({
               {(() => {
                 const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
                 // mergedRes = 버킷 도착 시 full subs 로 복원된 res, 미도착 시 슬림 res(subs[0]만).
-                return Object.entries((mergedRes ?? res).cats).map(([k, c]) => {
+                return orderedCatEntries((mergedRes ?? res).cats as unknown as Record<string, Res>).map(([k, c]) => {
                   const seq = jumpSeqs[k] ?? 0;
                   return (
                     <CatPanel

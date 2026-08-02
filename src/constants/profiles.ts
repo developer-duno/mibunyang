@@ -36,11 +36,15 @@ export const PROFILES: Record<ProfileKey, Profile> = {
   },
 };
 
-const CAT_ORDER: Category[] = ["location", "product", "price", "risk", "benefit", "future"];
+/**
+ * 가중치 **동점 시 tie-break** 순서. 화면 표시 순서가 아니다.
+ * 화면 순서는 `constants/catOrder.ts` 의 `CAT_DISPLAY_ORDER` — 순서가 서로 다르므로 혼동 금지.
+ */
+const CAT_TIEBREAK_ORDER: Category[] = ["location", "product", "price", "risk", "benefit", "future"];
 
-/** PROFILES 가중치에서 상위 N 카테고리 key. 0점 제외 + 동점은 CAT_ORDER(선언 순서) 우선. */
+/** PROFILES 가중치에서 상위 N 카테고리 key. 0점 제외 + 동점은 CAT_TIEBREAK_ORDER(선언 순서) 우선. */
 export function getTopCats(w: Record<Category, number>, n = 2): Category[] {
-  return CAT_ORDER.filter((c) => w[c] > 0)
-    .sort((a, b) => w[b] - w[a] || CAT_ORDER.indexOf(a) - CAT_ORDER.indexOf(b))
+  return CAT_TIEBREAK_ORDER.filter((c) => w[c] > 0)
+    .sort((a, b) => w[b] - w[a] || CAT_TIEBREAK_ORDER.indexOf(a) - CAT_TIEBREAK_ORDER.indexOf(b))
     .slice(0, n);
 }

@@ -48,7 +48,7 @@
 - 모든 신규 블록은 `adminLoggedIn` 게이트 + lazy import — 소비자 화면/번들 영향 0 (게이트 가드 테스트 의무)
 - 모든 필드 개별 표시 필수 (AdminDataAudit, fieldMeta.ts `FIELD_SECTIONS` 9섹션 전수 — 정확한 개수·섹션 구성은 fieldMeta.ts 가 진실의 원천, 박제 금지)
 - 스코어링 중간 계산 과정 투명 표시 (AdminScoreBreakdown — 적정가 과정·기여도·가중 합계)
-- catKeys는 `Object.keys(res.cats)` 동적 추출 (하드코딩 금지)
+- catKeys는 `orderedCatEntries(res.cats)` 로 추출 — 필드 목록을 손으로 적지 않는다는 **기존 취지는 그대로**이고, 거기에 표시 순서만 `CAT_DISPLAY_ORDER`(`constants/catOrder.ts`)로 고정한다. `Object.keys(res.cats)` 직접 사용 금지 — 그 순서는 서버 `catsCache` 의 JSON 직렬화 부산물이라 수집기 변경만으로 화면이 조용히 뒤집혔다(세션 487). 존재하지 않는 카테고리는 자동으로 빠지고, `catOrder.test.ts` 가 6개 전량·중복 0 을 잠근다.
 
 ---
 

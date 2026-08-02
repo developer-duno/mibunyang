@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { C, F, catCol, catBg } from "@/theme";
+import { orderedCatEntries } from "@/constants/catOrder";
 import type { ScoreBreakdownPreviewProps } from "@/types/admin";
 
 const CAT_LABELS: Record<string, string> = {
@@ -58,90 +59,94 @@ export const ScoreBreakdownPreview = memo(function ScoreBreakdownPreview({
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {Object.entries(previewItem.res.cats).map(([k, c]) => {
-            const w = (previewItem.res.weights as Record<string, number> | undefined)?.[k] ?? 0;
-            const contribution = Math.round((c.total * w) / 100);
-            return (
-              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: F.xs,
-                    fontWeight: 700,
-                    color: (catCol as Record<string, string>)[k],
-                    minWidth: 32,
-                  }}
-                >
-                  {CAT_LABELS[k] || k}
-                </span>
-                <div
-                  style={{
-                    flex: 1,
-                    height: 20,
-                    background: C.slate100,
-                    borderRadius: 4,
-                    position: "relative",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${Math.min(contribution * 2, 100)}%`,
-                      height: "100%",
-                      background: (catBg as Record<string, string>)[k],
-                      borderRadius: 4,
-                      transition: "width .3s",
-                      opacity: w === 0 ? 0.3 : 1,
-                    }}
-                  />
+          {orderedCatEntries(previewItem.res.cats as unknown as Record<string, { label: string; total: number }>).map(
+            ([k, c]) => {
+              const w = (previewItem.res.weights as Record<string, number> | undefined)?.[k] ?? 0;
+              const contribution = Math.round((c.total * w) / 100);
+              return (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span
                     style={{
-                      position: "absolute",
-                      left: 6,
-                      top: 2,
-                      fontSize: F.micro,
+                      fontSize: F.xs,
                       fontWeight: 700,
                       color: (catCol as Record<string, string>)[k],
+                      minWidth: 32,
                     }}
                   >
-                    {c.total}점
+                    {CAT_LABELS[k] || k}
+                  </span>
+                  <div
+                    style={{
+                      flex: 1,
+                      height: 20,
+                      background: C.slate100,
+                      borderRadius: 4,
+                      position: "relative",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.min(contribution * 2, 100)}%`,
+                        height: "100%",
+                        background: (catBg as Record<string, string>)[k],
+                        borderRadius: 4,
+                        transition: "width .3s",
+                        opacity: w === 0 ? 0.3 : 1,
+                      }}
+                    />
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 6,
+                        top: 2,
+                        fontSize: F.micro,
+                        fontWeight: 700,
+                        color: (catCol as Record<string, string>)[k],
+                      }}
+                    >
+                      {c.total}점
+                    </span>
+                  </div>
+                  <span style={{ fontSize: F.xs, color: C.muted, minWidth: 20, textAlign: "right" }}>{w}%</span>
+                  <span
+                    style={{
+                      fontSize: F.xs,
+                      fontWeight: 700,
+                      color: (catCol as Record<string, string>)[k],
+                      minWidth: 24,
+                      textAlign: "right",
+                    }}
+                  >
+                    {contribution}
                   </span>
                 </div>
-                <span style={{ fontSize: F.xs, color: C.muted, minWidth: 20, textAlign: "right" }}>{w}%</span>
-                <span
-                  style={{
-                    fontSize: F.xs,
-                    fontWeight: 700,
-                    color: (catCol as Record<string, string>)[k],
-                    minWidth: 24,
-                    textAlign: "right",
-                  }}
-                >
-                  {contribution}
-                </span>
-              </div>
-            );
-          })}
+              );
+            }
+          )}
         </div>
 
         <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 3 }}>
-          {Object.entries(previewItem.res.cats).map(([k, c]) => {
-            const w = (previewItem.res.weights as Record<string, number> | undefined)?.[k] ?? 0;
-            return (
-              <span
-                key={k}
-                style={{
-                  fontSize: F.xs,
-                  color: (catCol as Record<string, string>)[k],
-                  background: (catBg as Record<string, string>)[k],
-                  padding: "3px 8px",
-                  borderRadius: 4,
-                  fontWeight: 600,
-                }}
-              >
-                {CAT_LABELS[k] || k} {c.total}×{w}%={Math.round((c.total * w) / 100)}
-              </span>
-            );
-          })}
+          {orderedCatEntries(previewItem.res.cats as unknown as Record<string, { label: string; total: number }>).map(
+            ([k, c]) => {
+              const w = (previewItem.res.weights as Record<string, number> | undefined)?.[k] ?? 0;
+              return (
+                <span
+                  key={k}
+                  style={{
+                    fontSize: F.xs,
+                    color: (catCol as Record<string, string>)[k],
+                    background: (catBg as Record<string, string>)[k],
+                    padding: "3px 8px",
+                    borderRadius: 4,
+                    fontWeight: 600,
+                  }}
+                >
+                  {CAT_LABELS[k] || k} {c.total}×{w}%={Math.round((c.total * w) / 100)}
+                </span>
+              );
+            }
+          )}
         </div>
       </div>
     </div>

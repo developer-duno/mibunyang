@@ -218,3 +218,66 @@ describe("CompareSheet", () => {
     expect(screen.getByLabelText("비교 닫기")).toBeInTheDocument();
   });
 });
+
+/**
+ * 세션 487 PR-0 회귀 가드 — 비교표 6행의 순서가 서버 catsCache 의 JSON 키
+ * 직렬화 순서에 기대지 않는지. 이전 코드는 `Object.keys(items[0].res.cats)`
+ * 였기에 수집기가 필드 대입 순서만 바꿔도 행 순서가 조용히 뒤집혔다.
+ */
+describe("CompareSheet — 카테고리 행 순서 (catsCache 키 순서와 무관)", () => {
+  /**
+   * cats 를 임의의 키 순서로 만들어 주는 팩토리
+   * @returns {any}
+   */
+  function makeItemWithCatOrder(/** @type {any} */ id, /** @type {string[]} */ keyOrder) {
+    /** @type {any} */
+    const byKey = {
+      price: { label: "가격 매력도", total: 70, subs: [] },
+      location: { label: "입지·생활권", total: 80, subs: [] },
+      product: { label: "상품성", total: 65, subs: [] },
+      benefit: { label: "혜택·할인", total: 60, totalWon: 1000, subs: [] },
+      risk: { label: "안전도", total: 85, subs: [] },
+      future: { label: "미래가치", total: 72, subs: [] },
+    };
+    /** @type {any} */
+    const cats = {};
+    for (const k of keyOrder) cats[k] = byKey[k];
+    return makeScoredItem({ id, name: `아파트${id}`, region: "경기", gu: "수원시", price: 50000 }, { total: 75, cats });
+  }
+
+  /** 렌더된 표에서 카테고리 행 라벨을 DOM 차례대로 뽑는다 */
+  function catRowLabels(/** @type {any} */ container) {
+    const wanted = new Set(["가격 매력도", "입지", "혜택", "상품성", "안전도", "미래가치"]);
+    return [...container.querySelectorAll("tbody tr")]
+      .map((tr) => tr.querySelector("td")?.textContent?.trim())
+      .filter((t) => t && wanted.has(t));
+  }
+
+  const EXPECTED = ["가격 매력도", "입지", "혜택", "상품성", "안전도", "미래가치"];
+
+  it("운영 catsCache 키 순서(risk>price>future>benefit>product>location)여도 화면은 고정 순서", () => {
+    const order = ["risk", "price", "future", "benefit", "product", "location"];
+    const { container } = render(
+      <CompareSheet
+        items={[makeItemWithCatOrder(1, order), makeItemWithCatOrder(2, order)]}
+        onClose={vi.fn()}
+        isLoggedIn
+        profile={/** @type {any} */ ("live")}
+      />
+    );
+    expect(catRowLabels(container)).toEqual(EXPECTED);
+  });
+
+  it("키 순서를 완전히 뒤집어도 화면 순서는 그대로 (이 PR 의 존재 이유)", () => {
+    const order = ["location", "product", "benefit", "future", "price", "risk"];
+    const { container } = render(
+      <CompareSheet
+        items={[makeItemWithCatOrder(1, order), makeItemWithCatOrder(2, order)]}
+        onClose={vi.fn()}
+        isLoggedIn
+        profile={/** @type {any} */ ("live")}
+      />
+    );
+    expect(catRowLabels(container)).toEqual(EXPECTED);
+  });
+});
