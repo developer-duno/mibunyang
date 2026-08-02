@@ -55,6 +55,21 @@ export const KakaoMapView = memo(function KakaoMapView({
   const [mode, setMode] = useState<"point" | "choropleth">("point");
   const [mapInstance, setMapInstance] = useState<unknown>(null);
 
+  // ── 마커 재생성 억제·분할 추가 (세션 486 성능) ────────────────────────────
+  // 실측(프로덕션 빌드, 데스크톱): 지도 진입 롱태스크 1,520ms / 지도에서 프로필 전환 1,235ms.
+  // 같은 조작을 목록 탭에서 하면 118ms → 차액 약 1,100ms 가 순수 지도 몫.
+  // 부위별 실측: SVG 문자열+인코딩 1,581개 4ms · MarkerImage 0ms · Marker 객체 67ms ·
+  //   클릭리스너 0ms · **clusterer.addMarkers(1581) 957~1,216ms** ← 병목은 클러스터링 계산.
+  // 처방 2종:
+  //   ① 서명 비교 — 정렬만 바뀌면 filtered 는 새 배열이지만 (id, 점수) 집합은 동일 → 재생성 skip.
+  //      지도에서 정렬은 마커 위치·색을 바꾸지 않으므로 100% 낭비였다.
+  //   ② 분할 추가 — addMarkers 를 100개씩 rAF 로 쪼갬. 총량은 같지만 한 덩어리 1,216ms 가
+  //      최대 73ms 조각으로 나뉘어 그 사이 브라우저가 그리고 입력을 받는다(실측 16조각 최대 73ms).
+  // 서명은 클러스터러 인스턴스와 함께 보관 — 지도 재초기화로 클러스터러가 새로 생기면
+  // 서명이 같아도 비어 있는 클러스터러라 반드시 다시 채워야 한다(빈 지도 회귀 차단).
+  const markerSigRef = useRef<{ cl: unknown; sig: string }>({ cl: null, sig: "" });
+  const chunkJobRef = useRef(0);
+
   // compact 는 마운트 시 고정 — init effect(deps []) 안에서 읽으므로 ref 캡처.
   // deps 에 compact 를 넣으면 cleanup 이 JS ref 만 해제(지도 destroy API 없음)하고
   // 같은 div 에 두 번째 지도가 중첩 생성되는 함정 (plan 함정 박제).
@@ -218,6 +233,10 @@ export const KakaoMapView = memo(function KakaoMapView({
   // 색칠 모드 진입 시 마커/선택 상태 리셋 (event handler 에서 호출 — set-state-in-effect 회피)
   const clearMarkersAndSelection = useCallback(() => {
     clustererRef.current?.clear();
+    // 색칠 모드로 나가며 클러스터러를 비웠으므로 서명도 무효화 — 점 보기로 돌아올 때
+    // "서명 동일" 로 skip 돼 빈 지도가 되는 회귀 차단 (세션 486).
+    markerSigRef.current = { cl: null, sig: "" };
+    chunkJobRef.current++; // 진행 중 분할 추가 취소
     setSelected(null);
     setMarkerCount(0);
   }, []);
@@ -227,6 +246,23 @@ export const KakaoMapView = memo(function KakaoMapView({
     if (!ready || !clustererRef.current || mode !== "point") return;
     const kakao = getKakaoMaps();
     if (!kakao) return;
+
+    // ① 서명 비교 — (단지 id, 점수) 집합 + 지역/구가 모두 같으면 재생성 skip.
+    // 정렬 변경 시 filtered 는 새 배열이지만 마커의 위치·색·라벨은 하나도 안 바뀐다.
+    // 점수(res.total)를 서명에 넣는 이유: 프로필 전환은 id 집합이 같아도 마커 색/숫자가 바뀌므로
+    // 반드시 재생성해야 한다. XOR 누적이라 순서 무관(정렬만 바뀐 경우와 구분되지 않음 = 의도).
+    let hash = 0;
+    for (const { apt, res } of filtered) {
+      const id = apt.id ?? "";
+      let s = 0;
+      for (let i = 0; i < id.length; i++) s = (s * 31 + id.charCodeAt(i)) | 0;
+      hash = (hash ^ (s + Math.round(res.total) * 0x9e3779b1)) | 0;
+    }
+    const sig = `${filtered.length}|${hash}|${deferredRegion ?? ""}|${deferredGu ?? ""}`;
+    if (markerSigRef.current.cl === clustererRef.current && markerSigRef.current.sig === sig) return;
+    markerSigRef.current = { cl: clustererRef.current, sig };
+
+    chunkJobRef.current++; // 직전 분할 추가가 남아 있으면 취소
     clustererRef.current.clear();
     // filtered 변경 시 이전 선택 정리 — 새 filtered 에서 사라진 단지의 selected 카드가 남는 것 방지
     setSelected(null);
@@ -257,7 +293,25 @@ export const KakaoMapView = memo(function KakaoMapView({
       markers.push(marker);
       if (apt.id) markerByIdRef.current.set(apt.id, marker);
     }
-    clustererRef.current.addMarkers(markers);
+    // ② 분할 추가 — addMarkers 가 병목(1,581개 = 957~1,216ms 단일 롱태스크, 실측).
+    // 100개씩 rAF 로 쪼개면 총량은 같지만 최대 조각이 73ms 라 그 사이 브라우저가 그리고
+    // 입력을 받는다(실측 16조각). 작은 목록(≤CHUNK)은 지연 없이 한 번에.
+    const MARKER_CHUNK = 100;
+    const cl = clustererRef.current;
+    if (markers.length <= MARKER_CHUNK) {
+      cl.addMarkers(markers);
+    } else {
+      const job = chunkJobRef.current;
+      let i = 0;
+      const pump = () => {
+        // 새 effect 가 시작됐거나(job 증가) 클러스터러가 교체됐으면 중단 — 옛 마커 유입 차단
+        if (chunkJobRef.current !== job || clustererRef.current !== cl) return;
+        cl.addMarkers(markers.slice(i, i + MARKER_CHUNK));
+        i += MARKER_CHUNK;
+        if (i < markers.length) requestAnimationFrame(pump);
+      };
+      requestAnimationFrame(pump);
+    }
     setMarkerCount(markers.length);
 
     // region/gu 가 직전과 달라졌는지 — 이 시점 markers 는 새 지역으로 재채워진 상태(stale 0).
