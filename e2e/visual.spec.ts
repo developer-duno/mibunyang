@@ -1,9 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { stubApartments, freezeAnimations, waitForStableRender } from "./helpers";
 
 // 비로그인 시각 회귀 baseline (세션 418)
 // - 카카오 OAuth 로그인 게이트 안쪽(지도·상세)은 자동 캡처 불가 → 비로그인 화면만.
-// - daily refresh 로 카드 데이터가 매일 바뀌므로 동적 데이터 영역은 mask 처리,
-//   안정적 UI 골격(헤더·필터바·네비·빈상태)만 baseline 으로 잡는다.
+// - 카드 데이터는 고정 픽스처로 스텁한다(세션 487). 원래는 mask 만으로 daily refresh 를
+//   피하려 했으나, 마스크는 카드 *내용*만 가릴 뿐 **카드 높이**는 못 가려서 칩이 하나만
+//   늘어도 아래 요소가 전부 밀려 baseline 이 스스로 깨졌다(실측 확인). mask 는 그대로 둔다
+//   — 데이터를 고정한 지금은 중복 안전장치일 뿐 해가 없다.
 // - 최초 실행: `npx playwright test e2e/visual.spec.ts --update-snapshots` 로 baseline 생성.
 // - 회귀 검사: 이후 `npx playwright test e2e/visual.spec.ts` 가 baseline 과 픽셀 비교.
 //
@@ -11,15 +14,8 @@ import { test, expect } from "@playwright/test";
 
 test.describe("비로그인 시각 baseline @visual", () => {
   test.beforeEach(async ({ page }) => {
-    // 애니메이션·캐럿 깜빡임 제거 → 픽셀 안정화
-    await page.addStyleTag({
-      content: `*, *::before, *::after {
-        animation-duration: 0s !important;
-        animation-delay: 0s !important;
-        transition-duration: 0s !important;
-        caret-color: transparent !important;
-      }`,
-    });
+    await stubApartments(page);
+    await freezeAnimations(page);
   });
 
   test("목록 메인 — 상단 골격 (헤더+필터바)", async ({ page }) => {
@@ -31,6 +27,7 @@ test.describe("비로그인 시각 baseline @visual", () => {
       .first()
       .waitFor({ state: "visible", timeout: 15000 })
       .catch(() => {});
+    await waitForStableRender(page);
     // 동적 카드 그리드는 mask — 매일 바뀌는 단지 데이터는 비교 대상 아님
     await expect(page).toHaveScreenshot("list-main-desktop.png", {
       fullPage: false,
@@ -51,6 +48,7 @@ test.describe("비로그인 시각 baseline @visual", () => {
       .first()
       .waitFor({ state: "visible", timeout: 15000 })
       .catch(() => {});
+    await waitForStableRender(page);
     await expect(page).toHaveScreenshot("list-main-mobile.png", {
       fullPage: false,
       maxDiffPixelRatio: 0.02,
