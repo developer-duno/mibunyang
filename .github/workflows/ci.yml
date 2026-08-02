@@ -51,6 +51,9 @@ jobs:
       - name: fill matrix 외부 cron 교집합 audit
         run: node scripts/audit-fill-matrix.mjs
 
+      - name: Claude 훅 배선 audit
+        run: node scripts/audit-hooks-wiring.mjs
+
       - name: Test
         env:
           VITE_FEATURE_UPCOMING: "true"

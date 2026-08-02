@@ -78,6 +78,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": ".claude/hooks/post-edit-ts-check.sh"
+          },
+          {
+            "type": "command",
             "command": "mkdir -p .claude && echo 1 >> .claude/.edit-counter && n=$(wc -l < .claude/.edit-counter 2>/dev/null || echo 0); if [ \"$n\" -gt 5 ]; then echo \"[hook] $n파일 편집됨 — 5파일+ 단계 분리 검토\" >&2; touch .claude/.build-dirty; fi; exit 0"
           }
         ]

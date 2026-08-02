@@ -14,12 +14,12 @@
 |---|---|
 | 프론트 | React 19 + Vite 8 (Rolldown) + TypeScript |
 | 상태 | React Hooks (useMemo 13개 체인 + useDeferredValue) |
-| API | Vercel Serverless 23개 배포 함수 (api/ 루트) |
+| API | Vercel Serverless 25개 배포 함수 (api/ 루트) |
 | DB | Supabase PostgreSQL 15 테이블 + 2 VIEW |
 | 인증 | SHA-256+salt, HMAC-SHA256 JWT, 카카오 OAuth |
 | 캐싱 | Upstash Redis (서버리스) |
-| 수집 | GitHub Actions 47개 워크플로우 (수집 44 + CI/E2E/Monitor 3) + Windows 스케줄러 |
-| 테스트 | Vitest + Playwright E2E 13 spec |
+| 수집 | GitHub Actions 40개 워크플로우 (수집·가공 35 + CI/E2E/배포/모니터 5) + Windows 스케줄러 |
+| 테스트 | Vitest + Playwright E2E 14 spec (visual.spec.ts 시각 baseline 포함) |
 | 모니터링 | Vercel Analytics + Speed Insights |
 
 ## 시작하기
