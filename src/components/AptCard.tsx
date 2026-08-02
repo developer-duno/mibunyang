@@ -212,7 +212,7 @@ export const AptCard = memo(
     }, [profileWeights, res.cats]);
 
     return (
-      <div style={dynStyles.wrapper}>
+      <div style={dynStyles.wrapper} data-testid="apt-card">
         <div style={dynStyles.bar} />
         <div
           style={dynStyles.body || S.body}
