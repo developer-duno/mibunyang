@@ -22,6 +22,10 @@
 | 테스트 | Vitest + Playwright E2E 14 spec (visual.spec.ts 시각 baseline 포함) |
 | 모니터링 | Vercel Analytics + Speed Insights |
 
+> ⚠️ 위 개수(API 함수·워크플로·spec)는 세션마다 늘어 낡는다. 단정 전 실측:
+> `find api -name '*.ts' -not -path 'api/_lib/*' -not -name '*.test.ts' | wc -l` ·
+> `ls .github/workflows/*.yml | wc -l` · `ls e2e/*.spec.ts | wc -l` (세션 485 drift 정정)
+
 ## 시작하기
 
 ### 5분 셋업 (신규 머신)
@@ -72,17 +76,17 @@ npm run migrate:dry       # Supabase 마이그 dry-run
 
 ```text
 src/
-├── App.tsx                430줄 메인
-├── components/            45개 memo 컴포넌트
-├── hooks/                 useDataPipeline 등 13훅
+├── App.tsx                977줄 메인 (조립 ~450 + JSX ~520)
+├── components/            84 tsx (React.memo 76)
+├── hooks/                 useDataPipeline 등 31 파일
 ├── scoring/               6 카테고리 가중치 엔진
 ├── constants/             타입·상수
 └── theme/                 디자인 토큰
 
-api/                       Vercel 함수 23개 배포 (withHandler HOF)
-scripts/collectors/        50 수집기 + _shared/_molit-api 헬퍼 + .test.mjs (총 103 mjs)
-.github/workflows/         47 워크플로우 (수집 44 + CI/E2E/Monitor 3)
-supabase/                  71 마이그레이션 누적 + 현재 15 테이블 + 2 VIEW
+api/                       Vercel 함수 25개 배포 (withHandler HOF)
+scripts/collectors/        수집기 56 + _shared/_molit-api 헬퍼 + .test.mjs (총 113 mjs)
+.github/workflows/         40 워크플로우 (수집·가공 35 + CI/E2E/배포/모니터 5)
+supabase/                  87 마이그레이션 누적 + 현재 15 테이블 + 2 VIEW
 ```
 
 ## 데이터 흐름
@@ -106,7 +110,7 @@ GitHub Actions 가 일/주/월 스케줄로 외부 API (data.go.kr / 청약홈 /
 
 본 저장소는 Claude Code 기반 개발. 진행 상황·작업 규칙·세션 일지는 [.claude/](.claude/) 디렉토리에 누적:
 
-- [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) — 누적 세션 일지 (316+)
+- [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) — 누적 세션 일지 (1~354 아카이브, 296+ 는 글로벌 메모리가 진실의 원천)
 - [.claude/BACKLOG.md](.claude/BACKLOG.md) — 우선순위 백로그
 - [.claude/WORK_RULES.md](.claude/WORK_RULES.md) — Plan → Guard → Work → Review 규칙
 - [.claude/rules/](.claude/rules/) — 사고 박제 카탈로그 (TypeScript / Secret naming / KOSIS 차원 등)
