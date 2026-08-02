@@ -8,10 +8,12 @@
 **미분양 아파트 비교 엔진 v3.0** — 다기준 의사결정 엔진. 미분양·분양 예정 아파트를 6 카테고리 41+ 지표로 AHP 점수화하고 5가지 사용자 프로필 가중치 (실거주·투자·신혼·교육·은퇴) 적용. 같은 단지여도 프로필마다 다른 점수.
 
 - **프론트**: React 19 SPA (Vite 8 Rolldown)
-- **백엔드**: Vercel Serverless (23 함수) + Supabase PostgreSQL (15 테이블 + 2 VIEW)
+- **백엔드**: Vercel Serverless (25 함수) + Supabase PostgreSQL (15 테이블 + 2 VIEW)
 - **수집**: GitHub Actions (40 워크플로, KOSIS·childcare 로컬 이전으로 감소) + Windows 스케줄러 (네이버 한국 IP)
 - **인증**: SHA-256+salt, HMAC-SHA256 JWT + 카카오 OAuth + 관리자 role (전문가 role 세션 405 폐지)
-- **테스트**: Vitest 3400+ + Playwright E2E 13 spec (+ 시각 baseline `PW_VISUAL=1`)
+- **테스트**: Vitest 4000+ + Playwright E2E 13 spec (+ 시각 baseline `PW_VISUAL=1`)
+
+> ⚠️ 위 개수는 세션마다 늘어 낡는다. 단정 전 실측: `find api -name '*.ts' -not -path 'api/_lib/*' -not -name '*.test.ts' | wc -l` · `ls .github/workflows/*.yml | wc -l` · `ls e2e/*.spec.ts | wc -l` · `npm run test` 요약줄
 
 ## 5분 진입 단계
 
@@ -31,7 +33,7 @@ git log --oneline -10                  # 최근 작업 답습
 | 2 | 글로벌 메모리 `~/.claude/projects/f--mibunyang/memory/MEMORY.md` | 최근 세션 진행 (세션 296+ 진실의 원천). 과거 1~354 = [.claude/SESSION_LOG_ARCHIVE_2026H1.md](.claude/SESSION_LOG_ARCHIVE_2026H1.md) |
 | 3 | [.claude/BACKLOG.md](.claude/BACKLOG.md) | 활성 P0~P3 우선순위 |
 | 4 | [.claude/NEXT_SESSION.md](.claude/NEXT_SESSION.md) | 다음 작업 (로컬, git 미추적) |
-| 5 | [docs/superpowers/INDEX.md](docs/superpowers/INDEX.md) | spec/plan 35 파일 색인 |
+| 5 | [docs/superpowers/INDEX.md](docs/superpowers/INDEX.md) | spec/plan 54 파일 색인 |
 
 ### 3. 작업 규칙 답습 (2분)
 
@@ -48,17 +50,17 @@ git log --oneline -10                  # 최근 작업 답습
 ```
 mibunyang/
 ├── src/                # React 프론트 (TS화 98%)
-│   ├── components/    # 컴포넌트 (memo 54개 + icons.tsx)
+│   ├── components/    # 컴포넌트 84 tsx (React.memo 76 + icons.tsx)
 │   ├── scoring/       # 점수 엔진 (6 카테고리 41+ 지표)
 │   ├── hooks/         # useDataPipeline + 13 useMemo 체인
 │   └── theme/         # Pretendard + tokens
-├── api/                # Vercel Serverless 23 함수
-├── scripts/            # 수집기 47 + audit + 기타
+├── api/                # Vercel Serverless 25 함수
+├── scripts/            # 수집기 56 + audit 5 + 기타
 │   └── collectors/    # 외부 API 수집
 ├── supabase/           # 마이그 + RLS 정책
 ├── .github/workflows/  # 40 워크플로
 ├── e2e/                # Playwright 13 spec (+ visual.spec.ts 시각 baseline)
-├── docs/superpowers/   # spec/plan 35 파일 ([INDEX.md](docs/superpowers/INDEX.md))
+├── docs/superpowers/   # spec/plan 54 파일 ([INDEX.md](docs/superpowers/INDEX.md))
 └── .claude/            # 프로젝트 메모리 + 룰
     ├── rules/
     │   ├── collectors/    # 수집기 룰 (parseGu·KOSIS·graceful·timeout)
@@ -97,7 +99,8 @@ mibunyang/
 
 ## 외부 link
 
-- 라이브 프론트: <https://mibunyang.vercel.app>
+- 라이브 프론트: <https://미분양아파트.com> (퓨니코드 `xn--hg3bi2ac4o1ig57cnoa.com`)
+  ⚠️ `mibunyang.vercel.app` 은 **우리 사이트가 아니다** — title "미분양닷컴" 인 남의 서비스. 라이브 검증은 반드시 위 도메인으로 (세션 480·485 실측).
 - 운영자 대시보드: 카카오 OAuth 로그인 (전문가/관리자 role)
 - 데이터 카탈로그: [.claude/API_REGISTRY.md](.claude/API_REGISTRY.md) (28 외부 API)
 

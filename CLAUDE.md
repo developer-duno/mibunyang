@@ -26,7 +26,7 @@ npm run format            # prettier --write src/
 npm run format:check      # prettier --check src/ (CI 게이트, endOfLine auto 라 로컬 CRLF 도 통과)
 ```
 
-> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×4(env-key·monitor·collector·fill-matrix) → test → build. 머지 전 전부 green 필수.
+> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×5(env-key·monitor·collector·fill-matrix·hooks-wiring) → test → build. 머지 전 전부 green 필수.
 
 ## 아키텍처 개요
 
@@ -48,6 +48,8 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **모니터링** | Vercel Analytics + Speed Insights | 페이지뷰/Web Vitals/커스텀 이벤트 |
 
 번들: vendor 190KB / index ~212KB (2026-07-03 실측) / html2canvas+jsPDF 200+400KB(dynamic import).
+
+> ⚠️ 위 개수(API 함수·워크플로·spec)는 세션마다 늘어 낡는다. **단정 전 실측**: `find api -name '*.ts' -not -path 'api/_lib/*' -not -name '*.test.ts' | wc -l` · `ls .github/workflows/*.yml | wc -l` · `ls e2e/*.spec.ts | wc -l` (세션 485 drift 3건 정정)
 
 ## 공유 인프라 (mibunyang ↔ naver-estate-web)
 

@@ -1,6 +1,14 @@
 # TypeScript Patterns — JSDoc + // @ts-check 답습 자산
 
-> M5d~M7 (scripts/collectors + src/) typecheck 활성화 누적 18 패턴 (세션 350 §15 tsconfig glob 함정 + §16 LSP≠tsc 추가). 신규 .js/.mjs/.test.* 파일 // @ts-check 활성화 시 답습 의무.
+> M5d~M7 (scripts/collectors + src/) typecheck 활성화 누적 16 섹션 (세션 350 §15 tsconfig glob 함정 + §16 LSP≠tsc 추가). 신규 .js/.mjs/.test.* 파일 // @ts-check 활성화 시 답습 의무.
+
+## TL;DR — 522줄 다 읽기 전에 이 3개만 (세션 485)
+
+1. **[§11] 시뮬레이션 의무** — 사전 측정만 하고 끝내지 말 것. 정정을 다 적용한 뒤 다시 재세면 **없던 에러가 새로 생긴다**(calc-layout 실측 9→2 신규). 백업→정정→측정→복원으로 git diff 변동 0 유지.
+2. **[§6] `.js + // @ts-check` 에서 `!.X` 금지** — non-null assertion 은 .ts 문법이라 **TS8013**. 옵셔널 체인(`?.X ?? 0`) 또는 JSDoc cast 로. 세션 218 에 64건 일괄 치환 사고.
+3. **[§16] LSP 진단 ≠ 진실의 원천** — IDE 가 빨간 줄을 계속 보여줘도 `tsc -p tsconfig.scripts.json` 이 0 이면 0 이다(LSP 는 루트 tsconfig `checkJs:false` 기준). 완료 판정은 반드시 tsc 명령으로.
+
+나머지는 실제 에러 코드를 만났을 때 해당 § 만 찾아 읽으면 된다.
 
 ## 사용법
 
