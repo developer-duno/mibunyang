@@ -909,14 +909,23 @@ describe("MapView GPS 자동 동네 표시", () => {
 
     it("100개 초과면 100개씩 나눠 넣고, 전량이 빠짐없이 들어간다", async () => {
       const cl = setupKakao();
-      render(<MapView filtered={items(250)} onDetail={vi.fn()} deferredRegion="전체" />);
-      // 분할 추가는 스케줄러 경유 — 충분히 flush
-      for (let i = 0; i < 8; i++) await flushPromises();
+      // ⚠️ jsdom 은 실제 프레임이 없어 requestAnimationFrame 발화 시점이 환경마다 다르다
+      // (로컬 통과 / CI(리눅스)에서 0회 호출로 실패한 실사고). 분할 "동작"을 재는 테스트이지
+      // rAF 스케줄링을 재는 테스트가 아니므로, rAF 를 setTimeout 으로 치환해 결정론적으로 만든다.
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => /** @type {any} */ (setTimeout(() => cb(0), 0)));
+      try {
+        render(<MapView filtered={items(250)} onDetail={vi.fn()} deferredRegion="전체" />);
+        for (let i = 0; i < 8; i++) await flushPromises();
 
-      const chunks = cl.addMarkers.mock.calls.map((c) => c[0].length);
-      expect(chunks.length).toBeGreaterThan(1); // 실제로 쪼개졌나
-      expect(Math.max(...chunks)).toBeLessThanOrEqual(100); // 조각이 100 이하인가
-      expect(chunks.reduce((s, n) => s + n, 0)).toBe(250); // 하나도 안 빠졌나
+        const chunks = cl.addMarkers.mock.calls.map((c) => c[0].length);
+        expect(chunks.length).toBeGreaterThan(1); // 실제로 쪼개졌나
+        expect(Math.max(...chunks)).toBeLessThanOrEqual(100); // 조각이 100 이하인가
+        expect(chunks.reduce((s, n) => s + n, 0)).toBe(250); // 하나도 안 빠졌나
+      } finally {
+        rafSpy.mockRestore();
+      }
     });
 
     it("숨겨진 탭(document.hidden=true)에서도 마커가 전량 부착된다 (#284 회귀 가드)", async () => {
