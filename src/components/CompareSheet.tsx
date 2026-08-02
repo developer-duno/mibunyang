@@ -3,6 +3,7 @@ import { C, F, catCol, gr } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 import { PROFILES } from "@/constants/profiles";
+import { orderedCatEntries } from "@/constants/catOrder";
 import type { CompareItem } from "@/types/components";
 
 type CompareSheetProps = {
@@ -61,7 +62,8 @@ export const CompareSheet = memo(function CompareSheet({
   );
 
   if (items.length < 2) return null;
-  const cats = Object.keys(items[0].res.cats);
+  // 비교표 6행의 순서 — catsCache JSON 키 순서가 아니라 CAT_DISPLAY_ORDER 고정 (세션 487).
+  const cats = orderedCatEntries(items[0].res.cats as unknown as Record<string, unknown>).map(([k]) => k);
   const zoneData = items.map((it: CompareItem) => {
     const z = getZone(it.apt.region as string, it.apt.gu as string);
     const ltv = calcLTV((it.apt.price ?? 0) as number, z);
@@ -71,7 +73,11 @@ export const CompareSheet = memo(function CompareSheet({
   const profileInfo =
     (PROFILES as Record<string, { name: string; desc: string; w: Record<string, number> }>)[profile] || PROFILES.live;
   const best = items.reduce((a, b) => (a.res.total >= b.res.total ? a : b), items[0]);
-  const bestCats = Object.entries(best.res.cats).sort((a, b) => b[1].total - a[1].total);
+  // 총점 내림차순. 동점이면 sort 안정성 + CAT_DISPLAY_ORDER 로 결과가 고정된다
+  // (예전 Object.entries 는 동점 시 catsCache 키 순서에 따라 대표 카테고리 라벨이 바뀌었다).
+  const bestCats = orderedCatEntries(best.res.cats as unknown as Record<string, { label: string; total: number }>).sort(
+    (a, b) => b[1].total - a[1].total
+  );
   const topCat = bestCats[0];
   const topCatLabel = topCat ? topCat[1].label.split("·")[0] : "";
 

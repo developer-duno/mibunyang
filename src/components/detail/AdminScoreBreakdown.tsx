@@ -2,6 +2,7 @@ import { memo } from "react";
 import { C, F, catCol, gr } from "@/theme";
 import { BRAND_TIER } from "@/constants/brands";
 import { PROFILES } from "@/constants/profiles";
+import { orderedCatEntries } from "@/constants/catOrder";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import { getAgeCoeff, getAreaAdj } from "@/scoring/engine";
 import { fmtCompletion } from "@/lib/format";
@@ -26,7 +27,10 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
   profile = "live",
 }: AdminScoreBreakdownProps) {
   const w = PROFILES[profile]?.w || PROFILES.live.w;
-  const catKeys = Object.keys(res.cats);
+  // 표시 순서는 CAT_DISPLAY_ORDER 고정 — 하드코딩이 아니라 단일 출처다(세션 487).
+  // 실제 존재하는 카테고리만 남기므로 "동적 추출"의 취지(목록 드리프트 방지)는 유지되고,
+  // catOrder.test.ts 가 6개 전량·중복 0 을 잠근다.
+  const catKeys = orderedCatEntries(res.cats as unknown as Record<string, unknown>).map(([k]) => k);
 
   // 적정가 산출 과정 (구 ExpertScoreBreakdown L13-19 이식)
   const ageCoeff = getAgeCoeff(apt.completion);
