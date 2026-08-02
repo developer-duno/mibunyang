@@ -28,6 +28,7 @@ import { useApartmentData } from "@/hooks/useApartmentData";
 import { useShare } from "@/hooks/useShare";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useDataPipeline, VISIBLE_PAGE_SIZE } from "@/hooks/useDataPipeline";
+import { useRegionalStats } from "@/hooks/useRegionalStats";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { useKakaoAuth } from "@/hooks/useKakaoAuth";
 import { useLoginGate } from "@/hooks/useLoginGate";
@@ -232,6 +233,9 @@ export default function App() {
   // 로그인 여부 파생 (카카오 또는 관리자 — 같은 authToken 축)
   const isLoggedIn = auth.loggedIn;
   const { apartments, loading: dataLoading, error: dataError, retry: retryData, dataUpdatedAt } = useApartmentData();
+  // 편차 스트립용 지역 분포 (세션 487) — useDataPipeline 의 needsFallback 게이트와 무관하게 상시 계산.
+  // 운영에선 catsCache 가 다 차 있어 그 게이트가 거의 안 열린다.
+  const regionStats = useRegionalStats(apartments);
   const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, isMobile } =
     useShare(showToast);
 
@@ -652,6 +656,7 @@ export default function App() {
             budgetMin={budgetMin}
             budgetMax={budgetMax}
             filterRegion={filterRegion}
+            regionStats={regionStats}
             moveInFilter={moveInFilter}
             builderTier={builderTier}
             minScore={minScore}

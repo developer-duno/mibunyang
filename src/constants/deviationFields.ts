@@ -1,3 +1,5 @@
+import { fmtPrice } from "@/lib/format";
+
 /**
  * 편차 스트립에 그릴 필드 정의 — 라벨·유불리 방향·양끝 한글 끝말·문장 조각을 한곳에 모은다.
  *
@@ -36,6 +38,15 @@ export type DeviationFieldSpec = {
   goodWord: string;
   /** 불리할 때 맺음말 — `8% 비싸요` 의 "비싸요" */
   badWord: string;
+  /**
+   * 스크린리더 문구에 붙일 단위 (`FIELD_META[].unit` 과 같은 값).
+   *
+   * ⚠️ `FIELD_META` 를 import 하지 않는 이유 — 그 파일(145엔트리)이 lazy `DetailModal`
+   * 청크에 살고 있어서, 카드에서 부르면 **17KB 가 첫 화면 번들로 끌려온다**
+   * (세션 487 실측: 초기 gzip 70.31 → 75.02 KB). aria 문구 하나 때문에 모든 방문자가
+   * 그 비용을 치를 이유가 없어 단위만 여기 적어 둔다.
+   */
+  valueUnit: string;
 };
 
 /**
@@ -48,6 +59,7 @@ export type DeviationFieldSpec = {
 export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   {
     field: "price",
+    valueUnit: "만원",
     label: "분양가",
     better: "low",
     lowWord: "싸다",
@@ -58,6 +70,7 @@ export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   },
   {
     field: "unsoldRate",
+    valueUnit: "%",
     label: "미분양",
     better: "low",
     lowWord: "적다",
@@ -68,6 +81,7 @@ export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   },
   {
     field: "subwayDist",
+    valueUnit: "m",
     label: "역세권",
     better: "low",
     lowWord: "가깝다",
@@ -91,6 +105,7 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   ...CARD_DEVIATION_FIELDS,
   {
     field: "jeonseRate",
+    valueUnit: "%",
     label: "전세가율",
     better: "high",
     lowWord: "낮다",
@@ -101,6 +116,7 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   },
   {
     field: "pir",
+    valueUnit: "배",
     label: "소득부담",
     better: "low",
     lowWord: "가볍다",
@@ -111,6 +127,7 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   },
   {
     field: "parkingRatio",
+    valueUnit: "대/세대",
     label: "주차",
     better: "high",
     lowWord: "빠듯",
@@ -121,6 +138,7 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   },
   {
     field: "avgMaintenanceCost",
+    valueUnit: "만원",
     label: "관리비",
     better: "low",
     lowWord: "싸다",
@@ -131,6 +149,7 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   },
   {
     field: "exclusiveRatio",
+    valueUnit: "%",
     label: "전용률",
     better: "high",
     lowWord: "좁다",
@@ -143,6 +162,18 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
 
 /** 통계를 미리 계산해 둬야 하는 필드 전량 (= 팝업 8줄이 카드 3줄을 포함한다) */
 export const DEVIATION_FIELD_NAMES: readonly string[] = OVERVIEW_DEVIATION_FIELDS.map((f) => f.field);
+
+/**
+ * 스크린리더 문구에 넣을 값 표현. 분양가는 "3억 2,000만" 처럼 읽히게 기존 `fmtPrice` 를 쓴다
+ * (그 함수는 이미 카드가 쓰고 있어 번들 추가 비용이 0 이다).
+ */
+export function formatDeviationValue(spec: DeviationFieldSpec, raw: unknown): string {
+  if (raw == null) return "—";
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return "—";
+  if (spec.valueUnit === "만원") return fmtPrice(n);
+  return `${n}${spec.valueUnit}`;
+}
 
 /** 필드명 → 스펙 */
 export function deviationSpec(field: string): DeviationFieldSpec | undefined {

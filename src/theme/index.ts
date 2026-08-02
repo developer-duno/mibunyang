@@ -32,6 +32,12 @@ export const C: Record<string, string> = {
   indigo: "#4338CA",
   indigoLight: "#EEF2FF",
   borderStrong: "#D1D5DB",
+  // 정보 전달용 눈금선 (편차 스트립 중앙 기준선). borderStrong(#D1D5DB, 흰 배경 대비 1.47:1)은
+  // 장식용이라 너무 옅다 — 이 선은 "지역 한가운데 값"을 가리키는 정보라 2.54:1 로 올렸다.
+  // 그래도 3:1 목표엔 못 미쳐 색에만 기대지 않도록 트랙 위아래로 2px 씩 돌출시킨다(세션 487).
+  gridStrong: "#9CA3AF",
+  // 편차 스트립 트랙 바탕 — 기존 차트들이 쓰던 리터럴 #ECEEF4 를 토큰화
+  track: "#ECEEF4",
   slate100: "#F1F5F9",
   slate600: "#475569",
   shadowSm: "0 1px 3px rgba(0,0,0,0.06)",
