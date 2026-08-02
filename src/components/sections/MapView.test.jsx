@@ -835,4 +835,135 @@ describe("MapView GPS 자동 동네 표시", () => {
     expect(window.navigator.geolocation.getCurrentPosition).toHaveBeenCalled();
     delete (/** @type {any} */ (window.navigator).geolocation);
   });
+
+  /* ──────────────────────────────────────────────────────────────
+   * 마커 재생성 서명 skip + 분할 추가 (세션 486, PR #283·#284)
+   *
+   * 머지 당시 이 두 처방을 덮는 테스트가 0건이라 회귀 무방비였다(세션 486 자가 적대검증에서 발견).
+   * 특히 #284 는 "rAF 가 숨겨진 탭에서 안 돌아 마커가 영영 안 붙는" 실사고를 고친 것인데,
+   * 그 조건을 재현하는 테스트가 없으면 되돌아가도 아무도 모른다.
+   * ────────────────────────────────────────────────────────────── */
+  describe("마커 서명 skip · 분할 추가", () => {
+    /**
+     * id/점수를 지정한 아이템 N개
+     * @param {number} n
+     * @param {(_i: number) => number} [scoreOf]
+     * @returns {any[]}
+     */
+    function items(n, scoreOf) {
+      const score = scoreOf ?? (() => 75);
+      return Array.from({ length: n }, (_, i) =>
+        makeItem({ apt: { id: `a-${i}`, lat: 37 + i / 1000, lng: 127 + i / 1000 }, res: { total: score(i) } })
+      );
+    }
+
+    it("정렬만 바뀌면(집합·점수 동일, 순서만 변경) 마커를 재생성하지 않는다", async () => {
+      const cl = setupKakao();
+      const list = items(3);
+      const { rerender } = render(<MapView filtered={list} onDetail={vi.fn()} deferredRegion="전체" />);
+      await flushPromises();
+      const before = cl.addMarkers.mock.calls.length;
+      expect(before).toBeGreaterThan(0);
+
+      // 순서만 뒤집어 새 배열로 전달 = 정렬 변경과 동일한 상황
+      rerender(<MapView filtered={[...list].reverse()} onDetail={vi.fn()} deferredRegion="전체" />);
+      await flushPromises();
+
+      expect(cl.addMarkers.mock.calls.length).toBe(before); // 추가 호출 0
+    });
+
+    it("점수가 바뀌면(프로필 전환) 마커를 다시 만든다", async () => {
+      const cl = setupKakao();
+      const { rerender } = render(<MapView filtered={items(3)} onDetail={vi.fn()} deferredRegion="전체" />);
+      await flushPromises();
+      const before = cl.addMarkers.mock.calls.length;
+
+      // 같은 id 집합인데 점수만 다름 → 마커 색·숫자가 바뀌므로 반드시 재생성돼야 한다
+      rerender(<MapView filtered={items(3, () => 42)} onDetail={vi.fn()} deferredRegion="전체" />);
+      await flushPromises();
+
+      expect(cl.addMarkers.mock.calls.length).toBeGreaterThan(before);
+    });
+
+    it("지역이 바뀌면 마커를 다시 만든다", async () => {
+      const cl = setupKakao();
+      const list = items(3);
+      const { rerender } = render(<MapView filtered={list} onDetail={vi.fn()} deferredRegion="전체" />);
+      await flushPromises();
+      const before = cl.addMarkers.mock.calls.length;
+
+      rerender(<MapView filtered={list} onDetail={vi.fn()} deferredRegion="경기" />);
+      await flushPromises();
+
+      expect(cl.addMarkers.mock.calls.length).toBeGreaterThan(before);
+    });
+
+    it("100개 이하면 한 번에 넣는다 (분할 없음)", async () => {
+      const cl = setupKakao();
+      render(<MapView filtered={items(30)} onDetail={vi.fn()} deferredRegion="전체" />);
+      await flushPromises();
+
+      expect(cl.addMarkers).toHaveBeenCalledTimes(1);
+      expect(cl.addMarkers.mock.calls[0][0]).toHaveLength(30);
+    });
+
+    it("100개 초과면 100개씩 나눠 넣고, 전량이 빠짐없이 들어간다", async () => {
+      const cl = setupKakao();
+      // ⚠️ jsdom 은 실제 프레임이 없어 requestAnimationFrame 발화 시점이 환경마다 다르다
+      // (로컬 통과 / CI(리눅스)에서 0회 호출로 실패한 실사고). 분할 "동작"을 재는 테스트이지
+      // rAF 스케줄링을 재는 테스트가 아니므로, rAF 를 setTimeout 으로 치환해 결정론적으로 만든다.
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => /** @type {any} */ (setTimeout(() => cb(0), 0)));
+      try {
+        render(<MapView filtered={items(250)} onDetail={vi.fn()} deferredRegion="전체" />);
+        for (let i = 0; i < 8; i++) await flushPromises();
+
+        const chunks = cl.addMarkers.mock.calls.map((c) => c[0].length);
+        expect(chunks.length).toBeGreaterThan(1); // 실제로 쪼개졌나
+        expect(Math.max(...chunks)).toBeLessThanOrEqual(100); // 조각이 100 이하인가
+        expect(chunks.reduce((s, n) => s + n, 0)).toBe(250); // 하나도 안 빠졌나
+      } finally {
+        rafSpy.mockRestore();
+      }
+    });
+
+    it("숨겨진 탭(document.hidden=true)에서도 마커가 전량 부착된다 (#284 회귀 가드)", async () => {
+      const cl = setupKakao();
+      const spy = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+      // rAF 를 아예 죽여 "숨겨진 탭에서 프레임이 안 도는" 상황을 그대로 재현
+      const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 0);
+      try {
+        render(<MapView filtered={items(250)} onDetail={vi.fn()} deferredRegion="전체" />);
+        for (let i = 0; i < 8; i++) await flushPromises();
+
+        const total = cl.addMarkers.mock.calls.reduce((s, c) => s + c[0].length, 0);
+        expect(total).toBe(250); // rAF 가 죽어도 setTimeout 폴백으로 완주
+        expect(rafSpy).not.toHaveBeenCalled(); // hidden 이면 rAF 를 쓰지 않는다
+      } finally {
+        rafSpy.mockRestore();
+        spy.mockRestore();
+      }
+    });
+
+    it("색칠 모드로 나갔다 돌아오면 마커가 되살아난다 (서명 무효화 가드)", async () => {
+      const cl = setupKakao();
+      const list = items(3);
+      render(<MapView filtered={list} onDetail={vi.fn()} deferredRegion="전체" />);
+      await flushPromises();
+      const before = cl.addMarkers.mock.calls.length;
+
+      const toggle = screen.getByRole("button", { name: "지도 모드 토글" });
+      await act(async () => {
+        fireEvent.click(toggle); // point → color (마커 clear)
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "지도 모드 토글" })); // color → point
+      });
+      for (let i = 0; i < 4; i++) await flushPromises();
+
+      // 서명이 같더라도 클러스터러가 비었으므로 반드시 다시 채워져야 한다(빈 지도 회귀 차단)
+      expect(cl.addMarkers.mock.calls.length).toBeGreaterThan(before);
+    });
+  });
 });
