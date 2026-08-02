@@ -39,7 +39,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **프론트** | React 19 + Vite 8 (Rolldown) | App.tsx, `@/` 경로 별칭, Pretendard 폰트 |
 | **상태/훅** | useMemo 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
 | **컴포넌트** | React.memo 다수 + icons.tsx (SVG) | 소비자/홈/섹션/상세/필터/관리자 그룹 — 섹션 KakaoMapView 점 보기 지도 + MapView 패스스루(네이버 세션 449 전면 제거[카카오 단일화]·GPS 내 동네), 상세 ProfileWeightBar, 홈 RecentlyViewedWidget, 전문가 그룹 세션 405 폐지. 정확한 개수·구성은 `src/components/CLAUDE.md` 참조 |
-| **API** | Vercel Serverless (24개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합). Redis 순단 fail-open 차등(login·subscribers만 fail-close, 세션 427) |
+| **API** | Vercel Serverless (25개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합). Redis 순단 fail-open 차등(login·subscribers만 fail-close, 세션 427) |
 | **DB** | Supabase PostgreSQL | 15개 테이블 + 2 VIEW + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지. 손님 마케팅 수신 동의·전화번호(선택, VITE_KAKAO_PHONE_SCOPE 토글) 수집 세션 427 |
 | **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |

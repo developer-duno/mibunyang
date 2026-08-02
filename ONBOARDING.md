@@ -9,7 +9,7 @@
 
 - **프론트**: React 19 SPA (Vite 8 Rolldown)
 - **백엔드**: Vercel Serverless (23 함수) + Supabase PostgreSQL (15 테이블 + 2 VIEW)
-- **수집**: GitHub Actions (38 워크플로, KOSIS·childcare 로컬 이전으로 감소) + Windows 스케줄러 (네이버 한국 IP)
+- **수집**: GitHub Actions (40 워크플로, KOSIS·childcare 로컬 이전으로 감소) + Windows 스케줄러 (네이버 한국 IP)
 - **인증**: SHA-256+salt, HMAC-SHA256 JWT + 카카오 OAuth + 관리자 role (전문가 role 세션 405 폐지)
 - **테스트**: Vitest 3400+ + Playwright E2E 13 spec (+ 시각 baseline `PW_VISUAL=1`)
 
@@ -56,7 +56,7 @@ mibunyang/
 ├── scripts/            # 수집기 47 + audit + 기타
 │   └── collectors/    # 외부 API 수집
 ├── supabase/           # 마이그 + RLS 정책
-├── .github/workflows/  # 38 워크플로
+├── .github/workflows/  # 40 워크플로
 ├── e2e/                # Playwright 13 spec (+ visual.spec.ts 시각 baseline)
 ├── docs/superpowers/   # spec/plan 35 파일 ([INDEX.md](docs/superpowers/INDEX.md))
 └── .claude/            # 프로젝트 메모리 + 룰
