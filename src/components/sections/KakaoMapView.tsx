@@ -303,14 +303,22 @@ export const KakaoMapView = memo(function KakaoMapView({
     } else {
       const job = chunkJobRef.current;
       let i = 0;
+      // ⚠️ 스케줄러를 rAF 단독으로 두면 안 된다(세션 486 실측): 탭이 숨겨지면
+      // requestAnimationFrame 이 발화하지 않아 마커가 영영 안 붙고, 서명 skip 과 맞물려
+      // 되돌아와도 재생성되지 않는 "영구 빈 지도" 가 된다(document.hidden=true 로 재현 확인).
+      // 보이는 동안은 rAF(프레임 정렬로 부드럽게), 숨겨지면 setTimeout(반드시 완주).
+      const schedule = (fn: () => void) => {
+        if (typeof document !== "undefined" && document.hidden) setTimeout(fn, 0);
+        else requestAnimationFrame(fn);
+      };
       const pump = () => {
         // 새 effect 가 시작됐거나(job 증가) 클러스터러가 교체됐으면 중단 — 옛 마커 유입 차단
         if (chunkJobRef.current !== job || clustererRef.current !== cl) return;
         cl.addMarkers(markers.slice(i, i + MARKER_CHUNK));
         i += MARKER_CHUNK;
-        if (i < markers.length) requestAnimationFrame(pump);
+        if (i < markers.length) schedule(pump);
       };
-      requestAnimationFrame(pump);
+      schedule(pump);
     }
     setMarkerCount(markers.length);
 
