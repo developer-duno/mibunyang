@@ -463,10 +463,44 @@ describe("App 통합 테스트", () => {
       vi.unstubAllGlobals();
     });
 
-    it("초기 탭이 홈 — 위젯판 렌더 + D5 잠금 (비로그인)", async () => {
+    // 세션 487: 착륙 지점이 홈 → 목록(LANDING_TAB)으로 바뀌었다. 홈 탭 자체는 그대로라
+    // 홈 위젯을 검증하려면 홈 버튼을 눌러 들어간다.
+    async function gotoHomeTab() {
+      const btn = screen.getAllByRole("button", { name: "홈" })[0];
+      await act(async () => {
+        btn.click();
+      });
+    }
+
+    // ── 회귀 가드 (세션 487) ──
+    // 사장님 지시로 도메인 착륙 지점을 홈 → 목록으로 바꿨다. 이 두 건이 없으면
+    // 누가 `isFeatureHome() ? "home" : "list"` 로 되돌려도 아무도 모른다.
+    it("홈 기능이 켜져 있어도 도메인 착륙 지점은 **목록**이다", async () => {
       vi.stubEnv("VITE_FEATURE_HOME", "true");
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
+      // 목록 화면의 표식(필터 바의 지역 버튼)이 먼저 보이고,
+      await waitFor(() => {
+        expect(screen.getAllByRole("button", { name: /지역/ }).length).toBeGreaterThan(0);
+      });
+      // 홈 위젯은 안 보인다.
+      expect(screen.queryByText("📊 시장 요약")).toBeNull();
+    });
+
+    it("홈 탭 버튼은 그대로 남아 있다 (착륙 지점만 바뀐 것이지 홈을 없앤 게 아니다)", async () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getAllByRole("button", { name: "홈" }).length).toBeGreaterThan(0);
+      });
+    });
+
+    it("홈 탭 진입 — 위젯판 렌더 + D5 잠금 (비로그인)", async () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      await gotoHomeTab();
       await waitFor(() => {
         expect(screen.getByText("📊 시장 요약")).toBeInTheDocument();
       });
@@ -500,6 +534,7 @@ describe("App 통합 테스트", () => {
       vi.stubEnv("VITE_FEATURE_HOME", "true");
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
+      await gotoHomeTab();
       await waitFor(() => {
         expect(screen.getByText("⭐ 추천 TOP 3")).toBeInTheDocument();
       });

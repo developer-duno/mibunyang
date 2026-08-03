@@ -63,7 +63,8 @@ export async function waitForStableRender(page: Page): Promise<void> {
 }
 
 /**
- * VITE_FEATURE_HOME ON 이면 초기 탭이 홈 — 목록 검증 spec 은 목록 탭으로 이동 (OFF 면 no-op).
+ * 목록 탭으로 이동. 세션 487 이후 착륙 지점 자체가 목록(LANDING_TAB)이라 대개 no-op 이지만,
+ * 홈을 거쳐 온 spec 이나 착륙 지점이 다시 바뀌는 경우를 위해 남겨 둔다.
  * 홈 버튼은 데스크톱 헤더/모바일 BottomNav 양쪽 모두 getByRole 로 잡힘.
  */
 export async function gotoListTab(page: Page): Promise<void> {
