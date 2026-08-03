@@ -43,3 +43,42 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
     expect(safety?.hideWhenEmpty).toBeFalsy();
   });
 });
+
+/**
+ * 세션 487 PR-5 회귀 가드 — 은행·카페·문화시설·약국까지의 **거리** 4종.
+ *
+ * 수집기는 계속 이 값을 모으고 있었는데 `FIELD_META` 에 엔트리가 없어
+ * `LOCATION_SECTIONS` 의 짝이 `null` 이었다. 즉 **손님에게 한 번도 안 보인 자료**다.
+ * (실측 채움률 bank 96.7% · cafe 95.3% · culture 97.2% · pharmacy 76.5%)
+ *
+ * ⚠️ 섹션 목록이 **두 벌**이다 — 여기(`lib/dataSections.ts`, 손님 탭)와
+ * `constants/fieldMeta.ts` 의 `FIELD_SECTIONS`(관리자 전수 표). 한쪽만 고치면
+ * `fieldMeta.test.js` 의 "hidden 아닌 모든 키가 섹션에 포함" 가드가 잡는다(실제로 잡혔다).
+ */
+describe("입지 생활인프라 — 개수와 거리를 짝으로 보여준다", () => {
+  const infra = LOCATION_SECTIONS.find((s) => s.title.includes("생활인프라"));
+
+  it("생활인프라 섹션이 있다", () => {
+    expect(infra).toBeTruthy();
+  });
+
+  const PAIRS: Array<[string, string]> = [
+    ["pharmacy", "pharmacyDist"],
+    ["cafe", "cafeDist"],
+    ["culture", "cultureDist"],
+    ["bank", "bankDist"],
+  ];
+
+  for (const [count, dist] of PAIRS) {
+    it(`${count} 는 거리(${dist})와 짝을 이룬다 — 거리가 null 이면 손님이 못 본다`, () => {
+      const pair = (infra?.pairs || []).find((p) => p[0] === count);
+      expect(pair, `${count} 짝이 없다`).toBeTruthy();
+      expect(pair?.[1], `${count} 의 거리 자리가 비어 있다 — 수집한 자료가 화면에 안 나온다`).toBe(dist);
+    });
+  }
+
+  it("거리 4종이 fieldsOf 결과에 들어온다 (채움률 도넛·hasAny 게이트가 같은 입력을 쓴다)", () => {
+    const fields = infra ? fieldsOf(infra) : [];
+    for (const [, dist] of PAIRS) expect(fields).toContain(dist);
+  });
+});

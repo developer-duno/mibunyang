@@ -41,7 +41,7 @@ export type DeviationFieldSpec = {
   /**
    * 스크린리더 문구에 붙일 단위 (`FIELD_META[].unit` 과 같은 값).
    *
-   * ⚠️ `FIELD_META` 를 import 하지 않는 이유 — 그 파일(145엔트리)이 lazy `DetailModal`
+   * ⚠️ `FIELD_META` 를 import 하지 않는 이유 — 그 파일(149엔트리)이 lazy `DetailModal`
    * 청크에 살고 있어서, 카드에서 부르면 **17KB 가 첫 화면 번들로 끌려온다**
    * (세션 487 실측: 초기 gzip 70.31 → 75.02 KB). aria 문구 하나 때문에 모든 방문자가
    * 그 비용을 치를 이유가 없어 단위만 여기 적어 둔다.

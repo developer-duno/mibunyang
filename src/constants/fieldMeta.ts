@@ -315,6 +315,13 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   culture: { label: "문화시설", section: "입지", unit: "개", fmt: (v) => n(v, "개") },
   bank: { label: "은행", section: "입지", unit: "개", fmt: (v) => n(v, "개") },
   pharmacy: { label: "약국", section: "입지", unit: "개", fmt: (v) => n(v, "개") },
+  // 거리 4종 (세션 487 PR-5) — 수집은 계속 하고 있었는데 `FIELD_META` 에 없어서
+  // `LOCATION_SECTIONS` 의 짝이 `null` 로 비어 있었다. 즉 **한 번도 화면에 안 나온 자료**다.
+  // 실측 채움률: bank 96.7% · cafe 95.3% · culture 97.2% · pharmacy 76.5%.
+  bankDist: { label: "은행 거리", section: "입지", unit: "m", fmt: (v) => (v != null ? `${v}m` : "—") },
+  cafeDist: { label: "카페 거리", section: "입지", unit: "m", fmt: (v) => (v != null ? `${v}m` : "—") },
+  cultureDist: { label: "문화시설 거리", section: "입지", unit: "m", fmt: (v) => (v != null ? `${v}m` : "—") },
+  pharmacyDist: { label: "약국 거리", section: "입지", unit: "m", fmt: (v) => (v != null ? `${v}m` : "—") },
   hospitalDist: { label: "병원 거리", section: "입지", unit: "m", fmt: (v) => (v != null ? `${v}m` : "—") },
   martDist: { label: "마트 거리", section: "입지", unit: "m", fmt: (v) => (v != null ? `${v}m` : "—") },
   convDist: { label: "편의점 거리", section: "입지", unit: "m", fmt: (v) => (v != null ? `${v}m` : "—") },
@@ -638,10 +645,18 @@ export const FIELD_SECTIONS: { key: string; label: string; fields: string[] }[] 
       "convDist",
       "park",
       "parkDist",
+      // 거리 4종은 세션 487 PR-5 에 처음 등재 — 개수(cafe/culture/bank/pharmacy)만 있고
+      // 거리는 빠져 있었다. ⚠️ 섹션 목록이 **두 벌**이다(여기 = 관리자 전수 표,
+      // `lib/dataSections.ts` = 손님 탭). 한쪽만 고치면 `fieldMeta.test.js` 의
+      // "hidden 아닌 모든 키가 섹션에 포함" 가드가 잡는다 — 실제로 잡혔다.
       "cafe",
+      "cafeDist",
       "culture",
+      "cultureDist",
       "bank",
+      "bankDist",
       "pharmacy",
+      "pharmacyDist",
       "police",
       "policeDist",
       "childcare",
