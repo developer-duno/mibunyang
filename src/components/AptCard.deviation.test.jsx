@@ -10,8 +10,7 @@ function gyeonggiStats() {
   return computeRegionalStats(
     Array.from(
       { length: 21 },
-      (_, i) =>
-        /** @type {any} */ ({ region: "경기", price: 30000 + i * 1000, unsoldRate: i, subwayDist: 200 + i * 50 })
+      (_, i) => /** @type {any} */ ({ region: "경기", pp: 1000 + i * 40, unsoldRate: i, subwayDist: 200 + i * 50 })
     )
   );
 }
@@ -35,7 +34,7 @@ function makeRes(over = {}) {
 /** @returns {any} */
 function makeProps(over = {}) {
   return {
-    apt: makeApt({ region: "경기", price: 33000, unsoldRate: 4, subwayDist: 300, subwayName: "판교" }),
+    apt: makeApt({ region: "경기", price: 33000, pp: 1200, unsoldRate: 4, subwayDist: 300, subwayName: "판교" }),
     res: makeRes(),
     rank: 1,
     onDetail: vi.fn(),
@@ -117,7 +116,7 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
    * 세 필드 각각이 실제로 리렌더를 유발하는지 확인한다.
    */
   const cases = [
-    ["price", 33000, 90000, /비싸요|평균 수준/],
+    ["pp", 1200, 4000, /비싸요|평균 수준/],
     ["unsoldRate", 4, 19, /많아요|평균 수준/],
     ["subwayDist", 300, 1400, /멀어요|평균 수준/],
   ];
@@ -125,11 +124,13 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
   for (const [field, before, after, expected] of cases) {
     it(`${field} 가 바뀌면 화면 문구가 따라 바뀐다`, () => {
       on();
-      const props = makeProps({ apt: makeApt({ region: "경기", price: 33000, unsoldRate: 4, subwayDist: 300 }) });
+      const props = makeProps({
+        apt: makeApt({ region: "경기", price: 33000, pp: 1200, unsoldRate: 4, subwayDist: 300 }),
+      });
       const { rerender, container } = render(<AptCard {...props} />);
       const firstText = container.textContent ?? "";
 
-      const nextApt = makeApt({ region: "경기", price: 33000, unsoldRate: 4, subwayDist: 300 });
+      const nextApt = makeApt({ region: "경기", price: 33000, pp: 1200, unsoldRate: 4, subwayDist: 300 });
       /** @type {any} */ (nextApt)[String(field)] = after;
       rerender(<AptCard {...props} apt={nextApt} />);
 
@@ -139,13 +140,26 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
     });
   }
 
+  it("총 분양가(price)가 바뀌어도 다시 그린다 — 편차 목록에서 빠졌지만 머리글에 표시된다", () => {
+    on();
+    const props = makeProps();
+    const { rerender, container } = render(<AptCard {...props} />);
+    const first = container.textContent ?? "";
+    // ⚠️ **price 하나만** 바꾼다. 다른 추적 필드(subwayName 등)까지 같이 달라지면
+    //    그쪽 때문에 다시 그려져 이 가드가 무는지 알 수 없다 — 실제로 그 함정에 걸렸다.
+    rerender(<AptCard {...props} apt={{ ...props.apt, price: 77000 }} />);
+    expect(container.textContent, "총 분양가가 바뀌었는데 카드가 그대로다").not.toBe(first);
+  });
+
   it("region 이 바뀌면 비교 기준이 바뀌므로 다시 그린다", () => {
     on();
     const props = makeProps();
     const { rerender, container } = render(<AptCard {...props} />);
     expect(container.textContent).toContain("경기 아파트 평균과 비교");
 
-    rerender(<AptCard {...props} apt={makeApt({ region: "서울", price: 33000, unsoldRate: 4, subwayDist: 300 })} />);
+    rerender(
+      <AptCard {...props} apt={makeApt({ region: "서울", price: 33000, pp: 1200, unsoldRate: 4, subwayDist: 300 })} />
+    );
     expect(container.textContent).toContain("서울 아파트 평균과 비교");
   });
 
@@ -159,8 +173,7 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
     const pricier = computeRegionalStats(
       Array.from(
         { length: 21 },
-        (_, i) =>
-          /** @type {any} */ ({ region: "경기", price: 90000 + i * 1000, unsoldRate: i, subwayDist: 200 + i * 50 })
+        (_, i) => /** @type {any} */ ({ region: "경기", pp: 3000 + i * 40, unsoldRate: i, subwayDist: 200 + i * 50 })
       )
     );
     rerender(<AptCard {...props} regionStats={pricier} />);

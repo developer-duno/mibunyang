@@ -590,6 +590,9 @@ export const AptCard = memo(
       if ((pa as unknown as Record<string, unknown>)[f.field] !== (na as unknown as Record<string, unknown>)[f.field])
         return false;
     }
+    // 총 분양가는 편차 목록에서 빠졌지만(세션 487: 평당가로 교체) 카드 머리글에 그대로
+    // 표시되므로 여기서 명시적으로 추적한다. 상수 순회에만 맡기면 추적이 조용히 사라진다.
+    if (pa.price !== na.price) return false;
     // 지역이 바뀌면 비교 기준 자체가 달라진다
     if (pa.region !== na.region) return false;
     // useRegionalStats 의 안정 참조 — 데이터가 갱신되면 새 객체가 온다
