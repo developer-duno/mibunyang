@@ -3,8 +3,7 @@ import { gotoListTab } from "./helpers";
 
 // 스켈레톤 로딩 + 빈 상태 + 필터 초기화 테스트
 test.describe("스켈레톤 & 빈 상태", () => {
-
-  test("로딩 시 스켈레톤 표시 (목록 6카드 / HOME ON 홈 4카드)", async ({ page }) => {
+  test("로딩 시 스켈레톤 표시 (목록 6카드 / 홈 탭이면 4카드)", async ({ page }) => {
     // API 응답을 3초 지연시켜 로딩 상태 포착
     await page.route("**/api/supabase/apartments*", async (route) => {
       await new Promise((r) => setTimeout(r, 3000));
@@ -15,7 +14,8 @@ test.describe("스켈레톤 & 빈 상태", () => {
     const skeletons = page.locator('[style*="skeleton-pulse"]');
     await expect(skeletons.first()).toBeVisible({ timeout: 5000 });
     const count = await skeletons.count();
-    // VITE_FEATURE_HOME ON = 초기화면 홈 SkeletonList 4개 / OFF = 목록 카드 스켈레톤 6개
+    // 세션 487 이후 착륙 지점은 항상 목록이라 보통 6개. 홈 화면이면 SkeletonList 4개.
+    // 두 경우를 다 허용해 착륙 지점이 바뀌어도 이 테스트가 흔들리지 않게 한다.
     expect([4, 6]).toContain(count);
   });
 
@@ -33,7 +33,7 @@ test.describe("스켈레톤 & 빈 상태", () => {
     }
 
     // 예산 필터 트리거 클릭
-    const budgetTrigger = page.locator('[aria-expanded]', { hasText: "예산" });
+    const budgetTrigger = page.locator("[aria-expanded]", { hasText: "예산" });
     if (!(await budgetTrigger.isVisible({ timeout: 3000 }).catch(() => false))) {
       test.skip(true, "예산 필터 트리거 미존재");
       return;
@@ -46,16 +46,21 @@ test.describe("스켈레톤 & 빈 상태", () => {
       await minInput.fill("999");
     } else {
       // 프리셋 버튼으로 시도
-      const presets = page.locator('button', { hasText: /^\d+억/ });
-      if (await presets.last().isVisible({ timeout: 2000 }).catch(() => false)) {
+      const presets = page.locator("button", { hasText: /^\d+억/ });
+      if (
+        await presets
+          .last()
+          .isVisible({ timeout: 2000 })
+          .catch(() => false)
+      ) {
         await presets.last().click();
       }
     }
 
     // 빈 상태 메시지 확인
-    await expect(page.locator('text=단지가 없습니다')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("text=단지가 없습니다")).toBeVisible({ timeout: 5000 });
     // 필터 초기화 버튼 확인
-    await expect(page.locator('button', { hasText: "필터 초기화" })).toBeVisible();
+    await expect(page.locator("button", { hasText: "필터 초기화" })).toBeVisible();
   });
 
   test("필터 초기화 후 카드 복원", async ({ page }) => {
@@ -72,7 +77,7 @@ test.describe("스켈레톤 & 빈 상태", () => {
     }
 
     // 예산 필터로 0건 만들기
-    const budgetTrigger = page.locator('[aria-expanded]', { hasText: "예산" });
+    const budgetTrigger = page.locator("[aria-expanded]", { hasText: "예산" });
     if (!(await budgetTrigger.isVisible({ timeout: 3000 }).catch(() => false))) {
       test.skip(true, "예산 필터 트리거 미존재");
       return;
@@ -83,17 +88,22 @@ test.describe("스켈레톤 & 빈 상태", () => {
     if (await minInput.isVisible({ timeout: 2000 }).catch(() => false)) {
       await minInput.fill("999");
     } else {
-      const presets = page.locator('button', { hasText: /^\d+억/ });
-      if (await presets.last().isVisible({ timeout: 2000 }).catch(() => false)) {
+      const presets = page.locator("button", { hasText: /^\d+억/ });
+      if (
+        await presets
+          .last()
+          .isVisible({ timeout: 2000 })
+          .catch(() => false)
+      ) {
         await presets.last().click();
       }
     }
 
     // 빈 상태 확인
-    await expect(page.locator('text=단지가 없습니다')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("text=단지가 없습니다")).toBeVisible({ timeout: 5000 });
 
     // 필터 초기화 클릭
-    const resetBtn = page.locator('button', { hasText: "필터 초기화" });
+    const resetBtn = page.locator("button", { hasText: "필터 초기화" });
     await expect(resetBtn).toBeVisible();
     await resetBtn.click();
 

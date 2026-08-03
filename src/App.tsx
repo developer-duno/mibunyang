@@ -1,7 +1,8 @@
 // App.tsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
 import { useState, useEffect, useRef, useCallback, useTransition, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
+import { isFeatureUpcoming } from "@/constants/featureFlags";
+import { LANDING_TAB } from "@/constants/landing";
 import { HomePage } from "@/components/home/HomePage";
 import { lazyNamed } from "@/utils/lazyNamed";
 import { C, F } from "@/theme";
@@ -142,16 +143,16 @@ export default function App() {
         } catch {
           /* noop */
         }
-        return isFeatureHome() ? "home" : "list";
+        return LANDING_TAB;
       }
       return "upcoming";
     }
     // 토큰 키 자동 이관(구 expertToken → authToken, 세션 426) + 8e2b5b7 이전 sessionStorage 잔재까지 getAuthToken 이 처리
     const token = getAuthToken();
-    if (!token) return isFeatureHome() ? "home" : "list";
+    if (!token) return LANDING_TAB;
     const role = localStorage.getItem("userRole");
     if (role === "admin") return "admin";
-    return isFeatureHome() ? "home" : "list";
+    return LANDING_TAB;
   });
   // ── 커스텀 훅 13개 ──
   const { isPC, isDesktop } = useResponsive();
@@ -757,7 +758,7 @@ export default function App() {
           <UpcomingPage
             onOpenDetail={handleDetailGated}
             onBackToMain={() => {
-              setTab(isFeatureHome() ? "home" : "list");
+              setTab(LANDING_TAB);
               try {
                 window.history.pushState(null, "", "/");
               } catch {
