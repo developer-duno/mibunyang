@@ -70,10 +70,12 @@ export const LOCATION_SECTIONS: DataSection[] = [
       ["mart", "martDist"],
       ["conv", "convDist"],
       ["park", "parkDist"],
-      ["pharmacy", null],
-      ["cafe", null],
-      ["culture", null],
-      ["bank", null],
+      // 세션 487 PR-5: 거리 4종이 `null` 로 비어 있었다 — 수집은 되는데 `FIELD_META` 에
+      // 엔트리가 없어 손님에게 한 번도 안 보였다. 이제 개수 옆에 거리도 함께 보인다.
+      ["pharmacy", "pharmacyDist"],
+      ["cafe", "cafeDist"],
+      ["culture", "cultureDist"],
+      ["bank", "bankDist"],
       ["childcare", "childcareDist"],
       ["emergency", "emergencyDist"],
     ],
