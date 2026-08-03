@@ -235,7 +235,15 @@ export const AptCard = memo(
                 </span>
               </div>
               <div style={S.tagRow}>
-                {[regionTag, `${apt.area ?? ""}㎡`, fmtPrice(apt.price), apt.builder ?? ""]
+                {[
+                  regionTag,
+                  // ⚠️ `${apt.area ?? ""}㎡` 로 쓰면 면적이 없을 때 단위만 남은 "㎡" 가 되고,
+                  //    빈 문자열이 아니라서 아래 filter(Boolean) 도 못 걸러낸다.
+                  //    실측(2026-08-03): 면적 없는 단지 **670개(42.4%)** — 라이브에서 실제로 그렇게 떠 있었다.
+                  apt.area != null ? `${apt.area}㎡` : "",
+                  fmtPrice(apt.price),
+                  apt.builder ?? "",
+                ]
                   .filter(Boolean)
                   .map((t, i) => (
                     <span
@@ -334,12 +342,12 @@ export const AptCard = memo(
             )}
             {res.cats.price?.deviation != null && Number(res.cats.price.deviation) > 0 && (
               <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>
-                주변대비 +{Math.round(Number(res.cats.price.deviation))}% 저렴
+                적정가보다 {Math.round(Number(res.cats.price.deviation))}% 저렴
               </span>
             )}
             {res.cats.price?.deviation != null && Number(res.cats.price.deviation) < 0 && (
               <span style={{ ...S.infoTag, background: C.redLight, color: C.red, fontWeight: 700 }}>
-                주변대비 {Math.abs(Math.round(Number(res.cats.price.deviation)))}% 비쌈
+                적정가보다 {Math.abs(Math.round(Number(res.cats.price.deviation)))}% 비쌈
               </span>
             )}
             {PRESALE_ACTIVE_STAGES.has(apt.presaleStage as string) && Number(apt.competitionRate ?? 0) > 0 && (

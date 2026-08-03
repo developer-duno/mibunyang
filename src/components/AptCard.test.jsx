@@ -218,14 +218,14 @@ describe("AptCard", () => {
     const res = makeRes();
     res.cats.price.deviation = "8.4";
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.getByText("주변대비 +8% 저렴")).toBeInTheDocument(); // Math.round("8.4")=8
+    expect(screen.getByText("적정가보다 8% 저렴")).toBeInTheDocument(); // Math.round("8.4")=8
   });
 
   it("deviation 음수(비쌈)면 빨강 '비쌈' 배지 표시 + '저렴' 미표시 (세션420 A)", () => {
     const res = makeRes();
     res.cats.price.deviation = "-8.4";
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.getByText("주변대비 8% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round("-8.4"))=8
+    expect(screen.getByText("적정가보다 8% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round("-8.4"))=8
     expect(screen.queryByText(/저렴/)).toBeNull(); // 음수는 저렴 배지 안 뜸 (상호배타)
   });
 
@@ -240,7 +240,7 @@ describe("AptCard", () => {
     const res = makeRes();
     res.cats.price.deviation = null;
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.queryByText(/주변대비/)).toBeNull();
+    expect(screen.queryByText(/적정가보다/)).toBeNull();
   });
 
   it('deviation "0.0"(데이터 부재 분기) 이면 배지 미표시 (저렴·비쌈 둘 다)', () => {
@@ -248,7 +248,7 @@ describe("AptCard", () => {
     const res = makeRes();
     res.cats.price.deviation = "0.0";
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.queryByText(/주변대비/)).toBeNull();
+    expect(screen.queryByText(/적정가보다/)).toBeNull();
   });
 
   // 세션422: 청약 경쟁률 배지 — 분양중/청약중/분양계획 + competitionRate>0 일 때만 (미분양 제외)
@@ -662,5 +662,21 @@ describe("AptCard", () => {
       rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
       expect(screen.getByText("학군 C")).toBeInTheDocument();
     });
+  });
+});
+
+describe("AptCard — 면적 자료가 없을 때", () => {
+  it("숫자 없이 단위만 남은 '㎡' 를 안 그린다 (실측 670단지 42.4%가 이 경우)", () => {
+    const apt = /** @type {any} */ (makeApt({ area: null }));
+    render(<AptCard {...makeProps({ apt })} />);
+    // ⚠️ `${apt.area ?? ""}㎡` 로 쓰면 "㎡" 한 글자가 남고, 빈 문자열이 아니라
+    //    filter(Boolean) 도 못 걸러낸다. 라이브에서 실제로 그렇게 떠 있었다.
+    expect(screen.queryByText("㎡")).toBeNull();
+  });
+
+  it("면적이 있으면 그대로 보여준다", () => {
+    const apt = /** @type {any} */ (makeApt({ area: 84.93 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("84.93㎡")).toBeInTheDocument();
   });
 });
