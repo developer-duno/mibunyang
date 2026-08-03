@@ -23,6 +23,8 @@ import {
   AnnouncementLink,
 } from "./detail/DataSectionBlock";
 import { ExtraFieldsAccordion } from "./detail/ExtraFieldsAccordion";
+import { PresaleTimeline } from "./charts/PresaleTimeline";
+import { LoanStack } from "./charts/LoanStack";
 import { CategoryMiniCard } from "./detail/CategoryMiniCard";
 import { ProfileWeightBar } from "./detail/ProfileWeightBar";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
@@ -671,6 +673,15 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-presale")}
             >
+              {showDeviation && (
+                <PresaleTimeline
+                  stage={(mergedApt ?? apt).presaleStage as string | null}
+                  minPrice={(mergedApt ?? apt).presaleMinPrice as number | null}
+                  maxPrice={(mergedApt ?? apt).presaleMaxPrice as number | null}
+                  aptPrice={(apt.price as number | null) ?? null}
+                  competitionRate={(mergedApt ?? apt).competitionRate as number | null}
+                />
+              )}
               <PresaleInfo apt={apt} />
 
               {/* 청약경쟁·네이버분양정보 + 국토부 모집공고 원문 (세션 408 D2a) */}
@@ -695,6 +706,14 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-finance")}
             >
+              {showDeviation && (
+                <LoanStack
+                  price={(apt.price as number | null) ?? null}
+                  region={apt.region as string | null}
+                  gu={apt.gu as string | null}
+                  dsr40pass={(mergedApt ?? apt).dsr40pass as boolean | null}
+                />
+              )}
               <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
               {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-finance" />}
             </section>
