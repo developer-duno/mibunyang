@@ -6,6 +6,10 @@ import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 import { getTopCats } from "@/constants/profiles";
 import type { Category } from "@/constants/profiles";
 import { catVerdict } from "@/constants/catVerdict";
+import { CAT_DISPLAY_ORDER } from "@/constants/catOrder";
+import { CARD_DEVIATION_FIELDS } from "@/constants/deviationFields";
+import { isFeatureDeviationStrip } from "@/constants/featureFlags";
+import { DeviationStrip } from "./DeviationStrip";
 import type { AptCardProps } from "@/types/components/AptCard.types";
 
 const UNSOLD_ALERT_THRESHOLD = 30;
@@ -84,7 +88,11 @@ export const AptCard = memo(
     profileWeights,
     isDesktop,
     isLoggedIn = true,
+    regionStats = null,
   }: AptCardProps) {
+    // 편차 스트립은 플래그 + 지역 분포가 모두 있을 때만. 분포가 없으면(초기 로딩·빈 데이터)
+    // 아예 안 그린다 — "미수집" 3줄만 뜨는 빈 블록이 더 나쁘다.
+    const showDeviation = isFeatureDeviationStrip() && regionStats != null;
     const g = gr(res.total);
     const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = ((apt.noxious as string[] | undefined) || []).length;
@@ -204,7 +212,7 @@ export const AptCard = memo(
     }, [profileWeights, res.cats]);
 
     return (
-      <div style={dynStyles.wrapper}>
+      <div style={dynStyles.wrapper} data-testid="apt-card">
         <div style={dynStyles.bar} />
         <div
           style={dynStyles.body || S.body}
@@ -273,30 +281,42 @@ export const AptCard = memo(
 
           {isLoggedIn && recommendReason && <div style={S.reasonChip}>✓ {recommendReason}</div>}
 
-          <div style={isDesktop ? { ...S.grid, gap: "10px 14px" } : S.grid}>
-            {(topCats as Array<[string, { label: string; total: number }]>).map(([k, c]) => (
-              <div key={k}>
-                <div style={S.catHeader}>
-                  <span style={S.catLabel}>{(SHORT_LABEL as Record<string, string>)[c.label] || c.label}</span>
-                  <span
-                    aria-hidden={isLoggedIn ? undefined : true}
-                    style={{
-                      fontSize: F.base,
-                      fontWeight: 700,
-                      color: (catCol as Record<string, string>)[k],
-                      ...(isLoggedIn ? {} : { filter: "blur(4px)" }),
-                    }}
-                  >
-                    {isLoggedIn ? c.total : "??"}
-                  </span>
+          {/* ③.5 편차 스트립 (세션 487) — "이 단지 vs 같은 지역 한가운데 값" 3줄.
+              플래그 뒤에 둔다: 카드 30장이 한 번에 바뀌는 변경이라 배포 후 환경변수만으로 되돌릴 수 있어야 한다. */}
+          {showDeviation && <DeviationStrip apt={apt} fields={CARD_DEVIATION_FIELDS} regionStats={regionStats} />}
+
+          {/* ④ 카테고리 3칸.
+              스트립이 켜지면 ④′ 신호등 1줄로 압축한다 — 점수 숫자 대신 등급 문자, 막대 h5→h3
+              (h40 → h26, 스트립이 더한 높이를 일부 상쇄). 숫자는 상세 팝업 점수 탭에 그대로 있다.
+              ⚠️ 압축도 **같은 플래그 안**에 둔다. 밖에 두면 플래그를 내려도 카드가 옛 모습으로
+              안 돌아가 "환경변수만으로 롤백" 이 성립하지 않는다(세션 487 실측으로 확인). */}
+          <div style={isDesktop ? { ...S.grid, gap: showDeviation ? "8px 12px" : "10px 14px" } : S.grid}>
+            {(topCats as Array<[string, { label: string; total: number }]>).map(([k, c]) => {
+              const barH = showDeviation ? 3 : 5;
+              return (
+                <div key={k}>
+                  <div style={S.catHeader}>
+                    <span style={S.catLabel}>{(SHORT_LABEL as Record<string, string>)[c.label] || c.label}</span>
+                    <span
+                      aria-hidden={isLoggedIn ? undefined : true}
+                      style={{
+                        fontSize: F.base,
+                        fontWeight: 700,
+                        color: (catCol as Record<string, string>)[k],
+                        ...(isLoggedIn ? {} : { filter: "blur(4px)" }),
+                      }}
+                    >
+                      {isLoggedIn ? (showDeviation ? gr(c.total).l : c.total) : "??"}
+                    </span>
+                  </div>
+                  {isLoggedIn ? (
+                    <Bar value={c.total} color={(catCol as Record<string, string>)[k]} h={barH} />
+                  ) : (
+                    <div aria-hidden="true" style={{ height: barH, background: C.track, borderRadius: 99 }} />
+                  )}
                 </div>
-                {isLoggedIn ? (
-                  <Bar value={c.total} color={(catCol as Record<string, string>)[k]} h={5} />
-                ) : (
-                  <div aria-hidden="true" style={{ height: 5, background: "#ECEEF4", borderRadius: 99 }} />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div style={S.infoRow}>
@@ -327,8 +347,9 @@ export const AptCard = memo(
                 청약 {fmtCompetitionRate(Number(apt.competitionRate))}
               </span>
             )}
-            {/* 역세권 거리 칩 (세션 430) — subwayDist 9999=역없음 제외, ≤500m 만 "역세권" 강조 */}
-            {subwayDist != null && subwayDist < 9000 && (
+            {/* 역세권 거리 칩은 세션 487 에 제거 — 편차 스트립 3번째 줄이 같은 정보를
+                "가까운가/먼가" 까지 담아 보여준다. 스트립이 꺼져 있을 때만 예전 칩을 남긴다. */}
+            {!showDeviation && subwayDist != null && subwayDist < 9000 && (
               <span
                 style={
                   subwayDist <= 500
@@ -562,6 +583,23 @@ export const AptCard = memo(
     if (pa.schoolGrade !== na.schoolGrade) return false;
     // infoRow 칩 신호 (세션 444) — 향 (북쪽 계열 약점 칩)
     if (pa.primaryDirection !== na.primaryDirection) return false;
+    // ── 편차 스트립 신호 (세션 487) ──
+    // **손으로 적지 않고 상수를 돈다.** 이 목록을 손으로 관리하면 필드가 늘 때 빠뜨리고,
+    // 그러면 값이 바뀌어도 카드가 옛 화면 그대로 남는다(세션 430·461·479 에 세 번 당했다).
+    for (const f of CARD_DEVIATION_FIELDS) {
+      if ((pa as unknown as Record<string, unknown>)[f.field] !== (na as unknown as Record<string, unknown>)[f.field])
+        return false;
+    }
+    // 지역이 바뀌면 비교 기준 자체가 달라진다
+    if (pa.region !== na.region) return false;
+    // useRegionalStats 의 안정 참조 — 데이터가 갱신되면 새 객체가 온다
+    if (prev.regionStats !== next.regionStats) return false;
+    // 카테고리 3칸은 등급 문자를 그리므로 총점 변화를 봐야 한다(예전엔 res.total 만 봤다)
+    for (const k of CAT_DISPLAY_ORDER) {
+      const pc = (prev.res.cats as unknown as Record<string, { total: number } | undefined>)[k];
+      const nc = (next.res.cats as unknown as Record<string, { total: number } | undefined>)[k];
+      if (pc?.total !== nc?.total) return false;
+    }
     const pk = prev.profileWeights,
       nk = next.profileWeights;
     if (

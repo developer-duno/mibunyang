@@ -7,6 +7,7 @@
  */
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult, ResponsiveProps, AuthProps, Weights } from "@/types/components";
+import type { RegionalStats } from "@/scoring/regionalStats";
 
 export interface AptCardProps extends ResponsiveProps, AuthProps {
   apt: Apt;
@@ -18,4 +19,9 @@ export interface AptCardProps extends ResponsiveProps, AuthProps {
   isFav: boolean;
   onFav: (_id: string) => void;
   profileWeights: Weights;
+  /**
+   * 편차 스트립이 쓰는 지역 분포 (세션 487). `useRegionalStats` 가 준 **안정 참조**여야 한다 —
+   * 매 렌더 새 객체를 넘기면 memo comparator 가 매번 거짓이 되어 카드 30장이 통째로 다시 그려진다.
+   */
+  regionStats?: RegionalStats | null;
 }

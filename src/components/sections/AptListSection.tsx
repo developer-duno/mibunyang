@@ -1,6 +1,7 @@
 import { memo, useRef, useEffect } from "react";
 import { C, F } from "@/theme";
 import { AptCard } from "@/components/AptCard";
+import type { RegionalStats } from "@/scoring/regionalStats";
 import { PROFILES } from "@/constants/profiles";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
@@ -36,6 +37,8 @@ type AptListSectionProps = {
   dataFreshnessText?: string | null;
   onResetAll?: () => void;
   isLoggedIn?: boolean;
+  /** 편차 스트립용 지역 분포 (세션 487). useRegionalStats 의 안정 참조를 그대로 흘려보낸다. */
+  regionStats?: RegionalStats | null;
 };
 
 /** 아파트 카드 그리드 + 빈 결과 + 더 보기 */
@@ -68,6 +71,7 @@ export const AptListSection = memo(function AptListSection({
   dataFreshnessText,
   onResetAll,
   isLoggedIn,
+  regionStats,
 }: AptListSectionProps) {
   return (
     <>
@@ -334,6 +338,7 @@ export const AptListSection = memo(function AptListSection({
             profileWeights={pw}
             isDesktop={isDesktop}
             isLoggedIn={isLoggedIn}
+            regionStats={regionStats}
           />
         ))}
       </div>

@@ -41,6 +41,14 @@ import { gotoListTab, stubApartments, freezeAnimations, waitForStableRender } fr
  * 즉 이 파일은 **카드를 고치기 전후로 사람이 직접 돌려 비교하는 도구**다.
  */
 
+/**
+ * 허용 오차. 예전 값 0.01(=1%) 은 카드 15만 픽셀 중 **1,500 픽셀까지 봐주는** 것이라
+ * 버튼 라벨을 "비교" → "비교하기" 로 바꿔도 통과했다(세션 487 실측 — 사진을 찍어뒀다고
+ * 안심했지만 눈이 어두운 CCTV 였다). 데이터를 고정하고 폰트 로딩까지 기다리므로
+ * 훨씬 조여도 헛경보가 나지 않는다.
+ */
+const MAX_DIFF_RATIO = 0.0005; // 15만 픽셀 기준 약 76픽셀
+
 test.describe("단지 카드 시각 baseline @visual", () => {
   test.beforeEach(async ({ page }) => {
     await stubApartments(page);
@@ -50,13 +58,17 @@ test.describe("단지 카드 시각 baseline @visual", () => {
   /**
    * 이름으로 카드를 찾는다.
    *
-   * ⚠️ **인덱스(`nth(0)`)로 잡으면 안 된다** — 목록은 점수순으로 정렬되므로
-   * 픽스처의 첫 단지가 화면 첫 카드가 아니다(실제로 이 함정에 걸렸다).
+   * ⚠️ **`[role="button"]` 으로 잡으면 안 된다** — 그건 카드 *본문*이라 맨 아래
+   * 버튼행(상세보기·관심매물·비교)이 캡처 범위 밖으로 빠진다. 그러면 누가 버튼을
+   * 망가뜨려도 시각 회귀가 한 건도 안 잡힌다(세션 487 에 실제로 그 상태였다).
+   * → `AptCard` 겉테두리의 `data-testid="apt-card"` 를 잡아 카드 전체를 찍는다.
+   *
+   * ⚠️ **인덱스(`nth(0)`)로도 잡으면 안 된다** — 목록은 점수순으로 정렬되므로
+   * 픽스처의 첫 단지가 화면 첫 카드가 아니다(이 함정에도 걸렸다).
    *
    * 픽스처를 21단지로 맞춰 둔 덕에 한 페이지(`VISIBLE_PAGE_SIZE` 30) 안에 다 들어온다
    * → **"더 보기"를 누를 일이 없다.** 예전엔 63단지라 페이지를 넘겨야 했는데, 콜드 스타트
-   * 때 그 클릭이 오버레이에 막혀 간헐 타임아웃이 났다(세션 487 실측). 없앨 수 있는
-   * 불안정 요인은 없앤다.
+   * 때 그 클릭이 오버레이에 막혀 간헐 타임아웃이 났다. 없앨 수 있는 불안정 요인은 없앤다.
    *
    * 이름 조각은 픽스처 안에서 유일하도록 골라 뒀다(전각 공백이 섞인 원본 이름 대신
    * 공백 없는 조각을 쓴다 — Playwright 의 텍스트 정규화가 전각 공백을 건드릴 수 있다).
@@ -64,11 +76,13 @@ test.describe("단지 카드 시각 baseline @visual", () => {
   async function cardNamed(page: import("@playwright/test").Page, namePart: string) {
     await page.goto("/");
     await gotoListTab(page);
-    const card = page.locator('[role="button"]').filter({ hasText: namePart }).first();
+    const card = page.locator('[data-testid="apt-card"]').filter({ hasText: namePart }).first();
     await card.waitFor({ state: "visible", timeout: 15000 });
     await card.scrollIntoViewIfNeeded();
     await page.waitForLoadState("networkidle").catch(() => {});
     await waitForStableRender(page);
+    // 버튼행이 실제로 캡처 안에 들어왔는지 매번 확인한다 — 이게 빠지면 이 파일의 의미가 없다.
+    await expect(card.getByRole("button", { name: "상세보기" })).toBeVisible();
     return card;
   }
 
@@ -80,7 +94,7 @@ test.describe("단지 카드 시각 baseline @visual", () => {
   test("카드 ① 잘 채워진 단지 — 데스크톱", async ({ page }) => {
     const card = await cardNamed(page, RICH);
     await expect(card).toHaveScreenshot("card-rich-desktop.png", {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: MAX_DIFF_RATIO,
       animations: "disabled",
     });
   });
@@ -88,7 +102,7 @@ test.describe("단지 카드 시각 baseline @visual", () => {
   test("카드 ② 최악 결손 단지 — 데스크톱", async ({ page }) => {
     const card = await cardNamed(page, SPARSE);
     await expect(card).toHaveScreenshot("card-sparse-desktop.png", {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: MAX_DIFF_RATIO,
       animations: "disabled",
     });
   });
@@ -96,7 +110,7 @@ test.describe("단지 카드 시각 baseline @visual", () => {
   test("카드 ③ 중간 단지 — 데스크톱", async ({ page }) => {
     const card = await cardNamed(page, MID);
     await expect(card).toHaveScreenshot("card-mid-desktop.png", {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: MAX_DIFF_RATIO,
       animations: "disabled",
     });
   });
@@ -105,7 +119,7 @@ test.describe("단지 카드 시각 baseline @visual", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     const card = await cardNamed(page, RICH);
     await expect(card).toHaveScreenshot("card-rich-mobile.png", {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: MAX_DIFF_RATIO,
       animations: "disabled",
     });
   });
@@ -115,7 +129,7 @@ test.describe("단지 카드 시각 baseline @visual", () => {
     await page.setViewportSize({ width: 1024, height: 900 });
     const card = await cardNamed(page, RICH);
     await expect(card).toHaveScreenshot("card-rich-1024.png", {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: MAX_DIFF_RATIO,
       animations: "disabled",
     });
   });
