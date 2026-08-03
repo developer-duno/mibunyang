@@ -3,14 +3,17 @@ import { C, F } from "@/theme";
 import { FIELD_META, FIELD_SECTIONS } from "@/constants/fieldMeta";
 import { PROFILES, getTopCats } from "@/constants/profiles";
 import { computeCompleteness } from "@/lib/completeness";
-import { EmphasisBadge } from "@/components/primitives";
+import { FieldTable } from "./FieldTable";
 import type { Apt, Profile } from "@/types/scoring";
 
 // 관리자 데이터 검수 (세션 408 D2a — 구 DataSections adminMode 부분 추출, 점수 탭 전용).
-// 141필드 전수 표(FIELD_SECTIONS 9섹션) + 관리자 기준 완성도 + ★중점 강조. DATA_SECTIONS 무관.
-// 펼침 게이트: 부모(점수 탭)가 adminLoggedIn 게이트 → 즉시 노출. fullFields 토글로 141표 접힘/펼침.
+// 전수 표(FIELD_SECTIONS 9섹션) + 관리자 기준 완성도 + ★중점 강조. DATA_SECTIONS 무관.
+// 펼침 게이트: 부모(점수 탭)가 adminLoggedIn 게이트 → 즉시 노출. fullFields 토글로 전수표 접힘/펼침.
 
 // 구 ExpertDashboard L18·L26-27 이식 그대로.
+// 버튼 문구의 숫자는 박제하지 않는다 — 세션 487 이전에 "141" 이 박혀 있었으나 실제는 141 이 아니었다.
+const NON_HIDDEN_COUNT = Object.keys(FIELD_META).filter((k) => !FIELD_META[k].hidden).length;
+
 const ADMIN_SEC_COLOR: Record<string, string> = {
   가격: C.green,
   안전: C.red,
@@ -34,93 +37,7 @@ const ADMIN_CAT_TO_SECTION: Record<string, string> = {
   future: "미래",
 };
 
-// 구 ExpertFieldTable 렌더 로직 이식 — 기본값 ⚠·미수집 이탤릭·EmphasisBadge 동일
-function AdminFieldSection({
-  apt,
-  fields,
-  title,
-  color,
-  exclude,
-  emphasized,
-}: {
-  apt: Apt;
-  fields: readonly string[];
-  title: string;
-  color: string;
-  exclude?: readonly string[];
-  emphasized: boolean;
-}) {
-  return (
-    <div style={{ background: C.card, borderRadius: 8, border: `1px solid ${C.border}`, padding: 12, marginTop: 10 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          fontSize: F.base,
-          fontWeight: 800,
-          color,
-          marginBottom: 8,
-          borderBottom: `2px solid ${color}`,
-          paddingBottom: 6,
-        }}
-      >
-        <span>{title}</span>
-        {emphasized && <EmphasisBadge color={color} />}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
-        {fields.map((fk) => {
-          const meta = (
-            FIELD_META as Record<
-              string,
-              {
-                label: string;
-                hidden?: boolean;
-                fmt?: (_v: unknown, _apt: unknown) => unknown;
-                isDefault?: (_v: unknown) => boolean;
-              }
-            >
-          )[fk];
-          if (!meta || meta.hidden) return null;
-          if (exclude?.includes(fk)) return null;
-          const raw = apt[fk] ?? null;
-          const val = meta.fmt ? meta.fmt(raw, apt) : (raw ?? "미수집");
-          const isDef = meta.isDefault && meta.isDefault(raw);
-          const isMissing = raw == null && (val === "—" || val === "미수집");
-          return (
-            <div
-              key={fk}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "6px 8px",
-                borderBottom: `1px solid ${C.border}`,
-                fontSize: F.sm,
-              }}
-            >
-              <span style={{ color: C.muted, flexShrink: 0 }}>{meta.label}</span>
-              <span
-                title={isDef ? "이 값은 기본값/추정값입니다" : undefined}
-                style={{
-                  fontWeight: 600,
-                  color: isMissing ? C.muted : isDef ? C.amber : C.text,
-                  textAlign: "right",
-                  marginLeft: 8,
-                  fontStyle: isMissing ? "italic" : "normal",
-                }}
-              >
-                {String(val)}
-                {isDef ? " ⚠" : ""}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// 구 ExpertDataCompleteness 전체 이식 — 141필드(비-hidden 전수) 기준 진행바 + 5분류 + 필드명 목록 4종(검수 핵심)
+// 구 ExpertDataCompleteness 전체 이식 — 비-hidden 전수 기준 진행바 + 5분류 + 필드명 목록 4종(검수 핵심)
 function AdminCompleteness({ apt }: { apt: Apt }) {
   const allFields = Object.keys(FIELD_META).filter((k) => !FIELD_META[k].hidden);
   const {
@@ -203,10 +120,10 @@ function AdminCompleteness({ apt }: { apt: Apt }) {
 }
 
 export const AdminDataAudit = memo(function AdminDataAudit({ apt, profile }: { apt: Apt; profile?: Profile }) {
-  // 141필드 전수 표 토글 (구 DataSections fullFields, 세션 405 ExpertDashboard 이식) — 기본 접힘.
+  // 전수 표 토글 (구 DataSections fullFields, 세션 405 ExpertDashboard 이식) — 기본 접힘.
   const [fullFields, setFullFields] = useState(false);
 
-  // 프로필 상위 2 카테고리 → 강조할 141필드 섹션 key Set (구 ExpertDashboard L99-102 이식, 세션 382)
+  // 프로필 상위 2 카테고리 → 강조할 섹션 key Set (구 ExpertDashboard L99-102 이식, 세션 382)
   const emphasizedSectionKeys = useMemo(() => {
     if (!profile || !PROFILES[profile]) return new Set<string>();
     const top = getTopCats(PROFILES[profile].w) as string[];
@@ -231,13 +148,13 @@ export const AdminDataAudit = memo(function AdminDataAudit({ apt, profile }: { a
           minHeight: 36,
         }}
       >
-        {fullFields ? "요약 보기" : "전체 141필드 보기"}
+        {fullFields ? "요약 보기" : `전체 ${NON_HIDDEN_COUNT}필드 보기`}
       </button>
       <AdminCompleteness apt={apt} />
       {fullFields && (
         <div data-testid="admin-full-fields">
           {FIELD_SECTIONS.map((sec) => (
-            <AdminFieldSection
+            <FieldTable
               key={sec.key}
               apt={apt}
               fields={sec.fields}
