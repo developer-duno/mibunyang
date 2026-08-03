@@ -1,11 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ExtraFieldsAccordion } from "./ExtraFieldsAccordion";
-import { extraCount } from "@/lib/tabExtraFields";
+import { extraCount, TAB_EXTRA_SECTIONS } from "@/lib/tabExtraFields";
 import type { Apt } from "@/types/scoring";
 
 function apt(over: Record<string, unknown> = {}): Apt {
   return { parkingRatio: 1.4, floorAreaRatio: 220, discountPct: 5, ...over } as unknown as Apt;
+}
+
+/** 모든 여분 필드에 값이 있는 단지 — "제목 N = 그려진 줄 수" 검사용 */
+function fullApt(): Apt {
+  const o: Record<string, unknown> = {};
+  for (const t of ["sec-overview", "sec-price", "sec-location", "sec-presale", "sec-finance"] as const)
+    for (const s of TAB_EXTRA_SECTIONS[t]) for (const f of s.fields) o[f] = 1;
+  return o as unknown as Apt;
 }
 
 describe("ExtraFieldsAccordion — 기본은 접혀 있다", () => {
@@ -31,7 +39,7 @@ describe("ExtraFieldsAccordion — 제목의 숫자가 실제 줄 수와 같다"
   it.each(["sec-overview", "sec-price", "sec-location", "sec-presale", "sec-finance"] as const)(
     "%s — 제목 N = 펼쳤을 때 실제로 그려진 줄 수",
     (tab) => {
-      const { container } = render(<ExtraFieldsAccordion apt={apt()} tab={tab} />);
+      const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab={tab} />);
       const btn = screen.getByRole("button", { name: /아직 안 보여드린 자료/ });
       expect(btn.textContent).toContain(`${extraCount(tab)}개`);
       fireEvent.click(btn);
@@ -44,10 +52,18 @@ describe("ExtraFieldsAccordion — 제목의 숫자가 실제 줄 수와 같다"
 });
 
 describe("ExtraFieldsAccordion — 값이 없어도 줄을 지우지 않는다", () => {
-  it("빈 단지도 '미수집'으로 줄을 채운다", () => {
-    render(<ExtraFieldsAccordion apt={{} as Apt} tab="sec-overview" />);
+  it("일부만 비면 '미수집'으로 줄을 남긴다 (무엇이 없는지가 정보다)", () => {
+    render(<ExtraFieldsAccordion apt={apt()} tab="sec-overview" />);
     fireEvent.click(screen.getByRole("button", { name: /아직 안 보여드린 자료/ }));
     expect(screen.getAllByText(/미수집|—/).length).toBeGreaterThan(0);
+  });
+
+  it("한 묶음이 통째로 비면 빈 줄 여러 개 대신 한 줄로 접는다", () => {
+    // 혜택 9필드는 실측 0.0% — 금융 탭이 정확히 이 경우다
+    const { container } = render(<ExtraFieldsAccordion apt={{} as Apt} tab="sec-finance" />);
+    fireEvent.click(screen.getByRole("button", { name: /아직 안 보여드린 자료/ }));
+    expect(screen.getByText(/한 건도 못 모았어요/)).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-field]").length, "빈 줄을 늘어놓지 않는다").toBe(0);
   });
 
   it("추정값 표시(⚠)가 무슨 뜻인지 설명한다", () => {

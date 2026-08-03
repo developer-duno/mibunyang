@@ -19,6 +19,49 @@ import type { Apt } from "@/types/scoring";
  * 처음부터 펼쳐 손님을 숫자로 덮으려는 게 아니다.
  */
 
+/**
+ * 그 묶음이 **통째로** 비었는지.
+ *
+ * 규칙을 나눈 이유: 일부만 비면 "무엇이 없는지"가 정보라 줄을 남기지만, 전부 비면
+ * 똑같은 `미수집` 이 9줄 늘어설 뿐이라 오히려 읽기를 방해한다. 한 줄로 접어도
+ * "이 자료는 아직 없다"는 사실은 그대로 전해진다.
+ *
+ * 실측(2026-08-03): 혜택 9필드는 **전부 0.0%** — 금융 탭이 이 경우다.
+ */
+export function isAllEmpty(apt: Apt, fields: readonly string[]): boolean {
+  return fields.every((f) => {
+    const v = apt[f];
+    return v == null || v === "";
+  });
+}
+
+const EmptySectionLine = memo(function EmptySectionLine({
+  title,
+  color,
+  count,
+}: {
+  title: string;
+  color: string;
+  count: number;
+}) {
+  return (
+    <div
+      style={{
+        background: C.card,
+        borderRadius: 8,
+        border: `1px solid ${C.border}`,
+        borderLeft: `3px solid ${color}`,
+        padding: "10px 12px",
+        marginTop: 10,
+        fontSize: F.sm,
+        color: C.muted,
+      }}
+    >
+      <b style={{ color }}>{title}</b> — 이 {count}가지는 아직 한 건도 못 모았어요
+    </div>
+  );
+});
+
 export const ExtraFieldsAccordion = memo(function ExtraFieldsAccordion({ apt, tab }: { apt: Apt; tab: TabId }) {
   const [open, setOpen] = useState(false);
   const sections = TAB_EXTRA_SECTIONS[tab] ?? [];
@@ -56,9 +99,13 @@ export const ExtraFieldsAccordion = memo(function ExtraFieldsAccordion({ apt, ta
       </button>
       {open && (
         <div data-testid={`extra-fields-${tab}`}>
-          {sections.map((s) => (
-            <FieldTable key={s.key} apt={apt} fields={s.fields} title={s.title} color={s.color} columns={2} />
-          ))}
+          {sections.map((s) =>
+            isAllEmpty(apt, s.fields) ? (
+              <EmptySectionLine key={s.key} title={s.title} color={s.color} count={s.fields.length} />
+            ) : (
+              <FieldTable key={s.key} apt={apt} fields={s.fields} title={s.title} color={s.color} columns={2} />
+            )
+          )}
           <div style={{ fontSize: F.micro, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
             값이 없는 항목은 <i>미수집</i>으로 두고 줄을 지우지 않아요. 어떤 자료를 아직 못 모았는지도 정보이기
             때문이에요. <span style={{ color: C.amber }}>⚠</span> 가 붙은 값은 실제 조사값이 아니라 지역 평균으로 채운
