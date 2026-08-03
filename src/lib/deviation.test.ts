@@ -4,7 +4,7 @@ import { CARD_DEVIATION_FIELDS, OVERVIEW_DEVIATION_FIELDS, deviationSpec } from 
 import { computeRegionalStats, NATIONAL_KEY, type RegionalStats } from "@/scoring/regionalStats";
 import type { Apt } from "@/types/scoring";
 
-const priceSpec = deviationSpec("price")!;
+const priceSpec = deviationSpec("pp")!;
 const unsoldSpec = deviationSpec("unsoldRate")!;
 const subwaySpec = deviationSpec("subwayDist")!;
 const jeonseSpec = deviationSpec("jeonseRate")!;
@@ -26,7 +26,7 @@ function seoul(field: string, n: number): RegionalStats {
 }
 
 describe("G3 본인값 게이트 — 미수집", () => {
-  const stats = seoul("price", 30);
+  const stats = seoul("pp", 30);
 
   it("값이 null 이면 미수집", () => {
     const d = computeDeviation(priceSpec, null, "서울", stats);
@@ -91,22 +91,22 @@ describe("MAD 의 성질 — 절반 이상이 같으면 mad 가 0 이 된다", (
 
 describe("G1 표본 게이트", () => {
   it("시도 n≥20 이면 그 시도 기준 (전국 배지 없음)", () => {
-    const d = computeDeviation(priceSpec, 5, "서울", seoul("price", 30));
+    const d = computeDeviation(priceSpec, 5, "서울", seoul("pp", 30));
     expect(d.state).toBe("ok");
     expect(d.nationalFallback).toBe(false);
   });
 
   it("8 ≤ n < 20 이면 전국 기준으로 그리고 배지를 켠다", () => {
     // 제주 10개 + 서울 30개 → 제주는 시도 임계 미달, 전국(40)은 충분
-    const all = [...rows("제주", "price", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), ...rows("서울", "price", [11, 12, 13, 14])];
-    const stats = computeRegionalStats(all, ["price"]);
+    const all = [...rows("제주", "pp", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), ...rows("서울", "pp", [11, 12, 13, 14])];
+    const stats = computeRegionalStats(all, ["pp"]);
     const d = computeDeviation(priceSpec, 1, "제주", stats);
     expect(d.state).toBe("ok");
     expect(d.nationalFallback).toBe(true);
   });
 
   it("전국 표본도 8 미만이면 아예 그리지 않는다", () => {
-    const stats = computeRegionalStats(rows("제주", "price", [1, 2, 3]), ["price"]);
+    const stats = computeRegionalStats(rows("제주", "pp", [1, 2, 3]), ["pp"]);
     const d = computeDeviation(priceSpec, 1, "제주", stats);
     expect(d.state).toBe("sparse");
     expect(d.text).toBe("비교할 단지가 적어요");
@@ -114,7 +114,7 @@ describe("G1 표본 게이트", () => {
   });
 
   it("모르는 지역이면 전국으로 떨어진다", () => {
-    const d = computeDeviation(priceSpec, 5, "없는지역", seoul("price", 30));
+    const d = computeDeviation(priceSpec, 5, "없는지역", seoul("pp", 30));
     expect(d.state).toBe("ok");
     expect(d.nationalFallback).toBe(true);
   });
@@ -122,7 +122,7 @@ describe("G1 표본 게이트", () => {
 
 describe("G2 변별력 게이트 — 이 설계의 구조적 방어선", () => {
   it("그 지역이 전부 같은 값이면 막대를 그리지 않는다", () => {
-    const stats = computeRegionalStats(rows("경기", "price", Array(30).fill(500)), ["price"]);
+    const stats = computeRegionalStats(rows("경기", "pp", Array(30).fill(500)), ["pp"]);
     const d = computeDeviation(priceSpec, 500, "경기", stats);
     expect(d.state).toBe("uniform");
     expect(d.text).toBe("이 지역은 다 같아요");
@@ -130,7 +130,7 @@ describe("G2 변별력 게이트 — 이 설계의 구조적 방어선", () => {
 
   it("distinct 가 2 이하이면 그리지 않는다", () => {
     const vals = [...Array(15).fill(100), ...Array(15).fill(200)];
-    const stats = computeRegionalStats(rows("경기", "price", vals), ["price"]);
+    const stats = computeRegionalStats(rows("경기", "pp", vals), ["pp"]);
     expect(computeDeviation(priceSpec, 100, "경기", stats).state).toBe("uniform");
   });
 
@@ -142,14 +142,14 @@ describe("G2 변별력 게이트 — 이 설계의 구조적 방어선", () => {
   });
 
   it("mad 가 0 이 아니면 통과한다", () => {
-    const stats = seoul("price", 30);
+    const stats = seoul("pp", 30);
     expect(computeDeviation(priceSpec, 5, "서울", stats).state).toBe("ok");
   });
 });
 
 describe("fav — 막대는 항상 오른쪽이 유리", () => {
   it("낮을수록 좋은 지표는 싼 쪽이 fav 높음", () => {
-    const stats = seoul("price", 100); // 1..100
+    const stats = seoul("pp", 100); // 1..100
     const cheap = computeDeviation(priceSpec, 5, "서울", stats);
     const pricey = computeDeviation(priceSpec, 95, "서울", stats);
     expect(cheap.fav!).toBeGreaterThan(pricey.fav!);
@@ -167,7 +167,7 @@ describe("fav — 막대는 항상 오른쪽이 유리", () => {
   });
 
   it("fav 는 0~100 범위를 벗어나지 않는다", () => {
-    const stats = seoul("price", 50);
+    const stats = seoul("pp", 50);
     for (const v of [-999, 0, 1, 25, 50, 999]) {
       const d = computeDeviation(priceSpec, v, "서울", stats);
       if (d.fav != null) {
@@ -178,7 +178,7 @@ describe("fav — 막대는 항상 오른쪽이 유리", () => {
   });
 
   it("한가운데면 '평균 수준' + 중립", () => {
-    const stats = seoul("price", 101); // 중앙값 51
+    const stats = seoul("pp", 101); // 중앙값 51
     const d = computeDeviation(priceSpec, 51, "서울", stats);
     expect(d.text).toBe("평균 수준");
     expect(d.tone).toBe("neutral");
@@ -229,7 +229,7 @@ describe("deviationText — 값 슬롯 문장", () => {
 });
 
 describe("deviationAriaLabel", () => {
-  const stats = seoul("price", 30);
+  const stats = seoul("pp", 30);
 
   it("'점수' 라는 글자를 절대 넣지 않는다 (DetailModal 테스트 쿼리와 충돌)", () => {
     for (const value of [1, 15, 30, null]) {
@@ -242,12 +242,12 @@ describe("deviationAriaLabel", () => {
     const d = computeDeviation(priceSpec, 3, "서울", stats);
     const label = deviationAriaLabel(priceSpec, d, "서울", "3억");
     expect(label).toContain("서울");
-    expect(label).toContain("분양가");
+    expect(label).toContain("평당가");
   });
 
   it("전국 폴백이면 '전국' 이라 말한다", () => {
-    const all = [...rows("제주", "price", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), ...rows("서울", "price", [11, 12, 13, 14])];
-    const d = computeDeviation(priceSpec, 1, "제주", computeRegionalStats(all, ["price"]));
+    const all = [...rows("제주", "pp", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), ...rows("서울", "pp", [11, 12, 13, 14])];
+    const d = computeDeviation(priceSpec, 1, "제주", computeRegionalStats(all, ["pp"]));
     expect(deviationAriaLabel(priceSpec, d, "제주", "1억")).toContain("전국");
   });
 
@@ -287,7 +287,9 @@ describe("deviationFields 정의 자체의 불변식", () => {
 
   it("deviationSpec 은 없는 필드에 undefined", () => {
     expect(deviationSpec("없는필드")).toBeUndefined();
-    expect(deviationSpec("price")?.label).toBe("분양가");
+    expect(deviationSpec("pp")?.label).toBe("평당가");
+    // 총 분양가는 이제 편차 대상이 아니다 — 면적 편향 때문에 평당가로 교체(세션 487)
+    expect(deviationSpec("price")).toBeUndefined();
   });
 });
 

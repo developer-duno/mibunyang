@@ -4,7 +4,7 @@ import { DeviationRow, ROW_HEIGHT } from "./DeviationRow";
 import { CARD_DEVIATION_FIELDS, deviationSpec } from "@/constants/deviationFields";
 import type { Deviation } from "@/lib/deviation";
 
-const priceSpec = deviationSpec("price")!;
+const priceSpec = deviationSpec("pp")!;
 const subwaySpec = deviationSpec("subwayDist")!;
 
 function dev(over: Partial<Deviation> = {}): Deviation {
@@ -161,7 +161,15 @@ describe("DeviationRow — 스크린리더", () => {
 });
 
 describe("카드 3줄 정의", () => {
-  it("분양가·미분양·역세권 순서가 고정 — 30장을 훑을 때 '셋째 줄은 역세권'이 학습되게", () => {
-    expect(CARD_DEVIATION_FIELDS.map((f) => f.field)).toEqual(["price", "unsoldRate", "subwayDist"]);
+  it("평당가·미분양·역세권 순서가 고정 — 30장을 훑을 때 '셋째 줄은 역세권'이 학습되게", () => {
+    expect(CARD_DEVIATION_FIELDS.map((f) => f.field)).toEqual(["pp", "unsoldRate", "subwayDist"]);
+  });
+
+  // 세션 487 회귀 가드 — 총 분양가로 되돌아가면 이 막대가 "싼가"가 아니라 "작은가"를
+  // 보여준다(실측 면적 상관 −0.540). 서울 21.95㎡ 원룸이 "60% 싸요"로 나왔던 사고.
+  it("총 분양가(price)가 아니라 평당가(pp)로 견준다", () => {
+    const names = CARD_DEVIATION_FIELDS.map((f) => f.field);
+    expect(names, "총액으로 되돌아갔다 — 면적이 작을수록 싸다고 표시된다").not.toContain("price");
+    expect(names).toContain("pp");
   });
 });

@@ -5,14 +5,14 @@ import { NATIONAL_KEY } from "@/scoring/regionalStats";
 import type { Apt } from "@/types/scoring";
 
 function apts(n: number): Apt[] {
-  return Array.from({ length: n }, (_, i) => ({ region: "서울", price: 100 + i }) as unknown as Apt);
+  return Array.from({ length: n }, (_, i) => ({ region: "서울", pp: 100 + i }) as unknown as Apt);
 }
 
 describe("useRegionalStats", () => {
   it("지역·전국 분포를 계산한다", () => {
     const { result } = renderHook(() => useRegionalStats(apts(25)));
-    expect(result.current?.["서울"].price.n).toBe(25);
-    expect(result.current?.[NATIONAL_KEY].price.n).toBe(25);
+    expect(result.current?.["서울"].pp.n).toBe(25);
+    expect(result.current?.[NATIONAL_KEY].pp.n).toBe(25);
   });
 
   it("같은 배열 참조로 다시 그리면 **같은 객체**를 준다", () => {
@@ -30,7 +30,7 @@ describe("useRegionalStats", () => {
     const first = result.current;
     rerender({ a: apts(30) });
     expect(result.current).not.toBe(first);
-    expect(result.current?.["서울"].price.n).toBe(30);
+    expect(result.current?.["서울"].pp.n).toBe(30);
   });
 
   it("빈 배열·null·undefined 는 null (호출처가 미수집으로 처리)", () => {
@@ -44,6 +44,6 @@ describe("useRegionalStats", () => {
     // 편차 막대가 그 게이트에 얹히면 "운영에서만 막대가 안 보이는" 사고가 난다.
     const withCache = apts(25).map((a) => ({ ...a, catsCache: { price: { total: 70 } } }) as unknown as Apt);
     const { result } = renderHook(() => useRegionalStats(withCache));
-    expect(result.current?.["서울"].price.n).toBe(25);
+    expect(result.current?.["서울"].pp.n).toBe(25);
   });
 });
