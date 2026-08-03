@@ -836,6 +836,7 @@ export default function App() {
                 onConsult={handleConsultFromDetail}
                 profile={profile}
                 adminLoggedIn={admin.adminLoggedIn}
+                regionStats={regionStats}
               />
             </Suspense>
           );
