@@ -7,6 +7,8 @@ import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
 import { isFeatureDeviationStrip } from "@/constants/featureFlags";
+import { AreaPriceScatter } from "./charts/AreaPriceScatter";
+import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
 import { CatPanel } from "./CatPanel";
 import { fmtPrice, fmtCompletion, fmtUnsoldRate } from "@/lib/format";
@@ -609,6 +611,15 @@ export const DetailModal = memo(function DetailModal({
                     </div>
                   );
                 })()}
+              {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는
+                  유일한 자산(priceByArea 채움 96.8%, 단지당 중앙 28포인트). */}
+              {showDeviation && (
+                <AreaPriceScatter
+                  priceByArea={(mergedApt ?? apt).priceByArea}
+                  aptPrice={(apt.price as number | null) ?? null}
+                  aptArea={(apt.area as number | null) ?? null}
+                />
+              )}
               <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
               <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
               <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
@@ -630,6 +641,10 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-location")}
             >
+              {/* 요약 시각화 (세션 487 PR-5b) — 거리 자릿수가 필드마다 달라 축 3분리.
+                  KTX(채움 0%)·IC(3.9%·km단위)·혐오시설(멀수록 좋음)은 의도적 제외. */}
+              {showDeviation && <DistanceDots apt={mergedApt ?? apt} />}
+
               <SchoolInfo apt={mergedApt ?? apt} />
 
               <NearbyChildcareSection apt={mergedApt ?? apt} />
