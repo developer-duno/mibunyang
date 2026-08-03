@@ -128,6 +128,26 @@ export const HomePage = memo(function HomePage({
           />
         )}
         <MarketSummaryWidget scored={scored} dataFreshnessText={dataFreshnessText} onCellNav={handleMarketNav} />
+        {/* 추천 TOP 3 가 최근 본 단지보다 **앞**이다 (세션 487, 사장님 안 A 선택).
+            실측 근거: 예전 순서에서는 추천이 y=1013px 에서 시작해 화면 높이 900px 기준
+            스크롤해야 보였다(최근 본 단지가 570px 로 추천 466px 보다 크고 앞섰다).
+            순서를 바꾸면 추천이 y≈431px 로 582px 올라와 첫 화면에 들어온다.
+            "최근 본 단지"는 재방문자만 보는 칸이라 뒤로 간다 — 처음 온 손님에겐 아예 없다. */}
+        <div style={{ gridColumn: "1 / -1" }}>
+          <TopPicksWidget
+            scored={scored}
+            pw={pw}
+            onDetail={handleDetail}
+            onFav={onFav}
+            favoriteSet={favoriteSet}
+            onComp={onComp}
+            compIds={compIds}
+            isLoggedIn={isLoggedIn}
+            isDesktop={isDesktop}
+            isPC={isPC}
+            onExpand={() => expandWidget("toppicks", "list")}
+          />
+        </div>
         {hasRecent && (
           <div style={{ gridColumn: "1 / -1" }}>
             <RecentlyViewedWidget
@@ -145,21 +165,6 @@ export const HomePage = memo(function HomePage({
             />
           </div>
         )}
-        <div style={{ gridColumn: "1 / -1" }}>
-          <TopPicksWidget
-            scored={scored}
-            pw={pw}
-            onDetail={handleDetail}
-            onFav={onFav}
-            favoriteSet={favoriteSet}
-            onComp={onComp}
-            compIds={compIds}
-            isLoggedIn={isLoggedIn}
-            isDesktop={isDesktop}
-            isPC={isPC}
-            onExpand={() => expandWidget("toppicks", "list")}
-          />
-        </div>
       </div>
     </div>
   );

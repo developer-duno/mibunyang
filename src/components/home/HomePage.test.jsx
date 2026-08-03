@@ -140,4 +140,29 @@ describe("HomePage analytics (M3)", () => {
     const grid = /** @type {HTMLElement} */ (container.querySelector('[data-testid="home-grid"]'));
     expect(grid.style.gridTemplateColumns).toContain("min(300px, 100%)");
   });
+
+  // ── 배치 회귀 가드 (세션 487, 사장님 안 A) ──
+  // 실측: 예전 순서에서 추천 TOP 3 는 y=1013px 에서 시작해 화면(900px) 밖이었다.
+  // 추천을 최근 본 단지 앞으로 올려 y≈431px 로 당겼다. 이 가드가 없으면 순서가
+  // 조용히 되돌아가도 아무도 모른다.
+  it("추천 TOP 3 가 최근 본 단지보다 **앞**에 온다 (첫 화면에 들어오게)", () => {
+    const sc = makeScored("a1", "최근단지");
+    const { container } = render(<HomePage {...baseProps()} recentIds={["a1"]} scoredMap={new Map([["a1", sc]])} />);
+    const text =
+      /** @type {HTMLElement} */ (container.querySelector('[data-testid="home-grid"]')).innerText ||
+      /** @type {HTMLElement} */ (container.querySelector('[data-testid="home-grid"]')).textContent ||
+      "";
+    const top = text.indexOf("추천 TOP 3");
+    const recent = text.indexOf("최근 본 단지");
+    expect(top, "추천 TOP 3 위젯이 안 보인다").toBeGreaterThan(-1);
+    expect(recent, "최근 본 단지 위젯이 안 보인다").toBeGreaterThan(-1);
+    expect(top, "추천 TOP 3 가 최근 본 단지보다 뒤에 있다 — 배치가 되돌아갔다").toBeLessThan(recent);
+  });
+
+  it("최근 본 단지가 없으면 추천 TOP 3 만 남는다 (처음 온 손님)", () => {
+    const { container } = render(<HomePage {...baseProps()} recentIds={[]} />);
+    const text = /** @type {HTMLElement} */ (container.querySelector('[data-testid="home-grid"]')).textContent || "";
+    expect(text).toContain("추천 TOP 3");
+    expect(text).not.toContain("최근 본 단지");
+  });
 });
