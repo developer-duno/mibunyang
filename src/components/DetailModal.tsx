@@ -22,6 +22,7 @@ import {
   PriceByFloorBlock,
   AnnouncementLink,
 } from "./detail/DataSectionBlock";
+import { ExtraFieldsAccordion } from "./detail/ExtraFieldsAccordion";
 import { CategoryMiniCard } from "./detail/CategoryMiniCard";
 import { ProfileWeightBar } from "./detail/ProfileWeightBar";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
@@ -526,6 +527,8 @@ export const DetailModal = memo(function DetailModal({
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}
 
+              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-overview" />}
+
               {/* 출처 footer — 전 탭 공통 데이터 출처 (종합 탭 1회 고정, 세션 408 D2a) */}
               <div style={DM_S.sourceFooter}>
                 출처: 청약홈(국토교통부) · 카카오 로컬 API · KOSIS(통계청) · 국토부 실거래가 · NEIS(교육부)
@@ -629,6 +632,7 @@ export const DetailModal = memo(function DetailModal({
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}
               <PriceByFloorBlock apt={mergedApt ?? apt} />
+              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-price" />}
             </section>
           )}
 
@@ -654,6 +658,7 @@ export const DetailModal = memo(function DetailModal({
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}
               <NearbyFacilitiesBlock apt={mergedApt ?? apt} />
+              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-location" />}
             </section>
           )}
 
@@ -677,6 +682,7 @@ export const DetailModal = memo(function DetailModal({
               {/* 관리자 인사이트(동/호수·평형 공급)는 세션 409 D2b 로 관리자 탭(sec-admin)으로 이동 */}
 
               <MarketStatsCharts region={apt.region} gu={apt.gu} />
+              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-presale" />}
             </section>
           )}
 
@@ -690,6 +696,7 @@ export const DetailModal = memo(function DetailModal({
               style={panelStyle("sec-finance")}
             >
               <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
+              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-finance" />}
             </section>
           )}
 
