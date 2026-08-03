@@ -4,6 +4,9 @@ import { C, F } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { PROFILES, getTopCats } from "@/constants/profiles";
 import { orderedCatEntries } from "@/constants/catOrder";
+import { DeviationStrip } from "./DeviationStrip";
+import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
+import { isFeatureDeviationStrip } from "@/constants/featureFlags";
 import { ScoreBadge } from "./primitives";
 import { CatPanel } from "./CatPanel";
 import { fmtPrice, fmtCompletion, fmtUnsoldRate } from "@/lib/format";
@@ -121,7 +124,11 @@ export const DetailModal = memo(function DetailModal({
   onConsult,
   profile,
   adminLoggedIn = false,
+  regionStats = null,
 }: DetailModalProps) {
+  // 종합 탭 편차 스트립 8줄 (세션 487 PR-4) — 카드와 **같은 컴포넌트**, 트랙만 넓다.
+  // 카드에서 배운 읽는 법("오른쪽으로 길수록 유리")이 팝업에서 그대로 통해야 하기 때문.
+  const showDeviation = isFeatureDeviationStrip() && regionStats != null;
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocusRef = useRef<Element | null>(null);
   // 상세 필드 lazy fetch (apartments-detail-16-N.json 버킷 1개, 세션 468) — DetailModal 첫 열림 시
@@ -406,6 +413,18 @@ export const DetailModal = memo(function DetailModal({
                 <ScoreBadge score={res.total} size={80} />
               </div>
 
+              {/* 요약 시각화 — "이 단지 vs 같은 지역 한가운데 값" 8줄 (세션 487 PR-4).
+                  카드의 3줄과 같은 컴포넌트라 읽는 법이 그대로 이어진다. 트랙만 넓다.
+                  플래그 뒤: 카드와 한 스위치로 묶어 켜고 끄는 지점을 하나로 유지한다. */}
+              {showDeviation && (
+                <DeviationStrip
+                  apt={apt}
+                  fields={OVERVIEW_DEVIATION_FIELDS}
+                  regionStats={regionStats}
+                  compact={false}
+                />
+              )}
+
               {/* 핵심 지표 — 세션 409 D2b: 6각형 레이더 제거(카테고리 점수는 아래 미니카드와 이중 노출 → 루즈
             해소, 사장님 지시). 미니카드가 카테고리 시각화+진입 역할을 모두 흡수. 핵심지표는 전폭. */}
               <div style={{ marginBottom: 12 }}>
@@ -469,7 +488,9 @@ export const DetailModal = memo(function DetailModal({
               )}
 
               {/* 카테고리 요약 미니카드 6개 (세션 409 D2b) — 점수+등급+결론, 탭하면 점수 탭 해당 카테고리 자동 펼침.
-            레이더(위)는 한눈 균형 비교(시각), 미니카드는 결론+진입(행동)으로 역할 분리. */}
+            ⚠️ 옛 주석은 "레이더(위)가 한눈 비교, 미니카드는 결론+진입"이라 했으나 레이더는 세션 409 에
+            이미 제거됐다(현재 코드에 없음). 지금 위쪽 시각 요약은 편차 스트립이고, 역할 분리는
+            "스트립 = 지역 대비 위치(상대), 미니카드 = 카테고리 결론+진입(행동)"이다. */}
               {(() => {
                 const overviewTopCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
                 return (

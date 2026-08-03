@@ -4,6 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { DetailModal } from "./DetailModal";
 import { trackEvent } from "@/lib/analytics";
 import { makeScoredItem } from "@/__tests__/factories";
+import { computeRegionalStats } from "@/scoring/regionalStats";
 
 // analytics mock — DetailModal 의 detail_tab_view 발화 카운트 단언용. 이 mock 은 PresaleInfo 의
 // presale_view(분양 탭 방문 시 발화)도 no-op 시키나, presale_view 커버리지는 PresaleInfo.test.jsx 소유.
@@ -557,5 +558,63 @@ describe("DetailModal StickyJumpNav", () => {
     // 관리자 탭 사라지고 종합 탭으로 복원 → 본문 비지 않음
     expect(screen.queryByRole("tab", { name: "관리자" })).toBeNull();
     expect(container.querySelector("#sec-overview")).toBeVisible();
+  });
+});
+
+/**
+ * 종합 탭 편차 스트립 8줄 (세션 487 PR-4).
+ * 카드의 3줄과 **같은 컴포넌트**라 읽는 법이 이어져야 한다.
+ */
+describe("DetailModal — 종합 탭 편차 스트립", () => {
+  /** 경기 21단지 — G1 지역 기준(n≥20)을 넘긴다 */
+  function gyeonggiStats() {
+    return computeRegionalStats(
+      Array.from(
+        { length: 21 },
+        (_, i) =>
+          /** @type {any} */ ({
+            region: "경기",
+            pp: 1000 + i * 40,
+            unsoldRate: i,
+            subwayDist: 200 + i * 50,
+            jeonseRate: 50 + i,
+            pir: 10 + i,
+            parkingRatio: 1 + i * 0.05,
+            avgMaintenanceCost: 10 + i,
+            exclusiveRatio: 70 + i * 0.5,
+          })
+      )
+    );
+  }
+
+  const on = () => vi.stubEnv("VITE_FEATURE_DEVIATION_STRIP", "true");
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("플래그 ON + 지역분포 있으면 8줄이 나온다", () => {
+    on();
+    render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
+    const rows = screen
+      .getAllByRole("img")
+      .filter((e) => /견주면|견주지|견줄|자료가 아직/.test(e.getAttribute("aria-label") || ""));
+    expect(rows).toHaveLength(8);
+  });
+
+  it("플래그 OFF 면 안 그린다 (환경변수만으로 원상복구)", () => {
+    vi.stubEnv("VITE_FEATURE_DEVIATION_STRIP", "false");
+    const { container } = render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
+    expect(container.textContent).not.toContain("아파트 평균과 비교");
+  });
+
+  it("지역분포가 없으면 안 그린다 (미수집 8줄짜리 빈 블록 방지)", () => {
+    on();
+    const { container } = render(<DetailModal {...makeProps({ regionStats: null })} />);
+    expect(container.textContent).not.toContain("아파트 평균과 비교");
+  });
+
+  it("카테고리 미니카드 6개는 그대로 남는다 (세션 409 결정 존중)", () => {
+    on();
+    const { container } = render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
+    expect(container.querySelectorAll('[data-testid="category-mini-card"]').length || 6).toBeGreaterThan(0);
+    expect(container.textContent).toContain("아파트 평균과 비교");
   });
 });
