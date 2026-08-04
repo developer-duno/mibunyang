@@ -58,19 +58,19 @@ afterEach(() => vi.unstubAllEnvs());
 describe("편차 스트립 — 피처 플래그", () => {
   it("플래그 OFF 면 스트립을 그리지 않는다", () => {
     render(<AptCard {...makeProps()} />);
-    expect(screen.queryByText(/아파트 평균과 비교/)).toBeNull();
+    expect(screen.queryByText(/아파트 한가운데 값과 비교/)).toBeNull();
   });
 
   it("플래그 ON 이면 스트립 3줄이 나온다", () => {
     on();
     render(<AptCard {...makeProps()} />);
-    expect(screen.getByText(/경기 아파트 평균과 비교/)).toBeInTheDocument();
+    expect(screen.getByText(/경기 아파트 한가운데 값과 비교/)).toBeInTheDocument();
   });
 
   it("플래그 ON 이어도 regionStats 가 없으면 안 그린다 (미수집 3줄짜리 빈 블록 방지)", () => {
     on();
     render(<AptCard {...makeProps({ regionStats: null })} />);
-    expect(screen.queryByText(/아파트 평균과 비교/)).toBeNull();
+    expect(screen.queryByText(/아파트 한가운데 값과 비교/)).toBeNull();
   });
 });
 
@@ -155,12 +155,12 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
     on();
     const props = makeProps();
     const { rerender, container } = render(<AptCard {...props} />);
-    expect(container.textContent).toContain("경기 아파트 평균과 비교");
+    expect(container.textContent).toContain("경기 아파트 한가운데 값과 비교");
 
     rerender(
       <AptCard {...props} apt={makeApt({ region: "서울", price: 33000, pp: 1200, unsoldRate: 4, subwayDist: 300 })} />
     );
-    expect(container.textContent).toContain("서울 아파트 평균과 비교");
+    expect(container.textContent).toContain("서울 아파트 한가운데 값과 비교");
   });
 
   it("regionStats 참조가 바뀌면 다시 그린다 (데이터 갱신)", () => {

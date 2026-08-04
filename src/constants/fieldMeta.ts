@@ -127,7 +127,7 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     isEstimated: (v, apt) => apt?._fallbackUnsoldRate,
   },
   recentTrades6m: {
-    label: "최근6개월 거래",
+    label: "구 최근6개월 거래",
     section: "가격",
     unit: "건",
     fmt: (v) => (v != null ? `${v}건` : "미수집"),

@@ -619,6 +619,19 @@ describe("calcCats", () => {
       expect(c.total).toBeLessThanOrEqual(100);
     });
   });
+  // 세션 488: 용적률·전용률 0 은 미수집 — "0% → 쾌적한 밀도" 칭찬 사고 정정
+  it("용적률 0 은 미수집으로 처리 (info '정보 없음', 0% 로 칭찬 안 함)", () => {
+    const far0 = calcCats(makeApt({ floorAreaRatio: 0 }), {});
+    const farInfo = far0.product.subs.find((s) => s.name === "용적률")?.info;
+    expect(farInfo).toBe("정보 없음");
+    // 값이 있으면 그대로 표시 (0 만 미수집)
+    const farReal = calcCats(makeApt({ floorAreaRatio: 220 }), {});
+    expect(farReal.product.subs.find((s) => s.name === "용적률")?.info).toBe("220%");
+  });
+  it("전용률 0 은 미수집으로 처리 (info '정보 없음')", () => {
+    const excl0 = calcCats(makeApt({ exclusiveRatio: 0 }), {});
+    expect(excl0.product.subs.find((s) => s.name === "전용률")?.info).toBe("정보 없음");
+  });
   // --- 세션 454: sanitize null 안전성 보강 (engine.ts L22-95) ---
   it("한글 NFC 정규화 — 분해형(NFD) region 도 조합형과 동일 결과 (str L23)", () => {
     // 분해형 "경기"(NFD, 5글자)는 === 로는 조합형 "경기"(2글자)와 불일치하나,

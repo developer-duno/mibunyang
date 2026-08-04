@@ -53,14 +53,14 @@ describe("DeviationStrip — 블록 골격", () => {
     const { container } = render(
       <DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />
     );
-    expect(screen.getByText(/경기 아파트 평균과 비교/)).toBeInTheDocument();
+    expect(screen.getByText(/경기 아파트 한가운데 값과 비교/)).toBeInTheDocument();
     expect(container.textContent).not.toContain("중위값");
     expect(container.textContent).not.toContain("백분위");
   });
 
   it("region 이 비면 '전국'으로 부른다", () => {
     render(<DeviationStrip apt={apt({ region: "" })} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
-    expect(screen.getByText(/전국 아파트 평균과 비교/)).toBeInTheDocument();
+    expect(screen.getByText(/전국 아파트 한가운데 값과 비교/)).toBeInTheDocument();
   });
 });
 

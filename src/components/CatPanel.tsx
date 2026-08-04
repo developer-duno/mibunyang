@@ -57,6 +57,13 @@ function scoreSign(score: number, catKey: string): { mark: string; label: string
   return { mark: "▼", label: "약점" };
 }
 
+// 미수집 서브지표는 판정문구(interpret)를 숨긴다 — 값이 없는데 점수 기본값으로 "쾌적한 밀도"·
+// "주변 깨끗" 같은 칭찬/평가가 붙던 사고(세션 488 감사) 방지. info 가 "정보 없음"·"미수집"·"-" 면 데이터 없음.
+function isNoDataInfo(info?: string): boolean {
+  if (!info) return true;
+  return info === "-" || info.startsWith("정보 없음") || info.includes("미수집") || info.includes("미확인");
+}
+
 function getHighlights(subs: SubScoreItem[], catKey: string): SubScoreItem[] {
   if (catKey === "benefit") {
     return subs.filter((s) => s.info !== "-").slice(0, 3);
@@ -147,7 +154,7 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
         <div style={{ marginTop: 6 }}>
           {highlights.map((s) => {
             const sc = ctx[s.name];
-            const interp = sc?.interpret?.(s.score);
+            const interp = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score);
             return (
               <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 0" }}>
                 <span style={{ fontSize: F.xs, color: C.muted, flexShrink: 0 }}>·</span>
@@ -178,7 +185,7 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
           {subs.map((s: SubScoreItem, i: number) => {
             const sc = ctx[s.name];
             const dots = getDots(s.score, k, s.name);
-            const interp = sc?.interpret?.(s.score);
+            const interp = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score);
             const sc2 = scoreColor(s.score, k, s.name);
             return (
               <div

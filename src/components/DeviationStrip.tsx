@@ -79,7 +79,7 @@ export const DeviationStrip = memo(function DeviationStrip({
   return (
     <div style={compact ? S.wrap : { ...S.wrap, marginTop: 14 }}>
       <div style={S.header}>
-        <span>{regionLabel} 아파트 평균과 비교</span>
+        <span>{regionLabel} 아파트 한가운데 값과 비교</span>
         {usedNational && <span style={S.badge}>일부 전국 기준</span>}
         <HelpHint text={HELP_TEXT} label="지역 비교" />
       </div>

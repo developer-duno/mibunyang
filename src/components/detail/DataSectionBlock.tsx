@@ -80,7 +80,7 @@ export const DataSectionBlock = memo(function DataSectionBlock({
             {section.title}
             {section.hint && <HelpHint text={section.hint} label={section.title} />}
           </span>
-          {sectionPct != null && <CompletenessDonut pct={sectionPct} size={34} label={section.title} />}
+          {sectionPct != null && <CompletenessDonut pct={sectionPct} size={40} label={section.title} />}
         </div>
         <span
           style={{
