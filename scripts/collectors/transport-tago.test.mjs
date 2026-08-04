@@ -19,7 +19,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { extractSubwayName, extractSubwayLines, isValidStation, isValidIC, buildTransportRow } =
+const { extractSubwayName, extractSubwayLines, isValidStation, isValidIC, buildTransportRow, fetchCollectedApartmentIds } =
   await import("./transport-tago.mjs");
 
 // ── 팩토리 함수 ────────────────────────────────────────────────
@@ -194,5 +194,63 @@ describe('buildTransportRow — TAGO 수집 실패/성공 신호 분리', () => 
     expect(row.ic_dist).toBe(5.5);
     expect(row.ktx_dist).toBe(12);
     expect(row.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
+// ── fetchCollectedApartmentIds — PostgREST 1000행 상한 회귀 가드 (세션 490) ──
+/**
+ * PostgREST 를 흉내내는 가짜 Supabase.
+ * 핵심: `.limit(N)` 을 줘도 **한 응답에 최대 1000행**만 돌려준다(max_rows). `.range()` 도 같은 상한.
+ * 이 상한이 있어야 "옛 `.limit(10000)` 코드로 되돌리면 테스트가 깨진다"는 걸 실제로 검증할 수 있다.
+ * @param {number} totalRows
+ * @param {number} [cap]
+ */
+function makeCappedSb(totalRows, cap = 1000) {
+  const all = Array.from({ length: totalRows }, (_, i) => ({ apartment_id: `ap-${i}` }));
+  const chain = {
+    /** @param {number} from @param {number} to */
+    range: (from, to) =>
+      Promise.resolve({ data: all.slice(from, Math.min(to + 1, from + cap)), error: null }),
+    /** @param {number} n */
+    limit: (n) => Promise.resolve({ data: all.slice(0, Math.min(n, cap)), error: null }),
+  };
+  return { from: () => ({ select: () => ({ not: () => chain }) }) };
+}
+
+describe("fetchCollectedApartmentIds — 1000행 상한 넘어 전량 조회", () => {
+  it("1500건: 1000 에서 잘리지 않고 전량 반환 (옛 .limit(10000) 이면 1000 에서 멈춤)", async () => {
+    const done = await fetchCollectedApartmentIds(makeCappedSb(1500));
+    expect(done.size).toBe(1500);
+    expect(done.has("ap-1499")).toBe(true);
+  });
+
+  it("2170건(운영 규모): 전량 반환", async () => {
+    const done = await fetchCollectedApartmentIds(makeCappedSb(2170));
+    expect(done.size).toBe(2170);
+  });
+
+  it("정확히 1000건(경계): 무한루프 없이 1000 반환", async () => {
+    const done = await fetchCollectedApartmentIds(makeCappedSb(1000));
+    expect(done.size).toBe(1000);
+  });
+
+  it("0건: 빈 Set", async () => {
+    const done = await fetchCollectedApartmentIds(makeCappedSb(0));
+    expect(done.size).toBe(0);
+  });
+
+  it("빈/누락 apartment_id 는 제외", async () => {
+    const chain = {
+      /** @param {number} from */
+      range: (from) =>
+        Promise.resolve({
+          data: from === 0 ? [{ apartment_id: "ap-1" }, { apartment_id: "" }, {}] : [],
+          error: null,
+        }),
+    };
+    const sb = { from: () => ({ select: () => ({ not: () => chain }) }) };
+    const done = await fetchCollectedApartmentIds(sb);
+    expect(done.size).toBe(1);
+    expect(done.has("ap-1")).toBe(true);
   });
 });
