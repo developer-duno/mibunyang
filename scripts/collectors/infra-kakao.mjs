@@ -7,8 +7,9 @@
  * 사용법:
  *   node scripts/collectors/infra-kakao.mjs              (Supabase UPDATE)
  *   node scripts/collectors/infra-kakao.mjs --dry-run    (미리보기만)
+ *   node scripts/collectors/infra-kakao.mjs --force      (신선도 무시하고 전량 재수집)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordCollectorRun, createSemaphore } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordCollectorRun, createSemaphore, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -36,6 +37,38 @@ const CATEGORIES = /** @type {const} */ ([
   { key: "pharmacy", keyword: "약국", radius: 500 },
   { key: "park", keyword: "공원", radius: 1000 },
 ]);
+
+// ── 신선도 건너뛰기 (세션 490) ────────────────────────────────
+// 이전에는 매일 좌표 있는 단지 전량(2,170건)을 무조건 재수집해 23분/일을 태웠다. 인프라(병원·마트·
+// 편의점…)는 하루 단위로 바뀌지 않으므로 "완결 + 최근" 이면 건너뛴다. 하루 ~1/30 만 돌아 회차당 ~1분.
+// ⚠️ 시간만 보면 안 된다 — 값이 비어 있는 행이 신선하다는 이유로 영구 미보강으로 남는다
+//    (schools-neis buildEnrichedIds, 세션 338 답습). 완결성 + 신선도 둘 다 만족해야 건너뛴다.
+export const FRESH_DAYS = 30;
+
+/** 완결 판정 키 — 이 수집기가 채우는 컬럼 전부가 non-null 이어야 "완결" */
+export const REQUIRED_KEYS = [...CATEGORIES.map((c) => c.key), "subway_dist"];
+
+/**
+ * 건너뛸(=이미 완결 + 최근 갱신) apartment_id 집합.
+ * @param {Record<string, unknown>[]} rows infra 행 (apartment_id, updated_at, 카테고리 컬럼)
+ * @param {number} [nowMs]
+ * @param {number} [days]
+ * @returns {Set<string>}
+ */
+export function buildFreshIds(rows, nowMs = Date.now(), days = FRESH_DAYS) {
+  const cutoff = nowMs - days * 86400000;
+  /** @type {Set<string>} */
+  const fresh = new Set();
+  for (const r of rows || []) {
+    const id = r?.apartment_id;
+    if (typeof id !== "string" || !id) continue;
+    const ts = r.updated_at ? Date.parse(String(r.updated_at)) : NaN;
+    if (isNaN(ts) || ts < cutoff) continue;             // 오래됨 → 재수집
+    if (REQUIRED_KEYS.some((k) => r[k] == null)) continue; // 미완성 → 재수집
+    fresh.add(id);
+  }
+  return fresh;
+}
 
 /**
  * @param {number} lat
@@ -67,6 +100,7 @@ async function searchKakaoCategory(lat, lng, categoryCode, radius) {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  const forceAll = process.argv.includes("--force");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
@@ -81,10 +115,26 @@ async function main() {
     if (data.length < PAGE_SIZE) break;
   }
 
-  const targets = apts.filter(a => a.lat && a.lng);
+  const withCoords = apts.filter(a => a.lat && a.lng);
+  let targets = withCoords;
+  let freshCount = 0;
+  if (!forceAll) {
+    const infraRows = /** @type {Record<string, unknown>[]} */ (
+      await selectAll((s) => s.from("infra").select(
+        ["apartment_id", "updated_at", "subway_dist", ...CATEGORIES.map((c) => c.key)].join(", "),
+      ), sb)
+    );
+    const freshIds = buildFreshIds(infraRows);
+    freshCount = freshIds.size;
+    targets = withCoords.filter(a => !freshIds.has(a.id));
+    log(PHASE, `전체 ${withCoords.length}건 중 ${freshCount}건 최신(${FRESH_DAYS}일 이내·완결) 건너뜀`);
+  }
   log(PHASE, `대상: ${targets.length}건 (좌표 있음)`);
 
   const rpt = createReporter(PHASE);  // 세션 327: SIGTERM 핸들러 등록을 loop 이전으로 이동 (이전에는 loop 끝난 뒤 호출되어 등록 0회)
+  // 신선도로 건너뛴 건을 skip 으로 기록 — 전량 최신인 날 ok=0 이어도 monitor ② 의
+  // "success 인데 ok=0 && skip=0" 빈성공 오탐이 안 나게 한다 (notify-subscribers 선례 답습).
+  if (freshCount > 0) rpt.skip(freshCount);
   let updated = 0, skipped = 0;
 
   /**

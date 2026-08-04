@@ -9,7 +9,7 @@
  *   node scripts/collectors/transport-tago.mjs              (Supabase UPDATE)
  *   node scripts/collectors/transport-tago.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, recordCollectorRun, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, recordCollectorRun, createReporter, selectAll } from "./_shared.mjs";
 
 /**
  * @typedef {{ place_name?: string, category_name?: string, distance?: string|number, x?: string|number, y?: string|number }} KakaoDoc
@@ -181,6 +181,24 @@ export function extractSubwayLines(subways, stationName) {
   return lines.size > 0 ? [...lines].join(",") : null;
 }
 
+/**
+ * transport 테이블에서 이미 수집된 apartment_id 집합.
+ *
+ * ⚠️ `.limit(N)` 금지 — PostgREST max_rows=1000 이라 N 을 아무리 크게 줘도 **최대 1000행**만
+ *    돌아온다. 그러면 1000건만 "수집완료"로 인식해 나머지를 매일 재수집한다(세션 490 실측:
+ *    진짜 미수집 324건인데 매일 1170건 재수집 = 하루 46분 낭비 = $10 예산 대부분 소진).
+ *    전량 조회는 selectAll 페이지네이션으로만. 같은 사고 선례 = 커밋 01d0dd4(세션 295).
+ *
+ * @param {any} sb
+ * @returns {Promise<Set<string>>}
+ */
+export async function fetchCollectedApartmentIds(sb) {
+  const rows = /** @type {{ apartment_id: string }[]} */ (
+    await selectAll((s) => s.from("transport").select("apartment_id").not("subway_name", "is", null), sb)
+  );
+  return new Set(rows.map((r) => r.apartment_id).filter(Boolean));
+}
+
 async function main() {
   if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
   if (!TAGO_KEY) log(PHASE, "⚠️ TAGO_KEY 없음 — 버스 정류장 수집 건너뜀");
@@ -204,15 +222,19 @@ async function main() {
   const withCoords = apts.filter(a => a.lat && a.lng);
 
   let targets = withCoords;
+  let doneCount = 0;
   if (!forceAll) {
-    const { data: collected } = await sb.from("transport").select("apartment_id").not("subway_name", "is", null).limit(10000);
-    const doneSet = new Set((collected || []).map(r => r.apartment_id));
+    const doneSet = await fetchCollectedApartmentIds(sb);
+    doneCount = doneSet.size;
     targets = withCoords.filter(a => !doneSet.has(a.id));
-    log(PHASE, `전체 ${withCoords.length}건 중 수집완료 ${doneSet.size}건 → 미수집 ${targets.length}건`);
+    log(PHASE, `전체 ${withCoords.length}건 중 수집완료 ${doneCount}건 → 미수집 ${targets.length}건`);
   }
   log(PHASE, `대상: ${targets.length}건, TAGO 일일 상한: ${maxTago}건`);
 
   const rpt = createReporter(PHASE);
+  // 이미 수집된 건을 skip 으로 기록 — 전량 수집 완료 후 대상 0건이 되어도 monitor ②/⑤-a 의
+  // "success 인데 ok=0 && skip=0" 빈성공 오탐이 안 나게 한다 (notify-subscribers 선례 답습).
+  if (doneCount > 0) rpt.skip(doneCount);
   let tagoCallCount = 0;
 
   for (let i = 0; i < targets.length; i++) {
