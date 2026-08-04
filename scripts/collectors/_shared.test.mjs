@@ -7,7 +7,7 @@ import {
   resolveBuilder, stringSimilarity, today, sleep,
   REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
-  setupGracefulShutdown, clampUnsoldRate,
+  setupGracefulShutdown, clampUnsoldRate, budgetExceeded,
 } from "./_shared.mjs";
 
 describe("resolveBuilder", () => {
@@ -490,5 +490,35 @@ describe("createReporter graceful shutdown", () => {
     expect(sum.status).toBe("partial");
     expect(sum.ok).toBe(5);
     logSpy.mockRestore();
+  });
+});
+
+// ── budgetExceeded — job timeout 전에 스스로 멈추는 벽시계 예산 (세션 490) ──
+describe("budgetExceeded — 벽시계 예산", () => {
+  const T0 = Date.parse("2026-08-05T00:00:00Z");
+  const min = (/** @type {number} */ n) => T0 + n * 60_000;
+
+  it("예산 미만이면 false", () => {
+    expect(budgetExceeded(T0, 150, min(149))).toBe(false);
+  });
+
+  it("예산 정확히 도달하면 true (경계 포함)", () => {
+    expect(budgetExceeded(T0, 150, min(150))).toBe(true);
+  });
+
+  it("예산 초과면 true", () => {
+    expect(budgetExceeded(T0, 150, min(151))).toBe(true);
+  });
+
+  it("budgetMin=0 은 비활성 — 아무리 지나도 false", () => {
+    expect(budgetExceeded(T0, 0, min(100000))).toBe(false);
+  });
+
+  it("budgetMin 음수도 비활성", () => {
+    expect(budgetExceeded(T0, -5, min(100000))).toBe(false);
+  });
+
+  it("시작 직후는 false", () => {
+    expect(budgetExceeded(T0, 150, T0)).toBe(false);
   });
 });

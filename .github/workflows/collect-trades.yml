@@ -23,7 +23,11 @@ concurrency:
 jobs:
   collect-trades:
     runs-on: ubuntu-latest
-    timeout-minutes: 120 # 세션306: 5/6 60분 cancelled (raw 박제, 5/6 거래 491k vs 4/6 289k = 1.7배 자연 증가) → 120분
+    # 세션306: 5/6 60분 cancelled → 120분. 세션490: 7/6 도 120분 정확히 도달해 cancelled.
+    # 4-way 실측 결과 진앙은 데이터 증가가 아니라 **국토부 API 지연** — 6/6 성공 run 은 API 3402건을
+    # 73.8분(분당 46건)에 완주했는데 7/6 은 같은 3150건 지점에 120분(분당 26건, 1.8배 지연)이 걸렸고
+    # 그 시점 수집량은 오히려 적었다(464,958 vs 490,078). 73.8 × 1.8 ≈ 133분 → 180 + 예산 150분.
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v7

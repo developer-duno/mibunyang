@@ -6,6 +6,7 @@
  *   node scripts/collectors/collect-trades.mjs          (trades 테이블 적재)
  *   node scripts/collectors/collect-trades.mjs --dry-run (미리보기만)
  *   node scripts/collectors/collect-trades.mjs --months=12 (12개월 수집)
+ *   node scripts/collectors/collect-trades.mjs --budget-min=150 (벽시계 예산 분 — 기본 150, 0=무제한)
  *
  * 필요 환경변수:
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY, MOLIT_KEY
@@ -13,12 +14,18 @@
 import {
   loadEnv, getMibuyangSupabase, log, logError, sleep,
   upsertBatch, createReporter, recordApiQuota, recordCollectorRun, fetchWithRetry,
-  getLawdCd, normalizeGu,
+  getLawdCd, normalizeGu, budgetExceeded,
 } from "./_shared.mjs";
 
 loadEnv();
 
 const PHASE = "trades";
+
+// 벽시계 예산 (분). collect-trades.yml 의 timeout-minutes(180) 대비 30분 여유 —
+// 남은 30분은 마지막 upsert(약 52만행 batch 500) + 마무리용. 근거: 6/6 성공 run 실측 73.8분
+// × 현재 API 지연 1.8배 ≈ 133분 → 예산 150분이면 정상 회차는 예산에 닿지도 않는다.
+const DEFAULT_BUDGET_MIN = 150;
+
 const API_KEY = process.env.MOLIT_KEY;
 const API_BASE = "https://apis.data.go.kr/1613000";
 
@@ -261,20 +268,36 @@ async function main() {
 
   const rpt = createReporter(PHASE);
 
+  // 세션 490: job timeout(180분) 도달은 SIGKILL(grace 0)이라 아래 upsert 가 아예 실행되지 않는다
+  // → 210개 지역을 다 돌고 마지막에 한 번 저장하는 이 수집기는 수집분을 전량 잃는다
+  //   (7/6 run 28821807904 = 120분 일하고 저장 0건, 국토부 API 가 6월 대비 1.8배 지연).
+  // 예산 안에서 스스로 멈춰 "여기까지 수집분"이라도 저장한다. 6개월 롤링 창이라 다음 회차에 메워진다.
+  const startedAt = Date.now();
+  const budgetArg = process.argv.find((a) => a.startsWith("--budget-min="));
+  const budgetMin = budgetArg ? parseInt(budgetArg.replace("--budget-min=", ""), 10) : DEFAULT_BUDGET_MIN;
+  let budgetHit = false;
+
   for (const rg of regionGuPairs) {
     if (rpt.interrupted()) break;
+    if (budgetExceeded(startedAt, budgetMin)) { budgetHit = true; break; }
     const lawdCd = getLawdCd(rg.region, rg.gu);
     if (!lawdCd) { log(PHASE, "  " + rg.region + " " + rg.gu + ": 법정동코드 없음"); continue; }
 
     for (const type of /** @type {TradeType[]} */ (["sale", "jeonse", "presale"])) {
       if (rpt.interrupted()) break;  // 세션 344: graceful shutdown (내부 trade type loop)
+      if (budgetExceeded(startedAt, budgetMin)) { budgetHit = true; break; }
       const result = await fetchTradeRows(lawdCd, months, type, rg, seen, fallbackUsed);
       rows.push(...result.rows);
       apiCalls += result.apiCalls;
       fallbackUsed = result.fallbackUsed;
     }
+    if (budgetHit) break;  // 내부 loop 가 예산으로 끊겼으면 지역 loop 도 종료
 
     if (apiCalls % 50 === 0 && apiCalls > 0) log(PHASE, "  API " + apiCalls + "건, " + rows.length + "건 수집 중...");
+  }
+
+  if (budgetHit) {
+    log(PHASE, `[budget] ${budgetMin}분 예산 초과 — 여기까지 수집분(${rows.length}건)을 저장하고 종료. 남은 지역은 다음 회차 6개월 창이 메움`);
   }
 
   const saleCount = rows.filter(r => r.trade_type === "sale").length;

@@ -524,6 +524,26 @@ export function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+// ── wall-clock budget ────────────────────────────────────────
+/**
+ * job `timeout-minutes` **미만**에서 수집기가 스스로 멈추게 하는 벽시계 예산.
+ *
+ * ⚠️ 왜 필요한가: GitHub Actions 는 `timeout-minutes` 도달 시 step 을 **즉시 SIGKILL**
+ *    (grace 0) 한다 — graceful break 도, 마지막 저장도 실행될 틈이 없다. 수집을 다 끝낸 뒤
+ *    한 번에 upsert 하는 수집기는 그 순간 **그때까지의 수집분을 전량 잃는다**
+ *    (실측: collect-trades 7/6 run 28821807904 = 120분 일하고 저장 0건).
+ *    job timeout 보다 작은 예산에서 먼저 멈추면 부분 저장이라도 남는다.
+ *
+ * @param {number} startedAt  main() 시작 시각 (Date.now())
+ * @param {number} budgetMin  예산 (분). 0 이하 = 비활성(무제한)
+ * @param {number} [nowMs]    현재 시각 (테스트 주입용)
+ * @returns {boolean}
+ */
+export function budgetExceeded(startedAt, budgetMin, nowMs = Date.now()) {
+  if (budgetMin <= 0) return false;
+  return (nowMs - startedAt) >= budgetMin * 60_000;
+}
+
 // ── 오늘 날짜 (KST 고정) ────────────────────────────────────
 // 환경 무관 KST 날짜 — Intl en-CA = YYYY-MM-DD. GitHub Actions(UTC 러너)에서도 KST 보장.
 // 수집기 cron 이 KST 02:00~08:00 발화인데 UTC toISOString 은 그 시각 전날을 줘서 recorded_at 이
