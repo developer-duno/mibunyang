@@ -1,0 +1,336 @@
+{
+  "summary": "e2e.yml Playwright 브라우저 설치가 15분 예산을 먹어 테스트가 스킵되는 문제의 근본 대책 설계·검증",
+  "agentCount": 7,
+  "logs": [
+    "검증 완료 — 기각 렌즈 2/3, blocker 1건"
+  ],
+  "result": {
+    "proposal": {
+      "diagnosis": "고칠 문제가 실제로 존재하지 않는다 — 이번 조사의 전제가 실측으로 반증됐다.\n\n1) 설치 스텝은 느리지 않다. 최근 20회 `gh api .../jobs` 타임스탬프 실측: `npx playwright install --with-deps chromium webkit` = 평균 61.0초 / 중앙값 60초 / 최소 47초 / 최대 79초. 확장 표본(설치 스텝이 실제 존재한 최근 56회)에서도 최소 40초·최대 79초. 120초 초과 0건, 300초 초과 0건, 600초 초과 0건.\n2) 예산 압박이 없다. e2e job 전체(완료 19회) = 평균 245.6초(4분 6초) / 최대 298초(4분 58초) = `timeout-minutes: 15` 의 약 33%. `--status cancelled` 0건, `--status timed_out` 0건(각 최근 50회 조회).\n3) 메모리에 있던 \"Playwright 설치 13분 40초로 15분 예산 소진 → cancelled\" 서술은 e2e.yml 이력에 해당 실행이 없다. 최댓값이 79초다. 이 서술을 근거로 쓰면 안 된다.\n4) 캐시가 건드릴 수 있는 몫 자체가 작다. 61초 중 브라우저 다운로드는 평균 17.2초(28%)뿐이고, 나머지 평균 42.3초(69%)는 `--with-deps` 의 apt 설치다. 아이템별 실측(run 30817456114): Chrome 5.08초 + FFmpeg 1.12초 + Headless Shell 4.35초 + WebKit 3.89초 = 14.44초.\n5) 공식 문서가 캐싱을 명시적으로 비권장한다. playwright.dev/docs/ci: \"Caching browser binaries is not recommended, since the amount of time it takes to restore the cache is comparable to the time it takes to download the binaries. Especially under Linux, operating system dependencies need to be installed, which are not cacheable.\" 비권장 사유가 우리 실측(다운로드 17초 vs apt 42초)과 정확히 일치한다.\n6) webkit 은 실제로 필요하다. `playwright.config.ts:45-50` 의 mobile 프로젝트가 `devices[\"iPhone 13\"]` 만 쓰고 `browserName` 오버라이드가 없다. 디바이스 디스크립터 직독 결과 `iPhone 13 => defaultBrowserType: webkit` 이므로 webkit 을 빼면 `e2e/mobile.spec.ts` 4건이 브라우저 미설치로 깨진다.\n7) 이력상 유일하게 반복되는 빨간불은 설치와 무관하다. 최근 100회 conclusion = success 94 / failure 5 / 진행중 1 이고, failure 5건은 전부 dependabot 브랜치이며 job 이 2~3초 만에 `steps: []` 로 죽는다(예: 30358654097, 12:22:17→12:22:20). Install/Run E2E 스텝에 도달조차 못 한다(= Secrets 미접근 구조 문제).",
+      "recommendation": "캐시는 넣지 않습니다. 공식 문서가 대놓고 \"권하지 않는다\"고 적어둔 방법인 데다, 실측으로도 설치는 평균 61초뿐이고 그중 캐시가 줄일 수 있는 건 다운로드 17초라서 전체 4분짜리 작업의 7% 정도밖에 안 됩니다. 대신 이번 조사에서 나온 숫자를 e2e.yml 안에 주석으로 박아두고(나중에 누가 또 \"캐시 넣자\"로 되돌아오지 않게), 설치 스텝에만 5분 상한을 새로 답니다. 이 상한은 속도를 빠르게 하는 게 아니라, 만에 하나 설치가 정말 오래 걸릴 때 15분 예산을 조용히 다 태우고 테스트가 건너뛰어지는 대신 5분 만에 \"설치에서 막혔다\"고 분명하게 보이게 하는 안전핀입니다.",
+      "ymlPatch": "## 적용 대상: `F:\\mibunyang\\.github\\workflows\\e2e.yml` — 21~22줄을 아래 블록으로 교체 (그 외 줄 변경 없음)\n\n### 교체 전 (현행 21~22줄)\n\n```yaml\n      - name: Install Playwright browsers\n        run: npx playwright install --with-deps chromium webkit\n```\n\n### 교체 후 (붙여넣을 블록 원문)\n\n```yaml\n      # ⛔ 브라우저 바이너리 캐시(actions/cache)를 쓰지 않는다 — 재검토 전 이 근거부터 볼 것.\n      #  1) 공식 비권장: playwright.dev/docs/ci — \"Caching browser binaries is not recommended,\n      #     since the amount of time it takes to restore the cache is comparable to the time it\n      #     takes to download the binaries. Especially under Linux, operating system dependencies\n      #     need to be installed, which are not cacheable.\"\n      #  2) 실측(2026-08-03, 최근 20회 e2e run 의 gh api .../jobs 스텝 타임스탬프):\n      #     이 스텝 = 평균 61초 / 중앙 60 / 최소 47 / 최대 79(56회 확장표본도 최대 79).\n      #     내역은 --with-deps 의 apt 가 평균 42.3초(69%), 브라우저 다운로드가 평균 17.2초(28%).\n      #     캐시가 줄일 수 있는 건 뒤쪽 17초뿐이고 job 전체는 평균 246초라 최대 이득 ≈ 7%.\n      #     cancelled/timed_out 은 최근 50회 각 0건 — 15분 예산의 최대 사용률은 33%(298초).\n      #  3) 캐시 키를 잘못 잡으면 \"낡은 브라우저로 조용히 통과\"라는 더 나쁜 사고가 난다.\n      #     (부분 매칭 restore-keys 로 구버전 폴더가 복원되는 경우)\n      # ⛔ webkit 제거 금지: playwright.config.ts 의 mobile 프로젝트가 devices[\"iPhone 13\"]\n      #    (defaultBrowserType: webkit)을 browserName 오버라이드 없이 쓴다. 빼면 @mobile 4건이\n      #    브라우저 미설치로 깨진다. mobile 디바이스를 chromium 계열로 바꾸는 변경이 생기면\n      #    이 주석도 같이 갱신할 것.\n      - name: Install Playwright browsers\n        # 실측 최대 79초(56회 표본) 대비 약 3.8배 여유. 설치가 이 상한을 넘으면 15분 job 예산을\n        # 조용히 태우고 Run E2E 가 skipped 되는 대신, 여기서 즉시 실패시켜 원인을 드러낸다.\n        timeout-minutes: 5\n        run: npx playwright install --with-deps chromium webkit\n```\n\n### 적용 후 전체 파일 (검증용 — 이 모양이 되면 정상)\n\n```yaml\nname: E2E Tests\non:\n  pull_request:\n    branches: [main]\n\njobs:\n  e2e:\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    steps:\n      - uses: actions/checkout@v7\n\n      - uses: actions/setup-node@v6\n        with:\n          node-version: 24\n          cache: npm\n\n      - name: Install dependencies\n        run: npm ci\n\n      # ⛔ 브라우저 바이너리 캐시(actions/cache)를 쓰지 않는다 — 재검토 전 이 근거부터 볼 것.\n      #  1) 공식 비권장: playwright.dev/docs/ci — \"Caching browser binaries is not recommended,\n      #     since the amount of time it takes to restore the cache is comparable to the time it\n      #     takes to download the binaries. Especially under Linux, operating system dependencies\n      #     need to be installed, which are not cacheable.\"\n      #  2) 실측(2026-08-03, 최근 20회 e2e run 의 gh api .../jobs 스텝 타임스탬프):\n      #     이 스텝 = 평균 61초 / 중앙 60 / 최소 47 / 최대 79(56회 확장표본도 최대 79).\n      #     내역은 --with-deps 의 apt 가 평균 42.3초(69%), 브라우저 다운로드가 평균 17.2초(28%).\n      #     캐시가 줄일 수 있는 건 뒤쪽 17초뿐이고 job 전체는 평균 246초라 최대 이득 ≈ 7%.\n      #     cancelled/timed_out 은 최근 50회 각 0건 — 15분 예산의 최대 사용률은 33%(298초).\n      #  3) 캐시 키를 잘못 잡으면 \"낡은 브라우저로 조용히 통과\"라는 더 나쁜 사고가 난다.\n      #     (부분 매칭 restore-keys 로 구버전 폴더가 복원되는 경우)\n      # ⛔ webkit 제거 금지: playwright.config.ts 의 mobile 프로젝트가 devices[\"iPhone 13\"]\n      #    (defaultBrowserType: webkit)을 browserName 오버라이드 없이 쓴다. 빼면 @mobile 4건이\n      #    브라우저 미설치로 깨진다. mobile 디바이스를 chromium 계열로 바꾸는 변경이 생기면\n      #    이 주석도 같이 갱신할 것.\n      - name: Install Playwright browsers\n        # 실측 최대 79초(56회 표본) 대비 약 3.8배 여유. 설치가 이 상한을 넘으면 15분 job 예산을\n        # 조용히 태우고 Run E2E 가 skipped 되는 대신, 여기서 즉시 실패시켜 원인을 드러낸다.\n        timeout-minutes: 5\n        run: npx playwright install --with-deps chromium webkit\n\n      # SUPABASE_ANON_KEY는 공개 키 — GitHub Secrets에 등록 필요\n      - name: Run E2E tests\n        run: npx playwright test\n        env:\n          CI: true\n          VITE_USE_SUPABASE: \"true\"\n          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}\n          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}\n          VITE_FEATURE_UPCOMING: \"true\"\n          VITE_FEATURE_HOME: \"true\"\n\n      - uses: actions/upload-artifact@v7\n        if: ${{ !cancelled() }}\n        with:\n          name: playwright-report\n          path: playwright-report/\n          retention-days: 7\n```\n\n### 병행 권장 (yml 밖, 1줄 문서 정정)\n\n`.github/workflows/CLAUDE.md:21` 이 e2e.yml 을 \"push/PR 트리거\"로 적었으나 실제 yml 은 `pull_request` 만이다. 표의 해당 칸을 \"Playwright E2E 테스트 (PR 트리거)\"로 정정.",
+      "keyStrategy": "**우리 워크플로에는 cache key 가 존재하지 않는다** — actions/cache 를 채택하지 않으므로 \"브라우저 버전이 바뀌었는데 캐시가 안 무효화되는\" 사고 자체가 성립하지 않는다. 이게 이 선택의 실질 이득이다(절약되는 17초보다 이 사고를 없애는 값이 크다).\n\n다만 미래에 누가 굳이 넣겠다고 하면 지켜야 할 정답을 남긴다.\n\n- **경로**: `~/.cache/ms-playwright` (리눅스 러너). 이 아래에 `chromium-1228`, `chromium_headless_shell-1228`, `webkit-2311` 처럼 **브라우저별 + 빌드번호별 폴더**가 생긴다(공식 browsers 문서의 `du -hs` 예시가 이 구조를 보여줌). 즉 Playwright 버전을 올리면 요구 빌드번호가 바뀌어 **기존 폴더로는 못 돈다**.\n- **키에 반드시 Playwright 버전이 들어가야 한다.** 공식 지침이 \"cache these directories … **against a hash of the Playwright version**\" 이다. 현재 lock 실측값은 `@playwright/test` / `playwright` / `playwright-core` 모두 **1.61.1**. 1.61.1 → 1.62.x 로 올리면 키 문자열이 달라져 자동 miss → 새 빌드번호를 새로 받고 새 캐시를 굽는다. 이게 \"버전 변경 시 무효화\"의 유일한 정상 경로다.\n  - 차선책인 `hashFiles('package-lock.json')` 는 무관한 패키지 변경에도 miss 가 난다(= 17초 재다운로드). 안전한 방향의 오류라 허용은 되지만, 정확한 건 lock 에서 뽑은 playwright 버전 문자열을 키에 직접 박는 것이다.\n- **`restore-keys` 는 절대 쓰지 않는다.** GitHub 공식 동작이 \"접두사 부분 매칭 시 **가장 최근 캐시를 복원**\" 이라, 접두사만 맞는 **구버전 브라우저 폴더**가 복원된다. 그러면 폴더는 있는데 현재 Playwright 가 요구하는 빌드번호는 없는 상태가 되고, 여기에 \"캐시 적중이니 설치 스킵\" 같은 조건부 스텝을 붙이는 순간 **낡은/없는 브라우저로 조용히 도는** 사고가 완성된다.\n- **적중 여부와 무관하게 `npx playwright install` 은 항상 실행한다.** 이미 맞는 빌드번호가 있으면 즉시 no-op 이고, 어긋나면 그 자리에서 받는다. 캐시를 쓰더라도 설치 스텝을 `if: steps.cache.outputs.cache-hit != 'true'` 로 조건부화하지 말 것 — 그 조건문이 위 사고의 방아쇠다.\n- 부가 제약(공식): 캐시는 현재 브랜치·기본 브랜치(PR 이면 base 브랜치)에서 만든 것만 복원되고, 7일 미접근 시 삭제되며, 레포당 10GB 상한이다. 브랜치가 많은 이 레포(최근 20회 실행이 거의 전부 다른 feature 브랜치)에서는 **적중률 자체가 낮아** 이득이 더 줄어든다.",
+      "withDepsHandling": "`--with-deps` 를 **그대로 유지**한다. 스텝을 쪼개거나 `install-deps` 를 분리하지 않는다.\n\n근거와 처리 방침:\n\n1. **캐시로는 못 없앤다 — 공식 명시.** ci.md 가 \"operating system dependencies need to be installed, **which are not cacheable**\" 라고 못박았다. 우리 실측도 같은 말을 한다: 61초 중 **apt 가 42.3초(69%)**, 다운로드는 17.2초(28%)뿐. 즉 캐시를 완벽히 적중시켜도 스텝은 **61초 → 약 44초**가 최선이고, 4분짜리 job 기준 절감은 7% 다. 구조를 바꿀 값이 아니다.\n2. **\"캐시 적중 시 install-deps 만 따로 실행\" 분기는 만들지 않는다.** 애초에 캐시를 안 쓰므로 분기 이유가 없고, 그 절차는 공식 문서에 적혀 있지도 않다(위 문장에서 논리적으로 따라올 뿐 — 공식 확인 못 한 형태를 CI 에 박지 않는다). 스텝 1개 유지가 가장 단순하고 실패 지점도 하나다.\n3. **apt 42초를 실제로 0 으로 만드는 공식 경로는 Docker 이미지뿐**이다(`mcr.microsoft.com/playwright:v1.61.1-noble` 에 브라우저+OS 의존성 사전 설치, 공식 GitHub Actions 예시엔 `playwright install` 스텝 자체가 없음). 이건 기각했다 — 아래 rejected 참조.\n4. **부수효과 인지**: `--with-deps` 는 apt 를 건드리므로 GitHub 미러 상태에 좌우되는 유일한 구간이다. 이번 패치의 `timeout-minutes: 5` 는 정확히 이 구간이 이상해질 때(관측 최대 42초 → 5분은 7배 여유) 빠르고 분명하게 실패시키기 위한 안전핀이다. 즉 apt 를 **없애는 대신, 이상 징후를 관측 가능하게** 만드는 쪽으로 다룬다.",
+      "timeoutChange": "**job 레벨 `timeout-minutes: 15` 는 바꾸지 않는다(현행 유지).** 근거 = 완료된 19회 job 전체 소요가 평균 245.6초(4분 6초), 중앙 241초, **최대 298초(4분 58초)** 로 예산의 33% 만 쓴다. 3배 여유가 이미 있고, 최근 50회에 timed_out·cancelled 가 0건이다. 늘릴 이유도(초과 사례 0), 줄일 이유도(예산은 비용이 아니라 안전망이며 `retries: 2` 설정상 재시도 시 시간이 늘 수 있음) 없다.\n\n**대신 install 스텝에만 `timeout-minutes: 5` 를 신설한다(신규).** 근거:\n- 스텝 상한이 지금 **하나도 없어서**(job 15분만 존재), 설치가 오래 걸리면 예산을 조용히 다 태운 뒤 `Run E2E tests` 가 아예 실행되지 못한 채 job 이 죽는다. 이때 남는 신호는 \"E2E 실패\"뿐이고 리포트도 없어 원인 파악이 느리다. 이번 조사가 처음 출발한 잘못된 전제(\"설치가 예산을 먹었다\")가 바로 이 관측 불가능성에서 나온 것이기도 하다.\n- 값 산정: 20회 표본 최대 79초, 56회 확장 표본도 최대 79초 → **5분은 약 3.8배 여유**. apt 구간만 보면 최대 63.4초 대비 4.7배.\n- 성격: 속도 개선이 아니라 **관측성 개선**이다. 정상 경로(61초)에서는 아무 동작 변화가 없다. 실측이 \"느린 건 아예 없었다\"고 말하므로 캐시 같은 구조 변경 대신 **1줄짜리 안전핀**으로 빈도에 맞춘 처방을 한다.",
+      "risks": [
+        "`timeout-minutes: 5` 는 이론상 오늘이라면 통과했을 실행을 실패시킬 수 있다 — GitHub apt 미러가 유난히 느린 날 설치가 5분을 넘으면, 지금 구조에서는 15분 예산 안에서 그냥 성공했을 수도 있는 run 이 빨간불이 된다. 관측 최대 79초 대비 3.8배 여유라 확률은 낮고, 실패 메시지가 '이 스텝에서 막혔다'로 명확해 re-run 1회로 회복 가능하지만, 자원 여유를 관측성과 맞바꾼 선택임을 인지할 것.",
+        "이 패치로 CI 가 빨라지지 않는다. 설치는 여전히 평균 61초 그대로다. '캐시 검토했다'는 이유로 속도 개선을 기대하면 어긋난다 — 이번 결론은 '건드릴 값이 없다'이다.",
+        "주석에 실측 수치를 박제했으므로 Playwright 버전업(1.61.1 → 상위)·러너 이미지 변경·네트워크 환경 변화 후에는 수치가 낡는다. 측정 시점(2026-08-03)과 표본 수를 주석에 함께 적어 완화했으나, 큰 버전업 시 재측정 후 갱신 권장.",
+        "최근 100회의 유일한 반복 실패(dependabot 브랜치 5건)는 이 패치로 전혀 고쳐지지 않는다. 그 job 들은 2~3초 만에 `steps: []` 상태로 죽어 install 스텝에 도달조차 못 한다(Secrets 미접근 구조). e2e.yml 이 required check 라면 dependabot PR 은 계속 머지 차단된다 — 별도 판단이 필요한 사안.",
+        "webkit 유지 근거 주석은 `playwright.config.ts` 의 mobile 프로젝트가 `devices[\"iPhone 13\"]` 을 쓴다는 사실에 묶여 있다. 누가 mobile 디바이스를 `Pixel 5` 등 chromium 계열로 바꾸면 이 주석이 stale 이 된다(반대로 그때는 webkit 설치를 뺄 수 있게 됨). config 변경 시 e2e.yml 주석 동반 점검 필요.",
+        "주석이 길어져 e2e.yml 이 41줄 → 약 57줄이 된다. 실행 동작은 0 변화지만 diff 상 '워크플로 대폭 수정'처럼 보일 수 있다 — 리뷰 시 실제 실행 변경은 `timeout-minutes: 5` 단 1줄임을 명시할 것."
+      ],
+      "rejected": [
+        "**actions/cache 로 `~/.cache/ms-playwright` 캐싱** — 공식이 명시적으로 비권장하고(ci.md 원문 인용), 실측상 캐시가 건드릴 수 있는 몫은 61초 중 다운로드 17.2초뿐이라 job 전체(평균 246초) 대비 최대 이득이 약 7%다. 반대로 키를 잘못 잡거나 restore-keys 를 붙이면 '낡은 브라우저로 조용히 통과'라는 훨씬 나쁜 사고가 생긴다. 게다가 이 레포에는 `actions/cache` 선례가 0건이라(41개 워크플로 전부 setup-node 내장 `cache: npm` 만 사용) 첫 사례를 남기는 유지비까지 든다. 브랜치가 매번 다른 PR 중심 워크플로라 적중률도 낮다.",
+        "**Docker 컨테이너 전환(`container: mcr.microsoft.com/playwright:v1.61.1-noble`)** — 설치 61초를 실제로 0 으로 만드는 유일한 공식 경로이고 apt 42초까지 없앤다. 그러나 (a) Playwright 를 올릴 때마다 이미지 태그를 손으로 맞춰야 하고 어긋나면 깨지며(공식도 'always pin your Docker image to a specific version' 권고), (b) 기본 root 실행이라 Chromium 샌드박스가 꺼지고 `--ipc=host` 주의사항이 따라붙는다. 15분 예산의 33% 만 쓰고 있고 timed_out 이 0건인 상황에서 감수할 유지비가 아니다.",
+        "**webkit 설치 제거** — 다운로드 3.89초와 apt 일부를 줄일 수 있지만, 레포 조사 판정이 '필요'다. `playwright.config.ts:45-50` mobile 프로젝트가 `devices[\"iPhone 13\"]`(defaultBrowserType: webkit)을 browserName 오버라이드 없이 쓰므로 빼면 `e2e/mobile.spec.ts` 4건이 브라우저 미설치로 실패한다. 제거하지 않는다(지시 준수 + 실제 커버리지 손실).",
+        "**`--only-shell` 로 chromium 다운로드 축소** — 공식이 인정하는 용량 절감 수단이지만 절약분이 Chrome 5.08초 수준이고, 실제 테스트가 도는 바이너리가 full Chromium → chromium-headless-shell 로 바뀌어 동작이 달라질 위험이 있다. webkit 에는 애초에 적용되지 않아 절감 폭도 제한적이다. 측정 가능한 이득 없이 행동 변화만 사는 거래라 기각.",
+        "**job `timeout-minutes` 15 → 10 축소** — 최대 관측치가 298초라 여유는 있으나, 예산은 비용이 아니라 안전망이고 `retries: 2` 때문에 재시도가 붙는 날에는 소요가 늘 수 있다. 줄여서 얻는 게 없고 순수 위험만 는다.",
+        "**설치 스텝을 `npx playwright install` + `npx playwright install-deps` 로 분리** — 캐시를 도입할 때만 의미가 생기는 구조인데 캐시를 안 쓰므로 이유가 없다. 게다가 '적중 시 install-deps 만 실행하라'는 절차는 공식 문서에 실려 있지 않은(논리적으로만 따라오는) 형태라, 확인 못 한 절차를 CI 에 박지 않는다는 원칙에 어긋난다.",
+        "**dependabot 스킵(`if: github.actor != 'dependabot[bot]'`)** — 최근 100회 중 유일하게 반복되는 실패 5건의 실제 원인(Secrets 미접근으로 job 이 `steps: []` 로 즉사)이지만, 설치 시간·캐시라는 이번 과제 범위 밖이고 'dependabot PR 의 E2E 커버리지를 공식적으로 0 으로 둘 것인가 / required check 정책을 어떻게 할 것인가'라는 별도 판단이 필요하다. 이번 패치에 끼워 넣지 않고 별건으로 남긴다.",
+        "**`npm ci` → `npm ci --legacy-peer-deps`(ci.yml 과 통일)** — 두 워크플로의 플래그가 다른 건 사실이나, e2e.yml 은 현재 plain `npm ci` 로 최근 100회 중 94회 성공 중이다. 이번 목적(설치 시간)과 무관한 변경이라 손대지 않는다."
+      ]
+    },
+    "verdicts": [
+      {
+        "lens": "정확성",
+        "findings": [
+          {
+            "severity": "major",
+            "category": "wrong-tool-semantics",
+            "file": ".github/workflows/e2e.yml",
+            "line": 21,
+            "claim": "패치가 워크플로에 영구 박제하려는 주석 3항(\"캐시 키를 잘못 잡으면 '낡은 브라우저로 조용히 통과'\")과 keyStrategy 의 restore-keys 사고 시나리오가 actions/cache 의 hit 판정 방식을 틀리게 설명한다. 패치가 그린 사고 연쇄(restore-keys 부분 매칭 → 구버전 폴더 복원 → '캐시 적중이니 설치 스킵' 조건부 스텝 → 낡은 브라우저로 조용히 통과)는 `steps.<id>.outputs.cache-hit` 경로로는 성립할 수 없다.",
+            "evidence": "actions/cache 공식 README(raw.githubusercontent.com/actions/cache/main/README.md, WebFetch 직독): \"cache-hit - A string value to indicate an exact match was found for the key\" + \"set to `true` when the cache is restored using the primary `key` and `false` when the cache is restored using `restore-keys` or no cache is restored.\" → restore-keys 부분 복원 시 cache-hit=false 이므로, 통용되는 가드 `if: steps.cache.outputs.cache-hit != 'true'` 는 그 상황에서 **install 을 정상 실행**한다. 즉 패치가 지목한 방아쇠가 반대로 안전판이다. (참고로 진짜 silent-stale 경로는 '키에 Playwright 버전이 빠져 exact hit 이 뜨는데 요구 빌드번호가 달라진 경우' 또는 cache-matched-key/디렉터리 존재 여부로 손수 만든 가드인데, 이 두 가지는 주석에 안 적혀 있다.) 이 문장은 단순 메모가 아니라 '재검토 전 이 근거부터 볼 것' 이라고 스스로 권위를 선언한 블록 안에 들어간다.",
+            "fix": "주석 3항을 사실에 맞게 다시 쓴다. 예: \"restore-keys 로 부분 복원되면 cache-hit 은 false 라 install 은 그대로 돌지만, 구버전 브라우저 폴더가 캐시에 계속 얹혀 용량만 먹고 재다운로드도 그대로다. 진짜 위험은 primary key 에 Playwright 버전이 빠져 exact hit 이 뜨는 경우, 또는 cache-matched-key/폴더 존재로 install 을 손수 스킵하는 가드를 붙이는 경우다.\" keyStrategy 의 같은 서술도 동일하게 정정."
+          },
+          {
+            "severity": "minor",
+            "category": "stale-count",
+            "file": ".github/workflows/e2e.yml",
+            "line": 1,
+            "claim": "rejected 첫 항목의 \"41개 워크플로 전부 setup-node 내장 cache: npm 만 사용\" 에서 워크플로 개수가 틀렸다. 실측 40개다.",
+            "evidence": "`ls .github/workflows/*.yml | wc -l` = 40, `.yaml` 확장자 0개. 핵심 주장인 'actions/cache 선례 0건' 자체는 참(`grep -rl \"actions/cache\" .github/workflows/` = 0건). 이 레포는 같은 종류의 수치 drift 를 이미 겪었다 — 루트 CLAUDE.md 가 '단정 전 실측' 을 명시하고 세션 485 에서 워크플로 수 47·38 → 40 으로 정정한 이력.",
+            "fix": "'41개' → '40개' 로 정정하거나, 개수를 빼고 'actions/cache 사용 워크플로 0건(grep 실측)' 만 남긴다. 개수는 곧 낡는다."
+          },
+          {
+            "severity": "minor",
+            "category": "unstated-behavior-change",
+            "file": ".github/workflows/e2e.yml",
+            "line": 36,
+            "claim": "step-level timeout 은 job-level timeout 과 종료 종류가 다르다(step=프로세스 kill→step failure / job=job cancel). 이 차이로 upload-artifact 스텝의 실행 여부가 뒤바뀌는데 패치의 risks 에 없다.",
+            "evidence": "GitHub 공식 workflow-syntax(raw.githubusercontent.com/github/docs .../workflow-syntax.md, WebFetch 직독): steps[*].timeout-minutes = \"The maximum number of minutes to run the step before killing the process\", job timeout-minutes = \"...before GitHub automatically cancels it\". 현행 e2e.yml:35-40 의 아티팩트 스텝은 `if: ${{ !cancelled() }}`. 지금까지는 설치가 15분 job 예산을 먹으면 job 이 cancel → cancelled()=true → 아티팩트 스텝 스킵이었지만, 패치 후에는 설치 스텝이 fail 로 끝나므로 cancelled()=false → 아티팩트 스텝이 실행되고 `playwright-report/` 가 존재하지 않아 upload-artifact 가 'No files were found' 경고를 낸다(기본 if-no-files-found: warn 이라 job 을 더 깨뜨리지는 않음).",
+            "fix": "risks 에 한 줄 추가하거나, 아티팩트 스텝 조건을 `if: ${{ !cancelled() && hashFiles('playwright-report/**') != '' }}` 류로 좁힌다. 동작을 안 바꾸겠다면 최소한 '설치 타임아웃 시 아티팩트 스텝이 경고 1건 남긴다'를 명시."
+          },
+          {
+            "severity": "minor",
+            "category": "overstated-rationale",
+            "file": ".github/workflows/e2e.yml",
+            "line": 21,
+            "claim": "'15분 예산을 조용히 태우고' 라는 현행 서술이 과장이다. job timeout 은 조용하지 않다 — GitHub 이 '최대 실행 시간 15분 초과' 주석을 남기고 진행 중이던 스텝을 표시한다. 또한 이 안전핀이 발동할 시나리오는 이 레포 e2e 이력에 단 한 번도 없었다.",
+            "evidence": "`gh run list --workflow=e2e.yml --status cancelled --limit 50` = [] , `--status timed_out --limit 50` = [] (전 이력 서버측 필터). 최근 100회 conclusion 열거 = success 95 / failure 5, 그 5건 전부 dependabot 브랜치(30358654097 12:22:16→12:22:20 = 4초 등). 즉 설치가 예산을 태운 사례 0건. 안전핀 자체는 무해하지만, '기존에는 원인이 안 보였다'는 근거는 실제보다 세게 적혀 있다.",
+            "fix": "주석 문구를 '조용히 태우고' → '15분 job 예산을 다 쓴 뒤 job 이 통째로 cancel 되어 리포트도 안 남는다' 처럼 사실에 맞게 조정. 겸사겸사 '관측 이력상 발동 0회, 예방 목적' 임을 한 줄 명시하면 미래 독자가 빈도를 오해하지 않는다."
+          }
+        ],
+        "refuted": false
+      },
+      {
+        "lens": "조용한사고",
+        "findings": [
+          {
+            "severity": "major",
+            "claim": "진단 #7의 핵심 근거인 \"최근 100회 success 94 → 워크플로 건강 → 손댈 값 없음\"이 무효다. 이 초록불은 절반이 빈 껍데기다 — 매 실행 43개 중 20개(47%)가 런타임에 조용히 skip 되고 있다. 이 렌즈가 찾으라는 \"조용히 잘못된 결과\"가 이미 워크플로 안에 있는데, 패치는 그 위에 \"감사 완료, 건강함\"이라는 영구 주석을 덮어 다음 사람이 열어보지 않게 만든다.",
+            "evidence": "raw log 실측 2개 런 모두 동일: run 30817456114 `Running 43 tests using 1 worker` → `20 skipped` / `23 passed (2.6m)`, run 30818440672 `20 skipped` / `23 passed`. 소스 대조: `grep -c '^\\s*test(' e2e/*.spec.ts` 합(visual 2+5 제외) = 정확히 43 → 43건 전부 선택되고 20건이 런타임 `test.skip(true, ...)`로 빠지는 것 확정(프로젝트 필터링 아님). `grep -rn 'test.skip(' e2e/*.spec.ts | wc -l` = 31건, 15개 spec 중 10개 파일에 분포. 사유는 전부 \"카드 데이터 없음 — 빈 DB\" / \"flag OFF\" 류 (e2e/mobile.spec.ts:18,35,62). 즉 데이터가 안 실리면 테스트가 실패하는 대신 초록불이 된다.",
+            "fix": "패치의 diagnosis #7 문장(\"이력상 유일하게 반복되는 빨간불은 설치와 무관하다\")과 recommendation의 \"건드릴 값이 없다\"를 철회하거나, 최소한 \"성공률 95%는 43건 중 23건만 실제로 돈 결과\"라는 실측을 diagnosis에 병기할 것. yml 주석에 \"이 워크플로는 감사했고 문제없다\"는 취지를 박는 것은 보류 — 아직 감사되지 않은 층(스킵 47%)이 남아 있다."
+          },
+          {
+            "severity": "major",
+            "claim": "안전핀을 분산이 가장 작은 스텝에 달고, 예산을 실제로 태우는 스텝은 무방비로 남긴다. 패치가 내세운 목적(\"15분 예산을 조용히 태우는 것을 막는다\")과 실제 조치가 어긋난다.",
+            "evidence": "내 실측(n=25): `Install Playwright browsers` avg 60.0s / min 43 / max 79 — 56회 확장표본에서도 79초 초과 0건이라 5분 상한은 **한 번도 발동하지 않을** 상한이다. 반면 `Run E2E tests` = avg 163.9s / max 190s = **job 총시간의 67%**이고 `playwright.config.ts:29 retries: 2` + `:30 workers: 1` + `:57 webServer`(기본 60초 기동 대기)로 재시도 증폭이 걸린다. 이 스텝에는 스텝 timeout이 **없다**. 즉 15분 예산을 실제로 태울 수 있는 유일한 경로(테스트 hang → 재시도 2회)는 패치 후에도 그대로다.",
+            "fix": "`timeout-minutes`를 `Run E2E tests`(e2e.yml:25) 에도 달 것 — 실측 max 190초 대비 여유 두어 8~10분. install 상한만 달면 \"예산 보호 완료\"라는 오해만 남는다. install 상한 자체는 무해하나 단독으로는 목적을 달성하지 못한다."
+          },
+          {
+            "severity": "major",
+            "claim": "yml에 영구 박제될 주석이 GitHub Actions 동작을 **확인 없이** 단정하고 있고, 그 단정을 패치 자신의 증거가 반증한다. job timeout은 \"조용히\" 일어나지 않는다.",
+            "evidence": "패치 주석 원문: \"설치가 이 상한을 넘으면 15분 job 예산을 조용히 태우고 Run E2E 가 skipped 되는 대신…\". 그러나 패치 스스로 `gh run list --workflow=e2e.yml --status timed_out` 을 근거로 썼고(0건), 나도 동일 쿼리로 `[]` 를 받았다 — `timed_out` 은 GitHub의 일급 run status 필터다. 자기 자신을 status 로 노출하고 run 을 빨간불로 만드는 실패 모드를 \"조용히\"라고 부를 수 없다. 또 `Run E2E tests` 는 `skipped` 가 되는 게 아니라 도달 자체를 못 한다(조건부 skip 과 다른 상태). docs.github.com 해당 앵커를 WebFetch 했으나 timeout 동작 문단이 반환되지 않아 **공식 확인 실패** 상태 — 즉 이 주석은 지금 누구도 검증하지 않은 서술이다.",
+            "fix": "주석에서 \"조용히\"·\"Run E2E 가 skipped\" 표현 삭제. 검증 가능한 사실만 남길 것: \"job timeout(15분) 도달 시 원인이 어느 스텝인지 즉시 드러나지 않으므로, 설치 구간을 별도 상한으로 분리해 귀속을 명확히 한다\". [[workflow-name-hallucination]] §2 raw log 의무 · [[work-order-confirm-first]] §1(외부 시스템 동작 공식문서 확인 후 단정) 적용 대상."
+          },
+          {
+            "severity": "minor",
+            "claim": "영구 주석에 박히는 apt/다운로드 비율(69%/28%)이, 패치가 바로 그 근거로 인용한 런의 실측과 어긋난다.",
+            "evidence": "run 30817456114 raw log 타임스탬프 직독: 스텝 시작 13:20:14.65 → `Installing dependencies...` 13:20:15.29 → 첫 다운로드 시작 13:21:11.35 = **apt 약 56.1초**, 다운로드 13:21:11.35→13:21:25.79 = **14.44초**. 이 런의 실제 비율은 78%/20% 이지 69%/28% 가 아니다(스텝 API 총 72초와도 정합). 패치가 인용한 아이템별 수치(5.08/1.12/4.35/3.89)는 센티초 단위까지 정확했으므로 측정 자체는 신뢰할 만하나, 평균값 쌍이 인용 런과 재현되지 않는다.",
+            "fix": "주석에 비율을 박을 거면 표본 산출 방식(어느 런 N개, apt 구간 정의)을 함께 적거나, 재현 가능한 단일 런(30817456114: apt 56.1s / DL 14.44s)만 인용할 것. 오차 방향이 캐시를 실제보다 유리하게 보이게 하므로 \"캐시하지 말자\"는 결론 자체는 흔들리지 않는다."
+          },
+          {
+            "severity": "minor",
+            "claim": "스킵 수가 늘어나도 CI가 초록으로 남는 구조에 가드가 없고, 콘솔에는 개수만 찍혀 회귀가 눈에 띄지 않는다. 패치는 이 층을 검토 범위에서 통째로 뺐다.",
+            "evidence": "`playwright.config.ts:31 reporter: \"html\"` → CI 콘솔 출력은 `20 skipped / 23 passed` 두 줄뿐이고 어느 테스트가 왜 스킵됐는지는 아티팩트(playwright-report/)를 사람이 열어야만 보인다(`gh run view --log | grep '›'` 결과 0건으로 확인). 데이터 로딩 회귀로 스킵이 20→30 이 돼도 conclusion 은 success 그대로다.",
+            "fix": "이번 패치 범위 밖이면 별건으로 남기되, diagnosis 에 \"스킵 회귀 감시 부재\"를 명시할 것. 값싼 가드 예: `npx playwright test` 뒤에 json 리포터 병행 + 스킵 수 상한 검사, 또는 `reporter: [['html'],['list']]` 로 스킵 사유를 로그에 노출."
+          },
+          {
+            "severity": "minor",
+            "claim": "webkit 유지 판정은 맞지만 그 근거가 과대 표현됐다 — webkit 4건 중 3건은 데이터 없으면 조용히 스킵되므로 실효 커버리지는 1건이다.",
+            "evidence": "`devices['iPhone 13'].defaultBrowserType` = `webkit` 실측 확인, `e2e/mobile.spec.ts` 테스트 4건 확인 → webkit 제거 시 깨진다는 결론은 사실. 다만 e2e/mobile.spec.ts:18·35·62 세 건이 `test.skip(true, ...)` 조건부이고, 무조건 도는 것은 \"하단 네비게이션 표시\"(L11) 1건뿐이다.",
+            "fix": "webkit 은 그대로 유지(판정 동의). 다만 주석에 \"4건이 깨진다\"고 쓰면 커버리지가 4건인 것처럼 읽히므로 \"@mobile 4건이 브라우저 미설치로 에러(그중 3건은 데이터 없으면 스킵되는 조건부)\"로 정확히 적을 것."
+          },
+          {
+            "severity": "minor",
+            "claim": "dependabot 5건을 \"별건\"으로 미루는 것은 보안 업데이트가 조용히 안 들어오는 상태를 방치하는 결정이다 — 이 렌즈에서 가장 장기적인 silent 경로다.",
+            "evidence": "실측: 최근 100회 실패 5건 전부 dependabot 브랜치(js-yaml-4.3.0, minor-and-patch, dompurify-3.4.12, setup-node-7, eslint-10.6.0). run 30358654097 job = started 12:22:17 → completed 12:22:20(3초), `steps: 0`, failure — 스텝 진입 자체를 못 함(패치 서술과 일치). e2e 가 required check 면 이 PR 들은 영구 머지 불가.",
+            "fix": "패치 범위 유지는 수용하되, risks 에 \"보안 패치가 머지되지 못하고 쌓이는 상태\"임을 명시하고 별건 티켓을 남길 것. 메모리 세션 485b 선례(자체 브랜치 audit fix 로 우회)와 동일 사안."
+          }
+        ],
+        "refuted": true
+      },
+      {
+        "lens": "과잉대응",
+        "findings": [
+          {
+            "severity": "blocker",
+            "claim": "진단이 \"고칠 문제가 없다\"로 끝났는데 `rejected` 후보 8개 어디에도 **\"yml 을 아예 건드리지 않는다(null 옵션)\"** 가 없다. 문제 크기가 0으로 측정된 사안에 대해 최소 처방을 아예 저울에 올리지 않은 채 실행 변경 1줄 + 주석 16줄을 산출물로 낸다 — 이 렌즈에서 기각 사유다.",
+            "evidence": "독립 재측정(2026-08-03, developer-duno/mibunyang): `gh run list --workflow=e2e.yml --status cancelled --limit 100` = **0건**, `--status timed_out` = **0건**(역대). 최근 60회 conclusion = success 56 / failure 4, 표본 기간 2026-07-04 ~ 08-03(1개월). jobs 엔드포인트 실측 최근 15회 install = 79/72/78/49/47/60/58/70/52/54/51/64/74/55/57초(최대 79). job 전체 최대 = 30816729822 의 13:10:45→13:15:43 = **298초 = 15분 예산의 33%**. 즉 패치 자신의 근거가 전부 \"손댈 값이 없다\"를 가리키는데, 산출물은 무변경이 아니다.",
+            "fix": "e2e.yml 변경 0줄로 종결한다. 조사 결과(실측 수치·공식 비권장 인용·webkit 필요 근거)는 이 레포의 확립된 박제 위치인 `.claude/rules/workflows/` 에 1파일로 남기고(기존 13개 rules 와 같은 형식), 세션 메모리에 한 줄 인덱스만 추가한다. yml 은 지금 상태가 정답이라는 것이 이번 조사의 결론이다."
+          },
+          {
+            "severity": "major",
+            "claim": "`timeout-minutes: 5` 가 내세운 유일한 이득(\"어느 스텝에서 막혔는지 드러난다\")은 이 레포에 **이미 의무 절차로 존재**한다. 따라서 관측성 순증은 사실상 0이고, 남는 것은 \"오늘이라면 성공했을 실행을 실패시키는\" 새 실패 모드뿐이다.",
+            "evidence": "`.claude/rules/collectors/collector-timeout-rootcause-analysis.md:46` — \"`gh run view --log | tail` 텍스트로는 step별 시간을 못 보므로 jobs 엔드포인트 `started_at`/`completed_at` 실측 **의무**\", 같은 파일 `:87` — \"(1) `--status timed_out` vs `--status cancelled` 먼저 구분 (2) `gh api .../runs/<id>/jobs --jq '.jobs[].steps[]'` 로 step별 시간 확인\". 이 절차는 세션 309·344 사고로 박제된 것이고, 내가 이번 검증에서 그대로 써서 install 스텝 시간을 15회 뽑아냈다(위 finding 의 수치). 즉 \"설치에서 막혔다\"는 판별은 yml 변경 없이 이미 1개 명령으로 나온다.",
+            "fix": "`timeout-minutes: 5` 줄을 넣지 않는다. 굳이 안전핀을 남기고 싶다면 yml 이 아니라 위 rules 문서에 \"install 이 79초를 크게 벗어나면 jobs 엔드포인트로 step 시간부터 뽑는다\"는 진단 진입 조건 한 줄을 추가하는 쪽이 같은 목적에 위험 0이다."
+          },
+          {
+            "severity": "major",
+            "claim": "실측 수치 16줄을 e2e.yml **주석**에 박제하는 것은 이 레포의 박제 관례를 깨고 drift 를 사실상 보증한다. 어떤 audit 스크립트도 yml 주석을 검사하지 않아, 낡아도 아무 신호가 없는 채 \"캐시 재검토 금지\"의 권위로만 남는다.",
+            "evidence": "이 레포의 사고 근거 박제 위치는 `.claude/rules/**`(실측 `find .claude/rules -name '*.md' | wc -l` = **13파일**)이고, CI 가드도 rules/코드 쪽만 본다 — `scripts/audit-env-keys.mjs`·`audit-fill-matrix.mjs`·`audit-hooks-wiring.mjs`(ci.yml audit×5) 중 yml 주석 내용을 검증하는 것은 0개. 반면 수치 drift 는 이 레포의 반복 사고다(세션 485 = API 함수/워크플로/E2E 개수 3건 정정, 세션 485b = 문서 수치 11항목 정정). 주석에 박히는 \"평균 61초 / apt 42.3초(69%) / 다운로드 17.2초(28%)\"는 runner 이미지·apt 미러·Playwright 버전 중 하나만 바뀌어도 거짓이 되는데, 그 거짓이 미래 판단의 근거로 인용된다.",
+            "fix": "수치와 논거는 `.claude/rules/workflows/` 문서로 옮기고(측정일·표본수·재측정 명령 포함), yml 에는 아무것도 남기지 않는다. 정 필요하면 yml 주석은 \"근거: .claude/rules/workflows/<파일>.md 참조\" 한 줄로 포인터만 둔다 — 한 곳만 진실(memory-location 룰) 원칙."
+          },
+          {
+            "severity": "minor",
+            "claim": "\"정확한 수치를 박제한다\"가 명분인 패치 문서 자체에 수치 오류 2건이 있다. 같은 부주의가 파일에 박히는 수치에도 적용된다고 봐야 한다.",
+            "evidence": "패치 risks 항목: \"e2e.yml 이 41줄 → 약 57줄이 된다\" — 실측 `wc -l .github/workflows/e2e.yml` = **40**. 패치 rejected 항목: \"41개 워크플로 전부 setup-node 내장 cache: npm 만 사용\" — 실측 `ls .github/workflows/*.yml | wc -l` = **40**(세션 485 에서 47·38→40 으로 이미 정정된 값). 참고로 `grep -rn 'actions/cache' .github/workflows/` = 0건이라 \"선례 0건\" 주장 자체는 맞다.",
+            "fix": "두 수치를 40 으로 정정. 다만 finding 1·3 대로 yml 주석 자체를 안 넣으면 이 수치들이 파일에 남을 일이 없어진다."
+          },
+          {
+            "severity": "minor",
+            "claim": "패치가 인지하지 못한 부수효과 — step 실패는 cancel 이 아니라 failure 라서, `timeout-minutes: 5` 가 걸리면 아티팩트 업로드 스텝이 지금과 달리 **실행된다**. 존재하지 않는 리포트 디렉터리를 올리려다 무의미한 경고가 새로 붙는다.",
+            "evidence": "`.github/workflows/e2e.yml:35-39` = `actions/upload-artifact@v7` + `if: ${{ !cancelled() }}` + `path: playwright-report/`. 현행(job 15분 timeout)은 job 이 cancel 처리되어 이 스텝이 스킵되지만, step-level timeout 은 해당 스텝을 failure 로 만들고 job 도 failure 가 되므로 `!cancelled()` 가 참이 된다. 그런데 `Run E2E tests`(:25-26)가 실행되지 못한 상태라 `playwright-report/` 는 생성되지 않는다.",
+            "fix": "finding 1·2 대로 step timeout 을 넣지 않으면 해당 없음. 그래도 넣겠다면 업로드 스텝 조건을 `if: ${{ !cancelled() && steps.<e2e>.conclusion != 'skipped' }}` 류로 좁히거나 `if-no-files-found` 를 명시해 노이즈를 막을 것 — 다만 그 순간 \"1줄짜리 안전핀\"이라는 패치의 전제가 깨진다."
+          }
+        ],
+        "refuted": true
+      }
+    ],
+    "refutedCount": 2,
+    "blockers": [
+      {
+        "severity": "blocker",
+        "claim": "진단이 \"고칠 문제가 없다\"로 끝났는데 `rejected` 후보 8개 어디에도 **\"yml 을 아예 건드리지 않는다(null 옵션)\"** 가 없다. 문제 크기가 0으로 측정된 사안에 대해 최소 처방을 아예 저울에 올리지 않은 채 실행 변경 1줄 + 주석 16줄을 산출물로 낸다 — 이 렌즈에서 기각 사유다.",
+        "evidence": "독립 재측정(2026-08-03, developer-duno/mibunyang): `gh run list --workflow=e2e.yml --status cancelled --limit 100` = **0건**, `--status timed_out` = **0건**(역대). 최근 60회 conclusion = success 56 / failure 4, 표본 기간 2026-07-04 ~ 08-03(1개월). jobs 엔드포인트 실측 최근 15회 install = 79/72/78/49/47/60/58/70/52/54/51/64/74/55/57초(최대 79). job 전체 최대 = 30816729822 의 13:10:45→13:15:43 = **298초 = 15분 예산의 33%**. 즉 패치 자신의 근거가 전부 \"손댈 값이 없다\"를 가리키는데, 산출물은 무변경이 아니다.",
+        "fix": "e2e.yml 변경 0줄로 종결한다. 조사 결과(실측 수치·공식 비권장 인용·webkit 필요 근거)는 이 레포의 확립된 박제 위치인 `.claude/rules/workflows/` 에 1파일로 남기고(기존 13개 rules 와 같은 형식), 세션 메모리에 한 줄 인덱스만 추가한다. yml 은 지금 상태가 정답이라는 것이 이번 조사의 결론이다."
+      }
+    ],
+    "survives": false
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Research"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 2,
+      "title": "Synthesize"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 3,
+      "title": "Verify"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "research:공식문서",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "a1a415c32db3405ff",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785766695107,
+      "queuedAt": 1785766690722,
+      "attempt": 1,
+      "lastToolName": "WebFetch",
+      "lastToolSummary": "Quote verbatim: (1) how `key` exact match works and what ha…",
+      "promptPreview": "당신은 CI 인프라 조사 담당입니다. **공식 문서만** 근거로 삼으세요(추측 금지).\n\n조사 대상: GitHub Actions 에서 Playwright 브라우저 설치를 캐싱하는 **공식 권장 방법**.\n\nWebFetch/WebSearch 로 다음을 확인하세요:\n1. playwright.dev 의 CI 문서 (https://playwright.dev/docs/ci) — 브라우저 캐싱에 대해 공식적으로 뭐라고 하는가? 권장하는가, 비권장하는가? 비권장이면 그 이유는?\n2. 브라우저가 설치되는 **정확한 경로** (리눅스 기준). 버전별로 하위 디렉토리가 갈리는가?\n3. `npx playwright install --with-deps chromium webkit` 이 하는 일을 두 부분으로 분해: (a) 브라우…",
+      "lastProgressAt": 1785766914150,
+      "tokens": 168642,
+      "toolCalls": 13,
+      "durationMs": 219043,
+      "resultPreview": "## 1. 브라우저 캐싱 — 공식 입장: **비권장**\n\n**(a) 출처**: https://playwright.dev/docs/ci (\"Caching browsers\" 섹션) / 원문 https://raw.githubusercontent.com/microsoft/playwright/main/docs/src/ci.md\n\n**(b) 문서 원문 (verbatim)**:\n> \"Caching browser binaries is not recommended, since the amount of time it takes to restore the cache is comparable to the time it takes to download the binaries. Especially under Linux, operat…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "research:레포",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "a6881c49dc42134a2",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785766695292,
+      "queuedAt": 1785766690722,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "echo \"=== PW_VISUAL in .github ===\"; grep -rn \"PW_VISUAL\" .…",
+      "promptPreview": "당신은 레포 조사 담당입니다. 작업 디렉토리는 F:/mibunyang 입니다. 읽기 전용으로만 조사하세요(파일 수정·커밋 금지).\n\n다음을 **파일 직독**으로 확인하고 근거(파일:줄)를 붙여 보고하세요:\n1. `.github/workflows/e2e.yml` 전체 — 현재 timeout-minutes, 캐시 유무, 설치 명령.\n2. `playwright.config.ts` — projects 가 무엇이고 각각 어떤 브라우저/디바이스를 쓰는가? **webkit 이 실제로 필요한가?** (`devices[...]` 값을 직독해서 판단. mobile 프로젝트가 무슨 디바이스인지 정확히)\n3. `package.json` / `package-lock.json` — @playwright/test 정확한 버전.\n4. …",
+      "lastProgressAt": 1785766882166,
+      "tokens": 171320,
+      "toolCalls": 13,
+      "durationMs": 186874,
+      "resultPreview": "## 1. `.github/workflows/e2e.yml` (전체 41줄)\n\n| 항목 | 실측값 | 근거 |\n|---|---|---|\n| 트리거 | `pull_request: branches:[main]` **만** (push 없음) | `e2e.yml:2-4` |\n| `timeout-minutes` | **15** (job 레벨, step 레벨 timeout 없음) | `e2e.yml:9` |\n| 캐시 | `actions/setup-node@v6` 의 `cache: npm` **뿐** — npm 의존성만 캐시. **브라우저 바이너리 캐시 없음** | `e2e.yml:13-16` |\n| 설치 명령 | `npm ci` → `npx playwright install --with-deps chromium web…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "research:실행이력",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "aa2f6850722841296",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785766694955,
+      "queuedAt": 1785766690722,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "for id in 30817456114 30816729822 30816345990 30814842859 3…",
+      "promptPreview": "당신은 CI 실행 이력 분석 담당입니다. 작업 디렉토리 F:/mibunyang. gh CLI 를 읽기 전용으로 사용하세요.\n\n레포는 developer-duno/mibunyang 입니다. e2e.yml 워크플로의 **최근 20회 실행**에서 \"Install Playwright browsers\" step 이 실제로 몇 초 걸렸는지 전수 측정하세요.\n\n방법:\n```bash\ngh run list --workflow=e2e.yml --limit 20 --json databaseId,conclusion,createdAt\ngh api repos/developer-duno/mibunyang/actions/runs/<id>/jobs --jq '.jobs[].steps[] | select(.name|test(\"Playwrig…",
+      "lastProgressAt": 1785767252237,
+      "tokens": 189081,
+      "toolCalls": 20,
+      "durationMs": 557282,
+      "resultPreview": "All measurements complete. Every number below is from `gh api .../jobs` step timestamps and raw step logs — no estimates.\n\n## 1. Install step duration per run (last 20 e2e.yml runs)\n\nWorkflow step: `npx playwright install --with-deps chromium webkit` (`.github/workflows/e2e.yml`, job timeout-minutes: 15)\n\n| # | run id | branch | install step (s) | of which: `--with-deps` apt (s) | of which: browse…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "synthesize:패치안",
+      "phaseIndex": 2,
+      "phaseTitle": "Synthesize",
+      "agentId": "a8e077f5c56321bf8",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785767259270,
+      "queuedAt": 1785767256250,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "고칠 문제가 실제로 존재하지 않는다 — 이번 조사의 전제가 실…",
+      "promptPreview": "아래 3방향 조사 결과를 종합해 **e2e.yml 에 적용할 구체 패치**를 설계하세요.\n\n[공식문서 조사]\n## 1. 브라우저 캐싱 — 공식 입장: **비권장**\n\n**(a) 출처**: https://playwright.dev/docs/ci (\"Caching browsers\" 섹션) / 원문 https://raw.githubusercontent.com/microsoft/playwright/main/docs/src/ci.md\n\n**(b) 문서 원문 (verbatim)**:\n> \"Caching browser binaries is not recommended, since the amount of time it takes to restore the cache is comparable to the time it t…",
+      "lastProgressAt": 1785767540713,
+      "tokens": 177822,
+      "toolCalls": 3,
+      "durationMs": 281443,
+      "resultPreview": "{\"diagnosis\":\"고칠 문제가 실제로 존재하지 않는다 — 이번 조사의 전제가 실측으로 반증됐다.\\n\\n1) 설치 스텝은 느리지 않다. 최근 20회 `gh api .../jobs` 타임스탬프 실측: `npx playwright install --with-deps chromium webkit` = 평균 61.0초 / 중앙값 60초 / 최소 47초 / 최대 79초. 확장 표본(설치 스텝이 실제 존재한 최근 56회)에서도 최소 40초·최대 79초. 120초 초과 0건, 300초 초과 0건, 600초 초과 0건.\\n2) 예산 압박이 없다. e2e job 전체(완료 19회) = 평균 245.6초(4분 6초) / 최대 298초(4분 58초) = `timeout-minutes: 15` 의 약 33%. `--stat…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 5,
+      "label": "verify:정확성",
+      "phaseIndex": 3,
+      "phaseTitle": "Verify",
+      "agentId": "a36fabf530d33fd5a",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785767546219,
+      "queuedAt": 1785767543511,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "당신은 적대적 검증자입니다. 작업 디렉토리 F:/mibunyang. **패치를 반박하는 것이 임무**입니다. 확신이 없으면 refuted=true 쪽으로 기울이세요.\n\n렌즈: 정확성\n이 패치가 **작동하지 않을** 이유를 찾으세요. 캐시 경로가 틀렸는가? cache key 가 실제로는 브라우저 버전 변경을 못 잡는가? actions/cache 의 hit 판정 방식을 잘못 알고 있는가? yml 문법이 유효한가? 공식 문서 인용이 실제 문서와 다른가(직접 WebFetch 로 대조)?\n\n검증 대상 패치안:\n{\n  \"diagnosis\": \"고칠 문제가 실제로 존재하지 않는다 — 이번 조사의 전제가 실측으로 반증됐다.\\n\\n1) 설치 스텝은 느리지 않다. 최근 20회 `gh api .../jobs` 타임스탬프 실측:…",
+      "lastProgressAt": 1785768105312,
+      "tokens": 199342,
+      "toolCalls": 25,
+      "durationMs": 559093,
+      "resultPreview": "{\"findings\":[{\"severity\":\"major\",\"category\":\"wrong-tool-semantics\",\"file\":\".github/workflows/e2e.yml\",\"line\":21,\"claim\":\"패치가 워크플로에 영구 박제하려는 주석 3항(\\\"캐시 키를 잘못 잡으면 '낡은 브라우저로 조용히 통과'\\\")과 keyStrategy 의 restore-keys 사고 시나리오가 actions/cache 의 hit 판정 방식을 틀리게 설명한다. 패치가 그린 사고 연쇄(restore-keys 부분 매칭 → 구버전 폴더 복원 → '캐시 적중이니 설치 스킵' 조건부 스텝 → 낡은 브라우저로 조용히 통과)는 `steps.<id>.outputs.cache-hit` 경로로는 성립할 수 없다.\",\"evidenc…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 6,
+      "label": "verify:조용한사고",
+      "phaseIndex": 3,
+      "phaseTitle": "Verify",
+      "agentId": "af6f2d9e763497564",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785767546971,
+      "queuedAt": 1785767543511,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "당신은 적대적 검증자입니다. 작업 디렉토리 F:/mibunyang. **패치를 반박하는 것이 임무**입니다. 확신이 없으면 refuted=true 쪽으로 기울이세요.\n\n렌즈: 조용한사고\n이 패치가 **조용히 잘못된 결과**를 만들 경로를 찾으세요. 낡은 브라우저로 테스트가 통과해버리는가? restore-keys 가 다른 버전 캐시를 끌어오는가? 캐시 히트인데 --with-deps 가 스킵돼 런타임에 라이브러리 없어 깨지는가? 캐시가 비었을 때(첫 실행) 오히려 더 느려지는가?\n\n검증 대상 패치안:\n{\n  \"diagnosis\": \"고칠 문제가 실제로 존재하지 않는다 — 이번 조사의 전제가 실측으로 반증됐다.\\n\\n1) 설치 스텝은 느리지 않다. 최근 20회 `gh api .../jobs` 타임스탬프 실측: `…",
+      "lastProgressAt": 1785768078396,
+      "tokens": 198141,
+      "toolCalls": 26,
+      "durationMs": 531425,
+      "resultPreview": "{\"findings\":[{\"severity\":\"major\",\"claim\":\"진단 #7의 핵심 근거인 \\\"최근 100회 success 94 → 워크플로 건강 → 손댈 값 없음\\\"이 무효다. 이 초록불은 절반이 빈 껍데기다 — 매 실행 43개 중 20개(47%)가 런타임에 조용히 skip 되고 있다. 이 렌즈가 찾으라는 \\\"조용히 잘못된 결과\\\"가 이미 워크플로 안에 있는데, 패치는 그 위에 \\\"감사 완료, 건강함\\\"이라는 영구 주석을 덮어 다음 사람이 열어보지 않게 만든다.\",\"evidence\":\"raw log 실측 2개 런 모두 동일: run 30817456114 `Running 43 tests using 1 worker` → `20 skipped` / `23 passed (2.6m)`, run 308184…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 7,
+      "label": "verify:과잉대응",
+      "phaseIndex": 3,
+      "phaseTitle": "Verify",
+      "agentId": "a746712f44bed72fb",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785767547057,
+      "queuedAt": 1785767543512,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "당신은 적대적 검증자입니다. 작업 디렉토리 F:/mibunyang. **패치를 반박하는 것이 임무**입니다. 확신이 없으면 refuted=true 쪽으로 기울이세요.\n\n렌즈: 과잉대응\n이 패치가 **문제 크기에 비해 과한지** 판단하세요. 실행이력 실측상 느린 실행이 정말 몇 %인가? 그 빈도라면 timeout 만 올리는 게 더 단순하고 안전하지 않은가? 캐시 도입이 유지보수 부담(키 관리·캐시 용량 한도 10GB·eviction)을 새로 만드는가? 더 작은 처방이 있는가?\n\n검증 대상 패치안:\n{\n  \"diagnosis\": \"고칠 문제가 실제로 존재하지 않는다 — 이번 조사의 전제가 실측으로 반증됐다.\\n\\n1) 설치 스텝은 느리지 않다. 최근 20회 `gh api .../jobs` 타임스탬프 실측: `n…",
+      "lastProgressAt": 1785767903333,
+      "tokens": 185233,
+      "toolCalls": 15,
+      "durationMs": 356276,
+      "resultPreview": "{\"findings\":[{\"severity\":\"blocker\",\"claim\":\"진단이 \\\"고칠 문제가 없다\\\"로 끝났는데 `rejected` 후보 8개 어디에도 **\\\"yml 을 아예 건드리지 않는다(null 옵션)\\\"** 가 없다. 문제 크기가 0으로 측정된 사안에 대해 최소 처방을 아예 저울에 올리지 않은 채 실행 변경 1줄 + 주석 16줄을 산출물로 낸다 — 이 렌즈에서 기각 사유다.\",\"evidence\":\"독립 재측정(2026-08-03, developer-duno/mibunyang): `gh run list --workflow=e2e.yml --status cancelled --limit 100` = **0건**, `--status timed_out` = **0건**(역대). 최근 60회 concl…"
+    }
+  ],
+  "totalTokens": 1289581,
+  "totalToolCalls": 115
+}

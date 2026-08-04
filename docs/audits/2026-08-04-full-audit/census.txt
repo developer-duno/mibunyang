@@ -1,0 +1,156 @@
+
+총 필드 155 · 단지 1581
+
+══ ① 두 곳 이상에 나오는 필드 42개 ══
+  5곳  price                   94.8%  분양가              헤더 | 종합탭:직접 | 시세탭:직접 | 분양탭:직접 | 금융탭:직접
+  4곳  gu                      97.9%  구/시              헤더 | 종합탭:직접 | 분양탭:직접 | 금융탭:직접
+  4곳  region                   100%  시/도              헤더 | 종합탭:직접 | 분양탭:직접 | 금융탭:직접
+  3곳  competitionRate         48.3%  청약 경쟁률           분양탭:직접 | 세부:PRESALE/청약 경쟁 현황 | 점수탭
+  3곳  jeonseRate              98.6%  전세가율             종합탭:직접 | 편차:팝업 | 점수탭
+  3곳  pir                     94.8%  PIR (소득대비)       편차:팝업 | 세부:PRICE/시장/투자 지표 | 점수탭
+  3곳  subwayDist               100%  지하철 거리           편차:팝업 | 입지:거리그림 | 세부:LOCATION/교통 상세
+  2곳  address                  100%  지번 주소            헤더 | 세부:OVERVIEW/단지 기본정보
+  2곳  area                    57.6%  전용면적             헤더 | 시세탭:직접
+  2곳  avgMaintenanceCost      73.9%  평균 관리비           편차:팝업 | 세부:OVERVIEW/단지 기본정보
+  2곳  bankDist                96.7%  은행 거리            입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  cafeDist                95.3%  카페 거리            입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  cancelRatio6m           96.2%  계약해제율            세부:PRESALE/분양 안전지표 | 점수탭
+  2곳  childcare                100%  어린이집/유치원(1km)    세부:LOCATION/생활인프라 (반경 1km) | 점수탭
+  2곳  childcareDist           98.2%  어린이집 거리          입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  conv                     100%  편의점              세부:LOCATION/생활인프라 (반경 1km) | 점수탭
+  2곳  convDist                95.1%  편의점 거리           입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  crimeSafetyGrade        86.6%  치안 안전등급          세부:LOCATION/치안/환경 | 점수탭
+  2곳  cultureDist             97.2%  문화시설 거리          입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  district                 3.2%  개발구역             헤더 | 세부:OVERVIEW/단지 기본정보
+  2곳  dong                     100%  동                헤더 | 종합탭:직접
+  2곳  dsr40pass               94.8%  DSR 40% 통과       금융탭:직접 | 점수탭
+  2곳  emergency                100%  응급의료기관           세부:LOCATION/생활인프라 (반경 1km) | 점수탭
+  2곳  emergencyDist           90.1%  응급의료 거리          입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  hospital                 100%  병원               세부:LOCATION/생활인프라 (반경 1km) | 점수탭
+  2곳  hospitalDist            94.9%  병원 거리            입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  id                       100%  단지 ID            헤더 | 시세탭:직접
+  2곳  mart                     100%  대형마트             세부:LOCATION/생활인프라 (반경 1km) | 점수탭
+  2곳  martDist                41.2%  마트 거리            입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  park                     100%  공원               세부:LOCATION/생활인프라 (반경 1km) | 점수탭
+  2곳  parkDist                95.3%  공원 거리            입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  pharmacy                 100%  약국               세부:LOCATION/생활인프라 (반경 1km) | 점수탭
+  2곳  pharmacyDist            76.5%  약국 거리            입지:거리그림 | 세부:LOCATION/생활인프라 (반경 1km)
+  2곳  police                   100%  경찰관서(3km)        세부:LOCATION/치안/환경 | 점수탭
+  2곳  policeDist              97.7%  경찰관서 거리          입지:거리그림 | 세부:LOCATION/치안/환경
+  2곳  popGrowth                100%  인구증감률            세부:PRICE/시장/투자 지표 | 점수탭
+  2곳  pp                      94.8%  평당가              편차:팝업 | 세부:OVERVIEW/단지 기본정보
+  2곳  presaleMaxPrice         51.4%  분양 최고가           분양탭:직접 | 세부:PRESALE/네이버 분양정보
+  2곳  presaleMinPrice         51.4%  분양 최저가           분양탭:직접 | 세부:PRESALE/네이버 분양정보
+  2곳  presaleStage            51.4%  분양단계             분양탭:직접 | 세부:PRESALE/네이버 분양정보
+  2곳  psr                     46.8%  PSR (주변대비)       세부:PRICE/시장/투자 지표 | 점수탭
+  2곳  unsoldRate              84.4%  미분양률             종합탭:직접 | 편차:팝업
+
+══ ② 채움 0% (있어도 절대 안 보임) 13개 ══
+  balconyFree            발코니 확장 무상          (노출 0)
+  balconyValue           발코니 가치             (노출 0)
+  benefits               혜택 목록              종합탭:직접
+  cashback               캐시백                (노출 0)
+  contractDiscount       계약금 할인             (노출 0)
+  discountPct            할인율                (노출 0)
+  energyGrade            에너지 등급             (노출 0)
+  hugGuarantee           HUG 보증             (노출 0)
+  loanFree               무이자 대출             (노출 0)
+  loanFreePct            무이자 비율             (노출 0)
+  optionFree             옵션 무상              (노출 0)
+  optionValue            옵션 가치              (노출 0)
+  supplyRatio            공급비율               (노출 0)
+
+══ ③ 어디에도 직접 안 나오는 필드 45개 (여분 아코디언 경유) ══
+  announcementUrl          3.5%  (라벨없음)
+  avgPriceSqm              100%  ㎡당 평균분양가
+  balconyFree                0%  발코니 확장 무상
+  balconyValue               0%  발코니 가치
+  builderCreditGrade      11.5%  시공사 신용등급
+  builderDebtRatio        11.5%  시공사 부채비율
+  buildingCoverageRatio   97.3%  건폐율
+  cashback                   0%  캐시백
+  catsCache                100%  (라벨없음)
+  cityDev                  8.5%  도시 개발
+  contractDiscount           0%  계약금 할인
+  corridorType            81.8%  복도유형
+  devDist                 41.1%  개발지 거리
+  discountPct                0%  할인율
+  elecUsageKwh            25.1%  월 전기사용량
+  energyCollectedAt       28.1%  에너지 수집 시점
+  energyGrade                0%  에너지 등급
+  floorAreaRatio          72.6%  용적률
+  floors                  94.1%  층수 범위
+  gasUsageMj              19.8%  월 가스사용량
+  hasPool                 90.1%  수영장
+  hugGuarantee               0%  HUG 보증
+  industryDev             12.7%  산업 개발
+  isRegulated              100%  규제지역
+  lastUnsoldEventAt       48.5%  최근 무순위 공고일
+  lat                      100%  (라벨없음)
+  layout                  30.6%  평면구조
+  lng                      100%  (라벨없음)
+  loanFree                   0%  무이자 대출
+  loanFreePct                0%  무이자 비율
+  maxFloor                94.1%  최고층
+  naverAvgFloor           94.6%  네이버 평균 층수
+  naverBuildYear          99.3%  네이버 평균 건축연도
+  naverNearbyAvg          99.2%  네이버 주변 평균가
+  noxious                 86.4%  혐오시설
+  optionFree                 0%  옵션 무상
+  optionValue                0%  옵션 가치
+  priceIndex               100%  분양가격지수
+  schoolGrade              100%  학군 등급
+  schoolScore              100%  학군 점수
+  scoresComputedAt         100%  (라벨없음)
+  supplyRatio                0%  공급비율
+  transitDev              41.1%  교통 개발
+  unsoldEventCount         100%  무순위 공고 횟수
+  updatedAt                100%  (라벨없음)
+
+══ ④ 채움 90%+ 인데 노출 0~1곳 (묻힌 알짜) ══
+    100%  avgPriceSqm            ㎡당 평균분양가           (노출 0)
+    100%  bank                   은행                 세부:LOCATION/생활인프라 (반경 1km)
+    100%  cafe                   카페                 세부:LOCATION/생활인프라 (반경 1km)
+    100%  catsCache              (라벨없음)             (노출 0)
+    100%  culture                문화시설               세부:LOCATION/생활인프라 (반경 1km)
+    100%  dataReliability        데이터 신뢰도            세부:OVERVIEW/단지 기본정보
+    100%  housingSupplyLevel     주택보급률              세부:PRICE/시장/투자 지표
+    100%  icDist                 IC 거리              세부:LOCATION/교통 상세
+    100%  initialSaleRate        초기분양률              점수탭
+    100%  isRegulated            규제지역               (노출 0)
+    100%  ktxDist                KTX 거리             세부:LOCATION/교통 상세
+    100%  landCostRatio          대지비 비율             점수탭
+    100%  lat                    (라벨없음)             (노출 0)
+    100%  lng                    (라벨없음)             (노출 0)
+    100%  name                   단지명                헤더
+    100%  netMigration           순이동                세부:PRICE/시장/투자 지표
+    100%  newSupply              신규 분양세대수           세부:PRESALE/분양 안전지표
+    100%  priceIndex             분양가격지수             (노출 0)
+    100%  schoolGrade            학군 등급              (노출 0)
+    100%  schoolScore            학군 점수              (노출 0)
+    100%  scoresComputedAt       (라벨없음)             (노출 0)
+    100%  units                  총세대수               세부:OVERVIEW/단지 기본정보
+    100%  unsoldEventCount       무순위 공고 횟수          (노출 0)
+    100%  updatedAt              (라벨없음)             (노출 0)
+    100%  view                   조망                 세부:LOCATION/치안/환경
+   99.8%  builder                시공사                세부:OVERVIEW/단지 기본정보
+   99.7%  airQuality             대기질                세부:LOCATION/치안/환경
+   99.6%  busRoutes              버스 노선              세부:LOCATION/교통 상세
+   99.3%  naverBuildYear         네이버 평균 건축연도        (노출 0)
+   99.3%  naverFetchedAt         수집 시점              세부:PRICE/네이버 교차검증
+   99.3%  naverNearbyCount       주변 단지 수            세부:PRICE/네이버 교차검증
+   99.2%  naverNearbyAvg         네이버 주변 평균가         (노출 0)
+   99.2%  naverNearbyMedian      네이버 주변 중위가         세부:PRICE/네이버 교차검증
+   98.2%  nearbyMedian           주변 아파트 시세          세부:PRICE/시장/투자 지표
+   97.3%  buildingCoverageRatio  건폐율                (노출 0)
+   96.8%  avgFloor               평균 거래 층수           세부:PRICE/시장/투자 지표
+   96.8%  floorRange             거래 층수 범위           세부:PRICE/시장/투자 지표
+   96.1%  recentTrades6m         최근6개월 거래           세부:PRICE/시장/투자 지표
+   94.6%  naverAvgFloor          네이버 평균 층수          (노출 0)
+   94.1%  floors                 층수 범위              (노출 0)
+   94.1%  maxFloor               최고층                (노출 0)
+   94.1%  primaryDirection       대표 향               세부:OVERVIEW/단지 기본정보
+   92.5%  parkingRatio           주차 비율              편차:팝업
+   92.3%  naverJeonseRate        네이버 전세가율           세부:PRICE/네이버 교차검증
+   92.2%  unsold                 미분양 세대             세부:OVERVIEW/단지 기본정보
+   90.1%  hasPool                수영장                (노출 0)

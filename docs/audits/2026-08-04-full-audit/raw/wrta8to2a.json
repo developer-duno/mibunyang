@@ -1,0 +1,1039 @@
+{
+  "summary": "팝업 155필드 노출 순서를 처음부터 재설계 — 손님 의사결정 기준으로 우선순위·중복제거·서랍통일",
+  "agentCount": 8,
+  "logs": [
+    "재설계 검증 — blocker 10 / major 17 / 기각 4/4"
+  ],
+  "result": {
+    "frames": [
+      "All measurements done. Composing the deliverable.\n\n**결론 한 문장**\n\n> 이 팝업은 위에서부터 **①얼마이고 왜 안 팔렸나 → ②지금 사도 괜찮나 → ③내 조건에 맞나 → ④이 숫자를 믿어도 되나** 순서로 답한다.\n\n---\n\n## 1. 프로필 5종이 말하는 \"먼저 보는 것\" (`src/constants/profiles.ts:11-37`)\n\n| 프로필 | 1위 | 2위 | 최하위 |\n|---|---|---|---|\n| 실거주 | location 40 | product 20 / price 20 | benefit 5 · future 5 |\n| 투자 | price 30 | risk 25 | product 10 |\n| 신혼부부 | location 30 / price 30 | product 15 | future 5 |\n| 자녀교육 | location 45 | product 20 | benefit 5 · future 5 |\n| 은퇴 | location 35 | product 25 | **future 0** |\n\n측정 결과 3가지:\n\n1. **`location` 이 5개 중 4개에서 1위**(40·30·45·35), 투자만 3위(15). 가중치 합계로 보면 location 165 > price 115 > product 90 > risk 70 > benefit 35 > future 25.\n2. **`benefit` 은 5개 프로필 전부에서 하위 2위 안**(5·10·10·5·5)인데, 실측 채움률이 **0.0%**(아래 §4). 가장 안 중요하면서 가장 비어 있다.\n3. **화면 순서는 이 가중치를 전혀 안 쓴다.** `catOrder.ts:23` `CAT_DISPLAY_ORDER = price, location, benefit, product, risk, future` 고정. 2열 그리드라 **benefit(0% 데이터)이 2행 왼쪽** = 미니카드 6칸 중 3번째 자리를 차지한다. 은퇴 프로필은 가중치 0인 `future` 카드까지 본다(`orderedCatEntries` 는 가중치를 안 봄).\n\n---\n\n## 2. 이 상품의 특수성 — 실측\n\n`public/data/apartments-list.json` (1,581행) + 상세 버킷 16개 직접 집계:\n\n| 사실 | 수치 |\n|---|---|\n| **이미 다 짓고도 미분양이 남은 단지** | **824 / 1,581 = 52.1%** |\n| 그중 미분양률 15% 넘는 곳 | 233 (14.7%) |\n| 이미 준공(입주 개시) | 913 (57.7%) · 준공 예정 414 (26.2%) · 미상 254 (16.1%) |\n| 무순위(재공고) 1회 이상 | **766 (48.5%)** |\n| 미분양률 15% 초과 | 244 (15.5%) · 0% 250 (15.8%) · null 247 (15.6%) |\n| 분양단계 | 없음 768 · 분양중 432 · 미분양 265 · 청약중 60 · 분양계획 56 |\n\n**핵심**: 이 상품의 정의는 \"안 팔렸다\"이고, 그 절반(52.1%)은 **이미 완공된 채 안 팔린 것**이다. 이게 가장 위험한 유형인데 — `DetailModal.tsx:438-463` 핵심지표에서 **미분양률은 5번째 행, 입주는 8번째 행**으로 3칸 떨어져 있고, 손님이 두 줄을 머릿속에서 합쳐야 \"다 지었는데 안 팔렸구나\"를 안다. 어디에도 합쳐진 표현이 없다.\n\n`unsoldEventCount`(100%)·`lastUnsoldEventAt`(48.5%)는 **\"왜 안 팔렸나\"의 유일한 직접 증거**(다시 내놓은 횟수·시점)인데, 팝업 어디에도 직접 안 나온다 — `AptCard.tsx:470,525` 카드 배지에만 있고 팝업에서는 여분 아코디언(플래그 뒤)까지 들어가야 나온다.\n\n---\n\n## 3. 첫 화면(390px) 계산\n\n**뷰포트 390×844 기준** (`DetailModal.tsx:332,346` — isPC=false 경로).\n\n| 고정 영역 | px | 근거 |\n|---|---|---|\n| 모달 총 높이 | 801 | `maxHeight: \"95dvh\"` × 844 |\n| − 헤더 | 97 | padding 12 + dragBar(4+12) + headerRow 56 + margin 12 + border 1 (`L354-381`) |\n| − StickyJumpNav | 44 | `JUMP_NAV_HEIGHT = 44` (`StickyJumpNav.tsx:10`) |\n| − CTA sticky 바 | 119~153 | 10+44+8+44+12+1, safe-area 0~34 (`L781-875`) |\n| **= 첫 화면 콘텐츠 띠** | **507 ~ 541 (보수적 510)** | |\n\n**지금 그 510px 이 쓰이는 방식** (종합 탭):\n\n| 순서 | 블록 | 높이 | 누계 |\n|---|---|---|---|\n| 1 | ScoreBadge 80 + margin 16 | **96** | 96 |\n| 2 | 편차 스트립 8줄 | **245** | 341 |\n| 3 | 핵심지표 (head 26 + 8행×27) | 254 | 595 |\n| 4 | 카테고리 미니카드 6 | 217 | 812 |\n| 5 | 프로필 가중치 막대 / 기본정보 / 여분 / 출처 | — | 812+ |\n\n편차 스트립 245px 근거 = `stripHeight(8)` = 16+4+(8×22)+(7×5)=231, +`marginTop 14` (`DeviationStrip.tsx:16,74` · `DeviationRow.tsx:14` `ROW_HEIGHT=22`).\n\n**결론:**\n- **첫 화면의 67%(341/510)를 ScoreBadge + 편차 스트립이 쓴다.**\n- 핵심지표는 **5행(지역·분양가·적정가괴리·전세가율·미분양률)까지만** 보인다. 510−341=169, 169−26(head)=143, 143÷27 = **5.3행**.\n- 즉 **`입주`(8행)가 첫 화면 밖**이다. 준공후미분양 52.1% 짜리 상품에서 \"이미 다 지었나\"가 첫 화면에 없다.\n- **미니카드 6개(이 서비스의 핵심 자산)는 595~812px 구간** = 완전히 스크롤 아래.\n\n**한 화면에 들어가는 개수**: 값 1개당 27px(핵심지표 행) 기준 **최대 18줄**, 그림을 하나 쓰면 그 그림 높이만큼 뺀다. 스트립 8줄(245px)은 **핵심지표 9행과 같은 값**이다.\n\n편차 스트립 자체는 잘 채워져 있다 — 8줄 중 평균 **7.00줄**이 실제로 그려지고 46.9%는 8줄 전부 그려진다(해칭 낭비는 평균 22px 1줄뿐). 문제는 품질이 아니라 **자리값**이다: 8줄 중 3줄(평당가·미분양·역세권)은 `CARD_DEVIATION_FIELDS` 로 **카드에서 이미 본 것**(`deviationFields.ts:70`)이라, 팝업 첫 화면 66px 이 방금 본 그림의 재방송이다.\n\n---\n\n## 4. 155필드 4단 분류\n\n측정 기준: 목록 JSON 154키 + 상세 버킷 8키(중복 제외) = **162키 실측**, 1,581행. (census 의 \"155\" 는 `FIELD_META` 등재분 기준으로 보이며, 아래는 원본 직접 집계값이다.)\n\n### 1단 — 결정에 쓰는 것 (22개)\n\"산다/안 산다\"를 직접 가른다.\n\n| 필드 | 채움 | 한 줄 근거 |\n|---|---|---|\n| `price` `pp` | 94.8% | 얼마인가. `pp`(평당가)가 유일하게 면적 편향 없는 비교축 — 총액은 \"싼가\"가 아니라 \"작은가\"를 잰다(면적 상관 −0.540, `deviationFields.ts:72-84`) |\n| `unsold` | 92.2% | **몇 채가 안 팔렸나** = 이 상품의 정의 |\n| `unsoldRate` | 84.4% | 그게 전체의 몇 %인가 |\n| `completion` | 86.3% | 이미 지었나. `unsold` 와 합쳐야 52.1% 짜리 핵심 위험이 드러난다 |\n| `unsoldEventCount` | 100% | **몇 번 다시 내놨나 = \"왜 안 팔렸나\"의 유일한 직접 증거**(48.5%가 1회 이상) |\n| `lastUnsoldEventAt` | 48.5% | 그게 언제였나 (최근일수록 나쁨) |\n| `cancelRatio6m` | 96.2% | 사고 나서 깬 사람 비율 = \"사고 후회했나\" |\n| `presaleStage` | 51.4% | 지금 살 수 있는 물건인가 |\n| `competitionRate` | 48.3% | 남들은 원했나 |\n| `nearbyMedian` | 98.2% | 주변 실거래 = \"싸다\"의 기준점 |\n| `jeonseRate` | 98.6% | 전세 끼면 실제로 얼마 드나 |\n| `dsr40pass` | 94.8% | 대출이 나오나 (안 나오면 나머지가 무의미) |\n| `isRegulated` | 100% | 규제지역 = LTV·세금이 통째로 달라짐 |\n| `subwayDist` | 100% | 출퇴근. location 이 4/5 프로필 1위 |\n| `subwayName` | 82.9% | 어느 노선인가(거리만으론 판단 불가) |\n| `schoolGrade` | 100% | 아이. 자녀교육 45·실거주 40 |\n| `naverSchoolWalkMin` | 55.0% | 초등 도보 몇 분 (등급보다 체감이 큼) |\n| `crimeSafetyGrade` | 86.6% | 안전 |\n| `noxious` `noxiousDist` | 86.4% | 근처에 싫은 게 있나 (86.4%가 목록을 갖고 있다) |\n| `builder` | 99.8% | 누가 지었나 — 미분양은 시공사 리스크와 직결 |\n| `units` | 100% | 단지 규모 |\n| `pir` | 94.8% | 내 소득으로 감당되나 |\n| `parkingRatio` | 92.5% | 차 댈 데 (은퇴·실거주 product 축) |\n| `area` | **57.6%** | 몇 평인가. ⚠ 헤더 `L367` 이 `{apt.area}㎡` 를 무조건 찍어 **42.4%에서 \"㎡\" 앞이 빈다** |\n\n### 2단 — 안심시키는 것 (약 34개)\n결정을 바꾸진 않지만 \"이 숫자를 믿어도 되나\"에 답한다.\n\n`dataReliability`(100%) · 생활인프라 개수 9종(`hospital`·`mart`·`conv`·`park`·`pharmacy`·`cafe`·`culture`·`bank`·`childcare`·`emergency` 전부 100%) · 거리 9종(`hospitalDist` 94.9% … `martDist` 41.2%) · `busRoutes` 99.6% · `airQuality` 99.7% · `view` 100% · `sunlight` · `noise` · 네이버 교차검증 6종(`naverNearbyMedian` 99.2% · `naverJeonseRate` 92.3% · `naverNearbyCount` 99.3% · `naverFetchedAt` 99.3% · `naverSellCount` · `naverJeonseCount`) · `recentTrades6m` 96.1% · `avgFloor`·`floorRange` 96.8% · `priceByArea`·`priceByFloor` 96.8% · `rentByArea`·`jeonseByArea` 96.6% · `nearbySchools` 98.7% · `avgMaintenanceCost` 73.9% · `heating`·`heatFuel` 71.3% · `primaryDirection` 94.1% · `corridorType` 81.8% · `exclusiveRatio` 61.3% · `announcementUrl` 3.5%(있으면 원문이라 강력) · `presale*` 상세 14종 51.4%\n\n> 근거: 이것들은 \"몇 개/얼마\"를 **확인**시키지 그 자체로 결정을 뒤집지 않는다. 다만 `dataReliability`·네이버 교차검증·`announcementUrl` 은 **\"당신을 속이지 않는다\"는 증거**라 1단 바로 다음이어야 한다 — 미분양 상품은 손님이 기본적으로 의심하고 들어오기 때문이다.\n\n### 3단 — 전문가만 쓰는 것 (약 27개)\n채움률은 높은데 손님이 해석할 수 없다.\n\n`psr` 46.8% · `popGrowth` 100% · `netMigration` 100% · `housingSupplyLevel` 100% · `priceIndex` 100% · `initialSaleRate` 100% · `landCostRatio` 100% · `newSupply` 100% · `avgPriceSqm` 100% · `floorAreaRatio` 72.6% · `buildingCoverageRatio` 97.3% · `floors`·`maxFloor` 94.1% · `layout` 30.6% · `hasPool` 90.1% · `builderCreditGrade`·`builderDebtRatio` 11.5% · `transitDev`·`devDist` 41.1% · `cityDev` 8.5% · `industryDev` 12.7% · `elecUsageKwh` 25.1% · `gasUsageMj` 19.8% · `energyCollectedAt` 28.1% · `naverAvgFloor` 94.6% · `naverBuildYear` 99.3% · `naverNearbyAvg` 99.2% · `competitionSupply`·`competitionApplicants` 48.5% · `fertilityRate`·`doctorsPer1k`·`hospitalBedsPer1k`\n\n> 근거: 사장님이 지적한 **분양 탭의 설명 없는 그래프 3개**(신규공급 세대수·초기분양율·택지비율)가 정확히 이 칸이다 — `newSupply`·`initialSaleRate`·`landCostRatio` 전부 100% 채움인데 손님 언어로 번역된 적이 없다.\n\n### 4단 — 쓸모없는 것 (22개)\n**있어도 절대 안 보인다. 자리를 주면 안 된다.**\n\n**채움 0.0% (1,581행 전부 비어 있음, 직접 재측정):**\n`energyGrade` · `greenBldg` · `discountPct` · `loanFree` · `loanFreePct` · `optionFree` · `optionValue` · `balconyFree` · `balconyValue` · `cashback` · `contractDiscount` · `hugGuarantee` · `supplyRatio` · `presaleImageUrl` · `benefits`(상세) · `nearbyChildcare`(상세) · `nearbyFacilities`(상세)\n\n**내부 식별자:** `id` · `lat` · `lng` · `catsCache` · `scoresComputedAt` · `updatedAt` · `siblingIds`\n\n**사실상 무용:** `district` 3.2% — 헤더 `L372` 가 괄호로 붙이는데 96.8%는 안 붙는다\n\n---\n\n## 5. 실측으로 확인한 결함 (사장님이 본 화면의 원인)\n\n### ① 치안/환경 도넛 \"00%\" — 글자가 링보다 넓다\n`DataSectionBlock.tsx:88` 이 `size={34}` 를 넘긴다 → `CompletenessDonut.tsx:19` `r = 34/2 − 3.5 = 13.5` → **링 안쪽 지름 ≈ 24.5px**. 가운데 글자는 `F.xs`(11px) `fontWeight 800` 로 `\"100%\"` ≈ **28.5px**. 글자가 링 안쪽보다 4px 넓어 앞자리 `1` 이 초록 링(100%면 원이 꽉 참) 위에 겹친다. `size={40}` 인 다른 호출부는 안 겪는다.\n※ 정확한 글자 폭은 브라우저 실측이 아니라 Pretendard 표준 자폭 추정이다 — 픽셀 확인은 못 했다.\n\n### ② \"혐오시설: 장례식장,공장 ▲ → 주변 깨끗\" — 사전 어휘 불일치 (82.1% 영향)\n`brands.ts:81-89` `NOXIOUS_PENALTY` 는 7개 단어만 안다(`소각장`·`고압송전탑`·`화장장`·`교도소`·`묘지`·`철도인접`·`유흥가`).\n수집기가 실제로 내보내는 어휘를 전수 집계한 결과:\n\n| 실제 등장 | 건수 | 사전 |\n|---|---|---|\n| 공장 | 1,341 | **없음** |\n| 장례식장 | 969 | **없음** |\n| 폐수처리장 | 103 | **없음** |\n| 하수처리장 | 96 | **없음** |\n| 고압선 | 79 | **없음** (사전은 \"고압송전탑\") |\n| 축산시설 | 56 | **없음** |\n| 소각장 / 화장장 / 교도소 | 33 / 33 / 3 | 있음 |\n| 매립지 | 3 | **없음** |\n\n→ `(NOXIOUS_PENALTY)[n] ?? 0` 이므로 감점 0 → `noxSafe = 100` → `subContext.ts:59` `sc>=70 → \"주변 깨끗\"`.\n**혐오시설 목록이 있는 1,366단지 중 1,298곳(95.0%) = 전체의 82.1%가 \"시설 목록 + 주변 깨끗\"을 동시에 표시한다.**\n저장된 값으로 교차 확인: `ah-2020910001`(강서 크라운팰리스) → `혐오시설 score=100, info=\"장례식장,공장\"`, `noxiousDist=942`. 내 재계산과 일치.\n\n### ③ \"용적률: 0% → 쾌적한 밀도\"\n`scoreProduct.ts:71` `floorAreaRatio ?? 300` — **null 은 300으로 벌주고, 저장된 0은 그대로 통과**한다. 0 ≤ 200 → 최상위 티어 → 점수 10 → `subContext.ts:77` `sc>=7 → \"쾌적한 밀도\"`.\n- 진짜 `0` 값: **146건 (9.2%)** → \"0% → 쾌적한 밀도\"\n- `null`: **433건 (27.4%)** → 점수 3 → **\"정보 없음 → 과밀 우려\"** (안 모은 걸로 깎는 반대 방향 거짓)\n- 정상값: 1,002 (63.4%)\n저장값 확인: `ah-2020910023` → `{info:\"0%\", score:10}`, `ah-2020910007` → `{info:\"정보 없음\", score:3}`.\n\n### ④ \"혜택·할인 D 0\" 텅 빈 채 접힘 — 1,581단지 전부\n`scoreBenefit.ts` 의 6개 소스가 전부 0.0% → `noData: true`, 6개 sub 의 `info` 가 모두 `\"-\"` → `CatPanel.tsx:62` `subs.filter(s => s.info !== \"-\")` 가 **빈 배열**을 반환 → 근거 줄 0개, `Bar value=0`.\n저장값 확인: `benefit total:0 noData:true`, subs 전부 `=-`.\n**미니카드는 정직하다**(`catVerdict.ts:26` → \"혜택 정보 없음\"). **점수 패널만 \"D 0\" 이라는 나쁜 성적표로 보인다** — 없는 걸 못한 걸로 표시한다.\n\n### ⑤ \"자연환경:\" 이 \"자연환 / 경:\" 으로 쪼개짐\n`CatPanel.tsx:152-155` — `·` 에는 `flexShrink: 0` 이 있는데 **이름 span 에는 없다**. 390px 에서 쓸 수 있는 안쪽 폭은 390−32(본문 padding)−24(패널 padding)−2(border) = **332px**. `자연환경:`(60) + info `블루조망 일조:우수 40dB 대기:보통`(≈240) + `▲ → 환경 쾌적`(84) + 점·간격(18) = **약 402px > 332px** → flex 가 이름을 줄여 글자 중간에서 접힌다.\n\n### ⑥ 여분 54필드가 차트 스위치에 묶여 있다\n`DetailModal.tsx:532,637,663,696,718` — `ExtraFieldsAccordion` 5개 전부가 `{showDeviation && ...}` 안에 있다. `showDeviation = isFeatureDeviationStrip() && regionStats != null` (`L136`, `featureFlags.ts:14`).\n→ **환경변수 하나를 내리면 그림 6종과 함께 데이터 54필드가 통째로 사라진다.** 그림 롤백과 데이터 노출은 다른 결정인데 한 스위치에 묶여 있다.\n\n### ⑦ 항상 빈 블록 3개\n`nearbyChildcare` · `nearbyFacilities` · `benefits` = **0/1,581**. 각각 `NearbyChildcareSection`·`NearbyFacilitiesBlock`·종합탭 혜택칩(`L478`)이 소비한다. 세 컴포넌트는 어느 단지에서도 화면에 안 뜬다(내부 early-return 이 있으므로 빈 상자는 아니지만, **코드·번들·유지보수 비용만 남는다**).\n\n### ⑧ census 의 \"노출 0\" 은 믿으면 안 된다 (사장님 경고 확인)\n직접 grep 결과 `schoolGrade` 는 `SchoolInfo.tsx:80` 과 `AptCard.tsx:433` 에서 **실제로 렌더된다**. 반대로 `avgPriceSqm`·`priceIndex`·`isRegulated`·`floorAreaRatio` 등 20여 개는 `fieldMeta.ts` 에만 있어 **여분 아코디언(=⑥ 플래그 뒤)을 통해서만** 보인다.\n\n---\n\n## 6. 제안하는 새 노출 순서\n\n### 종합 탭 — 첫 화면 510px 예산 배분\n\n| 순 | 블록 | px | 답하는 질문 |\n|---|---|---|---|\n| 1 | **한 줄 판정** (신규) — \"다 짓고도 N채 남음 · 3번 다시 내놓음\" | 44 | **왜 안 팔렸나** |\n| 2 | 총점 배지 (80→**56** 축소) + 프로필 이름 | 68 | 내 기준 몇 점 |\n| 3 | 핵심지표 **6행**(분양가/평당가 · 미분양 · 입주 · 적정가괴리 · 대출 · 규제) | 188 | 얼마·안전한가 |\n| 4 | 카테고리 미니카드 6 (**위로 올림**) | 217 | 어디가 강하고 약한가 |\n| | **누계** | **517** | |\n\n빠지는 것: 편차 스트립 8줄(245px)을 **3줄로 줄여** 미니카드 아래로 내린다 — 카드에서 이미 본 3줄은 빼고 **팝업에서만 의미 있는 5줄**(전세가율·소득부담·주차·관리비·전용률)만 남기면 245→**176px**, 위치는 접힘 아래.\n\n근거: 미니카드는 이 서비스가 **유일하게 다른 사이트와 다른 것**(프로필별 6축 점수)인데 지금 595~812px 에 있다. 편차 스트립은 그 다음이다 — 카드에서 이미 배운 그림이라 팝업 첫 화면에서 다시 가르칠 필요가 없다.\n\n### 나머지 5탭 — 각 탭 첫 화면에 \"그 탭의 답\" 1개\n\n| 탭 | 첫 줄에 놓을 것 | 근거 |\n|---|---|---|\n| 시세 | 주변 시세 대비 위치 게이지(현행 유지, `L551`) | 이미 정답 위치 |\n| **입지** | **subwayDist·schoolGrade·crimeSafetyGrade·noxious 4개를 한 줄 요약으로** | location 이 4/5 프로필 1위인데 지금은 회색 상자 3개가 벽처럼 서 있다 |\n| 분양 | 재공고 횟수 + 계약해제율 (`unsoldEventCount`·`cancelRatio6m`) | **\"왜 안 팔렸나\"의 답이 이 탭에 있어야 한다.** 지금 이 탭 첫 줄은 분양 타임라인 |\n| 금융 | `dsr40pass` + LTV 한도 한 줄 | \"대출 나오나\"가 안 되면 나머지가 무의미 |\n| 점수 | 현행 유지 (대부분 펼쳐져 근거 3줄 — 사장님도 좋다고 함) | benefit 패널만 \"혜택 정보 없음\" 한 줄로 대체 |\n\n### 접힘 규칙 통일 (사장님이 지적한 \"서랍 2개가 다르게 생김\")\n현재 3종류가 섞여 있다:\n- `DataSectionBlock`: 회색 + 도넛 + `▼` (`DataSectionBlock.tsx:69-104`)\n- `ExtraFieldsAccordion`: 흰색 + \"펼치기 ▼\" (`ExtraFieldsAccordion.tsx:76-100`)\n- `CatPanel`: 회색 + 점수 + `▼` (`CatPanel.tsx:98-141`)\n\n→ **하나로**: 회색 박스 + 제목 + (오른쪽) 상태 한 마디 + `▼`. 도넛은 제목 옆이 아니라 **오른쪽 끝** — 지금은 도넛이 제목 바로 옆이라 `100%` 가 링을 넘칠 자리조차 없다(§5-①).\n\n### 4단 = 자리 회수\n0% 22필드를 렌더 경로에서 빼면 회수되는 것: 금융 탭 여분 아코디언의 \"혜택 9가지\" 섹션 1개(`ExtraFieldsAccordion.tsx:41` `EmptySectionLine`), 종합 탭 혜택칩 블록, `NearbyChildcareSection`·`NearbyFacilitiesBlock` 2개 컴포넌트, 점수 탭 benefit 패널의 빈 몸통.\n\n---\n\n## 7. 확인 못한 것 (추측 안 함)\n\n- **도넛 글자 잘림의 정확한 픽셀** — Pretendard 자폭 추정치로 계산했고 브라우저 실측은 안 했다. `size={34}`↔`size={40}` 차이가 원인이라는 것까지가 확인된 범위다.\n- **`sunlight`·`noise`·`heating`·`naverSellCount` 등 일부 2단 필드의 채움률** — 위 표에 수치 없는 항목은 개별 집계를 안 돌렸다.\n- **실기기 스크롤 위치** — §3 은 소스의 px 값으로 계산한 것이지 브라우저에서 재보지 않았다. safe-area(0~34px)에 따라 507~541 사이에서 움직인다.\n- **`ExtraFieldsAccordion` 의 정확한 필드 수 \"54\"** — `tabExtraFields.ts:95-121` 이 런타임 계산이라 TS 를 실행하지 않고는 못 센다. 세션 487 기록값을 인용했을 뿐 재측정은 못 했다.\n\n---\n\n**쉬운 말로 정리하면:**\n\n사장님이 보신 화면이 왜 그런지 원인을 전부 찾았습니다. 그리고 **원인이 화면 디자인이 아니라 \"순서를 정하는 기준이 없었던 것\"** 이었습니다.\n\n- 이 사이트에 있는 아파트의 **절반(52.1%)은 이미 다 지어놓고도 안 팔린 집**입니다. 손님이 제일 먼저 알아야 할 사실인데, 지금은 \"미분양률\"과 \"입주\" 두 줄로 따로 떨어져 있어서 손님이 머릿속에서 합쳐야 합니다.\n- 휴대폰 첫 화면에 들어가는 건 **약 510픽셀**인데, 그 **3분의 2를 점수 동그라미와 막대 8줄이 씁니다.** 그래서 \"언제 입주하나\"도, 이 사이트만의 자랑인 **6개 카테고리 카드도 첫 화면 밖**으로 밀려났습니다.\n- **\"주변 깨끗\"이라고 쓰면서 장례식장·공장을 나란히 보여주는 집이 82%** 입니다. 점수 사전에 \"공장·장례식장\" 같은 단어가 아예 안 들어 있어서 감점이 0점이 되고, 0점이니까 \"깨끗\"이라고 말한 겁니다.\n- **\"용적률 0% → 쾌적한 밀도\"**(146집)와 **\"정보 없음 → 과밀 우려\"**(433집)도 같은 종류입니다. 안 모은 걸 칭찬하거나 깎고 있습니다.\n- **\"혜택 D 0점\"이 텅 빈 것은 버그가 아니라 데이터가 한 건도 없어서**입니다. 1,581집 전부요. 그런데 화면은 \"없다\"가 아니라 \"0점\"이라고 말해서 나쁜 집처럼 보입니다.\n- **도넛의 \"00%\"** 는 동그라미(안쪽 24.5픽셀)보다 글자(28.5픽셀)가 커서 \"1\"이 초록 선에 겹친 것입니다.\n\n제가 제안하는 새 순서는 **\"왜 안 팔렸나 → 지금 사도 되나 → 내 조건에 맞나 → 믿어도 되나\"** 입니다. 미분양 아파트를 보러 온 손님의 머릿속 순서가 정확히 이거라서요.\n\n두 가지만 여쭙고 싶습니다.\n\n1. **첫 화면에서 편차 막대 8줄을 3줄로 줄이고 그 자리에 카테고리 카드 6개를 올리는 것** — 오늘 만든 걸 줄이는 거라 사장님 결정이 필요합니다.\n2. **\"주변 깨끗\" 거짓말(82%)과 \"용적률 0% 칭찬\"** 은 점수 엔진 쪽 문제라 제 권한(표현만 손대기) 밖입니다. 별도 작업으로 잡을까요, 아니면 화면에서 \"모순되면 판정 문구를 안 쓴다\"로만 막을까요?",
+      "# 데이터현실 렌즈 판정 — 실측 근거 전량 첨부\n\n측정 기준: `public/data/apartments-list.json`(1,581단지·154키, 2026-08-03 22:16 생성) + `apartments-detail-16-*.json` 16개 전량 + **Supabase 라이브 쿼리**(원본 테이블 직독). 코드는 `F:\\mibunyang` 실파일 grep.\n\n---\n\n## 0. 먼저 — 이번 정비의 판이 바뀌는 발견 3건\n\n전수 조사가 놓친 것들입니다. **순서를 다시 짜기 전에 이것부터 알아야** 합니다.\n\n### 0-1. VIEW가 6개 컬럼을 삼켰다 — \"안 보이는\" 게 아니라 \"끊겼다\"\n\n`supabase/migrations/20260609000000_view_regions_latest_nonnull.sql:15` 주석:\n> \"본문은 직전 VIEW(**20260502100000**_view_add_applyhome_events.sql) 통째 복사\"\n\n그런데 그 시점의 진짜 최신 VIEW는 `20260516090916` 였습니다. **2주치 늦은 판을 베껴서** 그 사이 추가된 컬럼이 통째로 빠졌습니다.\n\n| 컬럼 | 원본 테이블 실측(라이브) | 현재 VIEW(`20260629000000`) | 끊긴 날 |\n|---|---|---|---|\n| `schools.nearby_childcare` | **826 / 2,159 행 채워짐** | ❌ 없음 | 2026-06-09 (56일) |\n| `apartments.maint_elec` | **580 / 2,170** | ❌ 없음 | 2026-06-09 |\n| `apartments.maint_water` | **552 / 2,170** | ❌ 없음 | 2026-06-09 |\n| `apartments.maint_hotwater` | 228 / 2,170 | ❌ 없음 | 2026-06-09 |\n| `apartments.maint_heat` | 222 / 2,170 | ❌ 없음 | 2026-06-09 |\n| `apartments.maint_gas` | 28 / 2,170 | ❌ 없음 | 2026-06-09 |\n| `infra.emergency_name` | **2,001 / 2,159 (92.7%)** | ❌ 없음 | 2026-05-13 (83일) |\n| `infra.emergency_type` | (같은 수집기) | ❌ 없음 | 2026-05-13 |\n\n검증 명령: `for f in $(grep -rl apartments_flat supabase/migrations/*.sql); do grep -c nearby_childcare $f; done`\n→ `20260516090916` 만 6건, 그 이후 전부 0.\n\n**결과**: `NearbyChildcareSection.tsx`(`DetailModal.tsx:656`에서 호출)는 **어느 단지에서도 한 번도 뜬 적이 없습니다.** 컴포넌트·테스트·수집기 전부 멀쩡한데 파이프만 끊겼습니다. 응급의료 시설**명**(2,001건)도 마찬가지 — 손님은 \"응급의료 350m\"만 보고 **어느 병원인지는 못 봅니다.**\n\n→ 정비 순서에서 **\"어린이집 블록을 어디 둘까\"를 논하기 전에 VIEW부터 고쳐야** 합니다. 지금 자리를 옮겨봐야 여전히 안 뜹니다.\n\n### 0-2. 규제지역 — 같은 팝업이 서로 다른 말을 한다\n\n- `src/constants/regulations.ts:19` → `export const ZONE_MAP: Record<string, Zone> = {};` **빈 객체**\n- 따라서 `getZone()`(같은 파일 :21)은 **1,581단지 전부 `\"normal\"`** 반환\n- `DetailModal.tsx:461` 은 그 값으로 **\"규제현황: 비규제지역\"(초록)** 표시, `:462` 는 LTV를 70%/60%로 계산\n- 그런데 `apt.isRegulated` 실측 = **true 57건 / false 1,524건**. 57건 지역 = 서울 서초19·송파19·강남14·용산5 (= `public/data/regulation-zones.json` 의 투기과열지구와 정확히 일치)\n- 반대로 점수 엔진 `src/scoring/scoreRisk.ts:97` 은 **`apt.isRegulated` 우선**, `getZone()` 은 폴백\n\n→ **강남3구+용산 57개 단지는 종합 탭에서 \"비규제지역\"이라 보고 후한 LTV를 안내받는데, 점수 탭에서는 규제 감점을 받습니다.** 같은 화면 안의 모순이고, 손님이 실제 돈 계산에 쓰는 숫자라 위험도가 가장 높습니다.\n정본은 **`apt.isRegulated`(DB, 100% 채움)**. `ZONE_MAP` 은 비어 있으니 근거가 될 수 없습니다.\n\n### 0-3. 8개 필드는 \"이 단지 정보\"가 아니라 \"시도 전체 하나짜리 숫자\"\n\n`region` 이 같으면 값이 전부 같은지 실측(distinct 조합 = 시도 수 17):\n\n| 필드 | 실측 | 지금 있는 자리 |\n|---|---|---|\n| `newSupply` | 시도별 값 8종 → 17개 시도 상수 | **분양탭 \"분양 안전지표\"** (`dataSections.ts:135`) |\n| `netMigration`·`popGrowth`·`housingSupplyLevel` | 시도 상수 | 시세탭 \"시장/투자 지표\" |\n| `avgPriceSqm`·`priceIndex`·`landCostRatio`·`initialSaleRate` | 시도 상수 | **안 보임**(여분 아코디언만) |\n\n`newSupply` 는 단지 실측치인 `cancelRatio6m`(96% 채움) 옆에 나란히 놓여 있어, 손님은 \"이 단지의 안전지표\"로 읽습니다. 실제로는 경기도 전체 공급량입니다.\n게다가 **같은 5개 지표를 `MarketStatsCharts.tsx:26-62` 가 이미 시계열 그래프 + 도움말(`HelpHint`)로 분양탭에 그리고 있습니다.** 숫자 하나짜리 중복입니다.\n\n> 참고: `market_stats_history` 4,371행 중 5지표를 가진 건 **시도행(gu=\"\") 17개 시도 × 15~18개월**뿐. 시군구행 4,354개는 이 5지표가 전부 null. 서버 fallback이 있어 시도 그래프로 떨어지긴 하나, \"이 지역\"이라 부르면서 실제로는 시도 평균입니다.\n\n---\n\n## 1. 채움 0% 13개 — 왜 0인지, 빼야 하나 남겨야 하나\n\n전부 라이브 원본 테이블로 직접 확인했습니다(가공된 채움률 아님 — [[tool-output-illusion-guard]]).\n\n### ① 혜택 9개 + `benefits` — **수집기가 아예 없다. 빼세요.**\n\n`balconyFree` `balconyValue` `cashback` `contractDiscount` `discountPct` `loanFree` `loanFreePct` `optionFree` `optionValue` `benefits`\n\n- 라이브: `apartments` 2,170행 중 **10개 컬럼 전부 non-null = 0**\n- 코드 grep: 이 컬럼들을 쓰는 파일은 `scripts/migrate-to-supabase.mjs`(2026-03 1회성 이관)와 `data-audit.mjs`(감사용 읽기)**뿐**. `scripts/collectors/` 46개 중 **쓰는 수집기 0개**\n- `.github/workflows/` 40개 중 관련 워크플로 0개\n- 오히려 `data-fill.mjs:57` 이 `SKIP_CATEGORIES` 에 `\"benefits\"` 를 넣어 **자동보정 대상에서 명시적으로 제외**해 뒀습니다 (`:210` 주석 \"core/price/risk/benefits=원본\")\n\n**판정: 화면에서 제거.** \"아직 못 모음\"이라 말할 근거조차 없습니다 — 모으려는 시도가 코드에 존재한 적이 없습니다. 사장님이 앞서 \"혜택축은 제휴업체 슬롯\"으로 성격을 정하셨다는 기록(세션 486)과도 맞습니다. 데이터 필드가 아니라 영업 슬롯이므로 데이터 섹션에서 빼는 게 정직합니다.\n\n⚠️ **이게 금융 탭을 통째로 비웁니다**: 금융 탭 여분 아코디언에 배정된 필드는 `tabExtraFields.ts:38`(`혜택: \"sec-finance\"`) 기준 **10개 전부 이 목록**입니다. 즉 **금융 탭의 \"아직 안 보여드린 자료 10개\"는 열어도 100% 빈 줄**입니다. 지금 당장 손님이 속고 있는 자리입니다.\n\n### ② `energyGrade` — **공공 API가 안 준다. 빼세요.**\n\n- 라이브: `apartments.energy_grade` **0 / 2,170**\n- `scripts/collectors/data-audit.mjs:36` 이 이미 **`PERMANENT_NULL` 집합에 등재**:\n  > `const PERMANENT_NULL = new Set([\"quakeDesign\", \"greenBldg\", \"energyGrade\"]);`\n  `:34-35` 주석 — \"세션 358 정정: kaptdEcnt(승강기대수) 오인 제거. 주거용 아파트 에너지효율등급은 공공 data.go.kr API 미제공\"\n- 참고로 `greenBldg`·`quakeDesign` 은 이미 `fieldMeta.ts:344` 등에서 `hidden: true` 처리됨. **`energyGrade` 만 숨김 처리가 빠져 있습니다.**\n\n**판정: `hidden: true` 추가해서 제거.** 같은 사유의 형제 2개는 이미 숨겨져 있으니 일관성만 맞추면 됩니다.\n\n### ③ `hugGuarantee` — **수집기가 안 채운다. 빼세요.**\n\n- 라이브: `builders` 테이블 **32행**, `hug_guarantee` non-null **0**, `debt_ratio` 32, `credit_grade` 32\n- `scripts/collectors/dart-builders.mjs:228-229` 는 `debt_ratio`·`credit_grade` **둘만** upsert. `hug_guarantee` 를 쓰는 줄은 `migrate-to-supabase.mjs:307` 하나뿐(1회성 이관)\n- DART 재무제표에 HUG 보증 여부가 없으니 이 수집기로는 영구히 못 채웁니다\n\n**판정: 제거.** (형제 `builderDebtRatio`·`builderCreditGrade` 도 11.5%뿐인데, 원인은 다릅니다 — **시공사 마스터가 32개사밖에 없어서**입니다. 이건 \"못 모음\"이 맞으니 남기되 안내가 필요합니다.)\n\n### ④ `supplyRatio` — **수집기는 도는데 한 건도 못 쓴다. \"아직 못 모음\"으로 남기세요.**\n\n- 라이브: `regions` **1,395행 중 supply_ratio non-null = 0** (한 번도 채워진 적 없음)\n- `collector_runs` 실측:\n  ```\n  housing-permits  2026-07-10  success  ok=0\n  housing-permits  2026-06-10  success  ok=0\n  housing-permits  2026-05-26  success  ok=0\n  ```\n  **3회 연속 `success` 인데 `ok=0`** — 교과서적 silent fail\n- 코드는 정상: `scripts/collectors/housing-permits.mjs:198` 이 `(units/base)*100` 을 계산하고 `:241` 이 `update({supply_ratio})`. `:232` 의 `if (r.supply_ratio == null) continue;` 에서 전량 걸러진다는 뜻 = **MOLIT 주택건설실적 API 응답이 비어 있음**\n- 워크플로는 살아 있음: `collect-housing-permits.yml:5` `cron: '0 21 10 * *'` (매월 10일)\n- VIEW 쪽은 결백: `20260629000000...sql:46` 이 `array_agg(supply_ratio ... FILTER (WHERE ... NOT NULL))[1]` 로 **컬럼별 최신 non-null** 을 뽑으므로, 과거에 한 번이라도 값이 있었으면 살아났을 구조. 즉 원본이 진짜 빈 것\n\n**판정: 남기되 \"국토부 자료가 아직 안 와요\"라고 말할 것.** 다른 12개와 달리 **고칠 대상이 우리 쪽에 있습니다**(외부 API 장애 대응). [[external-api-outage-policy]] 의 5번째 카테고리에 이미 등재돼 있어야 할 건이고, `stale_days` 를 월간 기준 38로 맞춘 세션 463 정정 덕에 다음 미발화 때 경보가 뜹니다.\n\n### 0% 정리\n\n| 처분 | 개수 | 필드 |\n|---|---|---|\n| **제거**(수집 시도 자체가 없음) | 11 | 혜택 9 + `benefits` + `hugGuarantee` |\n| **제거**(API 영구 미제공, 형제와 일관성) | 1 | `energyGrade` |\n| **남김 + \"아직 못 모음\" 안내** | 1 | `supplyRatio` |\n\n---\n\n## 2. 채움 100%인데 안 보이는 것들 — 하위 컴포넌트 직접 grep 후 판정\n\n경고대로 하위 컴포넌트를 전부 열었습니다. `src/components/detail/*.tsx` + `charts/*.tsx` 21개 파일에서 `apt.<필드>` 참조를 추출했습니다.\n\n### 전수 조사가 **틀린** 것 (실제로는 보임)\n\n| 필드 | census | 실제 | 근거 |\n|---|---|---|---|\n| `schoolGrade` | 노출 0 | **보임** | `SchoolInfo.tsx:66-80` 배지 렌더. 카드에도 `AptCard.tsx:433`(C등급만) |\n| `unsoldEventCount` | 노출 0 | **목록 카드에 보임** | `AptCard.tsx:470,525` (`id.startsWith(\"ah-\")` 조건). 팝업에는 없음 |\n| `announcementUrl` | 라벨없음 | **보임** | `DataSectionBlock.tsx:180-183` 링크 블록 |\n| `noxious` | 여분만 | **카드에 보임** | `AptCard.tsx:98` 개수로 배지 |\n| `transitDev`·`devDist` | 여분만 | **카드에 보임** | `AptCard.tsx:421` 교통호재 칩(≤2km) |\n| `corridorType` | 여분만 | **카드에 보임** | `AptCard.tsx:401` 복도식 칩 |\n\n### 전수 조사가 **맞는** 것 (진짜 아무 데도 안 보임)\n\n`src/components/**` 전체에서 참조가 `fieldMeta.ts` 정의 줄과 여분 아코디언 목록 줄뿐인 필드:\n\n| 필드 | 채움 | 판정 |\n|---|---|---|\n| `schoolScore` | 100% | **버림.** `schoolGrade`(A/B/C 배지)가 같은 정보를 더 읽기 쉽게 전달. 실측 분포 A=1,357·B=172·C=52·D=0 이라 점수 원본을 또 보여줄 이득 없음 |\n| `isRegulated` | 100% (true 57) | **★승격.** 0-2에서 본 대로 지금 화면이 이 값과 **반대로** 말하고 있음. `DetailModal.tsx:461` 의 근거를 `getZone()` → `apt.isRegulated` 로 교체 |\n| `priceIndex`·`avgPriceSqm`·`landCostRatio`·`initialSaleRate` | 100% | **버림(숫자로는).** 전부 시도 상수이고 `MarketStatsCharts` 가 같은 5지표를 시계열+도움말로 이미 그림. 숫자 중복만 늘어남 |\n| `naverNearbyAvg` | 99.2% | **버림.** 같은 섹션에 `naverNearbyMedian`(99.2%) 이 이미 있음. 평균은 이상치에 흔들려 중위값보다 못함 |\n| `naverAvgFloor`·`naverBuildYear` | 95%·99% | **버림.** `avgFloor`(97%)·`nearbyBuildYear`(84%) 와 같은 뜻. 교차검증 섹션은 이미 8줄 |\n| `floors`·`maxFloor` | 94% 둘 다 | **`floors` 만 승격**(범위가 더 정보량 큼), `maxFloor` 버림. 지금 둘 다 안 보이는데 \"층수\"는 손님이 실제로 궁금해하는 축 |\n| `buildingCoverageRatio`·`hasPool` | 97%·90% | **승격.** 상품성 축에 실제로 채워진 몇 안 되는 필드(`floorAreaRatio` 73%, `layout` 31%, `exclusiveRatio` 61% 대비 최상위) |\n| `lat`·`lng`·`catsCache`·`scoresComputedAt`·`updatedAt` | 100% | **내부값.** `INTERNAL_ONLY_FIELDS`(`tabExtraFields.ts:90`)에 `id` 만 있는데 이 5개도 넣어야 함 |\n| `lastUnsoldEventAt` | 48.5% | **승격.** `unsoldEventCount` 가 0/1 이분값(815/766)이라 \"언제\"가 붙어야 의미가 생김 |\n\n---\n\n## 3. 42개 중복 — 정본 선택\n\n먼저 **중복의 성격이 세 가지로 갈립니다.** 이걸 구분 안 하면 헛수고합니다.\n\n`tabExtraFields.ts:12-13` 이 이미 같은 판단을 기록해 뒀습니다:\n> \"초안은 '점수 탭과 겹치는 17개'를 지목했는데, **점수 탭은 다른 탭이라 동시에 안 보인다.** 같은 화면에서 겹치는 건 세부 섹션이었다.\"\n\n### 유형 A — 중복 아님, 그대로 두세요 (26개)\n\n**다른 탭이라 손님이 동시에 볼 수 없습니다.**\n\n- **점수탭 근거 ↔ 세부 섹션** (17개): `competitionRate` `cancelRatio6m` `crimeSafetyGrade` `childcare` `conv` `emergency` `hospital` `mart` `park` `pharmacy` `police` `popGrowth` `psr` `pir` `dsr40pass` `jeonseRate` `subwayDist`\n  → 점수탭은 \"왜 이 점수인지\"를 설명하는 자리, 세부는 \"원자료\". 역할이 다름\n- **편차 스트립(종합탭) ↔ 세부 섹션(다른 탭)** (7개): `jeonseRate` `pir` `subwayDist` `avgMaintenanceCost` `pp` `unsoldRate` `parkingRatio`\n  → 편차는 \"지역 중위값 대비\", 세부는 절대값\n- **헤더 ↔ 어딘가** (8개): `price` `region` `gu` `dong` `address` `area` `district` `id`\n  → 헤더는 \"이 단지가 뭔지\" 신원 표시. 정본 = **헤더**. 다만 `id` 는 손님용이 아니므로 `INTERNAL_ONLY_FIELDS` 로\n\n⚠️ 단 하나 예외 — **`jeonseRate` 는 4곳**입니다(census 는 3곳으로 셌음). `DetailModal.tsx:455` 종합탭 핵심지표 + 편차 팝업 + 점수탭 + **시세탭 여분 아코디언**. 시세탭 여분에서 빼세요. 정본 = **종합탭 핵심지표**(`:455`).\n\n### 유형 B — 진짜 같은 화면 중복 ★ 여기가 실제 문제 (12+15개)\n\n#### B-1. 입지 탭: 거리 12종이 그림 + 목록으로 두 번 (12개)\n\n| | 위치 | 형태 |\n|---|---|---|\n| 그림 | `DetailModal.tsx:652` → `charts/DistanceDots.tsx:39-64` | 점 12개 가로 배치 |\n| 목록 | `dataSections.ts:68-91` 생활인프라 pairs + 교통상세 + 치안환경 | 숫자 12개 |\n\n겹치는 12개: `hospitalDist` `martDist` `convDist` `cafeDist` `cultureDist` `bankDist` `pharmacyDist` `parkDist` `childcareDist` `emergencyDist` `subwayDist` `policeDist`\n\n**정본 = 그림(`DistanceDots`).** 이유 3가지, 전부 실측 근거:\n1. 그림은 **한 축에 모아 상대 비교**가 됩니다. 목록은 \"병원 340m / 마트 1,240m\"를 따로 읽어야 합니다\n2. `DistanceDots.tsx:21-24` 가 이미 **못 쓰는 필드를 스스로 걸러냅니다** — `ktxDist`(0.0%), `icDist`(3.9%), `noxiousDist`(방향 반대)를 축에서 제외. 목록 쪽은 그 판단이 없어 그대로 뱉습니다\n3. 목록의 개수(`hospital` 등 8개, 전부 100%)는 거리와 다른 정보이므로 **개수만 남기면 중복이 사라집니다**\n\n→ 처방: **생활인프라 pairs 에서 `*Dist` 를 떼고 개수만.** 거리는 그림 한 곳에.\n\n#### B-2. 분양 탭: 네이버 분양정보가 통째로 두 번 (15개)\n\ncensus 는 3개(`presaleStage`·`presaleMinPrice`·`presaleMaxPrice`)로 셌지만, 실제로는 **15개 전부**입니다.\n\n- `PresaleInfo.tsx` (분양탭 `DetailModal.tsx:685`) 가 렌더하는 필드: `presaleStage`(배지) `presaleType` `presaleImageUrl` `presaleMinPrice` `presaleMaxPrice` `presalePp` `presaleGeneralSupply` `presaleBuildings` `presaleParking` `presaleHousingType` `presaleMoveIn` `presaleRecruitDate` `presaleSchedule` `presaleFeatures` `presaleInquiry`\n- `dataSections.ts:146-162` \"네이버 분양정보\" grid 가 렌더하는 필드: **위와 정확히 같은 15개**\n\n같은 탭에서 위아래로 이어 붙어 있습니다.\n\n**정본 = `PresaleInfo`.** \"분양가 범위 3억2천~4억1천 / 평당가 1,450만원\" 같은 **문장형 카드**라, \"presaleMinPrice: 32000\" 라벨-값 격자보다 손님이 읽기 쉽습니다.\n→ 처방: **\"네이버 분양정보\" DataSection 통째 삭제.**\n\n추가 근거 — 그 섹션은 `hideWhenEmpty` 가 없습니다(`dataSections.ts:144-164`). 실측 **768/1,581(48.6%) 단지가 15필드 전부 빔** → 절반의 단지에서 \"네이버 분양정보 ▼\" 회색 상자가 제목과 도넛만 달고 서 있다가, 열면 `DataSectionBlock.tsx:130` 의 **\"데이터 수집 중...\" 한 줄**만 나옵니다. 사장님이 본 \"벽처럼 쌓인 회색 상자\"의 정체 중 하나입니다.\n(반면 \"청약 경쟁 현황\"은 `hideWhenEmpty: true`(`:141`)라 815/1,581 빈 경우 **아예 안 뜹니다** — 이게 올바른 처리이고, 이미 있는 도구입니다.)\n\n### 유형 C — 중복은 아닌데 값이 가짜 (3개)\n\n| 필드 | 실측 | 화면 |\n|---|---|---|\n| `ktxDist` | **1,581/1,581 이 전부 `99`** (distinct 값 1개) | `dataSections.ts:86` 교통상세에 표시. `fieldMeta.ts:305` 가 `>=90` 이면 \"반경 밖\"으로 마스킹 |\n| `icDist` | **1,520/1,581(96.1%) 이 `99`**, 진짜 값 61개 | 같은 자리, 같은 마스킹 |\n| `subwayDist` | **270/1,581(17.1%) 이 `9999`** | `fieldMeta.ts:289` \"없음(9999)\" 표시 |\n\n표시는 정직합니다(`sentinels.ts` 가 단일 출처로 관리). 문제는 **`ktxDist` 는 1,581단지 전부가 똑같이 \"반경 밖\"** 이라는 것 — 정보량이 0인 줄이 모든 단지의 교통 섹션 한 칸을 영구히 차지합니다.\n\n**판정: `ktxDist` 는 교통상세에서 제거**(`DistanceDots` 가 이미 같은 이유로 축에서 뺐음 — 판단이 이미 한 번 내려져 있는데 목록 쪽에만 반영이 안 됐습니다). `icDist` 는 3.9%라도 진짜 값이 있으니 유지. `subwayDist` 는 82.9%가 진짜라 유지.\n\n---\n\n## 4. \"치안/환경 00%\" — 데이터가 아니라 글자 크기 문제\n\n데이터 쪽은 결백합니다. 치안/환경 8필드 실측: `police` 100% · `airQuality` 100% · `view` 100% · `policeDist` 98% · `crimeSafetyGrade` 87% · `noise` 87% · `noxiousDist` 86% · `sunlight` 60%. 채움률이 높으니 100%가 나오는 게 정상입니다.\n\n숫자로 확인한 기하: `CompletenessDonut.tsx:16` `r = 34/2 - 3.5 = 13.5` → 링 안쪽 지름 **27px**. `:52` 글자는 `F.xs = 11px`(`src/theme/index.ts:50`) 굵기 800. `\"100%\"` 4글자는 **28~30px** 필요 → **들어갈 수 없습니다.**\n→ 원인은 \"데이터가 0\"이 아니라 **3자리 수가 들어갈 자리가 없는 것.** 100%인 섹션에서만 재현되는 이유입니다. (정확한 잘림 메커니즘은 시각 렌즈 소관 — `DSB_S.head`(`DataSectionBlock.tsx:27`)에 `overflow` 지정이 없어서, 넘친 글자가 어디서 잘리는지는 실제 화면 측정이 필요합니다. **확인 못함.**)\n\n---\n\n## 5. 여분 아코디언 — 지금 구조의 실제 위험\n\n- `DetailModal.tsx:136` `const showDeviation = isFeatureDeviationStrip() && regionStats != null;`\n- 여분 아코디언 5개 전부 이 뒤: `:532` `:637` `:663` `:696` `:718`\n- `featureFlags.ts:14` → `VITE_FEATURE_DEVIATION_STRIP === \"true\"`\n\n**차트 플래그 하나에 여분 필드 전량의 도달이 걸려 있습니다.** 편차 스트립과 \"안 보여준 자료 목록\"은 아무 관계가 없는 기능인데 같은 스위치를 씁니다. 플래그를 끄면 43개(제 재계산 기준) 필드가 통째로 사라집니다.\n(운영 값은 Vercel 환경변수라 레포에서 **확인 못함**. `playwright.config.ts:70` 의 기본값은 `\"false\"`.)\n\n탭별 여분 실측 (제 재계산 — 정본은 `extraCount(tab)`):\n\n| 탭 | 여분 | 그중 0% | 상태 |\n|---|---|---|---|\n| 종합 | 10 | 1 (`energyGrade`) | 정상 |\n| 시세 | 7 | 0 | **전부 시도 상수/중복** — `priceIndex` `avgPriceSqm` `landCostRatio` `naverNearbyAvg` `naverBuildYear` `naverAvgFloor` |\n| 입지 | 7 | 0 | 정상 (`schoolScore` 만 버릴 것) |\n| 분양 | 9 | 2 (`supplyRatio` `hugGuarantee`) | 부분 |\n| **금융** | **10** | **10** | **전량 사망** |\n\n---\n\n## 6. 판정 요약 — 정비 우선순위 (데이터 근거순)\n\n| 순위 | 할 일 | 근거 | 손님 영향 |\n|---|---|---|---|\n| **1** | VIEW에 `nearby_childcare` + `maint_*` 5 + `emergency_name/type` 복원 | 원본에 826·580·2,001건 있는데 파이프 끊김 | 안 보이던 정보가 살아남 |\n| **2** | 규제현황 근거를 `getZone()` → `apt.isRegulated` | `ZONE_MAP={}`, true 57건과 화면이 반대 | 강남3구+용산 57단지 오안내·LTV 과대 |\n| **3** | 금융 탭 여분 아코디언 제거 (혜택 10필드) | 10/10 필드가 0/1,581 | \"10개 있어요\" 거짓말 제거 |\n| **4** | \"네이버 분양정보\" DataSection 삭제 (PresaleInfo 로 일원화) | 15필드 100% 중복 + 768단지 빈 상자 | 분양탭 절반 길이 감소 |\n| **5** | 생활인프라에서 `*Dist` 12개 제거 (그림에 일원화) | 같은 탭 12필드 이중 노출 | 입지탭 중복 해소 |\n| **6** | `ktxDist` 교통상세에서 제거 | 1,581/1,581 = 센티널 99 | 정보량 0인 줄 제거 |\n| **7** | 0% 12개 제거 + `supplyRatio` 만 \"아직 못 모음\" | 수집기 부재 11 + API 미제공 1 vs 외부 장애 1 | 빈 줄 제거 |\n| **8** | 시도 상수 8개를 \"이 지역\" 묶음으로 분리 | 17개 시도 상수 실측 | 단지 정보와 지역 정보 혼동 해소 |\n| **9** | `isRegulated`·`floors`·`buildingCoverageRatio`·`hasPool`·`lastUnsoldEventAt` 승격 / `schoolScore`·`maxFloor`·`naverNearbyAvg`·`naverAvgFloor`·`naverBuildYear`·`priceIndex`·`avgPriceSqm`·`landCostRatio`·`initialSaleRate` 버림 | §2 grep 결과 | 묻힌 알짜 노출 |\n| **10** | 여분 아코디언을 `showDeviation` 에서 분리 | `DetailModal.tsx:136`·5곳 | 플래그 사고 시 43필드 소실 방지 |\n\n---\n\n## 확인 못한 것 (단정 안 함)\n\n- `VITE_FEATURE_DEVIATION_STRIP` 의 운영 실제 값 — Vercel 환경변수, 레포에서 조회 불가\n- 도넛 \"100%\" 가 **어디서** 잘리는지의 정확한 CSS 메커니즘 — `overflow: hidden` 이 코드에 없어 실화면 측정 필요\n- `20260609000000` 마이그레이션이 **운영 DB에 실제 적용됐는지** 직접 확인은 안 했으나, 서빙 JSON 154키에 `maintHeat`·`emergencyName`·`nearbyChildcare`(값) 이 모두 없는 것으로 **정황상 확정**\n- 여분 필드 총계 — 제 손계산 43개, 실제 `extraCount()` 실행값은 미측정(TS 모듈이라 노드 직접 실행 불가). 탭별 구성은 신뢰 가능\n\n## 재측정 명령 (다음 세션용)\n\n```bash\n# 0% 원본 확인\nnode --input-type=module -e \"import{loadEnv,getSupabase}from'./scripts/collectors/_shared.mjs';loadEnv();const sb=getSupabase();\nfor(const c of ['balcony_free','option_free','loan_free','cashback','benefits','energy_grade']){const{count}=await sb.from('apartments').select('*',{count:'exact',head:true}).not(c,'is',null);console.log(c,count);}\"\n\n# VIEW 회귀 확인 (0 이면 아직 끊김)\ngrep -c nearby_childcare supabase/migrations/$(ls supabase/migrations | grep view | tail -1)\n\n# 센티널 분포\nnode -e \"const a=require('./public/data/apartments-list.json').data;for(const k of ['ktxDist','icDist','subwayDist']){const m={};for(const r of a)m[r[k]]=(m[r[k]]||0)+1;console.log(k,Object.entries(m).sort((x,y)=>y[1]-x[1])[0]);}\"\n```",
+      "측정 완료. 임시 스펙 삭제·`git status` clean·임시 서버 종료 확인했습니다.\n\n---\n\n# 렌즈: 화면제약 — 실측 보고\n\n## 실측 방법 (추정 아님)\n\nPlaywright `mobile` 프로젝트(iPhone 13 디바이스, **viewport 390×664**)로 실제 브라우저에서 상세 팝업을 열고 `getBoundingClientRect`·`scrollHeight` 를 읽었다. 세션 487 그림이 켜진 상태를 재현하려고 `VITE_FEATURE_DEVIATION_STRIP=true` 로 별도 dev 서버(포트 5241)를 띄웠다(기존 5173 서버는 다른 세션 것이라 건드리지 않음). 표본 단지 3곳: 검단신도시 푸르지오 더 베뉴(84.93㎡) / 대가트라움 의정부(72.955㎡) / 과천 위버필드(59.95㎡). 측정 스펙은 `e2e/zzmeasure.spec.ts` 로 만들었다가 **삭제했고 `git status` 는 `## main...origin/main` 로 깨끗하다.**\n\n---\n\n## 1. 화면이 감당하는 양 = **363px**\n\n| 항목 | 실측 | 근거 |\n|---|---|---|\n| viewport | 390 × 664 | iPhone 13 |\n| 모달 카드 높이 | **630.8px** | `DetailModal.tsx:346` `maxHeight: 95dvh` |\n| 상단 고정 헤더 | **104px** | `DetailModal.tsx:354-381` (드래그바+단지명+지역+지번+도로명) |\n| 스크롤 본문 clientHeight | **527px** | `DetailModal.tsx:384-394` |\n| 스티키 목차바 | **45px** | `StickyJumpNav.tsx:10` (44 + borderBottom 1) |\n| 스티키 CTA 바 | **119px** | `DetailModal.tsx:781-793` (상담 44 + 관심/비교/공유 44 + 패딩 31) |\n| **실제 읽는 창** | **527 − 45 − 119 = 363px** | |\n\n**363px 이 무엇인지 감각으로**: 접힌 회색 상자(56px) **6.5개** / 편차 스트립 8줄(231px) + 100px / 카테고리 미니카드 두 줄(218px) + 145px.\n\n**데스크톱도 재봤다** (1280×800): 본문 640, CTA 121 → 읽는 창 **474px**. 폭은 390→760 으로 **2배**인데 읽는 창은 363→474 로 **31%** 밖에 안 는다. 세로로만 쌓는 구조라 큰 화면이 이 문제를 못 푼다.\n\n---\n\n## 2. 탭별 세로 총길이 (실측)\n\n| 탭 | 접힌 기본 상태 | 화면 수 | 전부 펼침 | 화면 수 |\n|---|---|---|---|---|\n| 종합 | 1,260px | 3.5 | 1,839 | 5.1 |\n| 시세 | **1,832px** | **5.0** | 2,545 | 7.0 |\n| 입지 | 971px | 2.7 | 2,277 | 6.3 |\n| 분양 | 1,414 (표본2 = 1,550) | 3.9~4.3 | 1,779 | 4.9 |\n| 금융 | 878 (표본2 = 892) | 2.4 | 1,739 | 4.8 |\n| 점수 | 910px | 2.5 | 2,767 | **7.6** |\n| **합계** | **7,265px** | **20.0화면** | **12,946px** | **35.7화면** |\n\n한 단지를 기본 상태로 훑는 데 **20화면**, 다 펼치면 **35.7화면**. 손가락질은 **탭 6 + 접힘 23 = 29번**.\n\n**세션 487 그림 6종의 대가**(같은 방식으로 플래그 OFF 재측정): 합계 5,814px(16.0화면) → 7,265px(20.0화면). **+1,451px = +4.0화면.** 특히 입지 탭은 플래그 OFF 면 **스크롤이 아예 없었다**(527px = 창과 동일). 거리그림이 들어오면서 2.7화면이 됐다.\n\n---\n\n## 3. 세로를 잡아먹는 진짜 범인은 접힘이 아니다\n\n접힌 상자 9개가 감추는 내용을 **전부 합쳐도 590px**인데, 단일 블록 두 개가 그보다 2.4배 크다.\n\n| 블록 | 실측 높이 | 화면 | 위치 |\n|---|---|---|---|\n| **MarketStatsCharts** (지역 시장 추이 3그래프) | **812px** | 2.2화면 | 분양 탭의 **57%** |\n| **PriceTable** (인근 매매 시세) | **598px** | 1.6화면 | 시세 탭의 **33%** |\n| DistanceDots (주변 시설까지 거리) | 372px | 1.02화면 | 입지 탭 첫 화면 전부 |\n| AreaPriceScatter | 229px | | |\n| DeviationStrip 8줄 | 231px | | `stripHeight(8)=16+4+8×22+7×5` |\n| 접힌 DataSectionBlock 1개 | 56px | | 표본 전부 동일 |\n| 여분 아코디언 1개 | 44px | | |\n\n- **MarketStatsCharts 812px** — 사장님이 지적한 \"설명 없는 전문 그래프 3개\"가 이것이다. 게다가 이 3그래프는 **그 시도 전체 평균**이라 같은 도(道)의 모든 단지에서 똑같이 나온다. 이 단지 얘기가 아닌 그림이 분양 탭의 절반 이상을 먹는다.\n- **PriceTable 598px** — 같은 행을 **두 번 그린다**. `PriceTable.tsx:78-152` 가 면적별 막대로 한 번, `:153-184` 가 같은 `sellRows` 를 표로 또 한 번. 실데이터 측정으로 `sellRows` 는 **중앙값 1행 · p90 3행 · 최대 3행**이라 막대와 표가 보여주는 내용이 사실상 같다.\n\n---\n\n## 4. 접힘이 정말 필요한 지점 — 값어치로 판정\n\n**값어치 = (펼쳤을 때 늘어나는 px) ÷ (접힌 채 항상 차지하는 껍데기 px)**. 껍데기는 영구 비용이고 감춘 내용은 절약분이다.\n\n| 컨트롤 | 껍데기 | 펼침 증가 | 값어치 | 판정 |\n|---|---|---|---|---|\n| 전체 12개 학교 보기 (입지) | ~24 | **+716** | **30배** | 접기 정당 |\n| 은행별 금리 비교 (금융) | 38 | **+415** | **10.9배** | 접기 정당 |\n| 여분 자료 11개 (종합) | 44 | +336 | 7.6배 | 접기 정당 |\n| 여분 7개 (시세) | 44 | +296 | 6.7배 | 접기 정당 |\n| 여분 9개 (분양) | 44 | +255 | 5.8배 | 접기 정당 |\n| 시장/투자 지표 (시세) | 56 | +321 | 5.7배 | 접기 정당 |\n| 법률/규정 안내 (금융) | 38 | +193 | 5.1배 | 접기 정당 |\n| 여분 7개 (입지) | 44 | +206 | 4.7배 | 접기 정당 |\n| 단지 기본정보 (종합) | 56 | +243 | 4.3배 | 경계 |\n| 생활인프라 (입지) | 56 | +140 | **2.5배** | 접을 값어치 없음 |\n| 교통 상세 (입지) | 56 | +135 | **2.4배** | 접을 값어치 없음 |\n| 치안/환경 (입지) | 56 | +109 | **1.9배** | 접을 값어치 없음 |\n| 네이버 교차검증 (시세) | 56 | +96 | **1.7배** | 접을 값어치 없음 |\n| 청약 경쟁 현황 (분양) | 56 | +50 | **0.9배** | 껍데기가 내용보다 큼 |\n| 네이버 분양정보 (분양) | 44 | +33 | **0.75배** | 껍데기가 내용보다 큼 |\n| 분양 안전지표 (분양) | 56 | +27 | **0.5배** | 껍데기가 내용보다 큼 |\n\n**분양 탭 3개가 최악이다.** 56px 짜리 회색 상자를 세워 **27px(한 줄 반)** 을 감춘다. 셋을 합치면 껍데기 156px 로 내용 110px 을 감춘다 — **감춘 것보다 감추는 장치가 더 크다.** 그렇게 아끼는 46px 은 첫 화면의 13%인데, 대가는 탭 3번과 회색 벽이다.\n\n**입지 탭 3개도 접을 이유가 없다.** 다 펼쳐도 입지 탭은 971+384 = **1,355px(3.7화면)** 으로, 지금 시세 탭(5.0화면)보다 여전히 짧다.\n\n(주의: 금융 탭 수치는 `LoanRatesSection` 이 비동기로 표를 받아와서 순차 측정 때 높이가 뒷 항목으로 샜다. 그래서 \"여분 10개\"만 따로 직접 재서 교정했다 → 아래 §6.)\n\n---\n\n## 5. 첫 화면(363px)에 실제로 보이는 것\n\n| 탭 | 첫 화면에 보이는 것(px) | 0px = 한 픽셀도 안 보임 |\n|---|---|---|\n| 종합 | 점수뱃지 80 + 편차스트립 231 + 핵심지표 위 36 | 미니카드6·가중치막대·기본정보·여분·출처 |\n| 시세 | 위치게이지 81 + 산점도 229 + 시세표 위 29 | 분양가추이·미분양추이·서랍2·층별가·여분 |\n| 입지 | **거리그림 363 (혼자 다 차지)** | 학군정보·회색상자3·여분 **전부** |\n| 분양 | 타임라인 162 + **접힌 회색상자 3개 = 156** | 지역시장추이 812·여분 |\n| 금융 | 자금구성 109 + 대출분석 위 240 | 법률·금리·여분 |\n| 점수 | 카드 3.4장 | 안전도·미래가치 |\n\n- **입지 탭**: 사장님이 본 회색 상자 3개는 첫 화면에서 **0px**다. 스크롤해야 나오고, 나오면 372px 짜리 그림 바로 뒤에 제목+도넛만 붙은 벽 3개가 연달아 온다.\n- **분양 탭**: 첫 화면 363px 중 **156px(43%)이 접힌 회색 상자**. 세로로 3개가 붙어 벽을 만드는 게 여기가 제일 심하다.\n\n---\n\n## 6. 접힘 컨트롤 몇 개까지가 적당한가 — 근거 있는 상한\n\n기준은 \"첫 화면 363px 중 접힌 껍데기가 몇 %까지면 목록이 아니라 내용으로 읽히나\".\n\n- 접힌 상자 1개 = 56px = 첫 화면의 **15%**\n- 2개 = 112px = **31%**\n- 3개 = 168px = **46%** ← 지금 분양·입지 탭. 화면의 절반이 \"제목만 있는 상자\"\n\n**제안 규칙 3줄**\n1. **한 탭당 접힘 최대 2개.**\n2. **연속으로 붙는 접힘은 2개까지** — 세 번째 앞에는 반드시 펼쳐진 내용이 온다.\n3. **접힘 자격 = 값어치 4배 이상.** (실측 분포가 4.3배 위/2.5배 아래로 깨끗하게 갈린다. 4배 위는 전부 \"긴 표·목록\", 아래는 전부 \"몇 줄\")\n\n**적용 결과**\n\n| 탭 | 지금 | 규칙 적용 후 | 빠지는 것 |\n|---|---|---|---|\n| 종합 | 2 | 2 | — |\n| 시세 | 3 | 2 | 네이버 교차검증(1.7) |\n| 입지 | 5 | 2 | 생활인프라·교통·치안 (2.5/2.4/1.9) |\n| 분양 | 4 | 1 | 안전지표·경쟁현황·네이버분양 (0.5/0.9/0.75) |\n| 금융 | 3 | 2 | 법률안내는 각주로 흡수(연속 3 위반 해소) |\n| 점수 | 6 | 별도 축 — 아래 참조 | |\n| **합계** | **23** | **10** | |\n\n**대가는 세로 +590px(1.6화면)뿐이다.** 그 대신 손가락질이 23 → 10 으로 줄고, 회색 벽이 사라진다. 탭별로는 시세 +96, 입지 +384, 분양 +110 이고, 그래도 입지(3.7화면)·분양(4.2화면)은 지금의 시세 탭(5.0화면)보다 짧다.\n\n**점수 탭 CatPanel 6개는 이 계산에 넣으면 안 된다.** 접혀 있어도 상위 3개 근거가 이미 보이므로(`CatPanel.tsx:146-174`) \"접힌 벽\"이 아니라 \"요약 + 더보기\"다. 실측도 접힘 49~139px 로 다른 서랍(56 고정)과 성격이 다르다.\n\n---\n\n## 7. 서랍 6종 — 하나로 합칠 때 각각 잃는 것\n\n| 서랍 | 껍데기 | 고유 요소 | 합치면 잃는 것 |\n|---|---|---|---|\n| `DataSectionBlock` | 56 | **채움률 도넛 34px**, `?` 도움말, `hideWhenEmpty`, 본문 3형태(highlight 박스 / pairs 거리막대 / grid 2열) | 도넛(§8 참조), 본문 3형태 |\n| `ExtraFieldsAccordion` | 44 | 개수 N 표기, 섹션 색 왼쪽띠, **\"전부 비면 한 줄 요약\"**, ⚠추정값 각주 | 개수 약속, 빈 묶음 접기 |\n| `SchoolInfo` | ~24 (박스 안 버튼) | **등급칩 A~D**, 대표 3개는 **항상 노출**, 펼치면 7열 표 | 등급칩, \"요약은 늘 보이고 상세만 접힘\" 구조 |\n| `LoanRatesSection` | 38 | 금융권역 `role=tablist` 3탭, 로딩 스켈레톤, 월상환 시뮬 | 내부 탭·로딩 상태 |\n| `LoanAnalysis`(법률) | 38 | 순수 텍스트 고지 | **없음 — 가장 합치기 쉬움** |\n| `CatPanel` | 49~139 | 점수+등급칩+Bar+★중점 테두리, 접혀도 근거 3줄 노출 | 점수축 전체 |\n\n**합쳐도 되는 건 4종**: `DataSectionBlock` · `ExtraFieldsAccordion` · `LoanRatesSection` · `LoanAnalysis(법률)`. 넷 다 \"제목 + ▼ + 접힌 본문\"이고, 잃는 건 도넛과 개수표기뿐인데 둘 다 제목 옆 글자로 살릴 수 있다.\n\n**합치면 안 되는 건 2종**: `SchoolInfo`(값어치 30배, 유일하게 \"요약 항상 노출 + 상세만 접힘\"), `CatPanel`(점수축 — 채움률 도넛과 의미가 충돌한다).\n\n**사장님이 \"종합 탭 서랍 2개가 서로 다르게 생겼다\"고 한 것의 정체** — 코드에 이미 두 계열이 섞여 있다:\n- `DataSectionBlock.tsx:20-26` / `SchoolInfo.tsx:56-62` / `LoanRatesSection.tsx:19-25` = `background C.bg` + `borderRadius 10` + `padding 10px 12px` (**세 파일이 byte-identical**)\n- `ExtraFieldsAccordion.tsx:80-92` = `background C.card` + `borderRadius 8` + `minHeight 44` + \"펼치기 ▼\" 글자\n\n---\n\n## 8. 도넛 — 화면제약이 만든 진짜 버그 (실측 확정 2건)\n\n### (1) \"100%\" 가 원 안에 안 들어간다 → 사장님이 본 \"00%\"\n\n`CompletenessDonut.tsx:15,52` 실측:\n\n| 항목 | 실측 |\n|---|---|\n| 컨테이너 | 34 × 34 |\n| 원 지름 / 획 | 27 / 2.5 → **원 안쪽 글자 폭 24.5px** |\n| \"100%\" 글자 폭 (11px bold) | **31.2px** |\n| **초과** | **+6.7px (27% 넘침), 한쪽당 3.35px** |\n\n\"1\" 글자는 x = 1.4~6.9px 에 놓이는데 원 안쪽은 x = 4.75px 부터다 → **\"1\"이 통째로 컬러 링 위에 올라탄다.** 다른 값은 멀쩡하다: 95% = 25.1(간신히 초과), 91% = 23.4, 77% = 24.0, 71% = 22.6, 0% = 18.4. **세 자리(100%)만 깨진다.**\n\n**얼마나 자주 나오나** — 1,581 단지 × 9섹션 = 14,229개 도넛 중 **\"100%\" 가 4,431개(31.1%)**. 사장님이 본 치안/환경은 **1,581 중 737곳(46.6%)이 100%** 다.\n\n| 섹션 | 렌더되는 단지 | 도넛 100% | 도넛 0%인데 값 있음 | 중앙값 |\n|---|---|---|---|---|\n| 단지 기본정보 | 1,581 | 23 | 0 | 91 |\n| 시장/투자 지표 | 1,581 | 572 | 0 | 92 |\n| 네이버 교차검증 | 1,581 | 494 | 0 | 75 |\n| 생활인프라 | 1,581 | 499 | 0 | 95 |\n| 교통 상세 | 1,581 | 0 | **3** | 71 |\n| 치안/환경 | 1,581 | **737** | 0 | 88 |\n| 분양 안전지표 | 1,581 | **1,521** | 0 | 100 |\n| 청약 경쟁 현황 | 766 | 157 | **609** | **0** |\n| 네이버 분양정보 | 1,581 | 428 | 0 | 100 |\n\n### (2) 도넛이 0% 인데 안에는 자료가 꽉 차 있다 — 609건\n\n\"청약 경쟁 현황\" 은 766곳에서 렌더되는데 그 중 **609곳(79.5%)이 0% 도넛**이다. 실제로 열어보니 내용은 이랬다(측정 원문):\n\n> `청약 경쟁 현황 0% ▼  청약 경쟁률 8,157:1 / 공급세대수(청약) 1세대 / 청약신청수 8,157명`\n\n원인은 `src/lib/completeness.ts:60-61` — `evalTotal = total − na` 이고 세 필드가 전부 `isNotApplicable` 이면 `evalTotal = 0` → `pct = 0`. **\"평가 대상 아님\"을 \"자료 0%\"로 그리고 있다.** 교통 상세에서도 3건 같은 현상.\n\n**이게 왜 화면제약 문제인가**: 접힌 상자가 손님에게 보여주는 정보는 제목과 도넛 **딱 둘뿐**이다. 그런데 그 둘 중 하나가 **31%는 읽을 수 없고, 609건은 사실과 반대로 말한다.** 사장님이 본 \"접힌 게 잘 표시되고 있지 않다\"는 인상은 접혀서가 아니라 **접힌 채 내보내는 유일한 신호가 망가져 있어서**다.\n\n---\n\n## 9. 스크롤 위치 — 탭을 떠나면 읽던 자리를 잃는다\n\n`DetailModal.tsx:302-303` 이 탭 바뀔 때마다 `root.scrollTo({ top: 0 })` 를 부른다.\n\n실측: 입지 탭에서 400px 내려둠 → 시세 탭 이동 = **0** → 입지 탭 복귀 = **0**.\n\n패널 자체는 `keepMounted`(display:none)로 살아 있어서 펼침 상태·불러온 자료는 보존되는데(`DetailModal.tsx:255-258`) **스크롤만 버린다.** 5화면짜리 시세 탭을 4화면쯤 내려가 뭘 확인하고 다른 탭 들렀다 오면 처음부터 다시 내려야 한다.\n\n---\n\n## 10. 가로 실측 (390px)\n\n- **편차 스트립은 팝업에서 여유 있다.** 행 폭 358 안에서 트랙이 **159~209px** 확보된다(`TRACK_MIN_WIDTH` 56 대비 3~4배). 8줄 전부 한 줄에 들어간다.\n- **점수 탭 서브지표 줄이 터진다.** 한 줄 가용 폭 **330px**, 구성은 `·`(3) + 라벨 + 값 + 해석 + gap 12.\n  실측 실패 사례: `자연환경:` 51px + `블루조망 일조:양호 40dB 대기:보통` 194px + `▲→ 환경 쾌적` 70px = 318 + gap 12 = **330 = 한계 정확히** → **라벨과 값이 둘 다 2줄로 깨져 행 높이 22 → 38px**. 사장님이 본 \"자연환 / 경:\" 이 이것이다.\n  → **점수 탭 한 줄 예산 = 라벨+값+해석 합쳐 318px.** 지금 이 예산을 지키는 장치가 코드에 없다(`CatPanel.tsx:152` 는 `display:flex, gap:4` 뿐, `flexShrink`·`ellipsis` 없음).\n- 그 외 가로 넘침(`scrollWidth > clientWidth`)은 **탭 전체에서 0건**이었다.\n\n---\n\n## 11. 실측으로 확인한 \"절대 안 뜨는 것\"\n\n`public/data/apartments-detail-16-*.json` 1,581행 전수:\n\n| 블록 | 데이터 보유 단지 | 결과 |\n|---|---|---|\n| `NearbyChildcareSection` (어린이집) | **0 / 1,581** | 코드는 있지만 **어느 단지에서도 안 뜸** |\n| `NearbyFacilitiesBlock` (주변 편의시설 상세) | **0 / 1,581** | 안 뜸 |\n| 종합 탭 \"혜택 상세\" 칩 박스 | **0 / 1,581** | 안 뜸 |\n| 금융 탭 여분 아코디언 \"자료 10개\" | 혜택 10필드 `isAllEmpty` = **1,581 / 1,581 (100%)** | 열면 항상 **\"혜택/할인 — 이 10가지는 아직 한 건도 못 모았어요\" 한 줄(36px) + 각주(30px) = 74px** |\n\n즉 **금융 탭의 \"이 탭에서 아직 안 보여드린 자료 10개\" 버튼(44px)은 1,581 단지 전부에서 \"없어요\"로만 끝난다.** 접기 판단(`ExtraFieldsAccordion.tsx:31-36`)은 정상 작동 중이고, 문제는 **없는 것을 세어 \"10개\"라고 약속하는 제목**이다.\n\n정상 작동하는 블록: `nearbySchools` 98.7%(중앙 11개·최대 25) / `priceByArea` 96.8%(중앙 28포인트) / `priceByFloor` 96.8%(정확히 3행).\n\n---\n\n## 12. 확인 못한 것 (단정하지 않음)\n\n- **운영에서 `VITE_FEATURE_DEVIATION_STRIP` 이 켜져 있는지** — `.env` 읽기가 보안 규칙(`secret-output-commands`)에 막혀 확인 못함. 그래서 **켠 상태·끈 상태 둘 다 측정**해 뒀다(§2).\n- **실기기 iOS 사파리의 `env(safe-area-inset-bottom)`** — 노치 기기면 CTA 가 119 → 153px 이 되어 읽는 창이 **363 → 329px** 로 줄어든다. Playwright 에뮬레이션은 safe-area 가 0 이라 실기기에서 재확인 필요.\n- **여분 필드 총개수** — 코드에서 계산한 실측은 **44개**(종합 11 · 시세 7 · 입지 7 · 분양 9 · 금융 10)인데 세션 487 메모리에는 54 로 적혀 있다. 어느 쪽이 맞는지는 내 렌즈 밖.\n- 표본은 목록 상단 3개 단지다. `PriceTable`·`MarketStatsCharts`·`DistanceDots`·`AreaPriceScatter` 높이는 3곳 모두 동일했지만(598/812/372/229), `PresaleInfo` 는 단지마다 0~126px 달랐다.\n\n---\n\n## 쉬운 말로 정리하면:\n\n**한 번에 눈에 들어오는 건 세로 363픽셀뿐입니다.** 손바닥만 한 창인데, 한 단지를 다 보려면 그 창을 **20번 넘겨야** 하고 손가락질을 **29번** 해야 합니다.\n\n**서랍(접힌 회색 상자)이 문제의 본체가 아닙니다.** 접힌 것 9개가 감추고 있는 내용을 다 합쳐도 590픽셀인데, **그림 딱 두 개가 1,410픽셀**을 먹습니다 — 분양 탭의 \"지역 시장 추이\" 3그래프(812픽셀, 그 탭의 57%)와 시세 탭의 \"인근 매매 시세\"(598픽셀). 특히 지역 시장 추이는 **그 도(道)의 모든 단지에서 똑같이 나오는 그림**입니다. 이 단지 얘기가 아닌 게 한 탭의 절반을 차지하고 있어요.\n\n**서랍은 \"너무 많은 것\"이 아니라 \"값어치 없는 게 섞인 것\"이 문제입니다.** 학교 목록(24픽셀 눌러 716픽셀 펼침, 30배)이나 은행 금리(11배)는 접는 게 맞습니다. 그런데 분양 탭 서랍 3개는 **56픽셀짜리 상자를 세워 27픽셀(한 줄 반)을 감춥니다.** 감추는 장치가 감춰지는 내용보다 큽니다. 이 기준(**감춘 내용이 껍데기의 4배 이상일 때만 접는다**)을 대면 서랍이 23개에서 10개로 줄고, 세로는 1.6화면만 늘어납니다.\n\n**그리고 사장님이 본 \"00%\"는 착시가 아니라 진짜 버그입니다.** 동그라미 안에 글자를 놓을 수 있는 폭이 24.5픽셀인데 \"100%\"는 31.2픽셀입니다. 6.7픽셀이 넘쳐서 앞자리 \"1\"이 통째로 색깔 테두리 위에 올라탑니다. **전체 도넛의 31%(4,431개)가 이 상태**고, 치안/환경은 1,581곳 중 737곳(46.6%)이 그렇습니다.\n\n**더 나쁜 것도 찾았습니다.** \"청약 경쟁 현황 0%\"라고 적힌 상자를 열어보면 안에 **\"경쟁률 8,157대 1\"이 멀쩡히 들어 있습니다.** 이런 경우가 **609곳**입니다. 계산식이 \"따질 대상이 없음\"을 \"자료 0%\"로 그려서 그렇습니다. 접힌 상자가 손님에게 보여주는 건 제목과 이 동그라미 둘뿐인데, **그 둘 중 하나가 3분의 1은 못 읽히고 609곳에서는 반대로 말하고 있습니다.**\n\n**그 밖에 눈으로 확인한 것 두 가지**: ① 탭을 옮겼다 돌아오면 읽던 자리가 맨 위로 되돌아갑니다(400픽셀 내려뒀다 돌아오니 0). ② 점수 탭 한 줄에 쓸 수 있는 가로는 318픽셀인데 \"자연환경\" 줄이 정확히 그 한계를 넘어서 글자가 두 동강 납니다. ③ 어린이집·주변 편의시설·혜택 칩 세 블록은 **1,581개 단지 전부에서 한 번도 안 뜹니다**(자료가 0건).\n\n다음 단계로 뭘 우선할지 정하실 때 참고하실 순서는 이렇습니다: **동그라미 두 버그 → 지역 시장 추이 3그래프 자리 → 서랍 값어치 정리 → 탭 되돌아왔을 때 자리 기억.** 앞의 둘이 손대는 코드는 적은데 눈에 보이는 효과가 가장 큽니다."
+    ],
+    "design": {
+      "principle": "손님이 던지는 질문 순서대로 놓는다 — ①왜 안 팔렸나(이 물건의 정체) → ②지금 사도 되나(돈·위험) → ③내 조건에 맞나(입지·상품) → ④이 숫자를 믿어도 되나(출처·교차검증). 같은 질문 안에서는 「이 단지의 값 → 지역 대비 위치 → 지역 자체 통계」 순이고, 한 필드는 그 질문에 처음 답하는 자리 한 곳에만 둔다. 새 필드가 생기면 (a)네 질문 중 무엇에 답하나 → 탭·밴드 결정, (b)단지값/비교/지역통계 중 무엇인가 → 밴드 안 순서 결정, (c)채움 50%+ 이고 단지마다 값이 다른가 → 항상보임, 아니면 서랍, 채움 0%면 화면 밖(관리자 전수 표).",
+      "tabs": [
+        {
+          "tab": "종합",
+          "answers": "이 단지는 한마디로 어떤 물건이고, 내 기준으로 몇 점인가?",
+          "order": [
+            {
+              "slot": 1,
+              "what": "한 줄 판정 (신규) — unsold + unsoldEventCount 로 \"이미 다 지었는데 47채 남음 · 3번 다시 내놨어요\"",
+              "state": "항상보임",
+              "why": "이 상품의 정의가 '안 팔렸다'이고 그중 52.1%가 준공후 미분양이다. 지금은 미분양률(5행)과 입주(8행)가 3칸 떨어져 있어 손님이 머릿속에서 합쳐야 한다",
+              "changeFromNow": "신설. 미분양 세대수·재공고 횟수가 팝업에 처음 등장(지금은 목록 카드 배지에만 있음)"
+            },
+            {
+              "slot": 2,
+              "what": "총점 배지(80px→56px) + 프로필 이름",
+              "state": "항상보임",
+              "why": "판정 다음에 '내 기준 점수'. 배지 자체는 유지하되 첫 화면 363px 예산에서 24px 회수",
+              "changeFromNow": "1번→2번으로 내려가고 지름 80→56"
+            },
+            {
+              "slot": 3,
+              "what": "핵심지표 5행 — 분양가 · 평당가 · 적정가 괴리 · 규제현황 · 입주",
+              "state": "항상보임",
+              "why": "②'사도 되나'의 최소 집합. 평당가는 면적 편향이 없는 유일한 비교축(총액은 '싼가'가 아니라 '작은가'를 잰다)",
+              "changeFromNow": "8행→5행. 지역(헤더 중복)·전세가율(편차 스트립 중복)·미분양률(1번 흡수) 제거, LTV한도는 금융 탭으로 이동, 평당가 신규 승격. 규제현황 근거를 getZone()→apt.isRegulated 로 교체"
+            },
+            {
+              "slot": 4,
+              "what": "카테고리 미니카드 6개 (프로필 가중치 내림차순)",
+              "state": "항상보임",
+              "why": "이 서비스가 다른 사이트와 유일하게 다른 자산인데 지금은 595~812px 구간에 있어 첫 화면 밖이다. 5개 프로필 중 4개에서 location 이 1위인데 화면 순서는 가중치를 전혀 안 쓴다",
+              "changeFromNow": "편차 스트립 위로 올라와 첫 화면 안에 첫 줄이 걸린다. 표시 순서가 CAT_DISPLAY_ORDER 고정 → 프로필 가중치 순(동점은 기존 순서로 tiebreak)"
+            },
+            {
+              "slot": 5,
+              "what": "편차 스트립 8줄 (오늘 만든 것 그대로)",
+              "state": "항상보임",
+              "why": "지역 중위값 대비 위치 = ②의 '비교' 층. 내용은 좋다(평균 7.0줄 실제 렌더). 문제는 자리값이었다 — 첫 화면 363px 중 231px 을 혼자 먹었다",
+              "changeFromNow": "2번→5번. 줄 수·컴포넌트 그대로, 위치만 미니카드 아래로"
+            },
+            {
+              "slot": 6,
+              "what": "프로필 가중치 막대",
+              "state": "항상보임",
+              "why": "'왜 이 점수인지'의 근거. 미니카드 바로 다음이 제자리",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 7,
+              "what": "재공고 통합조회 배지 (siblingIds ≥2)",
+              "state": "조건부",
+              "why": "1번 판정과 같은 이야기라 붙여 둔다",
+              "changeFromNow": "위치만 판정 근처로. 조건 그대로"
+            },
+            {
+              "slot": 8,
+              "what": "단지 기본정보 서랍",
+              "state": "접힘",
+              "why": "펼침 +243px / 껍데기 56px = 4.3배로 접기 자격선(4배) 통과",
+              "changeFromNow": "평당가(3번으로 승격)·주소(헤더 중복) 제거. 닫힌 채 요약 1줄 노출 — 예: \"시공사 OO · 1,240세대 · 데이터 신뢰도 91%\""
+            },
+            {
+              "slot": 9,
+              "what": "아직 안 보여드린 자료 서랍",
+              "state": "접힘",
+              "why": "④'믿어도 되나'의 마지막 층. 항상 마지막",
+              "changeFromNow": "차트 플래그(showDeviation)에서 분리. energyGrade(0%) 빠져 11→10개"
+            },
+            {
+              "slot": 10,
+              "what": "출처 footer",
+              "state": "항상보임",
+              "why": "④의 종결. 전 탭 공통 1회",
+              "changeFromNow": "유지"
+            }
+          ]
+        },
+        {
+          "tab": "시세",
+          "answers": "이 분양가가 주변에 비해 싼가, 그리고 그 판단을 믿어도 되나?",
+          "order": [
+            {
+              "slot": 1,
+              "what": "주변 시세 대비 위치 게이지",
+              "state": "항상보임",
+              "why": "이 탭의 답을 첫 줄에서 준다. 이미 정답 위치",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 2,
+              "what": "면적–가격 산점도",
+              "state": "항상보임",
+              "why": "게이지가 준 결론(싸다/비싸다)을 분포로 확인시킨다. 단지 하나로 분포가 성립하는 유일한 자산(96.5%)",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 3,
+              "what": "인근 매매 시세 — 면적별 막대만",
+              "state": "항상보임",
+              "why": "같은 sellRows(중앙 1행·최대 3행)를 막대와 표로 두 번 그려 598px 을 쓴다. 막대가 더 읽기 쉽다",
+              "changeFromNow": "아래 표 삭제. 약 598px→350px"
+            },
+            {
+              "slot": 4,
+              "what": "이 단지 거래 기록 (신규 묶음) — 주변시세 · 최근6개월 거래 · 평균층 · 층수범위 · PIR · PSR",
+              "state": "항상보임",
+              "why": "'시장/투자 지표'가 단지 실측치와 시도(道) 전체 상수를 섞어 놓아 손님이 시도 평균을 이 단지 값으로 읽는다. 단지값만 남긴다",
+              "changeFromNow": "기존 '시장/투자 지표' 섹션 분해. 인구증감·순이동·주택보급률(시도 상수 3개)은 분양 탭 지역 통계 서랍으로 이동"
+            },
+            {
+              "slot": 5,
+              "what": "분양가 추이 · 미분양 추이",
+              "state": "항상보임",
+              "why": "이 단지의 시간축. 4번의 스냅샷 다음",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 6,
+              "what": "층별 거래가",
+              "state": "항상보임",
+              "why": "채움 96.8%·정확히 3행이라 접을 값어치가 없다",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 7,
+              "what": "네이버 교차검증 서랍",
+              "state": "접힘",
+              "why": "④'믿어도 되나' 층. 펼침 +96px 로 값어치는 1.7배지만, 닫힌 요약 1줄이 결론을 이미 전달하므로 접어 둔다",
+              "changeFromNow": "닫힌 채 \"네이버 주변 중위 4.2억 · 우리 값과 −3%\" 한 줄 노출. 평균가·평균층·건축연도(중위값과 중복) 제거"
+            },
+            {
+              "slot": 8,
+              "what": "아직 안 보여드린 자료 서랍",
+              "state": "접힘",
+              "why": "마지막 층",
+              "changeFromNow": "차트 플래그에서 분리. 시도 상수 4개(분양가격지수·㎡당 평균분양가·대지비 비율·초기분양률)와 네이버 중복 3개 빠져 7→0~2개, 0이면 서랍 자체 미렌더"
+            }
+          ]
+        },
+        {
+          "tab": "입지",
+          "answers": "여기 살면 매일 어떤가 — 출퇴근·아이·안전은?",
+          "order": [
+            {
+              "slot": 1,
+              "what": "한 줄 요약 (신규) — 지하철 340m · 학군 A · 치안 2등급 · 혐오시설 있음/없음",
+              "state": "항상보임",
+              "why": "5개 프로필 중 4개에서 location 이 1위(가중치 합 165, 2위 price 115). 그런데 지금 이 탭 첫 화면은 그림 하나가 363px 을 통째로 쓰고 결론은 어디에도 없다. 네 필드 채움 100/100/87/86%",
+              "changeFromNow": "신설"
+            },
+            {
+              "slot": 2,
+              "what": "주변 시설까지 거리 그림 (오늘 만든 것)",
+              "state": "항상보임",
+              "why": "거리 12종의 정본. 한 축에 모아야 상대 비교가 되고, 이미 못 쓰는 축(KTX·IC·혐오)을 스스로 걸러낸다",
+              "changeFromNow": "1번→2번. 그림 자체는 그대로"
+            },
+            {
+              "slot": 3,
+              "what": "학군 정보 — 등급칩·대표 3개 항상 + 전체 12개 접힘",
+              "state": "항상보임",
+              "why": "펼침 +716px / 껍데기 24px = 30배. 팝업 전체에서 접기 값어치 1위이고, 유일하게 '요약은 늘 보이고 상세만 접힘' 구조라 그대로 둔다",
+              "changeFromNow": "유지(서랍 통일의 예외로 명시)"
+            },
+            {
+              "slot": 4,
+              "what": "생활인프라 — 개수만 (병원·마트·편의점·공원·약국·카페·문화·은행·어린이집·응급의료)",
+              "state": "항상보임",
+              "why": "거리 12개를 그림에 넘기면 내용이 짧아져 접을 이유가 사라진다(현재 값어치 2.5배, 자격선 4배 미달)",
+              "changeFromNow": "접힘 해제 + 거리 필드 12개 제거(2번 그림이 정본)"
+            },
+            {
+              "slot": 5,
+              "what": "치안/환경 — 경찰관서·대기질·조망·일조·소음·혐오시설",
+              "state": "항상보임",
+              "why": "값어치 1.9배로 접을 자격 미달. 게다가 1,581곳 중 737곳(46.6%)이 도넛 100%라 사장님이 본 \"00%\"가 여기서 가장 자주 터진다",
+              "changeFromNow": "접힘 해제(도넛도 함께 사라져 버그 노출면 감소)"
+            },
+            {
+              "slot": 6,
+              "what": "교통 상세 — 지하철 노선명·버스 노선·IC 거리",
+              "state": "항상보임",
+              "why": "값어치 2.4배로 자격 미달",
+              "changeFromNow": "접힘 해제 + KTX 거리 제거(1,581/1,581 전부 센티널 99 = 정보량 0). 지하철 거리는 2번 그림이 정본"
+            },
+            {
+              "slot": 7,
+              "what": "어린이집 상세 · 주변 편의시설 상세",
+              "state": "조건부",
+              "why": "둘 다 0/1,581 이라 지금은 한 번도 안 뜬다. 원본 테이블엔 826행이 있고 VIEW 가 컬럼을 안 실어 끊긴 것이라, 파이프를 고치면 자동으로 살아난다",
+              "changeFromNow": "화면 코드 변경 0(이미 early-return). 대신 배포 단계에 VIEW 복구를 넣는다"
+            },
+            {
+              "slot": 8,
+              "what": "아직 안 보여드린 자료 서랍",
+              "state": "접힘",
+              "why": "마지막 층",
+              "changeFromNow": "차트 플래그에서 분리. 학군 점수(등급과 중복) 제거"
+            }
+          ]
+        },
+        {
+          "tab": "분양",
+          "answers": "왜 안 팔렸고, 지금 내가 살 수 있는 물건인가?",
+          "order": [
+            {
+              "slot": 1,
+              "what": "재공고 이력 (신규) — 다시 내놓은 횟수 · 마지막 시점 · 계약해제율",
+              "state": "항상보임",
+              "why": "'왜 안 팔렸나'의 유일한 직접 증거인데 팝업 어디에도 없었다. 채움 100% / 48.5% / 96.2%, 48.5%가 1회 이상 재공고",
+              "changeFromNow": "신설. cancelRatio6m 은 '분양 안전지표' 서랍에서 여기로 승격"
+            },
+            {
+              "slot": 2,
+              "what": "분양 타임라인 (오늘 만든 것)",
+              "state": "항상보임",
+              "why": "1번이 답한 '왜'에 이어 '지금 어느 단계인가'",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 3,
+              "what": "분양 정보 카드 (PresaleInfo)",
+              "state": "항상보임",
+              "why": "분양 15필드의 정본. \"분양가 3억2천~4억1천 / 평당 1,450만원\" 문장형이라 라벨-값 격자보다 읽기 쉽다",
+              "changeFromNow": "유지. 바로 아래 '네이버 분양정보' 섹션(같은 15필드)이 사라진다"
+            },
+            {
+              "slot": 4,
+              "what": "청약 경쟁 현황",
+              "state": "조건부",
+              "why": "766곳에서만 의미가 있고 이미 hideWhenEmpty 로 올바르게 숨는다",
+              "changeFromNow": "도넛 0% 거짓 표시 수정(609곳이 '0%'인데 안에는 경쟁률 8,157:1 이 들어 있음)"
+            },
+            {
+              "slot": 5,
+              "what": "모집공고 원문 링크",
+              "state": "조건부",
+              "why": "채움 3.5%지만 있으면 원문이라 ④에서 가장 강한 증거",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 6,
+              "what": "이 지역 통계 서랍 (신설 통합) — 지역 시장 추이 3그래프 + 신규공급·주택보급률·인구증감·순이동·분양가격지수·㎡당 평균분양가·대지비 비율·초기분양률",
+              "state": "접힘",
+              "why": "이 8개는 전부 시도(道) 상수라 같은 도의 모든 단지에서 값이 같다. '이 단지 안전지표'라는 이름 옆에 놓여 단지 실측치처럼 읽혔다. 그래프 3개만 812px = 이 탭의 57%",
+              "changeFromNow": "'분양 안전지표' 섹션 해체 + MarketStatsCharts 를 이 서랍 안으로. 닫힌 채 \"이 단지가 아니라 경기도 전체 통계예요\" 한 줄. 가로축에 연도 표기 추가(지금 01·02·03·04·01 로 되돌아가 보임)"
+            },
+            {
+              "slot": 7,
+              "what": "아직 안 보여드린 자료 서랍",
+              "state": "접힘",
+              "why": "마지막 층",
+              "changeFromNow": "차트 플래그에서 분리. 공급비율·HUG 보증(둘 다 0%) 빠져 9→7개"
+            }
+          ]
+        },
+        {
+          "tab": "금융",
+          "answers": "내 돈으로 이 집을 살 수 있나?",
+          "order": [
+            {
+              "slot": 1,
+              "what": "대출 가능 한 줄 (신규) — DSR 40% 통과 여부 + LTV 한도 + 규제 근거",
+              "state": "항상보임",
+              "why": "대출이 안 나오면 나머지 계산이 전부 무의미하다. dsr40pass 94.8%, isRegulated 100%",
+              "changeFromNow": "신설. LTV한도가 종합 탭 핵심지표에서 이 자리로 이동(정본 이전). 강남3구+용산 57단지가 받던 과대 LTV 안내가 여기서 바로잡힌다"
+            },
+            {
+              "slot": 2,
+              "what": "자금 구성 그림 (오늘 만든 것)",
+              "state": "항상보임",
+              "why": "1번의 결론을 금액 덩어리로 보여준다",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 3,
+              "what": "대출 분석 (월 상환·총이자)",
+              "state": "항상보임",
+              "why": "이 탭의 본론",
+              "changeFromNow": "유지"
+            },
+            {
+              "slot": 4,
+              "what": "은행별 금리 비교 서랍",
+              "state": "접힘",
+              "why": "펼침 +415px / 껍데기 38px = 10.9배. 접기 자격 충분",
+              "changeFromNow": "서랍 생김새 통일. 닫힌 채 \"1금융권 최저 3.4%부터\" 한 줄"
+            },
+            {
+              "slot": 5,
+              "what": "법률/규정 안내",
+              "state": "항상보임",
+              "why": "순수 텍스트 고지라 각주로 흡수하면 연속 접힘 3개(회색 벽)가 해소된다",
+              "changeFromNow": "서랍 → 작은 글씨 각주"
+            },
+            {
+              "slot": 6,
+              "what": "아직 안 보여드린 자료 서랍",
+              "state": "조건부",
+              "why": "이 탭 여분 10개가 전부 혜택 필드(0/1,581)라, 지금은 1,581단지 전부에서 '10개 있어요'를 약속하고 열면 '못 모았어요' 한 줄만 나온다",
+              "changeFromNow": "혜택 10필드를 화면에서 빼면 여분 0개 → 서랍 자체가 안 뜬다(코드는 count 0 시 미렌더 한 줄 추가)"
+            }
+          ]
+        },
+        {
+          "tab": "점수",
+          "answers": "왜 이 점수가 나왔나 — 어디가 강하고 어디가 약한가?",
+          "order": [
+            {
+              "slot": 1,
+              "what": "카테고리 패널 6개 (프로필 가중치 내림차순, 각 패널 = 점수+등급+막대+근거 3줄)",
+              "state": "항상보임",
+              "why": "사장님이 '대부분 펼쳐져 근거 3줄 보여 좋다'고 한 구조. 접혀 있어도 근거가 보이므로 '접힌 벽'이 아니라 '요약+더보기'라 서랍 규칙 밖에 둔다",
+              "changeFromNow": "표시 순서만 프로필 가중치 순으로(은퇴 프로필은 가중치 0인 미래가치가 맨 아래로 내려간다). 동점은 기존 CAT_DISPLAY_ORDER 로 tiebreak — 순서가 수집기 변경에 흔들리지 않는 성질은 유지"
+            },
+            {
+              "slot": 2,
+              "what": "혜택·할인 패널",
+              "state": "조건부",
+              "why": "6개 소스가 전부 0.0%라 근거 줄이 0개인데 화면은 'D 0점'이라는 나쁜 성적표로 보인다. 미니카드는 이미 '혜택 정보 없음'이라 정직하게 말하고 있어 두 화면이 어긋난다",
+              "changeFromNow": "noData 일 때 점수·등급·막대 대신 \"혜택 정보는 아직 모으지 않았어요\" 한 줄로 대체"
+            },
+            {
+              "slot": 3,
+              "what": "근거 한 줄의 가로 예산 — 라벨+값+해석 합계 318px",
+              "state": "항상보임",
+              "why": "390px 화면에서 쓸 수 있는 폭이 330px 인데 '자연환경:' 줄이 그 한계를 넘어 라벨이 '자연환/경:' 으로 두 동강 난다",
+              "changeFromNow": "라벨에 flexShrink:0, 값에 한 줄 말줄임 적용. 판정 문구가 잘릴 상황이면 값을 줄이고 판정을 살린다"
+            }
+          ]
+        }
+      ],
+      "removals": [
+        "혜택 9필드(할인율·무이자대출·무이자비율·옵션무상·옵션가치·발코니무상·발코니가치·캐시백·계약금할인) — 1,581단지 전부 0건이고 46개 수집기 중 이 컬럼을 쓰는 게 하나도 없다. '아직 못 모았다'가 아니라 모으려 한 적이 없다. 금융 탭 여분 서랍 10칸이 통째로 이것이라 서랍도 같이 사라진다",
+        "혜택 목록(benefits) 칩 박스 — 종합 탭, 0/1,581. data-fill 이 이미 자동보정 대상에서 명시적으로 제외해 둔 필드다",
+        "에너지 등급(energyGrade) — 주거용 아파트는 공공 API가 제공하지 않는다. 같은 사유의 형제(녹색건축·내진설계)는 이미 숨김 처리돼 있는데 이것만 빠져 있었다",
+        "HUG 보증(hugGuarantee) — 시공사 마스터 32개사 전부 0건. DART 재무제표에 없는 항목이라 지금 수집기로는 영구히 못 채운다",
+        "공급비율(supplyRatio)만 예외로 '아직 못 모았어요' 문구를 붙여 남긴다 — 코드는 정상인데 국토부 API가 3회 연속 빈 응답이라 우리 쪽에 고칠 대상이 있는 유일한 0%다",
+        "KTX 거리 — 1,581단지 전부 값이 '99'(반경 밖 표시용 숫자)다. 모든 단지에서 똑같은 줄이 교통 섹션 한 칸을 영구히 차지한다. 거리 그림은 이미 같은 이유로 이 축을 뺐는데 목록 쪽에만 반영이 안 됐다",
+        "'네이버 분양정보' 섹션 통째 — 바로 위 분양 정보 카드와 15필드가 100% 같다. 게다가 768곳(48.6%)에서 제목만 달린 빈 회색 상자로 서 있다가 열면 '데이터 수집 중...' 한 줄만 나온다",
+        "인근 매매 시세의 아래 표 — 위 막대와 같은 행을 다시 그린다(중앙값 1행·최대 3행)",
+        "생활인프라의 거리 12개 — 같은 탭 거리 그림과 완전 중복",
+        "핵심지표의 지역·전세가율·미분양률 3행 — 각각 헤더·편차 스트립·한 줄 판정이 정본",
+        "'분양 안전지표' 섹션 — 계약해제율은 1번으로 승격, 나머지는 시도 상수라 지역 통계 서랍으로. 껍데기 56px 로 27px(한 줄 반)을 감추던 자리다",
+        "내부 식별자 5개(위도·경도·점수캐시·점수계산시각·갱신시각)를 손님 경로에서 제외 — 지금 손님용 목록에 단지 ID 하나만 빠져 있다",
+        "학군 점수·최고층·네이버 주변평균가·네이버 평균층·네이버 건축연도·분양가격지수·㎡당 평균분양가·대지비 비율·초기분양률 — 전부 옆에 더 읽기 쉬운 형제가 이미 있다(등급·층수범위·중위가·평균층·건축연도·그래프)"
+      ],
+      "dedup": [
+        "price(5곳) → 정본=헤더. 종합 핵심지표는 '분양가' 1행만 유지(같은 값의 표시 형식이 아니라 계산 입력으로 쓰이는 자리), 시세·분양·금융 탭의 직접 표시는 각각 게이지·분양 정보 카드·대출 한 줄의 입력으로만 쓰고 라벨-값 줄은 제거",
+        "region·gu·dong·address·district(4곳/2곳) → 정본=헤더. 종합·분양·금융 탭의 반복 표시 제거. 개발구역(district)은 채움 3.2%라 헤더에서도 값 있을 때만",
+        "area → 정본=헤더. 단, 42.4%가 비어 '㎡'만 남으므로 값 있을 때만 렌더. 시세 탭 직접 표시 제거",
+        "jeonseRate(4곳: 종합 핵심지표·편차 스트립·점수 탭·시세 여분) → 정본=편차 스트립(지역 중위 대비라 정보량이 가장 크다). 종합 핵심지표·시세 여분에서 제거. 점수 탭은 다른 탭이라 유지",
+        "unsoldRate(2곳) → 정본=편차 스트립. 종합 핵심지표에서 제거. 미분양 '세대수'(unsold)는 한 줄 판정이 정본",
+        "pp 평당가(2곳) → 정본=종합 핵심지표(신규 승격). 단지 기본정보에서 제거. 편차 스트립의 평당가 줄은 '지역 대비 위치'라 값 자체가 아니므로 중복 아님",
+        "subwayDist(3곳) → 정본=입지 거리 그림. 교통 상세에서 제거. 편차 스트립은 지역 대비 위치라 유지",
+        "거리 11개(병원·마트·편의점·카페·문화·은행·약국·공원·어린이집·응급의료·경찰관서) → 정본=입지 거리 그림. 생활인프라·치안환경 섹션에서 전부 제거",
+        "개수 10개(병원·마트·편의점·공원·약국·카페·문화·은행·어린이집·응급의료) → 정본=생활인프라 섹션. 점수 탭 근거는 다른 탭이라 중복 아님",
+        "presale 15필드(분양단계·최저가·최고가·평당가·일반공급·동수·주차·주택형·입주·모집일·일정·특징·문의·유형·대표이미지) → 정본=분양 정보 카드. '네이버 분양정보' 섹션 삭제로 일괄 해소",
+        "competitionRate(3곳) → 정본=청약 경쟁 현황 섹션. 분양 탭 직접 표시는 타임라인 안 배지로 흡수",
+        "cancelRatio6m(2곳) → 정본=분양 탭 재공고 이력(1번). 분양 안전지표 섹션 삭제로 해소",
+        "pir·psr(각 2~3곳) → 정본=시세 탭 '이 단지 거래 기록'. 편차 스트립의 소득부담 줄은 지역 대비라 유지, 점수 탭은 다른 탭",
+        "avgMaintenanceCost(2곳) → 정본=편차 스트립(지역 대비 관리비가 절대값보다 유용). 단지 기본정보에서 제거",
+        "popGrowth·netMigration·housingSupplyLevel·newSupply·priceIndex·avgPriceSqm·landCostRatio·initialSaleRate(8개, 전부 시도 상수) → 정본=분양 탭 '이 지역 통계' 서랍 한 곳. 시세 탭 시장/투자 지표와 분양 안전지표에서 제거",
+        "naver 교차검증 6필드 → 정본=시세 탭 교차검증 서랍. 그중 평균가·평균층·건축연도는 중위가·평균층·건축연도와 같은 뜻이라 아예 제거",
+        "dsr40pass(2곳) → 정본=금융 탭 대출 한 줄. 점수 탭은 다른 탭",
+        "crimeSafetyGrade·schoolGrade → 정본=입지 탭 한 줄 요약(1번). 치안/환경 섹션·학군 정보의 값은 같은 탭 아래쪽 상세라, 요약은 결론만 쓰고 상세가 원자료를 갖는 관계로 역할 분리",
+        "id → 손님 경로에서 제외(내부 식별자). 관리자 표에는 그대로"
+      ],
+      "drawer": "서랍은 한 가지 생김새로 통일한다 — 회색 박스(C.bg) + 모서리 10 + 안쪽 여백 10/12 + [제목(굵게) / 그 아래 요약 한 줄(C.muted, 넘치면 말줄임)] + 오른쪽 끝에 채움 도넛 + 화살표, 전체 높이 최소 44px. 지금 섞여 있는 세 계열(회색+도넛+▼ / 흰색+\"펼치기 ▼\" / 회색+점수+▼) 중 첫 번째를 표준으로 삼고, 흰색 계열은 제목 옆 개수 표기만 살려서 흡수한다. ▍닫힌 채로 보여줄 것 = \"안에 무엇이 있는지\"를 대표값 1~2개로 말하는 한 줄이다. 예: 생활인프라 \"병원 3 · 마트 1 · 편의점 12\", 네이버 교차검증 \"주변 중위 4.2억 · 우리 값과 −3%\", 지역 통계 \"이 단지가 아니라 경기도 전체 통계예요\", 은행 금리 \"1금융권 최저 3.4%부터\", 여분 자료 \"관리비·향·평면 등 10가지\". 이 줄은 반드시 한 줄(넘치면 말줄임)이라 접은 의미가 사라지지 않는다 — 지금은 제목과 도넛 둘뿐인데 그중 하나가 31%는 못 읽히고 609곳에서는 반대로 말한다. ▍도넛은 제목 옆이 아니라 오른쪽 끝으로 옮기고 크기 34→40(글자 31.2px < 안쪽 33px)으로 바꾼다. 평가 대상이 하나도 없는 섹션은 0% 대신 \"해당 없음\" 칩. ▍접기 자격 = 감춘 높이 ÷ 껍데기 높이 ≥ 4배 이고 밴드 ③④(내 조건·믿어도 되나)일 때만. 실측 분포가 4.3배 위(전부 긴 표·목록)와 2.5배 아래(전부 몇 줄)로 깨끗하게 갈린다. ▍한 탭당 접힘 최대 2개, 연속으로 붙는 접힘도 2개까지(세 번째 앞에는 반드시 펼쳐진 내용). 접힌 상자 3개면 첫 화면 363px 의 46%가 제목만 있는 상자가 된다. 적용하면 23개 → 10개(종합 2·시세 2·입지 2·분양 2·금융 1·점수 별도), 늘어나는 세로는 590px(1.6화면)뿐이고 그래도 입지 3.7화면·분양 4.2화면으로 지금 시세 탭(5.0화면)보다 짧다. ▍예외 2종은 통일에서 뺀다 — 학군 정보(값어치 30배, 유일하게 '요약은 늘 보이고 상세만 접힘' 구조)와 점수 탭 카테고리 패널(접혀도 근거 3줄이 보이는 요약+더보기라 채움률 도넛과 의미가 충돌).",
+      "bugs": [
+        "도넛 \"00%\" — 원 안쪽 글자 폭이 24.5px 인데 \"100%\"는 31.2px 이라 앞자리 1이 초록 링 위에 올라탄다. 전체 도넛 14,229개 중 4,431개(31.1%)가 이 상태이고 치안/환경은 1,581곳 중 737곳(46.6%). 처방=크기 34→40 + 100%일 때 글자 한 단계 축소",
+        "도넛 0% 거짓 — '청약 경쟁 현황 0%'를 열면 안에 경쟁률 8,157:1 이 멀쩡히 들어 있다(766곳 중 609곳, 교통 상세에도 3곳). 평가 대상이 하나도 없을 때(evalTotal=0) 나누기 결과를 0%로 그리고 있다. 처방=이 경우 도넛 대신 '해당 없음'",
+        "규제현황 거짓 — 지역→규제구역 표가 빈 객체라 1,581단지 전부 '비규제지역(초록)'으로 뜨고 LTV도 후하게 계산된다. 실제 규제 단지는 57곳(서초19·송파19·강남14·용산5)이고 점수 엔진은 반대로 감점하고 있어 같은 팝업이 서로 다른 말을 한다. 처방=근거를 apt.isRegulated 로 교체(채움 100%)",
+        "\"혐오시설: 장례식장,공장 → 주변 깨끗\" — 감점 사전에 든 단어가 7개뿐이라 실제로 가장 많이 나오는 공장(1,341건)·장례식장(969건)·폐수처리장(103)·하수처리장(96)·고압선(79)·축산시설(56)이 전부 감점 0이 된다. 목록이 있는 1,366곳 중 1,298곳(전체의 82.1%)이 '시설 목록 + 깨끗'을 동시에 표시. 처방(표현계층)=목록이 있는데 판정이 '깨끗'이면 판정 문구를 표시하지 않는다. 사전 보강은 점수 엔진 건이라 별건",
+        "\"용적률: 0% → 쾌적한 밀도\"(146곳) / \"정보 없음 → 과밀 우려\"(433곳) — 값이 없으면 300으로 벌주고 저장된 0은 그대로 통과시킨다. 처방(표현계층)=값이 0이거나 '정보 없음'이면 해석 문구를 표시하지 않는다",
+        "\"혜택·할인 D 0\" 텅 빈 패널 — 데이터가 1,581곳 전부 0건이라 근거 줄이 0개인데 화면은 나쁜 성적표로 보인다. 미니카드는 이미 '혜택 정보 없음'이라 말하고 있어 두 화면이 어긋난다. 처방=noData 일 때 한 줄 안내로 대체",
+        "\"자연환 / 경:\" 줄바꿈 — 한 줄 가용 폭 330px 인데 라벨+값+해석이 330px 을 정확히 넘어 라벨이 두 동강 난다. 처방=라벨 flexShrink 고정 + 값 말줄임, 예산 318px",
+        "헤더 \"㎡\" 앞이 빔 — 전용면적 채움 57.6%인데 무조건 찍는다(42.4%에서 단위만 남음). 처방=값 있을 때만",
+        "분양 그래프 가로축에 연도가 없어 01·02·03·04·01 로 되돌아가 보인다. 처방=첫 점과 연도가 바뀌는 지점에 연도 표기",
+        "여분 서랍 5개가 전부 차트 플래그 뒤에 있어, 그림을 끄면 44개 필드가 통째로 사라진다. 그림 롤백과 자료 노출은 다른 결정인데 한 스위치를 쓴다. 처방=분리",
+        "금융 탭 '자료 10개' 거짓 약속 — 1,581단지 전부에서 열면 '못 모았어요' 한 줄만 나온다. 처방=0%인 필드를 세지 않으면 개수 0 → 서랍 자체 미렌더",
+        "탭을 옮겼다 돌아오면 읽던 자리가 맨 위로 되돌아간다(400px 내려두고 다른 탭 갔다 오면 0). 펼침 상태와 불러온 자료는 보존되는데 스크롤만 버린다. 처방=탭별 스크롤 위치 기억"
+      ],
+      "rollout": [
+        "1단계 — 거짓말 먼저 (순서 변경 0, 단독 배포 가능): 규제현황 근거 교체(57단지 오안내·LTV 과대), '주변 깨끗' 모순 가드(82.1%), 용적률 0%/정보없음 해석 억제(579곳), 혜택 D 0 → 안내 한 줄, 도넛 00% 크기 수정, 도넛 0% 거짓(609곳) → '해당 없음', 헤더 ㎡ 조건부, 점수 줄 가로 예산. 화면 배치는 그대로라 회귀 위험이 가장 낮고 손님 눈에 보이는 효과는 가장 크다",
+        "2단계 — 안전장치 분리: 여분 서랍 5개를 차트 플래그에서 떼어낸다. 이후 어떤 단계에서 그림을 되돌려도 자료 44개가 같이 사라지지 않는다. 다음 단계들의 전제",
+        "3단계 — 서랍 생김새 통일: 표준 서랍 한 종류 + 닫힌 요약 한 줄 + 도넛 위치·크기. 아직 무엇을 접을지는 안 바꾼다(생김새만). 시각 회귀 테스트 기준선을 여기서 새로 뜬다",
+        "4단계 — 중복 제거(내용 삭제, 순서 유지): 인근 시세 아래 표 삭제, '네이버 분양정보' 섹션 삭제, 생활인프라 거리 12개 제거, KTX 거리 제거, 핵심지표 3행 정리, LTV 한도를 금융 탭으로 이동. 각 항목이 서로 독립이라 쪼개서 배포해도 된다",
+        "5단계 — 0% 필드 화면 밖으로 + '전량 도달' 기준 재정의: 혜택 10 + 에너지등급 + HUG 보증 12개를 숨김 처리(공급비율만 '아직 못 모았어요'로 남김). ▶ 지금 CI 가드는 '154필드 중 어느 것도 손님 화면에서 사라지지 않는다'인데, 기준선을 손님 화면 → 관리자 전수 표로 옮긴다. 손님 화면 가드는 '화면에 나오는 필드는 어느 것도 두 번 안 나온다'(중복 0)가 되고, '빠짐 0'은 관리자 표가 진다. 이미 숨김인 8필드가 그 경로로 살아 있다. 함께 고칠 테스트 3곳: 숨김 필드 배제 규칙, 탭별 여분>0 강제(금융 0 허용), 금융 여분에 할인율·무이자대출이 있어야 한다는 단정",
+        "6단계 — 접기 자격 정리: 입지 3섹션·시세 교차검증 펼침 해제, 금융 법률안내 각주화, 분양 3섹션 해체. 서랍 23→10개. 4단계로 내용이 짧아진 뒤라야 안전하다",
+        "7단계 — 순서 재배치와 신설 4개: 종합 한 줄 판정, 입지 한 줄 요약, 분양 재공고 이력, 금융 대출 한 줄. 배지 축소와 미니카드 상승도 여기서. 시각 회귀가 가장 크게 나는 단계라 단독으로 뗀다",
+        "8단계 — 지역 통계 통합 서랍: 지역 시장 추이 3그래프 + 시도 상수 8개를 한 서랍으로. 분양 탭 812px 이 접힌다. 가로축 연도 표기 동반",
+        "9단계 — 점수 탭 프로필 가중치 정렬 + 탭별 스크롤 위치 기억. 둘 다 다른 단계와 겹치지 않는다",
+        "별건(백엔드, 언제든 독립): VIEW 복구 — 어린이집(원본 826행)·관리비 5종·응급의료 시설명(2,001행)이 2주 늦은 판을 베낀 마이그레이션 탓에 끊겨 있다. 이걸 고쳐야 입지 탭 7번 블록이 처음으로 화면에 뜬다. 화면 코드는 이미 준비돼 있어 순서 작업과 병행 가능"
+      ]
+    },
+    "verdicts": [
+      {
+        "lens": "근거정확성",
+        "refuted": true,
+        "findings": [
+          {
+            "severity": "blocker",
+            "claim": "시세 slot 3 / removals: \"인근 매매 시세의 아래 표는 위 막대와 같은 행을 다시 그린다(중앙값 1행·최대 3행)\" → 표 삭제",
+            "evidence": "`src/components/detail/PriceTable.tsx:78` 은 `sellRows.length > 1 &&` 일 때만 막대를 그린다. 같은 파일 L57 의 sellRows 산식을 1,530단지(priceByArea 보유)에 그대로 재현한 실측: 길이 0=176, 1=171, 2=201, 3=279, 4=692, 5=7, 6=4 → **중앙값 3행·최대 6행**(설계의 \"중앙 1행·최대 3행\"과 불일치). 그리고 `length>1` 이 거짓인 **347단지(22.7%)** 는 막대가 아예 렌더되지 않는다 — 그중 171단지는 표에 정확히 1행이 있고 그게 유일한 가격 표시다. 또 막대는 면적(L102)과 평균(L145)만 글자로 보여주고, 하한·상한·건수는 표(L176~L179)에만 숫자로 있다.",
+            "fix": "표 삭제 대신 (a) `sellRows.length === 1` 이면 표를 남기거나 막대를 1행에서도 그리게 하고, (b) 하한·상한·건수를 막대 쪽에 흡수한 뒤에만 표를 지운다. 수치는 \"중앙 3행·최대 6행\"으로 정정."
+          },
+          {
+            "severity": "blocker",
+            "claim": "5단계: \"'빠짐 0'은 관리자 전수 표가 진다. 이미 숨김인 8필드가 그 경로로 살아 있다\" → 혜택10+에너지등급+HUG 12필드를 숨김 처리",
+            "evidence": "`src/components/detail/FieldTable.tsx:42-47` `visibleFields()` 가 `if (!m || m.hidden) return false;` 로 hidden 필드를 렌더 대상에서 제외한다. `src/components/detail/AdminDataAudit.tsx:158-165` 는 전수 표를 그 FieldTable 로만 그린다(`fields={sec.fields}`). 따라서 hidden 필드는 관리자 표에도 안 나온다. 더구나 hidden 8개 중 elecUsageKwh·gasUsageMj·energyCollectedAt 3개는 `FIELD_SECTIONS`(fieldMeta.ts:556-752) 어디에도 없어 애초에 표에 들어가지도 않는다(해당 구간 grep 0건).",
+            "fix": "숨김(hidden) 대신 `INTENTIONALLY_UNRENDERED` 등재 또는 FieldTable 이 `adminMode` 에서 hidden 을 통과시키도록 바꾼 뒤에 12필드를 손님 화면에서만 뺀다. 새 가드 문장의 전제(\"관리자 표가 빠짐 0 을 진다\")를 먼저 사실로 만들어야 한다."
+          },
+          {
+            "severity": "major",
+            "claim": "점수 slot 2 / bugs: \"혜택·할인 6개 소스가 전부 0.0% · 데이터가 1,581곳 전부 0건이라 근거 줄이 0개 · 미니카드는 이미 '혜택 정보 없음'\"",
+            "evidence": "`src/scoring/scoreBenefit.ts:41` 의 6번째 소스 `maintSave` 는 혜택 컬럼이 아니라 `avgMaintenanceCost`(실측 채움 1,168곳 73.9%)와 지역평균으로 계산된다. `noData`(L46)는 6개가 전부 0일 때만 true. apartments-list.json 의 catsCache 실측: **noData=true 는 1,040곳(65.8%)뿐**, noData=false 541곳, benefit total>0 **345곳(21.8%)**. 즉 541곳에서는 `CatPanel.tsx:61-62` getHighlights 가 `info !== \"-\"` 인 '관리비 절감' 줄을 실제로 그리고, `catVerdict.ts:26` 도 \"혜택 정보 없음\"을 반환하지 않는다. (금융 여분 서랍 10칸이 전부 0% 라는 별개 주장은 DB 컬럼 기준이라 맞다.)",
+            "fix": "\"1,581곳 전부\"를 \"noData 인 1,040곳(65.8%)\"으로 정정. 처방 자체(noData 분기)는 유지하되, 나머지 541곳에서 관리비 절감 근거 줄이 계속 나온다는 점을 배치·문구에 반영."
+          },
+          {
+            "severity": "major",
+            "claim": "금융 slot 1: \"강남3구+용산 57단지가 받던 과대 LTV 안내가 여기서 바로잡힌다\" + 대출 분석·자금 구성 그림은 \"유지\"",
+            "evidence": "getZone/calcLTV 소비처 전수: `DetailModal.tsx:318,462`(설계가 고침) 외에 **`LoanAnalysis.tsx:18,24,37`**(금융 slot 3 \"유지\") — \"비규제지역\" 배지 L67, \"LTV 9억 이하 70%/초과분 60%\" L71, LTV 대출한도 L98, 필요 현금 L111, 행별 LTV한도 L132 를 전부 zone 으로 그린다 — 그리고 **`charts/LoanStack.tsx:46-47`**(금융 slot 2 \"유지\"), `CompareSheet.tsx:68-69`. `regulations.ts:19` ZONE_MAP={} 이라 이들 전부 normal 로 굳는다. 새 한 줄 바로 아래·바로 위에서 반대 숫자가 계속 나온다. 또 `isRegulated` 는 boolean(실측 true 57건)이라 투기과열 40/20 vs 조정대상 50/30 을 구분 못 하고, `public/data/regulation-zones.json` 은 같은 4개 구를 두 목록에 모두 넣어 두었다.",
+            "fix": "1단계에 LoanAnalysis·LoanStack·CompareSheet 의 zone 소비처를 함께 넣거나, `getZone` 자체를 regulation-zones.json 시드로 채워 한 곳에서 고친다. isRegulated(boolean)만으로는 LTV 비율을 못 정하므로 zone 타입 소스가 별도로 필요하다."
+          },
+          {
+            "severity": "major",
+            "claim": "시세 slot 4: \"'시장/투자 지표'는 단지 실측치와 시도 상수 3개(인구증감·순이동·주택보급률)가 섞여 있다 → 단지값만 남긴다\"",
+            "evidence": "`src/lib/dataSections.ts` PRICE_SECTIONS '시장/투자 지표' 는 13필드(highlight 3 + grid 10)다. 설계가 배치한 건 신규 묶음 6(nearbyMedian·recentTrades6m·avgFloor·floorRange·pir·psr) + 지역 통계 이동 3 = 9개뿐. 남는 **nearbyBuildYear(83.7%)·fertilityRate(81.8%)·doctorsPer1k(81.8%)·hospitalBedsPer1k(81.8%)** 4개는 설계 어디에도 안 나온다. 실측상 뒤 3개는 시군구 단위 상수(같은 구 안 값 1종)라 설계가 지적한 바로 그 \"지역 통계를 단지 값으로 읽는다\" 문제의 당사자다. 게다가 4개 모두 `FIELDS_SHOWN_IN_TABS` 에 속해 여분 아코디언에서 제외되므로(tabExtraFields.ts:65-67,104-113), 섹션 분해 시 빠뜨리면 즉시 orphan → `tabExtraFields.test.ts` \"전량 도달\" 빨강.",
+            "fix": "\"시도 상수 3개\"를 \"지역 단위 상수 6개(시도 3 + 시군구 3)\"로 정정하고, fertilityRate·doctorsPer1k·hospitalBedsPer1k 를 지역 통계 서랍으로, nearbyBuildYear 의 행선지도 명시한다."
+          },
+          {
+            "severity": "major",
+            "claim": "분양 slot 7: \"공급비율·HUG 보증(둘 다 0%) 빠져 9→7개\" (removals·5단계는 \"공급비율만 예외로 남긴다\")",
+            "evidence": "`tabExtraFields.ts` 계산을 재현하면 분양 탭 여분은 정확히 9개(unsoldEventCount·lastUnsoldEventAt·supplyRatio·builderCreditGrade·builderDebtRatio·hugGuarantee·isRegulated·dsr40pass·initialSaleRate). removals 는 \"공급비율(supplyRatio)만 예외로 '아직 못 모았어요' 문구를 붙여 남긴다\", 5단계도 \"공급비율만 남김\"이라 적혀 있어 hugGuarantee 하나만 빠지면 **8**이다. 게다가 같은 설계의 분양 slot 1 이 unsoldEventCount·lastUnsoldEventAt 를, slot 6 이 initialSaleRate 를, 금융 slot 1 이 isRegulated·dsr40pass 를 위로 승격시키므로 실제 잔여는 3에 가깝다.",
+            "fix": "세 곳(slot 7·removals·5단계)의 supplyRatio 처리를 하나로 통일하고, 승격되는 필드를 뺀 최종 개수를 다시 센다."
+          },
+          {
+            "severity": "minor",
+            "claim": "removals: \"에너지 등급 — 같은 사유의 형제(녹색건축·내진설계)는 이미 숨김 처리돼 있는데 이것만 빠져 있었다\"",
+            "evidence": "`src/constants/fieldMeta.ts:345` `quakeDesign` 엔트리에 `hidden` 이 없다. hidden:true 는 파일 전체에 8개(greenBldg·elecUsageKwh·gasUsageMj·energyCollectedAt·presaleStageCode·presaleImageUrl·naverPresaleNo·naverPresaleSeq)뿐이고 내진설계는 그중에 없다. quakeDesign 은 FIELD_SECTIONS 상품성에 있어 종합 탭 여분 아코디언에 그대로 나오며, 실측 채움 **800곳(50.6%)** 로 0% 필드도 아니다.",
+            "fix": "\"형제 = 녹색건축\" 하나로 정정. 내진설계는 절반 이상 채워진 정상 필드라 같은 사유로 묶지 않는다."
+          },
+          {
+            "severity": "minor",
+            "claim": "bugs: \"전체 도넛 14,229개 중 4,431개(31.1%)가 이 상태\"",
+            "evidence": "`src/components/detail/DataSectionBlock.tsx:61` 은 `sectionPct = hasAny ? ... : null` 이고 L83 은 `sectionPct != null` 일 때만 도넛을 그린다. 섹션별 hasAny 실측: 단지기본 1581·생활인프라 1581·교통 1581·치안 1581·시장투자 1581·네이버교차 1571·분양안전 1581·청약경쟁 766·네이버분양 813 = **합계 12,636개**. 14,229 는 1,581×9 를 가정한 값이라 분모가 1,593개 과다이고, 같은 4,431 이면 비율은 31.1% 가 아니라 35.1% 다.",
+            "fix": "분모를 12,636 으로 정정하고 100% 도넛 개수도 같은 렌더 조건에서 다시 센다."
+          },
+          {
+            "severity": "minor",
+            "claim": "입지 slot 4: \"생활인프라 — 거리 필드 12개 제거(2번 그림이 정본)\"",
+            "evidence": "`src/lib/dataSections.ts` LOCATION_SECTIONS '생활인프라 (반경 1km)' 의 pairs 는 거리 **10종**(hospitalDist·martDist·convDist·parkDist·pharmacyDist·cafeDist·cultureDist·bankDist·childcareDist·emergencyDist)이다. 나머지 2종은 policeDist(치안/환경 grid)·subwayDist(교통 상세 grid)로 다른 섹션에 있다. 같은 설계의 dedup 절(\"거리 11개 … 생활인프라·치안환경에서 제거\" + subwayDist 별항)은 맞아서 본문끼리 어긋난다.",
+            "fix": "slot 4 를 \"거리 10개 제거\"로 정정(policeDist 는 slot 5, subwayDist 는 slot 6 에서 각각 제거)."
+          },
+          {
+            "severity": "minor",
+            "claim": "분양 slot 6: \"지역 시장 추이 3그래프 + … 분양가격지수·㎡당 평균분양가 … 를 한 서랍으로\"",
+            "evidence": "`src/components/detail/MarketStatsCharts.tsx:28-57` 은 metric 을 **5개** 정의한다(avg_price_sqm 평균분양가격·price_index 분양가격지수·new_supply 신규공급 세대수·initial_sale_rate 초기분양율·land_cost_ratio 택지비율). 유효값 2개 이상인 metric 만 렌더(L96 주석)라 화면에서 3개만 보인 건 그 단지 사정이지 컴포넌트 구성이 아니다. 또 avgPriceSqm·priceIndex 는 이 차트의 metric 인데 설계는 같은 서랍에 \"필드\"로 다시 넣어, 한 서랍 안에서 같은 지표가 그래프와 라벨-값으로 두 번 나온다.",
+            "fix": "\"최대 5그래프(값이 2개 이상인 것만)\"로 정정하고, 그래프에 이미 있는 avgPriceSqm·priceIndex·newSupply·initialSaleRate·landCostRatio 는 필드 목록에서 뺀다."
+          },
+          {
+            "severity": "minor",
+            "claim": "dedup: \"jeonseRate → 정본=편차 스트립\", \"avgMaintenanceCost → 정본=편차 스트립(지역 대비 관리비가 절대값보다 유용)\"",
+            "evidence": "`src/components/DeviationRow.tsx:163` 의 값 슬롯은 `{dev.text}` 즉 \"5%p 높아요\" 같은 문장 조각만 그리고, 실제 수치는 L99 `formatDeviationValue(...)` 가 만든 **aria-label 안에만** 들어간다(`deviationFields.ts` 주석도 \"오른쪽 값 슬롯은 숫자가 아니라 문장 조각\"이라고 못 박는다). 따라서 핵심지표(전세가율 98.6% 채움)·단지 기본정보(관리비 73.9% 채움)에서 빼면 그 필드의 실제 숫자는 눈으로 볼 수 있는 곳이 한 곳도 남지 않는다.",
+            "fix": "편차 스트립을 '정본'이라 부르려면 값 슬롯에 원값을 병기하거나, 원값 한 곳(핵심지표·기본정보)은 남긴다."
+          },
+          {
+            "severity": "minor",
+            "claim": "종합 slot 3 / dedup: \"미분양률은 한 줄 판정이 흡수 → 핵심지표에서 제거\" (5단계 '함께 고칠 테스트 3곳'에 미포함)",
+            "evidence": "`src/lib/tabExtraFields.ts:76-87` FIELDS_SHOWN_IN_MODAL_CHROME 에 `unsoldRate` 가 있고, `src/lib/tabExtraFields.test.ts` 의 \"헤더가 그린다고 적어둔 필드는 실제로 헤더가 그린다\" 가 `new RegExp('apt\\\\.unsoldRate\\\\b').test(DetailModal.tsx 소스)` 로 검사한다. 설계의 한 줄 판정은 `unsold`+`unsoldEventCount` 를 쓰고 unsoldRate 는 안 쓴다. 편차 스트립은 별 컴포넌트(`DeviationStrip.tsx`)라 이 소스 grep 에 안 걸린다. → 테스트 빨강 + unsoldRate 는 어느 dataSection 에도 없어 orphan 이 된다.",
+            "fix": "미분양률을 뺄 거면 FIELDS_SHOWN_IN_MODAL_CHROME 에서도 빼고 unsoldRate 의 도달 경로(여분 아코디언 등)를 새로 열어 준다. '함께 고칠 테스트'에 이 케이스를 추가."
+          },
+          {
+            "severity": "minor",
+            "claim": "종합 slot 1: \"unsold + unsoldEventCount 로 '…3번 다시 내놨어요'\" / 분양 slot 1 \"다시 내놓은 횟수\"",
+            "evidence": "apartments-list.json 실측: `unsoldEventCount` 의 distinct 값은 **[0, 1] 뿐**(1 인 단지 766곳, 0 인 단지 815곳). 채움 100%·\"48.5% 가 1회 이상\" 은 맞지만 2 이상은 데이터에 존재하지 않으므로 \"3번\" 같은 예시 문구는 어느 단지에서도 나올 수 없다. 사실상 '재공고 있음/없음' 플래그다.",
+            "fix": "예시 문구를 '한 번 더 내놨어요' 또는 '재공고 있음'으로 바꾸고, '횟수' 표기 대신 있음/없음 + `lastUnsoldEventAt`(48.5%) 시점으로 구성한다."
+          },
+          {
+            "severity": "minor",
+            "claim": "dedup 목록 전체 (같은 탭 중복 42개 기준)",
+            "evidence": "`OVERVIEW_DEVIATION_FIELDS`(deviationFields.ts) 8필드 중 `parkingRatio`(92.5%)·`exclusiveRatio`(61.3%) 는 FIELD_SECTIONS '상품성' 소속이라 `tabExtraFields.ts` 계산상 **종합 탭 여분 아코디언에도 들어간다** — 즉 편차 스트립과 같은 탭에서 두 번 나온다. 설계의 dedup 목록에 이 2건이 없다(census 도 여분 아코디언 노출은 세지 않아 놓쳤다). 같은 이유로 `dsr40pass` 는 금융 직접·점수 탭 외에 분양 탭 여분에도 있어 census 의 \"2곳\" 보다 많다.",
+            "fix": "dedup 판정을 census 표가 아니라 `FIELDS_SHOWN_IN_TABS ∪ CHROME ∪ TAB_EXTRA_SECTIONS` 로 다시 계산해 같은 탭 중복 목록을 재작성."
+          }
+        ]
+      },
+      {
+        "lens": "손님이해",
+        "findings": [
+          {
+            "severity": "blocker",
+            "claim": "\"아직 안 보여드린 자료\" 서랍은 손으로 적는 목록이 아니라 `dataSections` 의 **차집합으로 자동 계산**된다. 따라서 4단계에서 세부 섹션의 필드를 지우면 그 필드는 사라지는 게 아니라 **같은 탭 서랍 안으로 되돌아온다.** 설계의 여분 개수 예측(시세 7→0~2 \"0이면 서랍 미렌더\", 분양 9→7)은 방향 자체가 반대이고, '네이버 분양정보 섹션 삭제'의 목적이었던 중복 제거도 달성되지 않는다.",
+            "evidence": "src/lib/tabExtraFields.ts:64 `FIELDS_SHOWN_IN_TABS = new Set([...OVERVIEW_SECTIONS,...LOCATION_SECTIONS,...PRICE_SECTIONS,...PRESALE_SECTIONS].flatMap(fieldsOf))` / :105 `alreadySeen = new Set([...FIELDS_SHOWN_IN_TABS, ...FIELDS_SHOWN_IN_MODAL_CHROME, ...INTERNAL_ONLY_FIELDS])` — 여분 = `FIELD_SECTIONS − alreadySeen`. 이 계산에 들어가는 건 `dataSections` 뿐이고 **PresaleInfo·PriceTable·SchoolInfo·LoanAnalysis·MarketStatsCharts 같은 하위 컴포넌트는 포함되지 않는다.** 결과: (a) fieldMeta.ts:728-750 `key:\"분양\"` 섹션 19필드 중 15개가 지금은 dataSections.ts:143-160 '네이버 분양정보' grid 에 있어 여분에서 빠져 있다 → 그 섹션을 지우면 **15개가 분양 탭 여분으로 유입**되고, 손님은 바로 위 PresaleInfo 문장형 카드에서 본 같은 값을 한 칸 아래 격자로 다시 본다(= 설계가 없애려던 바로 그 이중 노출). (b) fieldMeta.ts:585-601 `key:\"가격\"` 13필드 중 `nearbyMedian·avgFloor·floorRange·netMigration·housingSupplyLevel` 등이 PRICE_SECTIONS 에 있어 여분에서 빠져 있다 → 시세 탭에서 그것들을 지우면 여분이 **늘어난다.** 7→0 은 도달 불가. (c) fieldMeta.ts:628-668 `key:\"입지\"` 에 `subwayDist`·*Dist 12종이 전부 있어, 생활인프라·교통상세에서 거리를 빼면 그대로 입지 여분으로 복귀한다.",
+            "fix": "4단계 착수 전에 `FIELDS_SHOWN_IN_TABS` 를 '하위 컴포넌트가 그리는 필드'까지 포함하도록 확장(예: PresaleInfo·PriceTable·SchoolInfo 가 소비하는 필드 목록을 각 컴포넌트에서 export 해 합집합에 추가)하고, 그 위에서 여분 개수를 다시 실측한 뒤 rollout 의 숫자를 고쳐라. 지금의 '삭제 = 화면에서 사라짐' 전제로는 4~5단계 예측이 전부 틀어진다."
+          },
+          {
+            "severity": "blocker",
+            "claim": "dedup 이 지정한 정본 다수가 **기능 플래그 뒤에 있는 그림**이고, 그중 편차 스트립은 **원래 숫자를 화면에 한 번도 그리지 않는다.** 플래그를 내리면(그게 이 플래그의 존재 목적이다) 전세가율·미분양률·관리비·거리 12종이 첫 화면에서 통째로 빠지고, 플래그가 켜져 있어도 손님은 \"12% 싸요\" 만 볼 뿐 관리비가 얼마인지 영영 모른다.",
+            "evidence": "src/components/DetailModal.tsx:136 `const showDeviation = isFeatureDeviationStrip() && regionStats != null;` → :424 DeviationStrip, :622 AreaPriceScatter, :652 DistanceDots, :677 PresaleTimeline, :710 LoanStack 이 모두 이 한 게이트 뒤. src/constants/featureFlags.ts:14 주석 \"배포 후 문제가 보이면 재배포 없이 환경변수만 내려 원상 복구할 수 있다\" = 꺼지는 것이 정상 시나리오. rollout 2단계는 **여분 서랍만** 떼어내고 스트립·그림 자체는 그대로 둔다. 더 결정적으로 src/components/DeviationRow.tsx:118·152 는 값 슬롯에 `{dev.text}`(\"12% 싸요\")만 그리고, 원래 값 `formatDeviationValue(spec, value)` 은 :98 `aria` 문자열에만 들어간다 — 눈으로는 절대 안 보인다. `avgMaintenanceCost` 의 화면 노출처는 실측상 단 두 곳(src/lib/dataSections.ts:57 단지 기본정보 grid, src/constants/deviationFields.ts:151 스트립)뿐인데 dedup 이 앞을 지운다. 그런데 src/hooks/useDataPipeline.ts:60 에는 \"관리비 낮은순\" 정렬이 살아 있다 — 손님은 관리비로 줄을 세울 수는 있는데 금액은 어디서도 못 본다.",
+            "fix": "① 스트립·거리그림을 정본으로 삼는 dedup 은 그 블록들이 플래그에서 풀린 뒤에만 적용하라(2단계에 '차트도 함께 분리'를 넣거나, 정본을 플래그 밖 자리로 잡아라). ② 편차 스트립을 어떤 필드의 유일한 시각 정본으로 쓰려면 값 슬롯에 원래 값을 함께 넣어라(예: \"9만원 · 12% 싸요\"). 특히 관리비처럼 매달 내는 금액은 상대값만으로 대체 불가."
+          },
+          {
+            "severity": "major",
+            "claim": "편차 스트립 헤더가 화면에 \"○○ 아파트 **평균**과 비교\" 라고 쓰는데, 같은 블록의 도움말은 \"**평균과 달리** 아주 비싼 집 몇 채 때문에 기준이 흔들리지 않습니다\" 라고 말한다. 손님이 물음표를 누르는 순간 제목이 거짓이 된다. 설계는 bugs 목록에 이 모순을 넣지 않았고, 오히려 이 블록을 5개 필드의 정본으로 승격시켜 노출을 늘린다.",
+            "evidence": "src/components/DeviationStrip.tsx:93 `<span>{regionLabel} 아파트 평균과 비교</span>` vs :19-23 `HELP_TEXT = \"...가운데 세로선은 같은 지역 아파트들의 한가운데 값입니다... 평균과 달리, 아주 비싼 집 몇 채 때문에 기준이 흔들리지 않습니다.\"` 실제 계산도 중위값이다 — src/lib/deviation.ts:135 `deviationText(spec, value, stat.median, good)`. 이는 사장님이 지적한 \"거짓 안내문\"(GuideSections 레이더 문구) 과 정확히 같은 종류이며, 세션 487b 에서 한 번 잡고도 같은 유형이 남은 자리다.",
+            "fix": "1단계(거짓말 먼저)에 이 항목을 추가하라. 헤더를 \"○○ 아파트 한가운데 값과 비교\" 로 바꾸면 도움말과 일치하고 전문어도 안 늘어난다."
+          },
+          {
+            "severity": "major",
+            "claim": "미니카드·점수 패널을 프로필 가중치 순으로 재정렬하면 `CAT_DISPLAY_ORDER` 가 존재하는 두 이유를 동시에 무너뜨린다 — (a) 색각이상 대비를 위해 일부러 떨어뜨려 놓은 파랑(입지)·보라(상품)가 **5개 프로필 중 4개에서 바로 붙고**, (b) 프로필 전환이 이 서비스의 핵심 기능인데 전환할 때마다 카드 6장의 자리가 바뀌어 위치 학습이 불가능해진다.",
+            "evidence": "src/constants/catOrder.ts:16-18 \"순서 근거 — 파랑(입지 `#2563EB`)과 보라(상품 `#7C3AED`)가 인접하면 색각이상에서 구분되지 않아, 그 사이에 앰버(혜택)를 끼웠다\" → `CAT_DISPLAY_ORDER = [\"price\",\"location\",\"benefit\",\"product\",\"risk\",\"future\"]`. src/theme/index.ts:62-69 `catCol` = location: C.blue / product: C.purple. src/constants/profiles.ts 가중치로 내림차순 + `CAT_TIEBREAK_ORDER`(profiles.ts:43) tie-break 를 적용하면 live(40/20/20/10/5/5) → location,product / edu(45/20/15/…) → location,product / retire(35/25/20/…) → location,product / invest(price30,risk25,location15,product10,…) → …location,product. **4개 프로필에서 파랑 바로 옆이 보라다.** 또 같은 파일 :4-12 는 이 상수가 생긴 이유가 \"화면 순서가 소리 없이 뒤집히던 것\"을 고정하기 위함이라고 못박는다. 순서를 다시 가변으로 만드는 건 그 결정의 역행이다.",
+            "fix": "순서는 CAT_DISPLAY_ORDER 로 고정한 채, 프로필 반영은 이미 있는 강조 장치(`emphasized` 테두리 + \"중점\" 칩, DetailModal.tsx:515)로만 하라. 굳이 위로 올리고 싶으면 상위 1~2개만 별도 줄로 복제하고 6장 격자는 고정 순서를 유지하는 편이 안전하다."
+          },
+          {
+            "severity": "major",
+            "claim": "입지 탭 신설 '한 줄 요약'의 네 항목 중 둘이 손님에게 정보를 주지 못한다. \"학군 A\" 는 **84.4% 단지가 받는 등급**이라 변별력이 0이고(이 레포가 이미 실측으로 학습한 교훈이다), \"치안 2등급\" 은 숫자가 낮을수록 안전하다는 방향을 모르는 손님에게 좋은지 나쁜지조차 알려주지 않는다.",
+            "evidence": "src/components/CLAUDE.md AptCard 절(세션 441): \"라이브 실측 분포 A=84.4%·B=12.2%·C=3.4%·D=0% → A 는 다수(84%)라 강조하면 노이즈, D 는 0건 … **C(3.4% 소수)가 유일한 변별 신호**\" — 그래서 카드는 A 를 일부러 숨긴다. 치안도 마찬가지로 카드는 raw 등급 대신 말로 푼다: 같은 문서 \"치안우수(세션 423): `crimeSafetyGrade<=2` 초록 '치안우수' … 위험(`>=4`)과 상호배타\". 설계는 두 필드를 raw 등급 그대로 헤드라인에 올려 이 학습을 되돌린다. 게다가 src/constants/deviationFields.ts:11 이 명시한 이 레포의 원칙(\"화면에 전문어를 쓰지 않는다 … 오른쪽 값 슬롯은 숫자가 아니라 문장 조각\")과도 어긋난다.",
+            "fix": "한 줄 요약을 등급 나열이 아니라 판정 문장으로 써라 — 예: \"지하철 340m(역세권) · 치안 우수 · 혐오시설 없음\". 학군은 A/B 면 빼고 C 일 때만 \"학군 보통\" 으로 넣는 카드 규칙을 그대로 답습하는 게 일관된다."
+          },
+          {
+            "severity": "major",
+            "claim": "\"혜택 6개 소스가 전부 0.0%\" 라는 전제가 사실이 아니다. 혜택 점수의 여섯 번째 항목은 혜택 필드가 아니라 **관리비 절감**이고, 그 입력인 `avgMaintenanceCost` 는 채움 73.9% 다. 지역 평균보다 관리비가 싼 단지에서는 `noData=false` 이고 근거 줄도 실제로 뜬다. 그런데 같은 설계가 `avgMaintenanceCost` 를 단지 기본정보에서 빼버려, 점수의 유일한 살아있는 근거에 대해 손님이 원본 금액을 확인할 길이 사라진다.",
+            "evidence": "src/scoring/scoreBenefit.ts:41 `const maintSave = regionAvgMaint > 0 && avgMaint > 0 ? Math.max(0, Math.round((regionAvgMaint - avgMaint) * 12)) : 0;` / :46 `const noData = discVal===0 && loanVal===0 && optVal===0 && balVal===0 && cashVal===0 && **maintSave===0**;` / :86-88 sub \"관리비 절감\", `info: maintSave > 0 ? \\`연 ~${maintSave}만\\` : \"-\"`. src/components/CatPanel.tsx:64 `if (catKey === \"benefit\") return subs.filter((s) => s.info !== \"-\").slice(0, 3);` → maintSave>0 이면 근거 줄이 그려진다. census 상 avgMaintenanceCost 73.9%. 반면 설계 종합 4/6·점수 slot2·removals 는 일관되게 \"6개 소스 전부 0.0%\", \"1,581단지 전부 0건\" 이라고 적었다.",
+            "fix": "혜택 패널 대체는 반드시 코드의 `cat.noData` 플래그로만 분기하고(전제로 삼지 말 것), 문구도 \"혜택 정보 없음\" 계열로 통일하라(catVerdict.ts:26 이 이미 같은 문구를 쓴다). 그리고 `avgMaintenanceCost` 는 삭제 대상에서 빼거나, 최소한 혜택 근거 줄 옆에 \"이 단지 9만원 / 지역 12만원\" 을 함께 보여줘라."
+          },
+          {
+            "severity": "major",
+            "claim": "규제현황 근거만 `isRegulated` 로 바꾸고 LTV 계산은 그대로 두면, 새로 만든 금융 탭 '대출 가능 한 줄' **안에서** 모순이 생긴다 — 같은 줄이 \"규제지역\" 이라고 말하면서 비규제 기준 LTV 70% 를 안내한다. 게다가 `isRegulated` 는 boolean 이라 투기과열지구(40/20%)와 조정대상지역(50/30%)을 구분하지 못해 어느 쪽으로 매핑해도 57단지 중 일부는 틀린 한도를 받는다.",
+            "evidence": "src/components/DetailModal.tsx:318 `const zone = getZone(apt.region, apt.gu);` → :461 규제현황 `zoneName`, :462 `LTV한도: fmtPrice(calcLTV(apt.price, zone))` — **둘이 같은 `zone` 하나를 공유한다.** src/constants/regulations.ts:19 `export const ZONE_MAP: Record<string, Zone> = {};` (비어 있음) 이라 `getZone` 은 항상 `\"normal\"` → LTV under9 0.7. src/constants/regulations.ts:11-15 `LTV_RATES` 는 speculative 0.4/0.2 vs overheated 0.5/0.3 로 서로 다르다. src/constants/fieldMeta.ts:156 `isRegulated: { fmt: (v) => (v ? \"예\" : \"아니오\") }` = 참/거짓뿐. 참고로 점수 엔진은 이미 isRegulated 를 우선한다(src/scoring/scoreRisk.ts:95-98) — 지금의 불일치는 실재하지만, 설계의 처방은 그 불일치를 **한 줄 안으로 옮길** 뿐이다.",
+            "fix": "1단계에 `ZONE_MAP` 복원(강남·서초·송파·용산 → 실제 지정 종류)을 함께 넣어 `getZone` 하나로 라벨과 LTV 를 동시에 맞춰라. 그게 어려우면 `isRegulated=true` 일 때 LTV 를 숫자로 단정하지 말고 \"규제지역이라 한도가 낮아져요 — 은행 확인 필요\" 로 문구를 바꿔 거짓 숫자를 안 만드는 쪽이 안전하다."
+          },
+          {
+            "severity": "minor",
+            "claim": "종합 '한 줄 판정' 이 미분양 **세대수**만 말하고 미분양률을 핵심지표에서 빼면, 손님이 심각도를 판단할 기준을 잃는다. \"47채 남음\" 은 100세대 단지면 절반이 안 팔린 것이고 2,000세대 단지면 2.3% 다 — 같은 문장이 정반대를 뜻한다. 현재 핵심지표는 15% 초과를 빨강으로 칠해 그 판단을 대신 해주고 있었다.",
+            "evidence": "src/components/DetailModal.tsx:456-460 `{ l: \"미분양률\", v: fmtUnsoldRate(apt.unsoldRate), c: apt.unsoldRate > UNSOLD_WARN_THRESHOLD ? C.red : C.green }` (:59 `UNSOLD_WARN_THRESHOLD = 15`). 설계는 이 행을 지우고 정본을 편차 스트립으로 보내는데, 스트립은 플래그 뒤이고 값도 \"3%p 많아요\" 로만 나온다(DeviationRow.tsx:152). `units` 는 채움 100%(census)라 비율을 문장에 넣는 데 필요한 재료는 이미 다 있다. 덤으로 `unsoldRate` 는 tabExtraFields.ts:86 `FIELDS_SHOWN_IN_MODAL_CHROME` 에 손으로 등재돼 있고 그 목록은 DetailModal 소스에 `apt.unsoldRate` 가 있는지 테스트가 대조하므로(:74-77 주석), 핵심지표에서 빼면 테스트가 빨개지고 목록에서도 빼야 해서 이번엔 분양 탭 여분으로 흘러간다.",
+            "fix": "판정 문장에 비율을 함께 넣어라 — \"1,240세대 중 47채(3.8%)가 아직 안 팔렸어요 · 3번 다시 내놨어요\". 빨강/초록 경고색은 15% 임계 그대로 문장에 적용하면 핵심지표 행을 지우고도 판단 근거가 유지된다."
+          }
+        ],
+        "refuted": true
+      },
+      {
+        "lens": "구현위험",
+        "findings": [
+          {
+            "severity": "blocker",
+            "claim": "5단계의 새 기준선(“빠짐 0 은 관리자 전수 표가 진다”)은 성립하지 않는다 — 관리자 표는 hidden 필드를 **렌더하지 않는다**. 설계의 근거 문장 “이미 숨김인 8필드가 그 경로로 살아 있다”는 코드상 거짓이다.",
+            "evidence": "F:/mibunyang/src/components/detail/FieldTable.tsx:42-49 `visibleFields()` = `if (!m || m.hidden) return false;`. AdminDataAudit 는 이 FieldTable 로만 전수 표를 그린다(AdminDataAudit.tsx:151-161). 현재 hidden 8개(greenBldg·quakeDesign 인접·presaleStageCode·presaleImageUrl·naverPresaleNo·naverPresaleSeq·elecUsageKwh·gasUsageMj·energyCollectedAt 계열, fieldMeta.ts:344/467/474/480/507/545/546/547)는 FIELD_SECTIONS 에 **목록으로는 들어 있으나**(fieldMeta.ts:684,685,736,746,747,748) 화면에는 한 줄도 안 나온다. 또한 AdminDataAudit.tsx:15 `NON_HIDDEN_COUNT = Object.keys(FIELD_META).filter(k=>!hidden)` 와 AdminCompleteness 의 `allFields` 도 hidden 을 제외하므로, 12필드를 hidden 처리하면 관리자 완성도 분모에서도 사라진다. 결과: 5단계 후 “어느 필드도 조용히 사라지지 않는다”를 지키는 곳이 **한 군데도 없다**(손님 화면 가드는 중복 0 로 축소, 관리자 표는 hidden 을 못 봄).",
+            "fix": "① hidden 을 재사용하지 말고 `customerHidden`(손님만 숨김) 같은 새 플래그를 쓰거나, ② FieldTable 에 `showHidden` prop 을 추가해 관리자 경로에서만 hidden 을 렌더하도록 먼저 고친 뒤 5단계를 진행. 어느 쪽이든 “관리자 표가 전량을 진다”를 잠그는 테스트(FIELD_META 전 키가 관리자 표 DOM 에 data-field 로 존재)를 5단계와 같은 PR 에 넣어야 한다."
+          },
+          {
+            "severity": "blocker",
+            "claim": "4단계의 “중복 제거(내용 삭제)”는 실제로는 **삭제가 아니라 같은 탭 아코디언으로의 이동**이다. 여분 아코디언이 `FIELD_SECTIONS − dataSections` 차집합으로 계산되기 때문에, 세부 섹션에서 뺀 필드는 자동으로 같은 탭 여분에 다시 나타난다.",
+            "evidence": "F:/mibunyang/src/lib/tabExtraFields.ts:65-67,95-121 — `FIELDS_SHOWN_IN_TABS` 는 dataSections 에서 계산되고, alreadySeen 에 없는 비-hidden 필드는 SECTION_TO_TAB 에 따라 자동 편입된다. 실측(vite-node 로 모듈 직접 평가): `ktxDist`·`hospitalDist`·`presaleMinPrice` 모두 현재 `FIELDS_SHOWN_IN_TABS` 에 true. 이들이 속한 FIELD_SECTIONS 섹션은 각각 입지(→sec-location)·입지(→sec-location)·분양(→sec-presale)이라, 세부에서 빼는 순간 같은 탭 여분으로 편입된다. 즉 ‘생활인프라 거리 12개 제거’ → 12개가 입지 탭 아코디언에 재등장(거리 그림과 이중 노출), ‘KTX 제거’ → 입지 여분에 재등장, ‘네이버 분양정보 섹션 통째 삭제’ → presale 15필드가 분양 탭 여분에 재등장(PresaleInfo.tsx:171-227 이 이미 그리는 값과 이중 노출). tabExtraFields.ts:9-13 이 “같은 탭 세부와 87개(58%) 겹침”을 없애려고 만든 장치인데, 4단계가 그 사고를 반대 방향으로 재생산한다.",
+            "fix": "4단계 각 항목마다 ‘어디로 갈지’를 명시해야 한다 — 세부에서 빼면서 여분에도 안 나오게 하려면 (a) FIELD_META 에서 hidden 처리하거나, (b) 새 ‘차트/직접 렌더가 정본인 필드’ 레지스트리를 만들어 alreadySeen 에 합류시켜야 한다. 설계에 (b)가 없으므로 4단계 착수 전에 레지스트리 신설을 별도 선행 단계로 넣을 것."
+          },
+          {
+            "severity": "blocker",
+            "claim": "“한 필드는 한 곳” 을 지킨다는 중복 0 가드는 이미 구멍이 나 있고(현재도 jeonseRate 가 두 곳), 신설 4개 블록이 그 구멍을 정확히 확대한다. 가드는 계속 초록이다.",
+            "evidence": "실측: `jeonseRate` 는 `FIELDS_SHOWN_IN_TABS` 에 **없고**(false) sec-price 여분에 **있다**(true). 동시에 DetailModal.tsx:455 가 핵심지표에서 직접 렌더한다 → 지금도 두 곳. tabExtraFields.test.ts:47-50 의 중복 가드는 `FIELDS_SHOWN_IN_TABS ∪ FIELDS_SHOWN_IN_MODAL_CHROME` 하고만 대조하는데, 직접 렌더 목록(FIELDS_SHOWN_IN_MODAL_CHROME, tabExtraFields.ts:76-87)은 **손으로 적은 10줄**이고 테스트(tabExtraFields.test.ts:68-83)는 ‘목록→소스’ 한 방향만 검사한다. 소스에 직접 렌더를 추가하고 목록에 안 적으면 아무 테스트도 안 깨진다. 설계가 신설하는 4블록이 쓰는 필드는 실측상 전부 현재 여분 아코디언 소속이다 — sec-presale 여분 = `unsoldEventCount, lastUnsoldEventAt, supplyRatio, builderCreditGrade, builderDebtRatio, hugGuarantee, isRegulated, dsr40pass, initialSaleRate`. 종합 ‘한 줄 판정’(unsoldEventCount), 분양 ‘재공고 이력’(unsoldEventCount·lastUnsoldEventAt) → **같은 탭 안 이중 노출**, 금융 ‘대출 한 줄’(isRegulated·dsr40pass) → 분양 여분과 이중. 편차 스트립·거리 그림·산점도·타임라인·LoanStack 도 어디에도 등록돼 있지 않아, dedup 목록 20여 건 중 ‘정본=차트’인 항목은 기계적으로 표현할 방법 자체가 없다.",
+            "fix": "가드를 양방향으로 만든다 — DetailModal.tsx 소스에서 `apt.<field>` 를 정규식으로 전수 추출해 FIELDS_SHOWN_IN_MODAL_CHROME 과 **집합이 같은지** 검사(현재는 부분집합만 검사). 동시에 차트 컴포넌트가 소비하는 필드를 상수로 export 시켜(예: DeviationStrip 은 이미 OVERVIEW_DEVIATION_FIELDS 보유) alreadySeen 에 합류시킨 뒤에야 dedup 단계를 시작할 것."
+          },
+          {
+            "severity": "major",
+            "claim": "“함께 고칠 테스트 3곳”은 과소 추정이다. 실측으로 최소 17개 테스트가 깨지고, 그중 7개는 **한 세션 전에 정확히 반대 결정을 잠그려고 만든 회귀 가드**다.",
+            "evidence": "① dataSections.test.ts:65-83 — ‘pharmacy/cafe/culture/bank 는 거리와 짝을 이룬다’ 4건 + ‘거리 4종이 fieldsOf 에 들어온다’ 1건. 주석(L47-56)이 “수집은 되는데 손님에게 한 번도 안 보인 자료”라 명시한 세션 487 PR-5 가드인데, 4단계 ‘생활인프라 거리 12개 제거’가 이를 되돌린다. ② dataSections.test.ts:35-38(‘분양 탭에 계약해제율·신규공급 노출’)·40-44(‘분양 안전지표 섹션 존재’) — 4단계 ‘분양 안전지표 해체’로 2건. ③ AdminDataAudit.test.jsx:25,34,36,54 — `\"전체 141필드 보기\"` 3회 + `getByRole(name:/141필드/)` 1회 하드코딩. 실측 FIELD_META 149엔트리·hidden 8 → NON_HIDDEN_COUNT=141. 12필드 hidden 시 129 가 되어 4건. ④ ExtraFieldsAccordion.test.tsx:41-54 `it.each` 의 sec-finance 케이스 + L68-76 ‘한 묶음이 통째로 비면’(tab=\"sec-finance\") 2건 — 금융 여분 0 이면 컴포넌트가 null 을 반환(ExtraFieldsAccordion.tsx:70)해 getByRole 이 throw. ⑤ tabExtraFields.test.ts:86-88·96-99 2건(설계가 인지). ⑥ DetailModal.test.jsx:155-159 `getByText(\"경기 수원시 영통동\")` — 핵심지표 ‘지역’ 행 제거 시 헤더 텍스트는 ‘… · 84㎡ · …’ 가 붙어 완전일치 실패. ⑦ DetailModal.test.jsx:307-311 ‘시장/투자 지표’ 헤더 — 4단계 해체로 1건. ⑧ tabExtraFields.test.ts:71-82 의 `unsoldRate` 케이스 — 핵심지표에서 미분양률 제거 시 `apt.unsoldRate` 가 DetailModal.tsx 에서 사라져 red.",
+            "fix": "단계별 PR 마다 ‘깨질 테스트 목록’을 착수 전에 grep 으로 실측해 붙일 것. 특히 ①은 되돌리기 전에 사장님 확인 필요 — 바로 앞 세션이 ‘손님에게 한 번도 안 보였다’며 살려낸 자료다."
+          },
+          {
+            "severity": "major",
+            "claim": "2단계는 “안전장치 분리”가 아니라 **손님 눈에 보이는 콘텐츠 추가**다. 플래그가 꺼진 환경에서는 44필드가 지금 아예 안 보이는데, 분리하는 순간 처음으로 노출된다.",
+            "evidence": "DetailModal.tsx:136 `showDeviation = isFeatureDeviationStrip() && regionStats != null`, 그리고 여분 아코디언 5곳 전부 이 게이트 뒤(L532,637,663,696,718). playwright.config.ts:70 은 `VITE_FEATURE_DEVIATION_STRIP: process.env.… ?? \"false\"` 로 **기본 OFF**, .env.local 에도 이 키가 없다(VITE_FEATURE_UPCOMING 만 존재). 즉 플래그 OFF 환경에서 여분 44필드는 현재 렌더 0. 실측 여분 개수는 종합 11·시세 7·입지 7·분양 9·금융 10 = **44**(과제 브리핑의 ‘54’는 stale, 설계 bugs #10 의 44 가 맞다). 또한 분리하면 `regionStats == null` 인 단지에서도 새로 뜬다.",
+            "fix": "2단계를 ‘무해한 전제 단계’로 부르지 말고, 44필드 신규 노출을 감수할지 먼저 결정할 것. 원한다면 아코디언에 자체 플래그를 새로 달아 단계적으로 켜는 편이 안전하다."
+          },
+          {
+            "severity": "major",
+            "claim": "3·7단계가 기대는 “시각 회귀 기준선”은 팝업에 존재하지 않는다. 가장 위험한 7단계를 지키는 그물이 없다.",
+            "evidence": "e2e/visual.spec.ts 는 비로그인 목록 2장(list-main-desktop/mobile)뿐이고 스냅샷 폴더도 그 2개다. e2e/visual-card.spec.ts 는 카드 5장(card-rich/sparse/mid…)뿐. 팝업 캡처는 0장이며 visual.spec.ts 주석이 사유를 명시한다 — “카카오 OAuth 로그인 게이트 안쪽(지도·상세)은 자동 캡처 불가”. 팝업을 여는 e2e(detail-modal.spec.ts)는 로그인 토큰 스텁으로 열지만 단언이 `modalText?.length > 50`(L74-77) 수준이라 배치 변경을 못 잡는다.",
+            "fix": "7단계 전에 detail-modal.spec 의 로그인 스텁 방식을 visual 프로젝트에 이식해 팝업 6탭 baseline 을 먼저 뜨거나, 팝업 시각 회귀는 사람 눈 검수로 간다고 명시할 것(“baseline 을 새로 뜬다”는 문구는 현재 근거 없음)."
+          },
+          {
+            "severity": "major",
+            "claim": "규제·LTV 처방이 단계 간에 쪼개져 있어 1단계 단독 배포 시 **같은 팝업 안에서 서로 다른 말**이 남고, isRegulated(boolean)로는 calcLTV 가 요구하는 Zone 3종을 복원할 수 없다. 사내 유일 선례를 그대로 베끼면 런타임 크래시다.",
+            "evidence": "regulations.ts:1 `Zone = \"speculative\"|\"overheated\"|\"normal\"`, LTV_RATES 는 40/50/70% 3단(L14-18) — boolean 으로는 speculative 와 overheated 를 못 가른다. getZone/calcLTV 소비처는 DetailModal.tsx:318,462 뿐 아니라 CompareSheet.tsx:68-69, charts/LoanStack.tsx:46-47, detail/LoanAnalysis.tsx:18,24,37 로 **5곳**이다. 설계 1단계는 종합 탭 ‘규제현황’ 한 줄만 바꾸므로, 1→3단계 동안 종합 탭은 ‘규제지역’, 금융 탭 LoanStack·LoanAnalysis 는 여전히 getZone 기반 ‘비규제 70%’ 를 표시한다(LTV 이동은 4단계, 대출 한 줄은 7단계). 게다가 저장소 내 유일한 선례 scoreRisk.ts:96-101 은 `\"regulated\"` 라는 **Zone 에 없는 문자열**을 만들어 `!== \"normal\"` 로만 쓴다 — 이걸 그대로 calcLTV 에 넘기면 `LTV_RATES[\"regulated\"]` 가 undefined 라 `rates.under9` 에서 TypeError.",
+            "fix": "1단계에 ‘규제 근거 단일화’를 통째로 넣는다 — isRegulated→Zone 매핑 규칙을 regulations.ts 에 한 함수로 만들고(예: true→\"overheated\" 보수적 선택, 근거 주석 필수) getZone 소비처 5곳을 같은 PR 에서 동시 교체. 매핑 함수에 `LTV_RATES[zone]` 존재 단언 테스트 1건 추가."
+          },
+          {
+            "severity": "minor",
+            "claim": "6단계의 “접힘 해제하면 도넛도 함께 사라져 버그 노출면이 줄어든다”는 코드상 거짓 — 도넛은 접힘 여부와 무관하게 헤더에 항상 렌더된다.",
+            "evidence": "DataSectionBlock.tsx:63-96 — 헤더(제목+`CompletenessDonut`+▼)는 `open` 밖에 있고, `open && (...)` 는 본문(L97)만 감싼다. 도넛 렌더 조건은 `hasAny`(L61)뿐이라 defaultOpen 을 true 로 바꿔도 도넛은 그대로 남는다.",
+            "fix": "‘00%’ 노출면 축소를 6단계의 부수 효과로 기대하지 말 것. 도넛 자체를 없애려면 DataSectionBlock 수정이 별도로 필요하고, 실질 해소는 1단계의 크기 34→40 수정뿐이다."
+          },
+          {
+            "severity": "minor",
+            "claim": "5단계의 “코드는 count 0 시 미렌더 한 줄 추가”는 이미 구현돼 있어 불필요하고, 정작 필요한 작업(테스트 수정)이 그 자리에 안 적혀 있다.",
+            "evidence": "ExtraFieldsAccordion.tsx:70 `if (n === 0) return null;` 이 이미 존재한다. 반면 그 동작 때문에 ExtraFieldsAccordion.test.tsx:41-54(it.each 의 sec-finance)와 L68-76 이 getByRole 에서 throw 하며 깨진다.",
+            "fix": "5단계 작업 목록에서 ‘미렌더 한 줄 추가’를 빼고 ‘ExtraFieldsAccordion.test 2건 재작성(금융 탭 0 허용)’으로 교체."
+          },
+          {
+            "severity": "minor",
+            "claim": "설계가 인용한 여분 개수·소속이 실측과 어긋난다.",
+            "evidence": "실측 여분: 종합 11(floors,maxFloor,layout / parkingRatio,floorAreaRatio,energyGrade,quakeDesign,exclusiveRatio,hasPool,corridorType,buildingCoverageRatio), 시세 7(jeonseRate,priceIndex,avgPriceSqm,landCostRatio / naverNearbyAvg,naverBuildYear,naverAvgFloor), 입지 7, 분양 9, 금융 10 = 44. 설계는 종합 여분을 ‘11→10(energyGrade 빠져)’이라 해 이 값과만 일치하고, 시세는 ‘7→0~2’ 라며 초기분양률(initialSaleRate)을 시세 여분 4개에 넣었으나 실측상 initialSaleRate 는 **분양(sec-presale) 여분**이다. 브리핑의 ‘플래그 끄면 54필드’도 44 가 맞다.",
+            "fix": "단계별 전후 개수는 착수 시점에 `npx vite-node` 로 TAB_EXTRA_SECTIONS 를 직접 평가해 다시 뽑을 것(모듈이 계산식이라 상수 표는 즉시 낡는다)."
+          }
+        ],
+        "refuted": true
+      },
+      {
+        "lens": "사장님요구",
+        "findings": [
+          {
+            "severity": "blocker",
+            "claim": "롤아웃 5단계의 안전망(\"빠짐 0은 관리자 전수 표가 진다 — 이미 숨김인 8필드가 그 경로로 살아 있다\")이 코드와 정반대다. `hidden: true` 를 붙이면 관리자 전수 표에서도 사라진다. 즉 12필드를 숨기는 순간 손님 화면에서도, 관리자 표에서도, 어디에서도 안 보인다 — 설계가 새로 세운 기준선을 만들자마자 스스로 위반한다.",
+            "evidence": "F:/mibunyang/src/components/detail/FieldTable.tsx:46 — `if (!m || m.hidden) return false;` (렌더 대상에서 제외). 관리자 전수 표는 이 FieldTable 로만 그려진다: F:/mibunyang/src/components/detail/AdminDataAudit.tsx:156-165 `FIELD_SECTIONS.map(sec => <FieldTable .../>)`. 더구나 관리자 완성도 지표와 버튼 라벨도 hidden 을 분모에서 뺀다 — AdminDataAudit.tsx:15 `NON_HIDDEN_COUNT = Object.keys(FIELD_META).filter(k => !FIELD_META[k].hidden).length`, :42 `allFields = ...filter(k => !FIELD_META[k].hidden)`, :151 `전체 ${NON_HIDDEN_COUNT}필드 보기`. 따라서 혜택10+energyGrade+hugGuarantee 를 hidden 처리하면 분모가 149→137 로 줄어 **데이터가 하나도 안 늘었는데 관리자 '완성도 %'가 저절로 올라간다**. 현재 숨김 8필드(fieldMeta.ts:344 greenBldg / 467·474·480 에너지3 / 507·545·546·547 분양4)도 관리자 표에 안 나오는 게 실제 동작이다.",
+            "fix": "0% 필드를 손님 화면에서만 빼려면 `hidden` 이 아니라 새 플래그(예: `consumerHidden`)를 쓰고, `FieldTable` 은 `meta.hidden` 만 거르게 둔다. 그래야 관리자 전수 표·완성도 분모가 그대로 유지되어 '빠짐 0' 기준선이 실제로 성립한다. 아울러 AdminCompleteness 분모 변화 여부를 회귀 테스트로 잠글 것."
+          },
+          {
+            "severity": "blocker",
+            "claim": "같은 필드에 대해 `removals` 와 `dedup`/`tabs` 가 정반대 처분을 지시한다. 실행 불가능한 명세다 — \"처음부터 다시 정비\"의 핵심이 단일 기준인데 그 기준이 자기 문서 안에서 두 갈래다.",
+            "evidence": "① 분양가격지수·㎡당 평균분양가·대지비 비율·초기분양률 → `removals` 마지막 항목은 \"전부 옆에 더 읽기 쉬운 형제가 이미 있다\"며 **삭제** 대상으로 적었는데, `dedup` 의 시도상수 8개 항목과 `tabs[분양].slot6` 은 같은 4개를 \"정본=이 지역 통계 서랍\"으로 **보존**한다. ② supplyRatio → `removals` 와 `rollout` 5단계는 \"공급비율만 예외로 '아직 못 모았어요' 문구를 붙여 남긴다\"인데, `tabs[분양].slot7` 은 \"공급비율·HUG 보증(둘 다 0%) 빠져 9→7개\"라며 **제거**한다. ③ 부수적으로 `removals` 의 \"생활인프라의 거리 12개\"도 실제 10개다 — 생활인프라 pairs 는 10쌍(dataSections.ts LOCATION_SECTIONS 생활인프라), 나머지 2개는 policeDist(치안/환경)·subwayDist(교통 상세)이고 dedup 표는 이걸 11+1 로 맞게 적었다.",
+            "fix": "필드 처분을 표 하나로 단일화: `필드 | 현재 위치들 | 새 정본 1곳 | 나머지 위치 조치(제거/숨김) | 근거`. 산문 3곳(removals·dedup·tabs)에 흩어 적지 말고 그 표를 유일 출처로 삼고, 세 곳은 표를 참조만 하게 한다."
+          },
+          {
+            "severity": "blocker",
+            "claim": "이번 정비의 핵심 목표가 중복 제거인데, 새로 만든 \"한 줄\" 4개(종합 판정·입지 요약·분양 재공고·금융 대출)가 **dedup 표에 없는 새 중복을 만든다**. 게다가 기존 CI 가드는 이 유형의 중복을 구조적으로 못 잡는다.",
+            "evidence": "같은 탭 안 중복(설계 원칙 '한 필드는 한 곳' 정면 위반): ① `unsold` — 종합 slot1 판정(\"47채 남음\")과 slot8 단지 기본정보가 동시 보유. 후자는 dataSections.ts `OVERVIEW_SECTIONS.grid` 에 `\"unsold\"` 로 들어 있고 slot8 의 changeFromNow 는 평당가·주소만 뺀다. ② `completion` — slot1 판정(\"이미 다 지었는데\")과 slot3 핵심지표 '입주'(DetailModal.tsx:463). ③ `unsoldEventCount`·`lastUnsoldEventAt` — 분양 slot1 재공고 이력이 새로 쓰는데, 둘 다 fieldMeta.ts `FIELD_SECTIONS` '안전'(:611,:612) 소속 → tabExtraFields.ts `SECTION_TO_TAB.안전 = \"sec-presale\"` 이라 **같은 탭 slot7 여분 서랍에 그대로 남는다**. ④ `subwayDist` — 입지 slot1 요약과 slot2 거리그림(charts/DistanceDots.tsx:62). dedup 은 '정본=거리그림, 교통상세에서 제거'만 적어 3곳→3곳 그대로. ⑤ `schoolGrade`·`noxious` — 입지 slot1 요약과 같은 탭 여분 서랍(FIELD_SECTIONS '입지' :639,:669). ⑥ `isRegulated`·`dsr40pass` — 종합/금융이 직접 쓰는데 '안전' 섹션이라 분양 여분에 잔존(:620,:621). 가드 구멍: tabExtraFields.test.ts:47 \"한 필드가 두 곳에 겹쳐 나오지 않는다\" 는 `FIELDS_SHOWN_IN_TABS ∪ FIELDS_SHOWN_IN_MODAL_CHROME` 과 아코디언만 대조한다. DetailModal 이 직접 그리는 필드는 tabExtraFields.ts `FIELDS_SHOWN_IN_MODAL_CHROME` 에 **손으로 적어야만** 인식되고, 반대 방향(그렸는데 안 적음) 검사는 없다 — :68 의 테스트는 '적은 것이 실제 있나'만 본다.",
+            "fix": "신설 4줄이 쓰는 필드 9개를 전부 `FIELDS_SHOWN_IN_MODAL_CHROME` 에 등재하고, 등재로 여분에서 빠지는 것을 전제로 개수를 다시 계산할 것. 동시에 '소스에 `apt.X` 가 있는데 CHROME 목록에 없으면 red' 인 역방향 테스트를 추가해야 이번 개편 이후 같은 사고가 재발하지 않는다."
+          },
+          {
+            "severity": "major",
+            "claim": "\"지역 시장 추이 3그래프\"는 코드상 **5개**다. 사장님 화면에 3개만 보인 건 그 지역에 유효 시계열이 2점 미만인 지표가 조용히 빠졌기 때문이지 설계 상수가 아니다. 따라서 812px·\"이 탭의 57%\" 도 과소 추정이고, 더 심각하게는 새 '지역 통계 서랍' 안에서 **같은 지표가 그래프와 숫자로 두 번** 나온다.",
+            "evidence": "F:/mibunyang/src/components/detail/MarketStatsCharts.tsx `METRICS` = avg_price_sqm·price_index·new_supply·initial_sale_rate·land_cost_ratio 5개. 렌더는 `METRICS.map(...)` 후 `if (chartData.length < 2) return null;` — 값이 부족한 지표만 빠진다. 그런데 설계가 그 서랍에 함께 넣기로 한 시도 상수 8개 중 **5개가 이 5그래프와 1:1 동일 지표**다: priceIndex↔price_index, avgPriceSqm↔avg_price_sqm, landCostRatio↔land_cost_ratio, initialSaleRate↔initial_sale_rate, newSupply↔new_supply. dedup 은 이 8개를 \"정본=이 지역 통계 서랍 한 곳\"이라 선언하지만, 그 '한 곳' 내부의 이중 노출은 어디에도 다루지 않았다.",
+            "fix": "서랍 내용을 '그래프 5개'로 통일하고 스칼라 5개(priceIndex·avgPriceSqm·landCostRatio·initialSaleRate·newSupply)는 그래프의 최신 점으로 흡수, 그래프가 없는 3개(popGrowth·netMigration·housingSupplyLevel)만 숫자 줄로 남길 것. 높이 추정도 5그래프 기준으로 다시 잴 것."
+          },
+          {
+            "severity": "major",
+            "claim": "여분 서랍 개수 산술이 틀렸다. 0% 제거분만 빼고, 자기가 만든 신설 4줄이 같은 서랍에서 필드를 빼가는 것을 계산에 넣지 않았다. 또 초기분양률을 시세 탭 소속으로 잘못 적었다.",
+            "evidence": "분양(sec-presale) 여분 현재 9개는 실측과 일치한다 — fieldMeta.ts '안전' 18필드 중 dataSections/CHROME 이 이미 그리는 7개(unsoldRate·competitionRate·competitionSupply·competitionApplicants·crimeSafetyGrade·recentTrades6m·cancelRatio6m·newSupply·popGrowth)를 뺀 잔여 = unsoldEventCount, lastUnsoldEventAt, supplyRatio, builderCreditGrade, builderDebtRatio, hugGuarantee, isRegulated, dsr40pass, initialSaleRate. 설계는 여기서 hugGuarantee·supplyRatio 2개만 빼 \"9→7\"이라 했으나, 자기 slot1(unsoldEventCount·lastUnsoldEventAt)·금융 slot1(isRegulated·dsr40pass)·지역통계 서랍(initialSaleRate)이 5개를 더 가져가므로 실제 잔여는 2~4개다(supplyRatio 처분 모순에 따라 변동). 그리고 \"시세 여분 7→0~2개\" 의 근거로 든 '초기분양률'은 sec-price 가 아니라 **sec-presale** 소속이다(tabExtraFields.ts `SECTION_TO_TAB.안전 = \"sec-presale\"`). 시세 여분 7개의 실제 구성은 jeonseRate·priceIndex·avgPriceSqm·landCostRatio(가격 섹션) + naverNearbyAvg·naverBuildYear·naverAvgFloor(교차검증 섹션)다.",
+            "fix": "`extraCount(tab)` 를 설계 적용 후 값으로 다시 계산해 표로 박고, 그 숫자를 테스트로 잠글 것(현재 tabExtraFields.test.ts:105 가 제목의 N 과 실제 개수 일치는 이미 잠그고 있으므로, 탭별 기대값만 추가하면 된다)."
+          },
+          {
+            "severity": "major",
+            "claim": "사장님이 명시적으로 지목한 \"점수도\"가 사실상 재정비에서 빠졌다. 점수 탭의 order 3개 중 실제 노출 순서 변경은 slot1(가중치 정렬) 하나뿐이고 slot2·slot3 은 버그 수정이다. 게다가 사장님 불만의 핵심인 '접힘'을 점수 탭만 서랍 표준에서 **명시적으로 면제**한다.",
+            "evidence": "설계 `tabs[점수].order` = ①카테고리 패널 순서 변경 ②혜택 패널 noData 문구(버그) ③근거 한 줄 가로 예산 318px(CSS 버그). `drawer` 규칙은 \"점수 탭 카테고리 패널\"을 예외 2종으로 뺀다. 그런데 실제 코드의 그 접힘은 CatPanel.tsx `const [expanded, setExpanded] = useState(...)` + 헤더 우측 `▼` 뿐이고, **안에 몇 개가 더 있는지 알려주는 표기가 없다**(`subs` 전량이 `expanded` 안에 있고 highlights 는 `getHighlights` 로 상위 3개만). 비교 대상인 학군은 같은 '요약+더보기' 구조인데 SchoolInfo.tsx:123 이 `전체 ${schools.length}개 학교 보기` 로 개수를 말해 준다 — 즉 설계가 예외의 근거로 든 '학군과 같은 구조'라는 성질을 점수 탭은 절반만 충족한다.",
+            "fix": "점수 탭 접힘도 최소한 '펼치면 무엇이 더 나오는지'를 말하게 한다 — CatPanel `▼` 자리에 `세부 ${subs.length}개` 같은 개수 표기 한 줄 추가(서랍 표준 전체를 적용하지 않더라도). 그러면 예외 사유가 실제로 성립한다."
+          },
+          {
+            "severity": "major",
+            "claim": "사장님이 유일하게 만족을 표한 영역(종합 탭 상단)에 가장 큰 시각 변경이 몰려 있고, 롤아웃도 그걸 한 단계에 묶어 \"시각 회귀가 가장 크게 나는 단계\"라고 스스로 인정한다. 위험/이득 배분이 사장님 발언과 어긋난다.",
+            "evidence": "사장님 문장은 \"상단부분은 굉장히 잘되어 있는데 **아래로 내리면** 접혀있는 부분들이…\"로 불만이 하단에 있다. 그런데 설계는 종합 탭 상단 3요소를 모두 교체한다 — 신설 판정줄이 1번, ScoreBadge 는 1→2번이자 지름 80→56(현재 DetailModal.tsx:418 `<ScoreBadge score={res.total} size={80} />`), 어제 사장님 승인으로 붙인 편차 스트립(DetailModal.tsx:424-431)은 2→5번. 배지 축소의 유일한 근거는 \"24px 회수\"인데, 같은 개편에서 스트립 231px 을 이미 아래로 내려 첫 화면 예산은 그것만으로 확보된다. `rollout` 7단계도 이 묶음을 \"시각 회귀가 가장 크게 나는 단계라 단독으로 뗀다\"로 표기.",
+            "fix": "배지 축소(80→56)는 이번 개편에서 분리해 보류하거나 별도 승인 항목으로 뺄 것 — 순서 재배치만으로 첫 화면 목표가 달성되는지 먼저 실측하고, 미달일 때만 크기에 손대는 순서로 바꾼다."
+          },
+          {
+            "severity": "minor",
+            "claim": "도넛 \"00%\" 처방의 산술 근거가 틀렸다. 크기 34→40 만으로는 안 겹침이 보장되지 않는다(설계가 쓴 안쪽 33px 은 링 두께를 뺀 값이 아니다).",
+            "evidence": "F:/mibunyang/src/components/detail/CompletenessDonut.tsx:13 `DONUT_STROKE = 2.5`, :16 `const r = size / 2 - 3.5;`. size=40 → r=16.5 이고 링은 r 위에 중심을 두므로 **글자가 쓸 수 있는 안쪽 지름은 2×(16.5−1.25)=30.5px**, 설계가 적은 33px(=2r)이 아니다. 설계 자신의 글자폭 추정 31.2px 보다 작다. (size=34 인 현재 호출부는 DataSectionBlock.tsx:83 `size={34}` → 안쪽 24.5px 로, 설계의 24.5 는 정확하다.) 실제 해결은 병기된 \"100%일 때 글자 한 단계 축소\"(F.xs 11 → F.micro 10)가 담당한다.",
+            "fix": "근거 문장을 '안쪽 30.5px'로 정정하고, 글자 축소를 선택이 아닌 필수 조건으로 명시할 것. 참고로 텍스트 컨테이너에 `overflow:hidden` 이 없어 실제로는 잘리는 게 아니라 링 위에 겹쳐 보이는 것이므로, 증상 서술도 '잘림'이 아니라 '겹침'이 정확하다."
+          },
+          {
+            "severity": "minor",
+            "claim": "energyGrade 를 빼는 근거로 든 \"형제(녹색건축·내진설계)는 이미 숨김\"이 절반 거짓이다. 내진설계는 숨김이 아니다. 그리고 설계 자신의 \"종합 여분 11→10\" 계산은 내진설계가 숨김이 **아닐 때만** 성립한다.",
+            "evidence": "F:/mibunyang/src/constants/fieldMeta.ts:344 `greenBldg: { ... hidden: true, ... }` 하나만 숨김이고, :345-349 `quakeDesign: { label: \"내진설계\", section: \"상품성\", fmt: ... }` 에는 `hidden` 이 없다(파일 전체 `hidden: true` 는 8건: 344·467·474·480·507·545·546·547). 실제 sec-overview 여분 11개 = 개요 3(floors·maxFloor·layout) + 상품성 8(parkingRatio·floorAreaRatio·energyGrade·**quakeDesign**·exclusiveRatio·hasPool·corridorType·buildingCoverageRatio) 이므로, quakeDesign 을 숨김으로 치면 10이 되어 설계의 '현재 11'과 어긋난다.",
+            "fix": "근거 문장에서 내진설계를 빼거나, 내진설계도 함께 숨길지 별도 판단으로 분리할 것."
+          },
+          {
+            "severity": "minor",
+            "claim": "규제현황 진단(ZONE_MAP 빈 객체)은 맞지만, 처방이 미완이다. LTV 계산을 `apt.isRegulated`(boolean) 기준으로 바꾸겠다면서 어느 규제 등급으로 볼지 정하지 않았다 — 투기과열이냐 조정대상이냐에 따라 손님이 보는 대출 한도가 10%p 갈린다.",
+            "evidence": "F:/mibunyang/src/constants/regulations.ts:19 `export const ZONE_MAP: Record<string, Zone> = {};` → :21-27 `getZone` 이 항상 `\"normal\"` 반환 → DetailModal.tsx:318-319 의 `zoneName` 이 1,581단지 전부 '비규제지역', :462 `calcLTV(apt.price, zone)` 도 normal 요율. 그런데 :12-16 `LTV_RATES` 는 `speculative {0.4/0.2}` 와 `overheated {0.5/0.3}` 두 등급이고 `calcLTV(price, zone)` 는 `Zone` 문자열을 받는다. boolean 하나로는 이 둘을 못 가른다.",
+            "fix": "(a) 표시는 '규제지역/비규제지역' 2단계로만 낮추고 LTV 는 보수적으로 speculative 요율을 쓰든지, (b) `ZONE_MAP` 에 해당 구를 실제 등급으로 채우든지 — 둘 중 하나를 설계에 명시할 것. 대출 한도 표시는 손님 의사결정에 직결되므로 미정 상태로 롤아웃 1단계에 넣으면 안 된다. (부수: 금융 slot6 의 \"코드는 count 0 시 미렌더 한 줄 추가\"는 불필요하다 — ExtraFieldsAccordion.tsx 에 `if (n === 0) return null;` 이 이미 있다.)"
+          }
+        ],
+        "refuted": true
+      }
+    ],
+    "blockers": [
+      {
+        "severity": "blocker",
+        "claim": "시세 slot 3 / removals: \"인근 매매 시세의 아래 표는 위 막대와 같은 행을 다시 그린다(중앙값 1행·최대 3행)\" → 표 삭제",
+        "evidence": "`src/components/detail/PriceTable.tsx:78` 은 `sellRows.length > 1 &&` 일 때만 막대를 그린다. 같은 파일 L57 의 sellRows 산식을 1,530단지(priceByArea 보유)에 그대로 재현한 실측: 길이 0=176, 1=171, 2=201, 3=279, 4=692, 5=7, 6=4 → **중앙값 3행·최대 6행**(설계의 \"중앙 1행·최대 3행\"과 불일치). 그리고 `length>1` 이 거짓인 **347단지(22.7%)** 는 막대가 아예 렌더되지 않는다 — 그중 171단지는 표에 정확히 1행이 있고 그게 유일한 가격 표시다. 또 막대는 면적(L102)과 평균(L145)만 글자로 보여주고, 하한·상한·건수는 표(L176~L179)에만 숫자로 있다.",
+        "fix": "표 삭제 대신 (a) `sellRows.length === 1` 이면 표를 남기거나 막대를 1행에서도 그리게 하고, (b) 하한·상한·건수를 막대 쪽에 흡수한 뒤에만 표를 지운다. 수치는 \"중앙 3행·최대 6행\"으로 정정."
+      },
+      {
+        "severity": "blocker",
+        "claim": "5단계: \"'빠짐 0'은 관리자 전수 표가 진다. 이미 숨김인 8필드가 그 경로로 살아 있다\" → 혜택10+에너지등급+HUG 12필드를 숨김 처리",
+        "evidence": "`src/components/detail/FieldTable.tsx:42-47` `visibleFields()` 가 `if (!m || m.hidden) return false;` 로 hidden 필드를 렌더 대상에서 제외한다. `src/components/detail/AdminDataAudit.tsx:158-165` 는 전수 표를 그 FieldTable 로만 그린다(`fields={sec.fields}`). 따라서 hidden 필드는 관리자 표에도 안 나온다. 더구나 hidden 8개 중 elecUsageKwh·gasUsageMj·energyCollectedAt 3개는 `FIELD_SECTIONS`(fieldMeta.ts:556-752) 어디에도 없어 애초에 표에 들어가지도 않는다(해당 구간 grep 0건).",
+        "fix": "숨김(hidden) 대신 `INTENTIONALLY_UNRENDERED` 등재 또는 FieldTable 이 `adminMode` 에서 hidden 을 통과시키도록 바꾼 뒤에 12필드를 손님 화면에서만 뺀다. 새 가드 문장의 전제(\"관리자 표가 빠짐 0 을 진다\")를 먼저 사실로 만들어야 한다."
+      },
+      {
+        "severity": "blocker",
+        "claim": "\"아직 안 보여드린 자료\" 서랍은 손으로 적는 목록이 아니라 `dataSections` 의 **차집합으로 자동 계산**된다. 따라서 4단계에서 세부 섹션의 필드를 지우면 그 필드는 사라지는 게 아니라 **같은 탭 서랍 안으로 되돌아온다.** 설계의 여분 개수 예측(시세 7→0~2 \"0이면 서랍 미렌더\", 분양 9→7)은 방향 자체가 반대이고, '네이버 분양정보 섹션 삭제'의 목적이었던 중복 제거도 달성되지 않는다.",
+        "evidence": "src/lib/tabExtraFields.ts:64 `FIELDS_SHOWN_IN_TABS = new Set([...OVERVIEW_SECTIONS,...LOCATION_SECTIONS,...PRICE_SECTIONS,...PRESALE_SECTIONS].flatMap(fieldsOf))` / :105 `alreadySeen = new Set([...FIELDS_SHOWN_IN_TABS, ...FIELDS_SHOWN_IN_MODAL_CHROME, ...INTERNAL_ONLY_FIELDS])` — 여분 = `FIELD_SECTIONS − alreadySeen`. 이 계산에 들어가는 건 `dataSections` 뿐이고 **PresaleInfo·PriceTable·SchoolInfo·LoanAnalysis·MarketStatsCharts 같은 하위 컴포넌트는 포함되지 않는다.** 결과: (a) fieldMeta.ts:728-750 `key:\"분양\"` 섹션 19필드 중 15개가 지금은 dataSections.ts:143-160 '네이버 분양정보' grid 에 있어 여분에서 빠져 있다 → 그 섹션을 지우면 **15개가 분양 탭 여분으로 유입**되고, 손님은 바로 위 PresaleInfo 문장형 카드에서 본 같은 값을 한 칸 아래 격자로 다시 본다(= 설계가 없애려던 바로 그 이중 노출). (b) fieldMeta.ts:585-601 `key:\"가격\"` 13필드 중 `nearbyMedian·avgFloor·floorRange·netMigration·housingSupplyLevel` 등이 PRICE_SECTIONS 에 있어 여분에서 빠져 있다 → 시세 탭에서 그것들을 지우면 여분이 **늘어난다.** 7→0 은 도달 불가. (c) fieldMeta.ts:628-668 `key:\"입지\"` 에 `subwayDist`·*Dist 12종이 전부 있어, 생활인프라·교통상세에서 거리를 빼면 그대로 입지 여분으로 복귀한다.",
+        "fix": "4단계 착수 전에 `FIELDS_SHOWN_IN_TABS` 를 '하위 컴포넌트가 그리는 필드'까지 포함하도록 확장(예: PresaleInfo·PriceTable·SchoolInfo 가 소비하는 필드 목록을 각 컴포넌트에서 export 해 합집합에 추가)하고, 그 위에서 여분 개수를 다시 실측한 뒤 rollout 의 숫자를 고쳐라. 지금의 '삭제 = 화면에서 사라짐' 전제로는 4~5단계 예측이 전부 틀어진다."
+      },
+      {
+        "severity": "blocker",
+        "claim": "dedup 이 지정한 정본 다수가 **기능 플래그 뒤에 있는 그림**이고, 그중 편차 스트립은 **원래 숫자를 화면에 한 번도 그리지 않는다.** 플래그를 내리면(그게 이 플래그의 존재 목적이다) 전세가율·미분양률·관리비·거리 12종이 첫 화면에서 통째로 빠지고, 플래그가 켜져 있어도 손님은 \"12% 싸요\" 만 볼 뿐 관리비가 얼마인지 영영 모른다.",
+        "evidence": "src/components/DetailModal.tsx:136 `const showDeviation = isFeatureDeviationStrip() && regionStats != null;` → :424 DeviationStrip, :622 AreaPriceScatter, :652 DistanceDots, :677 PresaleTimeline, :710 LoanStack 이 모두 이 한 게이트 뒤. src/constants/featureFlags.ts:14 주석 \"배포 후 문제가 보이면 재배포 없이 환경변수만 내려 원상 복구할 수 있다\" = 꺼지는 것이 정상 시나리오. rollout 2단계는 **여분 서랍만** 떼어내고 스트립·그림 자체는 그대로 둔다. 더 결정적으로 src/components/DeviationRow.tsx:118·152 는 값 슬롯에 `{dev.text}`(\"12% 싸요\")만 그리고, 원래 값 `formatDeviationValue(spec, value)` 은 :98 `aria` 문자열에만 들어간다 — 눈으로는 절대 안 보인다. `avgMaintenanceCost` 의 화면 노출처는 실측상 단 두 곳(src/lib/dataSections.ts:57 단지 기본정보 grid, src/constants/deviationFields.ts:151 스트립)뿐인데 dedup 이 앞을 지운다. 그런데 src/hooks/useDataPipeline.ts:60 에는 \"관리비 낮은순\" 정렬이 살아 있다 — 손님은 관리비로 줄을 세울 수는 있는데 금액은 어디서도 못 본다.",
+        "fix": "① 스트립·거리그림을 정본으로 삼는 dedup 은 그 블록들이 플래그에서 풀린 뒤에만 적용하라(2단계에 '차트도 함께 분리'를 넣거나, 정본을 플래그 밖 자리로 잡아라). ② 편차 스트립을 어떤 필드의 유일한 시각 정본으로 쓰려면 값 슬롯에 원래 값을 함께 넣어라(예: \"9만원 · 12% 싸요\"). 특히 관리비처럼 매달 내는 금액은 상대값만으로 대체 불가."
+      },
+      {
+        "severity": "blocker",
+        "claim": "5단계의 새 기준선(“빠짐 0 은 관리자 전수 표가 진다”)은 성립하지 않는다 — 관리자 표는 hidden 필드를 **렌더하지 않는다**. 설계의 근거 문장 “이미 숨김인 8필드가 그 경로로 살아 있다”는 코드상 거짓이다.",
+        "evidence": "F:/mibunyang/src/components/detail/FieldTable.tsx:42-49 `visibleFields()` = `if (!m || m.hidden) return false;`. AdminDataAudit 는 이 FieldTable 로만 전수 표를 그린다(AdminDataAudit.tsx:151-161). 현재 hidden 8개(greenBldg·quakeDesign 인접·presaleStageCode·presaleImageUrl·naverPresaleNo·naverPresaleSeq·elecUsageKwh·gasUsageMj·energyCollectedAt 계열, fieldMeta.ts:344/467/474/480/507/545/546/547)는 FIELD_SECTIONS 에 **목록으로는 들어 있으나**(fieldMeta.ts:684,685,736,746,747,748) 화면에는 한 줄도 안 나온다. 또한 AdminDataAudit.tsx:15 `NON_HIDDEN_COUNT = Object.keys(FIELD_META).filter(k=>!hidden)` 와 AdminCompleteness 의 `allFields` 도 hidden 을 제외하므로, 12필드를 hidden 처리하면 관리자 완성도 분모에서도 사라진다. 결과: 5단계 후 “어느 필드도 조용히 사라지지 않는다”를 지키는 곳이 **한 군데도 없다**(손님 화면 가드는 중복 0 로 축소, 관리자 표는 hidden 을 못 봄).",
+        "fix": "① hidden 을 재사용하지 말고 `customerHidden`(손님만 숨김) 같은 새 플래그를 쓰거나, ② FieldTable 에 `showHidden` prop 을 추가해 관리자 경로에서만 hidden 을 렌더하도록 먼저 고친 뒤 5단계를 진행. 어느 쪽이든 “관리자 표가 전량을 진다”를 잠그는 테스트(FIELD_META 전 키가 관리자 표 DOM 에 data-field 로 존재)를 5단계와 같은 PR 에 넣어야 한다."
+      },
+      {
+        "severity": "blocker",
+        "claim": "4단계의 “중복 제거(내용 삭제)”는 실제로는 **삭제가 아니라 같은 탭 아코디언으로의 이동**이다. 여분 아코디언이 `FIELD_SECTIONS − dataSections` 차집합으로 계산되기 때문에, 세부 섹션에서 뺀 필드는 자동으로 같은 탭 여분에 다시 나타난다.",
+        "evidence": "F:/mibunyang/src/lib/tabExtraFields.ts:65-67,95-121 — `FIELDS_SHOWN_IN_TABS` 는 dataSections 에서 계산되고, alreadySeen 에 없는 비-hidden 필드는 SECTION_TO_TAB 에 따라 자동 편입된다. 실측(vite-node 로 모듈 직접 평가): `ktxDist`·`hospitalDist`·`presaleMinPrice` 모두 현재 `FIELDS_SHOWN_IN_TABS` 에 true. 이들이 속한 FIELD_SECTIONS 섹션은 각각 입지(→sec-location)·입지(→sec-location)·분양(→sec-presale)이라, 세부에서 빼는 순간 같은 탭 여분으로 편입된다. 즉 ‘생활인프라 거리 12개 제거’ → 12개가 입지 탭 아코디언에 재등장(거리 그림과 이중 노출), ‘KTX 제거’ → 입지 여분에 재등장, ‘네이버 분양정보 섹션 통째 삭제’ → presale 15필드가 분양 탭 여분에 재등장(PresaleInfo.tsx:171-227 이 이미 그리는 값과 이중 노출). tabExtraFields.ts:9-13 이 “같은 탭 세부와 87개(58%) 겹침”을 없애려고 만든 장치인데, 4단계가 그 사고를 반대 방향으로 재생산한다.",
+        "fix": "4단계 각 항목마다 ‘어디로 갈지’를 명시해야 한다 — 세부에서 빼면서 여분에도 안 나오게 하려면 (a) FIELD_META 에서 hidden 처리하거나, (b) 새 ‘차트/직접 렌더가 정본인 필드’ 레지스트리를 만들어 alreadySeen 에 합류시켜야 한다. 설계에 (b)가 없으므로 4단계 착수 전에 레지스트리 신설을 별도 선행 단계로 넣을 것."
+      },
+      {
+        "severity": "blocker",
+        "claim": "“한 필드는 한 곳” 을 지킨다는 중복 0 가드는 이미 구멍이 나 있고(현재도 jeonseRate 가 두 곳), 신설 4개 블록이 그 구멍을 정확히 확대한다. 가드는 계속 초록이다.",
+        "evidence": "실측: `jeonseRate` 는 `FIELDS_SHOWN_IN_TABS` 에 **없고**(false) sec-price 여분에 **있다**(true). 동시에 DetailModal.tsx:455 가 핵심지표에서 직접 렌더한다 → 지금도 두 곳. tabExtraFields.test.ts:47-50 의 중복 가드는 `FIELDS_SHOWN_IN_TABS ∪ FIELDS_SHOWN_IN_MODAL_CHROME` 하고만 대조하는데, 직접 렌더 목록(FIELDS_SHOWN_IN_MODAL_CHROME, tabExtraFields.ts:76-87)은 **손으로 적은 10줄**이고 테스트(tabExtraFields.test.ts:68-83)는 ‘목록→소스’ 한 방향만 검사한다. 소스에 직접 렌더를 추가하고 목록에 안 적으면 아무 테스트도 안 깨진다. 설계가 신설하는 4블록이 쓰는 필드는 실측상 전부 현재 여분 아코디언 소속이다 — sec-presale 여분 = `unsoldEventCount, lastUnsoldEventAt, supplyRatio, builderCreditGrade, builderDebtRatio, hugGuarantee, isRegulated, dsr40pass, initialSaleRate`. 종합 ‘한 줄 판정’(unsoldEventCount), 분양 ‘재공고 이력’(unsoldEventCount·lastUnsoldEventAt) → **같은 탭 안 이중 노출**, 금융 ‘대출 한 줄’(isRegulated·dsr40pass) → 분양 여분과 이중. 편차 스트립·거리 그림·산점도·타임라인·LoanStack 도 어디에도 등록돼 있지 않아, dedup 목록 20여 건 중 ‘정본=차트’인 항목은 기계적으로 표현할 방법 자체가 없다.",
+        "fix": "가드를 양방향으로 만든다 — DetailModal.tsx 소스에서 `apt.<field>` 를 정규식으로 전수 추출해 FIELDS_SHOWN_IN_MODAL_CHROME 과 **집합이 같은지** 검사(현재는 부분집합만 검사). 동시에 차트 컴포넌트가 소비하는 필드를 상수로 export 시켜(예: DeviationStrip 은 이미 OVERVIEW_DEVIATION_FIELDS 보유) alreadySeen 에 합류시킨 뒤에야 dedup 단계를 시작할 것."
+      },
+      {
+        "severity": "blocker",
+        "claim": "롤아웃 5단계의 안전망(\"빠짐 0은 관리자 전수 표가 진다 — 이미 숨김인 8필드가 그 경로로 살아 있다\")이 코드와 정반대다. `hidden: true` 를 붙이면 관리자 전수 표에서도 사라진다. 즉 12필드를 숨기는 순간 손님 화면에서도, 관리자 표에서도, 어디에서도 안 보인다 — 설계가 새로 세운 기준선을 만들자마자 스스로 위반한다.",
+        "evidence": "F:/mibunyang/src/components/detail/FieldTable.tsx:46 — `if (!m || m.hidden) return false;` (렌더 대상에서 제외). 관리자 전수 표는 이 FieldTable 로만 그려진다: F:/mibunyang/src/components/detail/AdminDataAudit.tsx:156-165 `FIELD_SECTIONS.map(sec => <FieldTable .../>)`. 더구나 관리자 완성도 지표와 버튼 라벨도 hidden 을 분모에서 뺀다 — AdminDataAudit.tsx:15 `NON_HIDDEN_COUNT = Object.keys(FIELD_META).filter(k => !FIELD_META[k].hidden).length`, :42 `allFields = ...filter(k => !FIELD_META[k].hidden)`, :151 `전체 ${NON_HIDDEN_COUNT}필드 보기`. 따라서 혜택10+energyGrade+hugGuarantee 를 hidden 처리하면 분모가 149→137 로 줄어 **데이터가 하나도 안 늘었는데 관리자 '완성도 %'가 저절로 올라간다**. 현재 숨김 8필드(fieldMeta.ts:344 greenBldg / 467·474·480 에너지3 / 507·545·546·547 분양4)도 관리자 표에 안 나오는 게 실제 동작이다.",
+        "fix": "0% 필드를 손님 화면에서만 빼려면 `hidden` 이 아니라 새 플래그(예: `consumerHidden`)를 쓰고, `FieldTable` 은 `meta.hidden` 만 거르게 둔다. 그래야 관리자 전수 표·완성도 분모가 그대로 유지되어 '빠짐 0' 기준선이 실제로 성립한다. 아울러 AdminCompleteness 분모 변화 여부를 회귀 테스트로 잠글 것."
+      },
+      {
+        "severity": "blocker",
+        "claim": "같은 필드에 대해 `removals` 와 `dedup`/`tabs` 가 정반대 처분을 지시한다. 실행 불가능한 명세다 — \"처음부터 다시 정비\"의 핵심이 단일 기준인데 그 기준이 자기 문서 안에서 두 갈래다.",
+        "evidence": "① 분양가격지수·㎡당 평균분양가·대지비 비율·초기분양률 → `removals` 마지막 항목은 \"전부 옆에 더 읽기 쉬운 형제가 이미 있다\"며 **삭제** 대상으로 적었는데, `dedup` 의 시도상수 8개 항목과 `tabs[분양].slot6` 은 같은 4개를 \"정본=이 지역 통계 서랍\"으로 **보존**한다. ② supplyRatio → `removals` 와 `rollout` 5단계는 \"공급비율만 예외로 '아직 못 모았어요' 문구를 붙여 남긴다\"인데, `tabs[분양].slot7` 은 \"공급비율·HUG 보증(둘 다 0%) 빠져 9→7개\"라며 **제거**한다. ③ 부수적으로 `removals` 의 \"생활인프라의 거리 12개\"도 실제 10개다 — 생활인프라 pairs 는 10쌍(dataSections.ts LOCATION_SECTIONS 생활인프라), 나머지 2개는 policeDist(치안/환경)·subwayDist(교통 상세)이고 dedup 표는 이걸 11+1 로 맞게 적었다.",
+        "fix": "필드 처분을 표 하나로 단일화: `필드 | 현재 위치들 | 새 정본 1곳 | 나머지 위치 조치(제거/숨김) | 근거`. 산문 3곳(removals·dedup·tabs)에 흩어 적지 말고 그 표를 유일 출처로 삼고, 세 곳은 표를 참조만 하게 한다."
+      },
+      {
+        "severity": "blocker",
+        "claim": "이번 정비의 핵심 목표가 중복 제거인데, 새로 만든 \"한 줄\" 4개(종합 판정·입지 요약·분양 재공고·금융 대출)가 **dedup 표에 없는 새 중복을 만든다**. 게다가 기존 CI 가드는 이 유형의 중복을 구조적으로 못 잡는다.",
+        "evidence": "같은 탭 안 중복(설계 원칙 '한 필드는 한 곳' 정면 위반): ① `unsold` — 종합 slot1 판정(\"47채 남음\")과 slot8 단지 기본정보가 동시 보유. 후자는 dataSections.ts `OVERVIEW_SECTIONS.grid` 에 `\"unsold\"` 로 들어 있고 slot8 의 changeFromNow 는 평당가·주소만 뺀다. ② `completion` — slot1 판정(\"이미 다 지었는데\")과 slot3 핵심지표 '입주'(DetailModal.tsx:463). ③ `unsoldEventCount`·`lastUnsoldEventAt` — 분양 slot1 재공고 이력이 새로 쓰는데, 둘 다 fieldMeta.ts `FIELD_SECTIONS` '안전'(:611,:612) 소속 → tabExtraFields.ts `SECTION_TO_TAB.안전 = \"sec-presale\"` 이라 **같은 탭 slot7 여분 서랍에 그대로 남는다**. ④ `subwayDist` — 입지 slot1 요약과 slot2 거리그림(charts/DistanceDots.tsx:62). dedup 은 '정본=거리그림, 교통상세에서 제거'만 적어 3곳→3곳 그대로. ⑤ `schoolGrade`·`noxious` — 입지 slot1 요약과 같은 탭 여분 서랍(FIELD_SECTIONS '입지' :639,:669). ⑥ `isRegulated`·`dsr40pass` — 종합/금융이 직접 쓰는데 '안전' 섹션이라 분양 여분에 잔존(:620,:621). 가드 구멍: tabExtraFields.test.ts:47 \"한 필드가 두 곳에 겹쳐 나오지 않는다\" 는 `FIELDS_SHOWN_IN_TABS ∪ FIELDS_SHOWN_IN_MODAL_CHROME` 과 아코디언만 대조한다. DetailModal 이 직접 그리는 필드는 tabExtraFields.ts `FIELDS_SHOWN_IN_MODAL_CHROME` 에 **손으로 적어야만** 인식되고, 반대 방향(그렸는데 안 적음) 검사는 없다 — :68 의 테스트는 '적은 것이 실제 있나'만 본다.",
+        "fix": "신설 4줄이 쓰는 필드 9개를 전부 `FIELDS_SHOWN_IN_MODAL_CHROME` 에 등재하고, 등재로 여분에서 빠지는 것을 전제로 개수를 다시 계산할 것. 동시에 '소스에 `apt.X` 가 있는데 CHROME 목록에 없으면 red' 인 역방향 테스트를 추가해야 이번 개편 이후 같은 사고가 재발하지 않는다."
+      }
+    ],
+    "majors": [
+      {
+        "severity": "major",
+        "claim": "점수 slot 2 / bugs: \"혜택·할인 6개 소스가 전부 0.0% · 데이터가 1,581곳 전부 0건이라 근거 줄이 0개 · 미니카드는 이미 '혜택 정보 없음'\"",
+        "evidence": "`src/scoring/scoreBenefit.ts:41` 의 6번째 소스 `maintSave` 는 혜택 컬럼이 아니라 `avgMaintenanceCost`(실측 채움 1,168곳 73.9%)와 지역평균으로 계산된다. `noData`(L46)는 6개가 전부 0일 때만 true. apartments-list.json 의 catsCache 실측: **noData=true 는 1,040곳(65.8%)뿐**, noData=false 541곳, benefit total>0 **345곳(21.8%)**. 즉 541곳에서는 `CatPanel.tsx:61-62` getHighlights 가 `info !== \"-\"` 인 '관리비 절감' 줄을 실제로 그리고, `catVerdict.ts:26` 도 \"혜택 정보 없음\"을 반환하지 않는다. (금융 여분 서랍 10칸이 전부 0% 라는 별개 주장은 DB 컬럼 기준이라 맞다.)",
+        "fix": "\"1,581곳 전부\"를 \"noData 인 1,040곳(65.8%)\"으로 정정. 처방 자체(noData 분기)는 유지하되, 나머지 541곳에서 관리비 절감 근거 줄이 계속 나온다는 점을 배치·문구에 반영."
+      },
+      {
+        "severity": "major",
+        "claim": "금융 slot 1: \"강남3구+용산 57단지가 받던 과대 LTV 안내가 여기서 바로잡힌다\" + 대출 분석·자금 구성 그림은 \"유지\"",
+        "evidence": "getZone/calcLTV 소비처 전수: `DetailModal.tsx:318,462`(설계가 고침) 외에 **`LoanAnalysis.tsx:18,24,37`**(금융 slot 3 \"유지\") — \"비규제지역\" 배지 L67, \"LTV 9억 이하 70%/초과분 60%\" L71, LTV 대출한도 L98, 필요 현금 L111, 행별 LTV한도 L132 를 전부 zone 으로 그린다 — 그리고 **`charts/LoanStack.tsx:46-47`**(금융 slot 2 \"유지\"), `CompareSheet.tsx:68-69`. `regulations.ts:19` ZONE_MAP={} 이라 이들 전부 normal 로 굳는다. 새 한 줄 바로 아래·바로 위에서 반대 숫자가 계속 나온다. 또 `isRegulated` 는 boolean(실측 true 57건)이라 투기과열 40/20 vs 조정대상 50/30 을 구분 못 하고, `public/data/regulation-zones.json` 은 같은 4개 구를 두 목록에 모두 넣어 두었다.",
+        "fix": "1단계에 LoanAnalysis·LoanStack·CompareSheet 의 zone 소비처를 함께 넣거나, `getZone` 자체를 regulation-zones.json 시드로 채워 한 곳에서 고친다. isRegulated(boolean)만으로는 LTV 비율을 못 정하므로 zone 타입 소스가 별도로 필요하다."
+      },
+      {
+        "severity": "major",
+        "claim": "시세 slot 4: \"'시장/투자 지표'는 단지 실측치와 시도 상수 3개(인구증감·순이동·주택보급률)가 섞여 있다 → 단지값만 남긴다\"",
+        "evidence": "`src/lib/dataSections.ts` PRICE_SECTIONS '시장/투자 지표' 는 13필드(highlight 3 + grid 10)다. 설계가 배치한 건 신규 묶음 6(nearbyMedian·recentTrades6m·avgFloor·floorRange·pir·psr) + 지역 통계 이동 3 = 9개뿐. 남는 **nearbyBuildYear(83.7%)·fertilityRate(81.8%)·doctorsPer1k(81.8%)·hospitalBedsPer1k(81.8%)** 4개는 설계 어디에도 안 나온다. 실측상 뒤 3개는 시군구 단위 상수(같은 구 안 값 1종)라 설계가 지적한 바로 그 \"지역 통계를 단지 값으로 읽는다\" 문제의 당사자다. 게다가 4개 모두 `FIELDS_SHOWN_IN_TABS` 에 속해 여분 아코디언에서 제외되므로(tabExtraFields.ts:65-67,104-113), 섹션 분해 시 빠뜨리면 즉시 orphan → `tabExtraFields.test.ts` \"전량 도달\" 빨강.",
+        "fix": "\"시도 상수 3개\"를 \"지역 단위 상수 6개(시도 3 + 시군구 3)\"로 정정하고, fertilityRate·doctorsPer1k·hospitalBedsPer1k 를 지역 통계 서랍으로, nearbyBuildYear 의 행선지도 명시한다."
+      },
+      {
+        "severity": "major",
+        "claim": "분양 slot 7: \"공급비율·HUG 보증(둘 다 0%) 빠져 9→7개\" (removals·5단계는 \"공급비율만 예외로 남긴다\")",
+        "evidence": "`tabExtraFields.ts` 계산을 재현하면 분양 탭 여분은 정확히 9개(unsoldEventCount·lastUnsoldEventAt·supplyRatio·builderCreditGrade·builderDebtRatio·hugGuarantee·isRegulated·dsr40pass·initialSaleRate). removals 는 \"공급비율(supplyRatio)만 예외로 '아직 못 모았어요' 문구를 붙여 남긴다\", 5단계도 \"공급비율만 남김\"이라 적혀 있어 hugGuarantee 하나만 빠지면 **8**이다. 게다가 같은 설계의 분양 slot 1 이 unsoldEventCount·lastUnsoldEventAt 를, slot 6 이 initialSaleRate 를, 금융 slot 1 이 isRegulated·dsr40pass 를 위로 승격시키므로 실제 잔여는 3에 가깝다.",
+        "fix": "세 곳(slot 7·removals·5단계)의 supplyRatio 처리를 하나로 통일하고, 승격되는 필드를 뺀 최종 개수를 다시 센다."
+      },
+      {
+        "severity": "major",
+        "claim": "편차 스트립 헤더가 화면에 \"○○ 아파트 **평균**과 비교\" 라고 쓰는데, 같은 블록의 도움말은 \"**평균과 달리** 아주 비싼 집 몇 채 때문에 기준이 흔들리지 않습니다\" 라고 말한다. 손님이 물음표를 누르는 순간 제목이 거짓이 된다. 설계는 bugs 목록에 이 모순을 넣지 않았고, 오히려 이 블록을 5개 필드의 정본으로 승격시켜 노출을 늘린다.",
+        "evidence": "src/components/DeviationStrip.tsx:93 `<span>{regionLabel} 아파트 평균과 비교</span>` vs :19-23 `HELP_TEXT = \"...가운데 세로선은 같은 지역 아파트들의 한가운데 값입니다... 평균과 달리, 아주 비싼 집 몇 채 때문에 기준이 흔들리지 않습니다.\"` 실제 계산도 중위값이다 — src/lib/deviation.ts:135 `deviationText(spec, value, stat.median, good)`. 이는 사장님이 지적한 \"거짓 안내문\"(GuideSections 레이더 문구) 과 정확히 같은 종류이며, 세션 487b 에서 한 번 잡고도 같은 유형이 남은 자리다.",
+        "fix": "1단계(거짓말 먼저)에 이 항목을 추가하라. 헤더를 \"○○ 아파트 한가운데 값과 비교\" 로 바꾸면 도움말과 일치하고 전문어도 안 늘어난다."
+      },
+      {
+        "severity": "major",
+        "claim": "미니카드·점수 패널을 프로필 가중치 순으로 재정렬하면 `CAT_DISPLAY_ORDER` 가 존재하는 두 이유를 동시에 무너뜨린다 — (a) 색각이상 대비를 위해 일부러 떨어뜨려 놓은 파랑(입지)·보라(상품)가 **5개 프로필 중 4개에서 바로 붙고**, (b) 프로필 전환이 이 서비스의 핵심 기능인데 전환할 때마다 카드 6장의 자리가 바뀌어 위치 학습이 불가능해진다.",
+        "evidence": "src/constants/catOrder.ts:16-18 \"순서 근거 — 파랑(입지 `#2563EB`)과 보라(상품 `#7C3AED`)가 인접하면 색각이상에서 구분되지 않아, 그 사이에 앰버(혜택)를 끼웠다\" → `CAT_DISPLAY_ORDER = [\"price\",\"location\",\"benefit\",\"product\",\"risk\",\"future\"]`. src/theme/index.ts:62-69 `catCol` = location: C.blue / product: C.purple. src/constants/profiles.ts 가중치로 내림차순 + `CAT_TIEBREAK_ORDER`(profiles.ts:43) tie-break 를 적용하면 live(40/20/20/10/5/5) → location,product / edu(45/20/15/…) → location,product / retire(35/25/20/…) → location,product / invest(price30,risk25,location15,product10,…) → …location,product. **4개 프로필에서 파랑 바로 옆이 보라다.** 또 같은 파일 :4-12 는 이 상수가 생긴 이유가 \"화면 순서가 소리 없이 뒤집히던 것\"을 고정하기 위함이라고 못박는다. 순서를 다시 가변으로 만드는 건 그 결정의 역행이다.",
+        "fix": "순서는 CAT_DISPLAY_ORDER 로 고정한 채, 프로필 반영은 이미 있는 강조 장치(`emphasized` 테두리 + \"중점\" 칩, DetailModal.tsx:515)로만 하라. 굳이 위로 올리고 싶으면 상위 1~2개만 별도 줄로 복제하고 6장 격자는 고정 순서를 유지하는 편이 안전하다."
+      },
+      {
+        "severity": "major",
+        "claim": "입지 탭 신설 '한 줄 요약'의 네 항목 중 둘이 손님에게 정보를 주지 못한다. \"학군 A\" 는 **84.4% 단지가 받는 등급**이라 변별력이 0이고(이 레포가 이미 실측으로 학습한 교훈이다), \"치안 2등급\" 은 숫자가 낮을수록 안전하다는 방향을 모르는 손님에게 좋은지 나쁜지조차 알려주지 않는다.",
+        "evidence": "src/components/CLAUDE.md AptCard 절(세션 441): \"라이브 실측 분포 A=84.4%·B=12.2%·C=3.4%·D=0% → A 는 다수(84%)라 강조하면 노이즈, D 는 0건 … **C(3.4% 소수)가 유일한 변별 신호**\" — 그래서 카드는 A 를 일부러 숨긴다. 치안도 마찬가지로 카드는 raw 등급 대신 말로 푼다: 같은 문서 \"치안우수(세션 423): `crimeSafetyGrade<=2` 초록 '치안우수' … 위험(`>=4`)과 상호배타\". 설계는 두 필드를 raw 등급 그대로 헤드라인에 올려 이 학습을 되돌린다. 게다가 src/constants/deviationFields.ts:11 이 명시한 이 레포의 원칙(\"화면에 전문어를 쓰지 않는다 … 오른쪽 값 슬롯은 숫자가 아니라 문장 조각\")과도 어긋난다.",
+        "fix": "한 줄 요약을 등급 나열이 아니라 판정 문장으로 써라 — 예: \"지하철 340m(역세권) · 치안 우수 · 혐오시설 없음\". 학군은 A/B 면 빼고 C 일 때만 \"학군 보통\" 으로 넣는 카드 규칙을 그대로 답습하는 게 일관된다."
+      },
+      {
+        "severity": "major",
+        "claim": "\"혜택 6개 소스가 전부 0.0%\" 라는 전제가 사실이 아니다. 혜택 점수의 여섯 번째 항목은 혜택 필드가 아니라 **관리비 절감**이고, 그 입력인 `avgMaintenanceCost` 는 채움 73.9% 다. 지역 평균보다 관리비가 싼 단지에서는 `noData=false` 이고 근거 줄도 실제로 뜬다. 그런데 같은 설계가 `avgMaintenanceCost` 를 단지 기본정보에서 빼버려, 점수의 유일한 살아있는 근거에 대해 손님이 원본 금액을 확인할 길이 사라진다.",
+        "evidence": "src/scoring/scoreBenefit.ts:41 `const maintSave = regionAvgMaint > 0 && avgMaint > 0 ? Math.max(0, Math.round((regionAvgMaint - avgMaint) * 12)) : 0;` / :46 `const noData = discVal===0 && loanVal===0 && optVal===0 && balVal===0 && cashVal===0 && **maintSave===0**;` / :86-88 sub \"관리비 절감\", `info: maintSave > 0 ? \\`연 ~${maintSave}만\\` : \"-\"`. src/components/CatPanel.tsx:64 `if (catKey === \"benefit\") return subs.filter((s) => s.info !== \"-\").slice(0, 3);` → maintSave>0 이면 근거 줄이 그려진다. census 상 avgMaintenanceCost 73.9%. 반면 설계 종합 4/6·점수 slot2·removals 는 일관되게 \"6개 소스 전부 0.0%\", \"1,581단지 전부 0건\" 이라고 적었다.",
+        "fix": "혜택 패널 대체는 반드시 코드의 `cat.noData` 플래그로만 분기하고(전제로 삼지 말 것), 문구도 \"혜택 정보 없음\" 계열로 통일하라(catVerdict.ts:26 이 이미 같은 문구를 쓴다). 그리고 `avgMaintenanceCost` 는 삭제 대상에서 빼거나, 최소한 혜택 근거 줄 옆에 \"이 단지 9만원 / 지역 12만원\" 을 함께 보여줘라."
+      },
+      {
+        "severity": "major",
+        "claim": "규제현황 근거만 `isRegulated` 로 바꾸고 LTV 계산은 그대로 두면, 새로 만든 금융 탭 '대출 가능 한 줄' **안에서** 모순이 생긴다 — 같은 줄이 \"규제지역\" 이라고 말하면서 비규제 기준 LTV 70% 를 안내한다. 게다가 `isRegulated` 는 boolean 이라 투기과열지구(40/20%)와 조정대상지역(50/30%)을 구분하지 못해 어느 쪽으로 매핑해도 57단지 중 일부는 틀린 한도를 받는다.",
+        "evidence": "src/components/DetailModal.tsx:318 `const zone = getZone(apt.region, apt.gu);` → :461 규제현황 `zoneName`, :462 `LTV한도: fmtPrice(calcLTV(apt.price, zone))` — **둘이 같은 `zone` 하나를 공유한다.** src/constants/regulations.ts:19 `export const ZONE_MAP: Record<string, Zone> = {};` (비어 있음) 이라 `getZone` 은 항상 `\"normal\"` → LTV under9 0.7. src/constants/regulations.ts:11-15 `LTV_RATES` 는 speculative 0.4/0.2 vs overheated 0.5/0.3 로 서로 다르다. src/constants/fieldMeta.ts:156 `isRegulated: { fmt: (v) => (v ? \"예\" : \"아니오\") }` = 참/거짓뿐. 참고로 점수 엔진은 이미 isRegulated 를 우선한다(src/scoring/scoreRisk.ts:95-98) — 지금의 불일치는 실재하지만, 설계의 처방은 그 불일치를 **한 줄 안으로 옮길** 뿐이다.",
+        "fix": "1단계에 `ZONE_MAP` 복원(강남·서초·송파·용산 → 실제 지정 종류)을 함께 넣어 `getZone` 하나로 라벨과 LTV 를 동시에 맞춰라. 그게 어려우면 `isRegulated=true` 일 때 LTV 를 숫자로 단정하지 말고 \"규제지역이라 한도가 낮아져요 — 은행 확인 필요\" 로 문구를 바꿔 거짓 숫자를 안 만드는 쪽이 안전하다."
+      },
+      {
+        "severity": "major",
+        "claim": "“함께 고칠 테스트 3곳”은 과소 추정이다. 실측으로 최소 17개 테스트가 깨지고, 그중 7개는 **한 세션 전에 정확히 반대 결정을 잠그려고 만든 회귀 가드**다.",
+        "evidence": "① dataSections.test.ts:65-83 — ‘pharmacy/cafe/culture/bank 는 거리와 짝을 이룬다’ 4건 + ‘거리 4종이 fieldsOf 에 들어온다’ 1건. 주석(L47-56)이 “수집은 되는데 손님에게 한 번도 안 보인 자료”라 명시한 세션 487 PR-5 가드인데, 4단계 ‘생활인프라 거리 12개 제거’가 이를 되돌린다. ② dataSections.test.ts:35-38(‘분양 탭에 계약해제율·신규공급 노출’)·40-44(‘분양 안전지표 섹션 존재’) — 4단계 ‘분양 안전지표 해체’로 2건. ③ AdminDataAudit.test.jsx:25,34,36,54 — `\"전체 141필드 보기\"` 3회 + `getByRole(name:/141필드/)` 1회 하드코딩. 실측 FIELD_META 149엔트리·hidden 8 → NON_HIDDEN_COUNT=141. 12필드 hidden 시 129 가 되어 4건. ④ ExtraFieldsAccordion.test.tsx:41-54 `it.each` 의 sec-finance 케이스 + L68-76 ‘한 묶음이 통째로 비면’(tab=\"sec-finance\") 2건 — 금융 여분 0 이면 컴포넌트가 null 을 반환(ExtraFieldsAccordion.tsx:70)해 getByRole 이 throw. ⑤ tabExtraFields.test.ts:86-88·96-99 2건(설계가 인지). ⑥ DetailModal.test.jsx:155-159 `getByText(\"경기 수원시 영통동\")` — 핵심지표 ‘지역’ 행 제거 시 헤더 텍스트는 ‘… · 84㎡ · …’ 가 붙어 완전일치 실패. ⑦ DetailModal.test.jsx:307-311 ‘시장/투자 지표’ 헤더 — 4단계 해체로 1건. ⑧ tabExtraFields.test.ts:71-82 의 `unsoldRate` 케이스 — 핵심지표에서 미분양률 제거 시 `apt.unsoldRate` 가 DetailModal.tsx 에서 사라져 red.",
+        "fix": "단계별 PR 마다 ‘깨질 테스트 목록’을 착수 전에 grep 으로 실측해 붙일 것. 특히 ①은 되돌리기 전에 사장님 확인 필요 — 바로 앞 세션이 ‘손님에게 한 번도 안 보였다’며 살려낸 자료다."
+      },
+      {
+        "severity": "major",
+        "claim": "2단계는 “안전장치 분리”가 아니라 **손님 눈에 보이는 콘텐츠 추가**다. 플래그가 꺼진 환경에서는 44필드가 지금 아예 안 보이는데, 분리하는 순간 처음으로 노출된다.",
+        "evidence": "DetailModal.tsx:136 `showDeviation = isFeatureDeviationStrip() && regionStats != null`, 그리고 여분 아코디언 5곳 전부 이 게이트 뒤(L532,637,663,696,718). playwright.config.ts:70 은 `VITE_FEATURE_DEVIATION_STRIP: process.env.… ?? \"false\"` 로 **기본 OFF**, .env.local 에도 이 키가 없다(VITE_FEATURE_UPCOMING 만 존재). 즉 플래그 OFF 환경에서 여분 44필드는 현재 렌더 0. 실측 여분 개수는 종합 11·시세 7·입지 7·분양 9·금융 10 = **44**(과제 브리핑의 ‘54’는 stale, 설계 bugs #10 의 44 가 맞다). 또한 분리하면 `regionStats == null` 인 단지에서도 새로 뜬다.",
+        "fix": "2단계를 ‘무해한 전제 단계’로 부르지 말고, 44필드 신규 노출을 감수할지 먼저 결정할 것. 원한다면 아코디언에 자체 플래그를 새로 달아 단계적으로 켜는 편이 안전하다."
+      },
+      {
+        "severity": "major",
+        "claim": "3·7단계가 기대는 “시각 회귀 기준선”은 팝업에 존재하지 않는다. 가장 위험한 7단계를 지키는 그물이 없다.",
+        "evidence": "e2e/visual.spec.ts 는 비로그인 목록 2장(list-main-desktop/mobile)뿐이고 스냅샷 폴더도 그 2개다. e2e/visual-card.spec.ts 는 카드 5장(card-rich/sparse/mid…)뿐. 팝업 캡처는 0장이며 visual.spec.ts 주석이 사유를 명시한다 — “카카오 OAuth 로그인 게이트 안쪽(지도·상세)은 자동 캡처 불가”. 팝업을 여는 e2e(detail-modal.spec.ts)는 로그인 토큰 스텁으로 열지만 단언이 `modalText?.length > 50`(L74-77) 수준이라 배치 변경을 못 잡는다.",
+        "fix": "7단계 전에 detail-modal.spec 의 로그인 스텁 방식을 visual 프로젝트에 이식해 팝업 6탭 baseline 을 먼저 뜨거나, 팝업 시각 회귀는 사람 눈 검수로 간다고 명시할 것(“baseline 을 새로 뜬다”는 문구는 현재 근거 없음)."
+      },
+      {
+        "severity": "major",
+        "claim": "규제·LTV 처방이 단계 간에 쪼개져 있어 1단계 단독 배포 시 **같은 팝업 안에서 서로 다른 말**이 남고, isRegulated(boolean)로는 calcLTV 가 요구하는 Zone 3종을 복원할 수 없다. 사내 유일 선례를 그대로 베끼면 런타임 크래시다.",
+        "evidence": "regulations.ts:1 `Zone = \"speculative\"|\"overheated\"|\"normal\"`, LTV_RATES 는 40/50/70% 3단(L14-18) — boolean 으로는 speculative 와 overheated 를 못 가른다. getZone/calcLTV 소비처는 DetailModal.tsx:318,462 뿐 아니라 CompareSheet.tsx:68-69, charts/LoanStack.tsx:46-47, detail/LoanAnalysis.tsx:18,24,37 로 **5곳**이다. 설계 1단계는 종합 탭 ‘규제현황’ 한 줄만 바꾸므로, 1→3단계 동안 종합 탭은 ‘규제지역’, 금융 탭 LoanStack·LoanAnalysis 는 여전히 getZone 기반 ‘비규제 70%’ 를 표시한다(LTV 이동은 4단계, 대출 한 줄은 7단계). 게다가 저장소 내 유일한 선례 scoreRisk.ts:96-101 은 `\"regulated\"` 라는 **Zone 에 없는 문자열**을 만들어 `!== \"normal\"` 로만 쓴다 — 이걸 그대로 calcLTV 에 넘기면 `LTV_RATES[\"regulated\"]` 가 undefined 라 `rates.under9` 에서 TypeError.",
+        "fix": "1단계에 ‘규제 근거 단일화’를 통째로 넣는다 — isRegulated→Zone 매핑 규칙을 regulations.ts 에 한 함수로 만들고(예: true→\"overheated\" 보수적 선택, 근거 주석 필수) getZone 소비처 5곳을 같은 PR 에서 동시 교체. 매핑 함수에 `LTV_RATES[zone]` 존재 단언 테스트 1건 추가."
+      },
+      {
+        "severity": "major",
+        "claim": "\"지역 시장 추이 3그래프\"는 코드상 **5개**다. 사장님 화면에 3개만 보인 건 그 지역에 유효 시계열이 2점 미만인 지표가 조용히 빠졌기 때문이지 설계 상수가 아니다. 따라서 812px·\"이 탭의 57%\" 도 과소 추정이고, 더 심각하게는 새 '지역 통계 서랍' 안에서 **같은 지표가 그래프와 숫자로 두 번** 나온다.",
+        "evidence": "F:/mibunyang/src/components/detail/MarketStatsCharts.tsx `METRICS` = avg_price_sqm·price_index·new_supply·initial_sale_rate·land_cost_ratio 5개. 렌더는 `METRICS.map(...)` 후 `if (chartData.length < 2) return null;` — 값이 부족한 지표만 빠진다. 그런데 설계가 그 서랍에 함께 넣기로 한 시도 상수 8개 중 **5개가 이 5그래프와 1:1 동일 지표**다: priceIndex↔price_index, avgPriceSqm↔avg_price_sqm, landCostRatio↔land_cost_ratio, initialSaleRate↔initial_sale_rate, newSupply↔new_supply. dedup 은 이 8개를 \"정본=이 지역 통계 서랍 한 곳\"이라 선언하지만, 그 '한 곳' 내부의 이중 노출은 어디에도 다루지 않았다.",
+        "fix": "서랍 내용을 '그래프 5개'로 통일하고 스칼라 5개(priceIndex·avgPriceSqm·landCostRatio·initialSaleRate·newSupply)는 그래프의 최신 점으로 흡수, 그래프가 없는 3개(popGrowth·netMigration·housingSupplyLevel)만 숫자 줄로 남길 것. 높이 추정도 5그래프 기준으로 다시 잴 것."
+      },
+      {
+        "severity": "major",
+        "claim": "여분 서랍 개수 산술이 틀렸다. 0% 제거분만 빼고, 자기가 만든 신설 4줄이 같은 서랍에서 필드를 빼가는 것을 계산에 넣지 않았다. 또 초기분양률을 시세 탭 소속으로 잘못 적었다.",
+        "evidence": "분양(sec-presale) 여분 현재 9개는 실측과 일치한다 — fieldMeta.ts '안전' 18필드 중 dataSections/CHROME 이 이미 그리는 7개(unsoldRate·competitionRate·competitionSupply·competitionApplicants·crimeSafetyGrade·recentTrades6m·cancelRatio6m·newSupply·popGrowth)를 뺀 잔여 = unsoldEventCount, lastUnsoldEventAt, supplyRatio, builderCreditGrade, builderDebtRatio, hugGuarantee, isRegulated, dsr40pass, initialSaleRate. 설계는 여기서 hugGuarantee·supplyRatio 2개만 빼 \"9→7\"이라 했으나, 자기 slot1(unsoldEventCount·lastUnsoldEventAt)·금융 slot1(isRegulated·dsr40pass)·지역통계 서랍(initialSaleRate)이 5개를 더 가져가므로 실제 잔여는 2~4개다(supplyRatio 처분 모순에 따라 변동). 그리고 \"시세 여분 7→0~2개\" 의 근거로 든 '초기분양률'은 sec-price 가 아니라 **sec-presale** 소속이다(tabExtraFields.ts `SECTION_TO_TAB.안전 = \"sec-presale\"`). 시세 여분 7개의 실제 구성은 jeonseRate·priceIndex·avgPriceSqm·landCostRatio(가격 섹션) + naverNearbyAvg·naverBuildYear·naverAvgFloor(교차검증 섹션)다.",
+        "fix": "`extraCount(tab)` 를 설계 적용 후 값으로 다시 계산해 표로 박고, 그 숫자를 테스트로 잠글 것(현재 tabExtraFields.test.ts:105 가 제목의 N 과 실제 개수 일치는 이미 잠그고 있으므로, 탭별 기대값만 추가하면 된다)."
+      },
+      {
+        "severity": "major",
+        "claim": "사장님이 명시적으로 지목한 \"점수도\"가 사실상 재정비에서 빠졌다. 점수 탭의 order 3개 중 실제 노출 순서 변경은 slot1(가중치 정렬) 하나뿐이고 slot2·slot3 은 버그 수정이다. 게다가 사장님 불만의 핵심인 '접힘'을 점수 탭만 서랍 표준에서 **명시적으로 면제**한다.",
+        "evidence": "설계 `tabs[점수].order` = ①카테고리 패널 순서 변경 ②혜택 패널 noData 문구(버그) ③근거 한 줄 가로 예산 318px(CSS 버그). `drawer` 규칙은 \"점수 탭 카테고리 패널\"을 예외 2종으로 뺀다. 그런데 실제 코드의 그 접힘은 CatPanel.tsx `const [expanded, setExpanded] = useState(...)` + 헤더 우측 `▼` 뿐이고, **안에 몇 개가 더 있는지 알려주는 표기가 없다**(`subs` 전량이 `expanded` 안에 있고 highlights 는 `getHighlights` 로 상위 3개만). 비교 대상인 학군은 같은 '요약+더보기' 구조인데 SchoolInfo.tsx:123 이 `전체 ${schools.length}개 학교 보기` 로 개수를 말해 준다 — 즉 설계가 예외의 근거로 든 '학군과 같은 구조'라는 성질을 점수 탭은 절반만 충족한다.",
+        "fix": "점수 탭 접힘도 최소한 '펼치면 무엇이 더 나오는지'를 말하게 한다 — CatPanel `▼` 자리에 `세부 ${subs.length}개` 같은 개수 표기 한 줄 추가(서랍 표준 전체를 적용하지 않더라도). 그러면 예외 사유가 실제로 성립한다."
+      },
+      {
+        "severity": "major",
+        "claim": "사장님이 유일하게 만족을 표한 영역(종합 탭 상단)에 가장 큰 시각 변경이 몰려 있고, 롤아웃도 그걸 한 단계에 묶어 \"시각 회귀가 가장 크게 나는 단계\"라고 스스로 인정한다. 위험/이득 배분이 사장님 발언과 어긋난다.",
+        "evidence": "사장님 문장은 \"상단부분은 굉장히 잘되어 있는데 **아래로 내리면** 접혀있는 부분들이…\"로 불만이 하단에 있다. 그런데 설계는 종합 탭 상단 3요소를 모두 교체한다 — 신설 판정줄이 1번, ScoreBadge 는 1→2번이자 지름 80→56(현재 DetailModal.tsx:418 `<ScoreBadge score={res.total} size={80} />`), 어제 사장님 승인으로 붙인 편차 스트립(DetailModal.tsx:424-431)은 2→5번. 배지 축소의 유일한 근거는 \"24px 회수\"인데, 같은 개편에서 스트립 231px 을 이미 아래로 내려 첫 화면 예산은 그것만으로 확보된다. `rollout` 7단계도 이 묶음을 \"시각 회귀가 가장 크게 나는 단계라 단독으로 뗀다\"로 표기.",
+        "fix": "배지 축소(80→56)는 이번 개편에서 분리해 보류하거나 별도 승인 항목으로 뺄 것 — 순서 재배치만으로 첫 화면 목표가 달성되는지 먼저 실측하고, 미달일 때만 크기에 손대는 순서로 바꾼다."
+      }
+    ]
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Frame"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 2,
+      "title": "Design"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 3,
+      "title": "Verify"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "frame:손님판단순서",
+      "phaseIndex": 1,
+      "phaseTitle": "Frame",
+      "agentId": "a76d6f9e60d62804a",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785773576420,
+      "queuedAt": 1785773572177,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "node --input-type=module -e \" import fs from 'fs'; const ke…",
+      "promptPreview": "당신은 정보설계 담당입니다. 작업 디렉토리 F:/mibunyang. **읽기 전용**(수정·커밋 금지).\n\n\n[사장님 지시 — 이번 작업의 성격]\n\"기존에 고친 것들일지라도 전체적으로 우선순위를 다시 정해서 **노출 순서를 다시 정하고 정비**하는 게 어때?\n 남은 걸 어떻게 하려고 하지 말고 **처음부터 다시 정비**하는 게 어때?\"\n→ 남은 문제를 때우는 게 아니라, **무엇을 어떤 순서로 보여줄지 기준부터 새로 세운다.**\n→ 세션 487에 오늘 만든 것(편차 스트립·거리그림·산점도·분양타임라인·자금구성·여분 아코디언)도 재검토 대상.\n\n[사장님 원래 불만 — 실제 화면을 찍어 확인함]\n\"상단부분은 굉장히 잘되어 있는데 아래로 내리면 접혀있는 부분들이 잘 표시되고 있진 않다. 사용자가 이용하기 쉽도록.…",
+      "lastProgressAt": 1785774434232,
+      "tokens": 267381,
+      "toolCalls": 47,
+      "durationMs": 857812,
+      "resultPreview": "All measurements done. Composing the deliverable.\n\n**결론 한 문장**\n\n> 이 팝업은 위에서부터 **①얼마이고 왜 안 팔렸나 → ②지금 사도 괜찮나 → ③내 조건에 맞나 → ④이 숫자를 믿어도 되나** 순서로 답한다.\n\n---\n\n## 1. 프로필 5종이 말하는 \"먼저 보는 것\" (`src/constants/profiles.ts:11-37`)\n\n| 프로필 | 1위 | 2위 | 최하위 |\n|---|---|---|---|\n| 실거주 | location 40 | product 20 / price 20 | benefit 5 · future 5 |\n| 투자 | price 30 | risk 25 | product 10 |\n| 신혼부부 | location 30 / price 30…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "frame:데이터현실",
+      "phaseIndex": 1,
+      "phaseTitle": "Frame",
+      "agentId": "a99965052354468d9",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785773575431,
+      "queuedAt": 1785773572177,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "cd F:/mibunyang && sed -n '95,200p' src/components/detail/P…",
+      "promptPreview": "당신은 정보설계 담당입니다. 작업 디렉토리 F:/mibunyang. **읽기 전용**(수정·커밋 금지).\n\n\n[사장님 지시 — 이번 작업의 성격]\n\"기존에 고친 것들일지라도 전체적으로 우선순위를 다시 정해서 **노출 순서를 다시 정하고 정비**하는 게 어때?\n 남은 걸 어떻게 하려고 하지 말고 **처음부터 다시 정비**하는 게 어때?\"\n→ 남은 문제를 때우는 게 아니라, **무엇을 어떤 순서로 보여줄지 기준부터 새로 세운다.**\n→ 세션 487에 오늘 만든 것(편차 스트립·거리그림·산점도·분양타임라인·자금구성·여분 아코디언)도 재검토 대상.\n\n[사장님 원래 불만 — 실제 화면을 찍어 확인함]\n\"상단부분은 굉장히 잘되어 있는데 아래로 내리면 접혀있는 부분들이 잘 표시되고 있진 않다. 사용자가 이용하기 쉽도록.…",
+      "lastProgressAt": 1785774725757,
+      "tokens": 270577,
+      "toolCalls": 82,
+      "durationMs": 1150326,
+      "resultPreview": "# 데이터현실 렌즈 판정 — 실측 근거 전량 첨부\n\n측정 기준: `public/data/apartments-list.json`(1,581단지·154키, 2026-08-03 22:16 생성) + `apartments-detail-16-*.json` 16개 전량 + **Supabase 라이브 쿼리**(원본 테이블 직독). 코드는 `F:\\mibunyang` 실파일 grep.\n\n---\n\n## 0. 먼저 — 이번 정비의 판이 바뀌는 발견 3건\n\n전수 조사가 놓친 것들입니다. **순서를 다시 짜기 전에 이것부터 알아야** 합니다.\n\n### 0-1. VIEW가 6개 컬럼을 삼켰다 — \"안 보이는\" 게 아니라 \"끊겼다\"\n\n`supabase/migrations/20260609000000_view_regions_latest_…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "frame:화면제약",
+      "phaseIndex": 1,
+      "phaseTitle": "Frame",
+      "agentId": "a5da83cf244cac322",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785773575978,
+      "queuedAt": 1785773572177,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "taskkill //PID 42348 //F 2>&1 | head -2; sleep 2; netstat -…",
+      "promptPreview": "당신은 정보설계 담당입니다. 작업 디렉토리 F:/mibunyang. **읽기 전용**(수정·커밋 금지).\n\n\n[사장님 지시 — 이번 작업의 성격]\n\"기존에 고친 것들일지라도 전체적으로 우선순위를 다시 정해서 **노출 순서를 다시 정하고 정비**하는 게 어때?\n 남은 걸 어떻게 하려고 하지 말고 **처음부터 다시 정비**하는 게 어때?\"\n→ 남은 문제를 때우는 게 아니라, **무엇을 어떤 순서로 보여줄지 기준부터 새로 세운다.**\n→ 세션 487에 오늘 만든 것(편차 스트립·거리그림·산점도·분양타임라인·자금구성·여분 아코디언)도 재검토 대상.\n\n[사장님 원래 불만 — 실제 화면을 찍어 확인함]\n\"상단부분은 굉장히 잘되어 있는데 아래로 내리면 접혀있는 부분들이 잘 표시되고 있진 않다. 사용자가 이용하기 쉽도록.…",
+      "lastProgressAt": 1785775174487,
+      "tokens": 318961,
+      "toolCalls": 74,
+      "durationMs": 1598508,
+      "resultPreview": "측정 완료. 임시 스펙 삭제·`git status` clean·임시 서버 종료 확인했습니다.\n\n---\n\n# 렌즈: 화면제약 — 실측 보고\n\n## 실측 방법 (추정 아님)\n\nPlaywright `mobile` 프로젝트(iPhone 13 디바이스, **viewport 390×664**)로 실제 브라우저에서 상세 팝업을 열고 `getBoundingClientRect`·`scrollHeight` 를 읽었다. 세션 487 그림이 켜진 상태를 재현하려고 `VITE_FEATURE_DEVIATION_STRIP=true` 로 별도 dev 서버(포트 5241)를 띄웠다(기존 5173 서버는 다른 세션 것이라 건드리지 않음). 표본 단지 3곳: 검단신도시 푸르지오 더 베뉴(84.93㎡) / 대가트라움 의정부(72.955㎡) /…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "design:재설계",
+      "phaseIndex": 2,
+      "phaseTitle": "Design",
+      "agentId": "aee158810d6d17b58",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785775181780,
+      "queuedAt": 1785775177894,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "손님이 던지는 질문 순서대로 놓는다 — ①왜 안 팔렸나(이 물건…",
+      "promptPreview": "아래 3방향 조사를 종합해 **팝업 노출 순서를 처음부터 재설계**하세요.\n\n\n[사장님 지시 — 이번 작업의 성격]\n\"기존에 고친 것들일지라도 전체적으로 우선순위를 다시 정해서 **노출 순서를 다시 정하고 정비**하는 게 어때?\n 남은 걸 어떻게 하려고 하지 말고 **처음부터 다시 정비**하는 게 어때?\"\n→ 남은 문제를 때우는 게 아니라, **무엇을 어떤 순서로 보여줄지 기준부터 새로 세운다.**\n→ 세션 487에 오늘 만든 것(편차 스트립·거리그림·산점도·분양타임라인·자금구성·여분 아코디언)도 재검토 대상.\n\n[사장님 원래 불만 — 실제 화면을 찍어 확인함]\n\"상단부분은 굉장히 잘되어 있는데 아래로 내리면 접혀있는 부분들이 잘 표시되고 있진 않다. 사용자가 이용하기 쉽도록.\"\n+ \"종합도 마찬가지\" + …",
+      "lastProgressAt": 1785775679629,
+      "tokens": 228602,
+      "toolCalls": 13,
+      "durationMs": 497848,
+      "resultPreview": "{\"principle\":\"손님이 던지는 질문 순서대로 놓는다 — ①왜 안 팔렸나(이 물건의 정체) → ②지금 사도 되나(돈·위험) → ③내 조건에 맞나(입지·상품) → ④이 숫자를 믿어도 되나(출처·교차검증). 같은 질문 안에서는 「이 단지의 값 → 지역 대비 위치 → 지역 자체 통계」 순이고, 한 필드는 그 질문에 처음 답하는 자리 한 곳에만 둔다. 새 필드가 생기면 (a)네 질문 중 무엇에 답하나 → 탭·밴드 결정, (b)단지값/비교/지역통계 중 무엇인가 → 밴드 안 순서 결정, (c)채움 50%+ 이고 단지마다 값이 다른가 → 항상보임, 아니면 서랍, 채움 0%면 화면 밖(관리자 전수 표).\",\"tabs\":[{\"tab\":\"종합\",\"answers\":\"이 단지는 한마디로 어떤 물건이고, 내 기준으로 몇 점…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 5,
+      "label": "verify:근거정확성",
+      "phaseIndex": 3,
+      "phaseTitle": "Verify",
+      "agentId": "a3a7e31210d5ddee8",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785775688718,
+      "queuedAt": 1785775681676,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "당신은 적대적 검증자입니다. 작업 디렉토리 F:/mibunyang. 읽기 전용. **설계를 반박하는 것이 임무**입니다.\n\n\n[사장님 지시 — 이번 작업의 성격]\n\"기존에 고친 것들일지라도 전체적으로 우선순위를 다시 정해서 **노출 순서를 다시 정하고 정비**하는 게 어때?\n 남은 걸 어떻게 하려고 하지 말고 **처음부터 다시 정비**하는 게 어때?\"\n→ 남은 문제를 때우는 게 아니라, **무엇을 어떤 순서로 보여줄지 기준부터 새로 세운다.**\n→ 세션 487에 오늘 만든 것(편차 스트립·거리그림·산점도·분양타임라인·자금구성·여분 아코디언)도 재검토 대상.\n\n[사장님 원래 불만 — 실제 화면을 찍어 확인함]\n\"상단부분은 굉장히 잘되어 있는데 아래로 내리면 접혀있는 부분들이 잘 표시되고 있진 않다. 사용자가 …",
+      "lastProgressAt": 1785777571094,
+      "tokens": 344526,
+      "toolCalls": 63,
+      "durationMs": 1882376,
+      "resultPreview": "{\"refuted\":true,\"findings\":[{\"severity\":\"blocker\",\"claim\":\"시세 slot 3 / removals: \\\"인근 매매 시세의 아래 표는 위 막대와 같은 행을 다시 그린다(중앙값 1행·최대 3행)\\\" → 표 삭제\",\"evidence\":\"`src/components/detail/PriceTable.tsx:78` 은 `sellRows.length > 1 &&` 일 때만 막대를 그린다. 같은 파일 L57 의 sellRows 산식을 1,530단지(priceByArea 보유)에 그대로 재현한 실측: 길이 0=176, 1=171, 2=201, 3=279, 4=692, 5=7, 6=4 → **중앙값 3행·최대 6행**(설계의 \\\"중앙 1행·최대 3행\\\"과 불일치). 그리고 `len…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 6,
+      "label": "verify:손님이해",
+      "phaseIndex": 3,
+      "phaseTitle": "Verify",
+      "agentId": "a3f1e15966f3b8faa",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785775689339,
+      "queuedAt": 1785775681676,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "당신은 적대적 검증자입니다. 작업 디렉토리 F:/mibunyang. 읽기 전용. **설계를 반박하는 것이 임무**입니다.\n\n\n[사장님 지시 — 이번 작업의 성격]\n\"기존에 고친 것들일지라도 전체적으로 우선순위를 다시 정해서 **노출 순서를 다시 정하고 정비**하는 게 어때?\n 남은 걸 어떻게 하려고 하지 말고 **처음부터 다시 정비**하는 게 어때?\"\n→ 남은 문제를 때우는 게 아니라, **무엇을 어떤 순서로 보여줄지 기준부터 새로 세운다.**\n→ 세션 487에 오늘 만든 것(편차 스트립·거리그림·산점도·분양타임라인·자금구성·여분 아코디언)도 재검토 대상.\n\n[사장님 원래 불만 — 실제 화면을 찍어 확인함]\n\"상단부분은 굉장히 잘되어 있는데 아래로 내리면 접혀있는 부분들이 잘 표시되고 있진 않다. 사용자가 …",
+      "lastProgressAt": 1785776549093,
+      "tokens": 271506,
+      "toolCalls": 31,
+      "durationMs": 859754,
+      "resultPreview": "{\"findings\":[{\"severity\":\"blocker\",\"claim\":\"\\\"아직 안 보여드린 자료\\\" 서랍은 손으로 적는 목록이 아니라 `dataSections` 의 **차집합으로 자동 계산**된다. 따라서 4단계에서 세부 섹션의 필드를 지우면 그 필드는 사라지는 게 아니라 **같은 탭 서랍 안으로 되돌아온다.** 설계의 여분 개수 예측(시세 7→0~2 \\\"0이면 서랍 미렌더\\\", 분양 9→7)은 방향 자체가 반대이고, '네이버 분양정보 섹션 삭제'의 목적이었던 중복 제거도 달성되지 않는다.\",\"evidence\":\"src/lib/tabExtraFields.ts:64 `FIELDS_SHOWN_IN_TABS = new Set([...OVERVIEW_SECTIONS,...LOCATION_SECTIONS,.…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 7,
+      "label": "verify:구현위험",
+      "phaseIndex": 3,
+      "phaseTitle": "Verify",
+      "agentId": "a2e5abf259c71cf82",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785775687468,
+      "queuedAt": 1785775681677,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "당신은 적대적 검증자입니다. 작업 디렉토리 F:/mibunyang. 읽기 전용. **설계를 반박하는 것이 임무**입니다.\n\n\n[사장님 지시 — 이번 작업의 성격]\n\"기존에 고친 것들일지라도 전체적으로 우선순위를 다시 정해서 **노출 순서를 다시 정하고 정비**하는 게 어때?\n 남은 걸 어떻게 하려고 하지 말고 **처음부터 다시 정비**하는 게 어때?\"\n→ 남은 문제를 때우는 게 아니라, **무엇을 어떤 순서로 보여줄지 기준부터 새로 세운다.**\n→ 세션 487에 오늘 만든 것(편차 스트립·거리그림·산점도·분양타임라인·자금구성·여분 아코디언)도 재검토 대상.\n\n[사장님 원래 불만 — 실제 화면을 찍어 확인함]\n\"상단부분은 굉장히 잘되어 있는데 아래로 내리면 접혀있는 부분들이 잘 표시되고 있진 않다. 사용자가 …",
+      "lastProgressAt": 1785776990338,
+      "tokens": 293678,
+      "toolCalls": 40,
+      "durationMs": 1302869,
+      "resultPreview": "{\"findings\":[{\"severity\":\"blocker\",\"claim\":\"5단계의 새 기준선(“빠짐 0 은 관리자 전수 표가 진다”)은 성립하지 않는다 — 관리자 표는 hidden 필드를 **렌더하지 않는다**. 설계의 근거 문장 “이미 숨김인 8필드가 그 경로로 살아 있다”는 코드상 거짓이다.\",\"evidence\":\"F:/mibunyang/src/components/detail/FieldTable.tsx:42-49 `visibleFields()` = `if (!m || m.hidden) return false;`. AdminDataAudit 는 이 FieldTable 로만 전수 표를 그린다(AdminDataAudit.tsx:151-161). 현재 hidden 8개(greenBldg·quakeDesig…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 8,
+      "label": "verify:사장님요구",
+      "phaseIndex": 3,
+      "phaseTitle": "Verify",
+      "agentId": "aceea714c35ed1ba4",
+      "model": "claude-opus-5",
+      "state": "done",
+      "startedAt": 1785775686362,
+      "queuedAt": 1785775681677,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "당신은 적대적 검증자입니다. 작업 디렉토리 F:/mibunyang. 읽기 전용. **설계를 반박하는 것이 임무**입니다.\n\n\n[사장님 지시 — 이번 작업의 성격]\n\"기존에 고친 것들일지라도 전체적으로 우선순위를 다시 정해서 **노출 순서를 다시 정하고 정비**하는 게 어때?\n 남은 걸 어떻게 하려고 하지 말고 **처음부터 다시 정비**하는 게 어때?\"\n→ 남은 문제를 때우는 게 아니라, **무엇을 어떤 순서로 보여줄지 기준부터 새로 세운다.**\n→ 세션 487에 오늘 만든 것(편차 스트립·거리그림·산점도·분양타임라인·자금구성·여분 아코디언)도 재검토 대상.\n\n[사장님 원래 불만 — 실제 화면을 찍어 확인함]\n\"상단부분은 굉장히 잘되어 있는데 아래로 내리면 접혀있는 부분들이 잘 표시되고 있진 않다. 사용자가 …",
+      "lastProgressAt": 1785776697770,
+      "tokens": 277712,
+      "toolCalls": 29,
+      "durationMs": 1011408,
+      "resultPreview": "{\"findings\":[{\"severity\":\"blocker\",\"claim\":\"롤아웃 5단계의 안전망(\\\"빠짐 0은 관리자 전수 표가 진다 — 이미 숨김인 8필드가 그 경로로 살아 있다\\\")이 코드와 정반대다. `hidden: true` 를 붙이면 관리자 전수 표에서도 사라진다. 즉 12필드를 숨기는 순간 손님 화면에서도, 관리자 표에서도, 어디에서도 안 보인다 — 설계가 새로 세운 기준선을 만들자마자 스스로 위반한다.\",\"evidence\":\"F:/mibunyang/src/components/detail/FieldTable.tsx:46 — `if (!m || m.hidden) return false;` (렌더 대상에서 제외). 관리자 전수 표는 이 FieldTable 로만 그려진다: F:/mibunyang/…"
+    }
+  ],
+  "totalTokens": 2272943,
+  "totalToolCalls": 379
+}
