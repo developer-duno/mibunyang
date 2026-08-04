@@ -602,19 +602,19 @@ describe("DetailModal — 종합 탭 편차 스트립", () => {
   it("플래그 OFF 면 안 그린다 (환경변수만으로 원상복구)", () => {
     vi.stubEnv("VITE_FEATURE_DEVIATION_STRIP", "false");
     const { container } = render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
-    expect(container.textContent).not.toContain("아파트 평균과 비교");
+    expect(container.textContent).not.toContain("아파트 한가운데 값과 비교");
   });
 
   it("지역분포가 없으면 안 그린다 (미수집 8줄짜리 빈 블록 방지)", () => {
     on();
     const { container } = render(<DetailModal {...makeProps({ regionStats: null })} />);
-    expect(container.textContent).not.toContain("아파트 평균과 비교");
+    expect(container.textContent).not.toContain("아파트 한가운데 값과 비교");
   });
 
   it("카테고리 미니카드 6개는 그대로 남는다 (세션 409 결정 존중)", () => {
     on();
     const { container } = render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
     expect(container.querySelectorAll('[data-testid="category-mini-card"]').length || 6).toBeGreaterThan(0);
-    expect(container.textContent).toContain("아파트 평균과 비교");
+    expect(container.textContent).toContain("아파트 한가운데 값과 비교");
   });
 });

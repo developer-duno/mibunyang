@@ -108,8 +108,10 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     // 수집 성공 여부는 busStopNames(수집기가 실패 시 null 저장) 기준으로 판정.
     _noBus: apt.busStopNames == null,
     _noParking: apt.parkingRatio == null,
-    _noFar: apt.floorAreaRatio == null,
-    _noExcl: apt.exclusiveRatio == null,
+    // 0 은 실제 0 이 아니라 미수집 — 용적률·전용률은 물리적으로 0 일 수 없다(세션 488 감사:
+    // 용적률 0% 가 "쾌적한 밀도"로 칭찬되던 사고). null 뿐 아니라 0 도 "없음"으로.
+    _noFar: apt.floorAreaRatio == null || apt.floorAreaRatio === 0,
+    _noExcl: apt.exclusiveRatio == null || apt.exclusiveRatio === 0,
     _noFloor: apt.maxFloor == null,
     _noSunlight: apt.sunlight == null || apt.sunlight === "",
   };

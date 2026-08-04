@@ -49,7 +49,7 @@ export const CompletenessDonut = memo(function CompletenessDonut({ pct, size = 4
           justifyContent: "center",
         }}
       >
-        <span style={{ fontSize: F.xs, fontWeight: 800, color, lineHeight: 1 }}>{pct}%</span>
+        <span style={{ fontSize: F.xs, fontWeight: 800, color, lineHeight: 1, whiteSpace: "nowrap" }}>{pct}%</span>
       </div>
     </div>
   );

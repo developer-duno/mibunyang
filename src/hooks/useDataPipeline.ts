@@ -11,9 +11,15 @@ import type { UseDataPipelineArgs, UseDataPipelineReturn, ScoredApt, SortKey } f
 export const VISIBLE_PAGE_SIZE = 30;
 
 /* ── 정렬 비교 함수 (모듈 레벨 — 클로저 미사용, 매 렌더 재생성 방지) ── */
-const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
+export const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> = {
   total: (a, b) => b.res.total - a.res.total,
-  price: (a, b) => (a.apt.price ?? 0) - (b.apt.price ?? 0),
+  // 저가순 — 가격 없음(null)·0(미수집)은 맨 뒤로. 예전 `?? 0` 은 미상 단지를 "가장 싼 집"으로
+  // 올려 저가순 첫 30개가 전부 "가격 미상"이 되던 사고(세션 488 감사) 정정. 동률·양쪽 미상은 종합점수 tie-break.
+  price: (a, b) => {
+    const va = a.apt.price && a.apt.price > 0 ? a.apt.price : Infinity;
+    const vb = b.apt.price && b.apt.price > 0 ? b.apt.price : Infinity;
+    return va === vb ? b.res.total - a.res.total : va - vb;
+  },
   priceScore: (a, b) => b.res.cats.price.total - a.res.cats.price.total,
   location: (a, b) => b.res.cats.location.total - a.res.cats.location.total,
   safe: (a, b) => b.res.cats.risk.total - a.res.cats.risk.total,

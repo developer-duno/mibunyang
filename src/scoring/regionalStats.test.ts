@@ -53,6 +53,20 @@ describe("usableValue", () => {
     expect(usableValue("subwayDist", 340)).toBe(340);
     expect(usableValue("ktxDist", 99)).toBeNull();
   });
+
+  it("0 이 불가능한 필드(평당가·소득부담·전세가율·관리비·전용률)의 0 은 미수집으로 제외 (세션 488)", () => {
+    // 평당가 0 → "100% 싸요" 로 오도되던 262단지 사고 정정
+    expect(usableValue("pp", 0)).toBeNull();
+    expect(usableValue("pir", 0)).toBeNull();
+    expect(usableValue("jeonseRate", 0)).toBeNull();
+    expect(usableValue("avgMaintenanceCost", 0)).toBeNull();
+    expect(usableValue("exclusiveRatio", 0)).toBeNull();
+    // 0 이 진짜 값인 필드는 그대로 유지 (완판·주차 0 등)
+    expect(usableValue("unsoldRate", 0)).toBe(0);
+    expect(usableValue("parkingRatio", 0)).toBe(0);
+    // 미수집 처리는 0 에만 — 실제 값은 통과
+    expect(usableValue("pp", 1500)).toBe(1500);
+  });
 });
 
 describe("computeRegionalStats", () => {

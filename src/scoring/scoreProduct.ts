@@ -68,14 +68,14 @@ export function scoreProduct(apt: Apt): Res {
       ? apt.presaleParking / Math.max((apt.presaleGeneralSupply ?? units) as number, 1)
       : parkingRatio;
   const parkSc: number = tierMin(effectivePR, PARKING_TIERS, PARKING_LOW_SCORE);
-  const floorAreaRatio = (apt.floorAreaRatio ?? 300) as number;
+  const floorAreaRatio = (apt._noFar ? 300 : apt.floorAreaRatio) as number;
   const farSc: number = tierMax(floorAreaRatio, FAR_TIERS, FAR_HIGH_SCORE);
   const energyGrade = apt.energyGrade as string | number | undefined;
   const greenBldg = apt.greenBldg as string | undefined;
   const energySc: number =
     ((ENERGY_SCORES as Record<string, number>)[String(energyGrade)] ?? ENERGY_DEFAULT) +
     ((GREEN_BLDG_SCORES as Record<string, number>)[String(greenBldg)] || 0);
-  const exclusiveRatio = (apt.exclusiveRatio ?? 60) as number;
+  const exclusiveRatio = (apt._noExcl ? 60 : apt.exclusiveRatio) as number;
   const exclSc: number = tierMin(exclusiveRatio, EXCL_RATIO_TIERS, EXCL_LOW_SCORE);
   const layout = apt.layout as string | undefined;
   const layoutSc = (LAYOUT_SCORE as Record<string, number>)[String(layout)] || 3;
