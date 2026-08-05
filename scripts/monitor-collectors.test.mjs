@@ -18,7 +18,7 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
 const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
-  QUARTERLY_CRON_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
+  QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
   dedupKey, filterUnsent, hasGithubApiAuth,
 } = await import("./monitor-collectors.mjs");
@@ -248,6 +248,96 @@ describe("hasGithubApiAuth — 로컬 실행 시 ①③ skip 가드 (가짜 미�
     process.env.GITHUB_REPOSITORY = "developer-duno/mibunyang";
     delete process.env.GITHUB_TOKEN;
     expect(hasGithubApiAuth()).toBe(false);
+  });
+});
+
+/**
+ * 세션 491 적대검증 후속 — 주기를 바꾸면 **감시 기준도 함께** 바꿔야 한다.
+ *
+ * 세션 491 이 워크플로 주기를 바꾸면서 monitor 를 한 줄도 안 고쳐 두 사고가 예약돼 있었다:
+ *   ① 분기로 내린 2건의 stale_days 가 38(월간) 그대로 → ⑤-b(미발화)가 먼저 걸려 `continue` 로
+ *      ⑤-a(진짜 outage) 판정을 덮음. 2026-08-18 부터 MOLIT 장기중단 경보가 사라졌을 것.
+ *   ② schedule 을 통째로 지운 4건이 ③ 점검 대상에 남아 35일 후 거짓 경보 →
+ *      dedup 때문에 그 1회 이후 ③ 이 해당 워크플로에 영구 침묵.
+ * 아래 테스트가 그 회귀를 막는다.
+ */
+describe("주기 변경 ↔ 감시 기준 동기화 (세션 491 적대검증)", () => {
+  it("분기로 내린 2건이 QUARTERLY_CRON_WORKFLOWS 에 등재돼 있다", () => {
+    expect(QUARTERLY_CRON_WORKFLOWS).toContain("Housing Permits Data Collection");
+    expect(QUARTERLY_CRON_WORKFLOWS).toContain("Collect Building Hub (에너지+인허가)");
+  });
+
+  it("분기 collector 의 stale_days 는 100 이다 — 38 이면 진짜 outage 판정을 덮는다", () => {
+    for (const name of ["housing-permits", "building-hub"]) {
+      const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === name);
+      expect(entry, `${name} 가 EXTERNAL_API_COLLECTORS 에 없다`).toBeTruthy();
+      expect(entry?.stale_days, `${name} stale_days 가 분기 기준(100)이 아니다`).toBe(100);
+    }
+  });
+
+  // 실측 3행 — housing-permits 가 3회 연속 success + ok_count=0 인 상태(진짜 MOLIT 장기 중단).
+  const outageRows = [
+    { status: "success", ok_count: 0, finished_at: "2026-07-10T21:28:48Z" },
+    { status: "success", ok_count: 0, finished_at: "2026-06-10T22:54:35Z" },
+    { status: "success", ok_count: 0, finished_at: "2026-05-26T18:46:08Z" },
+  ];
+  /** @param {number} staleDays @param {string} nowIso */
+  const runFive = (staleDays, nowIso) =>
+    checkExternalApiStale(
+      [{ collector: "housing-permits", stale_days: staleDays, owner: "t" }],
+      { "housing-permits": outageRows },
+      new Date(nowIso),
+    ).map((i) => i.kind);
+
+  it("stale_days 38 은 진짜 outage 를 '미발화'로 덮는다 (틀린 진단)", () => {
+    // ⑤-b(미발화)가 먼저 걸리면 `continue` 로 ⑤-a(outage) 판정에 도달조차 못 한다.
+    // 최신 행 2026-07-10 기준 +38일 = 8/17 → 그 이후로는 계속 stale 로만 보인다.
+    expect(runFive(38, "2026-09-05T00:00:00Z")).toContain("stale");
+    expect(runFive(38, "2026-09-05T00:00:00Z")).not.toContain("outage");
+  });
+
+  it("stale_days 100 은 같은 시점에 진짜 원인(outage)을 정확히 짚는다", () => {
+    // 최신 행 57일 < 100 이라 ⑤-b 를 통과하고, 가장 오래된 행(2026-05-26)이 102일 > 100 이라 ⑤-a 발화.
+    expect(runFive(100, "2026-09-05T00:00:00Z")).toContain("outage");
+  });
+
+  it("⚠️ 트레이드오프 기록 — 100 으로 올리면 8/18~9/2 구간은 '무경보'다", () => {
+    // outage 는 **가장 오래된 행**이 stale_days 를 넘어야 발화한다.
+    // 2026-05-26 + 100일 = 9/3 이므로 그 전에는 stale 도 outage 도 안 난다.
+    // 38 일 때의 "틀린 stale 경보"보다는 낫지만, "즉시 경보가 돌아온다"는 뜻이 아니다.
+    // 이 공백이 문제가 되면 별도 분기(연속 ok=0 을 stale_days 와 무관하게 잡는 경로)가 필요하다.
+    expect(runFive(100, "2026-08-20T00:00:00Z")).toEqual([]);
+  });
+
+  it("예약 없는 워크플로 4건은 ③ 점검에서 제외된다 (미발화 개념 자체가 성립 안 함)", () => {
+    const now = new Date("2026-09-10T00:00:00Z");
+    const wfs = SCHEDULELESS_WORKFLOWS.map((name) => ({ name, lastRunAt: "2026-08-02T00:00:00Z" }));
+    expect(checkStaleWorkflows(wfs, now)).toEqual([]);
+  });
+
+  it("제외 목록에 없는 워크플로는 그대로 35일 임계로 잡는다 (제외가 과하지 않다)", () => {
+    const now = new Date("2026-09-10T00:00:00Z");
+    const issues = checkStaleWorkflows([{ name: "아무 월간 수집", lastRunAt: "2026-08-02T00:00:00Z" }], now);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+  });
+
+  it("SCHEDULELESS_WORKFLOWS 는 실제로 schedule 이 없는 yml 만 담는다 (드리프트 차단)", () => {
+    const wfDir = join(dirname(fileURLToPath(import.meta.url)), "..", ".github", "workflows");
+    /** @type {Record<string, string>} */
+    const nameToFile = {};
+    for (const f of readdirSync(wfDir).filter((x) => x.endsWith(".yml"))) {
+      const src = readFileSync(join(wfDir, f), "utf8");
+      const m = src.match(/^name:\s*(.+)$/m);
+      if (m) nameToFile[m[1].trim()] = src;
+    }
+    for (const name of SCHEDULELESS_WORKFLOWS) {
+      const src = nameToFile[name];
+      expect(src, `SCHEDULELESS_WORKFLOWS 의 "${name}" 에 해당하는 yml 이 없다`).toBeTruthy();
+      // on: 블록에 schedule 이 살아 있으면(주석 아님) 이 목록에서 빼야 한다.
+      const hasSchedule = /^\s{2}schedule:\s*$/m.test(src || "");
+      expect(hasSchedule, `"${name}" 에 schedule 이 되살아났다 — SCHEDULELESS_WORKFLOWS 에서 뺄 것`).toBe(false);
+    }
   });
 });
 

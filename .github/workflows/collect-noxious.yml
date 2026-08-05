@@ -10,6 +10,15 @@ on:
         required: false
         type: boolean
         default: false
+      # 세션 491 적대검증 후속: 증분 수집(noxious == null 만)을 도입하면서 --force 를 복구 수단으로
+      # 내세웠는데 정작 이 입력란이 없어 Actions UI 에서 쓸 방법이 없었다.
+      # ⚠️ --force 는 전량 2,170건(약 105분)이라 아래 timeout-minutes: 60 안에 못 끝난다.
+      #    즉시저장 구조라 처리분은 남지만, 한 번에 다 채우려면 여러 번 돌리거나 timeout 을 함께 올릴 것.
+      force:
+        description: '전체 재수집 (증분 skip 무시 — 60분 제한 안에 다 못 끝남, 즉시저장이라 처리분은 남음)'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: data-collection
@@ -51,6 +60,9 @@ jobs:
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            ARGS="--dry-run"
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ "${{ inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
           fi
           node scripts/collectors/noxious.mjs $ARGS
