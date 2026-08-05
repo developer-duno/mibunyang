@@ -10,6 +10,16 @@ on:
   pull_request:
     branches: [main]
 
+# 세션 491: 연속 푸시 시 낡은 실행 자동 취소 (PR 한정).
+# 같은 PR 에 커밋을 연달아 밀면 이전 커밋을 보던 실행이 끝까지 돌며 분을 태운다.
+# main push 는 취소하지 않는다 — 머지 커밋 검사는 하나도 건너뛰면 안 되기 때문.
+# ⚠️ pull_request 에 paths-ignore 를 넣지 않은 것은 의도다. 경로 필터로 건너뛴 체크를
+# 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다.
+# (push 쪽 paths-ignore 는 필수 체크 대상이 아니라 무해.)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -53,6 +63,11 @@ jobs:
 
       - name: Claude 훅 배선 audit
         run: node scripts/audit-hooks-wiring.mjs
+
+      # 세션 491: e2e.yml 과 warm-playwright-cache.yml 의 캐시 키가 어긋나면
+      # 캐시가 영원히 미스되는데 CI 는 초록이라 아무도 모른다 → 기계가 검사한다.
+      - name: Playwright 캐시 키 audit
+        run: node scripts/audit-playwright-cache.mjs
 
       - name: Test
         env:
