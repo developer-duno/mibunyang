@@ -10,7 +10,7 @@
  *   node scripts/collectors/calc-layout.mjs              (Supabase UPDATE)
  *   node scripts/collectors/calc-layout.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -97,41 +97,29 @@ async function main() {
   const sb = getSupabase();
   const sbMibunyang = getMibuyangSupabase();
 
+  // ⚠️ 세션 491 — 아래 세 조회는 전부 PostgREST max_rows=1000 함정에 걸려 있었다.
+  //    `.limit(10000)` 은 숫자를 아무리 크게 줘도 **최대 1000행**만 돌아오고,
+  //    limit 을 아예 안 써도 기본값이 1000 이라 마찬가지로 잘린다.
+  //    그 결과 실측 로그가 매주 `대상: 1000건 / complexes: 1000건 / articles: 1000건
+  //    → 갱신 0, 건너뜀 1000` — 서로 다른 complex_no 1000개씩을 뽑아 놓으니 매칭이 0이었다.
+  //    3주 연속 갱신 0건이었고 layout 은 1109/1592(69.7%) 비어 있었다.
+  //    전량 조회는 selectAll 페이지네이션으로만. 선례 = 커밋 01d0dd4(세션 295)·b348ac1(세션 490).
+
   // 1. layout이 없는 아파트 조회
-  const { data: apts, error: aErr } = await sb
-    .from("apartments_flat")
-    .select("id, name, area")
-    .is("layout", null)
-    .limit(10000);
-  if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
+  const apts = /** @type {{ id: string, name: string, area: number | null }[]} */ (
+    await selectAll((s) => s.from("apartments_flat").select("id, name, area").is("layout", null), sb)
+  );
   log(PHASE, `대상: ${apts.length}건 (layout null)`);
 
   if (!apts.length) { log(PHASE, "대상 없음, 종료"); return; }
 
   // 2. complexes 조회
-  const { data: complexes, error: cErr } = await sb
-    .from("complexes")
-    .select("complex_no, complex_name, high_floor, total_household_count");
-  if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
+  const complexes = /** @type {{ complex_no: string, complex_name: string, high_floor: number | null, total_household_count: number | null }[]} */ (
+    await selectAll((s) => s.from("complexes").select("complex_no, complex_name, high_floor, total_household_count"), sb)
+  );
   log(PHASE, `complexes: ${complexes.length}건`);
 
-  // 3. articles에서 전용면적 조회 (active 매물만)
-  const { data: articles, error: artErr } = await sb
-    .from("articles")
-    .select("complex_no, area2_m2")
-    .eq("is_active", true)
-    .not("area2_m2", "is", null);
-  if (artErr) throw new Error(`articles 조회 실패: ${artErr.message}`);
-  log(PHASE, `articles (with area): ${articles.length}건`);
-
-  // 4. complex_no별 전용면적 그룹핑
-  const areaByComplex = new Map();
-  for (const art of articles) {
-    if (!areaByComplex.has(art.complex_no)) areaByComplex.set(art.complex_no, []);
-    areaByComplex.get(art.complex_no).push(art.area2_m2);
-  }
-
-  // 5. apartment_id → complex 역색인 (complex_links 테이블 기반)
+  // 3. apartment_id → complex 역색인 (complex_links 테이블 기반)
   const aptToComplexes = new Map();
   const { data: complexLinks, error: clErr } = await sbMibunyang
     .from("complex_links")
@@ -151,22 +139,66 @@ async function main() {
     log(PHASE, `complex_links: ${aptToComplexes.size}개 아파트 매핑`);
   }
 
+  // 4. 매칭 선행 — 필요한 complex_no 만 추린다 (세션 491)
+  //
+  // ⚠️ 이전에는 여기서 articles 전량(17만 건)을 읽었다. selectAll 로 전량을 받으려 하면
+  //    `canceling statement due to statement timeout` 으로 **매번 실패**한다(dry-run 실측).
+  //    게다가 articles(131만 행)는 자매 레포 naver-estate-web 과 **공유하는 테이블**이라
+  //    무거운 전량 조회는 저쪽 라이브 서비스에도 부담이 된다.
+  //    실제로 쓰이는 건 "매칭된 단지의 면적"뿐이므로, 매칭을 먼저 하고 그 단지만 조회한다.
+  //
+  // 부수 효과로 기존 버그도 사라진다 — 옛 코드는 `aptToComplexes.get()` 이 돌려준 배열에
+  // 직접 push 해 원본 색인을 오염시켰다. 아래는 filter 로 새 배열을 만든다.
+  /** @type {Map<string, any[]>} */
+  const matchByApt = new Map();
+  /** @type {Set<string>} */
+  const neededNos = new Set();
+  for (const apt of apts) {
+    let matched = aptToComplexes.get(apt.id) || [];
+    if (matched.length === 0) {
+      matched = complexes.filter((cpx) => {
+        const cpxName = (cpx.complex_name || "").replace(/\([^)]*\)/g, "").trim();
+        return stringSimilarity(cpxName, apt.name) >= 0.6;
+      });
+    }
+    matchByApt.set(apt.id, matched);
+    for (const cpx of matched) neededNos.add(cpx.complex_no);
+  }
+  log(PHASE, `매칭된 단지: ${neededNos.size}개 (대상 ${apts.length}건 기준)`);
+
+  // 5. 매칭된 단지의 전용면적만 조회 → complex_no별 그룹핑
+  /** @type {Map<string, number[]>} */
+  const areaByComplex = new Map();
+  const nos = [...neededNos];
+  const CHUNK = 200;
+  let artCount = 0;
+  for (let i = 0; i < nos.length; i += CHUNK) {
+    const chunk = nos.slice(i, i + CHUNK);
+    const rows = /** @type {{ complex_no: string, area2_m2: number }[]} */ (
+      await selectAll(
+        (s) =>
+          s
+            .from("articles")
+            .select("complex_no, area2_m2")
+            .in("complex_no", chunk)
+            .eq("is_active", true)
+            .not("area2_m2", "is", null),
+        sb,
+      )
+    );
+    for (const art of rows) {
+      if (!areaByComplex.has(art.complex_no)) areaByComplex.set(art.complex_no, []);
+      (areaByComplex.get(art.complex_no) ?? []).push(art.area2_m2);
+      artCount++;
+    }
+  }
+  log(PHASE, `articles (with area): ${artCount}건 / 단지 ${areaByComplex.size}개`);
+
   // 6. 각 아파트에 대해 layout 추정
   let updated = 0, skipped = 0;
 
   for (const apt of apts) {
-    // 매칭:  우선, 이름 유사도 폴백
-    let matchedComplexes = aptToComplexes.get(apt.id) || [];
-
-    if (matchedComplexes.length === 0) {
-      for (const cpx of complexes) {
-        const cpxName = (cpx.complex_name || "").replace(/\([^)]*\)/g, "").trim();
-        if (stringSimilarity(cpxName, apt.name) >= 0.6) {
-          matchedComplexes.push(cpx);
-        }
-      }
-    }
-
+    const matchedComplexes = matchByApt.get(apt.id) || [];
     if (matchedComplexes.length === 0) { skipped++; continue; }
 
     // 전용면적: 매칭 단지의 매물 면적 중앙값 → 아파트 면적 폴백

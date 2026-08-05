@@ -163,6 +163,34 @@ gh api "repos/developer-duno/mibunyang/actions/runs/<id>/jobs" \
 | `daily-deploy.yml` | 두 잡 → 한 잡 | `needs` 로 순차인데 준비(checkout·npm ci)를 두 번 태우고 분 올림도 두 번 |
 | `scripts/audit-playwright-cache.mjs` | 신설 + CI 등록 | 캐시 키가 어긋나면 **영원히 미스인데 CI 는 초록** — 사람 주석으로 못 막는 유형 |
 
+**3차 (수집기 구조 — 비용 + 데이터 복구)**
+
+| 대상 | 변경 | 근거 |
+|---|---|---|
+| `noxious.mjs` | 증분 수집(`noxious == null` 만) + **단지 단위 즉시 저장** + `createReporter`/`break`/`recordCollectorRun` | 전수 2,170건 × 2.9초 = **105분인데 제한 60분** → 매 실행이 60분 태우고 저장 직전 SIGKILL(유예 0). 3개월 연속 쓰기 0건. 대상 **2,170 → 236건(11분)**, 미채움 236건 복구 |
+| `calc-layout.mjs` | `selectAll` + **매칭 선행 후 필요한 단지만 articles 조회** | `.limit(10000)` 은 max_rows=1000 에 걸리고 limit 없는 조회도 기본 1000. 세 곳이 각각 잘려 **서로 다른 1000개끼리 매칭 → 3주 연속 갱신 0건**. dry-run 실측 결과 **갱신 0 → 490건**(layout 공백 69.7% → 38.9%) |
+
+> ⚠️ **`articles` 를 전량 `selectAll` 하면 안 된다** — 처음엔 세 조회를 그냥 `selectAll` 로 바꿨는데
+> dry-run 에서 `canceling statement due to statement timeout` 으로 **실패**했다(17만 행).
+> 그대로 머지했으면 매주 실패했을 것이다. 게다가 `articles`(131만 행)는 자매 레포
+> **naver-estate-web 과 공유하는 테이블**이라 무거운 전량 조회는 저쪽 라이브에도 부담이다.
+> 처방 = 이름 매칭을 **먼저** 수행해 필요한 `complex_no` 만 추린 뒤 `.in()` 으로 200개씩 조회
+> (실측: 17만 → **30,890건 / 단지 536개**). 부수적으로 옛 코드가 `aptToComplexes.get()` 이
+> 돌려준 배열에 직접 push 해 원본 색인을 오염시키던 버그도 사라졌다.
+>
+> ℹ️ `complex_links` 테이블은 존재하지 않고, **이름 유사도 폴백이 원래 설계**다
+> (`sync-naver-complex.mjs:249` 도 같은 로그를 남긴다). 사고가 아니다.
+| `_graceful-coverage.test.mjs` | ALLOWLIST 에서 `noxious.mjs` **제거** | graceful 을 넣었으니 이제 검사 대상. 남겨두면 나중에 `break` 가 지워져도 아무도 모른다 |
+
+> ⚠️ `noxious` 는 **발견 0건도 빈 배열(`[]`)로 기록**한다. "조회했고 없음"과 "아직 안 함"을
+> 구분해야 다음 회차에 건너뛸 수 있기 때문. 점수(`scoreLocation.ts:116`)·화면(`AptCard.tsx:98`)
+> 모두 `(noxious || [])` 로 읽어 `null` ↔ `[]` 의 표시·점수 영향은 0 임을 실측 확인했다.
+>
+> ⚠️ 또 하나의 가짜 초록불 — 테스트 12건이 전부 통과하는데도 `Number.isFinite` 가드는
+> **아무도 지키지 않았다**(지워도 통과). 발견 0건 케이스만 봤기 때문이고, 가드가 진짜 필요한
+> "발견은 있는데 거리가 Infinity" 케이스를 추가하고 나서야 뮤테이션이 잡혔다.
+> **테스트가 통과한다 ≠ 그 코드가 지켜진다.**
+
 > ⚠️ 작성 중 실제로 낸 버그 — `extractCacheKeys` 정규식을 `\S+` 로 썼다가 키 안의
 > `${{ runner.os }}` 공백에서 잘려 **정상 상태를 "키 없음"으로 오판**했다. 뮤테이션 검증
 > (일부러 한쪽 버전을 올려보기)에서 잡았다. 감사 스크립트를 새로 만들 땐 "정상이 통과하는가"와
