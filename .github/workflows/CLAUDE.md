@@ -4,11 +4,26 @@
 
 ## 워크플로우 목록
 
-### 매일 (2개)
+> ⚠️ **아래 표의 분류·개수는 낡는다.** 진실의 원천은 각 yml 의 `on:` 블록이다.
+> 세션 491 실측에서 개수 어긋남 2건 + 미기재 1건이 나왔다. 단정 전 실측:
+>
+> ```bash
+> ls .github/workflows/*.yml | wc -l                      # 전체 개수
+> for f in .github/workflows/*.yml; do                     # 파일별 실제 트리거·주기
+>   printf "%-42s %s\n" "$(basename $f)" "$(grep -oE "cron: *'[^']+'" $f | head -1)"
+> done
+> ```
+>
+> **분류 기준**: 아래 "매일/매주/매월"은 **수집·가공 계열**만 센다.
+> CI/CD·모니터링·유틸리티는 주기와 무관하게 별도 절로 묶여 있다
+> (예: `purge-consults` 는 매일 돌지만 유틸리티, `monitor-collectors` 는 매일 돌지만 모니터링).
+
+### 매일 (3개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `collect-naver-listings.yml` | 네이버 후처리 (sync + 전용률 계산) |
+| `collect-naver-listings.yml` | 네이버 후처리 Core (sync + 전용률 계산, UTC 19:00) |
+| `collect-naver-listings-incremental.yml` | 네이버 후처리 Incremental (UTC 20:30 = KST 05:30) — `transport-tago` → `infra-kakao` → `schools-neis` 를 **무인자로** 순차 실행. **세션 491 문서 추가** (그동안 표에 없었다). 이 세 스텝이 같은 이름의 월간 워크플로를 대체하므로 그쪽 schedule 을 지웠다 |
 | `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00). **세션 491**: `compute-scores` + `refresh-data` 두 잡을 `scoring-and-refresh` 하나로 합침 — `needs` 로 어차피 순차였는데 checkout·setup-node·npm ci 를 두 번 태우고 분 올림도 두 번 물었다. 스텝 순서(scores → collect-data → commit/push)는 그대로 |
 
 > 세션 399: `collect-childcare-detail.yml` 삭제 → 집서버 로컬 러너 이전 (아래 KOSIS 절 옆 childcare 절 참조).
@@ -21,7 +36,7 @@
 | `e2e.yml` | Playwright E2E 테스트 (PR 트리거). **세션 491**: `paths-ignore`(docs·md·.claude·scripts·supabase) + `concurrency` + 브라우저 캐시. ⚠️ `paths-ignore` 에 `.github/workflows/**` 를 넣으면 이 파일 자신을 고칠 때 검증이 사라진다 — 절대 금지 |
 | `warm-playwright-cache.yml` | **세션 491 신설** — 매주 화 KST 02:00, `main` 에서 브라우저 캐시를 미리 채운다. Actions 캐시는 "만든 브랜치 + 기본 브랜치"에서만 읽히는데 `e2e.yml` 은 PR 전용이라 이 예열이 없으면 캐시가 매번 미스된다. **캐시 키를 `e2e.yml` 과 동일하게 유지할 것** — 어긋나면 `scripts/audit-playwright-cache.mjs` 가 CI 에서 차단 |
 
-### 매주 (3개) + 격주 (2개)
+### 매주 (4개) + 격주 (2개)
 
 > **세션 491 (Actions 비용 감축)**: `collect-trade-stats`·`collect-trade-stats-regions` 주간→격주,
 > `calc-exclusive-ratio` schedule 삭제(매일 경로와 중복). 근거·검증법은 아래 "세션 491 감축" 절 참조.
@@ -30,11 +45,12 @@
 |-----------|------|
 | `collect-trade-stats.yml` | 거래 통계 산출 (**격주 7·21일** 16:00 UTC — 세션 491: 주 입력 trades 가 매월 6일에만 갱신되므로 주간은 과잉) |
 | `collect-trade-stats-regions.yml` | 시군구 거래 통계 (**격주 7·21일** 16:30 UTC, trade-stats 직후) |
-| `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리) |
+| `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리). **세션 491**: 세 조회가 전부 max_rows=1000 에 걸려 3주 연속 갱신 0건이던 것을 매칭 선행 + `.in()` 분할로 복구 (dry-run 실측 **갱신 490건**) |
+| `collect-nearby-childcare.yml` | 단지 1km 내 어린이집 근접 계산 (**세션 491: 매일 → 주 1회 화** — 입력이 82일째 정지 + 재계산 결과 677건 × 8필드 전부 동일). **세션 491 문서 추가** (그동안 표에 없었다) |
 | `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
-### 매월 (17개) + 수동 전용 (3개)
+### 매월 (18개) + 수동 전용 (4개)
 
 > **세션 288~289: KOSIS 의존 10개 GH 폐기 → 집서버 로컬 러너 이전.** kosis.kr 이 GitHub 러너(해외
 > Azure IP)를 차단해 `collect-{unsold-kosis,market-stats,migration,jeonse-price-index,regional-economy,fertility-rate,housing-supply-ratio,medical-access,avg-income,sale-price-index}.yml`
@@ -53,6 +69,7 @@
 | `collect-infra.yml` | **수동만** | Kakao Places 인프라 — 세션 491 schedule 삭제. 매일 경로(`collect-naver-listings-incremental.yml`)가 같은 `infra-kakao.mjs` 를 무인자로 실행하므로 중복이었다 |
 | `collect-transport.yml` | **수동만** | Kakao Places 교통 — 세션 491 schedule 삭제(동일 사유, `transport-tago.mjs`). dispatch 는 `--force` 전체 재수집 창구 |
 | `collect-schools.yml` | **수동만** | NEIS 학교 — 세션 491 schedule 삭제(동일 사유, `schools-neis.mjs`). dispatch 는 limit/force 보충 창구 |
+| `calc-exclusive-ratio.yml` | **수동만** | 전용률 계산 — 세션 491 주간 schedule 삭제. `collect-naver-listings.yml`(Core) 마지막 스텝이 같은 스크립트를 **매일** 실행해 중복이었다(주간보다 오히려 잦다) |
 | `collect-noise.yml` | 1일 | 소음 추정 |
 | `collect-environment.yml` | 1일 | 환경/혐오시설 |
 | `collect-noxious.yml` | 3일 | 혐오시설 거리 (세션260: 1일→3일 분산, 60분 장시간 작업) |
@@ -69,6 +86,7 @@
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
 | `collect-maintenance.yml` | 15일 | 공동주택 관리비 |
 | `collect-building-hub.yml` | **분기 15일** | 건축HUB 에너지+인허가 — 세션 491 월간→분기. 04-15·05-18·06-15 세 실행 모두 `성공 0 \| 스킵 2000`(API 2,794회 호출·신규 0건). 10/15 에 `성공 N`>0 이면 월간 복귀 |
+| `collect-housing-price.yml` | 16일 | 주택가격 (KST 17일 07:00 — 15일 migration/maintenance/building-hub 다음 날). **세션 491 문서 추가** — 그동안 이 표에 아예 없었다 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
 
 ### 모니터링 (2개)
@@ -78,7 +96,7 @@
 | `monitor-db-size.yml` | Supabase 테이블별 행 수 점검 (매월 1일 KST 06:00) |
 | `monitor-collectors.yml` | 수집기 실패/취소/0건/미발화/NULL급증 텔레그램 알림 (workflow_run 즉시 + 매일 KST 09:00 스윕). 새 collect-*.yml 추가 시 workflow_run.workflows 목록에 name 추가 의무 — `scripts/audit-monitor-coverage.mjs` 가 CI 에서 누락 차단. **세션 491: job 에 `if: github.event_name != 'workflow_run' \|\| github.event.workflow_run.conclusion != 'success'` 추가** — 트리거가 성공이면 감시 잡을 안 띄운다(실측 39회 중 35회가 "이상 없음"만 찍고 1분씩 과금). 실패·취소 알림은 그대로 즉시, "빈 성공"(ok=0)만 daily 스윕으로 최대 24h 지연 |
 
-### 유틸리티 (4개)
+### 유틸리티 (5개)
 
 | 워크플로우 | 설명 |
 |-----------|------|

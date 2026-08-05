@@ -18,8 +18,8 @@
 | DB | Supabase PostgreSQL 15 테이블 + 2 VIEW |
 | 인증 | SHA-256+salt, HMAC-SHA256 JWT, 카카오 OAuth |
 | 캐싱 | Upstash Redis (서버리스) |
-| 수집 | GitHub Actions 40개 워크플로우 (수집·가공 35 + CI/E2E/배포/모니터 5) + Windows 스케줄러 |
-| 테스트 | Vitest + Playwright E2E 14 spec (visual.spec.ts 시각 baseline 포함) |
+| 수집 | GitHub Actions 41개 워크플로우 (수집·가공 34 + CI/E2E/캐시예열/배포/모니터 7) + Windows 스케줄러 |
+| 테스트 | Vitest + Playwright E2E 15 spec (visual.spec.ts 시각 baseline 포함) |
 | 모니터링 | Vercel Analytics + Speed Insights |
 
 > ⚠️ 위 개수(API 함수·워크플로·spec)는 세션마다 늘어 낡는다. 단정 전 실측:
