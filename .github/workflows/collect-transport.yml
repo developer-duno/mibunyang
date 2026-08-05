@@ -1,8 +1,10 @@
 name: Transport Accessibility Collection
 
 on:
-  schedule:
-    - cron: '0 19 4 * *' # 매월 4일 UTC 19:00 = KST 04:00 (세션 260: 1일 cron 동시 충돌 분산 — data-collection 큐 대기 중 취소 재발 차단)
+  # 세션 491: 월간 schedule 삭제 (중복 실행). collect-naver-listings-incremental.yml 이 매일
+  # `node scripts/collectors/transport-tago.mjs` 를 무인자로 실행한다 — 이 파일의 schedule 발화도
+  # inputs 가 없어 $ARGS 가 빈 값이므로 완전히 동일한 명령이었다. workflow_dispatch 는 --force
+  # 전체 재수집 창구라 반드시 남긴다. (구: cron '0 19 4 * *' 매월 4일 KST 04:00)
   workflow_dispatch:
     inputs:
       dry_run:

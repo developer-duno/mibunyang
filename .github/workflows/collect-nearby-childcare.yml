@@ -2,7 +2,10 @@ name: Nearby Childcare Collection
 
 on:
   schedule:
-    - cron: '30 20 * * *' # 매일 UTC 20:30 = KST 05:30 (childcare-detail cron 04:00 뒤 — 70 필드 갱신분 반영)
+    # 세션 491: 매일 → 주 1회(화). 입력 regions.childcare 의 최신 recorded_at 이 2026-05-15(82일 전)로
+    # 멈춰 있고, 수집 로직을 그대로 재계산해 DB 저장값과 677건 × 8필드 전부 대조한 결과 다른 값이 0건이었다
+    # (매일 같은 값을 다시 쓰는 헛돌이). 원천은 collect-childcare.yml(매월 1일)이라 주 1회로도 지연 ≤ 3~4일.
+    - cron: '30 20 * * 2' # 매주 화 UTC 20:30 = KST 수 05:30
   workflow_dispatch:
     inputs:
       dry_run:

@@ -1,8 +1,9 @@
 name: Exclusive Ratio Calculation
 
 on:
-  schedule:
-    - cron: '0 22 * * 0' # 매주 일요일 UTC 22:00 = KST 07:00
+  # 세션 491: 주간 schedule 삭제 (중복 실행). 같은 스크립트 calc-exclusive-ratio.mjs 를
+  # collect-naver-listings.yml(Naver Core, 매일 UTC 19:00) 마지막 스텝이 이미 매일 실행한다 →
+  # 주간보다 오히려 잦아 갱신 빈도 손실 0. 수동 재실행 창구로 workflow_dispatch 만 남긴다.
   workflow_dispatch:
     inputs:
       dry_run:

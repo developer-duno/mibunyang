@@ -1,8 +1,9 @@
 name: Infra Facilities Collection
 
 on:
-  schedule:
-    - cron: '0 18 1 * *' # 매월 1일 UTC 18:00 = KST 03:00
+  # 세션 491: 월간 schedule 삭제 (중복 실행). collect-naver-listings-incremental.yml 이 매일
+  # `node scripts/collectors/infra-kakao.mjs` 를 무인자로 실행 — 이 파일 schedule 발화와 동일 명령.
+  # 수동 재실행 창구로 workflow_dispatch 만 남긴다. (구: cron '0 18 1 * *' 매월 1일 KST 03:00)
   workflow_dispatch:
     inputs:
       dry_run:

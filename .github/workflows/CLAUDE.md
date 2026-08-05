@@ -20,17 +20,20 @@
 | `ci.yml` | CI 파이프라인 (린트 + 테스트 + 빌드, push/PR 트리거) |
 | `e2e.yml` | Playwright E2E 테스트 (push/PR 트리거) |
 
-### 매주 (5개)
+### 매주 (3개) + 격주 (2개)
+
+> **세션 491 (Actions 비용 감축)**: `collect-trade-stats`·`collect-trade-stats-regions` 주간→격주,
+> `calc-exclusive-ratio` schedule 삭제(매일 경로와 중복). 근거·검증법은 아래 "세션 491 감축" 절 참조.
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `collect-trade-stats.yml` | 거래 통계 산출 (일요일 16:00 UTC) |
-| `calc-exclusive-ratio.yml` | 전용률 계산 (일요일 22:00 UTC, 세션273: calc-collection 그룹 분리 — data-collection 큐 경합 회피) |
+| `collect-trade-stats.yml` | 거래 통계 산출 (**격주 7·21일** 16:00 UTC — 세션 491: 주 입력 trades 가 매월 6일에만 갱신되므로 주간은 과잉) |
+| `collect-trade-stats-regions.yml` | 시군구 거래 통계 (**격주 7·21일** 16:30 UTC, trade-stats 직후) |
 | `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리) |
 | `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
-### 매월 (20개)
+### 매월 (17개) + 수동 전용 (3개)
 
 > **세션 288~289: KOSIS 의존 10개 GH 폐기 → 집서버 로컬 러너 이전.** kosis.kr 이 GitHub 러너(해외
 > Azure IP)를 차단해 `collect-{unsold-kosis,market-stats,migration,jeonse-price-index,regional-economy,fertility-rate,housing-supply-ratio,medical-access,avg-income,sale-price-index}.yml`
@@ -46,9 +49,9 @@
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
-| `collect-infra.yml` | 1일 | Kakao Places 인프라 |
-| `collect-transport.yml` | 4일 | Kakao Places 교통 (세션260: 1일→4일 분산) |
-| `collect-schools.yml` | 2일 | NEIS 학교 (세션118: 1일→2일 이동 + school-collection 그룹 분리) |
+| `collect-infra.yml` | **수동만** | Kakao Places 인프라 — 세션 491 schedule 삭제. 매일 경로(`collect-naver-listings-incremental.yml`)가 같은 `infra-kakao.mjs` 를 무인자로 실행하므로 중복이었다 |
+| `collect-transport.yml` | **수동만** | Kakao Places 교통 — 세션 491 schedule 삭제(동일 사유, `transport-tago.mjs`). dispatch 는 `--force` 전체 재수집 창구 |
+| `collect-schools.yml` | **수동만** | NEIS 학교 — 세션 491 schedule 삭제(동일 사유, `schools-neis.mjs`). dispatch 는 limit/force 보충 창구 |
 | `collect-noise.yml` | 1일 | 소음 추정 |
 | `collect-environment.yml` | 1일 | 환경/혐오시설 |
 | `collect-noxious.yml` | 3일 | 혐오시설 거리 (세션260: 1일→3일 분산, 60분 장시간 작업) |
@@ -60,11 +63,11 @@
 | `collect-trades.yml` | 6일 | 국토부 실거래 (매매/전세/분양권) |
 | `collect-molit-units.yml` | 6일 | 국토부 총세대수 보정 |
 | `collect-building-info.yml` | 10일 | 건축물 상세 (토요일 → 11일 fallback) |
-| `collect-housing-permits.yml` | 10일 | 주택 인허가 |
+| `collect-housing-permits.yml` | **분기 10일** | 주택 인허가 — 세션 491 월간→분기. MOLIT API 장기 중단으로 3회 연속 ok=0. 회복(`성공 N`>0) 확인 시 월간 복귀 |
 | `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
 | `collect-maintenance.yml` | 15일 | 공동주택 관리비 |
-| `collect-building-hub.yml` | 15일 | 건축HUB 에너지+인허가 |
+| `collect-building-hub.yml` | **분기 15일** | 건축HUB 에너지+인허가 — 세션 491 월간→분기. 04-15·05-18·06-15 세 실행 모두 `성공 0 \| 스킵 2000`(API 2,794회 호출·신규 0건). 10/15 에 `성공 N`>0 이면 월간 복귀 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
 
 ### 모니터링 (2개)
@@ -72,14 +75,14 @@
 | 워크플로우 | 설명 |
 |-----------|------|
 | `monitor-db-size.yml` | Supabase 테이블별 행 수 점검 (매월 1일 KST 06:00) |
-| `monitor-collectors.yml` | 수집기 실패/취소/0건/미발화/NULL급증 텔레그램 알림 (workflow_run 즉시 + 매일 KST 09:00 스윕). 새 collect-*.yml 추가 시 workflow_run.workflows 목록에 name 추가 의무 — `scripts/audit-monitor-coverage.mjs` 가 CI 에서 누락 차단 |
+| `monitor-collectors.yml` | 수집기 실패/취소/0건/미발화/NULL급증 텔레그램 알림 (workflow_run 즉시 + 매일 KST 09:00 스윕). 새 collect-*.yml 추가 시 workflow_run.workflows 목록에 name 추가 의무 — `scripts/audit-monitor-coverage.mjs` 가 CI 에서 누락 차단. **세션 491: job 에 `if: github.event_name != 'workflow_run' \|\| github.event.workflow_run.conclusion != 'success'` 추가** — 트리거가 성공이면 감시 잡을 안 띄운다(실측 39회 중 35회가 "이상 없음"만 찍고 1분씩 과금). 실패·취소 알림은 그대로 즉시, "빈 성공"(ok=0)만 daily 스윕으로 최대 24h 지연 |
 
 ### 유틸리티 (4개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
 | `seed-data.yml` | 초기 데이터 시딩 |
-| `backfill-new-apartments.yml` | **Phase 1+2 만 잔존** (세션 453: `fill-missing-data.yml` 에서 개명 — 동작이 backfill 로 좁혀짐) — Phase 1 좌표 backfill (geocode-missing+reverse-geocode) + Phase 2 matrix 3 일꾼 (sync-naver-complex+calc-floors+regulation-seed). **세션 308 (PR #11)**: Phase 3+4+5 일괄 폐기 — 외부 cron 가진 11 일꾼 (transport-tago/infra-kakao/environment/noise-estimate/noxious/dart-builders/molit-building-info/population/migration/collect-trades/trade-stats) 제외 + `audit-fill-matrix.mjs` CI 가드 신규. 5/31 발화 6번째 누적 cancelled 차단. 직전: 세션 273 calc 그룹 분리, 세션 291 phase2-calc 6→3, 세션 298 phase3 timeout 60→120, 세션 306 schools-neis 제거 |
+| `backfill-new-apartments.yml` | **Phase 1+2 만 잔존** (세션 453: `fill-missing-data.yml` 에서 개명 — 동작이 backfill 로 좁혀짐) — Phase 1 좌표 backfill (geocode-missing+reverse-geocode) + Phase 2 matrix **2 일꾼** (calc-floors+regulation-seed — 세션 491: `sync-naver-complex` 제거, `collect-naver-listings.yml`(Naver Core)이 매일 같은 스크립트를 실행하는 중복이었다). **세션 308 (PR #11)**: Phase 3+4+5 일괄 폐기 — 외부 cron 가진 11 일꾼 (transport-tago/infra-kakao/environment/noise-estimate/noxious/dart-builders/molit-building-info/population/migration/collect-trades/trade-stats) 제외 + `audit-fill-matrix.mjs` CI 가드 신규. 5/31 발화 6번째 누적 cancelled 차단. 직전: 세션 273 calc 그룹 분리, 세션 291 phase2-calc 6→3, 세션 298 phase3 timeout 60→120, 세션 306 schools-neis 제거 |
 | `geocode-missing.yml` | 좌표 누락 지오코딩 |
 | `reverse-geocode.yml` | 좌표 → 주소 역지오코딩 |
 | `purge-consults.yml` | 보존기간(365일) 경과 상담 자동 파기 (매일 KST 04:30, PIPA §21 — 세션 443 D4). `collect-*` 패턴 밖이라 monitor/audit 무관, 실패 시 `collector_runs` status=failure 기록 |
@@ -108,3 +111,58 @@
 | `CHILDCARE_BASIC_API_KEY` | info.childcare.go.kr cpmsapi030 어린이집 70 필드 상세 (세션 256) | O |
 | `SUBSCRIBERS_OPT_OUT_SECRET` | 분양 알림 수신거부 HMAC (Vercel 과 동일 값 유지 의무 — 드리프트 시 문자 속 철회 링크 전부 401, 세션 467) | - |
 | `SOLAPI_API_KEY`/`SOLAPI_API_SECRET`/`SOLAPI_SENDER` | 분양 알림 SMS 실발송 3종 (미등록 = notify-subscribers 자동 dry-run). ⚠️ 주입은 PR3(sendSms 실구현+SMS_ADAPTER_READY=true) 머지 후 — 스텁 상태 live 진입은 코드 게이트가 차단하지만 순서 지키는 게 정석 (세션 467) | - |
+
+---
+
+## 세션 491 감축 — Actions 비용
+
+### 배경 (실측)
+
+2026-07-13~31 **19일간 계정 지출한도 초과로 모든 잡이 시작조차 못 했다**(check-run annotation 원문:
+`The job was not started because recent account payments have failed or your spending limit needs to be increased`).
+잡이 2~3초 만에 `steps: []` 로 끝나 "수집기 고장"처럼 보이지만 코드 문제가 아니다 — **실패 로그를 볼 때
+반드시 `steps` 배열이 비었는지 먼저 확인할 것.**
+
+계정의 **비공개 레포 12개가 월 2,000분 무료 한도를 공유**한다(초과분 $0.006/분, 공개 레포는 한도 미소모).
+8/1~8/4 실측 하루 483분 → 월 환산 14,973분 → 청구 약 $78. 예산은 $80 으로 상향돼 있으나 여유가 하루 반뿐이라
+감축이 필수였다.
+
+### ⚠️ 측정 방법 (틀리기 쉬움)
+
+`updated_at − run_started_at`(벽시계)로 재면 **큐 대기가 섞이고 GitHub 은 큐 대기를 과금하지 않는다.**
+실측 예: Purge Old Consults 가 벽시계로는 4일 61분이었으나 실제 과금은 **회당 17~20초**(나머지 53분은
+`data-collection` 그룹 대기). 반드시 jobs API 로 잡 실행 시간을 재고, **잡마다 분 단위 올림** 과금임을
+감안할 것(수집기 잡 79개 중 52개가 이미 1분 바닥이라 준비시간 단축은 절감 0).
+
+```bash
+gh api "repos/developer-duno/mibunyang/actions/runs/<id>/jobs" \
+  --jq '.jobs[].steps[] | "\(.number). \(.name) | \(.started_at) ~ \(.completed_at)"'
+```
+
+### 이번에 바꾼 것
+
+| 대상 | 변경 | 근거 |
+|---|---|---|
+| `monitor-collectors.yml` | job `if:` 로 workflow_run 성공 시 미발화 | 39회 중 35회가 "이상 없음"만 찍음 |
+| `collect-nearby-childcare.yml` | 매일 → 주 1회(화) | 입력이 82일째 정지 + 재계산 결과 677건 × 8필드 전부 동일 |
+| `collect-trade-stats(-regions).yml` | 주간 → 격주(7·21일) | 주 입력 trades 가 매월 6일에만 갱신 |
+| `calc-exclusive-ratio.yml` | schedule 삭제 | Naver Core 가 매일 같은 스크립트 실행 |
+| `collect-{transport,infra,schools}.yml` | schedule 삭제 | incremental 이 매일 **동일 무인자 명령** 실행 |
+| `collect-housing-permits.yml` | 월간 → 분기 | MOLIT API 장기 중단, 3회 연속 ok=0 |
+| `collect-building-hub.yml` | 월간 → 분기 | 3회 연속 `성공 0 \| 스킵 2000` |
+| `backfill-new-apartments.yml` | `sync-naver-complex` 제거 | Naver Core 와 중복 |
+
+### 되돌리는 법
+
+전부 cron/트리거만 바꿨으므로 해당 줄을 원복하면 끝난다. **되돌려야 하는 신호**:
+`collect-building-hub` 가 분기 실행에서 `성공 N`>0 을 찍으면(=API 회복) 월간으로,
+`collect-housing-permits` 도 마찬가지. 감시는 monitor ⑤ `EXTERNAL_API_COLLECTORS` 가 담당하는데
+**월간→분기로 내렸으므로 해당 `stale_days` 기준(월간 38 / 분기 100)도 함께 맞춰야 한다.**
+
+### 손대지 않은 것 (검증에서 기각)
+
+- **`purge-consults.yml` 주기 축소** — 실제 과금이 하루 1분뿐이고, 줄이면 PIPA 파기가 최대 7일 지연 → 손해
+- **`collect-maintenance.yml` 5일 연속 cron 축소** — 5연속 실패는 코드 결함이 아니라 위 계정 정지 탓.
+  5일 연속은 미채움 ~1,415건을 `--limit=600` 으로 나눠 채우려는 **의도된 설계**다. 8/15 첫 실전 로그 확인이 먼저
+- **준비시간(checkout·setup-node·npm ci) 단축 / `--omit=dev`** — 잡당 평균 15.8초(전체의 3.6%), 분 올림 때문에 절감 시뮬레이션 0분
+- **Playwright 에서 webkit 제거** — 월 147분으로 최대지만 `e2e/mobile.spec.ts` 4건이 모바일 사파리 회귀를 잡는 유일한 그물
