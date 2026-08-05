@@ -2,7 +2,10 @@ name: Housing Permits Data Collection
 
 on:
   schedule:
-    - cron: '0 21 10 * *' # 매월 10일 UTC 21:00 = KST 06:00
+    # 세션 491: 월간 → 분기(1·4·7·10월 10일). MOLIT 주택건설실적 API 장기 중단으로 최근 3회 연속
+    # success + ok_count=0 (신규 유입 0건). 지금도 안 채워지므로 분기로 내려도 추가 낡음이 없고,
+    # API 회복 시 monitor ⑤(stale_days=38)가 잡는다. 회복 확인되면 월간으로 되돌릴 것.
+    - cron: '0 21 10 1,4,7,10 *' # 분기 10일 UTC 21:00 = KST 06:00
   workflow_dispatch:
     inputs:
       dry_run:

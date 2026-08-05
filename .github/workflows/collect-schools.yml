@@ -4,8 +4,10 @@ on:
   # 세션118: 매월 1일 UTC 20:00에 unsold-kosis/schools/childcare 3종이
   # 같은 concurrency 그룹·같은 시간에 시작해 30분 timeout으로 cancelled
   # 연속. schools를 2일 UTC 22:00(KST 07:00)로 이동 + 그룹 분리로 해소.
-  schedule:
-    - cron: '0 22 2 * *' # 매월 2일 UTC 22:00 = KST 07:00 (이전: 1일 05:00)
+  #
+  # 세션 491: 그 월간 schedule 자체를 삭제 (중복 실행). collect-naver-listings-incremental.yml 이
+  # 매일 `node scripts/collectors/schools-neis.mjs` 를 무인자로 실행 — 동일 명령이었다.
+  # workflow_dispatch 는 limit/force 수동 보충 창구라 남긴다. (구: cron '0 22 2 * *' 매월 2일 KST 07:00)
   workflow_dispatch:
     inputs:
       dry_run:

@@ -74,7 +74,9 @@ jobs:
       fail-fast: false
       matrix:
         script:
-          - { name: "네이버 동기화", cmd: "sync-naver-complex" }
+          # 세션 491: "네이버 동기화"(sync-naver-complex) 제거 — collect-naver-listings.yml(Naver Core)이
+          # 매일 UTC 19:00 에 같은 스크립트를 실행한다(실측 1139초). 주간 backfill 이 그 위에 15분을
+          # 덧칠하던 중복이라, 빼도 갱신 주기는 그대로 매일 유지된다.
           - { name: "층수 계산", cmd: "calc-floors" }
           - { name: "규제지역 적용", cmd: "regulation-seed" }
     env:

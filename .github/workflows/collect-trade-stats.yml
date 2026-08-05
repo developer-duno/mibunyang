@@ -2,7 +2,10 @@ name: Trade Stats Calculation
 
 on:
   schedule:
-    - cron: '0 16 * * 0' # 매주 일요일 UTC 16:00 = KST 월 01:00 (fill-missing-data 21:00·calc 22~23시 무더기 회피 — 일요일 빈 슬롯 단독 발화)
+    # 세션 491: 주간 → 격주(7·21일). 주 입력 trades 는 collect-trades.yml(매월 6일)에만 갱신되므로
+    # 그 사이 값이 바뀔 원천이 없다(23일 간격 두 실행의 처리 건수 차 2155→2159 = 4건). 보조 입력
+    # articles 폴백 때문에 월 1회가 아닌 격주로 남긴다. 7일 = collect-trades 다음날.
+    - cron: '0 16 7,21 * *' # 매월 7·21일 UTC 16:00 = KST 익일 01:00
   workflow_dispatch:
     inputs:
       dry_run:

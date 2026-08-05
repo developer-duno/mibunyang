@@ -70,6 +70,13 @@ permissions:
 
 jobs:
   monitor:
+    # 세션 491: workflow_run 팬아웃 억제 — 트리거 수집기가 success 면 감시 잡을 띄우지 않는다.
+    # 실측(8/1~8/4): Monitor 39회 중 35회가 workflow_run 이고 감시 대상 40 run 중 비정상은 4건뿐 →
+    # 36회가 "이상 없음"만 찍고 1분씩 과금. 실패·취소 알림은 그대로 즉시 발화하고,
+    # 잃는 것은 "success 인데 ok_count=0"(빈 성공) 알림의 즉시성뿐 — 이는 L51-52 의 매일 UTC 00:00
+    # daily 전체 스윕(①②③④⑤)이 최대 24h 안에 동일하게 잡는다. 빈 성공은 며칠~몇 주 단위로 굳는
+    # 유형(housing-permits 3개월 연속 ok=0)이라 하루 지연의 실질 손해가 없다.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -2,7 +2,8 @@ name: Trade Stats Regions Collection
 
 on:
   schedule:
-    - cron: '30 16 * * 0' # 매주 일요일 UTC 16:30 = KST 월요일 01:30 (collect-trade-stats 직후)
+    # 세션 491: 주간 → 격주(7·21일) — collect-trade-stats.yml 과 동일 사유·동일 일자 유지(직후 발화).
+    - cron: '30 16 7,21 * *' # 매월 7·21일 UTC 16:30 = KST 익일 01:30 (collect-trade-stats 직후)
   workflow_dispatch:
     inputs:
       dry_run:
