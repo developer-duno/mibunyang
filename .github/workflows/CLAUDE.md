@@ -214,6 +214,40 @@ gh api "repos/developer-duno/mibunyang/actions/runs/<id>/jobs" \
 > (일부러 한쪽 버전을 올려보기)에서 잡았다. 감사 스크립트를 새로 만들 땐 "정상이 통과하는가"와
 > "고장이 걸리는가"를 **둘 다** 확인할 것.
 
+### 🔴 필수 상태 검사(required status checks)는 이 저장소에 **켤 수 없다** — 실측 확정
+
+**세션 491 에서 실제로 켰다가 `daily-deploy` 가 즉시 깨져 되돌렸다.**
+
+```
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+remote: - Required status check "ci" is expected.
+! [remote rejected] main -> main (protected branch hook declined)
+```
+
+원인: `daily-deploy.yml:59` 이 `git push origin main` 으로 **데이터 갱신 커밋을 main 에 직접 민다.**
+필수 상태 검사가 켜져 있으면 **봇의 직접 push 도 거부된다** — 새 커밋에는 검사 기록이 없기 때문이다.
+
+> ⚠️ 공식 문서의 *"any commits must either be pushed to another branch and then merged **or pushed
+> directly to the protected branch**"* 를 "직접 push 가 허용된다"로 읽으면 안 된다.
+> **"그 커밋에 대해 검사가 이미 통과한 경우"** 를 뜻하고, 새로 만든 커밋은 영원히 거부된다.
+> `GITHUB_TOKEN` 은 관리자가 아니라 `enforce_admins: false` 로도 우회되지 않는다.
+
+**따라서 `ci.yml` 의 `push: branches: [main]` 을 뺄 수 없다.** 빼려면 필수 검사가 있어야 하는데
+필수 검사를 켜면 매일 배포가 죽는다. 둘은 양립 불가다.
+
+가능한 길 (착수 전 손익 계산할 것 — 절감은 월 312분 ≈ **$1.9** 뿐이다):
+
+| 안 | 내용 | 비용 |
+|---|---|---|
+| A | `daily-deploy` 를 **PR 방식**으로 전환 (봇이 브랜치 → PR → 자동 머지) | 작업량 큼, 매일 PR 이 쌓임 |
+| B | 필수 검사 대신 **PR 리뷰 필수**만 — 검사 강제는 못 하나 직접 push 는 허용 | 검사 강제 실패 |
+| C | **그대로 두기** — 사람이 CI 를 지키고 월 312분은 포기 | 0 |
+
+**현재 판단 = C.** 매일 배포 구조를 흔드는 대가가 $1.9 보다 크다.
+
+현재 main 보호 상태(세션 491 되돌린 뒤): `required_linear_history` ✅ / `allow_force_pushes` ❌ /
+`allow_deletions` ❌ / **`required_status_checks` 없음(의도적)**.
+
 ### 되돌리는 법
 
 전부 cron/트리거만 바꿨으므로 해당 줄을 원복하면 끝난다. **되돌려야 하는 신호**:
