@@ -13,9 +13,17 @@ on:
 # 세션 491: 연속 푸시 시 낡은 실행 자동 취소 (PR 한정).
 # 같은 PR 에 커밋을 연달아 밀면 이전 커밋을 보던 실행이 끝까지 돌며 분을 태운다.
 # main push 는 취소하지 않는다 — 머지 커밋 검사는 하나도 건너뛰면 안 되기 때문.
-# ⚠️ pull_request 에 paths-ignore 를 넣지 않은 것은 의도다. 경로 필터로 건너뛴 체크를
-# 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다.
-# (push 쪽 paths-ignore 는 필수 체크 대상이 아니라 무해.)
+#
+# 🔴 `push: branches: [main]` 을 **빼지 말 것** (세션 491 실측 확정).
+#    빼려면 브랜치 보호의 required status check 가 있어야 하는데, 그걸 켜면
+#    daily-deploy.yml:59 의 `git push origin main`(매일 데이터 갱신 커밋)이
+#    `GH006: Protected branch update failed / Required status check "ci" is expected` 로
+#    **거부되어 매일 배포가 죽는다.** 실제로 켰다가 즉시 되돌렸다.
+#    → 이 push 트리거가 현재 유일한 "머지 커밋 검사" 경로다.
+#    자세한 근거·대안 3안은 .github/workflows/CLAUDE.md "필수 상태 검사는 켤 수 없다" 절.
+#
+# ⚠️ pull_request 에 paths-ignore 를 넣지 않은 것도 의도다(필수 체크 도입 시의 함정 대비 +
+#    지금은 이쪽이 유일한 전량 검사라서). push 쪽 paths-ignore 는 무해.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
