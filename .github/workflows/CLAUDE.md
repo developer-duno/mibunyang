@@ -9,16 +9,17 @@
 | 워크플로우 | 설명 |
 |-----------|------|
 | `collect-naver-listings.yml` | 네이버 후처리 (sync + 전용률 계산) |
-| `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00) |
+| `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00). **세션 491**: `compute-scores` + `refresh-data` 두 잡을 `scoring-and-refresh` 하나로 합침 — `needs` 로 어차피 순차였는데 checkout·setup-node·npm ci 를 두 번 태우고 분 올림도 두 번 물었다. 스텝 순서(scores → collect-data → commit/push)는 그대로 |
 
 > 세션 399: `collect-childcare-detail.yml` 삭제 → 집서버 로컬 러너 이전 (아래 KOSIS 절 옆 childcare 절 참조).
 
-### CI/CD (2개)
+### CI/CD (3개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `ci.yml` | CI 파이프라인 (린트 + 테스트 + 빌드, push/PR 트리거) |
-| `e2e.yml` | Playwright E2E 테스트 (push/PR 트리거) |
+| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×6** → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
+| `e2e.yml` | Playwright E2E 테스트 (PR 트리거). **세션 491**: `paths-ignore`(docs·md·.claude·scripts·supabase) + `concurrency` + 브라우저 캐시. ⚠️ `paths-ignore` 에 `.github/workflows/**` 를 넣으면 이 파일 자신을 고칠 때 검증이 사라진다 — 절대 금지 |
+| `warm-playwright-cache.yml` | **세션 491 신설** — 매주 화 KST 02:00, `main` 에서 브라우저 캐시를 미리 채운다. Actions 캐시는 "만든 브랜치 + 기본 브랜치"에서만 읽히는데 `e2e.yml` 은 PR 전용이라 이 예열이 없으면 캐시가 매번 미스된다. **캐시 키를 `e2e.yml` 과 동일하게 유지할 것** — 어긋나면 `scripts/audit-playwright-cache.mjs` 가 CI 에서 차단 |
 
 ### 매주 (3개) + 격주 (2개)
 
@@ -151,6 +152,21 @@ gh api "repos/developer-duno/mibunyang/actions/runs/<id>/jobs" \
 | `collect-housing-permits.yml` | 월간 → 분기 | MOLIT API 장기 중단, 3회 연속 ok=0 |
 | `collect-building-hub.yml` | 월간 → 분기 | 3회 연속 `성공 0 \| 스킵 2000` |
 | `backfill-new-apartments.yml` | `sync-naver-complex` 제거 | Naver Core 와 중복 |
+
+**2차 (검사·배포 워크플로)**
+
+| 대상 | 변경 | 근거 |
+|---|---|---|
+| `ci.yml` | `concurrency`(PR 한정 낡은 실행 취소) + audit 6번째 등록 | 같은 PR 연속 푸시 시 옛 커밋 검사가 끝까지 돌던 낭비 |
+| `e2e.yml` | `paths-ignore` + `concurrency` + 브라우저 캐시 | 화면과 무관한 PR 에도 실브라우저 검사가 돌던 낭비 |
+| `warm-playwright-cache.yml` | 신설 (주 1회 main 예열) | Actions 캐시는 만든 브랜치·기본 브랜치에서만 읽힘 → PR 전용 워크플로 혼자서는 캐시 재사용 불가 |
+| `daily-deploy.yml` | 두 잡 → 한 잡 | `needs` 로 순차인데 준비(checkout·npm ci)를 두 번 태우고 분 올림도 두 번 |
+| `scripts/audit-playwright-cache.mjs` | 신설 + CI 등록 | 캐시 키가 어긋나면 **영원히 미스인데 CI 는 초록** — 사람 주석으로 못 막는 유형 |
+
+> ⚠️ 작성 중 실제로 낸 버그 — `extractCacheKeys` 정규식을 `\S+` 로 썼다가 키 안의
+> `${{ runner.os }}` 공백에서 잘려 **정상 상태를 "키 없음"으로 오판**했다. 뮤테이션 검증
+> (일부러 한쪽 버전을 올려보기)에서 잡았다. 감사 스크립트를 새로 만들 땐 "정상이 통과하는가"와
+> "고장이 걸리는가"를 **둘 다** 확인할 것.
 
 ### 되돌리는 법
 

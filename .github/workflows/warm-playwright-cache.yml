@@ -1,0 +1,55 @@
+name: Warm Playwright Cache
+
+# 세션 491: e2e.yml 의 브라우저 캐시를 main 에서 미리 채워두는 예열 전용 워크플로.
+#
+# 왜 필요한가 — GitHub Actions 캐시는 "그 캐시를 만든 브랜치"와 "기본 브랜치(main)"에서만
+# 읽힌다. e2e.yml 은 pull_request 전용이라, 어떤 PR 이 캐시를 만들어도 다른 PR 은 그것을
+# 읽지 못한다(실측: PR 런 로그가 매번 `cache is not found`). 그래서 main 에서 도는 이
+# 워크플로가 캐시를 만들어 두어야 모든 PR 이 그것을 재사용할 수 있다.
+#
+# 캐시 키는 e2e.yml 과 반드시 동일하게 유지할 것 (`pw-${{ runner.os }}-<버전>`).
+# @playwright/test 를 올릴 때 두 파일의 버전을 함께 바꾼다.
+
+on:
+  schedule:
+    - cron: '0 17 * * 1' # 매주 월 UTC 17:00 = KST 화 02:00 (한산한 시간대)
+  workflow_dispatch:
+
+# 예열은 하나만 돌면 된다. 겹치면 나중 것을 버린다.
+concurrency:
+  group: warm-playwright-cache
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-1.61.1
+
+      # 캐시가 이미 있으면 install 이 즉시 끝나고, 없으면 내려받아 캐시에 저장된다.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Report
+        run: |
+          echo "cache-hit: ${{ steps.pw-cache.outputs.cache-hit }}"
+          du -sh ~/.cache/ms-playwright 2>/dev/null || true

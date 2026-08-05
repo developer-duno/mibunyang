@@ -13,26 +13,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  compute-scores:
+  # 세션 491: compute-scores + refresh-data 두 잡을 하나로 합쳤다.
+  # refresh-data 가 `needs: compute-scores` 라 애초에 순차 실행이어서 병렬 이득이 0인데도
+  # checkout·setup-node·npm ci 를 한 번 더 태우고(런당 14~23초) 잡마다 분 단위 올림 과금을
+  # 한 번 더 물었다. 스텝 순서(scores → collect-data → commit/push)는 그대로라 의존이 보존된다.
+  # checkout 옵션은 push 가 필요한 refresh-data 쪽(persist-credentials: true)을 채택.
+  # timeout 은 두 잡의 합(30+10)으로 잡는다.
+  scoring-and-refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci --legacy-peer-deps
-      - name: Compute apartment scores (cats_cache)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs
-
-  refresh-data:
-    needs: compute-scores
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,6 +32,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --legacy-peer-deps
+
+      - name: Compute apartment scores (cats_cache)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs
 
       - name: collect-data --from-supabase-only
         env:
