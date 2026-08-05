@@ -38,6 +38,30 @@ const STALE_DAYS = 35;
  */
 export const QUARTERLY_CRON_WORKFLOWS = [
   "DART 시공사 재무 수집",
+  // 세션 491: 월간 → 분기(1,4,7,10월) 전환. 빠뜨리면 35일 기준으로 잡혀 거짓 경보.
+  "Housing Permits Data Collection",
+  "Collect Building Hub (에너지+인허가)",
+];
+/**
+ * 예약(cron)이 아예 없는 워크플로 — ③ 미발화 점검 대상에서 제외.
+ *
+ * 세션 491 이 이 4개의 schedule 을 지웠다(매일 도는 경로가 같은 스크립트를 무인자로 실행하는 중복이라서).
+ * 그런데 monitor.yml 의 workflow_run.workflows 배열에는 그대로 남아 있어야 한다 —
+ * `scripts/audit-monitor-coverage.mjs` 가 collect-*.yml 의 등재를 CI 에서 강제하기 때문이다.
+ * 목록에서 빼면 exit 1 이 나므로 **코드 쪽에서 예외 처리**하는 것이 유일한 길이다.
+ *
+ * 이 예외가 없으면 마지막 run 이 35일을 넘는 순간 "월간 cron 1주기를 넘김" 이라는
+ * 사실과 다른 진단이 나가고, dedupKey 가 `stale|<name>|<lastRunAt>` 로 고정이라
+ * 그 1회 이후 ③ 은 해당 워크플로에 대해 **영구히 침묵**한다(거짓 경보로 검사 하나를 태워 없앰).
+ *
+ * ⚠️ 이 목록의 워크플로에 schedule 을 다시 넣으면 여기서도 빼야 한다.
+ *    monitor-collectors.test.mjs 가 yml 과 대조해 드리프트를 막는다.
+ */
+export const SCHEDULELESS_WORKFLOWS = [
+  "Transport Accessibility Collection",
+  "Infra Facilities Collection",
+  "School District Collection",
+  "Exclusive Ratio Calculation",
 ];
 /** 분기 cron 미발화 판정 임계 — 91 일 1주기 + 9 일 여유. */
 const QUARTERLY_STALE_DAYS = 100;
@@ -193,8 +217,14 @@ const KO_FIELD = {
  * 신규 외부 API collector 추가 시 이 배열 1줄 박힘 + checkExternalApiStale 회귀 답습 의무.
  */
 export const EXTERNAL_API_COLLECTORS = [
-  { collector: "housing-permits", stale_days: 38, owner: "MOLIT 주택건설실적 (월 10일 cron + 1주 여유)" },
-  { collector: "building-hub",    stale_days: 38, owner: "MOLIT 건축물대장 허브 (월 15일 cron + 1주 여유)" },
+  // ⚠️ 세션 491: 두 collector 의 cron 이 월간 → **분기**(1,4,7,10월)로 바뀌었다.
+  //    stale_days 를 38(월간 기준)로 두면 ⑤-b(미발화) 가 먼저 걸려 `continue` 로
+  //    ⑤-a(진짜 outage) 판정을 통째로 덮는다 — housing-permits 는 지금 3회 연속 ok=0 이라
+  //    "MOLIT API 장기 중단" 이 울려야 하는데 2026-08-18 부터 그게 사라졌을 것이다.
+  //    세션 463 이 반대 방향(월간에 14 를 박음)으로 겪은 것과 **같은 사고**다.
+  //    cron 을 월간으로 되돌릴 때 이 값도 38 로 함께 되돌릴 것.
+  { collector: "housing-permits", stale_days: QUARTERLY_STALE_DAYS, owner: "MOLIT 주택건설실적 (분기 10일 cron + 9일 여유)" },
+  { collector: "building-hub",    stale_days: QUARTERLY_STALE_DAYS, owner: "MOLIT 건축물대장 허브 (분기 15일 cron + 9일 여유)" },
   { collector: "transport-tago",  stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 14, owner: "청약홈 분양일정·평형 (주간 월 cron — 세션 467 주간화)" },
@@ -380,6 +410,11 @@ export function checkStaleWorkflows(workflows, now = new Date()) {
   /** @type {Issue[]} */
   const issues = [];
   for (const wf of workflows) {
+    // 세션 491: 예약(cron)이 없는 워크플로는 "미발화"라는 개념 자체가 성립하지 않는다.
+    // 수동 전용인데 35일 임계로 재면 설계상 영구히 참이 되어 거짓 경보가 나가고,
+    // dedup 때문에 그 1회 이후 ③ 이 해당 워크플로에 대해 영구 침묵한다.
+    if (SCHEDULELESS_WORKFLOWS.includes(wf.name)) continue;
+
     // 분기 cron 워크플로면 100일 임계, 그 외 35일 임계 (분기 cron false positive 차단, 세션 292).
     const isQuarterly = QUARTERLY_CRON_WORKFLOWS.includes(wf.name);
     const threshold = isQuarterly ? QUARTERLY_STALE_DAYS : STALE_DAYS;

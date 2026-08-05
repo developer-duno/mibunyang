@@ -85,7 +85,7 @@ src/
 
 api/                       Vercel 함수 25개 배포 (withHandler HOF)
 scripts/collectors/        수집기 56 + _shared/_molit-api 헬퍼 + .test.mjs (총 113 mjs)
-.github/workflows/         40 워크플로우 (수집·가공 35 + CI/E2E/배포/모니터 5)
+.github/workflows/         41 워크플로우 (수집·가공 34 + CI/E2E/캐시예열/배포/모니터 7)
 supabase/                  87 마이그레이션 누적 + 현재 15 테이블 + 2 VIEW
 ```
 

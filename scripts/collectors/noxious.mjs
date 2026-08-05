@@ -206,6 +206,7 @@ async function main() {
     /** @type {string[]} */
     const found = [];
     let minDist = Infinity;
+    let searchErrors = 0;
 
     for (const { keyword, category } of NOXIOUS_KEYWORDS) {
       try {
@@ -215,6 +216,7 @@ async function main() {
           if (r.dist < minDist) minDist = r.dist;
         }
       } catch (err) {
+        searchErrors++;
         const msg = err instanceof Error ? err.message : String(err);
         logError("search", `${apt.name} "${keyword}": ${msg}`);
       }
@@ -226,9 +228,26 @@ async function main() {
       log("progress", `${searched}/${targets.length}건 검색 완료`);
     }
 
+    // ⚠️ 세션 491 적대검증 후속 — **검색이 신뢰할 수 없으면 저장하지 않는다.**
+    //
+    // 아래 "발견 0건도 []로 기록" 규칙에는 치명적 구멍이 있었다. 카카오 키 만료·401·5xx 소진 등으로
+    // 한 단지의 키워드 검색이 **전부 throw** 하면 found=[] 인 채 "조회했고 없음"으로 확정 저장되고,
+    // 다음 회차부터 selectNoxiousTargets 의 `noxious == null` 필터가 그 단지를 영구히 건너뛴다.
+    // 즉 소각장·장례식장이 실제로 있는 단지가 감점을 영영 못 받는다.
+    // (세션 491 이전 코드는 `if (found.length > 0)` 게이트라 실패 단지가 null 로 남아 다음 달 재시도됐다.
+    //  즉 이 회귀는 세션 491 이 새로 만든 것이다.)
+    //
+    // 부분 실패 + 발견 0건도 같은 이유로 신뢰 불가다 — 실패한 키워드 쪽에 시설이 있었을 수 있다.
+    if (searchErrors > 0 && found.length === 0) {
+      logError("search", `${apt.name}: 검색 ${searchErrors}/${NOXIOUS_KEYWORDS.length}건 실패 + 발견 0건 — 저장 skip (null 유지, 다음 회차 재시도)`);
+      rpt.fail();
+      continue;
+    }
+
     // 세션 491: 발견 0건도 빈 배열로 기록한다 — "조회했고 없음"과 "아직 안 함"을 구분해야
     // 다음 회차에 건너뛸 수 있다. 점수(scoreLocation.ts:116)·화면(AptCard.tsx:98) 모두
     // `(noxious || [])` 로 읽으므로 null → [] 로 바뀌어도 표시·점수 영향은 0 (실측 확인).
+    // 위 가드를 통과했다 = 검색이 전부 성공했거나(신뢰 가능한 "없음"), 일부 실패해도 발견이 있었다.
     const row = buildNoxiousRow(apt.id, found, minDist);
     updates.push(row);
 

@@ -18,7 +18,13 @@ concurrency:
 jobs:
   calc-layout:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # ⚠️ 세션 491 적대검증 후속: 10 → 30.
+    #    같은 세션에서 PostgREST max_rows=1000 상한을 풀면서 complexes 가 1,000 → 63,838건이 됐고,
+    #    이름 유사도 비교가 **8,720만 쌍**(실측)으로 늘었다. 로컬 순수 CPU 벤치 140초이고
+    #    GitHub 러너는 더 느리므로 3~5분, 여기에 npm ci·조회·순차 UPDATE 가 더해진다.
+    #    10분이면 grace 0 SIGKILL 인데 calc-layout 은 collector_runs 를 안 남겨 흔적조차 없다.
+    #    근본 처방(별건): 이름 정규화를 쌍마다가 아니라 로드 직후 1회만 캐싱 / 버킷으로 후보 축소.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7

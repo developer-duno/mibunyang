@@ -64,6 +64,26 @@ git diff --stat <대상>                # 5. 변동 0 확인 (원복 검증)
 
 **뮤테이션은 최소 2종**을 권한다 — 조건 뒤집기(`==` → `===`, `if` → `if !`)와 가드 삭제. 하나만 하면 그 하나만 지켜진다.
 
+### ⚠️ 소스를 grep 하는 테스트는 선언부·주석·문자열에 걸린다 (세션 491 실제 사고)
+
+배선(어느 파일을 읽는지, 어떤 인자를 넘기는지)은 순수 함수 테스트로 못 잡아서 소스를 직접 grep 하게 되는데,
+**그 정규식이 함수 선언부에도 매칭되면 가드가 통째로 무효**가 된다.
+
+```js
+// 빨강 — 호출부를 되돌려도 통과한다
+//   `export function findMismatches(lockVersion, found, ...)` 선언부에 매칭되기 때문
+expect(src).toMatch(/findMismatches\(\s*lockVersion\s*,/);
+
+// 초록 — 좌변까지 고정해 호출부만 잡는다
+expect(src).toMatch(/const\s+issues\s*=\s*findMismatches\(\s*lockVersion\s*,/);
+```
+
+같은 이유로 **주석 처리된 코드**도 매칭된다(`_graceful-coverage.test.mjs` 의 `BREAK_REGEX` 가 이 취약점을 갖고 있다 —
+`if (rpt.interrupted()) break;` 앞에 `//` 를 붙이면 가드가 죽은 채 통과한다).
+소스 grep 가드를 쓸 땐 **좌변·선언 키워드까지 고정**하고, 가능하면 주석을 걷어낸 사본에 돌린다.
+
+**이 함정은 뮤테이션 없이는 절대 안 드러난다** — 정상 상태에서는 어차피 통과하기 때문이다.
+
 ### exit code 측정 함정
 
 ```bash
@@ -90,6 +110,20 @@ node scripts/audit-x.mjs > /tmp/x.log 2>&1; echo "exit=$?"; head -4 /tmp/x.log
 - ❌ 행복 경로만 테스트 — 가드가 필요 없는 입력만 넣으면 가드가 지워져도 모른다
 - ❌ 파이프(`| head`)로 exit code 측정
 - ❌ 뮤테이션 후 원복 확인 생략 — `git diff --stat` 으로 변동 0 을 반드시 본다
+
+## ⚠️ 주기·설정을 바꾸면 그것을 읽는 감시도 함께 바꾼다 (세션 491)
+
+같은 세션에서 워크플로 cron 을 월간 → 분기로 내리고 `monitor-collectors.mjs` 를 한 줄도 안 고쳐,
+**진짜 장애 경보가 "미발화"로 덮여 사라지는** 상태를 만들었다. 적대검증이 실제 함수를 돌려 잡았다.
+
+- `stale_days` 같은 임계는 **cron 주기의 파생값**이다. 한쪽만 바꾸면 조용히 어긋난다
+- 예약(cron)을 **아예 지운** 워크플로는 "미발화" 개념이 성립하지 않는데,
+  감시 목록에 남아 있으면 임계 초과 시 설계상 영구히 참이 되어 거짓 경보 → dedup 으로 **그 검사가 영구 침묵**
+- 이 저장소는 `.claude/rules/collectors/external-api-outage-policy.md`(세션 463)에 **같은 사고를 이미 기록**해 뒀는데
+  방향만 반대로 재발했다 — 룰이 있어도 "지금 내가 그 상황인지" 를 스스로 묻지 않으면 소용없다
+
+**의무**: cron·주기·플래그를 바꾸는 PR 은 `grep -rn "<대상 이름>" scripts/monitor*.mjs .claude/rules/` 로
+그 값을 읽는 곳을 전부 찾아 함께 고치고, **테스트로 두 파일을 묶는다**(한쪽만 바뀌면 red).
 
 ## 답습 자산
 
