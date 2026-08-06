@@ -59,24 +59,6 @@ export function buildListData(apartments) {
 }
 
 /**
- * 가격 JSON 데이터 (구 apartments-prices.json — PR1 전환기 유지, PR2 제거 예정).
- * @param {object[]} apartments
- * @returns {object[]}
- */
-export function buildPricesData(apartments) {
-  return apartments.map((a) => {
-    const apt = /** @type {Record<string, unknown>} */ (a);
-    return {
-      id: apt.id,
-      priceByArea: apt.priceByArea ?? null,
-      rentByArea: apt.rentByArea ?? null,
-      jeonseByArea: apt.jeonseByArea ?? null,
-      priceByFloor: apt.priceByFloor ?? null,
-    };
-  });
-}
-
-/**
  * 상세 버킷 데이터 — 단지 id 해시로 N개 버킷에 분산. 각 원소 = 상세 전용 필드 + 가격배열 + full catsCache.
  * DetailModal 이 버킷 1개 fetch → mergedApt/mergedRes 로 목록의 슬림 필드를 복원.
  * @param {object[]} apartments

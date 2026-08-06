@@ -3,6 +3,7 @@
 
 import { getSupabase } from "./_lib/supabase.js";
 import { withHandler } from "./_lib/handler.js";
+import { excludeLeaseUnits } from "../src/constants/leaseTypes.mjs";
 
 const STAGE_MAP = {
   plan: "분양계획",
@@ -43,7 +44,10 @@ async function handleGet(req: any, res: any) {
       return res.status(500).json({ ok: false, error: "데이터 조회 실패" });
     }
 
-    const rows = (data || []) as any[];
+    // 임대형 제외 — 곧분양 탭·홈 위젯도 "분양" 화면이다(사장님 결정 2026-08-07).
+    // 정적 JSON 과 달리 이 엔드포인트는 apartments_flat 을 라이브로 읽으므로 여기서 따로 거른다.
+    // 실측(2026-08-07): 3단계(분양계획/청약중/분양중) 648건 중 430건(66%)이 임대형이었다.
+    const rows = excludeLeaseUnits((data || []) as any[]);
 
     // 세션 469: "곧 분양(분양계획)"인데 청약홈 공식 접수시작일이 이미 지난 단지는 실제로는 과거 공고다.
     // 네이버 presaleStage 가 stale 이면(수집기 정지 등) 과거 공고가 계속 "분양계획"으로 남으므로,

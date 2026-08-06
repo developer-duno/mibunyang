@@ -9,12 +9,14 @@
  * 효과:
  *   프론트엔드 calcCats() 355,440 ops → 0 ops (서버 캐시 사용)
  */
-import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, recordCollectorRun } from "./collectors/_shared.mjs";
 import { computeRegionalMedians, calcCats } from "@/scoring/engine";
 
 // ── 설정 ─────────────────────────────────────────────────────
 const DRY_RUN = process.argv.includes("--dry-run");
 const BATCH_SIZE = 1000;
+/** collector_runs 기록명 — monitor ⑤ 라벨 드리프트 방지용 단일 출처. */
+const PHASE = "compute-scores";
 
 // ── cats_cache 검증 ──────────────────────────────────────────
 const REQUIRED_KEYS = ["price", "location", "product", "benefit", "risk", "future"];
@@ -44,7 +46,7 @@ function safeJsonReplacer(_key, value) {
 }
 
 // ── 메인 ─────────────────────────────────────────────────────
-async function main() {
+export async function main() {
   loadEnv();
   const sb = getSupabase();
   const reporter = createReporter("compute-scores");
@@ -63,6 +65,9 @@ async function main() {
 
     if (error) {
       logError("compute-scores", `데이터 로드 실패: ${error.message}`);
+      // 기록 후 종료 — 여기서 그냥 죽으면 collector_runs 에 아무 흔적이 안 남아
+      // "점수 갱신이 며칠째 안 됐다" 를 아무도 못 본다 (세션 495).
+      await recordCollectorRun(PHASE, { ...reporter.summary(), status: "failure", errorMessage: error.message });
       process.exit(1);
     }
     if (!data || data.length === 0) break;
@@ -73,6 +78,9 @@ async function main() {
 
   if (allApartments.length === 0) {
     log("compute-scores", "아파트 데이터 없음 — 종료");
+    // ok=0·skip=0 으로 기록된다 → monitor ② 가 "성공인데 처리 0건" 으로 잡는다.
+    // 아파트가 0건이면 그건 정상이 아니므로 울리는 게 맞다.
+    await recordCollectorRun(PHASE, reporter.summary());
     process.exit(0);
   }
 
@@ -114,6 +122,9 @@ async function main() {
   log("compute-scores", `스코어링 완료: ${rows.length}건 성공, ${skipCount}건 스킵`);
 
   // 4) DB 업서트
+  // DB 반영 실패 건수 — reporter 는 "계산" 성공/실패만 세므로 여기서 따로 받아 합산한다.
+  // 안 합치면 2000건 계산 성공 + 2000건 UPDATE 전멸이 collector_runs 에 status=success 로 남는다.
+  let dbFailed = 0;
   if (DRY_RUN) {
     log("compute-scores", `[DRY-RUN] ${rows.length}건 계산 완료 — DB 미반영`);
     // 샘플 출력
@@ -155,12 +166,18 @@ async function main() {
       logError("compute-scores", `${failed}건 UPDATE 실패 — RLS 정책 또는 ID 불일치 확인 필요`);
     }
     log("compute-scores", `DB UPDATE 완료: ${updated}/${rows.length}건 (실패 ${failed}건)`);
+    dbFailed = failed;
   }
 
-  reporter.summary();
+  if (dbFailed > 0) reporter.fail(dbFailed);
+  await recordCollectorRun(PHASE, reporter.summary());
 }
 
-main().catch(err => {
+// CLI 직접 실행 시에만 main() 호출 — import 만으로 수집이 돌면 테스트가 실 DB 를 친다
+// (다른 수집기 전부가 쓰는 isCLI 관행. 이 파일만 빠져 있어 테스트를 못 붙이고 있었다.)
+const argv1 = process.argv[1];
+const isCLI = argv1 && import.meta.url.endsWith(argv1.replace(/\\/g, "/").split("/").pop() ?? "");
+if (isCLI) main().catch(err => {
   const msg = err instanceof Error ? err.message : String(err);
   logError("compute-scores", msg);
   process.exit(1);
