@@ -19,6 +19,8 @@ describe("HeaderSection", () => {
     containerMaxWidth: 520,
   };
 
+  afterEach(() => vi.unstubAllEnvs());
+
   // 모바일: 타이틀과 단지 수 표시
   it("모바일: 헤더 타이틀과 단지 수를 표시", () => {
     render(<HeaderSection {...defaultProps} />);
@@ -86,19 +88,23 @@ describe("HeaderSection", () => {
     expect(screen.getByText(/0개 단지/)).toBeInTheDocument();
   });
 
-  // § 5-5: upcomingCount prop — Feature Flag ON (테스트 env) 기준
+  // § 5-5: upcomingCount prop — VITE_FEATURE_UPCOMING 은 stubEnv 로 명시적으로 켠다.
+  // CI(ci.yml Test 스텝 env 주입)에만 기대면 로컬 실행이 4건 빨강 (세션 494, BottomNav.test.jsx 패턴)
   it("§ 5-5: upcomingCount=392 → '📅 곧 분양 392개' 라벨", () => {
+    vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
     render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} upcomingCount={392} />);
     expect(screen.getByText("📅 곧 분양 392개")).toBeInTheDocument();
   });
 
   it("§ 5-5: upcomingCount=null → '📅 곧 분양' (숫자 fallback)", () => {
+    vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
     render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} upcomingCount={null} />);
     expect(screen.getByText("📅 곧 분양")).toBeInTheDocument();
     expect(screen.queryByText(/곧 분양 \d+개/)).not.toBeInTheDocument();
   });
 
   it("§ 5-5: upcomingCount=0 → '📅 곧 분양' (0건은 N개 미표기)", () => {
+    vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
     render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} upcomingCount={0} />);
     expect(screen.getByText("📅 곧 분양")).toBeInTheDocument();
   });
@@ -111,6 +117,7 @@ describe("HeaderSection", () => {
 
   // 관리자 로그인 상태에서도 '곧 분양' 메뉴 노출 (운영자 본인 사용성 — 세션 168 답습, 세션 405 admin 축 전환)
   it("adminLoggedIn=true 분기에도 '📅 곧 분양 N개' 노출 + 관리자 네비", () => {
+    vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
     render(
       <HeaderSection
         {...defaultProps}
