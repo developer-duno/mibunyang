@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
 import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate } from "./collectors/_shared.mjs";
 import { buildListData, buildDetailBuckets, detailBucketName } from "./static-outputs.mjs";
+import { excludeLeaseUnits } from "../src/constants/leaseTypes.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -1019,11 +1020,16 @@ function writeOutputs(apartments, fetchedAt) {
   // + 상세 해시 버킷 N개(catsCache full·학교·가격배열) 분리 출력 + 원본 유지(롤백 안전). 세션 468.
   // 구 apartments-prices.json 은 PR2(세션 495)에서 생성 중단 — 가격배열은 상세 버킷이 이미 싣는다.
   // 슬림/버킷 로직은 static-outputs.mjs 단일 소스 — split-apartments-json.mjs 와 동일 호출(드리프트 차단).
-  const listData = buildListData(apartments);
-  const detailBuckets = buildDetailBuckets(apartments);
+  // 임대형 제외 — 손님 화면 출력(apartments/list/상세버킷)이 전부 여기서 갈라지는 단일 길목.
+  // "분양 아파트 비교" 서비스라 임대형은 화면·점수 대상이 아니다(사장님 결정 2026-08-07).
+  // 수집·DB 저장은 무변경 — 여기서만 거른다(src/constants/leaseTypes.mjs 주석 참조).
+  const visible = excludeLeaseUnits(apartments);
+
+  const listData = buildListData(visible);
+  const detailBuckets = buildDetailBuckets(visible);
 
   // 양쪽 키 동시 박힘 (세션 292) — staticDataApi.ts L48-50 fallback 의존 제거 + Supabase 분기 응답과 키 정합.
-  const output = { ok: true, data: apartments, count: apartments.length, fetchedAt, dataUpdatedAt: fetchedAt };
+  const output = { ok: true, data: visible, count: visible.length, fetchedAt, dataUpdatedAt: fetchedAt };
   writeFileSync(resolve(outDir, "apartments.json"), JSON.stringify(output));
   writeFileSync(resolve(outDir, "apartments-list.json"), JSON.stringify({ ok: true, data: listData, count: listData.length, fetchedAt, dataUpdatedAt: fetchedAt }));
   for (const { bucket, data } of detailBuckets) {
@@ -1060,11 +1066,15 @@ export async function supabaseOnlyMode() {
 
   // apartments_flat VIEW — camelCase + psr/pir/dataReliability + naver 모두 박힘
   log("apartments_flat SELECT...");
-  const apartments = await selectAll(
+  const loaded = await selectAll(
     (s) => s.from("apartments_flat").select("*"),
     supabase,
   );
-  log(`  ${apartments.length}건 로드`);
+  // 회귀 가드보다 **먼저** 걸러야 한다. writeOutputs 가 쓴 apartments.json 의 count 는
+  // 임대형이 빠진 수인데, 여기서 안 거르면 "이번 회차(임대 포함) vs 지난 회차(임대 제외)"를
+  // 비교하게 되어 임대 건수(약 446)만큼 감소가 상쇄돼 진짜 유실을 못 잡는다.
+  const apartments = excludeLeaseUnits(loaded);
+  log(`  ${loaded.length}건 로드 → 임대형 ${loaded.length - apartments.length}건 제외, ${apartments.length}건`);
 
   // 회귀 가드 — count 절대값
   const MIN_COUNT = 1000;

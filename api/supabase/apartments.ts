@@ -13,6 +13,7 @@
 import { getSupabase } from "../_lib/supabase.js";
 import { withHandler } from "../_lib/handler.js";
 import { validateApartmentListQuery } from "../_lib/proxyValidation.js";
+import { excludeLeaseUnits } from "../../src/constants/leaseTypes.mjs";
 
 const BATCH_SIZE = 1000;
 
@@ -34,19 +35,19 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     const { region, gu, limit, offset, hasExplicitPagination } = validation.query;
 
     let allData;
-    let totalCount;
 
     if (hasExplicitPagination) {
-      // 명시적 limit/offset → 기존 단일 쿼리 (하위 호환)
-      let query = buildQuery(supabase, region, gu, true);
+      // 명시적 limit/offset → 기존 단일 쿼리 (하위 호환).
+      // exact count 요청을 끈다 — 응답 count 가 "임대형 제외 후 실제 반환 건수"로 바뀌면서
+      // DB 전체 건수를 쓸 곳이 없어졌다(이 브랜치는 배치 반복도 안 한다).
+      let query = buildQuery(supabase, region, gu, false);
       query = query.range(offset, offset + limit - 1);
-      const { data, error, count } = await query;
+      const { data, error } = await query;
       if (error) {
         console.error("Supabase query error:", error);
         return res.status(500).json({ ok: false, error: "데이터 조회 중 오류가 발생했습니다" });
       }
       allData = data || [];
-      totalCount = count;
     } else {
       // 기본: 배치 페이지네이션으로 전체 데이터 조회 (PostgREST max_rows=1000 우회)
       const firstQuery = buildQuery(supabase, region, gu, true).range(0, BATCH_SIZE - 1);
@@ -56,7 +57,6 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
         return res.status(500).json({ ok: false, error: "데이터 조회 중 오류가 발생했습니다" });
       }
       allData = firstBatch || [];
-      totalCount = count;
 
       // 추가 배치 필요 시 병렬 요청
       if (count && count > BATCH_SIZE) {
@@ -79,8 +79,15 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
       }
     }
 
+    // 임대형 제외 — 정적 JSON(collect-data.mjs writeOutputs)과 같은 기준.
+    // 현재 production 은 VITE_USE_SUPABASE=false 라 이 엔드포인트를 아무도 안 부르지만,
+    // 나중에 Supabase 모드로 켰을 때 임대형이 되살아나는 잠복 회귀를 막으려고 여기도 건다.
+    // DB 쿼리(not.in)가 아니라 JS 필터인 이유: SQL NOT IN 은 NULL 을 통째로 떨궈
+    // presaleType 미수집 단지(전체의 약 36%)까지 사라진다.
+    const visible = excludeLeaseUnits(allData);
+
     // null → 기본값 정리 (기존 JSON과 호환)
-    const cleaned = allData.map(sanitize);
+    const cleaned = visible.map(sanitize);
 
     // 데이터 최신성: 가장 최근 updated_at
     const { data: latestRow } = await supabase
@@ -96,7 +103,7 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     return res.status(200).json({
       ok: true,
       data: cleaned,
-      count: totalCount ?? cleaned.length,
+      count: cleaned.length,
       fetchedAt: new Date().toISOString(),
       dataUpdatedAt,
     });
