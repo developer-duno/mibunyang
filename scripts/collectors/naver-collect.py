@@ -3,7 +3,7 @@
 # python3 scripts/collectors/naver-collect.py [--limit=N] [--dry-run] [--max-minutes=N]
 import sys,os,json,re,time,argparse
 from pathlib import Path
-from datetime import datetime,date,timedelta,timezone
+from datetime import datetime,date,timezone
 try:
     from curl_cffi import requests as cffi_requests
 except ImportError: print("pip install curl_cffi",file=sys.stderr);sys.exit(1)
@@ -149,6 +149,53 @@ def _extract_json_obj(html,key):
             try:return json.loads(html[start:i+1])
             except json.JSONDecodeError:return None
     return None
+# 방문 체크포인트 = {complex_no: 마지막 방문 시각(UTC epoch 초)}.
+# 왜 로컬 파일인가: 매물이 0건인 단지는 articles 에 행이 안 생겨 last_seen_at 스탬프가 남지
+# 않는다 → 매 실행이 그 단지를 다시 방문해 예산만 태웠다. complexes 는 자매 레포와 공용이라
+# 컬럼을 늘리지 않고(스키마 변경 금지), last_crawled_at 은 마커 전체에 이미 찍혀 방문 구분이
+# 불가능하다. 그래서 "우리 실행이 실제로 크롤한 단지"만 로컬에 남긴다(.gitignore 등재).
+STATE_PATH=ROOT/".naver-collect-state.json"
+def load_visits(path=None):
+    """방문 체크포인트 로드. 없거나 깨졌으면 빈 dict(= 전체 재방문 = 안전한 쪽)."""
+    p=Path(path) if path else STATE_PATH
+    try:
+        d=json.loads(p.read_text(encoding="utf8"))
+        return {str(k):float(v) for k,v in d.items() if isinstance(v,(int,float))}
+    except Exception:return {}
+def save_visits(visits,path=None):
+    """방문 체크포인트 저장 — tmp 에 쓰고 원자적 교체(강제종료 중 깨진 파일이 남지 않게).
+    저장 실패는 다음 실행이 조금 더 도는 것뿐이라 파이프라인을 막지 않는다."""
+    p=Path(path) if path else STATE_PATH
+    try:
+        tmp=p.with_name(p.name+".tmp")
+        tmp.write_text(json.dumps(visits,separators=(",",":")),encoding="utf8")
+        tmp.replace(p)
+    except Exception as e:log(f"  방문 체크포인트 저장 실패(무시): {e}")
+def _epoch(s):
+    """ISO 문자열 → UTC epoch 초. 시간대 표기가 없는 값은 UTC 로 간주. 실패 시 0.0."""
+    if not s:return 0.0
+    try:
+        d=datetime.fromisoformat(str(s).replace("Z","+00:00"))
+        if d.tzinfo is None:d=d.replace(tzinfo=timezone.utc)
+        return d.timestamp()
+    except (ValueError,TypeError):return 0.0
+def order_targets(targets,visits,skip_before=None):
+    """크롤 순서 = 오래 안 본 단지 먼저(한 번도 안 본 단지 최우선), 동률은 complex_no 로 결정적 정렬.
+    skip_before(UTC epoch 초)보다 최근에 본 단지는 pending 에서 빼고 skipped 로 센다.
+
+    왜 정렬이 필요한가: 예전엔 무정렬 select 가 준 순서를 그대로 돌아, 시간예산으로 앞쪽 몇 백
+    단지만 처리하고 끊기면 다음 실행도 *같은 앞쪽*을 다시 집어 뒤쪽 단지는 영원히 굶었다
+    (frontier 정체). 방문 시각 오름차순이면 매 실행이 반드시 전진한다.
+
+    반환: (pending 리스트, skipped 개수)"""
+    ranked=[];skipped=0
+    for cx in targets:
+        cn=str(cx.get("complex_no"))
+        v=visits.get(cn,0.0)
+        if skip_before is not None and v>=skip_before:skipped+=1;continue
+        ranked.append((v,cn,cx))
+    ranked.sort(key=lambda t:(t[0],t[1]))
+    return [t[2] for t in ranked],skipped
 def thr(s=5.0):
     # 세션118 긴급 완화: 네이버 IP 쿨다운 대응 (cooldown_fix.md ②)
     # 기본 요청 간격 1초 → 5초로 상향 (naver-listings.mjs MIN_INTERVAL과 일치)
@@ -251,6 +298,66 @@ def find_markers(cortar_no,lats,lngs,margin=0.03):
     d=ag(f"{NV}/api/complexes/single-markers/2.0",params)
     return d if isinstance(d,list) else []
 
+def collect_complex(cn):
+    """단지 하나의 매물 + 시세를 **한 묶음으로** 수집 → (매물수, 시세수, 실패수).
+
+    왜 한 묶음인가: 예전엔 매물 루프와 시세 루프가 따로 돌면서 같은 시간예산을 나눠 썼다.
+    매물 루프가 항상 예산을 먼저 다 태워서 시세 루프는 i=0 에서 즉시 끊겼고, 완주한 실행
+    뒤에도 시세 신규 0행이었다(방문 단지의 34%는 시세 이력 자체가 0행). 단지 단위로 묶으면
+    예산이 어디서 끊기든 "이번에 받은 단지는 매물·시세 둘 다" 확보된다.
+
+    매물/시세를 각각 try 로 감싸는 이유 = 시세가 실패해도 이미 받은 매물은 살리기 위함."""
+    na=0;np_=0;nf=0
+    try:
+        sa=set();arts=[];pg=1
+        while True:
+            d=ag(f"{NV}/api/articles/complex/{cn}",{"page":str(pg),"complexNo":cn,"tradeType":"","sameAddressGroup":"true"},cn)
+            al=d.get("articleList",[])
+            if not al:break
+            for x in al:
+                an=str(x["articleNo"]);sa.add(an)
+                pr=pp(x.get("dealOrWarrantPrc"));a2=float(x["area2"]) if x.get("area2") else None
+                ppp=round(pr/(a2/M2P)) if pr and a2 and a2>0 else None
+                arts.append({"article_no":an,"complex_no":cn,"trade_type_name":x.get("tradeTypeName",""),
+                    "numeric_price":pr or None,"numeric_rent_price":pp(x.get("rentPrc")) or None,
+                    "area1_m2":float(x["area1"]) if x.get("area1") else None,
+                    "area2_m2":a2,"price_per_pyeong":ppp,"floor_info":x.get("floorInfo"),
+                    "direction":x.get("direction"),"is_active":True,
+                    "last_seen_at":datetime.now(timezone.utc).isoformat()})
+            if not d.get("isMoreData"):break
+            pg+=1;time.sleep(1.5)
+        if arts:ub("articles",arts,"article_no");na=len(arts)
+        if sa:
+            try:SB.update("articles",{"is_active":False},[f"complex_no=eq.{cn}","is_active=eq.true",f"article_no=not.in.({chr(44).join(sa)})"])
+            except Exception as de:
+                log(f"  소프트삭제 실패 {cn}, 재시도: {de}")
+                time.sleep(1)
+                try:SB.update("articles",{"is_active":False},[f"complex_no=eq.{cn}","is_active=eq.true",f"article_no=not.in.({chr(44).join(sa)})"])
+                except Exception as de2:log(f"  소프트삭제 최종실패 {cn}: {de2}")
+    except Exception as e:nf+=1;log(f"  {cn} 매물:{e}")
+    try:
+        rows=[]
+        for tt in["A1","B1"]:
+            d=ag(f"{NV}/api/complexes/{cn}/prices",{"complexNo":cn,"tradeType":tt,"year":"5","priceChartChange":"true","type":"table"},cn)
+            area_no=str(d.get("areaNo")) if d.get("areaNo") is not None else None
+            items=d.get("marketPrices") or d.get("realEstatePrice",{}).get("monthlyPrices") or []
+            if not isinstance(items,list):continue
+            for it in items:
+                bm=str(it.get("baseYearMonthDay") or it.get("baseYearMonth") or "")
+                if not bm:continue
+                up=it.get("dealUpperPriceLimit") or it.get("dealUpperPrice") or it.get("leaseUpperPriceLimit") or it.get("leaseUpperPrice")
+                lo=it.get("dealLowPriceLimit") or it.get("dealLowerPrice") or it.get("leaseLowPriceLimit") or it.get("leaseLowerPrice")
+                avg=round((up+lo)/2) if up and lo else up or lo
+                rows.append({"complex_no":cn,"trade_type":tt,
+                    "area_no":area_no,
+                    "price_upper":up,"price_lower":lo,"price_avg":avg,
+                    "base_month":bm[:8].ljust(8,"0")})
+        if rows:
+            # upsert 방식 (DELETE+INSERT 대신 — INSERT 실패 시 데이터 손실 방지)
+            np_=ub("complex_price_history",rows,"complex_no,trade_type,area_no,base_month")
+    except Exception as e:nf+=1;log(f"  {cn} 시세:{e}")
+    return na,np_,nf
+
 def main():
     pa=argparse.ArgumentParser()
     pa.add_argument("--limit",type=int,default=0)
@@ -264,8 +371,8 @@ def main():
     #   남은 단지는 resume(articles.last_seen_at)으로 다음 실행이 이어받는다. 0 이하 = 무제한.
     pa.add_argument("--max-minutes",type=float,default=90)
     a=pa.parse_args()
-    # collector_runs 시각은 UTC — .mjs recordCollectorRun(toISOString)과 같은 축(timezone-consistency).
-    # articles.last_seen_at 의 로컬 벽시계 축과는 별개 짝(저장·조회가 서로 맞으면 됨).
+    # 이 파일이 쓰는 모든 시각은 UTC — collector_runs 는 .mjs recordCollectorRun(toISOString) 과,
+    # articles.last_seen_at·complexes.last_crawled_at 은 자매 레포(UTC writer)와 같은 축이 된다.
     t0=time.time();started_at=datetime.now(timezone.utc).isoformat()
     budget=a.max_minutes*60 if a.max_minutes>0 else 0
     def over():return budget>0 and time.time()-t0>budget
@@ -280,25 +387,33 @@ def main():
     apts=SB.select("apartments","id,name,region,gu,dong,lat,lng",["lat=not.is.null","lng=not.is.null"])
     tgt=apts[:a.limit] if a.limit>0 else apts
     log(f"미분양 {len(tgt)}건 (전체 {len(apts)})")
-    # resume: 최근 7일 내 last_seen_at 이 찍힌 complex_no = 이미 수집됨 → 매물·시세 skip.
-    # 창을 "오늘"에서 7일로 넓힌 이유: --max-minutes 로 한 번에 일부만 수집하므로, 다음 실행(월↔목)이
-    # 남은 단지를 이어받아 전체를 여러 번에 걸쳐 순환해야 한다. 오늘 기준이면 매 실행이 처음부터 다시 돌아
-    # 앞쪽 단지만 반복 수집하고 뒤쪽은 영원히 굶는다.
-    # 시너지: 자매 레포(naver-estate-web)가 같은 articles.last_seen_at 을 찍는 단지는 자동으로 스킵되어,
-    #   우리 예산이 "우리만 보는 단지"에 집중된다.
-    # DB(articles.last_seen_at)가 진실의 원천 → 체크포인트 파일 동기화 사고 없음(세션 470, schools buildEnrichedIds 답습).
-    done_cx=set()
+    # resume = "언제 봤나"를 단지별로 모아 (1) 최근 7일 내 본 단지는 건너뛰고 (2) 나머지를
+    # 오래 안 본 순으로 돌린다. --max-minutes 로 한 실행이 일부만 처리하므로, 이 순서가 없으면
+    # 매 실행이 같은 앞쪽 단지만 다시 집어 뒤쪽은 영원히 굶는다(frontier 정체).
+    # 출처 둘을 병합(더 최근 값 채택):
+    #   - DB articles.last_seen_at — 자매 레포(naver-estate-web)가 찍은 것도 잡혀, 우리 예산이
+    #     "우리만 보는 단지"에 집중되는 시너지가 있다.
+    #   - 로컬 체크포인트 — 매물 0건이라 articles 행이 안 생긴 단지, 7일보다 오래된 방문 이력.
+    visits=load_visits()  # 로컬 체크포인트(매물 0건 단지 포함) — DB 만으로는 남길 수 없는 방문 기록
+    skip_before=None
     if not a.dry_run and not a.no_resume:
-        # 저장부(last_seen_at=datetime.now().isoformat())와 동일한 datetime.now() 축을 써서
-        # 시간축 일관성 보장 — 저장·조회 둘 다 로컬 벽시계(집서버=KST) 기준이라 경계 비교가 정확.
-        # (timestamptz 컬럼이 +00:00 딱지를 붙여도 숫자가 같은 축. 저장부가 바뀌면 함께 바꿀 것.)
-        since=(datetime.now()-timedelta(days=7)).replace(microsecond=0).isoformat()
+        skip_before=time.time()-7*86400
+        # 저장부(last_seen_at=datetime.now(timezone.utc))와 **같은 UTC 축**으로 조회한다.
+        # 예전엔 저장·조회가 둘 다 naive 로컬(KST)이라 자매 레포(UTC writer)와 같은 컬럼에
+        # 9시간 어긋난 라벨이 섞였다 — 축을 UTC 하나로 통일(timezone-consistency 룰).
+        since=datetime.fromtimestamp(skip_before,timezone.utc).replace(microsecond=0).isoformat()
         try:
-            seen_rows=SB.select("articles","complex_no",[f"last_seen_at=gte.{since}","is_active=eq.true"])
-            done_cx={str(r["complex_no"]) for r in seen_rows if r.get("complex_no")}
-            if done_cx:log(f"resume: 최근 7일 내 수집한 {len(done_cx)}개 단지 건너뜀 (매물·시세)")
+            seen_rows=SB.select("articles","complex_no,last_seen_at",[f"last_seen_at=gte.{since}","is_active=eq.true"])
+            db_cx=set()
+            for r in seen_rows:
+                cn=r.get("complex_no")
+                if not cn:continue
+                cn=str(cn);db_cx.add(cn)
+                ts=_epoch(r.get("last_seen_at"))
+                if ts>visits.get(cn,0.0):visits[cn]=ts
+            log(f"resume: DB 스탬프 {len(db_cx)}개 단지 반영 (로컬 체크포인트 {len(visits)}개 누적)")
         except Exception as e:
-            log(f"resume 조회 실패 — 전체 수집으로 진행(fail-open): {e}");done_cx=set()
+            log(f"resume 조회 실패 — 로컬 체크포인트만으로 진행(fail-open): {e}")
     # region -> gu cortarNo 캐시
     gu_cache={}
     for rn,cc in REGION_CORTAR.items():
@@ -358,7 +473,9 @@ def main():
                     "total_household_count":c.get("totalHouseholdCount") or c.get("householdCount"),
                     "use_approve_ymd":c.get("completionYearMonth"),
                     "construction_company":c.get("constructionCompanyName"),
-                    "last_crawled_at":datetime.now().isoformat()})
+                    # 이 파일의 모든 시각은 UTC 로 통일 — 같은 timestamptz 컬럼을 쓰는
+                    # 자매 레포(naver-estate-web)가 UTC 로 쓰기 때문(timezone-consistency).
+                    "last_crawled_at":datetime.now(timezone.utc).isoformat()})
             log(f"  -> {len(markers)} 마커, {nc} 신규")
         except Exception as e:log(f"  실패:{e}")
     log(f"단지 총 {len(cpxs)}건")
@@ -370,73 +487,24 @@ def main():
         if cpxs:log(json.dumps(cpxs[0],ensure_ascii=False,indent=2)[:500])
         log("dry-run");return
     ub("complexes",cpxs,"complex_no")
-    ta=0
-    for i,cx in enumerate(targets):
+    # 회전 = 오래 안 본 단지부터. 예산에 잘려도 다음 실행이 그 다음 단지들을 집어 전체를 순환한다.
+    pending,skipped=order_targets(targets,visits,skip_before)
+    log(f"회전 대상 {len(pending)}건 (최근 7일 내 방문 {skipped}건 건너뜀, 오래 안 본 순)")
+    ta=0;tp=0
+    for i,cx in enumerate(pending):
         if over():
-            log(f"시간예산 {a.max_minutes}분 소진 — 남은 {len(targets)-i}단지는 다음 실행이 이어함(resume)")
+            log(f"시간예산 {a.max_minutes}분 소진 — 남은 {len(pending)-i}단지는 다음 실행이 이어함(resume)")
             budget_hit=True;break
-        if(i+1)%50==0:log(f"  {i+1}/{len(targets)}, {ta}매물")
+        if(i+1)%50==0:log(f"  {i+1}/{len(pending)}, 매물{ta} 시세{tp}")
         cn=cx["complex_no"]
-        if cn in done_cx:skipped+=1;continue  # resume: 최근 7일 내 수집한 단지 매물 건너뜀
-        try:
-            sa=set();arts=[];pg=1
-            while True:
-                d=ag(f"{NV}/api/articles/complex/{cn}",{"page":str(pg),"complexNo":cn,"tradeType":"","sameAddressGroup":"true"},cn)
-                al=d.get("articleList",[])
-                if not al:break
-                for x in al:
-                    an=str(x["articleNo"]);sa.add(an)
-                    pr=pp(x.get("dealOrWarrantPrc"));a2=float(x["area2"]) if x.get("area2") else None
-                    ppp=round(pr/(a2/M2P)) if pr and a2 and a2>0 else None
-                    arts.append({"article_no":an,"complex_no":cn,"trade_type_name":x.get("tradeTypeName",""),
-                        "numeric_price":pr or None,"numeric_rent_price":pp(x.get("rentPrc")) or None,
-                        "area1_m2":float(x["area1"]) if x.get("area1") else None,
-                        "area2_m2":a2,"price_per_pyeong":ppp,"floor_info":x.get("floorInfo"),
-                        "direction":x.get("direction"),"is_active":True,
-                        "last_seen_at":datetime.now().isoformat()})
-                if not d.get("isMoreData"):break
-                pg+=1;time.sleep(1.5)
-            if arts:ub("articles",arts,"article_no");ta+=len(arts)
-            if sa:
-                try:SB.update("articles",{"is_active":False},[f"complex_no=eq.{cn}","is_active=eq.true",f"article_no=not.in.({chr(44).join(sa)})"])
-                except Exception as de:
-                    log(f"  소프트삭제 실패 {cn}, 재시도: {de}")
-                    time.sleep(1)
-                    try:SB.update("articles",{"is_active":False},[f"complex_no=eq.{cn}","is_active=eq.true",f"article_no=not.in.({chr(44).join(sa)})"])
-                    except Exception as de2:log(f"  소프트삭제 최종실패 {cn}: {de2}")
-        except Exception as e:failed+=1;log(f"  {cn}:{e}")
-    log(f"매물 {ta}건")
-    log("시세...")
-    tp=0
-    for i,cx in enumerate(targets):
-        if over():
-            log(f"시간예산 {a.max_minutes}분 소진 — 시세 남은 {len(targets)-i}단지는 다음 실행이 이어함(resume)")
-            budget_hit=True;break
-        if(i+1)%50==0:log(f"  시세{i+1}/{len(targets)},{tp}")
-        cn=cx["complex_no"]
-        if cn in done_cx:continue  # resume: 최근 7일 내 수집한 단지 시세 건너뜀
-        try:
-            rows=[]
-            for tt in["A1","B1"]:
-                d=ag(f"{NV}/api/complexes/{cn}/prices",{"complexNo":cn,"tradeType":tt,"year":"5","priceChartChange":"true","type":"table"},cn)
-                area_no=str(d.get("areaNo")) if d.get("areaNo") is not None else None
-                items=d.get("marketPrices") or d.get("realEstatePrice",{}).get("monthlyPrices") or []
-                if not isinstance(items,list):continue
-                for it in items:
-                    bm=str(it.get("baseYearMonthDay") or it.get("baseYearMonth") or "")
-                    if not bm:continue
-                    up=it.get("dealUpperPriceLimit") or it.get("dealUpperPrice") or it.get("leaseUpperPriceLimit") or it.get("leaseUpperPrice")
-                    lo=it.get("dealLowPriceLimit") or it.get("dealLowerPrice") or it.get("leaseLowPriceLimit") or it.get("leaseLowerPrice")
-                    avg=round((up+lo)/2) if up and lo else up or lo
-                    rows.append({"complex_no":cn,"trade_type":tt,
-                        "area_no":area_no,
-                        "price_upper":up,"price_lower":lo,"price_avg":avg,
-                        "base_month":bm[:8].ljust(8,"0")})
-            if rows:
-                # upsert 방식 (DELETE+INSERT 대신 — INSERT 실패 시 데이터 손실 방지)
-                tp+=ub("complex_price_history",rows,"complex_no,trade_type,area_no,base_month")
-        except Exception as e:failed+=1;log(f"  {cn}:{e}")
-    log(f"시세 {tp}건")
+        na,np_,nf=collect_complex(cn)  # 매물·시세를 같은 단지에서 한 번에 (기아 구조 해소)
+        ta+=na;tp+=np_;failed+=nf
+        # 매물이 0건이어도 "봤다"는 스탬프를 남긴다 — articles 에 행이 안 생기는 단지가
+        # 매 실행 재방문 대상이 되어 예산을 태우던 누수 차단.
+        visits[cn]=time.time()
+        if(i+1)%20==0:save_visits(visits)  # 중간 저장 — 강제종료돼도 진행분이 남게
+    save_visits(visits)
+    log(f"매물 {ta}건 / 시세 {tp}건")
     # 단지 상세 정보 (ejwt에서 수집) → complexes UPDATE
     if COMPLEX_DETAILS and not a.dry_run:
         du=0
