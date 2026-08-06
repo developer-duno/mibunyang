@@ -6,7 +6,7 @@ import type { PriceTableProps, PriceAreaRow } from "@/types/detail";
 
 export const PriceTable = memo(function PriceTable({ apt, isLoading, error }: PriceTableProps) {
   const allSell = (apt.priceByArea as PriceAreaRow[] | undefined) ?? [];
-  // 가격배열 미로드 — apartments-prices.json lazy fetch 동안 placeholder 또는 에러 메시지
+  // 가격배열 미로드 — 상세 버킷 lazy fetch 동안 placeholder 또는 에러 메시지
   if (allSell.length === 0) {
     if (isLoading) {
       return (

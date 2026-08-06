@@ -155,7 +155,6 @@ function makeTestApartments() {
 // fetchApartmentDetail: DetailModal(lazy) 마운트 시 priceByArea=undefined 면 버킷 fetch 발동 — mock 누락 시 VitestMocker 에러
 vi.mock("@/services/staticDataApi", () => ({
   fetchStaticApartments: vi.fn(),
-  fetchApartmentPrices: vi.fn().mockResolvedValue(null),
   fetchApartmentDetail: vi.fn().mockResolvedValue(null),
 }));
 
