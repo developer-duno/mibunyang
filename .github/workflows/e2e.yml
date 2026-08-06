@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-1.61.1
+          key: pw-${{ runner.os }}-1.62.1
 
       # ⚠️ `--with-deps` 유지 필수 — 설치 70초 중 53초가 apt(시스템 라이브러리)이고 캐시 대상이 아니다.
       #    빼면 webkit 이 실행되지 않는다.
