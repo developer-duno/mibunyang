@@ -24,6 +24,7 @@ describe("useShareCallbacks", () => {
     minScore: "",
     builderTier: "전체",
     benefitOnly: false,
+    isLoggedIn: true,
     ...overrides,
   });
 
@@ -40,6 +41,36 @@ describe("useShareCallbacks", () => {
     expect(call.title).toContain("테스트아파트");
     expect(call.url).toContain("detail=1");
     expect(call.url).toContain("profile=live");
+  });
+
+  // 세션 495: 상세에서 점수를 가려 놓고(단계 2-A) 공유 문구로 흘리면 블라인드가 무의미해진다.
+  // 카카오 피드 description·SMS 본문이 전부 이 text 를 그대로 쓴다.
+  it("handleShareDetail (비로그인): 공유 문구에 점수가 없다", () => {
+    const openShareSheet = vi.fn();
+    const { result } = renderHook(() => useShareCallbacks(makeProps({ openShareSheet, isLoggedIn: false })));
+
+    act(() => {
+      result.current.handleShareDetail("1");
+    });
+
+    const call = openShareSheet.mock.calls[0][0];
+    expect(call.text).not.toContain("점");
+    expect(call.text).not.toContain("85");
+    // 가리는 건 점수뿐 — 단지명·가격은 그대로 남는다(공유가 빈껍데기가 되면 안 됨)
+    expect(call.text).toContain("테스트아파트");
+    expect(call.title).toContain("테스트아파트");
+    expect(call.url).toContain("detail=1");
+  });
+
+  it("handleShareDetail (로그인): 공유 문구에 점수가 그대로 있다", () => {
+    const openShareSheet = vi.fn();
+    const { result } = renderHook(() => useShareCallbacks(makeProps({ openShareSheet, isLoggedIn: true })));
+
+    act(() => {
+      result.current.handleShareDetail("1");
+    });
+
+    expect(openShareSheet.mock.calls[0][0].text).toContain("85점");
   });
 
   it("handleShareDetail: scoredMap에 없는 id면 openShareSheet 호출 안 함", () => {

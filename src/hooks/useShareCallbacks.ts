@@ -26,6 +26,16 @@ interface UseShareCallbacksArgs {
   minScore: string | number | null | "";
   builderTier: string;
   benefitOnly: boolean;
+  /**
+   * 로그인 여부 — false 면 단지 공유 문구에서 **점수를 뺀다** (세션 495).
+   *
+   * 상세 모달이 비로그인에게 점수를 가려도(단계 2-A) 공유 CTA 는 그대로 살아 있어서,
+   * 여기서 안 자르면 카카오 피드 description·SMS 본문으로 가린 숫자가 그대로 새 나간다.
+   * 카카오/SMS/복사 세 경로가 전부 이 `text` 를 읽으므로 문구 생성 지점 한 곳만 막으면 된다.
+   *
+   * **선택값이 아니라 필수값**인 게 이 가드의 절반이다 — 배선이 빠지면 typecheck 가 잡는다.
+   */
+  isLoggedIn: boolean;
 }
 
 interface UseShareCallbacksReturn {
@@ -56,6 +66,7 @@ export function useShareCallbacks({
   minScore,
   builderTier,
   benefitOnly,
+  isLoggedIn,
 }: UseShareCallbacksArgs): UseShareCallbacksReturn {
   const scoredMapRef = useRef(scoredMap);
   useEffect(() => {
@@ -70,11 +81,14 @@ export function useShareCallbacks({
       const sep = base.includes("?") ? "&" : "?";
       openShareSheet({
         title: `${item.apt.name} - 미분양 분석`,
-        text: `${item.apt.name} ${item.res.total}점 · ${fmtPrice(item.apt.price)}`,
+        // 비로그인은 점수를 뺀 "단지명 · 가격" — 가린 점수가 공유 경로로 새는 것을 여기서 막는다.
+        text: isLoggedIn
+          ? `${item.apt.name} ${item.res.total}점 · ${fmtPrice(item.apt.price)}`
+          : `${item.apt.name} · ${fmtPrice(item.apt.price)}`,
         url: `${base}${sep}detail=${aptId}&profile=${profile}`,
       });
     },
-    [profile, openShareSheet, getShareURL]
+    [profile, openShareSheet, getShareURL, isLoggedIn]
   );
 
   const handleShareCompare = useCallback(() => {
