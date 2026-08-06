@@ -26,7 +26,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo === 2/6 sync naver -> apartments ===
+echo === 2/6 sync naver to apartments ===
 call node scripts/collectors/sync-naver-complex.mjs
 if errorlevel 1 (
   echo [%date% %time%] ERROR: sync-naver-complex.mjs failed >> "%LOG%"
