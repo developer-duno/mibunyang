@@ -56,6 +56,7 @@ KOSIS 에러 코드(개발가이드 PDF 16p): 10/11 인증키 누락·만료 · 
 |---|---|---|
 | `CHILDCARE_API_KEY` | childcare-info | cpmsapi021 (어린이집 시군구별 목록) |
 | `CHILDCARE_BASIC_API_KEY` | childcare-detail | cpmsapi030 (어린이집 상세 70필드) |
+| `CHILDCARE_JEJU_KEY` | childcare-info-jeju | cpmsapi017 (제주시·서귀포시 전용 — cpmsapi021 미보유 2 시군구 보완) |
 
 > cpmsapi021 은 시군구당 응답 50건 hard limit (세션 252). BACKLOG 🔴 잔존.
 
@@ -68,13 +69,14 @@ KOSIS 에러 코드(개발가이드 PDF 16p): 10/11 인증키 누락·만료 · 
 | 환경변수 | 쓰는 수집기 |
 |---|---|
 | `KAKAO_KEY` | collect-childcare, collect-police, environment, geocode-missing, infra-kakao, noxious, reverse-geocode, schools-neis, transport-tago |
-| `KAKAO_REST_KEY` | noise-estimate (※ KAKAO_KEY 와 같은 값 가능 — 이름만 다름) |
+| `KAKAO_REST_KEY` | (미사용·폐기) 코드 사용처 0 — noise-estimate 도 `KAKAO_KEY` 사용 (세션 494 인벤토리 실측) |
 
 ### 5. 기타 단일 발급처
 
 | 환경변수 | 수집기 | 발급처 |
 |---|---|---|
 | `DART_KEY` | dart-builders | 금융감독원 OpenDART: https://opendart.fss.or.kr/intro/main.do |
+| `FINLIFE_API_KEY` | api/finlife/* (rates·loans·rent-loans — 수집기 아님, Vercel 함수) | 금융감독원 금융상품통합비교공시 오픈API: https://finlife.fss.or.kr/finlife/main/contents.do?menuNo=700029 |
 | `NEIS_KEY` | schools-neis | 나이스 교육정보 개방포털: https://open.neis.go.kr |
 | `SCHOOLINFO_KEY` | schools-neis | 학교알리미 (별도) |
 

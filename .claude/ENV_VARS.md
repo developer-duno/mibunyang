@@ -46,7 +46,7 @@
 | 변수 | 쓰는 수집기 | 필수 | 비고 |
 |------|------|------|------|
 | `KAKAO_KEY` | collect-childcare / collect-police / environment / geocode-missing / infra-kakao / noxious / reverse-geocode / schools-neis / transport-tago | O (인프라 수집 활성 시) | 카카오 로컬 API REST 키 |
-| `KAKAO_REST_KEY` | noise-estimate | - | KAKAO_KEY 와 같은 값 가능 (이름만 분리) |
+| `KAKAO_REST_KEY` | (미사용·폐기) | - | 코드 사용처 0 — noise-estimate 도 KAKAO_KEY 사용 (세션 494 인벤토리 실측) |
 
 ## 기타 단일 발급처
 
