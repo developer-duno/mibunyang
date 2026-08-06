@@ -21,7 +21,7 @@ API 키는 제공처(공급기관)별로 발급 절차가 다르다. 크게 5개
 
 | 환경변수 | 쓰는 수집기 | 공공데이터포털 API 상세 페이지 |
 |---|---|---|
-| `MOLIT_KEY` | molit-units, molit-building-info, collect-maintenance, collect-trades, collect-building-hub, collect-applyhome, collect-emergency, housing-permits | 아파트 기본정보: https://www.data.go.kr/data/15057511/openapi.do · 아파트 관리비: https://www.data.go.kr/data/15099426/openapi.do · 실거래가: https://www.data.go.kr/data/15058017/openapi.do · 건축 인허가: https://www.data.go.kr/data/15044713/openapi.do · 건물 에너지: https://www.data.go.kr/data/15049650/openapi.do · 청약홈 경쟁률: https://www.data.go.kr/data/15110589/openapi.do · 응급의료기관: https://www.data.go.kr/data/15000563/openapi.do |
+| `MOLIT_KEY` | molit-units, molit-building-info, collect-maintenance, collect-trades, collect-building-hub, collect-applyhome, collect-emergency, housing-permits | 아파트 기본정보: https://www.data.go.kr/data/15057511/openapi.do · 아파트 관리비: https://www.data.go.kr/data/15099426/openapi.do · 실거래가: https://www.data.go.kr/data/15058017/openapi.do · 건축 인허가: https://www.data.go.kr/data/15044713/openapi.do · 건물 에너지: https://www.data.go.kr/data/15049650/openapi.do · 청약홈 경쟁률: https://www.data.go.kr/data/15098905/openapi.do (구 15110589 는 404 — 세션 494 실측) · 응급의료기관: https://www.data.go.kr/data/15000563/openapi.do |
 | `AIRKOREA_KEY` | collect-air-quality | 한국환경공단 에어코리아 대기오염정보: https://www.data.go.kr/data/15073861/openapi.do |
 | `MOIS_POP_KEY` | population | 행정안전부 주민등록 인구·세대현황: https://www.data.go.kr/data/15094808/openapi.do |
 | `MOIS_SEX_AGE_KEY` | population-sex-age | 행정안전부 주민등록 성별·연령별 인구: https://www.data.go.kr/data/15094820/openapi.do |
