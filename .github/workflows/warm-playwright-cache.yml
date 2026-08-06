@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-1.61.1
+          key: pw-${{ runner.os }}-1.62.1
 
       # 캐시가 이미 있으면 install 이 즉시 끝나고, 없으면 내려받아 캐시에 저장된다.
       - name: Install Playwright browsers
