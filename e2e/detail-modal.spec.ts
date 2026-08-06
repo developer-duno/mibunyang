@@ -84,7 +84,7 @@ test.describe("상세 모달", () => {
     await expect(modal).not.toBeVisible({ timeout: 3000 });
   });
 
-  // prices lazy fetch (apartments-prices.json) 후 PriceTable 첫 행 실제 렌더 검증.
+  // 가격배열 lazy fetch (상세 해시 버킷 JSON) 후 PriceTable 첫 행 실제 렌더 검증.
   // 세션 407 D1: PriceTable 은 시세 탭 소속 — 칩 클릭 선행. #sec-price 단언은 데이터 무관 non-skip
   // 가드라 칩 클릭 수정이 누락되면 즉시 fail (silent-skip 함정 차단). 행 단언만 데이터 의존 skip 유지.
   test("DetailModal — 시세 탭: 칩 클릭 후 섹션 마운트 + prices lazy fetch 행 렌더", async ({ page }) => {

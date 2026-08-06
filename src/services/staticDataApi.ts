@@ -56,16 +56,15 @@ async function fetchFromJson(): Promise<StaticApartmentsResponse> {
   return { ok: json.ok, data: json.data, dataUpdatedAt: json.dataUpdatedAt ?? json.fetchedAt ?? null };
 }
 
-export interface PriceArrays {
+// 상세 버킷 필드 (세션 468) — 목록 JSON 에서 슬림된 상세 전용 필드 + 가격배열 + full catsCache.
+// DetailModal 이 버킷 1개 fetch 로 한 번에 받아 mergedApt/mergedRes 로 복원.
+// 가격배열 4개는 구 apartments-prices.json 이 싣던 것 — PR2(세션 495)에서 그 파일 생성을
+// 중단하며 버킷이 유일한 출처가 됐다(PriceArrays 인터페이스는 여기로 흡수).
+export interface AptDetailFields {
   priceByArea: unknown[] | null;
   rentByArea: unknown[] | null;
   jeonseByArea: unknown[] | null;
   priceByFloor: unknown[] | null;
-}
-
-// 상세 버킷 필드 (세션 468) — 목록 JSON 에서 슬림된 상세 전용 필드 + 가격배열 + full catsCache.
-// DetailModal 이 버킷 1개 fetch 로 한 번에 받아 mergedApt/mergedRes 로 복원.
-export interface AptDetailFields extends PriceArrays {
   catsCache?: unknown;
   nearbySchools?: unknown[] | null;
   nearbyChildcare?: unknown[] | null;
@@ -73,55 +72,9 @@ export interface AptDetailFields extends PriceArrays {
   benefits?: unknown[] | null;
 }
 
-// DetailModal 첫 열림 시 1회 전체 fetch + 모듈 Map 캐시 (useHistoryData 패턴 답습)
-const pricesCache = new Map<string, PriceArrays>();
-let pricesPromise: Promise<void> | null = null;
-let pricesLoaded = false;
-
-// vitest 격리 헬퍼 — 모듈 캐시는 테스트 간 공유되므로 beforeEach 에서 비운다.
-export function _clearPricesCache(): void {
-  pricesCache.clear();
-  pricesPromise = null;
-  pricesLoaded = false;
-}
-
-async function loadPricesOnce(): Promise<void> {
-  if (pricesLoaded) return;
-  // 진행 중이면 같은 Promise 대기 (동시 호출 dedup). rejected 상태면
-  // fetchApartmentPrices 의 catch 가 pricesPromise = null 로 reset → 다음 진입 시 새 fetch.
-  if (pricesPromise) return pricesPromise;
-  pricesPromise = (async () => {
-    const res = await fetch("/data/apartments-prices.json");
-    if (!res.ok) throw new Error(`Prices fetch failed: ${res.status}`);
-    const json = (await res.json()) as { ok: boolean; data: Array<{ id: string } & PriceArrays> };
-    if (!json.ok || !Array.isArray(json.data)) throw new Error("Prices data empty");
-    for (const row of json.data) {
-      const { id, ...rest } = row;
-      pricesCache.set(id, rest);
-    }
-    pricesLoaded = true;
-  })();
-  return pricesPromise;
-}
-
-export async function fetchApartmentPrices(id: string): Promise<PriceArrays | null> {
-  if (!pricesLoaded) {
-    try {
-      await loadPricesOnce();
-    } catch (err) {
-      // 재시도 허용: pricesPromise = null reset → 다음 호출 시 새 fetch.
-      // 본 라인이 없으면 다음 호출 시 if(pricesPromise) return pricesPromise 가 rejected Promise 를
-      // 반환해 무한 throw loop 가 된다.
-      pricesPromise = null;
-      throw err;
-    }
-  }
-  return pricesCache.get(id) ?? null;
-}
-
 // ─── 상세 버킷 lazy fetch (세션 468) ───
 // DetailModal 첫 열림 시 id 해시 버킷 1개만 fetch (br ~69KB). 버킷 단위 Map 캐시 +
-// 버킷별 promise dedup + reject 시 reset(fetchApartmentPrices 패턴 답습).
+// 버킷별 promise dedup + reject 시 reset.
 // FIFO 상한 8버킷 = 최악 누적 ~7MB (세션 279 모바일 OOM 후순위 메모 대응).
 const DETAIL_CACHE_MAX_BUCKETS = 8;
 const detailCache = new Map<number, Map<string, AptDetailFields>>();

@@ -79,6 +79,50 @@ describe("useLoginGate", () => {
     expect(kakao.initKakaoLogin).toHaveBeenCalledWith(null, "map");
   });
 
+  // ── 세션 495: 블라인드 CTA → 로그인 복귀 배선 ──
+  // 상세를 연 채 CTA 를 누르는 경로(App onRequestLogin)는 게이트를 안 거치므로,
+  // 여기서 pendingDetailId 를 안 적으면 카카오 리다이렉트 후 복귀할 단지가 없다.
+  it("requestLoginForDetail → 그 단지가 로그인 후 복귀 대상으로 전달된다", () => {
+    const kakao = { initKakaoLogin: vi.fn() };
+    const { result } = renderHook(() => useLoginGate(makeDeps({ kakao, isLoggedIn: false })));
+
+    act(() => {
+      result.current.requestLoginForDetail("55");
+    });
+
+    expect(result.current.showLoginPrompt).toBe(true);
+    expect(result.current.loginTrigger).toBe("detail");
+
+    act(() => {
+      result.current.handleKakaoFromPrompt();
+    });
+
+    expect(kakao.initKakaoLogin).toHaveBeenCalledWith("55", null);
+  });
+
+  it("closeLoginPrompt → trigger·복귀 단지 모두 리셋 (엉뚱한 단지 복원 차단)", () => {
+    const kakao = { initKakaoLogin: vi.fn() };
+    const { result } = renderHook(() => useLoginGate(makeDeps({ kakao, isLoggedIn: false })));
+
+    // 단지 55 로 모달을 열었다가 그냥 닫는다
+    act(() => {
+      result.current.requestLoginForDetail("55");
+    });
+    act(() => {
+      result.current.closeLoginPrompt();
+    });
+
+    expect(result.current.showLoginPrompt).toBe(false);
+    expect(result.current.loginTrigger).toBeNull();
+
+    // 이후 map 이 아닌 경로로 로그인해도 옛 단지(55)가 되살아나면 안 된다
+    act(() => {
+      result.current.handleKakaoFromPrompt();
+    });
+
+    expect(kakao.initKakaoLogin).toHaveBeenCalledWith(null, null);
+  });
+
   // 세션 405: 모달은 카카오 단독 — handleExpertFromPrompt 제거 가드 (관리자 입구 = InfoPage 링크)
   it("handleExpertFromPrompt 가 제거되었다 (카카오 단독 가드)", () => {
     const { result } = renderHook(() => useLoginGate(makeDeps()));

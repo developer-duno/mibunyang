@@ -247,6 +247,17 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⑤-b 미발화(14일+) 가 "스케줄러 정지"(현 근본 원인 = 4/13~ 정지)를 잡는 신호. 주 2회라 최대
   //   간격 ~4일 « 14일이므로 정상 주기엔 오탐 0 (childcare 일일=14 답습).
   { collector: "naver-presale",    stale_days: 14, owner: "네이버 분양정보 pre.land (로컬 월/목 08:00)" },
+  // naver-collect = 네이버 매물·시세 수집 1단계 (scripts/collectors/naver-collect.py, run-naver-local.bat 1/6).
+  //   ⚠️ 기록 주체가 유일하게 **파이썬**이다 — SB.insert("collector_runs", [{"collector":"naver-collect", ...}]).
+  //   .mjs recordCollectorRun 과 같은 스키마이며, monitor-collectors.test.mjs 의 라벨 드리프트 가드가
+  //   .py 도 훑도록 함께 넓혔다.
+  //   왜 등재하나: 이 1단계만 죽는 유형(스케줄러 정지·제한시간 초과 강제종료)이 세션 493 에서 **한 달**
+  //   잠복했다. 2~6단계는 bat 이 아예 실행하지 못했는데 어느 검사도 울리지 않았다 — GH run 이 없어 ③
+  //   대상 밖이고, 기록 자체가 없어 ②·⑤ 도 볼 게 없었기 때문. ⑤-b(미발화)가 그 구멍을 메운다.
+  //   stale_days=14: 월/목 발화라 정상 최대 간격이 4일(목→월) « 14 → 오탐 0 (자매 naver-presale 답습).
+  //   ⑤-a(빈 성공 3연속)는 이 수집기에선 구조적으로 안 울린다 — 시간예산에 잘리면 status="partial" 이라
+  //   연속이 끊기고, 3회가 다 success 여도 가장 오래된 행이 7~11일 전이라 14일 임계를 못 넘는다.
+  { collector: "naver-collect",    stale_days: 14, owner: "네이버 매물·시세 1단계 (로컬 월/목 08:00)" },
   // ── KOSIS 10종 = 집서버 로컬 러너 수집기 (kosis-local-runner.mjs, 매일 05:30 KST 일자 디스패치).
   //    kosis.kr 해외 IP 차단으로 GH collect-*.yml 10개 삭제 (세션 288~289) — GH run 이 없어
   //    ③ 워크플로 미발화 점검 대상에서 빠지므로 collector_runs 신선도가 유일한 "안 돌면 알림".
