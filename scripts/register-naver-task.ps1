@@ -23,14 +23,17 @@ $Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Thursday -At 8:00
 # 액션: 배치 스크립트 실행
 $Action = New-ScheduledTaskAction -Execute $ScriptPath -WorkingDirectory $WorkDir
 
-# 설정: PC 깨어있을 때만, 최대 2시간
+# 설정: PC 깨어있을 때만, 최대 4시간
+#  - ExecutionTimeLimit 4시간 (세션 493): 1단계 naver-collect.py 가 --max-minutes=150 으로 스스로
+#    멈추고, 그 뒤 2~6단계(sync·presale·units·전용률·점수)가 돌 여유를 둔다. 2시간이던 옛 설정은
+#    1단계가 통째로 잘려 2~6단계가 아예 실행되지 않아 분양정보·세대수가 한 달 굶었던 원인.
 #  - RestartCount 2 + RestartInterval 10분: 실패 시 10분 뒤 재시도 ×2 (세션 470, 사장님 결정).
-#    naver-collect.py resume(오늘 이미 받은 단지 skip)가 있어 재시도마다 이어서 돎.
+#    naver-collect.py resume(최근 7일 내 받은 단지 skip)가 있어 재시도마다 이어서 돎.
 #  - MultipleInstances IgnoreNew: 이미 돌고 있으면 새 발화(재시도 포함) 무시 = 절대 겹침 없음.
 #    naver-collect.py 의 filelock 이 손실행까지 막는 2중 안전망(세션 470 좀비 더미 사고 정정).
 $Settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 4) `
     -RestartCount 2 `
     -RestartInterval (New-TimeSpan -Minutes 10) `
     -MultipleInstances IgnoreNew `

@@ -125,7 +125,7 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 
 | 단계 | 스크립트 | 역할 | 필수 |
 |------|---------|------|------|
-| 1/6 | naver-collect.py | 네이버 매물 수집 (curl_cffi) | O |
+| 1/6 | naver-collect.py | 네이버 매물 수집 (curl_cffi, `--max-minutes=150`) | O |
 | 2/6 | sync-naver-complex.mjs | 22개 필드 → apartments 동기화 | O |
 | 3/6 | naver-presale.mjs | 분양정보 19필드 수집 | - |
 | 4/6 | molit-units.mjs | 세대수 보정 (국토부 API, 세션89 교체) | - |
@@ -140,6 +140,34 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 - **UTF-8 stdout 강제**: `sys.stdout.reconfigure("utf-8")` — cp949 콘솔 한글 print UnicodeEncodeError 방지(배치 chcp 65001 의존 제거).
 - **스케줄러 재시도**: `register-naver-task.ps1` `New-ScheduledTaskSettingsSet` 에 `-RestartCount 2 -RestartInterval 10분 -MultipleInstances IgnoreNew`(실패 시 10분 뒤 ×2, 절대 겹침 없음). filelock 이 손실행까지 막는 2중 안전망. **재등록 필요**: `powershell -ExecutionPolicy Bypass -File F:\mibunyang\scripts\register-naver-task.ps1`(전체경로, `$PSScriptRoot` 기준).
 - **⚠️ `run-naver-local.bat` 은 반드시 CRLF + ASCII**: `.gitattributes *.bat text eol=crlf` 로 checkout 시 CRLF 복원되나 Write 툴 직생성은 LF 잔존 → cmd 오파싱(한글 :: 주석 + chcp 65001 악화)으로 스케줄러 발화 실패. 편집 후 CRLF·pureLF0 실측 의무(세션400·470 2회 재발). run-naver-local.sh(bash)는 정상, .bat 만 취약.
+
+**세션493 1단계 시간 초과 → 2~6단계 굶주림 정정 (매칭 필터·시간예산·resume 7일·제한 4h)**:
+
+7월 초부터 1단계가 매번 예약작업 제한시간(2h)에 잘려 강제종료(결과코드 267014) → bat 이 **2~6단계에
+도달조차 못 함** → 분양정보(마지막 성공 7-03)·세대수 보정(7-06)이 한 달 stale. 산술: `find_markers` 가
+(region,gu) 그룹 bounding box + 마진 0.03 으로 **3만 개 단지**를 잡고 그 전부에 매물 1회 + 시세 2회를
+`thr(5.0)` 스로틀로 돌려 **≈42시간** 필요. **5초 스로틀은 IP 차단 방지용이라 줄이지 않는다.**
+
+| 정정 | 내용 |
+|------|------|
+| **매칭 필터** | 매물·시세는 **우리 단지와 이름 유사도 ≥ 0.6 인 단지만**. 실측 마커 1,747건 → 대상 10건 |
+| **시간예산** | `--max-minutes`(기본 90, bat 은 **150**). 초과 시 두 루프를 끊고 마무리는 정상 수행 후 **exit 0** |
+| **resume 창** | 오늘 → **7일**. 예산에 잘려 남은 단지를 다음 발화(월↔목)가 이어받아 전체를 순환 |
+| **제한시간** | `register-naver-task.ps1` ExecutionTimeLimit **2h → 4h** (150분 + 2~6단계 여유). **재등록 필요** |
+| **실행 기록** | 종료 직전 `collector_runs` 1행 INSERT (`collector="naver-collect"`, 예산 중단 시 `status="partial"`) |
+
+- **단지 메타(complexes upsert)는 마커 전체 유지** — bbox 요청 1회로 이미 받은 값이라 추가 비용 0.
+  시간을 먹는 건 단지당 개별 요청이 필요한 매물·시세뿐이라 **그쪽만** 좁힌다.
+- ⚠️ **매칭 임계·전처리는 다운스트림과 반드시 일치**: `sync-naver-complex.mjs` `matchApartments` 는
+  complex_links 가 비면 `stringSimilarity(cpxName, apt.name) >= 0.6` 로 폴백하는데, **cpxName 은
+  `.replace(/\([^)]*\)/g,"").trim()` 로 괄호를 벗긴 값**(L66). naver-collect.py 의 `_cpx_key()` 가 같은
+  전처리를 한다 — 안 벗기면 "스타캐슬2차(주상복합)" 류(전체 단지의 **24%**)를 우리가 안 받아와
+  굶주림이 그대로 남는다(실측: 괄호 제거를 빼면 599개 표본 중 매칭 48건 → 11건 유실).
+- 유사도는 `_shared.mjs stringSimilarity`(공백 제거 후 LCS, `2*LCS/(len+len)`)를 **파이썬으로 직접 포팅**
+  (`sim_name`). `difflib.SequenceMatcher` 는 알고리즘이 달라 0.6 임계 의미가 어긋나므로 **금지**.
+  비교는 **같은 (region,gu) 그룹 단지끼리만** — 전체 2,170개와 곱하면 LCS 가 폭발한다.
+- resume 시너지: 자매 레포(naver-estate-web)가 같은 `articles.last_seen_at` 을 찍는 단지는 자동 스킵되어
+  우리 예산이 "우리만 보는 단지"에 집중된다.
 
 **주의**: compute-scores.mjs는 `node --loader ./scripts/alias-loader.mjs` 필요 (`@/` 별칭)
 

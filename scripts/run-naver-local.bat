@@ -19,7 +19,8 @@ if defined MIBUNYANG_PYTHON (
 ) else (
   set "PY_CMD=py -3"
 )
-%PY_CMD% scripts/collectors/naver-collect.py
+REM --max-minutes: cap step 1 so steps 2-6 always get to run (see scripts/CLAUDE.md, session 493).
+%PY_CMD% scripts/collectors/naver-collect.py --max-minutes=150
 if errorlevel 1 (
   echo [%date% %time%] ERROR: naver-collect.py failed >> "%LOG%"
   exit /b 1
