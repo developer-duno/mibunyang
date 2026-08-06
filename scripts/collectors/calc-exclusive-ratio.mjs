@@ -8,7 +8,7 @@
  *   node scripts/collectors/calc-exclusive-ratio.mjs              (Supabase UPDATE)
  *   node scripts/collectors/calc-exclusive-ratio.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, selectAll, createReporter, recordCollectorRun } from "./_shared.mjs";
 
 /** @typedef {{ apartment_id: string; area: number | null; supply_area: number | null }} PriceRow */
 
@@ -27,11 +27,14 @@ export function calcRatio(area, supplyArea) {
   return Math.round(area / supplyArea * 100 * 10) / 10;
 }
 
-async function main() {
+export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
+  // 이 수집기는 run-naver-local.bat 5/6 단계라 GitHub Actions run 이 없다. 실행 기록이 없으면
+  // "돌았는데 대상이 0" 과 "아예 안 돌았다" 를 구분할 방법이 아무 데도 없었다 (세션 495).
+  const rpt = createReporter(PHASE);
 
   // 전용률이 없는 아파트 (selectAll: 1000행 제한 자동 페이지네이션)
   const apts = await selectAll(
@@ -42,7 +45,14 @@ async function main() {
   );
   log(PHASE, `대상: ${apts.length}건 (exclusive_ratio null)`);
 
-  if (!apts.length) { log(PHASE, "대상 없음, 종료"); return; }
+  if (!apts.length) {
+    log(PHASE, "대상 없음, 종료");
+    // 대상 0건도 기록한다. ok=0·skip=0 이라 monitor ② 가 한 번 울릴 수 있는데,
+    // 전용률이 빈 단지가 하나도 없다는 건 실제로 드문 상태라 한 번 보는 게 낫다
+    // (applyhome-seed 가 같은 트레이드오프를 이미 수용 — monitor ⑤ 주석 참조).
+    await recordCollectorRun(PHASE, rpt.summary());
+    return;
+  }
 
   // prices 테이블에서 area, supply_area 조회 (PostgREST URL ~8KB 제한 대비 150개 단위 청크)
   const aptIds = apts.map(a => a.id);
@@ -69,17 +79,19 @@ async function main() {
     }
   }
 
-  let updated = 0, skipped = 0;
+  let updated = 0, skipped = 0, failed = 0;
 
   for (const apt of apts) {
+    if (rpt.interrupted()) break;
     const p = priceMap[apt.id];
-    if (!p) { skipped++; continue; }
+    if (!p) { skipped++; rpt.skip(); continue; }
 
     const ratio = calcRatio(p.area, p.supply_area);
 
     if (dryRun) {
       log(PHASE, `  [DRY] ${apt.name}: ${p.area}/${p.supply_area} = ${ratio}%`);
       updated++;
+      rpt.success();
       continue;
     }
 
@@ -87,11 +99,14 @@ async function main() {
       .from("apartments")
       .update({ exclusive_ratio: ratio, updated_at: new Date().toISOString() })
       .eq("id", apt.id);
-    if (error) { logError(PHASE, `${apt.name}: ${error.message}`); skipped++; }
-    else updated++;
+    // DB 오류는 건너뜀이 아니라 장애다. 옛 코드가 skipped 에 섞어 세는 바람에
+    // "prices 가 없어서 못 함"(정상)과 "UPDATE 가 깨짐"(사고)이 한 숫자에 묻혔다.
+    if (error) { logError(PHASE, `${apt.name}: ${error.message}`); failed++; rpt.fail(); }
+    else { updated++; rpt.success(); }
   }
 
-  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
+  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped}, 장애 ${failed} ===`);
+  await recordCollectorRun(PHASE, rpt.summary());
 }
 
 const argv1 = process.argv[1];

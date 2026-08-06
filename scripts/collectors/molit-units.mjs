@@ -15,7 +15,10 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown } from "./_shared.mjs";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown, today } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, MIN_SIMILARITY, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -23,6 +26,7 @@ import {
 
 /** @typedef {import("@supabase/supabase-js").SupabaseClient} SupabaseClient */
 /** @typedef {{ id: string; name: string; region: string; gu: string | null; address: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; unit_source: string | null }} TargetApt */
+/** @typedef {{ id: string; name: string; region: string; gu: string | null; reason: string }} UnmatchedEntry */
 
 loadEnv();
 
@@ -116,6 +120,47 @@ export async function updateUnits(sb, aptId, newUnits, unsold, dryRun) {
   return true;
 }
 
+// ── 4. 미매칭 목록 파일 기록 ────────────────────────────────
+// 왜 파일인가: 이 수집기는 run-naver-local.bat 이 stdout 을 어디에도 남기지 않고 실행한다.
+// "국토부 목록에서 이름을 못 찾은 단지" 는 콘솔에만 찍혀 창이 닫히는 순간 사라졌고,
+// collector_runs 에도 unmatched 가 안 들어가 며칠 뒤엔 "몇 건이 왜 안 붙었나" 를
+// 되짚을 근거가 0 이었다 (세션 495). 날짜별 파일로 남겨 다음 세션이 직접 읽게 한다.
+const DEFAULT_UNMATCHED_LOG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "logs");
+
+/**
+ * @param {string} dir
+ * @param {string} [date] KST YYYY-MM-DD (기본 today())
+ * @returns {string}
+ */
+export function unmatchedLogPath(dir, date = today()) {
+  return resolve(dir, `molit-units-unmatched-${date}.json`);
+}
+
+/**
+ * 미매칭 목록을 JSON 파일로 저장한다. 빈 목록이면 파일을 만들지 않고 null.
+ * 기록 실패는 수집을 막지 않는다(로그만) — 진단 부산물이 본체를 죽이면 안 됨.
+ * @param {UnmatchedEntry[]} entries
+ * @param {string} [dir]
+ * @param {string} [date]
+ * @returns {string | null} 기록한 파일 경로 (미기록 시 null)
+ */
+export function writeUnmatchedLog(entries, dir = DEFAULT_UNMATCHED_LOG_DIR, date = today()) {
+  if (!entries.length) return null;
+  const filePath = unmatchedLogPath(dir, date);
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      filePath,
+      JSON.stringify({ collector: PHASE, date, count: entries.length, entries }, null, 2),
+      "utf8",
+    );
+    return filePath;
+  } catch (err) {
+    logError(PHASE, `미매칭 목록 기록 실패(무시): ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
@@ -152,6 +197,8 @@ async function main() {
   let unmatched = 0;   // 이름 매칭/데이터 부재 — 정상 범주
   let skipped = 0;
   let apiCalls = 0;
+  /** @type {UnmatchedEntry[]} 미매칭 단지 목록 — 파일로 남겨 사후 추적 가능하게 (세션 495) */
+  const unmatchedList = [];
 
   for (const [region, group] of Object.entries(groups)) {
     if (isInterrupted()) break;  // 세션 344: graceful shutdown (외부 region loop)
@@ -188,6 +235,10 @@ async function main() {
       if (!match) {
         log(PHASE, `    → 매칭 실패 (유사도 < ${MIN_SIMILARITY})`);
         unmatched++;
+        unmatchedList.push({
+          id: target.id, name: target.name, region: target.region, gu: target.gu,
+          reason: `이름 매칭 실패 (유사도 < ${MIN_SIMILARITY})`,
+        });
         continue;
       }
 
@@ -202,6 +253,10 @@ async function main() {
         if (!detail) {
           log(PHASE, `    → 상세 조회 실패`);
           unmatched++;
+          unmatchedList.push({
+            id: target.id, name: target.name, region: target.region, gu: target.gu,
+            reason: `상세 조회 실패 (kaptCode=${kaptCode})`,
+          });
           continue;
         }
 
@@ -230,8 +285,15 @@ async function main() {
   log(PHASE, `\n=== 완료 ===`);
   log(PHASE, `보정: ${corrected}건, 미매칭: ${unmatched}건, 장애: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회`);
 
+  const unmatchedLog = writeUnmatchedLog(unmatchedList);
+  if (unmatchedLog) log(PHASE, `미매칭 ${unmatchedList.length}건 목록 저장: ${unmatchedLog}`);
+
   if (!dryRun) await recordApiQuota("molit-units", "MOLIT_KEY", apiCalls);
-  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped, fail: failed });
+  // unmatched 를 skip 에 합산한다. collector_runs 는 ok/fail/skip 3칸뿐이라 별도 칸이 없고,
+  // "이름을 못 찾음"·"세대수 못 씀" 은 둘 다 장애가 아닌 건너뜀이라 같은 칸이 맞다.
+  // 합산 전에는 미매칭이 어느 칸에도 안 들어가 ok=0·skip=0 인 실행이 monitor ② 에 "성공인데
+  // 처리 0건" 으로 잡히거나, 반대로 수백 건이 조용히 증발해도 기록만 보면 멀쩡해 보였다 (세션 495).
+  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped + unmatched, fail: failed });
   if (failed > 0) process.exit(1);   // 진짜 장애만 — 미매칭은 정상 종료
 }
 

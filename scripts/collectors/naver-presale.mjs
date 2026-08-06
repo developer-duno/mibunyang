@@ -402,6 +402,31 @@ export function extractPresaleFields(row) {
   return picked;
 }
 
+/**
+ * 같은 아파트에 붙은 여러 공고를 한 행으로 합친다 (id 기준, 마지막 값 우선).
+ *
+ * 왜 필요한가: 분양 공고는 회차·평형별로 여러 건이 같은 단지에 매칭된다. 옛 코드는 공고 수만큼
+ * UPDATE 를 순서대로 쐈고, 로그·collector_runs 의 "1,113건" 은 **공고 수**였는데 실제로 값이 바뀐
+ * 단지는 916곳뿐이었다 (세션 495 실측). 같은 뜻의 숫자로 착각하면 "왜 197건이 사라졌지" 를 헛짚는다.
+ *
+ * 필드 단위 병합인 이유: 순차 UPDATE 의 최종 DB 상태와 같게 만들기 위해서다. 앞 공고가 채운
+ * enrichment(units·builder 등)를 뒷 공고가 안 들고 있으면 옛 코드에서도 그 값은 남았다.
+ * 통째로 교체하면 그 값이 사라져 동작이 달라진다.
+ *
+ * @param {Array<Record<string, unknown>>} rows
+ * @returns {Array<Record<string, unknown>>}
+ */
+export function dedupUpdateRows(rows) {
+  /** @type {Map<string, Record<string, unknown>>} */
+  const byId = new Map();
+  for (const row of rows) {
+    const id = String(row.id);
+    const prev = byId.get(id);
+    byId.set(id, prev ? { ...prev, ...row } : row);
+  }
+  return [...byId.values()];
+}
+
 /** 4단계 매칭: presale → 기존 apartments (indexes 옵션: Map 기반 O(1) 룩업)
  * @param {PresaleRow} presale
  * @param {AptForMatch[]} apartments
@@ -761,18 +786,23 @@ async function main() {
   // 매칭 tier 집계
   log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none}`);
 
+  // 공고(item) 단위 집계와 단지 단위 실갱신 수를 구분해 남긴다 — 아래 UPDATE 는 단지 단위로 돈다.
+  // reporter/collector_runs 의 ok 는 공고 단위 그대로 둔다(회귀 방지). 이 줄이 그 차이를 설명한다.
+  const dedupedUpdates = dedupUpdateRows(updateRows);
+  log(PHASE, `[집계] 기존 단지 갱신 — 공고 ${updateRows.length}건 / 단지 ${dedupedUpdates.length}건`);
+
   // DB 저장
   if (!dryRun) {
-    if (updateRows.length) {
-      log(PHASE, `기존 아파트 업데이트 ${updateRows.length}건...`);
+    if (dedupedUpdates.length) {
+      log(PHASE, `기존 아파트 업데이트 ${dedupedUpdates.length}건...`);
       let updOk = 0, updFail = 0;
-      for (const row of updateRows) {
+      for (const row of dedupedUpdates) {
         const { id, ...fields } = row;
         const { error } = await sb.from("apartments").update(fields).eq("id", id);
         if (error) { updFail++; if (updFail <= 3) logError(PHASE, `UPDATE ${id}: ${error.message}`); }
         else updOk++;
       }
-      log("apartments", `${updOk}/${updateRows.length}건 update${updFail ? ` (${updFail}건 실패)` : ""}`);
+      log("apartments", `${updOk}/${dedupedUpdates.length}건 update${updFail ? ` (${updFail}건 실패)` : ""}`);
     }
     if (insertRows.length) {
       log(PHASE, `신규 아파트 생성 ${insertRows.length}건...`);
@@ -788,7 +818,7 @@ async function main() {
       }
     }
   } else {
-    log(PHASE, `[DRY-RUN] 업데이트 ${updateRows.length}건, 신규 ${insertRows.length}건, prices ${priceRows.length}건 (미저장)`);
+    log(PHASE, `[DRY-RUN] 업데이트 단지 ${dedupedUpdates.length}건(공고 ${updateRows.length}건), 신규 ${insertRows.length}건, prices ${priceRows.length}건 (미저장)`);
   }
 
   const result = reporter.summary();

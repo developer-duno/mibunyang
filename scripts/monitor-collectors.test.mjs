@@ -781,7 +781,50 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 22 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470)", () => {
+  it("naver-collect 가 감시 목록에 등재돼 있다 — 1단계만 죽는 유형이 한 달 잠복했던 구멍 (세션 495)", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "naver-collect");
+    expect(entry, "naver-collect 미등재 — 스케줄러 정지·제한시간 초과를 아무도 못 본다").toBeTruthy();
+    // 월/목 발화라 정상 최대 간격 4일. 주 2회 자매(naver-presale)와 같은 14 여야 한다.
+    expect(entry?.stale_days).toBe(14);
+  });
+
+  it("naver-collect 미발화 14일 초과 → ⑤-b stale 발화 / 정상 주기(4일)엔 침묵", () => {
+    const rows = [
+      { status: "partial", ok_count: 120, skip_count: 900, finished_at: "2026-07-06T23:00:00Z" },
+      { status: "partial", ok_count: 130, skip_count: 880, finished_at: "2026-07-02T23:00:00Z" },
+      { status: "success", ok_count: 140, skip_count: 870, finished_at: "2026-06-29T23:00:00Z" },
+    ];
+    /** @param {string} nowIso */
+    const run = (nowIso) => checkExternalApiStale(
+      [{ collector: "naver-collect", stale_days: 14, owner: "네이버 매물·시세 1단계" }],
+      { "naver-collect": rows },
+      new Date(nowIso),
+    );
+    // 정상 주기 — 4일 뒤엔 조용
+    expect(run("2026-07-10T23:00:00Z")).toHaveLength(0);
+    // 스케줄러 정지 — 15일 뒤 미발화 경보
+    const late = run("2026-07-22T00:00:00Z");
+    expect(late).toHaveLength(1);
+    expect(late[0].kind).toBe("stale");
+  });
+
+  it("naver-collect 는 ⑤-a 빈성공 오탐이 구조적으로 안 난다 (시간예산 중단 = partial)", () => {
+    // 예산에 잘리면 status=partial 이라 3연속 success 사슬이 끊긴다.
+    const issues = checkExternalApiStale(
+      [{ collector: "naver-collect", stale_days: 14, owner: "네이버 매물·시세 1단계" }],
+      {
+        "naver-collect": [
+          { status: "partial", ok_count: 0, skip_count: 0, finished_at: "2026-07-06T23:00:00Z" },
+          { status: "success", ok_count: 0, skip_count: 0, finished_at: "2026-07-02T23:00:00Z" },
+          { status: "success", ok_count: 0, skip_count: 0, finished_at: "2026-06-29T23:00:00Z" },
+        ],
+      },
+      new Date("2026-07-09T23:00:00Z"),
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("EXTERNAL_API_COLLECTORS 배열 = 23 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "applyhome-detail", "applyhome-seed", "avg-income", "building-hub",
@@ -790,7 +833,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
       "kosis-unsold", "maintenance", "market-stats", "migration",
-      "naver-presale", "notify-subscribers", "schools", "transport-tago",
+      "naver-collect", "naver-presale", "notify-subscribers", "schools", "transport-tago",
     ]);
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);
@@ -814,7 +857,18 @@ describe("EXTERNAL_API_COLLECTORS 라벨 ↔ recordCollectorRun 기록명 동기
     const labels = new Set();
     for (const dir of dirs) {
       for (const f of readdirSync(dir)) {
-        if (!f.endsWith(".mjs") || f.includes(".test.")) continue;
+        if (f.includes(".test.")) continue;
+        // 세션 495: 파이썬 수집기(naver-collect.py)도 같은 collector_runs 스키마에 직접 INSERT 한다.
+        // .mjs 만 훑으면 그 라벨이 "어디에도 없는 이름" 으로 보여 이 가드가 오히려 정상을 막는다.
+        if (f.endsWith(".py")) {
+          const pySrc = readFileSync(join(dir, f), "utf8");
+          // collector_runs 에 실제로 쓰는 파일만 — 아무 dict 의 "collector" 키를 주워
+          // 가드를 헐겁게 만들지 않도록 좁힌다.
+          if (!pySrc.includes("collector_runs")) continue;
+          for (const m of pySrc.matchAll(/["']collector["']\s*:\s*["']([^"']+)["']/g)) labels.add(m[1]);
+          continue;
+        }
+        if (!f.endsWith(".mjs")) continue;
         const src = readFileSync(join(dir, f), "utf8");
         const phaseM = src.match(/const\s+PHASE\s*=\s*["'`]([^"'`]+)["'`]/);
         const phase = phaseM ? phaseM[1] : null;
@@ -831,6 +885,10 @@ describe("EXTERNAL_API_COLLECTORS 라벨 ↔ recordCollectorRun 기록명 동기
     }
     return labels;
   }
+
+  it("파이썬 수집기의 collector_runs 라벨도 추출한다 (naver-collect.py, 세션 495)", () => {
+    expect(extractRecordedLabels().has("naver-collect")).toBe(true);
+  });
 
   it("각 collector 키가 실제 collector .mjs 의 recordCollectorRun 기록명에 존재한다", () => {
     const recorded = extractRecordedLabels();
