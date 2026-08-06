@@ -136,9 +136,9 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 
 **세션470 인프라 개선 (중복방지·resume·재시도·CRLF)**:
 - **중복 실행 방지 (filelock)**: `naver-collect.py` `__main__` 이 `FileLock(ROOT/.naver-collect.lock, timeout=0)` 획득. 이미 돌면 즉시 `sys.exit(0)`(겹침은 실패 아님). 손으로 여러 번 실행해도 2번째부터 종료 = 좀비 더미 방지(같은 IP 다중 수집기 → 네이버 rate-limit 경합 stall 사고 정정). `requirements.txt` filelock, `.gitignore` `.naver-collect.lock`.
-- **resume (이어하기)**: `main()` 이 오늘 이미 `last_seen_at` 찍힌 complex_no(done_cx)를 `SB.select("articles",...)` 로 조회 → 매물·시세 루프 `if cn in done_cx: continue`. 스케줄러 재시도 시 이어서 돎. 다음 발화(월/목)는 날짜 바뀌어 전부 재수집=신선도. `--no-resume` 강제 전체. dry-run/조회실패 시 비활성(fail-open). 저장부(`datetime.now().isoformat()`)와 조회(`datetime.now()`) **동일 축**(timezone-consistency). 세션338 schools `buildEnrichedIds` 답습.
+- **resume (이어하기)**: `main()` 이 이미 `last_seen_at` 찍힌 complex_no(done_cx)를 `SB.select("articles",...)` 로 조회 → 매물·시세 루프 `if cn in done_cx: continue`. 스케줄러 재시도 시 이어서 돎. **창 = 최근 7일**(`naver-collect.py` L295 `since=now-timedelta(days=7)`) — 세션470 당시엔 "오늘"이었으나 **세션493 에서 7일로 확대**(아래 세션493 표 `resume 창` 행 참조). 따라서 날짜가 바뀌어도 7일 내 수집분은 계속 스킵되고, 시간예산이 아직 못 받은 단지로 간다. `--no-resume` 강제 전체. dry-run/조회실패 시 비활성(fail-open). 저장부(`datetime.now().isoformat()`)와 조회(`datetime.now()`) **동일 축**(timezone-consistency). 세션338 schools `buildEnrichedIds` 답습.
 - **UTF-8 stdout 강제**: `sys.stdout.reconfigure("utf-8")` — cp949 콘솔 한글 print UnicodeEncodeError 방지(배치 chcp 65001 의존 제거).
-- **스케줄러 재시도**: `register-naver-task.ps1` `New-ScheduledTaskSettingsSet` 에 `-RestartCount 2 -RestartInterval 10분 -MultipleInstances IgnoreNew`(실패 시 10분 뒤 ×2, 절대 겹침 없음). filelock 이 손실행까지 막는 2중 안전망. **재등록 필요**: `powershell -ExecutionPolicy Bypass -File F:\mibunyang\scripts\register-naver-task.ps1`(전체경로, `$PSScriptRoot` 기준).
+- **스케줄러 재시도**: `register-naver-task.ps1` `New-ScheduledTaskSettingsSet` 에 `-RestartCount 2 -RestartInterval 10분 -MultipleInstances IgnoreNew`(실패 시 10분 뒤 ×2, 절대 겹침 없음). filelock 이 손실행까지 막는 2중 안전망. **재등록 완료**(2026-08-06, 실측 `ExecutionTimeLimit=PT4H`): `powershell -ExecutionPolicy Bypass -File F:\mibunyang\scripts\register-naver-task.ps1`(전체경로, `$PSScriptRoot` 기준). ⚠️ **관리자 PowerShell 필요** — 일반 셸에서 실행하면 `0x80070005`(액세스 거부)로 등록이 거부된다.
 - **⚠️ `run-naver-local.bat` 은 반드시 CRLF + ASCII**: `.gitattributes *.bat text eol=crlf` 로 checkout 시 CRLF 복원되나 Write 툴 직생성은 LF 잔존 → cmd 오파싱(한글 :: 주석 + chcp 65001 악화)으로 스케줄러 발화 실패. 편집 후 CRLF·pureLF0 실측 의무(세션400·470 2회 재발). run-naver-local.sh(bash)는 정상, .bat 만 취약.
 
 **세션493 1단계 시간 초과 → 2~6단계 굶주림 정정 (매칭 필터·시간예산·resume 7일·제한 4h)**:
@@ -150,12 +150,17 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 
 | 정정 | 내용 |
 |------|------|
-| **매칭 필터** | 매물·시세는 **우리 단지와 이름 유사도 ≥ 0.6 인 단지만**. 실측 마커 1,747건 → 대상 10건 |
+| **매칭 필터** | 매물·시세는 **우리 단지와 이름 유사도 ≥ 0.6 인 단지만**. 전량 기준 **크롤 대상 1,789단지**(아래 ⚠️ 주석 — PR #314 본문의 "1,747→10" 은 스모크 값) |
 | **시간예산** | `--max-minutes`(기본 90, bat 은 **150**). 초과 시 두 루프를 끊고 마무리는 정상 수행 후 **exit 0** |
 | **resume 창** | 오늘 → **7일**. 예산에 잘려 남은 단지를 다음 발화(월↔목)가 이어받아 전체를 순환 |
-| **제한시간** | `register-naver-task.ps1` ExecutionTimeLimit **2h → 4h** (150분 + 2~6단계 여유). **재등록 필요** |
+| **제한시간** | `register-naver-task.ps1` ExecutionTimeLimit **2h → 4h** (150분 + 2~6단계 여유). **재등록 완료**(2026-08-06, 실측 PT4H) |
 | **실행 기록** | 종료 직전 `collector_runs` 1행 INSERT (`collector="naver-collect"`, 예산 중단 시 `status="partial"`) |
 
+- ⚠️ **"마커 1,747건 → 대상 10건" 은 스모크 실행 값이지 전량 수치가 아니다**: PR #314 본문의 그 숫자는
+  `--limit=10 --max-minutes=3` 로 돌린 스모크 결과다. `naver-collect.py` 의 `--limit` 은 **우리 단지 목록을
+  앞에서 자르는** 인자라, 대상 상한이 애초에 10으로 묶인 상태에서 나온 값이다.
+  **전체 오프라인 재현(세션 495): apartments 2,635 × complexes 63,842, LCS 임계 0.6 → 크롤 대상 1,789단지.**
+  바로 위 산술의 **'3만 개 단지'는 필터를 걸기 *전* 마커 수**라 서로 다른 단계의 값이다(1,789 는 필터 *후*).
 - **단지 메타(complexes upsert)는 마커 전체 유지** — bbox 요청 1회로 이미 받은 값이라 추가 비용 0.
   시간을 먹는 건 단지당 개별 요청이 필요한 매물·시세뿐이라 **그쪽만** 좁힌다.
 - ⚠️ **매칭 임계·전처리는 다운스트림과 반드시 일치**: `sync-naver-complex.mjs` `matchApartments` 는
@@ -225,7 +230,7 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 | API | 수집기 | 간격 | 재시도 | 429 처리 |
 |-----|--------|------|--------|---------|
 | 네이버 부동산 | naver-collect.py | 5초 (`thr()` 기본값, 세션 118 IP 쿨다운 상향) | 3회 | JWT 리셋 + 5*(i+1)초 |
-| 네이버 부동산 | naver-listings.mjs | 1초 | 5회 | JWT 리셋 + [3,5,10,15,20]초 |
+| 네이버 부동산 | naver-listings.mjs | 5초 | 5회 | JWT 리셋 + [10,20,40,60,120]초 |
 | 네이버 분양 | naver-presale.mjs | 2초 | 3회 | [5,10,20]초 |
 | data.go.kr | molit-* | 0.4초 | 3회 (기본) | NonRetryableError / 지수 백오프. ⚠️ collect-maintenance `fetchTotalHouseholds` 는 8s/1회 override(세션 451, 위 MOLIT 모듈 절) |
 | Kakao Places | infra-kakao | 세마포어 5개 | fetchWithRetry | 지수 백오프 |
