@@ -17,9 +17,25 @@ type CategoryMiniCardProps = {
   cat: Res;
   emphasized?: boolean;
   onJump: () => void;
+  /**
+   * 비로그인 점수 블라인드 (단계 2-A). 기본 false = 지금 화면 그대로.
+   *
+   * true 면 **점수를 뜻하는 것 전부**(숫자·등급 배지·결론 1줄)를 감춘다. 숫자만 뿌옇게 하고
+   * 등급 "A" 나 "입지 우수"(=70점 이상)를 남기면 같은 점수를 글자로 그대로 알려주는 셈이라,
+   * 가린 척만 하는 껍데기가 된다(catVerdict 임계 70/50 = gr() 등급 경계와 동일).
+   * 승인된 목업의 미니카드도 "이름 + 뿌연 숫자" 두 줄뿐이다.
+   * 가격 괴리는 종합 탭 핵심지표 "적정가 괴리" 행에 그대로 남아 정보 손실 0.
+   */
+  blind?: boolean;
 };
 
-export const CategoryMiniCard = memo(function CategoryMiniCard({ k, cat, emphasized, onJump }: CategoryMiniCardProps) {
+export const CategoryMiniCard = memo(function CategoryMiniCard({
+  k,
+  cat,
+  emphasized,
+  onJump,
+  blind = false,
+}: CategoryMiniCardProps) {
   const col = (catCol as Record<string, string>)[k] || C.text;
   const grade = gr(cat.total);
   const label = (SHORT_LABEL as Record<string, string>)[cat.label ?? ""] || cat.label || k;
@@ -30,7 +46,11 @@ export const CategoryMiniCard = memo(function CategoryMiniCard({ k, cat, emphasi
       onClick={onJump}
       role="button"
       tabIndex={0}
-      aria-label={`${label} ${cat.total}점 ${grade.l} — ${verdict}. 점수 탭에서 상세 보기`}
+      aria-label={
+        blind
+          ? `${label} 점수 비공개 — 로그인 후 확인 가능. 점수 탭에서 상세 보기`
+          : `${label} ${cat.total}점 ${grade.l} — ${verdict}. 점수 탭에서 상세 보기`
+      }
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -72,22 +92,36 @@ export const CategoryMiniCard = memo(function CategoryMiniCard({ k, cat, emphasi
           )}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-          <span style={{ fontSize: F.lg, fontWeight: 800, color: col, lineHeight: 1 }}>{cat.total}</span>
+          {/* AptCard 카테고리 점수 무늬 답습(L308-318): 뿌연 "??" + 장식이라 스크린리더엔 감춤 */}
           <span
+            aria-hidden={blind ? true : undefined}
             style={{
-              fontSize: F.xs,
-              fontWeight: 700,
-              color: grade.c,
-              background: grade.bg,
-              padding: "1px 5px",
-              borderRadius: 4,
+              fontSize: F.lg,
+              fontWeight: 800,
+              color: blind ? C.muted : col,
+              lineHeight: 1,
+              ...(blind ? { filter: "blur(4px)" } : {}),
             }}
           >
-            {grade.l}
+            {blind ? "??" : cat.total}
           </span>
+          {!blind && (
+            <span
+              style={{
+                fontSize: F.xs,
+                fontWeight: 700,
+                color: grade.c,
+                background: grade.bg,
+                padding: "1px 5px",
+                borderRadius: 4,
+              }}
+            >
+              {grade.l}
+            </span>
+          )}
         </span>
       </div>
-      <span style={{ fontSize: F.sm, color: C.muted }}>{verdict}</span>
+      {!blind && <span style={{ fontSize: F.sm, color: C.muted }}>{verdict}</span>}
     </div>
   );
 });

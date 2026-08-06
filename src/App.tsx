@@ -837,6 +837,11 @@ export default function App() {
                 profile={profile}
                 adminLoggedIn={admin.adminLoggedIn}
                 regionStats={regionStats}
+                isLoggedIn={isLoggedIn}
+                onRequestLogin={() => {
+                  setLoginTrigger("detail");
+                  setShowLoginPrompt(true);
+                }}
               />
             </Suspense>
           );

@@ -618,3 +618,156 @@ describe("DetailModal — 종합 탭 편차 스트립", () => {
     expect(container.textContent).toContain("아파트 한가운데 값과 비교");
   });
 });
+
+/**
+ * 비로그인 점수 블라인드 (단계 2-A, 세션 489 A안 · 세션 493 목업 승인).
+ *
+ * 핵심 불변식: `isLoggedIn` 기본값이 true 라서 **이 파일의 다른 모든 테스트가 손대지 않아도
+ * 그대로 통과**한다 = 머지해도 화면 변화 0. 아래 첫 두 테스트가 그 잠금장치다.
+ * 실제로 비로그인이 상세를 열게 되는 건 2-B(게이트 완화) — 그때 이 분기가 깨어난다.
+ */
+describe("DetailModal — 비로그인 점수 블라인드", () => {
+  const BLIND_LABEL = "점수 비공개 — 로그인 후 확인 가능";
+  const CTA_TEXT = "3초 카카오 로그인하고 이 단지 점수 보기";
+
+  beforeEach(() => {
+    document.body.style.overflow = "";
+  });
+  afterEach(() => {
+    document.body.style.overflow = "";
+  });
+
+  // ── 잠자는 상태 가드 (기본값 true) ──
+  it("isLoggedIn 생략(기본 true)이면 종합 점수·목차바 배지·CTA 모두 지금과 동일", () => {
+    render(<DetailModal {...makeProps({ profile: "live" })} />);
+    // 실제 ScoreBadge(aria-label "점수: NN점 (X등급)")가 그대로
+    expect(screen.getAllByRole("img", { name: /^점수: / }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByLabelText(BLIND_LABEL)).toBeNull();
+    expect(screen.queryByTestId("score-blind-cta")).toBeNull();
+    expect(screen.queryByTestId("score-lock-panel")).toBeNull();
+    // 목차바 종합점수 배지(res.total 기본 75) 유지
+    expect(screen.getAllByText("75").length).toBeGreaterThanOrEqual(1);
+    // 가중치 막대도 유지
+    expect(screen.getByText("이 점수는 당신의 프로필 기준으로 계산됐어요")).toBeInTheDocument();
+  });
+
+  it("isLoggedIn=true 를 명시해도 동일 (기본값과 같은 경로)", () => {
+    render(<DetailModal {...makeProps({ isLoggedIn: true, profile: "live" })} />);
+    expect(screen.queryByLabelText(BLIND_LABEL)).toBeNull();
+    expect(screen.queryByTestId("score-blind-cta")).toBeNull();
+  });
+
+  // ── 종합 탭 ──
+  it("isLoggedIn=false 면 종합 ScoreBadge 대신 '점수 비공개' 블라인드 원", () => {
+    render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    expect(screen.queryByRole("img", { name: /^점수: / })).toBeNull();
+    const blindBadge = screen.getByLabelText(BLIND_LABEL);
+    expect(blindBadge).toBeInTheDocument();
+    expect(blindBadge.textContent).toBe("??");
+    expect(blindBadge.style.filter).toContain("blur");
+  });
+
+  it("isLoggedIn=false 면 목차바 '종합 75' 배지도 사라진다 (블라인드 우회 차단)", () => {
+    render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    expect(screen.queryByText("75")).toBeNull();
+  });
+
+  it("isLoggedIn=false 면 카테고리 미니카드 점수가 뿌연 '??' (라벨은 남음)", () => {
+    const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
+    expect(cards.length).toBe(6);
+    // 6칸 전부 비공개 안내 + 점수 숫자·결론 문구 소멸
+    for (const card of cards) {
+      expect(card.getAttribute("aria-label")).toContain(BLIND_LABEL);
+    }
+    expect(overview.textContent).toContain("입지");
+    expect(overview.textContent).not.toContain("입지 우수");
+    expect(overview.textContent).not.toContain("적정가 대비 3% 비쌈");
+  });
+
+  it("isLoggedIn=false 면 profile 을 줘도 가중치 막대를 안 그린다", () => {
+    render(<DetailModal {...makeProps({ isLoggedIn: false, profile: "live" })} />);
+    expect(screen.queryByText("이 점수는 당신의 프로필 기준으로 계산됐어요")).toBeNull();
+    expect(screen.queryByTestId("weight-bar-summary")).toBeNull();
+  });
+
+  it("isLoggedIn=false 면 종합 탭 하단에 카카오 CTA 1개", () => {
+    const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    const cta = overview.querySelector('[data-testid="score-blind-cta"]');
+    expect(cta).not.toBeNull();
+    expect(cta.textContent).toContain(CTA_TEXT);
+    expect(cta.textContent).toContain("모든 단지의 점수·순위·내 프로필 맞춤 추천이 열립니다");
+    // 키보드 접근 (role=button + tabIndex)
+    expect(cta.getAttribute("role")).toBe("button");
+    expect(cta.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("CTA 클릭 시 onRequestLogin 호출", () => {
+    const onRequestLogin = vi.fn();
+    render(<DetailModal {...makeProps({ isLoggedIn: false, onRequestLogin })} />);
+    fireEvent.click(screen.getAllByTestId("score-blind-cta")[0]);
+    expect(onRequestLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it("CTA Enter/Space 키로도 onRequestLogin 호출 (키보드 접근성)", () => {
+    const onRequestLogin = vi.fn();
+    render(<DetailModal {...makeProps({ isLoggedIn: false, onRequestLogin })} />);
+    const cta = screen.getAllByTestId("score-blind-cta")[0];
+    fireEvent.keyDown(cta, { key: "Enter" });
+    fireEvent.keyDown(cta, { key: " " });
+    expect(onRequestLogin).toHaveBeenCalledTimes(2);
+  });
+
+  it("onRequestLogin 미전달이어도 CTA 클릭이 터지지 않는다", () => {
+    render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    expect(() => fireEvent.click(screen.getAllByTestId("score-blind-cta")[0])).not.toThrow();
+  });
+
+  // ── 점수 탭 ──
+  it("isLoggedIn=false 면 점수 탭이 CatPanel 대신 잠금 안내 + CTA", () => {
+    const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    fireEvent.click(screen.getByRole("tab", { name: "점수" }));
+    const score = /** @type {any} */ (container.querySelector("#sec-score"));
+    expect(score.querySelector('[data-testid="score-lock-panel"]')).not.toBeNull();
+    expect(score.textContent).toContain("점수 상세는 로그인 후 열립니다");
+    expect(score.textContent).toContain("6개 카테고리 · 41개 지표 · 지역 중앙값 비교");
+    // CatPanel(카테고리 라벨·펼침 버튼) 소멸
+    expect(score.textContent).not.toContain("가격 매력도");
+    expect(score.querySelectorAll('[role="button"][aria-expanded]').length).toBe(0);
+    // 잠금 패널 안에도 CTA 1개 → 모달 전체로는 종합 탭 것과 합쳐 2개
+    expect(score.querySelector('[data-testid="score-blind-cta"]')).not.toBeNull();
+    expect(screen.getAllByTestId("score-blind-cta").length).toBe(2);
+  });
+
+  it("점수 탭 잠금 패널의 CTA 도 onRequestLogin 호출", () => {
+    const onRequestLogin = vi.fn();
+    const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false, onRequestLogin })} />);
+    fireEvent.click(screen.getByRole("tab", { name: "점수" }));
+    const score = /** @type {any} */ (container.querySelector("#sec-score"));
+    fireEvent.click(score.querySelector('[data-testid="score-blind-cta"]'));
+    expect(onRequestLogin).toHaveBeenCalledTimes(1);
+  });
+
+  // ── 가리지 '않는' 것 (A안의 절반은 공개다) ──
+  it("isLoggedIn=false 여도 단지 정보·다른 탭은 그대로 공개", () => {
+    const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    expect(screen.getByText("테스트아파트")).toBeInTheDocument();
+    expect(screen.getByText("핵심 지표")).toBeVisible();
+    expect(screen.getByText("경기 수원시 영통동")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
+    expect(container.querySelector("#sec-price")?.textContent).toContain("시장/투자 지표");
+    fireEvent.click(screen.getByRole("tab", { name: "입지" }));
+    expect(container.querySelector("#sec-location")?.textContent).toContain("교통 상세");
+  });
+
+  it("isLoggedIn=false 여도 탭 6개·CTA 바(관심/비교/공유)는 그대로", () => {
+    render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    for (const label of ["종합", "시세", "입지", "분양", "금융", "점수"]) {
+      expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.getByText("관심매물 추가")).toBeVisible();
+    expect(screen.getByText("비교 추가")).toBeVisible();
+  });
+});

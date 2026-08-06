@@ -28,4 +28,14 @@ export interface DetailModalProps extends ResponsiveProps {
    * 없으면(null) 스트립을 아예 안 그린다. "미수집" 8줄짜리 빈 블록이 더 나쁘기 때문.
    */
   regionStats?: RegionalStats | null;
+  /**
+   * 로그인 여부 — false 면 점수·가중치만 블라인드 (단계 2-A, 세션 489 A안).
+   *
+   * **기본값 true** 가 이 슬라이스의 안전장치다. 지금은 useLoginGate 가 비로그인 상세 진입 자체를
+   * 막고 있어(2-B 에서 완화 예정) 이 분기는 실제로 그려지지 않는다 — 즉 이 PR 은 머지돼도
+   * 화면 변화 0 인 "잠자는 코드". 기본값을 false 로 바꾸는 순간 잠이 깬다.
+   */
+  isLoggedIn?: boolean;
+  /** 블라인드 자리 카카오 CTA 클릭 — 로그인 유도 모달 열기. 미전달 시 CTA 는 눌러도 무동작. */
+  onRequestLogin?: () => void;
 }
