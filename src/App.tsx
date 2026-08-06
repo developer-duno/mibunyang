@@ -300,6 +300,8 @@ export default function App() {
     setLoginTrigger,
     handleDetailGated,
     handleKakaoFromPrompt,
+    requestLoginForDetail,
+    closeLoginPrompt,
   } = useLoginGate({ isLoggedIn, detail, kakao });
 
   // ── 지도 뷰포트 보존 (M3) — 탭 전환/언마운트 간 center/level 유지 ──
@@ -375,6 +377,7 @@ export default function App() {
     minScore,
     builderTier,
     benefitOnly,
+    isLoggedIn,
   });
 
   // ── 데스크톱 키보드 단축키 ──
@@ -838,10 +841,9 @@ export default function App() {
                 adminLoggedIn={admin.adminLoggedIn}
                 regionStats={regionStats}
                 isLoggedIn={isLoggedIn}
-                onRequestLogin={() => {
-                  setLoginTrigger("detail");
-                  setShowLoginPrompt(true);
-                }}
+                // 지금 보고 있는 단지를 적어둔 채 로그인 모달을 연다 — 카카오는 전체 페이지
+                // 리다이렉트라 여기서 안 적으면 돌아왔을 때 이 단지로 못 돌아온다.
+                onRequestLogin={() => requestLoginForDetail(item.apt.id as string)}
               />
             </Suspense>
           );
@@ -850,10 +852,7 @@ export default function App() {
       {/* 로그인 유도 모달 */}
       <LoginPromptModal
         open={showLoginPrompt}
-        onClose={() => {
-          setShowLoginPrompt(false);
-          setLoginTrigger(null);
-        }}
+        onClose={closeLoginPrompt}
         onKakaoLogin={handleKakaoFromPrompt}
         kakaoLoading={kakao.kakaoLoading}
         trigger={loginTrigger}
