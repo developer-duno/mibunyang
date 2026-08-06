@@ -118,6 +118,10 @@ OpenAPI서비스명세서_*.doc
 # 네이버 수집기 중복 실행 방지 락 (filelock, 세션 470 — 런타임 산출물)
 .naver-collect.lock
 
+# 네이버 수집기 방문 체크포인트 (세션 495 — 회전 순서용 런타임 상태, 로컬 PC 전용)
+.naver-collect-state.json
+.naver-collect-state.json.tmp
+
 # 수집기 진단 로그 (molit-units 미매칭 목록 등 — 실행 산출물, 세션 495)
 # bat 이 stdout 을 안 남겨서 만든 날짜별 진단 파일이라 레포에 추적할 이유가 없다.
 scripts/collectors/logs/
