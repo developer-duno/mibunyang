@@ -39,7 +39,11 @@ const ALLOWLIST = new Set([
   // graceful 무관 — calc 단발 변환
   "calc-exclusive-ratio.mjs",
   "calc-floors.mjs",
-  "calc-layout.mjs",
+  // 세션 492: calc-layout.mjs 를 ALLOWLIST 에서 **제거**했다.
+  // "calc 단발 변환"으로 분류돼 있었지만 실제로는 대상 건수만큼 도는 루프가 셋이고
+  // (이름 유사도 8,720만 쌍 · articles 청크 조회 · 단지별 UPDATE), 예약 시간 30분에
+  // 걸려 죽어도 collector_runs 에 흔적이 없었다. createReporter/break/기록을 넣었으니
+  // 이제 검사 대상이다. 여기 남겨두면 그 안전장치가 나중에 지워져도 아무도 모른다.
   // graceful 무관 — KOSIS / 공공API 단발 호출
   "collect-avg-income.mjs",
   "collect-fertility-rate.mjs",
@@ -72,6 +76,54 @@ const REPORTER_REGEX = /createReporter\s*\(|setupGracefulShutdown\s*\(/;
 //   2. block: `if (rpt.interrupted()) { ...; break; }` (childcare-info-jeju 답습, 다중 줄)
 const BREAK_REGEX = /(if\s*\(\s*\w+\.interrupted\s*\(\s*\)\s*\)|if\s*\(\s*isInterrupted\s*\(\s*\)\s*\))[\s\S]{0,200}?break/;
 
+/**
+ * 주석을 걷어낸 사본을 돌려준다.
+ *
+ * ⚠️ 왜 필요한가 (세션 492): 이 가드는 소스를 **문자열로 grep** 한다. 그래서 지켜야 할
+ *    안전장치를 주석 처리해도 그대로 통과했다 —
+ *        // if (rpt.interrupted()) break;
+ *    안전장치가 죽었는데 초록불이 켜지는, 뮤테이션 없이는 절대 안 드러나는 구멍이다.
+ *    (같은 취약점이 REPORTER_REGEX 에도 있었다. 둘 다 걷어낸 사본에 건다.)
+ *
+ * 경계:
+ *   - URL 의 `//` 는 남긴다 — 앞 글자가 `:` 면 주석이 아니다 (`https://...`).
+ *   - 문자열 리터럴 안의 `//` 까지 지워지는 것은 **의도한 동작**이다. 문자열에 적힌
+ *     코드 조각이 "안전장치가 박혀 있다"는 증거가 되어선 안 된다.
+ *   - 지나치게 지우면 정상 collector 가 실패하므로, 이 가드가 실제 파일 전체에서
+ *     통과하는지(= 정상 통과)를 반드시 함께 확인한다.
+ *
+ * @param {string} src
+ * @returns {string}
+ */
+export function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+describe("stripComments — 가드가 주석에 속지 않는지", () => {
+  it("줄 주석으로 가려진 break 는 지워진다", () => {
+    const src = "for (const x of xs) {\n  // if (rpt.interrupted()) break;\n}";
+    expect(BREAK_REGEX.test(src), "주석 상태로도 매칭되는 것이 원래 결함").toBe(true);
+    expect(BREAK_REGEX.test(stripComments(src))).toBe(false);
+  });
+
+  it("블록 주석으로 가려진 createReporter 는 지워진다", () => {
+    const src = "/* const rpt = createReporter(PHASE); */\nconst x = 1;";
+    expect(REPORTER_REGEX.test(stripComments(src))).toBe(false);
+  });
+
+  it("살아 있는 코드는 남는다", () => {
+    const src = "const rpt = createReporter(PHASE);\nfor (const x of xs) {\n  if (rpt.interrupted()) break;\n}";
+    expect(REPORTER_REGEX.test(stripComments(src))).toBe(true);
+    expect(BREAK_REGEX.test(stripComments(src))).toBe(true);
+  });
+
+  it("URL 의 // 는 주석으로 오인하지 않는다", () => {
+    expect(stripComments('const u = "https://a.b/c";')).toContain("https://a.b/c");
+  });
+});
+
 describe("graceful shutdown coverage 회귀 가드 (PR-A, 세션 329)", () => {
   const FILES = readdirSync(COLLECTORS_DIR)
     .filter((f) => f.endsWith(".mjs") && !f.endsWith(".test.mjs") && !f.startsWith("_"))
@@ -87,7 +139,8 @@ describe("graceful shutdown coverage 회귀 가드 (PR-A, 세션 329)", () => {
   for (const f of FILES) {
     it(`${f}: createReporter or setupGracefulShutdown + main loop break 박힘`, () => {
       if (ALLOWLIST.has(f)) return;
-      const src = readFileSync(path.join(COLLECTORS_DIR, f), "utf8");
+      // 주석을 걷어낸 사본에 건다 — 주석 처리된 안전장치는 증거가 아니다 (세션 492)
+      const src = stripComments(readFileSync(path.join(COLLECTORS_DIR, f), "utf8"));
       const hasReporter = REPORTER_REGEX.test(src);
       const hasBreak = BREAK_REGEX.test(src);
       expect(hasReporter, `${f}: createReporter / setupGracefulShutdown 호출 미박힘`).toBe(true);

@@ -10,7 +10,7 @@
  *   node scripts/collectors/calc-layout.mjs              (Supabase UPDATE)
  *   node scripts/collectors/calc-layout.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, selectAll, createReporter, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -94,6 +94,13 @@ async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
+  // ⚠️ 세션 492 — reporter 는 **어떤 루프보다도 먼저** 만든다.
+  //    createReporter 가 SIGTERM 핸들러를 등록하는 지점이라, 루프 뒤에서 부르면
+  //    등록이 0회가 되어 graceful 이 무효가 된다 (infra-kakao 세션 327 선례).
+  //    calc-layout 은 여태 collector_runs 를 한 줄도 안 남겨서, 예약 시간(30분)에
+  //    걸려 죽어도 흔적이 없었다 — 적대검증이 지적한 "조용히 죽으면 알림 0".
+  const rpt = createReporter(PHASE);
+
   const sb = getSupabase();
   const sbMibunyang = getMibuyangSupabase();
 
@@ -111,7 +118,16 @@ async function main() {
   );
   log(PHASE, `대상: ${apts.length}건 (layout null)`);
 
-  if (!apts.length) { log(PHASE, "대상 없음, 종료"); return; }
+  if (!apts.length) {
+    // 대상 0건 = 전부 채워졌다는 뜻이라 정상이다. 다만 그대로 두면 collector_runs 에
+    // ok=0 && skip=0 인 성공 행이 남아 monitor ②가 "빈 성공"으로 오탐한다.
+    // 건드릴 필요가 없어 넘어간 건수를 skip 으로 남긴다 (notify-subscribers 선례).
+    const { count } = await sb.from("apartments_flat").select("*", { count: "exact", head: true });
+    rpt.skip(count ?? 0);
+    log(PHASE, "대상 없음, 종료");
+    await recordCollectorRun(PHASE, rpt.summary());
+    return;
+  }
 
   // 2. complexes 조회
   const complexes = /** @type {{ complex_no: string, complex_name: string, high_floor: number | null, total_household_count: number | null }[]} */ (
@@ -160,6 +176,9 @@ async function main() {
   /** @type {Set<string>} */
   const neededNos = new Set();
   for (const apt of apts) {
+    // 여기가 이 수집기에서 가장 오래 걸리는 구간이다 — complexes 63,838건과의 이름 유사도
+    // 비교가 대상 건수만큼 반복된다(실측 8,720만 쌍). SIGTERM 을 받으면 여기서 멈춰야 한다.
+    if (rpt.interrupted()) break;
     let matched = aptToComplexes.get(apt.id) || [];
     if (matched.length === 0) {
       matched = complexes.filter((cpx) => {
@@ -172,6 +191,13 @@ async function main() {
   }
   log(PHASE, `매칭된 단지: ${neededNos.size}개 (대상 ${apts.length}건 기준)`);
 
+  // 매칭이 중간에 끊겼으면 그 뒤 단계는 불완전한 목록 위에서 도는 셈이라 의미가 없다.
+  // 여기서 partial 로 기록하고 끝낸다 (기록을 남겨야 "조용히 죽음"이 아니게 된다).
+  if (rpt.interrupted()) {
+    await recordCollectorRun(PHASE, rpt.summary());
+    return;
+  }
+
   // 5. 매칭된 단지의 전용면적만 조회 → complex_no별 그룹핑
   /** @type {Map<string, number[]>} */
   const areaByComplex = new Map();
@@ -179,6 +205,7 @@ async function main() {
   const CHUNK = 200;
   let artCount = 0;
   for (let i = 0; i < nos.length; i += CHUNK) {
+    if (rpt.interrupted()) break;
     const chunk = nos.slice(i, i + CHUNK);
     const rows = /** @type {{ complex_no: string, area2_m2: number }[]} */ (
       await selectAll(
@@ -201,9 +228,10 @@ async function main() {
   log(PHASE, `articles (with area): ${artCount}건 / 단지 ${areaByComplex.size}개`);
 
   // 6. 각 아파트에 대해 layout 추정
-  let updated = 0, skipped = 0;
+  let updated = 0, skipped = 0, failed = 0;
 
   for (const apt of apts) {
+    if (rpt.interrupted()) break;
     const matchedComplexes = matchByApt.get(apt.id) || [];
     if (matchedComplexes.length === 0) { skipped++; continue; }
 
@@ -250,11 +278,18 @@ async function main() {
       .from("apartments")
       .update({ layout, updated_at: new Date().toISOString() })
       .eq("id", apt.id);
-    if (error) { logError(PHASE, `${apt.name}: ${error.message}`); skipped++; }
+    // 저장 실패는 skip 이 아니라 fail 이다 — skip 으로 묻으면 collector_runs 가 success 로
+    // 남아 실패가 감시망에 안 걸린다. (exit code 정책은 이번 범위 밖이라 그대로 둔다.)
+    if (error) { logError(PHASE, `${apt.name}: ${error.message}`); failed++; }
     else updated++;
   }
 
-  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
+  log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped}, 실패 ${failed} ===`);
+
+  rpt.success(updated);
+  rpt.skip(skipped);
+  rpt.fail(failed);
+  await recordCollectorRun(PHASE, rpt.summary());
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
