@@ -591,13 +591,14 @@ describe("supabaseOnlyMode", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(fromMock).toHaveBeenCalledWith("apartments_flat");
 
-    // 20 파일 write 호출 확인 (apartments/list/prices/meta 4 + 상세 버킷 16, 세션 468)
+    // 19 파일 write 호출 확인 (apartments/list/meta 3 + 상세 버킷 16, 세션 468 → PR2 로 prices 제외)
     // (실제 디스크 쓰기 0회 — vi.mock("fs") 스파이가 가로챔)
-    expect(writeFileSpy).toHaveBeenCalledTimes(20);
+    expect(writeFileSpy).toHaveBeenCalledTimes(19);
     const callPaths = writeFileSpy.mock.calls.map(c => c[0]);
     expect(callPaths.some(p => String(p).endsWith("apartments.json"))).toBe(true);
     expect(callPaths.some(p => String(p).endsWith("apartments-list.json"))).toBe(true);
-    expect(callPaths.some(p => String(p).endsWith("apartments-prices.json"))).toBe(true);
+    // PR2(세션 495) — 구 prices 파일은 더 이상 생성하지 않는다(가격배열은 상세 버킷이 싣는다).
+    expect(callPaths.some(p => String(p).endsWith("apartments-prices.json"))).toBe(false);
     expect(callPaths.some(p => String(p).endsWith("meta.json"))).toBe(true);
     // 상세 버킷 16개 — 0·15 존재 + 총 16개
     expect(callPaths.some(p => String(p).endsWith("apartments-detail-16-0.json"))).toBe(true);
@@ -668,8 +669,8 @@ describe("supabaseOnlyMode", () => {
     const fromMock = vi.fn(() => ({ select: () => ({ range: rangeMock }) }));
     mockCreateClient.mockReturnValue({ from: fromMock });
 
-    // 20 JSON write 박힘 (4 + 상세 버킷 16, 회귀 가드 통과 → writeOutputs 도달, 세션 468)
+    // 19 JSON write 박힘 (3 + 상세 버킷 16, 회귀 가드 통과 → writeOutputs 도달, 세션 468 → PR2 로 prices 제외)
     await supabaseOnlyMode();
-    expect(writeFileSpy).toHaveBeenCalledTimes(20);
+    expect(writeFileSpy).toHaveBeenCalledTimes(19);
   });
 });

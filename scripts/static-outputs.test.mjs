@@ -7,7 +7,6 @@ import { describe, it, expect } from "vitest";
 import {
   slimCats,
   buildListData,
-  buildPricesData,
   buildDetailBuckets,
   DETAIL_BUCKET_COUNT,
   detailBucketName,
@@ -105,13 +104,6 @@ describe("buildListData", () => {
   it("스칼라 필드 보존 (id/name/price/region)", () => {
     expect(/** @type {any} */ (list[0]).id).toBe("a");
     expect(/** @type {any} */ (list[0]).price).toBe(50000);
-  });
-});
-
-describe("buildPricesData", () => {
-  it("id + 가격배열 4개만", () => {
-    const p = buildPricesData([makeApt("a")]);
-    expect(Object.keys(p[0]).sort()).toEqual(["id", "jeonseByArea", "priceByArea", "priceByFloor", "rentByArea"]);
   });
 });
 
