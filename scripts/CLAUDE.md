@@ -224,7 +224,7 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 
 | API | 수집기 | 간격 | 재시도 | 429 처리 |
 |-----|--------|------|--------|---------|
-| 네이버 부동산 | naver-collect.py | 1초 | 3회 | JWT 리셋 + 5*(i+1)초 |
+| 네이버 부동산 | naver-collect.py | 5초 (`thr()` 기본값, 세션 118 IP 쿨다운 상향) | 3회 | JWT 리셋 + 5*(i+1)초 |
 | 네이버 부동산 | naver-listings.mjs | 1초 | 5회 | JWT 리셋 + [3,5,10,15,20]초 |
 | 네이버 분양 | naver-presale.mjs | 2초 | 3회 | [5,10,20]초 |
 | data.go.kr | molit-* | 0.4초 | 3회 (기본) | NonRetryableError / 지수 백오프. ⚠️ collect-maintenance `fetchTotalHouseholds` 는 8s/1회 override(세션 451, 위 MOLIT 모듈 절) |
