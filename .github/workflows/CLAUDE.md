@@ -126,8 +126,8 @@
 | `NEIS_KEY` | NEIS 교육정보 (선택, 미등록 시 스킵) | - |
 | `SCHOOLINFO_KEY` | 학교알리미 학생수 (선택) | - |
 | `AIRKOREA_KEY` | 에어코리아 대기질 (선택) | - |
-| `CHILDCARE_API_KEY` | info.childcare.go.kr cpmsapi021 어린이집 목록 (세션 252) | O |
-| `CHILDCARE_BASIC_API_KEY` | info.childcare.go.kr cpmsapi030 어린이집 70 필드 상세 (세션 256) | O |
+| `CHILDCARE_API_KEY` | info.childcare.go.kr cpmsapi021 어린이집 목록 (세션 252) — 세션 399 로컬 러너(`childcare-local-runner.mjs`) 이전으로 GH 워크플로 사용 0 (로컬 `.env` 만, 시크릿 잔존은 무해) | - |
+| `CHILDCARE_BASIC_API_KEY` | info.childcare.go.kr cpmsapi030 어린이집 70 필드 상세 (세션 256) — 세션 399 로컬 러너 이전으로 GH 워크플로 사용 0 (로컬 `.env` 만, 시크릿 잔존은 무해) | - |
 | `SUBSCRIBERS_OPT_OUT_SECRET` | 분양 알림 수신거부 HMAC (Vercel 과 동일 값 유지 의무 — 드리프트 시 문자 속 철회 링크 전부 401, 세션 467) | - |
 | `SOLAPI_API_KEY`/`SOLAPI_API_SECRET`/`SOLAPI_SENDER` | 분양 알림 SMS 실발송 3종 (미등록 = notify-subscribers 자동 dry-run). ⚠️ 주입은 PR3(sendSms 실구현+SMS_ADAPTER_READY=true) 머지 후 — 스텁 상태 live 진입은 코드 게이트가 차단하지만 순서 지키는 게 정석 (세션 467) | - |
 
