@@ -92,13 +92,17 @@ describe("leaseTypes — excludeLeaseUnits", () => {
 });
 
 describe("배선 가드 — 출력 길목에 실제로 꽂혀 있는가", () => {
-  it("collect-data.mjs writeOutputs 가 걸러진 배열로 4종 출력을 만든다", () => {
+  it("collect-data.mjs writeOutputs 가 걸러진 배열로 전 출력을 만든다", () => {
+    // 출력 3종 = apartments.json · apartments-list.json · 상세 버킷.
+    // 구 apartments-prices.json 은 PR #324(세션 468 후속)에서 생성 중단됐다 — 가격배열은
+    // 상세 버킷이 이미 싣는다. 그 파일이 되살아나면 여기 가드도 같이 늘려야 한다.
     const src = readStripped("scripts/collect-data.mjs");
     expect(src).toMatch(/const\s+visible\s*=\s*excludeLeaseUnits\(\s*apartments\s*\)/);
     expect(src).toMatch(/const\s+listData\s*=\s*buildListData\(\s*visible\s*\)/);
-    expect(src).toMatch(/const\s+pricesData\s*=\s*buildPricesData\(\s*visible\s*\)/);
     expect(src).toMatch(/const\s+detailBuckets\s*=\s*buildDetailBuckets\(\s*visible\s*\)/);
     expect(src).toMatch(/data:\s*visible\s*,\s*count:\s*visible\.length/);
+    // 거르지 않은 원본이 출력 함수로 새는 경로가 없어야 한다(회귀 방지).
+    expect(src).not.toMatch(/build(ListData|DetailBuckets)\(\s*apartments\s*\)/);
   });
 
   it("collect-data.mjs supabaseOnlyMode 가 회귀 가드 **이전에** 거른다", () => {
@@ -116,8 +120,8 @@ describe("배선 가드 — 출력 길목에 실제로 꽂혀 있는가", () => 
     const src = readStripped("scripts/split-apartments-json.mjs");
     expect(src).toMatch(/const\s+visible\s*=\s*excludeLeaseUnits\(\s*apartments\s*\)/);
     expect(src).toMatch(/const\s+listData\s*=\s*buildListData\(\s*visible\s*\)/);
-    expect(src).toMatch(/const\s+pricesData\s*=\s*buildPricesData\(\s*visible\s*\)/);
     expect(src).toMatch(/const\s+detailBuckets\s*=\s*buildDetailBuckets\(\s*visible\s*\)/);
+    expect(src).not.toMatch(/build(ListData|DetailBuckets)\(\s*apartments\s*\)/);
   });
 
   it("api/upcoming.ts 가 rows 를 걸러진 배열로 만든다 (곧분양 탭·홈 위젯)", () => {
