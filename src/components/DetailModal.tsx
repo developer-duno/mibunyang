@@ -27,6 +27,7 @@ import { PresaleTimeline } from "./charts/PresaleTimeline";
 import { LoanStack } from "./charts/LoanStack";
 import { CategoryMiniCard } from "./detail/CategoryMiniCard";
 import { ProfileWeightBar } from "./detail/ProfileWeightBar";
+import { BlindScoreBadge, LoginCta, ScoreLockPanel } from "./detail/ScoreBlind";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
@@ -130,7 +131,11 @@ export const DetailModal = memo(function DetailModal({
   profile,
   adminLoggedIn = false,
   regionStats = null,
+  isLoggedIn = true,
+  onRequestLogin,
 }: DetailModalProps) {
+  // 비로그인 점수 블라인드 (단계 2-A) — 기본 true 라 2-B(게이트 완화) 전까지 이 분기는 안 켜진다.
+  const blind = !isLoggedIn;
   // 종합 탭 편차 스트립 8줄 (세션 487 PR-4) — 카드와 **같은 컴포넌트**, 트랙만 넓다.
   // 카드에서 배운 읽는 법("오른쪽으로 길수록 유리")이 팝업에서 그대로 통해야 하기 때문.
   const showDeviation = isFeatureDeviationStrip() && regionStats != null;
@@ -396,7 +401,10 @@ export const DetailModal = memo(function DetailModal({
           <StickyJumpNav
             sections={sections}
             activeId={activeTab}
-            totalScore={res.total}
+            // 목차바 우측 "종합 NN" 배지도 같은 종합점수다 — 여기를 안 막으면 뿌옇게 만든 원 바로
+            // 위에 숫자가 그대로 떠서 블라인드가 무의미해진다. null = 배지 자체 미렌더
+            // (StickyJumpNav 의 `totalScore != null` 가드 재사용, 그쪽 파일 무변경).
+            totalScore={blind ? null : res.total}
             onJump={handleTabChange}
             isMounted={isPanelMounted}
             isDesktop={isDesktop}
@@ -415,7 +423,7 @@ export const DetailModal = memo(function DetailModal({
               style={panelStyle("sec-overview")}
             >
               <div style={DM_S.scoreBadgeWrap}>
-                <ScoreBadge score={res.total} size={80} />
+                {blind ? <BlindScoreBadge size={80} /> : <ScoreBadge score={res.total} size={80} />}
               </div>
 
               {/* 요약 시각화 — "이 단지 vs 같은 지역 한가운데 값" 8줄 (세션 487 PR-4).
@@ -514,6 +522,7 @@ export const DetailModal = memo(function DetailModal({
                         cat={c}
                         emphasized={overviewTopCats.includes(k)}
                         onJump={() => handleCategoryJump(k)}
+                        blind={blind}
                       />
                     ))}
                   </div>
@@ -521,8 +530,10 @@ export const DetailModal = memo(function DetailModal({
               })()}
 
               {/* 프로필 가중치 막대 — "왜 이 점수인지" 새 정보축 (세션 434 점수 근거 투명화 A+B).
-            손님이 보는 상세 모달은 로그인 전제(useDetailModal 단일 진입) → 블라인드 무관. profile 있을 때만. */}
-              {profile && <ProfileWeightBar weights={PROFILES[profile].w} cats={res.cats} />}
+            ⚠️ 옛 주석은 "상세 모달은 로그인 전제(useDetailModal 단일 진입)라 블라인드 무관"이라 했으나
+            단계 2-A 로 그 전제가 바뀐다(2-B 부터 비로그인도 상세를 연다). 비로그인엔 아예 안 그린다 —
+            가중치는 "내 프로필"이 있어야 성립하는 값이라 뿌옇게 남기는 것보다 없는 편이 정직하다. */}
+              {profile && !blind && <ProfileWeightBar weights={PROFILES[profile].w} cats={res.cats} />}
 
               {/* 단지 기본정보 (핵심지표 중복 4필드 제외 — 세션 408 D2a) */}
               {OVERVIEW_SECTIONS.map((s) => (
@@ -530,6 +541,9 @@ export const DetailModal = memo(function DetailModal({
               ))}
 
               {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-overview" />}
+
+              {/* 잠금 자리 CTA (단계 2-A) — 종합 탭 하단 1곳. 점수 탭 잠금 패널의 것과 같은 문구. */}
+              {blind && <LoginCta onRequestLogin={onRequestLogin} />}
 
               {/* 출처 footer — 전 탭 공통 데이터 출처 (종합 탭 1회 고정, 세션 408 D2a) */}
               <div style={DM_S.sourceFooter}>
@@ -729,22 +743,26 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-score")}
             >
-              {(() => {
-                const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
-                // mergedRes = 버킷 도착 시 full subs 로 복원된 res, 미도착 시 슬림 res(subs[0]만).
-                return orderedCatEntries((mergedRes ?? res).cats as unknown as Record<string, Res>).map(([k, c]) => {
-                  const seq = jumpSeqs[k] ?? 0;
-                  return (
-                    <CatPanel
-                      key={`${k}#${seq}`}
-                      cat={c}
-                      k={k}
-                      emphasized={topCats.includes(k)}
-                      defaultExpanded={seq > 0}
-                    />
-                  );
-                });
-              })()}
+              {/* 비로그인 = 패널 6개를 통째로 잠금 안내로 교체 (단계 2-A). CatPanel 은 서브지표 41개까지
+                  펼치는 곳이라 부분 가리기가 성립하지 않는다 — 문을 통째로 닫고 왜 닫혔는지만 알린다. */}
+              {blind && <ScoreLockPanel onRequestLogin={onRequestLogin} />}
+              {!blind &&
+                (() => {
+                  const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
+                  // mergedRes = 버킷 도착 시 full subs 로 복원된 res, 미도착 시 슬림 res(subs[0]만).
+                  return orderedCatEntries((mergedRes ?? res).cats as unknown as Record<string, Res>).map(([k, c]) => {
+                    const seq = jumpSeqs[k] ?? 0;
+                    return (
+                      <CatPanel
+                        key={`${k}#${seq}`}
+                        cat={c}
+                        k={k}
+                        emphasized={topCats.includes(k)}
+                        defaultExpanded={seq > 0}
+                      />
+                    );
+                  });
+                })()}
             </section>
           )}
 
