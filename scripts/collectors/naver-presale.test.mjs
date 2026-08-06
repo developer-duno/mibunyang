@@ -21,7 +21,9 @@ import {
   extractPresaleFields,
   buildNewApartment,
   toPresalePriceRow,
+  dedupUpdateRows,
 } from "./naver-presale.mjs";
+import { readFileSync } from "node:fs";
 
 // ── 테스트 팩토리 ─────────────────────────────────────────────
 
@@ -630,5 +632,66 @@ describe("buildNewApartment", () => {
     expect(apt.unit_source).toBe("naver_presale");
     expect(apt.name).toBe("테스트아파트");
     expect(apt.units).toBe(300);
+  });
+});
+
+// ── dedupUpdateRows (세션 495) ────────────────────────────────
+describe("dedupUpdateRows — 공고 N건 → 단지 M건", () => {
+  it("같은 아파트에 붙은 여러 공고를 한 행으로 합친다", () => {
+    const rows = dedupUpdateRows([
+      { id: "ap-1", presale_stage: "1차" },
+      { id: "ap-2", presale_stage: "1차" },
+      { id: "ap-1", presale_stage: "2차" },
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.id)).toEqual(["ap-1", "ap-2"]);
+  });
+
+  it("마지막 공고 값이 이긴다 (순차 UPDATE 의 최종 상태와 동일)", () => {
+    const rows = dedupUpdateRows([
+      { id: "ap-1", presale_stage: "1차", presale_pp: 1000 },
+      { id: "ap-1", presale_stage: "2차", presale_pp: 2000 },
+    ]);
+    expect(rows[0].presale_stage).toBe("2차");
+    expect(rows[0].presale_pp).toBe(2000);
+  });
+
+  it("앞 공고만 채운 enrichment 는 살아남는다 (필드 단위 병합 — 통째 교체면 사라짐)", () => {
+    const rows = dedupUpdateRows([
+      { id: "ap-1", presale_stage: "1차", units: 300, builder: "GS건설" },
+      { id: "ap-1", presale_stage: "2차" },
+    ]);
+    expect(rows[0].units).toBe(300);
+    expect(rows[0].builder).toBe("GS건설");
+    expect(rows[0].presale_stage).toBe("2차");
+  });
+
+  it("중복이 없으면 입력을 그대로 돌려준다", () => {
+    const input = [{ id: "ap-1" }, { id: "ap-2" }, { id: "ap-3" }];
+    expect(dedupUpdateRows(input)).toHaveLength(3);
+  });
+
+  it("빈 입력은 빈 배열", () => {
+    expect(dedupUpdateRows([])).toEqual([]);
+  });
+});
+
+describe("main 이 dedup 한 목록으로 UPDATE 하고 공고/단지를 나눠 찍는다 (세션 495)", () => {
+  // main() 은 export 되지 않아 배선을 소스로 확인한다.
+  // ⚠️ 좌변 고정 + 주석 제거 사본 — 선언부·주석 매칭 함정 차단.
+  const src = readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
+  it("dedupUpdateRows 결과를 변수로 받는다", () => {
+    expect(src).toMatch(/const\s+dedupedUpdates\s*=\s*dedupUpdateRows\(\s*updateRows\s*\)/);
+  });
+
+  it("UPDATE 루프가 dedup 한 목록을 돈다 (원본 updateRows 를 돌면 단지당 여러 번 쏨)", () => {
+    expect(src).toMatch(/for\s*\(\s*const\s+row\s+of\s+dedupedUpdates\s*\)/);
+  });
+
+  it("로그에 공고 수와 단지 수가 둘 다 찍힌다", () => {
+    expect(src).toMatch(/공고\s*\$\{updateRows\.length\}건\s*\/\s*단지\s*\$\{dedupedUpdates\.length\}건/);
   });
 });

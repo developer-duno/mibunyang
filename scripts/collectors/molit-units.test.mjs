@@ -4,7 +4,10 @@
  *
  * 대상: getTargets, fetchAptDetail, updateUnits, E2E 시나리오
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -30,7 +33,8 @@ vi.mock("./_molit-api.mjs", async (importOriginal) => {
 // MOLIT_KEY 설정 — process.exit 방지
 process.env.MOLIT_KEY = "test-key";
 
-const { getTargets, fetchAptDetail, updateUnits, resolveUnits } = await import("./molit-units.mjs");
+const { getTargets, fetchAptDetail, updateUnits, resolveUnits, writeUnmatchedLog, unmatchedLogPath } =
+  await import("./molit-units.mjs");
 
 // ── 헬퍼 ─────────────────────────────────────────────────────
 /**
@@ -189,6 +193,63 @@ describe("updateUnits", () => {
       }
     });
   }
+});
+
+// ── 미매칭 목록 파일 기록 (세션 495) ─────────────────────────
+describe("writeUnmatchedLog — 미매칭 목록을 날짜별 파일로 남긴다", () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "molit-units-log-")); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  const entries = [
+    { id: "ap-1", name: "가나아파트", region: "경기", gu: "화성시", reason: "이름 매칭 실패 (유사도 < 0.6)" },
+    { id: "ap-2", name: "다라아파트", region: "서울", gu: null, reason: "상세 조회 실패 (kaptCode=K9)" },
+  ];
+
+  it("단지명·사유가 파일에 남는다 (bat 이 stdout 을 안 남겨 생긴 구멍)", () => {
+    const p = writeUnmatchedLog(entries, dir, "2026-08-07");
+    expect(p).toBe(unmatchedLogPath(dir, "2026-08-07"));
+    const saved = JSON.parse(readFileSync(/** @type {string} */ (p), "utf8"));
+    expect(saved.count).toBe(2);
+    expect(saved.entries.map((/** @type {any} */ e) => e.name)).toEqual(["가나아파트", "다라아파트"]);
+    expect(saved.entries[0].reason).toMatch(/이름 매칭 실패/);
+    expect(saved.entries[1].reason).toMatch(/상세 조회 실패/);
+  });
+
+  it("미매칭 0건이면 파일을 만들지 않는다 (빈 파일 쓰레기 방지)", () => {
+    expect(writeUnmatchedLog([], dir, "2026-08-07")).toBeNull();
+    expect(existsSync(unmatchedLogPath(dir, "2026-08-07"))).toBe(false);
+  });
+
+  it("파일명에 날짜가 박혀 실행마다 덮어쓰지 않는다", () => {
+    writeUnmatchedLog(entries, dir, "2026-08-07");
+    writeUnmatchedLog(entries, dir, "2026-08-11");
+    expect(existsSync(unmatchedLogPath(dir, "2026-08-07"))).toBe(true);
+    expect(existsSync(unmatchedLogPath(dir, "2026-08-11"))).toBe(true);
+  });
+
+  it("기록 실패(없는 상위 경로 등)해도 예외를 던지지 않는다 — 진단이 수집을 죽이면 안 됨", () => {
+    // 파일을 디렉토리 이름으로 써서 mkdir/write 를 실패시킨다.
+    const bad = join(dir, "nope.json", "sub");
+    expect(() => writeUnmatchedLog(entries, bad, "2026-08-07")).not.toThrow();
+  });
+});
+
+describe("main 이 unmatched 를 collector_runs 의 skip 에 합산한다 (세션 495)", () => {
+  // main() 은 export 되지 않아 배선 자체를 소스로 확인한다.
+  // ⚠️ 좌변(await recordCollectorRun)까지 고정 + 주석 제거 사본에 검사 — 선언부·주석 매칭 함정 차단.
+  const src = readFileSync(new URL("./molit-units.mjs", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
+  it("recordCollectorRun 호출의 skip 이 skipped + unmatched 다", () => {
+    expect(src).toMatch(/await\s+recordCollectorRun\(\s*PHASE\s*,\s*\{[^}]*skip:\s*skipped\s*\+\s*unmatched/);
+  });
+
+  it("미매칭 목록을 파일로 남기는 호출이 배선돼 있다", () => {
+    expect(src).toMatch(/const\s+unmatchedLog\s*=\s*writeUnmatchedLog\(\s*unmatchedList\s*\)/);
+  });
 });
 
 // ── E2E 시나리오 ─────────────────────────────────────────────

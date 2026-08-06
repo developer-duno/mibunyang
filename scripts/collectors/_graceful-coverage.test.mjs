@@ -37,7 +37,9 @@ const COLLECTORS_DIR = path.resolve(process.cwd(), "scripts/collectors");
  */
 const ALLOWLIST = new Set([
   // graceful 무관 — calc 단발 변환
-  "calc-exclusive-ratio.mjs",
+  // 세션 495: calc-exclusive-ratio.mjs 를 ALLOWLIST 에서 **제거**했다.
+  // 실행 기록(collector_runs)을 넣으면서 createReporter + 단지별 UPDATE 루프의 break 를 함께 박았다.
+  // 여기 남겨두면 그 안전장치가 나중에 지워져도 아무도 모른다 (calc-layout·noxious 선례 답습).
   "calc-floors.mjs",
   // 세션 492: calc-layout.mjs 를 ALLOWLIST 에서 **제거**했다.
   // "calc 단발 변환"으로 분류돼 있었지만 실제로는 대상 건수만큼 도는 루프가 셋이고
