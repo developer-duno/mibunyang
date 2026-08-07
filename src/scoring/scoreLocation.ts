@@ -2,10 +2,13 @@ import { NOXIOUS_PENALTY } from "@/constants/brands";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import {
   tierMax,
+  tierMaxLabel,
   SUBWAY_DIST_TIERS,
   FULL_BUS_ROUTES,
   IC_DIST_TIERS,
+  IC_DIST_FALLBACK_LABEL,
   KTX_DIST_TIERS,
+  KTX_DIST_FALLBACK_LABEL,
   INFRA_CONFIG,
   VIEW_SCORES,
   SUNLIGHT_SCORES,
@@ -142,8 +145,12 @@ export function scoreLocation(apt: Apt): Res {
             ? "지하철 없음"
             : `지하철 ${subwayDist}m${subwayLines ? `(${subwayLines})` : ""} ${subwayDist <= 300 ? "역세권" : subwayDist <= 500 ? "도보권" : subwayDist <= 700 ? "양호" : subwayDist <= 1000 ? "보통" : "원거리"}`,
           apt._noBus ? "버스 미수집" : `버스 ${busRoutes}개/${FULL_BUS_ROUTES}`,
-          icDist < 90 ? `IC ${icDist}km ${icDist <= 2 ? "우수" : icDist <= 5 ? "양호" : "보통"}` : "IC 원거리",
-          ktxDist < 90 ? `KTX ${ktxDist}km ${ktxDist <= 5 ? "우수" : ktxDist <= 10 ? "양호" : "보통"}` : null,
+          // 등급 문구는 점수표(IC_DIST_TIERS/KTX_DIST_TIERS)에서 뽑는다 — 여기에 경계를 따로
+          // 박으면 점수표만 바뀌었을 때 문구가 안 따라와 "0점인데 보통"이 남는다(세션499).
+          icDist < 90
+            ? `IC ${icDist}km ${tierMaxLabel(icDist, IC_DIST_TIERS, IC_DIST_FALLBACK_LABEL)}`
+            : `IC ${IC_DIST_FALLBACK_LABEL}`,
+          ktxDist < 90 ? `KTX ${ktxDist}km ${tierMaxLabel(ktxDist, KTX_DIST_TIERS, KTX_DIST_FALLBACK_LABEL)}` : null,
         ]
           .filter(Boolean)
           .join(" · "),
