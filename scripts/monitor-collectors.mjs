@@ -225,7 +225,7 @@ export const EXTERNAL_API_COLLECTORS = [
   //    cron 을 월간으로 되돌릴 때 이 값도 38 로 함께 되돌릴 것.
   { collector: "housing-permits", stale_days: QUARTERLY_STALE_DAYS, owner: "MOLIT 주택건설실적 (분기 10일 cron + 9일 여유)" },
   { collector: "building-hub",    stale_days: QUARTERLY_STALE_DAYS, owner: "MOLIT 건축물대장 허브 (분기 15일 cron + 9일 여유)" },
-  { collector: "transport-tago",  stale_days: 14, owner: "TAGO 대중교통" },
+  { collector: "transport-tago",  stale_days: 14, owner: "버스정류장 파일(data.go.kr, 세션497부터 TAGO 실시간 API 대체) + Kakao" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 14, owner: "청약홈 분양일정·평형 (주간 월 cron — 세션 467 주간화)" },
   // 세션 496 단계1. collect-applyhome-remndr.yml = 주간 월 13:30 KST cron → 7+7 = 14.

@@ -1,34 +1,52 @@
 // @ts-check
 /**
- * 교통 접근성 수집기 — Kakao Places + TAGO 대중교통 API
+ * 교통 접근성 수집기 — Kakao Places + 버스정류장 정적 파일(data.go.kr)
  *
- * 지하철(Kakao SW8, 10km), 버스(TAGO 좌표기반, 1km),
+ * 지하철(Kakao SW8, 10km), 버스(data.go.kr #15067528 전국 버스정류장 위치정보,
+ *   반경 500m·최근접 15개 raw→정류장명 dedup — 세션497 실측 확정, 아래 §버스 정류장 참조),
  * 고속도로IC(Kakao, 30km), KTX(Kakao, 80km)
+ *
+ * ⚠️ 세션497: TAGO 실시간 API(`getCrdntPrxmtSttnList`)를 폐기했다. 같은 게이트웨이의
+ * 다른 서비스(collect-maintenance)는 정상 수집되는데 TAGO 만 간헐적으로 완전 무응답이었고
+ * (원인 미확정), 결정적으로 **서울 단지 391곳(62%)의 "버스 0개"가 거짓으로 확인**됐다 —
+ * 서울은 TOPIS(자체 BIS)를 쓰고 TAGO(지자체 BIS 연계)는 서울을 커버하지 않는다. 정적 파일은
+ * 서울을 포함한 전국 정류장(연 1회 갱신)을 담고 있어 이 결측을 해소한다.
+ * (`docs/superpowers/specs/2026-08-07-transport-busstop-file-gate-verification.md`,
+ *  `2026-08-07-transport-busstop-reversal-and-implementation.md` 답습)
  *
  * 사용법:
  *   node scripts/collectors/transport-tago.mjs                     (Supabase UPDATE)
  *   node scripts/collectors/transport-tago.mjs --dry-run           (미리보기만)
  *   node scripts/collectors/transport-tago.mjs --budget-min=180    (벽시계 예산 분 — 기본 180, 0=무제한)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, recordCollectorRun, createReporter, selectAll, budgetExceeded } from "./_shared.mjs";
+import { parse } from "csv-parse/sync";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordCollectorRun, createReporter, selectAll, budgetExceeded, haversineKm } from "./_shared.mjs";
 
 /**
  * @typedef {{ place_name?: string, category_name?: string, distance?: string|number, x?: string|number, y?: string|number }} KakaoDoc
  * @typedef {{ documents?: KakaoDoc[] }} KakaoSearchResponse
  * @typedef {{ nodenm?: string, [k: string]: unknown }} TagoBusStop
- * @typedef {{ response?: { body?: { items?: { item?: TagoBusStop|TagoBusStop[]|"" } } } }} TagoResponse
+ * @typedef {{ name: string, lat: number, lng: number }} BusStopRecord
  */
 
 loadEnv();
 
 const PHASE = "transport";
 const KAKAO_KEY = process.env.KAKAO_KEY;
-const TAGO_KEY = process.env.TAGO_KEY;
 
 const RADIUS = { SUBWAY: 10000, IC: 30000, KTX: 80000 };
 const DEFAULT_SUBWAY_DIST = 9999;
 const DEFAULT_IC_DIST = 99;
 const DEFAULT_KTX_DIST = 99;
+
+// ── 버스 정류장 정적 파일 (data.go.kr #15067528) ──────────────────
+// 세션497 게이트1(N=30, 15개 지역) 실측 확정: 반경 500m. cap15(raw, 거리순) → 이름 dedup 순서가
+// 정답(반대로 하면 게이트2 재현율이 반토막 난다 — 위 검증 문서 §(a) 답습).
+const BUS_RADIUS_M = 500;
+const BUS_RAW_CAP = 15;
+const BUS_GRID_CELL_DEG = 0.01; // ≈1.1km — 반경 500m 조회 시 자기 셀+인접 8셀로 충분
+const BUS_STOPS_PUBLIC_DATA_PK = "15067528";
+const BUS_STOPS_PUBLIC_DATA_DETAIL_PK = "uddi:f74b9799-9db1-4754-a5d0-b66e2ae705f3";
 
 /**
  * @param {number} lat
@@ -59,34 +77,150 @@ async function searchKakaoCategory(lat, lng, categoryCode, radius) {
 }
 
 /**
- * TAGO API: 좌표 기반 근처 버스 정류장 조회
+ * data.go.kr 파일 다운로드 흐름 — atchFileId 는 연 1회 갱신될 때 바뀌므로 절대 하드코딩하지
+ * 않고 매 실행 시 resolve 한다(collect-housing-price.mjs 의 알려진 함정 답습 — 세션497 지시).
  *
- * 세션98: 수집 성공/실패 신호를 명시적으로 구분한다.
- *   - null  = 호출 실패 (키 없음/HTTP 실패/JSON 실패/body 비정상)
- *   - []    = 호출 성공, 근처 0건 (실제 0노선 동네)
- *   - [...] = 호출 성공, N건
+ * 1) POST selectFileDataDownload.do 로 최신 atchFileId 를 얻는다.
+ * 2) GET fileDownload.do 로 실제 CSV(EUC-KR) 를 받는다.
  *
- * 실패와 실제 0건이 같게 저장되던 유령값 문제를 DB 레벨에서 분리한다.
+ * @returns {Promise<{ atchFileId: string, fileDetailSn: string }>}
  */
+export async function resolveBusStopsAtchFileId() {
+  const res = await fetchWithRetry(
+    "https://www.data.go.kr/tcs/dss/selectFileDataDownload.do",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "Mozilla/5.0" },
+      body: new URLSearchParams({
+        publicDataPk: BUS_STOPS_PUBLIC_DATA_PK,
+        publicDataDetailPk: BUS_STOPS_PUBLIC_DATA_DETAIL_PK,
+        atchFileId: "",
+        fileDetailSn: "1",
+        publicDataTyCode: "PR0051",
+      }),
+      signal: AbortSignal.timeout(20000),
+    },
+    3,
+  );
+  const json = await res.json();
+  if (!json?.status || !json?.atchFileId) {
+    throw new Error(`atchFileId resolve 응답 이상: ${JSON.stringify(json).slice(0, 200)}`);
+  }
+  return { atchFileId: json.atchFileId, fileDetailSn: String(json.fileDetailSn ?? "1") };
+}
+
 /**
+ * @param {{ atchFileId: string, fileDetailSn: string }} ref
+ * @returns {Promise<Buffer>}
+ */
+export async function downloadBusStopsCsv({ atchFileId, fileDetailSn }) {
+  const url = `https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=${encodeURIComponent(atchFileId)}&fileDetailSn=${encodeURIComponent(fileDetailSn)}&insertDataPrcus=N`;
+  const res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(60000) }, 3);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length === 0) throw new Error("버스정류장 파일 다운로드 결과가 비어 있음");
+  return buf;
+}
+
+/**
+ * CSV 텍스트(정류장번호,정류장명,위도,경도,정보수집일,모바일단축번호,도시코드,도시명,관리도시명)
+ * → { name, lat, lng }[]. RFC4180 인용부호(정류장명에 콤마 포함 케이스 존재) 대응을 위해
+ * csv-parse(MIT) 사용 — naive split(",") 은 세션497 조사에서 미확정 정정을 낳았다(oss-first 답습).
+ *
+ * EUC-KR 디코딩은 호출부(`loadBusStopGrid`) 책임 — 이 함수는 이미 디코딩된 텍스트만 받는다
+ * (IO 와 순수 파싱 로직을 분리해 EUC-KR 인코더 없이도 단위 테스트 가능하게 한다).
+ *
+ * @param {string} text
+ * @returns {BusStopRecord[]}
+ */
+export function parseBusStopsCsv(text) {
+  const records = parse(text, { columns: true, skip_empty_lines: true, relax_column_count: true, trim: true });
+  /** @type {BusStopRecord[]} */
+  const stops = [];
+  for (const r of /** @type {Record<string, string>[]} */ (records)) {
+    const lat = parseFloat(r["위도"]);
+    const lng = parseFloat(r["경도"]);
+    const name = r["정류장명"];
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !name) continue;
+    stops.push({ name, lat, lng });
+  }
+  return stops;
+}
+
+/**
+ * 정류장 배열 → 위경도 그리드 인덱스(Map). 반경 500m 조회 시 자기 셀+인접 8셀만 훑으면 되므로
+ * O(N) 전처리 + O(1) 근사 조회로 227,000+ 건도 아파트당 밀리초 단위로 매칭한다.
+ *
+ * @param {BusStopRecord[]} stops
+ * @returns {Map<string, BusStopRecord[]>}
+ */
+export function buildBusStopGrid(stops) {
+  /** @type {Map<string, BusStopRecord[]>} */
+  const grid = new Map();
+  for (const s of stops) {
+    const key = `${Math.floor(s.lat / BUS_GRID_CELL_DEG)}_${Math.floor(s.lng / BUS_GRID_CELL_DEG)}`;
+    const arr = grid.get(key);
+    if (arr) arr.push(s);
+    else grid.set(key, [s]);
+  }
+  return grid;
+}
+
+/**
+ * 반경 500m 이내 정류장을 거리순으로 정렬해 **최근접 15개(raw, dedup 전)** 만 돌려준다.
+ *
+ * ⚠️ 순서가 핵심이다 — "cap(15) 먼저 → dedup 은 호출부(`buildTransportRow`)가 나중에" 순서를
+ * 지켜야 한다. 반대로 하면(전체 dedup 후 15 캡) 세션497 게이트2 재현율이 44%→64%로 반토막
+ * 난다(반경500m 기준 실측). `buildTransportRow` 가 이미 `nodenm` 기준 `Set` dedup 을 하므로,
+ * 이 함수는 TAGO 라이브 응답과 같은 모양(`{nodenm}[]`, 최대 15개, dedup 전)만 돌려주면 된다 —
+ * `buildTransportRow` 는 데이터 출처(TAGO 라이브 vs 파일 매칭)를 몰라도 동일하게 동작한다.
+ *
+ * @param {Map<string, BusStopRecord[]>} grid
  * @param {number} lat
  * @param {number} lng
- * @returns {Promise<TagoBusStop[] | null>}
+ * @returns {TagoBusStop[]}
  */
-async function searchBusStopsTago(lat, lng) {
-  if (!TAGO_KEY) return null;
-  const url = `https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=${encodeURIComponent(TAGO_KEY)}&gpsLati=${lat}&gpsLong=${lng}&_type=json&numOfRows=15`;
+export function matchNearbyBusStops(grid, lat, lng) {
+  const latCell = Math.floor(lat / BUS_GRID_CELL_DEG);
+  const lngCell = Math.floor(lng / BUS_GRID_CELL_DEG);
+  /** @type {BusStopRecord[]} */
+  const candidates = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const arr = grid.get(`${latCell + dy}_${lngCell + dx}`);
+      if (arr) candidates.push(...arr);
+    }
+  }
+  return candidates
+    .map((s) => ({ name: s.name, dist: haversineKm(lat, lng, s.lat, s.lng) * 1000 }))
+    .filter((s) => s.dist <= BUS_RADIUS_M)
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, BUS_RAW_CAP)
+    .map((s) => ({ nodenm: s.name }));
+}
+
+/**
+ * 버스정류장 파일을 resolve→다운로드→파싱→그리드 구축까지 1회 수행한다(수집기 실행당 1번,
+ * 아파트마다가 아니다 — 네트워크 호출은 여기서만 발생하고 이후 매칭은 전부 인메모리다).
+ *
+ * 실패(네트워크·파싱 이상) 시 null 을 반환 — 호출부는 이번 회차 전체를 "버스 수집 실패"로
+ * 취급해 세션98 이래의 null(실패)/[](성공·0건) 구분 계약을 그대로 유지한다.
+ *
+ * @returns {Promise<Map<string, BusStopRecord[]> | null>}
+ */
+export async function loadBusStopGrid() {
   try {
-    const res = await fetchWithRetry(url, { signal: AbortSignal.timeout(15000) }, 3);
-    if (!res.ok) return null;
-    const data = /** @type {TagoResponse} */ (await res.json());
-    // 정상 구조 검증: response.body.items 가 있어야 성공. item 없으면 성공·0건.
-    const body = data?.response?.body;
-    if (!body || !("items" in body)) return null;
-    const items = body.items?.item;
-    if (items == null || items === "") return [];
-    return Array.isArray(items) ? items : [items];
-  } catch {
+    const ref = await resolveBusStopsAtchFileId();
+    log(PHASE, `버스정류장 파일 resolve: atchFileId=${ref.atchFileId}`);
+    const buf = await downloadBusStopsCsv(ref);
+    log(PHASE, `버스정류장 파일 다운로드: ${(buf.length / 1024 / 1024).toFixed(1)}MB`);
+    const text = new TextDecoder("euc-kr").decode(buf);
+    const stops = parseBusStopsCsv(text);
+    if (stops.length === 0) throw new Error("파싱된 정류장 0건");
+    const grid = buildBusStopGrid(stops);
+    log(PHASE, `버스정류장 ${stops.length}건 → 그리드 ${grid.size}셀 구축 완료`);
+    return grid;
+  } catch (err) {
+    logError(PHASE, `버스정류장 파일 로드 실패: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
@@ -198,7 +332,7 @@ export function findHighFailureRates(fails, attempted, threshold = 0.5) {
   if (attempted <= 0) return [];
   const entries = [
     { label: "지하철", count: fails.subway },
-    { label: "버스(TAGO)", count: fails.bus },
+    { label: "버스(정류장파일)", count: fails.bus },
     { label: "IC", count: fails.ic },
     { label: "KTX", count: fails.ktx },
   ];
@@ -208,16 +342,18 @@ export function findHighFailureRates(fails, attempted, threshold = 0.5) {
 }
 
 /**
- * transport 테이블에서 "TAGO 버스 수집이 실제로 성공한" apartment_id 집합 (완료 판정).
+ * transport 테이블에서 "버스정류장 매칭이 실제로 성공한" apartment_id 집합 (완료 판정).
  *
  * ⚠️ 완료 판정 기준 = `bus_routes IS NOT NULL` (subway_name 아님, 세션 496 정정).
- *    세션98 설계(위 searchBusStopsTago 주석)가 이미 성공/실패를 명확히 구분해 뒀다:
- *      null = TAGO 호출 실패 / [] → bus_routes=0 = 성공·0건 / [...] = 성공·N건.
- *    `bus_routes IS NOT NULL` 은 곧 "TAGO 호출이 실제로 성공했다"는 뜻이라 이 기준 하나로
+ *    세션98 설계(현재는 `matchNearbyBusStops`/`loadBusStopGrid`, 세션497부터 TAGO 실시간 API
+ *    대신 정적 파일 매칭)가 이미 성공/실패를 명확히 구분해 뒀다:
+ *      null = 이번 회차 버스정류장 파일 로드 실패 / [] → bus_routes=0 = 매칭 성공·반경 내 0건 /
+ *      [...] = 매칭 성공·N건.
+ *    `bus_routes IS NOT NULL` 은 곧 "버스정류장 매칭이 실제로 성공했다"는 뜻이라 이 기준 하나로
  *    두 결함을 동시에 푼다:
  *      1) 지방 단지(지하철 없음, subway_name 영구 null)가 매일 재수집 대상으로 남는 "헛돌이"
  *         — 버스는 지하철 유무와 무관하게 잡히므로 done 판정됨.
- *      2) 지하철은 성공했는데 버스(TAGO)만 실패한 단지가 subway_name 기준으로는 이미 done
+ *      2) 지하철은 성공했는데 버스(정류장 매칭)만 실패한 단지가 subway_name 기준으로는 이미 done
  *         처리돼 다시는 재시도되지 않는 "동결" — bus_routes null 이면 미완료로 남아 다음
  *         회차가 자동 재시도한다.
  *    subway_name 기준을 "추가"(AND)하지 말 것 — 지방 단지 헛돌이가 되살아난다. 반드시 교체.
@@ -275,11 +411,9 @@ export async function fetchExistingApartmentIds(sb) {
 
 async function main() {
   if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
-  if (!TAGO_KEY) log(PHASE, "⚠️ TAGO_KEY 없음 — 버스 정류장 수집 건너뜀");
 
   const dryRun = process.argv.includes("--dry-run");
   const forceAll = process.argv.includes("--force");
-  const maxTago = Number(process.argv.find(a => a.startsWith("--limit="))?.split("=")[1]) || 10000;
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
@@ -307,13 +441,19 @@ async function main() {
     targets = ordered.targets;
     log(PHASE, `전체 ${withCoords.length}건 중 수집완료 ${doneCount}건 → 미수집 ${targets.length}건 (신규 ${ordered.newCount}·재시도 ${ordered.retryCount})`);
   }
-  log(PHASE, `대상: ${targets.length}건, TAGO 일일 상한: ${maxTago}건`);
+  log(PHASE, `대상: ${targets.length}건`);
+
+  // 버스정류장 파일: 수집기 실행당 1회만 resolve→다운로드→파싱→그리드 구축 (세션497).
+  // 대상이 0건이어도(전량 수집완료) 매일 재다운로드는 낭비이므로 대상 있을 때만 로드.
+  const busGrid = targets.length > 0 ? await loadBusStopGrid() : null;
+  if (targets.length > 0 && !busGrid) {
+    logError(PHASE, "버스정류장 파일 로드 실패 — 이번 회차는 버스 없이(지하철/IC/KTX만) 진행, 다음 회차가 재시도");
+  }
 
   const rpt = createReporter(PHASE);
   // 이미 수집된 건을 skip 으로 기록 — 전량 수집 완료 후 대상 0건이 되어도 monitor ②/⑤-a 의
   // "success 인데 ok=0 && skip=0" 빈성공 오탐이 안 나게 한다 (notify-subscribers 선례 답습).
   if (doneCount > 0) rpt.skip(doneCount);
-  let tagoCallCount = 0;
 
   // 벽시계 예산 (세션 496): 완료 판정을 bus_routes 기준으로 바꾸면 TAGO 전면 장애 시
   // 매 회차 전량이 대상이 될 수 있다. job timeout(240분, collect-naver-listings-incremental.yml)
@@ -334,7 +474,7 @@ async function main() {
     const apt = targets[i];
     attemptedCount++;
     try {
-      // busStops 초기값 null = "TAGO 호출 미수행/실패" 로 취급
+      // busStops 초기값 null = "버스정류장 파일 매칭 미수행/실패" 로 취급
       /** @type {KakaoDoc[]} */
       let subways = [];
       /** @type {TagoBusStop[] | null} */
@@ -350,19 +490,15 @@ async function main() {
       } catch (e) { subwayFailCount++; /* 빈 배열 유지 */ }
       await sleep(100);
 
-      // 버스 정류장 (TAGO 좌표기반 API — 일일 상한 제어)
-      // 성공: 배열(0건 포함), 실패/상한초과: null
-      try {
-        if (tagoCallCount < maxTago) {
-          busStops = await searchBusStopsTago(apt.lat, apt.lng);
-          tagoCallCount++;
-          if (busStops === null) busFailCount++;
-        } else if (tagoCallCount === maxTago) {
-          log(PHASE, `⚠️ TAGO 일일 상한 ${maxTago}건 도달 — 버스 수집 중단`);
-          tagoCallCount++;
-        }
-      } catch (e) { busStops = null; busFailCount++; }
-      await sleep(100);
+      // 버스 정류장 (파일 매칭 — 네트워크 호출 없음, 인메모리 그리드 조회만).
+      // busGrid 가 null 이면(이번 회차 파일 로드 실패) 전량 "실패"로 취급 — 세션98 이래의
+      // null(실패)/[](성공·0건) 계약을 그대로 유지한다.
+      if (busGrid) {
+        busStops = matchNearbyBusStops(busGrid, apt.lat, apt.lng);
+      } else {
+        busStops = null;
+        busFailCount++;
+      }
 
       // 고속도로 IC (Kakao 키워드)
       try {
@@ -417,11 +553,8 @@ async function main() {
     logError(PHASE, `⚠️ ${label} 실패율 ${(rate * 100).toFixed(1)}% (${count}/${attemptedCount}) — 외부 API 장애 의심 (임계 50% 초과)`);
   }
 
-  const actualTagoCalls = Math.min(tagoCallCount, maxTago);
   const result = rpt.summary();
-  log(PHASE, `TAGO API 호출: ${actualTagoCalls}회`);
 
-  if (!dryRun) await recordApiQuota("transport-tago", "TAGO_KEY", actualTagoCalls);
   await recordCollectorRun("transport-tago", result);
   if (result.fail > 0) process.exit(1);
 }

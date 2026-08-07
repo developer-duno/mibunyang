@@ -44,9 +44,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
-          TAGO_KEY: ${{ secrets.TAGO_KEY }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$KAKAO_KEY" ] || [ -z "$TAGO_KEY" ]; then
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ] || [ -z "$KAKAO_KEY" ]; then
             echo "::error::Required secrets missing"
             exit 1
           fi
@@ -57,7 +56,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
-          TAGO_KEY: ${{ secrets.TAGO_KEY }}
         run: node scripts/collectors/transport-tago.mjs
 
       - name: Collect infra (incremental)
