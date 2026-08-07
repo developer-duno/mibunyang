@@ -1,7 +1,16 @@
 name: Collect Maintenance Cost
 on:
   schedule:
-    - cron: '0 3 15-19 * *'   # 매월 15~19일 12:00 KST (5일 연속 — 미채움 ~1415건을 --limit=600×5회차로 며칠 내 완납, 15~19일은 다른 MOLIT 수집기 없는 빈 날이라 쿼터 충돌 0)
+    # 매월 15~19일 15:00 KST. 5일 연속 = 미채움을 --limit=600 × 5회차로 며칠 내 완납하려는 의도된 설계이며,
+    # 15~19일은 다른 MOLIT 수집기가 없는 빈 날이라 data.go.kr 일일 쿼터 충돌이 0 이다.
+    #
+    # ⚠️ UTC 03:00 → 06:00 (세션 500). 옛 시각은 **쿼터만 보고 concurrency 를 안 봤다.**
+    #    15~19일 중 월요일이 오면(2026-08-17) 주간 청약홈 체인 2개가 이 잡의 실행창(120분) 안에 도착한다
+    #    — applyhome-detail(UTC 03:30) · applyhome-remndr(UTC 04:30). data-collection 그룹은 실행 1개 + 대기
+    #    1개까지만 유지하므로 2번째 도착이 첫 대기자를 취소시킨다. 그렇게 취소된 회차는 steps 가 비어
+    #    collector_runs 행조차 남지 않아 monitor-collectors 가 못 잡는다(= 조용한 손실).
+    #    UTC 06:00~14:00 은 이 그룹에서 비어 있다. 회귀 가드 = scripts/audit-cron-concurrency.mjs (CI)
+    - cron: '0 6 15-19 * *'
   workflow_dispatch:
     inputs:
       dry_run:

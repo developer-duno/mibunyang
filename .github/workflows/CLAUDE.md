@@ -32,7 +32,7 @@
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×6** → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
+| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×7** → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
 | `e2e.yml` | Playwright E2E 테스트 (PR 트리거). **세션 491**: `paths-ignore`(docs·md·.claude·scripts·supabase) + `concurrency` + 브라우저 캐시. ⚠️ `paths-ignore` 에 `.github/workflows/**` 를 넣으면 이 파일 자신을 고칠 때 검증이 사라진다 — 절대 금지 |
 | `warm-playwright-cache.yml` | **세션 491 신설** — 매주 화 KST 02:00, `main` 에서 브라우저 캐시를 미리 채운다. Actions 캐시는 "만든 브랜치 + 기본 브랜치"에서만 읽히는데 `e2e.yml` 은 PR 전용이라 이 예열이 없으면 캐시가 매번 미스된다. **캐시 키를 `e2e.yml` 과 동일하게 유지할 것** — 어긋나면 `scripts/audit-playwright-cache.mjs` 가 CI 에서 차단 |
 
@@ -84,7 +84,7 @@
 | `collect-housing-permits.yml` | **분기 10일** | 주택 인허가 — 세션 491 월간→분기. MOLIT API 장기 중단으로 3회 연속 ok=0. 회복(`성공 N`>0) 확인 시 월간 복귀 |
 | `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
-| `collect-maintenance.yml` | 15일 | 공동주택 관리비 |
+| `collect-maintenance.yml` | 15~19일 | 공동주택 관리비 (UTC 06:00 = **KST 15:00** — 세션 500 에 UTC 03:00 에서 이동. 옛 시각은 15~19일 중 월요일에 주간 청약홈 체인 2개를 실행창(120분) 안에 받아 `data-collection` 그룹 대기 자리를 밀어냈다 = 조용한 취소. 가드 `audit-cron-concurrency.mjs`) |
 | `collect-building-hub.yml` | **분기 15일** | 건축HUB 에너지+인허가 — 세션 491 월간→분기. 04-15·05-18·06-15 세 실행 모두 `성공 0 \| 스킵 2000`(API 2,794회 호출·신규 0건). 10/15 에 `성공 N`>0 이면 월간 복귀 |
 | `collect-housing-price.yml` | 16일 | 주택가격 (KST 17일 07:00 — 15일 migration/maintenance/building-hub 다음 날). **세션 491 문서 추가** — 그동안 이 표에 아예 없었다 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
@@ -259,6 +259,12 @@ remote: - Required status check "ci" is expected.
 
 - **`purge-consults.yml` 주기 축소** — 실제 과금이 하루 1분뿐이고, 줄이면 PIPA 파기가 최대 7일 지연 → 손해
 - **`collect-maintenance.yml` 5일 연속 cron 축소** — 5연속 실패는 코드 결함이 아니라 위 계정 정지 탓.
-  5일 연속은 미채움 ~1,415건을 `--limit=600` 으로 나눠 채우려는 **의도된 설계**다. 8/15 첫 실전 로그 확인이 먼저
+  5일 연속은 미채움을 `--limit=600` 으로 나눠 채우려는 **의도된 설계**다. 8/15 첫 실전 로그 확인이 먼저
+  > **세션 500 후속**: 이 판단은 유효했다. 7/16~19 관리비 4연속 failure 를 독립적으로 재조사한 결과
+  > 같은 결론(계정 지출한도 — 그 나흘간 CI·E2E 까지 레포 전체가 2초 `steps: []` 로 전멸, Actions 분을
+  > 안 쓰는 Dependabot 만 성공, `collector_runs` 행 0)에 도달했다. 8/6 18:29 의 `fetch failed` 600건은
+  > 별건의 **외부 MOLIT 순단**이고(17개 시도 목록 조회가 각각 34.5초씩 연결 실패, 같은 코드가 4시간 뒤
+  > 3,160회 호출로 성공) 5일 연속 cron 이 이미 흡수하는 설계다. **다만 시각(UTC 03:00)은 옮겼다** —
+  > 5일 span·`--limit` 은 그대로 두고 hour 만 06:00 으로. 근거는 위 매월 표의 관리비 행 참조.
 - **준비시간(checkout·setup-node·npm ci) 단축 / `--omit=dev`** — 잡당 평균 15.8초(전체의 3.6%), 분 올림 때문에 절감 시뮬레이션 0분
 - **Playwright 에서 webkit 제거** — 월 147분으로 최대지만 `e2e/mobile.spec.ts` 4건이 모바일 사파리 회귀를 잡는 유일한 그물
