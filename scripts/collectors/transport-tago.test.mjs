@@ -22,6 +22,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const {
   extractSubwayName, extractSubwayLines, isValidStation, isValidIC, buildTransportRow,
   fetchCollectedApartmentIds, fetchExistingApartmentIds, orderTargets, findHighFailureRates,
+  RADIUS, KAKAO_MAX_RADIUS_M,
 } = await import("./transport-tago.mjs");
 
 // ── 팩토리 함수 ────────────────────────────────────────────────
@@ -423,5 +424,32 @@ describe("findHighFailureRates — 신호별 실패율 50% 초과 경고", () =>
   it("여러 신호가 동시에 임계를 넘으면 전부 반환", () => {
     const result = findHighFailureRates({ subway: 60, bus: 90, ic: 0, ktx: 0 }, 100);
     expect(result.map((r) => r.label).sort()).toEqual(["버스(TAGO)", "지하철"].sort());
+  });
+});
+
+/**
+ * 세션 497 회귀 가드 — 검색 반경은 "API 가 받아주는 상한" 과 "점수가 필요로 하는 하한"
+ * 사이에 있어야 한다. 위를 넘기면 매 호출 400 으로 조용히 전멸하고(이번 사고), 아래로
+ * 내려가면 점수에 쓰이는 거리를 놓쳐 센티널 99 가 늘어난다. 양쪽을 다 잠근다.
+ *
+ * 기대값은 일부러 상수를 다시 참조하지 않고 숫자를 직접 적는다 — 소스의 상수로 비교하면
+ * 그 상수까지 같이 바뀔 때 테스트가 저 혼자 따라가서 아무것도 못 잡는다.
+ */
+describe("RADIUS — Kakao 반경 상한(20000m)과 점수 유효구간 사이", () => {
+  it("KAKAO_MAX_RADIUS_M 은 공식 문서상 상한 20000m (developers.kakao.com/docs/ko/local/dev-guide)", () => {
+    expect(KAKAO_MAX_RADIUS_M).toBe(20000);
+  });
+
+  it("모든 반경이 20000m 이하 — 넘으면 Kakao 가 400 ValidationError 로 거절한다", () => {
+    const over = Object.entries(RADIUS).filter(([, m]) => m > 20000);
+    expect(over).toEqual([]);
+  });
+
+  it("IC 반경은 10000m 이상 — scoreLocation IC_DIST_TIERS 가 10km 까지 점수를 준다", () => {
+    expect(RADIUS.IC).toBeGreaterThanOrEqual(10000);
+  });
+
+  it("KTX 반경은 15000m 이상 — scoreLocation KTX_DIST_TIERS 가 15km 까지 점수를 준다", () => {
+    expect(RADIUS.KTX).toBeGreaterThanOrEqual(15000);
   });
 });

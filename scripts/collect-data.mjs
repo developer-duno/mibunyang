@@ -669,7 +669,9 @@ async function phase6_transport(apartments) {
           .then(r => r.ok ? r.json() : { documents: [] })
           .then(d => d.documents?.[0] ? Math.round(parseFloat(d.documents[0].distance) / 100) / 10 : 99)
           .catch(() => 99),
-        fetch(`${base}?query=${encodeURIComponent("KTX")}&x=${apt.lng}&y=${apt.lat}&radius=30000&sort=distance&size=1`, { headers: h })
+        // 세션 497: radius 는 Kakao 상한이 20000(m) 이라 30000 이면 매번 400 으로 거절돼
+        // 아래 폴백(99)만 남았다. 바로 위 IC 줄은 20000 이라 멀쩡했던 탓에 눈에 안 띄었다.
+        fetch(`${base}?query=${encodeURIComponent("KTX")}&x=${apt.lng}&y=${apt.lat}&radius=20000&sort=distance&size=1`, { headers: h })
           .then(r => r.ok ? r.json() : { documents: [] })
           .then(d => d.documents?.[0] ? Math.round(parseFloat(d.documents[0].distance) / 100) / 10 : 99)
           .catch(() => 99),

@@ -3,7 +3,7 @@
  * 교통 접근성 수집기 — Kakao Places + TAGO 대중교통 API
  *
  * 지하철(Kakao SW8, 10km), 버스(TAGO 좌표기반, 1km),
- * 고속도로IC(Kakao, 30km), KTX(Kakao, 80km)
+ * 고속도로IC(Kakao, 20km), KTX(Kakao, 20km)
  *
  * 사용법:
  *   node scripts/collectors/transport-tago.mjs                     (Supabase UPDATE)
@@ -25,7 +25,27 @@ const PHASE = "transport";
 const KAKAO_KEY = process.env.KAKAO_KEY;
 const TAGO_KEY = process.env.TAGO_KEY;
 
-const RADIUS = { SUBWAY: 10000, IC: 30000, KTX: 80000 };
+/**
+ * Kakao Local API 반경 상한 — 공식 문서상 radius 는 0~20000(m)이고, 넘기면 검색 자체가
+ * HTTP 400 ValidationError(`query.radius should be at most 20000`)로 거절된다.
+ * https://developers.kakao.com/docs/ko/local/dev-guide
+ */
+export const KAKAO_MAX_RADIUS_M = 20000;
+
+/**
+ * 검색 반경(m). 전부 KAKAO_MAX_RADIUS_M 이하여야 한다 — 회귀 가드 = transport-tago.test.mjs.
+ *
+ * 세션 497: IC 가 30000, KTX 가 80000 이라 이 수집기가 도입된 2026-03-19 이래 두 검색이
+ * **매 호출 400 으로 실패**했다. 호출부가 예외를 삼켜 ic/ktxFailCount 로만 세는 탓에
+ * collector_runs 는 계속 success 였고, DB 는 ktx_dist 2,526행 전부(100%)·ic_dist 96.6%
+ * 가 센티널 99 로 굳어 화면에 "IC 원거리"·"반경 밖"이 거짓으로 표시됐다.
+ *
+ * 20000 으로 낮춰도 점수는 한 점도 잃지 않는다: scoreLocation 의 IC_DIST_TIERS 는 10km,
+ * KTX_DIST_TIERS 는 15km 를 넘으면 0점이라 20km 밖은 센티널 99 와 결과가 같다. 실측(17개
+ * 지역 51개 단지 표본)에서도 IC 는 96.1% 를 찾고 그 전부가 10km 이내였으며, 20km 안에서
+ * 찾았는데 점수가 0점인 IC 는 0건이었다. 그래서 나눠 검색·카테고리코드 전환은 불필요하다.
+ */
+export const RADIUS = { SUBWAY: 10000, IC: 20000, KTX: 20000 };
 const DEFAULT_SUBWAY_DIST = 9999;
 const DEFAULT_IC_DIST = 99;
 const DEFAULT_KTX_DIST = 99;
