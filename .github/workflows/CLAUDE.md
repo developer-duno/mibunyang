@@ -79,7 +79,7 @@
 | `collect-emergency.yml` | 2일 | 응급의료기관 |
 | `collect-population.yml` | 5일 | 행안부 인구 증감률 |
 | `collect-trades.yml` | 6일 | 국토부 실거래 (매매/전세/분양권) |
-| `collect-molit-units.yml` | 6일 | 국토부 총세대수 보정 |
+| `collect-molit-units.yml` | 6일 | 국토부 총세대수 보정 (`timeout-minutes: 45` — 세션 500 신설. 미지정이라 GitHub 기본 **360분**이 적용돼 `data-collection` 그룹에서 도착 3개를 받아 조용한 취소의 가해자였고, 8-06 엔 자신이 피해자(15분·`steps=0`)였다. 최대 실측 17분33초의 2.5배 마진) |
 | `collect-building-info.yml` | 10일 | 건축물 상세 (토요일 → 11일 fallback) |
 | `collect-housing-permits.yml` | **분기 10일** | 주택 인허가 — 세션 491 월간→분기. MOLIT API 장기 중단으로 3회 연속 ok=0. 회복(`성공 N`>0) 확인 시 월간 복귀 |
 | `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
