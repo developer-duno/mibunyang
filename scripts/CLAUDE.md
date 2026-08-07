@@ -86,6 +86,10 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
   `return`(dry-run 등)이 있으면 이쪽만 안전 — ①을 쓰면 그 줄에 도달 못 해 **exit 0(성공) 회귀**.
   전수 회귀 가드 = `scripts/collectors/_exit-quota-coverage.test.mjs` (세션 496). 세션 395 가 9개 파일을 고치고
   applyhome 2개를 놓친 채 1년 가까이 잠복한 사고라 파일별 수동 점검 대신 기계로 훑는다.
+- ✅ **가드가 사전 차단에 성공한 첫 사례 (세션 496b, PR #330)**: 신규 `collect-applyhome-remndr.mjs` 가
+  try 안 `process.exit` 4곳을 가진 채 올라왔고, main 병합 순간 이 가드가 **머지 전에** red 를 냈다.
+  이 파일은 dry-run 조기 `return` 이 있어 **②만 정답**이었다 — 즉 "정답이 2형"이 아니라 "파일마다 정답이
+  하나로 갈린다". 새 collector 를 쓸 때 ①/②를 고르는 기준은 **`try` 안에 조기 `return` 이 있는가** 하나다.
 
 ---
 
