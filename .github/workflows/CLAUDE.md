@@ -122,7 +122,7 @@
 | `KAKAO_KEY` | Kakao REST API (인프라/역지오코딩) | O |
 | `DART_KEY` | DART 전자공시 (시공사 재무) | O |
 | `KOSIS_KEY` | KOSIS 국가통계포털 — 세션 289 로컬 러너 이전으로 GH 워크플로 사용 0 (집서버 `.env` 만, 시크릿 잔존은 무해) | - |
-| `TAGO_KEY` | TAGO 대중교통 (data.go.kr) | O |
+| `TAGO_KEY` | ~~TAGO 대중교통~~ — 세션 498(#337) 정적 파일 전환으로 **워크플로 주입 제거**(TAGO 호출 0). 시크릿 잔존은 무해 | - |
 | `NEIS_KEY` | NEIS 교육정보 (선택, 미등록 시 스킵) | - |
 | `SCHOOLINFO_KEY` | 학교알리미 학생수 (선택) | - |
 | `AIRKOREA_KEY` | 에어코리아 대기질 (선택) | - |

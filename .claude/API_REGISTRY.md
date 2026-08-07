@@ -21,14 +21,33 @@ API 키는 제공처(공급기관)별로 발급 절차가 다르다. 크게 5개
 
 | 환경변수 | 쓰는 수집기 | 공공데이터포털 API 상세 페이지 |
 |---|---|---|
-| `MOLIT_KEY` | molit-units, molit-building-info, collect-maintenance, collect-trades, collect-building-hub, collect-applyhome, collect-emergency, housing-permits | 아파트 기본정보: https://www.data.go.kr/data/15057511/openapi.do · 아파트 관리비: https://www.data.go.kr/data/15099426/openapi.do · 실거래가: https://www.data.go.kr/data/15058017/openapi.do · 건축 인허가: https://www.data.go.kr/data/15044713/openapi.do · 건물 에너지: https://www.data.go.kr/data/15049650/openapi.do · 청약홈 경쟁률: https://www.data.go.kr/data/15098905/openapi.do (구 15110589 는 404 — 세션 494 실측) · 응급의료기관: https://www.data.go.kr/data/15000563/openapi.do |
+| `MOLIT_KEY` | molit-units, molit-building-info, collect-maintenance, collect-trades, collect-building-hub, collect-applyhome, collect-emergency, housing-permits | 아파트 기본정보: https://www.data.go.kr/data/15057511/openapi.do · 아파트 관리비: https://www.data.go.kr/data/15099426/openapi.do · 실거래가: https://www.data.go.kr/data/15058017/openapi.do · 건축 인허가(**건축HUB**): https://www.data.go.kr/data/15136267/openapi.do · 건물 에너지: https://www.data.go.kr/data/15049650/openapi.do · 청약홈 경쟁률: https://www.data.go.kr/data/15098905/openapi.do (구 15110589 는 404 — 세션 494 실측) · 응급의료기관: https://www.data.go.kr/data/15000563/openapi.do |
 | `AIRKOREA_KEY` | collect-air-quality | 한국환경공단 에어코리아 대기오염정보: https://www.data.go.kr/data/15073861/openapi.do |
 | `MOIS_POP_KEY` | population | 행정안전부 주민등록 인구·세대현황: https://www.data.go.kr/data/15094808/openapi.do |
 | `MOIS_SEX_AGE_KEY` | population-sex-age | 행정안전부 주민등록 성별·연령별 인구: https://www.data.go.kr/data/15094820/openapi.do |
-| `TAGO_KEY` | transport-tago | 국토교통부 TAGO 버스정류장정보: https://www.data.go.kr/data/15098534/openapi.do |
+| ~~`TAGO_KEY`~~ **폐기** | (없음 — 세션 498#337 로 호출 0) | ~~국토교통부 TAGO 버스정류장정보: https://www.data.go.kr/data/15098534/openapi.do~~ → **정적 파일로 대체**(아래 표) |
+
+**키 없이 쓰는 data.go.kr 정적 파일** — 활용신청·인증키가 필요 없고, 목록 페이지에서 `atchFileId` 를
+매번 resolve 한 뒤 파일을 내려받는다(ID 하드코딩 금지 — 갱신될 때마다 바뀐다).
+
+| 파일 | 쓰는 수집기 | 상세 페이지 | 갱신 |
+|---|---|---|---|
+| 전국 버스정류장 위치정보 (CSV, EUC-KR, 약 20MB) | transport-tago | https://www.data.go.kr/data/15067528/fileData.do | 연 1회 |
+
+> ⚠️ 이 파일은 **정류장 기둥 하나를 방향별·지자체체계별로 여러 행에 나눠 담는다**(서울분 16,980행
+> vs 서울시 TOPIS 공식 11,231건). 개수를 셀 땐 반드시 이름 기준 dedup 을 **먼저** 하고 상한을
+> 나중에 건다 — 자세히는 [.claude/rules/collectors/external-file-duplicate-rows.md](rules/collectors/external-file-duplicate-rows.md).
 
 > ⚠️ data.go.kr 서비스 ID(URL 의 숫자)는 API 가 개편되면 바뀔 수 있다.
 > 신규/변경 시 포털에서 API 이름으로 재검색해 정확한 상세 페이지를 확인할 것.
+
+**폐기된 엔드포인트 (되살리려 하지 말 것)**
+
+| 옛 엔드포인트 | 상태 | 대체 |
+|---|---|---|
+| `ArchPmsService_v2/getApHsptPrmsnLst` (카탈로그 15044713) | **404 / NO_OPENAPI_SERVICE(코드12)** — "500 장애 회복 대기"로 수개월 방치됐으나 실제로는 서비스 자체가 사라진 것(세션 495 실측). `housing-permits` ok=0 과 `regions.supply_ratio` 0% 의 공통 진앙 | **건축HUB** `ArchPmsHubService`(카탈로그 15136267, `apis.data.go.kr/1613000/`). 8-07 활용신청 즉시 승인 + `getApBasisOulnInfo` 200 실증. 주택유형은 `getApHsTpInfo`(⚠️`Apt` 아님·`bjdongCd` 필수·`silHoHhldCnt` 세대수·`startDate`=생성일 `crtnDay` 기준) |
+| `TAGO 버스정류장정보` (카탈로그 15098534) | 서울 미커버(자체 BIS TOPIS) + 응답 지연 | 정적 파일 15067528 (위 표) |
+| 청약홈 경쟁률 구 ID 15110589 | 404 (세션 494 실측) | 15098905 |
 
 ### 2. KOSIS 공유서비스 (통계청 국가통계포털)
 
