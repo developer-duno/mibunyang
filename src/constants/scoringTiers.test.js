@@ -183,24 +183,19 @@ describe("SUBWAY_DIST_TIERS 모든 경계값", () => {
   });
 });
 
-describe("IC_DIST_TIERS 모든 경계값", () => {
-  it("2km 이하 = 20점", () => {
-    expect(tierMax(2, IC_DIST_TIERS)).toBe(20);
-  });
-  it("2.1km = 14점", () => {
-    expect(tierMax(2.1, IC_DIST_TIERS)).toBe(14);
-  });
-  it("5km 이하 = 14점", () => {
-    expect(tierMax(5, IC_DIST_TIERS)).toBe(14);
-  });
-  it("5.1km = 8점", () => {
-    expect(tierMax(5.1, IC_DIST_TIERS)).toBe(8);
-  });
-  it("10km 이하 = 8점", () => {
-    expect(tierMax(10, IC_DIST_TIERS)).toBe(8);
-  });
-  it("10.1km = 0점 (fallback)", () => {
-    expect(tierMax(10.1, IC_DIST_TIERS)).toBe(0);
+// 경계 숫자를 하드코딩하지 않는다 — 세션500 에 IC 경계를 2/5/10 → 1.3/2.5/10 으로 정정할 때
+// 옛 판(2km=20점 … 을 그대로 적어둔 형태)이 통째로 red 가 됐다. 경계값 검증의 본질은
+// "경계 위 = 그 티어 점수 / 경계 바로 밖 = 다음 티어 점수(마지막이면 fallback 0)" 이므로
+// 티어에서 값을 뽑는다. tierMax 가 `<` 로 뒤집히면 첫 단정부터 red 가 되어 여전히 유효하다.
+describe("IC_DIST_TIERS 모든 경계값 (경계는 티어에서 유도)", () => {
+  IC_DIST_TIERS.forEach((t, i) => {
+    const next = IC_DIST_TIERS[i + 1];
+    it(`${t.max}km 이하 = ${t.score}점`, () => {
+      expect(tierMax(t.max, IC_DIST_TIERS)).toBe(t.score);
+    });
+    it(`${t.max}km 바로 밖 = ${next ? `${next.score}점` : "0점 (fallback)"}`, () => {
+      expect(tierMax(t.max + 0.1, IC_DIST_TIERS)).toBe(next ? next.score : 0);
+    });
   });
 });
 
