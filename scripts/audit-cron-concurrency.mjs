@@ -1,5 +1,10 @@
-#!/usr/bin/env node
 // @ts-check
+// ⚠️ shebang(`#!/usr/bin/env node`)을 넣지 말 것 — 이 저장소의 다른 audit 3종도 없다.
+// vite(vitest) 의 shebang 처리가 CR 을 못 다뤄, 윈도우에서 git 이 이 파일을 CRLF 로
+// 체크아웃하면 이 모듈을 import 하는 테스트가 `SyntaxError: Invalid or unexpected token`
+// 으로 통째로 죽는다(세션 500 실측: shebang+LF 통과 / shebang+CRLF 실패 / shebang없음 통과).
+// 리눅스 러너는 LF 로 받아 CI 는 초록이라 **윈도우 로컬에서만 깨지는** 유형이다.
+// 실행은 `node scripts/audit-cron-concurrency.mjs` 라 shebang 은 어차피 쓰이지 않는다.
 /**
  * concurrency 그룹 안 "조용한 취소" 차단 감사 (세션 500)
  *
@@ -43,13 +48,10 @@ const GH_DEFAULT_TIMEOUT_MIN = 360;
  * 알려진 예외 — 항목마다 "왜 괜찮은가"를 적는다. 이유 없이 넣지 말 것.
  * @type {Map<string, string>}
  */
-export const ALLOWLIST = new Map([
-  [
-    "collect-molit-units.yml",
-    "timeout-minutes 미지정이라 창이 GitHub 기본 360분으로 계산되지만 실측 소요는 수 분이다. " +
-      "실제 취소 관측 0건. 창을 명시(timeout-minutes)하면 이 항목은 지워야 한다 — 별건 트랙.",
-  ],
-]);
+export const ALLOWLIST = new Map();
+// 현재 비어 있다. `collect-molit-units.yml` 이 유일한 항목이었는데 세션 500 에 창을
+// (timeout-minutes: 45) 명시해 근본 해소했다 — 예외로 봐주는 대신 원인을 없앤 쪽이다.
+// 새로 추가할 땐 "왜 괜찮은가"를 반드시 적는다(사유 없는 항목은 테스트가 red).
 
 /**
  * cron 5필드 = `분 시 일(月중) 월 요일`.
