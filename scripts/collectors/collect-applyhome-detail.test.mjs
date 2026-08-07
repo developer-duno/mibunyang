@@ -129,7 +129,7 @@ describe("buildScheduleRow — Detail → 일정 행", () => {
 });
 
 describe("buildScheduleRow — 규제 지정 7종 Y/N → boolean", () => {
-  // raw API 표본 1000행 실측: 7필드 전부 "Y"/"N" 두 값뿐 (다른 코드값·null 없음)
+  // raw API 전량 2,837건 실측: 7필드 전부 "Y"/"N" 두 값뿐 (다른 코드값·null 없음)
   const REG = {
     MDAT_TRGET_AREA_SECD: "adjustment_target_area",
     PARCPRC_ULS_AT: "price_cap_applied",
