@@ -33,6 +33,37 @@ const LABELED_DIST_TIERS = [
   { name: "KTX", tiers: KTX_DIST_TIERS, fallback: KTX_DIST_FALLBACK_LABEL },
 ] as const;
 
+/**
+ * 세션500 결정 고정 가드.
+ *
+ * 위 테스트들은 전부 티어표에서 값을 **유도**하므로, 경계를 옛 `2/5/10` 으로 되돌려도 하나도
+ * 깨지지 않는다. 그러면 이 결정이 조용히 무효화될 수 있어 여기서 경계 자체를 고정한다.
+ *
+ * ⚠️ 이 숫자를 바꾸려면 이 주석과 scoringTiers.ts 의 IC_DIST_TIERS 근거 블록을 먼저 읽을 것.
+ * 되돌리는 게 금지는 아니지만 **의식적으로** 해야 한다.
+ *
+ * 근거 요약 (전 단지 2,635곳 실측, ic_dist 백필 100% 완료 후):
+ *   옛 2/5/10 → 우수 45.3% · 양호 44.1% (열 곳 중 아홉이 위 두 칸) · 점수 표준편차 4.52 = 변별 0
+ *   새 1.3/2.5/10 → 우수 26.2% · 양호 31.3% · 보통 40.1% · 원거리 2.4% · 표준편차 5.22
+ *   더 올릴 수는 있으나(sd 6.73~7.77) 마지막 경계를 3.4~3.5km 로 당겨야 해서 0점·"원거리" 가
+ *   2.4% → 24.8~27.1% 로 늘어난다 — IC 4km(차로 6분)를 "원거리" 라 부르는 거짓이라 기각했다.
+ */
+describe("IC 경계는 세션500 실측 결정값이다 (되돌릴 때 근거를 읽게 만드는 고정 가드)", () => {
+  it("경계 = 1.3 / 2.5 / 10", () => {
+    expect(IC_DIST_TIERS.map(maxOf)).toEqual([1.3, 2.5, 10]);
+  });
+
+  it("최상위 경계는 실측 p25(1.3km) 라 '우수'가 상위 4분의 1 안에 머문다", () => {
+    // 이 프로젝트는 FULL_BUS_ROUTES 주석에서 만점 30.2% 를 "세 곳 중 한 곳 동점 → 변별 불가"
+    // 로 기각했다. IC 도 같은 선 아래여야 자기모순이 없다(1.3km → 26.2%).
+    expect(maxOf(IC_DIST_TIERS[0])).toBeLessThanOrEqual(1.3);
+  });
+
+  it("마지막 경계는 10km 이상이어야 한다 — 4km 를 '원거리'로 표시하지 않기 위한 제약", () => {
+    expect(maxOf(IC_DIST_TIERS[IC_DIST_TIERS.length - 1])).toBeGreaterThanOrEqual(10);
+  });
+});
+
 describe("거리 등급 라벨은 점수표에서 유도된다", () => {
   for (const { name, tiers, fallback } of LABELED_DIST_TIERS) {
     it(`${name}: 모든 티어에 등급 라벨이 있다`, () => {
