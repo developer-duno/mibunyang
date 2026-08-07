@@ -15,10 +15,42 @@
  *   - findKeyCollisions            → source 필터를 지우면 자기 자신을 충돌로 오판
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   parseCmpetRate, parseIntLoose, parseRealLoose, normHouseTy,
   buildUnitRow, buildCancelRow, buildMatched, findKeyCollisions, CANC_TYPES,
 } from "./collect-applyhome-remndr.mjs";
+
+const SRC = readFileSync(new URL("./collect-applyhome-remndr.mjs", import.meta.url), "utf8");
+// 주석에도 같은 단어가 나오므로 **코드 형태로 좁혀서** 찾는다 — 좌변·괄호까지 고정하지 않으면
+// 주석만 남기고 코드를 지워도 통과하는 껍데기가 된다([[guards-must-be-mutation-tested]]).
+const CODE = SRC.split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*")).join("\n");
+
+describe("조기 종료 경로도 collector_runs 를 남긴다 (세션 498)", () => {
+  // 왜 필요한가: 마이그 미적용·충돌키·API 구조변경으로 try 안에서 return 하면 정상 기록 줄
+  // (`await recordCollectorRun(PHASE, result)`)에 도달하지 못해 **행이 아예 안 생긴다**.
+  // 행이 없으면 monitor 는 "실패"와 "아예 실행 안 함"을 구분할 수 없어 ①②⑤ 어느 검사에도
+  // 안 걸리고, 유일한 신호가 Actions 실패 알림 1회뿐이라 놓치면 매주 조용히 반복된다.
+  it("finally 에 미기록 폴백이 배선돼 있다", () => {
+    expect(CODE).toMatch(/if\s*\(!runRecorded\)\s*\{/);
+    expect(CODE).toMatch(/status:\s*["']failure["']/);
+  });
+
+  it("정상 경로가 기록 후 플래그를 세운다 (폴백 중복 기록 차단)", () => {
+    expect(CODE).toMatch(/await recordCollectorRun\(PHASE,\s*result\);\s*\n\s*runRecorded = true;/);
+  });
+
+  it("조기 종료 3곳이 모두 사유를 남긴다", () => {
+    // `let earlyExitReason = null;` 선언부가 같이 잡히지 않게 줄 시작 들여쓰기 뒤 **대입만** 센다
+    // (선언까지 세면 대입을 하나 지워도 4→3 이 아니라 3→3 이 되어 가드가 무효).
+    const hits = CODE.match(/^\s+earlyExitReason = /gm) ?? [];
+    expect(hits.length).toBe(3); // HOUSE_TY 부재 · 마이그 미적용 · 충돌키
+  });
+
+  it("폴백이 사유를 errorMessage 로 넘긴다", () => {
+    expect(CODE).toMatch(/errorMessage:\s*earlyExitReason/);
+  });
+});
 
 describe("parseCmpetRate — 청약홈 경쟁률 5형태 (2026-08-07 실측)", () => {
   it("정상 소수 문자열", () => {

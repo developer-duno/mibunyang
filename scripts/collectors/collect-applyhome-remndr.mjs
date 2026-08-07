@@ -307,6 +307,11 @@ async function main() {
   // (Node 실측, 세션 395 정정 패턴 — collect-applyhome.mjs 답습).
   // 그래서 exit 여부는 플래그로만 들고, 실제 exit 는 finally 안 recordApiQuota 직후에 한다.
   let shouldExit1 = false;
+  // collector_runs 를 이미 남겼는지. 조기 return 경로는 정상 기록 줄에 도달하지 못하므로
+  // finally 가 이 플래그를 보고 대신 남긴다(아래 finally 주석 참조, 세션 498).
+  let runRecorded = false;
+  /** @type {string | null} 조기 종료 사유 — collector_runs.error_message 로 남긴다 */
+  let earlyExitReason = null;
 
   try {
     // 1. 두 채널 전수 수집
@@ -326,6 +331,7 @@ async function main() {
       const ratio = noTy / rows.length;
       if (ratio > 0.5) {
         logError(PHASE, `⚠️ ${label} HOUSE_TY 부재 ${(ratio * 100).toFixed(1)}% (${noTy}/${rows.length}) — 청약홈 API 응답 구조 변경 가능성. 적재 중단.`);
+        earlyExitReason = `${label} HOUSE_TY 부재 ${(ratio * 100).toFixed(1)}% — API 응답 구조 변경 의심`;
         shouldExit1 = true;
         return;
       }
@@ -352,6 +358,7 @@ async function main() {
       // dry-run 은 파싱 검증이 목적이라 경고 후 계속, 실적재는 중단 (source 컬럼 없이 쓰면 실패).
       if (!dryRun) {
         logError(PHASE, "⚠️ applyhome_unit_supply.source 컬럼 없음 — 마이그 20260807000000_applyhome_stage1_remndr.sql 미적용. Dashboard SQL Editor 적용 후 재실행.");
+        earlyExitReason = "마이그 20260807000000 미적용 (applyhome_unit_supply.source 컬럼 없음)";
         shouldExit1 = true;
         return;
       }
@@ -361,6 +368,7 @@ async function main() {
       if (collisions.length > 0) {
         logError(PHASE, `⚠️ 충돌키 ${collisions.length}건 — 잔여세대 행이 기존 ${collisions[0].existingSource} 계열 행을 덮어쓴다. 설계 §5-A 전제(2026-08-07 실측 충돌 0) 붕괴. 적재 중단.`);
         logError(PHASE, `  예시: ${collisions.slice(0, 3).map((c) => c.key).join(" / ")}`);
+        earlyExitReason = `충돌키 ${collisions.length}건 — UNIQUE 전제 붕괴`;
         shouldExit1 = true;
         return;
       }
@@ -400,10 +408,26 @@ async function main() {
     const result = rpt.summary();
     log(PHASE, "\n=== 완료 ===");
     await recordCollectorRun(PHASE, result);
+    runRecorded = true;
     if (result.fail > 0) shouldExit1 = true;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);
+    }
+    // 조기 return(마이그 미적용·충돌키·API 실패) 경로는 위 recordCollectorRun 줄에 도달하지 못해
+    // collector_runs 에 **행 자체가 안 남는다**. 그러면 monitor 는 "실패"와 "아예 실행 안 함"을
+    // 구분할 수 없고, ①(failure 탐지)·②(빈 성공)·⑤(외부 API stale) 어느 검사에도 안 걸린다 —
+    // 유일한 신호가 Actions 실패 알림 1회뿐이라 놓치면 매주 조용히 반복된다(세션 496b 지적).
+    // 그래서 못 남긴 경우에만 여기서 failure 로 남긴다. dry-run 은 recordCollectorRun 내부가
+    // 스스로 걸러내므로(_shared.mjs) 여기서 따로 막지 않는다 = "DB 쓰기 0" 계약 유지.
+    if (!runRecorded) {
+      await recordCollectorRun(PHASE, {
+        status: "failure",
+        ok: 0,
+        fail: 1,
+        skip: 0,
+        errorMessage: earlyExitReason ?? "조기 종료(사유 미기록)",
+      });
     }
     // exit 은 recordApiQuota 를 await 한 바로 뒤 = 쿼터 기록 보장(scripts/CLAUDE.md Exit Code 정책).
     // ⚠️ try/finally *뒤* 로 빼면 안 된다 — 위 조기 감지 3곳이 try 안에서 return 하므로 그 줄에는
