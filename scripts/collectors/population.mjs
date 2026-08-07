@@ -133,6 +133,35 @@ function parseGu(ctpvNm, sggNm) {
   return { region, gu: sggNm };
 }
 
+// ── 시도 집계에서 제외할 "구 보유 시" 추출 ──────────────────
+/**
+ * 행안부 API 는 같은 시도에 시 합계("수원시")와 그 자치구("수원시 팔달구")를 **둘 다** 응답한다.
+ * 그대로 더하면 수원시 인구가 두 번 셈되므로 시 합계행을 빼야 하는데, 뺄 대상은
+ * **자치구를 실제로 가진 그 시**뿐이다.
+ *
+ * ⚠️ 세션 501 사고: 옛 코드는 "한 시도에 공백 든 이름이 하나라도 있으면 그 시도의 공백 없는
+ * 이름을 전부 제외" 했다. 그 결과 구가 없는 시·군(김포시·양평군·안동시…)까지 통째로 날아가
+ * **6개 시도에서 111개 시·군이 누락**됐다 — 경북은 포항시 하나만 남아 인구가 1/6(48.7만),
+ * 경기는 절반 이하(616만)로 줄었고, 그 상태로 계산된 경기 인구증감률 **+15.5%**(실제 +0.4%)가
+ * 855개 단지에 최고 등급을 부당하게 주고 있었다.
+ *
+ * 정답은 "공백 앞부분(부모 시 이름)"을 뽑아 **그 시의 합계행만** 제외하는 것.
+ * 서울("종로구")·부산 등 자치구 이름이 한 단어인 시도는 부모 시가 안 잡혀 전부 누적된다(무회귀).
+ *
+ * @param {Array<{region: string, gu: string | null}>} rows
+ * @returns {Set<string>} 제외 대상 키 집합 (`"경기:수원시"` 형식)
+ */
+function pickParentCities(rows) {
+  /** @type {Set<string>} */
+  const parents = new Set();
+  for (const r of rows) {
+    if (!r.gu) continue;
+    const sp = r.gu.indexOf(" ");
+    if (sp > 0) parents.add(`${r.region}:${r.gu.slice(0, sp)}`);
+  }
+  return parents;
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
   if (!API_KEY) { logError("init", "MOIS_POP_KEY 환경변수 필요 (data.go.kr 인증키)"); process.exit(1); }
@@ -199,19 +228,13 @@ async function main() {
   }
 
   // 4. 시도 단위 집계 (gu=null)
-  // 행안부 API 가 같은 시도에 시 합계 ("수원시") + 자치구 ("수원시 팔달구") 둘 다 응답하므로
-  // 자치구 보유 시도는 시 합계 행을 누적에서 제외 (중복 차단). 서울/세종 등 자치구가 단어 1개인
-  // 시도는 그대로 누적.
-  /** @type {Set<string>} */
-  const hasGuLevel = new Set();
-  for (const r of rows) {
-    if (r.gu && r.gu.includes(" ")) hasGuLevel.add(r.region);
-  }
+  // 중복 차단은 "구를 가진 그 시의 합계행"만 제외한다 — 근거는 pickParentCities 주석 참조.
+  const parentCities = pickParentCities(rows);
   /** @type {Record<string, {curPop: number, prevPop: number, curHh: number}>} */
   const regionAgg = {};
   for (const r of rows) {
     if (!r.gu) continue;
-    if (hasGuLevel.has(r.region) && !r.gu.includes(" ")) continue;
+    if (parentCities.has(`${r.region}:${r.gu}`)) continue;
     if (!regionAgg[r.region]) regionAgg[r.region] = { curPop: 0, prevPop: 0, curHh: 0 };
     regionAgg[r.region].curPop += r.population;
     if (r.households) regionAgg[r.region].curHh += r.households;
@@ -316,4 +339,4 @@ const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split
 if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
 
 // 테스트용 순수 함수 export
-export { resolveRegion, parseGu, parseHouseholds };
+export { resolveRegion, parseGu, parseHouseholds, pickParentCities };
