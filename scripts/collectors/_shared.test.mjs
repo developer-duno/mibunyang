@@ -7,7 +7,7 @@ import {
   resolveBuilder, stringSimilarity, today, sleep,
   REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
-  setupGracefulShutdown, clampUnsoldRate, budgetExceeded,
+  setupGracefulShutdown, clampUnsoldRate, budgetExceeded, fetchWithRetry,
 } from "./_shared.mjs";
 
 describe("resolveBuilder", () => {
@@ -520,5 +520,59 @@ describe("budgetExceeded — 벽시계 예산", () => {
 
   it("시작 직후는 false", () => {
     expect(budgetExceeded(T0, 150, T0)).toBe(false);
+  });
+});
+
+// 세션 496: fetchWithRetry 가 호출자의 signal 을 무조건 AbortSignal.timeout(30000) 으로
+// 덮어쓰던 결함. transport-tago 의 searchBusStopsTago 가 15000ms 짧은 timeout 을 넘겨도
+// 조용히 무시돼 30초로 늘어나던 것을 잡는 회귀 가드. 46개 수집기가 공유하는 함수라
+// "호출자 미지정 시 30초 기본값 유지"도 함께 검증한다.
+describe("fetchWithRetry — AbortSignal (세션 496: 호출자 signal 존중, 기본값 회귀 없음)", () => {
+  const originalFetch = global.fetch;
+
+  it("호출자가 signal 을 넘기면 fetch 에 그 signal 이 그대로 전달된다 (덮어쓰기 금지)", async () => {
+    /** @type {AbortSignal | undefined} */
+    let receivedSignal;
+    global.fetch = /** @type {any} */ (vi.fn(async (_url, opts) => {
+      receivedSignal = opts.signal;
+      return { ok: true, json: async () => ({}) };
+    }));
+    try {
+      const callerSignal = AbortSignal.timeout(15000);
+      await fetchWithRetry("https://example.com", { signal: callerSignal });
+      expect(receivedSignal).toBe(callerSignal);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("호출자가 signal 을 안 넘기면 fetch 는 AbortSignal 인스턴스를 받는다 (30초 기본값 유지)", async () => {
+    /** @type {any} */
+    let receivedSignal;
+    global.fetch = /** @type {any} */ (vi.fn(async (_url, opts) => {
+      receivedSignal = opts.signal;
+      return { ok: true, json: async () => ({}) };
+    }));
+    try {
+      await fetchWithRetry("https://example.com", { headers: { "X-Test": "1" } });
+      expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("options 자체를 안 넘겨도(기본 {}) 여전히 AbortSignal 기본값이 붙는다", async () => {
+    /** @type {any} */
+    let receivedSignal;
+    global.fetch = /** @type {any} */ (vi.fn(async (_url, opts) => {
+      receivedSignal = opts.signal;
+      return { ok: true, json: async () => ({}) };
+    }));
+    try {
+      await fetchWithRetry("https://example.com");
+      expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

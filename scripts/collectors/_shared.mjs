@@ -197,7 +197,11 @@ export async function upsertBatch(table, rows, conflictCol, batchSize = 500, sb 
 export async function fetchWithRetry(url, options = {}, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(url, { ...options, signal: AbortSignal.timeout(30000) });
+      // 세션 496: 호출자가 signal 을 넘겼으면 그걸 존중한다. 예전엔 `AbortSignal.timeout(30000)`
+      // 이 무조건 options.signal 을 덮어써 호출자가 준 더 짧은 timeout(예: transport-tago 의
+      // 15000ms)이 조용히 무시됐다. 호출자 미지정(undefined/null) 시에만 30초 기본값을 쓴다 —
+      // 46개 수집기가 공유하는 기본 동작은 이 분기로 그대로 유지된다.
+      const res = await fetch(url, { ...options, signal: options.signal ?? AbortSignal.timeout(30000) });
       if (res.ok) return res;
 
       if (res.status === 429) {

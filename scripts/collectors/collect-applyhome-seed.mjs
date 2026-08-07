@@ -285,6 +285,10 @@ async function main() {
 
   const sb = getSupabase();
   const rpt = createReporter(PHASE);
+  // process.exit() 를 try 안에서 부르면 대기 중인 finally(recordApiQuota)를 건너뛴다
+  // (Node 실측, 세션 395 정정 패턴 — collect-applyhome-detail.mjs 답습).
+  // 그래서 exit 여부는 플래그로만 들고, 실제 exit 는 finally 안 recordApiQuota 직후에 한다.
+  let shouldExit1 = false;
 
   try {
     log(PHASE, `청약홈 무순위/잔여세대 공고 전수 조회 (공고일 >= ${since})...`);
@@ -357,11 +361,15 @@ async function main() {
     const result = rpt.summary();
     log(PHASE, "\n=== 완료 ===");
     await recordCollectorRun(PHASE, result);
-    if (result.fail > 0) process.exit(1);
+    if (result.fail > 0) shouldExit1 = true;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);
     }
+    // exit 은 recordApiQuota 를 await 한 바로 뒤 = 쿼터 기록 보장(scripts/CLAUDE.md Exit Code 정책).
+    // ⚠️ try/finally *뒤* 로 빼면 안 된다 — dry-run 경로가 try 안에서 return 하므로 그 줄에는
+    //    도달하지 못해 exit 0(성공)으로 끝난다(Node 실측).
+    if (shouldExit1) process.exit(1);
   }
 }
 

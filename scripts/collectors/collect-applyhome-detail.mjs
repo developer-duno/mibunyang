@@ -8,7 +8,7 @@
  *
  * 기존 collect-applyhome.mjs(경쟁률, getRemndrLttotPblancCmpet)와 별개 서비스 — 에러 격리.
  * apartments base 컬럼은 안 건드림 → 미분양 stage·기존 날짜 보존.
- * 매칭된 단지만 presale_schedule_official(일정) + applyhome_unit_supply(평형) 적재.
+ * 매칭된 단지만 presale_schedule_official(일정 + 규제 7종) + applyhome_unit_supply(평형) 적재.
  *
  * 사용법:
  *   node scripts/collectors/collect-applyhome-detail.mjs              (적재)
@@ -39,7 +39,10 @@ const MATCH_SIM_MIN = 0.85;
  *   GNRL_RNK2_CRSPAREA_RCPTDE?: string | null; GNRL_RNK2_CRSPAREA_ENDDE?: string | null;
  *   PRZWNER_PRESNATN_DE?: string | null; CNTRCT_CNCLS_BGNDE?: string | null; CNTRCT_CNCLS_ENDDE?: string | null;
  *   MVN_PREARNGE_YM?: string | null; TOT_SUPLY_HSHLDCO?: string | number | null; PBLANC_URL?: string | null;
- *   BSNS_MBY_NM?: string | null; CNSTRCT_ENTRPS_NM?: string | null; [k: string]: unknown }} DetailRow
+ *   BSNS_MBY_NM?: string | null; CNSTRCT_ENTRPS_NM?: string | null;
+ *   MDAT_TRGET_AREA_SECD?: string | null; PARCPRC_ULS_AT?: string | null; SPECLT_RDN_EARTH_AT?: string | null;
+ *   IMPRMN_BSNS_AT?: string | null; PUBLIC_HOUSE_EARTH_AT?: string | null; LRSCL_BLDLND_AT?: string | null;
+ *   NPLN_PRVOPR_PUBLIC_HOUSE_AT?: string | null; [k: string]: unknown }} DetailRow
  * @typedef {{ HOUSE_MANAGE_NO?: string; PBLANC_NO?: string; MODEL_NO?: string; HOUSE_TY?: string;
  *   SUPLY_AR?: string | number; SUPLY_HSHLDCO?: string | number; SPSPLY_HSHLDCO?: string | number;
  *   MNYCH_HSHLDCO?: string | number; NWBB_HSHLDCO?: string | number; LFE_FRST_HSHLDCO?: string | number;
@@ -142,6 +145,13 @@ function toReal(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
+// 규제 지정 플래그: raw API 전량 2,837건 실측 = "Y"/"N" 두 값뿐. 그 외(부재·이상값)는 null 보존.
+/** @param {unknown} v @returns {boolean | null} */
+function toYn(v) {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t === "Y" ? true : t === "N" ? false : null;
+}
 
 // ── Detail row → presale_schedule_official 행 ──
 /** @param {DetailRow} row @param {string} aptId */
@@ -165,6 +175,13 @@ export function buildScheduleRow(row, aptId) {
     pblanc_url: row.PBLANC_URL ? String(row.PBLANC_URL) : null,
     biz_entity: row.BSNS_MBY_NM ? String(row.BSNS_MBY_NM).trim() : null,
     constructor: row.CNSTRCT_ENTRPS_NM ? String(row.CNSTRCT_ENTRPS_NM).trim() : null,
+    adjustment_target_area: toYn(row.MDAT_TRGET_AREA_SECD),
+    price_cap_applied: toYn(row.PARCPRC_ULS_AT),
+    speculation_overheated: toYn(row.SPECLT_RDN_EARTH_AT),
+    redevelopment_biz: toYn(row.IMPRMN_BSNS_AT),
+    public_housing_district: toYn(row.PUBLIC_HOUSE_EARTH_AT),
+    large_scale_district: toYn(row.LRSCL_BLDLND_AT),
+    metro_private_public_housing: toYn(row.NPLN_PRVOPR_PUBLIC_HOUSE_AT),
   };
 }
 
@@ -207,6 +224,10 @@ async function main() {
 
   const sb = getSupabase();
   const rpt = createReporter(PHASE);
+  // process.exit() 를 try 안에서 부르면 대기 중인 finally(recordApiQuota)를 건너뛴다
+  // (Node 실측, 세션 395 정정 패턴 — collect-market-stats.mjs 답습).
+  // 그래서 exit 여부는 플래그로만 들고, 실제 exit 는 finally 안 recordApiQuota 직후에 한다.
+  let shouldExit1 = false;
 
   try {
     // 1. 청약홈 Detail(일정) + Mdl(평형) 전수 수집
@@ -222,7 +243,8 @@ async function main() {
       : 1;
     if (noDateRatio > 0.5) {
       logError(PHASE, `⚠️ RCRIT_PBLANC_DE 파싱 실패 ${(noDateRatio * 100).toFixed(1)}% — 청약홈 API 날짜 형식 변경 가능성.`);
-      process.exit(1);
+      shouldExit1 = true;
+      return;
     }
 
     // 2. 매칭 후보 로드 (전체 apartments)
@@ -288,11 +310,15 @@ async function main() {
     const result = rpt.summary();
     log(PHASE, "\n=== 완료 ===");
     await recordCollectorRun(PHASE, result);
-    if (result.fail > 0) process.exit(1);
+    if (result.fail > 0) shouldExit1 = true;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);
     }
+    // exit 은 recordApiQuota 를 await 한 바로 뒤 = 쿼터 기록 보장(scripts/CLAUDE.md Exit Code 정책).
+    // ⚠️ try/finally *뒤* 로 빼면 안 된다 — 조기 중단 경로가 try 안에서 return 하므로 그 줄에는
+    //    도달하지 못해 exit 0(성공)으로 끝난다(Node 실측).
+    if (shouldExit1) process.exit(1);
   }
 }
 
