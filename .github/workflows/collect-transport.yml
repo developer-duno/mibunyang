@@ -57,7 +57,11 @@ jobs:
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
           TAGO_KEY: ${{ secrets.TAGO_KEY }}
         run: |
-          ARGS=""
+          # 세션 496: 이 job 은 timeout-minutes: 60 이라 스크립트 기본 예산(180분, 240분
+          # job 용)이 여기선 영원히 발동 못 한다 — job timeout 도달은 grace 0 즉시 SIGKILL
+          # 이라 [budget] 로그도 recordCollectorRun 도 못 남기고 죽는다(graceful-shutdown-
+          # coverage.md 실증 답습). 이 워크플로 전용으로 60분에 맞는 예산을 명시한다.
+          ARGS="--budget-min=50"
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
