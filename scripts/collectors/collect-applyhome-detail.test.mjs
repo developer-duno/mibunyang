@@ -117,6 +117,90 @@ describe("buildScheduleRow — Detail → 일정 행", () => {
     expect(out.apartment_id).toBe("ap-1");
     expect(out.house_manage_no).toBe("2026820004");
   });
+  it("규제 필드 없는 행 → 7종 전부 null (기존 픽스처 회귀 가드)", () => {
+    expect(out.adjustment_target_area).toBeNull();
+    expect(out.price_cap_applied).toBeNull();
+    expect(out.speculation_overheated).toBeNull();
+    expect(out.redevelopment_biz).toBeNull();
+    expect(out.public_housing_district).toBeNull();
+    expect(out.large_scale_district).toBeNull();
+    expect(out.metro_private_public_housing).toBeNull();
+  });
+});
+
+describe("buildScheduleRow — 규제 지정 7종 Y/N → boolean", () => {
+  // raw API 표본 1000행 실측: 7필드 전부 "Y"/"N" 두 값뿐 (다른 코드값·null 없음)
+  const REG = {
+    MDAT_TRGET_AREA_SECD: "adjustment_target_area",
+    PARCPRC_ULS_AT: "price_cap_applied",
+    SPECLT_RDN_EARTH_AT: "speculation_overheated",
+    IMPRMN_BSNS_AT: "redevelopment_biz",
+    PUBLIC_HOUSE_EARTH_AT: "public_housing_district",
+    LRSCL_BLDLND_AT: "large_scale_district",
+    NPLN_PRVOPR_PUBLIC_HOUSE_AT: "metro_private_public_housing",
+  };
+  /** @param {unknown} v */
+  const rowWithAll = (v) =>
+    /** @type {any} */ (Object.fromEntries(Object.keys(REG).map((k) => [k, v])));
+
+  it('"Y" → true (7종 전부)', () => {
+    const o = /** @type {any} */ (buildScheduleRow(rowWithAll("Y"), "ap-1"));
+    for (const col of Object.values(REG)) expect(o[col]).toBe(true);
+  });
+  it('"N" → false (7종 전부)', () => {
+    const o = /** @type {any} */ (buildScheduleRow(rowWithAll("N"), "ap-1"));
+    for (const col of Object.values(REG)) expect(o[col]).toBe(false);
+  });
+  it("필드 부재(undefined) → null (7종 전부)", () => {
+    const o = /** @type {any} */ (buildScheduleRow({ HOUSE_MANAGE_NO: "x" }, "ap-1"));
+    for (const col of Object.values(REG)) expect(o[col]).toBeNull();
+  });
+  it("이상값(빈문자·X·숫자·null) → null (Y/N 외 저장 금지)", () => {
+    for (const bad of ["", "X", "y", 1, 0, null]) {
+      const o = /** @type {any} */ (buildScheduleRow(rowWithAll(bad), "ap-1"));
+      for (const col of Object.values(REG)) expect(o[col]).toBeNull();
+    }
+  });
+  it("String() 변환 시 우연히 'Y'/'N' 이 되는 비문자열 → null (typeof 가드 회귀 방지)", () => {
+    // String(["Y"]) === "Y" / String(["N"]) === "N" / String({toString:()=>"Y"}) === "Y".
+    // toYn 의 typeof v !== "string" 가드가 완화되면(String(v) 로 바꾸면) 이 케이스만 red 가 된다.
+    for (const bad of [["Y"], ["N"], { toString: () => "Y" }]) {
+      const o = /** @type {any} */ (buildScheduleRow(rowWithAll(bad), "ap-1"));
+      for (const col of Object.values(REG)) expect(o[col]).toBeNull();
+    }
+  });
+  it('공백 포함 " Y " → true (trim)', () => {
+    const o = /** @type {any} */ (buildScheduleRow(rowWithAll(" Y "), "ap-1"));
+    for (const col of Object.values(REG)) expect(o[col]).toBe(true);
+  });
+  it("필드별 독립 매핑 — 한 필드만 Y 면 그 컬럼만 true", () => {
+    const o = /** @type {any} */ (
+      buildScheduleRow(
+        /** @type {any} */ ({ HOUSE_MANAGE_NO: "x", PARCPRC_ULS_AT: "Y", IMPRMN_BSNS_AT: "N" }),
+        "ap-1",
+      )
+    );
+    expect(o.price_cap_applied).toBe(true);
+    expect(o.redevelopment_biz).toBe(false);
+    expect(o.adjustment_target_area).toBeNull();
+    expect(o.speculation_overheated).toBeNull();
+    expect(o.metro_private_public_housing).toBeNull();
+  });
+  it("API 필드 ↔ 컬럼 1:1 대응 — 어느 두 줄을 맞바꿔도 잡힌다", () => {
+    // 벌크 케이스("전부 Y"/"전부 N")는 매핑 두 줄의 우변을 맞바꿔도 통과한다(세션 495b 적대검증
+    // 확인 — public_housing_district ↔ large_scale_district 실제 재현). 여기서는 7필드 중
+    // 정확히 1개만 "Y", 나머지 6개는 "N" 으로 넣어 그 필드에 대응하는 컬럼 하나만 true 이고
+    // 나머지 6개는 전부 false 인지 검증한다 — 두 줄이 맞바뀌면 반드시 다른 컬럼에서 어긋난다.
+    for (const apiField of Object.keys(REG)) {
+      const row = /** @type {any} */ (
+        Object.fromEntries(Object.keys(REG).map((k) => [k, k === apiField ? "Y" : "N"]))
+      );
+      const o = /** @type {any} */ (buildScheduleRow(row, "ap-1"));
+      for (const [otherApi, otherCol] of Object.entries(REG)) {
+        expect(o[otherCol], `${apiField}=Y 일 때 ${otherCol}`).toBe(otherApi === apiField);
+      }
+    }
+  });
 });
 
 describe("buildUnitRow — Mdl → 평형 행", () => {
