@@ -169,14 +169,31 @@
   - **세션 465 구조 확정 — 트리거 도달 불가능 (세션 422 "차수 누적 구조는 정상" 박제 정정)**: `collect-applyhome.mjs` 집계가 HOUSE_MANAGE_NO 단위(`buildEventsFromAggregated`) + `apartment_id = ah-{no}` 1:1 유도값 + 충돌키 `apartment_id,house_manage_no` → 같은 단지 2번째 무순위 공고가 와도 **같은 키에 upsert = row 불증가**, 평균 1.00 영구 고정. upstream 재확인(4100행 전수, 세션 465 워크플로)도 HOUSE_MANAGE_NO 당 PBLANC_NO 2종+ = 0건. → 측정 스크립트 재실행 무의미. 재오픈 조건 = 이벤트 로그를 공고번호(PBLANC_NO) 단위 적재로 재설계 + 위 🔴 신규 유입 경로 복구와 함께 (그 전까지 본 항목 동결)
   - 참조: `docs/superpowers/specs/2026-05-02-applyhome-events-log-design.md` § 명시적 비-작업
 
-- 🟡 **regions.supply_ratio 0% — MOLIT API 사고 진앙 v3** (세션 323 → v3 정정)
+- 🔴 **regions.supply_ratio 0% — 구 API 폐기 확정 (v4, 세션 501 실측)**
   - v1 환각: "60분 timeout 부족 / 큐 충돌" — 폐기
-  - v2 환각: "사용자 직접 cancel" — 부분 정답 (5/10 + 5/26 cancelled 자리), 단 진짜 0% 진앙 별
-  - **v3 진앙 (실측 확정)**: 세션 323 workflow_dispatch 재발화 (run 26467919257, 5분 success) 결과 17 시도 100% fetchWithRetry 사고. raw MOLIT API 직접 호출 결과 = **HTTP 500 "Unexpected errors"** (data.go.kr 서버 사고)
-  - endpoint: `https://apis.data.go.kr/1613000/ArchPmsService_v2/getApHsptPrmsnLst`
-  - 본인 정정 불가 자리 = data.go.kr 외부 서버 사고. 4/10 success 직전 자리 후 5월 들어 100% 사고
-  - 정정 자리 = (1) MOLIT API 정상화 자연 대기 (2) `gh workflow run "Housing Permits Data Collection"` 재발화 24h 간격 답습 (3) MOLIT 콘솔 자리 답습 (서비스 폐기 / endpoint 변경 가능성)
-  - 6/10 schedule run 자연 답습 = MOLIT API 정상화 여부 자동 답습
+  - v2 환각: "사용자 직접 cancel" — 부분 정답 (cancelled 자리), 단 진짜 0% 진앙은 별
+  - v3 (세션 323): "HTTP 500 = data.go.kr 서버 사고 → 자연 복구 대기" — **세션 501 에서 폐기**
+  - **v4 진앙 (2026-08-08 raw 실측 확정)**: HTTP **400** + `NO_OPENAPI_SERVICE_ERROR`
+    (`returnReasonCode` 12, "해당 오픈API 서비스가 없거나 폐기됨"). 500 이 아니라 **서비스 소멸**이다.
+    → **기다려도 복구되지 않는다.** v3 의 "자연 대기 / 24h 재발화" 지침은 무효.
+  - 죽은 endpoint: `https://apis.data.go.kr/1613000/ArchPmsService_v2/getApHsptPrmsnLst`
+  - **후속 `ArchPmsHubService`(카탈로그 15136267)는 이 용도에 못 쓴다** — `getApHsTpInfo` 는
+    `sigunguCd`+`bjdongCd` **둘 다 필수**(하나만 넣으면 `{"body":{}}` 빈 응답). 법정동 단위라
+    시도 집계를 하려면 전국 법정동 전수가 필요해 일 10,000회 쿼터(자매 레포 공유)를 넘긴다.
+    우리 단지 법정동(882곳)만 돌면 호출은 되지만 "시도 전체 인허가"가 아니라 지표 정의가 깨진다.
+    (API 자체는 살아 있다 — 200 NORMAL SERVICE + 실데이터 확인. 용도가 안 맞을 뿐.)
+  - **대안 = KOSIS `DT_MLTM_666`(지역별 주택건설 인허가실적)** — orgId 116, 시도 17개 × 연간
+    (1990~2025), 단위 "호", **호출 1회**. 차원은 교차 cells 확정(C1_NM 이 실제 시도명).
+    ⚠️ objL2/objL3 를 넘기면 `err 21`. `itmId=ALL objL1=ALL prdSe=A` 만 넘길 것.
+    ⚠️ 집계행("실적"·"수도권")이 섞여 오므로 제외 필요.
+    ⚠️ kosis.kr 은 해외 IP(GitHub 러너) 차단 → 로컬 러너(`kosis-local-runner`) 경유.
+  - **⛔ 채우기 전에 등급 경계를 먼저 재설계해야 한다**: 현행 `SUPPLY_RATIO_TIERS` 50/100/130% 는
+    **주택보급률용** 숫자인데 이 지표는 연간 인허가÷가구수라 실제값이 **0.1~10%(중앙값 1.7%)**.
+    그대로 채우면 17개 시도가 전부 최하 등급(5점)으로 몰려, **지금(전부 150→최고 75점 동점)과
+    방향만 반대인 같은 동점 상태**가 된다. 세션498(버스 만점 몰림)·세션500(IC 만점 몰림)에서
+    두 번 고친 것과 같은 병 — 분포를 먼저 재고 **만점 비율로 경계를 고르는** 그 절차를 그대로 적용.
+  - 분모(`regions.households`)는 **세션 501 에서 정정 완료**(PR #348). 그전에는 6개 시도에서
+    시·군 111개가 누락돼 경기 가구수가 실제의 절반이었다 — 이제 분모는 신뢰할 수 있다.
   - **세션 403 화면 거짓 표시 정직화 완료**: 전 단지 supplyRatio NULL → api `?? 150` 비관적 폴백을 화면이 "공급량 150%" 실측값처럼 표시하던 거짓 정정. scoreRisk.ts 공급량/시공사재무 sub 가 `_fallbackSupplyRatio`/`_fallbackBuilderDebt` 플래그 읽어 "정보 없음"/"부채율 미수집" 정직 표시. **점수 불변**(비관적 폴백 정책 유지, 사장님 결정). 데이터는 여전히 MOLIT API HTTP 500 복구 대기 (6/11 raw 호출 재확인). 회귀 가드 = engine.test.js 신규 2건 (NULL→정직표시 + 정상값 회귀). builderDebtRatio NULL 도 동종 정정 동시 박힘.
 
 ---
