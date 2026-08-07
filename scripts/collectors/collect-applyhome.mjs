@@ -139,6 +139,10 @@ async function main() {
 
   const sb = getSupabase();
   const rpt = createReporter(PHASE);
+  // process.exit() 를 try 안에서 부르면 대기 중인 finally(recordApiQuota)를 건너뛴다
+  // (Node 실측, 세션 395 정정 패턴 — collect-applyhome-detail.mjs 답습).
+  // 그래서 exit 여부는 플래그로만 들고, 실제 exit 는 finally 안 recordApiQuota 직후에 한다.
+  let shouldExit1 = false;
 
   try {
   // 1. 청약홈 API 전체 조회
@@ -153,14 +157,15 @@ async function main() {
 
   // 2.5. 청약홈 API 응답 형식 변경 조기 감지 (5% 경고 + exit(1) 알림)
   // ⚠️ 위치 = aggregate 직후 + apartments.update 루프 진입 전.
-  //    이 시점에는 어떤 DB 쓰기도 발생 안 함 → exit(1) 시 데이터 무결.
+  //    이 시점에는 어떤 DB 쓰기도 발생 안 함 → 중단 시 데이터 무결.
   const totalAggregated = aptNos.length;
   const zeroSupplyCount = Object.values(aggregated)
     .filter(a => a.supply === 0).length;
   const zeroRatio = totalAggregated > 0 ? zeroSupplyCount / totalAggregated : 0;
   if (zeroRatio > 0.05) {
     logError(PHASE, `⚠️ supply=0 비율 ${(zeroRatio * 100).toFixed(1)}% (${zeroSupplyCount}/${totalAggregated}) — 청약홈 API 필드명 변경 가능성. odcloud 응답 1건 샘플 확인 필요.`);
-    process.exit(1);
+    shouldExit1 = true;
+    return;
   }
 
   // 3. 우리 아파트 ID와 매칭 (ah-{HOUSE_MANAGE_NO})
@@ -230,11 +235,15 @@ async function main() {
   const result = rpt.summary();
   log(PHASE, "\n=== 완료 ===");
   await recordCollectorRun(PHASE, result);
-  if (result.fail > 0) process.exit(1);
+  if (result.fail > 0) shouldExit1 = true;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);
     }
+    // exit 은 recordApiQuota 를 await 한 바로 뒤 = 쿼터 기록 보장(scripts/CLAUDE.md Exit Code 정책).
+    // ⚠️ try/finally *뒤* 로 빼면 안 된다 — 2.5 조기 감지가 try 안에서 return 하므로 그 줄에는
+    //    도달하지 못해 exit 0(성공)으로 끝난다(Node 실측).
+    if (shouldExit1) process.exit(1);
   }
 }
 
