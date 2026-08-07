@@ -74,6 +74,14 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 - createReporter 사용 (9개): `rpt.summary().fail > 0` → exit(1)
 - 수동 카운터 (5개): `failed > 0` → exit(1)
 - recordApiQuota 완료 후 exit 호출 (쿼터 기록 보장)
+- ⚠️ **`try` 안 `process.exit()` 은 대기 중인 `finally` 를 실행하지 않는다**(Node 실측). `finally` 로 쿼터를
+  기록하는 collector 가 이 구조면 **실패 종료 때마다 기록이 통째로 유실**되는데, 성공 경로는 멀쩡히 기록되므로
+  로그만 봐서는 안 드러난다. 정답 2형 —
+  ① try/catch/finally 문 **전체가 끝난 뒤** exit (`collect-market-stats.mjs`): `try` 안에 조기 `return` 이 없을 때만 안전.
+  ② `shouldExit1` 플래그 + `finally` 안 recordApiQuota **await 직후** exit (`collect-applyhome.mjs`): 조기
+  `return`(dry-run 등)이 있으면 이쪽만 안전 — ①을 쓰면 그 줄에 도달 못 해 **exit 0(성공) 회귀**.
+  전수 회귀 가드 = `scripts/collectors/_exit-quota-coverage.test.mjs` (세션 496). 세션 395 가 9개 파일을 고치고
+  applyhome 2개를 놓친 채 1년 가까이 잠복한 사고라 파일별 수동 점검 대신 기계로 훑는다.
 
 ---
 
