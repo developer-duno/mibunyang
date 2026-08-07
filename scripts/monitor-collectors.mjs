@@ -228,6 +228,10 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "transport-tago",  stale_days: 14, owner: "TAGO 대중교통" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 14, owner: "청약홈 분양일정·평형 (주간 월 cron — 세션 467 주간화)" },
+  // 세션 496 단계1. collect-applyhome-remndr.yml = 주간 월 13:30 KST cron → 7+7 = 14.
+  //   cron 주기를 바꾸면 이 값도 함께 바꿀 것 (일일=14 / 월간=38 / 분기=100).
+  //   ok = 적재 행 수(평형 + 취소후재공급). 두 채널 모두 매칭률 90%+ 라 ok=0 이면 진짜 이상 신호다.
+  { collector: "applyhome-remndr", stale_days: 14, owner: "청약홈 잔여세대 평형·취소후재공급 (주간 월 cron)" },
   // notify-subscribers: 분양 알림 발송기 (scripts/notify-subscribers.mjs — collectors/ 밖, 주간 월 14:00 KST).
   //   skip=일정 스캔 행 수(984+)를 항상 기록해 대상 0건 주간에도 ⑤-a 빈성공(ok=0&&skip=0) 오탐 없음.
   //   ⑤-b 미발화(14일+)가 "발송기 안 돎"을 잡는 신호 (세션 467).
