@@ -17,6 +17,15 @@ export interface PresaleScheduleOfficial {
   pblanc_url: string | null;
   biz_entity: string | null;
   constructor: string | null;
+  // 규제 7종 — **공고 시점 스냅샷**(지금 상태 아님). 화면 노출 시 recruit_date 병기 의무.
+  // 한글명·표시순서·기준문구는 @/constants/regulationFlags 단일 출처.
+  adjustment_target_area: boolean | null;
+  speculation_overheated: boolean | null;
+  price_cap_applied: boolean | null;
+  redevelopment_biz: boolean | null;
+  public_housing_district: boolean | null;
+  large_scale_district: boolean | null;
+  metro_private_public_housing: boolean | null;
 }
 
 export interface ApplyhomeUnitSupply {

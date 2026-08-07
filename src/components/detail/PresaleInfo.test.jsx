@@ -97,3 +97,63 @@ describe("PresaleInfo", () => {
     expect(screen.getByText("네이버 분양정보 보기")).toBeTruthy();
   });
 });
+
+// 규제 7종 "공고 당시 규제" 행 (세션 496)
+// 설계: docs/superpowers/specs/2026-08-07-regulation-flags-ui-design.md
+describe("PresaleInfo — 공고 당시 규제", () => {
+  /** @param {Record<string, any>} extra */
+  const withSchedule = (extra) =>
+    vi.mocked(usePresaleDetail).mockReturnValueOnce(
+      /** @type {any} */ ({
+        schedule: { house_manage_no: "2026000123", recruit_date: "2026-03-30", ...extra },
+        units: [],
+        loading: false,
+        error: null,
+      })
+    );
+
+  it("해당 규제를 REGULATION_FLAGS 차례로 · 구분해 보여준다", () => {
+    withSchedule({
+      price_cap_applied: true,
+      adjustment_target_area: true,
+      speculation_overheated: true,
+    });
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: null }))} />);
+    expect(screen.getByText("조정대상지역 · 투기과열지구 · 분양가상한제")).toBeTruthy();
+  });
+
+  // ★ 이 설계의 핵심 — 시점 문구가 빠지면 옛 공고 단지에서 거짓이 된다.
+  //   2021 공고에 조정대상지역 Y 인 단지가 화면 모수에 실제로 있다(라이브 실측 79건).
+  it("옛 공고여도 '2021.05 공고 기준'이 반드시 함께 뜬다", () => {
+    withSchedule({ recruit_date: "2021-05-14", adjustment_target_area: true });
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: null }))} />);
+    expect(screen.getByText("조정대상지역")).toBeTruthy();
+    expect(screen.getByText("2021.05 공고 기준")).toBeTruthy();
+  });
+
+  it("규제가 전부 false 면 행 자체가 없다", () => {
+    withSchedule({ adjustment_target_area: false, price_cap_applied: false });
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: null }))} />);
+    expect(screen.queryByText("공고 당시 규제")).toBeNull();
+  });
+
+  it("규제가 전부 null(미수집)이어도 행 자체가 없다", () => {
+    withSchedule({ adjustment_target_area: null, price_cap_applied: null });
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: null }))} />);
+    expect(screen.queryByText("공고 당시 규제")).toBeNull();
+  });
+
+  it("recruit_date 가 없으면 규제명은 내되 기준 문구만 생략한다", () => {
+    withSchedule({ recruit_date: null, general_rank1_bgnde: "2026-04-08", redevelopment_biz: true });
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: null }))} />);
+    expect(screen.getByText("정비사업")).toBeTruthy();
+    expect(screen.queryByText(/공고 기준$/)).toBeNull();
+  });
+
+  it("네이버 분양정보(presaleStage 있음) 경로에서도 규제 행이 뜬다", () => {
+    withSchedule({ large_scale_district: true });
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "분양중" }))} />);
+    expect(screen.getByText("대규모 택지개발지구")).toBeTruthy();
+    expect(screen.getByText("2026.03 공고 기준")).toBeTruthy();
+  });
+});
