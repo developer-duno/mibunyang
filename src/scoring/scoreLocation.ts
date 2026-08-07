@@ -141,7 +141,7 @@ export function scoreLocation(apt: Apt): Res {
           subwayDist > 9000
             ? "지하철 없음"
             : `지하철 ${subwayDist}m${subwayLines ? `(${subwayLines})` : ""} ${subwayDist <= 300 ? "역세권" : subwayDist <= 500 ? "도보권" : subwayDist <= 700 ? "양호" : subwayDist <= 1000 ? "보통" : "원거리"}`,
-          apt._noBus ? "버스 미수집" : `버스 ${busRoutes}개/15`,
+          apt._noBus ? "버스 미수집" : `버스 ${busRoutes}개/${FULL_BUS_ROUTES}`,
           icDist < 90 ? `IC ${icDist}km ${icDist <= 2 ? "우수" : icDist <= 5 ? "양호" : "보통"}` : "IC 원거리",
           ktxDist < 90 ? `KTX ${ktxDist}km ${ktxDist <= 5 ? "우수" : ktxDist <= 10 ? "양호" : "보통"}` : null,
         ]

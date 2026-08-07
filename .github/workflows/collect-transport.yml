@@ -55,7 +55,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
-          TAGO_KEY: ${{ secrets.TAGO_KEY }}
         run: |
           # 세션 496: 이 job 은 timeout-minutes: 60 이라 스크립트 기본 예산(180분, 240분
           # job 용)이 여기선 영원히 발동 못 한다 — job timeout 도달은 grace 0 즉시 SIGKILL

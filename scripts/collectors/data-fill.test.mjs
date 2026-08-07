@@ -54,8 +54,9 @@ describe("COLLECTORS 수집기 매핑", () => {
     expect(byCategory.schools).toContain("KAKAO_KEY");
     expect(byCategory.schools).toContain("NEIS_KEY");
     expect(byCategory.schools).toContain("SCHOOLINFO_KEY");
+    // transport: 세션497부터 버스는 정적 파일 매칭(TAGO_KEY 불필요) — KAKAO_KEY(지하철/IC/KTX)만
     expect(byCategory.transport).toContain("KAKAO_KEY");
-    expect(byCategory.transport).toContain("TAGO_KEY");
+    expect(byCategory.transport).not.toContain("TAGO_KEY");
   });
 
   // 이 테스트가 검증하는 것: maintenance Phase 1 + scripts 단일 + envKeys MOLIT_KEY (세션 238 W3)

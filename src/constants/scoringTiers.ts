@@ -27,7 +27,13 @@ export const SUBWAY_DIST_TIERS: Tier[] = [
   { max: 1000, score: 11 },
   { max: 1500, score: 6 },
 ];
-export const FULL_BUS_ROUTES = 15;
+// 버스 만점 기준 = 반경 500m 안 **고유** 정류장 개수. 15 → 20 정정(세션498).
+// 근거: 전 단지 2,635곳 실측 분포 = 중앙값 10 · p75 16 · p90 20 · p95 24 · 최대 49.
+// 만점 도달 비율이 기준 15 면 30.2%(세 곳 중 한 곳이 동점 → 도심끼리 변별 불가), 20 이면
+// 13.9%, 25 면 4.4%. 비교 엔진이므로 상위 10%대만 만점을 받는 20 을 택했다.
+// ⚠️ scripts/collectors/transport-tago.mjs 의 BUS_UNIQUE_CAP(수집 상한)과 같아야 만점 도달이
+// 가능하다 — 동기화는 transport-tago.test.mjs 가 가드한다.
+export const FULL_BUS_ROUTES = 20;
 export const IC_DIST_TIERS: Tier[] = [
   { max: 2, score: 20 },
   { max: 5, score: 14 },

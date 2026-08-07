@@ -49,7 +49,7 @@ export const COLLECTORS = [
   // Phase 3: Kakao 의존 (순차)
   { category: "infra",      phase: 3, scripts: ["infra-kakao.mjs"],        args: [],          envKeys: ["KAKAO_KEY"] },
   { category: "schools",    phase: 3, scripts: ["schools-neis.mjs", "collect-nearby-childcare.mjs"], args: [], envKeys: ["KAKAO_KEY", "NEIS_KEY", "SCHOOLINFO_KEY"] },
-  { category: "transport",  phase: 3, scripts: ["transport-tago.mjs"],     args: [],          envKeys: ["KAKAO_KEY", "TAGO_KEY"] },
+  { category: "transport",  phase: 3, scripts: ["transport-tago.mjs"],     args: [],          envKeys: ["KAKAO_KEY"] },
   { category: "environment", phase: 3, scripts: ["environment.mjs"],       args: [],          envKeys: ["KAKAO_KEY"] },
 ];
 
