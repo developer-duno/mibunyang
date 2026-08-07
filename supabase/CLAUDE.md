@@ -2,7 +2,7 @@
 
 > 스키마/마이그레이션 수정 시 반드시 이 규칙을 따를 것.
 
-## 테이블 (17개 + 2 VIEW)
+## 테이블 (18개 + 2 VIEW)
 
 > schema.sql은 `apartments_flat` VIEW 포함. `api_quota_daily` VIEW는 migration `20260329100000_api_quota_log.sql`에만 존재(schema.sql snapshot 미동기, 운영에는 영향 없음).
 
@@ -26,7 +26,8 @@
 | consults | 상담 신청 | api/consults.js |
 | api_quota_log | API 쿼터 사용량 추적 | recordApiQuota() |
 | presale_schedule_official | 청약홈 공식 분양일정 12종 + 규제 7종 | collect-applyhome-detail |
-| applyhome_unit_supply | 청약홈 주택형별 공급 세대수 | collect-applyhome-detail |
+| applyhome_unit_supply | 청약홈 주택형별 공급 세대수 (`source` = apt/remndr/opt) | collect-applyhome-detail, collect-applyhome-remndr |
+| applyhome_cancel_respl | 청약홈 취소후재공급 경쟁률 (유형별 6종 `by_type` JSONB) | collect-applyhome-remndr |
 | **apartments_flat** (VIEW) | dedup CTE + 7개 JOIN 평탄화 + presale 19컬럼 | - |
 | **api_quota_daily** (VIEW) | 일별 API 쿼터 합계 | - |
 
