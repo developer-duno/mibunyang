@@ -303,6 +303,10 @@ async function main() {
 
   const sb = getSupabase();
   const rpt = createReporter(PHASE);
+  // process.exit() 를 try 안에서 부르면 대기 중인 finally(recordApiQuota)를 건너뛴다
+  // (Node 실측, 세션 395 정정 패턴 — collect-applyhome.mjs 답습).
+  // 그래서 exit 여부는 플래그로만 들고, 실제 exit 는 finally 안 recordApiQuota 직후에 한다.
+  let shouldExit1 = false;
 
   try {
     // 1. 두 채널 전수 수집
@@ -322,7 +326,8 @@ async function main() {
       const ratio = noTy / rows.length;
       if (ratio > 0.5) {
         logError(PHASE, `⚠️ ${label} HOUSE_TY 부재 ${(ratio * 100).toFixed(1)}% (${noTy}/${rows.length}) — 청약홈 API 응답 구조 변경 가능성. 적재 중단.`);
-        process.exit(1);
+        shouldExit1 = true;
+        return;
       }
     }
 
@@ -347,7 +352,8 @@ async function main() {
       // dry-run 은 파싱 검증이 목적이라 경고 후 계속, 실적재는 중단 (source 컬럼 없이 쓰면 실패).
       if (!dryRun) {
         logError(PHASE, "⚠️ applyhome_unit_supply.source 컬럼 없음 — 마이그 20260807000000_applyhome_stage1_remndr.sql 미적용. Dashboard SQL Editor 적용 후 재실행.");
-        process.exit(1);
+        shouldExit1 = true;
+        return;
       }
       log(PHASE, "⚠️ [DRY-RUN] source 컬럼 없음 = 마이그 미적용. 충돌키 검사 건너뜀 (파싱 검증만 계속).");
     } else {
@@ -355,7 +361,8 @@ async function main() {
       if (collisions.length > 0) {
         logError(PHASE, `⚠️ 충돌키 ${collisions.length}건 — 잔여세대 행이 기존 ${collisions[0].existingSource} 계열 행을 덮어쓴다. 설계 §5-A 전제(2026-08-07 실측 충돌 0) 붕괴. 적재 중단.`);
         logError(PHASE, `  예시: ${collisions.slice(0, 3).map((c) => c.key).join(" / ")}`);
-        process.exit(1);
+        shouldExit1 = true;
+        return;
       }
       log(PHASE, `충돌키 검사: 0건 (기존 ${existing.rows.length}행 대조) — UNIQUE 유지 근거 확인`);
     }
@@ -393,11 +400,15 @@ async function main() {
     const result = rpt.summary();
     log(PHASE, "\n=== 완료 ===");
     await recordCollectorRun(PHASE, result);
-    if (result.fail > 0) process.exit(1);
+    if (result.fail > 0) shouldExit1 = true;
   } finally {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);
     }
+    // exit 은 recordApiQuota 를 await 한 바로 뒤 = 쿼터 기록 보장(scripts/CLAUDE.md Exit Code 정책).
+    // ⚠️ try/finally *뒤* 로 빼면 안 된다 — 위 조기 감지 3곳이 try 안에서 return 하므로 그 줄에는
+    //    도달하지 못해 exit 0(성공)으로 끝난다(Node 실측).
+    if (shouldExit1) process.exit(1);
   }
 }
 
