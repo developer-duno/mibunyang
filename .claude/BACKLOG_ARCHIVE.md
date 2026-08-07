@@ -158,6 +158,10 @@
 
 ## 🟡 곧 — 완료
 
+- ✅ **랜딩 정적 JSON 슬림 + 상세 해시 버킷 — PR1·PR2 전부 완료, 라이브 검증 종결** (PR1 세션 468 / PR2 [#324](https://github.com/developer-duno/mibunyang/pull/324) 세션 495 / 잔여 관찰 실측 세션 496)
+  - **완료(세션 468, PR1)**: 공유 빌더 `scripts/static-outputs.mjs`(slimCats·buildListData·buildDetailBuckets — collect-data/split 중복 제거) + list 슬림(catsCache subs 축소 + 상세필드 4개 제거) + 상세 해시 버킷 16개 `apartments-detail-16-{i}.json`(`src/utils/bucketHash.mjs` FNV-1a) + `staticDataApi.fetchApartmentDetail`(버킷 lazy·dedup·content-type 가드·FIFO 8) + DetailModal mergedApt/mergedRes 배선 + 4 collector split spawn 경로 버그 수정. **실측: list raw 15.2→5.92MB / br 1.37MB→361KB, 상세 fetch br 424KB→≤69KB.** 설계 원문 `docs/superpowers/specs/2026-07-03-landing-json-slim-bucket-design.md`
+  - **완료(세션 495, PR2 #324 `fc8fd50`)**: `apartments-prices.json` 생성 중단(buildPricesData·writeOutputs·split) + `fetchApartmentPrices`/PriceArrays export·관련 테스트(staticDataApi.test.js prices describe·detail-modal-supabase-guard prices route) 정리 (−239줄). PR1 이 구 번들 세션 안전을 위해 유예했던 "1~2주 후 삭제" 조건 충족 후 실행.
+  - **잔여 관찰 3건 전부 확인 (2026-08-07 세션 496 실측)**: ① daily-deploy `2026-08-07T00:07:59Z success` (#324 머지 08-06T23:24 직후 첫 run — 직전 08-06T18:28 failure 는 머지 이전 + GitHub Actions 대장애 건) ② production 버킷 라이브 = `apartments-detail-16-0.json` 954KB·`-15.json` 979KB 둘 다 `200 application/json` ③ 버킷·prices **git 미추적 확인** (`git ls-files public/data` = 6개, `detail-16`·`prices` 매칭 0). ⚠️ **prices 삭제 검증은 상태코드가 아니라 Content-Type 으로** — `/data/apartments-prices.json` 은 SPA rewrite 폴백 때문에 `200` 이지만 타입이 `text/html`(파일 부재), 대조군 `apartments-list.json` 은 `application/json` 6.9MB. 200 만 보고 "아직 있다" 로 오판하기 쉬운 자리(세션 495 박제 답습).
 - ✅ **청약홈 매칭 회수 — 후보 쿼리 presale_stage 제약 제거 검증 완결** (세션 353~360 처방 → 세션 465 라이브 실증, 2026-07-03)
   - **세션 465 실측 종결**: `collector_runs` id=236 `applyhome-detail` 2026-06-13 03:49 UTC **success ok=934 fail=0** (43.4s, cron `30 2 13 * *` 자연 발화) — 세션 360 예측 "~916 rows" 대비 934 (+18 = 이후 신규 공고 자연 증가). `presale_schedule_official` 라이브 = **984 rows / 859 distinct apartments** (예측 916 rows / 810 distinct 초과 달성). 세션 360 처방(후보 쿼리 전체 apartments 확대)의 2.4배 회복(393→934 rows) 실증 확정. 이후 매월 13일 cron 이 자연 회귀 가드.
   - (이하 원문 보존 — 세션 360 진단·처방 기록)
