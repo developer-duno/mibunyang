@@ -4,6 +4,22 @@
  * transport-tago.mjs 테스트 — 지하철역명/노선 추출, IC/KTX 필터, 증분 수집 로직
  */
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+
+// 상한·만점 기준은 **소스에서 직접 읽는다**. 여기에 숫자를 적어두면 상수만 바꿔도 테스트가
+// 따라오지 않아 "둘이 어긋난 채 초록불"이 된다. 정규식은 줄 시작·끝을 고정해 주석줄(`//`로
+// 시작)에 걸리지 않게 한다 — [[guards-must-be-mutation-tested]] §"소스 grep 가드" 답습.
+const COLLECTOR_SRC = readFileSync(new URL("./transport-tago.mjs", import.meta.url), "utf8");
+const TIERS_SRC = readFileSync(
+  new URL("../../src/constants/scoringTiers.ts", import.meta.url),
+  "utf8"
+);
+const BUS_UNIQUE_CAP_EXPECTED = Number(
+  COLLECTOR_SRC.match(/^const BUS_UNIQUE_CAP = (\d+);$/m)?.[1]
+);
+const FULL_BUS_ROUTES_EXPECTED = Number(
+  TIERS_SRC.match(/^export const FULL_BUS_ROUTES = (\d+);$/m)?.[1]
+);
 
 // EUC-KR 로 인코딩된 CSV 원문(정류장번호,정류장명,위도,경도,정보수집일,모바일단축번호,도시코드,
 // 도시명,관리도시명\nADB1,stop,36.1,128.1,2025-10-31,1,37040,city,BIS\n) 을 base64 로 고정한
@@ -495,7 +511,20 @@ describe("buildBusStopGrid — 위경도 그리드 인덱스", () => {
   });
 });
 
-describe("matchNearbyBusStops — 반경500m·최근접15(raw)·거리순, dedup 안 함", () => {
+describe("BUS_UNIQUE_CAP ↔ FULL_BUS_ROUTES 동기화 (세션498)", () => {
+  it("두 상수를 소스에서 실제로 읽어냈다 (정규식이 죽으면 아래 비교가 무의미해진다)", () => {
+    expect(Number.isFinite(BUS_UNIQUE_CAP_EXPECTED)).toBe(true);
+    expect(Number.isFinite(FULL_BUS_ROUTES_EXPECTED)).toBe(true);
+  });
+
+  // 수집 상한이 만점 기준보다 낮으면 **어떤 단지도 만점을 받을 수 없다**(옛 상태: 상한 15 →
+  // dedup 후 항상 15 미만 → 15버킷 0곳). 높으면 초과분을 저장만 하고 점수엔 못 쓴다.
+  it("수집 상한 == 만점 기준 — 한쪽만 바꾸면 여기서 걸린다", () => {
+    expect(BUS_UNIQUE_CAP_EXPECTED).toBe(FULL_BUS_ROUTES_EXPECTED);
+  });
+});
+
+describe("matchNearbyBusStops — 반경500m·거리순·이름 dedup 先·고유 상한 後 (세션498)", () => {
   it("반경(500m) 밖 정류장은 제외한다", () => {
     // 위도 1도 ≈ 111km → 0.01도 ≈ 1.11km, 훨씬 밖
     const stops = [{ name: "far", lat: 37.51, lng: 127.0 }];
@@ -513,29 +542,48 @@ describe("matchNearbyBusStops — 반경500m·최근접15(raw)·거리순, dedup
     expect(result.map((r) => r.nodenm)).toEqual(["near", "mid"]);
   });
 
-  it("같은 이름이 여러 개여도 dedup 하지 않는다 (dedup 은 buildTransportRow 책임)", () => {
+  it("같은 이름 중복 행은 가장 가까운 하나만 남긴다 (국가 파일의 방향별 중복 등재 흡수)", () => {
     const stops = [
       { name: "역A", lat: 37.5001, lng: 127.0 },
       { name: "역A", lat: 37.5002, lng: 127.0 },
     ];
     const grid = buildBusStopGrid(stops);
     const result = matchNearbyBusStops(grid, 37.5, 127.0);
-    expect(result).toHaveLength(2);
-    expect(result.every((r) => r.nodenm === "역A")).toBe(true);
+    expect(result).toHaveLength(1);
+    expect(result[0].nodenm).toBe("역A");
   });
 
-  it("16개가 반경 내에 있어도 최근접 15개만 반환한다 (cap 先 — 세션497 확정 순서)", () => {
-    const stops = Array.from({ length: 16 }, (_, i) => ({
+  it("고유 정류장이 상한을 넘으면 가까운 순으로 상한까지만", () => {
+    const stops = Array.from({ length: BUS_UNIQUE_CAP_EXPECTED + 6 }, (_, i) => ({
       name: `stop-${i}`,
       lat: 37.5 + i * 0.0001, // i가 클수록 멀어짐
       lng: 127.0,
     }));
     const grid = buildBusStopGrid(stops);
     const result = matchNearbyBusStops(grid, 37.5, 127.0);
-    expect(result).toHaveLength(15);
-    expect(result.map((r) => r.nodenm)).toEqual(stops.slice(0, 15).map((s) => s.name));
-    // 가장 먼(16번째) 정류장은 캡에 밀려 제외됨
-    expect(result.some((r) => r.nodenm === "stop-15")).toBe(false);
+    expect(result).toHaveLength(BUS_UNIQUE_CAP_EXPECTED);
+    expect(result.map((r) => r.nodenm)).toEqual(
+      stops.slice(0, BUS_UNIQUE_CAP_EXPECTED).map((s) => s.name)
+    );
+  });
+
+  // ★ 이번 결함의 정확한 회귀 가드 (세션498).
+  // 옛 구현은 dedup 전에 상한을 걸어서, 중복 등재가 촘촘한 도심에서 상한 칸이 같은 정류장의
+  // 중복 행으로 채워져 고유 정류장 수가 과소 계상됐다(전 단지 실측 55%가 평균 2.54개 손실).
+  // 아래는 "고유 10개 × 각 3중복 = 30행" — 옛 순서면 20행 자른 뒤 dedup 해서 7개 아래로
+  // 떨어지고, 올바른 순서면 고유 10개가 그대로 나온다.
+  it("중복 행이 상한 칸을 먹지 않는다 (dedup 先 — cap 先 회귀 차단)", () => {
+    const stops = [];
+    for (let i = 0; i < 10; i++) {
+      for (let dup = 0; dup < 3; dup++) {
+        stops.push({ name: `정류장-${i}`, lat: 37.5 + (i * 3 + dup) * 0.00005, lng: 127.0 });
+      }
+    }
+    expect(stops).toHaveLength(30); // 상한(20)보다 많은 원시 행
+    const grid = buildBusStopGrid(stops);
+    const result = matchNearbyBusStops(grid, 37.5, 127.0);
+    expect(result).toHaveLength(10); // 고유 개수 그대로
+    expect(new Set(result.map((r) => r.nodenm)).size).toBe(10);
   });
 
   it("반경 내 정류장이 0건이면 빈 배열(성공·0건 — null 과 구분)", () => {

@@ -40,10 +40,26 @@ const DEFAULT_IC_DIST = 99;
 const DEFAULT_KTX_DIST = 99;
 
 // ── 버스 정류장 정적 파일 (data.go.kr #15067528) ──────────────────
-// 세션497 게이트1(N=30, 15개 지역) 실측 확정: 반경 500m. cap15(raw, 거리순) → 이름 dedup 순서가
-// 정답(반대로 하면 게이트2 재현율이 반토막 난다 — 위 검증 문서 §(a) 답습).
+// 세션497 게이트1(N=30, 15개 지역) 실측 확정: 반경 500m.
+//
+// ⚠️ 상한은 **고유 정류장 기준**이다(세션498 정정). 국토부 전국 파일은 정류장 기둥 하나를
+// 방향별·지자체체계별로 여러 행에 나눠 담는다 — 서울 실측 16,980행인데 고유 이름은 9,057개,
+// 모든 행이 서로 다른 좌표, "같은 이름 2회"가 3,914건으로 최다(전형적 상·하행 분리).
+// 서울시 TOPIS 공식 집계는 11,231건이라 국가 파일이 51% 부풀어 있다(시점 차이로는 설명 불가 —
+// 서울분 정보수집일이 전부 2025-10 한 달).
+//
+// 이전 구현은 dedup **전에** 15개로 잘라서, 중복이 촘촘한 도심일수록 15칸이 같은 정류장의
+// 중복 행으로 채워져 고유 정류장 수가 과소 계상됐다. 전 단지 2,635곳 재계산 실측:
+//   · 1,449곳(55%)이 실제보다 적게 계산 — 평균 2.54개(= 교통 원점수 5.08점) 손실
+//   · 15개 만점 버킷 0곳 (아무도 만점을 못 받는 상태)
+//   · 지역 편향: 대구 -10.05점 · 서울 -9.47점 · 부산 -8.60점 vs 제주 -0.40점 · 대전 -0.60점
+// 그래서 **dedup 을 먼저, 자르기를 나중에** 한다. 옛 순서의 근거였던 "게이트2 재현율 64%"는
+// 옛 TAGO DB 값과의 일치율인데, 그 옛 값이 서울에서 통째로 거짓이었다는 게 이 PR 의 출발점이라
+// 잣대 자체가 무효다(같은 문서 §(b) 가 그렇게 결론지었다).
 const BUS_RADIUS_M = 500;
-const BUS_RAW_CAP = 15;
+// 고유 정류장 상한. src/constants/scoringTiers.ts 의 FULL_BUS_ROUTES(만점 기준)와 같은 값이어야
+// 만점 도달이 가능하다 — 둘의 동기화는 transport-tago.test.mjs 가 가드한다.
+const BUS_UNIQUE_CAP = 20;
 const BUS_GRID_CELL_DEG = 0.01; // ≈1.1km — 반경 500m 조회 시 자기 셀+인접 8셀로 충분
 const BUS_STOPS_PUBLIC_DATA_PK = "15067528";
 const BUS_STOPS_PUBLIC_DATA_DETAIL_PK = "uddi:f74b9799-9db1-4754-a5d0-b66e2ae705f3";
@@ -166,13 +182,14 @@ export function buildBusStopGrid(stops) {
 }
 
 /**
- * 반경 500m 이내 정류장을 거리순으로 정렬해 **최근접 15개(raw, dedup 전)** 만 돌려준다.
+ * 반경 500m 이내 정류장을 거리순으로 정렬해 **가까운 순 고유 정류장 최대 20개**를 돌려준다.
  *
- * ⚠️ 순서가 핵심이다 — "cap(15) 먼저 → dedup 은 호출부(`buildTransportRow`)가 나중에" 순서를
- * 지켜야 한다. 반대로 하면(전체 dedup 후 15 캡) 세션497 게이트2 재현율이 44%→64%로 반토막
- * 난다(반경500m 기준 실측). `buildTransportRow` 가 이미 `nodenm` 기준 `Set` dedup 을 하므로,
- * 이 함수는 TAGO 라이브 응답과 같은 모양(`{nodenm}[]`, 최대 15개, dedup 전)만 돌려주면 된다 —
- * `buildTransportRow` 는 데이터 출처(TAGO 라이브 vs 파일 매칭)를 몰라도 동일하게 동작한다.
+ * ⚠️ 순서가 핵심이다 — **이름 dedup 이 먼저, 자르기가 나중**이다(세션498 정정). 반대로 하면
+ * 중복 등재가 촘촘한 도심에서 상한 칸이 같은 정류장의 중복 행으로 채워져 고유 정류장 수가
+ * 과소 계상된다(위 BUS_UNIQUE_CAP 주석의 전 단지 실측 참조).
+ *
+ * 반환 모양(`{nodenm}[]`)은 그대로라 `buildTransportRow` 는 손대지 않는다. 거기서 한 번 더 도는
+ * `Set(nodenm)` dedup 은 이 함수가 이미 고유만 넘기므로 통과값이 같다(중복 방어로 남겨둔다).
  *
  * @param {Map<string, BusStopRecord[]>} grid
  * @param {number} lat
@@ -190,12 +207,22 @@ export function matchNearbyBusStops(grid, lat, lng) {
       if (arr) candidates.push(...arr);
     }
   }
-  return candidates
+  const sorted = candidates
     .map((s) => ({ name: s.name, dist: haversineKm(lat, lng, s.lat, s.lng) * 1000 }))
     .filter((s) => s.dist <= BUS_RADIUS_M)
-    .sort((a, b) => a.dist - b.dist)
-    .slice(0, BUS_RAW_CAP)
-    .map((s) => ({ nodenm: s.name }));
+    .sort((a, b) => a.dist - b.dist);
+
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @type {TagoBusStop[]} */
+  const out = [];
+  for (const s of sorted) {
+    if (seen.has(s.name)) continue; // 같은 정류장의 방향별·체계별 중복 행
+    seen.add(s.name);
+    out.push({ nodenm: s.name });
+    if (out.length >= BUS_UNIQUE_CAP) break;
+  }
+  return out;
 }
 
 /**

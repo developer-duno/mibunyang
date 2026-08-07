@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { PROFILES } from "@/constants/profiles";
-import { INFRA_CONFIG } from "@/constants/scoringTiers";
+import { INFRA_CONFIG, FULL_BUS_ROUTES } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
   getAreaAdj,
@@ -950,17 +950,28 @@ describe("scoreLocation — 교통 sentinel + busRoutes 클램핑 (세션 288)",
     const transport = r.subs.find((s) => s.name === "교통");
     expect(transport?.info).toContain("지하철 500m");
   });
-  it("busRoutes FULL_BUS_ROUTES 상한 클램핑 (100 ≤ 15와 동일 가중)", () => {
-    const at15 = scoreLocation(makeApt({ busRoutes: 15 }));
+  it("busRoutes FULL_BUS_ROUTES 이상은 동일 클램핑 (기준값 하드코딩 금지 — 세션498)", () => {
+    const atFull = scoreLocation(makeApt({ busRoutes: FULL_BUS_ROUTES }));
     const at100 = scoreLocation(makeApt({ busRoutes: 100 }));
     // FULL_BUS_ROUTES 이상에서는 rawBus = 30 으로 동일 클램핑
     expect(at100.subs.find((s) => s.name === "교통")?.score ?? 0).toBe(
-      at15.subs.find((s) => s.name === "교통")?.score ?? 0
+      atFull.subs.find((s) => s.name === "교통")?.score ?? 0
     );
+  });
+  it("만점 기준 미달은 만점보다 낮다 (FULL_BUS_ROUTES 상향이 실제로 반영되는지)", () => {
+    const below = scoreLocation(makeApt({ busRoutes: FULL_BUS_ROUTES - 5 }));
+    const atFull = scoreLocation(makeApt({ busRoutes: FULL_BUS_ROUTES }));
+    expect(atFull.subs.find((s) => s.name === "교통")?.score ?? 0).toBeGreaterThan(
+      below.subs.find((s) => s.name === "교통")?.score ?? 0
+    );
+  });
+  it('detail 의 "N개/M" 분모가 FULL_BUS_ROUTES 를 따른다 (하드코딩 재발 차단)', () => {
+    const r = scoreLocation(makeApt({ busRoutes: 10 }));
+    expect(r.subs.find((s) => s.name === "교통")?.detail ?? "").toContain(`버스 10개/${FULL_BUS_ROUTES}`);
   });
   it("busRoutes 적을수록 교통 점수 하락 (단조성)", () => {
     const few = scoreLocation(makeApt({ busRoutes: 0 }));
-    const many = scoreLocation(makeApt({ busRoutes: 15 }));
+    const many = scoreLocation(makeApt({ busRoutes: FULL_BUS_ROUTES }));
     expect(many.subs.find((s) => s.name === "교통")?.score ?? 0).toBeGreaterThan(
       few.subs.find((s) => s.name === "교통")?.score ?? 0
     );
