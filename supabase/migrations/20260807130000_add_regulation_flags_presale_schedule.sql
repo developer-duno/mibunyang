@@ -4,6 +4,7 @@
 -- (다른 코드값·null 없음) → BOOLEAN 이 손실 없는 최소 타입. 미응답 대비 NOT NULL 은 안 검.
 -- 적용은 Dashboard SQL Editor 수동 실행이 표준 (supabase/CLAUDE.md "마이그레이션 적용").
 -- BEGIN/COMMIT 사용 안 함 (기존 컬럼 추가 마이그 패턴, Supabase 자동 적용).
+-- 롤백: 20260807130001_rollback_add_regulation_flags_presale_schedule.sql (7컬럼 DROP)
 
 ALTER TABLE presale_schedule_official ADD COLUMN IF NOT EXISTS adjustment_target_area BOOLEAN;
 ALTER TABLE presale_schedule_official ADD COLUMN IF NOT EXISTS price_cap_applied BOOLEAN;
