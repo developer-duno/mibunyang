@@ -71,8 +71,12 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 
 ### Exit Code 정책
 
-- createReporter 사용 (9개): `rpt.summary().fail > 0` → exit(1)
-- 수동 카운터 (5개): `failed > 0` → exit(1)
+- createReporter 사용: `rpt.summary().fail > 0` → exit(1)
+- 수동 카운터: `failed > 0` → exit(1)
+- ⚠️ 개수는 **박제하지 않는다**(세션마다 변한다). 세션 496 실측 시점에 이 두 줄의 옛 박제값 "9개/5개"가
+  실제 20개/7개로 어긋나 있었고, 두 분류 어디에도 안 드는 collector 가 27개 더 있었다(환경변수 누락 등
+  다른 조건으로만 exit). 단정이 필요하면 그때 세되, 세는 규칙부터 정하고 센다 — `failed > 0` 이
+  `rpt.fail(failed)` 에 넘기는 용도인 파일(`collect-applyhome.mjs`)도 있어 단순 grep 은 오탐한다.
 - recordApiQuota 완료 후 exit 호출 (쿼터 기록 보장)
 - ⚠️ **`try` 안 `process.exit()` 은 대기 중인 `finally` 를 실행하지 않는다**(Node 실측). `finally` 로 쿼터를
   기록하는 collector 가 이 구조면 **실패 종료 때마다 기록이 통째로 유실**되는데, 성공 경로는 멀쩡히 기록되므로
