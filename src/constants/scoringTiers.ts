@@ -5,12 +5,22 @@
  * 모든 수치는 기존과 100% 동일. 가중치 합계 불변.
  */
 
-export type Tier = { max?: number; min?: number; score: number };
+export type Tier = { max?: number; min?: number; score: number; label?: string };
 
 // === 헬퍼: 하향 임계값 매칭 ===
 /** value <= max 조건으로 첫 매칭 반환 */
 export const tierMax = (v: number, tiers: readonly Tier[], fallback = 0): number => {
   for (const t of tiers) if (t.max != null && v <= t.max) return t.score;
+  return fallback;
+};
+/**
+ * value <= max 조건으로 첫 매칭의 `label` 반환. 매칭이 없으면(= 점수 fallback 구간) `fallback`.
+ *
+ * 화면 등급 문구를 점수표와 **같은 자리**에서 뽑기 위한 헬퍼다. 등급을 호출부에 따로 박으면
+ * 점수표만 바뀌었을 때 문구가 안 따라와 "0점인데 보통" 같은 거짓이 남는다(세션499 정정).
+ */
+export const tierMaxLabel = (v: number, tiers: readonly Tier[], fallback: string): string => {
+  for (const t of tiers) if (t.max != null && v <= t.max) return t.label ?? fallback;
   return fallback;
 };
 /** value >= min 조건으로 첫 매칭 반환 */
@@ -34,16 +44,23 @@ export const SUBWAY_DIST_TIERS: Tier[] = [
 // ⚠️ scripts/collectors/transport-tago.mjs 의 BUS_UNIQUE_CAP(수집 상한)과 같아야 만점 도달이
 // 가능하다 — 동기화는 transport-tago.test.mjs 가 가드한다.
 export const FULL_BUS_ROUTES = 20;
+// IC·KTX 등급 문구(`label`)는 점수와 **한 줄에** 둔다. 세션499 이전에는 scoreLocation.ts 가
+// `icDist <= 2 ? "우수" : icDist <= 5 ? "양호" : "보통"` 으로 경계를 따로 박고 있어서,
+// 마지막 티어를 넘긴 값(= 점수 0)까지 "보통"으로 표시됐다 — 손님은 "그럭저럭"으로 읽는데
+// 실제 점수는 최하인 거짓. 라벨 없는 구간 = 점수 fallback 구간 = 아래 *_FALLBACK_LABEL.
+// 티어 경계를 고치면 문구가 자동으로 따라온다(가드: scoringTiers.test.ts).
 export const IC_DIST_TIERS: Tier[] = [
-  { max: 2, score: 20 },
-  { max: 5, score: 14 },
-  { max: 10, score: 8 },
+  { max: 2, score: 20, label: "우수" },
+  { max: 5, score: 14, label: "양호" },
+  { max: 10, score: 8, label: "보통" },
 ];
+export const IC_DIST_FALLBACK_LABEL = "원거리";
 export const KTX_DIST_TIERS: Tier[] = [
-  { max: 5, score: 20 },
-  { max: 10, score: 12 },
-  { max: 15, score: 6 },
+  { max: 5, score: 20, label: "우수" },
+  { max: 10, score: 12, label: "양호" },
+  { max: 15, score: 6, label: "보통" },
 ];
+export const KTX_DIST_FALLBACK_LABEL = "원거리";
 
 // === Location: 인프라 가중치 ===
 export const INFRA_CONFIG: { key: string; max: number; weight: number }[] = [
