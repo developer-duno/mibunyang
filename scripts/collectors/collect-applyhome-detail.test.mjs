@@ -161,6 +161,14 @@ describe("buildScheduleRow — 규제 지정 7종 Y/N → boolean", () => {
       for (const col of Object.values(REG)) expect(o[col]).toBeNull();
     }
   });
+  it("String() 변환 시 우연히 'Y'/'N' 이 되는 비문자열 → null (typeof 가드 회귀 방지)", () => {
+    // String(["Y"]) === "Y" / String(["N"]) === "N" / String({toString:()=>"Y"}) === "Y".
+    // toYn 의 typeof v !== "string" 가드가 완화되면(String(v) 로 바꾸면) 이 케이스만 red 가 된다.
+    for (const bad of [["Y"], ["N"], { toString: () => "Y" }]) {
+      const o = /** @type {any} */ (buildScheduleRow(rowWithAll(bad), "ap-1"));
+      for (const col of Object.values(REG)) expect(o[col]).toBeNull();
+    }
+  });
   it('공백 포함 " Y " → true (trim)', () => {
     const o = /** @type {any} */ (buildScheduleRow(rowWithAll(" Y "), "ap-1"));
     for (const col of Object.values(REG)) expect(o[col]).toBe(true);
@@ -177,6 +185,21 @@ describe("buildScheduleRow — 규제 지정 7종 Y/N → boolean", () => {
     expect(o.adjustment_target_area).toBeNull();
     expect(o.speculation_overheated).toBeNull();
     expect(o.metro_private_public_housing).toBeNull();
+  });
+  it("API 필드 ↔ 컬럼 1:1 대응 — 어느 두 줄을 맞바꿔도 잡힌다", () => {
+    // 벌크 케이스("전부 Y"/"전부 N")는 매핑 두 줄의 우변을 맞바꿔도 통과한다(세션 495b 적대검증
+    // 확인 — public_housing_district ↔ large_scale_district 실제 재현). 여기서는 7필드 중
+    // 정확히 1개만 "Y", 나머지 6개는 "N" 으로 넣어 그 필드에 대응하는 컬럼 하나만 true 이고
+    // 나머지 6개는 전부 false 인지 검증한다 — 두 줄이 맞바뀌면 반드시 다른 컬럼에서 어긋난다.
+    for (const apiField of Object.keys(REG)) {
+      const row = /** @type {any} */ (
+        Object.fromEntries(Object.keys(REG).map((k) => [k, k === apiField ? "Y" : "N"]))
+      );
+      const o = /** @type {any} */ (buildScheduleRow(row, "ap-1"));
+      for (const [otherApi, otherCol] of Object.entries(REG)) {
+        expect(o[otherCol], `${apiField}=Y 일 때 ${otherCol}`).toBe(otherApi === apiField);
+      }
+    }
   });
 });
 
