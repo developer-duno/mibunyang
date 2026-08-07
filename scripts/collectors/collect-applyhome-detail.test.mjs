@@ -117,6 +117,67 @@ describe("buildScheduleRow — Detail → 일정 행", () => {
     expect(out.apartment_id).toBe("ap-1");
     expect(out.house_manage_no).toBe("2026820004");
   });
+  it("규제 필드 없는 행 → 7종 전부 null (기존 픽스처 회귀 가드)", () => {
+    expect(out.adjustment_target_area).toBeNull();
+    expect(out.price_cap_applied).toBeNull();
+    expect(out.speculation_overheated).toBeNull();
+    expect(out.redevelopment_biz).toBeNull();
+    expect(out.public_housing_district).toBeNull();
+    expect(out.large_scale_district).toBeNull();
+    expect(out.metro_private_public_housing).toBeNull();
+  });
+});
+
+describe("buildScheduleRow — 규제 지정 7종 Y/N → boolean", () => {
+  // raw API 표본 1000행 실측: 7필드 전부 "Y"/"N" 두 값뿐 (다른 코드값·null 없음)
+  const REG = {
+    MDAT_TRGET_AREA_SECD: "adjustment_target_area",
+    PARCPRC_ULS_AT: "price_cap_applied",
+    SPECLT_RDN_EARTH_AT: "speculation_overheated",
+    IMPRMN_BSNS_AT: "redevelopment_biz",
+    PUBLIC_HOUSE_EARTH_AT: "public_housing_district",
+    LRSCL_BLDLND_AT: "large_scale_district",
+    NPLN_PRVOPR_PUBLIC_HOUSE_AT: "metro_private_public_housing",
+  };
+  /** @param {unknown} v */
+  const rowWithAll = (v) =>
+    /** @type {any} */ (Object.fromEntries(Object.keys(REG).map((k) => [k, v])));
+
+  it('"Y" → true (7종 전부)', () => {
+    const o = /** @type {any} */ (buildScheduleRow(rowWithAll("Y"), "ap-1"));
+    for (const col of Object.values(REG)) expect(o[col]).toBe(true);
+  });
+  it('"N" → false (7종 전부)', () => {
+    const o = /** @type {any} */ (buildScheduleRow(rowWithAll("N"), "ap-1"));
+    for (const col of Object.values(REG)) expect(o[col]).toBe(false);
+  });
+  it("필드 부재(undefined) → null (7종 전부)", () => {
+    const o = /** @type {any} */ (buildScheduleRow({ HOUSE_MANAGE_NO: "x" }, "ap-1"));
+    for (const col of Object.values(REG)) expect(o[col]).toBeNull();
+  });
+  it("이상값(빈문자·X·숫자·null) → null (Y/N 외 저장 금지)", () => {
+    for (const bad of ["", "X", "y", 1, 0, null]) {
+      const o = /** @type {any} */ (buildScheduleRow(rowWithAll(bad), "ap-1"));
+      for (const col of Object.values(REG)) expect(o[col]).toBeNull();
+    }
+  });
+  it('공백 포함 " Y " → true (trim)', () => {
+    const o = /** @type {any} */ (buildScheduleRow(rowWithAll(" Y "), "ap-1"));
+    for (const col of Object.values(REG)) expect(o[col]).toBe(true);
+  });
+  it("필드별 독립 매핑 — 한 필드만 Y 면 그 컬럼만 true", () => {
+    const o = /** @type {any} */ (
+      buildScheduleRow(
+        /** @type {any} */ ({ HOUSE_MANAGE_NO: "x", PARCPRC_ULS_AT: "Y", IMPRMN_BSNS_AT: "N" }),
+        "ap-1",
+      )
+    );
+    expect(o.price_cap_applied).toBe(true);
+    expect(o.redevelopment_biz).toBe(false);
+    expect(o.adjustment_target_area).toBeNull();
+    expect(o.speculation_overheated).toBeNull();
+    expect(o.metro_private_public_housing).toBeNull();
+  });
 });
 
 describe("buildUnitRow — Mdl → 평형 행", () => {

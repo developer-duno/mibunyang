@@ -8,7 +8,7 @@
  *
  * 기존 collect-applyhome.mjs(경쟁률, getRemndrLttotPblancCmpet)와 별개 서비스 — 에러 격리.
  * apartments base 컬럼은 안 건드림 → 미분양 stage·기존 날짜 보존.
- * 매칭된 단지만 presale_schedule_official(일정) + applyhome_unit_supply(평형) 적재.
+ * 매칭된 단지만 presale_schedule_official(일정 + 규제 7종) + applyhome_unit_supply(평형) 적재.
  *
  * 사용법:
  *   node scripts/collectors/collect-applyhome-detail.mjs              (적재)
@@ -39,7 +39,10 @@ const MATCH_SIM_MIN = 0.85;
  *   GNRL_RNK2_CRSPAREA_RCPTDE?: string | null; GNRL_RNK2_CRSPAREA_ENDDE?: string | null;
  *   PRZWNER_PRESNATN_DE?: string | null; CNTRCT_CNCLS_BGNDE?: string | null; CNTRCT_CNCLS_ENDDE?: string | null;
  *   MVN_PREARNGE_YM?: string | null; TOT_SUPLY_HSHLDCO?: string | number | null; PBLANC_URL?: string | null;
- *   BSNS_MBY_NM?: string | null; CNSTRCT_ENTRPS_NM?: string | null; [k: string]: unknown }} DetailRow
+ *   BSNS_MBY_NM?: string | null; CNSTRCT_ENTRPS_NM?: string | null;
+ *   MDAT_TRGET_AREA_SECD?: string | null; PARCPRC_ULS_AT?: string | null; SPECLT_RDN_EARTH_AT?: string | null;
+ *   IMPRMN_BSNS_AT?: string | null; PUBLIC_HOUSE_EARTH_AT?: string | null; LRSCL_BLDLND_AT?: string | null;
+ *   NPLN_PRVOPR_PUBLIC_HOUSE_AT?: string | null; [k: string]: unknown }} DetailRow
  * @typedef {{ HOUSE_MANAGE_NO?: string; PBLANC_NO?: string; MODEL_NO?: string; HOUSE_TY?: string;
  *   SUPLY_AR?: string | number; SUPLY_HSHLDCO?: string | number; SPSPLY_HSHLDCO?: string | number;
  *   MNYCH_HSHLDCO?: string | number; NWBB_HSHLDCO?: string | number; LFE_FRST_HSHLDCO?: string | number;
@@ -142,6 +145,13 @@ function toReal(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
+// 규제 지정 플래그: raw API 표본 1000행 실측 = "Y"/"N" 두 값뿐. 그 외(부재·이상값)는 null 보존.
+/** @param {unknown} v @returns {boolean | null} */
+function toYn(v) {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t === "Y" ? true : t === "N" ? false : null;
+}
 
 // ── Detail row → presale_schedule_official 행 ──
 /** @param {DetailRow} row @param {string} aptId */
@@ -165,6 +175,13 @@ export function buildScheduleRow(row, aptId) {
     pblanc_url: row.PBLANC_URL ? String(row.PBLANC_URL) : null,
     biz_entity: row.BSNS_MBY_NM ? String(row.BSNS_MBY_NM).trim() : null,
     constructor: row.CNSTRCT_ENTRPS_NM ? String(row.CNSTRCT_ENTRPS_NM).trim() : null,
+    adjustment_target_area: toYn(row.MDAT_TRGET_AREA_SECD),
+    price_cap_applied: toYn(row.PARCPRC_ULS_AT),
+    speculation_overheated: toYn(row.SPECLT_RDN_EARTH_AT),
+    redevelopment_biz: toYn(row.IMPRMN_BSNS_AT),
+    public_housing_district: toYn(row.PUBLIC_HOUSE_EARTH_AT),
+    large_scale_district: toYn(row.LRSCL_BLDLND_AT),
+    metro_private_public_housing: toYn(row.NPLN_PRVOPR_PUBLIC_HOUSE_AT),
   };
 }
 
