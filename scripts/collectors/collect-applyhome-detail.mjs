@@ -145,7 +145,7 @@ function toReal(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
-// 규제 지정 플래그: raw API 표본 1000행 실측 = "Y"/"N" 두 값뿐. 그 외(부재·이상값)는 null 보존.
+// 규제 지정 플래그: raw API 전량 2,837건 실측 = "Y"/"N" 두 값뿐. 그 외(부재·이상값)는 null 보존.
 /** @param {unknown} v @returns {boolean | null} */
 function toYn(v) {
   if (typeof v !== "string") return null;
