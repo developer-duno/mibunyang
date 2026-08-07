@@ -3,7 +3,7 @@
 /**
  * transport-tago.mjs 테스트 — 지하철역명/노선 추출, IC/KTX 필터, 증분 수집 로직
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 
 // 상한·만점 기준은 **소스에서 직접 읽는다**. 여기에 숫자를 적어두면 상수만 바꿔도 테스트가
@@ -47,6 +47,7 @@ const {
   fetchCollectedApartmentIds, fetchExistingApartmentIds, orderTargets, findHighFailureRates,
   parseBusStopsCsv, buildBusStopGrid, matchNearbyBusStops,
   resolveBusStopsAtchFileId, downloadBusStopsCsv, loadBusStopGrid,
+  RADIUS, KAKAO_MAX_RADIUS_M, FILTER_FIX_AT, searchKakaoUntilMatch,
 } = await import("./transport-tago.mjs");
 const { fetchWithRetry } = /** @type {{ fetchWithRetry: import("vitest").Mock }} */ (
   /** @type {unknown} */ (await import("./_shared.mjs"))
@@ -135,21 +136,56 @@ describe('extractSubwayLines — 지하철 노선 추출', () => {
   });
 });
 
-describe('isValidStation — KTX역 필터', () => {
-  it('역으로 끝나는 이름 → true', () => {
-    expect(isValidStation({ place_name: "서울역", category_name: "" })).toBe(true);
+/**
+ * 세션 497: 이름 기반 판정을 카테고리 기반으로 교체했다. 아래 false 케이스는 전부 **실제로
+ * DB 에 잘못 저장되던 시설**이다(전 단지 대조: IC 75.3% 오답 · KTX 1.4% 오답). 이름 규칙으로
+ * 되돌리면 이 케이스들이 red 가 된다.
+ */
+describe('isValidStation — KTX 정차역은 카테고리로만 판정', () => {
+  it('KTX,SRT정차역 → true', () => {
+    expect(isValidStation({
+      place_name: "대전역",
+      category_name: "교통,수송 > 기차,철도 > 기차역 > KTX,SRT정차역",
+    })).toBe(true);
   });
 
-  it('카테고리에 기차 포함 → true', () => {
-    expect(isValidStation({ place_name: "서울", category_name: "기차역" })).toBe(true);
+  it('KTX정차역 → true', () => {
+    expect(isValidStation({
+      place_name: "상봉역",
+      category_name: "교통,수송 > 기차,철도 > 기차역 > KTX정차역",
+    })).toBe(true);
   });
 
-  it('카테고리에 철도 포함 → true', () => {
-    expect(isValidStation({ place_name: "KTX", category_name: "철도교통" })).toBe(true);
+  it('공백이 없는 카테고리 표기도 통과 (정규화)', () => {
+    expect(isValidStation({ place_name: "부산역", category_name: "기차역>KTX,SRT정차역" })).toBe(true);
   });
 
-  it('관련 없는 결과 → false', () => {
-    expect(isValidStation({ place_name: "역삼공원", category_name: "공원" })).toBe(false);
+  it('지하철역은 이름이 "역"으로 끝나도 false — 지하철은 SW8 로 따로 재므로 중복 계상 차단', () => {
+    expect(isValidStation({
+      place_name: "강남역",
+      category_name: "교통,수송 > 지하철,전철 > 수도권2호선",
+    })).toBe(false);
+  });
+
+  it('KTX 미정차 일반 기차역 → false (ktx_dist 는 고속철도 접근성이다)', () => {
+    expect(isValidStation({
+      place_name: "화본역",
+      category_name: "교통,수송 > 기차,철도 > 기차역",
+    })).toBe(false);
+  });
+
+  it('실제 오염 사례 — 렌터카 픽업존이 "…KTX역" 이름을 달고 통과하던 것 → false', () => {
+    expect(isValidStation({
+      place_name: "롯데렌터카 픽업존 부전KTX역",
+      category_name: "교통,수송 > 자동차 > 렌터카 > 롯데렌터카 G car",
+    })).toBe(false);
+  });
+
+  it('실제 오염 사례 — 은행 지점 → false', () => {
+    expect(isValidStation({
+      place_name: "KB국민은행 KTX광명역",
+      category_name: "금융,보험 > 금융서비스 > 은행 > KB국민은행",
+    })).toBe(false);
   });
 
   it('빈 값 → false', () => {
@@ -157,25 +193,70 @@ describe('isValidStation — KTX역 필터', () => {
   });
 });
 
-describe('isValidIC — 고속도로IC 필터', () => {
-  it('IC 포함 → true', () => {
-    expect(isValidIC({ place_name: "판교IC" })).toBe(true);
+describe('isValidIC — 고속도로 IC 는 카테고리로만 판정', () => {
+  it('도로시설 > IC > 고속도로IC → true (실측 4,234회로 최다)', () => {
+    expect(isValidIC({
+      place_name: "중랑IC",
+      category_name: "교통,수송 > 도로시설 > IC > 고속도로IC",
+    })).toBe(true);
   });
 
-  it('나들목 포함 → true', () => {
-    expect(isValidIC({ place_name: "판교나들목" })).toBe(true);
+  it('도로시설 > IC → true (실측 657회)', () => {
+    expect(isValidIC({
+      place_name: "월릉IC",
+      category_name: "교통,수송 > 도로시설 > IC",
+    })).toBe(true);
   });
 
-  it('인터체인지 포함 → true', () => {
-    expect(isValidIC({ place_name: "판교인터체인지" })).toBe(true);
+  it('공백이 없는 카테고리 표기도 통과 (정규화)', () => {
+    expect(isValidIC({ place_name: "송도IC", category_name: "도로시설>IC>고속도로IC" })).toBe(true);
   });
 
-  it('관련 없는 결과 → false', () => {
-    expect(isValidIC({ place_name: "판교역" })).toBe(false);
+  it('실제 오염 사례 — 편의점 → false', () => {
+    expect(isValidIC({
+      place_name: "CU 평택어연IC점",
+      category_name: "가정,생활 > 편의점 > CU",
+    })).toBe(false);
   });
 
-  it('빈 place_name → false', () => {
-    expect(isValidIC({ place_name: "" })).toBe(false);
+  it('실제 오염 사례 — 한식당(나들목) → false', () => {
+    expect(isValidIC({ place_name: "나들목식당", category_name: "음식점 > 한식" })).toBe(false);
+  });
+
+  it('실제 오염 사례 — 타이어 가게 → false', () => {
+    expect(isValidIC({
+      place_name: "타이어월드 용인IC점",
+      category_name: "교통,수송 > 자동차 > 자동차부품",
+    })).toBe(false);
+  });
+
+  it('실제 오염 사례 — IC 육교/교량은 IC 가 아니다 → false', () => {
+    expect(isValidIC({
+      place_name: "가락IC육교",
+      category_name: "교통,수송 > 도로시설 > 교량,다리",
+    })).toBe(false);
+  });
+
+  it('실제 오염 사례 — IC 교차로도 IC 가 아니다 → false', () => {
+    expect(isValidIC({
+      place_name: "송탄IC교차로",
+      category_name: "교통,수송 > 도로시설 > 교차로",
+    })).toBe(false);
+  });
+
+  it('실제 오염 사례 — "아이씨" 로 읽히는 IT 회사 → false', () => {
+    expect(isValidIC({
+      place_name: "아이씨엔아이티",
+      category_name: "서비스,산업 > 인터넷,IT > 소프트웨어",
+    })).toBe(false);
+  });
+
+  it('카테고리 없이 이름만 IC → false (옛 이름 규칙이면 true 였다)', () => {
+    expect(isValidIC({ place_name: "판교IC" })).toBe(false);
+  });
+
+  it('빈 값 → false', () => {
+    expect(isValidIC({ place_name: "", category_name: "" })).toBe(false);
   });
 });
 
@@ -249,7 +330,8 @@ function makeCappedSb(totalRows, cap = 1000) {
     /** @param {number} n */
     limit: (n) => Promise.resolve({ data: all.slice(0, Math.min(n, cap)), error: null }),
   };
-  return { from: () => ({ select: () => ({ not: () => chain }) }) };
+  const withGte = { ...chain, gte: () => chain };
+  return { from: () => ({ select: () => ({ not: () => withGte }) }) };
 }
 
 describe("fetchCollectedApartmentIds — 1000행 상한 넘어 전량 조회", () => {
@@ -283,7 +365,7 @@ describe("fetchCollectedApartmentIds — 1000행 상한 넘어 전량 조회", (
           error: null,
         }),
     };
-    const sb = { from: () => ({ select: () => ({ not: () => chain }) }) };
+    const sb = { from: () => ({ select: () => ({ not: () => ({ ...chain, gte: () => chain }) }) }) };
     const done = await fetchCollectedApartmentIds(sb);
     expect(done.size).toBe(1);
     expect(done.has("ap-1")).toBe(true);
@@ -301,6 +383,8 @@ describe("fetchCollectedApartmentIds — 완료 판정 기준 = bus_routes IS NO
   function makeFilteringSb(rows) {
     /** @type {string[]} */
     const notCalls = [];
+    /** @type {[string, string][]} */
+    const gteCalls = [];
     const sb = {
       from: () => ({
         select: () => ({
@@ -308,15 +392,27 @@ describe("fetchCollectedApartmentIds — 완료 판정 기준 = bus_routes IS NO
           not: (field) => {
             notCalls.push(field);
             const filtered = rows.filter((r) => r[field] != null);
-            return {
+            /** @param {Record<string, unknown>[]} rs */
+            const respond = (rs) => ({
               /** @param {number} from */
-              range: (from) => Promise.resolve({ data: from === 0 ? filtered : [], error: null }),
+              range: (from) => Promise.resolve({ data: from === 0 ? rs : [], error: null }),
+            });
+            return {
+              ...respond(filtered),
+              // 세션 497 백필 커트라인: updated_at >= FILTER_FIX_AT 인 행만 "완료"
+              /** @param {string} col @param {string} cutoff */
+              gte: (col, cutoff) => {
+                gteCalls.push([col, cutoff]);
+                return respond(
+                  filtered.filter((r) => r[col] == null || String(r[col]) >= cutoff),
+                );
+              },
             };
           },
         }),
       }),
     };
-    return { sb, notCalls };
+    return { sb, notCalls, gteCalls };
   }
 
   const rows = [
@@ -358,7 +454,66 @@ describe("fetchCollectedApartmentIds — 완료 판정 기준 = bus_routes IS NO
     expect(oldCriterionDone.has("ap-rural-no-subway")).toBe(false); // 옛 기준: 헛돌이(미완료로 계속 잡힘)
     expect(oldCriterionDone.has("ap-bus-fail")).toBe(true);         // 옛 기준: 동결(완료로 오판)
   });
+
+  // ── 세션 497: 오염 필터로 수집된 행을 다시 수집하게 하는 백필 커트라인 ──
+  //
+  // 이 가드가 없으면 필터를 고쳐도 **이미 값이 박힌 단지는 영원히 안 고쳐진다** — 증분 경로가
+  // 여기서 통째로 건너뛰기 때문이다. 즉 필터 수정 자체가 무효가 된다.
+  const backfillRows = [
+    { apartment_id: "ap-old", bus_routes: 3, updated_at: "2026-08-01T00:00:00.000Z" }, // 커트라인 이전 = 오염
+    { apartment_id: "ap-new", bus_routes: 3, updated_at: "2026-08-07T05:00:00.000Z" }, // 커트라인 이후 = 정상
+  ];
+
+  it("커트라인 이전에 수집된 행은 완료로 안 친다 — 오염값이 재수집 대상이 된다", async () => {
+    const { sb } = makeFilteringSb(backfillRows);
+    const done = await fetchCollectedApartmentIds(sb);
+    expect(done.has("ap-old")).toBe(false);
+  });
+
+  it("커트라인 이후에 수집된 행은 완료로 친다 — 백필 끝난 단지를 또 돌지 않는다", async () => {
+    const { sb } = makeFilteringSb(backfillRows);
+    const done = await fetchCollectedApartmentIds(sb);
+    expect(done.has("ap-new")).toBe(true);
+  });
+
+  it("커트라인은 updated_at 컬럼에 FILTER_FIX_AT 값으로 건다", async () => {
+    const { sb, gteCalls } = makeFilteringSb(backfillRows);
+    await fetchCollectedApartmentIds(sb);
+    expect(gteCalls).toEqual([["updated_at", FILTER_FIX_AT]]);
+  });
+
+  it("FILTER_FIX_AT 은 ISO8601 UTC 문자열 — PostgREST 비교가 문자열 사전순이라 형식이 어긋나면 조용히 오작동", () => {
+    expect(FILTER_FIX_AT).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
 });
+
+/**
+ * 세션 497 회귀 가드 — 검색 반경은 "API 가 받아주는 상한" 과 "점수가 필요로 하는 하한" 사이에
+ * 있어야 한다. 위를 넘기면 매 호출 400 으로 조용히 전멸하고(이번 사고), 아래로 내려가면
+ * 점수에 쓰이는 거리를 놓쳐 센티널 99 가 늘어난다. 양쪽을 다 잠근다.
+ *
+ * 기대값은 일부러 상수를 다시 참조하지 않고 숫자를 직접 적는다 — 소스의 상수로 비교하면
+ * 그 상수까지 같이 바뀔 때 테스트가 저 혼자 따라가서 아무것도 못 잡는다.
+ */
+describe("RADIUS — Kakao 반경 상한(20000m)과 점수 유효구간 사이", () => {
+  it("KAKAO_MAX_RADIUS_M 은 공식 문서상 상한 20000m (developers.kakao.com/docs/ko/local/dev-guide)", () => {
+    expect(KAKAO_MAX_RADIUS_M).toBe(20000);
+  });
+
+  it("모든 반경이 20000m 이하 — 넘으면 Kakao 가 400 ValidationError 로 거절한다", () => {
+    const over = Object.entries(RADIUS).filter(([, m]) => m > 20000);
+    expect(over).toEqual([]);
+  });
+
+  it("IC 반경은 10000m 이상 — scoreLocation IC_DIST_TIERS 가 10km 까지 점수를 준다", () => {
+    expect(RADIUS.IC).toBeGreaterThanOrEqual(10000);
+  });
+
+  it("KTX 반경은 15000m 이상 — scoreLocation KTX_DIST_TIERS 가 15km 까지 점수를 준다", () => {
+    expect(RADIUS.KTX).toBeGreaterThanOrEqual(15000);
+  });
+});
+
 
 // ── orderTargets — 신규 단지 우선 정렬 (세션 496) ──
 describe("orderTargets — 신규(행 없음) 우선, 재시도(bus_routes null) 뒤로", () => {
@@ -657,5 +812,70 @@ describe("loadBusStopGrid — 전체 오케스트레이션 + 실패 시 null(전
       .mockResolvedValueOnce({ ok: true, arrayBuffer: async () => eucKrBuf.buffer.slice(eucKrBuf.byteOffset, eucKrBuf.byteOffset + eucKrBuf.byteLength) });
     const grid = await loadBusStopGrid();
     expect(grid).toBeNull();
+  });
+});
+/**
+ * 세션 497: 키워드 검색은 size=15 가 상한이라, 이름만 비슷한 잡음(편의점·주유소·다리)이 앞자리를
+ * 채우면 정작 찾으려는 시설이 1페이지 밖으로 밀린다. 표본 실측 = 1페이지만 보면 IC 3.0%·
+ * KTX 4.8% 를 놓친다. 페이지 순회가 조용히 1페이지로 되돌아가도 아무 신호가 없으므로 가드한다.
+ */
+describe("searchKakaoUntilMatch — 잡음에 밀린 시설을 페이지 넘겨 회수", () => {
+  /** @param {object[][]} pages 페이지별 documents. is_end 는 마지막 페이지에서 true. */
+  function mockPages(pages) {
+    /** @type {number[]} */
+    const calls = [];
+    vi.mocked(fetchWithRetry).mockImplementation(async (url) => {
+      const p = Number(new URL(String(url)).searchParams.get("page") || 1);
+      calls.push(p);
+      const docs = pages[p - 1] ?? [];
+      return /** @type {any} */ ({
+        json: async () => ({ documents: docs, meta: { is_end: p >= pages.length } }),
+      });
+    });
+    return calls;
+  }
+
+  const IC = { category_name: "교통,수송 > 도로시설 > IC > 고속도로IC", place_name: "월릉IC", distance: "1200" };
+  const JUNK = { category_name: "가정,생활 > 편의점 > CU", place_name: "CU 월릉IC점", distance: "300" };
+
+  // 이 블록은 공용 fetchWithRetry 목에 구현을 심으므로, 뒤따르는 테스트로 새지 않게
+  // 앞뒤로 모두 초기화한다(호출 기록까지 지워야 뒤 테스트의 mock.calls[0] 이 오염되지 않는다).
+  beforeEach(() => vi.mocked(fetchWithRetry).mockReset());
+  afterEach(() => vi.mocked(fetchWithRetry).mockReset());
+
+  it("1페이지가 전부 잡음이면 2페이지에서 찾아 반환한다", async () => {
+    const calls = mockPages([[JUNK, JUNK], [JUNK, IC]]);
+    const hits = await searchKakaoUntilMatch(37.5, 127.0, "IC 나들목", 20000, isValidIC);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].place_name).toBe("월릉IC");
+    expect(calls).toEqual([1, 2]);
+  });
+
+  it("1페이지에서 찾으면 더 안 넘긴다 (불필요한 호출 0)", async () => {
+    const calls = mockPages([[IC, JUNK], [IC]]);
+    const hits = await searchKakaoUntilMatch(37.5, 127.0, "IC 나들목", 20000, isValidIC);
+    expect(hits).toHaveLength(1);
+    expect(calls).toEqual([1]);
+  });
+
+  it("is_end 를 만나면 조기 종료한다 — 없는 페이지를 계속 두드리지 않는다", async () => {
+    const calls = mockPages([[JUNK]]);
+    const hits = await searchKakaoUntilMatch(37.5, 127.0, "IC 나들목", 20000, isValidIC);
+    expect(hits).toEqual([]);
+    expect(calls).toEqual([1]);
+  });
+
+  it("3페이지까지 뒤져도 없으면 빈 배열 (20km 안에 실재 안 함)", async () => {
+    const calls = mockPages([[JUNK], [JUNK], [JUNK], [IC]]);
+    const hits = await searchKakaoUntilMatch(37.5, 127.0, "IC 나들목", 20000, isValidIC);
+    expect(hits).toEqual([]);
+    expect(calls).toEqual([1, 2, 3]); // SEARCH_MAX_PAGES=3 — 4페이지의 IC 는 일부러 안 본다
+  });
+
+  it("빈 페이지를 만나면 조기 종료한다", async () => {
+    const calls = mockPages([[], [IC]]);
+    const hits = await searchKakaoUntilMatch(37.5, 127.0, "IC 나들목", 20000, isValidIC);
+    expect(hits).toEqual([]);
+    expect(calls).toEqual([1]);
   });
 });
