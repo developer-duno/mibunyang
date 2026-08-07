@@ -77,6 +77,12 @@ jobs:
       - name: Playwright 캐시 키 audit
         run: node scripts/audit-playwright-cache.mjs
 
+      # 세션 500: concurrency 그룹은 실행 1개 + 대기 1개까지만 유지한다. 실행창 안에 2개 이상
+      # 도착하면 먼저 대기한 회차가 조용히 취소되는데, steps 가 비어 collector_runs 행조차 없어
+      # monitor-collectors 가 못 잡는다 → 달력 대조를 사람이 아니라 기계가 한다.
+      - name: concurrency 조용한 취소 audit
+        run: node scripts/audit-cron-concurrency.mjs
+
       - name: Test
         run: npm run test
 
