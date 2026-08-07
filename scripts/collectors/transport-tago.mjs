@@ -6,10 +6,11 @@
  * 고속도로IC(Kakao, 30km), KTX(Kakao, 80km)
  *
  * 사용법:
- *   node scripts/collectors/transport-tago.mjs              (Supabase UPDATE)
- *   node scripts/collectors/transport-tago.mjs --dry-run    (미리보기만)
+ *   node scripts/collectors/transport-tago.mjs                     (Supabase UPDATE)
+ *   node scripts/collectors/transport-tago.mjs --dry-run           (미리보기만)
+ *   node scripts/collectors/transport-tago.mjs --budget-min=180    (벽시계 예산 분 — 기본 180, 0=무제한)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, recordCollectorRun, createReporter, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordApiQuota, recordCollectorRun, createReporter, selectAll, budgetExceeded } from "./_shared.mjs";
 
 /**
  * @typedef {{ place_name?: string, category_name?: string, distance?: string|number, x?: string|number, y?: string|number }} KakaoDoc
@@ -182,7 +183,44 @@ export function extractSubwayLines(subways, stationName) {
 }
 
 /**
- * transport 테이블에서 이미 수집된 apartment_id 집합.
+ * 호출 실패율이 임계를 넘는 신호를 찾는다 (순수 함수, 테스트용 export).
+ *
+ * 세션 496: 4개 외부 호출(지하철/버스/IC/KTX)이 전부 try/catch 로 실패를 삼켜 8-06 TAGO
+ * 100% 장애 때도 collector_runs 는 정상 기록됐다. main() 은 이 함수로 판정만 위임하고
+ * 로그 출력은 호출부가 담당 — 판정 로직을 main() 밖으로 빼서 단위 테스트 가능하게 한다.
+ *
+ * @param {{ subway: number, bus: number, ic: number, ktx: number }} fails 신호별 실패 건수
+ * @param {number} attempted 이번 회차에 실제로 시도한 단지 수
+ * @param {number} [threshold] 경고 임계 (0~1), 기본 0.5
+ * @returns {{ label: string, count: number, rate: number }[]} 임계를 넘은 신호만
+ */
+export function findHighFailureRates(fails, attempted, threshold = 0.5) {
+  if (attempted <= 0) return [];
+  const entries = [
+    { label: "지하철", count: fails.subway },
+    { label: "버스(TAGO)", count: fails.bus },
+    { label: "IC", count: fails.ic },
+    { label: "KTX", count: fails.ktx },
+  ];
+  return entries
+    .map((e) => ({ ...e, rate: e.count / attempted }))
+    .filter((e) => e.rate > threshold);
+}
+
+/**
+ * transport 테이블에서 "TAGO 버스 수집이 실제로 성공한" apartment_id 집합 (완료 판정).
+ *
+ * ⚠️ 완료 판정 기준 = `bus_routes IS NOT NULL` (subway_name 아님, 세션 496 정정).
+ *    세션98 설계(위 searchBusStopsTago 주석)가 이미 성공/실패를 명확히 구분해 뒀다:
+ *      null = TAGO 호출 실패 / [] → bus_routes=0 = 성공·0건 / [...] = 성공·N건.
+ *    `bus_routes IS NOT NULL` 은 곧 "TAGO 호출이 실제로 성공했다"는 뜻이라 이 기준 하나로
+ *    두 결함을 동시에 푼다:
+ *      1) 지방 단지(지하철 없음, subway_name 영구 null)가 매일 재수집 대상으로 남는 "헛돌이"
+ *         — 버스는 지하철 유무와 무관하게 잡히므로 done 판정됨.
+ *      2) 지하철은 성공했는데 버스(TAGO)만 실패한 단지가 subway_name 기준으로는 이미 done
+ *         처리돼 다시는 재시도되지 않는 "동결" — bus_routes null 이면 미완료로 남아 다음
+ *         회차가 자동 재시도한다.
+ *    subway_name 기준을 "추가"(AND)하지 말 것 — 지방 단지 헛돌이가 되살아난다. 반드시 교체.
  *
  * ⚠️ `.limit(N)` 금지 — PostgREST max_rows=1000 이라 N 을 아무리 크게 줘도 **최대 1000행**만
  *    돌아온다. 그러면 1000건만 "수집완료"로 인식해 나머지를 매일 재수집한다(세션 490 실측:
@@ -194,7 +232,43 @@ export function extractSubwayLines(subways, stationName) {
  */
 export async function fetchCollectedApartmentIds(sb) {
   const rows = /** @type {{ apartment_id: string }[]} */ (
-    await selectAll((s) => s.from("transport").select("apartment_id").not("subway_name", "is", null), sb)
+    await selectAll((s) => s.from("transport").select("apartment_id").not("bus_routes", "is", null), sb)
+  );
+  return new Set(rows.map((r) => r.apartment_id).filter(Boolean));
+}
+
+/**
+ * 미수집 대상을 신규(transport 행 없음) 우선으로 정렬한다 (순수 함수, 테스트용 export).
+ *
+ * 벽시계 예산(budgetExceeded)으로 대상이 도중에 잘려도 신규 단지가 재시도 대상(행은
+ * 있으나 bus_routes null)보다 뒤로 밀리지 않게 한다 (세션 496).
+ *
+ * @template {{ id: string }} T
+ * @param {T[]} withCoords 좌표 있는 전체 apartments
+ * @param {Set<string>} doneSet fetchCollectedApartmentIds 결과 (bus_routes IS NOT NULL)
+ * @param {Set<string>} existingSet fetchExistingApartmentIds 결과 (transport 행 존재)
+ * @returns {{ targets: T[], newCount: number, retryCount: number }}
+ */
+export function orderTargets(withCoords, doneSet, existingSet) {
+  const pending = withCoords.filter((a) => !doneSet.has(a.id));
+  const newTargets = pending.filter((a) => !existingSet.has(a.id));
+  const retryTargets = pending.filter((a) => existingSet.has(a.id));
+  return { targets: [...newTargets, ...retryTargets], newCount: newTargets.length, retryCount: retryTargets.length };
+}
+
+/**
+ * transport 테이블에 행이 이미 존재하는(성공 여부 무관) apartment_id 집합.
+ *
+ * 신규 단지(행 자체가 없는 단지)와 재시도 대상(행은 있으나 bus_routes 가 null)을 구분해
+ * 신규를 항상 먼저 처리하기 위한 보조 조회 — 벽시계 예산 초과로 대상이 잘려도 신규 단지가
+ * 뒤로 밀리지 않게 한다 (세션 496).
+ *
+ * @param {any} sb
+ * @returns {Promise<Set<string>>}
+ */
+export async function fetchExistingApartmentIds(sb) {
+  const rows = /** @type {{ apartment_id: string }[]} */ (
+    await selectAll((s) => s.from("transport").select("apartment_id"), sb)
   );
   return new Set(rows.map((r) => r.apartment_id).filter(Boolean));
 }
@@ -226,8 +300,12 @@ async function main() {
   if (!forceAll) {
     const doneSet = await fetchCollectedApartmentIds(sb);
     doneCount = doneSet.size;
-    targets = withCoords.filter(a => !doneSet.has(a.id));
-    log(PHASE, `전체 ${withCoords.length}건 중 수집완료 ${doneCount}건 → 미수집 ${targets.length}건`);
+    // 신규 단지(transport 행 자체가 없음) 우선 처리 — 벽시계 예산으로 대상이 잘려도
+    // 신규가 재시도 대상(행은 있으나 bus_routes null) 뒤로 밀리지 않게 한다 (세션 496).
+    const existingSet = await fetchExistingApartmentIds(sb);
+    const ordered = orderTargets(withCoords, doneSet, existingSet);
+    targets = ordered.targets;
+    log(PHASE, `전체 ${withCoords.length}건 중 수집완료 ${doneCount}건 → 미수집 ${targets.length}건 (신규 ${ordered.newCount}·재시도 ${ordered.retryCount})`);
   }
   log(PHASE, `대상: ${targets.length}건, TAGO 일일 상한: ${maxTago}건`);
 
@@ -237,9 +315,24 @@ async function main() {
   if (doneCount > 0) rpt.skip(doneCount);
   let tagoCallCount = 0;
 
+  // 벽시계 예산 (세션 496): 완료 판정을 bus_routes 기준으로 바꾸면 TAGO 전면 장애 시
+  // 매 회차 전량이 대상이 될 수 있다. job timeout(240분, collect-naver-listings-incremental.yml)
+  // 은 이 스텝 뒤에 infra-kakao·schools-neis 가 이어 도는 구조라, 예산 안에서 스스로 멈춰
+  // 두 스텝에 시간을 남긴다. 이 수집기는 단지마다 즉시 upsert 하므로 budgetExceeded 로
+  // 끊어도 그때까지 처리분은 이미 저장돼 있다(collect-trades/collect-maintenance 선례 답습).
+  const DEFAULT_BUDGET_MIN = 180; // 240분 job timeout 대비 infra+schools 후속 스텝에 60분 여유
+  const startedAt = Date.now();
+  const budgetArg = process.argv.find(a => a.startsWith("--budget-min="));
+  const budgetMin = budgetArg ? parseInt(budgetArg.replace("--budget-min=", ""), 10) : DEFAULT_BUDGET_MIN;
+  let budgetHit = false;
+  let subwayFailCount = 0, busFailCount = 0, icFailCount = 0, ktxFailCount = 0;
+  let attemptedCount = 0;
+
   for (let i = 0; i < targets.length; i++) {
     if (rpt.interrupted()) break;  // 세션 327: graceful shutdown (SIGTERM 받으면 다음 단지 처리 전 중단)
+    if (budgetExceeded(startedAt, budgetMin)) { budgetHit = true; break; }  // 세션 496
     const apt = targets[i];
+    attemptedCount++;
     try {
       // busStops 초기값 null = "TAGO 호출 미수행/실패" 로 취급
       /** @type {KakaoDoc[]} */
@@ -254,7 +347,7 @@ async function main() {
       // 지하철역 (Kakao SW8 카테고리)
       try {
         subways = await searchKakaoCategory(apt.lat, apt.lng, "SW8", RADIUS.SUBWAY);
-      } catch (e) { /* 빈 배열 유지 */ }
+      } catch (e) { subwayFailCount++; /* 빈 배열 유지 */ }
       await sleep(100);
 
       // 버스 정류장 (TAGO 좌표기반 API — 일일 상한 제어)
@@ -263,25 +356,26 @@ async function main() {
         if (tagoCallCount < maxTago) {
           busStops = await searchBusStopsTago(apt.lat, apt.lng);
           tagoCallCount++;
+          if (busStops === null) busFailCount++;
         } else if (tagoCallCount === maxTago) {
           log(PHASE, `⚠️ TAGO 일일 상한 ${maxTago}건 도달 — 버스 수집 중단`);
           tagoCallCount++;
         }
-      } catch (e) { busStops = null; }
+      } catch (e) { busStops = null; busFailCount++; }
       await sleep(100);
 
       // 고속도로 IC (Kakao 키워드)
       try {
         const icResults = await searchKakao(apt.lat, apt.lng, "IC 나들목", RADIUS.IC);
         validICs = icResults.filter(isValidIC);
-      } catch (e) { /* 빈 배열 유지 */ }
+      } catch (e) { icFailCount++; /* 빈 배열 유지 */ }
       await sleep(100);
 
       // KTX역 (Kakao 키워드)
       try {
         const ktxResults = await searchKakao(apt.lat, apt.lng, "KTX역", RADIUS.KTX);
         validKTX = ktxResults.filter(isValidStation);
-      } catch (e) { /* 빈 배열 유지 */ }
+      } catch (e) { ktxFailCount++; /* 빈 배열 유지 */ }
       await sleep(100);
 
       const row = buildTransportRow({ apartmentId: apt.id, subways, busStops, validICs, validKTX });
@@ -305,6 +399,22 @@ async function main() {
     }
 
     if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length}`);
+  }
+
+  if (budgetHit) {
+    log(PHASE, `[budget] ${budgetMin}분 예산 초과 — 여기까지 수집분을 저장하고 종료. 남은 대상(신규 우선)은 다음 회차가 이어받음`);
+  }
+
+  // 호출 실패 요약 (세션 496) — 4개 호출이 전부 try/catch 로 실패를 삼켜 8-06 TAGO 100%
+  // 장애 때도 collector_runs 는 정상 기록됐다. rpt.fail() 은 바꾸지 않고(부분 실패도 행은
+  // 저장되므로 exit code 의미를 지킨다) 요약 로그 1줄 + 임계 초과 시 경고만 추가한다.
+  log(PHASE, `호출 실패 요약: 지하철 ${subwayFailCount} · 버스 ${busFailCount} · IC ${icFailCount} · KTX ${ktxFailCount} (총 ${attemptedCount}건 시도)`);
+  const highFailures = findHighFailureRates(
+    { subway: subwayFailCount, bus: busFailCount, ic: icFailCount, ktx: ktxFailCount },
+    attemptedCount,
+  );
+  for (const { label, count, rate } of highFailures) {
+    logError(PHASE, `⚠️ ${label} 실패율 ${(rate * 100).toFixed(1)}% (${count}/${attemptedCount}) — 외부 API 장애 의심 (임계 50% 초과)`);
   }
 
   const actualTagoCalls = Math.min(tagoCallCount, maxTago);
