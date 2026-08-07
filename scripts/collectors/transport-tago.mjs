@@ -24,7 +24,7 @@ import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, recordColle
 
 /**
  * @typedef {{ place_name?: string, category_name?: string, distance?: string|number, x?: string|number, y?: string|number }} KakaoDoc
- * @typedef {{ documents?: KakaoDoc[] }} KakaoSearchResponse
+ * @typedef {{ documents?: KakaoDoc[], meta?: { is_end?: boolean } }} KakaoSearchResponse
  * @typedef {{ nodenm?: string, [k: string]: unknown }} TagoBusStop
  * @typedef {{ name: string, lat: number, lng: number }} BusStopRecord
  */
@@ -34,7 +34,40 @@ loadEnv();
 const PHASE = "transport";
 const KAKAO_KEY = process.env.KAKAO_KEY;
 
-const RADIUS = { SUBWAY: 10000, IC: 30000, KTX: 80000 };
+/**
+ * Kakao Local API 반경 상한 — 공식 문서상 radius 는 0~20000(m)이고, 넘기면 검색 자체가
+ * HTTP 400 ValidationError(`query.radius should be at most 20000`)로 거절된다.
+ * https://developers.kakao.com/docs/ko/local/dev-guide
+ */
+export const KAKAO_MAX_RADIUS_M = 20000;
+
+/**
+ * 검색 반경(m). 전부 KAKAO_MAX_RADIUS_M 이하여야 한다 — 회귀 가드 = transport-tago.test.mjs.
+ *
+ * 세션 497: IC 가 30000, KTX 가 80000 이라 이 수집기가 도입된 2026-03-19 이래 두 검색이
+ * **매 호출 400 으로 실패**했다. 호출부가 예외를 삼켜 ic/ktxFailCount 로만 세는 탓에
+ * collector_runs 는 계속 success 였고, DB 는 ktx_dist 2,526행 전부(100%)·ic_dist 96.6%
+ * 가 센티널 99 로 굳었다.
+ *
+ * 20000 으로 낮춰도 점수는 한 점도 잃지 않는다: scoreLocation 의 IC_DIST_TIERS 는 10km,
+ * KTX_DIST_TIERS 는 15km 를 넘으면 0점이라 20km 밖은 센티널 99 와 결과가 같다.
+ */
+export const RADIUS = { SUBWAY: 10000, IC: 20000, KTX: 20000 };
+
+/**
+ * 키워드 검색은 size=15 가 상한이라, 이름만 비슷한 잡음(편의점·주유소·다리)이 앞자리를 채우면
+ * 정작 찾으려는 시설이 1페이지 밖으로 밀린다. 전 단지 표본 실측 = 1페이지만 보면 IC 3.0%·
+ * KTX 4.8% 를 놓친다. 3페이지까지 넘기면 IC 98.5%·KTX 89.0% 회수(나머지는 20km 안에 실재 안 함).
+ */
+const SEARCH_MAX_PAGES = 3;
+
+/**
+ * 오염 필터 교체 시각(백필 커트라인). 이 시각 **이전**에 수집된 transport 행은 이름 기반
+ * 필터가 만든 `ic_dist`/`ktx_dist` 를 갖고 있으므로 미완료로 간주해 다시 수집한다.
+ * 자세한 이유는 `fetchCollectedApartmentIds` 주석 참조.
+ */
+export const FILTER_FIX_AT = "2026-08-07T00:00:00.000Z";
+
 const DEFAULT_SUBWAY_DIST = 9999;
 const DEFAULT_IC_DIST = 99;
 const DEFAULT_KTX_DIST = 99;
@@ -69,13 +102,39 @@ const BUS_STOPS_PUBLIC_DATA_DETAIL_PK = "uddi:f74b9799-9db1-4754-a5d0-b66e2ae705
  * @param {number} lng
  * @param {string} keyword
  * @param {number} radius
- * @returns {Promise<KakaoDoc[]>}
+ * @param {number} [page]
+ * @returns {Promise<KakaoSearchResponse>}
  */
-async function searchKakao(lat, lng, keyword, radius) {
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
+async function searchKakao(lat, lng, keyword, radius, page = 1) {
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15&page=${page}`;
   const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
   const data = /** @type {KakaoSearchResponse} */ (await res.json());
-  return data.documents || [];
+  return data;
+}
+
+/**
+ * 필터를 통과하는 가장 가까운 결과 1건을 찾을 때까지 페이지를 넘긴다.
+ *
+ * `sort=distance` 라 페이지는 거리 오름차순이므로, 먼저 통과한 것이 곧 최근접이다.
+ * 잡음이 1페이지 15칸을 채워 진짜 시설을 밀어내는 문제(IC 3.0%·KTX 4.8%)를 해소한다.
+ * 결과가 없으면 `is_end` 또는 빈 페이지에서 조기 종료해 불필요한 호출을 안 만든다.
+ *
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} keyword
+ * @param {number} radius
+ * @param {(d: KakaoDoc) => boolean} filter
+ * @returns {Promise<KakaoDoc[]>} 통과한 것들(최근접 우선). 없으면 빈 배열.
+ */
+export async function searchKakaoUntilMatch(lat, lng, keyword, radius, filter) {
+  for (let page = 1; page <= SEARCH_MAX_PAGES; page++) {
+    const data = await searchKakao(lat, lng, keyword, radius, page);
+    const docs = data.documents || [];
+    const hits = docs.filter(filter);
+    if (hits.length > 0) return hits;
+    if (docs.length === 0 || data.meta?.is_end) return [];
+  }
+  return [];
 }
 
 /**
@@ -289,25 +348,47 @@ export function buildTransportRow({ apartmentId, subways, busStops, validICs, va
   };
 }
 
+/** 카테고리 경로 비교용 정규화 — 카카오가 `A > B > C` 로 주는 공백을 제거한다. */
+const normCat = (/** @type {string|undefined} */ c) => (c || "").replace(/\s+/g, "");
+
 /**
- * KTX역 결과 필터
+ * KTX 정차역 필터 — **카테고리로만** 판정한다.
+ *
+ * 세션 497: 옛 판정은 `이름이 "역"으로 끝남 || 카테고리에 "기차"/"철도"` 였다. 이름 조건이
+ * 느슨해 `롯데렌터카 픽업존 부전KTX역`·`KB국민은행 KTX광명역` 같은 상점이 통과했다(전 단지
+ * 대조 1.4% 오염). 더 중요한 건 **이름이 "역"으로 끝나기만 하면 지하철역도 통과**한다는 점 —
+ * 지하철은 이미 SW8 카테고리로 따로 재므로 같은 시설을 두 지표에 겹쳐 넣는 통로였다.
+ *
+ * 카카오가 정차역을 `교통,수송 > 기차,철도 > 기차역 > KTX정차역`(또는 `KTX,SRT정차역`)으로
+ * 이미 분류해 주므로 그것만 받는다.
+ *
  * @param {KakaoDoc} doc
  * @returns {boolean}
  */
 export function isValidStation(doc) {
-  const name = doc.place_name || "";
-  const cat = doc.category_name || "";
-  return name.endsWith("역") || cat.includes("기차") || cat.includes("철도");
+  const cat = normCat(doc.category_name);
+  return cat.includes("기차역") && cat.includes("KTX");
 }
 
 /**
- * IC 결과 필터
+ * 고속도로 IC 필터 — **카테고리로만** 판정한다.
+ *
+ * 세션 497: 옛 판정은 `이름에 "IC"/"나들목"/"인터체인지" 포함` 이었다. 전 단지 대조 결과
+ * **75.3% 가 틀린 값**이었고(오차 중앙 1.3km·최대 18.2km, 전부 과소평가) 실제로 잡히던 것들:
+ *   청춘나들목(문화시설)·나들목식당(한식)·타이어월드 용인IC점·CU 평택어연IC점·
+ *   IC모바일 화곡역점(휴대폰)·가락IC육교(교량)·아이씨…(IT회사, "아이씨"로 읽히는 이름)
+ *
+ * 카카오 카테고리 전수 집계(표본 250단지·질의 3종)로 진짜 IC 는 두 갈래뿐임을 확정:
+ *   `교통,수송 > 도로시설 > IC > 고속도로IC`  4,234회
+ *   `교통,수송 > 도로시설 > IC`                 657회
+ * 나머지 `도로시설 > 교량,다리`(1,270회)·`도로시설 > 교차로`(326회)·`입출구`(378회)는 IC 가 아니다.
+ * 따라서 조건은 `도로시설 > IC` 포함 하나로 충분하다.
+ *
  * @param {KakaoDoc} doc
  * @returns {boolean}
  */
 export function isValidIC(doc) {
-  const name = doc.place_name || "";
-  return name.includes("IC") || name.includes("나들목") || name.includes("인터체인지");
+  return normCat(doc.category_name).includes("도로시설>IC");
 }
 
 /**
@@ -390,12 +471,28 @@ export function findHighFailureRates(fails, attempted, threshold = 0.5) {
  *    진짜 미수집 324건인데 매일 1170건 재수집 = 하루 46분 낭비 = $10 예산 대부분 소진).
  *    전량 조회는 selectAll 페이지네이션으로만. 같은 사고 선례 = 커밋 01d0dd4(세션 295).
  *
+ * ⚠️ **완료 판정에 `updated_at >= FILTER_FIX_AT` 조건이 함께 걸린다**(세션 497). 그 이전에
+ *    수집된 행의 `ic_dist`/`ktx_dist` 는 오염된 이름 기반 필터가 만든 값이라(IC 75.3% 오답)
+ *    필터만 고치면 **이미 값이 박힌 단지는 영원히 재수집되지 않는다** — 증분 경로가 여기서
+ *    통째로 건너뛰기 때문이다. 값을 지우는 방식(`SET bus_routes = NULL`)은 그동안 버스 점수가
+ *    통째로 빠지므로 쓰지 않고, 커트라인만 올려 **기존 값을 유지한 채** 며칠에 걸쳐 자연히
+ *    덮어쓰게 한다. `orderTargets` 가 신규 우선 정렬을 하므로 예산에 잘려도 다음 회차가 이어받는다.
+ *    백필이 끝나면 이 상수는 남겨둬도 무해하다(모든 행이 커트라인 이후가 되어 조건이 항상 참).
+ *
  * @param {any} sb
  * @returns {Promise<Set<string>>}
  */
 export async function fetchCollectedApartmentIds(sb) {
   const rows = /** @type {{ apartment_id: string }[]} */ (
-    await selectAll((s) => s.from("transport").select("apartment_id").not("bus_routes", "is", null), sb)
+    await selectAll(
+      (s) =>
+        s
+          .from("transport")
+          .select("apartment_id")
+          .not("bus_routes", "is", null)
+          .gte("updated_at", FILTER_FIX_AT),
+      sb,
+    )
   );
   return new Set(rows.map((r) => r.apartment_id).filter(Boolean));
 }
@@ -529,15 +626,13 @@ async function main() {
 
       // 고속도로 IC (Kakao 키워드)
       try {
-        const icResults = await searchKakao(apt.lat, apt.lng, "IC 나들목", RADIUS.IC);
-        validICs = icResults.filter(isValidIC);
+        validICs = await searchKakaoUntilMatch(apt.lat, apt.lng, "IC 나들목", RADIUS.IC, isValidIC);
       } catch (e) { icFailCount++; /* 빈 배열 유지 */ }
       await sleep(100);
 
       // KTX역 (Kakao 키워드)
       try {
-        const ktxResults = await searchKakao(apt.lat, apt.lng, "KTX역", RADIUS.KTX);
-        validKTX = ktxResults.filter(isValidStation);
+        validKTX = await searchKakaoUntilMatch(apt.lat, apt.lng, "KTX역", RADIUS.KTX, isValidStation);
       } catch (e) { ktxFailCount++; /* 빈 배열 유지 */ }
       await sleep(100);
 
