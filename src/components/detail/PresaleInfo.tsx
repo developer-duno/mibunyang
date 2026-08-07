@@ -3,6 +3,8 @@ import { C, F } from "@/theme";
 import { fmtPrice, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics";
 import { usePresaleDetail, type PresaleScheduleOfficial } from "@/hooks/usePresaleDetail";
+import { activeRegulations, formatAnnouncementBasis, REGULATION_HINT } from "@/constants/regulationFlags";
+import { HelpHint } from "../HelpHint";
 import type { PresaleInfoProps } from "@/types/components/PresaleInfo.types";
 
 const STAGE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -45,6 +47,30 @@ const SCHEDULE_CARD: CSSProperties = {
   border: `1px solid ${C.border}`,
 };
 
+// "공고 당시 규제" 행. 해당하는 규제가 하나도 없으면 null (빈 행 노이즈 0).
+//
+// ⚠️ 배지가 아니라 정보 행인 것이 이 설계의 핵심이다. 이 값들은 **공고 시점 스냅샷**이라
+// 배지로 달면 옛 공고 단지(화면 모수 899개 중 288개 = 2021~2022 공고)에 이미 풀린 규제가
+// 현재형으로 붙어 거짓이 된다. 그래서 규제명 옆에 늘 "YYYY.MM 공고 기준"을 함께 그린다.
+// 근거: docs/superpowers/specs/2026-08-07-regulation-flags-ui-design.md
+function renderRegulations(s: PresaleScheduleOfficial) {
+  const names = activeRegulations(s);
+  if (names.length === 0) return null;
+  const basis = formatAnnouncementBasis(s.recruit_date);
+  return (
+    <div style={{ marginTop: 8, paddingTop: 7, borderTop: `1px dashed ${C.border}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: F.xs, color: C.muted, whiteSpace: "nowrap" }}>
+          공고 당시 규제
+          <HelpHint text={REGULATION_HINT} label="공고 당시 규제" />
+        </span>
+        <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text, textAlign: "right" }}>{names.join(" · ")}</span>
+      </div>
+      {basis && <div style={{ fontSize: F.micro, color: C.muted, textAlign: "right", marginTop: 2 }}>{basis}</div>}
+    </div>
+  );
+}
+
 // 청약홈 공식 일정 타임라인 렌더. 항목이 없으면 null.
 // showInnerHeader=false 면 보조 헤더("청약홈 공식 일정")를 생략 — 일정-only 카드에서 바깥 카드 헤더와 중복 방지.
 function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean) {
@@ -66,6 +92,7 @@ function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean) {
           </div>
         ))}
       </div>
+      {renderRegulations(s)}
       {s.pblanc_url && (
         <div style={{ marginTop: 6 }}>
           <a

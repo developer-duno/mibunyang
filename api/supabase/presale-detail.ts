@@ -15,7 +15,11 @@ const SCHEDULE_SELECT =
   "house_manage_no, recruit_date, special_receipt_bgnde, special_receipt_endde, " +
   "general_rank1_bgnde, general_rank1_endde, general_rank2_bgnde, general_rank2_endde, " +
   "winner_announce_date, contract_bgnde, contract_endde, move_in_ym, tot_supply, " +
-  "pblanc_url, biz_entity, constructor";
+  "pblanc_url, biz_entity, constructor, " +
+  // 규제 7종(PR #331 저장) — 공고 시점 스냅샷이라 화면에서 recruit_date 와 반드시 함께 쓴다.
+  // 한글명·표시순서는 src/constants/regulationFlags.ts 가 단일 출처.
+  "adjustment_target_area, speculation_overheated, price_cap_applied, redevelopment_biz, " +
+  "public_housing_district, large_scale_district, metro_private_public_housing";
 const UNIT_SELECT =
   "house_manage_no, model_no, house_ty, supply_area, general_supply, special_supply, " +
   "special_by_type, top_amount";
