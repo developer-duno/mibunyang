@@ -15,7 +15,7 @@ vi.mock("./_shared.mjs", () => ({
   createReporter: vi.fn(() => ({ success: vi.fn(), fail: vi.fn(), skip: vi.fn(), summary: vi.fn() })),
 }));
 
-const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView, pickLatestNonNullByRegion } = await import("./data-audit.mjs");
+const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView, pickLatestNonNullByRegion, filterToViewRows } = await import("./data-audit.mjs");
 
 // 팩토리: 모든 필드가 채워진 아파트 행
 function createFullRow(overrides = {}) {
@@ -335,5 +335,46 @@ describe("data-audit — regions 합치기가 새 방식으로 배선돼 있다"
 
   it("옛 '최신 행 하나' 방식이 남아 있지 않다", () => {
     expect(src).not.toMatch(/if \(!prev \|\| String\(r\.recorded_at\) > String\(prev\.recorded_at\)\)/);
+  });
+});
+
+// ── 모수를 화면과 같게 (세션 504) ────────────────────────────────
+//
+// 사고: 이 감사는 `apartments` 테이블(2,635행)을 세는데 손님 화면이 쓰는 건
+// `apartments_flat` VIEW(2,043행, dedup 후)다. 차이 592곳은 화면에 없다.
+// 그런데 그 592곳이 **오히려 더 잘 채워져 있어** 감사가 실제 화면보다 후하게 나왔다:
+//   noxious_dist 73.4%(테이블) vs 66.7%(화면) · crime_safety_grade 73.8% vs 66.9%
+// 감사는 "손님이 보는 화면의 빈칸" 을 재는 도구다 — 화면에 없는 단지를 세면 안 된다.
+describe("filterToViewRows — 화면에 있는 단지만 센다", () => {
+  const rows = /** @type {any[]} */ ([{ id: "a" }, { id: "b" }, { id: "c" }]);
+
+  it("VIEW 에 있는 id 만 남긴다", () => {
+    const out = filterToViewRows(rows, new Set(["a", "c"]));
+    expect(out.map((r) => r.id)).toEqual(["a", "c"]);
+  });
+
+  it("VIEW id 조회 실패(null)면 전체 유지 — fail-open", () => {
+    // 감사가 아예 안 도는 것보다 모수가 큰 채로라도 도는 게 낫다.
+    // 대신 호출처가 경고 로그를 남긴다(조용한 왜곡 금지).
+    expect(filterToViewRows(rows, null)).toHaveLength(3);
+  });
+
+  it("빈 Set 이면 0건 — '전부 화면 밖' 도 그대로 드러낸다", () => {
+    expect(filterToViewRows(rows, new Set())).toHaveLength(0);
+  });
+});
+
+// 순수함수만 보면 **호출부가 필터를 안 쓰는 것**을 못 잡는다.
+// ⚠️ 좌변까지 고정 — 부분 문자열만 찾으면 선언부·주석에 걸려 껍데기가 된다.
+describe("data-audit — 모수 보정이 배선돼 있다", () => {
+  const src = readFileSync("scripts/collectors/data-audit.mjs", "utf-8");
+
+  it("apartments 결과를 VIEW id 로 거른다", () => {
+    expect(src).toMatch(/const apts = filterToViewRows\(rawApts\.map\(toCamel\), viewIds\);/);
+  });
+
+  it("VIEW id 를 apartments_flat 에서 가져온다", () => {
+    expect(src).toMatch(/const viewIds = await fetchViewIds\(sb, regionFilter\);/);
+    expect(src).toMatch(/"apartments_flat",\s*\n\s*"id",/);
   });
 });

@@ -390,6 +390,48 @@ function toCamel(row) {
 }
 
 /**
+ * 화면(apartments_flat VIEW)에 실제로 있는 id 집합. 실패하면 null (호출처가 fail-open).
+ *
+ * 조용히 전체를 세면 감사 수치가 화면과 어긋난 채 초록불이 된다 — 실패는 로그로 드러낸다.
+ *
+ * @param {any} sb
+ * @param {string | null | undefined} regionFilter
+ * @returns {Promise<Set<unknown> | null>}
+ */
+async function fetchViewIds(sb, regionFilter) {
+  try {
+    const rows = await fetchAllFromTable(
+      sb,
+      "apartments_flat",
+      "id",
+      regionFilter ? "region" : null,
+      regionFilter ?? null,
+    );
+    if (!rows.length) {
+      logError(PHASE, "apartments_flat 에서 id 를 0건 받았습니다 — 모수 보정을 건너뜁니다.");
+      return null;
+    }
+    return new Set(rows.map((r) => r.id));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logError(PHASE, `apartments_flat id 조회 실패(${msg}) — 모수 보정을 건너뜁니다.`);
+    return null;
+  }
+}
+
+/**
+ * VIEW 에 있는 행만 남긴다. viewIds 가 null 이면(조회 실패) 전체 유지 = fail-open.
+ *
+ * @param {FlatRow[]} rows
+ * @param {Set<unknown> | null} viewIds
+ * @returns {FlatRow[]}
+ */
+export function filterToViewRows(rows, viewIds) {
+  if (!viewIds) return rows;
+  return rows.filter((r) => viewIds.has(r.id));
+}
+
+/**
  * VIEW `latest_regions` 의 **컬럼별 최신 non-null** 을 자바스크립트로 재현한다 (세션 504).
  *
  * VIEW 본문(20260804000000 L43-57)이 하는 일과 같아야 한다:
@@ -453,8 +495,23 @@ export async function fetchAllFromView(sb, regionFilter) {
   // 1. apartments 메인 테이블
   log(PHASE, "  apartments 테이블 조회...");
   const rawApts = await fetchAllFromTable(sb, "apartments", APT_COLS, regionFilter ? "region" : null, regionFilter);
-  const apts = rawApts.map(toCamel);
-  log(PHASE, `  apartments: ${apts.length}건`);
+
+  // 세션 504 — 모수를 **화면과 같게** 맞춘다.
+  //
+  // 이 함수 이름은 fetchAllFromView 지만 실제로 읽는 건 `apartments` 테이블(2,635행)이고,
+  // 손님 화면이 쓰는 건 `apartments_flat` VIEW(2,043행, dedup 후)다. 차이 592곳은 화면에 없다.
+  // 그런데 그 592곳이 **오히려 더 잘 채워져 있어** 감사가 실제 화면보다 후하게 나왔다:
+  //   noxious_dist        1934/2635 = 73.4%  vs  화면 1363/2043 = 66.7%
+  //   crime_safety_grade  1945/2635 = 73.8%  vs  화면 1366/2043 = 66.9%
+  // 감사는 "손님이 보는 화면의 빈칸" 을 재는 도구이므로 화면에 없는 단지를 세면 안 된다.
+  const viewIds = await fetchViewIds(sb, regionFilter);
+  const apts = filterToViewRows(rawApts.map(toCamel), viewIds);
+  log(
+    PHASE,
+    viewIds
+      ? `  apartments: ${apts.length}건 (VIEW 기준 — 화면 밖 ${rawApts.length - apts.length}건 제외)`
+      : `  apartments: ${apts.length}건 ⚠️ VIEW id 조회 실패로 테이블 전체를 셉니다(모수가 화면보다 큼)`,
+  );
 
   const aptIds = apts.map(a => a.id);
   if (aptIds.length === 0) return apts;
