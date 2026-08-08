@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { DistanceDots, DISTANCE_AXES, fmtDist } from "./DistanceDots";
+import { DistanceDots, fmtDist } from "./DistanceDots";
+import { DISTANCE_AXES } from "@/constants/distanceAxes";
 import type { Apt } from "@/types/scoring";
 
 function apt(over: Record<string, unknown> = {}): Apt {

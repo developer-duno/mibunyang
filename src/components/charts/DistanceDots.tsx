@@ -2,6 +2,7 @@ import { memo } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
 import { isSentinel } from "@/constants/sentinels";
+import { DISTANCE_AXES } from "@/constants/distanceAxes";
 import type { Apt } from "@/types/scoring";
 
 /**
@@ -25,46 +26,8 @@ import type { Apt } from "@/types/scoring";
  *   방향이 반대라 같은 그림에 섞으면 정반대로 읽힌다. 카드·치안환경 섹션이 이미 다룬다.
  */
 
-type Item = { field: string; label: string };
-
-/** 축 하나 = 자릿수가 비슷한 시설 묶음 */
-type Axis = { title: string; cap: number; capLabel: string; items: Item[] };
-
-export const DISTANCE_AXES: readonly Axis[] = [
-  {
-    title: "걸어서 5분 안팎",
-    cap: 500,
-    capLabel: "500m",
-    items: [
-      { field: "convDist", label: "편의점" },
-      { field: "cafeDist", label: "카페" },
-      { field: "pharmacyDist", label: "약국" },
-    ],
-  },
-  {
-    title: "걸어서 갈 만한 거리",
-    cap: 1000,
-    capLabel: "1km",
-    items: [
-      { field: "childcareDist", label: "어린이집" },
-      { field: "cultureDist", label: "문화시설" },
-      { field: "hospitalDist", label: "병원" },
-      { field: "parkDist", label: "공원" },
-      { field: "bankDist", label: "은행" },
-      { field: "martDist", label: "마트" },
-    ],
-  },
-  {
-    title: "차로 가는 거리",
-    cap: 10000,
-    capLabel: "10km",
-    items: [
-      { field: "subwayDist", label: "지하철역" },
-      { field: "policeDist", label: "경찰관서" },
-      { field: "emergencyDist", label: "응급의료" },
-    ],
-  },
-];
+// 축 정의(`DISTANCE_AXES`)는 `@/constants/distanceAxes` 에 있다 — 서랍(`lib/tabExtraFields`)이
+// "이 그림이 이미 보여준 필드"를 세야 하는데, lib 이 components 를 import 하면 방향이 뒤집힌다.
 
 const ROW_H = 22;
 const LABEL_W = 62;

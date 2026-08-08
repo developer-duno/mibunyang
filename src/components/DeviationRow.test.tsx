@@ -114,6 +114,45 @@ describe("DeviationRow — 긴 안내문이 레이아웃을 밀지 않는다", (
   });
 });
 
+describe("DeviationRow — 팝업에서는 실제 값도 같이 보여준다 (세션 505)", () => {
+  /** 값 슬롯 = 행의 5번째 자식 */
+  function valueText(container: HTMLElement) {
+    return rowOf(container).kids[4].textContent;
+  }
+
+  it("팝업(compact=false)은 `300m · 12% 싸요` 처럼 절대값을 앞에 붙인다", () => {
+    const { container } = render(
+      <DeviationRow spec={subwaySpec} dev={dev()} value={300} regionLabel="경기" compact={false} />
+    );
+    expect(valueText(container)).toBe("300m · 12% 싸요");
+  });
+
+  it("카드(기본 compact)는 문장 조각만 — 붙이면 두 줄로 넘쳐 행 높이 고정이 깨진다", () => {
+    const { container } = render(<DeviationRow spec={subwaySpec} dev={dev()} value={300} regionLabel="경기" />);
+    expect(valueText(container)).toBe("12% 싸요");
+  });
+
+  it("값이 없으면 팝업에서도 안 붙인다 (`— · 미수집` 은 말이 안 된다)", () => {
+    const { container } = render(
+      <DeviationRow
+        spec={subwaySpec}
+        dev={dev({ state: "missing", fav: null, text: "미수집", tone: "neutral" })}
+        value={null}
+        regionLabel="경기"
+        compact={false}
+      />
+    );
+    expect(valueText(container)).toBe("미수집");
+  });
+
+  it("스크린리더 문구는 그대로 — 원래부터 절대값을 읽고 있었다", () => {
+    render(<DeviationRow spec={subwaySpec} dev={dev()} value={300} regionLabel="경기" compact={false} />);
+    const aria = screen.getByRole("img").getAttribute("aria-label") ?? "";
+    expect(aria).toContain("300m");
+    expect(aria).not.toContain("·");
+  });
+});
+
 describe("DeviationRow — 미수집 표시", () => {
   it("트랙에 회색 해칭을 깐다 (색 말고 형태로도 구분)", () => {
     const { container } = render(

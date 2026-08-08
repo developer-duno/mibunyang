@@ -42,22 +42,14 @@ export function dataValueColor(field: string, value: unknown): string {
 // ⚠️ 종합탭 핵심지표(DetailModal)와 중복되는 4필드 제외 (세션 408 적대검증 overview-tab-fit):
 //   unsoldRate("미분양률")·completion("입주")·dong(지역행)·roadAddress(헤더) — 핵심지표/헤더에 이미 노출.
 //   보강정보(units·builder·heating 등)만 남겨 "핵심지표가 안 보여주는 단지 상세"로 정직 분리.
+// ⚠️ 세션 505 에 4필드 추가 제외 — 같은 탭 위쪽이 이미 말하는 값이라 두 번 읽히던 것:
+//   pp·avgMaintenanceCost(편차 스트립 1·7번째 줄) · address·district(헤더 주소줄).
 export const OVERVIEW_SECTIONS: DataSection[] = [
   {
     title: "단지 기본정보",
-    highlight: ["pp", "dataReliability"],
-    grid: [
-      "address",
-      "district",
-      "units",
-      "unsold",
-      "builder",
-      "heating",
-      "heatFuel",
-      "avgMaintenanceCost",
-      "primaryDirection",
-    ],
-    hint: "이 단지의 위치·세대수·시공사·관리비 같은 기본 정보예요. 데이터 신뢰도(%)는 우리가 모은 정보가 얼마나 충분한지 보여줘요.",
+    highlight: ["dataReliability"],
+    grid: ["units", "unsold", "builder", "heating", "heatFuel", "primaryDirection"],
+    hint: "이 단지의 세대수·시공사·난방 같은 기본 정보예요. 데이터 신뢰도(%)는 우리가 모은 정보가 얼마나 충분한지 보여줘요.",
   },
 ];
 

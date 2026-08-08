@@ -152,10 +152,18 @@ describe("DetailModal", () => {
   });
 
   // 핵심 지표 영역
-  it("핵심 지표 영역에 지역, 분양가 등 표시", () => {
-    render(<DetailModal {...makeProps()} />);
+  it("핵심 지표는 4행이고, 지역·분양가는 헤더가 말한다 (세션 505 중복 정리)", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
     expect(screen.getByText("핵심 지표")).toBeInTheDocument();
-    expect(screen.getByText("경기 수원시 영통동")).toBeInTheDocument();
+    // 지역·분양가·전세가율·미분양률 행은 헤더/편차 스트립과 겹쳐 뺐다.
+    for (const label of ["적정가 괴리", "규제현황", "LTV한도", "입주"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    for (const gone of ["전세가율", "미분양률"]) {
+      expect(screen.queryByText(gone), `핵심 지표에 '${gone}' 행이 남아 있다`).toBeNull();
+    }
+    // 지역은 사라진 게 아니라 헤더 한 줄로 옮겨 읽힌다(여러 텍스트 노드라 textContent 로 본다)
+    expect(container.textContent).toContain("경기 수원시 영통동");
   });
 
   // 프로필 가중치 막대 (세션 434 점수 근거 투명화 A+B) — profile 전달 시 노출
@@ -587,11 +595,8 @@ describe("DetailModal — 종합 탭 편차 스트립", () => {
     );
   }
 
-  const on = () => vi.stubEnv("VITE_FEATURE_DEVIATION_STRIP", "true");
-  afterEach(() => vi.unstubAllEnvs());
-
-  it("플래그 ON + 지역분포 있으면 8줄이 나온다", () => {
-    on();
+  // 세션 505: 되돌림용 피처 플래그가 졸업했다 — 이제 레버는 `regionStats` 하나뿐이다.
+  it("지역분포가 있으면 8줄이 나온다", () => {
     render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
     const rows = screen
       .getAllByRole("img")
@@ -599,20 +604,12 @@ describe("DetailModal — 종합 탭 편차 스트립", () => {
     expect(rows).toHaveLength(8);
   });
 
-  it("플래그 OFF 면 안 그린다 (환경변수만으로 원상복구)", () => {
-    vi.stubEnv("VITE_FEATURE_DEVIATION_STRIP", "false");
-    const { container } = render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
-    expect(container.textContent).not.toContain("아파트 한가운데 값과 비교");
-  });
-
   it("지역분포가 없으면 안 그린다 (미수집 8줄짜리 빈 블록 방지)", () => {
-    on();
     const { container } = render(<DetailModal {...makeProps({ regionStats: null })} />);
     expect(container.textContent).not.toContain("아파트 한가운데 값과 비교");
   });
 
   it("카테고리 미니카드 6개는 그대로 남는다 (세션 409 결정 존중)", () => {
-    on();
     const { container } = render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
     expect(container.querySelectorAll('[data-testid="category-mini-card"]').length || 6).toBeGreaterThan(0);
     expect(container.textContent).toContain("아파트 한가운데 값과 비교");
@@ -755,7 +752,7 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
     expect(screen.getByText("테스트아파트")).toBeInTheDocument();
     expect(screen.getByText("핵심 지표")).toBeVisible();
-    expect(screen.getByText("경기 수원시 영통동")).toBeInTheDocument();
+    expect(container.textContent).toContain("경기 수원시 영통동");
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
     expect(container.querySelector("#sec-price")?.textContent).toContain("시장/투자 지표");
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
