@@ -57,11 +57,13 @@ describe("DistanceDots — 축 구성", () => {
 describe("DistanceDots — 일부러 뺀 필드", () => {
   const fields = DISTANCE_AXES.flatMap((a) => a.items.map((i) => i.field));
 
-  it("ktxDist 는 넣지 않는다 — 채움 0.0%(1,581 전부 센티널)", () => {
-    expect(fields, "그릴 값이 하나도 없는 필드를 축에 올렸다").not.toContain("ktxDist");
+  // ⚠️ 옛 사유("채움 0.0%"·"3.9%")는 세션 499 수집 정정으로 거짓이 됐다(KTX 71.8%·IC 79.2%).
+  //    남은 진짜 사유는 **단위**뿐이다 — 둘 다 km 라 m 축에 그대로 올릴 수 없다.
+  it("ktxDist 는 넣지 않는다 — 단위가 km 라 m 축에 섞으면 안 된다", () => {
+    expect(fields, "단위가 다른 필드(km)를 m 축에 올렸다").not.toContain("ktxDist");
   });
 
-  it("icDist 는 넣지 않는다 — 채움 3.9% 이고 단위가 km 라 m 축에 섞으면 안 된다", () => {
+  it("icDist 는 넣지 않는다 — 단위가 km 라 m 축에 섞으면 안 된다", () => {
     expect(fields, "단위가 다른 필드(km)를 m 축에 올렸다").not.toContain("icDist");
   });
 
@@ -102,12 +104,44 @@ describe("DistanceDots — 렌더", () => {
   });
 });
 
+describe("DistanceDots — 개수 병기 (세션 505)", () => {
+  it("개수가 있으면 라벨에 함께 적는다 (표를 없애고 이 한 줄로 합쳤다)", () => {
+    render(<DistanceDots apt={apt({ hospital: 3, conv: 12 })} />);
+    expect(screen.getByText("병원 3곳")).toBeInTheDocument();
+    expect(screen.getByText("편의점 12곳")).toBeInTheDocument();
+  });
+
+  it("개수가 없거나 0이면 옛 라벨 그대로 둔다 ('0곳'이라 단정하지 않는다)", () => {
+    // 0 은 '한 곳도 없다'인지 '아직 안 모았다'인지 이 값만으로 못 가른다.
+    render(<DistanceDots apt={apt({ hospital: 0, mart: null })} />);
+    expect(screen.getByText("병원")).toBeInTheDocument();
+    expect(screen.getByText("마트")).toBeInTheDocument();
+  });
+
+  it("지하철역은 개수 필드가 없어 언제나 이름만 나온다", () => {
+    render(<DistanceDots apt={apt({ subway: 5 })} />);
+    expect(screen.getByText("지하철역")).toBeInTheDocument();
+  });
+
+  it("축 정의에서 개수 필드를 지우면 라벨이 되돌아간다 (그림이 표를 흡수한 근거)", () => {
+    // 개수를 그리는 건 이 그림뿐이다 — `countField` 가 비면 개수는 화면 어디에도 안 남는다.
+    const withCount = DISTANCE_AXES.flatMap((a) => a.items).filter((i) => i.countField);
+    expect(withCount.length, "개수 병기 대상이 사라졌다 — 서랍 계산도 같이 무너진다").toBe(11);
+  });
+});
+
 describe("DistanceDots — 스크린리더", () => {
   it("한 문장으로 요약해 읽어준다", () => {
     render(<DistanceDots apt={apt()} />);
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
     expect(label).toContain("가장 가까운 곳은");
     expect(label).not.toContain("점수"); // DetailModal 테스트 쿼리와 충돌 차단
+  });
+
+  it("개수도 함께 읽어준다 (눈으로 보는 것과 같은 말)", () => {
+    render(<DistanceDots apt={apt({ conv: 12 })} />);
+    const label = screen.getByRole("img").getAttribute("aria-label") || "";
+    expect(label).toContain("편의점 12곳");
   });
 });
 

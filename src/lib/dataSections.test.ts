@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, fieldsOf } from "./dataSections";
+import { DISTANCE_AXES } from "@/constants/distanceAxes";
 
 describe("dataSections hint", () => {
-  it("종합·입지·시세 섹션 6개 모두 hint 가 채워져 있다", () => {
+  // 세션 505 에 6 → 5. 입지의 "생활인프라 (반경 1km)" 표를 없앴다(거리 점 그림이 흡수).
+  it("종합·입지·시세 섹션 5개 모두 hint 가 채워져 있다", () => {
     const all = [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS];
-    expect(all).toHaveLength(6);
+    expect(all).toHaveLength(5);
     for (const s of all) {
       expect(typeof s.hint).toBe("string");
       expect((s.hint ?? "").length).toBeGreaterThan(10);
@@ -32,15 +34,26 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
     expect(priceFields).toContain("housingSupplyLevel");
   });
 
-  it("분양 탭에 계약해제율·신규공급(cancelRatio6m/newSupply) 노출", () => {
+  it("분양 탭에 계약해제율(cancelRatio6m) 노출", () => {
     expect(presaleFields).toContain("cancelRatio6m");
-    expect(presaleFields).toContain("newSupply");
   });
 
-  it("분양 안전지표 섹션은 hideWhenEmpty 아님(항상 노출 — 청약경쟁 hide 결합 회피)", () => {
-    const safety = PRESALE_SECTIONS.find((s) => s.title === "분양 안전지표");
+  // 세션 505: newSupply 는 지역 시장 추이 차트가 시계열로 그린다 — 한 시점 숫자를 옆에 또 적지 않는다.
+  it("신규공급(newSupply)은 표에서 뺐다 (차트가 시계열로 그린다)", () => {
+    expect(presaleFields).not.toContain("newSupply");
+  });
+
+  it("분양 안전 섹션은 hideWhenEmpty 아님(항상 노출 — 청약경쟁이 비어도 계약해제율은 남는다)", () => {
+    const safety = PRESALE_SECTIONS.find((s) => s.title === "분양 안전");
     expect(safety).toBeDefined();
     expect(safety?.hideWhenEmpty).toBeFalsy();
+  });
+
+  // 세션 505: PresaleInfo 카드가 그리는 15필드를 표로 또 그리던 "네이버 분양정보" 섹션 폐지
+  it("분양 탭에 '네이버 분양정보' 표가 없다 (바로 위 카드와 완전 중복이었다)", () => {
+    expect(PRESALE_SECTIONS.map((s) => s.title)).not.toContain("네이버 분양정보");
+    expect(presaleFields).not.toContain("presaleMinPrice");
+    expect(presaleFields).not.toContain("presaleStage");
   });
 });
 
@@ -55,11 +68,10 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
  * `constants/fieldMeta.ts` 의 `FIELD_SECTIONS`(관리자 전수 표). 한쪽만 고치면
  * `fieldMeta.test.js` 의 "hidden 아닌 모든 키가 섹션에 포함" 가드가 잡는다(실제로 잡혔다).
  */
-describe("입지 생활인프라 — 개수와 거리를 짝으로 보여준다", () => {
-  const infra = LOCATION_SECTIONS.find((s) => s.title.includes("생활인프라"));
-
-  it("생활인프라 섹션이 있다", () => {
-    expect(infra).toBeTruthy();
+describe("생활인프라 — 개수와 거리가 한 곳(거리 점 그림)에서 함께 보인다", () => {
+  it("생활인프라 표는 없앴다 (같은 값을 그림과 표에서 두 번 읽던 자리)", () => {
+    expect(LOCATION_SECTIONS.find((s) => s.title.includes("생활인프라"))).toBeUndefined();
+    // 표를 없앤 김에 개수/거리가 통째로 사라지면 안 된다 — 그림이 받아야 진짜 정리다(아래).
   });
 
   const PAIRS: Array<[string, string]> = [
@@ -68,17 +80,31 @@ describe("입지 생활인프라 — 개수와 거리를 짝으로 보여준다"
     ["culture", "cultureDist"],
     ["bank", "bankDist"],
   ];
+  const items = DISTANCE_AXES.flatMap((ax) => ax.items);
 
   for (const [count, dist] of PAIRS) {
-    it(`${count} 는 거리(${dist})와 짝을 이룬다 — 거리가 null 이면 손님이 못 본다`, () => {
-      const pair = (infra?.pairs || []).find((p) => p[0] === count);
-      expect(pair, `${count} 짝이 없다`).toBeTruthy();
-      expect(pair?.[1], `${count} 의 거리 자리가 비어 있다 — 수집한 자료가 화면에 안 나온다`).toBe(dist);
+    it(`${count} 는 거리(${dist})와 같은 줄에 있다 — 짝이 끊기면 손님이 못 본다`, () => {
+      const item = items.find((i) => i.field === dist);
+      expect(item, `${dist} 가 그림 축에 없다`).toBeTruthy();
+      expect(item?.countField, `${dist} 줄에 개수(${count})가 안 붙었다 — 표를 없앤 만큼 사라진다`).toBe(count);
     });
   }
 
-  it("거리 4종이 fieldsOf 결과에 들어온다 (채움률 도넛·hasAny 게이트가 같은 입력을 쓴다)", () => {
-    const fields = infra ? fieldsOf(infra) : [];
-    for (const [, dist] of PAIRS) expect(fields).toContain(dist);
+  it("입지 탭 표에는 이제 개수·거리가 남아 있지 않다 (그림과 겹치지 않는다)", () => {
+    const fields = LOCATION_SECTIONS.flatMap(fieldsOf);
+    for (const [count, dist] of PAIRS) {
+      expect(fields, `${count} 가 표에 남아 그림과 겹친다`).not.toContain(count);
+      expect(fields, `${dist} 가 표에 남아 그림과 겹친다`).not.toContain(dist);
+    }
+    // 그림이 그리는 역까지 거리·경찰관서도 마찬가지
+    expect(fields).not.toContain("subwayDist");
+    expect(fields).not.toContain("policeDist");
+  });
+
+  it("혐오시설 이름 목록은 거리 옆(치안/환경)으로 옮겼다 — 서랍 깊은 곳이 아니라", () => {
+    const safety = LOCATION_SECTIONS.find((s) => s.title === "치안/환경");
+    const fields = safety ? fieldsOf(safety) : [];
+    expect(fields).toContain("noxious");
+    expect(fields).toContain("noxiousDist");
   });
 });

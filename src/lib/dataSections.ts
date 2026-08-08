@@ -53,35 +53,26 @@ export const OVERVIEW_SECTIONS: DataSection[] = [
   },
 ];
 
-// 입지 탭 — 생활인프라 + 교통 + 치안/환경 3섹션.
+// 입지 탭 — 교통 + 치안/환경 2섹션.
+// ⚠️ 세션 505: "생활인프라 (반경 1km)" 섹션(개수·거리 10쌍)을 통째로 없앴다. 바로 위
+//   거리 점 그림(`charts/DistanceDots`)이 같은 12종을 이미 그리는데, 그림은 거리만 적고
+//   이 표는 개수+거리를 또 적어 손님이 같은 값을 두 번 읽었다. 그림 라벨에 개수를 병기해
+//   ("병원 3곳") 한 곳으로 합쳤다 — 그림이 개수까지 흡수했으니 표가 남을 이유가 없다.
+//   같은 이유로 `subwayDist`(교통 상세)·`police`/`policeDist`(치안/환경)도 뺐다.
 export const LOCATION_SECTIONS: DataSection[] = [
   {
-    title: "생활인프라 (반경 1km)",
-    pairs: [
-      ["hospital", "hospitalDist"],
-      ["mart", "martDist"],
-      ["conv", "convDist"],
-      ["park", "parkDist"],
-      // 세션 487 PR-5: 거리 4종이 `null` 로 비어 있었다 — 수집은 되는데 `FIELD_META` 에
-      // 엔트리가 없어 손님에게 한 번도 안 보였다. 이제 개수 옆에 거리도 함께 보인다.
-      ["pharmacy", "pharmacyDist"],
-      ["cafe", "cafeDist"],
-      ["culture", "cultureDist"],
-      ["bank", "bankDist"],
-      ["childcare", "childcareDist"],
-      ["emergency", "emergencyDist"],
-    ],
-    hint: "걸어서 갈 만한 거리(반경 1km) 안에 병원·마트·편의점·공원 같은 생활시설이 몇 개 있는지예요. 많을수록 생활이 편해요.",
-  },
-  {
+    // 역까지 "거리"는 그림 소관이라 뺐다 — 여기 남은 건 그림이 못 그리는 것뿐이다
+    // (역 이름·노선처럼 글자값, IC·KTX 처럼 단위가 km 라 m 축에 못 올리는 값).
     title: "교통 상세",
-    grid: ["subwayDist", "subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"],
-    hint: "가장 가까운 지하철역까지 거리, 버스 노선 수, 고속도로 IC·KTX 거리예요. 지하철이 가까울수록(500m 이내는 초록색) 출퇴근이 편해요.",
+    grid: ["subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"],
+    hint: "가장 가까운 지하철역 이름과 노선, 버스 노선 수, 고속도로 IC·KTX 거리예요. 역까지 거리는 위 '주변 시설까지 거리' 그림에 있어요.",
   },
   {
+    // `noxious`(시설 이름 목록)를 서랍에서 여기로 옮겼다 — 거리(`noxiousDist`)만 여기 있고
+    // "무엇이 있는지"는 서랍 깊은 곳에 따로 있어, 정작 같이 봐야 할 두 값이 떨어져 있었다.
     title: "치안/환경",
-    grid: ["crimeSafetyGrade", "police", "policeDist", "airQuality", "noxiousDist", "view", "sunlight", "noise"],
-    hint: "주변 치안 안전등급, 가까운 경찰관서, 대기질(미세먼지), 혐오시설까지 거리예요. 조망·일조(햇빛)·소음(dB)은 집의 주거 환경을 보여줘요. 안전하고 공기 좋은 곳인지 보는 정보예요.",
+    grid: ["crimeSafetyGrade", "airQuality", "noxious", "noxiousDist", "view", "sunlight", "noise"],
+    hint: "주변 치안 안전등급, 대기질(미세먼지), 그리고 가까운 혐오시설이 무엇이고 얼마나 떨어져 있는지예요. 조망·일조(햇빛)·소음(dB)은 집의 주거 환경을 보여줘요. 경찰관서까지 거리는 위 '주변 시설까지 거리' 그림에 있어요.",
   },
 ];
 
@@ -120,38 +111,22 @@ export const PRICE_SECTIONS: DataSection[] = [
   },
 ];
 
-// 분양 탭 — 분양 안전지표 + 청약 경쟁 현황(hideWhenEmpty) + 네이버 분양정보 3섹션.
+// 분양 탭 — "분양 안전" 1섹션.
+//
+// ⚠️ 세션 505 에 셋을 하나로 줄였다.
+//  ① "네이버 분양정보"(15필드) 통째 삭제 — 바로 위 `detail/PresaleInfo` 카드가 그 15개를
+//     전부 그린다(가격 카드·정보 그리드·일정·특징·문의). 같은 값을 카드로 한 번, 표로 또
+//     한 번 읽히던 자리다. 카드가 그리는 목록은 `constants/presaleCardFields` 에 적어 두고
+//     `lib/tabExtraFields.test.ts` 가 카드 소스와 대조한다.
+//  ② "분양 안전지표" + "청약 경쟁 현황" 병합 — 둘 다 "이 분양이 안전한가" 한 가지 질문이라
+//     쪼갤 이유가 없었다. `hideWhenEmpty` 도 뗐다: 경쟁률이 비어도 계약해제율은 남아 있어,
+//     섹션을 통째로 숨기면 그 값까지 같이 사라진다.
+//  ③ `newSupply` 제거 — 지역 시장 추이 차트가 같은 지표를 시계열로 그린다
+//     (`constants/marketStatsFields`). 한 시점 숫자 하나를 옆에 또 적을 이유가 없다.
 export const PRESALE_SECTIONS: DataSection[] = [
   {
-    title: "분양 안전지표",
-    grid: ["cancelRatio6m", "newSupply"],
-    hint: "계약해제율은 분양 계약을 깬 비율(높으면 분양이 잘 안 됐다는 신호), 신규 분양세대수는 이 지역에 새로 풀린 물량이에요. 둘 다 분양이 얼마나 안전한지 따지는 정보예요.",
-  },
-  {
-    title: "청약 경쟁 현황",
-    grid: ["competitionRate", "competitionSupply", "competitionApplicants"],
-    hideWhenEmpty: true,
-    hint: "청약에서 몇 대 1로 경쟁했는지예요(예: 5:1). 신청자가 모집보다 적으면 '미달', 정보가 아직 없으면 '미수집'으로 표시돼요. 경쟁이 셀수록 인기 단지예요.",
-  },
-  {
-    title: "네이버 분양정보",
-    grid: [
-      "presaleStage",
-      "presaleType",
-      "presaleHousingType",
-      "presaleMinPrice",
-      "presaleMaxPrice",
-      "presalePp",
-      "presaleGeneralSupply",
-      "presaleBuildings",
-      "presaleParking",
-      "presaleMoveIn",
-      "presaleRecruitDate",
-      "presaleSchedule",
-      "presaleInquiry",
-      "presaleFeatures",
-      "presaleFetchedAt",
-    ],
-    hint: "네이버 부동산에서 모은 이 단지의 분양 가격·일정·공급 정보예요.",
+    title: "분양 안전",
+    grid: ["cancelRatio6m", "competitionRate", "competitionSupply", "competitionApplicants"],
+    hint: "계약해제율은 분양 계약을 깬 비율이에요(높으면 분양이 잘 안 됐다는 신호). 청약 경쟁률은 몇 대 1로 경쟁했는지예요(예: 5:1). 신청자가 모집보다 적으면 '미달', 정보가 아직 없으면 '미수집'으로 표시돼요. 둘 다 이 분양이 얼마나 안전한지 따지는 정보예요.",
   },
 ];

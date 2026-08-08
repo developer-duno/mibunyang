@@ -26,7 +26,8 @@ import type { Apt } from "@/types/scoring";
  * 똑같은 `미수집` 이 9줄 늘어설 뿐이라 오히려 읽기를 방해한다. 한 줄로 접어도
  * "이 자료는 아직 없다"는 사실은 그대로 전해진다.
  *
- * 실측(2026-08-03): 혜택 9필드는 **전부 0.0%** — 금융 탭이 이 경우다.
+ * 실측(2026-08-03): 혜택 9필드는 **전부 0.0%** 였다. 그 탭(금융)은 세션 505 에 아예 없앴다 —
+ * 서랍 하나가 통째로 이 상태면 접어 보여줄 게 아니라 안 만드는 게 맞다는 판단이다.
  */
 export function isAllEmpty(apt: Apt, fields: readonly string[]): boolean {
   return fields.every((f) => {

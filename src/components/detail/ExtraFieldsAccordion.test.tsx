@@ -36,7 +36,8 @@ describe("ExtraFieldsAccordion — 기본은 접혀 있다", () => {
 });
 
 describe("ExtraFieldsAccordion — 제목의 숫자가 실제 줄 수와 같다", () => {
-  it.each(["sec-overview", "sec-price", "sec-location", "sec-presale", "sec-finance"] as const)(
+  // sec-finance 제외 — 세션 505 에 여분이 0 이 돼 버튼 자체가 안 뜬다(빈 서랍은 안 만든다).
+  it.each(["sec-overview", "sec-price", "sec-location", "sec-presale"] as const)(
     "%s — 제목 N = 펼쳤을 때 실제로 그려진 줄 수",
     (tab) => {
       const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab={tab} />);
@@ -59,8 +60,10 @@ describe("ExtraFieldsAccordion — 값이 없어도 줄을 지우지 않는다",
   });
 
   it("한 묶음이 통째로 비면 빈 줄 여러 개 대신 한 줄로 접는다", () => {
-    // 혜택 9필드는 실측 0.0% — 금융 탭이 정확히 이 경우다
-    const { container } = render(<ExtraFieldsAccordion apt={{} as Apt} tab="sec-finance" />);
+    // ⚠️ 세션 505 전엔 금융 탭(혜택 9필드, 실측 0.0%)으로 검사했다. 그 9필드를 손님 화면에서
+    //    빼면서 금융 탭 여분이 0 이 됐고 버튼 자체가 안 뜬다 — 그래서 다른 탭으로 옮겼다.
+    //    값이 하나도 없는 단지(`{}`)면 어느 탭이든 이 분기를 탄다.
+    const { container } = render(<ExtraFieldsAccordion apt={{} as Apt} tab="sec-location" />);
     fireEvent.click(screen.getByRole("button", { name: /아직 안 보여드린 자료/ }));
     expect(screen.getByText(/한 건도 못 모았어요/)).toBeInTheDocument();
     expect(container.querySelectorAll("[data-field]").length, "빈 줄을 늘어놓지 않는다").toBe(0);

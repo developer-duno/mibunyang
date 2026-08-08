@@ -93,31 +93,44 @@ describe("DataSectionBlock", () => {
     expect(screen.getByText("데이터 수집 중...")).toBeTruthy();
   });
 
-  // hideWhenEmpty — 청약 경쟁 빈 단지는 컴포넌트 자체 null 반환
-  it("hideWhenEmpty 섹션은 데이터 없으면 렌더하지 않는다 (청약 경쟁)", () => {
+  // hideWhenEmpty — 세션 505 로 실제 섹션에서는 사라졌지만(청약 경쟁이 "분양 안전"에 합쳐지며
+  // 게이트를 뗐다) 컴포넌트 분기는 남아 있다. 섹션 객체를 직접 주입해 정직하게 검증한다.
+  it("hideWhenEmpty 섹션은 데이터 없으면 렌더하지 않는다", () => {
     const apt = /** @type {any} */ (makeApt()); // competitionRate 미설정
-    const { container } = render(<DataSectionBlock section={/** @type {any} */ (find("청약 경쟁 현황"))} apt={apt} />);
+    const section = /** @type {any} */ ({
+      title: "가상 섹션",
+      grid: ["competitionRate"],
+      hideWhenEmpty: true,
+    });
+    const { container } = render(<DataSectionBlock section={section} apt={apt} />);
     expect(container.firstChild).toBeNull();
-    expect(screen.queryByText("청약 경쟁 현황")).toBeNull();
+    expect(screen.queryByText("가상 섹션")).toBeNull();
   });
 
-  // hideWhenEmpty — 경쟁률 있으면 노출 + 콤마 포맷
-  it("경쟁률이 있으면 '청약 경쟁 현황' 섹션과 콤마 포맷 값을 표시한다", () => {
+  // 경쟁률 노출 + 콤마 포맷 (세션 505: "청약 경쟁 현황" → "분양 안전"으로 합침)
+  it("경쟁률이 있으면 '분양 안전' 섹션과 콤마 포맷 값을 표시한다", () => {
     const apt = /** @type {any} */ (
       makeApt({ competitionRate: 437995, competitionSupply: 300, competitionApplicants: 12000000 })
     );
-    render(<DataSectionBlock section={/** @type {any} */ (find("청약 경쟁 현황"))} apt={apt} />);
-    expect(screen.getByText("청약 경쟁 현황")).toBeTruthy();
-    fireEvent.click(screen.getByText("청약 경쟁 현황"));
+    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
+    expect(screen.getByText("분양 안전")).toBeTruthy();
+    fireEvent.click(screen.getByText("분양 안전"));
     expect(screen.getByText("437,995:1")).toBeTruthy();
   });
 
   // presaleStage=null이어도 경쟁률 있으면 노출 (세션365 게이트 준수)
   it("presaleStage=null이어도 경쟁률 있으면 노출한다", () => {
     const apt = /** @type {any} */ (makeApt({ presaleStage: null, competitionRate: 5.2 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("청약 경쟁 현황"))} apt={apt} />);
-    fireEvent.click(screen.getByText("청약 경쟁 현황"));
+    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
+    fireEvent.click(screen.getByText("분양 안전"));
     expect(screen.getByText("5.2:1")).toBeTruthy();
+  });
+
+  // 세션 505: 경쟁률이 비어도 계약해제율은 남는다 — hideWhenEmpty 를 뗀 이유가 이것이다
+  it("경쟁률이 비어도 '분양 안전' 섹션은 사라지지 않는다 (계약해제율이 남는다)", () => {
+    const apt = /** @type {any} */ (makeApt({ competitionRate: null, cancelRatio6m: 3.4 }));
+    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
+    expect(screen.getByText("분양 안전")).toBeTruthy();
   });
 
   // 교통 필드 null → "—"
@@ -129,11 +142,19 @@ describe("DataSectionBlock", () => {
     expect(dashes.length).toBeGreaterThanOrEqual(3);
   });
 
-  // 생활인프라 — pairs 섹션 렌더
-  it("생활인프라 섹션은 인프라 개수/거리를 표시한다", () => {
+  // pairs 섹션 렌더 — 세션 505 로 "생활인프라 (반경 1km)" 실제 섹션은 없앴다
+  // (거리 점 그림이 개수까지 병기해 흡수). 컴포넌트의 pairs 분기는 남아 있어 주입으로 검증한다.
+  it("pairs 섹션은 인프라 개수/거리를 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("생활인프라 (반경 1km)"))} apt={apt} />);
-    expect(screen.getByRole("img", { name: /생활인프라.*채움률/ })).toBeTruthy();
+    const section = /** @type {any} */ ({
+      title: "가상 인프라",
+      pairs: [
+        ["hospital", "hospitalDist"],
+        ["mart", "martDist"],
+      ],
+    });
+    render(<DataSectionBlock section={section} apt={apt} />);
+    expect(screen.getByRole("img", { name: /가상 인프라.*채움률/ })).toBeTruthy();
   });
 
   // 시장/투자 지표 — highlight 섹션
@@ -153,18 +174,18 @@ describe("DataSectionBlock", () => {
   });
 
   // 세션 411 — hint 있는 섹션 헤더에 ? 도움말 + 클릭이 섹션 토글과 분리(stopPropagation)
-  it("hint 있는 섹션('청약 경쟁 현황')은 헤더에 ? 도움말을 표시한다", () => {
+  it("hint 있는 섹션('분양 안전')은 헤더에 ? 도움말을 표시한다", () => {
     const apt = /** @type {any} */ (makeApt({ competitionRate: 5.2 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("청약 경쟁 현황"))} apt={apt} />);
-    expect(screen.getByLabelText("청약 경쟁 현황 풀이 보기")).toBeInTheDocument();
+    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
+    expect(screen.getByLabelText("분양 안전 풀이 보기")).toBeInTheDocument();
   });
 
   it("? 클릭은 섹션을 펼치지 않는다 (stopPropagation — 토글과 분리)", () => {
     const apt = /** @type {any} */ (makeApt({ competitionRate: 5.2 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("청약 경쟁 현황"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
     // 헤더 토글 button = aria-expanded 보유 (? 트리거도 role=button 이라 expanded 로 특정)
     const toggle = screen.getByRole("button", { expanded: false });
-    fireEvent.click(screen.getByLabelText("청약 경쟁 현황 풀이 보기"));
+    fireEvent.click(screen.getByLabelText("분양 안전 풀이 보기"));
     // 섹션은 여전히 접힘(? 클릭이 부모 토글로 전파 안 됨), 도움말만 표시
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.getByRole("tooltip")).toHaveTextContent(/몇 대 1/);

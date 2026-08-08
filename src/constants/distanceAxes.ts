@@ -7,8 +7,14 @@
  * 뺐는지의 실측 근거는 `DistanceDots.tsx` 상단 주석에 그대로 있다.
  */
 
-/** 축에 올리는 시설 하나 */
-export type DistanceItem = { field: string; label: string };
+/**
+ * 축에 올리는 시설 하나.
+ *
+ * `countField` = 같은 시설의 **개수** 필드. 세션 505 에 붙였다 — 거리와 개수를 서로 다른
+ * 두 곳(그림 / "생활인프라" 표)에서 따로 읽게 하던 것을 그림 한 곳으로 합치면서, 라벨에
+ * 개수를 함께 적기 위해서다. 지하철역은 개수 필드가 아예 없어 이 칸이 비어 있다.
+ */
+export type DistanceItem = { field: string; label: string; countField?: string };
 
 /** 축 하나 = 자릿수가 비슷한 시설 묶음 */
 export type DistanceAxis = { title: string; cap: number; capLabel: string; items: DistanceItem[] };
@@ -19,9 +25,9 @@ export const DISTANCE_AXES: readonly DistanceAxis[] = [
     cap: 500,
     capLabel: "500m",
     items: [
-      { field: "convDist", label: "편의점" },
-      { field: "cafeDist", label: "카페" },
-      { field: "pharmacyDist", label: "약국" },
+      { field: "convDist", label: "편의점", countField: "conv" },
+      { field: "cafeDist", label: "카페", countField: "cafe" },
+      { field: "pharmacyDist", label: "약국", countField: "pharmacy" },
     ],
   },
   {
@@ -29,12 +35,12 @@ export const DISTANCE_AXES: readonly DistanceAxis[] = [
     cap: 1000,
     capLabel: "1km",
     items: [
-      { field: "childcareDist", label: "어린이집" },
-      { field: "cultureDist", label: "문화시설" },
-      { field: "hospitalDist", label: "병원" },
-      { field: "parkDist", label: "공원" },
-      { field: "bankDist", label: "은행" },
-      { field: "martDist", label: "마트" },
+      { field: "childcareDist", label: "어린이집", countField: "childcare" },
+      { field: "cultureDist", label: "문화시설", countField: "culture" },
+      { field: "hospitalDist", label: "병원", countField: "hospital" },
+      { field: "parkDist", label: "공원", countField: "park" },
+      { field: "bankDist", label: "은행", countField: "bank" },
+      { field: "martDist", label: "마트", countField: "mart" },
     ],
   },
   {
@@ -42,9 +48,10 @@ export const DISTANCE_AXES: readonly DistanceAxis[] = [
     cap: 10000,
     capLabel: "10km",
     items: [
+      // 지하철역만 개수 필드가 없다 — 수집이 "가장 가까운 역 1곳"만 담는다
       { field: "subwayDist", label: "지하철역" },
-      { field: "policeDist", label: "경찰관서" },
-      { field: "emergencyDist", label: "응급의료" },
+      { field: "policeDist", label: "경찰관서", countField: "police" },
+      { field: "emergencyDist", label: "응급의료", countField: "emergency" },
     ],
   },
 ];

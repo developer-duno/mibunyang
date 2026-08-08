@@ -47,6 +47,20 @@ const SCHEDULE_CARD: CSSProperties = {
   border: `1px solid ${C.border}`,
 };
 
+// 분양 자료가 하나도 없을 때의 한 줄.
+//
+// ⚠️ 세션 505 이전엔 여기서 `null` 을 돌려줬다. 그런데 그 아래 "네이버 분양정보" 표를
+// 없애면서, 분양 자료가 없는 단지의 분양 탭이 **아무 말도 없이 비는** 상태가 됐다.
+// 손님은 화면이 고장 났는지 자료가 없는지 구분할 수 없다 — 그래서 없다는 사실을 말한다.
+// (서랍의 "미수집으로 줄을 남긴다"와 같은 원칙)
+function renderNoPresale() {
+  return (
+    <div style={SCHEDULE_CARD}>
+      <div style={{ fontSize: F.sm, color: C.muted }}>분양정보 없음 — 분양 가격·일정을 아직 모으지 못했어요</div>
+    </div>
+  );
+}
+
 // "공고 당시 규제" 행. 해당하는 규제가 하나도 없으면 null (빈 행 노이즈 0).
 //
 // ⚠️ 배지가 아니라 정보 행인 것이 이 설계의 핵심이다. 이 값들은 **공고 시점 스냅샷**이라
@@ -125,9 +139,9 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
   // 단 청약홈 공식 일정(schedule)은 presaleStage 무관 — 있으면 일정-only 카드로 분리 노출.
   // (6/13 cron 적재 ah- 단지: presaleStage 영구 NULL이라 이 분기로만 일정이 보임)
   if (!apt.presaleStage) {
-    if (!schedule) return null;
+    if (!schedule) return renderNoPresale();
     const timelineEl = renderTimeline(schedule, false);
-    if (!timelineEl) return null;
+    if (!timelineEl) return renderNoPresale();
     return (
       <div style={SCHEDULE_CARD}>
         <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>청약홈 공식 분양 일정</div>
