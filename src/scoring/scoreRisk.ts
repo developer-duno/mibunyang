@@ -9,8 +9,13 @@ import {
   LIQUIDITY_LOW_SCORE,
   CREDIT_GRADE_SCORES,
   CREDIT_DEFAULT,
-  SUPPLY_RATIO_TIERS,
-  SUPPLY_HIGH_SCORE,
+  HOUSING_SUPPLY_LEVEL_TIERS,
+  HOUSING_SUPPLY_HIGH_SCORE,
+  HOUSING_SUPPLY_UNKNOWN_SCORE,
+  PERMIT_RATIO_HIGH,
+  PERMIT_RATIO_LOW,
+  PERMIT_RATIO_HIGH_ADJ,
+  PERMIT_RATIO_LOW_ADJ,
   CANCEL_RATIO_TIERS,
   CANCEL_RATIO_HIGH_SCORE,
   CANCEL_RATIO_NULL_SCORE,
@@ -27,10 +32,8 @@ import {
   LISTING_FLOOD_PENALTY,
   LISTING_WARN_PENALTY,
   PUBLIC_PRESALE_BONUS,
-  NEW_SUPPLY_HIGH,
-  NEW_SUPPLY_LOW,
-  NEW_SUPPLY_HIGH_ADJ,
-  NEW_SUPPLY_LOW_ADJ,
+  HOUSING_SUPPLY_HIGH_LABEL,
+  tierMaxLabel,
 } from "@/constants/scoringTiers";
 import { fmtCompetitionRate } from "@/lib/format";
 import type { Apt, Res } from "@/types/scoring";
@@ -50,8 +53,8 @@ import type { Apt, Res } from "@/types/scoring";
  *     > LISTING_WARN_THRESHOLD → LISTING_WARN_PENALTY. liqSc 가산 후 상한 100.
  *   - finSc 공공분양 보너스: presaleType "공공" 포함 시 + PUBLIC_PRESALE_BONUS (0~100 클램프).
  *   - isRegulated 폴백: DB값 우선, null이면 `getZone(region, gu)` 폴백.
- *   - newSupply 보정: > NEW_SUPPLY_HIGH → supSc + NEW_SUPPLY_HIGH_ADJ (상한 100),
- *     < NEW_SUPPLY_LOW → supSc + NEW_SUPPLY_LOW_ADJ (하한 0).
+ *   - 인허가율 보정(세션501, 옛 newSupply 보정 대체): >= PERMIT_RATIO_HIGH → supSc + 5 (상한 100),
+ *     <= PERMIT_RATIO_LOW → supSc - 3 (하한 0). 주 지표는 주택보급률.
  *   - crimeSc 복합: gradeRisk(행안부 범죄등급) × 0.7 + policeRisk(경찰관서 거리) × 0.3.
  *   - 서브점수 구간 표는 src/scoring/CLAUDE.md L131~L191 참조.
  *
@@ -67,7 +70,11 @@ export function scoreRisk(apt: Apt): Res {
   //   sanitize(engine.ts)가 null 을 보존 → 여기서 units<=1 과 동일하게 중립(UNSOLD_UNKNOWN_SCORE) 처리.
   const unsoldRate = apt.unsoldRate as number | null;
   const recentTrades6m = (apt.recentTrades6m ?? 0) as number;
-  const supplyRatio = (apt.supplyRatio ?? 150) as number;
+  // 세션 501: 공급량 주 지표 = 주택보급률(재고), 보정 = 인허가율(미래 공급).
+  // 옛 코드는 `apt.supplyRatio ?? 150`(인허가율)을 주 지표로 썼는데 등급 경계가 보급률용이라
+  // 어긋나 있었다 — 상세는 scoringTiers.ts HOUSING_SUPPLY_LEVEL_TIERS 주석.
+  const housingSupplyLevel = apt.housingSupplyLevel as number | null | undefined;
+  const permitRatio = apt.supplyRatio as number | null | undefined;
   const builderDebtRatio = (apt.builderDebtRatio ?? 250) as number;
   const builderCreditGrade = apt.builderCreditGrade as string | undefined;
 
@@ -100,11 +107,14 @@ export function scoreRisk(apt: Apt): Res {
         : "normal"
       : getZone(apt.region as string, apt.gu as string);
   const regSc = zone !== "normal" ? 60 : 10;
-  let supSc: number = tierMax(supplyRatio, SUPPLY_RATIO_TIERS, SUPPLY_HIGH_SCORE);
-  // 신규공급 보정
-  const newSupply = apt.newSupply as number | null | undefined;
-  if (newSupply != null && newSupply > NEW_SUPPLY_HIGH) supSc = Math.min(supSc + NEW_SUPPLY_HIGH_ADJ, 100);
-  else if (newSupply != null && newSupply < NEW_SUPPLY_LOW) supSc = Math.max(supSc + NEW_SUPPLY_LOW_ADJ, 0);
+  let supSc: number =
+    housingSupplyLevel == null
+      ? HOUSING_SUPPLY_UNKNOWN_SCORE
+      : tierMax(housingSupplyLevel, HOUSING_SUPPLY_LEVEL_TIERS, HOUSING_SUPPLY_HIGH_SCORE);
+  // 미래 공급 압력 보정 (인허가율). 옛 newSupply(절대 세대수) 보정을 대체 — 그쪽은 HIGH=5000 에
+  // 아무도 도달 못 했고(최대 경기 3,107) 절대값이라 큰 시도가 구조적으로 불리했다.
+  if (permitRatio != null && permitRatio >= PERMIT_RATIO_HIGH) supSc = Math.min(supSc + PERMIT_RATIO_HIGH_ADJ, 100);
+  else if (permitRatio != null && permitRatio <= PERMIT_RATIO_LOW) supSc = Math.max(supSc + PERMIT_RATIO_LOW_ADJ, 0);
   // 초기분양률 서브스코어 (신규)
   const initSc: number =
     apt.initialSaleRate == null ? INIT_SALE_NULL : tierMin(apt.initialSaleRate, INIT_SALE_TIERS, INIT_SALE_HIGH_RISK);
@@ -215,10 +225,16 @@ export function scoreRisk(apt: Apt): Res {
       {
         name: "공급량",
         score: 100 - supSc,
-        info: apt._fallbackSupplyRatio ? "정보 없음" : `${supplyRatio}%`,
-        detail: apt._fallbackSupplyRatio
-          ? "공급비율 데이터 없음 (MOLIT API 미수집 — 보수적 기본값 적용)"
-          : `${supplyRatio}% (부족 50%↓, 적정 100%↓, 과잉 130%↑)`,
+        info:
+          housingSupplyLevel == null
+            ? "정보 없음"
+            : `보급률 ${housingSupplyLevel}% ${tierMaxLabel(housingSupplyLevel, HOUSING_SUPPLY_LEVEL_TIERS, HOUSING_SUPPLY_HIGH_LABEL)}`,
+        detail:
+          housingSupplyLevel == null
+            ? "주택보급률 데이터 없음 (보수적 기본값 적용)"
+            : `주택보급률 ${housingSupplyLevel}% — ${tierMaxLabel(housingSupplyLevel, HOUSING_SUPPLY_LEVEL_TIERS, HOUSING_SUPPLY_HIGH_LABEL)}` +
+              ` (부족 96%↓, 적정 101%↓, 여유 104%↓, 과잉 104%↑)` +
+              (permitRatio != null ? ` · 인허가율 ${permitRatio}%` : ""),
       },
       {
         name: "시장환경",

@@ -66,7 +66,8 @@ export interface Apt {
   competitionApplicants?: number | null;
   crimeSafetyGrade?: number | null;
   builderDebtRatio?: number;
-  supplyRatio?: number;
+  /** 인허가율(연간 인허가 호수 ÷ 가구수, %). 세션501: 폴백 150 제거로 null 이 정상값이 됐다. */
+  supplyRatio?: number | null;
   _fallbackSupplyRatio?: boolean;
   _fallbackBuilderDebt?: boolean;
   popGrowth?: number | null;

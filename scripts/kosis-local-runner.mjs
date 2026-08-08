@@ -43,6 +43,8 @@ export const DAY_TABLE = [
   { day: 7, script: "migration.mjs" },
   { day: 9, script: "collect-unsold-kosis.mjs" },
   { day: 10, script: "collect-fertility-rate.mjs" },
+  { day: 11, script: "housing-permits.mjs" }, // 세션 501: MOLIT 폐기 → KOSIS DT_MLTM_666 이전
+
   { day: 12, script: "collect-regional-economy.mjs" },
   { day: 13, script: "collect-avg-income.mjs" },
   { day: 14, script: "collect-medical-access.mjs" },

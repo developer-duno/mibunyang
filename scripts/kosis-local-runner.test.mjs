@@ -38,7 +38,7 @@ describe("collectorsDueOn — 일자 디스패치", () => {
     expect(collectorsDueOn(new Date("2026-06-17"))).toEqual([]);
   });
 
-  it("매핑표는 KOSIS 10종 전부를 정확히 1회씩 커버한다", () => {
+  it("매핑표는 KOSIS 11종 전부를 정확히 1회씩 커버한다", () => {
     const scripts = DAY_TABLE.map((e) => e.script).sort();
     expect(scripts).toEqual(
       [
@@ -51,6 +51,9 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         "collect-regional-economy.mjs",
         "collect-sale-price-index.mjs",
         "collect-unsold-kosis.mjs",
+        // 세션 501: MOLIT ArchPmsService_v2 폐기 → KOSIS DT_MLTM_666 이전.
+        // kosis.kr 이 해외 IP 를 막아 GH yml 을 삭제했으므로 여기 없으면 아예 안 돈다.
+        "housing-permits.mjs",
         "migration.mjs",
       ].sort(),
     );

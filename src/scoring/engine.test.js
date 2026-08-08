@@ -389,19 +389,50 @@ describe("scoreRisk", () => {
   });
   // 공급비율·시공사부채 NULL 정직 표시 (세션403): api sanitize가 ?? 150/?? 250 비관적 폴백으로 채우되
   // _fallbackX 플래그를 세팅함. 점수는 폴백값으로 채점(불변)하되 화면 sub info/detail은 폴백 수치를 숨기고 정직 표시.
-  it('supplyRatio NULL(_fallbackSupplyRatio) -> 공급량 점수 불변 + info "150%" 숨김', () => {
-    const filled = scoreRisk(makeApt({ supplyRatio: 150 }));
-    const nullish = scoreRisk(makeApt({ supplyRatio: 150, _fallbackSupplyRatio: true }));
-    const sFilled = filled.subs.find((s) => s.name === "공급량");
-    const sNull = nullish.subs.find((s) => s.name === "공급량");
-    // 점수 불변 (폴백값 150 기준 채점 동일)
-    expect(sNull?.score).toBe(sFilled?.score);
-    // 정직 표시: 폴백 수치 "150%" 노출 금지 + "정보 없음"
-    expect(sNull?.info).not.toContain("150");
-    expect(sNull?.info).toBe("정보 없음");
-    expect(sNull?.detail).not.toContain("150%");
-    // 정상값(플래그 false)은 현행 "150%" 표시 유지 (회귀 방지)
-    expect(sFilled?.info).toContain("150");
+  // 세션 501: 공급량 주 지표를 인허가율 → **주택보급률**로 교체했다.
+  // 옛 테스트(`supplyRatio` + `_fallbackSupplyRatio`)는 그 배선이 사라져 대체한다. 배경 —
+  // 옛 등급 경계 50/100/130 은 보급률용 숫자인데 담기던 값은 인허가율(0.09~3.0%)이라
+  // 자릿수가 어긋났고, 데이터가 비면 전 단지 75점 / 채우면 전 단지 5점으로 **어느 쪽이든 동점**이었다.
+  it("주택보급률이 없으면 '정보 없음' + 비관적 기본값으로 채점한다", () => {
+    // supplyRatio 를 null 로 명시한다 — makeApt 기본값 100 은 **옛 보급률 스케일**이라
+    // 인허가율로 해석하면 PERMIT_RATIO_HIGH(2.2)를 훌쩍 넘겨 보정이 걸린다.
+    const s = scoreRisk(makeApt({ housingSupplyLevel: null, supplyRatio: null })).subs.find((x) => x.name === "공급량");
+    expect(s?.info).toBe("정보 없음");
+    expect(s?.detail).not.toContain("150"); // 폴백 수치 노출 금지 (세션403 정직 표시 정신 유지)
+    expect(s?.score).toBe(100 - 75); // 표시는 100-위험 → 비관적 기본값 75 의 반전
+  });
+
+  // 세션499 답습 — 문구를 따로 하드코딩하면 경계를 고칠 때 한쪽만 바뀌어 거짓이 생긴다.
+  // 이 테스트는 구간과 문구가 같은 출처(Tier.label)에서 나오는지 지킨다.
+  it("보급률 등급 문구가 점수 구간과 어긋나지 않는다", () => {
+    /** @type {Array<[number, string]>} */
+    const cases = [
+      [93.9, "부족"], // 서울
+      [99.4, "적정"], // 경기 (855단지)
+      [104, "여유"], // 경계 위
+      [114.4, "과잉"], // 경북
+    ];
+    for (const [v, label] of cases) {
+      const s = scoreRisk(makeApt({ housingSupplyLevel: v })).subs.find((x) => x.name === "공급량");
+      expect(s?.info, `보급률 ${v}% 는 "${label}" 이어야 한다`).toContain(label);
+    }
+  });
+
+  it("보급률이 높을수록(집이 남을수록) 미분양 위험이 크다 — 표시 점수는 내려간다", () => {
+    const low = scoreRisk(makeApt({ housingSupplyLevel: 93.9 })).subs.find((x) => x.name === "공급량");
+    const high = scoreRisk(makeApt({ housingSupplyLevel: 114.4 })).subs.find((x) => x.name === "공급량");
+    expect(high?.score).toBeLessThan(Number(low?.score));
+  });
+
+  it("인허가율 보정 — 미래 공급이 많으면 위험이 오르고, 적으면 내린다", () => {
+    const pick = (/** @type {any} */ o) => scoreRisk(makeApt(o)).subs.find((x) => x.name === "공급량");
+    const base = pick({ housingSupplyLevel: 99.4, supplyRatio: 1.9 }); // 보정 구간 밖
+    const many = pick({ housingSupplyLevel: 99.4, supplyRatio: 2.5 }); // >= 2.2 → 위험 +5
+    const few = pick({ housingSupplyLevel: 99.4, supplyRatio: 0.9 }); // <= 1.5 → 위험 -3
+    expect(many?.score).toBeLessThan(Number(base?.score));
+    expect(few?.score).toBeGreaterThan(Number(base?.score));
+    // 보정이 주 지표를 뒤집을 만큼 크면 안 된다 (보정은 보정이어야 한다)
+    expect(Math.abs(Number(many?.score) - Number(base?.score))).toBeLessThanOrEqual(10);
   });
   it('builderDebtRatio NULL(_fallbackBuilderDebt) -> 시공사 재무 점수 불변 + detail "250%" 숨김', () => {
     const filled = scoreRisk(makeApt({ builderDebtRatio: 250, builderCreditGrade: "BBB" }));
