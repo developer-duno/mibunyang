@@ -64,6 +64,9 @@ supabase/.temp/
 
 # 임시 스크립트/로그
 _tmp_*
+# 테스트가 만드는 임시 픽스처 폴더 (audit-*.test.mjs). afterAll 의 rm 이 실패하면 잔재가
+# 남는데 ignore 가 없으면 그대로 커밋될 수 있다 — 세션 503 에서 실제로 2개가 남아 있었다.
+.tmp-*
 backup_*.json
 check_*.mjs
 detailed_*.mjs

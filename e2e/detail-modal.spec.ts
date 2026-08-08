@@ -1,10 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// 비로그인 게이트 우회 — 카드 클릭 시 상세(DetailModal)가 열리려면 isLoggedIn(=expertLoggedIn)이
-// true여야 한다(useLoginGate.ts:21). 비로그인이면 LoginPromptModal("로그인 안내")이 떠 상세가 안 열림.
+// 로그인 상태로 만든다.
+//
+// ⚠️ 세션 503(단계 2-B) 이후로는 **상세를 열기 위해** 로그인이 필요하지 않다 — 게이트가 폐지돼
+// 비로그인도 카드 클릭으로 상세가 열린다. 그런데도 여기서 로그인하는 이유는 이 파일이 **점수·등급
+// 같은 블라인드 대상 내용까지** 검증하기 때문이다(비로그인이면 그 자리가 전부 `??`).
+//
 // expertLoggedIn 초기값 = !!localStorage.expertToken(useExpertMode.ts:34). 단 verify useEffect가
 // /api/auth/verify 호출 후 `if (!data.ok)`면 토큰을 지우고 로그아웃하므로, mock은 반드시 { ok: true }
-// 스키마여야 한다({ valid: true }로 주면 data.ok=undefined → 로그아웃 → 게이트 부활).
+// 스키마여야 한다({ valid: true }로 주면 data.ok=undefined → 로그아웃 → 점수가 블라인드로 돌아감).
 async function loginViaToken(page: Page) {
   await page.route("**/api/auth/verify", (route) =>
     route.fulfill({
@@ -27,7 +31,7 @@ function firstCard(page: Page) {
   return page.locator('[role="button"]').filter({ hasText: "㎡" }).first();
 }
 
-// 상세 모달 — 열기/닫기/섹션 렌더링 테스트 (로그인 게이트 우회 후 진짜 DetailModal 검증)
+// 상세 모달 — 열기/닫기/섹션 렌더링 테스트 (로그인 상태로 점수까지 보이는 진짜 DetailModal 검증)
 test.describe("상세 모달", () => {
   test.beforeEach(async ({ page }) => {
     await loginViaToken(page); // goto 이전 등록 필수 (addInitScript)

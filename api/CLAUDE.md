@@ -130,7 +130,14 @@ export default withHandler({
 > 공개 부동산 분석값이라 비밀·PII 아님. **점수/상세를 진짜로 보호해야 하면** 이 엔드포인트에 JWT
 > 게이트를 걸고 미인증 응답에서 `catsCache` 등 점수 필드를 strip 해야 한다(현재 미적용).
 
-- AptCard: 점수 블러("??") + 상세/지도 LoginPromptModal
+- AptCard: 점수 블러("??") + 지도 LoginPromptModal (상세는 세션 503 부터 비로그인도 열림)
 - CompareSheet: 점수 "??" 텍스트 치환 (CSS blur 아닌 DOM 미노출), export/공유 숨김
 - LoginPromptModal Analytics: trigger prop (detail/map), 4개 이벤트
-- **상세 진입 게이트 일괄 (세션 413)**: 모든 상세 진입 경로가 `handleDetailGated`(useLoginGate.ts) 수렴 = 비로그인 시 LoginPromptModal. App.tsx 3 구멍 차단(`?detail=` URL 딥링크·지도 탭 MapView·분양결과/곧분양 UpcomingPage) — 직진입도 일반 목록과 동일 게이트. 신규 상세 진입 경로 추가 시 `detail.handleOpenDetail` 직접 호출 금지, 반드시 `handleDetailGated` 경유
+- **상세는 비로그인에게 열려 있고 점수만 가린다 (세션 503, 단계 2-B)** — 신규 상세 진입 경로는
+  `detail.handleOpenDetail` 을 그냥 쓰면 된다. 로그인 유도는 상세 안 CTA(`onRequestLogin`)가 맡는다.
+  - ⚠️ **게이트를 되살리지 말 것.** 구글봇은 언제나 비로그인이라 게이트가 있으면 색인할 내용이 0 이 되고,
+    sitemap 을 늘려도 통째로 헛수고가 된다. 회귀 가드 = `useLoginGate.test.js` "handleDetailGated 가 없다".
+  - 점수를 진짜로 보호해야 할 때가 오면 게이트 부활이 아니라 **위 문단대로 API 응답에서 점수 필드를
+    strip** 하는 쪽으로 간다(화면 가림은 우회 가능, 서버 strip 은 아님).
+  - ~~세션 413 "모든 상세 진입 경로가 handleDetailGated 수렴 = 비로그인 시 LoginPromptModal"~~ 폐지.
+    그때 막았던 3 구멍(`?detail=` 딥링크·지도 탭·분양결과)은 이제 **막을 대상이 아니라 열어야 할 입구**다.

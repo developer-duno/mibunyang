@@ -134,7 +134,8 @@ export const DetailModal = memo(function DetailModal({
   isLoggedIn = true,
   onRequestLogin,
 }: DetailModalProps) {
-  // 비로그인 점수 블라인드 (단계 2-A) — 기본 true 라 2-B(게이트 완화) 전까지 이 분기는 안 켜진다.
+  // 비로그인 점수 블라인드 (단계 2-A). 세션 503(2-B)이 상세 게이트를 없애면서 이 분기가 실제로
+  // 켜졌다 — 이제 비로그인·검색엔진이 여기까지 도달한다(그 전까지는 도달 자체가 불가능했다).
   const blind = !isLoggedIn;
   // 종합 탭 편차 스트립 8줄 (세션 487 PR-4) — 카드와 **같은 컴포넌트**, 트랙만 넓다.
   // 카드에서 배운 읽는 법("오른쪽으로 길수록 유리")이 팝업에서 그대로 통해야 하기 때문.
@@ -187,6 +188,20 @@ export const DetailModal = memo(function DetailModal({
     // 포커스가 닫기 버튼으로 튀거나 body overflow 가 깜박이는 것 방지. exhaustive-deps 의도적 위반.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!item, onClose]);
+
+  // ── 문서 제목 ↔ 열린 단지 (세션 503, 단계 2-B) ──
+  // 상세 2,043쪽이 전부 "미분양 비교 엔진 v3.0" 한 제목이면 검색결과에서 서로 구분이 안 된다.
+  // 닫을 때 되돌리는 게 핵심 — 목록으로 나왔는데 제목에 단지명이 남아 있으면 그 자체가 거짓 표시다.
+  useEffect(() => {
+    if (typeof document === "undefined" || !item) return;
+    const prev = document.title;
+    const a = item.apt;
+    const where = [a.region, a.gu].filter(Boolean).join(" ");
+    document.title = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 | 미분양 비교`;
+    return () => {
+      document.title = prev;
+    };
+  }, [item]);
 
   // 상세 필드 lazy fetch — item 변경 시마다 (버킷 캐시 hit 으로 안전)
   useEffect(() => {
@@ -367,7 +382,11 @@ export const DetailModal = memo(function DetailModal({
           {!isDesktop && <div onClick={onClose} style={DM_S.dragBar} />}
           <div style={DM_S.headerRow}>
             <div>
-              <div style={{ fontSize: isDesktop ? F.xl : F.lg, fontWeight: 800, color: C.text }}>{apt.name}</div>
+              {/* 세션 503(2-B): 검색엔진·스크린리더가 "이 쪽의 제목"으로 읽는 자리. 크기·굵기는
+                  인라인으로 고정돼 있어 h1 의 기본 스타일이 안 먹고, margin 만 0 으로 눌러 모양 보존. */}
+              <h1 style={{ fontSize: isDesktop ? F.xl : F.lg, fontWeight: 800, color: C.text, margin: 0 }}>
+                {apt.name}
+              </h1>
               <div style={{ fontSize: isDesktop ? F.base : F.sm, color: C.muted }}>
                 {[apt.region, apt.gu, apt.dong].filter(Boolean).join(" ")} · {apt.area}㎡ · {fmtPrice(apt.price)}
               </div>
@@ -531,7 +550,8 @@ export const DetailModal = memo(function DetailModal({
 
               {/* 프로필 가중치 막대 — "왜 이 점수인지" 새 정보축 (세션 434 점수 근거 투명화 A+B).
             ⚠️ 옛 주석은 "상세 모달은 로그인 전제(useDetailModal 단일 진입)라 블라인드 무관"이라 했으나
-            단계 2-A 로 그 전제가 바뀐다(2-B 부터 비로그인도 상세를 연다). 비로그인엔 아예 안 그린다 —
+            그 전제는 이미 깨졌다 — 2-A 로 블라인드를 넣었고 세션 503(2-B)이 게이트를 없애 비로그인도
+            상세를 연다. 비로그인엔 아예 안 그린다 —
             가중치는 "내 프로필"이 있어야 성립하는 값이라 뿌옇게 남기는 것보다 없는 편이 정직하다. */}
               {profile && !blind && <ProfileWeightBar weights={PROFILES[profile].w} cats={res.cats} />}
 

@@ -15,7 +15,7 @@ useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개
   → useShareCallbacks (callback 3개 + scoredMapRef 내부 관리)
   → useKeyboardShortcuts (void, 데스크톱 가드)
   → 독립 useEffect (print CSS)
-  → useUrlSync (void, URL 동기화 3종 — 세션 485 추출)
+  → useUrlSync (void, URL 동기화 5종 — 세션 485 추출 + 503 상세 URL 2종)
   → JSX
 ```
 
@@ -69,15 +69,33 @@ useAppNavigation({ tab, setTab, expert, admin, consult, detail, compIds, ... })
 
 ---
 
-## useUrlSync 구조 (세션 485 추출)
+## useUrlSync 구조 (세션 485 추출 · 세션 503 상세 URL 추가)
 
 ```
-useUrlSync({ tab, setTab, setProfile, handleDetailGated, setCompIds, setShowCompOpen,
+useUrlSync({ tab, setTab, setProfile, detailAptId, openDetail, closeDetail,
+             setCompIds, setShowCompOpen,
              apartments, dataLoading, dataError, setFavoriteIds, showToast })
   ├── useEffect: tab="upcoming" ↔ URL "/upcoming" 동기화 ([tab])
-  ├── useEffect: URL 딥링크 복원 (detail/compare/profile, [] mount 1회 + eslint-disable 유지)
+  ├── useEffect: 상세 열림 ↔ 주소 "/apt/{id}" ([detailAptId] — 세션 503 단계 2-B)
+  ├── useEffect: popstate(뒤로/앞으로) ↔ 상세 열림 ([openDetail, closeDetail])
+  ├── useEffect: URL 딥링크 복원 (경로형 /apt/{id} 1순위 + 옛 ?detail=, [] mount 1회 + eslint-disable 유지)
   └── useEffect: dedup 후 무효 ID 정리 (관심매물·비교 목록 청소)
 ```
+
+### 상세 URL 동기화의 두 함정 (세션 503 — 뮤테이션으로 실증)
+
+둘 다 `if (prevDetailRef.current === detailAptId) return;` **한 줄이 막는다**
+(= "실제로 열림 상태가 바뀐 실행에서만 움직인다"). 이 줄을 지우면 아래 둘이 동시에 터진다.
+
+1. **첫 렌더에 주소를 지우면 안 된다.** `/apt/{id}` 로 직접 들어온 손님은 딥링크 복원 effect 가
+   읽기 *전에* 이 effect 가 먼저 돈다. 그때 "상세가 안 열려 있으니 주소를 `/` 로" 라고 판단하면
+   그 순간 id 가 사라진다. → 첫 렌더는 `null === null` 이라 걸러진다.
+2. **tab 만 바뀐 실행이 히스토리를 오염시킨다.** tab 이 바뀌면 `useDetailModal` 이 같은 커밋에서
+   `detailAptId` 를 null 로 만드는데, 그 커밋의 effect 패스에선 아직 옛 값이다. 그대로 두면 위
+   effect 가 막 바꿔둔 `/upcoming` 을 `/apt/{id}` 로 되민다. → 옛 값 === 옛 값이라 걸러진다.
+
+> ⚠️ `tab` 을 ref 로 읽어 deps 에서 빼는 우회는 쓰지 말 것 — `react-hooks/refs`(렌더 중 ref 쓰기)
+> 경고가 나고, 위 한 줄이면 deps 를 정직하게 `[detailAptId, tab]` 로 두고도 둘 다 막힌다.
 
 App.tsx L389~455 에 있던 독립 useEffect 3개를 **순서·deps·로직 무변경**으로 옮긴 것.
 호출 위치는 원래 자리(`// ── JSX ──` 직전) 유지 — 훅 순서가 바뀌면 Rules of Hooks 위반.

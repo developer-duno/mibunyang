@@ -21,7 +21,8 @@ type RecentlyViewedWidgetProps = {
 };
 
 /**
- * 최근 본 단지 — 최근순(맨 앞 = 가장 최근). onDetail 은 반드시 handleDetailGated(홈 상세 게이트 정책).
+ * 최근 본 단지 — 최근순(맨 앞 = 가장 최근). onDetail 은 상세를 바로 여는 함수
+ * (detail.handleOpenDetail). 세션 503(2-B)에서 상세 진입 게이트 폐지 — 비로그인도 열린다.
  * recentIds 중 데이터 갱신으로 사라진 단지(scoredMap 부재)는 스킵. rank=0 으로 순위 배지 숨김.
  */
 export const RecentlyViewedWidget = memo(function RecentlyViewedWidget({

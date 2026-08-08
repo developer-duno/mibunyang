@@ -41,7 +41,9 @@ function MapSkeleton() {
 /**
  * 홈 지도 위젯 (M2) — 비로그인 = D5 잠금 placeholder / 로그인 = MapView 미니지도 임베드
  * (compact + height, 뷰포트 진입 시 lazy 마운트 — LoadMoreSentinel 패턴 답습).
- * 핀 클릭 → SelectedAptCard(지도 내부) → "상세" = onDetail(handleDetailGated) 경유.
+ * 핀 클릭 → SelectedAptCard(지도 내부) → "상세" = onDetail(detail.handleOpenDetail) 경유.
+ * 세션 503(2-B): 상세 진입 게이트 폐지 — 비로그인도 상세가 열리고 점수만 블라인드(2-A).
+ * 단 이 위젯 자체의 비로그인 잠금(D5 placeholder)과 onExpand 지도 게이트는 그대로 유지된다.
  * onExpand 는 반드시 handleNavClick("map") — 비로그인 게이트(useAppNavigation L68)가 자동 발화.
  */
 export const MapEntryWidget = memo(function MapEntryWidget({
