@@ -211,7 +211,8 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 | isRegulated | scoreRisk regSc | DB값 우선, null이면 getZone() 폴백 |
 | naverSellCount | scoreRisk liqSc | 50건+ → +5, 30건+ → +2 페널티 |
 | presaleType | scoreRisk finSc | "공공" 포함 시 -15 보너스 |
-| newSupply | scoreRisk supSc | 5000+ → +5, 1000- → -3 |
+| housingSupplyLevel | scoreRisk supSc **주 지표** | 96%↓ 5 / 101%↓ 25 / 104%↓ 50 / 초과 75, null 75 |
+| supplyRatio (인허가율) | scoreRisk supSc 보정 | 2.2%+ → +5, 1.5%- → -3, null 무보정 |
 | priceIndex | scorePrice relSc | 130+ → +5, 110+ → +3 |
 | presaleParking/presaleGeneralSupply | scoreProduct | parkingRatio null 폴백 |
 | presaleHousingType | scoreProduct | 오피스텔/도시형 brandSc 상한 15 |

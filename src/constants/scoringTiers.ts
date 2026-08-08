@@ -222,12 +222,44 @@ export const CREDIT_GRADE_SCORES: Record<string, number> = {
 /** 안전 등급 목록 (AptCard 경고 태그 판정용) */
 export const SAFE_CREDIT_GRADES: string[] = ["AAA", "AA+", "AA", "AA-", "A+", "A", "A-"];
 export const CREDIT_DEFAULT = 30;
-export const SUPPLY_RATIO_TIERS: Tier[] = [
-  { max: 50, score: 5 },
-  { max: 100, score: 25 },
-  { max: 130, score: 50 },
+// 세션 501: 공급량 항목의 **지표 자체를 교체**했다.
+//
+// 옛 `SUPPLY_RATIO_TIERS`(50/100/130)는 이름이 "인허가율"인데 값은 **주택보급률용** 숫자였다.
+// 정작 담기던 데이터는 연간 인허가÷가구수(실측 0.09~3.0%)라 자릿수가 어긋나 있었고, 그래서
+// 데이터가 비면(기본값 150 → 130 초과) **전 단지 75점**, 채우면(50 이하) **전 단지 5점** —
+// 어느 쪽이든 전 단지 동점이라 이 항목이 순위에 기여하지 못했다.
+//
+// 이제 주 지표를 주택보급률(`regions.housing_supply_level`, KOSIS, 17/17 채움)로 옮긴다.
+// 경계는 **단지 기준 실측 분포**(93.9~114.4)에서 골랐다:
+//   - 4구간을 전부 쓴다(옛 경계는 2구간만 사용). 점수 표준편차 11.54 → **26.01**
+//   - 경계를 실제 시도값에서 **1.4 이상 떨어뜨렸다** — 경기(99.4)에 855단지(32.4%)가 몰려 있어
+//     경계가 99냐 100이냐로 전체의 32%가 통째로 움직인다. 값에 붙은 경계는 미세 변동에 취약하다.
+//   - 결과 분포: 24.2% / 45.0% / 5.7% / 25.1%. 45%는 경기 덩어리 탓이며 **시도 단위 지표의 한계**다
+//     (같은 시도 안에서는 어떤 경계로도 갈리지 않는다).
+// 값이 클수록(주택이 남을수록) 신규 분양 수요가 얇아 미분양 위험이 크다 → 높은 위험 점수.
+// label 은 화면 문구의 **단일 출처**다(세션499 답습). 문구를 따로 하드코딩하면 경계를 고칠 때
+// 한쪽만 바뀌어 "0점인데 보통" 같은 거짓이 생긴다.
+export const HOUSING_SUPPLY_LEVEL_TIERS: Tier[] = [
+  { max: 96, score: 5, label: "부족" },
+  { max: 101, score: 25, label: "적정" },
+  { max: 104, score: 50, label: "여유" },
 ];
-export const SUPPLY_HIGH_SCORE = 75;
+export const HOUSING_SUPPLY_HIGH_SCORE = 75;
+export const HOUSING_SUPPLY_HIGH_LABEL = "과잉";
+/** 보급률 미수집 시 비관적 기본값 (세션403 "데이터 없으면 보수적으로" 정책 유지) */
+export const HOUSING_SUPPLY_UNKNOWN_SCORE = 75;
+
+// 인허가율(연간 인허가 호수 ÷ 가구수 = **미래** 공급 압력) 보정.
+// 보급률이 "지금 집이 남는가"라면 이쪽은 "앞으로 더 지어지는가"라 서로 다른 것을 잰다.
+//
+// 옛 `newSupply` 보정(절대 세대수, HIGH=5000)을 대체한다. 그쪽은 최대가 경기 3,107 이라
+// **HIGH 임계에 아무도 도달할 수 없었고**, 절대값이라 인구가 많은 시도가 구조적으로 불리했다.
+// 인허가율은 비율이라 시도 크기를 자동 보정한다.
+// 경계는 실측 분포(0.09~3.0, 중앙 1.89)의 **빈 구간**에서 골랐다(1.26↔1.89, 1.95↔2.49).
+export const PERMIT_RATIO_HIGH = 2.2; // 이상 → 미래 공급 과잉 (위험 +5)
+export const PERMIT_RATIO_LOW = 1.5; // 이하 → 미래 공급 희소 (위험 -3)
+export const PERMIT_RATIO_HIGH_ADJ = 5;
+export const PERMIT_RATIO_LOW_ADJ = -3;
 
 // scoreRisk cancelRatio6m (계약해제율: 낮을수록 안전 → 낮은 위험점수)
 export const CANCEL_RATIO_TIERS: Tier[] = [
@@ -392,11 +424,10 @@ export const LISTING_WARN_PENALTY = 2;
 // === Risk: 공공분양 재무안전 보너스 ===
 export const PUBLIC_PRESALE_BONUS = -15;
 
-// === Risk: 신규공급 보정 임계값 ===
-export const NEW_SUPPLY_HIGH = 5000; // 대량 공급 → supSc +5
-export const NEW_SUPPLY_LOW = 1000; // 희소 공급 → supSc -3
-export const NEW_SUPPLY_HIGH_ADJ = 5;
-export const NEW_SUPPLY_LOW_ADJ = -3;
+// === Risk: 신규공급 보정 임계값 — 세션 501 에서 제거 ===
+// 옛 NEW_SUPPLY_HIGH=5000 은 **아무도 도달할 수 없는 임계**였다(시도별 최대가 경기 3,107).
+// 게다가 절대 세대수라 인구가 많은 시도가 구조적으로 불리했다. 같은 것(미래 공급 압력)을
+// 비율로 재는 PERMIT_RATIO_* 가 대체한다 — 위 HOUSING_SUPPLY_LEVEL_TIERS 근처 참조.
 
 // === Price: 택지비 비율 (높을수록 가격 안정 → 높은 점수) ===
 export const LAND_COST_TIERS: Tier[] = [

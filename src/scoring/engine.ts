@@ -39,7 +39,11 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     competitionRate: num(apt.competitionRate, null),
     crimeSafetyGrade: apt.crimeSafetyGrade != null ? num(apt.crimeSafetyGrade, null) : null,
     builderDebtRatio: num(apt.builderDebtRatio, 250),
-    supplyRatio: num(apt.supplyRatio, rm?.supplyRatio ?? 150),
+    // 세션 501: 폴백 150 제거. 이 필드는 이제 **인허가율**(연간 인허가÷가구수, 실측 0.09~3.0%)이라
+    // 150 은 스케일이 맞지 않는다 — 그대로 두면 데이터가 없는 단지마다 PERMIT_RATIO_HIGH(2.2)를
+    // 넘겨 "미래 공급 과잉" 보정이 상시 걸린다. 없으면 null → 보정 자체를 하지 않는다.
+    // (주 지표인 주택보급률의 비관적 폴백은 scoreRisk 의 HOUSING_SUPPLY_UNKNOWN_SCORE 가 담당.)
+    supplyRatio: num(apt.supplyRatio, rm?.supplyRatio ?? null),
     popGrowth: apt.popGrowth != null ? num(apt.popGrowth, null) : null,
     netMigration: apt.netMigration != null ? num(apt.netMigration, null) : null,
     dataReliability: num(apt.dataReliability, 30),

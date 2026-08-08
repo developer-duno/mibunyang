@@ -262,17 +262,36 @@ describe("hasGithubApiAuth — 로컬 실행 시 ①③ skip 가드 (가짜 미�
  * 아래 테스트가 그 회귀를 막는다.
  */
 describe("주기 변경 ↔ 감시 기준 동기화 (세션 491 적대검증)", () => {
-  it("분기로 내린 2건이 QUARTERLY_CRON_WORKFLOWS 에 등재돼 있다", () => {
-    expect(QUARTERLY_CRON_WORKFLOWS).toContain("Housing Permits Data Collection");
+  it("분기 cron 워크플로가 QUARTERLY_CRON_WORKFLOWS 에 등재돼 있다", () => {
     expect(QUARTERLY_CRON_WORKFLOWS).toContain("Collect Building Hub (에너지+인허가)");
+    // 세션 501: "Housing Permits Data Collection" 은 **워크플로 자체가 삭제**됐다.
+    // MOLIT ArchPmsService_v2 폐기 → KOSIS 이전인데 kosis.kr 이 해외 IP 를 막아 GH 에서 못 돈다.
+    // 없는 워크플로가 여기 남으면 "분기라 오래 안 돈 것" 으로 오해되므로 등재돼 있으면 안 된다.
+    expect(QUARTERLY_CRON_WORKFLOWS).not.toContain("Housing Permits Data Collection");
   });
 
   it("분기 collector 의 stale_days 는 100 이다 — 38 이면 진짜 outage 판정을 덮는다", () => {
-    for (const name of ["housing-permits", "building-hub"]) {
+    for (const name of ["building-hub"]) {
       const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === name);
       expect(entry, `${name} 가 EXTERNAL_API_COLLECTORS 에 없다`).toBeTruthy();
       expect(entry?.stale_days, `${name} stale_days 가 분기 기준(100)이 아니다`).toBe(100);
     }
+  });
+
+  // 세션 501 — 주기가 바뀌면 감시 기준도 같이 바뀌어야 한다(이 describe 의 취지 그대로).
+  // housing-permits 는 분기 GH cron → 로컬 러너 매월 11일로 옮겼으므로 100 이 아니라 38 이다.
+  // 100 을 그대로 뒀다면 한 달 넘게 안 돌아도 조용해서 진짜 중단을 놓친다.
+  it("KOSIS 로 이전한 housing-permits 는 월간 기준(38)이다", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "housing-permits");
+    expect(entry, "housing-permits 가 EXTERNAL_API_COLLECTORS 에 없다").toBeTruthy();
+    expect(entry?.stale_days, "월간(로컬 매월 11일) 기준 38 이어야 한다").toBe(38);
+  });
+
+  it("housing-permits 가 로컬 러너 매핑표에 실제로 등록돼 있다 — 감시만 있고 실행이 없으면 영구 stale", async () => {
+    const { DAY_TABLE } = await import("./kosis-local-runner.mjs");
+    const entry = DAY_TABLE.find((e) => e.script === "housing-permits.mjs");
+    expect(entry, "kosis-local-runner DAY_TABLE 에 housing-permits.mjs 가 없다").toBeTruthy();
+    expect(entry?.months, "매월 실행이어야 한다(months 제한 없음)").toBeUndefined();
   });
 
   // 실측 3행 — housing-permits 가 3회 연속 success + ok_count=0 인 상태(진짜 MOLIT 장기 중단).

@@ -39,7 +39,9 @@ const STALE_DAYS = 35;
 export const QUARTERLY_CRON_WORKFLOWS = [
   "DART 시공사 재무 수집",
   // 세션 491: 월간 → 분기(1,4,7,10월) 전환. 빠뜨리면 35일 기준으로 잡혀 거짓 경보.
-  "Housing Permits Data Collection",
+  // ⚠️ "Housing Permits Data Collection" 은 세션 501 에서 제거했다 — MOLIT 폐기로 KOSIS 이전 +
+  //    kosis.kr 해외 IP 차단 때문에 yml 자체를 삭제했다(로컬 러너 매월 11일이 승계).
+  //    없는 워크플로를 여기 남겨두면 "분기라서 오래 안 돈 것" 으로 오해할 여지만 남는다.
   "Collect Building Hub (에너지+인허가)",
 ];
 /**
@@ -223,7 +225,9 @@ export const EXTERNAL_API_COLLECTORS = [
   //    "MOLIT API 장기 중단" 이 울려야 하는데 2026-08-18 부터 그게 사라졌을 것이다.
   //    세션 463 이 반대 방향(월간에 14 를 박음)으로 겪은 것과 **같은 사고**다.
   //    cron 을 월간으로 되돌릴 때 이 값도 38 로 함께 되돌릴 것.
-  { collector: "housing-permits", stale_days: QUARTERLY_STALE_DAYS, owner: "MOLIT 주택건설실적 (분기 10일 cron + 9일 여유)" },
+  // 세션 501: MOLIT ArchPmsService_v2 폐기(NO_OPENAPI_SERVICE) → KOSIS DT_MLTM_666 이전.
+  // kosis.kr 해외 IP 차단이라 GH yml 삭제 + 로컬 러너 매월 11일 → 분기 100 이 아니라 월간 38.
+  { collector: "housing-permits", stale_days: 38, owner: "KOSIS 주택건설 인허가실적 (로컬 매월 11일)" },
   { collector: "building-hub",    stale_days: QUARTERLY_STALE_DAYS, owner: "MOLIT 건축물대장 허브 (분기 15일 cron + 9일 여유)" },
   { collector: "transport-tago",  stale_days: 14, owner: "버스정류장 파일(data.go.kr, 세션497부터 TAGO 실시간 API 대체) + Kakao" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
