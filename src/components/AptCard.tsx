@@ -8,7 +8,6 @@ import type { Category } from "@/constants/profiles";
 import { catVerdict } from "@/constants/catVerdict";
 import { CAT_DISPLAY_ORDER } from "@/constants/catOrder";
 import { CARD_DEVIATION_FIELDS } from "@/constants/deviationFields";
-import { isFeatureDeviationStrip } from "@/constants/featureFlags";
 import { DeviationStrip } from "./DeviationStrip";
 import type { AptCardProps } from "@/types/components/AptCard.types";
 
@@ -90,9 +89,9 @@ export const AptCard = memo(
     isLoggedIn = true,
     regionStats = null,
   }: AptCardProps) {
-    // 편차 스트립은 플래그 + 지역 분포가 모두 있을 때만. 분포가 없으면(초기 로딩·빈 데이터)
-    // 아예 안 그린다 — "미수집" 3줄만 뜨는 빈 블록이 더 나쁘다.
-    const showDeviation = isFeatureDeviationStrip() && regionStats != null;
+    // 편차 스트립은 지역 분포가 있을 때만. 분포가 없으면(초기 로딩·빈 데이터) 아예 안 그린다
+    // — "미수집" 3줄만 뜨는 빈 블록이 더 나쁘다. (되돌림용 플래그는 세션 505 에 졸업)
+    const showDeviation = regionStats != null;
     const g = gr(res.total);
     const benefitWon = res.cats.benefit?.totalWon ?? 0;
     const noxCount = ((apt.noxious as string[] | undefined) || []).length;

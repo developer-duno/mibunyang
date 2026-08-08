@@ -398,6 +398,9 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     label: "네이버 주변 평균가",
     section: "교차검증",
     unit: "만원",
+    // ⚠️ 손님 화면에서 뺀 필드다 — 근거·처리 위치는 `lib/tabExtraFields` 의
+    //    `INTERNAL_ONLY_FIELDS`. 여기 `hidden: true` 를 쓰면 관리자 전수 표에서도
+    //    사라진다(`FieldTable.visibleFields`)라서 쓰지 않았다.
     fmt: (v) => (v != null ? nk(v, "만원") : "미수집"),
   },
   naverJeonseRate: {

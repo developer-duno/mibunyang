@@ -1,5 +1,5 @@
 // @ts-check
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AptCard } from "./AptCard";
 import { makeApt } from "@/__tests__/factories";
@@ -49,60 +49,49 @@ function makeProps(over = {}) {
   };
 }
 
-const on = () => vi.stubEnv("VITE_FEATURE_DEVIATION_STRIP", "true");
-const off = () => vi.stubEnv("VITE_FEATURE_DEVIATION_STRIP", "false");
-
-beforeEach(() => off());
-afterEach(() => vi.unstubAllEnvs());
-
-describe("편차 스트립 — 피처 플래그", () => {
-  it("플래그 OFF 면 스트립을 그리지 않는다", () => {
-    render(<AptCard {...makeProps()} />);
-    expect(screen.queryByText(/아파트 한가운데 값과 비교/)).toBeNull();
-  });
-
-  it("플래그 ON 이면 스트립 3줄이 나온다", () => {
-    on();
+/**
+ * 세션 505: 되돌림용 피처 플래그(`VITE_FEATURE_DEVIATION_STRIP`)가 졸업했다.
+ * 이제 스트립을 켜고 끄는 유일한 조건은 **지역 분포가 있느냐**라, 아래 테스트들도
+ * 환경변수 대신 `regionStats` 를 레버로 쓴다(검증하는 화면 거동은 전과 같다).
+ */
+describe("편차 스트립 — 렌더 조건", () => {
+  it("지역 분포가 있으면 스트립 3줄이 나온다", () => {
     render(<AptCard {...makeProps()} />);
     expect(screen.getByText(/경기 아파트 한가운데 값과 비교/)).toBeInTheDocument();
   });
 
-  it("플래그 ON 이어도 regionStats 가 없으면 안 그린다 (미수집 3줄짜리 빈 블록 방지)", () => {
-    on();
+  it("regionStats 가 없으면 안 그린다 (미수집 3줄짜리 빈 블록 방지)", () => {
     render(<AptCard {...makeProps({ regionStats: null })} />);
     expect(screen.queryByText(/아파트 한가운데 값과 비교/)).toBeNull();
   });
 });
 
 describe("편차 스트립 — 역세권 칩 대체", () => {
-  it("플래그 OFF 면 예전 역세권 칩이 그대로 있다 (환경변수만으로 원상복구)", () => {
-    render(<AptCard {...makeProps()} />);
+  it("스트립을 못 그리면 예전 역세권 칩이 그대로 있다", () => {
+    render(<AptCard {...makeProps({ regionStats: null })} />);
     expect(screen.getByText(/판교 300m 역세권/)).toBeInTheDocument();
   });
 
-  it("플래그 ON 이면 역세권 칩이 빠진다 (스트립 3번째 줄이 흡수)", () => {
-    on();
+  it("스트립을 그리면 역세권 칩이 빠진다 (스트립 3번째 줄이 흡수)", () => {
     render(<AptCard {...makeProps()} />);
     expect(screen.queryByText(/판교 300m 역세권/)).toBeNull();
   });
 });
 
-describe("카테고리 3칸 — 플래그에 따라 숫자/등급", () => {
-  it("플래그 OFF 면 점수 숫자를 보여준다", () => {
-    render(<AptCard {...makeProps()} />);
+describe("카테고리 3칸 — 스트립 유무에 따라 숫자/등급", () => {
+  it("스트립을 못 그리면 점수 숫자를 보여준다", () => {
+    render(<AptCard {...makeProps({ regionStats: null })} />);
     expect(screen.getByText("80")).toBeInTheDocument(); // location total
   });
 
-  it("플래그 ON 이면 등급 문자로 압축한다 (숫자는 상세 팝업에 그대로)", () => {
-    on();
+  it("스트립을 그리면 등급 문자로 압축한다 (숫자는 상세 팝업에 그대로)", () => {
     render(<AptCard {...makeProps()} />);
     expect(screen.queryByText("80")).toBeNull();
     // gr(80) 등급 문자가 대신 나온다
     expect(screen.getAllByText(/^[A-F][+-]?$/).length).toBeGreaterThanOrEqual(3);
   });
 
-  it("비로그인은 플래그와 무관하게 '??' (점수 블라인드 정책 불변)", () => {
-    on();
+  it("비로그인은 스트립 유무와 무관하게 '??' (점수 블라인드 정책 불변)", () => {
     render(<AptCard {...makeProps({ isLoggedIn: false })} />);
     expect(screen.getAllByText("??").length).toBeGreaterThan(0);
   });
@@ -123,7 +112,6 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
 
   for (const [field, before, after, expected] of cases) {
     it(`${field} 가 바뀌면 화면 문구가 따라 바뀐다`, () => {
-      on();
       const props = makeProps({
         apt: makeApt({ region: "경기", price: 33000, pp: 1200, unsoldRate: 4, subwayDist: 300 }),
       });
@@ -141,7 +129,6 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
   }
 
   it("총 분양가(price)가 바뀌어도 다시 그린다 — 편차 목록에서 빠졌지만 머리글에 표시된다", () => {
-    on();
     const props = makeProps();
     const { rerender, container } = render(<AptCard {...props} />);
     const first = container.textContent ?? "";
@@ -152,7 +139,6 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
   });
 
   it("region 이 바뀌면 비교 기준이 바뀌므로 다시 그린다", () => {
-    on();
     const props = makeProps();
     const { rerender, container } = render(<AptCard {...props} />);
     expect(container.textContent).toContain("경기 아파트 한가운데 값과 비교");
@@ -164,7 +150,6 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
   });
 
   it("regionStats 참조가 바뀌면 다시 그린다 (데이터 갱신)", () => {
-    on();
     const props = makeProps();
     const { rerender, container } = render(<AptCard {...props} />);
     const first = container.textContent ?? "";
@@ -182,7 +167,6 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
   });
 
   it("카테고리 총점만 바뀌어도 다시 그린다 (총점 합이 같은 경우 방어)", () => {
-    on();
     const props = makeProps();
     const { rerender, container } = render(<AptCard {...props} />);
     const first = container.textContent ?? "";

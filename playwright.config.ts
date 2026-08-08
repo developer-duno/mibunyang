@@ -67,7 +67,6 @@ export default defineConfig({
       VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY ?? "",
       VITE_FEATURE_UPCOMING: process.env.VITE_FEATURE_UPCOMING ?? "false",
       VITE_FEATURE_HOME: process.env.VITE_FEATURE_HOME ?? "false",
-      VITE_FEATURE_DEVIATION_STRIP: process.env.VITE_FEATURE_DEVIATION_STRIP ?? "false",
     },
   },
 });

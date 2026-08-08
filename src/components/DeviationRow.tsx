@@ -90,13 +90,22 @@ export const DeviationRow = memo(function DeviationRow({
   dev,
   value,
   regionLabel,
+  compact = true,
 }: {
   spec: DeviationFieldSpec;
   dev: Deviation;
   value: unknown;
   regionLabel: string;
+  /** 카드용(true)은 문장 조각만, 팝업용(false)은 실제 값도 앞에 붙인다 */
+  compact?: boolean;
 }) {
   const aria = deviationAriaLabel(spec, dev, regionLabel, formatDeviationValue(spec, value));
+
+  // 팝업에서는 `1,240만 · 12% 싸요` 처럼 실제 값을 앞에 붙인다. "12% 싸요"만으로는 "그래서
+  // 얼마인데?"가 남는데, 그 답이 팝업 다른 자리에 흩어져 있어 손님이 눈으로 찾아야 했다.
+  // 카드(compact)는 폭이 좁아 그대로 둔다 — 붙이면 두 줄로 넘쳐 행 높이 고정이 깨진다.
+  // 값이 없거나(missing) 비교가 성립 안 하는 줄은 붙일 값 자체가 없다.
+  const valueText = !compact && dev.state === "ok" ? `${formatDeviationValue(spec, value)} · ${dev.text}` : dev.text;
 
   const drawable = dev.state === "ok" && dev.fav != null;
   const fav = dev.fav ?? 50;
@@ -161,7 +170,7 @@ export const DeviationRow = memo(function DeviationRow({
         {spec.highWord}
       </span>
       <span style={{ ...S.value, color }} aria-hidden="true">
-        {dev.text}
+        {valueText}
       </span>
     </div>
   );

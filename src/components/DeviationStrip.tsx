@@ -85,7 +85,14 @@ export const DeviationStrip = memo(function DeviationStrip({
       </div>
       <div style={S.rows}>
         {rows.map(({ spec, dev }) => (
-          <DeviationRow key={spec.field} spec={spec} dev={dev} value={raw[spec.field]} regionLabel={regionLabel} />
+          <DeviationRow
+            key={spec.field}
+            spec={spec}
+            dev={dev}
+            value={raw[spec.field]}
+            regionLabel={regionLabel}
+            compact={compact}
+          />
         ))}
       </div>
     </div>

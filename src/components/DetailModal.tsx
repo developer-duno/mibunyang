@@ -6,12 +6,11 @@ import { PROFILES, getTopCats } from "@/constants/profiles";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
-import { isFeatureDeviationStrip } from "@/constants/featureFlags";
 import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
 import { CatPanel } from "./CatPanel";
-import { fmtPrice, fmtCompletion, fmtUnsoldRate } from "@/lib/format";
+import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
@@ -56,8 +55,6 @@ const JUMP_SECTIONS: JumpSection[] = [
   { id: "sec-finance", label: "금융" },
   { id: "sec-score", label: "점수" },
 ];
-
-const UNSOLD_WARN_THRESHOLD = 15;
 
 // 탭 전환 페이드 (세션 410 D3) — 활성 패널 진입 시 opacity 0→1 .18s. display:none→표시 전환 시
 // animation-name 신규 적용으로 keyframe 1회 재생(W3C CSS Animations). prefers-reduced-motion 존중.
@@ -139,7 +136,9 @@ export const DetailModal = memo(function DetailModal({
   const blind = !isLoggedIn;
   // 종합 탭 편차 스트립 8줄 (세션 487 PR-4) — 카드와 **같은 컴포넌트**, 트랙만 넓다.
   // 카드에서 배운 읽는 법("오른쪽으로 길수록 유리")이 팝업에서 그대로 통해야 하기 때문.
-  const showDeviation = isFeatureDeviationStrip() && regionStats != null;
+  // 지역 분포가 있어야만 그린다(없으면 "미수집" 8줄짜리 빈 블록). 다른 차트·서랍은 이 값을
+  // 안 쓰므로 세션 505 에 게이트를 걷어냈다 — 되돌림용 플래그도 같이 졸업.
+  const showDeviation = regionStats != null;
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocusRef = useRef<Element | null>(null);
   // 상세 필드 lazy fetch (apartments-detail-16-N.json 버킷 1개, 세션 468) — DetailModal 첫 열림 시
@@ -446,8 +445,7 @@ export const DetailModal = memo(function DetailModal({
               </div>
 
               {/* 요약 시각화 — "이 단지 vs 같은 지역 한가운데 값" 8줄 (세션 487 PR-4).
-                  카드의 3줄과 같은 컴포넌트라 읽는 법이 그대로 이어진다. 트랙만 넓다.
-                  플래그 뒤: 카드와 한 스위치로 묶어 켜고 끄는 지점을 하나로 유지한다. */}
+                  카드의 3줄과 같은 컴포넌트라 읽는 법이 그대로 이어진다. 트랙만 넓다. */}
               {showDeviation && (
                 <DeviationStrip
                   apt={apt}
@@ -458,13 +456,14 @@ export const DetailModal = memo(function DetailModal({
               )}
 
               {/* 핵심 지표 — 세션 409 D2b: 6각형 레이더 제거(카테고리 점수는 아래 미니카드와 이중 노출 → 루즈
-            해소, 사장님 지시). 미니카드가 카테고리 시각화+진입 역할을 모두 흡수. 핵심지표는 전폭. */}
+            해소, 사장님 지시). 미니카드가 카테고리 시각화+진입 역할을 모두 흡수. 핵심지표는 전폭.
+            세션 505: 8행 → 4행. 지역·분양가는 바로 위 헤더가 같은 값을 이미 말하고,
+            전세가율·미분양률은 바로 위 편차 스트립이 "지역 대비 어디쯤"까지 얹어 말한다 —
+            같은 값을 한 화면에서 두 번 읽게 하지 않는다. */}
               <div style={{ marginBottom: 12 }}>
                 <div>
                   <div style={DM_S.metricsHead}>핵심 지표</div>
                   {[
-                    { l: "지역", v: [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "), c: C.blue },
-                    { l: "분양가", v: fmtPrice(apt.price) },
                     {
                       l: "적정가 괴리",
                       v:
@@ -478,12 +477,6 @@ export const DetailModal = memo(function DetailModal({
                             : C.red
                           : C.muted,
                       hint: "주변 시세로 계산한 '적정가'와 실제 분양가를 비교한 거예요. +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
-                    },
-                    { l: "전세가율", v: apt.jeonseRate != null ? `${apt.jeonseRate}%` : "-" },
-                    {
-                      l: "미분양률",
-                      v: fmtUnsoldRate(apt.unsoldRate as number | null),
-                      c: apt.unsoldRate != null ? (apt.unsoldRate > UNSOLD_WARN_THRESHOLD ? C.red : C.green) : C.muted,
                     },
                     { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
                     { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
@@ -560,7 +553,7 @@ export const DetailModal = memo(function DetailModal({
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}
 
-              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-overview" />}
+              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-overview" />
 
               {/* 잠금 자리 CTA (단계 2-A) — 종합 탭 하단 1곳. 점수 탭 잠금 패널의 것과 같은 문구. */}
               {blind && <LoginCta onRequestLogin={onRequestLogin} />}
@@ -581,7 +574,9 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-price")}
             >
-              {/* 주변 시세 대비 위치 게이지 (세션 430) — deviation 양수=저렴(scorePrice.ts 진실원천), -30~+30% 클램프, 0 중앙 */}
+              {/* 적정가 대비 위치 게이지 (세션 430) — deviation 양수=저렴(scorePrice.ts 진실원천), -30~+30% 클램프, 0 중앙.
+                  ⚠️ 옛 이름 "주변 시세 대비"는 거짓이었다 — 이 값은 `scorePrice.ts` 가 낸 **적정가와의 괴리**이지
+                  주변 단지 비교가 아니다(세션 487 에 카드 배지는 정정했는데 이 게이지만 옛 이름이 남아 있었다). */}
               {res.cats.price?.deviation != null &&
                 (() => {
                   const dev = Number(res.cats.price.deviation);
@@ -600,7 +595,7 @@ export const DetailModal = memo(function DetailModal({
                       }}
                     >
                       <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>
-                        주변 시세 대비 위치
+                        적정가 대비 위치
                       </div>
                       <div
                         style={{
@@ -643,7 +638,7 @@ export const DetailModal = memo(function DetailModal({
                             ? `+${Math.round(dev)}% 저렴`
                             : dev < 0
                               ? `${Math.abs(Math.round(dev))}% 비쌈`
-                              : "주변과 비슷"}
+                              : "적정가와 비슷"}
                         </span>
                         <span>30% 저렴</span>
                       </div>
@@ -652,13 +647,11 @@ export const DetailModal = memo(function DetailModal({
                 })()}
               {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는
                   유일한 자산(priceByArea 채움 96.8%, 단지당 중앙 28포인트). */}
-              {showDeviation && (
-                <AreaPriceScatter
-                  priceByArea={(mergedApt ?? apt).priceByArea}
-                  aptPrice={(apt.price as number | null) ?? null}
-                  aptArea={(apt.area as number | null) ?? null}
-                />
-              )}
+              <AreaPriceScatter
+                priceByArea={(mergedApt ?? apt).priceByArea}
+                aptPrice={(apt.price as number | null) ?? null}
+                aptArea={(apt.area as number | null) ?? null}
+              />
               <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
               <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
               <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
@@ -668,7 +661,7 @@ export const DetailModal = memo(function DetailModal({
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}
               <PriceByFloorBlock apt={mergedApt ?? apt} />
-              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-price" />}
+              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-price" />
             </section>
           )}
 
@@ -683,7 +676,7 @@ export const DetailModal = memo(function DetailModal({
             >
               {/* 요약 시각화 (세션 487 PR-5b) — 거리 자릿수가 필드마다 달라 축 3분리.
                   KTX(채움 0%)·IC(3.9%·km단위)·혐오시설(멀수록 좋음)은 의도적 제외. */}
-              {showDeviation && <DistanceDots apt={mergedApt ?? apt} />}
+              <DistanceDots apt={mergedApt ?? apt} />
 
               <SchoolInfo apt={mergedApt ?? apt} />
 
@@ -694,7 +687,7 @@ export const DetailModal = memo(function DetailModal({
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}
               <NearbyFacilitiesBlock apt={mergedApt ?? apt} />
-              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-location" />}
+              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-location" />
             </section>
           )}
 
@@ -707,15 +700,13 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-presale")}
             >
-              {showDeviation && (
-                <PresaleTimeline
-                  stage={(mergedApt ?? apt).presaleStage as string | null}
-                  minPrice={(mergedApt ?? apt).presaleMinPrice as number | null}
-                  maxPrice={(mergedApt ?? apt).presaleMaxPrice as number | null}
-                  aptPrice={(apt.price as number | null) ?? null}
-                  competitionRate={(mergedApt ?? apt).competitionRate as number | null}
-                />
-              )}
+              <PresaleTimeline
+                stage={(mergedApt ?? apt).presaleStage as string | null}
+                minPrice={(mergedApt ?? apt).presaleMinPrice as number | null}
+                maxPrice={(mergedApt ?? apt).presaleMaxPrice as number | null}
+                aptPrice={(apt.price as number | null) ?? null}
+                competitionRate={(mergedApt ?? apt).competitionRate as number | null}
+              />
               <PresaleInfo apt={apt} />
 
               {/* 청약경쟁·네이버분양정보 + 국토부 모집공고 원문 (세션 408 D2a) */}
@@ -727,7 +718,7 @@ export const DetailModal = memo(function DetailModal({
               {/* 관리자 인사이트(동/호수·평형 공급)는 세션 409 D2b 로 관리자 탭(sec-admin)으로 이동 */}
 
               <MarketStatsCharts region={apt.region} gu={apt.gu} />
-              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-presale" />}
+              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-presale" />
             </section>
           )}
 
@@ -740,16 +731,14 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-finance")}
             >
-              {showDeviation && (
-                <LoanStack
-                  price={(apt.price as number | null) ?? null}
-                  region={apt.region as string | null}
-                  gu={apt.gu as string | null}
-                  dsr40pass={(mergedApt ?? apt).dsr40pass as boolean | null}
-                />
-              )}
+              <LoanStack
+                price={(apt.price as number | null) ?? null}
+                region={apt.region as string | null}
+                gu={apt.gu as string | null}
+                dsr40pass={(mergedApt ?? apt).dsr40pass as boolean | null}
+              />
               <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
-              {showDeviation && <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-finance" />}
+              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-finance" />
             </section>
           )}
 

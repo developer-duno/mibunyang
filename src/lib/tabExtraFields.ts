@@ -1,4 +1,7 @@
 import { FIELD_META, FIELD_SECTIONS } from "@/constants/fieldMeta";
+import { DEVIATION_FIELD_NAMES } from "@/constants/deviationFields";
+import { DISTANCE_AXES } from "@/constants/distanceAxes";
+import { MARKET_STATS_FIELD_KEYS } from "@/constants/marketStatsFields";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, fieldsOf } from "@/lib/dataSections";
 
 /**
@@ -17,9 +20,14 @@ import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS,
  *
  * ## 계산 방식
  *
- * `이 탭의 여분 = FIELD_SECTIONS 의 섹션 필드 − dataSections 가 이미 그리는 필드`
+ * `이 탭의 여분 = FIELD_SECTIONS 의 섹션 필드 − (세부 섹션 ∪ 헤더 ∪ 차트)가 이미 그리는 필드`
  *
- * 양쪽 다 기존 상수라, 필드가 늘거나 세부 섹션이 바뀌면 **자동으로 따라온다.**
+ * 전부 기존 상수라, 필드가 늘거나 세부 섹션·차트가 바뀌면 **자동으로 따라온다.**
+ *
+ * ⚠️ **차트를 뺀 게 세션 505 의 정정이다.** 세션 487 이 신설한 그림 셋(편차 스트립·거리 점
+ * 그림·지역 시장 추이)은 `dataSections` 를 안 거쳐서 이 계산이 몰랐다. 그래서 스트립이 이미
+ * 보여준 주차·전용률이 종합 서랍에 또 있었고, 시세 서랍엔 전세가율·분양가격지수 같은 것이
+ * 남아 있었다 — 아코디언 이름("아직 안 보여드린 자료")이 곧 거짓말이 된 상태였다.
  */
 
 /** 팝업 탭 id (DetailModal `JUMP_SECTIONS` 와 같은 값) */
@@ -67,8 +75,23 @@ export const FIELDS_SHOWN_IN_TABS: ReadonlySet<string> = new Set(
 );
 
 /**
+ * 세션 487 이 신설한 그림들이 이미 보여주는 필드 — `dataSections` 를 안 거치므로 위 계산에 안 잡힌다.
+ *
+ * 손으로 적지 않고 각 그림의 정의 상수를 그대로 합친다. 그림에 항목이 늘고 줄면 서랍이
+ * 자동으로 따라오게 하려는 것이다(손 목록이면 반드시 어긋난다 — 그게 이 파일이 처음부터
+ * 차집합을 "계산"하는 이유다).
+ *
+ * 편차 스트립 8 + 거리 점 그림 12 + 지역 시장 추이 5.
+ */
+export const FIELDS_SHOWN_IN_CHARTS: ReadonlySet<string> = new Set([
+  ...DEVIATION_FIELD_NAMES,
+  ...DISTANCE_AXES.flatMap((ax) => ax.items.map((it) => it.field)),
+  ...MARKET_STATS_FIELD_KEYS,
+]);
+
+/**
  * 팝업이 **직접** 그리는 필드 — `dataSections` 를 안 거치므로 위 계산에 안 잡힌다.
- * 헤더(단지명·지역·면적·분양가·주소) + 종합 탭 핵심지표(미분양률·입주·LTV).
+ * 헤더(단지명·지역·면적·분양가·주소·개발구역) + 종합 탭 핵심지표(입주).
  *
  * ⚠️ 손으로 적은 목록이라 낡을 수 있어, `tabExtraFields.test.ts` 가 실제
  * `DetailModal.tsx` 소스에 `apt.<필드>` 가 있는지 대조한다. 헤더에서 빼면 테스트가 빨개진다.
@@ -81,13 +104,23 @@ export const FIELDS_SHOWN_IN_MODAL_CHROME: readonly string[] = [
   "area",
   "price",
   "address",
+  // 헤더 주소줄이 `주소 (개발구역)` 으로 함께 그린다
+  "district",
   "roadAddress",
-  "unsoldRate",
   "completion",
 ];
 
-/** 손님에게 보여줄 이유가 없는 내부 식별자 (관리자 표에는 그대로 남는다) */
-export const INTERNAL_ONLY_FIELDS: readonly string[] = ["id"];
+/**
+ * 손님에게 보여줄 이유가 없는 필드 (관리자 표에는 그대로 남는다).
+ *
+ * ⚠️ `FIELD_META` 의 `hidden` 과 다르다 — 그건 **관리자 전수 표에서도** 지워버린다
+ * (`FieldTable.visibleFields`). "손님만 안 본다"는 여기서 처리해야 한다.
+ */
+export const INTERNAL_ONLY_FIELDS: readonly string[] = [
+  "id",
+  // 바로 위 "네이버 주변 중위가"와 같은 이야기를 한 번 더 하는 값 (세션 505 사장님 승인)
+  "naverNearbyAvg",
+];
 
 export type ExtraSection = { key: string; title: string; color: string; fields: string[] };
 
@@ -101,7 +134,12 @@ export const TAB_EXTRA_SECTIONS: Readonly<Record<TabId, ExtraSection[]>> = (() =
     "sec-finance": [],
   };
   const meta = FIELD_META as Record<string, { hidden?: boolean } | undefined>;
-  const alreadySeen = new Set([...FIELDS_SHOWN_IN_TABS, ...FIELDS_SHOWN_IN_MODAL_CHROME, ...INTERNAL_ONLY_FIELDS]);
+  const alreadySeen = new Set([
+    ...FIELDS_SHOWN_IN_TABS,
+    ...FIELDS_SHOWN_IN_MODAL_CHROME,
+    ...FIELDS_SHOWN_IN_CHARTS,
+    ...INTERNAL_ONLY_FIELDS,
+  ]);
   for (const sec of FIELD_SECTIONS) {
     const byTab = new Map<TabId, string[]>();
     for (const f of sec.fields) {
