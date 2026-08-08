@@ -175,7 +175,6 @@ export interface UseLoginGateReturn {
   setShowLoginPrompt: (_v: boolean) => void;
   loginTrigger: LoginTrigger;
   setLoginTrigger: (_v: LoginTrigger) => void;
-  handleDetailGated: (_aptId: string) => void;
   handleKakaoFromPrompt: () => void;
   /** 특정 단지를 이유로 로그인 모달 열기 — 로그인 후 그 단지로 복귀하도록 pendingDetailId 기록 (세션 495). */
   requestLoginForDetail: (_aptId: string) => void;

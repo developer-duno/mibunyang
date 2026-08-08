@@ -284,8 +284,9 @@ export const KakaoMapView = memo(function KakaoMapView({
       // 강조 복원용 — 일반 이미지를 마커 객체에 보관(강조 해제 시 setImage 로 되돌림)
       (marker as any).__normalImage = normalImage;
       // 마커 클릭 = 선택 강조(setSelected) + 바로 상세 진입(onDetail). 세션 417: 사장님 "말풍선
-      // 눌러도 안 들어간다" — 카드만 뜨던 2단계를 1단계로. 비로그인이면 onDetail(=handleDetailGated)이
-      // 로그인 모달을 띄움(정책 유지). setSelected 는 강조·선택카드 유지용(세션 416).
+      // 눌러도 안 들어간다" — 카드만 뜨던 2단계를 1단계로. 세션 503(2-B)부터는 비로그인도 상세가
+      // 그대로 열리고 점수만 블라인드(2-A) — 로그인 모달은 상세 안 CTA 로 옮겨졌다.
+      // setSelected 는 강조·선택카드 유지용(세션 416).
       kakao.event.addListener(marker, "click", () => {
         setSelected(item);
         if (onDetailRef.current && item.apt.id) onDetailRef.current(item.apt.id);

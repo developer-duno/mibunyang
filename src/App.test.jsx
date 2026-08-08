@@ -517,19 +517,38 @@ describe("App 통합 테스트", () => {
       window.history.replaceState(null, "", "/");
     });
 
-    it("?detail= 딥링크 (비로그인): 상세 모달 대신 LoginPromptModal (게이트 일괄 차단 세션413)", async () => {
+    // ── 세션 503(단계 2-B): 상세 진입 게이트 폐지 ──
+    // 세션413 의 "게이트 일괄 차단"을 뒤집은 것. 구글봇은 언제나 비로그인이라, 게이트가 있으면
+    // 색인할 내용이 0 이라 sitemap 을 아무리 늘려도 헛수고였다. 이제 상세는 열리고 점수만 가린다(2-A).
+    it("옛 ?detail= 딥링크 (비로그인): 상세가 열리고 주소가 /apt/{id} 로 승격된다", async () => {
       vi.stubEnv("VITE_FEATURE_HOME", "true");
       window.history.replaceState(null, "", "/?detail=apt1");
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
-      // 비로그인 → URL 직진입도 게이트(handleDetailGated) 경유 = 로그인 안내 모달
       await waitFor(() => {
-        expect(screen.getByRole("dialog", { name: "로그인 안내" })).toBeInTheDocument();
+        expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole("dialog", { name: "로그인 안내" })).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(window.location.pathname).toBe("/apt/apt1");
       });
       window.history.replaceState(null, "", "/");
     });
 
-    it("홈 추천 카드 상세 클릭: 비로그인 → LoginPromptModal (handleDetailGated 게이트)", async () => {
+    it("경로형 /apt/{id} 직진입 (비로그인): 그 단지 상세가 열린다", async () => {
+      vi.stubEnv("VITE_FEATURE_HOME", "true");
+      window.history.replaceState(null, "", "/apt/apt1");
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument();
+      });
+      // 복원 전에 주소가 지워지면 안 된다 (첫 렌더 prev=null 가드)
+      expect(window.location.pathname).toBe("/apt/apt1");
+      window.history.replaceState(null, "", "/");
+    });
+
+    it("홈 추천 카드 상세 클릭: 비로그인도 상세가 열린다 (로그인 안내 모달 아님)", async () => {
       vi.stubEnv("VITE_FEATURE_HOME", "true");
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
@@ -541,7 +560,13 @@ describe("App 통합 테스트", () => {
       await act(async () => {
         detailBtn.click();
       });
-      expect(screen.getByRole("dialog", { name: "로그인 안내" })).toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "로그인 안내" })).not.toBeInTheDocument();
+      // 카드 클릭 경로는 pushState 로 주소를 만든다(옛 ?detail= 승격은 replaceState 라 별 경로).
+      await waitFor(() => {
+        expect(window.location.pathname).toMatch(/^\/apt\/.+/);
+      });
+      window.history.replaceState(null, "", "/");
     });
   });
 });

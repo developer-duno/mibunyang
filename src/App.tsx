@@ -292,17 +292,18 @@ export default function App() {
     dataUpdatedAt,
   });
 
-  // ── 비로그인 게이트 (LoginPromptModal 관련 3 state + 3 핸들러) ──
+  // ── 로그인 유도 모달 (LoginPromptModal 관련 3 state + 3 핸들러) ──
+  // 세션 503(2-B): 상세 진입 게이트 폐지 — 비로그인도 상세를 열고 점수만 블라인드(2-A).
+  // 로그인 유도는 상세 안 CTA(onRequestLogin)와 지도 탭 게이트(loginTrigger="map") 두 곳만 남는다.
   const {
     showLoginPrompt,
     setShowLoginPrompt,
     loginTrigger,
     setLoginTrigger,
-    handleDetailGated,
     handleKakaoFromPrompt,
     requestLoginForDetail,
     closeLoginPrompt,
-  } = useLoginGate({ isLoggedIn, detail, kakao });
+  } = useLoginGate({ kakao });
 
   // ── 지도 뷰포트 보존 (M3) — 탭 전환/언마운트 간 center/level 유지 ──
   // useRef 라 리렌더 0. getViewport 는 MapView 마운트 시 1회 호출(render 중 ref 접근 회피),
@@ -400,7 +401,9 @@ export default function App() {
     tab,
     setTab,
     setProfile,
-    handleDetailGated,
+    detailAptId: detail.detailAptId,
+    openDetail: detail.handleOpenDetail,
+    closeDetail: detail.handleCloseDetail,
     setCompIds,
     setShowCompOpen,
     apartments,
@@ -573,7 +576,7 @@ export default function App() {
             if (sort) setSortKey(sort);
             handleNavClick(target);
           }}
-          onDetail={handleDetailGated}
+          onDetail={detail.handleOpenDetail}
           onFav={toggleFavorite}
           favoriteSet={favoriteSet}
           onComp={toggleComp}
@@ -647,7 +650,7 @@ export default function App() {
               setVisibleCount((v) => v + VISIBLE_PAGE_SIZE);
               trackEvent("load_more", { visible_count: visibleCount + VISIBLE_PAGE_SIZE });
             }}
-            onDetail={handleDetailGated}
+            onDetail={detail.handleOpenDetail}
             onFav={toggleFavorite}
             onComp={toggleComp}
             favoriteSet={favoriteSet}
@@ -686,7 +689,7 @@ export default function App() {
           >
             <MapView
               filtered={filtered}
-              onDetail={handleDetailGated}
+              onDetail={detail.handleOpenDetail}
               isPC={isPC}
               isDesktop={isDesktop}
               getViewport={getMapViewport}
@@ -759,7 +762,7 @@ export default function App() {
           }
         >
           <UpcomingPage
-            onOpenDetail={handleDetailGated}
+            onOpenDetail={detail.handleOpenDetail}
             onBackToMain={() => {
               setTab(LANDING_TAB);
               try {

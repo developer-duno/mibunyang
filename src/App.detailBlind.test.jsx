@@ -1,12 +1,12 @@
 // @ts-check
 /**
- * App → DetailModal 블라인드 배선 통합 테스트 (세션 495).
+ * App → DetailModal 블라인드 배선 통합 테스트 (세션 495 · 세션 503 갱신).
  *
- * 왜 별도 파일인가 — App.test.jsx 는 "비로그인은 상세를 못 연다"(세션 413 게이트)를 지키는
- * 테스트를 갖고 있어서, 그 파일에서 useLoginGate 를 통째로 모킹하면 그 가드가 죽는다.
- * 여기서는 게이트만 통과시켜(단계 2-B 를 앞당겨 흉내) **App 이 isLoggedIn 을 실제로 넘기는지**를
- * 본다. `isLoggedIn={isLoggedIn}` 한 줄이 사라지면 DetailModal 기본값 true 로 되돌아가
- * 블라인드가 통째로 사라지는데, 지금까지는 그걸 잡는 테스트가 하나도 없었다.
+ * 보는 것 = **App 이 isLoggedIn 을 실제로 DetailModal 에 넘기는지**. `isLoggedIn={isLoggedIn}`
+ * 한 줄이 사라지면 DetailModal 기본값 true 로 되돌아가 블라인드가 통째로 사라진다.
+ *
+ * 세션 503(단계 2-B): 상세 진입 게이트가 폐지돼 이 파일이 쓰던 "게이트만 통과시키는 스텁"이
+ * 필요 없어졌다 — 이제 비로그인도 그냥 상세가 열린다. useLoginGate 모킹도 함께 걷어냈다.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -46,21 +46,6 @@ vi.mock("@/components/ShareSheet", () => ({
   ShareSheet: () => null,
 }));
 
-// 게이트만 통과시키는 스텁 — 단계 2-B(비로그인도 상세를 연다)를 미리 흉내낸다.
-// 로그인 상태(useAuth)는 손대지 않으므로 App 이 넘기는 isLoggedIn 은 계속 false 다.
-vi.mock("@/hooks/useLoginGate", () => ({
-  useLoginGate: (/** @type {any} */ { detail }) => ({
-    showLoginPrompt: false,
-    setShowLoginPrompt: vi.fn(),
-    loginTrigger: null,
-    setLoginTrigger: vi.fn(),
-    handleDetailGated: (/** @type {string} */ id) => detail.handleOpenDetail(id),
-    handleKakaoFromPrompt: vi.fn(),
-    requestLoginForDetail: vi.fn(),
-    closeLoginPrompt: vi.fn(),
-  }),
-}));
-
 import { fetchStaticApartments } from "@/services/staticDataApi";
 import App from "./App";
 
@@ -86,10 +71,16 @@ describe("App → DetailModal 블라인드 배선", () => {
 
     render(<App />);
 
-    // DetailModal 은 lazy — Suspense 해제까지 기다린다
-    await waitFor(() => {
-      expect(screen.getAllByLabelText(BLIND_LABEL).length).toBeGreaterThan(0);
-    });
+    // DetailModal 은 lazy — Suspense 해제까지 기다린다.
+    // ⚠️ timeout 5초(기본 1초 아님): 세션 503 실측에서 이 대기가 여러 파일과 나란히 돌 때
+    // 1,195ms 가 걸려 20~40% 확률로 깨졌다(코드 변경 전에도 재현 — 원래 있던 깜빡임).
+    // 지연 로딩 컴포넌트 + 데이터 파이프라인이라 1초는 애초에 빠듯하다.
+    await waitFor(
+      () => {
+        expect(screen.getAllByLabelText(BLIND_LABEL).length).toBeGreaterThan(0);
+      },
+      { timeout: 5000 }
+    );
 
     window.history.replaceState(null, "", "/");
   });

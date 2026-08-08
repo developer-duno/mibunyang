@@ -19,7 +19,11 @@ type TopPicksWidgetProps = {
   onExpand: () => void;
 };
 
-/** 추천 TOP 3 — 현재 프로필 점수 상위 3. onDetail 은 반드시 handleDetailGated (홈 상세 게이트 정책) */
+/**
+ * 추천 TOP 3 — 현재 프로필 점수 상위 3.
+ * onDetail 은 상세를 바로 여는 함수(detail.handleOpenDetail). 세션 503(2-B)에서 상세 진입
+ * 게이트를 없앴다 — 비로그인도 열리고 점수만 블라인드(2-A)다.
+ */
 export const TopPicksWidget = memo(function TopPicksWidget({
   scored,
   pw,
