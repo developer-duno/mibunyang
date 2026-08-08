@@ -8,9 +8,10 @@
  *
  * 필요 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, selectAll, createReporter, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
+const PHASE = "calc-floors";
 const DRY = process.argv.includes("--dry-run");
 
 /**
@@ -26,6 +27,10 @@ export function classifyFloors(maxFloor) {
 }
 
 async function main() {
+  // 세션 504: 이 수집기는 매주 도는데 collector_runs 에 행을 한 번도 남기지 않아
+  // "돌았는지·실패했는지" 를 아무도 볼 수 없었다(감시 사각). 리포터를 루프 이전에 만든다
+  // — 루프 뒤에 만들면 SIGTERM 핸들러 등록이 0회라 graceful 이 무효가 된다(infra-kakao 선례).
+  const rpt = createReporter(PHASE);
   const sb = getSupabase();
 
   // max_floor가 있고 floors가 없는 단지 조회 — selectAll 공유 헬퍼(1000행/배치 자동 페이지네이션)
@@ -43,13 +48,15 @@ async function main() {
     targets.slice(0, 5).forEach(a =>
       log("dry", `${a.id} → max_floor=${a.max_floor} → "${classifyFloors(a.max_floor)}"`)
     );
+    await recordCollectorRun(PHASE, rpt.summary()); // --dry-run 이면 내부에서 기록 skip
     return;
   }
 
   let updated = 0;
   for (const apt of targets) {
+    if (rpt.interrupted()) break;
     const floors = classifyFloors(apt.max_floor);
-    if (!floors) continue;
+    if (!floors) { rpt.skip(); continue; }
 
     const { error: uErr } = await sb
       .from("apartments")
@@ -58,12 +65,18 @@ async function main() {
 
     if (uErr) {
       log("error", `${apt.id}: ${uErr.message}`);
+      rpt.fail();
     } else {
       updated++;
+      rpt.success();
     }
   }
 
   log("calc-floors", `완료: ${updated}건 갱신`);
+  // 0건이어도 반드시 기록한다 — "부를 게 없어서 0건" 과 "전부 실패해서 0건" 은
+  // 기록이 남아야만 구분된다(collect-trades 2개월 공백 사고, 세션 503).
+  const summary = rpt.summary();
+  await recordCollectorRun(PHASE, summary);
 }
 
 const argv1 = process.argv[1];

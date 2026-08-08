@@ -684,12 +684,69 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("신규 collector — 행 수 < 3 이면 점검 skip (오탐 차단)", () => {
+  it("신규 collector — 행 1개 + 최신이 신선하면 조용 (오탐 차단)", () => {
     const issues = checkExternalApiStale(
       targets,
       {
         "housing-permits": [
-          { status: "success", ok_count: 0, finished_at: "2026-05-27T00:00:00Z" },
+          { status: "success", ok_count: 0, finished_at: "2026-05-27T00:00:00Z" }, // 1일 전
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("행이 아예 없으면 조용 — 기준 시각이 없어 판정 불가 (세션 504)", () => {
+    const issues = checkExternalApiStale(targets, { "housing-permits": [] }, now);
+    expect(issues).toHaveLength(0);
+  });
+
+  // ⚠️ 아래 두 건이 세션 504 회귀 가드의 본체다.
+  //    "행 3개 미만이면 skip" 가드가 함수 맨 앞에 있으면 ⑤-b(미발화)까지 함께 막혀
+  //    행 1~2개짜리 collector 가 몇 달을 안 돌아도 영영 침묵한다(실제로 그 상태였다).
+  //    ⑤-b 는 최신 1행이면 판정 가능하므로, 가드를 위로 되돌리면 이 두 건이 red 여야 한다.
+  it("행 1개뿐이어도 최신이 stale_days 초과면 미발화 알림 (세션 504)", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 42, finished_at: "2026-05-01T00:00:00Z" }, // 27일 전 > 14
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].detail).toMatch(/미발화/);
+    expect(issues[0].detail).toMatch(/27일/);
+  });
+
+  it("행 2개여도 최신이 stale_days 초과면 미발화 알림 (세션 504)", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 5, finished_at: "2026-05-08T00:00:00Z" }, // 20일 전 > 14
+          { status: "success", ok_count: 3, finished_at: "2026-04-08T00:00:00Z" },
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].detail).toMatch(/20일/);
+  });
+
+  it("행 2개 + 전부 ok=0 이어도 outage 로는 안 간다 — N회 연속 정의상 3행 필요 (세션 504)", () => {
+    // ⑤-a 는 "3회 연속 빈 성공" 이 정의라 2행으로는 판정하지 않는다.
+    // 최신 행을 신선하게 둬서 ⑤-b 도 안 걸리게 한 뒤, 결과가 0건인지로 ⑤-a 의 3행 요건을 검증한다.
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 0, finished_at: "2026-05-27T00:00:00Z" }, // 1일 전
+          { status: "success", ok_count: 0, finished_at: "2026-04-27T00:00:00Z" },
         ],
       },
       now,

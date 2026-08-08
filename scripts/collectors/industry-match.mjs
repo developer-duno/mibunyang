@@ -13,7 +13,10 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import { spawnSync } from "node:child_process";
-import { loadEnv, getSupabase, log, logError, ROOT, haversineKm } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, ROOT, haversineKm, createReporter, recordCollectorRun } from "./_shared.mjs";
+
+// 세션 504: 매월 도는데 collector_runs 행이 0개라 감시 사각이었다.
+const PHASE = "industry-match";
 
 loadEnv();
 
@@ -26,6 +29,8 @@ export const haversine = haversineKm;
 
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
+  // 리포터는 반드시 루프 이전에 — 루프 뒤에 만들면 SIGTERM 등록이 0회라 무효(infra-kakao 선례).
+  const rpt = createReporter(PHASE);
   const dryRun = process.argv.includes("--dry-run");
   const jsonMode = process.argv.includes("--json");
 
@@ -107,6 +112,7 @@ async function main() {
       console.log(`  ${apt?.name || u.id}: ${u.industry_dev}`);
     }
     if (updates.length > 30) console.log(`  ... 외 ${updates.length - 30}건`);
+    await recordCollectorRun(PHASE, rpt.summary()); // --dry-run 이면 내부에서 skip
     return;
   }
 
@@ -123,6 +129,7 @@ async function main() {
     const updatedData = [...aptMap.values()];
     writeFileSync(jsonPath, JSON.stringify({ ...rawWrapper, data: updatedData, count: updatedData.length }, null, 2), "utf8");
     log("json", `apartments.json 업데이트 완료 (${updates.length}건)`);
+    rpt.success(updates.length);
 
     // split-apartments-json 자동 호출 — prebuild.mjs L11 답습 (ROOT=repo 루트라 scripts/ 명시, 세션 468)
     const splitScript = resolve(ROOT, "scripts", "split-apartments-json.mjs");
@@ -132,14 +139,20 @@ async function main() {
     const sb = getSupabase();
     let ok = 0;
     for (const u of updates) {
+      if (rpt.interrupted()) break;
       const { error } = await sb.from("apartments")
         .update({ industry_dev: u.industry_dev })
         .eq("id", u.id);
-      if (error) logError("upsert", `${u.id}: ${error.message}`);
-      else ok++;
+      if (error) { logError("upsert", `${u.id}: ${error.message}`); rpt.fail(); }
+      else { ok++; rpt.success(); }
     }
     log("supabase", `${ok}/${updates.length}건 업데이트`);
   }
+
+  // 0건이어도 기록한다 — 기록이 없으면 "매칭될 게 없어서 0건" 과 "전부 실패해서 0건" 이
+  // 구분되지 않는다(collect-trades 2개월 공백 사고, 세션 503).
+  const summary = rpt.summary();
+  await recordCollectorRun(PHASE, summary);
 }
 
 const argv1 = process.argv[1];

@@ -15,7 +15,10 @@
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { spawnSync } from "node:child_process";
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, ROOT } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, ROOT, createReporter, recordCollectorRun } from "./_shared.mjs";
+
+// 세션 504: 매월 도는데 collector_runs 행이 0개라 감시 사각이었다.
+const PHASE = "environment";
 
 loadEnv();
 
@@ -103,6 +106,8 @@ async function classifyView(lat, lng) {
 
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
+  // 리포터는 반드시 루프 이전에 — 루프 뒤면 SIGTERM 등록이 0회라 무효(infra-kakao 선례).
+  const rpt = createReporter(PHASE);
   const dryRun = process.argv.includes("--dry-run");
   const jsonMode = process.argv.includes("--json");
 
@@ -151,14 +156,18 @@ async function main() {
   const counts = { "블루": 0, "그린": 0, "천공": 0 };
 
   for (const apt of targets) {
+    if (rpt.interrupted()) break;
     try {
       const view = await classifyView(Number(apt.lat), Number(apt.lng));
-      if (view == null) { logError("skip", `${apt.name}: API 전체 실패, 판정 불가`); processed++; continue; }
+      // API 가 통째로 실패해 판정 불가인 것은 skip 이 아니라 fail — 이걸 skip 으로 세면
+      // "전부 실패해서 0건" 이 "바뀔 게 없어서 0건" 으로 위장된다(세션 503 실거래 사고).
+      if (view == null) { logError("skip", `${apt.name}: API 전체 실패, 판정 불가`); processed++; rpt.fail(); continue; }
       updates.push({ id: apt.id, view });
       counts[view]++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logError("classify", `${apt.name}: ${msg}`);
+      rpt.fail();
     }
 
     processed++;
@@ -176,6 +185,7 @@ async function main() {
       console.log(`  ${apt?.name || u.id}: ${u.view}`);
     }
     if (updates.length > 30) console.log(`  ... 외 ${updates.length - 30}건`);
+    await recordCollectorRun(PHASE, rpt.summary()); // --dry-run 이면 내부에서 skip
     return;
   }
 
@@ -191,6 +201,7 @@ async function main() {
     const updatedData = [...aptMap.values()];
     writeFileSync(jsonPath, JSON.stringify({ ...rawWrapper, data: updatedData, count: updatedData.length }, null, 2), "utf8");
     log("json", `apartments.json 업데이트 완료 (${updates.length}건)`);
+    rpt.success(updates.length);
 
     // split-apartments-json 자동 호출 — prebuild.mjs L11 답습 (ROOT=repo 루트라 scripts/ 명시, 세션 468)
     const splitScript = resolve(ROOT, "scripts", "split-apartments-json.mjs");
@@ -200,14 +211,19 @@ async function main() {
     const sb = getSupabase();
     let ok = 0;
     for (const u of updates) {
+      if (rpt.interrupted()) break;
       const { error } = await sb.from("apartments")
         .update({ view: u.view })
         .eq("id", u.id);
-      if (error) logError("upsert", `${u.id}: ${error.message}`);
-      else ok++;
+      if (error) { logError("upsert", `${u.id}: ${error.message}`); rpt.fail(); }
+      else { ok++; rpt.success(); }
     }
     log("supabase", `${ok}/${updates.length}건 업데이트`);
   }
+
+  // 0건이어도 기록한다 (세션 503 실거래 사고 답습).
+  const summary = rpt.summary();
+  await recordCollectorRun(PHASE, summary);
 }
 
 const argv1 = process.argv[1];
