@@ -2,7 +2,9 @@ import { test, expect } from "@playwright/test";
 import { stubApartments, freezeAnimations, waitForStableRender } from "./helpers";
 
 // 비로그인 시각 회귀 baseline (세션 418)
-// - 카카오 OAuth 로그인 게이트 안쪽(지도·상세)은 자동 캡처 불가 → 비로그인 화면만.
+// - 카카오 OAuth 로그인이 필요한 화면(지도)은 자동 캡처 불가 → 비로그인 화면만.
+//   ⚠️ 세션 503(2-B): **상세는 이제 비로그인도 열린다**(점수만 블라인드). 지금 이 파일은 그걸
+//   아직 안 찍는데, 상세 화면 시각 회귀를 잡고 싶으면 캡처 대상에 추가할 수 있는 상태가 됐다.
 // - 카드 데이터는 고정 픽스처로 스텁한다(세션 487). 원래는 mask 만으로 daily refresh 를
 //   피하려 했으나, 마스크는 카드 *내용*만 가릴 뿐 **카드 높이**는 못 가려서 칩이 하나만
 //   늘어도 아래 요소가 전부 밀려 baseline 이 스스로 깨졌다(실측 확인). mask 는 그대로 둔다
