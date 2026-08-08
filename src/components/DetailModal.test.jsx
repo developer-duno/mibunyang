@@ -309,7 +309,9 @@ describe("DetailModal StickyJumpNav", () => {
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     const loc = container.querySelector("#sec-location");
     expect(loc?.textContent).toContain("교통 상세");
-    expect(loc?.textContent).toContain("생활인프라 (반경 1km)");
+    expect(loc?.textContent).toContain("치안/환경");
+    // 세션 505: "생활인프라 (반경 1km)" 표는 없앴다 — 거리 점 그림이 개수까지 병기해 흡수.
+    expect(loc?.textContent).not.toContain("생활인프라");
   });
 
   it("시세 탭에 '시장/투자 지표' 데이터 섹션 헤더가 보인다 (D2a)", () => {

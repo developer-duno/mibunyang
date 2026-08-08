@@ -14,12 +14,15 @@ vi.mock("@/hooks/usePresaleDetail", () => ({
 }));
 
 describe("PresaleInfo", () => {
-  // presaleStage·schedule 둘 다 없으면 아무것도 렌더링하지 않음.
-  // (mock 기본값 schedule=null → presaleStage null + schedule null이라 일정-only 분기도 null 반환)
-  it("presaleStage가 null이고 schedule도 없으면 null을 반환한다", () => {
+  // presaleStage·schedule 둘 다 없으면 "분양정보 없음" 한 줄.
+  // ⚠️ 세션 505 이전엔 null 이었다. 그 아래 "네이버 분양정보" 표를 없애면서, 자료가 없는
+  //    단지의 분양 탭이 아무 말 없이 비게 됐다 — 고장인지 자료가 없는 건지 구분이 안 된다.
+  it("presaleStage가 null이고 schedule도 없으면 '분양정보 없음' 한 줄을 표시한다", () => {
     const apt = /** @type {any} */ (makeApt({ presaleStage: null }));
-    const { container } = render(<PresaleInfo apt={apt} />);
-    expect(container.firstChild).toBeNull();
+    render(<PresaleInfo apt={apt} />);
+    expect(screen.getByText(/분양정보 없음/)).toBeTruthy();
+    // 카드 본문(가격·일정)은 여전히 안 뜬다
+    expect(screen.queryByText("네이버 분양정보")).toBeNull();
   });
 
   // 게이트 분리: presaleStage가 null이어도 청약홈 일정(schedule)이 있으면 일정-only 카드 노출.

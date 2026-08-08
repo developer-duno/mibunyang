@@ -2,6 +2,7 @@ import { FIELD_META, FIELD_SECTIONS } from "@/constants/fieldMeta";
 import { DEVIATION_FIELD_NAMES } from "@/constants/deviationFields";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 import { MARKET_STATS_FIELD_KEYS } from "@/constants/marketStatsFields";
+import { FIELDS_SHOWN_IN_PRESALE_CARD } from "@/constants/presaleCardFields";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, fieldsOf } from "@/lib/dataSections";
 
 /**
@@ -20,7 +21,7 @@ import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS,
  *
  * ## 계산 방식
  *
- * `이 탭의 여분 = FIELD_SECTIONS 의 섹션 필드 − (세부 섹션 ∪ 헤더 ∪ 차트)가 이미 그리는 필드`
+ * `이 탭의 여분 = FIELD_SECTIONS 의 섹션 필드 − (세부 섹션 ∪ 헤더 ∪ 전용 카드 ∪ 차트)가 이미 그리는 필드`
  *
  * 전부 기존 상수라, 필드가 늘거나 세부 섹션·차트가 바뀌면 **자동으로 따라온다.**
  *
@@ -43,7 +44,12 @@ const SECTION_TO_TAB: Record<string, TabId> = {
   미래: "sec-location", // 교통호재·도시개발·산업단지 = "이 동네에 뭐가 들어오나" → 입지
   안전: "sec-presale",
   분양: "sec-presale",
-  혜택: "sec-finance", // 할인·중도금무이자·옵션·캐시백 = 돈 이야기 → 금융
+  // ⚠️ `혜택` 은 세션 505 에 뺐다 — 어느 탭에도 안 붙인다.
+  //   9필드(할인·중도금무이자·옵션·발코니·캐시백) 실측 채움률이 **전부 0.0%** 라
+  //   금융 탭 서랍이 "아직 안 보여드린 자료 10개"라 적어 놓고 열면 전부 미수집인
+  //   빈 서랍이었다. 손님에게 보여줄 값은 `benefits`(혜택 목록) 하나뿐이고 그건
+  //   종합 탭 혜택 칩이 이미 그린다. 나머지 9개는 `INTERNAL_ONLY_FIELDS` 로 내렸다
+  //   (관리자 전수 표에는 그대로 남는다).
 };
 
 /**
@@ -81,11 +87,16 @@ export const FIELDS_SHOWN_IN_TABS: ReadonlySet<string> = new Set(
  * 자동으로 따라오게 하려는 것이다(손 목록이면 반드시 어긋난다 — 그게 이 파일이 처음부터
  * 차집합을 "계산"하는 이유다).
  *
- * 편차 스트립 8 + 거리 점 그림 12 + 지역 시장 추이 5.
+ * 편차 스트립 8 + 거리 점 그림 12(거리) + 개수 11 + 지역 시장 추이 5.
+ *
+ * ⚠️ 세션 505 에 **개수 필드**가 합류했다. 거리 점 그림이 라벨에 개수를 병기하면서
+ * ("병원 3곳") 개수까지 흡수했고, 그래서 개수만 따로 늘어놓던 "생활인프라" 표를 없앴다.
+ * 여기서도 손으로 적지 않고 `countField` 를 그대로 합친다 — 그림에 시설이 늘고 줄면
+ * 서랍이 자동으로 따라오게 하려는 것이다.
  */
 export const FIELDS_SHOWN_IN_CHARTS: ReadonlySet<string> = new Set([
   ...DEVIATION_FIELD_NAMES,
-  ...DISTANCE_AXES.flatMap((ax) => ax.items.map((it) => it.field)),
+  ...DISTANCE_AXES.flatMap((ax) => ax.items.flatMap((it) => (it.countField ? [it.field, it.countField] : [it.field]))),
   ...MARKET_STATS_FIELD_KEYS,
 ]);
 
@@ -108,6 +119,25 @@ export const FIELDS_SHOWN_IN_MODAL_CHROME: readonly string[] = [
   "district",
   "roadAddress",
   "completion",
+  // 종합 탭 "혜택 상세" 칩줄 (세션 505 — 금융 탭 서랍을 없애면서 이 값의 자리를 여기로 확정)
+  "benefits",
+];
+
+/**
+ * 팝업 안의 **전용 카드**가 이미 그리는 필드 — `dataSections` 를 안 거치므로 위 계산에 안 잡힌다.
+ *
+ * 헤더(`FIELDS_SHOWN_IN_MODAL_CHROME`)와 나눠 둔 이유: 저건 `DetailModal.tsx` 가 직접 그리는
+ * 것이라 그 파일 하나만 대조하면 되지만, 이건 자식 컴포넌트가 그린다 — 어느 파일을 볼지가
+ * 필드마다 다르다. `tabExtraFields.test.ts` 가 필드별로 해당 소스에 `apt.<필드>` 가 있는지 대조한다.
+ */
+export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
+  // 분양 탭 `detail/PresaleInfo` 카드 15필드
+  ...FIELDS_SHOWN_IN_PRESALE_CARD,
+  // 입지 탭 `detail/SchoolInfo` 카드가 등급 배지로 그린다
+  "schoolGrade",
+  // 금융 탭 `charts/LoanStack` 이 한 문장으로 그린다("DSR 기준도 통과할 만해요").
+  // 분양 탭 서랍이 아니라 금융 탭 대출 그림이 제자리 (세션 505 목업).
+  "dsr40pass",
 ];
 
 /**
@@ -120,6 +150,26 @@ export const INTERNAL_ONLY_FIELDS: readonly string[] = [
   "id",
   // 바로 위 "네이버 주변 중위가"와 같은 이야기를 한 번 더 하는 값 (세션 505 사장님 승인)
   "naverNearbyAvg",
+  // 점수를 매기는 재료일 뿐, 손님에게 보이는 표현은 등급(`schoolGrade`)이다.
+  // 같은 학군을 점수와 등급 두 줄로 읽히게 할 이유가 없다 (세션 505).
+  "schoolScore",
+  // 혜택 9종 — 실측 채움률이 **전부 0.0%** 다. 손님 표면은 종합 탭 혜택 칩(`benefits`)과
+  // 카드 할인 배지가 이미 맡고 있어, 이 9개는 열어도 늘 "미수집"인 빈 줄만 만든다
+  // (세션 505 Q1 사장님 승인 — 관리자 전수 표에는 그대로 남는다).
+  "discountPct",
+  "loanFree",
+  "loanFreePct",
+  "optionFree",
+  "optionValue",
+  "balconyFree",
+  "balconyValue",
+  "cashback",
+  "contractDiscount",
+  // 규제지역 여부 — 이 **필드 자체**는 화면 어디서도 안 그린다(실측). 같은 이야기는
+  // 종합 탭 규제현황(`getZone` 계산)과 분양 카드 "공고 당시 규제"(`regulationFlags`)가
+  // 이미 하고, 둘 다 이 컬럼이 아니라 자기 출처를 쓴다. 세 번째 말할 자리는 없다
+  // (세션 505 목업 — 관리자 전수 표에는 그대로 남는다).
+  "isRegulated",
 ];
 
 export type ExtraSection = { key: string; title: string; color: string; fields: string[] };
@@ -137,6 +187,7 @@ export const TAB_EXTRA_SECTIONS: Readonly<Record<TabId, ExtraSection[]>> = (() =
   const alreadySeen = new Set([
     ...FIELDS_SHOWN_IN_TABS,
     ...FIELDS_SHOWN_IN_MODAL_CHROME,
+    ...FIELDS_SHOWN_IN_DETAIL_CARDS,
     ...FIELDS_SHOWN_IN_CHARTS,
     ...INTERNAL_ONLY_FIELDS,
   ]);

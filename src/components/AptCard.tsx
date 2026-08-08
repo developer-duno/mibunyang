@@ -289,14 +289,14 @@ export const AptCard = memo(
           {isLoggedIn && recommendReason && <div style={S.reasonChip}>✓ {recommendReason}</div>}
 
           {/* ③.5 편차 스트립 (세션 487) — "이 단지 vs 같은 지역 한가운데 값" 3줄.
-              플래그 뒤에 둔다: 카드 30장이 한 번에 바뀌는 변경이라 배포 후 환경변수만으로 되돌릴 수 있어야 한다. */}
+              되돌림용 스위치는 세션 505 에 졸업했고, 지금 조건은 지역 분포(regionStats) 유무뿐이다. */}
           {showDeviation && <DeviationStrip apt={apt} fields={CARD_DEVIATION_FIELDS} regionStats={regionStats} />}
 
           {/* ④ 카테고리 3칸.
-              스트립이 켜지면 ④′ 신호등 1줄로 압축한다 — 점수 숫자 대신 등급 문자, 막대 h5→h3
+              스트립이 보이면 ④′ 신호등 1줄로 압축한다 — 점수 숫자 대신 등급 문자, 막대 h5→h3
               (h40 → h26, 스트립이 더한 높이를 일부 상쇄). 숫자는 상세 팝업 점수 탭에 그대로 있다.
-              ⚠️ 압축도 **같은 플래그 안**에 둔다. 밖에 두면 플래그를 내려도 카드가 옛 모습으로
-              안 돌아가 "환경변수만으로 롤백" 이 성립하지 않는다(세션 487 실측으로 확인). */}
+              ⚠️ 압축 조건도 스트립과 **같은 `showDeviation`** 을 쓴다. 다른 조건을 쓰면 스트립이
+              없는 카드가 압축된 채로 남아 점수 숫자가 통째로 사라진다(세션 487 실측으로 확인). */}
           <div style={isDesktop ? { ...S.grid, gap: showDeviation ? "8px 12px" : "10px 14px" } : S.grid}>
             {(topCats as Array<[string, { label: string; total: number }]>).map(([k, c]) => {
               const barH = showDeviation ? 3 : 5;

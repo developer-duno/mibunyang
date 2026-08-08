@@ -675,7 +675,8 @@ export const DetailModal = memo(function DetailModal({
               style={panelStyle("sec-location")}
             >
               {/* 요약 시각화 (세션 487 PR-5b) — 거리 자릿수가 필드마다 달라 축 3분리.
-                  KTX(채움 0%)·IC(3.9%·km단위)·혐오시설(멀수록 좋음)은 의도적 제외. */}
+                  세션 505 에 개수까지 라벨에 병기해("병원 3곳") 아래 "생활인프라" 표를 흡수했다.
+                  KTX·IC(km 단위라 m 축과 안 맞음)·혐오시설(멀수록 좋아 방향이 반대)은 여전히 제외. */}
               <DistanceDots apt={mergedApt ?? apt} />
 
               <SchoolInfo apt={mergedApt ?? apt} />

@@ -17,11 +17,13 @@ import type { Apt } from "@/types/scoring";
  * 하나의 축에 다 올리면 69km 짜리 하나 때문에 나머지 전부가 왼쪽 끝에 뭉쳐 **아무것도
  * 구분이 안 된다**. 그래서 자릿수가 비슷한 것끼리 묶어 축을 3개로 나눈다.
  *
- * ## 일부러 뺀 것 (전부 실측으로 확인)
+ * ## 일부러 뺀 것
  *
- * - `ktxDist` — 채움 **0.0%**. 1,581 단지 전부 센티널(99)이라 그릴 값이 없다.
- * - `icDist` — 채움 3.9% 인 데다 단위가 **km**(0.2~8.3)라 m 필드와 같은 축에 두면
- *   "IC 가 8m" 처럼 읽힌다.
+ * - `ktxDist`·`icDist` — 단위가 **km**(0.2~8.3)라 m 축에 그대로 올리면 "IC 가 8m" 처럼
+ *   읽힌다. 축 자체가 안 맞는 것이지 값이 없어서가 아니다 — 세션 499 의 수집 정정으로
+ *   채움률은 KTX 71.8% · IC 79.2% 까지 올라왔다(그 전 수치 0%·3.9% 를 근거로 적어둔
+ *   옛 주석은 지금은 거짓이라 고쳤다). **그림에 넣을지 말지는 이번 범위 밖**이고,
+ *   넣으려면 km 전용 축을 따로 만들어야 한다. 지금은 "교통 상세" 표가 그린다.
  * - `noxiousDist` — **멀수록 좋은** 유일한 필드다. "왼쪽일수록 가깝다=좋다" 규칙과
  *   방향이 반대라 같은 그림에 섞으면 정반대로 읽힌다. 카드·치안환경 섹션이 이미 다룬다.
  */
@@ -30,7 +32,8 @@ import type { Apt } from "@/types/scoring";
 // "이 그림이 이미 보여준 필드"를 세야 하는데, lib 이 components 를 import 하면 방향이 뒤집힌다.
 
 const ROW_H = 22;
-const LABEL_W = 62;
+// 세션 505 에 62 → 84. 라벨이 "병원"에서 "병원 12곳"으로 길어졌다 — 62 로 두면 개수가 잘린다.
+const LABEL_W = 84;
 const VALUE_W = 62;
 
 /** m 를 사람이 읽는 말로 — 1km 넘으면 km */
@@ -47,12 +50,35 @@ function usable(field: string, raw: unknown): number | null {
   return n;
 }
 
+/**
+ * 쓸 수 있는 개수인가 — null·0·NaN 은 안 적는다.
+ *
+ * 0 을 "0곳"으로 적지 않는 이유: 수집이 안 된 것과 정말 한 곳도 없는 것을 이 값만으로는
+ * 가를 수 없다. 그런데 바로 옆에 거리 값이 있으면 "0곳인데 200m"라는 모순된 줄이 된다.
+ * 그래서 확실할 때만 병기하고, 아니면 옛 라벨 그대로 둔다.
+ */
+function usableCount(raw: unknown): number | null {
+  if (raw == null) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+}
+
 export const DistanceDots = memo(function DistanceDots({ apt }: { apt: Apt }) {
   const raw = apt as unknown as Record<string, unknown>;
 
+  // 세션 505: 라벨에 개수를 함께 적는다("병원 3곳"). 개수 표는 이 그림 아래에서 없앴고,
+  // 개수와 거리를 두 곳에서 따로 읽던 것을 여기 한 줄로 합쳤다.
   const axes = DISTANCE_AXES.map((ax) => ({
     ...ax,
-    rows: ax.items.map((it) => ({ ...it, v: usable(it.field, raw[it.field]) })),
+    rows: ax.items.map((it) => {
+      const cnt = it.countField ? usableCount(raw[it.countField]) : null;
+      return {
+        ...it,
+        v: usable(it.field, raw[it.field]),
+        label: cnt != null ? `${it.label} ${cnt}곳` : it.label,
+      };
+    }),
   }));
   const total = axes.reduce((s, a) => s + a.rows.length, 0);
   const filled = axes.reduce((s, a) => s + a.rows.filter((r) => r.v != null).length, 0);
