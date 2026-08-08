@@ -18,7 +18,10 @@
  * 필요 환경변수:
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY, KAKAO_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordCollectorRun } from "./_shared.mjs";
+
+// 세션 504: 매월 도는데 collector_runs 행이 0개라 감시 사각이었다.
+const PHASE = "noise-estimate";
 
 loadEnv();
 
@@ -99,6 +102,8 @@ async function findNearestRoad(kakaoKey, lat, lng) {
 
 // ── 메인 ─────────────────────────────────────────────────────────
 async function main() {
+  // 리포터는 반드시 루프 이전에 — 루프 뒤면 SIGTERM 등록이 0회라 무효(infra-kakao 선례).
+  const rpt = createReporter(PHASE);
   const dryRun = process.argv.includes("--dry-run");
   const kakaoKey = process.env.KAKAO_KEY;
 
@@ -126,12 +131,16 @@ async function main() {
 
   if (apts.length === 0) {
     log("done", "처리할 아파트 없음");
+    // 할 일이 0건이어도 기록은 남긴다 — 안 남기면 "돌았는데 할 일이 없었다" 와
+    // "아예 안 돌았다" 가 구분되지 않는다(세션 503 실거래 사고).
+    await recordCollectorRun(PHASE, rpt.summary());
     return;
   }
 
   const results = [];
 
   for (let i = 0; i < apts.length; i++) {
+    if (rpt.interrupted()) break;
     const apt = apts[i];
 
     // 1단계: road_address 파싱 (API 호출 없이 즉시 추정)
@@ -174,12 +183,14 @@ async function main() {
     const fromAddr = results.filter(r => r.source === "address").length;
     const fromKakao = results.filter(r => r.source === "kakao").length;
     console.log(`  소스: 주소파싱 ${fromAddr}건, Kakao API ${fromKakao}건`);
+    await recordCollectorRun(PHASE, rpt.summary()); // --dry-run 이면 내부에서 skip
     return;
   }
 
   // apartments 테이블 개별 update (noise 컬럼)
   let updated = 0;
   for (const r of results) {
+    if (rpt.interrupted()) break;
     const { error: e } = await sb
       .from("apartments")
       .update({ noise: r.noise })
@@ -187,12 +198,16 @@ async function main() {
 
     if (e) {
       logError("update", `${r.name}: ${e.message}`);
+      rpt.fail();
     } else {
       updated++;
+      rpt.success();
     }
   }
 
   log("done", `apartments.noise ${updated}/${results.length}건 업데이트 완료`);
+  const summary = rpt.summary();
+  await recordCollectorRun(PHASE, summary);
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)

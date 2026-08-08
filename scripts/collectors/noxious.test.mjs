@@ -2,7 +2,9 @@
 /**
  * noxious.mjs 테스트 — Haversine 거리 계산 검증
  */
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
+import yaml from "js-yaml";
 
 // loadEnv + 외부 API 호출 방지
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -113,5 +115,49 @@ describe("buildNoxiousRow (저장 행 생성)", () => {
 
   it("발견이 있고 거리가 NaN 이어도 null 로 막는다", () => {
     expect(buildNoxiousRow("e", ["변전소"], NaN).noxious_dist).toBeNull();
+  });
+});
+
+// ── 벽시계 예산 회귀 가드 (세션 504) ──────────────────────────────
+//
+// 사고: 6/03·7/03·8/03 세 회차가 job 시작 후 **정확히 60분 15초**에 죽었다.
+// GitHub annotation 원문 = "The job has exceeded the maximum execution time of 1h0m0s".
+// job timeout 도달은 grace 0 즉시 SIGKILL 이라 `rpt.interrupted()`(SIGTERM 전용) 도,
+// 마지막 `recordCollectorRun` 도 실행될 틈이 없다 — 그래서 collector_runs 행이 0개였다.
+//
+// 이 가드는 두 가지를 묶는다. 하나만 있으면 조용히 어긋난다:
+//   1. 스크립트 기본 예산(DEFAULT_BUDGET_MIN) < 워크플로 job timeout
+//   2. 루프 안에 예산 체크가 실제로 박혀 있는가
+//
+// ⚠️ 소스 grep 가드는 좌변까지 고정한다. `budgetExceeded` 부분 문자열만 찾으면
+//    import 줄이나 이 주석에도 걸려 "지워도 통과"하는 껍데기가 된다
+//    (.claude/rules/meta/guards-must-be-mutation-tested.md §"소스 grep 가드").
+describe("noxious 벽시계 예산 — job timeout 전에 스스로 멈추는가", () => {
+  const src = readFileSync("scripts/collectors/noxious.mjs", "utf-8");
+
+  it("루프 안에 예산 체크가 박혀 있다", () => {
+    expect(src).toMatch(/if \(budgetExceeded\(startedMs, budgetMin\)\) \{ budgetHit = true; break; \}/);
+  });
+
+  it("예산 초과 시 status 를 partial 로 낮춘다 (잘린 회차를 완주로 기록하지 않기)", () => {
+    expect(src).toMatch(/if \(budgetHit\) \{[\s\S]*?result\.status = "partial";/);
+  });
+
+  it("기본 예산이 collect-noxious.yml 의 job timeout 보다 최소 10분 작다", () => {
+    const m = src.match(/^\s*const DEFAULT_BUDGET_MIN = (\d+);\s*$/m);
+    expect(m, "DEFAULT_BUDGET_MIN 선언을 찾지 못함 — 이름이 바뀌었으면 이 가드도 갱신").toBeTruthy();
+    const budgetMin = Number(m?.[1]);
+    expect(Number.isFinite(budgetMin)).toBe(true);
+
+    const yml = /** @type {any} */ (
+      yaml.load(readFileSync(".github/workflows/collect-noxious.yml", "utf-8"), {
+        schema: yaml.FAILSAFE_SCHEMA,
+      })
+    );
+    const timeoutMin = Number(yml?.jobs?.["collect-noxious"]?.["timeout-minutes"]);
+    expect(Number.isFinite(timeoutMin), "collect-noxious job 의 timeout-minutes 파싱 실패").toBe(true);
+
+    // 마무리(마지막 저장 + collector_runs 기록)에 쓸 여유가 있어야 한다.
+    expect(timeoutMin - budgetMin).toBeGreaterThanOrEqual(10);
   });
 });

@@ -10,9 +10,10 @@
  */
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { loadEnv, getSupabase, log, ROOT } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, ROOT, createReporter, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
+const PHASE = "regulation-seed";
 
 /**
  * 규제지역 JSON → Set 생성
@@ -39,6 +40,9 @@ export function makeRegionKey(region, gu) {
 }
 
 async function main() {
+  // 세션 504: 매주 도는데 collector_runs 기록이 0행이라 감시 사각이었다.
+  // 리포터는 반드시 루프 이전에 만든다(루프 뒤면 SIGTERM 등록 0회 = graceful 무효).
+  const rpt = createReporter(PHASE);
   const DRY = process.argv.includes("--dry-run");
   const sb = getSupabase();
 
@@ -65,15 +69,17 @@ async function main() {
 
   let updated = 0;
   for (const apt of apts) {
+    if (rpt.interrupted()) break;
     const key = makeRegionKey(apt.region, apt.gu);
     const shouldBeRegulated = regulated.has(key);
 
     // 이미 동일하면 건너뜀
-    if (apt.is_regulated === shouldBeRegulated) continue;
+    if (apt.is_regulated === shouldBeRegulated) { rpt.skip(); continue; }
 
     if (DRY) {
       log("dry", `${apt.id} (${key}) → is_regulated=${shouldBeRegulated}`);
       updated++;
+      rpt.success();
       continue;
     }
 
@@ -84,12 +90,18 @@ async function main() {
 
     if (uErr) {
       log("error", `${apt.id}: ${uErr.message}`);
+      rpt.fail();
     } else {
       updated++;
+      rpt.success();
     }
   }
 
   log("regulation", `완료: ${updated}건 갱신`);
+  // 0건이어도 기록한다 — 기록이 없으면 "바뀔 게 없어서 0건" 과 "전부 실패해서 0건" 이
+  // 구분되지 않는다(collect-trades 2개월 공백 사고, 세션 503).
+  const summary = rpt.summary();
+  await recordCollectorRun(PHASE, summary);
 }
 
 const argv1 = process.argv[1];

@@ -12,7 +12,10 @@
  * 필요 환경변수:
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY, DART_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, selectAll, createReporter, recordCollectorRun } from "./_shared.mjs";
+
+// 세션 504: 분기마다 도는데 collector_runs 에 행을 한 번도 남기지 않아 감시 사각이었다.
+const PHASE = "dart-builders";
 
 /**
  * @typedef {{ fs_div: string, sj_div: string, account_nm: string, thstrm_amount: string }} DartFinancialItem
@@ -95,6 +98,29 @@ export function parseAmount(str) {
 }
 
 /**
+ * 실패 사유 집계 (세션 504).
+ *
+ * 이 함수의 세 갈래(`!res.ok` / `status !== "000"` / `catch`)가 전부 조용히 `continue` 라
+ * **재무 0건으로 끝나도 왜인지가 로그에 안 남았다.** 8/04 회차는 배치당 86초(직전 성공 회차의
+ * 25배)를 쓰고 수확 0건이었는데, 그게 키 거부인지·응답 지연인지·네트워크 문제인지 가를 근거가
+ * 로그에 하나도 없었다. 요청이 수백 건이라 줄마다 찍으면 폭주하므로 사유별로 세어 한 번만 낸다.
+ * @type {Map<string, number>}
+ */
+const failReasons = new Map();
+/** @param {string} reason */
+function noteFail(reason) {
+  failReasons.set(reason, (failReasons.get(reason) ?? 0) + 1);
+}
+/** 집계된 실패 사유를 한 줄로 (없으면 null) */
+export function formatFailReasons(reasons = failReasons) {
+  if (reasons.size === 0) return null;
+  return [...reasons.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([r, n]) => `${r}×${n}`)
+    .join(", ");
+}
+
+/**
  * @param {string} dartKey
  * @param {string} corpCode
  * @returns {Promise<DartFinancialResult | null>}
@@ -109,9 +135,11 @@ async function fetchFinancials(dartKey, corpCode) {
       try {
         const url = `https://opendart.fss.or.kr/api/fnlttSinglAcnt.json?crtfc_key=${dartKey}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=${reprt}`;
         const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-        if (!res.ok) continue;
+        if (!res.ok) { noteFail(`HTTP ${res.status}`); continue; }
         const json = /** @type {DartFinancialResponse} */ (await res.json());
-        if (json.status !== "000" || !json.list) continue;
+        // DART 는 키 거부·조회 없음도 HTTP 200 + status 코드로 준다 — 그래서 코드를 남겨야
+        // "키 문제(010/020)" 와 "그 해에 보고서가 없음(013)" 이 구분된다.
+        if (json.status !== "000" || !json.list) { noteFail(`status ${json.status ?? "?"}`); continue; }
 
         let items = json.list.filter((/** @type {DartFinancialItem} */ x) => x.fs_div === "CFS" && x.sj_div === "BS");
         if (items.length === 0) {
@@ -129,7 +157,11 @@ async function fetchFinancials(dartKey, corpCode) {
             return { debtRatio, year, reprt };
           }
         }
-      } catch {
+      } catch (err) {
+        // TimeoutError = 15초 abort 도달(응답 지연) / 그 외 = 연결 자체 실패.
+        // 이 둘을 안 가르면 "느린 것" 과 "막힌 것" 이 같은 0건으로 보인다.
+        const name = err instanceof Error ? err.name : "Unknown";
+        noteFail(name === "TimeoutError" ? "timeout(15s)" : `err:${name}`);
         continue;
       }
     }
@@ -139,6 +171,8 @@ async function fetchFinancials(dartKey, corpCode) {
 
 // ── 메인 ─────────────────────────────────────────────────────────
 async function main() {
+  // 리포터는 루프 이전에 — 루프 뒤면 SIGTERM 등록이 0회라 graceful 이 무효(infra-kakao 선례).
+  const rpt = createReporter(PHASE);
   const dryRun = process.argv.includes("--dry-run");
   const dartKey = process.env.DART_KEY;
 
@@ -209,6 +243,7 @@ async function main() {
   const results = [];
 
   for (let i = 0; i < targets.length; i += 3) {
+    if (rpt.interrupted()) break;
     const batch = targets.slice(i, i + 3);
     const batchResults = await Promise.allSettled(
       batch.map(async (name) => {
@@ -229,8 +264,12 @@ async function main() {
           credit_grade: grade,
           updated_at: new Date().toISOString(),
         });
+        rpt.success();
       } else if (r.status === "fulfilled") {
         log("dart", `${r.value.name}: 재무 데이터 없음`);
+        rpt.skip();
+      } else {
+        rpt.fail();
       }
     }
 
@@ -239,18 +278,26 @@ async function main() {
   }
 
   log("calc", `${results.length}/${targets.length} 시공사 재무 데이터 수집`);
+  // 세션 504: 0건으로 끝나도 "왜" 가 남게 한다 — 8/04 회차는 사유가 하나도 안 남아
+  // 키 문제인지 응답 지연인지 가를 수 없었다.
+  const reasons = formatFailReasons();
+  if (reasons) log("dart", `[실패사유] ${reasons}`);
 
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
     for (const r of results) {
       console.log(`  ${r.name}: 부채비율 ${r.debt_ratio}%, 신용등급 ${r.credit_grade}`);
     }
+    await recordCollectorRun(PHASE, rpt.summary()); // --dry-run 이면 내부에서 skip
     return;
   }
 
   // 4. builders 테이블 upsert
   if (!results.length) {
     log("done", "upsert할 데이터 없음");
+    // 0건이어도 기록한다 — 이 자리가 정확히 감시 사각이었다. 기록이 없으면
+    // "수집할 게 없어서 0건" 과 "API 가 전부 막혀서 0건" 이 똑같이 조용하다(세션 503 실거래 사고).
+    await recordCollectorRun(PHASE, rpt.summary());
     return;
   }
 
@@ -283,6 +330,8 @@ async function main() {
     if (!error) aliasCount++;
   }
   if (aliasCount > 0) log("done", `alias 행 ${aliasCount}건 추가 (아파트 원본명)`);
+
+  await recordCollectorRun(PHASE, rpt.summary());
 }
 
 const isCLI = !!process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop() ?? "");

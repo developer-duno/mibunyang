@@ -12,7 +12,7 @@
  *   node scripts/collectors/reverse-geocode.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/reverse-geocode.mjs --force      (이미 주소 있어도 재수행)
  */
-import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown, recordCollectorRun } from "./_shared.mjs";
 
 loadEnv();
 
@@ -74,6 +74,9 @@ async function main() {
   const force = process.argv.includes("--force");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
+  // 세션 504: 매일·매주 도는데 collector_runs 행이 0개라 감시가 이 수집기를 못 봤다.
+  const startedMs = Date.now();
+  const startedAt = new Date().toISOString();
   const sb = getSupabase();
   const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 344: graceful shutdown
 
@@ -92,7 +95,18 @@ async function main() {
   }
 
   log(PHASE, `대상: ${apts.length}건`);
-  if (apts.length === 0) { log(PHASE, "모든 단지에 주소 있음"); return; }
+  if (apts.length === 0) {
+    log(PHASE, "모든 단지에 주소 있음");
+    // 할 일이 0건이어도 기록은 남긴다 — 안 남기면 "돌았는데 할 일이 없었다" 와
+    // "아예 안 돌았다" 가 구분되지 않아 미발화 감시가 무력해진다(세션 503 실거래 사고).
+    await recordCollectorRun(PHASE, {
+      ok: 0, fail: 0, skip: 0,
+      elapsed: ((Date.now() - startedMs) / 1000).toFixed(1),
+      startedAt,
+      status: "success",
+    });
+    return;
+  }
 
   let updated = 0, failed = 0;
 
@@ -161,6 +175,14 @@ async function main() {
   }
 
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 실패 ${failed} / 전체 ${apts.length} ===`);
+  // 중단(SIGTERM)으로 루프를 끊고 나온 경우는 partial — 성공으로 찍으면 잘린 회차가
+  // 정상 완주로 보여 다음 회차가 이어받아야 할 신호를 지운다.
+  await recordCollectorRun(PHASE, {
+    ok: updated, fail: failed, skip: 0,
+    elapsed: ((Date.now() - startedMs) / 1000).toFixed(1),
+    startedAt,
+    status: isInterrupted() ? "partial" : (failed > 0 ? "failure" : "success"),
+  });
   if (failed > 0) process.exit(1);
 }
 

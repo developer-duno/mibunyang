@@ -248,6 +248,11 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⑤-b 미발화 분기(collector_runs.finished_at 기준)가 유일하게 "데이터 N일 stale" 을 잡음 (세션 447).
   //   5일 연속이라도 한 묶음 발화(19일 success→다음달 15일 발화 ~26일 간격)라 stale_days:38(=31일+1주)은 적정.
   { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (월 15~19일 cron + 1주 여유)" },
+  // housing-price = 공동주택공시가격 (collect-housing-price.yml, 매월 16일 cron — 세션 504 등재).
+  //   지금까지 ⑤ 어디에도 없어서 7/16 실패 후 방치돼도 아무 알림이 없었다(그 실패의 원인은
+  //   계정 지출한도였고 8/1 청구 리셋으로 해소됐지만, 그걸 알아챈 건 사람이 뒤늦게 뒤진 결과다).
+  //   월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100 기준표).
+  { collector: "housing-price",    stale_days: 38, owner: "공동주택공시가격 CSV (월 16일 cron + 1주 여유)" },
   // naver-presale = 네이버 분양정보 pre.land (scripts/collectors/naver-presale.mjs, run-naver-local.sh 3/6 단계).
   //   네이버 IP 차단으로 한국 IP 로컬 PC 에서만 실행 = Windows 스케줄러 `MibunyangNaverCollect` 월/목 08:00.
   //   GH run 이 없어 ③ 워크플로 점검 대상 밖 → collector_runs 신선도가 유일한 "안 돌면 알림".
@@ -582,7 +587,8 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
   const issues = [];
   for (const { collector, stale_days, owner } of targets) {
     const rows = runsByCollector[collector] ?? [];
-    if (rows.length < OUTAGE_MIN_CONSECUTIVE) continue; // 신규 collector 오탐 차단
+    // 행이 0개면 기준 시각 자체가 없어 아래 두 분기 다 판정 불가 (세션 504).
+    if (rows.length === 0) continue;
 
     // ⑤-b 미발화 — 최신 행이 stale_days 초과 = collector 가 안 돌고 있음.
     //    GH yml 없는 로컬 러너 수집기(KOSIS 10종)는 ③ 워크플로 점검 대상 밖이라
@@ -606,6 +612,12 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
       }
     }
 
+    // ⑤-a outage 는 "N회 연속" 이 정의라 N행이 있어야 판정된다 (신규 collector 오탐 차단).
+    // ⚠️ 이 가드는 세션 504 이전에 함수 맨 앞(rows 조회 직후)에 있었다. 그 자리에서는
+    //    행 1~2개짜리 collector 의 ⑤-b(미발화)까지 함께 막아, 정식 등재돼 있는데도 영영
+    //    침묵하는 사각을 만들었다(2026-08-01 입력으로 재현 시 naver-presale·notify-subscribers
+    //    두 건이 발화했어야 하는데 [] 였다). ⑤-b 는 최신 1행이면 판정 가능하므로 여기로 내렸다.
+    if (rows.length < OUTAGE_MIN_CONSECUTIVE) continue;
     const recent = rows.slice(0, OUTAGE_MIN_CONSECUTIVE);
     // success 인데 ok=0 & skip=0 만 점검 — failure 는 ①, 단발 0건은 ②가 잡음.
     // skip>0 = 원천 정상 응답 + 변경분만 0 (연간 통계 수집기 fertility 등 평상시 ok=0·skip>0) → outage 아님 (세션 289).
