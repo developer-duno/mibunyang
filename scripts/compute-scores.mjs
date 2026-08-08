@@ -9,7 +9,7 @@
  * 효과:
  *   프론트엔드 calcCats() 355,440 ops → 0 ops (서버 캐시 사용)
  */
-import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, recordCollectorRun } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, recordCollectorRun, selectAll } from "./collectors/_shared.mjs";
 import { computeRegionalMedians, calcCats } from "@/scoring/engine";
 
 // ── 설정 ─────────────────────────────────────────────────────
@@ -17,6 +17,40 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const BATCH_SIZE = 1000;
 /** collector_runs 기록명 — monitor ⑤ 라벨 드리프트 방지용 단일 출처. */
 const PHASE = "compute-scores";
+
+// ── 낡은 점수 정리 (세션502) ──────────────────────────────────
+// 이 스크립트는 `apartments_flat` VIEW 만 읽어 채점하는데, VIEW 는 이름·지역·동이 같은 단지를
+// 중복 제거(dedup CTE)해서 원본 `apartments` 보다 적다. 그래서 **VIEW 밖으로 밀려난 행은 영영
+// 재채점되지 않고 옛 점수를 그대로 들고 있었다** — 세션502 실측 시점에 579곳 중 570곳이 4.5개월
+// 전(2026-03) 값. 지금은 API·정적 JSON 모두 VIEW 를 거치므로 손님에게 새지 않지만, 누가
+// `apartments` 를 직접 읽는 코드를 하나 쓰는 순간 옛 점수가 조용히 나가는 잠복 지뢰다.
+// → 매 회차 끝에 VIEW 밖 행의 cats_cache 를 NULL 로 비워 스스로 정리한다.
+
+/** 한 회차에 지울 수 있는 최대 비율. 부분 조회 사고로 멀쩡한 점수를 쓸어버리는 것을 막는 안전판. */
+export const STALE_CLEAR_MAX_RATIO = 0.4;
+
+/**
+ * 점수를 들고 있는 행 중 이번 회차 채점 대상(=VIEW 전량)에 없는 id 를 추린다.
+ * ⚠️ 기준은 "채점에 **성공**한 행" 이 아니라 "VIEW 에 **있는** 행" 이다 — 검증 실패로 스킵된
+ *    VIEW 내 단지의 기존 점수까지 지워버리면 화면에서 점수가 사라진다.
+ * @param {Set<string>} viewIds apartments_flat 이 돌려준 전체 id
+ * @param {{ id: string }[]} rowsWithScores apartments 에서 cats_cache 가 비어있지 않은 행
+ * @returns {string[]}
+ */
+export function findStaleScoreIds(viewIds, rowsWithScores) {
+  return rowsWithScores.filter((r) => !viewIds.has(r.id)).map((r) => r.id);
+}
+
+/**
+ * 지우려는 양이 안전 범위인가. VIEW 조회가 일부만 돌아온 회차에 전량 삭제가 되는 것을 막는다.
+ * @param {number} staleCount 지우려는 행 수
+ * @param {number} totalWithScores 점수를 들고 있는 전체 행 수
+ */
+export function isStaleClearSafe(staleCount, totalWithScores) {
+  if (!Number.isFinite(staleCount) || !Number.isFinite(totalWithScores)) return false;
+  if (staleCount < 0 || totalWithScores <= 0) return false;
+  return staleCount / totalWithScores <= STALE_CLEAR_MAX_RATIO;
+}
 
 // ── cats_cache 검증 ──────────────────────────────────────────
 const REQUIRED_KEYS = ["price", "location", "product", "benefit", "risk", "future"];
@@ -169,8 +203,57 @@ export async function main() {
     dbFailed = failed;
   }
 
+  // 5) VIEW 밖에 남은 낡은 점수 정리 (세션502 — 위 STALE_CLEAR_MAX_RATIO 주석 참조)
+  dbFailed += await clearStaleScores(sb, new Set(allApartments.map((a) => a.id)));
+
   if (dbFailed > 0) reporter.fail(dbFailed);
   await recordCollectorRun(PHASE, reporter.summary());
+}
+
+/**
+ * VIEW 밖 행의 cats_cache 를 NULL 로 비운다.
+ * @param {any} sb Supabase 클라이언트
+ * @param {Set<string>} viewIds apartments_flat 전체 id
+ * @param {{ dryRun?: boolean }} [opts] dryRun 은 테스트에서 주입한다(기본 = CLI 플래그)
+ * @returns {Promise<number>} 실패 건수 (호출부가 dbFailed 에 합산)
+ */
+export async function clearStaleScores(sb, viewIds, { dryRun = DRY_RUN } = {}) {
+  // selectAll 이 .range() 페이지네이션을 붙여준다 (PostgREST 1,000행 제한 회피).
+  /** @type {{ id: string }[]} */
+  const scored = await selectAll((s) => s.from("apartments").select("id").not("cats_cache", "is", null), sb);
+  const staleIds = findStaleScoreIds(viewIds, scored);
+  if (staleIds.length === 0) {
+    log(PHASE, "낡은 점수 없음 — 정리 생략");
+    return 0;
+  }
+  if (!isStaleClearSafe(staleIds.length, scored.length)) {
+    // 여기 걸리면 대개 VIEW 조회가 일부만 돌아온 것이다. 지우지 않고 크게 남긴다.
+    logError(
+      PHASE,
+      `낡은 점수 ${staleIds.length}/${scored.length}건 = 안전 한도(${STALE_CLEAR_MAX_RATIO * 100}%) 초과 — 정리 중단. ` +
+        `VIEW 조회가 온전했는지 확인 필요 (VIEW ${viewIds.size}건)`,
+    );
+    return 1;
+  }
+  if (dryRun) {
+    log(PHASE, `[DRY-RUN] 낡은 점수 ${staleIds.length}건 정리 대상 — DB 미반영`);
+    return 0;
+  }
+  log(PHASE, `낡은 점수 ${staleIds.length}건 정리 중... (VIEW 밖 = 손님에게 안 보이는 중복 행)`);
+  let cleared = 0, failed = 0;
+  const BATCH = 100;
+  for (let i = 0; i < staleIds.length; i += BATCH) {
+    const slice = staleIds.slice(i, i + BATCH);
+    const { data, error } = await sb.from("apartments").update({ cats_cache: null }).in("id", slice).select("id");
+    if (error) {
+      logError(PHASE, `낡은 점수 정리 실패: ${error.message}`);
+      failed += slice.length;
+    } else {
+      cleared += data?.length ?? 0;
+    }
+  }
+  log(PHASE, `낡은 점수 정리 완료: ${cleared}건 (실패 ${failed}건)`);
+  return failed;
 }
 
 // CLI 직접 실행 시에만 main() 호출 — import 만으로 수집이 돌면 테스트가 실 DB 를 친다
