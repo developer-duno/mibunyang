@@ -58,7 +58,9 @@ const ALLOWLIST = new Set([
   "collect-sale-price-index.mjs",
   "collect-unsold-kosis.mjs",      // 이미 박힘 (rpt=1 break=1) — 검증 통과 가능, 안전 박힘
   // graceful 무관 — DART / 환경 / 산업 / 운영
-  "dart-builders.mjs",
+  // 세션 504: dart-builders.mjs 를 ALLOWLIST 에서 **제거**했다.
+  // 분기마다 도는데 collector_runs 기록이 0행이라 8/04 취소를 아무도 못 봤다.
+  // createReporter/break/기록 + 실패사유 집계를 넣었으니 이제 검사 대상이다.
   // 세션 504: environment.mjs · industry-match.mjs 를 ALLOWLIST 에서 **제거**했다.
   // 매월 도는데 collector_runs 기록이 0행이라 감시가 못 보던 자리 — 배선하며 break 도 박았다.
   // 세션 491: noxious.mjs 를 ALLOWLIST 에서 **제거**했다.
