@@ -4,13 +4,24 @@
  */
 import { describe, it, expect, vi } from "vitest";
 
+// 세션 503: fetchTradeRows 의 실패 집계를 검증하려면 외부 호출을 우리가 조종해야 한다.
+const fetchMock = vi.fn();
+
 // loadEnv + 외부 API 호출 방지
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
-  return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
+  return {
+    ...orig,
+    loadEnv: vi.fn(),
+    getMibuyangSupabase: vi.fn(),
+    getSupabase: vi.fn(),
+    fetchWithRetry: (/** @type {unknown[]} */ ...a) => fetchMock(...a),
+    sleep: vi.fn(), // 월당 200ms 대기 제거 (테스트 속도)
+  };
 });
 
-const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl, parseOnlyFilter } = await import("./collect-trades.mjs");
+const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl, parseOnlyFilter, fetchTradeRows } =
+  await import("./collect-trades.mjs");
 
 describe("parseOnlyFilter (세션94 단계 C)", () => {
   it("--only=경기:화성시 → '경기:화성시'", () => {
@@ -243,5 +254,39 @@ describe("TRADE_CONFIGS.validate", () => {
   it("presale: price > 0 && area > 0 이면 true", () => {
     expect(/** @type {any} */ (TRADE_CONFIGS.presale.validate)(55000, 84.99)).toBe(true);
     expect(/** @type {any} */ (TRADE_CONFIGS.presale.validate)(0, 84.99)).toBe(false);
+  });
+});
+
+// ── 세션 503: 수집 0건의 두 가지 뜻을 구분한다 ──
+// 2026-08-06 회차가 2시간 31분 동안 전 호출 `fetch failed` 로 0건을 받고도 워크플로가 **초록불**로
+// 끝나 실거래가 2개월 공백이 아무도 모르게 지나갔다. 실패를 세지 않으면 "부를 게 없어 0건"과
+// "전부 실패해서 0건"이 구분되지 않는다.
+describe("fetchTradeRows — API 실패 집계 (세션 503)", () => {
+  it("호출이 전부 실패하면 실패 횟수를 월 수만큼 센다 (수집 0건이어도)", async () => {
+    fetchMock.mockRejectedValue(new Error("fetch failed"));
+    const r = await fetchTradeRows(
+      "11110",
+      ["202607", "202606", "202605"],
+      "sale",
+      { region: "서울", gu: "종로구" },
+      new Set(),
+      false
+    );
+    expect(r.rows).toEqual([]);
+    expect(r.apiCalls).toBe(0);
+    expect(r.apiFails).toBe(3); // ← 이 줄이 "조용한 0건"을 막는 근거
+  });
+
+  it("정상 응답이면 실패는 0 이다 (거짓 경보 차단)", async () => {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => "<response><body><items></items></body></response>" });
+    const r = await fetchTradeRows(
+      "11110",
+      ["202607"],
+      "sale",
+      { region: "서울", gu: "종로구" },
+      new Set(),
+      false
+    );
+    expect(r.apiFails).toBe(0);
   });
 });

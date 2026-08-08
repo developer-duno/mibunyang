@@ -139,13 +139,16 @@ async function fetchXml(url) {
  * @param {RegionGuPair} rg
  * @param {Set<string>} seen
  * @param {boolean} prevFallbackUsed
- * @returns {Promise<{ rows: TradeRow[]; apiCalls: number; fallbackUsed: boolean }>}
+ * @returns {Promise<{ rows: TradeRow[]; apiCalls: number; apiFails: number; fallbackUsed: boolean }>}
  */
 export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbackUsed) {
   const config = TRADE_CONFIGS[type];
   /** @type {TradeRow[]} */
   const rows = [];
   let apiCalls = 0;
+  // 세션 503: 실패 횟수를 세어 올린다. 안 세면 "전부 실패해서 0건"과 "부를 게 없어서 0건"이
+  // 구분되지 않아, 아래 main() 이 두 경우를 똑같이 성공으로 끝낸다(그게 2개월 공백을 숨겼다).
+  let apiFails = 0;
   let fallbackUsed = prevFallbackUsed || false;
   let regionFallback = false;
 
@@ -186,12 +189,13 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
       }
       apiCalls++;
     } catch (err) {
+      apiFails++;
       const msg = err instanceof Error ? err.message : String(err);
       logError(PHASE, `${config.label} API 실패 ${lawdCd}/${month}: ${msg}`);
     }
     await sleep(200);
   }
-  return { rows, apiCalls, fallbackUsed };
+  return { rows, apiCalls, apiFails, fallbackUsed };
 }
 
 /**
@@ -262,6 +266,7 @@ async function main() {
   /** @type {TradeRow[]} */
   const rows = [];
   let apiCalls = 0;
+  let apiFails = 0;
   let fallbackUsed = false;
   /** @type {Set<string>} */
   const seen = new Set();
@@ -289,6 +294,7 @@ async function main() {
       const result = await fetchTradeRows(lawdCd, months, type, rg, seen, fallbackUsed);
       rows.push(...result.rows);
       apiCalls += result.apiCalls;
+      apiFails += result.apiFails;
       fallbackUsed = result.fallbackUsed;
     }
     if (budgetHit) break;  // 내부 loop 가 예산으로 끊겼으면 지역 loop 도 종료
@@ -317,7 +323,20 @@ async function main() {
     return;
   }
 
-  if (!rows.length) { log(PHASE, "수집된 데이터 없음"); return; }
+  // ⚠️ 세션 503: 여기서 그냥 return 하면 아래 recordCollectorRun 에 영영 못 와서 `collector_runs` 에
+  // **행 자체가 안 남고**, monitor 는 그 표를 보므로 사고를 영영 못 본다. 실제로 8/06 회차가 2시간 31분
+  // 동안 전 호출 `fetch failed` 로 0건을 받고도 워크플로가 **초록불**로 끝나, 실거래가 2개월 공백을
+  // 아무도 모르고 지나갔다. 0건이어도 반드시 기록을 남기고, 실패 때문이면 빨간불로 끝낸다.
+  if (!rows.length) {
+    log(PHASE, `수집된 데이터 없음 (API 호출 성공 ${apiCalls}건 / 실패 ${apiFails}건)`);
+    rpt.fail(apiFails);
+    await recordCollectorRun(PHASE, rpt.summary());
+    if (apiFails > 0) {
+      logError(PHASE, `수집 0건 + API 실패 ${apiFails}건 — 외부 API 또는 네트워크 사고로 판정하고 실패 종료`);
+      process.exit(1);
+    }
+    return;
+  }
 
   // 배치 내 중복 키 제거 (ON CONFLICT DO UPDATE 동일 행 2회 방지)
   const CONFLICT_COLS = "region,gu,deal_month,area,price,floor,trade_type";
