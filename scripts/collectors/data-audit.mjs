@@ -389,6 +389,42 @@ function toCamel(row) {
   return /** @type {FlatRow} */ (out);
 }
 
+/**
+ * VIEW `latest_regions` 의 **컬럼별 최신 non-null** 을 자바스크립트로 재현한다 (세션 504).
+ *
+ * VIEW 본문(20260804000000 L43-57)이 하는 일과 같아야 한다:
+ * ```sql
+ * SELECT region,
+ *   (array_agg(col ORDER BY recorded_at DESC) FILTER (WHERE col IS NOT NULL))[1] AS col, ...
+ * FROM regions WHERE gu IS NULL GROUP BY region
+ * ```
+ *
+ * ⚠️ 왜 "최신 행 하나" 가 아닌가 — regions 는 여러 수집기가 시점을 달리해 채운다.
+ * 인구(매월 5일)가 새 `recorded_at` 행을 자기 컬럼만 넣고 만들면, 그 행의 다른 컬럼은 NULL 이다.
+ * 최신 행 하나만 보면 그 NULL 을 "값 없음" 으로 읽어 **멀쩡한 데이터를 0% 로 오판**한다
+ * (세션 391 이 VIEW 를 이 방식으로 고친 이유이고, 이 재현만 5개월 뒤처져 있었다).
+ *
+ * @param {Record<string, unknown>[]} regionRows regions 테이블 행 (gu 포함 전체)
+ * @param {string[]} cols 스네이크케이스 컬럼명
+ * @returns {Map<unknown, Record<string, unknown>>} region → 컬럼별 최신 non-null 묶음
+ */
+export function pickLatestNonNullByRegion(regionRows, cols) {
+  /** @type {Map<unknown, Record<string, unknown>>} */
+  const byRegion = new Map();
+  // 시도 레벨만 — VIEW 의 `WHERE gu IS NULL` 과 같다.
+  const sidoRows = regionRows.filter((r) => r.gu == null);
+  // recorded_at 내림차순으로 훑으며 각 컬럼의 **첫** non-null 을 채운다 = ORDER BY DESC 의 [1].
+  sidoRows.sort((a, b) => String(b.recorded_at ?? "").localeCompare(String(a.recorded_at ?? "")));
+  for (const r of sidoRows) {
+    let acc = byRegion.get(r.region);
+    if (!acc) { acc = {}; byRegion.set(r.region, acc); }
+    for (const c of cols) {
+      if (acc[c] == null && r[c] != null) acc[c] = r[c];
+    }
+  }
+  return byRegion;
+}
+
 // 관련 테이블 merge (apartment_id 또는 name 기준)
 /**
  * @param {FlatRow[]} aptRows
@@ -483,25 +519,37 @@ export async function fetchAllFromView(sb, regionFilter) {
     debt_ratio: "builderDebtRatio", credit_grade: "builderCreditGrade", hug_guarantee: "hugGuarantee",
   });
 
-  // merge regions (VIEW latest_regions 재현: gu IS NULL 시도 레벨 + recorded_at 최신)
-  const regionLookup = new Map();
-  for (const r of regions) {
-    if (r.gu != null) continue; // 시도 레벨만 (market_stats 5컬럼은 시도 행에만 채워짐)
-    const prev = regionLookup.get(r.region);
-    if (!prev || String(r.recorded_at) > String(prev.recorded_at)) regionLookup.set(r.region, r);
-  }
+  // merge regions — VIEW latest_regions 재현: gu IS NULL 시도 레벨 + **컬럼별 최신 non-null**
+  //
+  // ⚠️ 세션 504 정정. 여기는 원래 "recorded_at 이 가장 큰 행 하나" 를 골랐다. 그런데 VIEW 는
+  // 세션 391 에서 이미 컬럼별 최신 non-null 로 바뀌었고(array_agg ... FILTER ... [1]),
+  // 이 재현 코드만 따라가지 않아 **감사가 VIEW 를 잘못 재고 있었다.**
+  //
+  // 실측(2026-08-08): regions 최신 행은 2026-06-01 인데 그 행의 6개 컬럼이 전부 NULL 이라
+  // 감사는 housing_supply_level·price_index·avg_price_sqm·new_supply·initial_sale_rate·
+  // land_cost_ratio 를 **전부 0/17** 로 봤다. 같은 시각 VIEW 실측은 **17/17**(예: 서울 93.9).
+  // 그 거짓 0% 를 monitor ⑥(checkViewRegionStale)이 "VIEW 회귀" 로 경보했다 —
+  // 있지도 않은 사고를 쫓게 만드는 신호였다([[tool-output-illusion-guard]] 의 자기 도구 버전).
+  //
+  // VIEW 와 이 재현이 어긋나면 감사 전체가 거짓이 되므로, 방식을 VIEW 와 **글자 그대로 같게** 둔다.
+  const REGION_MERGE_COLS = /** @type {const} */ ([
+    ["pop_growth", "popGrowth"],
+    ["supply_ratio", "supplyRatio"],
+    ["net_migration", "netMigration"],
+    ["housing_supply_level", "housingSupplyLevel"],
+    ["price_index", "priceIndex"],
+    ["avg_price_sqm", "avgPriceSqm"],
+    ["new_supply", "newSupply"],
+    ["initial_sale_rate", "initialSaleRate"],
+    ["land_cost_ratio", "landCostRatio"],
+  ]);
+  const regionLookup = pickLatestNonNullByRegion(regions, REGION_MERGE_COLS.map(([snake]) => snake));
   for (const apt of apts) {
     const r = regionLookup.get(apt.region);
     if (!r) continue;
-    apt.popGrowth = r.pop_growth;
-    apt.supplyRatio = r.supply_ratio;
-    apt.netMigration = r.net_migration;
-    apt.housingSupplyLevel = r.housing_supply_level;
-    apt.priceIndex = r.price_index;
-    apt.avgPriceSqm = r.avg_price_sqm;
-    apt.newSupply = r.new_supply;
-    apt.initialSaleRate = r.initial_sale_rate;
-    apt.landCostRatio = r.land_cost_ratio;
+    for (const [snake, camel] of REGION_MERGE_COLS) {
+      apt[camel] = r[snake] ?? null;
+    }
   }
 
   // merge trade_stats

@@ -2,6 +2,7 @@
 /**
  * data-audit.mjs 테스트 — null 판정, 감사 계산 검증
  */
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
 
 // Supabase 연결 방지 — importOriginal 없이 필요한 것만 re-export
@@ -14,7 +15,7 @@ vi.mock("./_shared.mjs", () => ({
   createReporter: vi.fn(() => ({ success: vi.fn(), fail: vi.fn(), skip: vi.fn(), summary: vi.fn() })),
 }));
 
-const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView } = await import("./data-audit.mjs");
+const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView, pickLatestNonNullByRegion } = await import("./data-audit.mjs");
 
 // 팩토리: 모든 필드가 채워진 아파트 행
 function createFullRow(overrides = {}) {
@@ -274,5 +275,65 @@ describe("fetchAllFromView regions merge", () => {
     });
     const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
     expect(rows[0].priceIndex).toBe(232);
+  });
+});
+
+// ── VIEW latest_regions 재현 (세션 504) ──────────────────────────
+//
+// 사고: 이 감사는 "recorded_at 이 가장 큰 행 하나" 를 골라 regions 를 합쳤다. 그런데 VIEW 는
+// 세션 391 에서 **컬럼별 최신 non-null** 로 바뀌었고, 이 재현만 5개월 뒤처져 있었다.
+//
+// 실측(2026-08-08): regions 최신 행 2026-06-01 의 6개 컬럼이 전부 NULL 이라 감사는
+// housing_supply_level·price_index·avg_price_sqm·new_supply·initial_sale_rate·land_cost_ratio
+// 를 **전부 0/17** 로 봤다. 같은 시각 VIEW 실측은 **17/17**(서울 93.9).
+// 그 거짓 0% 를 monitor ⑥ 이 "VIEW 회귀" 로 경보해 **있지도 않은 사고**를 쫓게 만들었다.
+describe("pickLatestNonNullByRegion — VIEW 와 같은 방식으로 골라야 한다", () => {
+  /** 인구 수집기가 자기 컬럼만 넣고 만든 새 행(6-01) + 값이 있는 옛 행(5-01) */
+  const rows = [
+    { region: "서울", gu: null, recorded_at: "2026-06-01", pop_growth: -0.4, housing_supply_level: null },
+    { region: "서울", gu: null, recorded_at: "2026-05-01", pop_growth: -0.5, housing_supply_level: 93.9 },
+  ];
+
+  it("최신 행이 NULL 이면 옛 행의 값을 가져온다 (이번 사고의 본체)", () => {
+    const m = pickLatestNonNullByRegion(rows, ["pop_growth", "housing_supply_level"]);
+    expect(m.get("서울")?.housing_supply_level).toBe(93.9);
+  });
+
+  it("값이 있는 컬럼은 최신 행 것을 쓴다 (컬럼마다 독립)", () => {
+    const m = pickLatestNonNullByRegion(rows, ["pop_growth", "housing_supply_level"]);
+    expect(m.get("서울")?.pop_growth).toBe(-0.4); // 6-01 값, 5-01 의 -0.5 아님
+  });
+
+  it("구(gu) 행은 제외한다 — VIEW 의 WHERE gu IS NULL", () => {
+    const withGu = [...rows, { region: "서울", gu: "강남구", recorded_at: "2026-07-01", housing_supply_level: 999 }];
+    const m = pickLatestNonNullByRegion(withGu, ["housing_supply_level"]);
+    expect(m.get("서울")?.housing_supply_level).toBe(93.9); // 999 가 들어오면 안 된다
+  });
+
+  it("입력 순서가 뒤죽박죽이어도 결과가 같다 (정렬에 의존)", () => {
+    const shuffled = [rows[1], rows[0]];
+    const m = pickLatestNonNullByRegion(shuffled, ["pop_growth", "housing_supply_level"]);
+    expect(m.get("서울")?.pop_growth).toBe(-0.4);
+    expect(m.get("서울")?.housing_supply_level).toBe(93.9);
+  });
+
+  it("모든 행이 NULL 이면 그 컬럼은 없다 (진짜 미수집은 그대로 드러나야 한다)", () => {
+    const allNull = [{ region: "부산", gu: null, recorded_at: "2026-06-01", housing_supply_level: null }];
+    const m = pickLatestNonNullByRegion(allNull, ["housing_supply_level"]);
+    expect(m.get("부산")?.housing_supply_level).toBeUndefined();
+  });
+});
+
+// 순수함수만 테스트하면 **호출부가 옛 방식으로 되돌아가도 통과**한다.
+// ⚠️ 좌변까지 고정 — 부분 문자열만 찾으면 선언부·주석에 걸려 껍데기가 된다.
+describe("data-audit — regions 합치기가 새 방식으로 배선돼 있다", () => {
+  const src = readFileSync("scripts/collectors/data-audit.mjs", "utf-8");
+
+  it("pickLatestNonNullByRegion 을 실제로 호출한다", () => {
+    expect(src).toMatch(/const regionLookup = pickLatestNonNullByRegion\(regions, /);
+  });
+
+  it("옛 '최신 행 하나' 방식이 남아 있지 않다", () => {
+    expect(src).not.toMatch(/if \(!prev \|\| String\(r\.recorded_at\) > String\(prev\.recorded_at\)\)/);
   });
 });
