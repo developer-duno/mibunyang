@@ -6,6 +6,7 @@
  *   node scripts/collectors/noxious.mjs              (Supabase 업데이트)
  *   node scripts/collectors/noxious.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/noxious.mjs --json       (apartments.json 직접 업데이트)
+ *   node scripts/collectors/noxious.mjs --budget-min=45  (벽시계 예산 분 — 기본 45, 0=무제한)
  */
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
@@ -21,6 +22,7 @@ import {
   haversineMeters,
   createReporter,
   recordCollectorRun,
+  budgetExceeded,
 } from "./_shared.mjs";
 
 const PHASE = "noxious";
@@ -143,6 +145,17 @@ async function main() {
   // 세션 491: 루프 이전에 등록해야 SIGTERM 핸들러가 붙는다 (loop 뒤에 만들면 graceful 효과 0).
   const rpt = createReporter(PHASE);
 
+  // 세션 504 — 벽시계 예산. rpt.interrupted() 는 SIGTERM(외부 취소, 유예 5분)에만 듣고,
+  // job timeout 도달은 **유예 0의 SIGKILL** 이라 그 순간 실행 기록조차 못 남긴다.
+  // 실제로 6/03·7/03·8/03 세 회차가 정확히 60분 15초에 죽으며 collector_runs 에 행 0개를 남겼다.
+  // 그래서 제한에 닿기 전에 스스로 멈춰 아래 recordCollectorRun 까지 반드시 도달하게 한다.
+  // 45 = collect-noxious.yml 의 timeout-minutes 60 대비 15분 여유(transport-tago 와 같은 25% 마진).
+  const DEFAULT_BUDGET_MIN = 45;
+  const budgetArg = process.argv.find(a => a.startsWith("--budget-min="));
+  const budgetMin = budgetArg ? parseInt(budgetArg.replace("--budget-min=", ""), 10) : DEFAULT_BUDGET_MIN;
+  const startedMs = Date.now();
+  let budgetHit = false;
+
   if (!process.env.KAKAO_KEY) {
     logError("noxious", "KAKAO_KEY 환경변수가 필요합니다");
     process.exit(1);
@@ -202,6 +215,8 @@ async function main() {
     // 세션 491: SIGTERM(수동 취소) 시 다음 단지로 넘어가지 않고 여기서 끊는다.
     // 이미 처리한 단지는 아래 즉시 저장으로 이미 DB 에 들어가 있다.
     if (rpt.interrupted()) break;
+    // 세션 504: job timeout(SIGKILL, 유예 0)에 닿기 전에 스스로 멈춘다.
+    if (budgetExceeded(startedMs, budgetMin)) { budgetHit = true; break; }
 
     /** @type {string[]} */
     const found = [];
@@ -301,6 +316,11 @@ async function main() {
   // (이전에는 여기서 일괄 저장했고, 그래서 timeout 시 전량 손실됐다.)
 
   const result = rpt.summary();
+  if (budgetHit) {
+    log(PHASE, `[budget] ${budgetMin}분 예산 초과 — 여기까지 저장하고 종료. 남은 단지(noxious == null)는 다음 회차가 이어받음`);
+    // 예산으로 끊긴 회차를 success 로 기록하면 "정상 완주" 로 보여 이어받아야 할 신호가 지워진다.
+    result.status = "partial";
+  }
   await recordCollectorRun(PHASE, result);
 }
 
