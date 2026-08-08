@@ -582,7 +582,8 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
   const issues = [];
   for (const { collector, stale_days, owner } of targets) {
     const rows = runsByCollector[collector] ?? [];
-    if (rows.length < OUTAGE_MIN_CONSECUTIVE) continue; // 신규 collector 오탐 차단
+    // 행이 0개면 기준 시각 자체가 없어 아래 두 분기 다 판정 불가 (세션 504).
+    if (rows.length === 0) continue;
 
     // ⑤-b 미발화 — 최신 행이 stale_days 초과 = collector 가 안 돌고 있음.
     //    GH yml 없는 로컬 러너 수집기(KOSIS 10종)는 ③ 워크플로 점검 대상 밖이라
@@ -606,6 +607,12 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
       }
     }
 
+    // ⑤-a outage 는 "N회 연속" 이 정의라 N행이 있어야 판정된다 (신규 collector 오탐 차단).
+    // ⚠️ 이 가드는 세션 504 이전에 함수 맨 앞(rows 조회 직후)에 있었다. 그 자리에서는
+    //    행 1~2개짜리 collector 의 ⑤-b(미발화)까지 함께 막아, 정식 등재돼 있는데도 영영
+    //    침묵하는 사각을 만들었다(2026-08-01 입력으로 재현 시 naver-presale·notify-subscribers
+    //    두 건이 발화했어야 하는데 [] 였다). ⑤-b 는 최신 1행이면 판정 가능하므로 여기로 내렸다.
+    if (rows.length < OUTAGE_MIN_CONSECUTIVE) continue;
     const recent = rows.slice(0, OUTAGE_MIN_CONSECUTIVE);
     // success 인데 ok=0 & skip=0 만 점검 — failure 는 ①, 단발 0건은 ②가 잡음.
     // skip>0 = 원천 정상 응답 + 변경분만 0 (연간 통계 수집기 fertility 등 평상시 ok=0·skip>0) → outage 아님 (세션 289).

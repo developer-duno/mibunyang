@@ -40,7 +40,9 @@ const ALLOWLIST = new Set([
   // 세션 495: calc-exclusive-ratio.mjs 를 ALLOWLIST 에서 **제거**했다.
   // 실행 기록(collector_runs)을 넣으면서 createReporter + 단지별 UPDATE 루프의 break 를 함께 박았다.
   // 여기 남겨두면 그 안전장치가 나중에 지워져도 아무도 모른다 (calc-layout·noxious 선례 답습).
-  "calc-floors.mjs",
+  // 세션 504: calc-floors.mjs 를 ALLOWLIST 에서 **제거**했다.
+  // 매주 도는데 collector_runs 기록이 0행이라 "돌았는지" 조차 볼 수 없었다.
+  // createReporter/break/기록을 넣었으니 이제 검사 대상이다.
   // 세션 492: calc-layout.mjs 를 ALLOWLIST 에서 **제거**했다.
   // "calc 단발 변환"으로 분류돼 있었지만 실제로는 대상 건수만큼 도는 루프가 셋이고
   // (이름 유사도 8,720만 쌍 · articles 청크 조회 · 단지별 UPDATE), 예약 시간 30분에
@@ -57,8 +59,8 @@ const ALLOWLIST = new Set([
   "collect-unsold-kosis.mjs",      // 이미 박힘 (rpt=1 break=1) — 검증 통과 가능, 안전 박힘
   // graceful 무관 — DART / 환경 / 산업 / 운영
   "dart-builders.mjs",
-  "environment.mjs",
-  "industry-match.mjs",
+  // 세션 504: environment.mjs · industry-match.mjs 를 ALLOWLIST 에서 **제거**했다.
+  // 매월 도는데 collector_runs 기록이 0행이라 감시가 못 보던 자리 — 배선하며 break 도 박았다.
   // 세션 491: noxious.mjs 를 ALLOWLIST 에서 **제거**했다.
   // 증분 수집 + 단지 단위 즉시 저장 + createReporter/break 를 넣었으므로 이제 검사 대상이다.
   // 여기 남겨두면 그 안전장치가 나중에 지워져도 아무도 모른다.
@@ -67,8 +69,8 @@ const ALLOWLIST = new Set([
   "data-audit.mjs",
   "data-fill.mjs",
   "migration.mjs",
-  "noise-estimate.mjs",
-  "regulation-seed.mjs",
+  // 세션 504: noise-estimate.mjs · regulation-seed.mjs 를 ALLOWLIST 에서 **제거**했다
+  // (calc-floors 와 같은 이유 — 기록 배선하며 break 도 함께 박았다).
   "sync-naver-complex.mjs",
 ]);
 
