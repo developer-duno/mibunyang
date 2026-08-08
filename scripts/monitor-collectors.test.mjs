@@ -900,12 +900,12 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 24 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 25 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "applyhome-detail", "applyhome-remndr", "applyhome-seed", "avg-income", "building-hub",
       "childcare-detail", "childcare-info", "childcare-info-jeju",
-      "housing-permits",
+      "housing-permits", "housing-price",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
       "kosis-unsold", "maintenance", "market-stats", "migration",

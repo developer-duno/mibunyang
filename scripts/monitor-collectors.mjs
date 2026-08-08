@@ -248,6 +248,11 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⑤-b 미발화 분기(collector_runs.finished_at 기준)가 유일하게 "데이터 N일 stale" 을 잡음 (세션 447).
   //   5일 연속이라도 한 묶음 발화(19일 success→다음달 15일 발화 ~26일 간격)라 stale_days:38(=31일+1주)은 적정.
   { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (월 15~19일 cron + 1주 여유)" },
+  // housing-price = 공동주택공시가격 (collect-housing-price.yml, 매월 16일 cron — 세션 504 등재).
+  //   지금까지 ⑤ 어디에도 없어서 7/16 실패 후 방치돼도 아무 알림이 없었다(그 실패의 원인은
+  //   계정 지출한도였고 8/1 청구 리셋으로 해소됐지만, 그걸 알아챈 건 사람이 뒤늦게 뒤진 결과다).
+  //   월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100 기준표).
+  { collector: "housing-price",    stale_days: 38, owner: "공동주택공시가격 CSV (월 16일 cron + 1주 여유)" },
   // naver-presale = 네이버 분양정보 pre.land (scripts/collectors/naver-presale.mjs, run-naver-local.sh 3/6 단계).
   //   네이버 IP 차단으로 한국 IP 로컬 PC 에서만 실행 = Windows 스케줄러 `MibunyangNaverCollect` 월/목 08:00.
   //   GH run 이 없어 ③ 워크플로 점검 대상 밖 → collector_runs 신선도가 유일한 "안 돌면 알림".

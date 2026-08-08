@@ -202,6 +202,39 @@ async function* streamRows() {
   log("parse", `총 ${lineCount.toLocaleString()} 행 파싱 완료`);
 }
 
+/**
+ * CSV 가 말하는 기준연도를 채택하되, 받은 파일이 낡았으면 실패시킨다 (세션 504).
+ *
+ * `DOWNLOAD_URL` 의 `atchFileId` 는 원본이 갱신되면 바뀐다(차기 등록 예정 2026-10-30).
+ * 그런데 그 값이 코드에 박혀 있어서, 새 파일이 나와도 **조용히 옛 파일을 계속 받는다**.
+ * 같은 함정을 `transport-tago.mjs` 가 이미 주석으로 경고하고 있다 — 여기엔 가드가 없었다.
+ *
+ * 받은 CSV 의 기준연도가 현재보다 2년 이상 뒤처지면 그 신호로 본다.
+ * 1년 차이는 정상이다 — 공시가격은 그 해 중반에 공표돼 다음 해까지 최신본으로 쓰인다.
+ *
+ * @param {number | null} csvBaseYear CSV 첫 유효 행의 `기준연도` (못 읽었으면 null)
+ * @param {number} currentYear
+ * @returns {number}
+ */
+export function resolveTargetYear(csvBaseYear, currentYear) {
+  if (csvBaseYear === null) {
+    // 못 읽었으면 옛 동작(현재 연도)으로 폴백하되 조용히 넘어가지는 않는다 — 헤더 변경 신호다.
+    logError("year", "CSV 에서 기준연도를 읽지 못했습니다 — 현재 연도로 폴백(헤더가 바뀌었는지 확인 필요)");
+    return currentYear;
+  }
+  const lag = currentYear - csvBaseYear;
+  if (lag >= 2) {
+    throw new Error(
+      `CSV 기준연도 ${csvBaseYear} 가 현재(${currentYear})보다 ${lag}년 뒤처집니다 — ` +
+      `DOWNLOAD_URL 의 atchFileId 가 낡아 옛 파일을 받고 있을 수 있습니다. data.go.kr #3073746 재확인 필요.`,
+    );
+  }
+  if (lag < 0) {
+    throw new Error(`CSV 기준연도 ${csvBaseYear} 가 현재(${currentYear})보다 미래입니다 — 파싱 오류 의심.`);
+  }
+  return csvBaseYear;
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   log("init", "공동주택공시가격 CSV 수집 시작 (data.go.kr 3073746)");
@@ -209,7 +242,15 @@ async function main() {
   // streaming generator → 점진 집계 (250 시군구 acc 만 메모리 누적, 1,500만 행 raw 미보존)
   /** @type {Map<string, { region: string, gu: string, sum: number, count: number }>} */
   const acc = new Map();
+  // 세션 504: CSV 의 실제 기준연도. 매 행 첫 컬럼이 `기준연도` 라 첫 유효 행에서 공짜로 읽힌다
+  // (옛 주석은 "streaming 한계로 보류" 라 했지만 한계가 아니었다).
+  /** @type {number | null} */
+  let csvBaseYear = null;
   for await (const row of streamRows()) {
+    if (csvBaseYear === null) {
+      const y = Number(String(row["기준연도"] ?? "").trim());
+      if (Number.isInteger(y) && y >= 2000 && y <= 2100) csvBaseYear = y;
+    }
     const sido = String(row["시도"] ?? "");
     const sigungu = String(row["시군구"] ?? "");
     const parsed = parseGu(sido, sigungu);
@@ -236,9 +277,14 @@ async function main() {
   }
   log("calc", `${aggregated.length}건 시군구 평균 집계 완료`);
 
-  // 데이터 기준일 (CSV 첫 행의 기준연도 기반)
-  const targetYear = new Date().getFullYear();  // CSV 자체에서 추출은 streaming 한계로 보류, 현재 연도 사용
+  // 데이터 기준일 — CSV 가 실제로 말하는 연도를 쓴다 (세션 504).
+  //
+  // 옛 코드는 `new Date().getFullYear()` 를 썼다. 원본은 "2025.1.1. 기준" 공시가격인데
+  // 2026년에 돌리면 recorded_at 이 2026-01-01 로 찍혀 **1년 미래로 라벨**된다.
+  // 내년 1월에 또 돌면 같은 2025 데이터가 2027-01-01 로 찍힌다 — 시계열이 통째로 어긋난다.
+  const targetYear = resolveTargetYear(csvBaseYear, new Date().getFullYear());
   const recordedAt = `${targetYear}-01-01`;  // 공시기준일은 매년 1월 1일
+  log("calc", `기준연도 ${targetYear} (CSV 기준연도 ${csvBaseYear ?? "미확인"}) → recorded_at=${recordedAt}`);
 
   if (dryRun) {
     log("dry-run", "미리보기 모드 — DB 미저장");

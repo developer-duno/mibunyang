@@ -1,6 +1,7 @@
 // @ts-check
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
-import { resolveRegion, parseGu, unitPriceManwon, aggregateBySggu, parseCsvLine, rowFromFields } from "./collect-housing-price.mjs";
+import { resolveRegion, parseGu, unitPriceManwon, aggregateBySggu, parseCsvLine, rowFromFields, resolveTargetYear } from "./collect-housing-price.mjs";
 
 // --- resolveRegion ---
 describe("resolveRegion", () => {
@@ -172,5 +173,54 @@ describe("rowFromFields", () => {
   it("fields 부족 시 빈 문자열", () => {
     const obj = rowFromFields(["a", "b", "c"], ["1", "2"]);
     expect(obj).toEqual({ "a": "1", "b": "2", "c": "" });
+  });
+});
+
+// ── 기준연도 · 낡은 파일 가드 (세션 504) ─────────────────────────
+//
+// 사고 1 — 연도가 1년 밀려 찍혔다. 원본은 "2025.1.1. 기준" 공시가격인데 옛 코드가
+// `new Date().getFullYear()` 를 써서 2026년에 돌리면 recorded_at 이 2026-01-01 이 된다.
+// 내년 1월에 또 돌면 같은 데이터가 2027-01-01 로 찍혀 시계열이 통째로 어긋난다.
+//
+// 사고 2 — DOWNLOAD_URL 의 atchFileId 가 코드에 박혀 있다. 원본이 갱신되면(차기 2026-10-30)
+// 그 값이 바뀌는데, 지금 코드는 **조용히 옛 파일을 계속 받는다**. 같은 함정을
+// transport-tago.mjs 는 주석으로 경고하고 있지만 여기엔 가드가 없었다.
+// 받은 CSV 의 기준연도가 현재보다 2년 이상 뒤처지면 그 신호로 본다.
+describe("resolveTargetYear — CSV 가 말하는 연도를 쓰고, 낡은 파일은 막는다", () => {
+  it("CSV 기준연도를 그대로 채택한다 (현재 연도가 아니라)", () => {
+    expect(resolveTargetYear(2025, 2026)).toBe(2025);
+  });
+
+  it("같은 해 파일도 정상", () => {
+    expect(resolveTargetYear(2026, 2026)).toBe(2026);
+  });
+
+  it("2년 이상 뒤처지면 실패 — atchFileId 가 낡아 옛 파일을 받는 신호", () => {
+    expect(() => resolveTargetYear(2025, 2027)).toThrow(/atchFileId/);
+  });
+
+  it("미래 연도는 파싱 오류로 보고 실패", () => {
+    expect(() => resolveTargetYear(2028, 2026)).toThrow(/미래/);
+  });
+
+  it("기준연도를 못 읽으면 현재 연도로 폴백한다 (헤더 변경 대비, 던지지 않음)", () => {
+    expect(resolveTargetYear(null, 2026)).toBe(2026);
+  });
+});
+
+// 위 순수함수 테스트만으로는 **호출부가 옛날로 되돌아가는 것**을 못 잡는다
+// (함수는 멀쩡한데 main 이 다시 `new Date().getFullYear()` 를 쓰면 연도는 또 밀린다).
+// ⚠️ 좌변까지 고정 — 부분 문자열만 찾으면 선언부·주석에도 걸려 껍데기가 된다
+//    (.claude/rules/meta/guards-must-be-mutation-tested.md §"소스 grep 가드").
+describe("collect-housing-price — 기준연도 배선이 main 에 박혀 있다", () => {
+  const src = readFileSync("scripts/collectors/collect-housing-price.mjs", "utf-8");
+
+  it("스트리밍 루프에서 CSV 기준연도를 잡는다", () => {
+    expect(src).toMatch(/let csvBaseYear = null;/);
+    expect(src).toMatch(/const y = Number\(String\(row\["기준연도"\] \?\? ""\)\.trim\(\)\);/);
+  });
+
+  it("recorded_at 을 CSV 기준연도로 만든다 (현재 연도 직접 사용 아님)", () => {
+    expect(src).toMatch(/const targetYear = resolveTargetYear\(csvBaseYear, new Date\(\)\.getFullYear\(\)\);/);
   });
 });
