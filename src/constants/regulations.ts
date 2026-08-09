@@ -1,4 +1,6 @@
-import zonesJson from "../data/regulation-zones.json";
+// `with { type: "json" }` 은 장식이 아니다 — Node ESM(alias-loader 경유 compute-scores·daily-deploy)이
+// 속성 없는 JSON import 를 ERR_IMPORT_ATTRIBUTE_MISSING 으로 거부한다. Vite/vitest 는 있어도 없어도 통과.
+import zonesJson from "../data/regulation-zones.json" with { type: "json" };
 
 export type Zone = "speculative" | "overheated" | "normal";
 

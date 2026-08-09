@@ -32,7 +32,7 @@
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×7** → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
+| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×8** → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
 | `e2e.yml` | Playwright E2E 테스트 (PR 트리거). **세션 491**: `paths-ignore`(docs·md·.claude·scripts·supabase) + `concurrency` + 브라우저 캐시. ⚠️ `paths-ignore` 에 `.github/workflows/**` 를 넣으면 이 파일 자신을 고칠 때 검증이 사라진다 — 절대 금지 |
 | `warm-playwright-cache.yml` | **세션 491 신설** — 매주 화 KST 02:00, `main` 에서 브라우저 캐시를 미리 채운다. Actions 캐시는 "만든 브랜치 + 기본 브랜치"에서만 읽히는데 `e2e.yml` 은 PR 전용이라 이 예열이 없으면 캐시가 매번 미스된다. **캐시 키를 `e2e.yml` 과 동일하게 유지할 것** — 어긋나면 `scripts/audit-playwright-cache.mjs` 가 CI 에서 차단 |
 

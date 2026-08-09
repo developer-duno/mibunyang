@@ -83,6 +83,12 @@ jobs:
       - name: concurrency 조용한 취소 audit
         run: node scripts/audit-cron-concurrency.mjs
 
+      # 세션 508: Vite 는 허용하지만 Node ESM 은 거부하는 문법(속성 없는 JSON import 등)이
+      # compute-scores 의 import 사슬에 스며들면 CI 전부 초록인 채 운영 점수 갱신만 죽는다
+      # (PR-1 #364 실사고 — daily-deploy 크론 3시간 전 발견) → 같은 방식으로 열어서 검사한다.
+      - name: Node ESM 사슬 import audit
+        run: node --loader ./scripts/alias-loader.mjs scripts/audit-node-esm-chain.mjs
+
       - name: Test
         run: npm run test
 
