@@ -83,7 +83,11 @@ const BAD_CONCLUSIONS = ["failure", "cancelled", "timed_out"];
  * latest_regions_gu=시군구)에서 노출하나 확인 → 그 단위 / VIEW 미노출이면 "all". 라이브 채움률
  * (시도/시군구 각각)로 교차 검증 후 박제 (소스 `.is("gu",null)` 여부만으로 단정 금지 — 매칭 실패로
  * 숨는 컬럼 있음). 근거 VIEW: 20260629000000_view_add_housing_supply_level.sql.
- * @type {Array<{ column: string, granularity: "sido" | "sigungu" | "all" }>}
+ *
+ * `nullSurge: false` = ④ NULL 급증 점검에서만 뺀다(⑥ VIEW 회귀 점검에는 그대로 쓴다). 원본 자체가
+ * 성기게 채워지는 게 정상인 컬럼용 — ④ 는 "임계(40%)보다 NULL 이 많으면 이상" 이라, 정상 채움률이
+ * 애초에 그 아래인 컬럼을 넣으면 고장 0인데 매일 경보가 울린다(그런 경보는 곧 무시당한다).
+ * @type {Array<{ column: string, granularity: "sido" | "sigungu" | "all", nullSurge?: boolean }>}
  */
 export const REGION_KEY_COLUMNS = [
   { column: "net_migration", granularity: "sido" },         // 양쪽채움이나 VIEW latest_regions(시도)만 손님 노출
@@ -91,6 +95,11 @@ export const REGION_KEY_COLUMNS = [
   { column: "crime_grade", granularity: "all" },            // 양쪽채움(collect-crime-safety 전체행 순회·매칭행만 UPDATE), VIEW 미노출
   { column: "doctors_per_1k", granularity: "sigungu" },     // 시군구 전용 (collect-medical-access)
   { column: "hospital_beds_per_1k", granularity: "sigungu" }, // 시군구 전용 (collect-medical-access)
+  // 공시가격 (세션 505) — 시군구 전용 (collect-housing-price, VIEW latest_regions_gu 노출).
+  //   ④ 제외 이유: MOLIT 공동주택공시가격은 공동주택이 있는 시군구만 나온다. 라이브 실측
+  //   252/1533(16.4%) 이 **정상**이라 ④ 임계(NULL 40%)에 늘 걸린다 — 등재하면 매일 거짓 경보.
+  //   ⑥(VIEW 회귀)에는 남긴다: 원본 252행 그대로인데 화면만 0% 가 되는 사고는 여전히 잡아야 한다.
+  { column: "housing_price", granularity: "sigungu", nullSurge: false },
 ];
 /**
  * ④ apartments 19 카테고리 중 NULL 점검 대상 — 카테고리별 기대 최저 rate(%).
@@ -303,11 +312,19 @@ const OUTAGE_MIN_CONSECUTIVE = 3;
  * net_migration = migration.mjs(후행) 가 population 새 행을 못 채우면 VIEW NULL (세션 391 회귀).
  * 신규 multi-collector regions 컬럼이 VIEW 에 노출되고 새 recorded_at 행을 후행 collector 가
  * 채우는 구조면 이 배열에 1줄 추가 의무. regionColumn 은 REGION_KEY_COLUMNS 에도 있어야 조회됨.
- * @type {Array<{ viewKey: string, regionColumn: string, label: string }>}
+ *
+ * `minRegionRate` = "원본이 이만큼은 채워져 있어야 VIEW 쪽 0% 를 회귀로 본다" 는 하한. 생략하면
+ * 기본 0.2. 원본 정상 채움률이 20% 아래인 컬럼은 이 값을 낮추지 않으면 **영영 발화하지 않는
+ * 껍데기 등재**가 된다 — 등재해 놓고 안 잡히는 게 제일 나쁘다.
+ * @type {Array<{ viewKey: string, regionColumn: string, label: string, minRegionRate?: number }>}
  */
 export const VIEW_REGION_STALE_TARGETS = [
   { viewKey: "regions.netMigration", regionColumn: "net_migration", label: "순이동 (migration)" },
   { viewKey: "regions.housingSupplyLevel", regionColumn: "housing_supply_level", label: "주택보급률 (KOSIS)" },
+  // 공시가격 (세션 505) — 원본 정상 채움이 시군구 252/1533(16.4%) 이라 기본 하한 20% 로는
+  //   조건이 성립할 수 없다. 0.1 로 낮춰 실제로 잡히게 한다(수집기가 통째로 죽어 0 이 되면
+  //   regionRate 0 < 0.1 이라 조용히 넘어가고, 그건 ⑤·② 가 잡을 몫이다).
+  { viewKey: "regions.housingPrice", regionColumn: "housing_price", label: "공시가격 (housing-price)", minRegionRate: 0.1 },
 ];
 
 // ── 알림 dedup (텔레그램 스팸 차단) ──────────────
@@ -492,13 +509,16 @@ export function buildStaleCheckList(monitoredNames, recentRuns, supplement, crea
 
 /**
  * ④ 컬럼별 (total, filled) 카운트에서 NULL 급증을 찾는다.
- * @param {Array<{ column: string, total: number, filled: number }>} columnStats
+ * @param {Array<{ column: string, total: number, filled: number, nullSurge?: boolean }>} columnStats
  * @returns {Issue[]}
  */
 export function checkNullSurge(columnStats) {
   /** @type {Issue[]} */
   const issues = [];
   for (const stat of columnStats) {
+    // REGION_KEY_COLUMNS 에서 nullSurge:false 로 표시한 컬럼은 ④ 대상이 아니다 —
+    // 성긴 채움이 정상이라 매일 거짓 경보가 나던 자리(세션 505 housing_price).
+    if (stat.nullSurge === false) continue;
     if (stat.total === 0) continue;
     const nullRate = (stat.total - stat.filled) / stat.total;
     if (nullRate > NULL_RATE_THRESHOLD) {
@@ -660,14 +680,14 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
  *   computeAudit 의 fields — key 예: "regions.netMigration". VIEW(apartments_flat) 기준 채움.
  * @param {Array<{ column: string, total: number, filled: number }>} regionStats
  *   fetchRegionColumnStats — regions 원본 테이블 컬럼별 채움 (column = snake_case).
- * @param {Array<{ viewKey: string, regionColumn: string, label: string }>} [targets]
+ * @param {Array<{ viewKey: string, regionColumn: string, label: string, minRegionRate?: number }>} [targets]
  * @returns {Issue[]}
  */
 export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REGION_STALE_TARGETS) {
   /** @type {Issue[]} */
   const issues = [];
   const regionByCol = new Map(regionStats.map((s) => [s.column, s]));
-  for (const { viewKey, regionColumn, label } of targets) {
+  for (const { viewKey, regionColumn, label, minRegionRate } of targets) {
     const vf = viewFields[viewKey];
     const rs = regionByCol.get(regionColumn);
     if (!vf || !rs) continue;
@@ -675,9 +695,10 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
     if (viewTotal === 0 || (rs.total ?? 0) === 0) continue;
     const viewRate = vf.filled / viewTotal;
     const regionRate = rs.filled / rs.total;
-    // 원본은 충분히 채워졌는데(≥20%) VIEW 는 거의 비었으면(≤5%) = VIEW 가 옛 채움값을
-    // 못 가져오는 회귀. supply_ratio 처럼 원본부터 0인 경우는 regionRate 가 낮아 제외됨.
-    if (regionRate >= 0.2 && viewRate <= 0.05) {
+    // 원본은 충분히 채워졌는데(기본 ≥20%, 대상별 minRegionRate 로 조정) VIEW 는 거의 비었으면
+    // (≤5%) = VIEW 가 옛 채움값을 못 가져오는 회귀. supply_ratio 처럼 원본부터 0인 경우는
+    // regionRate 가 낮아 제외됨.
+    if (regionRate >= (minRegionRate ?? 0.2) && viewRate <= 0.05) {
       issues.push({
         kind: "nulls",
         collector: label,
@@ -855,15 +876,16 @@ async function fetchRegionColumnStats() {
     return totalCache[g] ?? 0;
   };
 
-  /** @type {Array<{ column: string, total: number, filled: number }>} */
+  /** @type {Array<{ column: string, total: number, filled: number, nullSurge?: boolean }>} */
   const stats = [];
-  for (const { column, granularity } of REGION_KEY_COLUMNS) {
+  for (const { column, granularity, nullSurge } of REGION_KEY_COLUMNS) {
     const total = await totalFor(granularity);
     const { count: filled } = await applyGranularity(
       sb.from("regions").select(column, { count: "exact", head: true }).not(column, "is", null),
       granularity,
     );
-    stats.push({ column, total, filled: filled ?? 0 });
+    // nullSurge 플래그를 그대로 실어 보낸다 — ④ checkNullSurge 가 이걸 보고 건너뛴다.
+    stats.push({ column, total, filled: filled ?? 0, nullSurge });
   }
   return stats;
 }

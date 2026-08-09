@@ -275,6 +275,9 @@ function sanitizeRegion(row: any) {
     supplyRatio: row.supplyRatio ?? 150,
     // KOSIS HUG 시장 통계 (정보성, null 허용)
     housingSupplyLevel: row.housingSupplyLevel ?? null,
+    // 공시가격 (MOLIT, 시군구 평균 만원/㎡) — 정보성. 여기 한 줄이 없으면 VIEW 에 값이 있어도
+    //   이 응답이 그 필드를 통째로 빼버려 화면엔 영영 "미수집" 으로 보인다(허용목록 방식).
+    housingPrice: row.housingPrice ?? null,
     priceIndex: row.priceIndex ?? null,
     avgPriceSqm: row.avgPriceSqm ?? null,
     newSupply: row.newSupply ?? null,

@@ -34,6 +34,22 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
     expect(priceFields).toContain("housingSupplyLevel");
   });
 
+  // 세션 505 PR-C — 공시가격을 손님 화면에 처음 올린 자리. 표에서 빠지면 수집기·VIEW 가
+  // 멀쩡해도 손님은 영영 못 본다(등재가 곧 노출이라 이 한 줄이 도달 가드다).
+  it("시세 탭에 공시가격(housingPrice) 노출 + 시세 바로 옆자리", () => {
+    expect(priceFields).toContain("housingPrice");
+    expect(priceFields.indexOf("housingPrice")).toBe(priceFields.indexOf("nearbyMedian") + 1);
+  });
+
+  // 공시가격은 실거래·호가와 잣대가 달라 나란히 놓으면 "셋 중 뭘 믿나" 혼란이 난다.
+  // 안내문이 그 차이를 설명하지 않으면 노출 자체가 손님을 헷갈리게 만든다.
+  it("시세 탭 안내문이 공시가격이 왜 시세보다 낮은지 설명한다", () => {
+    const hint = PRICE_SECTIONS.map((s) => s.hint ?? "").join(" ");
+    expect(hint).toContain("공시가격");
+    expect(hint).toMatch(/세금/);
+    expect(hint).toMatch(/낮은 게 정상/);
+  });
+
   it("분양 탭에 계약해제율(cancelRatio6m) 노출", () => {
     expect(presaleFields).toContain("cancelRatio6m");
   });

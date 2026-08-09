@@ -2,7 +2,14 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { AdminDataAudit } from "./AdminDataAudit";
+import { FIELD_META } from "@/constants/fieldMeta";
 import { makeApt } from "@/__tests__/factories";
+
+// 버튼 문구의 숫자는 여기서도 박제하지 않는다. 컴포넌트(L14~15)는 세션 487 에 이미 박제를
+// 걷어냈는데 이 테스트만 옛 숫자를 들고 있어, 필드 하나만 늘려도 기능은 멀쩡한 채 4건이 빨개졌다
+// (세션 505 공시가격 추가 때 실제로 터짐). 소스와 같은 식으로 세어 스스로 따라오게 한다.
+const NON_HIDDEN_COUNT = Object.keys(FIELD_META).filter((k) => !FIELD_META[k].hidden).length;
+const OPEN_LABEL = `전체 ${NON_HIDDEN_COUNT}필드 보기`;
 
 // 구 DataSections adminMode 단언 이전 (세션 408 D2a — 점수 탭 직접 렌더, showData 토글 폐기).
 describe("AdminDataAudit", () => {
@@ -19,19 +26,19 @@ describe("AdminDataAudit", () => {
     );
   });
 
-  // 141필드 토글 버튼 — 기본 접힘
-  it("기본 상태에서 '전체 141필드 보기' 버튼은 있고 전수 표는 숨김", () => {
+  // 전수 필드 토글 버튼 — 기본 접힘
+  it("기본 상태에서 '전체 N필드 보기' 버튼은 있고 전수 표는 숨김", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<AdminDataAudit apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("전체 141필드 보기")).toBeTruthy();
+    expect(screen.getByText(OPEN_LABEL)).toBeTruthy();
     expect(screen.queryByTestId("admin-full-fields")).toBeNull();
   });
 
-  // 141필드 토글 ON → 전수 표 + 버튼 라벨 전환
-  it("'전체 141필드 보기' 클릭 시 9섹션 전수 표가 보이고 라벨이 '요약 보기'로 전환된다", () => {
+  // 전수 필드 토글 ON → 전수 표 + 버튼 라벨 전환
+  it("'전체 N필드 보기' 클릭 시 9섹션 전수 표가 보이고 라벨이 '요약 보기'로 전환된다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<AdminDataAudit apt={/** @type {any} */ (apt)} profile="live" />);
-    fireEvent.click(screen.getByText("전체 141필드 보기"));
+    fireEvent.click(screen.getByText(OPEN_LABEL));
     expect(screen.getByTestId("admin-full-fields")).toBeTruthy();
     expect(screen.getByText("요약 보기")).toBeTruthy();
   });
@@ -40,7 +47,7 @@ describe("AdminDataAudit", () => {
   it("'요약 보기' 재클릭 시 전수 표가 사라진다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<AdminDataAudit apt={/** @type {any} */ (apt)} />);
-    fireEvent.click(screen.getByText("전체 141필드 보기"));
+    fireEvent.click(screen.getByText(OPEN_LABEL));
     fireEvent.click(screen.getByText("요약 보기"));
     expect(screen.queryByTestId("admin-full-fields")).toBeNull();
   });
@@ -49,7 +56,7 @@ describe("AdminDataAudit", () => {
   it("토글 버튼 aria-pressed가 클릭으로 변경된다", () => {
     const apt = /** @type {any} */ (makeApt());
     render(<AdminDataAudit apt={/** @type {any} */ (apt)} />);
-    const btn = screen.getByRole("button", { name: /141필드/ });
+    const btn = screen.getByRole("button", { name: new RegExp(`${NON_HIDDEN_COUNT}필드`) });
     expect(btn.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(btn);
     expect(btn.getAttribute("aria-pressed")).toBe("true");

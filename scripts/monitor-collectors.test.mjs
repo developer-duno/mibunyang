@@ -518,6 +518,22 @@ describe("checkNullSurge — ④ NULL 급증", () => {
     const issues = checkNullSurge([{ column: "x", total: 0, filled: 0 }]);
     expect(issues).toHaveLength(0);
   });
+
+  // 세션 505 — 성기게 채워지는 게 정상인 컬럼(공시가격 252/1533)은 ④ 에서 뺀다.
+  // 안 빼면 고장 0인데 매일 경보가 울리고, 그런 경보는 곧 아무도 안 본다.
+  it("nullSurge:false 컬럼은 NULL 이 임계를 넘어도 ④ 경보 안 함", () => {
+    const issues = checkNullSurge([
+      { column: "housing_price", total: 1533, filled: 252, nullSurge: false }, // NULL 83.6%
+    ]);
+    expect(issues).toHaveLength(0);
+  });
+
+  it("같은 수치라도 플래그가 없으면 ④ 경보한다 (플래그가 실제로 일하는지 확인)", () => {
+    const issues = checkNullSurge([
+      { column: "housing_price", total: 1533, filled: 252 },
+    ]);
+    expect(issues).toHaveLength(1);
+  });
 });
 
 describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
@@ -1046,11 +1062,58 @@ describe("checkViewRegionStale — ⑥ VIEW 회귀 (regions 원본 채움 but VI
     );
     expect(issues).toHaveLength(0);
   });
+
+  // 세션 505 PR-C — 공시가격 등재. 원본 정상 채움이 16.4% 라 기본 하한 20% 로는 조건이
+  // 성립할 수 없어, minRegionRate 를 안 낮추면 "등재는 했는데 영영 안 잡히는" 껍데기가 된다.
+  //
+  // 등재가 사라지면 아래 두 테스트가 "0건이라 통과" 하는 게 아니라 여기서 먼저 터진다 —
+  // 못 찾은 걸 조용히 넘기면 뮤테이션이 초록불로 지나간다.
+  function housingPriceTarget() {
+    const t = VIEW_REGION_STALE_TARGETS.find((x) => x.regionColumn === "housing_price");
+    if (!t) throw new Error("VIEW_REGION_STALE_TARGETS 에 housing_price 등재가 없다");
+    return t;
+  }
+
+  it("⑥ housing_price 등재 — minRegionRate 를 낮췄기에 실제 회귀가 잡힌다", () => {
+    const target = housingPriceTarget();
+    expect(target.viewKey).toBe("regions.housingPrice");
+    expect(target.minRegionRate ?? 0.2).toBeLessThan(0.164); // 라이브 원본 채움률 252/1533
+    // VIEW 가 컬럼을 잃은 회귀 상황 (원본 252/1533 그대로인데 화면만 0)
+    expect(checkViewRegionStale(
+      { "regions.housingPrice": { filled: 0, missing: 2043 } },
+      [{ column: "housing_price", total: 1533, filled: 252 }],
+      [target],
+    )).toHaveLength(1);
+  });
+
+  it("⑥ housing_price 정상 — 화면 81.4% 채움이면 경보 없음", () => {
+    expect(checkViewRegionStale(
+      { "regions.housingPrice": { filled: 1664, missing: 379 } },
+      [{ column: "housing_price", total: 1533, filled: 252 }],
+      [housingPriceTarget()],
+    )).toHaveLength(0);
+  });
+
+  it("⑥ minRegionRate 미지정 대상은 기본 하한 0.2 를 그대로 쓴다", () => {
+    const targets = [{ viewKey: "regions.x", regionColumn: "x", label: "X" }];
+    // 원본 19% → 기본 하한 20% 미달이라 skip
+    expect(checkViewRegionStale(
+      { "regions.x": { filled: 0, missing: 100 } },
+      [{ column: "x", total: 100, filled: 19 }],
+      targets,
+    )).toHaveLength(0);
+    // 원본 21% → 발화
+    expect(checkViewRegionStale(
+      { "regions.x": { filled: 0, missing: 100 } },
+      [{ column: "x", total: 100, filled: 21 }],
+      targets,
+    )).toHaveLength(1);
+  });
 });
 
 describe("REGION_KEY_COLUMNS — ④ NULL 점검 대상 granularity 구조 (세션 478)", () => {
-  it("각 항목이 column + granularity(sido|sigungu|all) 구조 · 5개", () => {
-    expect(REGION_KEY_COLUMNS.length).toBe(5);
+  it("각 항목이 column + granularity(sido|sigungu|all) 구조 · 6개", () => {
+    expect(REGION_KEY_COLUMNS.length).toBe(6);
     for (const c of REGION_KEY_COLUMNS) {
       expect(typeof c.column).toBe("string");
       expect(["sido", "sigungu", "all"]).toContain(c.granularity);
@@ -1068,5 +1131,19 @@ describe("REGION_KEY_COLUMNS — ④ NULL 점검 대상 granularity 구조 (세�
     expect(g("housing_supply_level")).toBe("sido");
     // VIEW 미노출 (crime_grade) — 전체행 완결성
     expect(g("crime_grade")).toBe("all");
+    // 공시가격 (세션 505) — VIEW latest_regions_gu 노출이라 sigungu. 시도로 세면 0% 오탐
+    expect(g("housing_price")).toBe("sigungu");
+  });
+
+  // 세션 505 — ⑥ 는 REGION_KEY_COLUMNS 에 있는 컬럼만 조회하므로, ④ 에서 뺀 컬럼도
+  // 목록에는 남아 있어야 한다. 목록에서 지우면 ⑥ 등재가 조용히 무력화된다.
+  it("④ 에서 뺀 컬럼(nullSurge:false)도 목록에는 남아 ⑥ 가 조회할 수 있다", () => {
+    const hp = REGION_KEY_COLUMNS.find((c) => c.column === "housing_price");
+    expect(hp).toBeTruthy();
+    expect(hp?.nullSurge).toBe(false);
+    // ⑥ 대상의 regionColumn 은 전부 이 목록에 있어야 조회된다
+    for (const t of VIEW_REGION_STALE_TARGETS) {
+      expect(REGION_KEY_COLUMNS.some((c) => c.column === t.regionColumn)).toBe(true);
+    }
   });
 });
