@@ -303,7 +303,8 @@ describe("DetailModal StickyJumpNav", () => {
     expect(scoreSection?.textContent).toContain("가격 매력도");
   });
 
-  // 세션 408 D2a — 공공데이터 재배분: 입지 탭에 교통 상세 섹션, 시세 탭에 시장/투자 지표 헤더
+  // 세션 408 D2a — 공공데이터 재배분: 입지 탭에 교통 상세 섹션, 시세 탭에 데이터 섹션 헤더
+  // (그 헤더 이름은 세션 507 에 "시장/투자 지표" → "이 동네 거래 시세" 로 바뀌었다)
   it("입지 탭에 '교통 상세' 데이터 섹션 헤더가 보인다 (D2a 입지 탭 빈약 해소)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
@@ -314,11 +315,37 @@ describe("DetailModal StickyJumpNav", () => {
     expect(loc?.textContent).not.toContain("생활인프라");
   });
 
-  it("시세 탭에 '시장/투자 지표' 데이터 섹션 헤더가 보인다 (D2a)", () => {
+  it("시세 탭에 '이 동네 거래 시세' 데이터 섹션 헤더가 보인다 (D2a, 세션 507 개명)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
     const price = container.querySelector("#sec-price");
-    expect(price?.textContent).toContain("시장/투자 지표");
+    expect(price?.textContent).toContain("이 동네 거래 시세");
+    // 옛 이름은 세 가지 성격(단지 파생값·동네 값·지역 통계)을 한 표에 섞어 부르던 이름이다
+    expect(price?.textContent).not.toContain("시장/투자 지표");
+  });
+
+  // 세션 507 PR-2 — 우리 값과 네이버 값을 같은 줄에 놓는 대조표가 옛 "네이버 교차검증" 표를 대체
+  it("시세 탭에 두 출처 대조표가 보이고 '네이버 교차검증' 표는 없다 (세션 507)", () => {
+    // 네이버 값이 하나도 없으면 대조 자체가 성립하지 않아 컴포넌트가 null 이다
+    // (기본 팩토리에는 naver* 가 없다) — 대조가 성립하는 단지로 연다.
+    const item = makeScoredItem(
+      { naverNearbyMedian: 55000, naverJeonseRate: 68, naverBuildYear: 2012, naverAvgFloor: 11 },
+      { cats: makeItem().res.cats }
+    );
+    const { container } = render(<DetailModal {...makeProps({ item })} />);
+    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
+    const price = container.querySelector("#sec-price");
+    expect(price?.textContent).toContain("같은 값을 두 곳에서 재봤어요");
+    expect(price?.textContent).not.toContain("네이버 교차검증");
+  });
+
+  // 세션 507 PR-2 — 지역 통계 7종은 분양 탭 서랍으로. 닫힌 상태에서 "이 단지 값이 아니다"를 먼저 말한다
+  it("분양 탭에 '이 지역 통계' 서랍이 닫힌 채 보이고, 이 단지 값이 아님을 알린다 (세션 507)", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "분양" }));
+    const presale = container.querySelector("#sec-presale");
+    expect(presale?.textContent).toContain("이 지역 통계");
+    expect(presale?.textContent).toContain("이 단지 값이 아니라 수원시·경기 통계예요");
   });
 
   it("점수 탭에 '공공데이터' 단일 토글이 더 이상 없다 (D2a — 8섹션 타 탭 분산)", () => {
@@ -756,7 +783,7 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     expect(screen.getByText("핵심 지표")).toBeVisible();
     expect(container.textContent).toContain("경기 수원시 영통동");
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
-    expect(container.querySelector("#sec-price")?.textContent).toContain("시장/투자 지표");
+    expect(container.querySelector("#sec-price")?.textContent).toContain("이 동네 거래 시세");
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     expect(container.querySelector("#sec-location")?.textContent).toContain("교통 상세");
   });

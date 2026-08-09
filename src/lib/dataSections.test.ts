@@ -3,10 +3,11 @@ import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS,
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 
 describe("dataSections hint", () => {
-  // 세션 505 에 6 → 5. 입지의 "생활인프라 (반경 1km)" 표를 없앴다(거리 점 그림이 흡수).
-  it("종합·입지·시세 섹션 5개 모두 hint 가 채워져 있다", () => {
+  // 세션 505 에 6 → 5(입지 "생활인프라" 표 폐지), 세션 507 에 5 → 4
+  // (시세의 "네이버 교차검증" 표를 `detail/SourceComparison` 대조표가 대체).
+  it("종합·입지·시세 섹션 4개 모두 hint 가 채워져 있다", () => {
     const all = [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS];
-    expect(all).toHaveLength(5);
+    expect(all).toHaveLength(4);
     for (const s of all) {
       expect(typeof s.hint).toBe("string");
       expect((s.hint ?? "").length).toBeGreaterThan(10);
@@ -24,21 +25,34 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
   const priceFields = PRICE_SECTIONS.flatMap(fieldsOf);
   const presaleFields = PRESALE_SECTIONS.flatMap(fieldsOf);
 
-  it("입지 탭에 조망·일조·소음(view/sunlight/noise) 노출", () => {
+  it("입지 탭에 조망·소음(view/noise) 노출", () => {
     expect(locationFields).toContain("view");
-    expect(locationFields).toContain("sunlight");
     expect(locationFields).toContain("noise");
   });
 
-  it("시세 탭에 주택보급률(housingSupplyLevel) 노출", () => {
-    expect(priceFields).toContain("housingSupplyLevel");
+  // 세션 507 Q6 — 일조는 수집된 단지가 **전부 "양호"** 라 변별력이 0 이다.
+  // 모두가 같은 답인 줄은 정보가 아니라 "확인해 봤다"는 인상만 주는 장식이다.
+  it("일조(sunlight)는 표에서 뺐다 (전 단지 같은 값 — 변별력 0)", () => {
+    expect(locationFields).not.toContain("sunlight");
+  });
+
+  // 세션 507 — 주택보급률은 이 단지 값이 아니라 시·도 통계라 분양 탭 "이 지역 통계"로 옮겼다.
+  // 시세 탭에 되돌아오면 다시 단지 값처럼 읽히므로 그 자리를 잠근다.
+  it("주택보급률(housingSupplyLevel)은 시세 탭에 없다 (지역 통계로 이동)", () => {
+    expect(priceFields).not.toContain("housingSupplyLevel");
   });
 
   // 세션 505 PR-C — 공시가격을 손님 화면에 처음 올린 자리. 표에서 빠지면 수집기·VIEW 가
   // 멀쩡해도 손님은 영영 못 본다(등재가 곧 노출이라 이 한 줄이 도달 가드다).
-  it("시세 탭에 공시가격(housingPrice) 노출 + 시세 바로 옆자리", () => {
+  //
+  // ⚠️ 세션 507 에 인접성 단언("nearbyMedian 바로 옆")을 버렸다 — `nearbyMedian` 이
+  //    두 출처 대조표(`detail/SourceComparison`)로 나가 시세 탭 표에 더는 없기 때문이다.
+  //    "공시가격을 시세로 오해하지 않게"라는 취지는 라벨 "(시군구 평균)" 과 아래 hint
+  //    문구 가드가 그대로 맡는다.
+  it("시세 탭에 공시가격·거래 층수 범위가 남고, 주변 시세는 대조표로 나갔다", () => {
     expect(priceFields).toContain("housingPrice");
-    expect(priceFields.indexOf("housingPrice")).toBe(priceFields.indexOf("nearbyMedian") + 1);
+    expect(priceFields).toContain("floorRange");
+    expect(priceFields).not.toContain("nearbyMedian");
   });
 
   // 공시가격은 실거래·호가와 잣대가 달라 나란히 놓으면 "셋 중 뭘 믿나" 혼란이 난다.

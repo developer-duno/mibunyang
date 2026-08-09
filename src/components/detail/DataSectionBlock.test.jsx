@@ -72,25 +72,33 @@ describe("DataSectionBlock", () => {
   });
 
   // 빈 섹션 — 도넛 없음 + 펼치면 "데이터 수집 중..."
+  // ⚠️ 세션 507: 옛 대상이던 "네이버 교차검증" 섹션은 사라졌다(두 출처 대조표가 대체).
+  //    분기 자체는 그대로라 잔존 섹션("치안/환경")으로 옮겨 검증한다.
   it("모든 필드가 null인 섹션은 도넛이 없고, 펼치면 '데이터 수집 중...'만 표시한다", () => {
     const apt = /** @type {any} */ (
       makeApt({
-        naverNearbyMedian: null,
-        naverJeonseRate: null,
-        naverSellCount: null,
-        naverJeonseCount: null,
-        naverWolseCount: null,
-        naverSchoolWalkMin: null,
-        naverNearbyCount: null,
-        naverFetchedAt: null,
+        crimeSafetyGrade: null,
+        airQuality: null,
+        noxious: null,
+        noxiousDist: null,
+        view: null,
+        noise: null,
       })
     );
-    render(<DataSectionBlock section={/** @type {any} */ (find("네이버 교차검증"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
     // 도넛 없음
-    expect(screen.queryByRole("img", { name: /네이버 교차검증.*채움률/ })).toBeNull();
+    expect(screen.queryByRole("img", { name: /치안\/환경.*채움률/ })).toBeNull();
     // 펼치면 "데이터 수집 중..."
-    fireEvent.click(screen.getByText("네이버 교차검증"));
+    fireEvent.click(screen.getByText("치안/환경"));
     expect(screen.getByText("데이터 수집 중...")).toBeTruthy();
+  });
+
+  // 세션 507 Q6 — 일조는 전 단지 "양호"(변별력 0)라 표에서 뺐다. 되돌아오면 여기가 빨개진다.
+  it("치안/환경 섹션을 펼쳐도 '일조'는 없다 (세션 507 — 전 단지 같은 값)", () => {
+    const apt = /** @type {any} */ (makeApt({ sunlight: "양호" }));
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    fireEvent.click(screen.getByText("치안/환경"));
+    expect(screen.queryByText("일조")).toBeNull();
   });
 
   // hideWhenEmpty — 세션 505 로 실제 섹션에서는 사라졌지만(청약 경쟁이 "분양 안전"에 합쳐지며
@@ -157,13 +165,23 @@ describe("DataSectionBlock", () => {
     expect(screen.getByRole("img", { name: /가상 인프라.*채움률/ })).toBeTruthy();
   });
 
-  // 시장/투자 지표 — highlight 섹션
-  it("시장/투자 지표 섹션은 펼치면 PIR 등 강조 필드를 표시한다", () => {
+  // 이 동네 거래 시세 — highlight 섹션 (세션 507: 옛 "시장/투자 지표" 를 갈아 낀 이름)
+  it("'이 동네 거래 시세' 섹션은 펼치면 PIR 등 강조 필드를 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("시장/투자 지표"))} apt={apt} />);
-    fireEvent.click(screen.getByText("시장/투자 지표"));
+    render(<DataSectionBlock section={/** @type {any} */ (find("이 동네 거래 시세"))} apt={apt} />);
+    fireEvent.click(screen.getByText("이 동네 거래 시세"));
     // pir=5 (HighlightField 도메인 설명 포함)
     expect(screen.getByText(/연소득 대비 분양가/)).toBeTruthy();
+  });
+
+  // 세션 507 — 인구증감률은 이 단지 값이 아니라 시·도 통계라 이 표에서 내려갔다.
+  // 강조줄에 되돌아오면 다시 단지 값처럼 읽히므로 그 자리를 잠근다.
+  it("'이 동네 거래 시세' 강조줄에 인구증감률이 없다 (지역 통계로 이동)", () => {
+    const apt = /** @type {any} */ (makeApt({ popGrowth: 0.3 }));
+    render(<DataSectionBlock section={/** @type {any} */ (find("이 동네 거래 시세"))} apt={apt} />);
+    fireEvent.click(screen.getByText("이 동네 거래 시세"));
+    expect(screen.queryByText("인구증감률")).toBeNull();
+    expect(screen.queryByText(/양수면 유입 지역/)).toBeNull();
   });
 
   // defaultOpen=true 면 처음부터 펼침
