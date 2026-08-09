@@ -182,7 +182,8 @@ describe('sanitize (null → 기본값)', () => {
     const responseData = res.json.mock.calls[0][0].data[0];
 
     // 비관적 기본값 (위험 필드)
-    expect(responseData.builderDebtRatio).toBe(250);
+    // 세션508: builderDebtRatio 는 250 폴백 제거, null 보존(모름=중립, scoreRisk 가 처리).
+    expect(responseData.builderDebtRatio).toBeNull();
     expect(responseData.supplyRatio).toBe(150);
     expect(responseData.pir).toBe(10);
     expect(responseData.psr).toBe(1.5);
@@ -194,8 +195,10 @@ describe('sanitize (null → 기본값)', () => {
     expect(responseData.schoolScore).toBe(50);
 
     // 낙관적 기본값 (혜택 필드 → 0/false)
+    // 세션508: loanFree 는 false 폴백 제거, null 보존(모름=무페널티, scoreRisk 가 처리).
+    //   optionFree/balconyFree/contractDiscount 는 스코어링 미사용 정보성 필드라 그대로 false 유지.
     expect(responseData.discountPct).toBe(0);
-    expect(responseData.loanFree).toBe(false);
+    expect(responseData.loanFree).toBeNull();
     expect(responseData.optionFree).toBe(false);
     expect(responseData.balconyFree).toBe(false);
     expect(responseData.cashback).toBe(0);

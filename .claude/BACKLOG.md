@@ -140,6 +140,10 @@
 
 ## 🟡 곧
 
+- 🟡 **quakeDesign 변별력 0 — scoreProduct 재설계 때 항목 폐기·5점 재배분 검토 (세션508)**
+  quakeDesign 은 신축 아파트에서 변별력 0(알려진 것 중 98.9% 보유) — scoreProduct 9항목·합계 100
+  재설계 때 항목 폐기 + 5점 재배분 검토 (세션508)
+
 - 🟡 **분양 알림 발송 — PR1(#229 체계)·PR2(#230 가시성·카피) 완료, 잔여 = PR3 실발송 (세션 467)**
   - 완료(세션 467): `scripts/notify-subscribers.mjs`(접수시작 D-0~7 미래만 × 구독자 매칭 × notification_logs 멱등 dedup, SMS_ADAPTER_READY=false + SOLAPI env 이중 게이트로 계약 전 자동 dry-run) + `notify-subscribers.yml`(주간 월 14:00 KST) + applyhome-detail **주간화**(월 13일→매주 월 12:30, 미래 접수일 0건 진앙 해소) + monitor ⑤ 등재 + admin 구독자·발송로그 화면 + SubscribeForm 카피 "카카오 알림톡 또는 문자" 중립화. 설계 원문 = `~/.claude/plans/467-clever-toast.md`
   - 👤 **notification_logs 마이그 Dashboard SQL Editor 적용 대기** (`supabase/migrations/20260703000000`) — 적용 전에도 구독자 0명이라 발송기는 조기 종료(무해), 첫 구독자 생기기 전 적용
