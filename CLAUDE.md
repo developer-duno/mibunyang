@@ -26,7 +26,7 @@ npm run format            # prettier --write src/
 npm run format:check      # prettier --check src/ (CI 게이트, endOfLine auto 라 로컬 CRLF 도 통과)
 ```
 
-> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×7(env-key·monitor·collector·fill-matrix·hooks-wiring·playwright-cache·cron-concurrency) → test → build. 머지 전 전부 green 필수.
+> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×8(env-key·monitor·collector·fill-matrix·hooks-wiring·playwright-cache·cron-concurrency·node-esm-chain) → test → build. 머지 전 전부 green 필수.
 
 ## 아키텍처 개요
 
