@@ -9,6 +9,7 @@ import {
   LIQUIDITY_LOW_SCORE,
   CREDIT_GRADE_SCORES,
   CREDIT_DEFAULT,
+  BUILDER_DEBT_UNKNOWN_ADJ,
   HOUSING_SUPPLY_LEVEL_TIERS,
   HOUSING_SUPPLY_HIGH_SCORE,
   HOUSING_SUPPLY_UNKNOWN_SCORE,
@@ -62,6 +63,11 @@ import type { Apt, Res } from "@/types/scoring";
  *   - hugGuarantee(세션508): null = "모름"이라 무페널티(0). `=== false`(확인된 무보증)일 때만 +40.
  *     수집률 0%(builders.hug_guarantee 32개사 전부 null)인데 옛 코드는 `?? false` + truthy 분기라
  *     전 단지가 "보증 없음" 취급으로 +40 을 먹었다 — unsoldRate(세션445)·supplyRatio(세션501)와 같은 결.
+ *   - loanFree(세션508): 중도금 무이자는 이진(있음/없음) 필드라 null(모름)은 "있음"과 동일 대우.
+ *     `=== false`(확인된 유이자)일 때만 +15. 수집률 0%(혜택 9종 전부 미수집)인데 옛 코드
+ *     `apt.loanFree ? 0 : 15` 는 null 을 "무이자 아님"으로 단정해 전 단지에 +15 위험을 물렸다.
+ *   - builderDebtRatio(세션508): 연속 구간이라 null(모름)은 중립 구간 점수(BUILDER_DEBT_UNKNOWN_ADJ,
+ *     "주의" 구간과 동일 +10). 옛 `?? 250`(최악 구간, +20)은 부채율이 정말 250%인 것처럼 채점했다.
  *
  * @example
  * // 11서브 가중치 합 검증
@@ -78,7 +84,9 @@ export function scoreRisk(apt: Apt): Res {
   // 어긋나 있었다 — 상세는 scoringTiers.ts HOUSING_SUPPLY_LEVEL_TIERS 주석.
   const housingSupplyLevel = apt.housingSupplyLevel as number | null | undefined;
   const permitRatio = apt.supplyRatio as number | null | undefined;
-  const builderDebtRatio = (apt.builderDebtRatio ?? 250) as number;
+  // 세션508: null 보존(engine.ts sanitize 가 더 이상 250 으로 채우지 않는다). "미수집"은
+  //   BUILDER_DEBT_UNKNOWN_ADJ(중립 +10)로 채점 — 아래 finSc 계산과 detail 텍스트 참조.
+  const builderDebtRatio = apt.builderDebtRatio as number | null | undefined;
   const builderCreditGrade = apt.builderCreditGrade as string | undefined;
   // 세션 508: HUG 보증 null = "모름". 수집률 0%(builders.hug_guarantee 32개사 전부 null, DART 로는
   //   영구히 못 채우는 필드)인데 옛 코드 `apt.hugGuarantee ? 0 : 40` 은 null 을 "보증 없음"으로 단정해
@@ -99,11 +107,18 @@ export function scoreRisk(apt: Apt): Res {
         ? LISTING_WARN_PENALTY
         : 0;
   liqSc = Math.min(liqSc + listingPen, 100);
-  const loanSc = (apt.dsr40pass ? 15 : 50) + (apt.loanFree ? 0 : 15);
+  // 세션508: loanFree 는 이진 필드 — `=== false`(확인된 유이자)일 때만 +15. null(모름)·true 무페널티.
+  const loanSc = (apt.dsr40pass ? 15 : 50) + (apt.loanFree === false ? 15 : 0);
   let finSc: number =
     (hugGuarantee === false ? 40 : 0) +
     ((CREDIT_GRADE_SCORES as Record<string, number>)[String(builderCreditGrade)] ?? CREDIT_DEFAULT) +
-    (builderDebtRatio > 200 ? 20 : builderDebtRatio > 150 ? 10 : 0);
+    (builderDebtRatio == null
+      ? BUILDER_DEBT_UNKNOWN_ADJ
+      : builderDebtRatio > 200
+        ? 20
+        : builderDebtRatio > 150
+          ? 10
+          : 0);
   // 공공분양 재무안전 보너스
   if (apt.presaleType != null && (apt.presaleType as string).includes("공공")) finSc += PUBLIC_PRESALE_BONUS;
   finSc = Math.max(0, Math.min(finSc, 100));
@@ -222,7 +237,7 @@ export function scoreRisk(apt: Apt): Res {
         name: "시공사 재무",
         score: 100 - Math.round(finSc),
         info: builderCreditGrade || "정보 없음",
-        detail: `${builderCreditGrade || "미확인"} (AA↑안전, A보통, BBB↓주의, 부채율 ${apt._fallbackBuilderDebt ? "미수집" : `${builderDebtRatio}%`})`,
+        detail: `${builderCreditGrade || "미확인"} (AA↑안전, A보통, BBB↓주의, 부채율 ${builderDebtRatio == null || apt._fallbackBuilderDebt ? "미수집" : `${builderDebtRatio}%`})`,
       },
       {
         name: "규제",

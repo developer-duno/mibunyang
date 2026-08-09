@@ -12,9 +12,12 @@ type RegionMedian = NonNullable<ScoringContext["regionMedians"]>[string];
 
 /**
  * null 안전 레이어 + 한글 NFC 정규화.
- * 위험 필드 null → 비관적 기본값(builderDebtRatio:250, supplyRatio:150, dataReliability:30).
+ * 위험 필드 null → 비관적 기본값(dataReliability:30).
  * 단 unsoldRate 는 null 보존(세션 445) — 100% 초과 폭발값 무력화분을 지역 중위값으로 되채우지 않고
  *   scoreRisk 가 "미분양률 미확인=중립"으로 처리하게 둔다.
+ * 단 builderDebtRatio·noise 도 null 보존(세션508) — "모르는 것을 나쁘게 단정하는" 비관적 기본값
+ *   (구 builderDebtRatio:250, noise:75)을 제거. scoreRisk/scoreLocation 이 null=중립으로 처리한다.
+ *   supplyRatio 도 이미 null 보존(세션501, 폴백 150 제거) — 위 "위험 필드" 기본값 목록에서 제외.
  * 혜택 필드 null → 0, 가격/시장 필드 null → null 유지 (서브스코어 내부에서 재평가).
  * rm(regionMedians[region]) 우선 → 지역 중위값으로 위험 필드 폴백(unsoldRate 제외).
  * `??` 전용 (||는 0/"" 오판 유발로 금지, src/scoring/CLAUDE.md).
@@ -38,7 +41,10 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     cancelRatio6m: num(apt.cancelRatio6m, null),
     competitionRate: num(apt.competitionRate, null),
     crimeSafetyGrade: apt.crimeSafetyGrade != null ? num(apt.crimeSafetyGrade, null) : null,
-    builderDebtRatio: num(apt.builderDebtRatio, 250),
+    // 세션508: 폴백 250 제거. 옛 값은 "부채율 250%(최악 구간)"로 실제 채점했는데, 미수집 사유의
+    // 57.1%가 공기업·신탁·조합류(애초에 그 잣대의 대상이 아님)였다. null → scoreRisk 가
+    // BUILDER_DEBT_UNKNOWN_ADJ(중립 +10)로 처리.
+    builderDebtRatio: num(apt.builderDebtRatio, null),
     // 세션 501: 폴백 150 제거. 이 필드는 이제 **인허가율**(연간 인허가÷가구수, 실측 0.09~3.0%)이라
     // 150 은 스케일이 맞지 않는다 — 그대로 두면 데이터가 없는 단지마다 PERMIT_RATIO_HIGH(2.2)를
     // 넘겨 "미래 공급 과잉" 보정이 상시 걸린다. 없으면 null → 보정 자체를 하지 않는다.
@@ -58,7 +64,9 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     icDist: num(apt.icDist, 99),
     ktxDist: num(apt.ktxDist, 99),
     // 인프라 필드
-    noise: num(apt.noise, 75),
+    // 세션508: 폴백 75 제거 — NOISE_TIERS 최대(70)보다 커서 fallback 0점(최하)으로 떨어졌었다.
+    // null → scoreLocation 이 NOISE_UNKNOWN_SCORE(중립 15점)로 처리.
+    noise: num(apt.noise, null),
     hospital: num(apt.hospital, 0),
     mart: num(apt.mart, 0),
     conv: num(apt.conv, 0),

@@ -15,6 +15,7 @@ import {
   SUNLIGHT_DEFAULT,
   SUNLIGHT_NO_DATA,
   NOISE_TIERS,
+  NOISE_UNKNOWN_SCORE,
   NOXIOUS_DIST_THRESHOLD,
   NOXIOUS_REDUCTION,
   NOXIOUS_PEN_CAP,
@@ -103,8 +104,10 @@ export function scoreLocation(apt: Apt): Res {
   const primaryDirection = apt.primaryDirection as string | undefined;
   const dirBonus: number = primaryDirection ? ((DIRECTION_BONUS as Record<string, number>)[primaryDirection] ?? 0) : 0;
   sunSc = Math.min(sunSc + dirBonus, SUNLIGHT_DIRECTION_MAX);
-  const noise = (apt.noise ?? 75) as number;
-  const noiseSc: number = tierMax(noise, NOISE_TIERS, 0);
+  // 세션508: 소음 미측정(null) 시 중립값(NOISE_UNKNOWN_SCORE). 옛 `?? 75`는 NOISE_TIERS 최대(70)
+  //   보다 커서 fallback 0점으로 떨어져 "안 재본 곳이 실측 최악(70dB)보다 시끄럽다"로 채점됐다.
+  const noise = apt.noise as number | null | undefined;
+  const noiseSc: number = noise == null ? NOISE_UNKNOWN_SCORE : tierMax(noise, NOISE_TIERS, 0);
   // 대기질 복합: PM2.5(40%) + PM10(35%) + O3(25%) — pm10/o3 null이면 기존과 동일
   const airQuality = apt.airQuality as { pm25?: number; pm10?: number; o3?: number; grade?: string } | undefined;
   const pm25Sc: number =

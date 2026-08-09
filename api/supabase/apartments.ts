@@ -182,7 +182,10 @@ function sanitizeBasics(row: any) {
 function sanitizeBenefits(row: any) {
   return {
     discountPct: row.discountPct ?? 0,
-    loanFree: row.loanFree ?? false,
+    // loanFree 는 null 보존 (세션508, hugGuarantee 세션508 선례와 동형). 수집률 0%(혜택 9종
+    //   전부 미수집, 세션488 감사)인데 `?? false` 로 굳히면 "모름"이 "유이자"로 굳어 전 단지가
+    //   대출위험 페널티를 먹는다. 점수 엔진(scoreRisk)이 null=무페널티 / false=+15 를 명시 처리.
+    loanFree: row.loanFree ?? null,
     loanFreePct: row.loanFreePct ?? 0,
     optionFree: row.optionFree ?? false,
     optionValue: row.optionValue ?? 0,
@@ -267,7 +270,11 @@ function sanitizeTransport(row: any) {
 function sanitizeRegion(row: any) {
   return {
     // 건설사
-    builderDebtRatio: row.builderDebtRatio ?? 250,
+    // builderDebtRatio 는 null 보존 (세션508, unsoldRate 세션445·hugGuarantee 세션508 선례와 동형).
+    //   `_fallbackBuilderDebt`(위 sanitizeFallbackFlags, row.builderDebtRatio 원본 기준)는 이 줄보다
+    //   먼저 계산되며 서로 다른 함수에서 원본 row 를 각자 읽으므로 순서 영향 없음(둘 다 정확).
+    //   점수 엔진(scoreRisk)이 null=BUILDER_DEBT_UNKNOWN_ADJ(중립 +10) 처리.
+    builderDebtRatio: row.builderDebtRatio ?? null,
     builderCreditGrade: row.builderCreditGrade ?? null,
     // 지역
     popGrowth: row.popGrowth ?? null,

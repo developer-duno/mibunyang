@@ -210,6 +210,10 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 | naverSchoolWalkMin | scoreLocation school | <= 5분: +10, <= 10분: +5, <= 20분: -5, > 20분: -10 |
 | isRegulated | scoreRisk regSc | DB값 우선, null이면 getZone() 폴백 |
 | hugGuarantee | scoreRisk finSc | **false(확인된 무보증)일 때만 +40**, null(모름)·true 무페널티 (세션508) |
+| loanFree | scoreRisk loanSc | **false(확인된 유이자)일 때만 +15**, null(모름)·true 무페널티 (세션508) |
+| noise | scoreLocation noiseSc | null → NOISE_UNKNOWN_SCORE(중립 15점, 65dB 구간과 동일) (세션508) |
+| builderDebtRatio | scoreRisk finSc | null → BUILDER_DEBT_UNKNOWN_ADJ(중립 +10, "주의" 구간과 동일) (세션508) |
+| quakeDesign | scoreProduct quakeSc | **false(확인된 미적용)일 때만 0점**, null(모름)·true 5점 (세션508) |
 | naverSellCount | scoreRisk liqSc | 50건+ → +5, 30건+ → +2 페널티 |
 | presaleType | scoreRisk finSc | "공공" 포함 시 -15 보너스 |
 | housingSupplyLevel | scoreRisk supSc **주 지표** | 96%↓ 5 / 101%↓ 25 / 104%↓ 50 / 초과 75, null 75 |
@@ -226,3 +230,17 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 - `||` (logical OR) 금지: `apt.schoolScore || 50` — 0이 50으로 대체되는 함정
 - 배열 가드: `(apt.noxious || []).length`
 - 숫자 가드: `(apt.units ?? 0).toLocaleString()`
+
+### unknown(null) 처리 원칙 — 이진 vs 연속 (세션508)
+
+"모르는 것을 나쁘게 단정하는" 기본값을 막기 위한 필드 종류별 규칙. #367(hugGuarantee)이 드러낸
+패턴을 규칙으로 명문화한다 — 지금까지 필드마다 제각각이던 것을 두 갈래로 통일.
+
+| 필드 종류 | 규칙 | 근거 |
+|---|---|---|
+| **이진(있음/없음)** | `=== false`(확인된 부재)일 때만 불이익. **null(모름)은 "있음"과 같은 대우** | 중간값이 성립하지 않음. loanFree·quakeDesign·hugGuarantee(#367) |
+| **연속·구간** | null 이면 **중립 구간 점수**(알려진 값들의 중앙값이 떨어지는 구간) | noise·builderDebtRatio·cancelRatio(35)·competitionRate(40)·crime(35)·unsoldRate(40) |
+
+**중립을 쓰고 최고점을 안 쓰는 이유(데이터 관리)**: 미수집에 최고점을 주면 수집할 이유가
+사라진다. 중립은 "재면 오를 수도 내릴 수도" 라서 수집 동기가 유지된다. 자세한 근거 수치는
+`docs/superpowers/specs/2026-08-10-unknown-defaults-neutral-plan.md` 참조.

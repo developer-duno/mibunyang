@@ -79,7 +79,11 @@ export function scoreProduct(apt: Apt): Res {
   const exclSc: number = tierMin(exclusiveRatio, EXCL_RATIO_TIERS, EXCL_LOW_SCORE);
   const layout = apt.layout as string | undefined;
   const layoutSc = (LAYOUT_SCORE as Record<string, number>)[String(layout)] || 3;
-  const quakeSc = apt.quakeDesign ? 5 : 0;
+  // 세션508: 내진설계는 이진(있음/없음) 필드 — `=== false`(확인된 미적용)일 때만 0점. null(모름)·true
+  //   무페널티. 채워진 800/2,043건 중 98.9%(791/800)가 보유 — 우리 모수(신축 분양 아파트)는
+  //   내진설계 의무 대상(2017.12 확대)이라 미수집을 "미적용"으로 단정하면 안 된다.
+  const quakeDesign = apt.quakeDesign as boolean | null | undefined;
+  const quakeSc = quakeDesign === false ? 0 : 5;
   const maxFloor = (apt.maxFloor ?? 10) as number;
   const structSc: number = tierMin(maxFloor, FLOOR_TIERS, FLOOR_LOW_SCORE);
   const rawTotal = brandSc + unitSc + parkSc + farSc + energySc + exclSc + layoutSc + quakeSc + structSc;
@@ -143,8 +147,13 @@ export function scoreProduct(apt: Apt): Res {
       {
         name: "내진",
         score: quakeSc,
-        info: apt.quakeDesign ? "적용" : "정보 없음",
-        detail: apt.quakeDesign ? "적용 (5점)" : "미적용 또는 미수집 (0점)",
+        info: quakeDesign === false ? "미적용" : quakeDesign === true ? "적용" : "정보 없음(적용 추정)",
+        detail:
+          quakeDesign === false
+            ? "미적용 확인 (0점)"
+            : quakeDesign === true
+              ? "적용 확인 (5점)"
+              : "미수집 — 신축 분양 아파트는 전량 내진설계 의무 대상이라 적용으로 추정 (5점)",
       },
       {
         name: "구조",

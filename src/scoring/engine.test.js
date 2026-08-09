@@ -220,6 +220,34 @@ describe("scoreLocation", () => {
   it("미등록 지역도 에러 없이 계산", () => {
     expect(scoreLocation(makeApt({ region: "미등록" })).total).toBeGreaterThanOrEqual(0);
   });
+  // 세션508: 소음 미측정(null)은 중립값(65dB 구간과 동일 15점) — 옛 `?? 75`는 NOISE_TIERS
+  //   최대(70)보다 커 fallback 0점(최하)으로 떨어져 "안 재본 곳이 실측 최악보다 시끄럽다"로
+  //   채점됐다(unsoldRate 세션445·hugGuarantee 세션508와 같은 결).
+  it("noise null -> 65dB 구간과 동일한 자연환경 점수 (중립 15점)", () => {
+    const unknown = scoreLocation(makeApt({ noise: null }));
+    const at65 = scoreLocation(makeApt({ noise: 65 }));
+    expect(unknown.subs.find((s) => s.name === "자연환경")?.score).toBe(
+      at65.subs.find((s) => s.name === "자연환경")?.score
+    );
+  });
+  it("noise null -> 실측 최악(70dB)보다 자연환경 점수 높음 (옛 0점 회귀 방지)", () => {
+    const unknown = scoreLocation(makeApt({ noise: null }));
+    const worst = scoreLocation(makeApt({ noise: 70 }));
+    expect(Number(unknown.subs.find((s) => s.name === "자연환경")?.score)).toBeGreaterThan(
+      Number(worst.subs.find((s) => s.name === "자연환경")?.score)
+    );
+  });
+  // 대조군: noise 가 null 이어도 다른 서브(교통·학군)는 불변해야 한다.
+  it("noise null 이어도 교통·학군 서브는 불변 (대조군)", () => {
+    const withNoise = scoreLocation(makeApt({ noise: 55 }));
+    const noNoise = scoreLocation(makeApt({ noise: null }));
+    expect(noNoise.subs.find((s) => s.name === "교통")?.score).toBe(
+      withNoise.subs.find((s) => s.name === "교통")?.score
+    );
+    expect(noNoise.subs.find((s) => s.name === "학군")?.score).toBe(
+      withNoise.subs.find((s) => s.name === "학군")?.score
+    );
+  });
   // --- 세션 454: 가중치 합 1.0 불변식 (scoreLocation.ts L102/L93 + INFRA_CONFIG) ---
   it("외부 5항목 가중치 합 = 1.00 (transport·school·infra·env·noxSafe)", () => {
     // scoreLocation.ts L102: 0.30 + 0.25 + 0.20 + 0.10 + 0.15
@@ -262,6 +290,31 @@ describe("scoreProduct", () => {
   it("내진설계 5점/0점", () => {
     expect(scoreProduct(makeApt({ quakeDesign: true })).subs.find((s) => s.name === "내진")?.score ?? 0).toBe(5);
     expect(scoreProduct(makeApt({ quakeDesign: false })).subs.find((s) => s.name === "내진")?.score ?? 0).toBe(0);
+  });
+  // 세션508: 내진설계는 이진 필드 — null(미수집)은 true 와 동일 대우. 채워진 800/2,043건 중
+  //   98.9%가 보유 + 우리 모수(신축 분양 아파트)는 2017.12 확대된 내진설계 의무 대상이라
+  //   미수집을 "미적용"으로 단정하면 안 된다.
+  it("내진설계 null(미수집) -> true 와 동일 (5점, 적용 추정)", () => {
+    const nullScore = scoreProduct(makeApt({ quakeDesign: null })).subs.find((s) => s.name === "내진")?.score ?? -1;
+    const trueScore = scoreProduct(makeApt({ quakeDesign: true })).subs.find((s) => s.name === "내진")?.score ?? -1;
+    expect(nullScore).toBe(trueScore);
+    expect(nullScore).toBe(5);
+  });
+  it("내진설계 false(확인된 미적용)만 0점 -> null·true 보다 5점 낮음", () => {
+    const falseScore = scoreProduct(makeApt({ quakeDesign: false })).subs.find((s) => s.name === "내진")?.score ?? -1;
+    const nullScore = scoreProduct(makeApt({ quakeDesign: null })).subs.find((s) => s.name === "내진")?.score ?? -1;
+    expect(nullScore - falseScore).toBe(5);
+  });
+  // 대조군: quakeDesign 이 null 이어도 다른 서브(브랜드·세대수)는 불변해야 한다.
+  it("내진설계 null 이어도 브랜드·세대수 서브는 불변 (대조군)", () => {
+    const withTrue = scoreProduct(makeApt({ quakeDesign: true }));
+    const withNull = scoreProduct(makeApt({ quakeDesign: null }));
+    expect(withNull.subs.find((s) => s.name === "브랜드")?.score).toBe(
+      withTrue.subs.find((s) => s.name === "브랜드")?.score
+    );
+    expect(withNull.subs.find((s) => s.name === "세대수")?.score).toBe(
+      withTrue.subs.find((s) => s.name === "세대수")?.score
+    );
   });
 });
 
@@ -381,6 +434,41 @@ describe("scoreRisk", () => {
     expect(diff).toBeGreaterThanOrEqual(6);
     expect(diff).toBeLessThanOrEqual(7);
   });
+  // 세션508: loanFree(중도금 무이자)도 hugGuarantee 와 같은 이진 필드 패턴. 수집률 0%(혜택 9종
+  //   전부 미수집, 세션488 감사)인데 옛 코드 `apt.loanFree ? 0 : 15` 는 null 을 "무이자 아님"으로
+  //   단정해 전 단지에 +15 위험을 물렸다.
+  /** @param {boolean | null} v */
+  const loanFinScoreOf = (v) => {
+    const r = scoreRisk(makeApt({ loanFree: v }));
+    return r.subs.find((s) => s.name === "대출/잔금")?.score ?? 0;
+  };
+  it("loanFree null(모름) -> true 와 동일 (무페널티)", () => {
+    expect(loanFinScoreOf(null)).toBe(loanFinScoreOf(true));
+    expect(scoreRisk(makeApt({ loanFree: null })).total).toBe(scoreRisk(makeApt({ loanFree: true })).total);
+  });
+  it("loanFree false(확인된 유이자)만 +15 위험 -> null·true 보다 대출/잔금 15점 낮음", () => {
+    expect(loanFinScoreOf(null) - loanFinScoreOf(false)).toBe(15);
+    expect(loanFinScoreOf(true) - loanFinScoreOf(false)).toBe(15);
+    // 안전도 총점 반영: loan 가중치 0.15 → 15 × 0.15 = 2.25점. total 은 반올림이라 2~3.
+    const diff = scoreRisk(makeApt({ loanFree: null })).total - scoreRisk(makeApt({ loanFree: false })).total;
+    expect(diff).toBeGreaterThanOrEqual(2);
+    expect(diff).toBeLessThanOrEqual(3);
+  });
+  // 대조군: loanFree 변경이 hugGuarantee·신용등급 분기에 영향 없어야 한다.
+  it("loanFree 변경이 hugGuarantee·시공사 재무 로직에 영향 없음 (대조군)", () => {
+    const a = scoreRisk(makeApt({ loanFree: null, hugGuarantee: false, builderCreditGrade: "BBB" }));
+    const b = scoreRisk(makeApt({ loanFree: true, hugGuarantee: false, builderCreditGrade: "BBB" }));
+    // loanFree null==true 이므로 hugGuarantee·신용등급을 고정하면 두 결과가 완전히 같아야 함
+    expect(a.subs.find((s) => s.name === "시공사 재무")?.score).toBe(
+      b.subs.find((s) => s.name === "시공사 재무")?.score
+    );
+    // hugGuarantee === false 는 여전히 +40 위험 유지 확인
+    const notPenalized =
+      scoreRisk(makeApt({ hugGuarantee: true })).subs.find((s) => s.name === "시공사 재무")?.score ?? -1;
+    const stillPenalized =
+      scoreRisk(makeApt({ hugGuarantee: false })).subs.find((s) => s.name === "시공사 재무")?.score ?? -1;
+    expect(notPenalized - stillPenalized).toBe(40);
+  });
   // 신용등급 위험 단조성: CCC(최악) < B < BB < BBB (시공사 재무 안전점수). 동일 조건에서 등급만 변경.
   // B·CCC가 점수표에 누락되면 CREDIT_DEFAULT(30)로 떨어져 BB(60)보다 안전하게 역전됨 (세션392 버그).
   // hugGuarantee:true(+0)·debtRatio:100(보정 0)으로 finSc=creditScore만 남겨 등급 차이를 선명히 (false면 +40로 천장 클램프).
@@ -468,6 +556,46 @@ describe("scoreRisk", () => {
     expect(sNull?.detail).toContain("미수집");
     // 정상값은 현행 "250%" 표시 유지 (회귀 방지)
     expect(sFilled?.detail).toContain("250%");
+  });
+  // 세션508: builderDebtRatio 원본값 자체가 null 인 경로(compute-scores VIEW 등 _fallbackBuilderDebt
+  //   플래그가 없는 경로 포함) — 연속 구간 필드라 중립(BUILDER_DEBT_UNKNOWN_ADJ=10, "주의" 구간과
+  //   동일)으로 채점한다. 채워진 301건의 중앙값 171.9%가 정확히 그 구간이라는 게 근거.
+  it("builderDebtRatio null -> 175%(주의 구간)와 동일한 시공사 재무 점수", () => {
+    const nullScore = scoreRisk(makeApt({ builderDebtRatio: null, builderCreditGrade: "BBB" })).subs.find(
+      (s) => s.name === "시공사 재무"
+    )?.score;
+    const midScore = scoreRisk(makeApt({ builderDebtRatio: 175, builderCreditGrade: "BBB" })).subs.find(
+      (s) => s.name === "시공사 재무"
+    )?.score;
+    expect(nullScore).toBe(midScore);
+  });
+  it("builderDebtRatio null -> 250%(위험 구간)보다 시공사 재무 안전점수 높음 (옛 250 폴백 회귀 방지)", () => {
+    const nullScore = Number(
+      scoreRisk(makeApt({ builderDebtRatio: null, builderCreditGrade: "BBB" })).subs.find(
+        (s) => s.name === "시공사 재무"
+      )?.score
+    );
+    const worstScore = Number(
+      scoreRisk(makeApt({ builderDebtRatio: 250, builderCreditGrade: "BBB" })).subs.find(
+        (s) => s.name === "시공사 재무"
+      )?.score
+    );
+    expect(nullScore).toBeGreaterThan(worstScore);
+  });
+  it("builderDebtRatio null -> detail에 '미수집' 표시, %% 수치 숨김 (_fallbackBuilderDebt 플래그 없이도)", () => {
+    const r = scoreRisk(makeApt({ builderDebtRatio: null, builderCreditGrade: "BBB" }));
+    const s = r.subs.find((x) => x.name === "시공사 재무");
+    expect(s?.detail).toContain("미수집");
+    expect(s?.detail).not.toContain("%)"); // "175%)" 류 부채율 수치 노출 금지
+  });
+  // 대조군: builderDebtRatio 가 null 이어도 신용등급 단조성(세션392 회귀 가드)은 유지된다.
+  it("builderDebtRatio null 이어도 신용등급 단조성은 유지된다 (대조군)", () => {
+    const fin = (/** @type {string} */ grade) =>
+      scoreRisk(makeApt({ builderDebtRatio: null, builderCreditGrade: grade, hugGuarantee: true })).subs.find(
+        (s) => s.name === "시공사 재무"
+      )?.score ?? 0;
+    expect(fin("CCC")).toBeLessThan(fin("BB"));
+    expect(fin("BB")).toBeLessThan(fin("BBB"));
   });
 });
 
@@ -1501,5 +1629,32 @@ describe("scorePrice — price=0 classifyNoPrice 확장 (세션111)", () => {
       makeApt({ price: 0, nearbyMedian: 200000, name: "고덕국제신도시수자인풍경채1단지", presaleStage: "분양계획" })
     );
     expect(r.subs[0].detail).toContain("분양 예정 단지");
+  });
+});
+
+// 세션508 — engine.ts `sanitize()` 의 null 보존을 **실전 경로로** 잠근다.
+//
+// ⚠️ 왜 별도 블록이 필요한가: 위의 scoreLocation/scoreRisk 단독 호출 테스트는 raw apt 를 그대로
+//    넘기므로 sanitize 를 **건너뛴다**. 실제 화면·compute-scores 는 항상 calcCats → sanitize 를
+//    거치므로, sanitize 가 옛 비관적 기본값(noise 75 / builderDebtRatio 250)을 되살려도
+//    단독 호출 테스트는 전부 초록이다 — 뮤테이션으로 실증한 사각지대(수정이 조용히 무효화됨).
+//    아래 두 테스트는 그 되돌림을 red 로 잡는다.
+describe("sanitize null 보존 — 실전 경로(calcCats) 회귀 가드 (세션508)", () => {
+  it("noise null 은 65dB 구간과 같고, 구간 밖(75) 폴백보다 높다", () => {
+    const unknown = calcCats(makeApt({ noise: null })).location.total;
+    const at65 = calcCats(makeApt({ noise: 65 })).location.total;
+    const outOfRange = calcCats(makeApt({ noise: 75 })).location.total;
+    expect(unknown).toBe(at65);
+    // sanitize 가 `?? 75` 로 되돌아가면 unknown === outOfRange 가 되어 red.
+    expect(unknown).toBeGreaterThan(outOfRange);
+  });
+
+  it("builderDebtRatio null 은 주의 구간(175%)과 같고, 최악 기본값(250%)보다 안전하다", () => {
+    const unknown = calcCats(makeApt({ builderDebtRatio: null })).risk.total;
+    const caution = calcCats(makeApt({ builderDebtRatio: 175 })).risk.total;
+    const worst = calcCats(makeApt({ builderDebtRatio: 250 })).risk.total;
+    expect(unknown).toBe(caution);
+    // sanitize 가 `?? 250` 으로 되돌아가면 unknown === worst 가 되어 red.
+    expect(unknown).toBeGreaterThan(worst);
   });
 });

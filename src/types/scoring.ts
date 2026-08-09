@@ -65,7 +65,8 @@ export interface Apt {
   competitionSupply?: number | null;
   competitionApplicants?: number | null;
   crimeSafetyGrade?: number | null;
-  builderDebtRatio?: number;
+  /** 세션508: 폴백 250 제거, null 보존(모름=중립). scoreRisk 가 BUILDER_DEBT_UNKNOWN_ADJ 처리. */
+  builderDebtRatio?: number | null;
   /** 인허가율(연간 인허가 호수 ÷ 가구수, %). 세션501: 폴백 150 제거로 null 이 정상값이 됐다. */
   supplyRatio?: number | null;
   _fallbackSupplyRatio?: boolean;
@@ -86,7 +87,8 @@ export interface Apt {
   ktxDist?: number;
 
   // 인프라
-  noise?: number;
+  /** 세션508: 폴백 75 제거, null 보존(모름=중립). scoreLocation 이 NOISE_UNKNOWN_SCORE 처리. */
+  noise?: number | null;
   hospital?: number;
   hospitalDist?: number;
   mart?: number;
@@ -99,7 +101,8 @@ export interface Apt {
   pharmacy?: number;
 
   // 혜택
-  loanFree?: boolean;
+  /** 세션508: 폴백 false 제거, null 보존(모름=페널티 없음). scoreRisk 가 `=== false` 만 불이익 처리. */
+  loanFree?: boolean | null;
   loanFreePct?: number;
   discountPct?: number;
   optionFree?: boolean;
