@@ -1,8 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState, Suspense, type CSSProperties } from "react";
 import { lazyNamed } from "@/utils/lazyNamed";
 import { C, F } from "@/theme";
-import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { PROFILES, getTopCats } from "@/constants/profiles";
+import { aptVerdict } from "@/constants/aptVerdict";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
@@ -78,6 +78,9 @@ const DM_S = {
     alignItems: "center",
     justifyContent: "center",
   },
+  // 종합 판정 한 줄 (세션508 PR-3a A1) — ScoreBadge 보다 먼저 뜨는 상위 결론 문장.
+  verdictLine: { fontSize: F.md, fontWeight: 700, color: C.text, textAlign: "center" as const, marginBottom: 8 },
+  verdictBlind: { fontSize: F.sm, color: C.muted, textAlign: "center" as const, marginBottom: 8 },
   scoreBadgeWrap: { textAlign: "center" as const, marginBottom: 16 },
   metricsHead: { fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 6 },
   metricsRow: { display: "flex", justifyContent: "space-between", padding: "4px 0" },
@@ -335,8 +338,9 @@ export const DetailModal = memo(function DetailModal({
 
   if (!item) return null;
   const { apt, res } = item;
-  const zone = getZone(apt.region as string, apt.gu as string);
-  const zoneName = (ZONE_TYPE as Record<string, string>)[zone];
+  // 종합 판정 한 줄 (세션508 PR-3a A1) — blind 여부와 무관하게 순수 계산(res.total/res.cats 만 봄).
+  // 렌더 분기(blind 면 대신 "점수는 로그인 후 볼 수 있어요")는 아래 JSX 에서 결정한다.
+  const verdict = aptVerdict(res.total, res.cats);
 
   return (
     <div
@@ -441,26 +445,26 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-overview")}
             >
+              {/* 종합 판정 한 줄 (세션508 PR-3a A1) — ScoreBadge 보다 먼저. ProfileWeightBar 의
+            "강점/보완" 요약을 대체한다(ProfileWeightBar 는 profile && !blind 일 때만 떠서
+            비로그인·프로필 미선택 손님은 결론 문장을 못 봤다 — 이 한 줄이 상위 개념). blind 는
+            점수 파생값이라 등급·카테고리 대신 "로그인 후" 안내로 교체한다. verdict 가 null
+            (슬림 catsCache 등)이면 아무것도 렌더하지 않는다 — NaN·"—등급" 표시 금지. */}
+              {blind ? (
+                <div style={DM_S.verdictBlind}>점수는 로그인 후 볼 수 있어요</div>
+              ) : (
+                verdict && <div style={DM_S.verdictLine}>{verdict}</div>
+              )}
+
               <div style={DM_S.scoreBadgeWrap}>
                 {blind ? <BlindScoreBadge size={80} /> : <ScoreBadge score={res.total} size={80} />}
               </div>
 
-              {/* 요약 시각화 — "이 단지 vs 같은 지역 한가운데 값" 8줄 (세션 487 PR-4).
-                  카드의 3줄과 같은 컴포넌트라 읽는 법이 그대로 이어진다. 트랙만 넓다. */}
-              {showDeviation && (
-                <DeviationStrip
-                  apt={apt}
-                  fields={OVERVIEW_DEVIATION_FIELDS}
-                  regionStats={regionStats}
-                  compact={false}
-                />
-              )}
-
               {/* 핵심 지표 — 세션 409 D2b: 6각형 레이더 제거(카테고리 점수는 아래 미니카드와 이중 노출 → 루즈
             해소, 사장님 지시). 미니카드가 카테고리 시각화+진입 역할을 모두 흡수. 핵심지표는 전폭.
-            세션 505: 8행 → 4행. 지역·분양가는 바로 위 헤더가 같은 값을 이미 말하고,
-            전세가율·미분양률은 바로 위 편차 스트립이 "지역 대비 어디쯤"까지 얹어 말한다 —
-            같은 값을 한 화면에서 두 번 읽게 하지 않는다. */}
+            세션 505: 8행 → 4행(지역·분양가는 헤더, 전세가율·미분양률은 편차 스트립과 겹쳐 뺌).
+            세션508 PR-3a A2: 4행 → 2행. 규제현황·LTV한도는 금융 탭이 이미 배지+3칸으로 갖고
+            있다(A3) — 같은 값을 두 곳에서 또 읽게 하지 않는다(정보 손실 0). */}
               <div style={{ marginBottom: 12 }}>
                 <div>
                   <div style={DM_S.metricsHead}>핵심 지표</div>
@@ -479,8 +483,6 @@ export const DetailModal = memo(function DetailModal({
                           : C.muted,
                       hint: "주변 시세로 계산한 '적정가'와 실제 분양가를 비교한 거예요. +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
                     },
-                    { l: "규제현황", v: zoneName, c: zone === "normal" ? C.green : C.red },
-                    { l: "LTV한도", v: fmtPrice(calcLTV(apt.price, zone)), c: C.blue },
                     { l: "입주", v: fmtCompletion(apt.completion) },
                   ].map((r, i) => (
                     <div key={i} style={DM_S.metricsRow}>
@@ -496,27 +498,11 @@ export const DetailModal = memo(function DetailModal({
                 </div>
               </div>
 
-              {Array.isArray((mergedApt ?? apt).benefits) && ((mergedApt ?? apt).benefits as unknown[]).length > 0 && (
-                <div style={DM_S.benefitsBox}>
-                  <div style={DM_S.benefitsHead}>혜택 상세</div>
-                  <div style={DM_S.benefitsChipRow}>
-                    {((mergedApt ?? apt).benefits as string[]).map((b: string, i: number) => (
-                      <span key={i} style={DM_S.benefitsChip}>
-                        {b}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {Array.isArray(apt.siblingIds) && (apt.siblingIds as string[]).length > 1 && (
-                <div style={DM_S.republishBadge}>재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회</div>
-              )}
-
               {/* 카테고리 요약 미니카드 6개 (세션 409 D2b) — 점수+등급+결론, 탭하면 점수 탭 해당 카테고리 자동 펼침.
             ⚠️ 옛 주석은 "레이더(위)가 한눈 비교, 미니카드는 결론+진입"이라 했으나 레이더는 세션 409 에
-            이미 제거됐다(현재 코드에 없음). 지금 위쪽 시각 요약은 편차 스트립이고, 역할 분리는
-            "스트립 = 지역 대비 위치(상대), 미니카드 = 카테고리 결론+진입(행동)"이다. */}
+            이미 제거됐다(현재 코드에 없음). 세션508 PR-3a A4: 편차 스트립을 미니카드 뒤로 옮겼다 —
+            스트립(231px)이 미니카드 앞을 막으면 "카드를 첫 화면 안으로"라는 목표 자체가 무효화된다.
+            역할 분리는 "미니카드 = 카테고리 결론+진입(행동), 스트립 = 지역 대비 위치(상대, 근거)"다. */}
               {(() => {
                 const overviewTopCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
                 return (
@@ -546,8 +532,40 @@ export const DetailModal = memo(function DetailModal({
             ⚠️ 옛 주석은 "상세 모달은 로그인 전제(useDetailModal 단일 진입)라 블라인드 무관"이라 했으나
             그 전제는 이미 깨졌다 — 2-A 로 블라인드를 넣었고 세션 503(2-B)이 게이트를 없애 비로그인도
             상세를 연다. 비로그인엔 아예 안 그린다 —
-            가중치는 "내 프로필"이 있어야 성립하는 값이라 뿌옇게 남기는 것보다 없는 편이 정직하다. */}
+            가중치는 "내 프로필"이 있어야 성립하는 값이라 뿌옇게 남기는 것보다 없는 편이 정직하다.
+            세션508 PR-3a A1: 강점/보완 요약 줄은 위 판정 한 줄로 이관 — 이제 막대만 그린다. */}
               {profile && !blind && <ProfileWeightBar weights={PROFILES[profile].w} cats={res.cats} />}
+
+              {/* 요약 시각화 — "이 단지 vs 같은 지역 한가운데 값" 8줄 (세션 487 PR-4).
+                  카드의 3줄과 같은 컴포넌트라 읽는 법이 그대로 이어진다. 트랙만 넓다.
+                  세션508 PR-3a A4: 미니카드 뒤로 이동(위 주석 참조). apt 는 raw(mergedApt 아님) —
+                  detail 버킷(staticDataApi.ts:63-73)에 이 컴포넌트가 읽는 필드가 없어 값이 안
+                  바뀐다(전수 grep 확인, v1 의 "PresaleInfo 만 raw" 단정은 오류였다). */}
+              {showDeviation && (
+                <DeviationStrip
+                  apt={apt}
+                  fields={OVERVIEW_DEVIATION_FIELDS}
+                  regionStats={regionStats}
+                  compact={false}
+                />
+              )}
+
+              {Array.isArray((mergedApt ?? apt).benefits) && ((mergedApt ?? apt).benefits as unknown[]).length > 0 && (
+                <div style={DM_S.benefitsBox}>
+                  <div style={DM_S.benefitsHead}>혜택 상세</div>
+                  <div style={DM_S.benefitsChipRow}>
+                    {((mergedApt ?? apt).benefits as string[]).map((b: string, i: number) => (
+                      <span key={i} style={DM_S.benefitsChip}>
+                        {b}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(apt.siblingIds) && (apt.siblingIds as string[]).length > 1 && (
+                <div style={DM_S.republishBadge}>재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회</div>
+              )}
 
               {/* 단지 기본정보 (핵심지표 중복 4필드 제외 — 세션 408 D2a) */}
               {OVERVIEW_SECTIONS.map((s) => (
@@ -715,7 +733,9 @@ export const DetailModal = memo(function DetailModal({
                 aptPrice={(apt.price as number | null) ?? null}
                 competitionRate={(mergedApt ?? apt).competitionRate as number | null}
               />
-              <PresaleInfo apt={apt} />
+              {/* 세션508 PR-3a A5: raw apt → mergedApt ?? apt 통일 — 이 컴포넌트가 읽는 필드는
+                  detail 버킷(staticDataApi.ts:63-73)에 있어 버킷 도착 후 값이 갱신돼야 한다. */}
+              <PresaleInfo apt={mergedApt ?? apt} />
 
               {/* 청약경쟁·네이버분양정보 + 국토부 모집공고 원문 (세션 408 D2a) */}
               {PRESALE_SECTIONS.map((s) => (
@@ -805,6 +825,9 @@ export const DetailModal = memo(function DetailModal({
               <Suspense
                 fallback={<div style={{ padding: 12, fontSize: F.sm, color: C.muted }}>평형별 공급 로딩 중...</div>}
               >
+                {/* 세션508 PR-3a A5: 의도적으로 raw apt 유지 — 동/호수·평형 공급 표(usePresaleDetail
+                    units)가 읽는 필드는 detail 버킷(staticDataApi.ts:63-73)에 없어 mergedApt 로
+                    바꿔도 값이 안 바뀐다(전수 grep 확인). */}
                 <AdminUnitSupply apt={apt} />
               </Suspense>
               <AdminDataAudit apt={mergedApt ?? apt} profile={profile} />

@@ -22,7 +22,13 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
     zone === "normal"
       ? `LTV: 9억 이하 ${Math.round(NORMAL_LTV.under * 100)}% / 초과분 ${Math.round(NORMAL_LTV.over * 100)}% (무주택자 기준)`
       : `LTV: ${Math.round(REGULATED_LTV_RATE * 100)}% (무주택자 기준) · 대출한도 15억 초과 4억 / 25억 초과 2억`;
-  const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
+  // 2단 통일(세션508 PR-3a A3) — 종합 탭(2단: normal→초록/그외→빨강)과 여기(옛 3단:
+  // overheated→주황/speculative→빨강)가 갈려 있었다. ZONE_MAP 이 전 항목을 overheated 하나로만
+  // 매핑(PR-1)해 실제로는 같은 단지가 종합=빨강·금융=주황으로 보이는 모순이 생겼다.
+  // speculative 분기는 지우지 않고 주석으로 남긴다 — 투기과열지구·조정대상지역 두 목록이
+  // 다시 갈라지는 날 여기서 3단을 복원한다(regulations.ts:10 주석과 짝).
+  // const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
+  const zoneColor = zone === "normal" ? C.green : C.red;
   const aptPrice = Number(apt.price ?? 0);
   const aptArea = Number(apt.area ?? 0);
   const ltvBase = calcLTV(aptPrice, zone);
@@ -64,7 +70,8 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
               fontWeight: 700,
               padding: "2px 8px",
               borderRadius: 4,
-              background: zone === "normal" ? C.greenLight : zone === "overheated" ? C.amberLight : C.redLight,
+              // background: zone === "normal" ? C.greenLight : zone === "overheated" ? C.amberLight : C.redLight,
+              background: zone === "normal" ? C.greenLight : C.redLight,
               color: zoneColor,
             }}
           >

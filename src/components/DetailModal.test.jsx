@@ -152,30 +152,46 @@ describe("DetailModal", () => {
   });
 
   // 핵심 지표 영역
-  it("핵심 지표는 4행이고, 지역·분양가는 헤더가 말한다 (세션 505 중복 정리)", () => {
+  it("핵심 지표는 2행이고, 규제현황·LTV한도는 금융 탭이 이미 갖고 있다 (세션508 PR-3a A2)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     expect(screen.getByText("핵심 지표")).toBeInTheDocument();
-    // 지역·분양가·전세가율·미분양률 행은 헤더/편차 스트립과 겹쳐 뺐다.
-    for (const label of ["적정가 괴리", "규제현황", "LTV한도", "입주"]) {
+    // 남는 2행 — 적정가 괴리·입주.
+    for (const label of ["적정가 괴리", "입주"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    for (const gone of ["전세가율", "미분양률"]) {
+    // 규제현황·LTV한도(금융 탭 A3 로 이관)·지역·분양가·전세가율·미분양률 행은 뺐다.
+    for (const gone of ["규제현황", "LTV한도", "전세가율", "미분양률"]) {
       expect(screen.queryByText(gone), `핵심 지표에 '${gone}' 행이 남아 있다`).toBeNull();
     }
     // 지역은 사라진 게 아니라 헤더 한 줄로 옮겨 읽힌다(여러 텍스트 노드라 textContent 로 본다)
     expect(container.textContent).toContain("경기 수원시 영통동");
   });
 
-  // 프로필 가중치 막대 (세션 434 점수 근거 투명화 A+B) — profile 전달 시 노출
+  // 프로필 가중치 막대 (세션 434 점수 근거 투명화 A+B) — profile 전달 시 노출.
+  // weight-bar-summary 단언은 세션508 PR-3a 로 사라짐(요약 줄은 아래 "판정 한 줄"로 이관).
   it("profile 전달 시 프로필 가중치 막대 노출", () => {
     render(<DetailModal {...makeProps({ profile: "live" })} />);
     expect(screen.getByText("이 점수는 당신의 프로필 기준으로 계산됐어요")).toBeInTheDocument();
-    expect(screen.getByTestId("weight-bar-summary")).toBeInTheDocument();
+    expect(screen.queryByTestId("weight-bar-summary")).toBeNull();
   });
 
   it("profile 미전달 시 가중치 막대 미노출", () => {
     render(<DetailModal {...makeProps()} />);
     expect(screen.queryByText("이 점수는 당신의 프로필 기준으로 계산됐어요")).toBeNull();
+  });
+
+  // 종합 판정 한 줄 (세션508 PR-3a A1) — ProfileWeightBar 의 요약 줄을 대체한 상위 결론 문장.
+  // profile 무관 항상 뜬다(가중치 막대와 달리 "내 프로필" 필요 없음).
+  it("종합 판정 한 줄 노출 — 등급 + 강점/보완 (profile 미전달에도 노출)", () => {
+    render(<DetailModal {...makeProps()} />);
+    // makeItem() 의 score/factory 기본값이 등급 D~S 어느 쪽이든 "등급" 텍스트는 항상 붙는다.
+    expect(screen.getByText(/등급 — .+ 강점 · .+ 보완/)).toBeInTheDocument();
+  });
+
+  it("isLoggedIn=false(blind) 면 판정 한 줄 대신 로그인 안내", () => {
+    render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    expect(screen.getByText("점수는 로그인 후 볼 수 있어요")).toBeInTheDocument();
+    expect(screen.queryByText(/등급 — .+ 강점/)).toBeNull();
   });
 });
 
