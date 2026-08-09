@@ -23,10 +23,29 @@ const PHASE = "regulation-seed";
 export function buildRegulatedSet(zones) {
   /** @type {Set<string>} */
   const regulated = new Set();
-  for (const list of [zones["투기과열지구"], zones["조정대상지역"]]) {
+  // _guAliases 는 공식 지정 목록이 아니라 DB 표기 흔들림("성남시 분당구" vs "분당구")을 흡수하는
+  // 조회 키다. 조회용 Set 에는 함께 담아야 두 표기 모두 규제로 잡힌다 (JSON 의 _guAliasesNote 참조).
+  for (const list of [zones["투기과열지구"], zones["조정대상지역"], zones["_guAliases"]]) {
     if (Array.isArray(list)) list.forEach(z => regulated.add(String(z)));
   }
   return regulated;
+}
+
+/**
+ * 규제지역 여부 판정 — 정확 키("서울 강남구") 먼저, 없으면 시도 단독("서울") 폴백.
+ *
+ * 10·15 대책이 서울을 **전역** 지정하면서 시도 한 토막짜리 항목이 생겼다. 시군구를 붙인 키만
+ * 보면 서울 637단지가 통째로 비규제로 새어 나간다. 폴백 순서는 화면 쪽 `getZone` 과 같다.
+ *
+ * @param {Set<string>} regulated
+ * @param {string | null | undefined} region
+ * @param {string | null | undefined} gu
+ * @returns {boolean}
+ */
+export function isRegulatedArea(regulated, region, gu) {
+  if (regulated.has(makeRegionKey(region, gu))) return true;
+  const r = String(region ?? "").trim();
+  return r !== "" && regulated.has(r);
 }
 
 /**
@@ -47,7 +66,7 @@ async function main() {
   const sb = getSupabase();
 
   // 규제지역 JSON 로드
-  const jsonPath = resolve(ROOT, "public/data/regulation-zones.json");
+  const jsonPath = resolve(ROOT, "src/data/regulation-zones.json");
   const zones = JSON.parse(readFileSync(jsonPath, "utf8"));
 
   const regulated = buildRegulatedSet(zones);
@@ -71,7 +90,7 @@ async function main() {
   for (const apt of apts) {
     if (rpt.interrupted()) break;
     const key = makeRegionKey(apt.region, apt.gu);
-    const shouldBeRegulated = regulated.has(key);
+    const shouldBeRegulated = isRegulatedArea(regulated, apt.region, apt.gu);
 
     // 이미 동일하면 건너뜀
     if (apt.is_regulated === shouldBeRegulated) { rpt.skip(); continue; }
