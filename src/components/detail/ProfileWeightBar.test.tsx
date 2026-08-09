@@ -21,10 +21,12 @@ function mkCats(totals: Partial<Record<keyof Cats, number>> = {}): Cats {
   };
 }
 
+// ⚠️ 세션508 PR-3a: 강점/보완 요약 줄("weight-bar-summary") 2케이스는 `aptVerdict.test.ts` 로
+// 이관했다 — 그 로직이 `aptVerdict`(종합 탭 "판정 한 줄")로 옮겨가며 이 컴포넌트는 막대만 남았다.
 describe("ProfileWeightBar", () => {
   it("상위 3 가중치 카테고리 막대 렌더 (실거주 → 입지40·상품20·가격20)", () => {
     render(<ProfileWeightBar weights={PROFILES.live.w} cats={mkCats()} />);
-    // SHORT_LABEL 라벨로 노출 (입지는 막대+강점/보완 양쪽에 나올 수 있어 getAllByText)
+    // SHORT_LABEL 라벨로 노출 (막대 1줄에 1회씩)
     expect(screen.getAllByText("입지").length).toBeGreaterThan(0);
     expect(screen.getAllByText("상품").length).toBeGreaterThan(0);
     expect(screen.getAllByText("가격").length).toBeGreaterThan(0);
@@ -44,24 +46,9 @@ describe("ProfileWeightBar", () => {
     expect(container.textContent).not.toMatch(/\d+점/);
   });
 
-  it("강점/보완 1줄 — 최고·최저 total 카테고리 라벨 (입지90 최고·가격20 최저)", () => {
-    render(<ProfileWeightBar weights={PROFILES.live.w} cats={mkCats({ location: 90, price: 20 })} />);
-    const summary = screen.getByTestId("weight-bar-summary");
-    // 강점=최고 total(입지90), 보완=최저 total(가격20)
-    expect(summary.textContent).toContain("강점");
-    expect(summary.textContent).toContain("입지");
-    expect(summary.textContent).toContain("보완");
-    expect(summary.textContent).toContain("가격");
-  });
-
-  it("benefit noData 카테고리는 강점/보완 후보에서 제외 (점수축 다름 오도 회피)", () => {
-    // benefit total=10(최저)이지만 noData → 보완으로 뽑히면 안 됨. 다음 최저 future=30 이 보완.
-    const cats = mkCats({ benefit: 10, future: 30, location: 90 });
-    cats.benefit = mkRes(10, "혜택·할인", { noData: true });
-    render(<ProfileWeightBar weights={PROFILES.live.w} cats={cats} />);
-    const summary = screen.getByTestId("weight-bar-summary");
-    expect(summary.textContent).not.toContain("혜택");
-    expect(summary.textContent).toContain("미래"); // future=30 이 실제 최저
+  it("요약 줄(weight-bar-summary)이 사라졌다 — aptVerdict 로 이관", () => {
+    render(<ProfileWeightBar weights={PROFILES.live.w} cats={mkCats()} />);
+    expect(screen.queryByTestId("weight-bar-summary")).toBeNull();
   });
 
   it("막대 행은 role=button 없음 (클릭 비유발 — 정보 표시 전용)", () => {

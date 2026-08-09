@@ -1,7 +1,6 @@
 import { memo } from "react";
 import { C, F, catCol, SHORT_LABEL } from "@/theme";
 import { getTopCats } from "@/constants/profiles";
-import type { Category } from "@/constants/profiles";
 import type { Cats, ProfileWeights } from "@/types/scoring";
 
 /**
@@ -9,17 +8,19 @@ import type { Cats, ProfileWeights } from "@/types/scoring";
  *
  * 손님이 처음 보는 새 정보축: "내 프로필이 어느 카테고리를 중시하는지". 기존 관리자 전용
  * AdminScoreBreakdown 가중 합계표(기여분 숫자)와 달리, 비중 %만 막대로 보여 정직성·중복 동시 해소.
- * 하단 1줄에 강점(최고 total)·보완(최저 total) 카테고리 — 후보 B 흡수(서브 단위 아님 → 데이터 부재 오도 회피).
  *
  * 표현 계층 전용. 점수 엔진·DB·prop 무변경. getTopCats·catCol·SHORT_LABEL 기존 export 재활용.
  * 막대 행은 role=button 없음(미니카드가 점프 담당, 막대는 정보 표시 전용).
+ *
+ * ⚠️ 세션508 PR-3a: 강점(최고 total)·보완(최저 total) 요약 줄은 `aptVerdict`(종합 탭 맨 위
+ * "판정 한 줄")로 이관했다 — 같은 탭에서 같은 말을 두 번 하던 자리였다(ProfileWeightBar 는
+ * profile && !blind 일 때만 떠서 비로그인·프로필 미선택 손님은 그 결론을 못 봤다). 이 컴포넌트는
+ * 이제 막대만 그린다.
  */
 type ProfileWeightBarProps = {
   weights: ProfileWeights;
   cats: Cats;
 };
-
-const CAT_KEYS: Category[] = ["location", "product", "price", "risk", "benefit", "future"];
 
 function shortLabel(label?: string): string {
   return (SHORT_LABEL as Record<string, string>)[label ?? ""] || label || "";
@@ -28,13 +29,6 @@ function shortLabel(label?: string): string {
 export const ProfileWeightBar = memo(function ProfileWeightBar({ weights, cats }: ProfileWeightBarProps) {
   const topCats = getTopCats(weights, 3);
   const maxW = Math.max(...topCats.map((k) => weights[k]), 1);
-
-  // 강점(최고 total)·보완(최저 total) — benefit noData 는 점수축이 달라(할인 환산) 후보 제외(오도 회피).
-  const candidates = CAT_KEYS.map((k) => ({ k, cat: cats[k] })).filter(
-    ({ k, cat }) => !(k === "benefit" && cat.noData)
-  );
-  const best = candidates.reduce((a, b) => (b.cat.total > a.cat.total ? b : a));
-  const worst = candidates.reduce((a, b) => (b.cat.total < a.cat.total ? b : a));
 
   return (
     <div
@@ -69,11 +63,6 @@ export const ProfileWeightBar = memo(function ProfileWeightBar({ weights, cats }
             </div>
           );
         })}
-      </div>
-      <div data-testid="weight-bar-summary" style={{ fontSize: F.sm, color: C.muted, marginTop: 10 }}>
-        강점 <b style={{ color: C.green }}>{shortLabel(best.cat.label)}</b>
-        {" · "}
-        보완 <b style={{ color: C.amber }}>{shortLabel(worst.cat.label)}</b>
       </div>
     </div>
   );
