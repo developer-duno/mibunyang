@@ -309,7 +309,10 @@ function sanitizeTransaction(row: any) {
     // 규제/보증 (engine.js scoreRisk에서 사용)
     isRegulated: row.isRegulated ?? false,
     dsr40pass: row.dsr40pass ?? false,
-    hugGuarantee: row.hugGuarantee ?? false,
+    // hugGuarantee 는 null 보존 (세션 508, unsoldRate 세션445 선례).
+    //   수집률 0% 인데 `?? false` 로 강제하면 "모름"이 "보증 없음"으로 굳어 전 단지가 위험 페널티를 먹는다.
+    //   점수 엔진(scoreRisk)이 null=무페널티 / false=+40 을 명시 처리한다.
+    hugGuarantee: row.hugGuarantee ?? null,
     // 시세 배열 (DetailModal 시세 테이블)
     priceByArea: row.priceByArea ?? [],
     rentByArea: row.rentByArea ?? [],

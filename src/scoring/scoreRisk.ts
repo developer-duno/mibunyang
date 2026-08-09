@@ -59,6 +59,9 @@ import type { Apt, Res } from "@/types/scoring";
  *   - 서브점수 구간 표는 src/scoring/CLAUDE.md L131~L191 참조.
  *
  * null 처리: `apt.cancelRatio6m == null ? CANCEL_RATIO_NULL_SCORE : ...` 등 명시적 분기.
+ *   - hugGuarantee(세션508): null = "모름"이라 무페널티(0). `=== false`(확인된 무보증)일 때만 +40.
+ *     수집률 0%(builders.hug_guarantee 32개사 전부 null)인데 옛 코드는 `?? false` + truthy 분기라
+ *     전 단지가 "보증 없음" 취급으로 +40 을 먹었다 — unsoldRate(세션445)·supplyRatio(세션501)와 같은 결.
  *
  * @example
  * // 11서브 가중치 합 검증
@@ -77,6 +80,11 @@ export function scoreRisk(apt: Apt): Res {
   const permitRatio = apt.supplyRatio as number | null | undefined;
   const builderDebtRatio = (apt.builderDebtRatio ?? 250) as number;
   const builderCreditGrade = apt.builderCreditGrade as string | undefined;
+  // 세션 508: HUG 보증 null = "모름". 수집률 0%(builders.hug_guarantee 32개사 전부 null, DART 로는
+  //   영구히 못 채우는 필드)인데 옛 코드 `apt.hugGuarantee ? 0 : 40` 은 null 을 "보증 없음"으로 단정해
+  //   전 단지에 +40 위험(안전점수 약 -6.8)을 물렸다. 모르는 것을 나쁘게 단정하지 않는다 — null·true 무페널티,
+  //   확인된 무보증(false)만 +40.
+  const hugGuarantee = apt.hugGuarantee as boolean | null | undefined;
 
   const unsoldUnknown = units <= 1 || unsoldRate == null;
   const unsoldSc: number = unsoldUnknown
@@ -93,7 +101,7 @@ export function scoreRisk(apt: Apt): Res {
   liqSc = Math.min(liqSc + listingPen, 100);
   const loanSc = (apt.dsr40pass ? 15 : 50) + (apt.loanFree ? 0 : 15);
   let finSc: number =
-    (apt.hugGuarantee ? 0 : 40) +
+    (hugGuarantee === false ? 40 : 0) +
     ((CREDIT_GRADE_SCORES as Record<string, number>)[String(builderCreditGrade)] ?? CREDIT_DEFAULT) +
     (builderDebtRatio > 200 ? 20 : builderDebtRatio > 150 ? 10 : 0);
   // 공공분양 재무안전 보너스

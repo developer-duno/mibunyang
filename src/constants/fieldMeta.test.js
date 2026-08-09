@@ -82,6 +82,13 @@ describe("FIELD_META", () => {
     expect(FIELD_META.hugGuarantee.fmt(true)).toBe("있음");
   });
 
+  // 세션 508: 수집률 0% 라 실데이터는 전부 null — "없음"으로 표시하면 거짓("모름" ≠ "보증 없음")
+  it('hugGuarantee fmt: null/undefined → "미수집", false → "없음"', () => {
+    expect(FIELD_META.hugGuarantee.fmt(null)).toBe("미수집");
+    expect(FIELD_META.hugGuarantee.fmt(undefined)).toBe("미수집");
+    expect(FIELD_META.hugGuarantee.fmt(false)).toBe("없음");
+  });
+
   it('builderCreditGrade fmt: 공기업/신탁/조합 + 등급없음 → "해당없음"', () => {
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "SH공사" })).toBe("해당없음");
     expect(FIELD_META.builderCreditGrade.fmt(null, { builder: "(주)무궁화신탁" })).toBe("해당없음");
