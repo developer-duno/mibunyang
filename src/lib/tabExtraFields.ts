@@ -3,6 +3,7 @@ import { DEVIATION_FIELD_NAMES } from "@/constants/deviationFields";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 import { MARKET_STATS_FIELD_KEYS } from "@/constants/marketStatsFields";
 import { FIELDS_SHOWN_IN_PRESALE_CARD } from "@/constants/presaleCardFields";
+import { REGION_STATS_FIELDS } from "@/constants/regionStatsFields";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, fieldsOf } from "@/lib/dataSections";
 
 /**
@@ -53,9 +54,15 @@ const SECTION_TO_TAB: Record<string, TabId> = {
 };
 
 /**
- * `미래` 섹션 안에 네이버 시세 교차검증 필드가 섞여 있다(fieldMeta 의 오래된 분류).
- * 그것들은 시세 탭이 제자리라 필드 단위로 되돌린다. 섹션 분류 자체를 고치면
- * 관리자 표 순서가 같이 바뀌므로 여기서만 교정한다.
+ * ⚠️ 첫 줄 분기는 **도달 불가한 죽은 가지**다 (세션 507 실측 정정).
+ *
+ * 옛 주석은 "`미래` 섹션 안에 네이버 교차검증 필드가 섞여 있어 필드 단위로 되돌린다"고
+ * 적었는데, `fieldMeta.ts` 의 `미래` 섹션은 `transitDev`·`devDist`·`cityDev`·`industryDev`
+ * 4개뿐이고 `naver*` 는 전부 `교차검증` 섹션 소속이다(그 섹션은 아래 표가 이미 sec-price 로
+ * 보낸다). 즉 이 조건은 어떤 필드로도 참이 되지 않는다.
+ *
+ * **코드는 그대로 둔다** — 지우는 것 자체는 안전하지만 이 PR 의 범위(값 성격 분리)가 아니고,
+ * 미래에 `fieldMeta` 분류가 바뀌면 다시 살아날 안전망이기도 하다. 주석만 사실로 고친다.
  */
 function tabOf(sectionKey: string, field: string): TabId | null {
   if (sectionKey === "미래" && field.startsWith("naver")) return "sec-price";
@@ -138,6 +145,23 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   // 금융 탭 `charts/LoanStack` 이 한 문장으로 그린다("DSR 기준도 통과할 만해요").
   // 분양 탭 서랍이 아니라 금융 탭 대출 그림이 제자리 (세션 505 목업).
   "dsr40pass",
+  // ── 세션 507 PR-2: 시세 탭 `detail/SourceComparison` 대조표 12필드 ──
+  // 우리측 3 + 네이버측 9. 옛 "네이버 교차검증" 표와 "시장/투자 지표" 표에 흩어져 있던 값을
+  // 한 줄에 나란히 놓는 자리로 옮겼다.
+  // ※ `jeonseRate` 는 편차 스트립(charts)이 이미 등재한 값이라 여기 넣지 않는다 —
+  //   대조표는 그 값을 **재인용**할 뿐이고, 이중 등재하면 "한 필드 두 곳" 검사가 잡는다.
+  "nearbyMedian",
+  "nearbyBuildYear",
+  "avgFloor",
+  "naverNearbyMedian",
+  "naverJeonseRate",
+  "naverBuildYear",
+  "naverAvgFloor",
+  "naverSellCount",
+  "naverJeonseCount",
+  "naverWolseCount",
+  "naverNearbyCount",
+  "naverFetchedAt",
 ];
 
 /**
@@ -170,6 +194,17 @@ export const INTERNAL_ONLY_FIELDS: readonly string[] = [
   // 이미 하고, 둘 다 이 컬럼이 아니라 자기 출처를 쓴다. 세 번째 말할 자리는 없다
   // (세션 505 목업 — 관리자 전수 표에는 그대로 남는다).
   "isRegulated",
+  // ── 세션 507 PR-2 (Q6): 변별력이 0 인 6종 ──
+  // 값이 있어도 **모든 단지가 사실상 같은 답**이라 비교 엔진에서 하는 일이 없거나,
+  // 수집 자체가 0% 라 늘 "미수집"만 만드는 줄이다. 채워진 척하는 표보다 없는 편이 정직하다.
+  // ⚠️ 점수는 그대로 이 값들을 쓴다 — scoreProduct(hasPool·energyGrade·quakeDesign) ·
+  //    scoreRisk(supplyRatio·hugGuarantee) · scoreLocation(sunlight). 화면에서만 내렸다.
+  "hasPool", // 실측: 전 단지 "없음" — 있고 없고가 갈리지 않는다
+  "quakeDesign", // 실측 98.9% 가 "적용" — 사실상 전원 같은 답
+  "sunlight", // 실측: 수집된 단지가 전부 "양호"
+  "energyGrade", // 실측 수집 0%
+  "supplyRatio", // 실측 수집 0%
+  "hugGuarantee", // 실측 수집 0%
 ];
 
 export type ExtraSection = { key: string; title: string; color: string; fields: string[] };
@@ -189,6 +224,9 @@ export const TAB_EXTRA_SECTIONS: Readonly<Record<TabId, ExtraSection[]>> = (() =
     ...FIELDS_SHOWN_IN_MODAL_CHROME,
     ...FIELDS_SHOWN_IN_DETAIL_CARDS,
     ...FIELDS_SHOWN_IN_CHARTS,
+    // 세션 507: 분양 탭 "이 지역 통계" 서랍(`detail/RegionStats`)이 그리는 7종.
+    // 이걸 안 세면 같은 값이 그 서랍과 아코디언 두 곳에 나온다.
+    ...REGION_STATS_FIELDS,
     ...INTERNAL_ONLY_FIELDS,
   ]);
   for (const sec of FIELD_SECTIONS) {

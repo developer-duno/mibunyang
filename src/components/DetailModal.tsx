@@ -32,7 +32,8 @@ import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS 
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
-import { MarketStatsCharts } from "./detail/MarketStatsCharts";
+import { SourceComparison } from "./detail/SourceComparison";
+import { RegionStats } from "./detail/RegionStats";
 import { HelpHint } from "./HelpHint";
 import { StickyJumpNav, type JumpSection } from "./detail/StickyJumpNav";
 import { IconClose } from "./icons";
@@ -656,7 +657,13 @@ export const DetailModal = memo(function DetailModal({
               <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
               <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
 
-              {/* 시장지표·네이버교차·층별가 (세션 408 D2a) */}
+              {/* 두 출처 대조 (세션 507 PR-2) — 옛 "네이버 교차검증" 표를 대체한다.
+                  우리 값과 네이버 값이 다른 표 두 개에 흩어져 있어 정작 비교가 안 되던 자리라,
+                  같은 줄에 나란히 놓고 폴백(우리 값이 없어 네이버 값을 빌려 쓴 경우)은
+                  "미수집"으로 갈라 거짓 상호검증을 막는다. */}
+              <SourceComparison apt={mergedApt ?? apt} />
+
+              {/* 이 동네 거래 시세 + 층별가 (세션 408 D2a, 세션 507 에 섹션 1개로 축소) */}
               {PRICE_SECTIONS.map((s) => (
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}
@@ -718,7 +725,10 @@ export const DetailModal = memo(function DetailModal({
 
               {/* 관리자 인사이트(동/호수·평형 공급)는 세션 409 D2b 로 관리자 탭(sec-admin)으로 이동 */}
 
-              <MarketStatsCharts region={apt.region} gu={apt.gu} />
+              {/* 이 지역 통계 (세션 507 PR-2) — 시세 탭 표에 단지 값과 섞여 있던 인구·의료·
+                  거래량 7종을 지역 시장 추이 그래프와 한 서랍에 모았다. 그래프 자체는
+                  `MarketStatsCharts` 무변경 재사용(RegionStats 안에서 그린다). */}
+              <RegionStats apt={mergedApt ?? apt} />
               <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-presale" />
             </section>
           )}

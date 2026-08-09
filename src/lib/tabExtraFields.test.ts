@@ -13,6 +13,7 @@ import {
 } from "./tabExtraFields";
 import { FIELD_META } from "@/constants/fieldMeta";
 import { MARKET_STATS_FIELD_KEYS } from "@/constants/marketStatsFields";
+import { REGION_STATS_FIELDS, REGION_STATS_ROWS } from "@/constants/regionStatsFields";
 import { FIELDS_SHOWN_IN_PRESALE_CARD, presaleSectionVisibleFields } from "@/constants/presaleCardFields";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 
@@ -42,6 +43,14 @@ const INTENTIONALLY_UNRENDERED: Record<string, string> = {
   balconyValue: "〃",
   cashback: "〃",
   contractDiscount: "〃",
+  // 세션 507 Q6 — 변별력 0 (모든 단지가 사실상 같은 답이거나 수집 자체가 0%).
+  // 점수는 그대로 쓴다(scoreProduct·scoreRisk·scoreLocation) — 손님 화면에서만 내렸다.
+  hasPool: "전 단지 '없음' — 있고 없고가 갈리지 않는다 (세션 507)",
+  quakeDesign: "98.9% 가 '적용' — 사실상 전원 같은 답 (세션 507)",
+  sunlight: "수집된 단지가 전부 '양호' (세션 507)",
+  energyGrade: "수집 0% — 열어도 늘 '미수집' (세션 507)",
+  supplyRatio: "수집 0% (세션 507)",
+  hugGuarantee: "수집 0% (세션 507)",
 };
 
 /**
@@ -66,6 +75,9 @@ describe("154필드 전량 도달 — 어느 필드도 조용히 사라지지 �
       // 세션 505: 차트도 "보여준 자리"다. 이걸 안 세면 스트립이 그리는 평당가·관리비가
       // 서랍에서 빠지는 순간 "어디에도 안 나온다"고 잘못 빨개진다.
       ...FIELDS_SHOWN_IN_CHARTS,
+      // 세션 507: 분양 탭 "이 지역 통계" 서랍(`detail/RegionStats`)도 "보여준 자리"다.
+      // 이걸 안 세면 옮겨온 7필드가 통째로 "어디에도 안 나온다"고 잘못 빨개진다.
+      ...REGION_STATS_FIELDS,
       ...ALL_EXTRAS,
       ...Object.keys(INTENTIONALLY_UNRENDERED),
     ]);
@@ -79,7 +91,7 @@ describe("154필드 전량 도달 — 어느 필드도 조용히 사라지지 �
 
   it("한 필드가 두 곳에 겹쳐 나오지 않는다 (세션 409 이중 노출 재발 차단)", () => {
     // ⚠️ 검사 방향은 **아코디언 → 다른 표면** 한쪽뿐이다. 표면끼리(차트 ↔ 세부 섹션)를
-    //    통째로 맞대면 안 된다 — 예컨대 `pir` 은 편차 스트립과 "시장/투자 지표" 강조줄에
+    //    통째로 맞대면 안 된다 — 예컨대 `pir` 은 편차 스트립과 "이 동네 거래 시세" 강조줄에
     //    일부러 둘 다 있다(카드의 한 줄 요약과 탭의 본값은 역할이 다르다). 그걸 여기서
     //    잡으면 이 테스트가 "아코디언 중복"이 아닌 것까지 잡는 셈이 된다.
     //    개별 중복 정리는 `gone` 목록(아래)이 결과로 잠근다.
@@ -158,6 +170,28 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
       { file: "../components/detail/PresaleInfo.tsx", re: new RegExp(`apt\\)?\\.${f}\\b`), why: "분양 카드" },
     ];
 
+  /**
+   * 세션 507 — 두 출처 대조표 12필드.
+   *
+   * 이 표는 값을 `apt.<필드>` 로 직접 읽지 않고 **행 정의 상수(`ROWS`)의 필드명 문자열**로
+   * 읽는다(`apt[r.ours]`). 그래서 대조는 그 정의에 이름이 적혀 있는지를 본다.
+   * ⚠️ 정규식 좌변을 `ours:`/`theirs:`/`field:` 같은 **키까지** 고정한다 — 그냥 필드명만
+   *    찾으면 파일 위쪽 주석·타입 선언에도 걸려 실제로 안 그려도 통과한다(가짜 초록불).
+   */
+  const SOURCE_COMPARISON = "../components/detail/SourceComparison.tsx";
+  for (const f of ["nearbyMedian", "nearbyBuildYear", "avgFloor"])
+    CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`ours: "${f}"`), why: "두 출처 대조표 — 우리측 열" }];
+  for (const f of ["naverNearbyMedian", "naverJeonseRate", "naverBuildYear", "naverAvgFloor"])
+    CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`theirs: "${f}"`), why: "두 출처 대조표 — 네이버 열" }];
+  for (const f of ["naverSellCount", "naverJeonseCount", "naverWolseCount"])
+    CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`field: "${f}"`), why: "두 출처 대조표 — 매물 칩" }];
+  CARD_SOURCE.naverNearbyCount = [
+    { file: SOURCE_COMPARISON, re: /apt\.naverNearbyCount\b/, why: "두 출처 대조표 — 각주 '주변 N개 단지'" },
+  ];
+  CARD_SOURCE.naverFetchedAt = [
+    { file: SOURCE_COMPARISON, re: /apt\.naverFetchedAt\b/, why: "두 출처 대조표 — 각주 수집 시점" },
+  ];
+
   it("목록에 든 필드가 전부 어느 카드 소속인지 적혀 있다", () => {
     const orphan = FIELDS_SHOWN_IN_DETAIL_CARDS.filter((f) => !CARD_SOURCE[f]?.length);
     expect(orphan, `어느 카드가 그리는지 안 적힌 필드: ${orphan.join(", ")}`).toEqual([]);
@@ -180,6 +214,63 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
     // 한쪽만 늘면 새 분양 필드가 서랍에 또 나오거나(적으면), 카드가 안 그리는 걸
     // 그린다고 우기게 된다(많으면). 그래서 양쪽을 맞댄다.
     expect(FIELDS_SHOWN_IN_PRESALE_CARD).toEqual(presaleSectionVisibleFields());
+  });
+});
+
+/**
+ * 세션 507 — "이 지역 통계" 서랍 전용 대조.
+ *
+ * ⚠️ 이 검사를 **따로 두는 이유**: 위 `CARD_SOURCE` 루프는 `FIELDS_SHOWN_IN_DETAIL_CARDS` 만
+ * 순회한다. 지역통계 7필드는 그 목록이 아니라 `alreadySeen` 쪽으로 세므로, `CARD_SOURCE` 에만
+ * 적어 두면 **검사가 0회 실행되는 껍데기**가 된다(도달 검사는 통과하는데 실제로 그리는지는
+ * 아무도 안 본다). 그래서 자체 루프를 돈다.
+ */
+describe("이 지역 통계 서랍이 그린다고 적어둔 7필드는 실제로 그 서랍이 그린다", () => {
+  const rowsSrc = readFileSync(new URL("../constants/regionStatsFields.ts", import.meta.url), "utf8");
+  const viewSrc = readFileSync(new URL("../components/detail/RegionStats.tsx", import.meta.url), "utf8");
+
+  it("행 정의(REGION_STATS_ROWS)가 목록(REGION_STATS_FIELDS)과 순서·개수까지 같다", () => {
+    // 두 상수를 손으로 따로 적었다(한쪽을 펼쳐 만들면 그 한쪽을 비우는 순간 검사가 사라진다).
+    // 손으로 적은 만큼 어긋날 수 있어 여기서 맞댄다.
+    expect(REGION_STATS_ROWS.map((r) => r.field)).toEqual([...REGION_STATS_FIELDS]);
+  });
+
+  it("RegionStats 가 그 행 정의를 실제로 순회한다", () => {
+    // 목록만 맞고 컴포넌트가 안 쓰면 7필드가 화면 어디에도 안 나온다.
+    expect(/REGION_STATS_ROWS\.map\(/.test(viewSrc), "RegionStats.tsx 가 REGION_STATS_ROWS 를 안 그린다").toBe(true);
+  });
+
+  for (const f of REGION_STATS_FIELDS) {
+    it(`${f} — regionStatsFields.ts 행 정의에 있다`, () => {
+      // ⚠️ 좌변(`field:`)까지 고정 — 그냥 필드명만 찾으면 파일 상단 주석·`REGION_STATS_FIELDS`
+      //    나열에도 걸려, 화면에 그리는 줄이 없어도 통과한다(가짜 초록불).
+      expect(
+        new RegExp(`field: "${f}"`).test(rowsSrc),
+        `REGION_STATS_FIELDS 에 '${f}' 가 있는데 REGION_STATS_ROWS 에 그 줄이 없다.\n` +
+          `→ 서랍에서 뺐다면 목록에서도 빼야 한다(안 빼면 그 필드가 화면 어디에도 안 나온다).`
+      ).toBe(true);
+    });
+  }
+});
+
+/**
+ * 표면끼리의 이중 노출 차단 (세션 507 — 뮤테이션이 찾은 구멍).
+ *
+ * `gone` 목록은 "서랍(아코디언)에 없어야 한다"만 잠근다. 그래서 지역통계로 옮긴 popGrowth 를
+ * 시세 탭 grid 에 도로 넣어도 어느 검사도 안 빨개졌다(뮤테이션 실증) — alreadySeen 에 이미
+ * 있어 서랍으로는 안 돌아가고, 표와 지역통계 서랍에 **동시에** 그려지는 경로가 열린다.
+ * 세부 섹션 전체를 다른 표면과 통째로 맞대지 않는 기존 원칙(pir 처럼 역할이 다른 의도적
+ * 이중 노출이 있다)은 그대로 두고, 의도적 겹침이 0 인 두 집합만 콕 집어 잠근다.
+ */
+describe("표면끼리도 안 겹친다 — 서랍·카드 등재 필드는 탭 섹션에 다시 못 온다", () => {
+  it("지역통계 7필드는 어느 탭 세부 섹션에도 없다", () => {
+    const dup = REGION_STATS_FIELDS.filter((f) => FIELDS_SHOWN_IN_TABS.has(f));
+    expect(dup, `지역통계 서랍과 탭 섹션에 동시 노출: ${dup.join(", ")}`).toEqual([]);
+  });
+
+  it("전용 카드(대조표·분양카드 등) 필드는 어느 탭 세부 섹션에도 없다", () => {
+    const dup = FIELDS_SHOWN_IN_DETAIL_CARDS.filter((f) => FIELDS_SHOWN_IN_TABS.has(f));
+    expect(dup, `전용 카드와 탭 섹션에 동시 노출: ${dup.join(", ")}`).toEqual([]);
   });
 });
 
@@ -275,6 +366,42 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       // 분양 탭 서랍에 남아 있던 마지막 둘 (세션 505 목업)
       "dsr40pass", // 금융 탭 대출 그림이 문장으로 그린다
       "isRegulated", // 이 컬럼 자체는 어디서도 안 그린다 — 규제 이야기는 다른 출처가 한다
+      // ── 세션 507 PR-2 ──
+      // ⚠️ 여기도 **손으로 적는다**(위 세션 505 주석과 같은 이유 — 상수를 펼치면 상수를
+      //    비우는 순간 이 검사도 같이 사라진다).
+      // 분양 탭 "이 지역 통계" 서랍으로 옮긴 7종
+      "popGrowth",
+      "netMigration",
+      "housingSupplyLevel",
+      "fertilityRate",
+      "doctorsPer1k",
+      "hospitalBedsPer1k",
+      "recentTrades6m",
+      // 두 출처 대조표로 옮긴 우리측 3종
+      "nearbyMedian",
+      "nearbyBuildYear",
+      "avgFloor",
+      // 〃 네이버측 9종 ("네이버 교차검증" 표를 없앤 자리)
+      "naverNearbyMedian",
+      "naverJeonseRate",
+      "naverBuildYear",
+      "naverAvgFloor",
+      "naverSellCount",
+      "naverJeonseCount",
+      "naverWolseCount",
+      "naverNearbyCount",
+      "naverFetchedAt",
+      // Q6 — 변별력 0 이라 손님 화면에서 뺀 6종
+      "hasPool",
+      "quakeDesign",
+      "sunlight",
+      "energyGrade",
+      "supplyRatio",
+      "hugGuarantee",
+      // ⚠️ 여기 **넣으면 안 되는 것들**:
+      //   pir·psr·floorRange·housingPrice = 시세 탭 "이 동네 거래 시세" 표에 그대로 남는다.
+      //   naverSchoolWalkMin = 시세 탭 서랍에 남는 유일한 교차검증 필드다(PR-3 에 입지
+      //   학군 카드로 승격 예정). 지금 넣으면 즉시 빨개지고, 목록도 거짓이 된다.
     ];
     const back = gone.filter((f) => ALL_EXTRAS.includes(f));
     expect(back, `서랍으로 되돌아온 필드: ${back.join(", ")}`).toEqual([]);
@@ -306,12 +433,17 @@ describe("탭 배치", () => {
     expect(extraCount("sec-finance"), "빈 서랍이 되살아났다").toBe(0);
   });
 
-  it("네이버 시세 교차검증 필드는 미래가 아니라 시세 탭으로 간다", () => {
-    // 대표값이 `naverNearbyAvg` → `naverBuildYear` 로 바뀐 이유: 앞의 것은 바로 위
-    // "네이버 주변 중위가"와 같은 말이라 세션 505 에 손님 화면에서 뺐다(hidden).
+  it("교차검증 섹션에 남은 필드는 시세 탭 서랍으로 간다", () => {
+    // ⚠️ 세션 507 에 **전제를 갈아엎었다**. 옛 제목은 "미래가 아니라 시세 탭으로"였는데,
+    //    그 전제(`tabOf` 의 "미래 + naver*" 특례)는 실측해 보니 **도달 불가한 죽은 가지**였다
+    //    — `fieldMeta` 의 `미래` 섹션은 transitDev·devDist·cityDev·industryDev 4개뿐이고
+    //    naver* 는 전부 `교차검증` 섹션 소속이다. 즉 그 테스트는 아무것도 안 지키고 있었다.
+    //    지금 잠그는 것은 진짜로 작동하는 배선, `SECTION_TO_TAB.교차검증 = "sec-price"` 다.
+    // 대표값도 바꿨다: 옛 대표 `naverBuildYear` 는 세션 507 에 두 출처 대조표로 나갔고,
+    // 교차검증 섹션에서 서랍에 남는 필드는 `naverSchoolWalkMin` 하나다.
     const priceExtras = extrasOf("sec-price");
-    expect(priceExtras).toContain("naverBuildYear");
-    expect(extrasOf("sec-location")).not.toContain("naverBuildYear");
+    expect(priceExtras).toContain("naverSchoolWalkMin");
+    expect(extrasOf("sec-location")).not.toContain("naverSchoolWalkMin");
   });
 
   it("혜택(할인·중도금무이자·캐시백)은 어느 서랍에도 안 들어간다", () => {
