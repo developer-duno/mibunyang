@@ -125,8 +125,49 @@ node scripts/audit-x.mjs > /tmp/x.log 2>&1; echo "exit=$?"; head -4 /tmp/x.log
 **의무**: cron·주기·플래그를 바꾸는 PR 은 `grep -rn "<대상 이름>" scripts/monitor*.mjs .claude/rules/` 로
 그 값을 읽는 곳을 전부 찾아 함께 고치고, **테스트로 두 파일을 묶는다**(한쪽만 바뀌면 red).
 
+## ⚠️ 테스트가 **그 코드가 실제로 지나는 경로**를 지나는가 (세션 508 — 새 변종)
+
+지금까지의 사각은 "가드가 약하다"였다. 이번 건 다르다 — **가드는 정확한데 테스트가 그 코드에
+도달하지 않는다.** 순수 함수를 직접 호출하는 테스트는 그 앞단(정규화·기본값·래퍼)을 **건너뛴다.**
+
+세션 508 실사례: `scoreLocation`/`scoreRisk` 의 null 처리를 고쳤는데, 실전 경로는 언제나
+`calcCats → sanitize → scoreX` 다. `sanitize` 가 `noise` 를 75, `builderDebtRatio` 를 250 으로
+**이미 굳혀서** 넘기므로 앞단을 같이 고치지 않으면 **수정이 화면에서 아무 효과가 없다.**
+더 나쁜 건 그 앞단을 옛 코드로 되돌리는 뮤테이션에 **202건이 전부 초록**이었다는 점 —
+단독 호출 테스트(`scoreLocation(makeApt({...}))`)가 raw 입력을 그대로 넘겨 `sanitize` 를
+지나지 않기 때문이다. 즉 **그 수정이 지켜진다는 증거가 0**이었다.
+
+**의무 — 수정한 코드마다 자문한다:**
+
+1. **실전에서 이 함수를 누가 부르나?** 호출 사슬을 한 번 grep 한다(`grep -rn "함수명(" src/`).
+   화면·배치가 지나는 진입점(이 레포는 `calcCats`)이 있으면, **그 진입점을 지나는 테스트**를 최소 1건 둔다.
+2. **앞단이 내 값을 덮어쓰지 않나?** 기본값·정규화·클램프를 하는 레이어(`sanitize` 류)를 직접 읽는다.
+   덮어쓰면 그 레이어도 같이 고치고, **그 레이어의 되돌림이 red 를 내는지** 뮤테이션한다.
+3. **뮤테이션 대상은 "내가 고친 모든 줄"이다.** 함수 본문만 되돌려 보고 끝내면, 같은 PR 안의
+   앞단 수정은 무방비로 남는다.
+
+```js
+// 빨강 — sanitize 를 건너뛴다. 앞단이 되돌아가도 초록.
+expect(scoreLocation(makeApt({ noise: null })).total).toBe(X);
+
+// 초록 — 화면이 실제로 지나는 경로. 앞단 되돌림에 red.
+expect(calcCats(makeApt({ noise: null })).location.total).toBe(
+  calcCats(makeApt({ noise: 65 })).location.total
+);
+expect(calcCats(makeApt({ noise: null })).location.total).toBeGreaterThan(
+  calcCats(makeApt({ noise: 75 })).location.total // 옛 폴백값 — 같아지면 되돌아간 것
+);
+```
+
+**"옛 기본값과 달라야 한다"를 단언에 넣는 것이 핵심이다.** "중립값과 같다"만 쓰면 우연히
+같은 값이 나오는 되돌림을 놓친다.
+
 ## 답습 자산
 
+- 세션 508 `src/scoring/engine.test.js` §"sanitize null 보존 — 실전 경로(calcCats) 회귀 가드" —
+  위 변종의 원형. 구현 에이전트의 뮤테이션 4종이 전부 green 이었는데 오케스트레이터가 **앞단**을
+  되돌려 사각을 찾아냈다(에이전트 자신이 "단독 호출 테스트는 이 문제를 못 잡는다"고 보고서에
+  적고도 가드를 안 만든 상태였다 — **인지와 가드는 다른 일이다**)
 - 세션 491 `scripts/audit-playwright-cache.mjs` — 정규식 버그를 뮤테이션이 잡은 사례. 그 이유를 코드 주석에 남겨뒀다
 - 세션 491 `scripts/collectors/noxious.test.mjs` — "가드가 진짜 필요한 케이스" 를 명시한 주석 + 뮤테이션 3종 검증
 - 세션 486 뮤테이션 3회로 마커 가드 실증 / 세션 487 뮤테이션 10회 (치환 문자열이 코드와 안 맞아 **고장이 안 나** 12건 전부 무효였던 선례 — 치환 후 `assert n != s` 의무)
@@ -140,3 +181,5 @@ node scripts/audit-x.mjs > /tmp/x.log 2>&1; echo "exit=$?"; head -4 /tmp/x.log
 | 가드를 지워도 테스트가 통과 (껍데기) | "고장이 걸리는가" 뮤테이션에서 발견 |
 | 행복 경로만 테스트해 가드 무효 | 뮤테이션이 green → 케이스 부족을 드러냄 |
 | `\| head` 로 exit code 오측정 | §exit code 측정 함정 → 파일 리다이렉트 |
+| 함수는 고쳤는데 앞단(sanitize)이 덮어써 **실전 효과 0** | §"테스트가 실제 경로를 지나는가" → 호출 사슬 grep + 진입점 테스트 |
+| 앞단 되돌림에 테스트가 전부 초록 (증거 0) | 같은 절 → **고친 모든 줄**을 뮤테이션 대상으로 |
