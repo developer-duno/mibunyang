@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
 import { C, F } from "@/theme";
-import { getZone, calcLTV, ZONE_TYPE, LTV_RATES } from "@/constants/regulations";
+import { getZone, calcLTV, ZONE_TYPE, NORMAL_LTV, REGULATED_LTV_RATE } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 import { thStyle, tdStyle } from "./tableStyles";
 import { useRentLoanRates } from "@/hooks/useRentLoanRates";
@@ -17,7 +17,11 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
 
   const zone = getZone(apt.region, apt.gu);
   const zoneName = (ZONE_TYPE as Record<string, string>)[zone];
-  const rates = (LTV_RATES as Record<string, { under9: number; over9: number }>)[zone];
+  // 규제지역은 비율 하나로 못 적는다 — 40% 를 곱한 뒤 집값 구간별 금액 뚜껑이 또 씌워지기 때문.
+  const ltvSummary =
+    zone === "normal"
+      ? `LTV: 9억 이하 ${Math.round(NORMAL_LTV.under * 100)}% / 초과분 ${Math.round(NORMAL_LTV.over * 100)}% (무주택자 기준)`
+      : `LTV: ${Math.round(REGULATED_LTV_RATE * 100)}% (무주택자 기준) · 대출한도 15억 초과 4억 / 25억 초과 2억`;
   const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
   const aptPrice = Number(apt.price ?? 0);
   const aptArea = Number(apt.area ?? 0);
@@ -67,9 +71,12 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
             {zoneName}
           </span>
         </div>
-        <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8 }}>
-          LTV: 9억 이하 {Math.round(rates.under9 * 100)}% / 초과분 {Math.round(rates.over9 * 100)}% (무주택자 기준)
-        </div>
+        <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8 }}>{ltvSummary}</div>
+        {zone !== "normal" && (
+          <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 8 }}>
+            2025년 10·15 대책으로 조정대상지역·투기과열지구에 함께 지정된 곳이에요.
+          </div>
+        )}
         <div style={{ display: "flex", gap: 8, marginBottom: hasDetail ? 10 : 0 }}>
           <div
             style={{
@@ -207,8 +214,9 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
         {showLegal && (
           <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.6, marginTop: 8 }}>
             <div style={{ marginBottom: 6 }}>
-              <strong style={{ color: C.text }}>LTV (담보인정비율)</strong> — 투기과열지구 40%/20%, 조정대상지역
-              50%/30%, 비규제지역 70%/60% (9억 초과분 차등 적용)
+              <strong style={{ color: C.text }}>LTV (담보인정비율)</strong> — 규제지역(조정대상지역·투기과열지구 동시
+              지정) 40%, 단 대출한도는 집값 15억 초과 시 4억·25억 초과 시 2억으로 제한. 비규제지역은 9억 이하 70%,
+              초과분 60% (2025년 10·15 대책, 무주택자 기준)
             </div>
             <div style={{ marginBottom: 6 }}>
               <strong style={{ color: C.text }}>DSR (총부채원리금상환비율)</strong> — 전 금융권 40% 적용. 연소득 대비
