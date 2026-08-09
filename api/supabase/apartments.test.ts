@@ -378,6 +378,31 @@ describe('sanitize (null → 기본값)', () => {
     expect(d.housingSupplyLevel).toBeNull();
   });
 
+  // 세션 508: hugGuarantee 는 null 보존 (수집률 0% — `?? false` 로 굳히면 전 단지가 "보증 없음"이 되어
+  //   scoreRisk 에서 +40 위험 페널티를 먹는다. unsoldRate 세션445 선례와 같은 결).
+  it('hugGuarantee null → false 로 강제되지 않고 null 보존', async () => {
+    const row = { id: 1, name: 'Test', region: '경기' }; // hugGuarantee 부재 = 미수집
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.hugGuarantee).toBeNull();
+    expect(d.hugGuarantee).not.toBe(false);
+    // 대조군: 같은 sanitizeTransaction 블록의 isRegulated·dsr40pass 는 기존대로 false 강제 유지
+    expect(d.isRegulated).toBe(false);
+    expect(d.dsr40pass).toBe(false);
+  });
+
+  it('hugGuarantee 값이 있으면 그대로 전달 (true/false)', async () => {
+    for (const v of [true, false]) {
+      const row = { id: 1, name: 'Test', region: '경기', hugGuarantee: v };
+      mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+      const res = makeRes();
+      await handler(makeReq(), res);
+      expect(res.json.mock.calls[0][0].data[0].hugGuarantee).toBe(v);
+    }
+  });
+
   // 리팩토링 회귀 방어: sanitize()가 모든 필드를 반환하는지 전수 검증
   it('sanitize()는 전체 필드를 반환한다 (리팩토링 회귀 방어)', async () => {
     const row = { id: 1, name: 'X', region: '경기' };

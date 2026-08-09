@@ -209,6 +209,7 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 | airSc (대기질 복합) | scoreLocation env | PM2.5*0.4 + PM10*0.35 + O3*0.25 |
 | naverSchoolWalkMin | scoreLocation school | <= 5분: +10, <= 10분: +5, <= 20분: -5, > 20분: -10 |
 | isRegulated | scoreRisk regSc | DB값 우선, null이면 getZone() 폴백 |
+| hugGuarantee | scoreRisk finSc | **false(확인된 무보증)일 때만 +40**, null(모름)·true 무페널티 (세션508) |
 | naverSellCount | scoreRisk liqSc | 50건+ → +5, 30건+ → +2 페널티 |
 | presaleType | scoreRisk finSc | "공공" 포함 시 -15 보너스 |
 | housingSupplyLevel | scoreRisk supSc **주 지표** | 96%↓ 5 / 101%↓ 25 / 104%↓ 50 / 초과 75, null 75 |

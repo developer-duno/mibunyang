@@ -361,6 +361,26 @@ describe("scoreRisk", () => {
     const r = scoreRisk(makeApt({ hugGuarantee: true, builderCreditGrade: "AA", builderDebtRatio: 80 }));
     expect(r.subs.find((s) => s.name === "시공사 재무")?.score ?? 0).toBeGreaterThanOrEqual(90);
   });
+  // 세션 508: HUG 보증은 수집률 0%(builders.hug_guarantee 32개사 전부 null) → 전 단지가 null.
+  //   옛 코드 `apt.hugGuarantee ? 0 : 40` 은 null("모름")을 "보증 없음"으로 단정해 전 단지에 +40 위험을 물렸다.
+  //   unsoldRate(세션445)·supplyRatio(세션501)와 같은 결 — 모르는 것은 중립으로 둔다.
+  /** @param {boolean | null} v */
+  const finScoreOf = (v) => {
+    const r = scoreRisk(makeApt({ hugGuarantee: v }));
+    return r.subs.find((s) => s.name === "시공사 재무")?.score ?? 0;
+  };
+  it("hugGuarantee null(모름) -> true 와 동일 (무페널티)", () => {
+    expect(finScoreOf(null)).toBe(finScoreOf(true));
+    expect(scoreRisk(makeApt({ hugGuarantee: null })).total).toBe(scoreRisk(makeApt({ hugGuarantee: true })).total);
+  });
+  it("hugGuarantee false(확인된 무보증)만 +40 위험 -> null·true 보다 시공사 재무 40점 낮음", () => {
+    expect(finScoreOf(null) - finScoreOf(false)).toBe(40);
+    expect(finScoreOf(true) - finScoreOf(false)).toBe(40);
+    // 안전도 총점 반영: fin 가중치 0.17 → 40 × 0.17 = 6.8점. total 은 반올림이라 6~7.
+    const diff = scoreRisk(makeApt({ hugGuarantee: null })).total - scoreRisk(makeApt({ hugGuarantee: false })).total;
+    expect(diff).toBeGreaterThanOrEqual(6);
+    expect(diff).toBeLessThanOrEqual(7);
+  });
   // 신용등급 위험 단조성: CCC(최악) < B < BB < BBB (시공사 재무 안전점수). 동일 조건에서 등급만 변경.
   // B·CCC가 점수표에 누락되면 CREDIT_DEFAULT(30)로 떨어져 BB(60)보다 안전하게 역전됨 (세션392 버그).
   // hugGuarantee:true(+0)·debtRatio:100(보정 0)으로 finSc=creditScore만 남겨 등급 차이를 선명히 (false면 +40로 천장 클램프).

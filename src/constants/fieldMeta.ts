@@ -161,7 +161,8 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     fmt: (v) => n(v, "%"),
     isEstimated: (v, apt) => apt?._fallbackBuilderDebt,
   },
-  hugGuarantee: { label: "HUG 보증", section: "가격", fmt: (v) => (v ? "있음" : "없음") },
+  // 세션 508: null 은 "없음"이 아니라 "미수집" (수집률 0% — 모름을 없음으로 표시하면 거짓)
+  hugGuarantee: { label: "HUG 보증", section: "가격", fmt: (v) => (v == null ? "미수집" : v ? "있음" : "없음") },
   isRegulated: { label: "규제지역", section: "가격", fmt: (v) => (v ? "예" : "아니오") },
   dsr40pass: {
     label: "DSR 40% 통과",
