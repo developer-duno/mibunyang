@@ -91,6 +91,15 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     fmt: (v) => (v ? nk(v, "만원") : "미수집"),
     isEstimated: (v, apt) => apt?._fallbackNearbyMedian,
   },
+  // 공시가격 = 정부가 세금 매길 때 쓰는 기준값(MOLIT 공동주택공시가격 시군구 평균, 만원/㎡).
+  // 실거래·호가와 뜻이 다르므로 "주변 아파트 시세" 바로 옆에 두되 라벨에 (시군구 평균)을 박아
+  // 이 값이 이 단지 값이 아니라 동네 평균임을 드러낸다.
+  housingPrice: {
+    label: "공시가격(시군구 평균)",
+    section: "가격",
+    unit: "만원/㎡",
+    fmt: (v) => (v != null ? nk(v, "만원/㎡") : "미수집"),
+  },
   jeonseRate: {
     label: "전세가율",
     section: "가격",
@@ -589,6 +598,7 @@ export const FIELD_SECTIONS: { key: string; label: string; fields: string[] }[] 
     label: "가격/시장 지표",
     fields: [
       "nearbyMedian",
+      "housingPrice",
       "jeonseRate",
       "pir",
       "psr",

@@ -88,7 +88,9 @@ export const AUDIT_FIELDS = {
   },
   regions: {
     collector: "population+migration+housing",
-    fields: ["popGrowth", "supplyRatio", "netMigration", "housingSupplyLevel", "priceIndex", "avgPriceSqm", "newSupply", "initialSaleRate", "landCostRatio"],
+    // ⚠️ housingPrice 만 **시군구(gu) 단위**다 — VIEW 도 latest_regions_gu 로 가져온다.
+    //    아래 재현(fetchAllFromView)이 그 경로를 따로 밟지 않으면 감사만 0% 로 보게 된다.
+    fields: ["popGrowth", "supplyRatio", "netMigration", "housingSupplyLevel", "priceIndex", "avgPriceSqm", "newSupply", "initialSaleRate", "landCostRatio", "housingPrice"],
   },
   trade_stats: {
     collector: "trade-stats",
@@ -467,6 +469,34 @@ export function pickLatestNonNullByRegion(regionRows, cols) {
   return byRegion;
 }
 
+/**
+ * 위 함수의 **시군구(gu) 판**. VIEW 의 `latest_regions_gu`(WHERE gu IS NOT NULL, GROUP BY region,gu)
+ * 를 그대로 재현한다 — 키가 region 하나가 아니라 `region|gu` 라는 점만 다르다.
+ *
+ * 시도판과 따로 두는 이유: 시도 행과 시군구 행은 같은 테이블에 살지만 서로 다른 자료다. 공시가격은
+ * 시도 행에 한 건도 없어서(라이브 실측 0행) 시도판으로 재면 100% NULL 이 나온다 — 데이터는 멀쩡한데
+ * 감사만 0% 를 외치는, 세션 504 가 정정한 바로 그 착시가 재발한다.
+ *
+ * @param {Record<string, unknown>[]} regionRows regions 테이블 행 (시도+시군구 전체)
+ * @param {string[]} cols 스네이크케이스 컬럼명
+ * @returns {Map<string, Record<string, unknown>>} "region|gu" → 컬럼별 최신 non-null 묶음
+ */
+export function pickLatestNonNullByRegionGu(regionRows, cols) {
+  /** @type {Map<string, Record<string, unknown>>} */
+  const byGu = new Map();
+  const guRows = regionRows.filter((r) => r.gu != null);
+  guRows.sort((a, b) => String(b.recorded_at ?? "").localeCompare(String(a.recorded_at ?? "")));
+  for (const r of guRows) {
+    const key = `${r.region}|${r.gu}`;
+    let acc = byGu.get(key);
+    if (!acc) { acc = {}; byGu.set(key, acc); }
+    for (const c of cols) {
+      if (acc[c] == null && r[c] != null) acc[c] = r[c];
+    }
+  }
+  return byGu;
+}
+
 // 관련 테이블 merge (apartment_id 또는 name 기준)
 /**
  * @param {FlatRow[]} aptRows
@@ -524,7 +554,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     fetchAllFromTable(sb, "schools", "apartment_id,school_score,school_grade,nearby_schools", null, null),
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
     fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
-    fetchAllFromTable(sb, "regions", "region,gu,recorded_at,pop_growth,supply_ratio,net_migration,housing_supply_level,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio", null, null),
+    fetchAllFromTable(sb, "regions", "region,gu,recorded_at,pop_growth,supply_ratio,net_migration,housing_supply_level,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio,housing_price", null, null),
     fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m", null, null),
   ]);
 
@@ -606,6 +636,19 @@ export async function fetchAllFromView(sb, regionFilter) {
     if (!r) continue;
     for (const [snake, camel] of REGION_MERGE_COLS) {
       apt[camel] = r[snake] ?? null;
+    }
+  }
+
+  // merge regions (시군구) — VIEW latest_regions_gu 재현 (세션 505).
+  // 공시가격은 시도 행에 없고 시군구 행에만 있어서 위 시도 merge 로는 절대 안 붙는다.
+  const REGION_GU_MERGE_COLS = /** @type {const} */ ([
+    ["housing_price", "housingPrice"],
+  ]);
+  const regionGuLookup = pickLatestNonNullByRegionGu(regions, REGION_GU_MERGE_COLS.map(([snake]) => snake));
+  for (const apt of apts) {
+    const rg = regionGuLookup.get(`${apt.region}|${apt.gu}`);
+    for (const [snake, camel] of REGION_GU_MERGE_COLS) {
+      apt[camel] = rg?.[snake] ?? null;
     }
   }
 

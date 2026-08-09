@@ -421,6 +421,8 @@ describe('sanitize (null → 기본값)', () => {
       'popGrowth', 'netMigration', 'supplyRatio',
       // KOSIS 통계
       'priceIndex', 'avgPriceSqm', 'newSupply', 'initialSaleRate', 'landCostRatio', 'housingSupplyLevel',
+      // 공시가격 (세션 505) — sanitize 는 허용목록이라, 이 줄이 빠지면 VIEW 에 값이 있어도 응답에서 사라진다
+      'housingPrice',
       // 청약 경쟁률
       'competitionRate', 'competitionSupply', 'competitionApplicants',
       // 무순위 이벤트

@@ -15,7 +15,7 @@ vi.mock("./_shared.mjs", () => ({
   createReporter: vi.fn(() => ({ success: vi.fn(), fail: vi.fn(), skip: vi.fn(), summary: vi.fn() })),
 }));
 
-const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView, pickLatestNonNullByRegion, filterToViewRows } = await import("./data-audit.mjs");
+const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView, pickLatestNonNullByRegion, pickLatestNonNullByRegionGu, filterToViewRows } = await import("./data-audit.mjs");
 
 // 팩토리: 모든 필드가 채워진 아파트 행
 function createFullRow(overrides = {}) {
@@ -324,6 +324,42 @@ describe("pickLatestNonNullByRegion — VIEW 와 같은 방식으로 골라야 �
   });
 });
 
+// ── VIEW latest_regions_gu 재현 (세션 505 — 공시가격) ─────────────
+//
+// 공시가격은 시도 행에 한 건도 없고 시군구 행에만 있다(라이브 실측 0 / 252). 시도판으로 재면
+// 데이터가 멀쩡한데 감사만 0% 를 외치고, 그 거짓 0% 를 monitor ⑥ 이 회귀로 읽는다 — 세션 504 가
+// 정정한 착시가 단위만 바꿔 재발하는 자리라 별도 함수 + 별도 테스트로 못 박는다.
+describe("pickLatestNonNullByRegionGu — 시군구 단위는 시도판으로 못 잰다", () => {
+  const rows = [
+    { region: "서울", gu: null, recorded_at: "2026-06-01", housing_price: null },   // 시도 행엔 값 없음
+    { region: "서울", gu: "서초구", recorded_at: "2026-06-01", housing_price: null }, // 새 행(다른 수집기)
+    { region: "서울", gu: "서초구", recorded_at: "2026-01-01", housing_price: 1489 },
+    { region: "충북", gu: "영동군", recorded_at: "2026-01-01", housing_price: 97 },
+  ];
+
+  it("region+gu 를 키로 값을 찾는다", () => {
+    const m = pickLatestNonNullByRegionGu(rows, ["housing_price"]);
+    expect(m.get("서울|서초구")?.housing_price).toBe(1489);
+    expect(m.get("충북|영동군")?.housing_price).toBe(97);
+  });
+
+  it("최신 시군구 행이 NULL 이면 옛 행 값을 가져온다 (컬럼별 최신 non-null)", () => {
+    const m = pickLatestNonNullByRegionGu(rows, ["housing_price"]);
+    expect(m.get("서울|서초구")?.housing_price).toBe(1489); // 6-01 의 null 이 덮으면 안 된다
+  });
+
+  it("시도 행(gu null)은 키에 안 들어간다 — VIEW 의 WHERE gu IS NOT NULL", () => {
+    const m = pickLatestNonNullByRegionGu(rows, ["housing_price"]);
+    expect(m.has("서울|null")).toBe(false);
+    expect(m.has("서울|undefined")).toBe(false);
+  });
+
+  it("입력 순서가 뒤죽박죽이어도 결과가 같다", () => {
+    const m = pickLatestNonNullByRegionGu([...rows].reverse(), ["housing_price"]);
+    expect(m.get("서울|서초구")?.housing_price).toBe(1489);
+  });
+});
+
 // 순수함수만 테스트하면 **호출부가 옛 방식으로 되돌아가도 통과**한다.
 // ⚠️ 좌변까지 고정 — 부분 문자열만 찾으면 선언부·주석에 걸려 껍데기가 된다.
 describe("data-audit — regions 합치기가 새 방식으로 배선돼 있다", () => {
@@ -331,6 +367,16 @@ describe("data-audit — regions 합치기가 새 방식으로 배선돼 있다"
 
   it("pickLatestNonNullByRegion 을 실제로 호출한다", () => {
     expect(src).toMatch(/const regionLookup = pickLatestNonNullByRegion\(regions, /);
+  });
+
+  // 세션 505 — 시군구 경로를 배선하지 않으면 공시가격이 감사에서만 0% 로 보인다.
+  // 그 거짓 0% 를 monitor ⑥ 이 "VIEW 회귀" 로 읽어 세션 504 사고가 그대로 재발한다.
+  it("pickLatestNonNullByRegionGu 를 실제로 호출한다 (시군구 경로 배선)", () => {
+    expect(src).toMatch(/const regionGuLookup = pickLatestNonNullByRegionGu\(regions, /);
+  });
+
+  it("regions 조회에 housing_price 컬럼이 들어 있다 (안 뽑으면 위 배선이 헛돈다)", () => {
+    expect(src).toMatch(/fetchAllFromTable\(sb, "regions", "[^"]*,housing_price"/);
   });
 
   it("옛 '최신 행 하나' 방식이 남아 있지 않다", () => {
