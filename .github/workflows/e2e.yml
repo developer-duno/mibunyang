@@ -38,7 +38,7 @@ jobs:
       #    Actions 캐시는 "만든 브랜치 + 기본 브랜치"에서만 읽히는데 이 워크플로는 pull_request
       #    전용이라 PR 이 만든 캐시를 다른 PR 이 못 읽는다(실측: PR 런은 cache not found).
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: pw-${{ runner.os }}-1.62.1
