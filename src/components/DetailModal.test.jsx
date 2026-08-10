@@ -193,6 +193,22 @@ describe("DetailModal", () => {
     expect(screen.getByText("점수는 로그인 후 볼 수 있어요")).toBeInTheDocument();
     expect(screen.queryByText(/등급 — .+ 강점/)).toBeNull();
   });
+
+  // 입지 한 줄 요약 (세션508 PR-3b B4) — catVerdict("location", cats.location) + 상위 서브 1개.
+  // getHighlights 는 CatPanel.tsx 에서 export 했다(재사용 전 export 확인 — 플랜 §"v1 에서 틀렸던 것" #8).
+  it("입지 탭 한 줄 요약 노출 — 판정 + 상위 서브 (makeItem() location total 80·subs 1개)", () => {
+    render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "입지" }));
+    // total=80(>=70) → "입지 우수", 유일한 서브 "지하철: 역세권"이 상위 1개
+    expect(screen.getByText("입지 우수 · 지하철 역세권")).toBeInTheDocument();
+  });
+
+  it("isLoggedIn=false(blind) 면 입지 한 줄 요약 대신 로그인 안내", () => {
+    render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    fireEvent.click(screen.getByRole("tab", { name: "입지" }));
+    expect(screen.getByText("입지 점수는 로그인 후 볼 수 있어요")).toBeInTheDocument();
+    expect(screen.queryByText(/입지 우수|입지 양호|입지 아쉬움/)).toBeNull();
+  });
 });
 
 // StickyJumpNav(탭바) — 세션 377 PR-1 점프 앵커 → 세션 407 D1 콘텐츠 교체 탭. 데이터 삭제·축소 0 회귀 가드.

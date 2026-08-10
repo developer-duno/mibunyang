@@ -4,10 +4,12 @@ import { DISTANCE_AXES } from "@/constants/distanceAxes";
 
 describe("dataSections hint", () => {
   // 세션 505 에 6 → 5(입지 "생활인프라" 표 폐지), 세션 507 에 5 → 4
-  // (시세의 "네이버 교차검증" 표를 `detail/SourceComparison` 대조표가 대체).
-  it("종합·입지·시세 섹션 4개 모두 hint 가 채워져 있다", () => {
+  // (시세의 "네이버 교차검증" 표를 `detail/SourceComparison` 대조표가 대체),
+  // 세션508 PR-3b B1 에 4 → 3(입지 "교통 상세" 격자를 전용 카드로 승격 — LOCATION_SECTIONS 는
+  // 이제 "치안/환경" 하나뿐).
+  it("종합·입지·시세 섹션 3개 모두 hint 가 채워져 있다", () => {
     const all = [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS];
-    expect(all).toHaveLength(4);
+    expect(all).toHaveLength(3);
     for (const s of all) {
       expect(typeof s.hint).toBe("string");
       expect((s.hint ?? "").length).toBeGreaterThan(10);

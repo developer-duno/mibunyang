@@ -36,8 +36,10 @@ describe("ExtraFieldsAccordion — 기본은 접혀 있다", () => {
 });
 
 describe("ExtraFieldsAccordion — 제목의 숫자가 실제 줄 수와 같다", () => {
-  // sec-finance 제외 — 세션 505 에 여분이 0 이 돼 버튼 자체가 안 뜬다(빈 서랍은 안 만든다).
-  it.each(["sec-overview", "sec-price", "sec-location", "sec-presale"] as const)(
+  // sec-finance·sec-price 제외 — 세션 505 에 금융, 세션508 PR-3b B2 에 시세(naverSchoolWalkMin 이
+  // 학군 카드로 승격)가 여분 0 이 돼 버튼 자체가 안 뜬다(빈 서랍은 안 만든다). sec-price 의 n=0
+  // 케이스는 아래 별도 단언으로 확인한다.
+  it.each(["sec-overview", "sec-location", "sec-presale"] as const)(
     "%s — 제목 N = 펼쳤을 때 실제로 그려진 줄 수",
     (tab) => {
       const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab={tab} />);
@@ -50,6 +52,14 @@ describe("ExtraFieldsAccordion — 제목의 숫자가 실제 줄 수와 같다"
       expect(drawn, "제목 숫자와 실제 그려진 줄 수가 어긋나면 손님이 속는다").toBe(extraCount(tab));
     }
   );
+
+  // 세션508 PR-3b B2 — naverSchoolWalkMin 이 학군 카드로 승격되며 시세 탭 서랍도 실제로 비었다
+  // (sec-finance 는 이미 세션 505 부터 0). n=0 이면 버튼 자체가 안 뜬다.
+  it("sec-price — 여분 0(실제 탭, 가짜 tab id 아님) → null 을 반환한다", () => {
+    expect(extraCount("sec-price"), "시세 탭 여분이 되살아났다").toBe(0);
+    const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab="sec-price" />);
+    expect(container.firstChild).toBeNull();
+  });
 });
 
 describe("ExtraFieldsAccordion — 값이 없어도 줄을 지우지 않는다", () => {

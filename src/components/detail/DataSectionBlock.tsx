@@ -5,7 +5,6 @@ import { fmtPrice } from "@/lib/format";
 import { computeCompleteness } from "@/lib/completeness";
 import { fieldsOf, dataValueColor } from "@/lib/dataSections";
 import { HighlightField } from "./HighlightField";
-import { InfrastructureSection } from "./InfrastructureSection";
 import { CompletenessDonut } from "./CompletenessDonut";
 import { HelpHint } from "@/components/HelpHint";
 import type { Apt } from "@/types/scoring";
@@ -105,7 +104,6 @@ export const DataSectionBlock = memo(function DataSectionBlock({
                   ))}
                 </div>
               )}
-              {section.pairs && <InfrastructureSection pairs={section.pairs} apt={apt} />}
               {section.grid && (
                 <div style={DSB_S.grid}>
                   {section.grid.map((f) => {

@@ -170,6 +170,19 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
       { file: "../components/detail/PresaleInfo.tsx", re: new RegExp(`apt\\)?\\.${f}\\b`), why: "분양 카드" },
     ];
 
+  // 세션508 PR-3b B2 — naverSchoolWalkMin 은 학군 카드가 "초등 도보 N분" 줄로 그린다.
+  CARD_SOURCE.naverSchoolWalkMin = [
+    { file: "../components/detail/SchoolInfo.tsx", re: /apt\)?\.naverSchoolWalkMin\b/, why: "초등 도보 칩" },
+  ];
+
+  // 세션508 PR-3b B1 — 입지 탭 전용 카드(TransportCard) 6필드. 각 필드는 `<Field field="..."
+  // label={FIELD_META.<f>.label} value={FIELD_META.<f>.fmt(apt.<f>, apt)} />` 형태로 리터럴
+  // `apt.<f>` 접근을 그대로 남긴다(동적 인덱싱이면 이 grep 이 무의미해진다).
+  for (const f of ["subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"])
+    CARD_SOURCE[f] = [
+      { file: "../components/detail/TransportCard.tsx", re: new RegExp(`apt\\)?\\.${f}\\b`), why: "교통 상세 카드" },
+    ];
+
   /**
    * 세션 507 — 두 출처 대조표 12필드.
    *
@@ -398,10 +411,19 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "energyGrade",
       "supplyRatio",
       "hugGuarantee",
+      // ── 세션508 PR-3b ──
+      // B2: naverSchoolWalkMin 이 학군 카드(SchoolInfo)로 승격됐다. 옛 주석은 "지금 넣으면
+      // 안 된다"고 적었는데(PR-3 착수 전 예고), 이 PR 이 바로 그 PR-3 다 — 이제는 넣는 게 맞다.
+      "naverSchoolWalkMin",
+      // B1: "교통 상세" 격자를 폐기하고 전용 카드(TransportCard)로 승격한 6종.
+      "subwayName",
+      "subwayLines",
+      "busRoutes",
+      "busStopNames",
+      "icDist",
+      "ktxDist",
       // ⚠️ 여기 **넣으면 안 되는 것들**:
       //   pir·psr·floorRange·housingPrice = 시세 탭 "이 동네 거래 시세" 표에 그대로 남는다.
-      //   naverSchoolWalkMin = 시세 탭 서랍에 남는 유일한 교차검증 필드다(PR-3 에 입지
-      //   학군 카드로 승격 예정). 지금 넣으면 즉시 빨개지고, 목록도 거짓이 된다.
     ];
     const back = gone.filter((f) => ALL_EXTRAS.includes(f));
     expect(back, `서랍으로 되돌아온 필드: ${back.join(", ")}`).toEqual([]);
@@ -417,14 +439,16 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
 
 describe("탭 배치", () => {
   /**
-   * 세션 505 전엔 "다섯 탭 모두 0보다 크다"였다. 지금은 금융 탭만 0 이 정답이다 —
-   * 그 탭의 여분 10개가 전부 채움 0.0% 인 혜택 필드라 열어도 "미수집"뿐이었다.
+   * 세션 505 전엔 "다섯 탭 모두 0보다 크다"였다. 세션 505 에 금융 탭이 0 이 됐고(혜택
+   * 10종이 전부 채움 0.0% 라 열어도 "미수집"뿐), 세션508 PR-3b B2 로 시세 탭도 0 이 됐다
+   * — 그 탭 서랍에 남던 마지막 필드(naverSchoolWalkMin)가 학군 카드로 승격했다.
    * 0 이면 `ExtraFieldsAccordion` 이 null 을 돌려줘 버튼 자체가 안 뜬다(빈 서랍 아님).
-   * 나머지 네 탭까지 0 이 되면 그건 "정리"가 아니라 "실종"이므로 그대로 잠근다.
+   * 나머지 세 탭(종합·입지·분양)까지 0 이 되면 그건 "정리"가 아니라 "실종"이므로 그대로 잠근다.
+   * (종합·분양은 PR-3c 가 건물정보·재공고·시공사 카드로 마저 0화할 예정이나 이 PR 범위 밖이다.)
    */
-  it("금융 말고 네 탭은 보여줄 게 남아 있다 (빈 아코디언은 안 만든다)", () => {
+  it("금융·시세 말고 세 탭은 보여줄 게 남아 있다 (빈 아코디언은 안 만든다)", () => {
     for (const t of ALL_TABS) {
-      if (t === "sec-finance") continue;
+      if (t === "sec-finance" || t === "sec-price") continue;
       expect(extraCount(t), `${t} 여분 0`).toBeGreaterThan(0);
     }
   });
@@ -433,16 +457,16 @@ describe("탭 배치", () => {
     expect(extraCount("sec-finance"), "빈 서랍이 되살아났다").toBe(0);
   });
 
-  it("교차검증 섹션에 남은 필드는 시세 탭 서랍으로 간다", () => {
-    // ⚠️ 세션 507 에 **전제를 갈아엎었다**. 옛 제목은 "미래가 아니라 시세 탭으로"였는데,
-    //    그 전제(`tabOf` 의 "미래 + naver*" 특례)는 실측해 보니 **도달 불가한 죽은 가지**였다
-    //    — `fieldMeta` 의 `미래` 섹션은 transitDev·devDist·cityDev·industryDev 4개뿐이고
-    //    naver* 는 전부 `교차검증` 섹션 소속이다. 즉 그 테스트는 아무것도 안 지키고 있었다.
-    //    지금 잠그는 것은 진짜로 작동하는 배선, `SECTION_TO_TAB.교차검증 = "sec-price"` 다.
-    // 대표값도 바꿨다: 옛 대표 `naverBuildYear` 는 세션 507 에 두 출처 대조표로 나갔고,
-    // 교차검증 섹션에서 서랍에 남는 필드는 `naverSchoolWalkMin` 하나다.
-    const priceExtras = extrasOf("sec-price");
-    expect(priceExtras).toContain("naverSchoolWalkMin");
+  it("시세 탭 서랍도 비어 있다 (naverSchoolWalkMin 이 학군 카드로 승격, 세션508 PR-3b B2)", () => {
+    expect(extraCount("sec-price"), "빈 서랍이 되살아났다").toBe(0);
+  });
+
+  it("교차검증 섹션의 naverSchoolWalkMin 은 이제 학군 카드가 그린다 (서랍엔 없다)", () => {
+    // ⚠️ 이 테스트의 전제가 세션508 PR-3b 로 뒤집혔다. 옛 이름은 "교차검증 섹션에 남은
+    //    필드는 시세 탭 서랍으로 간다"였고, `naverSchoolWalkMin` 이 그 서랍에 남는
+    //    유일한 필드였다(세션 507 에 확정된 배선 `SECTION_TO_TAB.교차검증 = "sec-price"` 는
+    //    지금도 그대로다 — 다만 그 필드 자체가 서랍이 아니라 카드로 옮겨갔을 뿐이다).
+    expect(extrasOf("sec-price")).not.toContain("naverSchoolWalkMin");
     expect(extrasOf("sec-location")).not.toContain("naverSchoolWalkMin");
   });
 

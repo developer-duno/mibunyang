@@ -168,4 +168,54 @@ describe("SchoolInfo", () => {
     expect(screen.getByText(/초 2/)).toBeTruthy();
     expect(screen.getByText(/중 1/)).toBeTruthy();
   });
+
+  // 초등 도보거리 한 줄 (세션508 PR-3b B2) — naverSchoolWalkMin 을 시세 탭 서랍에서 이 카드로 승격.
+  // AptCard 칩 관례(≤5분 초록·6분~ 회색·null 숨김) 그대로.
+  describe("초등 도보거리 (세션508 PR-3b B2)", () => {
+    it("≤5분 → '초등 도보 N분' 초록 강조", () => {
+      const apt = makeApt({
+        naverSchoolWalkMin: 3,
+        nearbySchools: [{ name: "테스트초등학교", type: "초", distance: 300 }],
+      });
+      render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+      const line = screen.getByText("초등 도보 3분");
+      expect(line).toBeTruthy();
+      expect(line.style.color).toBe("rgb(22, 163, 74)");
+    });
+
+    it("6분~ → 회색 중립", () => {
+      const apt = makeApt({
+        naverSchoolWalkMin: 10,
+        nearbySchools: [{ name: "테스트초등학교", type: "초", distance: 300 }],
+      });
+      render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+      const line = screen.getByText("초등 도보 10분");
+      expect(line).toBeTruthy();
+      expect(line.style.color).not.toBe("rgb(22, 163, 74)");
+    });
+
+    it("naverSchoolWalkMin null → 줄 자체를 숨긴다 (미수집 placeholder 금지)", () => {
+      const apt = makeApt({
+        naverSchoolWalkMin: null,
+        nearbySchools: [{ name: "테스트초등학교", type: "초", distance: 300 }],
+      });
+      render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+      expect(screen.queryByText(/초등 도보/)).toBeNull();
+      expect(screen.queryByText("미수집")).toBeNull();
+    });
+
+    it("naverSchoolWalkMin 미설정(undefined) → 줄 자체를 숨긴다", () => {
+      const apt = makeApt({
+        nearbySchools: [{ name: "테스트초등학교", type: "초", distance: 300 }],
+      });
+      render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+      expect(screen.queryByText(/초등 도보/)).toBeNull();
+    });
+
+    it("nearbySchools 가 비어 있으면 naverSchoolWalkMin 이 있어도 카드 자체가 안 뜬다 (현행 게이트 유지)", () => {
+      const apt = makeApt({ naverSchoolWalkMin: 3, nearbySchools: [] });
+      const { container } = render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+      expect(container.innerHTML).toBe("");
+    });
+  });
 });

@@ -142,6 +142,17 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   ...FIELDS_SHOWN_IN_PRESALE_CARD,
   // 입지 탭 `detail/SchoolInfo` 카드가 등급 배지로 그린다
   "schoolGrade",
+  // 세션508 PR-3b B2: naverSchoolWalkMin 을 같은 카드로 승격("초등 도보 N분" 줄).
+  // 교차검증 섹션에서 시세 탭 서랍에 남던 마지막 필드였다 — 이제 서랍이 아니라 카드가 그린다.
+  "naverSchoolWalkMin",
+  // 세션508 PR-3b B1: 입지 탭 `detail/TransportCard` 전용 카드 6필드.
+  // "교통 상세" 격자(LOCATION_SECTIONS)를 폐기하고 카드로 승격한 자리.
+  "subwayName",
+  "subwayLines",
+  "busRoutes",
+  "busStopNames",
+  "icDist",
+  "ktxDist",
   // 금융 탭 `charts/LoanStack` 이 한 문장으로 그린다("DSR 기준도 통과할 만해요").
   // 분양 탭 서랍이 아니라 금융 탭 대출 그림이 제자리 (세션 505 목업).
   "dsr40pass",
