@@ -107,6 +107,56 @@ describe("CatPanel", () => {
     expect(screen.getByText("중도금무이자:")).toBeInTheDocument();
   });
 
+  // 세션510: 값이 없는 지표에 판정(칭찬/평가)이 붙던 자리 — 세션 488 감사가 막으려던 사고의 잔존 구멍.
+  // `scorePrice` 는 "데이터 부재"를 내는데 판정 목록에 그 문구가 없어서, **890곳(54.1%)** 에서
+  // PSR 이 값 없이 "주변 대비 합리적" 같은 말을 달고 있었다(2026-08-10 운영 n=1,646 실측).
+  describe("값 없는 지표에 판정을 붙이지 않는다 (세션510)", () => {
+    // 접힌 하이라이트와 펼친 목록에 같은 지표가 두 번 나온다 → 단수 조회는 "여러 개" 로 실패한다
+    const expand = () => fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    /** @param {string | RegExp} re */
+    const count = (re) => screen.queryAllByText(re).length;
+
+    it('info="데이터 부재" 면 판정 문구를 숨긴다', () => {
+      const cat = makeCat({ subs: [{ name: "PSR", score: 75, info: "데이터 부재" }] });
+      render(<CatPanel cat={cat} k="price" />);
+      expand();
+      expect(count("데이터 부재")).toBeGreaterThan(0);
+      expect(count(/주변 대비 합리적/)).toBe(0);
+    });
+
+    it("info 자체가 없으면(undefined) 판정 문구를 숨긴다", () => {
+      // 이 가드가 없으면 `if (!info) return true` 를 뒤집어도 아무도 못 잡는다(뮤테이션으로 실증).
+      const cat = makeCat({ subs: [{ name: "PSR", score: 75 }] });
+      render(<CatPanel cat={cat} k="price" />);
+      expand();
+      expect(count(/주변 대비 합리적/)).toBe(0);
+    });
+
+    it("값이 있으면 판정 문구가 그대로 뜬다 (숨김이 과하지 않은지 확인)", () => {
+      const cat = makeCat({ subs: [{ name: "PSR", score: 75, info: "0.82" }] });
+      render(<CatPanel cat={cat} k="price" />);
+      expand();
+      expect(count(/주변 대비 합리적/)).toBeGreaterThan(0);
+    });
+
+    // ⚠️ "없음"은 미수집이 **아니다** — 측정했고 결과가 없다는 사실이다.
+    //    실측: future 개발계획 3,925건(점수 0 = 진짜 약점)과 혐오시설 478건(점수 100 = 좋은 소식).
+    //    이걸 미수집으로 뭉개면 좋은 소식까지 사라진다.
+    it('혐오시설 info="없음"(점수 100)은 판정을 계속 보여준다 — 좋은 소식이다', () => {
+      const cat = makeCat({ label: "입지·생활권", subs: [{ name: "혐오시설", score: 100, info: "없음" }] });
+      render(<CatPanel cat={cat} k="location" />);
+      expand();
+      expect(count(/주변 깨끗/)).toBeGreaterThan(0);
+    });
+
+    it('개발계획 info="없음"(점수 0)도 판정을 보여준다 — 측정된 약점이다', () => {
+      const cat = makeCat({ label: "미래가치", subs: [{ name: "도시개발", score: 0, info: "없음" }] });
+      render(<CatPanel cat={cat} k="future" />);
+      expand();
+      expect(count(/개발 계획 없음/)).toBeGreaterThan(0);
+    });
+  });
+
   // 프로필 맞춤 강조 (세션 382)
   it("emphasized=true 면 '중점' 배지 표시", () => {
     render(<CatPanel cat={makeCat()} k="price" emphasized />);

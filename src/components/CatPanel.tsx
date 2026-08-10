@@ -58,10 +58,25 @@ function scoreSign(score: number, catKey: string): { mark: string; label: string
 }
 
 // 미수집 서브지표는 판정문구(interpret)를 숨긴다 — 값이 없는데 점수 기본값으로 "쾌적한 밀도"·
-// "주변 깨끗" 같은 칭찬/평가가 붙던 사고(세션 488 감사) 방지. info 가 "정보 없음"·"미수집"·"-" 면 데이터 없음.
+// "주변 깨끗" 같은 칭찬/평가가 붙던 사고(세션 488 감사) 방지.
+//
+// ⚠️ 이 목록은 **엔진이 실제로 내는 문구**와 맞아야 한다. 손으로 적어 두면 어긋난다 —
+//    실제로 `"데이터 부재"`(scorePrice 가 내는 문구)가 빠져 있어서, **890곳(54.1%)** 에서
+//    값 없는 지표에 판정이 그대로 붙고 있었다(2026-08-10 운영 n=1,646 실측:
+//    PSR 890건 · 전세가율 77 · 적정가 괴리도 72 · PIR 72 = 서브지표 1,111건).
+//
+// ⚠️ **`"없음"` 은 여기 넣으면 안 된다.** 실측해 보면 두 곳에서 쓰이는데 **둘 다 미수집이 아니다**:
+//    future 의 도시·산업·교통개발 3,925건(점수 0 — 측정했고 계획이 없다 = 진짜 약점)과
+//    location 의 혐오시설 478건(점수 100 — 없어서 좋다). 숨기면 좋은 소식까지 사라진다.
 function isNoDataInfo(info?: string): boolean {
   if (!info) return true;
-  return info === "-" || info.startsWith("정보 없음") || info.includes("미수집") || info.includes("미확인");
+  return (
+    info === "-" ||
+    info.startsWith("정보 없음") ||
+    info.startsWith("데이터 부재") ||
+    info.includes("미수집") ||
+    info.includes("미확인")
+  );
 }
 
 // export: 세션508 PR-3b B4 — 입지 탭 한 줄 요약(DetailModal)이 이 함수를 재사용한다.
