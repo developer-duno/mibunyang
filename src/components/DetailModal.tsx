@@ -769,8 +769,13 @@ export const DetailModal = memo(function DetailModal({
                 competitionSupply={(mergedApt ?? apt).competitionSupply as number | null}
                 competitionApplicants={(mergedApt ?? apt).competitionApplicants as number | null}
               />
-              {/* 세션508 PR-3a A5: raw apt → mergedApt ?? apt 통일 — 이 컴포넌트가 읽는 필드는
-                  detail 버킷(staticDataApi.ts:63-73)에 있어 버킷 도착 후 값이 갱신돼야 한다. */}
+              {/* 세션508 PR-3a A5: raw apt → mergedApt ?? apt 통일. ⚠️ 다만 **값이 바뀌지는 않는다** —
+                  이 컴포넌트가 읽는 건 presale* 계열인데 detail 버킷(staticDataApi.ts:63-73)엔 그 필드가
+                  하나도 없다(버킷 10키는 catsCache·nearby*·priceBy* 계열뿐이고 id 는 저장 시 떼어낸다).
+                  분양 값은 목록 응답에 실려 온다. 즉 통일은 "형태를 같게" 하려는 것이지 버킷 도착을
+                  기다리는 게 아니다. 초안 주석("버킷에 있어 버킷 도착 후 갱신돼야 한다")은 자기가 인용한
+                  파일과 어긋났다 — 세션509 적대검증에서 정정(같은 파일 아래 AdminUnitSupply 주석이
+                  같은 형식의 **참인** 예다). */}
               <PresaleInfo apt={mergedApt ?? apt} />
 
               {/* 추가 모집(무순위 공고) 이력 카드 (세션508 PR-3c C1) — ah- 단지만 그린다. */}
