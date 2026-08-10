@@ -452,11 +452,16 @@ describe("AptCard", () => {
     const INVEST_W = { location: 15, product: 10, price: 30, risk: 25, benefit: 10, future: 10 };
 
     it("자녀교육(입지 최우선)이어도 옛 '입지 우수' 칩은 안 뜨고, 판정 한 줄이 프로필과 무관하게 뜬다", () => {
-      // makeRes 기본값: risk(85)가 최고, benefit(60)가 최저 — location(80)이 최우선 가중치여도
+      // makeRes 기본값: risk(85)가 최고, **product(65)가 최저** — location(80)이 최우선 가중치여도
       // aptVerdict 는 profileWeights 를 보지 않으므로 결과가 안 바뀐다(이게 회귀 가드다).
+      //
+      // ⚠️ 원래 이 단언은 "혜택 보완"이었다. 혜택(60)이 최저였기 때문인데, 같은 세션의 다른 PR 이
+      //    **혜택을 판정 후보에서 뺐다**(전 단지 0점이라 비교에 못 쓴다 — `aptVerdict.ts` CAT_KEYS).
+      //    그래서 최저가 그다음인 상품(65)으로 넘어갔다. 두 PR 이 각자 main 에서 분기해 서로의 변경을
+      //    모른 채 머지된 탓이고, **합쳐진 main 에서만 드러났다**(각 PR 의 CI 는 통과했다).
       render(<AptCard {...makeProps({ profileWeights: EDU_W })} />);
       expect(screen.queryByText(/입지 우수/)).toBeNull();
-      expect(screen.getByText(/안전 강점 · 혜택 보완/)).toBeInTheDocument();
+      expect(screen.getByText(/안전 강점 · 상품 보완/)).toBeInTheDocument();
     });
 
     it("투자(가격 최우선) + 가격 비쌈(deviation<0) → 칩 미노출 (부정 게이트)", () => {
