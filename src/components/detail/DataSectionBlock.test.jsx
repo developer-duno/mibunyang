@@ -243,7 +243,9 @@ describe("부가블록 3종", () => {
     expect(screen.getByText("3건")).toBeTruthy();
   });
 
-  // 세션508 PR-3b B3 — priceByFloor 가 비면(94.2% 채움 기준 잔여 5.8%) 빈 틀을 남기지 않는다.
+  // 세션508 PR-3b B3 — priceByFloor 가 비면 빈 틀을 남기지 않는다.
+  // (초안의 "94.2% 채움" 은 어느 모수로도 재현 안 되는 값이었다 → 실측 = 1,488단지,
+  //  정적 JSON n=1,597 기준 93.2% / 운영 API n=1,646 기준 90.4%. 세션509 정정)
   it("PriceByFloorBlock — priceByFloor가 비어 있으면 null (빈 틀 금지)", () => {
     const apt = /** @type {any} */ (makeApt({ priceByFloor: [] }));
     const { container } = render(<PriceByFloorBlock apt={apt} />);

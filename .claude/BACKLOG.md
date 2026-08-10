@@ -12,6 +12,7 @@
 > **중복 플랜 방지**: plan 작성 전 이 색인을 grep. 여기 있으면 = 이미 완료, plan 금지.
 > fix 를 박은 세션이 그 자리에서 항목을 ARCHIVE 로 이동 + 이 색인에 한 줄 추가 (drift 0).
 
+- ✅ 3화면 재설계 **PR-3 전체 종결** — 상세 팝업 탭별 재배치 (세션508·509, PR [#369](https://github.com/developer-duno/mibunyang/pull/369)·[#377](https://github.com/developer-duno/mibunyang/pull/377)·[#378](https://github.com/developer-duno/mibunyang/pull/378)·[#379](https://github.com/developer-duno/mibunyang/pull/379)·[#380](https://github.com/developer-duno/mibunyang/pull/380), main 23bddea). 3a 종합 판정 한 줄 · 3b-1 입지 교통 카드 · 3b-2 층별가 계단 · 3c-1 분양 추가모집·시공사 · **3c-2 건물 정보 카드**. 결과 = **서랍이 입지 탭 하나만 남음**(종합·시세·분양·금융 0). **① 현존 점수 누출 차단**: `layout` 이 옛 종합 탭 서랍에 있었고 그 경로엔 로그인 분기가 없어, 세션503(2-B) 게이트 폐지 뒤로 비로그인 손님이 `4베이판상 (10점)` 을 이미 보고 있었다(적대검증이 origin/main 을 실행으로 재현) → 전용 `fmtLayout`. **② 용적률·건폐율 0% 를 전 화면에서 "미수집"으로**(198곳·12.4%) — 점수 쪽은 세션488 이후 이미 "정보 없음" 판정인데 표시 쪽만 안 따라와 한 모달 안에서 서로 다른 말을 하고 있었다. 카드가 아니라 `fieldMeta` 공통 포맷(`nPos`)을 고쳐 관리자 표·서랍까지 일괄 정정. **③ 껍데기 가드 3종 수리**(향 색 배선·카드 배선·0 가드 — 되돌려도 전부 초록이던 것을 뮤테이션 red 로 실증 후 잠금). 상세 = 글로벌 메모리 `session_2026-08-10_session509_pr3c2_and_zero_percent.md`.
 - ✅ 버스(TAGO) → data.go.kr 정적 파일 전환 + 개수 세는 순서 정정 (세션 497·498, PR [#337](https://github.com/developer-duno/mibunyang/pull/337)·[#335](https://github.com/developer-duno/mibunyang/pull/335), main 66ceb76). **① TAGO 는 서울 미커버**(서울은 자체 BIS 인 TOPIS 사용) → 서울 637단지 중 391곳(62%)이 "버스 0개" 거짓 기록 → 정적 파일(15067528) 매칭으로 교체, TAGO 호출 0. 증분 워크플로가 transport 한 스텝에 4시간 job timeout 을 다 먹고 infra·schools 가 아예 안 돌던 사고도 같이 해소. **② 그 규명 중 발견**: 정적 파일은 정류장 기둥 하나를 방향별로 여러 행에 담는데(서울 16,980행 vs 서울시 TOPIS 공식 11,231건) dedup **전에** 상한을 걸어 도심이 과소 계상 — 전 단지 55%가 평균 2.54개(교통 원점수 5.08점) 손실, 대구 -10.05·서울 -9.47 vs 제주 -0.40 의 체계적 편향, 만점 버킷 0곳. dedup 先 + 만점 기준 15→20(만점 비율 30.2% → 13.9%). 뮤테이션 5종 red 실증 + `BUS_UNIQUE_CAP`↔`FULL_BUS_ROUTES` 동기화 가드 신설. 룰 = `.claude/rules/collectors/external-file-duplicate-rows.md`. 상세 = `docs/superpowers/specs/2026-08-07-transport-busstop-reversal-and-implementation.md` §8.
 - ✅ monitor NULL 급증 오탐 정정 + 매일 아침 브리핑 (세션 478, PR #249) — 상세 = ARCHIVE "세션 478~479 완료".
 - ✅ 곧분양 모바일 UI 3건 — 지역칩 넘침·스크롤 힌트·캘린더 기본 펼침 (세션 478, PR #250·#251) — 상세 = ARCHIVE.
@@ -140,6 +141,15 @@
 
 ## 🟡 곧
 
+- 🟡 **층수 파생값이 최고층과 어긋나 손님이 모순을 읽는다 — 305곳(17%) (세션509 적대검증)**
+  "최고층 90층"인데 바로 옆이 "층수 범위 중층(6~15F)". `apartments_flat` VIEW 기준 **305/1,797(17.0%)**,
+  base `apartments` 기준 424/2,353(18.0%). 눈에 띄는 고층일수록 몰려 있다(maxFloor 상위 8건 중 5건이
+  floors="중층"). **저절로 안 고쳐진다** — `scripts/collectors/calc-floors.mjs:44` 가 `!a.floors`(빈 것)만
+  채우는데(쓰기 지점은 :63 한 곳뿐), `max_floor` 는 `molit-building-info.mjs` 가 월간으로 덮어쓴다.
+  선택지 ① 파생 재계산(빈 것만이 아니라 어긋난 행도 갱신) ② 표시에서 `floors` 를 빼기 — `floors` 는
+  `maxFloor` 100% 파생이라 나란히 보여주는 것 자체가 중복이고, 재설계 PR 계열의 "중복 걷어내기"
+  원칙과도 맞는다(적대검증자 제안). 세션509 는 PR-3c-2 범위 밖이라 보류.
+
 - 🟡 **quakeDesign 변별력 0 — scoreProduct 재설계 때 항목 폐기·5점 재배분 검토 (세션508)**
   quakeDesign 은 신축 아파트에서 변별력 0(알려진 것 중 98.9% 보유) — scoreProduct 9항목·합계 100
   재설계 때 항목 폐기 + 5점 재배분 검토 (세션508)
@@ -204,6 +214,18 @@
 
 ## 🟢 여유
 
+- 🟢 **빈 값을 "—"와 "미수집" 두 말로 부른다 — 건물 정보 카드 안에서 동시 노출 (세션509 적대검증)**
+  같은 카드 8행 중 `corridorType`·`heatFuel`·`primaryDirection`·`layout`·`floorAreaRatio`·
+  `buildingCoverageRatio` 는 "미수집", `maxFloor`·`floors` 는 "—" 를 쓴다(`fieldMeta` 의 `n()` 기본
+  fallback). 세션509 의 0% 정정으로 4개→2개로 줄었지만 **한 카드 안 혼용은 남았다.** 손님에겐 둘 다
+  "없음"이라 뜻은 통하나 표기가 갈린다. 고치려면 `maxFloor`(`n(v,"층")`)·`floors`(`v ?? "—"`)의
+  fallback 을 "미수집" 으로 — 단 이 fmt 는 서랍·관리자 표도 함께 쓰므로 전 표면 영향(0% 때처럼
+  공통 포맷 일괄이 맞는지 사장님 판단 필요).
+- 🟢 **`pairs` 배선이 죽었는데 채움률 도넛 계산엔 남아 있다 (세션509 적대검증, 미검증 후보)**
+  `src/lib/dataSections.ts:17` `fieldsOf` 가 `section.pairs` 를 합집합에 넣는데, 조사원 보고로는
+  `pairs` 를 정의하는 곳도 렌더하는 곳도 0이고 테스트가 그 상태를 못박아 뒀다고 한다. ⚠️ **이 항목은
+  적대검증에서 반증 단계를 못 거친 8건 중 하나** — 착수 전 `grep -rn "pairs" src/` 로 정의·렌더·테스트
+  전수 실측부터 할 것(부재 단정 금지).
 - ✅ **지역칩 "★편집" 라벨 모호 → "★ 관심지역" + 안내 문구 (세션 479 완료, PR #254)** — 위 완료 색인 참조. "★ 편집"→"★ 관심지역" + 편집 모드 안내 1줄로 라벨이 기능을 드러내게 정정.
 - 🟢 **손님 가치 발굴 후보 — 병원/공원 가까운순 정렬 + 필터 (세션 477 실측, 다음 세션 후보)** — 세션 474/475/477 라인 연장. 거리 지표 라이브 실측(count-exact): `hospitalDist` 94.8%(median 189m·p90 590m·**max 989m=~1km 캡, sentinel 0**·≤500m 859단지) / `parkDist` 95.0%(median 241m·p90 579m·max 998m·≤500m 854단지). 둘 다 채움률 높고 분포 좋음(1km 캡이라 null=1km 밖). `emergencyDist`는 median 1564m·max 69km로 분포 넓음(응급실 희소, 성격 다름=별도 판단). **패턴 = subwayNear 정렬 그대로 답습**(거리 오름차순, null→Infinity 맨뒤, 동률 종합점수 tie-break) + `subwayOnly` 필터 답습(≤500m). 사장님 결정 필요 = ① 지표 선택(병원·공원·응급실 중 몇 개) ② 정렬만/필터만/둘 다 ③ 필터 임계(≤500m 도보권 권장). **표현계층 전용**(fieldMeta 이미 존재·AptCard 일부 노출). ⚠️ 주의 = hospitalDist/parkDist 는 sentinel 없음(subwayDist 9999·icDist/ktxDist 99 와 다름, masked-defaults 답습 불필요). 상세 실측 = 메모리 `session_2026-07-04_session477_parking_sort_filter.md`.
 - 🟢 **정렬·필터 전수 검사 (드리프트 감사) — 사장님 요청 (세션 477, 다음 세션 과제)** — 정렬 15종·필터 토글 9종·범위 필터 7종이 세션별로 하나씩 copy-paste 배선(~16 사이트)돼 누적 → **개별 사이트 드리프트 위험**. 목적 = "각자 따로 만든 필터를 통합 전수 점검". **이미 발견된 갭 1건(세션 477)**: `useFilterSort.ts saveCustomPreset` 의 snap 객체가 `crimeSafeOnly`/`childcareGoodOnly`/`parkingGoodOnly` **3개를 누락** → 이 필터들은 커스텀 프리셋 저장 시 절대 안 담김(deps 배열엔 있는데 snap 객체엔 없어 loop 에서 undefined→스킵). **점검 축(설계 초안)**: (1) URL 왕복 — 모든 필터가 `?param=1` 저장·복원 round-trip 하나(deserializeFromURL↔serializeToURL) (2) 프리셋 저장/복원 — snap 객체 vs FILTER_URL_MAP 정합(위 갭) (3) undo/redo 스냅샷 포함 여부 (4) activeFilterCount 반영 (5) DetailPanel reset 포함 (6) SearchFilterBar active 칩 노출 (7) 필터별 단위 테스트 존재. **구현안** = 각 필터의 7축 매트릭스를 스크립트/테스트로 자동 검출(FILTER_URL_MAP 기준 leave-none-out), 누락 시 fail. **표현계층·회귀 안전 작업**(기존 동작 보존 + 누락 메움). 진입 시 = 서브에이전트로 필터별 7축 grep 매트릭스 먼저 실측 후 갭 목록 확정 → 사장님께 "고칠 것/둘 것" 판단 받고 수정.
