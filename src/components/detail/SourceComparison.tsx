@@ -67,13 +67,9 @@ const ROWS: readonly CompareRow[] = [
     fallbackKey: "_fallbackNearbyBuildYear",
     unit: "year",
   },
-  {
-    label: "평균 거래 층수",
-    ours: "avgFloor",
-    theirs: "naverAvgFloor",
-    fallbackKey: "_fallbackAvgFloor",
-    unit: "floor",
-  },
+  // "평균 거래 층수" 행은 세션508 PR-3b B3 로 뺐다 — 시세 탭 층별가 계단 카드
+  // (`detail/DataSectionBlock` PriceByFloorBlock)가 avgFloor 를 문장으로 흡수하면서
+  // 같은 값이 이 표와 그 카드에 두 번 나오게 됐다. 카드가 이제 그 값의 제자리다.
 ];
 
 /** 매물 수 칩 3종 */

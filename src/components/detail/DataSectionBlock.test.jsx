@@ -251,6 +251,52 @@ describe("부가블록 3종", () => {
     render(<PriceByFloorBlock apt={apt} />);
     expect(screen.getByText("층별 매매가 (주변 실거래)")).toBeTruthy();
     expect(screen.getByText("저층")).toBeTruthy();
+    // 거래 건수를 "N건"으로 병기한다 (세션508 PR-3b B3)
+    expect(screen.getByText("3건")).toBeTruthy();
+  });
+
+  // 세션508 PR-3b B3 — priceByFloor 가 비면(94.2% 채움 기준 잔여 5.8%) 빈 틀을 남기지 않는다.
+  it("PriceByFloorBlock — priceByFloor가 비어 있으면 null (빈 틀 금지)", () => {
+    const apt = /** @type {any} */ (makeApt({ priceByFloor: [] }));
+    const { container } = render(<PriceByFloorBlock apt={apt} />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  // avgFloor·floorRange 흡수 — SourceComparison "평균 거래 층수" 행과 PRICE_SECTIONS.grid
+  // "거래 층수 범위"를 문장으로 대체한 자리 (세션508 PR-3b B3).
+  it("PriceByFloorBlock — 평균 거래 층수·거래 층 범위를 문장으로 흡수한다", () => {
+    const apt = /** @type {any} */ (
+      makeApt({
+        priceByFloor: [{ group: "저층", avg: 50000, count: 3 }],
+        avgFloor: 10,
+        // 라이브 실측 형식 — DB 값에는 단위가 없다("1~23", 1,488건 전수). 픽스처에 "층"을
+        // 붙여두면 컴포넌트가 단위를 안 붙여도 테스트가 통과해 화면과 어긋난다(세션508 실사고).
+        floorRange: "1~20",
+      })
+    );
+    render(<PriceByFloorBlock apt={apt} />);
+    expect(screen.getByText(/평균 거래 층수 10층/)).toBeTruthy();
+    expect(screen.getByText(/거래 층 1~20층/)).toBeTruthy();
+  });
+
+  // 폴백 가드 — SourceComparison 이 하던 은폐(우리 값이 없어 네이버 값을 대신 앉힌 상태를
+  // "미수집"으로 감춤)를 그대로 이관한다. 안 하면 네이버 값을 우리가 잰 값처럼 말하게 된다.
+  it("PriceByFloorBlock — _fallbackAvgFloor 면 평균 거래 층수를 문장에서 뺀다", () => {
+    const apt = /** @type {any} */ (
+      makeApt({
+        priceByFloor: [{ group: "저층", avg: 50000, count: 3 }],
+        avgFloor: 10,
+        _fallbackAvgFloor: true,
+        // 라이브 실측 형식 — DB 값에는 단위가 없다("1~23", 1,488건 전수). 픽스처에 "층"을
+        // 붙여두면 컴포넌트가 단위를 안 붙여도 테스트가 통과해 화면과 어긋난다(세션508 실사고).
+        floorRange: "1~20",
+      })
+    );
+    render(<PriceByFloorBlock apt={apt} />);
+    // 폴백인 우리 값(10층)을 그대로 말하면 네이버 값을 우리가 잰 값처럼 말하는 것과 같다.
+    expect(screen.queryByText(/평균 거래 층수/)).toBeNull();
+    // floorRange 는 대응하는 폴백 플래그가 없다 — 남아 있어야 한다.
+    expect(screen.getByText(/거래 층 1~20층/)).toBeTruthy();
   });
 
   it("AnnouncementLink — announcementUrl이 있으면 '국토부 모집공고 원문' 링크", () => {

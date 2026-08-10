@@ -51,10 +51,15 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
   //    두 출처 대조표(`detail/SourceComparison`)로 나가 시세 탭 표에 더는 없기 때문이다.
   //    "공시가격을 시세로 오해하지 않게"라는 취지는 라벨 "(시군구 평균)" 과 아래 hint
   //    문구 가드가 그대로 맡는다.
-  it("시세 탭에 공시가격·거래 층수 범위가 남고, 주변 시세는 대조표로 나갔다", () => {
+  it("시세 탭에 공시가격이 남고, 주변 시세는 대조표로 나갔다", () => {
     expect(priceFields).toContain("housingPrice");
-    expect(priceFields).toContain("floorRange");
     expect(priceFields).not.toContain("nearbyMedian");
+  });
+
+  // 세션508 PR-3b B3 — 거래 층수 범위는 바로 아래 층별가 계단 카드가 "거래 층 X~Y층"
+  // 문장으로 흡수했다. 표에 되돌아오면 카드와 두 번 말하는 자리가 된다.
+  it("거래 층수 범위(floorRange)는 표에서 뺐다 (층별가 계단 카드가 문장으로 그린다)", () => {
+    expect(priceFields).not.toContain("floorRange");
   });
 
   // 공시가격은 실거래·호가와 잣대가 달라 나란히 놓으면 "셋 중 뭘 믿나" 혼란이 난다.
