@@ -11,7 +11,8 @@ import { makeApt } from "@/__tests__/factories";
  * 같은 숫자를 두 열에 그리면 "차이 0% = 믿을 만"이라는 거짓 상호검증이 된다.
  */
 
-/** 4행이 모두 성립하는 단지 */
+/** 3행이 모두 성립하는 단지 (세션508 PR-3b B3 — "평균 거래 층수" 행은 층별가 계단
+ *  카드로 옮겨서 4행 → 3행) */
 const full = (over = {}) =>
   /** @type {any} */ (
     makeApt({
@@ -21,8 +22,6 @@ const full = (over = {}) =>
       naverJeonseRate: 68,
       nearbyBuildYear: 2010,
       naverBuildYear: 2012,
-      avgFloor: 10,
-      naverAvgFloor: 11,
       naverSellCount: 12,
       naverJeonseCount: 5,
       naverWolseCount: 3,
@@ -33,23 +32,24 @@ const full = (over = {}) =>
   );
 
 describe("SourceComparison", () => {
-  it("네 항목을 공공데이터·네이버·차이 세 열로 나란히 그린다", () => {
+  it("세 항목을 공공데이터·네이버·차이 세 열로 나란히 그린다", () => {
     render(<SourceComparison apt={full()} />);
     expect(screen.getByText("같은 값을 두 곳에서 재봤어요")).toBeTruthy();
-    for (const label of ["주변 시세", "전세가율", "주변 건축연도", "평균 거래 층수"]) {
+    for (const label of ["주변 시세", "전세가율", "주변 건축연도"]) {
       expect(screen.getByText(label), `${label} 행이 없다`).toBeTruthy();
     }
+    // "평균 거래 층수"는 층별가 계단 카드로 옮겼다 — 이 표에는 더는 없다 (세션508 PR-3b B3)
+    expect(screen.queryByText("평균 거래 층수")).toBeNull();
     expect(screen.getByText("공공데이터")).toBeTruthy();
     expect(screen.getByText("네이버")).toBeTruthy();
     expect(screen.getByText("차이")).toBeTruthy();
   });
 
-  it("차이를 항목별 단위(%·%p·년·층)로 적는다", () => {
+  it("차이를 항목별 단위(%·%p·년)로 적는다", () => {
     render(<SourceComparison apt={full()} />);
     expect(screen.getByText("+10%")).toBeTruthy(); // 50000 → 55000
     expect(screen.getByText("-2%p")).toBeTruthy(); // 70 → 68
     expect(screen.getByText("+2년")).toBeTruthy(); // 2010 → 2012
-    expect(screen.getByText("+1층")).toBeTruthy(); // 10 → 11
   });
 
   // ── 이 PR 의 정직성 핵심 ──
@@ -74,10 +74,10 @@ describe("SourceComparison", () => {
   });
 
   it("한쪽만 없으면 행은 남기고 그 칸만 '미수집' (차이는 '—')", () => {
-    const apt = full({ naverAvgFloor: null });
+    const apt = full({ naverJeonseRate: null });
     render(<SourceComparison apt={apt} />);
-    const row = /** @type {HTMLElement} */ (screen.getByText("평균 거래 층수").closest("tr"));
-    expect(row.textContent).toContain("10층"); // 우리 값은 그대로 보여준다
+    const row = /** @type {HTMLElement} */ (screen.getByText("전세가율").closest("tr"));
+    expect(row.textContent).toContain("70%"); // 우리 값은 그대로 보여준다
     expect(row.textContent).toContain("미수집");
   });
 

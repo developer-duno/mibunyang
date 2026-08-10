@@ -51,6 +51,10 @@ const INTENTIONALLY_UNRENDERED: Record<string, string> = {
   energyGrade: "수집 0% — 열어도 늘 '미수집' (세션 507)",
   supplyRatio: "수집 0% (세션 507)",
   hugGuarantee: "수집 0% (세션 507)",
+  // 세션508 PR-3b B3 — 두 출처 대조표 "평균 거래 층수" 행을 없애면서(우리측 avgFloor 는
+  // 층별가 계단 카드로 승격) 네이버측 값이 혼자 남았다. 비교 상대 없는 단독값을 새로
+  // 보여줄 자리가 없어 손님 화면에서 뺐다.
+  naverAvgFloor: "짝(avgFloor)이 계단 카드로 승격해 단독 비교값이 됨 — 새 자리 없음 (세션508 PR-3b B3)",
 };
 
 /**
@@ -184,7 +188,7 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
     ];
 
   /**
-   * 세션 507 — 두 출처 대조표 12필드.
+   * 세션 507 — 두 출처 대조표 10필드(세션508 PR-3b B3 로 12 → 10, 아래 주석 참조).
    *
    * 이 표는 값을 `apt.<필드>` 로 직접 읽지 않고 **행 정의 상수(`ROWS`)의 필드명 문자열**로
    * 읽는다(`apt[r.ours]`). 그래서 대조는 그 정의에 이름이 적혀 있는지를 본다.
@@ -192,9 +196,9 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
    *    찾으면 파일 위쪽 주석·타입 선언에도 걸려 실제로 안 그려도 통과한다(가짜 초록불).
    */
   const SOURCE_COMPARISON = "../components/detail/SourceComparison.tsx";
-  for (const f of ["nearbyMedian", "nearbyBuildYear", "avgFloor"])
+  for (const f of ["nearbyMedian", "nearbyBuildYear"])
     CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`ours: "${f}"`), why: "두 출처 대조표 — 우리측 열" }];
-  for (const f of ["naverNearbyMedian", "naverJeonseRate", "naverBuildYear", "naverAvgFloor"])
+  for (const f of ["naverNearbyMedian", "naverJeonseRate", "naverBuildYear"])
     CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`theirs: "${f}"`), why: "두 출처 대조표 — 네이버 열" }];
   for (const f of ["naverSellCount", "naverJeonseCount", "naverWolseCount"])
     CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`field: "${f}"`), why: "두 출처 대조표 — 매물 칩" }];
@@ -203,6 +207,19 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
   ];
   CARD_SOURCE.naverFetchedAt = [
     { file: SOURCE_COMPARISON, re: /apt\.naverFetchedAt\b/, why: "두 출처 대조표 — 각주 수집 시점" },
+  ];
+
+  // 세션508 PR-3b B3 — 시세 탭 층별가 계단 카드(`detail/DataSectionBlock` PriceByFloorBlock)가
+  // "평균 거래 층수 N층 · 거래 층 X~Y층" 문장으로 avgFloor·floorRange 를 흡수한다. 옛 자리는
+  // 각각 두 출처 대조표(avgFloor)와 PRICE_SECTIONS.grid(floorRange)였다 — 짝이던 naverAvgFloor
+  // 는 혼자 남을 비교 대상이 없어 `INTERNAL_ONLY_FIELDS` 로 내렸다(위 두 출처 대조표 목록에서
+  // 뺀 이유이기도 하다).
+  const PRICE_BY_FLOOR_BLOCK = "../components/detail/DataSectionBlock.tsx";
+  CARD_SOURCE.avgFloor = [
+    { file: PRICE_BY_FLOOR_BLOCK, re: /apt\.avgFloor\b/, why: "층별가 계단 카드 — 평균 거래 층수 문장" },
+  ];
+  CARD_SOURCE.floorRange = [
+    { file: PRICE_BY_FLOOR_BLOCK, re: /apt\.floorRange\b/, why: "층별가 계단 카드 — 거래 층 범위 문장" },
   ];
 
   it("목록에 든 필드가 전부 어느 카드 소속인지 적혀 있다", () => {
@@ -390,15 +407,14 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "doctorsPer1k",
       "hospitalBedsPer1k",
       "recentTrades6m",
-      // 두 출처 대조표로 옮긴 우리측 3종
+      // 두 출처 대조표로 옮긴 우리측 2종 (세션508 PR-3b B3 로 3 → 2, avgFloor 는 아래로 이동)
       "nearbyMedian",
       "nearbyBuildYear",
-      "avgFloor",
-      // 〃 네이버측 9종 ("네이버 교차검증" 표를 없앤 자리)
+      // 〃 네이버측 8종 ("네이버 교차검증" 표를 없앤 자리, 세션508 PR-3b B3 로 9 → 8,
+      // naverAvgFloor 는 짝을 잃어 아래 INTERNAL_ONLY_FIELDS 목록으로 내려갔다)
       "naverNearbyMedian",
       "naverJeonseRate",
       "naverBuildYear",
-      "naverAvgFloor",
       "naverSellCount",
       "naverJeonseCount",
       "naverWolseCount",
@@ -422,8 +438,13 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "busStopNames",
       "icDist",
       "ktxDist",
+      // B3: 층별가 계단 카드(PriceByFloorBlock)가 문장으로 흡수한 2종(옛 자리는 각각
+      // 두 출처 대조표·PRICE_SECTIONS.grid) + 짝을 잃어 INTERNAL_ONLY_FIELDS 로 내린 1종.
+      "avgFloor",
+      "floorRange",
+      "naverAvgFloor",
       // ⚠️ 여기 **넣으면 안 되는 것들**:
-      //   pir·psr·floorRange·housingPrice = 시세 탭 "이 동네 거래 시세" 표에 그대로 남는다.
+      //   pir·psr·housingPrice = 시세 탭 "이 동네 거래 시세" 표에 그대로 남는다.
     ];
     const back = gone.filter((f) => ALL_EXTRAS.includes(f));
     expect(back, `서랍으로 되돌아온 필드: ${back.join(", ")}`).toEqual([]);

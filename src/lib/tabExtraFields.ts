@@ -156,23 +156,29 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   // 금융 탭 `charts/LoanStack` 이 한 문장으로 그린다("DSR 기준도 통과할 만해요").
   // 분양 탭 서랍이 아니라 금융 탭 대출 그림이 제자리 (세션 505 목업).
   "dsr40pass",
-  // ── 세션 507 PR-2: 시세 탭 `detail/SourceComparison` 대조표 12필드 ──
-  // 우리측 3 + 네이버측 9. 옛 "네이버 교차검증" 표와 "시장/투자 지표" 표에 흩어져 있던 값을
+  // ── 세션 507 PR-2: 시세 탭 `detail/SourceComparison` 대조표 ──
+  // 우리측 2 + 네이버측 8. 옛 "네이버 교차검증" 표와 "시장/투자 지표" 표에 흩어져 있던 값을
   // 한 줄에 나란히 놓는 자리로 옮겼다.
   // ※ `jeonseRate` 는 편차 스트립(charts)이 이미 등재한 값이라 여기 넣지 않는다 —
   //   대조표는 그 값을 **재인용**할 뿐이고, 이중 등재하면 "한 필드 두 곳" 검사가 잡는다.
+  // ⚠️ 세션508 PR-3b B3: `avgFloor`(우리측)는 여기서 뺐다 — 시세 탭 층별가 계단 카드로
+  //   옮겨서 아래 `FIELDS_SHOWN_IN_DETAIL_CARDS` 끝쪽에 다시 등재한다. 짝이던 `naverAvgFloor`
+  //   (네이버측)는 혼자 남을 비교 대상이 없어져 `INTERNAL_ONLY_FIELDS` 로 내렸다.
   "nearbyMedian",
   "nearbyBuildYear",
-  "avgFloor",
   "naverNearbyMedian",
   "naverJeonseRate",
   "naverBuildYear",
-  "naverAvgFloor",
   "naverSellCount",
   "naverJeonseCount",
   "naverWolseCount",
   "naverNearbyCount",
   "naverFetchedAt",
+  // ── 세션508 PR-3b B3: 시세 탭 층별가 계단 카드(`detail/DataSectionBlock` PriceByFloorBlock)
+  // 가 "평균 거래 층수 N층 · 거래 층 X~Y층" 문장으로 흡수한 2필드. 옛 자리는 각각
+  // SourceComparison 대조표(avgFloor)와 PRICE_SECTIONS.grid(floorRange)였다.
+  "avgFloor",
+  "floorRange",
 ];
 
 /**
@@ -216,6 +222,11 @@ export const INTERNAL_ONLY_FIELDS: readonly string[] = [
   "energyGrade", // 실측 수집 0%
   "supplyRatio", // 실측 수집 0%
   "hugGuarantee", // 실측 수집 0%
+  // ── 세션508 PR-3b B3 ──
+  // 두 출처 대조표의 "평균 거래 층수" 행을 없애면서(우리측 `avgFloor`는 층별가 계단
+  // 카드로 승격) 짝이던 네이버측 값이 혼자 남았다. 비교 상대가 없는 네이버 단독값을
+  // 새로 보여줄 자리를 만들 이유가 없어 손님 화면에서 뺐다(관리자 표에는 그대로 있다).
+  "naverAvgFloor",
 ];
 
 export type ExtraSection = { key: string; title: string; color: string; fields: string[] };
