@@ -34,6 +34,7 @@ import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS 
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { UnsoldEventCard } from "./detail/UnsoldEventCard";
 import { BuilderCard } from "./detail/BuilderCard";
+import { BuildingInfoCard } from "./detail/BuildingInfoCard";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { SourceComparison } from "./detail/SourceComparison";
@@ -570,6 +571,11 @@ export const DetailModal = memo(function DetailModal({
               {Array.isArray(apt.siblingIds) && (apt.siblingIds as string[]).length > 1 && (
                 <div style={DM_S.republishBadge}>재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회</div>
               )}
+
+              {/* 건물 정보 카드 (세션508 PR-3c C4) — 층수·구조·용적률·향 8필드. 기본 접힘 —
+                  TransportCard·BuilderCard 패턴 답습. layout 은 카드 자체가 점수 접미어 없는
+                  전용 포맷을 쓴다(FIELD_META.layout.fmt 는 점수를 문자열에 박아 재사용 금지). */}
+              <BuildingInfoCard apt={mergedApt ?? apt} />
 
               {/* 단지 기본정보 (핵심지표 중복 4필드 제외 — 세션 408 D2a) */}
               {OVERVIEW_SECTIONS.map((s) => (

@@ -18,6 +18,17 @@ describe("dataSections — 세션508 PR-3c 승격 필드는 표에서 빠졌다"
     const overviewFields = OVERVIEW_SECTIONS.flatMap(fieldsOf);
     expect(overviewFields).not.toContain("builder");
   });
+
+  // 세션508 PR-3c C4 — heatFuel(난방연료)·primaryDirection(대표 향)이 건물 정보 카드로 승격.
+  it("종합 탭 '단지 기본정보' 격자에 heatFuel·primaryDirection 이 없다 (건물 정보 카드로 승격)", () => {
+    const overviewFields = OVERVIEW_SECTIONS.flatMap(fieldsOf);
+    expect(overviewFields).not.toContain("heatFuel");
+    expect(overviewFields).not.toContain("primaryDirection");
+    // units·unsold·heating 은 그대로 남는다 — C4 는 두 필드만 옮겼다.
+    expect(overviewFields).toContain("units");
+    expect(overviewFields).toContain("unsold");
+    expect(overviewFields).toContain("heating");
+  });
 });
 
 describe("dataSections hint", () => {

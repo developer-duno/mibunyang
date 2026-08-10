@@ -47,12 +47,20 @@ export function dataValueColor(field: string, value: unknown): string {
 // ⚠️ 세션508 PR-3c C2: `builder`(시공사)를 뺐다 — 분양 탭 `detail/BuilderCard` 전용 카드로
 //   승격했다(시공사 신용등급·부채비율과 한 카드에 모아 "믿어도 되나"를 한 자리에서 답한다).
 //   그 격자에 시공사 하나만 외따로 있던 것보다, 신용·부채와 함께 있는 편이 정직하다.
+// ⚠️ 세션508 PR-3c C4: `heatFuel`(난방연료)·`primaryDirection`(대표 향)을 뺐다 — 종합 탭
+//   `detail/BuildingInfoCard` 전용 카드로 승격했다(층수·구조·용적률·향까지 8필드를 한 카드에
+//   모아 "이 건물이 어떻게 생겼나"를 한 자리에서 답한다). 이 격자에 두 필드만 외따로 있던
+//   것보다, 나머지 건물 정보와 함께 있는 편이 정직하다(BuilderCard 와 같은 결정 패턴).
 export const OVERVIEW_SECTIONS: DataSection[] = [
   {
     title: "단지 기본정보",
     highlight: ["dataReliability"],
-    grid: ["units", "unsold", "heating", "heatFuel", "primaryDirection"],
-    hint: "이 단지의 세대수·난방 같은 기본 정보예요. 데이터 신뢰도(%)는 우리가 모은 정보가 얼마나 충분한지 보여줘요. 시공사 정보는 분양 탭에 따로 있어요.",
+    grid: ["units", "unsold", "heating"],
+    // ⚠️ 안내문은 카드가 **없을 수도 있다**는 걸 전제로 쓴다. `BuildingInfoCard` 는 8필드가 전부
+    //   비면 아예 안 그려지는데(hasAny 게이트), 이 hint 는 조건 없이 항상 뜬다. 초안처럼 "카드에
+    //   따로 있어요" 라고 단정하면 그런 단지(2026-08-10 운영 API n=1,646 기준 69곳)에서 손님이
+    //   없는 카드를 찾게 된다 — 세션508 적대검증 지적.
+    hint: "이 단지의 세대수·난방 같은 기본 정보예요. 데이터 신뢰도(%)는 우리가 모은 정보가 얼마나 충분한지 보여줘요. 시공사 정보는 분양 탭에 있어요. 층수·구조·향 같은 건물 정보는 이 탭 위쪽 '건물 정보' 카드에서 볼 수 있는데, 그 자료를 하나도 못 모은 단지에는 카드가 안 보여요.",
   },
 ];
 

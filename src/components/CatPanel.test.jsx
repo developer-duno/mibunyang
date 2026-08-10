@@ -185,4 +185,17 @@ describe("CatPanel", () => {
     // catHelp("price") 고유 문구 — 서브지표 "적정가괴리" 와 겹치지 않게 "합리적" 으로 특정
     expect(screen.getByText(/합리적/)).toBeInTheDocument();
   });
+
+  // "세부 N개" 헤더 표기 (세션508 PR-3c C5)
+  it("서브지표가 있으면 헤더에 '세부 N개'를 표기한다", () => {
+    render(<CatPanel cat={makeCat()} k="price" />);
+    // makeCat() 기본 subs 3개
+    expect(screen.getByText("세부 3개")).toBeInTheDocument();
+  });
+
+  // 🔴 슬림 catsCache 과도기(subs=[]) 가드 — "세부 0개" 는 거짓말이라 표기 자체를 숨긴다.
+  it("서브지표가 없으면(슬림 catsCache) '세부 0개'를 표기하지 않는다", () => {
+    render(<CatPanel cat={makeCat({ subs: [] })} k="price" />);
+    expect(screen.queryByText(/세부 \d+개/)).toBeNull();
+  });
 });

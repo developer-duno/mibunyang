@@ -16,6 +16,12 @@ export type FieldMetaEntry = {
 
 const n = (v: any, unit: string, fallback = "—"): string => (v != null ? `${v}${unit}` : fallback);
 const nk = (v: any, unit: string): string => (v != null ? `${v.toLocaleString("ko-KR")}${unit}` : "—");
+// 0 이 "실제 0" 일 수 없는 필드용 — 건물이 서 있으면 연면적·바닥면적이 0 일 수 없으니 0 은 미수집이다.
+// 점수 쪽은 이미 그렇게 판정한다(engine.ts `_noFar` → 점수 탭 "정보 없음", 세션 488 감사에서 용적률
+// 0% 가 "쾌적한 밀도"로 칭찬되던 사고를 고친 자리). 그런데 표시 쪽만 그 결정을 안 따라와 "0%" 를 그대로
+// 내보내, 한 모달 안에서 종합 탭은 "0%" 점수 탭은 "정보 없음" 이라 서로 다른 말을 하고 있었다
+// (세션508 적대검증 실측: 198곳/12.4%). 센티널 문구는 형제 필드(heatFuel·corridorType)와 같게 맞춘다.
+const nPos = (v: any, unit: string): string => (v != null && v > 0 ? `${v}${unit}` : "미수집");
 
 // 분양 중이 아닌 단지 → presale/competition 필드는 "적용 대상 아님" 분류
 // (세션101: 세션100 NULL률 진단으로 confirmed — 1273/2001 단지가 presaleStage null)
@@ -349,7 +355,7 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   },
   // ── 섹션4: 상품성/건축 ──
   parkingRatio: { label: "주차 비율", section: "상품성", unit: "대/세대", fmt: (v) => n(v, "대/세대") },
-  floorAreaRatio: { label: "용적률", section: "상품성", unit: "%", fmt: (v) => n(v, "%") },
+  floorAreaRatio: { label: "용적률", section: "상품성", unit: "%", fmt: (v) => nPos(v, "%") },
   energyGrade: { label: "에너지 등급", section: "상품성", fmt: (v) => n(v, "등급") },
   greenBldg: { label: "녹색건축", section: "상품성", hidden: true, fmt: (v) => v || "미인증" },
   quakeDesign: {
@@ -361,7 +367,7 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   hasPool: { label: "수영장", section: "상품성", fmt: (v) => (v ? "있음" : "없음") },
   heatFuel: { label: "난방연료", section: "상품성", fmt: (v) => v || "미수집" },
   corridorType: { label: "복도유형", section: "상품성", fmt: (v) => v || "미수집" },
-  buildingCoverageRatio: { label: "건폐율", section: "상품성", unit: "%", fmt: (v) => n(v, "%") },
+  buildingCoverageRatio: { label: "건폐율", section: "상품성", unit: "%", fmt: (v) => nPos(v, "%") },
   // ── 섹션5: 혜택/할인 ──
   discountPct: { label: "할인율", section: "혜택", unit: "%", fmt: (v) => n(v ?? 0, "%"), isDefault: (v) => v === 0 },
   loanFree: { label: "무이자 대출", section: "혜택", fmt: (v) => (v ? "있음" : "없음") },

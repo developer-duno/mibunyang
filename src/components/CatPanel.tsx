@@ -134,6 +134,11 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
             {grade.l}
           </span>
           {emphasized && <EmphasisBadge color={col} background={C.bg} />}
+          {/* "세부 N개" (세션508 PR-3c C5) — 문법은 ExtraFieldsAccordion.tsx:96 답습.
+              ⚠️ subs.length > 0 일 때만 표기한다: 목록에서 상세를 열 때 catsCache 가
+              슬림(price/location 외 subs=[])이라 그 과도기에 "세부 0개"를 보여주면 거짓말이
+              된다(cat.subs 는 위에서 이미 `?? []` 로 좁혔다). */}
+          {subs.length > 0 && <span style={{ fontSize: F.xs, color: C.muted }}>세부 {subs.length}개</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: F.lg, fontWeight: 800, color: col }}>{cat.total}</span>
