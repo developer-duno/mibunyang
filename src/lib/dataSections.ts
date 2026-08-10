@@ -53,20 +53,16 @@ export const OVERVIEW_SECTIONS: DataSection[] = [
   },
 ];
 
-// 입지 탭 — 교통 + 치안/환경 2섹션.
+// 입지 탭 — 치안/환경 1섹션.
 // ⚠️ 세션 505: "생활인프라 (반경 1km)" 섹션(개수·거리 10쌍)을 통째로 없앴다. 바로 위
 //   거리 점 그림(`charts/DistanceDots`)이 같은 12종을 이미 그리는데, 그림은 거리만 적고
 //   이 표는 개수+거리를 또 적어 손님이 같은 값을 두 번 읽었다. 그림 라벨에 개수를 병기해
 //   ("병원 3곳") 한 곳으로 합쳤다 — 그림이 개수까지 흡수했으니 표가 남을 이유가 없다.
-//   같은 이유로 `subwayDist`(교통 상세)·`police`/`policeDist`(치안/환경)도 뺐다.
+//   같은 이유로 `subwayDist`(역까지 거리)·`police`/`policeDist`(치안/환경)도 뺐다.
+// ⚠️ 세션508 PR-3b B1: "교통 상세" 섹션(subwayName·subwayLines·busRoutes·busStopNames·
+//   icDist·ktxDist)을 이 표에서 완전히 뺐다 — `detail/TransportCard` 전용 카드로 승격했다
+//   (등재는 `lib/tabExtraFields.ts` FIELDS_SHOWN_IN_DETAIL_CARDS). 남는 건 치안/환경 하나뿐이다.
 export const LOCATION_SECTIONS: DataSection[] = [
-  {
-    // 역까지 "거리"는 그림 소관이라 뺐다 — 여기 남은 건 그림이 못 그리는 것뿐이다
-    // (역 이름·노선처럼 글자값, IC·KTX 처럼 단위가 km 라 m 축에 못 올리는 값).
-    title: "교통 상세",
-    grid: ["subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"],
-    hint: "가장 가까운 지하철역 이름과 노선, 버스 노선 수, 고속도로 IC·KTX 거리예요. 역까지 거리는 위 '주변 시설까지 거리' 그림에 있어요.",
-  },
   {
     // `noxious`(시설 이름 목록)를 서랍에서 여기로 옮겼다 — 거리(`noxiousDist`)만 여기 있고
     // "무엇이 있는지"는 서랍 깊은 곳에 따로 있어, 정작 같이 봐야 할 두 값이 떨어져 있었다.

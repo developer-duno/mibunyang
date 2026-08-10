@@ -3,13 +3,15 @@ import { lazyNamed } from "@/utils/lazyNamed";
 import { C, F } from "@/theme";
 import { PROFILES, getTopCats } from "@/constants/profiles";
 import { aptVerdict } from "@/constants/aptVerdict";
+import { catVerdict } from "@/constants/catVerdict";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
 import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
-import { CatPanel } from "./CatPanel";
+import { CatPanel, getHighlights } from "./CatPanel";
+import { TransportCard } from "./detail/TransportCard";
 import { fmtPrice, fmtCompletion } from "@/lib/format";
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
@@ -699,16 +701,40 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-location")}
             >
+              {/* 입지 한 줄 요약 (세션508 PR-3b B4) — catVerdict + 상위 서브 1개. A1(종합 탭
+                  판정 한 줄)과 같은 blind/슬림 catsCache 가드 패턴. getHighlights 는 CatPanel.tsx
+                  에서 export 했다(플랜 §"v1 에서 틀렸던 것" #8 — 모듈 비공개라 그냥 쓰면 TS2305). */}
+              {blind ? (
+                <div style={DM_S.verdictBlind}>입지 점수는 로그인 후 볼 수 있어요</div>
+              ) : (
+                (() => {
+                  const locCat = res.cats.location;
+                  if (!locCat) return null;
+                  const top = getHighlights(locCat.subs, "location")[0];
+                  return (
+                    <div style={DM_S.verdictLine}>
+                      {catVerdict("location", locCat)}
+                      {top && ` · ${top.name} ${top.info ?? ""}`}
+                    </div>
+                  );
+                })()
+              )}
+
               {/* 요약 시각화 (세션 487 PR-5b) — 거리 자릿수가 필드마다 달라 축 3분리.
                   세션 505 에 개수까지 라벨에 병기해("병원 3곳") 아래 "생활인프라" 표를 흡수했다.
                   KTX·IC(km 단위라 m 축과 안 맞음)·혐오시설(멀수록 좋아 방향이 반대)은 여전히 제외. */}
               <DistanceDots apt={mergedApt ?? apt} />
 
+              {/* 교통 상세 카드 (세션508 PR-3b B1) — LOCATION_SECTIONS 의 옛 "교통 상세" 격자를
+                  전용 카드로 승격. 기본 접힘 — 입지 판단 1차 신호는 위 DistanceDots 그림이 준다. */}
+              <TransportCard apt={mergedApt ?? apt} />
+
               <SchoolInfo apt={mergedApt ?? apt} />
 
               <NearbyChildcareSection apt={mergedApt ?? apt} />
 
-              {/* 생활인프라·교통·치안환경 (세션 408 D2a — 입지 탭 빈약 해소) */}
+              {/* 치안/환경 (세션 408 D2a — 입지 탭 빈약 해소. 세션508 PR-3b: "교통 상세" 는
+                  위 TransportCard 로 승격돼 LOCATION_SECTIONS 에서 빠졌다) */}
               {LOCATION_SECTIONS.map((s) => (
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}

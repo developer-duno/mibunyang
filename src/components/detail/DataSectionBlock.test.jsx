@@ -11,37 +11,41 @@ const find = (title) =>
   [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS, ...PRESALE_SECTIONS].find((s) => s.title === title);
 
 describe("DataSectionBlock", () => {
+  // ⚠️ 세션508 PR-3b B1: 옛 대상이던 "교통 상세" 섹션은 `LOCATION_SECTIONS` 에서 완전히
+  //    빠지고 전용 카드(`detail/TransportCard`)로 승격했다 — 그 컴포넌트가 이제 역 이름·
+  //    노선·정류장 값을 그린다(검증은 `TransportCard.test.tsx`). 이 파일이 보던 "일반 동작"
+  //    (헤더·접힘·키보드·도넛) 검증은 잔존 섹션("치안/환경")으로 옮긴다.
+
   // 헤더(제목) 항상 표시 — 접힌 상태에서도
   it("기본 접힘 상태에서 섹션 제목 헤더를 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
-    expect(screen.getByText("교통 상세")).toBeTruthy();
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    expect(screen.getByText("치안/환경")).toBeTruthy();
   });
 
   // 기본 접힘 — 본문 숨김
   it("기본 접힘이면 본문(필드값)은 숨겨져 있다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
-    expect(screen.queryByText("영통역")).toBeNull();
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    expect(screen.queryByText("그린")).toBeNull();
   });
 
   // 클릭 시 펼침 (아코디언)
-  it("헤더 클릭 시 본문이 펼쳐진다 — 교통 필드 표시", () => {
+  it("헤더 클릭 시 본문이 펼쳐진다 — 치안/환경 필드 표시", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
-    fireEvent.click(screen.getByText("교통 상세"));
-    expect(screen.getByText("영통역")).toBeTruthy();
-    expect(screen.getByText("1호선")).toBeTruthy();
-    // busStopNames: 콤마 분리 후 쉼표+공백 join
-    expect(screen.getByText("영통역입구, 삼성아파트")).toBeTruthy();
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    fireEvent.click(screen.getByText("치안/환경"));
+    // view="그린"(조망) · noise=55(소음dB) — makeApt 기본값
+    expect(screen.getByText("그린")).toBeTruthy();
+    expect(screen.getByText("55dB")).toBeTruthy();
   });
 
   // aria-expanded 토글
-  // 세션 412: 교통 상세에 hint 추가 → 헤더 토글 + ? 트리거 둘 다 role=button.
+  // 세션 412: 치안/환경에 hint 추가 → 헤더 토글 + ? 트리거 둘 다 role=button.
   // 헤더 토글은 aria-expanded 보유로 특정(? 트리거는 expanded 속성 없음).
   it("aria-expanded가 클릭으로 변경된다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
     const toggle = screen.getByRole("button", { expanded: false });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
@@ -51,24 +55,24 @@ describe("DataSectionBlock", () => {
   // 키보드 접근성 — Enter
   it("Enter 키로 펼칠 수 있다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
     fireEvent.keyDown(screen.getByRole("button", { expanded: false }), { key: "Enter" });
-    expect(screen.getByText("영통역")).toBeTruthy();
+    expect(screen.getByText("그린")).toBeTruthy();
   });
 
   // 키보드 접근성 — Space
   it("Space 키로 펼칠 수 있다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
     fireEvent.keyDown(screen.getByRole("button", { expanded: false }), { key: " " });
-    expect(screen.getByText("영통역")).toBeTruthy();
+    expect(screen.getByText("그린")).toBeTruthy();
   });
 
   // 채움률 도넛 — hasAny 섹션 헤더에 표시 (접힌 상태에서도)
   it("데이터 있는 섹션은 접힌 상태에서도 헤더 채움률 도넛(role=img)을 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
-    expect(screen.getByRole("img", { name: /교통 상세.*채움률/ })).toBeTruthy();
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    expect(screen.getByRole("img", { name: /치안\/환경.*채움률/ })).toBeTruthy();
   });
 
   // 빈 섹션 — 도넛 없음 + 펼치면 "데이터 수집 중..."
@@ -141,18 +145,16 @@ describe("DataSectionBlock", () => {
     expect(screen.getByText("분양 안전")).toBeTruthy();
   });
 
-  // 교통 필드 null → "—"
-  it("교통 필드가 null이면 '—'을 표시한다", () => {
-    const apt = /** @type {any} */ (makeApt({ subwayName: null, subwayLines: null, busStopNames: null }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} />);
-    fireEvent.click(screen.getByText("교통 상세"));
-    const dashes = screen.getAllByText("—");
-    expect(dashes.length).toBeGreaterThanOrEqual(3);
-  });
+  // 세션508 PR-3b: 교통 필드 null → "—" 검증은 TransportCard.test.tsx 로 이관했다
+  // (subwayName·subwayLines·busStopNames 는 이제 LOCATION_SECTIONS 를 안 거친다).
 
-  // pairs 섹션 렌더 — 세션 505 로 "생활인프라 (반경 1km)" 실제 섹션은 없앴다
-  // (거리 점 그림이 개수까지 병기해 흡수). 컴포넌트의 pairs 분기는 남아 있어 주입으로 검증한다.
-  it("pairs 섹션은 인프라 개수/거리를 표시한다", () => {
+  // pairs 섹션 렌더 — 세션 505 로 "생활인프라 (반경 1km)" 실제 섹션은 없앴다(거리 점 그림이
+  // 개수까지 병기해 흡수). ⚠️ 세션508 PR-3b B1: `InfrastructureSection`(pairs 실제 렌더)은
+  // 죽은 코드로 삭제됐다 — DataSectionBlock 은 이제 `section.pairs` 를 안 읽는다. 다만
+  // `fieldsOf()`(lib/dataSections)는 여전히 pairs 를 채움률 계산에 펼치므로, 이 테스트는
+  // "InfrastructureSection이 렌더한다"가 아니라 "pairs 필드도 채움률 도넛 계산에 들어간다"만
+  // 정직하게 검증한다(주입 섹션이라 실제 4그룹엔 pairs 를 쓰는 곳이 없다).
+  it("pairs 필드도 채움률 도넛 계산에 들어간다 (렌더는 안 함 — InfrastructureSection 삭제)", () => {
     const apt = /** @type {any} */ (makeApt());
     const section = /** @type {any} */ ({
       title: "가상 인프라",
@@ -187,8 +189,8 @@ describe("DataSectionBlock", () => {
   // defaultOpen=true 면 처음부터 펼침
   it("defaultOpen=true면 처음부터 본문이 보인다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("교통 상세"))} apt={apt} defaultOpen />);
-    expect(screen.getByText("영통역")).toBeTruthy();
+    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} defaultOpen />);
+    expect(screen.getByText("그린")).toBeTruthy();
   });
 
   // 세션 411 — hint 있는 섹션 헤더에 ? 도움말 + 클릭이 섹션 토글과 분리(stopPropagation)

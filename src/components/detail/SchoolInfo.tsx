@@ -84,6 +84,22 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }: SchoolInfoProps) {
         {counts.length > 0 && <span style={{ fontSize: F.xs, color: C.muted }}>{counts.join(" · ")} (1km)</span>}
       </div>
 
+      {/* 초등 도보거리 한 줄 (세션508 PR-3b B2) — naverSchoolWalkMin 을 시세 탭 서랍에서 승격.
+          AptCard 칩 관례 그대로: ≤5분 초록 강조(걸어서 가까움), 6분~ 회색 중립, null 이면 줄 자체를
+          숨긴다("미수집" placeholder 금지, AptCard.tsx:404-408 답습). */}
+      {apt.naverSchoolWalkMin != null && (
+        <div
+          style={{
+            fontSize: F.sm,
+            fontWeight: 600,
+            color: apt.naverSchoolWalkMin <= 5 ? C.green : C.muted,
+            marginBottom: 8,
+          }}
+        >
+          초등 도보 {apt.naverSchoolWalkMin}분
+        </div>
+      )}
+
       {nearest.map((s, i) => (
         <div
           key={i}

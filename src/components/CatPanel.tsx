@@ -64,7 +64,10 @@ function isNoDataInfo(info?: string): boolean {
   return info === "-" || info.startsWith("정보 없음") || info.includes("미수집") || info.includes("미확인");
 }
 
-function getHighlights(subs: SubScoreItem[], catKey: string): SubScoreItem[] {
+// export: 세션508 PR-3b B4 — 입지 탭 한 줄 요약(DetailModal)이 이 함수를 재사용한다.
+// 원래 모듈 비공개였다 — 재사용 전 export 여부를 먼저 확인해야 한다(v1 이 이 확인을 건너뛰고
+// TS2305 로 막힌 자리, 플랜 §"v1 에서 틀렸던 것" #8).
+export function getHighlights(subs: SubScoreItem[], catKey: string): SubScoreItem[] {
   if (catKey === "benefit") {
     return subs.filter((s) => s.info !== "-").slice(0, 3);
   }

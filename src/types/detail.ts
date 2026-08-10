@@ -49,15 +49,6 @@ export interface HighlightFieldProps {
 }
 
 /**
- * InfrastructureSection props (30줄).
- * pairs = [[countField, distField|null], ...].
- */
-export interface InfrastructureSectionProps {
-  pairs: ReadonlyArray<readonly [string, string | null]>;
-  apt: Apt;
-}
-
-/**
  * PriceChart props (43줄, DetailModal 내).
  */
 export interface PriceChartProps {
