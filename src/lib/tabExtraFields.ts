@@ -192,6 +192,18 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   "competitionRate",
   "competitionSupply",
   "competitionApplicants",
+  // ── 세션508 PR-3c C4: 종합 탭 `detail/BuildingInfoCard`(건물 정보) 8필드. `heatFuel`·
+  // `primaryDirection` 은 종합 탭 "단지 기본정보" 격자(OVERVIEW_SECTIONS)에서 뺀 자리 —
+  // 표면 중복 차단. 나머지 6필드는 옛 종합 탭 아코디언(서랍) 소속이었다 — 이 카드가 마저
+  // 종합 탭 서랍을 0으로 만든다.
+  "maxFloor",
+  "floors",
+  "corridorType",
+  "heatFuel",
+  "primaryDirection",
+  "floorAreaRatio",
+  "buildingCoverageRatio",
+  "layout",
 ];
 
 /**

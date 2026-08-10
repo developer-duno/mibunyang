@@ -265,6 +265,34 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
     { file: PRESALE_TIMELINE, re: /const applicants = competitionApplicants\b/, why: "진행 그림이 계산·렌더한다" },
   ];
 
+  // 세션508 PR-3c C4 — 종합 탭 건물 정보 카드 8필드. `heatFuel`·`primaryDirection` 은 종합 탭
+  // "단지 기본정보" 격자에서 빠진 자리(다른 두 필드처럼 표면 중복 차단).
+  const BUILDING_INFO_CARD = "../components/detail/BuildingInfoCard.tsx";
+  for (const f of [
+    "maxFloor",
+    "floors",
+    "corridorType",
+    "heatFuel",
+    "primaryDirection",
+    "floorAreaRatio",
+    "buildingCoverageRatio",
+    "layout",
+  ])
+    CARD_SOURCE[f] = [{ file: BUILDING_INFO_CARD, re: new RegExp(`apt\\.${f}\\b`), why: "건물 정보 카드" }];
+
+  // 🔴 배선 가드 — 위 CARD_SOURCE 는 "카드가 그 필드를 그리는가"만 본다. 정작 **모달이 그 카드를
+  //    렌더하는가**는 아무도 안 봤다: 세션508 뮤테이션에서 DetailModal 의 렌더 한 줄을 통째로
+  //    지웠는데 2,670건이 전부 초록이었다(= 8필드가 화면에서 조용히 증발해도 못 잡는다).
+  //    ⚠️ `<` 를 앞에 고정해 import 줄(`import { BuildingInfoCard } from ...`)에는 안 걸리게 한다.
+  it("DetailModal 이 건물 정보 카드를 실제로 렌더한다 (카드가 빠지면 8필드가 통째로 증발)", () => {
+    const src = readFileSync(new URL("../components/DetailModal.tsx", import.meta.url), "utf8");
+    expect(
+      /<BuildingInfoCard\s+apt=\{mergedApt \?\? apt\}/.test(src),
+      "DetailModal 에서 `<BuildingInfoCard apt={mergedApt ?? apt} />` 를 못 찾았다.\n" +
+        "→ 카드를 뺐다면 FIELDS_SHOWN_IN_DETAIL_CARDS 의 8필드도 함께 빼야 한다(안 빼면 화면 어디에도 안 나온다)."
+    ).toBe(true);
+  });
+
   it("목록에 든 필드가 전부 어느 카드 소속인지 적혀 있다", () => {
     const orphan = FIELDS_SHOWN_IN_DETAIL_CARDS.filter((f) => !CARD_SOURCE[f]?.length);
     expect(orphan, `어느 카드가 그리는지 안 적힌 필드: ${orphan.join(", ")}`).toEqual([]);
@@ -499,9 +527,22 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "competitionRate",
       "competitionSupply",
       "competitionApplicants",
+      // C4: 종합 탭 건물 정보 카드(BuildingInfoCard)로 승격한 8종. heatFuel·primaryDirection
+      // 은 종합 탭 격자에서 빠진 자리(표면 중복 차단은 별도 describe 가 잠근다). 이 8종이
+      // 옛 종합 탭 아코디언의 마지막 잔여였다 — 종합 탭 서랍도 이제 0이다.
+      "maxFloor",
+      "floors",
+      "corridorType",
+      "heatFuel",
+      "primaryDirection",
+      "floorAreaRatio",
+      "buildingCoverageRatio",
+      "layout",
       // ⚠️ 여기 **넣으면 안 되는 것들**:
       //   pir·psr·housingPrice = 시세 탭 "이 동네 거래 시세" 표에 그대로 남는다.
       //   cancelRatio6m = "분양 안전" 표에 그대로 남는다(C3 은 청약경쟁 3필드만 옮겼다).
+      //   units·unsold·heating = 종합 탭 "단지 기본정보" 격자에 그대로 남는다(C4 는 heatFuel·
+      //   primaryDirection 두 필드만 옮겼다).
     ];
     const back = gone.filter((f) => ALL_EXTRAS.includes(f));
     expect(back, `서랍으로 되돌아온 필드: ${back.join(", ")}`).toEqual([]);
@@ -523,20 +564,19 @@ describe("탭 배치", () => {
    * 세션508 PR-3c C1~C3 로 분양 탭도 0 이 됐다 — 추가 모집 이력·시공사·청약 진행 3필드가
    * 전용 카드/그림으로 승격하며 "안전" FIELD_SECTIONS 의 잔여 필드가 전부 사라졌다.
    * 0 이면 `ExtraFieldsAccordion` 이 null 을 돌려줘 버튼 자체가 안 뜬다(빈 서랍 아님).
-   * 남은 종합·입지 두 탭까지 0 이 되면 그건 "정리"가 아니라 "실종"이므로 그대로 잠근다.
-   * (종합은 C4 건물 정보 카드가 마저 0화할 예정이나 이 PR 범위 밖이다.)
+   * 세션508 PR-3c C4 로 종합 탭도 0 이 됐다 — 건물 정보 카드(층수·구조·용적률·향 8필드)가
+   * 옛 종합 탭 아코디언의 마지막 잔여를 흡수했다. 이제 **입지 탭 하나만** 서랍이 남는다 —
+   * 그것마저 0 이 되면 그건 "정리"가 아니라 "실종"이므로 그대로 잠근다.
    */
-  it("입지·종합 말고 나머지 탭은 서랍이 비어 있다 (빈 아코디언은 안 만든다)", () => {
+  it("입지 말고 나머지 탭은 서랍이 비어 있다 (빈 아코디언은 안 만든다)", () => {
     for (const t of ALL_TABS) {
-      if (t === "sec-overview" || t === "sec-location") continue;
+      if (t === "sec-location") continue;
       expect(extraCount(t), `${t} 여분이 남아 있다`).toBe(0);
     }
   });
 
-  it("종합·입지 두 탭은 보여줄 게 남아 있다", () => {
-    for (const t of ["sec-overview", "sec-location"] as const) {
-      expect(extraCount(t), `${t} 여분 0`).toBeGreaterThan(0);
-    }
+  it("입지 탭은 보여줄 게 남아 있다", () => {
+    expect(extraCount("sec-location"), "sec-location 여분 0").toBeGreaterThan(0);
   });
 
   it("금융 탭 서랍은 비어 있다 (혜택 9종은 손님 화면에서 뺐다)", () => {
@@ -549,6 +589,10 @@ describe("탭 배치", () => {
 
   it("분양 탭 서랍도 비어 있다 (추가 모집·시공사·청약 진행 카드로 승격, 세션508 PR-3c)", () => {
     expect(extraCount("sec-presale"), "빈 서랍이 되살아났다").toBe(0);
+  });
+
+  it("종합 탭 서랍도 비어 있다 (건물 정보 카드로 승격, 세션508 PR-3c C4)", () => {
+    expect(extraCount("sec-overview"), "빈 서랍이 되살아났다").toBe(0);
   });
 
   it("교차검증 섹션의 naverSchoolWalkMin 은 이제 학군 카드가 그린다 (서랍엔 없다)", () => {
