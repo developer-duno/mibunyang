@@ -21,6 +21,15 @@ import { ChartFrame } from "./ChartFrame";
  * 최대가 437,995 대 1이다. 선형 막대로 그리면 그 한 단지가 막대를 다 먹고
  * **나머지 756개가 전부 폭 0**이 된다. 10대 1과 100대 1의 차이가 안 보인다.
  * 그래서 자릿수(1 → 10 → 100 → 1,000 → …)로 눈금을 잡는다.
+ *
+ * ## 신청수·모집세대 병기 (세션508 PR-3c C3)
+ *
+ * v1 플랜은 "청약 위치 막대에 이미 3필드가 다 있다"고 적었는데 실제로는 `competitionRate`
+ * 하나뿐이었다(적대검증 정정). `competitionSupply`(공급세대수)·`competitionApplicants`
+ * (신청수)를 여기로 옮겨 막대 아래 실값까지 병기한다 — 옛 "분양 안전" 표는 두 값을
+ * 다시 안 그린다("경쟁률"이라는 계산값만으로는 몇 명이 몇 세대를 두고 다퉜는지 안 보인다).
+ * 둘 중 하나라도 없으면 줄 자체를 생략한다("N명 신청" 뿐이거나 "M세대 모집" 뿐인 반쪽
+ * 문장은 오히려 오해를 준다).
  */
 
 /** 진행 순서 — 왼쪽에서 오른쪽으로 */
@@ -51,27 +60,41 @@ export const PresaleTimeline = memo(function PresaleTimeline({
   maxPrice,
   aptPrice,
   competitionRate,
+  competitionSupply,
+  competitionApplicants,
 }: {
   stage?: string | null;
   minPrice?: number | null;
   maxPrice?: number | null;
   aptPrice?: number | null;
   competitionRate?: number | null;
+  competitionSupply?: number | null;
+  competitionApplicants?: number | null;
 }) {
   const idx = STAGES.indexOf(stage as Stage);
   const hasRange = minPrice != null && maxPrice != null && maxPrice > minPrice;
   const rate = competitionRate != null && competitionRate > 0 ? competitionRate : null;
+  // 세션508 PR-3c C3 — 옛 "분양 안전" 표가 그리던 2필드. 둘 다 있어야 문장이 성립한다.
+  const supply = competitionSupply != null && competitionSupply > 0 ? competitionSupply : null;
+  const applicants = competitionApplicants != null && competitionApplicants > 0 ? competitionApplicants : null;
+  const hasApplicantDetail = supply != null && applicants != null;
 
   const aria = useMemo(() => {
-    if (idx < 0) return "분양 정보가 없습니다.";
-    const parts = [`분양 진행 단계 ${STAGES.length}칸 중 ${idx + 1}번째, ${STAGES[idx]}.`];
+    // 세션508 PR-3c C3 정정: 단계가 없어도 분양가 범위·경쟁률이 있으면 읽어 줘야 한다
+    //   (경쟁률 보유 779곳 중 582곳이 단계 없음). 옛 조기 반환은 그 값을 낭독에서도 지웠다.
+    if (idx < 0 && !hasRange && !rate) return "분양 정보가 없습니다.";
+    const parts = idx >= 0 ? [`분양 진행 단계 ${STAGES.length}칸 중 ${idx + 1}번째, ${STAGES[idx]}.`] : [];
     if (hasRange)
       parts.push(
         `분양가 ${(minPrice as number).toLocaleString("ko-KR")}만원부터 ${(maxPrice as number).toLocaleString("ko-KR")}만원.`
       );
     if (rate) parts.push(`청약 경쟁률 ${fmtRate(rate)} 대 1.`);
+    if (hasApplicantDetail)
+      parts.push(
+        `${(applicants as number).toLocaleString("ko-KR")}명 신청, ${(supply as number).toLocaleString("ko-KR")}세대 모집.`
+      );
     return parts.join(" ");
-  }, [idx, hasRange, minPrice, maxPrice, rate]);
+  }, [idx, hasRange, minPrice, maxPrice, rate, hasApplicantDetail, applicants, supply]);
 
   return (
     <ChartFrame
@@ -83,45 +106,53 @@ export const PresaleTimeline = memo(function PresaleTimeline({
         "보통 눈금으로는 나머지가 전부 안 보이거든요."
       }
       ariaLabel={aria}
-      empty={idx < 0}
+      empty={idx < 0 && !hasRange && !rate}
       emptyReason="이 단지는 분양 정보를 아직 모으지 못했어요 (전체의 절반 정도가 그래요)"
       height={hasRange || rate ? 132 : 64}
     >
-      {idx >= 0 && (
+      {(idx >= 0 || hasRange || rate) && (
         <div>
-          {/* 4단계 스텝 */}
-          <div style={{ display: "flex", gap: 4 }}>
-            {STAGES.map((s, i) => {
-              const done = i <= idx;
-              const now = i === idx;
-              return (
-                <div key={s} style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      height: 6,
-                      borderRadius: 3,
-                      background: done ? (now ? C.blue : C.blueBorder) : C.border,
-                    }}
-                  />
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: F.micro,
-                      fontWeight: now ? 800 : 500,
-                      color: now ? C.blue : C.muted,
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {s}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>{STAGE_HINT[STAGES[idx]]}</div>
+          {/* 4단계 스텝 — 단계를 모르면(idx<0) **이 블록만** 건너뛴다.
+              ⚠️ 세션508 PR-3c C3 정정: 옛 코드는 `idx >= 0` 하나로 본문 전체를 막아, 분양 단계가
+              없는 단지에서는 아래 분양가 범위·경쟁률까지 통째로 사라졌다. 라이브 실측 결과
+              **경쟁률 보유 779곳 중 582곳(74.7%)이 presaleStage 가 없다** — 그 정보를 격자에서
+              빼면서 여기로 옮겼으므로, 단계로 막으면 손님이 볼 곳이 아예 없어진다. */}
+          {idx >= 0 && (
+            <>
+              <div style={{ display: "flex", gap: 4 }}>
+                {STAGES.map((s, i) => {
+                  const done = i <= idx;
+                  const now = i === idx;
+                  return (
+                    <div key={s} style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          height: 6,
+                          borderRadius: 3,
+                          background: done ? (now ? C.blue : C.blueBorder) : C.border,
+                        }}
+                      />
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: F.micro,
+                          fontWeight: now ? 800 : 500,
+                          color: now ? C.blue : C.muted,
+                          textAlign: "center",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {s}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>{STAGE_HINT[STAGES[idx]]}</div>
+            </>
+          )}
 
           {/* 분양가 범위 */}
           {hasRange && (
@@ -188,6 +219,13 @@ export const PresaleTimeline = memo(function PresaleTimeline({
                   <span key={t}>{t}</span>
                 ))}
               </div>
+              {/* 세션508 PR-3c C3 — 신청수·모집세대 실값 병기. 하나라도 없으면 줄 자체를 생략. */}
+              {hasApplicantDetail && (
+                <div style={{ marginTop: 6, fontSize: F.micro, color: C.sub }}>
+                  {(applicants as number).toLocaleString("ko-KR")}명 신청 / {(supply as number).toLocaleString("ko-KR")}
+                  세대 모집
+                </div>
+              )}
             </div>
           )}
         </div>

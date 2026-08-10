@@ -32,6 +32,8 @@ import { BlindScoreBadge, LoginCta, ScoreLockPanel } from "./detail/ScoreBlind";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
+import { UnsoldEventCard } from "./detail/UnsoldEventCard";
+import { BuilderCard } from "./detail/BuilderCard";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { SourceComparison } from "./detail/SourceComparison";
@@ -758,12 +760,20 @@ export const DetailModal = memo(function DetailModal({
                 maxPrice={(mergedApt ?? apt).presaleMaxPrice as number | null}
                 aptPrice={(apt.price as number | null) ?? null}
                 competitionRate={(mergedApt ?? apt).competitionRate as number | null}
+                competitionSupply={(mergedApt ?? apt).competitionSupply as number | null}
+                competitionApplicants={(mergedApt ?? apt).competitionApplicants as number | null}
               />
               {/* 세션508 PR-3a A5: raw apt → mergedApt ?? apt 통일 — 이 컴포넌트가 읽는 필드는
                   detail 버킷(staticDataApi.ts:63-73)에 있어 버킷 도착 후 값이 갱신돼야 한다. */}
               <PresaleInfo apt={mergedApt ?? apt} />
 
-              {/* 청약경쟁·네이버분양정보 + 국토부 모집공고 원문 (세션 408 D2a) */}
+              {/* 추가 모집(무순위 공고) 이력 카드 (세션508 PR-3c C1) — ah- 단지만 그린다. */}
+              <UnsoldEventCard apt={mergedApt ?? apt} />
+
+              {/* 시공사 카드 (세션508 PR-3c C2) — builder·builderCreditGrade·builderDebtRatio. */}
+              <BuilderCard apt={mergedApt ?? apt} />
+
+              {/* 계약해제율 (세션 408 D2a, 세션508 PR-3c C3: 청약경쟁 3필드는 위 진행 그림으로 이동) */}
               {PRESALE_SECTIONS.map((s) => (
                 <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
               ))}

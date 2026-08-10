@@ -50,6 +50,35 @@ describe("PresaleTimeline — 분양 정보 없는 절반은 안 그린다", () 
     render(<PresaleTimeline stage="알수없는단계" />);
     expect(screen.queryByRole("img")).toBeNull();
   });
+
+  // 🔴 세션508 PR-3c C3 회귀 가드 — "단계 없음"이 경쟁률까지 지우면 안 된다.
+  //    C3 가 competitionRate·Supply·Applicants 를 "분양 안전" 격자에서 빼 이 그림으로 옮겼는데,
+  //    옛 코드는 `empty={idx < 0}` 하나로 본문 전체를 막았다. 라이브 실측 =
+  //    **경쟁률 보유 779곳 중 582곳(74.7%)이 presaleStage 없음** → 그대로였으면 그 74.7% 에서
+  //    청약 정보가 화면에서 통째로 사라졌다(옮겨온 자리가 안 그려지니 볼 곳이 없다).
+  it("단계가 없어도 경쟁률이 있으면 그린다 (74.7% 가 이 상태 — 정보 소실 방지)", () => {
+    render(
+      <PresaleTimeline stage={null} competitionRate={34.29} competitionSupply={51} competitionApplicants={1749} />
+    );
+    expect(screen.queryByText(/분양 정보를 아직 모으지 못했어요/)).toBeNull();
+    // fmtRate 는 10 이상을 정수로 반올림한다(34.29 → "34") — 위 fmtRate 단언과 같은 규약.
+    expect(screen.getByText(/34 : 1/)).toBeInTheDocument();
+    expect(screen.getByText(/1,749명 신청 \/ 51세대 모집/)).toBeInTheDocument();
+  });
+
+  it("단계도 경쟁률도 분양가도 없을 때만 '정보 없음'", () => {
+    render(<PresaleTimeline stage={null} competitionRate={null} minPrice={null} maxPrice={null} />);
+    expect(screen.getByText(/분양 정보를 아직 모으지 못했어요/)).toBeInTheDocument();
+  });
+
+  it("단계가 없어도 스크린리더에 경쟁률을 읽어 준다", () => {
+    render(
+      <PresaleTimeline stage={null} competitionRate={34.29} competitionSupply={51} competitionApplicants={1749} />
+    );
+    const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
+    expect(label).not.toBe("분양 정보가 없습니다.");
+    expect(label).toContain("청약 경쟁률");
+  });
 });
 
 describe("PresaleTimeline — 단계 표시", () => {
@@ -100,5 +129,41 @@ describe("PresaleTimeline — 경쟁률", () => {
     render(<PresaleTimeline stage="분양중" competitionRate={437995} />);
     expect(screen.getByText(/437,995 : 1/)).toBeInTheDocument();
     expect(screen.getByText("100만")).toBeInTheDocument(); // 눈금 끝
+  });
+});
+
+// 세션508 PR-3c C3 — 신청수·모집세대 실값 병기. 이 그림이 옛 "분양 안전" 표의
+// competitionSupply·competitionApplicants 를 흡수한 자리라, 렌더 레벨 단언이 여기 없으면
+// "grid 에서 빼고 아무 데도 등재 안 함" 사고를 어떤 가드도 못 잡는다(플랜 §"남은 사각" 1).
+describe("PresaleTimeline — 신청수·모집세대 병기 (세션508 PR-3c C3)", () => {
+  it("경쟁률·신청수·모집세대가 모두 있으면 'N명 신청 / M세대 모집'을 함께 보여준다", () => {
+    render(
+      <PresaleTimeline stage="청약중" competitionRate={5.2} competitionSupply={300} competitionApplicants={1560} />
+    );
+    expect(screen.getByText(/1,560명 신청 \/ 300세대 모집/)).toBeInTheDocument();
+  });
+
+  it("모집세대가 없으면 병기 줄 자체를 생략한다 (반쪽 문장 금지)", () => {
+    render(<PresaleTimeline stage="청약중" competitionRate={5.2} competitionApplicants={1560} />);
+    expect(screen.queryByText(/명 신청/)).toBeNull();
+  });
+
+  it("신청수가 없으면 병기 줄 자체를 생략한다 (반쪽 문장 금지)", () => {
+    render(<PresaleTimeline stage="청약중" competitionRate={5.2} competitionSupply={300} />);
+    expect(screen.queryByText(/세대 모집/)).toBeNull();
+  });
+
+  it("둘 다 있어도 경쟁률이 0이면(막대 자체를 안 그리므로) 병기 줄도 없다", () => {
+    render(<PresaleTimeline stage="청약중" competitionRate={0} competitionSupply={300} competitionApplicants={1560} />);
+    expect(screen.queryByText(/명 신청/)).toBeNull();
+  });
+
+  it("스크린리더 설명에도 신청수·모집세대가 포함된다", () => {
+    render(
+      <PresaleTimeline stage="청약중" competitionRate={5.2} competitionSupply={300} competitionApplicants={1560} />
+    );
+    const label = screen.getByRole("img").getAttribute("aria-label") || "";
+    expect(label).toContain("1,560명 신청");
+    expect(label).toContain("300세대 모집");
   });
 });

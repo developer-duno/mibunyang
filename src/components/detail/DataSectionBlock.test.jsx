@@ -119,24 +119,10 @@ describe("DataSectionBlock", () => {
     expect(screen.queryByText("가상 섹션")).toBeNull();
   });
 
-  // 경쟁률 노출 + 콤마 포맷 (세션 505: "청약 경쟁 현황" → "분양 안전"으로 합침)
-  it("경쟁률이 있으면 '분양 안전' 섹션과 콤마 포맷 값을 표시한다", () => {
-    const apt = /** @type {any} */ (
-      makeApt({ competitionRate: 437995, competitionSupply: 300, competitionApplicants: 12000000 })
-    );
-    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
-    expect(screen.getByText("분양 안전")).toBeTruthy();
-    fireEvent.click(screen.getByText("분양 안전"));
-    expect(screen.getByText("437,995:1")).toBeTruthy();
-  });
-
-  // presaleStage=null이어도 경쟁률 있으면 노출 (세션365 게이트 준수)
-  it("presaleStage=null이어도 경쟁률 있으면 노출한다", () => {
-    const apt = /** @type {any} */ (makeApt({ presaleStage: null, competitionRate: 5.2 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
-    fireEvent.click(screen.getByText("분양 안전"));
-    expect(screen.getByText("5.2:1")).toBeTruthy();
-  });
+  // ⚠️ 세션508 PR-3c C3: 옛 대상이던 경쟁률 콤마 포맷 2건은 그림(`charts/PresaleTimeline`)
+  //    으로 이관됐다 — `competitionRate`·`competitionSupply`·`competitionApplicants` 가
+  //    PRESALE_SECTIONS.grid 에서 빠지고 청약 진행 그림 아래 실값 병기로 옮겨갔다. 콤마
+  //    포맷("437,995 : 1") 검증은 `PresaleTimeline.test.tsx` 가 이미 갖고 있다.
 
   // 세션 505: 경쟁률이 비어도 계약해제율은 남는다 — hideWhenEmpty 를 뗀 이유가 이것이다
   it("경쟁률이 비어도 '분양 안전' 섹션은 사라지지 않는다 (계약해제율이 남는다)", () => {
@@ -201,14 +187,16 @@ describe("DataSectionBlock", () => {
   });
 
   it("? 클릭은 섹션을 펼치지 않는다 (stopPropagation — 토글과 분리)", () => {
-    const apt = /** @type {any} */ (makeApt({ competitionRate: 5.2 }));
+    const apt = /** @type {any} */ (makeApt({ cancelRatio6m: 3.4 }));
     render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
     // 헤더 토글 button = aria-expanded 보유 (? 트리거도 role=button 이라 expanded 로 특정)
     const toggle = screen.getByRole("button", { expanded: false });
     fireEvent.click(screen.getByLabelText("분양 안전 풀이 보기"));
     // 섹션은 여전히 접힘(? 클릭이 부모 토글로 전파 안 됨), 도움말만 표시
+    // ⚠️ 세션508 PR-3c C3: 청약경쟁 3필드가 그림으로 옮겨가며 hint 문구도 계약해제율
+    //    중심으로 바뀌었다("몇 대 1" 문구는 이제 없다).
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.getByRole("tooltip")).toHaveTextContent(/몇 대 1/);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/계약해제율/);
   });
 
   // 세션 412: 모든 실제 섹션이 hint 를 가지므로, hint 없는 섹션 객체를 직접 주입해
