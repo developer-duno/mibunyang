@@ -17,7 +17,7 @@
  *   node scripts/collectors/collect-medical-access.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-medical-access.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, recordApiQuota, recordCollectorRun, normalizeGu, guParentCity, selectAll } from "./_shared.mjs";
 
 /** @typedef {{ C1: string; C1_NM: string; ITM_ID?: string; PRD_DE: string; DT: string }} KosisRow */
 /** @typedef {{ matched: Record<string, number>; unmatched: string[]; aggSkipped: number }} ParseResult */
@@ -87,7 +87,8 @@ export function parseKosisRows(rows) {
       continue;
     }
 
-    const key = `${region}::${row.C1_NM}`;
+    // 세션510 ①: KOSIS 표기를 통일해 담는다. 뒤 regions 매칭도 같은 규칙을 쓴다.
+    const key = `${region}::${normalizeGu(region, row.C1_NM) ?? row.C1_NM}`;
     if (!latestYear[key] || year > latestYear[key]) {
       latestYear[key] = year;
       matched[key] = value;
@@ -176,25 +177,36 @@ export async function main() {
       return;
     }
 
-    // regions UPDATE (gu 있는 시군구 행)
-    const { data: regions, error: rErr } = await sb
-      .from("regions")
-      .select("id, region, gu, doctors_per_1k, hospital_beds_per_1k")
-      .not("gu", "is", null);
-
-    if (rErr) {
-      logError(PHASE, `regions 조회 실패: ${rErr.message}`);
+    // regions UPDATE — gu 가 있는 시군구 행 전부
+    // ⚠️ 세션510 ①: `selectAll` 로 읽는다. 그냥 select 하면 PostgREST 가 1,000행에서 끊고,
+    //    `.range(0,9999)` 로도 안 늘어난다(서버 max-rows 가 우선). 실측 2026-08-11:
+    //    gu NOT NULL 1,533행 중 1,000행만 와서 뒤쪽 533행은 조회조차 안 됐다.
+    /** @type {Array<{ id: string; region: string; gu: string | null; doctors_per_1k: number | null; hospital_beds_per_1k: number | null }>} */
+    let regionsTyped = [];
+    try {
+      regionsTyped = /** @type {any} */ (
+        await selectAll(
+          /** @param {any} c */ (c) =>
+            c.from("regions").select("id, region, gu, doctors_per_1k, hospital_beds_per_1k").not("gu", "is", null),
+          sb
+        )
+      );
+    } catch (e) {
+      logError(PHASE, `regions 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
 
-    /** @type {Array<{ id: string; region: string; gu: string | null; doctors_per_1k: number | null; hospital_beds_per_1k: number | null }>} */
-    const regionsTyped = /** @type {any} */ (regions ?? []);
-
     let updated = 0;
     for (const reg of regionsTyped) {
-      const key = `${reg.region}::${reg.gu}`;
-      const doctors = byColumn["doctors_per_1k"]?.[key];
-      const beds = byColumn["hospital_beds_per_1k"]?.[key];
+      // 세션510 ①: ①표기 통일 키로 찾고 ②없으면 **부모 시** 값으로 채운다.
+      // 의사수·병상수는 KOSIS 가 시 단위로만 줘서, 폴백이 없으면 일반구 행이 영영 빈다(실측 310곳).
+      // 부모 시를 모르면 guParentCity 가 null → 그대로 건너뛴다(추측으로 안 채운다).
+      const key = `${reg.region}::${normalizeGu(reg.region, reg.gu) ?? reg.gu}`;
+      const parent = guParentCity(reg.region, reg.gu);
+      const parentKey = parent ? `${reg.region}::${parent}` : null;
+      const doctors = byColumn["doctors_per_1k"]?.[key] ?? (parentKey ? byColumn["doctors_per_1k"]?.[parentKey] : undefined);
+      const beds =
+        byColumn["hospital_beds_per_1k"]?.[key] ?? (parentKey ? byColumn["hospital_beds_per_1k"]?.[parentKey] : undefined);
       if (doctors == null && beds == null) continue;
 
       /** @type {Record<string, number>} */

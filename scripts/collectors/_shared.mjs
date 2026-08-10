@@ -392,6 +392,51 @@ export const GU_LAWD_MAP = {
 // 세션94 에서 확정된 화성시 비법정 구 화이트리스트만 처리.
 // 신규 region/case 는 여기 추가.
 const HWASEONG_BARE_GU = new Set(["동탄구", "만세구", "효행구", "병점구"]);
+
+/**
+ * 시군구 별칭표 — **진실의 원천은 `src/data/sigungu-aliases.json` 하나**다.
+ * 표를 코드에 복사하지 않는다(이번 사고의 원인이 정확히 "각 수집기가 원문을 제 판단으로 쓴 것"이다).
+ *
+ * ⚠️ JSON 을 import 구문으로 들이지 않는다 — 이 모듈은 일반 Node ESM
+ *    사슬(compute-scores.mjs → 스코어링)에서도 열리는데 거기서 import 속성이 빠지면 즉사한다
+ *    (세션508 실사고: daily-deploy 크론 3시간 전 발견). `regulation-seed.mjs` 와 같은 fs 방식.
+ *
+ * 지연 로드다 — 이 모듈을 import 하는 수집기가 40개가 넘어서, 쓰지도 않는 곳까지 파일을 읽을 이유가 없다.
+ *
+ * @type {Map<string, {region:string, canonical:string, parentCity:string, forms:string[]}> | null}
+ */
+let _guAliasIndex = null;
+
+function guAliasIndex() {
+  if (_guAliasIndex) return _guAliasIndex;
+  /** @type {Map<string, any>} */
+  const m = new Map();
+  const p = resolve(ROOT, "src/data/sigungu-aliases.json");
+  if (existsSync(p)) {
+    const raw = JSON.parse(readFileSync(p, "utf8"));
+    for (const e of raw.entries ?? []) {
+      for (const f of e.forms ?? []) m.set(`${e.region}|${f}`, e);
+    }
+  }
+  _guAliasIndex = m;
+  return m;
+}
+
+/**
+ * 시 단위로만 나오는 지표(출산율·의사수·병상수)를 어느 시에 붙일지.
+ *
+ * `guParentCity("경기", "장안구")` → `"수원시"`. 별칭표에 없으면 null —
+ * 그때는 호출부가 그 값을 시 단위로 못 쓴다는 뜻이므로 **추측으로 채우지 말 것**.
+ *
+ * @param {string} region
+ * @param {string | null | undefined} gu
+ * @returns {string | null}
+ */
+export function guParentCity(region, gu) {
+  if (!gu) return null;
+  const hit = guAliasIndex().get(`${region}|${gu}`);
+  return hit ? hit.parentCity : null;
+}
 /**
  * @param {string} region
  * @param {string | null | undefined} gu
@@ -399,6 +444,11 @@ const HWASEONG_BARE_GU = new Set(["동탄구", "만세구", "효행구", "병점
  */
 export function normalizeGu(region, gu) {
   if (!gu) return gu;
+  // 별칭표가 있으면 그것이 우선 — 전국 일반구(수원·성남·창원·청주…)를 "시 구" 한 표기로 모은다.
+  // 2026-08-11 실측: 같은 구가 두 표기로 갈린 쌍 28개 · 영향 266단지(16.2%).
+  const hit = guAliasIndex().get(`${region}|${gu}`);
+  if (hit) return hit.canonical;
+  // 별칭표에 없을 때의 폴백 — 세션94 화성 규칙은 그대로 살린다(표가 비어도 옛 동작이 안 깨지게).
   if (region === "경기") {
     if (gu.startsWith("화성시 ")) return "화성시";
     if (HWASEONG_BARE_GU.has(gu)) return "화성시";

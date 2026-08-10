@@ -39,13 +39,20 @@ describe("aptVerdict — 최고/최저 total 선정 (SHORT_LABEL 어휘)", () =>
   });
 });
 
-describe("aptVerdict — benefit noData 는 후보에서 제외 (ProfileWeightBar 로직 이관)", () => {
-  it("benefit total=10(최저)이지만 noData → 보완 후보에서 빠지고 다음 최저(future=30)가 보완", () => {
+describe("aptVerdict — benefit 은 후보에서 완전히 제외 (2026-08-11, 점수 가중치 0)", () => {
+  it("benefit total=10(최저)이지만 noData=true → 보완 후보에서 빠지고 다음 최저(future=30)가 보완", () => {
     const cats = mkCats({ benefit: 10, future: 30, location: 90 });
     cats.benefit = mkRes(10, "혜택·할인", { noData: true });
     const v = aptVerdict(70, cats);
     expect(v).not.toContain("혜택 보완");
     expect(v).toContain("미래 보완");
+  });
+  it("benefit total=99(최고)에 noData=false 여도 → 강점 후보에서 빠진다 (가중치 0 이라 실제 기여 0)", () => {
+    const cats = mkCats({ benefit: 99, location: 20, price: 30, product: 40, risk: 50, future: 60 });
+    cats.benefit = mkRes(99, "혜택·할인", { noData: false });
+    const v = aptVerdict(70, cats);
+    expect(v).not.toContain("혜택 강점");
+    expect(v).toContain("미래 강점");
   });
 });
 

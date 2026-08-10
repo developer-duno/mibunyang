@@ -91,8 +91,8 @@ describe("WeightEditor", () => {
     const inputs = document.querySelectorAll('input[type="number"]');
     // 200 입력 시도 → handleChange L23 가드로 무시됨 (n > 100)
     fireEvent.change(inputs[0], { target: { value: "200" } });
-    // input value는 여전히 PROFILES.live.w.location = 40
-    expect(/** @type {HTMLInputElement} */ (inputs[0]).value).toBe("40");
+    // input value는 여전히 PROFILES.live.w.location = 45 (2026-08-11: benefit 5 가 location 으로 재분배)
+    expect(/** @type {HTMLInputElement} */ (inputs[0]).value).toBe("45");
   });
 
   it("취소 버튼 클릭 시 편집 모드를 해제한다", () => {
@@ -115,8 +115,9 @@ describe("WeightEditor", () => {
     expect(saveBtn.disabled).toBe(false);
     fireEvent.click(saveBtn);
     expect(saveCustomWeights).toHaveBeenCalledTimes(1);
+    // live 기본 location = 45 (2026-08-11: benefit 5 가 location 으로 재분배)
     expect(saveCustomWeights).toHaveBeenCalledWith(
-      expect.objectContaining({ live: expect.objectContaining({ location: 40 }) })
+      expect.objectContaining({ live: expect.objectContaining({ location: 45 }) })
     );
     expect(showToast).toHaveBeenCalledWith("가중치가 저장되었습니다");
   });

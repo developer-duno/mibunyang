@@ -503,11 +503,14 @@ export const DetailModal = memo(function DetailModal({
                 </div>
               </div>
 
-              {/* 카테고리 요약 미니카드 6개 (세션 409 D2b) — 점수+등급+결론, 탭하면 점수 탭 해당 카테고리 자동 펼침.
+              {/* 카테고리 요약 미니카드 (세션 409 D2b) — 점수+등급+결론, 탭하면 점수 탭 해당 카테고리 자동 펼침.
             ⚠️ 옛 주석은 "레이더(위)가 한눈 비교, 미니카드는 결론+진입"이라 했으나 레이더는 세션 409 에
             이미 제거됐다(현재 코드에 없음). 세션508 PR-3a A4: 편차 스트립을 미니카드 뒤로 옮겼다 —
             스트립(231px)이 미니카드 앞을 막으면 "카드를 첫 화면 안으로"라는 목표 자체가 무효화된다.
-            역할 분리는 "미니카드 = 카테고리 결론+진입(행동), 스트립 = 지역 대비 위치(상대, 근거)"다. */}
+            역할 분리는 "미니카드 = 카테고리 결론+진입(행동), 스트립 = 지역 대비 위치(상대, 근거)"다.
+            benefit 제외 6→5개 (2026-08-11) — PROFILES 5개 전부 가중치 0 이 되어 더 이상 "점수
+            카테고리"가 아니다(constants/profiles.ts 근거 주석 참조). 실제 혜택 금액은 지우지
+            않고 아래 별도 사실 라벨("총 혜택 약 N만원")로 옮겼다 — 점수 그리드와 섞이면 안 된다. */}
               {(() => {
                 const overviewTopCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
                 return (
@@ -519,16 +522,18 @@ export const DetailModal = memo(function DetailModal({
                       margin: "12px 0",
                     }}
                   >
-                    {orderedCatEntries(res.cats as unknown as Record<string, Res>).map(([k, c]) => (
-                      <CategoryMiniCard
-                        key={k}
-                        k={k}
-                        cat={c}
-                        emphasized={overviewTopCats.includes(k)}
-                        onJump={() => handleCategoryJump(k)}
-                        blind={blind}
-                      />
-                    ))}
+                    {orderedCatEntries(res.cats as unknown as Record<string, Res>)
+                      .filter(([k]) => k !== "benefit")
+                      .map(([k, c]) => (
+                        <CategoryMiniCard
+                          key={k}
+                          k={k}
+                          cat={c}
+                          emphasized={overviewTopCats.includes(k)}
+                          onJump={() => handleCategoryJump(k)}
+                          blind={blind}
+                        />
+                      ))}
                   </div>
                 );
               })()}
@@ -555,18 +560,39 @@ export const DetailModal = memo(function DetailModal({
                 />
               )}
 
-              {Array.isArray((mergedApt ?? apt).benefits) && ((mergedApt ?? apt).benefits as unknown[]).length > 0 && (
-                <div style={DM_S.benefitsBox}>
-                  <div style={DM_S.benefitsHead}>혜택 상세</div>
-                  <div style={DM_S.benefitsChipRow}>
-                    {((mergedApt ?? apt).benefits as string[]).map((b: string, i: number) => (
-                      <span key={i} style={DM_S.benefitsChip}>
-                        {b}
-                      </span>
-                    ))}
+              {/* 혜택 사실 라벨 (2026-08-11) — benefit 이 점수 카테고리에서 빠지면서(위 미니카드 참조)
+              생긴 자리. 점수가 아니라 "총 혜택 약 N만원" 금액 사실만 보여준다 — 점수 그리드와
+              떨어뜨리려 미니카드 뒤(여기)에 둔다. AptCard.tsx 의 같은 문구·조건(totalWon > 0)을
+              그대로 답습(그쪽은 건드리지 않음, 다른 브랜치 충돌 회피) — 카드에서 본 문구가 상세에서도
+              똑같이 읽혀야 한다. `apt.benefits`(정성적 혜택 목록 칩)는 운영 실측 채움 0%(0/1,646)라
+              사실상 항상 비어 있지만, 데이터가 채워지면 자동 노출되도록 조건은 그대로 둔다. */}
+              {(() => {
+                // totalWon/rate 는 subs 와 달리 슬림 res(목록 응답)에도 이미 있다(AptCard.tsx:96 이
+                // 같은 res.cats.benefit?.totalWon 을 버킷 없이 그대로 씀) — mergedRes 대기 불필요.
+                const benefitWon = res.cats.benefit?.totalWon ?? 0;
+                const benefitRate = res.cats.benefit?.rate ?? 0;
+                const benefitsList = (mergedApt ?? apt).benefits;
+                const hasBenefitsList = Array.isArray(benefitsList) && (benefitsList as unknown[]).length > 0;
+                if (!(benefitWon > 0) && !hasBenefitsList) return null;
+                return (
+                  <div style={DM_S.benefitsBox}>
+                    {benefitWon > 0 && (
+                      <div style={DM_S.benefitsHead}>
+                        총 혜택 약 {benefitWon.toLocaleString()}만원 ({benefitRate}%)
+                      </div>
+                    )}
+                    {hasBenefitsList && (
+                      <div style={DM_S.benefitsChipRow}>
+                        {(benefitsList as string[]).map((b: string, i: number) => (
+                          <span key={i} style={DM_S.benefitsChip}>
+                            {b}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {Array.isArray(apt.siblingIds) && (apt.siblingIds as string[]).length > 1 && (
                 <div style={DM_S.republishBadge}>재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회</div>
@@ -820,8 +846,9 @@ export const DetailModal = memo(function DetailModal({
             </section>
           )}
 
-          {/* §6 점수 탭 — CatPanel×6 순수 점수만 (세션 409 D2b: 관리자 인사이트는 sec-admin 탭으로 이동).
-            jumpSeqs[k] key = 종합 탭 미니카드 클릭 시 해당 카테고리 1개만 리마운트(defaultExpanded 펼침). */}
+          {/* §6 점수 탭 — CatPanel×5 순수 점수만 (세션 409 D2b: 관리자 인사이트는 sec-admin 탭으로 이동).
+            jumpSeqs[k] key = 종합 탭 미니카드 클릭 시 해당 카테고리 1개만 리마운트(defaultExpanded 펼침).
+            benefit 제외 6→5개 (2026-08-11) — 위 미니카드와 동일 근거(가중치 0, 더 이상 점수 카테고리 아님). */}
           {isPanelMounted("sec-score") && (
             <section
               id="sec-score"
@@ -837,18 +864,20 @@ export const DetailModal = memo(function DetailModal({
                 (() => {
                   const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
                   // mergedRes = 버킷 도착 시 full subs 로 복원된 res, 미도착 시 슬림 res(subs[0]만).
-                  return orderedCatEntries((mergedRes ?? res).cats as unknown as Record<string, Res>).map(([k, c]) => {
-                    const seq = jumpSeqs[k] ?? 0;
-                    return (
-                      <CatPanel
-                        key={`${k}#${seq}`}
-                        cat={c}
-                        k={k}
-                        emphasized={topCats.includes(k)}
-                        defaultExpanded={seq > 0}
-                      />
-                    );
-                  });
+                  return orderedCatEntries((mergedRes ?? res).cats as unknown as Record<string, Res>)
+                    .filter(([k]) => k !== "benefit")
+                    .map(([k, c]) => {
+                      const seq = jumpSeqs[k] ?? 0;
+                      return (
+                        <CatPanel
+                          key={`${k}#${seq}`}
+                          cat={c}
+                          k={k}
+                          emphasized={topCats.includes(k)}
+                          defaultExpanded={seq > 0}
+                        />
+                      );
+                    });
                 })()}
             </section>
           )}

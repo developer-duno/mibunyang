@@ -170,14 +170,14 @@ describe("useDataPipeline", () => {
   /* ── scored (가중합산) ── */
   describe("scored", () => {
     it("live 프로필 가중합산 계산", () => {
-      // live: location:40, product:20, price:20, risk:10, benefit:5, future:5
+      // live: location:45, product:20, price:20, risk:10, benefit:0, future:5 (2026-08-11: benefit 5 → location 재분배)
       // cats: location:65, product:60, price:70, risk:75, benefit:50, future:55
-      // 합산: 65*40/100 + 60*20/100 + 70*20/100 + 75*10/100 + 50*5/100 + 55*5/100
-      //     = 26 + 12 + 14 + 7.5 + 2.5 + 2.75 = 64.75 → round → 65
+      // 합산: 65*45/100 + 60*20/100 + 70*20/100 + 75*10/100 + 50*0/100 + 55*5/100
+      //     = 29.25 + 12 + 14 + 7.5 + 0 + 2.75 = 65.5 → round → 66
       const apts = [makeApt()];
       const { result } = renderPipeline({ apartments: apts, profile: "live" });
       expect(result.current.scored).toHaveLength(1);
-      expect(result.current.scored[0].res.total).toBe(65);
+      expect(result.current.scored[0].res.total).toBe(66);
     });
 
     it("점수 100 초과 시 100으로 클램핑", () => {
@@ -206,8 +206,8 @@ describe("useDataPipeline", () => {
       const apts = [makeApt()];
       const cw = { live: { location: "invalid" } }; // 타입 불일치
       const { result } = renderPipeline({ apartments: apts, profile: "live", customWeights: cw });
-      // PROFILES.live.w 기본값 사용 → 65
-      expect(result.current.scored[0].res.total).toBe(65);
+      // PROFILES.live.w 기본값 사용 → 66 (2026-08-11: benefit 재분배로 65→66, 위 테스트와 동일 산식)
+      expect(result.current.scored[0].res.total).toBe(66);
     });
   });
 
