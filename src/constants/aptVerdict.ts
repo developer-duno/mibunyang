@@ -7,7 +7,12 @@ import type { Cats } from "@/types/scoring";
 // 떠서 비로그인·프로필 미선택 손님은 결론 문장을 못 봤다. 이 판정 한 줄이 상위 개념이라 항상 뜬다.
 //
 // 문구는 점수 서술에 한정한다 — "사도 된다/좋다/추천" 류는 투자 조언으로 읽힐 수 있어 금지.
-const CAT_KEYS: Category[] = ["location", "product", "price", "risk", "benefit", "future"];
+//
+// benefit 은 후보에서 완전히 제외한다(2026-08-11) — PROFILES 5개 전부 가중치 0(constants/profiles.ts)
+// 이라 더 이상 "점수 카테고리"가 아니다. total(0~100 원점수)이 마침 최고/최저였다는 이유로
+// "혜택 강점/보완"이라 말하면, 실제 종합 점수에는 0% 기여했는데 강점처럼 읽히는 거짓이 된다.
+// 옛 로직은 noData 일 때만 걸렀는데, 이제는 noData 여부와 무관하게 항상 제외한다.
+const CAT_KEYS: Category[] = ["location", "product", "price", "risk", "future"];
 
 function shortLabel(label?: string): string {
   return (SHORT_LABEL as Record<string, string>)[label ?? ""] || label || "";
@@ -22,9 +27,7 @@ function shortLabel(label?: string): string {
  */
 export function aptVerdict(total: number | null | undefined, cats: Cats | null | undefined): string | null {
   if (total == null || !cats) return null;
-  const candidates = CAT_KEYS.map((k) => ({ k, cat: cats[k] })).filter(
-    ({ k, cat }) => cat != null && !(k === "benefit" && cat.noData)
-  );
+  const candidates = CAT_KEYS.map((k) => ({ k, cat: cats[k] })).filter(({ cat }) => cat != null);
   if (candidates.length === 0) return null;
   const best = candidates.reduce((a, b) => (b.cat.total > a.cat.total ? b : a));
   const worst = candidates.reduce((a, b) => (b.cat.total < a.cat.total ? b : a));

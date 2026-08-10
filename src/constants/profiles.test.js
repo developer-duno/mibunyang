@@ -68,8 +68,10 @@ describe("getTopCats", () => {
   it("동점(live: product/price=20)은 카테고리 선언 순서로 — location, product", () => {
     expect(getTopCats(PROFILES.live.w)).toEqual(["location", "product"]);
   });
-  it("newlywed 동점(location/price=30) → location, price", () => {
-    expect(getTopCats(PROFILES.newlywed.w)).toEqual(["location", "price"]);
+  // 2026-08-11: benefit 가중치 0 재분배로 newlywed price 가 30→40 이 되어 더 이상 location 과 동점이
+  // 아니다(price 가 단독 1위) — constants/profiles.ts 근거 주석 참조.
+  it("newlywed 상위 2 = price(40), location(30) — benefit 10 이 price 로 재분배돼 동점 해소", () => {
+    expect(getTopCats(PROFILES.newlywed.w)).toEqual(["price", "location"]);
   });
   it("n=3 도 동작", () => {
     expect(getTopCats(PROFILES.invest.w, 3)).toEqual(["price", "risk", "location"]);

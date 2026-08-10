@@ -24,14 +24,15 @@ function mkCats(totals: Partial<Record<keyof Cats, number>> = {}): Cats {
 // ⚠️ 세션508 PR-3a: 강점/보완 요약 줄("weight-bar-summary") 2케이스는 `aptVerdict.test.ts` 로
 // 이관했다 — 그 로직이 `aptVerdict`(종합 탭 "판정 한 줄")로 옮겨가며 이 컴포넌트는 막대만 남았다.
 describe("ProfileWeightBar", () => {
-  it("상위 3 가중치 카테고리 막대 렌더 (실거주 → 입지40·상품20·가격20)", () => {
+  // 2026-08-11: benefit 5 → location 재분배로 실거주 입지가 40→45 (constants/profiles.ts)
+  it("상위 3 가중치 카테고리 막대 렌더 (실거주 → 입지45·상품20·가격20)", () => {
     render(<ProfileWeightBar weights={PROFILES.live.w} cats={mkCats()} />);
     // SHORT_LABEL 라벨로 노출 (막대 1줄에 1회씩)
     expect(screen.getAllByText("입지").length).toBeGreaterThan(0);
     expect(screen.getAllByText("상품").length).toBeGreaterThan(0);
     expect(screen.getAllByText("가격").length).toBeGreaterThan(0);
-    // 비중 % 표기 (최고 가중치 40%)
-    expect(screen.getByText("40%")).toBeInTheDocument();
+    // 비중 % 표기 (최고 가중치 45%)
+    expect(screen.getByText("45%")).toBeInTheDocument();
   });
 
   it("0점 가중치 카테고리는 막대 미표시 (은퇴 future=0)", () => {

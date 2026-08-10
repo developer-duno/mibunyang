@@ -35,8 +35,8 @@ describe("AdminScoreBreakdown", () => {
   it("프로필에 따른 가중치를 표시한다", () => {
     const { apt, res } = /** @type {any} */ (makeScoredItem());
     render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
-    // live 프로필: location=40%
-    expect(screen.getByText(/프로필 가중치: 40%/)).toBeTruthy();
+    // live 프로필: location=45% (2026-08-11: benefit 5 → location 재분배, constants/profiles.ts)
+    expect(screen.getByText(/프로필 가중치: 45%/)).toBeTruthy();
   });
 
   it("nearbyMedian이 0이면 괴리도 N/A로 표시된다", () => {

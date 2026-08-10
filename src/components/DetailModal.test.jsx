@@ -446,16 +446,54 @@ describe("DetailModal StickyJumpNav", () => {
     expect(screen.queryByText("점수 산출 과정 (관리자)")).toBeNull();
   });
 
-  // 세션 409 D2b — 종합 탭 카테고리 미니카드
-  it("종합 탭에 카테고리 미니카드 6개가 결론과 함께 보인다", () => {
+  // 세션 409 D2b — 종합 탭 카테고리 미니카드. benefit 제외 6→5개 (2026-08-11, 가중치 0)
+  it("종합 탭에 카테고리 미니카드 5개가 결론과 함께 보인다 (benefit 제외)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
-    // 6 카테고리 미니카드 = role=button 중 aria-label 에 '점수 탭에서 상세 보기' 포함
+    // 5 카테고리 미니카드 = role=button 중 aria-label 에 '점수 탭에서 상세 보기' 포함
     const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
-    expect(cards.length).toBe(6);
+    expect(cards.length).toBe(5);
     // 결론 문구 샘플: location 80점 → '입지 우수', price deviation '-3.2' → '비쌈'
     expect(overview.textContent).toContain("입지 우수");
     expect(overview.textContent).toContain("적정가 대비 3% 비쌈");
+  });
+
+  it("점수 탭에도 benefit CatPanel(혜택·할인)이 더 이상 없다 (5개, 2026-08-11)", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "점수" }));
+    const scoreSection = /** @type {any} */ (container.querySelector("#sec-score"));
+    expect(scoreSection.textContent).not.toContain("혜택·할인");
+    const panels = scoreSection.querySelectorAll('[role="button"][aria-expanded]');
+    expect(panels.length).toBe(5);
+  });
+
+  // 2026-08-11 — benefit 은 점수 카테고리에서 빠졌지만 실제 혜택 금액(totalWon)은 지운 게
+  // 아니라 점수 그리드와 떨어진 별도 사실 라벨로 남는다(사장님 정정 지시).
+  it("총 혜택 금액(totalWon>0)이 있으면 점수 그리드와 별도로 '총 혜택 약 N만원' 라벨이 뜬다", () => {
+    const item = makeScoredItem(
+      {},
+      {
+        cats: {
+          ...makeItem().res.cats,
+          benefit: { label: "혜택·할인", total: 3, totalWon: 1200, rate: 2.4, subs: [] },
+        },
+      }
+    );
+    const { container } = render(<DetailModal {...makeProps({ item })} />);
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    expect(overview.textContent).toContain("총 혜택 약 1,200만원 (2.4%)");
+    // 점수 미니카드(5개)와는 분리된 텍스트여야 — 미니카드 라벨 목록에 "혜택"이 없다
+    const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
+    expect(cards.length).toBe(5);
+    for (const c of cards) {
+      expect(c.getAttribute("aria-label")).not.toMatch(/^혜택/);
+    }
+  });
+
+  it("총 혜택 금액이 0(기본값)이면 사실 라벨을 그리지 않는다", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
+    expect(overview.textContent).not.toContain("총 혜택 약");
   });
 
   it("미니카드 클릭 시 점수 탭으로 전환 + 해당 카테고리 CatPanel 자동 펼침", () => {
@@ -734,8 +772,8 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
     const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
-    expect(cards.length).toBe(6);
-    // 6칸 전부 비공개 안내 + 점수 숫자·결론 문구 소멸
+    expect(cards.length).toBe(5);
+    // 5칸(benefit 제외, 2026-08-11) 전부 비공개 안내 + 점수 숫자·결론 문구 소멸
     for (const card of cards) {
       expect(card.getAttribute("aria-label")).toContain(BLIND_LABEL);
     }
