@@ -1,27 +1,33 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { C, F, R, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
-import { fmtPrice, fmtCompletion, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
-import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
+import { fmtPrice } from "@/lib/format";
 import { getTopCats } from "@/constants/profiles";
 import type { Category } from "@/constants/profiles";
-import { catVerdict } from "@/constants/catVerdict";
+import { aptVerdict } from "@/constants/aptVerdict";
 import { CAT_DISPLAY_ORDER } from "@/constants/catOrder";
 import { CARD_DEVIATION_FIELDS } from "@/constants/deviationFields";
+import { buildCardChips, splitCardChips } from "@/constants/cardChips";
+import type { CardChip, ChipTone } from "@/constants/cardChips";
 import { DeviationStrip } from "./DeviationStrip";
 import type { AptCardProps } from "@/types/components/AptCard.types";
 
-const UNSOLD_ALERT_THRESHOLD = 30;
-/* 청약 경쟁률 배지 노출 단계 — 청약 진행/예정만 (미분양 제외, 모순 표시 차단) */
-const PRESALE_ACTIVE_STAGES = new Set(["분양중", "청약중", "분양계획"]);
 /* ── 모듈 레벨 상수 (렌더마다 재생성 방지) ── */
 const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
-function completionBadge(completion: string | null | undefined, moveInDone: boolean, completionPast: boolean) {
-  if (moveInDone) return { bg: C.greenLight, color: C.green, text: `입주완료 ${fmtCompletion(completion)}` };
-  if (completionPast) return { bg: C.amberLight, color: C.amber, text: `미입주 (준공 ${fmtCompletion(completion)})` };
-  return { bg: C.blueLight, color: C.blue, text: `입주예정 ${fmtCompletion(completion)}` };
-}
+/**
+ * 칩 색 — `cardChips.ts` 가 정한 성격(tone)을 테마 색으로 옮기는 유일한 자리.
+ * 색 값은 여기서만 든다(상수 파일은 테마를 모른다 = 표현과 판정의 분리).
+ */
+const TONE_STYLE: Record<ChipTone, { background: string; color: string }> = {
+  plain: { background: C.bg, color: C.sub },
+  green: { background: C.greenLight, color: C.green },
+  amber: { background: C.amberLight, color: C.amber },
+  red: { background: C.redLight, color: C.red },
+  blue: { background: C.blueLight, color: C.blue },
+  indigo: { background: C.indigoLight, color: C.indigo },
+  purple: { background: C.purpleLight, color: C.purple },
+};
 
 /* ── 정적 스타일 ── */
 const S = {
@@ -50,7 +56,10 @@ const S = {
   catLabel: { fontSize: F.sm, color: C.muted },
   infoRow: { display: "flex", gap: 4, flexWrap: "wrap" as const, marginTop: 6 },
   infoTag: { fontSize: F.sm, padding: "3px 7px", borderRadius: R.badge, background: C.bg, color: C.sub },
-  reasonChip: {
+  /** 강점·약점 줄 — 색이 있는 칩만 모인다. 회색 줄과 떼어 놓아야 눈이 여기서 멈춘다 */
+  toneRow: { display: "flex", gap: 4, flexWrap: "wrap" as const, marginTop: 6 },
+  /** 판정 한 줄 — 카드에서 가장 먼저 읽히는 문장 */
+  verdictLine: {
     marginTop: 8,
     display: "inline-block",
     fontSize: F.sm,
@@ -60,7 +69,18 @@ const S = {
     background: C.greenLight,
     color: C.green,
   },
-  alertRow: { marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" as const },
+  moreBtn: {
+    marginTop: 8,
+    width: "100%",
+    minHeight: 32,
+    borderRadius: R.btn,
+    border: `1px dashed ${C.border}`,
+    background: "transparent",
+    color: C.muted,
+    fontSize: F.sm,
+    fontWeight: 600,
+    cursor: "pointer",
+  },
   btnRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 },
   btnBase: {
     borderRadius: R.btn,
@@ -71,8 +91,19 @@ const S = {
     minHeight: 36,
     transition: "all .15s",
   },
-  alertTag: { fontSize: F.sm, padding: "3px 8px", borderRadius: R.badge, fontWeight: 600 },
 };
+
+/**
+ * 칩 한 개. 성격(tone)만 색으로 옮기고 나머지는 손대지 않는다 —
+ * 무엇을 어떤 색으로 할지는 `cardChips.ts` 가 이미 정했다.
+ */
+const ChipTag = memo(function ChipTag({ chip }: { chip: CardChip }) {
+  return (
+    <span style={{ ...S.infoTag, ...TONE_STYLE[chip.tone], ...(chip.bold ? { fontWeight: 700 } : {}) }}>
+      {chip.text}
+    </span>
+  );
+});
 
 export const AptCard = memo(
   function AptCard({
@@ -94,32 +125,22 @@ export const AptCard = memo(
     const showDeviation = regionStats != null;
     const g = gr(res.total);
     const benefitWon = res.cats.benefit?.totalWon ?? 0;
-    const noxCount = ((apt.noxious as string[] | undefined) || []).length;
-    const subwayDist = apt.subwayDist as number | null | undefined;
-    const subwayName = apt.subwayName as string | null | undefined;
-    const noxiousDist = apt.noxiousDist as number | null | undefined;
-    // 혐오시설 안심 — 가장 가까운 혐오시설도 1km 밖이면 안심 칩으로 "혐오시설 N건" 경고 대체 (세션 430)
-    const noxSafe = noxiousDist != null && noxiousDist > 1000;
-    // 카드 칩 신규 (세션 437) — 표현계층 전용, 점수·엔진 무변경
-    const schoolWalk = apt.naverSchoolWalkMin as number | null | undefined;
-    const exclRatio = apt.exclusiveRatio as number | null | undefined;
-    const heatFuel = apt.heatFuel as string | null | undefined;
-    // 교통호재 칩 (세션 440) — devDist ≤2km 일 때만 강조(멀면 점수도 낮음, 거짓 강조 차단). null/"없음" 숨김
-    const transitDev = apt.transitDev as string | null | undefined;
-    const devDist = apt.devDist as number | null | undefined;
-    // DSR 통과 칩 (세션 440) — true(소수 10.8%)만 초록 강점. false(다수)·null 생략
-    const dsr40pass = apt.dsr40pass as boolean | null | undefined;
-    // 학군 등급 칩 (세션 441) — C(보통, 실측 3.4% 소수)만 주황 약점. A(84% 다수)·B·D(0건)·null 숨김
-    const schoolGrade = apt.schoolGrade as string | null | undefined;
-    // 향(向) 칩 (세션 444) — 북쪽 계열(북향·북동향·북서향, 실측 1.9% 희소)만 주황 약점.
-    // 남쪽 계열 93%(남 58.9%·남동 19.5%·남서 14.9%)는 다수라 강조 노이즈 → 숨김. null·동/서향(중립)도 숨김.
-    const primaryDirection = apt.primaryDirection as string | null | undefined;
-    const isNorthFacing = primaryDirection != null && primaryDirection.startsWith("북");
-    const completionPast = apt.completion ? apt.completion < NOW_YM : false;
-    // 준공 + 미분양 0 = 입주완료(회색). 미분양 판정은 unsold(수)로 — unsoldRate 는 100% 초과 폭발값이
-    //   null 로 무력화돼 있을 수 있어, 미분양 단지가 "입주완료"로 둔갑하던 회귀 방지 (세션 445, classify.ts:33 일치).
-    const moveInDone = completionPast && Number(apt.unsold ?? 0) === 0;
     const regionTag = [apt.region, apt.gu, apt.dong].filter(Boolean).join(" ");
+    // "지표 N개 더" 접힘 — 카드마다 따로 연다(목록을 벗어나지 않고 그 자리에서 펼친다)
+    const [expanded, setExpanded] = useState(false);
+
+    // 칩 조건·성격·순서는 전부 `constants/cardChips.ts` 소관이다(세션 510, PR-4).
+    // 여기서는 만들어진 칩을 층별로 그리기만 한다 — 조건을 이 파일에 다시 적지 않는다.
+    const chips = useMemo(
+      () => buildCardChips(apt, res, { isLoggedIn, showDeviation, nowYm: NOW_YM }),
+      [apt, res, isLoggedIn, showDeviation]
+    );
+    const layers = useMemo(() => splitCardChips(chips), [chips]);
+    // 준공 + 미분양 0 = 입주완료 → 카드를 흐리게. 판정은 칩 쪽 단일 출처를 그대로 읽는다
+    // (여기서 다시 계산하면 두 곳이 어긋난다 — 세션 445 회귀가 그렇게 났다).
+    const moveInDone = layers.status.some((c) => c.id === "moveInDone");
+    // 판정 한 줄 — 비로그인은 점수를 못 보므로 total 을 넘기지 않아 문구 자체가 안 만들어진다
+    const verdict = aptVerdict(isLoggedIn ? res.total : null, res.cats);
 
     // 상태 의존 스타일만 useMemo로 계산
     const dynStyles = useMemo(
@@ -181,34 +202,10 @@ export const AptCard = memo(
         .map((k) => [k, cats[k]] as [string, { label: string; total: number }]);
     }, [res.cats, profileWeights]);
 
-    // 맞춤 추천 이유 — 프로필 최우선 카테고리가 "긍정(양호 이상)"일 때만 결론 1줄 (catVerdict). 부정/데이터부재면 null.
-    const recommendReason = useMemo(() => {
-      const topKey = getTopCats(profileWeights as unknown as Record<string, number>, 1)[0];
-      if (!topKey) return null;
-      const cat = (
-        res.cats as unknown as Record<
-          string,
-          { total: number; deviation?: unknown; fairPrice?: unknown; noData?: boolean }
-        >
-      )[topKey];
-      if (!cat) return null;
-      // 긍정 판정: total>=50. price 는 deviation<0(비쌈) 모순(116건) 차단 — 부호 우선. benefit noData 제외.
-      let positive: boolean;
-      if (topKey === "price") {
-        // 적정가 산출됐으면 deviation 부호 우선(비쌈=음수 차단), 없으면 total 로 판정
-        positive =
-          (Number(cat.fairPrice) || 0) > 0
-            ? cat.deviation != null
-              ? Number(cat.deviation) >= 0
-              : cat.total >= 50
-            : cat.total >= 50;
-      } else if (topKey === "benefit") {
-        positive = !cat.noData && cat.total >= 50;
-      } else {
-        positive = cat.total >= 50;
-      }
-      return positive ? catVerdict(topKey, cat as never) : null;
-    }, [profileWeights, res.cats]);
+    // 옛 "맞춤 추천 이유" 초록 칩은 세션 510(PR-4)에 판정 한 줄(`aptVerdict`)로 대체됐다.
+    // 그 칩은 프로필 최우선 카테고리가 **긍정일 때만** 떠서 4개 프로필에선 97.5%가 항상 뜨고
+    // 투자 프로필에선 28.8%만 떴다(2026-08-10 n=1,597 실측) — 있으나 마나 하거나 없거나였다.
+    // 판정 한 줄은 좋고 나쁨을 가리지 않고 등급·강점·보완을 한 문장으로 말한다.
 
     return (
       <div style={dynStyles.wrapper} data-testid="apt-card">
@@ -286,7 +283,9 @@ export const AptCard = memo(
             )}
           </div>
 
-          {isLoggedIn && recommendReason && <div style={S.reasonChip}>✓ {recommendReason}</div>}
+          {/* ③ 판정 한 줄 (세션 510) — 카드에서 손님이 실제로 읽는 건 사실상 이 문장이다.
+              비로그인은 점수를 못 보므로 `aptVerdict` 가 null 을 돌려주고 줄 자체가 안 생긴다. */}
+          {verdict && <div style={S.verdictLine}>✓ {verdict}</div>}
 
           {/* ③.5 편차 스트립 (세션 487) — "이 단지 vs 같은 지역 한가운데 값" 3줄.
               되돌림용 스위치는 세션 505 에 졸업했고, 지금 조건은 지역 분포(regionStats) 유무뿐이다. */}
@@ -326,119 +325,25 @@ export const AptCard = memo(
             })}
           </div>
 
-          <div style={S.infoRow}>
-            {res.cats.price.subs[0]?.info && res.cats.price.subs[0].info !== "데이터 부재" ? (
-              <span style={S.infoTag}>적정가 {res.cats.price.subs[0].info}</span>
-            ) : res.cats.price.subs[0]?.detail ? (
-              <span style={S.infoTag}>{res.cats.price.subs[0].detail}</span>
-            ) : null}
-            {res.cats.location.subs[0]?.info && <span style={S.infoTag}>{res.cats.location.subs[0].info}</span>}
-            <span style={S.infoTag}>안전 {isLoggedIn ? gr(res.cats.risk?.total ?? 0).l : "?"}등급</span>
-            {(apt.discountPct ?? 0) > 0 && (
-              <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>
-                할인 {apt.discountPct}%
-              </span>
-            )}
-            {res.cats.price?.deviation != null && Number(res.cats.price.deviation) > 0 && (
-              <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>
-                적정가보다 {Math.round(Number(res.cats.price.deviation))}% 저렴
-              </span>
-            )}
-            {res.cats.price?.deviation != null && Number(res.cats.price.deviation) < 0 && (
-              <span style={{ ...S.infoTag, background: C.redLight, color: C.red, fontWeight: 700 }}>
-                적정가보다 {Math.abs(Math.round(Number(res.cats.price.deviation)))}% 비쌈
-              </span>
-            )}
-            {PRESALE_ACTIVE_STAGES.has(apt.presaleStage as string) && Number(apt.competitionRate ?? 0) > 0 && (
-              <span style={{ ...S.infoTag, background: C.indigoLight, color: C.indigo, fontWeight: 700 }}>
-                청약 {fmtCompetitionRate(Number(apt.competitionRate))}
-              </span>
-            )}
-            {/* 역세권 거리 칩은 세션 487 에 제거 — 편차 스트립 3번째 줄이 같은 정보를
-                "가까운가/먼가" 까지 담아 보여준다. 스트립이 꺼져 있을 때만 예전 칩을 남긴다. */}
-            {!showDeviation && subwayDist != null && subwayDist < 9000 && (
-              <span
-                style={
-                  subwayDist <= 500
-                    ? { ...S.infoTag, background: C.blueLight, color: C.blue, fontWeight: 700 }
-                    : S.infoTag
-                }
-              >
-                {subwayName ? `${subwayName} ` : ""}
-                {subwayDist}m{subwayDist <= 500 ? " 역세권" : ""}
-              </span>
-            )}
-            {/* 전세가율 칩 (세션 430) — ≥70% 초록(전세 수요 강세), <50% 주황(매매 대비 낮음) */}
-            {apt.jeonseRate != null && (
-              <span
-                style={
-                  Number(apt.jeonseRate) >= 70
-                    ? { ...S.infoTag, background: C.greenLight, color: C.green }
-                    : Number(apt.jeonseRate) < 50
-                      ? { ...S.infoTag, background: C.amberLight, color: C.amber }
-                      : S.infoTag
-                }
-              >
-                전세가율 {apt.jeonseRate}%
-              </span>
-            )}
-            {/* 주차 여유도 칩 (세션 430) — ≥1.5 초록(여유), <1 주황(부족) */}
-            {apt.parkingRatio != null && (
-              <span
-                style={
-                  Number(apt.parkingRatio) >= 1.5
-                    ? { ...S.infoTag, background: C.greenLight, color: C.green }
-                    : Number(apt.parkingRatio) < 1
-                      ? { ...S.infoTag, background: C.amberLight, color: C.amber }
-                      : S.infoTag
-                }
-              >
-                주차 {apt.parkingRatio}대/세대
-              </span>
-            )}
-            {/* 복도유형 칩 (세션 433) — 복도식만 주황(소음·프라이버시 약점 신호). 계단식(70%)·혼합식은 흔하거나 중립이라 생략 */}
-            {apt.corridorType === "복도식" && (
-              <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>복도식</span>
-            )}
-            {/* 초등학교 도보거리 칩 (세션 437) — ≤5분 초록 강조(걸어서 가까움), 6분~ 회색 중립. null 숨김 */}
-            {schoolWalk != null && (
-              <span style={schoolWalk <= 5 ? { ...S.infoTag, background: C.greenLight, color: C.green } : S.infoTag}>
-                초등 도보 {schoolWalk}분
-              </span>
-            )}
-            {/* 전용률 칩 (세션 437) — ≥80% 초록 강조(실사용 면적 넓음, 점수 '우수' 티어), <80% 회색 중립. null 숨김 */}
-            {exclRatio != null && (
-              <span style={exclRatio >= 80 ? { ...S.infoTag, background: C.greenLight, color: C.green } : S.infoTag}>
-                전용률 {exclRatio}%
-              </span>
-            )}
-            {/* 난방연료 칩 (세션 437) — LPG만 주황(도시가스보다 난방비 높음 약점 신호). 도시가스(다수)·null 생략 */}
-            {heatFuel === "LPG" && (
-              <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>LPG난방</span>
-            )}
-            {/* 교통호재 칩 (세션 440) — devDist≤2km 일 때만 파랑 강조(GTX/신설노선 미래가치). 라벨=노선+역 2토큰. 멀면 숨김(점수도 낮음)·"없음"/null 숨김 */}
-            {transitDev && transitDev !== "없음" && devDist != null && devDist <= 2 && (
-              <span style={{ ...S.infoTag, background: C.blueLight, color: C.blue, fontWeight: 700 }}>
-                🚆 {transitDev.split(" ").slice(0, 2).join(" ")}
-              </span>
-            )}
-            {/* DSR 통과 칩 (세션 440) — true(소수 10.8%)만 초록 강점(자금조달 양호). false(다수)·null 생략 */}
-            {dsr40pass === true && (
-              <span style={{ ...S.infoTag, background: C.greenLight, color: C.green, fontWeight: 700 }}>DSR 통과</span>
-            )}
-            {/* 학군 등급 칩 (세션 441) — C(보통)만 주황 약점 칩. 라이브 실측 분포 A=84.4%·B=12.2%·C=3.4%·D=0%:
-              A 는 다수(84%)라 강조하면 노이즈, D 는 0건. C(3.4% 소수)가 유일한 변별 신호=교육 중시 손님에게 상대적 약점.
-              A·B(양호 다수)·D·null 숨김. schoolGrade=schools-neis A/B/C/D */}
-            {schoolGrade === "C" && (
-              <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>학군 C</span>
-            )}
-            {/* 향 칩 (세션 444) — 북쪽 계열만 주황 약점(채광·난방 불리). 라이브 실측 분포:
-              남 58.9%·남동 19.5%·남서 14.9%(남쪽 93%)·동 3.2%·서 1.5%·북서 0.9%·북동 0.6%·북 0.4%(북쪽 1.9%).
-              남쪽 다수라 강조하면 노이즈, 북쪽(1.9% 희소)이 유일한 변별 신호. 라벨=실제 방향 그대로. 동/서·null 숨김 */}
-            {isNorthFacing && (
-              <span style={{ ...S.infoTag, background: C.amberLight, color: C.amber }}>{primaryDirection}</span>
-            )}
-          </div>
+          {/* ⑤ 칩 — 층으로 나눠 **무게**를 달리한다 (세션 510, PR-4).
+              옛 카드는 25종이 한 줄에 뒤엉켜 "치안우수"와 "미입주"가 같은 무게로 보였다
+              (2026-08-10 운영 n=1,646 실측: 한 장에 중앙 11개, 최대 16개).
+              위 줄 = 상태·핵심 값(회색, 늘 보임) / 아래 줄 = 강점·약점(색, 굵게, 각 2개까지).
+              조건·성격·순서는 전부 `constants/cardChips.ts` 가 정한다. */}
+          {(layers.status.length > 0 || layers.core.length > 0) && (
+            <div style={S.infoRow}>
+              {[...layers.status, ...layers.core].map((c) => (
+                <ChipTag key={c.id} chip={c} />
+              ))}
+            </div>
+          )}
+          {(layers.good.length > 0 || layers.bad.length > 0) && (
+            <div style={S.toneRow}>
+              {[...layers.good, ...layers.bad].map((c) => (
+                <ChipTag key={c.id} chip={c} />
+              ))}
+            </div>
+          )}
 
           {/* 혜택 있는 단지만 녹색 박스. 미수집(전 단지 benefits 0% 채움)은 박스 숨김 — 데이터 채워지면 자동 복원 (세션 461) */}
           {benefitWon > 0 && (
@@ -460,71 +365,30 @@ export const AptCard = memo(
             </div>
           )}
 
-          {(apt.completion ||
-            (apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD ||
-            noxCount > 0 ||
-            apt.presaleStage ||
-            (apt.builderCreditGrade && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade as string)) ||
-            (apt.crimeSafetyGrade != null && (apt.crimeSafetyGrade >= 4 || apt.crimeSafetyGrade <= 2)) ||
-            (Number(apt.unsoldEventCount ?? 0) > 0 && (apt.id as string)?.startsWith("ah-"))) && (
-            <div style={S.alertRow}>
-              {apt.presaleStage
-                ? (() => {
-                    const sm: Record<string, { bg: string; color: string }> = {
-                      분양중: { bg: C.greenLight, color: C.green },
-                      분양예정: { bg: C.blueLight, color: C.blue },
-                    };
-                    const s = sm[apt.presaleStage as string] ?? { bg: C.purpleLight, color: C.purple };
-                    return (
-                      <span style={{ ...S.alertTag, background: s.bg, color: s.color }}>
-                        {String(apt.presaleStage)}
-                      </span>
-                    );
-                  })()
-                : null}
-              {apt.completion
-                ? (() => {
-                    const b = completionBadge(apt.completion as string, moveInDone, completionPast);
-                    return <span style={{ ...S.alertTag, background: b.bg, color: b.color }}>{b.text}</span>;
-                  })()
-                : null}
-              {(apt.unsoldRate ?? 0) >= UNSOLD_ALERT_THRESHOLD && (
-                <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>
-                  미분양 {fmtUnsoldRate(apt.unsoldRate as number)}
-                </span>
+          {/* ⑥ "지표 N개 더" — 상한에 잘린 것과 회색 정보를 **그 자리에서** 펼친다.
+              목록을 벗어나지 않아야 여러 단지를 견주며 볼 수 있다(사장님 결정, 세션 510).
+              정보를 지우는 게 아니라 층을 나누는 것이므로, 잘린 칩은 전부 여기 있다. */}
+          {layers.hidden.length > 0 && (
+            <>
+              <button
+                type="button"
+                style={S.moreBtn}
+                aria-expanded={expanded}
+                onClick={(e) => {
+                  e.stopPropagation(); // 카드 본문 클릭(상세 열기)과 겹치지 않게
+                  setExpanded((v) => !v);
+                }}
+              >
+                {expanded ? "접기 ▴" : `지표 ${layers.hidden.length}개 더 ▾`}
+              </button>
+              {expanded && (
+                <div style={S.infoRow}>
+                  {layers.hidden.map((c) => (
+                    <ChipTag key={c.id} chip={c} />
+                  ))}
+                </div>
               )}
-              {Boolean(apt.builderCreditGrade) && !SAFE_CREDIT_GRADES.includes(apt.builderCreditGrade as string) && (
-                <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>
-                  시공사 {String(apt.builderCreditGrade)}
-                </span>
-              )}
-              {/* 혐오시설 안심(>1km) 이면 초록 안심 칩, 아니면 기존 빨강 경고 (세션 430, 상호배타) */}
-              {noxCount > 0 && noxSafe && (
-                <span style={{ ...S.alertTag, background: C.greenLight, color: C.green }}>혐오시설 안심(1km+)</span>
-              )}
-              {noxCount > 0 && !noxSafe && (
-                <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>혐오시설 {noxCount}건</span>
-              )}
-              {apt.crimeSafetyGrade != null && apt.crimeSafetyGrade >= 4 && (
-                <span
-                  style={{
-                    ...S.alertTag,
-                    background: apt.crimeSafetyGrade >= 5 ? C.redLight : C.amberLight,
-                    color: apt.crimeSafetyGrade >= 5 ? C.red : C.amber,
-                  }}
-                >
-                  {apt.crimeSafetyGrade >= 5 ? "치안위험" : "치안주의"}
-                </span>
-              )}
-              {/* 치안 우수(1·2등급) — 안전한 단지의 강점 노출 (세션 423, 위험 배지와 상호배타: 3등급은 둘 다 미표시) */}
-              {apt.crimeSafetyGrade != null && apt.crimeSafetyGrade <= 2 && (
-                <span style={{ ...S.alertTag, background: C.greenLight, color: C.green }}>치안우수</span>
-              )}
-              {/* 무순위 공고 발생 단지 — ah- 단지만 (다른 prefix는 0의 의미가 "정보 없음") */}
-              {Number(apt.unsoldEventCount ?? 0) > 0 && (apt.id as string)?.startsWith("ah-") && (
-                <span style={{ ...S.alertTag, background: C.redLight, color: C.red }}>추가 모집</span>
-              )}
-            </div>
+            </>
           )}
         </div>
 

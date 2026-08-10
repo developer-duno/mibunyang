@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { AptCard } from "./AptCard";
 import { makeApt } from "@/__tests__/factories";
 import { computeRegionalStats } from "@/scoring/regionalStats";
@@ -67,8 +67,13 @@ describe("편차 스트립 — 렌더 조건", () => {
 });
 
 describe("편차 스트립 — 역세권 칩 대체", () => {
-  it("스트립을 못 그리면 예전 역세권 칩이 그대로 있다", () => {
+  // 세션 510 PR-4: 역세권 칩은 강점(good) 층이라 상한(2개)이 적용된다. 이 픽스처의 기본 apt 는
+  // discountPct=5·transitDev="GTX-C 착공"(둘 다 factories.js 기본값) 이라는 순위가 더 높은 강점
+  // 칩 2개를 이미 채우고 있어 역세권 칩이 접힘으로 밀린다 — 정보를 지운 게 아니라
+  // "지표 N개 더"를 펼치면 그대로 있다(더 강한 가드: 접힘 목록에 실제로 들어있는지까지 확인).
+  it("스트립을 못 그리면 예전 역세권 칩이 그대로 있다 (접힘 펼쳐서 확인)", () => {
     render(<AptCard {...makeProps({ regionStats: null })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
     expect(screen.getByText(/판교 300m 역세권/)).toBeInTheDocument();
   });
 

@@ -207,15 +207,23 @@ describe("AptCard", () => {
     expect(screen.queryByText(/적정가 데이터 부재/)).toBeNull();
   });
 
-  it('price.subs[0].info=정상값이면 "적정가 {info}" 형식 유지 (회귀 방지)', () => {
-    render(<AptCard {...makeProps()} />);
-    expect(screen.getByText("적정가 -3.5%")).toBeInTheDocument();
+  // 세션 510 PR-4: 회색 "적정가 {info}" 중복 칩은 폐지됐다 — subs[0].info 와 deviation 이
+  // 운영 실측(1,525곳)에서 같은 숫자였다. 이제 문장형 "적정가보다 N%" 하나만 남는다.
+  // (뒤집은 가드: 옛 표기가 다시 뜨면 잡히고, 새 문장형이 안 뜨면 잡힌다 — 정보가 사라진 게 아님을 확인)
+  it('price.subs[0].info=정상값이어도 회색 "적정가 {info}" 칩은 안 뜬다 — 문장형만 남는다 (세션 510 PR-4)', () => {
+    const res = makeRes();
+    res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트(가격 데이터 보유 판별자)
+    res.cats.price.deviation = "-3.5";
+    render(<AptCard {...makeProps({ res })} />);
+    expect(screen.queryByText("적정가 -3.5%")).toBeNull();
+    expect(screen.getByText("적정가보다 3% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round(-3.5))=3 (JS는 -3.5를 -3으로 반올림)
   });
 
   // 세션411: 적정가 괴리(deviation) 부호 — 양수(+)=적정가보다 저렴(좋음). scorePrice.ts:127
   // dev=((fairPrice-price)/fairPrice)*100. 역부호 회귀 가드 (세션409 적대검증 발굴).
   it("deviation 양수(저렴)면 녹색 '+N% 저렴' 배지 표시", () => {
     const res = makeRes();
+    res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트 추가 — 옛 픽스처엔 없어 칩이 안 떴다
     res.cats.price.deviation = "8.4";
     render(<AptCard {...makeProps({ res })} />);
     expect(screen.getByText("적정가보다 8% 저렴")).toBeInTheDocument(); // Math.round("8.4")=8
@@ -223,6 +231,7 @@ describe("AptCard", () => {
 
   it("deviation 음수(비쌈)면 빨강 '비쌈' 배지 표시 + '저렴' 미표시 (세션420 A)", () => {
     const res = makeRes();
+    res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트
     res.cats.price.deviation = "-8.4";
     render(<AptCard {...makeProps({ res })} />);
     expect(screen.getByText("적정가보다 8% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round("-8.4"))=8
@@ -252,9 +261,12 @@ describe("AptCard", () => {
   });
 
   // 세션422: 청약 경쟁률 배지 — 분양중/청약중/분양계획 + competitionRate>0 일 때만 (미분양 제외)
-  it("분양중 + competitionRate>0 이면 '청약 N:1' 배지 표시", () => {
+  // 세션 510 PR-4: 강점 칩 상한(2개)에 밀려 기본 접힘으로 이동했다(기본 픽스처가 discount·transitDev
+  // 두 강점을 이미 채우고 있어서). 정보는 지운 게 아니라 "지표 N개 더"에서 펼치면 있다.
+  it("분양중 + competitionRate>0 이면 '청약 N:1' 배지 표시 (접힘 펼쳐서 확인)", () => {
     const apt = /** @type {any} */ (makeApt({ presaleStage: "분양중", competitionRate: 477.8 }));
     render(<AptCard {...makeProps({ apt })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
     expect(screen.getByText("청약 477.8:1")).toBeInTheDocument();
   });
 
@@ -279,16 +291,19 @@ describe("AptCard", () => {
     expect(screen.queryByText(/청약 /)).toBeNull();
   });
 
-  it("극단값 competitionRate=437995 → '청약 437,995:1' (천단위 콤마, fmtCompetitionRate 위임)", () => {
+  it("극단값 competitionRate=437995 → '청약 437,995:1' (천단위 콤마, fmtCompetitionRate 위임, 접힘 펼쳐서 확인)", () => {
     const apt = /** @type {any} */ (makeApt({ presaleStage: "청약중", competitionRate: 437995 }));
     render(<AptCard {...makeProps({ apt })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
     expect(screen.getByText("청약 437,995:1")).toBeInTheDocument();
   });
 
-  it("competitionRate 변경 시 카드 리렌더 (memo comparator 회귀 방지)", () => {
+  it("competitionRate 변경 시 카드 리렌더 (memo comparator 회귀 방지, 접힘 펼쳐서 확인)", () => {
     const aptInitial = /** @type {any} */ (makeApt({ id: "naver-200", presaleStage: "분양중", competitionRate: null }));
     const aptUpdated = /** @type {any} */ (makeApt({ id: "naver-200", presaleStage: "분양중", competitionRate: 50 }));
     const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+    // expanded 상태는 rerender 사이에도 같은 컴포넌트 인스턴스라 유지된다
+    fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
     expect(screen.queryByText(/청약 /)).toBeNull();
     rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
     expect(screen.getByText("청약 50.0:1")).toBeInTheDocument();
@@ -311,6 +326,19 @@ describe("AptCard", () => {
     expect(screen.queryByText("안전 A등급")).toBeNull();
     rerender(<AptCard {...makeProps({ res, isLoggedIn: true })} />);
     expect(screen.getByText("안전 A등급")).toBeInTheDocument();
+  });
+
+  // 세션510 PR-4: 판정 한 줄(aptVerdict)은 **등급 문자를 담는다** — 비로그인에게 새면 점수 블라인드가 뚫린다.
+  // ⚠️ 이 테스트가 없으면 `aptVerdict(isLoggedIn ? res.total : null, ...)` 의 조건을 지워도 아무도 안 잡는다
+  //    (뮤테이션으로 실증: 조건을 없애도 105건이 전부 초록이었다).
+  it("비로그인이면 판정 한 줄이 아예 안 뜬다 — 등급 문자 누설 차단 (세션510)", () => {
+    const res = makeRes();
+    const { rerender } = render(<AptCard {...makeProps({ res, isLoggedIn: false })} />);
+    // "✓ A등급 — … 강점 · … 보완" 형태. 등급 문자든 강점/보완 문구든 하나도 없어야 한다
+    expect(screen.queryByText(/등급 —/)).toBeNull();
+    expect(screen.queryByText(/강점 ·/)).toBeNull();
+    rerender(<AptCard {...makeProps({ res, isLoggedIn: true })} />);
+    expect(screen.getByText(/등급 —/)).toBeInTheDocument();
   });
 
   // 세션463: 비로그인 블라인드 스크린리더 정합 — 원형 ??는 설명 보유, blur ?? 숫자는 장식(aria-hidden)
@@ -349,17 +377,20 @@ describe("AptCard", () => {
   });
 
   // 치안 우수 배지 (세션 423) — 1·2등급 안전 단지 강점 노출, 위험(4·5)과 상호배타
-  it("치안 1등급이면 '치안우수' 배지 표시 (치안위험 미표시)", () => {
+  // 세션 510 PR-4: 강점 상한(2개)에 밀려 기본 접힘 — 펼쳐서 확인(정보는 지운 게 아니다)
+  it("치안 1등급이면 '치안우수' 배지 표시 (치안위험 미표시, 접힘 펼쳐서 확인)", () => {
     const apt = /** @type {any} */ (makeApt({ crimeSafetyGrade: 1 }));
     render(<AptCard {...makeProps({ apt })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
     expect(screen.getByText("치안우수")).toBeInTheDocument();
     expect(screen.queryByText("치안위험")).toBeNull();
     expect(screen.queryByText("치안주의")).toBeNull();
   });
 
-  it("치안 2등급이면 '치안우수' 배지 표시", () => {
+  it("치안 2등급이면 '치안우수' 배지 표시 (접힘 펼쳐서 확인)", () => {
     const apt = /** @type {any} */ (makeApt({ crimeSafetyGrade: 2 }));
     render(<AptCard {...makeProps({ apt })} />);
+    fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
     expect(screen.getByText("치안우수")).toBeInTheDocument();
   });
 
@@ -412,14 +443,20 @@ describe("AptCard", () => {
   });
 
   // 맞춤 추천 이유 칩 (세션 432) — 프로필 최우선 카테고리가 긍정일 때만 노출
-  describe("맞춤 추천 이유 칩", () => {
+  // 세션 510 PR-4: 이 초록 칩 자체가 폐지되고 `aptVerdict` 판정 한 줄로 대체됐다(비고: 4개 프로필에서
+  // 97.5%가 항상 뜨고 투자 프로필만 28.8% — 있으나 마나였다). 판정 한 줄은 프로필과 무관하게
+  // res.cats 의 최고/최저 total 만 본다. 아래 두 테스트는 "옛 칩이 다시 뜨면 잡히고, 새 판정 한 줄이
+  // 프로필 바뀌어도 안정적으로 뜨는지"를 확인하도록 뒤집었다.
+  describe("맞춤 추천 이유 칩 → 판정 한 줄(aptVerdict)로 대체", () => {
     const EDU_W = { location: 45, product: 20, price: 15, risk: 10, benefit: 5, future: 5 };
     const INVEST_W = { location: 15, product: 10, price: 30, risk: 25, benefit: 10, future: 10 };
 
-    it("자녀교육(입지 최우선) + 입지 우수 → '입지 우수' 칩 노출", () => {
-      // makeRes 기본 location.total=80(>=70 우수)
+    it("자녀교육(입지 최우선)이어도 옛 '입지 우수' 칩은 안 뜨고, 판정 한 줄이 프로필과 무관하게 뜬다", () => {
+      // makeRes 기본값: risk(85)가 최고, benefit(60)가 최저 — location(80)이 최우선 가중치여도
+      // aptVerdict 는 profileWeights 를 보지 않으므로 결과가 안 바뀐다(이게 회귀 가드다).
       render(<AptCard {...makeProps({ profileWeights: EDU_W })} />);
-      expect(screen.getByText(/입지 우수/)).toBeInTheDocument();
+      expect(screen.queryByText(/입지 우수/)).toBeNull();
+      expect(screen.getByText(/안전 강점 · 혜택 보완/)).toBeInTheDocument();
     });
 
     it("투자(가격 최우선) + 가격 비쌈(deviation<0) → 칩 미노출 (부정 게이트)", () => {
@@ -444,11 +481,12 @@ describe("AptCard", () => {
       expect(screen.queryByText(/입지 우수/)).toBeNull();
     });
 
-    it("투자(가격 최우선) + 가격 매력(deviation>0) → '적정가 대비 N% 저렴' 칩 노출", () => {
+    it("투자(가격 최우선) + 가격 매력이어도 옛 '적정가 대비 N% 저렴' 문구는 안 뜨고, core 층 '적정가보다 N% 저렴'가 뜬다", () => {
       const cats = makeRes().cats;
       cats.price = { ...cats.price, total: 75, fairPrice: 50000, deviation: 12 };
       render(<AptCard {...makeProps({ profileWeights: INVEST_W, res: makeRes({ cats }) })} />);
-      expect(screen.getByText(/적정가 대비 12% 저렴/)).toBeInTheDocument();
+      expect(screen.queryByText(/적정가 대비 12% 저렴/)).toBeNull();
+      expect(screen.getByText("적정가보다 12% 저렴")).toBeInTheDocument();
     });
   });
 
@@ -504,16 +542,20 @@ describe("AptCard", () => {
     });
   });
 
+  // 세션 510 PR-4: ≤5분(good 층)은 강점 상한 2개에 밀리고, 6분~(neutral 층)은 상한과 무관하게
+  // 항상 접힘이다 — 둘 다 "지표 N개 더"를 펼쳐서 확인(정보는 지운 게 아니다).
   describe("초등 도보거리 칩 (세션 437)", () => {
-    it("≤5분 → '초등 도보 N분' 칩 노출 (초록 강조)", () => {
+    it("≤5분 → '초등 도보 N분' 칩 노출 (초록 강조, 접힘 펼쳐서 확인)", () => {
       const apt = /** @type {any} */ (makeApt({ naverSchoolWalkMin: 3 }));
       render(<AptCard {...makeProps({ apt })} />);
+      fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
       expect(screen.getByText("초등 도보 3분")).toBeInTheDocument();
     });
 
-    it("6분~ → 칩 노출 (회색 중립)", () => {
+    it("6분~ → 칩 노출 (회색 중립, neutral 층은 항상 접힘 — 펼쳐서 확인)", () => {
       const apt = /** @type {any} */ (makeApt({ naverSchoolWalkMin: 10 }));
       render(<AptCard {...makeProps({ apt })} />);
+      fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
       expect(screen.getByText("초등 도보 10분")).toBeInTheDocument();
     });
 
@@ -524,16 +566,19 @@ describe("AptCard", () => {
     });
   });
 
+  // 세션 510 PR-4: ≥80%(good 층)는 강점 상한에 밀리고, <80%(neutral 층)는 항상 접힘 — 펼쳐서 확인
   describe("전용률 칩 (세션 437)", () => {
-    it("≥80% → '전용률 N%' 칩 노출 (초록 강조)", () => {
+    it("≥80% → '전용률 N%' 칩 노출 (초록 강조, 접힘 펼쳐서 확인)", () => {
       const apt = /** @type {any} */ (makeApt({ exclusiveRatio: 82 }));
       render(<AptCard {...makeProps({ apt })} />);
+      fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
       expect(screen.getByText("전용률 82%")).toBeInTheDocument();
     });
 
-    it("<80% → 칩 노출 (회색 중립)", () => {
+    it("<80% → 칩 노출 (회색 중립, neutral 층은 항상 접힘 — 펼쳐서 확인)", () => {
       const apt = /** @type {any} */ (makeApt({ exclusiveRatio: 75 }));
       render(<AptCard {...makeProps({ apt })} />);
+      fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
       expect(screen.getByText("전용률 75%")).toBeInTheDocument();
     });
 
@@ -599,10 +644,12 @@ describe("AptCard", () => {
     });
   });
 
+  // 세션 510 PR-4: 강점 상한(2개)에 밀려 기본 접힘 — 펼쳐서 확인
   describe("DSR 통과 칩 (세션 440)", () => {
-    it("dsr40pass=true → 'DSR 통과' 칩 노출 (초록 강점)", () => {
+    it("dsr40pass=true → 'DSR 통과' 칩 노출 (초록 강점, 접힘 펼쳐서 확인)", () => {
       const apt = /** @type {any} */ (makeApt({ dsr40pass: true }));
       render(<AptCard {...makeProps({ apt })} />);
+      fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
       expect(screen.getByText("DSR 통과")).toBeInTheDocument();
     });
 
@@ -618,10 +665,12 @@ describe("AptCard", () => {
       expect(screen.queryByText("DSR 통과")).toBeNull();
     });
 
-    it("dsr40pass 변경(false→true) 시 카드 리렌더 (comparator 회귀 가드)", () => {
+    it("dsr40pass 변경(false→true) 시 카드 리렌더 (comparator 회귀 가드, 접힘 펼쳐서 확인)", () => {
       const aptInitial = /** @type {any} */ (makeApt({ dsr40pass: false }));
       const aptUpdated = /** @type {any} */ (makeApt({ dsr40pass: true }));
       const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+      // expanded 상태는 rerender 사이에도 같은 컴포넌트 인스턴스라 유지된다
+      fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
       expect(screen.queryByText("DSR 통과")).toBeNull();
       rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
       expect(screen.getByText("DSR 통과")).toBeInTheDocument();
