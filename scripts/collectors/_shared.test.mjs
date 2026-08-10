@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   resolveBuilder, stringSimilarity, today, sleep,
   REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
-  REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu,
+  REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, guParentCity,
   setupGracefulShutdown, clampUnsoldRate, budgetExceeded, fetchWithRetry,
 } from "./_shared.mjs";
 
@@ -318,6 +318,56 @@ describe("normalizeGu (세션95 단계 B)", () => {
   it("null/undefined gu → 그대로 (getLawdCd 호환)", () => {
     expect(normalizeGu("경기", null)).toBeNull();
     expect(normalizeGu("세종", undefined)).toBeUndefined();
+  });
+});
+
+// 세션510 ① 수집기 — 전국 일반구 표기 통일. 진실의 원천 = src/data/sigungu-aliases.json
+// 2026-08-11 운영 스냅샷(n=1,646) 실측: 같은 구가 두 표기로 갈린 쌍 28개 · 영향 266단지(16.2%).
+// regions 쪽은 세 표기로 갈려 시군구 4지표가 310곳(19.4%)에서 값이 있는데도 "미수집"으로 떴다.
+describe("normalizeGu — 전국 일반구 별칭표 (세션510)", () => {
+  it("단독 구를 '시 구' 로 편다 — 이게 이번 사고의 본체다", () => {
+    expect(normalizeGu("경기", "장안구")).toBe("수원시 장안구");
+    expect(normalizeGu("경기", "처인구")).toBe("용인시 처인구");
+    expect(normalizeGu("충북", "흥덕구")).toBe("청주시 흥덕구");
+    expect(normalizeGu("경남", "성산구")).toBe("창원시 성산구");
+  });
+
+  it("이미 '시 구' 인 것은 그대로 (기존 동작 보존)", () => {
+    expect(normalizeGu("경기", "수원시 장안구")).toBe("수원시 장안구");
+    expect(normalizeGu("충남", "천안시 서북구")).toBe("천안시 서북구");
+  });
+
+  it("같은 이름 구가 여러 지역에 있어도 지역별로 갈린다 — '북구' 함정", () => {
+    // 북구는 대구·부산·광주·울산에도 있다. 지역을 빼고 맞추면 포항 북구와 뒤섞인다.
+    expect(normalizeGu("경북", "북구")).toBe("포항시 북구");
+    expect(normalizeGu("대구", "북구")).toBe("북구"); // 광역시 자치구 — 손대지 않는다
+    expect(normalizeGu("부산", "북구")).toBe("북구");
+  });
+
+  it("화성시 비법정구는 여전히 '화성시' 로 접는다 (세션94 규칙 유지)", () => {
+    // 통계가 시 단위로만 나와서 구로 펴면 붙일 행이 없다.
+    expect(normalizeGu("경기", "동탄구")).toBe("화성시");
+    expect(normalizeGu("경기", "화성시 병점구")).toBe("화성시");
+  });
+
+  it("광역시 자치구는 대상이 아니다", () => {
+    expect(normalizeGu("서울", "강남구")).toBe("강남구");
+    expect(normalizeGu("인천", "연수구")).toBe("연수구");
+  });
+});
+
+describe("guParentCity — 시 단위 지표를 어느 시에 붙일지 (세션510)", () => {
+  it("일반구의 부모 시를 돌려준다", () => {
+    expect(guParentCity("경기", "장안구")).toBe("수원시");
+    expect(guParentCity("경기", "수원시 장안구")).toBe("수원시");
+    expect(guParentCity("경남", "마산회원구")).toBe("창원시");
+  });
+
+  it("광역시 자치구·미등재는 null — 추측으로 채우지 않는다", () => {
+    // null 이 곧 "이 값을 시 단위로 쓸 수 없다"는 신호다. 호출부가 임의로 메우면 거짓이 된다.
+    expect(guParentCity("서울", "강남구")).toBeNull();
+    expect(guParentCity("경기", "없는구")).toBeNull();
+    expect(guParentCity("경기", null)).toBeNull();
   });
 });
 

@@ -16,7 +16,7 @@
 import { Buffer } from "node:buffer";
 import readline from "node:readline";
 import unzipper from "unzipper";
-import { loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun, REGION_MAP, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun, REGION_MAP, today, normalizeGu } from "./_shared.mjs";
 
 loadEnv();
 
@@ -50,7 +50,9 @@ function parseGu(sido, sigungu) {
   if (!region) return null;
   if (region === "세종") return { region, gu: "세종시" };
   if (!sigungu) return null;
-  return { region, gu: sigungu };
+  // 세션510 ①: MOLIT CSV 원문 표기를 그대로 쓰면 `regions` 안에서 같은 동네가 별도 행으로 갈린다
+  // (공시가격만 든 행 / 인구만 든 행 / 출산율·의료만 든 행). 표기를 하나로 모아 한 행에 쌓이게 한다.
+  return { region, gu: normalizeGu(region, sigungu) ?? sigungu };
 }
 
 /**

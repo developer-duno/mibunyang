@@ -18,7 +18,7 @@
  *   node scripts/collectors/collect-fertility-rate.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-fertility-rate.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, recordApiQuota, recordCollectorRun, normalizeGu, guParentCity } from "./_shared.mjs";
 
 /** @typedef {{ C1: string; C1_NM: string; ITM_NM?: string; PRD_DE: string; DT: string }} KosisRow */
 /** @typedef {{ matched: Record<string, number>; unmatched: string[]; aggSkipped: number }} ParseResult */
@@ -79,7 +79,8 @@ export function parseKosisRows(rows) {
       continue;
     }
 
-    const key = `${region}::${row.C1_NM}`;
+    // 세션510 ①: KOSIS 표기를 통일해 담는다. 뒤에서 regions 행을 찾을 때 같은 규칙으로 맞춘다.
+    const key = `${region}::${normalizeGu(region, row.C1_NM) ?? row.C1_NM}`;
     if (!latestYear[key] || year > latestYear[key]) {
       latestYear[key] = year;
       matched[key] = value;
@@ -173,7 +174,14 @@ export async function main() {
 
     let updated = 0;
     for (const reg of regionsTyped) {
-      const value = matched[`${reg.region}::${reg.gu}`];
+      // 세션510 ①: ①표기를 통일해 찾고 ②그래도 없으면 **부모 시** 값으로 채운다.
+      // 출산율·의사수·병상수는 KOSIS 가 시 단위로만 주기 때문에, 폴백이 없으면 "수원시 장안구"
+      // 같은 일반구 행은 영영 비어 있고 화면엔 "미수집"으로 뜬다(실측 310곳·19.4%).
+      // ⚠️ 부모 시를 모르면(별칭표 미등재·광역시 자치구) guParentCity 가 null 을 주고 그대로 건너뛴다 —
+      //    추측으로 아무 시나 갖다 붙이지 않는다.
+      const canonical = normalizeGu(reg.region, reg.gu) ?? reg.gu;
+      const parent = guParentCity(reg.region, reg.gu);
+      const value = matched[`${reg.region}::${canonical}`] ?? (parent ? matched[`${reg.region}::${parent}`] : undefined);
       if (value == null) continue;
       if (reg.fertility_rate != null && Math.abs(reg.fertility_rate - value) < 0.005) continue;
 

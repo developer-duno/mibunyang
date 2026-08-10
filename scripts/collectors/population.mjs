@@ -13,7 +13,7 @@
  *   SUPABASE_URL     — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun, normalizeGu } from "./_shared.mjs";
 
 loadEnv();
 
@@ -130,7 +130,13 @@ function parseGu(ctpvNm, sggNm) {
   if (!region) return null;
   if (region === "세종") return { region, gu: "세종시" };
   if (!sggNm) return null;
-  return { region, gu: sggNm };
+  // 세션510 ①: 행안부가 "장안구" 처럼 시 이름 없이 주는 경우가 있어 표기를 통일한다.
+  // 이 통일이 없으면 같은 동네가 `regions` 안에서 두 행으로 갈리고, 그중 한 행만 채워져
+  // 화면에서는 "미수집"으로 뜬다(2026-08-11 실측: 4지표가 310곳·19.4%에서 값이 있는데도 안 보였다).
+  // 진실의 원천은 `src/data/sigungu-aliases.json` 하나 — 여기에 표를 복사하지 않는다.
+  // `?? sggNm` — normalizeGu 는 빈 값을 그대로 돌려주는 계약이라 여기선 항상 문자열이지만,
+  // 시그니처상 null 이 열려 있어 원문 폴백을 명시한다(조용히 undefined 가 들어가는 것보다 낫다).
+  return { region, gu: normalizeGu(region, sggNm) ?? sggNm };
 }
 
 // ── 시도 집계에서 제외할 "구 보유 시" 추출 ──────────────────
