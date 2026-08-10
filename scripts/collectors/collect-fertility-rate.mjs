@@ -18,7 +18,7 @@
  *   node scripts/collectors/collect-fertility-rate.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-fertility-rate.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, recordApiQuota, recordCollectorRun, normalizeGu, guParentCity } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, recordApiQuota, recordCollectorRun, normalizeGu, guParentCity, selectAll } from "./_shared.mjs";
 
 /** @typedef {{ C1: string; C1_NM: string; ITM_NM?: string; PRD_DE: string; DT: string }} KosisRow */
 /** @typedef {{ matched: Record<string, number>; unmatched: string[]; aggSkipped: number }} ParseResult */
@@ -158,19 +158,25 @@ export async function main() {
       return;
     }
 
-    // regions UPDATE (gu 있는 694행 시군구 단위)
-    const { data: regions, error: rErr } = await sb
-      .from("regions")
-      .select("id, region, gu, fertility_rate")
-      .not("gu", "is", null);
-
-    if (rErr) {
-      logError(PHASE, `regions 조회 실패: ${rErr.message}`);
+    // regions UPDATE — gu 가 있는 시군구 단위 행 전부
+    // ⚠️ 세션510 ①: `selectAll` 로 읽는다. 그냥 select 하면 **PostgREST 가 1,000행에서 끊는다**
+    //    (실측 2026-08-11: gu NOT NULL 이 1,533행인데 1,000행만 옴). `.range(0,9999)` 로도 안 늘어난다 —
+    //    서버 `max-rows` 설정이 range 보다 우선하기 때문이다. 세션285 가 같은 함정에 당했고
+    //    (`limit(10000)` 이 실제로는 1,000행만 반환) 그때 이 헬퍼가 생겼다.
+    //    안 고치면 뒤쪽 533행은 조회조차 안 돼 **영영 NULL 로 남는다**(로그에는 "1000건 대상"으로만 찍힌다).
+    /** @type {Array<{ id: string; region: string; gu: string | null; fertility_rate: number | null }>} */
+    let regionsTyped = [];
+    try {
+      regionsTyped = /** @type {any} */ (
+        await selectAll(
+          /** @param {any} c */ (c) => c.from("regions").select("id, region, gu, fertility_rate").not("gu", "is", null),
+          sb
+        )
+      );
+    } catch (e) {
+      logError(PHASE, `regions 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-
-    /** @type {Array<{ id: string; region: string; gu: string | null; fertility_rate: number | null }>} */
-    const regionsTyped = /** @type {any} */ (regions ?? []);
 
     let updated = 0;
     for (const reg of regionsTyped) {
