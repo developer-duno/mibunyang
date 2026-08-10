@@ -36,28 +36,34 @@ describe("ExtraFieldsAccordion — 기본은 접혀 있다", () => {
 });
 
 describe("ExtraFieldsAccordion — 제목의 숫자가 실제 줄 수와 같다", () => {
-  // sec-finance·sec-price 제외 — 세션 505 에 금융, 세션508 PR-3b B2 에 시세(naverSchoolWalkMin 이
-  // 학군 카드로 승격)가 여분 0 이 돼 버튼 자체가 안 뜬다(빈 서랍은 안 만든다). sec-price 의 n=0
-  // 케이스는 아래 별도 단언으로 확인한다.
-  it.each(["sec-overview", "sec-location", "sec-presale"] as const)(
-    "%s — 제목 N = 펼쳤을 때 실제로 그려진 줄 수",
-    (tab) => {
-      const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab={tab} />);
-      const btn = screen.getByRole("button", { name: /아직 안 보여드린 자료/ });
-      expect(btn.textContent).toContain(`${extraCount(tab)}개`);
-      fireEvent.click(btn);
-      // ⚠️ `TAB_EXTRA_SECTIONS` 길이와 비교하면 같은 계산을 양쪽에서 하는 셈이라 아무것도 못 잡는다.
-      //    실제 DOM 에 그려진 줄(`data-field`)을 센다.
-      const drawn = container.querySelectorAll("[data-field]").length;
-      expect(drawn, "제목 숫자와 실제 그려진 줄 수가 어긋나면 손님이 속는다").toBe(extraCount(tab));
-    }
-  );
+  // sec-finance·sec-price·sec-presale 제외 — 세션 505 에 금융, 세션508 PR-3b B2 에 시세
+  // (naverSchoolWalkMin 이 학군 카드로 승격), 세션508 PR-3c 에 분양(추가 모집·시공사·청약
+  // 진행 3필드가 전용 카드/그림으로 승격)이 여분 0 이 돼 버튼 자체가 안 뜬다(빈 서랍은 안
+  // 만든다). n=0 케이스는 아래 별도 단언으로 확인한다.
+  it.each(["sec-overview", "sec-location"] as const)("%s — 제목 N = 펼쳤을 때 실제로 그려진 줄 수", (tab) => {
+    const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab={tab} />);
+    const btn = screen.getByRole("button", { name: /아직 안 보여드린 자료/ });
+    expect(btn.textContent).toContain(`${extraCount(tab)}개`);
+    fireEvent.click(btn);
+    // ⚠️ `TAB_EXTRA_SECTIONS` 길이와 비교하면 같은 계산을 양쪽에서 하는 셈이라 아무것도 못 잡는다.
+    //    실제 DOM 에 그려진 줄(`data-field`)을 센다.
+    const drawn = container.querySelectorAll("[data-field]").length;
+    expect(drawn, "제목 숫자와 실제 그려진 줄 수가 어긋나면 손님이 속는다").toBe(extraCount(tab));
+  });
 
   // 세션508 PR-3b B2 — naverSchoolWalkMin 이 학군 카드로 승격되며 시세 탭 서랍도 실제로 비었다
   // (sec-finance 는 이미 세션 505 부터 0). n=0 이면 버튼 자체가 안 뜬다.
   it("sec-price — 여분 0(실제 탭, 가짜 tab id 아님) → null 을 반환한다", () => {
     expect(extraCount("sec-price"), "시세 탭 여분이 되살아났다").toBe(0);
     const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab="sec-price" />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  // 세션508 PR-3c — 추가 모집 이력·시공사 정보·청약 진행 3필드가 전용 카드/그림으로 승격되며
+  // 분양 탭 서랍도 실제로 비었다.
+  it("sec-presale — 여분 0(추가 모집·시공사·청약 진행 카드로 승격) → null 을 반환한다", () => {
+    expect(extraCount("sec-presale"), "분양 탭 여분이 되살아났다").toBe(0);
+    const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab="sec-presale" />);
     expect(container.firstChild).toBeNull();
   });
 });

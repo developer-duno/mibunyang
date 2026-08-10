@@ -44,12 +44,15 @@ export function dataValueColor(field: string, value: unknown): string {
 //   보강정보(units·builder·heating 등)만 남겨 "핵심지표가 안 보여주는 단지 상세"로 정직 분리.
 // ⚠️ 세션 505 에 4필드 추가 제외 — 같은 탭 위쪽이 이미 말하는 값이라 두 번 읽히던 것:
 //   pp·avgMaintenanceCost(편차 스트립 1·7번째 줄) · address·district(헤더 주소줄).
+// ⚠️ 세션508 PR-3c C2: `builder`(시공사)를 뺐다 — 분양 탭 `detail/BuilderCard` 전용 카드로
+//   승격했다(시공사 신용등급·부채비율과 한 카드에 모아 "믿어도 되나"를 한 자리에서 답한다).
+//   그 격자에 시공사 하나만 외따로 있던 것보다, 신용·부채와 함께 있는 편이 정직하다.
 export const OVERVIEW_SECTIONS: DataSection[] = [
   {
     title: "단지 기본정보",
     highlight: ["dataReliability"],
-    grid: ["units", "unsold", "builder", "heating", "heatFuel", "primaryDirection"],
-    hint: "이 단지의 세대수·시공사·난방 같은 기본 정보예요. 데이터 신뢰도(%)는 우리가 모은 정보가 얼마나 충분한지 보여줘요.",
+    grid: ["units", "unsold", "heating", "heatFuel", "primaryDirection"],
+    hint: "이 단지의 세대수·난방 같은 기본 정보예요. 데이터 신뢰도(%)는 우리가 모은 정보가 얼마나 충분한지 보여줘요. 시공사 정보는 분양 탭에 따로 있어요.",
   },
 ];
 
@@ -112,10 +115,15 @@ export const PRICE_SECTIONS: DataSection[] = [
 //     섹션을 통째로 숨기면 그 값까지 같이 사라진다.
 //  ③ `newSupply` 제거 — 지역 시장 추이 차트가 같은 지표를 시계열로 그린다
 //     (`constants/marketStatsFields`). 한 시점 숫자 하나를 옆에 또 적을 이유가 없다.
+//  ④ 세션508 PR-3c C3: `competitionRate`·`competitionSupply`·`competitionApplicants` 3필드를
+//     이 표에서 뺐다 — 바로 위 `charts/PresaleTimeline`(분양 진행 그림)이 경쟁률 막대 아래
+//     "N명 신청 / M세대 모집"으로 실값까지 병기한다. v1 플랜은 그 그림이 경쟁률 하나만
+//     그린다고 잘못 적었는데(적대검증 정정), 실제로 셋 다 그림으로 옮기면서 이 표에는
+//     계약해제율만 남는다.
 export const PRESALE_SECTIONS: DataSection[] = [
   {
     title: "분양 안전",
-    grid: ["cancelRatio6m", "competitionRate", "competitionSupply", "competitionApplicants"],
-    hint: "계약해제율은 분양 계약을 깬 비율이에요(높으면 분양이 잘 안 됐다는 신호). 청약 경쟁률은 몇 대 1로 경쟁했는지예요(예: 5:1). 신청자가 모집보다 적으면 '미달', 정보가 아직 없으면 '미수집'으로 표시돼요. 둘 다 이 분양이 얼마나 안전한지 따지는 정보예요.",
+    grid: ["cancelRatio6m"],
+    hint: "계약해제율은 분양 계약을 깬 비율이에요(높으면 분양이 잘 안 됐다는 신호). 청약 경쟁률·신청 규모는 바로 위 '분양 진행 상황' 그림에 있어요. 이 값은 분양이 얼마나 안전한지 따지는 정보예요.",
   },
 ];

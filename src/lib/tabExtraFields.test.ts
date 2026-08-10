@@ -222,6 +222,49 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
     { file: PRICE_BY_FLOOR_BLOCK, re: /apt\.floorRange\b/, why: "층별가 계단 카드 — 거래 층 범위 문장" },
   ];
 
+  // 세션508 PR-3c C1 — 분양 탭 추가 모집 이력 카드(ah- 단지만) 2필드.
+  const UNSOLD_EVENT_CARD = "../components/detail/UnsoldEventCard.tsx";
+  CARD_SOURCE.unsoldEventCount = [
+    { file: UNSOLD_EVENT_CARD, re: /apt\.unsoldEventCount\b/, why: "추가 모집 이력 카드 — 횟수" },
+  ];
+  CARD_SOURCE.lastUnsoldEventAt = [
+    { file: UNSOLD_EVENT_CARD, re: /apt\.lastUnsoldEventAt\b/, why: "추가 모집 이력 카드 — 마지막 날짜" },
+  ];
+
+  // 세션508 PR-3c C2 — 분양 탭 시공사 카드 3필드. `builder` 는 종합 탭 격자에서 빠진 자리.
+  const BUILDER_CARD = "../components/detail/BuilderCard.tsx";
+  for (const f of ["builder", "builderCreditGrade", "builderDebtRatio"])
+    CARD_SOURCE[f] = [{ file: BUILDER_CARD, re: new RegExp(`apt\\.${f}\\b`), why: "시공사 카드" }];
+
+  // 세션508 PR-3c C3 — 분양 탭 청약 진행 그림(PresaleTimeline) 3필드. DetailModal 이 prop 으로
+  // 넘기고(dsr40pass 와 같은 두 파일 패턴), PresaleTimeline 이 실제로 계산·렌더한다.
+  // ⚠️ 정규식은 좌변까지 고정 — 그냥 필드명만 찾으면 함수 시그니처 선언부에도 걸린다.
+  const PRESALE_TIMELINE = "../components/charts/PresaleTimeline.tsx";
+  CARD_SOURCE.competitionRate = [
+    {
+      file: "../components/DetailModal.tsx",
+      re: /competitionRate=\{\(mergedApt \?\? apt\)\.competitionRate\b/,
+      why: "분양 탭이 진행 그림에 넘긴다",
+    },
+    { file: PRESALE_TIMELINE, re: /const rate = competitionRate\b/, why: "진행 그림이 계산·렌더한다" },
+  ];
+  CARD_SOURCE.competitionSupply = [
+    {
+      file: "../components/DetailModal.tsx",
+      re: /competitionSupply=\{\(mergedApt \?\? apt\)\.competitionSupply\b/,
+      why: "분양 탭이 진행 그림에 넘긴다",
+    },
+    { file: PRESALE_TIMELINE, re: /const supply = competitionSupply\b/, why: "진행 그림이 계산·렌더한다" },
+  ];
+  CARD_SOURCE.competitionApplicants = [
+    {
+      file: "../components/DetailModal.tsx",
+      re: /competitionApplicants=\{\(mergedApt \?\? apt\)\.competitionApplicants\b/,
+      why: "분양 탭이 진행 그림에 넘긴다",
+    },
+    { file: PRESALE_TIMELINE, re: /const applicants = competitionApplicants\b/, why: "진행 그림이 계산·렌더한다" },
+  ];
+
   it("목록에 든 필드가 전부 어느 카드 소속인지 적혀 있다", () => {
     const orphan = FIELDS_SHOWN_IN_DETAIL_CARDS.filter((f) => !CARD_SOURCE[f]?.length);
     expect(orphan, `어느 카드가 그리는지 안 적힌 필드: ${orphan.join(", ")}`).toEqual([]);
@@ -443,8 +486,22 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "avgFloor",
       "floorRange",
       "naverAvgFloor",
+      // ── 세션508 PR-3c ──
+      // C1: 분양 탭 추가 모집 이력 카드(UnsoldEventCard, ah- 단지만)로 승격한 2종.
+      "unsoldEventCount",
+      "lastUnsoldEventAt",
+      // C2: 분양 탭 시공사 카드(BuilderCard)로 승격한 3종. builder 는 종합 탭 격자에서
+      // 빠진 자리(표면 중복 차단은 별도 describe 가 잠근다).
+      "builder",
+      "builderCreditGrade",
+      "builderDebtRatio",
+      // C3: 분양 탭 청약 진행 그림(PresaleTimeline)이 실값까지 병기하며 흡수한 3종.
+      "competitionRate",
+      "competitionSupply",
+      "competitionApplicants",
       // ⚠️ 여기 **넣으면 안 되는 것들**:
       //   pir·psr·housingPrice = 시세 탭 "이 동네 거래 시세" 표에 그대로 남는다.
+      //   cancelRatio6m = "분양 안전" 표에 그대로 남는다(C3 은 청약경쟁 3필드만 옮겼다).
     ];
     const back = gone.filter((f) => ALL_EXTRAS.includes(f));
     expect(back, `서랍으로 되돌아온 필드: ${back.join(", ")}`).toEqual([]);
@@ -463,13 +520,21 @@ describe("탭 배치", () => {
    * 세션 505 전엔 "다섯 탭 모두 0보다 크다"였다. 세션 505 에 금융 탭이 0 이 됐고(혜택
    * 10종이 전부 채움 0.0% 라 열어도 "미수집"뿐), 세션508 PR-3b B2 로 시세 탭도 0 이 됐다
    * — 그 탭 서랍에 남던 마지막 필드(naverSchoolWalkMin)가 학군 카드로 승격했다.
+   * 세션508 PR-3c C1~C3 로 분양 탭도 0 이 됐다 — 추가 모집 이력·시공사·청약 진행 3필드가
+   * 전용 카드/그림으로 승격하며 "안전" FIELD_SECTIONS 의 잔여 필드가 전부 사라졌다.
    * 0 이면 `ExtraFieldsAccordion` 이 null 을 돌려줘 버튼 자체가 안 뜬다(빈 서랍 아님).
-   * 나머지 세 탭(종합·입지·분양)까지 0 이 되면 그건 "정리"가 아니라 "실종"이므로 그대로 잠근다.
-   * (종합·분양은 PR-3c 가 건물정보·재공고·시공사 카드로 마저 0화할 예정이나 이 PR 범위 밖이다.)
+   * 남은 종합·입지 두 탭까지 0 이 되면 그건 "정리"가 아니라 "실종"이므로 그대로 잠근다.
+   * (종합은 C4 건물 정보 카드가 마저 0화할 예정이나 이 PR 범위 밖이다.)
    */
-  it("금융·시세 말고 세 탭은 보여줄 게 남아 있다 (빈 아코디언은 안 만든다)", () => {
+  it("입지·종합 말고 나머지 탭은 서랍이 비어 있다 (빈 아코디언은 안 만든다)", () => {
     for (const t of ALL_TABS) {
-      if (t === "sec-finance" || t === "sec-price") continue;
+      if (t === "sec-overview" || t === "sec-location") continue;
+      expect(extraCount(t), `${t} 여분이 남아 있다`).toBe(0);
+    }
+  });
+
+  it("종합·입지 두 탭은 보여줄 게 남아 있다", () => {
+    for (const t of ["sec-overview", "sec-location"] as const) {
       expect(extraCount(t), `${t} 여분 0`).toBeGreaterThan(0);
     }
   });
@@ -480,6 +545,10 @@ describe("탭 배치", () => {
 
   it("시세 탭 서랍도 비어 있다 (naverSchoolWalkMin 이 학군 카드로 승격, 세션508 PR-3b B2)", () => {
     expect(extraCount("sec-price"), "빈 서랍이 되살아났다").toBe(0);
+  });
+
+  it("분양 탭 서랍도 비어 있다 (추가 모집·시공사·청약 진행 카드로 승격, 세션508 PR-3c)", () => {
+    expect(extraCount("sec-presale"), "빈 서랍이 되살아났다").toBe(0);
   });
 
   it("교차검증 섹션의 naverSchoolWalkMin 은 이제 학군 카드가 그린다 (서랍엔 없다)", () => {

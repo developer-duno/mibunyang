@@ -179,6 +179,19 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   // SourceComparison 대조표(avgFloor)와 PRICE_SECTIONS.grid(floorRange)였다.
   "avgFloor",
   "floorRange",
+  // ── 세션508 PR-3c C1: 분양 탭 `detail/UnsoldEventCard`(추가 모집 이력, ah- 단지만) 2필드.
+  "unsoldEventCount",
+  "lastUnsoldEventAt",
+  // ── 세션508 PR-3c C2: 분양 탭 `detail/BuilderCard`(시공사 정보) 3필드. `builder` 는
+  // 종합 탭 "단지 기본정보" 격자(OVERVIEW_SECTIONS)에서 뺀 자리 — 표면 중복 차단.
+  "builder",
+  "builderCreditGrade",
+  "builderDebtRatio",
+  // ── 세션508 PR-3c C3: 분양 탭 `charts/PresaleTimeline`(분양 진행 그림) 3필드. 옛
+  // PRESALE_SECTIONS.grid "분양 안전" 표에서 빼고 그림 아래 실값 병기로 옮겼다.
+  "competitionRate",
+  "competitionSupply",
+  "competitionApplicants",
 ];
 
 /**

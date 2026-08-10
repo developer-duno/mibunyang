@@ -2,6 +2,24 @@ import { describe, it, expect } from "vitest";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, fieldsOf } from "./dataSections";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 
+// 세션508 PR-3c — 분양 탭 청약 진행 3필드가 카드로 승격되며 표에서 빠졌다. 종합 탭
+// "단지 기본정보" 격자에서도 builder(시공사)가 빠졌다(시공사 카드로 승격).
+describe("dataSections — 세션508 PR-3c 승격 필드는 표에서 빠졌다", () => {
+  it("분양 탭 표에 청약 경쟁 3필드가 없다 (청약 진행 그림으로 승격)", () => {
+    const presaleFields = PRESALE_SECTIONS.flatMap(fieldsOf);
+    expect(presaleFields).not.toContain("competitionRate");
+    expect(presaleFields).not.toContain("competitionSupply");
+    expect(presaleFields).not.toContain("competitionApplicants");
+    // 계약해제율은 그대로 남는다 — 청약경쟁 3필드만 옮겼다.
+    expect(presaleFields).toContain("cancelRatio6m");
+  });
+
+  it("종합 탭 '단지 기본정보' 격자에 builder(시공사)가 없다 (시공사 카드로 승격)", () => {
+    const overviewFields = OVERVIEW_SECTIONS.flatMap(fieldsOf);
+    expect(overviewFields).not.toContain("builder");
+  });
+});
+
 describe("dataSections hint", () => {
   // 세션 505 에 6 → 5(입지 "생활인프라" 표 폐지), 세션 507 에 5 → 4
   // (시세의 "네이버 교차검증" 표를 `detail/SourceComparison` 대조표가 대체),
