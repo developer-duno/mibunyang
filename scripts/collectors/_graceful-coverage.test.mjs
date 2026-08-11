@@ -66,7 +66,10 @@ const ALLOWLIST = new Set([
   // 세션 491: noxious.mjs 를 ALLOWLIST 에서 **제거**했다.
   // 증분 수집 + 단지 단위 즉시 저장 + createReporter/break 를 넣었으므로 이제 검사 대상이다.
   // 여기 남겨두면 그 안전장치가 나중에 지워져도 아무도 모른다.
-  "transit-match.mjs",
+  // 세션 511: transit-match.mjs 를 ALLOWLIST 에서 **제거**했다.
+  // 이 수집기를 실행하는 워크플로가 2026-03-14 이후 0건이었다(audit-orphan-collectors.mjs
+  // 신규 감사가 잡은 사고). createReporter/break/recordCollectorRun 을 배선하고
+  // backfill-new-apartments.yml phase2-calc 매트릭스에 실행 경로를 부여했으니 이제 검사 대상이다.
   // graceful 무관 — 단발 / 보조 / 진단
   "data-audit.mjs",
   "data-fill.mjs",

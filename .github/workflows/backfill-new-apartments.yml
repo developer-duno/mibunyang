@@ -79,6 +79,15 @@ jobs:
           # 덧칠하던 중복이라, 빼도 갱신 주기는 그대로 매일 유지된다.
           - { name: "층수 계산", cmd: "calc-floors" }
           - { name: "규제지역 적용", cmd: "regulation-seed" }
+          # 세션 511: transit-match 는 collect-*.yml 형태의 외부 cron 이 없다(시드 파일
+          # public/data/{transit-dev,city-dev}.json 기반 좌표 매칭이라 API 호출 자체가 없음).
+          # 위 "외부 cron 박힌 collector 는 제외" 금지에 안 걸린다(industry-match 는
+          # collect-industry.yml 이 있어 여기 못 들어옴 — 대조 사례).
+          - { name: "교통/도시개발 매칭", cmd: "transit-match" }
+          # 세션 511: calc-school-walk 도 마찬가지 — schools 테이블(이미 DB 에 있는
+          # nearby_schools JSON)만 읽는 순수 계산이라 외부 API 호출·별도 cron 이 없다.
+          # 라이브 실측으로 2026-04 이후 신규 768곳이 채움 0% 임을 확인(세션511b).
+          - { name: "초등학교 도보거리 계산", cmd: "calc-school-walk" }
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

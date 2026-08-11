@@ -12,8 +12,11 @@
  * 필요 환경변수:
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun } from "./_shared.mjs";
 
+// 세션 511: transit-match.mjs 와 똑같은 사고 — 이 수집기를 실행하는 워크플로가 0건이라
+// collector_runs 행이 안 생겼다(createReporter 는 있었지만 recordCollectorRun 호출이 없었음).
+// audit-orphan-collectors.mjs 가 잡아 라이브 실측(2026-03 73.9% → 2026-04 이후 0%)까지 확인됨.
 loadEnv();
 
 const PHASE = "school-walk";
@@ -91,7 +94,10 @@ async function main() {
     }
   }
 
+  // 0건이어도 기록한다 — 기록이 없으면 "매칭될 게 없어서 0건" 과 "실행 자체가 없었던
+  // 것"이 구분되지 않는다(이 수집기가 5개월간 겪은 사고 그 자체, industry-match 답습).
   const result = rpt.summary();
+  await recordCollectorRun(PHASE, result);
   log(PHASE, "\n=== 완료 ===");
   if (result.fail > 0) process.exit(1);
 }
