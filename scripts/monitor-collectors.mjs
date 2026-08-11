@@ -227,6 +227,26 @@ const KO_FIELD = {
  * ⚠️ 월간 cron 에 14 를 박으면 ⑤-b 미발화 분기가 발화일+14일부터 다음 발화까지 매일 거짓 경보 + continue 로 진짜 outage 판정까지 가림 (세션 463 정정: housing-permits·building-hub 14→38).
  * 신규 외부 API collector 추가 시 이 배열 1줄 박힘 + checkExternalApiStale 회귀 답습 의무.
  */
+// 세션 359: naver-estate-web 측 감시 사각지대 조사(오전 8종) 중 mibunyang 쪽도
+// 대조 확인 — 7종(air-quality/applyhome/childcare/emergency/nearby-childcare/
+// police/trades)은 대응 GitHub Actions 워크플로가 monitor-collectors.yml 의
+// workflow_run.workflows 에 이미 등재돼 ①(실패/취소)·③(미발화) 축이 커버하고
+// 있음을 실측 확인(이 배열=EXTERNAL_API_COLLECTORS 는 로컬 러너 등 GH 워크플로
+// 자체가 없는 수집기 전용 — collect-air-quality.mjs 등은 워크플로가 있어 원래
+// 이 배열 대상이 아니었다). 진짜 사각지대는 collect-crime-safety.mjs 단
+// 하나였다 — 아래 EXEMPT_FROM_STALE_CHECK 참조.
+//
+// ⚠️ collect-crime-safety.mjs 는 이 배열에 넣지 않는다(의도적 제외):
+// data/crime-safety-index.csv 를 "사람이 연 1회 수동 다운로드 후 수동 실행"하는
+// 설계다(파일 헤더 8행). GitHub Actions 워크플로도, 로컬 스케줄러(kosis-local-runner
+// 등) 등록도 전혀 없다 — 자동 실행 경로 자체가 없으므로 stale_days 기반 "N일
+// 넘게 실행 안 됨" 판정이 항상 참이 되어(정상 상태가 곧 "오래됨") 상시 오탐만
+// 유발한다. recordCollectorRun("crime-safety", ...) 호출은 있어 실행되면 기록은
+// 남으므로(collect-crime-safety.mjs:182 근처) 검사2(실행되는데 기록 안 남기는
+// 수집기)는 이미 통과 — 다만 "실행 자체"를 감시할 자동 트리거가 없어 검사2도
+// 실질적으로 무의미하다. 향후 이 CSV 가 API로 전환되면 그때 정식 등재할 것.
+export const EXEMPT_FROM_STALE_CHECK = new Set(["crime-safety"]);
+
 export const EXTERNAL_API_COLLECTORS = [
   // ⚠️ 세션 491: 두 collector 의 cron 이 월간 → **분기**(1,4,7,10월)로 바뀌었다.
   //    stale_days 를 38(월간 기준)로 두면 ⑤-b(미발화) 가 먼저 걸려 `continue` 로
