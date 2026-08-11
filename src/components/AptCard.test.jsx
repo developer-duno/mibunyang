@@ -167,10 +167,10 @@ describe("AptCard", () => {
   // 실측 근거: 혐오시설 보유 1,119곳 중 감점을 받는 건 56곳(5.0%)뿐이었다 —
   // 나머지 1,063곳은 빨간 경고만 뜨고 점수는 그대로여서 화면과 점수가 다른 말을 했다.
   it("점수를 깎는 시설이 섞이면 그 이름을 앞세운 경고 태그", () => {
-    // 묘지는 NOXIOUS_PENALTY 등재(-5), 공장은 미등재
-    const apt = /** @type {any} */ (makeApt({ noxious: ["공장", "묘지"] }));
+    // 소각장은 NOXIOUS_PENALTY 등재(-18), 공장은 미등재(너무 흔해 감점 0 — brands.ts NOXIOUS_NO_PENALTY)
+    const apt = /** @type {any} */ (makeApt({ noxious: ["공장", "소각장"] }));
     render(<AptCard {...makeProps({ apt })} />);
-    expect(screen.getByText("묘지 등 2곳")).toBeInTheDocument();
+    expect(screen.getByText("소각장 등 2곳")).toBeInTheDocument();
   });
 
   it("감점 없는 시설만 있으면 경고가 아니라 회색 사실 칩 (접힘 안에 남는다)", () => {

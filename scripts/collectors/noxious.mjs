@@ -330,4 +330,7 @@ const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split
 if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError("main", msg); process.exit(1); });
 
 // 테스트용 순수 함수 export
-export { haversineM };
+// `NOXIOUS_KEYWORDS` 도 함께 연다 — 이 수집기가 만드는 카테고리와 점수표(`brands.ts NOXIOUS_PENALTY`)가
+// 어긋나면 화면은 경고를 띄우는데 점수는 안 깎이는 사고가 난다(세션510 실측: 1,119곳 중 감점 56곳뿐).
+// `noxious-penalty-sync.test.mjs` 가 두 목록을 대조한다.
+export { haversineM, NOXIOUS_KEYWORDS };
