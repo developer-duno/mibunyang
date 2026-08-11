@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildCardChips, splitCardChips, CHIP_ORDER, GOOD_CHIP_MAX, BAD_CHIP_MAX } from "./cardChips";
 import type { CardChip } from "./cardChips";
+import { NOXIOUS_PENALTY } from "@/constants/brands";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
@@ -182,13 +183,51 @@ describe("buildCardChips — 강점/약점 판정", () => {
 
 describe("buildCardChips — 상호배타 규칙", () => {
   it("혐오시설: 1km 밖이면 안심(강점), 안이면 경고(약점) — 둘이 같이 뜨지 않는다", () => {
-    const safe = build({ noxious: ["장례식장"], noxiousDist: 1500 });
+    const safe = build({ noxious: ["소각장"], noxiousDist: 1500 });
     expect(idsOf(safe)).toContain("noxiousSafe");
     expect(idsOf(safe)).not.toContain("noxiousNear");
 
-    const near = build({ noxious: ["장례식장"], noxiousDist: 300 });
+    const near = build({ noxious: ["소각장"], noxiousDist: 300 });
     expect(idsOf(near)).toContain("noxiousNear");
     expect(idsOf(near)).not.toContain("noxiousSafe");
+  });
+
+  // 세션510 ①-2: 빨간 경고는 **점수를 깎는 시설**에만 붙인다.
+  // 옛 카드는 무엇이든 하나만 잡히면 빨강이었는데, 실측 1,119곳 중 감점을 받는 건 56곳(5.0%)뿐이라
+  // 나머지 1,063곳에서 화면과 점수가 서로 다른 말을 하고 있었다.
+  describe("혐오시설 경고는 점수를 깎는 것만 빨강 (세션510)", () => {
+    it("감점 있는 시설(소각장·화장장·교도소)이면 빨간 약점", () => {
+      const c = find(build({ noxious: ["소각장"], noxiousDist: 300 }), "noxiousNear");
+      expect(c?.tone).toBe("red");
+      expect(c?.layer).toBe("bad");
+    });
+
+    it("감점 없는 시설(공장·장례식장)이면 회색 사실 칩 — 정보는 지우지 않는다", () => {
+      const c = find(build({ noxious: ["공장", "장례식장"], noxiousDist: 300 }), "noxiousFact");
+      expect(c?.tone).toBe("plain");
+      expect(c?.layer).toBe("neutral");
+      // 뭉뚱그린 "혐오시설 2건" 대신 실제 이름을 적는다
+      expect(c?.text).toBe("공장·장례식장");
+      expect(find(build({ noxious: ["공장"], noxiousDist: 300 }), "noxiousNear")).toBeUndefined();
+    });
+
+    it("섞여 있으면 감점 있는 쪽을 앞세워 빨강으로", () => {
+      const c = find(build({ noxious: ["공장", "소각장", "장례식장"], noxiousDist: 300 }), "noxiousNear");
+      expect(c?.tone).toBe("red");
+      expect(c?.text).toBe("소각장 등 3곳");
+    });
+
+    it("셋 이상 회색이면 '외 N' 으로 줄인다", () => {
+      const c = find(build({ noxious: ["공장", "장례식장", "축산시설", "매립지"], noxiousDist: 300 }), "noxiousFact");
+      expect(c?.text).toBe("공장·장례식장 외 2");
+    });
+
+    it("판정 근거는 점수 쪽 표를 그대로 읽는다 — 화면이 목록을 따로 들지 않는다", () => {
+      // 이 단언이 red 가 되면 화면과 점수가 갈라진 것이다.
+      for (const k of Object.keys(NOXIOUS_PENALTY)) {
+        expect(find(build({ noxious: [k], noxiousDist: 300 }), "noxiousNear")?.tone).toBe("red");
+      }
+    });
   });
 
   it("혐오시설 목록이 비면 안심도 경고도 안 뜬다", () => {
@@ -337,7 +376,7 @@ describe("splitCardChips — 흔한 경고가 진짜 위험을 밀어내지 않�
         mkApt({
           id: "ah-3",
           schoolGrade: "C",
-          noxious: ["장례식장"],
+          noxious: ["소각장"], // 감점 있는 시설이라야 빨간 약점으로 잡힌다(세션510 ①-2)
           noxiousDist: 300,
           unsoldEventCount: 4,
           crimeSafetyGrade: 4,
@@ -401,7 +440,8 @@ describe("CHIP_ORDER — 순서표 자체의 건전성", () => {
       { unsoldRate: 45, builderCreditGrade: "BBB", crimeSafetyGrade: 5 },
       { crimeSafetyGrade: 4 },
       { crimeSafetyGrade: 1, noxious: ["장례식장"], noxiousDist: 1500, dsr40pass: true },
-      { noxious: ["장례식장"], noxiousDist: 200, id: "ah-1", unsoldEventCount: 3 },
+      { noxious: ["소각장"], noxiousDist: 200, id: "ah-1", unsoldEventCount: 3 },
+      { noxious: ["공장"], noxiousDist: 200 }, // 감점 없는 쪽(noxiousFact) 도 만들어지는지
       { transitDev: "GTX-A 동탄역", devDist: 1, presaleStage: "분양중", competitionRate: 9 },
       { subwayDist: 300, subwayName: "아라역" },
       { subwayDist: 2000 },
