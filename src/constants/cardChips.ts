@@ -1,6 +1,10 @@
 import { gr } from "@/theme";
 import { fmtCompletion, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
+// 점수를 깎는 혐오시설이 무엇인지 **점수 쪽 표를 그대로** 읽는다 — 화면이 따로 목록을 들면
+// 그 순간부터 둘이 어긋난다(이번 사고가 정확히 그 어긋남이었다).
+// 번들 비용 0: `scoreLocation` 이 이미 이 파일을 쓰고, 카드는 그 스코어링을 이미 로드한다.
+import { NOXIOUS_PENALTY } from "@/constants/brands";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
@@ -324,14 +328,38 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
     out.push({ id: "builderCredit", text: `시공사 ${builderCreditGrade}`, tone: "red", layer: "bad" });
   }
   // 혐오시설 — 가장 가까운 것이 1km 밖이면 안심 칩으로 경고를 대체한다(상호배타, 세션 430)
-  const noxCount = ((a.noxious as string[] | undefined) || []).length;
+  const noxList = (a.noxious as string[] | undefined) || [];
+  const noxCount = noxList.length;
   const noxiousDist = a.noxiousDist as number | null | undefined;
   const noxSafe = noxiousDist != null && noxiousDist > 1000;
   if (noxCount > 0 && noxSafe) {
     out.push({ id: "noxiousSafe", text: "혐오시설 안심(1km+)", tone: "green", layer: "good" });
   }
   if (noxCount > 0 && !noxSafe) {
-    out.push({ id: "noxiousNear", text: `혐오시설 ${noxCount}건`, tone: "red", layer: "bad" });
+    // ⚠️ 세션510 ①-2: 옛 카드는 **무엇이든 하나만 잡히면 빨간 "혐오시설 N건"** 을 달았다.
+    //    그런데 점수를 깎는 시설은 `NOXIOUS_PENALTY` 에 등재된 것뿐이라,
+    //    2026-08-11 실측 기준 혐오시설 보유 1,119곳 중 **감점을 받는 건 56곳(5.0%)** 이었다.
+    //    나머지 1,063곳은 **빨간 경고만 뜨고 점수는 그대로** — 화면과 점수가 서로 다른 말을 했다.
+    //    (수집기가 만드는 카테고리: 공장 1,097 · 장례식장 794 · 하수처리장 84 · 폐수처리장 81 ·
+    //     고압선 63 · 축산시설 45 · 소각장 27 · 화장장 26 · 교도소 3 · 매립지 3)
+    //    → **점수를 깎는 것만 빨강**, 나머지는 **회색 사실 칩**으로 내린다. 정보는 지우지 않는다.
+    //    시설 이름을 그대로 적어서 "혐오시설"이라는 뭉뚱그린 말보다 손님이 판단하기 쉽게 한다.
+    const penalized = noxList.filter((c) => NOXIOUS_PENALTY[c] != null);
+    if (penalized.length > 0) {
+      out.push({
+        id: "noxiousNear",
+        text: noxCount > penalized.length ? `${penalized[0]} 등 ${noxCount}곳` : penalized.join("·"),
+        tone: "red",
+        layer: "bad",
+      });
+    } else {
+      out.push({
+        id: "noxiousFact",
+        text: noxList.slice(0, 2).join("·") + (noxCount > 2 ? ` 외 ${noxCount - 2}` : ""),
+        tone: "plain",
+        layer: "neutral",
+      });
+    }
   }
   // 치안 — 위험(4↑)과 우수(2↓)는 상호배타. 3등급은 둘 다 안 뜬다(세션 423)
   const crime = a.crimeSafetyGrade as number | null | undefined;
