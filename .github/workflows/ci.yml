@@ -69,6 +69,12 @@ jobs:
       - name: fill matrix 외부 cron 교집합 audit
         run: node scripts/audit-fill-matrix.mjs
 
+      # 세션 511: transit-match.mjs 를 실행하는 워크플로가 5개월간 0건이었다 —
+      # audit-monitor-coverage 는 "워크플로가 돌리는 수집기"만 보므로 워크플로 자체가
+      # 없는 수집기는 검사 대상 밖이었다. 이 감사는 그 사각지대(실행 경로 0개)를 잡는다.
+      - name: 고아 수집기(실행 경로 0개) audit
+        run: node scripts/audit-orphan-collectors.mjs
+
       - name: Claude 훅 배선 audit
         run: node scripts/audit-hooks-wiring.mjs
 
