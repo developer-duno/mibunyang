@@ -446,6 +446,21 @@ const VWORLD_KEY = process.env.VWORLD_KEY || null;
 export const VWORLD_BUFFER_M = 5000;
 
 /**
+ * V-WORLD 개발키는 **신청 시 등록한 서비스 URL 에서 온 요청인지 Referer 헤더로 검사한다.**
+ * 서버에서 부르면 브라우저와 달리 Referer 가 없어 키가 멀쩡해도 거부된다 —
+ * `INCORRECT_KEY / 인증키 정보가 올바르지 않습니다`(등록 안 된 키의 `INVALID_KEY` 와 다른 에러다).
+ *
+ * 2026-08-13 라이브 실측 (같은 키·같은 요청, 헤더만 바꿈):
+ *   헤더 없음                → status=ERROR, INCORRECT_KEY
+ *   Referer=이 도메인        → status=OK, features=3
+ *   Referer=http://localhost → status=OK, features=3
+ *
+ * ⚠️ 한글 도메인(미분양아파트.com)을 그대로 넣으면 안 된다 — HTTP 헤더는 ByteString 이라
+ *   fetch 가 `character ... greater than 255` 로 던진다. **퓨니코드**로 적는다.
+ */
+export const VWORLD_REFERER = "https://xn--hg3bi2ac4o1ig57cnoa.com/";
+
+/**
  * V-WORLD 레이어별 속성 매핑. lh_zone 은 dan_id 같은 명시적 id 속성이 없다(오케스트레이터가
  * 확인한 응답 속성 목록에 zonename/ag_geom 뿐) — GeoJSON 표준 feature.id 로 폴백한다.
  */
@@ -616,7 +631,8 @@ export async function fetchVworldFeatures(kind, lat, lng, fetchFn = fetchWithRet
   if (!meta) return null;
   const url = buildVworldUrl(meta.layerId, lat, lng, VWORLD_BUFFER_M, VWORLD_KEY);
   try {
-    const res = await fetchFn(url, {});
+    // Referer 필수 — 빠뜨리면 키가 멀쩡해도 INCORRECT_KEY (VWORLD_REFERER 주석의 실측 참조)
+    const res = await fetchFn(url, { headers: { Referer: VWORLD_REFERER } });
     const json = await res.json();
     return parseVworldResponse(json);
   } catch (err) {

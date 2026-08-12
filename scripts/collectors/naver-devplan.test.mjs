@@ -26,7 +26,7 @@ const {
   normalizeDevPlanItem, dedupDevPlanRows, fetchDevPlanTile,
   KOREA_LAT_MIN, KOREA_LAT_MAX, KOREA_LNG_MIN, KOREA_LNG_MAX, isWithinKoreaBounds,
   NAVER_429_BACKOFF_MS, NAVER_MAX_CONSECUTIVE_429, fetchNaverJson,
-  VWORLD_BUFFER_M, VWORLD_LAYERS, redactVworldKey, buildVworldUrl,
+  VWORLD_BUFFER_M, VWORLD_LAYERS, VWORLD_REFERER, redactVworldKey, buildVworldUrl,
   parseVworldResponse, geojsonCentroid, normalizeVworldFeature, fetchVworldFeatures,
 } = await import("./naver-devplan.mjs");
 
@@ -725,5 +725,27 @@ describe("fetchVworldFeatures — null(실패)/[](성공,0건) 계약 + 키 미�
     const [calledUrl] = okFetch.mock.calls[0];
     expect(calledUrl).toContain(VWORLD_LAYERS.lh_zone.layerId);
     expect(calledUrl).toContain(`buffer=${VWORLD_BUFFER_M}`);
+  });
+});
+
+// ── V-WORLD: Referer 헤더 (키가 멀쩡해도 이게 없으면 INCORRECT_KEY) ─────────
+//
+// 2026-08-13 라이브 실측으로 확인된 결함이라 회귀 가드를 둔다. 헤더를 빼면 서버 호출이
+// 전부 INCORRECT_KEY 로 죽는데, 그건 "키가 잘못됐다"는 메시지라서 원인을 코드가 아니라
+// 키에서 찾게 만든다 — 되돌아갔을 때 가장 오래 헤매는 종류의 결함이다.
+
+describe("fetchVworldFeatures — Referer 헤더", () => {
+  it("요청에 Referer 헤더를 붙인다", async () => {
+    const okFetch = vi.fn().mockResolvedValue({ json: async () => ({}) });
+    await fetchVworldFeatures("industrial_complex", 37.5, 127.0, okFetch);
+    const [, opts] = okFetch.mock.calls[0];
+    expect(opts?.headers?.Referer).toBe(VWORLD_REFERER);
+  });
+
+  it("VWORLD_REFERER 는 ASCII(퓨니코드)여야 한다 — 한글 도메인은 헤더에 못 넣는다", () => {
+    // HTTP 헤더는 ByteString 이라 값이 255 를 넘는 문자가 있으면 fetch 자체가 throw 한다.
+    // "미분양아파트.com" 처럼 사람이 읽기 좋은 표기로 바꾸면 런타임에 전부 터진다.
+    expect(VWORLD_REFERER).toMatch(/^https?:\/\/[\x20-\x7E]+$/);
+    for (const ch of VWORLD_REFERER) expect(ch.codePointAt(0)).toBeLessThan(256);
   });
 });
