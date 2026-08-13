@@ -110,18 +110,72 @@ export const KTX_DIST_TIERS: Tier[] = [
 export const KTX_DIST_FALLBACK_LABEL = "원거리";
 
 // === Location: 인프라 가중치 ===
+/**
+ * 생활인프라 만점 기준 — **실측 분포의 상위 15% 지점**(p85)을 반올림한 값이다.
+ *
+ * 옛 기준(병원5·마트3·편의점10·공원4·카페20·문화3·은행4·약국4)은 수집기가 `size=5` 로 잘라
+ * 세던 시절의 값이라 실제 분포와 어긋나 있었다. 세션511 에 수집기가 `meta.total_count`(반경 안
+ * 전체 개수)를 쓰도록 고쳐지면서 진짜 개수가 들어오는데, **옛 기준을 그대로 두면 병원 88% ·
+ * 문화 90% · 은행 88% · 공원 82% 가 만점**이 되어 변별력이 죽는다(150단지 표본 실측).
+ *
+ * 세션498 이 버스 정류장에서 세운 원칙을 그대로 따른다 — **만점 비율로 기준을 정한다.**
+ * 상위 10%대만 만점이어야 비교 엔진이 비교를 할 수 있다.
+ *
+ * 2026-08-13 **전수 실측**(2,660단지 재수집분, `meta.total_count` 기준):
+ * | 항목 | 중앙 | p75 | p85 | p90 | 최대 | 0개 | 채택 기준 | 그 기준의 만점비율 |
+ * |---|---|---|---|---|---|---|---|---|
+ * | hospital | 64 | 139 | 173 | 211 | 1,057 | 5% | 175 | ~15% |
+ * | mart | 0 | 1 | 1 | 2 | 4 | 58% | 1 | 41.8% (아래 예외) |
+ * | conv | 9 | 17 | 23 | 26 | 58 | 5% | 25 | 11.5% |
+ * | park | 18 | 31 | 40 | 47 | 383 | 5% | 40 | 15.5% |
+ * | cafe | 23 | 46 | 60 | 74 | 352 | 6% | 60 | 15.2% |
+ * | culture | 12 | 21 | 26 | 29 | 185 | 3% | 25 | 17.5% |
+ * | bank | 30 | 58 | 74 | 87 | 276 | 3% | 75 | ~15% |
+ * | pharmacy | 4 | 11 | 14 | 16 | 165 | 23% | 15 | 14.4% |
+ *
+ * **`mart` 만 만점 15% 규칙에서 뺀다.** 대형마트는 반경 1km 안에 최대 4개뿐이고 **58%가 0개**라
+ * 사실상 있냐/없냐의 이진 지표다. 41.8% 가 만점인 것은 "만점 몰림"이 아니라 **42:58 로 갈리는
+ * 것**이고, 그 구분("장 보러 갈 데가 있나")은 손님에게 실제로 의미가 있다. 여기서 기준을 2 로
+ * 올리면 있는 곳과 없는 곳을 나누는 게 아니라 "2개인 특수한 동네"만 골라내게 된다.
+ *
+ * `childcare`·`emergency` 는 카카오가 아니라 별도 수집기(childcare·emergency) 소관이라
+ * 이번 상한 변경의 영향을 받지 않는다 — 기준을 건드리지 않는다.
+ *
+ * ⚠️ 이 값들은 **체감 곡선(`INFRA_SATURATION`)과 짝**이다. 곡선 없이 선형으로 쓰면
+ * "병원 80개가 반점" 같은 어색한 채점이 된다.
+ */
 export const INFRA_CONFIG: { key: string; max: number; weight: number }[] = [
-  { key: "hospital", max: 5, weight: 0.16 },
-  { key: "mart", max: 3, weight: 0.08 },
-  { key: "conv", max: 10, weight: 0.04 },
-  { key: "park", max: 4, weight: 0.12 },
-  { key: "cafe", max: 20, weight: 0.12 },
-  { key: "culture", max: 3, weight: 0.12 },
-  { key: "bank", max: 4, weight: 0.04 },
-  { key: "pharmacy", max: 4, weight: 0.12 },
+  { key: "hospital", max: 175, weight: 0.16 },
+  { key: "mart", max: 1, weight: 0.08 },
+  { key: "conv", max: 25, weight: 0.04 },
+  { key: "park", max: 40, weight: 0.12 },
+  { key: "cafe", max: 60, weight: 0.12 },
+  { key: "culture", max: 25, weight: 0.12 },
+  { key: "bank", max: 75, weight: 0.04 },
+  { key: "pharmacy", max: 15, weight: 0.12 },
   { key: "childcare", max: 5, weight: 0.1 },
   { key: "emergency", max: 3, weight: 0.1 },
 ];
+
+/**
+ * 생활인프라 **체감 곡선** — 개수가 늘수록 추가 점수가 줄어드는 포화 곡선.
+ *
+ * `Math.log1p(v) / Math.log1p(max)` (상한 1). 왜 선형이 아닌가:
+ * 반경 1km 에 병원이 0개인 곳과 5개인 곳의 차이는 크지만, 100개와 163개의 차이는 손님에게
+ * 사실상 없다(163개면 대학병원가라 오히려 특수한 동네다). 선형(`v/max`)은 그 둘을 같은 폭으로
+ * 세어, 흔한 동네를 과소평가하고 특수한 동네만 만점을 준다.
+ *
+ * 병원(max=150) 기준 실제 값: 0개→0 · 5개→36 · 21개(p25)→62 · 56개(중앙)→80 · 150개→100.
+ * 초반 증가가 가파르고 뒤로 갈수록 완만해진다.
+ *
+ * @param v 실측 개수
+ * @param max 만점 기준(INFRA_CONFIG.max)
+ * @returns 0~1
+ */
+export function infraSaturation(v: number, max: number): number {
+  if (!(max > 0)) return 0;
+  return Math.min(Math.log1p(Math.max(0, v)) / Math.log1p(max), 1);
+}
 
 // === Location: 환경 ===
 export const VIEW_SCORES: Record<string, number> = { 블루: 40, 그린: 30, 천공: 20 };
@@ -163,6 +217,30 @@ export const AIR_QUALITY_TIERS: Tier[] = [
   { max: 50, score: 8 }, // 나쁨
 ];
 export const AIR_QUALITY_DEFAULT = 12; // 데이터 없을 때 중립
+
+/**
+ * 자연환경 서브의 이론 만점 — 조망 40 + 일조·방향 38 + 소음 30 + 대기 20 = **128**.
+ *
+ * `scoreLocation` 의 다른 서브(교통·학군·인프라·혐오시설)는 전부 0~100 으로 정규화되는데
+ * 자연환경만 네 요소를 **그냥 더해** 128 까지 나왔다. `total` 은 `env * 0.1` 로 섞으므로
+ * 배점이 10점이어야 할 자리가 최대 12.8점까지 먹고 있었다(실측: 1,646곳 중 **1,054곳(64.0%)
+ * 이 100 초과**, 중앙 108 · 최대 120).
+ *
+ * ⚠️ **100 에서 자르면(clamp) 안 된다** — 그러면 64% 가 전부 100 점 동점이 되어 변별력이
+ * 오히려 죽는다(세션488·501·510 이 세 번 겪은 "만점 몰림"). 나누기(정규화)는 **순위를 완전히
+ * 보존**하면서 배점만 제자리로 돌린다.
+ *
+ * 실측 최대(120)가 아니라 **이론 최대(128)** 로 나눈다 — 실측 최대로 나누면 데이터가 바뀔
+ * 때마다 척도가 흔들려 어제 점수와 오늘 점수를 비교할 수 없게 된다.
+ *
+ * 네 요소의 상한은 **각 표에서 직접 뽑는다** — 숫자를 손으로 적으면 표만 바뀌었을 때 척도가
+ * 조용히 어긋난다(그러면 정규화된 값이 100 을 넘거나, 아무도 100 에 못 닿는다).
+ */
+export const ENV_MAX =
+  Math.max(...Object.values(VIEW_SCORES)) +
+  SUNLIGHT_DIRECTION_MAX +
+  Math.max(...NOISE_TIERS.map((t) => t.score)) +
+  Math.max(...AIR_QUALITY_TIERS.map((t) => t.score));
 
 export const NOXIOUS_DIST_THRESHOLD = 500; // m — 이 거리 이상이면 감점 반감
 export const NOXIOUS_REDUCTION = 0.5;

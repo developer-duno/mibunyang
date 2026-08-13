@@ -1,7 +1,16 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { PROFILES } from "@/constants/profiles";
-import { INFRA_CONFIG, FULL_BUS_ROUTES } from "@/constants/scoringTiers";
+import {
+  INFRA_CONFIG,
+  FULL_BUS_ROUTES,
+  ENV_MAX,
+  VIEW_SCORES,
+  SUNLIGHT_DIRECTION_MAX,
+  NOISE_TIERS,
+  AIR_QUALITY_TIERS,
+  infraSaturation,
+} from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
   getAreaAdj,
@@ -246,6 +255,103 @@ describe("scoreLocation", () => {
     );
     expect(noNoise.subs.find((s) => s.name === "학군")?.score).toBe(
       withNoise.subs.find((s) => s.name === "학군")?.score
+    );
+  });
+  // --- 세션511: 생활인프라 체감 곡선 ---
+  //
+  // 수집기가 `size=5` 로 잘라 세던 시절의 기준(병원5·카페20…)을 실측 분포(p85)로 옮기면서,
+  // 채점도 선형에서 포화 곡선으로 바꿨다. 선형이면 "병원 80개가 반점" 같은 어색한 채점이 된다.
+  it("infraSaturation — 0 이면 0, 만점 기준이면 1, 그 사이는 단조 증가", () => {
+    expect(infraSaturation(0, 150)).toBe(0);
+    expect(infraSaturation(150, 150)).toBeCloseTo(1, 10);
+    expect(infraSaturation(300, 150)).toBe(1); // 초과분은 1 로 막힌다
+    expect(infraSaturation(56, 150)).toBeGreaterThan(infraSaturation(21, 150));
+  });
+  it("infraSaturation 은 선형보다 후하다 — 적은 개수에도 점수를 준다 (선형 회귀 시 red)", () => {
+    // 병원 5개: 선형이면 5/150 = 3.3%, 곡선이면 약 36%
+    const linear = 5 / 150;
+    expect(infraSaturation(5, 150)).toBeGreaterThan(linear * 5);
+    // 중앙값(56개)에서 선형은 37%, 곡선은 80% 근처
+    expect(infraSaturation(56, 150)).toBeGreaterThan(0.7);
+    expect(56 / 150).toBeLessThan(0.4);
+  });
+  it("infraSaturation — max 가 0 이하이면 0 (0 나눗셈 방어)", () => {
+    expect(infraSaturation(10, 0)).toBe(0);
+    expect(infraSaturation(10, -1)).toBe(0);
+  });
+  // ⚠️ 위 세 테스트는 infraSaturation **함수만** 본다 — scoreLocation 이 그 함수를 실제로
+  //    쓰는지는 검사하지 못한다(선형으로 되돌려도 전부 통과했다. 세션508 "테스트가 실전 경로를
+  //    지나는가" 사각의 재현). 아래 테스트가 그 배선을 잠근다.
+  it("scoreLocation 이 실제로 체감 곡선을 쓴다 — 선형으로 되돌리면 red", () => {
+    const cfg = INFRA_CONFIG.find((c) => c.key === "hospital");
+    const max = Number(cfg?.max);
+    const weight = Number(cfg?.weight);
+    // 병원만 5개, 나머지 인프라 0 → infra 서브 = (곡선 or 선형) × weight × 100
+    const r = scoreLocation(
+      makeApt(
+        /** @type {any} */ ({
+          hospital: 5,
+          mart: 0,
+          conv: 0,
+          park: 0,
+          cafe: 0,
+          culture: 0,
+          bank: 0,
+          pharmacy: 0,
+          childcare: 0,
+          emergency: 0,
+        })
+      )
+    );
+    const infra = Number(r.subs.find((s) => s.name === "생활인프라")?.score);
+    const curved = infraSaturation(5, max) * weight * 100;
+    const linear = Math.min(5 / max, 1) * weight * 100;
+    expect(Math.round(curved)).not.toBe(Math.round(linear)); // 두 방식이 실제로 구분되는 입력인지 먼저 보장
+    expect(infra).toBe(Math.round(curved));
+  });
+  it("생활인프라 detail 의 분모는 INFRA_CONFIG 를 따라간다 (하드코딩 회귀 시 red)", () => {
+    const r = scoreLocation(makeApt(/** @type {any} */ ({ hospital: 3, cafe: 7 })));
+    const detail = String(r.subs.find((s) => s.name === "생활인프라")?.detail);
+    const hospitalMax = INFRA_CONFIG.find((c) => c.key === "hospital")?.max;
+    const parkMax = INFRA_CONFIG.find((c) => c.key === "park")?.max;
+    expect(detail).toContain(`병원3/${hospitalMax}`);
+    expect(detail).toContain(`/${parkMax}(1km)`);
+  });
+  // --- 세션511: 자연환경 0~100 정규화 ---
+  //
+  // 네 요소(조망40·일조38·소음30·대기20)를 그냥 더하면 최대 128 이라, 배점 10점(env*0.1)
+  // 자리를 최대 12.8점까지 먹었다. 실측 1,646곳 중 1,054곳(64.0%)이 100 을 넘었다.
+  // ⚠️ 자르지 않고 나눈다 — 100 에서 자르면 그 64% 가 전부 동점이 되어 변별력이 죽는다.
+  it("ENV_MAX 는 네 요소 상한의 합과 일치 (표만 바뀌면 척도가 조용히 어긋난다)", () => {
+    const expected =
+      Math.max(...Object.values(VIEW_SCORES)) +
+      SUNLIGHT_DIRECTION_MAX +
+      Math.max(...NOISE_TIERS.map((t) => t.score)) +
+      Math.max(...AIR_QUALITY_TIERS.map((t) => t.score));
+    expect(ENV_MAX).toBe(expected);
+  });
+  it("최고 조건에서도 자연환경 서브는 100 을 넘지 않는다 (정규화 제거 시 red)", () => {
+    // 조망 블루(40) + 일조 우수(30)+남향(8)=38 + 소음 40dB(30) + 대기 좋음(20) = 128 = ENV_MAX
+    const best = scoreLocation(
+      makeApt(
+        /** @type {any} */ ({
+          view: "블루",
+          sunlight: "우수",
+          primaryDirection: "남향",
+          noise: 40,
+          airQuality: { pm25: 10, pm10: 20, o3: 0.02 },
+        })
+      )
+    );
+    const env = Number(best.subs.find((s) => s.name === "자연환경")?.score);
+    expect(env).toBeLessThanOrEqual(100);
+    expect(env).toBe(100); // 이론 만점 조합이므로 정확히 100 — 나누는 수가 틀리면 여기서 걸린다
+  });
+  it("정규화가 순위를 뒤집지 않는다 (좋은 조건이 나쁜 조건보다 높다)", () => {
+    const good = scoreLocation(makeApt(/** @type {any} */ ({ view: "블루", noise: 40, airQuality: { pm25: 10 } })));
+    const bad = scoreLocation(makeApt(/** @type {any} */ ({ view: "천공", noise: 70, airQuality: { pm25: 45 } })));
+    expect(Number(good.subs.find((s) => s.name === "자연환경")?.score)).toBeGreaterThan(
+      Number(bad.subs.find((s) => s.name === "자연환경")?.score)
     );
   });
   // --- 세션 454: 가중치 합 1.0 불변식 (scoreLocation.ts L102/L93 + INFRA_CONFIG) ---
