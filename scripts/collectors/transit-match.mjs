@@ -1,11 +1,22 @@
 // @ts-check
 /**
- * 교통/도시개발 시드 데이터 → 아파트 매칭
+ * 교통·도시개발 → 아파트 매칭
  *
  * 사용법:
  *   node scripts/collectors/transit-match.mjs          (Supabase 업데이트)
  *   node scripts/collectors/transit-match.mjs --dry-run (미리보기만)
  *   node scripts/collectors/transit-match.mjs --json    (apartments.json 직접 업데이트)
+ *
+ * 출처:
+ *   - 교통(`transit_dev`·`dev_dist`) = 시드 `public/data/transit-dev.json` (14노선 55역)
+ *   - 도시(`city_dev`) = **`dev_plans` `kind='lh_zone'`** (V-WORLD LH 사업지구경계 1,174건)
+ *     ← 세션511 교체. 옛 시드 `city-dev.json`(27건, 2026-03-14 동결)은 수도권 편중이라
+ *       비수도권 단지가 구조적으로 0점이었다.
+ *
+ * 출력 형식:
+ *   - `transit_dev = "{노선} {역}역 {상태}"` → `scoreFuture` 의 `TRANSIT_DEV_PATTERN`
+ *   - `city_dev    = "{지구명} {거리}km"`    → `scoreFuture` 의 `CITY_DEV_PATTERN`
+ * ⚠️ 형식과 패턴은 **한 쌍**이다. 한쪽만 바꾸면 점수가 조용히 0이 된다(에러가 아니라 침묵).
  */
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
@@ -95,6 +106,7 @@ async function main() {
   // 5. 각 아파트에 대해 매칭
   const updates = [];
   let matchedTransit = 0, matchedCity = 0;
+  let cleared = 0; // 매칭 안 됐는데 옛 값이 남아 있어 지운 건수
 
   for (const apt of apartments) {
     const lat = jsonMode ? apt.lat : apt.lat;
@@ -136,22 +148,39 @@ async function main() {
     if (transitDev) matchedTransit++;
     if (cityDev) matchedCity++;
 
-    if (transitDev || cityDev) {
-      const id = jsonMode ? apt.id : apt.id;
-      /** @type {{id: string, transit_dev?: string, dev_dist?: number|null, city_dev?: string}} */
+    // ⚠️ 매칭이 안 됐는데 옛 값이 남아 있으면 **지운다.**
+    // 안 그러면 화면엔 값이 보이는데 점수는 0 인 상태가 남는다 — 손님이 보는 거짓이다.
+    // (industry-match 에서 실제로 55곳이 그 상태였다: 옛 시드가 10km 까지 잡던 값이 남아 있었다.)
+    const staleTransit = !transitDev && (apt.transit_dev || apt.transitDev);
+    const staleCity = !cityDev && (apt.city_dev || apt.cityDev);
+
+    if (transitDev || cityDev || staleTransit || staleCity) {
+      const id = apt.id;
+      /** @type {{id: string, transit_dev?: string|null, dev_dist?: number|null, city_dev?: string|null}} */
       const update = { id };
       if (transitDev) {
         update.transit_dev = transitDev;
         update.dev_dist = devDist;
+      } else if (staleTransit) {
+        update.transit_dev = null;
+        update.dev_dist = null;
+        cleared++;
       }
       if (cityDev) {
         update.city_dev = cityDev;
+      } else if (staleCity) {
+        update.city_dev = null;
+        cleared++;
       }
       updates.push(update);
     }
   }
 
-  log("match", `교통 매칭: ${matchedTransit}/${apartments.length}건, 도시개발 매칭: ${matchedCity}/${apartments.length}건`);
+  log(
+    "match",
+    `교통 매칭: ${matchedTransit}/${apartments.length}건, 도시개발 매칭: ${matchedCity}/${apartments.length}건` +
+      (cleared ? ` · 옛 값 정리 ${cleared}건` : ""),
+  );
 
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");

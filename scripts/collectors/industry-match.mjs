@@ -104,6 +104,7 @@ async function main() {
   /** @type {Array<{ id: string; industry_dev: string }>} */
   const updates = [];
   let matched = 0;
+  let cleared = 0; // 매칭 안 됐는데 옛 값이 남아 있어 지운 건수
 
   for (const apt of withCoords) {
     /** @type {Array<{ name: string; type: string; dist: number }>} */
@@ -126,10 +127,20 @@ async function main() {
       const best = nearby[0];
       updates.push({ id: apt.id, industry_dev: `${best.name} ${best.dist}km` });
       matched++;
+    } else if (apt.industry_dev || apt.industryDev) {
+      // ⚠️ 매칭이 안 됐는데 옛 값이 남아 있으면 **지운다.**
+      // 옛 시드는 단지마다 radius(기본 10km)를 따로 들어서 지금보다 멀리까지 잡았다. 그 값을
+      // 그대로 두면 화면엔 "여수산단(국가)" 가 보이는데 점수는 0 인 상태가 된다 — 손님이 보는
+      // 거짓이다. 실제로 55곳이 그 상태였다(최근접이 7.3km 로 수집 반경 5km 밖).
+      updates.push({ id: apt.id, industry_dev: /** @type {any} */ (null) });
+      cleared++;
     }
   }
 
-  log("result", `산업단지 매칭: ${matched}/${withCoords.length}건`);
+  log(
+    "result",
+    `산업단지 매칭: ${matched}/${withCoords.length}건` + (cleared ? ` · 옛 값 정리 ${cleared}건` : ""),
+  );
 
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
