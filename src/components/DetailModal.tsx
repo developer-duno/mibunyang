@@ -578,7 +578,7 @@ export const DetailModal = memo(function DetailModal({
                   <div style={DM_S.benefitsBox}>
                     {benefitWon > 0 && (
                       <div style={DM_S.benefitsHead}>
-                        총 혜택 약 {benefitWon.toLocaleString()}만원 ({benefitRate}%)
+                        {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 ({benefitRate}%)
                       </div>
                     )}
                     {hasBenefitsList && (

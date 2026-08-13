@@ -280,9 +280,13 @@ export function scoreRisk(apt: Apt): Res {
       {
         name: "치안 안전",
         score: Math.round(100 - crimeSc),
+        // ⚠️ 범죄등급이 없으면 **그 사실을 info 에 적는다.** 옛 코드는 등급을 조용히 빼서
+        //    `경찰 685m` 만 남겼고, 그 상태로 판정이 "치안 우수 지역"이라 말했다(177곳) —
+        //    경찰서까지의 거리 하나로 동네 치안을 단정한 셈이다. 등급은 점수의 0.7 을 차지한다.
+        //    "미수집"을 넣으면 `CatPanel.isNoDataInfo` 가 판정·기준선을 함께 감춘다(기존 장치 재사용).
         info:
           [
-            apt.crimeSafetyGrade != null ? `${apt.crimeSafetyGrade}등급` : null,
+            apt.crimeSafetyGrade != null ? `${apt.crimeSafetyGrade}등급` : "범죄등급 미수집",
             policeDist != null ? `경찰 ${policeDist}m` : null,
           ]
             .filter(Boolean)

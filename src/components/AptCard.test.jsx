@@ -105,14 +105,14 @@ describe("AptCard", () => {
   // 혜택 표시 (totalWon > 0)
   it("혜택이 있으면 총 혜택 금액 표시", () => {
     render(<AptCard {...makeProps()} />);
-    expect(screen.getByText(/총 혜택 약 1,500만원/)).toBeInTheDocument();
+    expect(screen.getByText(/혜택 약 1,500만원/)).toBeInTheDocument();
   });
 
   it("혜택이 0이면 혜택 영역 미표시", () => {
     const res = makeRes();
     res.cats.benefit.totalWon = 0;
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.queryByText(/총 혜택/)).toBeNull();
+    expect(screen.queryByText(/혜택 약/)).toBeNull();
   });
 
   // 세션 461 — benefits 전 단지 0% 채움이라 noData 박스는 숨김(점수 무관 순수 화면)
@@ -122,7 +122,7 @@ describe("AptCard", () => {
     res.cats.benefit.noData = true;
     render(<AptCard {...makeProps({ res })} />);
     expect(screen.queryByText(/혜택 데이터 미수집/)).toBeNull();
-    expect(screen.queryByText(/총 혜택/)).toBeNull();
+    expect(screen.queryByText(/혜택 약/)).toBeNull();
   });
 
   // 입주 알림

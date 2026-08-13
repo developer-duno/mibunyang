@@ -60,15 +60,27 @@ describe("catVerdict — price 는 적정가 괴리(deviation) 실측 우선", (
   it("fairPrice>0 + deviation 0 → '적정가 수준' (진짜 0% 괴리 정직 표기)", () => {
     expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.0" }))).toBe("적정가 수준");
   });
-  it("fairPrice=0 (데이터 부재 폴백) → deviation '0.0' 무시하고 점수 문구", () => {
+  it("fairPrice=0 (적정가 산출 실패) → 점수 폴백 대신 '적정가 산출 불가' (세션512)", () => {
     // scorePrice.ts:116 데이터 부재 분기 = fairPrice:0, deviation:"0.0". 부호 분기로 가면 거짓 표시.
-    expect(catVerdict("price", mk({ total: 72, fairPrice: 0, deviation: "0.0" }))).toBe("가격 매력 높음");
+    expect(catVerdict("price", mk({ total: 72, fairPrice: 0, deviation: "0.0" }))).toBe("적정가 산출 불가");
   });
   it("deviation/fairPrice undefined (factory 기본값) → 점수 문구 폴백, 무크래시", () => {
-    expect(catVerdict("price", mk({ total: 45 }))).toBe("주변 대비 부담");
+    expect(catVerdict("price", mk({ total: 45 }))).toBe("적정가 산출 불가");
   });
-  it("deviation number 0 + fairPrice number 0 (engine 폴백) → 점수 문구", () => {
-    expect(catVerdict("price", mk({ total: 55, fairPrice: 0, deviation: 0 }))).toBe("가격 적정 수준");
+
+  // ⚠️ 세션512 — 적정가를 못 만든 74곳에게 "주변 대비 부담"이라 단정하고 있었다. 분양가도 모르고
+  //    주변과 비교한 적도 없는데 나쁘다고 말한 것이다(낮은 총점은 기본값이 만든 값이지 관측이 아니다).
+  //    옛 문구가 돌아오면 red.
+  it("적정가를 못 만들면 '주변 대비'라 말하지 않는다 (세션512)", () => {
+    for (const total of [10, 45, 72]) {
+      expect(catVerdict("price", mk({ total, fairPrice: 0 }))).not.toMatch(/주변/);
+    }
+    // 총점 폴백 문구 자체에서도 '주변 대비'를 뺐다 — 이 축은 주변 단지를 직접 비교하지 않는다
+    expect(catVerdict("location", mk({ total: 20 }))).not.toMatch(/주변/);
+  });
+  it("deviation number 0 + fairPrice number 0 (engine 폴백) → '적정가 산출 불가' (세션512)", () => {
+    // fairPrice=0 은 적정가를 못 만들었다는 뜻이라, deviation 이 숫자 0 이어도 "적정"이라 말할 수 없다.
+    expect(catVerdict("price", mk({ total: 55, fairPrice: 0, deviation: 0 }))).toBe("적정가 산출 불가");
   });
 });
 

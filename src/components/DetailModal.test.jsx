@@ -481,7 +481,7 @@ describe("DetailModal StickyJumpNav", () => {
     );
     const { container } = render(<DetailModal {...makeProps({ item })} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
-    expect(overview.textContent).toContain("총 혜택 약 1,200만원 (2.4%)");
+    expect(overview.textContent).toContain("혜택 약 1,200만원 (2.4%)");
     // 점수 미니카드(5개)와는 분리된 텍스트여야 — 미니카드 라벨 목록에 "혜택"이 없다
     const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
     expect(cards.length).toBe(5);
@@ -493,7 +493,7 @@ describe("DetailModal StickyJumpNav", () => {
   it("총 혜택 금액이 0(기본값)이면 사실 라벨을 그리지 않는다", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
-    expect(overview.textContent).not.toContain("총 혜택 약");
+    expect(overview.textContent).not.toContain("혜택 약");
   });
 
   it("미니카드 클릭 시 점수 탭으로 전환 + 해당 카테고리 CatPanel 자동 펼침", () => {

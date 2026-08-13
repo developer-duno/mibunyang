@@ -360,7 +360,8 @@ export const AptCard = memo(
               }}
             >
               <span style={{ fontSize: F.base, fontWeight: 700, color: C.amber }}>
-                총 혜택 약 {benefitWon.toLocaleString()}만원 ({res.cats.benefit?.rate ?? 0}%)
+                {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 (
+                {res.cats.benefit?.rate ?? 0}%)
               </span>
             </div>
           )}
