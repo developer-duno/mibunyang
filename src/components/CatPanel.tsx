@@ -68,6 +68,11 @@ function scoreSign(score: number, catKey: string): { mark: string; label: string
 // ⚠️ **`"없음"` 은 여기 넣으면 안 된다.** 실측해 보면 두 곳에서 쓰이는데 **둘 다 미수집이 아니다**:
 //    future 의 도시·산업·교통개발 3,925건(점수 0 — 측정했고 계획이 없다 = 진짜 약점)과
 //    location 의 혐오시설 478건(점수 100 — 없어서 좋다). 숨기면 좋은 소식까지 사라진다.
+//
+// ⚠️ 위 문단은 **세 축이 이진(있음/없음)이던 시절**의 전제다. 세션511이 거리 등급제로 바꾼 뒤로는
+//    `"평택포승BIX 4.7km"` 처럼 **값은 있는데 점수는 낮은** 제3의 상태가 있고, 이 함수는 그런 실값을
+//    (당연히) 전부 통과시킨다. 그래서 값 유무 판정은 여기가 아니라 `subContext.ts hasDevValue` 가
+//    맡고, `interpret` 에 `s.info` 를 넘겨 처리한다 — 이 함수의 책임은 "미수집 숨기기" 하나뿐이다.
 function isNoDataInfo(info?: string): boolean {
   if (!info) return true;
   return (
@@ -103,7 +108,7 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
     (
       SUB_CONTEXT as unknown as Record<
         string,
-        Record<string, { interpret?: ((_sc: number) => string) | null; benchmark?: string | null }>
+        Record<string, { interpret?: ((_sc: number, _info?: string) => string) | null; benchmark?: string | null }>
       >
     )[k] || {};
   // 슬림 catsCache(목록 JSON)는 price/location 외 subs=[] — 버킷 도착 전 과도기 방어 (세션 468).
@@ -177,7 +182,9 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
         <div style={{ marginTop: 6 }}>
           {highlights.map((s) => {
             const sc = ctx[s.name];
-            const interp = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score);
+            // `s.info` 를 함께 넘긴다 — 점수만 보면 "값이 있는데 낮은 점수"와 "값이 아예 없음"을
+            // 구분하지 못해 미래가치 3축에서 거짓 문구가 났다(세션512, 704곳/42.8%).
+            const interp = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score, s.info);
             return (
               <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 0" }}>
                 <span style={{ fontSize: F.xs, color: C.muted, flexShrink: 0 }}>·</span>
@@ -208,7 +215,9 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
           {subs.map((s: SubScoreItem, i: number) => {
             const sc = ctx[s.name];
             const dots = getDots(s.score, k, s.name);
-            const interp = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score);
+            // `s.info` 를 함께 넘긴다 — 점수만 보면 "값이 있는데 낮은 점수"와 "값이 아예 없음"을
+            // 구분하지 못해 미래가치 3축에서 거짓 문구가 났다(세션512, 704곳/42.8%).
+            const interp = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score, s.info);
             const sc2 = scoreColor(s.score, k, s.name);
             return (
               <div

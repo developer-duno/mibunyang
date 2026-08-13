@@ -153,7 +153,70 @@ describe("CatPanel", () => {
       const cat = makeCat({ label: "미래가치", subs: [{ name: "도시개발", score: 0, info: "없음" }] });
       render(<CatPanel cat={cat} k="future" />);
       expand();
-      expect(count(/개발 계획 없음/)).toBeGreaterThan(0);
+      expect(count(/개발지구 없음/)).toBeGreaterThan(0);
+    });
+  });
+
+  // ── 미래가치 3축: 값이 있는데 "없음"이라 말하지 않는다 (세션512) ────────────────
+  //
+  // 세션511이 세 축을 키워드 이진에서 **거리 등급제**로 바꾸면서 `"평택포승BIX 4.7km"` 처럼
+  // **값은 있는데 점수는 낮은** 제3의 상태가 생겼는데, 판정 문구표(subContext.ts)는 점수만 보고
+  // 있었다. 그래서 704곳(정적 JSON 1,646 중 42.8%)이 실제 산업단지·개발지구를 옆에 두고도
+  // "산업 호재 없음"·"개발 계획 없음"을 보고 있었다.
+  //
+  // ⚠️ 아래 테스트는 **`interpret` 이 `info` 를 받지 못하면 반드시 red 여야 한다.**
+  //    (뮤테이션 검증: subContext.ts 의 `(sc, info) =>` 를 `(sc) =>` 로 되돌리면 3건 전부 red)
+  describe("미래가치 3축 — 값이 있으면 '없음'이라 말하지 않는다 (세션512)", () => {
+    const expand = () => fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    /** @param {string | RegExp} re */
+    const count = (re) => screen.queryAllByText(re).length;
+
+    // 실데이터: 이안 평택 안중역 아파트 — 산업개발 25점 / "평택포승BIX 4.7km"
+    it("산업개발: 값이 있고 점수가 낮으면 '없음'이 아니라 '멀어 약함'", () => {
+      const cat = makeCat({
+        label: "미래가치",
+        subs: [{ name: "산업개발", score: 25, info: "평택포승BIX 4.7km" }],
+      });
+      render(<CatPanel cat={cat} k="future" />);
+      expand();
+      expect(count(/산업단지 멀어 약함/)).toBeGreaterThan(0);
+      expect(count(/산업 호재 없음/)).toBe(0); // 옛 문구로 되돌아가면 red
+    });
+
+    // 실데이터: 수성 푸르지오 리버센트 — 도시개발 0점 / "대구지산 3.1km" (등급 상한 3km 초과)
+    it("도시개발: 값이 있고 0점이어도 '개발 계획 없음'이라 하지 않는다", () => {
+      const cat = makeCat({
+        label: "미래가치",
+        subs: [{ name: "도시개발", score: 0, info: "대구지산 3.1km" }],
+      });
+      render(<CatPanel cat={cat} k="future" />);
+      expand();
+      expect(count(/개발지구 멀어 약함/)).toBeGreaterThan(0);
+      expect(count(/개발 계획 없음/)).toBe(0);
+    });
+
+    it("교통개발: 값이 있고 점수가 낮으면 '교통 호재 없음'이라 하지 않는다", () => {
+      const cat = makeCat({
+        label: "미래가치",
+        subs: [{ name: "교통개발", score: 30, info: "김포경전철 연장 김포공항역 추진" }],
+      });
+      render(<CatPanel cat={cat} k="future" />);
+      expand();
+      expect(count(/계획역 멀어 약함/)).toBeGreaterThan(0);
+      expect(count(/교통 호재 없음/)).toBe(0);
+    });
+
+    // 개통한 역은 입지 축(지하철 거리)이 이미 세므로 미래가치 0점이 정상이다.
+    // 그 0을 "없음"이라 말하면 거짓이 된다 — scoreFuture.ts 의 TRANSIT_OPEN 분기와 같은 자리.
+    it("교통개발: 개통한 역은 0점이어도 '이미 개통'이라 설명한다", () => {
+      const cat = makeCat({
+        label: "미래가치",
+        subs: [{ name: "교통개발", score: 0, info: "신분당선 강남역 개통" }],
+      });
+      render(<CatPanel cat={cat} k="future" />);
+      expand();
+      expect(count(/이미 개통/)).toBeGreaterThan(0);
+      expect(count(/없음/)).toBe(0);
     });
   });
 
