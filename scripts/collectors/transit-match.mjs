@@ -201,8 +201,11 @@ async function main() {
       /** @type {Record<string, unknown>} */
       const apt = aptMap.get(u.id);
       if (!apt) continue;
-      if (u.transit_dev) { apt.transitDev = u.transit_dev; apt.devDist = u.dev_dist; }
-      if (u.city_dev) apt.cityDev = u.city_dev;
+      // ⚠️ truthy 검사(`if (u.transit_dev)`)로 쓰면 **정리용 null 이 통째로 버려진다** —
+      // 옛 값을 지우려고 담은 null 이 조용히 무시돼 "정리 N건" 로그만 남고 실제로는 0건이 된다.
+      // 키 존재 여부로 판별해야 null 도 통과한다.
+      if ("transit_dev" in u) { apt.transitDev = u.transit_dev; apt.devDist = u.dev_dist ?? null; }
+      if ("city_dev" in u) apt.cityDev = u.city_dev;
     }
     const jsonPath = resolve(ROOT, "public/data/apartments.json");
     const updatedData = [...aptMap.values()];
@@ -222,8 +225,10 @@ async function main() {
       if (rpt.interrupted()) break;
       /** @type {Record<string, unknown>} */
       const row = {};
-      if (u.transit_dev) { row.transit_dev = u.transit_dev; row.dev_dist = u.dev_dist; }
-      if (u.city_dev) row.city_dev = u.city_dev;
+      // ⚠️ truthy 검사면 **정리용 null 이 버려진다** — "정리 N건" 로그만 남고 실제 0건이 된다.
+      if ("transit_dev" in u) { row.transit_dev = u.transit_dev; row.dev_dist = u.dev_dist ?? null; }
+      if ("city_dev" in u) row.city_dev = u.city_dev;
+      if (Object.keys(row).length === 0) continue; // 빈 update 로 행을 건드리지 않는다
       const { error } = await sb.from("apartments").update(row).eq("id", u.id);
       if (error) { logError("upsert", `${u.id}: ${error.message}`); rpt.fail(); }
       else { ok++; rpt.success(); }
