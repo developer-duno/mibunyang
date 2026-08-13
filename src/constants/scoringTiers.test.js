@@ -12,7 +12,9 @@ import { describe, it, expect } from "vitest";
 import {
   SAFE_CREDIT_GRADES,
   CREDIT_GRADE_SCORES,
-  FUTURE_WEIGHT_MAP,
+  FUTURE_WEIGHTS,
+  FUTURE_AXIS_MAX,
+  FUTURE_RAW_MAX,
   PRICE_NO_DATA_DEFAULTS,
   tierMax,
   tierMin,
@@ -63,27 +65,41 @@ describe("CREDIT_GRADE_SCORES", () => {
   });
 });
 
-describe("FUTURE_WEIGHT_MAP", () => {
-  // 8개 조합 키가 존재
-  it("8개 조합 키가 존재한다", () => {
-    expect(Object.keys(FUTURE_WEIGHT_MAP)).toHaveLength(8);
+// 세션511: 동적 재분배(FUTURE_WEIGHT_MAP) 폐기 → 고정 가중치.
+// 옛 구조는 8조합 합이 전부 1.00 이라 "호재가 없으면 그 몫이 100% 인구로" 갔고, 그래서
+// 호재를 가진 단지가 구조적으로 손해를 봤다(보유 762곳 중 486곳 역전).
+describe("FUTURE_WEIGHTS (고정 가중치)", () => {
+  it("네 축 가중치 합이 1.00 이다", () => {
+    const sum = FUTURE_WEIGHTS.pop + FUTURE_WEIGHTS.tr + FUTURE_WEIGHTS.city + FUTURE_WEIGHTS.ind;
+    expect(sum).toBeCloseTo(1.0, 10);
   });
 
-  // 모든 조합의 가중치 합계 = 1.00
-  it("모든 조합의 가중치 합계가 1.00이다", () => {
-    Object.values(FUTURE_WEIGHT_MAP).forEach((weights) => {
-      const sum = weights.tr + weights.city + weights.pop + weights.ind;
-      expect(sum).toBeCloseTo(1.0, 10);
-    });
+  it("호재 몫(교통+도시+산업)이 0.45 다 — 실측으로 고른 값", () => {
+    // 0.35 면 인구 설명력 85.0%(현행 75.7%보다 악화), 0.45 면 70.1%, 0.50 이면 61.6%(인구가 너무 약함)
+    const dev = FUTURE_WEIGHTS.tr + FUTURE_WEIGHTS.city + FUTURE_WEIGHTS.ind;
+    expect(dev).toBeCloseTo(0.45, 10);
   });
 
-  // 모든 개발 없음 -> 인구 100%
-  it("모든 개발 없으면 인구 가중치가 1.00이다", () => {
-    const w = FUTURE_WEIGHT_MAP["0,0,0"];
-    expect(w.pop).toBe(1.0);
-    expect(w.tr).toBe(0);
-    expect(w.city).toBe(0);
-    expect(w.ind).toBe(0);
+  it("인구가 여전히 가장 큰 축이다 (배경 신호)", () => {
+    expect(FUTURE_WEIGHTS.pop).toBeGreaterThan(FUTURE_WEIGHTS.tr);
+    expect(FUTURE_WEIGHTS.pop).toBeGreaterThan(FUTURE_WEIGHTS.city + FUTURE_WEIGHTS.ind);
+  });
+
+  it("모든 가중치가 비음수 — 채우면 내려갈 수 없다(단조성의 근거)", () => {
+    for (const w of Object.values(FUTURE_WEIGHTS)) expect(w).toBeGreaterThanOrEqual(0);
+  });
+
+  it("FUTURE_RAW_MAX 는 축 상한 × 가중치의 합이다 (손으로 적으면 척도가 어긋난다)", () => {
+    const expected =
+      FUTURE_AXIS_MAX.pop * FUTURE_WEIGHTS.pop +
+      FUTURE_AXIS_MAX.tr * FUTURE_WEIGHTS.tr +
+      FUTURE_AXIS_MAX.city * FUTURE_WEIGHTS.city +
+      FUTURE_AXIS_MAX.ind * FUTURE_WEIGHTS.ind;
+    expect(FUTURE_RAW_MAX).toBeCloseTo(expected, 10);
+    // 축 상한이 전부 100 이면 RAW_MAX 도 100 이라 정규화가 항등이 된다(세션511 재설계 후 상태).
+    // 어느 축이든 상한이 100 미만이 되면 여기가 100 아래로 떨어지고 정규화가 실제로 일을 한다.
+    expect(FUTURE_RAW_MAX).toBeLessThanOrEqual(100);
+    expect(FUTURE_RAW_MAX).toBeGreaterThan(0);
   });
 });
 
