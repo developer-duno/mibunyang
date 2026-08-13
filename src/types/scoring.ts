@@ -154,6 +154,9 @@ export interface Apt {
   _noExcl?: boolean;
   _noFloor?: boolean;
   _noSunlight?: boolean;
+  _noDiscount?: boolean;
+  _noCashback?: boolean;
+  _noMaint?: boolean;
 
   // 추가 필드 (도메인 확장 — strict 회피)
   [key: string]: unknown;
@@ -172,6 +175,8 @@ export interface Res {
   fairPriceFromSidoAvg?: boolean;
   // scoreBenefit
   totalWon?: number;
+  /** 합계 금액의 실제 구성 — 단일 항목이면 그 이름, 둘 이상이면 "혜택 합계" (세션512) */
+  wonSource?: string;
   rate?: string;
   noData?: boolean;
   // calcCats 가 추가

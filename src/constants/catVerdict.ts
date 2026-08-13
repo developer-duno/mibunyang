@@ -6,7 +6,8 @@ import type { Res } from "@/types/scoring";
 // 미니카드가 등급 배지와 결론 문구를 나란히 노출하므로 톤 모순을 0으로 맞춘다.
 // 엔진/점수 로직은 무변경: 여기는 표현 계층(CatPanel 의 서브항목 interpret 과 달리 카테고리 total 용).
 const VERDICT: Record<Category, (_t: number) => string> = {
-  price: (t) => (t >= 70 ? "가격 매력 높음" : t >= 50 ? "가격 적정 수준" : "주변 대비 부담"),
+  // ⚠️ "주변 대비"는 세션487이 거짓 라벨로 판정한 표현이다 — 이 축은 주변 단지를 직접 비교하지 않는다.
+  price: (t) => (t >= 70 ? "가격 매력 높음" : t >= 50 ? "가격 적정 수준" : "가격 매력 낮음"),
   location: (t) => (t >= 70 ? "입지 우수" : t >= 50 ? "입지 양호" : "입지 아쉬움"),
   product: (t) => (t >= 70 ? "상품성 우수" : t >= 50 ? "상품성 무난" : "상품성 미흡"),
   risk: (t) => (t >= 70 ? "안전성 높음" : t >= 50 ? "안전성 보통" : "위험 요소 주의"),
@@ -32,6 +33,12 @@ export function catVerdict(k: string, cat: Res): string {
       if (d < 0) return `적정가 대비 ${Math.abs(d).toFixed(0)}% 비쌈`;
       return "적정가 수준";
     }
+    // ⚠️ 여기 오면 **적정가를 만들지 못한 단지**다 — 분양가가 없거나(임대·정비사업·후분양 등)
+    //    주변 시세가 없어 fairPrice 를 못 세운 경우. 옛 코드는 총점 폴백으로 내려가
+    //    74곳에게 "주변 대비 부담"이라 단정했다. 분양가도 모르고 주변과 비교한 적도 없는데
+    //    나쁘다고 말한 것이다(낮은 총점은 PRICE_NO_DATA_DEFAULTS 기본값이 만든 값이지 관측이 아니다).
+    //    같은 파일 benefit 이 noData 를 정직하게 빠지는 선례를 따른다.
+    return "적정가 산출 불가";
   }
   const fn = VERDICT[k as Category];
   return fn ? fn(cat.total) : "—";

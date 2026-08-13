@@ -93,7 +93,7 @@ describe("CompareSheet", () => {
     render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     expect(screen.getByText("종합")).toBeInTheDocument();
     expect(screen.getByText("분양가")).toBeInTheDocument();
-    expect(screen.getByText("총혜택")).toBeInTheDocument();
+    expect(screen.getByText("관리비 절감 등 혜택")).toBeInTheDocument();
     expect(screen.getByText("규제현황")).toBeInTheDocument();
     expect(screen.getByText("LTV한도")).toBeInTheDocument();
     expect(screen.getByText("필요자본")).toBeInTheDocument();

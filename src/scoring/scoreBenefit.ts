@@ -44,9 +44,34 @@ export function scoreBenefit(apt: Apt): Res {
   const sc = Math.max(0, Math.min(Math.round((rate / BENEFIT_FULL_RATE) * 100), 100));
   const itemScore = (v: number): number => (totalWon > 0 ? Math.round((sc * v) / totalWon) : 0);
   const noData = discVal === 0 && loanVal === 0 && optVal === 0 && balVal === 0 && cashVal === 0 && maintSave === 0;
+  /**
+   * 원본이 `null`(안 재봄)이면 "미수집", 확인된 0/false 일 때만 "없음".
+   *
+   * ⚠️ 세션512 실측 — 이 5종(할인·무이자·옵션·발코니·캐시백)의 원본 필드는 **1,646곳 전부 null** 이다.
+   * 그런데 옛 문구는 전부 "…없음"이라 단정해, 한 번도 재보지 않은 것을 "확인해 보니 없다"로 말했다.
+   * `src/scoring/CLAUDE.md` §"unknown(null) 처리 원칙"의 문구판이다.
+   */
+  const unk = (raw: unknown, none: string): string => (raw == null ? "미수집" : none);
+  /**
+   * 합계 금액이 **실제로 무엇으로 이뤄졌는지**. 화면 라벨은 이 값을 쓴다.
+   *
+   * ⚠️ 세션512 실측 — 금액이 있는 548곳 **전부** 내용물이 `관리비 절감` 단독인데 화면은
+   * "총 혜택"이라 불렀다. 나머지 5종이 전 단지 미수집이라 그런 것인데, 손님은 "혜택을 다 따져본
+   * 결과"로 읽는다. 라벨을 손으로 적으면 나중에 다른 혜택이 채워질 때 또 어긋나므로 **파생**한다.
+   */
+  const parts = [
+    discVal > 0 ? "분양가 할인" : null,
+    loanVal > 0 ? "중도금 무이자" : null,
+    optVal > 0 ? "옵션 무상" : null,
+    balVal > 0 ? "발코니 확장" : null,
+    cashVal > 0 ? "캐시백" : null,
+    maintSave > 0 ? "관리비 절감" : null,
+  ].filter(Boolean) as string[];
+  const wonSource = parts.length === 1 ? parts[0] : parts.length > 1 ? "혜택 합계" : "";
   return {
     total: sc,
     totalWon,
+    wonSource,
     rate: Math.min(rate, 9999).toFixed(1),
     noData,
     subs: [
@@ -54,7 +79,10 @@ export function scoreBenefit(apt: Apt): Res {
         name: "분양가 할인",
         score: itemScore(discVal),
         info: discVal > 0 ? `${discVal.toLocaleString()}만` : "-",
-        detail: discVal > 0 ? `${discVal.toLocaleString()}만원 (분양가의 ${discountPct}% 할인)` : "할인 없음",
+        detail:
+          discVal > 0
+            ? `${discVal.toLocaleString()}만원 (분양가의 ${discountPct}% 할인)`
+            : unk(apt._noDiscount ? null : discountPct, "할인 없음"),
       },
       {
         name: "중도금 무이자",
@@ -63,25 +91,30 @@ export function scoreBenefit(apt: Apt): Res {
         detail:
           loanVal > 0
             ? `~${loanVal.toLocaleString()}만원 (무이자율 ${loanFreePct}% × 금리 4.5% × 1.5년)`
-            : "무이자 없음",
+            : unk(apt.loanFree, "무이자 없음"),
       },
       {
         name: "옵션 무상",
         score: itemScore(optVal),
         info: optVal > 0 ? `${optVal.toLocaleString()}만` : "-",
-        detail: optVal > 0 ? `${optVal.toLocaleString()}만원 (주방/바닥재/조명 등)` : "옵션 무상 없음",
+        detail:
+          optVal > 0 ? `${optVal.toLocaleString()}만원 (주방/바닥재/조명 등)` : unk(apt.optionFree, "옵션 무상 없음"),
       },
       {
         name: "발코니 확장",
         score: itemScore(balVal),
         info: balVal > 0 ? `${balVal.toLocaleString()}만` : "-",
-        detail: balVal > 0 ? `${balVal.toLocaleString()}만원 (발코니 개방/확장 비용)` : "발코니 무상 없음",
+        detail:
+          balVal > 0
+            ? `${balVal.toLocaleString()}만원 (발코니 개방/확장 비용)`
+            : unk(apt.balconyFree, "발코니 무상 없음"),
       },
       {
         name: "캐시백",
         score: itemScore(cashVal),
         info: cashVal > 0 ? `${cashVal}만` : "-",
-        detail: cashVal > 0 ? `${cashVal}만원 (계약 시 현금 지급)` : "캐시백 없음",
+        detail:
+          cashVal > 0 ? `${cashVal}만원 (계약 시 현금 지급)` : unk(apt._noCashback ? null : cashback, "캐시백 없음"),
       },
       {
         name: "관리비 절감",
@@ -89,8 +122,8 @@ export function scoreBenefit(apt: Apt): Res {
         info: maintSave > 0 ? `연 ~${maintSave.toLocaleString()}만` : "-",
         detail:
           maintSave > 0
-            ? `연 ~${maintSave.toLocaleString()}만원 (지역 평균 대비 절감액 × 면적 × 12개월)`
-            : "관리비 비교 불가",
+            ? `연 ~${maintSave.toLocaleString()}만원 (지역 중앙값 관리비 대비 월 차액 × 12개월)`
+            : unk(apt._noMaint ? null : avgMaint, "관리비 비교 불가"),
       },
     ],
   };

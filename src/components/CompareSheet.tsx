@@ -316,7 +316,7 @@ export const CompareSheet = memo(function CompareSheet({
               ))}
             </tr>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              <td style={{ padding: "8px 6px", color: C.sub, fontSize: F.xs }}>총혜택</td>
+              <td style={{ padding: "8px 6px", color: C.sub, fontSize: F.xs }}>관리비 절감 등 혜택</td>
               {items.map((it: CompareItem) => (
                 <td
                   key={it.apt.id}

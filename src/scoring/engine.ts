@@ -126,6 +126,11 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     _noExcl: apt.exclusiveRatio == null || apt.exclusiveRatio === 0,
     _noFloor: apt.maxFloor == null,
     _noSunlight: apt.sunlight == null || apt.sunlight === "",
+    // 혜택 3필드는 위에서 null→0 으로 눌리므로, 엔진이 "안 재봄"과 "재보니 0"을 구분하려면
+    // 누르기 **전에** 그 사실을 남겨야 한다. 없으면 미수집을 "없음"이라 단정하게 된다(세션512).
+    _noDiscount: apt.discountPct == null,
+    _noCashback: apt.cashback == null,
+    _noMaint: apt.avgMaintenanceCost == null,
   };
 }
 

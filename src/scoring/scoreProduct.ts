@@ -96,7 +96,9 @@ export function scoreProduct(apt: Apt): Res {
         name: "브랜드",
         score: brandSc,
         info: b.tier || "기타",
-        detail: `${b.tier || "기타"} (1군 20점, 2군 15점, 3군 10점, 기타 5점)`,
+        // ⚠️ 배점표(`brands.ts` BRAND_TIER)와 한 칸 밀려 있었다 — 실제는 1군Super 20 · 1군 15 ·
+        //    2군 10 · 3군 5 이고, 표 미등재도 5다. 옛 legend 를 읽으면 자기 점수와 어긋난다(202곳).
+        detail: `${b.tier || "기타"} (1군Super 20점, 1군 15점, 2군 10점, 3군·미등재 5점)`,
       },
       {
         name: "세대수",
@@ -142,7 +144,9 @@ export function scoreProduct(apt: Apt): Res {
         name: "평면",
         score: layoutSc,
         info: layout || "정보 없음",
-        detail: layout ? `${layout} (판상형>혼합형>타워형)` : "미수집 (판상형>혼합형>타워형)",
+        // ⚠️ "혼합형"은 배점표에도 데이터에도 없는 값이고, 순서도 틀렸다 — 베이 수가 판상/타워보다
+        //    먼저다(4베이타워 8 > 3베이판상 7). `LAYOUT_SCORE` 5키를 그대로 옮긴다.
+        detail: `${layout || "미수집"} ` + `(4베이판상 10 > 4베이타워 8 > 3베이판상 7 > 3베이타워 5 > 2베이이하 3)`,
       },
       {
         name: "내진",
