@@ -16,6 +16,9 @@ import { loadEnv, getSupabase, log, logError, ROOT, haversineKm, createReporter,
 // 사각지대). collector_runs 행도 없어 아무 감시도 안 걸렸다 — industry-match.mjs 배선 답습.
 const PHASE = "transit-match";
 
+/** 도시개발(LH 사업지구) 매칭 반경(km). 채점 등급 마지막 칸이 3km 라 그 밖은 어차피 0점이다. */
+const CITY_MATCH_RADIUS_KM = 5;
+
 loadEnv();
 
 export const haversine = haversineKm;
@@ -29,7 +32,6 @@ async function main() {
 
   // 1. 시드 데이터 로드
   const transitData = JSON.parse(readFileSync(resolve(ROOT, "public/data/transit-dev.json"), "utf8"));
-  const cityData = JSON.parse(readFileSync(resolve(ROOT, "public/data/city-dev.json"), "utf8"));
 
   // 2. 아파트 데이터 로드
   let apartments;
@@ -65,9 +67,30 @@ async function main() {
   }
   log("transit", `${stations.length}개 역사 로드 (${transitData.projects.length}개 노선)`);
 
-  // 4. 도시개발 목록
-  const devs = cityData.developments;
-  log("city", `${devs.length}개 개발 프로젝트 로드`);
+  // 4. 도시개발 목록 — 손으로 적은 시드(`city-dev.json` 27건, 2026-03-14 동결) 대신
+  //    **dev_plans**(V-WORLD LT_C_LHZONE = LH 사업지구경계, 1,174건).
+  //    시드는 수도권 편중이라 비수도권 단지가 구조적으로 0점이었다.
+  const sbCity = getSupabase();
+  /** @type {Array<{ name: string | null, lat: number, lng: number }>} */
+  const devs = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await sbCity
+      .from("dev_plans")
+      .select("name, lat, lng")
+      .eq("kind", "lh_zone")
+      .not("lat", "is", null)
+      .range(offset, offset + 999);
+    if (error) throw new Error(`dev_plans 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    devs.push(.../** @type {any} */ (data));
+    if (data.length < 1000) break;
+  }
+  if (devs.length === 0) {
+    // 0건을 성공으로 넘기면 전 단지의 city_dev 가 조용히 안 바뀐다(세션504 답습).
+    logError("city", "dev_plans 에 LH 사업지구(lh_zone)가 0건 — naver-devplan 수집기를 먼저 돌리세요");
+    process.exit(1);
+  }
+  log("city", `dev_plans LH 사업지구 ${devs.length}건 로드`);
 
   // 5. 각 아파트에 대해 매칭
   const updates = [];
@@ -89,13 +112,16 @@ async function main() {
       }
     }
 
-    // 도시개발 매칭 — radius 이내 가장 가까운 프로젝트
+    // 도시개발 매칭 — 5km 이내 가장 가까운 LH 사업지구
+    // (옛 시드는 지구마다 radius 를 따로 들었는데, 그러면 "왜 이 지구는 8km 도 잡히고 저 지구는
+    //  4km 에서 잘리나"를 설명할 수 없다. 채점 등급 마지막 칸이 3km 라 5km 밖은 어차피 0점.)
     let bestDev = null;
     let bestDevDist = Infinity;
     for (const dev of devs) {
+      // 사각 프리필터 — 전수 곱셈(2,696 × 1,174) 회피
+      if (Math.abs(dev.lat - lat) > 0.09 || Math.abs(dev.lng - lng) > 0.115) continue;
       const dist = haversine(lat, lng, dev.lat, dev.lng);
-      const radius = dev.radius || 5;
-      if (dist < bestDevDist && dist <= radius) {
+      if (dist < bestDevDist && dist <= CITY_MATCH_RADIUS_KM) {
         bestDevDist = dist;
         bestDev = dev;
       }
@@ -103,7 +129,9 @@ async function main() {
 
     const transitDev = bestStation ? `${bestStation.project} ${bestStation.name}역 ${bestStation.status}` : null;
     const devDist = bestStation ? Math.round(bestDist * 10) / 10 : null;
-    const cityDev = bestDev ? `${bestDev.name} (${bestDev.type})` : null;
+    // **{지구명} {거리}km** — `scoreFuture` 의 `CITY_DEV_PATTERN` 이 파싱하는 형식.
+    // 옛 형식 `{이름} ({종류})` 는 거리가 없어 채점이 이진으로만 쓸 수 있었다(값 보유 111곳이 전부 80점).
+    const cityDev = bestDev ? `${bestDev.name ?? "개발지구"} ${Math.round(bestDevDist * 10) / 10}km` : null;
 
     if (transitDev) matchedTransit++;
     if (cityDev) matchedCity++;

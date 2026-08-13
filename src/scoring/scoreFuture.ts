@@ -9,47 +9,27 @@ import {
   TRANSIT_GRADE_DEFAULT,
   TRANSIT_LINE_TYPE,
   TRANSIT_DEV_PATTERN,
+  CITY_DEV_PATTERN,
+  CITY_DIST_TIERS,
+  INDUSTRY_DEV_PATTERN,
+  INDUSTRY_DIST_TIERS,
+  DEV_DIST_FAR_SCORE,
   FUTURE_WEIGHTS,
   FUTURE_RAW_MAX,
 } from "@/constants/scoringTiers";
 import type { Apt, Res } from "@/types/scoring";
 
-// --- scoreFuture 키워드 배열 (Clean-3, src/scoring/CLAUDE.md L101~L113) ---
-// ⚠️ 교통 키워드 3종(TRANSIT_ACTIVE/PLANNED/HIGH)은 세션511에 폐기됐다 — 상태·노선급을 문자열
-//    부분매칭으로 추측하는 대신 `TRANSIT_DEV_PATTERN` 으로 파싱해 표에서 찾는다(scoringTiers.ts).
-//    옛 배열은 20개 키워드 중 14개가 어떤 문자열에도 안 닿는 죽은 값이었다.
-/** 고가치 도시개발. citySc 80. `includes()` 부분 매칭 주의: "신도" → "신도시"+"신도심" 모두 매칭. */
-const CITY_HIGH = [
-  "테크노",
-  "주거타운",
-  "신도시",
-  "신도심",
-  "복합도시",
-  "재건축",
-  "혁신",
-  "스마트시티",
-  "자족도시",
-  "행정중심",
-  "경제자유구역",
-  "국가산단",
-];
-/** 중가치 도시개발. citySc 50. 미매칭 시 30. */
-const CITY_MID = [
-  "재생",
-  "리모델링",
-  "관광",
-  "산업단지",
-  "공항",
-  "특구",
-  "메디컬",
-  "역세권개발",
-  "도시정비",
-  "택지개발",
-  "물류단지",
-  "연구단지",
-];
-/** `keywords.some(k => str.includes(k))` 부분 매칭. str=null 호출 금지(상위에서 가드). */
-const matchAny = (str: string, keywords: string[]): boolean => keywords.some((k) => str.includes(k));
+// --- 세션511: 키워드 부분매칭 전면 폐기 ---
+//
+// 옛 산식은 세 축을 전부 **이름 문자열 키워드**로 훑었다. 그 결과:
+//   - 교통: 키워드 20개 중 **14개가 어떤 문자열에도 안 닿는 죽은 값**이었고, 만점(100)이
+//           도달 불가능한 가지에 걸려 5개월간 아무도 못 받았다.
+//   - 도시: 거리를 아예 안 봐서 값 보유 111곳이 **전부 80점**.
+//   - 산업: 값 보유 239곳 중 **206곳이 같은 35점**.
+//
+// 이제 세 축 모두 수집기가 만든 문자열을 **파싱**해 표(`scoringTiers.ts`)에서 등급을 찾는다.
+// 형식이 안 맞으면 0점 — "무슨 호재인지 모르는데 점수는 있다"를 만들지 않는다.
+// ⚠️ 수집기 출력 형식과 `*_DEV_PATTERN` 은 **한 쌍**이다. 한쪽만 바꾸면 점수가 조용히 0이 된다.
 
 /**
  * 미래가치 점수 (0~100). 4축(인구·교통·도시·산업) **고정 가중치** 합산 후 0~100 정규화.
@@ -66,15 +46,15 @@ const matchAny = (str: string, keywords: string[]): boolean => keywords.some((k)
  *           4km↑ 0) + 노선급(GTX 20 / 도시철도 15 / 지하철연장 12 / 경전철 8 / 트램 6). 합 최대 100.
  *           **개통(TRANSIT_OPEN)은 0** — 입지 축이 같은 역을 이미 센다(이중 계상 차단).
  *           형식 불일치도 0 — "무슨 호재인지 모르는데 점수는 있다"를 만들지 않는다.
- *   - citySc: CITY_HIGH 80 / CITY_MID 50 / 기타 30. cityDev 빈 값 → 0.
+ *   - citySc: `"{지구명} {거리}km"` 파싱 → LH 사업지구까지 500m 100 / 1km 70 / 2km 40 / 3km 20 / 그 밖 0.
+ *   - indSc: `"{단지명} {거리}km"` 파싱 → 산업단지까지 1km 100 / 2km 75 / 3km 50 / 5km 25 / 그 밖 0.
+ *           ⚠️ 두 표가 다른 이유 = 스케일이 다르다. 최근접 중앙이 LH 1.03km vs 산업 3.28km 라
+ *           같은 표를 쓰면 한쪽이 죽는다(2,696단지 실측).
  *   - popSc 7단계: null 35 / ≥1.0 95 / ≥0.5 80 / ≥0 65 / ≥-0.3 50 / ≥-0.8 35 / ≥-2.0 20 / 그 외 10.
  *   - netMigration 보정: > 0 → popSc + 10 (상한 100), ≤ -5000 → popSc - 5 (하한 0).
- *   - indSc: industryDev (배열/문자열 모두 허용) → CITY_HIGH 80 / CITY_MID 55 / 기타 35.
  *
- * 정규화: `raw / FUTURE_RAW_MAX * 100`. 도시·산업 최고 등급이 80이라 raw 는 95.5 를 못 넘는데,
- * 그대로 두면 다른 카테고리(0~100)와 눈금이 어긋난다. 나누기는 단조라 **순위를 안 바꾼다.**
- *
- * `includes()` 부분 매칭 함정: "신도" 키워드 → "신도시"+"신도심" 모두 매칭됨(도시·산업축 한정).
+ * 정규화: `raw / FUTURE_RAW_MAX * 100`. 네 축이 전부 0~100 이 된 지금은 `FUTURE_RAW_MAX = 100`
+ * 이라 항등이지만, 축 상한이 바뀌면 자동으로 따라간다(손으로 적은 수를 안 쓴다).
  *
  * @example
  * // 호재를 채우면 절대 내려가지 않는다 (단조성 — 정의로 보장)
@@ -99,9 +79,10 @@ export function scoreFuture(apt: Apt): Res {
         tierMax(devDist, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE) +
         (TRANSIT_GRADE[TRANSIT_LINE_TYPE[trMatch[1]] ?? ""] ?? TRANSIT_GRADE_DEFAULT);
 
-  // 도시개발 (기본 30%)
-  const citySc =
-    !cityDev || cityDev === "" ? 0 : matchAny(cityDev, CITY_HIGH) ? 80 : matchAny(cityDev, CITY_MID) ? 50 : 30;
+  // 도시개발 — LH 사업지구까지 거리 등급 (세션511)
+  // 옛 산식은 이름 키워드만 봐서 값 보유 111곳이 **전부 80점**이었다(거리를 아예 안 봄).
+  const cityMatch = cityDev ? cityDev.trim().match(CITY_DEV_PATTERN) : null;
+  const citySc = cityMatch ? tierMax(parseFloat(cityMatch[2]), CITY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
 
   // 인구 (기본 30%) — 한국 현실 기반 7단계
   let popSc =
@@ -123,14 +104,13 @@ export function scoreFuture(apt: Apt): Res {
   if (apt.netMigration != null && apt.netMigration > 0) popSc = Math.min(popSc + 10, 100);
   if (apt.netMigration != null && apt.netMigration <= -5000) popSc = Math.max(popSc - 5, 0);
 
-  // 산업개발 (4번째 축)
+  // 산업개발 — 산업단지까지 거리 등급 (세션511)
+  // 옛 산식은 이름 키워드만 봐서 값 보유 239곳 중 **206곳이 같은 35점**이었다.
+  // ⚠️ 산업단지는 LH 지구보다 드물어(최근접 중앙 3.28km vs 1.03km) **등급표가 다르다.**
   const indDev = apt.industryDev as string | string[] | undefined;
-  const hasInd = !!indDev && (Array.isArray(indDev) ? indDev.length > 0 : String(indDev).trim().length > 0);
-  let indSc = 0;
-  if (hasInd) {
-    const indStr = Array.isArray(indDev) ? indDev.join(" ") : String(indDev);
-    indSc = matchAny(indStr, CITY_HIGH) ? 80 : matchAny(indStr, CITY_MID) ? 55 : 35;
-  }
+  const indStr = Array.isArray(indDev) ? (indDev[0] ?? "") : String(indDev ?? "");
+  const indMatch = indStr ? indStr.trim().match(INDUSTRY_DEV_PATTERN) : null;
+  const indSc = indMatch ? tierMax(parseFloat(indMatch[2]), INDUSTRY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
 
   // 고정 가중치 + 0~100 정규화 (세션511 — 동적 재분배 폐기)
   //
@@ -138,8 +118,8 @@ export function scoreFuture(apt: Apt): Res {
   // 72라, **호재를 가진 단지가 구조적으로 손해**를 봤다(보유 762곳 중 486곳 역전).
   // 고정 가중치에서는 각 항이 비음수 가산이라 채우면 오르기만 한다 — 실측이 아니라 정의로 보장된다.
   //
-  // 정규화가 필요한 이유: 도시·산업 축의 최고 등급이 80이라 raw 총점은 95.5 를 못 넘는다.
-  // 그대로 두면 다른 카테고리(전부 0~100)와 눈금이 어긋난다. 나누기는 단조라 순위는 안 바뀐다.
+  // 정규화는 축 상한이 100 이 아닐 때를 대비한 안전장치다. 지금은 네 축이 전부 0~100 이라
+  // FUTURE_RAW_MAX = 100 이고 이 나눗셈은 항등이지만, 축 상한이 바뀌면 자동으로 따라간다.
   const raw =
     popSc * FUTURE_WEIGHTS.pop + trSc * FUTURE_WEIGHTS.tr + citySc * FUTURE_WEIGHTS.city + indSc * FUTURE_WEIGHTS.ind;
   const total = (raw / FUTURE_RAW_MAX) * 100;
@@ -165,7 +145,9 @@ export function scoreFuture(apt: Apt): Res {
         name: "도시개발",
         score: Math.round(citySc),
         info: cityDev || "없음",
-        detail: cityDev ? `${cityDev} (신도시/테크노 80점, 재생/특구 50점, 기타 30점)` : "도시개발 없음 (0점)",
+        detail: cityMatch
+          ? `${cityDev} — LH 사업지구까지 ${cityMatch[2]}km (500m내 100점 · 1km 70 · 2km 40 · 3km 20 · 그 밖 0)`
+          : "반경 5km 안에 LH 사업지구 없음 (0점)",
       },
       {
         name: "인구",
@@ -179,10 +161,13 @@ export function scoreFuture(apt: Apt): Res {
       {
         name: "산업개발",
         score: Math.round(indSc),
-        info: hasInd ? (Array.isArray(indDev) ? indDev.join(", ") : String(indDev)) : "없음",
-        detail: hasInd
-          ? `${Array.isArray(indDev) ? indDev.join(", ") : String(indDev)} (국가산단 80점, 산업단지 55점, 기타 35점)`
-          : "산업개발 없음 (0점)",
+        // 값이 있으면 그대로 보여준다 — 점수가 0이라고 "없음"이라 쓰면 거짓이 된다
+        // (세션510: "427곳이 값을 갖고도 '없음' 표시" 와 같은 자리)
+        info: indStr || "없음",
+        // 산업단지는 LH 지구보다 드물어(최근접 중앙 3.28km) 등급 간격이 넓다
+        detail: indMatch
+          ? `${indStr} — 산업단지까지 ${indMatch[2]}km (1km내 100점 · 2km 75 · 3km 50 · 5km 25 · 그 밖 0)`
+          : "반경 5km 안에 산업단지 없음 (0점)",
       },
     ],
   };

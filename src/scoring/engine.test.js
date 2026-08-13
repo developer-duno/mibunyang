@@ -826,6 +826,58 @@ describe("scoreFuture", () => {
       .map((p) => `${p.name}: 시드=${p.type} 표=${TRANSIT_LINE_TYPE[p.name]}`);
     expect(mismatched).toEqual([]);
   });
+  // --- 도시·산업축 거리 등급 (세션511) ---
+  //
+  // 옛 산식은 이름 키워드만 봐서 거리를 아예 안 봤다 — 도시축은 값 보유 111곳이 전부 80점,
+  // 산업축은 239곳 중 206곳이 같은 35점이었다.
+  it("도시개발은 가까울수록 높다 (LH 사업지구 거리 등급)", () => {
+    const pick = (/** @type {string} */ s) =>
+      scoreFuture(makeApt(/** @type {any} */ ({ cityDev: s }))).subs.find((x) => x.name === "도시개발")?.score ?? 0;
+    expect(pick("어떤지구 0.3km")).toBeGreaterThan(pick("어떤지구 0.8km"));
+    expect(pick("어떤지구 0.8km")).toBeGreaterThan(pick("어떤지구 1.7km"));
+    expect(pick("어떤지구 1.7km")).toBeGreaterThan(pick("어떤지구 2.5km"));
+    expect(pick("어떤지구 4.0km")).toBe(0); // 등급 밖
+  });
+  it("산업개발은 가까울수록 높다 (산업단지 거리 등급)", () => {
+    const pick = (/** @type {string} */ s) =>
+      scoreFuture(makeApt(/** @type {any} */ ({ industryDev: s }))).subs.find((x) => x.name === "산업개발")?.score ?? 0;
+    expect(pick("어떤단지 0.8km")).toBeGreaterThan(pick("어떤단지 1.5km"));
+    expect(pick("어떤단지 1.5km")).toBeGreaterThan(pick("어떤단지 2.5km"));
+    expect(pick("어떤단지 2.5km")).toBeGreaterThan(pick("어떤단지 4.0km"));
+    expect(pick("어떤단지 6.0km")).toBe(0); // 수집 반경 밖
+  });
+  // ⚠️ 두 표를 같게 만들면 한쪽이 죽는다 — LH 지구는 흔하고(최근접 중앙 1.03km) 산업단지는
+  //    드물다(3.28km). 같은 거리에서 서로 다른 점수가 나와야 두 축이 각자 갈린다.
+  it("두 축의 거리 등급표가 서로 다르다 (스케일이 다르므로)", () => {
+    const city = scoreFuture(makeApt(/** @type {any} */ ({ cityDev: "지구 1.5km" }))).subs.find(
+      (x) => x.name === "도시개발"
+    )?.score;
+    const ind = scoreFuture(makeApt(/** @type {any} */ ({ industryDev: "단지 1.5km" }))).subs.find(
+      (x) => x.name === "산업개발"
+    )?.score;
+    expect(city).not.toBe(ind);
+  });
+  it("거리 없는 옛 형식은 0점 — 수집기와 채점이 한 쌍임을 잠근다", () => {
+    // 옛 수집기 출력: `"신도시 개발(택지)"` · `"반월시화산단(국가), 시화(일반)"` — 거리가 없다.
+    // 수집기만 되돌리고 채점을 안 고치면(혹은 그 반대) 점수가 조용히 0이 되는데, 이 테스트가
+    // 그 상태를 "의도된 0"으로 못 박는다.
+    expect(
+      scoreFuture(makeApt(/** @type {any} */ ({ cityDev: "신도시 개발(택지)" }))).subs.find(
+        (x) => x.name === "도시개발"
+      )?.score
+    ).toBe(0);
+    expect(
+      scoreFuture(makeApt(/** @type {any} */ ({ industryDev: "반월시화산단(국가)" }))).subs.find(
+        (x) => x.name === "산업개발"
+      )?.score
+    ).toBe(0);
+  });
+  it("값이 있으면 점수가 0이어도 화면에 그대로 보여준다 (거짓 '없음' 금지)", () => {
+    const r = scoreFuture(makeApt(/** @type {any} */ ({ industryDev: "먼단지 9.0km" })));
+    const sub = r.subs.find((x) => x.name === "산업개발");
+    expect(sub?.score).toBe(0);
+    expect(sub?.info).toContain("먼단지"); // "없음" 이 아니라 실제 값
+  });
   // ★ 이 저장소가 세션511에 겪은 사고의 핵심 가드 — 동적 재분배로 되돌리면 red.
   it("호재를 채우면 총점이 절대 내려가지 않는다 (단조성)", () => {
     const cases = [

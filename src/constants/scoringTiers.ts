@@ -300,8 +300,48 @@ export const TRANSIT_LINE_TYPE: Record<string, string> = {
   "김포경전철 연장": "경전철",
 };
 
-/** `transit-match.mjs` L104 가 만드는 문자열 형태: `"{노선} {역}역 {상태}"` */
+/** `transit-match.mjs` 가 만드는 문자열 형태: `"{노선} {역}역 {상태}"` */
 export const TRANSIT_DEV_PATTERN = /^(.+?)\s+\S+역\s+(\S+)$/;
+
+// === Future: 도시개발·산업개발 (세션511 재설계) ==========================
+//
+// 옛 산식은 이름 문자열을 키워드로만 훑어서 **거리를 아예 안 봤다.** 결과가 사실상 이진이었다 —
+// 도시축은 값 보유 111곳이 **전부 80점**, 산업축은 239곳 중 **206곳이 35점**.
+// 게다가 출처가 손으로 적은 시드(도시 27건·산업 24건, 2026-03-14 동결)라 **수도권 편중**이었다.
+//
+// 세션511에 출처를 `dev_plans`(V-WORLD 전국 1,792건)로 갈아타고, 수집기가 거리를 문자열에
+// 담게 했다(`"{이름} {거리}km"`). 여기서 그 거리를 등급으로 읽는다.
+//
+// ⚠️ **두 축의 스케일이 다르다.** 같은 표를 쓰면 한쪽이 죽는다 (2,696단지 실측):
+// | 반경 | 산업단지 | LH 사업지구 |
+// |---|---|---|
+// | 0.5km | 0.5% | 19.7% |
+// | 1km | 6.5% | 47.6% |
+// | 2km | 22.3% | 80.7% |
+// | 3km | 41.6% | 91.8% |
+// 산업단지는 최근접 중앙이 3.28km 로 드물고, LH 지구는 1.03km 로 흔하다.
+
+/** `transit-match.mjs` 가 만드는 형태: `"{지구명} {거리}km"` */
+export const CITY_DEV_PATTERN = /^(.+?)\s+([\d.]+)km$/;
+/** `industry-match.mjs` 가 만드는 형태: `"{단지명} {거리}km"` */
+export const INDUSTRY_DEV_PATTERN = /^(.+?)\s+([\d.]+)km$/;
+
+/** LH 사업지구까지 거리. 흔한 축이라 경계를 촘촘하고 가깝게 잡는다(만점 ≈ 상위 20%). */
+export const CITY_DIST_TIERS: Tier[] = [
+  { max: 0.5, score: 100 },
+  { max: 1.0, score: 70 },
+  { max: 2.0, score: 40 },
+  { max: 3.0, score: 20 },
+];
+/** 산업단지까지 거리. 드문 축이라 경계를 넓게 잡는다(만점 ≈ 상위 7%). */
+export const INDUSTRY_DIST_TIERS: Tier[] = [
+  { max: 1.0, score: 100 },
+  { max: 2.0, score: 75 },
+  { max: 3.0, score: 50 },
+  { max: 5.0, score: 25 },
+];
+/** 등급 밖(수집 반경 5km 초과 또는 형식 불일치) = 0. */
+export const DEV_DIST_FAR_SCORE = 0;
 
 // === Future: 고정 가중치 (세션511 — 동적 재분배 폐기) ====================
 //
@@ -317,11 +357,13 @@ export const TRANSIT_DEV_PATTERN = /^(.+?)\s+\S+역\s+(\S+)$/;
 export const FUTURE_WEIGHTS = { pop: 0.55, tr: 0.225, city: 0.135, ind: 0.09 } as const;
 
 /**
- * 각 축이 실제로 낼 수 있는 최대. 도시·산업이 80인 것은 그 축의 최고 등급이 80점이기 때문이다.
- * 이 값들로 raw 총점의 이론 최대를 구해 0~100 으로 정규화한다 — 안 하면 총점이 95.5 를 못 넘어
- * 다른 카테고리(전부 0~100)와 눈금이 어긋난다. **정규화는 단조라 순위·역전을 하나도 안 바꾼다.**
+ * 각 축이 실제로 낼 수 있는 최대. 세션511 재설계로 **네 축이 전부 0~100** 이 됐다
+ * (도시·산업이 거리 등급으로 바뀌면서 최고 등급이 80 → 100).
+ * 이 값들로 raw 총점의 이론 최대를 구해 0~100 으로 정규화한다 — 지금은 항등이지만, 축 상한이
+ * 바뀌면 눈금이 자동으로 따라간다(손으로 적은 수를 안 쓴다).
+ * **정규화는 단조라 순위·역전을 하나도 안 바꾼다.**
  */
-export const FUTURE_AXIS_MAX = { pop: 100, tr: 100, city: 80, ind: 80 } as const;
+export const FUTURE_AXIS_MAX = { pop: 100, tr: 100, city: 100, ind: 100 } as const;
 export const FUTURE_RAW_MAX =
   FUTURE_AXIS_MAX.pop * FUTURE_WEIGHTS.pop +
   FUTURE_AXIS_MAX.tr * FUTURE_WEIGHTS.tr +

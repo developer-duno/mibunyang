@@ -1,22 +1,34 @@
 // @ts-check
 /**
- * 산업단지 매칭 — 시드 데이터 기반 좌표 매칭
+ * 산업단지 매칭 — **dev_plans**(V-WORLD LT_C_DAMDAN) 기반 최근접 거리 매칭
  *
  * 사용법:
  *   node scripts/collectors/industry-match.mjs              (Supabase 업데이트)
  *   node scripts/collectors/industry-match.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/industry-match.mjs --json       (apartments.json 직접 업데이트)
  *
- * 시드 데이터: public/data/industry-dev.json
- * 형식: { "complexes": [{ "name": "반월시화산단", "type": "국가", "lat": 37.31, "lng": 126.73, "radius": 10 }, ...] }
+ * 출처 (세션511 교체): 손으로 적은 시드 `public/data/industry-dev.json`(24건, 2026-03-14 동결)
+ * → `dev_plans` 테이블 `kind='industrial_complex'`(618건, V-WORLD 전국 수집).
+ * 시드는 수도권에 몰려 있어 **비수도권 단지가 구조적으로 0점**이었다.
+ *
+ * 출력 형식: `industry_dev = "{단지명} {거리}km"` (최근접 1개).
+ * ⚠️ `scoreFuture` 의 `INDUSTRY_DEV_PATTERN` 이 이 형식을 파싱한다 — **바꾸면 양쪽을 같이 고쳐야
+ * 한다.** 형식이 어긋나면 점수가 조용히 0이 된다(에러가 아니라 침묵).
  */
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { spawnSync } from "node:child_process";
 import { loadEnv, getSupabase, log, logError, ROOT, haversineKm, createReporter, recordCollectorRun } from "./_shared.mjs";
 
 // 세션 504: 매월 도는데 collector_runs 행이 0개라 감시 사각이었다.
 const PHASE = "industry-match";
+
+/**
+ * 매칭 반경(km). 채점 등급(`INDUSTRY_DIST_TIERS`)의 마지막 칸이 5km 라 그 밖은 어차피 0점이다.
+ * 옛 시드는 단지마다 `radius` 를 따로 들고 있었는데(기본 10km), 그러면 "왜 이 단지는 8km 도
+ * 잡히고 저 단지는 6km 에서 잘리나"를 설명할 수 없다 — 하나의 반경으로 통일한다.
+ */
+const MATCH_RADIUS_KM = 5;
 
 loadEnv();
 
@@ -34,17 +46,29 @@ async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const jsonMode = process.argv.includes("--json");
 
-  // 1. 시드 데이터 로드
-  const seedPath = resolve(ROOT, "public/data/industry-dev.json");
-  if (!existsSync(seedPath)) {
-    logError("load", `시드 파일 없음: ${seedPath}`);
-    logError("load", "public/data/industry-dev.json 파일을 먼저 생성하세요");
-    logError("load", '형식: { "complexes": [{ "name": "...", "type": "국가|일반|도시첨단|농공", "lat": 0, "lng": 0, "radius": 10 }] }');
+  // 1. 산업단지 로드 — 손으로 적은 시드(24건, 2026-03-14 동결) 대신 **dev_plans**(V-WORLD
+  //    LT_C_DAMDAN, 618건). 시드는 수도권에 몰려 있어 비수도권 단지가 구조적으로 0점이었다.
+  const sbSrc = getSupabase();
+  /** @type {Array<{ name: string | null, lat: number, lng: number }>} */
+  const complexes = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await sbSrc
+      .from("dev_plans")
+      .select("name, lat, lng")
+      .eq("kind", "industrial_complex")
+      .not("lat", "is", null)
+      .range(offset, offset + 999);
+    if (error) throw new Error(`dev_plans 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    complexes.push(.../** @type {any} */ (data));
+    if (data.length < 1000) break;
+  }
+  if (complexes.length === 0) {
+    // 0건을 성공으로 넘기면 전 단지의 industry_dev 가 조용히 안 바뀐다(세션504 답습).
+    logError("load", "dev_plans 에 산업단지(industrial_complex)가 0건 — naver-devplan 수집기를 먼저 돌리세요");
     process.exit(1);
   }
-  const seedData = JSON.parse(readFileSync(seedPath, "utf8"));
-  const complexes = seedData.complexes || [];
-  log("seed", `${complexes.length}개 산업단지 로드`);
+  log("seed", `dev_plans 산업단지 ${complexes.length}건 로드`);
 
   // 2. 아파트 데이터 로드
   let apartments;
@@ -85,20 +109,22 @@ async function main() {
     /** @type {Array<{ name: string; type: string; dist: number }>} */
     const nearby = [];
 
-    for (const cpx of /** @type {IndustryComplex[]} */ (complexes)) {
+    for (const cpx of complexes) {
+      // 사각 프리필터 — 위경도 0.09°/0.115° 밖이면 5km 를 넘는다(전수 곱셈 회피)
+      if (Math.abs(cpx.lat - Number(apt.lat)) > 0.09 || Math.abs(cpx.lng - Number(apt.lng)) > 0.115) continue;
       const dist = haversine(Number(apt.lat), Number(apt.lng), cpx.lat, cpx.lng);
-      const radius = cpx.radius || 10; // 기본 10km
-      if (dist <= radius) {
-        nearby.push({ name: cpx.name, type: cpx.type, dist: Math.round(dist * 10) / 10 });
+      if (dist <= MATCH_RADIUS_KM) {
+        nearby.push({ name: cpx.name ?? "산업단지", type: "", dist: Math.round(dist * 10) / 10 });
       }
     }
 
     if (nearby.length > 0) {
-      // 가장 가까운 순 정렬, 상위 3개
+      // **최근접 1개 + 거리**. 옛 형식(상위 3개를 `이름(종류)` 로 나열)은 거리가 없어 채점이
+      // "있다/없다" 이진으로만 쓸 수 있었다(값 보유 239곳 중 206곳이 같은 35점).
+      // `scoreFuture` 가 `INDUSTRY_DEV_PATTERN` 으로 파싱하는 형식과 **정확히 같아야 한다.**
       nearby.sort((a, b) => a.dist - b.dist);
-      const top = nearby.slice(0, 3);
-      const industryDev = top.map(n => `${n.name}(${n.type})`).join(", ");
-      updates.push({ id: apt.id, industry_dev: industryDev });
+      const best = nearby[0];
+      updates.push({ id: apt.id, industry_dev: `${best.name} ${best.dist}km` });
       matched++;
     }
   }

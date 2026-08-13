@@ -96,7 +96,10 @@ describe("FUTURE_WEIGHTS (고정 가중치)", () => {
       FUTURE_AXIS_MAX.city * FUTURE_WEIGHTS.city +
       FUTURE_AXIS_MAX.ind * FUTURE_WEIGHTS.ind;
     expect(FUTURE_RAW_MAX).toBeCloseTo(expected, 10);
-    expect(FUTURE_RAW_MAX).toBeLessThan(100); // 도시·산업 최고가 80이라 100 에 못 미친다 → 정규화 필요
+    // 축 상한이 전부 100 이면 RAW_MAX 도 100 이라 정규화가 항등이 된다(세션511 재설계 후 상태).
+    // 어느 축이든 상한이 100 미만이 되면 여기가 100 아래로 떨어지고 정규화가 실제로 일을 한다.
+    expect(FUTURE_RAW_MAX).toBeLessThanOrEqual(100);
+    expect(FUTURE_RAW_MAX).toBeGreaterThan(0);
   });
 });
 
