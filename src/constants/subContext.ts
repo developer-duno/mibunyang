@@ -1,4 +1,4 @@
-import { PRODUCT_MAX as _PM } from "@/constants/scoringTiers";
+import { PRODUCT_MAX as _PM, TRANSIT_OPEN } from "@/constants/scoringTiers";
 
 // 소비자용 서브지표 해석 매핑 테이블
 // 엔진(engine.js) 수정 없이 표현 계층에서만 활용
@@ -7,9 +7,23 @@ import { PRODUCT_MAX as _PM } from "@/constants/scoringTiers";
 type Category = "price" | "location" | "product" | "benefit" | "risk" | "future";
 
 export type SubInterpret = {
-  interpret: ((_sc: number) => string) | null;
+  interpret: ((_sc: number, _info?: string) => string) | null;
   benchmark: string | null;
 };
+
+/**
+ * 미래가치 3축(교통·도시·산업개발)의 `info` 에 **실제 측정값이 담겼는지** 판정한다.
+ *
+ * ⚠️ 이 판정이 없으면 "값이 있는데 없다고 말하는" 거짓이 난다. 세션511이 세 축을
+ * 키워드 이진(있음/없음)에서 **거리 등급제**로 바꾸면서 `"평택포승BIX 4.7km"` 처럼
+ * **값은 있는데 점수는 낮은** 제3의 상태가 생겼는데, 판정 문구표는 점수만 보고 있었다.
+ * 그 결과 704곳(정적 JSON 1,646 중 42.8%)이 실제 산업단지·개발지구를 옆에 두고도
+ * "산업 호재 없음"·"개발 계획 없음"을 보고 있었다(세션512 실측).
+ *
+ * `scoreFuture` 는 값이 없을 때만 `"없음"` 을 넣는다(scoreFuture.ts `info: indStr || "없음"`).
+ * 따라서 `"없음"` 이 아니면 측정값이 있는 것이다.
+ */
+const hasDevValue = (info?: string): info is string => !!info && info !== "없음";
 
 export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
   price: {
@@ -153,22 +167,50 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       benchmark: "90% 이상 안전",
     },
   },
+  // ⚠️ 미래가치 3축(교통·도시·산업개발)은 세션511부터 **거리**를 잰다. 그래서 문구도 거리로 말한다.
+  //    옛 문구("대규모 개발"·"산업 유입 활발")는 축이 이름 키워드를 훑던 시절의 것이라,
+  //    지금은 우리가 재지도 않은 규모·유입을 주장하는 셈이었다. `hasDevValue` 주석 참조.
   future: {
     교통개발: {
-      interpret: (sc) => (sc >= 70 ? "대형 교통 호재" : sc >= 40 ? "교통 개발 진행" : "교통 호재 없음"),
-      benchmark: "착공/기존 노선 인접",
+      interpret: (sc, info) =>
+        !hasDevValue(info)
+          ? "계획 노선 없음"
+          : // 개통한 역은 입지 축(지하철 거리)이 이미 세므로 미래가치는 0점이다 — 그 0을 "없음"이라
+            // 말하면 거짓이 된다(scoreFuture.ts 의 TRANSIT_OPEN 분기와 같은 자리).
+            TRANSIT_OPEN.some((s) => info.includes(s))
+            ? "이미 개통 — 입지 점수에 반영"
+            : sc >= 70
+              ? "대형 교통 호재 인접"
+              : sc >= 40
+                ? "교통 개발 진행"
+                : "계획역 멀어 약함",
+      benchmark: "착공·공사중 + 가까울수록 높음",
     },
     도시개발: {
-      interpret: (sc) => (sc >= 70 ? "대규모 개발" : sc >= 40 ? "중규모 개발" : "개발 계획 없음"),
-      benchmark: "신도시/테크노밸리급",
+      interpret: (sc, info) =>
+        !hasDevValue(info)
+          ? "반경 5km 내 개발지구 없음"
+          : sc >= 70
+            ? "개발지구 매우 가까움"
+            : sc >= 40
+              ? "개발지구 가까움"
+              : "개발지구 멀어 약함",
+      benchmark: "500m 이내 만점",
     },
     인구: {
       interpret: (sc) => (sc >= 70 ? "인구 유입 활발" : sc >= 40 ? "인구 보합" : "인구 유출 주의"),
       benchmark: "인구 증가율 +0.5%+",
     },
     산업개발: {
-      interpret: (sc) => (sc >= 70 ? "산업 유입 활발" : sc >= 40 ? "산업 보통" : "산업 호재 없음"),
-      benchmark: "국가산단/테크노밸리급",
+      interpret: (sc, info) =>
+        !hasDevValue(info)
+          ? "반경 5km 내 산업단지 없음"
+          : sc >= 70
+            ? "산업단지 매우 가까움"
+            : sc >= 40
+              ? "산업단지 가까움"
+              : "산업단지 멀어 약함",
+      benchmark: "1km 이내 만점",
     },
   },
 };
