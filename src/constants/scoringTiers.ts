@@ -164,6 +164,30 @@ export const AIR_QUALITY_TIERS: Tier[] = [
 ];
 export const AIR_QUALITY_DEFAULT = 12; // 데이터 없을 때 중립
 
+/**
+ * 자연환경 서브의 이론 만점 — 조망 40 + 일조·방향 38 + 소음 30 + 대기 20 = **128**.
+ *
+ * `scoreLocation` 의 다른 서브(교통·학군·인프라·혐오시설)는 전부 0~100 으로 정규화되는데
+ * 자연환경만 네 요소를 **그냥 더해** 128 까지 나왔다. `total` 은 `env * 0.1` 로 섞으므로
+ * 배점이 10점이어야 할 자리가 최대 12.8점까지 먹고 있었다(실측: 1,646곳 중 **1,054곳(64.0%)
+ * 이 100 초과**, 중앙 108 · 최대 120).
+ *
+ * ⚠️ **100 에서 자르면(clamp) 안 된다** — 그러면 64% 가 전부 100 점 동점이 되어 변별력이
+ * 오히려 죽는다(세션488·501·510 이 세 번 겪은 "만점 몰림"). 나누기(정규화)는 **순위를 완전히
+ * 보존**하면서 배점만 제자리로 돌린다.
+ *
+ * 실측 최대(120)가 아니라 **이론 최대(128)** 로 나눈다 — 실측 최대로 나누면 데이터가 바뀔
+ * 때마다 척도가 흔들려 어제 점수와 오늘 점수를 비교할 수 없게 된다.
+ *
+ * 네 요소의 상한은 **각 표에서 직접 뽑는다** — 숫자를 손으로 적으면 표만 바뀌었을 때 척도가
+ * 조용히 어긋난다(그러면 정규화된 값이 100 을 넘거나, 아무도 100 에 못 닿는다).
+ */
+export const ENV_MAX =
+  Math.max(...Object.values(VIEW_SCORES)) +
+  SUNLIGHT_DIRECTION_MAX +
+  Math.max(...NOISE_TIERS.map((t) => t.score)) +
+  Math.max(...AIR_QUALITY_TIERS.map((t) => t.score));
+
 export const NOXIOUS_DIST_THRESHOLD = 500; // m — 이 거리 이상이면 감점 반감
 export const NOXIOUS_REDUCTION = 0.5;
 export const NOXIOUS_PEN_CAP = -15;

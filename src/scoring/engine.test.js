@@ -1,7 +1,15 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { PROFILES } from "@/constants/profiles";
-import { INFRA_CONFIG, FULL_BUS_ROUTES } from "@/constants/scoringTiers";
+import {
+  INFRA_CONFIG,
+  FULL_BUS_ROUTES,
+  ENV_MAX,
+  VIEW_SCORES,
+  SUNLIGHT_DIRECTION_MAX,
+  NOISE_TIERS,
+  AIR_QUALITY_TIERS,
+} from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
   getAreaAdj,
@@ -246,6 +254,47 @@ describe("scoreLocation", () => {
     );
     expect(noNoise.subs.find((s) => s.name === "학군")?.score).toBe(
       withNoise.subs.find((s) => s.name === "학군")?.score
+    );
+  });
+  // --- 세션511: 자연환경 0~100 정규화 ---
+  //
+  // 네 요소(조망40·일조38·소음30·대기20)를 그냥 더하면 최대 128 이라, 배점 10점(env*0.1)
+  // 자리를 최대 12.8점까지 먹었다. 실측 1,646곳 중 1,054곳(64.0%)이 100 을 넘었다.
+  // ⚠️ 자르지 않고 나눈다 — 100 에서 자르면 그 64% 가 전부 동점이 되어 변별력이 죽는다.
+  it("ENV_MAX 는 네 요소 상한의 합과 일치 (표만 바뀌면 척도가 조용히 어긋난다)", () => {
+    const expected =
+      Math.max(...Object.values(VIEW_SCORES)) +
+      SUNLIGHT_DIRECTION_MAX +
+      Math.max(...NOISE_TIERS.map((t) => t.score)) +
+      Math.max(...AIR_QUALITY_TIERS.map((t) => t.score));
+    expect(ENV_MAX).toBe(expected);
+  });
+  it("최고 조건에서도 자연환경 서브는 100 을 넘지 않는다 (정규화 제거 시 red)", () => {
+    // 조망 블루(40) + 일조 우수(30)+남향(8)=38 + 소음 40dB(30) + 대기 좋음(20) = 128 = ENV_MAX
+    const best = scoreLocation(
+      makeApt(
+        /** @type {any} */ ({
+          view: "블루",
+          sunlight: "우수",
+          primaryDirection: "남향",
+          noise: 40,
+          airQuality: { pm25: 10, pm10: 20, o3: 0.02 },
+        })
+      )
+    );
+    const env = Number(best.subs.find((s) => s.name === "자연환경")?.score);
+    expect(env).toBeLessThanOrEqual(100);
+    expect(env).toBe(100); // 이론 만점 조합이므로 정확히 100 — 나누는 수가 틀리면 여기서 걸린다
+  });
+  it("정규화가 순위를 뒤집지 않는다 (좋은 조건이 나쁜 조건보다 높다)", () => {
+    const good = scoreLocation(
+      makeApt(/** @type {any} */ ({ view: "블루", noise: 40, airQuality: { pm25: 10 } }))
+    );
+    const bad = scoreLocation(
+      makeApt(/** @type {any} */ ({ view: "천공", noise: 70, airQuality: { pm25: 45 } }))
+    );
+    expect(Number(good.subs.find((s) => s.name === "자연환경")?.score)).toBeGreaterThan(
+      Number(bad.subs.find((s) => s.name === "자연환경")?.score)
     );
   });
   // --- 세션 454: 가중치 합 1.0 불변식 (scoreLocation.ts L102/L93 + INFRA_CONFIG) ---

@@ -23,6 +23,7 @@ import {
   SUNLIGHT_DIRECTION_MAX,
   AIR_QUALITY_TIERS,
   AIR_QUALITY_DEFAULT,
+  ENV_MAX,
   AIR_PM10_TIERS,
   AIR_PM10_DEFAULT,
   AIR_O3_TIERS,
@@ -118,7 +119,10 @@ export function scoreLocation(apt: Apt): Res {
     pm10Sc == null && o3Sc == null
       ? pm25Sc
       : pm25Sc * 0.4 + (pm10Sc ?? AIR_PM10_DEFAULT) * 0.35 + (o3Sc ?? AIR_O3_DEFAULT) * 0.25;
-  const env = viewSc + sunSc + noiseSc + airSc;
+  // 0~100 정규화 — 네 요소를 그냥 더하면 최대 128 이 나와, 배점 10점(env*0.1) 자리를 최대
+  // 12.8점까지 먹는다(실측 1,646곳 중 1,054곳(64.0%)이 100 초과). 자르지 않고 나누는 이유는
+  // ENV_MAX 주석 참조 — 자르면 그 64% 가 전부 동점이 되어 변별력이 오히려 죽는다.
+  const env = ((viewSc + sunSc + noiseSc + airSc) / ENV_MAX) * 100;
   const noxious = (apt.noxious as string[] | undefined) || [];
   let noxPen = noxious.reduce((s, n) => s + ((NOXIOUS_PENALTY as Record<string, number>)[n] || 0), 0);
   // 거리 기반 감점 완화: noxiousDist >= 500m이면 감점 반감
