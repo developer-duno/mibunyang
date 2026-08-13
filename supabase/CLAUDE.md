@@ -28,6 +28,7 @@
 | presale_schedule_official | 청약홈 공식 분양일정 12종 + 규제 7종 | collect-applyhome-detail |
 | applyhome_unit_supply | 청약홈 주택형별 공급 세대수 (`source` = apt/remndr/opt) | collect-applyhome-detail, collect-applyhome-remndr |
 | applyhome_cancel_respl | 청약홈 취소후재공급 경쟁률 (유형별 6종 `by_type` JSONB) | collect-applyhome-remndr |
+| **dev_plans** | 개발계획·개발축 원본 (세션511 신설). `source`(naver/vworld) × `kind`(road·rail·station·jigu / industrial_complex·lh_zone). `raw` JSONB 에 원본 보존(V-WORLD 는 폴리곤 포함) | naver-devplan |
 | **apartments_flat** (VIEW) | dedup CTE + 7개 JOIN 평탄화 + presale 19컬럼 | - |
 | **api_quota_daily** (VIEW) | 일별 API 쿼터 합계 | - |
 
