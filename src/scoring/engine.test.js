@@ -10,6 +10,9 @@ import {
   NOISE_TIERS,
   AIR_QUALITY_TIERS,
   infraSaturation,
+  FUTURE_WEIGHTS,
+  FUTURE_RAW_MAX,
+  TRANSIT_LINE_TYPE,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
@@ -780,21 +783,69 @@ describe("scoreFuture", () => {
     expect(r.total).toBeLessThanOrEqual(100);
     expect(r.subs).toHaveLength(4);
   });
-  it("교통/도시/산업 없으면 인구 가중치 100%", () => {
+  // 세션511: 동적 재분배 폐기. 호재가 없어도 인구가 100% 를 대신하지 않는다 —
+  // 그 구조가 "호재를 채우면 점수가 내려가는" 역전(보유 762곳 중 486곳)을 만들었다.
+  it("호재가 없으면 인구 몫(0.55)만 받는다 — 인구 100% 대체 금지", () => {
     const r = scoreFuture(
       makeApt(
         /** @type {any} */ ({ transitDev: "없음", cityDev: "", industryDev: null, popGrowth: 0.5, netMigration: null })
       )
     );
-    expect(r.total).toBe(80);
+    // popSc 80 × 0.55 / FUTURE_RAW_MAX × 100
+    expect(r.total).toBe(Math.round(((80 * FUTURE_WEIGHTS.pop) / FUTURE_RAW_MAX) * 100));
+    expect(r.total).toBeLessThan(80); // 옛 구조는 정확히 80을 줬다
   });
-  it("GTX 고가치 교통 1.2x 보너스", () => {
-    const normal =
-      scoreFuture(makeApt({ transitDev: "일반 착공", devDist: 1 })).subs.find((s) => s.name === "교통개발")?.score ?? 0;
-    const gtx =
-      scoreFuture(makeApt({ transitDev: "GTX-C 착공", devDist: 1 })).subs.find((s) => s.name === "교통개발")?.score ??
-      0;
-    expect(gtx).toBeGreaterThan(normal);
+  it("노선급이 높을수록 교통 점수가 높다 (GTX > 경전철, 가산 방식)", () => {
+    const pick = (/** @type {string} */ t) =>
+      scoreFuture(makeApt({ transitDev: t, devDist: 1 })).subs.find((s) => s.name === "교통개발")?.score ?? 0;
+    expect(pick("GTX-C 의정부역 착공")).toBeGreaterThan(pick("위례신사선 잠실역 착공"));
+  });
+  it("개통한 노선은 교통 0점 — 입지 축이 같은 역을 이미 센다(이중 계상 차단)", () => {
+    const planned = scoreFuture(makeApt({ transitDev: "GTX-A 동탄역 공사중", devDist: 0.4 }));
+    const opened = scoreFuture(makeApt({ transitDev: "GTX-A 동탄역 개통", devDist: 0.4 }));
+    expect(planned.subs.find((s) => s.name === "교통개발")?.score).toBeGreaterThan(0);
+    expect(opened.subs.find((s) => s.name === "교통개발")?.score).toBe(0);
+  });
+  it("문자열 형식이 안 맞으면 0점 — 무슨 호재인지 모르는데 점수를 주지 않는다", () => {
+    expect(
+      scoreFuture(makeApt({ transitDev: "알 수 없는 문자열", devDist: 1 })).subs.find((s) => s.name === "교통개발")
+        ?.score
+    ).toBe(0);
+  });
+  // TRANSIT_LINE_TYPE 은 시드의 노선명을 그대로 키로 쓴다. 시드에 노선이 추가되거나 이름이
+  // 바뀌면 그 노선은 조용히 기본급(8점)으로 떨어진다 — 에러가 아니라 침묵이라 아무도 모른다.
+  it("TRANSIT_LINE_TYPE 이 시드(transit-dev.json)의 노선을 빠짐없이 덮는다", async () => {
+    const { readFileSync } = await import("node:fs");
+    /** @type {{ projects: { name: string, type: string }[] }} */
+    const seed = JSON.parse(readFileSync("public/data/transit-dev.json", "utf8"));
+    const missing = seed.projects.filter((p) => !(p.name in TRANSIT_LINE_TYPE)).map((p) => p.name);
+    expect(missing).toEqual([]);
+    // 종류도 일치해야 한다 — 이름만 맞고 종류가 어긋나면 등급이 조용히 틀어진다
+    const mismatched = seed.projects
+      .filter((p) => TRANSIT_LINE_TYPE[p.name] !== p.type)
+      .map((p) => `${p.name}: 시드=${p.type} 표=${TRANSIT_LINE_TYPE[p.name]}`);
+    expect(mismatched).toEqual([]);
+  });
+  // ★ 이 저장소가 세션511에 겪은 사고의 핵심 가드 — 동적 재분배로 되돌리면 red.
+  it("호재를 채우면 총점이 절대 내려가지 않는다 (단조성)", () => {
+    const cases = [
+      { transitDev: "GTX-A 동탄역 공사중", devDist: 0.4 },
+      { transitDev: "대장홍대선 대장역 추진", devDist: 3.5 },
+      { cityDev: "신도시 개발" },
+      { industryDev: "테크노밸리" },
+      { transitDev: "GTX-B 송도역 착공", devDist: 1.2, cityDev: "재생", industryDev: "산업단지" },
+    ];
+    for (const pg of [1.5, 0.7, 0.2, -0.5, -1.5]) {
+      const bare = scoreFuture(
+        makeApt(/** @type {any} */ ({ popGrowth: pg, transitDev: null, cityDev: null, industryDev: null }))
+      );
+      for (const c of cases) {
+        const withDev = scoreFuture(
+          makeApt(/** @type {any} */ ({ popGrowth: pg, transitDev: null, cityDev: null, industryDev: null, ...c }))
+        );
+        expect(withDev.total).toBeGreaterThanOrEqual(bare.total);
+      }
+    }
   });
   it("순유입 -> 인구 +10", () => {
     const base =
@@ -1149,14 +1200,13 @@ describe("scoreFuture — FUTURE_WEIGHT_MAP 모든 8개 경로", () => {
     });
   });
 
-  it("모든 개발 없음(0,0,0) → 인구에 100% 가중", () => {
+  it("모든 개발 없음 → 인구 몫(0.55)만 (세션511: 인구 100% 대체 폐기)", () => {
     const r = scoreFuture(
       makeApt(
         /** @type {any} */ ({ transitDev: "없음", cityDev: "", industryDev: null, popGrowth: 0.5, netMigration: null })
       )
     );
-    // 인구 가중치=1.00 → total = popSc * 1.00 = 80
-    expect(r.total).toBe(80);
+    expect(r.total).toBe(Math.round(((80 * FUTURE_WEIGHTS.pop) / FUTURE_RAW_MAX) * 100));
   });
 
   it("모든 개발 있음(1,1,1) → 4개 축 분산", () => {

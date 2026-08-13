@@ -218,6 +218,116 @@ export const AIR_QUALITY_TIERS: Tier[] = [
 ];
 export const AIR_QUALITY_DEFAULT = 12; // 데이터 없을 때 중립
 
+// === Future: 교통개발 (세션511 재설계) ==================================
+//
+// 옛 산식은 만점(100)을 `TRANSIT_ACTIVE`(기존·운행중·개통) 가지에만 뒀는데, 그 축을 채우는
+// 시드(`public/data/transit-dev.json`)는 **"앞으로 생길 노선" 목록**이라 개통 상태가 들어올 일이
+// 구조적으로 없다(실측: 보유 516곳 중 ACTIVE 매칭 0곳). 그래서 실질 상한이 `60×1.2=72` 로 고정돼
+// **5개월간 아무도 만점을 못 받았다.**
+//
+// 게다가 `transit-match.mjs` 가 만드는 문자열은 `"{노선} {역}역 {상태}"` 형태라 **노선 종류가
+// 안 들어간다.** 그 결과 옛 `TRANSIT_HIGH` 10개 중 7개(도시철도·지하철연장·신설역·광역급행·
+// BRT·KTX역·SRT)가 어떤 문자열에도 닿지 못하는 죽은 키워드였고, ×1.2 보너스는 GTX 세 노선과
+// 노선명에 우연히 "트램"/"경전철" 이 든 두 노선에만 붙었다.
+//
+// 새 산식 = **확실성 + 근접 + 노선급 가산**(합이 정확히 100이라 클램프에 몰리지 않는다).
+// 만점 조건이 "공사 중인 GTX 역 500m 이내" 라는 한 문장으로 설명된다.
+
+/**
+ * 이미 개통한 노선은 미래가치 **0점**이다 — 입지 축이 같은 역을 이미 세고 있다
+ * (`scoreLocation` 의 `subwayDist`, 출처 Kakao = 운행 중인 역).
+ * 실측 근거: 시드역 1km 내 96곳이 **100% 카카오 지하철 보유**(평균 572m), 현행 최고점 단지들은
+ * `subwayName` 이 문자 그대로 그 역이라 미래가치·입지지하철·입지KTX **삼중 계상**이 된다.
+ * 지금 시드엔 개통 상태가 0건이라 영향은 0이고, 나중에 들어올 때를 막는 가드다.
+ */
+export const TRANSIT_OPEN = ["개통", "운행중", "기존"];
+
+/**
+ * 사업 확실성. 공사중과 착공을 같은 40으로 묶은 이유 — **같은 단계의 다른 표기**다
+ * (착공 = 공사 시작). 시드가 두 표기를 혼용할 뿐 의미 차가 없어서, 가르면 표기 차이가 만드는
+ * 가짜 변별이 된다. 실질 2단계 = 공사 진행 중(40) vs 미착공(추진 22).
+ * 실측 분포: 착공 376 · 공사중 87 · 추진 53.
+ */
+export const TRANSIT_CERTAINTY: Record<string, number> = {
+  공사중: 40,
+  착공: 40,
+  추진: 22,
+  계획: 12,
+  구상: 6,
+};
+export const TRANSIT_CERTAINTY_DEFAULT = 12;
+
+/** 계획역까지 거리(km). 옛 2단계(1km/3km)는 0.1km 와 2.9km 를 같은 40점으로 봤다. */
+export const TRANSIT_DIST_TIERS: Tier[] = [
+  { max: 0.5, score: 40 },
+  { max: 1.0, score: 34 },
+  { max: 1.5, score: 27 },
+  { max: 2.0, score: 20 },
+  { max: 3.0, score: 12 },
+  { max: 4.0, score: 5 },
+];
+export const TRANSIT_DIST_FAR_SCORE = 0; // 4km 초과 (수집 반경 5km)
+
+/** 노선급. 옛 ×1.2 배수 대신 가산 — 배수는 상한(100)에 여럿을 몰아붙였다. */
+export const TRANSIT_GRADE: Record<string, number> = {
+  GTX: 20,
+  도시철도: 15,
+  지하철연장: 12,
+  경전철: 8,
+  트램: 6,
+};
+export const TRANSIT_GRADE_DEFAULT = 8;
+
+/**
+ * 노선명 → 노선급. `transit_dev` 문자열에 종류가 안 들어가서 여기서 되찾는다.
+ * **`public/data/transit-dev.json` 의 `projects[].name` → `.type` 과 1:1로 같아야 한다** —
+ * 어긋나면 그 노선이 조용히 기본급(8)으로 떨어진다. `engine.test.js` 가 시드를 읽어 대조한다.
+ */
+export const TRANSIT_LINE_TYPE: Record<string, string> = {
+  "GTX-A": "GTX",
+  "GTX-B": "GTX",
+  "GTX-C": "GTX",
+  신안산선: "도시철도",
+  위례신사선: "경전철",
+  인덕원동탄선: "도시철도",
+  월곶판교선: "도시철도",
+  대장홍대선: "도시철도",
+  "서울2호선연장(위례)": "지하철연장",
+  부산2호선연장: "지하철연장",
+  대구엑스코선: "경전철",
+  광주2호선: "도시철도",
+  "대전2호선(트램)": "트램",
+  "김포경전철 연장": "경전철",
+};
+
+/** `transit-match.mjs` L104 가 만드는 문자열 형태: `"{노선} {역}역 {상태}"` */
+export const TRANSIT_DEV_PATTERN = /^(.+?)\s+\S+역\s+(\S+)$/;
+
+// === Future: 고정 가중치 (세션511 — 동적 재분배 폐기) ====================
+//
+// 옛 `FUTURE_WEIGHT_MAP` 은 8조합의 합이 전부 1.00 인 **동적 재분배**였다. 그래서 항등식
+// `total − (호재 전무일 때 total) = Σ wᵢ(축ᵢ − popSc)` 가 성립하고, **"켜진 축들의 가중평균이
+// popSc 보다 낮으면 무조건 역전"** 했다. 호재가 없으면 그 몫이 100% 인구로 갔기 때문이다.
+// 실측: 호재 보유 762곳 중 **486곳(63.8%)이 그 호재를 지웠을 때보다 낮았다.**
+// 직접 증거 = corr(미래가치 총점, 교통 서브) = **−0.097**(음수).
+//
+// 고정 가중치에서는 각 가산항이 비음수이고 다른 항이 안 변하므로 **채우면 오르기만 한다**
+// (실측이 아니라 정의로 보장). 호재 몫 0.45 는 실측으로 고른 값이다 —
+// 0.35 면 인구 설명력 85.0%(현행 75.7%보다 악화), 0.45 면 **70.1%**, 0.50 이면 61.6%(인구가 너무 약함).
+export const FUTURE_WEIGHTS = { pop: 0.55, tr: 0.225, city: 0.135, ind: 0.09 } as const;
+
+/**
+ * 각 축이 실제로 낼 수 있는 최대. 도시·산업이 80인 것은 그 축의 최고 등급이 80점이기 때문이다.
+ * 이 값들로 raw 총점의 이론 최대를 구해 0~100 으로 정규화한다 — 안 하면 총점이 95.5 를 못 넘어
+ * 다른 카테고리(전부 0~100)와 눈금이 어긋난다. **정규화는 단조라 순위·역전을 하나도 안 바꾼다.**
+ */
+export const FUTURE_AXIS_MAX = { pop: 100, tr: 100, city: 80, ind: 80 } as const;
+export const FUTURE_RAW_MAX =
+  FUTURE_AXIS_MAX.pop * FUTURE_WEIGHTS.pop +
+  FUTURE_AXIS_MAX.tr * FUTURE_WEIGHTS.tr +
+  FUTURE_AXIS_MAX.city * FUTURE_WEIGHTS.city +
+  FUTURE_AXIS_MAX.ind * FUTURE_WEIGHTS.ind;
+
 /**
  * 자연환경 서브의 이론 만점 — 조망 40 + 일조·방향 38 + 소음 30 + 대기 20 = **128**.
  *
@@ -416,19 +526,15 @@ export const POP_FUTURE_TIERS: Tier[] = [
 export const POP_FUTURE_LOW = 10;
 export const POP_FUTURE_NULL = 35;
 
-// === Future: 동적 가중치 룩업 테이블 (Q-4) ===
-// 키: "${hasTr},${hasCity},${hasInd}" (1=있음, 0=없음) → 합계 항상 1.00
-// `as const` 부착 — scoreFuture.ts:84 의 `as keyof typeof FUTURE_WEIGHT_MAP` 패턴 보존
-export const FUTURE_WEIGHT_MAP = {
-  "1,1,1": { tr: 0.3, city: 0.25, pop: 0.25, ind: 0.2 },
-  "1,1,0": { tr: 0.4, city: 0.3, pop: 0.3, ind: 0 },
-  "1,0,1": { tr: 0.4, city: 0, pop: 0.3, ind: 0.3 },
-  "1,0,0": { tr: 0.55, city: 0, pop: 0.45, ind: 0 },
-  "0,1,1": { tr: 0, city: 0.35, pop: 0.35, ind: 0.3 },
-  "0,1,0": { tr: 0, city: 0.45, pop: 0.55, ind: 0 },
-  "0,0,1": { tr: 0, city: 0, pop: 0.6, ind: 0.4 },
-  "0,0,0": { tr: 0, city: 0, pop: 1.0, ind: 0 },
-} as const;
+// === Future: 동적 가중치 룩업 테이블 — 세션511 폐기 ===
+//
+// 8조합의 합이 전부 1.00 인 동적 재분배였다. 그 성질 때문에 항등식
+//   total − (호재 전무일 때 total) = Σ wᵢ(축ᵢ − popSc)
+// 가 성립해, **"켜진 축들의 가중평균 < popSc" 이면 무조건 역전**했다. `"0,0,0"` 이 pop 1.00 이라
+// 호재가 없으면 그 몫이 100% 인구로 갔기 때문이다. 실측: 호재 보유 762곳 중 **486곳(63.8%)이
+// 그 호재를 지웠을 때보다 낮았다.**
+//
+// 대체 = `FUTURE_WEIGHTS`(고정 가중치, 위쪽 정의). 각 항이 비음수 가산이라 채우면 오르기만 한다.
 
 // === Price: 데이터 부재 시 기본값 ===
 export const PRICE_NO_DATA_DEFAULTS: { dev: number; jr: number; pir: number; psr: number } = {

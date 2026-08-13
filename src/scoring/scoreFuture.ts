@@ -1,13 +1,23 @@
-import { FUTURE_WEIGHT_MAP } from "@/constants/scoringTiers";
+import {
+  tierMax,
+  TRANSIT_OPEN,
+  TRANSIT_CERTAINTY,
+  TRANSIT_CERTAINTY_DEFAULT,
+  TRANSIT_DIST_TIERS,
+  TRANSIT_DIST_FAR_SCORE,
+  TRANSIT_GRADE,
+  TRANSIT_GRADE_DEFAULT,
+  TRANSIT_LINE_TYPE,
+  TRANSIT_DEV_PATTERN,
+  FUTURE_WEIGHTS,
+  FUTURE_RAW_MAX,
+} from "@/constants/scoringTiers";
 import type { Apt, Res } from "@/types/scoring";
 
 // --- scoreFuture 키워드 배열 (Clean-3, src/scoring/CLAUDE.md L101~L113) ---
-/** 기존·운행 중인 교통 인프라. trSc 만점 100. */
-const TRANSIT_ACTIVE = ["기존", "운행중", "개통"];
-/** 계획·공사 중인 교통 인프라. trSc 만점 60 (ACTIVE의 60%). */
-const TRANSIT_PLANNED = ["계획", "착공", "공사중", "추진", "확정", "예정", "인가"];
-/** 고가치 교통(GTX/KTX 등). 매칭 시 trSc × 1.2 보너스 (상한 100). */
-const TRANSIT_HIGH = ["GTX", "KTX역", "SRT", "지하철연장", "신설역", "광역급행", "BRT", "트램", "경전철", "도시철도"];
+// ⚠️ 교통 키워드 3종(TRANSIT_ACTIVE/PLANNED/HIGH)은 세션511에 폐기됐다 — 상태·노선급을 문자열
+//    부분매칭으로 추측하는 대신 `TRANSIT_DEV_PATTERN` 으로 파싱해 표에서 찾는다(scoringTiers.ts).
+//    옛 배열은 20개 키워드 중 14개가 어떤 문자열에도 안 닿는 죽은 값이었다.
 /** 고가치 도시개발. citySc 80. `includes()` 부분 매칭 주의: "신도" → "신도시"+"신도심" 모두 매칭. */
 const CITY_HIGH = [
   "테크노",
@@ -42,52 +52,52 @@ const CITY_MID = [
 const matchAny = (str: string, keywords: string[]): boolean => keywords.some((k) => str.includes(k));
 
 /**
- * 미래가치 점수 (0~100). 4축(교통·도시·인구·산업) 동적 가중치 합산.
+ * 미래가치 점수 (0~100). 4축(인구·교통·도시·산업) **고정 가중치** 합산 후 0~100 정규화.
  *
- * 동적 가중치 합 항상 = 1.00 (CLAUDE.md L86~L99):
- *   FUTURE_WEIGHT_MAP[`${+hasTr},${+hasCity},${+hasInd}`] 8조합 — 데이터 부재 시 인구에 집중.
- *   예) (X, X, X) → wPop=1.00 / (O, O, O) → wTr=0.30·wCity=0.25·wPop=0.25·wInd=0.20.
+ * 세션511에 동적 재분배를 폐기했다. 옛 구조는 호재가 없으면 그 몫을 100% 인구로 보내서
+ * **호재를 가진 단지가 구조적으로 손해**를 봤다(보유 762곳 중 486곳이 그 호재를 지웠을 때보다 낮음,
+ * corr(총점, 교통서브) = −0.097). 고정 가중치에서는 각 항이 비음수 가산이라 **채우면 오르기만 한다.**
+ *
+ * 가중치 = `FUTURE_WEIGHTS` (pop .55 · tr .225 · city .135 · ind .09, 호재 몫 0.45).
+ * 0.45 는 실측으로 고른 값 — 0.35 면 인구 설명력 85.0%(현행 75.7%보다 악화), 0.45 면 70.1%.
  *
  * 핵심 산식:
- *   - trSc: TRANSIT_ACTIVE 시 ≤1km 100/≤2km 70/그 외 40, TRANSIT_PLANNED 시 ≤1km 60/≤3km 40/그 외 20.
- *           TRANSIT_HIGH 매칭 시 × 1.2, 상한 100. transitDev 없음/"없음" → 0.
+ *   - trSc: `"{노선} {역}역 {상태}"` 파싱 → 확실성(공사중·착공 40 / 추진 22) + 근접(≤0.5km 40 …
+ *           4km↑ 0) + 노선급(GTX 20 / 도시철도 15 / 지하철연장 12 / 경전철 8 / 트램 6). 합 최대 100.
+ *           **개통(TRANSIT_OPEN)은 0** — 입지 축이 같은 역을 이미 센다(이중 계상 차단).
+ *           형식 불일치도 0 — "무슨 호재인지 모르는데 점수는 있다"를 만들지 않는다.
  *   - citySc: CITY_HIGH 80 / CITY_MID 50 / 기타 30. cityDev 빈 값 → 0.
- *   - popSc 7단계 (CLAUDE.md L120~L129): null 35 / ≥1.0 95 / ≥0.5 80 / ≥0 65 /
- *           ≥-0.3 50 / ≥-0.8 35 / ≥-2.0 20 / 그 외 10.
+ *   - popSc 7단계: null 35 / ≥1.0 95 / ≥0.5 80 / ≥0 65 / ≥-0.3 50 / ≥-0.8 35 / ≥-2.0 20 / 그 외 10.
  *   - netMigration 보정: > 0 → popSc + 10 (상한 100), ≤ -5000 → popSc - 5 (하한 0).
- *   - indSc: industryDev (배열/문자열 모두 허용) 매칭 → CITY_HIGH 80 / CITY_MID 55 / 기타 35.
+ *   - indSc: industryDev (배열/문자열 모두 허용) → CITY_HIGH 80 / CITY_MID 55 / 기타 35.
  *
- * 클램핑: `Math.round(Math.max(0, Math.min(total, 100)))`.
+ * 정규화: `raw / FUTURE_RAW_MAX * 100`. 도시·산업 최고 등급이 80이라 raw 는 95.5 를 못 넘는데,
+ * 그대로 두면 다른 카테고리(0~100)와 눈금이 어긋난다. 나누기는 단조라 **순위를 안 바꾼다.**
  *
- * `includes()` 부분 매칭 함정: "신도" 키워드 → "신도시"+"신도심" 모두 매칭됨. 키워드 추가 시 주의.
+ * `includes()` 부분 매칭 함정: "신도" 키워드 → "신도시"+"신도심" 모두 매칭됨(도시·산업축 한정).
  *
  * @example
- * // 동적 가중치 합 1.00 — 8조합 전부 검증
- * Object.values(FUTURE_WEIGHT_MAP).every(w => Math.abs(w.tr+w.city+w.pop+w.ind - 1.0) < 1e-9)
+ * // 호재를 채우면 절대 내려가지 않는다 (단조성 — 정의로 보장)
+ * scoreFuture(apt).total >= scoreFuture({ ...apt, transitDev: null, cityDev: null, industryDev: null }).total
  */
 export function scoreFuture(apt: Apt): Res {
   const transitDev = (apt.transitDev ?? "") as string;
   const cityDev = (apt.cityDev ?? "") as string;
   const devDist = (apt.devDist ?? 99) as number;
 
-  // 교통개발 (기본 40%)
-  let trSc =
-    !transitDev || transitDev === "없음"
+  // 교통개발 — 확실성 + 근접 + 노선급 가산 (합 최대 100, 세션511)
+  //
+  // `transit_dev` 는 `transit-match.mjs` 가 만든 `"{노선} {역}역 {상태}"` 문자열이다.
+  // 노선 종류가 문자열에 없어서 노선명으로 되찾는다(TRANSIT_LINE_TYPE).
+  // 형식이 안 맞으면 0 — 억지로 부분 점수를 주면 "무슨 호재인지 모르는데 점수는 있다"가 된다.
+  const trMatch = transitDev && transitDev !== "없음" ? transitDev.trim().match(TRANSIT_DEV_PATTERN) : null;
+  const trStatus = trMatch?.[2] ?? "";
+  const trSc =
+    !trMatch || TRANSIT_OPEN.includes(trStatus) // 개통은 입지 축이 이미 셈 — 이중 계상 차단
       ? 0
-      : matchAny(transitDev, TRANSIT_ACTIVE)
-        ? devDist <= 1
-          ? 100
-          : devDist <= 2
-            ? 70
-            : 40
-        : matchAny(transitDev, TRANSIT_PLANNED)
-          ? devDist <= 1
-            ? 60
-            : devDist <= 3
-              ? 40
-              : 20
-          : 10;
-  if (trSc > 0 && matchAny(transitDev, TRANSIT_HIGH)) trSc = Math.min(Math.round(trSc * 1.2), 100);
+      : (TRANSIT_CERTAINTY[trStatus] ?? TRANSIT_CERTAINTY_DEFAULT) +
+        tierMax(devDist, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE) +
+        (TRANSIT_GRADE[TRANSIT_LINE_TYPE[trMatch[1]] ?? ""] ?? TRANSIT_GRADE_DEFAULT);
 
   // 도시개발 (기본 30%)
   const citySc =
@@ -122,12 +132,17 @@ export function scoreFuture(apt: Apt): Res {
     indSc = matchAny(indStr, CITY_HIGH) ? 80 : matchAny(indStr, CITY_MID) ? 55 : 35;
   }
 
-  // 동적 가중치: 데이터 부재 시 인구에 가중치 집중 (합계 항상 1.00)
-  const hasTr = trSc > 0;
-  const hasCity = citySc > 0;
-  const fw = FUTURE_WEIGHT_MAP[`${+hasTr},${+hasCity},${+hasInd}` as keyof typeof FUTURE_WEIGHT_MAP];
-
-  const total = trSc * fw.tr + citySc * fw.city + popSc * fw.pop + indSc * fw.ind;
+  // 고정 가중치 + 0~100 정규화 (세션511 — 동적 재분배 폐기)
+  //
+  // 옛 동적 재분배는 호재가 없으면 그 몫을 100% 인구로 보냈다. 인구는 실측 중앙 75인데 교통 상한은
+  // 72라, **호재를 가진 단지가 구조적으로 손해**를 봤다(보유 762곳 중 486곳 역전).
+  // 고정 가중치에서는 각 항이 비음수 가산이라 채우면 오르기만 한다 — 실측이 아니라 정의로 보장된다.
+  //
+  // 정규화가 필요한 이유: 도시·산업 축의 최고 등급이 80이라 raw 총점은 95.5 를 못 넘는다.
+  // 그대로 두면 다른 카테고리(전부 0~100)와 눈금이 어긋난다. 나누기는 단조라 순위는 안 바뀐다.
+  const raw =
+    popSc * FUTURE_WEIGHTS.pop + trSc * FUTURE_WEIGHTS.tr + citySc * FUTURE_WEIGHTS.city + indSc * FUTURE_WEIGHTS.ind;
+  const total = (raw / FUTURE_RAW_MAX) * 100;
   const pg = apt.popGrowth;
   return {
     total: Math.round(Math.max(0, Math.min(total, 100))),
@@ -136,7 +151,15 @@ export function scoreFuture(apt: Apt): Res {
         name: "교통개발",
         score: Math.round(trSc),
         info: transitDev || "없음",
-        detail: transitDev ? `${transitDev} (GTX/KTX역 ×1.2배, 1km내 100점, 2km 70점)` : "교통개발 없음 (0점)",
+        // 문구는 점수표에서 뽑는다 — 숫자를 박으면 표만 바뀌었을 때 "0점인데 만점 설명"이 남는다
+        // (세션499 등급 문구 사고와 같은 자리).
+        detail: !trMatch
+          ? "교통개발 없음 (0점)"
+          : TRANSIT_OPEN.includes(trStatus)
+            ? `${transitDev} — 이미 개통해 입지 점수(지하철 거리)에 반영됩니다 (미래가치 0점)`
+            : `${transitDev} · ${devDist}km — 확실성 ${TRANSIT_CERTAINTY[trStatus] ?? TRANSIT_CERTAINTY_DEFAULT}점` +
+              ` + 거리 ${tierMax(devDist, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE)}점` +
+              ` + ${TRANSIT_LINE_TYPE[trMatch[1]] ?? "기타"} ${TRANSIT_GRADE[TRANSIT_LINE_TYPE[trMatch[1]] ?? ""] ?? TRANSIT_GRADE_DEFAULT}점`,
       },
       {
         name: "도시개발",
