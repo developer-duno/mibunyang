@@ -23,7 +23,8 @@ const sem = createSemaphore(5); // 동시 5건 (Kakao 초당 50건 중 안전 �
 
 /**
  * @typedef {{ x: string; y: string; distance: string; place_name?: string }} KakaoPlaceItem
- * @typedef {{ documents: KakaoPlaceItem[] }} KakaoPlacesResponse
+ * @typedef {{ total_count?: number, pageable_count?: number, is_end?: boolean }} KakaoPlacesMeta
+ * @typedef {{ documents: KakaoPlaceItem[], meta?: KakaoPlacesMeta }} KakaoPlacesResponse
  * @typedef {{ id: string; name: string | null; lat: number | null; lng: number | null }} InfraAptRow
  */
 
@@ -71,17 +72,31 @@ export function buildFreshIds(rows, nowMs = Date.now(), days = FRESH_DAYS) {
 }
 
 /**
+ * 반경 안 개수 + 최근접 1건을 돌려준다.
+ *
+ * ⚠️ **개수는 `documents.length` 가 아니라 `meta.total_count` 다.** 예전에는 `size=5` 로 받아
+ * 배열 길이를 셌는데, 그러면 반경 안에 몇 개가 있든 **최대 5로 잘린다.** 그런데 채점 만점 기준은
+ * 편의점 10 · 카페 20 이라(`INFRA_CONFIG`) 그 두 항목은 **어떤 단지도 만점에 도달할 수 없었다.**
+ * 세션498 이 버스 정류장에서 똑같은 사고를 겪었다 — "수집 상한 < 만점 기준" 은 배점을 조용히 죽인다.
+ *
+ * `meta.total_count` 는 radius 필터가 적용된 값이다(2026-08-13 실측: 같은 좌표에서 반경만 바꾸니
+ * 200m→51 · 500m→212 · 1km→551 · 2km→1,534 로 변했다). `pageable_count`(최대 45)와 달리
+ * 상한이 없다. 공식 문서: developers.kakao.com/docs/ko/local/dev-guide
+ *
+ * `sort=distance` 라 첫 건이 최근접이므로 거리는 `size=1` 로도 그대로 얻는다.
+ *
  * @param {number} lat
  * @param {number} lng
  * @param {string} keyword
  * @param {number} radius
- * @returns {Promise<KakaoPlaceItem[]>}
+ * @returns {Promise<{ count: number, nearest: KakaoPlaceItem | null }>}
  */
-async function searchKakao(lat, lng, keyword, radius) {
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=5`;
+export async function searchKakao(lat, lng, keyword, radius) {
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=1`;
   const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
   const data = /** @type {KakaoPlacesResponse} */ (await res.json());
-  return data.documents || [];
+  const docs = data.documents || [];
+  return { count: data.meta?.total_count ?? docs.length, nearest: docs[0] ?? null };
 }
 
 /**
@@ -147,10 +162,9 @@ async function main() {
       const row = { apartment_id: apt.id, updated_at: new Date().toISOString() };
 
       for (const cat of CATEGORIES) {
-        const results = await searchKakao(Number(apt.lat), Number(apt.lng), cat.keyword, cat.radius);
-        const first = results[0];
-        row[cat.key] = results.length;
-        row[`${cat.key}_dist`] = first ? Math.round(Number(first.distance)) : null;
+        const { count, nearest } = await searchKakao(Number(apt.lat), Number(apt.lng), cat.keyword, cat.radius);
+        row[cat.key] = count;
+        row[`${cat.key}_dist`] = nearest ? Math.round(Number(nearest.distance)) : null;
         await sleep(120);
       }
 

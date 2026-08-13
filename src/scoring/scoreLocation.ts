@@ -24,6 +24,7 @@ import {
   AIR_QUALITY_TIERS,
   AIR_QUALITY_DEFAULT,
   ENV_MAX,
+  infraSaturation,
   AIR_PM10_TIERS,
   AIR_PM10_DEFAULT,
   AIR_O3_TIERS,
@@ -93,7 +94,9 @@ export function scoreLocation(apt: Apt): Res {
     m: cfg.max,
     w: cfg.weight,
   }));
-  const infra = infraItems.reduce((s, i) => s + Math.min(i.v / i.m, 1) * i.w * 100, 0);
+  // 체감 곡선 — 병원 0→5개의 차이는 크고 100→163개의 차이는 사실상 없다. 선형(v/max)은
+  // 그 둘을 같은 폭으로 세어 흔한 동네를 과소평가한다(INFRA_CONFIG·infraSaturation 주석 참조).
+  const infra = infraItems.reduce((s, i) => s + infraSaturation(i.v, i.m) * i.w * 100, 0);
 
   const view = apt.view as string | undefined;
   const sunlight = apt.sunlight as string | undefined;
@@ -172,7 +175,23 @@ export function scoreLocation(apt: Apt): Res {
         name: "생활인프라",
         score: Math.round(infra),
         info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy} 보육${apt.childcare ?? 0}`,
-        detail: `병원${apt.hospital}/5(1km) 마트${apt.mart}/3(1km) 편의점${apt.conv}/10(500m) 공원${apt.park}/4(1km) 약국${apt.pharmacy}/4(500m) 어린이집${apt.childcare ?? 0}/5(1km) 응급의료${apt.emergency ?? 0}/3(10km)`,
+        // 분모는 INFRA_CONFIG 에서 뽑는다 — 여기에 숫자를 박으면 기준만 바뀌었을 때 문구가
+        // 안 따라와 "5개인데 5/150" 같은 거짓이 남는다(세션499 의 등급 문구 사고와 같은 자리).
+        detail: [
+          ["병원", "hospital", "1km"],
+          ["마트", "mart", "1km"],
+          ["편의점", "conv", "500m"],
+          ["공원", "park", "1km"],
+          ["약국", "pharmacy", "500m"],
+          ["어린이집", "childcare", "1km"],
+          ["응급의료", "emergency", "10km"],
+        ]
+          .map(([label, key, rad]) => {
+            const cfg = INFRA_CONFIG.find((c) => c.key === key);
+            const v = ((apt as Record<string, unknown>)[key] as number | undefined) ?? 0;
+            return `${label}${v}/${cfg?.max ?? "?"}(${rad})`;
+          })
+          .join(" "),
       },
       {
         name: "자연환경",

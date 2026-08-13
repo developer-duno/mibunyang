@@ -27,7 +27,55 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { createSemaphore, buildFreshIds, FRESH_DAYS, REQUIRED_KEYS } = await import("./infra-kakao.mjs");
+const { createSemaphore, buildFreshIds, FRESH_DAYS, REQUIRED_KEYS, searchKakao } = await import("./infra-kakao.mjs");
+const shared = await import("./_shared.mjs");
+
+// ── 개수는 meta.total_count 로 센다 (세션511) ─────────────────────────────
+//
+// 예전에는 `size=5` 로 받아 `documents.length` 를 셌다. 그러면 반경 안에 몇 개가 있든 **최대 5로
+// 잘려서**, 만점 기준이 편의점 10 · 카페 20 인 두 항목은 **어떤 단지도 만점에 도달할 수 없었다**
+// (세션498 버스 정류장과 같은 "수집 상한 < 만점 기준" 사고). 되돌아가면 여기서 red 가 난다.
+
+describe("searchKakao — 개수는 meta.total_count (documents.length 로 되돌리면 red)", () => {
+  /** @param {{ total_count?: number } | undefined} meta @param {number} docCount */
+  function mockRes(meta, docCount) {
+    const documents = Array.from({ length: docCount }, (_, i) => ({
+      x: "127", y: "37", distance: String(100 + i),
+    }));
+    /** @type {any} */ (shared.fetchWithRetry).mockResolvedValue({ json: async () => ({ documents, meta }) });
+  }
+
+  it("documents 가 1건뿐이어도 total_count 를 개수로 쓴다", async () => {
+    mockRes({ total_count: 42 }, 1);
+    const { count } = await searchKakao(37.5, 127.0, "카페", 500);
+    expect(count).toBe(42); // documents.length(=1) 로 세면 실패
+  });
+
+  it("만점 기준을 넘는 개수도 잘리지 않는다 — 카페 만점 20 을 넘는 193 이 그대로 온다", async () => {
+    mockRes({ total_count: 193 }, 1);
+    const { count } = await searchKakao(37.5, 127.0, "카페", 500);
+    expect(count).toBe(193);
+  });
+
+  it("meta 가 없는 응답은 documents 길이로 폴백한다 (계약 유지)", async () => {
+    mockRes(undefined, 3);
+    const { count } = await searchKakao(37.5, 127.0, "병원", 1000);
+    expect(count).toBe(3);
+  });
+
+  it("최근접 1건의 거리는 그대로 얻는다 (sort=distance 라 첫 건이 최근접)", async () => {
+    mockRes({ total_count: 42 }, 1);
+    const { nearest } = await searchKakao(37.5, 127.0, "카페", 500);
+    expect(nearest?.distance).toBe("100");
+  });
+
+  it("0건이면 count 0 · nearest null (없음을 실패로 만들지 않는다)", async () => {
+    mockRes({ total_count: 0 }, 0);
+    const { count, nearest } = await searchKakao(37.5, 127.0, "대형마트", 1000);
+    expect(count).toBe(0);
+    expect(nearest).toBeNull();
+  });
+});
 
 // ── createSemaphore ───────────────────────────────────────────
 describe("createSemaphore", () => {
