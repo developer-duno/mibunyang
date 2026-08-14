@@ -1,4 +1,5 @@
 import { PRODUCT_MAX as _PM, TRANSIT_OPEN, PIR_SCORE_TIERS } from "@/constants/scoringTiers";
+import { NOXIOUS_PENALTY } from "@/constants/brands";
 
 // 소비자용 서브지표 해석 매핑 테이블
 // 엔진(engine.js) 수정 없이 표현 계층에서만 활용
@@ -24,6 +25,19 @@ export type SubInterpret = {
  * 따라서 `"없음"` 이 아니면 측정값이 있는 것이다.
  */
 const hasDevValue = (info?: string): info is string => !!info && info !== "없음";
+
+/**
+ * 혐오시설 `info`("장례식장,고압선,공장")에서 **점수를 깎는 시설만** 센다.
+ *
+ * ⚠️ 수집기는 감점 0인 카테고리(공장 1,097곳·장례식장 794곳 등)도 이름을 담는다
+ * (`brands.ts` `NOXIOUS_NO_PENALTY` 가 그 이유를 적어 뒀다). 그래서 **전체 개수로 세면 안 된다** —
+ * 세션512가 그렇게 세어 "감점 시설 여러 곳"을 55곳(87.3%)에 거짓으로 붙였다.
+ */
+const countPenalty = (info?: string): number =>
+  (info ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s in NOXIOUS_PENALTY).length;
 
 export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
   price: {
@@ -123,7 +137,14 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
             : "주변에 시설 있음 (감점 대상 아님)"
           : sc >= 40
             ? "감점 시설 있음 (500m 밖)"
-            : "감점 시설 여러 곳",
+            : // ⚠️ **개수는 info 에서 감점 대상만 세야 한다.** `info` 는 감점 0인 시설(공장·장례식장 등)까지
+              // 담기 때문에, 전체 개수로 세면 "여러 곳"이 55곳(87.3%)에서 거짓이 된다 —
+              // 세션512가 실제로 그 실수를 했고 적대검증이 잡았다.
+              // 감점 대상이 1개뿐인데 sc<40 이면 그것은 **가깝다는 뜻**이다(산술로 필연:
+              // 단일 시설은 500m 밖이면 40점 이상이 되므로 40 미만은 500m 이내뿐).
+              countPenalty(info) >= 2
+              ? "감점 시설 여러 곳"
+              : "감점 시설 가까움",
       benchmark: "감점 대상 = 소각장·고압선·화장장·교도소",
     },
   },
@@ -254,12 +275,15 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
             // 말하면 거짓이 된다(scoreFuture.ts 의 TRANSIT_OPEN 분기와 같은 자리).
             TRANSIT_OPEN.some((s) => info.includes(s))
             ? "이미 개통 — 입지 점수에 반영"
-            : sc >= 70
-              ? "대형 교통 호재 인접"
+            : // ⚠️ "대형"은 쓰지 않는다 — 이 점수는 **확실성 + 근접 + 노선급의 합**이라, 등급 최하위인
+              //    트램(6)·경전철(8)도 가깝고 착공 단계면 70을 넘는다(실측 24곳). 규모가 아니라
+              //    잰 것(단계·거리)을 말한다. 도시·산업축에서 "대규모 개발"을 걷어낸 것과 같은 이유.
+              sc >= 70
+              ? "착공 단계 · 가까움"
               : sc >= 40
                 ? "교통 개발 진행"
                 : "계획역 멀어 약함",
-      benchmark: "착공·공사중 + 가까울수록 높음",
+      benchmark: "착공·공사중 + 가까울수록 높음 (노선급 GTX 20 · 도시철도 15 · 트램 6)",
     },
     도시개발: {
       interpret: (sc, info) =>

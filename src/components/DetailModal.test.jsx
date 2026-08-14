@@ -475,13 +475,15 @@ describe("DetailModal StickyJumpNav", () => {
       {
         cats: {
           ...makeItem().res.cats,
-          benefit: { label: "혜택·할인", total: 3, totalWon: 1200, rate: 2.4, subs: [] },
+          benefit: { label: "혜택·할인", total: 3, totalWon: 1200, rate: 2.4, wonSource: "관리비 절감", subs: [] },
         },
       }
     );
     const { container } = render(<DetailModal {...makeProps({ item })} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
-    expect(overview.textContent).toContain("혜택 약 1,200만원 (2.4%)");
+    // ⚠️ 부분 문자열이라 옛 "총 혜택 약 …" 도 통과했다(적대검증). 파생 라벨을 잠그고 옛 것의 부재를 함께 단언.
+    expect(overview.textContent).toContain("관리비 절감 약 1,200만원 (2.4%)");
+    expect(overview.textContent).not.toMatch(/총 ?혜택 약/);
     // 점수 미니카드(5개)와는 분리된 텍스트여야 — 미니카드 라벨 목록에 "혜택"이 없다
     const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
     expect(cards.length).toBe(5);

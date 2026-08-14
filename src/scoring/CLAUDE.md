@@ -307,3 +307,20 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 **중립을 쓰고 최고점을 안 쓰는 이유(데이터 관리)**: 미수집에 최고점을 주면 수집할 이유가
 사라진다. 중립은 "재면 오를 수도 내릴 수도" 라서 수집 동기가 유지된다. 자세한 근거 수치는
 `docs/superpowers/specs/2026-08-10-unknown-defaults-neutral-plan.md` 참조.
+
+#### 문구판 — 점수뿐 아니라 **말**도 같은 원칙을 따른다 (세션512)
+
+점수를 중립으로 두고 **문구가 "없음"이라 단정하면** 손님은 여전히 거짓을 읽는다.
+
+| 원본 | 문구 |
+|---|---|
+| `null`(안 재봄) | **"미수집"** |
+| 확인된 `0`/`false` | "없음" |
+
+⚠️ **`sanitize` 가 누르는 필드는 엔진이 null 을 볼 수 없다.** 그래서 누르기 **전에** 사실을 남긴다 —
+`_noDiscount`·`_noCashback`·`_noMaint`(기존 `_noParking`·`_noFar`·`_noSunlight` 와 같은 꼴).
+이걸 빠뜨리면 코드는 맞아 보이는데 화면은 그대로다(세션512 실사고 — 단위 테스트 green, 실전 무효).
+**가드는 반드시 `calcCats` 경유**로 쓴다.
+
+축이 재는 것과 문구가 말하는 것을 맞추는 전반 원칙은
+[.claude/rules/meta/score-meaning-and-wording-are-a-pair.md](../../.claude/rules/meta/score-meaning-and-wording-are-a-pair.md).

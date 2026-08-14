@@ -13,7 +13,7 @@ function makeRes(overrides = {}) {
       price: { label: "가격 매력도", total: 70, subs: [{ info: "-3.5%", name: "적정가괴리", score: 70 }] },
       location: { label: "입지·생활권", total: 80, subs: [{ info: "역세권(500m)", name: "지하철", score: 80 }] },
       product: { label: "상품성", total: 65, subs: [] },
-      benefit: { label: "혜택·할인", total: 60, totalWon: 1500, rate: 3, subs: [] },
+      benefit: { label: "혜택·할인", total: 60, totalWon: 1500, rate: 3, wonSource: "관리비 절감", subs: [] },
       risk: { label: "안전도", total: 85, subs: [] },
       future: { label: "미래가치", total: 72, subs: [] },
     },
@@ -103,9 +103,12 @@ describe("AptCard", () => {
   });
 
   // 혜택 표시 (totalWon > 0)
-  it("혜택이 있으면 총 혜택 금액 표시", () => {
+  // ⚠️ 적대검증이 잡은 자리 — /혜택 약 …/ 는 옛 "총 혜택 약 …" 도 통과시킨다(부분 문자열).
+  //    파생 라벨(wonSource)이 실제로 쓰이는지 잠그고, 옛 하드코딩의 부재를 함께 단언한다.
+  it("혜택 금액 라벨은 wonSource 에서 파생한다 — 손으로 적은 '총 혜택'이 아니다", () => {
     render(<AptCard {...makeProps()} />);
-    expect(screen.getByText(/혜택 약 1,500만원/)).toBeInTheDocument();
+    expect(screen.getByText(/관리비 절감 약 1,500만원/)).toBeInTheDocument();
+    expect(screen.queryByText(/총 ?혜택 약/)).toBeNull();
   });
 
   it("혜택이 0이면 혜택 영역 미표시", () => {

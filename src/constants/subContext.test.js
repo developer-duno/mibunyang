@@ -273,6 +273,35 @@ describe("PRODUCT_MAX", () => {
       expect(say("location", "혐오시설", 50, "장례식장 892m")).not.toMatch(/소규모/);
     });
 
+    // ⚠️ 적대검증이 잡은 자리 — `info` 는 감점 0인 시설(공장·장례식장)까지 담으므로 전체 개수로 세면
+    //    "여러 곳"이 55곳(87.3%)에서 거짓이 된다. **감점 대상만** 세야 한다.
+    it("혐오시설: '여러 곳'은 감점 대상이 2개 이상일 때만 (공장·장례식장은 안 센다)", () => {
+      // 실데이터: 감점 대상 화장장 1개 + 감점 0인 공장 → "여러 곳"이 아니다
+      expect(say("location", "혐오시설", 33, "화장장,공장")).toBe("감점 시설 가까움");
+      expect(say("location", "혐오시설", 33, "화장장,공장")).not.toMatch(/여러/);
+      // 감점 대상 2개(소각장+고압선)면 "여러 곳"이 참
+      expect(say("location", "혐오시설", 10, "소각장,고압선,공장")).toBe("감점 시설 여러 곳");
+      // 감점 0인 시설만 잔뜩 있어도 개수로 세지 않는다
+      expect(say("location", "혐오시설", 20, "장례식장,공장,축산시설")).not.toMatch(/여러/);
+    });
+
+    // ⚠️ 적대검증 실측 — 이 항목의 판정·기준선을 통째로 옛 상태로 되돌려도 src 전체 2,782건이
+    //    초록이었다(완전 무방비). 다른 10종과 같은 꼴로 잠근다.
+    it("교통: 지하철만 재는 게 아니므로 '역세권 500m'를 기준이라 하지 않는다", () => {
+      expect(say("location", "교통", 90)).toBe("교통 우수");
+      expect(say("location", "교통", 90)).not.toMatch(/대중교통 우수/); // 옛 문구
+      expect(SUB_CONTEXT.location.교통.benchmark).not.toMatch(/역세권 500m/);
+      expect(SUB_CONTEXT.location.교통.benchmark).toMatch(/나들목|KTX/);
+    });
+
+    // ⚠️ 이 축은 확실성+근접+노선급의 합이라 트램(6)·경전철(8)도 70을 넘는다(실측 24곳).
+    //    "대형"이라 부르면 재지 않은 규모를 주장하는 것이다.
+    it("교통개발: 규모를 주장하지 않는다 — 트램도 같은 분기에 들어온다", () => {
+      const s = say("future", "교통개발", 73, "대전2호선(트램) 판암역 착공");
+      expect(s).not.toMatch(/대형/);
+      expect(s).toBe("착공 단계 · 가까움");
+    });
+
     it("자연환경·생활인프라 기준선이 엔진에 없는 숫자를 말하지 않는다", () => {
       expect(SUB_CONTEXT.location.자연환경.benchmark).not.toMatch(/55dB/); // NOISE_TIERS 에 없는 경계
       expect(SUB_CONTEXT.location.생활인프라.benchmark).not.toMatch(/마트2\+/); // 마트는 1개면 만점
