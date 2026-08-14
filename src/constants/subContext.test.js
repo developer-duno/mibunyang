@@ -71,12 +71,12 @@ describe("SUB_CONTEXT", () => {
     expect(Object.keys(SUB_CONTEXT.future)).toHaveLength(4);
   });
 
-  // interpret 3단계 검증 (높음/보통/낮음)
-  it("price.적정가 괴리도: 70→높음, 40→보통, 30→낮음", () => {
-    const fn = /** @type {(v: number) => string} */ (SUB_CONTEXT.price["적정가 괴리도"].interpret);
-    expect(fn(70)).toContain("저렴");
-    expect(fn(40)).toContain("적정");
-    expect(fn(30)).toContain("비쌈");
+  // interpret 3단계 검증 — 점수가 아니라 **값(info)** 으로 가른다 (세션512, 아래 블록 참조)
+  it("price.적정가 괴리도: +12%→저렴, +1%→적정, -12%→비쌈", () => {
+    const fn = /** @type {(v: number, i?: string) => string} */ (SUB_CONTEXT.price["적정가 괴리도"].interpret);
+    expect(fn(70, "+12.0%")).toContain("저렴");
+    expect(fn(40, "+1.0%")).toContain("적정");
+    expect(fn(30, "-12.0%")).toContain("비쌈");
   });
 });
 
@@ -217,8 +217,48 @@ describe("PRODUCT_MAX", () => {
 
     it("적정가 괴리도: '주변 대비'라 하지 않는다 — 적정가와의 괴리다", () => {
       // deviation = 적정가(주변 중앙가 × 연식·면적·브랜드 계수) 대비. 주변 단지 직접 비교가 아니다.
-      for (const sc of [90, 50, 10]) expect(say("price", "적정가 괴리도", sc)).not.toMatch(/주변/);
-      expect(say("price", "적정가 괴리도", 10)).toBe("적정가보다 비쌈");
+      for (const sc of [90, 50, 10]) expect(say("price", "적정가 괴리도", sc, "-12.0%")).not.toMatch(/주변/);
+      expect(say("price", "적정가 괴리도", 10, "-12.0%")).toBe("적정가보다 비쌈");
+    });
+
+    // ⚠️ 점수로 가르면 값과 어긋난다 — 전세가율(위)과 **같은 종류의 결함**이 옆 항목에 남아 있었다.
+    //    실측: 괴리도 양수인데 "비쌈" 10곳 · "적정가 수준" 91곳 중 45곳이 ±5% 밖.
+    //    옛 점수 기반 산식으로 되돌리면 red.
+    it("적정가 괴리도: 값(info)으로 가른다 — 양수인데 '비쌈'이라 하지 않는다", () => {
+      // 옛 산식이면 sc=10 → "적정가보다 비쌈". 값은 +0.9% 라 거짓이었다.
+      expect(say("price", "적정가 괴리도", 10, "+0.9%")).toBe("적정가 수준");
+      expect(say("price", "적정가 괴리도", 10, "+0.9%")).not.toMatch(/비쌈/);
+      expect(say("price", "적정가 괴리도", 100, "+18.8%")).toBe("적정가보다 저렴");
+      expect(say("price", "적정가 괴리도", 100, "-12.0%")).toBe("적정가보다 비쌈");
+      // 옛 산식이면 sc=90 → "저렴". 값이 ±5% 안이면 "적정가 수준"이다.
+      expect(say("price", "적정가 괴리도", 90, "-3.2%")).toBe("적정가 수준");
+    });
+
+    it("적정가 괴리도: 경계 ±5 는 benchmark 문구와 한 쌍이다", () => {
+      expect(say("price", "적정가 괴리도", 50, "+5.0%")).toBe("적정가 수준");
+      expect(say("price", "적정가 괴리도", 50, "+5.1%")).toBe("적정가보다 저렴");
+      expect(say("price", "적정가 괴리도", 50, "-5.0%")).toBe("적정가 수준");
+      expect(say("price", "적정가 괴리도", 50, "-5.1%")).toBe("적정가보다 비쌈");
+      expect(SUB_CONTEXT.price["적정가 괴리도"].benchmark).toContain("±5%");
+    });
+
+    it("적정가 괴리도: 적정가를 못 만들면 판정하지 않는다 (catVerdict 와 같은 어휘)", () => {
+      // scorePrice 무데이터 분기가 내는 info. 점수(devSc 기본값)로 역산하면 거짓 판정이 된다.
+      expect(say("price", "적정가 괴리도", 50, "데이터 부재")).toBe("적정가 산출 불가");
+      expect(say("price", "적정가 괴리도", 50)).toBe("적정가 산출 불가");
+      for (const info of ["데이터 부재", undefined]) {
+        expect(say("price", "적정가 괴리도", 50, info)).not.toMatch(/저렴|비쌈|수준/);
+      }
+    });
+
+    // ⚠️ 도시·산업축은 "반경 5km 내 …없음" 인데 교통만 반경이 없어, 936곳(56.9%)이 읽는 문구가
+    //    "전국에 계획이 없다"로 읽혔다. 수집 반경은 셋 다 5km(`transit-match.mjs`).
+    it("교통개발: 어디까지 찾아봤는지 밝힌다 — 세 축이 같은 형식", () => {
+      expect(say("future", "교통개발", 0, "없음")).toBe("반경 5km 내 계획 노선 없음");
+      expect(say("future", "교통개발", 0, "없음")).not.toBe("계획 노선 없음"); // 옛 문구 (반경 없음)
+      for (const sub of ["교통개발", "도시개발", "산업개발"]) {
+        expect(say("future", sub, 0, "없음")).toMatch(/^반경 5km 내 /);
+      }
     });
 
     it("전세가율: 높아서 낮은 점수를 '낮다'고 하지 않는다 (∩ 곡선)", () => {

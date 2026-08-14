@@ -5,7 +5,12 @@ import { CompareSheet } from "./CompareSheet";
 import { makeScoredItem } from "@/__tests__/factories";
 
 /** @returns {any} */
-function makeItem(/** @type {any} */ id, /** @type {any} */ name, total = 75) {
+function makeItem(
+  /** @type {any} */ id,
+  /** @type {any} */ name,
+  total = 75,
+  /** @type {Record<string, unknown>} */ benefitOver = {}
+) {
   return makeScoredItem(
     { id, name, region: "경기", gu: "수원시", price: 50000 },
     {
@@ -14,7 +19,8 @@ function makeItem(/** @type {any} */ id, /** @type {any} */ name, total = 75) {
         price: { label: "가격 매력도", total: 70, subs: [] },
         location: { label: "입지·생활권", total: 80, subs: [] },
         product: { label: "상품성", total: 65, subs: [] },
-        benefit: { label: "혜택·할인", total: 60, totalWon: 1000, subs: [] },
+        // 실측(세션512): 금액이 있는 548곳은 **전부** 관리비 절감 단독이다 — 기본값을 그 모양으로.
+        benefit: { label: "혜택·할인", total: 60, totalWon: 1000, wonSource: "관리비 절감", subs: [], ...benefitOver },
         risk: { label: "안전도", total: 85, subs: [] },
         future: { label: "미래가치", total: 72, subs: [] },
       },
@@ -93,10 +99,47 @@ describe("CompareSheet", () => {
     render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
     expect(screen.getByText("종합")).toBeInTheDocument();
     expect(screen.getByText("분양가")).toBeInTheDocument();
-    expect(screen.getByText("관리비 절감 등 혜택")).toBeInTheDocument();
+    expect(screen.getByText("관리비 절감")).toBeInTheDocument(); // 혜택 행 (라벨은 파생 — 아래 블록)
     expect(screen.getByText("규제현황")).toBeInTheDocument();
     expect(screen.getByText("LTV한도")).toBeInTheDocument();
     expect(screen.getByText("필요자본")).toBeInTheDocument();
+  });
+
+  // ── 혜택 행 라벨은 파생이다 (세션512) ────────────────────────────────────────
+  //
+  // ⚠️ 카드·상세는 `wonSource` 파생으로 바꿨는데 이 행만 `"관리비 절감 등 혜택"` 으로 손에 적혀
+  //    있었다. 지금은 우연히 맞지만 다른 혜택이 채워지면 조용히 거짓이 된다.
+  //    각 테스트는 **옛 하드코딩이 돌아오면 red** 가 되도록 그 문자열의 부재를 함께 단언한다
+  //    (.claude/rules/meta/guards-must-be-mutation-tested.md).
+  describe("혜택 행 라벨 (세션512)", () => {
+    it("구성이 한 종류면 그 이름을 쓴다", () => {
+      const items = [makeItem(1, "A"), makeItem(2, "B")];
+      render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
+      expect(screen.getByText("관리비 절감")).toBeInTheDocument();
+      expect(screen.queryByText("관리비 절감 등 혜택")).toBeNull(); // 옛 하드코딩
+    });
+
+    it("구성이 서로 다르면 '혜택 합계'", () => {
+      const items = [
+        makeItem(1, "A", 75, { wonSource: "관리비 절감" }),
+        makeItem(2, "B", 75, { wonSource: "분양가 할인" }),
+      ];
+      render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
+      expect(screen.getByText("혜택 합계")).toBeInTheDocument();
+      expect(screen.queryByText("관리비 절감 등 혜택")).toBeNull();
+    });
+
+    // 폴백이 "혜택" 이면 혜택 **점수** 행(라벨 "혜택")과 같은 말이 두 줄 생긴다 — 그래서 "혜택 금액".
+    it("금액이 없으면 구성을 주장하지 않는다 — '혜택 금액' (점수 행과 겹치지 않게)", () => {
+      const items = [
+        makeItem(1, "A", 75, { totalWon: 0, wonSource: "" }),
+        makeItem(2, "B", 75, { totalWon: 0, wonSource: "" }),
+      ];
+      render(<CompareSheet items={items} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
+      expect(screen.getByText("혜택 금액")).toBeInTheDocument();
+      expect(screen.getAllByText("혜택")).toHaveLength(1); // 점수 행 하나뿐
+      expect(screen.queryByText("관리비 절감 등 혜택")).toBeNull();
+    });
   });
 
   // 3개 비교
