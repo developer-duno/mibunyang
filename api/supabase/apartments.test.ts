@@ -391,9 +391,49 @@ describe('sanitize (null → 기본값)', () => {
     const d = res.json.mock.calls[0][0].data[0];
     expect(d.hugGuarantee).toBeNull();
     expect(d.hugGuarantee).not.toBe(false);
-    // 대조군: 같은 sanitizeTransaction 블록의 isRegulated·dsr40pass 는 기존대로 false 강제 유지
+    // 대조군: 같은 sanitizeTransaction 블록의 isRegulated 는 기존대로 false 강제 유지
+    //   (dsr40pass 는 세션513에 null 보존으로 바뀌었다 — 아래 전용 테스트 참조)
     expect(d.isRegulated).toBe(false);
-    expect(d.dsr40pass).toBe(false);
+  });
+
+  // 세션 513: recentTrades6m·dsr40pass 도 null 보존 (hugGuarantee 세션508 선례와 동형).
+  //   `?? 0`/`?? false` 는 "안 재봤다"를 "재봤더니 0건/미통과"로 굳혀 화면에 거짓을 낸다.
+  it('recentTrades6m null → 0 으로 강제되지 않고 null 보존', async () => {
+    const row = { id: 1, name: 'Test', region: '경기' }; // recentTrades6m 부재 = 미수집
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.recentTrades6m).toBeNull();
+    expect(d.recentTrades6m).not.toBe(0);
+  });
+
+  it('recentTrades6m 0 은 그대로 0 (?? 는 0 을 삼키지 않는다)', async () => {
+    const row = { id: 1, name: 'Test', region: '경기', recentTrades6m: 0 };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    expect(res.json.mock.calls[0][0].data[0].recentTrades6m).toBe(0);
+  });
+
+  it('dsr40pass null → false 로 강제되지 않고 null 보존', async () => {
+    const row = { id: 1, name: 'Test', region: '경기' }; // dsr40pass 부재 = 산출 불가
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.dsr40pass).toBeNull();
+    expect(d.dsr40pass).not.toBe(false);
+  });
+
+  it('dsr40pass 값이 있으면 그대로 전달 (true/false)', async () => {
+    for (const v of [true, false]) {
+      const row = { id: 1, name: 'Test', region: '경기', dsr40pass: v };
+      mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+      const res = makeRes();
+      await handler(makeReq(), res);
+      expect(res.json.mock.calls[0][0].data[0].dsr40pass).toBe(v);
+    }
   });
 
   it('hugGuarantee 값이 있으면 그대로 전달 (true/false)', async () => {

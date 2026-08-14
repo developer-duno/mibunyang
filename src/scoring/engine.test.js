@@ -1866,3 +1866,133 @@ describe("sanitize null 보존 — 실전 경로(calcCats) 회귀 가드 (세션
     expect(unknown).toBeGreaterThan(worst);
   });
 });
+
+// 세션513 — P1 5건의 회귀 가드. 위 세션508 블록과 같은 이유로 **전부 calcCats 경유**다:
+//   scoreRisk/scoreProduct 를 단독 호출하면 sanitize 를 건너뛰어, engine.ts 가 옛 폴백
+//   (`recentTrades6m ?? 0`)으로 되돌아가도 전부 초록이 된다. 실전 경로로만 잠근다.
+describe("거래량 null 보존 + 구 단위 경계 (세션513)", () => {
+  /** @param {Record<string, unknown>} apt */
+  const liq = (apt) => /** @type {any} */ (calcCats(apt).risk.subs.find((s) => s.name === "거래량"));
+
+  it("recentTrades6m null 은 '미수집'이고, 0건(최하)보다 높다", () => {
+    const unknown = liq(makeApt({ recentTrades6m: null }));
+    const zero = liq(makeApt({ recentTrades6m: 0 }));
+    expect(unknown.info).toBe("미수집");
+    // sanitize 가 `?? 0` 으로 되돌아가면 info 가 "이 구 6개월 0건"이 되어 red.
+    expect(unknown.score).toBeGreaterThan(zero.score);
+  });
+
+  it("null 중립은 알려진 값의 중앙값 구간(995건)과 같은 점수다", () => {
+    // LIQUIDITY_UNKNOWN_SCORE(45) = min:500 구간과 같은 값. 그 등가가 깨지면 red.
+    expect(liq(makeApt({ recentTrades6m: null })).score).toBe(liq(makeApt({ recentTrades6m: 995 })).score);
+  });
+
+  it("null 에 최고점을 주지 않는다 (주면 수집할 동기가 사라진다)", () => {
+    expect(liq(makeApt({ recentTrades6m: null })).score).toBeLessThan(liq(makeApt({ recentTrades6m: 5000 })).score);
+  });
+
+  it("구 단위 경계 — 옛 단지 단위 경계(30/15/5)면 전부 최상으로 뭉친다", () => {
+    const top = liq(makeApt({ recentTrades6m: 2500 })).score;
+    // 옛 경계라면 아래 셋 다 min:30 을 넘어 top 과 같아진다 → 이 단조 비교가 red.
+    expect(liq(makeApt({ recentTrades6m: 1200 })).score).toBeLessThan(top);
+    expect(liq(makeApt({ recentTrades6m: 700 })).score).toBeLessThan(liq(makeApt({ recentTrades6m: 1200 })).score);
+    expect(liq(makeApt({ recentTrades6m: 100 })).score).toBeLessThan(liq(makeApt({ recentTrades6m: 700 })).score);
+  });
+
+  it("문구가 구 단위임을 밝힌다 (단지 거래량으로 읽히면 거짓)", () => {
+    const s = liq(makeApt({ recentTrades6m: 1234 }));
+    expect(s.info).toBe("이 구 6개월 1,234건");
+    expect(s.detail).toContain("구 단위 합계");
+  });
+});
+
+describe("dsr40pass 미산정 — 점수는 그대로, 문구만 가른다 (세션513)", () => {
+  /** @param {Record<string, unknown>} apt */
+  const loan = (apt) => /** @type {any} */ (calcCats(apt).risk.subs.find((s) => s.name === "대출/잔금"));
+
+  it("null 은 '미산정' — false('주의')와 다른 말을 한다", () => {
+    expect(loan(makeApt({ dsr40pass: null })).info).toBe("미산정");
+    expect(loan(makeApt({ dsr40pass: false })).info).toBe("주의");
+    expect(loan(makeApt({ dsr40pass: true })).info).toBe("DSR통과");
+    expect(loan(makeApt({ dsr40pass: null })).detail).toContain("산출 불가");
+  });
+
+  it("null 의 점수는 false 와 같다 (실측 통과율 4.3% — true 대우는 근거 없는 최상 대우)", () => {
+    expect(loan(makeApt({ dsr40pass: null })).score).toBe(loan(makeApt({ dsr40pass: false })).score);
+    expect(loan(makeApt({ dsr40pass: null })).score).toBeLessThan(loan(makeApt({ dsr40pass: true })).score);
+  });
+
+  it("truthy 판정(`apt.dsr40pass ?`)으로 되돌리면 문구가 뭉개진다", () => {
+    // `=== true` 를 truthy 로 되돌리면 null 이 false 와 같은 "주의" 로 떨어져 red.
+    expect(loan(makeApt({ dsr40pass: null })).info).not.toBe(loan(makeApt({ dsr40pass: false })).info);
+  });
+
+  // ⚠️ 점수 쪽 `=== true` 는 **불리언·null 입력만으로는 뮤테이션이 안 잡힌다** — `null ? 15 : 50` 과
+  //    `null === true ? 15 : 50` 이 둘 다 50 이라 truthy 로 되돌려도 결과가 같기 때문이다(세션513 실증:
+  //    이 테스트가 없을 때 뮤테이션이 green 이었다). 두 판정이 갈리는 유일한 자리 = **불리언이 아닌
+  //    truthy 값**. DB·JSON 이 1/"Y" 를 흘리면 truthy 판정은 그걸 "DSR 통과"로 받아들여, 문구는
+  //    "미산정"인데 점수만 통과인 어긋남을 만든다. 그 자리를 못 박는다.
+  it("불리언이 아닌 truthy(1)는 통과로 치지 않는다 — 문구와 점수가 함께 미산정", () => {
+    const odd = loan(makeApt({ dsr40pass: 1 }));
+    expect(odd.info).toBe("미산정");
+    expect(odd.score).toBe(loan(makeApt({ dsr40pass: null })).score);
+    // truthy 로 되돌리면 score 가 true 와 같아져 red.
+    expect(odd.score).not.toBe(loan(makeApt({ dsr40pass: true })).score);
+  });
+});
+
+describe("주차 폴백 — 분모 교정 + 상식 클램프 + '추정' 표기 (세션513)", () => {
+  /** @param {Record<string, unknown>} apt */
+  const park = (apt) => /** @type {any} */ (calcCats(apt).product.subs.find((s) => s.name === "주차"));
+  // parkingRatio 를 비워야 _noParking 이 서고 폴백 분기로 들어간다.
+  /** @param {Record<string, unknown>} o */
+  const fb = (o) => makeApt(/** @type {any} */ ({ parkingRatio: null, ...o }));
+
+  it("분모는 총세대와 일반분양 중 **큰 쪽** — 작은 분모로 되돌리면 비율이 부풀려진다", () => {
+    // 주차 600면 / 총 600세대 = 1.00. 옛 분모(일반분양 300)면 2.00 으로 뻥튀기돼 만점권이 된다.
+    const s = park(fb({ units: 600, presaleGeneralSupply: 300, presaleParking: 600 }));
+    expect(s.info).toBe("추정 1.00대/세대");
+    expect(s.score).toBeLessThan(park(fb({ units: 600, presaleGeneralSupply: 300, presaleParking: 1200 })).score);
+  });
+
+  it("units 가 비어도 일반분양 세대로 분모를 세운다 (1 로 나눠 폭발하지 않는다)", () => {
+    expect(park(fb({ units: 0, presaleGeneralSupply: 400, presaleParking: 500 })).info).toBe("추정 1.25대/세대");
+  });
+
+  it("3대/세대 초과는 폴백을 포기한다 (물리적으로 있을 수 없는 값 = 원천 오염)", () => {
+    const s = park(fb({ units: 100, presaleGeneralSupply: 100, presaleParking: 900 }));
+    expect(s.info).toBe("정보 없음");
+    expect(s.info).not.toContain("추정");
+  });
+
+  it("폴백을 쓴 단지는 '정보 없음'이라 말하지 않는다 (점수와 화면이 어긋나던 자리)", () => {
+    const s = park(fb({ units: 500, presaleGeneralSupply: 500, presaleParking: 800 }));
+    expect(s.info).toBe("추정 1.60대/세대");
+    expect(s.detail).toContain("청약 공급자료 기반 추정");
+  });
+});
+
+describe("브랜드 — resolveBuilder 정규화 + scoreProduct 배선 (세션513)", () => {
+  /** @param {string} builder */
+  const brand = (builder) =>
+    /** @type {any} */ (calcCats(makeApt({ builder })).product.subs.find((s) => s.name === "브랜드"));
+
+  it("법인격·공백만 다른 표기를 같은 회사로 본다", () => {
+    const base = brand("GS건설");
+    for (const v of ["지에스건설(주)", "지에스건설 주식회사", "㈜GS건설", "GS건설 주식회사"]) {
+      expect(brand(v).score).toBe(base.score);
+      expect(brand(v).info).toBe(base.info);
+    }
+    expect(brand("디엘이앤씨 주식회사").score).toBe(brand("DL이앤씨").score);
+  });
+
+  it("정규화를 제거하면 미등재 5점으로 떨어진다", () => {
+    // resolveBuilder 의 정규화 분기를 빼면 아래가 5(기타)가 되어 red.
+    expect(brand("지에스건설 주식회사").score).toBeGreaterThan(5);
+    expect(brand("에이치디씨현대산업개발 주식회사").score).toBeGreaterThan(5);
+  });
+
+  it("모르는 회사는 그대로 미등재 5점 (정규화가 아무나 구제하지 않는다)", () => {
+    expect(brand("듣도보도못한건설 주식회사").score).toBe(5);
+  });
+});

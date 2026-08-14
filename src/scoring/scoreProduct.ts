@@ -1,4 +1,4 @@
-import { BRAND_TIER, LAYOUT_SCORE } from "@/constants/brands";
+import { BRAND_TIER, LAYOUT_SCORE, resolveBuilder } from "@/constants/brands";
 import {
   tierMin,
   tierMax,
@@ -47,7 +47,10 @@ const IS_DEV =
  * Object.values(PRODUCT_MAX).reduce((a, b) => a + b, 0) === 100  // true
  */
 export function scoreProduct(apt: Apt): Res {
-  const builder = (apt.builder ?? "기타") as string;
+  // 세션513: `resolveBuilder` 경유. 옛 코드는 `apt.builder` 를 BRAND_TIER 에 직조회해서,
+  //   "수집기가 저장 전에 이미 정규화해 뒀다"는 가정에 기대고 있었다 — 그 가정이 깨지면
+  //   ("주식회사 대우건설" 같은 표기) 조용히 미등재 5점으로 떨어진다. 여기서 한 번 더 정규화한다.
+  const builder = resolveBuilder(apt.builder as string | null | undefined);
   const brand = (BRAND_TIER as Record<string, { score: number; tier: string }>)[builder];
   if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${builder}"`);
   const b = brand || { score: 5, tier: "기타" };
@@ -63,10 +66,16 @@ export function scoreProduct(apt: Apt): Res {
   if (apt.hasPool) unitSc = Math.min(unitSc + 3, 15);
   // presaleParking 폴백: parkingRatio 기본값(0.5)이고 presaleParking 있으면 대체
   const parkingRatio = (apt.parkingRatio ?? 0.5) as number;
-  const effectivePR =
-    apt._noParking && apt.presaleParking != null
-      ? apt.presaleParking / Math.max((apt.presaleGeneralSupply ?? units) as number, 1)
-      : parkingRatio;
+  // 세션513 분모 교정: 옛 분모 `presaleGeneralSupply ?? units` 는 **일반분양 세대수**를 우선 썼는데,
+  //   그건 총세대의 부분집합일 수 있다(특별공급·조합원분 제외). 주차대수는 단지 전체 기준이므로
+  //   작은 분모와 짝지으면 비율이 부풀려진다 — 실측 78곳 중 만점권(1.5↑)이 35곳이었다.
+  //   둘 중 **큰 쪽**을 쓰면 19곳으로 줄고, 3대/세대 초과(물리적으로 있을 수 없는 값)도 12→8곳.
+  const parkDenom = Math.max(units, (apt.presaleGeneralSupply ?? 0) as number, 1);
+  const fallbackPR = apt._noParking && apt.presaleParking != null ? (apt.presaleParking as number) / parkDenom : null;
+  // 상식 클램프: 교정 후에도 3대/세대를 넘는 8곳은 presaleParking 자체가 오염된 것으로 본다
+  //   (총 주차면수 대신 다른 수가 들어왔을 자리). 폴백을 포기하고 parkingRatio 기본값으로 되돌린다.
+  const usableFallbackPR = fallbackPR != null && fallbackPR <= 3 ? fallbackPR : null;
+  const effectivePR = usableFallbackPR ?? parkingRatio;
   const parkSc: number = tierMin(effectivePR, PARKING_TIERS, PARKING_LOW_SCORE);
   const floorAreaRatio = (apt._noFar ? 300 : apt.floorAreaRatio) as number;
   const farSc: number = tierMax(floorAreaRatio, FAR_TIERS, FAR_HIGH_SCORE);
@@ -110,10 +119,21 @@ export function scoreProduct(apt: Apt): Res {
       {
         name: "주차",
         score: parkSc,
-        info: apt._noParking ? "정보 없음" : `${parkingRatio}대/세대`,
-        detail: apt._noParking
-          ? "미수집 (기준: 1.5↑우수, 1.3↑양호, 1.1↑보통)"
-          : `${parkingRatio}대/세대 (우수 1.5↑, 양호 1.3↑, 보통 1.1↑)`,
+        // 세션513: 폴백을 **실제로 쓴** 단지는 "정보 없음"이 아니다 — 그 값으로 채점하고 있으니
+        //   화면에 "정보 없음"이라 쓰면 점수와 어긋난다(35곳이 만점권인데 정보 없음이라 표시됐다).
+        //   폴백을 포기했거나(오염 클램프) 원천이 없으면 기존 "미수집" 문구를 유지한다.
+        info:
+          usableFallbackPR != null
+            ? `추정 ${usableFallbackPR.toFixed(2)}대/세대`
+            : apt._noParking
+              ? "정보 없음"
+              : `${parkingRatio}대/세대`,
+        detail:
+          usableFallbackPR != null
+            ? `추정 ${usableFallbackPR.toFixed(2)}대/세대 (청약 공급자료 기반 추정 · 우수 1.5↑, 양호 1.3↑, 보통 1.1↑)`
+            : apt._noParking
+              ? "미수집 (기준: 1.5↑우수, 1.3↑양호, 1.1↑보통)"
+              : `${parkingRatio}대/세대 (우수 1.5↑, 양호 1.3↑, 보통 1.1↑)`,
       },
       {
         name: "용적률",

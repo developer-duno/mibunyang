@@ -36,6 +36,19 @@ describe("FIELD_META", () => {
     expect(FIELD_META.builder.fmt("현대건설")).toContain("1군Super");
   });
 
+  // 세션513 — fmt 가 resolveBuilder 를 거치지 않으면 법인격 표기 변형이 전부 "(기타)"로 떨어진다.
+  it("builder fmt: 법인격 표기 변형도 resolveBuilder 로 등급을 찾는다", () => {
+    expect(FIELD_META.builder.fmt("지에스건설 주식회사")).toBe("지에스건설 주식회사 (1군Super)");
+    expect(FIELD_META.builder.fmt("디엘이앤씨 주식회사")).toBe("디엘이앤씨 주식회사 (1군)");
+  });
+
+  // 세션513 — 조합·신탁·공공은 배점표의 "기타(3군·미등재 5점)"가 아니라 브랜드 등급의 대상이 아니다.
+  it('builder fmt: 조합·신탁·공공 → "(브랜드 해당없음)" — "(기타)"는 3군 건설사로 읽힌다', () => {
+    expect(FIELD_META.builder.fmt("한국토지주택공사")).toBe("한국토지주택공사 (브랜드 해당없음)");
+    expect(FIELD_META.builder.fmt("(주)무궁화신탁")).toContain("브랜드 해당없음");
+    expect(FIELD_META.builder.fmt("둔촌주공아파트주택재건축정비사업조합")).toContain("브랜드 해당없음");
+  });
+
   it("builder fmt: 미등록 시공사 → (기타)", () => {
     expect(FIELD_META.builder.fmt("무명건설")).toContain("기타");
   });

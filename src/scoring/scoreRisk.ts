@@ -7,6 +7,7 @@ import {
   UNSOLD_UNKNOWN_SCORE,
   LIQUIDITY_TIERS,
   LIQUIDITY_LOW_SCORE,
+  LIQUIDITY_UNKNOWN_SCORE,
   CREDIT_GRADE_SCORES,
   CREDIT_DEFAULT,
   BUILDER_DEBT_UNKNOWN_ADJ,
@@ -78,7 +79,10 @@ export function scoreRisk(apt: Apt): Res {
   // unsoldRate null = 미분양률 데이터 미확인 (청약홈 회차 폭발값이 100% 초과로 무력화된 경우 포함, 세션 445).
   //   sanitize(engine.ts)가 null 을 보존 → 여기서 units<=1 과 동일하게 중립(UNSOLD_UNKNOWN_SCORE) 처리.
   const unsoldRate = apt.unsoldRate as number | null;
-  const recentTrades6m = (apt.recentTrades6m ?? 0) as number;
+  // 세션513: null 보존(engine.ts sanitize 가 더 이상 0 으로 채우지 않는다). 옛 `?? 0` 은 미수집
+  //   180곳을 "6개월 0건"으로 단정해 최하점을 물렸다. null → LIQUIDITY_UNKNOWN_SCORE(중립).
+  //   ⚠️ 이 값은 **구(區) 단위 합계**다 — 경계는 scoringTiers.ts LIQUIDITY_TIERS 주석 참조.
+  const recentTrades6m = apt.recentTrades6m as number | null;
   // 세션 501: 공급량 주 지표 = 주택보급률(재고), 보정 = 인허가율(미래 공급).
   // 옛 코드는 `apt.supplyRatio ?? 150`(인허가율)을 주 지표로 썼는데 등급 경계가 보급률용이라
   // 어긋나 있었다 — 상세는 scoringTiers.ts HOUSING_SUPPLY_LEVEL_TIERS 주석.
@@ -98,7 +102,8 @@ export function scoreRisk(apt: Apt): Res {
   const unsoldSc: number = unsoldUnknown
     ? UNSOLD_UNKNOWN_SCORE
     : tierMax(unsoldRate, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE);
-  let liqSc: number = tierMin(recentTrades6m, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE);
+  let liqSc: number =
+    recentTrades6m == null ? LIQUIDITY_UNKNOWN_SCORE : tierMin(recentTrades6m, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE);
   // 매물 과잉 페널티: naverSellCount 기반
   const listingPen =
     apt.naverSellCount != null && apt.naverSellCount > LISTING_FLOOD_THRESHOLD
@@ -108,7 +113,13 @@ export function scoreRisk(apt: Apt): Res {
         : 0;
   liqSc = Math.min(liqSc + listingPen, 100);
   // 세션508: loanFree 는 이진 필드 — `=== false`(확인된 유이자)일 때만 +15. null(모름)·true 무페널티.
-  const loanSc = (apt.dsr40pass ? 15 : 50) + (apt.loanFree === false ? 15 : 0);
+  // 세션513: `apt.dsr40pass` → `=== true`. API 가 이제 null 을 보존하므로(옛 `?? false`) 명시한다.
+  //   ⚠️ null 이 false 와 같은 50 인 것은 **의도**다. 이 필드는 세션508 의 "이진 필드는 `=== false`
+  //   일 때만 불이익" 규칙을 따르지 않는다 — 그 규칙은 미수집이 다수이고 실측 보유율이 높을 때
+  //   ("우리 모수는 대체로 갖췄다") 성립한다. 여기는 반대로 확인된 통과가 4.3%(70/1,646)뿐이라,
+  //   미산정 121곳을 true 대우하면 실측 4.3%만 받는 최상 대우를 근거 없이 주게 된다.
+  //   → 점수는 "알려진 값들의 다수 구간"인 50 으로 두고, **문구만** 미통과와 갈라 준다(아래 sub).
+  const loanSc = (apt.dsr40pass === true ? 15 : 50) + (apt.loanFree === false ? 15 : 0);
   let finSc: number =
     (hugGuarantee === false ? 40 : 0) +
     ((CREDIT_GRADE_SCORES as Record<string, number>)[String(builderCreditGrade)] ?? CREDIT_DEFAULT) +
@@ -224,14 +235,23 @@ export function scoreRisk(apt: Apt): Res {
       {
         name: "거래량",
         score: 100 - liqSc,
-        info: `6개월 ${recentTrades6m}건`,
-        detail: `6개월 ${recentTrades6m}건 (활발 30↑, 보통 15↑, 부진 5↓)`,
+        info: recentTrades6m == null ? "미수집" : `이 구 6개월 ${recentTrades6m.toLocaleString()}건`,
+        detail:
+          recentTrades6m == null
+            ? "구 단위 거래량 미수집 (중립)"
+            : `이 구 6개월 ${recentTrades6m.toLocaleString()}건 (활발 2,000↑, 보통 1,000↑, 한산 500↓ — 구 단위 합계)`,
       },
       {
+        // 세션513: null(미산정)을 false(미통과)와 갈라 준다. 점수는 같다 — 위 loanSc 주석 참조.
         name: "대출/잔금",
         score: 100 - loanSc,
-        info: apt.dsr40pass ? "DSR통과" : "주의",
-        detail: apt.dsr40pass ? "DSR 40% 통과 (자금조달 양호)" : "DSR 미통과 (대출 곤란 주의)",
+        info: apt.dsr40pass === true ? "DSR통과" : apt.dsr40pass === false ? "주의" : "미산정",
+        detail:
+          apt.dsr40pass === true
+            ? "DSR 40% 통과 (자금조달 양호)"
+            : apt.dsr40pass === false
+              ? "DSR 미통과 (대출 곤란 주의)"
+              : "DSR 미산정 (분양가·소득 자료 부족으로 산출 불가 — 중립)",
       },
       {
         name: "시공사 재무",

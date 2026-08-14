@@ -58,7 +58,8 @@ export interface Apt {
   //   "미분양 단지 여부" 판정은 unsoldRate(null 가능) 가 아니라 unsold(수) 로 해야 함(R1/R2 회귀 가드).
   unsold?: number | null;
   unsoldRate?: number | null;
-  recentTrades6m?: number;
+  /** 세션513: 폴백 0 제거, null 보존(모름=중립). 값은 **구(區) 단위 6개월 거래 합계**. */
+  recentTrades6m?: number | null;
   cancelRatio6m?: number | null;
   competitionRate?: number | null;
   // 청약홈 잔여세대 경쟁률 동반 필드 (정보성 — 스코어링 미사용, sanitize 무관)

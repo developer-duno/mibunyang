@@ -456,12 +456,23 @@ export const UNSOLD_RATE_TIERS: Tier[] = [
 ];
 export const UNSOLD_HIGH_SCORE = 90;
 export const UNSOLD_UNKNOWN_SCORE = 40;
+// ⚠️ `recentTrades6m` 은 **구(區) 단위 6개월 거래 합계**이지 단지 단위가 아니다. 옛 경계(30/15/5)는
+//    단지 단위를 전제로 잡혀 있어서, 구 단위 값과 맞대면 1,646곳 중 **1,427곳(97.3%)이 최상 구간**에
+//    몰렸다 — 변별력 0. 경계를 실제 분포의 사분위로 옮긴다(세션513 실측, 정적 JSON 2026-08-14,
+//    값 보유 n=1,466 / min 3 · p25 516 · **med 995** · p75 1,954 · max 8,115).
+//    세션511 "경계 먼저, 데이터 나중" 답습 — 데이터를 더 채워도 경계가 옛 자리면 동점은 안 풀린다.
 export const LIQUIDITY_TIERS: Tier[] = [
-  { min: 30, score: 5 },
-  { min: 15, score: 20 },
-  { min: 5, score: 45 },
+  { min: 2000, score: 5 }, // p75(1,954) 근방 — 거래 활발
+  { min: 1000, score: 20 }, // med(995) 근방 — 보통
+  { min: 500, score: 45 }, // p25(516) 근방 — 한산
 ];
 export const LIQUIDITY_LOW_SCORE = 80;
+/**
+ * 거래량 미수집(180곳/10.9%)의 중립 점수. **알려진 값들의 중앙값(995)이 떨어지는 구간과 같은 값**을
+ * 골랐다 — 세션508 원칙(연속형은 중립 구간을 주되 최고점은 금지: 최고점을 주면 수집할 동기가 사라진다).
+ * 옛 `?? 0` 폴백은 이 자리를 LIQUIDITY_LOW_SCORE(80, 최하)로 채웠다.
+ */
+export const LIQUIDITY_UNKNOWN_SCORE = 45;
 // 위험점수(낮을수록 안전). estimateCreditGrade(dart-builders.mjs)가 생성하는 6등급(A,A-,BBB,BB,B,CCC) 전수 커버 필수.
 // B(부채251~350%)·CCC(>350%) 누락 시 scoreRisk의 ?? CREDIT_DEFAULT(30)로 떨어져 BB(60)보다 안전하게 역전됨 (세션392 버그 정정).
 export const CREDIT_GRADE_SCORES: Record<string, number> = {
