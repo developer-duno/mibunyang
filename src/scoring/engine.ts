@@ -37,7 +37,10 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     //   → scoreRisk 가 units<=1 과 동일하게 중립(UNSOLD_UNKNOWN_SCORE) 처리. 100% 초과 폭발값을
     //   VIEW/JSON 에서 null 로 무력화한 단지가 지역 중위값 기반 임의 등급으로 오채점되던 것 방지.
     unsoldRate: num(apt.unsoldRate, null),
-    recentTrades6m: num(apt.recentTrades6m, 0),
+    // 세션513: 폴백 0 제거. 옛 값은 미수집 180곳(정적 JSON 1,646 중 10.9%)에 "6개월 0건"이라는
+    //   측정하지도 않은 사실을 만들어 LIQUIDITY_LOW_SCORE(80, 최하)로 채점했다. 위 unsoldRate(세션445)·
+    //   builderDebtRatio/noise(세션508)와 같은 결 — null → scoreRisk 가 LIQUIDITY_UNKNOWN_SCORE(중립)로 처리.
+    recentTrades6m: num(apt.recentTrades6m, null),
     cancelRatio6m: num(apt.cancelRatio6m, null),
     competitionRate: num(apt.competitionRate, null),
     crimeSafetyGrade: apt.crimeSafetyGrade != null ? num(apt.crimeSafetyGrade, null) : null,

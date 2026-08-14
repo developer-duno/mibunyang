@@ -29,10 +29,44 @@ export const BUILDER_ALIASES: Record<string, string> = {
   "(주)금호건설": "금호건설",
 };
 
+/**
+ * 법인격 표기(`㈜`·`(주)`·`주식회사`)와 공백을 걷어낸 비교용 키.
+ *
+ * 별칭 표(`BUILDER_ALIASES`)는 손으로 채우는 목록이라 표기 변형을 다 못 따라간다 —
+ * `"DL이앤씨(주)"` 는 있는데 `"디엘이앤씨 주식회사"` 는 없는 식이다. 정규화 후 대조하면
+ * 그 변형들이 한 자리로 모인다(세션513 실측: 표 그대로는 202곳 매칭인데 정규화로 **68곳 추가 구제** —
+ * "디엘이앤씨 주식회사"→DL이앤씨, "지에스건설(주)"→GS건설 등).
+ */
+const normalizeBuilderKey = (s: string): string => s.replace(/㈜|\(주\)|주식회사/g, "").replace(/\s+/g, "");
+
+/**
+ * 정규화 키 → canonical 이름 사전. `BRAND_TIER` 키 자신과 `BUILDER_ALIASES` 의 양변을 모두 담는다.
+ * 먼저 넣은 항목이 이긴다(정규화 충돌 시 BRAND_TIER 의 정식 이름 우선).
+ *
+ * ⚠️ 첫 호출 때 만든다(모듈 로드 시점 아님) — `BRAND_TIER` 가 이 함수보다 **아래**에 선언돼 있어
+ * 즉시 실행하면 TDZ(초기화 전 접근)로 죽는다. 사전은 한 번만 만들어 재사용한다.
+ */
+let normalizedBuilders: Record<string, string> | null = null;
+function getNormalizedBuilders(): Record<string, string> {
+  if (normalizedBuilders) return normalizedBuilders;
+  const map: Record<string, string> = {};
+  const put = (key: string, canonical: string): void => {
+    const k = normalizeBuilderKey(key);
+    if (k && !(k in map)) map[k] = canonical;
+  };
+  for (const canonical of Object.keys(BRAND_TIER)) put(canonical, canonical);
+  for (const [alias, canonical] of Object.entries(BUILDER_ALIASES)) put(alias, canonical);
+  normalizedBuilders = map;
+  return map;
+}
+
 export function resolveBuilder(name?: string | null): string {
   if (!name) return "기타";
   const trimmed = name.trim();
-  return BUILDER_ALIASES[trimmed] ?? trimmed;
+  const alias = BUILDER_ALIASES[trimmed];
+  if (alias) return alias;
+  // 세션513: 별칭 표에 없어도 법인격·공백만 다른 것이면 같은 회사다.
+  return getNormalizedBuilders()[normalizeBuilderKey(trimmed)] ?? trimmed;
 }
 
 export type BuilderTier = {

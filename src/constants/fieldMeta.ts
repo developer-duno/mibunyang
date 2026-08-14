@@ -1,4 +1,4 @@
-import { BRAND_TIER, LAYOUT_SCORE } from "./brands";
+import { BRAND_TIER, LAYOUT_SCORE, resolveBuilder } from "./brands";
 import { fmtPrice, fmtCompletion, fmtRecruitDate, fmtPresaleSchedule, fmtCompetitionRate } from "@/lib/format";
 
 // fmt/isEstimated 등 함수의 v/apt 매개변수는 동적 dict — DB row 타입 박제는 BACKLOG-M4c-fieldMeta-apt-type.
@@ -59,13 +59,26 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     unit: "세대",
     fmt: (v) => (v != null && v > 0 ? nk(v, "세대") : "—"),
   },
+  // 세션513: ① `resolveBuilder` 경유(표기 변형 68곳이 "기타"로 떨어지던 것 구제 — brands.ts 참조)
+  //   ② 조합·신탁·공공은 "기타"가 아니라 **해당없음**이다. "기타"는 배점표의 3군·미등재 칸(5점)을
+  //   가리키는 말인데, 애초에 브랜드 등급을 매길 대상이 아닌 시행 주체(실측 611곳/37.1%)에 그 말을 쓰면
+  //   "3군 건설사"로 읽힌다. 바로 아래 builderCreditGrade 가 같은 이유로 먼저 고쳐 둔 자리라
+  //   판정도 그 헬퍼(isBuilderNoCreditGrade)를 **그대로 재사용**한다 — 두 필드가 어긋나면 안 된다.
+  //   점수는 안 바뀐다(어느 쪽이든 brandSc 5점) — 표시만 갈린다.
   builder: {
     label: "시공사",
     section: "개요",
+    //   ⚠️ `isNotApplicable` 은 **일부러 안 단다**(아래 builderCreditGrade 와 갈리는 지점).
+    //   그 플래그는 `completeness.ts` 에서 `evalTotal = total − na` 로 **완성도 분모에서 필드를 빼는**
+    //   용도다. 신용등급은 애초에 존재하지 않는 값이라 빼는 게 맞지만, **시공사명은 수집돼 있다** —
+    //   채워진 필드를 "적용 대상 아님"으로 빼면 관리자 완성도가 근거 없이 내려간다(실측: 611곳이
+    //   평균 −0.13p·최대 −1p). 여기서 "해당없음"인 것은 이름이 아니라 **브랜드 등급**이고,
+    //   그건 아래 fmt 문구만으로 충분히 말해진다.
     fmt: (v) => {
       if (!v) return "—";
-      const b = BRAND_TIER[v];
-      return b ? `${v} (${b.tier})` : `${v} (기타)`;
+      const b = BRAND_TIER[resolveBuilder(v)];
+      if (b) return `${v} (${b.tier})`;
+      return isBuilderNoCreditGrade(v) ? `${v} (브랜드 해당없음)` : `${v} (기타)`;
     },
   },
   completion: { label: "입주예정", section: "개요", fmt: (v) => fmtCompletion(v) },

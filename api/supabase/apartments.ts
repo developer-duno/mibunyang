@@ -305,7 +305,10 @@ function sanitizeTransaction(row: any) {
   return {
     // 실거래 (위험 필드 → 비관적 기본값, 네이버 폴백)
     nearbyMedian: row.nearbyMedian ?? row.naverNearbyMedian ?? null,
-    recentTrades6m: row.recentTrades6m ?? 0,
+    // recentTrades6m 는 null 보존 (세션513, 바로 아래 hugGuarantee 세션508 선례와 동형).
+    //   `?? 0` 은 미수집(180곳/10.9%)을 "6개월 0건"으로 굳혀 거래량 최하점을 물렸다.
+    //   점수 엔진(scoreRisk)이 null=LIQUIDITY_UNKNOWN_SCORE(중립) 처리.
+    recentTrades6m: row.recentTrades6m ?? null,
     nearbyBuildYear: row.nearbyBuildYear ?? row.naverBuildYear ?? null,
     avgFloor: row.avgFloor ?? row.naverAvgFloor ?? null,
     floorRange: row.floorRange ?? null,
@@ -315,7 +318,11 @@ function sanitizeTransaction(row: any) {
     cancelRatio6m: row.cancelRatio6m ?? null,
     // 규제/보증 (engine.js scoreRisk에서 사용)
     isRegulated: row.isRegulated ?? false,
-    dsr40pass: row.dsr40pass ?? false,
+    // dsr40pass 는 null 보존 (세션513, 아래 hugGuarantee 세션508 선례와 동형). 미산정 121곳은
+    //   전부 `pir` 도 null(분양가·소득 자료 부족으로 산출 자체가 불가) — `?? false` 는 그걸
+    //   "심사해 봤더니 미통과"로 굳혀 화면에 거짓을 냈다. **점수는 바뀌지 않는다**(scoreRisk 가
+    //   null·false 를 같은 50 으로 채점 — 그 이유는 scoreRisk 의 loanSc 주석 참조). 문구만 갈린다.
+    dsr40pass: row.dsr40pass ?? null,
     // hugGuarantee 는 null 보존 (세션 508, unsoldRate 세션445 선례).
     //   수집률 0% 인데 `?? false` 로 강제하면 "모름"이 "보증 없음"으로 굳어 전 단지가 위험 페널티를 먹는다.
     //   점수 엔진(scoreRisk)이 null=무페널티 / false=+40 을 명시 처리한다.

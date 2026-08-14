@@ -223,12 +223,18 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       interpret: (sc) => (sc >= 70 ? "분양 순조" : sc >= 40 ? "미분양 주의" : "미분양 심각"),
       benchmark: "5% 이하 안전",
     },
+    // 세션513: 미수집(180곳)이 중립 점수를 받게 되면서 점수만 보면 "거래 보통"이라 말하게 된다 —
+    //   재보지도 않은 것을 보통이라 부르는 거짓이다. `info` 로 미수집을 먼저 가른다.
+    //   benchmark 는 LIQUIDITY_TIERS 와 한 쌍(구 단위 합계) — 한쪽만 바꾸면 어긋난다.
     거래량: {
-      interpret: (sc) => (sc >= 70 ? "거래 활발" : sc >= 40 ? "거래 보통" : "거래 침체"),
-      benchmark: "6개월 30건+ 활발",
+      interpret: (sc, info) =>
+        info === "미수집" ? "거래량 미수집" : sc >= 70 ? "거래 활발" : sc >= 40 ? "거래 보통" : "거래 침체",
+      benchmark: "구 6개월 2,000건+ 활발",
     },
+    // 세션513: DSR 미산정(121곳, 전부 pir 도 null)은 "대출 보통"이 아니라 재본 적이 없는 것이다.
     "대출/잔금": {
-      interpret: (sc) => (sc >= 70 ? "대출 양호" : sc >= 40 ? "대출 보통" : "대출 부담 주의"),
+      interpret: (sc, info) =>
+        info === "미산정" ? "대출 심사자료 미산정" : sc >= 70 ? "대출 양호" : sc >= 40 ? "대출 보통" : "대출 부담 주의",
       benchmark: "DSR 40% 이내",
     },
     "시공사 재무": {

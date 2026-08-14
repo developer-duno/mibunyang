@@ -361,5 +361,25 @@ describe("PRODUCT_MAX", () => {
       // 우리는 수요를 잰 적이 없다
       expect(say("risk", "공급량", 95, "보급률 93.9% 부족")).not.toMatch(/수요/);
     });
+
+    // 세션513 — 거래량 미수집(180곳)이 중립 점수를 받게 되면서, 점수만 보면 "거래 보통"이라
+    // 말하게 된다. 재보지도 않은 것을 보통이라 부르면 거짓 — info 로 먼저 가른다.
+    it('거래량: info "미수집" 이면 점수가 무엇이든 "거래량 미수집"', () => {
+      expect(say("risk", "거래량", 55, "미수집")).toBe("거래량 미수집");
+      expect(say("risk", "거래량", 55, "이 구 6개월 995건")).not.toBe("거래량 미수집");
+    });
+
+    it("거래량 benchmark 는 구 단위 경계(LIQUIDITY_TIERS)와 한 쌍", () => {
+      expect(SUB_CONTEXT.risk["거래량"].benchmark).toContain("구");
+      expect(SUB_CONTEXT.risk["거래량"].benchmark).toContain("2,000");
+      // 옛 단지 단위 경계 문구로 되돌아가면 red
+      expect(SUB_CONTEXT.risk["거래량"].benchmark).not.toContain("30건");
+    });
+
+    // 세션513 — DSR 미산정 121곳(전부 pir null)은 "대출 보통"이 아니라 재본 적이 없는 것.
+    it('대출/잔금: info "미산정" 이면 "대출 심사자료 미산정"', () => {
+      expect(say("risk", "대출/잔금", 50, "미산정")).toBe("대출 심사자료 미산정");
+      expect(say("risk", "대출/잔금", 50, "주의")).toBe("대출 보통");
+    });
   });
 });
