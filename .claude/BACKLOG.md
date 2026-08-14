@@ -93,7 +93,7 @@
   → 착수 첫 명령: `select kind, count(*), count(progression_step) from dev_plans group by kind`.
   jigu 를 켜는 쪽이 KICOX 신규 수집기보다 싸다.
 
-#### 🔴 PR-4(점수 변경) 착수 전 반드시 읽을 것 — 처방이 그대로면 새 사고
+#### ✅ PR-4(점수 변경) 착수 전 경고 — 세션513 [#400](https://github.com/developer-duno/mibunyang/pull/400) 에 5건 전부 반영 완료 (아래는 이력 보존용)
 
 - 🔴 **거래량: 구(區) 단위 통계인데 경계는 단지 단위** — `fieldMeta.ts:144-148` label "구 최근6개월 거래" ·
   `regionStatsFields.ts:63` scope:"gu". 폴백만 제거하면 **이 축이 전 단지 동점**이 된다(표시 거짓 하나를
@@ -117,32 +117,18 @@
 
 #### 🟡 손님이 읽는 안내문이 낡음 (점수 무변경, 문구만)
 
-- 🟡 **프로필 가중치 안내문 16개 수치 중 7개가 실제와 다름** — `GuideSections.tsx:32` 실거주 입지 40%→**45**,
-  `:36` 투자 가격 30%→**35** 등. **신혼부부는 0%인 혜택을 "10% 반영"이라 말한다**(`PROFILES` 실측 benefit
-  전 프로필 0). → 손으로 적지 말고 `getTopCats(PROFILES[k].w)` 로 조립.
-- 🟡 **미래가치 설명이 세션511이 폐기한 동적 재분배·키워드 시대 그대로** — "데이터 없는 항목은 인구에
-  가중치 집중" 문장은 **폐기된 동작**이고, 없는 KTX·광역철도까지 주장한다. `scoreFuture.ts:34-40` 이 직접 반박.
-- 🟡 **혜택 5종을 "점수화합니다"라고 단언** — 전 단지 미수집이고 `PROFILES` benefit 가중치는 **전부 0**
-  (종합 점수에 안 들어감). 같은 앱 `HeaderSection.tsx:158` 은 이미 정정된 문장을 쓰고 있다 — 그걸 맞출 것.
-- 🟡 **"관리비 비교 불가" 623곳 중 561곳(90%)은 실제로 비교해서 진 것** — 지역 중앙값도 단지값도 있는데
-  단지가 더 비싸 절감액 0. 미수집이 분리된 지금은 라벨 뜻이 좁아져 거짓이 또렷하다.
-  → `regionAvgMaint > 0 && avgMaint > 0` 이면 "지역 중앙값보다 비쌈 (절감 없음)". (관리자 화면 전용)
-- 🟡 **CompareSheet 라벨만 손으로 적었다** — `CompareSheet.tsx:319` "관리비 절감 등 혜택" 하드코딩 +
-  `CompareSheet.test.jsx:96` 이 그 문자열을 잠근다. 같은 커밋이 카드·상세는 `wonSource` 파생으로 바꿨는데
-  여기만 예외 — 다른 혜택이 채워지면 조용히 거짓이 된다.
+- ✅ **프로필 가중치 안내문** — 세션513 [#398](https://github.com/developer-duno/mibunyang/pull/398) `getTopCats(PROFILES[k].w)` 파생으로 교체(가드도 소스에서 수치를 읽어 대조).
+- ✅ **미래가치 설명 낡음** — 세션513 [#398](https://github.com/developer-duno/mibunyang/pull/398) ScoringEngine·HeaderSection 실산식으로 교체(KTX·광역철도·"인구에 가중치 집중" 제거, 입지 축 KTX 는 참이라 유지).
+- ✅ **혜택 "점수화합니다" 단언** — 세션513 [#398](https://github.com/developer-duno/mibunyang/pull/398) ScoringEngine+FAQ 를 HeaderSection 표준 문장으로. ★같은 PR 에서 JS 문자열 안 `&apos;` 5곳이 화면에 글자 그대로 찍히던 것도 정정(+가드).
+- ✅ **"관리비 비교 불가" 90%가 실제로 비교해서 진 것** — 세션513 [#399](https://github.com/developer-duno/mibunyang/pull/399) detail 4분기(미수집/비쌈/같음/진짜 불가). catsCache 반영은 P1 머지 후 compute-scores(늦어도 다음 daily-deploy).
+- ✅ **CompareSheet 라벨 하드코딩** — 세션513 [#399](https://github.com/developer-duno/mibunyang/pull/399) wonSource 파생(고유1=이름/2+="혜택 합계"/0="혜택 금액" — 점수 행 "혜택"과 중복 회피).
 
 #### 🟢 정리
 
-- 🟢 **`catVerdict` 의 `VERDICT.price` 는 도달 불가(죽은 코드)** — `catVerdict.ts:28~41` price 블록이
-  항상 return 한다. 세션512가 그 죽은 줄의 문구를 고쳤지만 화면엔 안 나온다("가격 매력 낮음" 실측 0곳).
-  → price 키를 빼거나 "도달하지 않는다"를 주석으로 못 박을 것.
-- 🟢 **적정가 괴리도 10곳 모순** — 괴리도 양수(+0.9%·+0.1%·0.0%)인데 sc<40 이라 "적정가보다 비쌈".
-  전세가율처럼 **값(dev)으로 가르면** 해소(dev>5 저렴 / |dev|≤5 적정 / dev<−5 비쌈). "적정가 수준" 91곳 중
-  45곳도 기준선 ±5% 를 벗어난다.
-- 🟢 **교통축만 측정 반경을 안 밝힌다** — 도시·산업은 "반경 5km 내 …없음"인데 교통만 "계획 노선 없음"
-  (936곳=56.9%). 수집 반경은 셋 다 5km(`transit-match.mjs:121`·`:31`, `industry-match.mjs:31`).
-- 🟢 **`src/components/detail/FieldVisuals.tsx`** — 세션510이 만든 **미사용 orphan**(import 0건, untracked).
-  살릴지 지울지 결정 필요.
+- ✅ **`catVerdict` 죽은 price 키** — 세션513 [#399](https://github.com/developer-duno/mibunyang/pull/399) 제거 + `Exclude<Category,"price">` 타입 잠금(되살리면 typecheck red).
+- ✅ **적정가 괴리도 판정 점수 역산** — 세션513 [#399](https://github.com/developer-duno/mibunyang/pull/399) 값(dev) 기반으로(±5 경계 = benchmark 와 한 쌍, 파싱 실패 "적정가 산출 불가").
+- ✅ **교통축 측정 반경 미명시** — 세션513 [#399](https://github.com/developer-duno/mibunyang/pull/399) "반경 5km 내 계획 노선 없음"으로 통일.
+- ✅ **`FieldVisuals.tsx` 고아** — 세션513 사장님 결정으로 삭제(untracked 라 커밋 흔적 없음).
 
 ### 세션 512 전수 조사 — 문구가 값과 어긋나던 자리 (2026-08-14, 정적 JSON n=1,646)
 
@@ -153,23 +139,14 @@
 > 원칙은 [.claude/rules/meta/score-meaning-and-wording-are-a-pair.md](rules/meta/score-meaning-and-wording-are-a-pair.md) 에 박제.
 > **아래는 점수가 바뀌어 별도 승인이 필요한 잔여분.** 조사·적대검증은 끝났고 처방 방향까지 나와 있다.
 
-- 🔴 **거래량 180곳(10.9%)이 "6개월 0건 · 거래 침체" + 최하점인데 원본은 null** — `engine.ts:40` 이
-  `recentTrades6m` 을 0 으로 폴백해 "안 재봄"이 "재보니 0"이 된다. 판정 "거래 침체" 193곳 중 180곳이
-  미수집분이고, 그중 31곳은 같은 구 형제 단지엔 거래가 잡힌다.
-  - ⚠️ **문구만 고치면 새 모순**이 생긴다 — "정보 없음"이라 써 놓고 점수는 `LIQUIDITY_LOW_SCORE`(최하).
-    세션508(noise·builderDebtRatio)처럼 **문구와 중립 점수를 한 쌍으로** 고쳐야 한다.
-  - 처방안: `engine.ts` 폴백 제거(null 보존) + `scoreRisk` 가 null 이면 중립 구간 점수.
-    `src/scoring/CLAUDE.md` §"unknown(null) 처리 원칙" 의 **연속·구간** 갈래.
-- 🔴 **대출/잔금 121곳(7.4%)이 `dsr40pass == null` 인데 전부 "주의"** — 121곳 **전부 `pir` 도 null**
-  (계산 불가 확정), 74곳은 분양가 자체가 없다. 미산정을 미통과로 단정하는 것.
-  - 처방안: 세션508 **이진** 갈래 — `=== false`(확인된 미통과)일 때만 불이익, null 은 무페널티.
-- 🟡 **주차 폴백 분모가 틀렸다** — `scoreProduct.ts:66~69` 이 `presaleGeneralSupply`(그 회차
-  일반분양 세대)를 분모로 써서 폴백 주차대수 비율이 비상식적으로 나온다(폴백 적용 78곳).
-  - ⚠️ **문구 먼저 고치면 안 된다**(적대검증 권고) — 산식을 고친 뒤에야 문구를 열 수 있다.
-  - 처방안: 분모를 `units`(총 세대수)로 바꾸거나, 값이 상식 범위를 벗어나면 폴백을 포기하고 미수집 처리.
-- 🟢 **브랜드 배점표(`BRAND_TIER`) 등급 간격 재검토** — legend 문구는 #395 로 맞췄다(1군Super 20 ·
-  1군 15 · 2군 10 · 3군·미등재 5). 남은 것은 **3군과 표 미등재가 같은 5점**이라 둘을 구분할 수
-  없다는 것. 표 미등재 1,444곳(87.7%)에 LH 등 공공기관과 대형 브랜드 표기 변형이 섞여 있다.
+- ✅ **거래량 null 폴백 + 구 단위 경계** — 세션513 [#400](https://github.com/developer-duno/mibunyang/pull/400) null 보존(엔진+API) + LIQUIDITY_TIERS 사분위 재설계(2000/1000/500) + UNKNOWN 45. 최상 몰림 61.5%→13.9%.
+- ✅ **dsr40pass 미산정 "주의" 거짓** — 세션513 [#400](https://github.com/developer-duno/mibunyang/pull/400) null 보존+문구 3분기("미산정"). ⚠️처방은 이진 갈래가 아니라 **중립=다수(미통과) 구간 50**(true 4.3%뿐 — 이진 규칙의 반례, scoreRisk 주석 참조). 점수 변동 0 실측.
+- ✅ **주차 폴백 분모** — 세션513 [#400](https://github.com/developer-duno/mibunyang/pull/400) `Math.max(units, presaleGeneralSupply)` + 3대/세대 초과 폴백 포기 + "추정 N대/세대" 표기. "정보 없음+만점권" 35→0곳.
+- ✅ **브랜드 표기 변형·해당없음** — 세션513 [#400](https://github.com/developer-duno/mibunyang/pull/400) resolveBuilder 정규화(62곳 회복) + scoreProduct·fieldMeta 배선 수리 + 조합·신탁·공공 "(브랜드 해당없음)". 잔여는 아래 신규 항목.
+- 🟢 **resolveBuilder 사본 3벌 동기화** (세션513 신규) — 프론트 `brands.ts` 만 정규화 매칭 보유.
+  `scripts/collectors/_shared.mjs:517`·`dart-builders.mjs:221` 사본은 열거식 그대로라 수집 시점
+  표기가 어긋날 수 있다(스코어링 시 resolve 로 전량 커버돼 화면 영향 0 — 급하지 않음).
+  동기화 시 세 구현이 같은 입력→같은 출력임을 잠그는 대조 테스트 동반할 것.
 
 ### 세션 512 P0-1 — 도시·산업축이 "이미 완공된 지구"를 미래가치로 센다 (사장님 결정 진행 중)
 
