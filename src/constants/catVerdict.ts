@@ -5,9 +5,11 @@ import type { Res } from "@/types/scoring";
 // 임계 70/50 = gr()(theme/index.ts) 등급 경계(B+ >=70 / C >=50)와 inclusive >= 정렬 —
 // 미니카드가 등급 배지와 결론 문구를 나란히 노출하므로 톤 모순을 0으로 맞춘다.
 // 엔진/점수 로직은 무변경: 여기는 표현 계층(CatPanel 의 서브항목 interpret 과 달리 카테고리 total 용).
-const VERDICT: Record<Category, (_t: number) => string> = {
-  // ⚠️ "주변 대비"는 세션487이 거짓 라벨로 판정한 표현이다 — 이 축은 주변 단지를 직접 비교하지 않는다.
-  price: (t) => (t >= 70 ? "가격 매력 높음" : t >= 50 ? "가격 적정 수준" : "가격 매력 낮음"),
+// ⚠️ `price` 는 이 표에 **없다** — 아래 catVerdict() 의 `k === "price"` 분기가 모든 경로에서
+//    return 하므로 여기 넣어도 도달하지 않는다(옛 price 줄은 운영 노출 0곳인 죽은 코드였다).
+//    Exclude 로 타입에서 잠근다 — 되살리면 typecheck 가 막는다.
+const VERDICT: Record<Exclude<Category, "price">, (_t: number) => string> = {
+  // ⚠️ "주변 대비"는 세션487이 거짓 라벨로 판정한 표현이다 — 이 축들은 주변 단지를 직접 비교하지 않는다.
   location: (t) => (t >= 70 ? "입지 우수" : t >= 50 ? "입지 양호" : "입지 아쉬움"),
   product: (t) => (t >= 70 ? "상품성 우수" : t >= 50 ? "상품성 무난" : "상품성 미흡"),
   risk: (t) => (t >= 70 ? "안전성 높음" : t >= 50 ? "안전성 보통" : "위험 요소 주의"),
@@ -40,6 +42,6 @@ export function catVerdict(k: string, cat: Res): string {
     //    같은 파일 benefit 이 noData 를 정직하게 빠지는 선례를 따른다.
     return "적정가 산출 불가";
   }
-  const fn = VERDICT[k as Category];
+  const fn = VERDICT[k as Exclude<Category, "price">];
   return fn ? fn(cat.total) : "—";
 }

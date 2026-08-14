@@ -123,7 +123,18 @@ export function scoreBenefit(apt: Apt): Res {
         detail:
           maintSave > 0
             ? `연 ~${maintSave.toLocaleString()}만원 (지역 중앙값 관리비 대비 월 차액 × 12개월)`
-            : unk(apt._noMaint ? null : avgMaint, "관리비 비교 불가"),
+            : apt._noMaint
+              ? "미수집"
+              : // ⚠️ 세션512 실측 — "관리비 비교 불가" 623곳 중 **561곳(90%)** 은 단지값도 지역
+                //    중앙값도 있는데 단지가 더 비싸 절감이 0인 경우였다. **비교를 했고 진 것**인데
+                //    "비교 불가"라 부르면 잰 적 없다는 뜻이 된다. 잰 사실을 그대로 말한다.
+                avgMaint > 0 && regionAvgMaint > 0
+                ? avgMaint > regionAvgMaint
+                  ? "지역 중앙값보다 비쌈 (절감 없음)"
+                  : // 중앙값은 표본 하나와 정확히 같을 수 있다(홀수 지역의 중앙값 = 어느 단지의 값).
+                    //    차액이 반올림으로 0이 되는 자리도 여기로 온다 — 그때 "비쌈"은 거짓이다.
+                    "지역 중앙값과 같음 (절감 없음)"
+                : "관리비 비교 불가",
       },
     ],
   };

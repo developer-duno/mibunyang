@@ -16,6 +16,28 @@ type CompareSheetProps = {
   showToast?: (_msg: string) => void;
 };
 
+/**
+ * 혜택 행 라벨. 카드·상세는 단지별 `wonSource`(scoreBenefit 파생)를 그대로 쓰지만, 비교표는
+ * 여러 단지가 **한 행을 공유**하므로 단지 하나의 라벨을 쓸 수 없다.
+ *
+ * ⚠️ 세션512 — 이 자리만 `"관리비 절감 등 혜택"` 으로 손에 적혀 있었다. 지금은 금액이 있는
+ * 548곳 전부가 관리비 절감 단독이라 우연히 맞지만, 다른 혜택이 채워지는 순간 조용히 거짓이 된다.
+ * 그래서 손으로 적지 않고 **실제 구성에서 파생**한다(scoreBenefit 의 wonSource 와 같은 꼴).
+ *
+ * ⚠️ 구성을 모를 때의 폴백은 카드(`wonSource || "혜택"`)와 달리 **"혜택 금액"** 이다 —
+ * 이 표에는 혜택 **점수** 행이 이미 `"혜택"` 이라는 라벨로 있어서 같은 말이 두 줄이 된다.
+ */
+function benefitRowLabel(items: CompareItem[]): string {
+  const sources = new Set(
+    items
+      .filter((it) => (it.res.cats.benefit?.totalWon ?? 0) > 0)
+      .map((it) => it.res.cats.benefit?.wonSource ?? "")
+      .filter(Boolean)
+  );
+  if (sources.size === 1) return [...sources][0];
+  return sources.size > 1 ? "혜택 합계" : "혜택 금액";
+}
+
 const btnStyle = {
   background: C.slate100,
   color: C.slate600,
@@ -316,7 +338,7 @@ export const CompareSheet = memo(function CompareSheet({
               ))}
             </tr>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              <td style={{ padding: "8px 6px", color: C.sub, fontSize: F.xs }}>관리비 절감 등 혜택</td>
+              <td style={{ padding: "8px 6px", color: C.sub, fontSize: F.xs }}>{benefitRowLabel(items)}</td>
               {items.map((it: CompareItem) => (
                 <td
                   key={it.apt.id}

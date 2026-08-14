@@ -44,8 +44,20 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     // `deviation` 은 **적정가**(주변 중앙가 × 연식·면적·브랜드 계수)와의 괴리이지 주변 단지와의 직접 비교가
     // 아니다. 세션487이 이 라벨을 이미 거짓으로 판정해 `cardChips`·`catVerdict` 는 "적정가 대비"로
     // 고쳤는데 이 표만 남아 같은 거짓을 1,572곳(95.5%)에 재생산하고 있었다.
+    // ⚠️ 점수로 가르면 값과 어긋난다 — 바로 아래 전세가율과 같은 자리다. 실측(운영 n=1,646):
+    //    괴리도가 **양수(+0.9% 등)인데 "적정가보다 비쌈"** 10곳, "적정가 수준" 91곳 중 45곳이 ±5% 밖.
+    //    `deviation` 은 이미 부호 있는 퍼센트로 `info` 에 담겨 오므로(scorePrice.ts `+18.8%`/`-3.2%`)
+    //    **값으로 전 구간을 가른다.** 경계 5 는 아래 benchmark 문구와 한 쌍 — 한쪽만 바꾸면 어긋난다.
     "적정가 괴리도": {
-      interpret: (sc) => (sc >= 70 ? "적정가보다 저렴" : sc >= 40 ? "적정가 수준" : "적정가보다 비쌈"),
+      interpret: (_sc, info) => {
+        const dev = info ? parseFloat(info) : NaN;
+        // 적정가를 못 만든 단지는 info 가 "데이터 부재" 다(scorePrice 무데이터 분기) — 점수로
+        // 역산하면 그 단지에 "비쌈/저렴"을 단정하게 된다. catVerdict.ts 와 같은 어휘로 빠진다.
+        if (!Number.isFinite(dev)) return "적정가 산출 불가";
+        if (dev > 5) return "적정가보다 저렴";
+        if (dev < -5) return "적정가보다 비쌈";
+        return "적정가 수준";
+      },
       benchmark: "적정가 ±5% 이내",
     },
     // ⚠️ 점수 곡선이 ∩ 모양이다(`scorePrice.ts` — 70~80% 가 정점, 80% 초과는 급락).
@@ -270,7 +282,9 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     교통개발: {
       interpret: (sc, info) =>
         !hasDevValue(info)
-          ? "계획 노선 없음"
+          ? // 수집 반경은 세 축 모두 5km 다(`transit-match.mjs`) — 도시·산업축과 같은 형식으로 적어
+            // "어디까지 찾아봤는지"를 밝힌다. 반경을 안 적으면 "전국에 계획이 없다"로 읽힌다.
+            "반경 5km 내 계획 노선 없음"
           : // 개통한 역은 입지 축(지하철 거리)이 이미 세므로 미래가치는 0점이다 — 그 0을 "없음"이라
             // 말하면 거짓이 된다(scoreFuture.ts 의 TRANSIT_OPEN 분기와 같은 자리).
             TRANSIT_OPEN.some((s) => info.includes(s))

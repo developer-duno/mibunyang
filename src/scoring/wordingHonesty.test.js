@@ -49,6 +49,46 @@ describe("엔진 문구 정직성 (세션512)", () => {
       expect(scoreBenefit(apt({ price: 50000 })).wonSource).toBe("");
     });
 
+    // ⚠️ 세션512 실측 — "관리비 비교 불가" 623곳 중 **561곳(90%)** 은 단지값도 지역 중앙값도
+    //    있는데 단지가 더 비싸 절감이 0인 경우였다. 비교를 **했고 진 것**인데 "비교 불가"라
+    //    부르면 잰 적 없다는 뜻이 된다.
+    //    ⚠️ 반드시 calcCats 를 지난다 — `sanitize` 가 avgMaintenanceCost 를 null→0 으로 누르므로
+    //    직접 호출 테스트는 `_noMaint` 분기를 실전과 다르게 본다([[guards-must-be-mutation-tested]]).
+    describe("관리비 — '비교 불가'와 '비교해서 진 것'을 가른다", () => {
+      /** @param {Record<string, unknown>} o @param {number|undefined} [maint] */
+      const cats = (o, maint) =>
+        calcCats(apt({ id: 1, price: 50000, region: "경기", ...o }), {
+          regionMedians: maint == null ? {} : { 경기: { pir: 5, psr: 0.8, unsoldRate: 15, supplyRatio: 100, maint } },
+        });
+      /** @param {Record<string, unknown>} o @param {number} [maint] */
+      const maintDetail = (o, maint) => sub(cats(o, maint).benefit, "관리비 절감")?.detail;
+
+      it("원본이 null 이면 '미수집' — 비교 여부를 말하지 않는다", () => {
+        expect(maintDetail({}, 20)).toBe("미수집");
+      });
+
+      it("단지값·지역 중앙값 둘 다 있고 단지가 더 비싸면 그렇게 말한다", () => {
+        expect(maintDetail({ avgMaintenanceCost: 25 }, 20)).toBe("지역 중앙값보다 비쌈 (절감 없음)");
+        // 옛 문구로 되돌리면 red — 561곳이 읽던 거짓
+        expect(maintDetail({ avgMaintenanceCost: 25 }, 20)).not.toBe("관리비 비교 불가");
+      });
+
+      it("지역 중앙값과 같으면 '비쌈'이라 하지 않는다 (중앙값 = 어느 단지의 값)", () => {
+        expect(maintDetail({ avgMaintenanceCost: 20 }, 20)).toBe("지역 중앙값과 같음 (절감 없음)");
+        expect(maintDetail({ avgMaintenanceCost: 20 }, 20)).not.toMatch(/비쌈/);
+      });
+
+      it("지역 중앙값이 없으면 그때만 '비교 불가'", () => {
+        expect(maintDetail({ avgMaintenanceCost: 25 })).toBe("관리비 비교 불가");
+      });
+
+      it("절감이 있으면 금액 문구 그대로 (점수·금액 무변경)", () => {
+        const c = cats({ avgMaintenanceCost: 15 }, 20);
+        expect(sub(c.benefit, "관리비 절감")?.detail).toMatch(/^연 ~60만원/);
+        expect(c.benefit.totalWon).toBe(60);
+      });
+    });
+
     it("관리비 비교 기준은 중앙값이다 — '평균'이라 하지 않는다", () => {
       const r = scoreBenefit(apt({ price: 50000, _regionAvgMaint: 20, avgMaintenanceCost: 15 }));
       expect(sub(r, "관리비 절감")?.detail).toMatch(/중앙값/);
