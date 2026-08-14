@@ -1,7 +1,8 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
-import { GuideSections } from "./GuideSections";
+import { PROFILES, getTopCats } from "@/constants/profiles";
+import { GuideSections, CAT_LABEL } from "./GuideSections";
 
 /**
  * 손님용 안내문이 **화면과 어긋나지 않는지** 지키는 가드 (세션 487 PR-4).
@@ -45,5 +46,49 @@ describe("GuideSections — 없는 기능을 안내하지 않는다", () => {
 
   it("자료 없음 표시(회색 빗금)도 설명한다", () => {
     expect(guideText()).toContain("회색 빗금");
+  });
+
+  /**
+   * 세션 513 — 프로필 안내의 가중치 수치가 `PROFILES` 와 어긋나 있었다(16칸 중 7칸).
+   * 여기서 **숫자를 적지 않는다** — 소스에서 읽어 렌더 결과와 대조한다.
+   * 가중치를 바꾸면 가드가 저절로 따라오고, 안내문만 옛 리터럴로 되돌리면 빨개진다.
+   */
+  describe("프로필 안내 = PROFILES 파생", () => {
+    for (const key of /** @type {import("@/constants/profiles").ProfileKey[]} */ (Object.keys(PROFILES))) {
+      it(`${key} — 상위 3개 카테고리 가중치가 PROFILES 와 일치`, () => {
+        const w = PROFILES[key].w;
+        const t = guideText();
+        expect(t).toContain(PROFILES[key].name);
+        for (const c of getTopCats(w, 3)) {
+          const want = `${CAT_LABEL[c]} ${w[c]}%`;
+          expect(t, `${key} 안내문에 "${want}" 가 없다 (손으로 적은 옛 수치로 되돌아갔나?)`).toContain(want);
+        }
+      });
+    }
+
+    // ⚠️ benefit 가중치는 5개 프로필 전부 0 이다(profiles.ts 주석). 되살리는 날
+    //    (그 주석의 ① 단계)에는 이 가드도 함께 갱신할 것 — 그때는 "혜택 N%" 가 참이 된다.
+    it('"혜택 N%" 를 말하지 않는다 — benefit 가중치가 전부 0 인 동안은 거짓', () => {
+      expect(guideText()).not.toMatch(/혜택\s*\(?\d+%/);
+    });
+  });
+
+  describe("혜택 문구 = 코드가 실제로 보는 것만", () => {
+    // 카드가 그리는 라벨은 `res.cats.benefit?.wonSource || "혜택"` 이다 (세션 512).
+    it('"총 혜택 금액" 이라 말하지 않는다', () => {
+      expect(guideText()).not.toContain("총 혜택 금액");
+    });
+
+    // 혜택 필터 판정은 `filterEngine.ts` 의 `totalWon > 0` 하나뿐.
+    it("혜택 필터를 금액 유무로 설명한다", () => {
+      expect(guideText()).toContain("혜택 금액이 있는 단지");
+    });
+  });
+
+  // JS 문자열 안의 &apos; 는 JSX 엔티티로 해석되지 않고 화면에 글자 그대로 찍힌다
+  // (세션 513 화면 실측 — 검색·최소점수·혜택필터·관심매물 4곳이 실제로 깨져 있었다).
+  // JSX 본문의 &apos; 는 파싱돼 textContent 에 안 나오므로 이 가드는 깨진 것만 잡는다.
+  it('"&apos;" 가 손님 화면에 글자 그대로 찍히지 않는다', () => {
+    expect(guideText()).not.toContain("&apos;");
   });
 });

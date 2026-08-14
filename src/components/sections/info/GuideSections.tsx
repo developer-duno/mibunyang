@@ -1,4 +1,6 @@
 import { memo } from "react";
+import { PROFILES, getTopCats } from "@/constants/profiles";
+import type { Category, ProfileKey } from "@/constants/profiles";
 import { C, F } from "@/theme";
 
 const cardStyle = {
@@ -17,6 +19,37 @@ const divider = { borderTop: `1px solid ${C.border}`, marginTop: 10, paddingTop:
 const tipBox = { background: C.blueLight, borderRadius: 8, padding: "8px 10px", marginTop: 6, marginBottom: 6 };
 const tipText = { fontSize: F.xs, color: C.blue, lineHeight: 1.6 };
 
+/**
+ * 카테고리 한글 라벨 — `admin/WeightTable.tsx` 의 CAT_LABELS 와 같은 어휘.
+ * 회귀 가드(`GuideSections.test.jsx`)가 이 라벨로 렌더 결과를 대조하므로 export 한다.
+ */
+export const CAT_LABEL: Record<Category, string> = {
+  location: "입지",
+  product: "상품",
+  price: "가격",
+  risk: "안전",
+  benefit: "혜택",
+  future: "미래",
+};
+
+/**
+ * 프로필 안내의 **이름과 가중치 수치는 `PROFILES` 에서 파생**한다 (세션 513).
+ *
+ * 옛 안내문은 "입지 40% + 상품 20% + 가격 20%" 처럼 손으로 적혀 있었고, 실제 가중치와
+ * 16칸 중 **7칸이 어긋나 있었다**(실거주 입지 45↔40, 투자 가격 35↔30·안전 30↔25, …).
+ * 특히 신혼부부 줄은 "혜택(10%)도 비중 있게 반영합니다"라고 적혀 있었는데 benefit 가중치는
+ * **5개 프로필 전부 0** 이다(profiles.ts 주석 참조) — 손님이 없는 반영을 읽고 있었다.
+ *
+ * 아래에는 수치가 없는 **정성 설명(tail)만** 적는다. 가중치가 바뀌면 안내문이 저절로 따라온다.
+ */
+const PROFILE_GUIDES: { key: ProfileKey; tail: string }[] = [
+  { key: "live", tail: "살기 좋은 곳을 찾는 분에게 추천. 교통, 학군, 생활 편의를 가장 중요하게 봅니다." },
+  { key: "invest", tail: "수익률을 중시하는 투자자용. 시세 대비 저평가 여부와 리스크를 집중 분석합니다." },
+  { key: "newlywed", tail: "합리적인 가격과 적당한 입지의 균형을 봅니다." },
+  { key: "edu", tail: "학군을 최우선으로 봅니다. 입지 가중치가 가장 높은 프로필입니다." },
+  { key: "retire", tail: "편안한 노후를 위한 프로필. 상품성(주차, 층수, 편의시설)을 중시합니다." },
+];
+
 export const GuideSections = memo(function GuideSections() {
   return (
     <>
@@ -26,33 +59,18 @@ export const GuideSections = memo(function GuideSections() {
         <div style={guideDesc}>
           상단 5개 버튼으로 분석 관점을 전환합니다. 프로필에 따라 같은 단지도 순위가 달라집니다.
         </div>
-        {[
-          {
-            title: "실거주",
-            desc: "입지 40% + 상품 20% + 가격 20% — 살기 좋은 곳을 찾는 분에게 추천. 교통, 학군, 생활 편의를 가장 중요하게 봅니다.",
-          },
-          {
-            title: "투자",
-            desc: "가격 30% + 안전 25% + 입지 15% — 수익률을 중시하는 투자자용. 시세 대비 저평가 여부와 리스크를 집중 분석합니다.",
-          },
-          {
-            title: "신혼부부",
-            desc: "가격 30% + 입지 30% + 상품 15% — 합리적인 가격과 적당한 입지의 균형. 혜택(10%)도 비중 있게 반영합니다.",
-          },
-          {
-            title: "자녀교육",
-            desc: "입지 45% + 상품 20% + 가격 15% — 학군을 최우선으로 봅니다. 입지 가중치가 가장 높은 프로필입니다.",
-          },
-          {
-            title: "은퇴",
-            desc: "입지 35% + 상품 25% + 가격 20% — 편안한 노후를 위한 프로필. 상품성(주차, 층수, 편의시설)을 중시합니다.",
-          },
-        ].map((item, i) => (
-          <div key={i} style={guideItem}>
-            <div style={guideTitle}>{item.title}</div>
-            <div style={guideDesc}>{item.desc}</div>
-          </div>
-        ))}
+        {PROFILE_GUIDES.map(({ key, tail }) => {
+          const w = PROFILES[key].w;
+          const top = getTopCats(w, 3)
+            .map((c) => `${CAT_LABEL[c]} ${w[c]}%`)
+            .join(" + ");
+          return (
+            <div key={key} style={guideItem}>
+              <div style={guideTitle}>{PROFILES[key].name}</div>
+              <div style={guideDesc}>{`${top} — ${tail}`}</div>
+            </div>
+          );
+        })}
       </div>
 
       {/* 3. 검색·필터 */}
@@ -61,7 +79,7 @@ export const GuideSections = memo(function GuideSections() {
         {[
           {
             title: "검색",
-            desc: "단지명, 건설사, 지역명을 입력하세요. 초성 검색도 지원합니다(예: &apos;ㅎㄴ&apos; → 한남, &apos;ㄷㅌ&apos; → 동탄). 검색어 우측 X 버튼으로 초기화할 수 있습니다.",
+            desc: "단지명, 건설사, 지역명을 입력하세요. 초성 검색도 지원합니다(예: 'ㅎㄴ' → 한남, 'ㄷㅌ' → 동탄). 검색어 우측 X 버튼으로 초기화할 수 있습니다.",
           },
           {
             title: "지역 필터",
@@ -85,11 +103,15 @@ export const GuideSections = memo(function GuideSections() {
           },
           {
             title: "최소 점수",
-            desc: "종합점수 기준 필터입니다. 예: &apos;70&apos; 입력 시 70점 이상 단지만 표시됩니다.",
+            desc: "종합점수 기준 필터입니다. 예: '70' 입력 시 70점 이상 단지만 표시됩니다.",
           },
           {
             title: "혜택 필터",
-            desc: "&apos;혜택&apos; 버튼을 켜면 분양가 할인, 무이자 등 혜택이 있는 단지만 표시됩니다.",
+            // 실제 판정은 `lib/filterEngine.ts` 의 `totalWon > 0` 하나뿐이다. 옛 문구가 열거하던
+            // 분양가 할인·무이자는 전 단지 미수집이라 그 이름으로 걸러지는 단지가 0곳이었다 (세션 513).
+            // ⚠️ JS 문자열 안에서 &apos; 는 JSX 엔티티로 해석되지 않고 글자 그대로 화면에 찍힌다
+            //    (세션 513 화면 실측 — JSX 본문의 &apos; 만 따옴표로 파싱된다).
+            desc: "'혜택' 버튼을 켜면 혜택 금액이 있는 단지만 표시됩니다.",
           },
         ].map((item, i) => (
           <div key={i} style={guideItem}>
@@ -137,7 +159,8 @@ export const GuideSections = memo(function GuideSections() {
           },
           { title: "입지순", desc: "교통, 학군, 생활 편의 점수가 높은 순서입니다." },
           { title: "안전순", desc: "미분양률, 시공사 재무, 시장 환경 등 리스크가 낮은 순서입니다." },
-          { title: "혜택순", desc: "분양가 할인, 무이자, 옵션 등 혜택 금액이 큰 순서입니다." },
+          // 정렬 키는 `hooks/useDataPipeline.ts` 의 `cats.benefit.totalWon` 내림차순 하나뿐 (세션 513).
+          { title: "혜택순", desc: "혜택 금액이 큰 순서입니다." },
           { title: "최신순", desc: "데이터가 최근 업데이트된 순서입니다." },
           {
             title: "미분양많은순",
@@ -181,7 +204,10 @@ export const GuideSections = memo(function GuideSections() {
             title: "핵심 정보",
             desc: "적정가 괴리도(+면 시세보다 저렴, -면 비쌈), 지하철·버스, 안전 등급이 한 줄로 요약됩니다.",
           },
-          { title: "혜택 표시", desc: "혜택이 있는 단지는 주황색 배경으로 총 혜택 금액과 혜택률(%)이 표시됩니다." },
+          // 카드가 실제로 그리는 건 `res.cats.benefit?.wonSource || "혜택"` 라벨 + 금액 + 혜택률이다
+          // (AptCard.tsx). "총 혜택"이라는 말은 세션 512 에 사라졌다 — 금액이 있는 단지는 사실상
+          // 관리비 절감 단독인데 "혜택을 다 따져본 총액"으로 읽혔기 때문 (세션 513).
+          { title: "혜택 표시", desc: "혜택이 있는 단지는 주황색 배경으로 혜택 항목과 금액, 혜택률(%)이 표시됩니다." },
         ].map((item, i) => (
           <div key={i} style={guideItem}>
             <div style={guideTitle}>{item.title}</div>
@@ -219,7 +245,7 @@ export const GuideSections = memo(function GuideSections() {
         {[
           {
             title: "관심매물 등록",
-            desc: "카드의 &apos;관심매물&apos; 버튼 또는 상세 모달의 하트 버튼으로 등록합니다. 등록된 단지는 브라우저에 저장되어 다음 방문에도 유지됩니다.",
+            desc: "카드의 '관심매물' 버튼 또는 상세 모달의 하트 버튼으로 등록합니다. 등록된 단지는 브라우저에 저장되어 다음 방문에도 유지됩니다.",
           },
           {
             title: "관심매물만 보기",

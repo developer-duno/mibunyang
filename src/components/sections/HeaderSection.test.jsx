@@ -144,6 +144,30 @@ describe("HeaderSection", () => {
     expect(screen.queryByText("관리자")).toBeNull();
   });
 
+  /**
+   * 세션 513 — 도움말의 미래가치 줄이 옛 산식("교통개발(GTX·KTX)")을 말하고 있었다.
+   * 세션511 재설계 후 노선급 표(TRANSIT_GRADE)에 KTX 는 없다 — KTX 거리는 입지 축이 잰다.
+   * ⚠️ 도움말 하단 "도시등급별 교통 보정" 각주의 KTX 는 **참**이므로 전체 텍스트로 금지하면
+   *    안 된다. 미래가치 줄 하나만 좁혀서 본다.
+   */
+  describe("도움말 — 미래가치 설명이 실제 산식과 맞는다", () => {
+    /** 도움말을 열고 '미래가치' 항목 한 줄의 글자만 뽑는다 */
+    function futureRowText() {
+      render(<HeaderSection {...defaultProps} />);
+      fireEvent.click(screen.getByLabelText("도움말"));
+      const label = screen.getByText("미래가치");
+      return label.parentElement?.textContent || "";
+    }
+
+    it("미래가치 줄에 KTX 가 없다", () => {
+      expect(futureRowText()).not.toContain("KTX");
+    });
+
+    it("미래가치 줄이 도시개발을 LH 지구 거리로 설명한다", () => {
+      expect(futureRowText()).toContain("LH 지구 거리");
+    });
+  });
+
   // 통합 홈 (VITE_FEATURE_HOME) — 데스크톱 네비 홈 항목
   describe("VITE_FEATURE_HOME flag", () => {
     afterEach(() => vi.unstubAllEnvs());
