@@ -8,7 +8,13 @@ import {
   REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, guParentCity,
   setupGracefulShutdown, clampUnsoldRate, budgetExceeded, fetchWithRetry,
+  BUILDER_ALIASES, BUILDER_CANONICALS,
 } from "./_shared.mjs";
+import {
+  resolveBuilder as brandsResolveBuilder,
+  BUILDER_ALIASES as BRANDS_BUILDER_ALIASES,
+  BRAND_TIER,
+} from "@/constants/brands";
 
 describe("resolveBuilder", () => {
   // 정방향: 원본 이름이 별칭 테이블에 없으면 원본 반환
@@ -624,5 +630,62 @@ describe("fetchWithRetry — AbortSignal (세션 496: 호출자 signal 존중, �
     } finally {
       global.fetch = originalFetch;
     }
+  });
+});
+
+// ── resolveBuilder 3벌 동기화 대조 (세션515) ──────────────────
+//
+// 같은 건설사명을 수집기(`_shared.mjs`)와 화면(`src/constants/brands.ts`)이 다르게 해석하면
+// 저장 표기와 등급 조회가 어긋난다. 세션513이 정본만 정규화 폴백을 갖도록 고쳐 사본이 뒤처져
+// 있던 것을 잇는 자리라, **두 구현이 같은 답을 내는지**를 여기서 잠근다.
+describe("resolveBuilder — brands.ts 정본과 동기화", () => {
+  const canonicals = Object.keys(BRAND_TIER);
+
+  // 법인격·공백 변형까지 만들어야 "정규화 폴백이 살아 있는가"를 실제로 묻게 된다.
+  // 정식 이름만 넣으면 열거식 사본으로 되돌려도 통과해 가드가 껍데기가 된다.
+  /** @param {string} c @returns {string[]} */
+  const variants = (c) => [
+    c, `(주)${c}`, `${c}(주)`, `주식회사 ${c}`, `㈜${c}`,
+    c.length > 2 ? `${c.slice(0, 2)} ${c.slice(2)}` : `${c} `,
+  ];
+
+  /** @type {string[]} */
+  const corpus = [...new Set([
+    ...Object.keys(BRANDS_BUILDER_ALIASES),
+    ...Object.keys(BUILDER_ALIASES),
+    ...canonicals,
+    ...canonicals.flatMap(variants),
+  ])];
+
+  it("코퍼스 전 항목에서 두 구현의 출력이 같다", () => {
+    /** @type {Array<[string, string, string]>} */
+    const mismatches = [];
+    for (const name of corpus) {
+      const mine = resolveBuilder(name);
+      const theirs = brandsResolveBuilder(name);
+      if (mine !== theirs) mismatches.push([name, mine, theirs]);
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it("코퍼스가 법인격 변형을 실제로 담고 있다(가드가 껍데기가 되는 것 차단)", () => {
+    expect(corpus.length).toBeGreaterThan(canonicals.length * 5);
+    expect(corpus).toContain("주식회사 GS건설");
+  });
+
+  it("BUILDER_ALIASES 표가 양쪽 동일하다", () => {
+    expect(BUILDER_ALIASES).toEqual(BRANDS_BUILDER_ALIASES);
+  });
+
+  it("BUILDER_CANONICALS 가 BRAND_TIER 키 목록과 동일하다", () => {
+    expect([...BUILDER_CANONICALS]).toEqual(canonicals);
+  });
+
+  it("null·빈 문자열은 양쪽 다 '기타'", () => {
+    for (const empty of [null, undefined, "", "   "]) {
+      expect(resolveBuilder(empty)).toBe(brandsResolveBuilder(empty));
+    }
+    expect(resolveBuilder(null)).toBe("기타");
+    expect(resolveBuilder("")).toBe("기타");
   });
 });

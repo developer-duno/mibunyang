@@ -89,7 +89,6 @@
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
 | `collect-emergency.yml` | 2일 | 응급의료기관 |
 | `collect-population.yml` | 5일 | 행안부 인구 증감률 |
-| `collect-housing-permits.yml` | **분기 10일** | 주택 인허가 — 세션 491 월간→분기. MOLIT API 장기 중단으로 3회 연속 ok=0. 회복(`성공 N`>0) 확인 시 월간 복귀 |
 | `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
 | `collect-housing-price.yml` | 16일 | 주택가격 (KST 17일 07:00 — 15일 migration/maintenance/building-hub 다음 날). **세션 491 문서 추가** — 그동안 이 표에 아예 없었다 |
@@ -257,8 +256,9 @@ remote: - Required status check "ci" is expected.
 ### 되돌리는 법
 
 전부 cron/트리거만 바꿨으므로 해당 줄을 원복하면 끝난다. **되돌려야 하는 신호**:
-`collect-building-hub` 가 분기 실행에서 `성공 N`>0 을 찍으면(=API 회복) 월간으로,
-`collect-housing-permits` 도 마찬가지. 감시는 monitor ⑤ `EXTERNAL_API_COLLECTORS` 가 담당하는데
+`collect-building-hub` 가 분기 실행에서 `성공 N`>0 을 찍으면(=API 회복) 월간으로.
+(`collect-housing-permits` 는 세션501에 KOSIS 로 갈아타며 워크플로 자체가 삭제됐다 — 로컬 러너 매월 11일.)
+감시는 monitor ⑤ `EXTERNAL_API_COLLECTORS` 가 담당하는데
 **월간→분기로 내렸으므로 해당 `stale_days` 기준(월간 38 / 분기 100)도 함께 맞춰야 한다.**
 
 ### 손대지 않은 것 (검증에서 기각)

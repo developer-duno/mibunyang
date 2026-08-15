@@ -12,7 +12,7 @@
  * 필요 환경변수:
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY, DART_KEY
  */
-import { loadEnv, getSupabase, log, logError, sleep, selectAll, createReporter, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, selectAll, createReporter, recordCollectorRun, normalizeBuilderKey } from "./_shared.mjs";
 
 // 세션 504: 분기마다 도는데 collector_runs 에 행을 한 번도 남기지 않아 감시 사각이었다.
 const PHASE = "dart-builders";
@@ -74,6 +74,15 @@ const BUILDER_CORP_CODES = {
   "동아건설": "01644616",
   "대방산업": "01102332",
 };
+
+/**
+ * 법인격·공백을 걷어낸 키 → `BUILDER_CORP_CODES` 정식 키.
+ * 조회하는 쪽과 표 쪽을 같은 규칙으로 정규화해 둬야 표에 공백 있는 키가 들어와도 조회가 산다.
+ * @type {Record<string, string>}
+ */
+const NORMALIZED_CORP_KEYS = Object.fromEntries(
+  Object.keys(BUILDER_CORP_CODES).map((k) => [normalizeBuilderKey(k), k]),
+);
 
 /**
  * @param {number} debtRatio
@@ -221,9 +230,10 @@ async function main() {
   function resolveBuilder(name) {
     if (BUILDER_CORP_CODES[name]) return name;
     if (ALIAS[name]) return ALIAS[name];
-    // (주), 주식회사 제거 후 재시도
-    const cleaned = name.replace(/^\(주\)|주식회사|\(주\)$/g, "").trim();
-    if (BUILDER_CORP_CODES[cleaned]) return cleaned;
+    // 법인격(㈜·(주)·주식회사)·공백 제거 후 재시도 — 정규화 규칙은 _shared 와 한 벌
+    const cleaned = NORMALIZED_CORP_KEYS[normalizeBuilderKey(name)];
+    if (cleaned) return cleaned;
+    // DART 는 "찾을 수 있나" 를 묻는 자리라 못 찾으면 null (이름 통과 금지)
     return null;
   }
   const targetMap = new Map();

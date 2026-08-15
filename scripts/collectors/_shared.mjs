@@ -511,12 +511,62 @@ export const BUILDER_ALIASES = {
 };
 
 /**
+ * `src/constants/brands.ts` 의 `BRAND_TIER` 키 목록 사본.
+ *
+ * 수집기는 런타임이 순수 node 라 `.ts` 정본을 import 할 수 없어 여기에 복제한다.
+ * 두 목록이 어긋나면 `_shared.test.mjs` 의 대조 테스트가 red 를 낸다.
+ * @type {readonly string[]}
+ */
+export const BUILDER_CANONICALS = [
+  "현대건설", "삼성물산", "GS건설", "롯데건설", "대우건설",
+  "HDC현대산업개발", "DL이앤씨", "포스코이앤씨", "대림산업",
+  "한화건설", "호반건설", "SK에코플랜트", "제일건설", "계룡건설",
+  "금호건설", "태영건설",
+];
+
+/**
+ * 법인격 표기(`㈜`·`(주)`·`주식회사`)와 공백을 걷어낸 비교용 키.
+ * `src/constants/brands.ts` 의 동명 함수와 **같은 정규식**이어야 한다(대조 테스트가 잠근다).
+ * @param {string} s
+ * @returns {string}
+ */
+export function normalizeBuilderKey(s) {
+  return s.replace(/㈜|\(주\)|주식회사/g, "").replace(/\s+/g, "");
+}
+
+/**
+ * 정규화 키 → canonical 이름 사전. `BUILDER_CANONICALS` 자신과 `BUILDER_ALIASES` 의 양변을 담는다.
+ * 먼저 넣은 항목이 이긴다(정규화 충돌 시 정식 이름 우선). 첫 호출 때 한 번만 만든다.
+ * @type {Record<string, string> | null}
+ */
+let normalizedBuilders = null;
+/** @returns {Record<string, string>} */
+function getNormalizedBuilders() {
+  if (normalizedBuilders) return normalizedBuilders;
+  /** @type {Record<string, string>} */
+  const map = {};
+  /** @param {string} key @param {string} canonical @returns {void} */
+  const put = (key, canonical) => {
+    const k = normalizeBuilderKey(key);
+    if (k && !(k in map)) map[k] = canonical;
+  };
+  for (const canonical of BUILDER_CANONICALS) put(canonical, canonical);
+  for (const [alias, canonical] of Object.entries(BUILDER_ALIASES)) put(alias, canonical);
+  normalizedBuilders = map;
+  return map;
+}
+
+/**
  * @param {string | null | undefined} name
  * @returns {string}
  */
 export function resolveBuilder(name) {
   if (!name) return "기타";
-  return BUILDER_ALIASES[name.trim()] ?? name.trim();
+  const trimmed = name.trim();
+  const alias = BUILDER_ALIASES[trimmed];
+  if (alias) return alias;
+  // 세션513: 별칭 표에 없어도 법인격·공백만 다른 것이면 같은 회사다.
+  return getNormalizedBuilders()[normalizeBuilderKey(trimmed)] ?? trimmed;
 }
 
 // ── 문자열 유사도 (Python SequenceMatcher 포팅) ─────────────
