@@ -50,7 +50,7 @@
 | `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
-### 매월 (18개) + 수동 전용 (4개)
+### 매월 (13개) + 수동 전용 (4개)
 
 > **세션 288~289: KOSIS 의존 10개 GH 폐기 → 집서버 로컬 러너 이전.** kosis.kr 이 GitHub 러너(해외
 > Azure IP)를 차단해 `collect-{unsold-kosis,market-stats,migration,jeonse-price-index,regional-economy,fertility-rate,housing-supply-ratio,medical-access,avg-income,sale-price-index}.yml`
@@ -63,6 +63,17 @@
 > `collect-childcare.yml` 의 info step 제거(Kakao step 만 GH 잔존). 수집 = `scripts/childcare-local-runner.mjs`
 > (Windows 작업 `MibunyangChildcareLocal`, 매일 04:30 KST 3종 전부 실행, `scripts/register-childcare-task.ps1` 로
 > 등록). 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS` (childcare-detail/info/info-jeju, collector_runs 신선도).
+>
+> **세션 515: 국토부(apis.data.go.kr/1613000) 의존 5종 GH 폐기 → 집서버 로컬 러너 이전.** 1613000 만
+> 2026-08-06 부터 해외 IP(GH 러너)를 복불복 차단한다(HTTP 코드 없는 `fetch failed` / 같은 키·같은 요청이
+> 로컬 한국 IP 에선 156ms 200 OK 실측). `collect-trades.yml`·`collect-molit-units.yml`·
+> `collect-building-info.yml`·`collect-maintenance.yml`·`collect-building-hub.yml` 5개 삭제 →
+> `scripts/kosis-local-runner.mjs` 매핑표에 편입(발화일·인자·게이트 전부 보존 — 6일 units·trades /
+> 10일 building-info(토요일이면 11일) / 15~19일 maintenance `--limit=600` / 분기 15일 building-hub).
+> 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS` (trades·molit-building·molit-units 신규 등재,
+> maintenance·building-hub 는 기존 항목 유지). ⚠️ `collect-building-info.yml` 의 2번째 스텝이던
+> `sync-naver-complex.mjs` 는 옮기지 않았다 — `collect-naver-listings.yml`(Naver Core)이 **매일** 같은
+> 스크립트를 돌려 이미 중복이었다.
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
@@ -78,14 +89,9 @@
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
 | `collect-emergency.yml` | 2일 | 응급의료기관 |
 | `collect-population.yml` | 5일 | 행안부 인구 증감률 |
-| `collect-trades.yml` | 6일 | 국토부 실거래 (매매/전세/분양권) |
-| `collect-molit-units.yml` | 6일 | 국토부 총세대수 보정 (`timeout-minutes: 45` — 세션 500 신설. 미지정이라 GitHub 기본 **360분**이 적용돼 `data-collection` 그룹에서 도착 3개를 받아 조용한 취소의 가해자였고, 8-06 엔 자신이 피해자(15분·`steps=0`)였다. 최대 실측 17분33초의 2.5배 마진) |
-| `collect-building-info.yml` | 10일 | 건축물 상세 (토요일 → 11일 fallback) |
 | `collect-housing-permits.yml` | **분기 10일** | 주택 인허가 — 세션 491 월간→분기. MOLIT API 장기 중단으로 3회 연속 ok=0. 회복(`성공 N`>0) 확인 시 월간 복귀 |
 | `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
-| `collect-maintenance.yml` | 15~19일 | 공동주택 관리비 (UTC 06:00 = **KST 15:00** — 세션 500 에 UTC 03:00 에서 이동. 옛 시각은 15~19일 중 월요일에 주간 청약홈 체인 2개를 실행창(120분) 안에 받아 `data-collection` 그룹 대기 자리를 밀어냈다 = 조용한 취소. 가드 `audit-cron-concurrency.mjs`) |
-| `collect-building-hub.yml` | **분기 15일** | 건축HUB 에너지+인허가 — 세션 491 월간→분기. 04-15·05-18·06-15 세 실행 모두 `성공 0 \| 스킵 2000`(API 2,794회 호출·신규 0건). 10/15 에 `성공 N`>0 이면 월간 복귀 |
 | `collect-housing-price.yml` | 16일 | 주택가격 (KST 17일 07:00 — 15일 migration/maintenance/building-hub 다음 날). **세션 491 문서 추가** — 그동안 이 표에 아예 없었다 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
 

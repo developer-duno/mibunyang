@@ -21,9 +21,11 @@ loadEnv();
 
 const PHASE = "trades";
 
-// 벽시계 예산 (분). collect-trades.yml 의 timeout-minutes(180) 대비 30분 여유 —
+// 벽시계 예산 (분). 원래 collect-trades.yml 의 timeout-minutes(180) 대비 30분 여유였고,
 // 남은 30분은 마지막 upsert(약 52만행 batch 500) + 마무리용. 근거: 6/6 성공 run 실측 73.8분
 // × 현재 API 지연 1.8배 ≈ 133분 → 예산 150분이면 정상 회차는 예산에 닿지도 않는다.
+// ⚠️ 세션 515: 그 yml 은 삭제됐다(MOLIT 해외 IP 차단 → 로컬 러너 매월 6일). 로컬엔 강제 종료가
+// 없으므로 이 예산은 이제 "무한정 물지 않게" 스스로 끊는 상한이다 — 값은 그대로 둔다.
 const DEFAULT_BUDGET_MIN = 150;
 
 const API_KEY = process.env.MOLIT_KEY;

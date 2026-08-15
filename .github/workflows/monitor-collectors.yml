@@ -10,15 +10,15 @@ on:
   workflow_run:
     workflows:
       - "Air Quality Collection"
-      - "Building Info Collection (MOLIT)"
       - "Childcare Facilities Collection"
       - "Collect Applyhome Competition Rate"
       - "Collect Applyhome Detail (Schedule + Units)"
       - "Collect Applyhome Remndr (잔여세대 평형 + 취소후재공급)"
-      - "Collect Building Hub (에너지+인허가)"
-      - "Collect MOLIT Units"
-      - "Collect Maintenance Cost"
-      - "Collect Trades (국토부 실거래)"
+      # 국토부(apis.data.go.kr/1613000) 5종 = 해외 IP 복불복 차단(2026-08-06~)으로
+      # 집서버 로컬 러너 이전 (scripts/kosis-local-runner.mjs, 세션 515) — yml 삭제로 목록 제거:
+      # Building Info Collection (MOLIT) / Collect Building Hub / Collect MOLIT Units /
+      # Collect Maintenance Cost / Collect Trades. 감시는 아래 KOSIS 와 동일하게
+      # monitor-collectors.mjs EXTERNAL_API_COLLECTORS (collector_runs 신선도) 가 승계.
       - "DART 시공사 재무 수집"
       - "Emergency Medical Facilities Collection"
       - "Environment Data Collection"

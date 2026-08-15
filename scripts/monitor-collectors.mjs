@@ -42,7 +42,9 @@ export const QUARTERLY_CRON_WORKFLOWS = [
   // ⚠️ "Housing Permits Data Collection" 은 세션 501 에서 제거했다 — MOLIT 폐기로 KOSIS 이전 +
   //    kosis.kr 해외 IP 차단 때문에 yml 자체를 삭제했다(로컬 러너 매월 11일이 승계).
   //    없는 워크플로를 여기 남겨두면 "분기라서 오래 안 돈 것" 으로 오해할 여지만 남는다.
-  "Collect Building Hub (에너지+인허가)",
+  // ⚠️ "Collect Building Hub (에너지+인허가)" 도 같은 이유로 세션 515 에서 제거했다 —
+  //    MOLIT(1613000) 해외 IP 차단으로 yml 삭제 + 로컬 러너 분기 15일 이전.
+  //    ⑤ EXTERNAL_API_COLLECTORS 의 building-hub(stale_days=100) 가 감시를 승계한다.
 ];
 /**
  * 예약(cron)이 아예 없는 워크플로 — ③ 미발화 점검 대상에서 제외.
@@ -257,7 +259,17 @@ export const EXTERNAL_API_COLLECTORS = [
   // 세션 501: MOLIT ArchPmsService_v2 폐기(NO_OPENAPI_SERVICE) → KOSIS DT_MLTM_666 이전.
   // kosis.kr 해외 IP 차단이라 GH yml 삭제 + 로컬 러너 매월 11일 → 분기 100 이 아니라 월간 38.
   { collector: "housing-permits", stale_days: 38, owner: "KOSIS 주택건설 인허가실적 (로컬 매월 11일)" },
-  { collector: "building-hub",    stale_days: QUARTERLY_STALE_DAYS, owner: "MOLIT 건축물대장 허브 (분기 15일 cron + 9일 여유)" },
+  { collector: "building-hub",    stale_days: QUARTERLY_STALE_DAYS, owner: "MOLIT 건축물대장 허브 (로컬 분기 1·4·7·10월 15일 + 9일 여유)" },
+  // ── MOLIT(apis.data.go.kr/1613000) 3종 = 세션 515 신규 등재.
+  //    1613000 이 해외 IP 를 복불복 차단(2026-08-06~, HTTP 코드 없는 `fetch failed`)해 GH yml 5개를
+  //    삭제하고 로컬 러너로 옮겼다 — GH run 이 없어 ①③ 대상에서 빠지므로 collector_runs 신선도가
+  //    유일한 "안 돌면 알림" 이다. maintenance·building-hub 는 이미 아래/위에 있어 3건만 추가.
+  //    stale_days = 발화주기 + 여유 1주기 (일일=14 / 주간=14 / 월간=38 / 분기=100).
+  { collector: "trades",          stale_days: 38, owner: "MOLIT 실거래 (로컬 매월 6일)" },
+  { collector: "molit-building",  stale_days: 38, owner: "MOLIT 건축물대장 상세 (로컬 매월 10일·토요일이면 11일)" },
+  // molit-units 만 14 인 이유 = 월간 cron 외에 네이버 로컬 파이프라인(월/목 08:00, run-naver-local)
+  // 4/6 단계가 같은 수집기를 돌린다. 정상 최대 간격이 4일이라 월간 38 을 쓰면 정지를 늦게 잡는다.
+  { collector: "molit-units",     stale_days: 14, owner: "MOLIT 세대수 보정 (로컬 매월 6일 + 네이버 파이프라인 월/목)" },
   { collector: "transport-tago",  stale_days: 14, owner: "버스정류장 파일(data.go.kr, 세션497부터 TAGO 실시간 API 대체) + Kakao" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 14, owner: "청약홈 분양일정·평형 (주간 월 cron — 세션 467 주간화)" },
@@ -276,7 +288,8 @@ export const EXTERNAL_API_COLLECTORS = [
   //   run 은 recordCollectorRun 전에 죽어 collector_runs 행 0건 → ③ 워크플로 점검은 GH created_at 으로 "신선" 마스킹.
   //   ⑤-b 미발화 분기(collector_runs.finished_at 기준)가 유일하게 "데이터 N일 stale" 을 잡음 (세션 447).
   //   5일 연속이라도 한 묶음 발화(19일 success→다음달 15일 발화 ~26일 간격)라 stale_days:38(=31일+1주)은 적정.
-  { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (월 15~19일 cron + 1주 여유)" },
+  //   세션 515: MOLIT 해외 IP 차단으로 GH yml 삭제 → 로컬 러너가 같은 15~19일 배치를 승계(주기 동일 → 38 유지).
+  { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (로컬 매일 15~19일 배치 + 1주 여유)" },
   // housing-price = 공동주택공시가격 (collect-housing-price.yml, 매월 16일 cron — 세션 504 등재).
   //   지금까지 ⑤ 어디에도 없어서 7/16 실패 후 방치돼도 아무 알림이 없었다(그 실패의 원인은
   //   계정 지출한도였고 8/1 청구 리셋으로 해소됐지만, 그걸 알아챈 건 사람이 뒤늦게 뒤진 결과다).
