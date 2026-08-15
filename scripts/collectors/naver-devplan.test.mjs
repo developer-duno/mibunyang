@@ -5,6 +5,8 @@
  * 한반도 좌표 가드, V-WORLD 축, 네이버 429 전용 백오프/서킷브레이커
  */
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
@@ -28,7 +30,13 @@ const {
   NAVER_429_BACKOFF_MS, NAVER_MAX_CONSECUTIVE_429, fetchNaverJson,
   VWORLD_BUFFER_M, VWORLD_LAYERS, VWORLD_REFERER, redactVworldKey, buildVworldUrl,
   parseVworldResponse, geojsonCentroid, normalizeVworldFeature, fetchVworldFeatures,
+  parseKindsArg, recordRunUnlessDryRun,
 } = await import("./naver-devplan.mjs");
+
+const DEVPLAN_SRC = readFileSync(
+  fileURLToPath(new URL("./naver-devplan.mjs", import.meta.url)),
+  "utf8",
+);
 
 // ── 실측 필드 형태를 반영한 픽스처(오케스트레이터 사전 조사 기반) ──────────────
 
@@ -747,5 +755,104 @@ describe("fetchVworldFeatures — Referer 헤더", () => {
     // "미분양아파트.com" 처럼 사람이 읽기 좋은 표기로 바꾸면 런타임에 전부 터진다.
     expect(VWORLD_REFERER).toMatch(/^https?:\/\/[\x20-\x7E]+$/);
     for (const ch of VWORLD_REFERER) expect(ch.codePointAt(0)).toBeLessThan(256);
+  });
+});
+
+// ── --kinds= 부분 수집 ────────────────────────────────────────────────────
+//
+// 전량 실행은 타일 × 4종 × 5초 스로틀이라 몇 시간짜리다. "지구만" 처럼 골라 돌 수단이 없으면
+// 부분 수집 자체를 못 한다. 오타가 조용히 전체 수집으로 되돌아가는 것이 이 인자의 최대 위험이라
+// 그 자리를 제일 두껍게 막는다.
+
+describe("parseKindsArg", () => {
+  it("--kinds 가 없으면 null — 전체 수집(기존 동작)", () => {
+    expect(parseKindsArg([])).toBeNull();
+    expect(parseKindsArg(["--dry-run", "--source=naver"])).toBeNull();
+  });
+
+  it("--kinds=jigu 는 해당 kind 하나만 준다", () => {
+    expect(parseKindsArg(["--kinds=jigu"])).toEqual(["jigu"]);
+  });
+
+  it("여러 개를 줘도 DEV_PLAN_KINDS 순서를 유지한다", () => {
+    // 인자에 적은 순서(jigu,rail)가 아니라 수집기 표준 순서(rail 먼저)로 나와야 한다.
+    expect(parseKindsArg(["--kinds=rail,jigu"])).toEqual(["rail", "jigu"]);
+    expect(parseKindsArg(["--kinds=jigu,rail"])).toEqual(["rail", "jigu"]);
+  });
+
+  it("공백·빈 항목은 흘려보낸다", () => {
+    expect(parseKindsArg(["--kinds= jigu , rail "])).toEqual(["rail", "jigu"]);
+    expect(parseKindsArg(["--kinds=jigu,,"])).toEqual(["jigu"]);
+  });
+
+  it("모르는 kind 가 섞이면 던진다 — 오타가 조용히 전체 수집이 되면 안 된다", () => {
+    expect(() => parseKindsArg(["--kinds=jiku"])).toThrow(/모르는 kind/);
+    // 하나만 틀려도 전체가 막혀야 한다(맞는 것만 골라 돌면 오타를 영영 모른다).
+    expect(() => parseKindsArg(["--kinds=jigu,jiku"])).toThrow(/모르는 kind/);
+    // V-WORLD kind 는 이 인자 소관이 아니다.
+    expect(() => parseKindsArg(["--kinds=industrial_complex"])).toThrow(/모르는 kind/);
+  });
+
+  it("빈 값(--kinds=)은 던진다 — 전체 수집으로 흘려보내지 않는다", () => {
+    expect(() => parseKindsArg(["--kinds="])).toThrow();
+    expect(() => parseKindsArg(["--kinds=  ,  "])).toThrow();
+  });
+
+  it("돌려준 kind 는 전부 DEV_PLAN_KINDS 안의 값이다", () => {
+    for (const k of parseKindsArg(["--kinds=road,rail,station,jigu"]) ?? []) {
+      expect(DEV_PLAN_KINDS).toContain(k);
+    }
+  });
+});
+
+// ── dry-run 은 collector_runs 를 남기지 않는다 ─────────────────────────────
+//
+// dry-run 은 DB 쓰기를 생략하는데 기록만 남으면 `success ok=N` 위장 행이 되어 신선도 감시가
+// "최근에 잘 돌았다"고 읽는다. 실제로 그 행 하나가 "수집 0건" 이라는 사실을 가렸다(세션 515).
+
+describe("recordRunUnlessDryRun", () => {
+  it("dry-run 이면 기록하지 않는다", async () => {
+    const recorder = vi.fn(async () => {});
+    const wrote = await recordRunUnlessDryRun(true, { status: "success", ok: 5392, fail: 0 }, recorder);
+    expect(recorder).not.toHaveBeenCalled();
+    expect(wrote).toBe(false);
+  });
+
+  it("실 수집이면 기록한다 — 감시가 죽지 않게", async () => {
+    const recorder = vi.fn(async (/** @type {string} */ _phase, /** @type {any} */ _result) => {});
+    const result = { status: "success", ok: 3, fail: 0 };
+    const wrote = await recordRunUnlessDryRun(false, result, recorder);
+    expect(recorder).toHaveBeenCalledTimes(1);
+    expect(recorder.mock.calls[0][1]).toBe(result);
+    expect(wrote).toBe(true);
+  });
+
+  it("partial/failure 도 dry-run 이 아니면 그대로 기록한다", async () => {
+    const recorder = vi.fn(async () => {});
+    await recordRunUnlessDryRun(false, { status: "partial", ok: 1, fail: 2 }, recorder);
+    expect(recorder).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── 배선 가드 (실전 경로가 위 함수들을 실제로 지나는가) ─────────────────────
+//
+// 위 두 describe 는 함수만 검증한다. main() 이 그 함수를 안 부르면 전부 초록인 채로 결함이
+// 남으므로 호출부를 소스에서 직접 확인한다. 선언부·주석에 걸리지 않도록 좌변(await/for)까지
+// 고정한다([[guards-must-be-mutation-tested]] §소스 grep 가드).
+
+describe("main 배선", () => {
+  it("collector_runs 기록은 recordRunUnlessDryRun 을 지난다", () => {
+    expect(DEVPLAN_SRC).toMatch(/await recordRunUnlessDryRun\(dryRun, result\)/);
+    // 우회 호출이 남아 있으면 dry-run 위장 기록이 그대로 재발한다.
+    expect(DEVPLAN_SRC).not.toMatch(/await recordCollectorRun\(/);
+  });
+
+  it("네이버 타일 루프가 --kinds 로 좁힌 목록을 돈다", () => {
+    expect(DEVPLAN_SRC).toMatch(/for \(const kind of naverKinds\)/);
+    expect(DEVPLAN_SRC).toMatch(/const naverKinds = kindsFilter \?\? DEV_PLAN_KINDS/);
+  });
+
+  it("--kinds 가 주어지면 V-WORLD 축을 건너뛴다", () => {
+    expect(DEVPLAN_SRC).toMatch(/const runVworld =[^\n]*&&[^\n]*kindsFilter === null/);
   });
 });
