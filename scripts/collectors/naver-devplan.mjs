@@ -47,6 +47,7 @@
  *   node scripts/collectors/naver-devplan.mjs --dry-run                          (양쪽 다, DB 쓰기 없음)
  *   node scripts/collectors/naver-devplan.mjs --dry-run --source=vworld --limit-apts=3   (V-WORLD 스모크)
  *   node scripts/collectors/naver-devplan.mjs --dry-run --source=naver --region=서울 --limit-tiles=2  (네이버 스모크)
+ *   node scripts/collectors/naver-devplan.mjs --kinds=jigu                       (네이버 지구만 — V-WORLD 축은 건너뜀)
  *   node scripts/collectors/naver-devplan.mjs                                    (전량 수집 + DB upsert)
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY, VWORLD_KEY(없으면 V-WORLD 축 자동 건너뜀)
@@ -295,6 +296,37 @@ export function buildTiles(apartments, opts = {}) {
 
 // ── 네이버 API ────────────────────────────────────────────────────────
 export const DEV_PLAN_KINDS = /** @type {DevPlanKind[]} */ (["road", "rail", "station", "jigu"]);
+
+/**
+ * `--kinds=jigu` / `--kinds=rail,jigu` → 네이버 kind 목록. 인자가 없으면 null(= 전체, 기존 동작).
+ *
+ * 전량 실행은 타일 × 4종 × 5초 스로틀이라 몇 시간짜리다. 그래서 오타(`--kinds=jiku`)를 조용히
+ * "전체 수집"으로 되돌리면 안 된다 — 모르는 값이 하나라도 섞이면 던져서 그 자리에서 멈춘다.
+ *
+ * 반환 순서는 항상 DEV_PLAN_KINDS 순서(인자에 적은 순서가 아니라) — 수집 순서가 인자 표기에
+ * 따라 달라지지 않게.
+ *
+ * @param {string[]} argv --kinds= 를 포함할 수 있는 인자 배열(보통 process.argv.slice(2))
+ * @returns {DevPlanKind[] | null}
+ */
+export function parseKindsArg(argv) {
+  const arg = argv.find((a) => a.startsWith("--kinds="));
+  if (!arg) return null;
+  const raw = arg
+    .slice("--kinds=".length)
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (raw.length === 0) {
+    throw new Error(`--kinds 값이 비어 있다 (가능: ${DEV_PLAN_KINDS.join(",")})`);
+  }
+  const known = /** @type {string[]} */ (DEV_PLAN_KINDS);
+  const unknown = raw.filter((k) => !known.includes(k));
+  if (unknown.length > 0) {
+    throw new Error(`--kinds 에 모르는 kind: ${unknown.join(",")} (가능: ${DEV_PLAN_KINDS.join(",")})`);
+  }
+  return DEV_PLAN_KINDS.filter((k) => raw.includes(k));
+}
 
 /**
  * @param {DevPlanKind} kind
@@ -643,6 +675,27 @@ export async function fetchVworldFeatures(kind, lat, lng, fetchFn = fetchWithRet
 
 // ── 메인 ────────────────────────────────────────────────────────────────
 
+/**
+ * dry-run 회차는 collector_runs 에 남기지 않는다.
+ *
+ * dry-run 은 DB 쓰기를 생략하므로 데이터가 한 건도 안 들어가는데, 기록만 남으면 그 행이
+ * `status=success, ok=N` 으로 보여 신선도 감시(monitor ⑤)가 "최근에 잘 돌았다"고 읽는다.
+ * 실제로 그렇게 남은 위장 성공 행 하나가 "수집이 죽어 있다"는 사실을 가렸다(세션 515).
+ *
+ * @param {boolean} dryRun
+ * @param {any} result rpt.summary() 결과
+ * @param {(phase: string, result: any) => Promise<unknown>} [recorder] 테스트 주입용
+ * @returns {Promise<boolean>} 실제로 기록했으면 true
+ */
+export async function recordRunUnlessDryRun(dryRun, result, recorder = recordCollectorRun) {
+  if (dryRun) {
+    log(PHASE, "[runs] dry-run — collector_runs 기록 skip");
+    return false;
+  }
+  await recorder(PHASE, result);
+  return true;
+}
+
 async function main() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     logError(PHASE, "SUPABASE_URL + SUPABASE_SERVICE_KEY 환경변수 필요");
@@ -659,10 +712,18 @@ async function main() {
   const limitApts = limitAptsArg ? parseInt(limitAptsArg.replace("--limit-apts=", ""), 10) : 0;
   const sourceArg = args.find((a) => a.startsWith("--source="));
   const sourceFilter = sourceArg ? sourceArg.replace("--source=", "") : "both";
+  // --kinds 는 네이버 kind(road/rail/station/jigu)만 가리키므로, 주어지면 V-WORLD 축은 통째로
+  // 건너뛴다. "지구만 1.9시간" 처럼 부분 수집을 골라 돌기 위한 인자인데 V-WORLD 가 딸려오면
+  // 그 의도가 깨진다.
+  const kindsFilter = parseKindsArg(args);
+  const naverKinds = kindsFilter ?? DEV_PLAN_KINDS;
   const runNaver = sourceFilter === "both" || sourceFilter === "naver";
-  const runVworld = sourceFilter === "both" || sourceFilter === "vworld";
+  const runVworld = (sourceFilter === "both" || sourceFilter === "vworld") && kindsFilter === null;
 
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 (DB 쓰기 없음) ===");
+  if (kindsFilter) {
+    log(PHASE, `--kinds=${kindsFilter.join(",")} — 네이버 해당 kind 만 수집, V-WORLD 축 건너뜀(--kinds 는 네이버 kind 전용)`);
+  }
 
   const sb = getSupabase();
   /** @type {AptForTiling[]} */
@@ -726,7 +787,7 @@ async function main() {
         if (rpt.interrupted()) break; // graceful shutdown (세션 344 답습)
         const tile = tiles[i];
 
-        for (const kind of DEV_PLAN_KINDS) {
+        for (const kind of naverKinds) {
           const items = await fetchDevPlanTile(kind, tile, jwt, /** @type {any} */ (fetch), ({ rateLimited }) => {
             consecutive429 = rateLimited ? consecutive429 + 1 : 0;
           });
@@ -769,7 +830,7 @@ async function main() {
   if (vworldSkippedNoKey) {
     /** @type {any} */ (result).errorMessage = "VWORLD_KEY 미설정 — V-WORLD 축 건너뜀(네이버만 수집)";
   }
-  await recordCollectorRun(PHASE, result);
+  await recordRunUnlessDryRun(dryRun, result);
   if (result.fail > 0) process.exit(1);
 }
 
