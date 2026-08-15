@@ -1901,8 +1901,12 @@ describe("거래량 null 보존 + 구 단위 경계 (세션513)", () => {
     const [t0, t1, t2] = LIQUIDITY_TIERS.map((t) => t.min ?? 0);
     const top = liq(makeApt({ recentTrades6m: t0 + 50 })).score;
     expect(liq(makeApt({ recentTrades6m: t1 + 50 })).score).toBeLessThan(top);
-    expect(liq(makeApt({ recentTrades6m: t2 + 50 })).score).toBeLessThan(liq(makeApt({ recentTrades6m: t1 + 50 })).score);
-    expect(liq(makeApt({ recentTrades6m: Math.max(t2 - 500, 0) })).score).toBeLessThan(liq(makeApt({ recentTrades6m: t2 + 50 })).score);
+    expect(liq(makeApt({ recentTrades6m: t2 + 50 })).score).toBeLessThan(
+      liq(makeApt({ recentTrades6m: t1 + 50 })).score
+    );
+    expect(liq(makeApt({ recentTrades6m: Math.max(t2 - 500, 0) })).score).toBeLessThan(
+      liq(makeApt({ recentTrades6m: t2 + 50 })).score
+    );
   });
 
   // 세션514: 옛 단언은 `"이 구 6개월 1,234건"` 이었는데, 그 "이 구"가 값 보유 1,466곳 중
