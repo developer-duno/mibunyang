@@ -456,17 +456,54 @@ export const UNSOLD_RATE_TIERS: Tier[] = [
 ];
 export const UNSOLD_HIGH_SCORE = 90;
 export const UNSOLD_UNKNOWN_SCORE = 40;
-// ⚠️ `recentTrades6m` 은 **구(區) 단위 6개월 거래 합계**이지 단지 단위가 아니다. 옛 경계(30/15/5)는
-//    단지 단위를 전제로 잡혀 있어서, 구 단위 값과 맞대면 1,646곳 중 **1,427곳(97.3%)이 최상 구간**에
-//    몰렸다 — 변별력 0. 경계를 실제 분포의 사분위로 옮긴다(세션513 실측, 정적 JSON 2026-08-14,
-//    값 보유 n=1,466 / min 3 · p25 516 · **med 995** · p75 1,954 · max 8,115).
-//    세션511 "경계 먼저, 데이터 나중" 답습 — 데이터를 더 채워도 경계가 옛 자리면 동점은 안 풀린다.
+// ⚠️ `recentTrades6m` 은 **시·군·구 단위 6개월 거래 합계**이지 단지 단위가 아니다(수집기가
+//    `guTrades` 를 세므로 — trade-stats.mjs). 옛 경계(30/15/5)는 단지 단위를 전제로 잡혀 있어서
+//    구 단위 값과 맞대면 **97.3%가 최상 구간**에 몰렸다 — 변별력 0.
+//
+// ⚠️⚠️ **경계는 두 번 재도출됐다. 두 번째가 진짜다.**
+//    세션513이 처음 사분위로 옮길 때 쓴 분포(p25 516 · med 995 · p75 1,954)는 **오염된 값**이었다 —
+//    수집기가 정렬 없이 OFFSET 페이징을 해서 큰 구의 거래를 통째로 잃고 있었다(화성시 실제 479건이
+//    38건으로 저장). 세션514가 고유키 커서로 고치고 재수집한 뒤의 **참값 분포**로 다시 잡는다.
+//
+//    실측 (trade_stats 2026-08-14 재수집분, 값 보유 **n=2,543** / null 150):
+//      min 9 · **p25 715** · **med 1,073** · **p75 1,735** · p90 2,238 · max 9,646
+//    경계별 최대 몰림: 옛 2000/1000/500 → **47.4%** vs 새 1700/1050/700 → **29.1%**(네 밴드 22~29%).
+//
+// ⚠️ **이 창은 지금 6개월치가 아니다** — 실거래 원본(`trades`)이 2026-08-08 실패 이후 6·7·8월
+//    0건이라 실제로는 202602~202605 **4개월치**만 담긴다(국토부 API 해외 IP 차단, 세션504 진단).
+//    수집이 재개되면 건수가 통째로 올라가므로 **경계를 다시 재도출해야 한다**(BACKLOG 등재).
+//    그때도 순서는 같다 — 세션511 "경계 먼저, 데이터 나중"의 반대, **데이터 먼저·경계 나중**.
 export const LIQUIDITY_TIERS: Tier[] = [
-  { min: 2000, score: 5 }, // p75(1,954) 근방 — 거래 활발
-  { min: 1000, score: 20 }, // med(995) 근방 — 보통
-  { min: 500, score: 45 }, // p25(516) 근방 — 한산
+  { min: 1700, score: 5 }, // p75(1,735) 근방 — 거래 활발 (25.6%)
+  { min: 1050, score: 20 }, // med(1,073) 근방 — 보통 (29.1%)
+  { min: 700, score: 45 }, // p25(715) 근방 — 한산 (22.1%)
 ];
 export const LIQUIDITY_LOW_SCORE = 80;
+/**
+ * 거래량 밴드 이름 — `LIQUIDITY_TIERS` 와 **한 쌍**이다(같은 순서 + 마지막은 그 아래 구간).
+ * 점수·문구·판정이 이 한 곳에서 나오게 해서, 경계를 옮겨도 세 곳이 함께 따라오게 한다.
+ *
+ * ⚠️ 세션514 이전에는 점수는 이 경계로 매기고 문구는 **점수 임계(70/40)** 로 갈랐다.
+ *    그래서 1,000~1,999건 구간 428곳이 "기준 2,000건+ 활발" 옆에서 "거래 활발"을 달고 있었다
+ *    ([[score-meaning-and-wording-are-a-pair]] — 축의 의미를 바꾸면 문구표도 같이 바꾼다).
+ */
+export const LIQUIDITY_LABELS = ["활발", "보통", "한산", "침체"] as const;
+
+/** 6개월 거래건수 → 밴드 이름. 경계는 `LIQUIDITY_TIERS`(min 내림차순) 그대로. */
+export function liquidityBand(count: number): (typeof LIQUIDITY_LABELS)[number] {
+  for (let i = 0; i < LIQUIDITY_TIERS.length; i++) {
+    if (count >= (LIQUIDITY_TIERS[i].min ?? 0)) return LIQUIDITY_LABELS[i];
+  }
+  return LIQUIDITY_LABELS[LIQUIDITY_LABELS.length - 1];
+}
+
+/** `"활발 2,000↑, 보통 1,000↑, 한산 500↑, 침체 500↓"` — 경계를 손으로 적지 않는다. */
+export const LIQUIDITY_LEGEND: string =
+  LIQUIDITY_TIERS.map((t, i) => `${LIQUIDITY_LABELS[i]} ${(t.min ?? 0).toLocaleString()}↑`).join(", ") +
+  `, ${LIQUIDITY_LABELS[LIQUIDITY_LABELS.length - 1]} ${(LIQUIDITY_TIERS[LIQUIDITY_TIERS.length - 1].min ?? 0).toLocaleString()}↓`;
+
+/** 판정표(`subContext`)·상세 문구가 함께 쓰는 단위 이름. `gu` 는 시·군·구가 섞여 있다(수정 4). */
+export const LIQUIDITY_AREA_UNIT = "시·군·구";
 /**
  * 거래량 미수집(180곳/10.9%)의 중립 점수. **알려진 값들의 중앙값(995)이 떨어지는 구간과 같은 값**을
  * 골랐다 — 세션508 원칙(연속형은 중립 구간을 주되 최고점은 금지: 최고점을 주면 수집할 동기가 사라진다).

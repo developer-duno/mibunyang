@@ -1,6 +1,7 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
+import { PROFILES } from "@/constants/profiles";
 import { FAQSection } from "./FAQSection";
 
 /**
@@ -31,5 +32,36 @@ describe("FAQSection — 화면에 찍히는 그대로 검사한다", () => {
 
   it("혜택은 채워진 항목만 말하고, 나머지는 대기 중이라고 말한다", () => {
     expect(faqText()).toContain("자료가 확보되면");
+  });
+
+  /**
+   * 세션514 — 프로필 가중치 안내가 옛 값을 말하고 있었다.
+   *
+   * "'투자' 프로필은 가격(30%)과 안전(25%)에, '교육' 프로필은 입지(45%)에" — 세 칸 전부 어긋났다
+   * (실제 35/30/50). #398(세션513)이 **같은 파일의 다른 줄만** 고치고 이 줄을 놓친 자리다.
+   * 이제 `PROFILES` 에서 파생하므로 가중치가 바뀌면 안내문이 저절로 따라온다
+   * (GuideSections 가 이미 쓰는 방식 — [[score-meaning-and-wording-are-a-pair]]).
+   */
+  describe("프로필 가중치 안내는 PROFILES 에서 파생한다", () => {
+    it("화면 수치가 실제 가중치와 같다", () => {
+      const t = faqText();
+      expect(t).toContain(`가격(${PROFILES.invest.w.price}%)`);
+      expect(t).toContain(`안전(${PROFILES.invest.w.risk}%)`);
+      expect(t).toContain(`입지(${PROFILES.edu.w.location}%)`);
+    });
+
+    it("프로필 이름도 손으로 적지 않는다", () => {
+      const t = faqText();
+      expect(t).toContain(`'${PROFILES.invest.name}' 프로필`);
+      expect(t).toContain(`'${PROFILES.edu.name}' 프로필`);
+    });
+
+    it("옛 하드코딩 수치가 남아 있지 않다", () => {
+      const t = faqText();
+      // 되돌리면 red — 세 칸 전부 실제 가중치와 다른 값이었다
+      expect(t).not.toContain("가격(30%)");
+      expect(t).not.toContain("안전(25%)");
+      expect(t).not.toContain("입지(45%)");
+    });
   });
 });

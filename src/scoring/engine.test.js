@@ -13,6 +13,8 @@ import {
   FUTURE_WEIGHTS,
   FUTURE_RAW_MAX,
   TRANSIT_LINE_TYPE,
+  LIQUIDITY_LEGEND,
+  LIQUIDITY_AREA_UNIT,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
@@ -1899,10 +1901,13 @@ describe("거래량 null 보존 + 구 단위 경계 (세션513)", () => {
     expect(liq(makeApt({ recentTrades6m: 100 })).score).toBeLessThan(liq(makeApt({ recentTrades6m: 700 })).score);
   });
 
-  it("문구가 구 단위임을 밝힌다 (단지 거래량으로 읽히면 거짓)", () => {
+  // 세션514: 옛 단언은 `"이 구 6개월 1,234건"` 이었는데, 그 "이 구"가 값 보유 1,466곳 중
+  //   616곳(42.0%)에서 거짓이었다(시 548·군 38·세종 30). 지역 이름은 아래 세션514 블록이
+  //   따로 잠그고, 여기서는 원래 취지인 **"단지 단위가 아니라 자치단체 합계"**만 지킨다.
+  it("문구가 자치단체 합계임을 밝힌다 (단지 거래량으로 읽히면 거짓)", () => {
     const s = liq(makeApt({ recentTrades6m: 1234 }));
-    expect(s.info).toBe("이 구 6개월 1,234건");
-    expect(s.detail).toContain("구 단위 합계");
+    expect(s.info).toContain("6개월 1,234건");
+    expect(s.detail).toContain(`${LIQUIDITY_AREA_UNIT} 단위 합계`);
   });
 });
 
@@ -1994,5 +1999,100 @@ describe("브랜드 — resolveBuilder 정규화 + scoreProduct 배선 (세션51
 
   it("모르는 회사는 그대로 미등재 5점 (정규화가 아무나 구제하지 않는다)", () => {
     expect(brand("듣도보도못한건설 주식회사").score).toBe(5);
+  });
+});
+
+// 세션514 — 위 세션513 정정이 **세 자리 중 두 자리만** 고쳐 생긴 이중 잣대를 잠근다.
+// `scorePrice` 는 처음부터 `apt.builder` 를 BRAND_TIER 에 직조회해서(선재 결함), 같은 단지가
+// 상품성축에서는 1군Super 인데 가격축 적정가 계수 `adj` 는 미등재 1.0 으로 남아 있었다.
+// 실측(정적 JSON 1,646곳): adj 가 달라지는 단지 67곳, 그 중 괴리도가 실제로 움직인 곳 65곳.
+describe("브랜드 정규화는 가격축에도 걸린다 (세션514)", () => {
+  /** @param {string} builder */
+  const price = (builder) => calcCats(makeApt({ builder })).price;
+
+  it("표기만 다른 같은 회사는 적정가·괴리도·점수가 전부 같다", () => {
+    const base = price("GS건설");
+    for (const v of ["지에스건설(주)", "지에스건설 주식회사", "㈜GS건설"]) {
+      expect(price(v).fairPrice).toBe(base.fairPrice);
+      expect(price(v).deviation).toBe(base.deviation);
+      expect(price(v).total).toBe(base.total);
+    }
+    expect(price("디엘이앤씨(주)").deviation).toBe(price("DL이앤씨").deviation);
+  });
+
+  it("가격축과 상품성축이 같은 회사로 본다 (한쪽만 정규화하면 이중 잣대)", () => {
+    // `scorePrice` 의 resolveBuilder 를 옛 직조회로 되돌리면 아래 fairPrice 비교가 red.
+    const raw = calcCats(makeApt({ builder: "지에스건설(주)" }));
+    const norm = calcCats(makeApt({ builder: "GS건설" }));
+    expect(raw.product.subs.find((s) => s.name === "브랜드")?.score).toBe(
+      norm.product.subs.find((s) => s.name === "브랜드")?.score
+    );
+    expect(raw.price.fairPrice).toBe(norm.price.fairPrice);
+  });
+
+  it("1군 프리미엄이 실제로 적정가를 올린다 (계수가 안 걸리면 미등재와 같아진다)", () => {
+    // adj 1.05 > 1.0 — 정규화가 빠지면 "지에스건설(주)" 가 미등재 취급이라 아래가 같아져 red.
+    expect(price("지에스건설(주)").fairPrice ?? 0).toBeGreaterThan(price("듣도보도못한건설(주)").fairPrice ?? 0);
+  });
+});
+
+describe("주차 폴백 하한 — 0면은 측정값이 아니라 미기재 (세션514)", () => {
+  /** @param {Record<string, unknown>} apt */
+  const park = (apt) => /** @type {any} */ (calcCats(apt).product.subs.find((s) => s.name === "주차"));
+  /** @param {Record<string, unknown>} o */
+  const fb = (o) => makeApt(/** @type {any} */ ({ parkingRatio: null, ...o }));
+
+  it("presaleParking 0 은 '추정 0.00대/세대'가 아니라 '정보 없음'", () => {
+    // 상한(≤3)만 보던 옛 가드는 0 을 통과시켜 28곳에 "추정 0.00대/세대"를 찍었다.
+    // `fallbackPR > 0` 를 지우면 red.
+    const s = park(fb({ units: 500, presaleGeneralSupply: 500, presaleParking: 0 }));
+    expect(s.info).toBe("정보 없음");
+    expect(s.info).not.toContain("추정");
+    expect(s.detail).toContain("미수집");
+  });
+
+  it("점수는 바뀌지 않는다 — 문구만 정직해진다", () => {
+    // 0 도, 폴백 포기 후 기본값 0.5 도 PARKING_LOW_SCORE 라 같은 점수여야 한다.
+    expect(park(fb({ units: 500, presaleGeneralSupply: 500, presaleParking: 0 })).score).toBe(
+      park(makeApt(/** @type {any} */ ({ parkingRatio: null }))).score
+    );
+  });
+
+  it("양수 폴백은 그대로 살아 있다 (하한이 유효값을 죽이지 않는다)", () => {
+    expect(park(fb({ units: 500, presaleGeneralSupply: 500, presaleParking: 800 })).info).toBe("추정 1.60대/세대");
+  });
+});
+
+describe("거래량 문구는 '이 구'라 단정하지 않는다 (세션514)", () => {
+  /** @param {Record<string, unknown>} apt */
+  const liq = (apt) => /** @type {any} */ (calcCats(apt).risk.subs.find((s) => s.name === "거래량"));
+
+  it("구가 아닌 자치단체(시·군)를 '구'라 부르지 않는다", () => {
+    // 값 보유 1,466곳 중 616곳(42.0%)이 구가 아니다 — 하드코딩 "이 구"로 되돌리면 red.
+    const s = liq(makeApt({ gu: "의정부시", recentTrades6m: 1234 }));
+    expect(s.info).toBe("의정부시 6개월 1,234건");
+    expect(s.info).not.toMatch(/이 구/);
+    expect(s.detail).toContain("의정부시");
+  });
+
+  it("gu 가 없으면 시도, 그것도 없으면 '이 지역'", () => {
+    expect(liq(makeApt(/** @type {any} */ ({ gu: null, region: "경기", recentTrades6m: 10 }))).info).toBe(
+      "경기 6개월 10건"
+    );
+    expect(liq(makeApt(/** @type {any} */ ({ gu: null, region: null, recentTrades6m: 10 }))).info).toBe(
+      "이 지역 6개월 10건"
+    );
+  });
+
+  it("숫자를 콤마 포함 자릿수로 남긴다 — 판정표가 이 문자열에서 건수를 읽는다", () => {
+    // subContext 거래량 interpret 이 `/([\d,]+)건/` 로 파싱한다. 형식이 깨지면 밴드가 사라진다.
+    expect(/([\d,]+)\s*건/.exec(liq(makeApt({ recentTrades6m: 1234 })).info)?.[1]).toBe("1,234");
+  });
+
+  it("경계 문구는 LIQUIDITY_LEGEND 에서 조립한다 (손으로 적으면 어긋난다)", () => {
+    expect(liq(makeApt({ recentTrades6m: 1234 })).detail).toContain(LIQUIDITY_LEGEND);
+    expect(liq(makeApt({ recentTrades6m: 1234 })).detail).toContain(`${LIQUIDITY_AREA_UNIT} 단위 합계`);
+    // 미수집도 같은 단위 이름을 쓴다
+    expect(liq(makeApt({ recentTrades6m: null })).detail).toContain(LIQUIDITY_AREA_UNIT);
   });
 });
