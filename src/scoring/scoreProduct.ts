@@ -68,13 +68,20 @@ export function scoreProduct(apt: Apt): Res {
   const parkingRatio = (apt.parkingRatio ?? 0.5) as number;
   // 세션513 분모 교정: 옛 분모 `presaleGeneralSupply ?? units` 는 **일반분양 세대수**를 우선 썼는데,
   //   그건 총세대의 부분집합일 수 있다(특별공급·조합원분 제외). 주차대수는 단지 전체 기준이므로
-  //   작은 분모와 짝지으면 비율이 부풀려진다 — 실측 78곳 중 만점권(1.5↑)이 35곳이었다.
-  //   둘 중 **큰 쪽**을 쓰면 19곳으로 줄고, 3대/세대 초과(물리적으로 있을 수 없는 값)도 12→8곳.
+  //   작은 분모와 짝지으면 비율이 부풀려진다. 둘 중 **큰 쪽**을 쓴다.
+  //   실측(정적 JSON 1,646곳, 폴백 후보 = parkingRatio 미수집 + presaleParking 보유 **78곳**):
+  //   만점권(1.5↑) 35곳 → **16곳**, 3대/세대 초과 12곳 → **1곳**, 최댓값 309.00 → **4.65**.
   const parkDenom = Math.max(units, (apt.presaleGeneralSupply ?? 0) as number, 1);
   const fallbackPR = apt._noParking && apt.presaleParking != null ? (apt.presaleParking as number) / parkDenom : null;
-  // 상식 클램프: 교정 후에도 3대/세대를 넘는 8곳은 presaleParking 자체가 오염된 것으로 본다
-  //   (총 주차면수 대신 다른 수가 들어왔을 자리). 폴백을 포기하고 parkingRatio 기본값으로 되돌린다.
-  const usableFallbackPR = fallbackPR != null && fallbackPR <= 3 ? fallbackPR : null;
+  // 유효 범위는 **양쪽**을 본다. 옛 코드는 상한(≤3)만 봐서 `presaleParking === 0` 을 그대로 통과시켰고,
+  //   화면에 `추정 0.00대/세대` 가 28곳 찍혔다 — 주차 0면인 아파트는 존재하지 않으니 그건 측정값이
+  //   아니라 **원천 미기재**다(28곳 전부 사전청약·공공분양, 총세대는 223~1,292로 멀쩡하다).
+  //   상한 3 은 "물리적으로 있을 수 없는 값"이라서가 아니다 — 직접 수집된 `parkingRatio` 에는
+  //   3 초과가 4곳 실재한다(오피스텔 6.21 · 아파트 3.67 · 주상복합 3.28 · 아파트 3.10).
+  //   폴백 **산식에서** 3 을 넘으면 총세대 기록이 오염된 자리로 본다는 뜻이다: 남은 1곳도
+  //   주차 1,074면인데 총세대가 5로 적혀 있다(일반분양 231). 그런 자리는 폴백을 포기하고
+  //   parkingRatio 기본값으로 되돌린다. 직접 수집값에는 이 클램프가 걸리지 않는다.
+  const usableFallbackPR = fallbackPR != null && fallbackPR > 0 && fallbackPR <= 3 ? fallbackPR : null;
   const effectivePR = usableFallbackPR ?? parkingRatio;
   const parkSc: number = tierMin(effectivePR, PARKING_TIERS, PARKING_LOW_SCORE);
   const floorAreaRatio = (apt._noFar ? 300 : apt.floorAreaRatio) as number;

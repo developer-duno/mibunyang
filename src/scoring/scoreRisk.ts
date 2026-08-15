@@ -8,6 +8,8 @@ import {
   LIQUIDITY_TIERS,
   LIQUIDITY_LOW_SCORE,
   LIQUIDITY_UNKNOWN_SCORE,
+  LIQUIDITY_LEGEND,
+  LIQUIDITY_AREA_UNIT,
   CREDIT_GRADE_SCORES,
   CREDIT_DEFAULT,
   BUILDER_DEBT_UNKNOWN_ADJ,
@@ -83,6 +85,8 @@ export function scoreRisk(apt: Apt): Res {
   //   180곳을 "6개월 0건"으로 단정해 최하점을 물렸다. null → LIQUIDITY_UNKNOWN_SCORE(중립).
   //   ⚠️ 이 값은 **구(區) 단위 합계**다 — 경계는 scoringTiers.ts LIQUIDITY_TIERS 주석 참조.
   const recentTrades6m = apt.recentTrades6m as number | null;
+  //   합계의 **단위 이름**. sanitize 가 빈 문자열로 눌러 보내므로 `??` 가 아니라 falsy 로 가른다.
+  const areaLabel = ((apt.gu as string) || (apt.region as string) || "이 지역").trim() || "이 지역";
   // 세션 501: 공급량 주 지표 = 주택보급률(재고), 보정 = 인허가율(미래 공급).
   // 옛 코드는 `apt.supplyRatio ?? 150`(인허가율)을 주 지표로 썼는데 등급 경계가 보급률용이라
   // 어긋나 있었다 — 상세는 scoringTiers.ts HOUSING_SUPPLY_LEVEL_TIERS 주석.
@@ -235,11 +239,15 @@ export function scoreRisk(apt: Apt): Res {
       {
         name: "거래량",
         score: 100 - liqSc,
-        info: recentTrades6m == null ? "미수집" : `이 구 6개월 ${recentTrades6m.toLocaleString()}건`,
+        // 세션514: "이 구" 단정 제거. `gu` 는 구가 아닌 값이 절반 가까이다 — 값 보유 1,466곳 중
+        //   **616곳(42.0%)**이 시(548)·군(38)·세종(30) 등이라, "이 구 6개월 …"은 그만큼이 거짓이었다.
+        //   이름이 있으면 그 이름을 그대로 쓰고(의정부시면 "의정부시"), 없으면 시도, 그것도 없으면
+        //   "이 지역". 경계 문구는 `LIQUIDITY_LEGEND` 에서 조립한다 — 손으로 적으면 어긋난다.
+        info: recentTrades6m == null ? "미수집" : `${areaLabel} 6개월 ${recentTrades6m.toLocaleString()}건`,
         detail:
           recentTrades6m == null
-            ? "구 단위 거래량 미수집 (중립)"
-            : `이 구 6개월 ${recentTrades6m.toLocaleString()}건 (활발 2,000↑, 보통 1,000↑, 한산 500↓ — 구 단위 합계)`,
+            ? `${LIQUIDITY_AREA_UNIT} 단위 거래량 미수집 (중립)`
+            : `${areaLabel} 6개월 ${recentTrades6m.toLocaleString()}건 (${LIQUIDITY_LEGEND} — ${LIQUIDITY_AREA_UNIT} 단위 합계)`,
       },
       {
         // 세션513: null(미산정)을 false(미통과)와 갈라 준다. 점수는 같다 — 위 loanSc 주석 참조.

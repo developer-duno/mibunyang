@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { SUB_CONTEXT, PRODUCT_MAX } from "./subContext";
-import { PIR_SCORE_TIERS } from "@/constants/scoringTiers";
+import { PIR_SCORE_TIERS, LIQUIDITY_TIERS, LIQUIDITY_LABELS, LIQUIDITY_AREA_UNIT } from "@/constants/scoringTiers";
 import { scorePrice, scoreLocation, scoreProduct, scoreBenefit, scoreRisk, scoreFuture } from "@/scoring/engine";
 
 describe("SUB_CONTEXT", () => {
@@ -364,15 +364,86 @@ describe("PRODUCT_MAX", () => {
 
     // 세션513 — 거래량 미수집(180곳)이 중립 점수를 받게 되면서, 점수만 보면 "거래 보통"이라
     // 말하게 된다. 재보지도 않은 것을 보통이라 부르면 거짓 — info 로 먼저 가른다.
-    it('거래량: info "미수집" 이면 점수가 무엇이든 "거래량 미수집"', () => {
+    //
+    // ⚠️ 세션514: 이 가지는 **화면에 도달하지 않는다**(CatPanel `isNoDataInfo` 가 "미수집"을
+    //    먼저 걸러 interpret 을 안 부른다). 그래도 지키는 이유는 죽은 코드라서가 아니라,
+    //    **형식이 깨졌을 때 밴드를 지어내지 않는다**는 방어이기 때문이다 — 이 가지가 없으면
+    //    파싱 실패가 최하 밴드("거래 침체")로 조용히 떨어진다.
+    it('거래량: 건수를 못 읽으면 밴드를 지어내지 않는다 ("거래량 미수집")', () => {
       expect(say("risk", "거래량", 55, "미수집")).toBe("거래량 미수집");
-      expect(say("risk", "거래량", 55, "이 구 6개월 995건")).not.toBe("거래량 미수집");
+      expect(say("risk", "거래량", 55, "형식이 바뀐 문자열")).toBe("거래량 미수집");
+      expect(say("risk", "거래량", 55, undefined)).toBe("거래량 미수집");
+      expect(say("risk", "거래량", 55, "수원시 6개월 995건")).not.toBe("거래량 미수집");
     });
 
-    it("거래량 benchmark 는 구 단위 경계(LIQUIDITY_TIERS)와 한 쌍", () => {
-      expect(SUB_CONTEXT.risk["거래량"].benchmark).toContain("구");
-      expect(SUB_CONTEXT.risk["거래량"].benchmark).toContain("2,000");
-      // 옛 단지 단위 경계 문구로 되돌아가면 red
+    // 세션514 — 판정을 **값 기반**으로 옮긴다. 세션513이 경계를 구 단위 분포로 옮겨 놓고
+    // 판정만 옛 점수 임계(70/40)에 남겨 둔 탓에, 1,000~1,999건 구간 428곳이
+    // "기준 2,000건+ 활발" 옆에서 "거래 활발"을 달고 있었다(모순 26곳 → 798곳).
+    describe("거래량 판정은 LIQUIDITY_TIERS 와 한 쌍 (세션514)", () => {
+      /** @param {number} n */
+      const at = (n) => say("risk", "거래량", 0, `수원시 6개월 ${n.toLocaleString()}건`);
+      /** @param {number} i */
+      const min = (i) => /** @type {number} */ (LIQUIDITY_TIERS[i].min);
+
+      it("경계 ±1 에서 밴드가 갈린다 — 수치는 상수에서 읽는다", () => {
+        LIQUIDITY_TIERS.forEach((_t, i) => {
+          expect(at(min(i))).toBe(`거래 ${LIQUIDITY_LABELS[i]}`);
+          expect(at(min(i) - 1)).toBe(`거래 ${LIQUIDITY_LABELS[i + 1]}`);
+        });
+      });
+
+      it("점수 임계(70/40)로 되돌리면 경계가 어긋난다", () => {
+        // 옛 산식은 이 구간(1,000~1,999)의 서브점수가 80 이라 "거래 활발"이라 불렀다.
+        // benchmark 는 2,000건+ 를 활발이라 하므로 그 자리에서 자기 모순.
+        expect(at(min(0) - 1)).toBe("거래 보통");
+        expect(at(min(0) - 1)).not.toBe("거래 활발");
+        // 점수를 무엇으로 주든 값이 같으면 같은 말을 한다 (점수 역산 잔재가 남으면 red)
+        expect(say("risk", "거래량", 95, "수원시 6개월 1,500건")).toBe(
+          say("risk", "거래량", 5, "수원시 6개월 1,500건")
+        );
+      });
+
+      it("지역 이름이 무엇이든 건수만 읽는다 (gu 는 시·군·구가 섞여 있다)", () => {
+        for (const area of ["수원시", "의정부시", "옹진군", "세종특별자치시", "이 지역"]) {
+          expect(say("risk", "거래량", 0, `${area} 6개월 2,500건`)).toBe(`거래 ${LIQUIDITY_LABELS[0]}`);
+        }
+      });
+
+      /**
+       * 경계가 **실측 사분위 근방**에 있는지 (세션514).
+       *
+       * 위 가드들은 전부 `LIQUIDITY_TIERS` 에서 파생하므로 **경계를 옮기면 다 같이 따라간다** —
+       * 그래서 잘못된 재보정(예: 2,000 → 2,500)을 하나도 못 잡는다(실증: 468건 전부 초록).
+       * 파생 가드가 지키는 건 "어긋나지 않음"이지 "옳음"이 아니다.
+       *
+       * 여기서 잠그는 건 상수 주석이 **스스로 주장하는 근거**다 — "경계를 실제 분포의 사분위로
+       * 옮긴다". 그 주장에서 멀어지면 세션501·498이 겪은 실패로 되돌아간다: 경계가 실측에서 뜨면
+       * 최상 구간이 비거나(만점 0곳) 한 구간에 몰려 변별력이 사라진다.
+       *
+       * ⚠️ 관측값은 **세션514에 갱신됐다.** 세션513이 쓰던 값(p25 516 · med 995 · p75 1,954)은
+       * 수집기의 무정렬 OFFSET 페이징 때문에 큰 구가 통째로 깎인 **오염 분포**였다.
+       * 여기 적힌 수치를 고칠 때는 반드시 **재수집 후** 분포를 다시 재고 함께 고친다.
+       */
+      it("경계는 상수 주석이 근거로 든 실측 사분위 근방이어야 한다", () => {
+        // 세션514 실측(trade_stats 재수집분 2026-08-14, 값 보유 n=2,543). 티어가 아니라 **관측값**이다.
+        const OBSERVED = [1735, 1073, 715]; // p75 · med · p25
+        const TOLERANCE = 0.15; // ±15% — 재보정은 되되, 분포에서 떨어지면 red
+        LIQUIDITY_TIERS.forEach((t, i) => {
+          const ratio = /** @type {number} */ (t.min) / OBSERVED[i];
+          expect(ratio).toBeGreaterThan(1 - TOLERANCE);
+          expect(ratio).toBeLessThan(1 + TOLERANCE);
+        });
+      });
+    });
+
+    it("거래량 benchmark 는 LIQUIDITY_TIERS 에서 **조립**한다 (손으로 적으면 어긋난다)", () => {
+      // 옛 가드는 "구"·"2,000" 문자열만 봐서, 상수를 바꿔도 초록인 껍데기였다.
+      // 이제 값에서 조립한 문자열과 통째로 대조한다 — 하드코딩으로 되돌리면 red.
+      const expected = `${LIQUIDITY_AREA_UNIT} 6개월 ${/** @type {number} */ (LIQUIDITY_TIERS[0].min).toLocaleString()}건+ ${LIQUIDITY_LABELS[0]}`;
+      expect(SUB_CONTEXT.risk["거래량"].benchmark).toBe(expected);
+      // "구"라고만 단정하던 옛 문구로 되돌아가면 red (값 보유의 42.0%가 구가 아니다)
+      expect(SUB_CONTEXT.risk["거래량"].benchmark).not.toBe("구 6개월 2,000건+ 활발");
+      // 옛 단지 단위 경계 문구로 되돌아가도 red
       expect(SUB_CONTEXT.risk["거래량"].benchmark).not.toContain("30건");
     });
 

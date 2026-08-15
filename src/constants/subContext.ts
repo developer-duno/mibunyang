@@ -1,4 +1,12 @@
-import { PRODUCT_MAX as _PM, TRANSIT_OPEN, PIR_SCORE_TIERS } from "@/constants/scoringTiers";
+import {
+  PRODUCT_MAX as _PM,
+  TRANSIT_OPEN,
+  PIR_SCORE_TIERS,
+  LIQUIDITY_TIERS,
+  LIQUIDITY_LABELS,
+  LIQUIDITY_AREA_UNIT,
+  liquidityBand,
+} from "@/constants/scoringTiers";
 import { NOXIOUS_PENALTY } from "@/constants/brands";
 
 // 소비자용 서브지표 해석 매핑 테이블
@@ -38,6 +46,20 @@ const countPenalty = (info?: string): number =>
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s in NOXIOUS_PENALTY).length;
+
+/**
+ * 거래량 `info`(`"의정부시 6개월 1,234건"`)에서 **건수만** 뽑는다.
+ *
+ * 앞에 붙는 지역 이름은 시·군·구가 섞여 있어(값 보유 1,466곳 중 616곳이 구가 아니다) 고정할 수
+ * 없다. 그래서 이름을 건너뛰고 `"…건"` 앞의 숫자만 읽는다. 형식이 어긋나면 `null` —
+ * 밴드를 지어내지 않는다.
+ */
+const parseTradeCount = (info?: string): number | null => {
+  const m = /([\d,]+)\s*건/.exec(info ?? "");
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
 
 export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
   price: {
@@ -223,13 +245,22 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       interpret: (sc) => (sc >= 70 ? "분양 순조" : sc >= 40 ? "미분양 주의" : "미분양 심각"),
       benchmark: "5% 이하 안전",
     },
-    // 세션513: 미수집(180곳)이 중립 점수를 받게 되면서 점수만 보면 "거래 보통"이라 말하게 된다 —
-    //   재보지도 않은 것을 보통이라 부르는 거짓이다. `info` 로 미수집을 먼저 가른다.
-    //   benchmark 는 LIQUIDITY_TIERS 와 한 쌍(구 단위 합계) — 한쪽만 바꾸면 어긋난다.
+    // 세션514: **값으로 가른다**(적정가 괴리도·전세가율 선례). 세션513이 경계를 구 단위 분포로
+    //   옮겨 놓고 판정만 옛 점수 임계(70/40)에 남겨 둔 탓에, 1,000~1,999건 구간 **428곳**이
+    //   "기준 2,000건+ 활발" 옆에서 "거래 활발"을 달고 있었다(모순 26곳 → 798곳).
+    //   밴드 이름·경계는 전부 `liquidityBand`/`LIQUIDITY_LEGEND` 한 곳에서 나온다.
+    //
+    //   ⚠️ 파싱 실패 가지("거래량 미수집")는 **화면에 도달하지 않는다** — `CatPanel` 의
+    //   `isNoDataInfo` 가 `info.includes("미수집")` 으로 먼저 걸러 `interpret` 자체를 안 부른다
+    //   (SUB_CONTEXT 소비처는 CatPanel 하나뿐, 전수 grep 확인). 그래도 남겨 둔다: 이건 죽은
+    //   분기이기 전에 **형식이 바뀌면 밴드를 지어내지 않겠다**는 방어다. 지우면 그 자리에서
+    //   `NaN` 이 최하 밴드("거래 침체")로 조용히 떨어진다.
     거래량: {
-      interpret: (sc, info) =>
-        info === "미수집" ? "거래량 미수집" : sc >= 70 ? "거래 활발" : sc >= 40 ? "거래 보통" : "거래 침체",
-      benchmark: "구 6개월 2,000건+ 활발",
+      interpret: (_sc, info) => {
+        const n = parseTradeCount(info);
+        return n == null ? "거래량 미수집" : `거래 ${liquidityBand(n)}`;
+      },
+      benchmark: `${LIQUIDITY_AREA_UNIT} 6개월 ${(LIQUIDITY_TIERS[0].min ?? 0).toLocaleString()}건+ ${LIQUIDITY_LABELS[0]}`,
     },
     // 세션513: DSR 미산정(121곳, 전부 pir 도 null)은 "대출 보통"이 아니라 재본 적이 없는 것이다.
     "대출/잔금": {

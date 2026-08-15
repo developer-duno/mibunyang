@@ -59,36 +59,62 @@ export function monthsAgo(n) {
   return d.toISOString().slice(0, 10);
 }
 
-// ── Supabase 전체 조회 (1000건 페이징) ─────────────────────────
+// ── Supabase 전체 조회 (고유키 커서 페이징) ────────────────────
 /**
+ * ⚠️ **정렬 없는 OFFSET 페이징은 큰 테이블에서 행을 잃는다** (세션513 실측).
+ *
+ * 옛 구현은 `.range(from, from+999)` 만 썼는데, Postgres 는 ORDER BY 가 없으면 행 순서를
+ * 보장하지 않는다. 같은 오프셋(300,000)으로 **같은 쿼리를 두 번 던졌더니 교집합이 0** 이었다
+ * (trades 12개월 창 795,614행 실측). 그 결과 페이지마다 다른 표본이 잡혀 일부는 중복, 일부는
+ * 통째로 누락됐다 — 저장된 구 단위 6개월 거래량이 원본의 8% 수준으로 과소집계되고 있었다
+ * (경기 화성시 실제 487건 → 저장 38건 · 양주시 1,045 → 91 · 반면 소형 구인 과천시는 111 → 108 로 정확).
+ *
+ * 정렬만 붙여도 부족하다 — `deal_month, price` 처럼 **고유하지 않은 키**로 정렬하면 동점 구간의
+ * 순서가 흔들려 여전히 어긋난다(실측 교집합 64/91). **고유 키 커서(keyset)** 만이 안전하고,
+ * 깊은 오프셋을 건너뛰지 않아 속도도 빠르다.
+ *
  * @param {string} table
  * @param {string} select
  * @param {Record<string, any>} [filters]
  * @param {import("@supabase/supabase-js").SupabaseClient | null} [sb]
  * @param {Array<{col: string, op: string, val: any}>} [rangeFilters]
+ * @param {string} [keyCol] 그 테이블의 **고유** 키 컬럼. 기본 `id`. `articles`=article_no,
+ *   `complexes`=complex_no 처럼 id 가 없는 테이블은 호출처가 반드시 넘긴다(없는 컬럼이면 조회가 에러로 죽는다).
+ * @param {boolean} [keyDesc] 키 내림차순으로 훑을지. `articles` 는 **true 여야 한다** —
+ *   활성 매물이 최신(큰 article_no)에 몰려 있어 오름차순으로 가면 죽은 행 100만 개를 먼저 훑다가
+ *   서버 statement timeout 으로 죽는다(실측: 오름차순 timeout / 내림차순 4페이지 745ms).
  * @returns {Promise<Array<Record<string, any>>>}
  */
-async function fetchAll(table, select, filters = {}, sb = null, rangeFilters = []) {
+export async function fetchAll(table, select, filters = {}, sb = null, rangeFilters = [], keyCol = "id", keyDesc = false) {
   sb = sb ?? getSupabase();
   const rows = [];
   const PAGE = 1000;
-  let from = 0;
+  // 커서로 쓰려면 키가 응답에 있어야 한다 — 빠졌으면 앞에 붙인다(여분 필드는 소비처에 무해).
+  const hasKey = select
+    .split(",")
+    .map((s) => s.trim().split(":")[0])
+    .includes(keyCol);
+  const selectWithKey = hasKey ? select : `${keyCol},${select}`;
+  /** @type {any} */
+  let cursor = null;
 
   while (true) {
     /** @type {any} */
-    let q = sb.from(table).select(select).range(from, from + PAGE - 1);
+    let q = sb.from(table).select(selectWithKey).order(keyCol, { ascending: !keyDesc }).limit(PAGE);
     for (const [col, val] of Object.entries(filters)) {
       q = q.eq(col, val);
     }
     for (const { col, op, val } of rangeFilters) {
       q = q[op](col, val);
     }
+    if (cursor != null) q = keyDesc ? q.lt(keyCol, cursor) : q.gt(keyCol, cursor);
     const { data, error } = await q;
     if (error) throw new Error(`${table} 조회 실패: ${error.message}`);
     if (!data || data.length === 0) break;
     rows.push(...data);
     if (data.length < PAGE) break;
-    from += PAGE;
+    cursor = data[data.length - 1][keyCol];
+    if (cursor == null) break; // 키가 비면 커서를 못 만든다 — 무한 루프 대신 멈춘다
   }
 
   return rows;
@@ -104,19 +130,25 @@ async function fetchCancelledTrades(sb, cutoff) {
   /** @type {Array<Record<string, any>>} */
   const rows = [];
   const PAGE = 1000;
-  let from = 0;
+  // 위 fetchAll 과 같은 이유로 고유키 커서 — 정렬 없는 OFFSET 은 행을 잃는다(세션513).
+  /** @type {any} */
+  let cursor = null;
   while (true) {
-    const { data, error } = await sb
+    let q = sb
       .from("trades")
-      .select("region,gu,deal_month,trade_type")
+      .select("id,region,gu,deal_month,trade_type")
       .gte("deal_month", cutoff)
       .not("cancel_date", "is", null)
-      .range(from, from + PAGE - 1);
+      .order("id", { ascending: true })
+      .limit(PAGE);
+    if (cursor != null) q = q.gt("id", cursor);
+    const { data, error } = await q;
     if (error) throw new Error(`해제거래 조회 실패: ${error.message}`);
     if (!data || data.length === 0) break;
     rows.push(...data);
     if (data.length < PAGE) break;
-    from += PAGE;
+    cursor = data[data.length - 1].id;
+    if (cursor == null) break;
   }
   return rows;
 }
@@ -163,8 +195,14 @@ async function main() {
       [{ col: "deal_month", op: "gte", val: cutoff12mYM },
        { col: "cancel_date", op: "is", val: null }]).catch(() => []),
     fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang).catch(() => []),
-    fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2", { is_active: true }, sbMibunyang).catch(() => []),
-    fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang).catch(() => []),
+    // ⚠️ articles(137만행)·complexes(6.4만행)는 `id` 가 없다 — 고유키를 명시하지 않으면 조회가 죽는다.
+    fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2", { is_active: true }, sbMibunyang, [], "article_no", true).catch(/** @param {any} e */ (e) => {
+      // ⚠️ 조용히 [] 로 넘기면 "매물 0건"이 정상처럼 보인다 — 세션513 에 정렬 추가로 이 조회가
+      //    statement timeout 으로 죽었는데 로그가 없어 dry-run 요약의 "매물 0건"만 남았다.
+      logError("load", `articles 조회 실패 — 매물 폴백 없이 진행: ${e?.message ?? e}`);
+      return [];
+    }),
+    fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang, [], "complex_no").catch(() => []),
     fetchAll("complex_price_history", "complex_no,trade_type,price_avg,base_month", { trade_type: "A1" }, sbMibunyang,
       [{ col: "base_month", op: "gte", val: cutoff12mYM }])
       .then(rows => rows.filter(r => r.price_avg != null))

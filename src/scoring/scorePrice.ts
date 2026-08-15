@@ -1,4 +1,4 @@
-import { BRAND_TIER, AGE_PREMIUM } from "@/constants/brands";
+import { BRAND_TIER, AGE_PREMIUM, resolveBuilder } from "@/constants/brands";
 import {
   tierMin,
   DEV_SCORE_TIERS,
@@ -83,7 +83,13 @@ function classifyNoPrice(apt: Apt): string {
  * priceIndex 보정: 130+ → +5, 110+ → +3 (과열 시장 신뢰도 가산).
  */
 export function scorePrice(apt: Apt): Res {
-  const builder = (apt.builder ?? "기타") as string;
+  // ⚠️ 이 자리는 **선재 결함**이다 — #400(세션513)이 만든 게 아니라, #400 이 브랜드 정규화를
+  //   세 자리 중 두 자리(`scoreProduct`·카드 칩)에만 넣어 **불일치가 드러난** 것이다.
+  //   `scorePrice` 는 처음부터 `apt.builder` 를 BRAND_TIER 에 직조회해 왔다.
+  //   결과: 같은 단지가 상품성축에서는 1군Super(20점)인데 가격축 적정가 계수 `adj` 는
+  //   미등재 1.0 으로 남는 **이중 잣대**가 68곳에 생겼다(운영 catsCache 대조 실측).
+  //   정규화는 한 군데서만 하는 게 아니라 `builder` 를 읽는 **모든 자리**에서 해야 한다.
+  const builder = resolveBuilder(apt.builder as string | null | undefined);
   const brand = (BRAND_TIER as Record<string, { adj?: number }>)[builder];
   if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${builder}"`);
   const b = brand || { adj: 1.0 };

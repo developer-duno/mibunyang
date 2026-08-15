@@ -20,7 +20,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { median, monthsAgo, groupByArea, statsKey } = await import("./trade-stats.mjs");
+const { median, monthsAgo, groupByArea, statsKey, fetchAll } = await import("./trade-stats.mjs");
 const { REGION_MAP } = await import("./_shared.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
@@ -256,5 +256,132 @@ describe("complexes.sido REGION_MAP 정규화", () => {
     const unnormalizedKey = statsKey("대전광역시", "유성구");
     const aptKey = statsKey("대전", "유성구");
     expect(unnormalizedKey).not.toBe(aptKey);
+  });
+});
+
+// ── fetchAll 페이징 (세션513) ────────────────────────────────
+//
+// 사고: 옛 구현은 `.range(from, from+999)` 만 썼다. Postgres 는 ORDER BY 가 없으면 행 순서를
+// 보장하지 않아, **같은 오프셋으로 같은 쿼리를 두 번 던졌더니 교집합이 0** 이었다(trades 79.5만행
+// 라이브 실측). 그 결과 구 단위 6개월 거래량이 원본의 8% 수준으로 저장되고 있었다
+// (화성시 실제 479 → 저장 38). 고유키 커서로 바꾼 뒤 1,380 = COUNT 정확 일치·중복 0 을 확인했다.
+//
+// 이 가드는 **쿼리를 어떻게 만드는지**를 잠근다 — 순수 함수가 아니라 배선이라 mock 으로 본다.
+describe("fetchAll — 고유키 커서 페이징", () => {
+  /**
+   * PostgREST 쿼리 빌더 mock. 호출된 메서드를 순서대로 기록한다.
+   * @param {Array<Array<Record<string, any>>>} pages 페이지별 반환 행
+   */
+  function makeClient(pages) {
+    /** @type {Array<{ method: string, args: any[] }>} */
+    const calls = [];
+    let page = 0;
+    const builder = {
+      /** @param {string} c @param {any} o */
+      order(c, o) {
+        calls.push({ method: "order", args: [c, o] });
+        return builder;
+      },
+      /** @param {number} n */
+      limit(n) {
+        calls.push({ method: "limit", args: [n] });
+        return builder;
+      },
+      /** @param {string} c @param {any} v */
+      eq(c, v) {
+        calls.push({ method: "eq", args: [c, v] });
+        return builder;
+      },
+      /** @param {string} c @param {any} v */
+      gt(c, v) {
+        calls.push({ method: "gt", args: [c, v] });
+        return builder;
+      },
+      /** @param {string} c @param {any} v */
+      lt(c, v) {
+        calls.push({ method: "lt", args: [c, v] });
+        return builder;
+      },
+      /** @param {string} c @param {any} v */
+      gte(c, v) {
+        calls.push({ method: "gte", args: [c, v] });
+        return builder;
+      },
+      /** @param {string} c @param {any} v */
+      is(c, v) {
+        calls.push({ method: "is", args: [c, v] });
+        return builder;
+      },
+      /** @param {any} r */
+      then(r) {
+        return Promise.resolve({ data: pages[page++] ?? [], error: null }).then(r);
+      },
+    };
+    const client = {
+      /** @param {string} t */
+      from(t) {
+        calls.push({ method: "from", args: [t] });
+        return {
+          /** @param {string} s */
+          select(s) {
+            calls.push({ method: "select", args: [s] });
+            return builder;
+          },
+        };
+      },
+    };
+    return { client, calls };
+  }
+
+  /** @param {number} n @param {number} start */
+  const rows = (n, start = 0) => Array.from({ length: n }, (_, i) => ({ id: start + i + 1, v: "x" }));
+
+  it("정렬 없이 페이징하지 않는다 — 매 페이지 order(고유키)", async () => {
+    const { client, calls } = makeClient([rows(1000), rows(3, 1000)]);
+    await fetchAll("trades", "region,gu", {}, /** @type {any} */ (client));
+    const orders = calls.filter((c) => c.method === "order");
+    expect(orders.length).toBe(2); // 2페이지 = order 2회
+    expect(orders[0].args[0]).toBe("id");
+    expect(orders[0].args[1]).toEqual({ ascending: true });
+    // `.range()` 는 더 이상 쓰지 않는다(불안정 페이징의 원인)
+    expect(calls.some((c) => c.method === "range")).toBe(false);
+  });
+
+  it("2페이지부터 커서(gt 마지막 키)로 이어받는다 — 오프셋을 안 쓴다", async () => {
+    const { client, calls } = makeClient([rows(1000), rows(2, 1000)]);
+    await fetchAll("trades", "region,gu", {}, /** @type {any} */ (client));
+    const gts = calls.filter((c) => c.method === "gt");
+    expect(gts.length).toBe(1); // 1페이지엔 커서 없음, 2페이지에만
+    expect(gts[0].args).toEqual(["id", 1000]); // 1페이지 마지막 id
+  });
+
+  it("키가 select 에 없으면 앞에 붙인다 — 커서를 못 만들면 페이징이 죽는다", async () => {
+    const { client, calls } = makeClient([rows(2)]);
+    await fetchAll("trades", "region,gu", {}, /** @type {any} */ (client));
+    expect(calls.find((c) => c.method === "select")?.args[0]).toBe("id,region,gu");
+  });
+
+  it("키가 이미 select 에 있으면 중복해 붙이지 않는다", async () => {
+    const { client, calls } = makeClient([rows(2)]);
+    await fetchAll("trades", "id,region", {}, /** @type {any} */ (client));
+    expect(calls.find((c) => c.method === "select")?.args[0]).toBe("id,region");
+  });
+
+  it("내림차순 옵션은 order(desc)+lt 커서 — articles 는 이쪽이어야 산다", async () => {
+    // articles 는 활성 매물이 최신(큰 article_no)에 몰려 있어 오름차순이면 죽은 행 100만 개를
+    // 먼저 훑다가 서버 statement timeout 으로 죽는다(라이브 실측).
+    const { client, calls } = makeClient([
+      [{ article_no: "300", v: "x" }],
+      [],
+    ]);
+    await fetchAll("articles", "complex_no", { is_active: true }, /** @type {any} */ (client), [], "article_no", true);
+    const order = calls.find((c) => c.method === "order");
+    expect(order?.args).toEqual(["article_no", { ascending: false }]);
+  });
+
+  it("모든 페이지의 행을 합쳐 돌려준다", async () => {
+    const { client } = makeClient([rows(1000), rows(1000, 1000), rows(7, 2000)]);
+    const out = await fetchAll("trades", "region", {}, /** @type {any} */ (client));
+    expect(out.length).toBe(2007);
   });
 });

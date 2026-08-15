@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { PROFILES } from "@/constants/profiles";
 import { C, F } from "@/theme";
 
 const cardStyle = {
@@ -33,7 +34,13 @@ export const FAQSection = memo(function FAQSection() {
         },
         {
           q: "프로필마다 순위가 다른 이유는?",
-          a: "프로필별로 6개 카테고리의 가중치가 다르기 때문입니다. 예를 들어 '투자' 프로필은 가격(30%)과 안전(25%)에, '교육' 프로필은 입지(45%)에 높은 가중치를 부여합니다.",
+          // 세션514: 수치를 **`PROFILES` 에서 파생**한다. 손으로 적힌 옛 문구는 3칸이 전부 어긋나
+          //   있었다(투자 가격 30↔35 · 안전 25↔30, 교육 입지 45↔50). #398(세션513)이 같은 파일의
+          //   다른 줄만 고치고 이 줄을 놓친 자리 — GuideSections 가 이미 쓰는 방식으로 맞춘다.
+          a:
+            `프로필별로 6개 카테고리의 가중치가 다르기 때문입니다. 예를 들어 '${PROFILES.invest.name}' 프로필은 ` +
+            `가격(${PROFILES.invest.w.price}%)과 안전(${PROFILES.invest.w.risk}%)에, ` +
+            `'${PROFILES.edu.name}' 프로필은 입지(${PROFILES.edu.w.location}%)에 높은 가중치를 부여합니다.`,
         },
         {
           q: "적정가 괴리도란?",
