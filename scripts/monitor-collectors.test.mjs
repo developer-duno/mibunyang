@@ -262,12 +262,28 @@ describe("hasGithubApiAuth — 로컬 실행 시 ①③ skip 가드 (가짜 미�
  * 아래 테스트가 그 회귀를 막는다.
  */
 describe("주기 변경 ↔ 감시 기준 동기화 (세션 491 적대검증)", () => {
-  it("분기 cron 워크플로가 QUARTERLY_CRON_WORKFLOWS 에 등재돼 있다", () => {
-    expect(QUARTERLY_CRON_WORKFLOWS).toContain("Collect Building Hub (에너지+인허가)");
+  it("삭제된 워크플로는 QUARTERLY_CRON_WORKFLOWS 에 남지 않는다", () => {
+    // 세션 515: "Collect Building Hub (에너지+인허가)" 도 워크플로 자체가 삭제됐다 —
+    // MOLIT(1613000) 해외 IP 차단으로 로컬 러너(분기 15일) 이전.
+    // 없는 워크플로가 여기 남으면 "분기라 오래 안 돈 것" 으로 오해되므로 등재돼 있으면 안 된다.
+    expect(QUARTERLY_CRON_WORKFLOWS).not.toContain("Collect Building Hub (에너지+인허가)");
     // 세션 501: "Housing Permits Data Collection" 은 **워크플로 자체가 삭제**됐다.
     // MOLIT ArchPmsService_v2 폐기 → KOSIS 이전인데 kosis.kr 이 해외 IP 를 막아 GH 에서 못 돈다.
     // 없는 워크플로가 여기 남으면 "분기라 오래 안 돈 것" 으로 오해되므로 등재돼 있으면 안 된다.
     expect(QUARTERLY_CRON_WORKFLOWS).not.toContain("Housing Permits Data Collection");
+  });
+
+  it("QUARTERLY_CRON_WORKFLOWS 의 이름은 실제 yml 에 존재한다 (삭제 드리프트 차단)", () => {
+    const wfDir = join(dirname(fileURLToPath(import.meta.url)), "..", ".github", "workflows");
+    /** @type {Set<string>} */
+    const names = new Set();
+    for (const f of readdirSync(wfDir).filter((x) => x.endsWith(".yml"))) {
+      const m = readFileSync(join(wfDir, f), "utf8").match(/^name:\s*(.+)$/m);
+      if (m) names.add(m[1].trim().replace(/^["'](.*)["']$/, "$1"));
+    }
+    for (const name of QUARTERLY_CRON_WORKFLOWS) {
+      expect(names.has(name), `QUARTERLY_CRON_WORKFLOWS 의 "${name}" 에 해당하는 yml 이 없다`).toBe(true);
+    }
   });
 
   it("분기 collector 의 stale_days 는 100 이다 — 38 이면 진짜 outage 판정을 덮는다", () => {
@@ -916,7 +932,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 25 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 28 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "applyhome-detail", "applyhome-remndr", "applyhome-seed", "avg-income", "building-hub",
@@ -925,8 +941,11 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
       "kosis-unsold", "maintenance", "market-stats", "migration",
+      // 세션 515: MOLIT(1613000) 해외 IP 차단 → GH yml 5개 삭제 + 로컬 러너 이전.
+      // GH run 이 없어 ①③ 대상 밖이므로 ⑤ 신선도가 유일한 "안 돌면 알림".
+      "molit-building", "molit-units", "trades",
       "naver-collect", "naver-presale", "notify-subscribers", "schools", "transport-tago",
-    ]);
+    ].sort());
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);
       expect(c.owner).toBeTruthy();

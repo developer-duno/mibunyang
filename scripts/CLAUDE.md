@@ -49,6 +49,10 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 
 ## MOLIT 수집기 모듈
 
+> ⚠️ **실행 경로 = GitHub Actions 가 아니라 집서버 로컬 러너다**(세션 515). apis.data.go.kr 의 국토부
+> (1613000) 서비스가 해외 IP 를 복불복 차단해 `collect-{trades,molit-units,building-info,maintenance,building-hub}.yml`
+> 5개를 삭제하고 `scripts/kosis-local-runner.mjs` 매핑표로 옮겼다 — 아래 "KOSIS + MOLIT 수집 — 로컬 자동화" 절 참조.
+
 | 파일 | 역할 | isCLI |
 |------|------|-------|
 | `_molit-api.mjs` | 공유 모듈 (API 호출, 매칭, 페이지네이션, NonRetryableError) | - |
@@ -93,19 +97,37 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 
 ---
 
-## KOSIS 수집 — 로컬 자동화 (세션 288~289·395)
+## KOSIS + MOLIT 수집 — 로컬 자동화 (세션 288~289·395·515)
 
 **kosis.kr 이 해외 클라우드 IP(GitHub 러너)를 차단(2026-06-09~) → 한국 IP 로컬 PC에서만 실행.** GH `collect-*.yml` 10개 삭제됨 (PR #98).
 
+**세션 515: 국토부(apis.data.go.kr/**1613000**)도 2026-08-06 부터 GH 러너를 복불복 차단** (HTTP 코드 없는 `fetch failed` / 같은 키·같은 요청이 로컬 한국 IP 에선 156ms 200 OK 실측) → 1613000 의존 5종(trades·molit-units·molit-building-info·maintenance·building-hub)도 같은 러너로 이전. GH `collect-{trades,molit-units,building-info,maintenance,building-hub}.yml` 5개 삭제.
+
 | 구분 | 방식 | 실행 |
 |------|------|------|
-| 자동 수집 | Windows 스케줄러 `MibunyangKosisLocal` → `kosis-local-runner.bat` | 매일 05:30 KST (일자 디스패치: 2·6·7·9·10·12·13·14·17(분기)·18일) |
+| 자동 수집 | Windows 스케줄러 `MibunyangKosisLocal` → `kosis-local-runner.bat` | 매일 05:30 KST (일자 디스패치 — 아래 표) |
 | 수동/보충 | `node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD` | 필요시 |
 | 매핑표 확인 | `node scripts/kosis-local-runner.mjs --list` | - |
 
+일자 디스패치 (진실의 원천 = `kosis-local-runner.mjs` 의 `DAY_TABLE` — 아래는 요약이라 낡을 수 있다, 단정 전 `--list`):
+
+| 일 | 수집기 | 게이트 |
+|----|--------|--------|
+| 2 | housing-supply-ratio | - |
+| 6 | market-stats → **molit-units** → **trades** | trades 가 가장 오래 걸려 마지막 |
+| 7 | migration | - |
+| 9 | unsold | - |
+| 10 | fertility-rate, **molit-building-info** | building-info 는 **토요일이면 건너뜀**(자매 레포 public_data 와 쿼터 충돌) |
+| 11 | housing-permits, **molit-building-info** | building-info 는 **전날이 토요일일 때만**(10일 보충) |
+| 12·13·14 | regional-economy / avg-income / medical-access | - |
+| 15~19 | **maintenance** | 매일 `--limit=600` 배치 (옛 cron `0 6 15-19` 이식 — 인자를 빼면 전 대상이 한 회차에 몰려 일일 쿼터 초과) |
+| 15 | **building-hub** | 1·4·7·10월만 |
+| 17 | sale-price-index | 1·4·7·10월만 |
+| 18 | jeonse-price-index | - |
+
 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-kosis-task.ps1`
 
-감시: GH run 이 없으므로 monitor ⑤ `EXTERNAL_API_COLLECTORS` 신선도(월간 38일/분기 100일)가 유일한 미발화 알림. KOSIS 수집기 10종 전부 실패 시 `collector_runs` 에 `status=failure` 행 기록 (PR #97·#99 하드닝 — throw·early-return 전 경로).
+감시: GH run 이 없으므로 monitor ⑤ `EXTERNAL_API_COLLECTORS` 신선도(일일·주간 14일/월간 38일/분기 100일)가 유일한 미발화 알림 — 세션 515 에 `trades`·`molit-building`·`molit-units` 3건 신규 등재(`maintenance`·`building-hub` 는 기존 항목 유지). KOSIS 수집기 10종 전부 실패 시 `collector_runs` 에 `status=failure` 행 기록 (PR #97·#99 하드닝 — throw·early-return 전 경로).
 
 ---
 
@@ -220,20 +242,24 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 
 일일 한도: 10,000회 (MOLIT_KEY, mibunyang + naver-estate-web 공유).
 
-| 일자 | 워크플로우 | 추정 호출 |
+> ⚠️ 아래 "실행 주체" 열은 세션 515 에 바뀌었다 — 국토부(1613000) 의존 5종은 GH 워크플로가 아니라
+> **집서버 로컬 러너**(`kosis-local-runner.mjs`)가 돌린다. 발화일은 그대로라 쿼터 계산은 불변이다.
+
+| 일자 | 실행 주체 | 추정 호출 |
 |------|-----------|----------|
-| 매월 1일 | collect-unsold-kosis | ~1 |
-| 매월 5일 | population, market-stats | ~100 |
-| 매월 6일 | collect-trades | 1,500~3,500 (세션92: 지방 8개 region 확장 시 +500~1,500) |
-| 매월 6일 + 월/목 08:00 후 | molit-units | 50~300 (+post-naver-collect 시 추가) |
-| **매월 10일** | **building-info** | **~8,500** |
-| 매월 10일 | housing-permits | ~100 |
+| 매월 1일 | collect-unsold-kosis (로컬 러너) | ~1 |
+| 매월 5일 | population(GH), market-stats(로컬 러너 6일) | ~100 |
+| 매월 6일 | collect-trades (로컬 러너) | 1,500~3,500 (세션92: 지방 8개 region 확장 시 +500~1,500) |
+| 매월 6일 + 월/목 08:00 후 | molit-units (로컬 러너 + 네이버 파이프라인) | 50~300 (+post-naver-collect 시 추가) |
+| **매월 10일** | **building-info (로컬 러너)** | **~8,500** |
+| 매월 11일 | housing-permits (로컬 러너, KOSIS) | ~100 |
+| 매월 15~19일 | maintenance (로컬 러너, `--limit=600`) | ~3,600/회차 |
 | **토요일** | naver-estate-web public_data | ~3,600 |
 
 **위험일**:
-- 매월 10일이 토요일 → 12,100 > 10,000. collect-building-info.yml에 토요일 → 11일 fallback 구현됨.
+- 매월 10일이 토요일 → 12,100 > 10,000. 로컬 러너 매핑표의 `skipIfDow: 6`(10일) + `onlyIfPrevDayDow: 6`(11일)로 fallback 구현됨(옛 collect-building-info.yml 의 셸 분기를 이식).
 - 매월 10일이 월/목 → building-info 8,500 + post-naver-collect molit-units 300 = ~8,800~9,100(한도의 88~91%). 여유 900~1,200회. 모니터링 필요(세션89).
-- **매월 6일 (세션92 이후)**: 지방 8개 region(강원/충북/충남/전북/전남/경북/경남/제주) 확장으로 collect-trades 최대 ~5,000회 가능. 여전히 10일보다 여유 있음 — 단 dry-run 실측 후 9,000 초과 시 `.github/workflows/collect-trades.yml` 2분할 고려(metro 6일 / rural 20일).
+- **매월 6일 (세션92 이후)**: 지방 8개 region(강원/충북/충남/전북/전남/경북/경남/제주) 확장으로 collect-trades 최대 ~5,000회 가능. 여전히 10일보다 여유 있음 — 단 dry-run 실측 후 9,000 초과 시 `kosis-local-runner.mjs` DAY_TABLE 2분할 고려(metro 6일 / rural 20일).
 
 ### 쿼터 로깅
 
