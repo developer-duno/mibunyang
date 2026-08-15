@@ -15,6 +15,7 @@ import {
   TRANSIT_LINE_TYPE,
   LIQUIDITY_LEGEND,
   LIQUIDITY_AREA_UNIT,
+  LIQUIDITY_TIERS,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
@@ -1884,21 +1885,24 @@ describe("거래량 null 보존 + 구 단위 경계 (세션513)", () => {
     expect(unknown.score).toBeGreaterThan(zero.score);
   });
 
-  it("null 중립은 알려진 값의 중앙값 구간(995건)과 같은 점수다", () => {
-    // LIQUIDITY_UNKNOWN_SCORE(45) = min:500 구간과 같은 값. 그 등가가 깨지면 red.
-    expect(liq(makeApt({ recentTrades6m: null })).score).toBe(liq(makeApt({ recentTrades6m: 995 })).score);
+  it("null 중립은 세 번째 밴드(한산)와 같은 점수다 — 최고도 최하도 아니다", () => {
+    // LIQUIDITY_UNKNOWN_SCORE(45) = TIERS[2] 구간과 같은 값. 그 등가가 깨지면 red.
+    // 픽스처는 상수 파생 — 고정 숫자(옛 995)는 경계 재도출(세션514→515 실증)마다 밴드를 이탈한다.
+    const midBand = LIQUIDITY_TIERS[2].min ?? 0;
+    expect(liq(makeApt({ recentTrades6m: null })).score).toBe(liq(makeApt({ recentTrades6m: midBand })).score);
   });
 
   it("null 에 최고점을 주지 않는다 (주면 수집할 동기가 사라진다)", () => {
     expect(liq(makeApt({ recentTrades6m: null })).score).toBeLessThan(liq(makeApt({ recentTrades6m: 5000 })).score);
   });
 
-  it("구 단위 경계 — 옛 단지 단위 경계(30/15/5)면 전부 최상으로 뭉친다", () => {
-    const top = liq(makeApt({ recentTrades6m: 2500 })).score;
-    // 옛 경계라면 아래 셋 다 min:30 을 넘어 top 과 같아진다 → 이 단조 비교가 red.
-    expect(liq(makeApt({ recentTrades6m: 1200 })).score).toBeLessThan(top);
-    expect(liq(makeApt({ recentTrades6m: 700 })).score).toBeLessThan(liq(makeApt({ recentTrades6m: 1200 })).score);
-    expect(liq(makeApt({ recentTrades6m: 100 })).score).toBeLessThan(liq(makeApt({ recentTrades6m: 700 })).score);
+  it("구 단위 경계 — 네 밴드가 서로 다른 점수로 갈린다 (옛 단지 단위 30/15/5 면 전부 최상으로 뭉침)", () => {
+    // 픽스처는 각 밴드 하한 +50 로 상수 파생 — 고정 숫자는 경계 재도출마다 깨진다(세션515 실증).
+    const [t0, t1, t2] = LIQUIDITY_TIERS.map((t) => t.min ?? 0);
+    const top = liq(makeApt({ recentTrades6m: t0 + 50 })).score;
+    expect(liq(makeApt({ recentTrades6m: t1 + 50 })).score).toBeLessThan(top);
+    expect(liq(makeApt({ recentTrades6m: t2 + 50 })).score).toBeLessThan(liq(makeApt({ recentTrades6m: t1 + 50 })).score);
+    expect(liq(makeApt({ recentTrades6m: Math.max(t2 - 500, 0) })).score).toBeLessThan(liq(makeApt({ recentTrades6m: t2 + 50 })).score);
   });
 
   // 세션514: 옛 단언은 `"이 구 6개월 1,234건"` 이었는데, 그 "이 구"가 값 보유 1,466곳 중
