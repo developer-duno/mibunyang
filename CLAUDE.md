@@ -26,7 +26,7 @@ npm run format            # prettier --write src/
 npm run format:check      # prettier --check src/ (CI 게이트, endOfLine auto 라 로컬 CRLF 도 통과)
 ```
 
-> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×8(env-key·monitor·collector·fill-matrix·hooks-wiring·playwright-cache·cron-concurrency·node-esm-chain) → test → build. 머지 전 전부 green 필수.
+> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×10(env-key·monitor·collector·fill-matrix·orphan-collectors·hooks-wiring·declared-deps·playwright-cache·cron-concurrency·node-esm-chain) → test → build. 머지 전 전부 green 필수. ⚠️ 개수는 늘어난다 — 단정 전 `grep -oE 'scripts/audit-[a-z-]+\.mjs' .github/workflows/ci.yml | sort -u | wc -l` 로 실측(`node-esm-chain` 은 `--loader` 를 거쳐 실행돼 `run: node scripts/audit-` 만 세면 빠진다).
 
 ## 아키텍처 개요
 
