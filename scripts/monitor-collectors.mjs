@@ -313,6 +313,13 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⑤-a(빈 성공 3연속)는 이 수집기에선 구조적으로 안 울린다 — 시간예산에 잘리면 status="partial" 이라
   //   연속이 끊기고, 3회가 다 success 여도 가장 오래된 행이 7~11일 전이라 14일 임계를 못 넘는다.
   { collector: "naver-collect",    stale_days: 14, owner: "네이버 매물·시세 1단계 (로컬 월/목 08:00)" },
+  // naver-devplan = 네이버 개발계획(도로·철도·역·지구) — 세션 517 에 로컬 러너 매월 20일로 크론 편입.
+  //   네이버 IP 가 필요해 GH 러너에서 못 돌리고, 편입 전까지는 **어느 스케줄에도 없어** 사람이
+  //   손으로 부를 때만 돌았다(세션 510b 지적 → 516 재확인). GH run 이 없어 ①③ 대상 밖 →
+  //   collector_runs 신선도가 유일한 "안 돌면 알림".
+  //   월간(매월 20일) 이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100 기준표).
+  //   DAY_TABLE 의 발화주기를 바꾸면 이 값도 함께 바꿀 것 — monitor-collectors.test.mjs 가 두 파일을 묶는다.
+  { collector: "naver-devplan",    stale_days: 38, owner: "네이버 개발계획 도로·철도·역·지구 (로컬 매월 20일)" },
   // ── KOSIS 10종 = 집서버 로컬 러너 수집기 (kosis-local-runner.mjs, 매일 05:30 KST 일자 디스패치).
   //    kosis.kr 해외 IP 차단으로 GH collect-*.yml 10개 삭제 (세션 288~289) — GH run 이 없어
   //    ③ 워크플로 미발화 점검 대상에서 빠지므로 collector_runs 신선도가 유일한 "안 돌면 알림".

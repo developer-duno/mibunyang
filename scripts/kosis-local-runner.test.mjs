@@ -52,7 +52,7 @@ describe("collectorsDueOn — 일자 디스패치", () => {
     expect(collectorsDueOn(at(2026, 6, 17))).toEqual(["collect-maintenance.mjs"]);
   });
 
-  it("매핑표는 KOSIS 11종 + MOLIT 5종을 전부 커버한다", () => {
+  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종을 전부 커버한다", () => {
     const scripts = [...new Set(DAY_TABLE.map((e) => e.script))].sort();
     expect(scripts).toEqual(
       [
@@ -76,6 +76,8 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         "collect-trades.mjs",
         "molit-building-info.mjs",
         "molit-units.mjs",
+        // 세션 517: 네이버 개발계획 크론 편입 — 편입 전까지 어느 스케줄에도 없어 손으로만 돌았다.
+        "naver-devplan.mjs",
       ].sort(),
     );
   });

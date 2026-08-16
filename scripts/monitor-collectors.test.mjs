@@ -23,6 +23,8 @@ const {
   dedupKey, filterUnsent, hasGithubApiAuth,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
+// 세션 517: 크론(로컬 러너 DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 를 한 테스트로 묶기 위해 함께 읽는다.
+const { DAY_TABLE } = await import("./kosis-local-runner.mjs");
 
 describe("checkFailedRuns — ① 실패/취소", () => {
   it("conclusion 이 failure/cancelled/timed_out 이면 이상 + 각각 conclusion 필드 박힘", () => {
@@ -932,7 +934,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 28 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 29 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "applyhome-detail", "applyhome-remndr", "applyhome-seed", "avg-income", "building-hub",
@@ -944,7 +946,8 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       // 세션 515: MOLIT(1613000) 해외 IP 차단 → GH yml 5개 삭제 + 로컬 러너 이전.
       // GH run 이 없어 ①③ 대상 밖이므로 ⑤ 신선도가 유일한 "안 돌면 알림".
       "molit-building", "molit-units", "trades",
-      "naver-collect", "naver-presale", "notify-subscribers", "schools", "transport-tago",
+      // 세션 517: naver-devplan 을 로컬 러너 매월 20일로 크론 편입 → ⑤ 신선도 감시 등재.
+      "naver-collect", "naver-devplan", "naver-presale", "notify-subscribers", "schools", "transport-tago",
     ].sort());
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);
@@ -983,14 +986,24 @@ describe("EXTERNAL_API_COLLECTORS 라벨 ↔ recordCollectorRun 기록명 동기
         const src = readFileSync(join(dir, f), "utf8");
         const phaseM = src.match(/const\s+PHASE\s*=\s*["'`]([^"'`]+)["'`]/);
         const phase = phaseM ? phaseM[1] : null;
-        for (const m of src.matchAll(/recordCollectorRun\(\s*([^,)]+)/g)) {
-          const arg = m[1].trim();
-          if (arg === "PHASE") {
+        /** @param {string} arg recordCollectorRun 첫 인자 원문 */
+        const addLabel = (arg) => {
+          const a = arg.trim();
+          if (a === "PHASE") {
             if (phase) labels.add(phase);
-          } else {
-            const lit = arg.match(/^["'`]([^"'`]+)["'`]$/);
-            if (lit) labels.add(lit[1]);
+            return;
           }
+          const lit = a.match(/^["'`]([^"'`]+)["'`]$/);
+          if (lit) labels.add(lit[1]);
+        };
+        for (const m of src.matchAll(/recordCollectorRun\(\s*([^,)]+)/g)) addLabel(m[1]);
+        // 세션 517: 기록을 **감싸는 래퍼**도 라벨 소스다. naver-devplan.mjs 는
+        //   `recordRunUnlessDryRun(dryRun, result, recorder = recordCollectorRun)` 안에서
+        //   `recorder(PHASE, result)` 로 부르므로 위의 직접 호출 정규식엔 걸리지 않는다.
+        //   기본값이 recordCollectorRun 인 매개변수 이름을 뽑아 그 호출도 같은 규칙으로 훑는다.
+        for (const alias of src.matchAll(/(\w+)\s*=\s*recordCollectorRun\b/g)) {
+          for (const c of src.matchAll(new RegExp(`\\b${alias[1]}\\(\\s*([^,)]+)`, "g")))
+            addLabel(c[1]);
         }
       }
     }
@@ -1164,5 +1177,41 @@ describe("REGION_KEY_COLUMNS — ④ NULL 점검 대상 granularity 구조 (세�
     for (const t of VIEW_REGION_STALE_TARGETS) {
       expect(REGION_KEY_COLUMNS.some((c) => c.column === t.regionColumn)).toBe(true);
     }
+  });
+});
+
+describe("크론(DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 동기화 — naver-devplan (세션 517)", () => {
+  // [[guards-must-be-mutation-tested]] §"주기·설정을 바꾸면 그것을 읽는 감시도 함께 바꾼다":
+  // 한쪽만 되돌리면 red 여야 한다. 크론만 지우면 "안 돌아도 아무도 모르는" 편입 전 상태로,
+  // 감시만 지우면 "돌다 멈춰도 조용한" 상태로 각각 회귀한다 — 둘 다 겉보기엔 정상이다.
+  const SCRIPT = "naver-devplan.mjs";
+  const COLLECTOR = "naver-devplan";
+  // 인자를 빼면 V-WORLD 축까지 켜져 ~7.5h 단발 upsert(중간 체크포인트 없음)로 늘어난다.
+  // 스펙을 못박는 것이 목적이므로 여기만 리터럴로 둔다.
+  const ARGS = ["--kinds=road,rail,station,jigu"];
+
+  it("DAY_TABLE 매월 20일에 naver-devplan 이 --kinds 4종 인자와 함께 있다", () => {
+    const rows = DAY_TABLE.filter((e) => e.script === SCRIPT);
+    expect(rows.map((e) => e.day), "매월 20일 1회여야 한다").toEqual([20]);
+    expect(rows[0]?.args, "인자가 빠지면 V-WORLD 축까지 켜져 회차가 ~7.5h 로 늘어난다").toEqual(ARGS);
+  });
+
+  it("같은 수집기가 monitor ⑤ 에 월간(38) 신선도로 등재돼 있다", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === COLLECTOR);
+    expect(entry, `${COLLECTOR} 가 EXTERNAL_API_COLLECTORS 에 없다 — 크론만 있고 감시가 없다`).toBeTruthy();
+    expect(entry?.stale_days, "월간(매월 20일) = 31일 + 여유 1주").toBe(38);
+  });
+
+  it("크론과 감시가 한 쌍으로 존재한다 (한쪽만 되돌리면 red)", () => {
+    const scheduled = DAY_TABLE.some((e) => e.script === SCRIPT);
+    const monitored = EXTERNAL_API_COLLECTORS.some((c) => c.collector === COLLECTOR);
+    expect(
+      scheduled,
+      "DAY_TABLE 에서 naver-devplan 이 빠졌다 — 어느 스케줄에도 없던 편입 전으로 회귀",
+    ).toBe(true);
+    expect(
+      monitored,
+      "EXTERNAL_API_COLLECTORS 에서 naver-devplan 이 빠졌다 — 안 돌아도 알림 0",
+    ).toBe(true);
   });
 });

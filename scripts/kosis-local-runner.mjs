@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * 해외 IP 차단 수집기 로컬(집서버) 디스패처 — KOSIS 11종 + 국토부(MOLIT) 5종
+ * 해외 IP 차단 수집기 로컬(집서버) 디스패처 — KOSIS 11종 + 국토부(MOLIT) 5종 + 네이버 개발계획 1종
  *
  * 배경 1 (세션 288, 2026-06-10): kosis.kr 이 해외 클라우드 IP 를 차단해 (6/8 밤 성공 →
  * 6/9 밤부터 4연속 "fetch failed" 네트워크 레벨 실패, 로컬 동일 키 0.5s 200 OK 실측)
@@ -19,6 +19,8 @@
  *   12일 regional-economy / 13일 avg-income / 14일 medical-access /
  *   15~19일 maintenance(--limit=600 배치) / 15일 building-hub(1·4·7·10월만) /
  *   17일 sale-price(1·4·7·10월만) / 18일 jeonse
+ * 세션 517 추가: 20일 naver-devplan(--kinds=road,rail,station,jigu) — 옛 cron 이 아니라 신규 편입.
+ *   네이버 개발계획 API 도 한국 IP 가 필요해 같은 러너에 실었다(data.go.kr 쿼터는 0 소모).
  *
  * 사용법:
  *   node scripts/kosis-local-runner.mjs                    오늘 due 수집기 실행
@@ -78,6 +80,11 @@ export const DAY_TABLE = [
   { day: 18, script: "collect-maintenance.mjs", args: ["--limit=600"] },
   { day: 18, script: "collect-jeonse-price-index.mjs" },
   { day: 19, script: "collect-maintenance.mjs", args: ["--limit=600"] },
+  // 세션 517: naver-devplan 크론 편입. 20일 = 15~19일 maintenance 배치 직후 빈 슬롯이고,
+  // 네이버 소스라 data.go.kr 일일 쿼터를 0 쓴다(다른 항목과 쿼터 충돌 없음).
+  // --kinds 를 넘기면 V-WORLD 축(전량 ~7.5h·중간 체크포인트 없음)은 자동 스킵된다 —
+  // 전량 수집은 체크포인트 설계 후 별도 트랙. 네이버 4종만 ≈30분.
+  { day: 20, script: "naver-devplan.mjs", args: ["--kinds=road,rail,station,jigu"] },
 ];
 
 /**
