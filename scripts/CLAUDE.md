@@ -175,6 +175,29 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 
 **세션89 변경**: 4/6 단계가 `naver-units.mjs`(네이버 크롤링, IP 차단)에서 `molit-units.mjs`(국토부 API)로 교체됨. **세션233 영구 삭제**. 실패 시 WARNING 처리로 5/6, 6/6 계속 진행. `run-naver-local.bat`/`.sh` 양쪽 동일.
 
+**세션518 — 실패 원인이 남는다 (로그 리다이렉션)**: 스케줄러 작업 `MibunyangNaverCollect` 는
+`Command=F:\mibunyang\scripts\run-naver-local.bat` 를 **인자 없이** 부른다(실측). 즉 stdout/stderr 가
+갈 곳이 없어 사라졌고, 단계가 죽어도 로그엔 `ERROR: X.mjs failed` 한 줄만 남았다 —
+**2026-08-14 2단계 실패는 그래서 원인을 영영 못 밝힌다**(3~6단계가 통째로 스킵돼 `naver-presale`·
+`molit-units` 가 7일 stale). 각 단계에 `>> "%LOG%" 2>&1` 을 붙여 해소.
+
+| 로그 | 내용 |
+|---|---|
+| `naver-collect.log` | 단계 마커(시각 포함) + **2~6단계 stdout·stderr** |
+| `naver-collect-py.log` | 1단계 파이썬 전용(단지마다 줄을 찍어 메인 로그를 파묻으므로 분리) |
+
+- 단계 마커에 시각이 붙어 **어느 단계가 시간을 먹었는지**가 로그만으로 보인다(1단계 상한 120분,
+  작업 전체 상한 `ExecutionTimeLimit=PT4H`).
+- `run-naver-local.sh` 는 **의도적으로 무변경** — 사람이 콘솔을 보며 돌리는 경로라 리다이렉트하면
+  진행이 안 보인다. (세션89의 "양쪽 동일"은 단계 구성 얘기지 로그 정책이 아니다.)
+- 같이 고친 기존 버그: `if` 블록 안에서 `echo ... (non-fatal) >> ...` 의 `)` 가 블록 종료로 해석돼
+  **문구가 `(non-fatal` 로 잘려 기록**되고 있었다(8/10 운영 로그 실측). `- non-fatal` 로 교체.
+- ⚠️ `audit-orphan-collectors.mjs` 는 `.bat` 에서 `scripts/collectors/X.mjs` 를 **줄 끝 고정 없이**
+  찾으므로 뒤에 리다이렉션이 붙어도 인식한다. 단 그 감사는 `REM` 주석을 못 걷어내니 **주석에
+  수집기 경로를 쓰면 안 된다**(가짜로 "실행 경로 있음"이 된다).
+- 검증: 수집기 호출만 가짜로 바꾼 사본으로 ①전 단계 성공(exit 0·6단계 마커) ②2단계 실패(exit 1·
+  그 단계 stderr 가 로그에 남고 이후 중단) ③3단계 경고(exit 0·4~6단계 진행) 3경우 실증.
+
 **세션470 인프라 개선 (중복방지·resume·재시도·CRLF)**:
 - **중복 실행 방지 (filelock)**: `naver-collect.py` `__main__` 이 `FileLock(ROOT/.naver-collect.lock, timeout=0)` 획득. 이미 돌면 즉시 `sys.exit(0)`(겹침은 실패 아님). 손으로 여러 번 실행해도 2번째부터 종료 = 좀비 더미 방지(같은 IP 다중 수집기 → 네이버 rate-limit 경합 stall 사고 정정). `requirements.txt` filelock, `.gitignore` `.naver-collect.lock`.
 - **resume (이어하기)**: `main()` 이 이미 `last_seen_at` 찍힌 complex_no(done_cx)를 `SB.select("articles",...)` 로 조회 → 매물·시세 루프 `if cn in done_cx: continue`. 스케줄러 재시도 시 이어서 돎. **창 = 최근 7일**(`naver-collect.py` L295 `since=now-timedelta(days=7)`) — 세션470 당시엔 "오늘"이었으나 **세션493 에서 7일로 확대**(아래 세션493 표 `resume 창` 행 참조). 따라서 날짜가 바뀌어도 7일 내 수집분은 계속 스킵되고, 시간예산이 아직 못 받은 단지로 간다. `--no-resume` 강제 전체. dry-run/조회실패 시 비활성(fail-open). 저장·조회 **UTC 통일**(`datetime.now(timezone.utc)`, 세션495 — 이전 naive KST 는 자매 레포 UTC writer 와 같은 컬럼에서 9시간 어긋났음). 세션338 schools `buildEnrichedIds` 답습. ⚠️ 세션495부터 **로컬 체크포인트 `.naver-collect-state.json` 병용** — 매물 0건 단지·7일 초과 방문 이력은 DB 스탬프에 안 남아 이 파일이 담당(유실 시 사고 아님 — 첫 사이클 순서만 재시작).
