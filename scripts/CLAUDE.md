@@ -287,6 +287,7 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 | 네이버 부동산 | naver-collect.py | 5초 (`thr()` 기본값, 세션 118 IP 쿨다운 상향) | 3회 | JWT 리셋 + 5*(i+1)초 |
 | 네이버 부동산 | naver-listings.mjs | 5초 | 5회 | JWT 리셋 + [10,20,40,60,120]초 |
 | 네이버 분양 | naver-presale.mjs | 2초 | 3회 | [5,10,20]초 |
+| 네이버 개발계획 | naver-devplan.mjs | 5초 | 3회 (429 전용 [30,60,120]초) | ⚠️ **세션 쿠키 필수**(세션516): 쿠키 없는 요청은 "Rate limit exceeded" 거짓 문구로 **즉답 429** — 진짜 rate limit 아님. `ensureNaverSession()` 이 JWT+쿠키를 한 캐시로 관리 |
 | data.go.kr | molit-* | 0.4초 | 3회 (기본) | NonRetryableError / 지수 백오프. ⚠️ collect-maintenance `fetchTotalHouseholds` 는 8s/1회 override(세션 451, 위 MOLIT 모듈 절) |
 | Kakao Places | infra-kakao | 세마포어 5개 | fetchWithRetry | 지수 백오프 |
 | DART | dart-builders | fetchWithRetry | 3회 | 지수 백오프 |
