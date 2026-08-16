@@ -20,8 +20,11 @@
  * apartments 의 transit_dev/city_dev/industry_dev 점수 컬럼은 이 수집기가 **건드리지 않는다**
  * — 배선은 경계 재설계 후 별건("경계 먼저, 데이터 나중").
  *
- * JWT(네이버): naver-listings.mjs(같은 new.land.naver.com 도메인)의 ensureJwt() 를 그대로
- * 답습했다 — /complexes/{id} HTML 페이지에서 `"token":"eyJ..."` 정규식 추출, 50분 캐시.
+ * 네이버 세션(JWT+쿠키): naver-listings.mjs(같은 new.land.naver.com 도메인)의 ensureJwt() JWT
+ * 추출 방식을 답습했다 — /complexes/{id} HTML 페이지에서 `"token":"eyJ..."` 정규식 추출, 50분
+ * 캐시. 여기에 같은 응답의 Set-Cookie(REALESTATE/PROP_TEST_KEY/PROP_TEST_ID)를 더해
+ * ensureNaverSession() 이 { jwt, cookie } 를 함께 반환한다 — developmentplan API 는 이 쿠키가
+ * 없으면 즉답 429 를 낸다(진짜 rate limit 이 아니었다, 아래 NAVER_429_BACKOFF_MS 주석 참조).
  *
  * 타일링(네이버): 전국을 무식하게 격자로 덮지 않고, apartments 좌표가 실제로 있는 0.30° 격자
  * 셀만 타일로 만든다(apartmentTileCells). 각 타일 bbox 는 격자 폭(0.30°) + 양쪽 마진(0.02°)
@@ -35,7 +38,9 @@
  *
  * 429 대응(네이버): fetchNaverJson 이 429 전용 백오프(30s/60s/120s, 일반 5xx 백오프와 분리)로
  * 재시도하고, 그래도 연속 NAVER_MAX_CONSECUTIVE_429 회 실패하면 그 회차 네이버 수집을 즉시
- * 중단해 partial 로 기록한다(무한 재시도로 쿨다운을 악화시키지 않는다).
+ * 중단해 partial 로 기록한다(무한 재시도로 쿨다운을 악화시키지 않는다). ⚠️ 이 429 의 주 원인은
+ * "속도 제한"이 아니라 "세션 쿠키 부재"였다(라이브 실측으로 정정, 아래 NAVER_429_BACKOFF_MS
+ * 주석 참조) — 이 백오프는 이제 쿨다운 해소용이 아니라 진짜 rate limit 에 대한 보험으로 남긴다.
  *
  * 좌표축 가드: 네이버 xPos/yPos → lng/lat, V-WORLD GeoJSON coordinates → [lng, lat](RFC 7946,
  * 세션511 WebFetch 로 재확인) 모두 **한반도 범위(lat 33~39, lng 124~132) 밖이면 저장하지 않고
@@ -63,6 +68,7 @@ import {
  * @typedef {{ latIdx: number, lngIdx: number }} TileCell
  * @typedef {{ leftLon: number, rightLon: number, topLat: number, bottomLat: number }} BBox
  * @typedef {TileCell & BBox} Tile
+ * @typedef {{ jwt: string, cookie: string }} NaverSession
  * @typedef {{ id: string, lat: number | null, lng: number | null, region?: string | null }} AptForTiling
  * @typedef {Record<string, unknown>} RawDevPlanItem
  * @typedef {{ ok: boolean, status: number, json: () => Promise<unknown> }} FetchLikeResponse
@@ -105,8 +111,9 @@ export function isWithinKoreaBounds(lat, lng) {
   );
 }
 
-// ── JWT (naver-listings.mjs 답습 — 같은 new.land.naver.com 도메인) ─────────
+// ── 네이버 세션: JWT + 쿠키 (naver-listings.mjs 답습 — 같은 new.land.naver.com 도메인) ──
 const JWT_TOKEN_PATTERN = /"token":"(eyJ[A-Za-z0-9._-]+)"/;
+// JWT 와 세션 쿠키는 같은 HTML 응답에서 나와 같이 늙는다 — 그래서 캐시 수명을 하나로 공유한다.
 const JWT_LIFETIME = 3000 * 1000; // 50분
 
 const HEADERS = {
@@ -121,17 +128,49 @@ const HEADERS = {
   "sec-fetch-site": "same-origin",
 };
 
-/** @type {string | null} */
-let jwtToken = null;
-let jwtTokenTime = 0;
+/** @type {NaverSession | null} */
+let naverSession = null;
+let naverSessionTime = 0;
 
 /**
- * JWT 토큰 추출 — naver-listings.mjs ensureJwt() 답습(같은 도메인, 같은 페이지 소스 패턴).
- * 새로 설계하지 않는다: 이미 검증된 이 레포의 방식을 그대로 쓴다.
- * @returns {Promise<string>}
+ * Headers-like 객체에서 Set-Cookie 배열을 뽑는다. Node(undici) 의 `Headers.getSetCookie()` 가
+ * 표준이지만, 없는 환경(구형 폴리필 등)에서도 죽지 않도록 방어한다 — 있으면 그 값 그대로,
+ * 없으면 빈 배열.
+ * @param {{ getSetCookie?: () => string[] } | null | undefined} headers
+ * @returns {string[]}
  */
-export async function ensureJwt() {
-  if (jwtToken && (Date.now() - jwtTokenTime) < JWT_LIFETIME) return jwtToken;
+export function extractSetCookies(headers) {
+  return headers?.getSetCookie?.() ?? [];
+}
+
+/**
+ * Set-Cookie 배열 → Cookie 요청 헤더 문자열. 각 항목에서 속성(Path/Expires/HttpOnly/Secure 등)을
+ * 버리고 `name=value` 부분(첫 ";" 앞)만 취해 "; " 로 잇는다.
+ * @param {string[]} setCookieHeaders
+ * @returns {string}
+ */
+export function buildCookieHeader(setCookieHeaders) {
+  return setCookieHeaders
+    .map((c) => c.split(";")[0].trim())
+    .filter((c) => c.length > 0)
+    .join("; ");
+}
+
+/**
+ * 네이버 세션(JWT + 세션 쿠키) 획득 — naver-listings.mjs ensureJwt() 의 JWT 추출 방식을 그대로
+ * 답습하되(같은 도메인, 같은 페이지 소스 패턴), 같은 응답의 Set-Cookie 도 함께 챙긴다.
+ * 새로 설계하지 않는다: JWT 추출은 이미 검증된 이 레포의 방식을 그대로 쓴다.
+ *
+ * 왜 쿠키가 필요한가(라이브 실측 — NAVER_429_BACKOFF_MS 주석의 A/B/C 대조 실험 참조):
+ * developmentplan API 는 이 쿠키 없이 부르면 즉답 429 를 낸다. "요청이 너무 많다"가 아니라
+ * "이 요청엔 세션이 없다"는 뜻이었다.
+ *
+ * JWT 와 쿠키는 같은 요청에서 나오고 같이 늙으므로, 캐시 수명(JWT_LIFETIME)을 하나로 공유한다
+ * — 따로 캐시하면 한쪽만 갱신되어 서로 어긋난 채로 쓰일 수 있다.
+ * @returns {Promise<NaverSession>}
+ */
+export async function ensureNaverSession() {
+  if (naverSession && (Date.now() - naverSessionTime) < JWT_LIFETIME) return naverSession;
 
   const url = `${NAVER_BASE}/complexes/217`; // 기본 단지 ID(은마아파트) — naver-listings.mjs 답습
   const res = await fetchWithRetry(url, { headers: { ...HEADERS, Accept: "text/html" } });
@@ -139,17 +178,35 @@ export async function ensureJwt() {
   const match = html.match(JWT_TOKEN_PATTERN);
   if (!match) throw new Error("JWT 토큰 추출 실패 — HTML에서 토큰을 찾을 수 없음");
 
-  jwtToken = match[1];
-  jwtTokenTime = Date.now();
-  log(PHASE, `JWT 토큰 획득 (${jwtToken.slice(0, 20)}...)`);
-  return jwtToken;
+  const cookie = buildCookieHeader(extractSetCookies(res.headers));
+
+  naverSession = { jwt: match[1], cookie };
+  naverSessionTime = Date.now();
+  log(PHASE, `네이버 세션 획득 (JWT ${naverSession.jwt.slice(0, 20)}..., 쿠키 ${cookie ? "있음" : "없음"})`);
+  return naverSession;
 }
 
-// ── 429 전용 재시도 (네이버 devplan 엔드포인트 — 세션511) ──────────────
+// ── 429 전용 재시도 (네이버 devplan 엔드포인트 — 세션511, 근본원인 정정 2026-08-16) ────
 /**
  * 429 전용 백오프. 일반 5xx 백오프((attempt+1)^2 초, fetchNaverJson 내부)와 **의도적으로
- * 분리**한다 — 429 는 "이 IP 가 지금 막혔다"는 신호라 몇 초가 아니라 수십 초 단위로 쉬어야
- * 한다(2026-08-11 오전 스모크는 8회 전부 429, 같은 날 아침 조사 직후라 일시 쿨다운으로 추정).
+ * 분리**한다.
+ *
+ * ⚠️ **정정(2026-08-16 라이브 실측)**: 2026-08-11 스모크의 "8회 전부 429" 를 당시 "IP 일시
+ * 쿨다운"으로 오진했다 — 틀렸다. 같은 조건에서 헤더만 바꾼 대조 실험(5초 간격):
+ *
+ *   A) 기존 헤더(HEADERS + Authorization)               → 429 (20ms, 즉답 거부)
+ *   B) A + Referer                                       → 429 (34ms, 즉답 거부 — Referer 는 무관)
+ *   C) B + Cookie(ensureNaverSession() 이 담는 Set-Cookie) → 200, 실데이터 6건 (201ms, 실제 조회)
+ *
+ * 진짜 원인은 **세션 쿠키 부재**였다 — "요청이 너무 많다"가 아니라 "이 요청엔 세션이 없다"는
+ * 뜻이었다. 응답 시간이 증거를 보탠다: 429 는 20~34ms 만에 끊기는 즉답 거부, 200 은 201ms(실제
+ * 조회) — 서버가 실제로 뭔가를 처리한 흔적이다. 쿠키를 붙인 뒤 5초 간격으로 4종(jigu/road/
+ * rail/station)을 연속 호출해도 전부 200 이었다(이 속도에서 진짜 rate limit 은 안 걸린다).
+ *
+ * 그래서 이 백오프는 더 이상 "쿨다운 해소용"이 아니다 — fetchDevPlanTile 이 이제 매 요청에
+ * ensureNaverSession() 의 쿠키를 싣으므로 이 429 는 정상적으로는 거의 뜨지 않는다. 지우지 않고
+ * 남기는 이유는 **진짜 rate limit 에 대한 보험**: 대량 수집(전국 타일 순회)에서 실제 속도
+ * 제한이 있을 가능성은 이번 실험(5초 간격 4회)만으로는 배제하지 못했다.
  */
 export const NAVER_429_BACKOFF_MS = [30000, 60000, 120000];
 
@@ -185,11 +242,11 @@ export async function fetchNaverJson(url, opts, fetchFn = /** @type {any} */ (fe
     if (res.status === 429) {
       if (attempt < NAVER_429_BACKOFF_MS.length) {
         const waitMs = NAVER_429_BACKOFF_MS[attempt];
-        log(PHASE, `429(rate limit) — 쿨다운 의심, 시간을 두고 재시도(${waitMs / 1000}초 대기, ${attempt + 1}/${NAVER_429_BACKOFF_MS.length})`);
+        log(PHASE, `429 — 세션 쿠키 부재/만료 우선 의심(NAVER_429_BACKOFF_MS 주석 참조), ${waitMs / 1000}초 대기 후 재시도(${attempt + 1}/${NAVER_429_BACKOFF_MS.length})`);
         await sleepFn(waitMs);
         continue;
       }
-      return { ok: false, rateLimited: true, message: "429 재시도 소진 — 쿨다운 의심, 시간을 두고 재시도할 것" };
+      return { ok: false, rateLimited: true, message: "429 재시도 소진 — 세션 쿠키 부재/만료 우선 의심(2026-08-16 실측: 쿨다운 아님), 쿠키 획득 경로 확인" };
     }
 
     if (!res.ok) {
@@ -425,16 +482,22 @@ export function normalizeDevPlanItem(kind, raw, nowFn = () => new Date().toISOSt
  * fetchFn 을 주입 가능하게 해 네트워크 없이 단위 테스트한다. onFailure 는 실패 시(특히 429
  * 여부) 호출부에 알려 연속 429 서킷브레이커를 셀 수 있게 한다.
  *
+ * cookie 는 ensureNaverSession() 이 준 세션 쿠키다 — 이게 없으면 네이버가 즉답 429 를 낸다
+ * (라이브 실측, NAVER_429_BACKOFF_MS 주석의 A/B/C 대조 실험 참조). 빈 문자열이면 Cookie
+ * 헤더를 아예 안 붙인다(빈 헤더 전송 회피).
+ *
  * @param {DevPlanKind} kind
  * @param {BBox} bbox
  * @param {string} jwt
+ * @param {string} cookie
  * @param {(url: string, opts: RequestInit) => Promise<FetchLikeResponse>} [fetchFn]
  * @param {(info: { rateLimited: boolean, message: string }) => void} [onFailure]
  * @returns {Promise<RawDevPlanItem[] | null>}
  */
-export async function fetchDevPlanTile(kind, bbox, jwt, fetchFn = /** @type {any} */ (fetch), onFailure) {
+export async function fetchDevPlanTile(kind, bbox, jwt, cookie, fetchFn = /** @type {any} */ (fetch), onFailure) {
   const url = buildDevPlanUrl(kind, bbox);
-  const result = await fetchNaverJson(url, { headers: { ...HEADERS, Authorization: `Bearer ${jwt}` } }, fetchFn);
+  const headers = { ...HEADERS, Authorization: `Bearer ${jwt}`, ...(cookie ? { Cookie: cookie } : {}) };
+  const result = await fetchNaverJson(url, { headers }, fetchFn);
   if (!result.ok) {
     logError(PHASE, `타일 조회 실패 [${kind}] ${JSON.stringify(bbox)}: ${result.message}`);
     if (onFailure) onFailure({ rateLimited: result.rateLimited, message: result.message });
@@ -646,7 +709,8 @@ export function normalizeVworldFeature(kind, feature, nowFn = () => new Date().t
  *      알려준다 — "어느 단지에서 몇 m 거리인가"는 여전히 별도 거리계산 단계가 있어야 한다.
  *      그 매칭기가 아직 없다(세션510 인계 — "거리 매칭기가 아직 없다"). 반경조회는 buffer
  *      자체가 "이 단지에서 그만큼 안"이라는 의미를 이미 담고 있어 그 단계가 필요 없다.
- *   2. V-WORLD 는 이 세션 조사에서 네이버 같은 429/IP 쿨다운 문제가 보고되지 않았다 — 요청
+ *   2. V-WORLD 는 이 세션 조사에서 네이버 같은 429 문제가 보고되지 않았다(그 429 는 이후
+ *      세션 쿠키 부재로 판명 — NAVER_429_BACKOFF_MS 주석 참조) — 요청
  *      수가 많아도(5,392회) 짧은 스로틀(300ms)이면 약 27분에 끝난다(스모크로 검증 예정).
  *   3. 요청 수 차이(5,392 vs ~60)보다 "매칭기 없이 바로 쓸 수 있는 데이터"의 가치가 크다고
  *      판단 — 다만 이건 판단이지 실측은 아니다. V-WORLD 요청량이 실제로 부담되면(쿼터·속도)
@@ -739,7 +803,8 @@ async function main() {
   const allRows = [];
   let rejectedCount = 0; // 정규화는 됐으나 한반도 밖 좌표/식별자 없음으로 저장 거부된 건수
 
-  // ── V-WORLD 먼저 (네이버가 429 쿨다운 중일 수 있어 우선 시도 — 지시) ──────
+  // ── V-WORLD 먼저 (당시 네이버 429 를 쿨다운으로 의심해 정한 순서 — 2026-08-16 실측으로
+  //    쿠키 부재가 진짜 원인으로 판명. 순서는 진짜 rate limit 대비 보험으로 유지) ──────
   let vworldSkippedNoKey = false;
   if (runVworld) {
     if (!VWORLD_KEY) {
@@ -779,7 +844,7 @@ async function main() {
     if (tiles.length === 0) {
       log(PHASE, "네이버: 타일 0개 — 대상 없음");
     } else {
-      const jwt = await ensureJwt();
+      const { jwt, cookie } = await ensureNaverSession();
       let consecutive429 = 0;
 
       naverLoop:
@@ -788,14 +853,14 @@ async function main() {
         const tile = tiles[i];
 
         for (const kind of naverKinds) {
-          const items = await fetchDevPlanTile(kind, tile, jwt, /** @type {any} */ (fetch), ({ rateLimited }) => {
+          const items = await fetchDevPlanTile(kind, tile, jwt, cookie, /** @type {any} */ (fetch), ({ rateLimited }) => {
             consecutive429 = rateLimited ? consecutive429 + 1 : 0;
           });
           if (items === null) {
             naverTileFailCount++;
             rpt.fail();
             if (consecutive429 >= NAVER_MAX_CONSECUTIVE_429) {
-              logError(PHASE, `네이버: 연속 429 ${consecutive429}회 — 쿨다운 의심, 이번 회차 네이버 수집 중단(시간을 두고 재시도할 것)`);
+              logError(PHASE, `네이버: 연속 429 ${consecutive429}회 — 세션 쿠키 부재/만료 우선 의심(쿨다운 아님, 2026-08-16 실측 — NAVER_429_BACKOFF_MS 주석 참조), 이번 회차 네이버 수집 중단`);
               naverCircuitBroken = true;
               break naverLoop;
             }
