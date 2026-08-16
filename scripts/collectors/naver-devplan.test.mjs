@@ -4,7 +4,7 @@
  * naver-devplan.mjs 테스트 — 타일 생성, bbox 안전선, 응답 정규화, dedup, null/[] 계약,
  * 한반도 좌표 가드, V-WORLD 축, 네이버 429 전용 백오프/서킷브레이커
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -28,10 +28,16 @@ const {
   normalizeDevPlanItem, dedupDevPlanRows, fetchDevPlanTile,
   KOREA_LAT_MIN, KOREA_LAT_MAX, KOREA_LNG_MIN, KOREA_LNG_MAX, isWithinKoreaBounds,
   NAVER_429_BACKOFF_MS, NAVER_MAX_CONSECUTIVE_429, fetchNaverJson,
+  extractSetCookies, buildCookieHeader, ensureNaverSession,
   VWORLD_BUFFER_M, VWORLD_LAYERS, VWORLD_REFERER, redactVworldKey, buildVworldUrl,
   parseVworldResponse, geojsonCentroid, normalizeVworldFeature, fetchVworldFeatures,
   parseKindsArg, recordRunUnlessDryRun,
 } = await import("./naver-devplan.mjs");
+// 429 근본원인(세션 쿠키 부재) 회귀 가드용 — ensureNaverSession() 이 부르는 fetchWithRetry 를
+// 직접 조작해야 해서, 목킹된 _shared.mjs 에서 다시 꺼낸다(transport-tago.test.mjs 답습).
+const { fetchWithRetry } = /** @type {{ fetchWithRetry: import("vitest").Mock }} */ (
+  /** @type {unknown} */ (await import("./_shared.mjs"))
+);
 
 const DEVPLAN_SRC = readFileSync(
   fileURLToPath(new URL("./naver-devplan.mjs", import.meta.url)),
@@ -469,26 +475,26 @@ describe("fetchDevPlanTile — null(실패)/[](성공,0건) 계약", () => {
 
   it("fetchFn 이 throw 하면 null 을 반환한다(실패)", async () => {
     const failingFetch = vi.fn().mockRejectedValue(new Error("네트워크 오류"));
-    const result = await fetchDevPlanTile("rail", bbox, "jwt-token", failingFetch);
+    const result = await fetchDevPlanTile("rail", bbox, "jwt-token", "", failingFetch);
     expect(result).toBeNull();
   });
 
   it("fetchFn 이 빈 배열을 반환하면 []을 그대로 돌려준다(성공·0건, null 아님)", async () => {
     const okFetch = vi.fn().mockResolvedValue(mockFetchResp([]));
-    const result = await fetchDevPlanTile("rail", bbox, "jwt-token", okFetch);
+    const result = await fetchDevPlanTile("rail", bbox, "jwt-token", "", okFetch);
     expect(result).toEqual([]);
     expect(result).not.toBeNull();
   });
 
   it("fetchFn 이 항목을 반환하면 배열 그대로 전달된다", async () => {
     const okFetch = vi.fn().mockResolvedValue(mockFetchResp([railFixture()]));
-    const result = await fetchDevPlanTile("rail", bbox, "jwt-token", okFetch);
+    const result = await fetchDevPlanTile("rail", bbox, "jwt-token", "", okFetch);
     expect(result).toEqual([railFixture()]);
   });
 
   it("Authorization 헤더에 Bearer 토큰을 싣는다", async () => {
     const okFetch = vi.fn().mockResolvedValue(mockFetchResp([]));
-    await fetchDevPlanTile("station", bbox, "my-jwt", okFetch);
+    await fetchDevPlanTile("station", bbox, "my-jwt", "", okFetch);
     const [, opts] = okFetch.mock.calls[0];
     expect(opts.headers.Authorization).toBe("Bearer my-jwt");
   });
@@ -497,15 +503,124 @@ describe("fetchDevPlanTile — null(실패)/[](성공,0건) 계약", () => {
     const rateLimitedFetch = vi.fn().mockResolvedValue(mockFetchResp(null, false, 429));
     const onFailure = vi.fn();
     // sleep 이 모킹돼 있어 실제 대기 없이 재시도 소진까지 빠르게 진행됨(_shared.mjs 목킹)
-    await fetchDevPlanTile("rail", bbox, "jwt", rateLimitedFetch, onFailure);
+    await fetchDevPlanTile("rail", bbox, "jwt", "", rateLimitedFetch, onFailure);
     expect(onFailure).toHaveBeenCalledWith({ rateLimited: true, message: expect.any(String) });
   });
 
   it("429 아닌 실패(404)는 onFailure({rateLimited:false}) 로 구분된다", async () => {
     const notFoundFetch = vi.fn().mockResolvedValue(mockFetchResp(null, false, 404));
     const onFailure = vi.fn();
-    await fetchDevPlanTile("rail", bbox, "jwt", notFoundFetch, onFailure);
+    await fetchDevPlanTile("rail", bbox, "jwt", "", notFoundFetch, onFailure);
     expect(onFailure).toHaveBeenCalledWith({ rateLimited: false, message: "HTTP 404" });
+  });
+});
+
+// ── fetchDevPlanTile — Cookie 헤더 배선 (429 근본원인 정정 — 라이브 실측) ──────
+//
+// 세션 쿠키 없이 부르면 네이버가 즉답 429 를 낸다는 게 라이브 실측으로 밝혀졌다(NAVER_429_
+// BACKOFF_MS 주석의 A/B/C 대조 실험). 이 테스트가 이 결함의 회귀 가드다 — Cookie 배선이
+// 빠지면(예: cookie 인자를 받고도 헤더에 안 실으면) 이 테스트가 즉시 red 여야 한다.
+
+describe("fetchDevPlanTile — Cookie 헤더 배선", () => {
+  const bbox = { leftLon: 126.9, rightLon: 127.24, topLat: 37.62, bottomLat: 37.28 };
+
+  it("쿠키가 있으면 요청 헤더에 Cookie 로 싣는다", async () => {
+    const okFetch = vi.fn().mockResolvedValue(mockFetchResp([]));
+    await fetchDevPlanTile("rail", bbox, "jwt-token", "REALESTATE=abc; PROP_TEST_KEY=xyz", okFetch);
+    const [, opts] = okFetch.mock.calls[0];
+    expect(opts.headers.Cookie).toBe("REALESTATE=abc; PROP_TEST_KEY=xyz");
+  });
+
+  it("⚠️ 뮤테이션 대상 — 쿠키가 빈 문자열이면 Cookie 헤더를 아예 붙이지 않는다(빈 헤더 전송 회피)", async () => {
+    const okFetch = vi.fn().mockResolvedValue(mockFetchResp([]));
+    await fetchDevPlanTile("rail", bbox, "jwt-token", "", okFetch);
+    const [, opts] = okFetch.mock.calls[0];
+    expect(opts.headers.Cookie).toBeUndefined();
+    expect("Cookie" in opts.headers).toBe(false);
+  });
+
+  it("쿠키가 있어도 Authorization 헤더는 그대로 유지된다(둘 다 동시에 실림)", async () => {
+    const okFetch = vi.fn().mockResolvedValue(mockFetchResp([]));
+    await fetchDevPlanTile("rail", bbox, "my-jwt", "REALESTATE=abc", okFetch);
+    const [, opts] = okFetch.mock.calls[0];
+    expect(opts.headers.Authorization).toBe("Bearer my-jwt");
+    expect(opts.headers.Cookie).toBe("REALESTATE=abc");
+  });
+});
+
+// ── extractSetCookies — Headers-like 객체에서 Set-Cookie 배열 추출 ────────────
+
+describe("extractSetCookies — getSetCookie() 가 없는 응답에서도 죽지 않는다", () => {
+  it("getSetCookie() 가 있으면 그 반환값을 그대로 준다", () => {
+    const headers = { getSetCookie: () => ["A=1", "B=2"] };
+    expect(extractSetCookies(headers)).toEqual(["A=1", "B=2"]);
+  });
+
+  it("⚠️ 뮤테이션 대상 — getSetCookie 가 없으면(구형 Headers 등) 빈 배열 — throw 하지 않는다", () => {
+    expect(extractSetCookies(/** @type {any} */ ({}))).toEqual([]);
+    expect(extractSetCookies(undefined)).toEqual([]);
+    expect(extractSetCookies(null)).toEqual([]);
+  });
+});
+
+// ── buildCookieHeader — Set-Cookie 배열 → Cookie 헤더 문자열 ─────────────────
+
+describe("buildCookieHeader — 속성 제거 + '; ' 결합", () => {
+  it("각 Set-Cookie 의 속성(Path/HttpOnly/Secure 등)을 떼고 name=value 만 남긴다", () => {
+    const setCookies = [
+      "REALESTATE=abc123; Path=/; HttpOnly; Secure",
+      "PROP_TEST_KEY=xyz789; Path=/",
+      "PROP_TEST_ID=1",
+    ];
+    expect(buildCookieHeader(setCookies)).toBe("REALESTATE=abc123; PROP_TEST_KEY=xyz789; PROP_TEST_ID=1");
+  });
+
+  it("빈 배열이면 빈 문자열", () => {
+    expect(buildCookieHeader([])).toBe("");
+  });
+
+  it("⚠️ 뮤테이션 대상 — 세미콜론 뒤 속성이 값에 섞여 들어가지 않는다", () => {
+    const cookie = buildCookieHeader(["FOO=bar; Domain=.naver.com; Max-Age=3600"]);
+    expect(cookie).toBe("FOO=bar");
+    expect(cookie).not.toContain("Domain");
+  });
+});
+
+// ── ensureNaverSession — JWT+쿠키를 같은 응답에서 함께 획득·캐시 공유 ─────────
+
+describe("ensureNaverSession — JWT 와 쿠키를 함께 획득하고 캐시를 공유한다", () => {
+  beforeEach(() => {
+    vi.mocked(fetchWithRetry).mockReset();
+  });
+
+  // 세 단계를 한 테스트 안에서 순서대로 확인한다(JWT+쿠키 캐시는 모듈 스코프 싱글턴이라
+  // it() 사이에 걸치면 앞 테스트의 캐시가 뒤 테스트로 새어 들어가 오탐/누락이 생긴다 —
+  // 한 테스트 안에서만 순서를 보장하면 이 문제가 없다).
+  it("JWT 못 찾으면 던지고(캐시 오염 없음) → 이어서 성공하면 JWT+쿠키를 한 캐시로 묶어 재호출 시 HTML 을 다시 안 받는다", async () => {
+    // 1) 토큰 패턴이 없는 응답 → throw. 이 실패가 캐시를 만들면 안 된다(다음 시도가 여전히
+    //    fetchWithRetry 를 불러야 한다).
+    vi.mocked(fetchWithRetry).mockResolvedValueOnce(/** @type {any} */ ({
+      text: async () => "<html>토큰 없음</html>",
+      headers: { getSetCookie: () => ["REALESTATE=abc"] },
+    }));
+    await expect(ensureNaverSession()).rejects.toThrow(/JWT/);
+
+    // 2) 이번엔 정상 응답(토큰 + Set-Cookie 2개) — 실패한 시도가 캐시를 오염시키지 않았다면
+    //    이 호출도 fetchWithRetry 를 실제로 부른다(총 호출 2회가 되어야 함).
+    vi.mocked(fetchWithRetry).mockResolvedValueOnce(/** @type {any} */ ({
+      text: async () => '<html>"token":"eyJhbGciOiJIUzI1NiJ9.payload.sig"</html>',
+      headers: { getSetCookie: () => ["REALESTATE=abc; Path=/", "PROP_TEST_KEY=xyz; Path=/"] },
+    }));
+    const first = await ensureNaverSession();
+    expect(first.jwt).toBe("eyJhbGciOiJIUzI1NiJ9.payload.sig");
+    expect(first.cookie).toBe("REALESTATE=abc; PROP_TEST_KEY=xyz");
+    expect(fetchWithRetry).toHaveBeenCalledTimes(2); // 1)실패 + 2)성공
+
+    // 3) 재호출 — ⚠️ 뮤테이션 대상: 캐시가 JWT 만 공유하고 쿠키는 따로 관리된다면(또는 캐시
+    //    수명을 공유하지 않는다면) 여기서 fetchWithRetry 가 다시 불린다.
+    const second = await ensureNaverSession();
+    expect(second).toEqual(first);
+    expect(fetchWithRetry).toHaveBeenCalledTimes(2); // 추가 호출 없음 — 같은 캐시로 공유됨
   });
 });
 
@@ -854,5 +969,15 @@ describe("main 배선", () => {
 
   it("--kinds 가 주어지면 V-WORLD 축을 건너뛴다", () => {
     expect(DEVPLAN_SRC).toMatch(/const runVworld =[^\n]*&&[^\n]*kindsFilter === null/);
+  });
+
+  // ★배선(429 근본원인 정정) — ensureNaverSession() 이 준 쿠키가 실제 타일 조회 호출까지
+  // 전달되는가. 함수만 검증한 위 describe("fetchDevPlanTile — Cookie 헤더 배선") 는 main() 이
+  // 그 함수를 실제로 이 인자로 부르는지는 못 본다. 좌변(const .../await)까지 고정해 함수
+  // 선언부(`export async function fetchDevPlanTile(kind, bbox, jwt, cookie, ...)`)에 우연히
+  // 매칭되지 않게 한다([[guards-must-be-mutation-tested]] §소스 grep 가드).
+  it("네이버 세션(JWT+쿠키)을 획득해 타일 조회 호출에 쿠키까지 그대로 넘긴다", () => {
+    expect(DEVPLAN_SRC).toMatch(/const \{ jwt, cookie \} = await ensureNaverSession\(\)/);
+    expect(DEVPLAN_SRC).toMatch(/const items = await fetchDevPlanTile\(kind, tile, jwt, cookie, /);
   });
 });
