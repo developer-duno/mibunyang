@@ -103,6 +103,8 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 
 **세션 515: 국토부(apis.data.go.kr/**1613000**)도 2026-08-06 부터 GH 러너를 복불복 차단** (HTTP 코드 없는 `fetch failed` / 같은 키·같은 요청이 로컬 한국 IP 에선 156ms 200 OK 실측) → 1613000 의존 5종(trades·molit-units·molit-building-info·maintenance·building-hub)도 같은 러너로 이전. GH `collect-{trades,molit-units,building-info,maintenance,building-hub}.yml` 5개 삭제.
 
+**세션 517: 이 러너는 이제 네이버 수집기도 하나 나른다** — `naver-devplan.mjs`(매월 20일). 네이버 API 역시 한국 IP 가 필요한데 편입 전까지는 어느 스케줄에도 없어 사람이 손으로 부를 때만 돌았다. 절 이름의 "KOSIS + MOLIT" 과 실체가 어긋나는 것은 `transport-tago`(이름은 TAGO 인데 TAGO 를 안 씀) 선례처럼 **문서로 해소**한다 — 파일·작업 이름을 바꾸면 스케줄러 등록·`collector_runs` 라벨까지 흔들린다.
+
 | 구분 | 방식 | 실행 |
 |------|------|------|
 | 자동 수집 | Windows 스케줄러 `MibunyangKosisLocal` → `kosis-local-runner.bat` | 매일 05:30 KST (일자 디스패치 — 아래 표) |
@@ -124,10 +126,11 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 | 15 | **building-hub** | 1·4·7·10월만 |
 | 17 | sale-price-index | 1·4·7·10월만 |
 | 18 | jeonse-price-index | - |
+| 20 | **naver-devplan** `--kinds=road,rail,station,jigu` | 네이버 4종만 (V-WORLD 축 제외 — 전량은 ~7.5h·중간 체크포인트 없음) |
 
 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-kosis-task.ps1`
 
-감시: GH run 이 없으므로 monitor ⑤ `EXTERNAL_API_COLLECTORS` 신선도(일일·주간 14일/월간 38일/분기 100일)가 유일한 미발화 알림 — 세션 515 에 `trades`·`molit-building`·`molit-units` 3건 신규 등재(`maintenance`·`building-hub` 는 기존 항목 유지). KOSIS 수집기 10종 전부 실패 시 `collector_runs` 에 `status=failure` 행 기록 (PR #97·#99 하드닝 — throw·early-return 전 경로).
+감시: GH run 이 없으므로 monitor ⑤ `EXTERNAL_API_COLLECTORS` 신선도(일일·주간 14일/월간 38일/분기 100일)가 유일한 미발화 알림 — 세션 515 에 `trades`·`molit-building`·`molit-units` 3건, 세션 517 에 `naver-devplan` 1건 신규 등재(`maintenance`·`building-hub` 는 기존 항목 유지). KOSIS 수집기 10종 전부 실패 시 `collector_runs` 에 `status=failure` 행 기록 (PR #97·#99 하드닝 — throw·early-return 전 경로).
 
 ---
 
