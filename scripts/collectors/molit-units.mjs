@@ -121,10 +121,13 @@ export async function updateUnits(sb, aptId, newUnits, unsold, dryRun) {
 }
 
 // ── 4. 미매칭 목록 파일 기록 ────────────────────────────────
-// 왜 파일인가: 이 수집기는 run-naver-local.bat 이 stdout 을 어디에도 남기지 않고 실행한다.
-// "국토부 목록에서 이름을 못 찾은 단지" 는 콘솔에만 찍혀 창이 닫히는 순간 사라졌고,
-// collector_runs 에도 unmatched 가 안 들어가 며칠 뒤엔 "몇 건이 왜 안 붙었나" 를
-// 되짚을 근거가 0 이었다 (세션 495). 날짜별 파일로 남겨 다음 세션이 직접 읽게 한다.
+// 왜 파일인가: "국토부 목록에서 이름을 못 찾은 단지" 는 콘솔에만 찍히면 다음 실행의
+// 로그 마커 사이에 묻히고, collector_runs 에도 unmatched 가 안 들어가 며칠 뒤엔 "몇 건이
+// 왜 안 붙었나" 를 되짚을 근거가 0 이었다 (세션 495). 날짜별 파일로 남겨 다음 세션이
+// 직접 읽게 한다. ⚠️ 세션519 정정 — "run-naver-local.bat 이 stdout 을 어디에도 안 남긴다"는
+// 옛 전제는 세션518(PR #412)이 그 배치의 각 단계 출력을 naver-collect.log 로 리다이렉트하며
+// 깨졌다. 이 파일이 별도 산출물을 남기는 이유는 이제 "stdout 자체가 사라짐"이 아니라
+// "콘솔 로그는 단지별 unmatched 상세를 파싱하기엔 구조화가 안 돼 있음"이다.
 const DEFAULT_UNMATCHED_LOG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "logs");
 
 /**
