@@ -50,7 +50,11 @@
 | `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
-### 매월 (13개) + 수동 전용 (4개)
+### 매월 (10개) + 수동 전용 (4개)
+
+> ⚠️ 세션519 실측 정정 — 이 헤더의 "13개"는 이번 편집 이전부터 이미 실제 행 수와 어긋나 있었다
+> (본 절 상단 disclaimer 가 경고하는 바로 그 drift). air-quality·housing-price 2행을 로컬
+> 러너로 옮기며 실측 후 10개로 정정.
 
 > **세션 288~289: KOSIS 의존 10개 GH 폐기 → 집서버 로컬 러너 이전.** kosis.kr 이 GitHub 러너(해외
 > Azure IP)를 차단해 `collect-{unsold-kosis,market-stats,migration,jeonse-price-index,regional-economy,fertility-rate,housing-supply-ratio,medical-access,avg-income,sale-price-index}.yml`
@@ -142,7 +146,7 @@
 | `TAGO_KEY` | ~~TAGO 대중교통~~ — 세션 498(#337) 정적 파일 전환으로 **워크플로 주입 제거**(TAGO 호출 0). 시크릿 잔존은 무해 | - |
 | `NEIS_KEY` | NEIS 교육정보 (선택, 미등록 시 스킵) | - |
 | `SCHOOLINFO_KEY` | 학교알리미 학생수 (선택) | - |
-| `AIRKOREA_KEY` | 에어코리아 대기질 (선택) | - |
+| `AIRKOREA_KEY` | 에어코리아 대기질 — 세션 519 로컬 러너 이전으로 GH 워크플로 사용 0 (집서버 `.env` 만, 시크릿 잔존은 무해) | - |
 | `CHILDCARE_API_KEY` | info.childcare.go.kr cpmsapi021 어린이집 목록 (세션 252) — 세션 399 로컬 러너(`childcare-local-runner.mjs`) 이전으로 GH 워크플로 사용 0 (로컬 `.env` 만, 시크릿 잔존은 무해) | - |
 | `CHILDCARE_BASIC_API_KEY` | info.childcare.go.kr cpmsapi030 어린이집 70 필드 상세 (세션 256) — 세션 399 로컬 러너 이전으로 GH 워크플로 사용 0 (로컬 `.env` 만, 시크릿 잔존은 무해) | - |
 | `SUBSCRIBERS_OPT_OUT_SECRET` | 분양 알림 수신거부 HMAC (Vercel 과 동일 값 유지 의무 — 드리프트 시 문자 속 철회 링크 전부 401, 세션 467) | - |
