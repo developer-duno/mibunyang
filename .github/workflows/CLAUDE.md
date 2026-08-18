@@ -74,6 +74,20 @@
 > maintenance·building-hub 는 기존 항목 유지). ⚠️ `collect-building-info.yml` 의 2번째 스텝이던
 > `sync-naver-complex.mjs` 는 옮기지 않았다 — `collect-naver-listings.yml`(Naver Core)이 **매일** 같은
 > 스크립트를 돌려 이미 중복이었다.
+>
+> **세션 519: data.go.kr 2종 GH 폐기 → 집서버 로컬 러너 이전.** 1613000 만의 문제가 아니었다 —
+> `www.data.go.kr`(공시가격 CSV)·`apis.data.go.kr/B552584`(에어코리아)도 해외 IP 를 막는다.
+> 실측: GH 는 `fetch failed`(HTTP 코드 없음)인데 **같은 요청이 로컬 한국 IP 에선 166ms / 92ms 200 OK**.
+> `collect-housing-price.yml`(7/16·8/16 **연속 실패**, 62일 미갱신)·`collect-air-quality.yml`
+> (8회 중 2회만 성공 = **25% 복불복**) 2개 삭제 → 러너 매핑표 편입.
+> ⚠️ **cron 을 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다** — `0 22 16 * *` 는 KST **17일**,
+> `0 15 * * 1` 은 KST **화요일**이다. 러너 표는 KST 기준이라 숫자를 그대로 베끼면 하루가 밀린다.
+> 이를 위해 러너에 **주간(`dow`) 항목**을 새로 지원했다(기존은 `day` 만).
+> 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS` — air-quality 신규 등재, housing-price 는 세션 504 에
+> 이미 있어 문구만 갱신(**중복 추가하면 한쪽을 지워도 가드가 통과한다 — 뮤테이션이 실제로 잡았다**).
+> 같은 세션에 `monitor-collectors.yml` 의 workflow_run 목록에서 **"Housing Permits Data Collection"**
+> 도 제거했다 — 세션 501 에 yml 이 삭제됐는데 이름만 남아 **매일 "실행 기록이 한 번도 없음" 거짓 경보**를
+> 내고 있었다(monitor-collectors.mjs 주석엔 "제거했다"고 적혀 있었지만 이 yml 은 안 고쳐졌다).
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
@@ -89,9 +103,7 @@
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
 | `collect-emergency.yml` | 2일 | 응급의료기관 |
 | `collect-population.yml` | 5일 | 행안부 인구 증감률 |
-| `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
-| `collect-housing-price.yml` | 16일 | 주택가격 (KST 17일 07:00 — 15일 migration/maintenance/building-hub 다음 날). **세션 491 문서 추가** — 그동안 이 표에 아예 없었다 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
 
 ### 모니터링 (2개)
