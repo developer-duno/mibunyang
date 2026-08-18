@@ -125,8 +125,14 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 | 15~19 | **maintenance** | 매일 `--limit=600` 배치 (옛 cron `0 6 15-19` 이식 — 인자를 빼면 전 대상이 한 회차에 몰려 일일 쿼터 초과) |
 | 15 | **building-hub** | 1·4·7·10월만 |
 | 17 | sale-price-index | 1·4·7·10월만 |
+| 17 | **housing-price** | 세션519 신규 — 옛 cron `0 22 16 * *`(UTC)는 **KST 17일** |
 | 18 | jeonse-price-index | - |
 | 20 | **naver-devplan** `--kinds=road,rail,station,jigu` | 네이버 4종만 (V-WORLD 축 제외 — 전량은 ~7.5h·중간 체크포인트 없음) |
+| **매주 화** | **air-quality** | 세션519 신규 — 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**. 표의 첫 `dow` 항목 |
+
+⚠️ **GH cron 을 이 표로 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다** (세션519). 러너는
+KST 05:30 에 돌고 이 표도 KST 기준이라, cron 숫자를 그대로 베끼면 하루/한 요일이 밀린다.
+`day` 와 `dow` 는 **배타** — `dow` 가 있으면 그 요일만 보고 `day` 는 무시한다.
 
 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-kosis-task.ps1`
 

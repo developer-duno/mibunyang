@@ -234,9 +234,12 @@ const KO_FIELD = {
 // police/trades)은 대응 GitHub Actions 워크플로가 monitor-collectors.yml 의
 // workflow_run.workflows 에 이미 등재돼 ①(실패/취소)·③(미발화) 축이 커버하고
 // 있음을 실측 확인(이 배열=EXTERNAL_API_COLLECTORS 는 로컬 러너 등 GH 워크플로
-// 자체가 없는 수집기 전용 — collect-air-quality.mjs 등은 워크플로가 있어 원래
-// 이 배열 대상이 아니었다). 진짜 사각지대는 collect-crime-safety.mjs 단
+// 자체가 없는 수집기 전용). 진짜 사각지대는 collect-crime-safety.mjs 단
 // 하나였다 — 아래 EXEMPT_FROM_STALE_CHECK 참조.
+// ⚠️ 위 7종 중 **air-quality·trades 는 그 뒤 GH 워크플로가 삭제**됐다(trades=세션 515,
+//   air-quality=세션 519 — 해외 IP 차단으로 로컬 러너 이전). 즉 "워크플로가 있어 이 배열
+//   대상이 아니다" 는 그 둘에 더는 성립하지 않고, 실제로 둘 다 아래에 등재돼 있다.
+//   **워크플로를 지울 때 이 배열 등재를 함께 챙기지 않으면 그 수집기는 조용히 죽는다.**
 //
 // ⚠️ collect-crime-safety.mjs 는 이 배열에 넣지 않는다(의도적 제외):
 // data/crime-safety-index.csv 를 "사람이 연 1회 수동 다운로드 후 수동 실행"하는
@@ -266,6 +269,13 @@ export const EXTERNAL_API_COLLECTORS = [
   //    유일한 "안 돌면 알림" 이다. maintenance·building-hub 는 이미 아래/위에 있어 3건만 추가.
   //    stale_days = 발화주기 + 여유 1주기 (일일=14 / 주간=14 / 월간=38 / 분기=100).
   { collector: "trades",          stale_days: 38, owner: "MOLIT 실거래 (로컬 매월 6일)" },
+  // ── data.go.kr = 세션 519. 1613000 만의 문제가 아니었다 — www.data.go.kr(공시가격 CSV)·
+  //    apis.data.go.kr/B552584(에어코리아)도 해외 IP 를 막는다. 실측: GH 는 `fetch failed`
+  //    (HTTP 코드 없음)인데 같은 요청이 로컬 한국 IP 에선 166ms / 92ms 200 OK.
+  //    housing-price 7/16·8/16 **연속 실패**, air-quality 8회 중 2회만 성공(25% 복불복).
+  //    둘 다 GH yml 삭제 + 로컬 러너 이전. housing-price 는 아래에 이미 등재돼 있어
+  //    거기 문구만 갱신했다(중복 추가하면 한쪽을 지워도 가드가 통과한다 — 뮤테이션이 잡음).
+  { collector: "air-quality",     stale_days: 14, owner: "에어코리아 대기질 (로컬 매주 화요일 + 1주 여유)" },
   { collector: "molit-building",  stale_days: 38, owner: "MOLIT 건축물대장 상세 (로컬 매월 10일·토요일이면 11일)" },
   // molit-units 만 14 인 이유 = 월간 cron 외에 네이버 로컬 파이프라인(월/목 08:00, run-naver-local)
   // 4/6 단계가 같은 수집기를 돌린다. 정상 최대 간격이 4일이라 월간 38 을 쓰면 정지를 늦게 잡는다.
@@ -290,11 +300,12 @@ export const EXTERNAL_API_COLLECTORS = [
   //   5일 연속이라도 한 묶음 발화(19일 success→다음달 15일 발화 ~26일 간격)라 stale_days:38(=31일+1주)은 적정.
   //   세션 515: MOLIT 해외 IP 차단으로 GH yml 삭제 → 로컬 러너가 같은 15~19일 배치를 승계(주기 동일 → 38 유지).
   { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (로컬 매일 15~19일 배치 + 1주 여유)" },
-  // housing-price = 공동주택공시가격 (collect-housing-price.yml, 매월 16일 cron — 세션 504 등재).
-  //   지금까지 ⑤ 어디에도 없어서 7/16 실패 후 방치돼도 아무 알림이 없었다(그 실패의 원인은
-  //   계정 지출한도였고 8/1 청구 리셋으로 해소됐지만, 그걸 알아챈 건 사람이 뒤늦게 뒤진 결과다).
+  // housing-price = 공동주택공시가격 (세션 504 등재). 이 항목이 실제로 일을 했다 —
+  //   62일 미발화를 매일 알려 세션 519 가 원인(해외 IP 차단)에 도달했다.
+  //   ⚠️ 세션 519: `collect-housing-price.yml` **삭제**, 로컬 러너 매월 **17일** 로 이전.
+  //   옛 cron `0 22 16 * *` 은 UTC 라 KST 로는 17일이었다(러너 표는 KST 기준).
   //   월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100 기준표).
-  { collector: "housing-price",    stale_days: 38, owner: "공동주택공시가격 CSV (월 16일 cron + 1주 여유)" },
+  { collector: "housing-price",    stale_days: 38, owner: "공동주택 공시가격 CSV (로컬 매월 17일 + 1주 여유)" },
   // naver-presale = 네이버 분양정보 pre.land (scripts/collectors/naver-presale.mjs, run-naver-local.sh 3/6 단계).
   //   네이버 IP 차단으로 한국 IP 로컬 PC 에서만 실행 = Windows 스케줄러 `MibunyangNaverCollect` 월/목 08:00.
   //   GH run 이 없어 ③ 워크플로 점검 대상 밖 → collector_runs 신선도가 유일한 "안 돌면 알림".

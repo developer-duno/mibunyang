@@ -43,11 +43,18 @@ const COLLECTORS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "
 
 /**
  * 일자(KST) → 수집기.
+ *   day              매월 이 날짜(KST)에 실행. `dow` 와 **둘 중 하나만** 쓴다
+ *   dow              매주 이 요일(0=일..6=토, KST)에 실행 — 주간 cron 이식용(세션519)
  *   months           있으면 해당 월에만 (분기 cron 이식)
  *   args             수집기에 넘길 고정 인자 (GH yml 이 넘기던 것 보존)
  *   skipIfDow        그 날의 요일(0=일..6=토)이면 건너뜀
  *   onlyIfPrevDayDow 전날 요일이 이 값일 때만 실행 (skipIfDow 로 미룬 회차의 보충)
- * @type {Array<{ day: number, script: string, months?: number[], args?: string[], skipIfDow?: number, onlyIfPrevDayDow?: number }>}
+ *
+ * ⚠️ **GH cron 을 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다.** 러너는 KST 05:30 에
+ * 도는데 이 표도 KST 기준이라, cron 의 숫자를 그대로 베끼면 하루/한 요일이 밀린다.
+ * 실례(세션519): `0 22 16 * *`(UTC 16일 22시)는 **KST 17일** 07시고,
+ * `0 15 * * 1`(UTC 월 15시)은 **KST 화요일** 00시다.
+ * @type {Array<{ day?: number, dow?: number, script: string, months?: number[], args?: string[], skipIfDow?: number, onlyIfPrevDayDow?: number }>}
  */
 export const DAY_TABLE = [
   { day: 2, script: "collect-housing-supply-ratio.mjs" },
@@ -77,6 +84,9 @@ export const DAY_TABLE = [
   { day: 16, script: "collect-maintenance.mjs", args: ["--limit=600"] },
   { day: 17, script: "collect-maintenance.mjs", args: ["--limit=600"] },
   { day: 17, script: "collect-sale-price-index.mjs", months: [1, 4, 7, 10] },
+  // 세션519: www.data.go.kr 도 해외 IP 를 막는다 — GH 는 7/16·8/16 연속 `fetch failed`(HTTP 코드
+  // 없음)인데 같은 URL 이 로컬 한국 IP 에선 166ms 200 OK. 옛 cron `0 22 16 * *`(UTC)는 **KST 17일**.
+  { day: 17, script: "collect-housing-price.mjs" },
   { day: 18, script: "collect-maintenance.mjs", args: ["--limit=600"] },
   { day: 18, script: "collect-jeonse-price-index.mjs" },
   { day: 19, script: "collect-maintenance.mjs", args: ["--limit=600"] },
@@ -85,6 +95,9 @@ export const DAY_TABLE = [
   // --kinds 를 넘기면 V-WORLD 축(전량 ~7.5h·중간 체크포인트 없음)은 자동 스킵된다 —
   // 전량 수집은 체크포인트 설계 후 별도 트랙. 네이버 4종만 ≈30분.
   { day: 20, script: "naver-devplan.mjs", args: ["--kinds=road,rail,station,jigu"] },
+  // 세션519: apis.data.go.kr/B552584(에어코리아)도 같은 차단 — GH 8회 중 2회만 성공(25%,
+  // 러너 IP 복불복)인데 로컬은 92ms 200 OK. 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**.
+  { dow: 2, script: "collect-air-quality.mjs" },
 ];
 
 /**
@@ -102,7 +115,8 @@ export function entriesDueOn(date) {
   const prevDow = prev.getDay();
   return DAY_TABLE.filter(
     (e) =>
-      e.day === day &&
+      // 주간 항목(dow)과 월간 항목(day)은 배타 — dow 가 있으면 그것만 본다(세션519).
+      (e.dow !== undefined ? e.dow === dow : e.day === day) &&
       (!e.months || e.months.includes(month)) &&
       e.skipIfDow !== dow &&
       (e.onlyIfPrevDayDow === undefined || e.onlyIfPrevDayDow === prevDow),
@@ -135,7 +149,8 @@ export function describeEntry(e) {
     gates.push(`전날이 ${DOW_LABEL[e.onlyIfPrevDayDow]}요일일 때만`);
   const gate = gates.length > 0 ? ` (${gates.join(", ")})` : "";
   const args = e.args?.length ? ` ${e.args.join(" ")}` : "";
-  return `매월 ${e.day}일${gate}: ${e.script}${args}`;
+  const when = e.dow !== undefined ? `매주 ${DOW_LABEL[e.dow]}요일` : `매월 ${e.day}일`;
+  return `${when}${gate}: ${e.script}${args}`;
 }
 
 async function main() {
