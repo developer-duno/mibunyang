@@ -78,6 +78,12 @@ jobs:
       - name: Claude 훅 배선 audit
         run: node scripts/audit-hooks-wiring.mjs
 
+      # 세션 518: js-yaml 이 선언 없이 eslint 의 transitive 로만 존재해, eslint 10 시험
+      # 업그레이드가 그 사슬을 끊자 감사·테스트 5개가 통째로 죽었다. `npm run lint` 는
+      # `eslint src/` 라 scripts/ 를 아예 안 봐서 기존 도구로는 닿지 않는 사각이다.
+      - name: scripts/ 미선언 패키지 audit
+        run: node scripts/audit-declared-deps.mjs
+
       # 세션 491: e2e.yml 과 warm-playwright-cache.yml 의 캐시 키가 어긋나면
       # 캐시가 영원히 미스되는데 CI 는 초록이라 아무도 모른다 → 기계가 검사한다.
       - name: Playwright 캐시 키 audit
