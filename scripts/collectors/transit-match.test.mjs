@@ -6,6 +6,16 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
+// 채점 상수는 **직접 import 해서** 대조한다. 소스를 정규식으로 긁으면 줄 끝 주석 하나에
+// 항목이 통째로 안 잡혀 "어긋난 채 초록불"이 된다(세션520에 실제로 그렇게 헛돌았다).
+import {
+  TRANSIT_CERTAINTY,
+  TRANSIT_CERTAINTY_DEFAULT,
+  TRANSIT_DIST_TIERS,
+  TRANSIT_GRADE,
+  TRANSIT_GRADE_DEFAULT,
+  TRANSIT_LINE_TYPE,
+} from "@/constants/scoringTiers";
 
 // 채점 상수는 **소스에서 직접 읽는다**. 여기에 값을 적어두면 상수만 바꿔도 테스트가 따라오지
 // 않아 "둘이 어긋난 채 초록불"이 된다. 정규식은 좌변까지 고정해 주석줄에 안 걸리게 한다 —
@@ -46,7 +56,20 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { haversine, isStationOpened, buildNaverStations, filterCityDevs } = await import("./transit-match.mjs");
+const {
+  haversine,
+  isStationOpened,
+  buildNaverStations,
+  filterCityDevs,
+  stationScore,
+  pickBestStation,
+  CERTAINTY_MIRROR,
+  CERTAINTY_DEFAULT_MIRROR,
+  DIST_TIERS_MIRROR,
+  GRADE_MIRROR,
+  GRADE_DEFAULT_MIRROR,
+  LINE_TYPE_MIRROR,
+} = await import("./transit-match.mjs");
 
 /**
  * 네이버 `dev_plans` `kind='station'` 행 픽스처.
@@ -185,6 +208,25 @@ describe("buildNaverStations — 시드와 같은 모양으로 정규화", () =>
     expect(st.project).toBe("GTX-A");
   });
 
+  it("역명이 번호뿐이면 '신설역' 으로 바꾼다 — 손님에게 '942역' 은 아무 뜻이 없다", () => {
+    const [st] = buildNaverStations(
+      [stationRow({ railName: "9호선4단계(공사중)", stationName: "942역(2028년예정)", openDate: "2028" })],
+      "2026-08",
+    );
+    expect(st.name).toBe("신설");
+    expect(`${st.project} ${st.name}역 ${st.status}`).toBe("9호선4단계 신설역 공사중");
+    expect(TRANSIT_DEV_PATTERN).not.toBeNull();
+    expect(`${st.project} ${st.name}역 ${st.status}`).toMatch(/** @type {RegExp} */ (TRANSIT_DEV_PATTERN));
+  });
+
+  it("이름이 숫자로 **시작**할 뿐이면 그대로 둔다 — '4단계역' 같은 진짜 이름을 지우지 않는다", () => {
+    const [st] = buildNaverStations(
+      [stationRow({ railName: "테스트선(공사중)", stationName: "4단계역(2028년예정)", openDate: "2028" })],
+      "2026-08",
+    );
+    expect(st.name).toBe("4단계");
+  });
+
   it("좌표가 없으면 버린다", () => {
     expect(buildNaverStations([stationRow({ lat: null }), stationRow({ lng: null })], "2026-08")).toHaveLength(0);
   });
@@ -247,5 +289,103 @@ describe("KNOWN_STATUSES ↔ TRANSIT_CERTAINTY 동기화", () => {
 
   it("폴백 상태도 채점이 아는 낱말이다", () => {
     expect(CERTAINTY_KEYS).toContain(FALLBACK_STATUS_SRC);
+  });
+});
+
+// ── 채점 거울 동기화 (세션520) ────────────────────────────────
+//
+// 수집기는 `.mjs` 라 `.ts` 상수를 import 할 수 없어 값을 복제해 뒀다. 복제본이 어긋나면 수집기가
+// 고른 역과 채점이 매긴 점수가 **서로 다른 잣대**를 쓴다. 아래가 네 종류 전부를 대조한다.
+describe("채점 거울 ↔ scoringTiers 동기화", () => {
+  it("확실성 표가 같다", () => {
+    expect(CERTAINTY_MIRROR).toEqual(TRANSIT_CERTAINTY);
+    expect(CERTAINTY_DEFAULT_MIRROR).toBe(TRANSIT_CERTAINTY_DEFAULT);
+  });
+
+  it("노선급 표가 같다", () => {
+    expect(GRADE_MIRROR).toEqual(TRANSIT_GRADE);
+    expect(GRADE_DEFAULT_MIRROR).toBe(TRANSIT_GRADE_DEFAULT);
+  });
+
+  it("거리 등급표가 같다 (경계·점수·순서 전부)", () => {
+    expect(DIST_TIERS_MIRROR).toEqual(TRANSIT_DIST_TIERS.map((t) => [t.max, t.score]));
+  });
+
+  it("노선명→종류 표가 같다", () => {
+    expect(LINE_TYPE_MIRROR).toEqual(TRANSIT_LINE_TYPE);
+  });
+
+  it("수집기가 내보내는 상태는 전부 채점이 아는 낱말이다", () => {
+    for (const s of KNOWN_STATUSES_SRC) expect(Object.keys(TRANSIT_CERTAINTY)).toContain(s);
+    expect(Object.keys(TRANSIT_CERTAINTY)).toContain(FALLBACK_STATUS_SRC);
+  });
+});
+
+// ── stationScore · pickBestStation (세션520) ──────────────────
+describe("stationScore — scoreFuture 의 trSc 와 같은 식", () => {
+  it("확실성 + 근접 + 노선급 을 더한다", () => {
+    expect(stationScore({ project: "GTX-A", status: "공사중" }, 0.4)).toBe(
+      TRANSIT_CERTAINTY["공사중"] + TRANSIT_DIST_TIERS[0].score + TRANSIT_GRADE.GTX,
+    );
+  });
+
+  it("표에 없는 노선은 기본급으로 떨어진다", () => {
+    expect(stationScore({ project: "표에없는선", status: "공사중" }, 0.4)).toBe(
+      TRANSIT_CERTAINTY["공사중"] + TRANSIT_DIST_TIERS[0].score + TRANSIT_GRADE_DEFAULT,
+    );
+  });
+
+  it("모르는 상태는 기본 확실성으로 떨어진다", () => {
+    expect(stationScore({ project: "GTX-A", status: "몰라" }, 0.4)).toBe(
+      TRANSIT_CERTAINTY_DEFAULT + TRANSIT_DIST_TIERS[0].score + TRANSIT_GRADE.GTX,
+    );
+  });
+
+  it("마지막 거리 등급을 넘기면 근접 0점", () => {
+    const far = (TRANSIT_DIST_TIERS[TRANSIT_DIST_TIERS.length - 1].max ?? 0) + 1;
+    expect(stationScore({ project: "GTX-A", status: "공사중" }, far)).toBe(
+      TRANSIT_CERTAINTY["공사중"] + TRANSIT_GRADE.GTX,
+    );
+  });
+});
+
+describe("pickBestStation — 가장 가까운 곳이 아니라 가장 좋은 호재", () => {
+  const at = (/** @type {number} */ lat, /** @type {number} */ lng, /** @type {Record<string, any>} */ o) => ({
+    lat,
+    lng,
+    ...o,
+  });
+  const APT = { lat: 37.5, lng: 127.0 };
+
+  it("더 가까운 저급 노선보다 조금 먼 GTX 를 고른다 — 옛 '최근접' 규칙이 35곳을 떨어뜨린 자리", () => {
+    const pool = [
+      at(37.5045, 127.0, { project: "위례선", status: "공사중", name: "가까운" }), // 약 0.5km · 기본급
+      at(37.509, 127.0, { project: "GTX-A", status: "공사중", name: "GTX" }), // 약 1.0km · GTX
+    ];
+    expect(pickBestStation(APT, pool, 5)?.station.name).toBe("GTX");
+  });
+
+  it("점수가 같으면 가까운 쪽을 고른다 (표시가 자연스럽다)", () => {
+    const pool = [
+      at(37.5018, 127.0, { project: "GTX-A", status: "공사중", name: "가까운" }),
+      at(37.5036, 127.0, { project: "GTX-B", status: "공사중", name: "먼쪽" }),
+    ];
+    expect(pickBestStation(APT, pool, 5)?.station.name).toBe("가까운");
+  });
+
+  it("반경 밖은 고르지 않는다", () => {
+    expect(pickBestStation(APT, [at(38.5, 127.0, { project: "GTX-A", status: "공사중" })], 5)).toBeNull();
+  });
+
+  it("후보가 없으면 null", () => {
+    expect(pickBestStation(APT, [], 5)).toBeNull();
+    expect(pickBestStation(APT, /** @type {any} */ (null), 5)).toBeNull();
+  });
+
+  it("후보를 **더하면** 점수가 내려가지 않는다 — 이 PR 의 핵심 계약", () => {
+    const seed = [at(37.509, 127.0, { project: "GTX-A", status: "공사중" })];
+    const added = [...seed, at(37.5045, 127.0, { project: "위례선", status: "공사중" })];
+    const sc = (/** @type {any} */ r) => (r ? stationScore(r.station, Math.round(r.dist * 10) / 10) : 0);
+    expect(sc(pickBestStation(APT, added, 5))).toBeGreaterThanOrEqual(sc(pickBestStation(APT, seed, 5)));
   });
 });

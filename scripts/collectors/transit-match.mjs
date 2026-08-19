@@ -40,6 +40,9 @@ const PHASE = "transit-match";
 /** 도시개발(LH 사업지구) 매칭 반경(km). 채점 등급 마지막 칸이 3km 라 그 밖은 어차피 0점이다. */
 const CITY_MATCH_RADIUS_KM = 5;
 
+/** 계획역 매칭 반경(km). 채점 거리 등급 마지막 칸이 4km 라 그 밖은 근접 0점이다. */
+const TRANSIT_MATCH_RADIUS_KM = 5;
+
 /**
  * 채점이 아는 사업 확실성 표기. **`src/constants/scoringTiers.ts` 의 `TRANSIT_CERTAINTY` 키와 한 쌍**이다
  * — 여기 없는 낱말을 내보내면 채점이 기본값(12)으로 떨어져 조용히 낮은 점수가 된다.
@@ -49,6 +52,96 @@ const KNOWN_STATUSES = ["공사중", "착공", "추진", "계획", "구상"];
 
 /** 괄호 안이 확실성 낱말이 아닐 때(구간명 등) 쓸 표기. 아는 게 없으면 낮게 잡는다. */
 const FALLBACK_STATUS = "추진";
+
+// ── 채점 거울 (세션520) ──────────────────────────────────────────────────────
+//
+// **`src/constants/scoringTiers.ts` 의 같은 이름 상수와 값이 같아야 한다.** 여기 복제본을 두는
+// 이유는 이 수집기가 `.mjs` 라 `.ts` 상수를 import 할 수 없어서다. 어긋나면 수집기가 고른 역과
+// 채점이 매긴 점수가 서로 다른 잣대를 쓰게 되므로, `transit-match.test.mjs` 가 **네 종류 전부를
+// 소스에서 읽어 대조**한다(한쪽만 바꾸면 red). transport-tago 의 BUS_UNIQUE_CAP 동기화 답습.
+//
+// 왜 거리만 보지 않고 점수로 고르나 — 채점은 거리 말고 **확실성·노선급**도 본다. 거리만 보면
+// 트램역이 0.2km 더 가깝다는 이유로 GTX역을 밀어내 **후보를 늘렸는데 점수가 내려간다**
+// (실측: 그 상태로 35곳 하락, 최대 −12점). 점수로 고르면 하락이 0 이 되고 평균도 높다(40.2→40.9).
+export const CERTAINTY_MIRROR = { 공사중: 40, 착공: 40, 추진: 22, 계획: 12, 구상: 6 };
+export const CERTAINTY_DEFAULT_MIRROR = 12;
+export const DIST_TIERS_MIRROR = [
+  [0.5, 40],
+  [1.0, 34],
+  [1.5, 27],
+  [2.0, 20],
+  [3.0, 12],
+  [4.0, 5],
+];
+const DIST_FAR_MIRROR = 0;
+export const GRADE_MIRROR = { GTX: 20, 도시철도: 15, 지하철연장: 12, 경전철: 8, 트램: 6 };
+export const GRADE_DEFAULT_MIRROR = 8;
+export const LINE_TYPE_MIRROR = {
+  "GTX-A": "GTX",
+  "GTX-B": "GTX",
+  "GTX-C": "GTX",
+  신안산선: "도시철도",
+  위례신사선: "경전철",
+  인덕원동탄선: "도시철도",
+  월곶판교선: "도시철도",
+  "서울2호선연장(위례)": "지하철연장",
+  부산2호선연장: "지하철연장",
+  대구엑스코선: "경전철",
+  광주2호선: "도시철도",
+  "대전2호선(트램)": "트램",
+  "김포경전철 연장": "경전철",
+  대장홍대선: "도시철도",
+  대전지하철2호선: "트램",
+  광주2호선1단계: "도시철도",
+  수도권광역급행철도: "GTX",
+  "7호선청라연장": "지하철연장",
+  "9호선4단계": "지하철연장",
+};
+
+/**
+ * 그 역이 받게 될 교통 서브점수(확실성 + 근접 + 노선급). `scoreFuture` 의 `trSc` 와 같은 식이다.
+ * @param {{ project?: string, status?: string }} st
+ * @param {number} distKm 반올림된 거리(수집기가 저장하는 값과 같아야 한다)
+ */
+export function stationScore(st, distKm) {
+  const cert = CERTAINTY_MIRROR[/** @type {keyof typeof CERTAINTY_MIRROR} */ (st?.status)] ?? CERTAINTY_DEFAULT_MIRROR;
+  let near = DIST_FAR_MIRROR;
+  for (const [lim, s] of DIST_TIERS_MIRROR) {
+    if (distKm <= lim) {
+      near = s;
+      break;
+    }
+  }
+  const type = LINE_TYPE_MIRROR[/** @type {keyof typeof LINE_TYPE_MIRROR} */ (st?.project)];
+  const grade = GRADE_MIRROR[/** @type {keyof typeof GRADE_MIRROR} */ (type)] ?? GRADE_DEFAULT_MIRROR;
+  return cert + near + grade;
+}
+
+/**
+ * 후보 역 중 **점수가 가장 높은** 하나를 고른다. 동점이면 가까운 쪽(표시가 자연스럽다).
+ * 거리는 저장값과 같은 자리에서 반올림한다 — 안 그러면 고를 때와 채점할 때 등급 칸이 갈린다.
+ *
+ * @param {{ lat: number, lng: number }} apt
+ * @param {Array<Record<string, any>>} pool
+ * @param {number} radiusKm
+ */
+export function pickBestStation(apt, pool, radiusKm) {
+  let best = null;
+  let bestScore = -1;
+  let bestDist = Infinity;
+  for (const st of pool ?? []) {
+    const raw = haversineKm(apt.lat, apt.lng, st.lat, st.lng);
+    if (raw > radiusKm) continue;
+    const d = Math.round(raw * 10) / 10;
+    const s = stationScore(st, d);
+    if (s > bestScore || (s === bestScore && raw < bestDist)) {
+      best = st;
+      bestScore = s;
+      bestDist = raw;
+    }
+  }
+  return best ? { station: best, dist: bestDist } : null;
+}
 
 loadEnv();
 
@@ -104,7 +197,11 @@ export function buildNaverStations(rows, nowYm) {
     if (isStationOpened(r.raw?.developmentPlanStation?.openDate, nowYm)) continue;
     const paren = railName.match(/\(([^)]*)\)\s*$/)?.[1] ?? "";
     const bare = stripParen(r.raw?.developmentPlanStation?.stationName ?? r.name);
-    const name = bare.replace(/역$/, "");
+    // 원본은 역명이 아직 안 정해진 신설역을 **번호**로 적는다(`"942역"`·`"001역"`, 실측 32건).
+    // 그대로 내보내면 손님이 `"9호선4단계 942역 공사중"` 을 읽는다 — 우리가 아는 사실은
+    // "그 노선의 새 역이 생긴다" 까지지 역 이름이 아니다. 아는 만큼만 말한다.
+    const bare2 = /^\d+$/.test(bare.replace(/역$/, "")) ? "신설역" : bare;
+    const name = bare2.replace(/역$/, "");
     const project = stripParen(railName);
     if (!name || !project) continue; // 이름이 비면 "역 공사중" 같은 깨진 문자열이 나간다
     out.push({
@@ -250,16 +347,11 @@ async function main() {
     const lng = jsonMode ? apt.lng : apt.lng;
     if (!lat || !lng) continue;
 
-    // 교통 매칭 — 5km 이내 가장 가까운 역
-    let bestStation = null;
-    let bestDist = Infinity;
-    for (const st of stations) {
-      const dist = haversine(lat, lng, st.lat, st.lng);
-      if (dist < bestDist && dist <= 5) {
-        bestDist = dist;
-        bestStation = st;
-      }
-    }
+    // 교통 매칭 — 5km 이내에서 **점수가 가장 높은** 역 (세션520: 옛 "가장 가까운" 규칙은
+    // 후보를 늘렸을 때 트램역이 GTX역을 밀어내 35곳을 떨어뜨렸다)
+    const bestPick = pickBestStation({ lat, lng }, stations, TRANSIT_MATCH_RADIUS_KM);
+    const bestStation = bestPick?.station ?? null;
+    const bestDist = bestPick?.dist ?? Infinity;
 
     // 도시개발 매칭 — 5km 이내 가장 가까운 LH 사업지구
     // (옛 시드는 지구마다 radius 를 따로 들었는데, 그러면 "왜 이 지구는 8km 도 잡히고 저 지구는
