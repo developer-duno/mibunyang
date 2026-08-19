@@ -474,7 +474,7 @@ eslint-plugin-import 의 `no-extraneous-dependencies` 같은 규칙이 이 디�
 | collect-emergency.test.mjs | 6 |
 | housing-permits.test.mjs | 6 |
 | infra-kakao.test.mjs | 5 |
-| transit-match.test.mjs | 4 |
+| transit-match.test.mjs | 27 |
 | noxious.test.mjs | 4 |
 | collect-air-quality.test.mjs | 3 |
 | industry-match.test.mjs | 3 |
