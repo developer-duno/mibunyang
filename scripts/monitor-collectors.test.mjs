@@ -934,12 +934,15 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 30 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 31 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "air-quality",
       "applyhome-detail", "applyhome-remndr", "applyhome-seed", "avg-income", "building-hub",
       "childcare-detail", "childcare-info", "childcare-info-jeju",
+      // 세션 521: CSV 기반이라 "자동 실행 경로가 없다" 며 감시에서 빼 뒀던 것을 로컬 러너
+      // 매월 8일로 편입하면서 정식 등재. 안 돌던 사이 regions 3개월치가 통째로 NULL 이었다.
+      "crime-safety",
       "housing-permits", "housing-price",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",

@@ -57,7 +57,7 @@ describe("collectorsDueOn — 일자 디스패치", () => {
     ]);
   });
 
-  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종 + data.go.kr 2종을 전부 커버한다", () => {
+  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종 + data.go.kr 2종 + CSV 1종을 전부 커버한다", () => {
     const scripts = [...new Set(DAY_TABLE.map((e) => e.script))].sort();
     expect(scripts).toEqual(
       [
@@ -88,6 +88,9 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         // 여기 없으면 아예 안 돈다.
         "collect-air-quality.mjs",
         "collect-housing-price.mjs",
+        // 세션 521: 외부 API 를 안 쓰는 유일한 등재분(로컬 CSV 파싱). 옛 판단은 "CSV 가 연 1회
+        // 갱신이라 자동화 대상이 없다" 였으나, 채우는 대상인 regions 에는 매월 새 행이 생긴다.
+        "collect-crime-safety.mjs",
       ].sort(),
     );
   });

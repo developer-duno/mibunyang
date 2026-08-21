@@ -241,16 +241,14 @@ const KO_FIELD = {
 //   대상이 아니다" 는 그 둘에 더는 성립하지 않고, 실제로 둘 다 아래에 등재돼 있다.
 //   **워크플로를 지울 때 이 배열 등재를 함께 챙기지 않으면 그 수집기는 조용히 죽는다.**
 //
-// ⚠️ collect-crime-safety.mjs 는 이 배열에 넣지 않는다(의도적 제외):
-// data/crime-safety-index.csv 를 "사람이 연 1회 수동 다운로드 후 수동 실행"하는
-// 설계다(파일 헤더 8행). GitHub Actions 워크플로도, 로컬 스케줄러(kosis-local-runner
-// 등) 등록도 전혀 없다 — 자동 실행 경로 자체가 없으므로 stale_days 기반 "N일
-// 넘게 실행 안 됨" 판정이 항상 참이 되어(정상 상태가 곧 "오래됨") 상시 오탐만
-// 유발한다. recordCollectorRun("crime-safety", ...) 호출은 있어 실행되면 기록은
-// 남으므로(collect-crime-safety.mjs:182 근처) 검사2(실행되는데 기록 안 남기는
-// 수집기)는 이미 통과 — 다만 "실행 자체"를 감시할 자동 트리거가 없어 검사2도
-// 실질적으로 무의미하다. 향후 이 CSV 가 API로 전환되면 그때 정식 등재할 것.
-export const EXEMPT_FROM_STALE_CHECK = new Set(["crime-safety"]);
+// ⚠️ 세션521: 여기 있던 `crime-safety` 를 **뺐다**. 옛 사유는 "자동 실행 경로가 아예 없어
+// stale 판정이 항상 참 → 상시 오탐" 이었고 그때는 맞았다. 그런데 그 상태가 만든 결과가
+// 실측으로 드러났다 — 수집기가 3월경 이후 안 돌아 regions 2026-04·05·06월 행이 통째로
+// NULL, crime_grade NULL 비율이 계속 올라 **NULL 급증 경보가 영구화**됐다(58%→64%).
+// 처방은 감시를 끄는 쪽이 아니라 **자동 실행 경로를 만드는 쪽**이었다: 로컬 러너 매월 8일
+// 등재(kosis-local-runner.mjs). 이제 stale 판정이 의미를 가지므로 아래 배열에 정식 등재한다.
+// 비워 두되 상수는 남긴다 — 같은 상황이 또 생기면 사유를 적고 넣는 자리다.
+export const EXEMPT_FROM_STALE_CHECK = new Set([]);
 
 export const EXTERNAL_API_COLLECTORS = [
   // ⚠️ 세션 491: 두 collector 의 cron 이 월간 → **분기**(1,4,7,10월)로 바뀌었다.
@@ -269,6 +267,10 @@ export const EXTERNAL_API_COLLECTORS = [
   //    유일한 "안 돌면 알림" 이다. maintenance·building-hub 는 이미 아래/위에 있어 3건만 추가.
   //    stale_days = 발화주기 + 여유 1주기 (일일=14 / 주간=14 / 월간=38 / 분기=100).
   { collector: "trades",          stale_days: 38, owner: "MOLIT 실거래 (로컬 매월 6일)" },
+  // ── 세션521: 외부 API 를 쓰지 않는 유일한 등재분. `data/crime-safety-index.csv` 를 읽어
+  //    apartments·regions 를 채운다 — 이 배열의 취지가 "GH run 이 없어 ①③ 이 못 보는 수집기의
+  //    신선도" 이므로 출처가 API 든 파일이든 같다. 로컬 러너 매월 8일 → 월간 38.
+  { collector: "crime-safety",    stale_days: 38, owner: "행안부 지역안전지수 CSV (로컬 매월 8일)" },
   // ── data.go.kr = 세션 519. 1613000 만의 문제가 아니었다 — www.data.go.kr(공시가격 CSV)·
   //    apis.data.go.kr/B552584(에어코리아)도 해외 IP 를 막는다. 실측: GH 는 `fetch failed`
   //    (HTTP 코드 없음)인데 같은 요청이 로컬 한국 IP 에선 166ms / 92ms 200 OK.

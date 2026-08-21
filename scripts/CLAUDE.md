@@ -118,6 +118,7 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 | 2 | housing-supply-ratio | - |
 | 6 | market-stats → **molit-units** → **trades** | trades 가 가장 오래 걸려 마지막 |
 | 7 | migration | - |
+| 8 | **collect-crime-safety** | 세션521 신규 — 외부 API 0(로컬 CSV 파싱). 행 생성자(population 5일·market-stats 6일) **뒤**여야 새 `recorded_at` 행을 덮는다 |
 | 9 | unsold | - |
 | 10 | fertility-rate, **molit-building-info** | building-info 는 **토요일이면 건너뜀**(자매 레포 public_data 와 쿼터 충돌) |
 | 11 | housing-permits, **molit-building-info** | building-info 는 **전날이 토요일일 때만**(10일 보충) |
@@ -135,6 +136,15 @@ KST 05:30 에 돌고 이 표도 KST 기준이라, cron 숫자를 그대로 베�
 `day` 와 `dow` 는 **배타** — `dow` 가 있으면 그 요일만 보고 `day` 는 무시한다.
 
 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-kosis-task.ps1`
+
+⚠️ **세션521 — 이 표에 CSV 기반 수집기가 처음 들어왔다.** `collect-crime-safety.mjs` 는 외부 API 를
+쓰지 않고 `data/crime-safety-index.csv` 를 읽는다. 옛 판단은 *"CSV 가 연 1회 갱신이라 자동화할
+대상이 없다"* 였는데(그래서 `audit-orphan-collectors` ALLOWLIST·monitor EXEMPT 양쪽에서 빠져
+있었다), **채우는 대상인 `regions` 에는 매월 새 `recorded_at` 행이 생긴다**. 실측 결과 수집기가
+2026-03 경 이후 안 돌아 04·05·06월 행이 통째로 NULL 이었고 `crime_grade` NULL 비율이 계속 올라
+monitor NULL 급증 경보가 영구화되고 있었다. **처방은 감시를 끄는 쪽이 아니라 자동 실행 경로를
+만드는 쪽**이었다 — 러너 매월 8일 편입 + 양쪽 예외 목록에서 제거.
+즉 이 표의 자격은 "외부 API 를 쓰는가" 가 아니라 **"한국 IP 나 정기 실행이 필요한가"** 다.
 
 감시: GH run 이 없으므로 monitor ⑤ `EXTERNAL_API_COLLECTORS` 신선도(일일·주간 14일/월간 38일/분기 100일)가 유일한 미발화 알림 — 세션 515 에 `trades`·`molit-building`·`molit-units` 3건, 세션 517 에 `naver-devplan` 1건 신규 등재(`maintenance`·`building-hub` 는 기존 항목 유지). KOSIS 수집기 10종 전부 실패 시 `collector_runs` 에 `status=failure` 행 기록 (PR #97·#99 하드닝 — throw·early-return 전 경로).
 
