@@ -135,6 +135,24 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 KST 05:30 에 돌고 이 표도 KST 기준이라, cron 숫자를 그대로 베끼면 하루/한 요일이 밀린다.
 `day` 와 `dow` 는 **배타** — `dow` 가 있으면 그 요일만 보고 `day` 는 무시한다.
 
+**놓친 날 보충 (세션521)** — 스케줄러가 `StartWhenAvailable=true` 라 PC 가 꺼져 있던 날의 발화를
+나중에 실행하는데, 러너는 **실행된 날짜**로만 판단해서 놓친 날의 수집기를 영영 건너뛰었다.
+실측 사고: 8/13 05:30 발화가 통째로 빠졌고 8/14 03:28 에 뒤늦게 돈 실행은 "8/14" 로 판단해
+14일분만 돌렸다 → `avg-income` 이 **39일** 밀린 채 monitor ⑤ 가 잡을 때까지 잠복.
+이제 `.kosis-local-runner-state.json`(gitignore)에 마지막 처리일을 남기고 다음 실행에서 메운다.
+
+| 상황 | 처리 |
+|---|---|
+| 첫 실행(상태 파일 없음)·형식 깨짐·미래 날짜 | 오늘만 |
+| 어제까지 처리 | 오늘만 (평상시 동작 불변) |
+| 며칠 밀림 | **가장 오래된 하루 + 오늘** — 매일 하루씩 따라잡는다 |
+| 10일 초과로 밀림 | 위와 같되 `logError` 로 알림 (원인부터 볼 자리) |
+
+⚠️ **한 번에 하루치만** 메우는 이유는 쿼터다. 15~19일 `maintenance` 는 회차당 약 3,600 회를 쓰는데
+5일치를 몰아 돌리면 data.go.kr 일일 10,000 한도를 그 자리에서 넘긴다.
+`--date=YYYY-MM-DD`(수동 보충)와 `--no-catchup` 은 소급을 끄고 그 날만 본다 — 상태 파일도 안 쓴다.
+실패해도 상태는 기록한다(같은 날 무한 재시도 방지). 실패 알림은 기존 텔레그램이 담당.
+
 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-kosis-task.ps1`
 
 ⚠️ **세션521 — 이 표에 CSV 기반 수집기가 처음 들어왔다.** `collect-crime-safety.mjs` 는 외부 API 를

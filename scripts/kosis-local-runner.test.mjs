@@ -10,7 +10,8 @@
  * ⚠️ 날짜는 `new Date(y, m-1, d)` 로컬 생성자로 만든다 — "2026-10-10" 문자열은 UTC 자정으로
  * 파싱돼 러너 타임존에 따라 날짜·요일이 밀릴 수 있고, 이 매핑은 KST 로컬 날짜 기준이다.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -21,7 +22,17 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
 });
 vi.mock("./notify-telegram.mjs", () => ({ sendTelegram: vi.fn() }));
 
-import { DAY_TABLE, collectorsDueOn, describeEntry } from "./kosis-local-runner.mjs";
+import {
+  DAY_TABLE,
+  collectorsDueOn,
+  datesToProcess,
+  daysBetween,
+  describeEntry,
+  isCatchupStale,
+  readLastProcessed,
+  writeLastProcessed,
+  ymd,
+} from "./kosis-local-runner.mjs";
 
 /** @param {number} y @param {number} m @param {number} d */
 const at = (y, m, d) => new Date(y, m - 1, d);
@@ -227,5 +238,114 @@ describe("data.go.kr 2종 이전 (세션 519)", () => {
       const p = path.join(process.cwd(), ".github", "workflows", f);
       expect(existsSync(p), `${f} 가 아직 있다 — 로컬 러너와 이중 실행된다`).toBe(false);
     }
+  });
+});
+
+// ── 놓친 날 보충 (세션521) ────────────────────────────────────
+//
+// 스케줄러가 `StartWhenAvailable=true` 라 PC 가 꺼져 있던 날의 발화를 나중에 실행하는데, 러너가
+// **실행된 날짜**로만 판단하면 놓친 날의 수집기를 영영 건너뛴다. 실측 사고 — 8/13 05:30 발화가
+// 빠졌고 8/14 03:28 에 뒤늦게 돈 실행이 "8/14" 로 판단해 14일분만 돌려 `avg-income` 이 39일 밀렸다.
+describe("datesToProcess — 놓친 날 보충", () => {
+  const d = (/** @type {number} */ y, /** @type {number} */ m, /** @type {number} */ day) =>
+    new Date(y, m - 1, day);
+
+  it("상태가 없으면(첫 실행) 오늘 하나만", () => {
+    expect(datesToProcess(null, d(2026, 8, 21))).toEqual(["2026-08-21"]);
+    expect(datesToProcess(undefined, d(2026, 8, 21))).toEqual(["2026-08-21"]);
+  });
+
+  it("**이번 사고 재현** — 8/12 까지 처리한 상태로 8/14 에 돌면 8/13 을 메운다", () => {
+    expect(datesToProcess("2026-08-12", d(2026, 8, 14))).toEqual(["2026-08-13", "2026-08-14"]);
+  });
+
+  it("어제까지 처리했으면 오늘만 (평상시엔 동작이 안 바뀐다)", () => {
+    expect(datesToProcess("2026-08-20", d(2026, 8, 21))).toEqual(["2026-08-21"]);
+  });
+
+  it("같은 날 두 번 돌아도 오늘이 한 번만 (중복 실행 금지)", () => {
+    expect(datesToProcess("2026-08-21", d(2026, 8, 21))).toEqual(["2026-08-21"]);
+  });
+
+  it("미래 날짜가 적혀 있어도 오늘만 (시계 되돌림·손편집 방어)", () => {
+    expect(datesToProcess("2026-09-01", d(2026, 8, 21))).toEqual(["2026-08-21"]);
+  });
+
+  it("여러 날 밀려도 **한 번에 하나만** 메운다 — 쿼터 폭발 방지", () => {
+    // 15~19일 maintenance 는 회차당 약 3,600 회. 5일치를 몰아 돌리면 일일 10,000 한도를 넘긴다.
+    expect(datesToProcess("2026-08-15", d(2026, 8, 21))).toEqual(["2026-08-16", "2026-08-21"]);
+  });
+
+  it("가장 **오래된** 놓친 날부터 집는다 (공백을 먼저 줄인다)", () => {
+    const [first] = datesToProcess("2026-08-10", d(2026, 8, 21));
+    expect(first).toBe("2026-08-11");
+  });
+
+  it("월·연 경계를 넘어간다", () => {
+    expect(datesToProcess("2026-07-31", d(2026, 8, 2))).toEqual(["2026-08-01", "2026-08-02"]);
+    expect(datesToProcess("2025-12-31", d(2026, 1, 2))).toEqual(["2026-01-01", "2026-01-02"]);
+  });
+
+  it("형식이 깨진 상태값은 없는 셈 친다 (러너를 죽이지 않는다)", () => {
+    for (const bad of ["", "망가짐", "2026-8-1", "2026/08/12", "not-a-date"]) {
+      expect(datesToProcess(bad, d(2026, 8, 21))).toEqual(["2026-08-21"]);
+    }
+  });
+
+  it("maxCatchup 을 늘리면 그만큼 더 메운다 (상한이 실제로 상한이다)", () => {
+    expect(datesToProcess("2026-08-15", d(2026, 8, 21), 3)).toEqual([
+      "2026-08-16", "2026-08-17", "2026-08-18", "2026-08-21",
+    ]);
+  });
+});
+
+describe("ymd · daysBetween · isCatchupStale", () => {
+  it("ymd 는 KST 로컬 날짜 (toISOString UTC 밀림 금지)", () => {
+    // 05:30 KST 는 UTC 로 전날 20:30 이라, toISOString() 을 쓰면 하루가 밀린다.
+    expect(ymd(new Date(2026, 7, 21, 5, 30))).toBe("2026-08-21");
+    expect(ymd(new Date(2026, 0, 1, 0, 0))).toBe("2026-01-01");
+  });
+
+  it("daysBetween 은 두 날 사이 일수", () => {
+    expect(daysBetween("2026-08-12", "2026-08-14")).toBe(2);
+    expect(daysBetween("2026-07-13", "2026-08-21")).toBe(39); // 이번에 잡힌 avg-income 지연
+    expect(daysBetween("깨짐", "2026-08-21")).toBe(0);
+  });
+
+  it("isCatchupStale 은 임계 초과에서만 참", () => {
+    expect(isCatchupStale(10)).toBe(false);
+    expect(isCatchupStale(11)).toBe(true);
+    expect(isCatchupStale(39)).toBe(true);
+  });
+});
+
+describe("상태 파일 읽기·쓰기", () => {
+  it("쓴 값을 그대로 읽는다", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "runner-state-"));
+    const f = path.join(dir, "state.json");
+    try {
+      expect(writeLastProcessed("2026-08-21", f)).toBe(true);
+      expect(readLastProcessed(f)).toBe("2026-08-21");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("파일이 없거나 깨졌으면 null — 러너를 죽이지 않는다", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "runner-state-"));
+    const f = path.join(dir, "state.json");
+    try {
+      expect(readLastProcessed(f)).toBeNull();
+      writeFileSync(f, "{ 깨진 json", "utf8");
+      expect(readLastProcessed(f)).toBeNull();
+      writeFileSync(f, JSON.stringify({ lastProcessed: 42 }), "utf8");
+      expect(readLastProcessed(f)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("쓸 수 없는 경로여도 throw 하지 않는다 (best-effort)", () => {
+    expect(writeLastProcessed("2026-08-21", path.join(tmpdir(), "없는폴더", "x", "state.json"))).toBe(false);
   });
 });
