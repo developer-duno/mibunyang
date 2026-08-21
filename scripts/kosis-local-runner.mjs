@@ -64,6 +64,13 @@ export const DAY_TABLE = [
   { day: 6, script: "molit-units.mjs" },
   { day: 6, script: "collect-trades.mjs" },
   { day: 7, script: "migration.mjs" },
+  // 세션521: 외부 API 를 안 쓰는 유일한 등재분(data/crime-safety-index.csv 파싱).
+  // 옛 판단은 "CSV 가 연 1회 갱신이라 자동화할 대상이 없다" 였는데, 채우는 대상인
+  // **regions 에는 매월 새 recorded_at 행이 생긴다** — CSV 가 그대로여도 돌릴 이유가 있다.
+  // 실측: 2026-04·05·06월 행이 통째로 NULL(수집기 마지막 실행이 3월경)이라 NULL 비율이
+  // 계속 올라 monitor 경보가 영구화되고 있었다. 8일 = 행 생성자(population 5일·
+  // market-stats 6일) **뒤**여야 새 행을 덮는다([[regions-multicollector-recorded-at-lag]]).
+  { day: 8, script: "collect-crime-safety.mjs" },
   { day: 9, script: "collect-unsold-kosis.mjs" },
   { day: 10, script: "collect-fertility-rate.mjs" },
   // 세션 515: 옛 collect-building-info.yml 의 "10일 토요일 → 11일 fallback" 이식.
