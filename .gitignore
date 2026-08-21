@@ -134,3 +134,6 @@ scripts/collectors/logs/
 # `git add -A` 시 딸려 들어갈 위험이 있었다. 전역 패턴으로 차단.
 __pycache__/
 *.pyc
+
+# 로컬 러너가 마지막 처리일을 남기는 자리 (세션521 catch-up). 유실돼도 사고 아님 — 소급만 못 함.
+.kosis-local-runner-state.json
