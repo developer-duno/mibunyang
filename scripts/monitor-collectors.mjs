@@ -109,6 +109,9 @@ export const REGION_KEY_COLUMNS = [
  * (benefits 수기입력 / maintenance·builders·future·energy 부분수집 / naver 로컬전용 /
  * regions VIEW측 미수집컬럼)는 점검 안 함 — 정상인데 매일 오탐 방지.
  * 값 출처: data-audit --json 실측(2026-05-17) - 안전 마진 15~20%p.
+ *
+ * ⚠️ competition 만 모수가 다르다 — 전체 단지가 아니라 **청약홈(ah-) 시드 단지**로 좁혀 센다.
+ *    아래 competition 항목 주석 참조.
  */
 export const AUDIT_CATEGORY_BASELINE = {
   core: 70,
@@ -120,10 +123,31 @@ export const AUDIT_CATEGORY_BASELINE = {
   schools: 90,
   trade_stats: 75,
   environment: 65,
-  competition: 45,
+  // ⚠️ 이 값만 "채울 수 있는 모수"(청약홈 ah- 시드 단지) 기준이다 — scopeCompetitionToAh 참조 (세션 522).
+  //   전체 모수로는 영구 거짓 경보였다: apartments_flat 2,211곳 중 네이버 분양 시드(ap-) 1,229곳은
+  //   청약홈 공고번호와 이을 키가 구조적으로 없어 채움 0건이고(실측 0/1229), ah- 982곳만 채워진다.
+  //   즉 도달 가능 최대 채움률 = 982/2211 = 44.4% < 옛 문턱 45% → 매일 경보.
+  //   문턱을 낮추는 처방은 오래 못 간다 — 구성비가 2026-05-17 ah:ap 74:26 → 2026-08-22 55:45 로
+  //   계속 드리프트한다(ap- 증가). 모수를 바꿔야 드리프트와 절연된다.
+  //   65 = ah- 모수 실측 79.5%(2,341/2,946, 2026-08-22) − 마진 약 15%p (이 표의 기존 산정 관례와 동일).
+  //   수집기 자체 고장은 ⑤(EXTERNAL_API_COLLECTORS 의 applyhome-*)가 독립으로 잡는다 —
+  //   이 점검의 몫은 "청약홈 단지의 데이터 품질"이다.
+  competition: 65,
   air: 90,
   safety: 60,
 };
+
+/** ④ competition 카테고리 키 (data-audit AUDIT_FIELDS 기준). */
+export const COMPETITION_CATEGORY = "competition";
+
+/** ④ competition 카테고리를 이루는 필드 3종 — data-audit AUDIT_FIELDS.competition.fields 와 같아야 한다. */
+export const COMPETITION_FIELDS = ["competitionRate", "competitionSupply", "competitionApplicants"];
+
+/** ④ competition 모수인 청약홈 시드 단지의 id 접두사 (apartments_flat.id). */
+export const AH_ID_PREFIX = "ah-";
+
+/** ④ 모수를 좁혔음을 경보 문구에 드러내는 표식 — collector 라벨 뒤에 붙는다. */
+export const COMPETITION_SCOPE_SUFFIX = " · 청약홈 ah- 단지 모수";
 
 /**
  * ④ NULL 점검에서 의도적으로 제외하는 카테고리 — 수기입력·부분수집·로컬전용.
@@ -640,6 +664,68 @@ export function checkCategoryNullSurge(categories, baseline, fields = {}) {
 }
 
 /**
+ * ④ competition 카테고리의 모수를 "채울 수 있는 단지"(청약홈 ah- 시드)로 좁힌 사본을 만든다.
+ *
+ * 왜 필요한가 (세션 522): apartments_flat 의 ap-(네이버 분양 시드) 단지는 청약홈 공고번호와 이을
+ * 키가 구조적으로 없어 competition 3필드가 영구 0% 다. 전체 모수로 재면 도달 가능 최대 채움률이
+ * 문턱보다 낮아 매일 거짓 경보가 나고, 문턱을 낮추는 처방은 ah:ap 구성비 드리프트에 다시 뚫린다.
+ *
+ * 원본은 변형하지 않고 새 객체를 돌려준다(⑥ VIEW 회귀·브리핑이 같은 audit 을 원본 그대로 쓴다).
+ * ahCounts 가 null(조회 실패)이거나 total 이 0 이면 원본을 그대로 반환한다 — 감시를 조용히 끄는
+ * 것보다 원본 모수로라도 계속 보는 쪽이 안전하다.
+ *
+ * @param {Record<string, { collector: string, filled: number, total: number, rate: number }>} categories
+ *   computeAudit().categories
+ * @param {Record<string, { category: string, field: string, filled: number, missing: number }>} fields
+ *   computeAudit().fields — key = `${category}.${field}`
+ * @param {{ total: number, filled: Record<string, number> } | null | undefined} ahCounts
+ *   ah- 단지 총수 + 필드별 채움 수 (fetchAhCompetitionCounts)
+ * @returns {{
+ *   categories: Record<string, { collector: string, filled: number, total: number, rate: number }>,
+ *   fields: Record<string, { category: string, field: string, filled: number, missing: number }>,
+ * }}
+ */
+export function scopeCompetitionToAh(categories, fields, ahCounts) {
+  const stat = categories?.[COMPETITION_CATEGORY];
+  if (!stat) return { categories, fields };
+  const ahTotal = ahCounts?.total;
+  if (!Number.isFinite(ahTotal) || Number(ahTotal) <= 0) return { categories, fields };
+  const total = Number(ahTotal);
+
+  const nextFields = { ...fields };
+  let catFilled = 0;
+  let scopedFieldCount = 0;
+  for (const f of COMPETITION_FIELDS) {
+    const key = `${COMPETITION_CATEGORY}.${f}`;
+    const base = fields?.[key];
+    if (!base) continue; // data-audit 에 없는 필드는 손대지 않는다 (drift 안전)
+    const raw = ahCounts?.filled?.[f];
+    // 채움 수가 모수를 넘으면 모수로 자른다 — missing 이 음수가 되는 것보다 낫다.
+    const filled = Number.isFinite(raw) ? Math.min(Math.max(Number(raw), 0), total) : 0;
+    nextFields[key] = { ...base, filled, missing: total - filled };
+    catFilled += filled;
+    scopedFieldCount++;
+  }
+  if (scopedFieldCount === 0) return { categories, fields };
+
+  const catTotal = total * scopedFieldCount;
+  return {
+    categories: {
+      ...categories,
+      [COMPETITION_CATEGORY]: {
+        ...stat,
+        // 경보 문구에 모수가 드러나게 — checkCategoryNullSurge 는 collector 를 그대로 찍는다.
+        collector: `${stat.collector}${COMPETITION_SCOPE_SUFFIX}`,
+        filled: catFilled,
+        total: catTotal,
+        rate: Math.round((catFilled / catTotal) * 1000) / 10,
+      },
+    },
+    fields: nextFields,
+  };
+}
+
+/**
  * ⑤ 외부 API 의존 collector 의 "정상 실행 + 데이터 갱신 0건 연속 N회" 탐지.
  * collector_runs 컬럼 진실의 원천 = `collector` (NOT phase). status=success 인데
  * ok_count=0 행이 OUTAGE_MIN_CONSECUTIVE 회 누적되면 외부 API 장기 중단 의심.
@@ -941,6 +1027,40 @@ async function fetchRegionColumnStats() {
     stats.push({ column, total, filled: filled ?? 0, nullSurge });
   }
   return stats;
+}
+
+/**
+ * ④ competition 모수(청약홈 ah- 시드 단지)의 총수 + 필드별 채움 수를 센다.
+ * apartments_flat 에서 head:true count 4회 (total 1 + 필드 3). 세션 522.
+ * 어느 한 쿼리라도 count 를 못 받으면 null — 호출부(scopeCompetitionToAh)가 원본 모수로 되돌린다.
+ * @returns {Promise<{ total: number, filled: Record<string, number> } | null>}
+ */
+async function fetchAhCompetitionCounts() {
+  try {
+    const sb = getSupabase();
+    /** ah- 단지만 세는 count 쿼리. @param {string | null} field null 이면 total */
+    const countAh = async (field) => {
+      /** @type {any} */
+      let q = sb.from("apartments_flat").select("*", { count: "exact", head: true }).like("id", `${AH_ID_PREFIX}%`);
+      if (field) q = q.not(field, "is", null);
+      const { count } = await q;
+      return count;
+    };
+    const total = await countAh(null);
+    if (total == null) return null;
+    /** @type {Record<string, number>} */
+    const filled = {};
+    for (const f of COMPETITION_FIELDS) {
+      const count = await countAh(f);
+      if (count == null) return null;
+      filled[f] = count;
+    }
+    return { total, filled };
+  } catch (err) {
+    // 조회 실패가 감시 자체를 멈추면 안 됨 — 원본 모수로 계속 본다.
+    console.log(`[monitor] ah- 모수 조회 실패(원본 모수로 ④ 진행): ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
 }
 
 /**
@@ -1264,8 +1384,12 @@ async function main() {
     const regionStats = await fetchRegionColumnStats();
     issues = issues.concat(checkNullSurge(regionStats));
     const audit = computeAudit(await fetchAllFromView(getSupabase(), null));
+    // competition 만 모수를 "채울 수 있는 단지"(청약홈 ah- 시드)로 좁혀 판정한다 (세션 522).
+    // audit 원본은 그대로 둔다 — ⑥ VIEW 회귀·아침 브리핑이 같은 객체를 쓴다.
+    const ahCounts = await fetchAhCompetitionCounts();
+    const scoped = scopeCompetitionToAh(audit.categories, audit.fields, ahCounts);
     issues = issues.concat(
-      checkCategoryNullSurge(audit.categories, AUDIT_CATEGORY_BASELINE, audit.fields),
+      checkCategoryNullSurge(scoped.categories, AUDIT_CATEGORY_BASELINE, scoped.fields),
     );
 
     // ⑤ 외부 API 장기 중단 — silent fail (success+ok=0) 연속 누적 탐지

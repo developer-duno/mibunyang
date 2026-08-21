@@ -18,6 +18,7 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
 const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
+  scopeCompetitionToAh, COMPETITION_CATEGORY, COMPETITION_FIELDS, COMPETITION_SCOPE_SUFFIX,
   QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
   dedupKey, filterUnsent, hasGithubApiAuth,
@@ -645,6 +646,127 @@ describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
     // lines[0] = 머리말, 이후가 필드 줄. 8개 입력 → 6개로 절단
     const fieldLines = (issues[0].lines ?? []).filter((l) => l.startsWith("  · "));
     expect(fieldLines).toHaveLength(6);
+  });
+});
+
+describe("scopeCompetitionToAh — ④ competition 모수를 청약홈(ah-) 단지로 좁힘 (세션 522)", () => {
+  // 실측 골격 (apartments_flat, 2026-08-22):
+  //   전체 2,211 = ah- 982 + ap- 1,229. ap- 는 청약홈 공고번호와 이을 키가 없어 3필드 전량 0 채움.
+  const AH_TOTAL = 982;
+  const ALL_TOTAL = 2211;
+  /** @type {Record<string, number>} ah- 단지의 필드별 채움 수 (라이브 실측) */
+  const AH_FILLED = { competitionRate: 779, competitionSupply: 781, competitionApplicants: 781 };
+  /** ah- 모수 실측 채움률 (2,341/2,946). 문턱 산정의 관측 앵커. */
+  const OBSERVED_AH_RATE = 79.5;
+
+  /** 전체 모수로 집계된 computeAudit 결과 골격 (ap- 는 0 채움이라 filled 가 곧 ah- 채움). */
+  function makeAudit() {
+    /** @type {Record<string, { category: string, field: string, filled: number, missing: number }>} */
+    const fields = {};
+    let catFilled = 0;
+    for (const f of COMPETITION_FIELDS) {
+      const filled = AH_FILLED[f];
+      fields[`${COMPETITION_CATEGORY}.${f}`] = {
+        category: COMPETITION_CATEGORY, field: f, filled, missing: ALL_TOTAL - filled,
+      };
+      catFilled += filled;
+    }
+    fields["core.name"] = { category: "core", field: "name", filled: ALL_TOTAL, missing: 0 };
+    const catTotal = ALL_TOTAL * COMPETITION_FIELDS.length;
+    return {
+      categories: {
+        [COMPETITION_CATEGORY]: {
+          collector: "collect-applyhome",
+          filled: catFilled,
+          total: catTotal,
+          rate: Math.round((catFilled / catTotal) * 1000) / 10, // 35.3
+        },
+        core: { collector: "applyhome", filled: ALL_TOTAL, total: ALL_TOTAL, rate: 100 },
+      },
+      fields,
+    };
+  }
+
+  const ahCounts = { total: AH_TOTAL, filled: AH_FILLED };
+
+  it("정상 전환 — 카테고리 total·filled·rate 가 ah- 모수로 교체된다", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, ahCounts);
+    const stat = out.categories[COMPETITION_CATEGORY];
+    expect(stat.total).toBe(AH_TOTAL * 3); // 2946
+    expect(stat.filled).toBe(779 + 781 + 781); // 2341
+    expect(stat.rate).toBe(OBSERVED_AH_RATE); // 79.5 — 원본 35.3 에서 재계산됨
+    expect(stat.collector).toContain(COMPETITION_SCOPE_SUFFIX); // 경보에 모수가 드러난다
+  });
+
+  it("정상 전환 — 필드별 filled/missing 도 ah- 모수로 교체된다", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, ahCounts);
+    const rate = out.fields[`${COMPETITION_CATEGORY}.competitionRate`];
+    expect(rate.filled).toBe(779);
+    expect(rate.missing).toBe(AH_TOTAL - 779); // 203 — 전체 모수였다면 1432
+    expect(rate.category).toBe(COMPETITION_CATEGORY); // 나머지 속성은 보존
+  });
+
+  it("ahCounts.total = 0 이면 원본 그대로 — 감시를 조용히 끄지 않는다", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, { total: 0, filled: {} });
+    expect(out.categories).toBe(categories);
+    expect(out.fields).toBe(fields);
+  });
+
+  it("ahCounts 가 null(조회 실패)이면 원본 그대로", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, null);
+    expect(out.categories).toBe(categories);
+    expect(out.fields).toBe(fields);
+  });
+
+  it("competition 외 카테고리·필드는 손대지 않는다", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, ahCounts);
+    expect(out.categories.core).toEqual(categories.core);
+    expect(out.fields["core.name"]).toEqual(fields["core.name"]);
+  });
+
+  it("원본 객체를 변형하지 않는다 (⑥ VIEW 회귀·브리핑이 같은 audit 을 쓴다)", () => {
+    const { categories, fields } = makeAudit();
+    const before = JSON.parse(JSON.stringify({ categories, fields }));
+    scopeCompetitionToAh(categories, fields, ahCounts);
+    expect(JSON.parse(JSON.stringify({ categories, fields }))).toEqual(before);
+  });
+
+  it("의미 가드 — ap- 0채움/ah- 79% 상태에서 전환하면 경보 0건, 전환 없이는 1건", () => {
+    const { categories, fields } = makeAudit();
+    // 전환 없이(전체 모수) — 도달 가능 최대 44.4% 라 문턱을 영구히 못 넘는 거짓 경보
+    const before = checkCategoryNullSurge(categories, AUDIT_CATEGORY_BASELINE, fields);
+    expect(before.filter((i) => i.collector.includes("청약경쟁률"))).toHaveLength(1);
+    // 전환 후 — 청약홈 단지 품질(79.5%)로 판정되어 경보 없음
+    const scoped = scopeCompetitionToAh(categories, fields, ahCounts);
+    const after = checkCategoryNullSurge(scoped.categories, AUDIT_CATEGORY_BASELINE, scoped.fields);
+    expect(after.filter((i) => i.collector.includes("청약경쟁률"))).toHaveLength(0);
+  });
+
+  it("문턱 앵커 — competition 문턱은 ah- 실측 채움률(79.5%)보다 8~25%p 아래", () => {
+    // 파생 가드(상수에서 읽어 비교)만으로는 상수를 잘못 바꿔도 전부 초록이라, 상수가 근거로 삼은
+    // **관측값**을 적어 둔다. 전체 모수 시절 문턱(45)은 마진 34.5%p 라 여기서 빨강.
+    const margin = OBSERVED_AH_RATE - AUDIT_CATEGORY_BASELINE.competition;
+    expect(margin).toBeGreaterThanOrEqual(8);
+    expect(margin).toBeLessThanOrEqual(25);
+    // 전체 모수의 도달 가능 최대치(982/2211=44.4%)보다는 반드시 높아야 한다 —
+    // 그보다 낮으면 모수 전환의 이유 자체가 사라진다.
+    expect(AUDIT_CATEGORY_BASELINE.competition).toBeGreaterThan((AH_TOTAL / ALL_TOTAL) * 100);
+  });
+
+  it("배선 가드 — runAll 이 ④ 에 원본이 아니라 좁힌 사본을 넘긴다", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8");
+    // 좌변까지 고정해 호출부만 잡는다 (선언부·주석 매칭 방지 — guards 룰 §소스 grep 가드)
+    expect(src).toMatch(/const\s+scoped\s*=\s*scopeCompetitionToAh\(\s*audit\.categories\s*,\s*audit\.fields\s*,\s*ahCounts\s*\)/);
+    expect(src).toMatch(/checkCategoryNullSurge\(\s*scoped\.categories\s*,\s*AUDIT_CATEGORY_BASELINE\s*,\s*scoped\.fields\s*\)/);
+  });
+
+  it("COMPETITION_FIELDS 는 data-audit 의 competition 필드와 정확히 일치", () => {
+    expect([...COMPETITION_FIELDS].sort()).toEqual([...AUDIT_FIELDS.competition.fields].sort());
   });
 });
 
