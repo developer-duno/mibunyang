@@ -1033,11 +1033,15 @@ async function fetchRegionColumnStats() {
  * ④ competition 모수(청약홈 ah- 시드 단지)의 총수 + 필드별 채움 수를 센다.
  * apartments_flat 에서 head:true count 4회 (total 1 + 필드 3). 세션 522.
  * 어느 한 쿼리라도 count 를 못 받으면 null — 호출부(scopeCompetitionToAh)가 원본 모수로 되돌린다.
+ *
+ * @param {any} [sbArg] Supabase 클라이언트. 생략하면 getSupabase() — 테스트에서 주입한다.
+ *   기본값 문법 대신 try 안에서 폴백하는 이유: getSupabase() 자체가 던져도 null 로 받아야 한다
+ *   (기본 매개변수는 try 밖에서 평가돼 catch 를 못 탄다).
  * @returns {Promise<{ total: number, filled: Record<string, number> } | null>}
  */
-async function fetchAhCompetitionCounts() {
+export async function fetchAhCompetitionCounts(sbArg) {
   try {
-    const sb = getSupabase();
+    const sb = sbArg ?? getSupabase();
     /** ah- 단지만 세는 count 쿼리. @param {string | null} field null 이면 total */
     const countAh = async (field) => {
       /** @type {any} */
