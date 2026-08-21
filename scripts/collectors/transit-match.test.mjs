@@ -321,6 +321,31 @@ describe("채점 거울 ↔ scoringTiers 동기화", () => {
   });
 });
 
+// ── 노선급 확정분 잠금 (세션522) ──────────────────────────────
+//
+// 위 동기화 가드는 "두 표가 서로 같다" 만 본다 — **둘 다** 지우면 통과한다.
+// 이 6종은 공식 자료로 확인해 넣은 값이라, 사라지면 그 역들이 조용히 기본급(8)으로 떨어진다.
+// 키는 `buildNaverStations` 의 `stripParen(railName)` 결과와 같은 꼴이어야 한다.
+describe("네이버 노선 6종 노선급 — 값 자체를 잠근다 (세션522)", () => {
+  /** @type {Array<[string, string]>} */
+  const CONFIRMED = [
+    ["위례선", "트램"], // 서울시 공식 무가선 트램 (14역)
+    ["사상하단선", "경전철"], // 부산 도시철도 5호선, 고무차륜 K-AGT (7역)
+    ["양산선", "경전철"], // 부산 도시철도, 고무차륜 K-AGT 무인 (6역)
+    ["신분당선", "지하철연장"], // "신분당선(광교-호매실)" = 기존 노선의 연장 (5역)
+    ["경강선", "도시철도"], // "경강선(시흥-성남)" = "월곶판교선" 의 다른 표기 (2역)
+    ["여주-원주선", "지하철연장"], // 기존 경강선(성남~여주)의 동쪽 연장 (1역)
+  ];
+
+  it.each(CONFIRMED)("%s → %s", (line, type) => {
+    expect(TRANSIT_LINE_TYPE[line]).toBe(type);
+  });
+
+  it("확정한 종류는 전부 채점표가 아는 등급이다 (모르는 낱말이면 기본급으로 떨어진다)", () => {
+    for (const [, type] of CONFIRMED) expect(Object.keys(TRANSIT_GRADE)).toContain(type);
+  });
+});
+
 // ── stationScore · pickBestStation (세션520) ──────────────────
 describe("stationScore — scoreFuture 의 trSc 와 같은 식", () => {
   it("확실성 + 근접 + 노선급 을 더한다", () => {
