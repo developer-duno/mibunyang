@@ -19,6 +19,7 @@ const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
   scopeCompetitionToAh, COMPETITION_CATEGORY, COMPETITION_FIELDS, COMPETITION_SCOPE_SUFFIX,
+  fetchAhCompetitionCounts, AH_ID_PREFIX,
   QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
   dedupKey, filterUnsent, hasGithubApiAuth,
@@ -767,6 +768,112 @@ describe("scopeCompetitionToAh — ④ competition 모수를 청약홈(ah-) 단�
 
   it("COMPETITION_FIELDS 는 data-audit 의 competition 필드와 정확히 일치", () => {
     expect([...COMPETITION_FIELDS].sort()).toEqual([...AUDIT_FIELDS.competition.fields].sort());
+  });
+});
+
+describe("fetchAhCompetitionCounts — ④ ah- 모수 조회 (세션 522·523)", () => {
+  /**
+   * apartments_flat count 쿼리만 흉내내는 최소 Supabase mock.
+   *
+   * 체이닝은 `from().select().like()` 로 시작하고, 필드 count 일 때만 `.not(field,"is",null)` 가
+   * 덧붙는다 — 그래서 `.not` 호출 여부가 곧 "total 이냐 필드냐" 의 판별이 된다.
+   * 반환 객체는 thenable 이라 `await q` 가 그대로 `{ count }` 를 준다(실제 PostgrestFilterBuilder 와 같은 꼴).
+   *
+   * @param {{ total: number|null, filled: Record<string, number|null> }} counts
+   * @param {{ throwOn?: string }} [opts] "total" 또는 필드명이면 그 쿼리에서 throw (조회 실패 재현)
+   */
+  function makeAhSb(counts, opts = {}) {
+    /** @type {{ tables: string[], likes: Array<[string, string]>, notFields: string[] }} */
+    const calls = { tables: [], likes: [], notFields: [] };
+    const builder = () => {
+      /** @type {string | null} */
+      let field = null;
+      /** @type {any} */
+      const q = {
+        select: () => q,
+        like: (/** @type {string} */ col, /** @type {string} */ pat) => {
+          calls.likes.push([col, pat]);
+          return q;
+        },
+        not: (/** @type {string} */ f) => {
+          field = f;
+          calls.notFields.push(f);
+          return q;
+        },
+        then: (/** @type {any} */ resolve, /** @type {any} */ reject) => {
+          const key = field ?? "total";
+          if (opts.throwOn === key) {
+            return Promise.reject(new Error(`쿼리 실패: ${key}`)).then(resolve, reject);
+          }
+          const raw = field ? counts.filled[field] : counts.total;
+          return Promise.resolve({ count: raw === undefined ? null : raw }).then(resolve, reject);
+        },
+      };
+      return q;
+    };
+    return {
+      calls,
+      sb: { from: (/** @type {string} */ t) => { calls.tables.push(t); return builder(); } },
+    };
+  }
+
+  /** 라이브 실측 골격 (2026-08-22): ah- 982 단지, 3필드 채움 779/781/781. */
+  const AH_TOTAL = 982;
+  const AH_FILLED = { competitionRate: 779, competitionSupply: 781, competitionApplicants: 781 };
+
+  it("정상 — total + 3필드 채움 수를 { total, filled } 로 돌려준다", async () => {
+    const { sb, calls } = makeAhSb({ total: AH_TOTAL, filled: AH_FILLED });
+    const out = await fetchAhCompetitionCounts(sb);
+    expect(out).toEqual({ total: AH_TOTAL, filled: AH_FILLED });
+    // 주입한 sb 를 실제로 썼다는 증거 (getSupabase() 로 샜다면 undefined.from 으로 죽어 null 이 된다)
+    expect(calls.tables).toEqual(Array(4).fill("apartments_flat")); // total 1 + 필드 3
+    expect(calls.notFields).toEqual([...COMPETITION_FIELDS]);
+  });
+
+  it("정상 — 모든 쿼리가 ah- 접두사로 모수를 좁힌다", async () => {
+    const { sb, calls } = makeAhSb({ total: AH_TOTAL, filled: AH_FILLED });
+    await fetchAhCompetitionCounts(sb);
+    expect(calls.likes).toHaveLength(4);
+    for (const [col, pat] of calls.likes) {
+      expect(col).toBe("id");
+      expect(pat).toBe(`${AH_ID_PREFIX}%`);
+    }
+  });
+
+  it("total count 가 null 이면 null — 필드 쿼리로 넘어가지 않는다", async () => {
+    const { sb, calls } = makeAhSb({ total: null, filled: AH_FILLED });
+    expect(await fetchAhCompetitionCounts(sb)).toBeNull();
+    expect(calls.notFields).toEqual([]); // total 에서 즉시 중단
+  });
+
+  it("필드 count 가 하나라도 null 이면 null — 반쪽 모수로 판정하지 않는다", async () => {
+    const { sb } = makeAhSb({
+      total: AH_TOTAL,
+      filled: { ...AH_FILLED, competitionSupply: null },
+    });
+    expect(await fetchAhCompetitionCounts(sb)).toBeNull();
+  });
+
+  it("쿼리가 throw 하면 null + 로그 1줄 — 감시 자체는 멈추지 않는다", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { sb } = makeAhSb({ total: AH_TOTAL, filled: AH_FILLED }, { throwOn: "competitionRate" });
+      expect(await fetchAhCompetitionCounts(sb)).toBeNull();
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(String(spy.mock.calls[0][0])).toContain("ah- 모수 조회 실패");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("total 쿼리 자체가 throw 해도 null (첫 쿼리 실패 경로)", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { sb } = makeAhSb({ total: AH_TOTAL, filled: AH_FILLED }, { throwOn: "total" });
+      expect(await fetchAhCompetitionCounts(sb)).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
