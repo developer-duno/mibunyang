@@ -94,6 +94,31 @@ describe("mapC1", () => {
 });
 
 // ── aggregateKosisRows ───────────────────────────────────────
+// 세션522 — gu 표기 통일 배선 가드.
+// KOSIS 는 일반구를 압축형("수원장안구")으로 준다. normalizeC1Name 은 공백만 걷어낼 뿐이라
+// 그 표기가 그대로 UPDATE 키가 됐고, canonical 행("수원시 장안구")은 net_migration 이 영영 비었다.
+// 이 수집기는 UPDATE 전용이라 canonical 행이 없으면 못 채우는 게 정상 — 행 생성자는 population.mjs 다.
+//
+// ⚠️ 행동으로 검증한다 — 소스 grep 은 선언부·주석에 걸려 무효가 될 수 있다(세션491).
+describe("mapC1 — gu 표기 통일 (세션522)", () => {
+  it("압축형 일반구를 canonical 로 접는다", () => {
+    expect(mapC1("41111", "수원장안구")).toEqual({ region: "경기", gu: "수원시 장안구" });
+  });
+
+  it("공백 든 표기도 (normalizeC1Name 뒤) canonical 로 접는다", () => {
+    expect(mapC1("41111", "수원 장안구")).toEqual({ region: "경기", gu: "수원시 장안구" });
+  });
+
+  it("이미 canonical 인 2단 표기는 그대로", () => {
+    // normalizeC1Name 이 공백을 지워 "수원시장안구" 가 되지만 별칭표가 다시 편다.
+    expect(mapC1("41111", "수원시 장안구")).toEqual({ region: "경기", gu: "수원시 장안구" });
+  });
+
+  it("광역시 자치구는 손대지 않는다 (기존 동작 보존)", () => {
+    expect(mapC1("11680", "강남구")).toEqual({ region: "서울", gu: "강남구" });
+  });
+});
+
 describe("aggregateKosisRows", () => {
   /**
    * @param {string} C1

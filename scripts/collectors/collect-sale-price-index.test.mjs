@@ -41,6 +41,33 @@ function makeRow(c1, c1Nm, prd, value, itm = "지수") {
   return { C1: c1, C1_NM: c1Nm, ITM_NM: itm, PRD_DE: prd, DT: String(value) };
 }
 
+// 세션522 — gu 표기 통일 배선 가드.
+// KAB 은 일반구를 압축형("수원장안구")으로 준다. 그 표기가 그대로 upsert 충돌키
+// (region,gu,base_month)에 박히면 canonical 과 갈린 별도 행으로 쌓이고,
+// `api/supabase/market-stats-history.ts` 는 화면에서 온 canonical gu 로 조회하므로
+// 그 행에 영영 못 닿는다(값이 있는데도 시도 평균으로 폴백).
+//
+// ⚠️ 이 블록은 normalizeGu 호출을 **행동으로** 검증한다 — 소스 문자열 grep 은 함수 선언부나
+// 주석에도 걸려 가드가 통째로 무효가 될 수 있다(세션491 실사고).
+describe("parseKabRows — gu 표기 통일 (세션522)", () => {
+  it("압축형 시군구명을 canonical 로 접어 담는다", () => {
+    const r = parseKabRows([makeRow("80001", "수원장안구", "20251", 101.5)]);
+    expect(r.matched).toHaveLength(1);
+    expect(r.matched[0].gu).toBe("수원시 장안구");
+    expect(r.matched[0].region).toBe("경기");
+  });
+
+  it("이미 canonical 이면 그대로 (기존 동작 보존)", () => {
+    const r = parseKabRows([makeRow("80002", "수원시 장안구", "20251", 101.5)]);
+    expect(r.matched[0].gu).toBe("수원시 장안구");
+  });
+
+  it("광역시 자치구는 손대지 않는다", () => {
+    const r = parseKabRows([makeRow("10001", "종로구", "20251", 157.97)]);
+    expect(r.matched[0].gu).toBe("종로구");
+  });
+});
+
 describe("parseKabRows (DT_KAB_11672_S5 매매가격지수)", () => {
   it("빈 배열 → matched 빈 배열", () => {
     expect(parseKabRows([])).toEqual({ matched: [], unmatched: [], skipped: 0 });

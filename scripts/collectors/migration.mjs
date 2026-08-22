@@ -24,7 +24,7 @@
  */
 import {
   loadEnv, getSupabase, log, logError,
-  REGION_LAWD_PREFIX, recordApiQuota, recordCollectorRun, fetchWithRetry,
+  REGION_LAWD_PREFIX, recordApiQuota, recordCollectorRun, fetchWithRetry, normalizeGu,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -103,7 +103,20 @@ export function mapC1(c1Code, c1Name) {
     if (!region) return null;
     // 세종은 시군구 없음
     if (region === "세종") return { region, gu: "세종시" };
-    return { region, gu: name || null };
+    // 표기 통일은 **예방용**이다 (세션523 정정).
+    //
+    // ⚠️ 세션522 가 여기에 "KOSIS 는 일반구를 압축형(\"수원장안구\")으로 준다" 고 적었는데
+    //    이 표(DT_1B26001_A01)에 한해서는 **사실이 아니다**. 라이브 실측(2026-08-22, 기준월
+    //    202606): 시군구 254건 중 일반구는 압축형·정식형 **양쪽 다 0건**이다. 즉 일반구의
+    //    net_migration 이 비는 것은 표기 문제가 아니라 **원본이 그 단위를 안 주기 때문**이고,
+    //    여기를 어떻게 고쳐도 채워지지 않는다(데이터 한계 — 다른 KOSIS 표는 압축형을 주므로
+    //    "KOSIS 가 준다/안 준다" 를 표 단위로 확인하지 않고 일반화하면 이 오진을 반복한다).
+    //
+    // 그래도 normalizeGu 를 두는 이유: 원본이 나중에 일반구를 주기 시작해도 canonical 행에
+    // 바로 붙게 하려는 것이다. 이 수집기는 UPDATE 전용이라 canonical 행이 아직 없으면 못
+    // 채우는 게 정상이다 — 행 생성자는 population.mjs 다.
+    if (!name) return { region, gu: null };
+    return { region, gu: normalizeGu(region, name) ?? name };
   }
   return null;
 }
