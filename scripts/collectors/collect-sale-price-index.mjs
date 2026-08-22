@@ -20,7 +20,7 @@
  *   node scripts/collectors/collect-sale-price-index.mjs              (Supabase upsert)
  *   node scripts/collectors/collect-sale-price-index.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, normalizeGu } from "./_shared.mjs";
 
 /** @typedef {{ C1: string; C1_NM: string; ITM_NM?: string; PRD_DE: string; DT: string }} KabRow */
 /** @typedef {{ region: string; gu: string; base_month: string; sale_price_index: number }} MatchedRow */
@@ -78,7 +78,11 @@ export function parseKabRows(rows) {
       continue;
     }
 
-    matched.push({ region, gu: row.C1_NM, base_month: period, sale_price_index: value });
+    // 세션522: KAB 은 일반구를 압축형("수원장안구")으로 준다. 그 표기를 그대로 쓰면
+    // upsert 충돌키(region,gu,base_month)가 canonical 과 갈려 별도 행으로 쌓이고,
+    // `api/supabase/market-stats-history.ts` 는 화면에서 온 canonical gu 로 조회하므로
+    // 그 행에 영영 못 닿는다(값이 있는데도 시도 평균으로 폴백).
+    matched.push({ region, gu: normalizeGu(region, row.C1_NM) ?? row.C1_NM, base_month: period, sale_price_index: value });
   }
 
   return { matched, unmatched: [...unmatchedSet], skipped };

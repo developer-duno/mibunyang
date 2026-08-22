@@ -9,7 +9,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { resolveRegion, parseGu, parseSexAge, AGE_BUCKETS } = await import("./population-sex-age.mjs");
+const { resolveRegion, parseGu, parseSexAge, AGE_BUCKETS, pickCanonicalRows } = await import("./population-sex-age.mjs");
 
 describe("resolveRegion", () => {
   it("'서울특별시' → '서울'", () => {
@@ -27,16 +27,117 @@ describe("resolveRegion", () => {
 
 describe("parseGu", () => {
   it("서울 종로구 정상 자리", () => {
-    expect(parseGu("서울특별시", "종로구")).toEqual({ region: "서울", gu: "종로구" });
+    expect(parseGu("서울특별시", "종로구")).toEqual({ region: "서울", gu: "종로구", folded: false });
   });
   it("세종 자리 = gu 무시 후 '세종시' 자리", () => {
-    expect(parseGu("세종특별자치시", "")).toEqual({ region: "세종", gu: "세종시" });
+    expect(parseGu("세종특별자치시", "")).toEqual({ region: "세종", gu: "세종시", folded: false });
   });
   it("ctpvNm 미상 → null", () => {
     expect(parseGu("미상", "강남구")).toBeNull();
   });
   it("sggNm 빈 자리 (서울/경기 등) → null", () => {
     expect(parseGu("서울특별시", "")).toBeNull();
+  });
+});
+
+// 세션522 — gu 표기 통일 배선 가드.
+// 자매 `population.mjs` 는 세션510부터 여기서 표기를 접는데 이 파일만 빠져 있었다.
+// 이 수집기는 UPDATE 가 0행이면 **INSERT 로 행을 만든다** — 표기를 안 접으면 canonical 행 옆에
+// sex_age 만 든 별도 행이 생기고 어느 쪽도 온전해 보이지 않는다.
+//
+// ⚠️ 행동으로 검증한다 — 소스 grep 은 선언부·주석에 걸려 무효가 될 수 있다(세션491).
+describe("parseGu — gu 표기 통일 (세션522)", () => {
+  it("행안부가 시 이름 없이 준 구를 canonical 로 편다", () => {
+    expect(parseGu("경기도", "장안구")).toEqual({ region: "경기", gu: "수원시 장안구", folded: true });
+  });
+
+  it("압축형도 canonical 로 접는다", () => {
+    expect(parseGu("경기도", "수원장안구")).toEqual({ region: "경기", gu: "수원시 장안구", folded: true });
+  });
+
+  it("이미 canonical 이면 그대로 (기존 동작 보존)", () => {
+    expect(parseGu("경기도", "수원시 장안구")).toEqual({ region: "경기", gu: "수원시 장안구", folded: false });
+  });
+
+  it("광역시 자치구는 손대지 않는다", () => {
+    expect(parseGu("서울특별시", "종로구")).toEqual({ region: "서울", gu: "종로구", folded: false });
+  });
+
+  it("화성 신설구는 시 단위로 접힌다 — folded 로 표시된다", () => {
+    // 별칭표가 화성 4구를 "화성시" 로 접는다(화면 단지가 전부 시 단위 표기라).
+    // 이 folded 표시가 없으면 아래 pickCanonicalRows 가 시 값과 구 값을 구분하지 못한다.
+    expect(parseGu("경기도", "화성시 효행구")).toEqual({ region: "경기", gu: "화성시", folded: true });
+    expect(parseGu("경기도", "화성시")).toEqual({ region: "경기", gu: "화성시", folded: false });
+  });
+});
+
+// 세션523 — 표기 통일이 **서로 다른 원문을 한 키로 모으는** 자리 가드.
+// 행안부는 화성시를 시 단위와 신설 4구로 둘 다 준다. 별칭표가 그 구들을 "화성시" 로 접으므로
+// dedup 없이 쓰면 UPDATE 루프가 같은 행을 다섯 번 덮어써 **시 전체 인구구성이 구 하나의 값으로
+// 바뀐다** — 로그도 실패 수도 정상이라 사람 눈에 안 띄는 자리다.
+describe("pickCanonicalRows — 한 키로 모인 원문 정리 (세션523)", () => {
+  /** 성/연령 원본 한 줄. total 만 다르게 줘서 어느 원문이 남았는지 가른다. */
+  /** @type {(ctpvNm: string, sggNm: string, total: number) => Record<string, unknown>} */
+  const item = (ctpvNm, sggNm, total) => ({
+    ctpvNm, sggNm, statsYm: "202606",
+    totNmprCnt: String(total), maleNmprCnt: String(total), femlNmprCnt: "0",
+  });
+
+  it("시 단위 원문이 있으면 접힌 구 값이 그것을 덮지 않는다", () => {
+    const { rows, collapsed } = pickCanonicalRows([
+      item("경기도", "화성시 효행구", 100),
+      item("경기도", "화성시", 999999),        // 시 전체 — 이게 남아야 한다
+      item("경기도", "화성시 동탄구", 200),
+      item("경기도", "화성시 만세구", 300),
+      item("경기도", "화성시 병점구", 400),
+    ], "2026-06-01");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].gu).toBe("화성시");
+    expect(rows[0].sex_age.total).toBe(999999);
+    expect(collapsed).toBe(4);
+  });
+
+  it("시 단위 원문이 **뒤에** 와도 결과가 같다 (순서에 안 흔들린다)", () => {
+    const { rows } = pickCanonicalRows([
+      item("경기도", "화성시 효행구", 100),
+      item("경기도", "화성시 동탄구", 200),
+      item("경기도", "화성시", 999999),
+    ], "2026-06-01");
+    expect(rows[0].sex_age.total).toBe(999999);
+  });
+
+  it("정상 보정(장안구 → 수원시 장안구)은 겹칠 원문이 없어 그대로 살아남는다", () => {
+    const { rows, collapsed } = pickCanonicalRows([
+      item("경기도", "장안구", 111),
+      item("경기도", "권선구", 222),
+    ], "2026-06-01");
+    expect(rows.map((/** @type {{gu: string}} */ r) => r.gu).sort()).toEqual(["수원시 권선구", "수원시 장안구"]);
+    expect(collapsed).toBe(0);
+  });
+
+  it("접힌 원문만 여럿이면 경고 대상으로 남긴다 (조용히 틀리지 않게)", () => {
+    const { rows, foldedOnly } = pickCanonicalRows([
+      item("경기도", "화성시 효행구", 100),
+      item("경기도", "화성시 동탄구", 200),
+    ], "2026-06-01");
+    expect(rows).toHaveLength(1);
+    expect(foldedOnly).toEqual(["경기|화성시"]);
+  });
+
+  it("접히지 않은 원문끼리 겹치면 기존 동작(나중 것)을 지킨다", () => {
+    // 세종은 원래부터 sggNm 이 무엇이든 "세종시" 한 키로 모인다. 이 수정이 그 결과를
+    // 조용히 바꾸면 안 되므로 같은 등급끼리는 나중 것이 이기던 옛 동작을 그대로 둔다.
+    const { rows } = pickCanonicalRows([
+      item("세종특별자치시", "조치원읍", 111),
+      item("세종특별자치시", "한솔동", 222),
+    ], "2026-06-01");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sex_age.total).toBe(222);
+  });
+
+  it("인구 0 이하인 원문은 애초에 들어오지 않는다", () => {
+    const { rows } = pickCanonicalRows([item("경기도", "화성시", 0)], "2026-06-01");
+    expect(rows).toHaveLength(0);
   });
 });
 

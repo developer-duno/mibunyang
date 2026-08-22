@@ -772,11 +772,34 @@ describe("normalizeVworldFeature — GeoJSON feature → DB 행 정규화", () =
       name: "테스트산업단지",
       lat: 37.4,
       lng: 127.05,
-      progression_step: null,
-      eta: null,
+      // progression_step · eta 는 **키 자체가 없다** (세션522) — 아래 전용 가드 참조.
       raw: damdanFeature(),
       fetched_at: NOW,
     });
+  });
+
+  // [[guards-must-be-mutation-tested]]: 되돌리면(두 키에 null 을 다시 실으면) red 여야 한다.
+  // 옛 payload 는 `progression_step: null` 을 실었고, upsert 는 payload 에 있는 컬럼만 덮어쓰므로
+  // 그 null 이 lhzone-status.mjs 가 채운 정부 장부의 조성 단계를 재수집마다 지웠다.
+  it("⚠️ 뮤테이션 대상 — vworld payload 에 progression_step·eta 키가 아예 없다 (보강값 보호, 세션522)", () => {
+    for (const row of [
+      normalizeVworldFeature("industrial_complex", damdanFeature(), nowFn),
+      normalizeVworldFeature("lh_zone", lhzoneFeature(), nowFn),
+    ]) {
+      expect(row).not.toBeNull();
+      const keys = Object.keys(/** @type {Record<string, unknown>} */ (row));
+      expect(keys, "progression_step 키가 실리면 upsert 가 기존 보강값을 null 로 덮어쓴다").not.toContain("progression_step");
+      expect(keys, "eta 키가 실리면 같은 방식으로 기존 값을 지운다").not.toContain("eta");
+    }
+  });
+
+  it("⚠️ 뮤테이션 대상 — upsert 를 출처별로 나눈다 (키 구성이 달라 PostgREST 가 혼합 배열을 거부)", () => {
+    // 좌변까지 고정 — 선언부·주석에 걸리는 헐거운 grep 은 가드를 무효로 만든다
+    // ([[guards-must-be-mutation-tested]] §"소스 grep 가드").
+    expect(DEVPLAN_SRC).toMatch(/const\s+naverRows\s*=\s*deduped\.filter\(/);
+    expect(DEVPLAN_SRC).toMatch(/const\s+vworldRows\s*=\s*deduped\.filter\(/);
+    expect(DEVPLAN_SRC).toMatch(/upsertBatch\(\s*"dev_plans",\s*vworldRows,/);
+    expect(DEVPLAN_SRC).not.toMatch(/upsertBatch\(\s*"dev_plans",\s*deduped,/);
   });
 
   it("lh_zone: 명시 id 속성이 없어 feature.id 로 source_id 폴백", () => {
