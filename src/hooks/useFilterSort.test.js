@@ -387,6 +387,28 @@ describe("전체 초기화 + 프리셋", () => {
     });
     expect(result.current.parkingGoodOnly).toBe(true);
   });
+
+  // 세션 524 — 학군 토글만 왕복 가드가 없어 형제 8개와 어긋나 있던 자리 (subwayOnly·dsr·치안 패턴 답습)
+  it("saveCustomPreset — schoolGoodOnly=true 저장 후 applyPreset 으로 복원", () => {
+    const { result } = renderHook(() => useFilterSort({}));
+    act(() => {
+      result.current.toggleSchoolGoodOnly();
+    });
+    expect(result.current.schoolGoodOnly).toBe(true);
+    act(() => {
+      result.current.saveCustomPreset("학군만");
+    });
+    const saved = /** @type {any} */ (result.current.customPresets.find((p) => p.label === "학군만"));
+    expect(saved?.values.schoolGoodOnly).toBe(true);
+    act(() => {
+      result.current.toggleSchoolGoodOnly();
+    });
+    expect(result.current.schoolGoodOnly).toBe(false);
+    act(() => {
+      result.current.applyPreset(saved.values);
+    });
+    expect(result.current.schoolGoodOnly).toBe(true);
+  });
 });
 
 describe("URL 필터 역직렬화 (Phase 1)", () => {
@@ -618,5 +640,51 @@ describe("URL 필터 역직렬화 (Phase 2)", () => {
       result.current.applyPreset(saved.values);
     });
     expect(result.current.parkNearOnly).toBe(true);
+  });
+});
+
+// 세션 524 — 시군구(gu)·역세권(subway)·학군(school) URL 복원 가드가 비어 있던 자리
+describe("URL 필터 역직렬화 — 시군구·역세권·학군 (세션 524)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("URL에서 region + gu 읽기", () => {
+    mockLocationSearch("?region=서울&gu=강남구");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.filterRegion).toBe("서울");
+    expect(result.current.filterGu).toBe("강남구");
+  });
+
+  it("URL에서 subwayOnly, schoolGoodOnly 읽기", () => {
+    mockLocationSearch("?subway=1&school=1");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.subwayOnly).toBe(true);
+    expect(result.current.schoolGoodOnly).toBe(true);
+  });
+
+  it("subway/school 미지정 → 기본값 false", () => {
+    mockLocationSearch("?region=서울");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.subwayOnly).toBe(false);
+    expect(result.current.schoolGoodOnly).toBe(false);
+  });
+
+  // 수리 3 회귀 가드 — 지역 없이 구만 온 URL 은 모순 상태라 구를 무시한다
+  it("지역 없이 gu 만 온 URL → gu 무시 (전체 유지)", () => {
+    mockLocationSearch("?gu=강남구");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.filterRegion).toBe("전체");
+    expect(result.current.filterGu).toBe("전체");
+  });
+
+  it("region=전체 + gu 조합도 gu 무시", () => {
+    mockLocationSearch("?region=전체&gu=강남구&sort=price");
+    const { result } = renderHook(() => useFilterSort({}));
+    expect(result.current.filterRegion).toBe("전체");
+    expect(result.current.filterGu).toBe("전체");
+    // 같은 URL 의 다른 파라미터는 그대로 복원돼야 한다 (구만 버린다)
+    expect(result.current.sortKey).toBe("price");
   });
 });

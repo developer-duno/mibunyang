@@ -227,6 +227,28 @@ describe("SearchFilterBar", () => {
       expect(onRegionChange).toHaveBeenCalledWith("전체");
     });
 
+    // 세션 524 회귀 가드 — 구를 골라도 칩이 "서울"만 보여줘 어디까지 좁혔는지 알 수 없던 결함
+    it("구까지 선택하면 칩에 구 이름이 함께 보인다", () => {
+      render(
+        <SearchFilterBar
+          {...makeProps({
+            filterRegion: "서울",
+            filterGu: "강남구",
+            guOptions: ["전체", "강남구"],
+            activeFilterCount: 2,
+          })}
+        />
+      );
+      const chip = screen.getByRole("button", { name: "서울 강남구 필터 해제" });
+      expect(chip.textContent).toContain("서울 강남구");
+    });
+
+    it("구가 전체면 칩은 지역만 보여준다", () => {
+      render(<SearchFilterBar {...makeProps({ filterRegion: "서울", activeFilterCount: 1 })} />);
+      const chip = screen.getByRole("button", { name: "서울 필터 해제" });
+      expect(chip.textContent).not.toContain("강남구");
+    });
+
     it("다른 키 입력 시 onClick 콜백 미호출 (회귀 가드)", () => {
       const onBudgetReset = vi.fn();
       render(
