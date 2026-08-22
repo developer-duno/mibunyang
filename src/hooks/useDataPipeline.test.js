@@ -370,6 +370,75 @@ describe("useDataPipeline", () => {
       expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 150 < 400 < 700 < null(Infinity 맨뒤)
     });
 
+    // 세션 524 — 정렬 6종(카테고리 점수 4 + 최신 + 대단지)에 순서 가드가 없던 자리.
+    //   한 배열로 6개를 돌려 "정렬 키마다 다른 순서가 나온다"까지 함께 잠근다.
+    describe("정렬 6종 순서 (세션 524)", () => {
+      const sortApts = [
+        makeApt({
+          id: "ah-s1",
+          region: "서울",
+          units: 300,
+          updatedAt: "2026-01-05",
+          catsCache: makeCats({
+            price: { total: 40, subs: [] },
+            location: { total: 80, subs: [] },
+            risk: { total: 60, subs: [] },
+            benefit: { total: 50, totalWon: 100, subs: [] },
+          }),
+        }),
+        makeApt({
+          id: "ah-s2",
+          region: "서울",
+          units: 1200,
+          updatedAt: "2026-07-20",
+          catsCache: makeCats({
+            price: { total: 90, subs: [] },
+            location: { total: 50, subs: [] },
+            risk: { total: 95, subs: [] },
+            benefit: { total: 50, totalWon: 900, subs: [] },
+          }),
+        }),
+        makeApt({
+          id: "ah-s3",
+          region: "서울",
+          units: 800,
+          updatedAt: "2026-03-11",
+          catsCache: makeCats({
+            price: { total: 65, subs: [] },
+            location: { total: 95, subs: [] },
+            risk: { total: 30, subs: [] },
+            benefit: { total: 50, totalWon: 400, subs: [] },
+          }),
+        }),
+      ];
+      const orderBy = (/** @type {string} */ sortKey) =>
+        renderPipeline({ apartments: sortApts, sortKey }).result.current.filtered.map((x) => x.apt.id);
+
+      it("sortKey=priceScore → 가격점수 내림차순", () => {
+        expect(orderBy("priceScore")).toEqual(["ah-s2", "ah-s3", "ah-s1"]); // 90 > 65 > 40
+      });
+
+      it("sortKey=location → 입지점수 내림차순", () => {
+        expect(orderBy("location")).toEqual(["ah-s3", "ah-s1", "ah-s2"]); // 95 > 80 > 50
+      });
+
+      it("sortKey=safe → 안정성(risk)점수 내림차순", () => {
+        expect(orderBy("safe")).toEqual(["ah-s2", "ah-s1", "ah-s3"]); // 95 > 60 > 30
+      });
+
+      it("sortKey=benefit → 혜택 금액(totalWon) 내림차순", () => {
+        expect(orderBy("benefit")).toEqual(["ah-s2", "ah-s3", "ah-s1"]); // 900 > 400 > 100
+      });
+
+      it("sortKey=newest → updatedAt 최신순", () => {
+        expect(orderBy("newest")).toEqual(["ah-s2", "ah-s3", "ah-s1"]); // 07-20 > 03-11 > 01-05
+      });
+
+      it("sortKey=units → 세대수 많은순", () => {
+        expect(orderBy("units")).toEqual(["ah-s2", "ah-s3", "ah-s1"]); // 1200 > 800 > 300
+      });
+    });
+
     it("filterRegion 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울" });
       expect(result.current.filtered.every((x) => x.apt.region === "서울")).toBe(true);
@@ -378,6 +447,40 @@ describe("useDataPipeline", () => {
     it("filterGu 적용", () => {
       const { result } = renderPipeline({ apartments: threeApts, filterRegion: "서울", filterGu: "강남구" });
       expect(result.current.filtered.every((x) => x.apt.gu === "강남구")).toBe(true);
+    });
+
+    // 세션 524 — 시공사 등급·입주 상태가 파이프라인에서 실제로 거르는지 (기존엔 정렬만 있고 이 두 필터 가드가 없었다)
+    it("builderTier 적용 — 1군만 남는다", () => {
+      const apts = [
+        makeApt({ id: "ah-t1", region: "서울", builder: "현대건설" }), // 1군Super → "1군"
+        makeApt({ id: "ah-etc", region: "서울", builder: "이름없는건설" }), // 매핑 없음 → "기타"
+      ];
+      const { result } = renderPipeline({ apartments: apts, builderTier: "1군" });
+      expect(result.current.filtered.map((x) => x.apt.id)).toEqual(["ah-t1"]);
+    });
+
+    it("builderTier 적용 — 기타만 남는다", () => {
+      const apts = [
+        makeApt({ id: "ah-t1", region: "서울", builder: "현대건설" }),
+        makeApt({ id: "ah-etc", region: "서울", builder: "이름없는건설" }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, builderTier: "기타" });
+      expect(result.current.filtered.map((x) => x.apt.id)).toEqual(["ah-etc"]);
+    });
+
+    it("moveInFilter 적용 — 입주예정/미입주/입주완료 각각 그 상태만 남는다", () => {
+      // NOW_YM 기준 상대값 (고정 날짜는 시간이 지나면 스스로 깨진다)
+      const yy = new Date().getFullYear();
+      const apts = [
+        makeApt({ id: "ah-sched", region: "서울", completion: `${yy + 1}03` }), // 미래 → 입주예정
+        makeApt({ id: "ah-notmoved", region: "서울", completion: `${yy - 1}05`, unsold: 12 }), // 과거 + 잔여 → 미입주
+        makeApt({ id: "ah-done", region: "서울", completion: `${yy - 1}05`, unsold: 0 }), // 과거 + 잔여 0 → 입주완료
+      ];
+      const pick = (/** @type {string} */ moveInFilter) =>
+        renderPipeline({ apartments: apts, moveInFilter }).result.current.filtered.map((x) => x.apt.id);
+      expect(pick("입주예정")).toEqual(["ah-sched"]);
+      expect(pick("미입주")).toEqual(["ah-notmoved"]);
+      expect(pick("입주완료")).toEqual(["ah-done"]);
     });
 
     it("hideNoUnsold → unsoldRate 0 제외", () => {
@@ -460,6 +563,18 @@ describe("useDataPipeline", () => {
 
     it("필터 적용 시 카운트 증가", () => {
       const { result } = renderPipeline({ filterRegion: "서울", budgetMin: "3" });
+      expect(result.current.activeFilterCount).toBe(2);
+    });
+
+    // 세션 524 회귀 가드 — filterGu 가 카운트 배열에 없어 "서울 강남구"가 1개로 보이던 결함.
+    //   지역과 별개로 세야 배지 숫자와 실제 좁힌 정도가 맞는다.
+    it("filterGu 선택 시 카운트 +1", () => {
+      const { result } = renderPipeline({ filterGu: "강남구" });
+      expect(result.current.activeFilterCount).toBe(1);
+    });
+
+    it("filterRegion + filterGu 동시 선택 시 카운트 2", () => {
+      const { result } = renderPipeline({ filterRegion: "서울", filterGu: "강남구" });
       expect(result.current.activeFilterCount).toBe(2);
     });
 

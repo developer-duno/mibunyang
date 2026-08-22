@@ -305,6 +305,8 @@ export function useDataPipeline({
       [
         showFavOnly,
         filterRegion !== "전체",
+        // 시군구도 별개 필터 — 지역만 세면 "서울 강남구"가 1개로 보인다 (세션524 배선 갭)
+        filterGu !== "전체",
         budgetMin,
         budgetMax,
         areaMin,
@@ -329,6 +331,7 @@ export function useDataPipeline({
     [
       showFavOnly,
       filterRegion,
+      filterGu,
       budgetMin,
       budgetMax,
       areaMin,

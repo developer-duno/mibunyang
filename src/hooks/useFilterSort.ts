@@ -125,6 +125,10 @@ function deserializeFromURL(): Partial<FilterState> | null {
       const val = PARSERS[parserName]?.(raw, defaultVal);
       if (val !== undefined) result[stateKey] = val;
     }
+    // 지역 없이 구만 온 URL(?gu=강남구)은 모순 상태 — 화면엔 "전체"인데 목록만 좁혀져 손님이 이유를 못 찾는다.
+    // 구를 버려 "지역 없으면 구도 없다"는 정합을 URL 복원 시점에 지킨다 (handleRegionChange 의 구 리셋과 같은 결, 세션524).
+    if ((result.filterRegion == null || result.filterRegion === "전체") && result.filterGu != null)
+      delete result.filterGu;
     return Object.keys(result).length > 0 ? (result as Partial<FilterState>) : null;
   } catch {
     return null;
@@ -172,6 +176,10 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
   );
   const [budgetMin, setBudgetMin] = useState<string>(() => urlInit?.budgetMin ?? "");
   const [budgetMax, setBudgetMax] = useState<string>(() => urlInit?.budgetMax ?? "");
+  // 관심매물만 보기 — URL/프리셋에 의도적으로 미참여(세션524 설계 결정). 관심 목록은 기기 로컬 개인 목록이라
+  //   ① 공유 URL 에 담으면 받는 사람에겐 남의 관심 목록이 없어 빈 결과가 되고
+  //   ② 프리셋에 담으면 적용 순간 목록이 관심 단지로 줄어 "매물이 사라졌다"는 오인을 부른다.
+  //   searchQuery(L199)와 같은 결 — resetFilters 만 비운다.
   const [showFavOnly, setShowFavOnly] = useState<boolean>(false);
   const [areaMin, setAreaMin] = useState<string>(() => urlInit?.areaMin ?? "");
   const [areaMax, setAreaMax] = useState<string>(() => urlInit?.areaMax ?? "");
