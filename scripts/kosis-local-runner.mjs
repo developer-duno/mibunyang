@@ -196,6 +196,11 @@ export const DAY_TABLE = [
   // --kinds 를 넘기면 V-WORLD 축(전량 ~7.5h·중간 체크포인트 없음)은 자동 스킵된다 —
   // 전량 수집은 체크포인트 설계 후 별도 트랙. 네이버 4종만 ≈30분.
   { day: 20, script: "naver-devplan.mjs", args: ["--kinds=road,rail,station,jigu"] },
+  // 세션522: 택지정보시스템(openapi.jigu.go.kr) 지구단계정보 → dev_plans.progression_step(lh_zone).
+  // 21일 = 20일 naver-devplan **다음날**. 순서에 뜻이 있다 — 네이버/V-WORLD 축이 먼저 지구 목록을
+  // 새로 긁고, 이 수집기가 그 위에 정부 장부의 조성 단계를 덮는다(신규 지구도 같은 달에 채워진다).
+  // 원본이 월간 갱신(고시월 단위)이고 외부 API 키가 없어 data.go.kr 일일 쿼터를 0 쓴다.
+  { day: 21, script: "lhzone-status.mjs" },
   // 세션519: apis.data.go.kr/B552584(에어코리아)도 같은 차단 — GH 8회 중 2회만 성공(25%,
   // 러너 IP 복불복)인데 로컬은 92ms 200 OK. 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**.
   { dow: 2, script: "collect-air-quality.mjs" },

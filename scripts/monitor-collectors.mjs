@@ -302,6 +302,10 @@ export const EXTERNAL_API_COLLECTORS = [
   //    둘 다 GH yml 삭제 + 로컬 러너 이전. housing-price 는 아래에 이미 등재돼 있어
   //    거기 문구만 갱신했다(중복 추가하면 한쪽을 지워도 가드가 통과한다 — 뮤테이션이 잡음).
   { collector: "air-quality",     stale_days: 14, owner: "에어코리아 대기질 (로컬 매주 화요일 + 1주 여유)" },
+  // ── 세션522: 택지정보시스템 지구단계정보(openapi.jigu.go.kr, 무인증) → dev_plans.progression_step.
+  //    GH 워크플로가 없어(로컬 러너 매월 21일) ①③ 이 못 본다 — collector_runs 신선도가 유일한
+  //    "안 돌면 알림". 월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100).
+  { collector: "lhzone-status",   stale_days: 38, owner: "택지정보시스템 지구단계정보 (로컬 매월 21일)" },
   { collector: "molit-building",  stale_days: 38, owner: "MOLIT 건축물대장 상세 (로컬 매월 10일·토요일이면 11일)" },
   // molit-units 만 14 인 이유 = 월간 cron 외에 네이버 로컬 파이프라인(월/목 08:00, run-naver-local)
   // 4/6 단계가 같은 수집기를 돌린다. 정상 최대 간격이 4일이라 월간 38 을 쓰면 정지를 늦게 잡는다.
