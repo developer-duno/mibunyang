@@ -33,7 +33,9 @@ import {
   SCHOOL_WALK_BONUS,
   SCHOOL_WALK_FAR_ADJ,
   schoolGradeLegend,
+  LOCATION_SUB_WEIGHTS,
 } from "@/constants/scoringTiers";
+import type { LocationSubWeights } from "@/constants/scoringTiers";
 import type { Apt, Res } from "@/types/scoring";
 
 const IS_DEV =
@@ -42,8 +44,10 @@ const IS_DEV =
 /**
  * 입지·생활권 점수 (0~100). 5개 서브 가중치 합계 = 1.00 (불변식).
  *
- * 가중치(이 함수 내부 — src/scoring/CLAUDE.md L40):
- *   transport 0.30 · school 0.25 · infra 0.20 · env 0.10 · noxSafe 0.15
+ * 가중치는 **기준 비중** `LOCATION_SUB_WEIGHTS`(constants/scoringTiers.ts) 가 기본값이고,
+ * 프로필이 `PROFILES[*].locW` 로 덮어쓸 수 있다(세션526 — 자녀교육은 학군, 은퇴는 인프라·자연환경).
+ * 옛 구조는 이 함수 안에 `0.3/0.25/0.2/0.1/0.15` 를 박아 전 프로필이 같은 입지 점수를 받았다.
+ * ⚠️ `subs[].score` 는 **비중과 무관한 원값**이라 프로필이 바뀌어도 그대로다 — 달라지는 건 `total` 뿐.
  *
  * 핵심 보정:
  *   - airSc 복합: PM2.5(0.40) + PM10(0.35) + O3(0.25). pm10/o3 둘 다 null이면 PM2.5 단독.
@@ -57,10 +61,10 @@ const IS_DEV =
  * 클램핑: `Math.max(0, Math.min(total, 100))` 강제.
  *
  * @example
- * // 5개 서브 가중치 합 검증
- * 0.30 + 0.25 + 0.20 + 0.10 + 0.15 === 1.00  // true
+ * // 5개 서브 가중치 합 검증 (기준 비중·프로필 오버라이드 둘 다 1.00)
+ * Object.values(LOCATION_SUB_WEIGHTS).reduce((a, b) => a + b, 0) === 1.00  // true
  */
-export function scoreLocation(apt: Apt): Res {
+export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_WEIGHTS): Res {
   const region = apt.region as string;
   const tier = (REGIONS as Record<string, { tier: string }>)[region]?.tier;
   if (!tier && IS_DEV) console.warn(`[scoring] Unknown region: "${region}"`);
@@ -134,7 +138,8 @@ export function scoreLocation(apt: Apt): Res {
   if (noxiousDist != null && noxiousDist >= NOXIOUS_DIST_THRESHOLD) noxPen = noxPen * NOXIOUS_REDUCTION;
   noxPen = Math.max(noxPen, NOXIOUS_PEN_CAP);
   const noxSafe = Math.max(0, 100 + (noxPen / 15) * 100);
-  const total = transport * 0.3 + school * 0.25 + infra * 0.2 + env * 0.1 + noxSafe * 0.15;
+  const total =
+    transport * locW.transport + school * locW.school + infra * locW.infra + env * locW.env + noxSafe * locW.noxSafe;
   const subwayLines = apt.subwayLines as string | undefined;
   const schoolGrade = apt.schoolGrade as string | undefined;
   return {

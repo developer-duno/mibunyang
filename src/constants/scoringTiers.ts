@@ -29,6 +29,31 @@ export const tierMin = (v: number, tiers: readonly Tier[], fallback = 0): number
   return fallback;
 };
 
+/**
+ * 입지 5서브 **기준 비중**의 단일 출처 (합 1.00 — src/scoring/CLAUDE.md 불변식).
+ *
+ * 세션526 이전에는 `scoreLocation` 본문(구 L137)에 `transport * 0.3 + ...` 로 하드코딩돼 있어
+ * 어느 프로필에서든 같은 비중이었다. 이제 프로필이 `PROFILES[*].locW` 로 이 표를 덮어쓸 수 있다
+ * — 자녀교육은 학군을, 은퇴는 인프라·자연환경을 더 크게 본다(constants/profiles.ts 근거 주석).
+ * `locW` 가 없는 프로필(실거주·투자)은 이 기준 비중을 그대로 쓴다.
+ */
+export const LOCATION_SUB_WEIGHTS = {
+  transport: 0.3,
+  school: 0.25,
+  infra: 0.2,
+  env: 0.1,
+  noxSafe: 0.15,
+} as const;
+
+/** `LOCATION_SUB_WEIGHTS` 와 같은 5키 구조. 프로필별 오버라이드(`Profile.locW`)의 타입. */
+export type LocationSubWeights = {
+  transport: number;
+  school: number;
+  infra: number;
+  env: number;
+  noxSafe: number;
+};
+
 // === Location: 교통 ===
 export const SUBWAY_DIST_TIERS: Tier[] = [
   { max: 300, score: 25 },

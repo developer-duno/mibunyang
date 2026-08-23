@@ -37,10 +37,15 @@ export const FAQSection = memo(function FAQSection() {
           // 세션514: 수치를 **`PROFILES` 에서 파생**한다. 손으로 적힌 옛 문구는 3칸이 전부 어긋나
           //   있었다(투자 가격 30↔35 · 안전 25↔30, 교육 입지 45↔50). #398(세션513)이 같은 파일의
           //   다른 줄만 고치고 이 줄을 놓친 자리 — GuideSections 가 이미 쓰는 방식으로 맞춘다.
+          // 세션526: 입지 **안에서도** 프로필마다 보는 곳이 다르다(locW). 카테고리 가중치만 설명하면
+          //   "왜 둘 다 입지 위주인데 순위가 다르지?"에 답이 안 된다. ⚠️ 0.55*100 은 부동소수라 Math.round 필수.
           a:
             `프로필별로 6개 카테고리의 가중치가 다르기 때문입니다. 예를 들어 '${PROFILES.invest.name}' 프로필은 ` +
             `가격(${PROFILES.invest.w.price}%)과 안전(${PROFILES.invest.w.risk}%)에, ` +
-            `'${PROFILES.edu.name}' 프로필은 입지(${PROFILES.edu.w.location}%)에 높은 가중치를 부여합니다.`,
+            `'${PROFILES.edu.name}' 프로필은 입지(${PROFILES.edu.w.location}%)에 높은 가중치를 부여합니다. ` +
+            `또한 같은 입지 점수 안에서도 '${PROFILES.edu.name}'은 학군(${Math.round((PROFILES.edu.locW?.school ?? 0) * 100)}%)을, ` +
+            `'${PROFILES.retire.name}'은 생활인프라(${Math.round((PROFILES.retire.locW?.infra ?? 0) * 100)}%)와 ` +
+            `자연환경(${Math.round((PROFILES.retire.locW?.env ?? 0) * 100)}%)을 더 크게 봅니다.`,
         },
         {
           q: "적정가 괴리도란?",

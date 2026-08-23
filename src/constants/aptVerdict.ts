@@ -6,6 +6,10 @@ import type { Cats } from "@/types/scoring";
 // 판정 로직(benefit noData 제외)을 그대로 옮겼다 — ProfileWeightBar 는 profile && !blind 일 때만
 // 떠서 비로그인·프로필 미선택 손님은 결론 문장을 못 봤다. 이 판정 한 줄이 상위 개념이라 항상 뜬다.
 //
+// ⚠️ 세션526 전제 갱신: 이 함수는 **여전히 가중치를 안 본다**(최고/최저 total 만 본다). 다만 입력
+// `cats` 의 `location.total` 이 이제 프로필별(`PROFILES[*].locW`)로 달라질 수 있어, 같은 단지라도
+// 프로필에 따라 판정 한 줄이 달라질 수 있다. "cats 는 프로필과 무관"이라는 옛 전제는 더 이상 참이 아니다.
+//
 // 문구는 점수 서술에 한정한다 — "사도 된다/좋다/추천" 류는 투자 조언으로 읽힐 수 있어 금지.
 //
 // benefit 은 후보에서 완전히 제외한다(2026-08-11) — PROFILES 5개 전부 가중치 0(constants/profiles.ts)

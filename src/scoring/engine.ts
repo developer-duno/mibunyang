@@ -6,6 +6,7 @@ import { scoreBenefit } from "./scoreBenefit";
 import { scoreRisk } from "./scoreRisk";
 import { scoreFuture } from "./scoreFuture";
 import { computeRegionalMedians } from "./computeRegionalMedians";
+import type { LocationSubWeights } from "@/constants/scoringTiers";
 import type { Apt, Cats, Profile, ProfileWeights, ScoringContext, Res } from "@/types/scoring";
 
 type RegionMedian = NonNullable<ScoringContext["regionMedians"]>[string];
@@ -163,6 +164,21 @@ export function calcCats(apt: Apt, ctx?: ScoringContext): Cats {
     risk: { ...safe(() => scoreRisk(a)), label: "안전도", key: "risk" },
     future: { ...safe(() => scoreFuture(a)), label: "미래가치", key: "future" },
   };
+}
+
+/**
+ * 프로필별 입지 총점만 다시 계산한다 (세션526 — 프로필 변별력 수술 (나)).
+ *
+ * `catsCache`(서버가 구워 보내는 캐시)는 기준 비중으로 계산돼 있어 프로필과 무관하다.
+ * `locW` 를 가진 프로필(신혼·자녀교육·은퇴)은 화면에서 이 함수로 입지 총점만 갈아끼운다
+ * — 나머지 5개 카테고리와 캐시 구조는 건드리지 않으므로 캐시 호환이 유지된다.
+ *
+ * ⚠️ `rm`(지역 중앙값) 인자를 생략하는 이유: `sanitize` 안에서 `rm` 이 쓰이는 자리는
+ * `supplyRatio`(→ scoreRisk)와 `_regionAvgMaint`(→ scoreProduct·scorePrice) **둘뿐**이라
+ * 입지 점수에는 영향이 0 이다. `engine.test.js` 가 rm 유무로 입지 총점이 같음을 잠근다.
+ */
+export function locationTotalForProfile(apt: Apt, locW: LocationSubWeights): number {
+  return scoreLocation(sanitize(apt), locW).total;
 }
 
 /**
