@@ -233,7 +233,8 @@ describe("배선", () => {
     const dryBlock = SRC.slice(SRC.indexOf("if (dryRun) {"), SRC.indexOf("let changed = 0;"));
     expect(dryBlock).toContain("dry-run — DB 쓰기 생략");
     expect(dryBlock).not.toContain("await recordCollectorRun(");
-    expect(dryBlock).toMatch(/\n\s*return;\n/);
+    // \r?\n — 윈도우 로컬 체크아웃은 CRLF 라 `return;` 뒤가 \r\n 이다 (CI 는 LF). 세션525 실측.
+    expect(dryBlock).toMatch(/\r?\n\s*return;\r?\n/);
   });
 
   it("list.json 요청에 tNm 을 함께 보낸다 (빠지면 406)", () => {
