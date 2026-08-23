@@ -14,6 +14,7 @@ import {
   PRICE_INDEX_HOT_BONUS,
   PRICE_INDEX_WARM_BONUS,
   PRICE_FALLBACK_RELIABILITY_PENALTY,
+  AREA_BUCKET_TOLERANCE_M2,
 } from "@/constants/scoringTiers";
 import type { Apt, Res } from "@/types/scoring";
 
@@ -51,6 +52,40 @@ export function getAreaAdj(area: number | null | undefined): number {
   return 0.94;
 }
 
+/**
+ * `priceByArea`(5㎡ 버킷별 실거래) 에서 이 단지 면적에 가장 가까운 버킷의 평균가를 찾는다.
+ * 옛 fairPrice(`nearbyMedian × getAreaAdj`)는 구 전체 거래 총액 중위값에 ±3~8% 계수만 곱해
+ * 대형 평형을 자동으로 "비싸다"고 채점하던 구조적 편향이 있었다(corr(면적,괴리도) = −0.704,
+ * src/constants/scoringTiers.ts AREA_BUCKET_TOLERANCE_M2 주석 참조) — 이 함수가 그 1순위 대체.
+ *
+ * 최근접 버킷과의 이격이 `AREA_BUCKET_TOLERANCE_M2` 이내면 그 버킷의 평균가를 그대로 쓰고,
+ * 넘으면(예: 버킷이 성기게 채워진 지역) 그 버킷의 ㎡당가로 환산해 반환한다.
+ *
+ * @returns 매칭된 가격(만원, 총액). 배열이 비었거나 area 가 유효하지 않으면 null.
+ */
+export function matchAreaPrice(
+  priceByArea: Array<{ area: number; min: number; avg: number; max: number; count: number }> | null | undefined,
+  area: number | null | undefined
+): number | null {
+  if (!Array.isArray(priceByArea) || priceByArea.length === 0) return null;
+  if (area == null || !(area > 0)) return null;
+  let best: { area: number; avg: number } | null = null;
+  let bestDist = Infinity;
+  for (const b of priceByArea) {
+    if (!(b?.area > 0) || !(b?.avg > 0)) continue;
+    const dist = Math.abs(b.area - area);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = b;
+    }
+  }
+  if (!best) return null;
+  if (bestDist > AREA_BUCKET_TOLERANCE_M2) {
+    return (best.avg / best.area) * area;
+  }
+  return best.avg;
+}
+
 // 세션111: price=0 구조적 사유별 UX 분기 확장.
 // 점수 로직(devSc=30 중립)은 불변, 문구만 정교화.
 // 판정 순서: 임대 → 정비사업 → 후분양 → 오피스텔 → 분양계획 → 택지지구 블록 → 공공분양 → 기본.
@@ -74,11 +109,13 @@ function classifyNoPrice(apt: Apt): string {
 /**
  * 가격 매력도 점수 (가중치 합 1.00, total 0~100 클램핑).
  * 서브스코어: 괴리도 0.30 / 전세가율 0.20 / PIR 0.15 / PSR 0.25 / 신뢰도 0.07 / 택지비 0.03.
- * fairPrice 3단 폴백 (src/scoring/CLAUDE.md "fairPrice 폴백 + 신뢰도 차감"):
- *   1순위: trade_stats.nearby_median
- *   2순위: regions.avg_price_sqm × 면적 → fairPriceFromSidoAvg=true
- *   3순위: presale_pp × 면적/3.3058 → fairPriceFromSidoAvg=true
- * 폴백 사용 시: dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY (기본 15).
+ * fairPrice 폴백 (src/scoring/CLAUDE.md "fairPrice 폴백 + 신뢰도 차감"):
+ *   1순위: trade_stats.price_by_area 평형별 실거래 버킷 매칭 (matchAreaPrice) → areaAdj 미적용
+ *   2순위: trade_stats.nearby_median × areaAdj
+ *   3순위: regions.avg_price_sqm × 면적 → fairPriceFromSidoAvg=true
+ *   4순위: presale_pp × 면적/3.3058 → fairPriceFromSidoAvg=true
+ * 2~4순위 폴백 사용 시: dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY (기본 15).
+ *   1순위(버킷 매칭)는 신뢰도 차감 없음 — 시도 평균보다 정밀한 그 평형대 실거래이기 때문.
  * PIR 구간: ≤10→100, ≤20→80~100 선형, ≤30→60~80 선형, >30→60-(pir-30)×2 (0 하한, 세션108).
  * priceIndex 보정: 130+ → +5, 110+ → +3 (과열 시장 신뢰도 가산).
  */
@@ -97,10 +134,26 @@ export function scorePrice(apt: Apt): Res {
   const ageCoeff = getAgeCoeff(apt.completion);
   const area = (apt.area ?? 84) as number;
   const areaAdj = getAreaAdj(area);
-  let fairPrice = (apt.nearbyMedian ?? 0) * ageCoeff * areaAdj * bAdj;
+  let fairPrice = 0;
   // 세션114: nearbyMedian 부재로 시도 평균 폴백(avgPriceSqm/presalePp) 사용 여부.
   // 섬·군 지역에서 시도 평균이 실시세의 2~3배로 왜곡 → 신뢰도 차감 + detail 경고.
   let fairPriceFromSidoAvg = false;
+  // 면적 편향 수정: 1순위 = 평형별 실거래 버킷 매칭(priceByArea). 이미 그 평형대 실거래이므로
+  // areaAdj(±3~8%)를 다시 곱하지 않는다 — 곱하면 corr(면적,괴리도) −0.147 대신 −0.237로 악화(실측).
+  // `_noArea`(면적 미상, sanitize 가 84 로 누르기 전 플래그)면 매칭 대상에서 제외 — 안 잰 것을
+  // "84㎡ 단지"로 오매칭하지 않기 위함.
+  let fairPriceFromAreaBucket = false;
+  if (!apt._noArea) {
+    const bucketAvg = matchAreaPrice(apt.priceByArea, area);
+    if (bucketAvg != null && bucketAvg > 0) {
+      fairPrice = bucketAvg * ageCoeff * bAdj;
+      fairPriceFromAreaBucket = true;
+    }
+  }
+  // 2순위 이하: 현행 3단 폴백 그대로 (nearbyMedian → avgPriceSqm → presalePp)
+  if (!fairPriceFromAreaBucket) {
+    fairPrice = (apt.nearbyMedian ?? 0) * ageCoeff * areaAdj * bAdj;
+  }
   // fairPrice=0 폴백: avgPriceSqm(천원/㎡) 또는 presalePp(만원/평) → 만원 총가
   if (fairPrice <= 0 && apt.avgPriceSqm != null && area > 0) {
     fairPrice = Math.round((apt.avgPriceSqm * area) / 10) * ageCoeff * areaAdj * bAdj;
@@ -232,7 +285,10 @@ export function scorePrice(apt: Apt): Res {
         );
   const total = devSc * 0.3 + jrSc * 0.2 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
   // 방안 B: 시도 평균 폴백 사용 시 detail 접미 경고(세션114)
+  // 두 플래그는 서로 배타적(버킷 매칭 성공 시 sidoAvg 폴백 경로 자체를 안 탐) — 접미는 둘 다
+  // 넣어도 실제로는 하나만 붙는다.
   const sidoNotice = fairPriceFromSidoAvg ? " — 광역 시도 평균 기준(실시세 왜곡 가능)" : "";
+  const areaBucketNotice = fairPriceFromAreaBucket ? " — 평수대별 실거래 기준" : "";
   const relNotice = fairPriceFromSidoAvg ? ` -폴백차감${PRICE_FALLBACK_RELIABILITY_PENALTY}` : "";
   return {
     total: Math.round(Math.max(0, Math.min(total, 100))),
@@ -243,7 +299,7 @@ export function scorePrice(apt: Apt): Res {
         name: "적정가 괴리도",
         score: Math.round(devSc),
         info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`,
-        detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (±5% 적정, ±10~20% 주의, 20%↑ 과대)${sidoNotice}`,
+        detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (±5% 적정, ±10~20% 주의, 20%↑ 과대)${sidoNotice}${areaBucketNotice}`,
       },
       {
         name: "전세가율",

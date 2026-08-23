@@ -1,5 +1,5 @@
 import { PROFILES } from "@/constants/profiles";
-import { scorePrice, getAgeCoeff, getAreaAdj } from "./scorePrice";
+import { scorePrice, getAgeCoeff, getAreaAdj, matchAreaPrice } from "./scorePrice";
 import { scoreLocation } from "./scoreLocation";
 import { scoreProduct } from "./scoreProduct";
 import { scoreBenefit } from "./scoreBenefit";
@@ -61,6 +61,9 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     jeonseRate: num(apt.jeonseRate, null),
     nearbyMedian: num(apt.nearbyMedian, null),
     price: num(apt.price, 0),
+    // area 를 84 로 누르기 전에 사실을 남긴다(세션508 `_no*` 관례) — scorePrice 의 평형별
+    // 실거래 버킷 매칭이 "안 잰 것"을 "84㎡ 단지"로 오매칭하지 않게 하기 위함.
+    _noArea: apt.area == null || !(Number(apt.area) > 0),
     area: num(apt.area, 84),
     // 교통 필드
     subwayDist: num(apt.subwayDist, 9999),
@@ -174,7 +177,7 @@ export function calcCats(apt: Apt, ctx?: ScoringContext): Cats {
  * — 나머지 5개 카테고리와 캐시 구조는 건드리지 않으므로 캐시 호환이 유지된다.
  *
  * ⚠️ `rm`(지역 중앙값) 인자를 생략하는 이유: `sanitize` 안에서 `rm` 이 쓰이는 자리는
- * `supplyRatio`(→ scoreRisk)와 `_regionAvgMaint`(→ scoreProduct·scorePrice) **둘뿐**이라
+ * `supplyRatio`(→ scoreRisk)와 `_regionAvgMaint`(→ scoreBenefit **하나뿐**, 전수 grep 확인)이라
  * 입지 점수에는 영향이 0 이다. `engine.test.js` 가 rm 유무로 입지 총점이 같음을 잠근다.
  */
 export function locationTotalForProfile(apt: Apt, locW: LocationSubWeights): number {
@@ -213,6 +216,7 @@ export function calcAll(
 export {
   getAgeCoeff,
   getAreaAdj,
+  matchAreaPrice,
   scorePrice,
   scoreLocation,
   scoreProduct,

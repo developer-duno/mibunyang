@@ -77,17 +77,36 @@ src/scoring/
 
 상수: `src/constants/scoringTiers.js` → `PIR_SCORE_TIERS = { EXCELLENT_MAX: 10, GOOD_MAX: 20, MODERATE_MAX: 30, BURDEN_PENALTY: 2 }`.
 
-## fairPrice 폴백 + 신뢰도 차감 (세션114)
+## fairPrice 폴백 + 신뢰도 차감 (세션114, 1순위 면적 버킷 매칭 추가)
 
-`nearbyMedian` 부재 시 `fairPrice` 산정은 3단 폴백:
+`fairPrice` 산정은 4단 폴백:
 
-1. `trade_stats.nearby_median`  (1순위)
-2. `regions.avg_price_sqm` × 면적 → `fairPriceFromSidoAvg=true` 플래그 설정
-3. `presale_pp` × 면적/3.3058 → 동일 플래그 설정
+1. **`trade_stats.price_by_area` 평형별 실거래 버킷 매칭**(`matchAreaPrice`, `scorePrice.ts`) — 1순위
+2. `trade_stats.nearby_median` × `getAreaAdj`
+3. `regions.avg_price_sqm` × 면적 → `fairPriceFromSidoAvg=true` 플래그 설정
+4. `presale_pp` × 면적/3.3058 → 동일 플래그 설정
 
-**폴백 사용 시**: `dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY` (기본 15, `src/constants/scoringTiers.js`). 괴리도 `detail`에 `" — 광역 시도 평균 기준(실시세 왜곡 가능)"`, 신뢰도 `info/detail`에 `" -폴백차감15"` 접미. 점수 계산 로직·가중치는 불변, UX 정직성 보정만.
+**옛 2순위(nearbyMedian)의 결함**: `nearby_median` 은 같은 구 안 **모든 거래의 총액 중위값**(면적
+무관)이다. 여기에 `getAreaAdj`(±3~8%)만 곱하면, 단지 면적이 그 동네 전형 면적의 3배여도 fairPrice
+는 1.08배만 커져 **대형 평형이 구조적으로 "비싸다"로 채점**됐다(실측: 정적 JSON 1,713곳
+corr(면적, 괴리도) = −0.704, 150㎡+ 단지의 괴리도 0점 비율 100.0%, 라펜트힐 241.958㎡ 괴리도
+−924.1%). `price_by_area`(5㎡ 버킷별 실거래 평균)는 이미 그 평형대의 실거래이므로, 매칭에
+성공하면 `areaAdj` 를 **다시 곱하지 않는다**(곱하면 corr −0.237, 안 곱하면 −0.147 — 실측으로
+확인한 이중 계상 회피). 최근접 버킷과의 이격이 `AREA_BUCKET_TOLERANCE_M2`(기본 10㎡)를 넘으면
+그 버킷의 ㎡당가로 환산한다.
 
-영향 단지: 섬·군 10개(인천 동구 2·옹진군 2·경기 가평군 3·양평군 2·연천군 1). 세션115 Playwright 실측으로 전문가 대시보드 `ExpertScoreBreakdown`에서 5/5 DOM 노출 확인.
+⚠️ **면적 미상(`_noArea`, `apt.area` 가 null/미기재)은 버킷 매칭 대상에서 제외**한다. `sanitize`
+가 area 를 84 로 누른 뒤에는 "안 잰 것"과 "84㎡ 단지"를 구분할 수 없기 때문 — 누르기 전에
+`_noArea` 플래그를 남겨(세션508 `_no*` 관례) 84㎡ 버킷으로 오매칭되지 않게 막는다.
+
+**2~4순위 폴백 사용 시**: `dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY` (기본 15,
+`src/constants/scoringTiers.js`). 괴리도 `detail`에 `" — 광역 시도 평균 기준(실시세 왜곡 가능)"`,
+신뢰도 `info/detail`에 `" -폴백차감15"` 접미. **1순위(버킷 매칭)는 신뢰도 차감 없음** — 시도
+평균보다 정밀한 실거래이기 때문. 대신 괴리도 `detail`에 `" — 평수대별 실거래 기준"` 접미.
+점수 계산 로직·가중치는 불변, UX 정직성 보정만.
+
+영향 단지(옛 2순위 사고): 섬·군 10개(인천 동구 2·옹진군 2·경기 가평군 3·양평군 2·연천군 1).
+세션115 Playwright 실측으로 전문가 대시보드 `ExpertScoreBreakdown`에서 5/5 DOM 노출 확인.
 
 ## 새 카테고리 추가 시
 
