@@ -60,6 +60,51 @@ const DEFAULT_MAP = makeRegionGuMap({
   부산: ["중구", "서구"],
 });
 
+// 세션522 — gu 표기 통일 (찾는 건 원문으로, 쓰는 건 canonical 로).
+//
+// 이 수집기는 gu 를 `regions.gu` 집합 대조로 정한다. 그 집합에는 압축형("수원장안구") 행이
+// 아직 살아 있어서, 잡힌 표기를 그대로 쓰면 market_stats_history 충돌키가 canonical 과 갈리고
+// `api/supabase/market-stats-history.ts`(화면에서 온 canonical gu 로 조회)가 그 행에 못 닿는다.
+//
+// ⚠️ 대조 집합 자체를 canonical 로 좁히는 처방은 **틀렸다** — 아래 마지막 케이스가 그 이유다.
+describe("parseKabRows — gu 표기 통일 (세션522)", () => {
+  it("압축형으로 잡혀도 canonical 로 기록한다", () => {
+    // regions 에 압축형 행만 남아 있는 상태를 재현한다.
+    const map = makeRegionGuMap({ 경기: ["수원장안구"] });
+    const r = parseKabRows([makeRow("아파트", "a80203xx", "수원장안", "202601", 101.5)], map);
+    expect(r.matched).toEqual([
+      { region: "경기", gu: "수원시 장안구", base_month: "202601", jeonse_price_index: 101.5 },
+    ]);
+  });
+
+  it("canonical 행으로 잡히면 그대로 (기존 동작 보존)", () => {
+    const map = makeRegionGuMap({ 경기: ["수원시 장안구"] });
+    const r = parseKabRows([makeRow("아파트", "a80203xx", "수원시 장안", "202601", 101.5)], map);
+    expect(r.matched[0].gu).toBe("수원시 장안구");
+  });
+
+  it("광역시 자치구는 손대지 않는다", () => {
+    const r = parseKabRows([makeRow("아파트", "a7010101", "종로", "202601", 102.5)], DEFAULT_MAP);
+    expect(r.matched[0].gu).toBe("종로구");
+  });
+
+  it("시 단위 행도 그대로 (통합시의 시 레벨은 canonical 이다)", () => {
+    const r = parseKabRows([makeRow("아파트", "a80203", "수원", "202601", 100.1)], DEFAULT_MAP);
+    expect(r.matched[0].gu).toBe("수원시");
+  });
+
+  it("대조는 원문 표기로 해야 한다 — 집합을 canonical 로 좁히면 아예 못 잡는다", () => {
+    // 이 케이스가 "집합을 canonical 로 좁히자" 는 처방을 막는다.
+    // KAB 의 C2_NM 은 접미사 없는 약칭("수원장안")이라 canonical("수원시 장안구") 과
+    // 접미사 4종("구/시/군/") 어느 조합으로도 안 맞는다. 집합에서 압축형을 빼는 순간
+    // 이 시군구는 조용히 누락된다 — 잡을 땐 원문이 필요하고, 접는 건 잡은 다음이다.
+    const canonicalOnly = makeRegionGuMap({ 경기: ["수원시 장안구"] });
+    const r = parseKabRows([makeRow("아파트", "a80203xx", "수원장안", "202601", 101.5)], canonicalOnly);
+    expect(r.matched).toHaveLength(0);
+    expect(r.unmatched).toContain("수원장안");
+  });
+});
+
 describe("parseKabRows (DT_30404_B013 전세가격지수)", () => {
   it("빈 배열 → matched 빈 배열", () => {
     expect(parseKabRows([], DEFAULT_MAP)).toEqual({ matched: [], unmatched: [], skipped: 0 });

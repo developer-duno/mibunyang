@@ -164,9 +164,14 @@ describe("buildCardChips — 강점/약점 판정", () => {
     expect(find(build({ primaryDirection: "동향" }), "northFacing")).toBeUndefined();
   });
 
-  it("학군은 C 만 약점 — A·B·D 는 칩이 없다", () => {
-    expect(find(build({ schoolGrade: "C" }), "schoolC")).toBeDefined();
-    for (const g of ["A", "B", "D"]) expect(find(build({ schoolGrade: g }), "schoolC")).toBeUndefined();
+  // 세션524 — 게이트가 C → D 로 옮겨졌다. 상대 척도에서 C 는 39.8%(흔한 중간)이고
+  // 바닥은 D(9.6%)다. C 에 칩이 붙으면 열 곳 중 네 곳이 경고를 달아 경고가 소음이 된다.
+  it("학군은 D 만 약점 — A·B·C 는 칩이 없다", () => {
+    expect(find(build({ schoolGrade: "D" }), "schoolLow")).toBeDefined();
+    expect(find(build({ schoolGrade: "D" }), "schoolLow")?.text).toBe("학군 D");
+    for (const g of ["A", "B", "C"]) expect(find(build({ schoolGrade: g }), "schoolLow")).toBeUndefined();
+    // 옛 게이트로 되돌리면 C 가 칩을 만든다 — 그 회귀를 여기서 잡는다.
+    expect(find(build({ schoolGrade: "C" }), "schoolC")).toBeUndefined();
   });
 
   it("시공사 신용은 안전 등급 목록에 없을 때만 약점", () => {
@@ -306,7 +311,7 @@ describe("splitCardChips — 상한을 걸어도 정보가 사라지지 않는�
     // 약점 4개
     corridorType: "복도식",
     heatFuel: "LPG",
-    schoolGrade: "C",
+    schoolGrade: "D",
     primaryDirection: "북향",
     // 회색 1개 + 상태 1개
     naverSchoolWalkMin: 12,
@@ -368,14 +373,14 @@ describe("splitCardChips — 흔한 경고가 진짜 위험을 밀어내지 않�
     expect(s.hidden.map((c) => c.id)).toEqual(expect.arrayContaining(["corridor", "heatLpg"]));
   });
 
-  it("감점 2위인 학군C 가, 흔하기만 한 혐오시설·추가모집보다 먼저 보인다", () => {
+  it("감점 2위인 학군D 가, 흔하기만 한 혐오시설·추가모집보다 먼저 보인다", () => {
     // 혐오시설은 56.7% 가 다는데 감점은 −0.12, 추가모집은 47.0% 인데 감점 0 이다.
-    // 학군C 는 3.6% 뿐이지만 감점 −3.43 으로 2위다. 흔한 것이 치명적인 것을 밀어내면 안 된다.
+    // 학군D 는 9.6% 뿐이지만 감점 −3.43 으로 2위다. 흔한 것이 치명적인 것을 밀어내면 안 된다.
     const s = splitCardChips(
       buildCardChips(
         mkApt({
           id: "ah-3",
-          schoolGrade: "C",
+          schoolGrade: "D",
           noxious: ["소각장"], // 감점 있는 시설이라야 빨간 약점으로 잡힌다(세션510 ①-2)
           noxiousDist: 300,
           unsoldEventCount: 4,
@@ -385,7 +390,7 @@ describe("splitCardChips — 흔한 경고가 진짜 위험을 밀어내지 않�
         OPTS
       )
     );
-    expect(s.bad.map((c) => c.id)[0]).toBe("schoolC");
+    expect(s.bad.map((c) => c.id)[0]).toBe("schoolLow");
     expect(s.hidden.map((c) => c.id)).toEqual(expect.arrayContaining(["noxiousNear", "unsoldEvent"]));
   });
 
@@ -436,7 +441,7 @@ describe("CHIP_ORDER — 순서표 자체의 건전성", () => {
       { discountPct: 5, jeonseRate: 75, parkingRatio: 1.8, exclusiveRatio: 88, naverSchoolWalkMin: 3 },
       { jeonseRate: 40, parkingRatio: 0.7, exclusiveRatio: 60, naverSchoolWalkMin: 20 },
       { jeonseRate: 92 },
-      { corridorType: "복도식", heatFuel: "LPG", schoolGrade: "C", primaryDirection: "북향" },
+      { corridorType: "복도식", heatFuel: "LPG", schoolGrade: "D", primaryDirection: "북향" },
       { unsoldRate: 45, builderCreditGrade: "BBB", crimeSafetyGrade: 5 },
       { crimeSafetyGrade: 4 },
       { crimeSafetyGrade: 1, noxious: ["장례식장"], noxiousDist: 1500, dsr40pass: true },

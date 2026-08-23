@@ -109,6 +109,9 @@ export const REGION_KEY_COLUMNS = [
  * (benefits 수기입력 / maintenance·builders·future·energy 부분수집 / naver 로컬전용 /
  * regions VIEW측 미수집컬럼)는 점검 안 함 — 정상인데 매일 오탐 방지.
  * 값 출처: data-audit --json 실측(2026-05-17) - 안전 마진 15~20%p.
+ *
+ * ⚠️ competition 만 모수가 다르다 — 전체 단지가 아니라 **청약홈(ah-) 시드 단지**로 좁혀 센다.
+ *    아래 competition 항목 주석 참조.
  */
 export const AUDIT_CATEGORY_BASELINE = {
   core: 70,
@@ -120,10 +123,31 @@ export const AUDIT_CATEGORY_BASELINE = {
   schools: 90,
   trade_stats: 75,
   environment: 65,
-  competition: 45,
+  // ⚠️ 이 값만 "채울 수 있는 모수"(청약홈 ah- 시드 단지) 기준이다 — scopeCompetitionToAh 참조 (세션 522).
+  //   전체 모수로는 영구 거짓 경보였다: apartments_flat 2,211곳 중 네이버 분양 시드(ap-) 1,229곳은
+  //   청약홈 공고번호와 이을 키가 구조적으로 없어 채움 0건이고(실측 0/1229), ah- 982곳만 채워진다.
+  //   즉 도달 가능 최대 채움률 = 982/2211 = 44.4% < 옛 문턱 45% → 매일 경보.
+  //   문턱을 낮추는 처방은 오래 못 간다 — 구성비가 2026-05-17 ah:ap 74:26 → 2026-08-22 55:45 로
+  //   계속 드리프트한다(ap- 증가). 모수를 바꿔야 드리프트와 절연된다.
+  //   65 = ah- 모수 실측 79.5%(2,341/2,946, 2026-08-22) − 마진 약 15%p (이 표의 기존 산정 관례와 동일).
+  //   수집기 자체 고장은 ⑤(EXTERNAL_API_COLLECTORS 의 applyhome-*)가 독립으로 잡는다 —
+  //   이 점검의 몫은 "청약홈 단지의 데이터 품질"이다.
+  competition: 65,
   air: 90,
   safety: 60,
 };
+
+/** ④ competition 카테고리 키 (data-audit AUDIT_FIELDS 기준). */
+export const COMPETITION_CATEGORY = "competition";
+
+/** ④ competition 카테고리를 이루는 필드 3종 — data-audit AUDIT_FIELDS.competition.fields 와 같아야 한다. */
+export const COMPETITION_FIELDS = ["competitionRate", "competitionSupply", "competitionApplicants"];
+
+/** ④ competition 모수인 청약홈 시드 단지의 id 접두사 (apartments_flat.id). */
+export const AH_ID_PREFIX = "ah-";
+
+/** ④ 모수를 좁혔음을 경보 문구에 드러내는 표식 — collector 라벨 뒤에 붙는다. */
+export const COMPETITION_SCOPE_SUFFIX = " · 청약홈 ah- 단지 모수";
 
 /**
  * ④ NULL 점검에서 의도적으로 제외하는 카테고리 — 수기입력·부분수집·로컬전용.
@@ -234,20 +258,21 @@ const KO_FIELD = {
 // police/trades)은 대응 GitHub Actions 워크플로가 monitor-collectors.yml 의
 // workflow_run.workflows 에 이미 등재돼 ①(실패/취소)·③(미발화) 축이 커버하고
 // 있음을 실측 확인(이 배열=EXTERNAL_API_COLLECTORS 는 로컬 러너 등 GH 워크플로
-// 자체가 없는 수집기 전용 — collect-air-quality.mjs 등은 워크플로가 있어 원래
-// 이 배열 대상이 아니었다). 진짜 사각지대는 collect-crime-safety.mjs 단
+// 자체가 없는 수집기 전용). 진짜 사각지대는 collect-crime-safety.mjs 단
 // 하나였다 — 아래 EXEMPT_FROM_STALE_CHECK 참조.
+// ⚠️ 위 7종 중 **air-quality·trades 는 그 뒤 GH 워크플로가 삭제**됐다(trades=세션 515,
+//   air-quality=세션 519 — 해외 IP 차단으로 로컬 러너 이전). 즉 "워크플로가 있어 이 배열
+//   대상이 아니다" 는 그 둘에 더는 성립하지 않고, 실제로 둘 다 아래에 등재돼 있다.
+//   **워크플로를 지울 때 이 배열 등재를 함께 챙기지 않으면 그 수집기는 조용히 죽는다.**
 //
-// ⚠️ collect-crime-safety.mjs 는 이 배열에 넣지 않는다(의도적 제외):
-// data/crime-safety-index.csv 를 "사람이 연 1회 수동 다운로드 후 수동 실행"하는
-// 설계다(파일 헤더 8행). GitHub Actions 워크플로도, 로컬 스케줄러(kosis-local-runner
-// 등) 등록도 전혀 없다 — 자동 실행 경로 자체가 없으므로 stale_days 기반 "N일
-// 넘게 실행 안 됨" 판정이 항상 참이 되어(정상 상태가 곧 "오래됨") 상시 오탐만
-// 유발한다. recordCollectorRun("crime-safety", ...) 호출은 있어 실행되면 기록은
-// 남으므로(collect-crime-safety.mjs:182 근처) 검사2(실행되는데 기록 안 남기는
-// 수집기)는 이미 통과 — 다만 "실행 자체"를 감시할 자동 트리거가 없어 검사2도
-// 실질적으로 무의미하다. 향후 이 CSV 가 API로 전환되면 그때 정식 등재할 것.
-export const EXEMPT_FROM_STALE_CHECK = new Set(["crime-safety"]);
+// ⚠️ 세션521: 여기 있던 `crime-safety` 를 **뺐다**. 옛 사유는 "자동 실행 경로가 아예 없어
+// stale 판정이 항상 참 → 상시 오탐" 이었고 그때는 맞았다. 그런데 그 상태가 만든 결과가
+// 실측으로 드러났다 — 수집기가 3월경 이후 안 돌아 regions 2026-04·05·06월 행이 통째로
+// NULL, crime_grade NULL 비율이 계속 올라 **NULL 급증 경보가 영구화**됐다(58%→64%).
+// 처방은 감시를 끄는 쪽이 아니라 **자동 실행 경로를 만드는 쪽**이었다: 로컬 러너 매월 8일
+// 등재(kosis-local-runner.mjs). 이제 stale 판정이 의미를 가지므로 아래 배열에 정식 등재한다.
+// 비워 두되 상수는 남긴다 — 같은 상황이 또 생기면 사유를 적고 넣는 자리다.
+export const EXEMPT_FROM_STALE_CHECK = new Set([]);
 
 export const EXTERNAL_API_COLLECTORS = [
   // ⚠️ 세션 491: 두 collector 의 cron 이 월간 → **분기**(1,4,7,10월)로 바뀌었다.
@@ -266,6 +291,21 @@ export const EXTERNAL_API_COLLECTORS = [
   //    유일한 "안 돌면 알림" 이다. maintenance·building-hub 는 이미 아래/위에 있어 3건만 추가.
   //    stale_days = 발화주기 + 여유 1주기 (일일=14 / 주간=14 / 월간=38 / 분기=100).
   { collector: "trades",          stale_days: 38, owner: "MOLIT 실거래 (로컬 매월 6일)" },
+  // ── 세션521: 외부 API 를 쓰지 않는 유일한 등재분. `data/crime-safety-index.csv` 를 읽어
+  //    apartments·regions 를 채운다 — 이 배열의 취지가 "GH run 이 없어 ①③ 이 못 보는 수집기의
+  //    신선도" 이므로 출처가 API 든 파일이든 같다. 로컬 러너 매월 8일 → 월간 38.
+  { collector: "crime-safety",    stale_days: 38, owner: "행안부 지역안전지수 CSV (로컬 매월 8일)" },
+  // ── data.go.kr = 세션 519. 1613000 만의 문제가 아니었다 — www.data.go.kr(공시가격 CSV)·
+  //    apis.data.go.kr/B552584(에어코리아)도 해외 IP 를 막는다. 실측: GH 는 `fetch failed`
+  //    (HTTP 코드 없음)인데 같은 요청이 로컬 한국 IP 에선 166ms / 92ms 200 OK.
+  //    housing-price 7/16·8/16 **연속 실패**, air-quality 8회 중 2회만 성공(25% 복불복).
+  //    둘 다 GH yml 삭제 + 로컬 러너 이전. housing-price 는 아래에 이미 등재돼 있어
+  //    거기 문구만 갱신했다(중복 추가하면 한쪽을 지워도 가드가 통과한다 — 뮤테이션이 잡음).
+  { collector: "air-quality",     stale_days: 14, owner: "에어코리아 대기질 (로컬 매주 화요일 + 1주 여유)" },
+  // ── 세션522: 택지정보시스템 지구단계정보(openapi.jigu.go.kr, 무인증) → dev_plans.progression_step.
+  //    GH 워크플로가 없어(로컬 러너 매월 21일) ①③ 이 못 본다 — collector_runs 신선도가 유일한
+  //    "안 돌면 알림". 월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100).
+  { collector: "lhzone-status",   stale_days: 38, owner: "택지정보시스템 지구단계정보 (로컬 매월 21일)" },
   { collector: "molit-building",  stale_days: 38, owner: "MOLIT 건축물대장 상세 (로컬 매월 10일·토요일이면 11일)" },
   // molit-units 만 14 인 이유 = 월간 cron 외에 네이버 로컬 파이프라인(월/목 08:00, run-naver-local)
   // 4/6 단계가 같은 수집기를 돌린다. 정상 최대 간격이 4일이라 월간 38 을 쓰면 정지를 늦게 잡는다.
@@ -290,11 +330,12 @@ export const EXTERNAL_API_COLLECTORS = [
   //   5일 연속이라도 한 묶음 발화(19일 success→다음달 15일 발화 ~26일 간격)라 stale_days:38(=31일+1주)은 적정.
   //   세션 515: MOLIT 해외 IP 차단으로 GH yml 삭제 → 로컬 러너가 같은 15~19일 배치를 승계(주기 동일 → 38 유지).
   { collector: "maintenance",      stale_days: 38, owner: "국토부 공동주택 관리비 (로컬 매일 15~19일 배치 + 1주 여유)" },
-  // housing-price = 공동주택공시가격 (collect-housing-price.yml, 매월 16일 cron — 세션 504 등재).
-  //   지금까지 ⑤ 어디에도 없어서 7/16 실패 후 방치돼도 아무 알림이 없었다(그 실패의 원인은
-  //   계정 지출한도였고 8/1 청구 리셋으로 해소됐지만, 그걸 알아챈 건 사람이 뒤늦게 뒤진 결과다).
+  // housing-price = 공동주택공시가격 (세션 504 등재). 이 항목이 실제로 일을 했다 —
+  //   62일 미발화를 매일 알려 세션 519 가 원인(해외 IP 차단)에 도달했다.
+  //   ⚠️ 세션 519: `collect-housing-price.yml` **삭제**, 로컬 러너 매월 **17일** 로 이전.
+  //   옛 cron `0 22 16 * *` 은 UTC 라 KST 로는 17일이었다(러너 표는 KST 기준).
   //   월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100 기준표).
-  { collector: "housing-price",    stale_days: 38, owner: "공동주택공시가격 CSV (월 16일 cron + 1주 여유)" },
+  { collector: "housing-price",    stale_days: 38, owner: "공동주택 공시가격 CSV (로컬 매월 17일 + 1주 여유)" },
   // naver-presale = 네이버 분양정보 pre.land (scripts/collectors/naver-presale.mjs, run-naver-local.sh 3/6 단계).
   //   네이버 IP 차단으로 한국 IP 로컬 PC 에서만 실행 = Windows 스케줄러 `MibunyangNaverCollect` 월/목 08:00.
   //   GH run 이 없어 ③ 워크플로 점검 대상 밖 → collector_runs 신선도가 유일한 "안 돌면 알림".
@@ -627,6 +668,68 @@ export function checkCategoryNullSurge(categories, baseline, fields = {}) {
 }
 
 /**
+ * ④ competition 카테고리의 모수를 "채울 수 있는 단지"(청약홈 ah- 시드)로 좁힌 사본을 만든다.
+ *
+ * 왜 필요한가 (세션 522): apartments_flat 의 ap-(네이버 분양 시드) 단지는 청약홈 공고번호와 이을
+ * 키가 구조적으로 없어 competition 3필드가 영구 0% 다. 전체 모수로 재면 도달 가능 최대 채움률이
+ * 문턱보다 낮아 매일 거짓 경보가 나고, 문턱을 낮추는 처방은 ah:ap 구성비 드리프트에 다시 뚫린다.
+ *
+ * 원본은 변형하지 않고 새 객체를 돌려준다(⑥ VIEW 회귀·브리핑이 같은 audit 을 원본 그대로 쓴다).
+ * ahCounts 가 null(조회 실패)이거나 total 이 0 이면 원본을 그대로 반환한다 — 감시를 조용히 끄는
+ * 것보다 원본 모수로라도 계속 보는 쪽이 안전하다.
+ *
+ * @param {Record<string, { collector: string, filled: number, total: number, rate: number }>} categories
+ *   computeAudit().categories
+ * @param {Record<string, { category: string, field: string, filled: number, missing: number }>} fields
+ *   computeAudit().fields — key = `${category}.${field}`
+ * @param {{ total: number, filled: Record<string, number> } | null | undefined} ahCounts
+ *   ah- 단지 총수 + 필드별 채움 수 (fetchAhCompetitionCounts)
+ * @returns {{
+ *   categories: Record<string, { collector: string, filled: number, total: number, rate: number }>,
+ *   fields: Record<string, { category: string, field: string, filled: number, missing: number }>,
+ * }}
+ */
+export function scopeCompetitionToAh(categories, fields, ahCounts) {
+  const stat = categories?.[COMPETITION_CATEGORY];
+  if (!stat) return { categories, fields };
+  const ahTotal = ahCounts?.total;
+  if (!Number.isFinite(ahTotal) || Number(ahTotal) <= 0) return { categories, fields };
+  const total = Number(ahTotal);
+
+  const nextFields = { ...fields };
+  let catFilled = 0;
+  let scopedFieldCount = 0;
+  for (const f of COMPETITION_FIELDS) {
+    const key = `${COMPETITION_CATEGORY}.${f}`;
+    const base = fields?.[key];
+    if (!base) continue; // data-audit 에 없는 필드는 손대지 않는다 (drift 안전)
+    const raw = ahCounts?.filled?.[f];
+    // 채움 수가 모수를 넘으면 모수로 자른다 — missing 이 음수가 되는 것보다 낫다.
+    const filled = Number.isFinite(raw) ? Math.min(Math.max(Number(raw), 0), total) : 0;
+    nextFields[key] = { ...base, filled, missing: total - filled };
+    catFilled += filled;
+    scopedFieldCount++;
+  }
+  if (scopedFieldCount === 0) return { categories, fields };
+
+  const catTotal = total * scopedFieldCount;
+  return {
+    categories: {
+      ...categories,
+      [COMPETITION_CATEGORY]: {
+        ...stat,
+        // 경보 문구에 모수가 드러나게 — checkCategoryNullSurge 는 collector 를 그대로 찍는다.
+        collector: `${stat.collector}${COMPETITION_SCOPE_SUFFIX}`,
+        filled: catFilled,
+        total: catTotal,
+        rate: Math.round((catFilled / catTotal) * 1000) / 10,
+      },
+    },
+    fields: nextFields,
+  };
+}
+
+/**
  * ⑤ 외부 API 의존 collector 의 "정상 실행 + 데이터 갱신 0건 연속 N회" 탐지.
  * collector_runs 컬럼 진실의 원천 = `collector` (NOT phase). status=success 인데
  * ok_count=0 행이 OUTAGE_MIN_CONSECUTIVE 회 누적되면 외부 API 장기 중단 의심.
@@ -928,6 +1031,44 @@ async function fetchRegionColumnStats() {
     stats.push({ column, total, filled: filled ?? 0, nullSurge });
   }
   return stats;
+}
+
+/**
+ * ④ competition 모수(청약홈 ah- 시드 단지)의 총수 + 필드별 채움 수를 센다.
+ * apartments_flat 에서 head:true count 4회 (total 1 + 필드 3). 세션 522.
+ * 어느 한 쿼리라도 count 를 못 받으면 null — 호출부(scopeCompetitionToAh)가 원본 모수로 되돌린다.
+ *
+ * @param {any} [sbArg] Supabase 클라이언트. 생략하면 getSupabase() — 테스트에서 주입한다.
+ *   기본값 문법 대신 try 안에서 폴백하는 이유: getSupabase() 자체가 던져도 null 로 받아야 한다
+ *   (기본 매개변수는 try 밖에서 평가돼 catch 를 못 탄다).
+ * @returns {Promise<{ total: number, filled: Record<string, number> } | null>}
+ */
+export async function fetchAhCompetitionCounts(sbArg) {
+  try {
+    const sb = sbArg ?? getSupabase();
+    /** ah- 단지만 세는 count 쿼리. @param {string | null} field null 이면 total */
+    const countAh = async (field) => {
+      /** @type {any} */
+      let q = sb.from("apartments_flat").select("*", { count: "exact", head: true }).like("id", `${AH_ID_PREFIX}%`);
+      if (field) q = q.not(field, "is", null);
+      const { count } = await q;
+      return count;
+    };
+    const total = await countAh(null);
+    if (total == null) return null;
+    /** @type {Record<string, number>} */
+    const filled = {};
+    for (const f of COMPETITION_FIELDS) {
+      const count = await countAh(f);
+      if (count == null) return null;
+      filled[f] = count;
+    }
+    return { total, filled };
+  } catch (err) {
+    // 조회 실패가 감시 자체를 멈추면 안 됨 — 원본 모수로 계속 본다.
+    console.log(`[monitor] ah- 모수 조회 실패(원본 모수로 ④ 진행): ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
 }
 
 /**
@@ -1251,8 +1392,12 @@ async function main() {
     const regionStats = await fetchRegionColumnStats();
     issues = issues.concat(checkNullSurge(regionStats));
     const audit = computeAudit(await fetchAllFromView(getSupabase(), null));
+    // competition 만 모수를 "채울 수 있는 단지"(청약홈 ah- 시드)로 좁혀 판정한다 (세션 522).
+    // audit 원본은 그대로 둔다 — ⑥ VIEW 회귀·아침 브리핑이 같은 객체를 쓴다.
+    const ahCounts = await fetchAhCompetitionCounts();
+    const scoped = scopeCompetitionToAh(audit.categories, audit.fields, ahCounts);
     issues = issues.concat(
-      checkCategoryNullSurge(audit.categories, AUDIT_CATEGORY_BASELINE, audit.fields),
+      checkCategoryNullSurge(scoped.categories, AUDIT_CATEGORY_BASELINE, scoped.fields),
     );
 
     // ⑤ 외부 API 장기 중단 — silent fail (success+ok=0) 연속 누적 탐지

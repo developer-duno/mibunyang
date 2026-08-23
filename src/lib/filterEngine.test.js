@@ -94,6 +94,29 @@ describe("applyBaseFilters", () => {
     expect(result[0].apt.id).toBe("t2");
   });
 
+  // 세대수 상한 — unitsMin 만 가드가 있어 unitsMax 는 비어 있던 자리 (세션 524)
+  it("unitsMax 필터 적용", () => {
+    const items = [makeItem({ units: 200 }), makeItem({ id: "t2", units: 1000 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, unitsMax: "500" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t1");
+  });
+
+  it("unitsMin + unitsMax 구간 적용", () => {
+    const items = [makeItem({ units: 100 }), makeItem({ id: "t2", units: 600 }), makeItem({ id: "t3", units: 2000 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, unitsMin: "300", unitsMax: "1000" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
+  // units 미수집(null)은 상한 필터에서 빠진다 — "작은 단지"로 둔갑시키지 않는다
+  it("units null 은 unitsMax 필터에서 제외", () => {
+    const items = [makeItem({ units: null }), makeItem({ id: "t2", units: 300 })];
+    const result = applyBaseFilters(items, { ...DEFAULT_FILTER, unitsMax: "500" });
+    expect(result).toHaveLength(1);
+    expect(result[0].apt.id).toBe("t2");
+  });
+
   // 최소 점수 필터
   it("minScore 필터 적용", () => {
     const items = [makeItem({}, { total: 60 }), makeItem({ id: "t2" }, { total: 80 })];

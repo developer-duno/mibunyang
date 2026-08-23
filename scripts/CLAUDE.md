@@ -118,6 +118,7 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 | 2 | housing-supply-ratio | - |
 | 6 | market-stats → **molit-units** → **trades** | trades 가 가장 오래 걸려 마지막 |
 | 7 | migration | - |
+| 8 | **collect-crime-safety** | 세션521 신규 — 외부 API 0(로컬 CSV 파싱). 행 생성자(population 5일·market-stats 6일) **뒤**여야 새 `recorded_at` 행을 덮는다 |
 | 9 | unsold | - |
 | 10 | fertility-rate, **molit-building-info** | building-info 는 **토요일이면 건너뜀**(자매 레포 public_data 와 쿼터 충돌) |
 | 11 | housing-permits, **molit-building-info** | building-info 는 **전날이 토요일일 때만**(10일 보충) |
@@ -125,10 +126,43 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 | 15~19 | **maintenance** | 매일 `--limit=600` 배치 (옛 cron `0 6 15-19` 이식 — 인자를 빼면 전 대상이 한 회차에 몰려 일일 쿼터 초과) |
 | 15 | **building-hub** | 1·4·7·10월만 |
 | 17 | sale-price-index | 1·4·7·10월만 |
+| 17 | **housing-price** | 세션519 신규 — 옛 cron `0 22 16 * *`(UTC)는 **KST 17일** |
 | 18 | jeonse-price-index | - |
 | 20 | **naver-devplan** `--kinds=road,rail,station,jigu` | 네이버 4종만 (V-WORLD 축 제외 — 전량은 ~7.5h·중간 체크포인트 없음) |
+| **매주 화** | **air-quality** | 세션519 신규 — 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**. 표의 첫 `dow` 항목 |
+
+⚠️ **GH cron 을 이 표로 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다** (세션519). 러너는
+KST 05:30 에 돌고 이 표도 KST 기준이라, cron 숫자를 그대로 베끼면 하루/한 요일이 밀린다.
+`day` 와 `dow` 는 **배타** — `dow` 가 있으면 그 요일만 보고 `day` 는 무시한다.
+
+**놓친 날 보충 (세션521)** — 스케줄러가 `StartWhenAvailable=true` 라 PC 가 꺼져 있던 날의 발화를
+나중에 실행하는데, 러너는 **실행된 날짜**로만 판단해서 놓친 날의 수집기를 영영 건너뛰었다.
+실측 사고: 8/13 05:30 발화가 통째로 빠졌고 8/14 03:28 에 뒤늦게 돈 실행은 "8/14" 로 판단해
+14일분만 돌렸다 → `avg-income` 이 **39일** 밀린 채 monitor ⑤ 가 잡을 때까지 잠복.
+이제 `.kosis-local-runner-state.json`(gitignore)에 마지막 처리일을 남기고 다음 실행에서 메운다.
+
+| 상황 | 처리 |
+|---|---|
+| 첫 실행(상태 파일 없음)·형식 깨짐·미래 날짜 | 오늘만 |
+| 어제까지 처리 | 오늘만 (평상시 동작 불변) |
+| 며칠 밀림 | **가장 오래된 하루 + 오늘** — 매일 하루씩 따라잡는다 |
+| 10일 초과로 밀림 | 위와 같되 `logError` 로 알림 (원인부터 볼 자리) |
+
+⚠️ **한 번에 하루치만** 메우는 이유는 쿼터다. 15~19일 `maintenance` 는 회차당 약 3,600 회를 쓰는데
+5일치를 몰아 돌리면 data.go.kr 일일 10,000 한도를 그 자리에서 넘긴다.
+`--date=YYYY-MM-DD`(수동 보충)와 `--no-catchup` 은 소급을 끄고 그 날만 본다 — 상태 파일도 안 쓴다.
+실패해도 상태는 기록한다(같은 날 무한 재시도 방지). 실패 알림은 기존 텔레그램이 담당.
 
 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-kosis-task.ps1`
+
+⚠️ **세션521 — 이 표에 CSV 기반 수집기가 처음 들어왔다.** `collect-crime-safety.mjs` 는 외부 API 를
+쓰지 않고 `data/crime-safety-index.csv` 를 읽는다. 옛 판단은 *"CSV 가 연 1회 갱신이라 자동화할
+대상이 없다"* 였는데(그래서 `audit-orphan-collectors` ALLOWLIST·monitor EXEMPT 양쪽에서 빠져
+있었다), **채우는 대상인 `regions` 에는 매월 새 `recorded_at` 행이 생긴다**. 실측 결과 수집기가
+2026-03 경 이후 안 돌아 04·05·06월 행이 통째로 NULL 이었고 `crime_grade` NULL 비율이 계속 올라
+monitor NULL 급증 경보가 영구화되고 있었다. **처방은 감시를 끄는 쪽이 아니라 자동 실행 경로를
+만드는 쪽**이었다 — 러너 매월 8일 편입 + 양쪽 예외 목록에서 제거.
+즉 이 표의 자격은 "외부 API 를 쓰는가" 가 아니라 **"한국 IP 나 정기 실행이 필요한가"** 다.
 
 감시: GH run 이 없으므로 monitor ⑤ `EXTERNAL_API_COLLECTORS` 신선도(일일·주간 14일/월간 38일/분기 100일)가 유일한 미발화 알림 — 세션 515 에 `trades`·`molit-building`·`molit-units` 3건, 세션 517 에 `naver-devplan` 1건 신규 등재(`maintenance`·`building-hub` 는 기존 항목 유지). KOSIS 수집기 10종 전부 실패 시 `collector_runs` 에 `status=failure` 행 기록 (PR #97·#99 하드닝 — throw·early-return 전 경로).
 
@@ -468,7 +502,7 @@ eslint-plugin-import 의 `no-extraneous-dependencies` 같은 규칙이 이 디�
 | collect-emergency.test.mjs | 6 |
 | housing-permits.test.mjs | 6 |
 | infra-kakao.test.mjs | 5 |
-| transit-match.test.mjs | 4 |
+| transit-match.test.mjs | 43 |
 | noxious.test.mjs | 4 |
 | collect-air-quality.test.mjs | 3 |
 | industry-match.test.mjs | 3 |

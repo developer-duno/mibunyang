@@ -46,7 +46,7 @@ import type { Apt, Res } from "@/types/scoring";
  *           4km↑ 0) + 노선급(GTX 20 / 도시철도 15 / 지하철연장 12 / 경전철 8 / 트램 6). 합 최대 100.
  *           **개통(TRANSIT_OPEN)은 0** — 입지 축이 같은 역을 이미 센다(이중 계상 차단).
  *           형식 불일치도 0 — "무슨 호재인지 모르는데 점수는 있다"를 만들지 않는다.
- *   - citySc: `"{지구명} {거리}km"` 파싱 → LH 사업지구까지 500m 100 / 1km 70 / 2km 40 / 3km 20 / 그 밖 0.
+ *   - citySc: `"{지구명} {거리}km"` 파싱 → 개발지구(LH 사업지구 + 지구단위)까지 500m 100 / 1km 70 / 2km 40 / 3km 20 / 그 밖 0.
  *   - indSc: `"{단지명} {거리}km"` 파싱 → 산업단지까지 1km 100 / 2km 75 / 3km 50 / 5km 25 / 그 밖 0.
  *           ⚠️ 두 표가 다른 이유 = 스케일이 다르다. 최근접 중앙이 LH 1.03km vs 산업 3.28km 라
  *           같은 표를 쓰면 한쪽이 죽는다(2,696단지 실측).
@@ -79,8 +79,9 @@ export function scoreFuture(apt: Apt): Res {
         tierMax(devDist, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE) +
         (TRANSIT_GRADE[TRANSIT_LINE_TYPE[trMatch[1]] ?? ""] ?? TRANSIT_GRADE_DEFAULT);
 
-  // 도시개발 — LH 사업지구까지 거리 등급 (세션511)
+  // 도시개발 — 개발지구까지 거리 등급 (세션511; 세션520에 지구단위 합류)
   // 옛 산식은 이름 키워드만 봐서 값 보유 111곳이 **전부 80점**이었다(거리를 아예 안 봄).
+  // 출처는 LH 사업지구(V-WORLD)에 네이버 지구단위가 더해진 것이라 "LH" 로 못 박아 말하지 않는다.
   const cityMatch = cityDev ? cityDev.trim().match(CITY_DEV_PATTERN) : null;
   const citySc = cityMatch ? tierMax(parseFloat(cityMatch[2]), CITY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
 
@@ -146,8 +147,8 @@ export function scoreFuture(apt: Apt): Res {
         score: Math.round(citySc),
         info: cityDev || "없음",
         detail: cityMatch
-          ? `${cityDev} — LH 사업지구까지 ${cityMatch[2]}km (500m내 100점 · 1km 70 · 2km 40 · 3km 20 · 그 밖 0)`
-          : "반경 5km 안에 LH 사업지구 없음 (0점)",
+          ? `${cityDev} — 개발지구까지 ${cityMatch[2]}km (500m내 100점 · 1km 70 · 2km 40 · 3km 20 · 그 밖 0)`
+          : "반경 5km 안에 개발지구 없음 (0점)",
       },
       {
         name: "인구",

@@ -35,9 +35,6 @@ const DATA_FILL = "scripts/collectors/data-fill.mjs";
  * @type {Set<string>}
  */
 export const ALLOWLIST = new Set([
-  // 데이터 소스가 data.go.kr/15069240 CSV 파일 수동 다운로드(연 1회 갱신, 파일 docstring
-  // 명시) — API 호출이 없어 cron 으로 자동화할 대상이 없다.
-  "collect-crime-safety",
   // apartments_flat VIEW 를 훑는 진단 리포트 도구. docstring 사용법이 "콘솔 리포트 /
   // --json / --region=" 등 사람이 손으로 실행하는 형태로만 적혀 있다. data-fill.mjs 가
   // computeAudit/fetchAllFromView 를 **함수로 import** 해 판단 근거로 쓰지만 그건

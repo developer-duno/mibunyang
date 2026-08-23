@@ -15,7 +15,7 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun, fetchWithRetry } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun, fetchWithRetry, normalizeGu } from "./_shared.mjs";
 
 loadEnv();
 
@@ -100,14 +100,73 @@ function resolveRegion(fullName) {
 /**
  * @param {string} ctpvNm
  * @param {string} sggNm
- * @returns {{region: string, gu: string} | null}
+ * @returns {{region: string, gu: string, folded: boolean} | null}
  */
 function parseGu(ctpvNm, sggNm) {
   const region = resolveRegion(ctpvNm);
   if (!region) return null;
-  if (region === "세종") return { region, gu: "세종시" };
+  if (region === "세종") return { region, gu: "세종시", folded: false };
   if (!sggNm) return null;
-  return { region, gu: sggNm };
+  // 세션522: 자매 `population.mjs` 는 세션510부터 여기서 표기를 통일하는데 이 파일만 빠져 있었다.
+  // 이 수집기는 UPDATE 가 0행이면 **INSERT 로 행을 만든다**(아래 main 참조) — 표기를 안 접으면
+  // 행안부가 "장안구"처럼 시 이름 없이 주는 순간 canonical 행 옆에 별도 행이 생기고,
+  // 그 행에는 sex_age 만 담겨 화면에서는 어느 쪽도 온전해 보이지 않는다.
+  //
+  // `folded` = 원문 표기가 통일 과정에서 **바뀌었는가**. 아래 dedup 이 쓴다(세션523).
+  const gu = normalizeGu(region, sggNm) ?? sggNm;
+  return { region, gu, folded: gu !== sggNm };
+}
+
+/**
+ * 행안부 응답 → `regions` 쓰기용 행 목록. **한 키에 여럿이 모이면 시 단위 원문을 남긴다.**
+ *
+ * ⚠️ 표기 통일은 서로 다른 원문을 **한 키로 모으는** 경우가 있다 (세션523 실측 — 화성시).
+ * 행안부는 화성시를 시 단위("화성시")와 신설 4구(효행·동탄·만세·병점)로 **둘 다** 주는데,
+ * 별칭표는 그 구들을 "화성시" 로 접는다 — 손님 화면의 화성 단지 67곳이 전부 시 단위 표기라
+ * 구 단위 행은 어차피 아무도 못 읽기 때문이다. 접힌 결과를 그대로 아래 UPDATE 루프에 넘기면
+ * 같은 행을 다섯 번 덮어써 **시 전체 인구구성이 구 하나의 값으로 바뀐다** — 채운 것처럼
+ * 보이지만 거짓이다. 그래서 겹치면 접히지 않은 원문(= 시 단위)을 남긴다.
+ *
+ * "장안구" → "수원시 장안구" 같은 정상 보정은 같은 키로 모이는 짝이 없어 이 규칙에 안 걸린다
+ * (그 지역은 행안부가 구 단위로만 주므로 겹칠 원문이 없다).
+ *
+ * @param {Array<Record<string, unknown>>} items 행안부 원본 행
+ * @param {string} recordedAt `YYYY-MM-01`
+ */
+export function pickCanonicalRows(items, recordedAt) {
+  /** @type {Map<string, { region: string, gu: string, sex_age: SexAgeBucket, recorded_at: string, folded: boolean }>} */
+  const byKey = new Map();
+  let collapsed = 0;
+  /** @type {Set<string>} */
+  const foldedOnly = new Set();
+
+  for (const item of items) {
+    const parsed = parseGu(String(item.ctpvNm ?? ""), String(item.sggNm ?? ""));
+    if (!parsed) continue;
+
+    const bucket = parseSexAge(item);
+    if (bucket.total <= 0) continue;
+
+    const key = `${parsed.region}|${parsed.gu}`;
+    const prev = byKey.get(key);
+    if (prev) {
+      collapsed++;
+      // 접히지 않은 원문(= 시 단위)이 접힌 것보다 우선한다. **같은 등급끼리는 기존 동작(나중 것이
+      // 이김)을 그대로 둔다** — 세종처럼 원래부터 여러 원문이 한 이름으로 모이던 자리의 결과를
+      // 이 수정이 조용히 바꾸지 않게 하기 위해서다.
+      if (!prev.folded && parsed.folded) continue;                          // 시 단위를 구 값으로 덮지 않는다
+      if (prev.folded && parsed.folded) { foldedOnly.add(key); continue; }  // 둘 다 접힘 — 먼저 온 것 유지
+    }
+    byKey.set(key, {
+      region: parsed.region,
+      gu: parsed.gu,
+      sex_age: bucket,
+      recorded_at: recordedAt,
+      folded: parsed.folded,
+    });
+  }
+
+  return { rows: [...byKey.values()], collapsed, foldedOnly: [...foldedOnly] };
 }
 
 /**
@@ -170,23 +229,15 @@ async function main() {
     process.exit(1);
   }
 
-  /** @type {Array<{ region: string, gu: string, sex_age: SexAgeBucket, recorded_at: string }>} */
-  const rows = [];
-  for (const item of items) {
-    const ctpvNm = String(item.ctpvNm ?? "");
-    const sggNm = String(item.sggNm ?? "");
-    const parsed = parseGu(ctpvNm, sggNm);
-    if (!parsed) continue;
-
-    const bucket = parseSexAge(item);
-    if (bucket.total <= 0) continue;
-
-    rows.push({
-      region: parsed.region,
-      gu: parsed.gu,
-      sex_age: bucket,
-      recorded_at: `${curYear}-${String(curMonth).padStart(2, "0")}-01`,
-    });
+  const recordedAt = `${curYear}-${String(curMonth).padStart(2, "0")}-01`;
+  const { rows, collapsed, foldedOnly } = pickCanonicalRows(items, recordedAt);
+  if (collapsed > 0) {
+    log("calc", `표기 통일로 한 키에 겹친 원문 ${collapsed}건 정리 — 시 단위 원문 우선`);
+  }
+  for (const key of foldedOnly) {
+    // 시 단위 원문 없이 접힌 것만 여럿 = 어느 구 값을 써도 그 지역 전체를 대표하지 못한다.
+    // 지금은 실제로 안 일어나지만(행안부가 시 단위도 준다), 원본이 바뀌면 조용히 틀릴 자리라 남긴다.
+    logError("calc", `${key} — 시 단위 원문 없이 접힌 원문만 여럿. 값이 그 지역 전체를 대표하지 못할 수 있다`);
   }
 
   log("calc", `${rows.length}건 sex_age 파싱 완료`);

@@ -18,6 +18,8 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
 const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
+  scopeCompetitionToAh, COMPETITION_CATEGORY, COMPETITION_FIELDS, COMPETITION_SCOPE_SUFFIX,
+  fetchAhCompetitionCounts, AH_ID_PREFIX,
   QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
   dedupKey, filterUnsent, hasGithubApiAuth,
@@ -648,6 +650,233 @@ describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
   });
 });
 
+describe("scopeCompetitionToAh — ④ competition 모수를 청약홈(ah-) 단지로 좁힘 (세션 522)", () => {
+  // 실측 골격 (apartments_flat, 2026-08-22):
+  //   전체 2,211 = ah- 982 + ap- 1,229. ap- 는 청약홈 공고번호와 이을 키가 없어 3필드 전량 0 채움.
+  const AH_TOTAL = 982;
+  const ALL_TOTAL = 2211;
+  /** @type {Record<string, number>} ah- 단지의 필드별 채움 수 (라이브 실측) */
+  const AH_FILLED = { competitionRate: 779, competitionSupply: 781, competitionApplicants: 781 };
+  /** ah- 모수 실측 채움률 (2,341/2,946). 문턱 산정의 관측 앵커. */
+  const OBSERVED_AH_RATE = 79.5;
+
+  /** 전체 모수로 집계된 computeAudit 결과 골격 (ap- 는 0 채움이라 filled 가 곧 ah- 채움). */
+  function makeAudit() {
+    /** @type {Record<string, { category: string, field: string, filled: number, missing: number }>} */
+    const fields = {};
+    let catFilled = 0;
+    for (const f of COMPETITION_FIELDS) {
+      const filled = AH_FILLED[f];
+      fields[`${COMPETITION_CATEGORY}.${f}`] = {
+        category: COMPETITION_CATEGORY, field: f, filled, missing: ALL_TOTAL - filled,
+      };
+      catFilled += filled;
+    }
+    fields["core.name"] = { category: "core", field: "name", filled: ALL_TOTAL, missing: 0 };
+    const catTotal = ALL_TOTAL * COMPETITION_FIELDS.length;
+    return {
+      categories: {
+        [COMPETITION_CATEGORY]: {
+          collector: "collect-applyhome",
+          filled: catFilled,
+          total: catTotal,
+          rate: Math.round((catFilled / catTotal) * 1000) / 10, // 35.3
+        },
+        core: { collector: "applyhome", filled: ALL_TOTAL, total: ALL_TOTAL, rate: 100 },
+      },
+      fields,
+    };
+  }
+
+  const ahCounts = { total: AH_TOTAL, filled: AH_FILLED };
+
+  it("정상 전환 — 카테고리 total·filled·rate 가 ah- 모수로 교체된다", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, ahCounts);
+    const stat = out.categories[COMPETITION_CATEGORY];
+    expect(stat.total).toBe(AH_TOTAL * 3); // 2946
+    expect(stat.filled).toBe(779 + 781 + 781); // 2341
+    expect(stat.rate).toBe(OBSERVED_AH_RATE); // 79.5 — 원본 35.3 에서 재계산됨
+    expect(stat.collector).toContain(COMPETITION_SCOPE_SUFFIX); // 경보에 모수가 드러난다
+  });
+
+  it("정상 전환 — 필드별 filled/missing 도 ah- 모수로 교체된다", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, ahCounts);
+    const rate = out.fields[`${COMPETITION_CATEGORY}.competitionRate`];
+    expect(rate.filled).toBe(779);
+    expect(rate.missing).toBe(AH_TOTAL - 779); // 203 — 전체 모수였다면 1432
+    expect(rate.category).toBe(COMPETITION_CATEGORY); // 나머지 속성은 보존
+  });
+
+  it("ahCounts.total = 0 이면 원본 그대로 — 감시를 조용히 끄지 않는다", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, { total: 0, filled: {} });
+    expect(out.categories).toBe(categories);
+    expect(out.fields).toBe(fields);
+  });
+
+  it("ahCounts 가 null(조회 실패)이면 원본 그대로", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, null);
+    expect(out.categories).toBe(categories);
+    expect(out.fields).toBe(fields);
+  });
+
+  it("competition 외 카테고리·필드는 손대지 않는다", () => {
+    const { categories, fields } = makeAudit();
+    const out = scopeCompetitionToAh(categories, fields, ahCounts);
+    expect(out.categories.core).toEqual(categories.core);
+    expect(out.fields["core.name"]).toEqual(fields["core.name"]);
+  });
+
+  it("원본 객체를 변형하지 않는다 (⑥ VIEW 회귀·브리핑이 같은 audit 을 쓴다)", () => {
+    const { categories, fields } = makeAudit();
+    const before = JSON.parse(JSON.stringify({ categories, fields }));
+    scopeCompetitionToAh(categories, fields, ahCounts);
+    expect(JSON.parse(JSON.stringify({ categories, fields }))).toEqual(before);
+  });
+
+  it("의미 가드 — ap- 0채움/ah- 79% 상태에서 전환하면 경보 0건, 전환 없이는 1건", () => {
+    const { categories, fields } = makeAudit();
+    // 전환 없이(전체 모수) — 도달 가능 최대 44.4% 라 문턱을 영구히 못 넘는 거짓 경보
+    const before = checkCategoryNullSurge(categories, AUDIT_CATEGORY_BASELINE, fields);
+    expect(before.filter((i) => i.collector.includes("청약경쟁률"))).toHaveLength(1);
+    // 전환 후 — 청약홈 단지 품질(79.5%)로 판정되어 경보 없음
+    const scoped = scopeCompetitionToAh(categories, fields, ahCounts);
+    const after = checkCategoryNullSurge(scoped.categories, AUDIT_CATEGORY_BASELINE, scoped.fields);
+    expect(after.filter((i) => i.collector.includes("청약경쟁률"))).toHaveLength(0);
+  });
+
+  it("문턱 앵커 — competition 문턱은 ah- 실측 채움률(79.5%)보다 8~25%p 아래", () => {
+    // 파생 가드(상수에서 읽어 비교)만으로는 상수를 잘못 바꿔도 전부 초록이라, 상수가 근거로 삼은
+    // **관측값**을 적어 둔다. 전체 모수 시절 문턱(45)은 마진 34.5%p 라 여기서 빨강.
+    const margin = OBSERVED_AH_RATE - AUDIT_CATEGORY_BASELINE.competition;
+    expect(margin).toBeGreaterThanOrEqual(8);
+    expect(margin).toBeLessThanOrEqual(25);
+    // 전체 모수의 도달 가능 최대치(982/2211=44.4%)보다는 반드시 높아야 한다 —
+    // 그보다 낮으면 모수 전환의 이유 자체가 사라진다.
+    expect(AUDIT_CATEGORY_BASELINE.competition).toBeGreaterThan((AH_TOTAL / ALL_TOTAL) * 100);
+  });
+
+  it("배선 가드 — runAll 이 ④ 에 원본이 아니라 좁힌 사본을 넘긴다", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8");
+    // 좌변까지 고정해 호출부만 잡는다 (선언부·주석 매칭 방지 — guards 룰 §소스 grep 가드)
+    expect(src).toMatch(/const\s+scoped\s*=\s*scopeCompetitionToAh\(\s*audit\.categories\s*,\s*audit\.fields\s*,\s*ahCounts\s*\)/);
+    expect(src).toMatch(/checkCategoryNullSurge\(\s*scoped\.categories\s*,\s*AUDIT_CATEGORY_BASELINE\s*,\s*scoped\.fields\s*\)/);
+  });
+
+  it("COMPETITION_FIELDS 는 data-audit 의 competition 필드와 정확히 일치", () => {
+    expect([...COMPETITION_FIELDS].sort()).toEqual([...AUDIT_FIELDS.competition.fields].sort());
+  });
+});
+
+describe("fetchAhCompetitionCounts — ④ ah- 모수 조회 (세션 522·523)", () => {
+  /**
+   * apartments_flat count 쿼리만 흉내내는 최소 Supabase mock.
+   *
+   * 체이닝은 `from().select().like()` 로 시작하고, 필드 count 일 때만 `.not(field,"is",null)` 가
+   * 덧붙는다 — 그래서 `.not` 호출 여부가 곧 "total 이냐 필드냐" 의 판별이 된다.
+   * 반환 객체는 thenable 이라 `await q` 가 그대로 `{ count }` 를 준다(실제 PostgrestFilterBuilder 와 같은 꼴).
+   *
+   * @param {{ total: number|null, filled: Record<string, number|null> }} counts
+   * @param {{ throwOn?: string }} [opts] "total" 또는 필드명이면 그 쿼리에서 throw (조회 실패 재현)
+   */
+  function makeAhSb(counts, opts = {}) {
+    /** @type {{ tables: string[], likes: Array<[string, string]>, notFields: string[] }} */
+    const calls = { tables: [], likes: [], notFields: [] };
+    const builder = () => {
+      /** @type {string | null} */
+      let field = null;
+      /** @type {any} */
+      const q = {
+        select: () => q,
+        like: (/** @type {string} */ col, /** @type {string} */ pat) => {
+          calls.likes.push([col, pat]);
+          return q;
+        },
+        not: (/** @type {string} */ f) => {
+          field = f;
+          calls.notFields.push(f);
+          return q;
+        },
+        then: (/** @type {any} */ resolve, /** @type {any} */ reject) => {
+          const key = field ?? "total";
+          if (opts.throwOn === key) {
+            return Promise.reject(new Error(`쿼리 실패: ${key}`)).then(resolve, reject);
+          }
+          const raw = field ? counts.filled[field] : counts.total;
+          return Promise.resolve({ count: raw === undefined ? null : raw }).then(resolve, reject);
+        },
+      };
+      return q;
+    };
+    return {
+      calls,
+      sb: { from: (/** @type {string} */ t) => { calls.tables.push(t); return builder(); } },
+    };
+  }
+
+  /** 라이브 실측 골격 (2026-08-22): ah- 982 단지, 3필드 채움 779/781/781. */
+  const AH_TOTAL = 982;
+  const AH_FILLED = { competitionRate: 779, competitionSupply: 781, competitionApplicants: 781 };
+
+  it("정상 — total + 3필드 채움 수를 { total, filled } 로 돌려준다", async () => {
+    const { sb, calls } = makeAhSb({ total: AH_TOTAL, filled: AH_FILLED });
+    const out = await fetchAhCompetitionCounts(sb);
+    expect(out).toEqual({ total: AH_TOTAL, filled: AH_FILLED });
+    // 주입한 sb 를 실제로 썼다는 증거 (getSupabase() 로 샜다면 undefined.from 으로 죽어 null 이 된다)
+    expect(calls.tables).toEqual(Array(4).fill("apartments_flat")); // total 1 + 필드 3
+    expect(calls.notFields).toEqual([...COMPETITION_FIELDS]);
+  });
+
+  it("정상 — 모든 쿼리가 ah- 접두사로 모수를 좁힌다", async () => {
+    const { sb, calls } = makeAhSb({ total: AH_TOTAL, filled: AH_FILLED });
+    await fetchAhCompetitionCounts(sb);
+    expect(calls.likes).toHaveLength(4);
+    for (const [col, pat] of calls.likes) {
+      expect(col).toBe("id");
+      expect(pat).toBe(`${AH_ID_PREFIX}%`);
+    }
+  });
+
+  it("total count 가 null 이면 null — 필드 쿼리로 넘어가지 않는다", async () => {
+    const { sb, calls } = makeAhSb({ total: null, filled: AH_FILLED });
+    expect(await fetchAhCompetitionCounts(sb)).toBeNull();
+    expect(calls.notFields).toEqual([]); // total 에서 즉시 중단
+  });
+
+  it("필드 count 가 하나라도 null 이면 null — 반쪽 모수로 판정하지 않는다", async () => {
+    const { sb } = makeAhSb({
+      total: AH_TOTAL,
+      filled: { ...AH_FILLED, competitionSupply: null },
+    });
+    expect(await fetchAhCompetitionCounts(sb)).toBeNull();
+  });
+
+  it("쿼리가 throw 하면 null + 로그 1줄 — 감시 자체는 멈추지 않는다", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { sb } = makeAhSb({ total: AH_TOTAL, filled: AH_FILLED }, { throwOn: "competitionRate" });
+      expect(await fetchAhCompetitionCounts(sb)).toBeNull();
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(String(spy.mock.calls[0][0])).toContain("ah- 모수 조회 실패");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("total 쿼리 자체가 throw 해도 null (첫 쿼리 실패 경로)", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { sb } = makeAhSb({ total: AH_TOTAL, filled: AH_FILLED }, { throwOn: "total" });
+      expect(await fetchAhCompetitionCounts(sb)).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 describe("AUDIT_CATEGORY_BASELINE 키 정합성 — data-audit 카테고리 drift 차단", () => {
   it("점검 12 + 제외 7 = data-audit AUDIT_FIELDS 19 카테고리와 정확히 일치", () => {
     const checked = Object.keys(AUDIT_CATEGORY_BASELINE);
@@ -934,15 +1163,23 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 29 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 32 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
+      "air-quality",
       "applyhome-detail", "applyhome-remndr", "applyhome-seed", "avg-income", "building-hub",
       "childcare-detail", "childcare-info", "childcare-info-jeju",
+      // 세션 521: CSV 기반이라 "자동 실행 경로가 없다" 며 감시에서 빼 뒀던 것을 로컬 러너
+      // 매월 8일로 편입하면서 정식 등재. 안 돌던 사이 regions 3개월치가 통째로 NULL 이었다.
+      "crime-safety",
       "housing-permits", "housing-price",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
-      "kosis-unsold", "maintenance", "market-stats", "migration",
+      "kosis-unsold",
+      // 세션 522: 택지정보시스템 지구단계정보 → dev_plans.progression_step(lh_zone).
+      // 로컬 러너 매월 21일 편입과 한 쌍(아래 동기화 describe 가 한쪽만 지워지면 red).
+      "lhzone-status",
+      "maintenance", "market-stats", "migration",
       // 세션 515: MOLIT(1613000) 해외 IP 차단 → GH yml 5개 삭제 + 로컬 러너 이전.
       // GH run 이 없어 ①③ 대상 밖이므로 ⑤ 신선도가 유일한 "안 돌면 알림".
       "molit-building", "molit-units", "trades",
@@ -1212,6 +1449,35 @@ describe("크론(DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 동기화 — na
     expect(
       monitored,
       "EXTERNAL_API_COLLECTORS 에서 naver-devplan 이 빠졌다 — 안 돌아도 알림 0",
+    ).toBe(true);
+  });
+});
+
+describe("크론(DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 동기화 — lhzone-status (세션 522)", () => {
+  // 세션 517 선례를 그대로 답습한다. 한쪽만 되돌리면 red 여야 한다 —
+  // 크론만 지우면 "안 돌아도 아무도 모르는" 상태, 감시만 지우면 "돌다 멈춰도 조용한" 상태.
+  const SCRIPT = "lhzone-status.mjs";
+  const COLLECTOR = "lhzone-status";
+
+  it("DAY_TABLE 매월 21일에 lhzone-status 가 있다", () => {
+    const rows = DAY_TABLE.filter((e) => e.script === SCRIPT);
+    expect(rows.map((e) => e.day), "매월 21일 1회여야 한다").toEqual([21]);
+  });
+
+  it("같은 수집기가 monitor ⑤ 에 월간(38) 신선도로 등재돼 있다", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === COLLECTOR);
+    expect(entry, `${COLLECTOR} 가 EXTERNAL_API_COLLECTORS 에 없다 — 크론만 있고 감시가 없다`).toBeTruthy();
+    expect(entry?.stale_days, "월간(매월 21일) = 31일 + 여유 1주").toBe(38);
+  });
+
+  it("크론과 감시가 한 쌍으로 존재한다 (한쪽만 되돌리면 red)", () => {
+    expect(
+      DAY_TABLE.some((e) => e.script === SCRIPT),
+      "DAY_TABLE 에서 lhzone-status 가 빠졌다 — 어느 스케줄에도 없던 편입 전으로 회귀",
+    ).toBe(true);
+    expect(
+      EXTERNAL_API_COLLECTORS.some((c) => c.collector === COLLECTOR),
+      "EXTERNAL_API_COLLECTORS 에서 lhzone-status 가 빠졌다 — 안 돌아도 알림 0",
     ).toBe(true);
   });
 });

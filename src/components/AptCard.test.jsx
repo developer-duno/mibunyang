@@ -699,15 +699,23 @@ describe("AptCard", () => {
     });
   });
 
-  describe("학군 등급 칩 (세션 441)", () => {
-    // 라이브 실측 분포 A=84.4%·B=12.2%·C=3.4%·D=0% → C(소수)만 변별 신호로 약점 노출
-    it("schoolGrade='C' → '학군 C' 칩 노출 (주황 약점, 실측 3.4% 소수)", () => {
-      const apt = /** @type {any} */ (makeApt({ schoolGrade: "C" }));
+  describe("학군 등급 칩 (세션 441 · 세션524 게이트 C→D)", () => {
+    // 세션441 당시 실측은 A=84.4%·B=12.2%·C=3.4%·D=0% 였고, 그래서 C 가 곧 바닥이었다.
+    // 세션524 상대 척도 전환 후 A=17.2%·B=33.4%·C=39.8%·D=9.6% —
+    // C 는 "흔한 중간"이 됐고 바닥은 D 다. 칩은 드문 약점을 알리는 자리라 게이트를 옮겼다.
+    it("schoolGrade='D' → '학군 D' 칩 노출 (주황 약점, 실측 9.6% 소수)", () => {
+      const apt = /** @type {any} */ (makeApt({ schoolGrade: "D" }));
       render(<AptCard {...makeProps({ apt })} />);
-      expect(screen.getByText("학군 C")).toBeInTheDocument();
+      expect(screen.getByText("학군 D")).toBeInTheDocument();
     });
 
-    it("schoolGrade='A' → 칩 미노출 (84% 다수라 강조 안 함)", () => {
+    it("schoolGrade='C' → 칩 미노출 (39.8% 흔한 중간, 옛 게이트면 red)", () => {
+      const apt = /** @type {any} */ (makeApt({ schoolGrade: "C" }));
+      render(<AptCard {...makeProps({ apt })} />);
+      expect(screen.queryByText(/학군/)).toBeNull();
+    });
+
+    it("schoolGrade='A' → 칩 미노출 (상위 17%, 약점이 아니다)", () => {
       const apt = /** @type {any} */ (makeApt({ schoolGrade: "A" }));
       render(<AptCard {...makeProps({ apt })} />);
       expect(screen.queryByText(/학군/)).toBeNull();
@@ -725,13 +733,13 @@ describe("AptCard", () => {
       expect(screen.queryByText(/학군/)).toBeNull();
     });
 
-    it("schoolGrade 변경(A→C) 시 카드 리렌더 (comparator 회귀 가드)", () => {
+    it("schoolGrade 변경(A→D) 시 카드 리렌더 (comparator 회귀 가드)", () => {
       const aptInitial = /** @type {any} */ (makeApt({ schoolGrade: "A" }));
-      const aptUpdated = /** @type {any} */ (makeApt({ schoolGrade: "C" }));
+      const aptUpdated = /** @type {any} */ (makeApt({ schoolGrade: "D" }));
       const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
-      expect(screen.queryByText("학군 C")).toBeNull();
+      expect(screen.queryByText("학군 D")).toBeNull();
       rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
-      expect(screen.getByText("학군 C")).toBeInTheDocument();
+      expect(screen.getByText("학군 D")).toBeInTheDocument();
     });
   });
 });

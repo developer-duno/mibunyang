@@ -50,7 +50,11 @@
 | `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
-### 매월 (13개) + 수동 전용 (4개)
+### 매월 (10개) + 수동 전용 (4개)
+
+> ⚠️ 세션519 실측 정정 — 이 헤더의 "13개"는 이번 편집 이전부터 이미 실제 행 수와 어긋나 있었다
+> (본 절 상단 disclaimer 가 경고하는 바로 그 drift). air-quality·housing-price 2행을 로컬
+> 러너로 옮기며 실측 후 10개로 정정.
 
 > **세션 288~289: KOSIS 의존 10개 GH 폐기 → 집서버 로컬 러너 이전.** kosis.kr 이 GitHub 러너(해외
 > Azure IP)를 차단해 `collect-{unsold-kosis,market-stats,migration,jeonse-price-index,regional-economy,fertility-rate,housing-supply-ratio,medical-access,avg-income,sale-price-index}.yml`
@@ -74,6 +78,20 @@
 > maintenance·building-hub 는 기존 항목 유지). ⚠️ `collect-building-info.yml` 의 2번째 스텝이던
 > `sync-naver-complex.mjs` 는 옮기지 않았다 — `collect-naver-listings.yml`(Naver Core)이 **매일** 같은
 > 스크립트를 돌려 이미 중복이었다.
+>
+> **세션 519: data.go.kr 2종 GH 폐기 → 집서버 로컬 러너 이전.** 1613000 만의 문제가 아니었다 —
+> `www.data.go.kr`(공시가격 CSV)·`apis.data.go.kr/B552584`(에어코리아)도 해외 IP 를 막는다.
+> 실측: GH 는 `fetch failed`(HTTP 코드 없음)인데 **같은 요청이 로컬 한국 IP 에선 166ms / 92ms 200 OK**.
+> `collect-housing-price.yml`(7/16·8/16 **연속 실패**, 62일 미갱신)·`collect-air-quality.yml`
+> (8회 중 2회만 성공 = **25% 복불복**) 2개 삭제 → 러너 매핑표 편입.
+> ⚠️ **cron 을 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다** — `0 22 16 * *` 는 KST **17일**,
+> `0 15 * * 1` 은 KST **화요일**이다. 러너 표는 KST 기준이라 숫자를 그대로 베끼면 하루가 밀린다.
+> 이를 위해 러너에 **주간(`dow`) 항목**을 새로 지원했다(기존은 `day` 만).
+> 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS` — air-quality 신규 등재, housing-price 는 세션 504 에
+> 이미 있어 문구만 갱신(**중복 추가하면 한쪽을 지워도 가드가 통과한다 — 뮤테이션이 실제로 잡았다**).
+> 같은 세션에 `monitor-collectors.yml` 의 workflow_run 목록에서 **"Housing Permits Data Collection"**
+> 도 제거했다 — 세션 501 에 yml 이 삭제됐는데 이름만 남아 **매일 "실행 기록이 한 번도 없음" 거짓 경보**를
+> 내고 있었다(monitor-collectors.mjs 주석엔 "제거했다"고 적혀 있었지만 이 yml 은 안 고쳐졌다).
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
@@ -89,9 +107,7 @@
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
 | `collect-emergency.yml` | 2일 | 응급의료기관 |
 | `collect-population.yml` | 5일 | 행안부 인구 증감률 |
-| `collect-air-quality.yml` | 매주 월 | 에어코리아 대기질 |
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
-| `collect-housing-price.yml` | 16일 | 주택가격 (KST 17일 07:00 — 15일 migration/maintenance/building-hub 다음 날). **세션 491 문서 추가** — 그동안 이 표에 아예 없었다 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
 
 ### 모니터링 (2개)
@@ -130,7 +146,7 @@
 | `TAGO_KEY` | ~~TAGO 대중교통~~ — 세션 498(#337) 정적 파일 전환으로 **워크플로 주입 제거**(TAGO 호출 0). 시크릿 잔존은 무해 | - |
 | `NEIS_KEY` | NEIS 교육정보 (선택, 미등록 시 스킵) | - |
 | `SCHOOLINFO_KEY` | 학교알리미 학생수 (선택) | - |
-| `AIRKOREA_KEY` | 에어코리아 대기질 (선택) | - |
+| `AIRKOREA_KEY` | 에어코리아 대기질 — 세션 519 로컬 러너 이전으로 GH 워크플로 사용 0 (집서버 `.env` 만, 시크릿 잔존은 무해) | - |
 | `CHILDCARE_API_KEY` | info.childcare.go.kr cpmsapi021 어린이집 목록 (세션 252) — 세션 399 로컬 러너(`childcare-local-runner.mjs`) 이전으로 GH 워크플로 사용 0 (로컬 `.env` 만, 시크릿 잔존은 무해) | - |
 | `CHILDCARE_BASIC_API_KEY` | info.childcare.go.kr cpmsapi030 어린이집 70 필드 상세 (세션 256) — 세션 399 로컬 러너 이전으로 GH 워크플로 사용 0 (로컬 `.env` 만, 시크릿 잔존은 무해) | - |
 | `SUBSCRIBERS_OPT_OUT_SECRET` | 분양 알림 수신거부 HMAC (Vercel 과 동일 값 유지 의무 — 드리프트 시 문자 속 철회 링크 전부 401, 세션 467) | - |

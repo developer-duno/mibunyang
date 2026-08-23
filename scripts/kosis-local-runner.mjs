@@ -27,11 +27,21 @@
  *   node scripts/kosis-local-runner.mjs --date=2026-06-12  날짜 강제 (테스트)
  *   node scripts/kosis-local-runner.mjs --dry-run          수집기에 --dry-run 전달
  *   node scripts/kosis-local-runner.mjs --list             매핑표 출력만
+ *   node scripts/kosis-local-runner.mjs --no-catchup       놓친 날 보충 없이 오늘만
+ *
+ * 놓친 날 보충 (세션521): 스케줄러가 `StartWhenAvailable=true` 라 PC 가 꺼져 있던 날의 발화를
+ * 나중에 실행하는데, 러너는 **실행된 날짜**로만 판단해서 놓친 날의 수집기를 영영 건너뛴다.
+ * 실측 사고 — 8/13 05:30 발화가 통째로 빠졌고 8/14 03:28 에 뒤늦게 돈 실행은 "8/14" 로 판단해
+ * 14일분만 돌렸다. 그 결과 `avg-income` 이 **39일** 밀린 채 monitor ⑤ 가 잡을 때까지 잠복했다.
+ * → `.kosis-local-runner-state.json` 에 마지막 처리일을 남기고, 다음 실행에서 빠진 날을 메운다.
+ * ⚠️ **한 번에 하루치만** 메운다(`MAX_CATCHUP_PER_RUN`). 5일치를 한꺼번에 돌리면 maintenance
+ * 같은 대용량 수집기가 data.go.kr 일일 10,000 한도를 그 자리에서 넘긴다 — 매일 하루씩 따라잡는다.
  *
  * 실패 처리: 하나라도 exit!=0 이면 텔레그램 best-effort 알림 + exit 1 (silent fail 금지).
  * 수집기 자체가 collector_runs 를 기록하므로 모니터의 데이터0건·외부API stale 감시 유지.
  */
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,13 +51,104 @@ import { sendTelegram } from "./notify-telegram.mjs";
 const PHASE = "kosis-local-runner";
 const COLLECTORS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "collectors");
 
+/** 마지막으로 처리한 날짜를 남기는 자리(gitignore). 유실돼도 사고가 아니다 — 소급만 못 할 뿐이다. */
+const STATE_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".kosis-local-runner-state.json");
+
+/**
+ * 한 번 실행에서 메울 수 있는 **놓친 날의 최대 개수**.
+ * 1 인 이유 = 쿼터. 15~19일 maintenance 는 회차당 약 3,600 회를 쓰는데 5일치를 한꺼번에 돌리면
+ * data.go.kr 일일 10,000 한도를 그 자리에서 넘긴다. 매일 하루씩 따라잡으면 며칠 걸려도 안전하다.
+ */
+const MAX_CATCHUP_PER_RUN = 1;
+
+/** 이만큼보다 더 벌어지면 조용히 메우지 않고 **로그로 알린다**(사람이 판단할 자리). */
+const CATCHUP_STALE_WARN_DAYS = 10;
+
+/** `Date` → KST 기준 `"YYYY-MM-DD"`. `toISOString()` 은 UTC 라 05:30 실행 시 전일이 된다. */
+export function ymd(/** @type {Date} */ date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * 이번 실행에서 처리할 날짜 목록 — **오래된 것부터**, 마지막이 오늘.
+ *
+ * 상태 파일이 없거나(첫 실행) 형식이 깨졌거나 미래·같은 날이면 오늘 하나만 돌려준다.
+ * 놓친 날이 여럿이면 `maxCatchup` 개만 **가장 오래된 쪽부터** 집는다 — 오래 밀린 것을 먼저 푸는
+ * 편이 데이터 공백을 줄인다.
+ *
+ * @param {string | null | undefined} lastProcessed `"YYYY-MM-DD"` 또는 없음
+ * @param {Date} today
+ * @param {number} [maxCatchup]
+ * @returns {string[]} 처리할 날짜 — 항상 마지막 원소가 오늘
+ */
+export function datesToProcess(lastProcessed, today, maxCatchup = MAX_CATCHUP_PER_RUN) {
+  const todayStr = ymd(today);
+  if (!lastProcessed || !/^\d{4}-\d{2}-\d{2}$/.test(lastProcessed)) return [todayStr];
+
+  const cur = new Date(`${lastProcessed}T00:00:00`);
+  if (Number.isNaN(cur.getTime())) return [todayStr];
+
+  /** @type {string[]} */
+  const missed = [];
+  cur.setDate(cur.getDate() + 1);
+  // 오늘 **전날**까지가 놓친 날 — 오늘은 아래에서 따로 붙인다(중복 방지).
+  while (ymd(cur) < todayStr) {
+    missed.push(ymd(cur));
+    cur.setDate(cur.getDate() + 1);
+    if (missed.length > 400) break; // 상태 파일이 망가져도 무한 루프는 없다
+  }
+  return [...missed.slice(0, Math.max(0, maxCatchup)), todayStr];
+}
+
+/** `"YYYY-MM-DD"` 두 날 사이 일수. 상태 파일이 깨졌으면 0(=경고 안 함). */
+export function daysBetween(/** @type {string} */ fromStr, /** @type {string} */ toStr) {
+  const a = new Date(`${fromStr}T00:00:00`);
+  const b = new Date(`${toStr}T00:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+/** 놓친 날이 이만큼 넘게 쌓였는지 — 참이면 조용히 메우지 말고 사람에게 알린다. */
+export function isCatchupStale(/** @type {number} */ missedCount, warnDays = CATCHUP_STALE_WARN_DAYS) {
+  return missedCount > warnDays;
+}
+
+/** 상태 파일에서 마지막 처리일 읽기. 깨져 있으면 없는 셈 친다(소급만 못 할 뿐). */
+export function readLastProcessed(statePath = STATE_PATH) {
+  try {
+    if (!existsSync(statePath)) return null;
+    const j = JSON.parse(readFileSync(statePath, "utf8"));
+    return typeof j?.lastProcessed === "string" ? j.lastProcessed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 마지막 처리일 기록. 실패해도 러너를 죽이지 않는다 — 다음 실행이 소급을 못 할 뿐이다. */
+export function writeLastProcessed(/** @type {string} */ dateStr, statePath = STATE_PATH) {
+  try {
+    writeFileSync(statePath, JSON.stringify({ lastProcessed: dateStr }, null, 2), "utf8");
+    return true;
+  } catch (e) {
+    logError(PHASE, `상태 파일 기록 실패(${statePath}): ${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  }
+}
+
 /**
  * 일자(KST) → 수집기.
+ *   day              매월 이 날짜(KST)에 실행. `dow` 와 **둘 중 하나만** 쓴다
+ *   dow              매주 이 요일(0=일..6=토, KST)에 실행 — 주간 cron 이식용(세션519)
  *   months           있으면 해당 월에만 (분기 cron 이식)
  *   args             수집기에 넘길 고정 인자 (GH yml 이 넘기던 것 보존)
  *   skipIfDow        그 날의 요일(0=일..6=토)이면 건너뜀
  *   onlyIfPrevDayDow 전날 요일이 이 값일 때만 실행 (skipIfDow 로 미룬 회차의 보충)
- * @type {Array<{ day: number, script: string, months?: number[], args?: string[], skipIfDow?: number, onlyIfPrevDayDow?: number }>}
+ *
+ * ⚠️ **GH cron 을 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다.** 러너는 KST 05:30 에
+ * 도는데 이 표도 KST 기준이라, cron 의 숫자를 그대로 베끼면 하루/한 요일이 밀린다.
+ * 실례(세션519): `0 22 16 * *`(UTC 16일 22시)는 **KST 17일** 07시고,
+ * `0 15 * * 1`(UTC 월 15시)은 **KST 화요일** 00시다.
+ * @type {Array<{ day?: number, dow?: number, script: string, months?: number[], args?: string[], skipIfDow?: number, onlyIfPrevDayDow?: number }>}
  */
 export const DAY_TABLE = [
   { day: 2, script: "collect-housing-supply-ratio.mjs" },
@@ -57,6 +158,13 @@ export const DAY_TABLE = [
   { day: 6, script: "molit-units.mjs" },
   { day: 6, script: "collect-trades.mjs" },
   { day: 7, script: "migration.mjs" },
+  // 세션521: 외부 API 를 안 쓰는 유일한 등재분(data/crime-safety-index.csv 파싱).
+  // 옛 판단은 "CSV 가 연 1회 갱신이라 자동화할 대상이 없다" 였는데, 채우는 대상인
+  // **regions 에는 매월 새 recorded_at 행이 생긴다** — CSV 가 그대로여도 돌릴 이유가 있다.
+  // 실측: 2026-04·05·06월 행이 통째로 NULL(수집기 마지막 실행이 3월경)이라 NULL 비율이
+  // 계속 올라 monitor 경보가 영구화되고 있었다. 8일 = 행 생성자(population 5일·
+  // market-stats 6일) **뒤**여야 새 행을 덮는다([[regions-multicollector-recorded-at-lag]]).
+  { day: 8, script: "collect-crime-safety.mjs" },
   { day: 9, script: "collect-unsold-kosis.mjs" },
   { day: 10, script: "collect-fertility-rate.mjs" },
   // 세션 515: 옛 collect-building-info.yml 의 "10일 토요일 → 11일 fallback" 이식.
@@ -77,6 +185,9 @@ export const DAY_TABLE = [
   { day: 16, script: "collect-maintenance.mjs", args: ["--limit=600"] },
   { day: 17, script: "collect-maintenance.mjs", args: ["--limit=600"] },
   { day: 17, script: "collect-sale-price-index.mjs", months: [1, 4, 7, 10] },
+  // 세션519: www.data.go.kr 도 해외 IP 를 막는다 — GH 는 7/16·8/16 연속 `fetch failed`(HTTP 코드
+  // 없음)인데 같은 URL 이 로컬 한국 IP 에선 166ms 200 OK. 옛 cron `0 22 16 * *`(UTC)는 **KST 17일**.
+  { day: 17, script: "collect-housing-price.mjs" },
   { day: 18, script: "collect-maintenance.mjs", args: ["--limit=600"] },
   { day: 18, script: "collect-jeonse-price-index.mjs" },
   { day: 19, script: "collect-maintenance.mjs", args: ["--limit=600"] },
@@ -85,6 +196,14 @@ export const DAY_TABLE = [
   // --kinds 를 넘기면 V-WORLD 축(전량 ~7.5h·중간 체크포인트 없음)은 자동 스킵된다 —
   // 전량 수집은 체크포인트 설계 후 별도 트랙. 네이버 4종만 ≈30분.
   { day: 20, script: "naver-devplan.mjs", args: ["--kinds=road,rail,station,jigu"] },
+  // 세션522: 택지정보시스템(openapi.jigu.go.kr) 지구단계정보 → dev_plans.progression_step(lh_zone).
+  // 21일 = 20일 naver-devplan **다음날**. 순서에 뜻이 있다 — 네이버/V-WORLD 축이 먼저 지구 목록을
+  // 새로 긁고, 이 수집기가 그 위에 정부 장부의 조성 단계를 덮는다(신규 지구도 같은 달에 채워진다).
+  // 원본이 월간 갱신(고시월 단위)이고 외부 API 키가 없어 data.go.kr 일일 쿼터를 0 쓴다.
+  { day: 21, script: "lhzone-status.mjs" },
+  // 세션519: apis.data.go.kr/B552584(에어코리아)도 같은 차단 — GH 8회 중 2회만 성공(25%,
+  // 러너 IP 복불복)인데 로컬은 92ms 200 OK. 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**.
+  { dow: 2, script: "collect-air-quality.mjs" },
 ];
 
 /**
@@ -102,7 +221,8 @@ export function entriesDueOn(date) {
   const prevDow = prev.getDay();
   return DAY_TABLE.filter(
     (e) =>
-      e.day === day &&
+      // 주간 항목(dow)과 월간 항목(day)은 배타 — dow 가 있으면 그것만 본다(세션519).
+      (e.dow !== undefined ? e.dow === dow : e.day === day) &&
       (!e.months || e.months.includes(month)) &&
       e.skipIfDow !== dow &&
       (e.onlyIfPrevDayDow === undefined || e.onlyIfPrevDayDow === prevDow),
@@ -135,7 +255,8 @@ export function describeEntry(e) {
     gates.push(`전날이 ${DOW_LABEL[e.onlyIfPrevDayDow]}요일일 때만`);
   const gate = gates.length > 0 ? ` (${gates.join(", ")})` : "";
   const args = e.args?.length ? ` ${e.args.join(" ")}` : "";
-  return `매월 ${e.day}일${gate}: ${e.script}${args}`;
+  const when = e.dow !== undefined ? `매주 ${DOW_LABEL[e.dow]}요일` : `매월 ${e.day}일`;
+  return `${when}${gate}: ${e.script}${args}`;
 }
 
 async function main() {
@@ -149,30 +270,61 @@ async function main() {
     return;
   }
 
-  const dueEntries = entriesDueOn(date);
-  const due = dueEntries.map((e) => e.script);
-  // KST 로컬 날짜 — toISOString() 은 UTC 라 05:30 KST 실행 시 전일로 표기됨 (디스패치 getDate() 와 통일)
-  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  if (due.length === 0) {
-    log(PHASE, `${dateStr}: due 수집기 없음 — 종료`);
-    return;
+  // 놓친 날 보충 — `--date=` 강제나 `--no-catchup` 이면 그 날 하나만 본다.
+  // (세션521: 스케줄러가 놓친 발화를 뒤늦게 실행하면 러너가 "오늘" 로만 판단해 그 날을 영영 건너뛴다)
+  const noCatchup = process.argv.includes("--no-catchup") || Boolean(dateArg);
+  const lastProcessed = noCatchup ? null : readLastProcessed();
+  const targets = noCatchup ? [ymd(date)] : datesToProcess(lastProcessed, date);
+  const missedCount = targets.length - 1;
+  if (missedCount > 0) {
+    log(PHASE, `놓친 날 보충: ${targets.slice(0, -1).join(", ")} (마지막 처리 ${lastProcessed})`);
   }
-
-  log(PHASE, `${dateStr}: ${due.length}개 실행 — ${due.join(", ")}${dryRun ? " (dry-run)" : ""}`);
+  if (lastProcessed && isCatchupStale(daysBetween(lastProcessed, ymd(date)))) {
+    // 조용히 몰아서 돌리지 않는다 — 쿼터도 위험하고, 이만큼 밀렸으면 원인부터 봐야 한다.
+    logError(
+      PHASE,
+      `마지막 처리(${lastProcessed}) 이후 ${daysBetween(lastProcessed, ymd(date))}일 경과 — ` +
+        `하루에 ${MAX_CATCHUP_PER_RUN}일씩만 메웁니다. 급하면 --date=YYYY-MM-DD 로 직접 보충하세요.`,
+    );
+  }
 
   /** @type {string[]} */
   const failures = [];
-  for (const entry of dueEntries) {
-    const script = entry.script;
-    const scriptPath = path.join(COLLECTORS_DIR, script);
-    const args = [scriptPath, ...(entry.args ?? []), ...(dryRun ? ["--dry-run"] : [])];
-    log(PHASE, `▶ ${script}${entry.args?.length ? ` ${entry.args.join(" ")}` : ""}`);
-    const res = spawnSync(process.execPath, args, { stdio: "inherit" });
-    if (res.status !== 0) {
-      failures.push(script);
-      logError(PHASE, `${script} 실패 (exit ${res.status})`);
+  /** @type {string[]} */
+  const ranAll = [];
+
+  for (const targetStr of targets) {
+    const targetDate = new Date(`${targetStr}T00:00:00`);
+    const dueEntries = entriesDueOn(targetDate);
+    const due = dueEntries.map((e) => e.script);
+    if (due.length === 0) {
+      log(PHASE, `${targetStr}: due 수집기 없음`);
+      continue;
+    }
+    log(PHASE, `${targetStr}: ${due.length}개 실행 — ${due.join(", ")}${dryRun ? " (dry-run)" : ""}`);
+    ranAll.push(...due);
+    for (const entry of dueEntries) {
+      const script = entry.script;
+      const scriptPath = path.join(COLLECTORS_DIR, script);
+      const args = [scriptPath, ...(entry.args ?? []), ...(dryRun ? ["--dry-run"] : [])];
+      log(PHASE, `▶ ${script}${entry.args?.length ? ` ${entry.args.join(" ")}` : ""}`);
+      const res = spawnSync(process.execPath, args, { stdio: "inherit" });
+      if (res.status !== 0) {
+        failures.push(script);
+        logError(PHASE, `${script} 실패 (exit ${res.status})`);
+      }
     }
   }
+
+  const dateStr = targets[targets.length - 1];
+  // 실패해도 기록한다 — 안 그러면 같은 날을 매일 재시도해 쿼터만 태운다. 실패는 아래 텔레그램이 알린다.
+  if (!dryRun && !dateArg) writeLastProcessed(dateStr);
+
+  if (ranAll.length === 0) {
+    log(PHASE, `${dateStr}: due 수집기 없음 — 종료`);
+    return;
+  }
+  const due = ranAll;
 
   if (failures.length > 0) {
     // 알림 실패가 러너를 죽이면 안 됨 (notify-telegram 철학) — best-effort.

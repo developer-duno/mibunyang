@@ -74,8 +74,8 @@ import {
  * @typedef {{ ok: boolean, status: number, json: () => Promise<unknown> }} FetchLikeResponse
  * @typedef {{
  *   source: DevPlanSource, kind: DevPlanKind, source_id: string, gid: string | null, name: string | null,
- *   lat: number | null, lng: number | null, progression_step: string | null,
- *   eta: string | null, raw: RawDevPlanItem, fetched_at: string,
+ *   lat: number | null, lng: number | null, progression_step?: string | null,
+ *   eta?: string | null, raw: RawDevPlanItem, fetched_at: string,
  * }} DevPlanRow
  * @typedef {{ type?: string, coordinates?: unknown }} GeoJsonGeometry
  * @typedef {{ id?: string | number, type?: string, geometry?: GeoJsonGeometry | null, properties?: Record<string, unknown> }} VworldFeature
@@ -689,8 +689,11 @@ export function normalizeVworldFeature(kind, feature, nowFn = () => new Date().t
     name: firstTruthyStr(props[meta.nameKey]),
     lat: centroid?.lat ?? null,
     lng: centroid?.lng ?? null,
-    progression_step: null, // V-WORLD 축(경계 데이터)엔 네이버 같은 진행단계 필드가 없음
-    eta: null,               // 별도 ETA 필드 없음
+    // ⚠️ progression_step · eta 를 **payload 에 넣지 않는다** (세션522).
+    // V-WORLD 경계 레이어엔 진행단계 필드가 없어 예전엔 둘 다 `null` 을 실어 보냈는데,
+    // upsert 는 payload 에 있는 컬럼만 덮어쓰므로 그 `null` 이 `lhzone-status.mjs` 가
+    // 채워 둔 정부 장부의 조성 단계를 **재수집 때마다 지웠다**.
+    // 키를 빼면 신규 행은 컬럼 기본값(null)으로 들어가고 기존 행의 값은 보존된다.
     raw: /** @type {RawDevPlanItem} */ (feature),
     fetched_at: nowFn(),
   };
@@ -887,7 +890,13 @@ async function main() {
     if (deduped.length > 0) log(PHASE, `샘플: ${JSON.stringify(deduped[0])}`);
     log(PHASE, "dry-run — DB 쓰기 생략");
   } else {
-    await upsertBatch("dev_plans", deduped, "source,kind,source_id", 500, sb);
+    // 출처별로 나눠 보낸다 (세션522). V-WORLD 행은 progression_step·eta 키를 아예 싣지 않는데
+    // (normalizeVworldFeature 주석 참조), PostgREST 는 한 배열 안 객체들의 키가 다르면
+    // bulk insert 를 거부한다(PGRST102 "All object keys must match").
+    const naverRows = deduped.filter((r) => r.source === "naver");
+    const vworldRows = deduped.filter((r) => r.source !== "naver");
+    if (naverRows.length) await upsertBatch("dev_plans", naverRows, "source,kind,source_id", 500, sb);
+    if (vworldRows.length) await upsertBatch("dev_plans", vworldRows, "source,kind,source_id", 500, sb);
   }
 
   const result = rpt.summary();

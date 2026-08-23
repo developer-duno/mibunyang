@@ -38,7 +38,10 @@ describe("ScoringEngine — 재지 않는 것을 말하지 않는다", () => {
   it("미래가치는 지금 산식대로 말한다 — 고정 가중치 · 거리 등급", () => {
     const t = engineText();
     expect(t).toContain("고정 가중치");
-    expect(t).toContain("LH 사업지구");
+    // 세션520: 도시축 출처가 LH 사업지구 하나가 아니게 됐다(네이버 지구단위 135건 합류).
+    // "LH 사업지구까지 거리" 라고 못 박으면 그 135건을 안 세는 것처럼 말하는 셈이라 "개발지구" 로
+    // 넓혔다 — 재는 것만 말한다는 이 파일의 원칙 그대로다.
+    expect(t).toContain("개발지구");
     expect(t).toContain("산업단지");
   });
 

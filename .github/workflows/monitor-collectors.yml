@@ -9,7 +9,6 @@ name: Monitor Collectors
 on:
   workflow_run:
     workflows:
-      - "Air Quality Collection"
       - "Childcare Facilities Collection"
       - "Collect Applyhome Competition Rate"
       - "Collect Applyhome Detail (Schedule + Units)"
@@ -22,8 +21,13 @@ on:
       - "DART 시공사 재무 수집"
       - "Emergency Medical Facilities Collection"
       - "Environment Data Collection"
-      - "Housing Permits Data Collection"
-      - "Housing Price Data Collection"
+      # 세션 519 정리 — 아래 3종은 워크플로가 없는데 이름만 남아 매일 거짓 경보를 냈다:
+      #   "Housing Permits Data Collection" = 세션 501 에 yml 삭제(KOSIS 이전)됐는데 목록에 잔존.
+      #     monitor-collectors.mjs 주석엔 "제거했다"고 적혀 있었지만 이 yml 은 안 고쳐졌다 —
+      #     **한쪽만 고치면 조용히 어긋난다**(매일 "실행 기록이 한 번도 없음" 발화).
+      #   "Air Quality Collection" / "Housing Price Data Collection" = 세션 519 에 로컬 러너 이전.
+      #     www.data.go.kr·apis.data.go.kr 도 해외 IP 차단(로컬 한국 IP 는 200 OK 실측).
+      # 감시는 셋 다 monitor-collectors.mjs EXTERNAL_API_COLLECTORS (collector_runs 신선도) 가 승계.
       - "Industry Complex Matching"
       - "Infra Facilities Collection"
       # KOSIS 10종 (KOSIS 8 + Average Income + Migration) = kosis.kr 해외 IP 차단으로

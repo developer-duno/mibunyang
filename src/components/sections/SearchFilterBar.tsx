@@ -479,12 +479,13 @@ export const SearchFilterBar = memo(function SearchFilterBar({
               <span
                 role="button"
                 tabIndex={0}
-                aria-label={`${filterRegion} 필터 해제`}
+                /* 구까지 골랐으면 "서울 강남구" 로 — 칩만 보고 어디까지 좁혔는지 알 수 있게 (세션524) */
+                aria-label={`${regionSummary} 필터 해제`}
                 onClick={() => onRegionChange("전체")}
                 onKeyDown={onChipKeyDown(() => onRegionChange("전체"))}
                 style={chipStyle}
               >
-                {filterRegion} ✕
+                {regionSummary} ✕
               </span>
             )}
             {(budgetMin || budgetMax) && (

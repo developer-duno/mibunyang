@@ -24,7 +24,7 @@
  *   node scripts/collectors/collect-jeonse-price-index.mjs              (Supabase upsert)
  *   node scripts/collectors/collect-jeonse-price-index.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, normalizeGu } from "./_shared.mjs";
 
 /** @typedef {{ C1_NM: string; C2: string; C2_NM: string; ITM_NM?: string; PRD_DE: string; DT: string }} KabRow */
 /** @typedef {{ region: string; gu: string; base_month: string; jeonse_price_index: number }} MatchedRow */
@@ -96,12 +96,23 @@ export function parseKabRows(rows, regionGuMap) {
     }
 
     // region 의 regions.gu 집합에서 C2_NM + 접미사 매칭 → 정식 gu 명 확정
+    //
+    // 세션522: **찾는 건 원문 표기로, 쓰는 건 canonical 로.**
+    // KAB 의 C2_NM 은 접미사가 없는 압축형("수원장안")이라 + "구" = "수원장안구" 로 잡히는데,
+    // 그 표기가 `regions` 에 아직 살아 있어서 매칭은 성공한다. 그 값을 그대로 쓰면
+    // market_stats_history 충돌키(region,gu,base_month)가 canonical 과 갈려 별도 행으로 쌓이고,
+    // `api/supabase/market-stats-history.ts` 는 화면에서 온 canonical gu 로 조회하므로 못 닿는다.
+    //
+    // ⚠️ 대조 집합 자체를 canonical 로 좁히면 **안 된다** — "수원장안구" 가 집합에서 사라져
+    //    매칭이 통째로 실패하고(접미사 4종 어느 것도 canonical 과 안 맞음) 그 시군구가 조용히
+    //    누락된다. 잡을 땐 원문 표기가 필요하고, 접는 건 잡은 다음이다.
     const guSet = regionGuMap.get(region);
     let gu = null;
     if (guSet) {
       for (const suffix of ["구", "시", "군", ""]) {
-        if (guSet.has(row.C2_NM + suffix)) {
-          gu = row.C2_NM + suffix;
+        const candidate = row.C2_NM + suffix;
+        if (guSet.has(candidate)) {
+          gu = normalizeGu(region, candidate) ?? candidate;
           break;
         }
       }

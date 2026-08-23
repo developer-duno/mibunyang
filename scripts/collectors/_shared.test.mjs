@@ -15,6 +15,32 @@ import {
   BUILDER_ALIASES as BRANDS_BUILDER_ALIASES,
   BRAND_TIER,
 } from "@/constants/brands";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+/**
+ * 별칭표 정본을 **직접 읽는다**. 소스 정규식으로 세면 표가 늘거나 줄 때 가드가 조용히 뒤처진다
+ * (세션491: 정규식 가드가 선언부·주석에 걸려 통째로 무효였던 선례).
+ * `_shared.mjs` 와 같은 fs 방식 — import 속성 문제를 피한다.
+ * @type {Array<{ region: string, canonical: string, parentCity: string, forms: string[] }>}
+ */
+const GU_ALIAS_ENTRIES = JSON.parse(
+  readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../../src/data/sigungu-aliases.json"),
+    "utf8",
+  ),
+).entries;
+
+/**
+ * 엔트리에서 구명만 뽑는다. **정식 2단 form 에서만** 뽑아야 한다 —
+ * bare·압축형까지 긁으면 "고양고양덕양구" 같은 겹말이 나온다(세션522 생성기 실사고).
+ * @param {{ parentCity: string, forms: string[] }} e
+ * @returns {string[]}
+ */
+function guNamesOf(e) {
+  return e.forms.filter((f) => f.startsWith(e.parentCity + " ")).map((f) => f.slice(e.parentCity.length + 1));
+}
 
 describe("resolveBuilder", () => {
   // 정방향: 원본 이름이 별칭 테이블에 없으면 원본 반환
@@ -359,6 +385,65 @@ describe("normalizeGu — 전국 일반구 별칭표 (세션510)", () => {
   it("광역시 자치구는 대상이 아니다", () => {
     expect(normalizeGu("서울", "강남구")).toBe("강남구");
     expect(normalizeGu("인천", "연수구")).toBe("연수구");
+  });
+});
+
+// 세션522 — 압축형("수원장안구") 전수 가드.
+// 세션510 이 별칭표를 만들 때 forms 에 정식 2단("수원시 장안구")과 bare("장안구") 둘만 넣었다.
+// 그런데 KOSIS/KAB·MOLIT 공시가격 CSV 는 **공백도 '시'도 없는 압축형**을 쓴다. 그게 표에 없으니
+// normalizeGu 가 원문을 그대로 돌려줬고, 별칭표를 도입하고도 35개 도시 중 34개에서 무효였다
+// (2026-08-22 라이브 실측: regions 에 압축형 행이 도시마다 2행씩 살아 있었다).
+//
+// 이 블록은 JSON 을 **직접 import 해서 전수 순회**한다 — 소스 정규식으로 세면 표가 늘 때
+// 가드가 조용히 뒤처진다.
+describe("normalizeGu — 압축형 별칭 전수 (세션522)", () => {
+  it("모든 엔트리가 압축형·공백제거 form 을 갖는다", () => {
+    // 압축형   = parentCity 에서 '시' 를 뗀 것 + 구명 ("수원장안구")  — KOSIS/KAB · MOLIT CSV 원문
+    // 공백제거 = parentCity + 구명                  ("수원시장안구") — migration.normalizeC1Name 결과
+    // 두 규칙 다 DB·수집기 실측에서 나온 실제 표기다.
+    for (const e of GU_ALIAS_ENTRIES) {
+      const guNames = guNamesOf(e);
+      expect(guNames.length, `${e.region}|${e.canonical} 에 '시 구' 형 form 이 없다`).toBeGreaterThan(0);
+      for (const g of guNames) {
+        for (const want of [e.parentCity.replace(/시$/, "") + g, e.parentCity + g]) {
+          expect(e.forms, `${e.region}|${e.canonical} 에 "${want}" 가 없다`).toContain(want);
+        }
+      }
+    }
+  });
+
+  it("압축형·공백제거형이 canonical 로 접힌다 — 전 엔트리", () => {
+    for (const e of GU_ALIAS_ENTRIES) {
+      for (const g of guNamesOf(e)) {
+        for (const f of [e.parentCity.replace(/시$/, "") + g, e.parentCity + g]) {
+          expect(normalizeGu(e.region, f), `${e.region}|${f}`).toBe(e.canonical);
+        }
+      }
+    }
+  });
+
+  it("forms 에 적힌 모든 표기가 canonical 로 접힌다 — 전 엔트리", () => {
+    for (const e of GU_ALIAS_ENTRIES) {
+      for (const f of e.forms) {
+        expect(normalizeGu(e.region, f), `${e.region}|${f}`).toBe(e.canonical);
+      }
+    }
+  });
+
+  it("2026-08-22 라이브에서 실제로 관측된 압축형 표본", () => {
+    // 표가 통째로 날아가도 이 줄들은 남아 사고를 재현한다.
+    expect(normalizeGu("경기", "수원장안구")).toBe("수원시 장안구");
+    expect(normalizeGu("경기", "성남분당구")).toBe("성남시 분당구");
+    expect(normalizeGu("충북", "청주상당구")).toBe("청주시 상당구");
+    expect(normalizeGu("경북", "포항남구")).toBe("포항시 남구");
+    expect(normalizeGu("경남", "창원마산합포구")).toBe("창원시 마산합포구");
+    expect(normalizeGu("경기", "화성동탄구")).toBe("화성시");
+  });
+
+  it("고양시 일산서구 — 형제 구는 등재됐는데 이것만 빠져 있었다 (세션522 발견)", () => {
+    expect(normalizeGu("경기", "일산서구")).toBe("고양시 일산서구");
+    expect(normalizeGu("경기", "고양일산서구")).toBe("고양시 일산서구");
+    expect(guParentCity("경기", "고양일산서구")).toBe("고양시");
   });
 });
 
