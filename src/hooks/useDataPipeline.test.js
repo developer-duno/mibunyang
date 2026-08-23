@@ -1,9 +1,13 @@
 // @ts-check
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { PROFILES } from "@/constants/profiles";
 import { useDataPipeline, VISIBLE_PAGE_SIZE } from "./useDataPipeline";
 
-/* ── calcCats / computeRegionalMedians 모킹 ── */
+/* ── calcCats / computeRegionalMedians / locationTotalForProfile 모킹 ── */
+// 세션526: `locationTotalForProfile` 은 locW 를 가진 프로필(신혼·자녀교육·은퇴)에서만 호출된다.
+//   캐시 기본값(location 65)과 구분되는 90 을 돌려줘, 총점이 어느 쪽을 썼는지 눈에 보이게 한다.
+const MOCK_LOC_W_TOTAL = 90;
 vi.mock("@/scoring/engine", () => ({
   calcCats: vi.fn(() => ({
     price: { total: 70, subs: [] },
@@ -14,6 +18,7 @@ vi.mock("@/scoring/engine", () => ({
     future: { total: 55, subs: [] },
   })),
   computeRegionalMedians: vi.fn(() => ({})),
+  locationTotalForProfile: vi.fn(() => 90),
 }));
 
 /* ── 팩토리 ── */
@@ -633,5 +638,86 @@ describe("useDataPipeline", () => {
       expect(result.current.regionOptions).toContain("서울");
       expect(result.current.regionOptions).toContain("경기");
     });
+  });
+});
+
+/**
+ * 세션526 — 입지 내부 비중(locW) 배선. 근거:
+ * docs/superpowers/specs/2026-08-24-profile-discrimination-remeasure.md
+ *
+ * `catsCache` 는 기준 비중으로 구워져 프로필과 무관하다. locW 를 가진 프로필만 이 훅에서
+ * 입지 총점을 갈아끼운다 — 표시(res.cats)와 합산이 **같은 값**을 쓰는지가 핵심이다.
+ */
+describe("scored — locW 프로필별 입지 총점 (세션526)", () => {
+  it("edu 프로필은 locW 반영 입지 총점으로 합산한다", async () => {
+    const { locationTotalForProfile } = await import("@/scoring/engine");
+    /** @type {import('vitest').Mock} */ (locationTotalForProfile).mockClear();
+    // edu w: location 70, product 10, price 10, risk 5, benefit 0, future 5
+    // cats(캐시): location 65 → locW 반영 90 으로 교체, 나머지 product 60 / price 70 / risk 75 / future 55
+    // 합산: 90*.70 + 60*.10 + 70*.10 + 75*.05 + 50*0 + 55*.05
+    //     = 63 + 6 + 7 + 3.75 + 0 + 2.75 = 82.5 → round → 83
+    const { result } = renderPipeline({ apartments: [makeApt()], profile: "edu" });
+    expect(result.current.scored[0].res.total).toBe(83);
+    expect(locationTotalForProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it("edu 프로필의 res.cats.location.total 이 locW 반영값으로 교체된다 (표시 = 합산)", () => {
+    const { result } = renderPipeline({ apartments: [makeApt()], profile: "edu" });
+    const cats = /** @type {Record<string, { total: number }>} */ (
+      /** @type {unknown} */ (result.current.scored[0].res.cats)
+    );
+    expect(cats.location.total).toBe(MOCK_LOC_W_TOTAL);
+    // 나머지 5개 카테고리는 캐시 그대로 — 입지만 갈아끼운다
+    expect(cats.price.total).toBe(70);
+    expect(cats.product.total).toBe(60);
+    expect(cats.risk.total).toBe(75);
+    expect(cats.future.total).toBe(55);
+    // 표시된 값으로 다시 합산하면 res.total 과 일치해야 한다 (표시-합산 정합)
+    const w = /** @type {Record<string, number>} */ (PROFILES.edu.w);
+    const recomputed = Math.round(Object.keys(cats).reduce((s, k) => s + (cats[k].total * (w[k] ?? 0)) / 100, 0));
+    expect(recomputed).toBe(result.current.scored[0].res.total);
+  });
+
+  it("locW 를 가진 프로필은 신혼·자녀교육·은퇴 셋 — 각각 호출된다", async () => {
+    const { locationTotalForProfile } = await import("@/scoring/engine");
+    for (const p of ["newlywed", "edu", "retire"]) {
+      /** @type {import('vitest').Mock} */ (locationTotalForProfile).mockClear();
+      renderPipeline({ apartments: [makeApt()], profile: p });
+      expect(locationTotalForProfile).toHaveBeenCalled();
+      // 그 프로필의 locW 를 그대로 넘긴다
+      const profilesMap = /** @type {Record<string, { locW?: unknown }>} */ (/** @type {unknown} */ (PROFILES));
+      expect(/** @type {import('vitest').Mock} */ (locationTotalForProfile).mock.calls[0][1]).toEqual(
+        profilesMap[p].locW
+      );
+    }
+  });
+
+  it("live 프로필은 locW 가 없어 캐시 객체를 그대로 참조한다 (불필요한 clone 0)", async () => {
+    const { locationTotalForProfile } = await import("@/scoring/engine");
+    /** @type {import('vitest').Mock} */ (locationTotalForProfile).mockClear();
+    const { result } = renderPipeline({ apartments: [makeApt()], profile: "live" });
+    expect(locationTotalForProfile).not.toHaveBeenCalled();
+    // catsCache 의 cats 와 res.cats 가 **같은 객체**여야 한다
+    expect(result.current.scored[0].res.cats).toBe(result.current.catsCache[0].cats);
+    expect(result.current.scored[0].res.cats.location.total).toBe(65);
+  });
+
+  it("invest 프로필도 locW 가 없어 캐시 그대로 (기준 비중 사용)", async () => {
+    const { locationTotalForProfile } = await import("@/scoring/engine");
+    /** @type {import('vitest').Mock} */ (locationTotalForProfile).mockClear();
+    const { result } = renderPipeline({ apartments: [makeApt()], profile: "invest" });
+    expect(locationTotalForProfile).not.toHaveBeenCalled();
+    expect(result.current.scored[0].res.cats).toBe(result.current.catsCache[0].cats);
+  });
+
+  it("커스텀 가중치는 카테고리 축만 바꾼다 — locW 는 프로필 고정값 그대로 적용", async () => {
+    const { locationTotalForProfile } = await import("@/scoring/engine");
+    /** @type {import('vitest').Mock} */ (locationTotalForProfile).mockClear();
+    // 입지 100% 커스텀 → 총점 = locW 반영 입지 총점(90)
+    const cw = { edu: { location: 100, product: 0, price: 0, risk: 0, benefit: 0, future: 0 } };
+    const { result } = renderPipeline({ apartments: [makeApt()], profile: "edu", customWeights: cw });
+    expect(locationTotalForProfile).toHaveBeenCalled();
+    expect(/** @type {import('vitest').Mock} */ (locationTotalForProfile).mock.calls[0][1]).toEqual(PROFILES.edu.locW);
+    expect(result.current.scored[0].res.total).toBe(MOCK_LOC_W_TOTAL);
   });
 });

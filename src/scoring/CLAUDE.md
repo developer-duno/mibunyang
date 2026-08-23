@@ -36,12 +36,28 @@ src/scoring/
 | 위치 | 합계 |
 |------|------|
 | PROFILES 5개 (live/invest/newlywed/edu/retire) | 각각 **100** |
+| PROFILES `locW` (입지 5서브 프로필별 비중 — newlywed/edu/retire, 세션526) | 각각 **1.00** |
 | scorePrice 내부 (괴리도/전세가율/PIR/PSR/신뢰도/택지비) | **1.00** |
-| scoreLocation 내부 (5개 서브) | **1.00** |
+| scoreLocation 내부 (5개 서브 — 기준 `LOCATION_SUB_WEIGHTS`) | **1.00** |
 | infra 서브가중치 (10항목) | **1.00** |
 | scoreRisk 내부 (11개 서브) | **1.00** |
 | scoreFuture 내부 (동적, 아래 참조) | **항상 1.00** |
 | scoreProduct max (9개 항목) | **100** |
+
+## 입지 서브 비중의 프로필화 — locW (세션526)
+
+`scoreLocation(apt, locW = LOCATION_SUB_WEIGHTS)` — 입지 5서브(교통/학군/인프라/자연환경/혐오시설)
+비중이 하드코딩에서 **기준 상수 + 프로필별 오버라이드**(`PROFILES.*.locW`, 합 1.00)로 바뀌었다.
+같은 입지 총점을 곱하기만 해서는 프로필이 안 갈리기 때문이다(실거주–자녀교육 상관 0.992 →
+수술 후 0.906, 근거: `docs/superpowers/specs/2026-08-24-profile-discrimination-remeasure.md`).
+
+- **catsCache 는 기준 비중으로 구워진다** (calcCats 무변경 — 캐시는 프로필 무관 유지).
+- locW 프로필(newlywed/edu/retire)의 입지 총점은 화면에서 `locationTotalForProfile(apt, locW)`
+  (engine.ts — sanitize 경유 정확 재계산, rm 무관)로 다시 계산해 `useDataPipeline` scored 에서
+  `res.cats.location.total` 만 교체한다. live/invest 는 캐시 참조 그대로.
+- ⚠️ 그래서 **res.cats 의 location.total 은 프로필 의존**이다 — "cats 는 프로필과 무관" 전제의
+  옛 주석·코드를 새로 쓰지 말 것. subs 의 각 score 는 비중 무관 원값이라 여전히 프로필 공통.
+- locW 를 되돌릴 땐 profiles.ts 주석의 되돌리기 절 참조(FAQ 문장 동반 제거 포함).
 
 ## 모든 점수 0~100 클램핑
 

@@ -16,6 +16,7 @@ import {
   LIQUIDITY_LEGEND,
   LIQUIDITY_AREA_UNIT,
   LIQUIDITY_TIERS,
+  LOCATION_SUB_WEIGHTS,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
@@ -29,6 +30,7 @@ import {
   computeRegionalMedians,
   calcCats,
   calcAll,
+  locationTotalForProfile,
 } from "./engine";
 
 // --- 팩토리 함수: 테스트용 아파트 데이터 생성 ---
@@ -360,11 +362,12 @@ describe("scoreLocation", () => {
       Number(bad.subs.find((s) => s.name === "자연환경")?.score)
     );
   });
-  // --- 세션 454: 가중치 합 1.0 불변식 (scoreLocation.ts L102/L93 + INFRA_CONFIG) ---
-  it("외부 5항목 가중치 합 = 1.00 (transport·school·infra·env·noxSafe)", () => {
-    // scoreLocation.ts L102: 0.30 + 0.25 + 0.20 + 0.10 + 0.15
-    const w = [0.3, 0.25, 0.2, 0.1, 0.15];
-    expect(Math.round(w.reduce((a, b) => a + b, 0) * 100) / 100).toBe(1.0);
+  // --- 세션 454: 가중치 합 1.0 불변식 (INFRA_CONFIG + 대기질) ---
+  // 세션526: 입지 5서브 비중 하드코딩이 사라지고 LOCATION_SUB_WEIGHTS(기준)+프로필 locW 로 옮겨갔다.
+  //   옛 가드는 리터럴 배열을 스스로 합산해 소스와 무관한 껍데기였다(상수를 바꿔도 green) — 상수 파생으로 정정.
+  it("외부 5항목 가중치 합 = 1.00 (LOCATION_SUB_WEIGHTS 파생 — transport·school·infra·env·noxSafe)", () => {
+    const sum = Object.values(LOCATION_SUB_WEIGHTS).reduce((a, b) => a + b, 0);
+    expect(Math.round(sum * 100) / 100).toBe(1.0);
   });
   it("대기질 복합 가중치 합 = 1.00 (PM2.5·PM10·O3)", () => {
     // scoreLocation.ts L93: 0.40 + 0.35 + 0.25
@@ -2102,5 +2105,117 @@ describe("거래량 문구는 '이 구'라 단정하지 않는다 (세션514)", 
     expect(liq(makeApt({ recentTrades6m: 1234 })).detail).toContain(`${LIQUIDITY_AREA_UNIT} 단위 합계`);
     // 미수집도 같은 단위 이름을 쓴다
     expect(liq(makeApt({ recentTrades6m: null })).detail).toContain(LIQUIDITY_AREA_UNIT);
+  });
+});
+
+/**
+ * 세션526 — 입지 내부 비중(locW) 오버라이드. 근거:
+ * docs/superpowers/specs/2026-08-24-profile-discrimination-remeasure.md
+ *
+ * 옛 `scoreLocation` 은 본문에 `transport*0.3 + school*0.25 + ...` 를 박아 두어 어느 프로필이든
+ * 같은 입지 점수를 냈다. 이제 프로필이 `PROFILES[*].locW` 로 그 비중을 덮어쓴다.
+ */
+describe("scoreLocation — locW 오버라이드 (세션526)", () => {
+  /**
+   * locW 5키 중 하나에 1.0 을 몰아준 비중 — 그 서브 하나만 total 에 반영돼야 한다.
+   * @param {string} key
+   */
+  const oneHot = (key) => ({
+    transport: 0,
+    school: 0,
+    infra: 0,
+    env: 0,
+    noxSafe: 0,
+    [key]: 1,
+  });
+
+  /** locW 키 → subs[].name (표시 이름) @type {Record<string, string>} */
+  const SUB_NAME = {
+    transport: "교통",
+    school: "학군",
+    infra: "생활인프라",
+    env: "자연환경",
+    noxSafe: "혐오시설",
+  };
+
+  it("인자를 생략하면 기준 비중(LOCATION_SUB_WEIGHTS)과 같다 — 기존 호출처 무변경 보장", () => {
+    const apt = makeApt();
+    expect(scoreLocation(apt).total).toBe(scoreLocation(apt, LOCATION_SUB_WEIGHTS).total);
+  });
+
+  // ⚠️ 뮤테이션 대상 — total 식의 `locW.X` 를 리터럴(예: 0.35)로 되돌리면 그 키의 케이스가 red.
+  //    5키를 전부 도는 이유: 한 키만 검사하면 나머지 4개가 하드코딩돼도 초록불이 된다.
+  Object.keys(LOCATION_SUB_WEIGHTS).forEach((key) => {
+    it(`${key} 에 비중 1.0 을 몰아주면 total = 그 서브(${SUB_NAME[key]})의 원점수`, () => {
+      const apt = makeApt();
+      const r = scoreLocation(apt, /** @type {any} */ (oneHot(key)));
+      const subScore = r.subs.find((s) => s.name === SUB_NAME[key])?.score ?? -1;
+      expect(r.total).toBe(subScore);
+    });
+  });
+
+  it("subs[].score 는 비중과 무관한 원값 — locW 를 바꿔도 그대로다 (total 만 달라진다)", () => {
+    const apt = makeApt();
+    const base = scoreLocation(apt);
+    const edu = scoreLocation(apt, /** @type {any} */ (PROFILES.edu.locW));
+    expect(edu.subs.map((s) => s.score)).toEqual(base.subs.map((s) => s.score));
+  });
+
+  it("학군이 좋은 단지는 자녀교육 비중에서 입지 총점이 오른다 (수술 (나)가 실제로 순위를 가른다)", () => {
+    // 학군 100 / 교통 최악 — 기준 비중보다 학군 가중(edu)에서 총점이 높아야 한다.
+    const goodSchool = makeApt({ schoolScore: 100, schoolGrade: "A", subwayDist: 9999, busRoutes: 0 });
+    const base = scoreLocation(goodSchool).total;
+    const edu = scoreLocation(goodSchool, /** @type {any} */ (PROFILES.edu.locW)).total;
+    expect(edu).toBeGreaterThan(base);
+  });
+
+  it("학군이 나쁜 단지는 은퇴 비중(학군 0.05)에서 입지 총점이 덜 깎인다", () => {
+    const badSchool = makeApt({ schoolScore: 0, schoolGrade: "D" });
+    const base = scoreLocation(badSchool).total;
+    const retire = scoreLocation(badSchool, /** @type {any} */ (PROFILES.retire.locW)).total;
+    expect(retire).toBeGreaterThan(base);
+  });
+
+  it("총점은 0~100 클램핑을 유지한다 (극단 비중에서도)", () => {
+    const apt = makeApt();
+    Object.keys(LOCATION_SUB_WEIGHTS).forEach((key) => {
+      const t = scoreLocation(apt, /** @type {any} */ (oneHot(key))).total;
+      expect(t).toBeGreaterThanOrEqual(0);
+      expect(t).toBeLessThanOrEqual(100);
+    });
+  });
+});
+
+describe("locationTotalForProfile (세션526)", () => {
+  it("기준 비중으로 부르면 calcCats 의 입지 총점과 정확히 같다 — 캐시 호환 보장", () => {
+    const apt = makeApt();
+    expect(locationTotalForProfile(apt, LOCATION_SUB_WEIGHTS)).toBe(calcCats(apt).location.total);
+  });
+
+  // ⚠️ 이 가드가 잠그는 사실: sanitize 의 `rm`(지역 중앙값)은 supplyRatio·_regionAvgMaint 에만 쓰여
+  //    입지 점수와 무관하다. 그래서 locationTotalForProfile 이 rm 을 생략해도 안전하다.
+  //    rm 이 입지에 새로 쓰이게 되면 이 테스트가 red 로 알려준다.
+  it("regionMedians 유무가 입지 총점을 바꾸지 않는다 (rm 은 supplyRatio·_regionAvgMaint 전용)", () => {
+    const apt = makeApt({ region: "경기", pir: null, psr: null, supplyRatio: null });
+    const rm = { 경기: { pir: 5, psr: 0.8, unsoldRate: 15, supplyRatio: 100, maint: 30 } };
+    const withRm = calcCats(apt, /** @type {any} */ ({ regionMedians: rm })).location.total;
+    const withoutRm = calcCats(apt).location.total;
+    expect(withRm).toBe(withoutRm);
+    expect(locationTotalForProfile(apt, LOCATION_SUB_WEIGHTS)).toBe(withRm);
+  });
+
+  it("locW 가 다르면 결과가 달라진다 (프로필별로 실제로 갈린다)", () => {
+    const apt = makeApt({ schoolScore: 95, schoolGrade: "A" });
+    const edu = locationTotalForProfile(apt, /** @type {any} */ (PROFILES.edu.locW));
+    const retire = locationTotalForProfile(apt, /** @type {any} */ (PROFILES.retire.locW));
+    expect(edu).not.toBe(retire);
+  });
+
+  it("sanitize 를 거친다 — 원시 null 입력에서도 NaN 없이 0~100", () => {
+    const raw = /** @type {any} */ ({ id: 9, region: "경기", schoolScore: null, noise: null, subwayDist: null });
+    const t = locationTotalForProfile(raw, LOCATION_SUB_WEIGHTS);
+    expect(Number.isFinite(t)).toBe(true);
+    expect(t).toBeGreaterThanOrEqual(0);
+    expect(t).toBeLessThanOrEqual(100);
   });
 });

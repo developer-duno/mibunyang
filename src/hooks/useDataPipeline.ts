@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect, useDeferredValue } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { REGIONS } from "@/constants/regions";
-import { calcCats, computeRegionalMedians } from "@/scoring/engine";
+import { calcCats, computeRegionalMedians, locationTotalForProfile } from "@/scoring/engine";
 import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES, NOW_YM } from "@/lib/classify";
 import { applyBaseFilters } from "@/lib/filterEngine";
 import { matchesQuery, normalizeQuery } from "@/lib/searchMatch";
+import type { LocationSubWeights } from "@/constants/scoringTiers";
 import type { Cats, ProfileWeights } from "@/types/scoring";
 import type { UseDataPipelineArgs, UseDataPipelineReturn, ScoredApt, SortKey } from "@/types/hooks";
 
@@ -195,7 +196,7 @@ export function useDataPipeline({
   }, [apartments]);
 
   const scored = useMemo<ScoredApt[]>(() => {
-    const profilesMap = PROFILES as Record<string, { w: ProfileWeights }>;
+    const profilesMap = PROFILES as Record<string, { w: ProfileWeights; locW?: LocationSubWeights }>;
     const raw = customWeights[profile];
     const defaultW = profilesMap[profile].w;
     const w: ProfileWeights =
@@ -204,15 +205,24 @@ export function useDataPipeline({
       Object.keys(defaultW).every((k) => typeof (raw as unknown as Record<string, unknown>)[k] === "number")
         ? (raw as ProfileWeights)
         : defaultW;
+    // 입지 내부 비중(세션526 수술 (나)). `catsCache` 는 기준 비중으로 구워져 있어 프로필과 무관하므로,
+    // locW 를 가진 프로필만 입지 총점을 다시 계산해 갈아끼운다. 손님이 만지는 커스텀 가중치
+    // (customWeights)는 **카테고리 축만** 다루므로 locW 는 프로필 고정값 그대로 쓴다.
+    const locW = profilesMap[profile]?.locW;
     return catsCache.map(({ apt, cats }) => {
-      const catKeys = Object.keys(cats) as Array<keyof Cats>;
+      // live/invest 는 캐시 객체를 그대로 참조한다(불필요한 clone 0 — 참조 동일성 유지).
+      const catsP: Cats = locW
+        ? { ...cats, location: { ...cats.location, total: locationTotalForProfile(apt, locW) } }
+        : cats;
+      const catKeys = Object.keys(catsP) as Array<keyof Cats>;
       const total = Math.round(
         Math.min(
-          catKeys.reduce((s, k) => s + (cats[k].total * (w[k as keyof ProfileWeights] ?? 0)) / 100, 0),
+          catKeys.reduce((s, k) => s + (catsP[k].total * (w[k as keyof ProfileWeights] ?? 0)) / 100, 0),
           100
         )
       );
-      return { apt, res: { total, cats, weights: w } };
+      // res.cats 로 DetailModal·CompareSheet·정렬이 전부 흐르므로 여기 한 곳 교체로 표시·합산이 함께 간다.
+      return { apt, res: { total, cats: catsP, weights: w } };
     });
   }, [catsCache, profile, customWeights]);
 
