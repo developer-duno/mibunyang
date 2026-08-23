@@ -32,6 +32,7 @@ import {
   AIR_O3_BAD_SCORE,
   SCHOOL_WALK_BONUS,
   SCHOOL_WALK_FAR_ADJ,
+  schoolGradeLegend,
 } from "@/constants/scoringTiers";
 import type { Apt, Res } from "@/types/scoring";
 
@@ -169,12 +170,14 @@ export function scoreLocation(apt: Apt): Res {
         name: "학군",
         score: Math.round(school),
         info: schoolGrade ? `${schoolGrade}${walkMin != null ? ` 도보${walkMin}분` : ""}` : schoolGrade,
-        // ⚠️ 등급은 점수에서 **파생**된다(`schools-neis.mjs gradeFromScore`: 80↑ A · 60↑ B · 40↑ C).
+        // ⚠️ 등급은 점수에서 **파생**된다(`schools-neis.mjs gradeFromScore`).
         //    옛 문구 "A=100, B=80, C=60, D=40점" 이 주장하는 1:1 대응은 성립할 수 없다 —
         //    B등급 186곳은 실측 60~79(중앙 71)라 80 에 닿지 않는다(520곳에서 detail 이 거짓이었다).
         //    `schoolScore` 는 `?? 50` 폴백이 걸려 있어, 등급이 없으면 점수도 함께 감춘다.
+        //    ⚠️ 경계 숫자를 여기 박지 않는다 — 세션524에 경계가 80/60/40 → 90/60/20 으로 바뀌었는데
+        //    박아 뒀으면 문구만 옛 경계에 남는다(세션499·512가 겪은 자리). `SCHOOL_GRADE_TIERS` 파생.
         detail:
-          `${schoolGrade ? `${schoolGrade} ${schoolScore}점` : "미수집"} (A 80↑ · B 60↑ · C 40↑)` +
+          `${schoolGrade ? `${schoolGrade} ${schoolScore}점` : "미수집"} (${schoolGradeLegend()})` +
           `${walkMin != null ? ` · 도보 ${walkMin}분 (5분↓+10, 10분↓+5, 20분↑-10)` : ""}`,
       },
       {

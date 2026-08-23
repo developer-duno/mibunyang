@@ -8,6 +8,8 @@
  *   node scripts/collectors/schools-neis.mjs              (Supabase UPDATE)
  *   node scripts/collectors/schools-neis.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/schools-neis.mjs --limit 100  (처리 건수 제한)
+ *   node scripts/collectors/schools-neis.mjs --rescale-only [--dry-run]
+ *       저장된 nearby_schools 만 읽어 school_score/school_grade 재계산 (외부 API 호출 0)
  */
 import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota, recordCollectorRun, createReporter } from "./_shared.mjs";
 
@@ -308,7 +310,7 @@ export function calcQualityBonus(highSchools) {
  * @param {Array<Record<string, any>>} [allSchools]
  * @returns {number}
  */
-export function calcScore(elem, middle, high, allSchools) {
+export function calcRawScore(elem, middle, high, allSchools) {
   let score = 50;
   // 거리 기반 점수 (기존 로직 유지)
   for (const s of elem) {
@@ -331,15 +333,60 @@ export function calcScore(elem, middle, high, allSchools) {
   // 밀도 보정 — 학교알리미 학생수 있을 때만 적용
   if (allSchools) score += calcDensityBonus(allSchools);
 
-  return Math.min(Math.max(score, 0), 100);
+  return Math.max(score, 0);
 }
 
-/** @param {number} score */
+// ── 재척도 거울값 (세션524) ──────────────────────────────────
+// `.mjs` 는 `src/constants/scoringTiers.ts` 를 import 할 수 없어 값을 복제한다.
+// **진실의 원천은 그 파일**이고, `schools-neis.test.mjs` 가 직접 import 해 대조한다
+// (한쪽만 바꾸면 red — transit-match.mjs 의 `*_MIRROR` 관례 답습).
+// 근거 분포·앵커의 뜻은 scoringTiers.ts 의 `SCHOOL_RESCALE_ANCHORS` 주석 참조.
+export const RESCALE_ANCHORS_MIRROR = [
+  { raw: 50, score: 0 },
+  { raw: 76, score: 20 },
+  { raw: 124, score: 60 },
+  { raw: 162, score: 100 },
+];
+export const GRADE_TIERS_MIRROR = [
+  { min: 90, grade: "A" },
+  { min: 60, grade: "B" },
+  { min: 20, grade: "C" },
+];
+export const GRADE_FALLBACK_MIRROR = "D";
+
+/**
+ * 원점수(상한 없음) → 0~100 상대 점수. 앵커 사이는 선형 보간, 양 끝은 클램프.
+ * @param {number} raw
+ * @returns {number}
+ */
+export function rescaleSchoolScore(raw) {
+  const a = RESCALE_ANCHORS_MIRROR;
+  if (raw <= a[0].raw) return a[0].score;
+  for (let i = 1; i < a.length; i++) {
+    if (raw <= a[i].raw) {
+      const t = (raw - a[i - 1].raw) / (a[i].raw - a[i - 1].raw);
+      return Math.round(a[i - 1].score + t * (a[i].score - a[i - 1].score));
+    }
+  }
+  return a[a.length - 1].score;
+}
+
+/**
+ * @param {Array<Record<string, any>>} elem
+ * @param {Array<Record<string, any>>} middle
+ * @param {Array<Record<string, any>>} high
+ * @param {Array<Record<string, any>>} [allSchools]
+ * @returns {number}
+ */
+export function calcScore(elem, middle, high, allSchools) {
+  return rescaleSchoolScore(calcRawScore(elem, middle, high, allSchools));
+}
+
+/** 등급 경계는 거울 상수에서 뽑는다 — 숫자를 여기 박으면 경계만 바뀌었을 때 등급이 안 따라온다.
+ * @param {number} score */
 export function gradeFromScore(score) {
-  if (score >= 80) return "A";
-  if (score >= 60) return "B";
-  if (score >= 40) return "C";
-  return "D";
+  for (const t of GRADE_TIERS_MIRROR) if (score >= t.min) return t.grade;
+  return GRADE_FALLBACK_MIRROR;
 }
 
 // ── 세션 338: resume self skip 헬퍼 ───────────────────────────
@@ -368,11 +415,87 @@ export function buildEnrichedIds(schoolRows, staleThresholdMs) {
   return ids;
 }
 
+// ── 재척도 백필 (세션524) ────────────────────────────────────
+/**
+ * 이미 저장된 `nearby_schools` 만 읽어 `school_score`·`school_grade` 를 다시 계산한다.
+ * **외부 API 호출 0** (Kakao·NEIS·학교알리미 모두 안 부른다).
+ *
+ * 왜 별도 경로인가 — 본 수집 경로는 `buildEnrichedIds` 로 "NEIS 보강 완료 + 30일 이내" 단지를
+ * 건너뛴다. 그 skip 은 *수집* 을 아끼려는 것이지 *채점* 과는 무관해서, 재척도만 하려면
+ * 그 게이트를 지나쳐야 한다. 게이트를 느슨하게 고치면 다음 정기 실행이 전수 재수집을 하며
+ * 쿼터를 태우므로(세션338 사고 자리), 건드리지 않고 옆길을 낸다.
+ *
+ * ⚠️ `updated_at` 을 **일부러 안 건드린다**. 새로 수집한 것이 아니므로 신선도 시계를 앞당기면
+ * 다음 정기 실행이 30일 동안 그 단지를 건너뛴다(= 진짜 갱신이 밀린다).
+ * ⚠️ `collector_runs` 에도 기록하지 않는다 — monitor ⑤ 가 "수집기가 돌았다"로 오해한다.
+ *
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {{ dryRun: boolean, limit: number }} opts
+ */
+export async function rescaleOnly(sb, { dryRun, limit }) {
+  log(PHASE, `=== 재척도 전용 모드${dryRun ? " (DRY-RUN)" : ""} — 외부 API 호출 0 ===`);
+  const PAGE = 1000;
+  /** @type {Array<Record<string, any>>} */
+  const rows = [];
+  for (let off = 0; ; off += PAGE) {
+    const { data, error } = await sb
+      .from("schools")
+      .select("apartment_id, nearby_schools, school_score, school_grade")
+      .order("apartment_id", { ascending: true })
+      .range(off, off + PAGE - 1);
+    if (error) throw new Error(`schools 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    rows.push(.../** @type {Array<Record<string, any>>} */ (/** @type {unknown} */ (data)));
+    if (data.length < PAGE) break;
+  }
+
+  const targets = rows.slice(0, limit);
+  const rpt = createReporter(PHASE);
+  let changed = 0, same = 0, noData = 0, failed = 0;
+  /** @type {Record<string, number>} */
+  const gradeDist = {};
+
+  for (const r of targets) {
+    if (rpt.interrupted()) break;
+    const arr = Array.isArray(r.nearby_schools) ? r.nearby_schools : [];
+    if (arr.length === 0) { noData++; continue; }
+    const score = calcScore(
+      arr.filter(/** @param {Record<string, any>} s */ (s) => s.type === "초"),
+      arr.filter(/** @param {Record<string, any>} s */ (s) => s.type === "중"),
+      arr.filter(/** @param {Record<string, any>} s */ (s) => s.type === "고"),
+      arr,
+    );
+    const grade = gradeFromScore(score);
+    gradeDist[grade] = (gradeDist[grade] ?? 0) + 1;
+    if (r.school_score === score && r.school_grade === grade) { same++; continue; }
+    if (dryRun) { changed++; continue; }
+    const { error } = await sb
+      .from("schools")
+      .update({ school_score: score, school_grade: grade })
+      .eq("apartment_id", r.apartment_id);
+    if (error) { logError(PHASE, `${r.apartment_id}: ${error.message}`); failed++; }
+    else changed++;
+  }
+
+  const total = Object.values(gradeDist).reduce((s, v) => s + v, 0) || 1;
+  log(PHASE, `등급 분포: ${["A", "B", "C", "D"].map(g => `${g} ${gradeDist[g] ?? 0}(${(((gradeDist[g] ?? 0) / total) * 100).toFixed(1)}%)`).join(" · ")}`);
+  log(PHASE, `=== 재척도 완료: 변경 ${changed}, 동일 ${same}, nearby_schools 없음 ${noData}, 실패 ${failed} ===`);
+  return { changed, same, noData, failed };
+}
+
 // ── 메인 수집 로직 ──────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const limitIdx = process.argv.indexOf("--limit");
   const limit = limitIdx !== -1 ? Number(process.argv[limitIdx + 1]) : Infinity;
+
+  // 재척도 전용 — 외부 API 를 하나도 안 부르므로 본 수집 준비 전에 갈라진다.
+  if (process.argv.includes("--rescale-only")) {
+    const res = await rescaleOnly(getSupabase(), { dryRun, limit });
+    if (res.failed > 0) process.exit(1);
+    return;
+  }
+
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
   if (NEIS_KEY) log(PHASE, "NEIS API 활성화 — 학교 상세 보강 적용");
   else log(PHASE, "⚠️ NEIS_KEY 미설정 — 거리 기반만 사용");
