@@ -10,6 +10,7 @@
 //    통과만 보는 가드는 껍데기다(.claude/rules/meta/guards-must-be-mutation-tested.md).
 import { describe, it, expect } from "vitest";
 import { scoreBenefit, scoreLocation, scoreProduct, scoreRisk, calcCats } from "@/scoring/engine";
+import { SCHOOL_GRADE_TIERS, schoolGradeLegend } from "@/constants/scoringTiers";
 
 /** @param {Record<string, unknown>} o */
 const apt = (o) => /** @type {any} */ (o);
@@ -97,12 +98,22 @@ describe("엔진 문구 정직성 (세션512)", () => {
   });
 
   describe("학군 — 등급은 점수에서 파생된다", () => {
-    // `schools-neis.mjs gradeFromScore`: 80↑ A · 60↑ B · 40↑ C. "B=80점" 대응은 성립 불가.
+    // 등급 경계는 `SCHOOL_GRADE_TIERS` 에서 파생된다. "B=80점" 대응은 성립 불가.
+    // ⚠️ 기대값을 숫자로 적지 않는다 — 세션524에 경계가 80/60/40 → 90/60/20 으로 바뀌었고,
+    //    적어 뒀으면 문구가 옛 경계에 남아도 초록불이었다. 상수에서 읽어 대조한다.
     it("등급↔점수 1:1 대응을 주장하지 않고 실제 점수를 보여준다", () => {
       const d = sub(scoreLocation(apt({ schoolGrade: "B", schoolScore: 71 })), "학군")?.detail;
       expect(d).toContain("B 71점");
-      expect(d).toContain("A 80↑");
+      expect(d).toContain(schoolGradeLegend());
+      for (const t of SCHOOL_GRADE_TIERS) expect(d).toContain(`${t.grade} ${t.min}↑`);
       expect(d).not.toMatch(/B=80/); // 옛 거짓 대응
+    });
+
+    it("옛 경계(A 80↑)를 그대로 적어 두지 않는다 — 상수와 어긋나면 red", () => {
+      const d = sub(scoreLocation(apt({ schoolGrade: "B", schoolScore: 71 })), "학군")?.detail;
+      const aMin = SCHOOL_GRADE_TIERS.find((t) => t.grade === "A")?.min;
+      expect(aMin).toBe(90);
+      expect(d).not.toContain("A 80↑");
     });
 
     it("등급이 없으면 점수도 감춘다 — ?? 50 폴백을 '실측 50점'처럼 보이지 않게", () => {

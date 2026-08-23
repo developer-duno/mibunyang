@@ -1,7 +1,13 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { SUB_CONTEXT, PRODUCT_MAX } from "./subContext";
-import { PIR_SCORE_TIERS, LIQUIDITY_TIERS, LIQUIDITY_LABELS, LIQUIDITY_AREA_UNIT } from "@/constants/scoringTiers";
+import {
+  PIR_SCORE_TIERS,
+  LIQUIDITY_TIERS,
+  LIQUIDITY_LABELS,
+  LIQUIDITY_AREA_UNIT,
+  schoolGradeLegend,
+} from "@/constants/scoringTiers";
 import { scorePrice, scoreLocation, scoreProduct, scoreBenefit, scoreRisk, scoreFuture } from "@/scoring/engine";
 
 describe("SUB_CONTEXT", () => {
@@ -304,6 +310,22 @@ describe("PRODUCT_MAX", () => {
     it("학군: 접근성을 재므로 '우수 학군'이라 하지 않는다", () => {
       expect(say("location", "학군", 90)).not.toMatch(/우수 학군/);
       expect(say("location", "학군", 90)).toBe("학교 접근 우수");
+    });
+
+    // 세션524 — 학군 점수가 상대 척도로 바뀌면서 경계를 70/40 → 80/50 으로 옮겼다.
+    // 옛 경계를 새 척도에 두면 "학교 접근 우수" 가 44.7%(거의 절반)에 붙는다.
+    it("학군: 경계가 80/50 이다 — 옛 경계(70/40)로 되돌리면 red", () => {
+      expect(say("location", "학군", 80)).toBe("학교 접근 우수");
+      expect(say("location", "학군", 79)).toBe("학교 접근 보통"); // 옛 경계면 "우수"
+      expect(say("location", "학군", 50)).toBe("학교 접근 보통");
+      expect(say("location", "학군", 49)).toBe("학교 접근 미흡"); // 옛 경계면 "보통"
+    });
+
+    it("학군 benchmark 는 등급 경계를 상수에서 뽑는다 — 손으로 적지 않는다", () => {
+      const bm = /** @type {any} */ (SUB_CONTEXT).location["학군"].benchmark;
+      expect(bm).toContain(schoolGradeLegend());
+      expect(bm).toContain("상위 10%");
+      expect(bm).not.toContain("A 80↑"); // 옛 경계가 되살아나면 red
     });
 
     it("혐오시설: 시설이 있는데 '깨끗'이라 하지 않는다 (값으로 가른다)", () => {
