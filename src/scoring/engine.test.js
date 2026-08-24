@@ -50,7 +50,10 @@ function makeApt(overrides = {}) {
     region: "경기",
     gu: "수원시",
     builder: "현대건설",
-    completion: "2025-06-01",
+    // 실전 DB 형식(YYYYMM). 옛 값 "2025-06-01"(대시형)은 **운영 DB 에 0건**이라, 스코어링
+    // 테스트가 결함 분기를 한 번도 지나지 않게 만든 사각의 근원이었다(세션529).
+    // 월 단위 파싱이라 두 표기의 판정 결과는 동일하다 — 값이 아니라 형식만 실전에 맞춘 것.
+    completion: "202506",
     price: 50000,
     area: 84,
     pp: 595,
@@ -136,56 +139,148 @@ describe("프로필 가중치 합계", () => {
   });
 });
 
+/**
+ * 지금 기준 offsetMonths 만큼 떨어진 달을 **실전 DB 형식("YYYYMM")** 으로 만든다.
+ * 고정 날짜를 적으면 시간이 지나며 저절로 깨지므로(테스트에 시각 하드코딩 금지) 상대값으로 만들고,
+ * 기준은 엔진과 같은 **KST 고정**이라 CI(UTC 러너)에서도 같은 값이 나온다.
+ *
+ * @param {number} offsetMonths
+ * @returns {string}
+ */
+function ymOffset(offsetMonths) {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const idx = kst.getUTCFullYear() * 12 + kst.getUTCMonth() + offsetMonths;
+  return `${Math.floor(idx / 12)}${String((idx % 12) + 1).padStart(2, "0")}`;
+}
+
 describe("getAgeCoeff", () => {
-  // 세션528 결함B 처방: 미준공(예정) 단지는 더 이상 1.0(중립) 이 아니라 PRESALE_PREMIUM_COEFF
-  // (실측 중앙 1.17) — 신축 분양이 그 동네 헌 아파트보다 원래 비싼 걸 반영한다. brands.ts 주석 참조.
-  it("미래 입주일은 신축 프리미엄 계수(PRESALE_PREMIUM_COEFF)", () => {
-    expect(getAgeCoeff("2030-01-01")).toBe(PRESALE_PREMIUM_COEFF);
-    expect(PRESALE_PREMIUM_COEFF).toBeGreaterThan(1.0); // 하드코딩 1.17 을 안 적는다 — 상수 자체를 검증
+  // ⚠️ 실전 데이터 형식은 **대시 없는 "YYYYMM"** 이다(운영 DB 2,227행 중 1,802행). 세션529 이전
+  // 가드는 전부 "2030-01-01" 같은 대시 형식만 넣어서 — 그건 옛 파서가 이미 올바르게 처리하던
+  // 형식이라 — 준공완료 958곳을 전부 미준공으로 만드는 결함을 **한 건도 못 잡았다**.
+  // [[guards-must-be-mutation-tested]] §"테스트가 실제 경로를 지나는가" 의 변종: 경로(calcCats)뿐
+  // 아니라 **입력 형식**도 실전과 같아야 한다.
+  it("미래 입주월(YYYYMM)은 신축 프리미엄 계수", () => {
+    expect(getAgeCoeff(ymOffset(18))).toBe(PRESALE_PREMIUM_COEFF);
+    expect(PRESALE_PREMIUM_COEFF).toBeGreaterThan(1.0); // 하드코딩 없이 상수 자체를 검증
+  });
+  it("[회귀] 이미 준공된 YYYYMM 은 신축 프리미엄이 아니라 연식 구간값을 받는다", () => {
+    // 이 단언이 세션529 결함의 재발 가드다 — 옛 코드는 new Date("199912") 를 서기 199912년으로
+    // 읽어 미준공 계수를 돌려줬다.
+    const oldest = AGE_PREMIUM[AGE_PREMIUM.length - 1].coeff;
+    expect(getAgeCoeff("199912")).toBe(oldest);
+    expect(getAgeCoeff("199912")).not.toBe(PRESALE_PREMIUM_COEFF);
+  });
+  it("[회귀] 최근 준공(YYYYMM)은 0~1년 구간값", () => {
+    expect(getAgeCoeff(ymOffset(-3))).toBe(AGE_PREMIUM[0].coeff);
+    expect(getAgeCoeff(ymOffset(-3))).not.toBe(PRESALE_PREMIUM_COEFF);
+  });
+  it("2년 전 준공은 1~3년 구간값", () => {
+    expect(getAgeCoeff(ymOffset(-24))).toBe(AGE_PREMIUM[1].coeff);
+  });
+  it("이번 달 준공은 신축 프리미엄, 지난 달 준공은 0~1년 구간값", () => {
+    // getAgeCoeff 는 isPresale 과 **따로** 경계를 들고 있다 — 여기 가드가 없으면 그 안의 `>=` 를
+    // `>` 로 바꿔도 아무 테스트가 안 잡는다(세션529 뮤테이션 실측에서 실제로 green 이 나왔다).
+    expect(getAgeCoeff(ymOffset(0))).toBe(PRESALE_PREMIUM_COEFF);
+    expect(getAgeCoeff(ymOffset(-1))).toBe(AGE_PREMIUM[0].coeff);
+  });
+  it("[경계 일관성] isPresale 과 getAgeCoeff 가 같은 달에서 갈린다", () => {
+    // 두 함수가 각자 경계를 들면 한쪽만 어긋나도 화면은 "입주예정"인데 계수는 연식값이 된다.
+    for (const off of [-2, -1, 0, 1, 2]) {
+      const ym = ymOffset(off);
+      expect(getAgeCoeff(ym) === PRESALE_PREMIUM_COEFF).toBe(isPresale(ym));
+    }
   });
   it("null은 1.05", () => {
     expect(getAgeCoeff(null)).toBe(1.05);
   });
   it("유효하지 않은 값은 1.05", () => {
     expect(getAgeCoeff("invalid")).toBe(1.05);
+    expect(getAgeCoeff("미정")).toBe(1.05); // 운영 DB 41행
+    expect(getAgeCoeff("2030 미")).toBe(1.05); // 수집기 slice 절단 잔재 9행
+    expect(getAgeCoeff("[1회]20")).toBe(1.05); // 운영 DB 1행
   });
-  it("1년 미만 = 1.03", () => {
+  it("월 범위 밖은 거부 — 조용히 다음 해로 넘어가지 않는다", () => {
+    // 월 검사가 없으면 new Date(2026, 12, 1) 이 2027-01 이 된다.
+    expect(getAgeCoeff("202613")).toBe(1.05);
+    expect(getAgeCoeff("202600")).toBe(1.05);
+  });
+  it("자릿수가 안 맞으면 거부 — new Date 폴백으로 새지 않는다", () => {
+    // 네이버 "2026.6" 이 수집기 slice 를 거치면 "20266" 이 된다. 폴백이 있으면 서기 20266년이 돼
+    // 미준공으로 통과한다.
+    expect(getAgeCoeff("20266")).toBe(1.05);
+    expect(getAgeCoeff("20260501")).toBe(1.05);
+  });
+  it("앞뒤 공백은 무시한다", () => {
+    expect(getAgeCoeff(`  ${ymOffset(18)}  `)).toBe(PRESALE_PREMIUM_COEFF);
+  });
+  it("대시 형식도 계속 지원한다 (테스트 픽스처·과거 형식)", () => {
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
-    expect(getAgeCoeff(d.toISOString().slice(0, 10))).toBe(1.03);
+    expect(getAgeCoeff(d.toISOString().slice(0, 10))).toBe(AGE_PREMIUM[0].coeff);
   });
-  // AGE_PREMIUM(준공 후 재건축 기대 프리미엄)과 PRESALE_PREMIUM_COEFF(미준공 신축 프리미엄)는
-  // 서로 다른 현상이라 값이 섞이면 안 된다 — 이 가드가 없으면 둘 중 하나를 고칠 때 다른 쪽이
-  // 조용히 같은 값으로 끌려올 수 있다.
-  it("미준공 계수는 AGE_PREMIUM 표(준공 후 계수)와 다른 값이다", () => {
+  // AGE_PREMIUM(준공 후)과 PRESALE_PREMIUM_COEFF(미준공)는 서로 다른 현상이라 값이 섞이면 안 된다.
+  it("미준공 계수는 AGE_PREMIUM 표의 어떤 값과도 같지 않다", () => {
     expect(AGE_PREMIUM.some((a) => a.coeff === PRESALE_PREMIUM_COEFF)).toBe(false);
   });
 });
 
 describe("isPresale", () => {
-  it("미래 입주일은 true", () => {
+  it("미래 입주월은 true", () => {
+    expect(isPresale(ymOffset(18))).toBe(true);
     expect(isPresale("2030-01-01")).toBe(true);
   });
-  it("과거 입주일은 false", () => {
+  it("[회귀] 과거 입주월(YYYYMM)은 false — 세션529 결함 재발 가드", () => {
+    expect(isPresale("202002")).toBe(false);
+    expect(isPresale("199912")).toBe(false);
     expect(isPresale("2020-01-01")).toBe(false);
   });
   it("null/invalid는 false (미준공으로 오판하지 않는다)", () => {
     expect(isPresale(null)).toBe(false);
     expect(isPresale("invalid")).toBe(false);
   });
-  // 세션528 적대검증이 잡은 가드 갭: "2030-01-01"/"2020-01-01" 처럼 몇 년씩 차이나는 값만
-  // 테스트하면 `comp.getTime() > Date.now()` 를 `>=` 로 뮤테이션해도 안 잡힌다(실측 확인).
-  // completion 은 "YYYY-MM-DD" → 그 날짜 00:00:00(로컬)으로 파싱되므로, 시각을 자정으로
-  // 고정하면 comp.getTime() === Date.now() 인 정확한 경계를 재현할 수 있다.
-  it("경계값(입주일 00:00:00 과 현재 시각이 정확히 같은 밀리초)은 미준공이 아니다", () => {
+  // 경계는 **월 단위**다 — 화면(classify.ts:32 `completion >= NOW_YM` → "입주예정")과 같은 규약.
+  // 이번 달 준공을 엔진만 "준공완료"로 보면 같은 단지를 카드는 입주예정, 관리자 분해표는
+  // 연식계수라 부르는 어긋남이 생긴다(2026-08 기준 22곳).
+  it("이번 달 준공은 미준공 (화면의 '입주예정'과 같은 경계)", () => {
+    expect(isPresale(ymOffset(0))).toBe(true);
+  });
+  it("지난 달 준공은 준공완료", () => {
+    expect(isPresale(ymOffset(-1))).toBe(false);
+  });
+  // 판정 기준 시각은 **KST 고정**이다. daily-deploy 는 UTC 러너에서 cron '0 18 * * *'(KST 03:00)로
+  // 도는데 그 순간 UTC 는 아직 전월이라, 러너 로컬 시간을 쓰면 매월 1일마다 한 달씩 어긋난다.
+  it("월초 KST 03:00 에도 러너 시간대와 무관하게 같은 판정", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 0, 1, 0, 0, 0, 0));
+    vi.setSystemTime(new Date("2026-09-01T03:00:00+09:00")); // = UTC 2026-08-31 18:00
     try {
-      // "지금 이 순간" == 입주일 00:00:00 → 이미 도래한 시점이라 미준공이 아니다(> 이어야 true 회피).
-      expect(isPresale("2026-01-01")).toBe(false);
+      expect(isPresale("202609")).toBe(true); // KST 로 이번 달 = 입주예정
+      expect(isPresale("202608")).toBe(false); // 지난 달 — UTC 기준이면 true 로 뒤집힌다
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// [관측값 앵커] 상수에서 파생된 가드만 두면 상수를 아무 값으로 바꿔도 전부 초록이 된다
+// ([[guards-must-be-mutation-tested]] §"파생 가드는 상수 변경을 못 잡는다", 세션514).
+// 아래 숫자는 티어 값이 아니라 **실측 관측값**이다 — 모집단·시점을 함께 적는다.
+describe("연식·신축 계수 관측값 앵커 (apartments_flat 2,227행 · 2026-08-24 실측)", () => {
+  // 준공완료 중 평형별 실거래 버킷 매칭 758곳의 구간별 price/실거래 중앙값
+  const OBSERVED_AGE_MEDIANS = [1.178, 1.157, 1.044, 0.953];
+  it("AGE_PREMIUM 앞 4구간은 실측 중앙값의 ±15% 안", () => {
+    OBSERVED_AGE_MEDIANS.forEach((observed, i) => {
+      const ratio = AGE_PREMIUM[i].coeff / observed;
+      expect(ratio).toBeGreaterThan(0.85);
+      expect(ratio).toBeLessThan(1.15);
+    });
+  });
+  // 미준공 계수는 두 fairPrice 경로의 패리티 계수 사이여야 한다 (버킷 1.455 · 폴백 1.265)
+  it("PRESALE_PREMIUM_COEFF 는 두 경로 패리티 계수 사이", () => {
+    expect(PRESALE_PREMIUM_COEFF).toBeGreaterThan(1.265);
+    expect(PRESALE_PREMIUM_COEFF).toBeLessThan(1.455);
+  });
+  it("미준공 계수가 AGE_PREMIUM 전 구간보다 크다 (역전 방지)", () => {
+    AGE_PREMIUM.forEach((a) => expect(PRESALE_PREMIUM_COEFF).toBeGreaterThan(a.coeff));
   });
 });
 
@@ -1497,9 +1592,14 @@ describe("scorePrice — fairPrice 폴백 (단위 교정)", () => {
   // avgPriceSqm 단위: 천원/㎡ (fieldMeta.js:72) → fairPrice(만원) = avgPriceSqm × area / 10
   it("nearbyMedian=null + avgPriceSqm 있으면 → 만원 스케일로 올바른 fairPrice", () => {
     const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: 4510, area: 84.9372, price: 43000 }));
-    // 4510 × 84.9372 / 10 ≈ 38307 만원 × brandAdj × ageCoeff (completion 미래면 1.0, 과거면 >1)
-    expect(r.fairPrice).toBeGreaterThanOrEqual(35000);
-    expect(r.fairPrice).toBeLessThanOrEqual(45000);
+    // 4510 × 84.9372 / 10 ≈ 38,307 만원 × 연식계수 × 면적보정(84.9㎡ → 1.0) × 브랜드보정
+    // ⚠️ 상·하한을 그냥 넓히지 말 것 — 이 테스트가 잡는 건 **단위(스케일) 오류**다
+    //    (세션91 실측: fairPrice=132, dev −32,401%). 연식계수가 바뀌면 fairPrice 도 그만큼
+    //    움직이므로 범위를 계수에서 파생시켜, 스케일 감시는 유지하되 계수 변경에는 흔들리지 않게 한다.
+    //    계수 값 자체의 타당성은 아래 "관측값 앵커" 블록이 따로 지킨다.
+    const base1 = Math.round((4510 * 84.9372) / 10) * getAgeCoeff(makeApt({}).completion);
+    expect(r.fairPrice).toBeGreaterThanOrEqual(base1 * 0.9);
+    expect(r.fairPrice).toBeLessThanOrEqual(base1 * 1.2);
     // dev는 한 자릿수 ~ 30% 이내여야 함 (이전 버그는 -32,401%)
     expect(parseFloat(String(r.deviation))).toBeGreaterThan(-30);
     expect(parseFloat(String(r.deviation))).toBeLessThan(30);
@@ -1507,9 +1607,10 @@ describe("scorePrice — fairPrice 폴백 (단위 교정)", () => {
   // presalePp 단위: 만원/평 (fieldMeta.js:148) → fairPrice(만원) = presalePp × (area / 3.3058)
   it("nearbyMedian=null + presalePp 있으면 → 평수 환산으로 올바른 fairPrice", () => {
     const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: null, presalePp: 2000, area: 84, price: 40000 }));
-    // 2000 × (84 / 3.3058) ≈ 50,822 만원 × brandAdj × ageCoeff
-    expect(r.fairPrice).toBeGreaterThanOrEqual(45000);
-    expect(r.fairPrice).toBeLessThanOrEqual(58000);
+    // 2000 × (84 / 3.3058) ≈ 50,822 만원 × 연식계수 × 브랜드보정 (범위 파생 이유는 위 테스트 주석 참조)
+    const base2 = 2000 * (84 / 3.3058) * getAgeCoeff(makeApt({}).completion);
+    expect(r.fairPrice).toBeGreaterThanOrEqual(base2 * 0.9);
+    expect(r.fairPrice).toBeLessThanOrEqual(base2 * 1.2);
   });
   it("셋 다 null → PRICE_NO_DATA_DEFAULTS 분기", () => {
     const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: null, presalePp: null }));
@@ -2396,19 +2497,19 @@ describe("scorePrice — 면적 버킷 매칭이 fairPrice 1순위 (면적 편�
  * ([[guards-must-be-mutation-tested]] §"테스트가 실제 경로를 지나는가", 세션508/512 재발 자리).
  */
 describe("scorePrice — 미준공 신축 프리미엄 (결함B 처방, 세션528)", () => {
-  it("실제 경로(calcCats)에서 미준공 단지가 갓 준공된 단지(AGE_PREMIUM 0~1y=1.03)보다 fairPrice 가 더 크게 잡힌다", () => {
+  it("실제 경로(calcCats)에서 미준공 단지가 이미 준공된 단지보다 fairPrice 가 더 크게 잡힌다", () => {
     // builder 를 미등재로 고정해 bAdj=1.0 — 브랜드 계수를 섞지 않고 age/presale 계수만 비교.
-    // ⚠️ AGE_PREMIUM 은 나이 먹을수록 커지는 표라(5~10y=1.18 > PRESALE_PREMIUM_COEFF=1.17),
-    // "오래 지난 준공 단지"와 비교하면 역전될 수 있다 — 갓 준공(0~1y=1.03)이 유일하게 안전한 대조군.
+    // 세션529 정정: 옛 주석은 "AGE_PREMIUM 은 나이 먹을수록 커지는 표라 오래된 준공과 비교하면
+    // 역전될 수 있다"고 했는데, 실측으로 표 방향이 뒤집히고(brands.ts 주석) 미준공 계수가 전 구간보다
+    // 커져 그 역전이 사라졌다. 대조군을 갓 준공으로 제한할 이유도 함께 없어졌다(위 앵커 블록이 잠근다).
+    // ⚠️ 입력은 **실전 DB 형식(YYYYMM)** 이다 — 대시 형식은 운영 DB 에 0건이라 실전 경로를 못 지난다.
     const bucket = /** @type {any} */ ([{ area: 100, min: 40000, max: 60000, avg: 50000, count: 30 }]);
-    const recentCompletion = new Date();
-    recentCompletion.setMonth(recentCompletion.getMonth() - 3);
     const presale = calcCats(
       makeApt({
         area: 100,
         price: 55000,
         priceByArea: bucket,
-        completion: "2030-01-01",
+        completion: ymOffset(48),
         builder: "듣도보도못한건설(주)",
       })
     ).price;
@@ -2417,28 +2518,27 @@ describe("scorePrice — 미준공 신축 프리미엄 (결함B 처방, 세션52
         area: 100,
         price: 55000,
         priceByArea: bucket,
-        completion: recentCompletion.toISOString().slice(0, 10),
+        completion: ymOffset(-3),
         builder: "듣도보도못한건설(주)",
       })
     ).price;
     // presale 은 fairPrice = 50000×PRESALE_PREMIUM_COEFF(bAdj=1.0) — dev = (fairPrice-price)/fairPrice.
     expect(presale.fairPrice).toBe(Math.round(50000 * PRESALE_PREMIUM_COEFF));
-    // built(갓 준공, AGE_PREMIUM 1.03 < PRESALE_PREMIUM_COEFF 1.17)보다
-    // presale 의 dev 가 더 큰 양수(덜 비쌈 판정)여야 한다.
+    // 미준공 계수가 갓 준공 구간값보다 크므로 presale 의 dev 가 더 큰 양수(덜 비쌈 판정)여야 한다.
     expect(Number(presale.deviation)).toBeGreaterThan(Number(built.deviation));
   });
 
   it("옛 동작(미준공=1.0 중립)으로 되돌리면 이 가드가 깨진다 — 뮤테이션 실증", () => {
     // 소스(scorePrice.ts)의 `return PRESALE_PREMIUM_COEFF;` 를 `return 1.0;` 으로 되돌려 재실행한
     // 결과를 세션528에서 직접 확인함(위 테스트 모두 red). 이 테스트는 그 사실을 문서화하는
-    // 자리이며, 값 자체는 PRESALE_PREMIUM_COEFF 상수를 통해서만 검증한다(하드코딩 1.17 금지).
+    // 자리이며, 값 자체는 PRESALE_PREMIUM_COEFF 상수를 통해서만 검증한다(하드코딩 금지).
     const bucket = /** @type {any} */ ([{ area: 100, min: 40000, max: 60000, avg: 50000, count: 30 }]);
     const presale = calcCats(
       makeApt({
         area: 100,
         price: 58000,
         priceByArea: bucket,
-        completion: "2030-01-01",
+        completion: ymOffset(48),
         builder: "듣도보도못한건설(주)",
       })
     ).price;
@@ -2452,7 +2552,7 @@ describe("scorePrice — 미준공 신축 프리미엄 (결함B 처방, 세션52
     // 스펙 문서 극단 사례(써밋 리미티드 남천 -273%, 양산자이 파크팰리체 -442%)와 같은 결 —
     // 신축 프리미엄이 진짜 바가지 단지를 "적정"으로 덮어주면 안 된다.
     const bucket = /** @type {any} */ ([{ area: 100, min: 40000, max: 60000, avg: 50000, count: 30 }]);
-    const r = calcCats(makeApt({ area: 100, price: 200000, priceByArea: bucket, completion: "2030-01-01" })).price;
+    const r = calcCats(makeApt({ area: 100, price: 200000, priceByArea: bucket, completion: ymOffset(48) })).price;
     const devScoreOf = (/** @type {any} */ res) => res.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도");
     expect(devScoreOf(r).score).toBe(0);
   });
