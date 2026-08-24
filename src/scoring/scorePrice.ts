@@ -1,4 +1,4 @@
-import { BRAND_TIER, AGE_PREMIUM, resolveBuilder } from "@/constants/brands";
+import { BRAND_TIER, AGE_PREMIUM, PRESALE_PREMIUM_COEFF, resolveBuilder } from "@/constants/brands";
 import {
   tierMin,
   DEV_SCORE_TIERS,
@@ -21,18 +21,38 @@ import type { Apt, Res } from "@/types/scoring";
 const IS_DEV =
   typeof import.meta !== "undefined" && !!(import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV;
 
-/**
- * 준공시점 기반 연식 보정계수. 신축 프리미엄 반영.
- * 미준공(예정) → 1.0, 미입력·파싱 실패 → 1.05 (약간 보수적 중립).
- * AGE_PREMIUM 구간: {0~5y: 1.08, 5~10y: 1.05, 10~20y: 1.0, 20+y: 0.95} 등 (src/constants/brands.js).
- */
-export function getAgeCoeff(completion: string | null | undefined): number {
-  if (!completion) return 1.05;
+/** completion 문자열을 Date 로 파싱. 미기재·파싱 실패 시 null. getAgeCoeff/isPresale 공유. */
+function parseCompletion(completion: string | null | undefined): Date | null {
+  if (!completion) return null;
   const parts = completion.toString().split("-");
   const comp =
     parts.length >= 2 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2] || 1)) : new Date(completion);
-  if (isNaN(comp.getTime())) return 1.05;
-  if (comp.getTime() > Date.now()) return 1.0;
+  return isNaN(comp.getTime()) ? null : comp;
+}
+
+/**
+ * 미준공(분양 예정) 여부. 화면이 "연식계수"와 "신축 프리미엄"을 다른 이름으로 보여줘야 할 때
+ * (예: `AdminScoreBreakdown`) 이 함수로 갈라야 한다 — `getAgeCoeff` 반환값(1.17)을 역산해서
+ * 판정하면 `AGE_PREMIUM` 표에 우연히 같은 수치가 들어갈 때 조용히 틀린다.
+ */
+export function isPresale(completion: string | null | undefined): boolean {
+  const comp = parseCompletion(completion);
+  return comp != null && comp.getTime() > Date.now();
+}
+
+/**
+ * 준공시점 기반 연식 보정계수.
+ * 미준공(예정) → `PRESALE_PREMIUM_COEFF`(신축 분양 프리미엄, 실측 중앙 1.17 — 결함B 처방,
+ *   세션528). 준공 후에는 `AGE_PREMIUM`(재건축 기대 프리미엄, 나이 먹을수록 증가) 적용.
+ *   이 둘은 서로 다른 현상이라 표가 다르다 — brands.ts 주석 참조.
+ * 미입력·파싱 실패 → 1.05 (약간 보수적 중립).
+ * AGE_PREMIUM 구간: {0~1y:1.03, 1~3y:1.05, 3~5y:1.1, 5~10y:1.18, 10~15y:1.3, 15~20y:1.42, 20y+:1.55}
+ * (src/constants/brands.ts — 실제 값은 소스가 진실의 원천, 위 표는 참고용이라 drift 가능).
+ */
+export function getAgeCoeff(completion: string | null | undefined): number {
+  const comp = parseCompletion(completion);
+  if (!comp) return 1.05;
+  if (comp.getTime() > Date.now()) return PRESALE_PREMIUM_COEFF;
   const yrs = Math.max(0, (Date.now() - comp.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
   type AgePremiumEntry = { min: number; max: number; coeff: number };
   const found = (AGE_PREMIUM as AgePremiumEntry[]).find((a) => yrs >= a.min && yrs < a.max);

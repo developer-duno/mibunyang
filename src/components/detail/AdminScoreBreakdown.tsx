@@ -4,7 +4,7 @@ import { BRAND_TIER } from "@/constants/brands";
 import { PROFILES } from "@/constants/profiles";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
-import { getAgeCoeff, getAreaAdj } from "@/scoring/engine";
+import { getAgeCoeff, getAreaAdj, isPresale } from "@/scoring/engine";
 import { fmtCompletion } from "@/lib/format";
 import type { Apt, Profile } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
@@ -34,6 +34,9 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
 
   // 적정가 산출 과정 (구 ExpertScoreBreakdown L13-19 이식)
   const ageCoeff = getAgeCoeff(apt.completion);
+  // 미준공(분양 예정)은 "연식"이 아니라 "신축 프리미엄"이라 라벨이 달라야 정직하다(세션528
+  // 결함B 처방 — 같은 ageCoeff 가 이제 두 가지 다른 현상을 나타낸다). brands.ts 주석 참조.
+  const presale = isPresale(apt.completion);
   const areaAdj = getAreaAdj(apt.area);
   const brand = (apt.builder ? (BRAND_TIER as Record<string, { adj: number; tier?: string }>)[apt.builder] : null) || {
     adj: 1.0,
@@ -112,7 +115,8 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
             </b>
           </div>
           <div>
-            × 연식계수: <b style={{ color: C.text }}>{ageCoeff.toFixed(2)}</b> (입주: {fmtCompletion(apt.completion)})
+            × {presale ? "신축 프리미엄" : "연식계수"}: <b style={{ color: C.text }}>{ageCoeff.toFixed(2)}</b> (입주:{" "}
+            {fmtCompletion(apt.completion)})
           </div>
           {!fromBucket && (
             <div>
