@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { AdminScoreBreakdown } from "./AdminScoreBreakdown";
 import { makeScoredItem } from "@/__tests__/factories";
 import { getAgeCoeff } from "@/scoring/engine";
+import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
 
 // 세션 405: 구 ExpertScoreBreakdown.test + ExpertScoreSummary.test 단언 이식 (전문가 대시보드 폐지·관리자 이식)
 
@@ -214,5 +215,22 @@ describe("AdminScoreBreakdown — 운영 실제 형식(YYYYMM) 라벨 분기", (
   it("이번 달과 지난 달은 서로 다른 라벨로 갈린다 (경계가 한 칸이라도 밀리면 red)", () => {
     expect(readCoeffRow(thisMonth)?.label).toBe("신축 프리미엄");
     expect(readCoeffRow(lastMonth)?.label).toBe("연식계수");
+  });
+
+  /**
+   * 세션529 적대검증: 이 패널이 `BRAND_TIER[apt.builder]` 를 **직조회**해서, 법인 표기를 쓰는
+   * 단지에서 화면 곱셈이 바로 밑 "= 적정가" 와 안 맞았다(운영 2,227곳 중 **50곳** — 예:
+   * "지에스건설(주)" 화면 1.00 vs 엔진 1.05). 엔진은 `resolveBuilder` 를 거친다.
+   * 세션513이 `scorePrice` 에서 고친 것과 같은 결함 — 정규화는 `builder` 를 읽는 **모든 자리**에서.
+   */
+  it("브랜드보정이 엔진과 같은 값이다 — 법인 표기도 정규화해서 조회한다", () => {
+    // 별칭이 필요한 실제 표기(운영 DB 실측). 직조회하면 1.00 으로 떨어진다.
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ builder: "지에스건설(주)" }));
+    render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+    const expected = BRAND_TIER[resolveBuilder("지에스건설(주)")]?.adj ?? 1.0;
+    expect(expected).toBeGreaterThan(1.0); // 별칭 해석이 실제로 필요한 표기인지 먼저 잠근다
+    expect(screen.getByText(new RegExp(`브랜드보정`))).toBeTruthy();
+    const shown = screen.getByText(expected.toFixed(2));
+    expect(shown).toBeTruthy();
   });
 });

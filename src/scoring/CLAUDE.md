@@ -5,16 +5,19 @@
 ## 파일 구조
 
 ```
-src/scoring/
-  engine.js              — 오케스트레이터 (sanitize + calcCats + calcAll + re-export)
-  scorePrice.js          — 가격 매력도 (scorePrice, getAgeCoeff, getAreaAdj)
-  scoreLocation.js       — 입지/생활권 (scoreLocation)
-  scoreProduct.js        — 상품성 (scoreProduct)
-  scoreBenefit.js        — 혜택/할인 (scoreBenefit)
-  scoreRisk.js           — 안전도 (scoreRisk)
-  scoreFuture.js         — 미래가치 (scoreFuture + matchAny + 키워드 상수)
-  computeRegionalMedians.js — 지역별 중위값 계산
-  engine.test.js         — 전체 테스트
+src/scoring/                (⚠️ 전부 .ts — 옛 문서가 .js 로 적어 두었던 것을 세션529가 정정)
+  engine.ts              — 오케스트레이터 (sanitize + calcCats + calcAll + re-export)
+  scorePrice.ts          — 가격 매력도 (scorePrice, getAgeCoeff, getAreaAdj,
+                            isPresale, matchAreaPrice, parseCompletionMonth, currentMonthIndexKst)
+  scoreLocation.ts       — 입지/생활권 (scoreLocation)
+  scoreProduct.ts        — 상품성 (scoreProduct)
+  scoreBenefit.ts        — 혜택/할인 (scoreBenefit)
+  scoreRisk.ts           — 안전도 (scoreRisk)
+  scoreFuture.ts         — 미래가치 (scoreFuture + matchAny + 키워드 상수)
+  computeRegionalMedians.ts — 지역별 중위값 계산
+  regionalStats.ts       — 지역 통계
+  engine.test.js · regionalStats.test.ts · wordingHonesty.test.js — 테스트
+  ※ 목록은 낡는다 — 단정 전 `ls -1 src/scoring/` 로 실측
 ```
 
 모든 함수는 engine.js에서 re-export. import 경로: `@/scoring/engine`
