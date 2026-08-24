@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { C, F, catCol, gr } from "@/theme";
-import { BRAND_TIER } from "@/constants/brands";
+import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
 import { PROFILES } from "@/constants/profiles";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
@@ -38,9 +38,14 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
   // 결함B 처방 — 같은 ageCoeff 가 이제 두 가지 다른 현상을 나타낸다). brands.ts 주석 참조.
   const presale = isPresale(apt.completion);
   const areaAdj = getAreaAdj(apt.area);
-  const brand = (apt.builder ? (BRAND_TIER as Record<string, { adj: number; tier?: string }>)[apt.builder] : null) || {
-    adj: 1.0,
-  };
+  // ⚠️ **`resolveBuilder` 를 반드시 거친다.** 직조회하면 "지에스건설(주)"·"디엘이앤씨 주식회사" 같은
+  //    법인 표기가 미등재 1.0 으로 떨어져, 이 패널이 보여주는 곱셈이 바로 아래 "= 적정가" 와 안 맞는다
+  //    (세션529 적대검증 실측: 2,227곳 중 **50곳** 불일치 — 지에스건설(주) 화면 1.00 vs 엔진 1.05 등).
+  //    세션513이 `scorePrice` 에서 같은 결함을 고치며 남긴 교훈 그대로다 — 정규화는 한 군데가 아니라
+  //    **`builder` 를 읽는 모든 자리**에서 해야 한다.
+  const brand = (BRAND_TIER as Record<string, { adj: number; tier?: string }>)[
+    resolveBuilder(apt.builder as string | null | undefined)
+  ] || { adj: 1.0 };
   const nearbyMedian = apt.nearbyMedian ?? 0;
   const aptPrice = apt.price ?? 0;
   // ⚠️ **엔진이 계산한 값을 그대로 쓴다 — 여기서 다시 계산하지 않는다.**
