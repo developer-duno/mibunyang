@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AdminScoreBreakdown } from "./AdminScoreBreakdown";
 import { makeScoredItem } from "@/__tests__/factories";
+import { getAgeCoeff } from "@/scoring/engine";
 
 // 세션 405: 구 ExpertScoreBreakdown.test + ExpertScoreSummary.test 단언 이식 (전문가 대시보드 폐지·관리자 이식)
 
@@ -155,5 +156,63 @@ describe("AdminScoreBreakdown", () => {
     const { apt, res } = /** @type {any} */ (makeScoredItem());
     render(<AdminScoreBreakdown apt={apt} res={res} />);
     expect(screen.getByText(/최종 가중 합계.*실거주/)).toBeTruthy();
+  });
+});
+
+/**
+ * 세션529: **운영 실제 형식(대시 없는 "YYYYMM")** 으로 라벨 분기를 검사한다.
+ *
+ * ⚠️ 위 세션528 테스트들은 completion 을 전부 `"2020-01-01"` 같은 대시 형식으로 넣는데,
+ * 그 형식은 **운영 DB 에 0건**이다(2026-08-24 실측 `apartments_flat` 2,227행: YYYYMM 1,802 ·
+ * 빈값 374 · 비정형 51 · 대시 0). 세션529가 고친 결함이 정확히 "가드는 있는데 넣은 값이
+ * 실전 형식이 아니라 결함 분기를 안 지났다"는 것이었으므로(`guards-must-be-mutation-tested.md`
+ * §"테스트가 실제 경로를 지나는가"), 같은 씨앗을 여기서 뽑는다.
+ *
+ * 날짜는 **실행 시점 상대값**으로 만든다 — 고정 YYYYMM 을 박으면 그 달이 지나는 순간
+ * 경계 케이스가 조용히 다른 뜻이 된다(`timezone-consistency.md` §4).
+ */
+describe("AdminScoreBreakdown — 운영 실제 형식(YYYYMM) 라벨 분기", () => {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  /** @param {number} y @param {number} m */
+  const ym = (y, m) => `${y}${String(m).padStart(2, "0")}`;
+  const Y = kst.getUTCFullYear();
+  const M = kst.getUTCMonth() + 1;
+  const thisMonth = ym(Y, M);
+  const lastMonth = M === 1 ? ym(Y - 1, 12) : ym(Y, M - 1);
+  const future = ym(Y + 2, M);
+  const old6y = ym(Y - 6, M);
+
+  /** 화면에 실제로 찍힌 "× <라벨>: <값>" 을 뽑는다. */
+  /** @param {string | null | undefined} completion */
+  const readCoeffRow = (completion) => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ completion, nearbyMedian: 55000, price: 50000 }));
+    const { container } = render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+    const m = (container.textContent ?? "").match(/×\s*(신축 프리미엄|연식계수)\s*:\s*([\d.]+)/);
+    return m ? { label: m[1], value: m[2] } : null;
+  };
+
+  it.each([
+    [() => future, "신축 프리미엄", "2년 뒤 예정 = 미준공"],
+    [() => thisMonth, "신축 프리미엄", "이번 달 준공 — 화면(classify.ts `>= NOW_YM`)과 같은 경계라 '입주예정' 쪽"],
+    [() => lastMonth, "연식계수", "지난 달 준공 = 준공완료 (경계 바로 아래)"],
+    [() => old6y, "연식계수", "6년 전 준공"],
+    [() => "미정", "연식계수", "비정형 — 미상(중립)으로 빠진다"],
+    [() => "", "연식계수", "빈값 — 미상(중립)으로 빠진다"],
+  ])("%s → %s 라벨 (%s)", (getComp, expectedLabel) => {
+    const row = readCoeffRow(getComp());
+    expect(row).not.toBeNull();
+    expect(row?.label).toBe(expectedLabel);
+  });
+
+  it("화면은 엔진의 계수를 그대로 표시한다 (역산·재계산하지 않는다)", () => {
+    for (const comp of [future, thisMonth, lastMonth, old6y, "미정", ""]) {
+      const row = readCoeffRow(comp);
+      expect(row?.value).toBe(getAgeCoeff(comp).toFixed(2));
+    }
+  });
+
+  it("이번 달과 지난 달은 서로 다른 라벨로 갈린다 (경계가 한 칸이라도 밀리면 red)", () => {
+    expect(readCoeffRow(thisMonth)?.label).toBe("신축 프리미엄");
+    expect(readCoeffRow(lastMonth)?.label).toBe("연식계수");
   });
 });
