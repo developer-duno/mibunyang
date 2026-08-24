@@ -230,10 +230,12 @@ describe("AptCard", () => {
   it('price.subs[0].info=정상값이어도 회색 "적정가 {info}" 칩은 안 뜬다 — 문장형만 남는다 (세션 510 PR-4)', () => {
     const res = makeRes();
     res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트(가격 데이터 보유 판별자)
-    res.cats.price.deviation = "-3.5";
+    // ⚠️ 세션531: 판정 경계가 0 → ±DEV_NEUTRAL_BAND_PCT(10) 로 넓어졌다. -3.5 는 이제 "적정가 수준"
+    //    이라 이 가드(문장형이 뜬다)의 대상이 아니다 — 밴드 밖 값으로 옮긴다.
+    res.cats.price.deviation = "-13.5";
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.queryByText("적정가 -3.5%")).toBeNull();
-    expect(screen.getByText("적정가보다 3% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round(-3.5))=3 (JS는 -3.5를 -3으로 반올림)
+    expect(screen.queryByText("적정가 -13.5%")).toBeNull();
+    expect(screen.getByText("적정가보다 13% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round(-13.5))=13 (JS는 -13.5를 -13으로 반올림)
   });
 
   // 세션411: 적정가 괴리(deviation) 부호 — 양수(+)=적정가보다 저렴(좋음). scorePrice.ts:127
@@ -241,25 +243,38 @@ describe("AptCard", () => {
   it("deviation 양수(저렴)면 녹색 '+N% 저렴' 배지 표시", () => {
     const res = makeRes();
     res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트 추가 — 옛 픽스처엔 없어 칩이 안 떴다
-    res.cats.price.deviation = "8.4";
+    res.cats.price.deviation = "18.4";
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.getByText("적정가보다 8% 저렴")).toBeInTheDocument(); // Math.round("8.4")=8
+    expect(screen.getByText("적정가보다 18% 저렴")).toBeInTheDocument(); // Math.round("18.4")=18
   });
 
   it("deviation 음수(비쌈)면 빨강 '비쌈' 배지 표시 + '저렴' 미표시 (세션420 A)", () => {
     const res = makeRes();
     res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트
-    res.cats.price.deviation = "-8.4";
+    res.cats.price.deviation = "-18.4";
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.getByText("적정가보다 8% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round("-8.4"))=8
+    expect(screen.getByText("적정가보다 18% 비쌈")).toBeInTheDocument(); // Math.abs(Math.round("-18.4"))=18
     expect(screen.queryByText(/저렴/)).toBeNull(); // 음수는 저렴 배지 안 뜸 (상호배타)
   });
 
   it("deviation 양수(저렴)면 '비쌈' 배지 미표시 (세션420 A 상호배타)", () => {
     const res = makeRes();
-    res.cats.price.deviation = "8.4";
+    res.cats.price.deviation = "18.4";
     render(<AptCard {...makeProps({ res })} />);
     expect(screen.queryByText(/비쌈/)).toBeNull();
+  });
+
+  // 세션531: 판정 경계가 0 → ±10 으로 넓어졌다. 그 폭은 우리 적정가 추정 자체의 흔들림
+  //   (중앙 ±11.5%p)에서 왔다 — 그보다 작은 차이로 초록/빨강 굵은 칩을 달면 알 수 없는 것을
+  //   강점·약점이라 말하는 셈이고, 같은 단지를 점수 탭은 "적정가 수준"이라 불러 어긋났다.
+  //   옛 경계(0)로 되돌리면 아래 두 건이 red.
+  it.each(["3.5", "-3.5", "9.9", "-9.9"])("deviation %s%% 는 밴드 안이라 '적정가 수준' (세션531)", (d) => {
+    const res = makeRes();
+    res.cats.price.fairPrice = 90000;
+    res.cats.price.deviation = d;
+    render(<AptCard {...makeProps({ res })} />);
+    expect(screen.getByText("적정가 수준")).toBeInTheDocument();
+    expect(screen.queryByText(/적정가보다/)).toBeNull();
   });
 
   it("deviation null 이면 배지 미표시", () => {

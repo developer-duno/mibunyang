@@ -55,7 +55,14 @@ describe("catVerdict — price 는 적정가 괴리(deviation) 실측 우선", (
     expect(catVerdict("price", mk({ total: 40, fairPrice: 50000, deviation: "12.3" }))).toBe("적정가 대비 12% 저렴");
   });
   it("fairPrice>0 + deviation 음수 → 비쌈 (절댓값 표기)", () => {
-    expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: "-8.7" }))).toBe("적정가 대비 9% 비쌈");
+    expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: "-18.7" }))).toBe("적정가 대비 19% 비쌈");
+  });
+  // 세션531: 경계가 0 → ±DEV_NEUTRAL_BAND_PCT(10). 그 폭은 우리 적정가 추정 자체의 흔들림
+  //   (중앙 ±11.5%p)에서 왔다 — 그보다 작은 차이로 방향을 단정하지 않는다.
+  //   `subContext`·`cardChips` 와 같은 상수를 써야 한 단지가 화면마다 다른 말을 안 듣는다.
+  //   옛 경계(0)로 되돌리면 아래가 red.
+  it.each(["-9.9", "9.9", "-3.2", "3.2"])("밴드 안(%s%%)이면 방향을 단정하지 않는다 (세션531)", (d) => {
+    expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: d }))).toBe("적정가 수준");
   });
   it("fairPrice>0 + deviation 0 → '적정가 수준' (진짜 0% 괴리 정직 표기)", () => {
     expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.0" }))).toBe("적정가 수준");

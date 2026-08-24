@@ -1,6 +1,6 @@
 import { gr } from "@/theme";
 import { fmtMoveIn, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
-import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
+import { SAFE_CREDIT_GRADES, DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
 // 점수를 깎는 혐오시설이 무엇인지 **점수 쪽 표를 그대로** 읽는다 — 화면이 따로 목록을 들면
 // 그 순간부터 둘이 어긋난다(이번 사고가 정확히 그 어긋남이었다).
 // 번들 비용 0: `scoreLocation` 이 이미 이 파일을 쓰고, 카드는 그 스코어링을 이미 로드한다.
@@ -194,7 +194,12 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   const fairPrice = Number(price?.fairPrice ?? 0);
   const dev = price?.deviation != null ? Number(price.deviation) : NaN;
   if (fairPrice > 0 && Number.isFinite(dev)) {
-    if (dev > 0) {
+    // ⚠️ 경계는 **0 이 아니라 `DEV_NEUTRAL_BAND_PCT`** 다(세션531). 0 으로 가르면 +1% 짜리 차이에도
+    //    초록 굵은 `core` 칩이 붙는데, 그 폭은 **우리 적정가 추정 자체의 흔들림(중앙 ±11.5%p)보다
+    //    한참 작다** — 알 수 없는 것을 강점이라 말하는 셈이다. 같은 단지를 점수 탭은 "적정가 수준"
+    //    이라 부르는데 카드만 "저렴"이라 부르던 어긋남도 여기서 없어진다
+    //    (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md — 같은 축을 말하는 자리는 한 쌍).
+    if (dev > DEV_NEUTRAL_BAND_PCT) {
       out.push({
         id: "priceCheap",
         text: `적정가보다 ${Math.round(dev)}% 저렴`,
@@ -202,7 +207,7 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
         layer: "core",
         bold: true,
       });
-    } else if (dev < 0) {
+    } else if (dev < -DEV_NEUTRAL_BAND_PCT) {
       out.push({
         id: "priceExpensive",
         text: `적정가보다 ${Math.abs(Math.round(dev))}% 비쌈`,

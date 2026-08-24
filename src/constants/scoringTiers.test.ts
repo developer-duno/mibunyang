@@ -6,6 +6,11 @@ import {
   IC_DIST_FALLBACK_LABEL,
   KTX_DIST_TIERS,
   KTX_DIST_FALLBACK_LABEL,
+  DEV_SCORE_TIERS,
+  DEV_SCORE_NEGATIVE_MULT,
+  DEV_SCORE_BASE,
+  DEV_NEUTRAL_BAND_PCT,
+  DEV_BAND_LABEL,
   type Tier,
 } from "./scoringTiers";
 import { scoreLocation } from "@/scoring/scoreLocation";
@@ -131,4 +136,92 @@ describe("scoreLocation 교통 문구가 점수와 어긋나지 않는다", () =
       }
     });
   }
+});
+
+// ── 괴리도 눈금 — 관측값 앵커 (세션531) ────────────────────────────────────────
+//
+// ⚠️ **파생 가드만 두면 상수를 아무 값으로 바꿔도 전부 초록이 된다.** 이 저장소는 실제로 그 사고를
+// 겪었다 — `LIQUIDITY_TIERS` 를 2,000 → 2,500 으로 바꾸는 뮤테이션에 468건이 전부 green 이었다
+// (.claude/rules/meta/guards-must-be-mutation-tested.md §"파생 가드는 상수 변경을 못 잡는다").
+// 그래서 아래는 **티어 값이 아니라 관측값**을 적고, 상수가 그 근방에 있는지를 본다.
+describe("괴리도 눈금 관측값 앵커 (2026-08-24 실측)", () => {
+  // 모집단 = 손님 노출(임대 제외) 중 **평형별 실거래 버킷 경로를 타는** 1,428곳.
+  // 폴백군(면적 미상)은 값 자체가 편향돼 있어 앵커로 쓰지 않는다.
+  const TRUSTED_P90 = 35.7; // 만점 경계의 근거 — 상위 10%가 만점
+  const TRUSTED_P15_ABS = 37.0; // 바닥 경계의 근거 — 하위 15%가 최하
+  // 계수를 문서화된 범위 안에서 흔들었을 때 괴리율이 움직이는 폭의 중앙(n=1,537).
+  // 미준공 패리티 1.265~1.455(±7.1%) · AGE_PREMIUM 앵커 허용 ±15%.
+  const COEFF_SWING_MEDIAN = 11.5;
+
+  it("만점 경계는 신뢰군 p90 의 ±15% 안", () => {
+    const ratio = DEV_SCORE_TIERS[0].min / TRUSTED_P90;
+    expect(ratio).toBeGreaterThan(0.85);
+    expect(ratio).toBeLessThan(1.15);
+  });
+
+  it("바닥 경계(0점 도달 지점)는 신뢰군 p15 의 ±15% 안", () => {
+    const zeroAt = DEV_SCORE_BASE / DEV_SCORE_NEGATIVE_MULT;
+    const ratio = zeroAt / TRUSTED_P15_ABS;
+    expect(ratio).toBeGreaterThan(0.85);
+    expect(ratio).toBeLessThan(1.15);
+  });
+
+  it("'적정가 수준' 밴드는 우리 추정 흔들림의 ±25% 안", () => {
+    // 밴드가 흔들림보다 훨씬 좁으면(옛 ±5) 추정 오차보다 작은 차이로 저렴/비쌈을 단정하게 되고,
+    // 훨씬 넓으면 그 라벨이 다른 둘을 삼켜 축이 말을 안 하게 된다.
+    const ratio = DEV_NEUTRAL_BAND_PCT / COEFF_SWING_MEDIAN;
+    expect(ratio).toBeGreaterThan(0.75);
+    expect(ratio).toBeLessThan(1.25);
+  });
+
+  // ⚠️ 경계를 **표에서 읽어** 검사하면 표가 밀릴 때 단언도 같이 밀린다(세션529 자책).
+  //    리터럴로 못 박는다 — 연속성을 유지한 채 경계만 옮기는 뮤테이션도 red 가 된다.
+  it("구간 경계는 리터럴로 고정한다 (표가 밀리면 red)", () => {
+    expect(DEV_SCORE_TIERS.map((t) => t.min)).toEqual([35, 18, 9, 0]);
+    expect(DEV_SCORE_NEGATIVE_MULT).toBe(1);
+    expect(DEV_SCORE_BASE).toBe(35);
+    expect(DEV_NEUTRAL_BAND_PCT).toBe(10);
+  });
+
+  it("곡선이 이어지고 뒤집히지 않는다 (구간 사이 도약은 만점 진입 한 곳뿐)", () => {
+    const tiers = DEV_SCORE_TIERS as Array<{
+      min: number;
+      score?: number;
+      base?: number;
+      span?: number;
+      range?: number;
+    }>;
+    const at = (d: number): number => {
+      const s =
+        d >= tiers[0].min
+          ? (tiers[0].score as number)
+          : d >= tiers[1].min
+            ? (tiers[1].base as number) + ((d - tiers[1].min) / (tiers[1].span as number)) * (tiers[1].range as number)
+            : d >= tiers[2].min
+              ? (tiers[2].base as number) +
+                ((d - tiers[2].min) / (tiers[2].span as number)) * (tiers[2].range as number)
+              : d >= tiers[3].min
+                ? (tiers[3].base as number) + (d / (tiers[3].span as number)) * (tiers[3].range as number)
+                : Math.max(0, DEV_SCORE_BASE + d * DEV_SCORE_NEGATIVE_MULT);
+      return Math.max(0, Math.min(s, 100));
+    };
+    let prev = -1;
+    let bigJumps = 0;
+    for (let d = -60; d <= 60; d += 0.25) {
+      const v = at(d);
+      expect(v).toBeGreaterThanOrEqual(prev - 1e-9); // 단조 증가 — 싸질수록 점수가 내려가면 안 된다
+      if (prev >= 0 && v - prev > 2.01) bigJumps++;
+      prev = v;
+    }
+    expect(bigJumps).toBe(1); // 만점 진입(95→97) 한 곳
+    expect(at(0)).toBe(DEV_SCORE_BASE);
+    expect(at(-DEV_SCORE_BASE / DEV_SCORE_NEGATIVE_MULT)).toBe(0);
+  });
+
+  it("밴드 안내 문구가 세 상수를 모두 말한다", () => {
+    expect(DEV_BAND_LABEL).toContain(`±${DEV_NEUTRAL_BAND_PCT}%`);
+    expect(DEV_BAND_LABEL).toContain(`+${DEV_SCORE_TIERS[0].min}%`);
+    expect(DEV_BAND_LABEL).toContain(`−${DEV_SCORE_BASE / DEV_SCORE_NEGATIVE_MULT}%`);
+    expect(DEV_BAND_LABEL).not.toContain("주의"); // 음수 쪽 산식과 어긋났던 옛 문구
+  });
 });

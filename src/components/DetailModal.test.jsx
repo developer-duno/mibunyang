@@ -5,6 +5,7 @@ import { DetailModal } from "./DetailModal";
 import { trackEvent } from "@/lib/analytics";
 import { makeScoredItem } from "@/__tests__/factories";
 import { computeRegionalStats } from "@/scoring/regionalStats";
+import { DEV_FULL_MIN_PCT, DEV_ZERO_AT_PCT } from "@/constants/scoringTiers";
 
 // analytics mock — DetailModal 의 detail_tab_view 발화 카운트 단언용. 이 mock 은 PresaleInfo 의
 // presale_view(분양 탭 방문 시 발화)도 no-op 시키나, presale_view 커버리지는 PresaleInfo.test.jsx 소유.
@@ -447,15 +448,77 @@ describe("DetailModal StickyJumpNav", () => {
   });
 
   // 세션 409 D2b — 종합 탭 카테고리 미니카드. benefit 제외 6→5개 (2026-08-11, 가중치 0)
+  // ── 적정가 대비 위치 게이지 (세션531) ──────────────────────────────────────
+  //
+  // 옛 코드는 눈금 끝을 손으로 ±30 에 박아 뒀는데, 그건 **점수가 이미 만점·최하가 되는 지점과
+  // 어긋난 값**이었다. 이제 양 끝 = 점수가 더는 안 움직이는 지점이라, 게이지가 꽉 찼다는 건
+  // "이 축에서 더 좋아질 게 없다"는 뜻이 된다. 옛 ±30 하드코딩으로 되돌리면 아래가 red.
+  describe("적정가 대비 위치 게이지", () => {
+    /** @param {string} dev */
+    const openPrice = (dev) => {
+      const item = makeItem();
+      // 픽스처의 price 는 `{ total, subs }` 로만 추론돼 deviation 이 없다 — 실제 엔진 반환에는 있다
+      /** @type {any} */ (item.res.cats.price).deviation = dev;
+      const { container } = render(<DetailModal {...makeProps({ item })} />);
+      fireEvent.click(screen.getByRole("tab", { name: "시세" }));
+      return /** @type {any} */ (container.querySelector("#sec-price"));
+    };
+
+    it("눈금 양 끝이 점수 경계(만점·최하 지점)를 그대로 말한다", () => {
+      const sec = openPrice("5.0");
+      expect(sec.textContent).toContain(`${DEV_ZERO_AT_PCT}% 비쌈`);
+      expect(sec.textContent).toContain(`${DEV_FULL_MIN_PCT}% 저렴`);
+      // 옛 하드코딩이 돌아오면 red (상수가 30 이 아닌 한)
+      if (DEV_FULL_MIN_PCT !== 30) expect(sec.textContent).not.toContain("30% 저렴");
+      if (DEV_ZERO_AT_PCT !== 30) expect(sec.textContent).not.toContain("30% 비쌈");
+    });
+
+    it("만점 경계에서 눈금이 오른쪽 끝까지 찬다", () => {
+      const sec = openPrice(String(DEV_FULL_MIN_PCT));
+      const marker = sec.querySelector('[style*="left: 100%"]');
+      expect(marker).not.toBeNull();
+    });
+
+    it("최하 지점에서 눈금이 왼쪽 끝까지 간다", () => {
+      const sec = openPrice(String(-DEV_ZERO_AT_PCT));
+      const marker = sec.querySelector('[style*="left: 0%"]');
+      expect(marker).not.toBeNull();
+    });
+
+    // ⚠️ 아래 두 건이 이 가드의 **핵심**이다. 위 세 건(만점 경계·최하 지점·한가운데)은
+    //    옛 ±30 고정 클램프로 되돌려도 **똑같이 통과한다** — 35 도 30 도 그 지점에서는 둘 다
+    //    포화하기 때문이다. 실제로 뮤테이션 검증에서 그 되돌림이 green 이었다(세션531 자책).
+    //    두 클램프가 **서로 다른 값을 내는 안쪽 지점**을 넣어야 잡힌다.
+    it("경계 안쪽(90% 지점)은 끝까지 안 간다 — 옛 ±30 고정 클램프면 red", () => {
+      const sec = openPrice(String(DEV_FULL_MIN_PCT * 0.9));
+      expect(sec.querySelector('[style*="left: 100%"]')).toBeNull();
+      expect(sec.querySelector('[style*="left: 95%"]')).not.toBeNull();
+    });
+
+    it("반대쪽 경계 안쪽(90% 지점)도 끝까지 안 간다", () => {
+      const sec = openPrice(String(-DEV_ZERO_AT_PCT * 0.9));
+      expect(sec.querySelector('[style*="left: 0%"]')).toBeNull();
+      expect(sec.querySelector('[style*="left: 5%"]')).not.toBeNull();
+    });
+
+    it("적정가와 같으면 한가운데", () => {
+      const sec = openPrice("0.0");
+      expect(sec.querySelector('[style*="left: 50%"]')).not.toBeNull();
+    });
+  });
+
   it("종합 탭에 카테고리 미니카드 5개가 결론과 함께 보인다 (benefit 제외)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
     // 5 카테고리 미니카드 = role=button 중 aria-label 에 '점수 탭에서 상세 보기' 포함
     const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
     expect(cards.length).toBe(5);
-    // 결론 문구 샘플: location 80점 → '입지 우수', price deviation '-3.2' → '비쌈'
+    // 결론 문구 샘플: location 80점 → '입지 우수'
     expect(overview.textContent).toContain("입지 우수");
-    expect(overview.textContent).toContain("적정가 대비 3% 비쌈");
+    // ⚠️ 세션531: 판정 경계가 0 → ±10 으로 넓어져 픽스처의 deviation '-3.2' 는 이제 "적정가 수준"이다.
+    //    (그 폭은 우리 적정가 추정 자체의 흔들림 중앙 ±11.5%p 에서 왔다 — scoringTiers.ts 주석)
+    expect(overview.textContent).toContain("적정가 수준");
+    expect(overview.textContent).not.toContain("적정가 대비 3% 비쌈");
   });
 
   it("점수 탭에도 benefit CatPanel(혜택·할인)이 더 이상 없다 (5개, 2026-08-11)", () => {

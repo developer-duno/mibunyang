@@ -722,14 +722,68 @@ export const PIR_SCORE_TIERS: {
 // === Price: 괴리도 점수 임계값 ===
 // 첫 항목 {min, score} / 나머지 {min, base, range, span} — union type
 export type DevScoreTier = { min: number; score: number } | { min: number; base: number; range: number; span: number };
+// 경계 재설계 (세션531). 옛 값(만점 +20% · 바닥 −8.75%)은 **실제 괴리율 분포보다 훨씬 좁아**
+// 열에 여섯을 양 끝에 뭉갰다 — 손님 노출 신뢰군(평형별 실거래 버킷 경로) 1,428곳 실측:
+//   0점 40.3% + 만점 21.1% = **양 끝 61.3%**, 10점 구간 최대 점유 44.0%. 비교 엔진이 비교를 못 한다.
+//
+// **경계는 분포에서 읽었다** — 신뢰군 p90 = **+35.7%** · p15 = **−37.0%** → 만점 +35 / 바닥 −35.
+//   (폴백군 분포에 맞추지 않는다. 그쪽은 면적을 몰라 값 자체가 편향돼 있어, 그 분포에 눈금을 맞추면
+//    오염을 정당화하게 된다 — 세션514 앵커 교훈.)
+//
+// 반영 후(같은 신뢰군): 0점 **16.2%** · 만점 **10.4%** · 양 끝 **26.6%** · 최대 구간 점유 **22.4%**.
+// 평균은 39.9 → 40.9 로 사실상 그대로다 — **축의 중심을 옮긴 게 아니라 눌린 양 끝을 편 것**이다.
+// 만점 10.4% 는 이 저장소 선례와 같은 자리다(버스 만점 13.9% 채택 · 30.2% 는 "세 곳 중 한 곳 동점 →
+// 변별 불가"로 명시 기각 · IC 26.2% 채택).
+//
+// 곡선 **모양은 그대로 두고 폭만 늘렸다**(0 근처에 해상도를 더 주는 3구간 구조 유지, 경계 5/10/20 →
+// 9/18/35). 음수 쪽은 배율만 4 → **1** — "적정가보다 1% 비쌀 때마다 1점" 이라 설명도 한 줄이다.
+// ⚠️ 표를 고치면 `DEV_ZERO_AT_PCT`·`DEV_BAND_LABEL` 이 자동으로 따라오지만, **관측값 앵커**
+//    (scoringTiers.test.ts)는 분포를 다시 재서 함께 고쳐야 한다 — 그러지 않으면 파생 가드만 남아
+//    아무 값이나 통과한다(.claude/rules/meta/guards-must-be-mutation-tested.md).
 export const DEV_SCORE_TIERS: DevScoreTier[] = [
-  { min: 20, score: 97 },
-  { min: 10, base: 75, range: 20, span: 10 },
-  { min: 5, base: 55, range: 20, span: 5 },
-  { min: 0, base: 35, range: 20, span: 5 },
+  { min: 35, score: 97 },
+  { min: 18, base: 75, range: 20, span: 17 },
+  { min: 9, base: 55, range: 20, span: 9 },
+  { min: 0, base: 35, range: 20, span: 9 },
 ];
-export const DEV_SCORE_NEGATIVE_MULT = 4;
+export const DEV_SCORE_NEGATIVE_MULT = 1;
 export const DEV_SCORE_BASE = 35;
+
+/**
+ * "적정가 수준"이라 부르는 밴드 폭(±%). **점수표와 문구가 여기 하나에서 갈린다.**
+ *
+ * 세션531 이전에는 이 숫자가 세 군데에 손으로 적혀 있었다 — `subContext.ts` 의 `interpret`(±5)과
+ * `benchmark`("적정가 ±5% 이내"), 그리고 `scorePrice.ts` 의 `detail`("±5% 적정, ±10~20% 주의,
+ * 20%↑ 과대"). 그 중 `detail` 은 **음수 쪽 실제 산식과 이미 어긋나 있었다**: `dev ≤ −8.75%` 면
+ * 이미 0점인데 문구는 "−10~−20% 주의" 구간이 있는 것처럼 읽혔다.
+ * 축이 재는 것과 문구가 말하는 것은 한 쌍이다
+ * (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md).
+ *
+ * **폭 5 → 10 (세션531). 근거 = 우리 적정가 추정 자체의 흔들림.**
+ * `fairPrice` 는 실거래에 연식·신축·브랜드 계수를 곱해 만든 **추정치**다. 그 계수를 이미
+ * 문서화된 범위 안에서만 흔들어도(미준공 패리티 1.265~1.455 = ±7.1% · `AGE_PREMIUM` 관측값
+ * 앵커 허용 ±15%) 괴리율이 **중앙 ±11.5%p** 움직인다(2026-08-24 실측 n=1,537 — 미준공 ±7.3 ·
+ * 준공 ±15.4). 즉 ±5% 밴드에서는 표본의 **5.4%만** 흔들림이 밴드 안에 들어왔다 —
+ * 나머지 94%에 대해 **우리 추정 오차보다 작은 차이로 "저렴/비쌈"을 단정**하고 있었다.
+ * 10 은 그 중앙 흔들림(11.5)에 가장 가까운 라운드 값이다.
+ *
+ * 판정 분포도 함께 고르게 된다(손님 노출 전체): 저렴 38.1/수준 15.7/비쌈 46.2 →
+ * **저렴 31.4 / 수준 28.8 / 비쌈 39.8**. 어느 한 라벨이 사라지거나 삼키지 않는다.
+ * ⚠️ 더 넓히면(±12.5 → 수준 34.9%) "적정가 수준"이 최다가 되어 축이 말을 덜 하게 된다.
+ */
+export const DEV_NEUTRAL_BAND_PCT = 10;
+
+/** 만점(97) 에 도달하는 괴리율 하한 — `DEV_SCORE_TIERS` 첫 칸에서 읽는다(손으로 적지 않는다). */
+export const DEV_FULL_MIN_PCT = DEV_SCORE_TIERS[0].min;
+
+/** 0점 바닥에 닿는 괴리율 — `35 + dev×배율 = 0` 의 해. 표를 바꾸면 자동으로 따라온다. */
+export const DEV_ZERO_AT_PCT = DEV_SCORE_BASE / DEV_SCORE_NEGATIVE_MULT;
+
+/**
+ * 괴리도 `detail` 의 밴드 안내 문구 — **표에서 계산**한다.
+ * 손으로 적으면 표만 바뀌었을 때 문구가 조용히 거짓이 된다(위 §의 실제 사고).
+ */
+export const DEV_BAND_LABEL = `±${DEV_NEUTRAL_BAND_PCT}% 적정 · +${DEV_FULL_MIN_PCT}%↑ 만점 · −${DEV_ZERO_AT_PCT}%↓ 최하`;
 
 // === Benefit ===
 export const INTEREST_RATE = 0.045; // 중도금 대출 추정 금리 4.5%

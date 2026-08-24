@@ -6,6 +6,7 @@ import {
   LIQUIDITY_TIERS,
   LIQUIDITY_LABELS,
   LIQUIDITY_AREA_UNIT,
+  DEV_NEUTRAL_BAND_PCT,
   schoolGradeLegend,
 } from "@/constants/scoringTiers";
 import { scorePrice, scoreLocation, scoreProduct, scoreBenefit, scoreRisk, scoreFuture } from "@/scoring/engine";
@@ -240,12 +241,22 @@ describe("PRODUCT_MAX", () => {
       expect(say("price", "적정가 괴리도", 90, "-3.2%")).toBe("적정가 수준");
     });
 
-    it("적정가 괴리도: 경계 ±5 는 benchmark 문구와 한 쌍이다", () => {
-      expect(say("price", "적정가 괴리도", 50, "+5.0%")).toBe("적정가 수준");
-      expect(say("price", "적정가 괴리도", 50, "+5.1%")).toBe("적정가보다 저렴");
-      expect(say("price", "적정가 괴리도", 50, "-5.0%")).toBe("적정가 수준");
-      expect(say("price", "적정가 괴리도", 50, "-5.1%")).toBe("적정가보다 비쌈");
-      expect(SUB_CONTEXT.price["적정가 괴리도"].benchmark).toContain("±5%");
+    it("적정가 괴리도: 밴드 경계는 benchmark 문구와 한 쌍이다 (경계 포함)", () => {
+      // 값은 `DEV_NEUTRAL_BAND_PCT` 하나에서 온다 — 세션531 이전에는 이 파일 두 곳과
+      // `scorePrice.ts` detail 에 각각 손으로 적혀 있었다. 여기서 검사하는 것은 **경계 동작**
+      // (경계값 포함, 한 눈금 밖은 방향 판정)이지 값 자체가 아니다.
+      // 값의 정당성은 `scoringTiers.test.ts` 의 **관측값 앵커**가 따로 잠근다 —
+      // 파생 가드만 두면 상수를 아무 값으로 바꿔도 전부 초록이 된다(세션514).
+      const B = DEV_NEUTRAL_BAND_PCT;
+      expect(say("price", "적정가 괴리도", 50, `+${B.toFixed(1)}%`)).toBe("적정가 수준");
+      expect(say("price", "적정가 괴리도", 50, `+${(B + 0.1).toFixed(1)}%`)).toBe("적정가보다 저렴");
+      expect(say("price", "적정가 괴리도", 50, `-${B.toFixed(1)}%`)).toBe("적정가 수준");
+      expect(say("price", "적정가 괴리도", 50, `-${(B + 0.1).toFixed(1)}%`)).toBe("적정가보다 비쌈");
+      expect(SUB_CONTEXT.price["적정가 괴리도"].benchmark).toContain(`±${B}%`);
+      // 옛 폭(±5)이 되돌아오면 red — 그 폭은 우리 추정 흔들림(중앙 ±11.5%p)보다 훨씬 좁아
+      // 표본의 94%에게 "오차보다 작은 차이"로 저렴/비쌈을 단정했다.
+      expect(say("price", "적정가 괴리도", 50, "+7.0%")).toBe("적정가 수준");
+      expect(say("price", "적정가 괴리도", 50, "-7.0%")).toBe("적정가 수준");
     });
 
     it("적정가 괴리도: 적정가를 못 만들면 판정하지 않는다 (catVerdict 와 같은 어휘)", () => {
