@@ -22,6 +22,8 @@ import {
   buildNewApartment,
   toPresalePriceRow,
   dedupUpdateRows,
+  parsePresaleCompletion,
+  isCompletionYm,
 } from "./naver-presale.mjs";
 import { readFileSync } from "node:fs";
 
@@ -693,5 +695,90 @@ describe("main 이 dedup 한 목록으로 UPDATE 하고 공고/단지를 나눠 
 
   it("로그에 공고 수와 단지 수가 둘 다 찍힌다", () => {
     expect(src).toMatch(/공고\s*\$\{updateRows\.length\}건\s*\/\s*단지\s*\$\{dedupedUpdates\.length\}건/);
+  });
+});
+
+describe("parsePresaleCompletion — 잘린 completion 재발 차단 (세션530)", () => {
+  // ⚠️ 뮤테이션 대상: 아래 세 방어선을 하나씩 지우면 각각 red 여야 한다.
+  //    ① 정규식을 옛 `replace(/[-./]/g,"").slice(0,6)` 로 되돌리기
+  //    ② 월 범위(1~12) 검사 제거   ③ 연 범위(1900~2100) 검사 제거
+  it("정상 꼴은 YYYYMM 으로 정규화", () => {
+    expect(parsePresaleCompletion("2026.06")).toBe("202606");
+    expect(parsePresaleCompletion("2026-06")).toBe("202606");
+    expect(parsePresaleCompletion("202606")).toBe("202606");
+    expect(parsePresaleCompletion("2029-12")).toBe("202912");
+  });
+
+  it("앞뒤 공백·회차 접두사가 붙어도 날짜만 뽑는다", () => {
+    expect(parsePresaleCompletion("  2026.06  ")).toBe("202606");
+    // 옛 코드는 "[1회]2026.06" → "[1회]20" 으로 잘라 저장했다
+    expect(parsePresaleCompletion("[1회]2026.06")).toBe("202606");
+  });
+
+  it("월을 알 수 없으면 자르지 않고 null — 옛 코드가 '2030 미' 를 만든 자리", () => {
+    expect(parsePresaleCompletion("2030 미정")).toBeNull();
+    expect(parsePresaleCompletion("2029 미정")).toBeNull();
+    expect(parsePresaleCompletion("2031 미정")).toBeNull();
+    expect(parsePresaleCompletion("미정")).toBeNull();
+  });
+
+  it("월 범위(01~12) 밖은 null", () => {
+    expect(parsePresaleCompletion("202600")).toBeNull();
+    expect(parsePresaleCompletion("202613")).toBeNull();
+    expect(parsePresaleCompletion("202699")).toBeNull();
+  });
+
+  it("연 범위(1900~2100) 밖은 null", () => {
+    expect(parsePresaleCompletion("189912")).toBeNull();
+    expect(parsePresaleCompletion("210101")).toBeNull();
+  });
+
+  it("빈값·비문자열은 null", () => {
+    expect(parsePresaleCompletion(null)).toBeNull();
+    expect(parsePresaleCompletion(undefined)).toBeNull();
+    expect(parsePresaleCompletion("")).toBeNull();
+    expect(parsePresaleCompletion(202606)).toBeNull();
+  });
+});
+
+describe("isCompletionYm — completion 규약 판정", () => {
+  it("YYYYMM 만 참", () => {
+    expect(isCompletionYm("202501")).toBe(true);
+    expect(isCompletionYm("189912")).toBe(true); // 규약 판정이지 값 검증이 아니다
+  });
+  it("규약을 어긴 값·비문자열은 거짓 (동결 해제 판정의 근거)", () => {
+    expect(isCompletionYm("2030 미")).toBe(false);
+    expect(isCompletionYm("[1회]20")).toBe(false);
+    expect(isCompletionYm("미정")).toBe(false);
+    expect(isCompletionYm("2025-06-01")).toBe(false);
+    expect(isCompletionYm("2025061")).toBe(false);
+    expect(isCompletionYm(null)).toBe(false);
+    expect(isCompletionYm(202501)).toBe(false);
+  });
+});
+
+describe("completion 은 규약을 어긴 값도 갱신 대상 — 동결 해제 배선 (세션530)", () => {
+  // main()·toPresaleRow 안 배선이라 소스로 확인한다.
+  // ⚠️ 좌변 고정 + 주석 제거 사본 — 선언부·주석 매칭 함정 차단.
+  const src = readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
+  it("enrich.completion 은 검증 파서를 거쳐 만들어진다 (옛 slice(0,6) 금지)", () => {
+    expect(src).toMatch(/completion:\s*parsePresaleCompletion\(\s*complex\?\.mvi_date\s*\)/);
+    expect(src).not.toMatch(/mvi_date\.replace\([^)]*\)\.slice\(\s*0\s*,\s*6\s*\)/);
+  });
+
+  it("기존 값이 규약을 어기면 갱신한다 (NULL 일 때만 갱신하던 동결 해제)", () => {
+    expect(src).toMatch(
+      /if\s*\(\s*!isCompletionYm\(\s*match\.apartment\.completion\s*\)\s*&&\s*enrich\.completion\s*\)\s*update\.completion\s*=/,
+    );
+    // 옛 조건이 남아 있으면 잘린 값이 다시 영구 동결된다
+    expect(src).not.toMatch(/if\s*\(\s*!match\.apartment\.completion\s*&&\s*enrich\.completion\s*\)/);
+  });
+
+  it("정상 YYYYMM 은 건드리지 않는다 (무조건 덮어쓰기가 아님)", () => {
+    // 조건 없이 대입하면 presale_move_in 과 어긋난 236건까지 통째로 덮인다
+    expect(src).not.toMatch(/^\s*update\.completion\s*=\s*enrich\.completion;\s*$/m);
   });
 });

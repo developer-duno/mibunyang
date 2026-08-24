@@ -1,5 +1,5 @@
 import { gr } from "@/theme";
-import { fmtCompletion, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
+import { fmtMoveIn, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
 import { SAFE_CREDIT_GRADES } from "@/constants/scoringTiers";
 // 점수를 깎는 혐오시설이 무엇인지 **점수 쪽 표를 그대로** 읽는다 — 화면이 따로 목록을 들면
 // 그 순간부터 둘이 어긋난다(이번 사고가 정확히 그 어긋남이었다).
@@ -127,17 +127,17 @@ const UNSOLD_ALERT_THRESHOLD = 30;
 /** 청약 경쟁률 배지 노출 단계 — 청약 진행/예정만 (미분양 제외, 모순 표시 차단) */
 const PRESALE_ACTIVE_STAGES = new Set(["분양중", "청약중", "분양계획"]);
 
-/** 입주 상태 칩 — 준공일이 지났는지 + 미분양이 남았는지로 갈린다 */
-function completionChip(completion: string, moveInDone: boolean, completionPast: boolean): CardChip {
-  if (moveInDone)
-    return { id: "moveInDone", text: `입주완료 ${fmtCompletion(completion)}`, tone: "green", layer: "status" };
+/** 입주 상태 칩 — 준공일이 지났는지 + 미분양이 남았는지로 갈린다.
+ *  `moveInText` 는 이미 사람이 읽을 꼴로 만들어 넘긴다(`fmtMoveIn` — 잘린 값은 네이버
+ *  원문으로 대체된다, 세션530). 여기서 다시 포맷하면 그 대체가 무효가 된다. */
+function completionChip(moveInText: string, moveInDone: boolean, completionPast: boolean): CardChip {
+  if (moveInDone) return { id: "moveInDone", text: `입주완료 ${moveInText}`, tone: "green", layer: "status" };
   // 미입주도 **상태**다 — 색만 주황이다.
   // 약점으로 두면 상한 2칸을 미분양·시공사 같은 더 급한 위험에 내주고 접히는데,
   // 2026-08-10 운영 n=1,646 실측에서 그렇게 접히는 카드가 666곳(40.5%)이었다.
   // 입주 상태는 세 형제(완료·예정·미입주)가 같은 축이라 한 층에 둔다.
-  if (completionPast)
-    return { id: "moveInLate", text: `미입주 (준공 ${fmtCompletion(completion)})`, tone: "amber", layer: "status" };
-  return { id: "moveInSoon", text: `입주예정 ${fmtCompletion(completion)}`, tone: "blue", layer: "status" };
+  if (completionPast) return { id: "moveInLate", text: `미입주 (준공 ${moveInText})`, tone: "amber", layer: "status" };
+  return { id: "moveInSoon", text: `입주예정 ${moveInText}`, tone: "blue", layer: "status" };
 }
 
 export interface BuildChipsOptions {
@@ -176,7 +176,9 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   // 준공 + 미분양 0 = 입주완료. 판정은 unsold(수)로 — unsoldRate(%)는 100% 초과 폭발값이 null 로
   // 무력화돼 있을 수 있어, 미분양 단지가 "입주완료"로 둔갑하던 회귀 방지(세션 445, classify.ts:33 일치).
   const moveInDone = completionPast && Number(a.unsold ?? 0) === 0;
-  if (completion) out.push(completionChip(completion, moveInDone, completionPast));
+  // 잘린 값(`"2029 미"`)은 네이버 원문(`"2029 미정"`)으로 대체해 보여준다 (세션530).
+  if (completion)
+    out.push(completionChip(fmtMoveIn(completion, a.presaleMoveIn as string | undefined), moveInDone, completionPast));
 
   /* ── core: 손님이 늘 확인하는 값 (상한 밖 상시 노출) ──
      손님 질문 4단계의 ①이 "얼마인가"라서 가격 판정은 언제나 보여야 한다(재설계 D3). */

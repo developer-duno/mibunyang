@@ -165,4 +165,18 @@ describe("FIELD_SECTIONS", () => {
       expect(allSectionFields, `필드 "${key}"가 어떤 섹션에도 없음`).toContain(key);
     }
   });
+
+  // ⚠️ 뮤테이션 대상: completion 의 fmt 를 `(v) => fmtMoveIn(v)` 로 되돌리면 red 여야 한다.
+  //    `fmt` 는 2번째 인자로 행 전체를 받는다 — 안 넘기면 원문 대체가 통째로 죽는다.
+  describe("completion — 잘린 값은 네이버 원문으로 대체 (세션530)", () => {
+    it("잘린 값이면 같은 행의 원문을 보여준다", () => {
+      expect(FIELD_META.completion.fmt("2029 미", { presaleMoveIn: "2029 미정" })).toBe("2029 미정");
+    });
+    it("정상 YYYYMM 은 정본을 쓴다", () => {
+      expect(FIELD_META.completion.fmt("202812", { presaleMoveIn: "2030-05" })).toBe("2028년 12월");
+    });
+    it("원문이 없으면 저장된 값 그대로", () => {
+      expect(FIELD_META.completion.fmt("미정", {})).toBe("미정");
+    });
+  });
 });

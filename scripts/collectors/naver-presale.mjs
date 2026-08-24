@@ -267,6 +267,39 @@ export function sanitizeImageUrl(url) {
   }
 }
 
+/** `completion` 규약(YYYYMM) 을 만족하는가. 저장 전 검증·기존 값 판정 공용.
+ * @param {unknown} v
+ * @returns {v is string}
+ */
+export function isCompletionYm(v) {
+  return typeof v === "string" && /^\d{6}$/.test(v);
+}
+
+/**
+ * 네이버 `mvi_date`(입주예정) 원문 → `completion`(YYYYMM). 확실할 때만 값을 낸다.
+ *
+ * 옛 코드는 `replace(/[-./]/g, "").slice(0, 6)` 로 **검증 없이 앞 6자를 잘라**
+ * `"2030 미정"` → `"2030 미"`, `"[1회]2026.06"` → `"[1회]20"` 같은 깨진 값을 저장했고,
+ * 그게 그대로 손님 화면에 `"2030년  미월"` 로 나갔다 (세션530).
+ *
+ * 버려도 잃는 게 없다 — 원문은 `presale_move_in` 이 무손실 보존하므로, 확실하지 않으면
+ * null 을 내고 복구는 원문에서 다시 한다. 실측(정적 1,730행)상 네이버가 주는 꼴은
+ * `YYYY-MM`/`YYYY.MM` 970건 + `"미정"` 계열뿐이라 한 자리 월 같은 변종은 없다.
+ *
+ * @param {unknown} raw
+ * @returns {string | null}
+ */
+export function parsePresaleCompletion(raw) {
+  if (typeof raw !== "string") return null;
+  const m = raw.trim().match(/(\d{4})[-./]?(\d{2})/);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  if (year < 1900 || year > 2100) return null;
+  if (month < 1 || month > 12) return null;
+  return `${m[1]}${m[2]}`;
+}
+
 /** 주소 파싱 → { region, gu, dong }
  * @param {string | null | undefined} address
  * @returns {{ region: string | null; gu: string | null; dong: string | null }}
@@ -354,9 +387,7 @@ export function toPresaleRow(complex, detail, listItem) {
       max_floor: complex?.max_flr_cnt ?? null,
       lat: complex?.ypos != null ? parseFloat(String(complex.ypos)) : null,
       lng: complex?.xpos != null ? parseFloat(String(complex.xpos)) : null,
-      completion: complex?.mvi_date?.trim()
-        ? complex.mvi_date.replace(/[-./]/g, "").slice(0, 6)
-        : null,
+      completion: parsePresaleCompletion(complex?.mvi_date),
       bjd_code: complex?.bubdong_code ?? null,
       address: complex?.address ?? null,
     },
@@ -756,7 +787,10 @@ async function main() {
         if (!match.apartment.max_floor && enrich.max_floor) update.max_floor = enrich.max_floor;
         if (!match.apartment.lat && enrich.lat) update.lat = enrich.lat;
         if (!match.apartment.lng && enrich.lng) update.lng = enrich.lng;
-        if (!match.apartment.completion && enrich.completion) update.completion = enrich.completion;
+        // completion 만 "NULL 일 때만" 갱신하던 탓에 한 번 잘린 값이 영구 동결됐고, 매번
+        // 갱신되는 presale_move_in 과 드리프트했다 (세션530). 규약(YYYYMM) 을 어긴 값도
+        // 갱신 대상에 넣어 다음 회차에 스스로 낫게 한다. 정상 YYYYMM 은 그대로 둔다.
+        if (!isCompletionYm(match.apartment.completion) && enrich.completion) update.completion = enrich.completion;
         if (!match.apartment.bjd_code && enrich.bjd_code) update.bjd_code = enrich.bjd_code;
       }
       updateRows.push(update);

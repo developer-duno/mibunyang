@@ -12,7 +12,7 @@ import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
 import { CatPanel, getHighlights } from "./CatPanel";
 import { TransportCard } from "./detail/TransportCard";
-import { fmtPrice, fmtCompletion } from "@/lib/format";
+import { fmtPrice, fmtMoveIn } from "@/lib/format";
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
@@ -488,7 +488,7 @@ export const DetailModal = memo(function DetailModal({
                           : C.muted,
                       hint: "주변 시세로 계산한 '적정가'와 실제 분양가를 비교한 거예요. +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
                     },
-                    { l: "입주", v: fmtCompletion(apt.completion) },
+                    { l: "입주", v: fmtMoveIn(apt.completion, apt.presaleMoveIn as string | null | undefined) },
                   ].map((r, i) => (
                     <div key={i} style={DM_S.metricsRow}>
                       <span style={{ ...DM_S.metricsLabel, display: "flex", alignItems: "center" }}>

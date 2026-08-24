@@ -36,10 +36,40 @@ export const maskPhone = (phone: string | null | undefined): string => {
   return digits.slice(0, 3) + "-****-" + digits.slice(-4);
 };
 
-/** YYYYMM → "YYYY년 MM월" (예: "202501" → "2025년 01월") */
+/**
+ * YYYYMM → "YYYY년 MM월" (예: "202501" → "2025년 01월").
+ * 형식이 아니면 **원문 그대로** — 우리가 못 읽는 값을 읽은 척 꾸미지 않는다.
+ *
+ * 옛 코드는 `length < 6` 만 보고 앞 6자를 잘라 붙여서, 규약을 어긴 값이 손님 화면에
+ * `"2030 미"` → `"2030년  미월"`, `"[1회]20"` → `"[1회]년 20월"` 처럼 깨진 문구로
+ * 나갔다 (세션530). 수집 단계(`naver-presale.mjs parsePresaleCompletion`)가 1차로 막지만,
+ * 이미 저장된 값과 다른 출처를 위해 표시 계층에도 방어선을 둔다.
+ */
 export const fmtCompletion = (v: string | null | undefined): string => {
-  if (!v || v.length < 6) return v || "-";
-  return `${v.slice(0, 4)}년 ${v.slice(4, 6)}월`;
+  if (!v) return "-";
+  const s = String(v);
+  if (!/^\d{6}$/.test(s)) return s;
+  return `${s.slice(0, 4)}년 ${s.slice(4, 6)}월`;
+};
+
+/**
+ * 입주 시기 **표시값** — `completion`(YYYYMM)이 정본이고, 규약을 어겼거나 비었으면
+ * 네이버 원문(`presaleMoveIn`)을 대신 보여준다.
+ *
+ * 왜 필요한가 (세션530): 옛 수집기가 `"2029 미정"` 을 6자에서 잘라 `"2029 미"` 로 저장한
+ * 값이 44건 남아 있다. 원문에도 월이 없어 복구가 안 되는데, 잘린 값을 그대로 보이면
+ * `"입주예정 2029 미"` 라 어색하다. 원문은 `"2029 미정"` 이라 사람이 읽을 수 있다.
+ *
+ * ⚠️ 그럼 DB 의 잘린 값을 비우면 되지 않나 — **안 된다.** `classifyMoveIn`(classify.ts:31)이
+ *    `completion` 이 비면 입주 상태를 못 매기고, 그 결과가 `useDataPipeline` 의 "입주 시기"
+ *    필터로 흘러가 그 44곳이 "입주예정" 목록에서 통째로 사라진다. 표시만 대체하는 이유다.
+ */
+export const fmtMoveIn = (completion: string | null | undefined, presaleMoveIn?: string | null): string => {
+  if (completion && /^\d{6}$/.test(String(completion))) return fmtCompletion(completion);
+  const raw = typeof presaleMoveIn === "string" ? presaleMoveIn.trim() : "";
+  if (raw) return raw;
+  const stored = typeof completion === "string" ? completion.trim() : "";
+  return stored || "-";
 };
 
 /** 분양가 범위: min~max (만원 → 억/만) */
