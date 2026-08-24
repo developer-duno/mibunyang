@@ -76,11 +76,18 @@ const MATCH_DISTANCE_M = 500;          // 3순위: 좌표 반경 (미터)
 const METERS_PER_DEGREE = 111000;      // 위도 1도 ≈ 111km (근사)
 const MIN_UNITS_FOR_INSERT = 20;       // 신규 아파트 최소 세대수
 const LIST_PAGE_SIZE = 100;            // 분양 목록 페이지 크기
+// 전용면적 상식 범위 — `pickScaleArea` 가 계약면적 오입력·임대 행을 거르는 데 쓴다.
+// 실측(2026-08-24, 최저가 주택형 31곳 표본): p05 46.9 · p50 74.8 · p95 113.3 ㎡.
+const AREA_MIN_M2 = 20;
+const AREA_MAX_M2 = 250;
 
 // ── CLI 인자 ────────────────────────────────────────────────
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const probeOnly = args.includes("--probe");
+// 이미 면적을 아는 단지도 강제로 다시 조회한다(최저가 주택형이 완판돼 바뀐 경우 등).
+// 기본값은 이월 — 단지당 요청 1개(2초)를 아낀다.
+const refreshArea = args.includes("--refresh-area");
 const limitArg = args.find(a => a.startsWith("--limit="));
 const complexLimit = limitArg ? parseInt(limitArg.replace("--limit=", ""), 10) : 0;
 const regionArg = args.find(a => a.startsWith("--region="));
@@ -395,21 +402,72 @@ export function toPresaleRow(complex, detail, listItem) {
 }
 
 /**
+ * 주택형 목록(`/api/complex/scale`)에서 **대표 주택형의 전용·공급 면적**을 고른다.
+ *
+ * 왜 필요한가 (세션531): 이 수집기가 만드는 `presale_min` 가격 행은 `area: null` 이었다. 그
+ * 단지들은 `apartments_flat.area` 가 비어 `scorePrice` 의 평형별 실거래 버킷 경로를 못 타고
+ * **"구 전체 거래 중위 총액"과 비교**되는 폴백으로 떨어진다. 그러면 괴리도가 "비싼가"가 아니라
+ * **"큰가"** 를 재게 된다 — 같은 단지 892곳을 경로만 바꿔 잰 대조 실험에서 면적↔괴리도 상관이
+ * 버킷 −0.097 vs 폴백 **−0.699**, 대형(115㎡+) 괴리도 중앙이 −35.6% vs **−182.1%** 였다.
+ * 그 편향이 손님 노출 1,730곳 중 833곳(48.2%)에 걸려 괴리도 점수를 양 끝(0점·만점)으로 몰았다.
+ *
+ * **왜 최저 분양가 주택형인가** — 이 행의 `price` 가 `min_price`(최저가)라 면적도 **같은 주택형**
+ * 것이어야 짝이 맞는다. 다른 주택형 면적을 붙이면 비싼 집을 싼 값으로 재는 새 거짓이 된다.
+ *
+ * ⚠️ **역산·다른 대체 경로는 실측으로 기각했다**(같은 세션). 되살리려면 근거를 새로 들고 올 것:
+ *   - `prices` 에 숨은 면적: 해당 833곳 중 **0곳**
+ *   - `price ÷ 평당가` 역산: 공급/전용 중앙비율로 보정해도 오차 중앙 13.5%, 진짜 괴리도와
+ *     맞대보면 폴백 대비 **승률 53.1%**(동전던지기)에 평균오차는 오히려 악화
+ *   - 평당가끼리 비교(`presale_pp` vs `avg_price_sqm`): 버킷 경로 값과 상관 **0.149**(무관)
+ *   - 상세 응답의 `min_size`/`max_size`: 전용면적 아님(DB 전용 대비 비율 0.95~1.93 산포,
+ *     서로 다른 단지가 같은 값을 반환하는 사례도 있음)
+ *
+ * @param {Array<Record<string, unknown>> | null | undefined} list `/api/complex/scale` 의 `result.list`
+ * @returns {{ area: number, supplyArea: number | null } | null} 후보가 없으면 null (지어내지 않는다)
+ */
+export function pickScaleArea(list) {
+  if (!Array.isArray(list) || list.length === 0) return null;
+  /** @type {{ area: number, supplyArea: number | null, price: number } | null} */
+  let best = null;
+  for (const it of list) {
+    if (it == null || typeof it !== "object") continue;
+    const area = Number(it.use_area_size);
+    const price = Number(it.supp_price);
+    // 전용면적이 상식 범위 밖이면 버린다 — 0·빈값뿐 아니라 계약면적이 잘못 들어온 행도 거른다.
+    if (!Number.isFinite(area) || area < AREA_MIN_M2 || area > AREA_MAX_M2) continue;
+    // 분양가가 없으면 "최저가 주택형"을 고를 수 없다. 임대(보증금/월세)형 행도 여기서 걸린다.
+    if (!Number.isFinite(price) || price <= 0) continue;
+    if (best == null || price < best.price) {
+      const supply = Number(it.supp_size);
+      best = { area, supplyArea: Number.isFinite(supply) && supply > 0 ? supply : null, price };
+    }
+  }
+  return best ? { area: best.area, supplyArea: best.supplyArea } : null;
+}
+
+/**
  * complex 응답 → prices 테이블 행 변환 (house_type='presale_min')
  * price 커버리지 갭 보정용. recorded_at은 수집일 + (apartment_id, house_type, recorded_at) 복합키로 자연 멱등.
- */
-/**
+ *
+ * `areaInfo` 는 `pickScaleArea` 결과이거나, 이전 회차에 이미 확보해 둔 같은 단지의 면적이다
+ * (main 이 이월한다). **null 을 넣어도 옛 동작 그대로**라 호출처를 하나씩 옮길 수 있다.
+ *
+ * ⚠️ 이월이 필요한 이유: `latest_prices` 는 `presale_%` 행 중 `recorded_at` 이 가장 늦은 것을
+ * 고른다. 면적이 이미 있다고 이번 회차 요청만 건너뛰면 **면적 없는 새 행이 옛 행을 덮어**
+ * 화면에서 면적이 사라진다. 요청을 아끼되 값은 이어 붙인다.
+ *
  * @param {ComplexData | null | undefined} complex
  * @param {string | null | undefined} apartmentId
+ * @param {{ area: number, supplyArea: number | null } | null} [areaInfo]
  */
-export function toPresalePriceRow(complex, apartmentId) {
+export function toPresalePriceRow(complex, apartmentId, areaInfo = null) {
   const price = parsePresalePrice(complex?.min_price);
   if (price == null || price <= 0 || !apartmentId) return null;
   const pp = parsePresalePrice(complex?.pyper_price);
   return {
     apartment_id: apartmentId,
-    area: null,
-    supply_area: null,
+    area: areaInfo?.area ?? null,
+    supply_area: areaInfo?.supplyArea ?? null,
     price,
     pp: pp ?? null,
     house_type: "presale_min",
@@ -631,6 +689,24 @@ async function fetchDetailData(complexNo, seq) {
   return await presalePost("/api/complex/schedule", { build_dtl_cd: no, supp_cd: s });
 }
 
+/** 주택형별 규모 — POST /api/complex/scale (전용면적 출처, 실패·빈응답 시 [])
+ *
+ * 엔드포인트는 추측이 아니라 **분양 상세 페이지가 실제로 부르는 것**을 확인해 골랐다
+ * (페이지 JS 번들에서 `/api/` 문자열 21개를 추출 → `scale` 이 주택형 목록). 처음 짚어 본
+ * `houseType`·`typeList`·`supply` 등 19개는 전부 404 였다.
+ *
+ * @param {string | number | null | undefined} complexNo
+ * @param {string | number | null | undefined} seq
+ * @returns {Promise<Array<Record<string, unknown>>>}
+ */
+export async function fetchScaleData(complexNo, seq) {
+  const no = Number(complexNo), s = Number(seq);
+  if (!Number.isFinite(no) || !Number.isFinite(s)) return [];
+  const data = await presalePost("/api/complex/scale", { build_dtl_cd: no, supp_cd: s });
+  const list = data?.list;
+  return Array.isArray(list) ? list : [];
+}
+
 // ── 메인 ────────────────────────────────────────────────────
 
 async function main() {
@@ -686,6 +762,52 @@ async function main() {
   }
   /** @type {AptIndexes} */
   const aptIndexes = { byPresaleNo, byBjd };
+
+  // Phase 0.6: 이미 확보한 전용면적 이월표 — 단지당 요청 1개(2초)를 아낀다.
+  // ⚠️ 고유키(apartment_id) 커서로 전량을 훑는다. 무정렬 `.range()` 반복은 1,000행 넘는
+  //    표에서 에러 없이 행을 잃는다(.claude/rules/collectors/unordered-pagination-loses-rows.md).
+  //    `prices` 는 이미 7,886행이라 이 규칙에 걸린다.
+  /** @type {Map<string, { area: number, supplyArea: number | null }>} */
+  const knownArea = new Map();
+  {
+    const PAGE = 1000;
+    /** @type {number | null} */
+    let cursor = null;
+    for (;;) {
+      let pq = sb.from("prices").select("id, apartment_id, area, supply_area").order("id", { ascending: true }).limit(PAGE);
+      if (cursor != null) pq = pq.gt("id", cursor);
+      const { data: prows, error: perr } = await pq;
+      if (perr) { logError(PHASE, `prices 면적 조회 실패 — 이월 없이 진행: ${perr.message}`); break; }
+      if (!prows?.length) break;
+      for (const r of prows) {
+        const a = Number(r.area);
+        if (!Number.isFinite(a) || a < AREA_MIN_M2 || a > AREA_MAX_M2) continue;
+        const sa = Number(r.supply_area);
+        knownArea.set(String(r.apartment_id), { area: a, supplyArea: Number.isFinite(sa) && sa > 0 ? sa : null });
+      }
+      if (prows.length < PAGE) break;
+      cursor = Number(prows[prows.length - 1].id);
+    }
+    log(PHASE, `기존 전용면적 보유 단지 ${knownArea.size}건 (이월 대상)`);
+  }
+
+  /**
+   * 이 단지에 붙일 전용면적. 이미 알고 있으면 그대로 이월하고, 모를 때만 `scale` 을 부른다.
+   * `--refresh-area` 면 항상 다시 조회한다.
+   * @param {string} aptId
+   * @param {string | number | null | undefined} no
+   * @param {string | number | null | undefined} seq
+   */
+  async function resolveAreaInfo(aptId, no, seq) {
+    if (!refreshArea) {
+      const cached = knownArea.get(aptId);
+      if (cached) return cached;
+    }
+    const picked = pickScaleArea(await fetchScaleData(no, seq));
+    if (picked) knownArea.set(aptId, picked);
+    // 못 구했는데 옛 값이 있으면 그 값을 이월한다 — 면적 없는 새 행이 옛 행을 덮지 않게.
+    return picked ?? knownArea.get(aptId) ?? null;
+  }
 
   // Phase 1: Discovery — 전국 분양단지 목록
   const regions = regionFilter ? [regionFilter] : Object.keys(REGION_CORTAR);
@@ -794,7 +916,8 @@ async function main() {
         if (!match.apartment.bjd_code && enrich.bjd_code) update.bjd_code = enrich.bjd_code;
       }
       updateRows.push(update);
-      const priceRow = toPresalePriceRow(complexData, match.apartment.id);
+      const areaInfo = await resolveAreaInfo(match.apartment.id, no, seq);
+      const priceRow = toPresalePriceRow(complexData, match.apartment.id, areaInfo);
       if (priceRow) priceRows.push(priceRow);
       reporter.success();
     } else {
@@ -807,7 +930,8 @@ async function main() {
         tierCounts.new++;
         const newApt = buildNewApartment(row, complexData, item._region);
         insertRows.push(newApt);
-        const priceRow = toPresalePriceRow(complexData, newApt.id);
+        const areaInfo = await resolveAreaInfo(newApt.id, no, seq);
+        const priceRow = toPresalePriceRow(complexData, newApt.id, areaInfo);
         if (priceRow) priceRows.push(priceRow);
         reporter.success();
       } else {
