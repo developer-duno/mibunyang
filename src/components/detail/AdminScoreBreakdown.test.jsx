@@ -18,6 +18,29 @@ describe("AdminScoreBreakdown", () => {
     expect(screen.getByText(/브랜드보정/)).toBeTruthy();
   });
 
+  /**
+   * 세션528 결함B 처방 — 미준공(분양 예정) 단지는 "연식계수"가 아니라 "신축 프리미엄" 라벨이어야
+   * 정직하다(같은 ageCoeff 값이 이제 두 가지 다른 현상을 나타내므로, brands.ts 주석 참조).
+   * 적대검증(세션528)이 잡은 가드 갭: 팩토리 기본 completion(2025-06-01)이 과거로 고정돼 있어
+   * 위 테스트는 항상 "연식계수" 분기만 지나고, presale=true 분기(신축 프리미엄)는 이 파일의
+   * 어떤 테스트도 렌더하지 않아 그 분기를 지워도 전체 테스트가 초록불을 유지했다.
+   */
+  it("미준공(분양 예정) 단지는 '신축 프리미엄' 라벨을 표시한다 (연식계수 아님)", () => {
+    const future = new Date();
+    future.setFullYear(future.getFullYear() + 1); // 실행 시점 기준 상대값 — 하드코딩 날짜 금지
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ completion: future.toISOString().slice(0, 10) }));
+    render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+    expect(screen.getByText(/신축 프리미엄/)).toBeTruthy();
+    expect(screen.queryByText(/^×\s*연식계수/)).toBeNull();
+  });
+
+  it("준공된 단지는 '연식계수' 라벨을 표시한다 (신축 프리미엄 아님)", () => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ completion: "2020-01-01" }));
+    render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+    expect(screen.getByText(/연식계수/)).toBeTruthy();
+    expect(screen.queryByText(/신축 프리미엄/)).toBeNull();
+  });
+
   it("6개 카테고리 섹션의 총점을 표시한다", () => {
     const { apt, res } = /** @type {any} */ (makeScoredItem());
     render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);

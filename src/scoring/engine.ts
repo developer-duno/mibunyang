@@ -1,5 +1,5 @@
 import { PROFILES } from "@/constants/profiles";
-import { scorePrice, getAgeCoeff, getAreaAdj, matchAreaPrice } from "./scorePrice";
+import { scorePrice, getAgeCoeff, getAreaAdj, matchAreaPrice, isPresale } from "./scorePrice";
 import { scoreLocation } from "./scoreLocation";
 import { scoreProduct } from "./scoreProduct";
 import { scoreBenefit } from "./scoreBenefit";
@@ -217,6 +217,7 @@ export {
   getAgeCoeff,
   getAreaAdj,
   matchAreaPrice,
+  isPresale,
   scorePrice,
   scoreLocation,
   scoreProduct,
