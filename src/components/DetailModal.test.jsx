@@ -868,4 +868,27 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     expect(screen.getByText("관심매물 추가")).toBeVisible();
     expect(screen.getByText("비교 추가")).toBeVisible();
   });
+
+  // ⚠️ 뮤테이션 대상: `fmtMoveIn(apt.completion, apt.presaleMoveIn)` 에서 **2번째 인자를 빼면** red
+  //    여야 한다. 함수만 지키고 배선을 안 지키면 껍데기 가드가 된다
+  //    (.claude/rules/meta/guards-must-be-mutation-tested.md §"테스트가 실제 경로를 지나는가").
+  describe("입주 시기 — 잘린 값은 네이버 원문으로 대체 (세션530)", () => {
+    /** apt 쪽을 갈아끼운 item (makeItem 은 res 쪽만 받는다)
+     * @param {Record<string, unknown>} aptOver
+     * @returns {any} */
+    const itemWithApt = (aptOver) => ({ ...makeItem(), apt: { ...makeItem().apt, ...aptOver } });
+
+    it('옛 수집 사고로 잘린 "2029 미" 대신 원문 "2029 미정" 이 보인다', () => {
+      render(
+        <DetailModal {...makeProps({ item: itemWithApt({ completion: "2029 미", presaleMoveIn: "2029 미정" }) })} />
+      );
+      expect(screen.getByText("2029 미정")).toBeInTheDocument();
+      expect(screen.queryByText("2029년  미월")).toBeNull(); // 옛 깨진 문구가 되살아나면 안 된다
+    });
+
+    it("정상 YYYYMM 은 원문과 어긋나도 정본을 쓴다", () => {
+      render(<DetailModal {...makeProps({ item: itemWithApt({ completion: "202812", presaleMoveIn: "2030-05" }) })} />);
+      expect(screen.getByText("2028년 12월")).toBeInTheDocument();
+    });
+  });
 });

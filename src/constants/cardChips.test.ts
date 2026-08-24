@@ -108,6 +108,27 @@ describe("buildCardChips — 상태(status) 층", () => {
     expect(find(chips, "moveInDone")).toBeUndefined();
     expect(find(chips, "moveInLate")).toBeDefined();
   });
+
+  // ⚠️ 뮤테이션 대상: `completionChip(fmtMoveIn(...))` 배선을 원값으로 되돌리면 red 여야 한다.
+  //    함수(fmtMoveIn)만 지키고 배선을 안 지키면 껍데기 가드가 된다
+  //    (.claude/rules/meta/guards-must-be-mutation-tested.md §"테스트가 실제 경로를 지나는가").
+  describe("잘린 입주 시기는 네이버 원문으로 대체해 보여준다 (세션530)", () => {
+    it('옛 수집 사고로 잘린 "2029 미" 대신 원문 "2029 미정" 이 칩에 찍힌다', () => {
+      const chip = find(build({ completion: "2029 미", presaleMoveIn: "2029 미정" }), "moveInSoon");
+      expect(chip?.text).toBe("입주예정 2029 미정");
+      expect(chip?.text).not.toContain("2029 미 "); // 잘린 값이 그대로 새면 안 된다
+    });
+
+    it("정상 YYYYMM 은 원문과 어긋나도 정본을 쓴다", () => {
+      // 운영 236곳이 어긋나 있다(입주예정일 연기 등) — 화면은 정본을 따른다
+      const chip = find(build({ completion: "202812", presaleMoveIn: "2030-05" }), "moveInSoon");
+      expect(chip?.text).toBe("입주예정 2028년 12월");
+    });
+
+    it("원문이 없으면 저장된 값을 그대로 (지어내지 않는다)", () => {
+      expect(find(build({ completion: "미정" }), "moveInSoon")?.text).toBe("입주예정 미정");
+    });
+  });
 });
 
 describe("buildCardChips — 강점/약점 판정", () => {

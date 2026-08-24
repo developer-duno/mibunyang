@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   fmtPrice,
   fmtCompletion,
+  fmtMoveIn,
   maskName,
   maskPhone,
   fmtPriceRange,
@@ -108,15 +109,53 @@ describe("fmtCompletion — 추가 edge cases", () => {
   it('6자리 정확히: 202512 → "2025년 12월"', () => {
     expect(fmtCompletion("202512")).toBe("2025년 12월");
   });
-  it("7자리 이상도 앞 6자리만 파싱", () => {
-    expect(fmtCompletion("2025061")).toBe("2025년 06월");
+  // ⚠️ 아래 3건은 뮤테이션 대상 — `/^\d{6}$/` 가드를 지우면 red 여야 한다.
+  //    옛 테스트는 깨진 동작(`"2025-06-01"` → `"2025년 -0월"`)을 기대값으로 박아
+  //    손님 화면에 나가던 거짓 문구를 오히려 지키고 있었다 (세션530).
+  it("7자리는 YYYYMM 이 아니므로 원문 그대로", () => {
+    expect(fmtCompletion("2025061")).toBe("2025061");
   });
-  it("YYYY-MM-DD 형식은 앞 4자리/4~6자리 사용", () => {
-    expect(fmtCompletion("2025-06-01")).toBe("2025년 -0월");
-    // 이 형식은 의도된 사용이 아니지만 에러 없이 처리됨
+  it("대시 형식은 YYYYMM 이 아니므로 원문 그대로", () => {
+    expect(fmtCompletion("2025-06-01")).toBe("2025-06-01");
+  });
+  it("비정형 값(수집 사고 잔재)은 꾸미지 않고 원문 그대로", () => {
+    expect(fmtCompletion("2030 미")).toBe("2030 미");
+    expect(fmtCompletion("2029 미")).toBe("2029 미");
+    expect(fmtCompletion("[1회]20")).toBe("[1회]20");
+    expect(fmtCompletion("미정")).toBe("미정");
   });
   it("숫자 0 → -", () => {
     expect(fmtCompletion(/** @type {string} */ (/** @type {unknown} */ (0)))).toBe("-");
+  });
+});
+
+describe("fmtMoveIn — 잘린 값은 네이버 원문으로 대체 (세션530)", () => {
+  // ⚠️ 뮤테이션 대상: 원문 폴백을 지우면 화면에 "입주예정 2029 미" 가 되돌아온다.
+  it("정상 YYYYMM 이면 원문을 무시하고 정본을 쓴다", () => {
+    // 원문은 입주예정일이 미뤄져 어긋나 있을 수 있다(운영 236건) — 정본이 이긴다
+    expect(fmtMoveIn("202501", "2028-10")).toBe("2025년 01월");
+  });
+
+  it("잘린 값이면 원문을 대신 보여준다 — 복구 불가 44건이 읽히는 자리", () => {
+    expect(fmtMoveIn("2029 미", "2029 미정")).toBe("2029 미정");
+    expect(fmtMoveIn("2031 미", "2031 미정")).toBe("2031 미정");
+    expect(fmtMoveIn("[1회]20", "[1회] 미정")).toBe("[1회] 미정");
+  });
+
+  it("completion 이 비어도 원문이 있으면 보여준다", () => {
+    expect(fmtMoveIn(null, "2029 미정")).toBe("2029 미정");
+    expect(fmtMoveIn(undefined, "  2027-07  ")).toBe("2027-07");
+  });
+
+  it("원문이 없으면 저장된 값을 그대로 (꾸미지 않는다)", () => {
+    expect(fmtMoveIn("2029 미", null)).toBe("2029 미");
+    expect(fmtMoveIn("미정", undefined)).toBe("미정");
+  });
+
+  it("둘 다 없으면 -", () => {
+    expect(fmtMoveIn(null, null)).toBe("-");
+    expect(fmtMoveIn(undefined, undefined)).toBe("-");
+    expect(fmtMoveIn("", "")).toBe("-");
   });
 });
 

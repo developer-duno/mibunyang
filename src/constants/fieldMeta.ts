@@ -1,5 +1,5 @@
 import { BRAND_TIER, LAYOUT_SCORE, resolveBuilder } from "./brands";
-import { fmtPrice, fmtCompletion, fmtRecruitDate, fmtPresaleSchedule, fmtCompetitionRate } from "@/lib/format";
+import { fmtPrice, fmtMoveIn, fmtRecruitDate, fmtPresaleSchedule, fmtCompetitionRate } from "@/lib/format";
 
 // fmt/isEstimated 등 함수의 v/apt 매개변수는 동적 dict — DB row 타입 박제는 BACKLOG-M4c-fieldMeta-apt-type.
 // 좁힘 보류 — `any` 사용. 호출처 호환성 우선.
@@ -81,7 +81,8 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
       return isBuilderNoCreditGrade(v) ? `${v} (브랜드 해당없음)` : `${v} (기타)`;
     },
   },
-  completion: { label: "입주예정", section: "개요", fmt: (v) => fmtCompletion(v) },
+  // 잘린 값은 네이버 원문으로 대체 (세션530) — `fmt` 2번째 인자가 행 전체다
+  completion: { label: "입주예정", section: "개요", fmt: (v, apt) => fmtMoveIn(v, apt?.presaleMoveIn) },
   layout: {
     label: "평면구조",
     section: "개요",
