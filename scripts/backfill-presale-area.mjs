@@ -110,7 +110,7 @@ export function selectAreaBackfillTargets(priceRows, naverCodes) {
  * @param {string} keyCol
  * @returns {Promise<T[]>}
  */
-async function fetchAllByCursor(sb, table, cols, keyCol) {
+export async function fetchAllByCursor(sb, table, cols, keyCol) {
   const PAGE = 1000;
   /** @type {T[]} */
   const rows = [];
