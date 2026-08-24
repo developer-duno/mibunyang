@@ -10,7 +10,7 @@
 //    통과만 보는 가드는 껍데기다(.claude/rules/meta/guards-must-be-mutation-tested.md).
 import { describe, it, expect } from "vitest";
 import { scoreBenefit, scoreLocation, scoreProduct, scoreRisk, calcCats } from "@/scoring/engine";
-import { SCHOOL_GRADE_TIERS, schoolGradeLegend } from "@/constants/scoringTiers";
+import { SCHOOL_GRADE_TIERS, schoolGradeLegend, DEV_BAND_LABEL } from "@/constants/scoringTiers";
 
 /** @param {Record<string, unknown>} o */
 const apt = (o) => /** @type {any} */ (o);
@@ -151,5 +151,78 @@ describe("엔진 문구 정직성 (세션512)", () => {
       expect(i).toContain("2등급");
       expect(i).not.toContain("미수집");
     });
+  });
+});
+
+// ── 괴리도 — 어느 잣대로 잰 값인지 말한다 (세션531) ───────────────────────────
+//
+// 면적을 모르면 `getAreaAdj` 가 1.0(중립)이라 fairPrice 가 **동네 전체 거래의 총액 중위값**이 된다.
+// 그러면 이 축은 "비싼가"가 아니라 **"큰가"** 를 잰다 — 같은 단지 892곳을 경로만 바꿔 잰 대조
+// 실험에서 corr(면적, 괴리도) 가 버킷 −0.097 vs 폴백 **−0.699**, 115㎡+ 괴리도 중앙이
+// −35.6% vs **−182.1%** 였다. 버킷·시도평균 두 경로는 이미 자기 출처를 밝히는데 이 경로만
+// 침묵해서, 가장 못 믿을 값이 가장 당당하게 표시되고 있었다.
+//
+// ⚠️ **반드시 `calcCats` 를 지난다.** `_noArea` 는 `sanitize` 가 area 를 84 로 누르기 **전에**
+//    남기는 플래그라, `scorePrice` 를 직접 부르는 테스트는 이 분기를 지나지 않는다.
+describe("괴리도 — 잰 잣대를 밝힌다 (세션531)", () => {
+  /** 폴백 경로(주변 중앙가)를 타게 하는 최소 입력 — priceByArea 없음 */
+  const fallbackApt = (over = {}) =>
+    apt({ id: 1, region: "경기", price: 50000, nearbyMedian: 50000, completion: "202001", ...over });
+
+  it("면적 미상이면 '면적 미상'이라고 적는다", () => {
+    const cats = calcCats(fallbackApt({ area: null }), { regionMedians: {} });
+    const d = sub(cats.price, "적정가 괴리도")?.detail;
+    expect(d).toContain("면적 미상");
+    expect(d).toContain("평형 차이 반영 안 됨"); // 무엇이 빠졌는지까지 말한다
+  });
+
+  it("면적을 알면 그 문구를 붙이지 않는다 (없는 결함을 만들지 않는다)", () => {
+    const cats = calcCats(fallbackApt({ area: 84 }), { regionMedians: {} });
+    expect(sub(cats.price, "적정가 괴리도")?.detail).not.toContain("면적 미상");
+  });
+
+  it("평형별 실거래 버킷을 탔으면 그쪽만 밝힌다", () => {
+    const cats = calcCats(
+      fallbackApt({ area: 84, priceByArea: [{ area: 85, min: 40000, avg: 50000, max: 60000, count: 12 }] }),
+      { regionMedians: {} }
+    );
+    const d = sub(cats.price, "적정가 괴리도")?.detail;
+    expect(d).toContain("평수대별 실거래 기준");
+    expect(d).not.toContain("면적 미상"); // 두 출처를 동시에 말하면 어느 쪽인지 알 수 없다
+  });
+
+  it("밴드 안내는 상수에서 계산된다 — 옛 하드코딩 문구는 돌아오면 안 된다", () => {
+    const cats = calcCats(fallbackApt({ area: 84 }), { regionMedians: {} });
+    const d = sub(cats.price, "적정가 괴리도")?.detail ?? "";
+    expect(d).toContain(DEV_BAND_LABEL);
+    // 옛 문구는 음수 쪽 산식과 어긋나 있었다 — dev ≤ −8.75% 면 이미 0점인데
+    // "−10~−20% 주의" 구간이 있는 것처럼 읽혔다.
+    expect(d).not.toContain("±10~20% 주의");
+    expect(d).not.toContain("20%↑ 과대");
+  });
+
+  it("밴드 안내가 실제 산식과 맞는다 — 만점·바닥 경계를 그대로 말한다", () => {
+    // 파생 문자열이므로 **산식 쪽에서** 두 경계를 독립 재현해 맞댄다.
+    // (표에서 읽어 표와 비교하면 항등식이 된다 — [[guards-must-be-mutation-tested]])
+    // ⚠️ fairPrice = nearbyMedian × **연식계수** × 면적보정 × 브랜드보정 이라, 분양가를
+    //    `nearbyMedian × (1−dev)` 로 잡으면 계수만큼 어긋난다(이 가드를 처음 쓸 때 실제로 그랬다).
+    //    엔진이 낸 fairPrice 에서 역산해 목표 괴리율을 정확히 맞춘다.
+    /** @param {Record<string, unknown>} over */
+    const probe = (over) =>
+      /** @type {any} */ (calcCats(fallbackApt({ area: 84, nearbyMedian: 50000, ...over }), { regionMedians: {} }));
+    const fair = Number(probe({ price: 1 }).price.fairPrice);
+    expect(fair).toBeGreaterThan(0);
+    /** @param {number} dev */
+    const at = (dev) =>
+      /** @type {any} */ (sub(probe({ price: fair * (1 - dev / 100) }).price, "적정가 괴리도"))?.score ?? -1;
+    const full = Number(/\+(\d+(?:\.\d+)?)%↑ 만점/.exec(DEV_BAND_LABEL)?.[1]);
+    const zero = Number(/−(\d+(?:\.\d+)?)%↓ 최하/.exec(DEV_BAND_LABEL)?.[1]);
+    expect(Number.isFinite(full)).toBe(true);
+    expect(Number.isFinite(zero)).toBe(true);
+    // 문구가 말한 지점에서 실제로 만점/바닥이어야 한다
+    expect(at(full)).toBe(97);
+    expect(at(full - 0.5)).toBeLessThan(97);
+    expect(at(-zero)).toBe(0);
+    expect(at(-zero + 0.5)).toBeGreaterThan(0);
   });
 });

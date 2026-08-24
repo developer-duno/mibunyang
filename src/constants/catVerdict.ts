@@ -1,4 +1,5 @@
 import type { Category } from "@/constants/profiles";
+import { DEV_NEUTRAL_BAND_PCT } from "./scoringTiers";
 import type { Res } from "@/types/scoring";
 
 // 카테고리 total → 상세 모달 종합 탭 미니카드의 "결론 1줄" 단일 출처 (세션 409 D2b).
@@ -31,8 +32,10 @@ export function catVerdict(k: string, cat: Res): string {
     const hasPriceData = (Number(cat.fairPrice) || 0) > 0;
     const d = cat.deviation != null ? Number(cat.deviation) : NaN;
     if (hasPriceData && Number.isFinite(d)) {
-      if (d > 0) return `적정가 대비 ${Math.abs(d).toFixed(0)}% 저렴`;
-      if (d < 0) return `적정가 대비 ${Math.abs(d).toFixed(0)}% 비쌈`;
+      // 경계는 0 이 아니라 `DEV_NEUTRAL_BAND_PCT` — 우리 적정가 추정의 흔들림(중앙 ±11.5%p)보다
+      // 작은 차이로 방향을 단정하지 않는다. `subContext`·`cardChips` 와 **같은 상수**를 쓴다(세션531).
+      if (d > DEV_NEUTRAL_BAND_PCT) return `적정가 대비 ${Math.abs(d).toFixed(0)}% 저렴`;
+      if (d < -DEV_NEUTRAL_BAND_PCT) return `적정가 대비 ${Math.abs(d).toFixed(0)}% 비쌈`;
       return "적정가 수준";
     }
     // ⚠️ 여기 오면 **적정가를 만들지 못한 단지**다 — 분양가가 없거나(임대·정비사업·후분양 등)

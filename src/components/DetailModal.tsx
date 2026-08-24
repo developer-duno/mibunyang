@@ -7,6 +7,7 @@ import { catVerdict } from "@/constants/catVerdict";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
+import { DEV_FULL_MIN_PCT, DEV_ZERO_AT_PCT } from "@/constants/scoringTiers";
 import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
@@ -629,15 +630,20 @@ export const DetailModal = memo(function DetailModal({
               data-tab-panel
               style={panelStyle("sec-price")}
             >
-              {/* 적정가 대비 위치 게이지 (세션 430) — deviation 양수=저렴(scorePrice.ts 진실원천), -30~+30% 클램프, 0 중앙.
+              {/* 적정가 대비 위치 게이지 (세션 430) — deviation 양수=저렴(scorePrice.ts 진실원천), 0 중앙.
                   ⚠️ 옛 이름 "주변 시세 대비"는 거짓이었다 — 이 값은 `scorePrice.ts` 가 낸 **적정가와의 괴리**이지
-                  주변 단지 비교가 아니다(세션 487 에 카드 배지는 정정했는데 이 게이지만 옛 이름이 남아 있었다). */}
+                  주변 단지 비교가 아니다(세션 487 에 카드 배지는 정정했는데 이 게이지만 옛 이름이 남아 있었다).
+                  ⚠️ 눈금 끝을 손으로 ±30 에 박아 두었더니 **점수가 이미 만점·최하인 지점과 어긋났다**(세션531).
+                  이제 양 끝 = 점수가 더는 안 움직이는 지점(만점 경계 / 0점 도달 지점)이라, 게이지가 꽉 찼다는 건
+                  "이 축에서 더 좋아질 게 없다"는 뜻이 된다. 상수를 바꾸면 눈금이 따라온다. */}
               {res.cats.price?.deviation != null &&
                 (() => {
                   const dev = Number(res.cats.price.deviation);
                   if (!Number.isFinite(dev)) return null;
-                  const clamped = Math.max(-30, Math.min(30, dev));
-                  const pct = 50 + (clamped / 30) * 50;
+                  const pct =
+                    dev >= 0
+                      ? 50 + (Math.min(dev, DEV_FULL_MIN_PCT) / DEV_FULL_MIN_PCT) * 50
+                      : 50 - (Math.min(-dev, DEV_ZERO_AT_PCT) / DEV_ZERO_AT_PCT) * 50;
                   const isGood = dev > 0;
                   return (
                     <div
@@ -687,7 +693,7 @@ export const DetailModal = memo(function DetailModal({
                         />
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted }}>
-                        <span>30% 비쌈</span>
+                        <span>{DEV_ZERO_AT_PCT}% 비쌈</span>
                         <span style={{ fontWeight: 700, color: isGood ? C.green : C.red }}>
                           {isGood
                             ? `+${Math.round(dev)}% 저렴`
@@ -695,7 +701,7 @@ export const DetailModal = memo(function DetailModal({
                               ? `${Math.abs(Math.round(dev))}% 비쌈`
                               : "적정가와 비슷"}
                         </span>
-                        <span>30% 저렴</span>
+                        <span>{DEV_FULL_MIN_PCT}% 저렴</span>
                       </div>
                     </div>
                   );

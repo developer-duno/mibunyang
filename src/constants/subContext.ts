@@ -5,6 +5,7 @@ import {
   LIQUIDITY_TIERS,
   LIQUIDITY_LABELS,
   LIQUIDITY_AREA_UNIT,
+  DEV_NEUTRAL_BAND_PCT,
   liquidityBand,
   schoolGradeLegend,
 } from "@/constants/scoringTiers";
@@ -71,18 +72,23 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     // ⚠️ 점수로 가르면 값과 어긋난다 — 바로 아래 전세가율과 같은 자리다. 실측(운영 n=1,646):
     //    괴리도가 **양수(+0.9% 등)인데 "적정가보다 비쌈"** 10곳, "적정가 수준" 91곳 중 45곳이 ±5% 밖.
     //    `deviation` 은 이미 부호 있는 퍼센트로 `info` 에 담겨 오므로(scorePrice.ts `+18.8%`/`-3.2%`)
-    //    **값으로 전 구간을 가른다.** 경계 5 는 아래 benchmark 문구와 한 쌍 — 한쪽만 바꾸면 어긋난다.
+    //    **값으로 전 구간을 가른다.** 경계는 `DEV_NEUTRAL_BAND_PCT`(세션531에 5 → 10) 하나에서 오고,
+    //    아래 benchmark·`cardChips`·`catVerdict`·엔진 detail 이 **같은 상수**를 쓴다 — 넷이 제각각이던
+    //    시절엔 같은 단지를 카드는 "1% 저렴", 점수 탭은 "적정가 수준"이라 불렀다.
     "적정가 괴리도": {
       interpret: (_sc, info) => {
         const dev = info ? parseFloat(info) : NaN;
         // 적정가를 못 만든 단지는 info 가 "데이터 부재" 다(scorePrice 무데이터 분기) — 점수로
         // 역산하면 그 단지에 "비쌈/저렴"을 단정하게 된다. catVerdict.ts 와 같은 어휘로 빠진다.
         if (!Number.isFinite(dev)) return "적정가 산출 불가";
-        if (dev > 5) return "적정가보다 저렴";
-        if (dev < -5) return "적정가보다 비쌈";
+        if (dev > DEV_NEUTRAL_BAND_PCT) return "적정가보다 저렴";
+        if (dev < -DEV_NEUTRAL_BAND_PCT) return "적정가보다 비쌈";
         return "적정가 수준";
       },
-      benchmark: "적정가 ±5% 이내",
+      // 밴드 폭은 `scoringTiers.ts` 한 곳에서 온다 — 세션531 이전에는 이 파일 두 곳과
+      // `scorePrice.ts` 의 detail 에 각각 손으로 적혀 있어 셋이 갈릴 수 있었다(실제로 detail 이
+      // 음수 쪽 산식과 어긋나 있었다).
+      benchmark: `적정가 ±${DEV_NEUTRAL_BAND_PCT}% 이내`,
     },
     // ⚠️ 점수 곡선이 ∩ 모양이다(`scorePrice.ts` — 70~80% 가 정점, 80% 초과는 급락).
     //    그래서 **점수만 보면 "너무 낮아서"와 "너무 높아서"를 구분할 수 없다.** 옛 문구는 낮은 점수를

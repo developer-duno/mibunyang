@@ -4,6 +4,7 @@ import {
   DEV_SCORE_TIERS,
   DEV_SCORE_NEGATIVE_MULT,
   DEV_SCORE_BASE,
+  DEV_BAND_LABEL,
   LAND_COST_TIERS,
   LAND_COST_LOW,
   LAND_COST_NULL,
@@ -361,6 +362,16 @@ export function scorePrice(apt: Apt): Res {
   // 넣어도 실제로는 하나만 붙는다.
   const sidoNotice = fairPriceFromSidoAvg ? " — 광역 시도 평균 기준(실시세 왜곡 가능)" : "";
   const areaBucketNotice = fairPriceFromAreaBucket ? " — 평수대별 실거래 기준" : "";
+  // 면적을 모르면 `areaAdj` 가 1.0(중립)이라 **동네 전체 거래의 총액 중위값과 그대로 비교**된다.
+  // 그러면 이 축은 "비싼가"가 아니라 **"큰가"** 를 잰다 — 같은 단지 892곳을 경로만 바꿔 잰 대조
+  // 실험에서 corr(면적, 괴리도) 가 버킷 −0.097 vs 폴백 **−0.699**, 115㎡+ 괴리도 중앙이
+  // −35.6% vs **−182.1%** 였다(세션531). 위 두 경로는 이미 자기 출처를 밝히는데 이 경로만
+  // 침묵해서, 가장 못 믿을 값이 가장 당당하게 표시되고 있었다.
+  // 값을 지어내 메우지 않고 **사실을 말한다** — 근본 해소는 면적 수집이다(scripts/CLAUDE.md).
+  const noAreaNotice =
+    !fairPriceFromAreaBucket && !fairPriceFromSidoAvg && apt._noArea
+      ? " — 면적 미상이라 동네 전체 실거래 총액과 비교(평형 차이 반영 안 됨)"
+      : "";
   const relNotice = fairPriceFromSidoAvg ? ` -폴백차감${PRICE_FALLBACK_RELIABILITY_PENALTY}` : "";
   return {
     total: Math.round(Math.max(0, Math.min(total, 100))),
@@ -377,7 +388,7 @@ export function scorePrice(apt: Apt): Res {
         name: "적정가 괴리도",
         score: Math.round(devSc),
         info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`,
-        detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (±5% 적정, ±10~20% 주의, 20%↑ 과대)${sidoNotice}${areaBucketNotice}`,
+        detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (${DEV_BAND_LABEL})${sidoNotice}${areaBucketNotice}${noAreaNotice}`,
       },
       {
         name: "전세가율",
