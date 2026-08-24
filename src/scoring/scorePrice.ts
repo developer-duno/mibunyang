@@ -294,6 +294,12 @@ export function scorePrice(apt: Apt): Res {
     total: Math.round(Math.max(0, Math.min(total, 100))),
     fairPrice: Math.round(fairPrice),
     deviation: dev.toFixed(1),
+    // 어느 경로로 fairPrice 를 구했는지 **밖으로 알린다**. 화면이 "산출 과정"을 설명하려면
+    // 이 사실이 필요한데, 없으면 `AdminScoreBreakdown` 처럼 **화면이 제 나름대로 다시 계산**해
+    // 같은 모달 안에서 서로 다른 괴리율 두 개가 뜬다(세션527 적대검증이 실제로 잡은 결함).
+    // detail 문자열을 정규식으로 훑어 판정하면 문구를 고칠 때 조용히 깨지므로 플래그로 준다.
+    fairPriceFromAreaBucket,
+    fairPriceFromSidoAvg,
     subs: [
       {
         name: "적정가 괴리도",

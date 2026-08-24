@@ -40,8 +40,15 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
   };
   const nearbyMedian = apt.nearbyMedian ?? 0;
   const aptPrice = apt.price ?? 0;
-  const fairPrice = nearbyMedian > 0 ? Math.round(nearbyMedian * ageCoeff * areaAdj * brand.adj) : 0;
-  const devPct = fairPrice > 0 ? (((fairPrice - aptPrice) / fairPrice) * 100).toFixed(1) : "N/A";
+  // ⚠️ **엔진이 계산한 값을 그대로 쓴다 — 여기서 다시 계산하지 않는다.**
+  // 옛 코드는 `nearbyMedian × ageCoeff × areaAdj × brand` 로 자체 재계산했는데, 세션527이
+  // fairPrice 1순위를 평형별 실거래 버킷 매칭으로 바꾼 뒤 **같은 모달에 서로 다른 괴리율 두 개**가
+  // 뜨게 됐다(적대검증이 잡음). 산식이 또 바뀌어도 이 화면은 따라올 필요가 없다.
+  const priceRes = res.cats.price;
+  const fairPrice = Number(priceRes.fairPrice ?? 0);
+  const devPct = fairPrice > 0 ? String(priceRes.deviation ?? "N/A") : "N/A";
+  const fromBucket = priceRes.fairPriceFromAreaBucket === true;
+  const fromSido = priceRes.fairPriceFromSidoAvg === true;
 
   // 도시등급 (구 ExpertAptHeader L11-12 이식 — fieldMeta 141필드에 없는 유일한 헤더 정보)
   const tier =
@@ -96,15 +103,22 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
           적정가 산출 과정
         </div>
         <div style={{ fontSize: F.sm, lineHeight: 1.8, color: C.sub }}>
+          {/* 기준값 줄 — 어느 경로로 구한 fairPrice 인지에 따라 설명이 달라진다.
+              버킷 경로는 이미 그 평형대 실거래라 면적보정을 곱하지 않으므로 그 줄도 감춘다. */}
           <div>
-            주변중위가: <b style={{ color: C.text }}>{(apt.nearbyMedian ?? 0).toLocaleString("ko-KR")}만원</b>
+            {fromBucket ? "평형별 실거래" : fromSido ? "광역 시도 평균(폴백)" : "주변중위가"}:{" "}
+            <b style={{ color: C.text }}>
+              {fromBucket ? `${apt.area ?? "?"}㎡ 기준` : `${nearbyMedian.toLocaleString("ko-KR")}만원`}
+            </b>
           </div>
           <div>
             × 연식계수: <b style={{ color: C.text }}>{ageCoeff.toFixed(2)}</b> (입주: {fmtCompletion(apt.completion)})
           </div>
-          <div>
-            × 면적보정: <b style={{ color: C.text }}>{areaAdj.toFixed(2)}</b> ({apt.area ?? ""}㎡)
-          </div>
+          {!fromBucket && (
+            <div>
+              × 면적보정: <b style={{ color: C.text }}>{areaAdj.toFixed(2)}</b> ({apt.area ?? ""}㎡)
+            </div>
+          )}
           <div>
             × 브랜드보정: <b style={{ color: C.text }}>{brand.adj.toFixed(2)}</b> ({apt.builder})
           </div>

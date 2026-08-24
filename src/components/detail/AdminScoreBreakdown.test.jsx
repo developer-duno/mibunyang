@@ -45,6 +45,33 @@ describe("AdminScoreBreakdown", () => {
     expect(screen.getByText(/괴리도 N\/A%/)).toBeTruthy();
   });
 
+  /**
+   * 세션527 적대검증 회귀 가드 — 이 화면은 **엔진이 계산한 fairPrice/deviation 을 그대로 써야 한다.**
+   * 옛 코드는 `nearbyMedian × ageCoeff × areaAdj × brand` 로 자체 재계산했는데, fairPrice 1순위가
+   * 평형별 실거래 버킷 매칭으로 바뀐 뒤 **같은 모달에 서로 다른 괴리율 두 개**가 떴다.
+   * ⚠️ 이 가드가 없으면 화면이 자체 재계산으로 되돌아가도 초록불이다(세션508·512 함정).
+   */
+  it("엔진이 준 fairPrice·deviation 을 그대로 표시한다 (자체 재계산 금지)", () => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ nearbyMedian: 55000, price: 50000 }));
+    // 엔진 값이 자체 재계산 결과(55000×보정)와 확연히 다르게 되도록 일부러 멀리 둔다.
+    res.cats.price.fairPrice = 999000;
+    res.cats.price.deviation = "-88.8";
+    render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+    expect(screen.getByText(/999,000만원/)).toBeTruthy();
+    expect(screen.getByText(/괴리도 -88\.8%/)).toBeTruthy();
+  });
+
+  it("버킷 경로면 '평형별 실거래' 로 설명하고 면적보정 줄을 감춘다", () => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ nearbyMedian: 55000, price: 50000, area: 100 }));
+    res.cats.price.fairPrice = 200000;
+    res.cats.price.deviation = "10.0";
+    res.cats.price.fairPriceFromAreaBucket = true;
+    render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+    expect(screen.getByText(/평형별 실거래/)).toBeTruthy();
+    // 버킷은 이미 그 평형대 실거래라 면적보정을 곱하지 않는다 — 그 줄이 뜨면 거짓 설명이 된다.
+    expect(screen.queryByText(/면적보정/)).toBeNull();
+  });
+
   it("존재하지 않는 프로필이면 크래시 없이 렌더링한다", () => {
     const { apt, res } = /** @type {any} */ (makeScoredItem());
     expect(() =>
