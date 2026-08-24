@@ -81,15 +81,20 @@ describe("AGE_PREMIUM", () => {
     }
   });
 
-  it("coeff > 1.0 (프리미엄)", () => {
+  it("coeff 는 상식 범위 안 (0.5~2.0)", () => {
     AGE_PREMIUM.forEach((r) => {
-      expect(r.coeff).toBeGreaterThanOrEqual(1.0);
+      expect(r.coeff).toBeGreaterThan(0.5);
+      expect(r.coeff).toBeLessThan(2.0);
     });
   });
 
-  it("coeff는 나이가 많을수록 커진다", () => {
+  // 세션529 정정: 옛 가드는 "coeff > 1.0" + "나이가 많을수록 커진다"였다. 둘 다 "오래될수록
+  // 재건축 기대로 비싸진다"는 **검증된 적 없는 가설**을 지키고 있었다 — parseCompletion 결함으로
+  // 이 표 자체가 한 번도 안 쓰였기 때문에 아무도 실측과 대조하지 못했다. 파서를 고쳐 처음 재보니
+  // 방향이 반대였다(brands.ts AGE_PREMIUM 주석의 실측 근거 참조). 가드도 실측 방향으로 뒤집는다.
+  it("coeff 는 나이가 많을수록 작아진다 (비증가) — 실측 방향", () => {
     for (let i = 1; i < AGE_PREMIUM.length; i++) {
-      expect(AGE_PREMIUM[i].coeff).toBeGreaterThanOrEqual(AGE_PREMIUM[i - 1].coeff);
+      expect(AGE_PREMIUM[i].coeff).toBeLessThanOrEqual(AGE_PREMIUM[i - 1].coeff);
     }
   });
 });

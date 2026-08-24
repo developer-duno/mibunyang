@@ -21,39 +21,85 @@ import type { Apt, Res } from "@/types/scoring";
 const IS_DEV =
   typeof import.meta !== "undefined" && !!(import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV;
 
-/** completion 문자열을 Date 로 파싱. 미기재·파싱 실패 시 null. getAgeCoeff/isPresale 공유. */
-function parseCompletion(completion: string | null | undefined): Date | null {
-  if (!completion) return null;
-  const parts = completion.toString().split("-");
-  const comp =
-    parts.length >= 2 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2] || 1)) : new Date(completion);
-  return isNaN(comp.getTime()) ? null : comp;
+/** 한국 시간(UTC+9, 서머타임 없음) 고정 오프셋 — 준공 판정을 러너 시간대에 맡기지 않는다. */
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/**
+ * 지금이 몇 년 몇 월인지를 **한국 시간 기준** "월 일련번호"(연×12 + 월−1)로 돌려준다.
+ *
+ * ⚠️ 러너 로컬 시간을 쓰면 안 된다 — `daily-deploy.yml` 의 `cron: '0 18 * * *'` 는 UTC 러너에서
+ * KST 03:00 에 도는데 그 순간 UTC 는 아직 **전월**이다. 그러면 매월 1일마다 `compute-scores` 가
+ * 굽는 판정이 한국 사용자 브라우저(`classify.ts` 의 `NOW_YM`)와 한 달씩 어긋난다
+ * (2026-09-01 03:00 KST 실측: 로컬 UTC 기준 24319=2026-08 vs KST 고정 24320=2026-09).
+ * 저장소 워크플로에 TZ 핀이 하나도 없어(`grep -rn "TZ:" .github/workflows/` → 0건) 여기서 고정한다.
+ */
+function currentMonthIndexKst(nowMs: number = Date.now()): number {
+  const kst = new Date(nowMs + KST_OFFSET_MS);
+  return kst.getUTCFullYear() * 12 + kst.getUTCMonth();
 }
 
 /**
- * 미준공(분양 예정) 여부. 화면이 "연식계수"와 "신축 프리미엄"을 다른 이름으로 보여줘야 할 때
- * (예: `AdminScoreBreakdown`) 이 함수로 갈라야 한다 — `getAgeCoeff` 반환값(1.17)을 역산해서
- * 판정하면 `AGE_PREMIUM` 표에 우연히 같은 수치가 들어갈 때 조용히 틀린다.
+ * completion 을 **월 일련번호**(연×12 + 월−1)로 파싱. 미기재·형식 불명이면 null.
+ * `getAgeCoeff`/`isPresale` 공유.
+ *
+ * ⚠️ 운영 DB 의 실제 형식은 **대시 없는 "YYYYMM"** 이다(청약홈 `MVN_PREARNGE_YM` 계열 ·
+ * `collect-applyhome-seed.mjs` / `naver-presale.mjs`). 2026-08-24 실측 `apartments_flat` 2,227행:
+ * YYYYMM 1,802 · 빈값 374 · 비정형 51("미정" 41 · "2030 미" 계열 9 · "[1회]20" 1).
+ * 대시 형식은 **운영 DB 에 0건**이고 테스트 픽스처에만 있다.
+ *
+ * 옛 코드는 대시가 없으면 `new Date("202605")` 로 넘겼는데 V8 은 이 6자리를 **확장 연도**로 읽어
+ * 서기 202605년을 만든다. 그래서 1999년 준공 단지까지 "미래"가 되어 `isPresale` 이 YYYYMM 전량
+ * true 였고, `AGE_PREMIUM` 표는 도입 이래 **한 번도 쓰이지 않았다**(실측: 1,802행 중 958곳이
+ * 이미 준공됐는데 전부 미준공 판정 · 세션529).
+ *
+ * **일(日)은 일부러 버린다.** 원천에 일 정보가 없어 "1일"로 채우면 없는 사실을 지어내는 것이고,
+ * 화면(`classify.ts:32` · `cardChips.ts`)도 이미 월 단위 문자열 비교로 판정한다 — 같은 단지를
+ * 카드는 "입주예정", 엔진은 "준공완료"라 부르던 어긋남을 이 단위 통일이 없앤다.
+ *
+ * 형식에 안 맞으면 **거부(null)** 한다 — `new Date(s)` 폴백을 두면 "20266"(네이버 "2026.6" 이
+ * slice 된 값) 같은 5자리가 서기 20266년으로 조용히 통과한다.
+ */
+function parseCompletionMonth(completion: string | null | undefined): number | null {
+  if (completion == null) return null;
+  const s = completion.toString().trim();
+  if (!s) return null;
+  //                      "202605"                    "2025-06-01" / "2025-6"
+  const m = /^(\d{4})(\d{2})$/.exec(s) ?? /^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/.exec(s);
+  if (!m) return null;
+  const month = Number(m[2]);
+  // 월 범위를 여기서 막지 않으면 "202613" 이 Date 생성자에서 조용히 2027-01 로 넘어간다.
+  if (month < 1 || month > 12) return null;
+  return Number(m[1]) * 12 + (month - 1);
+}
+
+/**
+ * 미준공(분양 예정) 여부. **준공월이 이번 달 이후면 미준공**이다(`>=`) — 화면의 입주 상태
+ * (`classify.ts:32` `completion >= NOW_YM` → "입주예정")와 같은 경계를 쓴다. 이 경계가 어긋나면
+ * 같은 단지를 카드는 "입주예정", 관리자 분해표는 "연식계수"라 부른다(2026-08 기준 22곳).
+ *
+ * 화면이 "연식계수"와 "신축 프리미엄"을 다른 이름으로 보여줘야 할 때(예: `AdminScoreBreakdown`)
+ * 이 함수로 갈라야 한다 — `getAgeCoeff` 반환값을 역산해 판정하면 `AGE_PREMIUM` 표에 우연히 같은
+ * 수치가 들어갈 때 조용히 틀린다.
  */
 export function isPresale(completion: string | null | undefined): boolean {
-  const comp = parseCompletion(completion);
-  return comp != null && comp.getTime() > Date.now();
+  const idx = parseCompletionMonth(completion);
+  return idx != null && idx >= currentMonthIndexKst();
 }
 
 /**
- * 준공시점 기반 연식 보정계수.
- * 미준공(예정) → `PRESALE_PREMIUM_COEFF`(신축 분양 프리미엄, 실측 중앙 1.17 — 결함B 처방,
- *   세션528). 준공 후에는 `AGE_PREMIUM`(재건축 기대 프리미엄, 나이 먹을수록 증가) 적용.
- *   이 둘은 서로 다른 현상이라 표가 다르다 — brands.ts 주석 참조.
- * 미입력·파싱 실패 → 1.05 (약간 보수적 중립).
- * AGE_PREMIUM 구간: {0~1y:1.03, 1~3y:1.05, 3~5y:1.1, 5~10y:1.18, 10~15y:1.3, 15~20y:1.42, 20y+:1.55}
- * (src/constants/brands.ts — 실제 값은 소스가 진실의 원천, 위 표는 참고용이라 drift 가능).
+ * 준공시점 기반 연식 보정계수 — `fairPrice` 에 곱해진다.
+ * 미준공(예정) → `PRESALE_PREMIUM_COEFF`. 준공 후 → `AGE_PREMIUM` 구간값.
+ * 미입력·형식 불명 → 1.05 (약간 보수적 중립).
+ *
+ * 두 표의 값과 실측 근거는 `src/constants/brands.ts` 주석이 진실의 원천이다 — **여기에 수치를
+ * 복사하지 말 것**(옛 주석이 구간값을 복사해 뒀다가 표와 함께 낡았다).
  */
 export function getAgeCoeff(completion: string | null | undefined): number {
-  const comp = parseCompletion(completion);
-  if (!comp) return 1.05;
-  if (comp.getTime() > Date.now()) return PRESALE_PREMIUM_COEFF;
-  const yrs = Math.max(0, (Date.now() - comp.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+  const idx = parseCompletionMonth(completion);
+  if (idx == null) return 1.05;
+  const nowIdx = currentMonthIndexKst();
+  if (idx >= nowIdx) return PRESALE_PREMIUM_COEFF;
+  const yrs = (nowIdx - idx) / 12;
   type AgePremiumEntry = { min: number; max: number; coeff: number };
   const found = (AGE_PREMIUM as AgePremiumEntry[]).find((a) => yrs >= a.min && yrs < a.max);
   return found ? found.coeff : 1.05;
