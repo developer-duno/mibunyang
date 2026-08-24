@@ -213,6 +213,14 @@ describe("getAgeCoeff", () => {
   it("앞뒤 공백은 무시한다", () => {
     expect(getAgeCoeff(`  ${ymOffset(18)}  `)).toBe(PRESALE_PREMIUM_COEFF);
   });
+  it("대시 형식도 앵커가 있어야 한다 — 앞뒤에 뭐가 붙으면 거부", () => {
+    // 세션529 적대검증: YYYYMM 정규식의 앵커 제거는 red 였지만 **대시 형식 정규식의 앵커 제거는
+    // green** 이었다. 대시 쪽도 부분 일치로 새지 않는지 겨눈다.
+    expect(getAgeCoeff("x2020-01")).toBe(1.05);
+    expect(getAgeCoeff("2020-01x")).toBe(1.05);
+    expect(getAgeCoeff("2020-01-01T00:00:00Z")).toBe(1.05);
+    expect(isPresale("x2030-01-01")).toBe(false);
+  });
   it("대시 형식도 계속 지원한다 (테스트 픽스처·과거 형식)", () => {
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
@@ -274,13 +282,53 @@ describe("연식·신축 계수 관측값 앵커 (apartments_flat 2,227행 · 20
       expect(ratio).toBeLessThan(1.15);
     });
   });
-  // 미준공 계수는 두 fairPrice 경로의 패리티 계수 사이여야 한다 (버킷 1.455 · 폴백 1.265)
+  // 미준공 계수는 두 fairPrice 경로의 패리티 계수 사이여야 한다.
+  // **정의**(세션529 적대검증이 요구): 각 경로의 미준공 중앙 괴리율이 *준공완료 **전체** 중앙(+1.57%)*
+  // 이 되게 하는 값 — 버킷 1.455 · 폴백 1.265. 다른 정의(각 경로를 *그 경로* 준공완료 중앙에 맞추기)
+  // 를 쓰면 1.438·1.493 이 나오므로, 정의를 안 적으면 이 범위가 정반대로 읽힌다.
   it("PRESALE_PREMIUM_COEFF 는 두 경로 패리티 계수 사이", () => {
     expect(PRESALE_PREMIUM_COEFF).toBeGreaterThan(1.265);
     expect(PRESALE_PREMIUM_COEFF).toBeLessThan(1.455);
   });
   it("미준공 계수가 AGE_PREMIUM 전 구간보다 크다 (역전 방지)", () => {
     AGE_PREMIUM.forEach((a) => expect(PRESALE_PREMIUM_COEFF).toBeGreaterThan(a.coeff));
+  });
+  // 세션529 적대검증: 10년 이상 세 구간은 관측 표본이 0이라 **마지막 관측 구간(5~10y)을 평평하게
+  // 이어 붙인 값**이다. 앵커가 앞 4구간만 덮어 이 세 구간은 "0.5 초과 아무 값"이나 통과했다
+  // (0.95→0.6 뮤테이션 green 실측). 의도를 기계로 못 박는다 — 독립적으로 움직이면 red.
+  it("10년 이상 세 구간은 5~10y 와 같은 값이다 (관측 표본 0 — 평평 이어붙임이 의도)", () => {
+    // (any) cast: `find` 반환이 `| undefined` 라 TS18048 — 바로 아래 toBeDefined 로 존재를 잠근다
+    const band5to10 = /** @type {any} */ (AGE_PREMIUM.find((a) => a.min === 5 && a.max === 10));
+    expect(band5to10).toBeDefined();
+    AGE_PREMIUM.filter((a) => a.min >= 10).forEach((a) => {
+      expect(a.coeff).toBe(band5to10.coeff);
+    });
+  });
+  // 위 "평평 이어붙임" 탓에 `getAgeCoeff("199912") === AGE_PREMIUM[마지막].coeff` 가드는
+  // 199912 가 어느 구간에 떨어져도 통과한다(값이 같으므로). 구간 **인덱스**를 직접 겨눈다.
+  //
+  // ⚠️ 경계를 **표에서 읽으면 안 된다.** 세션529가 처음엔 `band.min`/`band.max` 를 표에서 읽어
+  //    검사했는데, 연속성을 유지한 채 경계만 미는 뮤테이션(0~1→0~2, 1~3→2~3)에 **green** 이었다 —
+  //    표가 밀리면 가드도 같이 밀리기 때문이다([[guards-must-be-mutation-tested]] §"파생 가드").
+  //    그래서 경계는 여기 **리터럴로 못 박는다.**
+  it("연식 구간 경계가 설계값과 같다 (경계가 밀리면 red)", () => {
+    expect(AGE_PREMIUM.map((a) => a.min)).toEqual([0, 1, 3, 5, 10, 15, 20]);
+    expect(AGE_PREMIUM.map((a) => a.max)).toEqual([1, 3, 5, 10, 15, 20, 99]);
+  });
+  it("각 연식 구간이 자기 구간값을 돌려준다 (인덱스가 밀리면 red)", () => {
+    // [구간 한가운데 월, 기대 인덱스] — 월도 인덱스도 리터럴이라 표를 따라 움직이지 않는다.
+    const cases = [
+      [-6, 0],
+      [-24, 1],
+      [-48, 2],
+      [-90, 3],
+      [-150, 4],
+      [-210, 5],
+      [-360, 6],
+    ];
+    cases.forEach(([m, i]) => {
+      expect(getAgeCoeff(ymOffset(m))).toBe(AGE_PREMIUM[i].coeff);
+    });
   });
 });
 
