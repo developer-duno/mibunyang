@@ -185,6 +185,12 @@ export interface Res {
   fairPrice?: number;
   deviation?: string | number;
   fairPriceFromSidoAvg?: boolean;
+  /**
+   * fairPrice 를 `priceByArea` **평형별 실거래 버킷 매칭**으로 구했는가(1순위 경로).
+   * 화면이 "적정가 산출 과정"을 설명할 때 필요하다 — 이 플래그가 없으면 화면이 제 나름대로
+   * 다시 계산해 같은 모달에 서로 다른 괴리율이 뜬다(세션527 적대검증이 잡은 결함).
+   */
+  fairPriceFromAreaBucket?: boolean;
   // scoreBenefit
   totalWon?: number;
   /** 합계 금액의 실제 구성 — 단일 항목이면 그 이름, 둘 이상이면 "혜택 합계" (세션512) */

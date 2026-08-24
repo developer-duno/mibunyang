@@ -2323,4 +2323,30 @@ describe("scorePrice — 면적 버킷 매칭이 fairPrice 1순위 (면적 편�
     expect(withoutField.fairPrice).toBe(withEmptyArray.fairPrice);
     expect(withoutField.total).toBe(withEmptyArray.total);
   });
+
+  /**
+   * 세션527 적대검증: `AdminScoreBreakdown` 이 fairPrice 를 **자체 재계산**하고 있어
+   * 같은 모달에 서로 다른 괴리율 두 개가 떴다. 화면이 엔진을 따라오려면 **어느 경로로 구했는지**를
+   * 엔진이 밖으로 알려야 한다 — detail 문자열 정규식으로 판정하면 문구를 고칠 때 조용히 깨진다.
+   */
+  it("어느 경로로 fairPrice 를 구했는지 플래그로 알린다 (화면 자체 재계산 방지)", () => {
+    const bucket = /** @type {any} */ ([{ area: 100, min: 180000, max: 220000, avg: 200000, count: 30 }]);
+    const viaBucket = calcCats(makeApt(/** @type {any} */ ({ area: 100, price: 150000, priceByArea: bucket }))).price;
+    expect(viaBucket.fairPriceFromAreaBucket).toBe(true);
+    expect(viaBucket.fairPriceFromSidoAvg).toBe(false);
+
+    // 폴백(버킷 없음) — 플래그가 켜지면 안 된다.
+    const viaFallback = calcCats(makeApt({ area: 100, price: 150000 })).price;
+    expect(viaFallback.fairPriceFromAreaBucket).toBe(false);
+  });
+
+  it("플래그가 실제 산식 경로와 일치한다 (플래그만 켜고 값은 옛 경로인 회귀 방지)", () => {
+    const bucket = /** @type {any} */ ([{ area: 100, min: 180000, max: 220000, avg: 200000, count: 30 }]);
+    const apt = makeApt(/** @type {any} */ ({ area: 100, price: 150000, priceByArea: bucket }));
+    const r = calcCats(apt).price;
+    // 버킷 경로면 fairPrice 는 버킷 avg 기반이라 nearbyMedian 기반 값과 달라야 한다.
+    const fallback = calcCats(makeApt({ area: 100, price: 150000 })).price;
+    expect(r.fairPriceFromAreaBucket).toBe(true);
+    expect(r.fairPrice).not.toBe(fallback.fairPrice);
+  });
 });

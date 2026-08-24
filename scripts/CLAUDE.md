@@ -287,6 +287,18 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 
 **주의**: compute-scores.mjs는 `node --loader ./scripts/alias-loader.mjs` 필요 (`@/` 별칭)
 
+### ⚠️ cats_cache UPDATE 는 단지 1곳당 요청 1개 — 동시성·지연을 함부로 올리지 말 것 (세션527)
+
+PostgREST 에 **행마다 다른 값을 넣는 배치 UPDATE 문법이 없어** 약 2,200건을 개별 요청으로 보낸다.
+`upsert` 로 `{id, cats_cache}` 만 보내는 우회는 **운영 DB 실측 결과 불가** —
+`null value in column "name" violates not-null constraint`(INSERT 선시도). 전체 행 upsert 는
+읽은 시점 이후 다른 수집기가 바꾼 컬럼을 되돌리는 **lost update** 위험이라 배제.
+
+그래서 요청 **수** 대신 **요청률**을 잠갔다: `UPDATE_CONCURRENCY` **5** + `UPDATE_BATCH_DELAY_MS`
+**100ms**(둘 다 export, `compute-scores.test.mjs` 가 값·배선·초당 요청률을 검사).
+옛 값(10·지연 0)은 초당 약 25회(피크 32) 버스트였고, **DB 는 자매 레포(naver-estate-web)와 공유**다.
+실측: 2,227건 · 174초 · 실패 0 = **초당 12.8회**. 근본책(Postgres RPC 로 배열 UPDATE)은 BACKLOG.
+
 ### 후처리 파이프라인 (post-naver-collect.sh)
 
 | 단계 | 스크립트 | 역할 |
