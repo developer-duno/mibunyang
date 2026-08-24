@@ -267,9 +267,14 @@ calcAll(apt, "live")
 ### 적정가(fairPrice) 계산 공식
 
 ```
-fairPrice = 주변중위가(nearbyMedian) * 연식계수(ageCoeff) * 면적보정(areaAdj) * 브랜드보정(brandAdj)
+1순위: fairPrice = 평형별 실거래(matchAreaPrice) * 연식/신축계수(ageCoeff) * 브랜드보정(brandAdj)
+        ↑ 이미 그 평형대 실거래라 면적보정을 곱하지 않는다 (세션527)
+2순위~: fairPrice = 주변중위가(nearbyMedian) * ageCoeff * 면적보정(areaAdj) * brandAdj
 
-- ageCoeff: 신축=1.03, 1년=1.05, 5년=1.10, ... 25년+=1.55 (미래 완공=1.0)
+- ageCoeff (세션529 실측 재산출 — **값의 진실의 원천은 src/constants/brands.ts**):
+    미준공(예정) = PRESALE_PREMIUM_COEFF · 준공 후 = AGE_PREMIUM 구간값(나이 들수록 **감소**)
+    ⚠️ 옛 서술 "신축=1.03 … 25년+=1.55 (미래 완공=1.0)" 은 방향까지 반대였다 — 그 표는
+       parseCompletion 결함으로 도입 이래 한 번도 쓰이지 않아 실측과 대조된 적이 없었다.
 - areaAdj: 60㎡미만=1.08, 60~84=1.0, 85~114=0.97, 115+=0.94
 - brandAdj: 1군Super=1.05, 1군=1.02, 2군=0.99, 기타=0.98
 ```
