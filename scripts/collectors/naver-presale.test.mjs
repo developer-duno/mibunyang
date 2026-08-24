@@ -21,11 +21,28 @@ import {
   extractPresaleFields,
   buildNewApartment,
   toPresalePriceRow,
+  pickScaleArea,
   dedupUpdateRows,
   parsePresaleCompletion,
   isCompletionYm,
 } from "./naver-presale.mjs";
 import { readFileSync } from "node:fs";
+
+/**
+ * 소스 grep 가드용 주석 제거.
+ *
+ * ⚠️ **줄머리 고정이 핵심이다.** 옛 판본은 `/\*[\s\S]*?\*\//g` 로 아무 데서나 블록 주석을
+ * 찾았는데, 이 수집기의 `HEADERS` 에는 `"Accept": "application/json, text/plain, *\/*"` 가 있어
+ * 그 안의 `/*` 가 가짜 주석 시작으로 읽혔다. 그 뒤 첫 `*\/`(다음 JSDoc 닫기)까지 **1,857자·
+ * 34줄이 통째로 지워져** CLI 인자 선언부 전체가 검사 대상에서 사라져 있었다(세션531 발견).
+ * 그 구간을 겨누는 가드는 무엇을 넣어도 통과한다 — 껍데기 가드가 되는 자리다.
+ *
+ * JSDoc·블록 주석은 언제나 줄머리(들여쓰기 허용)에서 시작하고, 문자열 안 `*\/*` 는 그렇지 않다.
+ * @param {string} code
+ */
+function stripComments(code) {
+  return code.replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
 
 // ── 테스트 팩토리 ─────────────────────────────────────────────
 
@@ -681,9 +698,7 @@ describe("dedupUpdateRows — 공고 N건 → 단지 M건", () => {
 describe("main 이 dedup 한 목록으로 UPDATE 하고 공고/단지를 나눠 찍는다 (세션 495)", () => {
   // main() 은 export 되지 않아 배선을 소스로 확인한다.
   // ⚠️ 좌변 고정 + 주석 제거 사본 — 선언부·주석 매칭 함정 차단.
-  const src = readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
 
   it("dedupUpdateRows 결과를 변수로 받는다", () => {
     expect(src).toMatch(/const\s+dedupedUpdates\s*=\s*dedupUpdateRows\(\s*updateRows\s*\)/);
@@ -760,9 +775,7 @@ describe("isCompletionYm — completion 규약 판정", () => {
 describe("completion 은 규약을 어긴 값도 갱신 대상 — 동결 해제 배선 (세션530)", () => {
   // main()·toPresaleRow 안 배선이라 소스로 확인한다.
   // ⚠️ 좌변 고정 + 주석 제거 사본 — 선언부·주석 매칭 함정 차단.
-  const src = readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
 
   it("enrich.completion 은 검증 파서를 거쳐 만들어진다 (옛 slice(0,6) 금지)", () => {
     expect(src).toMatch(/completion:\s*parsePresaleCompletion\(\s*complex\?\.mvi_date\s*\)/);
@@ -780,5 +793,97 @@ describe("completion 은 규약을 어긴 값도 갱신 대상 — 동결 해제
   it("정상 YYYYMM 은 건드리지 않는다 (무조건 덮어쓰기가 아님)", () => {
     // 조건 없이 대입하면 presale_move_in 과 어긋난 236건까지 통째로 덮인다
     expect(src).not.toMatch(/^\s*update\.completion\s*=\s*enrich\.completion;\s*$/m);
+  });
+});
+
+// ── pickScaleArea + 면적 배선 (세션531) ─────────────────────────
+//
+// 왜 이 가드가 필요한가: `presale_min` 가격 행의 `area` 가 null 이면 그 단지는 평형별 실거래
+// 버킷 경로를 못 타고 "구 전체 거래 중위 총액"과 비교되는 폴백으로 떨어진다. 그러면 괴리도가
+// "비싼가"가 아니라 **"큰가"** 를 잰다(대조 실험: 면적↔괴리도 상관 버킷 −0.097 vs 폴백 −0.699).
+describe("pickScaleArea — 최저 분양가 주택형의 전용면적", () => {
+  /** @param {number} area @param {number} price @param {number} supp */
+  const T = (area, price, supp) => ({ use_area_size: area, supp_price: price, supp_size: supp });
+
+  it("가장 싼 주택형의 전용·공급 면적을 고른다", () => {
+    // ⚠️ 면적 오름차순이 아니라 **분양가** 오름차순이어야 한다. 저장되는 price 가 min_price 라
+    //    면적도 같은 주택형 것이어야 짝이 맞는다.
+    const got = pickScaleArea([T(84.9, 500000000, 112.3), T(59.9, 380000000, 79.1), T(74.8, 440000000, 101.0)]);
+    expect(got).toEqual({ area: 59.9, supplyArea: 79.1 });
+  });
+
+  it("면적이 더 작아도 더 비싸면 고르지 않는다 (면적 최소 아님)", () => {
+    const got = pickScaleArea([T(49.5, 600000000, 66.0), T(84.9, 300000000, 112.3)]);
+    expect(got?.area).toBe(84.9);
+  });
+
+  it("상식 범위 밖 전용면적은 버린다 (계약면적 오입력 차단)", () => {
+    // 실제 응답에 276.55·291.13 처럼 계약면적으로 보이는 값이 섞여 온다.
+    const got = pickScaleArea([T(276.55, 100000000, 300), T(84.9, 500000000, 112.3)]);
+    expect(got?.area).toBe(84.9);
+  });
+
+  it("분양가가 없는 행은 후보에서 뺀다 (임대·보증금형)", () => {
+    const got = pickScaleArea([T(59.9, 0, 79.1), T(84.9, 500000000, 112.3)]);
+    expect(got?.area).toBe(84.9);
+  });
+
+  it("쓸 수 있는 행이 없으면 null — 지어내지 않는다", () => {
+    expect(pickScaleArea([])).toBeNull();
+    expect(pickScaleArea(null)).toBeNull();
+    expect(pickScaleArea(undefined)).toBeNull();
+    expect(pickScaleArea([T(0, 500000000, 0), T(9999, 400000000, 0)])).toBeNull();
+    // 배열 안에 객체가 아닌 값이 섞여 와도 죽지 않는다 (런타임 강건성 — 시그니처 밖 입력이라 cast)
+    expect(pickScaleArea(/** @type {any} */ ([null, "x", 3]))).toBeNull();
+  });
+
+  it("공급면적이 없으면 supplyArea 만 null (전용은 살린다)", () => {
+    expect(pickScaleArea([T(59.9, 380000000, 0)])).toEqual({ area: 59.9, supplyArea: null });
+  });
+});
+
+describe("toPresalePriceRow — 면적 전달", () => {
+  it("areaInfo 를 주면 area·supply_area 에 담는다", () => {
+    const row = toPresalePriceRow({ min_price: 461000000 }, "apt-1", { area: 59.9, supplyArea: 79.1 });
+    expect(row).toMatchObject({ price: 46100, area: 59.9, supply_area: 79.1 });
+  });
+
+  it("areaInfo 를 안 주면 옛 동작 그대로 null (호출처 점진 이전 가능)", () => {
+    const row = toPresalePriceRow({ min_price: 461000000 }, "apt-1");
+    expect(row).toMatchObject({ area: null, supply_area: null });
+  });
+});
+
+describe("면적 배선 — main() 안이라 소스로 확인 (세션531)", () => {
+  // ⚠️ 좌변 고정 + 주석 제거 사본 — 선언부·주석 매칭 함정 차단
+  //    (.claude/rules/meta/guards-must-be-mutation-tested.md §"소스 grep 가드").
+  const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+
+  it("가격 행을 만드는 두 자리 모두 면적을 넘긴다", () => {
+    // 한 자리만 넘기면 신규 단지(또는 기존 단지)만 면적을 얻어 절반이 남는다.
+    const calls = src.match(/toPresalePriceRow\(\s*complexData\s*,\s*[A-Za-z.]+\s*,\s*areaInfo\s*\)/g) ?? [];
+    expect(calls.length).toBe(2);
+    // 인자 2개짜리 옛 호출이 남아 있으면 그 자리는 면적을 잃는다
+    expect(src).not.toMatch(/toPresalePriceRow\(\s*complexData\s*,\s*[A-Za-z.]+\s*\)/);
+  });
+
+  it("이월표를 고유키 커서로 훑는다 (무정렬 range 금지)", () => {
+    // prices 는 7,886행 — 무정렬 .range() 반복은 에러 없이 행을 잃는다
+    expect(src).toMatch(/from\("prices"\)[\s\S]{0,160}?\.order\(\s*"id"\s*,\s*\{\s*ascending:\s*true\s*\}\s*\)/);
+  });
+
+  it("면적을 못 구하면 옛 값을 이월한다 (새 행이 옛 행을 덮지 않게)", () => {
+    // latest_prices 는 presale_% 중 recorded_at 이 가장 늦은 행을 고른다. 이월이 없으면
+    // 면적 없는 오늘 행이 어제의 면적 있는 행을 덮어 화면에서 면적이 사라진다.
+    expect(src).toMatch(/return\s+picked\s*\?\?\s*knownArea\.get\(\s*aptId\s*\)\s*\?\?\s*null/);
+  });
+
+  it("이미 아는 단지는 요청을 건너뛴다 (--refresh-area 면 예외)", () => {
+    expect(src).toMatch(/if\s*\(\s*!refreshArea\s*\)/);
+    expect(src).toMatch(/const\s+refreshArea\s*=\s*args\.includes\(\s*"--refresh-area"\s*\)/);
+  });
+
+  it("scale 엔드포인트를 부른다", () => {
+    expect(src).toMatch(/presalePost\(\s*"\/api\/complex\/scale"/);
   });
 });
