@@ -9,7 +9,7 @@
  * 효과:
  *   프론트엔드 calcCats() 355,440 ops → 0 ops (서버 캐시 사용)
  */
-import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, recordCollectorRun, selectAll } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, recordCollectorRun, selectAll, sleep } from "./collectors/_shared.mjs";
 import { computeRegionalMedians, calcCats } from "@/scoring/engine";
 
 // ── 설정 ─────────────────────────────────────────────────────
@@ -17,6 +17,18 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const BATCH_SIZE = 1000;
 /** collector_runs 기록명 — monitor ⑤ 라벨 드리프트 방지용 단일 출처. */
 const PHASE = "compute-scores";
+
+/**
+ * cats_cache UPDATE 의 **동시 요청 수**. 이 스크립트는 단지 1곳당 요청 1개를 만들 수밖에 없어
+ * (PostgREST 에 행마다 다른 값을 넣는 배치 UPDATE 문법이 없다) 요청 **수** 대신 **동시성**을 조인다.
+ * 옛 값 10 은 초당 약 25회(피크 32회) 버스트를 만들었다 — 아래 UPDATE 루프 주석 참조.
+ */
+export const UPDATE_CONCURRENCY = 5;
+/**
+ * 배치 사이 지연(ms). `upsertBatch` 의 기본 지연과 같은 톤으로 맞췄다.
+ * 동시성 5 + 100ms 로 초당 약 10회 — PostgREST 백엔드가 쌓이지 않는 수준.
+ */
+export const UPDATE_BATCH_DELAY_MS = 100;
 
 // ── 낡은 점수 정리 (세션502) ──────────────────────────────────
 // 이 스크립트는 `apartments_flat` VIEW 만 읽어 채점하는데, VIEW 는 이름·지역·동이 같은 단지를
@@ -172,8 +184,29 @@ export async function main() {
   } else {
     log("compute-scores", `${rows.length}건 DB UPDATE 중...`);
     let updated = 0, failed = 0;
-    const BATCH = 10;
+    // ⚠️ 이 루프는 **단지 1곳당 요청 1개**를 만든다(약 2,200건). PostgREST 는 서로 다른 값으로
+    // 여러 행을 한 번에 UPDATE 하는 문법이 없고, `upsert` 로 {id, cats_cache} 만 보내는 우회는
+    // **실측 결과 불가**하다 — INSERT 를 선시도해 `null value in column "name" violates not-null
+    // constraint` 로 전량 실패한다(세션527 운영 DB 실측). 전체 행 upsert 는 읽은 시점 이후 다른
+    // 수집기가 바꾼 컬럼을 되돌리는 lost update 위험이 있어 쓰지 않는다.
+    //
+    // 그래서 요청 **수**는 그대로 두고 **동시성과 요청률**만 낮춘다.
+    //
+    // 실측(자매 레포 naver-estate-web 세션381 의 Supabase Logs Explorer 집계 + 본 코드 대조):
+    // 옛 값(BATCH 10, 지연 0)은 88초에 2,211건 = 초당 약 25회(피크 32회)를 쏴서 PostgREST
+    // 백엔드 ~20개를 만들고 idle 로 20분 가까이 잔존시켰다. 같은 시간대(8/22·8/24)에 공유
+    // Supabase 인스턴스가 두 번 죽었다.
+    // ⚠️ **다만 인과는 미확정이다.** 버스트(03:03)와 크래시(03:21) 사이 19분 공백이 설명되지
+    // 않았고, 크래시 원인으로 지목된 OOM 도 Postgres 서버 로그 원문이 아니라 대시보드 그래프
+    // 판독이다(자매 세션이 스스로 정정 통지). 즉 **시간적 근접까지가 확인된 전부**다.
+    // 이 완화의 근거는 "크래시를 막는다" 가 아니라 **"공유 자원에 초당 32회 버스트를 쏠 이유가
+    // 없다"** 는 것 하나로 충분하다 — 인과가 나중에 부정돼도 이 변경은 여전히 옳다.
+    //
+    // 근본책(Postgres RPC 로 배열 UPDATE = 요청 수 자체를 수십 건으로)은 마이그레이션이 필요해
+    // `.claude/BACKLOG.md` 에 별도 등재했다.
+    const BATCH = UPDATE_CONCURRENCY;
     for (let i = 0; i < rows.length; i += BATCH) {
+      if (i > 0) await sleep(UPDATE_BATCH_DELAY_MS);
       const batch = rows.slice(i, i + BATCH);
       const promises = batch.map(row =>
         sb.from("apartments")

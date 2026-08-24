@@ -15,7 +15,14 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 // 순수 함수만 골라 import — isCLI 가드가 있어 import 만으로 main() 이 돌지 않는다.
-import { findStaleScoreIds, isStaleClearSafe, clearStaleScores, STALE_CLEAR_MAX_RATIO } from "./compute-scores.mjs";
+import {
+  findStaleScoreIds,
+  isStaleClearSafe,
+  clearStaleScores,
+  STALE_CLEAR_MAX_RATIO,
+  UPDATE_CONCURRENCY,
+  UPDATE_BATCH_DELAY_MS,
+} from "./compute-scores.mjs";
 
 const src = readFileSync(new URL("./compute-scores.mjs", import.meta.url), "utf8")
   .replace(/\/\*[\s\S]*?\*\//g, " ")
@@ -185,5 +192,42 @@ describe("compute-scores — VIEW 밖 낡은 점수 정리 (세션502)", () => {
     expect(src).toMatch(
       /dbFailed\s*\+=\s*await\s+clearStaleScores\(\s*sb\s*,\s*new Set\(allApartments\.map\(\(a\)\s*=>\s*a\.id\)\)\s*\)/,
     );
+  });
+});
+
+/**
+ * cats_cache UPDATE 요청률 가드 (세션527).
+ *
+ * 이 루프는 단지 1곳당 요청 1개를 만든다(약 2,200건) — PostgREST 에 행마다 다른 값을 넣는 배치
+ * UPDATE 문법이 없고, `upsert` 로 부분 필드만 보내는 우회는 **운영 DB 실측 결과 불가**하다
+ * (INSERT 선시도 → `null value in column "name" violates not-null constraint` 로 전량 실패).
+ * 그래서 요청 **수** 대신 **동시성·요청률**을 잠근다. 옛 값(동시 10·지연 0)은 초당 약 25회
+ * (피크 32회) 버스트를 만들었고, 같은 시간대에 공유 Supabase 가 두 번(8/22·8/24) 죽었다.
+ * ⚠️ 인과는 미확정 — 버스트와 크래시 사이 19분 공백이 설명되지 않았고 OOM 판정도 서버 로그가
+ * 아닌 대시보드 판독이다. 이 가드의 근거는 "크래시 방지" 가 아니라 **"공유 자원에 초당 32회를
+ * 쏠 이유가 없다"** 는 것이다.
+ */
+describe("compute-scores — DB 요청률 (세션527)", () => {
+  it("동시 요청 수가 5 이하다", () => {
+    expect(UPDATE_CONCURRENCY).toBeLessThanOrEqual(5);
+    expect(UPDATE_CONCURRENCY).toBeGreaterThan(0);
+  });
+
+  it("배치 사이 지연이 있다 (버스트 방지)", () => {
+    expect(UPDATE_BATCH_DELAY_MS).toBeGreaterThanOrEqual(100);
+  });
+
+  it("초당 요청률이 15회를 넘지 않는다 (동시성·지연 어느 쪽을 바꿔도 함께 검사)", () => {
+    // 배치당 실측 소요 약 0.4초(2,211건/88초, 세션526 운영 로그) + 지연.
+    const perBatchSec = 0.4 + UPDATE_BATCH_DELAY_MS / 1000;
+    expect(UPDATE_CONCURRENCY / perBatchSec).toBeLessThanOrEqual(15);
+  });
+
+  it("UPDATE 루프가 상수를 실제로 쓴다 (하드코딩 회귀 방지)", () => {
+    expect(src).toMatch(/const\s+BATCH\s*=\s*UPDATE_CONCURRENCY\s*;/);
+  });
+
+  it("UPDATE 루프가 배치 사이에 실제로 쉰다", () => {
+    expect(src).toMatch(/if\s*\(i\s*>\s*0\)\s*await\s+sleep\(\s*UPDATE_BATCH_DELAY_MS\s*\)\s*;/);
   });
 });
