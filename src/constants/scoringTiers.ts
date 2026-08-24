@@ -744,6 +744,15 @@ export const AREA_ADJ_TIERS: { max: number; adj: number }[] = [
 ];
 export const AREA_ADJ_LARGE = 0.94;
 
+// === Price: 평형별 실거래 버킷 매칭 허용 오차 ===
+// 옛 fairPrice 는 `nearby_median`(구 안 전체 거래 총액 중위값, 면적 무관)에 AREA_ADJ_TIERS(±3~8%)만
+// 곱해 산정했다 — 국민평형(전형 면적) 기준값을 대형 평형에 그대로 써서 corr(면적, 괴리도) = −0.704,
+// 큰 평형일수록 자동으로 "비싸다"로 채점되는 구조적 편향이 있었다(실측: 라펜트힐 241.958㎡ 괴리도
+// −924.1%). `trade_stats.price_by_area`(5㎡ 버킷별 실거래) 가 이미 그 평형대의 실거래이므로 이걸
+// 최우선으로 매칭한다. 최근접 버킷과의 이격이 이 값을 넘으면 버킷 ㎡당가로 환산(실측: 이격 중앙
+// 0.1㎡·p90 1.8㎡ — 버킷이 5㎡ 단위라 대부분 거의 정확히 맞는다). scorePrice.ts matchAreaPrice 참조.
+export const AREA_BUCKET_TOLERANCE_M2 = 10;
+
 // === Location: 대기질 PM10 (4단계, ㎍/㎥ 기준) ===
 export const AIR_PM10_TIERS: Tier[] = [
   { max: 30, score: 20 }, // 좋음

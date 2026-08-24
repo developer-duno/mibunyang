@@ -52,6 +52,15 @@ export interface Apt {
   presalePp?: number | null;
   priceIndex?: number | null;
   landCostRatio?: number | null;
+  /**
+   * 평형별 실거래가 분포 — `trade_stats.price_by_area`(5㎡ 버킷) 가 VIEW `priceByArea` 로
+   * 노출되고 정적 JSON 까지 흘러온다(적정가 괴리도 면적 편향 수정). 각 버킷 { area, min, avg, max, count }
+   * — **`area` 는 구간 하한이 아니라 5 의 배수로 반올림한 대표값**이다
+   * (`trade-stats.mjs` `groupByArea`: `Math.round(t.area / 5) * 5` → 82.5~87.4㎡ 거래가 `area: 85` 로 묶인다).
+   * 하한으로 오해하면 "area~area+5" 로 범위를 역산하는 코드가 경계에서 어긋난다.
+   * avg/min/max=만원, count=거래건수. `sanitize` 를 거치지 않으므로 원본 그대로.
+   */
+  priceByArea?: Array<{ area: number; min: number; avg: number; max: number; count: number }> | null;
 
   // 위험 (sanitize 후 num + 비관 폴백)
   // unsold = 미분양 세대 수(원시), unsoldRate = 미분양률(%). 100% 초과 폭발값은 null 로 무력화(세션 445).
@@ -158,6 +167,8 @@ export interface Apt {
   _noDiscount?: boolean;
   _noCashback?: boolean;
   _noMaint?: boolean;
+  /** area 가 84 로 눌리기 전 원본 null/미기재 여부(세션508 계열 관례). scorePrice 가 면적 버킷 매칭 대상에서 제외할 때 사용. */
+  _noArea?: boolean;
 
   // 추가 필드 (도메인 확장 — strict 회피)
   [key: string]: unknown;

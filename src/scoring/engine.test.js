@@ -17,10 +17,12 @@ import {
   LIQUIDITY_AREA_UNIT,
   LIQUIDITY_TIERS,
   LOCATION_SUB_WEIGHTS,
+  AREA_BUCKET_TOLERANCE_M2,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
   getAreaAdj,
+  matchAreaPrice,
   scorePrice,
   scoreLocation,
   scoreProduct,
@@ -2217,5 +2219,108 @@ describe("locationTotalForProfile (세션526)", () => {
     expect(Number.isFinite(t)).toBe(true);
     expect(t).toBeGreaterThanOrEqual(0);
     expect(t).toBeLessThanOrEqual(100);
+  });
+});
+
+/**
+ * 적정가 괴리도 면적 편향 수정 — matchAreaPrice + fairPrice 1순위 교체.
+ *
+ * 옛 fairPrice(`nearbyMedian × getAreaAdj`)는 구 전체 거래 총액 중위값(면적 무관)에 ±3~8%
+ * 계수만 곱해, 단지 면적이 그 동네 전형 면적의 배수여도 fairPrice 는 조금만 커져 대형 평형이
+ * 구조적으로 "비싸다"로 채점됐다(실측: 정적 JSON 1,713곳 corr(면적,괴리도) = −0.704).
+ * `trade_stats.price_by_area`(5㎡ 버킷별 실거래)가 이미 그 평형대 실거래이므로 1순위로 쓴다.
+ */
+describe("matchAreaPrice — 평형별 실거래 버킷 매칭", () => {
+  const buckets = [
+    { area: 60, min: 30000, max: 50000, avg: 40000, count: 10 },
+    { area: 85, min: 50000, max: 80000, avg: 65000, count: 20 },
+    { area: 115, min: 90000, max: 130000, avg: 110000, count: 5 },
+  ];
+
+  it("정확 매칭 — 이격 0", () => {
+    expect(matchAreaPrice(buckets, 85)).toBe(65000);
+  });
+
+  it("이격이 허용치(AREA_BUCKET_TOLERANCE_M2) 이내면 최근접 버킷 평균값 그대로", () => {
+    // 85 버킷과의 이격 = 3㎡ < 10
+    expect(matchAreaPrice(buckets, 88)).toBe(65000);
+  });
+
+  it("이격이 허용치를 넘으면 최근접 버킷의 ㎡당가로 환산", () => {
+    // 115 버킷과의 이격 = 15㎡ > AREA_BUCKET_TOLERANCE_M2(10) → (110000/115) × 130
+    const area = 130;
+    expect(AREA_BUCKET_TOLERANCE_M2).toBe(10); // 이 테스트가 전제하는 상수값 — 상수가 바뀌면 여기부터 손본다
+    expect(matchAreaPrice(buckets, area)).toBeCloseTo((110000 / 115) * area, 6);
+  });
+
+  it("빈 배열/null/undefined 는 null", () => {
+    expect(matchAreaPrice([], 84)).toBeNull();
+    expect(matchAreaPrice(null, 84)).toBeNull();
+    expect(matchAreaPrice(undefined, 84)).toBeNull();
+  });
+
+  it("area 가 유효하지 않으면(null/0/음수) null", () => {
+    expect(matchAreaPrice(buckets, null)).toBeNull();
+    expect(matchAreaPrice(buckets, 0)).toBeNull();
+    expect(matchAreaPrice(buckets, -5)).toBeNull();
+  });
+
+  it("area<=0 또는 avg<=0 인 버킷은 후보에서 제외된다", () => {
+    const dirty = /** @type {any} */ ([
+      { area: 0, min: 0, max: 0, avg: 0, count: 1 },
+      { area: 85, min: 50000, max: 80000, avg: 0, count: 1 },
+      { area: 90, min: 60000, max: 90000, avg: 70000, count: 10 },
+    ]);
+    // 유효 버킷은 90 하나 — 이격 5 < 허용치라 그대로 반환
+    expect(matchAreaPrice(dirty, 85)).toBe(70000);
+  });
+});
+
+describe("scorePrice — 면적 버킷 매칭이 fairPrice 1순위 (면적 편향 수정)", () => {
+  it("대형 평형이 버킷 매칭 덕에 총액비교보다 정확한 괴리도 점수를 받는다", () => {
+    const bucket = /** @type {any} */ ([{ area: 150, min: 180000, max: 220000, avg: 200000, count: 15 }]);
+    const devScoreOf = (/** @type {any} */ r) => r.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도");
+    // nearbyMedian(55000)은 국민평형(84㎡) 기준 중위값 — 150㎡ 단지에 그대로 쓰면 fairPrice 가
+    // 실제 실거래(20억)보다 훨씬 작게 잡혀 price=200000 이 "과대평가"로 채점된다.
+    const withoutBucket = calcCats(makeApt({ area: 150, price: 200000, nearbyMedian: 55000 })).price;
+    const withBucket = calcCats(makeApt({ area: 150, price: 200000, nearbyMedian: 55000, priceByArea: bucket })).price;
+    expect(devScoreOf(withBucket).score).toBeGreaterThan(devScoreOf(withoutBucket).score);
+    expect(devScoreOf(withBucket).detail).toContain("평수대별 실거래 기준");
+    expect(devScoreOf(withoutBucket).detail).not.toContain("평수대별 실거래 기준");
+  });
+
+  it("버킷 매칭 시 areaAdj 를 다시 곱하지 않는다 (이중 계상 회피)", () => {
+    // areaAdj 를 다시 곱하면 red — fairPrice = bucketAvg × ageCoeff × bAdj 만이어야 한다.
+    const bucket = /** @type {any} */ ([{ area: 150, min: 180000, max: 220000, avg: 200000, count: 15 }]);
+    const apt = makeApt({
+      area: 150,
+      price: 200000,
+      nearbyMedian: 55000,
+      priceByArea: bucket,
+      completion: null, // ageCoeff = 1.05
+      builder: "듣도보도못한건설(주)", // 미등재 → bAdj = 1.0
+    });
+    const r = calcCats(apt).price;
+    expect(r.fairPrice).toBe(Math.round(200000 * 1.05 * 1.0));
+  });
+
+  it("_noArea(면적 미상)는 84㎡ 버킷이 있어도 매칭하지 않는다 — 현행 폴백값과 같아야 한다", () => {
+    // sanitize 가 area:null 을 84 로 누르기 전에 _noArea=true 를 남긴다. 이 가드가 없으면
+    // "안 잰 것"이 "84㎡ 단지"로 오매칭돼 아래 두 결과가 달라진다.
+    const bucket = /** @type {any} */ ([{ area: 84, min: 40000, max: 60000, avg: 50000, count: 30 }]);
+    const withBucket = calcCats(makeApt(/** @type {any} */ ({ area: null, price: 45000, priceByArea: bucket })));
+    const withoutBucket = calcCats(makeApt(/** @type {any} */ ({ area: null, price: 45000 })));
+    expect(withBucket.price.fairPrice).toBe(withoutBucket.price.fairPrice);
+    expect(withBucket.price.total).toBe(withoutBucket.price.total);
+    expect(withBucket.price.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도")?.detail).not.toContain(
+      "평수대별 실거래 기준"
+    );
+  });
+
+  it("면적이 유효해도 priceByArea 가 비어 있거나 없으면 기존 로직 그대로", () => {
+    const withoutField = calcCats(makeApt({ area: 100 })).price;
+    const withEmptyArray = calcCats(makeApt(/** @type {any} */ ({ area: 100, priceByArea: [] }))).price;
+    expect(withoutField.fairPrice).toBe(withEmptyArray.fairPrice);
+    expect(withoutField.total).toBe(withEmptyArray.total);
   });
 });
