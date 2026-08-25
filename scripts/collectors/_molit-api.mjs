@@ -26,8 +26,10 @@
 import { stringSimilarity, sleep, log } from "./_shared.mjs";
 
 // ── 상수 ─────────────────────────────────────────────────────
-export const API_LIST_BASE = "https://apis.data.go.kr/1613000/AptListService3";
-export const API_DETAIL_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoServiceV4";
+// 2026-08-19 data.go.kr 인증체계 개편으로 V3/V4 는 폐기(NO_OPENAPI_SERVICE_ERROR) —
+// V4/V5 로 교체 (세션388 naver-estate-web 라이브 실측, 필드명은 V4→V5 동일 유지 확인).
+export const API_LIST_BASE = "https://apis.data.go.kr/1613000/AptListService4";
+export const API_DETAIL_BASE = "https://apis.data.go.kr/1613000/AptBasisInfoServiceV5";
 export const MIN_SIMILARITY = 0.5;
 export const REQUEST_DELAY = 400; // ms — API 레이트리밋 방지
 
@@ -132,7 +134,7 @@ export async function fetchSidoAptList(phase, sidoCode, apiKey) {
 
   while (true) {
     const params = { numOfRows: "500", pageNo: String(pageNo), sidoCode };
-    const json = await molitApiCall(phase, API_LIST_BASE, "getSidoAptList3", params, apiKey);
+    const json = await molitApiCall(phase, API_LIST_BASE, "getSidoAptList4", params, apiKey);
     const body = json?.response?.body;
     if (!body || body.totalCount === 0) break;
 

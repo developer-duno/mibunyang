@@ -4,8 +4,9 @@
  *
  * API: 국토교통부 공동주택 서비스
  *   - AptListService3 (#15057332): 시도별 단지 목록
- *   - AptBasisInfoServiceV4: 단지 기본 정보 (getAphusBassInfoV4)
- *   - AptBasisInfoServiceV4: 단지 상세 정보 (getAphusDtlInfoV4) — 주차, 난방, 복도 등
+ *   - AptBasisInfoServiceV5: 단지 기본 정보 (getAphusBassInfoV5, 2026-08-19 data.go.kr
+ *     인증체계 개편으로 V4에서 교체 — 필드명은 V4와 동일)
+ *   - AptBasisInfoServiceV5: 단지 상세 정보 (getAphusDtlInfoV5) — 주차, 난방, 복도 등
  *
  * 세션 358 정정: energy_grade(kaptdEcnt=승강기대수 오인) + 건폐율/용적률(kaptdBcRat/
  * kaptdVlRat=응답에 없는 죽은 코드) 추출 제거. 건폐율/용적률은 네이버(sync-naver-complex)가 채움.
@@ -46,14 +47,14 @@ if (!API_KEY) {
  */
 export async function fetchAptDetail(kaptCode) {
   // 기본 정보 (세대수, 최고층 등)
-  const bassJson = /** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY || ""));
+  const bassJson = /** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode }, API_KEY || ""));
   const bassBody = bassJson?.response?.body;
   const bass = bassBody?.item ?? bassBody?.items?.item ?? null;
 
   await sleep(REQUEST_DELAY);
 
   // 상세 정보 (주차, 에너지, 구조 등)
-  const dtlJson = /** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusDtlInfoV4", { kaptCode }, API_KEY || ""));
+  const dtlJson = /** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusDtlInfoV5", { kaptCode }, API_KEY || ""));
   const dtlBody = dtlJson?.response?.body;
   const dtl = dtlBody?.item ?? dtlBody?.items?.item ?? null;
 

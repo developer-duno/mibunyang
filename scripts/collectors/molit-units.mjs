@@ -4,7 +4,8 @@
  *
  * API: 국토교통부 공동주택 서비스
  *   - AptListService3 (#15057332): 시도별 단지 목록 (kaptCode, kaptName)
- *   - AptBasisInfoServiceV4: 단지 기본 정보 (getAphusBassInfoV4 — kaptdaCnt = 세대수)
+ *   - AptBasisInfoServiceV5: 단지 기본 정보 (getAphusBassInfoV5 — kaptdaCnt = 세대수,
+ *     2026-08-19 data.go.kr 인증체계 개편으로 V4에서 교체, 필드명 동일 유지)
  *
  * 사용법:
  *   node scripts/collectors/molit-units.mjs              (Supabase apartments 직접 UPDATE)
@@ -55,13 +56,13 @@ export async function getTargets(sb) {
   return /** @type {TargetApt[]} */ (data ?? []);
 }
 
-// ── 2. 단지 기본 조회 (V4: getAphusBassInfoV4) ──────────────
+// ── 2. 단지 기본 조회 (V5: getAphusBassInfoV5, 2026-08-19 개편으로 V4에서 교체) ──
 /**
  * @param {string} kaptCode
  * @returns {Promise<Record<string, unknown> | null>}
  */
 export async function fetchAptDetail(kaptCode) {
-  const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV4", { kaptCode }, API_KEY_SAFE);
+  const json = await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode }, API_KEY_SAFE);
   const body = /** @type {{ item?: Record<string, unknown>; items?: { item?: Record<string, unknown> } } | undefined} */ (json?.response?.body);
   return body?.item ?? body?.items?.item ?? null;
 }
