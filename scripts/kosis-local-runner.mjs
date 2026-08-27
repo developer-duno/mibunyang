@@ -11,10 +11,14 @@
  * building-hub)을 같은 방식으로 이전 — GH collect-*.yml 5개 삭제 + monitor 목록 제거
  * (stale 오탐 차단) + EXTERNAL_API_COLLECTORS 등재(collector_runs 기반 "안 돌면 알림" 보존).
  *
+ * 배경 3 (세션525, 2026-08-27): apis.data.go.kr 의 **국립중앙의료원(B552657)** 응급의료기관
+ * 서비스도 같은 차단이다 — GH 8/02·8/04 연속 failure 로그가 `fetch failed`(HTTP 코드 없음)인데
+ * 로컬 한국 IP + 같은 키는 `resultCode=00 NORMAL SERVICE`. `collect-emergency.yml` 삭제 + 편입.
+ *
  * 실행 = 본 러너 + Windows 작업 스케줄러(매일 05:30 KST, 작업명 "MibunyangKosisLocal").
  *
  * 일자 매핑 = 기존 UTC cron 이 실제 발화하던 KST 날짜 보존 (UTC 20~22시 = KST 익일 새벽):
- *   2일 housing-supply / 6일 market-stats·molit-units·trades / 7일 migration / 9일 unsold /
+ *   2일 housing-supply / 3일 emergency / 6일 market-stats·molit-units·trades / 7일 migration / 9일 unsold /
  *   10일 fertility·building-info(토요일이면 11일) / 11일 housing-permits /
  *   12일 regional-economy / 13일 avg-income / 14일 medical-access /
  *   15~19일 maintenance(--limit=600 배치) / 15일 building-hub(1·4·7·10월만) /
@@ -152,6 +156,14 @@ export function writeLastProcessed(/** @type {string} */ dateStr, statePath = ST
  */
 export const DAY_TABLE = [
   { day: 2, script: "collect-housing-supply-ratio.mjs" },
+  // 세션525(본 세션): apis.data.go.kr **B552657**(국립중앙의료원 응급의료기관)도 해외 IP 를 막는다.
+  // 8/02·8/04 GH 연속 failure 로그가 `[emergency] ERROR: fetch failed`(HTTP 코드 없음)인데,
+  // 같은 요청을 로컬 한국 IP + 같은 키로 던지니 `resultCode=00 NORMAL SERVICE` 였다.
+  // 세션515(1613000 5종)·세션519(www.data.go.kr·B552584 2종)와 같은 처방 —
+  // `collect-emergency.yml` 삭제 + 러너 편입. B552657 은 이 저장소에서 처음 막힌 서비스다.
+  // ⚠️ **UTC→KST 재계산**: 옛 cron `0 16 2 * *` 은 UTC 2일 16:00 = **KST 3일** 01:00 이다.
+  //    숫자를 그대로 베껴 2일에 두면 하루 당겨지고, 같은 날 housing-supply-ratio 와 겹친다.
+  { day: 3, script: "collect-emergency.mjs" },
   { day: 6, script: "collect-market-stats.mjs" },
   // 세션 515: MOLIT(1613000) 해외 IP 차단 → GH collect-molit-units.yml·collect-trades.yml 삭제.
   // trades 는 가장 오래 걸려(실측 74~120분) 같은 날 마지막에 둔다.

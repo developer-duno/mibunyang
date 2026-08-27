@@ -213,12 +213,13 @@ describe("fetchMaintenanceCost", () => {
   });
 
   it("fetch URL에 5개 endpoint명이 순서대로 포함", async () => {
+    // V3 리터럴 고정 — 서비스 개편(2026-08-27 공지) 시 코드만 되돌아오면 red 나야 한다
     const endpoints = [
-      "getHsmpHeatCostInfoV2",
-      "getHsmpHotWaterCostInfoV2",
-      "getHsmpGasRentalFeeInfoV2",
-      "getHsmpElectricityCostInfoV2",
-      "getHsmpWaterCostInfoV2",
+      "getHsmpHeatCostInfoV3",
+      "getHsmpHotWaterCostInfoV3",
+      "getHsmpGasRentalFeeInfoV3",
+      "getHsmpElectricityCostInfoV3",
+      "getHsmpWaterCostInfoV3",
     ];
     for (let i = 0; i < 5; i++) {
       mockFetch.mockResolvedValueOnce(makeCostResponse(FIELDS[i], 100));

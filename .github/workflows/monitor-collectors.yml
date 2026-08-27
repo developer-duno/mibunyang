@@ -19,7 +19,11 @@ on:
       # Collect Maintenance Cost / Collect Trades. 감시는 아래 KOSIS 와 동일하게
       # monitor-collectors.mjs EXTERNAL_API_COLLECTORS (collector_runs 신선도) 가 승계.
       - "DART 시공사 재무 수집"
-      - "Emergency Medical Facilities Collection"
+      # 세션525: "Emergency Medical Facilities Collection" 제거 — apis.data.go.kr/B552657
+      #   (국립중앙의료원 응급의료기관)도 해외 IP 차단(GH 8/02·8/04 연속 `fetch failed` / 로컬
+      #   한국 IP 는 resultCode=00 NORMAL SERVICE)이라 yml 삭제 + 로컬 러너 매월 3일 이전.
+      #   이름만 남기면 매일 "실행 기록이 한 번도 없음" 거짓 경보가 난다(세션 519 선례).
+      #   감시는 EXTERNAL_API_COLLECTORS 의 `emergency`(collector_runs 신선도) 가 승계.
       - "Environment Data Collection"
       # 세션 519 정리 — 아래 3종은 워크플로가 없는데 이름만 남아 매일 거짓 경보를 냈다:
       #   "Housing Permits Data Collection" = 세션 501 에 yml 삭제(KOSIS 이전)됐는데 목록에 잔존.

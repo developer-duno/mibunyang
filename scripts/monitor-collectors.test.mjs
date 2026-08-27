@@ -1163,7 +1163,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 32 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 33 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "air-quality",
@@ -1172,6 +1172,9 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       // 세션 521: CSV 기반이라 "자동 실행 경로가 없다" 며 감시에서 빼 뒀던 것을 로컬 러너
       // 매월 8일로 편입하면서 정식 등재. 안 돌던 사이 regions 3개월치가 통째로 NULL 이었다.
       "crime-safety",
+      // 세션 525: apis.data.go.kr/B552657(응급의료기관)도 해외 IP 차단 → GH yml 삭제 +
+      // 로컬 러너 매월 3일. GH run 이 없어 ①③ 대상 밖이므로 ⑤ 가 유일한 "안 돌면 알림".
+      "emergency",
       "housing-permits", "housing-price",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
@@ -1478,6 +1481,37 @@ describe("크론(DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 동기화 — lh
     expect(
       EXTERNAL_API_COLLECTORS.some((c) => c.collector === COLLECTOR),
       "EXTERNAL_API_COLLECTORS 에서 lhzone-status 가 빠졌다 — 안 돌아도 알림 0",
+    ).toBe(true);
+  });
+});
+
+describe("크론(DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 동기화 — emergency (세션 525)", () => {
+  // 세션 517·522 선례를 그대로 답습한다. 한쪽만 되돌리면 red 여야 한다 —
+  // 크론만 지우면 "안 돌아도 아무도 모르는" 상태, 감시만 지우면 "돌다 멈춰도 조용한" 상태.
+  // ⚠️ 스크립트 파일명(collect-emergency.mjs)과 기록 라벨(emergency)이 다르다.
+  //    라벨의 진실의 원천은 recordCollectorRun 첫 인자 = PHASE 상수다(세션 439 드리프트 사고).
+  const SCRIPT = "collect-emergency.mjs";
+  const COLLECTOR = "emergency";
+
+  it("DAY_TABLE 매월 3일에 emergency 가 있다 (옛 cron `0 16 2 * *` = UTC 2일 → KST 3일)", () => {
+    const rows = DAY_TABLE.filter((e) => e.script === SCRIPT);
+    expect(rows.map((e) => e.day), "매월 3일 1회여야 한다").toEqual([3]);
+  });
+
+  it("같은 수집기가 monitor ⑤ 에 월간(38) 신선도로 등재돼 있다", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === COLLECTOR);
+    expect(entry, `${COLLECTOR} 가 EXTERNAL_API_COLLECTORS 에 없다 — 크론만 있고 감시가 없다`).toBeTruthy();
+    expect(entry?.stale_days, "월간(매월 3일) = 31일 + 여유 1주").toBe(38);
+  });
+
+  it("크론과 감시가 한 쌍으로 존재한다 (한쪽만 되돌리면 red)", () => {
+    expect(
+      DAY_TABLE.some((e) => e.script === SCRIPT),
+      "DAY_TABLE 에서 emergency 가 빠졌다 — GH yml 을 지웠으므로 아예 안 도는 상태로 회귀",
+    ).toBe(true);
+    expect(
+      EXTERNAL_API_COLLECTORS.some((c) => c.collector === COLLECTOR),
+      "EXTERNAL_API_COLLECTORS 에서 emergency 가 빠졌다 — 안 돌아도 알림 0",
     ).toBe(true);
   });
 });
