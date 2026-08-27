@@ -50,7 +50,7 @@
 | `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
-### 매월 (10개) + 수동 전용 (4개)
+### 매월 (9개) + 수동 전용 (4개)
 
 > ⚠️ 세션519 실측 정정 — 이 헤더의 "13개"는 이번 편집 이전부터 이미 실제 행 수와 어긋나 있었다
 > (본 절 상단 disclaimer 가 경고하는 바로 그 drift). air-quality·housing-price 2행을 로컬
@@ -92,6 +92,17 @@
 > 같은 세션에 `monitor-collectors.yml` 의 workflow_run 목록에서 **"Housing Permits Data Collection"**
 > 도 제거했다 — 세션 501 에 yml 이 삭제됐는데 이름만 남아 **매일 "실행 기록이 한 번도 없음" 거짓 경보**를
 > 내고 있었다(monitor-collectors.mjs 주석엔 "제거했다"고 적혀 있었지만 이 yml 은 안 고쳐졌다).
+>
+> **세션 525: `collect-emergency.yml` 도 같은 이유로 폐기 → 로컬 러너 매월 3일.**
+> 이번엔 `apis.data.go.kr/**B552657**`(국립중앙의료원 응급의료기관) — 이 저장소에서 처음 막힌 서비스다.
+> 실측: GH 8/02·8/04 **연속 failure** 로그가 `[emergency] ERROR: fetch failed`(HTTP 코드 없음)인데
+> **같은 요청·같은 키를 로컬 한국 IP 에서 던지니 `resultCode=00 NORMAL SERVICE`**(2026-08-27).
+> ⚠️ **UTC→KST 재계산**: 옛 cron `0 16 2 * *` 은 UTC 2일 16:00 = **KST 3일** 01:00 이다 — 2일에 두면
+> 하루 당겨지고 `housing-supply-ratio`(2일)와 같은 날 겹친다. 3일은 러너 표에서 비어 있던 슬롯이다.
+> 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS` 에 `emergency`(월간 38) **신규 등재** +
+> `monitor-collectors.yml` workflow_run 목록에서 "Emergency Medical Facilities Collection" 제거.
+> ⚠️ 등재 라벨은 파일명(`collect-emergency.mjs`)이 아니라 **`recordCollectorRun` 첫 인자**인
+> `PHASE = "emergency"` 다(세션 439 드리프트 사고 답습).
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
@@ -105,7 +116,6 @@
 | `collect-industry.yml` | 7일 | 산업단지 매칭 (세션260: 1일→7일 분산) |
 | `collect-childcare.yml` | 1일 | Kakao 어린이집/유치원 (info step 은 세션 399 로컬 이전) |
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
-| `collect-emergency.yml` | 2일 | 응급의료기관 |
 | `collect-population.yml` | 5일 | 행안부 인구 증감률 |
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |

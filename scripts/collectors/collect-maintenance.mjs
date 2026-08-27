@@ -2,7 +2,7 @@
 /**
  * 국토부 공동주택 관리비 수집기
  *
- * API: AptIndvdlzManageCostServiceV2 (data.go.kr)
+ * API: AptIndvdlzManageCostServiceV3 (data.go.kr)
  *   주요 5개 항목(난방/급탕/가스/전기/수도)의 세대당 관리비 합산
  *
  * 사용법:
@@ -39,15 +39,18 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const COST_BASE = "https://apis.data.go.kr/1613000/AptIndvdlzManageCostServiceV2";
+// V2 → V3: data.go.kr 공지(2026-08-27, NOTICE_0000000004986) — 옛 V2 URL 은 90일 유지 후 중지.
+// V3 는 새 카탈로그 활용신청이 필요했고(미신청 시 403 SERVICE_KEY_IS_NOT_REGISTERED) 신청·승인 후
+// 라이브 실측 완료: getHsmpHeatCostInfoV3 kaptCode=A10021295 → resultCode 00, 응답 필드 V2 와 동일.
+const COST_BASE = "https://apis.data.go.kr/1613000/AptIndvdlzManageCostServiceV3";
 
 // 관리비 주요 5개 항목 — 항목별 raw 값을 object 로 반환하여 main() 에서 5 컬럼 동시 UPDATE + 합산 avg_maintenance_cost 보존
 const COST_ENDPOINTS = [
-  { label: "난방비", endpoint: "getHsmpHeatCostInfoV2", field: "heatP" },
-  { label: "급탕비", endpoint: "getHsmpHotWaterCostInfoV2", field: "waterHotP" },
-  { label: "가스료", endpoint: "getHsmpGasRentalFeeInfoV2", field: "gasP" },
-  { label: "전기료", endpoint: "getHsmpElectricityCostInfoV2", field: "electP" },
-  { label: "수도료", endpoint: "getHsmpWaterCostInfoV2", field: "waterCoolP" },
+  { label: "난방비", endpoint: "getHsmpHeatCostInfoV3", field: "heatP" },
+  { label: "급탕비", endpoint: "getHsmpHotWaterCostInfoV3", field: "waterHotP" },
+  { label: "가스료", endpoint: "getHsmpGasRentalFeeInfoV3", field: "gasP" },
+  { label: "전기료", endpoint: "getHsmpElectricityCostInfoV3", field: "electP" },
+  { label: "수도료", endpoint: "getHsmpWaterCostInfoV3", field: "waterCoolP" },
 ];
 
 /** @type {Record<string, "heat"|"hotwater"|"gas"|"elec"|"water">} */

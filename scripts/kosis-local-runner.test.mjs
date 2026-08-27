@@ -51,7 +51,10 @@ describe("collectorsDueOn — 일자 디스패치", () => {
   });
 
   it("due 없는 날짜는 빈 배열", () => {
-    expect(collectorsDueOn(at(2026, 7, 3))).toEqual([]);
+    // ⚠️ 세션525 정정: 옛 표본이던 3일은 이제 응급의료가 차지했다(GH cron UTC 2일 = KST 3일).
+    // 5일은 어느 `day` 항목도 없고, 2026-07-05 는 일요일이라 `dow` 항목(화요일 air-quality)에도
+    // 안 걸린다 — 빈 날 표본은 **두 축을 모두** 피해야 한다.
+    expect(collectorsDueOn(at(2026, 7, 5))).toEqual([]);
   });
 
   it("분기 수집기(sale-price)는 1·4·7·10월 17일에만 due 다", () => {
@@ -68,7 +71,7 @@ describe("collectorsDueOn — 일자 디스패치", () => {
     ]);
   });
 
-  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종 + data.go.kr 2종 + CSV 1종 + 택지정보 1종을 전부 커버한다", () => {
+  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종 + data.go.kr 3종 + CSV 1종 + 택지정보 1종을 전부 커버한다", () => {
     const scripts = [...new Set(DAY_TABLE.map((e) => e.script))].sort();
     expect(scripts).toEqual(
       [
@@ -99,6 +102,9 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         // 여기 없으면 아예 안 돈다.
         "collect-air-quality.mjs",
         "collect-housing-price.mjs",
+        // 세션 525: apis.data.go.kr/B552657(국립중앙의료원 응급의료기관)도 해외 IP 차단.
+        // GH yml 을 삭제했으므로 여기 없으면 아예 안 돈다.
+        "collect-emergency.mjs",
         // 세션 521: 외부 API 를 안 쓰는 유일한 등재분(로컬 CSV 파싱). 옛 판단은 "CSV 가 연 1회
         // 갱신이라 자동화 대상이 없다" 였으나, 채우는 대상인 regions 에는 매월 새 행이 생긴다.
         "collect-crime-safety.mjs",
@@ -241,6 +247,65 @@ describe("data.go.kr 2종 이전 (세션 519)", () => {
       const p = path.join(process.cwd(), ".github", "workflows", f);
       expect(existsSync(p), `${f} 가 아직 있다 — 로컬 러너와 이중 실행된다`).toBe(false);
     }
+  });
+});
+
+describe("응급의료 이전 (세션 525)", () => {
+  const SCRIPT = "collect-emergency.mjs";
+
+  // ⚠️ GH cron 이식에서 가장 쉬운 실수 = UTC 숫자를 그대로 베끼는 것(세션519 가 같은 자리에서 겪음).
+  // 옛 cron `0 16 2 * *`(UTC 2일 16:00)은 KST 로 **3일** 01:00 이다. 2일에 두면 하루 당겨진다.
+  it("응급의료는 매월 3일에 due 다 (옛 cron 은 UTC 2일 = KST 3일)", () => {
+    expect(collectorsDueOn(at(2026, 9, 3))).toContain(SCRIPT);
+    expect(collectorsDueOn(at(2026, 9, 2))).not.toContain(SCRIPT);
+  });
+
+  it("3일에는 응급의료만 due 다 (2일 housing-supply 와 겹치지 않는다)", () => {
+    expect(collectorsDueOn(at(2026, 9, 3))).toEqual([SCRIPT]);
+    expect(collectorsDueOn(at(2026, 9, 2))).toEqual(["collect-housing-supply-ratio.mjs"]);
+  });
+
+  it("매핑표에 매월 3일 1회로만 있다 (중복 등재는 가드를 무력화한다 — 세션519 실증)", () => {
+    const rows = DAY_TABLE.filter((e) => e.script === SCRIPT);
+    expect(rows.map((e) => e.day), "매월 3일 1회여야 한다").toEqual([3]);
+    expect(rows[0]?.args, "GH yml 은 dry_run 외 고정 인자를 넘기지 않았다").toBeUndefined();
+  });
+
+  it("--list 는 '매월 3일' 로 표기한다", () => {
+    const e = DAY_TABLE.find((x) => x.script === SCRIPT);
+    expect(e, "응급의료 항목이 매핑표에 없음").toBeTruthy();
+    expect(describeEntry(/** @type {(typeof DAY_TABLE)[number]} */ (e))).toBe(
+      "매월 3일: collect-emergency.mjs",
+    );
+  });
+
+  // 로컬 러너로 옮긴 수집기는 GH run 이 없어 monitor ①③ 대상에서 빠진다 →
+  // collector_runs 신선도(⑤)가 유일한 "안 돌면 알림" 이다. 등재를 잊으면 조용히 죽는다.
+  // ⚠️ 라벨은 파일명이 아니라 recordCollectorRun 첫 인자(PHASE="emergency")다.
+  it("monitor ⑤ EXTERNAL_API_COLLECTORS 에 `emergency` 로 등재돼 있다", () => {
+    const src = readFileSync(path.join(process.cwd(), "scripts", "monitor-collectors.mjs"), "utf8");
+    // 문자열 포함 검사 — 정규식은 백슬래시가 한 겹 벗겨져 `\s` 가 `s` 로 죽는 사고가 났다(세션519).
+    expect(src, "emergency 가 EXTERNAL_API_COLLECTORS 에 없음").toContain('collector: "emergency"');
+  });
+
+  it("GH 워크플로가 삭제돼 있다 (이중 실행 방지)", () => {
+    const p = path.join(process.cwd(), ".github", "workflows", "collect-emergency.yml");
+    expect(existsSync(p), "collect-emergency.yml 이 아직 있다 — 로컬 러너와 이중 실행된다").toBe(
+      false,
+    );
+  });
+
+  // 워크플로를 지웠는데 monitor.yml 의 workflow_run 목록에 이름이 남으면 ③ 이 매일
+  // "실행 기록이 한 번도 없음" 거짓 경보를 낸다(세션519 가 Housing Permits 에서 실제로 겪음).
+  it("monitor-collectors.yml workflow_run 목록에서도 이름이 빠져 있다", () => {
+    const yml = readFileSync(
+      path.join(process.cwd(), ".github", "workflows", "monitor-collectors.yml"),
+      "utf8",
+    );
+    // 주석으로 남긴 사유 줄(`# ... "Emergency ..."`)은 목록 항목이 아니므로 `- "..."` 형태만 본다.
+    expect(yml, "workflow_run 목록에 이름이 남아 매일 거짓 경보가 난다").not.toMatch(
+      /^\s*-\s*"Emergency Medical Facilities Collection"\s*$/m,
+    );
   });
 });
 
