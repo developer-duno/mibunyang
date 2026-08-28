@@ -10,7 +10,7 @@
  */
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { loadEnv, getSupabase, log, ROOT, createReporter, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, ROOT, createReporter, recordCollectorRun, selectAll } from "./_shared.mjs";
 
 loadEnv();
 const PHASE = "regulation-seed";
@@ -72,19 +72,11 @@ async function main() {
   const regulated = buildRegulatedSet(zones);
   log("regulation", `규제지역: ${regulated.size}개 시군구`);
 
-  // 전체 아파트 조회 — 페이지네이션 1000 행/배치
-  const PAGE_SIZE = 1000;
-  const apts = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await sb
-      .from("apartments")
-      .select("id, region, gu, is_regulated")
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    apts.push(...data);
-    if (data.length < PAGE_SIZE) break;
-  }
+  // 전체 아파트 조회 — 세션534: 무정렬 OFFSET → 고유키(id) 커서
+  // (unordered-pagination-loses-rows.md §1). apartments 3페이지 경계에서의 행 유실 차단.
+  const apts = /** @type {Array<{ id: string; region: string | null; gu: string | null; is_regulated: boolean | null }>} */ (
+    await selectAll((s) => s.from("apartments").select("id, region, gu, is_regulated"), sb, "id")
+  );
 
   let updated = 0;
   for (const apt of apts) {
