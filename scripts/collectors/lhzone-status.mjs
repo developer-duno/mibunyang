@@ -301,6 +301,7 @@ async function main() {
   const zones = await selectAll(
     (s) => s.from("dev_plans").select("id, name, progression_step").eq("kind", TARGET_KIND),
     sb,
+    "id", // 고유키 커서 — 무정렬 OFFSET 은 큰 표에서 행을 잃는다(unordered-pagination-loses-rows.md)
   );
   log(PHASE, `대상 ${TARGET_KIND} ${zones.length}건`);
 

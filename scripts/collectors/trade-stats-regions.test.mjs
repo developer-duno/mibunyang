@@ -20,7 +20,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { computeRegionJeonseRate, pickLatestPerKey } = await import("./trade-stats-regions.mjs");
+const { computeRegionJeonseRate, pickLatestPerKey, fetchAllTrades } = await import("./trade-stats-regions.mjs");
 
 /**
  * @param {string} region
@@ -179,5 +179,70 @@ describe("pickLatestPerKey", () => {
     ];
     const latest = pickLatestPerKey(regions);
     expect(latest.size).toBe(0);
+  });
+});
+
+// ── fetchAllTrades — 고유키 커서 페이징 (세션534) ──────────────
+//
+// 사고: 옛 구현은 무정렬 `.range()` 로 trades(79만행)를 훑어 저장 집계가 원본의 8% 수준이었다
+// (unordered-pagination-loses-rows.md). 고유키(id) 커서로 바꿔 전량 유실 없이 받는다.
+// 배선(쿼리를 어떻게 만드는지)이라 mock 으로 잠근다.
+describe("fetchAllTrades — 고유키 커서 페이징", () => {
+  /**
+   * PostgREST 쿼리 빌더 mock. 호출 메서드를 순서대로 기록하고 페이지를 순차 반환한다.
+   * @param {Array<Array<Record<string, any>>>} pages
+   */
+  function makeSb(pages) {
+    /** @type {Array<{ method: string, args: any[] }>} */
+    const calls = [];
+    let page = 0;
+    const builder = {
+      /** @param {string} s */
+      select(s) { calls.push({ method: "select", args: [s] }); return builder; },
+      /** @param {string} c @param {any} v */
+      gte(c, v) { calls.push({ method: "gte", args: [c, v] }); return builder; },
+      /** @param {string} c @param {any} v */
+      is(c, v) { calls.push({ method: "is", args: [c, v] }); return builder; },
+      /** @param {string} c @param {any} o */
+      order(c, o) { calls.push({ method: "order", args: [c, o] }); return builder; },
+      /** @param {number} n */
+      limit(n) { calls.push({ method: "limit", args: [n] }); return builder; },
+      /** @param {string} c @param {any} v */
+      gt(c, v) { calls.push({ method: "gt", args: [c, v] }); return builder; },
+      /** @param {number} a @param {number} b */
+      range(a, b) { calls.push({ method: "range", args: [a, b] }); return builder; },
+      /** @param {any} r */
+      then(r) { return Promise.resolve({ data: pages[page++] ?? [], error: null }).then(r); },
+    };
+    const sb = {
+      /** @param {string} t */
+      from(t) { calls.push({ method: "from", args: [t] }); return builder; },
+    };
+    return { sb, calls };
+  }
+
+  /** @param {number} n @param {number} start */
+  const rows = (n, start = 0) =>
+    Array.from({ length: n }, (_, i) => ({ id: start + i + 1, region: "서울", gu: "강남구", price: 1, trade_type: "sale", deal_month: "202601" }));
+
+  it("select 에 id 포함 + order(id asc) 로 페이징 — 무정렬 range 를 쓰지 않는다", async () => {
+    const { sb, calls } = makeSb([rows(1000), rows(3, 1000)]);
+    const out = await fetchAllTrades(/** @type {any} */ (sb), "202601");
+    expect(calls.find((c) => c.method === "select")?.args[0]).toBe("id,region,gu,price,trade_type,deal_month");
+    const orders = calls.filter((c) => c.method === "order");
+    expect(orders.length).toBe(2); // 2페이지 = order 2회
+    expect(orders[0].args).toEqual(["id", { ascending: true }]);
+    expect(calls.some((c) => c.method === "range")).toBe(false); // 무정렬 OFFSET 금지
+    expect(out.length).toBe(1003); // 2페이지 전량
+  });
+
+  it("2페이지부터 커서(gt 마지막 id)로 이어받는다 — 오프셋을 안 쓴다", async () => {
+    const { sb, calls } = makeSb([rows(1000), rows(2, 1000)]);
+    const out = await fetchAllTrades(/** @type {any} */ (sb), "202601");
+    const gts = calls.filter((c) => c.method === "gt");
+    expect(gts.length).toBe(1); // 1페이지엔 커서 없음, 2페이지에만
+    expect(gts[0].args).toEqual(["id", 1000]); // 1페이지 마지막 id
+    expect(out.length).toBe(1002);
+    expect(new Set(out.map((r) => r.id)).size).toBe(1002); // 중복 0
   });
 });

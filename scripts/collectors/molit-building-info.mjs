@@ -159,7 +159,7 @@ async function main() {
       q = q.or("parking_ratio.is.null,max_floor.is.null");
     }
     return q;
-  }, sb));
+  }, sb, "id")); // 고유키 커서 — 무정렬 OFFSET 은 큰 표에서 행을 잃는다(unordered-pagination-loses-rows.md)
   const targets = data ?? [];
   log(PHASE, `대상: ${targets.length}건 ${force ? "(전체 재수집)" : "(상품성 필드 null 포함)"}`);
 

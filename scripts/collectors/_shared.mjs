@@ -597,24 +597,54 @@ export function stringSimilarity(a, b) {
 // ── Supabase 전체 조회 (1000행 제한 자동 페이지네이션) ────────
 // queryFn: (sb) => sb.from("t").select("cols").filter(...) 형태의 쿼리 빌더 콜백
 /**
+ * ⚠️ **정렬 없는 OFFSET 페이징은 큰 표(>1000행)에서 행을 잃는다**(세션513·514 실측 —
+ * `unordered-pagination-loses-rows.md`). Postgres 는 ORDER BY 가 없으면 페이지마다 다른
+ * 표본을 주므로, 79만행 `trades` 를 무정렬로 훑었더니 저장 집계가 원본의 8% 수준이었다.
+ *
+ * **옵트인 커서**: `keyCol` 을 넘긴 호출처만 고유키 커서(keyset)로 훑는다. 미지정(기본 null)이면
+ * 기존 offset 동작 그대로라 40곳+ 호출처의 동작이 한 줄도 안 바뀐다(회귀 0). 큰 표를 훑는
+ * 호출처만 그 테이블의 **고유** 키(대개 `id`, `articles`=article_no·`complexes`=complex_no)를
+ * `select` 에 포함해 넘기면 유실 없이 전량을 받는다.
+ *
  * @template T
  * @param {(sb: import("@supabase/supabase-js").SupabaseClient) => any} queryFn
  * @param {import("@supabase/supabase-js").SupabaseClient | null} [sb]
+ * @param {string | null} [keyCol] 넘기면 그 **고유** 키로 오름차순 커서 페이징(select 에 포함 필수).
+ *   미지정이면 기존 offset 모드(회귀 0). 커서 값이 비면(키가 select 에 없으면) 즉시 throw.
  * @returns {Promise<T[]>}
  */
-export async function selectAll(queryFn, sb = null) {
+export async function selectAll(queryFn, sb = null, keyCol = null) {
   const client = sb ?? getSupabase();
   const PAGE = 1000;
   /** @type {T[]} */
   const all = [];
-  let offset = 0;
-  while (true) {
-    const { data, error } = await queryFn(client).range(offset, offset + PAGE - 1);
-    if (error) throw new Error(`selectAll 조회 실패: ${error.message}`);
-    if (!data || data.length === 0) break;
-    all.push(...data);
-    if (data.length < PAGE) break;
-    offset += PAGE;
+  if (keyCol) {
+    // 커서 모드: 명시적으로 keyCol 넘긴 호출처만 (unordered-pagination-loses-rows.md §1).
+    /** @type {any} */
+    let cursor = null;
+    while (true) {
+      let q = queryFn(client).order(keyCol, { ascending: true }).limit(PAGE);
+      if (cursor != null) q = q.gt(keyCol, cursor);
+      const { data, error } = await q;
+      if (error) throw new Error(`selectAll 조회 실패: ${error.message}`);
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < PAGE) break;
+      cursor = data[data.length - 1][keyCol];
+      // 키가 select 에 없으면 조용히 도는 대신 즉시 실패(진단 가능).
+      if (cursor == null) throw new Error(`selectAll 커서 실패: ${keyCol} 컬럼이 select에 없음`);
+    }
+  } else {
+    // 기존 offset 모드 — 한 줄도 안 바뀜 (회귀 0).
+    let offset = 0;
+    while (true) {
+      const { data, error } = await queryFn(client).range(offset, offset + PAGE - 1);
+      if (error) throw new Error(`selectAll 조회 실패: ${error.message}`);
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < PAGE) break;
+      offset += PAGE;
+    }
   }
   return all;
 }

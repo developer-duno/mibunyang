@@ -8,7 +8,7 @@ import {
   REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, guParentCity,
   setupGracefulShutdown, clampUnsoldRate, budgetExceeded, fetchWithRetry,
-  BUILDER_ALIASES, BUILDER_CANONICALS,
+  BUILDER_ALIASES, BUILDER_CANONICALS, selectAll,
 } from "./_shared.mjs";
 import {
   resolveBuilder as brandsResolveBuilder,
@@ -772,5 +772,86 @@ describe("resolveBuilder — brands.ts 정본과 동기화", () => {
     }
     expect(resolveBuilder(null)).toBe("기타");
     expect(resolveBuilder("")).toBe("기타");
+  });
+});
+
+// ── selectAll 옵트인 커서 페이징 (세션534) ────────────────────
+//
+// 사고: 무정렬 `.range()` 페이징은 큰 표(>1000행)에서 페이지마다 다른 표본을 준다(세션513·514).
+// keyCol 을 넘긴 호출처만 고유키 커서로 훑고, 미지정이면 기존 offset 동작 그대로(회귀 0).
+// 이 가드는 **쿼리를 어떻게 만드는지**(order/gt vs range)를 잠근다 — 배선이라 mock 으로 본다.
+describe("selectAll — 옵트인 고유키 커서 페이징", () => {
+  /**
+   * 쿼리 빌더 mock. 호출 메서드를 순서대로 기록하고 페이지를 순차 반환한다.
+   * @param {Array<Array<Record<string, any>>>} pages
+   */
+  function makeClient(pages) {
+    /** @type {Array<{ method: string, args: any[] }>} */
+    const calls = [];
+    let page = 0;
+    const builder = {
+      /** @param {string} t */
+      from(t) { calls.push({ method: "from", args: [t] }); return builder; },
+      /** @param {string} s */
+      select(s) { calls.push({ method: "select", args: [s] }); return builder; },
+      /** @param {string} c @param {any} o */
+      order(c, o) { calls.push({ method: "order", args: [c, o] }); return builder; },
+      /** @param {number} n */
+      limit(n) { calls.push({ method: "limit", args: [n] }); return builder; },
+      /** @param {string} c @param {any} v */
+      gt(c, v) { calls.push({ method: "gt", args: [c, v] }); return builder; },
+      /** @param {string} c @param {any} v */
+      eq(c, v) { calls.push({ method: "eq", args: [c, v] }); return builder; },
+      /** @param {number} a @param {number} b */
+      range(a, b) { calls.push({ method: "range", args: [a, b] }); return builder; },
+      /** @param {any} r */
+      then(r) { return Promise.resolve({ data: pages[page++] ?? [], error: null }).then(r); },
+    };
+    return { client: builder, calls };
+  }
+
+  /** @param {number} n @param {number} start @param {boolean} withId */
+  const rows = (n, start = 0, withId = true) =>
+    Array.from({ length: n }, (_, i) => (withId ? { id: start + i + 1, v: "x" } : { v: "x" }));
+
+  it("keyCol 지정 시 order(고유키 asc)+limit 로 페이징 — range 를 쓰지 않는다", async () => {
+    const { client, calls } = makeClient([rows(1000), rows(3, 1000)]);
+    const out = await selectAll((s) => s.from("t").select("id"), /** @type {any} */ (client), "id");
+    const orders = calls.filter((c) => c.method === "order");
+    expect(orders.length).toBe(2); // 2페이지 = order 2회
+    expect(orders[0].args).toEqual(["id", { ascending: true }]);
+    expect(calls.some((c) => c.method === "range")).toBe(false); // 무정렬 OFFSET 금지
+    expect(out.length).toBe(1003);
+  });
+
+  it("2페이지부터 커서(gt 마지막 키)로 이어받는다", async () => {
+    const { client, calls } = makeClient([rows(1000), rows(2, 1000)]);
+    await selectAll((s) => s.from("t").select("id"), /** @type {any} */ (client), "id");
+    const gts = calls.filter((c) => c.method === "gt");
+    expect(gts.length).toBe(1); // 1페이지엔 커서 없음, 2페이지에만
+    expect(gts[0].args).toEqual(["id", 1000]); // 1페이지 마지막 id
+  });
+
+  it("전량 반환·중복 0", async () => {
+    const { client } = makeClient([rows(1000), rows(1000, 1000), rows(7, 2000)]);
+    const out = await selectAll((s) => s.from("t").select("id"), /** @type {any} */ (client), "id");
+    expect(out.length).toBe(2007);
+    expect(new Set(out.map((r) => r.id)).size).toBe(2007); // 중복 없음
+  });
+
+  it("keyCol 이 select 에 없으면(커서 값 null) 즉시 throw — 조용히 도는 것보다 낫다", async () => {
+    // 첫 페이지가 꽉 차(1000) 다음 페이지로 넘어가려는데 id 가 없어 커서를 못 만든다.
+    const { client } = makeClient([rows(1000, 0, false)]);
+    await expect(
+      selectAll((s) => s.from("t").select("v"), /** @type {any} */ (client), "id"),
+    ).rejects.toThrow(/컬럼이 select에 없음/);
+  });
+
+  it("keyCol 미지정(기본 null) = 기존 offset 모드 그대로 — range 를 쓰고 order 는 안 붙인다(회귀 0)", async () => {
+    const { client, calls } = makeClient([rows(1000), rows(3, 1000)]);
+    const out = await selectAll((s) => s.from("t").select("id"), /** @type {any} */ (client));
+    expect(calls.some((c) => c.method === "range")).toBe(true); // 기존 동작 = OFFSET
+    expect(calls.some((c) => c.method === "order")).toBe(false); // 커서 아님
+    expect(out.length).toBe(1003);
   });
 });
