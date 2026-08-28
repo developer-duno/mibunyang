@@ -37,6 +37,15 @@ function makeRes() {
   } as any;
 }
 
+/**
+ * KV 순서: isBlacklisted(bl:) → null(블랙 아님), user 조회(user:) → userData.
+ * 세션 534 S1 로 blacklist 확인이 user 조회 앞에 추가된 이후 정상 흐름은 이 순서를 채운다.
+ */
+function mockNotBlacklistedThenUser(userData: any) {
+  mockKv.get.mockResolvedValueOnce(null);
+  mockKv.get.mockResolvedValueOnce(userData);
+}
+
 describe("auth/kakao-consent handler", () => {
   it("POST가 아닌 메서드는 405를 반환한다", async () => {
     const res = makeRes();
@@ -65,15 +74,28 @@ describe("auth/kakao-consent handler", () => {
 
   it("존재하지 않는 사용자는 404", async () => {
     const token = createToken({ email: "ghost@test.com" });
-    mockKv.get.mockResolvedValueOnce(null);
+    mockNotBlacklistedThenUser(null);
     const res = makeRes();
     await handler({ method: "POST", body: { token, consent: true }, headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(404);
   });
 
+  // 세션 534 S1: 로그아웃/강제 로그아웃된 토큰은 401
+  it("블랙리스트된 토큰은 401 (동의 변경 차단)", async () => {
+    const token = createToken({ email: "kakao@test.com" });
+    mockKv.get.mockResolvedValueOnce(1); // isBlacklisted → true
+    const res = makeRes();
+    await handler({ method: "POST", body: { token, consent: true }, headers: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: "로그아웃된 토큰입니다" }));
+    // 블랙리스트에서 차단 → user 조회·set 미도달
+    expect(mockKv.set).not.toHaveBeenCalled();
+    expect(mockKv.sadd).not.toHaveBeenCalled();
+  });
+
   it("consent=true → user 갱신 + consent_marketing 집합 추가", async () => {
     const token = createToken({ email: "kakao@test.com" });
-    mockKv.get.mockResolvedValueOnce({ email: "kakao@test.com", name: "Tester", consentMarketing: null });
+    mockNotBlacklistedThenUser({ email: "kakao@test.com", name: "Tester", consentMarketing: null });
     const res = makeRes();
     await handler({ method: "POST", body: { token, consent: true }, headers: {} }, res);
     expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
@@ -85,7 +107,7 @@ describe("auth/kakao-consent handler", () => {
 
   it("consent=false → user 갱신 + consent_marketing 집합 제거", async () => {
     const token = createToken({ email: "kakao@test.com" });
-    mockKv.get.mockResolvedValueOnce({ email: "kakao@test.com", name: "Tester", consentMarketing: null });
+    mockNotBlacklistedThenUser({ email: "kakao@test.com", name: "Tester", consentMarketing: null });
     const res = makeRes();
     await handler({ method: "POST", body: { token, consent: false }, headers: {} }, res);
     expect(mockKv.set).toHaveBeenCalledWith("user:kakao@test.com", expect.objectContaining({
@@ -97,7 +119,7 @@ describe("auth/kakao-consent handler", () => {
 
   it("이메일 대소문자/공백은 정규화하여 조회한다", async () => {
     const token = createToken({ email: "  Kakao@TEST.com  " });
-    mockKv.get.mockResolvedValueOnce({ email: "kakao@test.com", name: "Tester" });
+    mockNotBlacklistedThenUser({ email: "kakao@test.com", name: "Tester" });
     const res = makeRes();
     await handler({ method: "POST", body: { token, consent: true }, headers: {} }, res);
     expect(mockKv.get).toHaveBeenCalledWith("user:kakao@test.com");
@@ -105,7 +127,7 @@ describe("auth/kakao-consent handler", () => {
 
   it("sadd 실패 시 500을 반환한다 (해시 미변경)", async () => {
     const token = createToken({ email: "kakao@test.com" });
-    mockKv.get.mockResolvedValueOnce({ email: "kakao@test.com", name: "Tester", consentMarketing: null });
+    mockNotBlacklistedThenUser({ email: "kakao@test.com", name: "Tester", consentMarketing: null });
     mockKv.sadd.mockRejectedValueOnce(new Error("Redis error"));
     const res = makeRes();
     await handler({ method: "POST", body: { token, consent: true }, headers: {} }, res);
@@ -116,7 +138,7 @@ describe("auth/kakao-consent handler", () => {
 
   it("srem 실패 시 500을 반환한다 (해시 미변경)", async () => {
     const token = createToken({ email: "kakao@test.com" });
-    mockKv.get.mockResolvedValueOnce({ email: "kakao@test.com", name: "Tester", consentMarketing: true });
+    mockNotBlacklistedThenUser({ email: "kakao@test.com", name: "Tester", consentMarketing: true });
     mockKv.srem.mockRejectedValueOnce(new Error("Redis error"));
     const res = makeRes();
     await handler({ method: "POST", body: { token, consent: false }, headers: {} }, res);

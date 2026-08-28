@@ -1,6 +1,7 @@
 import { kv } from "../_lib/redis.js";
 import { verifyToken, createToken, createRefreshToken, verifyRefreshToken, isAdminEmail } from "../_lib/auth.js";
 import { isBlacklisted, blacklistToken } from "../_lib/tokenBlacklist.js";
+import { isUserAccessDenied } from "../_lib/userAccess.js";
 import { withHandler } from "../_lib/handler.js";
 
 type UserRecord = {
@@ -10,11 +11,8 @@ type UserRecord = {
   role?: string;
 };
 
-/** 접근 거부 status (rejected/pending/suspended) 또는 user 부재 — handleRefresh·handleVerify 공유 조건.
- *  ⚠️ kakao.ts 는 pending 을 statusCode:"PENDING" 으로 따로 처리하므로 이 헬퍼와 합치지 않음. */
-function isAccessDenied(user: UserRecord | null | undefined): boolean {
-  return !user || user.status === "rejected" || user.status === "pending" || user.status === "suspended";
-}
+// 접근 거부 판정(user 부재 또는 rejected/pending/suspended)은 adminAuth 와 공유하는 단일 출처
+// isUserAccessDenied(../_lib/userAccess) 를 쓴다 — 기준이 갈리면 강제 로그아웃이 한쪽만 먹힌다.
 
 /** action=refresh → refresh token rotation (기존 /api/auth/refresh 통합) */
 async function handleRefresh(req: any, res: any) {
@@ -35,7 +33,7 @@ async function handleRefresh(req: any, res: any) {
   let user: UserRecord | null | undefined;
   try {
     user = (await kv.get(`user:${payload.email}`)) as UserRecord | null;
-    if (isAccessDenied(user)) {
+    if (isUserAccessDenied(user)) {
       return res.status(403).json({ ok: false, error: "접근 권한이 없습니다" });
     }
   } catch {
@@ -76,7 +74,7 @@ async function handleVerify(req: any, res: any) {
 
   try {
     const user = (await kv.get(`user:${payload.email}`)) as UserRecord | null;
-    if (isAccessDenied(user)) {
+    if (isUserAccessDenied(user)) {
       return res.status(403).json({ ok: false, reason: "revoked", error: "접근 권한이 없습니다" });
     }
   } catch {
