@@ -379,6 +379,54 @@ describe("articles 통합 fetch 컬럼 가드", () => {
   });
 });
 
+// ── complexes 무정렬 페이징 → 고유키(complex_no) 커서 회귀 가드 (세션534) ──────
+// complexes 는 id 컬럼이 없어 고유키 = complex_no. 무정렬 OFFSET 으로 훑으면 6.4만행
+// 3페이지 경계에서 행이 샌다(unordered-pagination-loses-rows.md §1). selectAll 커서 모드
+// 옵트인(keyCol="complex_no")이 되돌아가지 않게 소스에서 직접 검사.
+describe("complexes 고유키(complex_no) 커서 페이징 가드", () => {
+  const src = readFileSync(
+    fileURLToPath(new URL("./sync-naver-complex.mjs", import.meta.url)),
+    "utf8",
+  );
+
+  it("complexes 조회는 selectAll(..., sbMibunyang, \"complex_no\") 커서", () => {
+    // 호출부를 앵커로 keyCol 캡처 — keyCol 제거·변경 시 red (뮤테이션 대상).
+    const m = src.match(
+      /selectAll\(\s*\(s\) => s\.from\("complexes"\)[\s\S]*?,\s*sbMibunyang,\s*"([^"]+)"/,
+    );
+    expect(m?.[1]).toBe("complex_no");
+  });
+
+  it("complexes 에 무정렬 .range() 오프셋 루프가 남아있지 않음", () => {
+    // .from("complexes") 직후 .range( 가 붙으면 옛 offset 페이징이 되살아난 것.
+    expect(/\.from\("complexes"\)[\s\S]{0,400}?\.range\(/.test(src)).toBe(false);
+  });
+});
+
+// ── apartments 재조회(aptsForUnsold·aptsForNaver) 손제작 커서 회귀 가드 (세션534) ──
+// fail-open(에러 시 break·throw 안 함)을 유지해야 해서 selectAll(throw) 대신 id 손제작
+// 커서로 전환. 무정렬 OFFSET 으로 되돌아가면 3페이지 경계에서 행이 샌다(§1).
+describe("apartments 재조회 id 손제작 커서 페이징 가드", () => {
+  const src = readFileSync(
+    fileURLToPath(new URL("./sync-naver-complex.mjs", import.meta.url)),
+    "utf8",
+  );
+
+  it("apartments 조회에 무정렬 .range() 오프셋 루프가 남아있지 않음", () => {
+    // .from("apartments") 직후 .range( 가 붙으면 옛 offset 페이징이 되살아난 것.
+    expect(/\.from\("apartments"\)[\s\S]{0,400}?\.range\(/.test(src)).toBe(false);
+  });
+
+  it("aptsForUnsold·aptsForNaver 재조회는 id 커서(order+gt)로 훑는다", () => {
+    // 두 재조회 블록이 order("id", {ascending:true}) + gt("id", cursorX) 로 커서 훑기.
+    // 한 블록만 range 로 되돌아가도 order 개수가 2 미만이 되어 red (뮤테이션 대상).
+    const orderIds = src.match(/\.order\("id",\s*\{\s*ascending:\s*true\s*\}\)/g) ?? [];
+    const gtIds = src.match(/\.gt\("id",\s*cursor[A-Z]\)/g) ?? [];
+    expect(orderIds.length).toBeGreaterThanOrEqual(2); // B(aptsForUnsold) + C(aptsForNaver)
+    expect(gtIds.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 // ── flushUpdates 반환 형태 (collector_runs fail 집계용, 세션 373) ──────
 describe("flushUpdates {ok, fail} 반환", () => {
   it("빈 배열 → { ok: 0, fail: 0 }", async () => {
@@ -415,31 +463,38 @@ describe("main() recordCollectorRun 편입", () => {
   });
 
   it("complexes 조회 실패 → throw + status=failure 기록", async () => {
-    // 첫 supabase 호출(complexes select range)에서 에러 반환 → L203 throw
+    // 첫 supabase 호출(complexes selectAll 커서)에서 에러 반환 → throw.
+    // 세션534: selectAll 이 order().limit() 체인으로 훑고 "selectAll 조회 실패:" 로 래핑.
     getMibuyangSupabase.mockReturnValue(/** @type {any} */ ({
       from: () => ({
         select: () => ({
-          range: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+          order: () => ({
+            limit: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+          }),
         }),
       }),
     }));
 
-    await expect(main()).rejects.toThrow("complexes 조회 실패: boom");
+    await expect(main()).rejects.toThrow("selectAll 조회 실패: boom");
     expect(recordCollectorRun).toHaveBeenCalledWith(
       "sync-naver",
-      expect.objectContaining({ status: "failure", errorMessage: "complexes 조회 실패: boom" }),
+      expect.objectContaining({ status: "failure", errorMessage: "selectAll 조회 실패: boom" }),
     );
   });
 
   it("정상 종료(빈 데이터) → status=success / ok=0 / fail=0 기록", async () => {
-    // 모든 select·eq·not 체인이 빈 배열로 resolve → 4 Phase 전부 통과, throw 없음.
+    // 모든 select·eq·not·order·limit 체인이 빈 배열로 resolve → 4 Phase 전부 통과, throw 없음.
     // .not() 은 thenable(빈 배열) 이자 체인 가능해야 함 (heating 쿼리 L220-222).
+    // 세션534: complexes·apartments 는 selectAll 커서(order().limit().gt()) 경로.
     const emptyResult = { data: [], error: null };
     const emptyChain = {
       select: () => emptyChain,
       eq: () => emptyChain,
       not: () => Promise.resolve(emptyResult),
       range: () => Promise.resolve(emptyResult),
+      order: () => emptyChain,
+      limit: () => Promise.resolve(emptyResult),
+      gt: () => Promise.resolve(emptyResult),
     };
     getMibuyangSupabase.mockReturnValue(/** @type {any} */ ({ from: () => emptyChain }));
 
