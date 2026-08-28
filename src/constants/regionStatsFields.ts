@@ -13,24 +13,14 @@
  *
  * - **시·도**(`latest_regions`): 인구증감률·순이동·주택보급률
  * - **시·군·구**(`latest_regions_gu` · trade-stats `guTrades`): 합계출산율·의사수·병상수·최근 6개월 거래
- *
- * ⚠️ 이 목록은 **export 필수**다. `lib/tabExtraFields` 가 "이미 보여준 자리"로 세고,
- * `tabExtraFields.test.ts` 의 전량 도달 검사가 같은 것을 가리키는지 잠근다. 여기서 빼면
- * 그 필드가 서랍으로 되돌아가거나(중복 노출) 어디에도 안 나오게 된다(실종).
  */
-
-/** 시·도 단위 3종 — 라벨 접두는 `{region}` */
-export const REGION_STATS_SIDO_FIELDS = ["popGrowth", "netMigration", "housingSupplyLevel"] as const;
-
-/** 시·군·구 단위 4종 — 라벨 접두는 `{gu}` (gu 없으면 `{region}` 폴백) */
-export const REGION_STATS_GU_FIELDS = ["fertilityRate", "doctorsPer1k", "hospitalBedsPer1k", "recentTrades6m"] as const;
 
 /**
  * 7종 전량 (시·도 3 + 시·군·구 4).
  *
- * ⚠️ 위 두 배열을 펼쳐 만들지 않고 **손으로 적는다.** 펼쳐 쓰면 한쪽 배열을 비우는 순간
+ * ⚠️ 다른 목록에서 펼쳐 만들지 않고 **손으로 적는다.** 파생으로 만들면 그 원본이 비는 순간
  * 이 목록도 같이 비어 도달 검사가 통째로 사라진다(세션 505 `gone` 목록이 같은 이유로
- * 손 목록이다). 두 곳이 어긋나면 `RegionStats.test.jsx` 가 빨개진다.
+ * 손 목록이다). `RegionStats.test.jsx` 의 전량 도달 검사가 이 목록을 기준으로 한다.
  */
 export const REGION_STATS_FIELDS = [
   "popGrowth",

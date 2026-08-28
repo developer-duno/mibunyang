@@ -223,7 +223,6 @@ export const DIRECTION_BONUS: Record<string, number> = {
   북향: 0,
 };
 export const SUNLIGHT_DIRECTION_MAX = 38; // 일조(30) + 방향 보너스(8) 상한
-export const WON_TO_MANWON = 10000; // 원 → 만원 변환
 export const NOISE_TIERS: Tier[] = [
   { max: 50, score: 30 },
   { max: 60, score: 22 },
@@ -653,28 +652,6 @@ export const POLICE_DIST_TIERS: Tier[] = [
 export const POLICE_DIST_HIGH_SCORE = 70; // 3km 초과
 export const POLICE_DIST_NULL_SCORE = 35; // 데이터 없음 중립
 
-// scoreRisk popGrowth (위험 관점: 높으면 안전 → 낮은 위험점수)
-export const POP_RISK_TIERS: Tier[] = [
-  { min: 0.5, score: 10 },
-  { min: 0, score: 20 },
-  { min: -0.3, score: 30 },
-  { min: -0.8, score: 45 },
-];
-export const POP_RISK_HIGH = 60;
-export const POP_RISK_NULL = 35;
-
-// === Future: 인구 (미래가치 관점: 7단계) ===
-export const POP_FUTURE_TIERS: Tier[] = [
-  { min: 1.0, score: 95 },
-  { min: 0.5, score: 80 },
-  { min: 0, score: 65 },
-  { min: -0.3, score: 50 },
-  { min: -0.8, score: 35 },
-  { min: -2.0, score: 20 },
-];
-export const POP_FUTURE_LOW = 10;
-export const POP_FUTURE_NULL = 35;
-
 // === Future: 동적 가중치 룩업 테이블 — 세션511 폐기 ===
 //
 // 8조합의 합이 전부 1.00 인 동적 재분배였다. 그 성질 때문에 항등식
@@ -790,16 +767,8 @@ export const INTEREST_RATE = 0.045; // 중도금 대출 추정 금리 4.5%
 export const LOAN_TERM_MULT = 1.5; // 중도금 기간 계수 (약 1.5년)
 export const BENEFIT_FULL_RATE = 25; // 총혜택률 25% = 100점
 
-// === Area 조정 ===
-export const AREA_ADJ_TIERS: { max: number; adj: number }[] = [
-  { max: 60, adj: 1.08 },
-  { max: 85, adj: 1.0 },
-  { max: 115, adj: 0.97 },
-];
-export const AREA_ADJ_LARGE = 0.94;
-
 // === Price: 평형별 실거래 버킷 매칭 허용 오차 ===
-// 옛 fairPrice 는 `nearby_median`(구 안 전체 거래 총액 중위값, 면적 무관)에 AREA_ADJ_TIERS(±3~8%)만
+// 옛 fairPrice 는 `nearby_median`(구 안 전체 거래 총액 중위값, 면적 무관)에 면적 계수(±3~8%)만
 // 곱해 산정했다 — 국민평형(전형 면적) 기준값을 대형 평형에 그대로 써서 corr(면적, 괴리도) = −0.704,
 // 큰 평형일수록 자동으로 "비싸다"로 채점되는 구조적 편향이 있었다(실측: 라펜트힐 241.958㎡ 괴리도
 // −924.1%). `trade_stats.price_by_area`(5㎡ 버킷별 실거래) 가 이미 그 평형대의 실거래이므로 이걸

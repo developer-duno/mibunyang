@@ -26,7 +26,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  */
 function readStripped(relPath) {
   return readFileSync(resolve(ROOT, relPath), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, "")
     .replace(/^[ \t]*\/\/.*$/gm, "");
 }
 

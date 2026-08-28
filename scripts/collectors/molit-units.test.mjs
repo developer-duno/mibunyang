@@ -240,7 +240,7 @@ describe("main 이 unmatched 를 collector_runs 의 skip 에 합산한다 (세�
   // main() 은 export 되지 않아 배선 자체를 소스로 확인한다.
   // ⚠️ 좌변(await recordCollectorRun)까지 고정 + 주석 제거 사본에 검사 — 선언부·주석 매칭 함정 차단.
   const src = readFileSync(new URL("./molit-units.mjs", import.meta.url), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, " ")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
   it("recordCollectorRun 호출의 skip 이 skipped + unmatched 다", () => {

@@ -71,7 +71,7 @@ export const ALLOWLIST = new Set([
  */
 export function stripComments(src) {
   return src
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, " ")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1")
     .replace(/(^|\s)#[^\n]*/gm, "$1");
 }

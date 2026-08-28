@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from "react";
 import { C, F, R, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice } from "@/lib/format";
+import { NOW_YM } from "@/lib/classify";
 import { getTopCats } from "@/constants/profiles";
 import type { Category } from "@/constants/profiles";
 import { aptVerdict } from "@/constants/aptVerdict";
@@ -11,9 +12,6 @@ import { buildCardChips, splitCardChips } from "@/constants/cardChips";
 import type { CardChip, ChipTone } from "@/constants/cardChips";
 import { DeviationStrip } from "./DeviationStrip";
 import type { AptCardProps } from "@/types/components/AptCard.types";
-
-/* ── 모듈 레벨 상수 (렌더마다 재생성 방지) ── */
-const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
 /**
  * 칩 색 — `cardChips.ts` 가 정한 성격(tone)을 테마 색으로 옮기는 유일한 자리.

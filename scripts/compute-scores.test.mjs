@@ -25,7 +25,7 @@ import {
 } from "./compute-scores.mjs";
 
 const src = readFileSync(new URL("./compute-scores.mjs", import.meta.url), "utf8")
-  .replace(/\/\*[\s\S]*?\*\//g, " ")
+  .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, " ")
   .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
 describe("compute-scores — collector_runs 기록 배선 (세션 495)", () => {
