@@ -879,3 +879,18 @@ describe("searchKakaoUntilMatch — 잡음에 밀린 시설을 페이지 넘겨 
     expect(calls).toEqual([1]);
   });
 });
+
+// 세션534 — apartments 무정렬 페이징 → 고유키(id) 커서 회귀 가드.
+// 무정렬 OFFSET 은 apartments 3페이지 경계에서 행을 잃는다(unordered-pagination-loses-rows.md).
+// selectAll 호출에 keyCol="id" 가 빠지면 조용히 offset 모드로 되돌아가므로 호출부를 소스에서 잠근다.
+describe("apartments 페이징 — 고유키 커서 회귀 가드 (세션534)", () => {
+  it("apartments 는 selectAll(..., sb, \"id\") 커서로 훑는다", () => {
+    expect(COLLECTOR_SRC.includes('s.from("apartments")')).toBe(true);
+    expect(COLLECTOR_SRC).toMatch(
+      /selectAll\(\(s\) => s\.from\("apartments"\)\.select\([^)]*\), sb, "id"\)/,
+    );
+  });
+  it("apartments 를 무정렬 .range() 손제작 루프로 훑지 않는다", () => {
+    expect(COLLECTOR_SRC).not.toMatch(/from\("apartments"\)\.select\([^)]*\)\.range\(/);
+  });
+});

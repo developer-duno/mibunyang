@@ -11,7 +11,7 @@
  *   node scripts/collectors/schools-neis.mjs --rescale-only [--dry-run]
  *       저장된 nearby_schools 만 읽어 school_score/school_grade 재계산 (외부 API 호출 0)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota, recordCollectorRun, createReporter } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota, recordCollectorRun, createReporter, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -503,15 +503,8 @@ async function main() {
   else log(PHASE, "⚠️ SCHOOLINFO_KEY 미설정 — 학생수 보강 스킵");
 
   const sb = getSupabase();
-  const PAGE_SIZE = 1000;
-  const apts = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await sb.from("apartments").select("id, name, lat, lng, region, gu, bjd_code").range(offset, offset + PAGE_SIZE - 1);
-    if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
-    if (!data || data.length === 0) break;
-    apts.push(...data);
-    if (data.length < PAGE_SIZE) break;
-  }
+  // 세션534: 무정렬 OFFSET → 고유키(id) 커서 (unordered-pagination-loses-rows.md §1).
+  const apts = await selectAll((s) => s.from("apartments").select("id, name, lat, lng, region, gu, bjd_code"), sb, "id");
 
   const targets = apts.filter(a => a.lat && a.lng).slice(0, limit);
 

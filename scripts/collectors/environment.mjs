@@ -15,7 +15,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { spawnSync } from "node:child_process";
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, ROOT, createReporter, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, ROOT, createReporter, recordCollectorRun, selectAll } from "./_shared.mjs";
 
 // 세션 504: 매월 도는데 collector_runs 행이 0개라 감시 사각이었다.
 const PHASE = "environment";
@@ -129,17 +129,10 @@ async function main() {
     log("load", `apartments.json: ${apartments.length}건`);
   } else {
     const sb = getSupabase();
-    const PAGE_SIZE = 1000;
-    /** @type {EnvAptRow[]} */
-    const acc = [];
-    for (let offset = 0; ; offset += PAGE_SIZE) {
-      const { data, error } = await sb.from("apartments").select("id, name, lat, lng, view").range(offset, offset + PAGE_SIZE - 1);
-      if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
-      if (!data || data.length === 0) break;
-      acc.push(.../** @type {EnvAptRow[]} */ (/** @type {unknown} */ (data)));
-      if (data.length < PAGE_SIZE) break;
-    }
-    apartments = acc;
+    // 세션534: 무정렬 OFFSET → 고유키(id) 커서 (unordered-pagination-loses-rows.md §1).
+    apartments = /** @type {EnvAptRow[]} */ (/** @type {unknown} */ (
+      await selectAll((s) => s.from("apartments").select("id, name, lat, lng, view"), sb, "id")
+    ));
     log("load", `Supabase apartments: ${apartments.length}건`);
   }
 

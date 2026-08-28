@@ -14,7 +14,7 @@
 import {
   loadEnv, getMibuyangSupabase, log, logError, sleep,
   upsertBatch, createReporter, recordApiQuota, recordCollectorRun, fetchWithRetry,
-  getLawdCd, normalizeGu, budgetExceeded,
+  getLawdCd, normalizeGu, budgetExceeded, selectAll,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -225,18 +225,12 @@ async function main() {
   const sb = getMibuyangSupabase();
 
   log(PHASE, "아파트 목록 조회...");
-  const PAGE = 1000;
+  // 세션534: 무정렬 OFFSET → 고유키(id) 커서 (unordered-pagination-loses-rows.md §1).
+  // id 는 커서 전용(다운스트림 미사용) — select 에 넣어야 selectAll 이 커서를 만든다.
   /** @type {Array<{ region: string; gu: string | null }>} */
-  const allApts = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await sb.from("apartments").select("region,gu").range(from, from + PAGE - 1);
-    if (error) throw new Error("apartments 조회 실패: " + error.message);
-    if (!data || data.length === 0) break;
-    allApts.push(...(/** @type {Array<{ region: string; gu: string | null }>} */ (data)));
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
+  const allApts = /** @type {Array<{ region: string; gu: string | null }>} */ (/** @type {unknown} */ (
+    await selectAll((s) => s.from("apartments").select("id,region,gu"), sb, "id")
+  ));
 
   // 세종은 구·군 없이 단일 LAWD_CD(36110)만 유효 — gu 없어도 한 번만 수집
   // 세션95 단계 B: apartments.gu 가 미래 경로로 오염돼도 normalizeGu 로 방어
