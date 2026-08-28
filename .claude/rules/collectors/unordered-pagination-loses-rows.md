@@ -113,10 +113,20 @@ const { count } = await sb.from(t).select("*", { count: "exact", head: true })./
   `article_no`/`complex_no`)를 넘긴다 — 세션534 적용분 = `lhzone-status`·`naver-devplan`·`molit-building-info`.
 - 세션534 `scripts/collectors/trade-stats-regions.mjs` `fetchAllTrades` — trades 79만행을 옛 무정렬로
   훑던 것(trade-stats 세션514 수정의 미전파 쌍둥이)을 `id` 커서로 전환.
-- ⚠️ **아직 남은 무정렬 호출처**(세션534 감사가 확인, 회귀 위험으로 이번 제외 — BACKLOG 등재):
-  apartments/schools 대상 손제작 `.range()` 루프(transit-match·schools-neis·infra-kakao·noxious·
-  environment·industry-match·transport-tago·reverse-geocode·collect-trades·collect-crime-safety).
-  표가 3페이지 미만이라 유실 규모 작음. 위 `selectAll(keyCol)` 옵트인으로 전환하면 된다.
+- 세션534 PR-7 = **apartments/complexes 무정렬 인라인 루프 전수 종결**(14곳: 단일줄 8 + 다중줄 6).
+  전환 규칙: 전량 수집형(push만) → `selectAll(fn, sb, keyCol)` 통째 교체 / **에러가 fail-open**
+  (`if(err){logError;break}` throw 아님)인 곳(sync-naver-complex aptsForUnsold·aptsForNaver) →
+  selectAll(throw)로 바꾸면 fail-open→fail-close 회귀라 **손제작 커서(order id+gt)로 fail-open 유지**.
+  ⚠️ selectAll 은 에러를 `selectAll 조회 실패:` 로 래핑 → collector_runs errorMessage 문구가 바뀜(기능 무관).
+- ⚠️ **스캔 맹점 (세션534 실증)**: `.range()` 손제작 루프를 **단일줄 grep** 으로만 찾으면 **여러 줄에 걸친
+  루프를 통째로 놓친다**(PR-7 첫 스캔이 8곳만 잡고 다중줄 6곳을 놓쳐 리뷰가 뒤늦게 발견). 무정렬 루프
+  전수는 `.range(` 위치마다 앞 6줄에서 `from("<표>")` + `.order(` 부재를 보는 식으로 **컨텍스트 grep**
+  하거나 multiline 으로 찾을 것. 단일줄 정규식은 반드시 놓친다.
+- ⚠️ **아직 남은 무정렬 호출처**(BACKLOG 등재 — 별도 작업): `sync-naver-complex.mjs:42` 범용 헬퍼
+  `fetchAllPages` 가 무정렬 OFFSET 으로 **`articles`(137만행)·`complex_price_history`** 를 훑는다.
+  이건 §2(필터 걸린 큰 표는 훑는 방향 결정 — articles 는 **내림차순 lt 커서**)가 필요한 복잡 케이스라
+  단순 id 커서로 안 된다 + 자체 committed 테스트가 range 동작을 기대해 재작성 동반. `_shared.mjs`
+  `selectAll` 은 이제 옵트인 커서 제공하나 fetchAllPages 는 별개 헬퍼.
 
 ## 차단 검증
 
