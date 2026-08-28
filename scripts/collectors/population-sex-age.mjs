@@ -170,6 +170,20 @@ export function pickCanonicalRows(items, recordedAt) {
 }
 
 /**
+ * 행안부 API items.item 정규화 — 다행이면 배열, 1행이면 단일 객체(양형).
+ * 배열일 때만 처리하면 1행 응답(시군구 1개인 시도 등)을 통째로 버린다.
+ * parsegu-normalization.md §3 답습.
+ * @param {any} json
+ * @returns {Array<Record<string, unknown>>}
+ */
+export function normalizeItems(json) {
+  const items = json?.Response?.items?.item;
+  if (Array.isArray(items)) return /** @type {Array<Record<string, unknown>>} */ (items);
+  if (items && typeof items === "object") return [/** @type {Record<string, unknown>} */ (items)];
+  return [];
+}
+
+/**
  * @param {number} year
  * @param {number} month
  * @returns {Promise<Array<Record<string, unknown>>>}
@@ -196,10 +210,7 @@ async function fetchSexAge(year, month) {
     try {
       const res = await fetchWithRetry(`${BASE_URL}?${params}`);
       const json = /** @type {any} */ (await res.json());
-      const items = json?.Response?.items?.item;
-      if (items && Array.isArray(items)) {
-        allItems.push(.../** @type {Array<Record<string, unknown>>} */ (items));
-      }
+      allItems.push(...normalizeItems(json));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log("fetch", `  ${stdgCd}: ${msg} — skip`);
