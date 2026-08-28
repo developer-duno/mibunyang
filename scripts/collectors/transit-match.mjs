@@ -31,7 +31,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { spawnSync } from "node:child_process";
-import { loadEnv, getSupabase, log, logError, ROOT, haversineKm, createReporter, recordCollectorRun, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, ROOT, haversineKm, createReporter, recordCollectorRun, today, selectAll } from "./_shared.mjs";
 
 // 세션 511: 이 수집기를 실행하는 워크플로가 2026-03-14 이후 0건이었다(audit-orphan-collectors
 // 사각지대). collector_runs 행도 없어 아무 감시도 안 걸렸다 — industry-match.mjs 배선 답습.
@@ -264,16 +264,9 @@ async function main() {
     log("load", `apartments.json: ${apartments.length}건`);
   } else {
     const sb = getSupabase();
-    const PAGE_SIZE = 1000;
-    const acc = [];
-    for (let offset = 0; ; offset += PAGE_SIZE) {
-      const { data, error } = await sb.from("apartments").select("id, name, lat, lng, region, gu, transit_dev, dev_dist, city_dev, industry_dev").range(offset, offset + PAGE_SIZE - 1);
-      if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
-      if (!data || data.length === 0) break;
-      acc.push(...data);
-      if (data.length < PAGE_SIZE) break;
-    }
-    apartments = acc;
+    // 세션534: 무정렬 OFFSET → 고유키(id) 커서. apartments 3페이지 경계에서의 행 유실 차단
+    // (unordered-pagination-loses-rows.md §1). id 를 select 에 포함 → selectAll(keyCol="id").
+    apartments = await selectAll((s) => s.from("apartments").select("id, name, lat, lng, region, gu, transit_dev, dev_dist, city_dev, industry_dev"), sb, "id");
     log("load", `Supabase apartments: ${apartments.length}건`);
   }
 

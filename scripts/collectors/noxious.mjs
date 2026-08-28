@@ -23,6 +23,7 @@ import {
   createReporter,
   recordCollectorRun,
   budgetExceeded,
+  selectAll,
 } from "./_shared.mjs";
 
 const PHASE = "noxious";
@@ -174,17 +175,10 @@ async function main() {
     log("load", `apartments.json: ${apartments.length}건`);
   } else {
     const sb = getSupabase();
-    const PAGE_SIZE = 1000;
-    /** @type {NoxiousAptRow[]} */
-    const acc = [];
-    for (let offset = 0; ; offset += PAGE_SIZE) {
-      const { data, error } = await sb.from("apartments").select("id, name, lat, lng, noxious, noxious_dist").range(offset, offset + PAGE_SIZE - 1);
-      if (error) throw new Error(`Supabase 조회 실패: ${error.message}`);
-      if (!data || data.length === 0) break;
-      acc.push(.../** @type {NoxiousAptRow[]} */ (/** @type {unknown} */ (data)));
-      if (data.length < PAGE_SIZE) break;
-    }
-    apartments = acc;
+    // 세션534: 무정렬 OFFSET → 고유키(id) 커서 (unordered-pagination-loses-rows.md §1).
+    apartments = /** @type {NoxiousAptRow[]} */ (/** @type {unknown} */ (
+      await selectAll((s) => s.from("apartments").select("id, name, lat, lng, noxious, noxious_dist"), sb, "id")
+    ));
     log("load", `Supabase apartments: ${apartments.length}건`);
   }
 
