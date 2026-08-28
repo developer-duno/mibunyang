@@ -226,3 +226,54 @@ describe("괴리도 — 잰 잣대를 밝힌다 (세션531)", () => {
     expect(at(-zero + 0.5)).toBeGreaterThan(0);
   });
 });
+
+// ── 미래가치 3축 — 원문이 있으면 detail 이 "없음"이라 하지 않는다 (SC3, PR-2) ──────
+//
+// info 는 원문(transitDev/cityDev/indStr)을 그대로 보여주는데, 미매칭이면 detail 만
+// "…없음 (0점)" 이라 한 줄 안에서 서로 다른 말을 했다(값 있는데 낮은 점수 ≠ 부재).
+// 이제 detail 도 info 와 같은 조건(원문 유무)으로 갈린다.
+// ⚠️ 반드시 calcCats 를 지난다 — sanitize 가 transitDev/cityDev/industryDev 를 str() 로 지난다.
+// ⚠️ 옛 문구("…없음")로 되돌리면 red 가 되도록 원문-있음 케이스에서 그 부재를 함께 단언한다.
+describe("미래가치 3축 — 원문이 있으면 '없음'이라 하지 않는다 (SC3)", () => {
+  /** @param {Record<string, unknown>} over */
+  const future = (over) =>
+    calcCats(apt({ id: 1, price: 50000, region: "경기", ...over }), { regionMedians: {} }).future;
+  /** @param {Record<string, unknown>} over @param {string} name */
+  const detailOf = (over, name) => sub(future(over), name)?.detail;
+  /** @param {Record<string, unknown>} over @param {string} name */
+  const scoreOf = (over, name) => future(over).subs.find((s) => s.name === name)?.score;
+
+  it("교통개발: 원문 있으나 형식 미매칭이면 '형식을 해석하지 못함' (0점) — '없음' 아님", () => {
+    const d = detailOf({ transitDev: "알 수 없는 형식" }, "교통개발");
+    expect(d).toContain("형식을 해석하지 못함");
+    expect(d).not.toContain("교통개발 없음"); // 원문이 있는데 '없음'이라 하면 거짓
+    expect(scoreOf({ transitDev: "알 수 없는 형식" }, "교통개발")).toBe(0); // 점수는 무변경
+  });
+  it("교통개발: 원문이 아예 없으면 '교통개발 없음' 유지", () => {
+    expect(detailOf({}, "교통개발")).toBe("교통개발 없음 (0점)");
+  });
+
+  it("도시개발: 원문 있으나 미매칭 → '형식을 해석하지 못함' (0점) — '없음' 아님", () => {
+    const d = detailOf({ cityDev: "택지지구(거리없음)" }, "도시개발");
+    expect(d).toContain("형식을 해석하지 못함");
+    expect(d).not.toContain("개발지구 없음");
+  });
+  it("도시개발: 원문 없으면 '개발지구 없음' 유지", () => {
+    expect(detailOf({}, "도시개발")).toBe("반경 5km 안에 개발지구 없음 (0점)");
+  });
+
+  it("산업개발: 원문 있으나 미매칭 → '형식을 해석하지 못함' (0점) — '없음' 아님", () => {
+    const d = detailOf({ industryDev: "산단(거리없음)" }, "산업개발");
+    expect(d).toContain("형식을 해석하지 못함");
+    expect(d).not.toContain("산업단지 없음");
+  });
+  it("산업개발: 원문 없으면 '산업단지 없음' 유지", () => {
+    expect(detailOf({}, "산업개발")).toBe("반경 5km 안에 산업단지 없음 (0점)");
+  });
+
+  it("매칭되면 거리 설명이 그대로 (형식 미해석 문구를 붙이지 않는다)", () => {
+    const d = detailOf({ industryDev: "테크노밸리 1.5km" }, "산업개발");
+    expect(d).toContain("산업단지까지 1.5km");
+    expect(d).not.toContain("형식을 해석하지 못함");
+  });
+});

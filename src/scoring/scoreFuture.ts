@@ -134,8 +134,13 @@ export function scoreFuture(apt: Apt): Res {
         info: transitDev || "없음",
         // 문구는 점수표에서 뽑는다 — 숫자를 박으면 표만 바뀌었을 때 "0점인데 만점 설명"이 남는다
         // (세션499 등급 문구 사고와 같은 자리).
+        // ⚠️ 미매칭이어도 **원문이 있으면** "없음"이라 하지 않는다 — info 는 원문을 그대로 보여주는데
+        //    detail 만 "없음"이라 하면 한 줄 안에서 서로 다른 말을 한다(값 있는데 낮은 점수 ≠ 부재,
+        //    .claude/rules/meta/score-meaning-and-wording-are-a-pair.md). info 와 같은 조건(원문 유무)으로 가른다.
         detail: !trMatch
-          ? "교통개발 없음 (0점)"
+          ? transitDev && transitDev !== "없음"
+            ? `${transitDev} — 형식을 해석하지 못함 (0점)`
+            : "교통개발 없음 (0점)"
           : TRANSIT_OPEN.includes(trStatus)
             ? `${transitDev} — 이미 개통해 입지 점수(지하철 거리)에 반영됩니다 (미래가치 0점)`
             : `${transitDev} · ${devDist}km — 확실성 ${TRANSIT_CERTAINTY[trStatus] ?? TRANSIT_CERTAINTY_DEFAULT}점` +
@@ -146,9 +151,12 @@ export function scoreFuture(apt: Apt): Res {
         name: "도시개발",
         score: Math.round(citySc),
         info: cityDev || "없음",
+        // 미매칭이어도 원문이 있으면 "없음"이라 하지 않는다(위 교통개발과 같은 규약).
         detail: cityMatch
           ? `${cityDev} — 개발지구까지 ${cityMatch[2]}km (500m내 100점 · 1km 70 · 2km 40 · 3km 20 · 그 밖 0)`
-          : "반경 5km 안에 개발지구 없음 (0점)",
+          : cityDev && cityDev !== "없음"
+            ? `${cityDev} — 형식을 해석하지 못함 (0점)`
+            : "반경 5km 안에 개발지구 없음 (0점)",
       },
       {
         name: "인구",
@@ -166,9 +174,12 @@ export function scoreFuture(apt: Apt): Res {
         // (세션510: "427곳이 값을 갖고도 '없음' 표시" 와 같은 자리)
         info: indStr || "없음",
         // 산업단지는 LH 지구보다 드물어(최근접 중앙 3.28km) 등급 간격이 넓다
+        // 미매칭이어도 원문이 있으면 "없음"이라 하지 않는다(위 교통개발과 같은 규약).
         detail: indMatch
           ? `${indStr} — 산업단지까지 ${indMatch[2]}km (1km내 100점 · 2km 75 · 3km 50 · 5km 25 · 그 밖 0)`
-          : "반경 5km 안에 산업단지 없음 (0점)",
+          : indStr && indStr !== "없음"
+            ? `${indStr} — 형식을 해석하지 못함 (0점)`
+            : "반경 5km 안에 산업단지 없음 (0점)",
       },
     ],
   };

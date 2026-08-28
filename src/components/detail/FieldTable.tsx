@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
+import { NO_DATA_TOKENS } from "@/constants/emptyText";
 import { EmphasisBadge } from "@/components/primitives";
 import type { Apt } from "@/types/scoring";
 
@@ -85,7 +86,10 @@ export const FieldTable = memo(function FieldTable({
           const raw = apt[fk] ?? null;
           const val = m.fmt ? m.fmt(raw, apt) : (raw ?? "미수집");
           const isDef = m.isDefault && m.isDefault(raw);
-          const isMissing = raw == null && (val === "—" || val === "미수집");
+          // 빈 값 판정은 공용 토큰 목록으로 넓힌다 — fmt 가 "정보 없음"/"데이터 부재" 를 내는 필드도
+          // 회색 이탤릭으로 처리된다. `raw == null` 가드는 유지: 측정된 배열·0 은 영향 0
+          // (예: nPos 가 v===0 에 "미수집"을 내도 raw 가 0 이라 미수집 처리 안 됨).
+          const isMissing = raw == null && (NO_DATA_TOKENS as readonly string[]).includes(String(val));
           return (
             <div
               key={fk}
