@@ -134,25 +134,6 @@ describe("DataSectionBlock", () => {
   // 세션508 PR-3b: 교통 필드 null → "—" 검증은 TransportCard.test.tsx 로 이관했다
   // (subwayName·subwayLines·busStopNames 는 이제 LOCATION_SECTIONS 를 안 거친다).
 
-  // pairs 섹션 렌더 — 세션 505 로 "생활인프라 (반경 1km)" 실제 섹션은 없앴다(거리 점 그림이
-  // 개수까지 병기해 흡수). ⚠️ 세션508 PR-3b B1: `InfrastructureSection`(pairs 실제 렌더)은
-  // 죽은 코드로 삭제됐다 — DataSectionBlock 은 이제 `section.pairs` 를 안 읽는다. 다만
-  // `fieldsOf()`(lib/dataSections)는 여전히 pairs 를 채움률 계산에 펼치므로, 이 테스트는
-  // "InfrastructureSection이 렌더한다"가 아니라 "pairs 필드도 채움률 도넛 계산에 들어간다"만
-  // 정직하게 검증한다(주입 섹션이라 실제 4그룹엔 pairs 를 쓰는 곳이 없다).
-  it("pairs 필드도 채움률 도넛 계산에 들어간다 (렌더는 안 함 — InfrastructureSection 삭제)", () => {
-    const apt = /** @type {any} */ (makeApt());
-    const section = /** @type {any} */ ({
-      title: "가상 인프라",
-      pairs: [
-        ["hospital", "hospitalDist"],
-        ["mart", "martDist"],
-      ],
-    });
-    render(<DataSectionBlock section={section} apt={apt} />);
-    expect(screen.getByRole("img", { name: /가상 인프라.*채움률/ })).toBeTruthy();
-  });
-
   // 이 동네 거래 시세 — highlight 섹션 (세션 507: 옛 "시장/투자 지표" 를 갈아 낀 이름)
   it("'이 동네 거래 시세' 섹션은 펼치면 PIR 등 강조 필드를 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());

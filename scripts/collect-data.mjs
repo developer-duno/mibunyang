@@ -1161,6 +1161,9 @@ async function main() {
   log("Phase 8: 파생 필드 계산...");
   apartments = apartments.map(a => {
     // psr: 분양가 / 주변 중위가
+    // ⚠️ 이 psr(분양가÷주변 중위가 = 총액 비율)은 레거시 전체수집 경로 전용이다 —
+    //    daily-deploy(--from-supabase-only)는 supabaseOnlyMode 에서 먼저 return 하므로 여기 도달 안 함.
+    //    이 경로를 되살리면 화면이 쓰는 VIEW 의 ts.psr(면적 반영)과 다른 총액 비율이 PSR 에 유입된다.
     const psr = (a.price && a.nearbyMedian && a.nearbyMedian > 0)
       ? Math.round(a.price / a.nearbyMedian * 100) / 100 : null;
 

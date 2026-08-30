@@ -1,7 +1,7 @@
 import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
 import type { Apt } from "@/types/scoring";
 
-/** 현재 연월 "YYYYMM" (AptCard.NOW_YM과 동일 · moveInSoon 정렬 공용) */
+/** 현재 연월 "YYYYMM" (AptCard·moveInSoon 정렬 공용 단일 출처) */
 export const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
 /* ── 분류 상수 (단일 진실 원천) ── */

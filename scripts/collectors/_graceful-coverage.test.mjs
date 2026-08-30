@@ -106,7 +106,7 @@ const BREAK_REGEX = /(if\s*\(\s*\w+\.interrupted\s*\(\s*\)\s*\)|if\s*\(\s*isInte
  */
 export function stripComments(src) {
   return src
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, " ")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
