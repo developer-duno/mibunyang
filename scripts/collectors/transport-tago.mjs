@@ -541,15 +541,8 @@ async function main() {
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
-  const PAGE_SIZE = 1000;
-  const apts = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await sb.from("apartments").select("id, name, lat, lng").range(offset, offset + PAGE_SIZE - 1);
-    if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
-    if (!data || data.length === 0) break;
-    apts.push(...data);
-    if (data.length < PAGE_SIZE) break;
-  }
+  // 세션534: 무정렬 OFFSET → 고유키(id) 커서 (unordered-pagination-loses-rows.md §1).
+  const apts = await selectAll((s) => s.from("apartments").select("id, name, lat, lng"), sb, "id");
 
   const withCoords = apts.filter(a => a.lat && a.lng);
 

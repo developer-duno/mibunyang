@@ -11,7 +11,7 @@
  *   node scripts/collectors/sync-naver-complex.mjs              (Supabase UPDATE)
  *   node scripts/collectors/sync-naver-complex.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun, selectAll } from "./_shared.mjs";
 
 /** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} ComplexRow */
 /** @typedef {{ id: string; name: string; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
@@ -199,20 +199,17 @@ export async function main() {
   const sbMibunyang = getMibuyangSupabase();
 
   // 1. complexes에서 유용한 필드가 있는 데이터 조회
-  // complexes 페이지네이션 (1000행 제한 우회)
-  /** @type {ComplexRow[]} */
-  const complexes = [];
+  // 세션534: 무정렬 OFFSET → 고유키(complex_no) 커서 (unordered-pagination-loses-rows.md §1).
+  // ⚠️ complexes 는 id 컬럼이 없다 — 고유키는 complex_no. 6.4만행이라 3페이지 경계 유실 위험.
   const PAGE = 1000;
-  for (let off = 0; ; off += PAGE) {
-    const { data: page, error: cErr } = await sbMibunyang
-      .from("complexes")
-      .select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, heat_fuel_type, corridor_type, building_coverage_ratio")
-      .range(off, off + PAGE - 1);
-    if (cErr) throw new Error(`complexes 조회 실패: ${cErr.message}`);
-    if (!page) break;
-    complexes.push(.../** @type {ComplexRow[]} */ (page));
-    if (page.length < PAGE) break;
-  }
+  /** @type {ComplexRow[]} */
+  const complexes = /** @type {ComplexRow[]} */ (
+    await selectAll(
+      (s) => s.from("complexes").select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, heat_fuel_type, corridor_type, building_coverage_ratio"),
+      sbMibunyang,
+      "complex_no",
+    )
+  );
   log(PHASE, `complexes: ${complexes.length}건`);
 
   // 1-b. articles에서 complex_no별 최다 빈도 heating_type 집계
@@ -258,19 +255,16 @@ export async function main() {
 
   log(PHASE, `heating_type 집계: ${Object.keys(heatingByComplex).length}개 단지`);
 
-  // 2. apartments 조회 (페이지네이션 — 1000행 제한 우회)
+  // 2. apartments 조회 — 세션534: 무정렬 OFFSET → 고유키(id) 커서
+  // (unordered-pagination-loses-rows.md §1). 3페이지 경계에서의 행 유실 차단.
   /** @type {AptBaseRow[]} */
-  const apartments = [];
-  for (let off = 0; ; off += PAGE) {
-    const { data: page, error: aErr } = await sbMibunyang
-      .from("apartments")
-      .select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio")
-      .range(off, off + PAGE - 1);
-    if (aErr) throw new Error(`apartments 조회 실패: ${aErr.message}`);
-    if (!page) break;
-    apartments.push(.../** @type {AptBaseRow[]} */ (page));
-    if (page.length < PAGE) break;
-  }
+  const apartments = /** @type {AptBaseRow[]} */ (
+    await selectAll(
+      (s) => s.from("apartments").select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio"),
+      sbMibunyang,
+      "id",
+    )
+  );
   log(PHASE, `apartments: ${apartments.length}건`);
 
   // articles 통합 조회 (1회 전건 fetch → Phase 1/2/3b/4 공유) — 같은 is_active=true 전건을
@@ -444,15 +438,23 @@ export async function main() {
     const aptsForUnsold = [];
     /** @type {string | null} */
     let aErr2Msg = null;
-    for (let off = 0; ; off += PAGE) {
-      const { data: page, error: aErr2 } = await sbMibunyang
+    // 세션534: 무정렬 OFFSET → 고유키(id) 손제작 커서 (unordered-pagination-loses-rows.md §1).
+    // fail-open(에러 시 break·throw 안 함)을 유지해야 해서 selectAll(throw) 대신 손제작.
+    /** @type {any} */
+    let cursorU = null;
+    while (true) {
+      let q = sbMibunyang
         .from("apartments")
         .select("id, name, units, unsold, unsold_rate, naver_sell_count, naver_jeonse_count, naver_wolse_count")
-        .range(off, off + PAGE - 1);
+        .order("id", { ascending: true })
+        .limit(PAGE);
+      if (cursorU != null) q = q.gt("id", cursorU);
+      const { data: page, error: aErr2 } = await q;
       if (aErr2) { aErr2Msg = aErr2.message; logError(PHASE, `apartments 재조회 실패: ${aErr2Msg}`); break; }
       if (!page) break;
       aptsForUnsold.push(.../** @type {AptUnsoldRow[]} */ (page));
       if (page.length < PAGE) break;
+      cursorU = page[page.length - 1].id;
     }
 
     if (aptsForUnsold.length === 0) {
@@ -552,15 +554,23 @@ export async function main() {
   const aptsForNaver = [];
   /** @type {string | null} */
   let aErr3Msg = null;
-  for (let off = 0; ; off += PAGE) {
-    const { data: page, error: aErr3 } = await sbMibunyang
+  // 세션534: 무정렬 OFFSET → 고유키(id) 손제작 커서 (unordered-pagination-loses-rows.md §1).
+  // fail-open(에러 시 break·throw 안 함)을 유지해야 해서 selectAll(throw) 대신 손제작.
+  /** @type {any} */
+  let cursorN = null;
+  while (true) {
+    let q = sbMibunyang
       .from("apartments")
       .select("id, name, lat, lng, naver_nearby_median, naver_nearby_avg, naver_jeonse_rate, naver_build_year, naver_avg_floor, naver_nearby_count, naver_fetched_at")
-      .range(off, off + PAGE - 1);
+      .order("id", { ascending: true })
+      .limit(PAGE);
+    if (cursorN != null) q = q.gt("id", cursorN);
+    const { data: page, error: aErr3 } = await q;
     if (aErr3) { aErr3Msg = aErr3.message; logError(PHASE, `apartments naver 재조회 실패: ${aErr3Msg}`); break; }
     if (!page) break;
     aptsForNaver.push(.../** @type {AptNaverRow[]} */ (page));
     if (page.length < PAGE) break;
+    cursorN = page[page.length - 1].id;
   }
 
   if (aptsForNaver.length === 0) {

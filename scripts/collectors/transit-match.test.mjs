@@ -414,3 +414,20 @@ describe("pickBestStation — 가장 가까운 곳이 아니라 가장 좋은 �
     expect(sc(pickBestStation(APT, added, 5))).toBeGreaterThanOrEqual(sc(pickBestStation(APT, seed, 5)));
   });
 });
+
+// 세션534 — apartments 무정렬 페이징 → 고유키(id) 커서 회귀 가드.
+// 무정렬 OFFSET 은 apartments 3페이지 경계에서 행을 잃는다(unordered-pagination-loses-rows.md).
+// selectAll 호출에 keyCol="id" 가 빠지면 조용히 offset 모드로 되돌아가므로 호출부를 소스에서 잠근다.
+// 정규식은 호출부(selectAll( ... )) 만 겨눈다 — [[guards-must-be-mutation-tested]] §"소스 grep 가드".
+describe("apartments 페이징 — 고유키 커서 회귀 가드 (세션534)", () => {
+  it("apartments 는 selectAll(..., sb, \"id\") 커서로 훑는다", () => {
+    // §531 판별 — 겨누는 문자열이 실제로 소스에 있는지 먼저 확인
+    expect(COLLECTOR_SRC.includes('s.from("apartments")')).toBe(true);
+    expect(COLLECTOR_SRC).toMatch(
+      /selectAll\(\(s\) => s\.from\("apartments"\)\.select\([^)]*\), sb, "id"\)/,
+    );
+  });
+  it("apartments 를 무정렬 .range() 손제작 루프로 훑지 않는다", () => {
+    expect(COLLECTOR_SRC).not.toMatch(/from\("apartments"\)\.select\([^)]*\)\.range\(/);
+  });
+});
