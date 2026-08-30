@@ -10,6 +10,7 @@ import { withHandler } from "../_lib/handler.js";
  */
 
 import { verifyToken } from "../_lib/auth.js";
+import { isBlacklisted } from "../_lib/tokenBlacklist.js";
 
 type KakaoUser = {
   email: string;
@@ -36,6 +37,11 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     email = (payload.email as string).toLowerCase().trim();
   } catch {
     return res.status(401).json({ ok: false, error: "유효하지 않은 토큰입니다" });
+  }
+
+  // 로그아웃/강제 로그아웃된 토큰으로 마케팅 동의를 뒤집지 못하게 차단 (세션 534 S1, verify.ts:73 패턴)
+  if (await isBlacklisted(token)) {
+    return res.status(401).json({ ok: false, error: "로그아웃된 토큰입니다" });
   }
 
   const user = (await kv.get(`user:${email}`)) as KakaoUser | null;

@@ -21,6 +21,11 @@ vi.mock("./_lib/tokenBlacklist.js", () => ({
   isBlacklisted: vi.fn().mockResolvedValue(false),
 }));
 
+// 세션 534 S0: requireAdminGate 가 status 재확인용으로 kv.get(user:{email}) 호출 — approved 로 통과.
+vi.mock("./_lib/redis.js", () => ({
+  kv: { get: vi.fn().mockResolvedValue({ status: "approved" }) },
+}));
+
 // Supabase chainable mock — handleGet: .select().order().order().range() (세션 425 페이지네이션)
 const mockInsert = vi.fn().mockResolvedValue({ error: null });
 const mockRange = vi.fn().mockResolvedValue({ data: [], error: null, count: 0 });
