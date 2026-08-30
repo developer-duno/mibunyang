@@ -36,6 +36,24 @@
 
 ## 🔴 즉시
 
+### 세션534 전수 감사 — 처리분·잔여분 (2026-08-28)
+
+전 코드베이스 5렌즈 스캔 → 적대검증 → 계획 적대검증 → 위험 낮은 순 5PR(로컬 커밋, 독립리뷰 통과, push 대기).
+
+**처리 완료(draft PR 대기 — 사장님 승인 후 push)**:
+- PR-1 정리: pairs 죽은 배선·죽은 상수 5종(POP_RISK/POP_FUTURE/AREA_ADJ_TIERS·WON_TO_MANWON·REGION_STATS_SIDO/GU)·NOW_YM 중복·주석 스트리퍼 앵커 5곳.
+- PR-2 표시정직: 적정가 게이지/핵심지표 중립대(±10%) 3분기·부재(fairPrice≤0) "0.0%" 둔갑 게이트·scoreFuture info↔detail 모순 3곳·빈값 토큰 공용상수.
+- PR-3 보안: admin 강제 로그아웃이 무력했던 것(adminAuth KV status 재확인)·kakao-consent 블랙리스트 미확인.
+- PR-4 수집기: trade-stats 가격행 선택을 화면 VIEW 규칙과 일치·행안부 1행 응답 유실.
+- PR-5 페이징: trade-stats-regions 79만행 무정렬 유실 → 고유키 커서·selectAll 옵트인 커서.
+
+**잔여(감사가 찾았으나 이번 제외 — 착수 가능)**:
+- ✅ **apartments/complexes 손제작 무정렬 루프 — 세션534 PR-7([#456](https://github.com/developer-duno/mibunyang/pull/456))이 전수 종결** — apartments/complexes 무정렬 인라인 `.range()` 루프 **14곳(단일줄 8 + 다중줄 6)** 을 고유키 커서로 전환(전량형=selectAll 통째 교체 / fail-open 자리=손제작 커서로 시맨틱 보존). 전수 grep 확정으로 인라인 루프 0(naver-presale:740 은 의도된 bounded 단발, 제외). ⚠️ collect-crime-safety:152 는 **regions** 대상이라 이 트랙 아님(별도 판단). ⚠️ schools-neis 의 **schools 테이블** 루프는 apartments 아님(미대상).
+  🔴 **잔여 = `sync-naver-complex.mjs:42` 범용 헬퍼 `fetchAllPages`** — 무정렬 OFFSET 으로 **`articles`(137만행)·`complex_price_history`** 를 훑는다. 이건 룰 §2(필터 걸린 큰 표는 **내림차순 lt 커서** — articles 활성 매물이 최신에 몰림)가 필요한 복잡 케이스라 단순 id 커서로 안 되고, 자체 committed 테스트(range 동작 기대) 재작성 동반. `_shared.mjs selectAll` 옵트인 커서와 별개 헬퍼. 근거 = `.claude/rules/collectors/unordered-pagination-loses-rows.md` §2 + 세션534 절.
+- 🟢 **scoreProduct 미수집→최하 폴백 채점(SC2)** — sanitize 가 null 로 누른 floorAreaRatio·exclusiveRatio·parkingRatio·maxFloor 를 화면엔 "미수집"이라면서 채점은 최하 폴백으로 떨어뜨린다(미수집=최악). **점수 변경이라 사장님 결정** — 세션403 "비관적 폴백 유지" 선례와 같은 성격.
+- 🟢 **login 타이밍 오라클(S2)** — 존재 계정만 PBKDF2 실행 → 응답시간으로 계정 존재 추론 가능. rate-limit(5/5분·fail-close)이 실질 완화라 Low. 필요 시 miss 경로에 더미 해시.
+- ℹ️ **trade-stats house_type 분류 경계차(Info)** — SQL `LIKE 'presale_%'` 의 `_` 는 와일드카드, JS `.startsWith("presale_")` 의 `_` 는 리터럴. 현재 실데이터는 `presale_min` 하나뿐이라 동일. 밑줄 없는 `presale*` house_type 도입 시에만 갈림.
+
 ### 🔴 compute-scores 가 공유 DB 에 단지당 개별 UPDATE 2,211건을 병렬 발사 (세션527 확정, 2026-08-24)
 
 **자매 레포(naver-estate-web 세션381)가 Supabase Logs Explorer 로 실측해 알려왔고, 우리 코드에서 확인했다.**
@@ -321,7 +339,8 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
 - ✅ **dsr40pass 미산정 "주의" 거짓** — 세션513 [#400](https://github.com/developer-duno/mibunyang/pull/400) null 보존+문구 3분기("미산정"). ⚠️처방은 이진 갈래가 아니라 **중립=다수(미통과) 구간 50**(true 4.3%뿐 — 이진 규칙의 반례, scoreRisk 주석 참조). 점수 변동 0 실측.
 - ✅ **주차 폴백 분모** — 세션513 [#400](https://github.com/developer-duno/mibunyang/pull/400) `Math.max(units, presaleGeneralSupply)` + 3대/세대 초과 폴백 포기 + "추정 N대/세대" 표기. "정보 없음+만점권" 35→0곳.
 - ✅ **브랜드 표기 변형·해당없음** — 세션513 [#400](https://github.com/developer-duno/mibunyang/pull/400) resolveBuilder 정규화(62곳 회복) + scoreProduct·fieldMeta 배선 수리 + 조합·신탁·공공 "(브랜드 해당없음)". 잔여는 아래 신규 항목.
-- 🟢 **resolveBuilder 사본 3벌 동기화** (세션513 신규) — 프론트 `brands.ts` 만 정규화 매칭 보유.
+- ✅ **resolveBuilder 사본 3벌 동기화 — 세션515 종결 (세션534 감사 실측)** — 대조 테스트가 `scripts/collectors/_shared.test.mjs:726-765`("resolveBuilder — brands.ts 정본과 동기화" · "BUILDER_ALIASES 표가 양쪽 동일")에 존재해 세 구현이 같은 입력→같은 출력임을 잠근다. 이력:
+  (이력) 🟢 **resolveBuilder 사본 3벌 동기화** (세션513 신규) — 프론트 `brands.ts` 만 정규화 매칭 보유.
   `scripts/collectors/_shared.mjs:517`·`dart-builders.mjs:221` 사본은 열거식 그대로라 수집 시점
   표기가 어긋날 수 있다(스코어링 시 resolve 로 전량 커버돼 화면 영향 0 — 급하지 않음).
   동기화 시 세 구현이 같은 입력→같은 출력임을 잠그는 대조 테스트 동반할 것.
@@ -508,7 +527,8 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
 - 🟡 **층수 파생값 모순 — 재실측 294곳(20.2%)** (앞선 세션 기록 "305곳(17%)" 을 정정) — `floors`(구간 문자열 "중층(6~15F)")와 `maxFloor`(숫자)가 어긋난다. 모수 = 둘 다 값이 있는 1,455곳. 예: "서초동 지에스타워" `floors=중층(6~15F)` 인데 `maxFloor=19`. **한 카드(`BuildingInfoCard`) 안에서 나란히 보인다.** 원인 = `calc-floors.mjs:44` 가 `!a.floors`(빈 것)만 채우는데 `max_floor` 는 월간으로 덮어써 저절로 안 고쳐진다. 후보: 표시에서 `floors` 를 빼기(어차피 `maxFloor` 파생) 또는 파생을 매번 다시 계산.
   - 참고: `floorRange`(예: "1~48")는 또 다른 축이다 — 상한이 `maxFloor` 와 다른 경우가 1,359곳이라 셋을 같은 뜻으로 다루면 안 된다.
 - 🟡 **운영 API `/api/supabase/apartments` 간헐적 500** — 2026-08-10 밤 첫 호출이 500 + `{"ok":false,"error":"데이터 조회 중 오류가 발생했습니다"}`(72바이트), 재시도 2회는 200(23.8MB). 정적 JSON 폴백이 있어 화면은 안 깨지지만 **폴백 데이터가 더 낡다**(1,597행 vs API 1,646행). 23.8MB 응답 크기가 서버리스 한도에 걸리는지 확인 필요.
-- 🟡 **`discountPct > 0` 카드 칩이 운영 1,646곳 중 0곳** — 렌더 경로가 한 번도 도달하지 않는다. 데이터가 안 들어오는 것인지 필드가 죽은 것인지 규명 후 살리거나 걷어낸다. (조건은 지우지 않았다 — 값이 채워지면 저절로 살아난다.)
+- 🟢 **`discountPct > 0` 카드 칩 0곳 — 규명 완결 (세션534 감사): 데이터가 안 들어온다** — `discount_pct` 를 쓰는 수집기가 0(운영 파이프라인). 유일한 writer 는 일회성 `scripts/migrate-to-supabase.mjs`(마이그레이션), `naver-presale.mjs`·`collect-data.mjs` 에는 할인 필드 자체가 없다(`data-audit.mjs` 의 discountPct 언급은 감사용 읽기). 렌더 경로(`cardChips.ts:236`)·산식(`scoreBenefit.ts`)은 정상 — **값이 채워지면 저절로 살아난다**(조건 안 지움, 이미 결정됨). 출처 발굴(네이버 분양 상세 API 등에서 실할인 수집)은 별도 사장님 결정. 이력:
+  (이력) 🟡 렌더 경로가 한 번도 도달하지 않는다 — 데이터/죽은 필드 규명 후 살리거나 걷어낸다.
 - 🟡 **Supabase Micro 컴퓨트 hang — Small 업그레이드 검토 (세션 460 진단, 👤 사장님 미결정)** — 공유 인스턴스(`rwdtljipvmqpazrimyns`, t4g.micro RAM 1GB)가 2026-06-29 양쪽 collector+Vercel 부하에서 일시 hang → Cloudflare 522 약 2.5h, daily-deploy 1회 failure. 대시보드 Restart로 회복. **근본 해소 = Micro→Small(RAM 2GB, Pro 크레딧 후 순 +$5/월)** — 비용 공유라 협의 필요. 재발 시 진단·업그레이드 절차 = `supabase/CLAUDE.md` "컴퓨트 한계" 절 + 글로벌 메모리 `session_2026-06-30_session460_db_hang_infra.md`. **데이터 다이어트는 반려**(Pro+Disk30% 명분없음, 공유테이블 양쪽 위험). 워치 = hang 재발 빈도. 1회성이면 Micro 유지, 반복되면 Small.
 - ❌ **monitor 음수가드 테스트 추가 — 폐기(헛돌이 확정, 세션 421)** — 세션 419 부산물로 "4곳(ageH·sinceCreated·idleDays·daysSince) 음수 입력 전용 테스트로 가드가 막는 걸 증명" 제안했으나, 세션 421 적대검증(5에이전트 만장일치 + node 줄별 실증)으로 **전부 헛돌이 확정 → 테스트 추가 0건**. 근거: 음수(미래 시각)와 0(Math.max 클램프)이 항상 양수 임계값(maxAgeHours 36·STALE_DAYS 35·stale_days≥14)의 **같은 쪽**에 떨어져 가드 제거해도 분기 불변(guardRemovalChangesBranch=false). 음수는 비교에서 먼저 걸러져 `Math.floor()` 표시 라인 **도달 불가**(사용자 노출 경로 없음). 미래-시각 테스트는 가드 제거 후에도 항상 통과 → 회귀 못 잡음. 5개 Math.max(0,..) 가드 = **방어적 no-op 확정**(제거 안전하나 cosmetic 보험이라 유지). 기존 L217 ageDays 테스트도 같은 이유로 inert. 양수-일수 표기 정확성은 기존 미발화 테스트가 이미 커버. 시간대 회귀 걱정이면 가드가 아니라 finished_at/recorded_at 저장 시간축 일치(timezone) 검증이 진짜 가치(별개)
 
@@ -585,7 +605,8 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   전수 실측부터 할 것(부재 단정 금지).
 - ✅ **지역칩 "★편집" 라벨 모호 → "★ 관심지역" + 안내 문구 (세션 479 완료, PR #254)** — 위 완료 색인 참조. "★ 편집"→"★ 관심지역" + 편집 모드 안내 1줄로 라벨이 기능을 드러내게 정정.
 - 🟢 **손님 가치 발굴 후보 — 병원/공원 가까운순 정렬 + 필터 (세션 477 실측, 다음 세션 후보)** — 세션 474/475/477 라인 연장. 거리 지표 라이브 실측(count-exact): `hospitalDist` 94.8%(median 189m·p90 590m·**max 989m=~1km 캡, sentinel 0**·≤500m 859단지) / `parkDist` 95.0%(median 241m·p90 579m·max 998m·≤500m 854단지). 둘 다 채움률 높고 분포 좋음(1km 캡이라 null=1km 밖). `emergencyDist`는 median 1564m·max 69km로 분포 넓음(응급실 희소, 성격 다름=별도 판단). **패턴 = subwayNear 정렬 그대로 답습**(거리 오름차순, null→Infinity 맨뒤, 동률 종합점수 tie-break) + `subwayOnly` 필터 답습(≤500m). 사장님 결정 필요 = ① 지표 선택(병원·공원·응급실 중 몇 개) ② 정렬만/필터만/둘 다 ③ 필터 임계(≤500m 도보권 권장). **표현계층 전용**(fieldMeta 이미 존재·AptCard 일부 노출). ⚠️ 주의 = hospitalDist/parkDist 는 sentinel 없음(subwayDist 9999·icDist/ktxDist 99 와 다름, masked-defaults 답습 불필요). 상세 실측 = 메모리 `session_2026-07-04_session477_parking_sort_filter.md`.
-- 🟢 **정렬·필터 전수 검사 (드리프트 감사) — 사장님 요청 (세션 477, 다음 세션 과제)** — 정렬 15종·필터 토글 9종·범위 필터 7종이 세션별로 하나씩 copy-paste 배선(~16 사이트)돼 누적 → **개별 사이트 드리프트 위험**. 목적 = "각자 따로 만든 필터를 통합 전수 점검". **이미 발견된 갭 1건(세션 477)**: `useFilterSort.ts saveCustomPreset` 의 snap 객체가 `crimeSafeOnly`/`childcareGoodOnly`/`parkingGoodOnly` **3개를 누락** → 이 필터들은 커스텀 프리셋 저장 시 절대 안 담김(deps 배열엔 있는데 snap 객체엔 없어 loop 에서 undefined→스킵). **점검 축(설계 초안)**: (1) URL 왕복 — 모든 필터가 `?param=1` 저장·복원 round-trip 하나(deserializeFromURL↔serializeToURL) (2) 프리셋 저장/복원 — snap 객체 vs FILTER_URL_MAP 정합(위 갭) (3) undo/redo 스냅샷 포함 여부 (4) activeFilterCount 반영 (5) DetailPanel reset 포함 (6) SearchFilterBar active 칩 노출 (7) 필터별 단위 테스트 존재. **구현안** = 각 필터의 7축 매트릭스를 스크립트/테스트로 자동 검출(FILTER_URL_MAP 기준 leave-none-out), 누락 시 fail. **표현계층·회귀 안전 작업**(기존 동작 보존 + 누락 메움). 진입 시 = 서브에이전트로 필터별 7축 grep 매트릭스 먼저 실측 후 갭 목록 확정 → 사장님께 "고칠 것/둘 것" 판단 받고 수정.
+- ✅ **정렬·필터 전수 검사 — 대부분 세션524 [#428](https://github.com/developer-duno/mibunyang/pull/428)에서 종결 (세션534 감사 실측)** — #428(main `d5827b83`, 2026-08-22)이 시군구 배선 갭 4건 수리 + **필터 21종 테스트 가드 22건**을 붙였다. 아래 "이미 발견된 갭"(saveCustomPreset snap 3필드 누락)도 그 PR 소관으로 수리됨. 잔여 = 7축 매트릭스 **자동 검출 스크립트**(사람이 필터 추가 시 누락을 CI가 잡는 것)는 미착수 — 필요 시 아래 원문 참조. 이력:
+  (이력) 🟢 **정렬·필터 전수 검사 (드리프트 감사) — 사장님 요청 (세션 477, 다음 세션 과제)** — 정렬 15종·필터 토글 9종·범위 필터 7종이 세션별로 하나씩 copy-paste 배선(~16 사이트)돼 누적 → **개별 사이트 드리프트 위험**. 목적 = "각자 따로 만든 필터를 통합 전수 점검". **이미 발견된 갭 1건(세션 477)**: `useFilterSort.ts saveCustomPreset` 의 snap 객체가 `crimeSafeOnly`/`childcareGoodOnly`/`parkingGoodOnly` **3개를 누락** → 이 필터들은 커스텀 프리셋 저장 시 절대 안 담김(deps 배열엔 있는데 snap 객체엔 없어 loop 에서 undefined→스킵). **점검 축(설계 초안)**: (1) URL 왕복 — 모든 필터가 `?param=1` 저장·복원 round-trip 하나(deserializeFromURL↔serializeToURL) (2) 프리셋 저장/복원 — snap 객체 vs FILTER_URL_MAP 정합(위 갭) (3) undo/redo 스냅샷 포함 여부 (4) activeFilterCount 반영 (5) DetailPanel reset 포함 (6) SearchFilterBar active 칩 노출 (7) 필터별 단위 테스트 존재. **구현안** = 각 필터의 7축 매트릭스를 스크립트/테스트로 자동 검출(FILTER_URL_MAP 기준 leave-none-out), 누락 시 fail. **표현계층·회귀 안전 작업**(기존 동작 보존 + 누락 메움). 진입 시 = 서브에이전트로 필터별 7축 grep 매트릭스 먼저 실측 후 갭 목록 확정 → 사장님께 "고칠 것/둘 것" 판단 받고 수정.
 - ❌ **청약경쟁률 정렬 (competitionRate desc/asc) — 세션 423 폐기 (데이터 부족·의미 왜곡)** — 손님 가치 UX 후보 평가 시 라이브 실측: CR>0 715개(50.2%) 중 분양 진행단계(분양중·청약중·분양계획)는 **48개(7%)뿐**, 나머지 667개(93%)는 완료/과거(589)+미분양실패(78) → 끝난 청약경쟁률로 전체 줄세우면 이미 완판된 과거 단지가 상위 점령(미분양 전문 서비스 목적 정반대). 단위 비일관 치명적: 최댓값 437995·349071, CR>0 중 14.4%가 1000 초과 = N:1 비율 아닌 미가공 지원자수 아티팩트가 최상단 노출. null 705개(49.5%)도 바닥. **카드 배지(세션 422)는 active 48단지만 노출해 이미 의미 전달 중** → 정렬의 한계가치 낮음. 재오픈 트리거 = active-stage 한정 필터+정렬 결합 + 모집단 ≥100단지.
 - ❌ **입주시기 필터 (즉시입주/N년내/예정) — 세션 423 폐기 (완전 중복)** — `moveInFilter`(classify.ts classifyMoveIn 3분류: 입주예정/미입주/입주완료)가 이미 전 스택 배포(useFilterSort URL `?movein=` 영속화·useDataPipeline leave-one-out 카운트·AreaPanel select UI·칩·filterPresets "신혼"·전용 테스트). 신규 버킷은 같은 축 이름만 다른 변형 → 무의미. 라벨 교체 시 classify.test/useFilterSort.test/filterPresets 동시 붕괴 + "미입주(준공 후 미분양)" 핵심 변별 신호 상실. 손님 가치 개선은 신규 필터 아닌 기존 select 라벨 보조설명("미입주 = 준공 후 미분양")이 더 적합(별 후보).
 - 🟢 **청약홈 Phase 2 — 날짜 정밀화 + drift 가드 — 세션 370 적대 검증으로 REFUTED (진행 안 함)**
