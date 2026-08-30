@@ -122,11 +122,20 @@ const { count } = await sb.from(t).select("*", { count: "exact", head: true })./
   루프를 통째로 놓친다**(PR-7 첫 스캔이 8곳만 잡고 다중줄 6곳을 놓쳐 리뷰가 뒤늦게 발견). 무정렬 루프
   전수는 `.range(` 위치마다 앞 6줄에서 `from("<표>")` + `.order(` 부재를 보는 식으로 **컨텍스트 grep**
   하거나 multiline 으로 찾을 것. 단일줄 정규식은 반드시 놓친다.
-- ⚠️ **아직 남은 무정렬 호출처**(BACKLOG 등재 — 별도 작업): `sync-naver-complex.mjs:42` 범용 헬퍼
-  `fetchAllPages` 가 무정렬 OFFSET 으로 **`articles`(137만행)·`complex_price_history`** 를 훑는다.
-  이건 §2(필터 걸린 큰 표는 훑는 방향 결정 — articles 는 **내림차순 lt 커서**)가 필요한 복잡 케이스라
-  단순 id 커서로 안 된다 + 자체 committed 테스트가 range 동작을 기대해 재작성 동반. `_shared.mjs`
-  `selectAll` 은 이제 옵트인 커서 제공하나 fetchAllPages 는 별개 헬퍼.
+- 세션535 `sync-naver-complex.mjs` `fetchAllPages` — 마지막 남은 무정렬 헬퍼를 키셋 커서로 재작성
+  (`{ keyCol, desc, page }`). articles(활성 26만)는 **`article_no` 내림차순 lt 커서**(§2 — 활성 매물이
+  최신 큰 번호에 몰림, 실측 76~213ms/페이지), complex_price_history(38.6만)는 `id` 오름차순.
+  결함 재현 실측 = articles 같은 offset 2회 조회 **교집합 0/100**. fail-open(`{rows, error}` 반환)
+  계약 유지가 selectAll(throw)을 안 쓴 이유. 테스트 fake 는 `.range` 를 아예 제공하지 않아
+  OFFSET 회귀 시 TypeError. 뮤테이션 7종 red 실증(경쟁 후보 keyCol 포함).
+- ⚠️ **스캔 맹점 2 (세션535 실증)**: `.range` 도 `.limit` 도 없는 **생 쿼리**는 PostgREST 가 1000행에서
+  조용히 자르는데, `.range(` grep 에는 당연히 안 걸린다(sync-naver-complex heating 집계가 이 꼴 —
+  당시 대상 행 0이라 잠복). 전수 스캔은 `.range(` 가 아니라 **`.from(` 마다 페이징 방식(selectAll/커서/
+  단발 상한)을 확인**하는 방식이어야 한다.
+- ⚠️ **배선 가드의 toContain 은 근처 옵션 줄에도 매칭된다 (세션535 M4 실증)**: select 리터럴에 커서 키가
+  있는지를 `toContain("article_no")` 로 검사하면 바로 아래 `keyCol: "article_no"` 옵션 줄에 매칭돼
+  select 에서 키를 빼도 초록 — 검사값은 **select 문자열 리터럴 조각**(`'"article_no, complex_no'`)으로
+  고정한다([[guards-must-be-mutation-tested]] §소스 grep 의 변종).
 
 ## 차단 검증
 
