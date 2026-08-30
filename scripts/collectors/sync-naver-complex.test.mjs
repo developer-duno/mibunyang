@@ -261,83 +261,213 @@ describe("findNearbyComplexes", () => {
   });
 });
 
-// ── fetchAllPages (PostgREST max_rows=1000 cap 회귀 가드) ──────────
+// ── fetchAllPages (고유키 커서 페이징 회귀 가드, 세션534) ──────────
+// 옛 구현은 무정렬 OFFSET(.range) 반복이라 큰 표에서 행이 새고 중복됐다
+// (라이브 실측: articles 같은 offset 2회 조회 교집합 0/100).
+// 아래 fake 는 .range 를 아예 제공하지 않으므로, OFFSET 으로 되돌리면 TypeError 로 빨강.
 /**
- * 체인 가능한 fake Supabase 빌더. allRows 를 .range(lo,hi) 로 슬라이스 반환.
- * range 호출 인자를 calls 에 기록 (1000씩 증가 검증용).
+ * 체인 가능한 fake Supabase 빌더 — 커서 페이징(order/limit/lt/gt) 전용.
+ *
+ * allRows 를 order 방향으로 정렬 → lt/gt 커서 필터 → limit 슬라이스 → select 컬럼으로 투영.
+ * "select 에 keyCol 누락" 시나리오는 투영에서 그 키가 빠지는 것으로 자연스럽게 재현된다
+ * (정렬 자체는 원본 행으로 하므로 fake 가 먼저 죽지 않는다).
+ *
  * @param {any[]} allRows
  * @param {{ errorOnCall?: number; errorMsg?: string }} [opts]
  */
 function makeFakeSb(allRows, opts = {}) {
-  /** @type {Array<[number, number]>} */
-  const rangeCalls = [];
+  /** @type {Array<{ table: string; cols: string[] | null; orderCol: string | null; ascending: boolean; op: string | null; cursorCol: string | null; cursor: any; limit: number }>} */
+  const calls = [];
   let callIdx = 0;
+  /** @type {any} */
+  let st = null;
+
+  const settle = () => {
+    callIdx++;
+    calls.push({ ...st });
+    if (!st.orderCol) {
+      // 무정렬 조회 = 이 룰이 막으려는 그 결함. fake 가 조용히 통과시키면 가드가 껍데기가 된다.
+      throw new Error("fake sb: .order() 없이 조회 — 무정렬 페이징 회귀");
+    }
+    if (opts.errorOnCall === callIdx) {
+      return Promise.resolve({ data: null, error: { message: opts.errorMsg ?? "fake error" } });
+    }
+    const col = st.orderCol;
+    const sign = st.ascending ? 1 : -1;
+    let rows = allRows.slice().sort((a, b) => (a[col] === b[col] ? 0 : (a[col] < b[col] ? -1 : 1) * sign));
+    if (st.op === "gt") rows = rows.filter((r) => r[st.cursorCol] > st.cursor);
+    else if (st.op === "lt") rows = rows.filter((r) => r[st.cursorCol] < st.cursor);
+    rows = rows.slice(0, st.limit);
+    const data = st.cols
+      ? rows.map((r) => Object.fromEntries(st.cols.filter((/** @type {string} */ c) => c in r).map((/** @type {string} */ c) => [c, r[c]])))
+      : rows;
+    return Promise.resolve({ data, error: null });
+  };
+
+  // .limit() 이후에도 .lt/.gt 를 붙일 수 있어야 하므로 thenable 로 지연 평가.
+  const terminal = () => ({
+    /** @param {string} col @param {any} v */
+    lt(col, v) { st.op = "lt"; st.cursorCol = col; st.cursor = v; return terminal(); },
+    /** @param {string} col @param {any} v */
+    gt(col, v) { st.op = "gt"; st.cursorCol = col; st.cursor = v; return terminal(); },
+    /** @param {any} res @param {any} rej */
+    then(res, rej) { return settle().then(res, rej); },
+  });
+
   const chain = {
-    from() { return chain; },
-    select() { return chain; },
+    /** @param {string} table */
+    from(table) {
+      st = { table, cols: null, orderCol: null, ascending: true, op: null, cursorCol: null, cursor: null, limit: Infinity };
+      return chain;
+    },
+    /** @param {string} cols */
+    select(cols) { st.cols = typeof cols === "string" ? cols.split(",").map((c) => c.trim()) : null; return chain; },
     eq() { return chain; },
     not() { return chain; },
-    /** @param {number} lo @param {number} hi */
-    range(lo, hi) {
-      rangeCalls.push([lo, hi]);
-      callIdx++;
-      if (opts.errorOnCall === callIdx) {
-        return Promise.resolve({ data: null, error: { message: opts.errorMsg ?? "fake error" } });
-      }
-      return Promise.resolve({ data: allRows.slice(lo, hi + 1), error: null });
-    },
+    /** @param {string} col @param {{ ascending?: boolean }} [o] */
+    order(col, o) { st.orderCol = col; st.ascending = o?.ascending !== false; return chain; },
+    /** @param {number} n */
+    limit(n) { st.limit = n; return terminal(); },
   };
-  return { sb: chain, rangeCalls };
+  return { sb: chain, calls };
 }
 
-describe("fetchAllPages (max_rows=1000 cap 회귀 가드)", () => {
-  it("2500행 → range(0,999)/(1000,1999)/(2000,2999) 3회 호출 + 전건 2500행 수집", async () => {
-    const rows = Array.from({ length: 2500 }, (_, i) => ({ id: i }));
-    const { sb, rangeCalls } = makeFakeSb(rows);
-    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb);
+describe("fetchAllPages — 고유키 커서 페이징", () => {
+  /** @param {number} n */
+  const mkRows = (n) => Array.from({ length: n }, (_, i) => ({ id: i, v: `v${i}` }));
+
+  it("2500행 오름차순 → 3회 호출·전량 2500행·중복 0", async () => {
+    const { sb, calls } = makeFakeSb(mkRows(2500));
+    const result = await fetchAllPages((s) => s.from("t").select("id, v"), sb, { keyCol: "id" });
     expect(result.error).toBeNull();
-    expect(result.rows.length).toBe(2500); // ← .range(0,99999) 단일 호출로 회귀하면 1000 으로 빨강
-    expect(rangeCalls).toEqual([[0, 999], [1000, 1999], [2000, 2999]]);
+    expect(result.rows.length).toBe(2500);
+    // 무정렬 OFFSET 으로 회귀하면 같은 행을 다시 받아 Set 크기가 작아진다.
+    expect(new Set(result.rows.map((r) => r.id)).size).toBe(2500);
+    expect(calls.length).toBe(3);
+    // 매 호출에 order 가 붙어야 한다 — 이게 빠지면 표본이 흔들린다.
+    expect(calls.every((c) => c.orderCol === "id" && c.ascending === true)).toBe(true);
   });
 
-  it("range 인자가 page(1000)씩 증가", async () => {
-    const rows = Array.from({ length: 1500 }, (_, i) => ({ id: i }));
-    const { sb, rangeCalls } = makeFakeSb(rows);
-    await fetchAllPages((s) => s.from("articles").select("id"), sb);
-    expect(rangeCalls.map(([lo]) => lo)).toEqual([0, 1000]);
+  it("desc: true → ascending:false + lt 커서 사용", async () => {
+    const { sb, calls } = makeFakeSb(mkRows(2500));
+    const result = await fetchAllPages((s) => s.from("t").select("id, v"), sb, { keyCol: "id", desc: true });
+    expect(result.rows.length).toBe(2500);
+    expect(calls.every((c) => c.ascending === false)).toBe(true);
+    expect(calls[0].op).toBeNull();                      // 1페이지는 커서 없음
+    expect(calls.slice(1).every((c) => c.op === "lt")).toBe(true);
+    expect(result.rows[0].id).toBe(2499);                 // 내림차순 첫 행
   });
 
-  it("정확히 PAGE 배수(2000행) → 빈 페이지 후 종료", async () => {
-    const rows = Array.from({ length: 2000 }, (_, i) => ({ id: i }));
-    const { sb, rangeCalls } = makeFakeSb(rows);
-    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb);
-    expect(result.rows.length).toBe(2000);
-    // 2000행 = 2페이지 가득 → 3번째 빈 페이지 조회 후 종료
-    expect(rangeCalls).toEqual([[0, 999], [1000, 1999], [2000, 2999]]);
+  it("커서 값이 각 페이지 마지막 행의 keyCol", async () => {
+    const { sb, calls } = makeFakeSb(mkRows(2500));
+    await fetchAllPages((s) => s.from("t").select("id, v"), sb, { keyCol: "id" });
+    expect(calls[1].cursorCol).toBe("id");
+    expect(calls[1].cursor).toBe(999);   // 1페이지 마지막 행
+    expect(calls[2].cursor).toBe(1999);  // 2페이지 마지막 행
   });
 
-  it("1페이지 error → { rows: 누적분, error } 반환 (graceful degradation 보존)", async () => {
-    const rows = Array.from({ length: 2500 }, (_, i) => ({ id: i }));
-    const { sb } = makeFakeSb(rows, { errorOnCall: 2, errorMsg: "조회 실패" });
-    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb);
-    expect(result.error).toBe("조회 실패");
-    expect(result.rows.length).toBe(1000); // 1페이지(0~999)만 누적 후 2페이지에서 error
+  it("중간 페이지 error → { rows: 누적분, error } (fail-open 회귀 가드)", async () => {
+    const { sb } = makeFakeSb(mkRows(2500), { errorOnCall: 2, errorMsg: "조회 실패" });
+    const result = await fetchAllPages((s) => s.from("t").select("id, v"), sb, { keyCol: "id" });
+    expect(result.error).toBe("조회 실패");     // throw 로 바뀌면 이 단언에 도달 못 해 빨강
+    expect(result.rows.length).toBe(1000);
   });
 
   it("빈 테이블(0행) → { rows: [], error: null }", async () => {
-    const { sb, rangeCalls } = makeFakeSb([]);
-    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb);
+    const { sb, calls } = makeFakeSb([]);
+    const result = await fetchAllPages((s) => s.from("t").select("id"), sb, { keyCol: "id" });
     expect(result.rows).toEqual([]);
     expect(result.error).toBeNull();
-    expect(rangeCalls).toEqual([[0, 999]]); // 1회 조회 후 빈 결과로 종료
+    expect(calls.length).toBe(1);
+  });
+
+  it("정확히 page 배수(2000행) → 마지막 빈 페이지 후 정상 종료", async () => {
+    const { sb, calls } = makeFakeSb(mkRows(2000));
+    const result = await fetchAllPages((s) => s.from("t").select("id, v"), sb, { keyCol: "id" });
+    expect(result.rows.length).toBe(2000);
+    expect(new Set(result.rows.map((r) => r.id)).size).toBe(2000);
+    expect(calls.length).toBe(3); // 2페이지 가득 → 3번째 빈 페이지 확인 후 종료
   });
 
   it("커스텀 page 크기 적용", async () => {
-    const rows = Array.from({ length: 250 }, (_, i) => ({ id: i }));
-    const { sb, rangeCalls } = makeFakeSb(rows);
-    const result = await fetchAllPages((s) => s.from("articles").select("id"), sb, 100);
+    const { sb, calls } = makeFakeSb(mkRows(250));
+    const result = await fetchAllPages((s) => s.from("t").select("id, v"), sb, { keyCol: "id", page: 100 });
     expect(result.rows.length).toBe(250);
-    expect(rangeCalls).toEqual([[0, 99], [100, 199], [200, 299]]);
+    expect(calls.map((c) => c.limit)).toEqual([100, 100, 100]);
+  });
+
+  it("가득 찬 페이지 끝의 null 키 → error 반환 (무한루프 가드, 적대검증 F1)", async () => {
+    // 가드가 없으면 cursor=null → 다음 회차가 커서 없이 같은 페이지를 다시 받아 무한루프(테스트 타임아웃).
+    // fake 의 desc 정렬은 null 을 맨 뒤로 보낸다(JS 비교) — 999행 + null 1행 = 정확히 가득 찬 1000행.
+    const rows = [...Array.from({ length: 999 }, (_, i) => ({ id: i + 1, v: i })), { id: null, v: "x" }];
+    const { sb } = makeFakeSb(rows);
+    const result = await fetchAllPages((s) => s.from("t").select("id, v"), sb, { keyCol: "id", desc: true });
+    expect(result.error).toContain("커서 진행 불가");
+    expect(result.rows.length).toBe(1000); // fail-open: 누적분은 돌려준다
+  });
+
+  it("select 에 keyCol 누락 → error 반환 (throw 아님)", async () => {
+    // select 가 article_no 를 안 담으면 커서를 못 만들어 조용히 1페이지만 받고 끝난다.
+    const rows = Array.from({ length: 2500 }, (_, i) => ({ article_no: String(1000000 + i), v: i }));
+    const { sb } = makeFakeSb(rows);
+    const result = await fetchAllPages(
+      (s) => s.from("articles").select("v"), // ← article_no 누락
+      sb,
+      { keyCol: "article_no" },
+    );
+    expect(result.error).toContain("keyCol 'article_no' 누락");
+    expect(result.rows).toEqual([]); // 잘린 1페이지를 전량인 척 돌려주지 않는다
+  });
+});
+
+// ── fetchAllPages 호출처 배선 가드 (소스 grep, 세션534) ──────────────────
+// 순수 함수 테스트로는 "어느 표를 어느 키·어느 방향으로 훑는가" 를 못 잡는다.
+// 정규식은 좌변(구조분해 변수명)까지 고정해 함수 선언부·주석에 걸리지 않게 한다
+// (.claude/rules/meta/guards-must-be-mutation-tested.md §소스 grep).
+describe("fetchAllPages 호출처 배선 가드", () => {
+  const src = readFileSync(
+    fileURLToPath(new URL("./sync-naver-complex.mjs", import.meta.url)),
+    "utf8",
+  );
+  /** @param {RegExp} re */
+  const block = (re) => {
+    const m = src.match(re);
+    expect(m?.[1]).toBeTruthy();
+    return m?.[1] ?? "";
+  };
+
+  it("articles 통합 조회 = article_no 내림차순 커서", () => {
+    const b = block(/const \{ rows: allArticles, error: artFetchErr \} = await fetchAllPages\(([\s\S]{0,900}?)\);/);
+    expect(b).toContain('.from("articles")');
+    // select "리터럴" 에 커서 키가 있어야 한다 — 바깥 keyCol 옵션 줄에도 article_no 가 있어
+    // 느슨한 toContain("article_no") 는 select 에서 빼도 초록(뮤테이션 M4 실증) → 리터럴 고정.
+    expect(b).toContain('"article_no, complex_no');
+    expect(b).toContain('keyCol: "article_no"');
+    expect(b).toContain("desc: true");          // 활성 매물이 최신 쪽에 몰려 있다(§2)
+    expect(b).toContain('.eq("is_active", true)');
+  });
+
+  it("heating 조회는 생 쿼리가 아니라 fetchAllPages 경유 (not 필터 유지)", () => {
+    const b = block(/const \{ rows: heatingRows, error: hErr \} = await fetchAllPages\(([\s\S]{0,900}?)\);/);
+    expect(b).toContain('.from("articles")');
+    expect(b).toContain('.not("heating_type", "is", null)');
+    expect(b).toContain('"article_no, complex_no, heating_type"'); // select 리터럴 고정 (M4 답습)
+    expect(b).toContain('keyCol: "article_no"');
+    expect(b).toContain("desc: true");
+  });
+
+  it("complex_price_history 조회 = id 오름차순 커서", () => {
+    const b = block(/const \{ rows: priceRows, error: prErr \} = await fetchAllPages\(([\s\S]{0,900}?)\);/);
+    expect(b).toContain('.from("complex_price_history")');
+    expect(b).toContain('.select("id,');        // select 에 커서 키 포함
+    expect(b).toContain('keyCol: "id"');
+  });
+
+  it("fetchAllPages 가 무정렬 .range() 로 되돌아가지 않음", () => {
+    const m = src.match(/export async function fetchAllPages\([\s\S]{0,1200}?\n\}/);
+    expect(m).toBeTruthy();
+    expect(m?.[0]).toContain(".order(keyCol");
+    expect(m?.[0]).not.toContain(".range(");
   });
 });
 
@@ -484,17 +614,19 @@ describe("main() recordCollectorRun 편입", () => {
 
   it("정상 종료(빈 데이터) → status=success / ok=0 / fail=0 기록", async () => {
     // 모든 select·eq·not·order·limit 체인이 빈 배열로 resolve → 4 Phase 전부 통과, throw 없음.
-    // .not() 은 thenable(빈 배열) 이자 체인 가능해야 함 (heating 쿼리 L220-222).
-    // 세션534: complexes·apartments 는 selectAll 커서(order().limit().gt()) 경로.
+    // 세션534: complexes·apartments 는 selectAll 커서(order().limit().gt()) 경로,
+    // articles(통합·heating)·complex_price_history 는 fetchAllPages 커서 경로.
+    // → .not() 도 체인 가능해야 한다(뒤에 .order().limit() 이 붙는다).
     const emptyResult = { data: [], error: null };
     const emptyChain = {
       select: () => emptyChain,
       eq: () => emptyChain,
-      not: () => Promise.resolve(emptyResult),
+      not: () => emptyChain,
       range: () => Promise.resolve(emptyResult),
       order: () => emptyChain,
       limit: () => Promise.resolve(emptyResult),
       gt: () => Promise.resolve(emptyResult),
+      lt: () => Promise.resolve(emptyResult),
     };
     getMibuyangSupabase.mockReturnValue(/** @type {any} */ ({ from: () => emptyChain }));
 

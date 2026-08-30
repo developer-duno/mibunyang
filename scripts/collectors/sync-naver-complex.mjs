@@ -17,8 +17,8 @@ import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilar
 /** @typedef {{ id: string; name: string; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
 /** @typedef {{ id: string; name: string; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; naver_jeonse_count: number | null; naver_wolse_count: number | null }} AptUnsoldRow */
 /** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; naver_nearby_median: number | null; naver_nearby_avg: number | null; naver_jeonse_rate: number | null; naver_build_year: number | null; naver_avg_floor: number | null; naver_nearby_count: number | null; naver_fetched_at: string | null }} AptNaverRow */
-/** @typedef {{ complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null }} ArticleAreaRow */
-/** @typedef {{ complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null; trade_type_name: string | null; floor_info: string | null; numeric_maintenance_cost: number | null }} ArticleRow */
+/** @typedef {{ article_no: string; complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null }} ArticleAreaRow */
+/** @typedef {{ article_no: string; complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null; trade_type_name: string | null; floor_info: string | null; numeric_maintenance_cost: number | null }} ArticleRow */
 /** @typedef {{ grid: Record<string, ComplexRow[]>; cellSize: number }} SpatialGrid */
 
 loadEnv();
@@ -26,24 +26,49 @@ loadEnv();
 const PHASE = "sync-naver";
 
 /**
- * 전건 페이지네이션 fetch. PostgREST max_rows=1000 제한 우회.
- * 단일 .range(0, 99999) 호출은 1000건만 반환 → 1000행씩 끝까지 누적.
- * 1페이지 실패 시 throw 대신 { rows: 누적분, error } 반환 (graceful degradation 보존 —
- * articles fetch 가 실패해도 다른 필드 동기화는 계속).
- * @param {(sb: any) => any} buildQuery  - sb 받아 .from().select().eq()... 까지 빌드 (.range 제외)
+ * 전건 페이지네이션 fetch — 고유키 커서(keyset). PostgREST max_rows=1000 제한 우회.
+ *
+ * ⚠️ 옛 구현은 `.range(off, off+999)` 를 정렬 없이 반복하는 OFFSET 페이징이었다. 정렬이 없으면
+ * 매 페이지가 **다른 표본**을 주므로 에러도 경고도 없이 행이 새고 중복된다
+ * (.claude/rules/collectors/unordered-pagination-loses-rows.md §1).
+ * 세션534 라이브 실측 — articles(활성 260,548행)에서 같은 offset 을 2회 조회했더니 교집합 0/100.
+ * complex_price_history 는 385,694행으로 같은 위험권.
+ *
+ * 방향(desc)은 **성능 최적화**일 뿐 전량 보장은 어느 방향이든 같다. articles 는 활성 매물이
+ * 큰 article_no(최신)에 몰려 있어 오름차순으로 훑으면 죽은 행 지대를 먼저 지나며 statement
+ * timeout 위험이 있다(같은 룰 §2, 세션514 실측) → `desc: true` + lt 커서.
+ * 실측: articles article_no 내림차순 76~213ms/페이지, cph id 오름차순 74ms.
+ *
+ * ⚠️ fail-open 계약 유지 — 1페이지라도 실패하면 throw 대신 `{ rows: 누적분, error }` 반환.
+ * `_shared.mjs` 의 `selectAll` 은 throw(fail-close)라 여기 못 쓴다: articles fetch 가 죽어도
+ * 다른 필드 동기화는 계속돼야 한다(graceful degradation).
+ *
+ * @param {(sb: any) => any} buildQuery  - sb 받아 .from().select().eq()... 까지 빌드
+ *   (.order/.limit/.lt/.gt 는 이 함수가 붙인다). **select 에 keyCol 을 반드시 포함**할 것 —
+ *   없으면 커서를 못 만들어 조용히 1페이지만 받고 끝나므로 error 로 되돌린다.
  * @param {any} sb
- * @param {number} [page=1000]
+ * @param {{ keyCol: string; desc?: boolean; page?: number }} opts
  * @returns {Promise<{ rows: any[]; error: string | null }>}
  */
-export async function fetchAllPages(buildQuery, sb, page = 1000) {
+export async function fetchAllPages(buildQuery, sb, { keyCol, desc = false, page = 1000 }) {
   /** @type {any[]} */
   const rows = [];
-  for (let off = 0; ; off += page) {
-    const { data, error } = await buildQuery(sb).range(off, off + page - 1);
+  /** @type {any} */
+  let cursor = null;
+  for (;;) {
+    let q = buildQuery(sb).order(keyCol, { ascending: !desc }).limit(page);
+    if (cursor != null) q = desc ? q.lt(keyCol, cursor) : q.gt(keyCol, cursor);
+    const { data, error } = await q;
     if (error) return { rows, error: error.message };
     if (!data || data.length === 0) break;
+    if (!(keyCol in data[0])) return { rows, error: `fetchAllPages: select 에 keyCol '${keyCol}' 누락` };
     rows.push(...data);
     if (data.length < page) break;
+    cursor = data[data.length - 1][keyCol];
+    // null 키가 페이지 끝에 오면 다음 회차가 커서 없이 같은 페이지를 다시 받아 무한루프.
+    // 현 호출처 키(article_no·id)는 전부 PK 라 도달 불가지만 범용 export 헬퍼라 가드
+    // (_shared.mjs selectAll 의 throw 가드와 동일 취지 — 여기선 fail-open 계약대로 error 반환).
+    if (cursor == null) return { rows, error: `fetchAllPages: keyCol '${keyCol}' 값이 null — 커서 진행 불가` };
   }
   return { rows, error: null };
 }
@@ -213,12 +238,15 @@ export async function main() {
   log(PHASE, `complexes: ${complexes.length}건`);
 
   // 1-b. articles에서 complex_no별 최다 빈도 heating_type 집계
-  const { data: heatingRows, error: hErr } = await sbMibunyang
-    .from("articles")
-    .select("complex_no, heating_type")
-    .not("heating_type", "is", null);
+  // 세션534: .range 도 .limit 도 없던 생 쿼리 → PostgREST 가 1000행에서 조용히 잘랐다.
+  // heating_type not-null 행이 지금은 0이라 잠복 상태였을 뿐 같은 뿌리 결함 → 커서 경유로 전환.
+  const { rows: heatingRows, error: hErr } = await fetchAllPages(
+    (s) => s.from("articles").select("article_no, complex_no, heating_type").not("heating_type", "is", null),
+    sbMibunyang,
+    { keyCol: "article_no", desc: true },
+  );
 
-  if (hErr) logError(PHASE, `articles heating 조회 실패: ${hErr.message}`);
+  if (hErr) logError(PHASE, `articles heating 조회 실패: ${hErr}`);
 
   /** @type {Record<string, string>} */
   const heatingByComplex = {};
@@ -269,11 +297,13 @@ export async function main() {
 
   // articles 통합 조회 (1회 전건 fetch → Phase 1/2/3b/4 공유) — 같은 is_active=true 전건을
   // 4번 따로 읽던 것을 8컬럼 1회로 통합 (fetch ~16분 → ~4분). 매칭 캐시(아래)와 독립.
+  // 세션534: article_no 는 커서 키(고유). 무정렬 OFFSET 이면 활성 26만행에서 행이 샌다.
   const { rows: allArticles, error: artFetchErr } = await fetchAllPages(
     (s) => s.from("articles").select(
-      "complex_no, area1_m2, area2_m2, direction, building_name, trade_type_name, floor_info, numeric_maintenance_cost",
+      "article_no, complex_no, area1_m2, area2_m2, direction, building_name, trade_type_name, floor_info, numeric_maintenance_cost",
     ).eq("is_active", true),
     sbMibunyang,
+    { keyCol: "article_no", desc: true },
   );
   if (artFetchErr) logError(PHASE, `articles 통합 조회 실패: ${artFetchErr}`);
   log(PHASE, `articles 통합: ${allArticles.length}건`);
@@ -516,10 +546,12 @@ export async function main() {
   // ── Phase 3: 시세/통계 → naver_* 필드 동기화 ──
   log(PHASE, "\n── Phase 3: 시세/통계 → naver_* 필드 동기화 ──");
 
-  // 3-a. complex_price_history 조회 (최근 데이터) — 전건 페이지네이션
+  // 3-a. complex_price_history 조회 (최근 데이터) — 고유키(id) 커서 페이지네이션
+  // 세션534: 38.5만행. 무정렬 OFFSET 이면 페이지마다 다른 표본을 받는다.
   const { rows: priceRows, error: prErr } = await fetchAllPages(
-    (s) => s.from("complex_price_history").select("complex_no, trade_type, price_avg"),
+    (s) => s.from("complex_price_history").select("id, complex_no, trade_type, price_avg"),
     sbMibunyang,
+    { keyCol: "id" },
   );
 
   if (prErr) logError(PHASE, `price_history 조회 실패: ${prErr}`);
@@ -528,7 +560,7 @@ export async function main() {
   /** @type {Record<string, { A1: number[]; B1: number[] }>} */
   const priceByComplex = {};
   if (priceRows) {
-    for (const r of /** @type {Array<{ complex_no: string; trade_type: string; price_avg: number | null }>} */ (priceRows)) {
+    for (const r of /** @type {Array<{ id: number; complex_no: string; trade_type: string; price_avg: number | null }>} */ (priceRows)) {
       if (!r.price_avg || r.price_avg <= 0) continue;
       if (!priceByComplex[r.complex_no]) priceByComplex[r.complex_no] = { A1: [], B1: [] };
       if (r.trade_type === "A1") priceByComplex[r.complex_no].A1.push(r.price_avg);
