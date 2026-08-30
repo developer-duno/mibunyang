@@ -176,6 +176,40 @@ export function groupByArea(trades) {
     }));
 }
 
+/**
+ * rawPrices 에서 아파트별 대표 가격·면적 행을 고른다 (apartments 테이블에 price/area 컬럼 없음).
+ *
+ * ⚠️ 화면이 쓰는 VIEW `latest_prices`(supabase/migrations/20260809000000_view_add_housing_price.sql:43-49)와
+ *    **같은 규칙**으로 골라야 PSR·괴리도가 화면 price·area 와 같은 값에서 계산된다. VIEW 는
+ *    `ORDER BY apartment_id, (CASE WHEN house_type LIKE 'presale_%' THEN 1 ELSE 0 END), recorded_at DESC`
+ *    = 비분양(seed) 행 우선(rank 0) + 그 안에서 recorded_at 최신. presale_% 는 뒤로 미룬다(rank 1).
+ *    house_type null 은 SQL 의 CASE ELSE 0 과 동일하게 rank 0.
+ *    (옛 코드는 recorded_at 최신만 봐서, presale 최신 행이 seed 를 이겨 화면과 다른 값을 썼다 — 세션531 후속.)
+ * @param {Array<Record<string, any>>} rawPrices
+ * @returns {Map<string, Record<string, any>>}
+ */
+export function buildLatestPriceMap(rawPrices) {
+  /** @type {Map<string, Record<string, any>>} */
+  const latestPriceMap = new Map();
+  /** @param {Record<string, any>} p @returns {number} */
+  const rank = (p) => (String(p.house_type ?? "").startsWith("presale_") ? 1 : 0);
+  for (const p of rawPrices) {
+    if (!p.price || p.price <= 0) continue; // price=0 오염 row 방어
+    const prev = latestPriceMap.get(p.apartment_id);
+    if (!prev) {
+      latestPriceMap.set(p.apartment_id, p);
+      continue;
+    }
+    const pr = rank(p), prevr = rank(prev);
+    if (pr < prevr) {
+      latestPriceMap.set(p.apartment_id, p); // 비분양(rank 낮음)이 분양을 이긴다
+    } else if (pr === prevr && p.recorded_at && (!prev.recorded_at || p.recorded_at > prev.recorded_at)) {
+      latestPriceMap.set(p.apartment_id, p); // 동순위면 recorded_at 최신
+    }
+  }
+  return latestPriceMap;
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const cutoff12m = monthsAgo(12);
@@ -190,7 +224,7 @@ async function main() {
   const cutoff6mYM = cutoff6m.replace(/-/g, "").slice(0, 6);
   const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory, cancelledTrades] = await Promise.all([
     fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate", {}, sbMibunyang),
-    fetchAll("prices", "apartment_id,area,price,recorded_at", {}, sbMibunyang),
+    fetchAll("prices", "apartment_id,area,price,recorded_at,house_type", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang,
       [{ col: "deal_month", op: "gte", val: cutoff12mYM },
        { col: "cancel_date", op: "is", val: null }]).catch(() => []),
@@ -210,16 +244,8 @@ async function main() {
     // 해제 거래 (cancel_date IS NOT NULL, 6개월)
     fetchCancelledTrades(sbMibunyang, cutoff6mYM).catch(() => []),
   ]);
-  // rawPrices에서 아파트별 최신 가격·면적 매핑 (apartments 테이블에 price/area 컬럼 없음)
-  /** @type {Map<string, Record<string, any>>} */
-  const latestPriceMap = new Map();
-  for (const p of rawPrices) {
-    if (!p.price || p.price <= 0) continue; // price=0 오염 row 방어
-    const prev = latestPriceMap.get(p.apartment_id);
-    if (!prev || (p.recorded_at && (!prev.recorded_at || p.recorded_at > prev.recorded_at))) {
-      latestPriceMap.set(p.apartment_id, p);
-    }
-  }
+  // rawPrices에서 아파트별 대표 가격·면적 매핑 (VIEW latest_prices 규칙 미러 — buildLatestPriceMap)
+  const latestPriceMap = buildLatestPriceMap(rawPrices);
   /** @type {Array<Record<string, any>>} */
   const apartments = rawApts.map(/** @param {Record<string, any>} a */ (a) => {
     const lp = latestPriceMap.get(a.id);

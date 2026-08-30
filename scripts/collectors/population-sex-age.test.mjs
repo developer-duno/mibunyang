@@ -9,7 +9,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { resolveRegion, parseGu, parseSexAge, AGE_BUCKETS, pickCanonicalRows } = await import("./population-sex-age.mjs");
+const { resolveRegion, parseGu, parseSexAge, AGE_BUCKETS, pickCanonicalRows, normalizeItems } = await import("./population-sex-age.mjs");
 
 describe("resolveRegion", () => {
   it("'서울특별시' → '서울'", () => {
@@ -221,6 +221,29 @@ describe("parseSexAge", () => {
     expect(b.total).toBe(0);
     expect(b.totalMale).toBe(0);
     expect(b.male.age0).toBe(0);
+  });
+});
+
+// 세션534 (C8) — 행안부 items.item 양형(배열/단일객체) 정규화.
+// 배열일 때만 처리하던 옛 코드는 시군구 1개짜리 응답(1행)을 통째로 버렸다.
+// 뮤테이션: 단일객체 분기 제거 → "1행 응답" 케이스 red.
+describe("normalizeItems — items.item 양형 처리 (C8)", () => {
+  it("다행 응답(배열) → 그대로 배열", () => {
+    const json = { Response: { items: { item: [{ ctpvNm: "서울특별시" }, { ctpvNm: "부산광역시" }] } } };
+    expect(normalizeItems(json)).toHaveLength(2);
+  });
+
+  it("1행 응답(단일 객체) → 길이 1 배열로 감싼다 (유실 0)", () => {
+    const json = { Response: { items: { item: { ctpvNm: "세종특별자치시", sggNm: "세종시" } } } };
+    const out = normalizeItems(json);
+    expect(out).toHaveLength(1);
+    expect(out[0].ctpvNm).toBe("세종특별자치시");
+  });
+
+  it("items 부재 → 빈 배열", () => {
+    expect(normalizeItems({ Response: { items: {} } })).toEqual([]);
+    expect(normalizeItems({})).toEqual([]);
+    expect(normalizeItems(null)).toEqual([]);
   });
 });
 

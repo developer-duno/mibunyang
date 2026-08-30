@@ -5,6 +5,7 @@
  * 대상: median, monthsAgo, groupByArea
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -20,7 +21,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { median, monthsAgo, groupByArea, statsKey, fetchAll } = await import("./trade-stats.mjs");
+const { median, monthsAgo, groupByArea, statsKey, fetchAll, buildLatestPriceMap } = await import("./trade-stats.mjs");
 const { REGION_MAP } = await import("./_shared.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
@@ -383,5 +384,52 @@ describe("fetchAll — 고유키 커서 페이징", () => {
     const { client } = makeClient([rows(1000), rows(1000, 1000), rows(7, 2000)]);
     const out = await fetchAll("trades", "region", {}, /** @type {any} */ (client));
     expect(out.length).toBe(2007);
+  });
+});
+
+// 세션534 (A4) — buildLatestPriceMap 이 화면 VIEW latest_prices 규칙(비분양 우선 + 최신)을 미러하는지.
+// 옛 코드는 recorded_at 최신만 봐서 presale 최신 행이 seed 를 이겼다 → PSR·괴리도가 화면과 다른 값에서 계산.
+// 뮤테이션 ① 비교자를 recorded_at 단독으로 되돌림 → 첫 케이스 red
+// 뮤테이션 ② rank 부호 반전(presale 우선) → 첫 케이스 red
+describe("buildLatestPriceMap — VIEW latest_prices 규칙 미러 (A4)", () => {
+  it("presale 최신 + seed 옛 → seed 채택 (price·area 둘 다 seed 값)", () => {
+    const m = buildLatestPriceMap([
+      { apartment_id: "a", house_type: "presale_min", price: 90000, area: 84, recorded_at: "2026-08-01" },
+      { apartment_id: "a", house_type: "apt_59", price: 50000, area: 59, recorded_at: "2026-01-01" },
+    ]);
+    expect(m.get("a")?.price).toBe(50000);
+    expect(m.get("a")?.area).toBe(59);
+  });
+
+  it("둘 다 비분양 → recorded_at 최신 채택 (기존 동작 보존)", () => {
+    const m = buildLatestPriceMap([
+      { apartment_id: "a", house_type: "apt_59", price: 50000, area: 59, recorded_at: "2026-01-01" },
+      { apartment_id: "a", house_type: "apt_84", price: 70000, area: 84, recorded_at: "2026-08-01" },
+    ]);
+    expect(m.get("a")?.price).toBe(70000);
+  });
+
+  it("house_type null 두 행 → recorded_at 최신 (rank 동일 0)", () => {
+    const m = buildLatestPriceMap([
+      { apartment_id: "a", house_type: null, price: 50000, area: 59, recorded_at: "2026-08-01" },
+      { apartment_id: "a", house_type: null, price: 40000, area: 49, recorded_at: "2026-01-01" },
+    ]);
+    expect(m.get("a")?.price).toBe(50000);
+  });
+
+  it("price<=0 행은 스킵된다 (오염 방어 유지)", () => {
+    const m = buildLatestPriceMap([
+      { apartment_id: "a", house_type: "apt_59", price: 0, area: 59, recorded_at: "2026-08-01" },
+      { apartment_id: "a", house_type: "apt_84", price: 60000, area: 84, recorded_at: "2026-01-01" },
+    ]);
+    expect(m.get("a")?.price).toBe(60000);
+  });
+
+  // 배선 가드 — main() 이 실제로 buildLatestPriceMap 을 호출하는지. 좌변 고정으로 선언부/주석 오매칭 방지
+  // (guards-must-be-mutation-tested §소스 grep). main() 을 옛 인라인 new Map() 으로 되돌리면 red.
+  it("main() 이 buildLatestPriceMap 을 실제 호출한다 (배선 가드)", () => {
+    const src = readFileSync(new URL("./trade-stats.mjs", import.meta.url), "utf8");
+    expect(src.includes("buildLatestPriceMap")).toBe(true); // 겨누는 식별자 존재 먼저 확인
+    expect(src).toMatch(/const\s+latestPriceMap\s*=\s*buildLatestPriceMap\(/);
   });
 });
