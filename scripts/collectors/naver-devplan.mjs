@@ -797,6 +797,7 @@ async function main() {
   const apartments = await selectAll(
     (s) => s.from("apartments").select("id, lat, lng, region").not("lat", "is", null).not("lng", "is", null),
     sb,
+    "id", // 고유키 커서 — 무정렬 OFFSET 은 큰 표에서 행을 잃는다(unordered-pagination-loses-rows.md)
   );
   const targets = regionFilter ? apartments.filter((a) => a.region === regionFilter) : apartments;
   log(PHASE, `apartments ${apartments.length}건 중 대상 ${targets.length}건${regionFilter ? ` (region=${regionFilter})` : ""}`);

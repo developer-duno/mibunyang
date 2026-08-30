@@ -107,8 +107,16 @@ const { count } = await sb.from(t).select("*", { count: "exact", head: true })./
 
 - 세션514 `scripts/collectors/trade-stats.mjs` `fetchAll` — keyCol·keyDesc 커서 구현 + 주석에 실측
 - `scripts/collectors/trade-stats.test.mjs` §"fetchAll — 고유키 커서 페이징" 7건(뮤테이션 2종 red 실증)
-- ⚠️ **`_shared.mjs` 의 `selectAll` 은 아직 무정렬 OFFSET 이다**(호출처가 `.order()` 를 붙이면 부분
-  방어). 큰 표를 훑는 호출처가 있는지 점검은 BACKLOG 등재 — 이 룰의 §1 을 그대로 적용하면 된다.
+- 세션534 `scripts/collectors/_shared.mjs` `selectAll(queryFn, sb, keyCol=null)` — **옵트인 커서**.
+  `keyCol` 을 넘긴 호출처만 고유키 커서로 훑고(select 에 그 키 포함 필수, 없으면 throw), 미지정이면
+  기존 offset 동작 그대로(40곳+ 호출처 회귀 0). 큰 표(>1000행)를 훑는 호출처는 `keyCol="id"`(또는
+  `article_no`/`complex_no`)를 넘긴다 — 세션534 적용분 = `lhzone-status`·`naver-devplan`·`molit-building-info`.
+- 세션534 `scripts/collectors/trade-stats-regions.mjs` `fetchAllTrades` — trades 79만행을 옛 무정렬로
+  훑던 것(trade-stats 세션514 수정의 미전파 쌍둥이)을 `id` 커서로 전환.
+- ⚠️ **아직 남은 무정렬 호출처**(세션534 감사가 확인, 회귀 위험으로 이번 제외 — BACKLOG 등재):
+  apartments/schools 대상 손제작 `.range()` 루프(transit-match·schools-neis·infra-kakao·noxious·
+  environment·industry-match·transport-tago·reverse-geocode·collect-trades·collect-crime-safety).
+  표가 3페이지 미만이라 유실 규모 작음. 위 `selectAll(keyCol)` 옵트인으로 전환하면 된다.
 
 ## 차단 검증
 

@@ -32,29 +32,39 @@ loadEnv();
 const PHASE = "trade-stats-regions";
 const SAMPLE_GATE = 3; // jeonse + sale 각각 최소 3건
 
-// ── trades 12개월 페이징 조회 (trade-stats.mjs:161 답습) ──────
+// ── trades 12개월 페이징 조회 (trade-stats.mjs fetchAll 고유키 커서 답습) ──────
 /**
+ * ⚠️ **정렬 없는 OFFSET 페이징은 trades(79만행)에서 행을 잃는다**(세션513·514 실측 —
+ * `unordered-pagination-loses-rows.md`). 옛 구현은 `.range()` 만 써 무정렬이었다 — 같은
+ * 오프셋으로 같은 쿼리를 두 번 던지면 교집합이 0 이라, 저장된 시군구 집계가 원본의 8% 수준으로
+ * 과소집계됐다. **고유키(`id`) 커서**로 훑어 유실을 막는다. 형제 파일 `trade-stats.mjs` 의
+ * `fetchAll` 과 같은 패턴(select 에 id 포함 → order(id asc) → gt 커서).
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {string} cutoffYM
  * @returns {Promise<Array<Record<string, any>>>}
  */
-async function fetchAllTrades(sb, cutoffYM) {
+export async function fetchAllTrades(sb, cutoffYM) {
   /** @type {Array<Record<string, any>>} */
   const rows = [];
   const PAGE = 1000;
-  let from = 0;
+  /** @type {any} */
+  let cursor = null;
   while (true) {
-    const { data, error } = await sb
+    let q = sb
       .from("trades")
-      .select("region,gu,price,trade_type,deal_month")
+      .select("id,region,gu,price,trade_type,deal_month")
       .gte("deal_month", cutoffYM)
       .is("cancel_date", null)
-      .range(from, from + PAGE - 1);
+      .order("id", { ascending: true })
+      .limit(PAGE);
+    if (cursor != null) q = q.gt("id", cursor);
+    const { data, error } = await q;
     if (error) throw new Error(`trades 조회 실패: ${error.message}`);
     if (!data || data.length === 0) break;
     rows.push(...data);
     if (data.length < PAGE) break;
-    from += PAGE;
+    cursor = data[data.length - 1].id;
+    if (cursor == null) break; // 키가 비면 커서를 못 만든다 — 무한 루프 대신 멈춘다
   }
   return rows;
 }
