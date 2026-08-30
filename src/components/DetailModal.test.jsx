@@ -505,6 +505,78 @@ describe("DetailModal StickyJumpNav", () => {
       const sec = openPrice("0.0");
       expect(sec.querySelector('[style*="left: 50%"]')).not.toBeNull();
     });
+
+    // ── SC0: 마커 색이 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기 ──────────
+    // 마커(14px 원)의 background 로 색을 본다. jsdom 은 hex → rgb 로 정규화한다.
+    // ⚠️ 핵심 뮤테이션: 색을 `dev > 0` 부호 단독으로 되돌리면 밴드 안(+3%)이 초록이 되어 red.
+    /** @param {string} dev */
+    const dotBg = (dev) =>
+      openPrice(dev).querySelector('[style*="width: 14px"][style*="border-radius: 50%"]').style.background;
+
+    it("밴드 안(+3%)은 초록이 아니라 중립 회색 — 부호 단독이면 red", () => {
+      expect(dotBg("3.0")).toBe("rgb(107, 114, 128)"); // C.muted
+    });
+    it("밴드 안(-3%)도 빨강이 아니라 중립 회색", () => {
+      expect(dotBg("-3.0")).toBe("rgb(107, 114, 128)"); // C.muted
+    });
+    it("밴드 위(+15%)는 초록", () => {
+      expect(dotBg("15.0")).toBe("rgb(22, 163, 74)"); // C.green
+    });
+    it("밴드 아래(-15%)는 빨강", () => {
+      expect(dotBg("-15.0")).toBe("rgb(220, 38, 38)"); // C.red
+    });
+
+    // ── SC1: 데이터 부재(fairPrice<=0)면 게이지를 아예 안 그린다 ──────────────────────
+    // scorePrice 는 부재 시 fairPrice=0 + deviation="0.0" 을 내므로 deviation 게이트만으로는
+    // 부재가 "적정가와 비슷"(한가운데 마커)으로 둔갑한다.
+    it("데이터 부재(fairPrice=0)면 게이지를 안 그린다 (SC1)", () => {
+      const item = makeItem();
+      const price = /** @type {any} */ (item.res.cats.price);
+      price.fairPrice = 0;
+      price.deviation = "0.0";
+      const { container } = render(<DetailModal {...makeProps({ item })} />);
+      fireEvent.click(screen.getByRole("tab", { name: "시세" }));
+      const sec = /** @type {any} */ (container.querySelector("#sec-price"));
+      expect(sec.textContent).not.toContain("적정가 대비 위치");
+    });
+    it("데이터 보유(fairPrice>0)면 게이지를 그린다 (게이트 정상 통과)", () => {
+      // openPrice 는 makeItem 의 fairPrice=48000 을 유지한다
+      expect(openPrice("3.0").textContent).toContain("적정가 대비 위치");
+    });
+  });
+
+  // ── 핵심 지표 '적정가 괴리' 행 — 부재 게이트(SC1) + 중립대 색(SC0) ─────────────────
+  // 종합 탭(기본 활성)이라 클릭 없이 보인다. 값 span = 라벨 span 의 형제(행의 마지막 자식).
+  describe("핵심 지표 적정가 괴리 — 부재 '—' + 중립대 색", () => {
+    const valueEl = () => /** @type {any} */ (screen.getByText("적정가 괴리").parentElement).lastElementChild;
+
+    it("데이터 부재(fairPrice=0)면 '—' — '0.0%' 로 둔갑 안 함 (SC1)", () => {
+      const item = makeItem();
+      const price = /** @type {any} */ (item.res.cats.price);
+      price.fairPrice = 0;
+      price.deviation = "0.0";
+      render(<DetailModal {...makeProps({ item })} />);
+      const v = valueEl();
+      expect(v.textContent).toBe("—");
+      expect(v.textContent).not.toContain("0.0%");
+      expect(v.style.color).toBe("rgb(107, 114, 128)"); // C.muted
+    });
+
+    it("데이터 보유 + 밴드 안(-3.2%)이면 값은 보이되 색은 중립 (SC0) — 부호 단독이면 red(빨강)", () => {
+      render(<DetailModal {...makeProps()} />); // 기본 fairPrice 48000, deviation -3.2
+      const v = valueEl();
+      expect(v.textContent).toBe("-3.2%");
+      expect(v.style.color).toBe("rgb(107, 114, 128)"); // C.muted (부호 단독이면 rgb(220,38,38))
+    });
+
+    it("밴드 밖(+15%)이면 초록 (SC0)", () => {
+      const item = makeItem();
+      /** @type {any} */ (item.res.cats.price).deviation = "15.0";
+      render(<DetailModal {...makeProps({ item })} />);
+      const v = valueEl();
+      expect(v.textContent).toBe("+15.0%");
+      expect(v.style.color).toBe("rgb(22, 163, 74)"); // C.green
+    });
   });
 
   it("종합 탭에 카테고리 미니카드 5개가 결론과 함께 보인다 (benefit 제외)", () => {

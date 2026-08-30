@@ -4,6 +4,7 @@ import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
 import { PROFILES } from "@/constants/profiles";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
+import { DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
 import { getAgeCoeff, getAreaAdj, isPresale } from "@/scoring/engine";
 import { fmtCompletion } from "@/lib/format";
 import type { Apt, Profile } from "@/types/scoring";
@@ -47,7 +48,6 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
     resolveBuilder(apt.builder as string | null | undefined)
   ] || { adj: 1.0 };
   const nearbyMedian = apt.nearbyMedian ?? 0;
-  const aptPrice = apt.price ?? 0;
   // ⚠️ **엔진이 계산한 값을 그대로 쓴다 — 여기서 다시 계산하지 않는다.**
   // 옛 코드는 `nearbyMedian × ageCoeff × areaAdj × brand` 로 자체 재계산했는데, 세션527이
   // fairPrice 1순위를 평형별 실거래 버킷 매칭으로 바꾼 뒤 **같은 모달에 서로 다른 괴리율 두 개**가
@@ -55,6 +55,21 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
   const priceRes = res.cats.price;
   const fairPrice = Number(priceRes.fairPrice ?? 0);
   const devPct = fairPrice > 0 ? String(priceRes.deviation ?? "N/A") : "N/A";
+  // 색·배경·문구는 부호 단독(적정가 > 단지가면 무조건 초록)이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기 —
+  // DetailModal SC0 답습(같은 상수). 추정 오차보다 작은 차이로 "저평가/고평가"를 단정하지 않는다.
+  // 셋을 하나의 tone 에서 파생해 "색=중립인데 문구=저평가" 모순을 원천 차단한다(세션512 PR-2 답습).
+  // fairPrice≤0(SC1 게이트)이면 devPct="N/A" → Number 가 NaN → 자동으로 중립(부재를 초록/빨강으로 오표시 안 함).
+  const devNum = Number(devPct);
+  const priceTone = !Number.isFinite(devNum)
+    ? "neutral"
+    : devNum > DEV_NEUTRAL_BAND_PCT
+      ? "cheap"
+      : devNum < -DEV_NEUTRAL_BAND_PCT
+        ? "expensive"
+        : "neutral";
+  const toneColor = priceTone === "cheap" ? C.green : priceTone === "expensive" ? C.red : C.muted;
+  const toneBg = priceTone === "cheap" ? C.greenLight : priceTone === "expensive" ? C.redLight : C.amberLight;
+  const toneLabel = priceTone === "cheap" ? "저평가" : priceTone === "expensive" ? "고평가" : "적정가 수준";
   const fromBucket = priceRes.fairPriceFromAreaBucket === true;
   const fromSido = priceRes.fairPriceFromSidoAvg === true;
 
@@ -135,14 +150,13 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
             style={{
               marginTop: 6,
               padding: "8px 10px",
-              background: fairPrice > aptPrice ? C.greenLight : C.redLight,
+              background: toneBg,
               borderRadius: 6,
               fontWeight: 700,
-              color: fairPrice > aptPrice ? C.green : C.red,
+              color: toneColor,
             }}
           >
-            = 적정가 {fairPrice.toLocaleString("ko-KR")}만원 | 괴리도 {devPct}% (
-            {fairPrice > aptPrice ? "저평가" : fairPrice < aptPrice ? "고평가" : "적정"})
+            = 적정가 {fairPrice.toLocaleString("ko-KR")}만원 | 괴리도 {devPct}% ({toneLabel})
           </div>
         </div>
       </div>

@@ -158,6 +158,75 @@ describe("AdminScoreBreakdown", () => {
     render(<AdminScoreBreakdown apt={apt} res={res} />);
     expect(screen.getByText(/최종 가중 합계.*실거주/)).toBeTruthy();
   });
+
+  /**
+   * 세션534 PR-2 후속(적대검증이 찾은 놓친 자리) — 적정가 요약줄의 색·배경·문구가 **부호 단독**
+   * (적정가 > 단지가면 무조건 저평가·초록)이 아니라 **±DEV_NEUTRAL_BAND_PCT 중립대 3분기**여야 한다.
+   * DetailModal SC0 와 같은 규칙(같은 상수). 추정 오차보다 작은 차이로 "저평가/고평가"를 단정하지 않는다.
+   *
+   * ⚠️ 색만 밴드로 바꾸고 문구를 부호로 두면 "색=중립인데 문구=저평가" 모순이 생긴다 —
+   * 색·배경·문구 셋을 하나의 tone 에서 파생하는지 함께 잠근다.
+   * 실제 렌더 경로(render + DOM 색 조회)를 지난다 — 순수 계산만 테스트하지 않는다.
+   */
+  describe("AdminScoreBreakdown — 적정가 요약줄 중립대 3분기 색·문구 (SC0 답습)", () => {
+    // jsdom 은 hex → rgb 로 정규화한다. C.green #16A34A / C.red #DC2626 / C.muted #6B7280 /
+    // C.greenLight #EDFCF2 / C.redLight #FEF2F2 / C.amberLight #FFF9EB.
+    const GREEN = "rgb(22, 163, 74)";
+    const RED = "rgb(220, 38, 38)";
+    const MUTED = "rgb(107, 114, 128)";
+    const GREEN_LIGHT = "rgb(237, 252, 242)";
+    const RED_LIGHT = "rgb(254, 242, 242)";
+    const AMBER_LIGHT = "rgb(255, 249, 235)";
+
+    /** 적정가 요약줄(= 적정가 … | 괴리도 …) 엘리먼트를 찾는다. */
+    /** @param {string | number} deviation @param {number} [fairPrice] */
+    const summaryEl = (deviation, fairPrice = 200000) => {
+      const { apt, res } = /** @type {any} */ (makeScoredItem({ nearbyMedian: 55000, price: 50000 }));
+      res.cats.price.fairPrice = fairPrice;
+      res.cats.price.deviation = String(deviation);
+      const { container } = render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+      const el = [...container.querySelectorAll("div")].find((d) => (d.textContent ?? "").startsWith("= 적정가"));
+      return /** @type {HTMLElement} */ (el);
+    };
+
+    it("중립대 안(+3%)은 초록이 아니라 중립 — 색·배경·문구 셋 다 중립 (부호 단독이면 red)", () => {
+      const el = summaryEl("3.0");
+      expect(el.style.color).toBe(MUTED);
+      expect(el.style.background).toBe(AMBER_LIGHT);
+      expect(el.textContent).toContain("적정가 수준");
+      expect(el.textContent).not.toContain("저평가");
+    });
+
+    it("중립대 안(-3%)도 빨강이 아니라 중립", () => {
+      const el = summaryEl("-3.0");
+      expect(el.style.color).toBe(MUTED);
+      expect(el.style.background).toBe(AMBER_LIGHT);
+      expect(el.textContent).toContain("적정가 수준");
+      expect(el.textContent).not.toContain("고평가");
+    });
+
+    it("밴드 위(+15%)는 초록·저평가", () => {
+      const el = summaryEl("15.0");
+      expect(el.style.color).toBe(GREEN);
+      expect(el.style.background).toBe(GREEN_LIGHT);
+      expect(el.textContent).toContain("저평가");
+    });
+
+    it("밴드 아래(-15%)는 빨강·고평가", () => {
+      const el = summaryEl("-15.0");
+      expect(el.style.color).toBe(RED);
+      expect(el.style.background).toBe(RED_LIGHT);
+      expect(el.textContent).toContain("고평가");
+    });
+
+    it("fairPrice≤0(괴리도 N/A) 이면 부재를 초록/빨강으로 오표시하지 않고 중립", () => {
+      const el = summaryEl("0.0", 0); // fairPrice=0 → devPct="N/A" → Number NaN → 중립
+      expect(el.textContent).toContain("괴리도 N/A%");
+      expect(el.style.color).toBe(MUTED);
+      expect(el.style.background).toBe(AMBER_LIGHT);
+      expect(el.textContent).toContain("적정가 수준");
+    });
+  });
 });
 
 /**

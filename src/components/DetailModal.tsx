@@ -7,7 +7,7 @@ import { catVerdict } from "@/constants/catVerdict";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
-import { DEV_FULL_MIN_PCT, DEV_ZERO_AT_PCT } from "@/constants/scoringTiers";
+import { DEV_FULL_MIN_PCT, DEV_ZERO_AT_PCT, DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
 import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
@@ -477,15 +477,22 @@ export const DetailModal = memo(function DetailModal({
                   {[
                     {
                       l: "적정가 괴리",
+                      // ⚠️ `fairPrice > 0` 이 "가격 데이터 보유"의 정직한 판별자다 — 데이터 부재 분기만
+                      //    fairPrice=0 + deviation="0.0"(scorePrice.ts:256)을 내므로, deviation 만으로는
+                      //    진짜 0% 괴리와 부재를 구분 못 해 부재가 "0.0%"로 표시됐다(catVerdict/cardChips 규약).
                       v:
-                        res.cats.price.deviation != null
+                        Number(res.cats.price.fairPrice) > 0 && res.cats.price.deviation != null
                           ? `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`
                           : "—",
+                      // 색은 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기 — 추정 오차보다
+                      // 작은 차이로 방향을 단정하지 않는다(catVerdict.ts·cardChips.ts 와 같은 상수).
                       c:
-                        res.cats.price.deviation != null
-                          ? Number(res.cats.price.deviation) > 0
+                        Number(res.cats.price.fairPrice) > 0 && res.cats.price.deviation != null
+                          ? Number(res.cats.price.deviation) > DEV_NEUTRAL_BAND_PCT
                             ? C.green
-                            : C.red
+                            : Number(res.cats.price.deviation) < -DEV_NEUTRAL_BAND_PCT
+                              ? C.red
+                              : C.muted
                           : C.muted,
                       hint: "주변 시세로 계산한 '적정가'와 실제 분양가를 비교한 거예요. +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
                     },
@@ -636,7 +643,10 @@ export const DetailModal = memo(function DetailModal({
                   ⚠️ 눈금 끝을 손으로 ±30 에 박아 두었더니 **점수가 이미 만점·최하인 지점과 어긋났다**(세션531).
                   이제 양 끝 = 점수가 더는 안 움직이는 지점(만점 경계 / 0점 도달 지점)이라, 게이지가 꽉 찼다는 건
                   "이 축에서 더 좋아질 게 없다"는 뜻이 된다. 상수를 바꾸면 눈금이 따라온다. */}
-              {res.cats.price?.deviation != null &&
+              {/* ⚠️ `fairPrice > 0` 게이트 — 데이터 부재(fairPrice=0 + deviation="0.0")면 게이지를 아예
+                  안 그린다. 그리면 부재가 "적정가와 비슷"(한가운데 마커)으로 둔갑한다(SC1). */}
+              {Number(res.cats.price?.fairPrice) > 0 &&
+                res.cats.price?.deviation != null &&
                 (() => {
                   const dev = Number(res.cats.price.deviation);
                   if (!Number.isFinite(dev)) return null;
@@ -644,7 +654,12 @@ export const DetailModal = memo(function DetailModal({
                     dev >= 0
                       ? 50 + (Math.min(dev, DEV_FULL_MIN_PCT) / DEV_FULL_MIN_PCT) * 50
                       : 50 - (Math.min(-dev, DEV_ZERO_AT_PCT) / DEV_ZERO_AT_PCT) * 50;
-                  const isGood = dev > 0;
+                  // 색·문구는 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기(SC0) — 추정 오차보다
+                  // 작은 차이로 "저렴/비쌈"을 단정하지 않는다(catVerdict.ts·cardChips.ts 와 같은 상수).
+                  // ⚠️ pct(마커 위치) 계산은 손대지 않는다 — 색·문구만 밴드 기준으로 바꾼다.
+                  const tone =
+                    dev > DEV_NEUTRAL_BAND_PCT ? "cheap" : dev < -DEV_NEUTRAL_BAND_PCT ? "expensive" : "fair";
+                  const toneColor = tone === "cheap" ? C.green : tone === "expensive" ? C.red : C.muted;
                   return (
                     <div
                       style={{
@@ -686,7 +701,7 @@ export const DetailModal = memo(function DetailModal({
                             width: 14,
                             height: 14,
                             borderRadius: "50%",
-                            background: isGood ? C.green : C.red,
+                            background: toneColor,
                             border: `2px solid ${C.card}`,
                             transform: "translate(-50%,-50%)",
                           }}
@@ -694,10 +709,10 @@ export const DetailModal = memo(function DetailModal({
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted }}>
                         <span>{DEV_ZERO_AT_PCT}% 비쌈</span>
-                        <span style={{ fontWeight: 700, color: isGood ? C.green : C.red }}>
-                          {isGood
+                        <span style={{ fontWeight: 700, color: toneColor }}>
+                          {tone === "cheap"
                             ? `+${Math.round(dev)}% 저렴`
-                            : dev < 0
+                            : tone === "expensive"
                               ? `${Math.abs(Math.round(dev))}% 비쌈`
                               : "적정가와 비슷"}
                         </span>
