@@ -37,6 +37,30 @@ export type SubInterpret = {
 const hasDevValue = (info?: string): info is string => !!info && info !== "없음";
 
 /**
+ * scoreProduct/scoreRisk/scoreFuture/scoreLocation 은 **재지 못한 값**을 정확히 `"정보 없음"`
+ * 문자열로 표시한다(`_noFar`·`_noFloor`·`_noParking`·`_noExcl` 플래그, 에너지등급·주택보급률·
+ * 인구증감·환경 3종 미기재 — 전부 이 정확한 문자열, `sanitize`/각 score* 함수의 info 생성부 실측).
+ *
+ * ⚠️ 이때 엔진이 넣는 점수는 **중립이 아니라 최저 구간에 거의 닿는 값**이다 — 값을 강제로 채워
+ * 넣기 때문이다(예: `_noFar` 면 `floorAreaRatio` 를 300%로, `_noFloor` 면 `maxFloor` 를 10층으로
+ * 채워 넣고 그 값을 등급표에 넣는다). 실측(각 등급표 최저 구간과 정확히 일치):
+ * 용적률 3점(FAR_TIERS 최저) · 층수 2점(FLOOR_TIERS 최저) · 주차 5점(PARKING_LOW_SCORE) ·
+ * 에너지 3점(ENERGY_DEFAULT, 두 등급보다 낮음) · 전용률 4점(EXCL_LOW_SCORE) · 평면 3점
+ * ("2베이이하"와 동일) · 주택보급률 위험 75점→안전 25점("보수적 기본값", 세션403 정책) ·
+ * 인구증감 35점(40점 문턱 바로 밑) · 자연환경 약 38점(40점 문턱 바로 밑, 세 필드 동시 미기재 시).
+ *
+ * `interpret` 이 점수만 보면 "안 잰 것"을 "재봤더니 나쁘다"로 단정하게 된다 — `hasDevValue` 와
+ * 같은 병, 다른 문자열(세션512 선례를 그대로 답습).
+ *
+ * ⚠️ `CatPanel.tsx` 의 `isNoDataInfo` 가 이 정확한 문자열을 이미 걸러 배지 자체를 숨기므로
+ * (현재 유일한 소비처), 이 함수는 **오늘의 화면 결함을 막는 게 아니라** subContext.ts 자신이
+ * 값 유무를 스스로 정확히 판정하게 만드는 것이다(CatPanel 주석: "값 유무 판정은 여기가 아니라
+ * subContext.ts 가 맡는다"가 이 파일에 요구하는 책임) — 다른 소비처가 생기거나 그 방어선이
+ * 바뀌어도 이 파일 혼자서 거짓을 안 만든다.
+ */
+const hasInfoValue = (info?: string): info is string => !!info && info !== "정보 없음";
+
+/**
  * 혐오시설 `info`("장례식장,고압선,공장")에서 **점수를 깎는 시설만** 센다.
  *
  * ⚠️ 수집기는 감점 0인 카테고리(공장 1,097곳·장례식장 794곳 등)도 이름을 담는다
@@ -169,7 +193,11 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     // 옛 기준 "55dB 이하 쾌적" 은 엔진에 존재하지 않는 경계였다(NOISE_TIERS 는 50/60/65/70).
     // 그래서 55dB 를 넘는 68곳(60dB 64곳·70dB 4곳)이 전부 "환경 쾌적"으로 표시됐다.
     자연환경: {
-      interpret: (sc) => (sc >= 70 ? "환경 쾌적" : sc >= 40 ? "환경 보통" : "소음/조망 불리"),
+      // ⚠️ 조망·일조·소음이 전부 미기재(`_noView && _noNoise && _noSunlight`)면 각 서브값이
+      //    중립 기본값으로 채워져도 합산이 40점 문턱 바로 밑(약 38점)이라 최저 구간으로 떨어진다 —
+      //    "정보 없음"인데 "불리"라 단정하던 자리(실측: 0+22+15+12=49/128×100≈38).
+      interpret: (sc, info) =>
+        !hasInfoValue(info) ? "환경 정보 미수집" : sc >= 70 ? "환경 쾌적" : sc >= 40 ? "환경 보통" : "소음/조망 불리",
       benchmark: "조망·일조·소음·대기질 종합 (소음은 50dB 이하 최고점)",
     },
     // ⚠️ 이 축의 점수는 **감점 대상 시설**(소각장·고압선·화장장·교도소)까지의 거리만 반영한다.
@@ -213,26 +241,39 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       benchmark: "1,000세대+ 대단지",
     },
     주차: {
-      interpret: (sc) => (sc >= 12 ? "주차 여유" : sc >= 8 ? "주차 보통" : "주차 부족"),
+      // ⚠️ `_noParking`(폴백도 못 쓴 경우) 이면 엔진이 parkingRatio 를 0.5로 채워 넣어
+      //    PARKING_LOW_SCORE(5점, 최저 구간)를 만든다 — "정보 없음"인데 "주차 부족"이라 단정하던 자리.
+      interpret: (sc, info) =>
+        !hasInfoValue(info) ? "주차 정보 미수집" : sc >= 12 ? "주차 여유" : sc >= 8 ? "주차 보통" : "주차 부족",
       benchmark: "1.3대/세대 이상",
     },
     // ⚠️ 임계가 `FAR_TIERS`(≤200% → 10 · ≤250% → 7 · 그 밖 3)와 어긋나 있었다.
     //    7점(=200~250%)이 "쾌적한 밀도"로 불려 351곳이 실제보다 후하게 표시됐고,
     //    `sc >= 5` 가지는 배점이 10·7·3 셋뿐이라 **도달 불가능한 죽은 가지**였다.
     용적률: {
-      interpret: (sc) => (sc >= 10 ? "쾌적한 밀도" : sc >= 7 ? "보통 밀도" : "과밀 우려"),
+      interpret: (sc, info) =>
+        !hasInfoValue(info) ? "용적률 미수집" : sc >= 10 ? "쾌적한 밀도" : sc >= 7 ? "보통 밀도" : "과밀 우려",
       benchmark: "200% 이하 쾌적",
     },
     에너지: {
-      interpret: (sc) => (sc >= 7 ? "고효율 에너지" : sc >= 5 ? "보통 효율" : "에너지 효율 낮음"),
+      // ⚠️ energyGrade 가 null 이면 ENERGY_DEFAULT(3점)가 두 등급(5·7점)보다 낮아 최저 구간으로
+      //    떨어진다 — "정보 없음"인데 "효율 낮음"이라 단정하던 자리.
+      interpret: (sc, info) =>
+        !hasInfoValue(info) ? "에너지 등급 미수집" : sc >= 7 ? "고효율 에너지" : sc >= 5 ? "보통 효율" : "에너지 효율 낮음",
       benchmark: "1등급 최우수",
     },
     전용률: {
-      interpret: (sc) => (sc >= 8 ? "실사용 면적 넓음" : sc >= 6 ? "전용률 보통" : "전용률 낮음"),
+      // ⚠️ `_noExcl` 이면 exclusiveRatio 를 60%로 채워 넣어 EXCL_LOW_SCORE(4점, 최저 구간)를
+      //    만든다 — "정보 없음"인데 "전용률 낮음"이라 단정하던 자리.
+      interpret: (sc, info) =>
+        !hasInfoValue(info) ? "전용률 미수집" : sc >= 8 ? "실사용 면적 넓음" : sc >= 6 ? "전용률 보통" : "전용률 낮음",
       benchmark: "80%+ 우수",
     },
     평면: {
-      interpret: (sc) => (sc >= 7 ? "우수 평면 구조" : sc >= 5 ? "보통 평면" : "평면 아쉬움"),
+      // ⚠️ layout 이 미기재·미매칭이면 LAYOUT_SCORE 의 fallback(3점)이 "2베이이하"와 같은 값이라
+      //    최저 구간으로 떨어진다 — "정보 없음"인데 "평면 아쉬움"이라 단정하던 자리.
+      interpret: (sc, info) =>
+        !hasInfoValue(info) ? "평면 정보 미수집" : sc >= 7 ? "우수 평면 구조" : sc >= 5 ? "보통 평면" : "평면 아쉬움",
       benchmark: "판상형 4Bay 최적",
     },
     내진: {
@@ -242,7 +283,8 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     // 이 축은 `apt.maxFloor` 하나만 읽는다 — 조망은 입지 자연환경 축이 별도 필드(VIEW_SCORES)로 잰다.
     // "고층 조망 유리"라 하면 재지 않은 조망을 주장하는 것이고, 858곳(52.1%)이 그 문장을 읽고 있었다.
     구조: {
-      interpret: (sc) => (sc >= 4 ? "고층 단지" : sc >= 3 ? "중층 규모" : "저층 규모"),
+      interpret: (sc, info) =>
+        !hasInfoValue(info) ? "층수 미수집" : sc >= 4 ? "고층 단지" : sc >= 3 ? "중층 규모" : "저층 규모",
       benchmark: "25층+ 고층",
     },
   },
@@ -302,6 +344,10 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       interpret: (sc, info) => {
         const label = info?.match(/(부족|적정|여유|과잉)\s*$/)?.[1];
         if (label) return label === "과잉" ? "주택 과잉 주의" : `주택 ${label}`;
+        // ⚠️ housingSupplyLevel 이 null 이면 "보수적 기본값"(세션403 정책, 안전점수 25점)이 들어가
+        //    40점 문턱 아래로 떨어져 위 sc 기반 분기가 "공급 과잉 주의"라 단정했다 — 라벨 파싱이
+        //    실패하는 경우는 사실상 이 "정보 없음" 하나뿐이다(값이 있으면 항상 위에서 걸린다).
+        if (!hasInfoValue(info)) return "주택보급률 미수집";
         return sc >= 70 ? "공급 적정" : sc >= 40 ? "공급 보통" : "공급 과잉 주의";
       },
       benchmark: "주택보급률 — 부족 96%↓ · 적정 101%↓ · 여유 104%↓ · 과잉 104%↑",
@@ -363,7 +409,10 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       benchmark: "500m 이내 만점",
     },
     인구: {
-      interpret: (sc) => (sc >= 70 ? "인구 유입 활발" : sc >= 40 ? "인구 보합" : "인구 유출 주의"),
+      // ⚠️ popGrowth 가 null 이면 기본값 35점(40점 문턱 바로 밑)이 들어가 "정보 없음"인데
+      //    "인구 유출 주의"라 단정하던 자리 — 미래가치 3축(교통·도시·산업)과 같은 병이다.
+      interpret: (sc, info) =>
+        !hasInfoValue(info) ? "인구증감 데이터 미수집" : sc >= 70 ? "인구 유입 활발" : sc >= 40 ? "인구 보합" : "인구 유출 주의",
       benchmark: "인구 증가율 +0.5%+",
     },
     산업개발: {

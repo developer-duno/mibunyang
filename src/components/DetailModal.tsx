@@ -494,7 +494,7 @@ export const DetailModal = memo(function DetailModal({
                               ? C.red
                               : C.muted
                           : C.muted,
-                      hint: "주변 시세로 계산한 '적정가'와 실제 분양가를 비교한 거예요. +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
+                      hint: "이 단지와 비슷한 평형의 실거래가로 계산한 '적정가'와 실제 분양가를 비교한 거예요(그런 실거래가 부족한 곳은 더 넓은 지역 평균으로 대신 계산해요). +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
                     },
                     { l: "입주", v: fmtMoveIn(apt.completion, apt.presaleMoveIn as string | null | undefined) },
                   ].map((r, i) => (
@@ -606,7 +606,7 @@ export const DetailModal = memo(function DetailModal({
                 <div style={DM_S.republishBadge}>재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회</div>
               )}
 
-              {/* 건물 정보 카드 (세션508 PR-3c C4) — 층수·구조·용적률·향 8필드. 기본 접힘 —
+              {/* 건물 정보 카드 (세션508 PR-3c C4) — 최고층·구조·용적률·향 7필드. 기본 접힘 —
                   TransportCard·BuilderCard 패턴 답습. layout 은 카드 자체가 점수 접미어 없는
                   전용 포맷을 쓴다(FIELD_META.layout.fmt 는 점수를 문자열에 박아 재사용 금지). */}
               <BuildingInfoCard apt={mergedApt ?? apt} />

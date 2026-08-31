@@ -192,12 +192,11 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   "competitionRate",
   "competitionSupply",
   "competitionApplicants",
-  // ── 세션508 PR-3c C4: 종합 탭 `detail/BuildingInfoCard`(건물 정보) 8필드. `heatFuel`·
+  // ── 세션508 PR-3c C4: 종합 탭 `detail/BuildingInfoCard`(건물 정보) 7필드. `heatFuel`·
   // `primaryDirection` 은 종합 탭 "단지 기본정보" 격자(OVERVIEW_SECTIONS)에서 뺀 자리 —
-  // 표면 중복 차단. 나머지 6필드는 옛 종합 탭 아코디언(서랍) 소속이었다 — 이 카드가 마저
-  // 종합 탭 서랍을 0으로 만든다.
+  // 표면 중복 차단. 나머지 5필드는 옛 종합 탭 아코디언(서랍) 소속이었다 — 이 카드가 마저
+  // 종합 탭 서랍을 0으로 만든다. (`floors` 는 이 카드에도 없다 — 아래 INTERNAL_ONLY_FIELDS 참조)
   "maxFloor",
-  "floors",
   "corridorType",
   "heatFuel",
   "primaryDirection",
@@ -252,6 +251,12 @@ export const INTERNAL_ONLY_FIELDS: readonly string[] = [
   // 카드로 승격) 짝이던 네이버측 값이 혼자 남았다. 비교 상대가 없는 네이버 단독값을
   // 새로 보여줄 자리를 만들 이유가 없어 손님 화면에서 뺐다(관리자 표에는 그대로 있다).
   "naverAvgFloor",
+  // `floors`(층수 범위 문자열)는 한 번 채워지면 갱신되지 않는데 `maxFloor`(숫자)는
+  // 월간으로 덮어써져, 종합 탭 "건물 정보" 카드 안에서 "최고층 19층"과 "층수 범위
+  // 중층(6~15F)"이 나란히 뜨며 어긋나는 단지가 손님 모수 1,754곳 중 306곳(18.1%)이었다.
+  // 결국 `maxFloor`에서 파생되는 값이라 애초에 중복이기도 했다(사장님 결정 — 관리자
+  // 전수 표에는 그대로 남는다).
+  "floors",
 ];
 
 export type ExtraSection = { key: string; title: string; color: string; fields: string[] };

@@ -122,6 +122,30 @@ function rankOf(id: string): number {
   return CHIP_ORDER[id] ?? RANK_FALLBACK;
 }
 
+/**
+ * 적정가가 무엇과 비교됐는지 — 카드만 보고는 알 수 없던 것을 칩 문구에 한 마디로 드러낸다
+ * (사장님 결정, 세션 536 — "적정가보다 61% 저렴"이 무엇과 비교한 값인지 손님이 알 수 없던 문제).
+ *
+ * 실측(2026-08-31, `fairPrice > 0` 인 1,687곳):
+ *   평형별 실거래 버킷 88.9%(1,500) · 광역 시도 평균(또는 분양 평당가) 폴백 8.5%(143) ·
+ *   인근(구) 실거래 중위가 2.6%(44, 그 중 면적 미상 31 · 면적 있음 13).
+ *
+ * `scorePrice.ts` 의 `areaBucketNotice`/`sidoNotice`/`noAreaNotice`(엔진 detail 접미사)와
+ * 같은 판단을 그대로 따른다 — 한 축을 두 자리가 다르게 말하지 않는다
+ * (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md).
+ *
+ * ⚠️ `_noArea`(면적 미상 원 플래그)는 sanitize 내부 값이라 목록 JSON 에 안 남는다 — 대신
+ * 살아남는 `area` 필드로 같은 판정을 재현한다(engine.ts:66 `_noArea` 정의와 동일 조건).
+ */
+export function priceBasisLabel(
+  price: { fairPriceFromAreaBucket?: boolean; fairPriceFromSidoAvg?: boolean },
+  areaKnown: boolean
+): string {
+  if (price.fairPriceFromAreaBucket) return "비슷한 평형 기준";
+  if (price.fairPriceFromSidoAvg) return "지역 평균 기준";
+  return areaKnown ? "인근 실거래 기준" : "면적 미상, 지역 평균 기준";
+}
+
 /* ── 기존 카드의 상수 (AptCard.tsx 에서 그대로 옮김) ── */
 const UNSOLD_ALERT_THRESHOLD = 30;
 /** 청약 경쟁률 배지 노출 단계 — 청약 진행/예정만 (미분양 제외, 모순 표시 차단) */
@@ -183,7 +207,14 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   /* ── core: 손님이 늘 확인하는 값 (상한 밖 상시 노출) ──
      손님 질문 4단계의 ①이 "얼마인가"라서 가격 판정은 언제나 보여야 한다(재설계 D3). */
   const price = cats.price as
-    { subs?: Array<{ info?: string; detail?: string }>; deviation?: unknown; fairPrice?: unknown } | undefined;
+    | {
+        subs?: Array<{ info?: string; detail?: string }>;
+        deviation?: unknown;
+        fairPrice?: unknown;
+        fairPriceFromAreaBucket?: boolean;
+        fairPriceFromSidoAvg?: boolean;
+      }
+    | undefined;
   const priceSub0 = price?.subs?.[0];
   // ⚠️ 옛 카드는 같은 값을 **두 번** 보여줬다 — 회색 `적정가 +18.8%`(subs[0].info)와
   //    초록 `적정가보다 19% 저렴`(deviation)이 같은 숫자다(2026-08-10 실측: 값이 있는 1,525곳 전부 일치,
@@ -199,10 +230,11 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
     //    한참 작다** — 알 수 없는 것을 강점이라 말하는 셈이다. 같은 단지를 점수 탭은 "적정가 수준"
     //    이라 부르는데 카드만 "저렴"이라 부르던 어긋남도 여기서 없어진다
     //    (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md — 같은 축을 말하는 자리는 한 쌍).
+    const basis = priceBasisLabel(price ?? {}, (a.area as number | null | undefined) != null);
     if (dev > DEV_NEUTRAL_BAND_PCT) {
       out.push({
         id: "priceCheap",
-        text: `적정가보다 ${Math.round(dev)}% 저렴`,
+        text: `적정가보다 ${Math.round(dev)}% 저렴 (${basis})`,
         tone: "green",
         layer: "core",
         bold: true,
@@ -210,13 +242,13 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
     } else if (dev < -DEV_NEUTRAL_BAND_PCT) {
       out.push({
         id: "priceExpensive",
-        text: `적정가보다 ${Math.abs(Math.round(dev))}% 비쌈`,
+        text: `적정가보다 ${Math.abs(Math.round(dev))}% 비쌈 (${basis})`,
         tone: "red",
         layer: "core",
         bold: true,
       });
     } else {
-      out.push({ id: "priceFair", text: "적정가 수준", tone: "plain", layer: "core" });
+      out.push({ id: "priceFair", text: `적정가 수준 (${basis})`, tone: "plain", layer: "core" });
     }
   } else if (priceSub0?.detail) {
     // 가격 데이터가 없을 때만 안내 문구를 그 자리에 둔다 — 빈칸으로 두면 왜 없는지 알 수 없다

@@ -306,16 +306,18 @@ describe("PRODUCT_MAX", () => {
       expect(say("product", "브랜드", 5)).not.toMatch(/중소/);
     });
 
+    // ⚠️ 아래 세 테스트는 실제 값(info)이 있는 경우다. info 없이 sc 만 보던 옛 호출은
+    //    "정보 없음인데 최저점 → 최저 라벨 오분류 방지" 블록(아래)에서 별도로 잠근다.
     it("용적률: FAR_TIERS(10/7/3)와 임계가 맞는다 — 7점은 '쾌적'이 아니다", () => {
-      expect(say("product", "용적률", 10)).toBe("쾌적한 밀도");
-      expect(say("product", "용적률", 7)).toBe("보통 밀도");
-      expect(say("product", "용적률", 7)).not.toMatch(/쾌적/);
-      expect(say("product", "용적률", 3)).toBe("과밀 우려");
+      expect(say("product", "용적률", 10, "180%")).toBe("쾌적한 밀도");
+      expect(say("product", "용적률", 7, "220%")).toBe("보통 밀도");
+      expect(say("product", "용적률", 7, "220%")).not.toMatch(/쾌적/);
+      expect(say("product", "용적률", 3, "300%")).toBe("과밀 우려");
     });
 
     it("구조: 층수만 재므로 조망을 주장하지 않는다", () => {
-      expect(say("product", "구조", 5)).not.toMatch(/조망/);
-      expect(say("product", "구조", 5)).toBe("고층 단지");
+      expect(say("product", "구조", 5, "최고 35층")).not.toMatch(/조망/);
+      expect(say("product", "구조", 5, "최고 35층")).toBe("고층 단지");
     });
 
     it("학군: 접근성을 재므로 '우수 학군'이라 하지 않는다", () => {
@@ -485,6 +487,73 @@ describe("PRODUCT_MAX", () => {
     it('대출/잔금: info "미산정" 이면 "대출 심사자료 미산정"', () => {
       expect(say("risk", "대출/잔금", 50, "미산정")).toBe("대출 심사자료 미산정");
       expect(say("risk", "대출/잔금", 50, "주의")).toBe("대출 보통");
+    });
+
+    // ── 정보 없음인데 최저점 → 최저 라벨 오분류 방지 ──────────────────────────
+    //
+    // 값이 없을 때 엔진은 강제로 값을 채워 넣어 점수를 만든다(예: 용적률 미수집 →
+    // floorAreaRatio=300 → 최저 구간 3점). 그 점수만 보면 "안 잰 것"을 "재봤더니 나쁘다"로
+    // 단정하게 된다(세션512의 hasDevValue 와 같은 병). 각 테스트는 옛 문구(sc 만으로 최저
+    // 라벨을 내는 것)가 되돌아오면 red 가 되도록, ①info 없음 → "미수집" 계열 ②같은 최저
+    // 점수라도 실제 값이 있으면 최저 라벨을 그대로 낸다(값이 진짜 나쁠 땐 숨기지 않는다) 둘
+    // 다 검사한다.
+    describe("정보 없음인데 최저점 → 최저 라벨 오분류 방지", () => {
+      it("용적률: 정보 없음이면 '과밀 우려'라 하지 않는다", () => {
+        expect(say("product", "용적률", 3)).toBe("용적률 미수집");
+        expect(say("product", "용적률", 3)).not.toMatch(/과밀/);
+        expect(say("product", "용적률", 3, "정보 없음")).toBe("용적률 미수집");
+        // 실제로 300%(최악)면 여전히 "과밀 우려" — 숨기지 않는다.
+        expect(say("product", "용적률", 3, "300%")).toBe("과밀 우려");
+      });
+
+      it("구조: 정보 없음이면 '저층 규모'라 하지 않는다", () => {
+        expect(say("product", "구조", 2)).toBe("층수 미수집");
+        expect(say("product", "구조", 2)).not.toMatch(/저층/);
+        expect(say("product", "구조", 2, "최고 5층")).toBe("저층 규모");
+      });
+
+      it("주차: 정보 없음이면 '주차 부족'이라 하지 않는다", () => {
+        expect(say("product", "주차", 5)).toBe("주차 정보 미수집");
+        expect(say("product", "주차", 5)).not.toMatch(/부족/);
+        expect(say("product", "주차", 5, "0.5대/세대")).toBe("주차 부족");
+      });
+
+      it("에너지: 정보 없음이면 '효율 낮음'이라 하지 않는다", () => {
+        expect(say("product", "에너지", 3)).toBe("에너지 등급 미수집");
+        expect(say("product", "에너지", 3)).not.toMatch(/낮음/);
+        expect(say("product", "에너지", 3, "3등급")).toBe("에너지 효율 낮음");
+      });
+
+      it("전용률: 정보 없음이면 '전용률 낮음'이라 하지 않는다", () => {
+        expect(say("product", "전용률", 4)).toBe("전용률 미수집");
+        expect(say("product", "전용률", 4)).not.toMatch(/낮음/);
+        expect(say("product", "전용률", 4, "60%")).toBe("전용률 낮음");
+      });
+
+      it("평면: 정보 없음이면 '평면 아쉬움'이라 하지 않는다", () => {
+        expect(say("product", "평면", 3)).toBe("평면 정보 미수집");
+        expect(say("product", "평면", 3)).not.toMatch(/아쉬움/);
+        expect(say("product", "평면", 3, "2베이이하")).toBe("평면 아쉬움");
+      });
+
+      it("공급량: 정보 없음이면 라벨 파싱 실패로 '과잉 주의'를 단정하지 않는다", () => {
+        expect(say("risk", "공급량", 25)).toBe("주택보급률 미수집");
+        expect(say("risk", "공급량", 25)).not.toMatch(/과잉/);
+        // 실제 값이 있는데 라벨 포맷이 어긋난 경우(방어적 fallback)는 sc 로 판정한다.
+        expect(say("risk", "공급량", 25, "보급률 98%")).toBe("공급 과잉 주의");
+      });
+
+      it("인구: 정보 없음이면 '유출 주의'라 하지 않는다", () => {
+        expect(say("future", "인구", 35)).toBe("인구증감 데이터 미수집");
+        expect(say("future", "인구", 35)).not.toMatch(/유출/);
+        expect(say("future", "인구", 35, "-3.2%")).toBe("인구 유출 주의");
+      });
+
+      it("자연환경: 정보 없음이면 '소음/조망 불리'라 하지 않는다", () => {
+        expect(say("location", "자연환경", 38)).toBe("환경 정보 미수집");
+        expect(say("location", "자연환경", 38)).not.toMatch(/불리/);
+        expect(say("location", "자연환경", 38, "그린조망 일조:양호 55dB")).toBe("소음/조망 불리");
+      });
     });
   });
 });

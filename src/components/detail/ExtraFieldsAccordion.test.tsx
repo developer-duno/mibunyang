@@ -74,8 +74,9 @@ describe("ExtraFieldsAccordion — 제목의 숫자가 실제 줄 수와 같다"
     expect(container.firstChild).toBeNull();
   });
 
-  // 세션508 PR-3c C4 — 건물 정보 카드가 종합 탭 아코디언의 마지막 잔여 8필드를 흡수하며
-  // 종합 탭 서랍도 실제로 비었다.
+  // 세션508 PR-3c C4 — 건물 정보 카드(7필드)와 손님 화면 노출 중단(floors, maxFloor 와
+  // 어긋나는 306곳이라 관리자 전용으로 이동)이 종합 탭 아코디언의 마지막 잔여 8필드를
+  // 나눠 흡수하며 종합 탭 서랍도 실제로 비었다.
   it("sec-overview — 여분 0(건물 정보 카드로 승격) → null 을 반환한다", () => {
     expect(extraCount("sec-overview"), "종합 탭 여분이 되살아났다").toBe(0);
     const { container } = render(<ExtraFieldsAccordion apt={fullApt()} tab="sec-overview" />);

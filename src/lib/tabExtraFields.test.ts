@@ -55,6 +55,7 @@ const INTENTIONALLY_UNRENDERED: Record<string, string> = {
   // 층별가 계단 카드로 승격) 네이버측 값이 혼자 남았다. 비교 상대 없는 단독값을 새로
   // 보여줄 자리가 없어 손님 화면에서 뺐다.
   naverAvgFloor: "짝(avgFloor)이 계단 카드로 승격해 단독 비교값이 됨 — 새 자리 없음 (세션508 PR-3b B3)",
+  floors: "maxFloor 에서 파생되는 구간 문자열인데 재계산이 안 돼 최고층과 어긋난다(306곳/18.1%). 관리자 표에만 남긴다.",
 };
 
 /**
@@ -265,12 +266,12 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
     { file: PRESALE_TIMELINE, re: /const applicants = competitionApplicants\b/, why: "진행 그림이 계산·렌더한다" },
   ];
 
-  // 세션508 PR-3c C4 — 종합 탭 건물 정보 카드 8필드. `heatFuel`·`primaryDirection` 은 종합 탭
-  // "단지 기본정보" 격자에서 빠진 자리(다른 두 필드처럼 표면 중복 차단).
+  // 세션508 PR-3c C4 — 종합 탭 건물 정보 카드 7필드. `heatFuel`·`primaryDirection` 은 종합 탭
+  // "단지 기본정보" 격자에서 빠진 자리(다른 두 필드처럼 표면 중복 차단). `floors` 는 카드에서도
+  // 뺐다 — maxFloor 와 갱신 주기가 달라 어긋나는 306곳이 있었다(INTERNAL_ONLY_FIELDS 로 이동).
   const BUILDING_INFO_CARD = "../components/detail/BuildingInfoCard.tsx";
   for (const f of [
     "maxFloor",
-    "floors",
     "corridorType",
     "heatFuel",
     "primaryDirection",
@@ -284,12 +285,12 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
   //    렌더하는가**는 아무도 안 봤다: 세션508 뮤테이션에서 DetailModal 의 렌더 한 줄을 통째로
   //    지웠는데 2,670건이 전부 초록이었다(= 8필드가 화면에서 조용히 증발해도 못 잡는다).
   //    ⚠️ `<` 를 앞에 고정해 import 줄(`import { BuildingInfoCard } from ...`)에는 안 걸리게 한다.
-  it("DetailModal 이 건물 정보 카드를 실제로 렌더한다 (카드가 빠지면 8필드가 통째로 증발)", () => {
+  it("DetailModal 이 건물 정보 카드를 실제로 렌더한다 (카드가 빠지면 7필드가 통째로 증발)", () => {
     const src = readFileSync(new URL("../components/DetailModal.tsx", import.meta.url), "utf8");
     expect(
       /<BuildingInfoCard\s+apt=\{mergedApt \?\? apt\}/.test(src),
       "DetailModal 에서 `<BuildingInfoCard apt={mergedApt ?? apt} />` 를 못 찾았다.\n" +
-        "→ 카드를 뺐다면 FIELDS_SHOWN_IN_DETAIL_CARDS 의 8필드도 함께 빼야 한다(안 빼면 화면 어디에도 안 나온다)."
+        "→ 카드를 뺐다면 FIELDS_SHOWN_IN_DETAIL_CARDS 의 7필드도 함께 빼야 한다(안 빼면 화면 어디에도 안 나온다)."
     ).toBe(true);
   });
 
@@ -527,9 +528,10 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "competitionRate",
       "competitionSupply",
       "competitionApplicants",
-      // C4: 종합 탭 건물 정보 카드(BuildingInfoCard)로 승격한 8종. heatFuel·primaryDirection
-      // 은 종합 탭 격자에서 빠진 자리(표면 중복 차단은 별도 describe 가 잠근다). 이 8종이
-      // 옛 종합 탭 아코디언의 마지막 잔여였다 — 종합 탭 서랍도 이제 0이다.
+      // C4: 종합 탭 건물 정보 카드(BuildingInfoCard)로 승격한 7종. heatFuel·primaryDirection
+      // 은 종합 탭 격자에서 빠진 자리(표면 중복 차단은 별도 describe 가 잠근다). `floors` 는
+      // 카드가 아니라 INTERNAL_ONLY_FIELDS 로 갔다(maxFloor 와 어긋나는 306곳) — 그래도 이
+      // 8종이 옛 종합 탭 아코디언의 마지막 잔여였다는 사실은 같다 — 종합 탭 서랍도 이제 0이다.
       "maxFloor",
       "floors",
       "corridorType",
@@ -564,8 +566,9 @@ describe("탭 배치", () => {
    * 세션508 PR-3c C1~C3 로 분양 탭도 0 이 됐다 — 추가 모집 이력·시공사·청약 진행 3필드가
    * 전용 카드/그림으로 승격하며 "안전" FIELD_SECTIONS 의 잔여 필드가 전부 사라졌다.
    * 0 이면 `ExtraFieldsAccordion` 이 null 을 돌려줘 버튼 자체가 안 뜬다(빈 서랍 아님).
-   * 세션508 PR-3c C4 로 종합 탭도 0 이 됐다 — 건물 정보 카드(층수·구조·용적률·향 8필드)가
-   * 옛 종합 탭 아코디언의 마지막 잔여를 흡수했다. 이제 **입지 탭 하나만** 서랍이 남는다 —
+   * 세션508 PR-3c C4 로 종합 탭도 0 이 됐다 — 건물 정보 카드(층수·구조·용적률·향 7필드)가
+   * 옛 종합 탭 아코디언의 마지막 잔여를 흡수했다(`floors` 는 카드에도 안 남고 관리자 표로만
+   * 갔다 — maxFloor 와 어긋나는 306곳). 이제 **입지 탭 하나만** 서랍이 남는다 —
    * 그것마저 0 이 되면 그건 "정리"가 아니라 "실종"이므로 그대로 잠근다.
    */
   it("입지 말고 나머지 탭은 서랍이 비어 있다 (빈 아코디언은 안 만든다)", () => {
