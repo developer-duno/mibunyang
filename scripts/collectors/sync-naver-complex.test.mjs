@@ -837,4 +837,65 @@ describe("Phase 1 거리 게이트 — 실전 경로(main()) 회귀 가드", () 
     const farUpdate = updateCalls.find((u) => u.id === "apt-far");
     expect(farUpdate).toBeUndefined();
   });
+
+  // ── 0 = "미수집" sentinel (세션537) ─────────────────────────────────
+  // 화면 `nPos`(v > 0 이라야 표시)와 점수 `_noFar`(=== 0 을 "모름")는 이미 0 을 미수집으로
+  // 취급하는데 채움 가드만 `== null` 이라 0 이 박히면 영영 안 채워졌다(실측 292곳).
+  // ⚠️ 뮤테이션 대상 — 대상 조건과 **출처 조건** 둘 다. 대상만 넓히고 출처를 `!= null` 로
+  //    두면 0 을 0 으로 덮는 쓰기가 남는다(complexes 에 0 이 7,535건).
+  it("apt 값이 0 이면 다시 채우고, 출처가 0 이면 채우지 않으며, 양수는 건드리지 않는다", async () => {
+    const at = { lat: 37.5, lng: 127.0 };
+    /** @param {string} no @param {string} name @param {Record<string, unknown>} f */
+    const cpx = (no, name, f) => /** @type {any} */ ({
+      complex_no: no, complex_name: name, latitude: at.lat, longitude: at.lng,
+      floor_area_ratio: null, building_coverage_ratio: null, high_floor: null,
+      total_parking_count: null, total_household_count: null, has_pool: null,
+      use_approve_ymd: null, heat_fuel_type: null, corridor_type: null, ...f,
+    });
+    /** @param {string} id @param {string} name @param {Record<string, unknown>} f */
+    const apt = (id, name, f) => /** @type {any} */ ({
+      id, name, lat: at.lat, lng: at.lng,
+      floor_area_ratio: null, building_coverage_ratio: null, max_floor: null,
+      parking_ratio: null, has_pool: null, heating: null, exclusive_ratio: null,
+      quake_design: null, view: null, sunlight: null, heat_fuel: null, corridor_type: null, ...f,
+    });
+
+    const { sb, updateCalls } = makeGateSb({
+      complexes: [
+        cpx("CX-Z", "제로단지", { floor_area_ratio: 260, building_coverage_ratio: 45, high_floor: 20 }),
+        cpx("CX-SRC0", "출처영단지", { floor_area_ratio: 0, building_coverage_ratio: 0, high_floor: 0 }),
+        cpx("CX-KEEP", "보존단지", { floor_area_ratio: 999, building_coverage_ratio: 88, high_floor: 77 }),
+      ],
+      apartments: [
+        // ① 저장값이 0 = 미수집 → 채워져야 한다
+        apt("apt-zero", "제로단지", { floor_area_ratio: 0, building_coverage_ratio: 0, max_floor: 0 }),
+        // ② 출처가 0 → 채우면 안 된다(0 을 0 으로 덮는 쓰기)
+        apt("apt-src0", "출처영단지", { floor_area_ratio: 0, building_coverage_ratio: 0, max_floor: 0 }),
+        // ③ 저장값이 양수 → 건드리면 안 된다(기존 값 불변)
+        apt("apt-keep", "보존단지", { floor_area_ratio: 250, building_coverage_ratio: 40, max_floor: 15 }),
+      ],
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+
+    await main();
+
+    // ① 0 이던 세 필드가 전부 채워진다
+    const zero = updateCalls.find((u) => u.id === "apt-zero");
+    expect(zero).toBeDefined();
+    expect(zero?.row.floor_area_ratio).toBe(260);
+    expect(zero?.row.building_coverage_ratio).toBe(45);
+    expect(zero?.row.max_floor).toBe(20);
+
+    // ② 출처가 0 이면 그 필드는 쓰지 않는다
+    const src0 = updateCalls.find((u) => u.id === "apt-src0");
+    expect(src0?.row.floor_area_ratio).toBeUndefined();
+    expect(src0?.row.building_coverage_ratio).toBeUndefined();
+    expect(src0?.row.max_floor).toBeUndefined();
+
+    // ③ 양수 저장값은 덮지 않는다 — 999 로 덮이면 세션536 이 지운 오염이 되살아난다
+    const keep = updateCalls.find((u) => u.id === "apt-keep");
+    expect(keep?.row.floor_area_ratio).toBeUndefined();
+    expect(keep?.row.building_coverage_ratio).toBeUndefined();
+    expect(keep?.row.max_floor).toBeUndefined();
+  });
 });
