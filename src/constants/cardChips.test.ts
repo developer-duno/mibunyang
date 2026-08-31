@@ -71,7 +71,7 @@ describe("buildCardChips — 늘 보이는 핵심 값(core)", () => {
 
   it("적정가와 정확히 같으면(fairPrice 있음 + 괴리 0) '적정가 수준'", () => {
     const res = mkRes({ price: { total: 70, subs: [{ info: "0.0%" }], fairPrice: 50000, deviation: 0 } });
-    expect(find(build({}, res), "priceFair")?.text).toBe("적정가 수준");
+    expect(find(build({}, res), "priceFair")?.text).toBe("적정가 수준 (면적 미상, 지역 평균 기준)");
   });
 
   it("비로그인이면 안전 등급이 물음표로 가려진다 (점수 블라인드 정책)", () => {
@@ -83,6 +83,47 @@ describe("buildCardChips — 늘 보이는 핵심 값(core)", () => {
     const chips = build({}, mkRes({ risk: { total: 85, subs: [] } }));
     expect(find(chips, "riskGrade")?.text).toBe("안전 A등급");
   });
+});
+
+describe("buildCardChips — 적정가 비교 근거 (세션536)", () => {
+  // "적정가보다 61% 저렴"만 보면 무엇과 비교했는지 손님이 알 수 없다. 실측(fairPrice>0 인
+  // 1,687곳)상 88.9%는 평형별 실거래 버킷, 8.5%는 광역 시도 평균 폴백이라 한 문구로 뭉뚱그리면
+  // 143곳에 거짓이 된다 — 칩 문구에 경로별 근거를 드러낸다.
+  const priceRes = (extra: Record<string, unknown>) =>
+    mkRes({ price: { total: 70, subs: [{ info: "x" }], fairPrice: 9e4, deviation: 19, ...extra } });
+
+  it("평형별 실거래 버킷 매칭이면 '비슷한 평형 기준'", () => {
+    const chips = build({}, priceRes({ fairPriceFromAreaBucket: true }));
+    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (비슷한 평형 기준)");
+  });
+
+  it("광역 시도 평균(또는 분양 평당가) 폴백이면 '지역 평균 기준'", () => {
+    const chips = build({}, priceRes({ fairPriceFromSidoAvg: true }));
+    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (지역 평균 기준)");
+  });
+
+  it("두 플래그 모두 없고 면적을 아는 단지(인근 중위가 경로)면 '인근 실거래 기준'", () => {
+    const chips = build({ area: 84.97 }, priceRes({}));
+    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (인근 실거래 기준)");
+  });
+
+  it("두 플래그 모두 없고 면적 미상이면 '면적 미상' 을 밝힌다 — 평형 반영된 것처럼 읽히면 안 된다", () => {
+    const chips = build({ area: null }, priceRes({}));
+    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (면적 미상, 지역 평균 기준)");
+  });
+
+  it("'적정가 수준'도 같은 근거 문구를 단다", () => {
+    const chips = build(
+      {},
+      mkRes({
+        price: { total: 70, subs: [{ info: "x" }], fairPrice: 5e4, deviation: 0, fairPriceFromAreaBucket: true },
+      })
+    );
+    expect(find(chips, "priceFair")?.text).toBe("적정가 수준 (비슷한 평형 기준)");
+  });
+
+  // ⚠️ 뮤테이션 대상: priceBasisLabel 을 안 부르고 옛 문구(접미 없음)로 되돌리면 위 5건이 전부 red 여야 한다
+  // (.claude/rules/meta/guards-must-be-mutation-tested.md).
 });
 
 describe("buildCardChips — 상태(status) 층", () => {
@@ -138,7 +179,7 @@ describe("buildCardChips — 강점/약점 판정", () => {
     expect(find(cheap, "priceExpensive")).toBeUndefined();
 
     const pricey = build({}, mkRes({ price: { total: 40, subs: [{ info: "x" }], fairPrice: 9e4, deviation: -12 } }));
-    expect(find(pricey, "priceExpensive")?.text).toBe("적정가보다 12% 비쌈");
+    expect(find(pricey, "priceExpensive")?.text).toBe("적정가보다 12% 비쌈 (면적 미상, 지역 평균 기준)");
     expect(find(pricey, "priceExpensive")?.layer).toBe("core");
     expect(find(pricey, "priceCheap")).toBeUndefined();
   });

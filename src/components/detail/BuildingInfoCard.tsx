@@ -7,21 +7,29 @@ import type { Apt } from "@/types/scoring";
 /**
  * BuildingInfoCard — 종합 탭 "건물 정보" 전용 카드 (세션508 PR-3c C4).
  *
- * 필드 8개: `maxFloor`·`floors`·`corridorType`·`heatFuel`·`primaryDirection`·`floorAreaRatio`·
+ * 필드 7개: `maxFloor`·`corridorType`·`heatFuel`·`primaryDirection`·`floorAreaRatio`·
  * `buildingCoverageRatio`·`layout`.
+ *
+ * ⚠️ `floors`(층수 범위 문자열, 예: "중층(6~15F)")는 이 카드에서 뺐다 — 한 번 채워지면
+ * 갱신되지 않는데 `maxFloor`(숫자)는 월간으로 덮어써져서, 같은 카드 안에 "최고층 19층"과
+ * "층수 범위 중층(6~15F)"이 나란히 뜨며 어긋나는 단지가 손님 모수 1,754곳 중 306곳(18.1%)
+ * 이었다. 둘 다 결국 `maxFloor`에서 파생되는 값이라 원래도 중복이었다. 관리자 전수 표
+ * (`AdminDataAudit` → `FieldTable`)에는 그대로 남는다 — `INTERNAL_ONLY_FIELDS`(`lib/tabExtraFields.ts`)
+ * 로 옮겼을 뿐 `FIELD_META.floors`는 그대로다(완성도 계산 모수에서 빠지면 안 되므로 `hidden`은
+ * 쓰지 않는다 — `fieldMeta.ts` 의 `naverNearbyAvg` 선례와 같은 이유).
  *
  * 채움률은 **모수와 측정일을 함께** 적는다 — 모집단 없는 비율은 검증도 인용도 못 한다
  * (`.claude/rules/collectors/external-file-duplicate-rows.md`). 2026-08-10 운영 API(n=1,646) 기준
- * 평균 81.5%, 가장 낮은 건 `corridorType` 64.9% 이고 `layout` 은 68.9%로 두 번째다.
+ * 평균 81.5%(당시 8필드), 가장 낮은 건 `corridorType` 64.9% 이고 `layout` 은 68.9%로 두 번째다.
  * (초안에 있던 "평균 73%·layout 23.6%" 는 분자와 분모를 서로 다른 모수에서 가져온 값이라
  *  어느 출처로도 재현되지 않았다 — 세션508 적대검증에서 정정.)
  *
  * `heatFuel`·`primaryDirection` 은 종합 탭 "단지 기본정보" 격자(`lib/dataSections.ts`
  * OVERVIEW_SECTIONS)에서 뺀 자리 — 이 카드가 층수·구조·향까지 한데 모아 "이 건물이 어떻게
- * 생겼나"를 한 자리에서 답한다. 나머지 6필드는 옛 종합 탭 아코디언(서랍) 소속이었다 — 이
+ * 생겼나"를 한 자리에서 답한다. 나머지 5필드는 옛 종합 탭 아코디언(서랍) 소속이었다 — 이
  * 카드가 그 서랍을 마저 0으로 만든다(플랜 §"착수 전 사장님 확인 1건" 표의 마지막 칸).
  *
- * ## layout — fmt 재사용 금지 (다른 7필드와 다르다)
+ * ## layout — fmt 재사용 금지 (다른 6필드와 다르다)
  *
  * `FIELD_META.layout.fmt` 는 `${v} (${sc}점)` 로 **점수 엔진 원재료(LAYOUT_SCORE)를 문자열에
  * 그대로 박아** 내보낸다. 그런데 이 필드는 옛 종합 탭 서랍(`ExtraFieldsAccordion` → `FieldTable`)
@@ -29,7 +37,7 @@ import type { Apt } from "@/types/scoring";
  * **비로그인 손님이 이미 "4베이판상 (10점)"을 보고 있었다**(세션508 적대검증이 origin/main 의
  * 서랍 구성을 실행으로 재현해 확인). 그래서 이 카드는 "미래 위험 예방"이 아니라 **현존 누출을
  * 막는 수정**이다 — fmt 를 그대로 재사용했다면 누출을 더 눈에 띄는 자리로 옮기기만 했을 것이다.
- * → 점수 접미어 없는 별도 포맷을 쓴다(`fmtLayout`, `v || "미수집"`). 나머지 7필드는 기존
+ * → 점수 접미어 없는 별도 포맷을 쓴다(`fmtLayout`, `v || "미수집"`). 나머지 6필드는 기존
  * 원칙(TransportCard·BuilderCard 답습 — "센티널 문구는 fieldMeta 것을 그대로 재사용, 새로
  * 짓지 않는다")대로 `FIELD_META.fmt` 를 그대로 재사용한다.
  *
@@ -42,7 +50,6 @@ import type { Apt } from "@/types/scoring";
  */
 const FIELDS = [
   "maxFloor",
-  "floors",
   "corridorType",
   "heatFuel",
   "primaryDirection",
@@ -116,7 +123,6 @@ export const BuildingInfoCard = memo(function BuildingInfoCard({ apt }: { apt: A
             label={FIELD_META.maxFloor.label}
             value={FIELD_META.maxFloor.fmt(apt.maxFloor, apt)}
           />
-          <Field field="floors" label={FIELD_META.floors.label} value={FIELD_META.floors.fmt(apt.floors, apt)} />
           <Field
             field="corridorType"
             label={FIELD_META.corridorType.label}

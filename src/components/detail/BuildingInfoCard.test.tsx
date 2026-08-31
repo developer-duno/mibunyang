@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { BuildingInfoCard } from "./BuildingInfoCard";
 import { makeApt } from "@/__tests__/factories";
 import { C } from "@/theme";
 import type { Apt } from "@/types/scoring";
+import { INTERNAL_ONLY_FIELDS } from "@/lib/tabExtraFields";
 
 /** 값 칸(라벨 다음 span) — 색·문구를 함께 보려면 텍스트만으로는 부족하다. */
 function valueEl(container: HTMLElement, field: string): HTMLElement {
@@ -16,10 +18,10 @@ function apt(overrides: Record<string, unknown> = {}): Apt {
   return makeApt(overrides) as unknown as Apt;
 }
 
-// 8필드 전부 null 로 만드는 헬퍼 — makeApt() 기본값(maxFloor·floorAreaRatio·layout)을 지운다.
+// 7필드 전부 null 로 만드는 헬퍼 — makeApt() 기본값(maxFloor·floorAreaRatio·layout)을 지운다.
+// (floors 는 이 카드에서 뺐다 — maxFloor 와 어긋나는 306곳, INTERNAL_ONLY_FIELDS 로 이동)
 const ALL_NULL = {
   maxFloor: null,
-  floors: null,
   corridorType: null,
   heatFuel: null,
   primaryDirection: null,
@@ -29,7 +31,7 @@ const ALL_NULL = {
 };
 
 describe("BuildingInfoCard — 게이트·기본 접힘 (BuilderCard·TransportCard 패턴 답습)", () => {
-  it("8필드가 전부 null 이면 렌더하지 않는다", () => {
+  it("7필드가 전부 null 이면 렌더하지 않는다", () => {
     const { container } = render(<BuildingInfoCard apt={apt(ALL_NULL)} />);
     expect(container.firstChild).toBeNull();
   });
@@ -69,17 +71,11 @@ describe("BuildingInfoCard — layout (점수 접미어 없는 전용 포맷, fm
   });
 });
 
-describe("BuildingInfoCard — 나머지 7필드 (FIELD_META.fmt 그대로 재사용)", () => {
+describe("BuildingInfoCard — 나머지 6필드 (FIELD_META.fmt 그대로 재사용)", () => {
   it("maxFloor — fmt 그대로 (숫자+층)", () => {
     render(<BuildingInfoCard apt={apt({ maxFloor: 25 })} />);
     fireEvent.click(screen.getByText("건물 정보"));
     expect(screen.getByText("25층")).toBeTruthy();
-  });
-
-  it("floors — fmt 그대로 (문자열)", () => {
-    render(<BuildingInfoCard apt={apt({ floors: "고층(16~25F)" })} />);
-    fireEvent.click(screen.getByText("건물 정보"));
-    expect(screen.getByText("고층(16~25F)")).toBeTruthy();
   });
 
   it("corridorType — null 이면 '미수집'", () => {
@@ -155,5 +151,34 @@ describe("BuildingInfoCard — 용적률·건폐율 0 은 '미수집' (있을 �
     fireEvent.click(screen.getByText("건물 정보"));
     expect(valueEl(container, "floorAreaRatio").textContent).toBe("226%");
     expect(valueEl(container, "buildingCoverageRatio").textContent).toBe("17%");
+  });
+});
+
+describe("BuildingInfoCard — FIELDS 배열은 INTERNAL_ONLY_FIELDS 와 겹치지 않는다 (역방향 가드)", () => {
+  /**
+   * `tabExtraFields.test.ts` 의 CARD_SOURCE 대조는 한쪽 방향만 본다 — "FIELDS_SHOWN_IN_DETAIL_CARDS
+   * 에 적힌 필드가 실제로 이 카드에 그려지는가". 반대 방향("이 카드가 그 목록에 없는 걸 몰래
+   * 그리는가")은 아무도 안 본다. 뮤테이션 검증(2026-08-31, PR-1 층수구간 제거)으로 실측: `floors`
+   * 를 이 카드의 FIELDS 배열 + JSX `<Field>` 줄에 그대로 되돌려도 vitest·typecheck·lint 전부
+   * 초록이었다 — `INTERNAL_ONLY_FIELDS`(`lib/tabExtraFields.ts`, 관리자 전용으로 내린 필드
+   * 목록)로 옮긴 필드가 이 카드에 조용히 재등장해도 잡는 가드가 없었다는 뜻.
+   *
+   * 이 테스트가 그 반대 방향을 채운다: 이 카드의 FIELDS 배열(hasAny 게이트 목록)을 소스에서
+   * 직접 읽어, INTERNAL_ONLY_FIELDS 와 겹치는 항목이 있는지 본다. FIELDS 자체는 렌더링을
+   * 하지 않지만(개별 `<Field>` JSX 가 그린다) hasAny 게이트를 통과시키는 순간이 "이 필드를
+   * 다시 다루기 시작했다"는 가장 이른 신호라 여기서 잡는다.
+   *
+   * ⚠️ 경로는 `import.meta.url` 이 아니라 **cwd 상대 문자열**로 준다 — 이 파일은 jsdom
+   *    환경이라 `import.meta.url` 이 file: 스킴이 아니다(`DeviationRow.bundle.test.ts` 의 같은
+   *    주석 참조). node 환경 전용 pragma 를 파일 전체에 걸면 위 render 테스트들이 깨진다.
+   */
+  it("FIELDS 배열에 INTERNAL_ONLY_FIELDS 소속 필드가 없다", () => {
+    const src = readFileSync("src/components/detail/BuildingInfoCard.tsx", "utf8");
+    const m = src.match(/const FIELDS = \[([\s\S]*?)\] as const;/);
+    expect(m, "FIELDS 배열 선언을 소스에서 못 찾았다 — 정규식이 소스 형태와 어긋났다").not.toBeNull();
+    const fields = [...(m?.[1] ?? "").matchAll(/"([a-zA-Z0-9_]+)"/g)].map((x) => x[1]);
+    expect(fields.length, "FIELDS 배열 파싱 결과가 비어 있다 — 정규식이 무효하다").toBeGreaterThan(0);
+    const leaked = fields.filter((f) => (INTERNAL_ONLY_FIELDS as readonly string[]).includes(f));
+    expect(leaked, `카드 FIELDS 에 INTERNAL_ONLY_FIELDS 소속이 섞였다: ${leaked.join(", ")}`).toEqual([]);
   });
 });
