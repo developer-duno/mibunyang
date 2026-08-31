@@ -259,7 +259,13 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       // ⚠️ energyGrade 가 null 이면 ENERGY_DEFAULT(3점)가 두 등급(5·7점)보다 낮아 최저 구간으로
       //    떨어진다 — "정보 없음"인데 "효율 낮음"이라 단정하던 자리.
       interpret: (sc, info) =>
-        !hasInfoValue(info) ? "에너지 등급 미수집" : sc >= 7 ? "고효율 에너지" : sc >= 5 ? "보통 효율" : "에너지 효율 낮음",
+        !hasInfoValue(info)
+          ? "에너지 등급 미수집"
+          : sc >= 7
+            ? "고효율 에너지"
+            : sc >= 5
+              ? "보통 효율"
+              : "에너지 효율 낮음",
       benchmark: "1등급 최우수",
     },
     전용률: {
@@ -412,7 +418,13 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       // ⚠️ popGrowth 가 null 이면 기본값 35점(40점 문턱 바로 밑)이 들어가 "정보 없음"인데
       //    "인구 유출 주의"라 단정하던 자리 — 미래가치 3축(교통·도시·산업)과 같은 병이다.
       interpret: (sc, info) =>
-        !hasInfoValue(info) ? "인구증감 데이터 미수집" : sc >= 70 ? "인구 유입 활발" : sc >= 40 ? "인구 보합" : "인구 유출 주의",
+        !hasInfoValue(info)
+          ? "인구증감 데이터 미수집"
+          : sc >= 70
+            ? "인구 유입 활발"
+            : sc >= 40
+              ? "인구 보합"
+              : "인구 유출 주의",
       benchmark: "인구 증가율 +0.5%+",
     },
     산업개발: {
