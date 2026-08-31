@@ -409,9 +409,9 @@ export async function main() {
       // (실측 292곳). 바로 아래 view/sunlight 가 문자열 sentinel `""` 를 함께 보는 것과 같은
       // 사상인데 숫자 쪽만 빠져 있었던 것이다.
       //
-      // 출처도 `> 0` 으로 좁힌다 — complexes 에 용적률 0 이 7,025건 있어 `!= null` 로 두면
-      // **0 을 0 으로 덮는 쓰기가 계속된다**(0 이 들어온 경로 자체). 대상만 넓히고 출처를
-      // 그대로 두면 고친 자리가 다시 0 으로 채워진다.
+      // 출처도 `> 0` 으로 좁힌다 — complexes 에 **진짜 0** 이 용적률 7,025건·건폐율 7,372건
+      // 있어 `!= null` 로 두면 **0 을 0 으로 덮는 쓰기가 계속된다**(0 이 들어온 경로 자체).
+      // 대상만 넓히고 출처를 그대로 두면 고친 자리가 다시 0 으로 채워진다.
       // `Number(null)` 은 0 이라 null·0 이 한 번에 걸린다(NaN 도 `> 0` 이 false).
       if (!(Number(apt.floor_area_ratio) > 0) && Number(cpx.floor_area_ratio) > 0) {
         row.floor_area_ratio = cpx.floor_area_ratio;
@@ -422,9 +422,12 @@ export async function main() {
         row.parking_ratio = Math.round((cpx.total_parking_count / cpx.total_household_count) * 100) / 100;
       }
 
-      // 최고층 — 0 처리는 위 용적률과 같다. 지금 apartments 에 0 은 **0곳**이지만
-      // complexes.high_floor 에 0 이 15,647건 있어 **유입 경로가 열려 있다**(0층 건물은 없다).
-      // 즉 여기서는 대상 확대가 아니라 **유입 차단**이 목적이다.
+      // 최고층 — 0 처리는 위 용적률과 같다. **다만 근거는 용적률·건폐율보다 약하다**:
+      // apartments 에 0 은 0곳이고 complexes.high_floor 에도 **진짜 0 은 0건**이다
+      // (세션537 최초 서술은 NULL 15,647건을 0 으로 잘못 셌다 — `Number(null)===0` 함정.
+      //  후속 감사가 정정). 그래도 유지하는 이유는 **0층 건물이 물리적으로 없어** 방어가
+      // 무해하고, 화면(`nPos`)·점수(`_noFloor`)를 같은 세션에 0-sentinel 로 맞췄기 때문이다
+      // — 여기만 `!= null` 로 두면 그 셋이 다시 어긋난다.
       if (!(Number(apt.max_floor) > 0) && Number(cpx.high_floor) > 0) {
         row.max_floor = cpx.high_floor;
       }

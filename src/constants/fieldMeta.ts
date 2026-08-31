@@ -46,7 +46,9 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   price: { label: "분양가", section: "개요", unit: "만원", fmt: (v) => fmtPrice(v) },
   pp: { label: "평당가", section: "개요", unit: "만원", fmt: (v) => nk(v ?? 0, "만원") },
   floors: { label: "층수 범위", section: "개요", fmt: (v) => v ?? "—" },
-  maxFloor: { label: "최고층", section: "개요", unit: "층", fmt: (v) => n(v, "층") },
+  // 0층 건물은 없다 → `n`(null 만 검사) 이 아니라 `nPos`(v > 0). 용적률·건폐율과 같은 꼴이다.
+  // 세션537: PR #464 가 수집기에서 0 을 sentinel 로 선언했는데 여기가 0 을 "0층"으로 찍고 있었다.
+  maxFloor: { label: "최고층", section: "개요", unit: "층", fmt: (v) => nPos(v, "층") },
   units: {
     label: "총세대수",
     section: "개요",

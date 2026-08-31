@@ -180,3 +180,25 @@ describe("FIELD_SECTIONS", () => {
     });
   });
 });
+
+// 세션537: 0 을 "미수집"으로 보는 필드는 `nPos`(v > 0), 개수처럼 0 이 진짜 값인 필드는 `n`.
+// ⚠️ 뮤테이션 대상 — maxFloor 를 `n` 으로 되돌리면 "0층"이 찍히므로 red 여야 한다.
+describe("0 을 미수집으로 보는 필드 (nPos) vs 0 이 진짜 값인 필드 (n)", () => {
+  it("물리적으로 0 이 불가능한 필드는 0 을 '미수집'으로 찍는다", () => {
+    // 0층 건물·용적률 0%·건폐율 0% 는 존재하지 않는다 → 값이 아니라 미수집 표시다
+    expect(FIELD_META.maxFloor.fmt(0)).toBe("미수집");
+    expect(FIELD_META.floorAreaRatio.fmt(0)).toBe("미수집");
+    expect(FIELD_META.buildingCoverageRatio.fmt(0)).toBe("미수집");
+  });
+
+  it("값이 있으면 그대로 찍는다", () => {
+    expect(FIELD_META.maxFloor.fmt(25)).toBe("25층");
+    expect(FIELD_META.floorAreaRatio.fmt(220)).toBe("220%");
+  });
+
+  it("0 이 진짜 값일 수 있는 개수 필드는 0 을 그대로 찍는다", () => {
+    // 병원 0개·편의점 0개는 실제로 가능한 값이라 "미수집"으로 뭉개면 안 된다
+    expect(FIELD_META.hospital.fmt(0)).toBe("0개");
+    expect(FIELD_META.park.fmt(0)).toBe("0개");
+  });
+});

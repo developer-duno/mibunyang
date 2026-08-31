@@ -321,7 +321,10 @@ export function toComplexRow(input) {
     construction_company: data.constructionCompanyName ?? null,
     floor_area_ratio: data.floorAreaRatio ? parseFloat(data.floorAreaRatio) : null,
     total_parking_count: data.totalParkingCount ?? null,
-    high_floor: data.highFloor ?? null,
+    // `??` 는 0 을 통과시킨다 — 0층 건물은 없으므로 위 floor_area_ratio 와 같이 falsy 로 막는다
+    // (세션537). 현재 complexes.high_floor 의 진짜 0 은 0건이라 효과는 예방뿐이지만, 이 값이
+    // apartments.max_floor 의 출처라 여기서 0 이 새면 화면 "0층"·최하위 점수로 이어진다.
+    high_floor: Number(data.highFloor) > 0 ? data.highFloor : null,
     low_floor: data.lowFloor ?? null,
     min_supply_area_m2: data.minSupplyArea ? parseFloat(data.minSupplyArea) : null,
     max_supply_area_m2: data.maxSupplyArea ? parseFloat(data.maxSupplyArea) : null,
