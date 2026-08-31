@@ -14,7 +14,7 @@
 import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun, selectAll } from "./_shared.mjs";
 
 /** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} ComplexRow */
-/** @typedef {{ id: string; name: string; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
+/** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
 /** @typedef {{ id: string; name: string; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; naver_jeonse_count: number | null; naver_wolse_count: number | null }} AptUnsoldRow */
 /** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; naver_nearby_median: number | null; naver_nearby_avg: number | null; naver_jeonse_rate: number | null; naver_build_year: number | null; naver_avg_floor: number | null; naver_nearby_count: number | null; naver_fetched_at: string | null }} AptNaverRow */
 /** @typedef {{ article_no: string; complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null }} ArticleAreaRow */
@@ -153,12 +153,10 @@ export function buildSpatialGrid(allComplexes, cellSize = 0.02) {
 export function findNearbyComplexes(apt, spatialGrid, radiusKm = 2) {
   if (!apt.lat || !apt.lng) return [];
   const { grid, cellSize } = spatialGrid;
-  const R = 6371;
-  /** @param {number} d */
-  const toRad = (d) => d * Math.PI / 180;
   const cellRadius = Math.ceil(radiusKm / (cellSize * 111));
   const cr = Math.floor(apt.lat / cellSize);
   const cc = Math.floor(apt.lng / cellSize);
+  const radiusM = radiusKm * 1000;
   /** @type {string[]} */
   const results = [];
   for (let dr = -cellRadius; dr <= cellRadius; dr++) {
@@ -167,15 +165,57 @@ export function findNearbyComplexes(apt, spatialGrid, radiusKm = 2) {
       if (!cell) continue;
       for (const cpx of cell) {
         if (cpx.latitude == null || cpx.longitude == null) continue;
-        const dLat = toRad(cpx.latitude - apt.lat);
-        const dLon = toRad(cpx.longitude - apt.lng);
-        const a = Math.sin(dLat/2)**2 + Math.cos(toRad(apt.lat)) * Math.cos(toRad(cpx.latitude)) * Math.sin(dLon/2)**2;
-        const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        if (dist <= radiusKm) results.push(cpx.complex_no);
+        const dist = distanceM(apt.lat, apt.lng, cpx.latitude, cpx.longitude);
+        if (dist <= radiusM) results.push(cpx.complex_no);
       }
     }
   }
   return results;
+}
+
+/**
+ * 두 좌표 간 haversine 거리(미터). findNearbyComplexes 인라인 계산을 추출(세션536) —
+ * withinMatchRange(거리 게이트)와 findNearbyComplexes(Phase 3 인근 단지 탐색)가 공유한다.
+ * @param {number} lat1 @param {number} lng1 @param {number} lat2 @param {number} lng2
+ * @returns {number} 거리(m)
+ */
+export function distanceM(lat1, lng1, lat2, lng2) {
+  const R = 6371000; // 지구 반지름(m)
+  /** @param {number} d */
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Phase 1 재오염 방지 거리 게이트(세션536) — matchApartments(이름 유사도 0.6, 거리 무제한)가
+ * 만드는 (단지,아파트) 짝의 92.07%가 500m 밖(짝 거리 중앙값 85km)이었다. 그 오염을 값으로
+ * 확정(용적률 33.2%·건폐율 55.6%·최고층 12.9% 대조가능분 어긋남)해 세션536 정리 스크립트로
+ * 지운 뒤, **앞으로 빈 칸을 채울 때만** 이 게이트를 적용한다(사장님 결정 ② — 기존 값은 불변).
+ *
+ * 500m 채택 근거 = 선행 실측 전반의 공통 기준선. 거리 임계는 300~1000m 구간에서 완만하게만
+ * 움직여(용적률 어긋남 208·213·249건) 정밀 튜닝 여지가 낮고, 그보다 자의적인 배율(1.5배) 축과
+ * 달리 "500m 안에 이름이 거의 같은 단지가 있는데 값이 다르다"는 그 자체로 오염 신호였다.
+ * @type {number}
+ */
+export const MATCH_MAX_M = 500;
+
+/**
+ * cpx(네이버 단지) 값을 apt(아파트)에 채워도 되는 거리인지 판정.
+ *
+ * ⚠️ fail-close: 좌표가 하나라도 없으면 채우지 않는다(false). 거리를 확인할 수 없다는 것은
+ * 곧 출처를 확인할 수 없다는 뜻이라, 통과시키면 예전과 같은 무제한 매칭 오염이 재발한다.
+ * 세션536 실측 = apartments·complexes 둘 다 좌표 결측 0건(현재 시점) — 이 분기는 지금 당장은
+ * 안 걸리지만, 향후 좌표 없는 신규 행이 생겨도 안전한 쪽(안 채움)으로 고정해 둔다.
+ * @param {{ lat: number | null; lng: number | null }} apt
+ * @param {{ latitude: number | null; longitude: number | null }} cpx
+ * @returns {boolean}
+ */
+export function withinMatchRange(apt, cpx) {
+  if (apt.lat == null || apt.lng == null || cpx.latitude == null || cpx.longitude == null) return false;
+  return distanceM(apt.lat, apt.lng, cpx.latitude, cpx.longitude) <= MATCH_MAX_M;
 }
 
 /** @typedef {{ id: string; name: string; row: Record<string, unknown> }} AptUpdate */
@@ -288,7 +328,7 @@ export async function main() {
   /** @type {AptBaseRow[]} */
   const apartments = /** @type {AptBaseRow[]} */ (
     await selectAll(
-      (s) => s.from("apartments").select("id, name, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio"),
+      (s) => s.from("apartments").select("id, name, lat, lng, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio"),
       sbMibunyang,
       "id",
     )
@@ -353,6 +393,11 @@ export async function main() {
     if (matchedApts.length === 0) continue;
 
     for (const apt of matchedApts) {
+      // 거리 게이트(세션536, 재오염 방지) — Phase 1 이 채우는 11개 필드가 전부 이 cpx 에서
+      // 나오므로 필드별로 나눠 걸지 않고 apt 진입 직후 한 번에 건다(matchApartments 자체는
+      // 22개 필드에 영향을 주므로 건드리지 않음 — 채움 라인 쪽만 좁힌다).
+      if (!withinMatchRange(apt, cpx)) { skipped++; continue; }
+
       /** @type {Record<string, unknown>} */
       const row = {};
 

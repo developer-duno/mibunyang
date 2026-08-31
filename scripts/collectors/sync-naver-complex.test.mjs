@@ -23,7 +23,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes, fetchAllPages, flushUpdates, main } =
+const { matchApartments, median, parseFloor, buildSpatialGrid, findNearbyComplexes, fetchAllPages, flushUpdates, main, distanceM, withinMatchRange, MATCH_MAX_M } =
   await import("./sync-naver-complex.mjs");
 const { getMibuyangSupabase, recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
@@ -258,6 +258,91 @@ describe("findNearbyComplexes", () => {
 
     const result = findNearbyComplexes(apt, spatialGrid, 0.001);
     expect(result).toContain("C1");
+  });
+});
+
+// ── distanceM (세션536 — findNearbyComplexes 인라인 haversine 추출) ──────
+describe("distanceM", () => {
+  it("같은 좌표 → 0m", () => {
+    expect(distanceM(37.5, 127.0, 37.5, 127.0)).toBe(0);
+  });
+
+  it("대칭 — distanceM(a,b) === distanceM(b,a)", () => {
+    const d1 = distanceM(37.5, 127.0, 37.6, 127.1);
+    const d2 = distanceM(37.6, 127.1, 37.5, 127.0);
+    expect(d1).toBe(d2);
+  });
+
+  it("순수 위도 오프셋 100m → 약 100m (오차 1mm 이내)", () => {
+    // dLat = (100 / 6371000) * (180 / PI) 도 — 경도 변화 0 이면 haversine 이 R*dLat(rad) 로 닫힌형
+    const dLatFor100m = (100 / 6371000) * (180 / Math.PI);
+    const dist = distanceM(37.5, 127.0, 37.5 + dLatFor100m, 127.0);
+    expect(dist).toBeCloseTo(100, 5);
+  });
+
+  it("서울-부산(약 325km) 규모 — 범위 검증(과대/과소 계산 방지)", () => {
+    const dist = distanceM(37.5665, 126.978, 35.1796, 129.0756);
+    expect(dist).toBeGreaterThan(320000);
+    expect(dist).toBeLessThan(330000);
+  });
+});
+
+// ── withinMatchRange / MATCH_MAX_M (세션536 — Phase 1 재오염 방지 거리 게이트) ──
+// 라이브 실측: matchApartments(이름 유사도 0.6, 거리 무제한)의 짝 92.07%가 500m 밖
+// (짝 거리 중앙값 85km). 500m 를 채택 근거로 삼은 임계 — 뮤테이션에 경쟁 후보(300m/1000m)도 포함.
+describe("withinMatchRange / MATCH_MAX_M", () => {
+  it("MATCH_MAX_M = 500 (실측 근거 고정값)", () => {
+    expect(MATCH_MAX_M).toBe(500);
+  });
+
+  const dLatForM = (/** @type {number} */ m) => (m / 6371000) * (180 / Math.PI);
+
+  it("499m — 게이트 통과(true)", () => {
+    const apt = makeApt("A1", "apt", 37.5, 127.0);
+    const cpx = makeComplex("C1", "cpx", 37.5 + dLatForM(499), 127.0);
+    expect(withinMatchRange(apt, cpx)).toBe(true);
+  });
+
+  it("정확히 500m — 경계 포함(<=, true)", () => {
+    const apt = makeApt("A1", "apt", 37.5, 127.0);
+    const cpx = makeComplex("C1", "cpx", 37.5 + dLatForM(500), 127.0);
+    expect(withinMatchRange(apt, cpx)).toBe(true);
+  });
+
+  it("501m — 게이트 차단(false)", () => {
+    const apt = makeApt("A1", "apt", 37.5, 127.0);
+    const cpx = makeComplex("C1", "cpx", 37.5 + dLatForM(501), 127.0);
+    expect(withinMatchRange(apt, cpx)).toBe(false);
+  });
+
+  it("먼 거리(서울-부산 규모) — 차단(false)", () => {
+    const apt = makeApt("A1", "apt", 37.5665, 126.978);
+    const cpx = makeComplex("C1", "cpx", 35.1796, 129.0756);
+    expect(withinMatchRange(apt, cpx)).toBe(false);
+  });
+
+  it("apt.lat null — fail-close(false), 거리 무관", () => {
+    const apt = makeApt("A1", "apt", null, 127.0);
+    const cpx = makeComplex("C1", "cpx", 37.5, 127.0); // 같은 좌표라도
+    expect(withinMatchRange(apt, cpx)).toBe(false);
+  });
+
+  it("apt.lng null — fail-close(false)", () => {
+    const apt = makeApt("A1", "apt", 37.5, null);
+    const cpx = makeComplex("C1", "cpx", 37.5, 127.0);
+    expect(withinMatchRange(apt, cpx)).toBe(false);
+  });
+
+  it("cpx.latitude null — fail-close(false)", () => {
+    const apt = makeApt("A1", "apt", 37.5, 127.0);
+    const cpx = /** @type {any} */ ({ complex_no: "C1", complex_name: "cpx", latitude: null, longitude: 127.0 });
+    expect(withinMatchRange(apt, cpx)).toBe(false);
+  });
+
+  it("cpx.longitude null — fail-close(false)", () => {
+    const apt = makeApt("A1", "apt", 37.5, 127.0);
+    const cpx = /** @type {any} */ ({ complex_no: "C1", complex_name: "cpx", latitude: 37.5, longitude: null });
+    expect(withinMatchRange(apt, cpx)).toBe(false);
   });
 });
 
@@ -635,5 +720,121 @@ describe("main() recordCollectorRun 편입", () => {
       "sync-naver",
       expect.objectContaining({ status: "success", ok: 0, fail: 0, skip: 0 }),
     );
+  });
+});
+
+// ── Phase 1 거리 게이트 — 실전 경로(main()) 회귀 가드 (세션536) ──────────
+// withinMatchRange 를 직접 호출하는 단위 테스트만으로는 "Phase 1 루프가 실제로 그 반환값을
+// 써서 skip 하는가"를 증명 못한다([[guards-must-be-mutation-tested]] §"테스트가 실제 경로를
+// 지나는가" — sanitize 가 값을 눌러 단위테스트만 green 이던 세션508/512 재발 패턴과 같은 함정).
+// 그래서 main() 을 실제로 실행해 "가까운 단지 값은 채워지고 먼 단지 값은 안 채워진다"를
+// apartments.update() 호출 자체로 검증한다.
+describe("Phase 1 거리 게이트 — 실전 경로(main()) 회귀 가드", () => {
+  beforeEach(() => {
+    recordCollectorRun.mockClear();
+    getMibuyangSupabase.mockReset();
+  });
+
+  /**
+   * 테이블별로 라우팅하는 fake Supabase. complexes/apartments 는 지정한 행을 그대로 돌려주고
+   * (selectAll 커서는 1페이지 미만이면 그 즉시 종료하므로 order/limit 인자는 무시해도 무방),
+   * 그 외(articles/complex_price_history 등)는 전부 빈 배열 — Phase 2~4 가 자연히 무동작(집계가
+   * 비어 write 0건)이 되어 Phase 1 만 격리해서 본다. complex_links 는 range() 에서 error 를
+   * 반환해 이름 유사도 폴백을 유도한다(이 레포 DB 의 실제 상태와 동일 — complex_links 미존재).
+   *
+   * ⚠️ update()/eq() 는 동시성(BATCH 슬라이스 + semaphore) 아래서도 안전 — .from()→.update()→
+   * .eq() 세 호출이 그 사이 await 없이 한 번에(동기적으로) 실행되고 .eq() 안에서 즉시
+   * updateCalls 에 적재 후 pendingUpdate 를 리셋하므로, 여러 update 가 번갈아 스케줄돼도
+   * 서로의 pendingUpdate 를 훔쳐볼 틈이 없다.
+   * @param {{ complexes: any[]; apartments: any[] }} data
+   */
+  function makeGateSb({ complexes, apartments }) {
+    /** @type {Array<{ id: string; row: Record<string, unknown> }>} */
+    const updateCalls = [];
+    /** @type {string | null} */
+    let table = null;
+    /** @type {Record<string, unknown> | null} */
+    let pendingUpdate = null;
+
+    /** @param {string | null} t */
+    const rowsFor = (t) => {
+      if (t === "complexes") return complexes;
+      if (t === "apartments") return apartments;
+      return []; // articles / complex_price_history 등 — 이 테스트에선 전부 무관(Phase2~4 무동작 유도)
+    };
+
+    const chain = {
+      /** @param {string} t */
+      from(t) { table = t; pendingUpdate = null; return chain; },
+      select() { return chain; },
+      /** @param {string} col @param {unknown} v */
+      eq(col, v) {
+        if (pendingUpdate != null) {
+          updateCalls.push({ id: /** @type {string} */ (v), row: pendingUpdate });
+          pendingUpdate = null;
+          return Promise.resolve({ error: null });
+        }
+        return chain;
+      },
+      not() { return chain; },
+      order() { return chain; },
+      limit() { return Promise.resolve({ data: rowsFor(table), error: null }); },
+      range() { return Promise.resolve({ data: [], error: { message: "complex_links 없음(테스트 폴백 유도)" } }); },
+      gt() { return Promise.resolve({ data: [], error: null }); },
+      lt() { return Promise.resolve({ data: [], error: null }); },
+      /** @param {Record<string, unknown>} row */
+      update(row) { pendingUpdate = row; return chain; },
+    };
+    return { sb: chain, updateCalls };
+  }
+
+  it("500m 이내 단지 값은 채우고, 500m 밖 동명이 아닌 단지 값은 건너뛴다", async () => {
+    // 청계산 짝 — 같은 좌표(거리 0m) → 게이트 통과 → floor_area_ratio 채움
+    const cpxNear = /** @type {any} */ ({
+      complex_no: "CX-NEAR", complex_name: "청계산아이파크1차",
+      floor_area_ratio: 250, total_parking_count: null, total_household_count: null,
+      high_floor: null, has_pool: null, use_approve_ymd: null,
+      latitude: 37.5, longitude: 127.0,
+      heat_fuel_type: null, corridor_type: null, building_coverage_ratio: null,
+    });
+    const aptNear = /** @type {any} */ ({
+      id: "apt-near", name: "청계산아이파크1차", lat: 37.5, lng: 127.0,
+      floor_area_ratio: null, parking_ratio: null, max_floor: null, has_pool: null,
+      heating: null, exclusive_ratio: null, quake_design: null, view: null, sunlight: null,
+      heat_fuel: null, corridor_type: null, building_coverage_ratio: null,
+    });
+
+    // 해운대 짝 — 아파트는 청계산과 같은 좌표에 있는데(=55km+ 떨어진 단지와 이름만 일치) 값이
+    // 저장돼 있던 옛 사고를 그대로 재현: 거리 게이트가 없으면 999가 채워진다.
+    const cpxFar = /** @type {any} */ ({
+      complex_no: "CX-FAR", complex_name: "해운대엘시티더샵",
+      floor_area_ratio: 999, total_parking_count: null, total_household_count: null,
+      high_floor: null, has_pool: null, use_approve_ymd: null,
+      latitude: 38.0, longitude: 127.0, // aptFar 와 직선거리 약 55.5km
+      heat_fuel_type: null, corridor_type: null, building_coverage_ratio: null,
+    });
+    const aptFar = /** @type {any} */ ({
+      id: "apt-far", name: "해운대엘시티더샵", lat: 37.5, lng: 127.0,
+      floor_area_ratio: null, parking_ratio: null, max_floor: null, has_pool: null,
+      heating: null, exclusive_ratio: null, quake_design: null, view: null, sunlight: null,
+      heat_fuel: null, corridor_type: null, building_coverage_ratio: null,
+    });
+
+    const { sb, updateCalls } = makeGateSb({
+      complexes: [cpxNear, cpxFar],
+      apartments: [aptNear, aptFar],
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+
+    await main();
+
+    // 근접 단지 → 채워짐
+    const nearUpdate = updateCalls.find((u) => u.id === "apt-near");
+    expect(nearUpdate).toBeDefined();
+    expect(nearUpdate?.row.floor_area_ratio).toBe(250);
+
+    // 원거리 단지(이름은 매칭됐지만 55km+ 떨어짐) → update 자체가 호출되지 않음
+    const farUpdate = updateCalls.find((u) => u.id === "apt-far");
+    expect(farUpdate).toBeUndefined();
   });
 });
