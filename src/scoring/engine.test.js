@@ -1209,6 +1209,31 @@ describe("calcCats", () => {
     const excl0 = calcCats(makeApt({ exclusiveRatio: 0 }), {});
     expect(excl0.product.subs.find((s) => s.name === "전용률")?.info).toBe("정보 없음");
   });
+  // 세션537: 최고층만 이 합의에서 빠져 있었다 — `_noFloor` 가 `== null` 만 봐서 0 이면
+  // 화면 "0층"·`tierMin(0)` 최하위 점수·"저층 규모" 판정이 한꺼번에 거짓이 됐다.
+  // ⚠️ 뮤테이션 대상: `_noFloor` 의 `=== 0` 과 scoreProduct 의 `_noFloor ? 10 :` 둘 다.
+  it("최고층 0 은 미수집으로 처리 (info '정보 없음', '0층' 으로 찍지 않음)", () => {
+    const f0 = calcCats(makeApt({ maxFloor: 0 }), {});
+    const sub = f0.product.subs.find((s) => s.name === "구조");
+    expect(sub?.info).toBe("정보 없음");
+    expect(sub?.info).not.toContain("0층");
+    // 값이 있으면 그대로 (0 만 미수집)
+    const real = calcCats(makeApt({ maxFloor: 25 }), {});
+    expect(real.product.subs.find((s) => s.name === "구조")?.info).toBe("최고 25층");
+  });
+  it("최고층 0 은 null 과 동일 취급 — 점수·문구 모두", () => {
+    const zero = calcCats(makeApt({ maxFloor: 0 }), {});
+    const nul = calcCats(makeApt(/** @type {any} */ ({ maxFloor: null })), {});
+    expect(zero.product.total).toBe(nul.product.total);
+    const zSub = zero.product.subs.find((s) => s.name === "구조");
+    const nSub = nul.product.subs.find((s) => s.name === "구조");
+    expect(zSub?.info).toBe(nSub?.info);
+    // ⚠️ 점수만으로는 되돌림을 못 잡는다 — FLOOR_TIERS 가 35/25/15 라 0·1·10 이 전부
+    //    FLOOR_LOW_SCORE(2) 로 같은 구간이다. 그래서 **detail 문구**가 실질 가드다:
+    //    `?? 10` 으로 되돌리면 `_noFloor` 가 false 라 "최고 0층 (고층 35↑…)" 이 찍힌다.
+    expect(zSub?.detail).not.toContain("최고 0층");
+    expect(zSub?.detail).toBe(nSub?.detail);
+  });
   // --- 세션 454: sanitize null 안전성 보강 (engine.ts L22-95) ---
   it("한글 NFC 정규화 — 분해형(NFD) region 도 조합형과 동일 결과 (str L23)", () => {
     // 분해형 "경기"(NFD, 5글자)는 === 로는 조합형 "경기"(2글자)와 불일치하나,

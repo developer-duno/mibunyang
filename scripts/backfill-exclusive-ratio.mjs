@@ -49,7 +49,12 @@
  *      (`.claude/rules/collectors/pipe-kills-collector.md`). 파일로 받아서 읽는다.
  *
  * 재실행 안전: 채운 값은 타당 범위 안이라 다음 실행의 대상에서 빠진다(멱등).
- * 롤백: 로그에 `이름 / 이전값 / 새값` 이 남는다. 빈칸이던 것은 NULL 로 되돌리면 된다.
+ * ⚠️ 롤백 경로가 사실상 없다 (세션537 후속 감사): `log()` 는 `console.log` 라 파일·DB 어디에도
+ *   남지 않고, `apartments` 에 변경 이력 테이블·트리거도 없다(`updated_at` 갱신뿐). 게다가
+ *   `show()` 는 최대 15건만 찍으므로 정정 42건 중 27건은 콘솔에도 이전값이 안 남았다.
+ *   → 다음에 이 스크립트를 쓸 땐 **실행 출력을 파일로 리다이렉트**해 두어라
+ *     (`node scripts/backfill-exclusive-ratio.mjs --apply > backfill-$(date +%%Y%%m%%d).log 2>&1`).
+ *   빈칸이던 것은 NULL 로 되돌리면 되지만, 정정분은 이전값을 알 수 없다.
  */
 import { loadEnv, getSupabase, log, logError, selectAll } from "./collectors/_shared.mjs";
 

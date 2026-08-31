@@ -131,7 +131,11 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     // 용적률 0% 가 "쾌적한 밀도"로 칭찬되던 사고). null 뿐 아니라 0 도 "없음"으로.
     _noFar: apt.floorAreaRatio == null || apt.floorAreaRatio === 0,
     _noExcl: apt.exclusiveRatio == null || apt.exclusiveRatio === 0,
-    _noFloor: apt.maxFloor == null,
+    // 0층 건물은 없다 — 0 은 값이 아니라 "미수집"이다(세션537). `_noFar` 와 같은 꼴로 맞춘다.
+    // PR #464 가 수집기 쪽에서 max_floor 0 을 sentinel 로 선언했는데 여기만 `== null` 이라,
+    // 0 이 들어오면 화면 "최고 0층"·`tierMin(0)` 최하위 점수·"저층 규모" 판정이 한꺼번에
+    // 거짓이 되는 **비대칭**이 남아 있었다(현재 0 은 0곳이라 잠복 상태였다).
+    _noFloor: apt.maxFloor == null || apt.maxFloor === 0,
     _noSunlight: apt.sunlight == null || apt.sunlight === "",
     // 혜택 3필드는 위에서 null→0 으로 눌리므로, 엔진이 "안 재봄"과 "재보니 0"을 구분하려면
     // 누르기 **전에** 그 사실을 남겨야 한다. 없으면 미수집을 "없음"이라 단정하게 된다(세션512).

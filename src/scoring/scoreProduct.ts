@@ -100,7 +100,14 @@ export function scoreProduct(apt: Apt): Res {
   //   내진설계 의무 대상(2017.12 확대)이라 미수집을 "미적용"으로 단정하면 안 된다.
   const quakeDesign = apt.quakeDesign as boolean | null | undefined;
   const quakeSc = quakeDesign === false ? 0 : 5;
-  const maxFloor = (apt.maxFloor ?? 10) as number;
+  // `?? 10` 은 null 만 잡아 0 을 그대로 채점했다(0층으로 tierMin). 위 floorAreaRatio 가
+  // `_noFar ? 300 : ...` 인 것과 같은 꼴로 맞춘다(세션537) — "모른다"면서 0 을 채점하는 모순 제거.
+  //
+  // ⚠️ **이 줄은 회귀 가드가 없다**(세션537 뮤테이션 실증: `?? 10` 으로 되돌려도 green).
+  // FLOOR_TIERS 가 35/25/15 라 0·10 이 둘 다 FLOOR_LOW_SCORE(2) — 지금은 점수가 같고,
+  // 문구는 `_noFloor` 가 이미 잡는다. 경계가 15 아래로 내려오면 그때 갈리므로, 그때
+  // 여기에도 가드를 붙여야 한다.
+  const maxFloor = (apt._noFloor ? 10 : apt.maxFloor) as number;
   const structSc: number = tierMin(maxFloor, FLOOR_TIERS, FLOOR_LOW_SCORE);
   const rawTotal = brandSc + unitSc + parkSc + farSc + energySc + exclSc + layoutSc + quakeSc + structSc;
   const maxPossible = (Object.values(PRODUCT_MAX) as number[]).reduce((a, b) => a + b, 0);

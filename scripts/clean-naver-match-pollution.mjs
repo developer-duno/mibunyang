@@ -155,7 +155,8 @@ export const FIELD_SPECS = [
   { key: "floor_area_ratio", label: "용적률", aptField: "floor_area_ratio", cpxField: "floor_area_ratio", validMin: 30, validMax: 800, unit: "%" },
   { key: "building_coverage_ratio", label: "건폐율", aptField: "building_coverage_ratio", cpxField: "building_coverage_ratio", validMin: 5, validMax: 60, unit: "%" },
   // ⚠️ apartments 는 max_floor, complexes 는 high_floor — 이름이 다르다(sync-naver-complex.mjs
-  // Phase 1 채움 라인과 동일 매핑: `apt.max_floor == null && cpx.high_floor != null`).
+  // Phase 1 채움 라인과 동일 매핑. 그 조건문은 세션537 PR #464 로
+  // `!(Number(apt.max_floor) > 0) && Number(cpx.high_floor) > 0` 이 됐다 — 0 을 "미수집"으로 본다).
   { key: "max_floor", label: "최고층", aptField: "max_floor", cpxField: "high_floor", validMin: 3, validMax: 100, unit: "층" },
 ];
 
