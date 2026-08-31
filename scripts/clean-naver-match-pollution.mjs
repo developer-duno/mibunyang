@@ -106,7 +106,7 @@
  *   node scripts/clean-naver-match-pollution.mjs             (기본 = DRY-RUN, 미리보기만)
  *   node scripts/clean-naver-match-pollution.mjs --apply     (실제 UPDATE)
  */
-import { loadEnv, getMibuyangSupabase, log, logError, selectAll, stringSimilarity } from "./collectors/_shared.mjs";
+import { loadEnv, getMibuyangSupabase, log, logError, selectAll, sleep, stringSimilarity } from "./collectors/_shared.mjs";
 import { buildSpatialGrid, findNearbyComplexes, distanceM, flushUpdates, fetchAllPages } from "./collectors/sync-naver-complex.mjs";
 
 loadEnv();
@@ -131,6 +131,16 @@ export const RATIO_THRESHOLD = 1.5;
  * (채택) · 50 → 37건(과함). @type {number}
  */
 export const TWIN_HOUSEHOLD_MIN = 20;
+
+/**
+ * articles(활성매물) 조회 재시도 횟수. 세션537 실측 = 활성 262,336행 전량 33.4초(COUNT 정확
+ * 일치)로 평소엔 통과하지만, 세션536 실행 때는 같은 조회가 statement timeout 으로 죽었다.
+ * 즉 **복불복 실패**라 재시도로 대부분 풀린다.
+ * @type {number}
+ */
+export const ARTICLES_MAX_ATTEMPTS = 3;
+/** 재시도 사이 대기(ms) — DB 부하가 지나가길 기다리는 것이 목적이라 짧게 두지 않는다. @type {number} */
+export const ARTICLES_RETRY_DELAY_MS = 5000;
 
 /**
  * @typedef {{ key: string; label: string; aptField: string; cpxField: string; validMin: number; validMax: number; unit: string }} FieldSpec
@@ -372,22 +382,45 @@ async function fetchComplexes(sb) {
  * 고유키(article_no) 커서로 전량 조회(unordered-pagination-loses-rows.md §1, sync-naver-complex.mjs
  * 의 동일 패턴 답습 — 활성 매물이 큰 article_no(최신)에 몰려 있어 desc+lt 커서가 더 빠르다).
  *
- * fail-open: 조회 실패 시 빈 Map + 로그만 남기고 계속 진행 — 신뢰도 게이트가 완화될 뿐
- * (twinActiveListings 가 전부 0 취급되어 세대수 문턱만으로 판정) 전체 정리 작업을 막지 않는다.
+ * **fail-close (세션537 정정)**: 재시도 후에도 실패하면 throw 한다.
+ *
+ * 옛 주석은 "fail-open — 신뢰도 게이트가 완화될 뿐"이라 적혀 있었는데 **방향이 반대**였다.
+ * 이 신호가 없으면 twinActiveListings 가 전부 0 이 되어 게이트(b)의 AND 뒤쪽이 항상 참이
+ * 되고, 세대수 20 미만인 쌍둥이가 **전부 보류**된다 — 완화가 아니라 **과보류**다. 즉 위험은
+ * "멀쩡한 값을 지운다"가 아니라 "**지워야 할 오염을 놓친다**" 쪽이다. 방향이 안전하다고
+ * 조용히 진행하면 판정이 부실해진 것을 아무도 모르므로(세션536 때 실제로 timeout 이 났는데
+ * 결과가 dry-run 과 우연히 같아 넘어갔다) 근거가 불완전하면 아예 멈춘다.
+ *
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {typeof fetchAllPages} [fetcher] 조회 함수(테스트 주입용, 기본 fetchAllPages)
  * @returns {Promise<Map<string, number>>}
  */
-async function fetchActiveArticleCounts(sb) {
-  const { rows, error } = await fetchAllPages(
-    (s) => s.from("articles").select("article_no, complex_no").eq("is_active", true),
-    sb,
-    { keyCol: "article_no", desc: true },
-  );
-  if (error) logError(PHASE, `articles(활성매물) 조회 실패 — 신뢰도 게이트 완화됨: ${error}`);
-  /** @type {Map<string, number>} */
-  const counts = new Map();
-  for (const r of rows) counts.set(r.complex_no, (counts.get(r.complex_no) ?? 0) + 1);
-  return counts;
+export async function fetchActiveArticleCounts(sb, fetcher = fetchAllPages) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= ARTICLES_MAX_ATTEMPTS; attempt++) {
+    const { rows, error } = await fetcher(
+      (s) => s.from("articles").select("article_no, complex_no").eq("is_active", true),
+      sb,
+      { keyCol: "article_no", desc: true },
+    );
+    if (!error) {
+      /** @type {Map<string, number>} */
+      const counts = new Map();
+      for (const r of rows) counts.set(r.complex_no, (counts.get(r.complex_no) ?? 0) + 1);
+      return counts;
+    }
+    lastError = error;
+    if (attempt < ARTICLES_MAX_ATTEMPTS) {
+      logError(PHASE, `articles(활성매물) 조회 실패 ${attempt}/${ARTICLES_MAX_ATTEMPTS} — ${ARTICLES_RETRY_DELAY_MS / 1000}초 후 재시도: ${error}`);
+      await sleep(ARTICLES_RETRY_DELAY_MS);
+    }
+  }
+  // ⚠️ fail-close. 이 신호 없이 진행하면 twinActiveListings 가 전부 0 이 되어 게이트(b)의
+  //    AND 조건 뒤쪽이 항상 참이 된다 — 세대수 20 미만인 쌍둥이가 **전부** 보류되므로
+  //    "멀쩡한 값을 지운다"가 아니라 **지워야 할 오염을 놓친다**(과보류). 방향은 안전하지만
+  //    판정이 조용히 부실해지는 것은 같아서, 근거가 불완전한 채로는 아예 진행하지 않는다.
+  //    세션536 실행 때 statement timeout 이 났는데 결과가 dry-run 과 우연히 같아 넘어갔다.
+  throw new Error(`articles(활성매물) 조회가 ${ARTICLES_MAX_ATTEMPTS}회 모두 실패 — 신뢰도 게이트(b)의 판정 근거가 없어 중단한다: ${lastError}`);
 }
 
 /**

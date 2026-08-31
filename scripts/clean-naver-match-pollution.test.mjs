@@ -2,7 +2,13 @@
 /**
  * clean-naver-match-pollution.mjs 테스트 — 오염 판정 순수 함수 검증 (세션536)
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// 재시도 대기(5초)를 무력화 — 실제 기다림은 이 테스트의 관심사가 아니다.
+vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
+  return { ...orig, sleep: async () => {} };
+});
 import {
   isExactNameTwin,
   stripBrackets,
@@ -14,6 +20,9 @@ import {
   RADIUS_M,
   RATIO_THRESHOLD,
   TWIN_HOUSEHOLD_MIN,
+  fetchActiveArticleCounts,
+  ARTICLES_MAX_ATTEMPTS,
+  ARTICLES_RETRY_DELAY_MS,
 } from "./clean-naver-match-pollution.mjs";
 import { buildSpatialGrid } from "./collectors/sync-naver-complex.mjs";
 
@@ -524,5 +533,61 @@ describe("RADIUS_M / RATIO_THRESHOLD / TWIN_HOUSEHOLD_MIN 상수", () => {
 
   it("TWIN_HOUSEHOLD_MIN = 20 (전수 실측 — 10은 브이티스타일 반례를 못 구하고 50은 과함)", () => {
     expect(TWIN_HOUSEHOLD_MIN).toBe(20);
+  });
+});
+
+// ⚠️ 뮤테이션 대상 (세션537) — 재시도 횟수·fail-close·counts 집계를 되돌리면 red 가 떠야 한다.
+describe("fetchActiveArticleCounts — 활성매물 조회 (세션537: fail-open → fail-close)", () => {
+  const SB = /** @type {any} */ ({});
+  /** @param {Record<string, string>[]} rows */
+  const ok = (rows) => async () => ({ rows, error: null });
+  /** @param {string} msg */
+  const fail = (msg) => async () => ({ rows: [], error: msg });
+
+  it("성공하면 단지별 활성매물 개수를 센다", async () => {
+    const counts = await fetchActiveArticleCounts(SB, /** @type {any} */ (ok([
+      { article_no: "1", complex_no: "A" },
+      { article_no: "2", complex_no: "A" },
+      { article_no: "3", complex_no: "B" },
+    ])));
+    expect(counts.get("A")).toBe(2);
+    expect(counts.get("B")).toBe(1);
+    expect(counts.get("없는단지")).toBeUndefined();
+  });
+
+  it("실패했다가 재시도에서 성공하면 그 결과를 쓴다", async () => {
+    let n = 0;
+    const flaky = /** @type {any} */ (async () => {
+      n++;
+      return n < ARTICLES_MAX_ATTEMPTS
+        ? { rows: [], error: "statement timeout" }
+        : { rows: [{ article_no: "1", complex_no: "A" }], error: null };
+    });
+    const counts = await fetchActiveArticleCounts(SB, flaky);
+    expect(n).toBe(ARTICLES_MAX_ATTEMPTS);
+    expect(counts.get("A")).toBe(1);
+  });
+
+  // ⚠️ 핵심 — 근거가 없으면 조용히 진행하지 않는다.
+  //    옛 fail-open 은 빈 Map 을 반환해 게이트(b)가 과보류(오염 놓침)로 흘렀다.
+  it("모두 실패하면 빈 Map 을 반환하지 않고 throw 한다", async () => {
+    let n = 0;
+    const always = /** @type {any} */ (async () => { n++; return { rows: [], error: "statement timeout" }; });
+    await expect(fetchActiveArticleCounts(SB, always)).rejects.toThrow(/활성매물/);
+    expect(n).toBe(ARTICLES_MAX_ATTEMPTS);
+  });
+
+  it("throw 메시지에 원인이 남는다 (다음 사람이 timeout 인지 안다)", async () => {
+    await expect(
+      fetchActiveArticleCounts(SB, /** @type {any} */ (fail("statement timeout"))),
+    ).rejects.toThrow(/statement timeout/);
+  });
+
+  it("재시도 상수는 리터럴로 고정한다 (표에서 읽으면 같이 밀린다)", () => {
+    expect(ARTICLES_MAX_ATTEMPTS).toBe(3);
+    expect(ARTICLES_RETRY_DELAY_MS).toBe(5000);
+    // 1회는 재시도가 아니고, 과하면 실패를 오래 붙든다
+    expect(ARTICLES_MAX_ATTEMPTS).toBeGreaterThan(1);
+    expect(ARTICLES_MAX_ATTEMPTS).toBeLessThanOrEqual(5);
   });
 });
