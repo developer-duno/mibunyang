@@ -76,6 +76,14 @@ describe("extractBuildingInfo", () => {
     ["세대수 0 → null", { kaptdaCnt: "0" }, null],
     ["필드 누락 → null", { kaptdPcnt: null, kaptdPcntu: null, kaptdaCnt: null }, null],
     ["반올림 검증 (333/1000=0.33)", { kaptdPcnt: "333", kaptdPcntu: "0" }, 0.33],
+    // 0-sentinel 화석화 방어(세션538) — 반올림 결과가 0.00 이면 "값"이 아니라 "안 잰 것".
+    // 주차 대수는 0 이상인데 세대수가 커서 비율이 0.005 미만이면 Math.round 가 0 으로 뭉갠다.
+    // 0대/세대인 아파트는 없으므로 이 세 케이스는 실제 라이브에서 나온 값(적대검증 실측).
+    ["0.00 로 반올림 (1/300)", { kaptdPcnt: "1", kaptdPcntu: "0", kaptdaCnt: "300" }, null],
+    ["0.00 로 반올림 (1/201)", { kaptdPcnt: "1", kaptdPcntu: "0", kaptdaCnt: "201" }, null],
+    ["0.00 로 반올림 (2/500)", { kaptdPcnt: "2", kaptdPcntu: "0", kaptdaCnt: "500" }, null],
+    // 경계 확인 — 0.005 이상은 0.01 로 살아남아야 한다(전량 null 로 뭉개면 안 됨)
+    ["경계 — 0.01 로 살아남음 (3/300=0.01)", { kaptdPcnt: "3", kaptdPcntu: "0", kaptdaCnt: "300" }, 0.01],
   ];
   for (const [label, overrides, expected] of parkingCases) {
     it(`parking_ratio — ${label}`, () => {
@@ -215,6 +223,23 @@ describe("E2E 시나리오", () => {
     const ok = await updateBuilding(sb, "apt-1", info, false);
     expect(ok).toBe(true);
     expect(sb.from).toHaveBeenCalledWith("apartments");
+  });
+
+  it("0.00 로 반올림되는 실전 값 → 추출~업데이트 전 구간에서 parking_ratio 가 안 실린다 (세션538)", async () => {
+    // 세션538 적대검증 실측 재현: 주차 1대 / 세대 300 → 반올림 0.00.
+    mockMolitApiCall
+      .mockResolvedValueOnce({ response: { body: { item: { kaptdaCnt: "300", ktownFlrNo: "15", codeHeatNm: "개별난방", codeHallNm: "계단식" } } } })
+      .mockResolvedValueOnce({ response: { body: { item: { kaptdPcnt: "1", kaptdPcntu: "0" } } } });
+
+    const detail = await fetchAptDetail("K002");
+    const info = extractBuildingInfo(/** @type {any} */ (detail));
+    expect(info.parking_ratio).toBeNull(); // 0 이 아니라 null — "미수집" 취급
+
+    const sb = makeMockSb();
+    await updateBuilding(sb, "apt-2", info, false);
+    const updateArg = sb.update.mock.calls[0][0];
+    expect(updateArg.parking_ratio).toBeUndefined(); // 화면·점수 sentinel(0) 이 다시 안 박힘
+    expect(updateArg.max_floor).toBe(15); // 다른 필드는 정상 반영(전부 null 처리로 뭉개지지 않음)
   });
 
   it("빈 상세 → 추출 건너뛰기 (main 로직 재현)", async () => {

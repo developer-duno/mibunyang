@@ -9,6 +9,9 @@ import {
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, guParentCity,
   setupGracefulShutdown, clampUnsoldRate, budgetExceeded, fetchWithRetry,
   BUILDER_ALIASES, BUILDER_CANONICALS, selectAll,
+  EXCL_RATIO_MIN, EXCL_RATIO_MAX, isPlausibleExclRatio,
+  EXCL_RATIO_SOURCE_TYPES, canUseComplexForExclRatio,
+  EXCL_RATIO_APT_LIKE_TYPES, isPlausibleExclRatioFor,
 } from "./_shared.mjs";
 import {
   resolveBuilder as brandsResolveBuilder,
@@ -158,6 +161,105 @@ describe("clampUnsoldRate (세션 445 — 100% 초과 무력화)", () => {
   it("null/undefined 입력은 null 출력", () => {
     expect(clampUnsoldRate(null)).toBe(null);
     expect(clampUnsoldRate(undefined)).toBe(null);
+  });
+});
+
+describe("isPlausibleExclRatio (세션538 — 전용률 유입 게이트)", () => {
+  it("경계값(60/90)을 포함한다", () => {
+    expect(isPlausibleExclRatio(EXCL_RATIO_MIN)).toBe(true);
+    expect(isPlausibleExclRatio(EXCL_RATIO_MAX)).toBe(true);
+    expect(isPlausibleExclRatio(60)).toBe(true);
+    expect(isPlausibleExclRatio(90)).toBe(true);
+  });
+
+  it("경계 밖은 거짓", () => {
+    expect(isPlausibleExclRatio(59.9)).toBe(false);
+    expect(isPlausibleExclRatio(90.1)).toBe(false);
+    expect(isPlausibleExclRatio(0)).toBe(false);
+    expect(isPlausibleExclRatio(100)).toBe(false);
+  });
+
+  it("범위 안은 참", () => {
+    expect(isPlausibleExclRatio(74.8)).toBe(true);
+    expect(isPlausibleExclRatio(61.2)).toBe(true);
+    expect(isPlausibleExclRatio(83.3)).toBe(true);
+  });
+
+  it("null/undefined/NaN/문자열은 거짓 (모르면 안 쓴다)", () => {
+    expect(isPlausibleExclRatio(null)).toBe(false);
+    expect(isPlausibleExclRatio(undefined)).toBe(false);
+    expect(isPlausibleExclRatio(NaN)).toBe(false);
+    expect(isPlausibleExclRatio("75")).toBe(false);
+  });
+});
+
+describe("canUseComplexForExclRatio (세션538 — 전용률 출처 게이트)", () => {
+  it("아파트·아파트분양권은 재료로 쓸 수 있다", () => {
+    expect(canUseComplexForExclRatio("아파트")).toBe(true);
+    expect(canUseComplexForExclRatio("아파트분양권")).toBe(true);
+  });
+
+  it("오피스텔·오피스텔분양권·재건축은 쓸 수 없다 (계약면적 혼입/정비사업 특수)", () => {
+    expect(canUseComplexForExclRatio("오피스텔")).toBe(false);
+    expect(canUseComplexForExclRatio("오피스텔분양권")).toBe(false);
+    expect(canUseComplexForExclRatio("재건축")).toBe(false);
+  });
+
+  it("null/undefined(모름)은 쓸 수 없다 — 모르면 안 쓴다", () => {
+    expect(canUseComplexForExclRatio(null)).toBe(false);
+    expect(canUseComplexForExclRatio(undefined)).toBe(false);
+    expect(canUseComplexForExclRatio("")).toBe(false);
+  });
+
+  it("EXCL_RATIO_SOURCE_TYPES 는 정확히 아파트·아파트분양권 2종", () => {
+    expect(EXCL_RATIO_SOURCE_TYPES.size).toBe(2);
+    expect(EXCL_RATIO_SOURCE_TYPES.has("아파트")).toBe(true);
+    expect(EXCL_RATIO_SOURCE_TYPES.has("아파트분양권")).toBe(true);
+  });
+});
+
+describe("isPlausibleExclRatioFor (세션538 — 유형별 잣대)", () => {
+  // 60~90 은 **아파트 잣대**다. prices(네이버 분양 API) 재료는 오피스텔에서도 진짜 전용률이라
+  // 아파트 잣대를 그대로 대면 멀쩡한 값을 지운다 — 라이브 실측 16건이 그 대상이었다(세션538).
+  it("아파트 계열에는 60~90 잣대를 그대로 댄다", () => {
+    expect(isPlausibleExclRatioFor(75, "아파트")).toBe(true);
+    expect(isPlausibleExclRatioFor(75, "주상복합")).toBe(true);
+    expect(isPlausibleExclRatioFor(55.7, "아파트")).toBe(false); // 실측 오염값
+    expect(isPlausibleExclRatioFor(93.9, "아파트")).toBe(false); // 루첸시아표선IB에듀
+    expect(isPlausibleExclRatioFor(100, "아파트")).toBe(false); // 청계백상앨리츠
+  });
+
+  it("오피스텔의 50%대는 살린다 — 아파트 잣대를 대면 안 된다", () => {
+    // 라이브 실측: 중화역라온프라이빗센트로(오) 58.0 · e편한세상범일국제금융시티(오) 54.0
+    expect(isPlausibleExclRatioFor(58, "오피스텔")).toBe(true);
+    expect(isPlausibleExclRatioFor(54, "오피스텔")).toBe(true);
+    expect(isPlausibleExclRatioFor(59, "오피스텔")).toBe(true);
+  });
+
+  it("정의상 불가능한 값은 유형과 무관하게 막는다 (공급 = 전용 + 주거공용)", () => {
+    expect(isPlausibleExclRatioFor(100, "오피스텔")).toBe(false);
+    expect(isPlausibleExclRatioFor(120, "생활숙박시설")).toBe(false);
+    expect(isPlausibleExclRatioFor(0, "오피스텔")).toBe(false);
+    expect(isPlausibleExclRatioFor(-5, "아파트")).toBe(false);
+  });
+
+  it("유형 미상은 정의상 한계만 적용한다 (모른다고 나쁘게 단정하지 않는다)", () => {
+    expect(isPlausibleExclRatioFor(58, null)).toBe(true);
+    expect(isPlausibleExclRatioFor(58, undefined)).toBe(true);
+    expect(isPlausibleExclRatioFor(100, null)).toBe(false);
+  });
+
+  it("숫자가 아니면 거짓", () => {
+    expect(isPlausibleExclRatioFor(null, "아파트")).toBe(false);
+    expect(isPlausibleExclRatioFor(NaN, "아파트")).toBe(false);
+    expect(isPlausibleExclRatioFor("75", "아파트")).toBe(false);
+  });
+
+  it("EXCL_RATIO_APT_LIKE_TYPES 는 정확히 아파트·주상복합 2종", () => {
+    expect(EXCL_RATIO_APT_LIKE_TYPES.size).toBe(2);
+    expect(EXCL_RATIO_APT_LIKE_TYPES.has("아파트")).toBe(true);
+    expect(EXCL_RATIO_APT_LIKE_TYPES.has("주상복합")).toBe(true);
+    expect(EXCL_RATIO_APT_LIKE_TYPES.has("오피스텔")).toBe(false);
   });
 });
 
