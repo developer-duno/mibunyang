@@ -56,16 +56,23 @@
  *     (`node scripts/backfill-exclusive-ratio.mjs --apply > backfill-$(date +%%Y%%m%%d).log 2>&1`).
  *   빈칸이던 것은 NULL 로 되돌리면 되지만, 정정분은 이전값을 알 수 없다.
  */
-import { loadEnv, getSupabase, log, logError, selectAll } from "./collectors/_shared.mjs";
+import {
+  loadEnv, getSupabase, log, logError, selectAll,
+  EXCL_RATIO_MIN, EXCL_RATIO_MAX, isPlausibleExclRatio,
+} from "./collectors/_shared.mjs";
 
 loadEnv();
 
 const PHASE = "backfill-excl-ratio";
 
+// 전용률 타당 범위·판정 함수는 `_shared.mjs` 가 단일 출처다(세션538) — 이 파일이 처음 관측값
+// 앵커(60~90, 위 주석의 민감도 표)로 도출했고, sync-naver-complex.mjs·calc-exclusive-ratio.mjs
+// 도 같은 값을 써야 해서 그리로 옮기고 여기서는 re-export 만 한다. 값·동작은 그대로라
+// 기존 import(`VALID_MIN`/`VALID_MAX`/`isPlausible`)가 그대로 통과한다.
 /** 전용률 타당 범위 하한(%) — 위 주석의 민감도 표 참조. @type {number} */
-export const VALID_MIN = 60;
+export const VALID_MIN = EXCL_RATIO_MIN;
 /** 전용률 타당 범위 상한(%) — 전용률은 정의상 100 미만, 90대는 공용면적 없음을 뜻함. @type {number} */
-export const VALID_MAX = 90;
+export const VALID_MAX = EXCL_RATIO_MAX;
 /** 두 재료가 이보다 크게 어긋나면 보류(%p). @type {number} */
 export const MATERIAL_DISAGREE_MAX = 5;
 
@@ -100,13 +107,11 @@ export function ratioFrom(exclusive, supply) {
 }
 
 /**
- * 물리적으로 말이 되는 전용률인가.
+ * 물리적으로 말이 되는 전용률인가 — `_shared.mjs` `isPlausibleExclRatio` re-export(세션538).
  * @param {number | null | undefined} v
  * @returns {boolean}
  */
-export function isPlausible(v) {
-  return typeof v === "number" && Number.isFinite(v) && v >= VALID_MIN && v <= VALID_MAX;
-}
+export const isPlausible = isPlausibleExclRatio;
 
 /**
  * 중앙값. 극단 주택형 하나에 끌려가지 않도록 평균 대신 쓴다.

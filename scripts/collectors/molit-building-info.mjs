@@ -76,9 +76,14 @@ export function extractBuildingInfo(detail) {
   const underParking = safeInt(detail.kaptdPcntu) || 0;
   const totalParking = groundParking + underParking;
   const totalHouseholds = safeInt(detail.kaptdaCnt);
-  const parkingRatio = (totalParking > 0 && totalHouseholds && totalHouseholds > 0)
+  // 0대/세대인 아파트는 없다 — 반올림 결과가 0 이면 그건 "값"이 아니라 "안 잰 것"이다
+  // (세션538 적대검증 실측: 주차1/세대300, 주차1/세대201, 주차2/세대500 이 전부 0.00 으로
+  // 반올림된다). 그렇게 박힌 0 은 옛 대상 선정(`parking_ratio.is.null` 만)에 다시 안 걸려
+  // 영구 화석이 됐다 — 아래 `.or(...)` 에 `.eq.0` 을 더한 것이 그 짝이다.
+  const rawParkingRatio = (totalParking > 0 && totalHouseholds && totalHouseholds > 0)
     ? Math.round((totalParking / totalHouseholds) * 100) / 100
     : null;
+  const parkingRatio = rawParkingRatio != null && rawParkingRatio > 0 ? rawParkingRatio : null;
 
   // 에너지 효율 등급: 수집 안 함 (세션 358 정정).
   // kaptdEcnt/kaptdEcntp 는 에너지등급이 아니라 "승강기 대수(승용)" 필드 — raw API 실측
@@ -156,7 +161,10 @@ async function main() {
     let q = s.from("apartments")
       .select("id, name, region, gu, address, parking_ratio, max_floor");
     if (!force) {
-      q = q.or("parking_ratio.is.null,max_floor.is.null");
+      // 0-sentinel 대상도 재수집(세션538) — 반올림 0(위 extractBuildingInfo 참조)이 이미
+      // 박힌 행은 `.is.null` 만으론 다시 안 잡혀 영구 화석이 된다. 실측: 지금 이 조건으로
+      // 대상 수가 안 늘어나는 게 정상이다(현재 0 인 행 0건) — 늘면 이 .or 문법이 잘못된 것.
+      q = q.or("parking_ratio.is.null,parking_ratio.eq.0,max_floor.is.null,max_floor.eq.0");
     }
     return q;
   }, sb, "id")); // 고유키 커서 — 무정렬 OFFSET 은 큰 표에서 행을 잃는다(unordered-pagination-loses-rows.md)

@@ -899,3 +899,188 @@ describe("Phase 1 거리 게이트 — 실전 경로(main()) 회귀 가드", () 
     expect(keep?.row.max_floor).toBeUndefined();
   });
 });
+
+// ── 전용률 유입 게이트 + 미분양률 클램프 — 실전 경로(main()) 회귀 가드 (세션538) ──
+// isPlausibleExclRatio/canUseComplexForExclRatio/clampUnsoldRate 를 직접 호출하는 단위
+// 테스트만으로는 Phase 1/2 루프가 실제로 그 반환값을 써서 skip 하는가를 증명 못한다
+// ([[guards-must-be-mutation-tested]] §"테스트가 실제 경로를 지나는가" — 위 0-sentinel
+// 가드와 동일 취지). main() 을 실행해 apartments.update() 호출 자체로 검증한다.
+describe("전용률 유입 게이트 + 미분양률 클램프 — 실전 경로(main()) 회귀 가드", () => {
+  beforeEach(() => {
+    recordCollectorRun.mockClear();
+    getMibuyangSupabase.mockReset();
+  });
+
+  /**
+   * makeGateSb(위 "Phase 1 거리 게이트" 절) 확장판 — articles 테이블도 라우팅한다.
+   * 전용률 재료(area1_m2/area2_m2)·미분양 재료(trade_type_name)가 전부 articles 통합
+   * fetch·heating fetch 둘 다 이 배열을 그대로 받는다(fetchAllPages 가 select 컬럼을
+   * 구분하지 않고 테이블명으로만 라우팅되므로 무관).
+   * @param {{ complexes: any[]; apartments: any[]; articles?: any[] }} data
+   */
+  function makeExclSb({ complexes, apartments, articles = [] }) {
+    /** @type {Array<{ id: string; row: Record<string, unknown> }>} */
+    const updateCalls = [];
+    /** @type {string | null} */
+    let table = null;
+    /** @type {Record<string, unknown> | null} */
+    let pendingUpdate = null;
+
+    /** @param {string | null} t */
+    const rowsFor = (t) => {
+      if (t === "complexes") return complexes;
+      if (t === "apartments") return apartments;
+      if (t === "articles") return articles;
+      return [];
+    };
+
+    const chain = {
+      /** @param {string} t */
+      from(t) { table = t; pendingUpdate = null; return chain; },
+      select() { return chain; },
+      /** @param {string} col @param {unknown} v */
+      eq(col, v) {
+        if (pendingUpdate != null) {
+          updateCalls.push({ id: /** @type {string} */ (v), row: pendingUpdate });
+          pendingUpdate = null;
+          return Promise.resolve({ error: null });
+        }
+        return chain;
+      },
+      not() { return chain; },
+      order() { return chain; },
+      limit() { return Promise.resolve({ data: rowsFor(table), error: null }); },
+      range() { return Promise.resolve({ data: [], error: { message: "complex_links 없음(테스트 폴백 유도)" } }); },
+      gt() { return Promise.resolve({ data: [], error: null }); },
+      lt() { return Promise.resolve({ data: [], error: null }); },
+      /** @param {Record<string, unknown>} row */
+      update(row) { pendingUpdate = row; return chain; },
+    };
+    return { sb: chain, updateCalls };
+  }
+
+  const at = { lat: 37.5, lng: 127.0 };
+  /** @param {string} no @param {string} name @param {Record<string, unknown>} f */
+  const cpx = (no, name, f = {}) => /** @type {any} */ ({
+    complex_no: no, complex_name: name, latitude: at.lat, longitude: at.lng,
+    floor_area_ratio: null, building_coverage_ratio: null, high_floor: null,
+    total_parking_count: null, total_household_count: null, has_pool: null,
+    use_approve_ymd: null, heat_fuel_type: null, corridor_type: null,
+    real_estate_type_name: null, ...f,
+  });
+  /** @param {string} id @param {string} name @param {Record<string, unknown>} f */
+  const apt = (id, name, f = {}) => /** @type {any} */ ({
+    id, name, lat: at.lat, lng: at.lng,
+    floor_area_ratio: null, building_coverage_ratio: null, max_floor: null,
+    parking_ratio: null, has_pool: null, heating: null, exclusive_ratio: null,
+    quake_design: null, view: null, sunlight: null, heat_fuel: null, corridor_type: null,
+    units: null, unsold: null, unsold_rate: null,
+    naver_sell_count: null, naver_jeonse_count: null, naver_wolse_count: null, ...f,
+  });
+  /** 전용률 재료용 매물 — area1_m2=공급, area2_m2=전용. @param {string} complexNo @param {number} exclusiveArea @param {number} supplyArea */
+  const areaArticles = (complexNo, exclusiveArea, supplyArea) => Array.from({ length: 3 }, (_, i) => ({
+    article_no: `${complexNo}-A${i}`, complex_no: complexNo,
+    area1_m2: supplyArea, area2_m2: exclusiveArea,
+    direction: null, building_name: null, trade_type_name: null, floor_info: null,
+    numeric_maintenance_cost: null,
+  }));
+  /** 미분양 재료용 매매 매물 N건. @param {string} complexNo @param {number} count */
+  const sellArticles = (complexNo, count) => Array.from({ length: count }, (_, i) => ({
+    article_no: `${complexNo}-S${i}`, complex_no: complexNo,
+    area1_m2: null, area2_m2: null, direction: null, building_name: null,
+    trade_type_name: "매매", floor_info: null, numeric_maintenance_cost: null,
+  }));
+
+  /** 한 apt id 로 온 모든 update row 를 병합(Phase 1/2 가 각각 별도 update 를 호출하므로). */
+  const mergedRowFor = (/** @type {Array<{ id: string; row: Record<string, unknown> }>} */ updateCalls, /** @type {string} */ id) =>
+    Object.assign({}, .../** @type {any[]} */ (updateCalls.filter((u) => u.id === id).map((u) => u.row)));
+
+  it("(a) 오피스텔 complex 는 값이 유효 범위(75%)여도 전용률을 안 쓴다", async () => {
+    const { sb, updateCalls } = makeExclSb({
+      complexes: [cpx("CX-A", "오피스텔단지", { real_estate_type_name: "오피스텔" })],
+      apartments: [apt("apt-a", "오피스텔단지")],
+      articles: areaArticles("CX-A", 75, 100),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main();
+    expect(mergedRowFor(updateCalls, "apt-a").exclusive_ratio).toBeUndefined();
+  });
+
+  it("(b) 재건축 complex 는 값이 유효 범위(75%)여도 전용률을 안 쓴다", async () => {
+    const { sb, updateCalls } = makeExclSb({
+      complexes: [cpx("CX-B", "재건축단지", { real_estate_type_name: "재건축" })],
+      apartments: [apt("apt-b", "재건축단지")],
+      articles: areaArticles("CX-B", 75, 100),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main();
+    expect(mergedRowFor(updateCalls, "apt-b").exclusive_ratio).toBeUndefined();
+  });
+
+  it("(c) 아파트라도 계산값이 타당 범위(90) 초과면 안 쓴다", async () => {
+    const { sb, updateCalls } = makeExclSb({
+      complexes: [cpx("CX-C", "아파트씨단지", { real_estate_type_name: "아파트" })],
+      apartments: [apt("apt-c", "아파트씨단지")],
+      articles: areaArticles("CX-C", 95, 100), // 95% — 상한(90) 초과
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main();
+    expect(mergedRowFor(updateCalls, "apt-c").exclusive_ratio).toBeUndefined();
+  });
+
+  it("(d) 아파트 + 타당 범위(75%) → 전용률을 쓴다", async () => {
+    const { sb, updateCalls } = makeExclSb({
+      complexes: [cpx("CX-D", "아파트디단지", { real_estate_type_name: "아파트" })],
+      apartments: [apt("apt-d", "아파트디단지")],
+      articles: areaArticles("CX-D", 75, 100),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main();
+    expect(mergedRowFor(updateCalls, "apt-d").exclusive_ratio).toBe(75);
+  });
+
+  it("(e) 기존 값이 0(sentinel)이면 채움 대상이 된다", async () => {
+    const { sb, updateCalls } = makeExclSb({
+      complexes: [cpx("CX-E", "아파트이단지", { real_estate_type_name: "아파트" })],
+      apartments: [apt("apt-e", "아파트이단지", { exclusive_ratio: 0 })],
+      articles: areaArticles("CX-E", 75, 100),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main();
+    expect(mergedRowFor(updateCalls, "apt-e").exclusive_ratio).toBe(75);
+  });
+
+  it("(f) unsold_rate 가 100 초과로 계산되면 null 을 명시 기록한다 (unsold 는 그대로 쓴다)", async () => {
+    // 세대수 10 · 매매 매물 15건 → 150% (clampUnsoldRate 가 null 로 무력화)
+    //
+    // ⚠️ `toBeUndefined()`(= 그 필드를 빼고 넘어감) 이면 **안 된다**. 빼면 unsold 만 최신으로
+    //    갱신되고 unsold_rate 는 마지막으로 경계를 통과했던 옛 값에 멈춰, 두 필드가 서로 다른
+    //    시점을 가리킨 채 그럴듯한 옛 비율이 화면·scoreRisk 에 계속 노출된다(세션538 적대검증).
+    //    "못 잰다"는 undefined(안 건드림)가 아니라 null(모른다)로 남아야 한다.
+    const { sb, updateCalls } = makeExclSb({
+      complexes: [cpx("CX-F", "아파트에프단지", { real_estate_type_name: "아파트" })],
+      apartments: [apt("apt-f", "아파트에프단지", { units: 10, exclusive_ratio: 75 })],
+      articles: sellArticles("CX-F", 15),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main();
+    const row = mergedRowFor(updateCalls, "apt-f");
+    expect(row.unsold).toBe(15);
+    expect("unsold_rate" in row).toBe(true);
+    expect(row.unsold_rate).toBeNull();
+  });
+
+  it("미분양률 100 이하는 그대로 쓴다 (대조군 — 클램프가 정상값까지 지우지 않는다)", async () => {
+    // 세대수 20 · 매매 매물 5건 → 25%
+    const { sb, updateCalls } = makeExclSb({
+      complexes: [cpx("CX-G", "아파트지단지", { real_estate_type_name: "아파트" })],
+      apartments: [apt("apt-g", "아파트지단지", { units: 20, exclusive_ratio: 75 })],
+      articles: sellArticles("CX-G", 5),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main();
+    const row = mergedRowFor(updateCalls, "apt-g");
+    expect(row.unsold).toBe(5);
+    expect(row.unsold_rate).toBe(25);
+  });
+});

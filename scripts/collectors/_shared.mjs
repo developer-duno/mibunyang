@@ -703,6 +703,89 @@ export function clampUnsoldRate(rate) {
   return rate > 100 ? null : rate;
 }
 
+// ── 전용률 유입 게이트 (2중) ─────────────────────────────────
+/**
+ * 전용률(exclusive_ratio) 타당 범위 — `scripts/backfill-exclusive-ratio.mjs` 의
+ * VALID_MIN/VALID_MAX 와 같은 상수(세션537 관측값 앵커, 재복사 아님 — 그 파일이 이 값을
+ * re-export 한다). 두 독립 출처(청약홈·prices)가 3%p 이내로 일치한 538곳("신뢰 코어")의
+ * 분포가 min=61.2~max=83.3 으로 좁고, 정의상 100% 를 넘을 수 없다(공급=전용+주거공용).
+ * @type {number}
+ */
+export const EXCL_RATIO_MIN = 60;
+/** @type {number} */
+export const EXCL_RATIO_MAX = 90;
+
+/**
+ * 물리적으로 말이 되는 전용률인가 — 유한수이고 [EXCL_RATIO_MIN, EXCL_RATIO_MAX] 안.
+ * @param {unknown} v
+ * @returns {boolean}
+ */
+export function isPlausibleExclRatio(v) {
+  return typeof v === "number" && Number.isFinite(v) && v >= EXCL_RATIO_MIN && v <= EXCL_RATIO_MAX;
+}
+
+/**
+ * 전용률 재료로 쓸 수 있는 complexes.real_estate_type_name — "아파트"·"아파트분양권"만.
+ *
+ * 세션538 라이브 실측(활성 매물 area2/area1, complexes.real_estate_type_name 별):
+ *   아파트        n=190,714 p50=75.7 | <60  0.4% | >90  0.7% | 정확히100% 340건
+ *   아파트분양권   n= 21,039 p50=75.0 | <60  0.0% | >90  0.0% | 100%       0건
+ *   오피스텔      n= 46,764 p50=48.3 | <60 79.4% | >90  0.0% | 100%       0건  ← 계약면적 혼입
+ *   오피스텔분양권 n=    886 p50=42.9 | <60  100% | >90  0.0% | 100%       0건  ← 계약면적 혼입
+ *   재건축        n=  3,915 p50=82.1 | <60  0.0% | >90 32.1% | 100%      39건  ← 정비사업 특수
+ * 오피스텔(분양권 포함)은 area1 이 계약면적(전용+공용+기타공용)일 때가 많아 79.4~100%가
+ * 60 미만으로 나온다 — 진짜 전용률이 아니라 혼입값. 재건축은 90 초과가 32.1%(+100% 39건)로
+ * 일반 아파트의 물리적 범위를 벗어난다. null/모름은 재료로 쓰지 않는다(모르면 안 쓴다).
+ * @type {ReadonlySet<string>}
+ */
+export const EXCL_RATIO_SOURCE_TYPES = new Set(["아파트", "아파트분양권"]);
+
+/**
+ * complexes.real_estate_type_name 이 전용률 재료로 쓸 수 있는 유형인가.
+ * @param {unknown} typeName
+ * @returns {boolean}
+ */
+export function canUseComplexForExclRatio(typeName) {
+  return typeof typeName === "string" && EXCL_RATIO_SOURCE_TYPES.has(typeName);
+}
+
+/**
+ * 60~90 잣대를 그대로 댈 수 있는 분양 유형(apartments.presale_housing_type).
+ * @type {ReadonlySet<string>}
+ */
+export const EXCL_RATIO_APT_LIKE_TYPES = new Set(["아파트", "주상복합"]);
+
+/**
+ * 분양 유형까지 감안한 전용률 타당성 — **네이버 분양 API(prices) 재료 전용**.
+ *
+ * 60~90 은 청약홈 **아파트** 주택형에서 도출된 잣대다(세션537). 그런데 prices 의
+ * presale_min 행은 `/api/complex/scale` 의 use_area_size(전용)/supp_size(공급)에서 와서
+ * 매물(articles)의 계약면적 혼입 문제가 없다 — 오피스텔에서도 **진짜 전용률**이다.
+ * 그래서 아파트 잣대를 오피스텔에 그대로 대면 멀쩡한 값을 지운다(세션536 "지울 뻔한
+ * 멀쩡한 값" 과 같은 함정).
+ *
+ * 세션538 라이브 실측(presale_min 재료 1,626행 · 유형 라벨 커버리지 100%):
+ *   60 미만 22건 = 오피스텔 16(54~59%, 정상) + 아파트 6(54~55.7%, 오염 의심)
+ *   90 초과  5건 = 전부 아파트 라벨(루첸시아 93.9 · 청계백상앨리츠 100×3 · 광명소하파크타워 100)
+ * → 아파트 계열에만 60~90 을 대면 틀린 11건을 막고 멀쩡한 16건을 살린다.
+ *
+ * 비아파트·유형 미상은 **정의상 불가능한 것만** 막는다(공급 = 전용 + 주거공용이므로
+ * 전용률은 항상 100 미만). 미상 분기는 위 실측상 커버리지 100%라 지금은 도달하지 않는다.
+ * ⚠️ 이 판정은 재료가 "진짜 전용/공급면적"일 때만 옳다. 매물(area1/area2) 재료에는
+ * 쓰지 마라 — 그쪽은 유형 자체를 거르는 `canUseComplexForExclRatio` 가 맡는다.
+ *
+ * @param {unknown} v 계산된 전용률(%)
+ * @param {unknown} housingType apartments.presale_housing_type
+ * @returns {boolean}
+ */
+export function isPlausibleExclRatioFor(v, housingType) {
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return false;
+  if (typeof housingType === "string" && EXCL_RATIO_APT_LIKE_TYPES.has(housingType)) {
+    return isPlausibleExclRatio(v);
+  }
+  return v < 100;
+}
+
 // ── API 쿼터 로깅 ───────────────────────────────────────────
 // data.go.kr 등 일일 한도 API 사용량을 api_quota_log 테이블에 기록
 /**

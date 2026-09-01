@@ -8,7 +8,7 @@
  *   node scripts/collectors/calc-exclusive-ratio.mjs              (Supabase UPDATE)
  *   node scripts/collectors/calc-exclusive-ratio.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, selectAll, createReporter, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, selectAll, createReporter, recordCollectorRun, isPlausibleExclRatioFor } from "./_shared.mjs";
 
 /** @typedef {{ apartment_id: string; area: number | null; supply_area: number | null }} PriceRow */
 
@@ -39,7 +39,7 @@ export async function main() {
   // 전용률이 없는 아파트 (selectAll: 1000행 제한 자동 페이지네이션)
   const apts = await selectAll(
     (s) => s.from("apartments")
-      .select("id, name, exclusive_ratio")
+      .select("id, name, exclusive_ratio, presale_housing_type")
       .is("exclusive_ratio", null),
     sb
   );
@@ -87,6 +87,18 @@ export async function main() {
     if (!p) { skipped++; rpt.skip(); continue; }
 
     const ratio = calcRatio(p.area, p.supply_area);
+
+    // 값 게이트(세션538) — 계산됐다고 써도 되는 건 아니다. 재료(prices.area/supply_area)도
+    // 틀릴 수 있다. 단 **잣대는 유형별로 다르다**: 60~90 은 아파트 기준이고, 이 재료는
+    // 오피스텔에서도 진짜 전용률이라 아파트 잣대를 그대로 대면 멀쩡한 값(실측 16건)을
+    // 지운다 — 자세한 근거는 `_shared.mjs` `isPlausibleExclRatioFor` 주석 참조.
+    // dry-run 미리보기도 같은 게이트를 타야 미리보기와 실제 반영이 어긋나지 않는다.
+    if (!isPlausibleExclRatioFor(ratio, apt.presale_housing_type)) {
+      log(PHASE, `  [SKIP] ${apt.name}(${apt.presale_housing_type ?? "유형미상"}): ${p.area}/${p.supply_area} = ${ratio}% — 타당 범위 밖`);
+      skipped++;
+      rpt.skip();
+      continue;
+    }
 
     if (dryRun) {
       log(PHASE, `  [DRY] ${apt.name}: ${p.area}/${p.supply_area} = ${ratio}%`);

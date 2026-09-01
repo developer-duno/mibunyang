@@ -11,9 +11,9 @@
  *   node scripts/collectors/sync-naver-complex.mjs              (Supabase UPDATE)
  *   node scripts/collectors/sync-naver-complex.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun, selectAll, isPlausibleExclRatio, canUseComplexForExclRatio, clampUnsoldRate } from "./_shared.mjs";
 
-/** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} ComplexRow */
+/** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null; real_estate_type_name: string | null }} ComplexRow */
 /** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
 /** @typedef {{ id: string; name: string; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; naver_jeonse_count: number | null; naver_wolse_count: number | null }} AptUnsoldRow */
 /** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; naver_nearby_median: number | null; naver_nearby_avg: number | null; naver_jeonse_rate: number | null; naver_build_year: number | null; naver_avg_floor: number | null; naver_nearby_count: number | null; naver_fetched_at: string | null }} AptNaverRow */
@@ -270,7 +270,7 @@ export async function main() {
   /** @type {ComplexRow[]} */
   const complexes = /** @type {ComplexRow[]} */ (
     await selectAll(
-      (s) => s.from("complexes").select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, heat_fuel_type, corridor_type, building_coverage_ratio"),
+      (s) => s.from("complexes").select("complex_no, complex_name, floor_area_ratio, total_parking_count, total_household_count, high_floor, has_pool, use_approve_ymd, latitude, longitude, heat_fuel_type, corridor_type, building_coverage_ratio, real_estate_type_name"),
       sbMibunyang,
       "complex_no",
     )
@@ -457,13 +457,23 @@ export async function main() {
         row.building_coverage_ratio = cpx.building_coverage_ratio;
       }
 
-      // 전용률: articles area1(공급)/area2(전용) 비율
-      if (apt.exclusive_ratio == null) {
+      // 전용률: articles area1(공급)/area2(전용) 비율 — 2중 게이트(세션538).
+      //
+      // 대상: 0 도 "미수집" sentinel 이다(위 용적률/건폐율/최고층과 같은 사상) — 채움 가드만
+      // `== null` 이면 한 번 0 이 박힌 뒤 영영 안 채워진다. 전용률은 정의상 0 이 될 수 없다.
+      //
+      // 출처 게이트: complexes.real_estate_type_name 이 "아파트"/"아파트분양권"일 때만 재료로
+      // 쓴다. 오피스텔(계약면적 혼입, <60% 79.4~100%)·재건축(>90% 32.1%)은 물리적으로 다른
+      // 분포라 배제 — 근거 수치는 `_shared.mjs` `EXCL_RATIO_SOURCE_TYPES` 주석 참조.
+      //
+      // 값 게이트: 계산한 중앙값이 타당 범위(60~90) 밖이면 버린다 — 재료도 틀릴 수 있다.
+      if (!(Number(apt.exclusive_ratio) > 0) && canUseComplexForExclRatio(cpx.real_estate_type_name)) {
         const withArea = (articlesByComplex[cpx.complex_no] || [])
           .filter(a => a.area1_m2 != null && a.area1_m2 > 0 && a.area2_m2 != null && a.area2_m2 > 0);
         if (withArea.length >= 1) {
           const ratios = withArea.map(a => (/** @type {number} */ (a.area2_m2) / /** @type {number} */ (a.area1_m2)) * 100);
-          row.exclusive_ratio = Math.round(median(ratios) * 10) / 10;
+          const ratio = Math.round(median(ratios) * 10) / 10;
+          if (isPlausibleExclRatio(ratio)) row.exclusive_ratio = ratio;
         }
       }
 
@@ -574,10 +584,17 @@ export async function main() {
           if (cnt.jeonse !== (apt.naver_jeonse_count ?? 0)) row.naver_jeonse_count = cnt.jeonse;
           if (cnt.wolse !== (apt.naver_wolse_count ?? 0)) row.naver_wolse_count = cnt.wolse;
 
-          // 매매 매물 수를 미분양 근사치로 사용
+          // 매매 매물 수를 미분양 근사치로 사용.
+          // unsold_rate 는 clampUnsoldRate(>100 → null, 세션445)로 VIEW·API·collect-data 와
+          // 같은 단일 경계를 맞춘다(세션538). unsold(원본 매물 수)는 별개 판단이라 그대로 둔다.
+          //
+          // ⚠️ null 을 **명시적으로 기록**한다(그 필드를 빼고 넘어가지 않는다). 빼면 unsold 만
+          //    최신으로 갱신되고 unsold_rate 는 마지막으로 경계를 통과했던 옛 값에 멈춰,
+          //    두 필드가 서로 다른 시점을 가리킨 채 그럴듯한 옛 비율이 화면·scoreRisk 에
+          //    계속 노출된다(세션538 적대검증 지적). 못 재는 것은 "모른다"로 남기는 게 맞다.
           if (cnt.sell > 0 && apt.units != null && apt.units > 0) {
             row.unsold = cnt.sell;
-            row.unsold_rate = Math.round(cnt.sell / apt.units * 1000) / 10;
+            row.unsold_rate = clampUnsoldRate(Math.round(cnt.sell / apt.units * 1000) / 10);
           }
 
           if (Object.keys(row).length === 0) continue;

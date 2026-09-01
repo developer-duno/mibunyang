@@ -3,6 +3,7 @@
  * calc-exclusive-ratio.mjs 테스트 — calcRatio 전용률 계산 검증
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
 
 /** @type {any} */
 let mockSb;
@@ -135,5 +136,107 @@ describe("main — collector_runs 기록", () => {
     expect(result.fail).toBe(1);
     expect(result.skip).toBe(0);
     expect(result.status).toBe("failure");
+  });
+
+  // ── 값 게이트(세션538) — **유형별 잣대**로 거른다 ────────────────────────
+  // 이 수집기의 현재 write 대상은 0건이다(전용률 null 550곳 중 prices 재료 보유 0곳,
+  // 세션538 실측). 즉 이 게이트는 즉시 효과가 아니라 선제 방어라 아래는 합성 케이스다.
+  //
+  // ⚠️ 60~90 은 **아파트 잣대**다. 이 수집기의 재료(prices presale_min)는 네이버 분양 API 의
+  //    전용/공급면적이라 오피스텔에서도 진짜 전용률이고, 실측상 오피스텔은 54~59%가 정상이다
+  //    (라이브 16건). 그래서 픽스처에 presale_housing_type 을 반드시 명시한다 — 유형을 빼면
+  //    "유형 미상" 분기(정의상 한계만)로 떨어져 게이트를 검사하지 못한다.
+  it("아파트인데 계산값이 상한(90) 초과면 skip 으로 세고 UPDATE 를 호출하지 않는다", async () => {
+    // 95 / 100 = 95.0% — 아파트에서 공용면적이 사실상 0이라 불가능(실측: 루첸시아 93.9 등)
+    selectAllResults = [
+      [{ id: "ap-1", name: "다라", exclusive_ratio: null, presale_housing_type: "아파트" }],
+      [{ apartment_id: "ap-1", area: 95, supply_area: 100 }],
+    ];
+    const updateSpy = vi.fn(() => ({ eq: async () => ({ error: null }) }));
+    mockSb = { from: () => ({ update: updateSpy }) };
+    await main();
+    expect(updateSpy).not.toHaveBeenCalled();
+    const [, result] = mockRecord.mock.calls[0];
+    expect(result.skip).toBe(1);
+    expect(result.ok).toBe(0);
+    expect(result.fail).toBe(0);
+    expect(result.status).toBe("success");
+  });
+
+  it("아파트인데 계산값이 하한(60) 미만이면 skip 으로 센다", async () => {
+    // 50 / 100 = 50.0% — 아파트 잣대 밖(실측: 아파트 라벨 6건이 54~55.7%로 오염 의심)
+    selectAllResults = [
+      [{ id: "ap-1", name: "마바", exclusive_ratio: null, presale_housing_type: "아파트" }],
+      [{ apartment_id: "ap-1", area: 50, supply_area: 100 }],
+    ];
+    const updateSpy = vi.fn(() => ({ eq: async () => ({ error: null }) }));
+    mockSb = { from: () => ({ update: updateSpy }) };
+    await main();
+    expect(updateSpy).not.toHaveBeenCalled();
+    const [, result] = mockRecord.mock.calls[0];
+    expect(result.skip).toBe(1);
+    expect(result.ok).toBe(0);
+  });
+
+  it("오피스텔의 58% 는 정상이라 UPDATE 를 호출한다 (아파트 잣대를 대면 안 된다)", async () => {
+    // 라이브 실측: 중화역라온프라이빗센트로(오) 44.01/75.93 = 58.0%
+    selectAllResults = [
+      [{ id: "ap-1", name: "라온(오)", exclusive_ratio: null, presale_housing_type: "오피스텔" }],
+      [{ apartment_id: "ap-1", area: 44.01, supply_area: 75.93 }],
+    ];
+    const updateSpy = vi.fn(() => ({ eq: async () => ({ error: null }) }));
+    mockSb = { from: () => ({ update: updateSpy }) };
+    await main();
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    const [, result] = mockRecord.mock.calls[0];
+    expect(result.ok).toBe(1);
+    expect(result.skip).toBe(0);
+  });
+
+  it("오피스텔이어도 100% 는 정의상 불가능이라 skip 한다", async () => {
+    // 전용 = 공급 → 주거공용 0. 어떤 유형에서도 나올 수 없다.
+    selectAllResults = [
+      [{ id: "ap-1", name: "불가능(오)", exclusive_ratio: null, presale_housing_type: "오피스텔" }],
+      [{ apartment_id: "ap-1", area: 76.62, supply_area: 76.62 }],
+    ];
+    const updateSpy = vi.fn(() => ({ eq: async () => ({ error: null }) }));
+    mockSb = { from: () => ({ update: updateSpy }) };
+    await main();
+    expect(updateSpy).not.toHaveBeenCalled();
+    const [, result] = mockRecord.mock.calls[0];
+    expect(result.skip).toBe(1);
+  });
+
+  it("경계값(정확히 60, 90)은 타당 범위 — UPDATE 를 호출한다", async () => {
+    // 60 / 100 = 60.0% (하한 포함)
+    selectAllResults = [
+      [{ id: "ap-1", name: "경계", exclusive_ratio: null, presale_housing_type: "아파트" }],
+      [{ apartment_id: "ap-1", area: 60, supply_area: 100 }],
+    ];
+    const updateSpy = vi.fn(() => ({ eq: async () => ({ error: null }) }));
+    mockSb = { from: () => ({ update: updateSpy }) };
+    await main();
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    const [, result] = mockRecord.mock.calls[0];
+    expect(result.ok).toBe(1);
+    expect(result.skip).toBe(0);
+  });
+});
+
+// ── 배선 가드 ────────────────────────────────────────────────────────────────
+// 위 행동 테스트는 selectAll 을 mock 하므로 **실제 SELECT 문에 유형 컬럼이 있는지**를 못 본다.
+// 그 컬럼이 빠지면 apt.presale_housing_type 이 항상 undefined 가 되어 게이트가 조용히
+// "유형 미상"(정의상 한계만) 으로 퇴화한다 — 테스트는 전부 초록인 채로.
+describe("배선 가드 (세션538)", () => {
+  const src = readFileSync(new URL("./calc-exclusive-ratio.mjs", import.meta.url), "utf8");
+
+  it("대상 SELECT 가 presale_housing_type 을 함께 읽는다", () => {
+    // 문자열 리터럴 조각으로 고정한다 — 단순히 "presale_housing_type" 만 찾으면 아래
+    // 게이트 호출 줄이나 주석에 오매칭돼 SELECT 에서 빠져도 초록이 된다.
+    expect(src).toContain('"id, name, exclusive_ratio, presale_housing_type"');
+  });
+
+  it("게이트가 유형을 인자로 받는다 (유형 무시형으로 되돌아가지 않는다)", () => {
+    expect(src).toMatch(/if\s*\(!isPlausibleExclRatioFor\(\s*ratio\s*,\s*apt\.presale_housing_type\s*\)\)/);
   });
 });
