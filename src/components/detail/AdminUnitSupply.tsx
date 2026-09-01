@@ -20,11 +20,19 @@ type AdminUnitSupplyProps = { apt: Apt };
 export const AdminUnitSupply = memo(function AdminUnitSupply({ apt }: AdminUnitSupplyProps) {
   const units = Number(apt.units ?? 0);
   const unsold = apt.unsold != null ? Number(apt.unsold) : null;
+  // units가 총세대수가 아니라 그 회차 공급 세대수인 자리(청약홈 계열)면 재계산이 100%를
+  // 넘을 수 있다(예: 총세대수 15·미분양 47 → 313%). VIEW·API·수집기가 이미 지키는
+  // ">100 → 무효" 경계(세션445)를 여기서도 지켜 "미분양 313%" 같은 거짓 수치를 막는다.
+  const recalculated = units > 0 && unsold != null ? (unsold / units) * 100 : null;
+  // 그 회차 공급분이 units 에 들어온 자리에서는 이 숫자가 "총 세대"가 아니다. 판정 기준은
+  // 화면 표(`FIELD_META.units.fmt`)와 **같아야** 한다 — 한 모달 안에서 표는 "정보 없음",
+  // 관리자 카드는 "15" 라고 서로 다른 말을 하면 안 된다(세션538 적대검증 high).
+  const unitsUnknown = !(units > 1) || (unsold != null && unsold > units);
   const unsoldRate =
     apt.unsoldRate != null
       ? Number(apt.unsoldRate).toFixed(1)
-      : units > 0 && unsold != null
-        ? ((unsold / units) * 100).toFixed(1)
+      : recalculated != null && recalculated <= 100
+        ? recalculated.toFixed(1)
         : null;
   const { units: unitRows } = usePresaleDetail(apt.id);
   return (
@@ -48,7 +56,7 @@ export const AdminUnitSupply = memo(function AdminUnitSupply({ apt }: AdminUnitS
         <div style={{ textAlign: "center", padding: 10, background: C.bg, borderRadius: 6 }}>
           <div style={{ fontSize: F.xs, color: C.muted }}>총 세대</div>
           <div style={{ fontSize: F.lg, fontWeight: 800, color: C.text }}>
-            {(apt.units ?? 0).toLocaleString("ko-KR")}
+            {unitsUnknown ? "—" : units.toLocaleString("ko-KR")}
           </div>
         </div>
         <div style={{ textAlign: "center", padding: 10, background: C.redLight, borderRadius: 6 }}>

@@ -215,6 +215,15 @@ describe("buildCardChips — 강점/약점 판정", () => {
     expect(find(build({ exclusiveRatio: 77 }), "exclusiveRatio")?.layer).toBe("neutral");
   });
 
+  // 세션 — 전용률 0% 는 물리적으로 불가능한 sentinel(미수집, fieldMeta.ts exclusiveRatio 와 같은
+  // 경계). 0 이 그대로 새면 "전용률 0%" 회색칩이 뜬다. ⚠️ 뮤테이션 대상: `exclRatio > 0` 가드를
+  // 지우면 이 테스트가 red 여야 한다.
+  it("전용률 0 은 미수집 sentinel — 칩 자체가 뜨지 않는다", () => {
+    const chips = build({ exclusiveRatio: 0 });
+    expect(find(chips, "exclusiveRatio")).toBeUndefined();
+    expect(find(chips, "exclusiveHigh")).toBeUndefined();
+  });
+
   it("초등 도보 5분 이내만 강점, 6분부터는 회색", () => {
     expect(find(build({ naverSchoolWalkMin: 4 }), "schoolWalkNear")?.layer).toBe("good");
     expect(find(build({ naverSchoolWalkMin: 9 }), "schoolWalk")?.layer).toBe("neutral");

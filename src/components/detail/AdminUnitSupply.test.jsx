@@ -24,10 +24,14 @@ describe("AdminUnitSupply", () => {
     expect(screen.getByText("15.0%")).toBeTruthy();
   });
 
-  it("units가 null이면 0을 표시한다", () => {
+  // 세션538: 옛 단언은 `getByText("0")` 이었다 — units 가 없을 때 "0" 을 찍는 건
+  // "총 세대가 0세대"라는 거짓이다. 화면 표(`FIELD_META.units.fmt`)는 이미 v<=1 을
+  // "정보 없음"으로 가리고 있었는데 이 카드만 0을 찍어 한 모달 안에서 말이 갈렸다.
+  it("units가 null이면 '—'을 표시한다 (0세대짜리 단지는 없다)", () => {
     const apt = /** @type {any} */ (makeApt({ units: null, unsold: null, unsoldRate: null }));
     render(<AdminUnitSupply apt={apt} />);
-    expect(screen.getByText("0")).toBeTruthy();
+    expect(screen.queryByText("0")).toBeNull();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
   });
 
   it("unsold가 null이면 '—'을 표시한다", () => {
@@ -55,5 +59,41 @@ describe("AdminUnitSupply", () => {
     const apt = /** @type {any} */ (makeApt({ units: 500, unsold: 100, unsoldRate: 20 }));
     render(<AdminUnitSupply apt={apt} />);
     expect(screen.getByText("20.0%")).toBeTruthy();
+  });
+
+  // 세션 — units 가 총세대수가 아니라 그 회차 공급 세대수인 자리(청약홈 계열)면 재계산이
+  // 100%를 넘는다(15세대 중 미분양 47세대). VIEW·API·수집기와 같은 ">100 → 무효" 경계(세션445).
+  // ⚠️ 뮤테이션 대상: `recalculated <= 100` 가드를 지우면 "313.3%" 가 찍혀 red 여야 한다.
+  it("재계산 결과가 100%를 넘으면 무효 처리한다 (— 표시)", () => {
+    const apt = /** @type {any} */ (makeApt({ units: 15, unsold: 47, unsoldRate: null }));
+    render(<AdminUnitSupply apt={apt} />);
+    expect(screen.queryByText(/313/)).toBeNull();
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("재계산 결과가 정확히 100%면 그대로 표시한다 (경계값)", () => {
+    const apt = /** @type {any} */ (makeApt({ units: 100, unsold: 100, unsoldRate: null }));
+    render(<AdminUnitSupply apt={apt} />);
+    expect(screen.getByText("100.0%")).toBeTruthy();
+  });
+
+  // 세션538 적대검증(high): 미분양률은 막아뒀는데 바로 옆 "총 세대" 칸은 원본을 그대로 찍어
+  // "총 세대 15 / 미분양 47" 이 동시에 보였다. 판정 기준을 화면 표(`FIELD_META.units.fmt`)와
+  // 같게 맞춘다 — 한 모달 안에서 두 자리가 다른 말을 하면 안 된다.
+  // ⚠️ 뮤테이션 대상: `unitsUnknown` 을 지우고 `apt.units` 를 그대로 찍으면 red 여야 한다.
+  it("미분양이 총세대수보다 크면 '총 세대'도 무효 처리한다 (분모가 그 회차 공급분인 자리)", () => {
+    const apt = /** @type {any} */ (makeApt({ units: 15, unsold: 47, unsoldRate: null }));
+    render(<AdminUnitSupply apt={apt} />);
+    expect(screen.queryByText("15")).toBeNull(); // "총 세대 15" 가 사라져야 한다
+    expect(screen.getByText("47")).toBeTruthy(); // 미분양 자체는 참이라 그대로 둔다
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2); // 총세대 + 미분양률
+  });
+
+  it("정상 단지(미분양 < 총세대수)는 총 세대를 그대로 보여준다 (대조군)", () => {
+    const apt = /** @type {any} */ (makeApt({ units: 500, unsold: 100, unsoldRate: 20 }));
+    render(<AdminUnitSupply apt={apt} />);
+    expect(screen.getByText("500")).toBeTruthy();
+    expect(screen.getByText("100")).toBeTruthy();
   });
 });

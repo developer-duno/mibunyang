@@ -53,7 +53,16 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     label: "총세대수",
     section: "개요",
     unit: "세대",
-    fmt: (v) => (v != null && v > 1 ? nk(v, "세대") : "정보 없음"),
+    // 청약홈 계열 행에서 이 값이 단지 총세대수가 아니라 "그 회차 공급 세대수"인 자리가 있다.
+    // 미분양(unsold)이 이 값보다 크면 분모가 틀렸다는 신호다 — 숫자 자체가 아니라 "총세대수"라는
+    // 라벨이 거짓이 되는 자리라 값을 지우고 "정보 없음"으로 뺀다(예: 총세대수 15·미분양 47).
+    // HighlightField 처럼 apt 없이 불릴 수도 있어 apt?.unsold 로 안전하게 접근한다.
+    fmt: (v, apt) => {
+      if (v == null || v <= 1) return "정보 없음";
+      const unsold = apt?.unsold;
+      if (unsold != null && Number(unsold) > v) return "정보 없음";
+      return nk(v, "세대");
+    },
   },
   unsold: {
     label: "미분양 세대",
@@ -379,7 +388,12 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     section: "상품성",
     fmt: (v) => (v === true ? "적용" : v === false ? "미적용" : "미수집"),
   },
-  exclusiveRatio: { label: "전용률", section: "상품성", unit: "%", fmt: (v) => n(v, "%") },
+  // 0층 건물·용적률 0%·건폐율 0% 와 같은 꼴 — 전용률 0% 도 물리적으로 불가능해 0 은 미수집이다.
+  // 점수 쪽은 이미 그렇게 판정한다(engine.ts `_noExcl` → 점수 탭 "정보 없음"). 그런데 이 필드만
+  // `n`(null 만 검사)이라 "0%"를 그대로 내보내, 같은 모달 안에서 종합 탭 "0%" vs 점수 탭 "정보 없음"
+  // 으로 갈리고 있었다(형제 필드 maxFloor L50·용적률 L374·건폐율 L386 은 이미 nPos). 현재 DB 에
+  // 정확히 0인 행은 0건이라 잠복 상태 — PR #464 가 수집기 유입만 막고 이 자리는 안 고쳐져 있었다.
+  exclusiveRatio: { label: "전용률", section: "상품성", unit: "%", fmt: (v) => nPos(v, "%") },
   hasPool: { label: "수영장", section: "상품성", fmt: (v) => (v ? "있음" : "없음") },
   heatFuel: { label: "난방연료", section: "상품성", fmt: (v) => v || "미수집" },
   corridorType: { label: "복도유형", section: "상품성", fmt: (v) => v || "미수집" },
