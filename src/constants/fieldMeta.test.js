@@ -1,6 +1,7 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { FIELD_META, FIELD_SECTIONS } from "./fieldMeta";
+import { calcCats } from "@/scoring/engine";
 
 describe("FIELD_META", () => {
   const keys = Object.keys(FIELD_META);
@@ -60,6 +61,28 @@ describe("FIELD_META", () => {
 
   it('units fmt: 정상 → "X,XXX세대"', () => {
     expect(FIELD_META.units.fmt(1500)).toContain("세대");
+  });
+
+  // 세션 — 청약홈 계열 행에서 units 가 "총세대수"가 아니라 "그 회차 공급 세대수"인 자리가 있다.
+  // 미분양(unsold)이 units 보다 크면 분모가 틀렸다는 신호 → 라벨이 거짓이 되므로 "정보 없음".
+  // ⚠️ 뮤테이션 대상: unsold 비교 가드를 지우면 "15세대" 가 찍혀 red 여야 한다.
+  it('units fmt: 미분양(unsold)이 units 보다 크면 분모가 틀린 것 — "정보 없음"', () => {
+    expect(FIELD_META.units.fmt(15, { unsold: 47 })).toBe("정보 없음");
+  });
+
+  it("units fmt: 정상 케이스는 apt를 넘겨도 그대로 세대수를 찍는다", () => {
+    expect(FIELD_META.units.fmt(1000, { unsold: 150 })).toBe("1,000세대");
+  });
+
+  it("units fmt: apt 미전달(HighlightField 경로)이어도 기존 동작을 유지한다", () => {
+    expect(FIELD_META.units.fmt(1000)).toBe("1,000세대");
+    expect(FIELD_META.units.fmt(0)).toBe("정보 없음");
+  });
+
+  // unsold 가 null/undefined 인 정상 경로(미분양 미수집)는 mismatch 판정을 안 한다
+  it("units fmt: unsold 가 없으면(null) mismatch 판정을 하지 않는다", () => {
+    expect(FIELD_META.units.fmt(500, { unsold: null })).toBe("500세대");
+    expect(FIELD_META.units.fmt(500, {})).toBe("500세대");
   });
 
   it('subwayDist fmt: 9000 이상 → "없음(9999)"', () => {
@@ -185,20 +208,48 @@ describe("FIELD_SECTIONS", () => {
 // ⚠️ 뮤테이션 대상 — maxFloor 를 `n` 으로 되돌리면 "0층"이 찍히므로 red 여야 한다.
 describe("0 을 미수집으로 보는 필드 (nPos) vs 0 이 진짜 값인 필드 (n)", () => {
   it("물리적으로 0 이 불가능한 필드는 0 을 '미수집'으로 찍는다", () => {
-    // 0층 건물·용적률 0%·건폐율 0% 는 존재하지 않는다 → 값이 아니라 미수집 표시다
+    // 0층 건물·용적률 0%·건폐율 0%·전용률 0% 는 존재하지 않는다 → 값이 아니라 미수집 표시다
     expect(FIELD_META.maxFloor.fmt(0)).toBe("미수집");
     expect(FIELD_META.floorAreaRatio.fmt(0)).toBe("미수집");
     expect(FIELD_META.buildingCoverageRatio.fmt(0)).toBe("미수집");
+    expect(FIELD_META.exclusiveRatio.fmt(0)).toBe("미수집");
+  });
+
+  it("null 도 같은 필드에서 '미수집'으로 찍는다", () => {
+    expect(FIELD_META.exclusiveRatio.fmt(null)).toBe("미수집");
   });
 
   it("값이 있으면 그대로 찍는다", () => {
     expect(FIELD_META.maxFloor.fmt(25)).toBe("25층");
     expect(FIELD_META.floorAreaRatio.fmt(220)).toBe("220%");
+    expect(FIELD_META.exclusiveRatio.fmt(74)).toBe("74%");
   });
 
   it("0 이 진짜 값일 수 있는 개수 필드는 0 을 그대로 찍는다", () => {
     // 병원 0개·편의점 0개는 실제로 가능한 값이라 "미수집"으로 뭉개면 안 된다
     expect(FIELD_META.hospital.fmt(0)).toBe("0개");
     expect(FIELD_META.park.fmt(0)).toBe("0개");
+  });
+});
+
+// [[guards-must-be-mutation-tested]] §"테스트가 실제 경로를 지나는가" — 단독 fmt() 호출은
+// engine.ts 의 sanitize/_noExcl 앞단을 건너뛴다. 화면(fieldMeta)과 점수(scoreProduct) 가
+// 정말로 같은 말을 하는지는 calcCats 를 실제로 거쳐야 확인된다.
+describe("전용률 0-비대칭 — calcCats 경유로 화면과 점수가 같은 말을 하는지 확인", () => {
+  it("0 과 null 은 점수 탭('정보 없음')과 화면(fieldMeta, '미수집')이 둘 다 미수집이라 말한다", () => {
+    for (const v of [0, null]) {
+      const apt = /** @type {any} */ ({ id: "x", region: "경기", exclusiveRatio: v });
+      const cats = calcCats(apt, {});
+      const scoreInfo = cats.product.subs.find((s) => s.name === "전용률")?.info;
+      expect(scoreInfo).toBe("정보 없음");
+      expect(FIELD_META.exclusiveRatio.fmt(v, apt)).toBe("미수집");
+    }
+  });
+
+  it("실측치는 점수 탭·화면 둘 다 같은 숫자를 보여준다", () => {
+    const apt = /** @type {any} */ ({ id: "x", region: "경기", exclusiveRatio: 74 });
+    const cats = calcCats(apt, {});
+    expect(cats.product.subs.find((s) => s.name === "전용률")?.info).toBe("74%");
+    expect(FIELD_META.exclusiveRatio.fmt(74, apt)).toBe("74%");
   });
 });

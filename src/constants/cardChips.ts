@@ -345,7 +345,9 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
     else out.push({ id: "parking", text, tone: "plain", layer: "neutral" });
   }
   const exclRatio = a.exclusiveRatio as number | null | undefined;
-  if (exclRatio != null) {
+  // 전용률 0% 는 물리적으로 불가능한 sentinel(미수집, fieldMeta.ts exclusiveRatio 와 같은 경계) —
+  // 0 이 그대로 새면 "전용률 0%" 회색칩이 뜬다. 현재 DB 에 0 은 0건이라 잠복 상태.
+  if (exclRatio != null && exclRatio > 0) {
     const high = exclRatio >= 80;
     out.push({
       id: high ? "exclusiveHigh" : "exclusiveRatio",
