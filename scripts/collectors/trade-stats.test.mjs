@@ -433,3 +433,43 @@ describe("buildLatestPriceMap — VIEW latest_prices 규칙 미러 (A4)", () => 
     expect(src).toMatch(/const\s+latestPriceMap\s*=\s*buildLatestPriceMap\(/);
   });
 });
+
+// 세션539 B-2: main() 의 Promise.all 안 6개 조회 중 articles(:233, 세션513 사고 후 추가) 만
+// logError 를 갖고 있었다 — 나머지 5개(trades·regions·complexes·complex_price_history·
+// cancelledTrades)는 조회가 죽어도 조용히 []로 넘어가 워크플로는 success 로 남는다. 심각도는
+// low(recentTrades6m 은 :464 `|| null` 이라 0건이 "미수집" null 로 가지 거짓 0건이 되지 않는다)
+// — 그래도 로그 공백은 남아 monitor outage 감지가 못 잡는다. .catch() 마다 logError 호출을
+// 소스에서 직접 확인한다(실행 경로를 mock 으로 통째로 재현하기보다 배선 확인이 더 정확 —
+// [[guards-must-be-mutation-tested]] §소스 grep).
+describe("Promise.all 조회 실패 로깅 — articles 뿐 아니라 5곳 전부 (세션539 B-2)", () => {
+  const src = readFileSync(new URL("./trade-stats.mjs", import.meta.url), "utf8");
+
+  it("겨누는 fetchAll 호출 6개가 실제로 소스에 있다 (판별 전 존재 확인)", () => {
+    expect(src.includes('fetchAll("trades",')).toBe(true);
+    expect(src.includes('fetchAll("regions",')).toBe(true);
+    expect(src.includes('fetchAll("articles",')).toBe(true);
+    expect(src.includes('fetchAll("complexes",')).toBe(true);
+    expect(src.includes('fetchAll("complex_price_history",')).toBe(true);
+    expect(src.includes("fetchCancelledTrades(")).toBe(true);
+  });
+
+  it("trades 조회 실패 시 logError 를 호출한다 (없으면 red)", () => {
+    expect(src).toMatch(/fetchAll\("trades",[\s\S]{0,300}?\.catch\([\s\S]{0,600}?logError\("load", `trades 조회 실패/);
+  });
+
+  it("regions 조회 실패 시 logError 를 호출한다 (없으면 red)", () => {
+    expect(src).toMatch(/fetchAll\("regions",[\s\S]{0,150}?\.catch\([\s\S]{0,200}?logError\("load", `regions 조회 실패/);
+  });
+
+  it("complexes 조회 실패 시 logError 를 호출한다 (없으면 red)", () => {
+    expect(src).toMatch(/fetchAll\("complexes",[\s\S]{0,250}?\.catch\([\s\S]{0,200}?logError\("load", `complexes 조회 실패/);
+  });
+
+  it("complex_price_history 조회 실패 시 logError 를 호출한다 (없으면 red)", () => {
+    expect(src).toMatch(/fetchAll\("complex_price_history",[\s\S]{0,500}?\.catch\([\s\S]{0,300}?logError\("load", `complex_price_history 조회 실패/);
+  });
+
+  it("cancelledTrades 조회 실패 시 logError 를 호출한다 (없으면 red)", () => {
+    expect(src).toMatch(/fetchCancelledTrades\(sbMibunyang, cutoff6mYM\)[\s\S]{0,150}?\.catch\([\s\S]{0,200}?logError\("load", `cancelledTrades 조회 실패/);
+  });
+});

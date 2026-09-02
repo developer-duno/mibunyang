@@ -55,7 +55,23 @@ const KNOWN_BROKEN = new Set();
  */
 export function stripComments(src) {
   return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    // ── 블록 주석은 **두 번에 나눠** 지운다. 한 정규식으로는 두 위험을 동시에 못 막는다.
+    //
+    // ⚠️ 위험 ① — 문자열 안 `*/*` 를 주석 시작으로 오인 (세션531 박제, 이 파일만 미반영이었다):
+    //    `"Accept": "application/json, text/plain, */*"` 의 가운데 `/*` 를 주석 시작으로 읽으면
+    //    그 뒤 첫 `*/`(다음 JSDoc 닫기)까지 **실제 코드가 통째로 지워진다**. 그러면 그 구간을
+    //    겨누는 검사가 무엇을 넣어도 통과한다(`extractQuotaTryFinally` 가 null → `if (!found) return;`).
+    //    이 저장소에서 `*/*` 를 가진 수집기 = naver-presale·naver-listings·naver-devplan 3개.
+    //
+    // ⚠️ 위험 ② — 줄머리 고정만 쓰면 **줄 중간 블록 주석을 못 지운다**:
+    //    `finally { await recordApiQuota(); /* process.exit(1); */ }` 처럼 주석 처리된 exit 이
+    //    남아 "안전장치가 있다"로 오인된다(같은 파일 위쪽 "주석으로 가려진 finally-exit" 테스트가
+    //    정확히 이걸 지킨다 — 세션539 에서 고정만 걸었다가 그 테스트가 red 로 잡아냈다).
+    //
+    // 1단계: 줄머리 블록 주석(JSDoc 등) — 문자열 리터럴은 줄머리에서 시작하지 않으니 안전하다.
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, (m) => m.replace(/[^\n]/g, " "))
+    // 2단계: 줄 중간 블록 주석 — 단 `*` 바로 뒤의 `/*`(= `*/*` 의 일부)는 제외해 위험 ①을 막는다.
+    .replace(/(?<!\*)\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
     .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + " ".repeat(m.length - p1.length));
 }
 
@@ -202,6 +218,63 @@ describe("exit ↔ 쿼터 기록 순서 회귀 가드 (세션 496)", () => {
         `${f}: try 안에 조기 return 이 있는데 exit 이 finally 밖에 있다 — 그 경로는 exit 줄에 ` +
           `도달하지 못해 실패인데 exit 0(성공)으로 끝난다. exit 을 finally 안 recordApiQuota await 직후로 옮길 것`,
       ).toBe(true);
+    });
+  }
+});
+
+// ── 세션539 C-1: 주석 제거기가 문자열 안 `*/*` 를 먹지 않는다 ────────────────
+/**
+ * 세션531 이 `.claude/rules/meta/guards-must-be-mutation-tested.md` 에 박제한 결함의 재발 가드다.
+ * 줄머리 고정이 없는 정규식은 `"Accept": "…, * / *"`(공백 없이) 안의 `/ *` 를 주석 시작으로 읽어
+ * 그 뒤 첫 `* /` 까지 실제 코드를 통째로 지운다 — 그러면 그 구간을 겨누는 이 파일의 검사들이
+ * **무엇을 넣어도 통과**한다(검사 대상이 애초에 없으니까).
+ *
+ * ⚠️ 이 가드는 "겨누는 문자열이 사본에 실제로 남아 있는가"를 먼저 확인한다 — 그게 빠지면
+ *    가드가 무엇을 검사하는지도 모르는 채 초록불이 된다.
+ */
+describe("stripComments — 문자열 리터럴 안의 주석 기호를 먹지 않는다 (세션539 C-1)", () => {
+  // ⚠️ 검사 대상은 **실제로 지워지는 구간 안**에 있어야 한다. 옛 정규식은 `*/*` 의 `/*` 부터
+  //    **다음 `*/`(아래 JSDoc 닫기)까지**를 먹으므로, 그 뒤에 있는 `AFTER_COMMENT` 는 옛 판본에서도
+  //    멀쩡히 살아남는다 — 그걸 검사하면 가드가 아무것도 안 지킨다(세션539 에서 실제로 그렇게
+  //    썼다가 뮤테이션이 green 이라 잡았다). 그래서 **두 `*/` 사이**의 줄을 겨눈다.
+  const SAMPLE = [
+    "const HEADERS = {",
+    '  Accept: "application/json, text/plain, */*",',
+    '  "sec-fetch-site": "same-origin",', // ← 옛 판본이 먹는 구간
+    "};",
+    "",
+    "/**",
+    " * 진짜 블록 주석 — 이건 지워져야 한다.",
+    " */",
+    "const AFTER_COMMENT = 1;",
+  ].join("\n");
+
+  it("`*/*` 와 다음 `*/` 사이의 실제 코드가 사본에 그대로 남는다", () => {
+    const out = stripComments(SAMPLE);
+    expect(out).toContain('"sec-fetch-site": "same-origin"');
+    expect(out).toContain("};");
+    expect(out).toContain("const AFTER_COMMENT = 1;");
+  });
+
+  it("줄머리에서 시작하는 진짜 블록 주석은 지운다", () => {
+    const out = stripComments(SAMPLE);
+    expect(out).not.toContain("진짜 블록 주석");
+  });
+
+  it("줄 수가 보존된다 (중괄호 균형·줄번호 어긋남 방지)", () => {
+    expect(stripComments(SAMPLE).split("\n").length).toBe(SAMPLE.split("\n").length);
+  });
+
+  // 실측(세션539): 옛 정규식이 먹는 줄 수 — naver-presale 32줄(57~95) · naver-listings 11줄(81~91)
+  // · naver-devplan 11줄(120~130). 세 파일 모두 같은 헤더 블록이라 `sec-fetch-site` 가 공통 표적이다.
+  for (const f of ["naver-presale.mjs", "naver-listings.mjs", "naver-devplan.mjs"]) {
+    it(`${f}: \`*/*\` 뒤 헤더 블록이 사본에서 안 잘린다`, async () => {
+      const { readFileSync } = await import("node:fs");
+      const src = readFileSync(new URL(`./${f}`, import.meta.url), "utf-8");
+      // 전제 확인 — `*/*` 가 사라지면 이 가드는 아무것도 안 지키는 셈이라 그 사실을 시끄럽게 알린다.
+      expect(src, `${f} 에 '*/*' 가 없다 — 이 가드의 전제가 깨졌다`).toContain("*/*");
+      expect(src).toContain("sec-fetch-site");
+      expect(stripComments(src), `${f}: 옛 정규식이면 이 줄이 공백이 된다`).toContain("sec-fetch-site");
     });
   }
 });

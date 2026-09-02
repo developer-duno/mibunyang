@@ -283,20 +283,16 @@ async function main() {
   // 산업축(세션511 시드 24건 → dev_plans 618건)·도시축과 같은 교체를 교통축만 아직 안 받은 상태였다.
   const sbStation = getSupabase();
   const nowYm = today().slice(0, 7);
-  /** @type {Array<Record<string, any>>} */
-  const stationRows = [];
-  for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await sbStation
-      .from("dev_plans")
-      .select("name, lat, lng, raw")
-      .eq("kind", "station")
-      .not("lat", "is", null)
-      .range(offset, offset + 999);
-    if (error) throw new Error(`dev_plans(station) 조회 실패: ${error.message}`);
-    if (!data || data.length === 0) break;
-    stationRows.push(.../** @type {any} */ (data));
-    if (data.length < 1000) break;
-  }
+  // 세션539 B-1: 무정렬 OFFSET → 고유키(id) 커서. station 은 아직 1페이지(수십 건)라 지금은
+  // 무해하지만, 이 파일의 lh_zone 조회(아래)가 이미 1,174건으로 페이지 경계를 넘겨 실제로
+  // 행을 잃고 있어 — 같은 결함 형태를 station 에도 남겨두면 다음에 커지는 순간 재발한다.
+  const stationRows = /** @type {Array<Record<string, any>>} */ (
+    await selectAll(
+      (s) => s.from("dev_plans").select("id, name, lat, lng, raw").eq("kind", "station").not("lat", "is", null),
+      sbStation,
+      "id",
+    )
+  );
   const naverStations = buildNaverStations(stationRows, nowYm);
   stations.push(...naverStations);
   log(
@@ -314,20 +310,23 @@ async function main() {
   //    **dev_plans**(V-WORLD LT_C_LHZONE = LH 사업지구경계 + 네이버 지구단위).
   //    시드는 수도권 편중이라 비수도권 단지가 구조적으로 0점이었다.
   const sbCity = getSupabase();
-  /** @type {Array<Record<string, any>>} */
-  const devRows = [];
-  for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await sbCity
-      .from("dev_plans")
-      .select("name, lat, lng, kind, progression_step")
-      .in("kind", ["lh_zone", "jigu"])
-      .not("lat", "is", null)
-      .range(offset, offset + 999);
-    if (error) throw new Error(`dev_plans 조회 실패: ${error.message}`);
-    if (!data || data.length === 0) break;
-    devRows.push(.../** @type {any} */ (data));
-    if (data.length < 1000) break;
-  }
+  // 세션539 B-1: 무정렬 OFFSET → 고유키(id) 커서. 이 조회는 §"lh_zone 은 이미 1,174건"
+  // 주석대로 페이지 경계(1,000행)를 매주(일요일 backfill-new-apartments.yml) 넘기고 있었다
+  // — 정렬 없는 .range() 는 페이지마다 다른 표본을 줘 지구가 조용히 빠질 수 있다
+  // (unordered-pagination-loses-rows.md §1). 기존 devs.length===0 방어는 전량 실패만 잡고
+  // "일부 페이지 누락"은 못 잡는다.
+  const devRows = /** @type {Array<Record<string, any>>} */ (
+    await selectAll(
+      (s) =>
+        s
+          .from("dev_plans")
+          .select("id, name, lat, lng, kind, progression_step")
+          .in("kind", ["lh_zone", "jigu"])
+          .not("lat", "is", null),
+      sbCity,
+      "id",
+    )
+  );
   const devs = filterCityDevs(devRows);
   if (devs.length === 0) {
     // 0건을 성공으로 넘기면 전 단지의 city_dev 가 조용히 안 바뀐다(세션504 답습).

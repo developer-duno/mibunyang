@@ -161,6 +161,12 @@ describe("updateUnits", () => {
     ["unsold=null → rate null", 500, null, null],
     ["newUnits=0 → rate null", 0, 50, null],
     ["unsold=0 → rate 0.0", 500, 0, 0],
+    // 세션539 F-2: 형제 writer(collect-data·sync-naver-complex·applyhome-seed 는
+    // clampUnsoldRate, collect-unsold-kosis 는 calcProportionalUnsold 내부)는 전부 갖고
+    // 있는 >100→null 방어가 이 수집기만 없었다. 이 수집기의 SELECT 대상 자체가
+    // unsold_rate>=100 인 망가진 행이라, 매칭이 다시 폭발값을 주면 자기가 재기입하는 자리다.
+    ["unsold > newUnits (100% 초과) → clampUnsoldRate 로 null (세션539 F-2, 없으면 red)", 10, 15, null],
+    ["unsold == newUnits (정확히 100%) → 클램프 경계, 100은 그대로 유지", 10, 10, 100],
   ];
   for (const [label, units, unsold, expectedRate] of rateCases) {
     it(/** @type {string} */ (label), async () => {

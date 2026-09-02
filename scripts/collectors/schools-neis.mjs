@@ -513,20 +513,13 @@ async function main() {
   //   - schoolType 키 부재 (L157 조건부 spread) = NEIS_KEY 미설정 시 박힌 단지 → 강제 재처리
   //   - 30일 초과 = 학교 신설/폐교 변동 추적 위해 강제 재처리
   //   - 진앙: 5/22+5/26+5/27 3주 연속 cancelled (NEIS API 12배 지연)
-  const SCHOOLS_PAGE_SIZE = 1000;
   const staleThresholdMs = Date.now() - STALE_DAYS_FOR_SKIP * 86400000;
-  /** @type {Array<Record<string, any>>} */
-  const allSchoolRows = [];
-  for (let off = 0; ; off += SCHOOLS_PAGE_SIZE) {
-    const { data: schoolRows, error: sErr } = await sb
-      .from("schools")
-      .select("apartment_id, nearby_schools, updated_at")
-      .range(off, off + SCHOOLS_PAGE_SIZE - 1);
-    if (sErr) throw new Error(`schools 조회 실패: ${sErr.message}`);
-    if (!schoolRows || schoolRows.length === 0) break;
-    allSchoolRows.push(.../** @type {Array<Record<string, unknown>>} */ (/** @type {unknown} */ (schoolRows)));
-    if (schoolRows.length < SCHOOLS_PAGE_SIZE) break;
-  }
+  // 세션539 B-1: 무정렬 OFFSET → 고유키(apartment_id) 커서. rescaleOnly()(L444)가 이미
+  // 같은 테이블을 .order("apartment_id") 로 훑는 정답 패턴 — 여기 main() 만 빠져 있었다
+  // (unordered-pagination-loses-rows.md §1). schools 는 apartment_id 가 1행=1단지 고유키.
+  const allSchoolRows = /** @type {Array<Record<string, any>>} */ (
+    await selectAll((s) => s.from("schools").select("apartment_id, nearby_schools, updated_at"), sb, "apartment_id")
+  );
   const enrichedIds = buildEnrichedIds(allSchoolRows, staleThresholdMs);
 
   log(PHASE, `대상: ${targets.length}건 (좌표 있음), NEIS 보강 + 30일 이내 = ${enrichedIds.size}건 skip 예정${limit < Infinity ? `, limit ${limit}` : ""}`);

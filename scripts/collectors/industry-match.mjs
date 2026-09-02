@@ -49,20 +49,17 @@ async function main() {
   // 1. 산업단지 로드 — 손으로 적은 시드(24건, 2026-03-14 동결) 대신 **dev_plans**(V-WORLD
   //    LT_C_DAMDAN, 618건). 시드는 수도권에 몰려 있어 비수도권 단지가 구조적으로 0점이었다.
   const sbSrc = getSupabase();
-  /** @type {Array<{ name: string | null, lat: number, lng: number }>} */
-  const complexes = [];
-  for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await sbSrc
-      .from("dev_plans")
-      .select("name, lat, lng")
-      .eq("kind", "industrial_complex")
-      .not("lat", "is", null)
-      .range(offset, offset + 999);
-    if (error) throw new Error(`dev_plans 조회 실패: ${error.message}`);
-    if (!data || data.length === 0) break;
-    complexes.push(.../** @type {any} */ (data));
-    if (data.length < 1000) break;
-  }
+  // 세션539 B-1: 무정렬 OFFSET → 고유키(id) 커서. 618건은 아직 1페이지 안이라 지금은
+  // 무해하지만, 자매 조회(transit-match.mjs 의 lh_zone)가 같은 무정렬 형태로 1,174건에서
+  // 이미 실제 유실 중이었다 — 여기도 커지면 같은 결함이 재발한다(unordered-pagination-
+  // loses-rows.md §1). 아래 complexes.length===0 방어는 전량 실패만 잡고 일부 페이지 누락은 못 잡는다.
+  const complexes = /** @type {Array<{ name: string | null, lat: number, lng: number }>} */ (
+    await selectAll(
+      (s) => s.from("dev_plans").select("id, name, lat, lng").eq("kind", "industrial_complex").not("lat", "is", null),
+      sbSrc,
+      "id",
+    )
+  );
   if (complexes.length === 0) {
     // 0건을 성공으로 넘기면 전 단지의 industry_dev 가 조용히 안 바뀐다(세션504 답습).
     logError("load", "dev_plans 에 산업단지(industrial_complex)가 0건 — naver-devplan 수집기를 먼저 돌리세요");
