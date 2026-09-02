@@ -842,13 +842,14 @@ describe("DetailModal — 종합 탭 편차 스트립", () => {
 
   it("지역분포가 없으면 안 그린다 (미수집 8줄짜리 빈 블록 방지)", () => {
     const { container } = render(<DetailModal {...makeProps({ regionStats: null })} />);
-    expect(container.textContent).not.toContain("아파트 한가운데 값과 비교");
+    expect(container.textContent).not.toContain("분양 단지 한가운데 값과 비교");
   });
 
   it("카테고리 미니카드 6개는 그대로 남는다 (세션 409 결정 존중)", () => {
     const { container } = render(<DetailModal {...makeProps({ regionStats: gyeonggiStats() })} />);
     expect(container.querySelectorAll('[data-testid="category-mini-card"]').length || 6).toBeGreaterThan(0);
-    expect(container.textContent).toContain("아파트 한가운데 값과 비교");
+    // 세션539 A-6: 대조군이 오피스텔·재건축을 섞어 그룹핑해 "아파트"라 단정할 수 없다.
+    expect(container.textContent).toContain("분양 단지 한가운데 값과 비교");
   });
 });
 

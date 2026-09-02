@@ -1,6 +1,8 @@
 import { memo } from "react";
 import { PROFILES, getTopCats } from "@/constants/profiles";
 import type { Category, ProfileKey } from "@/constants/profiles";
+import { SORT_OPTIONS } from "@/constants/sortOptions";
+import { FILTER_PRESETS } from "@/constants/filterPresets";
 import { C, F } from "@/theme";
 
 const cardStyle = {
@@ -30,6 +32,41 @@ export const CAT_LABEL: Record<Category, string> = {
   risk: "안전",
   benefit: "혜택",
   future: "미래",
+};
+
+/**
+ * 정렬 안내 — 항목 수·순서는 `SORT_OPTIONS` 에서 파생한다(세션539 A-5①).
+ *
+ * 예전엔 "정렬 (12가지)"로 손 적혀 있었는데 실제 `SORT_OPTIONS` 는 **17개**다. 빠진 5개
+ * (관리비순·치안안전·주차넉넉·병원가까움·공원가까움, `useDataPipeline.ts:69-104` 에 비교
+ * 함수가 이미 구현돼 있고 `SortPanel.tsx` 가 slice 없이 전체를 렌더해 드롭다운엔 다 뜬다)는
+ * **살아있는 기능인데 손님이 몰라서 못 쓰고 있었다** — 과대약속이 아니라 과소약속.
+ * 제목은 `SORT_OPTIONS[].mobileLabel`(옛 안내문과 대부분 일치)을 기본으로 쓰고, 안내문 톤에
+ * 맞게 다듬은 한 곳만 override 한다. `SORT_OPTIONS` 가 늘면 이 목록도 자동으로 늘어난다
+ * (desc 가 비면 빈 문자열 — 새 정렬을 추가한 세션이 desc 도 함께 채우게 하는 신호).
+ */
+const SORT_TITLE_OVERRIDE: Partial<Record<string, string>> = { unsoldRate: "미분양많은순" };
+const SORT_DESC: Record<string, string> = {
+  total: "현재 프로필의 가중치로 계산된 총점 높은 순. 기본 정렬입니다.",
+  price: "분양가가 낮은 순서. 예산이 제한적일 때 유용합니다.",
+  // ⚠️ 옛 문구 "주변 시세 대비"는 거짓이었다 — 이 값(deviation)은 scorePrice 가 계산한
+  //    **적정가와의 괴리**이지 주변 단지 비교가 아니다 (세션 487 카드 배지 정정과 같은 결).
+  priceScore: "적정가 대비 저평가된 순서. 적정가와의 괴리가 클수록 상위에 표시됩니다.",
+  location: "교통, 학군, 생활 편의 점수가 높은 순서입니다.",
+  safe: "미분양률, 시공사 재무, 시장 환경 등 리스크가 낮은 순서입니다.",
+  // 정렬 키는 `hooks/useDataPipeline.ts` 의 `cats.benefit.totalWon` 내림차순 하나뿐 (세션 513).
+  benefit: "혜택 금액이 큰 순서입니다.",
+  newest: "데이터가 최근 업데이트된 순서입니다.",
+  unsoldRate: "미분양률이 높은 순서. 미분양 물량이 많은 단지를 먼저 보고 싶을 때 유용합니다.",
+  units: "세대수가 많은 순서. 대단지를 선호할 때 유용합니다.",
+  moveInSoon: "지금 입주 가능한 단지(준공 후 미분양)부터, 곧 입주 예정 순으로 정렬합니다.",
+  subwayNear: "가장 가까운 지하철역까지 거리가 짧은 순서. 대중교통 접근성을 중시할 때 유용합니다.",
+  jeonseHigh: "전세가율(매매가 대비 전세가)이 높은 순서. 전세를 끼고 투자(갭)할 때 유용합니다.",
+  maintenanceLow: "월 관리비가 낮은 순서입니다. 매달 나가는 고정비를 줄이고 싶을 때 유용합니다.",
+  crimeSafe: "치안 등급이 높은(위험이 낮은) 순서입니다.",
+  parkingHigh: "세대당 주차 대수가 많은 순서입니다.",
+  hospitalNear: "가장 가까운 병원까지 거리가 짧은 순서입니다.",
+  parkNear: "가장 가까운 공원까지 거리가 짧은 순서입니다.",
 };
 
 /**
@@ -125,10 +162,13 @@ export const GuideSections = memo(function GuideSections() {
 
         <div style={divider}>
           <div style={guideTitle}>필터 프리셋 (1클릭 설정)</div>
+          {/* 세션539 A-5②: 옛 문구가 신혼부부 프리셋(areaMin:60·areaMax:85)을 "소형"이라
+              불렀는데, 바로 위 면적·세대수 안내(:97)는 "소형(60㎡ 이하)"라 적어 같은 화면에서
+              같은 단어가 두 정의를 갖는 자기모순이었다. FILTER_PRESETS 의 label+desc 에서
+              그대로 파생시켜 "소형" 같은 손으로 붙인 이름을 더 안 쓴다 — 프리셋 값이 바뀌면
+              안내문이 저절로 따라온다. */}
           <div style={guideDesc}>
-            필터가 없을 때 프리셋 버튼이 표시됩니다. 신혼부부(5억 이하 + 소형 + 혜택), 투자용(60점+ + 입주예정),
-            안전우선(1군 + 70점+), 3억 이하, 대단지(1000세대+) 5가지를 제공합니다. 자주 쓰는 필터 조합은 &apos;프리셋
-            저장&apos; 버튼으로 직접 저장할 수도 있습니다(최대 10개).
+            {`필터가 없을 때 프리셋 버튼이 표시됩니다. ${FILTER_PRESETS.map((p) => `${p.label}(${p.desc})`).join(", ")} ${FILTER_PRESETS.length}가지를 제공합니다. 자주 쓰는 필터 조합은 '프리셋 저장' 버튼으로 직접 저장할 수도 있습니다(최대 10개).`}
           </div>
         </div>
 
@@ -150,36 +190,11 @@ export const GuideSections = memo(function GuideSections() {
 
       {/* 4. 정렬 */}
       <div style={cardStyle}>
-        <div style={titleStyle}>정렬 (12가지)</div>
-        {[
-          { title: "종합순", desc: "현재 프로필의 가중치로 계산된 총점 높은 순. 기본 정렬입니다." },
-          { title: "저가순", desc: "분양가가 낮은 순서. 예산이 제한적일 때 유용합니다." },
-          {
-            title: "가격매력순",
-            // ⚠️ 옛 문구 "주변 시세 대비"는 거짓이었다 — 이 값(deviation)은 scorePrice 가 계산한
-            //    **적정가와의 괴리**이지 주변 단지 비교가 아니다 (세션 487 카드 배지 정정과 같은 결).
-            desc: "적정가 대비 저평가된 순서. 적정가와의 괴리가 클수록 상위에 표시됩니다.",
-          },
-          { title: "입지순", desc: "교통, 학군, 생활 편의 점수가 높은 순서입니다." },
-          { title: "안전순", desc: "미분양률, 시공사 재무, 시장 환경 등 리스크가 낮은 순서입니다." },
-          // 정렬 키는 `hooks/useDataPipeline.ts` 의 `cats.benefit.totalWon` 내림차순 하나뿐 (세션 513).
-          { title: "혜택순", desc: "혜택 금액이 큰 순서입니다." },
-          { title: "최신순", desc: "데이터가 최근 업데이트된 순서입니다." },
-          {
-            title: "미분양많은순",
-            desc: "미분양률이 높은 순서. 미분양 물량이 많은 단지를 먼저 보고 싶을 때 유용합니다.",
-          },
-          { title: "대단지순", desc: "세대수가 많은 순서. 대단지를 선호할 때 유용합니다." },
-          { title: "입주빠른순", desc: "지금 입주 가능한 단지(준공 후 미분양)부터, 곧 입주 예정 순으로 정렬합니다." },
-          {
-            title: "역세권순",
-            desc: "가장 가까운 지하철역까지 거리가 짧은 순서. 대중교통 접근성을 중시할 때 유용합니다.",
-          },
-          {
-            title: "전세율순",
-            desc: "전세가율(매매가 대비 전세가)이 높은 순서. 전세를 끼고 투자(갭)할 때 유용합니다.",
-          },
-        ].map((item, i) => (
+        <div style={titleStyle}>{`정렬 (${SORT_OPTIONS.length}가지)`}</div>
+        {SORT_OPTIONS.map((o) => ({
+          title: SORT_TITLE_OVERRIDE[o.key] ?? o.mobileLabel,
+          desc: SORT_DESC[o.key] ?? "",
+        })).map((item, i) => (
           <div key={i} style={guideItem}>
             <div style={guideTitle}>{item.title}</div>
             <div style={guideDesc}>{item.desc}</div>
@@ -197,7 +212,9 @@ export const GuideSections = memo(function GuideSections() {
           },
           {
             title: "지역 한가운데 값과 비교",
-            desc: "카드 가운데의 막대 3줄은 이 단지를 같은 지역 아파트들의 한가운데 값과 견준 것입니다. 평당가·미분양·역세권 순서로 늘 같습니다. 규칙은 하나 — 막대가 오른쪽으로 길수록 이 단지가 유리합니다. 막대 양 끝의 '싸다/비싸다' 같은 글자가 방향을 알려주고, 오른쪽에는 '12% 싸요'처럼 결과가 말로 적힙니다. 회색 빗금은 아직 모으지 못한 자료라는 뜻입니다.",
+            // 세션539 A-6 후속: `DeviationStrip` 헤더·도움말·스크린리더와 같은 모집단을 말해야 한다.
+            //   대조군은 `region` 하나로만 묶여 오피스텔·재건축이 섞이므로 "아파트"는 틀린 이름이다.
+            desc: "카드 가운데의 막대 3줄은 이 단지를 같은 지역 분양 단지들의 한가운데 값과 견준 것입니다. 평당가·미분양·역세권 순서로 늘 같습니다. 규칙은 하나 — 막대가 오른쪽으로 길수록 이 단지가 유리합니다. 막대 양 끝의 '싸다/비싸다' 같은 글자가 방향을 알려주고, 오른쪽에는 '12% 싸요'처럼 결과가 말로 적힙니다. 회색 빗금은 아직 모으지 못한 자료라는 뜻입니다.",
           },
           {
             title: "카테고리 등급",

@@ -57,12 +57,14 @@ function makeProps(over = {}) {
 describe("편차 스트립 — 렌더 조건", () => {
   it("지역 분포가 있으면 스트립 3줄이 나온다", () => {
     render(<AptCard {...makeProps()} />);
-    expect(screen.getByText(/경기 아파트 한가운데 값과 비교/)).toBeInTheDocument();
+    // 세션539 A-6: 대조군이 오피스텔·재건축을 섞어 그룹핑해 "아파트"라 단정할 수 없다 —
+    // 중립어(분양 단지)로 정정.
+    expect(screen.getByText(/경기 분양 단지 한가운데 값과 비교/)).toBeInTheDocument();
   });
 
   it("regionStats 가 없으면 안 그린다 (미수집 3줄짜리 빈 블록 방지)", () => {
     render(<AptCard {...makeProps({ regionStats: null })} />);
-    expect(screen.queryByText(/아파트 한가운데 값과 비교/)).toBeNull();
+    expect(screen.queryByText(/분양 단지 한가운데 값과 비교/)).toBeNull();
   });
 });
 
@@ -146,12 +148,12 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
   it("region 이 바뀌면 비교 기준이 바뀌므로 다시 그린다", () => {
     const props = makeProps();
     const { rerender, container } = render(<AptCard {...props} />);
-    expect(container.textContent).toContain("경기 아파트 한가운데 값과 비교");
+    expect(container.textContent).toContain("경기 분양 단지 한가운데 값과 비교");
 
     rerender(
       <AptCard {...props} apt={makeApt({ region: "서울", price: 33000, pp: 1200, unsoldRate: 4, subwayDist: 300 })} />
     );
-    expect(container.textContent).toContain("서울 아파트 한가운데 값과 비교");
+    expect(container.textContent).toContain("서울 분양 단지 한가운데 값과 비교");
   });
 
   it("regionStats 참조가 바뀌면 다시 그린다 (데이터 갱신)", () => {

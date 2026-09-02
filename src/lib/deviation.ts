@@ -160,6 +160,10 @@ export function deviationAriaLabel(
     case "uniform":
       return `${spec.label} ${formattedValue}. ${where} 단지들이 모두 같은 값이라 견줄 수 없습니다.`;
     default:
-      return `${spec.label} ${formattedValue}. ${where} 아파트 한가운데 값과 견주면 ${dev.text}.`;
+      // 세션539 A-6: DeviationStrip.tsx 헤더와 같은 이유로 "아파트"라 단정하지 않는다 —
+      // 대조군(regionalStats.ts:90)은 region 하나로만 묶여 오피스텔·재건축이 섞여 있다.
+      // 헤더만 고치고 이 스크린리더 문장을 안 고치면 같은 위젯 안에서 눈에 보이는 글자와
+      // 스크린리더가 듣는 말이 서로 다른 모집단을 말하게 된다.
+      return `${spec.label} ${formattedValue}. ${where} 분양 단지 한가운데 값과 견주면 ${dev.text}.`;
   }
 }

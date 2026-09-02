@@ -2418,6 +2418,31 @@ describe("locationTotalForProfile (세션526)", () => {
     expect(locationTotalForProfile(apt, LOCATION_SUB_WEIGHTS)).toBe(withRm);
   });
 
+  // 세션539 E-1: engine.ts:23 주석이 예전엔 "rm 우선 → 지역 중위값으로 pir/psr/unsoldRate
+  // 폴백(unsoldRate 제외)"이라 적혀 거짓이었다. 실제로는 이 세 필드 전부 sanitize 에서
+  // `num(apt.X, null)` 로만 채워져 rm 을 전혀 안 본다 — rm 안의 pir/psr/unsoldRate 를
+  // 바꿔도 price.total(pir·psr 소비처)·risk 총점(unsoldRate 소비처)이 그대로여야 한다.
+  // ⚠️ apt 의 pir/psr/unsoldRate 를 **null** 로 둬야 한다 — `num(v, fallback)` 은 v 가 null 일
+  // 때만 fallback(=rm) 을 본다. 값이 채워져 있으면 애초에 fallback 이 안 쓰여 뮤테이션을
+  // 못 잡는다(1차 시도에서 실제로 그렇게 놓쳤다 — 세션539 자체 실증).
+  // 이 값이 rm 에 반응하기 시작하면 sanitize 가 되돌아간 것 — red 로 알려준다.
+  it("regionMedians 의 pir/psr/unsoldRate 값이 price·risk 총점을 바꾸지 않는다 (죽은 계산 회귀 가드)", () => {
+    const apt = makeApt({ region: "경기", pir: null, psr: null, unsoldRate: null });
+    const rmLow = { 경기: { pir: 1, psr: 0.1, unsoldRate: 0, supplyRatio: 100, maint: 30 } };
+    const rmHigh = { 경기: { pir: 99, psr: 9.9, unsoldRate: 100, supplyRatio: 100, maint: 30 } };
+    const priceLow = calcCats(apt, /** @type {any} */ ({ regionMedians: rmLow })).price.total;
+    const priceHigh = calcCats(apt, /** @type {any} */ ({ regionMedians: rmHigh })).price.total;
+    const priceNone = calcCats(apt).price.total;
+    expect(priceLow).toBe(priceHigh);
+    expect(priceLow).toBe(priceNone);
+
+    const riskLow = calcCats(apt, /** @type {any} */ ({ regionMedians: rmLow })).risk.total;
+    const riskHigh = calcCats(apt, /** @type {any} */ ({ regionMedians: rmHigh })).risk.total;
+    const riskNone = calcCats(apt).risk.total;
+    expect(riskLow).toBe(riskHigh);
+    expect(riskLow).toBe(riskNone);
+  });
+
   it("locW 가 다르면 결과가 달라진다 (프로필별로 실제로 갈린다)", () => {
     const apt = makeApt({ schoolScore: 95, schoolGrade: "A" });
     const edu = locationTotalForProfile(apt, /** @type {any} */ (PROFILES.edu.locW));

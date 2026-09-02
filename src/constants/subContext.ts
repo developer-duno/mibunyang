@@ -6,6 +6,7 @@ import {
   LIQUIDITY_LABELS,
   LIQUIDITY_AREA_UNIT,
   DEV_NEUTRAL_BAND_PCT,
+  EXCL_RATIO_TIERS,
   liquidityBand,
   schoolGradeLegend,
 } from "@/constants/scoringTiers";
@@ -271,9 +272,22 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     전용률: {
       // ⚠️ `_noExcl` 이면 exclusiveRatio 를 60%로 채워 넣어 EXCL_LOW_SCORE(4점, 최저 구간)를
       //    만든다 — "정보 없음"인데 "전용률 낮음"이라 단정하던 자리.
+      // ⚠️ 세션539 A-1: 예전엔 sc>=8(=77%)부터 "실사용 면적 넓음"이었는데, benchmark·
+      //    cardChips.ts·ScoringEngine.tsx 는 전부 80%를 "우수" 기준으로 쓴다. 77~79% 구간
+      //    307곳(정적 JSON 18.3%)이 "넓음" 판정을 받으면서 바로 옆 기준선은 "80%+ 우수"라
+      //    말해 한 위젯 안에서 판정과 기준이 어긋났다. EXCL_RATIO_TIERS 에서 경계를 파생시켜
+      //    셋을 하나로 통일하고, 77~79%(사이 구간)엔 중간 라벨을 준다.
       interpret: (sc, info) =>
-        !hasInfoValue(info) ? "전용률 미수집" : sc >= 8 ? "실사용 면적 넓음" : sc >= 6 ? "전용률 보통" : "전용률 낮음",
-      benchmark: "80%+ 우수",
+        !hasInfoValue(info)
+          ? "전용률 미수집"
+          : sc >= EXCL_RATIO_TIERS[0].score
+            ? "실사용 면적 넓음"
+            : sc >= EXCL_RATIO_TIERS[1].score
+              ? "전용률 양호"
+              : sc >= EXCL_RATIO_TIERS[2].score
+                ? "전용률 보통"
+                : "전용률 낮음",
+      benchmark: `${EXCL_RATIO_TIERS[0].min}%+ 우수`,
     },
     평면: {
       // ⚠️ layout 이 미기재·미매칭이면 LAYOUT_SCORE 의 fallback(3점)이 "2베이이하"와 같은 값이라

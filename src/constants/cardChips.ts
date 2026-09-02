@@ -383,7 +383,14 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   const noxList = (a.noxious as string[] | undefined) || [];
   const noxCount = noxList.length;
   const noxiousDist = a.noxiousDist as number | null | undefined;
-  const noxSafe = noxiousDist != null && noxiousDist > 1000;
+  // ⚠️ 세션539 A-3②: 예전엔 거리(>1000m)만 보고 "안심" 칩을 달았다. 그런데 `NOXIOUS_PENALTY`
+  //    에 등재된 시설은 거리와 무관하게 감점을 받는다(500m 넘으면 반감될 뿐 0이 되지는 않는다 —
+  //    scoreLocation.ts:135-139). 그래서 노xious=["장례식장","고압선","공장"], dist=1197 인
+  //    단지가 고압선 감점을 실제로 받으면서 초록 "안심" 칩을 다는 자기모순이 났다(같은 조건 14곳).
+  //    `penalized`(감점 대상)를 먼저 걸러 두 판정이 같은 출처(NOXIOUS_PENALTY)를 쓰게 한다 —
+  //    나중에 그 표가 확장돼도(미착수 PR, CLAUDE.md) 이 게이트가 자동으로 따라온다.
+  const penalized = noxList.filter((c) => NOXIOUS_PENALTY[c] != null);
+  const noxSafe = noxiousDist != null && noxiousDist > 1000 && penalized.length === 0;
   if (noxCount > 0 && noxSafe) {
     out.push({ id: "noxiousSafe", text: "혐오시설 안심(1km+)", tone: "green", layer: "good" });
   }
@@ -396,7 +403,6 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
     //     고압선 63 · 축산시설 45 · 소각장 27 · 화장장 26 · 교도소 3 · 매립지 3)
     //    → **점수를 깎는 것만 빨강**, 나머지는 **회색 사실 칩**으로 내린다. 정보는 지우지 않는다.
     //    시설 이름을 그대로 적어서 "혐오시설"이라는 뭉뚱그린 말보다 손님이 판단하기 쉽게 한다.
-    const penalized = noxList.filter((c) => NOXIOUS_PENALTY[c] != null);
     if (penalized.length > 0) {
       out.push({
         id: "noxiousNear",
