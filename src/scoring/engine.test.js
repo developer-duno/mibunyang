@@ -18,6 +18,14 @@ import {
   LIQUIDITY_TIERS,
   LOCATION_SUB_WEIGHTS,
   AREA_BUCKET_TOLERANCE_M2,
+  FAR_UNKNOWN_SCORE,
+  FAR_HIGH_SCORE,
+  EXCL_UNKNOWN_SCORE,
+  EXCL_LOW_SCORE,
+  FLOOR_UNKNOWN_SCORE,
+  FLOOR_LOW_SCORE,
+  PARKING_UNKNOWN_SCORE,
+  PARKING_LOW_SCORE,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
@@ -1847,6 +1855,169 @@ describe("scoreProduct — presale 폴백", () => {
   it("presaleHousingType null → 브랜드 상한 20 (기존과 동일)", () => {
     const apt = scoreProduct(makeApt({ builder: "현대건설", presaleHousingType: null }));
     expect(apt.subs.find((s) => s.name === "브랜드")?.score ?? 0).toBe(20);
+  });
+});
+
+// === 세션539: "모르면 중립" 정책 확장 — 용적률·전용률·최고층·주차 ===
+// 옛 동작: 미수집을 가짜 값(300%·60%·10층·0.5대)으로 눌러 각 항목의 최하 구간 점수를 줬다.
+// 새 동작: `apt._noX` 면 tierMin/Max 를 아예 안 거치고 X_UNKNOWN_SCORE 를 직접 준다.
+// [[guards-must-be-mutation-tested]] §"테스트가 실제 경로를 지나는가" — sanitize 가 이 네
+// 필드를 눌러(`num(apt.X, 기본값)`) `_noX` 플래그를 만들므로, 반드시 calcCats 경유로 검사한다
+// (scoreProduct 직접 호출은 sanitize 를 건너뛰어 `_noX` 를 손으로 넣어야 하고, 이 네 필드처럼
+// "0 도 sentinel"인 경우 그 손질 자체가 실전과 달라지기 쉽다).
+describe("scoreProduct — 모르면 중립 (세션539)", () => {
+  describe("용적률(far)", () => {
+    it("모름(null) → FAR_UNKNOWN_SCORE, 0(sentinel)도 동일", () => {
+      const nul = calcCats(makeApt(/** @type {any} */ ({ floorAreaRatio: null })), {});
+      const zero = calcCats(makeApt({ floorAreaRatio: 0 }), {});
+      expect(nul.product.subs.find((s) => s.name === "용적률")?.score).toBe(FAR_UNKNOWN_SCORE);
+      expect(zero.product.subs.find((s) => s.name === "용적률")?.score).toBe(FAR_UNKNOWN_SCORE);
+    });
+    it("옛 가짜 값(300%)과 실제로 값이 300%인 단지는 다른 점수 — '모른다'와 '재보니 나쁘다'를 구분", () => {
+      const unknown = calcCats(makeApt(/** @type {any} */ ({ floorAreaRatio: null })), {}).product.subs.find(
+        (s) => s.name === "용적률"
+      )?.score;
+      const real300 = calcCats(makeApt({ floorAreaRatio: 300 }), {}).product.subs.find(
+        (s) => s.name === "용적률"
+      )?.score;
+      expect(unknown).toBe(FAR_UNKNOWN_SCORE);
+      expect(real300).toBe(FAR_HIGH_SCORE); // 300% 는 어느 구간에도 안 걸려 최하 폴백
+      expect(unknown).not.toBe(real300);
+    });
+    it("정상 값은 기존과 동일 (200%↓쾌적 10점)", () => {
+      const r = calcCats(makeApt({ floorAreaRatio: 180 }), {});
+      expect(r.product.subs.find((s) => s.name === "용적률")?.score).toBe(10);
+    });
+  });
+
+  describe("전용률(excl)", () => {
+    it("모름(null) → EXCL_UNKNOWN_SCORE, 0(sentinel)도 동일", () => {
+      const nul = calcCats(makeApt(/** @type {any} */ ({ exclusiveRatio: null })), {});
+      const zero = calcCats(makeApt({ exclusiveRatio: 0 }), {});
+      expect(nul.product.subs.find((s) => s.name === "전용률")?.score).toBe(EXCL_UNKNOWN_SCORE);
+      expect(zero.product.subs.find((s) => s.name === "전용률")?.score).toBe(EXCL_UNKNOWN_SCORE);
+    });
+    it("옛 가짜 값(60%)과 실제로 값이 60%인 단지는 다른 점수", () => {
+      const unknown = calcCats(makeApt(/** @type {any} */ ({ exclusiveRatio: null })), {}).product.subs.find(
+        (s) => s.name === "전용률"
+      )?.score;
+      const real60 = calcCats(makeApt({ exclusiveRatio: 60 }), {}).product.subs.find((s) => s.name === "전용률")?.score;
+      expect(unknown).toBe(EXCL_UNKNOWN_SCORE);
+      expect(real60).toBe(EXCL_LOW_SCORE); // 60% 는 어느 구간(74/77/80)에도 안 걸려 최하 폴백
+      expect(unknown).not.toBe(real60);
+    });
+    it("정상 값은 기존과 동일 (80%↑우수 10점)", () => {
+      const r = calcCats(makeApt({ exclusiveRatio: 82 }), {});
+      expect(r.product.subs.find((s) => s.name === "전용률")?.score).toBe(10);
+    });
+  });
+
+  describe("최고층(floor/struct)", () => {
+    it("모름(null) → FLOOR_UNKNOWN_SCORE, 0(sentinel)도 동일", () => {
+      const nul = calcCats(makeApt(/** @type {any} */ ({ maxFloor: null })), {});
+      const zero = calcCats(makeApt({ maxFloor: 0 }), {});
+      expect(nul.product.subs.find((s) => s.name === "구조")?.score).toBe(FLOOR_UNKNOWN_SCORE);
+      expect(zero.product.subs.find((s) => s.name === "구조")?.score).toBe(FLOOR_UNKNOWN_SCORE);
+    });
+    it("옛 가짜 값(10층)과 실제로 10층인 단지는 다른 점수", () => {
+      const unknown = calcCats(makeApt(/** @type {any} */ ({ maxFloor: null })), {}).product.subs.find(
+        (s) => s.name === "구조"
+      )?.score;
+      const real10 = calcCats(makeApt({ maxFloor: 10 }), {}).product.subs.find((s) => s.name === "구조")?.score;
+      expect(unknown).toBe(FLOOR_UNKNOWN_SCORE);
+      expect(real10).toBe(FLOOR_LOW_SCORE); // 10층은 어느 구간(15/25/35)에도 안 걸려 최하 폴백
+      expect(unknown).not.toBe(real10);
+    });
+    it("정상 값은 기존과 동일 (35층↑고층 5점)", () => {
+      const r = calcCats(makeApt({ maxFloor: 40 }), {});
+      expect(r.product.subs.find((s) => s.name === "구조")?.score).toBe(5);
+    });
+  });
+
+  describe("주차(parking) — 폴백은 유지, 정보 자체가 없을 때만 중립", () => {
+    it("_noParking && 폴백 추정치도 없음 → PARKING_UNKNOWN_SCORE", () => {
+      const r = calcCats(makeApt(/** @type {any} */ ({ parkingRatio: null, presaleParking: null })), {});
+      expect(r.product.subs.find((s) => s.name === "주차")?.score).toBe(PARKING_UNKNOWN_SCORE);
+    });
+    it("옛 가짜 값(0.5대)과 실제로 0.5대인 단지는 다른 점수", () => {
+      const unknown = calcCats(
+        makeApt(/** @type {any} */ ({ parkingRatio: null, presaleParking: null })),
+        {}
+      ).product.subs.find((s) => s.name === "주차")?.score;
+      const real05 = calcCats(makeApt({ parkingRatio: 0.5 }), {}).product.subs.find((s) => s.name === "주차")?.score;
+      expect(unknown).toBe(PARKING_UNKNOWN_SCORE);
+      expect(real05).toBe(PARKING_LOW_SCORE); // 0.5대는 어느 구간(1.1/1.3/1.5)에도 안 걸려 최하 폴백
+      expect(unknown).not.toBe(real05);
+    });
+    it("_noParking 이어도 presaleParking 폴백 추정치가 있으면 그 값으로 정상 채점 (중립 아님)", () => {
+      // 세션513 폴백을 그대로 유지 — 세션539 는 "폴백조차 없는" 자리만 중립으로 바꾼다.
+      const r = calcCats(
+        makeApt(/** @type {any} */ ({ parkingRatio: null, presaleParking: 1500, presaleGeneralSupply: 1000 })),
+        {}
+      );
+      // 1500/1000 = 1.5대/세대 → PARKING_TIERS 만점(15), 중립(8)이 아니다.
+      expect(r.product.subs.find((s) => s.name === "주차")?.score).toBe(15);
+    });
+    it("정상 값(직접 수집)은 기존과 동일 (1.5↑ 15점)", () => {
+      const r = calcCats(makeApt({ parkingRatio: 1.6 }), {});
+      expect(r.product.subs.find((s) => s.name === "주차")?.score).toBe(15);
+    });
+  });
+});
+
+/**
+ * [score,count] 쌍 목록에서 가중 중앙값을 구한다. 관측값 앵커 테스트 전용 — 카운트가
+ * 수천 단위라 배열을 그대로 펼쳐도 성능에 문제가 없다.
+ * @param {Array<[number, number]>} pairs
+ * @returns {number}
+ */
+function weightedMedian(pairs) {
+  /** @type {number[]} */
+  const expanded = [];
+  for (const [score, n] of pairs) for (let i = 0; i < n; i++) expanded.push(score);
+  expanded.sort((a, b) => a - b);
+  const mid = Math.floor(expanded.length / 2);
+  return expanded.length % 2 === 1 ? expanded[mid] : (expanded[mid - 1] + expanded[mid]) / 2;
+}
+
+// [[guards-must-be-mutation-tested]] §"파생 가드는 상수 변경을 못 잡는다" — 관측값 앵커.
+// 2026-09-02 라이브 정적 JSON 1,821곳 실측(scoringTiers.ts 상수 주석과 동일 리터럴). 상수가
+// 이 분포의 중앙값과 정확히 일치하는지 검사 — 상수만 바꿔도(파생 없이) 여기서 갈린다.
+describe("FAR/EXCL/FLOOR/PARKING _UNKNOWN_SCORE — 관측값 앵커 (세션539)", () => {
+  it("용적률 채움 1,294곳 점수 분포의 중앙값 = FAR_UNKNOWN_SCORE", () => {
+    const dist = /** @type {Array<[number, number]>} */ ([
+      [3, 575],
+      [7, 423],
+      [10, 296],
+    ]);
+    expect(weightedMedian(dist)).toBe(FAR_UNKNOWN_SCORE);
+  });
+  it("전용률 채움 1,679곳 점수 분포의 중앙값 = EXCL_UNKNOWN_SCORE", () => {
+    const dist = /** @type {Array<[number, number]>} */ ([
+      [4, 577],
+      [6, 675],
+      [8, 307],
+      [10, 120],
+    ]);
+    expect(weightedMedian(dist)).toBe(EXCL_UNKNOWN_SCORE);
+  });
+  it("최고층 채움 1,724곳 점수 분포의 중앙값 = FLOOR_UNKNOWN_SCORE", () => {
+    const dist = /** @type {Array<[number, number]>} */ ([
+      [2, 177],
+      [3, 617],
+      [4, 659],
+      [5, 271],
+    ]);
+    expect(weightedMedian(dist)).toBe(FLOOR_UNKNOWN_SCORE);
+  });
+  it("주차 채움(parkingRatio 실측치) 1,674곳 점수 분포의 중앙값 = PARKING_UNKNOWN_SCORE", () => {
+    const dist = /** @type {Array<[number, number]>} */ ([
+      [5, 353],
+      [8, 520],
+      [12, 505],
+      [15, 296],
+    ]);
+    expect(weightedMedian(dist)).toBe(PARKING_UNKNOWN_SCORE);
   });
 });
 

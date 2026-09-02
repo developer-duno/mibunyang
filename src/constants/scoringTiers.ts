@@ -460,6 +460,28 @@ export const UNIT_TIERS: Tier[] = [
 ];
 export const UNIT_UNKNOWN_SCORE = 8;
 export const UNIT_SMALL_SCORE = 4;
+
+// 세션539: "모르면 중립" 정책 확장 — 용적률·전용률·최고층·주차는 그동안 미수집을 가짜 값
+// (300%·60%·10층·0.5대)으로 눌러 각 항목의 최하 구간 점수(FAR_HIGH_SCORE·EXCL_LOW_SCORE·
+// FLOOR_LOW_SCORE·PARKING_LOW_SCORE)를 줬다. 화면 문구는 이미 "정보 없음"/"미수집"이라
+// 정직한데 점수만 최하점이었던 것 — 손님이 "정보 없음"과 최하점을 나란히 보는 거짓 상태였다
+// (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md). UNIT_UNKNOWN_SCORE(위)와
+// 같은 이름꼴로 둔다.
+//
+// 값의 근거 = **채워진 곳의 점수 중앙값** (2026-09-02 라이브 정적 JSON 1,821곳 실측). 값의
+// 중앙값에서 뽑은 점수와 점수 자체의 중앙값이 일치해 튼튼하다.
+//   용적률(채움 1,294곳): 3점 575곳(44%)·7점 423곳(33%)·10점 296곳(23%) → 점수 중앙 7
+//   전용률(채움 1,679곳): 4점 577(34%)·6점 675(40%)·8점 307(18%)·10점 120(7%) → 점수 중앙 6
+//   최고층(채움 1,724곳): 2점 177(10%)·3점 617(36%)·4점 659(38%)·5점 271(16%) → 점수 중앙 4
+//   주차(parkingRatio 실측치 보유 1,674곳): 5점 353곳(21%)·8점 520곳(31%)·12점 505곳(30%)·
+//     15점 296곳(18%) → 점수 중앙 8 (평균 9.81, 값 중앙 1.28대/세대). 폴백 추정치까지 포함한
+//     1,750곳 기준으로도 점수 중앙 8·값 중앙 1.29 — 같은 결론. 단 적용 대상은 `_noParking`
+//     이면서 `presaleParking` 폴백 추정치도 없는 71곳뿐(추정치가 있으면 그 값으로 정상 채점).
+export const FAR_UNKNOWN_SCORE = 7;
+export const EXCL_UNKNOWN_SCORE = 6;
+export const FLOOR_UNKNOWN_SCORE = 4;
+export const PARKING_UNKNOWN_SCORE = 8;
+
 export const PARKING_TIERS: Tier[] = [
   { min: 1.5, score: 15 },
   { min: 1.3, score: 12 },
