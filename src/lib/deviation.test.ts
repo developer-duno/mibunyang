@@ -245,6 +245,17 @@ describe("deviationAriaLabel", () => {
     expect(label).toContain("평당가");
   });
 
+  // 세션539 A-6: DeviationStrip.tsx 헤더와 짝인 문장이라 같은 이유로 "아파트"라 단정하지
+  // 않는다 — 대조군(regionalStats.ts:90)이 region 하나로만 묶여 오피스텔·재건축이 섞인다.
+  // 헤더만 고치고 이 스크린리더 문장이 되돌아가면 같은 위젯에서 눈에 보이는 글자와
+  // 스크린리더가 듣는 말이 서로 다른 모집단을 말하게 된다.
+  it('"아파트"라고 모집단을 단정하지 않는다 (세션539 A-6)', () => {
+    const d = computeDeviation(priceSpec, 3, "서울", stats);
+    const label = deviationAriaLabel(priceSpec, d, "서울", "3억");
+    expect(label).not.toContain("아파트");
+    expect(label).toContain("분양 단지");
+  });
+
   it("전국 폴백이면 '전국' 이라 말한다", () => {
     const all = [...rows("제주", "pp", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), ...rows("서울", "pp", [11, 12, 13, 14])];
     const d = computeDeviation(priceSpec, 1, "제주", computeRegionalStats(all, ["pp"]));

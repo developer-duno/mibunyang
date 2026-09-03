@@ -96,4 +96,18 @@ describe("AdminUnitSupply", () => {
     expect(screen.getByText("500")).toBeTruthy();
     expect(screen.getByText("100")).toBeTruthy();
   });
+
+  // 세션539 E-2: collect-applyhome-seed.mjs:118-132 가 무순위 회차에서 실제로 만드는 상태
+  // (units=1, unsold=1, unsold_rate=100) — molit-units.mjs:48-52 가 이걸 보정 대상으로
+  // 조회한다. 옛 코드는 unsoldRate 를 unitsUnknown 과 다른 문턱(apt.unsoldRate 유무만)으로
+  // 판정해 "총 세대 —"와 "미분양률 100.0%"가 나란히 떴다(세션538 적대검증 high) — apt.unsoldRate
+  // 가 채워져 있어도 unitsUnknown 이면 그 값을 못 믿는다는 사실은 그대로다.
+  // ⚠️ 뮤테이션 대상: `unsoldRate` 계산에서 `unitsUnknown` 게이트를 지우고 apt.unsoldRate 를
+  // 바로 쓰면 "100.0%" 가 다시 찍혀 red 여야 한다.
+  it("units=1·unsold=1인데 apt.unsoldRate 가 채워져 있어도 '총 세대 모름'이면 미분양률도 감춘다", () => {
+    const apt = /** @type {any} */ (makeApt({ units: 1, unsold: 1, unsoldRate: 100 }));
+    render(<AdminUnitSupply apt={apt} />);
+    expect(screen.queryByText("100.0%")).toBeNull();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2); // 총세대 + 미분양률
+  });
 });

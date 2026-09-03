@@ -1,6 +1,13 @@
 // /api/subscribers - 분양 시작 알림 신청 (POST) + 철회 (DELETE)
 // spec: docs/superpowers/specs/2026-05-02-upcoming-presale-page-design.md
-// RLS: anon-only INSERT, service_role-only SELECT/UPDATE
+// ⚠️ 세션539 E-3 정정 — 이 줄은 예전엔 "RLS: anon-only INSERT, service_role-only
+//   SELECT/UPDATE"라 적혀 있었는데 실제 동작과 달랐다. handlePost/handleDelete 는 둘 다
+//   getMibuyangSupabase()(SUPABASE_SERVICE_KEY = service_role, RLS 우회)로 접근한다 — 이
+//   경로에 anon 클라이언트는 관여하지 않는다. migration 20260502200000_create_subscribers.sql
+//   의 anon INSERT 정책은 **이 경로에서는 죽은 정책**이다(다른 접근 경로가 생기지 않는 한).
+//   공개 POST 가 service_role 로 쓰는 것 자체는 의도된 아키텍처 결정이라 바꾸지 않는다
+//   (docs/superpowers/specs/2026-09-02-session539-audit-plan.md D-3) — 애플리케이션 검증
+//   (PHONE_RE/REGION_RE/APT_ID_RE+consent)이 방어선이다.
 
 import crypto from "crypto";
 import { getMibuyangSupabase } from "./_lib/supabase.js";

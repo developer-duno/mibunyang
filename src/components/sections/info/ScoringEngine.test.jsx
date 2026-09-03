@@ -2,6 +2,8 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import { ScoringEngine } from "./ScoringEngine";
+import { LAYOUT_SCORE } from "@/constants/brands";
+import { NOXIOUS_DIST_THRESHOLD, NOXIOUS_REDUCTION } from "@/constants/scoringTiers";
 
 /**
  * 엔진 설명이 **실제 산식과 어긋나지 않는지** 지키는 가드 (세션 513).
@@ -53,5 +55,30 @@ describe("ScoringEngine — 재지 않는 것을 말하지 않는다", () => {
   //    `not.toContain("KTX")` 같은 전면 금지 단언을 쓰면 참인 문장을 지우게 된다.
   it("입지 축의 KTX 설명은 그대로 남는다 (입지는 실제로 KTX 거리를 잰다)", () => {
     expect(engineText()).toContain("KTX");
+  });
+
+  // 세션539 A-2 — 평면 안내가 LAYOUT_SCORE 에 없는 "혼합형"을 예시로 들고 순서도 틀려 있었다
+  // (4베이타워 8점 > 3베이판상 7점인데 "판상형>혼합>타워"라 적혀 있었다).
+  it('"혼합"이라는 배점표에 없는 값을 말하지 않는다 (세션539 A-2)', () => {
+    expect(engineText()).not.toContain("혼합");
+  });
+
+  it("평면 안내는 LAYOUT_SCORE 를 점수 내림차순으로 그대로 나열한다 — 표가 바뀌면 문구가 따라온다", () => {
+    const order = Object.entries(LAYOUT_SCORE)
+      .sort(([, a], [, b]) => b - a)
+      .map(([k]) => k)
+      .join(">");
+    // ⚠️ 옛 문구(경쟁 후보)로 되돌리면 이 표에서 파생된 문자열이 사라져 red.
+    expect(engineText()).toContain(order);
+  });
+
+  // 세션539 A-3① — "500m 이내 감점"은 컷오프처럼 읽히지만 실제로는 500m 이상이면 감점이
+  // 반감(NOXIOUS_REDUCTION)될 뿐 감점 자체는 거리와 무관하게 계속된다.
+  it('혐오시설 안내가 "500m 이내 감점"(컷오프처럼 읽히는 옛 문구)을 말하지 않는다', () => {
+    expect(engineText()).not.toContain("500m 이내 감점");
+  });
+
+  it("혐오시설 안내는 NOXIOUS_DIST_THRESHOLD·NOXIOUS_REDUCTION 에서 파생된 문구를 담는다", () => {
+    expect(engineText()).toContain(`${NOXIOUS_DIST_THRESHOLD}m 이상이면 감점 ${NOXIOUS_REDUCTION * 100}%로 완화`);
   });
 });

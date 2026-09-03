@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { DeviationStrip, stripHeight } from "./DeviationStrip";
 import { CARD_DEVIATION_FIELDS, OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
 import { computeRegionalStats } from "@/scoring/regionalStats";
@@ -53,14 +53,34 @@ describe("DeviationStrip — 블록 골격", () => {
     const { container } = render(
       <DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />
     );
-    expect(screen.getByText(/경기 아파트 한가운데 값과 비교/)).toBeInTheDocument();
+    expect(screen.getByText(/경기 분양 단지 한가운데 값과 비교/)).toBeInTheDocument();
     expect(container.textContent).not.toContain("중위값");
     expect(container.textContent).not.toContain("백분위");
   });
 
   it("region 이 비면 '전국'으로 부른다", () => {
     render(<DeviationStrip apt={apt({ region: "" })} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
-    expect(screen.getByText(/전국 아파트 한가운데 값과 비교/)).toBeInTheDocument();
+    expect(screen.getByText(/전국 분양 단지 한가운데 값과 비교/)).toBeInTheDocument();
+  });
+
+  // 세션539 A-6 — 대조군(regionalStats.ts:90)이 `region` 하나로만 묶여 오피스텔·재건축이
+  // 섞여 있는데 헤더가 "아파트"라고 단정했다. 모집단을 단정하지 않는 중립어(분양 단지)로
+  // 고정한다 — "아파트"로 되돌리면 이 단언이 깨진다.
+  it('헤더가 "아파트"라고 모집단을 단정하지 않는다 (세션539 A-6)', () => {
+    render(<DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
+    expect(screen.queryByText(/아파트 한가운데 값과 비교/)).not.toBeInTheDocument();
+  });
+
+  // 세션539 A-6 후속 — 헤더와 `lib/deviation.ts` 만 고쳤을 때 **같은 위젯의 도움말('?')이
+  // 여전히 "아파트들의 한가운데 값"이라 말하고 있었다**. 한 위젯이 두 말을 하는 자리라
+  // 헤더 가드만으로는 못 잡는다(도움말은 클릭 전엔 DOM 에 없다) — 실제로 열어서 읽는다.
+  // ⚠️ 나중에 대조군을 유형별로 가르기로 하면 헤더·도움말·스크린리더 **셋을 함께** 고쳐야 한다.
+  it('도움말도 "아파트"라고 모집단을 단정하지 않는다 (세션539 A-6 후속)', () => {
+    render(<DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
+    fireEvent.click(screen.getByRole("button", { name: /지역 비교 풀이 보기/ }));
+    const tip = screen.getByRole("tooltip");
+    expect(tip.textContent).toContain("분양 단지");
+    expect(tip.textContent).not.toContain("아파트");
   });
 });
 

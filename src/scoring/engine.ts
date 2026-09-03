@@ -20,7 +20,12 @@ type RegionMedian = NonNullable<ScoringContext["regionMedians"]>[string];
  *   (구 builderDebtRatio:250, noise:75)을 제거. scoreRisk/scoreLocation 이 null=중립으로 처리한다.
  *   supplyRatio 도 이미 null 보존(세션501, 폴백 150 제거) — 위 "위험 필드" 기본값 목록에서 제외.
  * 혜택 필드 null → 0, 가격/시장 필드 null → null 유지 (서브스코어 내부에서 재평가).
- * rm(regionMedians[region]) 우선 → 지역 중위값으로 위험 필드 폴백(unsoldRate 제외).
+ * ⚠️ 세션539 E-1 정정 — 이 줄은 예전엔 "rm(regionMedians[region]) 우선 → 지역 중위값으로 위험
+ *   필드 폴백(unsoldRate 제외)"이라 적혀 있었는데 거짓이었다. pir(:35)·psr(:36)·unsoldRate(:40)
+ *   은 전부 `num(apt.X, null)` 로 `rm` 을 전혀 안 본다(전수 grep: `rm.pir`/`rm.psr`/
+ *   `rm.unsoldRate` 참조 0건). `rm` 을 실제로 쓰는 곳은 `supplyRatio`(:56)와
+ *   `_regionAvgMaint`(:111) 둘뿐이다 — `computeRegionalMedians` 가 여전히 pir/psr/unsoldRate
+ *   중위값을 계산하는 것은 **죽은 계산**이다(채점 영향 0, computeRegionalMedians.ts 주석 참조).
  * `??` 전용 (||는 0/"" 오판 유발로 금지, src/scoring/CLAUDE.md).
  */
 function sanitize(apt: Apt, rm?: RegionMedian): Apt {

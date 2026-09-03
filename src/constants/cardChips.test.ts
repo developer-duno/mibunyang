@@ -258,14 +258,32 @@ describe("buildCardChips — 강점/약점 판정", () => {
 });
 
 describe("buildCardChips — 상호배타 규칙", () => {
-  it("혐오시설: 1km 밖이면 안심(강점), 안이면 경고(약점) — 둘이 같이 뜨지 않는다", () => {
-    const safe = build({ noxious: ["소각장"], noxiousDist: 1500 });
+  // 세션539 A-3②: 예전엔 거리(>1000m)만 보고 "안심"을 판정해, 감점 대상 시설(NOXIOUS_PENALTY)이
+  // 있어도 1km 밖이면 초록 "안심" 칩을 달았다. 그런데 감점은 거리와 무관하게 계속된다
+  // (scoreLocation.ts:135-139 — 500m 이상이면 반감될 뿐 0이 되지 않는다). 감점 대상이 하나라도
+  // 있으면 거리와 무관하게 "안심"을 달지 않는다 — 감점 없는 시설만 멀면 안심이다.
+  it("혐오시설: 감점 대상이 없고 1km 밖이면 안심 — 감점 대상이 있으면 거리와 무관하게 경고", () => {
+    // 감점 없는 시설(공장)은 멀면 안심(강점), 가까우면 회색 사실 칩(경고 아님)
+    const safe = build({ noxious: ["공장"], noxiousDist: 1500 });
     expect(idsOf(safe)).toContain("noxiousSafe");
     expect(idsOf(safe)).not.toContain("noxiousNear");
+
+    // 감점 있는 시설(소각장)은 1km 밖이라도 안심이 아니다 — 감점이 반감될 뿐 사라지지 않는다
+    const farPenalized = build({ noxious: ["소각장"], noxiousDist: 1500 });
+    expect(idsOf(farPenalized)).not.toContain("noxiousSafe");
+    expect(idsOf(farPenalized)).toContain("noxiousNear");
 
     const near = build({ noxious: ["소각장"], noxiousDist: 300 });
     expect(idsOf(near)).toContain("noxiousNear");
     expect(idsOf(near)).not.toContain("noxiousSafe");
+  });
+
+  // 세션539 실측 재현 — 신진주역세권 데시앙(noxious=["장례식장","고압선","공장"], noxiousDist=1197)이
+  // 고압선(감점 대상) 감점을 실제로 받으면서 초록 "혐오시설 안심(1km+)" 강점 칩을 달고 있었다.
+  it("감점 없는 시설과 섞여 있어도 감점 대상이 하나면 안심 칩을 달지 않는다 (세션539 실측 재현)", () => {
+    const mixed = build({ noxious: ["장례식장", "고압선", "공장"], noxiousDist: 1197 });
+    expect(idsOf(mixed)).not.toContain("noxiousSafe");
+    expect(idsOf(mixed)).toContain("noxiousNear");
   });
 
   // 세션510 ①-2: 빨간 경고는 **점수를 깎는 시설**에만 붙인다.

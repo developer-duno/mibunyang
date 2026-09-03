@@ -1,5 +1,16 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
+import { LAYOUT_SCORE } from "@/constants/brands";
+import { NOXIOUS_DIST_THRESHOLD, NOXIOUS_REDUCTION } from "@/constants/scoringTiers";
+
+// 세션539 A-2: LAYOUT_SCORE 를 점수 내림차순으로 나열해 안내 문구를 만든다 — 배점표가
+// 바뀌면 문구가 저절로 따라온다. 예전엔 "판상형>혼합>타워"라 적었는데 "혼합"은 배점표에도
+// 데이터에도 없는 값이었고, 순서도 틀렸다(4베이타워 8점 > 3베이판상 7점 — 베이 수가 판상/
+// 타워보다 먼저다). scoreProduct.ts:181-186 이 이미 같은 지적을 하고 detail 문구를 고쳐뒀다.
+const LAYOUT_ORDER = Object.entries(LAYOUT_SCORE)
+  .sort(([, a], [, b]) => b - a)
+  .map(([k]) => k)
+  .join(">");
 
 const cardStyle = {
   background: C.card,
@@ -29,11 +40,14 @@ export const ScoringEngine = memo(function ScoringEngine() {
         },
         {
           title: "입지·생활권 (5개 지표)",
-          desc: "교통접근성(도시등급별 보정: 특별시↔군 지하철·버스·IC·KTX 가중치 자동 조정) + 학군(초등 도보거리) + 생활인프라(병원·마트·편의점·공원·카페·문화·은행·약국) + 환경(조망·소음·채광) + 혐오시설(500m 이내 감점).",
+          // 세션539 A-3①: "500m 이내 감점"은 컷오프가 아니다 — scoreLocation.ts:135-139 는
+          // 500m(NOXIOUS_DIST_THRESHOLD) 이상이면 감점을 반감(NOXIOUS_REDUCTION)할 뿐, 감점
+          // 자체는 거리와 무관하게 계속된다. 수집기(noxious.mjs)는 2km 까지 담는다.
+          desc: `교통접근성(도시등급별 보정: 특별시↔군 지하철·버스·IC·KTX 가중치 자동 조정) + 학군(초등 도보거리) + 생활인프라(병원·마트·편의점·공원·카페·문화·은행·약국) + 환경(조망·소음·채광) + 혐오시설(${NOXIOUS_DIST_THRESHOLD}m 이상이면 감점 ${NOXIOUS_REDUCTION * 100}%로 완화).`,
         },
         {
           title: "상품성 (9개 지표)",
-          desc: "브랜드티어(1군 20점~기타 5점) + 세대수(대단지 가산) + 주차비(1.5대↑ 우수) + 용적률(200%↓ 쾌적) + 에너지등급 + 전용률(80%↑ 우수) + 평면(판상형>혼합>타워) + 내진설계 + 구조(층수).",
+          desc: `브랜드티어(1군 20점~기타 5점) + 세대수(대단지 가산) + 주차비(1.5대↑ 우수) + 용적률(200%↓ 쾌적) + 에너지등급 + 전용률(80%↑ 우수) + 평면(${LAYOUT_ORDER}) + 내진설계 + 구조(층수).`,
         },
         {
           title: "혜택·할인 (6개 지표)",

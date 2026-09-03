@@ -7,6 +7,7 @@ import {
   LIQUIDITY_LABELS,
   LIQUIDITY_AREA_UNIT,
   DEV_NEUTRAL_BAND_PCT,
+  EXCL_RATIO_TIERS,
   schoolGradeLegend,
 } from "@/constants/scoringTiers";
 import { scorePrice, scoreLocation, scoreProduct, scoreBenefit, scoreRisk, scoreFuture } from "@/scoring/engine";
@@ -553,6 +554,30 @@ describe("PRODUCT_MAX", () => {
         expect(say("location", "자연환경", 38)).toBe("환경 정보 미수집");
         expect(say("location", "자연환경", 38)).not.toMatch(/불리/);
         expect(say("location", "자연환경", 38, "그린조망 일조:양호 55dB")).toBe("소음/조망 불리");
+      });
+    });
+
+    // ── 전용률 "우수" 경계 통일 (세션539 A-1) ──────────────────────────────
+    //
+    // benchmark(subContext.ts)·cardChips.ts·ScoringEngine.tsx 는 전부 80%를 "우수" 기준으로
+    // 쓰는데 interpret 만 sc>=8(=77%)부터 "실사용 면적 넓음"이라 판정해, 77~79% 단지가 판정과
+    // 기준선이 서로 다른 말을 하는 위젯을 만들었다. 경계를 EXCL_RATIO_TIERS[0].score(=80%)로
+    // 올리고 77~79%엔 중간 라벨을 준다.
+    describe("전용률 '우수' 경계 통일 (세션539 A-1)", () => {
+      it("EXCL_RATIO_TIERS[0].min(80%) 이 benchmark 문자열에 그대로 들어간다", () => {
+        expect(SUB_CONTEXT.product["전용률"].benchmark).toBe(`${EXCL_RATIO_TIERS[0].min}%+ 우수`);
+      });
+
+      it("sc=10(80%)만 '실사용 면적 넓음' — sc=8(77%)은 더 이상 넓음이 아니다", () => {
+        expect(say("product", "전용률", EXCL_RATIO_TIERS[0].score, "80%")).toBe("실사용 면적 넓음");
+        // ⚠️ 옛(기각한 경쟁 후보) 경계 — sc=8(77%)로 되돌리면 이 단언이 깨진다.
+        expect(say("product", "전용률", EXCL_RATIO_TIERS[1].score, "77%")).not.toBe("실사용 면적 넓음");
+        expect(say("product", "전용률", EXCL_RATIO_TIERS[1].score, "77%")).toBe("전용률 양호");
+      });
+
+      it("sc=6(74%)은 '전용률 보통', sc=4(60%)는 '전용률 낮음'", () => {
+        expect(say("product", "전용률", EXCL_RATIO_TIERS[2].score, "74%")).toBe("전용률 보통");
+        expect(say("product", "전용률", 4, "60%")).toBe("전용률 낮음");
       });
     });
   });

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { InfoPage } from "./InfoPage";
+import { SORT_OPTIONS } from "@/constants/sortOptions";
 
 // 세션 405: 전문가 CTA 카드 → 카카오 로그인 카드 + 로그아웃 + 관리자 링크로 개편
 
@@ -53,7 +54,10 @@ describe("InfoPage", () => {
     render(<InfoPage {...makeProps()} />);
     expect(screen.getByText("프로필 선택 (5가지)")).toBeInTheDocument();
     expect(screen.getByText("검색과 필터")).toBeInTheDocument();
-    expect(screen.getByText("정렬 (12가지)")).toBeInTheDocument();
+    // 세션539 A-5①: "12가지"는 손 적힌 옛 값이었다 — 실제 SORT_OPTIONS 는 17개(관리비순·
+    // 치안안전·주차넉넉·병원가까움·공원가까움 5개가 안내에서만 빠져 있었다). SORT_OPTIONS.length
+    // 에서 파생시켜, 정렬이 늘어도 이 테스트가 손으로 안 고쳐도 되게 한다.
+    expect(screen.getByText(`정렬 (${SORT_OPTIONS.length}가지)`)).toBeInTheDocument();
     expect(screen.getByText("단지 카드 읽는 법")).toBeInTheDocument();
     expect(screen.getByText("관심매물")).toBeInTheDocument();
     expect(screen.getByText("지도 뷰")).toBeInTheDocument();
