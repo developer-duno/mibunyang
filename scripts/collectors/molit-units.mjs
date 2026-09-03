@@ -19,7 +19,7 @@
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
-import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown, today, clampUnsoldRate } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, MIN_SIMILARITY, REQUEST_DELAY,
   molitApiCall, fetchSidoAptList, findBestMatch,
@@ -95,9 +95,14 @@ export function resolveUnits(detail) {
  * @returns {Promise<boolean>}
  */
 export async function updateUnits(sb, aptId, newUnits, unsold, dryRun) {
-  const unsoldRate = newUnits > 0 && unsold != null
-    ? Math.round((unsold / newUnits) * 1000) / 10
-    : null;
+  // 세션539 F-2: 형제 writer(collect-data·sync-naver-complex·applyhome-seed 는 clampUnsoldRate,
+  // collect-unsold-kosis 는 calcProportionalUnsold 내부에 같은 >100→null 방어)는 전부 갖고
+  // 있는데 이 수집기만 없었다. 하물며 이 수집기의 **대상 자체가**
+  // `unsold_rate>=100`(위 SELECT `.or("units.lte.1,unsold_rate.gte.100")`)인 망가진 행이라,
+  // 매칭 실패나 이번 회차 데이터가 다시 폭발값을 주면 자기가 그 폭발값을 재기입하는 자리다.
+  const unsoldRate = clampUnsoldRate(
+    newUnits > 0 && unsold != null ? Math.round((unsold / newUnits) * 1000) / 10 : null,
+  );
 
   if (dryRun) {
     log(PHASE, `  [DRY-RUN] ${aptId}: units=${newUnits}, unsoldRate=${unsoldRate}%`);

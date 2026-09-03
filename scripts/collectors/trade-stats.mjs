@@ -227,8 +227,18 @@ async function main() {
     fetchAll("prices", "apartment_id,area,price,recorded_at,house_type", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang,
       [{ col: "deal_month", op: "gte", val: cutoff12mYM },
-       { col: "cancel_date", op: "is", val: null }]).catch(() => []),
-    fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang).catch(() => []),
+       { col: "cancel_date", op: "is", val: null }]).catch(/** @param {any} e */ (e) => {
+      // 세션539 B-2: articles(:233)만 로그가 있고 나머지 5개 조회는 조용히 []로 넘어갔다.
+      // 실피해는 낮다(:464 recentTrades6m = recent6m.length || null 이라 0건은 "미수집" null로
+      // 가지 거짓 0건이 되지 않는다) — 그러나 워크플로는 success, ok_count 는 큰 값을 기록해
+      // 조회가 죽어도 monitor outage 감지가 안 울린다. 로그만이라도 남겨 흔적을 없애지 않는다.
+      logError("load", `trades 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
+      return [];
+    }),
+    fetchAll("regions", "region,gu,avg_income", {}, sbMibunyang).catch(/** @param {any} e */ (e) => {
+      logError("load", `regions 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
+      return [];
+    }),
     // ⚠️ articles(137만행)·complexes(6.4만행)는 `id` 가 없다 — 고유키를 명시하지 않으면 조회가 죽는다.
     fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2", { is_active: true }, sbMibunyang, [], "article_no", true).catch(/** @param {any} e */ (e) => {
       // ⚠️ 조용히 [] 로 넘기면 "매물 0건"이 정상처럼 보인다 — 세션513 에 정렬 추가로 이 조회가
@@ -236,13 +246,22 @@ async function main() {
       logError("load", `articles 조회 실패 — 매물 폴백 없이 진행: ${e?.message ?? e}`);
       return [];
     }),
-    fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang, [], "complex_no").catch(() => []),
+    fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang, [], "complex_no").catch(/** @param {any} e */ (e) => {
+      logError("load", `complexes 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
+      return [];
+    }),
     fetchAll("complex_price_history", "complex_no,trade_type,price_avg,base_month", { trade_type: "A1" }, sbMibunyang,
       [{ col: "base_month", op: "gte", val: cutoff12mYM }])
       .then(rows => rows.filter(r => r.price_avg != null))
-      .catch(() => []),
+      .catch(/** @param {any} e */ (e) => {
+        logError("load", `complex_price_history 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
+        return [];
+      }),
     // 해제 거래 (cancel_date IS NOT NULL, 6개월)
-    fetchCancelledTrades(sbMibunyang, cutoff6mYM).catch(() => []),
+    fetchCancelledTrades(sbMibunyang, cutoff6mYM).catch(/** @param {any} e */ (e) => {
+      logError("load", `cancelledTrades 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
+      return [];
+    }),
   ]);
   // rawPrices에서 아파트별 대표 가격·면적 매핑 (VIEW latest_prices 규칙 미러 — buildLatestPriceMap)
   const latestPriceMap = buildLatestPriceMap(rawPrices);

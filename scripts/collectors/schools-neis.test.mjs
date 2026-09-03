@@ -8,6 +8,7 @@
  *       fetchStudentBulk, enrichWithStudents, calcDensityBonus
  */
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -27,6 +28,9 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 process.env.KAKAO_KEY = "test-key";
 
 const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP } = await import("./schools-neis.mjs");
+
+// 소스를 직접 읽어 배선(어느 쿼리로 훑는지)을 검사한다 — transit-match.test.mjs 답습 패턴.
+const COLLECTOR_SRC = readFileSync(new URL("./schools-neis.mjs", import.meta.url), "utf8");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** Kakao 검색 결과 팩토리 (distance 포함)
@@ -672,5 +676,27 @@ describe("관측값 앵커 (2026-08-23 전수 실측, n=2,771)", () => {
     const byScore = Object.fromEntries(RESCALE_ANCHORS_MIRROR.map((a) => [a.score, a.raw]));
     expect(byScore[100]).toBeGreaterThan(byScore[60]);
     expect(byScore[100]).toBeGreaterThanOrEqual(OBSERVED.median * 1.2);
+  });
+});
+
+// 세션539 B-1: main() 이 schools 테이블을 훑던 무정렬 OFFSET → 고유키(apartment_id) 커서
+// 회귀 가드. 같은 파일 rescaleOnly()(§L444)는 이미 .order("apartment_id") 를 붙인 정답
+// 패턴이었는데 main() 만 빠져 있었다(unordered-pagination-loses-rows.md §1). select 문자열
+// 리터럴 조각으로 고정 — toContain("apartment_id") 류는 옆 옵션 줄에 오매칭된다
+// ([[guards-must-be-mutation-tested]] §"소스 grep 가드").
+describe("schools 페이징 — 고유키 커서 회귀 가드 (세션539 B-1)", () => {
+  it("main() 은 selectAll(..., sb, \"apartment_id\") 커서로 schools 를 훑는다", () => {
+    expect(COLLECTOR_SRC.includes('.select("apartment_id, nearby_schools, updated_at")')).toBe(true);
+    expect(COLLECTOR_SRC).toMatch(
+      /selectAll\(\(s\) => s\.from\("schools"\)\.select\("apartment_id, nearby_schools, updated_at"\), sb, "apartment_id"\)/,
+    );
+  });
+
+  it("main() 은 schools 를 무정렬 .range() 손제작 루프로 훑지 않는다", () => {
+    // rescaleOnly() 는 이미 .order() 를 붙인 별개 루프라 이 검사 대상이 아니다 — main() 의
+    // allSchoolRows 조회만 겨눈다.
+    expect(COLLECTOR_SRC).not.toMatch(
+      /allSchoolRows[\s\S]{0,40}\[\][\s\S]{0,300}?from\("schools"\)[\s\S]{0,200}?\.range\(/,
+    );
   });
 });

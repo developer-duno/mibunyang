@@ -436,7 +436,19 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(err => {
-  console.error("audit script error:", err);
-  process.exit(2);
-});
+// ⚠️ `isCLI` 가드 없이 import 시점에 `main()` 이 돌면, 이 모듈을 import 하는 테스트
+//    (`audit-env-keys.test.mjs`)가 다른 테스트 파일과 임시 yml 을 두고 경합할 때
+//    `process.exit(2)` 가 튀어 vitest 종료코드가 흔들린다(세션538 에서 2회 관측 —
+//    테스트 결과 자체는 안 틀리지만 exit code 만 간헐 실패). 자매 audit 스크립트 8개는
+//    전부 이 가드를 갖고 있고 이 파일만 빠져 있었다(세션539 전수 확인).
+//    ※ `audit-node-esm-chain.mjs` 는 대상이 아니다 — `main()` 자체가 없고 "import 가 되는지"가
+//       곧 검사 내용이라 조건부 실행이 성립하지 않는다.
+const isCLI = !!process.argv[1] && import.meta.url.endsWith(
+  process.argv[1].replace(/\\/g, "/").split("/").pop() ?? ""
+);
+if (isCLI) {
+  main().catch(err => {
+    console.error("audit script error:", err);
+    process.exit(2);
+  });
+}

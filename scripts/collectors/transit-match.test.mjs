@@ -431,3 +431,27 @@ describe("apartments 페이징 — 고유키 커서 회귀 가드 (세션534)", 
     expect(COLLECTOR_SRC).not.toMatch(/from\("apartments"\)\.select\([^)]*\)\.range\(/);
   });
 });
+
+// 세션539 B-1: dev_plans (station · lh_zone/jigu) 도 apartments 와 같은 결함이었다 —
+// 특히 lh_zone 은 이미 1,174건(>1,000) 이라 오늘도 매주 페이지 경계를 넘기고 있었다(잠복
+// 아님). select 문자열 리터럴 조각으로 고정 — toContain("id") 류는 옆 옵션 줄(keyCol 등)에
+// 오매칭된다([[guards-must-be-mutation-tested]] §"소스 grep 가드").
+describe("dev_plans 페이징 — 고유키 커서 회귀 가드 (세션539 B-1)", () => {
+  it("dev_plans(station) select 는 id 를 포함하고 selectAll(..., sbStation, \"id\") 커서로 훑는다", () => {
+    expect(COLLECTOR_SRC.includes('.select("id, name, lat, lng, raw")')).toBe(true);
+    expect(COLLECTOR_SRC).toMatch(
+      /s\.from\("dev_plans"\)\.select\("id, name, lat, lng, raw"\)\.eq\("kind", "station"\)\.not\("lat", "is", null\),\s*sbStation,\s*"id",/,
+    );
+  });
+
+  it("dev_plans(lh_zone/jigu) select 는 id 를 포함하고 selectAll(..., sbCity, \"id\") 커서로 훑는다", () => {
+    expect(COLLECTOR_SRC.includes('.select("id, name, lat, lng, kind, progression_step")')).toBe(true);
+    expect(COLLECTOR_SRC).toMatch(
+      /\.from\("dev_plans"\)\s*\.select\("id, name, lat, lng, kind, progression_step"\)\s*\.in\("kind", \["lh_zone", "jigu"\]\)\s*\.not\("lat", "is", null\),\s*sbCity,\s*"id",/,
+    );
+  });
+
+  it("dev_plans 를 무정렬 .range() 손제작 루프로 훑지 않는다", () => {
+    expect(COLLECTOR_SRC).not.toMatch(/from\("dev_plans"\)[\s\S]{0,200}?\.range\(/);
+  });
+});

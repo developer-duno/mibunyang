@@ -418,8 +418,25 @@ export async function main() {
       }
 
       // 주차비율: total_parking / total_household_count
+      //
+      // ⚠️ 세션539 B-3 — 여기서 막는 건 "반올림 아티팩트"이지 "0이 불가능하다"는 뜻이 아니다.
+      // `parkingRatio` 는 이 저장소가 명시적으로 **0도 진짜 값**이라 결정해 둔 필드다
+      // (regionalStats.ts:57~58 "0도 가능 … 미수집으로 바꾸면 안 된다" · ZERO_MEANS_MISSING 에
+      // parkingRatio 없음 · scoring/CLAUDE.md §"0도 sentinel인 필드가 있다" 실측 최솟값 0.13).
+      // 그래서 `engine.ts`(_noParking)·`fieldMeta.ts`(fmt)·`scoreProduct.ts`(?? 0.5)는 건드리지
+      // 않는다 — 저 결정을 뒤집으면 "주차가 진짜로 거의 없는 단지가 중립 점수로 위험을 감추는"
+      // 반대 방향 거짓이 생긴다(D-1).
+      //
+      // 여기서 고치는 건 다른 문제다: 주차 1대/300세대처럼 **반올림하면 0.0이 되는 계산값**이
+      // 저장되면, 읽기 가드가 `apt.parking_ratio == null` 이라 이 수집기가 다시는 그 행을
+      // 건드리지 않는다(자가 화석화). 바로 위 용적률(:416)이 세션538에서 `>0` 게이트를 받은
+      // 것과 같은 형태를 여기도 맞춘다 — 계산 결과가 0보다 클 때만 기입하고, 0이면 아예
+      // 미기입(null 그대로 둬 다음 수집에 다시 계산 기회를 준다).
       if (apt.parking_ratio == null && cpx.total_parking_count && cpx.total_household_count && cpx.total_household_count > 0) {
-        row.parking_ratio = Math.round((cpx.total_parking_count / cpx.total_household_count) * 100) / 100;
+        const computedRatio = Math.round((cpx.total_parking_count / cpx.total_household_count) * 100) / 100;
+        if (computedRatio > 0) {
+          row.parking_ratio = computedRatio;
+        }
       }
 
       // 최고층 — 0 처리는 위 용적률과 같다. **다만 근거는 용적률·건폐율보다 약하다**:

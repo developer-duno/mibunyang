@@ -26,6 +26,19 @@ export function classifyFloors(maxFloor) {
   return "초고층(26F+)";
 }
 
+/**
+ * 세션539 F-3: `floors` 는 `classifyFloors(max_floor)` 의 100% 파생값이다. `!a.floors` 만
+ * 보면 "빈 것만 채우고" 끝이라, `max_floor` 가 나중에(molit-building-info.mjs 매월) 갱신돼도
+ * `floors` 는 옛 값에 멈춰 화석화된다(실측: 화면 207곳(11.4%)·base 314곳 불일치, 극단은
+ * "최고 90층인데 중층(6~15F)"). 손님에게는 안 보인다(INTERNAL_ONLY_FIELDS — 세션508, 관리자
+ * 표만) — 그래도 파생값이 원본과 어긋난 채 방치되는 건 다음 세션의 오판 소지라 정정한다.
+ * @param {Array<{ id: string, max_floor: number | null, floors: string | null }>} apts
+ * @returns {Array<{ id: string, max_floor: number | null, floors: string | null }>}
+ */
+export function selectFloorTargets(apts) {
+  return apts.filter((a) => !a.floors || a.floors !== classifyFloors(a.max_floor));
+}
+
 async function main() {
   // 세션 504: 이 수집기는 매주 도는데 collector_runs 에 행을 한 번도 남기지 않아
   // "돌았는지·실패했는지" 를 아무도 볼 수 없었다(감시 사각). 리포터를 루프 이전에 만든다
@@ -41,7 +54,7 @@ async function main() {
       .gt("max_floor", 0),
   sb);
 
-  const targets = apts.filter(a => !a.floors);
+  const targets = selectFloorTargets(apts);
   log("calc-floors", `대상: ${targets.length}건 (전체 max_floor 보유: ${apts.length}건)`);
 
   if (DRY) {

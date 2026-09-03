@@ -898,6 +898,58 @@ describe("Phase 1 거리 게이트 — 실전 경로(main()) 회귀 가드", () 
     expect(keep?.row.building_coverage_ratio).toBeUndefined();
     expect(keep?.row.max_floor).toBeUndefined();
   });
+
+  // ── 주차비율 반올림-0 화석화 차단 (세션539 B-3) ─────────────────────
+  // ⚠️ parkingRatio 는 0 이 sentinel 아니다(D-1 — regionalStats.ts:57~58 "0도 가능",
+  // ZERO_MEANS_MISSING 에 없음) — 여기서 막는 건 "0 이 불가능하다"는 뜻이 아니라, 주차
+  // 1대/300세대처럼 **반올림하면 0.0이 되는 계산값**이 저장돼 읽기 가드(`== null`)가 다시는
+  // 그 행을 건드리지 않는 자가 화석화만 막는다. 위 floor_area_ratio(:416, 세션538)가 이미
+  // 받은 `>0` 게이트를 여기도 같은 형태로 맞춘다.
+  it("주차 1대/300세대(반올림 0) 는 저장하지 않고, 정상 계산값·기존 값은 그대로 동작한다", async () => {
+    const at = { lat: 37.5, lng: 127.0 };
+    /** @param {string} no @param {string} name @param {Record<string, unknown>} f */
+    const cpx = (no, name, f) => /** @type {any} */ ({
+      complex_no: no, complex_name: name, latitude: at.lat, longitude: at.lng,
+      floor_area_ratio: null, building_coverage_ratio: null, high_floor: null,
+      total_parking_count: null, total_household_count: null, has_pool: null,
+      use_approve_ymd: null, heat_fuel_type: null, corridor_type: null, ...f,
+    });
+    /** @param {string} id @param {string} name @param {Record<string, unknown>} f */
+    const apt = (id, name, f) => /** @type {any} */ ({
+      id, name, lat: at.lat, lng: at.lng,
+      floor_area_ratio: null, building_coverage_ratio: null, max_floor: null,
+      parking_ratio: null, has_pool: null, heating: null, exclusive_ratio: null,
+      quake_design: null, view: null, sunlight: null, heat_fuel: null, corridor_type: null, ...f,
+    });
+
+    const { sb, updateCalls } = makeGateSb({
+      complexes: [
+        // 1/300*100 = 0.333... → Math.round → 0 (실측 사례와 동일한 반올림-0)
+        cpx("CX-ROUND0", "반올림영단지", { total_parking_count: 1, total_household_count: 300 }),
+        // 정상 계산값 — 1/2*100 = 50
+        cpx("CX-NORMAL", "정상단지", { total_parking_count: 1, total_household_count: 2 }),
+      ],
+      apartments: [
+        // ① 계산 결과가 반올림-0 → row.parking_ratio 자체가 미기입(0이 아니라 undefined)
+        apt("apt-round0", "반올림영단지", {}),
+        // ② 계산 결과가 양수 → 그대로 기입
+        apt("apt-normal", "정상단지", {}),
+      ],
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+
+    await main();
+
+    const round0 = updateCalls.find((u) => u.id === "apt-round0");
+    // update 자체가 안 불릴 수도(다른 필드가 전부 null→null 이라 write 스킵), 불려도
+    // parking_ratio 키가 없어야 한다 — 두 경우 모두 "0 이 저장되지 않았다"를 보장한다.
+    expect(round0?.row.parking_ratio).toBeUndefined();
+
+    const normal = updateCalls.find((u) => u.id === "apt-normal");
+    expect(normal).toBeDefined();
+    // Math.round((1/2)*100)/100 = 0.5 (세대당 주차 대수 비율 — 퍼센트 아님)
+    expect(normal?.row.parking_ratio).toBe(0.5);
+  });
 });
 
 // ── 전용률 유입 게이트 + 미분양률 클램프 — 실전 경로(main()) 회귀 가드 (세션538) ──

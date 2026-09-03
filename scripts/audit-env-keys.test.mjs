@@ -333,3 +333,43 @@ describe("extractStepCollectorEnv", () => {
     expect(map.size).toBe(0);
   });
 });
+
+// ── isCLI 가드 회귀 (세션539) ────────────────────────────────
+/**
+ * 이 모듈은 테스트가 `extractMatrixJobs`·`extractStepCollectorEnv` 를 쓰려고 import 한다.
+ * 그런데 옛 코드는 `main()` 을 조건 없이 호출해, import 만 해도 감사가 통째로 돌고
+ * 끝에서 `process.exit(0|1|2)` 를 불렀다. 다른 테스트 파일이 임시 yml 을 만들고 지우는 것과
+ * 경합하면 그 exit 이 vitest 종료코드를 흔들었다(세션538 에서 2회 관측).
+ *
+ * ⚠️ 이 가드는 **자식 프로세스 실행**으로 확인한다 — 같은 프로세스 안에서는 이미 import 가
+ *    끝난 뒤라 "main 이 돌았는지"를 되짚을 수 없다. 소스 grep 만 쓰면 주석·선언부에
+ *    오매칭될 수 있다(`.claude/rules/meta/guards-must-be-mutation-tested.md` §소스 grep).
+ */
+describe("isCLI 가드 — import 만으로 main() 이 돌지 않는다", () => {
+  it("모듈을 import 하는 자식 프로세스가 감사를 실행하지 않고 정상 종료한다", async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const run = promisify(execFile);
+    const modUrl = new URL("./audit-env-keys.mjs", import.meta.url).href;
+    // `-e` 로 돌면 process.argv[1] 이 없어 isCLI 는 false 여야 한다.
+    const { stdout, stderr } = await run(
+      process.execPath,
+      ["--input-type=module", "-e", `await import(${JSON.stringify(modUrl)}); console.log("IMPORT_OK");`],
+      { cwd: process.cwd(), timeout: 60_000 },
+    );
+    // 감사가 돌았다면 summary 나 결과 표식이 찍힌다 — 하나도 없어야 한다.
+    expect(stdout).toContain("IMPORT_OK");
+    expect(stdout).not.toMatch(/=== summary:/);
+    expect(stdout).not.toMatch(/all clean|audit failed/);
+    expect(stderr).not.toMatch(/audit script error/);
+  }, 60_000);
+
+  it("소스에 top-level `main().catch(` 가 남아 있지 않다", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const src = await readFile(new URL("./audit-env-keys.mjs", import.meta.url), "utf-8");
+    // 줄머리에서 시작하는 호출 = 가드 밖. 가드 안은 들여쓰기가 붙는다.
+    expect(src).not.toMatch(/^main\(\)\.catch\(/m);
+    // 가드가 실제로 main 을 감싸고 있는지 (좌변 `if (isCLI) {` 까지 고정)
+    expect(src).toMatch(/if \(isCLI\) \{[\s\S]{0,120}?main\(\)\.catch\(/);
+  });
+});
