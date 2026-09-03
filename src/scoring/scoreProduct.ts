@@ -7,15 +7,19 @@ import {
   UNIT_SMALL_SCORE,
   PARKING_TIERS,
   PARKING_LOW_SCORE,
+  PARKING_UNKNOWN_SCORE,
   FAR_TIERS,
   FAR_HIGH_SCORE,
+  FAR_UNKNOWN_SCORE,
   ENERGY_SCORES,
   ENERGY_DEFAULT,
   GREEN_BLDG_SCORES,
   EXCL_RATIO_TIERS,
   EXCL_LOW_SCORE,
+  EXCL_UNKNOWN_SCORE,
   FLOOR_TIERS,
   FLOOR_LOW_SCORE,
+  FLOOR_UNKNOWN_SCORE,
   PRODUCT_MAX,
   HOUSING_TYPE_CAP_DEFAULT,
   HOUSING_TYPE_CAP_NON_APT,
@@ -39,6 +43,10 @@ const IS_DEV =
  *     `presaleParking / max(presaleGeneralSupply ?? units, 1)`로 effectivePR 산출.
  *   - hasPool 보너스: unitSc + 3, 상한 15.
  *   - units ≤ 1: UNIT_UNKNOWN_SCORE(중립 8점) — 0/1 동시 처리.
+ *   - 세션539: 용적률(`_noFar`)·전용률(`_noExcl`)·최고층(`_noFloor`)·주차(`_noParking` &&
+ *     폴백 추정치도 없음)는 각각 FAR_UNKNOWN_SCORE(7)·EXCL_UNKNOWN_SCORE(6)·FLOOR_UNKNOWN_SCORE(4)·
+ *     PARKING_UNKNOWN_SCORE(8) 로 중립 채점 — 예전엔 가짜 값(300%·60%·10층·0.5대)을 대입해
+ *     최하 구간 점수를 줬다(CLAUDE.md "unknown(null) 처리 원칙" 참고).
  *
  * null 처리: `apt.units ?? 0`, `apt.childcare ?? 0` 등 `??` 사용.
  *
@@ -83,16 +91,23 @@ export function scoreProduct(apt: Apt): Res {
   //   parkingRatio 기본값으로 되돌린다. 직접 수집값에는 이 클램프가 걸리지 않는다.
   const usableFallbackPR = fallbackPR != null && fallbackPR > 0 && fallbackPR <= 3 ? fallbackPR : null;
   const effectivePR = usableFallbackPR ?? parkingRatio;
-  const parkSc: number = tierMin(effectivePR, PARKING_TIERS, PARKING_LOW_SCORE);
-  const floorAreaRatio = (apt._noFar ? 300 : apt.floorAreaRatio) as number;
-  const farSc: number = tierMax(floorAreaRatio, FAR_TIERS, FAR_HIGH_SCORE);
+  // 세션539: `_noParking` 이면서 폴백 추정치도 없는 곳(정보 자체가 없는 71곳)은 parkingRatio
+  //   기본값(0.5, PARKING_LOW_SCORE 로 이어짐)을 더는 채점에 쓰지 않는다 — "모른다"를 "0.5대라서
+  //   나쁘다"로 채점하던 것을 중립으로 바꾼다. 폴백 추정치가 있으면(usableFallbackPR != null)
+  //   그 값으로 그대로 채점 — 그건 실제로 잰 값이지 모르는 값이 아니다(폴백을 유지한다).
+  const noParkingInfo = apt._noParking && usableFallbackPR == null;
+  const parkSc: number = noParkingInfo ? PARKING_UNKNOWN_SCORE : tierMin(effectivePR, PARKING_TIERS, PARKING_LOW_SCORE);
+  // 세션539: `_noFar` 면 가짜 값(300%, FAR_HIGH_SCORE 최하점으로 이어짐) 대신 중립 점수를 직접 준다.
+  const floorAreaRatio = apt.floorAreaRatio as number;
+  const farSc: number = apt._noFar ? FAR_UNKNOWN_SCORE : tierMax(floorAreaRatio, FAR_TIERS, FAR_HIGH_SCORE);
   const energyGrade = apt.energyGrade as string | number | undefined;
   const greenBldg = apt.greenBldg as string | undefined;
   const energySc: number =
     ((ENERGY_SCORES as Record<string, number>)[String(energyGrade)] ?? ENERGY_DEFAULT) +
     ((GREEN_BLDG_SCORES as Record<string, number>)[String(greenBldg)] || 0);
-  const exclusiveRatio = (apt._noExcl ? 60 : apt.exclusiveRatio) as number;
-  const exclSc: number = tierMin(exclusiveRatio, EXCL_RATIO_TIERS, EXCL_LOW_SCORE);
+  // 세션539: `_noExcl` 면 가짜 값(60%, EXCL_LOW_SCORE 최하점으로 이어짐) 대신 중립 점수를 직접 준다.
+  const exclusiveRatio = apt.exclusiveRatio as number;
+  const exclSc: number = apt._noExcl ? EXCL_UNKNOWN_SCORE : tierMin(exclusiveRatio, EXCL_RATIO_TIERS, EXCL_LOW_SCORE);
   const layout = apt.layout as string | undefined;
   const layoutSc = (LAYOUT_SCORE as Record<string, number>)[String(layout)] || 3;
   // 세션508: 내진설계는 이진(있음/없음) 필드 — `=== false`(확인된 미적용)일 때만 0점. null(모름)·true
@@ -100,15 +115,14 @@ export function scoreProduct(apt: Apt): Res {
   //   내진설계 의무 대상(2017.12 확대)이라 미수집을 "미적용"으로 단정하면 안 된다.
   const quakeDesign = apt.quakeDesign as boolean | null | undefined;
   const quakeSc = quakeDesign === false ? 0 : 5;
-  // `?? 10` 은 null 만 잡아 0 을 그대로 채점했다(0층으로 tierMin). 위 floorAreaRatio 가
-  // `_noFar ? 300 : ...` 인 것과 같은 꼴로 맞춘다(세션537) — "모른다"면서 0 을 채점하는 모순 제거.
-  //
-  // ⚠️ **이 줄은 회귀 가드가 없다**(세션537 뮤테이션 실증: `?? 10` 으로 되돌려도 green).
-  // FLOOR_TIERS 가 35/25/15 라 0·10 이 둘 다 FLOOR_LOW_SCORE(2) — 지금은 점수가 같고,
-  // 문구는 `_noFloor` 가 이미 잡는다. 경계가 15 아래로 내려오면 그때 갈리므로, 그때
-  // 여기에도 가드를 붙여야 한다.
-  const maxFloor = (apt._noFloor ? 10 : apt.maxFloor) as number;
-  const structSc: number = tierMin(maxFloor, FLOOR_TIERS, FLOOR_LOW_SCORE);
+  // 세션537 이 `?? 10`(null 만 잡던 폴백)을 `_noFloor ? 10 : ...` 로 바꿔 0-sentinel 을 맞췄지만,
+  //   당시엔 FLOOR_TIERS(35/25/15) 상 0·10 이 둘 다 FLOOR_LOW_SCORE(2) 라 점수만으로는 `_noFloor`
+  //   플래그 되돌림을 못 잡았다(문구가 실질 가드였다). 세션539 가 그 가짜 값(10) 대입 자체를 없애고
+  //   FLOOR_UNKNOWN_SCORE(4) 를 직접 주면서 이제 점수도 갈린다 — `_noFloor` 가 되돌아가면(0/null 을
+  //   다시 실값으로 취급하면) tierMin(0,...)=FLOOR_LOW_SCORE(2) 대 그대로면 FLOOR_UNKNOWN_SCORE(4)
+  //   로 값 자체가 달라진다(engine.test.js "최고층 0 은 null 과 동일 취급" 참고).
+  const maxFloor = apt.maxFloor as number;
+  const structSc: number = apt._noFloor ? FLOOR_UNKNOWN_SCORE : tierMin(maxFloor, FLOOR_TIERS, FLOOR_LOW_SCORE);
   const rawTotal = brandSc + unitSc + parkSc + farSc + energySc + exclSc + layoutSc + quakeSc + structSc;
   const maxPossible = (Object.values(PRODUCT_MAX) as number[]).reduce((a, b) => a + b, 0);
   const total = Math.round(Math.max(0, Math.min((rawTotal / maxPossible) * 100, 100)));
@@ -146,7 +160,7 @@ export function scoreProduct(apt: Apt): Res {
           usableFallbackPR != null
             ? `추정 ${usableFallbackPR.toFixed(2)}대/세대 (청약 공급자료 기반 추정 · 우수 1.5↑, 양호 1.3↑, 보통 1.1↑)`
             : apt._noParking
-              ? "미수집 (기준: 1.5↑우수, 1.3↑양호, 1.1↑보통)"
+              ? `미수집 (기준: 1.5↑우수, 1.3↑양호, 1.1↑보통 · 중립 ${PARKING_UNKNOWN_SCORE}점)`
               : `${parkingRatio}대/세대 (우수 1.5↑, 양호 1.3↑, 보통 1.1↑)`,
       },
       {
@@ -154,7 +168,7 @@ export function scoreProduct(apt: Apt): Res {
         score: farSc,
         info: apt._noFar ? "정보 없음" : `${floorAreaRatio}%`,
         detail: apt._noFar
-          ? "미수집 (기준: 200%↓쾌적, 250%↓보통)"
+          ? `미수집 (기준: 200%↓쾌적, 250%↓보통 · 중립 ${FAR_UNKNOWN_SCORE}점)`
           : `${floorAreaRatio}% (쾌적 200%↓, 보통 250%↓, 밀집 250%↑)`,
       },
       {
@@ -171,7 +185,7 @@ export function scoreProduct(apt: Apt): Res {
         score: exclSc,
         info: apt._noExcl ? "정보 없음" : `${exclusiveRatio}%`,
         detail: apt._noExcl
-          ? "미수집 (기준: 80%↑우수, 77%↑양호, 74%↑보통)"
+          ? `미수집 (기준: 80%↑우수, 77%↑양호, 74%↑보통 · 중립 ${EXCL_UNKNOWN_SCORE}점)`
           : `${exclusiveRatio}% (우수 80%↑, 양호 77%↑, 보통 74%↑)`,
       },
       {
@@ -198,7 +212,7 @@ export function scoreProduct(apt: Apt): Res {
         score: structSc,
         info: apt._noFloor ? "정보 없음" : `최고 ${maxFloor}층`,
         detail: apt._noFloor
-          ? "미수집 (기준: 35층↑고층, 25층↑중고층, 15층↑중층)"
+          ? `미수집 (기준: 35층↑고층, 25층↑중고층, 15층↑중층 · 중립 ${FLOOR_UNKNOWN_SCORE}점)`
           : `최고 ${maxFloor}층 (고층 35↑, 중고층 25↑, 중층 15↑)`,
       },
     ],

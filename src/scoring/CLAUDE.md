@@ -525,6 +525,10 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 | priceIndex | scorePrice relSc | 130+ → +5, 110+ → +3 |
 | presaleParking/presaleGeneralSupply | scoreProduct | parkingRatio null 폴백 |
 | presaleHousingType | scoreProduct | 오피스텔/도시형 brandSc 상한 15 |
+| floorAreaRatio(용적률) | scoreProduct farSc | `_noFar` → FAR_UNKNOWN_SCORE(중립 7점, 예전 가짜 값 300%→최하점 3점을 대체) (세션539) |
+| exclusiveRatio(전용률) | scoreProduct exclSc | `_noExcl` → EXCL_UNKNOWN_SCORE(중립 6점, 예전 가짜 값 60%→최하점 4점을 대체) (세션539) |
+| maxFloor(최고층) | scoreProduct structSc | `_noFloor` → FLOOR_UNKNOWN_SCORE(중립 4점, 예전 가짜 값 10층→최하점 2점을 대체) (세션539) |
+| parkingRatio(주차) | scoreProduct parkSc | `_noParking` **이면서 presaleParking 폴백 추정치도 없을 때만** → PARKING_UNKNOWN_SCORE(중립 8점, 예전 가짜 값 0.5대→최하점 5점을 대체). 폴백 추정치가 있으면 그 값으로 그대로 채점(폴백 유지) (세션539) |
 
 ---
 
@@ -543,7 +547,7 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 | 필드 종류 | 규칙 | 근거 |
 |---|---|---|
 | **이진(있음/없음)** | `=== false`(확인된 부재)일 때만 불이익. **null(모름)은 "있음"과 같은 대우** | 중간값이 성립하지 않음. loanFree·quakeDesign·hugGuarantee(#367) |
-| **연속·구간** | null 이면 **중립 구간 점수**(알려진 값들의 중앙값이 떨어지는 구간) | noise·builderDebtRatio·cancelRatio(35)·competitionRate(40)·crime(35)·unsoldRate(40) |
+| **연속·구간** | null 이면 **중립 구간 점수**(알려진 값들의 중앙값이 떨어지는 구간) | noise·builderDebtRatio·cancelRatio(35)·competitionRate(40)·crime(35)·unsoldRate(40)·floorAreaRatio(FAR_UNKNOWN_SCORE 7)·exclusiveRatio(EXCL_UNKNOWN_SCORE 6)·maxFloor(FLOOR_UNKNOWN_SCORE 4)·parkingRatio(PARKING_UNKNOWN_SCORE 8, 세션539) |
 
 **중립을 쓰고 최고점을 안 쓰는 이유(데이터 관리)**: 미수집에 최고점을 주면 수집할 이유가
 사라진다. 중립은 "재면 오를 수도 내릴 수도" 라서 수집 동기가 유지된다. 자세한 근거 수치는
@@ -562,15 +566,18 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 |---|---|
 | 화면 `fieldMeta.ts` | `n`(null 만 검사) 이 아니라 **`nPos`**(`v != null && v > 0`) |
 | 점수 플래그 `engine.ts` | `_noX: apt.X == null` 이 아니라 **`\|\| apt.X === 0`** |
-| 점수 사용 `scoreX.ts` | `apt.X ?? 기본값` 이 아니라 **`apt._noX ? 기본값 : apt.X`** |
+| 점수 사용 `scoreX.ts` | `apt.X ?? 기본값` 이 아니라 **`apt._noX ? 기본값 : apt.X`** — 단 그 "기본값"을 채점 함수에 그대로 먹이면 최하 구간으로 떨어진다. floorAreaRatio·exclusiveRatio·maxFloor·parkingRatio 는 세션539 부터 **가짜 값 대입 자체를 없애고** `apt._noX ? X_UNKNOWN_SCORE : tierMin/Max(apt.X, ...)` 로 중립 점수를 직접 준다 (아래 "unknown(null) 처리 원칙" 표 참고). |
 
 세션537 실사고: 수집기(`sync-naver-complex.mjs`)에서 `max_floor` 0 유입만 막고 위 셋을 안 고쳐,
 화면은 **"0층"**, 점수는 `tierMin(0)` 최하위, 판정은 "저층 규모"로 셋 다 거짓이 될 상태였다
 (당시 0 이 0곳이라 잠복). 커밋 메시지에는 "이미 합의돼 있다"고 썼는데 그 합의가 없는 필드였다.
 
-⚠️ **가드는 `calcCats` 경유로 쓰고, 점수로 못 잡는 자리는 문구로 잡는다.** `FLOOR_TIERS` 가
-35/25/15 라 0 과 폴백 10 이 둘 다 `FLOOR_LOW_SCORE` — **점수 단언으로는 되돌림을 못 잡는다**
-(세션537 뮤테이션 실증). `detail` 문구(`"최고 0층"` 이 안 나오는지)가 실질 가드다.
+⚠️ **가드는 `calcCats` 경유로 쓰고, 점수로 못 잡는 자리는 문구로 잡는다.** 세션537 당시엔
+`FLOOR_TIERS` 가 35/25/15 라 0 과 폴백 10 이 둘 다 `FLOOR_LOW_SCORE` — **점수 단언으로는
+되돌림을 못 잡았다**(뮤테이션 실증). `detail` 문구(`"최고 0층"` 이 안 나오는지)가 그때의
+실질 가드였다. 세션539 가 그 폴백 10 대입 자체를 없애고 `FLOOR_UNKNOWN_SCORE`(4, `FLOOR_LOW_SCORE`
+2 와 다른 값)를 직접 주면서, 이제 **점수만으로도** `_noFloor` 되돌림이 갈린다 — 다만 `detail`
+문구 가드는 여전히 겸용한다(둘 중 하나가 무력화돼도 다른 하나가 잡도록).
 
 "0 이 불가능한가"를 판단할 땐 **분포 실측**으로 확인한다 — `parkingRatio` 는 0 이 가능해 보이지만
 실제 최솟값이 0.13 이고, 코드가 이미 "0 도 가능"으로 일관 처리하고 있어 건드리면 회귀다.
