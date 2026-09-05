@@ -30,6 +30,8 @@
  * 카카오 **주소검색**은 지번 없는 질의에 `address_type: REGION`(동/구 중심점)을 준다. 그건 그
  * 단지가 아니라 자리표시라 `REGION_ADDR`/`ROAD_ADDR` 만 인정하고, 질의의 읍/면/동/리 토큰이
  * 결과 주소에 실제로 있는지까지 본다. 청약홈 seed 도 같은 규칙을 쓴다.
+ * 읍면동 토큰이 아예 없는 질의는 **도로명 토큰(…로/…길)이 결과에 있을 때만** 통과한다 —
+ * 지구·블록식 이름은 지번도 도로명도 아니라 타입만 맞아도 남의 자리다(세션542, 5.3km 사고).
  *
  * ⚠️ `_` 접두 = 라이브러리. graceful/exit-quota/orphan 감사가 자동 제외한다(`_molit-api.mjs` 선례).
  */
@@ -44,13 +46,32 @@ const NO_GU_SIDO = new Set(["세종"]);
 export const KAKAO_MIN_SIM = 0.7;
 /** 이 이상이면 "강함"(단독으로 정정 근거). */
 export const KAKAO_STRONG_SIM = 0.85;
+/**
+ * 부분문자열 구제에 필요한 최소 질의 길이(공백 제거).
+ *
+ * 브랜드만 이름은 7자 안팎(`중흥S-클래스`·`해링턴플레이스`)이라 그 아래로 내리면 한 지역에
+ * 여러 단지가 걸린다 — 실측: `"힐스테이트"`(5자)는 **경기 시도 게이트 안에서만도**
+ * `힐스테이트용인포레아파트`(처인구)·`힐스테이트더운정아파트`(파주)·`현대힐스테이트아파트`(수원)
+ * 3건이 부분문자열로 매치된다. DB 단지명(공백 제거) 길이 분포 2,938건 = ≤4 24 · 5~6 197 ·
+ * 7~8 445 · 9~10 761 · ≥11 1,511.
+ */
+export const KAKAO_SUB_MIN_LEN = 8;
 
-/** 회차·공급방식 수식어 — 단지 이름에서 떼어낸다(카카오에 그대로 물으면 검색이 안 된다). */
-const ROUND_WORDS = /(무순위|임의공급|추가공급|사후|잔여세대|계약취소주택|불법행위재공급)/g;
+/**
+ * 회차·공급방식 수식어 — 단지 이름에서 떼어낸다(카카오에 그대로 물으면 검색이 안 된다).
+ *
+ * 뒤의 `(?:\s*\d+\s*차)?` 는 **그 수식어 바로 뒤에 붙은 "N차"**(= 공고 회차)까지 함께 먹는다.
+ * `"평택지제역자이 무순위(사후) 1차"` 의 1차는 단지 차수가 아니라 공고 회차라, 남겨서 물으면
+ * 카카오 결과가 0건이 된다(세션542 실측 — DB 2,938 중 이런 꼴 260곳). 괄호 제거가 먼저 도므로
+ * `무순위(임의공급) 2차` → `무순위  2차` 가 되는데 `\s*` 가 그 이중 공백을 흡수한다.
+ */
+const ROUND_WORDS = /(무순위|임의공급|추가공급|사후|잔여세대|계약취소주택|불법행위재공급)(?:\s*\d+\s*차)?/g;
 
 /**
  * 단지명을 검색용 이름으로 정리한다. 괄호와 회차 수식어만 떼고 **차수/블록 숫자는 남긴다**
- * (그게 다른 블록과 가르는 유일한 정보다).
+ * (그게 다른 블록과 가르는 유일한 정보다) — 단 회차 글자 **바로 뒤**의 `N차` 는 단지 차수가
+ * 아니라 공고 회차라 뗀다(실측: 그게 남으면 카카오 0건). 위치가 회차 글자 **앞**이면
+ * (`동탄신도시 금강펜테리움 6차 센트럴파크`·`힐스테이트 2차 무순위`) 규칙상 자연히 남는다.
  * @param {unknown} name
  * @returns {string}
  */
@@ -109,6 +130,23 @@ export function matchesRegion(addressName, sido, gu) {
  * 강함(`strong`) = `sim ≥ 0.85` **또는** 공백 제거 질의가 공백 제거 장소명의 부분문자열
  * (접미어 "1차아파트" 때문에 sim 이 떨어지는 진짜 일치를 구제한다).
  *
+ * ## 왜 2패스인가 (세션542)
+ *
+ * 부분문자열 승격이 유사도 하한 **뒤**에 있으면, 앞뒤로 마을·블록 접두어가 붙어 sim 이
+ * 하한 밑으로 눌린 **진짜 일치**가 하한에서 통째로 버려진다. 실측: 질의
+ * `"파주 운정신도시 디에트르 센트럴"` ↔ 카카오 1위
+ * `"산내마을5단지파주운정신도시디에트르센트럴아파트(A36BL)"` 는 sim **0.622** 인데 질의가
+ * 장소명의 부분문자열이다(진짜 위치 = 목동동 916). 옛 순서에서는 `null` 이 나와 세션541
+ * dry-run 이 5.3km 떨어진 자리표시를 대신 골랐다.
+ *
+ * 그래서 승격을 하한 **앞**으로 옮기되, 짧은 브랜드만 질의의 오탐을 막는 조건 셋을 건다 —
+ * ①부분문자열 ②`qn.length ≥ KAKAO_SUB_MIN_LEN` ③**게이트를 통과한 docs 중 부분문자열
+ * 매치가 정확히 1건**. ③ 때문에 2패스다: 유일성은 후보 하나만 봐서는 판정할 수 없다.
+ * (실측: `"힐스테이트"` 5자는 경기 시도 게이트 안에서만도 3단지가 부분문자열로 걸린다.)
+ *
+ * ⚠️ 이 구제는 **하한 이상 후보의 판정·순위를 한 비트도 바꾸지 않는다.** `sim ≥ 0.7` 인
+ * 후보는 예전처럼 그대로 들어오고, 강함 우선 → 그 안에서 sim 최고라는 best 규칙도 같다.
+ *
  * ⚠️ 좌표(`x`/`y`)가 유한수가 아닌 문서는 **여기서** 후보에서 뺀다. 정정 도구도 이 선별기를
  * 직접 쓰는데, 그쪽은 `Number(doc.y)` 를 그대로 UPDATE 에 실어서 NaN → JSON null 로
  * **멀쩡한 좌표를 지운다.** 검사를 호출자마다 두면 한 곳만 빠져도 그 사고가 난다.
@@ -122,8 +160,10 @@ export function pickKakaoCandidate(query, docs, sidoPrefix, gu = null) {
   const q = String(query ?? "");
   const qn = q.replace(/\s+/g, "");
   if (!qn) return null;
-  /** @type {{ doc: any, sim: number, strong: boolean } | null} */
-  let best = null;
+  // 1패스 — 게이트(카테고리·이름·지역·좌표)를 통과한 것만 모은다. 유일성(subCount)은
+  // 전체를 봐야 판정되므로 여기서 채택을 결정하지 않는다.
+  /** @type {{ d: any, sim: number, sub: boolean }[]} */
+  const passed = [];
   for (const d of docs ?? []) {
     const cat = String(d?.category_name ?? "");
     const name = String(d?.place_name ?? "");
@@ -132,9 +172,16 @@ export function pickKakaoCandidate(query, docs, sidoPrefix, gu = null) {
     const addr = String(d?.address_name ?? d?.road_address_name ?? "");
     if (sidoPrefix && !matchesRegion(addr, sidoPrefix, gu)) continue;
     if (!Number.isFinite(parseFloat(d?.x)) || !Number.isFinite(parseFloat(d?.y))) continue;
-    const sim = stringSimilarity(q, name);
-    if (sim < KAKAO_MIN_SIM) continue;
-    const strong = sim >= KAKAO_STRONG_SIM || name.replace(/\s+/g, "").includes(qn);
+    passed.push({ d, sim: stringSimilarity(q, name), sub: name.replace(/\s+/g, "").includes(qn) });
+  }
+  const subCount = passed.filter((p) => p.sub).length;
+  // 2패스 — 하한 미만이라도 "유일한 부분문자열 매치 + 충분히 긴 질의"면 구제한다.
+  /** @type {{ doc: any, sim: number, strong: boolean } | null} */
+  let best = null;
+  for (const { d, sim, sub } of passed) {
+    const rescued = sub && sim < KAKAO_MIN_SIM && qn.length >= KAKAO_SUB_MIN_LEN && subCount === 1;
+    if (sim < KAKAO_MIN_SIM && !rescued) continue;
+    const strong = sim >= KAKAO_STRONG_SIM || sub;
     // 강함을 먼저, 그 안에서 유사도 최고. (접미어로 sim 이 눌린 진짜 일치가 밀리지 않게)
     if (!best || (strong && !best.strong) || (strong === best.strong && sim > best.sim)) {
       best = { doc: d, sim, strong };
@@ -181,6 +228,11 @@ function pickCleanPoi(q, docs, { sido, gu = null }) {
 const PRECISE_TYPES = new Set(["REGION_ADDR", "ROAD_ADDR"]);
 /** 읍/면/동/리/가 토큰. */
 const DONG_RE = /([가-힣]+?\d*(?:읍|면|동|리|가))(?=\s|$)/g;
+/**
+ * 도로명 토큰(…로/…길). 뒤에 공백·숫자·끝이 와야 한다 — `"오리로1165"` 처럼 붙여 쓴 표기도 잡고,
+ * `"구로구"` 처럼 로 뒤에 글자가 이어지는 지명은 안 잡는다.
+ */
+const ROAD_RE = /([가-힣A-Za-z0-9]+?(?:로|길))(?=\s|\d|$)/g;
 
 /**
  * `"학익2동"` → `"학익동"` (끝 접미어 앞 숫자만 뗀다).
@@ -193,6 +245,13 @@ export function normalizeDongToken(tok) {
 
 /**
  * 카카오 주소검색 결과가 "그 지번"인지. 타입 + 건전성(질의의 읍면동리가 토큰이 결과 주소에 있나).
+ *
+ * ⚠️ **읍면동 토큰이 없는 질의는 도로명 토큰이 결과에 있을 때만 통과**한다(세션542). 옛 코드는
+ * 그런 질의를 타입 검사만으로 통과시켰는데, 지구·블록식 주소는 지번도 도로명도 아니라서
+ * 카카오가 무엇을 주든 그 단지가 아니다 — 실측 사고: `"경기도 파주시 파주운정1"` 이
+ * `REGION_ADDR "경기 파주시 신촌동 1"` 로 통과해 5.3km 떨어진 자리가 박혔다.
+ * 청약홈 로스터 1,675건 중 읍면동리 토큰이 없는 정규화 주소는 501건 = 도로명 꼴 371건(살려야
+ * 한다) + 블록식 130건(`김포 풍무역세권 B4블록` 류 — 거부가 정직하다).
  * @param {any} doc 카카오 `documents[0]`
  * @param {unknown} query 지오코딩에 쓴 주소 문자열
  * @returns {boolean}
@@ -202,7 +261,12 @@ export function isPreciseGeocode(doc, query) {
   if (!PRECISE_TYPES.has(String(doc.address_type ?? ""))) return false;
   const addr = `${String(doc.address_name ?? "")} ${String(doc.road_address?.address_name ?? "")}`;
   const toks = [...String(query ?? "").matchAll(DONG_RE)].map((m) => m[1]);
-  if (toks.length === 0) return true; // 동 토큰이 없는 주소는 타입 검사만으로 판정
+  if (toks.length === 0) {
+    // 동 토큰이 없으면 도로명으로만 건전성을 잴 수 있다.
+    const roads = [...String(query ?? "").matchAll(ROAD_RE)].map((m) => m[1]);
+    if (roads.length === 0) return false; // 블록식·지구식 — 지번도 도로명도 아니다.
+    return roads.some((t) => addr.includes(t));
+  }
   // 원형·정규형 둘 다 허용 — "칠성동2가"처럼 숫자가 의미를 갖는 표기를 정규형이 망가뜨린다.
   return toks.some((t) => addr.includes(t) || addr.includes(normalizeDongToken(t)));
 }

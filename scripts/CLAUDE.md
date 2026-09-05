@@ -470,6 +470,10 @@ vs 서울시 TOPIS 공식 11,231건, 고유 이름은 9,057개). 그래서:
   통과분만 채택(약함 0.7~0.85 는 시군구 게이트를 거쳤을 때만). `geocode-missing` 의 주소검색(1차 `region gu dong`
   = 항상 동/구 중심점)과 4차(시군구 중심점)는 **둘 다 삭제** — 못 찾으면 **null 로 두고 skip 으로 센다**(실패 아님 —
   실패로 세면 매일 step 이 죽는다). seed 의 청약홈 주소검색은 `isPreciseGeocode`(정밀 지번만) 통과분만.
+- **v2.1(세션542)** — 같은 모듈의 구멍 셋을 실측으로 막았다: ①읍면동 토큰 없는 주소는 **도로명 토큰이 결과에 있을 때만**
+  정밀(`파주운정1` → `신촌동 1` 통과 사고; 로스터 501 = 도로명 371·블록식 130) ②부분문자열 승격을 유사도 하한 **앞**으로,
+  단 질의 8자 이상 + 게이트 안 부분문자열 매치 **딱 1건**(`힐스테이트` 5자는 경기 안 3단지에 걸린다) ③회차 글자 바로 뒤의
+  "N차"는 뗀다(`무순위 3차` 가 남으면 카카오 0건, DB 260곳). 표·실측 = 규칙 문서 §"도구 v2 구멍 3개 → v2.1 처방".
 - 정정 도구 = `scripts/fix-placeholder-addresses.mjs`(3출처 교차: **카카오 POI > 청약홈 공급주소 지오코딩 >
   단지명 매칭**, dry-run 기본, `--purge-derived --ids-file=scripts/data/placeholder-coord-fixes-2026-09.json`).
   선별기 `pickKakaoCandidate`·`cleanName`·`shortRegion`·`isPreciseGeocode` 는 `_kakao-poi.mjs` 에 있고 도구·도구
