@@ -539,7 +539,7 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   dry-run 재확인 = ok 1143→1222 · none 551→464 · **B_kakao_strong 19→27**(파주 3 = 목동동 916 이동 + 새 구제 5 =
   에코델타 푸르지오 트레파크·디에트르 에듀타운·엘리프 한신더휴 C3/D3·시흥거모 엘가, 전부 POI 이름 꼬리 "(20xx년xx월예정)"
   이 유사도를 깎던 자리) · B_apply 5→2(파주 오답 3 제거·송도 2 유지) · weak 11→14(보류) · conflict 0 → **적용 대상 29곳**.
-  ③`--apply` **완료(세션542, 사장님 승인 29곳 = `scripts/data/placeholder-coord-fixes-2026-09-batch3.json`)**. 실측 표 = [rules/collectors/placeholder-coordinates-truth-sources.md](rules/collectors/placeholder-coordinates-truth-sources.md) §"도구 v2 구멍 3개 → v2.1 처방".
+  ③`--apply` **완료(세션542, 사장님 승인 29곳 = `scripts/data/placeholder-coord-fixes-2026-09-batch3.json`, 코드·문서 = PR #478)**. 실측 표 = [rules/collectors/placeholder-coordinates-truth-sources.md](rules/collectors/placeholder-coordinates-truth-sources.md) §"도구 v2 구멍 3개 → v2.1 처방".
   ★★ 그 `--apply` 에서 **청약홈 API 가 0건**을 돌려줘 도구가 재분석 판정을 바꿔 **33곳**을 옮김(6곳 승인 밖 — 리버카운티 3곳은 39km 밖
   다른 단지) → 즉시 6곳 되돌리고 송도 2곳은 dry-run 값으로 직접 반영. 처방 ①로스터 0건이면 `--apply` 중단(이번 PR) ②아래 🔴.
 
