@@ -456,6 +456,19 @@ vs 서울시 TOPIS 공식 11,231건, 고유 이름은 9,057개). 그래서:
 
 ---
 
+## 좌표 지오코딩 — 폴백이 만든 자리표시 주소 (세션539~540)
+
+`geocode-missing.mjs` 의 키워드 폴백(2·3·5차)은 결과를 검증하지 않아 단지명이 안 잡히면 **구청 같은 대표
+장소**를 좌표로 쓰고, 4차는 **시군구 중심점**을 쓴다. 그 뒤 `reverse-geocode.mjs` 가 `address IS NULL` 행을
+역지오코딩해 지번·도로명·법정동코드·동까지 채우므로 **완전한 가짜 주소**가 된다(김량장동 286 = 처인구청에
+개발사업 5종·19곳이 겹침, 최대 21km). 2026-09 에 209곳을 정정했다.
+
+- 정정 도구 = `scripts/fix-placeholder-addresses.mjs`(3출처 교차: **카카오 POI > 청약홈 공급주소 지오코딩 >
+  단지명 매칭**, dry-run 기본, `--purge-derived --ids-file=scripts/data/placeholder-coord-fixes-2026-09.json`).
+- 방법론·오탐 사례·지역 게이트 실측·근본 처방 = [.claude/rules/collectors/placeholder-coordinates-truth-sources.md](../.claude/rules/collectors/placeholder-coordinates-truth-sources.md).
+- ⚠️ 좌표를 고쳤으면 `dong/bjd_code/lot_main/lot_sub/road_address` 도 새 좌표로 재정합해야 한다(`bjd_code` 는
+  건축HUB 조회 키). 파생표 정리는 KST 03:00~05:30 창에서만([.claude/rules/collectors/purge-to-recollect-timing.md](../.claude/rules/collectors/purge-to-recollect-timing.md)).
+
 ## BldEngyHubService 한계
 
 `collect-building-hub.mjs`의 에너지 수집(전기/가스)은 **공공/상업 건물만 대상**.
