@@ -110,19 +110,19 @@ import {
   sleep,
   log,
   logError,
-  REGION_MAP,
   ROOT,
 } from "./collectors/_shared.mjs";
+// 세션541: 카카오 게이트(POI 선별 `cleanName`·`shortRegion`·`pickKakaoCandidate`·유사도 상수 +
+// 주소검색 정밀도 `isPreciseGeocode`)는 `scripts/collectors/_kakao-poi.mjs` 로 옮겼다 — 자동
+// 지오코딩 통로들(geocode-missing 키워드, applyhome-seed 주소·키워드)이 이 도구와 **같은 규칙**을
+// 쓰게 하기 위해서다. 그 함수들의 가드는 `_kakao-poi.test.mjs` 와 이 도구 테스트가 지킨다.
+import { cleanName, shortRegion, pickKakaoCandidate, isPreciseGeocode } from "./collectors/_kakao-poi.mjs";
 
 loadEnv();
 const PHASE = "fix-placeholder";
 
 /** 현재 좌표와 이만큼 떨어져 있으면 "다른 자리"로 본다. */
 export const NEAR_M = 300;
-/** 카카오 POI 후보로 인정하는 최소 이름 유사도. */
-export const KAKAO_MIN_SIM = 0.7;
-/** 이 이상이면 "강함"(단독으로 정정 근거). */
-export const KAKAO_STRONG_SIM = 0.85;
 /** complexes 이름매칭 최소 유사도. */
 export const COMPLEX_MIN_SIM = 0.75;
 /** C 단독 채택에 필요한 유사도. */
@@ -151,35 +151,6 @@ const APPLYHOME_URL =
   "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1/getRemndrLttotPblancDetail";
 
 // ────────────────────────────── 순수 함수 ──────────────────────────────
-
-/** 회차·공급방식 수식어 — 단지 이름에서 떼어낸다(카카오에 그대로 물으면 검색이 안 된다). */
-const ROUND_WORDS = /(무순위|임의공급|추가공급|사후|잔여세대|계약취소주택|불법행위재공급)/g;
-
-/**
- * 단지명을 검색용 이름으로 정리한다. 괄호와 회차 수식어만 떼고 **차수/블록 숫자는 남긴다**
- * (그게 다른 블록과 가르는 유일한 정보다).
- * @param {unknown} name
- * @returns {string}
- */
-export function cleanName(name) {
-  return String(name ?? "")
-    .replace(/\([^)]*\)/g, " ")
-    .replace(ROUND_WORDS, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
- * 시도 표기를 약칭으로. `REGION_MAP` 에 없으면 앞 2글자(예: "서울시" → "서울").
- * @param {unknown} r
- * @returns {string | null}
- */
-export function shortRegion(r) {
-  const s = String(r ?? "").trim();
-  if (!s) return null;
-  const mapped = /** @type {Record<string, string>} */ (REGION_MAP)[s];
-  return mapped ?? s.slice(0, 2);
-}
 
 /**
  * 주소 앞의 시도 토큰을 떼어낸다.
@@ -290,75 +261,6 @@ export function phaseConsistent(aName, cName) {
   if (a.size === 0 || c.size === 0) return "one-sided";
   for (const v of a) if (c.has(v)) return "ok";
   return "conflict";
-}
-
-/** 아파트로 인정하는 카테고리. */
-const KAKAO_CAT_OK = /(아파트|주택)/;
-/** 실물 단지가 아닌 것 — 모델하우스는 실제 단지에서 수 km 떨어진 자리에 있다. */
-const KAKAO_CAT_NG = /(모델하우스|견본|중개|분양사무|홍보관)/;
-
-/**
- * 카카오 키워드 결과에서 쓸 만한 후보 하나를 고른다.
- *
- * 강함(`strong`) = `sim ≥ 0.85` **또는** 공백 제거 질의가 공백 제거 장소명의 부분문자열
- * (접미어 "1차아파트" 때문에 sim 이 떨어지는 진짜 일치를 구제한다).
- * @param {unknown} query 정리된 단지명
- * @param {any[] | null | undefined} docs 카카오 `documents`
- * @param {string | null} sidoPrefix 단지 시도 약칭(예: "경기") — 결과 주소가 이걸로 시작해야 인정
- * @returns {{ doc: any, sim: number, strong: boolean } | null}
- */
-export function pickKakaoCandidate(query, docs, sidoPrefix) {
-  const q = String(query ?? "");
-  const qn = q.replace(/\s+/g, "");
-  if (!qn) return null;
-  /** @type {{ doc: any, sim: number, strong: boolean } | null} */
-  let best = null;
-  for (const d of docs ?? []) {
-    const cat = String(d?.category_name ?? "");
-    const name = String(d?.place_name ?? "");
-    if (!KAKAO_CAT_OK.test(cat) || KAKAO_CAT_NG.test(cat)) continue;
-    if (KAKAO_CAT_NG.test(name)) continue;
-    const addr = String(d?.address_name ?? d?.road_address_name ?? "");
-    if (sidoPrefix && !addr.startsWith(sidoPrefix)) continue;
-    const sim = stringSimilarity(q, name);
-    if (sim < KAKAO_MIN_SIM) continue;
-    const strong = sim >= KAKAO_STRONG_SIM || name.replace(/\s+/g, "").includes(qn);
-    // 강함을 먼저, 그 안에서 유사도 최고. (접미어로 sim 이 눌린 진짜 일치가 밀리지 않게)
-    if (!best || (strong && !best.strong) || (strong === best.strong && sim > best.sim)) {
-      best = { doc: d, sim, strong };
-    }
-  }
-  return best;
-}
-
-/** 카카오 주소검색에서 "그 지번"이라고 인정하는 타입. `REGION`(동 중심점)은 폴백이라 거부. */
-const PRECISE_TYPES = new Set(["REGION_ADDR", "ROAD_ADDR"]);
-/** 읍/면/동/리/가 토큰. */
-const DONG_RE = /([가-힣]+?\d*(?:읍|면|동|리|가))(?=\s|$)/g;
-
-/**
- * `"학익2동"` → `"학익동"` (끝 접미어 앞 숫자만 뗀다).
- * @param {unknown} tok
- * @returns {string}
- */
-export function normalizeDongToken(tok) {
-  return String(tok ?? "").replace(/\d+(?=(?:읍|면|동|리|가)$)/, "");
-}
-
-/**
- * 카카오 주소검색 결과가 "그 지번"인지. 타입 + 건전성(질의의 읍면동리가 토큰이 결과 주소에 있나).
- * @param {any} doc 카카오 `documents[0]`
- * @param {unknown} query 지오코딩에 쓴 주소 문자열
- * @returns {boolean}
- */
-export function isPreciseGeocode(doc, query) {
-  if (!doc) return false;
-  if (!PRECISE_TYPES.has(String(doc.address_type ?? ""))) return false;
-  const addr = `${String(doc.address_name ?? "")} ${String(doc.road_address?.address_name ?? "")}`;
-  const toks = [...String(query ?? "").matchAll(DONG_RE)].map((m) => m[1]);
-  if (toks.length === 0) return true; // 동 토큰이 없는 주소는 타입 검사만으로 판정
-  // 원형·정규형 둘 다 허용 — "칠성동2가"처럼 숫자가 의미를 갖는 표기를 정규형이 망가뜨린다.
-  return toks.some((t) => addr.includes(t) || addr.includes(normalizeDongToken(t)));
 }
 
 /**

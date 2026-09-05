@@ -10,17 +10,21 @@
  * 아무것도 안 지키는 껍데기가 남는다.
  */
 import { describe, it, expect } from "vitest";
+// 세션541: 카카오 게이트(POI 선별 3종 + 주소검색 정밀도 `isPreciseGeocode`)는 공유 모듈로
+// 옮겨졌다(자동 통로들과 같은 규칙). 여기 가드는 그대로 둔다 — 이 도구가 그 규칙으로 좌표를 옮긴다.
 import {
   cleanName,
   shortRegion,
+  pickKakaoCandidate,
+  isPreciseGeocode,
+  normalizeDongToken,
+} from "./collectors/_kakao-poi.mjs";
+import {
   cityKey,
   complexKey,
   normalizeApplyhomeAddress,
   extractPhases,
   phaseConsistent,
-  pickKakaoCandidate,
-  isPreciseGeocode,
-  normalizeDongToken,
   classify,
   groupSharedAddresses,
   coreName,

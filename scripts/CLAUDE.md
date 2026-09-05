@@ -456,15 +456,24 @@ vs 서울시 TOPIS 공식 11,231건, 고유 이름은 9,057개). 그래서:
 
 ---
 
-## 좌표 지오코딩 — 폴백이 만든 자리표시 주소 (세션539~540)
+## 좌표 지오코딩 — 폴백이 만든 자리표시 주소 (세션539~541)
 
 `geocode-missing.mjs` 의 키워드 폴백(2·3·5차)은 결과를 검증하지 않아 단지명이 안 잡히면 **구청 같은 대표
-장소**를 좌표로 쓰고, 4차는 **시군구 중심점**을 쓴다. 그 뒤 `reverse-geocode.mjs` 가 `address IS NULL` 행을
+장소**를 좌표로 쓰고, 4차는 **시군구 중심점**을 썼다. `collect-applyhome-seed.mjs` 의 `geocodeAddr` 도 청약홈
+주소 문자열을 키워드로 던져 1위를 무검증 채택했다(세 번째 통로 — 세션541 발견, `덕은도시개발구역 A4블록` →
+다른 단지 DMC자이더리버). 그 뒤 `reverse-geocode.mjs` 가 `address IS NULL` 행을
 역지오코딩해 지번·도로명·법정동코드·동까지 채우므로 **완전한 가짜 주소**가 된다(김량장동 286 = 처인구청에
 개발사업 5종·19곳이 겹침, 최대 21km). 2026-09 에 209곳을 정정했다.
 
+- **근본 처방(세션541)** = 공유 모듈 `scripts/collectors/_kakao-poi.mjs`. 세 통로가 `geocodeApartmentByName`
+  하나를 쓴다: 결과 15건 중 **아파트/주택 카테고리 · 모델하우스류 제외 · 시도+시군구 토큰 게이트 · 이름 유사도 ≥0.7**
+  통과분만 채택(약함 0.7~0.85 는 시군구 게이트를 거쳤을 때만). `geocode-missing` 의 주소검색(1차 `region gu dong`
+  = 항상 동/구 중심점)과 4차(시군구 중심점)는 **둘 다 삭제** — 못 찾으면 **null 로 두고 skip 으로 센다**(실패 아님 —
+  실패로 세면 매일 step 이 죽는다). seed 의 청약홈 주소검색은 `isPreciseGeocode`(정밀 지번만) 통과분만.
 - 정정 도구 = `scripts/fix-placeholder-addresses.mjs`(3출처 교차: **카카오 POI > 청약홈 공급주소 지오코딩 >
   단지명 매칭**, dry-run 기본, `--purge-derived --ids-file=scripts/data/placeholder-coord-fixes-2026-09.json`).
+  선별기 `pickKakaoCandidate`·`cleanName`·`shortRegion`·`isPreciseGeocode` 는 `_kakao-poi.mjs` 에 있고 도구·도구
+  테스트가 거기서 import 한다.
 - 방법론·오탐 사례·지역 게이트 실측·근본 처방 = [.claude/rules/collectors/placeholder-coordinates-truth-sources.md](../.claude/rules/collectors/placeholder-coordinates-truth-sources.md).
 - ⚠️ 좌표를 고쳤으면 `dong/bjd_code/lot_main/lot_sub/road_address` 도 새 좌표로 재정합해야 한다(`bjd_code` 는
   건축HUB 조회 키). 파생표 정리는 KST 03:00~05:30 창에서만([.claude/rules/collectors/purge-to-recollect-timing.md](../.claude/rules/collectors/purge-to-recollect-timing.md)).
