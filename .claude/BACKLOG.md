@@ -502,7 +502,7 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
 
 ### 세션540 자리표시 좌표 정정이 새로 남긴 것 (2026-09-05)
 
-- ✅ **근본 처방 적용(세션541)** — 키워드 폴백 무검증 채택 통로가 **셋**이었다: `geocode-missing.mjs` 2·3·5차 ·
+- ✅ **근본 처방 적용(세션541, PR #477)** — 키워드 폴백 무검증 채택 통로가 **셋**이었다: `geocode-missing.mjs` 2·3·5차 ·
   같은 파일 4차(시군구 중심점) · **`collect-applyhome-seed.mjs` `geocodeAddr` 키워드 폴백**(세션541 발견 —
   `덕은도시개발구역 A4블록` 을 키워드로 던지면 다른 단지 DMC자이더리버가 나온다). 셋 다 공유 모듈
   `scripts/collectors/_kakao-poi.mjs` 의 `geocodeApartmentByName`(카테고리·시도+시군구 토큰·유사도 ≥0.7 게이트,
