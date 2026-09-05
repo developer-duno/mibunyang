@@ -502,6 +502,15 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
 
 ### 세션540 자리표시 좌표 정정이 새로 남긴 것 (2026-09-05)
 
+- ✅ **근본 처방 적용(세션541, PR #477)** — 키워드 폴백 무검증 채택 통로가 **셋**이었다: `geocode-missing.mjs` 2·3·5차 ·
+  같은 파일 4차(시군구 중심점) · **`collect-applyhome-seed.mjs` `geocodeAddr` 키워드 폴백**(세션541 발견 —
+  `덕은도시개발구역 A4블록` 을 키워드로 던지면 다른 단지 DMC자이더리버가 나온다). 셋 다 공유 모듈
+  `scripts/collectors/_kakao-poi.mjs` 의 `geocodeApartmentByName`(카테고리·시도+시군구 토큰·유사도 ≥0.7 게이트,
+  약함은 시군구 게이트 통과 때만)으로 통일. 독립 리뷰가 뒷문 둘을 더 잡았다 — geocode-missing **1차 주소검색**
+  (`region gu dong` = 항상 동/구 중심점)과 seed **주소검색의 REGION 통과** → 1차·4차 삭제, seed 는 `isPreciseGeocode`
+  통과분만. 못 찾음은 **skip**(실패로 세면 매일 step 이 죽는다). 상세 = [rules/collectors/placeholder-coordinates-truth-sources.md](rules/collectors/placeholder-coordinates-truth-sources.md) §재발 방지.
+  ⚠️ 관찰 = 다음 seed(월 11:30 KST) 로그의 `보류 N건`·`[키워드 …]` 줄, 매일 geocode step 의 `미확정 N` — 좌표 못 찾는 새 단지는 이제 null 로 남는다.
+
 - 🔴 **`naver_presale_no`/`naver_presale_seq` 링크 오염 — `ah-*` 표본 4/4 가 엉뚱한 지역**
   좌표를 고치려 단지를 대조하다 드러났다. 세션536이 잡은 `complexes` 매칭 오염
   (짝 28,268쌍 중 500m 이내 7.9%·거리 중앙 85km)의 **분양(presale) 판**이다.
@@ -516,6 +525,16 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   해당 지구명이 없다(실측)**. 남은 길은 새 폴리곤 출처를 들이거나 수작업이다.
   ⚠️ 그때까지 **그 좌표를 지우면 안 된다** — 빈칸은 화면에 "지하철 없음·병원 0개"로 그려진다
   ([.claude/rules/collectors/purge-to-recollect-timing.md](rules/collectors/purge-to-recollect-timing.md)).
+
+- 🟡 **도구 v2 전수 dry-run(세션541, 209 정정 후) 후보 24 — 적용 전에 도구 구멍부터 막아야 한다**
+  kakao_strong 19(전부 `이름+아파트` 정확 일치) + 청약홈 단독 5. 그중 **파주 디에트르 센트럴(A36BL) 3곳은 도구 오류**:
+  청약홈 주소 `경기도 파주시 파주운정1` 에 읍면동 토큰이 없어 건전성 검사가 스킵되고 카카오가 준 엉뚱한
+  `신촌동 1`(5.3km) 을 통과시켰다. 진짜 = POI `산내마을5단지…디에트르센트럴아파트(A36BL)` **목동동 916
+  (37.72987, 126.73318)** — 접두어 때문에 유사도 0.667 로 하한(0.7)에 걸려 도구가 POI 를 못 봤다(부분문자열 승격이
+  하한 검사 뒤에 있음). 송도프라임뷰 2곳은 맞음(POI 와 8m).
+  ⚠️ **파주 3곳을 수작업으로 고쳐도 `--apply` 를 다시 돌리면 도구가 다시 신촌동으로 되돌린다**(POI 를 못 보고 청약홈
+  오답만 보므로). 순서 = ①도구 v2.1(승격 규칙을 하한 앞으로 + 최소 질의 길이 · 읍면동 없는 주소는 지번 숫자 대조)
+  ②dry-run 재확인 ③`--apply`. 실측 = [rules/collectors/placeholder-coordinates-truth-sources.md](rules/collectors/placeholder-coordinates-truth-sources.md) §"도구 v2 의 알려진 구멍".
 
 - 🟢 **카카오 약함(sim 0.7~0.85) 32곳 보류** — 이름이 비슷하기만 한 남의 단지를 옮길 위험이 있어
   `--apply` 대상에서 뺐다(`--include-weak` 로만 반영). 청약홈 공급주소가 **도로명**이면 카카오

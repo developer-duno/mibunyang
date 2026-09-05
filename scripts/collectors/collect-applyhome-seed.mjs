@@ -39,6 +39,7 @@ import {
   REGION_MAP, VALID_REGIONS, normalizeGu, resolveBuilder, clampUnsoldRate,
 } from "./_shared.mjs";
 import { normName } from "./collect-applyhome-detail.mjs";
+import { geocodeApartmentByName, fetchKakaoKeywordDocs, isPreciseGeocode } from "./_kakao-poi.mjs";
 
 loadEnv();
 
@@ -166,14 +167,19 @@ export function filterCandidates(rows, rosterIds, since) {
   return { candidates, skippedExisting, skippedOld, skippedNoDate };
 }
 
-// ── Kakao 지오코딩 (geocode-missing.mjs 패턴: 주소 검색 → 키워드 폴백) ──
+// ── Kakao 지오코딩 (주소검색 전용 — 키워드는 게이트를 거쳐 별도로 한다) ──
 /**
+ * 카카오 **주소검색**(address.json) 한 건. 키워드 검색은 여기 없다 — `_kakao-poi.mjs` 가 게이트를 걸어 한다.
+ *
+ * ⚠️ 1위를 그냥 받지 않고 `isPreciseGeocode` 로 **정밀도**를 본다(세션541). 청약홈 공급주소는
+ * 지번 없는 표기가 흔한데, 그런 질의에 카카오는 `address_type: REGION`(동/구 **중심점**)을 준다.
+ * 그건 그 단지 좌표가 아니라 자리표시인데 저장되는 순간 `reverse-geocode.mjs` 가 지번·도로명까지
+ * 갖춘 가짜 주소로 세탁한다(세션539~540: 314곳 발견 → 209곳 정정). 정밀하지 않으면 **정직한 null**.
  * @param {string} query
- * @param {string} endpoint  "address" | "keyword"
  * @returns {Promise<{lat: number, lng: number} | null>}
  */
-async function kakaoSearch(query, endpoint) {
-  const url = `https://dapi.kakao.com/v2/local/search/${endpoint}.json?query=${encodeURIComponent(query)}&size=1`;
+async function kakaoSearch(query) {
+  const url = `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(query)}&size=1`;
   const res = await fetch(url, {
     headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
     signal: AbortSignal.timeout(10000),
@@ -181,24 +187,32 @@ async function kakaoSearch(query, endpoint) {
   if (!res.ok) return null;
   const data = await res.json();
   const doc = data.documents?.[0];
-  return doc ? { lat: parseFloat(doc.y), lng: parseFloat(doc.x) } : null;
+  if (!isPreciseGeocode(doc, query)) return null;
+  const lat = parseFloat(doc.y);
+  const lng = parseFloat(doc.x);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 }
 
 /**
- * 공급주소 지오코딩. "번지 일원" 류 꼬리를 줄여가며 재시도, 실패 시 키워드 검색 폴백.
+ * 공급주소 지오코딩. "번지 일원" 류 꼬리를 줄여가며 재시도한다.
+ *
+ * ⚠️ **키워드 폴백을 하지 않는다**(세션541). 청약홈 공급주소는 블록식
+ * ("…덕은도시개발구역 A4블록")이 흔한데, 그걸 키워드로 던지면 지역명이 지배해서
+ * **다른 단지**(예: DMC자이더리버)의 좌표가 1위로 잡혔다. 키워드는
+ * `geocodeApartmentByName` 이 **단지명으로** 게이트를 걸어 따로 한다.
  * @param {string | null} addr
  * @returns {Promise<{lat: number, lng: number} | null>}
  */
 export async function geocodeAddr(addr, search = kakaoSearch) {
   if (!addr) return null;
-  const primary = await search(addr, "address");
+  const primary = await search(addr);
   if (primary) return primary;
   const trimmed = addr.replace(/\s*(일원|일대|외\s?\d*필지?)\s*$/, "").trim();
   if (trimmed && trimmed !== addr) {
-    const retry = await search(trimmed, "address");
+    const retry = await search(trimmed);
     if (retry) return retry;
   }
-  return search(trimmed || addr, "keyword");
+  return null;
 }
 
 // ── 좌표 정밀 중복 판정 게이트 (사장님 결정 ①) ──
@@ -312,7 +326,18 @@ async function main() {
       if (rpt.interrupted()) break;
       const cand = mapRow(raw);
       if (!cand) { regionFailed++; rpt.skip(); continue; }
-      const geo = await geocodeAddr(cand.address);
+      let geo = await geocodeAddr(cand.address);
+      if (!geo) {
+        // 주소가 블록식이라 안 잡히면 단지명으로 — 카테고리·시도+시군구·유사도 게이트 통과분만.
+        const byName = await geocodeApartmentByName(
+          { name: cand.name, sido: cand.region, gu: cand.gu },
+          { fetchDocs: (q) => fetchKakaoKeywordDocs(q, KAKAO_KEY) },
+        );
+        if (byName) {
+          geo = { lat: byName.lat, lng: byName.lng };
+          log(PHASE, `  [키워드 ${byName.tier}] ${cand.name} → ${byName.placeName}`);
+        }
+      }
       if (geo) { cand.lat = geo.lat; cand.lng = geo.lng; }
       await sleep(200);
       const verdict = findDuplicate(cand, existing);

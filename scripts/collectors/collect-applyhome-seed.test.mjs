@@ -4,6 +4,8 @@
  * 대상: mapRow / filterCandidates / findDuplicate / dedupeWithinBatch / geocodeAddr
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   mapRow, filterCandidates, findDuplicate, dedupeWithinBatch, geocodeAddr, parseAddress,
 } from "./collect-applyhome-seed.mjs";
@@ -219,14 +221,70 @@ describe("geocodeAddr", () => {
     expect(queries.length).toBe(2);
   });
 
-  it("주소 검색 전부 실패 → 키워드 폴백", async () => {
-    const search = async (/** @type {string} */ _q, /** @type {string} */ ep) =>
-      ep === "keyword" ? { lat: 36.0, lng: 128.0 } : null;
-    expect(await geocodeAddr("경북 어딘가 123", search)).toEqual({ lat: 36.0, lng: 128.0 });
+  it("★ 주소 검색 전부 실패 → null, 호출은 주소검색 2회뿐 (키워드는 여기서 안 부른다 — 세션541)", async () => {
+    // 청약홈 공급주소는 블록식("…덕은도시개발구역 A4블록")이 흔한데 그걸 키워드로 던지면
+    // 지역명이 지배해 **다른 단지**(DMC자이더리버) 좌표가 1위로 잡혔다. 키워드는
+    // `geocodeApartmentByName` 이 단지명으로 게이트를 걸어 따로 한다.
+    // 옛 코드는 여기서 3번째 호출(키워드 폴백)이 있었다 — 호출 수가 2 를 넘으면 그게 되살아난 것.
+    /** @type {string[]} */
+    const queries = [];
+    const search = async (/** @type {string} */ q) => { queries.push(q); return null; };
+    expect(await geocodeAddr("경북 어딘가 123 일원", search)).toBe(null);
+    expect(queries).toEqual(["경북 어딘가 123 일원", "경북 어딘가 123"]);
   });
 
   it("주소 null → null (검색 호출 0)", async () => {
     const search = async () => { throw new Error("호출되면 안 됨"); };
     expect(await geocodeAddr(null, search)).toBe(null);
+  });
+});
+
+// ── 키워드 배선 가드 (세션541) ─────────────────────────────
+/**
+ * ⚠️ 주석을 걷어낸 사본에 돌린다 — 주석 처리된 옛 코드가 가드를 속이지 못하게
+ * (`guards-must-be-mutation-tested.md`). 줄 주석은 **줄머리만** 지운다(코드 안 `https://…`
+ * URL 이 잘려 검사 범위가 조용히 깎이는 것을 막는다).
+ */
+const SRC = readFileSync(fileURLToPath(new URL("./collect-applyhome-seed.mjs", import.meta.url)), "utf8")
+  .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, " ")
+  .replace(/(?<!\*)\/\*[\s\S]*?\*\//g, " ")
+  .replace(/^[ \t]*\/\/.*$/gm, " ");
+
+const OLD_KEYWORD_FALLBACK = 'search(trimmed || addr, "keyword")';
+
+describe("지오코딩 배선 — 주소는 주소검색, 키워드는 게이트 통과분만", () => {
+  it("검사 대상이 주석 제거 후에도 남아 있다", () => {
+    expect(SRC).toContain("geocodeApartmentByName");
+    expect(SRC).toContain("_kakao-poi.mjs");
+  });
+
+  // ⚠️ import 검사를 정규식 리터럴로 쓰면 `audit-declared-deps` 가 이스케이프를 패키지 이름으로
+  //    오검출한다(실측 exit 1). 상대경로 문자열은 그 감사가 건너뛴다.
+  it("★ 단지명 키워드는 공유 게이트를 거친다", () => {
+    expect(SRC).toContain('from "./_kakao-poi.mjs"');
+    expect(SRC).toMatch(/const byName = await geocodeApartmentByName\(/);
+  });
+
+  // 세션541: geocode-missing 쪽 뮤테이션(M-E)에서 `gu` 를 빼도 초록이었던 사각을 여기서도 막는다 —
+  // gu 가 빠지면 시군구 게이트 없이 시도만 남는다. 인자 형태를 고정한다.
+  it("★ 호출부가 단지명·시도·시군구를 셋 다 넘긴다", () => {
+    expect(SRC).toMatch(/geocodeApartmentByName\(\s*\{ name: cand\.name, sido: cand\.region, gu: cand\.gu \}/);
+  });
+
+  it("★ geocodeAddr 의 무검증 키워드 폴백이 부활하지 않았다", () => {
+    expect(SRC).not.toContain(OLD_KEYWORD_FALLBACK);
+  });
+
+  // 세션541 2차: 주소검색 1위도 그냥 받으면 안 된다. 청약홈 공급주소는 지번 없는 표기가
+  // 흔한데, 그런 질의에 카카오는 `address_type: REGION`(동/구 **중심점**)을 준다 —
+  // geocode-missing 에서 없앤 자리표시와 같은 것이다. 정밀도 검사가 빠지면 red.
+  it("★ 주소검색 1위를 그대로 받지 않는다 — isPreciseGeocode 로 중심점을 거른다", () => {
+    expect(SRC).toMatch(/isPreciseGeocode\(doc, query\)/);
+  });
+
+  // 키워드는 반드시 `_kakao-poi.mjs` 게이트를 거친다 — 이 파일이 keyword.json 을 직접 부르면
+  // 게이트를 우회하는 무검증 1위 채택이 되살아난 것이다(철자를 바꿔도 걸린다).
+  it("★ 키워드(keyword.json)를 직접 부르지 않는다", () => {
+    expect(SRC).not.toContain("keyword.json");
   });
 });
