@@ -1,203 +1,852 @@
 // @ts-check
 /**
- * 자리표시용(placeholder) 주소로 좌표가 어긋난 단지 일괄 정정 — `fix-sosa-coordinates.mjs` 일반화 (세션540)
+ * 자리표시용(placeholder) 주소로 좌표가 어긋난 단지 — **3출처 교차 검증** 정정 도구 v2 (세션540)
  *
- * ## 무엇을 찾나
+ * ## 무엇이 틀렸나 (원인 — 2026-09-03 실측 확정)
  *
- * 소사역 프라힐스(세션539, 15곳·651m)와 같은 종류의 문제 — **서로 다른 실제 프로젝트가 같은
- * `address` 문자열을 공유**하는 경우(대개 정확한 지번이 확정되기 전 대략적인 주소를 쓰다가
- * 다른 단지의 주소를 그대로 복사한 경우). 이런 그룹은 `naver_nearby_median` 같은 좌표 파생값이
- * 그룹 전체에서 하나로 통일되는 특징이 있다(같은 좌표를 공유하기 때문).
+ * `geocode-missing.mjs:163` 의 **키워드 폴백**(`[region, gu, name]`)이 단지 이름을 못 잡으면
+ * 구청 같은 **대표 장소의 좌표**를 돌려준다. 그 좌표를 `reverse-geocode.mjs` 가 역지오코딩해
+ * `address`·`road_address`·`bjd_code`·`lot_*` 까지 **그럴듯하게** 써넣는다. 그래서 서로 완전히
+ * 다른 프로젝트가 **같은 지번·같은 좌표**를 공유하는 무리가 생긴다(세션539 발견: 314곳·최대 131km).
  *
- * ## 방법론 (2026-09-03 실측·검증)
+ * 좌표가 어긋나면 교통·학군·인프라·인근시세가 전부 **다른 동네 기준**으로 계산된다.
+ * 입지 비중은 실거주 45% · 자녀교육 70% 라 점수 왜곡이 크다.
  *
- * 1. `address` 를 2곳 이상이 공유하는 그룹을 찾는다 (base 1,811곳 / 467그룹 — 노이즈 큼,
- *    같은 프로젝트의 무순위/임의공급 회차가 정당하게 같은 주소를 쓰는 경우가 다수 섞여 있다).
- * 2. 각 후보를 `complexes`(네이버 실단지) 테이블과 **이름 유사도 ≥0.75**로 매칭한다.
- *    ⚠️ **지역 필터가 필수다** — 지역 필터 없이 매칭했더니 "힐스테이트"·"두산위브더제니스" 같은
- *    전국 공용 브랜드명이 수백km 떨어진 별개 단지와 매칭돼 큰 오탐(330km!)이 났다. 시도 단위
- *    필터도 부족했다(경기도 안에서도 55km 오탐) — **address 에서 뽑은 시/군 단위**로 좁혀야
- *    안전했다(오탐 소멸, 검증된 결과 107건이 세션539 가 별도로 추정한 109건과 거의 일치).
- * 3. `complexes` 매칭점과 300m 초과 떨어져 있으면 "정정 대상"(진짜 다른 좌표), 300m 이내면
- *    "이미 정상"(건드리지 않음).
- * 4. 매칭이 안 되는 나머지(1,400여곳)는 이 방법으로 못 잡는다 — 다른 방법(직접 지오코딩 등)이
- *    필요하다. 이 스크립트는 그 곳들은 건드리지 않는다(대상에서 제외될 뿐, 삭제/변경 없음).
+ * ## 후보 풀 — 의심일 뿐, 판정은 출처로 한다
  *
- * ## infra 테이블 컬럼 소유권 (세션539 사고 정정 — 절대 행 전체 삭제 금지)
+ * `apartments.address` 를 **2곳 이상이 공유**하는 행(2026-09-03 기준 467그룹·1,811곳)을 후보로 삼는다.
+ * ⚠️ 같은 프로젝트의 무순위/임의공급 회차가 **정당하게** 같은 주소를 쓰는 경우가 다수 섞여 있다.
+ * 그래서 이 풀은 "여기부터 보자"는 뜻일 뿐이고, 고칠지 말지는 아래 세 출처가 정한다.
  *
- * `infra` 테이블은 5개 수집기가 컬럼을 나눠 쓴다:
- *   - `collect-childcare.mjs`  → childcare, childcare_dist       (스킵 로직 없음 — 매 실행 전량 재계산, **자동 회복**)
- *   - `collect-police.mjs`    → police, police_dist              (스킵 로직 없음 — **자동 회복**)
- *   - `collect-emergency.mjs` → emergency, emergency_dist, emergency_name, emergency_type (**자동 회복**)
- *   - `infra-kakao.mjs`       → hospital,mart,conv,cafe,culture,bank,pharmacy,park,subway_dist
- *                                (30일 신선도 + 완결성 스킵 — **자동 회복 안 됨**, 컬럼만 null 처리해야 재수집)
- *   - `transport-tago.mjs`    → apartment_id 존재만 보장(ignoreDuplicates), 값 기록은 `transport` 테이블
+ * ## 출처 우선순위 (양성 대조군으로 검증됨 — `probe-must-be-self-verified.md`)
  *
- * → 행을 통째로 지우면 childcare/police/emergency 는 다음 실행 때 다시 채워지지만, 그 사이
- *   화면에 "없음"으로 잠깐 노출된다(불필요한 위험). **infra-kakao 컬럼만 null 로 갱신**하고
- *   나머지 컬럼은 그대로 둔다.
+ * | 기호 | 출처 | 무엇을 믿나 |
+ * |---|---|---|
+ * | **K** | 카카오 키워드 POI(`/v2/local/search/keyword.json`) | 그 이름의 아파트가 실제로 있는 자리 |
+ * | **A** | 청약홈 공급주소(`getRemndrLttotPblancDetail`)를 카카오 **주소검색**으로 지오코딩 | 공고에 적힌 공식 지번 |
+ * | **C** | `complexes`(네이버 실단지) 이름매칭 | 보조 — 단독으로는 근거가 약하다 |
  *
- * `transport`·`schools` 테이블은 단일 소유(각각 transport-tago, schools-neis 계열)라 행을
- * 지워도 다른 수집기 데이터가 딸려가지 않는다 — 안전하게 DELETE 가능.
+ * ### 오탐 사례 (지역 필터·차수 게이트가 왜 필요한가)
  *
- * ## 타이밍 (purge-to-recollect-timing.md 답습 — 절대 규칙)
+ * - **시도 필터만 걸면 브랜드명 충돌로 330km** — "힐스테이트"·"두산위브더제니스" 같은 전국 공용
+ *   브랜드는 시도 안에서도 55km 떨어진 별개 단지와 매칭된다. 그래서 C 는 **시/군(광역시는 구)**
+ *   단위 키로 좁힌다(`cityKey`/`complexKey`).
+ * - **2단지 ↔ 1BL 차수 착오** — 이름 유사도만 보면 같은 브랜드의 다른 블록이 최고점을 받는다.
+ *   `phaseConsistent` 로 차수/블록 숫자 집합의 교집합을 요구한다.
+ * - **센트럴 → 퍼스트 서브브랜드** — 같은 시행사의 인접 프로젝트끼리 0.8대 유사도가 나온다.
+ *   C 단독 채택은 `sim ≥ 0.9 + 차수 일관`일 때만 인정하고, 그마저 `--apply` 대상에서 뺐다.
+ * - **접미어 때문에 진짜 일치가 떨어진다** — "등촌역한울에이치밸리움" ⊂ "등촌역한울에이치밸리움1차
+ *   아파트" 는 sim 0.81 이라 0.85 문턱을 못 넘는다. 공백 제거 **부분문자열**이면 강함으로 구제한다.
+ * - **동 중심점 폴백 금지** — 카카오 주소검색이 `address_type: "REGION"`(동 중심점)을 주면 그건
+ *   "그 동 어딘가"이지 그 단지가 아니다. `REGION_ADDR`/`ROAD_ADDR` 만 인정한다(`isPreciseGeocode`).
  *
- * 화면 정적 JSON 은 `daily-deploy.yml`(매일 KST 03:00)이 재생성하고, `transport`/`infra-kakao`/
- * `schools-neis` 재수집은 `collect-naver-listings-incremental.yml`(매일 KST 05:30)이 담당한다.
- * **파생값을 null/삭제하는 시점은 반드시 03:00~05:30 KST 창 안이어야 한다** — 그 밖에 지우면
- * "지하철 없음·병원 0개" 같은 거짓이 최대 하루 화면에 노출된다. `--purge-derived` 는 이 창
- * 밖에서 실행하면 경고 후 확인을 요구한다.
+ * ### A 출처의 알려진 한계 (실측 2026-09-05 — 없는 것을 있다고 하지 않기 위해 적는다)
+ *
+ * 로스터에 주소가 **있어도** 지오코딩이 안 되는 경우가 잦다. 공급주소가 **도로명**일 때 특히
+ * 그렇다 — `"서울특별시 강서구 공항대로 533"`·`"대구광역시 수성구 파동로 43-9"` 는 카카오
+ * 주소검색이 **0건**을 준다(시도 표기를 약칭으로 바꿔도 같다. 같은 단지의 지번
+ * `"서울특별시 강서구 등촌동 665-15"` 는 정상 조회된다). 즉 이건 우리 질의 형식 문제가 아니라
+ * 그 도로명 주소가 검색 DB 에 없는 것이다. 그때 A 는 없는 셈 치고 K 로 내려간다.
+ * 덤프의 `applyGeocoded` 로 그 비율을 볼 수 있다.
+ *
+ * ## 판정 (현재 좌표와 300m 기준 — `classify`)
+ *
+ * | 등급 | 조건 | `--apply` |
+ * |---|---|---|
+ * | `ok` | **어떤 출처든** 현재 좌표와 ≤300m | 건드리지 않음 |
+ * | `A2` | K·A 둘 다 있고 서로 ≤300m, 현재와는 >300m | ✅ |
+ * | `B_apply` | A 단독 | ✅ |
+ * | `B_kakao_strong` | K 강함 단독 | ✅ |
+ * | `B_kakao_weak` | K 약함(0.7~0.85) 단독 | `--include-weak` 일 때만 |
+ * | `B_complex` | C 단독이 sim ≥0.9 + 차수 일관 | ❌ 보고만 |
+ * | `conflict` | K·A 가 서로 >300m | ❌ 보고만 |
+ * | `none` | 출처 없음 | ❌ 보고만 |
+ *
+ * `none` 중 **다른 핵심이름 2종 이상이 소수 5자리 동일 좌표를 공유**하는 것은 `진짜 자리표시`로
+ * 따로 표기한다(고칠 재료가 없다는 사실 자체가 정보다).
+ *
+ * ## 무엇을 저장하나
+ *
+ * - `address` — **A 가 있으면 정규화한 청약홈 표기 원문**을 쓴다. 카카오가 돌려주는 명칭
+ *   (예: "전남광주통합특별시…")을 쓰면 우리가 재지 않은 행정 개편을 주장하게 된다. A 가 없으면
+ *   카카오 `address_name`.
+ * - `road_address` — **null**. 도로명은 추측하지 않는다.
+ * - `lat`/`lng` — 채택 출처의 좌표. `updated_at` 갱신.
+ *
+ * ## 파생표 정리 (`--purge-derived`)
+ *
+ * `transport`·`schools` 는 단일 소유라 행 삭제. **`infra` 는 5개 수집기가 컬럼을 나눠 쓰므로
+ * 행 삭제 금지** — `infra-kakao` 소유 9컬럼만 null(세션539 실사고: 행을 지워 13컬럼 유실).
+ *
+ * ⏰ **시간창** — 화면 정적 JSON 은 `daily-deploy.yml`(KST 03:00)이 재생성하고 재수집은
+ * `collect-naver-listings-incremental.yml`(KST 05:30)이 한다. 그 **사이**에서만 지워야 한다.
+ * 밖에서 지우면 "지하철 없음·병원 0개"가 최대 하루 화면에 나간다(`purge-to-recollect-timing.md`).
+ * `--force-timing` 으로만 강행 가능.
+ *
+ * ⚠️ v2 에서는 이미 정정된 행이 `ok` 로 판정돼 정정 목록에서 빠진다. 그래서 **지난번에 고친
+ * 행들의 파생표를 지우려면** `--ids-file=<json>` 으로 id 목록을 명시해야 한다
+ * (`scripts/data/placeholder-coord-fixes-2026-09.json`).
  *
  * ## 사용법
  *
- *   node scripts/fix-placeholder-addresses.mjs                          # 미리보기 (기본)
- *   node scripts/fix-placeholder-addresses.mjs --apply                  # 주소·좌표만 정정
- *   node scripts/fix-placeholder-addresses.mjs --apply --purge-derived  # + 파생 컬럼/행 정리(재수집 유도, 시간창 확인)
+ *   node scripts/fix-placeholder-addresses.mjs --out=/tmp/v2.json          # 미리보기(기본)
+ *   node scripts/fix-placeholder-addresses.mjs --limit=60 --out=…          # 개발용 표본
+ *   node scripts/fix-placeholder-addresses.mjs --apply                     # A2+B_apply+B_kakao_strong
+ *   node scripts/fix-placeholder-addresses.mjs --apply --include-weak      # + B_kakao_weak
+ *   node scripts/fix-placeholder-addresses.mjs --apply --purge-derived     # + 파생표 정리(시간창 확인)
+ *   node scripts/fix-placeholder-addresses.mjs --purge-derived --ids-file=scripts/data/placeholder-coord-fixes-2026-09.json --apply
  *
- * ⚠️ 파이프(`| tail`)를 붙이지 마라 — SIGPIPE 로 중간에 죽는다. 파일로 리다이렉트할 것.
+ * ⚠️ 파이프(`| tail`)를 붙이지 마라 — SIGPIPE 로 중간에 죽는다(`pipe-kills-collector.md`).
+ * 파일로 리다이렉트할 것.
  */
-import { loadEnv, getSupabase, selectAll, stringSimilarity, haversineMeters, log, logError } from "./collectors/_shared.mjs";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  loadEnv,
+  getSupabase,
+  selectAll,
+  stringSimilarity,
+  haversineMeters,
+  sleep,
+  log,
+  logError,
+  REGION_MAP,
+  ROOT,
+} from "./collectors/_shared.mjs";
 
 loadEnv();
 const PHASE = "fix-placeholder";
 
-const SIM_THRESHOLD = 0.75;
-const WRONG_DIST_M = 300;
+/** 현재 좌표와 이만큼 떨어져 있으면 "다른 자리"로 본다. */
+export const NEAR_M = 300;
+/** 카카오 POI 후보로 인정하는 최소 이름 유사도. */
+export const KAKAO_MIN_SIM = 0.7;
+/** 이 이상이면 "강함"(단독으로 정정 근거). */
+export const KAKAO_STRONG_SIM = 0.85;
+/** complexes 이름매칭 최소 유사도. */
+export const COMPLEX_MIN_SIM = 0.75;
+/** C 단독 채택에 필요한 유사도. */
+export const COMPLEX_SOLO_SIM = 0.9;
+/** 차수 정보가 한쪽에만 있을 때 C 에 요구하는 유사도. */
+export const COMPLEX_ONE_SIDED_SIM = 0.85;
+/** 카카오 요청 간 간격(ms). */
+const KAKAO_GAP_MS = 200;
 
-/** infra-kakao 가 소유한 컬럼 — purge 시 이 컬럼만 null 처리(행 삭제 금지). */
-const INFRA_KAKAO_COLUMNS = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park", "subway_dist"];
+/** 광역시·특별시 — 시/군이 아니라 **구(군)** 단위로 키를 만든다. */
+export const METRO_REGIONS = new Set(["서울", "부산", "대구", "인천", "광주", "대전", "울산"]);
+
+/** `--apply` 가 실제로 반영하는 등급. */
+export const APPLY_TIERS = new Set(["A2", "B_apply", "B_kakao_strong"]);
+
+/** infra-kakao 가 소유한 컬럼 — purge 시 이 컬럼만 null(행 삭제 금지). */
+export const INFRA_KAKAO_COLUMNS = [
+  "hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park", "subway_dist",
+];
 /** 단일 소유 테이블 — purge 시 행 삭제 가능. */
-const SOLE_OWNER_TABLES = ["transport", "schools"];
+export const SOLE_OWNER_TABLES = ["transport", "schools"];
+
+const KAKAO_KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json";
+const KAKAO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/search/address.json";
+const APPLYHOME_URL =
+  "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1/getRemndrLttotPblancDetail";
+
+// ────────────────────────────── 순수 함수 ──────────────────────────────
+
+/** 회차·공급방식 수식어 — 단지 이름에서 떼어낸다(카카오에 그대로 물으면 검색이 안 된다). */
+const ROUND_WORDS = /(무순위|임의공급|추가공급|사후|잔여세대|계약취소주택|불법행위재공급)/g;
 
 /**
- * address 문자열에서 시/군 토큰 추출. 예: "경기도 부천시 오정구 원종동" → "부천시"
- * @param {unknown} addr
- * @returns {string | null}
- */
-function cityToken(addr) {
-  const m = String(addr || "").match(/(\S+?시|\S+?군)(?=\s|$)/);
-  return m ? m[1] : null;
-}
-/**
- * complexes.sigungu 에서 시/군 단위만 취함(예: "용인시 처인구" → "용인시").
- * @param {unknown} s
+ * 단지명을 검색용 이름으로 정리한다. 괄호와 회차 수식어만 떼고 **차수/블록 숫자는 남긴다**
+ * (그게 다른 블록과 가르는 유일한 정보다).
+ * @param {unknown} name
  * @returns {string}
  */
-function sigunguCity(s) {
-  const m = String(s || "").match(/^(\S+?시|\S+?군)/);
-  return m ? m[1] : String(s || "");
+export function cleanName(name) {
+  return String(name ?? "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(ROUND_WORDS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
- * 정정 대상 목록을 계산한다(읽기 전용 — DB 변경 없음).
- * @param {any[]} apts
- * @param {any[]} complexes
+ * 시도 표기를 약칭으로. `REGION_MAP` 에 없으면 앞 2글자(예: "서울시" → "서울").
+ * @param {unknown} r
+ * @returns {string | null}
  */
-export function findFixCandidates(apts, complexes) {
-  const byAddr = new Map();
-  for (const a of apts) {
-    if (!a.address) continue;
-    if (!byAddr.has(a.address)) byAddr.set(a.address, []);
-    byAddr.get(a.address).push(a);
-  }
-  const groups = [...byAddr.entries()].filter(([, l]) => l.length >= 2);
-  const candidates = groups.flatMap(([, l]) => l);
-
-  const byCity = new Map();
-  for (const c of complexes) {
-    const key = sigunguCity(c.sigungu);
-    if (!byCity.has(key)) byCity.set(key, []);
-    byCity.get(key).push(c);
-  }
-
-  const fixList = [];
-  const okList = [];
-  for (const apt of candidates) {
-    if (apt.lat == null || apt.lng == null) continue;
-    const city = cityToken(apt.address);
-    if (!city) continue;
-    const pool = byCity.get(city) || [];
-    let best = null;
-    let bestSim = 0;
-    for (const c of pool) {
-      const sim = stringSimilarity(apt.name, c.complex_name);
-      if (sim > bestSim) { bestSim = sim; best = c; }
-    }
-    if (!best || bestSim < SIM_THRESHOLD || best.latitude == null || best.longitude == null) continue;
-    const dist = haversineMeters(apt.lat, apt.lng, best.latitude, best.longitude);
-    if (dist > WRONG_DIST_M) {
-      fixList.push({ apt, complex: best, sim: bestSim, dist: Math.round(dist) });
-    } else {
-      okList.push({ apt, complex: best, sim: bestSim, dist: Math.round(dist) });
-    }
-  }
-  return { fixList, okList, candidateCount: candidates.length, groupCount: groups.length };
+export function shortRegion(r) {
+  const s = String(r ?? "").trim();
+  if (!s) return null;
+  const mapped = /** @type {Record<string, string>} */ (REGION_MAP)[s];
+  return mapped ?? s.slice(0, 2);
 }
 
-/** 안전한 KST 시간창(03:00~05:30) 안인지. */
-function inSafeWindow(now = new Date()) {
-  const kstH = (now.getUTCHours() + 9) % 24;
-  const kstM = now.getUTCMinutes();
-  const minutes = kstH * 60 + kstM;
+/**
+ * 주소 앞의 시도 토큰을 떼어낸다.
+ *
+ * ⚠️ **이게 없으면 "대구 달성군 …" 이 `"대구 대구"` 가 된다** — `대구`·`대구광역시` 자체가
+ * `구` 로 끝나기 때문이다(테스트가 잡은 실제 결함). 시도 토큰은 우리가 이미 `region` 으로
+ * 알고 있으니 주소에서 지우고 시작한다.
+ * @param {string} addr
+ * @param {string | null} short 시도 약칭
+ * @returns {string}
+ */
+function stripSidoToken(addr, short) {
+  if (!short) return addr;
+  const parts = addr.trim().split(/\s+/);
+  if (parts.length > 1 && shortRegion(parts[0]) === short) return parts.slice(1).join(" ");
+  return addr;
+}
+
+/**
+ * apartments 쪽 지역 키. `complexKey` 와 **같은 문자열**을 내야 매칭된다.
+ *
+ * - 세종 → `"세종"`
+ * - 광역시/특별시 → `"<시도약칭> <구|군>"` — 구 이름만 쓰면 "남구·중구"가 여러 광역시에 있어 오탐.
+ * - 도 → address 의 `시|군` 토큰(예: "경기도 부천시 오정구 원종동" → `"부천시"`).
+ *   ⚠️ 광역시 주소는 첫 토큰이 "부산광역시"라 이 규칙을 쓰면 안 된다(그래서 분기가 있다).
+ * @param {unknown} address
+ * @param {unknown} region
+ * @returns {string | null}
+ */
+export function cityKey(address, region) {
+  const short = shortRegion(region);
+  const addr = stripSidoToken(String(address ?? ""), short);
+  if (short === "세종") return "세종";
+  if (short && METRO_REGIONS.has(short)) {
+    const m = addr.match(/(\S+?[구군])(?=\s|$)/);
+    return m ? `${short} ${m[1]}` : null;
+  }
+  const m = addr.match(/(\S+?시|\S+?군)(?=\s|$)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * complexes 쪽 지역 키(`cityKey` 와 짝).
+ * @param {unknown} sido
+ * @param {unknown} sigungu
+ * @returns {string | null}
+ */
+export function complexKey(sido, sigungu) {
+  const short = shortRegion(sido);
+  const sgg = String(sigungu ?? "").trim();
+  if (short === "세종") return "세종";
+  if (short && METRO_REGIONS.has(short)) {
+    const m = sgg.match(/(\S+?[구군])(?=\s|$)/);
+    return m ? `${short} ${m[1]}` : null;
+  }
+  if (!sgg) return null;
+  const m = sgg.match(/^(\S+?시|\S+?군)/);
+  return m ? m[1] : sgg;
+}
+
+/**
+ * 청약홈 `HSSPLY_ADRES` 를 지오코딩 가능한 한 필지 주소로 정규화한다.
+ *
+ * `"인천광역시 연수구 송도동 109, 109-2번지(F20-1BL)"` → `"인천광역시 연수구 송도동 109"`
+ * @param {unknown} addr
+ * @returns {string}
+ */
+export function normalizeApplyhomeAddress(addr) {
+  let s = String(addr ?? "").replace(/\([^)]*\)/g, " ");
+  s = s.replace(/\s*외\s*\d+\s*필지.*$/, " ");
+  const comma = s.indexOf(",");
+  if (comma >= 0) s = s.slice(0, comma);
+  s = s.replace(/번지/g, " ").replace(/\s+/g, " ").trim();
+  s = s.replace(/\s*(일원|일대)$/, "").trim();
+  return s;
+}
+
+/** 차수/블록 숫자 추출용. */
+const PHASE_RE = /(\d+)\s*(차|단지|BL|블록|블럭)/gi;
+
+/**
+ * 이름에서 차수·블록 숫자 집합을 뽑는다("힐스테이트 오룡 2단지" → `{"2"}`).
+ * @param {unknown} name
+ * @returns {Set<string>}
+ */
+export function extractPhases(name) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  for (const m of String(name ?? "").matchAll(PHASE_RE)) {
+    out.add(m[1].replace(/^0+(?=\d)/, ""));
+  }
+  return out;
+}
+
+/**
+ * 두 이름의 차수 일관성.
+ * - `"ok"` — 둘 다 차수가 없거나, 있는데 교집합이 있다
+ * - `"one-sided"` — 한쪽에만 차수가 있다(더 높은 유사도를 요구한다)
+ * - `"conflict"` — 둘 다 있는데 겹치지 않는다(**거부**: 2단지 ↔ 1BL)
+ * @param {unknown} aName
+ * @param {unknown} cName
+ * @returns {"ok" | "one-sided" | "conflict"}
+ */
+export function phaseConsistent(aName, cName) {
+  const a = extractPhases(aName);
+  const c = extractPhases(cName);
+  if (a.size === 0 && c.size === 0) return "ok";
+  if (a.size === 0 || c.size === 0) return "one-sided";
+  for (const v of a) if (c.has(v)) return "ok";
+  return "conflict";
+}
+
+/** 아파트로 인정하는 카테고리. */
+const KAKAO_CAT_OK = /(아파트|주택)/;
+/** 실물 단지가 아닌 것 — 모델하우스는 실제 단지에서 수 km 떨어진 자리에 있다. */
+const KAKAO_CAT_NG = /(모델하우스|견본|중개|분양사무|홍보관)/;
+
+/**
+ * 카카오 키워드 결과에서 쓸 만한 후보 하나를 고른다.
+ *
+ * 강함(`strong`) = `sim ≥ 0.85` **또는** 공백 제거 질의가 공백 제거 장소명의 부분문자열
+ * (접미어 "1차아파트" 때문에 sim 이 떨어지는 진짜 일치를 구제한다).
+ * @param {unknown} query 정리된 단지명
+ * @param {any[] | null | undefined} docs 카카오 `documents`
+ * @param {string | null} sidoPrefix 단지 시도 약칭(예: "경기") — 결과 주소가 이걸로 시작해야 인정
+ * @returns {{ doc: any, sim: number, strong: boolean } | null}
+ */
+export function pickKakaoCandidate(query, docs, sidoPrefix) {
+  const q = String(query ?? "");
+  const qn = q.replace(/\s+/g, "");
+  if (!qn) return null;
+  /** @type {{ doc: any, sim: number, strong: boolean } | null} */
+  let best = null;
+  for (const d of docs ?? []) {
+    const cat = String(d?.category_name ?? "");
+    const name = String(d?.place_name ?? "");
+    if (!KAKAO_CAT_OK.test(cat) || KAKAO_CAT_NG.test(cat)) continue;
+    if (KAKAO_CAT_NG.test(name)) continue;
+    const addr = String(d?.address_name ?? d?.road_address_name ?? "");
+    if (sidoPrefix && !addr.startsWith(sidoPrefix)) continue;
+    const sim = stringSimilarity(q, name);
+    if (sim < KAKAO_MIN_SIM) continue;
+    const strong = sim >= KAKAO_STRONG_SIM || name.replace(/\s+/g, "").includes(qn);
+    // 강함을 먼저, 그 안에서 유사도 최고. (접미어로 sim 이 눌린 진짜 일치가 밀리지 않게)
+    if (!best || (strong && !best.strong) || (strong === best.strong && sim > best.sim)) {
+      best = { doc: d, sim, strong };
+    }
+  }
+  return best;
+}
+
+/** 카카오 주소검색에서 "그 지번"이라고 인정하는 타입. `REGION`(동 중심점)은 폴백이라 거부. */
+const PRECISE_TYPES = new Set(["REGION_ADDR", "ROAD_ADDR"]);
+/** 읍/면/동/리/가 토큰. */
+const DONG_RE = /([가-힣]+?\d*(?:읍|면|동|리|가))(?=\s|$)/g;
+
+/**
+ * `"학익2동"` → `"학익동"` (끝 접미어 앞 숫자만 뗀다).
+ * @param {unknown} tok
+ * @returns {string}
+ */
+export function normalizeDongToken(tok) {
+  return String(tok ?? "").replace(/\d+(?=(?:읍|면|동|리|가)$)/, "");
+}
+
+/**
+ * 카카오 주소검색 결과가 "그 지번"인지. 타입 + 건전성(질의의 읍면동리가 토큰이 결과 주소에 있나).
+ * @param {any} doc 카카오 `documents[0]`
+ * @param {unknown} query 지오코딩에 쓴 주소 문자열
+ * @returns {boolean}
+ */
+export function isPreciseGeocode(doc, query) {
+  if (!doc) return false;
+  if (!PRECISE_TYPES.has(String(doc.address_type ?? ""))) return false;
+  const addr = `${String(doc.address_name ?? "")} ${String(doc.road_address?.address_name ?? "")}`;
+  const toks = [...String(query ?? "").matchAll(DONG_RE)].map((m) => m[1]);
+  if (toks.length === 0) return true; // 동 토큰이 없는 주소는 타입 검사만으로 판정
+  // 원형·정규형 둘 다 허용 — "칠성동2가"처럼 숫자가 의미를 갖는 표기를 정규형이 망가뜨린다.
+  return toks.some((t) => addr.includes(t) || addr.includes(normalizeDongToken(t)));
+}
+
+/**
+ * 세 출처와 현재 좌표를 놓고 등급을 매긴다.
+ *
+ * ⚠️ **가장 먼저 "이미 정상"을 가른다** — 어떤 출처든 현재 좌표 근처면 건드리지 않는다.
+ * 세션539 소사역 사고에서 이미 맞는 21곳을 다시 옮길 뻔했다.
+ * @param {{
+ *   cur: { lat: number | null, lng: number | null } | null,
+ *   K?: { lat: number, lng: number, strong: boolean } | null,
+ *   A?: { lat: number, lng: number } | null,
+ *   C?: { lat: number, lng: number, solo: boolean } | null,
+ * }} input
+ * @returns {{ tier: string, source: "A" | "K" | "C" | null, reason: string }}
+ */
+export function classify({ cur, K = null, A = null, C = null }) {
+  if (!cur || cur.lat == null || cur.lng == null) {
+    return { tier: "none", source: null, reason: "현재 좌표 없음" };
+  }
+  const lat = cur.lat, lng = cur.lng;
+  /** @param {{lat:number,lng:number}|null} p */
+  const near = (p) => !!p && haversineMeters(lat, lng, p.lat, p.lng) <= NEAR_M;
+  if (near(K) || near(A) || near(C)) {
+    return { tier: "ok", source: null, reason: "출처 좌표가 현재와 300m 이내" };
+  }
+  if (K && A) {
+    const d = haversineMeters(K.lat, K.lng, A.lat, A.lng);
+    if (d <= NEAR_M) return { tier: "A2", source: "A", reason: `K↔A ${Math.round(d)}m 일치` };
+    return { tier: "conflict", source: null, reason: `K↔A ${Math.round(d)}m 불일치` };
+  }
+  if (A) return { tier: "B_apply", source: "A", reason: "청약홈 공급주소 단독" };
+  if (K) {
+    return K.strong
+      ? { tier: "B_kakao_strong", source: "K", reason: "카카오 POI 강함 단독" }
+      : { tier: "B_kakao_weak", source: "K", reason: "카카오 POI 약함 단독" };
+  }
+  if (C) {
+    return C.solo
+      ? { tier: "B_complex", source: "C", reason: "complexes 단독(sim≥0.9·차수 일관) — 보고만" }
+      : { tier: "none", source: null, reason: "complexes 매칭이 단독 근거로는 약함" };
+  }
+  return { tier: "none", source: null, reason: "출처 없음" };
+}
+
+/**
+ * `apartments.address` 를 2곳 이상이 공유하는 그룹만 남긴다.
+ * @param {any[]} apts
+ * @returns {{ groups: Map<string, any[]>, candidates: any[] }}
+ */
+export function groupSharedAddresses(apts) {
+  /** @type {Map<string, any[]>} */
+  const byAddr = new Map();
+  for (const a of apts) {
+    if (!a?.address) continue;
+    const list = byAddr.get(a.address);
+    if (list) list.push(a);
+    else byAddr.set(a.address, [a]);
+  }
+  /** @type {Map<string, any[]>} */
+  const groups = new Map();
+  /** @type {any[]} */
+  const candidates = [];
+  for (const [addr, list] of byAddr) {
+    if (list.length < 2) continue;
+    groups.set(addr, list);
+    candidates.push(...list);
+  }
+  return { groups, candidates };
+}
+
+/**
+ * "핵심 이름" — 차수/블록/숫자를 뗀 브랜드+프로젝트 이름. 같은 좌표를 **다른 프로젝트**가
+ * 공유하는지 보는 데 쓴다.
+ * @param {unknown} name
+ * @returns {string}
+ */
+export function coreName(name) {
+  return cleanName(name)
+    .replace(PHASE_RE, " ")
+    .replace(/[A-Za-z]?\d+\s*(BL|블록|블럭)?/g, " ")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+/**
+ * `none` 등급 중 **다른 핵심이름 2종 이상이 소수 5자리 동일 좌표를 공유**하는 것 = 진짜 자리표시.
+ * @param {{ id: string, name: string, lat: number | null, lng: number | null, tier: string }[]} rows
+ * @returns {Set<string>} 해당 id 집합
+ */
+export function findTruePlaceholders(rows) {
+  /** @type {Map<string, { ids: string[], names: Set<string> }>} */
+  const byCoord = new Map();
+  for (const r of rows) {
+    if (r.tier !== "none" || r.lat == null || r.lng == null) continue;
+    const key = `${r.lat.toFixed(5)},${r.lng.toFixed(5)}`;
+    let e = byCoord.get(key);
+    if (!e) { e = { ids: [], names: new Set() }; byCoord.set(key, e); }
+    e.ids.push(r.id);
+    e.names.add(coreName(r.name));
+  }
+  /** @type {Set<string>} */
+  const out = new Set();
+  for (const e of byCoord.values()) {
+    if (e.names.size >= 2) for (const id of e.ids) out.add(id);
+  }
+  return out;
+}
+
+/** 안전한 KST 시간창(03:00~05:30) 안인지 — `purge-to-recollect-timing.md`. */
+export function inSafeWindow(now = new Date()) {
+  const minutes = ((now.getUTCHours() + 9) % 24) * 60 + now.getUTCMinutes();
   return minutes >= 3 * 60 && minutes <= 5 * 60 + 30;
 }
 
+/**
+ * `--limit=60` 같은 숫자 인자 파싱.
+ * @param {string[]} argv
+ * @param {string} flag
+ * @returns {number | null}
+ */
+export function numArg(argv, flag) {
+  const hit = argv.find((a) => a.startsWith(`${flag}=`));
+  if (!hit) return null;
+  const n = Number(hit.slice(flag.length + 1));
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+/**
+ * `--out=path` 같은 문자열 인자 파싱.
+ * @param {string[]} argv
+ * @param {string} flag
+ * @returns {string | null}
+ */
+export function strArg(argv, flag) {
+  const hit = argv.find((a) => a.startsWith(`${flag}=`));
+  return hit ? hit.slice(flag.length + 1) : null;
+}
+
+// ────────────────────────────── 외부 호출 ──────────────────────────────
+
+/**
+ * @param {string} url
+ * @returns {Promise<any[]>}
+ */
+async function kakaoFetch(url) {
+  const key = process.env.KAKAO_KEY;
+  const res = await fetch(url, {
+    headers: { Authorization: `KakaoAK ${key}` },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) {
+    logError(PHASE, `카카오 HTTP ${res.status}`);
+    return [];
+  }
+  const json = /** @type {any} */ (await res.json());
+  return json?.documents ?? [];
+}
+
+/**
+ * 카카오 키워드 POI 검색.
+ * @param {string} query
+ * @returns {Promise<any[]>}
+ */
+async function kakaoKeyword(query) {
+  return kakaoFetch(`${KAKAO_KEYWORD_URL}?query=${encodeURIComponent(query)}&size=5`);
+}
+
+/**
+ * 카카오 주소 검색.
+ * @param {string} query
+ * @returns {Promise<any[]>}
+ */
+async function kakaoAddress(query) {
+  return kakaoFetch(`${KAKAO_ADDRESS_URL}?query=${encodeURIComponent(query)}&size=1`);
+}
+
+/**
+ * 청약홈 무순위/잔여세대 공고 로스터 — `HOUSE_MANAGE_NO` → `HSSPLY_ADRES`.
+ * `ah-*` id 는 `ah-${HOUSE_MANAGE_NO}` 형식이라 그대로 이어붙는다(실측 1,556/1,556).
+ * @returns {Promise<Map<string, string>>}
+ */
+async function fetchApplyhomeRoster() {
+  const key = process.env.MOLIT_KEY;
+  /** @type {Map<string, string>} */
+  const map = new Map();
+  if (!key) {
+    logError(PHASE, "MOLIT_KEY 없음 — 청약홈 출처(A) 없이 진행한다");
+    return map;
+  }
+  let page = 1;
+  let total = 0;
+  while (true) {
+    const params = new URLSearchParams({ page: String(page), perPage: "1000", serviceKey: key });
+    const res = await fetch(`${APPLYHOME_URL}?${params}`, { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) {
+      logError(PHASE, `청약홈 HTTP ${res.status} (page ${page}) — A 출처 부분 수집`);
+      break;
+    }
+    const json = /** @type {{ data?: any[], totalCount?: number }} */ (await res.json());
+    const rows = json.data ?? [];
+    for (const r of rows) {
+      const no = String(r?.HOUSE_MANAGE_NO ?? "").trim();
+      const addr = String(r?.HSSPLY_ADRES ?? "").trim();
+      if (no && addr) map.set(no, addr);
+    }
+    total += rows.length;
+    log(PHASE, `  청약홈 page ${page}: ${rows.length}건 (누적 ${total}/${json.totalCount ?? "?"})`);
+    if (rows.length < 1000 || total >= (json.totalCount ?? 0)) break;
+    page++;
+  }
+  return map;
+}
+
+// ────────────────────────────── 본체 ──────────────────────────────
+
+/**
+ * `--ids-file` 로 넘긴 JSON 에서 id 목록을 읽는다. 배열이거나 `{ids:[...]}` 둘 다 받는다.
+ * @param {string} p
+ * @returns {string[]}
+ */
+function readIdsFile(p) {
+  const abs = resolve(ROOT, p);
+  if (!existsSync(abs)) throw new Error(`--ids-file 없음: ${abs}`);
+  const j = /** @type {any} */ (JSON.parse(readFileSync(abs, "utf8")));
+  const arr = Array.isArray(j) ? j : j?.ids;
+  if (!Array.isArray(arr)) throw new Error(`--ids-file 형식 오류(배열 또는 {ids:[...]}): ${abs}`);
+  return arr.map((x) => (typeof x === "string" ? x : String(x?.id ?? ""))).filter(Boolean);
+}
+
+/**
+ * 파생표 정리 — transport/schools 행 삭제 + infra 의 kakao 소유 컬럼만 null.
+ * @param {any} sb
+ * @param {string[]} ids
+ */
+async function purgeDerived(sb, ids) {
+  for (const table of SOLE_OWNER_TABLES) {
+    const { error } = await sb.from(table).delete().in("apartment_id", ids);
+    if (error) logError(PHASE, `${table} 삭제 실패: ${error.message}`);
+    else log(PHASE, `파생 ${table} 삭제 완료 (${ids.length}건 대상)`);
+  }
+  const nullPayload = Object.fromEntries(INFRA_KAKAO_COLUMNS.map((c) => [c, null]));
+  const { error } = await sb.from("infra").update(nullPayload).in("apartment_id", ids);
+  if (error) logError(PHASE, `infra 컬럼 null 처리 실패: ${error.message}`);
+  else log(PHASE, `infra 의 kakao 소유 ${INFRA_KAKAO_COLUMNS.length}컬럼 null 처리 완료 (행 유지)`);
+}
+
 async function main() {
-  const apply = process.argv.includes("--apply");
-  const purge = process.argv.includes("--purge-derived");
-  const forceTiming = process.argv.includes("--force-timing");
+  const argv = process.argv.slice(2);
+  const apply = argv.includes("--apply");
+  const purge = argv.includes("--purge-derived");
+  const includeWeak = argv.includes("--include-weak");
+  const forceTiming = argv.includes("--force-timing");
+  const limit = numArg(argv, "--limit");
+  const outPath = strArg(argv, "--out");
+  const idsFile = strArg(argv, "--ids-file");
+
   log(PHASE, apply ? "=== 실제 반영 모드 (--apply) ===" : "=== 미리보기 — 반영하려면 --apply ===");
   if (purge && !apply) {
     logError(PHASE, "--purge-derived 는 --apply 와 함께만 쓴다");
     process.exit(1);
   }
   if (purge && !inSafeWindow() && !forceTiming) {
-    logError(PHASE, "지금은 안전 시간창(KST 03:00~05:30) 밖이다 — 지금 지우면 화면에 빈칸이 노출될 수 있다.");
+    logError(PHASE, "지금은 안전 시간창(KST 03:00~05:30) 밖이다 — 지금 지우면 화면에 빈칸이 노출된다.");
     logError(PHASE, "그래도 강행하려면 --force-timing 을 추가하라(권장하지 않음).");
     process.exit(1);
   }
 
   const sb = getSupabase();
+
+  // ── ids-file 전용 경로: 이미 고친 행들의 파생표만 정리한다 ──
+  if (idsFile) {
+    const ids = readIdsFile(idsFile);
+    log(PHASE, `--ids-file: ${ids.length}건`);
+    if (!purge) {
+      log(PHASE, "purge 없이 --ids-file 만 주면 할 일이 없다(--purge-derived 를 함께 쓰라).");
+      return;
+    }
+    await purgeDerived(sb, ids);
+    log(PHASE, "=== 완료 (ids-file purge) ===");
+    return;
+  }
+
+  if (!process.env.KAKAO_KEY) {
+    logError(PHASE, "KAKAO_KEY 환경변수 필요");
+    process.exit(1);
+  }
+
   const apts = /** @type {any[]} */ (
-    await selectAll((s) => s.from("apartments").select("id, name, address, road_address, lat, lng"), sb, "id")
+    await selectAll((s) => s.from("apartments").select("id, name, region, gu, address, lat, lng"), sb, "id")
   );
   const complexes = /** @type {any[]} */ (
     await selectAll(
-      (s) => s.from("complexes").select("complex_no, complex_name, latitude, longitude, address, road_address, sigungu"),
+      (s) => s.from("complexes").select("complex_no, complex_name, latitude, longitude, sido, sigungu"),
       sb,
       "complex_no",
     )
   );
   log(PHASE, `apartments ${apts.length}행, complexes ${complexes.length}행`);
 
-  const { fixList, okList, candidateCount, groupCount } = findFixCandidates(apts, complexes);
-  log(PHASE, `주소 공유 그룹 ${groupCount}개(${candidateCount}곳) 중 — 정정대상 ${fixList.length} · 이미정상 ${okList.length}`);
+  const { groups, candidates } = groupSharedAddresses(apts);
+  log(PHASE, `주소 공유 그룹 ${groups.size}개 · 후보 ${candidates.length}곳`);
 
-  log(PHASE, `\n=== 정정 대상 (거리순) ===`);
-  for (const f of fixList.sort((a, b) => b.dist - a.dist)) {
+  /** @type {Map<string, any[]>} */
+  const cpxByKey = new Map();
+  for (const c of complexes) {
+    const key = complexKey(c.sido, c.sigungu);
+    if (!key) continue;
+    const list = cpxByKey.get(key);
+    if (list) list.push(c);
+    else cpxByKey.set(key, [c]);
+  }
+
+  const roster = await fetchApplyhomeRoster();
+  log(PHASE, `청약홈 로스터 ${roster.size}건`);
+
+  let targets = candidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  if (limit) {
+    targets = targets.slice(0, limit);
+    log(PHASE, `⚠️ --limit=${limit} — 개발용 표본이다. 전체 판정이 아니다.`);
+  }
+
+  /** @type {Map<string, {lat:number,lng:number}|null>} 같은 주소를 여러 번 지오코딩하지 않는다 */
+  const geoCache = new Map();
+  /** @type {any[]} */
+  const rows = [];
+  let done = 0;
+
+  for (const apt of targets) {
+    done++;
+    if (done % 50 === 0) log(PHASE, `  진행 ${done}/${targets.length}`);
+    const name = cleanName(apt.name);
+    const sidoPrefix = shortRegion(apt.region);
+
+    // ── C: complexes 이름매칭 (보조) ──
+    /** @type {{lat:number,lng:number,solo:boolean}|null} */
+    let C = null;
+    /** @type {any} */
+    let cBest = null;
+    let cSim = 0;
+    /** @type {string} */
+    let cPhase = "ok";
+    const key = cityKey(apt.address, apt.region);
+    for (const c of key ? (cpxByKey.get(key) ?? []) : []) {
+      if (c.latitude == null || c.longitude == null) continue;
+      const sim = stringSimilarity(apt.name, c.complex_name);
+      if (sim > cSim) { cSim = sim; cBest = c; }
+    }
+    if (cBest && cSim >= COMPLEX_MIN_SIM) {
+      cPhase = phaseConsistent(apt.name, cBest.complex_name);
+      const passesPhase =
+        cPhase === "ok" || (cPhase === "one-sided" && cSim >= COMPLEX_ONE_SIDED_SIM);
+      if (passesPhase) {
+        C = {
+          lat: Number(cBest.latitude),
+          lng: Number(cBest.longitude),
+          solo: cSim >= COMPLEX_SOLO_SIM && cPhase === "ok",
+        };
+      } else {
+        cBest = null;
+      }
+    } else {
+      cBest = null;
+    }
+
+    // ── A: 청약홈 공급주소 → 카카오 주소검색 ──
+    /** @type {{lat:number,lng:number}|null} */
+    let A = null;
+    let applyAddr = "";
+    const ahNo = String(apt.id ?? "").startsWith("ah-") ? String(apt.id).slice(3) : null;
+    const rawApply = ahNo ? roster.get(ahNo) : undefined;
+    if (rawApply) {
+      applyAddr = normalizeApplyhomeAddress(rawApply);
+      if (applyAddr) {
+        if (geoCache.has(applyAddr)) {
+          A = geoCache.get(applyAddr) ?? null;
+        } else {
+          const docs = await kakaoAddress(applyAddr);
+          await sleep(KAKAO_GAP_MS);
+          const doc = docs[0];
+          A = isPreciseGeocode(doc, applyAddr)
+            ? { lat: Number(doc.y), lng: Number(doc.x) }
+            : null;
+          geoCache.set(applyAddr, A);
+        }
+      }
+    }
+
+    // ── K: 카카오 키워드 POI ──
+    /** @type {{lat:number,lng:number,strong:boolean}|null} */
+    let K = null;
+    /** @type {{doc:any,sim:number,strong:boolean}|null} */
+    let kPick = null;
+    if (name) {
+      const docs = await kakaoKeyword(name);
+      await sleep(KAKAO_GAP_MS);
+      kPick = pickKakaoCandidate(name, docs, sidoPrefix);
+      if (kPick) K = { lat: Number(kPick.doc.y), lng: Number(kPick.doc.x), strong: kPick.strong };
+    }
+
+    const verdict = classify({ cur: { lat: apt.lat, lng: apt.lng }, K, A, C });
+    /** @type {{lat:number,lng:number}|null} */
+    const picked = verdict.source === "A" ? A : verdict.source === "K" ? K : verdict.source === "C" ? C : null;
+    const distM =
+      picked && apt.lat != null && apt.lng != null
+        ? Math.round(haversineMeters(apt.lat, apt.lng, picked.lat, picked.lng))
+        : null;
+
+    rows.push({
+      id: apt.id,
+      name: apt.name,
+      region: apt.region ?? null,
+      tier: verdict.tier,
+      reason: verdict.reason,
+      source: verdict.source,
+      lat: apt.lat,
+      lng: apt.lng,
+      oldAddress: apt.address ?? null,
+      newLat: picked?.lat ?? null,
+      newLng: picked?.lng ?? null,
+      newAddress:
+        verdict.source === "A"
+          ? applyAddr
+          : verdict.source === "K"
+            ? String(kPick?.doc?.address_name ?? "")
+            : null,
+      distM,
+      kakaoName: kPick ? String(kPick.doc.place_name) : null,
+      kakaoSim: kPick ? Number(kPick.sim.toFixed(3)) : null,
+      kakaoStrong: kPick ? kPick.strong : null,
+      applyAddress: applyAddr || null,
+      // 로스터에는 있는데 지오코딩이 안 된 경우를 눈에 보이게 남긴다 — 실측(2026-09-05)상
+      // 공급주소가 **도로명**이면 카카오 주소검색이 못 찾는 일이 잦다(예: "서울특별시 강서구
+      // 공항대로 533" → 결과 0건). 그때 A 는 없고 K 로 내려간다.
+      applyGeocoded: applyAddr ? A != null : null,
+      complexNo: cBest?.complex_no ?? null,
+      complexName: cBest?.complex_name ?? null,
+      complexSim: cBest ? Number(cSim.toFixed(3)) : null,
+      complexPhase: cBest ? cPhase : null,
+      complexSupports:
+        C && picked ? haversineMeters(C.lat, C.lng, picked.lat, picked.lng) <= NEAR_M : null,
+    });
+  }
+
+  const truePlaceholders = findTruePlaceholders(rows);
+  for (const r of rows) if (truePlaceholders.has(r.id)) r.truePlaceholder = true;
+
+  // ── 보고 ──
+  /** @type {Record<string, number>} */
+  const tally = {};
+  for (const r of rows) tally[r.tier] = (tally[r.tier] ?? 0) + 1;
+  log(PHASE, "\n=== 등급별 ===");
+  for (const [t, n] of Object.entries(tally).sort((a, b) => b[1] - a[1])) {
+    log(PHASE, `  ${t.padEnd(16)} ${String(n).padStart(5)}`);
+  }
+  log(PHASE, `  ${"(그중 진짜 자리표시)".padEnd(16)} ${String(truePlaceholders.size).padStart(5)}`);
+
+  const applyTiers = new Set(APPLY_TIERS);
+  if (includeWeak) applyTiers.add("B_kakao_weak");
+  const fixList = rows.filter((r) => applyTiers.has(r.tier) && r.newLat != null);
+
+  log(PHASE, `\n=== 정정 대상 ${fixList.length}곳 (거리순 상위 30) ===`);
+  for (const f of fixList.slice().sort((a, b) => (b.distM ?? 0) - (a.distM ?? 0)).slice(0, 30)) {
     log(
       PHASE,
-      `  ${f.apt.id.padEnd(14)} ${String(f.apt.name).slice(0, 30).padEnd(32)} → ${String(f.complex.complex_name).slice(0, 20).padEnd(22)} sim=${f.sim.toFixed(2)} dist=${f.dist}m`,
+      `  ${String(f.id).padEnd(16)} ${String(f.name).slice(0, 26).padEnd(28)} ${f.tier.padEnd(16)} ${String(f.distM).padStart(7)}m  → ${f.newAddress ?? ""}`,
     );
   }
 
-  if (fixList.length === 0) {
-    log(PHASE, "정정할 것이 없다.");
-    return;
+  const conflicts = rows.filter((r) => r.tier === "conflict");
+  if (conflicts.length) {
+    log(PHASE, `\n=== conflict ${conflicts.length}곳 (보고만) ===`);
+    for (const f of conflicts.slice(0, 15)) {
+      log(PHASE, `  ${String(f.id).padEnd(16)} ${String(f.name).slice(0, 26).padEnd(28)} ${f.reason}`);
+    }
   }
 
-  const ids = fixList.map((f) => f.apt.id);
-  for (const table of SOLE_OWNER_TABLES) {
-    const { count, error } = await sb.from(table).select("*", { count: "exact", head: true }).in("apartment_id", ids);
-    if (error) { logError(PHASE, `${table} 조회 실패: ${error.message}`); continue; }
-    log(PHASE, `  파생 ${table.padEnd(10)} ${count ?? 0}행 — ${purge ? "삭제 예정" : "그대로 둠"}`);
+  if (outPath) {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(outPath, JSON.stringify({ generatedAt: new Date().toISOString(), tally, rows }, null, 2), "utf8");
+    log(PHASE, `\nJSON 덤프: ${outPath}`);
   }
-  const { count: infraCount, error: infraErr } = await sb.from("infra").select("*", { count: "exact", head: true }).in("apartment_id", ids);
-  if (infraErr) logError(PHASE, `infra 조회 실패: ${infraErr.message}`);
-  else log(PHASE, `  파생 infra      ${infraCount ?? 0}행 — ${purge ? `${INFRA_KAKAO_COLUMNS.join(",")} 컬럼만 null 처리 예정(행 유지)` : "그대로 둠"}`);
 
   if (!apply) {
-    log(PHASE, `\n=== 미리보기 종료 — 반영하려면 --apply ===`);
+    log(PHASE, "\n=== 미리보기 종료 — 반영하려면 --apply ===");
+    return;
+  }
+  if (fixList.length === 0) {
+    log(PHASE, "정정할 것이 없다.");
     return;
   }
 
@@ -206,31 +855,21 @@ async function main() {
     const { error } = await sb
       .from("apartments")
       .update({
-        address: f.complex.road_address || f.complex.address,
-        road_address: f.complex.road_address ?? null,
-        lat: f.complex.latitude,
-        lng: f.complex.longitude,
+        address: f.newAddress || f.oldAddress,
+        road_address: null,
+        lat: f.newLat,
+        lng: f.newLng,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", f.apt.id);
-    if (error) { logError(PHASE, `${f.apt.id}: ${error.message}`); fail++; }
+      .eq("id", f.id);
+    if (error) { logError(PHASE, `${f.id}: ${error.message}`); fail++; }
     else ok++;
   }
   log(PHASE, `\n좌표·주소 정정: 성공 ${ok} · 실패 ${fail}`);
 
-  if (purge) {
-    for (const table of SOLE_OWNER_TABLES) {
-      const { error } = await sb.from(table).delete().in("apartment_id", ids);
-      if (error) logError(PHASE, `${table} 삭제 실패: ${error.message}`);
-      else log(PHASE, `파생 ${table} 삭제 완료`);
-    }
-    const nullPayload = Object.fromEntries(INFRA_KAKAO_COLUMNS.map((c) => [c, null]));
-    const { error: infraUpdErr } = await sb.from("infra").update(nullPayload).in("apartment_id", ids);
-    if (infraUpdErr) logError(PHASE, `infra 컬럼 null 처리 실패: ${infraUpdErr.message}`);
-    else log(PHASE, `infra 의 kakao 소유 컬럼(${INFRA_KAKAO_COLUMNS.length}개) null 처리 완료 — childcare/police/emergency 컬럼은 그대로 둠`);
-  }
+  if (purge) await purgeDerived(sb, fixList.map((f) => f.id));
 
-  log(PHASE, `\n=== 완료 ===`);
+  log(PHASE, "\n=== 완료 ===");
 }
 
 const argv1 = process.argv[1];
