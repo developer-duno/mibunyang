@@ -533,8 +533,20 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   (37.72987, 126.73318)** — 접두어 때문에 유사도 0.667 로 하한(0.7)에 걸려 도구가 POI 를 못 봤다(부분문자열 승격이
   하한 검사 뒤에 있음). 송도프라임뷰 2곳은 맞음(POI 와 8m).
   ⚠️ **파주 3곳을 수작업으로 고쳐도 `--apply` 를 다시 돌리면 도구가 다시 신촌동으로 되돌린다**(POI 를 못 보고 청약홈
-  오답만 보므로). 순서 = ①도구 v2.1(승격 규칙을 하한 앞으로 + 최소 질의 길이 · 읍면동 없는 주소는 지번 숫자 대조)
-  ②dry-run 재확인 ③`--apply`. 실측 = [rules/collectors/placeholder-coordinates-truth-sources.md](rules/collectors/placeholder-coordinates-truth-sources.md) §"도구 v2 의 알려진 구멍".
+  오답만 보므로). 순서 = ①도구 v2.1 ②dry-run 재확인 ③`--apply`.
+  **①② 세션542 완료(2026-09-05~06)**: 공용 게이트 `_kakao-poi.mjs` 구멍 3개(읍면동 없는 주소는 도로명 토큰 있을 때만 ·
+  부분문자열 구제를 하한 앞으로 + 8자·유일 · 회차 글자 뒤 "N차" 제거 — 셋째는 세션541 이 못 본 결함, DB 260곳) → 전수
+  dry-run 재확인 = ok 1143→1222 · none 551→464 · **B_kakao_strong 19→27**(파주 3 = 목동동 916 이동 + 새 구제 5 =
+  에코델타 푸르지오 트레파크·디에트르 에듀타운·엘리프 한신더휴 C3/D3·시흥거모 엘가, 전부 POI 이름 꼬리 "(20xx년xx월예정)"
+  이 유사도를 깎던 자리) · B_apply 5→2(파주 오답 3 제거·송도 2 유지) · weak 11→14(보류) · conflict 0 → **적용 대상 29곳**.
+  ③`--apply` **완료(세션542, 사장님 승인 29곳 = `scripts/data/placeholder-coord-fixes-2026-09-batch3.json`)**. 실측 표 = [rules/collectors/placeholder-coordinates-truth-sources.md](rules/collectors/placeholder-coordinates-truth-sources.md) §"도구 v2 구멍 3개 → v2.1 처방".
+  ★★ 그 `--apply` 에서 **청약홈 API 가 0건**을 돌려줘 도구가 재분석 판정을 바꿔 **33곳**을 옮김(6곳 승인 밖 — 리버카운티 3곳은 39km 밖
+  다른 단지) → 즉시 6곳 되돌리고 송도 2곳은 dry-run 값으로 직접 반영. 처방 ①로스터 0건이면 `--apply` 중단(이번 PR) ②아래 🔴.
+
+- 🔴 **`fix-placeholder-addresses.mjs --apply-from=<dry-run json>` — 검토한 목록을 그대로 적용하는 모드** — 지금의 `--apply` 는
+  전체를 다시 분석해서, 외부 출처(청약홈·카카오)가 그 순간 다르게 답하면 **눈으로 본 목록과 다른 것을 반영**한다(세션542 실사고
+  6곳, 규칙 문서 안티패턴 참조). dry-run JSON 의 `rows[].tier ∈ APPLY_TIERS && newLat` 를 그대로 UPDATE 하고, 재분석은 하지 않는다.
+  같은 PR 에 "apply 직후 dry-run 집합 대조" 를 도구 안에 넣으면(집합이 다르면 반영 전 중단) 더 좋다.
 
 - 🟢 **카카오 약함(sim 0.7~0.85) 32곳 보류** — 이름이 비슷하기만 한 남의 단지를 옮길 위험이 있어
   `--apply` 대상에서 뺐다(`--include-weak` 로만 반영). 청약홈 공급주소가 **도로명**이면 카카오
