@@ -106,15 +106,37 @@
  *   node scripts/fix-placeholder-addresses.mjs --purge-derived --ids-file=scripts/data/placeholder-coord-fixes-2026-09.json --apply
  *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=scripts/data/…json          # 부속 필드 미리보기
  *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=…json --apply               # 부속 필드 반영
+ *   node scripts/fix-placeholder-addresses.mjs --apply-from=/tmp/v2.json                             # 그 덤프 그대로 미리보기(재분석 0)
+ *   node scripts/fix-placeholder-addresses.mjs --apply-from=/tmp/v2.json --apply                     # 그 덤프 그대로 반영 → …applied.json
+ *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=/tmp/v2.applied.json --apply  # 그 반영분 부속 필드
  *
  * ⚠️ 파이프(`| tail`)를 붙이지 마라 — SIGPIPE 로 중간에 죽는다(`pipe-kills-collector.md`).
  * 파일로 리다이렉트할 것.
  *
  * ⚠️ `--apply` 는 **미리보기 결과를 적용하는 게 아니라 전체를 다시 분석**한다. 그래서 청약홈 로스터가
  * 0건이면 중단한다(fail-close, 세션542) — 외부 출처 하나가 그 순간 비면 판정이 통째로 바뀌기 때문이다.
- * 반영 직후에는 미리보기 JSON 과 **id 집합을 대조**할 것(후속: `--apply-from=<dry-run json>`, BACKLOG).
+ *
+ * ## 검토한 목록을 그대로 반영 — `--apply-from=<dry-run json>` (세션543)
+ *
+ * 위 fail-close 는 "로스터가 통째로 빈" 한 가지만 막는다. 이 모드는 **덤프에 적힌 목록만 반영한다
+ * (재분석 0회·외부 호출 0회, `KAKAO_KEY` 불필요)**. 반영 전 대상 id 의 현재 DB 좌표를 덤프의
+ * `lat/lng` 와 대조해 그 사이 누가 옮긴 행은 건너뛰고(`changed`), 이미 새 좌표인 행은 `already`,
+ * 반영 직후 다시 읽어 좌표가 일치하는지 확인한다.
+ *
+ * ⚠️ **보장 범위는 여기까지다.**
+ * - **덤프 자체가 틀렸으면 그대로 반영된다** — 그래서 `--out` 덤프에 `rosterSize`·`applySet` 을 함께
+ *   기록하고, 이 모드가 그걸 검사한다(로스터 0건 덤프·구버전 덤프는 `exit 1`). 그래도 "그 dry-run 의
+ *   판정이 옳았는가" 는 사람이 본 것에 달려 있다.
+ * - 잘못 옮겨진 행(DB 가 파일의 현재 좌표도 새 좌표도 아님)은 `changed` 로 **건너뛴다** — 이 모드로
+ *   지난 사고를 **되돌릴 수는 없다**. 되돌리기는 별도 작업이다.
+ * - `already`(재실행 안전)는 **좌표 한정**이다. 파생표(`transport`/`schools`/`infra`)는 아직 옛
+ *   좌표 기준일 수 있어 `--purge-derived` 대상에 `already` 도 포함한다.
+ *
+ * ⚠️ 경로 기준이 인자마다 다르다 — `--ids-file` 은 **레포 루트** 기준, `--out`·`--apply-from` 과
+ * 그 옆에 쓰이는 `.applied.json` 은 **cwd** 기준이다. 섞이면 "방금 쓴 그 파일" 이 아닌 다른 파일을
+ * 연다. **절대경로로 쓰는 것을 권한다**(후속 정정 후보 — `.claude/BACKLOG.md`).
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   loadEnv,
@@ -417,6 +439,47 @@ export function strArg(argv, flag) {
   return hit ? hit.slice(flag.length + 1) : null;
 }
 
+/** 값 없이 그 자체로 뜻이 있는 인자. */
+export const KNOWN_BOOLEAN_FLAGS = [
+  "--apply",
+  "--purge-derived",
+  "--refit-fields",
+  "--include-weak",
+  "--force-timing",
+];
+/** `--flag=값` 꼴로 써야 하는 인자. */
+export const KNOWN_VALUE_FLAGS = ["--limit", "--out", "--ids-file", "--apply-from"];
+
+/**
+ * 알 수 없는 인자·값이 빈 인자를 찾아낸다(세션543).
+ *
+ * 왜 필요한가: `strArg`·`numArg`·`argv.includes` 는 **모르는 인자를 조용히 무시**한다. 그래서
+ * `--apply-from /tmp/x.json --apply`(등호 빠짐)·`--apply--from=…`(오타)·`--include-week` 는
+ * "그 인자가 없는 것" 이 되고, 도구는 **전체 재분석 + 반영**이라는 전혀 다른 일을 한다.
+ * 이 도구는 DB 를 쓰므로 오타의 대가가 크다 — 모르는 인자는 실행하지 않는다.
+ *
+ * `process.exit`·DB 접근 없음(순수).
+ * @param {string[]} argv
+ * @returns {{ unknown: string[], empty: string[] }}
+ */
+export function validateArgv(argv) {
+  /** @type {string[]} */
+  const unknown = [];
+  /** @type {string[]} */
+  const empty = [];
+  for (const a of argv ?? []) {
+    if (KNOWN_BOOLEAN_FLAGS.includes(a)) continue;
+    const vf = KNOWN_VALUE_FLAGS.find((f) => a.startsWith(`${f}=`));
+    if (vf) {
+      // `--out=` 처럼 값이 비면 빈 경로로 파일을 열거나 쓰게 된다 — 조용히 넘기지 않는다.
+      if (a.slice(vf.length + 1) === "") empty.push(a);
+      continue;
+    }
+    unknown.push(a);
+  }
+  return { unknown, empty };
+}
+
 /**
  * 좌표를 고친 뒤 **부속 필드만** 새 좌표로 다시 만든다(`--refit-fields`).
  *
@@ -451,6 +514,240 @@ export function buildRefitUpdates(regionDocs, addrDoc) {
     lot_main: mainNo ? parseInt(String(mainNo), 10) || null : null,
     lot_sub: subNo && subNo !== "" && subNo !== "0" ? parseInt(String(subNo), 10) : 0,
   };
+}
+
+// ── `--apply-from` 순수 함수들 (세션543) ────────────────────────────────────
+// `--apply` 는 전체를 다시 분석하므로 외부 출처가 그 순간 다르게 답하면 **승인 밖의 것**을 옮긴다
+// (세션542 실사고: 승인 29곳 대신 33곳, 리버카운티 3곳은 39km 밖 다른 단지). 아래 함수들은 덤프
+// JSON 을 유일한 입력으로 삼아 "파일에 적힌 행 == 쓰이는 행" 만 지킨다.
+// ⚠️ **덤프의 판정이 옳은지는 지키지 못한다** — 그건 `rosterSize`·`applySet` 검사와 사람의 검토 몫이다.
+// DB 접근·process.exit 없음.
+
+/** 좌표 동일 판정 문턱 — 1e-7° ≈ 1cm. 부동소수 왕복 오차만 흡수하고 실제 이동은 다르다고 본다. */
+const COORD_EPS = 1e-7;
+
+/**
+ * 두 좌표가 같은가.
+ *
+ * ⚠️ `Number(null)` 은 **0** 이라 빈 값을 그냥 숫자로 바꾸면 "둘 다 0 이니 같다"가 나온다
+ * (`probe-must-be-self-verified.md` §2). 그래서 빈 값을 먼저 걷어낸다.
+ * @param {unknown} a
+ * @param {unknown} b
+ * @returns {boolean}
+ */
+function sameCoord(a, b) {
+  if (a == null || b == null || a === "" || b === "") return false;
+  const x = Number(a);
+  const y = Number(b);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  return Math.abs(x - y) < COORD_EPS;
+}
+
+/** `--apply-from` 이 통과시킬 수 있는 등급 — 덤프가 `--include-weak` 로 만들어졌을 수도 있다. */
+const APPLY_FROM_TIERS = new Set([...APPLY_TIERS, "B_kakao_weak"]);
+
+/**
+ * 덤프의 **출처 상태**를 판정한다(세션543 · F2).
+ *
+ * 이 모드는 재분석을 하지 않으므로 덤프가 곧 진실이다. 그러면 "그 덤프를 만든 dry-run 이 온전했나"
+ * 를 파일 안에서 확인할 수 있어야 한다 — 세션542 사고의 원인은 **청약홈 로스터 0건**이었고,
+ * 그런 상태로 만들어진 덤프는 A 출처가 통째로 빠진 판정이다. 그래서 `--out` 이 `rosterSize` 와
+ * `applySet`(그 dry-run 이 "정정 대상" 으로 보여준 바로 그 id 집합)을 함께 적고, 여기서 검사한다.
+ *
+ * `runApplyFrom` 은 비순수(파일·DB)라 판정만 떼어 낸다. `process.exit` 없음.
+ * @param {any} json
+ * @returns {{ ok: boolean, reason: string }}
+ */
+export function checkDumpProvenance(json) {
+  if (!Array.isArray(json?.applySet)) {
+    return {
+      ok: false,
+      reason: "구버전 덤프 — applySet 이 없다(그 dry-run 이 무엇을 대상으로 봤는지 알 수 없다). 미리보기를 다시 만들라.",
+    };
+  }
+  if (typeof json?.rosterSize !== "number" || !Number.isFinite(json.rosterSize)) {
+    return {
+      ok: false,
+      reason: "구버전 덤프 — rosterSize 가 없다(청약홈 로스터가 온전했는지 알 수 없다). 미리보기를 다시 만들라.",
+    };
+  }
+  if (json.rosterSize === 0) {
+    return {
+      ok: false,
+      reason: "로스터 0건 덤프 — 판정 자체가 틀렸다(A 출처 없이 카카오 단독으로 옮긴 세션542 사고). 미리보기를 다시 만들라.",
+    };
+  }
+  return { ok: true, reason: "" };
+}
+
+/**
+ * dry-run 덤프(`{generatedAt, rosterSize, applySet, tally, rows}`)에서 **반영 대상만** 고른다.
+ *
+ * - 대상은 **`applySet` 에 든 id 뿐**이다 — 등급을 여기서 다시 계산하지 않는다(세션543 · F2).
+ *   등급으로 재선별하면 `--limit`·`--include-weak` 같은 그 dry-run 의 사정이 빠져 **콘솔에서 본
+ *   "정정 대상 N곳" 과 다른 집합**이 되고, 그게 이 모드가 막으려던 바로 그 일이다.
+ * - 그래도 검증은 한다: 등급이 반영 가능 집합 안인지, 새 좌표가 **유한 숫자**인지
+ *   (문자열 `"37.5"` 를 그대로 UPDATE 하지 않는다), 같은 id 가 두 번 나오지 않는지.
+ * - `applySet` 에 있는데 `rows` 에 없는 id 도 사유와 함께 남긴다(덤프가 깨졌다는 신호).
+ * @param {any} json
+ * @returns {{ rows: any[], rejected: { id: string, reason: string }[] }}
+ */
+export function selectApplyFromRows(json) {
+  const raw = json?.rows;
+  if (!Array.isArray(raw)) {
+    // 빈 목록("반영할 게 없다")과 형식 오류를 구분한다 — 후자를 조용히 넘기면 아무것도 안 하고 성공한다.
+    throw new Error("--apply-from 형식 오류: rows 가 배열이 아니다");
+  }
+  if (!Array.isArray(json?.applySet)) {
+    throw new Error("--apply-from 형식 오류: applySet 이 배열이 아니다");
+  }
+  const applySet = new Set(json.applySet.map((/** @type {unknown} */ v) => String(v)));
+
+  /** @type {Map<string, number>} 같은 id 가 파일 안에 몇 번 나왔나 */
+  const seen = new Map();
+  for (const r of raw) {
+    const id = String(r?.id ?? "");
+    if (id) seen.set(id, (seen.get(id) ?? 0) + 1);
+  }
+
+  /** @type {any[]} */
+  const rows = [];
+  /** @type {{ id: string, reason: string }[]} */
+  const rejected = [];
+  for (const r of raw) {
+    const id = String(r?.id ?? "");
+    if (!id) {
+      rejected.push({ id: "", reason: "id 없음" });
+      continue;
+    }
+    if (!applySet.has(id)) {
+      rejected.push({ id, reason: "applySet 에 없음(그 dry-run 이 정정 대상으로 보여주지 않았다)" });
+      continue;
+    }
+    if ((seen.get(id) ?? 0) > 1) {
+      rejected.push({ id, reason: "파일 안 같은 id 중복" });
+      continue;
+    }
+    if (!APPLY_FROM_TIERS.has(String(r?.tier))) {
+      rejected.push({ id, reason: `반영 대상 아닌 등급(${r?.tier})` });
+      continue;
+    }
+    // weak 는 그 dry-run 이 `--include-weak` 였을 때만 반영 대상이다. 덤프가 그렇지 않다고 적어
+    // 두었는데 applySet 에 weak 가 들어 있으면 파일이 손으로 고쳐졌다는 뜻이다(세션543 · G5).
+    if (String(r?.tier) === "B_kakao_weak" && json?.includeWeak !== true) {
+      rejected.push({ id, reason: "덤프가 weak 를 포함하지 않았다(includeWeak !== true)" });
+      continue;
+    }
+    if (
+      typeof r.newLat !== "number" ||
+      typeof r.newLng !== "number" ||
+      !Number.isFinite(r.newLat) ||
+      !Number.isFinite(r.newLng)
+    ) {
+      rejected.push({ id, reason: "새 좌표가 유한 숫자가 아니다" });
+      continue;
+    }
+    rows.push(r);
+  }
+
+  // applySet 에만 있고 rows 에 없는 id — 덤프가 잘렸거나 손으로 고쳐졌다는 신호다.
+  const inRows = new Set(raw.map((r) => String(r?.id ?? "")));
+  for (const id of applySet) {
+    if (!inRows.has(id)) rejected.push({ id, reason: "applySet 에만 있음(rows 에 그 행이 없다)" });
+  }
+  return { rows, rejected };
+}
+
+/**
+ * 반영 **전** 전제 검사 — 덤프가 본 "현재 좌표" 가 지금 DB 와 같은가.
+ *
+ * | 분류 | 뜻 |
+ * |---|---|
+ * | `apply` | DB 가 덤프의 현재 좌표와 같다 = 검토한 그 상태 그대로다 |
+ * | `already` | DB 가 이미 새 좌표다 = 재실행(멱등) |
+ * | `changed` | 둘 다 아니다 = **그 사이 누가 옮겼다**. 건너뛰고 사람에게 보고한다 |
+ * | `missing` | DB 에 그 행이 없다 |
+ * @param {any[]} fileRows
+ * @param {any[]} dbRows `{ id, lat, lng }`
+ * @returns {{ apply: any[], already: any[], changed: any[], missing: any[] }}
+ */
+export function planApplyFrom(fileRows, dbRows) {
+  /** @type {Map<string, any>} */
+  const byId = new Map();
+  for (const d of dbRows ?? []) {
+    const id = String(d?.id ?? "");
+    if (id) byId.set(id, d);
+  }
+  /** @type {{ apply: any[], already: any[], changed: any[], missing: any[] }} */
+  const out = { apply: [], already: [], changed: [], missing: [] };
+  for (const row of fileRows ?? []) {
+    const id = String(row?.id ?? "");
+    const db = byId.get(id);
+    if (!db) {
+      out.missing.push({ id, row, db: null });
+      continue;
+    }
+    const cur = { lat: db.lat ?? null, lng: db.lng ?? null };
+    // ⚠️ already 를 **먼저** 본다 — 이미 반영된 행을 "그 사이 누가 옮겼다"로 오판하면 재실행이 막힌다.
+    if (sameCoord(cur.lat, row.newLat) && sameCoord(cur.lng, row.newLng)) {
+      out.already.push({ id, row, db: cur });
+      continue;
+    }
+    if (sameCoord(cur.lat, row.lat) && sameCoord(cur.lng, row.lng)) {
+      out.apply.push({ id, row, db: cur });
+      continue;
+    }
+    out.changed.push({ id, row, db: cur });
+  }
+  return out;
+}
+
+/**
+ * 반영 **직후** 대조 — DB 가 정말 그 좌표인가. 행이 사라졌으면 일치로 세지 않는다.
+ * @param {any[]} fileRows 반영한 행
+ * @param {any[]} dbRowsAfter
+ * @returns {{ ok: string[], mismatch: { id: string, expected: { lat: number, lng: number }, actual: { lat: number, lng: number } | null }[] }}
+ */
+export function verifyApplied(fileRows, dbRowsAfter) {
+  /** @type {Map<string, any>} */
+  const byId = new Map();
+  for (const d of dbRowsAfter ?? []) {
+    const id = String(d?.id ?? "");
+    if (id) byId.set(id, d);
+  }
+  /** @type {string[]} */
+  const ok = [];
+  /** @type {{ id: string, expected: { lat: number, lng: number }, actual: { lat: number, lng: number } | null }[]} */
+  const mismatch = [];
+  for (const row of fileRows ?? []) {
+    const id = String(row?.id ?? "");
+    const expected = { lat: row?.newLat, lng: row?.newLng };
+    const db = byId.get(id);
+    if (!db) {
+      mismatch.push({ id, expected, actual: null });
+      continue;
+    }
+    if (sameCoord(db.lat, expected.lat) && sameCoord(db.lng, expected.lng)) {
+      ok.push(id);
+      continue;
+    }
+    mismatch.push({ id, expected, actual: { lat: db.lat ?? null, lng: db.lng ?? null } });
+  }
+  return { ok, mismatch };
+}
+
+/**
+ * 파생표를 지울 id — **이번에 반영한 것 ∪ 이미 새 좌표였던 것**(세션543 · F3).
+ *
+ * `already` 를 빼면 공백이 생긴다: 좌표는 지난 실행에서 옮겨졌는데 파생표(`transport`/`schools`/
+ * `infra`)는 그때 지워지지 않은 행이 그렇다. 다시 돌려도 좌표는 `already` 라 `okIds` 에 안 들어오니
+ * **영영 옛 좌표 기준 파생값을 달고 있게 된다**. `already` 는 좌표에 한해서만 "손댈 것 없음" 이다.
+ * @param {string[] | null | undefined} okIds 이번 실행이 UPDATE 에 성공한 id
+ * @param {string[] | null | undefined} alreadyIds 이미 새 좌표라 UPDATE 하지 않은 id
+ * @returns {string[]}
+ */
+export function purgeTargetIds(okIds, alreadyIds) {
+  return [...new Set([...(okIds ?? []).map(String), ...(alreadyIds ?? []).map(String)])];
 }
 
 // ────────────────────────────── 외부 호출 ──────────────────────────────
@@ -561,8 +858,234 @@ async function purgeDerived(sb, ids) {
   else log(PHASE, `infra 의 kakao 소유 ${INFRA_KAKAO_COLUMNS.length}컬럼 null 처리 완료 (행 유지)`);
 }
 
+/**
+ * 좌표·주소 UPDATE. `--apply` 와 `--apply-from` 이 **같은 페이로드**를 쓴다 — 두 벌이면 갈린다.
+ * @param {any} sb
+ * @param {any[]} fixList `{ id, newAddress, oldAddress, newLat, newLng }`
+ * @returns {Promise<{ ok: number, fail: number, okIds: string[] }>}
+ */
+async function applyCoordFixes(sb, fixList) {
+  let ok = 0;
+  let fail = 0;
+  /** @type {string[]} */
+  const okIds = [];
+  for (const f of fixList) {
+    const { error } = await sb
+      .from("apartments")
+      .update({
+        address: f.newAddress || f.oldAddress,
+        road_address: null,
+        lat: f.newLat,
+        lng: f.newLng,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", f.id);
+    if (error) {
+      logError(PHASE, `${f.id}: ${error.message}`);
+      fail++;
+    } else {
+      ok++;
+      okIds.push(String(f.id));
+    }
+  }
+  return { ok, fail, okIds };
+}
+
+/**
+ * id 목록으로 현재 좌표만 읽는다.
+ *
+ * ⚠️ **항상 300씩** 자른다(세션543 · F9). refit 분기의 "900 이하면 한 번에" 는 근거 없이 굳은 값이고
+ * (id 하나가 16자면 900개 = URL 14KB 로 서버 한계 근처), 여기서 조회가 조용히 잘리면 그 행이
+ * `missing` 으로 분류돼 **반영 대상에서 빠진다**. 300 은 refit 이 실제로 쓰는 값이다.
+ * @param {any} sb
+ * @param {string[]} ids
+ * @returns {Promise<any[]>}
+ */
+async function fetchCoordRows(sb, ids) {
+  const chunk = 300;
+  /** @type {any[]} */
+  const out = [];
+  for (let i = 0; i < ids.length; i += chunk) {
+    const { data, error } = await sb
+      .from("apartments")
+      .select("id,name,lat,lng")
+      .in("id", ids.slice(i, i + chunk));
+    if (error) throw new Error(`apartments 좌표 조회 실패: ${error.message}`);
+    out.push(...(data ?? []));
+  }
+  return out;
+}
+
+/**
+ * `--apply-from=<dry-run json>` — **덤프에 적힌 그 목록만** 반영한다(재분석·외부 호출 0).
+ *
+ * 기본은 미리보기다. `--apply` 가 함께 있어야 UPDATE 한다(도구 관례).
+ * @param {any} sb
+ * @param {{ path: string, apply: boolean, purge: boolean }} opts
+ * @returns {Promise<void>}
+ */
+async function runApplyFrom(sb, { path, apply, purge }) {
+  // ⚠️ `--out` 은 `writeFileSync(outPath)` = **cwd 기준**이다. 여기만 레포 루트 기준이면 cwd 가
+  // 루트가 아닐 때 방금 쓴 그 파일이 아니라 **다른 파일**을 연다(세션543 · F8). 기준을 맞춘다.
+  const abs = resolve(path);
+  if (!existsSync(abs)) throw new Error(`--apply-from 파일 없음: ${abs}`);
+  const json = /** @type {any} */ (JSON.parse(readFileSync(abs, "utf8")));
+  log(PHASE, `--apply-from: ${abs}`);
+
+  // ── 덤프 출처 검사 — 그 dry-run 이 온전했나(F2). 여기서 막지 못하면 틀린 판정을 그대로 쓴다. ──
+  const prov = checkDumpProvenance(json);
+  if (!prov.ok) {
+    logError(PHASE, `--apply-from 거부: ${prov.reason}`);
+    process.exit(1);
+  }
+  log(PHASE, `덤프 출처 — 청약홈 로스터 ${json.rosterSize}건 · applySet ${json.applySet.length}건${json.includeWeak ? " · --include-weak" : ""}`);
+  if (json.limit != null) {
+    logError(PHASE, `⚠️ 이 덤프는 --limit=${json.limit} 로 만든 **개발용 표본**이다 — 전체 판정이 아니다.`);
+  }
+
+  // 오래된 덤프는 **경고만** 한다 — 진짜 가드는 아래 전제 검사(파일 좌표 ↔ 현재 DB 좌표)다.
+  const gen = json?.generatedAt ? Date.parse(String(json.generatedAt)) : Number.NaN;
+  if (Number.isFinite(gen)) {
+    const hours = (Date.now() - gen) / 3600000;
+    log(PHASE, `덤프 생성 ${json.generatedAt} (${hours.toFixed(1)}시간 전)`);
+    if (hours > 48) {
+      logError(PHASE, "⚠️ 48시간이 넘은 덤프다 — 그 사이 DB 가 바뀌었을 수 있다(전제 검사가 걸러낸다).");
+    }
+  } else {
+    logError(PHASE, "⚠️ generatedAt 이 없다 — 언제 만든 덤프인지 알 수 없다.");
+  }
+
+  const { rows: fileRows, rejected } = selectApplyFromRows(json);
+  log(PHASE, `파일 ${json.rows.length}행 · applySet ${json.applySet.length}건 → 반영 대상 ${fileRows.length}건`);
+  /** @type {Record<string, number>} */
+  const byTier = {};
+  for (const r of fileRows) byTier[String(r.tier)] = (byTier[String(r.tier)] ?? 0) + 1;
+  for (const [t, n] of Object.entries(byTier).sort((a, b) => b[1] - a[1])) {
+    log(PHASE, `  대상 ${t.padEnd(18)} ${String(n).padStart(5)}`);
+  }
+  /** @type {Record<string, number>} */
+  const byReason = {};
+  for (const r of rejected) byReason[r.reason] = (byReason[r.reason] ?? 0) + 1;
+  for (const [reason, n] of Object.entries(byReason).sort((a, b) => b[1] - a[1])) {
+    // "applySet 에 없음" 은 대부분의 행(ok/none/conflict)이라 정상이다. 나머지 사유는 덤프 이상 신호.
+    log(PHASE, `  제외 ${reason.padEnd(46)} ${String(n).padStart(5)}`);
+  }
+  // ⚠️ applySet 에 든 id 가 검증에서 탈락했다 = 그 dry-run 이 "정정 대상"으로 보여준 행을 지금 못 쓴다는 뜻.
+  // 정상 덤프에서는 일어나지 않는다(등급·좌표를 그 dry-run 이 이미 확인했다) — 손으로 고쳤거나 잘렸다(세션543 · G3).
+  const applySetIds = new Set(json.applySet.map((/** @type {unknown} */ v) => String(v)));
+  const lost = rejected.filter((r) => applySetIds.has(r.id));
+  for (const r of lost) logError(PHASE, `  ⚠️ applySet 멤버 탈락 ${String(r.id).padEnd(16)} ${r.reason}`);
+  if (lost.length > 0 && apply) {
+    logError(PHASE, "applySet 멤버가 검증에서 탈락 — 덤프가 손상·편집됐다. 미리보기를 다시 만들라.");
+    process.exit(1);
+  }
+  if (fileRows.length === 0) {
+    log(PHASE, "반영 대상이 없다.");
+    return;
+  }
+
+  const dbRows = await fetchCoordRows(sb, fileRows.map((r) => String(r.id)));
+  const plan = planApplyFrom(fileRows, dbRows);
+  log(
+    PHASE,
+    `\n전제 검사 — apply ${plan.apply.length} · already ${plan.already.length}` +
+      ` · changed ${plan.changed.length} · missing ${plan.missing.length}`,
+  );
+  // changed 는 사람이 판단할 재료를 한 줄씩 남긴다(파일이 본 좌표 ↔ 지금 DB 좌표).
+  for (const e of plan.changed) {
+    logError(
+      PHASE,
+      `  changed ${String(e.id).padEnd(16)} 파일 ${e.row.lat},${e.row.lng} ↔ DB ${e.db.lat},${e.db.lng} — 그 사이 누가 옮겼다(건너뜀)`,
+    );
+  }
+  for (const e of plan.missing) {
+    logError(PHASE, `  missing ${String(e.id).padEnd(16)} DB 에 행이 없다(건너뜀)`);
+  }
+  // already 는 성공과 구분해 한 줄로 먼저 알린다 — 좌표는 손대지 않지만 파생표는 지운다(F3).
+  if (plan.already.length > 0) {
+    log(PHASE, `  ${plan.already.length}건은 이미 새 좌표 — 좌표는 손대지 않음(파생표 정리 대상에는 포함)`);
+    for (const e of plan.already) {
+      log(PHASE, `  already ${String(e.id).padEnd(16)} ${String(e.row.name ?? "").slice(0, 24)}`);
+    }
+  }
+  // ⚠️ 재분석이 없어 행 수가 작다 — **전부** 찍는다(거리 내림차순). 잘라 보여주면 검토가 반쪽이 된다.
+  const applySorted = plan.apply.slice().sort((a, b) => (b.row.distM ?? 0) - (a.row.distM ?? 0));
+  for (const e of applySorted) {
+    log(
+      PHASE,
+      `  apply   ${String(e.id).padEnd(16)} ${String(e.row.name ?? "").slice(0, 24).padEnd(26)}` +
+        ` ${String(e.row.tier).padEnd(16)} ${String(e.row.distM ?? "").padStart(7)}m` +
+        ` → ${e.row.newLat},${e.row.newLng}  ${e.row.newAddress ?? ""}`,
+    );
+  }
+
+  if (!apply) {
+    log(PHASE, "\n=== 미리보기 종료 — 반영하려면 --apply 를 함께 ===");
+    return;
+  }
+
+  const alreadyIds = plan.already.map((e) => String(e.id));
+  // 불일치로 죽는 경로에서도 남겨야 한다 — 그때가 후속 작업(되돌리기·재정합)에 id 가 가장 필요한 순간이다.
+  const appliedPath = `${abs.replace(/\.json$/i, "")}.applied.json`;
+  /** @type {string[]} */
+  let okIds = [];
+  let fail = 0;
+  if (plan.apply.length === 0) {
+    // ⚠️ 여기서 return 하면 안 된다 — `already` 만 남은 재실행에서도 파생표는 아직 옛 좌표 기준이다(F3).
+    log(PHASE, "반영할 좌표가 없다 (apply 0건).");
+  } else {
+    const appliedRows = plan.apply.map((e) => e.row);
+    const res = await applyCoordFixes(sb, appliedRows);
+    fail = res.fail;
+    okIds = res.okIds;
+    log(PHASE, `\n좌표·주소 정정: 성공 ${res.ok} · 실패 ${fail}`);
+
+    const okSet = new Set(okIds);
+    const after = await fetchCoordRows(sb, okIds);
+    const { ok: matched, mismatch } = verifyApplied(appliedRows.filter((r) => okSet.has(String(r.id))), after);
+    log(PHASE, `반영 직후 대조: 일치 ${matched.length} · 불일치 ${mismatch.length}`);
+    if (mismatch.length > 0) {
+      for (const m of mismatch) logError(PHASE, `  ${m.id} 기대 ${m.expected.lat},${m.expected.lng} · 실제 ${m.actual ? `${m.actual.lat},${m.actual.lng}` : "행 없음"}`);
+      // ⚠️ 불일치 id 는 ids 에서 뺀다 — refit 입력으로 새면 **틀린 좌표 기준**으로 부속 필드를 재정합한다(G4).
+      const partial = { generatedAt: new Date().toISOString(), source: abs, ids: purgeTargetIds(matched, alreadyIds), verified: false, mismatch };
+      writeFileSync(appliedPath, JSON.stringify(partial, null, 2), "utf8");
+      logError(PHASE, `반영 결과 id ${partial.ids.length}건(불일치 ${mismatch.length}건 제외·verified:false): ${appliedPath}`);
+      logError(PHASE, "반영 직후 대조 불일치 — 파생표는 건드리지 않는다. 사람이 확인하라.");
+      process.exit(1);
+    }
+  }
+
+  // 후속 작업(`--refit-fields --ids-file=…` · `--purge-derived --ids-file=…`)의 입력을 남긴다.
+  // 손으로 id 를 옮겨 적으면 그 순간 다시 "본 목록 ≠ 쓰는 목록" 이 된다.
+  const purgeIds = purgeTargetIds(okIds, alreadyIds);
+  writeFileSync(
+    appliedPath,
+    JSON.stringify({ generatedAt: new Date().toISOString(), source: abs, ids: purgeIds, verified: true }, null, 2),
+    "utf8",
+  );
+  log(PHASE, `반영 결과 id ${purgeIds.length}건: ${appliedPath}`);
+
+  if (purge) {
+    if (purgeIds.length > 0) await purgeDerived(sb, purgeIds);
+    else log(PHASE, "파생표를 지울 id 가 없다(반영 성공 0 · already 0).");
+  }
+  if (fail > 0) process.exit(1);
+  log(PHASE, "\n=== 완료 (apply-from) ===");
+}
+
 async function main() {
   const argv = process.argv.slice(2);
+
+  // ── 모르는 인자·값 없는 인자는 **아무것도 하기 전에** 종료한다 (세션543 · F1) ──
+  // `--apply-from /tmp/x.json --apply`(등호 빠짐)를 조용히 무시하면 전체 재분석 + 반영이 돌아간다.
+  const argvIssues = validateArgv(argv);
+  if (argvIssues.unknown.length > 0 || argvIssues.empty.length > 0) {
+    for (const a of argvIssues.unknown) logError(PHASE, `알 수 없는 인자: ${a}`);
+    for (const a of argvIssues.empty) logError(PHASE, `값이 비었다: ${a}`);
+    logError(PHASE, `쓸 수 있는 인자: ${[...KNOWN_BOOLEAN_FLAGS, ...KNOWN_VALUE_FLAGS.map((f) => `${f}=…`)].join(" ")}`);
+    process.exit(1);
+  }
+
   const apply = argv.includes("--apply");
   const purge = argv.includes("--purge-derived");
   const refit = argv.includes("--refit-fields");
@@ -571,6 +1094,14 @@ async function main() {
   const limit = numArg(argv, "--limit");
   const outPath = strArg(argv, "--out");
   const idsFile = strArg(argv, "--ids-file");
+  const applyFrom = strArg(argv, "--apply-from");
+
+  // ⚠️ `numArg` 는 숫자가 아니거나 0 이하면 **null**(= "제한 없음")을 준다. `--limit=abc`·`--limit=0` 이
+  // 조용히 전 단지 대상이 되는 자리다 — 값이 있는데 숫자로 못 읽히면 실행하지 않는다(세션543 · G6).
+  if (strArg(argv, "--limit") != null && limit == null) {
+    logError(PHASE, `--limit 값이 1 이상의 숫자가 아니다: ${strArg(argv, "--limit")} (빈 값·0·문자는 "제한 없음"이 되므로 거부한다)`);
+    process.exit(1);
+  }
 
   log(PHASE, apply ? "=== 실제 반영 모드 (--apply) ===" : "=== 미리보기 — 반영하려면 --apply ===");
   if (purge && !apply) {
@@ -585,6 +1116,18 @@ async function main() {
     logError(PHASE, "--refit-fields 는 --ids-file=<json> 이 있어야 한다 (대상 없이 전 단지를 건드리지 않는다)");
     process.exit(1);
   }
+  // --apply-from 은 "파일에 적힌 것만" 반영한다 — 대상을 다르게 정하는 인자와 섞이면 뜻이 충돌한다.
+  // ⚠️ 판정은 `numArg`/`strArg` 결과가 아니라 **원시 argv 존재**로 본다(세션543 · F1) —
+  // `--limit=0` 은 numArg 가 null 로 지워 버려서 "안 준 것" 처럼 보인다.
+  // `--include-weak` 도 배타다: 반영 집합은 덤프의 `applySet` 이 정하지 이 플래그가 정하지 않는다(F2).
+  const hasFlag = (/** @type {string} */ f) => argv.some((a) => a === f || a.startsWith(`${f}=`));
+  if (hasFlag("--apply-from") && ["--refit-fields", "--ids-file", "--limit", "--out", "--include-weak"].some(hasFlag)) {
+    logError(
+      PHASE,
+      "--apply-from 은 --refit-fields·--ids-file·--limit·--out·--include-weak 과 함께 쓸 수 없다 (덤프가 곧 반영 목록이다)",
+    );
+    process.exit(1);
+  }
   if (purge && !inSafeWindow() && !forceTiming) {
     logError(PHASE, "지금은 안전 시간창(KST 03:00~05:30) 밖이다 — 지금 지우면 화면에 빈칸이 노출된다.");
     logError(PHASE, "그래도 강행하려면 --force-timing 을 추가하라(권장하지 않음).");
@@ -592,6 +1135,14 @@ async function main() {
   }
 
   const sb = getSupabase();
+
+  // ── apply-from 전용 경로: 덤프에 적힌 그 목록만 반영한다 ──
+  // ⚠️ **재분석보다 앞**이어야 한다 — 청약홈 로스터·카카오를 한 번이라도 부르면 그 순간의 외부 응답이
+  // 판정에 섞여 "눈으로 본 목록" 과 달라진다(세션542 실사고). 여기서 바로 반환한다.
+  if (applyFrom) {
+    await runApplyFrom(sb, { path: applyFrom, apply, purge });
+    return;
+  }
 
   // ── refit 전용 경로: 좌표를 고친 뒤 부속 필드를 새 좌표로 재정합한다 ──
   // 파생표를 지우지 않으므로 안전 시간창과 무관하다(화면에 빈칸이 생기지 않는다).
@@ -883,9 +1434,27 @@ async function main() {
   }
 
   if (outPath) {
-    const { writeFileSync } = await import("node:fs");
-    writeFileSync(outPath, JSON.stringify({ generatedAt: new Date().toISOString(), tally, rows }, null, 2), "utf8");
-    log(PHASE, `\nJSON 덤프: ${outPath}`);
+    // ⚠️ `rosterSize`·`applySet` 은 `--apply-from` 이 검사할 **출처 상태**다(세션543 · F2).
+    // `applySet` = 방금 콘솔에 "정정 대상" 으로 보여준 바로 그 집합이라, 그 목록만 반영되게 된다.
+    // 빼면 `--apply-from` 이 그 덤프를 거부한다(구버전 덤프).
+    writeFileSync(
+      outPath,
+      JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          rosterSize: roster.size,
+          includeWeak,
+          limit: limit ?? null,
+          applySet: fixList.map((r) => String(r.id)),
+          tally,
+          rows,
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+    log(PHASE, `\nJSON 덤프: ${outPath} (로스터 ${roster.size}건 · applySet ${fixList.length}건)`);
   }
 
   if (!apply) {
@@ -897,21 +1466,7 @@ async function main() {
     return;
   }
 
-  let ok = 0, fail = 0;
-  for (const f of fixList) {
-    const { error } = await sb
-      .from("apartments")
-      .update({
-        address: f.newAddress || f.oldAddress,
-        road_address: null,
-        lat: f.newLat,
-        lng: f.newLng,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", f.id);
-    if (error) { logError(PHASE, `${f.id}: ${error.message}`); fail++; }
-    else ok++;
-  }
+  const { ok, fail } = await applyCoordFixes(sb, fixList);
   log(PHASE, `\n좌표·주소 정정: 성공 ${ok} · 실패 ${fail}`);
 
   if (purge) await purgeDerived(sb, fixList.map((f) => f.id));
