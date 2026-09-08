@@ -10,6 +10,7 @@
  * 아무것도 안 지키는 껍데기가 남는다.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 // 세션541: 카카오 게이트(POI 선별 3종 + 주소검색 정밀도 `isPreciseGeocode`)는 공유 모듈로
 // 옮겨졌다(자동 통로들과 같은 규칙). 여기 가드는 그대로 둔다 — 이 도구가 그 규칙으로 좌표를 옮긴다.
 import {
@@ -26,6 +27,7 @@ import {
   extractPhases,
   phaseConsistent,
   classify,
+  buildRefitUpdates,
   groupSharedAddresses,
   coreName,
   findTruePlaceholders,
@@ -44,10 +46,12 @@ const FAR = { lat: 37.51, lng: 127.0 }; // 약 1,112m
 const FAR2 = { lat: 37.5102, lng: 127.0 }; // FAR 에서 약 22m
 const FARWAY = { lat: 37.6, lng: 127.0 }; // FAR 에서 약 10km
 
-describe("cleanName — 회차 수식어만 떼고 차수는 남긴다", () => {
+describe("cleanName — 회차 수식어(와 그 뒤 회차 숫자)만 떼고 단지 차수는 남긴다", () => {
   it("괄호와 공급방식 수식어를 뗀다", () => {
     expect(cleanName("현대 프라힐스 소사역 더프라임(임의공급 10차)")).toBe("현대 프라힐스 소사역 더프라임");
-    expect(cleanName("검단신도시 파라곤 무순위 3차")).toBe("검단신도시 파라곤 3차");
+    // 세션542: 회차 글자 **바로 뒤**의 "3차"는 단지 차수가 아니라 공고 회차라 함께 뗀다
+    // (남겨서 물으면 카카오 결과 0건 — 세션540 결정 뒤집음, 사장님 승인 2026-09-05).
+    expect(cleanName("검단신도시 파라곤 무순위 3차")).toBe("검단신도시 파라곤");
   });
 
   it("★ 블록·차수 숫자는 남긴다 (그게 다른 블록과 가르는 유일한 정보다)", () => {
@@ -267,7 +271,7 @@ describe("isPreciseGeocode — 동 중심점 폴백 거부", () => {
     expect(isPreciseGeocode(doc, "대구광역시 북구 칠성동2가 742")).toBe(true);
   });
 
-  it("동 토큰이 없는 주소는 타입 검사만으로 판정", () => {
+  it("동 토큰이 없는 주소는 도로명 토큰이 결과에 있을 때만 통과", () => {
     const doc = { address_type: "ROAD_ADDR", address_name: "경기 화성시 동탄대로 1", road_address: null };
     expect(isPreciseGeocode(doc, "경기도 화성시 동탄대로 1")).toBe(true);
   });
@@ -415,5 +419,133 @@ describe("infra 컬럼 소유권 (세션539 실사고 — 행 통째 삭제 금�
       expect(INFRA_KAKAO_COLUMNS).not.toContain(c);
     }
     expect(INFRA_KAKAO_COLUMNS).toContain("subway_dist");
+  });
+});
+
+describe("buildRefitUpdates — 좌표 정정 뒤 부속 필드 재정합", () => {
+  // 카카오 `coord2regioncode` 는 같은 좌표에 대해 **행정동(H)·법정동(B) 두 doc** 을 준다.
+  // 둘의 `region_3depth_name` 이 서로 다른 것이 정상이다(실측: 송도2동 vs 송도동).
+  const H = { region_type: "H", region_3depth_name: "목동동", code: "4148055000" };
+  const B = { region_type: "B", region_3depth_name: "야당동", code: "4148012600" };
+  const ADDR = {
+    address: { address_name: "경기 파주시 목동동 916", main_address_no: "916", sub_address_no: "" },
+    road_address: { address_name: "경기 파주시 미래로 100" },
+  };
+
+  it("H·B·주소 doc 이 다 있으면 다섯 필드를 만든다", () => {
+    const u = /** @type {any} */ (buildRefitUpdates([H, B], ADDR));
+    expect(u).toEqual({
+      dong: "목동동",
+      bjd_code: "4148012600",
+      road_address: "경기 파주시 미래로 100",
+      lot_main: 916,
+      lot_sub: 0,
+    });
+  });
+
+  it("★ 반환 객체에 `address` 키가 없다 (A 출처 = 청약홈 표기 원문을 보존한다)", () => {
+    const u = /** @type {any} */ (buildRefitUpdates([H, B], ADDR));
+    // 카카오 표기로 address 를 덮으면 우리가 재지 않은 행정 개편을 주장하게 된다.
+    expect(Object.keys(u)).not.toContain("address");
+    expect(Object.keys(u).sort()).toEqual(["bjd_code", "dong", "lot_main", "lot_sub", "road_address"]);
+    // `region`/`gu`/`lat`/`lng` 도 이 모드의 소관이 아니다.
+    for (const k of ["region", "gu", "lat", "lng"]) expect(Object.keys(u)).not.toContain(k);
+  });
+
+  it("★ dong 은 행정동(H) 에서, bjd_code 는 법정동(B) 에서 — 바꿔 쓰면 동 이름이 통째로 틀어진다", () => {
+    const h = { region_type: "H", region_3depth_name: "송도2동", code: "2818566000" };
+    const b = { region_type: "B", region_3depth_name: "송도동", code: "2818510600" };
+    // 순서를 뒤집어도 region_type 으로 고른다(배열 순서에 기대지 않는다).
+    for (const docs of [[h, b], [b, h]]) {
+      const u = /** @type {any} */ (buildRefitUpdates(docs, ADDR));
+      expect(u.dong).toBe("송도2동");
+      expect(u.dong).not.toBe("송도동"); // B 의 3depth 를 쓰면 여기서 죽는다
+      expect(u.bjd_code).toBe("2818510600");
+    }
+  });
+
+  it("없는 doc 은 억지로 채우지 않는다 (해당 필드만 null)", () => {
+    const noB = /** @type {any} */ (buildRefitUpdates([H], ADDR));
+    expect(noB.bjd_code).toBe(null);
+    expect(noB.dong).toBe("목동동");
+
+    const noAddr = /** @type {any} */ (buildRefitUpdates([H, B], null));
+    expect(noAddr.road_address).toBe(null);
+    expect(noAddr.lot_main).toBe(null);
+    expect(noAddr.lot_sub).toBe(0); // lot_sub 만 0 — reverse-geocode.mjs L68 과 같은 계약
+    expect(noAddr.bjd_code).toBe("4148012600");
+  });
+
+  it("★ 전부 없으면 null — 호출자가 skip 한다 (빈 값으로 덮지 않는다)", () => {
+    expect(buildRefitUpdates([], null)).toBe(null);
+    expect(buildRefitUpdates(null, undefined)).toBe(null);
+    expect(buildRefitUpdates([{ region_type: "X" }], null)).toBe(null);
+  });
+
+  it("★ lot_sub — 비었거나 '0' 이면 0, 값이 있으면 숫자", () => {
+    /** @param {string} sub */
+    const withSub = (sub) =>
+      /** @type {any} */ (
+        buildRefitUpdates([H, B], { address: { main_address_no: "916", sub_address_no: sub }, road_address: null })
+      );
+    expect(withSub("").lot_sub).toBe(0);
+    expect(withSub("0").lot_sub).toBe(0);
+    expect(withSub("12").lot_sub).toBe(12);
+  });
+
+  it("lot_main 이 비면 null (0 으로 채우지 않는다)", () => {
+    const u = /** @type {any} */ (
+      buildRefitUpdates([H, B], { address: { main_address_no: "", sub_address_no: "3" }, road_address: null })
+    );
+    expect(u.lot_main).toBe(null);
+    expect(u.lot_sub).toBe(3);
+  });
+
+  it("road_address 가 없는 응답이면 null", () => {
+    const u = /** @type {any} */ (
+      buildRefitUpdates([H, B], { address: { main_address_no: "916", sub_address_no: "" } })
+    );
+    expect(u.road_address).toBe(null);
+  });
+});
+
+describe("배선 — --refit-fields 모드가 실제로 연결돼 있다 (소스 grep)", () => {
+  /**
+   * 주석에 가려진 코드가 "배선 있음"으로 오인되지 않게 지운다.
+   * 2단계로 나누는 이유(문자열 안 별표-슬래시 함정)는 `guards-must-be-mutation-tested.md` 참조.
+   * @param {string} code
+   * @returns {string}
+   */
+  const stripComments = (code) =>
+    code
+      .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, (m) => m.replace(/[^\n]/g, " "))
+      .replace(/(?<!\*)\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+      .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + " ".repeat(m.length - p1.length));
+
+  const SRC = stripComments(readFileSync(new URL("./fix-placeholder-addresses.mjs", import.meta.url), "utf8"));
+
+  it("주석 제거가 검사 대상을 먹지 않았다 (스트리퍼 자체 점검)", () => {
+    // 세션531: 스트리퍼가 코드를 통째로 지우면 아래 검사들이 "무엇을 넣어도 통과" 가 된다.
+    expect(SRC).toContain("KAKAO_COORD2ADDR_URL");
+    expect(SRC).toContain("buildRefitUpdates");
+  });
+
+  it("★ argv 파싱에 --refit-fields 가 있다", () => {
+    expect(SRC).toMatch(/const refit = argv\.includes\("--refit-fields"\);/);
+  });
+
+  it("★ refit 분기가 순수 함수를 부르고 그 결과로 update 한다", () => {
+    expect(SRC).toMatch(/const updates = buildRefitUpdates\(/);
+    expect(SRC).toMatch(/\.update\(\{ \.\.\.updates, updated_at:/);
+  });
+
+  it("★ --ids-file 없는 --refit-fields 는 종료한다 (전 단지를 건드리지 않는다)", () => {
+    expect(SRC).toMatch(/if \(refit && !idsFile\) \{/);
+    expect(SRC).toMatch(/if \(refit && purge\) \{/);
+  });
+
+  it("★ 청약홈 로스터 0건이면 --apply 를 중단한다 (세션542: 로스터 없이 재분석해 승인 밖 6곳을 옮긴 사고)", () => {
+    // 좌변·순서까지 고정 — 로스터 검사 블록 안의 apply 분기가 exit 하는지를 본다.
+    expect(SRC).toMatch(/if \(roster\.size === 0\) \{\s*if \(apply\) \{[^}]*process\.exit\(1\);/);
   });
 });

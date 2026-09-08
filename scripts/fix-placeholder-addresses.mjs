@@ -83,6 +83,15 @@
  * 밖에서 지우면 "지하철 없음·병원 0개"가 최대 하루 화면에 나간다(`purge-to-recollect-timing.md`).
  * `--force-timing` 으로만 강행 가능.
  *
+ * ## 정정할 때 함께 — 부속 필드 재정합(`--refit-fields`)
+ *
+ * 좌표를 옮기면 `dong`·`bjd_code`·`lot_main`·`lot_sub`·`road_address` 가 **옛 자리표시 좌표에서
+ * 역산된 값 그대로** 남는다. `bjd_code` 는 건축HUB 조회 키라 그대로 두면 **남의 건물 정보**가 붙는다.
+ * 이 모드는 `--ids-file` 의 id 만 골라 새 좌표로 카카오 두 곳(`coord2regioncode`·`coord2address`)을
+ * 다시 물어 그 다섯 필드만 갱신한다. **`address` 는 건드리지 않는다** — A 출처(청약홈 표기 원문)를
+ * 보존하는 게 위 `## 무엇을 저장하나` 의 규칙이고, 카카오 표기로 덮으면 그 결정이 뒤집힌다.
+ * `region`·`gu`·`lat`·`lng` 도 그대로 둔다(파생표를 지우지 않으므로 안전 시간창과 무관).
+ *
  * ⚠️ v2 에서는 이미 정정된 행이 `ok` 로 판정돼 정정 목록에서 빠진다. 그래서 **지난번에 고친
  * 행들의 파생표를 지우려면** `--ids-file=<json>` 으로 id 목록을 명시해야 한다
  * (`scripts/data/placeholder-coord-fixes-2026-09.json`).
@@ -95,9 +104,15 @@
  *   node scripts/fix-placeholder-addresses.mjs --apply --include-weak      # + B_kakao_weak
  *   node scripts/fix-placeholder-addresses.mjs --apply --purge-derived     # + 파생표 정리(시간창 확인)
  *   node scripts/fix-placeholder-addresses.mjs --purge-derived --ids-file=scripts/data/placeholder-coord-fixes-2026-09.json --apply
+ *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=scripts/data/…json          # 부속 필드 미리보기
+ *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=…json --apply               # 부속 필드 반영
  *
  * ⚠️ 파이프(`| tail`)를 붙이지 마라 — SIGPIPE 로 중간에 죽는다(`pipe-kills-collector.md`).
  * 파일로 리다이렉트할 것.
+ *
+ * ⚠️ `--apply` 는 **미리보기 결과를 적용하는 게 아니라 전체를 다시 분석**한다. 그래서 청약홈 로스터가
+ * 0건이면 중단한다(fail-close, 세션542) — 외부 출처 하나가 그 순간 비면 판정이 통째로 바뀌기 때문이다.
+ * 반영 직후에는 미리보기 JSON 과 **id 집합을 대조**할 것(후속: `--apply-from=<dry-run json>`, BACKLOG).
  */
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -147,6 +162,9 @@ export const SOLE_OWNER_TABLES = ["transport", "schools"];
 
 const KAKAO_KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json";
 const KAKAO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/search/address.json";
+// `--refit-fields` 전용 — 좌표를 고친 뒤 부속 필드를 새 좌표로 다시 뽑는다.
+const KAKAO_REGION_URL = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json";
+const KAKAO_COORD2ADDR_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json";
 const APPLYHOME_URL =
   "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1/getRemndrLttotPblancDetail";
 
@@ -399,6 +417,42 @@ export function strArg(argv, flag) {
   return hit ? hit.slice(flag.length + 1) : null;
 }
 
+/**
+ * 좌표를 고친 뒤 **부속 필드만** 새 좌표로 다시 만든다(`--refit-fields`).
+ *
+ * 규칙은 `scripts/collectors/reverse-geocode.mjs` 를 **직독하고 그대로** 옮겼다 — 같은 좌표에
+ * 두 도구가 서로 다른 값을 쓰면 어느 쪽이 맞는지 아무도 모르게 된다.
+ * - `dong` = **행정동(H) doc** 의 `region_3depth_name` (`reverse-geocode.mjs` L131·L134: `admin` =
+ *   `region_type === "H"` 인 doc, 거기서 `region_3depth_name` 를 뽑는다). 법정동(B)의 3depth 가
+ *   아니다 — 실측 `송도 센트럴파크 리버리치` 의 dong 은 `"송도2동"`(행정동)인데 `bjd_code` 는
+ *   `2818510600`(법정동 "송도동")이다. 둘을 바꿔 쓰면 화면의 동 이름이 통째로 틀어진다.
+ * - `bjd_code` = **법정동(B) doc** 의 `code` (같은 파일 L152 `geo?.legal?.code`).
+ * - `road_address`·`lot_main`·`lot_sub` = `coord2address` 의 `documents[0]` (같은 파일 L62~68).
+ *   `lot_sub` 는 비었거나 `"0"` 이면 **0**(null 아님) — 원본과 같은 계약이다.
+ *
+ * ⚠️ **반환 객체에 `address` 키를 넣지 않는다.** 이 도구는 A 출처(청약홈 표기 원문)를 `address` 에
+ * 남기기로 한 규칙 위에서 돈다(`## 무엇을 저장하나`). 카카오 표기로 덮으면 그 결정이 조용히 뒤집힌다.
+ * @param {any[] | null | undefined} regionDocs `coord2regioncode` 의 documents 전체
+ * @param {any} addrDoc `coord2address` 의 documents[0]
+ * @returns {{ dong: string|null, bjd_code: string|null, road_address: string|null, lot_main: number|null, lot_sub: number } | null}
+ *   H·B·addrDoc 이 전부 없으면 `null`(호출자가 skip). 일부만 없으면 그 필드만 `null` — 억지로 채우지 않는다.
+ */
+export function buildRefitUpdates(regionDocs, addrDoc) {
+  const docs = Array.isArray(regionDocs) ? regionDocs : [];
+  const admin = docs.find((d) => d?.region_type === "H") ?? null;
+  const legal = docs.find((d) => d?.region_type === "B") ?? null;
+  if (!admin && !legal && !addrDoc) return null;
+  const mainNo = addrDoc?.address?.main_address_no;
+  const subNo = addrDoc?.address?.sub_address_no;
+  return {
+    dong: admin?.region_3depth_name || null,
+    bjd_code: legal?.code || null,
+    road_address: addrDoc?.road_address?.address_name || null,
+    lot_main: mainNo ? parseInt(String(mainNo), 10) || null : null,
+    lot_sub: subNo && subNo !== "" && subNo !== "0" ? parseInt(String(subNo), 10) : 0,
+  };
+}
+
 // ────────────────────────────── 외부 호출 ──────────────────────────────
 
 /**
@@ -511,6 +565,7 @@ async function main() {
   const argv = process.argv.slice(2);
   const apply = argv.includes("--apply");
   const purge = argv.includes("--purge-derived");
+  const refit = argv.includes("--refit-fields");
   const includeWeak = argv.includes("--include-weak");
   const forceTiming = argv.includes("--force-timing");
   const limit = numArg(argv, "--limit");
@@ -522,6 +577,14 @@ async function main() {
     logError(PHASE, "--purge-derived 는 --apply 와 함께만 쓴다");
     process.exit(1);
   }
+  if (refit && purge) {
+    logError(PHASE, "--refit-fields 와 --purge-derived 는 한 번에 한 모드만 쓴다");
+    process.exit(1);
+  }
+  if (refit && !idsFile) {
+    logError(PHASE, "--refit-fields 는 --ids-file=<json> 이 있어야 한다 (대상 없이 전 단지를 건드리지 않는다)");
+    process.exit(1);
+  }
   if (purge && !inSafeWindow() && !forceTiming) {
     logError(PHASE, "지금은 안전 시간창(KST 03:00~05:30) 밖이다 — 지금 지우면 화면에 빈칸이 노출된다.");
     logError(PHASE, "그래도 강행하려면 --force-timing 을 추가하라(권장하지 않음).");
@@ -529,6 +592,78 @@ async function main() {
   }
 
   const sb = getSupabase();
+
+  // ── refit 전용 경로: 좌표를 고친 뒤 부속 필드를 새 좌표로 재정합한다 ──
+  // 파생표를 지우지 않으므로 안전 시간창과 무관하다(화면에 빈칸이 생기지 않는다).
+  if (refit) {
+    if (!process.env.KAKAO_KEY) {
+      logError(PHASE, "KAKAO_KEY 환경변수 필요");
+      process.exit(1);
+    }
+    const ids = readIdsFile(/** @type {string} */ (idsFile));
+    log(PHASE, `--refit-fields: ${ids.length}건`);
+
+    // 29~300건 규모라 단발 조회로 충분하다. 그보다 커지면 URL 길이 때문에 끊어 묻는다.
+    const chunk = ids.length > 900 ? 300 : Math.max(ids.length, 1);
+    /** @type {any[]} */
+    const targetRows = [];
+    for (let i = 0; i < ids.length; i += chunk) {
+      const { data, error } = await sb
+        .from("apartments")
+        .select("id,name,lat,lng,address,dong,bjd_code,lot_main,lot_sub,road_address")
+        .in("id", ids.slice(i, i + chunk));
+      if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
+      targetRows.push(...(data ?? []));
+    }
+    log(PHASE, `조회 ${targetRows.length}행 (요청 ${ids.length}건)`);
+
+    let refitted = 0, same = 0, skipped = 0, failed = 0;
+    for (const row of targetRows) {
+      const label = `${String(row.id).padEnd(16)} ${String(row.name ?? "").slice(0, 26).padEnd(28)}`;
+      if (row.lat == null || row.lng == null) {
+        skipped++;
+        log(PHASE, `  ${label} skip — 좌표가 없다(재정합할 기준이 없다)`);
+        continue;
+      }
+      const regionDocs = await kakaoFetch(`${KAKAO_REGION_URL}?x=${row.lng}&y=${row.lat}`);
+      await sleep(KAKAO_GAP_MS);
+      const addrDocs = await kakaoFetch(`${KAKAO_COORD2ADDR_URL}?x=${row.lng}&y=${row.lat}`);
+      await sleep(KAKAO_GAP_MS);
+      const updates = buildRefitUpdates(regionDocs, addrDocs[0]);
+      if (!updates) {
+        skipped++;
+        log(PHASE, `  ${label} skip — 카카오 응답에 행정구역·주소가 없다`);
+        continue;
+      }
+      const unchanged =
+        updates.dong === (row.dong ?? null) &&
+        updates.bjd_code === (row.bjd_code ?? null) &&
+        updates.road_address === (row.road_address ?? null) &&
+        updates.lot_main === (row.lot_main ?? null) &&
+        updates.lot_sub === (row.lot_sub ?? 0);
+      log(
+        PHASE,
+        `  ${label} | dong ${row.dong ?? "-"}→${updates.dong ?? "-"}` +
+          ` | bjd ${row.bjd_code ?? "-"}→${updates.bjd_code ?? "-"}` +
+          ` | lot ${updates.lot_main ?? "-"}-${updates.lot_sub}` +
+          ` | road ${updates.road_address ?? "-"}` +
+          (unchanged ? " (변화 없음)" : ""),
+      );
+      if (unchanged) { same++; continue; }
+      if (apply) {
+        const { error } = await sb
+          .from("apartments")
+          .update({ ...updates, updated_at: new Date().toISOString() })
+          .eq("id", row.id);
+        if (error) { logError(PHASE, `${row.id}: ${error.message}`); failed++; continue; }
+      }
+      refitted++;
+    }
+    log(PHASE, `\n재정합 ${refitted}건 · 변화 없음 ${same} · skip ${skipped} · 실패 ${failed}`);
+    if (!apply) log(PHASE, "=== 미리보기 종료 — 반영하려면 --apply ===");
+    if (failed > 0) process.exit(1);
+    return;
+  }
 
   // ── ids-file 전용 경로: 이미 고친 행들의 파생표만 정리한다 ──
   if (idsFile) {
@@ -575,6 +710,16 @@ async function main() {
 
   const roster = await fetchApplyhomeRoster();
   log(PHASE, `청약홈 로스터 ${roster.size}건`);
+  // 세션542 실사고: 청약홈 API 가 이 순간 0건을 주자 A 출처가 통째로 빠진 채 재분석이 돌아, 15분 전
+  // dry-run 에서 "청약홈 주소가 현재 좌표와 300m 이내 = 이미 정상" 이던 6곳이 카카오 POI 단독으로
+  // 옮겨졌다(리버카운티 3곳은 39km 밖 다른 단지). 눈으로 본 목록과 다른 것을 반영하면 검토가 무의미하다.
+  if (roster.size === 0) {
+    if (apply) {
+      logError(PHASE, "청약홈 로스터 0건 — A 출처 없이 --apply 하면 dry-run 과 다른 판정이 난다(세션542: 승인 29 대신 33곳). 미리보기로 다시 확인하라.");
+      process.exit(1);
+    }
+    logError(PHASE, "⚠️ 청약홈 로스터 0건 — 이 미리보기는 A 출처가 빠진 판정이다(정상 1,500건+). 결과를 근거로 쓰지 마라.");
+  }
 
   let targets = candidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
   if (limit) {
