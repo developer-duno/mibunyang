@@ -34,10 +34,35 @@ import {
   inSafeWindow,
   numArg,
   strArg,
+  selectApplyFromRows,
+  planApplyFrom,
+  verifyApplied,
+  checkDumpProvenance,
+  purgeTargetIds,
+  validateArgv,
+  KNOWN_BOOLEAN_FLAGS,
+  KNOWN_VALUE_FLAGS,
   NEAR_M,
   APPLY_TIERS,
   INFRA_KAKAO_COLUMNS,
 } from "./fix-placeholder-addresses.mjs";
+
+/**
+ * 주석에 가려진 코드가 "배선 있음"으로 오인되지 않게 지운다.
+ * 2단계로 나누는 이유(문자열 안 별표-슬래시 함정)는 `guards-must-be-mutation-tested.md` 참조.
+ *
+ * ⚠️ 스트리퍼는 **하나만** 둔다 — 배선 describe 마다 사본을 두면 한쪽만 고쳐져 드리프트한다.
+ * 각 배선 describe 는 자기가 겨누는 식별자가 살아남았는지 스스로 점검한다.
+ * @param {string} code
+ * @returns {string}
+ */
+const stripComments = (code) =>
+  code
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/(?<!\*)\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + " ".repeat(m.length - p1.length));
+
+const SRC = stripComments(readFileSync(new URL("./fix-placeholder-addresses.mjs", import.meta.url), "utf8"));
 
 // 위도 1° ≈ 111km — 0.002° ≈ 222m(300m 안), 0.01° ≈ 1,112m(밖)
 const CUR = { lat: 37.5, lng: 127.0 };
@@ -510,20 +535,6 @@ describe("buildRefitUpdates — 좌표 정정 뒤 부속 필드 재정합", () =
 });
 
 describe("배선 — --refit-fields 모드가 실제로 연결돼 있다 (소스 grep)", () => {
-  /**
-   * 주석에 가려진 코드가 "배선 있음"으로 오인되지 않게 지운다.
-   * 2단계로 나누는 이유(문자열 안 별표-슬래시 함정)는 `guards-must-be-mutation-tested.md` 참조.
-   * @param {string} code
-   * @returns {string}
-   */
-  const stripComments = (code) =>
-    code
-      .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, (m) => m.replace(/[^\n]/g, " "))
-      .replace(/(?<!\*)\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-      .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + " ".repeat(m.length - p1.length));
-
-  const SRC = stripComments(readFileSync(new URL("./fix-placeholder-addresses.mjs", import.meta.url), "utf8"));
-
   it("주석 제거가 검사 대상을 먹지 않았다 (스트리퍼 자체 점검)", () => {
     // 세션531: 스트리퍼가 코드를 통째로 지우면 아래 검사들이 "무엇을 넣어도 통과" 가 된다.
     expect(SRC).toContain("KAKAO_COORD2ADDR_URL");
@@ -547,5 +558,521 @@ describe("배선 — --refit-fields 모드가 실제로 연결돼 있다 (소스
   it("★ 청약홈 로스터 0건이면 --apply 를 중단한다 (세션542: 로스터 없이 재분석해 승인 밖 6곳을 옮긴 사고)", () => {
     // 좌변·순서까지 고정 — 로스터 검사 블록 안의 apply 분기가 exit 하는지를 본다.
     expect(SRC).toMatch(/if \(roster\.size === 0\) \{\s*if \(apply\) \{[^}]*process\.exit\(1\);/);
+  });
+});
+
+// ── --apply-from (세션543): 눈으로 본 그 목록만 반영한다 ────────────────────────
+// 세션542 실사고 = `--apply` 가 전체를 **다시 분석**해 승인 29곳 대신 33곳을 옮겼다.
+// 아래 순수 함수 6개(validateArgv · checkDumpProvenance · selectApplyFromRows · planApplyFrom ·
+// verifyApplied · purgeTargetIds)가 "파일 = 반영 목록" 을 지킨다. 전부 뮤테이션으로 red 확인.
+
+/**
+ * dry-run JSON 한 행(기본값 = 반영 대상).
+ * @param {Record<string, unknown>} [over]
+ * @returns {Record<string, unknown>}
+ */
+const fileRow = (over = {}) => ({
+  id: "ah-1",
+  tier: "B_apply",
+  lat: 37.1,
+  lng: 127.1,
+  newLat: 37.5,
+  newLng: 127.5,
+  newAddress: "경기도 어딘가 1",
+  oldAddress: "경기도 옛곳 2",
+  ...over,
+});
+
+/**
+ * 덤프 한 벌. `applySet` 을 안 주면 `rows` 중 반영 등급인 것들로 채운다(정상 `--out` 과 같은 꼴).
+ * @param {any[]} rows
+ * @param {Record<string, unknown>} [over]
+ * @returns {Record<string, unknown>}
+ */
+const dump = (rows, over = {}) => ({
+  generatedAt: new Date().toISOString(),
+  rosterSize: 1675,
+  includeWeak: false,
+  limit: null,
+  applySet: rows
+    .filter((r) => APPLY_TIERS.has(r.tier) || r.tier === "B_kakao_weak")
+    .map((r) => String(r.id)),
+  rows,
+  ...over,
+});
+
+describe("validateArgv — 모르는 인자로는 실행하지 않는다 (세션543 F1)", () => {
+  it("★ 정상 조합은 아무 문제도 없다", () => {
+    expect(validateArgv(["--apply-from=/tmp/v2.json", "--apply", "--purge-derived"])).toEqual({
+      unknown: [],
+      empty: [],
+    });
+    expect(validateArgv([])).toEqual({ unknown: [], empty: [] });
+    expect(validateArgv(["--limit=60", "--out=/tmp/a.json"])).toEqual({ unknown: [], empty: [] });
+  });
+
+  it("★ 등호를 빠뜨린 값 인자는 unknown — 조용히 무시하면 전체 재분석이 돌아간다", () => {
+    // 세션542 사고의 재발 경로: `--apply-from` 이 사라지고 `--apply` 만 남으면 도구는 전체를 다시 분석한다.
+    const out = validateArgv(["--apply-from", "/tmp/x.json", "--apply"]);
+    expect(out.unknown).toEqual(["--apply-from", "/tmp/x.json"]);
+    expect(out.empty).toEqual([]);
+  });
+
+  it("★ 오타는 unknown (--apply--from=, --include-week, --applyfrom=)", () => {
+    const out = validateArgv(["--apply--from=/tmp/x.json", "--include-week", "--applyfrom=/tmp/y.json"]);
+    expect(out.unknown).toEqual(["--apply--from=/tmp/x.json", "--include-week", "--applyfrom=/tmp/y.json"]);
+  });
+
+  it("★ 값이 빈 인자는 empty (--apply-from= 로 빈 경로를 열지 않는다)", () => {
+    const out = validateArgv(["--apply-from=", "--out=", "--limit=", "--ids-file="]);
+    expect(out.empty).toEqual(["--apply-from=", "--out=", "--limit=", "--ids-file="]);
+    expect(out.unknown).toEqual([]);
+  });
+
+  it("불리언 인자에 값을 붙이면 unknown (--apply=true)", () => {
+    expect(validateArgv(["--apply=true"]).unknown).toEqual(["--apply=true"]);
+  });
+
+  it("화이트리스트가 실제 인자와 같다 (상수 하나에서 나온다)", () => {
+    expect(KNOWN_BOOLEAN_FLAGS).toEqual([
+      "--apply",
+      "--purge-derived",
+      "--refit-fields",
+      "--include-weak",
+      "--force-timing",
+    ]);
+    expect(KNOWN_VALUE_FLAGS).toEqual(["--limit", "--out", "--ids-file", "--apply-from"]);
+  });
+});
+
+describe("checkDumpProvenance — 그 dry-run 이 온전했나 (세션543 F2)", () => {
+  it("★ rosterSize 0 인 덤프는 거부한다 — 세션542 사고가 바로 그 상태였다", () => {
+    const v = checkDumpProvenance(dump([fileRow()], { rosterSize: 0 }));
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/로스터 0건/);
+  });
+
+  it("★ rosterSize 가 없는 구버전 덤프는 거부한다 (온전했는지 알 수 없다)", () => {
+    const d = dump([fileRow()]);
+    delete d.rosterSize;
+    const v = checkDumpProvenance(d);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/rosterSize/);
+  });
+
+  it("★ applySet 이 없는 구버전 덤프는 거부한다 (무엇을 대상으로 봤는지 알 수 없다)", () => {
+    const d = dump([fileRow()]);
+    delete d.applySet;
+    const v = checkDumpProvenance(d);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/applySet/);
+  });
+
+  it("정상 덤프는 통과", () => {
+    expect(checkDumpProvenance(dump([fileRow()]))).toEqual({ ok: true, reason: "" });
+  });
+
+  it("rosterSize 가 숫자가 아니면 거부 (문자열 '1675' 도)", () => {
+    expect(checkDumpProvenance(dump([fileRow()], { rosterSize: "1675" })).ok).toBe(false);
+    expect(checkDumpProvenance(dump([fileRow()], { rosterSize: Number.NaN })).ok).toBe(false);
+  });
+
+  it("null·빈 객체도 거부 (throw 하지 않는다)", () => {
+    expect(checkDumpProvenance(null).ok).toBe(false);
+    expect(checkDumpProvenance({}).ok).toBe(false);
+  });
+});
+
+describe("selectApplyFromRows — 덤프의 applySet 만 반영한다 (등급 재계산 없음)", () => {
+  it("★ applySet 에 없으면 등급이 맞아도 거부한다 — 그 dry-run 이 보여준 집합이 곧 반영 집합", () => {
+    // ⚠️ 이게 이 모드의 핵심이다. 등급으로 다시 고르면 그 dry-run 의 사정(--limit·--include-weak)이
+    // 빠져 **콘솔에서 본 "정정 대상 N곳" 과 다른 집합**이 된다.
+    const rows = [fileRow({ id: "shown" }), fileRow({ id: "hidden" })];
+    const out = selectApplyFromRows(dump(rows, { applySet: ["shown"] }));
+    expect(out.rows.map((r) => r.id)).toEqual(["shown"]);
+    expect(out.rejected).toEqual([
+      { id: "hidden", reason: "applySet 에 없음(그 dry-run 이 정정 대상으로 보여주지 않았다)" },
+    ]);
+  });
+
+  it("★ applySet 에 있어도 반영 대상 아닌 등급이면 거부한다 (검증은 남긴다)", () => {
+    const rows = [
+      fileRow({ id: "a", tier: "A2" }),
+      fileRow({ id: "b", tier: "B_apply" }),
+      fileRow({ id: "c", tier: "B_kakao_strong" }),
+      fileRow({ id: "w", tier: "B_kakao_weak" }),
+      fileRow({ id: "d", tier: "ok" }),
+      fileRow({ id: "e", tier: "conflict" }),
+      fileRow({ id: "g", tier: "B_complex" }),
+    ];
+    // 덤프가 손으로 고쳐져 applySet 에 ok/conflict/B_complex 까지 들어간 상황
+    // (weak 는 등급 게이트와 별개로 `includeWeak` 게이트가 또 있다 — 여기선 그쪽을 열어 등급만 본다)
+    const out = selectApplyFromRows(dump(rows, { applySet: ["a", "b", "c", "w", "d", "e", "g"], includeWeak: true }));
+    expect(out.rows.map((r) => r.id)).toEqual(["a", "b", "c", "w"]);
+    expect(out.rejected.map((r) => r.id).sort()).toEqual(["d", "e", "g"]);
+    for (const r of out.rejected) expect(r.reason).toMatch(/등급/);
+    // APPLY_TIERS 와 같은 집합을 쓴다 — 두 곳이 갈리면 `--apply` 와 다른 것을 반영하게 된다
+    expect([...APPLY_TIERS].sort()).toEqual(["A2", "B_apply", "B_kakao_strong"]);
+  });
+
+  it("★ B_kakao_weak 은 applySet 에 들어 있으면 통과한다 (덤프가 --include-weak 로 만들어졌다)", () => {
+    const rows = [fileRow({ id: "w", tier: "B_kakao_weak" })];
+    expect(selectApplyFromRows(dump(rows, { applySet: ["w"], includeWeak: true })).rows.map((r) => r.id))
+      .toEqual(["w"]);
+    // 같은 행이라도 그 dry-run 이 대상으로 안 봤으면 반영하지 않는다
+    expect(selectApplyFromRows(dump(rows, { applySet: [] })).rows).toHaveLength(0);
+  });
+
+  it("★ 덤프가 weak 를 포함하지 않았는데 applySet 에 weak 가 있으면 거부한다 (G5)", () => {
+    // 이 조합은 정상 `--out` 에서는 나올 수 없다 — weak 가 applySet 에 들었다면 그 dry-run 은
+    // `--include-weak` 였고 그러면 `includeWeak: true` 로 적힌다. 어긋났다 = 파일이 편집됐다.
+    const rows = [fileRow({ id: "w", tier: "B_kakao_weak" }), fileRow({ id: "a", tier: "A2" })];
+    for (const iw of [false, undefined, "true", 1]) {
+      const out = selectApplyFromRows(dump(rows, { applySet: ["w", "a"], includeWeak: iw }));
+      expect(out.rows.map((r) => r.id)).toEqual(["a"]); // weak 만 빠지고 나머지는 그대로
+      expect(out.rejected).toEqual([{ id: "w", reason: "덤프가 weak 를 포함하지 않았다(includeWeak !== true)" }]);
+    }
+    // 반대로 true 면 통과한다(위 테스트와 같은 자리 — 조건이 통째로 지워지면 이 쌍이 무의미해진다)
+    expect(selectApplyFromRows(dump(rows, { applySet: ["w", "a"], includeWeak: true })).rows.map((r) => r.id))
+      .toEqual(["w", "a"]);
+  });
+
+  it("★ newLat/newLng 이 없거나 문자열이면 거부한다 (좌표를 문자열로 UPDATE 하지 않는다)", () => {
+    const rows = [
+      fileRow({ id: "n1", newLat: null }),
+      fileRow({ id: "n2", newLng: null }),
+      fileRow({ id: "s1", newLat: "37.5" }),
+      fileRow({ id: "s2", newLng: "127.5" }),
+      fileRow({ id: "nan", newLat: Number.NaN }),
+      fileRow({ id: "good" }),
+    ];
+    const out = selectApplyFromRows(dump(rows));
+    expect(out.rows.map((r) => r.id)).toEqual(["good"]);
+    expect(out.rejected.map((r) => r.id).sort()).toEqual(["n1", "n2", "nan", "s1", "s2"]);
+    for (const r of out.rejected) expect(r.reason).toMatch(/좌표/);
+  });
+
+  it("★ 같은 id 가 두 번 나오면 그 id 를 전부 거부한다 (어느 쪽이 맞는지 모른다)", () => {
+    const rows = [
+      fileRow({ id: "dup", newLat: 37.5 }),
+      fileRow({ id: "dup", newLat: 38.9 }),
+      fileRow({ id: "solo" }),
+    ];
+    const out = selectApplyFromRows(dump(rows));
+    expect(out.rows.map((r) => r.id)).toEqual(["solo"]);
+    expect(out.rejected.filter((r) => r.id === "dup")).toHaveLength(2);
+    for (const r of out.rejected) expect(r.reason).toMatch(/중복/);
+  });
+
+  it("★ applySet 에만 있고 rows 에 없는 id 는 사유를 남긴다 (덤프가 잘렸다는 신호)", () => {
+    const out = selectApplyFromRows(dump([fileRow({ id: "a" })], { applySet: ["a", "ghost"] }));
+    expect(out.rows.map((r) => r.id)).toEqual(["a"]);
+    expect(out.rejected).toEqual([{ id: "ghost", reason: "applySet 에만 있음(rows 에 그 행이 없다)" }]);
+  });
+
+  it("id 가 비면 거부한다", () => {
+    const rows = [fileRow({ id: "" }), fileRow({ id: null })];
+    const out = selectApplyFromRows(dump(rows, { applySet: [] }));
+    expect(out.rows).toHaveLength(0);
+    expect(out.rejected.filter((r) => r.reason === "id 없음")).toHaveLength(2);
+  });
+
+  it("★ rows 가 배열이 아니면 throw (빈 목록을 '반영할 게 없다' 로 착각하지 않는다)", () => {
+    expect(() => selectApplyFromRows({ applySet: [] })).toThrow(/rows/);
+    expect(() => selectApplyFromRows(null)).toThrow(/rows/);
+    expect(() => selectApplyFromRows({ rows: { id: "a" }, applySet: [] })).toThrow(/rows/);
+  });
+
+  it("★ applySet 이 배열이 아니면 throw (구버전 덤프를 등급으로 되돌려 처리하지 않는다)", () => {
+    expect(() => selectApplyFromRows({ rows: [fileRow()] })).toThrow(/applySet/);
+    expect(() => selectApplyFromRows({ rows: [], applySet: "a" })).toThrow(/applySet/);
+  });
+
+  it("빈 배열은 빈 결과 (throw 아님)", () => {
+    expect(selectApplyFromRows({ rows: [], applySet: [] })).toEqual({ rows: [], rejected: [] });
+  });
+});
+
+describe("purgeTargetIds — 파생표 정리 대상 (세션543 F3)", () => {
+  it("★ already 도 포함한다 — 좌표만 이미 옮겨지고 파생표는 안 지워진 행이 있다", () => {
+    expect(purgeTargetIds(["a", "b"], ["c"]).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("★ apply 가 0건이어도 already 가 있으면 대상이 남는다 (재실행이 파생표를 정리한다)", () => {
+    expect(purgeTargetIds([], ["c", "d"]).sort()).toEqual(["c", "d"]);
+  });
+
+  it("겹치는 id 는 한 번만 (중복 purge 하지 않는다)", () => {
+    expect(purgeTargetIds(["a", "b"], ["b", "c"]).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("둘 다 비면 빈 배열 (purge 를 아예 부르지 않는 근거)", () => {
+    expect(purgeTargetIds([], [])).toEqual([]);
+    expect(purgeTargetIds(undefined, undefined)).toEqual([]);
+  });
+});
+
+describe("planApplyFrom — 반영 전 전제 검사 (그 사이 누가 옮겼나)", () => {
+  const F = fileRow({ id: "x" });
+
+  it("★ DB 가 파일의 현재 좌표와 같으면 apply", () => {
+    const plan = planApplyFrom([F], [{ id: "x", lat: 37.1, lng: 127.1 }]);
+    expect(plan.apply.map((e) => e.id)).toEqual(["x"]);
+    expect(plan.already).toHaveLength(0);
+    expect(plan.changed).toHaveLength(0);
+    expect(plan.missing).toHaveLength(0);
+  });
+
+  it("★ DB 가 이미 새 좌표면 already — changed 보다 먼저 판정된다 (재실행 안전)", () => {
+    // 옛 좌표(37.1)와도 다르고 새 좌표(37.5)와는 같다. changed 를 먼저 보면 여기서 죽는다.
+    const plan = planApplyFrom([F], [{ id: "x", lat: 37.5, lng: 127.5 }]);
+    expect(plan.already.map((e) => e.id)).toEqual(["x"]);
+    expect(plan.apply).toHaveLength(0);
+    expect(plan.changed).toHaveLength(0);
+  });
+
+  it("★ 파일의 현재 좌표도 새 좌표도 아니면 changed — 반영하지 않는다", () => {
+    const plan = planApplyFrom([F], [{ id: "x", lat: 38.9, lng: 128.9 }]);
+    expect(plan.changed.map((e) => e.id)).toEqual(["x"]);
+    expect(plan.apply).toHaveLength(0);
+    // 사람이 판단할 재료: 파일 좌표와 DB 좌표를 둘 다 들고 있다
+    expect(plan.changed[0].db).toEqual({ lat: 38.9, lng: 128.9 });
+    expect(plan.changed[0].row.lat).toBe(37.1);
+  });
+
+  it("★ DB 에 행이 없으면 missing — 조용히 반영하지 않는다", () => {
+    const plan = planApplyFrom([F], []);
+    expect(plan.missing.map((e) => e.id)).toEqual(["x"]);
+    expect(plan.apply).toHaveLength(0);
+    expect(plan.missing[0].db).toBe(null);
+  });
+
+  it("★ 좌표 동일 판정 경계 — 1e-8(≈1mm) 은 같음, 1e-4(≈11m) 는 다름", () => {
+    const same = planApplyFrom([F], [{ id: "x", lat: 37.1 + 1e-8, lng: 127.1 - 1e-8 }]);
+    expect(same.apply.map((e) => e.id)).toEqual(["x"]);
+
+    const diff = planApplyFrom([F], [{ id: "x", lat: 37.1 + 1e-4, lng: 127.1 }]);
+    expect(diff.changed.map((e) => e.id)).toEqual(["x"]);
+    expect(diff.apply).toHaveLength(0);
+  });
+
+  it("★ DB 좌표가 null 이면 changed (0 으로 셈해서 같다고 하지 않는다)", () => {
+    const plan = planApplyFrom([fileRow({ id: "z", lat: 0, lng: 0 })], [{ id: "z", lat: null, lng: null }]);
+    expect(plan.changed.map((e) => e.id)).toEqual(["z"]);
+    expect(plan.apply).toHaveLength(0);
+  });
+
+  it("여러 행을 각 분류로 나눈다", () => {
+    const rows = [
+      fileRow({ id: "a" }),
+      fileRow({ id: "b" }),
+      fileRow({ id: "c" }),
+      fileRow({ id: "d" }),
+    ];
+    const plan = planApplyFrom(rows, [
+      { id: "a", lat: 37.1, lng: 127.1 },
+      { id: "b", lat: 37.5, lng: 127.5 },
+      { id: "c", lat: 38.9, lng: 128.9 },
+    ]);
+    expect(plan.apply.map((e) => e.id)).toEqual(["a"]);
+    expect(plan.already.map((e) => e.id)).toEqual(["b"]);
+    expect(plan.changed.map((e) => e.id)).toEqual(["c"]);
+    expect(plan.missing.map((e) => e.id)).toEqual(["d"]);
+  });
+});
+
+describe("verifyApplied — 반영 직후 대조 (DB 가 정말 그 좌표인가)", () => {
+  it("★ 전부 일치하면 mismatch 0", () => {
+    const rows = [fileRow({ id: "a" }), fileRow({ id: "b", newLat: 35.2, newLng: 129.1 })];
+    const v = verifyApplied(rows, [
+      { id: "a", lat: 37.5, lng: 127.5 },
+      { id: "b", lat: 35.2, lng: 129.1 },
+    ]);
+    expect(v.ok.slice().sort()).toEqual(["a", "b"]);
+    expect(v.mismatch).toHaveLength(0);
+  });
+
+  it("★ 1건이라도 어긋나면 mismatch 에 기대값·실제값을 담는다", () => {
+    const rows = [fileRow({ id: "a" }), fileRow({ id: "b" })];
+    const v = verifyApplied(rows, [
+      { id: "a", lat: 37.5, lng: 127.5 },
+      { id: "b", lat: 37.1, lng: 127.1 },
+    ]);
+    expect(v.ok).toEqual(["a"]);
+    expect(v.mismatch).toEqual([
+      { id: "b", expected: { lat: 37.5, lng: 127.5 }, actual: { lat: 37.1, lng: 127.1 } },
+    ]);
+  });
+
+  it("★ DB 에서 행이 사라졌으면 mismatch (actual null) — 일치로 세지 않는다", () => {
+    const v = verifyApplied([fileRow({ id: "gone" })], []);
+    expect(v.ok).toHaveLength(0);
+    expect(v.mismatch).toEqual([
+      { id: "gone", expected: { lat: 37.5, lng: 127.5 }, actual: null },
+    ]);
+  });
+
+  it("반올림 오차(1e-8)는 일치로 본다", () => {
+    const v = verifyApplied([fileRow({ id: "a" })], [{ id: "a", lat: 37.5 + 1e-8, lng: 127.5 }]);
+    expect(v.mismatch).toHaveLength(0);
+  });
+});
+
+describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 grep)", () => {
+  it("주석 제거가 검사 대상을 먹지 않았다 (스트리퍼 자체 점검)", () => {
+    // 세션531: 스트리퍼가 코드를 통째로 지우면 아래 검사들이 "무엇을 넣어도 통과" 가 된다.
+    expect(SRC).toContain("selectApplyFromRows");
+    expect(SRC).toContain("runApplyFrom");
+    expect(SRC).toContain("checkDumpProvenance");
+    expect(SRC).toContain("purgeTargetIds");
+    expect(SRC).toContain("validateArgv");
+    expect(SRC).toContain("const roster = await fetchApplyhomeRoster();");
+  });
+
+  it("★ 모르는 인자 검사가 DB 접근보다 앞에서 종료시킨다 (F1)", () => {
+    const i = SRC.indexOf("const argvIssues = validateArgv(argv);");
+    const j = SRC.indexOf('const apply = argv.includes("--apply");', i);
+    const sb = SRC.indexOf("const sb = getSupabase();");
+    expect(i).toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
+    expect(sb).toBeGreaterThan(-1);
+    // ⚠️ 창을 **다음 문장 경계**로 자른다 — 넓게 잡으면 뒤따르는 다른 exit 가 들어와 껍데기가 된다
+    expect(SRC.slice(i, j)).toContain("process.exit(1);");
+    expect(i).toBeLessThan(sb); // 인자가 틀렸으면 DB 에 붙기 전에 죽는다
+  });
+
+  it("★ argv 파싱에 --apply-from 이 있다", () => {
+    expect(SRC).toMatch(/const applyFrom = strArg\(argv, "--apply-from"\);/);
+  });
+
+  it("★ --apply-from 분기가 재분석(청약홈 로스터 조회)보다 앞에서 **반환**한다 (F7)", () => {
+    // 순서만 보고 `return;` 을 안 보면, 분기가 앞에 있어도 그대로 흘러 재분석이 돈다.
+    expect(SRC).toMatch(/await runApplyFrom\(sb, \{[^;]*\}\);\s*return;/);
+    const call = SRC.indexOf("await runApplyFrom(sb, {");
+    const roster = SRC.indexOf("const roster = await fetchApplyhomeRoster();");
+    const refitBranch = SRC.indexOf("if (refit) {");
+    expect(call).toBeGreaterThan(-1);
+    expect(roster).toBeGreaterThan(-1);
+    expect(refitBranch).toBeGreaterThan(-1);
+    expect(call).toBeLessThan(roster); // 재분석 전에 반환한다
+    expect(call).toBeLessThan(refitBranch); // refit/ids-file 분기보다도 앞
+  });
+
+  it("★ 배타 검사는 원시 argv 존재로 본다 (--limit=0 이 null 로 사라지는 함정) + --include-weak 포함", () => {
+    expect(SRC).toContain("a === f || a.startsWith(`${f}=`)");
+    expect(SRC).toMatch(
+      /if \(hasFlag\("--apply-from"\) && \["--refit-fields", "--ids-file", "--limit", "--out", "--include-weak"\]\.some\(hasFlag\)\)/,
+    );
+  });
+
+  it("★ 덤프 출처 검사(rosterSize·applySet)가 DB 조회보다 앞에서 종료시킨다 (F2·G2)", () => {
+    const i = SRC.indexOf("const prov = checkDumpProvenance(json);");
+    const fetch1 = SRC.indexOf("await fetchCoordRows(sb, fileRows");
+    expect(i).toBeGreaterThan(-1);
+    expect(fetch1).toBeGreaterThan(-1);
+    // 창 방식은 뒤따르는 다른 exit 를 삼킨다 — `if (!prov.ok)` 블록 **안**의 exit 를 앵커로 고정한다.
+    // `[^;]*;` = 그 사이에 문장 하나(logError)까지만 허용(G2).
+    expect(SRC).toMatch(/if \(!prov\.ok\) \{[^;]*;\s*process\.exit\(1\);/);
+    expect(i).toBeLessThan(fetch1);
+  });
+
+  it("★ --out 덤프가 rosterSize·applySet 을 적는다 — 없으면 apply-from 이 그 덤프를 거부한다 (F2)", () => {
+    expect(SRC).toMatch(/rosterSize: roster\.size,/);
+    expect(SRC).toMatch(/applySet: fixList\.map\(\(r\) => String\(r\.id\)\),/);
+    expect(SRC).toMatch(/limit: limit \?\? null,/);
+  });
+
+  it("★ 대조 불일치가 1건이라도 있으면 exit 1 (조용히 넘어가지 않는다) (F6·G1)", () => {
+    expect(SRC).toMatch(/const \{ ok: matched, mismatch \} = verifyApplied\(/);
+    // ⚠️ 창(slice) 방식은 두 번 뚫렸다 — 고정 400자는 뒤따르는 `if (fail > 0) process.exit(1);` 을 삼키고,
+    // 경계를 `purgeDerived(` 로 잡으면 그 exit 를 **앞으로 옮기는 리팩터**에 그대로 뚫린다
+    // (게다가 `not.toContain("purgeDerived(")` 는 슬라이스 경계가 그 문자열이라 **항등식**이었다).
+    // 그래서 창을 버리고 **그 로그 문구 바로 다음 줄**로 앵커를 고정한다(CRLF 워킹트리라 `\r?` 필수).
+    expect(SRC).toMatch(/반영 직후 대조 불일치[^\n]*\r?\n\s*process\.exit\(1\);/);
+  });
+
+  it("★ applySet 멤버가 검증에서 탈락하면 반영 경로는 죽는다 (G3)", () => {
+    // 정상 덤프에서는 일어날 수 없는 조합이다(그 dry-run 이 등급·좌표를 이미 확인했다).
+    // 일어났다 = 파일이 손으로 고쳐졌거나 잘렸다 → 반영하면 "본 목록 ≠ 쓰는 목록" 이 된다.
+    expect(SRC).toMatch(/const lost = rejected\.filter\(\(r\) => applySetIds\.has\(r\.id\)\);/);
+    expect(SRC).toMatch(/if \(lost\.length > 0 && apply\) \{/); // 미리보기는 경고만
+    expect(SRC).toMatch(/applySet 멤버가 검증에서 탈락[^\n]*\r?\n\s*process\.exit\(1\);/);
+    // DB 조회보다 앞이어야 한다 — 손상된 덤프로는 아무것도 묻지 않는다
+    expect(SRC.indexOf("const lost = rejected.filter(")).toBeLessThan(
+      SRC.indexOf("await fetchCoordRows(sb, fileRows"),
+    );
+  });
+
+  it("★ 불일치로 죽는 경로에서도 .applied.json 을 남긴다 — 불일치 id 는 빼고 (G4)", () => {
+    const decl = SRC.indexOf("const appliedPath = ");
+    const partial = SRC.indexOf("const partial = {");
+    const mismatchExit = SRC.indexOf('logError(PHASE, "반영 직후 대조 불일치');
+    expect(decl).toBeGreaterThan(-1);
+    // 선언이 반영 루프보다 **앞**이어야 불일치 블록에서 쓸 수 있다(뒤에 있으면 ReferenceError)
+    expect(decl).toBeLessThan(partial);
+    expect(partial).toBeLessThan(mismatchExit); // exit 전에 쓴다 — 죽고 나면 못 남긴다
+    expect(SRC).toMatch(
+      /const partial = \{ generatedAt: new Date\(\)\.toISOString\(\), source: abs, ids: purgeTargetIds\(matched, alreadyIds\), verified: false, mismatch \};/,
+    );
+    expect(SRC).toMatch(/writeFileSync\(appliedPath, JSON\.stringify\(partial, null, 2\), "utf8"\);/);
+    // 정상 경로는 verified: true — 후속 작업이 두 파일을 구분할 수 있어야 한다
+    expect(SRC).toMatch(/ids: purgeIds, verified: true \}/);
+  });
+
+  it("★ --limit 값이 숫자가 아니면 DB 접근 전에 죽는다 (G6)", () => {
+    // `numArg` 는 "abc"·"0"·"-3" 을 전부 null 로 준다 = **제한 없음**(전 단지 대상). 값 오타의 대가가 크다.
+    expect(numArg(["--limit=abc"], "--limit")).toBeNull();
+    expect(numArg(["--limit=0"], "--limit")).toBeNull(); // ⚠️ `--limit=0` 도 이제 거부 대상이다
+    expect(numArg(["--limit=60"], "--limit")).toBe(60);
+    expect(SRC).toMatch(/if \(strArg\(argv, "--limit"\) != null && limit == null\) \{[^;]*;\s*process\.exit\(1\);/);
+    expect(SRC.indexOf('if (strArg(argv, "--limit") != null && limit == null)')).toBeLessThan(
+      SRC.indexOf("const sb = getSupabase();"),
+    );
+  });
+
+  it("★ 두 경로가 같은 UPDATE 를 쓴다 — 기존 --apply 도 applyCoordFixes 를 부른다", () => {
+    expect(SRC).toMatch(/const \{ ok, fail \} = await applyCoordFixes\(sb, fixList\);/);
+    expect(SRC).toMatch(/await applyCoordFixes\(sb, appliedRows\);/);
+    // 페이로드는 한 곳에만 있다(두 벌이면 갈린다)
+    expect(SRC.match(/road_address: null,/g) ?? []).toHaveLength(1);
+  });
+
+  it("★ purge 대상 = 반영 성공 ∪ already (F3)", () => {
+    expect(SRC).toMatch(/const purgeIds = purgeTargetIds\(okIds, alreadyIds\);/);
+    expect(SRC).toMatch(/if \(purgeIds\.length > 0\) await purgeDerived\(sb, purgeIds\);/);
+  });
+
+  it("★ apply 0건이어도 purge 로 흘러간다 — 조기 return 이 없다 (F3)", () => {
+    const i = SRC.indexOf("if (plan.apply.length === 0) {");
+    const j = SRC.indexOf("const purgeIds = purgeTargetIds(", i);
+    expect(i).toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
+    expect(SRC.slice(i, j)).not.toMatch(/\breturn;/);
+  });
+
+  it("★ 반영 결과 id 를 .applied.json 으로 남긴다 — 후속 --ids-file 의 입력 (F3)", () => {
+    expect(SRC).toContain(".applied.json`");
+    expect(SRC).toMatch(
+      /appliedPath,\s*JSON\.stringify\(\{ generatedAt: new Date\(\)\.toISOString\(\), source: abs, ids: purgeIds, verified: true \}/,
+    );
+  });
+
+  it("★ --apply-from 경로는 cwd 기준 — --out(writeFileSync) 과 같은 기준이다 (F8)", () => {
+    expect(SRC).toMatch(/const abs = resolve\(path\);/);
+    // 레포 루트 기준으로 되돌아가면 cwd ≠ 루트일 때 방금 쓴 그 파일이 아니라 다른 파일을 연다
+    expect(SRC).not.toMatch(/const abs = resolve\(ROOT, path\);/);
+  });
+
+  it("★ fetchCoordRows 는 항상 300씩 자른다 (F9)", () => {
+    expect(SRC).toMatch(/async function fetchCoordRows\(sb, ids\) \{\s*const chunk = 300;/);
+  });
+
+  it("★ 미리보기가 apply 행을 거리 내림차순으로 **전부** 찍는다 (F4)", () => {
+    expect(SRC).toMatch(
+      /const applySorted = plan\.apply\.slice\(\)\.sort\(\(a, b\) => \(b\.row\.distM \?\? 0\) - \(a\.row\.distM \?\? 0\)\);/,
+    );
+    expect(SRC).toMatch(/for \(const e of applySorted\) \{/);
+    // 잘라 보여주면 검토가 반쪽이 된다 — slice(0, 30) 로 되돌아가지 않았다
+    expect(SRC).not.toMatch(/plan\.apply\.slice\(0, 30\)/);
   });
 });
