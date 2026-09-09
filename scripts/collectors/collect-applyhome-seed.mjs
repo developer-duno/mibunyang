@@ -11,6 +11,10 @@
  *   normName 유사도 >= 0.85 AND region 일치(collect-applyhome-detail 게이트 답습) 인 기존
  *   단지가 있으면 → 좌표 거리 <= 500m 같은 아파트(skip) / > 500m 동명 이단지(등록) /
  *   후보 지오코딩 실패 시 판정불가(이번 run 보류 — 로스터 미등재라 다음 주 자동 재시도).
+ *   단, 좌표가 없어도 **이름 유사도 >= 0.95 + 블록·차수 비충돌 + 기존 단지에 좌표 있음** 이면
+ *   중복으로 본다(skip, `by: "name"` — 세션543 B-4). 하나라도 아니면 보류.
+ *   블록·차수는 **숫자 차이(phaseConsistent) + 글자 차이(blockConflict) 둘 다** 본다 — 숫자만
+ *   보면 `(AB23BL)` ↔ `(AA23BL)` 처럼 글자만 다른 별개 단지를 못 가른다(세션543 H1 리뷰 실증).
  *
  * raw probe 박제 (2026-07-03, perPage=5 + 전수 1608행):
  *   존재 필드: HOUSE_MANAGE_NO, HOUSE_NM, HSSPLY_ADRES, TOT_SUPLY_HSHLDCO, RCRIT_PBLANC_DE(ISO
@@ -39,7 +43,9 @@ import {
   REGION_MAP, VALID_REGIONS, normalizeGu, resolveBuilder, clampUnsoldRate,
 } from "./_shared.mjs";
 import { normName } from "./collect-applyhome-detail.mjs";
-import { geocodeApartmentByName, fetchKakaoKeywordDocs, isPreciseGeocode } from "./_kakao-poi.mjs";
+import {
+  geocodeApartmentByName, fetchKakaoKeywordDocs, isPreciseGeocode, phaseConsistent, blockConflict,
+} from "./_kakao-poi.mjs";
 
 loadEnv();
 
@@ -53,6 +59,13 @@ let apiCalls = 0;
 const MATCH_SIM_MIN = 0.85;
 // 같은 아파트 판정 좌표 거리(m) — 대단지 부지 + 공급주소 지오코드 오차 흡수
 const DEDUP_DIST_M = 500;
+// 좌표 없이 이름만으로 중복이라 부를 최소 유사도 (세션543 사장님 결정 B-4).
+// `MATCH_SIM_MIN`(0.85, 후보 선정)보다 한 단계 높지만 **"사실상 같은 이름"은 아니다**:
+// `stringSimilarity = 2·LCS/(la+lb)` 라 정규화 20자짜리 두 이름은 **한 글자만 달라도 정확히 0.95**
+// (2·19/40). 즉 이 문턱이 실제로 걸러내는 건 "20자 미만에서 2글자 이상 차이" 뿐이고, 20자 이상
+// 긴 이름의 1글자 차이는 그냥 통과한다 — 그래서 블록·차수 가드(phaseConsistent + blockConflict)가
+// **같이** 있어야 한다. 실측 보류 10건 중 6건이 여기를 넘고 4건이 걸린다.
+const NAME_ONLY_SKIP_SIM = 0.95;
 // 공고일 기준 기본값 (세션 466 사장님 결정: 3/14 이후 신규만)
 const DEFAULT_SINCE = "2026-03-14";
 // RCRIT_PBLANC_DE 파싱 실패 비율 가드 (applyhome-detail noDateRatio 답습 — API 형식 변경 감지)
@@ -219,7 +232,9 @@ export async function geocodeAddr(addr, search = kakaoSearch) {
 /**
  * @param {Candidate} cand
  * @param {ExistingApt[]} existing
- * @returns {{ action: "insert" } | { action: "skip" | "defer"; matchedId: string; matchedName: string; sim: number; dist: number | null }}
+ * @returns {{ action: "insert" }
+ *   | { action: "skip"; matchedId: string; matchedName: string; sim: number; dist: number | null; by: "coord" | "name" }
+ *   | { action: "defer"; matchedId: string; matchedName: string; sim: number; dist: number | null }}
  */
 export function findDuplicate(cand, existing) {
   const cn = normName(cand.name);
@@ -227,20 +242,42 @@ export function findDuplicate(cand, existing) {
   /** @type {ExistingApt | null} */
   let best = null;
   let bestSim = 0;
+  // 동점(sim 1.00)일 때 쓰는 적격 플래그 — 아래 tie-break 주석 참조.
+  let bestOk = false;
   for (const a of existing) {
     // region 게이트 먼저 (후보 region 은 항상 확정값) — 동명이지역 오매칭 차단
     if (a.region && !(cand.region.startsWith(a.region) || a.region.startsWith(cand.region))) continue;
     const sim = stringSimilarity(cn, normName(a.name));
-    if (sim >= MATCH_SIM_MIN && sim > bestSim) { best = a; bestSim = sim; }
+    if (sim < MATCH_SIM_MIN) continue;
+    // `normName` 이 괄호를 지우므로 `X(AB22BL)`·`X(AB23BL)`·네이버 `X` 가 전부 sim 1.00 이 된다.
+    // `sim > bestSim` 만 쓰면 **조회 순서**가 판정을 정한다(세션543 H3 실증: [AB22, AB23] 순 →
+    // defer / 반대 순 → skip). 동점이면 블록·차수가 안 어긋나는 행을 골라 순서 의존을 없앤다.
+    const ok = phaseConsistent(cand.name, a.name) === "ok" && !blockConflict(cand.name, a.name);
+    if (sim > bestSim || (sim === bestSim && best && !bestOk && ok)) { best = a; bestSim = sim; bestOk = ok; }
   }
   if (!best) return { action: "insert" };
   if (cand.lat == null || cand.lng == null || best.lat == null || best.lng == null) {
-    // 좌표 없이는 정밀 판정 불가 → 이번 run 보류 (로스터 미등재 유지 = 다음 주 자동 재시도)
+    // 좌표가 없어도 **이름이 거의 같고(≥0.95) 블록·차수가 안 어긋나며 기존 단지에 좌표가
+    // 있으면** 중복으로 본다 (세션543 B-4). 그 전엔 무조건 보류라 매주 같은 10건이 반복됐다.
+    // ⚠️ 블록·차수는 **숫자 차이(phaseConsistent) + 글자 차이(blockConflict) 둘 다** 봐야 한다 —
+    //    `normName` 이 괄호를 통째로 지워서 `(AB23BL)` ↔ `(AB22BL)`(숫자 차이)도, `(AB23BL)` ↔
+    //    `(AA23BL)`(글자 차이)도 sim 1.00 이다. 숫자 게이트만 있으면 뒤엣것을 못 봐서 **별개
+    //    단지를 영영 못 넣는다**(세션543 H1 리뷰 실증: 글자접두 쌍 3종 전부 skip 이었다).
+    //    기존 좌표 요구는 "좌표 없는 행에 얹지 않는다"(세션541).
+    const nameOnly =
+      bestSim >= NAME_ONLY_SKIP_SIM &&
+      best.lat != null && best.lng != null &&
+      phaseConsistent(cand.name, best.name) === "ok" &&
+      !blockConflict(cand.name, best.name);
+    if (nameOnly) {
+      return { action: "skip", matchedId: best.id, matchedName: best.name, sim: bestSim, dist: null, by: "name" };
+    }
+    // 그 밖에는 정밀 판정 불가 → 이번 run 보류 (로스터 미등재 유지 = 다음 주 자동 재시도)
     return { action: "defer", matchedId: best.id, matchedName: best.name, sim: bestSim, dist: null };
   }
   const dist = haversineMeters(cand.lat, cand.lng, best.lat, best.lng);
   if (dist <= DEDUP_DIST_M) {
-    return { action: "skip", matchedId: best.id, matchedName: best.name, sim: bestSim, dist };
+    return { action: "skip", matchedId: best.id, matchedName: best.name, sim: bestSim, dist, by: "coord" };
   }
   return { action: "insert" };
 }
@@ -321,7 +358,7 @@ async function main() {
     // 후보별: 변환 → 지오코딩 → 정밀 중복 판정
     /** @type {Candidate[]} */
     const toInsert = [];
-    let dupSkipped = 0, deferred = 0, regionFailed = 0;
+    let dupSkipped = 0, dupByName = 0, deferred = 0, regionFailed = 0;
     for (const raw of candidates) {
       if (rpt.interrupted()) break;
       const cand = mapRow(raw);
@@ -342,9 +379,16 @@ async function main() {
       await sleep(200);
       const verdict = findDuplicate(cand, existing);
       if (verdict.action === "skip") {
-        dupSkipped++;
         rpt.skip();
-        log(PHASE, `  [중복] ${cand.name} (${cand.region}) ≒ ${verdict.matchedName} [${verdict.matchedId}] sim=${verdict.sim.toFixed(2)} dist=${Math.round(verdict.dist ?? -1)}m`);
+        // 좌표로 확인한 중복과 이름으로만 판단한 중복을 **로그에서 가른다** — 뒤에 오는 사람이
+        // "무엇을 근거로 안 넣었나"를 되짚을 수 있어야 한다(이름 경로는 물증이 한 겹 얇다).
+        if (verdict.by === "name") {
+          dupByName++;
+          log(PHASE, `  [중복·이름] ${cand.name} (${cand.region}) ≒ ${verdict.matchedName} [${verdict.matchedId}] sim=${verdict.sim.toFixed(2)} (좌표 없음 — 블록·차수 비충돌)`);
+        } else {
+          dupSkipped++;
+          log(PHASE, `  [중복] ${cand.name} (${cand.region}) ≒ ${verdict.matchedName} [${verdict.matchedId}] sim=${verdict.sim.toFixed(2)} dist=${Math.round(verdict.dist ?? -1)}m`);
+        }
         continue;
       }
       if (verdict.action === "defer") {
@@ -363,7 +407,7 @@ async function main() {
       log(PHASE, `  [배치중복] ${d.cand.name} (${d.cand.id}) → ${d.keptId} 유지 (공고일 최신)`);
     }
 
-    log(PHASE, `판정: 등록 ${kept.length} / 중복 ${dupSkipped} / 보류 ${deferred} / 배치중복 ${dropped.length} / region 실패 ${regionFailed}`);
+    log(PHASE, `판정: 등록 ${kept.length} / 중복 ${dupSkipped} / 중복(이름) ${dupByName} / 보류 ${deferred} / 배치중복 ${dropped.length} / region 실패 ${regionFailed}`);
 
     if (dryRun) {
       for (const c of kept.slice(0, 15)) {

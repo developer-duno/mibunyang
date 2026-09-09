@@ -153,7 +153,14 @@ import {
 // 주소검색 정밀도 `isPreciseGeocode`)는 `scripts/collectors/_kakao-poi.mjs` 로 옮겼다 — 자동
 // 지오코딩 통로들(geocode-missing 키워드, applyhome-seed 주소·키워드)이 이 도구와 **같은 규칙**을
 // 쓰게 하기 위해서다. 그 함수들의 가드는 `_kakao-poi.test.mjs` 와 이 도구 테스트가 지킨다.
-import { cleanName, shortRegion, pickKakaoCandidate, isPreciseGeocode } from "./collectors/_kakao-poi.mjs";
+// 세션543: 차수·블록 게이트(`PHASE_RE`·`extractPhases`·`phaseConsistent`)도 같은 이유로 그리로
+// 옮겼다 — `collect-applyhome-seed.mjs` 의 이름 기반 중복 판정이 이 도구와 **같은 잣대**를 써야
+// 한다. 이 도구의 공개 API 는 그대로 두려고 아래에서 **재수출**한다(호출처·테스트 무변경).
+import {
+  cleanName, shortRegion, pickKakaoCandidate, isPreciseGeocode,
+  PHASE_RE, extractPhases, phaseConsistent,
+} from "./collectors/_kakao-poi.mjs";
+export { extractPhases, phaseConsistent };
 
 loadEnv();
 const PHASE = "fix-placeholder";
@@ -266,41 +273,6 @@ export function normalizeApplyhomeAddress(addr) {
   s = s.replace(/번지/g, " ").replace(/\s+/g, " ").trim();
   s = s.replace(/\s*(일원|일대)$/, "").trim();
   return s;
-}
-
-/** 차수/블록 숫자 추출용. */
-const PHASE_RE = /(\d+)\s*(차|단지|BL|블록|블럭)/gi;
-
-/**
- * 이름에서 차수·블록 숫자 집합을 뽑는다("힐스테이트 오룡 2단지" → `{"2"}`).
- * @param {unknown} name
- * @returns {Set<string>}
- */
-export function extractPhases(name) {
-  /** @type {Set<string>} */
-  const out = new Set();
-  for (const m of String(name ?? "").matchAll(PHASE_RE)) {
-    out.add(m[1].replace(/^0+(?=\d)/, ""));
-  }
-  return out;
-}
-
-/**
- * 두 이름의 차수 일관성.
- * - `"ok"` — 둘 다 차수가 없거나, 있는데 교집합이 있다
- * - `"one-sided"` — 한쪽에만 차수가 있다(더 높은 유사도를 요구한다)
- * - `"conflict"` — 둘 다 있는데 겹치지 않는다(**거부**: 2단지 ↔ 1BL)
- * @param {unknown} aName
- * @param {unknown} cName
- * @returns {"ok" | "one-sided" | "conflict"}
- */
-export function phaseConsistent(aName, cName) {
-  const a = extractPhases(aName);
-  const c = extractPhases(cName);
-  if (a.size === 0 && c.size === 0) return "ok";
-  if (a.size === 0 || c.size === 0) return "one-sided";
-  for (const v of a) if (c.has(v)) return "ok";
-  return "conflict";
 }
 
 /**
