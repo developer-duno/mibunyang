@@ -43,7 +43,7 @@ vi.stubGlobal("fetch", mockFetch);
 // MOLIT_KEY 설정 — process.exit 방지
 process.env.MOLIT_KEY = "test-key";
 
-const { fetchTotalHouseholds, fetchMaintenanceCost, budgetExceeded } = await import("./collect-maintenance.mjs");
+const { fetchTotalHouseholds, fetchMaintenanceCost, budgetExceeded, sortByUpdatedAtAsc } = await import("./collect-maintenance.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** molitApiCall 응답 팩토리 (fetchTotalHouseholds용)
@@ -449,5 +449,68 @@ describe("wall-clock budget 박힘 (회귀 가드)", () => {
 
   it("기본 예산 100분 (120분 job timeout 미만 — SIGKILL 레이스 회피)", () => {
     expect(src).toMatch(/DEFAULT_BUDGET_MIN = 100/);
+  });
+});
+
+// ── sortByUpdatedAtAsc — 조회에서 클라이언트로 옮긴 정렬 (세션544) ──
+/**
+ * 옛 `.order("updated_at", { ascending: true, nullsFirst: true })` 를 그대로 재현해야 한다.
+ * `--limit` 이 앞에서 자르므로 이 순서가 곧 "이번 회차에 어느 단지를 채우나" 다.
+ */
+describe("sortByUpdatedAtAsc — updated_at 오래된 순 (NULL 먼저)", () => {
+  it("오래된 순으로 정렬한다", () => {
+    const rows = [
+      { id: "c", updated_at: "2026-03-01T00:00:00Z" },
+      { id: "a", updated_at: "2026-01-01T00:00:00Z" },
+      { id: "b", updated_at: "2026-02-01T00:00:00Z" },
+    ];
+    expect(sortByUpdatedAtAsc(rows).map((r) => r.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("NULL 이 가장 먼저 온다 (nullsFirst 재현 — 한 번도 안 채워진 단지 우선)", () => {
+    const rows = [
+      { id: "old", updated_at: "2026-01-01T00:00:00Z" },
+      { id: "never", updated_at: null },
+      { id: "new", updated_at: "2026-05-01T00:00:00Z" },
+    ];
+    expect(sortByUpdatedAtAsc(rows).map((r) => r.id)).toEqual(["never", "old", "new"]);
+  });
+
+  it("updated_at 동률은 id 로 갈라 회차마다 같은 순서가 나온다", () => {
+    const same = "2026-04-01T00:00:00Z";
+    const rows = [
+      { id: "b2", updated_at: same },
+      { id: "a1", updated_at: same },
+      { id: "c3", updated_at: same },
+    ];
+    expect(sortByUpdatedAtAsc(rows).map((r) => r.id)).toEqual(["a1", "b2", "c3"]);
+  });
+
+  it("원본 배열을 바꾸지 않는다", () => {
+    const rows = [{ id: "b", updated_at: "2026-02-01" }, { id: "a", updated_at: "2026-01-01" }];
+    sortByUpdatedAtAsc(rows);
+    expect(rows.map((r) => r.id)).toEqual(["b", "a"]);
+  });
+
+  it("빈 배열도 안전", () => {
+    expect(sortByUpdatedAtAsc([])).toEqual([]);
+  });
+});
+
+// ── 대상 조회는 고유키(id) 커서 (세션544) ──
+describe("대상 조회 배선 — selectAll keyCol", () => {
+  const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-maintenance.mjs"), "utf8");
+
+  it("selectAll 에 keyCol \"id\" 를 넘긴다 (무정렬 OFFSET 이면 2,900행 표에서 행이 샌다)", () => {
+    // 좌변까지 고정해 함수 선언부·주석에 매칭되지 않게 한다 (guards-must-be-mutation-tested §소스 grep).
+    expect(src).toMatch(/let targets = [\s\S]{0,80}await selectAll\(\(s\) => \{[\s\S]*?\}, sb, "id"\)\);/);
+  });
+
+  it("커서 키가 select 에 들어 있다 (없으면 selectAll 이 즉시 throw)", () => {
+    expect(src).toMatch(/\.select\("id, name, region, gu, units, updated_at,/);
+  });
+
+  it("조회에는 .order 를 남기지 않는다 — 정렬 키와 커서 키가 어긋나면 행이 잘린다", () => {
+    expect(src).not.toMatch(/q\.order\("updated_at"/);
   });
 });

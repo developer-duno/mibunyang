@@ -46,13 +46,13 @@ async function main() {
   const rpt = createReporter(PHASE);
   const sb = getSupabase();
 
-  // max_floor가 있고 floors가 없는 단지 조회 — selectAll 공유 헬퍼(1000행/배치 자동 페이지네이션)
+  // max_floor가 있고 floors가 없는 단지 조회 — selectAll 공유 헬퍼(고유키 id 커서 페이지네이션)
   const apts = await selectAll((s) =>
     s.from("apartments")
       .select("id, max_floor, floors")
       .not("max_floor", "is", null)
       .gt("max_floor", 0),
-  sb);
+  sb, "id");
 
   const targets = selectFloorTargets(apts);
   log("calc-floors", `대상: ${targets.length}건 (전체 max_floor 보유: ${apts.length}건)`);

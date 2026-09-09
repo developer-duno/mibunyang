@@ -170,7 +170,8 @@ export async function main() {
       regionsTyped = /** @type {any} */ (
         await selectAll(
           /** @param {any} c */ (c) => c.from("regions").select("id, region, gu, fertility_rate").not("gu", "is", null),
-          sb
+          sb,
+          "id"
         )
       );
     } catch (e) {

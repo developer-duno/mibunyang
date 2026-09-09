@@ -284,8 +284,9 @@ async function main() {
   // 1. 이벤트 — 접수 시작 D-0~+7 (미래만)
   const schedRows = await selectAll(
     (s) => s.from("presale_schedule_official")
-      .select("apartment_id, house_manage_no, special_receipt_bgnde, general_rank1_bgnde, pblanc_url"),
+      .select("id, apartment_id, house_manage_no, special_receipt_bgnde, general_rank1_bgnde, pblanc_url"),
     sb,
+    "id",
   );
   rpt.skip(schedRows.length); // 스캔 행 수 — 대상 0건 주간에도 skip>0 → monitor ②·⑤ 빈성공 오탐 차단
   const events = pickEvents(/** @type {any} */ (schedRows), todayStr);
@@ -296,6 +297,7 @@ async function main() {
     await selectAll(
       (s) => s.from("subscribers").select("id, phone, region, apartment_id").is("opt_out_at", null),
       sb,
+      "id",
     ));
   log(PHASE, `활성 구독자 ${subs.length}명`);
 
@@ -314,6 +316,7 @@ async function main() {
     await selectAll(
       (s) => s.from("apartments").select("id, name, region").in("id", events.map((e) => e.aptId)),
       sb,
+      "id",
     ));
   const aptById = new Map(aptRows.map((a) => [a.id, { name: a.name, region: a.region }]));
 
@@ -326,9 +329,10 @@ async function main() {
   if (subIds.length > 0) {
     const logs = await selectAll(
       (s) => s.from("notification_logs")
-        .select("subscriber_id, apartment_id, house_manage_no, event_type, status")
+        .select("id, subscriber_id, apartment_id, house_manage_no, event_type, status")
         .in("subscriber_id", subIds),
       sb,
+      "id",
     );
     for (const l of /** @type {any[]} */ (logs)) {
       const finalized = l.status === "sent" || l.status === "pending" || l.status === "failed";
@@ -367,6 +371,7 @@ async function main() {
     /** @type {any[]} */ (await selectAll(
       (s) => s.from("subscribers").select("id").in("id", subIds).is("opt_out_at", null),
       sb,
+      "id",
     )).map((r) => r.id),
   );
 

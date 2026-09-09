@@ -251,9 +251,11 @@ export async function main() {
  * @returns {Promise<number>} 실패 건수 (호출부가 dbFailed 에 합산)
  */
 export async function clearStaleScores(sb, viewIds, { dryRun = DRY_RUN } = {}) {
-  // selectAll 이 .range() 페이지네이션을 붙여준다 (PostgREST 1,000행 제한 회피).
+  // selectAll 이 고유키(id) 커서로 페이지네이션한다 (PostgREST 1,000행 제한 회피).
+  // ⚠️ keyCol 을 빼면 무정렬 OFFSET 이라 2,300행+ 에서 행이 조용히 새고, 빠진 단지는
+  //    그날 점수 재계산에서 통째로 빠진다 (unordered-pagination-loses-rows.md §1).
   /** @type {{ id: string }[]} */
-  const scored = await selectAll((s) => s.from("apartments").select("id").not("cats_cache", "is", null), sb);
+  const scored = await selectAll((s) => s.from("apartments").select("id").not("cats_cache", "is", null), sb, "id");
   const staleIds = findStaleScoreIds(viewIds, scored);
   if (staleIds.length === 0) {
     log(PHASE, "낡은 점수 없음 — 정리 생략");

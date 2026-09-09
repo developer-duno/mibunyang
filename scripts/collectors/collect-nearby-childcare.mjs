@@ -132,17 +132,19 @@ async function main() {
 
   const sb = getSupabase();
 
-  // 단지 로드 (selectAll — Supabase 1000 row 기본 제한 회피)
+  // 단지 로드 (selectAll — 고유키 id 커서 페이지네이션)
   const apartments = await selectAll(
     /** @param {any} c */ (c) => c.from("apartments").select("id, region, gu, lat, lng"),
     sb,
+    "id",
   );
   log("init", `apartments: ${apartments.length}건`);
 
   // regions.childcare 로드
   const regions = await selectAll(
-    /** @param {any} c */ (c) => c.from("regions").select("region, gu, childcare").not("childcare", "is", null),
+    /** @param {any} c */ (c) => c.from("regions").select("id, region, gu, childcare").not("childcare", "is", null),
     sb,
+    "id",
   );
 
   const facilityMap = buildRegionFacilityMap(/** @type {any} */ (regions));

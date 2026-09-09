@@ -108,14 +108,32 @@ describe("compute-scores — VIEW 밖 낡은 점수 정리 (세션502)", () => {
   // (grep 만 두면 안전판 호출을 통째로 들어내도 초록불이 남는다 — 세션502 뮤테이션에서 실증.)
   describe("clearStaleScores (가짜 Supabase 로 실행)", () => {
     /**
-     * `.from().select().not()` → selectAll 이 `.range()` 로 페이지네이션.
+     * `.from().select().not()` → selectAll 이 **고유키(id) 커서**로 페이지네이션
+     * (`.order("id",{ascending:true}).limit(1000)` → 2페이지부터 `.gt("id", cursor)`).
      * `.from().update().in().select()` → 그대로 await.
+     *
+     * ⚠️ **`.range` 를 일부러 두지 않는다** (세션544). 호출이 무정렬 OFFSET 으로 되돌아가면
+     * `range is not a function` 으로 시끄럽게 깨진다 — 조용히 통과하면 2,300행+ 에서 행이
+     * 새고 그날 재계산에서 단지가 빠져도 아무도 모른다
+     * (`unordered-pagination-loses-rows.md`, `collect-data.test.mjs` 선례).
      * @param {{ scored?: string[], updateError?: string|null }} cfg
      */
     function makeFake({ scored = [], updateError = null } = {}) {
-      const log = { updatedBatches: /** @type {string[][]} */ ([]), patches: /** @type {any[]} */ ([]) };
+      const PAGE = 1000;
+      const log = {
+        updatedBatches: /** @type {string[][]} */ ([]),
+        patches: /** @type {any[]} */ ([]),
+        orders: /** @type {any[][]} */ ([]),
+        limits: /** @type {number[]} */ ([]),
+        gts: /** @type {any[][]} */ ([]),
+      };
+      /** @param {string | null} afterId */
+      const page = (afterId) => {
+        const start = afterId == null ? 0 : scored.indexOf(afterId) + 1;
+        return { data: scored.slice(start, start + PAGE).map((id) => ({ id })), error: null };
+      };
       const build = () => {
-        const st = { isUpdate: false, ids: /** @type {string[]} */ ([]) };
+        const st = { isUpdate: false, isCursor: false, cursor: /** @type {string|null} */ (null), ids: /** @type {string[]} */ ([]) };
         /** @type {any} */
         const b = {
           select: () => b,
@@ -124,13 +142,20 @@ describe("compute-scores — VIEW 밖 낡은 점수 정리 (세션502)", () => {
           in: (/** @type {string} */ _c, /** @type {string[]} */ vals) => {
             st.ids = vals; log.updatedBatches.push(vals); return b;
           },
-          range: (/** @type {number} */ f, /** @type {number} */ t) =>
-            Promise.resolve({ data: scored.slice(f, t + 1).map((id) => ({ id })), error: null }),
+          order: (/** @type {string} */ key, /** @type {any} */ opts) => {
+            st.isCursor = true; log.orders.push([key, opts]); return b;
+          },
+          limit: (/** @type {number} */ n) => { log.limits.push(n); return b; },
+          gt: (/** @type {string} */ key, /** @type {any} */ cursor) => {
+            st.cursor = cursor; log.gts.push([key, cursor]); return b;
+          },
           then: (/** @type {any} */ res, /** @type {any} */ rej) =>
             Promise.resolve(
               st.isUpdate && updateError
                 ? { data: null, error: { message: updateError } }
-                : { data: st.ids.map((id) => ({ id })), error: null },
+                : st.isCursor
+                  ? page(st.cursor)
+                  : { data: st.ids.map((id) => ({ id })), error: null },
             ).then(res, rej),
         };
         return b;
@@ -183,6 +208,15 @@ describe("compute-scores — VIEW 밖 낡은 점수 정리 (세션502)", () => {
       // 뒤 500건만 VIEW 밖 → 20% 라 안전 한도 안
       await clearStaleScores(sb, new Set(scored.slice(0, 2000)), { dryRun: false });
       expect(sb._log.updatedBatches.flat()).toHaveLength(500);
+      // ★ 세션544 — 고유키(id) 커서로 훑는다. 무정렬 OFFSET 이면 위 가짜가 TypeError 를 낸다.
+      //   2,500행 = 1000 + 1000 + 500 → 3페이지, 2·3페이지는 직전 페이지 마지막 id 가 커서.
+      expect(sb._log.orders).toEqual([
+        ["id", { ascending: true }],
+        ["id", { ascending: true }],
+        ["id", { ascending: true }],
+      ]);
+      expect(sb._log.limits).toEqual([1000, 1000, 1000]);
+      expect(sb._log.gts).toEqual([["id", "id999"], ["id", "id1999"]]);
     });
   });
 

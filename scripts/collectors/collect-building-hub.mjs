@@ -184,12 +184,13 @@ async function main() {
   const useYm = `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, "0")}`;
   log(PHASE, `조회 월: ${useYm}, bjd_code 보유: ${count}건`);
 
-  // 대상 아파트 조회 (selectAll: 1000행 제한 자동 페이지네이션)
+  // 대상 아파트 조회 (selectAll: 고유키(id) 커서 페이지네이션)
   const apts = await selectAll(
     (s) => s.from("apartments")
       .select("id, name, bjd_code, lot_main, lot_sub, elec_usage_kwh")
       .not("bjd_code", "is", null),
-    sb
+    sb,
+    "id"
   );
 
   log(PHASE, `대상: ${apts.length}건`);

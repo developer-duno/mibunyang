@@ -190,11 +190,13 @@ async function main() {
     process.exit(1);
   }
 
-  // 1. apartments에서 사용 중인 시공사 목록 조회 (selectAll: 1000행 제한 자동 페이지네이션)
+  // 1. apartments에서 사용 중인 시공사 목록 조회 (selectAll: 고유키 id 커서 페이지네이션)
+  //    id 자체는 안 쓰지만 커서 키라 select 에 포함해야 한다(없으면 selectAll 이 즉시 throw).
   const sb = getSupabase();
   const apts = await selectAll(
-    (s) => s.from("apartments").select("builder").not("builder", "is", null),
-    sb
+    (s) => s.from("apartments").select("id, builder").not("builder", "is", null),
+    sb,
+    "id"
   );
 
   const builderSet = new Set(apts.map(a => a.builder).filter(Boolean));

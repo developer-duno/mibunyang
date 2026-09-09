@@ -23,6 +23,7 @@ import {
 
 /**
  * @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null;
+ *   updated_at: string | null;
  *   avg_maintenance_cost: number | null;
  *   maint_heat: number | null; maint_hotwater: number | null;
  *   maint_gas: number | null; maint_elec: number | null; maint_water: number | null
@@ -136,6 +137,27 @@ export function budgetExceeded(startedAt, budgetMin, nowMs = Date.now()) {
   return (nowMs - startedAt) >= budgetMin * 60_000;
 }
 
+/**
+ * `updated_at` 오래된 순 정렬 (NULL 먼저) — 옛 `.order("updated_at", { ascending: true,
+ * nullsFirst: true })` 을 클라이언트로 옮긴 것.
+ *
+ * 왜 옮겼나: `selectAll` 커서 페이징은 **정렬 키 == 커서 키**여야 한다. 조회에
+ * `.order("updated_at")` 이 남으면 그게 1순위 정렬이 되어 `id > cursor` 필터가 다음
+ * 페이지가 아닌 엉뚱한 행을 잘라낸다(행 유실). 정렬 의미(--limit 회차 분산)는 그대로 둔다.
+ * 동률은 `id` 오름차순으로 갈라 회차마다 같은 순서가 나오게 한다.
+ * @template {{ id: string, updated_at?: string | null }} T
+ * @param {T[]} rows
+ * @returns {T[]}
+ */
+export function sortByUpdatedAtAsc(rows) {
+  return [...rows].sort((a, b) => {
+    const au = a.updated_at ?? "";
+    const bu = b.updated_at ?? "";
+    if (au !== bu) return au < bu ? -1 : 1; // "" (NULL) 이 가장 앞 = nullsFirst
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
@@ -157,14 +179,17 @@ async function main() {
   const searchDate = `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, "0")}`;
   log(PHASE, `조회 월: ${searchDate}`);
 
-  // 1. 대상 아파트 조회 (selectAll: 1000행 제한 자동 페이지네이션)
+  // 1. 대상 아파트 조회 (selectAll: 고유키(id) 커서 페이지네이션)
   // maint_* 5컬럼 중 하나라도 NULL이면 대상 (avg_maintenance_cost만 있고 항목별은 빈 단지 포함)
-  // updated_at 오래된 순 — --limit 사용 시 cron 회차마다 다른 단지가 채워지도록
+  // ⚠️ 정렬은 **조회가 아니라 여기서** 한다. 커서 페이징은 정렬 키와 커서 키가 같아야 하는데
+  //    `.order("updated_at")` 이 남으면 그게 1순위가 되어 `id > cursor` 가 엉뚱한 행을 잘라낸다.
+  //    "updated_at 오래된 순" 은 --limit 회차 분산용 의미라 전량을 받아온 뒤 그대로 재현한다.
   let targets = /** @type {MaintAptTarget[]} */ (await selectAll((s) => {
-    let q = s.from("apartments").select("id, name, region, gu, units, avg_maintenance_cost, maint_heat, maint_hotwater, maint_gas, maint_elec, maint_water");
+    let q = s.from("apartments").select("id, name, region, gu, units, updated_at, avg_maintenance_cost, maint_heat, maint_hotwater, maint_gas, maint_elec, maint_water");
     if (!force) q = q.or("maint_heat.is.null,maint_hotwater.is.null,maint_gas.is.null,maint_elec.is.null,maint_water.is.null");
-    return q.order("updated_at", { ascending: true, nullsFirst: true });
-  }, sb));
+    return q;
+  }, sb, "id"));
+  targets = sortByUpdatedAtAsc(targets);
 
   // --limit=N: 한 회차 대상 수 제한 (API 일일 한도 분산). 단지당 ~6회 호출.
   const limitArg = process.argv.find((a) => a.startsWith("--limit="));
