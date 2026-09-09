@@ -84,6 +84,92 @@ export function cleanName(name) {
 }
 
 /**
+ * 차수/블록 **숫자** 추출용.
+ *
+ * ⚠️ 세션543 에 `fix-placeholder-addresses.mjs` 에서 **이리로 옮겼다**(도구는 재수출). 정정 도구와
+ * `collect-applyhome-seed.mjs` 의 이름 기반 중복 판정이 **같은 잣대**를 써야 하기 때문 —
+ * `normName` 이 괄호를 통째로 지워서 `(AB23BL)` ↔ `(AB22BL)` 가 유사도 1.00 이 되는 자리를
+ * 막는 게 이 게이트다. 단 여기서 보는 건 **숫자 차이뿐**이라 `(AB23BL)` ↔ `(AA23BL)` 처럼
+ * 글자만 다른 별개 단지는 못 가른다 — 그건 아래 `blockConflict` 소관이다. 그 구멍을 다 막으려면
+ * **숫자 차이(`phaseConsistent`) + 글자 차이(`blockConflict`) 둘 다** 봐야 한다(세션543 H1).
+ *
+ * ⚠️ `g` 플래그 — `matchAll`/`replace` 로만 쓸 것(`.test`/`.exec` 는 lastIndex 가 샌다).
+ */
+export const PHASE_RE = /(\d+)\s*(차|단지|BL|블록|블럭)/gi;
+
+/**
+ * 이름에서 차수·블록 숫자 집합을 뽑는다("힐스테이트 오룡 2단지" → `{"2"}`).
+ * @param {unknown} name
+ * @returns {Set<string>}
+ */
+export function extractPhases(name) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  for (const m of String(name ?? "").matchAll(PHASE_RE)) {
+    out.add(m[1].replace(/^0+(?=\d)/, ""));
+  }
+  return out;
+}
+
+/**
+ * 두 이름의 차수 일관성.
+ * - `"ok"` — 둘 다 차수가 없거나, 있는데 교집합이 있다
+ * - `"one-sided"` — 한쪽에만 차수가 있다(더 높은 유사도를 요구한다)
+ * - `"conflict"` — 둘 다 있는데 겹치지 않는다(**거부**: 2단지 ↔ 1BL)
+ * @param {unknown} aName
+ * @param {unknown} cName
+ * @returns {"ok" | "one-sided" | "conflict"}
+ */
+export function phaseConsistent(aName, cName) {
+  const a = extractPhases(aName);
+  const c = extractPhases(cName);
+  if (a.size === 0 && c.size === 0) return "ok";
+  if (a.size === 0 || c.size === 0) return "one-sided";
+  for (const v of a) if (c.has(v)) return "ok";
+  return "conflict";
+}
+
+/**
+ * 글자 접두 블록 토큰용 — `PHASE_RE` 가 못 보는 **글자 차이**를 본다(세션543 H1).
+ * `(AB23BL)`·`A-13블록`·`C3블록` 처럼 "글자+숫자" 로 붙는 블록 표기를 한 토큰으로 묶는다.
+ * 청약홈 괄호 블록 표기 ah-* 52건 중 42건이 이 글자접두 꼴이다(2026-09-09 실측).
+ *
+ * ⚠️ `g` 플래그 — `matchAll`/`replace` 로만 쓸 것(`.test`/`.exec` 는 lastIndex 가 샌다).
+ */
+export const BLOCK_RE = /([A-Za-z]{1,2})-?(\d+)\s*(?:BL|블록|블럭)/gi;
+
+/**
+ * 이름에서 글자 접두 블록 토큰 집합을 뽑는다 — `"(AB23BL)"` → `{"AB23"}`, `"A-13블록"` → `{"A13"}`,
+ * `"C3블록"` → `{"C3"}`. 하이픈·대소문자·선행 0 을 정규화해 같은 블록이 다르게 보이지 않게 한다.
+ * 글자 접두가 없는 `"1BL"` 은 여기 안 걸린다 — 그 자리는 `extractPhases`(숫자)가 본다.
+ * @param {unknown} name
+ * @returns {Set<string>}
+ */
+export function extractBlockTokens(name) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  for (const m of String(name ?? "").matchAll(BLOCK_RE)) {
+    out.add(m[1].toUpperCase() + String(Number(m[2])));
+  }
+  return out;
+}
+
+/**
+ * 둘 다 블록 토큰이 있는데 교집합이 없으면 `true`(= 다른 블록 = 별개 단지).
+ * 한쪽이라도 토큰이 없으면 근거가 없으므로 `false` — 막는 건 **아는 차이**뿐이다.
+ * @param {unknown} aName
+ * @param {unknown} bName
+ * @returns {boolean}
+ */
+export function blockConflict(aName, bName) {
+  const a = extractBlockTokens(aName);
+  const b = extractBlockTokens(bName);
+  if (a.size === 0 || b.size === 0) return false;
+  for (const v of a) if (b.has(v)) return false;
+  return true;
+}
+
+/**
  * 시도 표기를 약칭으로. `REGION_MAP` 에 없으면 앞 2글자(예: "서울시" → "서울").
  * @param {unknown} r
  * @returns {string | null}

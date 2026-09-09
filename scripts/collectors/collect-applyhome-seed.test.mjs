@@ -156,9 +156,121 @@ describe("findDuplicate", () => {
     expect(v.action).toBe("insert");
   });
 
-  it("이름 유사 + 후보 좌표 없음 → defer (판정 불가 보류)", () => {
-    const v = findDuplicate(cand({ lat: null, lng: null }), existing);
+  // 세션543 B-4: 후보 좌표가 없어도 **이름이 사실상 같고(≥0.95) 블록·차수가 안 어긋나며
+  // 기존 단지에 좌표가 있으면** 중복으로 본다. 그 전엔 매주 같은 10건이 보류로 반복됐다.
+  it("★ 후보 좌표 없음 + sim 1.0 + 블록·차수 일관 + 기존 좌표 O → skip (by=name)", () => {
+    const v = /** @type {any} */ (findDuplicate(cand({ lat: null, lng: null }), existing));
+    expect(v.action).toBe("skip");
+    expect(v.by).toBe("name");
+    expect(v.matchedId).toBe("ap-100");
+    expect(v.dist).toBe(null);
+  });
+
+  it("★ 블록 충돌이면 이름이 sim 1.00 이어도 defer — normName 이 괄호를 통째로 지운다", () => {
+    // normName("…(AB23BL)") === normName("…(AB22BL)") → sim 1.00. 유사도만 보면 별개 단지를
+    // 영영 못 넣는다. phaseConsistent 가 괄호 안 숫자로 그 구멍을 막는다.
+    const v = findDuplicate(
+      cand({ name: "더샵 검단레이크파크(AB23BL)", lat: null, lng: null }),
+      [{ id: "ap-300", name: "더샵 검단레이크파크(AB22BL)", region: "서울", lat: 37.5, lng: 127.0 }],
+    );
     expect(v.action).toBe("defer");
+  });
+
+  // 세션543 H1(리뷰 실증): PHASE_RE 는 **숫자만** 캡처해서 글자 접두만 다른 별개 단지가
+  // 게이트에 안 보였다 — (AB23BL)↔(AA23BL)·(AA19BL)↔(AB19BL) 가 전부 skip by=name sim 1.000.
+  // blockConflict(글자+숫자를 한 토큰으로)가 그 자리를 막는다.
+  it("★ 글자만 다른 블록((AB23BL)↔(AA23BL))도 defer — 숫자 게이트로는 안 보이던 구멍", () => {
+    for (const [a, b] of [
+      ["더샵 검단레이크파크(AB23BL)", "더샵 검단레이크파크(AA23BL)"],
+      ["더샵 검단레이크파크(AA19BL)", "더샵 검단레이크파크(AB19BL)"],
+    ]) {
+      const v = findDuplicate(
+        cand({ name: a, lat: null, lng: null }),
+        [{ id: "ap-320", name: b, region: "서울", lat: 37.5, lng: 127.0 }],
+      );
+      expect(v, `${a} vs ${b}`).toMatchObject({ action: "defer" });
+    }
+  });
+
+  it("★ (C3블록)↔(D3블록) 도 defer — 로스터 실재 220m 별개 단지(수원 엘리프 한신더휴)", () => {
+    // 괄호 안이라 normName 이 통째로 지운다 → sim 1.000. 숫자는 둘 다 3 이라 phaseConsistent 는 ok.
+    const v = findDuplicate(
+      cand({ name: "엘리프 한신더휴(C3블록)", lat: null, lng: null }),
+      [{ id: "ap-321", name: "엘리프 한신더휴(D3블록)", region: "서울", lat: 37.5, lng: 127.0 }],
+    );
+    expect(v.action).toBe("defer");
+  });
+
+  it("★ sim 동점이면 블록·차수가 안 어긋나는 기존 행을 고른다 (조회 순서 무관)", () => {
+    // 동점(1.00) 후보가 둘이면 `sim > bestSim` 만으로는 **DB 조회 순서**가 판정을 정한다
+    // (실증: [AB22, AB23] 순 → defer / 반대 순 → skip). 순서로 결과가 갈리면 안 된다.
+    const ab22 = { id: "ap-330", name: "더샵 검단레이크파크(AB22BL)", region: "서울", lat: 37.5, lng: 127.0 };
+    const ab23 = { id: "ap-331", name: "더샵 검단레이크파크(AB23BL)", region: "서울", lat: 37.5, lng: 127.0 };
+    for (const rows of [[ab22, ab23], [ab23, ab22]]) {
+      const v = /** @type {any} */ (findDuplicate(
+        cand({ name: "더샵 검단레이크파크(AB23BL)", lat: null, lng: null }), rows,
+      ));
+      expect(v.action, `순서 ${rows.map((r) => r.id).join(",")}`).toBe("skip");
+      expect(v.by).toBe("name");
+      expect(v.matchedId).toBe("ap-331");
+    }
+  });
+
+  it("★ 차수 충돌((3차)↔(2차))도 defer — 공고 회차일 수 있어도 안전 쪽", () => {
+    const v = findDuplicate(
+      cand({ name: "평택 A-55 모아엘가(3차)", lat: null, lng: null }),
+      [{ id: "ap-301", name: "평택 A-55 모아엘가(2차)", region: "서울", lat: 37.5, lng: 127.0 }],
+    );
+    expect(v.action).toBe("defer");
+  });
+
+  it("★ sim 0.875(호반써밋 풍무Ⅱ) — 후보 선정은 되지만 0.95 문턱 미달 → defer", () => {
+    const v = findDuplicate(
+      cand({ name: "호반써밋 풍무Ⅱ", lat: null, lng: null }),
+      [{ id: "ap-302", name: "호반써밋김포풍무Ⅱ(오)", region: "서울", lat: 37.5, lng: 127.0 }],
+    );
+    expect(v.action).toBe("defer");
+  });
+
+  it("★ 기존 단지에 좌표가 없으면 이름·차수가 만족해도 defer (좌표 없는 행에 얹지 않는다)", () => {
+    const v = findDuplicate(
+      cand({ lat: null, lng: null }),
+      [{ id: "ah-9", name: "청계노르웨이숲", region: "서울", lat: null, lng: null }],
+    );
+    expect(v.action).toBe("defer");
+  });
+
+  // 문턱 경계 — 실측 유사도가 정확히 0.95 / 0.9487 인 문자열 쌍.
+  // stringSimilarity = 2·LCS/(len_a+len_b) 이므로 20자 2개에서 1글자만 다르면 2·19/40 = 0.95,
+  // 39자 2개에서 2글자가 다르면 2·37/78 = 0.9487(2026-09-09 실측).
+  const SEED = "가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허고노도로모보소오조초코";
+  it("★ 경계: sim 정확히 0.95 → skip", () => {
+    const base = SEED.slice(0, 20);
+    const v = /** @type {any} */ (findDuplicate(
+      cand({ name: base, lat: null, lng: null }),
+      [{ id: "ap-400", name: `${base.slice(0, 19)}힣`, region: "서울", lat: 37.5, lng: 127.0 }],
+    ));
+    expect(v.sim).toBe(0.95);
+    expect(v.action).toBe("skip");
+    expect(v.by).toBe("name");
+  });
+
+  it("★ 경계: sim 0.9487 (0.95 바로 아래) → defer", () => {
+    const base = SEED.slice(0, 39);
+    const v = /** @type {any} */ (findDuplicate(
+      cand({ name: base, lat: null, lng: null }),
+      [{ id: "ap-401", name: `${base.slice(0, 37)}힣힢`, region: "서울", lat: 37.5, lng: 127.0 }],
+    ));
+    expect(v.sim).toBeCloseTo(0.9487, 4);
+    expect(v.sim).toBeLessThan(0.95);
+    expect(v.action).toBe("defer");
+  });
+
+  it("좌표 기반 skip 은 by=coord (두 경로 구분 회귀)", () => {
+    const v = /** @type {any} */ (findDuplicate(cand(), existing));
+    expect(v.action).toBe("skip");
+    expect(v.by).toBe("coord");
+    expect(v.dist).not.toBe(null);
   });
 
   it("이름 유사해도 region 불일치 → insert (동명이지역 게이트)", () => {

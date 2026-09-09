@@ -29,6 +29,10 @@ import {
   geocodeApartmentByName,
   isPreciseGeocode,
   KAKAO_SUB_MIN_LEN,
+  extractPhases,
+  phaseConsistent,
+  extractBlockTokens,
+  blockConflict,
 } from "./_kakao-poi.mjs";
 
 /**
@@ -559,5 +563,61 @@ describe("cleanName — 회차 글자 뒤 N차", () => {
     expect(cleanName("동탄신도시 금강펜테리움 6차 센트럴파크(A59블럭) 무순위(1차)")).toBe(
       "동탄신도시 금강펜테리움 6차 센트럴파크",
     );
+  });
+});
+
+// ── extractPhases / phaseConsistent (세션543: 정정 도구에서 이 공용 게이트로 옮겨왔다) ──
+// 도구(`fix-placeholder-addresses.test.mjs`)가 재수출 경유로 이미 지키고 있지만, **원 위치에서도**
+// 기본 계약을 못 박는다 — 도구 쪽 가드만 있으면 이 파일을 직접 고칠 때 아무도 안 잡는다.
+describe("extractPhases / phaseConsistent — 차수·블록 게이트 (공용 게이트 이전분)", () => {
+  it("차수·블록 숫자만 뽑는다 (없으면 빈 집합)", () => {
+    expect([...extractPhases("힐스테이트 오룡 2단지")]).toEqual(["2"]);
+    expect([...extractPhases("더샵 검단레이크파크(AB23BL)")]).toEqual(["23"]);
+    expect([...extractPhases("검단 파라곤")]).toEqual([]);
+  });
+
+  it("교집합이 있으면 ok, 둘 다 있는데 안 겹치면 conflict", () => {
+    expect(phaseConsistent("오룡 42블록", "오룡42BL")).toBe("ok");
+    expect(phaseConsistent("더샵 검단레이크파크(AB23BL)", "더샵 검단레이크파크(AB22BL)")).toBe("conflict");
+  });
+
+  it("한쪽에만 차수가 있으면 one-sided, 둘 다 없으면 ok", () => {
+    expect(phaseConsistent("힐스테이트 오룡 2단지", "힐스테이트오룡")).toBe("one-sided");
+    expect(phaseConsistent("검단 파라곤", "검단파라곤")).toBe("ok");
+  });
+});
+
+// ── extractBlockTokens / blockConflict (세션543 H1) ──────────────────────────
+// `PHASE_RE` 는 **숫자만** 캡처한다. 그래서 `(AB23BL)`↔`(AA23BL)` 처럼 **글자만 다른** 별개
+// 단지가 게이트에 안 보였다(리뷰 실증: sim 1.000 으로 통과). 여기서 글자+숫자를 한 토큰으로 묶어
+// 그 구멍을 막는다. 청약홈 괄호 블록 표기 ah-* 52건 중 42건이 글자접두라 실전 빈도가 높다.
+describe("extractBlockTokens / blockConflict — 글자 접두 블록 토큰 (세션543 H1)", () => {
+  it("글자+숫자를 한 토큰으로 묶는다 (하이픈·BL/블록/블럭 표기 차이 흡수)", () => {
+    expect([...extractBlockTokens("더샵 검단레이크파크(AB23BL)")]).toEqual(["AB23"]);
+    expect([...extractBlockTokens("오산세교 A-13블록 호반써밋")]).toEqual(["A13"]);
+    expect([...extractBlockTokens("A13BL")]).toEqual(["A13"]);   // 위와 같은 토큰
+    expect([...extractBlockTokens("엘리프 한신더휴(C3블록)")]).toEqual(["C3"]);
+    expect([...extractBlockTokens("a-03블럭")]).toEqual(["A3"]);  // 대문자화 + 선행 0 제거
+  });
+
+  it("글자 접두가 없으면(1BL) 토큰이 아니다 — 그 자리는 phaseConsistent 가 본다", () => {
+    expect([...extractBlockTokens("엘리프 성성호수공원 1BL")]).toEqual([]);
+    expect([...extractBlockTokens("검단 파라곤")]).toEqual([]);
+    expect([...extractBlockTokens(null)]).toEqual([]);
+  });
+
+  it("g 플래그 정규식이지만 연속 호출에도 같은 결과 (lastIndex 누수 회귀)", () => {
+    const once = [...extractBlockTokens("더샵 검단레이크파크(AB23BL)")];
+    expect([...extractBlockTokens("더샵 검단레이크파크(AB23BL)")]).toEqual(once);
+    expect(blockConflict("X(AB23BL)", "X(AA23BL)")).toBe(true);
+    expect(blockConflict("X(AB23BL)", "X(AA23BL)")).toBe(true);
+  });
+
+  it("둘 다 토큰이 있는데 겹치지 않을 때만 충돌", () => {
+    expect(blockConflict("더샵 검단레이크파크(AB23BL)", "더샵 검단레이크파크(AA23BL)")).toBe(true);
+    expect(blockConflict("엘리프 한신더휴(C3블록)", "엘리프 한신더휴(D3블록)")).toBe(true);
+    expect(blockConflict("오산세교 A-13블록 호반써밋", "오산세교 A13BL 호반써밋")).toBe(false);
+    expect(blockConflict("X(AB23BL)", "X")).toBe(false);          // 한쪽만 있으면 판단 보류(false)
+    expect(blockConflict("검단 파라곤", "검단파라곤")).toBe(false); // 둘 다 없음
   });
 });
