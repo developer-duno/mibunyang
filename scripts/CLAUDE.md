@@ -456,7 +456,7 @@ vs 서울시 TOPIS 공식 11,231건, 고유 이름은 9,057개). 그래서:
 
 ---
 
-## 좌표 지오코딩 — 폴백이 만든 자리표시 주소 (세션539~541)
+## 좌표 지오코딩 — 폴백이 만든 자리표시 주소 (세션539~543)
 
 `geocode-missing.mjs` 의 키워드 폴백(2·3·5차)은 결과를 검증하지 않아 단지명이 안 잡히면 **구청 같은 대표
 장소**를 좌표로 쓰고, 4차는 **시군구 중심점**을 썼다. `collect-applyhome-seed.mjs` 의 `geocodeAddr` 도 청약홈
@@ -478,9 +478,31 @@ vs 서울시 TOPIS 공식 11,231건, 고유 이름은 9,057개). 그래서:
   단지명 매칭**, dry-run 기본, `--purge-derived --ids-file=scripts/data/placeholder-coord-fixes-2026-09.json`).
   선별기 `pickKakaoCandidate`·`cleanName`·`shortRegion`·`isPreciseGeocode` 는 `_kakao-poi.mjs` 에 있고 도구·도구
   테스트가 거기서 import 한다.
+- **`--apply-from=<dry-run json>`(세션543, PR #481)** — `--apply` 는 전체를 **다시 분석**해 외부 응답이 그 순간 다르면 검토한 것과
+  다른 것을 반영한다(세션542: 승인 29곳 대신 33곳). 그래서 `--out` 덤프에 `rosterSize·includeWeak·limit·applySet` 을 기록하고,
+  `--apply-from` 은 그 `applySet` 만 재분석 0회로 반영한다(로스터 0건·구버전 덤프는 거부, 반영 전 DB 좌표 ↔ 덤프 좌표 대조
+  `apply/already/changed/missing`, 반영 직후 되읽기, `<덤프>.applied.json` 이 후속 `--refit-fields`/`--purge-derived --ids-file` 입력).
+  모르는 인자·값 없는 인자(`--apply-from` 등호 누락)는 DB 접근 전 `exit 1`. 스펙 `docs/superpowers/specs/2026-09-09-apply-from-mode.md`.
+- **seed 이름 기반 중복(세션543 B-4, PR #482)** — 후보 좌표가 없어도 이름 유사도 ≥0.95 + `phaseConsistent`(괄호 안 숫자) **+ `blockConflict`
+  (블록 글자, `(AA19BL)`↔`(AB19BL)`)** 비충돌 + 기존 단지 좌표 있음이면 `skip`(로그 `[중복·이름]`), 아니면 보류. 두 게이트 함수는
+  `_kakao-poi.mjs` 로 이동해 seed·정정 도구가 같은 잣대. 실측 = 주간 보류 10 → 4(블록 충돌·차수 충돌·저유사도 2).
 - 방법론·오탐 사례·지역 게이트 실측·근본 처방 = [.claude/rules/collectors/placeholder-coordinates-truth-sources.md](../.claude/rules/collectors/placeholder-coordinates-truth-sources.md).
 - ⚠️ 좌표를 고쳤으면 `dong/bjd_code/lot_main/lot_sub/road_address` 도 새 좌표로 재정합해야 한다(`bjd_code` 는
-  건축HUB 조회 키). 파생표 정리는 KST 03:00~05:30 창에서만([.claude/rules/collectors/purge-to-recollect-timing.md](../.claude/rules/collectors/purge-to-recollect-timing.md)).
+  건축HUB 조회 키). 파생표 정리는 **KST 03:20~05:00** 창 + **"오늘 화면 스냅샷 확인"** 이 둘 다 통과할 때만
+  ([.claude/rules/collectors/purge-to-recollect-timing.md](../.claude/rules/collectors/purge-to-recollect-timing.md)).
+- **창이 03:00~05:30 → 03:20~05:00 으로 좁혀졌다(세션543 W1).** `daily-deploy.yml` cron 은 `0 18 * * *`(03:00 KST)
+  이지만 **실제 실행은 03:04~03:10 KST**(최근 8회 실측 18:04:36Z~18:09:47Z)이고 그 job 이 `apartments_flat` 을
+  한 번 SELECT 해 화면 JSON 을 만든다 — 03:00~03:10 에 지우면 "지하철 없음·병원 0" 이 하루 박힌다(세션542 의
+  03:10 예약은 13초 차이로 살았다). 상한도 재수집(`collect-naver-listings-incremental.yml`, 05:30 시작 시 대상
+  목록을 뜬다) 직전이면 그날 재수집을 놓친다. 창만으로는 그날 배포 완료를 보장 못 하므로 도구가 라이브
+  `meta.json` 의 `fetchedAt` 이 **오늘 03:00 이후**인지 함께 확인한다(실패하면 진행 안 함 = fail-close).
+- ⚠️ **도구 인자 경로는 절대경로로 — `/tmp` 금지.** Git Bash `/tmp` = `C:\Users\<me>\AppData\Local\Temp` 인데
+  node `resolve("/tmp/x")` = `F:\tmp\x` 라 **셸과 node 가 다른 폴더를 본다**. `--out` 으로 쓴 덤프를
+  `--apply-from` 이 못 찾거나 다른 폴더의 옛 동명 파일을 읽는다.
+- ⚠️ **`apartments` 명단을 훑는 `selectAll` 은 `keyCol`("id")를 넘긴다**(세션543 W2). 안 넘기면 ORDER BY 없는
+  OFFSET 페이징이라 2,600행+ 표에서 **에러 없이** 행이 샌다([.claude/rules/collectors/unordered-pagination-loses-rows.md](../.claude/rules/collectors/unordered-pagination-loses-rows.md)).
+  특히 `collect-applyhome-seed` 는 빠진 행을 로스터에서도 못 봐 **INSERT** 로 보내고, 그 행의 `lat:null,lng:null`
+  이 upsert 로 덮어써 **고친 좌표를 null 로 되돌린다** — 209곳 정정의 역행 경로다.
 
 ## BldEngyHubService 한계
 

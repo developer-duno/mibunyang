@@ -1071,6 +1071,10 @@ export async function supabaseOnlyMode() {
   const loaded = await selectAll(
     (s) => s.from("apartments_flat").select("*"),
     supabase,
+    // 이 결과가 **그날 화면 JSON** 이다. 무정렬 OFFSET 은 단지를 잃거나 겹치게 하는데
+    // 아래 회귀 가드(MIN_COUNT 1000 · 12% 감소)는 1~20행 어긋남을 못 잡는다 (세션543 W2).
+    // `select("*")` 에 id 가 포함된다.
+    "id",
   );
   // 회귀 가드보다 **먼저** 걸러야 한다. writeOutputs 가 쓴 apartments.json 의 count 는
   // 임대형이 빠진 수인데, 여기서 안 거르면 "이번 회차(임대 포함) vs 지난 회차(임대 제외)"를

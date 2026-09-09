@@ -78,9 +78,12 @@
  * `transport`·`schools` 는 단일 소유라 행 삭제. **`infra` 는 5개 수집기가 컬럼을 나눠 쓰므로
  * 행 삭제 금지** — `infra-kakao` 소유 9컬럼만 null(세션539 실사고: 행을 지워 13컬럼 유실).
  *
- * ⏰ **시간창** — 화면 정적 JSON 은 `daily-deploy.yml`(KST 03:00)이 재생성하고 재수집은
- * `collect-naver-listings-incremental.yml`(KST 05:30)이 한다. 그 **사이**에서만 지워야 한다.
- * 밖에서 지우면 "지하철 없음·병원 0개"가 최대 하루 화면에 나간다(`purge-to-recollect-timing.md`).
+ * ⏰ **시간창 = KST 03:20~05:00 + "오늘 스냅샷 확인"** — 화면 정적 JSON 은 `daily-deploy.yml` 이
+ * 재생성(cron 03:00 KST 이나 **실제 실행 03:04~03:10**, 최근 8회 실측)하고 재수집은
+ * `collect-naver-listings-incremental.yml`(KST 05:30, **시작 시 대상 목록을 뜬다**)이 한다.
+ * 그 **사이**에서만 지워야 한다 — 밖에서 지우면 "지하철 없음·병원 0개"가 최대 하루 화면에
+ * 나간다(`purge-to-recollect-timing.md`). 창 안이어도 그날 배포가 아직 안 끝났을 수 있어
+ * 라이브 `meta.json` 의 `fetchedAt` 이 오늘 03:00 이후인지 함께 본다(fail-close).
  * `--force-timing` 으로만 강행 가능.
  *
  * ## 정정할 때 함께 — 부속 필드 재정합(`--refit-fields`)
@@ -98,7 +101,14 @@
  *
  * ## 사용법
  *
- *   node scripts/fix-placeholder-addresses.mjs --out=/tmp/v2.json          # 미리보기(기본)
+ * ⚠️ **경로는 절대경로로 쓴다 — `/tmp` 금지.** 셸과 node 가 **다른 폴더**로 해석한다:
+ * Git Bash `/tmp` = `C:\Users\<me>\AppData\Local\Temp`, node `resolve("/tmp/x")` = `F:\tmp\x`.
+ * 그래서 `--out=/tmp/a.json` 으로 쓴 덤프를 `--apply-from=/tmp/a.json` 이 못 찾거나, 더 나쁘게는
+ * **다른 폴더의 옛 동명 파일**을 읽어 검토한 것과 다른 목록을 반영한다.
+ * 아래 `<덤프>` 는 절대경로로 바꿔 쓴다
+ * (예: `C:/Users/<me>/AppData/Local/Temp/claude/<proj>/<session>/scratchpad/v2.json`).
+ *
+ *   node scripts/fix-placeholder-addresses.mjs --out=<덤프>                # 미리보기(기본)
  *   node scripts/fix-placeholder-addresses.mjs --limit=60 --out=…          # 개발용 표본
  *   node scripts/fix-placeholder-addresses.mjs --apply                     # A2+B_apply+B_kakao_strong
  *   node scripts/fix-placeholder-addresses.mjs --apply --include-weak      # + B_kakao_weak
@@ -106,9 +116,9 @@
  *   node scripts/fix-placeholder-addresses.mjs --purge-derived --ids-file=scripts/data/placeholder-coord-fixes-2026-09.json --apply
  *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=scripts/data/…json          # 부속 필드 미리보기
  *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=…json --apply               # 부속 필드 반영
- *   node scripts/fix-placeholder-addresses.mjs --apply-from=/tmp/v2.json                             # 그 덤프 그대로 미리보기(재분석 0)
- *   node scripts/fix-placeholder-addresses.mjs --apply-from=/tmp/v2.json --apply                     # 그 덤프 그대로 반영 → …applied.json
- *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=/tmp/v2.applied.json --apply  # 그 반영분 부속 필드
+ *   node scripts/fix-placeholder-addresses.mjs --apply-from=<덤프>                                 # 그 덤프 그대로 미리보기(재분석 0)
+ *   node scripts/fix-placeholder-addresses.mjs --apply-from=<덤프> --apply                         # 그 덤프 그대로 반영 → …applied.json
+ *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=<덤프>.applied.json --apply  # 그 반영분 부속 필드
  *
  * ⚠️ 파이프(`| tail`)를 붙이지 마라 — SIGPIPE 로 중간에 죽는다(`pipe-kills-collector.md`).
  * 파일로 리다이렉트할 것.
@@ -196,6 +206,9 @@ const KAKAO_REGION_URL = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.j
 const KAKAO_COORD2ADDR_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json";
 const APPLYHOME_URL =
   "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1/getRemndrLttotPblancDetail";
+// 손님이 실제로 보는 화면의 스냅샷 메타 — `daily-deploy` 가 만든 정적 JSON 옆에 함께 놓인다.
+// ⚠️ 운영 도메인이다(`mibunyang.vercel.app` 은 남의 사이트).
+const DEPLOY_META_URL = "https://xn--hg3bi2ac4o1ig57cnoa.com/data/meta.json";
 
 // ────────────────────────────── 순수 함수 ──────────────────────────────
 
@@ -381,10 +394,61 @@ export function findTruePlaceholders(rows) {
   return out;
 }
 
-/** 안전한 KST 시간창(03:00~05:30) 안인지 — `purge-to-recollect-timing.md`. */
+/**
+ * 안전한 KST 시간창(**03:20~05:00**) 안인지 — `purge-to-recollect-timing.md`.
+ *
+ * 옛 창은 03:00~05:30 이었는데 **양쪽 끝이 위험했다**(세션543 실측):
+ * - 하한: `daily-deploy.yml` cron 은 `0 18 * * *`(03:00 KST)이지만 최근 8회 실제 실행은
+ *   **18:04:36Z~18:09:47Z = 03:04~03:10 KST**. 그 job 이 `apartments_flat` 을 읽기 전에 지우면
+ *   "지하철 없음·병원 0" 이 하루 화면에 박힌다(세션539 실사고 경로). 세션542 의 03:10 예약은
+ *   13초 차이로 살았다 — 운이었다.
+ * - 상한: 재수집(`collect-naver-listings-incremental.yml`)은 05:30 시작이고 `transport-tago` 는
+ *   **시작 시 대상 목록을 뜬다** → 05:30 직전 purge 는 그날 재수집을 놓친다.
+ *
+ * ⚠️ 창만으로는 부족하다 — 그날 배포가 실제로 끝났는지는 `deploySnapshotTakenToday` 가 본다.
+ */
 export function inSafeWindow(now = new Date()) {
   const minutes = ((now.getUTCHours() + 9) % 24) * 60 + now.getUTCMinutes();
-  return minutes >= 3 * 60 && minutes <= 5 * 60 + 30;
+  return minutes >= 3 * 60 + 20 && minutes <= 5 * 60;
+}
+
+/**
+ * 라이브 화면 스냅샷이 **오늘(KST) 03:00 이후**에 떠졌나 — 순수 판정(네트워크 0).
+ *
+ * `daily-deploy` 는 끝나는 시각이 그날마다 다르다(03:04~03:10 실측). 창 안이라는 것만으로는
+ * "그 job 이 이미 `apartments_flat` 을 읽었다" 를 보장하지 못하므로, 라이브 `meta.json` 의
+ * `fetchedAt` 으로 실측한다. 판정은 순수 함수로 두고 네트워크는 래퍼가 맡는다 —
+ * 그래야 테스트가 망을 타지 않는다(`probe-must-be-self-verified.md`).
+ *
+ * @param {any} meta 라이브 `meta.json` (필드 `fetchedAt` = UTC ISO)
+ * @param {Date} [now]
+ * @returns {boolean} `fetchedAt` 이 없거나 못 읽으면 **false**(fail-close)
+ */
+export function deploySnapshotTakenToday(meta, now = new Date()) {
+  const raw = meta?.fetchedAt;
+  if (typeof raw !== "string") return false;
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t)) return false;
+  // "오늘(KST) 03:00" 을 UTC 절대시각으로 환산한다. KST 로 옮겨 날짜를 자른 뒤 되돌린다.
+  const KST = 9 * 3600_000;
+  const kstMidnight = Math.floor((now.getTime() + KST) / 86_400_000) * 86_400_000;
+  return t >= kstMidnight + 3 * 3600_000 - KST;
+}
+
+/**
+ * 위 판정을 라이브로 확인하는 래퍼. **어떤 실패도 false**(fail-close) — 망이 안 되거나 응답이
+ * 이상하면 "확인 못 했다" 이지 "괜찮다" 가 아니다.
+ * @param {Date} [now]
+ * @returns {Promise<boolean>}
+ */
+async function assertDeploySnapshotToday(now = new Date()) {
+  try {
+    const res = await fetch(DEPLOY_META_URL, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return false;
+    return deploySnapshotTakenToday(await res.json(), now);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -426,7 +490,7 @@ export const KNOWN_VALUE_FLAGS = ["--limit", "--out", "--ids-file", "--apply-fro
  * 알 수 없는 인자·값이 빈 인자를 찾아낸다(세션543).
  *
  * 왜 필요한가: `strArg`·`numArg`·`argv.includes` 는 **모르는 인자를 조용히 무시**한다. 그래서
- * `--apply-from /tmp/x.json --apply`(등호 빠짐)·`--apply--from=…`(오타)·`--include-week` 는
+ * `--apply-from <경로> --apply`(등호 빠짐)·`--apply--from=…`(오타)·`--include-week` 는
  * "그 인자가 없는 것" 이 되고, 도구는 **전체 재분석 + 반영**이라는 전혀 다른 일을 한다.
  * 이 도구는 DB 를 쓰므로 오타의 대가가 크다 — 모르는 인자는 실행하지 않는다.
  *
@@ -804,10 +868,18 @@ async function fetchApplyhomeRoster() {
  * @param {string} p
  * @returns {string[]}
  */
-function readIdsFile(p) {
+export function readIdsFile(p) {
   const abs = resolve(ROOT, p);
   if (!existsSync(abs)) throw new Error(`--ids-file 없음: ${abs}`);
   const j = /** @type {any} */ (JSON.parse(readFileSync(abs, "utf8")));
+  // `--apply-from` 은 반영 직후 대조가 어긋나면 `verified:false` 로 부분 덤프를 남긴다. 그 파일을
+  // 그대로 purge 대상으로 받으면 **DB 가 그 좌표인지 확인도 안 된 행의 파생표를 지우는 것**이다.
+  // 사람이 실제 DB 를 보고 판단한 뒤 그 표시를 지워야 진행한다(세션543 W4).
+  if (j?.verified === false) {
+    throw new Error(
+      `반영 직후 대조가 불일치했던 applied.json — 사람이 확인해 verified 를 지운 뒤 다시: ${abs}`,
+    );
+  }
   const arr = Array.isArray(j) ? j : j?.ids;
   if (!Array.isArray(arr)) throw new Error(`--ids-file 형식 오류(배열 또는 {ids:[...]}): ${abs}`);
   return arr.map((x) => (typeof x === "string" ? x : String(x?.id ?? ""))).filter(Boolean);
@@ -1049,7 +1121,7 @@ async function main() {
   const argv = process.argv.slice(2);
 
   // ── 모르는 인자·값 없는 인자는 **아무것도 하기 전에** 종료한다 (세션543 · F1) ──
-  // `--apply-from /tmp/x.json --apply`(등호 빠짐)를 조용히 무시하면 전체 재분석 + 반영이 돌아간다.
+  // `--apply-from <경로> --apply`(등호 빠짐)를 조용히 무시하면 전체 재분석 + 반영이 돌아간다.
   const argvIssues = validateArgv(argv);
   if (argvIssues.unknown.length > 0 || argvIssues.empty.length > 0) {
     for (const a of argvIssues.unknown) logError(PHASE, `알 수 없는 인자: ${a}`);
@@ -1100,10 +1172,19 @@ async function main() {
     );
     process.exit(1);
   }
-  if (purge && !inSafeWindow() && !forceTiming) {
-    logError(PHASE, "지금은 안전 시간창(KST 03:00~05:30) 밖이다 — 지금 지우면 화면에 빈칸이 노출된다.");
-    logError(PHASE, "그래도 강행하려면 --force-timing 을 추가하라(권장하지 않음).");
-    process.exit(1);
+  // ⏰ purge 시간 가드 — **세 경로(레거시 --apply · --ids-file · --apply-from)가 전부 이 한 자리를
+  // 지난다**. 경로마다 따로 구현하면 한 곳만 고쳐져 드리프트한다(세션543 W1).
+  if (purge && !forceTiming) {
+    if (!inSafeWindow()) {
+      logError(PHASE, "지금은 안전 시간창(KST 03:20~05:00) 밖이다 — 지금 지우면 화면에 빈칸이 노출된다.");
+      logError(PHASE, "그래도 강행하려면 --force-timing 을 추가하라(권장하지 않음).");
+      process.exit(1);
+    }
+    // 창 안이어도 그날 배포가 아직 안 끝났을 수 있다(실행 03:04~03:10, 그날마다 다름).
+    if (!(await assertDeploySnapshotToday())) {
+      logError(PHASE, "오늘 03:00 이후 화면 스냅샷(meta.fetchedAt)이 아직 없다 — daily-deploy 가 끝난 뒤 지워라(강행 --force-timing).");
+      process.exit(1);
+    }
   }
 
   const sb = getSupabase();
@@ -1438,10 +1519,14 @@ async function main() {
     return;
   }
 
-  const { ok, fail } = await applyCoordFixes(sb, fixList);
+  const res = await applyCoordFixes(sb, fixList);
+  const { ok, fail } = res;
   log(PHASE, `\n좌표·주소 정정: 성공 ${ok} · 실패 ${fail}`);
 
-  if (purge) await purgeDerived(sb, fixList.map((f) => f.id));
+  // ⚠️ 지울 대상은 **UPDATE 에 성공한 id 뿐**이다(세션543 W3). 대상 전체(`fixList`)를 지우면
+  // UPDATE 가 실패한 행은 "옛 좌표 + 파생표 없음" 이 되어 화면에 빈칸만 남는다 — 고치지도 못한 채
+  // 있던 정보만 잃는 최악의 조합. `--apply-from` 경로는 이미 성공분만 지운다(같은 잣대로 맞춘다).
+  if (purge) await purgeDerived(sb, res.okIds);
 
   log(PHASE, "\n=== 완료 ===");
 }

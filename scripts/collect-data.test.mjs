@@ -535,6 +535,46 @@ describe("상수 무결성", () => {
 // ============================================================
 // supabaseOnlyMode (3케이스)
 // ============================================================
+/**
+ * `apartments_flat` 가짜 클라이언트 — `selectAll` 의 **커서 모드**만 제공한다.
+ *
+ * 커서 모드 경로: `queryFn(sb).order(key,{ascending:true}).limit(1000)` → (2페이지부터) `.gt(key, cursor)`.
+ *
+ * ⚠️ **`.range` 를 일부러 두지 않는다.** 호출이 무정렬 OFFSET 으로 되돌아가면 `range is not a function`
+ * 으로 시끄럽게 깨진다 — 조용히 통과하면 그날 화면 JSON 에서 단지가 사라져도 아무도 모른다
+ * (`unordered-pagination-loses-rows.md` 세션535 답습).
+ * @param {Array<Record<string, any>>} rows
+ */
+function makeFlatClient(rows) {
+  const PAGE = 1000;
+  const calls = { orders: [], limits: [], gts: [] };
+  /** @param {string | null} afterId */
+  const page = (afterId) => {
+    const start = afterId == null ? 0 : rows.findIndex((r) => r.id === afterId) + 1;
+    return { data: rows.slice(start, start + PAGE), error: null };
+  };
+  const selectMock = vi.fn(() => ({
+    order: (/** @type {string} */ key, /** @type {any} */ opts) => {
+      calls.orders.push([key, opts]);
+      return {
+        limit: (/** @type {number} */ n) => {
+          calls.limits.push(n);
+          return {
+            gt: (/** @type {string} */ k, /** @type {any} */ cursor) => {
+              calls.gts.push([k, cursor]);
+              return Promise.resolve(page(cursor));
+            },
+            // 첫 페이지는 `.gt` 없이 그대로 await 된다 (thenable)
+            then: (/** @type {any} */ res, /** @type {any} */ rej) => Promise.resolve(page(null)).then(res, rej),
+          };
+        },
+      };
+    },
+  }));
+  const fromMock = vi.fn(() => ({ select: selectMock }));
+  return { client: { from: fromMock }, fromMock, selectMock, calls };
+}
+
 describe("supabaseOnlyMode", () => {
   beforeEach(() => {
     delete process.env.SUPABASE_URL;
@@ -580,16 +620,21 @@ describe("supabaseOnlyMode", () => {
       priceByFloor: null,
     }));
 
-    // selectAll 이 호출하는 queryFn(client).range() 가 데이터 반환
-    const rangeMock = vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }).mockResolvedValue({ data: [], error: null });
-    const selectMock = vi.fn(() => ({ range: rangeMock }));
-    const fromMock = vi.fn(() => ({ select: selectMock }));
-    mockCreateClient.mockReturnValue({ from: fromMock });
+    // selectAll 이 호출하는 queryFn(client).order().limit()[.gt()] 커서 경로가 데이터 반환 (세션543 W2 — .range 없음)
+    const flat = makeFlatClient(mockRows);
+    const fromMock = flat.fromMock;
+    mockCreateClient.mockReturnValue(flat.client);
 
     await supabaseOnlyMode();
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(fromMock).toHaveBeenCalledWith("apartments_flat");
+
+    // ★ 세션543 W2 — 고유키 커서로 훑는다(무정렬 OFFSET 이면 위 가짜 클라이언트가 TypeError 를 낸다).
+    //   1,565행이므로 1,000 + 565 = 2페이지. 두 번째 페이지는 첫 페이지 마지막 id 를 커서로 쓴다.
+    expect(flat.calls.orders).toEqual([["id", { ascending: true }], ["id", { ascending: true }]]);
+    expect(flat.calls.limits).toEqual([1000, 1000]);
+    expect(flat.calls.gts).toEqual([["id", "ah-999"]]);
 
     // 19 파일 write 호출 확인 (apartments/list/meta 3 + 상세 버킷 16, 세션 468 → PR2 로 prices 제외)
     // (실제 디스크 쓰기 0회 — vi.mock("fs") 스파이가 가로챔)
@@ -617,9 +662,7 @@ describe("supabaseOnlyMode", () => {
     process.env.SUPABASE_ANON_KEY = "test-anon";
 
     const mockRows = Array.from({ length: 500 }, (_, i) => ({ id: `ah-${i}` }));
-    const rangeMock = vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }).mockResolvedValue({ data: [], error: null });
-    const fromMock = vi.fn(() => ({ select: () => ({ range: rangeMock }) }));
-    mockCreateClient.mockReturnValue({ from: fromMock });
+    mockCreateClient.mockReturnValue(makeFlatClient(mockRows).client);
 
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("exit called");
@@ -637,9 +680,7 @@ describe("supabaseOnlyMode", () => {
 
     // 시나리오: 이전 1424 → 신규 1224 (diff -200, 임계값 max(150, ceil(1224*0.12))=150 초과)
     const mockRows = Array.from({ length: 1224 }, (_, i) => ({ id: `ah-${i}` }));
-    const rangeMock = vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }).mockResolvedValue({ data: [], error: null });
-    const fromMock = vi.fn(() => ({ select: () => ({ range: rangeMock }) }));
-    mockCreateClient.mockReturnValue({ from: fromMock });
+    mockCreateClient.mockReturnValue(makeFlatClient(mockRows).client);
 
     // 실측 public/data/apartments.json (count=1424, git tracked) 가 existsSync=true 박힘 →
     // JSON.parse(real fs readFileSync) 박힘 → prevCount=1424, diff=-200 → 임계값 -150 초과 → exit(1)
@@ -665,9 +706,7 @@ describe("supabaseOnlyMode", () => {
       jeonseByArea: null,
       priceByFloor: null,
     }));
-    const rangeMock = vi.fn().mockResolvedValueOnce({ data: mockRows, error: null }).mockResolvedValue({ data: [], error: null });
-    const fromMock = vi.fn(() => ({ select: () => ({ range: rangeMock }) }));
-    mockCreateClient.mockReturnValue({ from: fromMock });
+    mockCreateClient.mockReturnValue(makeFlatClient(mockRows).client);
 
     // 19 JSON write 박힘 (3 + 상세 버킷 16, 회귀 가드 통과 → writeOutputs 도달, 세션 468 → PR2 로 prices 제외)
     await supabaseOnlyMode();

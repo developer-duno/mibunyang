@@ -348,6 +348,10 @@ async function main() {
     const existing = /** @type {ExistingApt[]} */ (await selectAll(
       (s) => s.from("apartments").select("id, name, region, lat, lng"),
       sb,
+      // 무정렬 OFFSET 이면 빠진 행이 로스터에도 없고 `findDuplicate` 도 못 찾아 **INSERT** 로 가고,
+      // `mapRow` 의 `lat:null, lng:null` 이 upsert 로 덮어써 **고친 좌표가 null 로 회귀**한다
+      // (209곳 정정의 역행 경로 — 세션543 W2).
+      "id",
     ));
     const rosterIds = new Set(existing.map((a) => a.id));
     log(PHASE, `기존 로스터: ${existing.length}건`);
