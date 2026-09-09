@@ -504,7 +504,10 @@ vs 서울시 TOPIS 공식 11,231건, 고유 이름은 9,057개). 그래서:
 - ⚠️ **도구 인자 경로는 절대경로로 — `/tmp` 금지.** Git Bash `/tmp` = `C:\Users\<me>\AppData\Local\Temp` 인데
   node `resolve("/tmp/x")` = `F:\tmp\x` 라 **셸과 node 가 다른 폴더를 본다**. `--out` 으로 쓴 덤프를
   `--apply-from` 이 못 찾거나 다른 폴더의 옛 동명 파일을 읽는다.
-- ⚠️ **`apartments` 명단을 훑는 `selectAll` 은 `keyCol`("id")를 넘긴다**(세션543 W2). 안 넘기면 ORDER BY 없는
+- ⚠️ **모든 `selectAll` 호출은 3번째 인자 `keyCol`(표의 고유키: `id` / complexes `complex_no` / articles `article_no` / infra·transport
+  `apartment_id`)를 넘기고, 그 키를 select 에 포함한다** — 세션543 W2 가 명단 4곳, 세션544 #485 가 나머지 31곳을 옮겨 무키 호출 0.
+  정적 가드 `scripts/_selectall-keycol-coverage.test.mjs`(ALLOWLIST 없음, 괄호 균형·주석/문자열/정규식 마스킹)가 새 무키 호출을 red 로
+  잡는다. 조회 안에 `.order(…)` 를 두면 커서 키와 충돌해 행이 샌다 — 정렬은 `collect-maintenance` 처럼 클라이언트에서. 안 넘기면 ORDER BY 없는
   OFFSET 페이징이라 2,600행+ 표에서 **에러 없이** 행이 샌다([.claude/rules/collectors/unordered-pagination-loses-rows.md](../.claude/rules/collectors/unordered-pagination-loses-rows.md)).
   특히 `collect-applyhome-seed` 는 빠진 행을 로스터에서도 못 봐 **INSERT** 로 보내고, 그 행의 `lat:null,lng:null`
   이 upsert 로 덮어써 **고친 좌표를 null 로 되돌린다** — 209곳 정정의 역행 경로다.

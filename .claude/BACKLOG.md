@@ -647,6 +647,21 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   `collect-maintenance` 만 조회 안 `.order("updated_at")` 가 커서 키와 충돌 → 조회에서 빼고 `sortByUpdatedAtAsc`(NULL 먼저·동률 id)로
   클라이언트 재현(--limit 회차 분산 의미 유지). 라이브 5종(apartments·regions·transport·infra·applyhome_unit_supply) 커서=count=무키 —
   **지금은 새는 게 재현되지 않았다**(세션514 유실은 79만행 trades + 동시쓰기 조건). 근거는 "보장이 없다"쪽.
+- 🔴 **`reverse-geocode --force` 를 권하는 문구가 레포에 있고, 그 명령은 이제 전남·광주 105곳 `bjd_code` 를 되돌릴 수 없게 바꾼다** (세션544 마무리 적대검증 H1, 2026-09-10).
+  `collect-building-hub.mjs:34`(주석)·`:177`(로그 "reverse-geocode.mjs --force를 먼저 실행하세요") ↔ `reverse-geocode.mjs:95` `if (!force) q = q.is("address", null)` = force 는 **전량**.
+  2026-07-01 전남광주통합특별시 출범 후 카카오가 전남·광주 좌표에 법정동코드 **`12…`** 를 돌려주므로(순천 `1215032028` 실측) 옛 `46…`·`29…` 가 조용히 교체 →
+  건축HUB(`slice(0,5)/(5,10)`)·학교알리미(`schools-neis:560`) 조회가 **에러 없이 0건**. 되돌릴 길 없음. **처방 = PR-D**(`docs/superpowers/specs/2026-09-10-selectall-guard-hardening-and-force-geocode.md` §1-4): `--only-null-bjd` 신설 + `--force` fail-close + 문구 교체.
+  ⚠️ 그때까지 **누구도 `reverse-geocode --force` 를 실행하지 말 것.** 근본(학군 폴백 `getLawdCd`)은 별건.
+- 🟡 **PR-D 묶음 — 커서 가드 3층 보강 · refit 청크 150 · maintenance 정렬 Date.parse · 왕숙 refit** (세션544 마무리 적대검증 M1·M2·M3·M5·L2·L3, 스펙 `docs/superpowers/specs/2026-09-10-selectall-guard-hardening-and-force-geocode.md`).
+  M1 `_shared.mjs:632` 커서 null 검사가 `break` 뒤라 키 없는 select 가 1,000행 미만에서 무증상 · M2 가드가 비고유 키(`"region"`)를 못 가름 · M3 `fix-placeholder-addresses.mjs:1303`
+  `.in()` 900 문턱(8KB 한계, 300건이면 throw — 다음 대량 refit 에서 즉시) · M5 `collect-maintenance` 문자열 정렬이 오프셋 균일 전제 · L2 `MIN_TOTAL_CALLS` 60 vs 실측 66 · L3 3번째 인자 식별자 허용.
+  전부 "현재 피해 0, 다음에 건드리면 조용히 깨짐". 스펙에 변경·테스트·뮤테이션까지 적혀 있어 코더 위임 가능.
+- 🟢 **세션544 적대검증 낮음 묶음** — ①`B_gray`·`B_kakao_planned` 는 매 dry-run 마다 같은 행이 다시 뜨고(경보 피로) 사람이 "옮기자"고 결정해도 반영 경로가 없다(`--include-weak` 는 weak 만) → `scripts/data/placeholder-coord-decisions.json`(id→결정·날짜·사유)로 "새로 뜬 N / 이미 판단한 M" 가르기 ②`notify-subscribers.mjs:316/330/371` `.in()` 무청크(이벤트 200건+ 면 URL 길이) — 기존 결함 ③infra `mart_dist`·`pharmacy_dist`·`nearby_facilities` 는 쓰는 수집기가 없는 죽은 컬럼(data-audit 만 읽음 → "0% = 사고" 오판 씨앗) ④가드 `_shared.mjs` 파일 통째 제외·템플릿 리터럴 안 줄머리 주석 ⑤refit 경로엔 `--apply-from` 의 "덤프 좌표 ↔ DB 좌표" 대조가 없다(손으로 만든 ids 파일 오타 = 남의 단지 부속필드) ⑥일회성 cron 은 창 **앞쪽**에(03:33 예약이 04:04 발화 — 04:3x 였으면 도구가 거부).
+- 🟡 **왕숙진접메르디앙더퍼스트(ap-6028098) 부속필드가 옛 `(예정)` 핀 자리 값** (세션544 결정 ①의 잔여, PR-D §1-6 에 동승). 좌표는 공식 사업지 지번(양지리 335)
+  자리라 옮기지 않기로 했는데, `road_address`(경복대로17번길 1)·`lot_main` 404·`bjd_code` 4136026200 은 350m 남쪽 핀 자리에서 역산된 값이 남아 있다.
+  `--refit-fields` 미리보기(2026-09-10 05:2x, 쓰기 0) = dong 오남읍 유지 · bjd → **4136026221** · lot → **335-0**(사업지 지번과 일치 = 좌표 정당성 방증) ·
+  road → 경복대로17번길 32-1. 반영 = 사장님 승인 후 `node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=<절대경로 json {"ids":["ap-6028098"]}> --apply`
+  (창 무관 — 파생표 안 건드림). ⚠️ `bjd_code` 가 바뀌면 건축HUB 조회 키가 바뀐다 — 어차피 옛 값은 남의 자리 코드였다.
 - 🟢 **`calc-exclusive-ratio.mjs` 의 prices "최신 가격" 주석 vs 실제 "첫 행"** (세션544 PR-B 발견). `if (!priceMap[id]) priceMap[id] = p` 로
   **첫 행**을 쓰는데 주석은 "최신 가격"이라 한다. 원래 무정렬이라 "최신" 보장이 없었고, 커서 전환으로 `prices.id` 최소값(대체로 가장 오래된 행)이
   **결정적**으로 잡힌다. 의미를 바꾸는 일이라 PR-B 에서 손대지 않음 — "최신"이 맞다면 `.order("recorded_at",desc)` 를 클라이언트에서 재현할 것.

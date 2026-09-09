@@ -16,7 +16,7 @@
 ```bash
 npm run dev               # localhost:5173
 npm run build             # 빌드 (⚠️ prebuild 가 public/data JSON 재생성 → 커밋 금지, git checkout 원복)
-npm run test              # vitest 단위 (src spec)
+npm run test              # vitest 단위 (src spec + scripts/**/*.test.{js,mjs} — vitest.config 의 node 프로젝트, 정적 가드 포함)
 npm run test:e2e          # Playwright E2E (e2e spec)
 npm run lint              # eslint src/
 npm run typecheck         # tsc --noEmit (src)
