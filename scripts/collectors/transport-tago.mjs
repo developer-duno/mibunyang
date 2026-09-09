@@ -492,6 +492,7 @@ export async function fetchCollectedApartmentIds(sb) {
           .not("bus_routes", "is", null)
           .gte("updated_at", FILTER_FIX_AT),
       sb,
+      "apartment_id", // transport 는 apartment_id 가 PK
     )
   );
   return new Set(rows.map((r) => r.apartment_id).filter(Boolean));
@@ -528,7 +529,7 @@ export function orderTargets(withCoords, doneSet, existingSet) {
  */
 export async function fetchExistingApartmentIds(sb) {
   const rows = /** @type {{ apartment_id: string }[]} */ (
-    await selectAll((s) => s.from("transport").select("apartment_id"), sb)
+    await selectAll((s) => s.from("transport").select("apartment_id"), sb, "apartment_id")
   );
   return new Set(rows.map((r) => r.apartment_id).filter(Boolean));
 }

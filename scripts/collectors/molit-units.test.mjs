@@ -43,12 +43,21 @@ const { getTargets, fetchAptDetail, updateUnits, resolveUnits, writeUnmatchedLog
  * @returns {any}
  */
 function makeMockSbForQuery(data, error = null) {
-  // selectAll이 .range()를 호출하므로 체인에 포함
-  const range = vi.fn().mockResolvedValue({ data, error });
-  const or = vi.fn().mockReturnValue({ range });
+  // selectAll 은 **고유키(id) 커서 모드**로 호출된다 (세션544):
+  //   `.order("id",{ascending:true}).limit(1000)` → (2페이지부터) `.gt("id", cursor)`.
+  // ⚠️ `.range` 를 일부러 두지 않는다 — 무정렬 OFFSET 으로 되돌아가면
+  //   `range is not a function` 으로 시끄럽게 깨진다 (unordered-pagination-loses-rows.md).
+  const gt = vi.fn().mockResolvedValue({ data, error });
+  const limit = vi.fn().mockReturnValue({
+    gt,
+    /** @param {any} res @param {any} rej */
+    then: (res, rej) => Promise.resolve({ data, error }).then(res, rej),
+  });
+  const order = vi.fn().mockReturnValue({ limit });
+  const or = vi.fn().mockReturnValue({ order });
   const select = vi.fn().mockReturnValue({ or });
   const from = vi.fn().mockReturnValue({ select });
-  return { from, select, or, range };
+  return { from, select, or, order, limit, gt };
 }
 
 /**
@@ -71,6 +80,10 @@ describe("getTargets", () => {
     const result = await getTargets(sb);
     expect(result).toEqual(mockData);
     expect(sb.from).toHaveBeenCalledWith("apartments");
+    // ★ 세션544 — 고유키(id) 커서로 훑는다. select 에 id 가 없으면 selectAll 이 즉시 throw 한다.
+    expect(sb.order).toHaveBeenCalledWith("id", { ascending: true });
+    expect(sb.limit).toHaveBeenCalledWith(1000);
+    expect(sb.select.mock.calls[0][0]).toContain("id,");
   });
 
   // 에러 + 빈 데이터

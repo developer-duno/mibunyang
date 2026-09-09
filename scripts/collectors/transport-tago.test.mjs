@@ -315,30 +315,82 @@ describe('buildTransportRow — TAGO 수집 실패/성공 신호 분리', () => 
 
 // ── fetchCollectedApartmentIds — PostgREST 1000행 상한 회귀 가드 (세션 490) ──
 /**
- * PostgREST 를 흉내내는 가짜 Supabase.
- * 핵심: `.limit(N)` 을 줘도 **한 응답에 최대 1000행**만 돌려준다(max_rows). `.range()` 도 같은 상한.
- * 이 상한이 있어야 "옛 `.limit(10000)` 코드로 되돌리면 테스트가 깨진다"는 걸 실제로 검증할 수 있다.
+ * `selectAll` 의 **커서 모드**만 흉내내는 응답기 (세션544).
+ *
+ * 커서 경로: `queryFn(sb).order(key,{ascending:true}).limit(1000)` → 2페이지부터 `.gt(key, cursor)`.
+ * ⚠️ **`.range` 를 일부러 두지 않는다.** 호출이 무정렬 OFFSET 으로 되돌아가면
+ * `range is not a function` 으로 시끄럽게 깨진다 — 조용히 통과하면 2,900행 표에서 행이 새도
+ * 아무도 모른다 (`unordered-pagination-loses-rows.md`, `collect-data.test.mjs` 선례).
+ *
+ * PostgREST 처럼 **한 응답에 최대 `cap` 행**만 돌려준다(max_rows). 이 상한이 있어야
+ * "한 번에 다 받는다고 착각한 코드로 되돌리면 깨진다"를 실제로 검증할 수 있다.
+ * @param {Record<string, unknown>[]} rows
+ * @param {number} [cap]
+ */
+function cursorRespond(rows, cap = 1000) {
+  const KEY = "apartment_id";
+  const k = (/** @type {Record<string, unknown>} */ r) => String(r[KEY]);
+  const sorted = [...rows].sort((a, b) => (k(a) < k(b) ? -1 : k(a) > k(b) ? 1 : 0));
+  /** @param {unknown} cursor */
+  const page = (cursor) => {
+    const rest = cursor == null ? sorted : sorted.filter((r) => k(r) > String(cursor));
+    return { data: rest.slice(0, cap), error: null };
+  };
+  /** @type {{ orders: any[][], limits: number[], gts: any[][] }} */
+  const calls = { orders: [], limits: [], gts: [] };
+  const obj = {
+    calls,
+    /** @param {string} key @param {any} opts */
+    order: (key, opts) => {
+      calls.orders.push([key, opts]);
+      return {
+        /** @param {number} n */
+        limit: (n) => {
+          calls.limits.push(n);
+          const size = Math.min(n, cap);
+          return {
+            /** @param {string} key2 @param {unknown} cursor */
+            gt: (key2, cursor) => {
+              calls.gts.push([key2, cursor]);
+              const p = page(cursor);
+              return Promise.resolve({ data: p.data.slice(0, size), error: null });
+            },
+            /** @param {any} res @param {any} rej */
+            then: (res, rej) => Promise.resolve({ data: page(null).data.slice(0, size), error: null }).then(res, rej),
+          };
+        },
+      };
+    },
+  };
+  return obj;
+}
+
+/**
+ * PostgREST 를 흉내내는 가짜 Supabase (`.select().not().gte()` → 커서 응답).
  * @param {number} totalRows
  * @param {number} [cap]
  */
 function makeCappedSb(totalRows, cap = 1000) {
   const all = Array.from({ length: totalRows }, (_, i) => ({ apartment_id: `ap-${i}` }));
-  const chain = {
-    /** @param {number} from @param {number} to */
-    range: (from, to) =>
-      Promise.resolve({ data: all.slice(from, Math.min(to + 1, from + cap)), error: null }),
-    /** @param {number} n */
-    limit: (n) => Promise.resolve({ data: all.slice(0, Math.min(n, cap)), error: null }),
-  };
+  const chain = cursorRespond(all, cap);
   const withGte = { ...chain, gte: () => chain };
-  return { from: () => ({ select: () => ({ not: () => withGte }) }) };
+  return { from: () => ({ select: () => ({ not: () => withGte }) }), _calls: chain.calls };
 }
 
 describe("fetchCollectedApartmentIds — 1000행 상한 넘어 전량 조회", () => {
   it("1500건: 1000 에서 잘리지 않고 전량 반환 (옛 .limit(10000) 이면 1000 에서 멈춤)", async () => {
-    const done = await fetchCollectedApartmentIds(makeCappedSb(1500));
+    const sb = makeCappedSb(1500);
+    const done = await fetchCollectedApartmentIds(sb);
     expect(done.size).toBe(1500);
     expect(done.has("ap-1499")).toBe(true);
+    // ★ 세션544 — 고유키(apartment_id) 커서로 훑는다(transport 는 apartment_id 가 PK).
+    //   무정렬 OFFSET 으로 되돌아가면 위 가짜가 `range is not a function` 으로 깨진다.
+    expect(sb._calls.orders).toEqual([
+      ["apartment_id", { ascending: true }],
+      ["apartment_id", { ascending: true }],
+    ]);
+    expect(sb._calls.limits).toEqual([1000, 1000]);
+    expect(sb._calls.gts.map(([key]) => key)).toEqual(["apartment_id"]);
   });
 
   it("2170건(운영 규모): 전량 반환", async () => {
@@ -357,14 +409,7 @@ describe("fetchCollectedApartmentIds — 1000행 상한 넘어 전량 조회", (
   });
 
   it("빈/누락 apartment_id 는 제외", async () => {
-    const chain = {
-      /** @param {number} from */
-      range: (from) =>
-        Promise.resolve({
-          data: from === 0 ? [{ apartment_id: "ap-1" }, { apartment_id: "" }, {}] : [],
-          error: null,
-        }),
-    };
+    const chain = cursorRespond([{ apartment_id: "ap-1" }, { apartment_id: "" }, {}]);
     const sb = { from: () => ({ select: () => ({ not: () => ({ ...chain, gte: () => chain }) }) }) };
     const done = await fetchCollectedApartmentIds(sb);
     expect(done.size).toBe(1);
@@ -393,10 +438,7 @@ describe("fetchCollectedApartmentIds — 완료 판정 기준 = bus_routes IS NO
             notCalls.push(field);
             const filtered = rows.filter((r) => r[field] != null);
             /** @param {Record<string, unknown>[]} rs */
-            const respond = (rs) => ({
-              /** @param {number} from */
-              range: (from) => Promise.resolve({ data: from === 0 ? rs : [], error: null }),
-            });
+            const respond = (rs) => cursorRespond(rs);
             return {
               ...respond(filtered),
               // 세션 497 백필 커트라인: updated_at >= FILTER_FIX_AT 인 행만 "완료"
@@ -559,23 +601,18 @@ describe("orderTargets — 신규(행 없음) 우선, 재시도(bus_routes null)
 // ── fetchExistingApartmentIds — transport 행 존재 여부(성공 무관) ──
 describe("fetchExistingApartmentIds", () => {
   it("bus_routes 값과 무관하게 행이 있으면 포함", async () => {
-    const chain = {
-      /** @param {number} from */
-      range: (from) =>
-        Promise.resolve({
-          data: from === 0 ? [{ apartment_id: "ap-1" }, { apartment_id: "ap-2" }] : [],
-          error: null,
-        }),
-    };
+    const chain = cursorRespond([{ apartment_id: "ap-1" }, { apartment_id: "ap-2" }]);
     const sb = { from: () => ({ select: () => chain }) };
     const existing = await fetchExistingApartmentIds(sb);
     expect(existing.size).toBe(2);
     expect(existing.has("ap-1")).toBe(true);
     expect(existing.has("ap-2")).toBe(true);
+    // ★ 세션544 — 고유키(apartment_id) 커서. 무정렬 OFFSET 이면 `.range` 부재로 TypeError.
+    expect(chain.calls.orders).toEqual([["apartment_id", { ascending: true }]]);
   });
 
   it("행이 없으면 빈 Set", async () => {
-    const chain = { range: () => Promise.resolve({ data: [], error: null }) };
+    const chain = cursorRespond([]);
     const sb = { from: () => ({ select: () => chain }) };
     const existing = await fetchExistingApartmentIds(sb);
     expect(existing.size).toBe(0);

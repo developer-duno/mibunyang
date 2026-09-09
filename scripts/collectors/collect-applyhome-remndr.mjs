@@ -282,7 +282,11 @@ async function fetchAllPages(base, op, rpt) {
 async function loadExistingUnits(sb) {
   try {
     const rows = /** @type {{ apartment_id: string, house_manage_no: string, model_no: string, source?: string | null }[]} */ (
-      await selectAll((s) => s.from("applyhome_unit_supply").select("apartment_id, house_manage_no, model_no, source"), sb)
+      await selectAll(
+        (s) => s.from("applyhome_unit_supply").select("id, apartment_id, house_manage_no, model_no, source"),
+        sb,
+        "id",
+      )
     );
     return { rows };
   } catch (err) {
@@ -341,6 +345,7 @@ async function main() {
     const apts = /** @type {{ id: string }[]} */ (await selectAll(
       (s) => s.from("apartments").select("id"),
       sb,
+      "id",
     ));
     const rosterIds = new Set(apts.map((a) => a.id));
     log(PHASE, `로스터: ${apts.length}건`);

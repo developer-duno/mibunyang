@@ -188,7 +188,8 @@ export async function main() {
         await selectAll(
           /** @param {any} c */ (c) =>
             c.from("regions").select("id, region, gu, doctors_per_1k, hospital_beds_per_1k").not("gu", "is", null),
-          sb
+          sb,
+          "id"
         )
       );
     } catch (e) {

@@ -8,6 +8,8 @@
 ## 0. 실측 (2026-09-09, 읽기 전용 조사 에이전트 + 오케스트레이터 재확인)
 
 - `scripts/**/*.mjs`(테스트·`scripts/probes/` 제외)에서 `selectAll(` 호출 **65곳**(정의 1 제외) = 커서 32 · **무키 33**.
+  **구현 시 정정(코더 실측, 2026-09-10)**: 총 **66** · 무키 **31** · 커서 35 — 표의 #7·#8(`clean-naver-match-pollution.mjs`)은
+  이미 `"id"`/`"complex_no"` 를 넘기고 있었다(조사 에이전트의 오판). 전환은 31곳 전부. 가드의 총 호출 하한(`MIN_TOTAL_CALLS` 60)은 66 기준.
   BACKLOG 의 "25곳" 은 `scripts/collectors/` 한정 집계였다(루트 `scripts/` 8곳 누락 — `compute-scores.mjs` 1 ·
   `notify-subscribers.mjs` 5 · `clean-naver-match-pollution.mjs` 2). 25 + 8 = 33.
 - 같은 필터로 `count:'exact'` 실측: **🔴 1,000행 이상 25곳 · 🟡 700~999 1곳 · 🟢 700 미만 6곳 · 미측 1곳**(표 부재).

@@ -403,13 +403,14 @@ async function main() {
 
   // 1. Supabase에서 미분양 아파트 좌표 조회
   const sbMibunyang = getMibuyangSupabase();
-  // selectAll: 1000행 제한 자동 페이지네이션
+  // selectAll: 고유키(id) 커서 페이지네이션
   const apartments = await selectAll(
     (s) => s.from("apartments")
       .select("id, name, region, gu, dong, lat, lng")
       .not("lat", "is", null)
       .not("lng", "is", null),
-    sbMibunyang
+    sbMibunyang,
+    "id"
   );
 
   const targets = aptLimit > 0 ? apartments.slice(0, aptLimit) : apartments;

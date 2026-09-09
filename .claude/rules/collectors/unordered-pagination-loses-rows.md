@@ -147,6 +147,13 @@ const { count } = await sb.from(t).select("*", { count: "exact", head: true })./
   select 에서 키를 빼도 초록 — 검사값은 **select 문자열 리터럴 조각**(`'"article_no, complex_no'`)으로
   고정한다([[guards-must-be-mutation-tested]] §소스 grep 의 변종).
 
+- 세션544 PR-B = **무키 `selectAll` 전수 종결(31곳) + 예외 0 정적 가드** `scripts/_selectall-keycol-coverage.test.mjs`.
+  가드는 괄호 균형 + 주석 2단계 제거 + **문자열·템플릿·정규식 리터럴 마스킹**(`naver-listings.mjs` 의 정규식 안 따옴표가 가짜 문자열을 열어
+  그 파일 호출이 0건으로 집계되던 사각 실측) + 트레일링 콤마 처리 + 총 호출 ≥60 앵커 + "selectAll 을 쓰는 파일은 최소 1건 보인다".
+  ⚠️ **커서 키 ≠ 정렬 키면 행이 샌다**: 조회 안에 `.order("updated_at")` 가 남으면 그게 1순위 정렬이 되어 `id > cursor` 가 엉뚱한 행을
+  잘라낸다 — `collect-maintenance` 가 유일한 사례. 처방 = 조회에서 `.order` 를 빼고 정렬 컬럼을 select 에 넣은 뒤 클라이언트에서 재현
+  (`sortByUpdatedAtAsc`, NULL 먼저·동률 id). 라이브 5종 대조에선 새는 게 재현되지 않았다(세션514 는 79만행 + 동시쓰기) — 근거는 "보장 없음".
+
 ## 차단 검증
 
 | 사고 시나리오 | 본 룰 적용 시 |

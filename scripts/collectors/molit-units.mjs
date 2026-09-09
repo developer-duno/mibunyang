@@ -46,12 +46,13 @@ const API_KEY_SAFE = API_KEY;
  * @returns {Promise<TargetApt[]>}
  */
 export async function getTargets(sb) {
-  // selectAll: 1000행 제한 자동 페이지네이션
+  // selectAll: 고유키(id) 커서 페이지네이션
   const data = await selectAll(
     (s) => s.from("apartments")
       .select("id, name, region, gu, address, units, unsold, unsold_rate, unit_source")
       .or("units.lte.1,unsold_rate.gte.100"),
-    sb
+    sb,
+    "id"
   );
   return /** @type {TargetApt[]} */ (data ?? []);
 }

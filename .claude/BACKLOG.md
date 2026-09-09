@@ -642,6 +642,14 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   (`compute-scores.mjs:256` **daily-deploy 매일, apartments 2,375행** · `notify-subscribers.mjs` 5 · `clean-naver-match-pollution.mjs` 2).
   같은 필터로 count 실측 = 🔴 ≥1,000 **25곳** · 🟡 1 · 🟢 6 · 미측 1(표 부재). 전체 목록·키·select 포함 여부 =
   `docs/superpowers/specs/2026-09-09-selectall-keycol-all.md`(PR-B: 33곳 전부 커서 + ALLOWLIST 없는 정적 가드; 스펙은 #484 에 동승).
+  **PR-B 구현(세션544, 브랜치 `fix/s544-selectall-keycol-all`)**: 실측 무키 **31**(#7·#8 은 이미 커서) 전부 전환 + 가드
+  `scripts/_selectall-keycol-coverage.test.mjs`(괄호 균형·주석 2단계 제거·문자열/정규식 리터럴 마스킹·총 호출 ≥60 앵커, 예외 0).
+  `collect-maintenance` 만 조회 안 `.order("updated_at")` 가 커서 키와 충돌 → 조회에서 빼고 `sortByUpdatedAtAsc`(NULL 먼저·동률 id)로
+  클라이언트 재현(--limit 회차 분산 의미 유지). 라이브 5종(apartments·regions·transport·infra·applyhome_unit_supply) 커서=count=무키 —
+  **지금은 새는 게 재현되지 않았다**(세션514 유실은 79만행 trades + 동시쓰기 조건). 근거는 "보장이 없다"쪽.
+- 🟢 **`calc-exclusive-ratio.mjs` 의 prices "최신 가격" 주석 vs 실제 "첫 행"** (세션544 PR-B 발견). `if (!priceMap[id]) priceMap[id] = p` 로
+  **첫 행**을 쓰는데 주석은 "최신 가격"이라 한다. 원래 무정렬이라 "최신" 보장이 없었고, 커서 전환으로 `prices.id` 최소값(대체로 가장 오래된 행)이
+  **결정적**으로 잡힌다. 의미를 바꾸는 일이라 PR-B 에서 손대지 않음 — "최신"이 맞다면 `.order("recorded_at",desc)` 를 클라이언트에서 재현할 것.
 
 - 🟡 **`notification_logs` 표가 라이브 DB 에 없다** (세션544 실측, PGRST205). 마이그 `20260703000000_create_notification_logs.sql`
   과 `…000001_rollback_…` 둘 다 레포에 있고 `notify-subscribers.mjs:327`·`api/admin/subscribers.ts` 가 읽는다. 지금은 `subscribers`

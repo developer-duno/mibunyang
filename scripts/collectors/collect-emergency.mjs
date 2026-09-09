@@ -99,8 +99,8 @@ async function main() {
   const { facilities, apiCalls } = await fetchEmergencyList();
   log(PHASE, `응급의료기관 ${facilities.length}건 조회 완료 (API ${apiCalls}회)`);
 
-  // 2. 단지 목록 조회 — selectAll 공유 헬퍼(1000행/배치 자동 페이지네이션)
-  const apts = await selectAll((s) => s.from("apartments").select("id, name, lat, lng"), sb);
+  // 2. 단지 목록 조회 — selectAll 공유 헬퍼(고유키 id 커서 페이지네이션)
+  const apts = await selectAll((s) => s.from("apartments").select("id, name, lat, lng"), sb, "id");
   const targets = apts.filter(a => a.lat && a.lng);
   log(PHASE, `대상: ${targets.length}건`);
 

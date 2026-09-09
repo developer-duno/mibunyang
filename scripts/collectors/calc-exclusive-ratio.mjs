@@ -36,12 +36,13 @@ export async function main() {
   // "돌았는데 대상이 0" 과 "아예 안 돌았다" 를 구분할 방법이 아무 데도 없었다 (세션 495).
   const rpt = createReporter(PHASE);
 
-  // 전용률이 없는 아파트 (selectAll: 1000행 제한 자동 페이지네이션)
+  // 전용률이 없는 아파트 (selectAll: 고유키 id 커서 페이지네이션)
   const apts = await selectAll(
     (s) => s.from("apartments")
       .select("id, name, exclusive_ratio, presale_housing_type")
       .is("exclusive_ratio", null),
-    sb
+    sb,
+    "id"
   );
   log(PHASE, `대상: ${apts.length}건 (exclusive_ratio null)`);
 
@@ -62,9 +63,10 @@ export async function main() {
     const chunk = aptIds.slice(i, i + CHUNK);
     const data = await selectAll(
       (s) => s.from("prices")
-        .select("apartment_id, area, supply_area")
+        .select("id, apartment_id, area, supply_area")
         .in("apartment_id", chunk),
-      sb
+      sb,
+      "id"
     );
     prices.push(...data);
   }

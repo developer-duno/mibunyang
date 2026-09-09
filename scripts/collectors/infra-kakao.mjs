@@ -131,7 +131,7 @@ async function main() {
     const infraRows = /** @type {Record<string, unknown>[]} */ (
       await selectAll((s) => s.from("infra").select(
         ["apartment_id", "updated_at", "subway_dist", ...CATEGORIES.map((c) => c.key)].join(", "),
-      ), sb)
+      ), sb, "apartment_id") // infra 는 apartment_id 가 PK
     );
     const freshIds = buildFreshIds(infraRows);
     freshCount = freshIds.size;

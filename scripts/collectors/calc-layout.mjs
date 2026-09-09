@@ -114,7 +114,7 @@ async function main() {
 
   // 1. layout이 없는 아파트 조회
   const apts = /** @type {{ id: string, name: string, area: number | null }[]} */ (
-    await selectAll((s) => s.from("apartments_flat").select("id, name, area").is("layout", null), sb)
+    await selectAll((s) => s.from("apartments_flat").select("id, name, area").is("layout", null), sb, "id")
   );
   log(PHASE, `대상: ${apts.length}건 (layout null)`);
 
@@ -131,7 +131,11 @@ async function main() {
 
   // 2. complexes 조회
   const complexes = /** @type {{ complex_no: string, complex_name: string, high_floor: number | null, total_household_count: number | null }[]} */ (
-    await selectAll((s) => s.from("complexes").select("complex_no, complex_name, high_floor, total_household_count"), sb)
+    await selectAll(
+      (s) => s.from("complexes").select("complex_no, complex_name, high_floor, total_household_count"),
+      sb,
+      "complex_no", // complexes 는 id 컬럼이 없다 — 고유키는 complex_no
+    )
   );
   log(PHASE, `complexes: ${complexes.length}건`);
 
@@ -212,11 +216,12 @@ async function main() {
         (s) =>
           s
             .from("articles")
-            .select("complex_no, area2_m2")
+            .select("article_no, complex_no, area2_m2")
             .in("complex_no", chunk)
             .eq("is_active", true)
             .not("area2_m2", "is", null),
         sb,
+        "article_no", // articles 는 id 컬럼이 없다 — 고유키는 article_no
       )
     );
     for (const art of rows) {
