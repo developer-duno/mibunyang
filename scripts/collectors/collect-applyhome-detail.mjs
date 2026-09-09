@@ -254,6 +254,7 @@ async function main() {
     const apts = /** @type {AptRow[]} */ (await selectAll(
       (s) => s.from("apartments").select("id, name, region"),
       sb,
+      "id", // 무정렬 OFFSET 이면 상세 매칭 후보가 조용히 빠진다 (세션543 W2)
     ));
     log(PHASE, `매칭 후보 단지: ${apts.length}건`);
 

@@ -128,6 +128,16 @@ const { count } = await sb.from(t).select("*", { count: "exact", head: true })./
   결함 재현 실측 = articles 같은 offset 2회 조회 **교집합 0/100**. fail-open(`{rows, error}` 반환)
   계약 유지가 selectAll(throw)을 안 쓴 이유. 테스트 fake 는 `.range` 를 아예 제공하지 않아
   OFFSET 회귀 시 TypeError. 뮤테이션 7종 red 실증(경쟁 후보 keyCol 포함).
+- 세션543 W2 `collect-applyhome-seed:348`·`collect-applyhome:172`·`collect-applyhome-detail:254`·
+  `collect-data:1071` — **apartments/apartments_flat 명단 읽기 4곳**에 `"id"` 추가. seed 가 특히 위험했다:
+  빠진 행은 로스터에도 없어 `findDuplicate` 를 통과해 **INSERT** 로 가고, `mapRow` 의 `lat:null,lng:null` 이
+  `upsertBatch("apartments", …, "id")` 로 덮어써 **정정한 좌표를 null 로 되돌린다**(209곳 정정의 역행 경로).
+  `collect-data:1071` 은 그날 화면 JSON 이라 1~20행 어긋남을 기존 회귀 가드(MIN_COUNT 1000·12% 감소)가 못 잡는다.
+  가드 = 세 수집기 테스트의 배선 grep + `collect-data.test.mjs` 의 **`.range` 를 제공하지 않는** 가짜 클라이언트
+  (OFFSET 회귀 시 TypeError) + 커서 호출 순서 단언(`order/limit/gt`).
+- ⚠️ **`selectAll` 무키 호출은 단일줄 grep 으로 세지 마라 (세션543)**: `keyCol` 이 다음 줄에 있으면 못 본다.
+  `selectAll(` 마다 **괄호 균형을 맞춰 닫는 괄호까지 인자 수를 세야** 한다(스캔 맹점 1과 같은 결).
+  2026-09-09 실측 = 커서 22곳 · 무키 25곳(대상 표 = `apartments` 14 · `regions` 3 · `transport` 2 · 나머지 각 1).
 - ⚠️ **스캔 맹점 2 (세션535 실증)**: `.range` 도 `.limit` 도 없는 **생 쿼리**는 PostgREST 가 1000행에서
   조용히 자르는데, `.range(` grep 에는 당연히 안 걸린다(sync-naver-complex heating 집계가 이 꼴 —
   당시 대상 행 0이라 잠복). 전수 스캔은 `.range(` 가 아니라 **`.from(` 마다 페이징 방식(selectAll/커서/

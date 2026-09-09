@@ -10,7 +10,9 @@
  * 아무것도 안 지키는 껍데기가 남는다.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 // 세션541: 카카오 게이트(POI 선별 3종 + 주소검색 정밀도 `isPreciseGeocode`)는 공유 모듈로
 // 옮겨졌다(자동 통로들과 같은 규칙). 여기 가드는 그대로 둔다 — 이 도구가 그 규칙으로 좌표를 옮긴다.
 import {
@@ -32,6 +34,8 @@ import {
   coreName,
   findTruePlaceholders,
   inSafeWindow,
+  deploySnapshotTakenToday,
+  readIdsFile,
   numArg,
   strArg,
   selectApplyFromRows,
@@ -413,17 +417,68 @@ describe("findTruePlaceholders — 고칠 재료가 없는 진짜 자리표시",
   });
 });
 
-describe("inSafeWindow — 파생표 정리 시간창 (KST 03:00~05:30)", () => {
+describe("inSafeWindow — 파생표 정리 시간창 (KST 03:20~05:00, 세션543 W1)", () => {
   /** @param {number} kstH @param {number} kstM */
   const at = (kstH, kstM) => new Date(Date.UTC(2026, 8, 3, (kstH - 9 + 24) % 24, kstM));
 
-  it("★ 창 안이면 true, 밖이면 false", () => {
-    expect(inSafeWindow(at(3, 0))).toBe(true);
+  // ⚠️ 경계값은 **리터럴로 못 박는다** — 창 상수에서 읽어 오면 창이 밀려도 단언이 같이 밀린다
+  // (`guards-must-be-mutation-tested.md` §"경계·범위를 표에서 읽는 가드").
+  it("★ 하한 = 03:20 (03:19 는 밖) — daily-deploy 실제 실행이 03:04~03:10 이라 03:00 하한은 위험하다", () => {
+    expect(inSafeWindow(at(3, 19))).toBe(false);
+    expect(inSafeWindow(at(3, 20))).toBe(true);
+  });
+
+  it("★ 상한 = 05:00 (05:01 은 밖) — 재수집이 05:30 에 대상 목록을 뜬다", () => {
+    expect(inSafeWindow(at(5, 0))).toBe(true);
+    expect(inSafeWindow(at(5, 1))).toBe(false);
+    expect(inSafeWindow(at(5, 30))).toBe(false);
+  });
+
+  it("창 한복판과 한낮", () => {
     expect(inSafeWindow(at(4, 30))).toBe(true);
-    expect(inSafeWindow(at(5, 30))).toBe(true);
     expect(inSafeWindow(at(2, 59))).toBe(false);
-    expect(inSafeWindow(at(5, 31))).toBe(false);
     expect(inSafeWindow(at(14, 0))).toBe(false);
+  });
+});
+
+describe("deploySnapshotTakenToday — 오늘 화면 스냅샷이 이미 떠졌나 (세션543 W1)", () => {
+  // 시간창만으로는 부족하다: daily-deploy 가 03:04~03:10 사이 어디서 끝나는지는 그날마다 다르고,
+  // 그 job 이 apartments_flat 을 읽기 **전에** 지우면 "지하철 없음·병원 0" 이 하루 화면에 박힌다.
+  // 그래서 라이브 meta.json 의 fetchedAt 으로 "오늘 03:00 이후 스냅샷" 을 실측해 확인한다.
+  const now = new Date("2026-09-09T03:15:00+09:00");
+
+  it("★ 오늘(KST) 03:05 스냅샷이면 true", () => {
+    expect(deploySnapshotTakenToday({ fetchedAt: "2026-09-09T03:05:00+09:00" }, now)).toBe(true);
+  });
+
+  it("★ 어제 03:05 스냅샷이면 false (하루 묵은 화면)", () => {
+    expect(deploySnapshotTakenToday({ fetchedAt: "2026-09-08T03:05:00+09:00" }, now)).toBe(false);
+  });
+
+  it("★ 오늘이어도 03:00 **전**이면 false — 그 스냅샷은 어제 데이터로 만들어졌다", () => {
+    expect(deploySnapshotTakenToday({ fetchedAt: "2026-09-09T02:59:00+09:00" }, now)).toBe(false);
+    expect(deploySnapshotTakenToday({ fetchedAt: "2026-09-09T03:00:00+09:00" }, now)).toBe(true);
+  });
+
+  it("★ fetchedAt 이 없거나 못 읽으면 false (fail-close)", () => {
+    expect(deploySnapshotTakenToday({}, now)).toBe(false);
+    expect(deploySnapshotTakenToday({ fetchedAt: null }, now)).toBe(false);
+    expect(deploySnapshotTakenToday({ fetchedAt: "어제쯤" }, now)).toBe(false);
+    expect(deploySnapshotTakenToday(null, now)).toBe(false);
+    expect(deploySnapshotTakenToday(undefined, now)).toBe(false);
+  });
+
+  it("★ 자정 넘김 — 09-09 00:30 KST 에는 그날 03:00 이 아직 안 왔으므로 어떤 스냅샷도 false", () => {
+    const justAfterMidnight = new Date("2026-09-09T00:30:00+09:00");
+    expect(deploySnapshotTakenToday({ fetchedAt: "2026-09-08T03:05:00+09:00" }, justAfterMidnight)).toBe(false);
+    expect(deploySnapshotTakenToday({ fetchedAt: "2026-09-09T00:20:00+09:00" }, justAfterMidnight)).toBe(false);
+  });
+
+  it("UTC 로 들어온 ISO 도 같은 판정 (라이브 meta.json 은 UTC 표기다)", () => {
+    // 2026-09-08T18:05:00Z = 2026-09-09 03:05 KST
+    expect(deploySnapshotTakenToday({ fetchedAt: "2026-09-08T18:05:00.000Z" }, now)).toBe(true);
+    // 2026-09-08T17:59:00Z = 2026-09-09 02:59 KST
+    expect(deploySnapshotTakenToday({ fetchedAt: "2026-09-08T17:59:00.000Z" }, now)).toBe(false);
   });
 });
 
@@ -918,6 +973,113 @@ describe("verifyApplied — 반영 직후 대조 (DB 가 정말 그 좌표인가
   });
 });
 
+describe("배선 — 레거시 --apply 의 purge 대상은 성공분뿐 (세션543 W3)", () => {
+  it("주석 제거가 검사 대상을 먹지 않았다 (스트리퍼 자체 점검)", () => {
+    expect(SRC).toContain("applyCoordFixes");
+    expect(SRC).toContain("purgeDerived");
+  });
+
+  it("★ 레거시 경로 purge 는 okIds — 대상 전체를 지우면 UPDATE 실패 행이 '옛 좌표 + 파생표 없음' 이 된다", () => {
+    expect(SRC).toMatch(/if \(purge\) await purgeDerived\(sb, res\.okIds\);/);
+    // 옛 형태가 어딘가에 되살아나면 바로 잡는다
+    expect(SRC).not.toContain("purgeDerived(sb, fixList.map((f) => f.id))");
+  });
+
+  it("★ applyCoordFixes 가 okIds 를 실제로 돌려준다 (없는 필드를 지우면 조용히 0건이 된다)", () => {
+    expect(SRC).toMatch(/return \{ ok, fail, okIds \};/);
+  });
+});
+
+describe("readIdsFile — 실제 파일을 읽어 판정한다 (세션543 W4)", () => {
+  // 배선 grep 만으로는 "그 조건이 실제로 던지는가" 를 못 본다 — 실경로로 확인한다
+  // (`guards-must-be-mutation-tested.md` §"테스트가 실제 경로를 지나는가").
+  // `resolve(ROOT, p)` 는 p 가 절대경로면 그대로 쓰므로 임시 폴더를 그대로 넘길 수 있다.
+  const dir = mkdtempSync(join(tmpdir(), "s543-ids-"));
+  /** @param {string} name @param {any} body */
+  const write = (name, body) => {
+    const p = join(dir, name);
+    writeFileSync(p, JSON.stringify(body));
+    return p;
+  };
+
+  it("★ verified:false 면 던진다 — DB 가 그 좌표인지 확인도 안 된 행의 파생표를 지우는 자리다", () => {
+    const p = write("bad.json", { ids: ["ah-1", "ah-2"], verified: false });
+    expect(() => readIdsFile(p)).toThrow(/verified/);
+  });
+
+  it("★ verified:true 는 통과한다", () => {
+    const p = write("good.json", { ids: ["ah-1", "ah-2"], verified: true });
+    expect(readIdsFile(p)).toEqual(["ah-1", "ah-2"]);
+  });
+
+  it("★ verified 표시가 아예 없는 파일도 통과한다 (거부가 넓으면 정상 파일을 막는다)", () => {
+    expect(readIdsFile(write("plain.json", { ids: ["ah-9"] }))).toEqual(["ah-9"]);
+    expect(readIdsFile(write("array.json", ["ah-7", "ah-8"]))).toEqual(["ah-7", "ah-8"]);
+  });
+});
+
+describe("readIdsFile — verified:false 인 applied.json 은 거부 (세션543 W4)", () => {
+  it("주석 제거가 검사 대상을 먹지 않았다 (스트리퍼 자체 점검)", () => {
+    expect(SRC).toContain("function readIdsFile(");
+  });
+
+  it("★ verified:false 면 던진다 — DB 가 그 좌표인지 확인도 안 된 행의 파생표를 지우는 자리다", () => {
+    expect(SRC).toMatch(/if \(j\?\.verified === false\) \{[\s\S]{0,240}?throw new Error\(/);
+  });
+
+  it("★ 그 검사가 id 배열을 뽑기 **전**이다 (뒤에 있으면 이미 목록이 만들어진다)", () => {
+    const i = SRC.indexOf("if (j?.verified === false) {");
+    const j = SRC.indexOf("const arr = Array.isArray(j) ? j : j?.ids;");
+    expect(i).toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
+  });
+
+  it("★ verified:true·표시 없음·순수 배열은 그대로 통과한다 (거부가 너무 넓으면 정상 파일을 막는다)", () => {
+    // 문구가 "verified 를 지운 뒤 다시" 이므로, 표시가 없는 파일은 반드시 통과해야 한다.
+    expect(SRC).not.toMatch(/if \(j\?\.verified !== true\)/);
+    expect(SRC).not.toMatch(/if \(!j\?\.verified\)/);
+  });
+});
+
+describe("배선 — purge 시간 가드 (창 + 오늘 스냅샷) (세션543 W1)", () => {
+  it("주석 제거가 검사 대상을 먹지 않았다 (스트리퍼 자체 점검)", () => {
+    expect(SRC).toContain("inSafeWindow");
+    expect(SRC).toContain("assertDeploySnapshotToday");
+    expect(SRC).toContain("deploySnapshotTakenToday");
+  });
+
+  it("★ 창 검사와 스냅샷 가드가 **같은** `purge && !forceTiming` 분기 안에 있다 (경로별 중복 구현 금지)", () => {
+    // 세 purge 경로(레거시 --apply · --ids-file · --apply-from)가 전부 이 한 자리를 지난다.
+    expect(SRC).toMatch(/if \(purge && !forceTiming\) \{\s*if \(!inSafeWindow\(\)\) \{/);
+    const branch = SRC.indexOf("if (purge && !forceTiming) {");
+    expect(branch).toBeGreaterThan(-1);
+    const guard = SRC.indexOf("await assertDeploySnapshotToday()", branch);
+    expect(guard).toBeGreaterThan(branch);
+    // 가드는 그 분기 안(다음 최상위 문장 전)이어야 한다 — 창 검사만 지나면 통과하는 자리에 두면 껍데기
+    expect(guard).toBeLessThan(SRC.indexOf("const sb = getSupabase();"));
+  });
+
+  it("★ 스냅샷 가드가 통과 못 하면 종료한다 (fail-close)", () => {
+    expect(SRC).toMatch(/if \(!\(await assertDeploySnapshotToday\(\)\)\) \{[^;]*;\s*process\.exit\(1\);/);
+  });
+
+  it("★ 세 purge 경로가 전부 이 가드 **뒤**에 있다", () => {
+    const branch = SRC.indexOf("if (purge && !forceTiming) {");
+    for (const anchor of [
+      "await runApplyFrom(sb, {",          // --apply-from
+      "await purgeDerived(sb, ids);",      // --ids-file
+      "await purgeDerived(sb, res.okIds);" // 레거시 --apply
+    ]) {
+      const i = SRC.indexOf(anchor);
+      expect(i).toBeGreaterThan(branch);
+    }
+  });
+
+  it("★ 라이브 meta.json 주소가 운영 도메인이다 (vercel.app 아님)", () => {
+    expect(SRC).toContain("https://xn--hg3bi2ac4o1ig57cnoa.com/data/meta.json");
+  });
+});
+
 describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 grep)", () => {
   it("주석 제거가 검사 대상을 먹지 않았다 (스트리퍼 자체 점검)", () => {
     // 세션531: 스트리퍼가 코드를 통째로 지우면 아래 검사들이 "무엇을 넣어도 통과" 가 된다.
@@ -1031,7 +1193,8 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
   });
 
   it("★ 두 경로가 같은 UPDATE 를 쓴다 — 기존 --apply 도 applyCoordFixes 를 부른다", () => {
-    expect(SRC).toMatch(/const \{ ok, fail \} = await applyCoordFixes\(sb, fixList\);/);
+    // 세션543 W3: 레거시 경로도 `okIds` 가 필요해져 반환값을 통째로 받는다(구조분해는 그 다음 줄).
+    expect(SRC).toMatch(/const res = await applyCoordFixes\(sb, fixList\);\s*const \{ ok, fail \} = res;/);
     expect(SRC).toMatch(/await applyCoordFixes\(sb, appliedRows\);/);
     // 페이로드는 한 곳에만 있다(두 벌이면 갈린다)
     expect(SRC.match(/road_address: null,/g) ?? []).toHaveLength(1);

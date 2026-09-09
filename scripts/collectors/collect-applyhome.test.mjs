@@ -1,5 +1,35 @@
 // @ts-check
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// ── apartments 명단 페이징 배선 가드 (세션543 W2) ──
+/**
+ * ⚠️ 주석을 걷어낸 사본에 돌린다 — `guards-must-be-mutation-tested.md`.
+ * 줄 주석은 **줄머리만** 지운다(코드 안 URL 이 잘려 검사 범위가 조용히 깎이는 것을 막는다).
+ */
+const PAGING_SRC = readFileSync(fileURLToPath(new URL("./collect-applyhome.mjs", import.meta.url)), "utf8")
+  .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, " ")
+  .replace(/(?<!\*)\/\*[\s\S]*?\*\//g, " ")
+  .replace(/^[ \t]*\/\/.*$/gm, " ");
+
+describe("apartments 명단 페이징 — 고유키 커서 (세션543 W2)", () => {
+  it("검사 대상이 주석 제거 후에도 남아 있다 (스트리퍼 자체 점검)", () => {
+    expect(PAGING_SRC).toContain("selectAll");
+    expect(PAGING_SRC).toContain('.from("apartments")');
+  });
+
+  it("★ selectAll 호출이 keyCol \"id\" 를 넘긴다 — 없으면 무정렬 OFFSET 이라 큰 표에서 행이 샌다", () => {
+    // `selectAll(fn, sb)` 는 ORDER BY 없는 `.range()` 경로다(`_shared.mjs`).
+    // apartments 는 2,600행+ 이라 페이지마다 다른 표본이 와서 **에러 없이** 행을 잃는다
+    // (`unordered-pagination-loses-rows.md`).
+    expect(PAGING_SRC).toMatch(/select\("id"\),\s*sb,\s*"id",/);
+  });
+
+  it("★ select 에 그 키가 실제로 들어 있다 — 없으면 selectAll 이 커서를 못 만들어 throw 한다", () => {
+    expect(PAGING_SRC).toContain('select("id")');
+  });
+});
 
 // collect-applyhome.mjs의 aggregateByApartment 테스트
 // 이 테스트가 검증하는 것: HOUSE_MANAGE_NO별 가중평균 경쟁률 계산의 정확성

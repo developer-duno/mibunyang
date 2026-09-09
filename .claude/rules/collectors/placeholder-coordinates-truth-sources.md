@@ -62,8 +62,13 @@ A 단독 / K 강함 단독 → **정정** · K 약함 단독 → **보류** · K
 1. **부속 필드 재정합** — `address/lat/lng` 만 고치면 `dong/bjd_code/lot_main/lot_sub/road_address` 가 옛 자리표시
    값으로 남는다(209행 전부 그랬다). `bjd_code` 는 건축HUB 조회 키라 **남의 건물 정보가 붙는다**. 새 좌표로
    `coord2regioncode`+`coord2address` 를 다시 돌려 채운다(`address` 는 정답 출처 표기 유지).
-2. **파생표 정리는 시간창에서만** — [[purge-to-recollect-timing]]. `transport`·`schools` 는 행 삭제, `infra` 는
+2. **파생표 정리는 시간창에서만** — [[purge-to-recollect-timing]]. 창 = **KST 03:20~05:00** + 라이브
+   `meta.json` 의 `fetchedAt` 이 **오늘 03:00 이후**(세션543 W1 — `daily-deploy` cron 은 03:00 이지만 실제
+   실행이 03:04~03:10 이라 03:00 하한은 화면에 빈칸을 굽는다). `transport`·`schools` 는 행 삭제, `infra` 는
    kakao 소유 9컬럼만 null(행 통째 삭제 금지 — childcare/police/emergency 가 같은 행을 쓴다).
+   ⚠️ 레거시 `--apply --purge-derived` 는 **UPDATE 에 성공한 id 만** 지운다(세션543 W3) — 대상 전체를 지우면
+   실패 행이 "옛 좌표 + 파생표 없음" 이 되어 고치지도 못한 채 있던 정보만 잃는다. `--ids-file` 은
+   `verified:false` 인 `.applied.json` 을 거부한다(W4 — DB 가 그 좌표인지 확인도 안 된 행이다).
 3. **자기 감사** — 정정 직후 정정하지 않은 출처로 다시 잰다. 세션540은 107건을 카카오로 재감사해 **내 오류 5건**
    (차수 착오 1·서브브랜드 착오 4)을 잡았고, 제3 신호(`coord2regioncode` 시도/시군구 대조)로 209건을 재검했다.
 

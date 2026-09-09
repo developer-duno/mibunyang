@@ -558,12 +558,21 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   부재/0 이면 거부)** 까지다. **그 dry-run 의 판정이 옳았는지는 지키지 못하고**, 이미 잘못 옮겨진 행은 `changed` 로 건너뛸 뿐
   **되돌리지 못한다**.
 
-- 🟢 **후속(세션543 남김) — 같은 도구 안에서 두 경로가 다르게 행동하는 자리 2건** ①기존 `--apply` 경로는 파생표를
-  `fixList` **전체**로 지운다 = UPDATE 에 **실패한 id 까지** purge 대상이다(새 `--apply-from` 경로는 `okIds ∪ already`
-  만 지운다). 좌표는 옛 값 그대로인데 파생표만 날아가 다음 수집까지 화면이 빈칸이 된다 — `okIds` 기준으로 맞출 것.
+- 🟢 **후속(세션543 남김) — 같은 도구 안에서 두 경로가 다르게 행동하는 자리 2건** ①**✅ 세션543 W3 정정** — 기존
+  `--apply` 경로가 파생표를 `fixList` **전체**로 지워 UPDATE **실패 id 까지** purge 대상이던 것을 `res.okIds` 로
+  맞췄다(`--apply-from` 경로와 같은 잣대). 가드 = 배선 grep 3건 + 뮤테이션(`fixList.map` 되돌림) red.
   ②경로 기준이 인자마다 다르다: `--ids-file` 은 **레포 루트** 기준(`resolve(ROOT, p)`), `--out`·`--apply-from`·
   `.applied.json` 은 **cwd** 기준. cwd ≠ 루트면 방금 쓴 그 파일이 아닌 다른 파일을 연다 — 당장은 헤더에 "절대경로 권장"
-  을 적어 뒀고, 한쪽으로 통일하는 건 후속.
+  을 적어 뒀고(세션543 W5 에서 `/tmp` 예시를 걷어내고 경고를 넣었다), 한쪽으로 통일하는 건 후속.
+
+- 🔵 **사장님 결정 대기 — 회색지대(300~500m) 정책 · `(예정)` POI 취급** (코드 변경 없음, 세션543 W6).
+  판정은 현재 300m 를 경계로 "이미 정상" 과 "정정" 을 가르는데, 그 사이 200m 구간에 어떤 규칙을 둘지는
+  근거가 갈린다. `(20xx년xx월예정)` 이 붙은 카카오 POI 도 마찬가지다 — **양쪽 근거를 병기한다**:
+  - **채택(세션542 실적)**: 그 POI 로 옮긴 건들이 청약홈 주소·제3 신호와 맞았다. 분양 단지는 준공 전이라
+    "예정" 표기가 오히려 **그 단지를 정확히 가리키는** 이름인 경우가 많다.
+  - **제외(critic 권고)**: "예정" 은 아직 건물이 없다는 뜻이라 좌표가 **사업 부지 대표점**일 수 있고,
+    그러면 [[external-file-duplicate-rows]] 가 말한 "그럴듯하게 틀린 값" 이 된다.
+  → 결정 전까지 **로직 변경 금지**(스펙 §금지). 결정이 나면 그때 게이트를 한 곳(`_kakao-poi.mjs`)에만 넣는다.
 
 - 🟢 **후속(세션543 B-4 남김) — seed 이름 경로에 `gu` 게이트가 없다** — `findDuplicate` 의 후보 선정은
   `region`(시도)만 본다. 좌표가 있으면 500m 거리로 갈리지만, 좌표 없이 이름만으로 판정하는 새 경로는
@@ -613,6 +622,19 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   `monitors/applyhome-event-recurrence.mjs`(`applyhome_events` 1,325행).
   ⚠️ 심각도는 낮다 — `data-audit`·`applyhome-event-recurrence` 는 **어느 워크플로에도 없는 수동
   진단 도구**이고, `regions.crime_grade` 는 `src/`·`api/` 어디서도 안 읽는 **죽은 컬럼**이다.
+
+- 🟡 **`keyCol` 없는 `selectAll` 호출 — 잔여 25곳** (위 항목은 **인라인 `.range()` 루프** 기준이라 이걸 안 셌다).
+  `selectAll(fn, sb)` 는 `keyCol` 을 안 주면 ORDER BY 없는 OFFSET 경로다(`_shared.mjs`) — 1,000행을 넘는 표에서
+  **에러 없이** 행이 샌다([.claude/rules/collectors/unordered-pagination-loses-rows.md](rules/collectors/unordered-pagination-loses-rows.md)).
+  세션543 W2 에서 apartments/apartments_flat 명단 **4곳**(`collect-applyhome-seed:348`·`collect-applyhome:172`·
+  `collect-applyhome-detail:254`·`collect-data:1071`)을 `"id"` 커서로 정정했다.
+  **잔여 개수는 직접 셌다**(2026-09-09) — `scripts/**/*.mjs`(테스트 제외)에서 `selectAll(` 마다 **괄호 균형을 맞춰
+  닫는 괄호까지 인자 수를 세는** 방식. ⚠️ 단일줄 grep 은 다음 줄의 `keyCol` 을 못 봐서 틀린다.
+  결과 = 커서 22곳(정의 1 제외) · **무키 25곳**. 대상 표별로:
+  `apartments` 14 · `regions` 3 · `transport` 2 · `apartments_flat`·`prices`·`complexes`·`articles`·`infra`·
+  `applyhome_unit_supply` 각 1. `complexes`(63k)·`articles`(137만)·`apartments`(2.6k)·`apartments_flat`(2.2k) 는
+  이미 1,000행을 넘으므로 **필터가 결과를 1,000 미만으로 줄이는지 호출마다 확인**해야 한다 — 안 줄이면 정정 대상.
+  (표 크기만으로 단정하지 말 것: 각 호출의 `.eq/.is/.not` 필터가 결과를 얼마로 줄이는지는 안 셌다.)
 
 - 🟢 **`fix-sosa-coordinates.mjs` 주석의 줄번호 앵커** — `sync-naver-complex.mjs:695-715` 를 인용하는데
   #471 이 그 위에 17줄을 넣어 **712-732 로 밀렸다**. 줄번호 대신 이름("naver_nearby_median 계산 루프")으로.

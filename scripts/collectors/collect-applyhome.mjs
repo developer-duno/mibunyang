@@ -171,7 +171,8 @@ async function main() {
   // 3. 우리 아파트 ID와 매칭 (ah-{HOUSE_MANAGE_NO})
   const apartments = /** @type {Array<{ id: string }>} */ (await selectAll(
     (s) => s.from("apartments").select("id"),
-    sb
+    sb,
+    "id", // 무정렬 OFFSET 이면 경쟁률 대상이 조용히 빠진다 (세션543 W2)
   ));
 
   const aptSet = new Set(apartments.map(a => a.id));
