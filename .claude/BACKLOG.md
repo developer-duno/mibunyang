@@ -565,7 +565,7 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   `.applied.json` 은 **cwd** 기준. cwd ≠ 루트면 방금 쓴 그 파일이 아닌 다른 파일을 연다 — 당장은 헤더에 "절대경로 권장"
   을 적어 뒀고(세션543 W5 에서 `/tmp` 예시를 걷어내고 경고를 넣었다), 한쪽으로 통일하는 건 후속.
 
-- ✅ **결정 완료(세션544, 2026-09-09) — 회색지대(300~500m) 정책 · `(예정)` POI 취급** (구현 = PR-A `fix/s544-planned-gray-tiers`,
+- ✅ **결정 완료(세션544, 2026-09-09) — 회색지대(300~500m) 정책 · `(예정)` POI 취급** (구현 = PR-A **#484** `fix/s544-planned-gray-tiers`,
   스펙 `docs/superpowers/specs/2026-09-09-fix-tool-planned-gray-tiers.md`). 사장님 결정 3건:
   ① 왕숙진접메르디앙더퍼스트(ap-6028098, 350m) **옮기지 않음** — 외부 자료로 확정: 사업지 "양지리 335번지 일원" 지번이 현재
   좌표와 **3m**, `(예정)` 핀은 자기 주소(334)와도 339m 어긋난 지번 404 자리, 오남읍 중심점과 1,395m(자리표시 아님), 임대라 화면 미노출.
@@ -641,7 +641,7 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   **세션544 정정: 무키는 25 가 아니라 33** — 위 집계가 `scripts/collectors/` 한정이었고 루트 `scripts/` 에 8곳 더
   (`compute-scores.mjs:256` **daily-deploy 매일, apartments 2,375행** · `notify-subscribers.mjs` 5 · `clean-naver-match-pollution.mjs` 2).
   같은 필터로 count 실측 = 🔴 ≥1,000 **25곳** · 🟡 1 · 🟢 6 · 미측 1(표 부재). 전체 목록·키·select 포함 여부 =
-  `docs/superpowers/specs/2026-09-09-selectall-keycol-all.md`(PR-B: 33곳 전부 커서 + ALLOWLIST 없는 정적 가드).
+  `docs/superpowers/specs/2026-09-09-selectall-keycol-all.md`(PR-B: 33곳 전부 커서 + ALLOWLIST 없는 정적 가드; 스펙은 #484 에 동승).
 
 - 🟡 **`notification_logs` 표가 라이브 DB 에 없다** (세션544 실측, PGRST205). 마이그 `20260703000000_create_notification_logs.sql`
   과 `…000001_rollback_…` 둘 다 레포에 있고 `notify-subscribers.mjs:327`·`api/admin/subscribers.ts` 가 읽는다. 지금은 `subscribers`
