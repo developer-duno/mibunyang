@@ -486,6 +486,11 @@ vs 서울시 TOPIS 공식 11,231건, 고유 이름은 9,057개). 그래서:
 - **seed 이름 기반 중복(세션543 B-4, PR #482)** — 후보 좌표가 없어도 이름 유사도 ≥0.95 + `phaseConsistent`(괄호 안 숫자) **+ `blockConflict`
   (블록 글자, `(AA19BL)`↔`(AB19BL)`)** 비충돌 + 기존 단지 좌표 있음이면 `skip`(로그 `[중복·이름]`), 아니면 보류. 두 게이트 함수는
   `_kakao-poi.mjs` 로 이동해 seed·정정 도구가 같은 잣대. 실측 = 주간 보류 10 → 4(블록 충돌·차수 충돌·저유사도 2).
+- **`(예정)` POI 단독·300~500m 회색지대 = 보고만(세션544, PR-A)** — `classify` 에 `B_kakao_planned`(K 단독인데 이름에 `(…예정)`)·
+  `B_gray`(단일 출처가 현재와 300m 초과 500m 이하) 추가, 둘 다 `--apply` 밖. K·A 두 출처가 서로 300m 안이면(A2) 거리·예정 무관 반영.
+  **정정 도구에만** — `_kakao-poi.mjs`·`geocode-missing`·seed 는 그대로(빈 좌표를 채우는 자리에선 `(예정)` 핀이 빈칸보다 낫다:
+  ok 1,003곳 중 323곳이 `(예정)` 핀과 300m 안 일치, seed 키워드 채택 15건 중 10건이 `(예정)`). 근거 실측 = 왕숙진접메르디앙더퍼스트
+  (사업지 지번 335 ↔ 현재 3m, `(예정)` 핀은 자기 주소와 339m). 스펙 `docs/superpowers/specs/2026-09-09-fix-tool-planned-gray-tiers.md`.
 - 방법론·오탐 사례·지역 게이트 실측·근본 처방 = [.claude/rules/collectors/placeholder-coordinates-truth-sources.md](../.claude/rules/collectors/placeholder-coordinates-truth-sources.md).
 - ⚠️ 좌표를 고쳤으면 `dong/bjd_code/lot_main/lot_sub/road_address` 도 새 좌표로 재정합해야 한다(`bjd_code` 는
   건축HUB 조회 키). 파생표 정리는 **KST 03:20~05:00** 창 + **"오늘 화면 스냅샷 확인"** 이 둘 다 통과할 때만

@@ -22,6 +22,9 @@ import {
   isPreciseGeocode,
   normalizeDongToken,
 } from "./collectors/_kakao-poi.mjs";
+// 픽스처 거리를 **실측**해서 잠근다 — "400m 쯤이겠지"로 두면 회색지대 경계 가드가 엉뚱한
+// 거리를 시험하게 된다(`probe-must-be-self-verified.md`).
+import { haversineMeters } from "./collectors/_shared.mjs";
 import {
   cityKey,
   complexKey,
@@ -44,9 +47,12 @@ import {
   checkDumpProvenance,
   purgeTargetIds,
   validateArgv,
+  buildKakaoInput,
   KNOWN_BOOLEAN_FLAGS,
   KNOWN_VALUE_FLAGS,
   NEAR_M,
+  GRAY_MAX_M,
+  PLANNED_POI_RE,
   APPLY_TIERS,
   INFRA_KAKAO_COLUMNS,
 } from "./fix-placeholder-addresses.mjs";
@@ -74,6 +80,11 @@ const NEAR = { lat: 37.502, lng: 127.0 }; // 약 222m
 const FAR = { lat: 37.51, lng: 127.0 }; // 약 1,112m
 const FAR2 = { lat: 37.5102, lng: 127.0 }; // FAR 에서 약 22m
 const FARWAY = { lat: 37.6, lng: 127.0 }; // FAR 에서 약 10km
+// 회색지대(300m 초과 ~ 500m 이하) 픽스처 — 세션544 결정 ③.
+const GRAY = { lat: 37.5036, lng: 127.0 }; // 현재와 약 400m
+const GRAY2 = { lat: 37.5037, lng: 127.0 }; // GRAY 에서 약 11m (둘 다 회색지대 안)
+const GRAY_EDGE_OUT = { lat: 37.50451, lng: 127.0 }; // 약 501m — 회색지대 **밖**
+const FAR_5KM = { lat: 37.5453, lng: 127.0 }; // 약 5,037m — 순천 사례 자리
 
 describe("cleanName — 회차 수식어(와 그 뒤 회차 숫자)만 떼고 단지 차수는 남긴다", () => {
   it("괄호와 공급방식 수식어를 뗀다", () => {
@@ -160,7 +171,7 @@ describe("cityKey / complexKey — 지역 키 (오탐 330km 를 막는 자리)",
 describe("normalizeApplyhomeAddress — 청약홈 공급주소 정규화", () => {
   it("★ 여러 필지·블록 표기에서 첫 필지만 남긴다", () => {
     expect(normalizeApplyhomeAddress("인천광역시 연수구 송도동 109, 109-2번지(F20-1BL)")).toBe(
-      "인천광역시 연수구 송도동 109",
+      "인천광역시 연수구 송도동 109"
     );
   });
 
@@ -220,7 +231,11 @@ describe("pickKakaoCandidate — 카카오 POI 후보 선별", () => {
   });
 
   it("★ 부분문자열이면 강함으로 승격 (접미어 때문에 sim 이 떨어지는 진짜 일치를 구제)", () => {
-    const got = pickKakaoCandidate("등촌역한울에이치밸리움", [doc("등촌역한울에이치밸리움1차아파트", "서울 강서구 등촌동 1")], "서울");
+    const got = pickKakaoCandidate(
+      "등촌역한울에이치밸리움",
+      [doc("등촌역한울에이치밸리움1차아파트", "서울 강서구 등촌동 1")],
+      "서울"
+    );
     expect(got).not.toBe(null);
     expect(got?.sim).toBeLessThan(0.85); // 0.85 문턱은 못 넘는다
     expect(got?.strong).toBe(true); // 그런데도 강함이다
@@ -239,7 +254,9 @@ describe("pickKakaoCandidate — 카카오 POI 후보 선별", () => {
     const docs = [doc("힐스테이트부천옥길", "강원특별자치도 원주시 무실동 1")];
     expect(pickKakaoCandidate("힐스테이트부천옥길", docs, "경기")).toBe(null);
     // 같은 이름이라도 시도가 맞으면 통과한다(게이트가 무조건 거부하는 게 아님을 함께 잠근다)
-    expect(pickKakaoCandidate("힐스테이트부천옥길", [doc("힐스테이트부천옥길", "경기 부천시 옥길동 1")], "경기")).not.toBe(null);
+    expect(
+      pickKakaoCandidate("힐스테이트부천옥길", [doc("힐스테이트부천옥길", "경기 부천시 옥길동 1")], "경기")
+    ).not.toBe(null);
   });
 
   it("아파트/주택 카테고리가 아니면 제외", () => {
@@ -277,10 +294,20 @@ describe("isPreciseGeocode — 동 중심점 폴백 거부", () => {
 
   it("REGION_ADDR / ROAD_ADDR 은 인정", () => {
     expect(
-      isPreciseGeocode({ address_type: "REGION_ADDR", address_name: "인천 미추홀구 학익동 123", road_address: null }, "인천광역시 미추홀구 학익동 123"),
+      isPreciseGeocode(
+        { address_type: "REGION_ADDR", address_name: "인천 미추홀구 학익동 123", road_address: null },
+        "인천광역시 미추홀구 학익동 123"
+      )
     ).toBe(true);
     expect(
-      isPreciseGeocode({ address_type: "ROAD_ADDR", address_name: "인천 미추홀구 학익동 123", road_address: { address_name: "인천 미추홀구 학익동 123" } }, "인천광역시 미추홀구 학익동 123"),
+      isPreciseGeocode(
+        {
+          address_type: "ROAD_ADDR",
+          address_name: "인천 미추홀구 학익동 123",
+          road_address: { address_name: "인천 미추홀구 학익동 123" },
+        },
+        "인천광역시 미추홀구 학익동 123"
+      )
     ).toBe(true);
   });
 
@@ -357,15 +384,143 @@ describe("classify — 등급 판정", () => {
     expect(classify({ cur: { lat: 37.5, lng: null }, A: FAR }).tier).toBe("none");
   });
 
-  it("★ 경계: 300m 안쪽은 ok, 바깥은 정정 대상", () => {
-    // 0.0026° ≈ 289m(안) / 0.0028° ≈ 311m(밖)
+  it("★ 경계: 300m 안쪽은 ok · 300~500m 는 회색지대(보고만) · 그 밖이면 정정 대상", () => {
+    // 0.0026° ≈ 289m(안) / 0.0028° ≈ 311m(회색지대) / FAR ≈ 1,112m(밖)
     expect(classify({ cur: CUR, A: { lat: 37.5026, lng: 127.0 } }).tier).toBe("ok");
-    expect(classify({ cur: CUR, A: { lat: 37.5028, lng: 127.0 } }).tier).toBe("B_apply");
+    expect(classify({ cur: CUR, A: { lat: 37.5028, lng: 127.0 } }).tier).toBe("B_gray"); // 세션544 결정 ③
+    expect(classify({ cur: CUR, A: FAR }).tier).toBe("B_apply");
     expect(NEAR_M).toBe(300);
   });
 
   it("--apply 가 반영하는 등급은 셋뿐", () => {
     expect([...APPLY_TIERS].sort()).toEqual(["A2", "B_apply", "B_kakao_strong"]);
+  });
+});
+
+describe("classify — (예정) POI 단독 · 300~500m 회색지대 (세션544)", () => {
+  it("★ 픽스처 거리 자체를 실측으로 잠근다 (탐침 자기검증)", () => {
+    /** @param {{lat:number,lng:number}} p */
+    const d = (p) => haversineMeters(CUR.lat, CUR.lng, p.lat, p.lng);
+    expect(d(GRAY)).toBeGreaterThan(300);
+    expect(d(GRAY)).toBeLessThanOrEqual(500);
+    expect(d(GRAY2)).toBeGreaterThan(300);
+    expect(d(GRAY2)).toBeLessThanOrEqual(500);
+    expect(haversineMeters(GRAY.lat, GRAY.lng, GRAY2.lat, GRAY2.lng)).toBeLessThanOrEqual(300);
+    expect(d(GRAY_EDGE_OUT)).toBeGreaterThan(500); // 경계 밖
+    expect(d(FAR_5KM)).toBeGreaterThan(5000);
+  });
+
+  // ── (예정) 단독 = 보고만 (결정 ②) ──
+  it("1. K 강함 단독인데 이름이 (예정) 이면 B_kakao_planned", () => {
+    const v = classify({ cur: CUR, K: { ...FAR, strong: true, planned: true } });
+    expect(v.tier).toBe("B_kakao_planned");
+    expect(v.source).toBe("K"); // 사람이 검토하도록 좌표는 채운다
+  });
+
+  it("2. K 약함 단독 + (예정) 도 B_kakao_planned", () => {
+    expect(classify({ cur: CUR, K: { ...FAR, strong: false, planned: true } }).tier).toBe("B_kakao_planned");
+  });
+
+  it("★ 3. K(예정) 과 A 가 서로 300m 안이면 A2 — 두 출처 일치는 (예정) 의 예외", () => {
+    const v = classify({ cur: CUR, K: { ...FAR, strong: false, planned: true }, A: FAR2 });
+    expect(v.tier).toBe("A2");
+    expect(v.source).toBe("A");
+  });
+
+  it("4. K(예정) 과 A 가 서로 멀면 conflict", () => {
+    expect(classify({ cur: CUR, K: { ...FAR, strong: true, planned: true }, A: FARWAY }).tier).toBe("conflict");
+  });
+
+  it("5. (예정) 이어도 현재 좌표와 300m 안이면 ok", () => {
+    expect(classify({ cur: CUR, K: { ...NEAR, strong: true, planned: true } }).tier).toBe("ok");
+  });
+
+  it("11. (예정) 은 거리와 무관 — 5,037m 단독도 B_kakao_planned (planned 가 gray 보다 먼저)", () => {
+    expect(classify({ cur: CUR, K: { ...FAR_5KM, strong: true, planned: true } }).tier).toBe("B_kakao_planned");
+  });
+
+  it("11b. ★ 왕숙 그 자체 — (예정) 이면서 350m(회색지대 안)이어도 B_gray 가 아니라 B_kakao_planned", () => {
+    // 리뷰어 뮤테이션 R2("planned 를 회색지대 밖에서만 적용")가 케이스 11(5,037m)만으로는 green 이었다 —
+    // 순서(planned → gray)를 지키는 유일한 케이스는 **두 조건이 겹치는 거리**다.
+    const v = classify({ cur: CUR, K: { ...GRAY, strong: true, planned: true } });
+    expect(v.tier).toBe("B_kakao_planned");
+    expect(v.tier).not.toBe("B_gray");
+  });
+
+  // ── 300~500m 회색지대 = 보고만 (결정 ③) ──
+  it("6. A 단독이 400m 면 B_gray", () => {
+    const v = classify({ cur: CUR, A: GRAY });
+    expect(v.tier).toBe("B_gray");
+    expect(v.source).toBe("A");
+    expect(v.reason).toContain("회색지대");
+  });
+
+  it("7. K 강함 단독이 400m 면 B_gray", () => {
+    const v = classify({ cur: CUR, K: { ...GRAY, strong: true } });
+    expect(v.tier).toBe("B_gray");
+    expect(v.source).toBe("K");
+  });
+
+  it("8. K 약함 단독이 400m 면 B_gray (--include-weak 로도 안 옮겨진다)", () => {
+    expect(classify({ cur: CUR, K: { ...GRAY, strong: false } }).tier).toBe("B_gray");
+  });
+
+  it("★ 9. 501m 는 회색지대 밖 — 기존 등급 그대로", () => {
+    expect(classify({ cur: CUR, K: { ...GRAY_EDGE_OUT, strong: true } }).tier).toBe("B_kakao_strong");
+  });
+
+  it("★ 10. K·A 둘 다 회색지대 자리라도 서로 300m 안이면 A2 (두 출처 일치는 거리 무관)", () => {
+    const v = classify({ cur: CUR, K: { ...GRAY, strong: false }, A: GRAY2 });
+    expect(v.tier).toBe("A2");
+    expect(v.source).toBe("A");
+  });
+
+  it("C 단독은 회색지대를 적용하지 않는다 (이미 보고만)", () => {
+    expect(classify({ cur: CUR, C: { ...GRAY, solo: true } }).tier).toBe("B_complex");
+  });
+
+  // ── 12. 정규식 ──
+  it("12. PLANNED_POI_RE — 괄호 안 '예정' 만 잡는다", () => {
+    expect(PLANNED_POI_RE.test("왕숙진접메르디앙더퍼스트아파트 (예정)")).toBe(true);
+    expect(PLANNED_POI_RE.test("무슨무슨아파트(2029년01월예정)")).toBe(true);
+    expect(PLANNED_POI_RE.test("○○아파트예정지")).toBe(false); // 괄호가 없으면 아니다
+    expect(PLANNED_POI_RE.test("등촌역한울에이치밸리움1차아파트")).toBe(false);
+  });
+
+  // ── 13. 리터럴 앵커 ──
+  it("13. 새 등급은 --apply 대상이 아니고 회색지대 상한은 500m", () => {
+    expect(APPLY_TIERS.has("B_kakao_planned")).toBe(false);
+    expect(APPLY_TIERS.has("B_gray")).toBe(false);
+    expect(GRAY_MAX_M).toBe(500);
+    expect(NEAR_M).toBeLessThan(GRAY_MAX_M);
+  });
+});
+
+describe("buildKakaoInput — K 조립이 planned 를 채운다 (세션544 배선)", () => {
+  it("14. place_name 의 (예정) 이 planned 로 들어간다", () => {
+    const k = buildKakaoInput({
+      doc: { y: "37.51", x: "127.0", place_name: "왕숙진접메르디앙더퍼스트아파트 (예정)" },
+      sim: 0.9,
+      strong: true,
+    });
+    expect(k).toEqual({ lat: 37.51, lng: 127.0, strong: true, planned: true });
+  });
+
+  it("(예정) 이 없으면 planned=false", () => {
+    const k = buildKakaoInput({
+      doc: { y: "37.51", x: "127.0", place_name: "등촌역한울에이치밸리움1차아파트" },
+      sim: 0.9,
+      strong: false,
+    });
+    expect(k).toEqual({ lat: 37.51, lng: 127.0, strong: false, planned: false });
+  });
+
+  it("place_name 이 없어도 죽지 않는다", () => {
+    expect(buildKakaoInput({ doc: { y: "37.51", x: "127.0" }, sim: 0.9, strong: true })?.planned).toBe(false);
+  });
+
+  it("후보가 없으면 null", () => {
+    expect(buildKakaoInput(null)).toBe(null);
   });
 });
 
@@ -536,7 +691,10 @@ describe("buildRefitUpdates — 좌표 정정 뒤 부속 필드 재정합", () =
     const h = { region_type: "H", region_3depth_name: "송도2동", code: "2818566000" };
     const b = { region_type: "B", region_3depth_name: "송도동", code: "2818510600" };
     // 순서를 뒤집어도 region_type 으로 고른다(배열 순서에 기대지 않는다).
-    for (const docs of [[h, b], [b, h]]) {
+    for (const docs of [
+      [h, b],
+      [b, h],
+    ]) {
       const u = /** @type {any} */ (buildRefitUpdates(docs, ADDR));
       expect(u.dong).toBe("송도2동");
       expect(u.dong).not.toBe("송도동"); // B 의 3depth 를 쓰면 여기서 죽는다
@@ -649,9 +807,7 @@ const dump = (rows, over = {}) => ({
   rosterSize: 1675,
   includeWeak: false,
   limit: null,
-  applySet: rows
-    .filter((r) => APPLY_TIERS.has(r.tier) || r.tier === "B_kakao_weak")
-    .map((r) => String(r.id)),
+  applySet: rows.filter((r) => APPLY_TIERS.has(r.tier) || r.tier === "B_kakao_weak").map((r) => String(r.id)),
   rows,
   ...over,
 });
@@ -772,8 +928,9 @@ describe("selectApplyFromRows — 덤프의 applySet 만 반영한다 (등급 �
 
   it("★ B_kakao_weak 은 applySet 에 들어 있으면 통과한다 (덤프가 --include-weak 로 만들어졌다)", () => {
     const rows = [fileRow({ id: "w", tier: "B_kakao_weak" })];
-    expect(selectApplyFromRows(dump(rows, { applySet: ["w"], includeWeak: true })).rows.map((r) => r.id))
-      .toEqual(["w"]);
+    expect(selectApplyFromRows(dump(rows, { applySet: ["w"], includeWeak: true })).rows.map((r) => r.id)).toEqual([
+      "w",
+    ]);
     // 같은 행이라도 그 dry-run 이 대상으로 안 봤으면 반영하지 않는다
     expect(selectApplyFromRows(dump(rows, { applySet: [] })).rows).toHaveLength(0);
   });
@@ -788,8 +945,10 @@ describe("selectApplyFromRows — 덤프의 applySet 만 반영한다 (등급 �
       expect(out.rejected).toEqual([{ id: "w", reason: "덤프가 weak 를 포함하지 않았다(includeWeak !== true)" }]);
     }
     // 반대로 true 면 통과한다(위 테스트와 같은 자리 — 조건이 통째로 지워지면 이 쌍이 무의미해진다)
-    expect(selectApplyFromRows(dump(rows, { applySet: ["w", "a"], includeWeak: true })).rows.map((r) => r.id))
-      .toEqual(["w", "a"]);
+    expect(selectApplyFromRows(dump(rows, { applySet: ["w", "a"], includeWeak: true })).rows.map((r) => r.id)).toEqual([
+      "w",
+      "a",
+    ]);
   });
 
   it("★ newLat/newLng 이 없거나 문자열이면 거부한다 (좌표를 문자열로 UPDATE 하지 않는다)", () => {
@@ -808,11 +967,7 @@ describe("selectApplyFromRows — 덤프의 applySet 만 반영한다 (등급 �
   });
 
   it("★ 같은 id 가 두 번 나오면 그 id 를 전부 거부한다 (어느 쪽이 맞는지 모른다)", () => {
-    const rows = [
-      fileRow({ id: "dup", newLat: 37.5 }),
-      fileRow({ id: "dup", newLat: 38.9 }),
-      fileRow({ id: "solo" }),
-    ];
+    const rows = [fileRow({ id: "dup", newLat: 37.5 }), fileRow({ id: "dup", newLat: 38.9 }), fileRow({ id: "solo" })];
     const out = selectApplyFromRows(dump(rows));
     expect(out.rows.map((r) => r.id)).toEqual(["solo"]);
     expect(out.rejected.filter((r) => r.id === "dup")).toHaveLength(2);
@@ -918,12 +1073,7 @@ describe("planApplyFrom — 반영 전 전제 검사 (그 사이 누가 옮겼�
   });
 
   it("여러 행을 각 분류로 나눈다", () => {
-    const rows = [
-      fileRow({ id: "a" }),
-      fileRow({ id: "b" }),
-      fileRow({ id: "c" }),
-      fileRow({ id: "d" }),
-    ];
+    const rows = [fileRow({ id: "a" }), fileRow({ id: "b" }), fileRow({ id: "c" }), fileRow({ id: "d" })];
     const plan = planApplyFrom(rows, [
       { id: "a", lat: 37.1, lng: 127.1 },
       { id: "b", lat: 37.5, lng: 127.5 },
@@ -954,17 +1104,13 @@ describe("verifyApplied — 반영 직후 대조 (DB 가 정말 그 좌표인가
       { id: "b", lat: 37.1, lng: 127.1 },
     ]);
     expect(v.ok).toEqual(["a"]);
-    expect(v.mismatch).toEqual([
-      { id: "b", expected: { lat: 37.5, lng: 127.5 }, actual: { lat: 37.1, lng: 127.1 } },
-    ]);
+    expect(v.mismatch).toEqual([{ id: "b", expected: { lat: 37.5, lng: 127.5 }, actual: { lat: 37.1, lng: 127.1 } }]);
   });
 
   it("★ DB 에서 행이 사라졌으면 mismatch (actual null) — 일치로 세지 않는다", () => {
     const v = verifyApplied([fileRow({ id: "gone" })], []);
     expect(v.ok).toHaveLength(0);
-    expect(v.mismatch).toEqual([
-      { id: "gone", expected: { lat: 37.5, lng: 127.5 }, actual: null },
-    ]);
+    expect(v.mismatch).toEqual([{ id: "gone", expected: { lat: 37.5, lng: 127.5 }, actual: null }]);
   });
 
   it("반올림 오차(1e-8)는 일치로 본다", () => {
@@ -1066,9 +1212,9 @@ describe("배선 — purge 시간 가드 (창 + 오늘 스냅샷) (세션543 W1)
   it("★ 세 purge 경로가 전부 이 가드 **뒤**에 있다", () => {
     const branch = SRC.indexOf("if (purge && !forceTiming) {");
     for (const anchor of [
-      "await runApplyFrom(sb, {",          // --apply-from
-      "await purgeDerived(sb, ids);",      // --ids-file
-      "await purgeDerived(sb, res.okIds);" // 레거시 --apply
+      "await runApplyFrom(sb, {", // --apply-from
+      "await purgeDerived(sb, ids);", // --ids-file
+      "await purgeDerived(sb, res.okIds);", // 레거시 --apply
     ]) {
       const i = SRC.indexOf(anchor);
       expect(i).toBeGreaterThan(branch);
@@ -1123,7 +1269,7 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
   it("★ 배타 검사는 원시 argv 존재로 본다 (--limit=0 이 null 로 사라지는 함정) + --include-weak 포함", () => {
     expect(SRC).toContain("a === f || a.startsWith(`${f}=`)");
     expect(SRC).toMatch(
-      /if \(hasFlag\("--apply-from"\) && \["--refit-fields", "--ids-file", "--limit", "--out", "--include-weak"\]\.some\(hasFlag\)\)/,
+      /if \(hasFlag\("--apply-from"\) && \["--refit-fields", "--ids-file", "--limit", "--out", "--include-weak"\]\.some\(hasFlag\)\)/
     );
   });
 
@@ -1160,9 +1306,7 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
     expect(SRC).toMatch(/if \(lost\.length > 0 && apply\) \{/); // 미리보기는 경고만
     expect(SRC).toMatch(/applySet 멤버가 검증에서 탈락[^\n]*\r?\n\s*process\.exit\(1\);/);
     // DB 조회보다 앞이어야 한다 — 손상된 덤프로는 아무것도 묻지 않는다
-    expect(SRC.indexOf("const lost = rejected.filter(")).toBeLessThan(
-      SRC.indexOf("await fetchCoordRows(sb, fileRows"),
-    );
+    expect(SRC.indexOf("const lost = rejected.filter(")).toBeLessThan(SRC.indexOf("await fetchCoordRows(sb, fileRows"));
   });
 
   it("★ 불일치로 죽는 경로에서도 .applied.json 을 남긴다 — 불일치 id 는 빼고 (G4)", () => {
@@ -1174,7 +1318,7 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
     expect(decl).toBeLessThan(partial);
     expect(partial).toBeLessThan(mismatchExit); // exit 전에 쓴다 — 죽고 나면 못 남긴다
     expect(SRC).toMatch(
-      /const partial = \{ generatedAt: new Date\(\)\.toISOString\(\), source: abs, ids: purgeTargetIds\(matched, alreadyIds\), verified: false, mismatch \};/,
+      /const partial = \{ generatedAt: new Date\(\)\.toISOString\(\), source: abs, ids: purgeTargetIds\(matched, alreadyIds\), verified: false, mismatch \};/
     );
     expect(SRC).toMatch(/writeFileSync\(appliedPath, JSON\.stringify\(partial, null, 2\), "utf8"\);/);
     // 정상 경로는 verified: true — 후속 작업이 두 파일을 구분할 수 있어야 한다
@@ -1188,7 +1332,7 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
     expect(numArg(["--limit=60"], "--limit")).toBe(60);
     expect(SRC).toMatch(/if \(strArg\(argv, "--limit"\) != null && limit == null\) \{[^;]*;\s*process\.exit\(1\);/);
     expect(SRC.indexOf('if (strArg(argv, "--limit") != null && limit == null)')).toBeLessThan(
-      SRC.indexOf("const sb = getSupabase();"),
+      SRC.indexOf("const sb = getSupabase();")
     );
   });
 
@@ -1216,7 +1360,7 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
   it("★ 반영 결과 id 를 .applied.json 으로 남긴다 — 후속 --ids-file 의 입력 (F3)", () => {
     expect(SRC).toContain(".applied.json`");
     expect(SRC).toMatch(
-      /appliedPath,\s*JSON\.stringify\(\{ generatedAt: new Date\(\)\.toISOString\(\), source: abs, ids: purgeIds, verified: true \}/,
+      /appliedPath,\s*JSON\.stringify\(\{ generatedAt: new Date\(\)\.toISOString\(\), source: abs, ids: purgeIds, verified: true \}/
     );
   });
 
@@ -1232,7 +1376,7 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
 
   it("★ 미리보기가 apply 행을 거리 내림차순으로 **전부** 찍는다 (F4)", () => {
     expect(SRC).toMatch(
-      /const applySorted = plan\.apply\.slice\(\)\.sort\(\(a, b\) => \(b\.row\.distM \?\? 0\) - \(a\.row\.distM \?\? 0\)\);/,
+      /const applySorted = plan\.apply\.slice\(\)\.sort\(\(a, b\) => \(b\.row\.distM \?\? 0\) - \(a\.row\.distM \?\? 0\)\);/
     );
     expect(SRC).toMatch(/for \(const e of applySorted\) \{/);
     // 잘라 보여주면 검토가 반쪽이 된다 — slice(0, 30) 로 되돌아가지 않았다

@@ -58,9 +58,31 @@
  * | `B_apply` | A 단독 | ✅ |
  * | `B_kakao_strong` | K 강함 단독 | ✅ |
  * | `B_kakao_weak` | K 약함(0.7~0.85) 단독 | `--include-weak` 일 때만 |
+ * | `B_kakao_planned` | K 단독인데 이름에 `(…예정)` | ❌ 보고만 (A 가 300m 안에서 맞장구치면 `A2` 로 옮김) |
+ * | `B_gray` | 단일 출처(A 또는 K)가 현재와 300m 초과 500m 이하 | ❌ 보고만 (K·A 일치 `A2` 는 거리 무관 ✅) |
  * | `B_complex` | C 단독이 sim ≥0.9 + 차수 일관 | ❌ 보고만 |
  * | `conflict` | K·A 가 서로 >300m | ❌ 보고만 |
  * | `none` | 출처 없음 | ❌ 보고만 |
+ *
+ * ### `(예정)` 단독과 300~500m 회색지대는 왜 옮기지 않나 (세션544 왕숙 실측)
+ *
+ * `왕숙진접메르디앙더퍼스트`(ap-6028098) 하나를 끝까지 파 보니 두 규칙이 다 필요했다.
+ *
+ * - 분양 안내 여러 곳의 사업지는 `"남양주시 오남읍 양지리 335번지 일원"`(1단지 117 + 2단지 666
+ *   = 783세대)이고, 카카오 **주소검색** `양지리 335` 는 **현재 좌표와 3m**다. 즉 지금 좌표가
+ *   공식 사업지 지번이다.
+ * - 그런데 카카오 **POI** `왕숙진접메르디앙더퍼스트아파트 (예정)` 의 핀은 자기 `address_name`
+ *   (양지리 334)과도 **339m** 어긋나 있다(지번 404·경복대로17번길 1 자리). 준공 전 핀은 부지
+ *   대표점이라 이런 일이 잦다 → **`(예정)` 단독으로는 못 옮긴다**(결정 ②).
+ * - 그 핀과 현재 좌표의 거리는 **350m** — 오남읍 중심점과는 1,395m 라 자리표시도 아니다.
+ *   이 거리대는 **같은 대단지 부지의 양끝**일 수 있어 출처 하나로는 못 가린다
+ *   → **300~500m 단일 출처는 보고만**(결정 ③).
+ * - 두 규칙 다 `A2`(K·A 가 서로 300m 안)에는 적용하지 않는다. `ok` 1,003곳의 K 후보 중
+ *   323곳(32%)이 `(예정)` 인데 독립 좌표와 300m 안에서 맞았다 — `(예정)` 핀은 대체로 맞는 자리고,
+ *   막아야 하는 것은 **혼자 판단하는 것**뿐이다.
+ * - 왜 공용 게이트(`_kakao-poi.mjs`)가 아니라 **이 도구에만** 넣나 — 청약홈 seed 의 키워드 채택은
+ *   15건 중 10건이 `(예정)` 이다(2026-09-09 dry-run). 빈 좌표를 **채우는** 자리에서 빼면 신규 분양이
+ *   준공 때까지 빈칸(점수 0)이 된다. 위험은 "있는 좌표를 핀 하나만 믿고 **옮기는**" 것뿐이라 그 자리만 막는다.
  *
  * `none` 중 **다른 핵심이름 2종 이상이 소수 5자리 동일 좌표를 공유**하는 것은 `진짜 자리표시`로
  * 따로 표기한다(고칠 재료가 없다는 사실 자체가 정보다).
@@ -177,6 +199,18 @@ const PHASE = "fix-placeholder";
 
 /** 현재 좌표와 이만큼 떨어져 있으면 "다른 자리"로 본다. */
 export const NEAR_M = 300;
+/**
+ * 카카오 POI 이름의 `(예정)`·`(2029년01월예정)` 꼴 — **준공 전 단지**.
+ * 그런 핀은 부지 대표점일 수 있어 자기 주소와도 어긋난다(세션544 왕숙 실측 — 헤더 §"(예정)" 절).
+ * 괄호 안의 "예정"만 잡는다(`"○○아파트예정지"` 같은 상호는 아니다).
+ */
+export const PLANNED_POI_RE = /\([^()]*예정\)/;
+/**
+ * 단일 출처가 현재 좌표와 `NEAR_M` 초과 ~ 이 값 이하면 **"회색지대"** — 옮기지 않고 보고만 한다.
+ * 이 거리대는 같은 대단지 부지의 양끝일 수도 있어, 출처 하나로는 어느 쪽이 맞는지 못 가른다
+ * (세션544 결정 ③).
+ */
+export const GRAY_MAX_M = 500;
 /** complexes 이름매칭 최소 유사도. */
 export const COMPLEX_MIN_SIM = 0.75;
 /** C 단독 채택에 필요한 유사도. */
@@ -289,13 +323,35 @@ export function normalizeApplyhomeAddress(addr) {
 }
 
 /**
+ * 카카오 POI 후보(`pickKakaoCandidate` 결과)를 `classify` 가 받는 K 입력으로 만든다.
+ *
+ * 순수 함수로 뽑아 둔 이유 = `planned` 를 **실제로 채우는지**를 소스 grep 이 아니라 단위
+ * 테스트로 잠그기 위해서다(`guards-must-be-mutation-tested.md` §"소스 grep 가드").
+ * @param {{ doc: any, sim: number, strong: boolean } | null} kPick
+ * @returns {{ lat: number, lng: number, strong: boolean, planned: boolean } | null}
+ */
+export function buildKakaoInput(kPick) {
+  if (!kPick) return null;
+  return {
+    lat: Number(kPick.doc.y),
+    lng: Number(kPick.doc.x),
+    strong: kPick.strong,
+    planned: PLANNED_POI_RE.test(String(kPick.doc.place_name ?? "")),
+  };
+}
+
+/**
  * 세 출처와 현재 좌표를 놓고 등급을 매긴다.
  *
  * ⚠️ **가장 먼저 "이미 정상"을 가른다** — 어떤 출처든 현재 좌표 근처면 건드리지 않는다.
  * 세션539 소사역 사고에서 이미 맞는 21곳을 다시 옮길 뻔했다.
+ *
+ * ⚠️ **단일 출처에는 두 개의 제동이 더 걸린다**(세션544). 둘 다 `K && A` 가 서로 맞장구치는
+ * `A2` 에는 **적용되지 않는다** — 서로 다른 두 출처가 같은 자리를 가리키는 것이 이 도구가
+ * 가진 가장 강한 근거이기 때문이다.
  * @param {{
  *   cur: { lat: number | null, lng: number | null } | null,
- *   K?: { lat: number, lng: number, strong: boolean } | null,
+ *   K?: { lat: number, lng: number, strong: boolean, planned?: boolean } | null,
  *   A?: { lat: number, lng: number } | null,
  *   C?: { lat: number, lng: number, solo: boolean } | null,
  * }} input
@@ -316,8 +372,44 @@ export function classify({ cur, K = null, A = null, C = null }) {
     if (d <= NEAR_M) return { tier: "A2", source: "A", reason: `K↔A ${Math.round(d)}m 일치` };
     return { tier: "conflict", source: null, reason: `K↔A ${Math.round(d)}m 불일치` };
   }
-  if (A) return { tier: "B_apply", source: "A", reason: "청약홈 공급주소 단독" };
+  // ── 여기부터 단일 출처 ──
+  // ⚠️ `(예정)` 이 회색지대보다 **먼저**다 — 사유가 더 근본적이라(핀 자체를 못 믿는다)
+  //    거리가 얼마든 옮기지 않는다.
+  if (K && !A && K.planned) {
+    return {
+      tier: "B_kakao_planned",
+      source: "K",
+      reason: "카카오 POI (예정) 단독 — 보고만(다른 출처 필요)",
+    };
+  }
+  /**
+   * 단일 출처가 회색지대(300m 초과 ~ 500m 이하)면 보고만. `source` 를 채우는 이유는
+   * `B_complex` 와 같다 — 사람이 검토할 좌표·주소가 rows 에 실려야 한다.
+   * @param {{lat:number,lng:number}} p
+   * @param {"A"|"K"} src
+   * @param {string} label
+   */
+  const grayIfClose = (p, src, label) => {
+    const d = haversineMeters(lat, lng, p.lat, p.lng);
+    // ⚠️ 상한 500m 는 **포함**("500m 이하"). haversine 픽스처로 정확히 500.000m 를 만들 수 없어
+    //    테스트가 이 등호를 못 지킨다(리뷰어 뮤테이션 R1 green) — 이 문장이 가드다.
+    return d <= GRAY_MAX_M
+      ? {
+          tier: "B_gray",
+          source: src,
+          reason: `${label} 단독 ${Math.round(d)}m — ${NEAR_M}~${GRAY_MAX_M}m 회색지대(보고만)`,
+        }
+      : null;
+  };
+  if (A) {
+    return (
+      grayIfClose(A, "A", "청약홈 공급주소") ??
+      { tier: "B_apply", source: "A", reason: "청약홈 공급주소 단독" }
+    );
+  }
   if (K) {
+    const gray = grayIfClose(K, "K", `카카오 POI ${K.strong ? "강함" : "약함"}`);
+    if (gray) return gray;
     return K.strong
       ? { tier: "B_kakao_strong", source: "K", reason: "카카오 POI 강함 단독" }
       : { tier: "B_kakao_weak", source: "K", reason: "카카오 POI 약함 단독" };
@@ -1398,7 +1490,7 @@ async function main() {
     }
 
     // ── K: 카카오 키워드 POI ──
-    /** @type {{lat:number,lng:number,strong:boolean}|null} */
+    /** @type {{lat:number,lng:number,strong:boolean,planned:boolean}|null} */
     let K = null;
     /** @type {{doc:any,sim:number,strong:boolean}|null} */
     let kPick = null;
@@ -1406,7 +1498,7 @@ async function main() {
       const docs = await kakaoKeyword(name);
       await sleep(KAKAO_GAP_MS);
       kPick = pickKakaoCandidate(name, docs, sidoPrefix);
-      if (kPick) K = { lat: Number(kPick.doc.y), lng: Number(kPick.doc.x), strong: kPick.strong };
+      K = buildKakaoInput(kPick);
     }
 
     const verdict = classify({ cur: { lat: apt.lat, lng: apt.lng }, K, A, C });
@@ -1439,6 +1531,8 @@ async function main() {
       kakaoName: kPick ? String(kPick.doc.place_name) : null,
       kakaoSim: kPick ? Number(kPick.sim.toFixed(3)) : null,
       kakaoStrong: kPick ? kPick.strong : null,
+      // 이름에 `(예정)` 이 붙은 준공 전 단지 — 단독으로는 좌표를 옮기지 않는다(세션544 결정 ②).
+      kakaoPlanned: K ? K.planned : null,
       applyAddress: applyAddr || null,
       // 로스터에는 있는데 지오코딩이 안 된 경우를 눈에 보이게 남긴다 — 실측(2026-09-05)상
       // 공급주소가 **도로명**이면 카카오 주소검색이 못 찾는 일이 잦다(예: "서울특별시 강서구
@@ -1483,6 +1577,19 @@ async function main() {
     log(PHASE, `\n=== conflict ${conflicts.length}곳 (보고만) ===`);
     for (const f of conflicts.slice(0, 15)) {
       log(PHASE, `  ${String(f.id).padEnd(16)} ${String(f.name).slice(0, 26).padEnd(28)} ${f.reason}`);
+    }
+  }
+
+  // 세션544 — 옮기지 않지만 **사람이 봐야 하는** 두 등급. 좌표·거리·POI 이름이 있어야
+  // "그래서 어디로 옮기자는 건데" 를 검토할 수 있다.
+  const held = rows.filter((r) => r.tier === "B_gray" || r.tier === "B_kakao_planned");
+  if (held.length) {
+    log(PHASE, `\n=== 보고만(회색지대·(예정) 단독) ${held.length}곳 (거리순 상위 15) ===`);
+    for (const f of held.slice().sort((a, b) => (b.distM ?? 0) - (a.distM ?? 0)).slice(0, 15)) {
+      log(
+        PHASE,
+        `  ${String(f.id).padEnd(16)} ${String(f.name).slice(0, 26).padEnd(28)} ${String(f.tier).padEnd(18)} ${String(f.distM ?? "").padStart(7)}m  ${f.kakaoName ?? ""}`,
+      );
     }
   }
 
