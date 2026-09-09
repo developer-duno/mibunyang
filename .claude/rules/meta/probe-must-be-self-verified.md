@@ -68,6 +68,23 @@ const { data, error } = await sb.from(t).select(cols).eq(...);
 console.log('error:', error?.message ?? 'none', '| rows:', data?.length ?? 'null');
 ```
 
+### 4-1. Supabase 탐침 착시 두 가지 (세션544 실사고 — 같은 세션에서 두 번, 검사관까지 한 번)
+
+- **없는 컬럼명이 하나라도 섞이면 `data` 는 null** — `select("apartment_id,hospital,convenience,park")` 처럼 실제 컬럼(`conv`)과 다른
+  이름을 쓰면 PostgREST 가 에러를 주고, `.error` 를 안 찍으면 **"행 없음"** 으로 읽힌다. 세션544는 이걸로 "infra 행 없음"·"재수집 뒤
+  transport 행이 안 생겼다" 를 두 번 잘못 적었다(둘 다 존재). 컬럼을 모르면 `select("*")` 로 먼저 본다.
+- **`select("*", { count: "exact", head: true })` 는 존재하지 않는 표에도 error=none·count=null** 을 돌려준다 — 음성 대조군
+  `definitely_not_a_table_xyz` 로 실증. 검사관이 이 방식으로 "`notification_logs` 표가 존재한다" 고 뒤집었지만 실제
+  `select("*").limit(1)` 은 PGRST205. **"표 없음" 결론은 head 가 아니라 실제 select 의 에러 코드로만.**
+
+```js
+// 탐침 정형 — error 를 반드시 찍고, 있는 표/없는 표 대조군을 같이 돌린다
+for (const t of ["<대상표>", "apartments", "definitely_not_a_table_xyz"]) {
+  const { data, error } = await sb.from(t).select("*").limit(1);
+  console.log(t, "error:", error?.code ?? "none", "| rows:", data?.length ?? "null");
+}
+```
+
 ### 5. `.find(name === ...)` 로 단정하지 않는다 — **동명이 흔하다**
 
 이 저장소는 같은 이름의 단지가 여럿이다(회차 분리·동 분리). 첫 건만 보고 "재료 없음"을

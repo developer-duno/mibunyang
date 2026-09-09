@@ -68,6 +68,22 @@ job 이 `apartments_flat`(transport/schools/infra JOIN)을 **한 번 SELECT** �
 구현하고, **세 purge 경로(레거시 `--apply` · `--ids-file` · `--apply-from`)가 전부 같은 한 자리**를
 지난다(경로별 중복 구현은 한 곳만 고쳐져 드리프트한다). 강행은 `--force-timing`.
 
+### 1-1. 지운 **같은 날 06:00 이전에** 파생표가 다시 채워졌는지 DB 로 확인한다 (세션544 적대검증 M4)
+
+창 안에서 지웠어도 05:30 재수집이 **실패**하면 09-11 03:04~03:10 굽기가 빈칸을 그대로 굽는다 — 그런데 "다음날 화면에서 확인" 은
+굽기보다 **늦다**. 세션544 순천은 05:33~05:35 재수집이 성공해 무사했을 뿐(운). 처방 = purge 뒤 **같은 날 06:00 이전**에 아래를 실행하고,
+하나라도 `updated_at` 이 purge 시각보다 앞이면 §2 의 `daily-deploy` 수동 트리거(사람 확인) 또는 해당 수집기 단독 실행으로 메운다.
+
+```js
+// transport·schools·infra 를 apartment_id 로 조회해 updated_at 이 purge 이후인가 (select("*") + error 출력 — probe 규칙 §4-1)
+for (const t of ["transport", "schools", "infra"]) {
+  const { data, error } = await sb.from(t).select("*").eq("apartment_id", id);
+  console.log(t, error?.code ?? "none", data?.[0]?.updated_at ?? "(행 없음)");
+}
+```
+
+⚠️ 조회에 **없는 컬럼명**을 넣으면 `data` 가 null 이 되어 "행 없음" 으로 오독한다(세션544 실사고 2회) — `select("*")` 로.
+
 ### 2. 타이밍을 못 맞추면 **재생성을 앞당긴다**
 
 `daily-deploy.yml` 에는 `workflow_dispatch`(수동 트리거)가 있다. 재수집이 끝난 것을 DB 로 확인한 뒤
