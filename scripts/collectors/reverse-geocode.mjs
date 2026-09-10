@@ -12,7 +12,7 @@
  *   node scripts/collectors/reverse-geocode.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/reverse-geocode.mjs --force      (이미 주소 있어도 재수행)
  */
-import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown, recordCollectorRun, selectAll, resolveRegionName, VALID_REGIONS } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown, recordCollectorRun, selectAll, resolveRegionName, VALID_REGIONS, normalizeGu } from "./_shared.mjs";
 
 loadEnv();
 
@@ -153,6 +153,15 @@ async function main() {
         invalidRegion++;
         continue;
       }
+
+      // ⚠️ gu 정규화는 **여기**여야 한다(세션546). 두 조건이 위치를 못 박는다:
+      //    ① `region` 이 17지역 약칭으로 확정된 **뒤**여야 한다 — 별칭표 키가 `약칭|표기` 라
+      //       카카오 원문("경기도")으로는 절대 안 맞는다(`normalizeGu("경기도","화성시 동탄구")` 무변경 실측).
+      //    ② 그런데 L145 `normalizeRegion(region, gu)` 는 gu 를 **인자로 받아** 지역을 가르므로
+      //       그 앞에서 gu 를 바꾸면 지역 판정 자체가 달라진다. 그래서 그 뒤·`updates` 앞.
+      //    이 한 줄이 없으면 매일 도는 이 수집기가 카카오 원문("화성특례시"·"화성시 동탄구")을
+      //    그대로 저장해 표기 혼재가 **재발**한다(세션546 실측 5곳).
+      gu = normalizeGu(region, gu) || null;
 
       // 기존 dong에 특수 지역명이 있으면 district로 이동
       let district = null;

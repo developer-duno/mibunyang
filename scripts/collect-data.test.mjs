@@ -433,8 +433,10 @@ describe("getLawdCd", () => {
   it("부산 중구 → 26110", () => {
     expect(getLawdCd("부산", "중구")).toBe("26110");
   });
-  it("인천 중구 → 28110", () => {
-    expect(getLawdCd("인천", "중구")).toBe("28110");
+  // 2026-07-01 인천 개편(세션546): 중구·동구 → 제물포구·영종구. 옛 이름은 표에 **남아 있지만**
+  // `RETIRED_GU` 가 코드를 막는다 — 지우면 전 지역 폴백이 서울 11140 을 조용히 준다.
+  it("인천 중구 → null (은퇴 — 서울 11140 이 새어 나오면 안 된다)", () => {
+    expect(getLawdCd("인천", "중구")).toBeNull();
   });
   it("대구 중구 → 27110", () => {
     expect(getLawdCd("대구", "중구")).toBe("27110");
@@ -450,8 +452,10 @@ describe("getLawdCd", () => {
   it("부산 동구 → 26170", () => {
     expect(getLawdCd("부산", "동구")).toBe("26170");
   });
-  it("인천 동구 → 28120", () => {
-    expect(getLawdCd("인천", "동구")).toBe("28120");
+  // 인천 동구는 옛 표 값 자체가 틀렸다(28120, 실제 28140) — 거래가 한 번도 안 들어왔다.
+  // 이제는 은퇴라 null 이고, 표의 값은 바로잡아 뒀다(`_shared.test.mjs` 앵커).
+  it("인천 동구 → null (은퇴 — 부산 26170 이 새어 나오면 안 된다)", () => {
+    expect(getLawdCd("인천", "동구")).toBeNull();
   });
   it("대구 동구 → 27140", () => {
     expect(getLawdCd("대구", "동구")).toBe("27140");
@@ -467,8 +471,16 @@ describe("getLawdCd", () => {
   it("부산 서구 → 26140", () => {
     expect(getLawdCd("부산", "서구")).toBe("26140");
   });
-  it("인천 서구 → 28260", () => {
-    expect(getLawdCd("인천", "서구")).toBe("28260");
+  it("인천 서구 → null (은퇴 — 부산 26140 이 새어 나오면 안 된다)", () => {
+    expect(getLawdCd("인천", "서구")).toBeNull();
+  });
+
+  // 개편으로 생긴 4구 — 동명이구가 아니므로 폴백 없이 바로 맞아야 한다.
+  it("인천 새 4구 → 28125 / 28155 / 28275 / 28290", () => {
+    expect(getLawdCd("인천", "제물포구")).toBe("28125");
+    expect(getLawdCd("인천", "영종구")).toBe("28155");
+    expect(getLawdCd("인천", "서해구")).toBe("28275");
+    expect(getLawdCd("인천", "검단구")).toBe("28290");
   });
   it("대전 서구 → 30170", () => {
     expect(getLawdCd("대전", "서구")).toBe("30170");

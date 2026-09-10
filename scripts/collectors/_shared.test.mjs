@@ -13,6 +13,7 @@ import {
   EXCL_RATIO_SOURCE_TYPES, canUseComplexForExclRatio,
   EXCL_RATIO_APT_LIKE_TYPES, isPlausibleExclRatioFor,
   JEONNAM_GWANGJU_SGG_OLD_TO_NEW, GWANGJU_GU_NAMES, resolveRegionName,
+  RETIRED_GU, HWASEONG_BARE_GU,
 } from "./_shared.mjs";
 import {
   resolveBuilder as brandsResolveBuilder,
@@ -1100,5 +1101,94 @@ describe("getLawdCd — 프로토타입 키 방어 (세션545)", () => {
     expect(getLawdCd("전남", "순천시")).toBe("12150");
     expect(getLawdCd("광주", "북구")).toBe("12300");
     expect(getLawdCd("경기", "화성시")).toBe("41591");
+  });
+});
+
+// ── 인천 2026-07-01 개편 (세션546) ─────────────────────────────
+// 중구·동구 → 제물포구·영종구 / 서구 → 서해구·검단구.
+//
+// 앵커를 **리터럴로** 못 박는 이유가 둘이다:
+//   ① 표에서 읽어 비교하면 표를 바꿔도 테스트가 따라와 아무것도 안 지킨다(파생 가드 함정).
+//   ② 옛 3항목은 표에 **남겨 둔다** — 지우면 `getLawdCd` 의 전 지역 폴백이 "중구"에 서울 11140,
+//      "동구"에 부산 26170 을 조용히 준다. 그 코드로 실거래를 부르면 남의 지역 거래가 인천
+//      단지에 붙는데 **에러가 안 난다**. 그래서 이름은 남기고 `RETIRED_GU` 로 null 을 만든다.
+//
+// 측정 출처 = 국토부 실거래가 raw(202605·202608) · 행안부 인구 lv=2 202607 · 카카오
+//            coord2regioncode. 2026-09-11 실측(스펙 §0-1).
+describe("인천 2026 개편 — 코드표 앵커 (세션546)", () => {
+  it("인천 키 집합 = 옛 10 + 새 4 = 14 (은퇴 3 포함, 지우지 않는다)", () => {
+    expect(Object.keys(GU_LAWD_MAP["인천"]).sort()).toEqual(
+      [
+        "중구", "동구", "미추홀구", "연수구", "남동구",
+        "부평구", "계양구", "서구", "강화군", "옹진군",
+        "제물포구", "영종구", "서해구", "검단구",
+      ].sort(),
+    );
+  });
+
+  it("새 4구 코드 리터럴", () => {
+    expect(GU_LAWD_MAP["인천"]["제물포구"]).toBe("28125");
+    expect(GU_LAWD_MAP["인천"]["영종구"]).toBe("28155");
+    expect(GU_LAWD_MAP["인천"]["서해구"]).toBe("28275");
+    expect(GU_LAWD_MAP["인천"]["검단구"]).toBe("28290");
+  });
+
+  it("동구는 28140 — 28120 은 개편과 무관하게 처음부터 틀린 값이었다", () => {
+    expect(GU_LAWD_MAP["인천"]["동구"]).toBe("28140");
+    expect(GU_LAWD_MAP["인천"]["동구"]).not.toBe("28120");
+  });
+
+  it("RETIRED_GU 는 인천 3구만", () => {
+    expect(Object.keys(RETIRED_GU)).toEqual(["인천"]);
+    expect([...RETIRED_GU["인천"]].sort()).toEqual(["동구", "서구", "중구"]);
+  });
+
+  it("은퇴 gu 는 코드가 아니라 null — 폴백이 서울·부산 코드를 주지 않는다", () => {
+    expect(getLawdCd("인천", "중구")).toBeNull();
+    expect(getLawdCd("인천", "동구")).toBeNull();
+    expect(getLawdCd("인천", "서구")).toBeNull();
+  });
+
+  it("새 구는 정상 코드", () => {
+    expect(getLawdCd("인천", "검단구")).toBe("28290");
+    expect(getLawdCd("인천", "제물포구")).toBe("28125");
+    expect(getLawdCd("인천", "영종구")).toBe("28155");
+    expect(getLawdCd("인천", "서해구")).toBe("28275");
+  });
+
+  it("은퇴는 인천에만 — 같은 이름의 다른 지역은 그대로", () => {
+    expect(getLawdCd("서울", "중구")).toBe("11140");
+    expect(getLawdCd("부산", "중구")).toBe("26110");
+    expect(getLawdCd("부산", "동구")).toBe("26170");
+    expect(getLawdCd("부산", "서구")).toBe("26140");
+    expect(getLawdCd("대전", "서구")).toBe("30170");
+  });
+
+  it("인천 안 바뀐 구는 회귀 0", () => {
+    expect(getLawdCd("인천", "미추홀구")).toBe("28177");
+    expect(getLawdCd("인천", "연수구")).toBe("28185");
+    expect(getLawdCd("인천", "강화군")).toBe("28710");
+  });
+
+  it("새 구 이름은 별칭표가 건드리지 않는다 (광역시 자치구)", () => {
+    for (const g of ["제물포구", "영종구", "서해구", "검단구"]) {
+      expect(normalizeGu("인천", g)).toBe(g);
+    }
+  });
+});
+
+describe("화성특례시 별칭 (세션546)", () => {
+  it("시 승격 표기도 '화성시' 로 접는다", () => {
+    expect(normalizeGu("경기", "화성특례시")).toBe("화성시");
+  });
+
+  it("기존 화성 규칙 회귀 0", () => {
+    expect(normalizeGu("경기", "화성시 동탄구")).toBe("화성시");
+    expect(normalizeGu("경기", "동탄구")).toBe("화성시");
+    expect(normalizeGu("경기", "화성시")).toBe("화성시");
+  });
+
+  it("HWASEONG_BARE_GU 는 비법정 4구 — 도구가 이 명단을 재사용한다", () => {
+    expect([...HWASEONG_BARE_GU].sort()).toEqual(["동탄구", "만세구", "병점구", "효행구"]);
   });
 });
