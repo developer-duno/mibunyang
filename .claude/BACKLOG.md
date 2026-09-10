@@ -647,6 +647,40 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   `collect-maintenance` 만 조회 안 `.order("updated_at")` 가 커서 키와 충돌 → 조회에서 빼고 `sortByUpdatedAtAsc`(NULL 먼저·동률 id)로
   클라이언트 재현(--limit 회차 분산 의미 유지). 라이브 5종(apartments·regions·transport·infra·applyhome_unit_supply) 커서=count=무키 —
   **지금은 새는 게 재현되지 않았다**(세션514 유실은 79만행 trades + 동시쓰기 조건). 근거는 "보장이 없다"쪽.
+
+<!-- 세션546 (2026-09-11) 추가 -->
+- 🔴 **전남·광주 `regions.net_migration` 이 07-01 행에서 통째로 비었다 — 미래가치 점수 직결** (세션546 적대검증 → 오케스트레이터 재현 2026-09-11).
+  실측: 07-01 행 기준 전남 23행·광주 6행 **전부 null**(0 이 아니라 null). 대조군 서울 26/26·경기 32/52 는 값 있음.
+  적대검증 지적(반박 실패, medium): `migration.mjs` 가 KOSIS 신·구 코드 중복 행을 dedup 없이 순서대로 UPDATE 해 나중 행이 앞 값을 덮는다.
+  검증관 실측 = `fetchKosis()` 912행 중 순이동 304행, C1 접두 분포 `{"12":28,"29":6,"4x":…}` → **KOSIS 가 신·구 라벨을 동시에 준다**.
+  자리 = `scripts/collectors/migration.mjs` C1_TO_REGION 복원 L68-83 · `mapC1` L117-151 · UPDATE 루프 L268-291.
+  영향 = `scoreFuture.ts` 가 `netMigration > 0` 이면 +10점 → 전남·광주 106단지가 그 보정을 못 받는다([[regions-multicollector-recorded-at-lag]] 와 같은 결).
+  처방 후보: 같은 (region, gu) 키에 신·구 두 행이 오면 **신 코드 우선 + null 은 기존 값 보존**(덮지 않음). 다음 발화 = kosis-local-runner day 7.
+
+- 🟡 **`collect-unsold-kosis.mjs:188-192` 가 `regions` 를 필터·정렬·페이징 없이 select** (세션546 적대검증, 반박 실패 low).
+  2,249행 표라 PostgREST 기본 1,000행 컷에 걸린다([[unordered-pagination-loses-rows]] §"스캔 맹점 2" 의 생 쿼리 사례). `selectAll(..., sb, "id")` 로 전환.
+
+- 🟡 **`collect-crime-safety.mjs:152` 가 `regions` 를 order 없이 `.range()` 페이징** (세션546 적대검증, 반박 실패 low).
+  같은 룰의 무정렬 OFFSET 패턴. `selectAll(..., sb, "id")` 로 전환.
+
+- 🟡 **monitor 가 "지역×월 거래 0건" 을 못 본다 — 이번과 같은 사고가 또 조용히 지나간다** (세션546 적대검증 medium, 미반박).
+  `scripts/monitor-collectors.mjs` `EXTERNAL_API_COLLECTORS`(L277-380)·`checkExternalApiStale`(L755-800) 는 collector 단위 신선도만 본다.
+  전남 202606~08 이 3개월간 0건이었는데 아무 알림도 없었다. 후보 = region×deal_month 격자에서 "직전 3개월 평균 대비 0건" 이면 경보.
+
+- 🟡 **네이버 로컬 파이프라인이 4시간 상한에 잠식된다** (세션546 실측 + 적대검증 medium, 반박 실패).
+  09-10 회차 = 1/6 네이버 2시간 + 3/6 분양 1시간54분 → `ExecutionTimeLimit=PT4H` 도달로 4/6·5/6·6/6 미실행(스케줄러 결과 267014).
+  `naver-presale.mjs` 런타임이 3주 연속 신기록(6,868.9초, 직전 최댓값 5,385.7 대비 +27.5%). 세 단계는 다른 경로가 매일 메우므로 데이터 구멍은 없다.
+  처방 = 상한 6시간(사장님 실행 대기) 또는 3/6 에 `--max-minutes` 도입.
+
+- 🟢 **`collect-maintenance`·`molit-building-info`·`molit-units` 3종이 광주·전남에서 같은 목록을 두 번 조회** (세션546 적대검증 low, 반박됨=의도된 동작).
+  `SIDO_CODE` 가 둘 다 "12" 라 region 별 그룹이 같은 1,758건을 각각 부른다. 결함은 아니나 쿼터 낭비 — 캐시 1줄로 절반.
+
+- 🟢 **`collect-data.mjs:76-78` areaName 검증 분기가 도달 불가(dead code)** (세션546 적대검증 low, 반박됨).
+  `VALID_REGIONS` 17개가 전부 `REGION_MAP` 에 자기자신으로 매핑돼 76행이 거짓이면서 77행이 참인 입력이 0개.
+
+- 🟢 **전남 7개 구·군의 202509 매매가 0건** (세션546 적대검증 low). 광주 5구는 정상.
+  백필이 `--months=5`(202604~202608)였고 12개월 창의 최고참 달인 202509 는 그 전이라 안 채워졌다. 다음 정기 회차가 메우는지 확인.
+
 - 🔴 **`reverse-geocode --force` 를 권하는 문구가 레포에 있고, 그 명령은 좌표 있는 전 단지의 주소·행정구역을 통째로 덮어쓴다** (세션544 마무리 적대검증 H1, 근거 교체 = 세션545 PR-E).
   `collect-building-hub.mjs:34`(주석)·`:177`(로그 "reverse-geocode.mjs --force를 먼저 실행하세요") ↔ `reverse-geocode.mjs:95` `if (!force) q = q.is("address", null)` = force 는 **전량**.
   갱신 필드가 `region·gu·dong·address·road_address·bjd_code·lot_main·lot_sub`(+`district`) 전부라 세션539~544 가 **209곳에 손으로 박은 `address`(정답 출처 표기)와 `district` 결정이 카카오 원문으로 지워진다**. 되돌릴 길 없음.
