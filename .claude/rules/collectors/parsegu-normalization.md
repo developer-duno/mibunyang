@@ -17,7 +17,7 @@ function parseGu(ctpvNm, sggNm) {
   const region = parseRegion(ctpvNm);
   return region ? { region, gu: sggNm || null } : null;
 }
-// 시도 단위 집계 hasGuLevel 플래그로 중복 차단
+// 시도 단위 집계 중복 차단 (⚠️ 옛 `hasGuLevel` 플래그는 폐기 — 세션501/546 정정 이력은 아래 §2)
 ```
 
 ### 2. SIDO_CODES 환각 3건 (2개월 누락)
@@ -72,7 +72,15 @@ for (const r of Array.isArray(items) ? items : [items]) {
 
 ### 2. parseGu 시그니처 정형 답습
 
-신규 행안부/KOSIS 시군구 단위 collector 시 `parseGu(ctpvNm, sggNm)` 시그니처 답습 의무. sggNm 그대로 박힘 + 시도 집계 hasGuLevel 플래그로 중복 차단.
+신규 행안부/KOSIS 시군구 단위 collector 시 `parseGu(ctpvNm, sggNm)` 시그니처 답습 의무. sggNm 그대로 박힘.
+
+⚠️ **시도 집계 중복 차단은 `hasGuLevel` 플래그가 아니다** — 그 방식은 세션501에 폐기됐고(구 없는 시·군 111개
+동반 유실), 뒤이은 `pickParentCities(rows)`(접힌 `gu` 기준)도 세션546에 폐기됐다. 별칭표가 "화성시 동탄구"를
+"화성시"로 접어 공백이 사라지므로 부모 시가 안 잡혀 경기 시도행이 **+999,673** 부풀었다. 현재 정답은 둘을 함께 쓴다:
+- `pickCanonicalPopulationRows(items)` — 같은 키로 접힌 원문 중 **시 단위 원문 우선**으로 키당 1행(저장용).
+- `rawParents(items)` — 부모 시 판정을 **원문 `sggNm`** 으로(시도 합 계산용, `sumSidoFromRaw`).
+- 그리고 시도행 자체는 손으로 더하지 말고 **`lv=1` API 값**을 쓴다(`fetchSidoTotals`·`buildSidoRows`).
+  시군구 합은 교차검증과 lv=1 실패 시 fallback 에만 쓴다.
 
 ### 3. items.item 객체/배열 양형 처리 의무
 
