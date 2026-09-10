@@ -730,7 +730,9 @@ async function phase7_realtrade(apartments) {
 
   for (const rg of regionGuPairs) {
     const lawdCd = getLawdCd(rg.region, rg.gu);
-    if (!lawdCd) continue;
+    // 세션546: 은퇴 시군구(인천 중구·동구·서구)는 null 을 받는다 — 조용히 넘기면 "그 지역 거래가
+    // 원래 없었나" 로 오독된다. `collect-trades.mjs` 와 같은 형태로 한 줄 남긴다.
+    if (!lawdCd) { log(`  ${rg.region} ${rg.gu ?? ""}: 법정동코드 없음 — 건너뜀`); continue; }
     const key = `${rg.region}|${rg.gu}`;
     if (tradeData[key]) continue;
     tradeData[key] = { trades: [], rentPrices: [] };

@@ -20,7 +20,7 @@ import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
   upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
-  resolveBuilder, today, resolveRegionName, selectAll,
+  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu,
 } from "./_shared.mjs";
 
 /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
@@ -632,11 +632,15 @@ export function matchPresaleToApt(presale, apartments, indexes) {
 export function buildNewApartment(row, complexData, regionFallback) {
   const no = row.naver_presale_no || "";
   const { region, gu, dong } = parsePresaleAddress(complexData.address);
+  // ⚠️ gu 는 **정규화해서** 넣는다(세션546). 네이버 주소 원문이 "화성특례시"·"화성시 동탄구" 처럼
+  //    GU_LAWD_MAP·regions 어디에도 없는 표기로 들어오면 실거래 호출도 지표 조인도 통째로 끊긴다.
+  //    별칭표 키가 `17지역약칭|표기` 라 **약칭이 확정된 region**(폴백 적용 후)을 넘겨야 맞는다.
+  const finalRegion = region ?? regionFallback;
   const apt = {
     id: `ap-${no}`,
     name: complexData.build_nm,
-    region: region ?? regionFallback,
-    gu: gu ?? null,
+    region: finalRegion,
+    gu: normalizeGu(finalRegion ?? "", gu) ?? null,
     dong: dong ?? null,
     address: complexData.address ?? null,
     lat: row._enrich.lat,
