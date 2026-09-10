@@ -408,12 +408,23 @@ describe("fetchCollectedApartmentIds — 1000행 상한 넘어 전량 조회", (
     expect(done.size).toBe(0);
   });
 
-  it("빈/누락 apartment_id 는 제외", async () => {
-    const chain = cursorRespond([{ apartment_id: "ap-1" }, { apartment_id: "" }, {}]);
+  it("빈 apartment_id 는 제외", async () => {
+    const chain = cursorRespond([{ apartment_id: "ap-1" }, { apartment_id: "" }]);
     const sb = { from: () => ({ select: () => ({ not: () => ({ ...chain, gte: () => chain }) }) }) };
     const done = await fetchCollectedApartmentIds(sb);
     expect(done.size).toBe(1);
     expect(done.has("ap-1")).toBe(true);
+  });
+
+  // ★ 세션546 M1 — 커서 키 검사가 `data.length < PAGE` **앞**으로 옮겨졌다.
+  // 그래서 첫 페이지가 1,000행 미만이어도 마지막 행에 키가 없으면 그 자리에서 죽는다.
+  // 실제 `transport.apartment_id` 는 PK 라 값이 빠질 수 없다 — 이 경로가 열리는 건
+  // **select 에서 키를 빼먹었을 때**뿐이고, 그때 조용히 도는 대신 진단 가능하게 죽는 게 맞다.
+  // (옛 판본은 여기서 아무 일도 없이 통과해, 그 표가 1,001행이 되는 날 처음 죽었다.)
+  it("★ 커서 키가 빠진 행이 마지막이면 즉시 throw — select 누락을 첫 페이지에서 잡는다", async () => {
+    const chain = cursorRespond([{ apartment_id: "ap-1" }, {}]); // String({}) = "undefined" 라 마지막
+    const sb = { from: () => ({ select: () => ({ not: () => ({ ...chain, gte: () => chain }) }) }) };
+    await expect(fetchCollectedApartmentIds(sb)).rejects.toThrow(/apartment_id 컬럼이 select에 없음/);
   });
 });
 

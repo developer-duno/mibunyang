@@ -951,6 +951,28 @@ describe("selectAll — 옵트인 고유키 커서 페이징", () => {
     ).rejects.toThrow(/컬럼이 select에 없음/);
   });
 
+  // ⚠️ 세션546 M1 — 커서 계산·검사가 `data.length < PAGE` **뒤**에 있으면 이 케이스가 통과한다.
+  // 그러면 "키를 select 에서 빼먹었다"는 결함이 그 표가 1,001행이 되는 날까지 잠복한다.
+  // 뮤테이션(두 줄 순서 되돌리기) → 이 테스트 red.
+  it("첫 페이지가 PAGE 미만이어도 keyCol 이 select 에 없으면 즉시 throw (1,000행 미만 표 잠복 차단)", async () => {
+    const { client } = makeClient([rows(900, 0, false)]); // 900행 = PAGE 미만 + id 없음
+    await expect(
+      selectAll((s) => s.from("t").select("v"), /** @type {any} */ (client), "id"),
+    ).rejects.toThrow(/컬럼이 select에 없음/);
+  });
+
+  it("정상 종료 경로는 그대로 — PAGE 미만 마지막 페이지에서 키가 있으면 throw 없이 끝난다", async () => {
+    const { client } = makeClient([rows(900)]);
+    const out = await selectAll((s) => s.from("t").select("id"), /** @type {any} */ (client), "id");
+    expect(out.length).toBe(900);
+  });
+
+  it("빈 첫 페이지는 커서 검사 전에 끝난다 — 0행 표에서 거짓 throw 없음", async () => {
+    const { client } = makeClient([[]]);
+    const out = await selectAll((s) => s.from("t").select("id"), /** @type {any} */ (client), "id");
+    expect(out).toEqual([]);
+  });
+
   it("keyCol 미지정(기본 null) = 기존 offset 모드 그대로 — range 를 쓰고 order 는 안 붙인다(회귀 0)", async () => {
     const { client, calls } = makeClient([rows(1000), rows(3, 1000)]);
     const out = await selectAll((s) => s.from("t").select("id"), /** @type {any} */ (client));

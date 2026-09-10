@@ -190,7 +190,7 @@ import {
 // 한다. 이 도구의 공개 API 는 그대로 두려고 아래에서 **재수출**한다(호출처·테스트 무변경).
 import {
   cleanName, shortRegion, pickKakaoCandidate, isPreciseGeocode,
-  PHASE_RE, extractPhases, phaseConsistent,
+  PHASE_RE, extractPhases, phaseConsistent, blockConflict,
 } from "./collectors/_kakao-poi.mjs";
 export { extractPhases, phaseConsistent };
 
@@ -449,6 +449,91 @@ export function groupSharedAddresses(apts) {
 }
 
 /**
+ * 좌표 동일 판정 자릿수 — 소수 5자리 ≈ 1.1m. 후보 선정(`groupSharedCoords`)과
+ * 진짜 자리표시 집계(`findTruePlaceholders`)가 **같은 서명**을 쓴다(두 값이 갈리면
+ * "후보엔 들어왔는데 집계엔 안 잡히는" 행이 생긴다).
+ */
+export const COORD_KEY_DIGITS = 5;
+
+/**
+ * 좌표 그룹 키. 숫자가 아니거나 유한하지 않으면 `null`(그룹에 안 넣는다).
+ * @param {unknown} lat
+ * @param {unknown} lng
+ * @returns {string | null}
+ */
+export function coordKey(lat, lng) {
+  const y = Number(lat);
+  const x = Number(lng);
+  if (lat == null || lng == null || !Number.isFinite(y) || !Number.isFinite(x)) return null;
+  return `${y.toFixed(COORD_KEY_DIGITS)},${x.toFixed(COORD_KEY_DIGITS)}`;
+}
+
+/**
+ * 한 좌표 그룹 안에 **서로 다른 단지**가 섞여 있는가.
+ *
+ * 판정 둘 — 어느 하나라도 참이면 별개 단지로 본다:
+ *   ① `cleanName` 값이 2종 이상 (다른 브랜드·다른 차수)
+ *   ② 블록 토큰이 충돌 (`(A7BL)` ↔ `(A8BL)`) — `cleanName` 이 **괄호를 통째로 지우므로**
+ *      ①만으로는 실측 사례(ah-2026910189·190)를 못 가른다.
+ *
+ * ⚠️ 반대로 **같은 이름의 회차 분리**(`… 무순위 1차` ↔ `… 무순위 2차`)는 `cleanName` 이
+ * 회차 글자를 떼어 한 값으로 모이고 블록 토큰도 없어 여기서 걸러진다 — 그런 쌍은 같은 좌표를
+ * 쓰는 게 정당해서 기존 "주소 공유" 규칙에 맡긴다.
+ *
+ * 알려진 한계: `(1BL)` ↔ `(2BL)` 처럼 **글자 접두 없는 괄호 안 숫자 블록**은 ①에서 괄호가
+ * 지워지고 ②의 `BLOCK_RE` 가 글자 접두를 요구해 둘 다 못 본다. 그런 쌍은 대개 주소도 공유해
+ * 기존 규칙이 잡는다(이 함수를 넓히기 전에 실측부터 할 것).
+ * @param {any[]} list
+ * @returns {boolean}
+ */
+export function hasDistinctProjects(list) {
+  const names = new Set(list.map((a) => cleanName(a?.name)));
+  if (names.size >= 2) return true;
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      if (blockConflict(list[i]?.name, list[j]?.name)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * **주소는 다른데 좌표만 같은** 그룹 — 세션546 M7.
+ *
+ * 옛 후보 풀은 "같은 `address` 문자열" 만 봤다. 그런데 자리표시 좌표는 역지오코딩이 각각
+ * 다른 주소로 세탁해 주기도 한다: ah-2026910189(A7BL, 북구 월출동)·ah-2026910190(A8BL,
+ * 장성군 진원면)은 **주소가 서로 달라** 후보에 아예 없었고, 그래서 "진짜 자리표시" 집계에서도
+ * 빠졌다(2026-09-11 실측, 미리보기 1,832곳에 두 id 0건).
+ * [[placeholder-coordinates-truth-sources]] 의 "다른 핵심이름 2종 이상이 소수5자리 동일 좌표 =
+ * 진짜 자리표시" 서명을 **후보 선정에도** 적용한다. 판정(3출처 교차)은 그대로다 —
+ * 출처가 없으면 `none` 으로 남아 집계에 들어가는 게 정답이다.
+ * @param {any[]} apts
+ * @returns {{ groups: Map<string, any[]>, candidates: any[] }}
+ */
+export function groupSharedCoords(apts) {
+  /** @type {Map<string, any[]>} */
+  const byCoord = new Map();
+  for (const a of apts) {
+    const key = coordKey(a?.lat, a?.lng);
+    if (!key) continue;
+    const list = byCoord.get(key);
+    if (list) list.push(a);
+    else byCoord.set(key, [a]);
+  }
+  /** @type {Map<string, any[]>} */
+  const groups = new Map();
+  /** @type {any[]} */
+  const candidates = [];
+  for (const [key, list] of byCoord) {
+    if (list.length < 2) continue;
+    if (!hasDistinctProjects(list)) continue;
+    groups.set(key, list);
+    candidates.push(...list);
+  }
+  return { groups, candidates };
+}
+
+/**
  * "핵심 이름" — 차수/블록/숫자를 뗀 브랜드+프로젝트 이름. 같은 좌표를 **다른 프로젝트**가
  * 공유하는지 보는 데 쓴다.
  * @param {unknown} name
@@ -471,8 +556,9 @@ export function findTruePlaceholders(rows) {
   /** @type {Map<string, { ids: string[], names: Set<string> }>} */
   const byCoord = new Map();
   for (const r of rows) {
-    if (r.tier !== "none" || r.lat == null || r.lng == null) continue;
-    const key = `${r.lat.toFixed(5)},${r.lng.toFixed(5)}`;
+    if (r.tier !== "none") continue;
+    const key = coordKey(r.lat, r.lng); // 후보 선정(groupSharedCoords)과 같은 서명
+    if (!key) continue;
     let e = byCoord.get(key);
     if (!e) { e = { ids: [], names: new Set() }; byCoord.set(key, e); }
     e.ids.push(r.id);
@@ -1028,24 +1114,46 @@ async function applyCoordFixes(sb, fixList) {
 }
 
 /**
+ * `.in("id", …)` 한 번에 담는 id 개수.
+ *
+ * PostgREST 는 조회를 **URL 로** 보내므로 id 목록이 길어지면 서버가 조용히 거절한다(≈8KB).
+ * id 하나가 13~16자 + 구분자라 **150개 ≈ 2.4KB** — `calc-exclusive-ratio.mjs` 가 같은 근거로
+ * 쓰는 값이다. 옛 300/900 은 근거 없이 굳은 값이었고(900개 = 약 14KB → 즉시 실패),
+ * 세션540 의 209건은 ≈7.7KB 로 **아슬하게** 통과했을 뿐이다.
+ * 두 경로(`--apply-from` 전제 검사 · `--refit-fields`)가 같은 값을 쓴다 — 다르면 다음 사람이 헷갈린다.
+ */
+export const ID_CHUNK = 150;
+
+/**
+ * id 목록을 `ID_CHUNK` 단위로 자른다 — 두 조회 경로가 **같은 함수**를 쓰게 해서
+ * 한쪽만 고쳐지는 드리프트를 막는다(옛 코드는 300 과 `>900?300:전량` 두 값이 따로 살았다).
+ * @param {string[]} ids
+ * @param {number} [size]
+ * @returns {string[][]}
+ */
+export function chunkIds(ids, size = ID_CHUNK) {
+  /** @type {string[][]} */
+  const out = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
+
+/**
  * id 목록으로 현재 좌표만 읽는다.
  *
- * ⚠️ **항상 300씩** 자른다(세션543 · F9). refit 분기의 "900 이하면 한 번에" 는 근거 없이 굳은 값이고
- * (id 하나가 16자면 900개 = URL 14KB 로 서버 한계 근처), 여기서 조회가 조용히 잘리면 그 행이
- * `missing` 으로 분류돼 **반영 대상에서 빠진다**. 300 은 refit 이 실제로 쓰는 값이다.
+ * ⚠️ 조회가 조용히 잘리면 그 행이 `missing` 으로 분류돼 **반영 대상에서 빠진다**(세션543 · F9).
  * @param {any} sb
  * @param {string[]} ids
  * @returns {Promise<any[]>}
  */
 async function fetchCoordRows(sb, ids) {
-  const chunk = 300;
   /** @type {any[]} */
   const out = [];
-  for (let i = 0; i < ids.length; i += chunk) {
+  for (const part of chunkIds(ids)) {
     const { data, error } = await sb
       .from("apartments")
       .select("id,name,lat,lng")
-      .in("id", ids.slice(i, i + chunk));
+      .in("id", part);
     if (error) throw new Error(`apartments 좌표 조회 실패: ${error.message}`);
     out.push(...(data ?? []));
   }
@@ -1299,15 +1407,15 @@ async function main() {
     const ids = readIdsFile(/** @type {string} */ (idsFile));
     log(PHASE, `--refit-fields: ${ids.length}건`);
 
-    // 29~300건 규모라 단발 조회로 충분하다. 그보다 커지면 URL 길이 때문에 끊어 묻는다.
-    const chunk = ids.length > 900 ? 300 : Math.max(ids.length, 1);
+    // 항상 ID_CHUNK 씩 끊어 묻는다(세션546 M3). 옛 `ids.length > 900 ? 300 : 전량` 은
+    // **300건짜리 refit 을 한 번에** 던져 URL 약 11KB → 조회 실패 throw 가 나는 값이었다.
     /** @type {any[]} */
     const targetRows = [];
-    for (let i = 0; i < ids.length; i += chunk) {
+    for (const part of chunkIds(ids)) {
       const { data, error } = await sb
         .from("apartments")
         .select("id,name,lat,lng,address,dong,bjd_code,lot_main,lot_sub,road_address")
-        .in("id", ids.slice(i, i + chunk));
+        .in("id", part);
       if (error) throw new Error(`apartments 조회 실패: ${error.message}`);
       targetRows.push(...(data ?? []));
     }
@@ -1392,7 +1500,20 @@ async function main() {
   log(PHASE, `apartments ${apts.length}행, complexes ${complexes.length}행`);
 
   const { groups, candidates } = groupSharedAddresses(apts);
-  log(PHASE, `주소 공유 그룹 ${groups.size}개 · 후보 ${candidates.length}곳`);
+  // 세션546 M7 — 주소가 서로 다른데 좌표만 같은 그룹도 후보다(역지오코딩이 각각 다른 주소로
+  // 세탁해 준 자리표시). 두 풀의 **합집합**을 id 로 중복 제거해 쓴다.
+  const { groups: coordGroups, candidates: coordCandidates } = groupSharedCoords(apts);
+  /** @type {Map<string, any>} */
+  const byId = new Map();
+  for (const a of candidates) byId.set(String(a.id), a);
+  const addrOnly = byId.size;
+  for (const a of coordCandidates) byId.set(String(a.id), a);
+  const allCandidates = [...byId.values()];
+  log(
+    PHASE,
+    `주소 공유 그룹 ${groups.size}개 · 좌표 공유 그룹 ${coordGroups.size}개 · ` +
+      `후보 ${allCandidates.length}곳(좌표만 공유해 새로 들어온 것 ${allCandidates.length - addrOnly}곳)`,
+  );
 
   /** @type {Map<string, any[]>} */
   const cpxByKey = new Map();
@@ -1417,7 +1538,7 @@ async function main() {
     logError(PHASE, "⚠️ 청약홈 로스터 0건 — 이 미리보기는 A 출처가 빠진 판정이다(정상 1,500건+). 결과를 근거로 쓰지 마라.");
   }
 
-  let targets = candidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  let targets = allCandidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
   if (limit) {
     targets = targets.slice(0, limit);
     log(PHASE, `⚠️ --limit=${limit} — 개발용 표본이다. 전체 판정이 아니다.`);

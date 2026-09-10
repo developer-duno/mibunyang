@@ -24,7 +24,9 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { normalizeRegion } = await import("./reverse-geocode.mjs");
+const { normalizeRegion, resolveTargetScope, OVERWRITE_ACK_FLAG } = await import(
+  "./reverse-geocode.mjs"
+);
 
 // ── normalizeRegion ───────────────────────────────────────────
 describe("normalizeRegion", () => {
@@ -92,6 +94,75 @@ describe("apartments 고유키(id) 커서 페이징 가드", () => {
   });
 });
 
+// ── --force 게이트 · --only-null-bjd (세션546 H1) ─────────────
+//
+// `--force` 는 좌표 있는 **전 단지**의 region/gu/dong/address/road_address/bjd_code/lot 를
+// 카카오 값으로 덮어쓴다. 세션539~544 가 209곳에 손으로 박은 address 출처 표기·district 결정이
+// 되돌릴 수 없이 지워진다. 그래서 확인 플래그를 함께 줘야만 열리고, 평소엔 빈 칸만 채우는
+// `--only-null-bjd` 를 쓴다. 뮤테이션: 게이트 제거(`--force` 를 그냥 통과)하면 (2) red.
+describe("resolveTargetScope — --force 게이트", () => {
+  it("(1) 인자 없음 = address 가 빈 단지만 (기존 기본 동작)", () => {
+    expect(resolveTargetScope(["node", "x"])).toEqual({ ok: true, scope: "null-address" });
+    expect(resolveTargetScope(["node", "x", "--dry-run"])).toEqual({ ok: true, scope: "null-address" });
+  });
+
+  it("(2) ★ --force 단독 = 거부 — 확인 플래그가 없으면 열리지 않는다", () => {
+    const r = resolveTargetScope(["node", "x", "--force"]);
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toMatch(/전 단지|덮어쓴다/);
+    expect(r.ok === false && r.reason).toContain(OVERWRITE_ACK_FLAG);
+  });
+
+  it("(3) --force + 확인 플래그 = 전량 (막지만 못 하게 하지는 않는다)", () => {
+    expect(resolveTargetScope(["node", "x", "--force", OVERWRITE_ACK_FLAG])).toEqual({
+      ok: true,
+      scope: "all",
+    });
+  });
+
+  it("(4) --only-null-bjd = bjd_code 가 빈 단지만", () => {
+    expect(resolveTargetScope(["node", "x", "--only-null-bjd"])).toEqual({
+      ok: true,
+      scope: "null-bjd",
+    });
+  });
+
+  it("(5) --force 와 --only-null-bjd 를 같이 주면 거부 — 뜻이 반대다", () => {
+    const r = resolveTargetScope(["node", "x", "--force", "--only-null-bjd", OVERWRITE_ACK_FLAG]);
+    expect(r.ok).toBe(false);
+  });
+
+  it("(6) 확인 플래그 이름이 위험의 정체를 말한다 — 지역 코드 이름 금지", () => {
+    // 이름이 `--i-know-jeonnam-gwangju` 면 "PR-E 로 코드가 정리됐으니 이제 안전" 오독을 부른다.
+    expect(OVERWRITE_ACK_FLAG).toBe("--i-know-overwrite-all");
+  });
+});
+
+describe("--force 게이트 배선 (세션546 H1)", () => {
+  const src = readFileSync(new URL("./reverse-geocode.mjs", import.meta.url), "utf8");
+
+  it("★ main 이 DB 를 잡기 전에 게이트한다 — resolveTargetScope 가 getSupabase 보다 앞", () => {
+    const gate = src.indexOf("const scoped = resolveTargetScope(process.argv);");
+    const db = src.indexOf("const sb = getSupabase();");
+    expect(gate).toBeGreaterThan(0);
+    expect(db).toBeGreaterThan(0);
+    expect(gate).toBeLessThan(db);
+    expect(src).toMatch(/if \(!scoped\.ok\) \{[\s\S]{0,120}?process\.exit\(1\);/);
+  });
+
+  it("★ 대상 쿼리가 scope 를 쓴다 — 옛 `if (!force) q = q.is(\"address\", null)` 로 되돌아가지 않았다", () => {
+    expect(src).toMatch(/if \(scope === "null-address"\) q = q\.is\("address", null\);/);
+    expect(src).toMatch(/else if \(scope === "null-bjd"\) q = q\.is\("bjd_code", null\);/);
+    expect(src).not.toMatch(/if \(!force\) q = q\.is\("address", null\);/);
+  });
+
+  it("★ collect-building-hub 가 --force 대신 --only-null-bjd 를 권한다", () => {
+    const bh = readFileSync(new URL("./collect-building-hub.mjs", import.meta.url), "utf8");
+    expect(bh).toContain("reverse-geocode.mjs --only-null-bjd");
+    expect(bh).not.toContain("reverse-geocode.mjs --force"); // 옛 권유 문구가 남아 있으면 red
+  });
+});
+
 // ── 전남광주통합특별시 (2026-07-01) — 세션545 ─────────────────
 describe("normalizeRegion — 통합 시도 분할 (세션545)", () => {
   it("통합 + 순천시 → 전남", () => {
@@ -133,7 +204,9 @@ describe("region 검증 배선 — 표준 17개가 아니면 쓰지 않는다 (�
 
   it("VALID_REGIONS 를 import 한다", () => {
     // ⚠️ 정규식 안에 import 문 모양을 쓰지 않는다 — `audit-declared-deps.mjs` 가 정규식 리터럴을
-    //    마스킹하지 않아 그 안의 경로를 **미선언 패키지로 오탐**해 CI 가 빨개진다(세션545 실측).
+    //    마스킹하지 않아 그 안의 경로를 **미선언 패키지로 오탐**해 CI 가 빨개졌다(세션545 실측).
+    //    세션546 M6 이 `_source-mask.mjs` 로 그 오탐을 막았지만, 문자열 분해로 읽는 이 방식이
+    //    여전히 더 명확해서 그대로 둔다(가드가 무엇을 검사하는지 눈으로 보인다).
     const importLine = src
       .split("\n")
       .find((l) => l.trimStart().startsWith("import {") && l.includes("_shared.mjs"));

@@ -145,15 +145,28 @@ export function budgetExceeded(startedAt, budgetMin, nowMs = Date.now()) {
  * `.order("updated_at")` 이 남으면 그게 1순위 정렬이 되어 `id > cursor` 필터가 다음
  * 페이지가 아닌 엉뚱한 행을 잘라낸다(행 유실). 정렬 의미(--limit 회차 분산)는 그대로 둔다.
  * 동률은 `id` 오름차순으로 갈라 회차마다 같은 순서가 나오게 한다.
+ *
+ * ⚠️ **시각으로 비교한다(세션546 M5).** 옛 판본은 문자열 사전순이었는데, 그건 모든 행이
+ * 같은 오프셋(`+00:00`/`Z`)으로 직렬화될 때만 시간순과 같다. 실측은 균일하지만 **코드가 그걸
+ * 단언하지 않았다** — `"2026-04-01T09:00:00+09:00"`(= 00:00Z)가 `"2026-04-01T00:00:00Z"` 보다
+ * 뒤로 밀려 "가장 오래된 단지부터" 라는 `--limit` 회차 분산의 전제가 조용히 깨진다.
+ * 파싱 실패(NaN)는 NULL 과 같이 **가장 앞**(= 한 번도 안 채워진 것으로 취급) — 값이 이상한
+ * 행을 뒤로 미뤄 영영 안 채우는 것보다 낫다.
  * @template {{ id: string, updated_at?: string | null }} T
  * @param {T[]} rows
  * @returns {T[]}
  */
 export function sortByUpdatedAtAsc(rows) {
+  /** @param {string | null | undefined} v */
+  const at = (v) => {
+    if (v == null || v === "") return -Infinity; // NULL = nullsFirst
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? -Infinity : t; // 파싱 실패도 앞으로
+  };
   return [...rows].sort((a, b) => {
-    const au = a.updated_at ?? "";
-    const bu = b.updated_at ?? "";
-    if (au !== bu) return au < bu ? -1 : 1; // "" (NULL) 이 가장 앞 = nullsFirst
+    const au = at(a.updated_at);
+    const bu = at(b.updated_at);
+    if (au !== bu) return au < bu ? -1 : 1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 }

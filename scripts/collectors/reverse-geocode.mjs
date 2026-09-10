@@ -8,9 +8,18 @@
  * lot_main/lot_sub: 지번 본번/부번 (건축HUB API 조회용)
  *
  * 사용법:
- *   node scripts/collectors/reverse-geocode.mjs              (Supabase UPDATE)
- *   node scripts/collectors/reverse-geocode.mjs --dry-run    (미리보기만)
- *   node scripts/collectors/reverse-geocode.mjs --force      (이미 주소 있어도 재수행)
+ *   node scripts/collectors/reverse-geocode.mjs                  (address 가 비어 있는 단지만)
+ *   node scripts/collectors/reverse-geocode.mjs --dry-run        (미리보기만)
+ *   node scripts/collectors/reverse-geocode.mjs --only-null-bjd  (bjd_code 가 비어 있는 단지만)
+ *
+ * ⛔ `--force` 는 **좌표 있는 전 단지**를 카카오 값으로 덮어쓴다(세션546 H1).
+ *   갱신 필드가 `region·gu·dong·address·road_address·bjd_code·lot_main·lot_sub`(+`district`)
+ *   전부라, 세션539~544 가 209곳에 손으로 박은 **`address`(정답 출처 표기)와 `district` 결정이
+ *   통째로 지워진다**. 되돌릴 길이 없다(다시 force 해도 카카오 값이 다시 박힌다).
+ *   위험의 정체는 **덮어쓰기 범위**이지 특정 코드값이 아니다 — 전남광주통합특별시 `12…` 는
+ *   2026-07-01 출범 이후 **새 정답 코드**이고 코드표·저장 데이터가 이미 그리로 옮겨졌다(PR-E).
+ *   비어 있는 bjd_code 를 채우는 게 목적이면 `--only-null-bjd` 를 쓴다.
+ *   그래도 전량 덮어써야 하면 `--force --i-know-overwrite-all` 로 **두 개를 함께** 준다.
  */
 import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown, recordCollectorRun, selectAll, resolveRegionName, VALID_REGIONS } from "./_shared.mjs";
 
@@ -21,6 +30,46 @@ const KAKAO_KEY = process.env.KAKAO_KEY;
 if (!KAKAO_KEY) { logError(PHASE, "KAKAO_KEY 환경변수 필요"); process.exit(1); }
 
 const DISTRICT_PATTERNS = /지구|구역|뉴타운|택지|단지|블록|BL$/;
+
+/** `--force`(전량 덮어쓰기)를 열려면 함께 줘야 하는 확인 플래그. */
+export const OVERWRITE_ACK_FLAG = "--i-know-overwrite-all";
+
+/**
+ * 인자로 대상 범위를 정하고 `--force` 를 게이트한다 (세션546 H1).
+ *
+ * ⚠️ 이름을 `--i-know-jeonnam-gwangju` 로 두지 않는다 — 위험의 정체가 전남·광주 코드가 아니라
+ * **전량 덮어쓰기**이기 때문. 이름이 근거를 잘못 말하면 다음 사람이 "PR-E 로 코드가 정리됐으니
+ * 이제 안전하다" 고 오독한다.
+ *
+ * ⚠️ 순수 함수로 뺀 이유 = main 을 돌리지 않고도 인자 조합을 시험하기 위해서다.
+ * @param {string[]} argv
+ * @returns {{ ok: true, scope: "null-address" | "null-bjd" | "all" } | { ok: false, reason: string }}
+ */
+export function resolveTargetScope(argv) {
+  const force = argv.includes("--force");
+  const onlyNullBjd = argv.includes("--only-null-bjd");
+  if (force && onlyNullBjd) {
+    return {
+      ok: false,
+      reason: "--force 와 --only-null-bjd 는 함께 못 쓴다 — 전량 덮어쓰기와 빈 칸 채우기 중 하나만 고르라.",
+    };
+  }
+  if (force) {
+    if (!argv.includes(OVERWRITE_ACK_FLAG)) {
+      return {
+        ok: false,
+        reason:
+          `--force 는 좌표 있는 **전 단지**의 region/gu/dong/address/road_address/bjd_code/lot 를 ` +
+          `카카오 값으로 덮어쓴다. 세션539~544 가 209곳에 박은 address 출처 표기·district 결정이 ` +
+          `되돌릴 수 없이 지워진다. bjd_code 를 채우려는 것이면 --only-null-bjd 를 쓰라. ` +
+          `그래도 전량 덮어써야 하면 ${OVERWRITE_ACK_FLAG} 를 함께 주라.`,
+      };
+    }
+    return { ok: true, scope: "all" };
+  }
+  if (onlyNullBjd) return { ok: true, scope: "null-bjd" };
+  return { ok: true, scope: "null-address" };
+}
 
 /**
  * Kakao 역지오코딩: 좌표→행정구역
@@ -71,7 +120,16 @@ async function coordToAddress(lat, lng) {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
-  const force = process.argv.includes("--force");
+  // ⚠️ DB 에 손대기 전에(=getSupabase 앞에) 게이트한다 — 세션546 H1.
+  const scoped = resolveTargetScope(process.argv);
+  if (!scoped.ok) {
+    logError(PHASE, scoped.reason);
+    process.exit(1);
+  }
+  const scope = scoped.scope;
+  if (scope === "all") {
+    log(PHASE, "⚠️ --force: 좌표 있는 전 단지를 카카오 값으로 덮어쓴다(손으로 박은 address·district 소실).");
+  }
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   // 세션 504: 매일·매주 도는데 collector_runs 행이 0개라 감시가 이 수집기를 못 봤다.
@@ -80,7 +138,9 @@ async function main() {
   const sb = getSupabase();
   const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 344: graceful shutdown
 
-  // 좌표 있는 단지 조회 (address가 없거나 --force)
+  // 좌표 있는 단지 조회 — 범위는 위 `resolveTargetScope` 가 정한다.
+  //   null-address(기본) = address 가 빈 단지 / null-bjd = bjd_code 가 빈 단지 / all = 전량(--force)
+  // ⚠️ 대상 선정은 **쿼리**에서, 17지역 검증은 **응답 처리**에서 한다(세션545 VALID_REGIONS).
   // 세션534: 무정렬 OFFSET → 고유키(id) 커서 (unordered-pagination-loses-rows.md §1).
   // WHERE 필터(.not lat·.not lng, 선택적 .is address null)는 콜백에 그대로 유지.
   // selectAll 은 error 시 throw — 옛 throw 시맨틱과 동일.
@@ -92,7 +152,8 @@ async function main() {
           .select("id, name, dong, gu, region, lat, lng, address")
           .not("lat", "is", null)
           .not("lng", "is", null);
-        if (!force) q = q.is("address", null);
+        if (scope === "null-address") q = q.is("address", null);
+        else if (scope === "null-bjd") q = q.is("bjd_code", null);
         return q;
       },
       sb,
@@ -102,7 +163,7 @@ async function main() {
 
   log(PHASE, `대상: ${apts.length}건`);
   if (apts.length === 0) {
-    log(PHASE, "모든 단지에 주소 있음");
+    log(PHASE, scope === "null-bjd" ? "모든 단지에 법정동코드 있음" : "모든 단지에 주소 있음");
     // 할 일이 0건이어도 기록은 남긴다 — 안 남기면 "돌았는데 할 일이 없었다" 와
     // "아예 안 돌았다" 가 구분되지 않아 미발화 감시가 무력해진다(세션 503 실거래 사고).
     await recordCollectorRun(PHASE, {

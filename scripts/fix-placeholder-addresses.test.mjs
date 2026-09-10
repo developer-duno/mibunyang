@@ -34,6 +34,10 @@ import {
   classify,
   buildRefitUpdates,
   groupSharedAddresses,
+  groupSharedCoords,
+  hasDistinctProjects,
+  coordKey,
+  COORD_KEY_DIGITS,
   coreName,
   findTruePlaceholders,
   inSafeWindow,
@@ -55,6 +59,8 @@ import {
   PLANNED_POI_RE,
   APPLY_TIERS,
   INFRA_KAKAO_COLUMNS,
+  ID_CHUNK,
+  chunkIds,
 } from "./fix-placeholder-addresses.mjs";
 
 /**
@@ -535,6 +541,79 @@ describe("groupSharedAddresses — 후보 풀", () => {
     const { groups, candidates } = groupSharedAddresses(apts);
     expect(groups.size).toBe(1);
     expect(candidates.map((x) => x.id).sort()).toEqual(["a", "b"]);
+  });
+});
+
+// ── 좌표 공유 그룹 (세션546 M7) ────────────────────────────────
+//
+// 실측 사례: ah-2026910189(A7BL, 북구 월출동)·ah-2026910190(A8BL, 장성군 진원면) 은
+// **주소가 서로 달라** 옛 후보 풀(주소 공유)에 0건이었고 "진짜 자리표시" 집계에서도 빠졌다.
+// 뮤테이션: main 의 좌표 그룹 합집합을 지우거나 `groupSharedCoords` 를 빈 결과로 되돌리면 red.
+describe("groupSharedCoords — 주소는 다른데 좌표만 같은 그룹", () => {
+  const P = (/** @type {any} */ o) => ({ address: null, ...o });
+
+  it("★ 주소가 달라도 소수 5자리 좌표가 같고 블록이 다르면 후보 (실측 A7BL·A8BL 꼴)", () => {
+    const apts = [
+      P({ id: "ah-2026910189", name: "광주 첨단제일풍경채(A7BL)", address: "광주 북구 월출동 1", lat: 35.2, lng: 126.8 }),
+      P({ id: "ah-2026910190", name: "광주 첨단제일풍경채(A8BL)", address: "전남 장성군 진원면 2", lat: 35.2, lng: 126.8 }),
+    ];
+    const { groups, candidates } = groupSharedCoords(apts);
+    expect(groups.size).toBe(1);
+    expect(candidates.map((x) => x.id).sort()).toEqual(["ah-2026910189", "ah-2026910190"]);
+  });
+
+  it("★ 다른 프로젝트가 같은 좌표를 쓰면 후보 (구청 한 점에 겹친 꼴)", () => {
+    const apts = [
+      P({ id: "1", name: "힐스테이트 몬테로이", lat: 37.234561, lng: 127.199991 }),
+      P({ id: "2", name: "에버랜드역 칸타빌", lat: 37.234561, lng: 127.199991 }),
+    ];
+    expect(groupSharedCoords(apts).candidates.map((x) => x.id).sort()).toEqual(["1", "2"]);
+  });
+
+  it("★ 소수 5자리에서 좌표가 다르면 미포함", () => {
+    const apts = [
+      P({ id: "1", name: "가나 아파트", lat: 37.20001, lng: 127.0 }),
+      P({ id: "2", name: "다라 아파트", lat: 37.20002, lng: 127.0 }),
+    ];
+    expect(groupSharedCoords(apts).groups.size).toBe(0);
+  });
+
+  it("★ 같은 이름의 회차 분리는 미포함 — 같은 좌표를 쓰는 게 정당하다(기존 주소 규칙 소관)", () => {
+    const apts = [
+      P({ id: "1", name: "평택지제역자이 무순위 1차", lat: 37.0, lng: 127.0 }),
+      P({ id: "2", name: "평택지제역자이 무순위 2차", lat: 37.0, lng: 127.0 }),
+    ];
+    expect(groupSharedCoords(apts).candidates).toEqual([]);
+  });
+
+  it("좌표가 없거나 혼자면 미포함", () => {
+    const apts = [
+      P({ id: "1", name: "가나", lat: null, lng: null }),
+      P({ id: "2", name: "다라", lat: null, lng: null }),
+      P({ id: "3", name: "마바", lat: 37.5, lng: 127.0 }),
+    ];
+    expect(groupSharedCoords(apts).groups.size).toBe(0);
+  });
+
+  it("coordKey — 자릿수 상수를 쓰고, 숫자가 아니면 null", () => {
+    expect(COORD_KEY_DIGITS).toBe(5);
+    expect(coordKey(37.1234567, 127.7654321)).toBe("37.12346,127.76543");
+    expect(coordKey(null, 127)).toBe(null);
+    expect(coordKey(37, undefined)).toBe(null);
+    expect(coordKey("abc", 127)).toBe(null);
+  });
+
+  it("hasDistinctProjects — 이름 2종·블록 충돌은 참, 완전 동명은 거짓", () => {
+    expect(hasDistinctProjects([{ name: "가나" }, { name: "다라" }])).toBe(true);
+    expect(hasDistinctProjects([{ name: "가나(A7BL)" }, { name: "가나(A8BL)" }])).toBe(true);
+    expect(hasDistinctProjects([{ name: "가나" }, { name: "가나" }])).toBe(false);
+  });
+
+  it("★ 배선 — main 이 두 풀의 합집합을 targets 로 쓴다 (좌표 그룹만 만들고 안 쓰면 red)", () => {
+    expect(SRC).toMatch(/groupSharedCoords\(apts\)/);
+    expect(SRC).toMatch(/for \(const a of coordCandidates\) byId\.set\(String\(a\.id\), a\);/);
+    expect(SRC).toMatch(/let targets = allCandidates\.slice\(\)/);
+    expect(SRC).not.toMatch(/let targets = candidates\.slice\(\)/); // 옛 주소 전용 풀로 되돌아가지 않았다
   });
 });
 
@@ -1370,8 +1449,11 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
     expect(SRC).not.toMatch(/const abs = resolve\(ROOT, path\);/);
   });
 
-  it("★ fetchCoordRows 는 항상 300씩 자른다 (F9)", () => {
-    expect(SRC).toMatch(/async function fetchCoordRows\(sb, ids\) \{\s*const chunk = 300;/);
+  it("★ fetchCoordRows 는 조건 없이 chunkIds 로 자른다 (F9 · 세션546 M3)", () => {
+    // 옛 판본은 `const chunk = 300;` 이었다. 300 도 근거 없는 값이라 150(ID_CHUNK)으로 통일하면서
+    // **분기 없이** 자른다는 성질만 잠근다(값 자체는 아래 ID_CHUNK 앵커가 지킨다).
+    expect(SRC).toMatch(/async function fetchCoordRows\(sb, ids\) \{[\s\S]{0,120}?for \(const part of chunkIds\(ids\)\) \{/);
+    expect(SRC).not.toMatch(/const chunk = ids\.length > 900/); // 옛 refit 분기로 되돌아가지 않았다
   });
 
   it("★ 미리보기가 apply 행을 거리 내림차순으로 **전부** 찍는다 (F4)", () => {
@@ -1381,5 +1463,45 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
     expect(SRC).toMatch(/for \(const e of applySorted\) \{/);
     // 잘라 보여주면 검토가 반쪽이 된다 — slice(0, 30) 로 되돌아가지 않았다
     expect(SRC).not.toMatch(/plan\.apply\.slice\(0, 30\)/);
+  });
+});
+
+// ── ID_CHUNK — PostgREST URL 길이 (세션546 M3) ──────────────────
+//
+// 조회는 URL 로 나간다. id 목록이 길면 서버가 조용히 거절하고, 그 행은 `missing` 으로 분류돼
+// **반영 대상에서 빠진다**. 옛 값은 두 경로가 서로 달랐다(300 / `>900?300:전량`).
+describe("ID_CHUNK · chunkIds", () => {
+  /** URL 에 실리는 대략 길이 — id 1건 + 구분자. `ah-2026910127`(13자) 기준 넉넉하게 */
+  const BYTES_PER_ID = 16;
+  /** PostgREST 가 받아 주는 URL 대략 상한 */
+  const URL_BUDGET = 8 * 1024;
+
+  it("한 청크가 URL 예산의 절반을 넘지 않는다 — 값을 크게 되돌리면 red", () => {
+    // ⚠️ 앵커는 티어 값이 아니라 **관측치(예산·id 길이)** 다. 900(≈14KB)·300(≈4.8KB) 로
+    // 되돌리면 각각 예산 초과·절반 초과로 잡힌다.
+    expect(ID_CHUNK * BYTES_PER_ID).toBeLessThan(URL_BUDGET / 2);
+    expect(ID_CHUNK).toBeGreaterThanOrEqual(100); // 너무 잘게 쪼개면 요청 수가 폭증한다
+  });
+
+  it("400건이면 3청크 (150·150·100) — 마지막 청크가 잘리지 않는다", () => {
+    const ids = Array.from({ length: 400 }, (_, i) => `ah-${1000000 + i}`);
+    const parts = chunkIds(ids);
+    expect(parts.map((p) => p.length)).toEqual([150, 150, 100]);
+    expect(parts.flat()).toEqual(ids); // 전량 보존
+  });
+
+  it("경계값 — 0건·정확히 한 청크·한 청크+1", () => {
+    const mk = (/** @type {number} */ n) => Array.from({ length: n }, (_, i) => `x${i}`);
+    expect(chunkIds(mk(0))).toEqual([]);
+    expect(chunkIds(mk(ID_CHUNK)).map((p) => p.length)).toEqual([ID_CHUNK]);
+    expect(chunkIds(mk(ID_CHUNK + 1)).map((p) => p.length)).toEqual([ID_CHUNK, 1]);
+  });
+
+  it("★ 두 조회 경로가 **같은** 헬퍼를 쓴다 — 한쪽만 고쳐지는 드리프트 차단", () => {
+    // `--apply-from` 전제 검사(fetchCoordRows)와 `--refit-fields` 두 곳.
+    const uses = SRC.match(/for \(const part of chunkIds\(ids\)\) \{/g) ?? [];
+    expect(uses).toHaveLength(2);
+    // 손으로 자르는 옛 꼴이 남아 있지 않다
+    expect(SRC).not.toMatch(/ids\.slice\(i, i \+ chunk\)/);
   });
 });

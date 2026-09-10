@@ -83,6 +83,56 @@ describe("extractBareImports — 외부 패키지만 뽑는다", () => {
   });
 });
 
+// ⚠️ 세션546 M6 — 실측 오탐 정정. 소스를 정규식으로 훑는 가드의 단골 사각:
+// 정규식·문자열 **리터럴 안**의 import 꼴 텍스트가 진짜 import 로 읽힌다.
+// 처방은 `_source-mask.mjs`(구조는 마스크 사본에서, 텍스트는 원본에서).
+// 뮤테이션: `extractBareImports` 의 `maskedSource` 를 `stripComments` 로 되돌리면 (a)(b)(d) red.
+describe("extractBareImports — 리터럴 마스킹 (세션546)", () => {
+  it("(a) 정규식 리터럴 안의 from \"...\" 는 import 가 아니다", () => {
+    const src = String.raw`const RE = /import .* from "\.\/_shared\.mjs"/;`;
+    expect([...extractBareImports(src)]).toEqual([]);
+  });
+
+  it("(b) 문자열 리터럴 안의 import 문은 import 가 아니다", () => {
+    const src = `const msg = 'import ghost from "ghost-pkg";';\nconst t = \`require("tpl-pkg")\`;`;
+    expect([...extractBareImports(src)]).toEqual([]);
+  });
+
+  it("(c) 마스킹을 넣어도 진짜 import 는 그대로 잡힌다", () => {
+    const src = [
+      String.raw`const RE = /from "\.\/_shared\.mjs"/;`,
+      `import real from "js-yaml";`,
+      `const m = await import("unzipper");`,
+      `import { createClient } from "@supabase/supabase-js";`,
+    ].join("\n");
+    expect([...extractBareImports(src)].sort()).toEqual([
+      "@supabase/supabase-js",
+      "js-yaml",
+      "unzipper",
+    ]);
+  });
+
+  it("(d) 세션545 실제 오탐 문자열 — 배선 grep 가드의 정규식", () => {
+    // `_selectall-keycol-coverage` 류 배선 가드가 쓰는 꼴. 마스킹 전에는 `\.\` 가
+    // "미선언 패키지"로 잡혀 audit 이 exit 1 을 냈다.
+    const src = [
+      `import { readFileSync } from "node:fs";`,
+      String.raw`const WIRED = /selectAll\([\s\S]*?from "\.\/_shared\.mjs"[\s\S]*?"id"\)/;`,
+      String.raw`const IMPORTS = /^import .+ from ["'](.+)["'];$/gm;`,
+    ].join("\n");
+    expect([...extractBareImports(src)]).toEqual([]);
+  });
+
+  it("(e) 별-슬래시-별 Accept 헤더 뒤 코드가 살아 있다 — 스트리퍼가 코드를 먹지 않는다", () => {
+    const src = [
+      `const H = { Accept: "application/json, text/plain, */*" };`,
+      `/** @type {any} */`,
+      `import yaml from "js-yaml";`,
+    ].join("\n");
+    expect([...extractBareImports(src)]).toEqual(["js-yaml"]);
+  });
+});
+
 describe("findUndeclared", () => {
   it("선언되지 않은 것만 정렬해 돌려준다", () => {
     expect(findUndeclared(["js-yaml", "vitest", "unzipper"], ["vitest"])).toEqual([

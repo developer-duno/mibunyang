@@ -31,7 +31,10 @@
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  *
  * 전제조건:
- *   reverse-geocode.mjs --force 실행 후 bjd_code가 채워져 있어야 함
+ *   reverse-geocode.mjs --only-null-bjd 실행 후 bjd_code가 채워져 있어야 함
+ *   ⛔ `--force` 를 쓰지 말 것 — 좌표 있는 **전 단지**의 region/gu/dong/address/road_address/
+ *      bjd_code/lot 를 카카오 값으로 덮어써, 세션539~544 가 209곳에 손으로 박은 address 출처
+ *      표기와 district 결정을 되돌릴 수 없이 지운다(세션546 H1).
  */
 import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota, recordCollectorRun, selectAll } from "./_shared.mjs";
 import { REQUEST_DELAY } from "./_molit-api.mjs";
@@ -174,7 +177,9 @@ async function main() {
     .select("id", { count: "exact", head: true })
     .not("bjd_code", "is", null);
   if (cntErr || !count || count === 0) {
-    logError(PHASE, `bjd_code가 채워진 단지 0건. reverse-geocode.mjs --force를 먼저 실행하세요.`);
+    // ⛔ `--force` 를 권하지 않는다 — 전 단지를 카카오 값으로 덮어써 손으로 박은
+    //    address 출처 표기·district 결정이 지워진다(세션546 H1). 빈 칸만 채우는 쪽을 권한다.
+    logError(PHASE, `bjd_code가 채워진 단지 0건. reverse-geocode.mjs --only-null-bjd를 먼저 실행하세요 (--force 금지: 전 단지 덮어쓰기).`);
     process.exit(1);
   }
 
