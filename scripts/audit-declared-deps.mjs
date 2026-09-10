@@ -16,7 +16,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { builtinModules } from "node:module";
-import { stripComments } from "./audit-orphan-collectors.mjs";
+import { maskedSource } from "./_source-mask.mjs";
 
 const SCRIPTS_DIR = "scripts";
 const PKG = "package.json";
@@ -61,19 +61,31 @@ const IMPORT_PATTERNS = [
  *
  * ⚠️ 주석을 먼저 걷어낸다 — 주석에 적힌 import 가 "실제로 쓴다"는 증거가 되면
  * 안 되고(가짜 양성), 반대로 주석 처리된 줄 때문에 미선언이 가려져도 안 된다.
- * (`audit-orphan-collectors.mjs` stripComments 재사용)
+ *
+ * ⚠️ **정규식·문자열 리터럴도 마스킹한다(세션546 M6 — 실측 오탐 정정)**. 테스트 파일의
+ * 정규식 리터럴 `/… from "\.\/_shared\.mjs"/` 를 import 로 읽어 `\.\` 를 "미선언 패키지"로
+ * 보고 exit 1 을 낸 적이 있다(세션545 — 그때는 테스트 쪽을 우회해 넘겼다).
+ * `maskedSource` 는 리터럴의 **내용만** 공백으로 덮고 길이·구분자를 보존하므로,
+ * **구조(어디가 import 인가)는 마스크 사본에서, 지정자 텍스트는 원본에서** 읽는다.
+ * 마스크 사본에서 패턴을 찾으면 정규식·문자열 안의 가짜 import 는 애초에 매치되지 않는다.
  *
  * @param {string} text
  * @returns {Set<string>}
  */
 export function extractBareImports(text) {
-  const src = stripComments(text);
+  const masked = maskedSource(text);
   /** @type {Set<string>} */
   const out = new Set();
   /** @type {string[]} */
   const specifiers = [];
   for (const re of IMPORT_PATTERNS) {
-    for (const m of src.matchAll(re)) specifiers.push(m[1]);
+    for (const m of masked.matchAll(re)) {
+      // 마스크 사본에서는 지정자 내용이 공백이다 — 같은 인덱스를 원본에 대입해 실제 이름을 읽는다.
+      const quoteAt = m[0].search(/["']/);
+      if (quoteAt === -1) continue;
+      const base = m.index ?? 0;
+      specifiers.push(text.slice(base + quoteAt + 1, base + m[0].length - 1));
+    }
   }
 
   for (const spec of specifiers) {

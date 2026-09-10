@@ -699,10 +699,14 @@ export async function selectAll(queryFn, sb = null, keyCol = null) {
       if (error) throw new Error(`selectAll 조회 실패: ${error.message}`);
       if (!data || data.length === 0) break;
       all.push(...data);
-      if (data.length < PAGE) break;
+      // ⚠️ 커서 계산·검사는 `data.length < PAGE` **앞**이어야 한다(세션546 M1).
+      // 뒤에 두면 키가 select 에 없어도 **1,000행 미만 표에서는 무증상**이라,
+      // 그 표가 1,001행이 되는 날 처음 죽는다(정적 가드는 3번째 인자만 보므로
+      // select 리터럴에서 키를 지우는 편집을 못 막는다).
       cursor = data[data.length - 1][keyCol];
       // 키가 select 에 없으면 조용히 도는 대신 즉시 실패(진단 가능).
       if (cursor == null) throw new Error(`selectAll 커서 실패: ${keyCol} 컬럼이 select에 없음`);
+      if (data.length < PAGE) break;
     }
   } else {
     // 기존 offset 모드 — 한 줄도 안 바뀜 (회귀 0).

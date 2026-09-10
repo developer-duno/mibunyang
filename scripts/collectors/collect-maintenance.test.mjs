@@ -495,6 +495,37 @@ describe("sortByUpdatedAtAsc — updated_at 오래된 순 (NULL 먼저)", () => 
   it("빈 배열도 안전", () => {
     expect(sortByUpdatedAtAsc([])).toEqual([]);
   });
+
+  // ⚠️ 세션546 M5 — 문자열 사전순으로 되돌리면 red.
+  // `+09:00` 표기는 같은 순간을 다른 글자로 적는다: "2026-04-01T09:00:00+09:00" == "2026-04-01T00:00:00Z".
+  // 사전순은 "0…" < "2026-04-01T09…" 라 **더 뒤로** 밀어 "오래된 순" 전제를 깬다.
+  it("★ 오프셋이 섞여도 실제 시각으로 정렬한다 (문자열 사전순이면 red)", () => {
+    const rows = [
+      { id: "kst_later", updated_at: "2026-04-01T18:00:00+09:00" }, // = 09:00Z
+      { id: "utc_early", updated_at: "2026-04-01T03:00:00Z" },
+      { id: "kst_early", updated_at: "2026-04-01T09:00:00+09:00" }, // = 00:00Z ← 가장 오래됨
+    ];
+    expect(sortByUpdatedAtAsc(rows).map((r) => r.id)).toEqual(["kst_early", "utc_early", "kst_later"]);
+  });
+
+  it("★ 같은 순간을 다른 표기로 적으면 동률 — id 로 갈린다", () => {
+    const rows = [
+      { id: "b", updated_at: "2026-04-01T09:00:00+09:00" },
+      { id: "a", updated_at: "2026-04-01T00:00:00Z" },
+    ];
+    expect(sortByUpdatedAtAsc(rows).map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("파싱 안 되는 값은 NULL 과 같이 가장 앞 — 영영 안 채워지는 행을 만들지 않는다", () => {
+    const rows = [
+      { id: "ok", updated_at: "2026-04-01T00:00:00Z" },
+      { id: "junk", updated_at: "알 수 없음" },
+      { id: "nul", updated_at: null },
+    ];
+    const ids = sortByUpdatedAtAsc(rows).map((r) => r.id);
+    expect(ids.slice(0, 2).sort()).toEqual(["junk", "nul"]); // 둘 다 앞(동률 → id 순)
+    expect(ids[2]).toBe("ok");
+  });
 });
 
 // ── 대상 조회는 고유키(id) 커서 (세션544) ──
