@@ -12,7 +12,7 @@
  *   node scripts/collectors/reverse-geocode.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/reverse-geocode.mjs --force      (이미 주소 있어도 재수행)
  */
-import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown, recordCollectorRun, selectAll, resolveRegionName } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown, recordCollectorRun, selectAll, resolveRegionName, VALID_REGIONS } from "./_shared.mjs";
 
 loadEnv();
 
@@ -115,6 +115,8 @@ async function main() {
   }
 
   let updated = 0, failed = 0;
+  // 카카오가 17지역 밖 시도명을 줘 건너뛴 수 (세션545 — 실패가 아니라 skip 이다)
+  let invalidRegion = 0;
 
   for (let i = 0; i < apts.length; i++) {
     if (isInterrupted()) break;  // 세션 344: graceful shutdown
@@ -141,6 +143,16 @@ async function main() {
 
       // region 정규화 (예: "충청북도" → "충북")
       region = normalizeRegion(region, gu);
+
+      // ⚠️ `normalizeRegion` 은 못 가르면 **원문을 그대로 돌려준다**(`?? name`). 그 값을 그대로
+      //    쓰면 `apartments.region` 에 17지역 밖 문자열이 박힌다 — 실제로 카카오가 주는
+      //    "전남광주통합특별시" 가 6곳에 그렇게 들어갔고(세션545 정정), 그 행은 화면의 지역
+      //    필터 어디에도 안 잡히고 지역 지표 조인도 끊긴다. 표준 17개가 아니면 **쓰지 않는다**.
+      if (!VALID_REGIONS.includes(region)) {
+        logError(PHASE, `region 미확정 — 건너뜀: ${apt.name} (카카오 "${region}", gu="${gu ?? ""}")`);
+        invalidRegion++;
+        continue;
+      }
 
       // 기존 dong에 특수 지역명이 있으면 district로 이동
       let district = null;
@@ -184,7 +196,7 @@ async function main() {
   // 중단(SIGTERM)으로 루프를 끊고 나온 경우는 partial — 성공으로 찍으면 잘린 회차가
   // 정상 완주로 보여 다음 회차가 이어받아야 할 신호를 지운다.
   await recordCollectorRun(PHASE, {
-    ok: updated, fail: failed, skip: 0,
+    ok: updated, fail: failed, skip: invalidRegion,
     elapsed: ((Date.now() - startedMs) / 1000).toFixed(1),
     startedAt,
     status: isInterrupted() ? "partial" : (failed > 0 ? "failure" : "success"),

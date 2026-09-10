@@ -237,3 +237,29 @@ describe("전남광주통합특별시 분할 (세션545)", () => {
     expect(pickParentCities(rows).size).toBe(0);
   });
 });
+
+// ── 부분 매칭 모호성 (세션545 적대검증) ──────────────────────
+//
+// 처음엔 `/통합특별시/` 로 그 이름 하나만 막았다. 적대검증이 **표기가 한 글자만 달라도**
+// 빠져나가는 것을 재현했다: "전남광주특별시" 는 그 정규식에 안 걸리고, 부분 매칭 루프에서
+// `.includes("광주")` 가 먼저 참이 되어 **27 시군구 전부가 광주**로 굳는다.
+// 처방은 이름을 열거해 막는 게 아니라 **둘 이상 걸리면 포기**하는 것이다.
+describe("resolveRegion — 부분 매칭이 모호하면 판정하지 않는다 (세션545)", () => {
+  it("전남·광주가 동시에 걸리는 이름은 표기가 달라도 전부 null", () => {
+    for (const nm of ["전남광주통합특별시", "전남광주특별시", "전남광주통합시", "광주전남통합특별시", "전남광주자치시"]) {
+      expect(resolveRegion(nm)).toBeNull();
+    }
+  });
+
+  it("한 곳만 걸리는 이름은 그대로 판정한다 (회귀 0)", () => {
+    expect(resolveRegion("서울시")).toBe("서울");
+    expect(resolveRegion("경기도")).toBe("경기");
+    expect(resolveRegion("전라남도")).toBe("전남");
+    expect(resolveRegion("광주광역시")).toBe("광주");
+  });
+
+  it("아무것도 안 걸리면 null", () => {
+    expect(resolveRegion("미지의땅")).toBeNull();
+    expect(resolveRegion(null)).toBeNull();
+  });
+});

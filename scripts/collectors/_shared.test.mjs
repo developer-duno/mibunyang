@@ -1081,3 +1081,24 @@ describe("resolveRegionName (통합 시도 분할)", () => {
     expect(VALID_REGIONS).not.toContain("전남광주통합특별시");
   });
 });
+
+// ── getLawdCd 프로토타입 키 (세션545 적대검증) ────────────────
+//
+// `regionMap?.[gu]` 는 gu 가 "constructor"·"toString" 같은 프로토타입 키일 때 **함수를 돌려준다**.
+// 그 값이 LAWD_CD 로 URL 에 실리면 무슨 일이 벌어질지 알 수 없다. 자매 `resolveRegionName` 은
+// 이미 hasOwnProperty 로 막아 둔 자리라 여기만 뚫려 있었다.
+describe("getLawdCd — 프로토타입 키 방어 (세션545)", () => {
+  it("constructor·toString·valueOf 는 코드가 아니라 시도 폴백", () => {
+    for (const k of ["constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      const v = getLawdCd("전남", k);
+      expect(typeof v === "string" || v === null).toBe(true);
+      expect(typeof v).not.toBe("function");
+    }
+  });
+
+  it("실재 시군구는 그대로 (회귀 0)", () => {
+    expect(getLawdCd("전남", "순천시")).toBe("12150");
+    expect(getLawdCd("광주", "북구")).toBe("12300");
+    expect(getLawdCd("경기", "화성시")).toBe("41591");
+  });
+});
