@@ -91,3 +91,34 @@ describe("apartments 고유키(id) 커서 페이징 가드", () => {
     expect(/\.from\("apartments"\)[\s\S]{0,400}?\.range\(/.test(src)).toBe(false);
   });
 });
+
+// ── 전남광주통합특별시 (2026-07-01) — 세션545 ─────────────────
+describe("normalizeRegion — 통합 시도 분할 (세션545)", () => {
+  it("통합 + 순천시 → 전남", () => {
+    expect(normalizeRegion("전남광주통합특별시", "순천시")).toBe("전남");
+  });
+
+  it("통합 + 북구 → 광주", () => {
+    expect(normalizeRegion("전남광주통합특별시", "북구")).toBe("광주");
+  });
+
+  it("gu 가 없으면 원문 그대로 — 조용히 한쪽으로 붙이지 않는다", () => {
+    expect(normalizeRegion("전남광주통합특별시")).toBe("전남광주통합특별시");
+    expect(normalizeRegion("전남광주통합특별시", null)).toBe("전남광주통합특별시");
+  });
+
+  it("기존 시도명은 gu 를 넘겨도 회귀 없음", () => {
+    expect(normalizeRegion("전라남도", "순천시")).toBe("전남");
+    expect(normalizeRegion("경기도", "광주시")).toBe("경기");
+  });
+
+  // ⚠️ 배선 가드 — 위 단위 테스트는 함수만 본다. main() 호출부가 `normalizeRegion(region)` 으로
+  // 되돌아가면(gu 를 안 넘기면) 함수는 멀쩡한데 통합 시도 행에 원문 "전남광주통합특별시" 가 다시
+  // 박힌다(세션545 실측: 6곳). 오케스트레이터 뮤테이션 D 가 이 구간을 green 으로 통과시켜 추가.
+  // 좌변(`region =`)까지 고정해 선언부·주석·JSDoc 예시에는 매칭되지 않게 한다.
+  it("main() 이 gu 를 함께 넘긴다 — `region = normalizeRegion(region, gu)`", () => {
+    const src = readFileSync(new URL("./reverse-geocode.mjs", import.meta.url), "utf8");
+    expect(src).toMatch(/^\s*region = normalizeRegion\(region, gu\);/m);
+    expect(src).not.toMatch(/^\s*region = normalizeRegion\(region\);/m);
+  });
+});

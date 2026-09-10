@@ -19,7 +19,7 @@
 import {
   loadEnv, getSupabase, log, logError, createReporter,
   selectAll, upsertBatch, stringSimilarity,
-  recordApiQuota, recordCollectorRun, REGION_MAP,
+  recordApiQuota, recordCollectorRun, REGION_MAP, resolveRegionName,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -89,7 +89,23 @@ export function normName(s) {
 /** @param {string | null | undefined} addr @returns {string | null} */
 export function addrToRegion(addr) {
   if (!addr) return null;
-  const head = addr.trim().split(/\s+/)[0] || "";
+  const parts = addr.trim().split(/\s+/);
+  const head = parts[0] || "";
+  // 세션545: 통합 시도("전남광주통합특별시")는 시도명만으로 못 가른다 — 시군구(parts[1])로
+  // 광주/전남을 가르는 분할 헬퍼를 **가장 먼저** 태운다.
+  //
+  // ⚠️ 아래 긴 키 우선 순회에 맡기면 안 된다: 통합 이름은 `REGION_MAP` 에 없고
+  //    `head.startsWith("전남")` 이 참이라 **27 시군구가 전부 "전남"으로** 떨어진다.
+  //    그러면 청약홈이 새 시도명을 쓰기 시작하는 순간 광주 단지가 전부
+  //    `matchDetailToApt` 의 region 게이트에서 오차단된다(일정·평형이 통째로 안 붙는다).
+  const split = resolveRegionName(head, parts[1] ?? null);
+  if (split) return split;
+  // ⚠️ 헬퍼가 **못 가른 통합 시도**는 아래 순회에 넘기지 않는다(세션545 2차 리뷰):
+  //    `head.startsWith("전남")` 이 참이라 "전남" 이 나오는데, 그건 판정이 아니라 글자 우연이다.
+  //    둘째 토큰이 시군구가 아닌 주소(지구·블록)에서 광주 단지가 "전남" 으로 굳으면
+  //    `matchDetailToApt` 의 region 게이트가 그 단지를 통째로 거부한다.
+  //    null 을 주면 게이트를 건너뛰고 이름 유사도(≥0.85)만으로 판정한다 — 모른다고 말하는 쪽이 맞다.
+  if (/^전남광주통합/.test(head)) return null;
   // 정식명(예: "경기도")이 약칭(예: "경기")보다 먼저 매칭되도록 긴 키 우선 정렬
   const entries = Object.entries(REGION_MAP).sort((a, b) => b[0].length - a[0].length);
   for (const [full, short] of entries) {

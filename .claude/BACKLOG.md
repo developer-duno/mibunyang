@@ -647,11 +647,35 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   `collect-maintenance` 만 조회 안 `.order("updated_at")` 가 커서 키와 충돌 → 조회에서 빼고 `sortByUpdatedAtAsc`(NULL 먼저·동률 id)로
   클라이언트 재현(--limit 회차 분산 의미 유지). 라이브 5종(apartments·regions·transport·infra·applyhome_unit_supply) 커서=count=무키 —
   **지금은 새는 게 재현되지 않았다**(세션514 유실은 79만행 trades + 동시쓰기 조건). 근거는 "보장이 없다"쪽.
-- 🔴 **`reverse-geocode --force` 를 권하는 문구가 레포에 있고, 그 명령은 이제 전남·광주 105곳 `bjd_code` 를 되돌릴 수 없게 바꾼다** (세션544 마무리 적대검증 H1, 2026-09-10).
+- 🔴 **`reverse-geocode --force` 를 권하는 문구가 레포에 있고, 그 명령은 좌표 있는 전 단지의 주소·행정구역을 통째로 덮어쓴다** (세션544 마무리 적대검증 H1, 근거 교체 = 세션545 PR-E).
   `collect-building-hub.mjs:34`(주석)·`:177`(로그 "reverse-geocode.mjs --force를 먼저 실행하세요") ↔ `reverse-geocode.mjs:95` `if (!force) q = q.is("address", null)` = force 는 **전량**.
-  2026-07-01 전남광주통합특별시 출범 후 카카오가 전남·광주 좌표에 법정동코드 **`12…`** 를 돌려주므로(순천 `1215032028` 실측) 옛 `46…`·`29…` 가 조용히 교체 →
-  건축HUB(`slice(0,5)/(5,10)`)·학교알리미(`schools-neis:560`) 조회가 **에러 없이 0건**. 되돌릴 길 없음. **처방 = PR-D**(`docs/superpowers/specs/2026-09-10-selectall-guard-hardening-and-force-geocode.md` §1-4): `--only-null-bjd` 신설 + `--force` fail-close + 문구 교체.
+  갱신 필드가 `region·gu·dong·address·road_address·bjd_code·lot_main·lot_sub`(+`district`) 전부라 세션539~544 가 **209곳에 손으로 박은 `address`(정답 출처 표기)와 `district` 결정이 카카오 원문으로 지워진다**. 되돌릴 길 없음.
+  ⚠️ **옛 근거("카카오가 주는 `12…` 가 bjd 를 손상시킨다")는 폐기** — 2026-07-01 전남광주통합특별시 출범 이후 `12…` 가 **새 정답 코드**이고(순천 `1215032028` 실측), PR-E 가 코드표(`GU_LAWD_MAP`·`SIDO_CODE`·`REGION_LAWD_PREFIX`)와 저장된 `bjd_code` 93곳을 새 코드로 옮겼다. 즉 금지 이유는 **덮어쓰기 범위**이지 코드값이 아니다.
+  **처방 = PR-D**(`docs/superpowers/specs/2026-09-10-selectall-guard-hardening-and-force-geocode.md` §1-4): `--only-null-bjd` 신설 + `--force` fail-close(`--i-know-overwrite-all`) + 문구 교체.
   ⚠️ 그때까지 **누구도 `reverse-geocode --force` 를 실행하지 말 것.** 근본(학군 폴백 `getLawdCd`)은 별건.
+- 🔴 **PR-E 후속 — 전남·광주 백필**(세션545, 머지 뒤 별도 승인). 코드표만 바꿔도 **이미 빈 기간은 안 채워진다**:
+  ① 거래 백필(로컬 한국 IP) `node scripts/collectors/collect-trades.mjs --months=4 --only=<region>:<gu>` × 전남 7 시군(여수·순천·나주·광양·무안·장성·해남) + 광주 5구 → 이어서 `collect-trade-stats.yml` dispatch
+  ② `collect-population.yml` dispatch(07월 행 — `regions` 전남·광주 07-01 행이 0)
+  ③ `fix-placeholder-addresses.mjs --refit-fields --ids-file` 로 ah-2026910076·086·134 bjd 재정합(앞5가 충남·경남 코드라 재매핑 표 밖 — 도구가 "수동 refit 대상"으로 출력)
+  ④ 네이버 분양·관리비·어린이집은 다음 정기 회차가 자동 흡수 — **첫 회차 로그에서 전남·광주 건수 > 0 확인**이 완료 판정.
+- 🟡 **KOSIS 7 소비처 라벨 전환 감시** (세션545 PR-E §1-8 범위 밖). `market-stats`·`migration` 등 KOSIS 계열은 2026-09-06 실측에도 **"광주"·"전남" 분리 라벨**로 정상 응답한다.
+  KOSIS 가 `통합특별시` 라벨로 바꾸는 순간 **시도행을 양쪽에 배분**해야 하고(단순 매핑으로는 한쪽이 0), `C1_TO_REGION` 의 "12" 배제와 `mapC1` 5자리 분기가 그 첫 방어선이다.
+  감시 방법 = 수집 로그에 `통합특별시` 문자열이 뜨는지 + `regions` 광주·전남 행이 같은 회차에 동시에 갱신되는지. 뜨면 그 자리가 즉시 P0.
+- 🟡 **건축HUB 새 코드 응답의 `useQty` 가 50배** (세션545 실측 2026-09-10). 같은 건물을 옛 코드(46/29)로 부르면 `5,583`, 새 코드(12)로 부르면 `282,842`.
+  **집계 단위(㎾h vs Wh 등)가 바뀐 것인지 대상 범위가 바뀐 것인지 미확인** — 확인 전에는 10-15 회차 `collect-building-hub` 결과를 그대로 믿지 말 것. 확인 후 회차 진행.
+- 🟢 **중복 의심 `ah-2026910183`(순천금호어울림더파크2차, 09-07 seed)** — `ah-2026930022` 와 좌표 동일. 재매핑 도구가 **보고만** 한다(삭제는 별도 승인). 어느 쪽을 남길지 사장님 결정 필요.
+- 🟢 **버스정류장 정적 파일 다운로드 간헐 타임아웃**(세션545 관찰). `transport-tago.mjs` 의 20s 타임아웃이 20MB CSV 에 빠듯 — 실패 시 그 회차 전체가 "버스 수집 실패"(`null` 계약)라 영향이 크다. 상향 또는 재시도 검토.
+- 🟢 **monitor 가드 신설 후보 — "region×deal_month 거래 0건인데 API 는 >0"** (세션545). 이번 사고(전남 202606~ `trades` 0건)가 **3개월간 아무 알림도 안 냈다**:
+  `collector_runs` 는 success, 수집기도 "0건 수집" 을 정상으로 처리한다. 지역별 최근 3개월 거래 0건이면 그 지역 LAWD 로 API 를 1회 찔러 보고, API 가 >0 을 주면 경보.
+- 🟡 **호반써밋 첨단3지구 A7·A8블록(ah-2026910189·190)이 좌표를 공유한다 — A8 의 자리표시 의심** (세션545 2차 리뷰 중 실측).
+  둘의 `lat/lng` 가 **소수 13자리까지 동일**(35.2411705241485, 126.864718064904)인데 주소는 갈린다: A7 = "…북구 월출동"(광주),
+  A8 = "…**장성군 진원면**"(전남 장성군). 카카오는 그 좌표를 북구 월출동이라 답하므로 **A8 좌표가 A7 것을 복사한 자리표시**일 가능성이 높다.
+  둘 다 `bjd_code` NULL · `gu` 는 "첨단3지구"(쓰레기값) · `dong` 에 괄호 원문이 박혀 있다. PR-E 재매핑 (e) 는 **A7 만** 고치고 A8 은 손대지 않는다
+  (region "전남" 이 이미 맞는 값이라 덮으면 악화). 처방 = `fix-placeholder-addresses.mjs` 3출처 교차로 A8 좌표를 먼저 정한 뒤 gu(장성군)·bjd 재정합.
+- 🟡 **naver-presale 이 1,000곳만 보고 매칭하던 기간의 중복 ap-* 점검** (세션545 FIX 9 발견). Phase 0.5 가 `.range(0, 9999)` 단발이라 PostgREST max-rows 에
+  **1,000행에서 잘렸다**(2026-09-10 로그 "기존 아파트 1000건 로드" / 실제 3,044). apartments 가 1,000을 넘긴 시점부터 나머지 단지는 매칭 후보 밖이라
+  이미 있는 ah-* 옆에 ap-* 가 새로 생겼을 수 있다(오늘 신규 61곳 중 서울 49 등이 후보). PR-E 가 `selectAll(id)` 전량으로 고쳤으니 **이후 회차**는 정상 —
+  과거 생성분은 `naver_presale_no` 없는 ah-* 와 좌표 500m·이름 유사도 ≥0.85 로 짝을 찾아 dedupe 후보를 뽑는다(세션536 매칭 오염 차단 도구 답습).
 - 🟡 **PR-D 묶음 — 커서 가드 3층 보강 · refit 청크 150 · maintenance 정렬 Date.parse · 왕숙 refit** (세션544 마무리 적대검증 M1·M2·M3·M5·L2·L3, 스펙 `docs/superpowers/specs/2026-09-10-selectall-guard-hardening-and-force-geocode.md`).
   M1 `_shared.mjs:632` 커서 null 검사가 `break` 뒤라 키 없는 select 가 1,000행 미만에서 무증상 · M2 가드가 비고유 키(`"region"`)를 못 가름 · M3 `fix-placeholder-addresses.mjs:1303`
   `.in()` 900 문턱(8KB 한계, 300건이면 throw — 다음 대량 refit 에서 즉시) · M5 `collect-maintenance` 문자열 정렬이 오프셋 균일 전제 · L2 `MIN_TOTAL_CALLS` 60 vs 실측 66 · L3 3번째 인자 식별자 허용.

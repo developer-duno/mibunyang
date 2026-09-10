@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   mapRow, filterCandidates, findDuplicate, dedupeWithinBatch, geocodeAddr, parseAddress,
 } from "./collect-applyhome-seed.mjs";
+import { VALID_REGIONS } from "./_shared.mjs";
 
 /** @param {Record<string, unknown>} overrides */
 function makeRaw(overrides = {}) {
@@ -426,5 +427,55 @@ describe("지오코딩 배선 — 주소는 주소검색, 키워드는 게이트
   // 게이트를 우회하는 무검증 1위 채택이 되살아난 것이다(철자를 바꿔도 걸린다).
   it("★ 키워드(keyword.json)를 직접 부르지 않는다", () => {
     expect(SRC).not.toContain("keyword.json");
+  });
+});
+
+// ── 전남광주통합특별시 (2026-07-01) — 세션545 ─────────────────
+// 09-14 월요일 실모드 첫 회차부터 청약홈이 시도명을 새 이름으로 줄 수 있다.
+// 그때 AREA_CODE 폴백 없이도 맞게 붙는지 잠근다.
+describe("parseAddress — 통합 시도 분할 (세션545)", () => {
+  it("전남광주통합특별시 순천시 서면 → {전남, 순천시, 서면}", () => {
+    expect(parseAddress("전남광주통합특별시 순천시 서면")).toEqual({
+      region: "전남", gu: "순천시", dong: "서면",
+    });
+  });
+
+  it("전남광주통합특별시 북구 월출동 → 광주", () => {
+    expect(parseAddress("전남광주통합특별시 북구 월출동").region).toBe("광주");
+  });
+
+  it("기존 시도명은 회귀 없음", () => {
+    expect(parseAddress("전라남도 여수시 학동").region).toBe("전남");
+    expect(parseAddress("경기도 광주시 양벌동").region).toBe("경기");
+  });
+
+  // ⚠️ **폴백을 꺼뜨리지 않는 것**이 이 테스트의 목적이다.
+  //    청약홈 공급주소의 둘째 토큰은 시군구가 아닐 때가 잦다("첨단3지구"·"A7블록").
+  //    분할 헬퍼가 그런 토큰을 "전남" 으로 흘려보내면 region 이 **유효값처럼 보여서**
+  //    아래 mapRow 의 AREA_CODE_REGION 폴백(L130 `!VALID_REGIONS.includes(region)`)이
+  //    아예 발동하지 않는다 → 광주 단지가 전남으로 조용히 적재된다.
+  it("시군구가 아닌 둘째 토큰 → region 이 유효값이 아니어야 AREA_CODE 폴백이 산다", () => {
+    const parsed = parseAddress("전남광주통합특별시 첨단3지구 A7블록");
+    expect(VALID_REGIONS).not.toContain(parsed.region);
+  });
+
+  it("그 주소도 mapRow 는 SUBSCRPT_AREA_CODE 폴백으로 광주를 맞춘다", () => {
+    const row = mapRow(
+      makeRaw({
+        HSSPLY_ADRES: "전남광주통합특별시 첨단3지구 A7블록",
+        SUBSCRPT_AREA_CODE_NM: null,
+        SUBSCRPT_AREA_CODE: "의미없음",
+      }),
+    );
+    // AREA_CODE 도 못 알아보면 null 반환(=skip) — 조용한 오라벨보다 낫다.
+    expect(row).toBeNull();
+
+    const ok = mapRow(
+      makeRaw({
+        HSSPLY_ADRES: "전남광주통합특별시 첨단3지구 A7블록",
+        SUBSCRPT_AREA_CODE_NM: "광주광역시",
+      }),
+    );
+    expect(ok?.region).toBe("광주");
   });
 });

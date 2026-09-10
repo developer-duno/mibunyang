@@ -7,7 +7,7 @@
 
 | # | 자리 | 지금 코드 | 왜 위험한가 |
 |---|---|---|---|
-| **H1** | `scripts/collectors/collect-building-hub.mjs:34`(주석)·`:177`(로그) | `reverse-geocode.mjs --force 를 먼저 실행하세요` 를 **권한다** | `scripts/collectors/reverse-geocode.mjs:95` `if (!force) q = q.is("address", null);` → `--force` 는 **전량** 역지오코딩. 2026-07-01 전남광주통합특별시 출범 후 카카오가 전남·광주 좌표에 법정동코드 **`12…`**(순천 실측 `1215032028`)를 돌려주므로, 전남·광주 105곳의 `bjd_code`(옛 `46…`·`29…`)가 조용히 교체된다. `collect-building-hub.mjs:98-99`(`slice(0,5)`/`slice(5,10)`)·`schools-neis.mjs:560-563` 이 MOLIT·학교알리미가 모르는 코드를 던져 **에러 없이 0건**. 되돌릴 길 없음(다시 force 해도 `12…`). |
+| **H1** | `scripts/collectors/collect-building-hub.mjs:34`(주석)·`:177`(로그) | `reverse-geocode.mjs --force 를 먼저 실행하세요` 를 **권한다** | `scripts/collectors/reverse-geocode.mjs:95` `if (!force) q = q.is("address", null);` → `--force` 는 **좌표 있는 전 단지를 전량 덮어쓴다**. 갱신 필드는 `region·gu·dong·address·road_address·bjd_code·lot_main·lot_sub`(+`district`) 전부 — 즉 세션539~544 가 209곳에 손으로 박은 **`address`(정답 출처 표기)와 `district` 결정이 카카오 원문으로 통째로 지워진다**. 되돌릴 길 없음(다시 force 해도 카카오 값). ⚠️ **옛 근거("12 코드가 bjd 를 손상시킨다")는 PR-E 로 폐기** — 2026-07-01 전남광주통합특별시 출범 이후 `12…` 는 **새 정답 코드**이고(순천 실측 `1215032028`), 코드표·저장 데이터가 PR-E 에서 새 코드로 옮겨졌으므로 카카오가 주는 `12…` 는 손상이 아니라 정합이다. 금지 이유는 **덮어쓰기 범위**이지 코드값이 아니다. |
 | **M1** | `scripts/collectors/_shared.mjs:632-635` | `if (data.length < PAGE) break;` 가 `cursor = …[keyCol]; if (cursor == null) throw` **앞** | 키가 select 에 없어도 **1,000행 미만 표에선 무증상** — 그 표가 1,001행이 되는 날 수집기가 죽는다. 가드는 3번째 인자만 보므로 select 리터럴에서 키를 지우는 편집을 못 막는다. |
 | **M2** | `scripts/_selectall-keycol-coverage.test.mjs` `EMPTY_KEY` | 3번째 인자가 빈 값만 아니면 통과 | `"region"`·`"deal_month"` 같은 **비고유 키**로 `.gt(key, cursor)` 를 돌면 페이지 경계 동률 행이 에러 없이 사라진다(세션514 실측 `deal_month` 교집합 64/91) — 이 가드가 막으려던 바로 그 유실. |
 | **M3** | `scripts/fix-placeholder-addresses.mjs:1303` | `const chunk = ids.length > 900 ? 300 : Math.max(ids.length, 1);` | 같은 파일 `:1033` 이 이미 "근거 없이 굳은 값"이라 적어 둠. `calc-exclusive-ratio.mjs:58` 은 **PostgREST URL ~8KB** 근거로 150. `--refit-fields --ids-file=<300건>` 이면 URL ≈ 11KB → 조회 실패 throw. 세션540 209건은 ≈7.7KB 로 아슬하게 통과. 다음 대량 refit(보류 32곳 + 회색지대)에서 즉시 터진다. |
@@ -38,8 +38,9 @@ if (data.length < PAGE) break;
 ### 1-3. `fix-placeholder-addresses.mjs:1303` — `const chunk = 150;` (주석에 8KB 근거·`calc-exclusive-ratio` 선례). `:1033` 의 자백 문장은 "정정됨(세션545)" 으로 갱신. `--apply-from` 의 300 도 150 으로 통일(둘이 다르면 다음 사람이 헷갈린다). 테스트: 400건 ids 가짜로 `.in` 호출 청크 수 = 3.
 
 ### 1-4. H1 봉합 (텍스트 + 좁힌 플래그)
-- `collect-building-hub.mjs:34`·`:177`: "`reverse-geocode.mjs --force` 를 먼저" → "`reverse-geocode.mjs --only-null-bjd` 를 먼저 (⚠️ `--force` 는 전남·광주 105곳 bjd 를 `12…` 로 바꿔 되돌릴 수 없다 — 2026-07 개편)".
-- `reverse-geocode.mjs`: `--only-null-bjd` 추가(`bjd_code IS NULL` 만), `--force` 에는 시작 시 경고 로그 + `--i-know-jeonnam-gwangju` 동반 없으면 exit 1(fail-close). 테스트: 인자 조합 3종.
+- `collect-building-hub.mjs:34`·`:177`: "`reverse-geocode.mjs --force` 를 먼저" → "`reverse-geocode.mjs --only-null-bjd` 를 먼저 (⚠️ `--force` 는 좌표 있는 **전 단지**의 region/gu/dong/address/road_address/bjd/lot 를 카카오 값으로 덮어써 209곳 정정의 `address` 출처 표기·`district` 결정을 지운다)".
+- `reverse-geocode.mjs`: `--only-null-bjd` 추가(`bjd_code IS NULL` 만), `--force` 에는 시작 시 경고 로그 + `--i-know-overwrite-all` 동반 없으면 exit 1(fail-close). 테스트: 인자 조합 3종.
+- ⚠️ 플래그 이름을 `--i-know-jeonnam-gwangju` 로 두지 않는다 — 위험의 정체가 전남·광주 코드가 아니라 **전량 덮어쓰기**이기 때문(PR-E 로 근거 교체). 이름이 근거를 잘못 말하면 다음 사람이 "PR-E 로 코드가 정리됐으니 이제 안전하다" 고 오독한다.
 - 근본 처방(별건 후속): `schools-neis.mjs:560` 앞 2자리가 `REGION_LAWD_PREFIX` 집합 밖이면 `getLawdCd(region, gu)` 폴백. 이번 PR 범위 밖 — BACKLOG.
 
 ### 1-5. M5 — `sortByUpdatedAtAsc` 를 `Date.parse` 비교로(NaN=NULL 먼저, 동률 id). 픽스처에 `+09:00` 행 1건 추가 → 문자열 비교로 되돌리면 red.

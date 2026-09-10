@@ -25,6 +25,7 @@ import {
   dedupUpdateRows,
   parsePresaleCompletion,
   isCompletionYm,
+  buildCortarQueries,
 } from "./naver-presale.mjs";
 import { readFileSync } from "node:fs";
 
@@ -885,5 +886,151 @@ describe("면적 배선 — main() 안이라 소스로 확인 (세션531)", () =
 
   it("scale 엔드포인트를 부른다", () => {
     expect(src).toMatch(/presalePost\(\s*"\/api\/complex\/scale"/);
+  });
+});
+
+// ── 전남광주통합특별시 (2026-07-01) — 세션545 ─────────────────
+//
+// ⚠️ 회귀 가드의 핵심은 **경기 광주시**다. 옛 코드는 `address.includes(full)` 로 주소 전체를
+// 훑었고 `REGION_MAP` 키에 약칭("광주")이 있어서 `"경기도 광주시 양벌동"` 이 광주광역시로
+// 붙었다(실측 5곳). 시도는 **첫 토큰**이 결정한다.
+describe("parsePresaleAddress — 통합 시도 · 경기 광주시 (세션545)", () => {
+  it("경기도 광주시 양벌동 → 경기 (오라벨 회귀 가드)", () => {
+    const r = parsePresaleAddress("경기도 광주시 양벌동");
+    expect(r.region).toBe("경기");
+    expect(r.gu).toBe("광주시");
+  });
+
+  it("경기도 광주시 태전동 → 경기", () => {
+    expect(parsePresaleAddress("경기도 광주시 태전동").region).toBe("경기");
+  });
+
+  it("전남광주통합특별시 순천시 서면 선평리 → 전남", () => {
+    const r = parsePresaleAddress("전남광주통합특별시 순천시 서면 선평리");
+    expect(r.region).toBe("전남");
+    expect(r.gu).toBe("순천시");
+  });
+
+  it("전남광주통합특별시 북구 월출동 → 광주", () => {
+    const r = parsePresaleAddress("전남광주통합특별시 북구 월출동");
+    expect(r.region).toBe("광주");
+    expect(r.gu).toBe("북구");
+  });
+
+  it("광주광역시 서구 화정동 → 광주 (기존 표기 회귀 없음)", () => {
+    expect(parsePresaleAddress("광주광역시 서구 화정동").region).toBe("광주");
+  });
+
+  it("전라남도 여수시 → 전남 (기존 표기 회귀 없음)", () => {
+    expect(parsePresaleAddress("전라남도 여수시 학동").region).toBe("전남");
+  });
+});
+
+describe("buildCortarQueries — 같은 cortarNo 는 한 번만 (세션545)", () => {
+  it("광주·전남이 한 항목으로 접히고 region 은 null (시도만으론 못 가른다)", () => {
+    const qs = buildCortarQueries(["광주", "전남"]);
+    expect(qs).toHaveLength(1);
+    expect(qs[0].cortarNo).toBe("1200000000");
+    expect(qs[0].region).toBeNull();
+    expect(qs[0].regions.sort()).toEqual(["광주", "전남"]);
+  });
+
+  it("코드를 혼자 쓰는 지역은 region 이 남는다", () => {
+    const qs = buildCortarQueries(["서울"]);
+    expect(qs).toEqual([{ cortarNo: "1100000000", region: "서울", regions: ["서울"] }]);
+  });
+
+  it("전 지역을 돌면 17개가 아니라 16번 조회한다 (중복 1건 접힘)", () => {
+    const src = readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8");
+    const block = src.match(/const REGION_CORTAR = \{([\s\S]*?)\};/);
+    expect(block).toBeTruthy();
+    const body = block?.[1] ?? "";
+    // 광주·전남이 같은 코드를 쓰는지 소스에서 직접 확인 (표를 테스트에 복사하지 않는다)
+    expect(body).toMatch(/"광주": "1200000000"/);
+    expect(body).toMatch(/"전남": "1200000000"/);
+    const regions = [...body.matchAll(/"([가-힣]+)":/g)].map((m) => m[1]);
+    expect(regions).toHaveLength(17);
+    expect(buildCortarQueries(regions)).toHaveLength(16);
+  });
+
+  it("알 수 없는 지역은 조용히 빠진다", () => {
+    expect(buildCortarQueries(["없는지역"])).toEqual([]);
+  });
+
+  // ⚠️ 공유 판정은 **요청 목록이 아니라 표 전체**로 한다. 한쪽만 요청해도 그 코드는 여전히
+  //    두 지역이 쓰는 코드라, region 을 남기면 그 코드가 실어 온 반대편 단지가
+  //    `buildNewApartment` 의 `region ?? regionFallback` 폴백으로 통째로 오라벨된다.
+  it("★ --region=광주 처럼 한쪽만 돌려도 공유 코드면 region 은 null", () => {
+    expect(buildCortarQueries(["광주"])).toEqual([
+      { cortarNo: "1200000000", region: null, regions: ["광주"] },
+    ]);
+    expect(buildCortarQueries(["전남"])).toEqual([
+      { cortarNo: "1200000000", region: null, regions: ["전남"] },
+    ]);
+  });
+
+  it("단독 코드는 한쪽만 돌려도 region 이 남는다 (회귀 가드)", () => {
+    expect(buildCortarQueries(["서울"])).toEqual([
+      { cortarNo: "1100000000", region: "서울", regions: ["서울"] },
+    ]);
+  });
+});
+
+// ── region NOT NULL 가드 (세션545 라운드2) ────────────────────
+//
+// 공유 cortarNo 항목은 `_region` 이 null 이라, 주소가 없거나 안 읽히면 신규 행의 region 이
+// null 로 나온다. `apartments.region` 은 NOT NULL 이므로 그 한 행이 배치(최대 500건)를
+// 통째로 죽인다 — 같이 실린 멀쩡한 신규 단지가 함께 유실된다.
+describe("신규 생성 — region null 행은 배치에 넣지 않는다 (세션545)", () => {
+  it("주소를 못 읽고 폴백도 null 이면 buildNewApartment 의 region 이 null 이다 (가드가 필요한 이유)", () => {
+    const row = {
+      naver_presale_no: "9999",
+      _enrich: { lat: null, lng: null, builder: null, completion: null, bjd_code: null },
+    };
+    const apt = buildNewApartment(
+      /** @type {any} */ (row),
+      /** @type {any} */ ({ address: null, build_nm: "주소없는단지" }),
+      null,
+    );
+    expect(apt.region).toBeNull();
+  });
+
+  it("★ main 이 그 행을 insertRows 에 넣지 않고 카운트한다 (소스 배선)", () => {
+    const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+    // 검사 대상이 주석 제거 후에도 남아 있는지 먼저 확인 (스트리퍼 자체 점검)
+    expect(src).toContain("regionUnresolved");
+    expect(src).toContain("insertRows.push(newApt)");
+    // 가드가 push 앞에 있고, 바로 다음 줄에서 카운트한다
+    expect(src).toMatch(/if \(!?\w+\.region\b[^\n]*\r?\n[^\n]*regionUnresolved/);
+    // 카운트가 요약 로그에 실린다 (조용히 사라지지 않는다)
+    expect(src).toMatch(/\[매칭\][^\n]*regionUnresolved/);
+  });
+
+  it("★ --region 필터가 주소로 가른 지역과 대조해 건너뛴다 (소스 배선)", () => {
+    const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+    expect(src).toContain("regionFiltered");
+    expect(src).toMatch(/if \(regionFilter\) \{[\s\S]{0,400}?parsePresaleAddress\(/);
+    expect(src).toMatch(/!==\s*regionFilter[^\n]*\r?\n[^\n]*regionFiltered/);
+    expect(src).toMatch(/\[매칭\][^\n]*regionFiltered/);
+    // ★ 못 가른 항목(null)까지 거르면 --region 모드에서 기존 단지 갱신이 통째로 사라진다(2차 리뷰 NEW-2).
+    //   조건에 `resolvedRegion != null` 이 함께 있어야 한다 — 빼면 red.
+    expect(src).toMatch(/resolvedRegion != null && resolvedRegion !== regionFilter/);
+  });
+});
+
+// ── 기존 아파트 로드 전량 (세션545 FIX 9) ──────────────────────
+//
+// 옛 `.range(0, 9999)` 단발 조회는 PostgREST max-rows 에 1,000행에서 잘려(2026-09-10 실측
+// "기존 아파트 1000건 로드" / 실제 3,044곳) 나머지 2,000여 곳이 매칭 후보에서 빠졌다 —
+// 이미 있는 ah-* 옆에 ap-* 가 새로 생기는 중복 통로. 고유키(id) 커서 전량 조회로 고정한다.
+describe("기존 아파트 로드 — selectAll(id 커서) 전량 (세션545)", () => {
+  const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+  it("단발 .range(0, 9999) 가 남아 있지 않다", () => {
+    expect(src).not.toMatch(/\.range\(0,\s*9999\)/);
+  });
+  it("apartments 로드가 selectAll(…, sb, \"id\") 로 배선돼 있다", () => {
+    expect(src).toMatch(
+      /apts = [\s\S]{0,200}?selectAll\(\s*\(s\) => s\.from\("apartments"\)[\s\S]{0,400}?,\s*sb,\s*"id",?\s*\)/,
+    );
   });
 });

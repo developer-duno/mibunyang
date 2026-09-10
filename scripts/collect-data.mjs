@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate } from "./collectors/_shared.mjs";
+import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate, resolveRegionName } from "./collectors/_shared.mjs";
 import { buildListData, buildDetailBuckets, detailBucketName } from "./static-outputs.mjs";
 import { excludeLeaseUnits } from "../src/constants/leaseTypes.mjs";
 
@@ -53,7 +53,11 @@ function parseAddress(addr) {
   if (!addr) return { region: null, gu: null, dong: null };
   const parts = addr.trim().split(/\s+/);
   const regionFull = parts[0] || "";
-  const region = REGION_MAP[regionFull] ?? regionFull.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "");
+  // 세션545: 통합 시도("전남광주통합특별시")는 시도명만으로 못 가르므로 분할 헬퍼를 먼저 —
+  // 시군구(parts[1])로 광주/전남을 나눈다. 나머지 경로는 무변경.
+  const region = resolveRegionName(regionFull, parts[1])
+    ?? REGION_MAP[regionFull]
+    ?? regionFull.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "");
   const gu = parts[1] || null;
   const dong = parts[2] || null;
   return { region, gu: isValidGu(gu) ? gu : null, dong: isValidGu(gu) ? dong : null };
