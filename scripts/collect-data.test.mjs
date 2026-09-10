@@ -10,6 +10,7 @@
  *   environmentMatchGlobs("node") 로는 불충분 — 파일 단위 어노테이션 필요.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
 
 // writeFileSync 호이스트 스파이 — supabaseOnlyMode 테스트에서 실제 파일 오염 차단
 // mockCreateClient — supabaseOnlyMode 테스트에서 per-test 설정 가능한 createClient 스파이
@@ -284,12 +285,16 @@ describe("mapItem", () => {
   });
 
   // region 폴백 경로 3: areaName 직접 사용
-  it("REGION_MAP에 없는 areaName → 직접 사용", () => {
+  // 세션545 적대검증: 옛 동작은 REGION_MAP 에 없는 areaName 을 **검증 없이 그대로** region 으로
+  // 썼다. 그러면 통합 시도처럼 표준 17개 밖 이름이 오는 순간 그 행이 화면 지역 필터 어디에도
+  // 안 잡힌다. 이제는 표준값이 아니면 쓰지 않고 지역코드 폴백(AREA_CODE_REGION)으로 내려간다.
+  it("REGION_MAP·VALID_REGIONS 어디에도 없는 areaName 은 쓰지 않고 코드 폴백으로 내려간다", () => {
     const apt = mapItem(createApplyhomeItem({
       HSSPLY_ADRES: "",
       SUBSCRPT_AREA_CODE_NM: "미래특별시",
     }), 0, false);
-    expect(apt.region).toBe("미래특별시");
+    expect(apt.region).not.toBe("미래특별시");
+    expect(apt.region).toBe("서울"); // SUBSCRPT_AREA_CODE "100" → AREA_CODE_REGION
   });
 
   // region 폴백 경로 4: AREA_CODE_REGION
@@ -712,5 +717,19 @@ describe("supabaseOnlyMode", () => {
     // 19 JSON write 박힘 (3 + 상세 버킷 16, 회귀 가드 통과 → writeOutputs 도달, 세션 468 → PR2 로 prices 제외)
     await supabaseOnlyMode();
     expect(writeFileSpy).toHaveBeenCalledTimes(19);
+  });
+});
+
+// ── region 폴백 검증 배선 (세션545 적대검증) ──────────────────
+//
+// 옛 코드는 `else if (areaName) region = areaName;` 로 청약홈 원문을 **검증 없이** 넣었다.
+// REGION_MAP 에 없는 이름(통합 시도 등)이 오면 쓰레기 문자열이 region 이 되고 그 행은
+// 17지역 필터 어디에도 안 잡힌다.
+describe("mapItem region 폴백 — 표준값만 (세션545)", () => {
+  it("검증 없는 원문 대입이 남아 있지 않다", () => {
+    const src = readFileSync(new URL("./collect-data.mjs", import.meta.url), "utf8");
+    // ⚠️ 줄머리 고정 — 바로 위 주석에 옛 코드 문장이 그대로 적혀 있어 앵커 없이는 주석에 걸린다.
+    expect(src).not.toMatch(/^\s*else if \(areaName\) region = areaName;/m);
+    expect(src).toMatch(/else if \(areaName && VALID_REGIONS\.includes\(areaName\)\) region = areaName;/);
   });
 });

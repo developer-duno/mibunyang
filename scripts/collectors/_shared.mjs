@@ -536,7 +536,10 @@ export function getLawdCd(region, gu) {
     return prefix ? prefix + "000" : null;
   }
   const regionMap = GU_LAWD_MAP[region];
-  if (regionMap?.[gu]) return regionMap[gu];
+  // ⚠️ `regionMap?.[gu]` 만 쓰면 `gu` 가 "constructor"·"toString" 같은 프로토타입 키일 때
+  //    **코드 대신 함수를 돌려준다**(세션545 적대검증 실증). 자매 `resolveRegionName` 은 이미
+  //    hasOwnProperty 로 막아 둔 자리라 여기만 뚫려 있었다. 아래 순회들도 같은 이유로 own key 만 본다.
+  if (Object.prototype.hasOwnProperty.call(regionMap ?? {}, gu)) return regionMap[gu];
   // 통합시(천안/청주/창원/포항/전주) 단독 구 형식 매칭 — "동남구"로 "천안시 동남구" 찾기
   if (regionMap && gu.endsWith("구")) {
     for (const [name, code] of Object.entries(regionMap)) {
@@ -552,7 +555,7 @@ export function getLawdCd(region, gu) {
     }
   }
   for (const rMap of Object.values(GU_LAWD_MAP)) {
-    if (rMap[gu]) return rMap[gu];
+    if (Object.prototype.hasOwnProperty.call(rMap, gu)) return rMap[gu];
   }
   const prefix = REGION_LAWD_PREFIX[region];
   return prefix ? prefix + "000" : null;

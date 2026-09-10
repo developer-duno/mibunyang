@@ -122,3 +122,36 @@ describe("normalizeRegion — 통합 시도 분할 (세션545)", () => {
     expect(src).not.toMatch(/^\s*region = normalizeRegion\(region\);/m);
   });
 });
+
+// ── region 검증 배선 (세션545 적대검증) ───────────────────────
+//
+// `normalizeRegion` 은 못 가르면 **원문을 그대로 돌려준다**(`?? name`). 그 값을 검증 없이
+// `apartments.region` 에 쓰면 17지역 밖 문자열이 박히고, 그 행은 화면 지역 필터 어디에도
+// 안 잡힌다 — 실제로 "전남광주통합특별시" 가 6곳에 그렇게 들어갔다(세션545 정정).
+describe("region 검증 배선 — 표준 17개가 아니면 쓰지 않는다 (세션545)", () => {
+  const src = readFileSync(new URL("./reverse-geocode.mjs", import.meta.url), "utf8");
+
+  it("VALID_REGIONS 를 import 한다", () => {
+    // ⚠️ 정규식 안에 import 문 모양을 쓰지 않는다 — `audit-declared-deps.mjs` 가 정규식 리터럴을
+    //    마스킹하지 않아 그 안의 경로를 **미선언 패키지로 오탐**해 CI 가 빨개진다(세션545 실측).
+    const importLine = src
+      .split("\n")
+      .find((l) => l.trimStart().startsWith("import {") && l.includes("_shared.mjs"));
+    expect(importLine).toBeTruthy();
+    expect(importLine).toContain("VALID_REGIONS");
+  });
+
+  it("update 전에 VALID_REGIONS 로 걸러 continue 한다", () => {
+    // 좌변·흐름까지 고정 — 검사만 남기고 continue 를 빼면 red.
+    expect(src).toMatch(/if \(!VALID_REGIONS\.includes\(region\)\) \{[\s\S]{0,320}?continue;/);
+    // 그 검사가 update 호출보다 **앞**에 있어야 한다.
+    const guard = src.indexOf("!VALID_REGIONS.includes(region)");
+    const update = src.indexOf('.from("apartments").update(updates)');
+    expect(guard).toBeGreaterThan(0);
+    expect(update).toBeGreaterThan(guard);
+  });
+
+  it("건너뛴 수를 실패가 아니라 skip 으로 집계한다", () => {
+    expect(src).toMatch(/skip:\s*invalidRegion/);
+  });
+});

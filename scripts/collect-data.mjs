@@ -70,8 +70,11 @@ function mapItem(item, idx, isRemndr) {
   if (!region || !VALID_REGIONS.includes(region)) {
     const areaCode = item.SUBSCRPT_AREA_CODE;
     const areaName = item.SUBSCRPT_AREA_CODE_NM;
+    // ⚠️ 옛 코드는 `else if (areaName) region = areaName;` 로 **청약홈 원문을 검증 없이** 넣었다.
+    //    통합 시도처럼 REGION_MAP 에 없는 이름이 오면 "전남광주통합" 같은 쓰레기가 region 이 되고,
+    //    그 행은 17지역 필터 어디에도 안 잡힌다(세션545 적대검증). 표준값으로 못 옮기면 코드 폴백만 쓴다.
     if (areaName && REGION_MAP[areaName]) region = REGION_MAP[areaName];
-    else if (areaName) region = areaName;
+    else if (areaName && VALID_REGIONS.includes(areaName)) region = areaName;
     else if (areaCode && AREA_CODE_REGION[areaCode]) region = AREA_CODE_REGION[areaCode];
   }
   const units = parseInt(item.TOT_SUPLY_HSHLDCO || 0, 10) || 0;

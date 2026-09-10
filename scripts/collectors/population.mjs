@@ -106,16 +106,17 @@ function resolveRegion(fullName) {
   if (!fullName) return null;
   // 정확 매칭
   if (REGION_MAP[fullName]) return REGION_MAP[fullName];
-  // ⚠️ 통합 시도는 부분 매칭에 넘기지 않는다 (세션545 실측 함정):
-  //    `"전남광주통합특별시".includes("광주")` 가 참이라, 가드가 없으면 27 시군구 **전부**가
-  //    광주로 오라벨된다(전남 22 시군 포함). 시도 이름만으로는 가를 수 없으므로 null —
-  //    parseGu 가 sggNm 을 보고 `resolveRegionName` 으로 가른다.
-  if (/통합특별시/.test(fullName)) return null;
-  // 부분 매칭
+  // ⚠️ 부분 매칭은 **둘 이상이 걸리면 판정하지 않는다** (세션545 적대검증).
+  //    `"전남광주통합특별시".includes("광주")` 도 `.includes("전남")` 도 참이라, 먼저 걸린 쪽이
+  //    이기면 27 시군구 **전부**가 그 지역으로 오라벨된다. 처음엔 `/통합특별시/` 로 그 이름만
+  //    막았는데, 표기가 한 글자만 달라도(예: "전남광주특별시") 가드를 빠져나가 광주로 굳는 것을
+  //    적대검증이 재현했다. 이름을 열거해 막는 대신 **모호하면 포기**한다 — 시도 이름만으로
+  //    못 가르는 게 사실이고, `parseGu` 가 `sggNm` 을 보고 `resolveRegionName` 으로 가른다.
+  const hits = new Set();
   for (const [k, v] of Object.entries(REGION_MAP)) {
-    if (fullName.includes(v) || k.includes(fullName)) return v;
+    if (fullName.includes(v) || k.includes(fullName)) hits.add(v);
   }
-  return null;
+  return hits.size === 1 ? [...hits][0] : null;
 }
 
 // ── 시군구명 파싱 ────────────────────────────────────────────

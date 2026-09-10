@@ -273,3 +273,17 @@ describe("전남광주통합특별시 분할 (세션545)", () => {
     expect(parseGu("전남광주통합특별시", "")).toBeNull();
   });
 });
+
+// ── 부분 매칭 모호성 (세션545 적대검증 — 자매 population.mjs 와 동일) ──
+describe("resolveRegion — 모호하면 판정하지 않는다 (세션545)", () => {
+  it("전남·광주가 동시에 걸리는 이름은 표기가 달라도 전부 null", () => {
+    for (const nm of ["전남광주통합특별시", "전남광주특별시", "전남광주통합시", "광주전남통합특별시"]) {
+      expect(resolveRegion(nm)).toBeNull();
+    }
+  });
+  it("한 곳만 걸리는 이름은 그대로 (회귀 0)", () => {
+    expect(resolveRegion("전라남도")).toBe("전남");
+    expect(resolveRegion("광주광역시")).toBe("광주");
+    expect(resolveRegion("서울시")).toBe("서울");
+  });
+});
