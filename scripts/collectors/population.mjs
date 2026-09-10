@@ -13,7 +13,7 @@
  *   SUPABASE_URL     — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY — Supabase service_role 키
  */
-import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun, normalizeGu } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun, normalizeGu, resolveRegionName } from "./_shared.mjs";
 
 loadEnv();
 
@@ -22,19 +22,22 @@ const API_KEY = process.env.MOIS_POP_KEY;
 // 신 API: 행정안전부_법정동별 주민등록 인구 및 세대현황 (#15108071)
 const BASE_URL = "https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus";
 
-// 전국 17 시도 법정동코드 (10자리)
+// 전국 시도 법정동코드 (10자리) — **16개** (17 시도이나 광주·전남이 한 코드를 공유)
 // 세션 285 raw API 응답 검증 박제 — 3 코드 정정 (영구 누락 사고):
 //   3600000000 → 3611000000 (세종, 이전 빈 응답)
 //   4200000000 → 5100000000 (강원, 이전 빈 응답)
 //   4500000000 → 5200000000 (전북, 이전 빈 응답)
+// 세션 545 — 2026-07-01 전남광주통합특별시 출범 (raw 실측 2026-09-10):
+//   2900000000·4600000000 은 202607~ NODATA_ERROR → 1200000000 하나로 통합
+//   (응답 27 시군구 · ctpvNm "전남광주통합특별시" → parseGu 가 sggNm 으로 광주/전남을 가른다)
 const SIDO_CODES = [
-  "1100000000","2600000000","2700000000","2800000000","2900000000",
+  "1100000000","2600000000","2700000000","2800000000","1200000000",
   "3000000000","3100000000","3611000000","4100000000","5100000000",
-  "4300000000","4400000000","5200000000","4600000000","4700000000",
+  "4300000000","4400000000","5200000000","4700000000",
   "4800000000","5000000000",
 ];
 
-// ── 인구 데이터 조회 (17 시도별 순회) ─────────────────────────
+// ── 인구 데이터 조회 (시도코드별 순회) ───────────────────────
 /**
  * @param {number} year
  * @param {number} month
@@ -42,7 +45,7 @@ const SIDO_CODES = [
  */
 async function fetchPopulation(year, month) {
   const ym = `${year}${String(month).padStart(2, "0")}`;
-  log("fetch", `${year}년 ${month}월 인구 데이터 조회 (17 시도)...`);
+  log("fetch", `${year}년 ${month}월 인구 데이터 조회 (${SIDO_CODES.length} 시도코드)...`);
 
   const allItems = [];
   for (const stdgCd of SIDO_CODES) {
@@ -103,6 +106,11 @@ function resolveRegion(fullName) {
   if (!fullName) return null;
   // 정확 매칭
   if (REGION_MAP[fullName]) return REGION_MAP[fullName];
+  // ⚠️ 통합 시도는 부분 매칭에 넘기지 않는다 (세션545 실측 함정):
+  //    `"전남광주통합특별시".includes("광주")` 가 참이라, 가드가 없으면 27 시군구 **전부**가
+  //    광주로 오라벨된다(전남 22 시군 포함). 시도 이름만으로는 가를 수 없으므로 null —
+  //    parseGu 가 sggNm 을 보고 `resolveRegionName` 으로 가른다.
+  if (/통합특별시/.test(fullName)) return null;
   // 부분 매칭
   for (const [k, v] of Object.entries(REGION_MAP)) {
     if (fullName.includes(v) || k.includes(fullName)) return v;
@@ -121,12 +129,16 @@ function resolveRegion(fullName) {
  *   ("서울특별시", "강남구")    → { region: "서울", gu: "강남구" }
  *   ("세종특별자치시", "")      → { region: "세종", gu: "세종시" }
  *
+ *   ("전남광주통합특별시", "순천시") → { region: "전남", gu: "순천시" }
+ *   ("전남광주통합특별시", "북구")   → { region: "광주", gu: "북구" }
+ *
  * @param {string | null | undefined} ctpvNm
  * @param {string | null | undefined} sggNm
  * @returns {{region: string, gu: string} | null}
  */
 function parseGu(ctpvNm, sggNm) {
-  const region = resolveRegion(ctpvNm);
+  // 통합 시도(전남광주)는 sggNm 으로만 갈린다 — 분할 헬퍼를 먼저.
+  const region = resolveRegionName(ctpvNm, sggNm) ?? resolveRegion(ctpvNm);
   if (!region) return null;
   if (region === "세종") return { region, gu: "세종시" };
   if (!sggNm) return null;
@@ -183,7 +195,7 @@ async function main() {
 
   log("init", `대상: ${curYear}년 ${curMonth}월 vs ${prevYear}년 ${curMonth}월`);
 
-  // API 호출 카운트 (시도 17개 × 2회 = 34회)
+  // API 호출 카운트 (시도코드 수 × 2회)
   let apiCalls = 0;
 
   // 1. 올해/작년 데이터 가져오기
@@ -191,7 +203,7 @@ async function main() {
     fetchPopulation(curYear, curMonth),
     fetchPopulation(prevYear, curMonth),
   ]);
-  apiCalls += SIDO_CODES.length * 2; // 17 시도 × 2 (올해 + 작년)
+  apiCalls += SIDO_CODES.length * 2; // 시도코드 × 2 (올해 + 작년)
 
   if (!curItems.length || !prevItems.length) {
     logError("data", "인구 데이터가 비어있습니다. API 키를 확인하세요.");

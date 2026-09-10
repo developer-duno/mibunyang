@@ -253,3 +253,23 @@ describe("AGE_BUCKETS", () => {
     expect(AGE_BUCKETS.length).toBe(11);
   });
 });
+
+// ── 전남광주통합특별시 (2026-07-01) — 세션545 ─────────────────
+// population.mjs 와 같은 가드. 이 파일만 빠지면 sex_age 쪽에서 27 시군구가 광주로 붙는다.
+describe("전남광주통합특별시 분할 (세션545)", () => {
+  it("resolveRegion 은 통합 이름을 못 가른다 → null", () => {
+    expect(resolveRegion("전남광주통합특별시")).toBeNull();
+  });
+
+  it("parseGu: 통합 + 순천시 → 전남", () => {
+    expect(parseGu("전남광주통합특별시", "순천시")).toEqual({ region: "전남", gu: "순천시", folded: false });
+  });
+
+  it("parseGu: 통합 + 동구 → 광주", () => {
+    expect(parseGu("전남광주통합특별시", "동구")).toEqual({ region: "광주", gu: "동구", folded: false });
+  });
+
+  it("parseGu: 통합인데 sggNm 이 비면 null", () => {
+    expect(parseGu("전남광주통합특별시", "")).toBeNull();
+  });
+});

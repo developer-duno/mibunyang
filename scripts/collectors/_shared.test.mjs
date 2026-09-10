@@ -12,6 +12,7 @@ import {
   EXCL_RATIO_MIN, EXCL_RATIO_MAX, isPlausibleExclRatio,
   EXCL_RATIO_SOURCE_TYPES, canUseComplexForExclRatio,
   EXCL_RATIO_APT_LIKE_TYPES, isPlausibleExclRatioFor,
+  JEONNAM_GWANGJU_SGG_OLD_TO_NEW, GWANGJU_GU_NAMES, resolveRegionName,
 } from "./_shared.mjs";
 import {
   resolveBuilder as brandsResolveBuilder,
@@ -381,8 +382,9 @@ describe("getLawdCd", () => {
     expect(getLawdCd("경남", "의창구")).toBe("48121");
   });
   // 기존 광주 북구는 여전히 정확 매칭 (경북 북구와 충돌 없어야 함)
-  it("광주 북구 → 29170 (단독 구 매칭 회귀 검증)", () => {
-    expect(getLawdCd("광주", "북구")).toBe("29170");
+  // 2026-07-01 전남광주통합특별시 통합으로 29170 → 12300 (세션545)
+  it("광주 북구 → 12300 (단독 구 매칭 회귀 검증)", () => {
+    expect(getLawdCd("광주", "북구")).toBe("12300");
   });
   // 경기 통합시 복합 gu (세션92-d)
   it("경기 수원시 영통구 → 41117", () => {
@@ -955,5 +957,127 @@ describe("selectAll — 옵트인 고유키 커서 페이징", () => {
     expect(calls.some((c) => c.method === "range")).toBe(true); // 기존 동작 = OFFSET
     expect(calls.some((c) => c.method === "order")).toBe(false); // 커서 아님
     expect(out.length).toBe(1003);
+  });
+});
+
+// ── 전남광주통합특별시 (2026-07-01) — 세션545 ─────────────────
+//
+// ⚠️ 이 블록이 지키는 것은 "값이 예쁘다" 가 아니라 **세 표의 정합**이다.
+// `JEONNAM_GWANGJU_SGG_OLD_TO_NEW` 는 데이터 재매핑
+// (`scripts/remap-jeonnam-gwangju-codes.mjs`)이 `apartments.bjd_code` 앞 5자리를 옮길 때 쓰고,
+// `GU_LAWD_MAP` 은 실거래가·어린이집 API 호출에 쓴다. 둘이 어긋나면 재매핑이 만든 코드로는
+// API 를 못 부르는데 **에러 없이** 0건이 돌아온다(그게 이번 사고의 모양이었다).
+describe("전남광주통합특별시 코드 전환 (세션545)", () => {
+  it("REGION_LAWD_PREFIX: 광주·전남 모두 '12'", () => {
+    expect(REGION_LAWD_PREFIX["광주"]).toBe("12");
+    expect(REGION_LAWD_PREFIX["전남"]).toBe("12");
+  });
+
+  it("OLD_TO_NEW 는 27항목 (광주 5구 + 전남 22 시군)", () => {
+    expect(Object.keys(JEONNAM_GWANGJU_SGG_OLD_TO_NEW)).toHaveLength(27);
+  });
+
+  it("OLD_TO_NEW 의 옛 코드는 전부 29/46 접두, 새 코드는 전부 12 접두", () => {
+    for (const [oldCd, newCd] of Object.entries(JEONNAM_GWANGJU_SGG_OLD_TO_NEW)) {
+      expect(oldCd).toMatch(/^(29|46)\d{3}$/);
+      expect(newCd).toMatch(/^12\d{3}$/);
+    }
+  });
+
+  it("정합 → : OLD_TO_NEW 의 새 코드 집합 == GU_LAWD_MAP 광주+전남 값 집합", () => {
+    const fromTable = new Set(Object.values(JEONNAM_GWANGJU_SGG_OLD_TO_NEW));
+    const fromMap = new Set([
+      ...Object.values(GU_LAWD_MAP["광주"]),
+      ...Object.values(GU_LAWD_MAP["전남"]),
+    ]);
+    expect([...fromTable].sort()).toEqual([...fromMap].sort());
+  });
+
+  it("정합 ← : GU_LAWD_MAP 광주+전남 값이 전부 OLD_TO_NEW 에 있고 중복이 없다", () => {
+    const values = [
+      ...Object.values(GU_LAWD_MAP["광주"]),
+      ...Object.values(GU_LAWD_MAP["전남"]),
+    ];
+    expect(new Set(values).size).toBe(values.length); // 코드 중복 0
+    expect(values).toHaveLength(27);
+    const news = new Set(Object.values(JEONNAM_GWANGJU_SGG_OLD_TO_NEW));
+    for (const v of values) expect(news.has(v)).toBe(true);
+  });
+
+  it("GWANGJU_GU_NAMES = 광주 5구, GU_LAWD_MAP['광주'] 키와 같다", () => {
+    expect([...GWANGJU_GU_NAMES].sort()).toEqual(Object.keys(GU_LAWD_MAP["광주"]).sort());
+  });
+
+  it("대표 코드 — 순천시 12150 · 광주 북구 12300", () => {
+    expect(getLawdCd("전남", "순천시")).toBe("12150");
+    expect(getLawdCd("광주", "북구")).toBe("12300");
+  });
+
+  // ⚠️ 위 집합 정합 테스트만으로는 **두 새 코드가 옛 키끼리 뒤바뀌어도 초록**이다
+  //    (집합이 같은지만 보므로 짝이 어긋나는 것을 못 본다). 그래서 실측으로 확인한 짝을
+  //    리터럴로 못 박는다 — 앵커는 표에서 읽지 않는다.
+  //    측정 출처 = 카카오 coord2regioncode + 국토부 실거래가 API(202608/202604) 실측 2026-09-10.
+  it("실측 앵커 — 옛↔새 짝이 리터럴로 고정된다 (집합 정합만으로는 뒤바뀜을 못 잡는다)", () => {
+    expect(JEONNAM_GWANGJU_SGG_OLD_TO_NEW["46150"]).toBe("12150"); // 전남 순천시
+    expect(JEONNAM_GWANGJU_SGG_OLD_TO_NEW["29170"]).toBe("12300"); // 광주 북구
+    expect(JEONNAM_GWANGJU_SGG_OLD_TO_NEW["46230"]).toBe("12190"); // 전남 광양시
+    expect(JEONNAM_GWANGJU_SGG_OLD_TO_NEW["46820"]).toBe("12790"); // 전남 영암군
+    expect(JEONNAM_GWANGJU_SGG_OLD_TO_NEW["46910"]).toBe("12870"); // 전남 신안군
+    expect(JEONNAM_GWANGJU_SGG_OLD_TO_NEW["29110"]).toBe("12210"); // 광주 동구
+  });
+});
+
+describe("resolveRegionName (통합 시도 분할)", () => {
+  it("직접 매핑: 전라남도 → 전남 (gu 무관)", () => {
+    expect(resolveRegionName("전라남도", "순천시")).toBe("전남");
+    expect(resolveRegionName("전라남도")).toBe("전남");
+  });
+
+  it("통합 + 광주 자치구 → 광주", () => {
+    expect(resolveRegionName("전남광주통합특별시", "북구")).toBe("광주");
+    expect(resolveRegionName("전남광주통합특별시", "광산구")).toBe("광주");
+  });
+
+  it("통합 + 전남 시 → 전남", () => {
+    expect(resolveRegionName("전남광주통합특별시", "순천시")).toBe("전남");
+  });
+
+  it("통합 + 전남 군 → 전남", () => {
+    expect(resolveRegionName("전남광주통합특별시", "무안군")).toBe("전남");
+  });
+
+  it("통합인데 gu 가 비면 null — 시도 단위는 못 가른다", () => {
+    expect(resolveRegionName("전남광주통합특별시", null)).toBeNull();
+    expect(resolveRegionName("전남광주통합특별시", "")).toBeNull();
+    expect(resolveRegionName("전남광주통합특별시", "   ")).toBeNull();
+  });
+
+  it("미지의 시도명 → null (조용히 아무 데나 붙이지 않는다)", () => {
+    expect(resolveRegionName("어딘가시", "북구")).toBeNull();
+    expect(resolveRegionName(null, "북구")).toBeNull();
+  });
+
+  it("복합 gu 는 첫 공백 토큰으로 판정", () => {
+    expect(resolveRegionName("전남광주통합특별시", "순천시 어딘가동")).toBe("전남");
+    expect(resolveRegionName("전남광주통합특별시", "북구 월출동")).toBe("광주");
+  });
+
+  // ⚠️ else 폴백("광주 5구가 아니면 전남") 금지 — 둘째 토큰에는 시군구가 아닌 것이 섞인다.
+  //    전남으로 오라벨되면 호출자의 폴백(seed 의 AREA_CODE_REGION)이 꺼지지도 않는다.
+  it("시군구가 아닌 토큰(지구·블록)은 null — 전남으로 흘려보내지 않는다", () => {
+    expect(resolveRegionName("전남광주통합특별시", "첨단3지구")).toBeNull();
+    expect(resolveRegionName("전남광주통합특별시", "A7블록(전남광주통합특별시")).toBeNull();
+    expect(resolveRegionName("전남광주통합특별시", "어딘가동")).toBeNull();
+  });
+
+  it("전남 22 시군은 GU_LAWD_MAP['전남'] 명단 그대로 통과한다", () => {
+    for (const gu of Object.keys(GU_LAWD_MAP["전남"])) {
+      expect(resolveRegionName("전남광주통합특별시", gu)).toBe("전남");
+    }
+  });
+
+  it("REGION_MAP 에 통합 이름이 **없다** — 단일값 표라 넣으면 27 시군구가 한쪽으로 오라벨된다", () => {
+    expect(REGION_MAP["전남광주통합특별시"]).toBeUndefined();
+    expect(VALID_REGIONS).not.toContain("전남광주통합특별시");
   });
 });

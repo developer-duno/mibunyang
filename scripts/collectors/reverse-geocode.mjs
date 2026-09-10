@@ -12,7 +12,7 @@
  *   node scripts/collectors/reverse-geocode.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/reverse-geocode.mjs --force      (이미 주소 있어도 재수행)
  */
-import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown, recordCollectorRun, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, sleep, setupGracefulShutdown, recordCollectorRun, selectAll, resolveRegionName } from "./_shared.mjs";
 
 loadEnv();
 
@@ -140,7 +140,7 @@ async function main() {
       }
 
       // region 정규화 (예: "충청북도" → "충북")
-      region = normalizeRegion(region);
+      region = normalizeRegion(region, gu);
 
       // 기존 dong에 특수 지역명이 있으면 district로 이동
       let district = null;
@@ -193,11 +193,16 @@ async function main() {
 }
 
 /**
- * 시도명 정규화
+ * 시도명 정규화 — 카카오 `region_1depth_name` → 우리 17지역 약칭.
+ *
+ * 세션545: 통합 시도("전남광주통합특별시")는 시도 이름만으로 못 가르므로 `gu`(2depth)를 받아
+ * `resolveRegionName` 에 넘긴다. gu 가 없으면 원문 그대로 — 조용히 한쪽으로 붙이지 않는다.
+ *
  * @param {string} name
+ * @param {string | null} [gu]
  * @returns {string}
  */
-export function normalizeRegion(name) {
+export function normalizeRegion(name, gu = null) {
   const map = {
     "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
     "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
@@ -209,7 +214,11 @@ export function normalizeRegion(name) {
     "경상북도": "경북", "경상남도": "경남",
     "제주특별자치도": "제주",
   };
-  return /** @type {Record<string, string>} */ (map)[name] || name;
+  return (
+    /** @type {Record<string, string>} */ (map)[name] ??
+    resolveRegionName(name, gu) ??
+    name
+  );
 }
 
 const argv1 = process.argv[1];

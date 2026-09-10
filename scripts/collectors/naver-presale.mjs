@@ -19,8 +19,8 @@ import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
-  upsertBatch, stringSimilarity, sleep, REGION_MAP, VALID_REGIONS,
-  resolveBuilder, today,
+  upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
+  resolveBuilder, today, resolveRegionName, selectAll,
 } from "./_shared.mjs";
 
 /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
@@ -43,15 +43,55 @@ const RETRY_DELAYS = [5000, 10000, 20000];
 // 세션 286 자매 fix — 세종 환각 정정 (population.mjs 세션 285 답습)
 //   3600000000 → 3611000000 (세종, 이전 빈 응답 추정)
 //   강원/전북은 이미 정정 박제 (5100/5200)
+// 세션 545 — 2026-07-01 전남광주통합특별시 출범: 광주 2900000000·전남 4600000000 은 0건,
+//   1200000000 하나가 46건(raw 실측 2026-09-10). **두 지역이 같은 코드**라 아래 buildCortarQueries
+//   가 중복 호출을 접고, 그 코드로 받은 항목은 시도만으로 지역을 못 가르므로 _region 을 null 로 둔다.
 /** @type {Record<string, string>} */
 const REGION_CORTAR = {
   "서울": "1100000000", "경기": "4100000000", "인천": "2800000000",
   "부산": "2600000000", "대전": "3000000000", "대구": "2700000000",
-  "울산": "3100000000", "세종": "3611000000", "광주": "2900000000",
+  "울산": "3100000000", "세종": "3611000000", "광주": "1200000000",
   "강원": "5100000000", "충북": "4300000000", "충남": "4400000000",
   "경북": "4700000000", "경남": "4800000000", "전북": "5200000000",
-  "전남": "4600000000", "제주": "5000000000",
+  "전남": "1200000000", "제주": "5000000000",
 };
+
+/**
+ * Phase 1 목록 조회 계획 — cortarNo 로 **중복을 접는다**.
+ *
+ * 세션545: 광주·전남이 같은 cortarNo("1200000000")를 쓰게 되어, 지역 목록을 그대로 돌면
+ * 같은 46건을 두 번 받는다. 접은 뒤 `region` 은 **그 코드를 혼자 쓰는 지역일 때만** 남긴다 —
+ * 공유 코드의 항목은 시도만으로 지역을 못 가르므로 `null` 을 넣고, `buildNewApartment` 의
+ * `region ?? regionFallback` 폴백 대신 주소 파서(`parsePresaleAddress`)가 가르게 한다.
+ *
+ * @param {string[]} regions 지역 약칭 목록
+ * @param {Record<string, string>} [cortarMap]
+ * @returns {Array<{ cortarNo: string, region: string | null, regions: string[] }>}
+ */
+export function buildCortarQueries(regions, cortarMap = REGION_CORTAR) {
+  // ⚠️ "공유 코드인가" 는 **표 전체**로 판정한다. 요청 목록만 보면 `--region=광주` 처럼
+  //    한쪽만 돌릴 때 rs.length === 1 이라 region 이 "광주" 로 남고, 그 코드가 실어 오는
+  //    전남 단지까지 전부 광주로 오라벨된다(폴백이 주소 파서를 이겨버린다).
+  //    코드를 두 지역이 쓰면 **누가 요청했든** 시도만으로는 못 가른다.
+  /** @type {Map<string, number>} */
+  const useCount = new Map();
+  for (const code of Object.values(cortarMap)) useCount.set(code, (useCount.get(code) ?? 0) + 1);
+
+  /** @type {Map<string, string[]>} */
+  const byCode = new Map();
+  for (const r of regions) {
+    const code = cortarMap[r];
+    if (!code) continue;
+    const hit = byCode.get(code);
+    if (hit) hit.push(r);
+    else byCode.set(code, [r]);
+  }
+  return [...byCode.entries()].map(([cortarNo, rs]) => ({
+    cortarNo,
+    region: (useCount.get(cortarNo) ?? 0) === 1 && rs.length === 1 ? rs[0] : null,
+    regions: rs,
+  }));
+}
 
 const HEADERS = {
   "Accept": "application/json, text/plain, */*",
@@ -321,12 +361,12 @@ export function parsePresaleAddress(address) {
   /** @type {string | null} */
   let dong = null;
 
-  for (const [full, short] of Object.entries(REGION_MAP)) {
-    if (parts[0]?.includes(short) || address.includes(full)) {
-      region = short;
-      break;
-    }
-  }
+  // 세션545: 첫 토큰(시도) + 둘째 토큰(시군구)만 본다.
+  //
+  // ⚠️ 옛 코드는 `address.includes(full)` 로 **주소 전체**를 훑었다. `REGION_MAP` 키에 약칭이
+  // 있어서 `"경기도 광주시 양벌동".includes("광주")` 가 참이 되고, 그게 경기 광주시 단지 5곳이
+  // 광주광역시로 오라벨된 원인이다(세션545 실측). 시도는 첫 토큰이 결정한다 — 전수 순회 제거.
+  region = resolveRegionName(parts[0], parts[1]) ?? null;
   // 직접 매칭: "서울시" → "서울"
   if (!region && parts[0]) {
     const p0 = parts[0].replace(/(특별자치|특별|광역)?(시|도)$/, "");
@@ -632,12 +672,13 @@ async function probeEndpoints() {
   return null;
 }
 
-/** 시도별 분양단지 목록 조회 (페이지네이션)
- * @param {string} region
+/** cortarNo 별 분양단지 목록 조회 (페이지네이션)
+ * 세션545: 인자를 region → cortarNo 로 바꿨다. 광주·전남이 같은 코드를 쓰게 되어 호출 단위가
+ * "지역" 이 아니라 "코드" 가 됐기 때문(buildCortarQueries 참조).
+ * @param {string} cortarNo
  * @returns {Promise<ListItem[]>}
  */
-async function fetchPresaleList(region) {
-  const cortarNo = REGION_CORTAR[region];
+async function fetchPresaleList(cortarNo) {
   if (!cortarNo) return [];
 
   const results = [];
@@ -734,17 +775,25 @@ async function main() {
 
   // Phase 0.5: 기존 apartments 로드
   log(PHASE, "기존 아파트 데이터 로드...");
-  const { data: apartments, error: aptErr } = await sb
-    .from("apartments")
-    .select("id, name, region, gu, dong, lat, lng, bjd_code, naver_presale_no, units, builder, max_floor, completion")
-    .range(0, 9999);
-
-  if (aptErr) {
-    logError(PHASE, `apartments 조회 실패: ${aptErr.message}`);
+  // ⚠️ 세션545: 옛 `.range(0, 9999)` 단발 조회는 PostgREST max-rows 에 **1,000행에서 잘렸다**
+  //    (2026-09-10 실측: 3,044곳 중 "기존 아파트 1000건 로드"). 나머지 2,000여 곳은 매칭 후보에
+  //    없어 이미 있는 ah-* 단지 옆에 ap-* 가 새로 생기고(신규 326건 부풀림) tier 매칭이 통째로
+  //    무너진다. `apts.length === 10000` 가드는 그래서 영영 안 울렸다. 고유키(id) 커서로 전량.
+  /** @type {AptForMatch[]} */
+  let apts;
+  try {
+    apts = /** @type {AptForMatch[]} */ (/** @type {unknown} */ (
+      await selectAll(
+        (s) => s.from("apartments")
+          .select("id, name, region, gu, dong, lat, lng, bjd_code, naver_presale_no, units, builder, max_floor, completion"),
+        sb,
+        "id",
+      )
+    ));
+  } catch (err) {
+    logError(PHASE, `apartments 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
-  const apts = /** @type {AptForMatch[]} */ (apartments ?? []);
-  if (apts.length === 10000) logError(PHASE, "apartments 10,000건 — .range(0, 9999) 초과 가능, 페이지네이션 필요");
   log(PHASE, `기존 아파트 ${apts.length}건 로드`);
 
   // Map 인덱스 (Tier1·2 O(1) 룩업)
@@ -814,11 +863,13 @@ async function main() {
   const allPresales = [];
 
   if (!probeResult._complexOnly) {
-    for (const region of regions) {
-      log(PHASE, `[목록] ${region} 조회...`);
-      const list = await fetchPresaleList(region);
+    // cortarNo 중복(광주·전남 = 1200000000)을 접어 같은 목록을 두 번 받지 않는다.
+    for (const q of buildCortarQueries(regions)) {
+      log(PHASE, `[목록] ${q.regions.join("·")} (${q.cortarNo}) 조회...`);
+      const list = await fetchPresaleList(q.cortarNo);
       log(PHASE, `  → ${list.length}건 발견`);
-      allPresales.push(...list.map(item => ({ ...item, _region: region })));
+      // 공유 코드는 _region 을 null 로 — 주소 파서가 가른다(잘못된 폴백 라벨 방지).
+      allPresales.push(...list.map(item => ({ ...item, _region: q.region })));
     }
   } else {
     log(PHASE, "리스트 API 미사용 — 기존 naver_presale_no 기반으로 갱신만 수행");
@@ -858,6 +909,10 @@ async function main() {
   const priceRows = []; // prices 테이블 upsert용 (house_type='presale_min')
   /** @type {Record<string | number, number>} */
   const tierCounts = { 1: 0, 2: 0, 3: 0, 4: 0, new: 0, none: 0 };
+  // region 을 못 구해 신규 생성을 접은 수 (apartments.region 은 NOT NULL — 아래 가드 참조)
+  let regionUnresolved = 0;
+  // --region=X 로 좁혀 돌 때 공유 cortarNo 가 실어 온 다른 지역 단지를 건너뛴 수
+  let regionFiltered = 0;
 
   for (let idx = 0; idx < total; idx++) {
     if (reporter.interrupted()) break;
@@ -889,6 +944,21 @@ async function main() {
     // 행 변환
     const row = toPresaleRow(complexData, detailData, item);
     row._name = complexData.build_nm;
+
+    // --region=X 로 좁혀 돌 때: 공유 cortarNo(광주·전남 = 1200000000)는 **양쪽 단지를 다**
+    // 실어 온다. 시도만으로 못 가르므로 주소로 가른 지역이 요청과 다르면 건너뛴다.
+    // (`_region` 은 그 코드가 공유라 null 이다 — buildCortarQueries 참조.)
+    if (regionFilter) {
+      const resolvedRegion = parsePresaleAddress(complexData.address).region ?? item._region ?? null;
+      // ⚠️ **못 가른 항목(null)은 거르지 않는다**(2차 리뷰 NEW-2). 여기서 걸러 버리면
+      //    주소가 비었을 뿐 `naver_presale_no` 로는 멀쩡히 매칭되는 기존 단지의 갱신까지
+      //    `--region` 모드에서 통째로 사라진다. 신규 INSERT 는 아래 region null 가드가 따로 막는다.
+      if (resolvedRegion != null && resolvedRegion !== regionFilter) {
+        regionFiltered++;
+        reporter.skip();
+        continue;
+      }
+    }
 
     // Phase 4: 매칭
     const match = matchPresaleToApt(row, apts, aptIndexes);
@@ -927,8 +997,18 @@ async function main() {
       const totalUnits = complexData.total_house_cnt ?? 0;
 
       if (isAptLike && totalUnits >= MIN_UNITS_FOR_INSERT) {
-        tierCounts.new++;
         const newApt = buildNewApartment(row, complexData, item._region);
+        // ⚠️ `apartments.region` 은 **NOT NULL** 이다. 공유 cortarNo 항목은 `_region` 이 null 이라
+        //    주소가 없거나 안 읽히면 여기서 region 이 null 로 나온다. 그 한 행을 배치에 넣으면
+        //    `upsertBatch("apartments", …, 500)` 이 **그 배치를 통째로** 실패시켜, 같이 실린
+        //    멀쩡한 신규 단지 수백 건이 함께 유실된다. 한 행을 접는 쪽이 언제나 싸다.
+        if (newApt.region == null) {
+          regionUnresolved++;
+          logError(PHASE, `region 미확정 — 신규 생성 건너뜀: ${newApt.name ?? "(이름없음)"} (no=${no}, 주소=${complexData.address ?? "(없음)"})`);
+          reporter.skip();
+          continue;
+        }
+        tierCounts.new++;
         insertRows.push(newApt);
         const areaInfo = await resolveAreaInfo(newApt.id, no, seq);
         const priceRow = toPresalePriceRow(complexData, newApt.id, areaInfo);
@@ -942,7 +1022,7 @@ async function main() {
   }
 
   // 매칭 tier 집계
-  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none}`);
+  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered}`);
 
   // 공고(item) 단위 집계와 단지 단위 실갱신 수를 구분해 남긴다 — 아래 UPDATE 는 단지 단위로 돈다.
   // reporter/collector_runs 의 ok 는 공고 단위 그대로 둔다(회귀 방지). 이 줄이 그 차이를 설명한다.

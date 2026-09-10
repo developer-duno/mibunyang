@@ -15,22 +15,24 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun, fetchWithRetry, normalizeGu } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, REGION_MAP, today, recordApiQuota, recordCollectorRun, fetchWithRetry, normalizeGu, resolveRegionName } from "./_shared.mjs";
 
 loadEnv();
 
 const API_KEY = process.env.MOIS_SEX_AGE_KEY;
 const BASE_URL = "https://apis.data.go.kr/1741000/stdgSexdAgePpltn/selectStdgSexdAgePpltn";
 
-// 17 시도 법정동코드 (population.mjs L26 답습)
+// 시도 법정동코드 — **16개** (17 시도이나 광주·전남이 한 코드를 공유). population.mjs 답습.
 // 세션 286 동시 fix — SIDO_CODES 환각 3건 정정 (세종/강원/전북)
 //   3600000000 → 3611000000 (세종, 이전 빈 응답)
 //   4200000000 → 5100000000 (강원, 이전 빈 응답)
 //   4500000000 → 5200000000 (전북, 이전 빈 응답)
+// 세션 545 — 2026-07-01 전남광주통합특별시 출범: 2900000000·4600000000 → 1200000000 통합
+//   (ctpvNm "전남광주통합특별시" 27 시군구 → parseGu 가 sggNm 으로 광주/전남을 가른다)
 const SIDO_CODES = [
-  "1100000000","2600000000","2700000000","2800000000","2900000000",
+  "1100000000","2600000000","2700000000","2800000000","1200000000",
   "3000000000","3100000000","3611000000","4100000000","5100000000",
-  "4300000000","4400000000","5200000000","4600000000","4700000000",
+  "4300000000","4400000000","5200000000","4700000000",
   "4800000000","5000000000",
 ];
 
@@ -91,6 +93,10 @@ function parseSexAge(item) {
 function resolveRegion(fullName) {
   if (!fullName) return null;
   if (REGION_MAP[fullName]) return REGION_MAP[fullName];
+  // ⚠️ 통합 시도는 부분 매칭에 넘기지 않는다 (세션545 실측 함정):
+  //    `"전남광주통합특별시".includes("광주")` 가 참이라 27 시군구 전부가 광주로 오라벨된다.
+  //    시도 이름만으로는 못 가르므로 null — parseGu 가 sggNm 으로 가른다.
+  if (/통합특별시/.test(fullName)) return null;
   for (const [k, v] of Object.entries(REGION_MAP)) {
     if (fullName.includes(v) || k.includes(fullName)) return v;
   }
@@ -103,7 +109,8 @@ function resolveRegion(fullName) {
  * @returns {{region: string, gu: string, folded: boolean} | null}
  */
 function parseGu(ctpvNm, sggNm) {
-  const region = resolveRegion(ctpvNm);
+  // 통합 시도(전남광주)는 sggNm 으로만 갈린다 — 분할 헬퍼를 먼저.
+  const region = resolveRegionName(ctpvNm, sggNm) ?? resolveRegion(ctpvNm);
   if (!region) return null;
   if (region === "세종") return { region, gu: "세종시", folded: false };
   if (!sggNm) return null;
@@ -191,7 +198,7 @@ export function normalizeItems(json) {
 async function fetchSexAge(year, month) {
   if (!API_KEY) throw new Error("MOIS_SEX_AGE_KEY 환경변수 필요");
   const ym = `${year}${String(month).padStart(2, "0")}`;
-  log("fetch", `${year}년 ${month}월 성/연령 인구 조회 (17 시도)...`);
+  log("fetch", `${year}년 ${month}월 성/연령 인구 조회 (${SIDO_CODES.length} 시도코드)...`);
 
   /** @type {Array<Record<string, unknown>>} */
   const allItems = [];

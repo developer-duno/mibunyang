@@ -181,3 +181,59 @@ describe("parseHouseholds", () => {
     expect(parseHouseholds("abc")).toBeNull();
   });
 });
+
+// ── 전남광주통합특별시 (2026-07-01) — 세션545 ─────────────────
+//
+// ⚠️ 이 가드가 없으면 `"전남광주통합특별시".includes("광주")` 가 참이라 **27 시군구 전부**가
+// 광주로 붙는다(전남 22 시군 포함). 그러면 광주 인구가 몇 배로 부풀고 전남은 통째로 빈다 —
+// 에러 하나 없이. 그래서 "resolveRegion 이 null 을 준다" 와 "parseGu 가 갈라 준다" 를 함께 잠근다.
+describe("전남광주통합특별시 분할 (세션545)", () => {
+  it("resolveRegion 은 통합 이름을 못 가른다 → null", () => {
+    expect(resolveRegion("전남광주통합특별시")).toBeNull();
+  });
+
+  it("parseGu: 통합 + 순천시 → 전남", () => {
+    expect(parseGu("전남광주통합특별시", "순천시")).toEqual({ region: "전남", gu: "순천시" });
+  });
+
+  it("parseGu: 통합 + 동구 → 광주", () => {
+    expect(parseGu("전남광주통합특별시", "동구")).toEqual({ region: "광주", gu: "동구" });
+  });
+
+  it("parseGu: 통합 + 무안군 → 전남 / 통합 + 광산구 → 광주", () => {
+    expect(parseGu("전남광주통합특별시", "무안군")?.region).toBe("전남");
+    expect(parseGu("전남광주통합특별시", "광산구")?.region).toBe("광주");
+  });
+
+  it("parseGu: 통합인데 sggNm 이 비면 null (시도 합계행은 버린다)", () => {
+    expect(parseGu("전남광주통합특별시", "")).toBeNull();
+    expect(parseGu("전남광주통합특별시", null)).toBeNull();
+  });
+
+  // ⚠️ 분할 헬퍼가 "광주 5구가 아니면 전남" 이던 시절엔 시군구가 아닌 토큰도 전남 행으로
+  //    적재됐다. 없는 시군구 이름으로 regions 행이 생기면 화면에서 영영 안 붙는다.
+  it("parseGu: 시군구가 아닌 sggNm(지구·블록)은 null — 없는 전남 행을 만들지 않는다", () => {
+    expect(parseGu("전남광주통합특별시", "첨단3지구")).toBeNull();
+    expect(parseGu("전남광주통합특별시", "A7블록")).toBeNull();
+  });
+
+  it("기존 시도명은 회귀 없음", () => {
+    expect(parseGu("전라남도", "순천시")).toEqual({ region: "전남", gu: "순천시" });
+    expect(parseGu("광주광역시", "북구")).toEqual({ region: "광주", gu: "북구" });
+  });
+
+  it("시도 집계는 region 키로 도므로 광주·전남이 자연히 갈린다", () => {
+    const rows = [
+      parseGu("전남광주통합특별시", "동구"),
+      parseGu("전남광주통합특별시", "북구"),
+      parseGu("전남광주통합특별시", "순천시"),
+      parseGu("전남광주통합특별시", "무안군"),
+    ].filter((r) => r !== null);
+    /** @type {Record<string, number>} */
+    const byRegion = {};
+    for (const r of rows) byRegion[r.region] = (byRegion[r.region] ?? 0) + 1;
+    expect(byRegion).toEqual({ 광주: 2, 전남: 2 });
+    // 시 합계행 제외 대상이 생기지 않는다(자치구 이름이 한 단어라 부모 시가 안 잡힌다)
+    expect(pickParentCities(rows).size).toBe(0);
+  });
+});

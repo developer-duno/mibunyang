@@ -284,3 +284,23 @@ describe("fetchSidoAptList", () => {
     });
   }
 });
+
+// ── 전남광주통합특별시 (2026-07-01) — 세션545 ─────────────────
+// 시도 목록 API(getSidoAptList4) 는 "46"·"29" 에 0건, "12" 에 1,758건을 준다(raw 실측 2026-09-10).
+// 키는 17개 그대로 두고 값만 바꾼다 — 소비처가 region 별로 도는 구조라 키를 줄이면 그 지역이 통째로 빠진다.
+describe("SIDO_CODE — 전남광주통합특별시 (세션545)", () => {
+  it("광주·전남이 같은 '12'", () => {
+    expect(SIDO_CODE["광주"]).toBe("12");
+    expect(SIDO_CODE["전남"]).toBe("12");
+  });
+
+  it("옛 코드 29·46 은 어느 지역에도 안 남아 있다", () => {
+    expect(Object.values(SIDO_CODE)).not.toContain("29");
+    expect(Object.values(SIDO_CODE)).not.toContain("46");
+  });
+
+  it("키는 여전히 17개 (지역이 줄어든 게 아니라 코드를 공유할 뿐)", () => {
+    expect(Object.keys(SIDO_CODE)).toHaveLength(17);
+    expect(new Set(Object.values(SIDO_CODE)).size).toBe(16);
+  });
+});

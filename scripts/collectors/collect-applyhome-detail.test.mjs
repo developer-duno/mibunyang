@@ -52,6 +52,8 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const {
   normName, addrToRegion, matchDetailToApt, buildScheduleRow, buildUnitRow,
 } = await import("./collect-applyhome-detail.mjs");
+// 통합 시도 분할 헬퍼 — "헬퍼가 판정을 포기했다" 를 테스트가 직접 증명하는 데 쓴다.
+const { resolveRegionName } = await import("./_shared.mjs");
 
 const APTS = [
   { id: "ap-1", name: "검암역자이르네", region: "인천" },
@@ -91,6 +93,45 @@ describe("addrToRegion — 주소 → region 약칭", () => {
   it("null → null", () => {
     expect(addrToRegion(null)).toBeNull();
     expect(addrToRegion("")).toBeNull();
+  });
+
+  // ── 전남광주통합특별시 (2026-07-01) — 세션545 ──
+  //
+  // ⚠️ 이 파일의 파서는 스펙이 처음에 놓친 **네 번째** 주소 파서다. 통합 이름은 REGION_MAP 에
+  //    없고 아래 긴 키 우선 순회가 `head.startsWith("전남")` 로 잡아버려, 헬퍼가 없으면
+  //    **광주 27 시군구가 전부 "전남"** 이 된다 → `matchDetailToApt` 의 region 게이트에서
+  //    광주 단지가 통째로 오차단(일정·평형 미적재).
+  describe("전남광주통합특별시 — 시군구로 가른다 (세션545)", () => {
+    it("통합 + 광주 자치구 → 광주 (긴 키 순회의 '전남' 오라벨을 막는다)", () => {
+      expect(addrToRegion("전남광주통합특별시 북구 월출동")).toBe("광주");
+      expect(addrToRegion("전남광주통합특별시 광산구 수완동")).toBe("광주");
+    });
+
+    it("통합 + 전남 시군 → 전남", () => {
+      expect(addrToRegion("전남광주통합특별시 순천시 조례동")).toBe("전남");
+      expect(addrToRegion("전남광주통합특별시 무안군 삼향읍")).toBe("전남");
+    });
+
+    it("★ 통합 시도인데 둘째 토큰이 시군구가 아니면 null — 'startsWith(\"전남\")' 우연을 판정으로 쓰지 않는다", () => {
+      // 헬퍼가 판정을 포기했음을 먼저 못 박는다.
+      expect(resolveRegionName("전남광주통합특별시", "첨단3지구")).toBeNull();
+      // 옛 순회에 넘기면 `head.startsWith("전남")` 이 참이라 "전남" 이 나오는데, 그건 글자 우연이다.
+      // 그 값이 굳으면 matchDetailToApt 의 region 게이트가 광주 단지를 거부한다(2차 리뷰 NEW-1).
+      expect(addrToRegion("전남광주통합특별시 첨단3지구 A7블록")).toBeNull();
+      expect(addrToRegion("전남광주통합특별시 A8블록")).toBeNull();
+    });
+
+    it("통합 시도가 아닌 주소는 옛 순회 그대로 (회귀 0)", () => {
+      // 라이브 실측(2026-09-10): 첨단3지구 두 곳의 실제 주소는 "광주연구개발특구…" 로 시작해
+      // 이 경로를 타지 않는다 — 위 null 규칙이 기존 판정을 건드리지 않음을 못 박는다.
+      expect(addrToRegion("광주연구개발특구 첨단3지구 A7블록(전남광주통합특별시 북구 월출동)")).toBe("광주");
+      expect(addrToRegion("전라남도 장성군 진원면")).toBe("전남");
+    });
+
+    it("경기 광주시 회귀 가드 — 헬퍼가 먼저 돌아도 경기 그대로", () => {
+      expect(addrToRegion("경기도 광주시 양벌동")).toBe("경기");
+      expect(addrToRegion("경기도 광주시 탄벌동")).toBe("경기");
+    });
   });
 });
 

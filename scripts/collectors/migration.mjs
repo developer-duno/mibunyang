@@ -25,6 +25,7 @@
 import {
   loadEnv, getSupabase, log, logError,
   REGION_LAWD_PREFIX, recordApiQuota, recordCollectorRun, fetchWithRetry, normalizeGu,
+  GU_LAWD_MAP, JEONNAM_GWANGJU_SGG_OLD_TO_NEW, resolveRegionName,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -56,6 +57,13 @@ const BASE_URL = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
 // ── C1 2자리 → 약칭 역변환 맵 (REGION_LAWD_PREFIX 역방향) ─────
 // 강원 42→51, 전북 45→52 특별자치도 개편 이후 KOSIS는 신 코드 사용.
 // 레거시 코드도 함께 수용(자체 방어).
+//
+// ⚠️ 세션545 — `REGION_LAWD_PREFIX` 는 2026-07-01 전남광주통합특별시 출범 이후 **단사가 아니다**
+//    (광주·전남이 둘 다 "12"). 그래서 이 역변환 표는:
+//      · "29"(광주)·"46"(전남) 을 **명시 항목**으로 되살린다 — KOSIS 순이동은 2026-09-06 실측에도
+//        옛 코드로 275건을 정상 응답한다(전환 시점이 API 마다 다르다).
+//      · "12" 는 **넣지 않는다** — 시도 2자리만으로는 광주/전남을 못 가른다. 5자리는 아래
+//        `mapC1` 이 시군구 이름으로 가른다.
 /** @type {Record<string, string>} */
 export const C1_TO_REGION = (() => {
   /** @type {Record<string, string>} */
@@ -68,8 +76,26 @@ export const C1_TO_REGION = (() => {
   map["52"] = "전북";
   map["42"] = "강원"; // 방어
   map["45"] = "전북"; // 방어
+  // 전남광주통합특별시(2026-07-01) 이전 코드 — KOSIS 가 아직 분리 코드로 준다
+  map["29"] = "광주";
+  map["46"] = "전남";
+  // "12" 는 모호(광주·전남 공용) — 2자리 단독으로는 못 가른다
+  delete map["12"];
   return map;
 })();
+
+// 새 5자리(12xxx) → 시군구 이름. GU_LAWD_MAP 역참조 — 표를 코드에 복사하지 않는다.
+/** @type {Map<string, string>} */
+const NEW_SGG_TO_GU = new Map(
+  Object.values(JEONNAM_GWANGJU_SGG_OLD_TO_NEW).flatMap((code) => {
+    for (const region of ["광주", "전남"]) {
+      for (const [gu, c] of Object.entries(GU_LAWD_MAP[region] ?? {})) {
+        if (c === code) return [/** @type {[string, string]} */ ([code, gu])];
+      }
+    }
+    return [];
+  }),
+);
 
 // ── KOSIS 공백 이슈 정규화 ─────────────────────────────────
 // 부산/대구 등 "중  구" 공백 2칸 → "중구"
@@ -99,7 +125,15 @@ export function mapC1(c1Code, c1Name) {
   }
   if (code.length === 5) {
     const prefix = code.slice(0, 2);
-    const region = C1_TO_REGION[prefix];
+    // 전남광주통합특별시 새 코드(12xxx) — 시군구 이름으로 광주/전남을 가른다.
+    //
+    // 판정 1순위는 **코드표 역참조**다(C1_NM 이 아니라). 코드는 KOSIS 가 바꿀 수 없는 값이고,
+    // C1_NM 은 표기가 흔들린다("광주동구" 처럼 시도가 붙어 오면 분할 헬퍼의 명단 대조에서
+    // 떨어져 그 행이 통째로 버려진다). 이름은 코드로 못 구할 때의 폴백으로만 쓴다.
+    const derivedGu = prefix === "12" ? (NEW_SGG_TO_GU.get(code) ?? null) : null;
+    const region = prefix === "12"
+      ? resolveRegionName("전남광주통합특별시", derivedGu ?? name)
+      : C1_TO_REGION[prefix];
     if (!region) return null;
     // 세종은 시군구 없음
     if (region === "세종") return { region, gu: "세종시" };
@@ -115,7 +149,8 @@ export function mapC1(c1Code, c1Name) {
     // 그래도 normalizeGu 를 두는 이유: 원본이 나중에 일반구를 주기 시작해도 canonical 행에
     // 바로 붙게 하려는 것이다. 이 수집기는 UPDATE 전용이라 canonical 행이 아직 없으면 못
     // 채우는 게 정상이다 — 행 생성자는 population.mjs 다.
-    if (!name) return { region, gu: null };
+    // C1_NM 이 비어도 12xxx 는 코드로 시군구를 안다 — gu:null 로 버리지 않는다.
+    if (!name) return { region, gu: derivedGu ? (normalizeGu(region, derivedGu) ?? derivedGu) : null };
     return { region, gu: normalizeGu(region, name) ?? name };
   }
   return null;
