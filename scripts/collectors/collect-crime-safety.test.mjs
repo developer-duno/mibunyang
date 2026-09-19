@@ -1,5 +1,7 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import path from "path";
 import { parseCrimeCsv, matchCrimeGrade } from "./collect-crime-safety.mjs";
 
 // --- parseCrimeCsv ---
@@ -90,5 +92,32 @@ describe("matchCrimeGrade", () => {
 
   it("region 없으면 null", () => {
     expect(matchCrimeGrade(/** @type {any} */ ({ region: null, gu: "종로구" }), crimeMap)).toBeNull();
+  });
+});
+
+// ── regions 조회 배선 — selectAll keyCol (세션549) ──
+// 무정렬 .range 루프는 2,249행 표에서 같은 offset 이 매 조회 다른 표본을 준다
+// (.claude/rules/collectors/unordered-pagination-loses-rows.md §1). main() 을 테스트가 안 돌려
+// 배선을 순수함수 테스트로 못 잡으므로 소스 grep 으로 지킨다
+// (좌변까지 고정 — guards-must-be-mutation-tested §소스 grep 함정).
+describe("regions 조회 배선 — selectAll keyCol", () => {
+  const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-crime-safety.mjs"), "utf8");
+
+  it("selectAll 에 keyCol \"id\" 를 넘긴다 (무정렬 range 는 2,249행 표에서 같은 offset 이 다른 표본을 준다)", () => {
+    expect(src).toMatch(
+      /regions = [\s\S]{0,40}await selectAll\(\(s\) => s\.from\("regions"\)\.select\("id, region, gu"\), sb, "id"\)/,
+    );
+  });
+
+  it("커서 키가 select 에 들어 있다 (없으면 selectAll 이 즉시 throw)", () => {
+    expect(src).toMatch(/\.select\("id, region, gu"\)/);
+  });
+
+  it("조회 실패는 throw 대신 로그만 남기고 계속한다 (기존 fail-open 유지)", () => {
+    expect(src).toMatch(/} catch \(e\) {\s*rErr = /);
+  });
+
+  it("PAGE_SIZE 상수는 제거됐다 (무정렬 range 루프 잔재 금지)", () => {
+    expect(src).not.toMatch(/PAGE_SIZE/);
   });
 });

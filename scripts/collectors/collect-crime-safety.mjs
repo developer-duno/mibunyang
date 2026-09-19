@@ -115,7 +115,6 @@ async function main() {
   const sb = getSupabase();
 
   // 아파트 목록 조회 — selectAll 공유 헬퍼(고유키 id 커서 페이지네이션)
-  const PAGE_SIZE = 1000; // 아래 regions 루프(에러 시 throw 대신 graceful 계속)에서 계속 사용
   const apts = await selectAll((s) => s.from("apartments").select("id, name, region, gu"), sb, "id");
   log(PHASE, `대상: ${apts.length}건`);
 
@@ -143,17 +142,18 @@ async function main() {
   const result = rpt.summary();
 
   // regions UPDATE (세션 243 W6-E): 시군구 단위 crime_grade 채움
+  // 세션549: 무정렬 range 루프는 2,249행 표에서 같은 offset 이 매 조회 다른 표본을 준다
+  // (unordered-pagination-loses-rows.md §1). selectAll 은 throw 하므로 기존 fail-open 을 try/catch 로 보존.
   let regionsFailed = false;
   let rResult = { elapsed: "0", ok: 0, fail: 0, skip: 0, total: 0 };
-  const regions = [];
+  /** @type {Array<{ id: string; region: string; gu: string | null }>} */
+  let regions = [];
   /** @type {{ message: string } | null} */
   let rErr = null;
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await sb.from("regions").select("id, region, gu").range(offset, offset + PAGE_SIZE - 1);
-    if (error) { rErr = error; break; }
-    if (!data || data.length === 0) break;
-    regions.push(...data);
-    if (data.length < PAGE_SIZE) break;
+  try {
+    regions = /** @type {any} */ (await selectAll((s) => s.from("regions").select("id, region, gu"), sb, "id"));
+  } catch (e) {
+    rErr = { message: e instanceof Error ? e.message : String(e) };
   }
   if (rErr) { logError(PHASE, `regions 조회 실패: ${rErr.message}`); }
   else if (regions.length) {

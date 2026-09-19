@@ -708,10 +708,14 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
 
 - 🟡 **`sync-naver` 가 `articles heating 조회 실패: canceling statement due to statement timeout` 을 내고도 success 로 기록된다** (세션548, 09-17 파이프라인 로그).
   [[unordered-pagination-loses-rows]] §"스캔 맹점 2" 가 "대상 행 0 이라 잠복" 이라 적어 둔 그 생 쿼리가 실제로 발화했다. fail-open 이라 `collector_runs` 에는 안 보인다.
-  처방 후보 = heating 집계도 `fetchAllPages`(키셋 커서) 경유 + 폴백 시 skip 카운트로 드러내기.
+  ~~처방 후보 = heating 집계도 `fetchAllPages`(키셋 커서) 경유~~ → **세션549 직독으로 정정: 위 두 줄의 진단이 낡았다.** `sync-naver-complex.mjs:283` 은 세션535 부터 이미
+  `fetchAllPages(…, { keyCol: "article_no", desc: true })` 키셋 커서다(생 쿼리 아님). 그런데도 timeout 이 난다.
+  **확인된 사실**(2026-09-20 실측): `heating_type IS NOT NULL` 행은 **존재한다**(같은 필터·정렬로 첫 1행 75ms, 대조군 최신 1행 145ms) — 코드 주석의 "지금은 0 이라 잠복"도 낡았다.
+  **미확인 가설**: 난방값 있는 행이 137만 행 중 드물게 흩어져 있어, 커서가 깊어지면 한 페이지(1,000행)를 채우려고 null 구간을 길게 훑다 statement timeout.
+  다음 조사 = 페이지별 소요시간·커서 위치 로그로 어느 깊이에서 끊기는지 실측 → 처방 후보 ①부분 색인 `WHERE heating_type IS NOT NULL`(**`articles` 는 naver-estate-web 공용 표** — [[migration-safety]] 검토·Dashboard 수동 적용)
+  ②페이지 크기 축소 ③집계를 DB 쪽(RPC/VIEW)으로. 어느 쪽이든 **폴백 시 skip 카운트로 `collector_runs` 에 드러내기**는 공통.
 
-- 🟡 **첨단3지구 A8(`ah-2026910190`) 좌표 비우기 미실행** (세션546 사장님 결정, 세션548 재확인 = 화면 노출 중).
-  A7 좌표 복사분이라 비우는 게 맞지만, 화면에 나가는 단지라 파생표 정리는 **purge 창(KST 03:20~05:00 + 그날 배포 스냅샷 확인)** 에서만([[purge-to-recollect-timing]]).
+- ✅ **해소 (세션549 · 사장님 재결정)** — 첨단3지구 A8(`ah-2026910190`) 은 "좌표 비우기" 대신 **자기 카카오 핀(852m)으로 정정**했다. 경위·실측은 위 `<!-- 세션549 -->` 블록 참조.
 
 - 🟢 **KOSIS 순이동에서 29/46 계열이 되살아나 새·옛 계열이 동시에 살아 있게 되면 어느 쪽이 맞는지 코드가 판정하지 않는다** (세션548 PR #499 잔여 우려).
   파생 시도 entry 는 `liveSidoRegions` 로 자동 억제돼 중복 UPDATE 는 없다. 그 시점에 raw 재실측(접두별 전입·전출·순이동 합) 후 결정.
@@ -723,11 +727,10 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   처방 = 전입 0 ∧ 전출 0 계열 폐기(`detectDeadPrefixes`, 이름 하드코딩 없음) + 광주·전남 시도값 = 소속 시군구 합 + 합 ≠ "12" 시도값이면 fail-close.
   결과 = 광주 **−546** · 전남 **+102**(전 recorded_at), 07-01 시군구 전남 22/22·광주 5/5 채움, 나머지 15 시도는 수정 전과 동일.
 
-- 🟡 **`collect-unsold-kosis.mjs:188-192` 가 `regions` 를 필터·정렬·페이징 없이 select** (세션546 적대검증, 반박 실패 low).
-  2,249행 표라 PostgREST 기본 1,000행 컷에 걸린다([[unordered-pagination-loses-rows]] §"스캔 맹점 2" 의 생 쿼리 사례). `selectAll(..., sb, "id")` 로 전환.
-
-- 🟡 **`collect-crime-safety.mjs:152` 가 `regions` 를 order 없이 `.range()` 페이징** (세션546 적대검증, 반박 실패 low).
-  같은 룰의 무정렬 OFFSET 패턴. `selectAll(..., sb, "id")` 로 전환.
+- ✅ **해소 (세션549)** — `collect-unsold-kosis.mjs` 가 `regions`(2,249행)를 페이징 없이 select 하던 것 + `collect-crime-safety.mjs` 가 같은 표를 order 없이 `.range()` 로 훑던 것.
+  라이브 3-way 대조: 옛 무페이징 select = **1,000행** / `selectAll(…, sb, "id")` = **2,249** / `count exact` = 2,249 — 미분양 매칭이 지역표의 앞 1,000행에만 걸리고 있었다.
+  둘 다 `selectAll` 키셋 커서로 전환, 기존 fail-open(읽기 실패 시 로그만 남기고 계속)은 try/catch 로 보존. 배선 가드 + 뮤테이션 3종 red · 전체 6,879.
+  ⚠️ 코드만 고쳤다 — **빠졌던 1,249행은 다음 회차가 채운다**(unsold-kosis 는 로컬 러너, crime-safety 는 09-08 류 월간). 급하면 머지·본 폴더 pull 뒤 수동 1회 실행.
 
 - 🟡 **monitor 가 "지역×월 거래 0건" 을 못 본다 — 이번과 같은 사고가 또 조용히 지나간다** (세션546 적대검증 medium, 미반박).
   `scripts/monitor-collectors.mjs` `EXTERNAL_API_COLLECTORS`(L277-380)·`checkExternalApiStale`(L755-800) 는 collector 단위 신선도만 본다.
