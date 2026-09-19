@@ -2,7 +2,11 @@
 
 > 스키마/마이그레이션 수정 시 반드시 이 규칙을 따를 것.
 
-## 테이블 (18개 + 2 VIEW)
+## 테이블 (25개+ · 2 VIEW — 세션 548 라이브 실측, 아래 표 19 + 운영 표 6)
+
+> ⚠️ 개수를 단정하지 말 것 — 마이그레이션 grep 으로는 못 센다(CREATE/DROP·rename 혼재). 존재 확인은
+> `sb.from('<이름>').select('*').limit(1)` 의 에러 코드로(`PGRST205` = 없음). `{count:'exact', head:true}` 는
+> **없는 표에도 error=none** 을 돌려주므로 쓰지 않는다. `notification_logs` 는 생성·롤백 마이그레이션이 같은 날 있어 **운영 DB 에 없다**(세션 548 실측).
 
 > schema.sql은 `apartments_flat` VIEW 포함. `api_quota_daily` VIEW는 migration `20260329100000_api_quota_log.sql`에만 존재(schema.sql snapshot 미동기, 운영에는 영향 없음).
 
@@ -29,6 +33,12 @@
 | applyhome_unit_supply | 청약홈 주택형별 공급 세대수 (`source` = apt/remndr/opt) | collect-applyhome-detail, collect-applyhome-remndr |
 | applyhome_cancel_respl | 청약홈 취소후재공급 경쟁률 (유형별 6종 `by_type` JSONB) | collect-applyhome-remndr |
 | **dev_plans** | 개발계획·개발축 원본 (세션511 신설). `source`(naver/vworld) × `kind`(road·rail·station·jigu / industrial_complex·lh_zone). `raw` JSONB 에 원본 보존(V-WORLD 는 폴리곤 포함) | naver-devplan |
+| collector_runs | 수집기 실행 이력 (`collector`·`status`·`ok_count`/`fail_count`/`skip_count`·`finished_at`) — **모니터 전체가 이 표에 의존** | recordCollectorRun() |
+| applyhome_events | 청약홈 경쟁률·접수 이벤트 (알림 발송기의 이벤트 소스) | collect-applyhome |
+| subscribers | 분양 알림 구독자 | api/subscribers |
+| market_stats_history | 시장 지표 시계열 | collect-market-stats |
+| monitor_alert_state | 모니터 경보 dedup 상태 | monitor-collectors |
+| monitor_daily_snapshot | 모니터 일일 스냅샷 (NULL 추세 비교용) | monitor-collectors |
 | **apartments_flat** (VIEW) | dedup CTE + 7개 JOIN 평탄화 + presale 19컬럼 | - |
 | **api_quota_daily** (VIEW) | 일별 API 쿼터 합계 | - |
 

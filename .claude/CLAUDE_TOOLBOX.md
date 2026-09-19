@@ -171,7 +171,7 @@
 | `EASY_WORDS.md` | 사용자 대화 시 쉬운 말 원칙 |
 | `ENV_VARS.md` | 환경변수 목록 |
 | `NEXT_SESSION.md` | 다음 세션 시작점 (세션 종료 시 갱신) |
-| `SESSION_LOG.md` | 세션 1~ 누적 일지 (불변, append만) |
+| `SESSION_LOG.md` | **스텁**(세션 418) — 신규 누적 안 함. 세션 1~354 는 `SESSION_LOG_ARCHIVE_2026H1.md`, 세션 296+ 는 글로벌 메모리 `~/.claude/projects/f--mibunyang/memory/` |
 | `BACKLOG.md` | 보류 작업 |
 | `DB_QUALITY.md` | apartments_flat 품질 지표 |
 | `IMPROVE_REPORT_2026-05-02.md` | /improve 33건 분석 |

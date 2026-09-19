@@ -24,14 +24,18 @@
 | `AIRKOREA_KEY` | collect-air-quality | - | 별도 쿼터, MOLIT_KEY와 분리 |
 | `MOIS_POP_KEY` | population | O (population 활성 시) | 행정안전부 인구·세대현황 |
 | `MOIS_SEX_AGE_KEY` | population-sex-age | O (population-sex-age 활성 시) | 행정안전부 성별·연령별 인구 |
-| `TAGO_KEY` | transport-tago | O (transport 활성 시) | 국토교통부 TAGO 버스정류장 |
+| ~~`TAGO_KEY`~~ | (없음) | **불필요** | 세션 498(PR #337)에 버스 자료를 TAGO API → data.go.kr 정적 파일로 전환. `transport-tago.mjs` 의 `TAGO_KEY` 참조 0건(세션 548 실측). 새 환경을 꾸릴 때 발급받을 필요 없다 |
 
 ## KOSIS — 발급처 2 (회원당 인증키 1개)
 
 | 변수 | 쓰는 수집기 | 필수 | 비고 |
 |------|------|------|------|
-| `KOSIS_KEY` | collect-housing-supply-ratio / collect-market-stats / collect-unsold-kosis | O (KOSIS 활성 시) | 모든 통계표 공용 |
-| `KOSIS_MIGRATION_KEY` | migration / collect-avg-income | O (migration 활성 시) | 별도 발급 키 (세션 232) |
+| `KOSIS_KEY` | collect-housing-supply-ratio / collect-market-stats / collect-unsold-kosis / collect-fertility-rate / collect-jeonse-price-index / collect-sale-price-index / collect-medical-access / collect-regional-economy / housing-permits (+ `collect-data.mjs`) | O (KOSIS 활성 시) | 모든 통계표 공용. 세션 548 실측 목록 — 단정 전 `grep -lE 'process\.env\.KOSIS_KEY\b' scripts/collectors/*.mjs` |
+| `KOSIS_MIGRATION_KEY` | migration / collect-avg-income (+ `data-fill.mjs` envKeys) | O (migration 활성 시) | 별도 발급 키 (세션 232) |
+
+> ⚠️ **두 KOSIS 키는 GitHub Actions 에서 쓰이지 않는다** (세션 288~289: kosis.kr 이 해외 IP 를 차단 → KOSIS 수집기 전부를
+> 로컬 러너 `scripts/kosis-local-runner.mjs` 로 이전. 세션 548 실측 = 워크플로 yml 의 `KOSIS_*` 주입 0건).
+> 즉 이 키들은 **`.env.local` 에만 있으면 된다** — GitHub Secret 을 새로 등록하거나 회전할 때 빠뜨려도 수집은 안 멈춘다.
 
 ## info.childcare.go.kr — 발급처 3 (data.go.kr 아님)
 

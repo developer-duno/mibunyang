@@ -5,7 +5,8 @@
 ## Hook 호출 순서 (App.tsx)
 
 ```
-useState (4개: profile, customWeights, hideNoUnsold, tab) + useTransition (1개)
+useState (7개: profile, customWeights, hideNoUnsold, upcomingData, upcomingError, upcomingRetryTick, tab) + useTransition (1개)
+  ⚠️ 셀 때 `grep -c 'useState('` 는 제네릭 꼴(`useState<Profile>(`)을 놓친다 — `grep -cE 'useState(<[^>]*>)?\('` 로 (세션 548)
   → useCallback (setProfile, saveCustomWeights, toggleHideNoUnsold, closeDetail)
   → 커스텀 훅 13개 (useResponsive → useToast → ... → useShare)
   → useDataPipeline (useMemo 13개 + visibleCount + reset useEffect)

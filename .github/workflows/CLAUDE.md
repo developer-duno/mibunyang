@@ -32,7 +32,7 @@
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×8** → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
+| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×10**(세션 548 실측 — 개수는 늘어난다, 세는 명령은 루트 `CLAUDE.md` "명령" 절) → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
 | `e2e.yml` | Playwright E2E 테스트 (PR 트리거). **세션 491**: `paths-ignore`(docs·md·.claude·scripts·supabase) + `concurrency` + 브라우저 캐시. ⚠️ `paths-ignore` 에 `.github/workflows/**` 를 넣으면 이 파일 자신을 고칠 때 검증이 사라진다 — 절대 금지 |
 | `warm-playwright-cache.yml` | **세션 491 신설** — 매주 화 KST 02:00, `main` 에서 브라우저 캐시를 미리 채운다. Actions 캐시는 "만든 브랜치 + 기본 브랜치"에서만 읽히는데 `e2e.yml` 은 PR 전용이라 이 예열이 없으면 캐시가 매번 미스된다. **캐시 키를 `e2e.yml` 과 동일하게 유지할 것** — 어긋나면 `scripts/audit-playwright-cache.mjs` 가 CI 에서 차단 |
 
@@ -48,6 +48,7 @@
 | `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리). **세션 491**: 세 조회가 전부 max_rows=1000 에 걸려 3주 연속 갱신 0건이던 것을 매칭 선행 + `.in()` 분할로 복구 (dry-run 실측 **갱신 490건**) |
 | `collect-nearby-childcare.yml` | 단지 1km 내 어린이집 근접 계산 (**세션 491: 매일 → 주 1회 화** — 입력이 82일째 정지 + 재계산 결과 677건 × 8필드 전부 동일). **세션 491 문서 추가** (그동안 표에 없었다) |
 | `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
+| `collect-applyhome-remndr.yml` | 청약홈 잔여세대 평형 + 취소후재공급 경쟁률 (월 13:30 KST, 세션 496 PR #330). **세션 548 문서 추가** (그동안 표에 없었다) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
 ### 매월 (9개) + 수동 전용 (4개)
