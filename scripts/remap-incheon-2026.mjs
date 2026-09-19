@@ -434,8 +434,8 @@ function idList(ids, max = 20) {
     : `${ids.slice(0, max).join(", ")} … 외 ${ids.length - max}건`;
 }
 
-const APT_COLUMNS = "id, region, gu, dong, bjd_code, lat, lng, name";
-const TRADE_COLUMNS = "id, region, gu, dong, deal_month, area, price, floor, trade_type, apt_name";
+// ⚠️ select 컬럼은 호출 자리에 **문자열 리터럴로** 적는다(세션547) — 상수로 넘기면 정적 가드
+//    `_selectall-keycol-coverage.test.mjs` 가 커서 키("id")를 못 읽어 위반으로 판정한다.
 
 /**
  * @param {any} sb
@@ -445,14 +445,14 @@ const TRADE_COLUMNS = "id, region, gu, dong, deal_month, area, price, floor, tra
 async function fetchApts(sb, ids = null) {
   if (!ids) {
     return /** @type {AptRow[]} */ (
-      await selectAll((s) => s.from("apartments").select(APT_COLUMNS), sb, "id")
+      await selectAll((s) => s.from("apartments").select("id, region, gu, dong, bjd_code, lat, lng, name"), sb, "id")
     );
   }
   /** @type {AptRow[]} */
   const out = [];
   for (const chunk of chunkIds(ids)) {
     const rows = /** @type {AptRow[]} */ (
-      await selectAll((s) => s.from("apartments").select(APT_COLUMNS).in("id", chunk), sb, "id")
+      await selectAll((s) => s.from("apartments").select("id, region, gu, dong, bjd_code, lat, lng, name").in("id", chunk), sb, "id")
     );
     out.push(...rows);
   }
@@ -596,7 +596,7 @@ async function main() {
     const wantTypes = types ?? null;
     const oldRaw = /** @type {TradeRow[]} */ (
       await selectAll(
-        (s) => s.from("trades").select(TRADE_COLUMNS)
+        (s) => s.from("trades").select("id, region, gu, dong, deal_month, area, price, floor, trade_type, apt_name")
           .eq("region", REGION).in("gu", [...RETIRED])
           .gte("deal_month", TRADE_WINDOW_FROM).lte("deal_month", TRADE_WINDOW_TO),
         sb, "id",
@@ -604,7 +604,7 @@ async function main() {
     );
     const newRaw = /** @type {TradeRow[]} */ (
       await selectAll(
-        (s) => s.from("trades").select(TRADE_COLUMNS)
+        (s) => s.from("trades").select("id, region, gu, dong, deal_month, area, price, floor, trade_type, apt_name")
           .eq("region", REGION).in("gu", NEW_GU)
           .gte("deal_month", TRADE_WINDOW_FROM).lte("deal_month", TRADE_WINDOW_TO),
         sb, "id",
