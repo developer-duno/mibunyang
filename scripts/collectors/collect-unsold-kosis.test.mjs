@@ -5,6 +5,8 @@
  * 대상: parseKosisRows, aggregateRegionTotals, calcProportionalUnsold
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "fs";
+import path from "path";
 
 const fetchWithRetryMock = vi.fn();
 
@@ -255,5 +257,28 @@ describe("main() recordCollectorRun 하드닝", () => {
       "kosis-unsold",
       { ok: 0 },
     );
+  });
+});
+
+// ── regions 조회 배선 — selectAll keyCol (세션549) ──
+// 무정렬 select 는 2,249행 표에서 첫 1,000행만 매칭한다
+// (.claude/rules/collectors/unordered-pagination-loses-rows.md §1). main() 은 fetch mock 으로
+// early-return 하는 케이스만 커버해 이 지점을 안 지나므로, 소스 grep 으로 배선을 지킨다
+// (좌변까지 고정 — guards-must-be-mutation-tested §소스 grep 함정).
+describe("regions 조회 배선 — selectAll keyCol", () => {
+  const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-unsold-kosis.mjs"), "utf8");
+
+  it("selectAll 에 keyCol \"id\" 를 넘긴다 (무정렬 select 는 2,249행 표에서 1,000행만 매칭한다)", () => {
+    expect(src).toMatch(
+      /regions = [\s\S]{0,40}await selectAll\(\(s\) => s\.from\("regions"\)\.select\("id, region, gu, regional_unsold"\), sb, "id"\)/,
+    );
+  });
+
+  it("커서 키가 select 에 들어 있다 (없으면 selectAll 이 즉시 throw)", () => {
+    expect(src).toMatch(/\.select\("id, region, gu, regional_unsold"\)/);
+  });
+
+  it("조회 실패는 throw 대신 로그만 남기고 계속한다 (기존 fail-open 유지)", () => {
+    expect(src).toMatch(/} catch \(e\) {\s*rErr = /);
   });
 });

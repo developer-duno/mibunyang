@@ -10,7 +10,7 @@
  *   node scripts/collectors/collect-unsold-kosis.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-unsold-kosis.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll } from "./_shared.mjs";
 
 /** @typedef {{ C1_NM: string; C2_NM: string; PRD_DE: string; DT: string }} KosisRow */
 /** @typedef {Record<string, Record<string, Record<string, number>>>} UnsoldByRegionGuMonth */
@@ -187,9 +187,19 @@ export async function main() {
     log(PHASE, `시도별 미분양: ${Object.entries(regionTotals).map(([r, v]) => `${r}=${v}`).join(", ")}`);
 
     // 1. regions 테이블 업데이트
-    const { data: regions, error: rErr } = await sb
-      .from("regions")
-      .select("id, region, gu, regional_unsold");
+    // 세션549: 무정렬 select 는 2,249행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
+    // selectAll 은 조회 실패 시 throw 하므로, 기존 fail-open(로그만 남기고 계속) 의미를 try/catch 로 보존한다.
+    /** @type {Array<{ id: string; region: string; gu: string | null; regional_unsold: number | null }> | null} */
+    let regions = null;
+    /** @type {{ message: string } | null} */
+    let rErr = null;
+    try {
+      regions = /** @type {any} */ (
+        await selectAll((s) => s.from("regions").select("id, region, gu, regional_unsold"), sb, "id")
+      );
+    } catch (e) {
+      rErr = { message: e instanceof Error ? e.message : String(e) };
+    }
 
     let regUpdated = 0;
     if (rErr) {
