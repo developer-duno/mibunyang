@@ -25,8 +25,8 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 process.env.KOSIS_MIGRATION_KEY = "test-key";
 
-const { normalizeC1Name, mapC1, aggregateKosisRows, detectDeadPrefixes, C1_TO_REGION, fetchKosis, main } = await import("./migration.mjs");
-const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { normalizeC1Name, mapC1, aggregateKosisRows, detectDeadPrefixes, parseDT, C1_TO_REGION, fetchKosis, main } = await import("./migration.mjs");
+const { recordCollectorRun, logError } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── normalizeC1Name ──────────────────────────────────────────
 describe("normalizeC1Name", () => {
@@ -129,8 +129,11 @@ describe("aggregateKosisRows", () => {
    */
   const mkRow = (C1, C1_NM, PRD_DE, ITM_NM, DT) => ({ C1, C1_NM, PRD_DE, ITM_NM, DT });
 
+  // 세션548 D3 — 반환 모양에 crossCheckFailures·unmappedAmbiguous 가 **추가**됐다(이름 변경 0).
+  // toEqual 은 여분 키를 불일치로 보므로 핵심 두 칸만 본다.
   it("빈 배열 → period null, entries []", () => {
-    expect(aggregateKosisRows([])).toEqual({ period: null, entries: [] });
+    expect(aggregateKosisRows([])).toMatchObject({ period: null, entries: [] });
+    expect(aggregateKosisRows([]).crossCheckFailures).toBe(0);
   });
 
   it("최신 월만 선택 (202602 > 202601)", () => {
@@ -463,5 +466,284 @@ describe("죽은 계열 제외 + 시도 파생값 (세션547)", () => {
   it("한쪽만 0 이면 죽은 계열이 아니다 (∧ 조건)", () => {
     expect(detectDeadPrefixes(mkTriple("46", "전라남도", 0, 500))).toEqual(new Set());
     expect(detectDeadPrefixes(mkTriple("46", "전라남도", 500, 0))).toEqual(new Set());
+  });
+});
+
+// ── 세션548 하드닝 (D1~D4) ────────────────────────────────────
+//
+// 전부 실제 경로(`aggregateKosisRows` / export 된 헬퍼)로 검증한다. 픽스처는 라이브 응답과
+// 같은 모양 — 한 코드당 총전입·총전출·순이동 3행 + "동  구" 같은 공백 2칸 표기.
+describe("세션548 D1 — 빈 DT 를 0 으로 읽지 않는다", () => {
+  /**
+   * @param {string} C1 @param {string} C1_NM
+   * @param {any} tin @param {any} tout @param {any} net
+   */
+  const mkRaw = (C1, C1_NM, tin, tout, net) => [
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전입", DT: tin },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전출", DT: tout },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "순이동", DT: net },
+  ];
+  /** DT 필드 자체가 없는 3행 */
+  const mkNoDt = (/** @type {string} */ C1, /** @type {string} */ C1_NM) => [
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전입" },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전출" },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "순이동", DT: "-777" },
+  ];
+
+  it("parseDT — 빈 값은 NaN, 진짜 0 은 0", () => {
+    expect(parseDT("")).toBeNaN();
+    expect(parseDT("   ")).toBeNaN();
+    expect(parseDT(null)).toBeNaN();
+    expect(parseDT(undefined)).toBeNaN();
+    expect(parseDT("0")).toBe(0);
+    expect(parseDT("-444")).toBe(-444);
+    expect(parseDT("-12,345")).toBe(-12345);
+  });
+
+  it("총전입/총전출 DT 가 '' 여도 죽은 계열이 아니다 — 시도·시군구가 살아 남는다", () => {
+    const rows = [...mkRaw("11", "서울특별시", "", "", "-50000"), ...mkRaw("11680", "강남구", "", "", "200")];
+    expect(detectDeadPrefixes(rows)).toEqual(new Set());
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries).toContainEqual({ region: "서울", gu: null, net_migration: -50000 });
+    expect(entries).toContainEqual({ region: "서울", gu: "강남구", net_migration: 200 });
+  });
+
+  it("총전입/총전출 DT 가 null 이어도 죽은 계열이 아니다", () => {
+    const rows = [...mkRaw("26", "부산광역시", null, null, "-1200"), ...mkRaw("26110", "중  구", null, null, "-30")];
+    expect(detectDeadPrefixes(rows)).toEqual(new Set());
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries).toContainEqual({ region: "부산", gu: null, net_migration: -1200 });
+    expect(entries).toContainEqual({ region: "부산", gu: "중구", net_migration: -30 });
+  });
+
+  it("DT 필드 자체가 없어도 죽은 계열이 아니다", () => {
+    const rows = [...mkNoDt("27", "대구광역시"), ...mkNoDt("27110", "중  구")];
+    expect(detectDeadPrefixes(rows)).toEqual(new Set());
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries).toContainEqual({ region: "대구", gu: null, net_migration: -777 });
+    expect(entries).toContainEqual({ region: "대구", gu: "중구", net_migration: -777 });
+  });
+
+  it("순이동 DT 가 비면 0 으로 적재하지 않는다 (entry 자체가 없다)", () => {
+    const rows = [...mkRaw("28", "인천광역시", "9000", "9100", ""), ...mkRaw("11", "서울특별시", "5", "6", "-1")];
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries.find((e) => e.region === "인천")).toBeUndefined();
+    expect(entries).toContainEqual({ region: "서울", gu: null, net_migration: -1 });
+  });
+
+  it("⚠️ 진짜 0 은 여전히 죽은 계열로 잡는다 (D1 고치면서 R1 을 잃지 않는다)", () => {
+    const rows = [...mkRaw("46", "전라남도", "0", "0", "0"), ...mkRaw("46150", "순천시", "0", "0", "0")];
+    expect(detectDeadPrefixes(rows)).toEqual(new Set(["46"]));
+    expect(aggregateKosisRows(rows).entries).toHaveLength(0);
+  });
+});
+
+describe("세션548 D2 — 2자리 행 없는 죽은 계열 + 중복 키", () => {
+  /**
+   * @param {string} C1 @param {string} C1_NM
+   * @param {number} tin @param {number} tout
+   */
+  const mkTriple = (C1, C1_NM, tin, tout) => [
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전입", DT: String(tin) },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전출", DT: String(tout) },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "순이동", DT: String(tin - tout) },
+  ];
+
+  /** 살아 있는 전남 — 옛 코드 46 계열(시도행 포함) */
+  const live = [
+    ...mkTriple("46", "전라남도", 10376, 10376 + 376),
+    ...mkTriple("46150", "순천시", 1000, 1376),
+  ];
+  /** 죽은 12 계열인데 **2자리 시도행이 없다** — 5자리 0 만 온다 */
+  const deadNoSido = [
+    ...mkTriple("12150", "순천시", 0, 0),
+    ...mkTriple("12110", "목포시", 0, 0),
+  ];
+
+  it("2자리 행이 없어도 5자리가 전부 0 ∧ 0 이면 죽은 계열", () => {
+    expect(detectDeadPrefixes(deadNoSido)).toEqual(new Set(["12"]));
+  });
+
+  it("5자리 중 하나라도 살아 있으면 죽은 계열이 아니다", () => {
+    const mixed = [...mkTriple("12150", "순천시", 0, 0), ...mkTriple("12110", "목포시", 900, 1094)];
+    expect(detectDeadPrefixes(mixed)).toEqual(new Set());
+  });
+
+  it("5자리가 0 이지만 총전입/총전출이 비면(NaN) 죽은 계열이 아니다", () => {
+    const blank = [
+      { C1: "12150", C1_NM: "순천시", PRD_DE: "202607", ITM_NM: "총전입", DT: "" },
+      { C1: "12150", C1_NM: "순천시", PRD_DE: "202607", ITM_NM: "총전출", DT: "" },
+      { C1: "12150", C1_NM: "순천시", PRD_DE: "202607", ITM_NM: "순이동", DT: "0" },
+    ];
+    expect(detectDeadPrefixes(blank)).toEqual(new Set());
+  });
+
+  it("죽은 0 행이 앞/뒤 어디에 있어도 결과가 같고, 살아 있는 값이 이긴다", () => {
+    const 정렬 = (/** @type {any[]} */ es) =>
+      [...es].sort((a, b) => `${a.region}|${a.gu}`.localeCompare(`${b.region}|${b.gu}`));
+    // ① D2a 가 잡는 모양(전부 0) ② D2a 가 못 잡는 모양(5자리 하나가 살아 있음) 둘 다 본다.
+    const d2aMiss = [
+      ...mkTriple("12150", "순천시", 0, 0),
+      ...mkTriple("12110", "목포시", 900, 1094),
+    ];
+    for (const zeros of [deadNoSido, d2aMiss]) {
+      const before = aggregateKosisRows([...zeros, ...live]);
+      const after = aggregateKosisRows([...live, ...zeros]);
+      expect(정렬(after.entries)).toEqual(정렬(before.entries));
+      for (const r of [before, after]) {
+        expect(r.entries.find((e) => e.region === "전남" && e.gu === "순천시")?.net_migration).toBe(-376);
+      }
+    }
+  });
+
+  it("⚠️ entries 에 같은 region|gu 키가 두 번 나오지 않는다 (순차 UPDATE 라 순서가 값을 정한다)", () => {
+    // ⚠️ `deadNoSido` 만으로는 이 단언이 **속 빈다** — 죽은 계열 판정(D2a)이 0 행을 먼저
+    //    걷어내 중복 자체가 안 생기기 때문이다. 그래서 D2a 가 못 잡는 모양(5자리 하나가
+    //    살아 있어 prefix 가 dead 가 아닌 경우)도 함께 넣는다. 이게 방어층이 실제로 일하는 자리다.
+    const d2aMiss = [
+      ...mkTriple("12150", "순천시", 0, 0),
+      ...mkTriple("12110", "목포시", 900, 1094),
+    ];
+    const cases = [
+      [...deadNoSido, ...live], [...live, ...deadNoSido],
+      [...d2aMiss, ...live], [...live, ...d2aMiss],
+    ];
+    for (const rows of cases) {
+      const { entries } = aggregateKosisRows(rows);
+      const keys = entries.map((e) => `${e.region}|${e.gu ?? ""}`);
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+  });
+
+  it("⚠️ 방어층 — 죽은 계열 판정이 뚫려도 0 이 살아 있는 값을 못 덮는다", () => {
+    // 죽은 판정을 피하려고 5자리 하나를 살려 둔다(그래서 12 prefix 는 dead 가 아니다).
+    // 그래도 12150(0) 과 46150(-376) 은 같은 "전남|순천시" 키 → 하나만 남아야 한다.
+    const rows = [
+      ...mkTriple("12150", "순천시", 0, 0),
+      ...mkTriple("12110", "목포시", 900, 1094),
+      ...live,
+    ];
+    expect(detectDeadPrefixes(rows)).toEqual(new Set());
+    for (const ordered of [rows, [...live, ...rows.slice(0, 6)]]) {
+      const { entries } = aggregateKosisRows(ordered);
+      const 순천 = entries.filter((e) => e.region === "전남" && e.gu === "순천시");
+      expect(순천).toHaveLength(1);
+      expect(순천[0].net_migration).toBe(-376);
+    }
+  });
+});
+
+describe("세션548 D3 — 교차검증 실패를 run 에 싣는다", () => {
+  /**
+   * @param {string} C1 @param {string} C1_NM
+   * @param {number} tin @param {number} tout
+   */
+  const mkTriple = (C1, C1_NM, tin, tout) => [
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전입", DT: String(tin) },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전출", DT: String(tout) },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "순이동", DT: String(tin - tout) },
+  ];
+
+  const 시군구 = [
+    ...mkTriple("12210", "동  구", 1000, 1030),
+    ...mkTriple("12300", "북구", 1000, 1050),
+    ...mkTriple("12110", "목포시", 1000, 1194),
+  ];
+
+  it("합이 어긋나면 crossCheckFailures ≥ 1 · 시도 파생 없음 · 시군구는 그대로", () => {
+    const rows = [...mkTriple("12", "전남광주통합특별시", 25369, 25369 + 999), ...시군구];
+    const { entries, crossCheckFailures } = aggregateKosisRows(rows);
+    expect(crossCheckFailures).toBeGreaterThanOrEqual(1);
+    expect(entries.filter((e) => e.gu === null)).toHaveLength(0);
+    expect(entries.filter((e) => e.gu)).toHaveLength(3);
+  });
+
+  it("합이 맞으면 실패 0 + 시도 파생 있음", () => {
+    const rows = [...mkTriple("12", "전남광주통합특별시", 25369, 25369 + 30 + 50 + 194), ...시군구];
+    const { entries, crossCheckFailures } = aggregateKosisRows(rows);
+    expect(crossCheckFailures).toBe(0);
+    expect(entries).toContainEqual({ region: "광주", gu: null, net_migration: -80 });
+    expect(entries).toContainEqual({ region: "전남", gu: null, net_migration: -194 });
+  });
+
+  it("⚠️ mapC1 이 못 가른 12xxx 코드를 세고 로그에 코드까지 적는다", () => {
+    logError.mockClear();
+    // 12999 는 코드표에 없다 → mapC1 null → 시군구 합에서 빠진다. 시도 통합값은 **12999 를 포함한**
+    // 진짜 합(-274 + -80 = -354)이므로, 빠진 그 값만큼 교차검증이 깨진다.
+    const rows = [
+      ...mkTriple("12", "전남광주통합특별시", 25369, 25369 + 354),
+      ...시군구,
+      ...mkTriple("12999", "없는구", 1000, 1080),
+    ];
+    const { unmappedAmbiguous, crossCheckFailures } = aggregateKosisRows(rows);
+    expect(unmappedAmbiguous).toContain("12999");
+    expect(crossCheckFailures).toBeGreaterThanOrEqual(1);
+    const msgs = logError.mock.calls.map((/** @type {any[]} */ c) => String(c[1]));
+    // ⚠️ 코드가 "어딘가의 로그에" 있는 것으로는 부족하다 — **교차검증 실패 그 줄**에 있어야
+    //    "왜 합이 어긋났나" 를 한 줄에서 읽는다. 별도 요약 줄만 보면 이 단언이 속 빈다.
+    const xline = msgs.find((/** @type {string} */ m) => m.includes("교차검증 실패"));
+    expect(xline, "교차검증 실패 로그가 없다").toBeTruthy();
+    expect(xline).toMatch(/매핑 실패 5자리 1건/);
+    expect(xline).toMatch(/12999/);
+  });
+
+  it("main() — 교차검증 실패가 collector_runs fail 로 올라간다 (깨끗한 success 아님)", async () => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+    const rows = [...mkTriple("12", "전남광주통합특별시", 25369, 25369 + 999), ...시군구];
+    fetchWithRetryMock.mockResolvedValue({ text: async () => JSON.stringify(rows) });
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
+    const argvSpy = vi.spyOn(process, "argv", "get").mockReturnValue(["node", "migration.mjs", "--dry-run"]);
+    try {
+      await main();
+    } finally {
+      argvSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+    const arg = recordCollectorRun.mock.calls.at(-1)?.[1];
+    expect(arg.fail).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("세션548 D4 — 모호 prefix 끼리 합을 빌려 쓰지 않는다", () => {
+  /**
+   * @param {string} C1 @param {string} C1_NM
+   * @param {number} tin @param {number} tout
+   */
+  const mkTriple = (C1, C1_NM, tin, tout) => [
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전입", DT: String(tin) },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "총전출", DT: String(tout) },
+    { C1, C1_NM, PRD_DE: "202607", ITM_NM: "순이동", DT: String(tin - tout) },
+  ];
+
+  it("두 번째 모호 prefix 가 첫 prefix 의 시군구 합을 재사용하지 않는다", () => {
+    // "11"(서울)도 모호하다고 주입한다 — 실제로는 아니지만, 표가 늘었을 때의 동작을 잰다.
+    // 12 쪽 시군구 합(-80/-194)이 11 쪽 교차검증에 끼어들면 11 은 통과해 버린다.
+    const rows = [
+      ...mkTriple("12", "전남광주통합특별시", 1000, 1000 + 30 + 50 + 194),
+      ...mkTriple("12210", "동  구", 1000, 1030),
+      ...mkTriple("12300", "북구", 1000, 1050),
+      ...mkTriple("12110", "목포시", 1000, 1194),
+      // 11 계열 — 시도 통합값(-80)은 12 쪽 광주 합과 우연히 같다. 자기 시군구 합은 -5 뿐.
+      ...mkTriple("11", "서울특별시", 1000, 1080),
+      ...mkTriple("11680", "강남구", 1000, 1005),
+    ];
+    const { entries, crossCheckFailures } = aggregateKosisRows(rows, new Set(["12", "11"]));
+    // 12 쪽은 정상 파생
+    expect(entries).toContainEqual({ region: "광주", gu: null, net_migration: -80 });
+    expect(entries).toContainEqual({ region: "전남", gu: null, net_migration: -194 });
+    // 11 쪽은 자기 합(-5) ≠ 시도값(-80) 이므로 **파생하지 않는다**
+    expect(entries.find((e) => e.region === "서울" && e.gu === null)).toBeUndefined();
+    expect(crossCheckFailures).toBeGreaterThanOrEqual(1);
+    // 시군구는 그대로 나간다
+    expect(entries).toContainEqual({ region: "서울", gu: "강남구", net_migration: -5 });
+  });
+
+  it("기본 인자는 모듈 상수(AMBIGUOUS_PREFIXES) — 주입 없이도 종전과 같다", () => {
+    const rows = [
+      ...mkTriple("12", "전남광주통합특별시", 1000, 1000 + 30),
+      ...mkTriple("12210", "동  구", 1000, 1030),
+    ];
+    expect(aggregateKosisRows(rows).entries).toContainEqual({ region: "광주", gu: null, net_migration: -30 });
   });
 });

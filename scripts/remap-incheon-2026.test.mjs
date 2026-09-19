@@ -400,6 +400,38 @@ describe("verifyApplied / verifyResiduals", () => {
     expect(verifyResiduals({ leftCount: 3, checkCount: true, applied: false })).toEqual([]);
   });
 
+  // ── 세션548 D5 ─────────────────────────────────────────────
+  // 이 도구는 `twinIds`(= 새 gu 쪽에 같은 거래가 있는 옛 행)만 지우고, 쌍둥이 없는 옛 행은
+  // **설계상 남긴다**(그건 중복이 아니라 유일본이다). 옛 판정은 `leftCount > 0` 이라 정상
+  // 실행 뒤에도 exit 1 을 냈다 — 2026-09-19 실측 13,736행 삭제 · 22행 잔여 → 거짓 실패.
+  it("⚠️ 기대 잔여와 같으면 통과 — 쌍둥이 없는 옛 행은 남는 게 정상", () => {
+    expect(verifyResiduals({ leftCount: 22, checkCount: true, applied: true, expectedLeft: 22 })).toEqual([]);
+    expect(verifyResiduals({ leftCount: 0, checkCount: true, applied: true, expectedLeft: 22 })).toEqual([]);
+  });
+
+  it("⚠️ 기대 잔여를 넘으면 실패 — 삭제가 덜 됐다는 신호는 여전히 잡는다", () => {
+    const p = verifyResiduals({ leftCount: 23, checkCount: true, applied: true, expectedLeft: 22 });
+    expect(p).toHaveLength(1);
+    expect(p[0]).toMatch(/잔여 23행/);
+    expect(p[0]).toMatch(/기대 22행/);
+    // 기대값을 안 주면 종전대로 0 기준 (다른 호출 자리 회귀 방지)
+    expect(verifyResiduals({ leftCount: 1, checkCount: true, applied: true })).toHaveLength(1);
+  });
+
+  it("⚠️ 기대 잔여가 있어도 count 가 null 이면 실패 · --types 면제는 그대로", () => {
+    expect(verifyResiduals({ leftCount: null, checkCount: true, applied: true, expectedLeft: 22 })).toHaveLength(1);
+    expect(verifyResiduals({ leftCount: 999, checkCount: true, applied: false, expectedLeft: 22 })).toEqual([]);
+  });
+
+  it("⚠️ 기대 잔여 = 옛 행 전체 − 쌍둥이 (computeTwinRatio 가 그 둘을 준다)", () => {
+    const olds = Array.from({ length: 30 }, (_, i) => trade({ id: i + 1, floor: i + 1, gu: "서구" }));
+    const news = olds.slice(0, 28).map((r, i) => ({ ...r, id: 9000 + i, gu: "검단구" }));
+    const d = computeTwinRatio(olds, news);
+    const expectedLeft = d.total - d.twins;
+    expect(expectedLeft).toBe(2);
+    expect(verifyResiduals({ leftCount: expectedLeft, checkCount: true, applied: true, expectedLeft })).toEqual([]);
+  });
+
   it("불일치가 없으면 통과", () => {
     expect(verifyResiduals({ mismatched: [] })).toEqual([]);
     expect(verifyResiduals({ mismatched: ["a"] })).toHaveLength(1);
@@ -536,10 +568,42 @@ describe("배선 — 이 도구 자신", () => {
     expect(lits.length).toBe(2);
     for (const lit of lits) {
       const cols = lit.split(",").map((s) => s.trim());
-      for (const c of ["id", "dong", "deal_month", "area", "price", "floor", "trade_type", "apt_name"]) {
+      // region·gu 는 쌍둥이 키가 아니지만(그게 갈린 축이라) **fail-close 표본 로그·계획 JSON** 이
+      // 그 둘을 읽는다 — 빠지면 undefined 가 찍혀 "왜 안 지웠나" 를 사람이 못 읽는다(세션548).
+      for (const c of ["id", "region", "gu", "dong", "deal_month", "area", "price", "floor", "trade_type", "apt_name"]) {
         expect(cols, `trades select 에 ${c} 가 없다`).toContain(c);
       }
     }
+  });
+
+  it("⚠️ trades 두 조회 모두 창 필터를 **서버에서** 건다 (전 기간을 끌어오지 않는다)", () => {
+    // 창 필터가 빠지면 `filterTradeRows` 가 클라이언트에서 다시 거르므로 결과는 같아 보이지만,
+    // trades 전 기간을 통째로 끌어와 느려지고 커서 페이징이 커진다. 호출 자리 본문을 고정한다 —
+    // 근처 옵션 줄이 아니라 `from("trades").select(` 에서 그 호출이 닫히기 전까지만 본다.
+    const calls = [...src.matchAll(/from\("trades"\)\.select\("[^"]+"\)/g)];
+    expect(calls.length).toBe(2);
+    for (const m of calls) {
+      const start = /** @type {number} */ (m.index);
+      // 다음 인자 경계(`,\n        sb,`)까지가 이 조회의 체인이다.
+      const end = src.indexOf("sb,", start);
+      expect(end).toBeGreaterThan(start);
+      const chain = src.slice(start, end);
+      expect(chain, "서버측 하한 필터(.gte deal_month) 가 없다").toContain('.gte("deal_month"');
+      expect(chain, "서버측 상한 필터(.lte deal_month) 가 없다").toContain('.lte("deal_month"');
+      expect(chain).toContain("TRADE_WINDOW_FROM");
+      expect(chain).toContain("TRADE_WINDOW_TO");
+    }
+  });
+
+  it("⚠️ trades 잔여 판정에 expectedLeft 를 실제로 넘긴다 (세션548 D5)", () => {
+    // 기대 잔여는 `d.total - d.twins` 로 계산해 verifyResiduals 까지 배선돼야 한다.
+    // 안 넘기면 기본값 0 이 되어 정상 실행이 다시 exit 1 이 된다.
+    expect(src).toMatch(/const expectedLeft = d\.total - d\.twins;/);
+    const iCall = src.indexOf("verifyResiduals({");
+    expect(iCall).toBeGreaterThan(-1);
+    const call = src.slice(iCall, src.indexOf("})", iCall));
+    expect(call).toContain("checkCount: true");
+    expect(call).toMatch(/expectedLeft: tradePlan\.expectedLeft/);
   });
 
   it("⚠️ 은퇴 명단을 복사하지 않고 _shared 의 RETIRED_GU 에서 가져온다", () => {
