@@ -20,6 +20,8 @@
  * 2. **지역** — 결과 `address_name` 의 첫 토큰이 그 단지 시도 약칭으로 시작하고, `gu` 를 알면
  *    그다음 토큰(들)이 `gu` 와 **정확히** 같아야 한다(`matchesRegion`).
  *    시도만 거르면 브랜드명 충돌로 55~330km 밖 단지가 잡힌다(세션540 실측).
+ *    통합 시도(`전남광주통합특별시`)는 첫 토큰이 두 지역 공용이라 **시군구로 가른다** —
+ *    `matchesRegion` 주석 참조(세션549: 그 전까지 광주 단지가 전부 거부됐다).
  * 3. **이름 유사도** — `KAKAO_MIN_SIM`(0.7) 이상. 0.85 이상이거나 공백 제거 질의가 장소명의
  *    부분문자열이면 **강함**(접미어 "1차아파트" 때문에 sim 이 눌린 진짜 일치를 구제).
  * 4. **자동 채택**(`pickApartmentPoi`) — 강함은 채택, 약함(0.7~0.85)은 **시군구 게이트를 실제로
@@ -35,12 +37,21 @@
  *
  * ⚠️ `_` 접두 = 라이브러리. graceful/exit-quota/orphan 감사가 자동 제외한다(`_molit-api.mjs` 선례).
  */
-import { stringSimilarity, REGION_MAP, sleep, fetchWithRetry, logError } from "./_shared.mjs";
+import { stringSimilarity, REGION_MAP, resolveRegionName, sleep, fetchWithRetry, logError } from "./_shared.mjs";
 
 const PHASE = "kakao-poi";
 const KAKAO_KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json";
 /** 시도 자체가 시(市)라 `gu` 가 없는 곳 — 시도 게이트만으로 시군구 게이트를 거친 것과 같다. */
 const NO_GU_SIDO = new Set(["세종"]);
+/**
+ * 두 시도가 한 이름을 쓰는 **통합 시도** — 첫 토큰만으로는 어느 쪽인지 못 가른다(세션549).
+ *
+ * ⚠️ `_shared.mjs resolveRegionName` 의 내부 판정(`/^전남광주통합/`)과 **같은 패턴**이다.
+ *    한쪽만 바꾸면 여기서 "통합" 으로 보내 놓고 저쪽이 못 갈라 전부 false 가 되거나(전 지역 거부),
+ *    반대로 여기서 안 보내 startsWith 로 새어 나간다. 바꿀 땐 둘을 함께 본다.
+ *    이름을 열거하지 않는 이유 = 규칙 §3("이름을 열거하지 말 것" — 표기가 한 글자만 달라도 샌다).
+ */
+const MERGED_SIDO_RE = /^전남광주통합/;
 
 /** 카카오 POI 후보로 인정하는 최소 이름 유사도. */
 export const KAKAO_MIN_SIM = 0.7;
@@ -193,15 +204,43 @@ const KAKAO_CAT_NG = /(모델하우스|견본|중개|분양사무|홍보관)/;
  *
  * 카카오 실측 표기: `경남 창원시 의창구 …` / `강원특별자치도 원주시 …` /
  * `세종특별자치시 한솔동 …` → 첫 토큰이 시도(약칭 2글자로 시작), 그다음 토큰(들)이 시군구.
+ *
+ * ## ⚠️ 통합 시도(전남광주통합특별시) — `startsWith` 만으로는 못 가른다 (세션549)
+ *
+ * 2026-07-01 개편으로 카카오가 광주·전남을 **한 이름**으로 준다. 실측 `address_name`:
+ *   `전남광주통합특별시 북구 월출동 813-6`     ← 광주 (북구)
+ *   `전남광주통합특별시 장성군 진원면 학림리 641-16` ← 전남 (장성군)
+ *   `전남광주통합특별시 서구 마륵동 164-11`     ← 광주 (서구)
+ * 옛 `toks[0].startsWith(sido)` 는 이 이름에 대해:
+ *   ("…북구…", "광주") → **false** — 광주 단지가 **전부** 거부됐다(POI 가 있어도 null).
+ *   ("…장성군…", "전남") → true — 우연히 접두가 "전남" 이라 통과했을 뿐.
+ *   ("…서구…", "전남") → **true** — 서구는 광주인데 전남으로 통과(반대 방향 오탐).
+ *
+ * 그래서 첫 토큰이 통합 이름이면 `resolveRegionName(toks[0], toks[1])` 로 **시군구를 보고**
+ * 17지역 약칭을 정한 뒤 그것과 비교한다. 못 가르면(둘째 토큰이 양쪽 명단에 없는 지구·블록
+ * 표기 등) **false** 를 준다 — 추측해서 한쪽에 붙이는 것보다 정직한 거부가 낫다
+ * (`.claude/rules/collectors/admin-district-code-reform.md` §3 "모호하면 포기").
+ *
+ * 평범한 시도 토큰은 **옛 동작 그대로** `startsWith` 다. `resolveRegionName` 은 통합 이름이
+ * 아니면 `REGION_MAP` 정확 일치라, 카카오가 주는 약칭/전체이름 변형을 다 담지 못한다.
+ *
  * @param {unknown} addressName
- * @param {string | null} sido
+ * @param {string | null} sido 17지역 약칭(`shortRegion` 결과 — "광주"·"전남"·"경기" …)
  * @param {string | null | undefined} gu
  * @returns {boolean}
  */
 export function matchesRegion(addressName, sido, gu) {
   if (!sido) return false;
   const toks = String(addressName ?? "").trim().split(/\s+/);
-  if (!toks[0]?.startsWith(sido)) return false;
+  const head = toks[0];
+  if (!head) return false;
+  if (MERGED_SIDO_RE.test(head)) {
+    // 통합 이름 — 주소 **자신의** 둘째 토큰으로 가른다(호출자의 gu 를 쓰면, gu 가 없을 때
+    // 못 가르고 gu 가 틀렸을 때 그 틀린 값으로 판정하게 된다).
+    if (resolveRegionName(head, toks[1]) !== sido) return false;
+  } else if (!head.startsWith(sido)) {
+    return false;
+  }
   // 공백만 든 gu 는 "모른다"와 같다 — trim 전에 판정하면 `" "` 가 토큰 하나로 쪼개져
   // 무엇과도 안 맞아 전부 거부된다(멀쩡한 후보를 통째로 버리는 false negative).
   const g = String(gu ?? "").trim();
