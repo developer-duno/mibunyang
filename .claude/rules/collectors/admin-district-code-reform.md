@@ -6,16 +6,7 @@
 외부 API 는 옛 코드에 **에러 대신 0건**을 돌려주므로 `collector_runs` 는 success, 수집기 로그는 "0건 수집",
 모니터는 침묵한다. 이 저장소는 이 사고를 **세 번** 겪었다 — 강원 42→51 · 전북 45→52 · 전남광주 46/29→**12**.
 
-## 사고 이력
-
-| 개편 | 시행 | 우리가 겪은 일 |
-|---|---|---|
-| 강원특별자치도 | 2023-06-11 | `SIDO_CODES` 에 `4200000000` 이 남아 인구 응답이 **빈 값** — 세션285 raw 검증에서 발견 |
-| 전북특별자치도 | 2024-01-18 | 같은 꼴(`4500000000`) — 같은 세션에 함께 정정. 2개월(61일) 누락 |
-| **전남광주통합특별시** | **2026-07-01** | 광주 `29`·전남 `46` **동시 폐지 → 둘 다 `12`**. 5개 층이 6~7월부터 끊긴 것을 **2026-09-10** 에야 발견(3개월 잠복) |
-
-세 번째가 앞의 둘보다 나쁜 이유: **두 시도가 한 접두를 공유**하게 되어 `접두 → 지역` 역변환이
-**모호**해졌다. 표 하나를 뒤집어 쓰던 자리(`C1_TO_REGION`)가 전부 재설계 대상이 된다.
+> 사건·이력 (사고 이력 표 — 강원 2023-06-11·전북 2024-01-18·전남광주 2026-07-01, 세 번째는 두 시도가 한 접두를 공유해 역변환이 모호해짐) → [rules-history/collectors/admin-district-code-reform.md](../../rules-history/collectors/admin-district-code-reform.md)
 
 ## 1. 표를 바꾸기 **전** — 소비처 API 마다 raw 1회 (옛/새 대조)
 
@@ -159,18 +150,8 @@ node --input-type=module -e "import { loadEnv, normalizeGu } from './scripts/col
 - ❌ "0건이니 그 지역에 거래가 없었나 보다" — 옛 코드는 **에러 대신 0건**을 준다(§4)
 - ❌ 접두 역변환 표를 그대로 뒤집어 씀 — 공유 접두가 생기면 **모호**하다(§2-8)
 
-## 답습 자산
+> 답습 자산·차단 검증 이력 → [rules-history/collectors/admin-district-code-reform.md](../../rules-history/collectors/admin-district-code-reform.md)
 
-- 세션545 `scripts/remap-jeonnam-gwangju-codes.mjs` + `_shared.mjs resolveRegionName` / `JEONNAM_GWANGJU_SGG_OLD_TO_NEW`
-- 세션285·286 [[parsegu-normalization]] — 강원·전북 개편 때의 같은 사고(SIDO_CODES 환각 3건, 61일 누락)
-- [[tool-output-illusion-guard]] · [[probe-must-be-self-verified]]
+## 관련
 
-## 차단 검증
-
-| 사고 시나리오 | 본 룰 적용 시 |
-|---|---|
-| 개편 소식만 보고 표를 전부 새 코드로 교체 | §1 소비처별 raw 대조 → KOSIS 가 아직 옛 코드임을 발견 → 방어 항목 유지 |
-| 표만 고치고 저장 데이터 방치 | §2-9 체크리스트 → 재매핑 도구 |
-| 통합 이름을 `REGION_MAP` 에 추가 | §3 → 단일값 표 금지 + 분할 헬퍼 |
-| `includes` 부분 매칭이 27 시군구를 한쪽으로 | §3 가드 + 회귀 테스트 |
-| 개편 뒤 그 지역이 계속 0건인데 아무도 모름 | §4 첫 회차 로그 확인 |
+- [[parsegu-normalization]] · [[tool-output-illusion-guard]] · [[probe-must-be-self-verified]]

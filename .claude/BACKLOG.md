@@ -660,7 +660,14 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
 - 🟡 **세종 35단지(VIEW)는 구 단위 지표 4종이 구조적으로 빈칸** (세션549 실측 — 위 180곳 정정 뒤 "4지표 전부 빈 단지"는 세종 35곳뿐).
   `apartments.gu` = null(41/42곳) ↔ `regions` 키 = `세종|세종시`. VIEW 조인 `rg.gu = a.gu` 는 null 과 못 맞춘다. monitor ⑦ 도 gu 없는 단지는 건너뛰므로 못 본다.
   처방 후보 = VIEW `latest_regions_gu` 조인에 세종 예외(`COALESCE(a.gu, CASE WHEN a.region='세종' THEN '세종시' END)`) — 마이그(Dashboard 수동 적용)라 별도 세션.
-  `apartments.gu` 를 "세종시"로 채우는 안은 기각 후보: `getLawdCd`·`matchesRegion`·지역 필터가 "세종은 gu 없음"을 전제로 한다. 남은 쓰레기값 1곳 = `ah-2022910239`(gu="행정중심복합도시" → null 이 맞다).
+  `apartments.gu` 를 "세종시"로 채우는 안은 기각 후보: `getLawdCd`·`matchesRegion`·지역 필터가 "세종은 gu 없음"을 전제로 한다. 쓰레기값 1곳 `ah-2022910239`(gu="행정중심복합도시")은 같은 날 null 로 정정(사장님 승인) → monitor ⑦ 기준 짝 없는 쌍 **34 → 0**.
+- ✅ **해소 (세션549 · PR #505)** — 카카오 지역 게이트 `_kakao-poi.mjs matchesRegion` 이 **광주 단지를 전부 거부**하던 것. 카카오 `address_name` 이 `전남광주통합특별시 북구 …` 로 바뀌어
+  `toks[0].startsWith("광주")` 가 false(양성 대조군 A7 이 null 로 나와 발견), 전남은 접두가 우연히 맞아 통과, `("…서구…","전남")` 은 반대 방향 오탐. 세 통로(geocode-missing·seed·정정 도구) 공용이라
+  광주의 새 단지·빈 좌표는 POI 로 영영 못 채워질 자리였다(57곳 전부 좌표 보유라 잠복). 처방 = 통합 이름이면 `resolveRegionName(toks[0], toks[1])` 로 주소 자신의 시군구를 보고 가르고, 못 가르면 false.
+  검증: 69/69 · 전체 6,858 · 뮤테이션 4종(경쟁 후보 포함) red · 라이브 대조 A7 null → 0.0m / A8 불변. [[admin-district-code-reform]] §2-11 의 다섯 번째 "첫 토큰 파서".
+- 🟢 **통합 시도 표기의 남은 잠복 2곳** (세션549 PR #505 작업자 보고): ① `_kakao-poi.mjs shortRegion("전남광주통합특별시")` 는 `REGION_MAP` 에 없어 `slice(0,2)` = "전남" —
+  우리 DB `apartments.address`/`region` 에 통합 표기가 들어오면 광주가 전남으로 라벨된다(`fix-placeholder-addresses.mjs stripSidoToken`→`cityKey` 경유). ② `MERGED_SIDO_RE`(`/^전남광주통합/`)가
+  `_shared.mjs` 내부 패턴의 **사본** — 한쪽만 바꾸면 전 지역 거부 또는 startsWith 로 샌다. 상수를 export 해 두 파일을 테스트로 묶을 것.
 
 <!-- 세션548 (2026-09-19~20) 추가 -->
 - 🟠 **인천 신설 4구(제물포·영종·서해·검단)의 구 단위 지표 4종은 "모구 승계값"이다 — 원천이 새 구 이름을 줄 때까지 임시** (세션548 맹점 검사관 발견 → 오케스트레이터 직독 확인·조치).
