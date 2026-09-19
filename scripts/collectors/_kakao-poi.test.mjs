@@ -93,6 +93,76 @@ describe("matchesRegion — 시도 + 시군구 토큰 일치", () => {
   });
 });
 
+// ── 통합 시도(전남광주통합특별시) — 첫 토큰이 두 지역 공용 (세션549) ──────────
+//
+// 아래 주소 문자열은 전부 **2026-09-20 라이브 카카오 실측값**이다(지어낸 예시 아님).
+// 옛 `toks[0].startsWith(sido)` 는 이 이름에 대해 세 방향 다 틀렸다:
+//   "…북구…" ↔ "광주" → false (광주 단지 **전부** 거부 — POI 가 있어도 null 이 나갔다)
+//   "…서구…" ↔ "전남" → true  (서구는 광주인데 통과 — 반대 방향 오탐)
+//   "…장성군…" ↔ "전남" → true (맞지만 **우연히** 접두가 "전남" 이라 맞은 것)
+describe("matchesRegion — 통합 시도는 시군구로 가른다 (세션549)", () => {
+  const GJ_BUKGU = "전남광주통합특별시 북구 월출동 813-6";
+  const JN_JANGSEONG = "전남광주통합특별시 장성군 진원면 학림리 641-16";
+  const GJ_SEOGU = "전남광주통합특별시 서구 마륵동 164-11";
+
+  it("★ 광주 자치구 → 광주로 통과 (옛 startsWith 는 false 였다 — 광주 단지 전멸)", () => {
+    expect(matchesRegion(GJ_BUKGU, "광주", "북구")).toBe(true);
+    expect(matchesRegion(GJ_SEOGU, "광주", "서구")).toBe(true);
+  });
+
+  it("전남 군 → 전남으로 통과", () => {
+    expect(matchesRegion(JN_JANGSEONG, "전남", "장성군")).toBe(true);
+  });
+
+  it("★ 광주 자치구를 전남이라 하면 거부 (옛 startsWith 는 true 였다 — 반대 방향 오탐)", () => {
+    expect(matchesRegion(GJ_SEOGU, "전남", "서구")).toBe(false);
+    expect(matchesRegion(GJ_BUKGU, "전남", "북구")).toBe(false);
+  });
+
+  it("전남 군을 광주라 하면 거부", () => {
+    expect(matchesRegion(JN_JANGSEONG, "광주", "장성군")).toBe(false);
+  });
+
+  it("★ 둘째 토큰이 시군구가 아니면(지구·블록 표기) 양쪽 다 거부 — 모호하면 포기", () => {
+    // 추측해서 한쪽에 붙이면 그 좌표가 apartments 에 박히고 reverse-geocode 가 세탁한다.
+    const UNKNOWN = "전남광주통합특별시 첨단3지구 어딘가 1-2";
+    expect(matchesRegion(UNKNOWN, "광주", null)).toBe(false);
+    expect(matchesRegion(UNKNOWN, "전남", null)).toBe(false);
+    expect(matchesRegion(UNKNOWN, "광주", "첨단3지구")).toBe(false);
+    expect(matchesRegion(UNKNOWN, "전남", "첨단3지구")).toBe(false);
+  });
+
+  it("★ gu 를 몰라도 주소 자신의 둘째 토큰으로 가른다", () => {
+    // 호출자의 gu 가 아니라 주소의 둘째 토큰을 보므로 gu=null 에서도 판정된다.
+    expect(matchesRegion(GJ_BUKGU, "광주", null)).toBe(true);
+    expect(matchesRegion(GJ_BUKGU, "전남", null)).toBe(false);
+    expect(matchesRegion(JN_JANGSEONG, "전남", null)).toBe(true);
+    expect(matchesRegion(JN_JANGSEONG, "광주", null)).toBe(false);
+  });
+
+  it("통합 이름 뒤에 토큰이 없으면 거부 (시도 단위 합계행은 못 가른다)", () => {
+    expect(matchesRegion("전남광주통합특별시", "광주", null)).toBe(false);
+    expect(matchesRegion("전남광주통합특별시", "전남", null)).toBe(false);
+  });
+
+  it("시군구 게이트는 통합 시도에서도 그대로 — 지역이 맞아도 gu 가 다르면 거부", () => {
+    expect(matchesRegion(GJ_BUKGU, "광주", "서구")).toBe(false);
+    // "동구" ⊂ "남동구" 식 부분문자열 금지도 유지
+    expect(matchesRegion("전남광주통합특별시 광산구 신창동 1", "광주", "산구")).toBe(false);
+  });
+
+  it("평범한 시도는 옛 동작 그대로 — 통합 판정이 끼어들지 않는다", () => {
+    // 이 케이스들이 red 면 통합 분기가 평범한 주소까지 먹은 것이다.
+    expect(matchesRegion("경남 창원시 의창구 북면 감계리 227-1", "경남", "창원시 의창구")).toBe(true);
+    expect(matchesRegion("강원특별자치도 원주시 단구동 1702", "강원", null)).toBe(true);
+    expect(matchesRegion("세종특별자치시 한솔동 1", "세종", null)).toBe(true);
+    expect(matchesRegion("인천 남동구 논현동 1", "인천", "동구")).toBe(false);
+    // 옛 전남 표기(개편 전 주소가 남아 있어도 계속 통과해야 한다)
+    expect(matchesRegion("전남 순천시 조례동 1", "전남", "순천시")).toBe(true);
+    expect(matchesRegion("광주 북구 월출동 813-6", "광주", "북구")).toBe(true);
+  });
+});
+
 describe("pickKakaoCandidate — gu 인자 확장", () => {
   it("gu 를 주면 시군구까지 일치해야 통과", () => {
     const docs = [doc(NAME, "인천 남동구 논현동 1")];
