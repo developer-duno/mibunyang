@@ -531,10 +531,14 @@ describe("배선 — 이 도구 자신", () => {
   });
 
   it("⚠️ trades 조회 select 에 커서 키와 쌍둥이 키 컬럼이 전부 들어 있다", () => {
-    const m = src.match(/const TRADE_COLUMNS = "([^"]+)"/);
-    const cols = (m?.[1] ?? "").split(",").map((s) => s.trim());
-    for (const c of ["id", "dong", "deal_month", "area", "price", "floor", "trade_type", "apt_name"]) {
-      expect(cols, `TRADE_COLUMNS 에 ${c} 가 없다`).toContain(c);
+    // 상수가 아니라 **실제 호출 자리의 select 리터럴**을 본다(세션547) — 옛·새 구 두 조회 모두.
+    const lits = [...src.matchAll(/from\("trades"\)\.select\("([^"]+)"\)/g)].map((m) => m[1]);
+    expect(lits.length).toBe(2);
+    for (const lit of lits) {
+      const cols = lit.split(",").map((s) => s.trim());
+      for (const c of ["id", "dong", "deal_month", "area", "price", "floor", "trade_type", "apt_name"]) {
+        expect(cols, `trades select 에 ${c} 가 없다`).toContain(c);
+      }
     }
   });
 
