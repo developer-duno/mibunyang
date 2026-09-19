@@ -25,7 +25,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 process.env.KOSIS_MIGRATION_KEY = "test-key";
 
-const { normalizeC1Name, mapC1, aggregateKosisRows, C1_TO_REGION, fetchKosis, main } = await import("./migration.mjs");
+const { normalizeC1Name, mapC1, aggregateKosisRows, detectDeadPrefixes, C1_TO_REGION, fetchKosis, main } = await import("./migration.mjs");
 const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── normalizeC1Name ──────────────────────────────────────────
@@ -310,5 +310,158 @@ describe("mapC1 — 전남광주통합특별시 (세션545)", () => {
   it("2자리 '12' 단독 → null (시도 단위 통합값은 못 가른다)", () => {
     expect(mapC1("12", "전남광주통합특별시")).toBeNull();
     expect(C1_TO_REGION["12"]).toBeUndefined();
+  });
+});
+
+// ── 죽은 계열(dead series) + 시도 파생값 — 세션547 ─────────────
+//
+// 실측(KOSIS DT_1B26001_A01, 2026-09-19, 기준월 202607, 912행):
+//   · prefix "12"(전남광주통합특별시) = 살아 있음. 시도행 총전입 25369 / 총전출 25813 / 순이동 -444.
+//     5자리 27건 전부 non-zero 이고 그 순이동 합이 정확히 -444.
+//   · prefix "29"(광주광역시)·"46"(전라남도) = **죽은 계열**. 시도·시군구 전부 0
+//     (총전입 0 / 총전출 0 / 순이동 0). 에러도 결측도 아니라 "0" 이라 그대로 적재되면
+//     살아 있는 값을 0 으로 덮는다 — 실제로 라이브 DB 의 광주·전남이 전 recorded_at 0 이었다.
+//
+// ⚠️ 판정 규칙은 이름이 아니라 **총전입 0 ∧ 총전출 0** 이다. 순이동만 보면 "진짜로 순이동이
+//    0 인 살아 있는 지역" 과 구별이 안 된다.
+describe("죽은 계열 제외 + 시도 파생값 (세션547)", () => {
+  /**
+   * 한 C1 에 대해 실제 응답과 같은 3행(총전입·총전출·순이동)을 만든다.
+   * @param {string} C1
+   * @param {string} C1_NM
+   * @param {number} tin
+   * @param {number} tout
+   * @param {string} [PRD_DE]
+   */
+  const mkTriple = (C1, C1_NM, tin, tout, PRD_DE = "202607") => [
+    { C1, C1_NM, PRD_DE, ITM_NM: "총전입", DT: String(tin) },
+    { C1, C1_NM, PRD_DE, ITM_NM: "총전출", DT: String(tout) },
+    { C1, C1_NM, PRD_DE, ITM_NM: "순이동", DT: String(tin - tout) },
+  ];
+
+  // 실측 값 그대로 — 12110 목포 -194 / 12130 여수 -232 / 12150 순천 -376 / 12170 나주 -1,
+  // 광주 5구 = 나머지. 27건 합 = -444 (시도행과 일치).
+  const 광주구 = /** @type {const} */ ([
+    ["12210", "동  구", -30],
+    ["12240", "서구", -40],
+    ["12270", "남구", -20],
+    ["12300", "북구", -50],
+    ["12330", "광산구", -25],
+  ]);
+  const 전남시군 = /** @type {const} */ ([
+    ["12110", "목포시", -194],
+    ["12130", "여수시", -232],
+    ["12150", "순천시", -376],
+    ["12170", "나주시", -1],
+    ["12190", "광양시", 524],
+  ]);
+  const 광주합 = 광주구.reduce((a, [, , v]) => a + v, 0); // -165
+  const 전남합 = 전남시군.reduce((a, [, , v]) => a + v, 0); // -279
+  const 통합합 = 광주합 + 전남합; // -444 (실측 시도행과 동일)
+
+  /** 살아 있는 12 계열 (시도 + 시군구 10건) */
+  const liveRows = [
+    ...mkTriple("12", "전남광주통합특별시", 25369, 25369 - 통합합),
+    ...광주구.flatMap(([c, n, v]) => mkTriple(c, n, 1000, 1000 - v)),
+    ...전남시군.flatMap(([c, n, v]) => mkTriple(c, n, 1000, 1000 - v)),
+  ];
+
+  /** 죽은 29/46 계열 — 시도·시군구 전부 0 */
+  const deadRows = [
+    ...mkTriple("29", "광주광역시", 0, 0),
+    ...mkTriple("46", "전라남도", 0, 0),
+    ...mkTriple("29110", "동  구", 0, 0),
+    ...mkTriple("29170", "북구", 0, 0),
+    ...mkTriple("46110", "목포시", 0, 0),
+    ...mkTriple("46150", "순천시", 0, 0),
+  ];
+
+  /** 정상 지역 대조군 — 서울(살아 있고 순이동 음수) */
+  const seoulRows = [
+    ...mkTriple("11", "서울특별시", 500000, 550000),
+    ...mkTriple("11680", "강남구", 10000, 9800),
+  ];
+
+  it("죽은 29/46 + 살아있는 12 → 광주·전남 시도값이 시군구 합과 같다", () => {
+    const { period, entries } = aggregateKosisRows([...deadRows, ...liveRows, ...seoulRows]);
+    expect(period).toBe("202607");
+
+    const 광주시도 = entries.filter((e) => e.region === "광주" && e.gu === null);
+    const 전남시도 = entries.filter((e) => e.region === "전남" && e.gu === null);
+    expect(광주시도).toEqual([{ region: "광주", gu: null, net_migration: 광주합 }]);
+    expect(전남시도).toEqual([{ region: "전남", gu: null, net_migration: 전남합 }]);
+
+    // 두 파생값의 합 = C1="12" 시도 통합값
+    expect(광주합 + 전남합).toBe(통합합);
+  });
+
+  it("죽은 계열이 남긴 0 이 하나도 들어오지 않는다 (옛 동작과 다름)", () => {
+    const { entries } = aggregateKosisRows([...deadRows, ...liveRows]);
+    // 옛 동작: 광주·전남 시도가 net_migration 0 으로 적재됐다.
+    expect(entries).not.toContainEqual({ region: "광주", gu: null, net_migration: 0 });
+    expect(entries).not.toContainEqual({ region: "전남", gu: null, net_migration: 0 });
+    // 죽은 5자리도 0 으로 시군구 행을 덮지 않는다.
+    expect(entries.filter((e) => e.net_migration === 0)).toHaveLength(0);
+    expect(entries.find((e) => e.region === "전남" && e.gu === "순천시")?.net_migration).toBe(-376);
+  });
+
+  it("행 순서 무관 — 죽은 행이 앞/뒤 어디에 있어도 결과 동일 (R4)", () => {
+    const before = aggregateKosisRows([...deadRows, ...liveRows, ...seoulRows]);
+    const after = aggregateKosisRows([...liveRows, ...seoulRows, ...deadRows]);
+    const 정렬 = (/** @type {any[]} */ es) =>
+      [...es].sort((a, b) => `${a.region}|${a.gu}`.localeCompare(`${b.region}|${b.gu}`));
+    expect(정렬(after.entries)).toEqual(정렬(before.entries));
+    expect(after.entries).toHaveLength(before.entries.length);
+  });
+
+  it("교차검증 불일치 → 시도 파생 entry 없음, 시군구는 그대로 (R3 fail-close)", () => {
+    // 시도 통합값만 999 로 어긋나게 한다 (시군구는 그대로).
+    const 어긋난시도 = mkTriple("12", "전남광주통합특별시", 25369, 25369 - 999);
+    const rows = [
+      ...deadRows,
+      ...어긋난시도,
+      ...광주구.flatMap(([c, n, v]) => mkTriple(c, n, 1000, 1000 - v)),
+      ...전남시군.flatMap(([c, n, v]) => mkTriple(c, n, 1000, 1000 - v)),
+    ];
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries.filter((e) => e.gu === null)).toHaveLength(0);
+    // 시군구는 전부 살아서 나간다
+    expect(entries.filter((e) => e.region === "광주" && e.gu)).toHaveLength(5);
+    expect(entries.filter((e) => e.region === "전남" && e.gu)).toHaveLength(5);
+  });
+
+  it("C1='12' 시도행 자체가 없으면 파생하지 않는다 (R3)", () => {
+    const rows = [
+      ...광주구.flatMap(([c, n, v]) => mkTriple(c, n, 1000, 1000 - v)),
+      ...전남시군.flatMap(([c, n, v]) => mkTriple(c, n, 1000, 1000 - v)),
+    ];
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries.filter((e) => e.gu === null)).toHaveLength(0);
+    expect(entries).toHaveLength(10);
+  });
+
+  it("정상 지역(서울)은 종전과 동일 — 시도행은 자기 값, 파생 아님 (R5)", () => {
+    const { entries } = aggregateKosisRows([...deadRows, ...liveRows, ...seoulRows]);
+    expect(entries).toContainEqual({ region: "서울", gu: null, net_migration: -50000 });
+    expect(entries).toContainEqual({ region: "서울", gu: "강남구", net_migration: 200 });
+  });
+
+  it("전입·전출이 실제로 있는데 순이동만 0 인 지역은 죽은 계열이 아니다", () => {
+    // ⚠️ 순이동만 보고 판정하면 이 지역이 통째로 버려진다.
+    const rows = [...mkTriple("11", "서울특별시", 500000, 500000), ...mkTriple("11680", "강남구", 10000, 10000)];
+    expect(detectDeadPrefixes(rows)).toEqual(new Set());
+    const { entries } = aggregateKosisRows(rows);
+    expect(entries).toContainEqual({ region: "서울", gu: null, net_migration: 0 });
+    expect(entries).toContainEqual({ region: "서울", gu: "강남구", net_migration: 0 });
+  });
+
+  it("detectDeadPrefixes — 총전입 0 ∧ 총전출 0 인 prefix 만 집는다", () => {
+    const dead = detectDeadPrefixes([...deadRows, ...liveRows, ...seoulRows]);
+    expect(dead).toEqual(new Set(["29", "46"]));
+  });
+
+  it("한쪽만 0 이면 죽은 계열이 아니다 (∧ 조건)", () => {
+    expect(detectDeadPrefixes(mkTriple("46", "전라남도", 0, 500))).toEqual(new Set());
+    expect(detectDeadPrefixes(mkTriple("46", "전라남도", 500, 0))).toEqual(new Set());
   });
 });

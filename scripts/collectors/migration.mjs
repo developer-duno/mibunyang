@@ -84,6 +84,11 @@ export const C1_TO_REGION = (() => {
   return map;
 })();
 
+// 두 지역이 한 2자리 prefix 를 공유하는 코드 — 시도행을 이름으로 못 가른다.
+// 5자리는 `mapC1` 이 코드표 역참조로 가르므로, 시도값은 시군구 합으로 파생한다(세션547).
+/** @type {Set<string>} */
+export const AMBIGUOUS_PREFIXES = new Set(["12"]);
+
 // 새 5자리(12xxx) → 시군구 이름. GU_LAWD_MAP 역참조 — 표를 코드에 복사하지 않는다.
 /** @type {Map<string, string>} */
 const NEW_SGG_TO_GU = new Map(
@@ -156,6 +161,50 @@ export function mapC1(c1Code, c1Name) {
   return null;
 }
 
+// ── DT 파싱 ─────────────────────────────────────────────────
+/**
+ * @param {string|undefined} dt
+ * @returns {number} 파싱 실패 시 NaN
+ */
+function parseDT(dt) {
+  return parseInt(String(dt || "0").replace(/,/g, ""), 10);
+}
+
+/**
+ * 죽은 계열(dead series) 2자리 prefix 판정.
+ *
+ * ⚠️ 이름("29"·"46")을 규칙으로 박지 않는다 — **총전입 0 ∧ 총전출 0** 이 규칙이다.
+ * 행정구역 개편이 나면 옛 계열이 값을 0 으로 계속 뱉는데(에러도 결측도 아니다), 그걸
+ * 그대로 적재하면 살아 있는 값을 0 으로 덮는다(세션547: 광주·전남 net_migration 전멸).
+ *
+ * 순이동만 보면 못 가른다 — 진짜로 순이동이 0 인 살아 있는 지역과 구별이 안 된다.
+ * 전입·전출이 **둘 다** 0 인 것이 "그 계열은 더 이상 집계되지 않는다"의 서명이다.
+ *
+ * @param {KosisRow[]} periodRows 이미 최신 기간으로 걸러진 행
+ * @returns {Set<string>} 죽은 2자리 prefix 집합
+ */
+export function detectDeadPrefixes(periodRows) {
+  /** @type {Map<string, {in: number|null, out: number|null}>} */
+  const sido = new Map();
+  for (const r of periodRows) {
+    const code = String(r.C1 ?? "");
+    if (code.length !== 2 || code === "00") continue;
+    if (r.ITM_NM !== "총전입" && r.ITM_NM !== "총전출") continue;
+    const v = parseDT(r.DT);
+    if (Number.isNaN(v)) continue;
+    const cur = sido.get(code) ?? { in: null, out: null };
+    if (r.ITM_NM === "총전입") cur.in = v;
+    else cur.out = v;
+    sido.set(code, cur);
+  }
+  /** @type {Set<string>} */
+  const dead = new Set();
+  for (const [code, { in: tin, out: tout }] of sido) {
+    if (tin === 0 && tout === 0) dead.add(code);
+  }
+  return dead;
+}
+
 // ── KOSIS 응답 행 → 집계 ────────────────────────────────────
 // 최신 PRD_DE (월)만 사용, ITM_NM === "순이동" 만
 /**
@@ -172,17 +221,51 @@ export function aggregateKosisRows(rows) {
     if (r.PRD_DE && r.PRD_DE > latestPrd) latestPrd = r.PRD_DE;
   }
 
+  const periodRows = typedRows.filter((r) => r.PRD_DE === latestPrd);
+
+  // ① 죽은 계열 판정 — 순이동만 보기 **전에** 총전입/총전출로 가른다.
+  const deadPrefixes = detectDeadPrefixes(periodRows);
+  if (deadPrefixes.size > 0) {
+    log(PHASE, `죽은 계열 prefix 제외(총전입=0 ∧ 총전출=0): ${[...deadPrefixes].sort().join(", ")}`);
+  }
+
   /** @type {MigrationEntry[]} */
   const entries = [];
-  for (const r of typedRows) {
-    if (r.PRD_DE !== latestPrd) continue;
+  /** 모호 prefix("12") 에서 온 시군구 합계 — region 별 */
+  /** @type {Map<string, number>} */
+  const ambiguousGuSum = new Map();
+  /** 모호 prefix 시도 2자리 행의 순이동(교차검증용) */
+  /** @type {Map<string, number>} */
+  const ambiguousSidoTotal = new Map();
+  /** 살아 있는 시도 entry 를 가진 region */
+  /** @type {Set<string>} */
+  const liveSidoRegions = new Set();
+
+  for (const r of periodRows) {
+    const code = String(r.C1 ?? "");
+    const prefix = code.length >= 2 ? code.slice(0, 2) : "";
+
+    // ② 죽은 계열은 2자리·5자리 **전부** 버린다 — 순서와 무관하게 살아 있는 값을 못 덮는다(R4).
+    if (deadPrefixes.has(prefix)) continue;
+
     if (r.ITM_NM !== "순이동") continue;
+
+    const netMigration = parseDT(r.DT);
+    if (Number.isNaN(netMigration)) continue;
+
+    // ③ 모호 prefix 의 2자리 시도행 — mapC1 은 못 가르므로(정상) 교차검증 값으로만 쥔다.
+    if (code.length === 2 && AMBIGUOUS_PREFIXES.has(code)) {
+      ambiguousSidoTotal.set(code, netMigration);
+      continue;
+    }
 
     const mapped = mapC1(r.C1, r.C1_NM);
     if (!mapped) continue;
 
-    const netMigration = parseInt(String(r.DT || "0").replace(/,/g, ""), 10);
-    if (Number.isNaN(netMigration)) continue;
+    if (!mapped.gu) liveSidoRegions.add(mapped.region);
+    else if (AMBIGUOUS_PREFIXES.has(prefix)) {
+      ambiguousGuSum.set(mapped.region, (ambiguousGuSum.get(mapped.region) ?? 0) + netMigration);
+    }
 
     entries.push({
       region: mapped.region,
@@ -190,6 +273,24 @@ export function aggregateKosisRows(rows) {
       net_migration: netMigration,
     });
   }
+
+  // ④ 시도 파생값 — 모호 prefix 라 2자리로는 못 갈랐지만 시군구는 갈랐다.
+  //    구역 내부 이동은 상쇄되므로 시군구 합 = 그 지역의 진짜 순이동이다.
+  for (const [prefix, sidoTotal] of ambiguousSidoTotal) {
+    const derived = [...ambiguousGuSum.entries()].filter(([region]) => !liveSidoRegions.has(region));
+    if (derived.length === 0) continue;
+    const sum = derived.reduce((acc, [, v]) => acc + v, 0);
+    // ⑤ fail-close — 합이 시도 통합값과 어긋나면 **적재하지 않는다**(시군구는 그대로 간다).
+    if (sum !== sidoTotal) {
+      logError(PHASE, `시도 파생값 교차검증 실패 prefix=${prefix}: 시군구 합 ${sum} ≠ 시도 통합값 ${sidoTotal} — 시도 entry 생략`);
+      continue;
+    }
+    for (const [region, v] of derived) {
+      entries.push({ region, gu: null, net_migration: v });
+      log(PHASE, `시도 파생값: ${region} = ${v} (시군구 합, prefix=${prefix})`);
+    }
+  }
+
   return { period: latestPrd, entries };
 }
 
