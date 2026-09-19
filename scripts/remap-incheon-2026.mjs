@@ -357,7 +357,14 @@ export function verifyApplied(afterRows, applied) {
  * 조회가 어긋나도 `count: null` 을 조용히 돌려준다 — `?? 0` 으로 받으면 "0건 남음 = 성공" 으로
  * 뒤집혀 읽힌다(probe-must-be-self-verified §4-1).
  *
- * @param {{ mismatched?: string[], leftCount?: number | null, checkCount?: boolean, applied?: boolean }} r
+ * ⚠️ 기대 잔여는 **0 이 아니다** (세션548 D5). 이 도구는 `twinIds`(= 새 gu 에 같은 거래가 있는
+ * 옛 행)만 지우고 **쌍둥이 없는 옛 행은 설계상 남긴다** — 그건 중복이 아니라 유일본이라
+ * 지우면 자료가 사라진다. 그런데 판정이 `leftCount > 0` 이라 옛 판본은 정상 실행 뒤에도
+ * exit 1 을 냈다(2026-09-19 실측: 13,736행 삭제 · 22행 잔여 → 거짓 "기대와 다릅니다").
+ * 그래서 `expectedLeft`(= 창 안 옛 행 전체 − 쌍둥이)를 받아 **그보다 많을 때만** 실패로 센다.
+ *
+ * @param {{ mismatched?: string[], leftCount?: number | null, checkCount?: boolean,
+ *   applied?: boolean, expectedLeft?: number }} r
  * @returns {string[]}
  */
 export function verifyResiduals(r) {
@@ -366,8 +373,11 @@ export function verifyResiduals(r) {
   const mism = r.mismatched ?? [];
   if (mism.length > 0) problems.push(`되읽기 불일치 ${mism.length}곳: ${mism.slice(0, 10).join(", ")}`);
   if (r.checkCount) {
+    const expectedLeft = Number.isFinite(r.expectedLeft) ? Number(r.expectedLeft) : 0;
     if (r.leftCount == null) problems.push("재조회 실패 — count 가 null (0 으로 읽지 않는다)");
-    else if (r.applied && r.leftCount > 0) problems.push(`trades 잔여 ${r.leftCount}행`);
+    else if (r.applied && r.leftCount > expectedLeft) {
+      problems.push(`trades 잔여 ${r.leftCount}행 (기대 ${expectedLeft}행 — 쌍둥이 없는 옛 행은 남긴다)`);
+    }
   }
   return problems;
 }
@@ -473,7 +483,7 @@ async function main() {
   const applied = [];
   /** @type {Record<string, any>} */
   const plan = { generatedAt: new Date().toISOString(), mode };
-  /** @type {{ oldIds: Array<number|string>, passes: boolean } | null} */
+  /** @type {{ oldIds: Array<number|string>, passes: boolean, expectedLeft: number } | null} */
   let tradePlan = null;
 
   if (mode === "incheon") {
@@ -627,11 +637,14 @@ async function main() {
       }
       log(PHASE, "  → 백필이 아직 안 끝났거나 타입이 안 맞는다. `--types=sale,jeonse` 로 좁혀 다시 본다.");
     }
-    tradePlan = { oldIds: d.twinIds, passes: d.passes };
+    // 지우는 건 쌍둥이뿐이므로 **남는 게 정상인 행 수** = 옛 행 전체 − 쌍둥이 (세션548 D5).
+    // `--types=` 로 좁혔으면 이 수치가 다른 타입을 못 세므로 아래 판정 자체를 끈다(applied:false).
+    const expectedLeft = d.total - d.twins;
+    tradePlan = { oldIds: d.twinIds, passes: d.passes, expectedLeft };
     Object.assign(plan, {
       window: { from: TRADE_WINDOW_FROM, to: TRADE_WINDOW_TO }, types: wantTypes,
       oldRows: d.total, newRows: newRows.length, twins: d.twins, ratio: d.ratio, passes: d.passes,
-      twinIds: d.twinIds,
+      expectedLeft, twinIds: d.twinIds,
       nonTwinSamples: d.nonTwinSamples.map((r) => ({
         id: r.id, gu: r.gu, dong: r.dong, deal_month: r.deal_month,
         trade_type: r.trade_type, area: r.area, price: r.price, floor: r.floor,
@@ -666,9 +679,11 @@ async function main() {
       .eq("region", REGION).in("gu", [...RETIRED])
       .gte("deal_month", TRADE_WINDOW_FROM).lte("deal_month", TRADE_WINDOW_TO);
     if (leftErr) logError(PHASE, `재조회 오류: ${leftErr.message}`);
-    log(PHASE, `삭제 ${deleted}행 · 창 안 옛 gu 잔여 ${leftCount ?? "(count 없음)"}`);
+    log(PHASE, `삭제 ${deleted}행 · 창 안 옛 gu 잔여 ${leftCount ?? "(count 없음)"} (기대 ${tradePlan.expectedLeft}행)`);
     // ⚠️ `--types=` 로 좁혀 돌렸으면 다른 타입이 남는 게 정상 — 그때는 잔여를 실패로 세지 않는다.
-    const problems = verifyResiduals({ leftCount, checkCount: true, applied: types == null });
+    const problems = verifyResiduals({
+      leftCount, checkCount: true, applied: types == null, expectedLeft: tradePlan.expectedLeft,
+    });
     if (problems.length) { logError(PHASE, `재조회 결과가 기대와 다릅니다 — ${problems.join(" · ")}`); process.exit(1); }
     log(PHASE, "apply 완료");
     return;

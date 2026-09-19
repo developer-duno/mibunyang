@@ -163,11 +163,21 @@ export function mapC1(c1Code, c1Name) {
 
 // ── DT 파싱 ─────────────────────────────────────────────────
 /**
- * @param {string|undefined} dt
- * @returns {number} 파싱 실패 시 NaN
+ * ⚠️ **빈 칸은 0 이 아니다** (세션548 D1).
+ *
+ * 옛 판본은 `String(dt || "0")` 이라 `""`·null·undefined·필드 자체 부재가 전부 **0** 이 됐다.
+ * 그러면 살아 있는 시도의 총전입/총전출 칸이 비어 오는 순간 `detectDeadPrefixes` 가
+ * "총전입 0 ∧ 총전출 0" 으로 읽어 **그 prefix 전체(시도 + 시군구 전부)를 죽은 계열로 버린다**.
+ * 값이 없는 것과 값이 0 인 것은 다르다 — 없으면 NaN 으로 두고 판정에서 빠진다.
+ *
+ * @param {string|number|null|undefined} dt
+ * @returns {number} 값이 없거나 파싱 실패 시 NaN
  */
-function parseDT(dt) {
-  return parseInt(String(dt || "0").replace(/,/g, ""), 10);
+export function parseDT(dt) {
+  if (dt == null) return NaN;
+  const s = String(dt).replace(/,/g, "").trim();
+  if (s === "") return NaN;
+  return parseInt(s, 10);
 }
 
 /**
@@ -180,27 +190,69 @@ function parseDT(dt) {
  * 순이동만 보면 못 가른다 — 진짜로 순이동이 0 인 살아 있는 지역과 구별이 안 된다.
  * 전입·전출이 **둘 다** 0 인 것이 "그 계열은 더 이상 집계되지 않는다"의 서명이다.
  *
+ * ⚠️ 두 층으로 본다 (세션548 D2a):
+ *   ① 2자리 시도행이 **있으면** 그 행의 총전입/총전출로 판정한다(원래 규칙).
+ *   ② 시도행이 **없으면** — 응답이 5자리만 줄 수 있다 — 그 prefix 의 5자리 코드가
+ *      하나라도 있고 **전부** 총전입 0 ∧ 총전출 0 이면 죽은 계열로 본다.
+ *      ②가 없으면 죽은 계열의 0 행이 그대로 `entries` 에 들어가 같은 `(region, gu)` 가
+ *      두 번 나오고, 순차 UPDATE 라 **행 순서가 DB 값을 정한다**(순천시 0 vs -376).
+ *
+ * 값이 없는 칸(NaN)은 **0 이 아니다** — 어느 층에서든 "죽지 않았다" 쪽으로 센다.
+ *
  * @param {KosisRow[]} periodRows 이미 최신 기간으로 걸러진 행
  * @returns {Set<string>} 죽은 2자리 prefix 집합
  */
 export function detectDeadPrefixes(periodRows) {
   /** @type {Map<string, {in: number|null, out: number|null}>} */
   const sido = new Map();
+  /** prefix → 5자리 코드별 총전입/총전출 */
+  /** @type {Map<string, Map<string, {in: number|null, out: number|null}>>} */
+  const sgg = new Map();
+
   for (const r of periodRows) {
     const code = String(r.C1 ?? "");
-    if (code.length !== 2 || code === "00") continue;
+    if (code === "00") continue;
     if (r.ITM_NM !== "총전입" && r.ITM_NM !== "총전출") continue;
     const v = parseDT(r.DT);
-    if (Number.isNaN(v)) continue;
-    const cur = sido.get(code) ?? { in: null, out: null };
-    if (r.ITM_NM === "총전입") cur.in = v;
-    else cur.out = v;
-    sido.set(code, cur);
+
+    if (code.length === 2) {
+      // NaN 이어도 **자리는 만든다** — 시도행이 존재한다는 사실 자체가 ②를 막는다.
+      const cur = sido.get(code) ?? { in: null, out: null };
+      if (!Number.isNaN(v)) {
+        if (r.ITM_NM === "총전입") cur.in = v;
+        else cur.out = v;
+      }
+      sido.set(code, cur);
+      continue;
+    }
+    if (code.length === 5) {
+      const prefix = code.slice(0, 2);
+      const inner = sgg.get(prefix) ?? new Map();
+      const cur = inner.get(code) ?? { in: null, out: null };
+      if (!Number.isNaN(v)) {
+        if (r.ITM_NM === "총전입") cur.in = v;
+        else cur.out = v;
+      }
+      inner.set(code, cur);
+      sgg.set(prefix, inner);
+    }
   }
+
   /** @type {Set<string>} */
   const dead = new Set();
+  // ① 시도행이 있는 prefix
   for (const [code, { in: tin, out: tout }] of sido) {
     if (tin === 0 && tout === 0) dead.add(code);
+  }
+  // ② 시도행이 없는 prefix — 5자리 전부가 0 ∧ 0 일 때만
+  for (const [prefix, inner] of sgg) {
+    if (sido.has(prefix)) continue;
+    if (inner.size === 0) continue;
+    let allZero = true;
+    for (const { in: tin, out: tout } of inner.values()) {
+      if (!(tin === 0 && tout === 0)) { allZero = false; break; }
+    }
+    if (allZero) dead.add(prefix);
   }
   return dead;
 }
@@ -209,10 +261,13 @@ export function detectDeadPrefixes(periodRows) {
 // 최신 PRD_DE (월)만 사용, ITM_NM === "순이동" 만
 /**
  * @param {unknown} rows
- * @returns {{period: string|null, entries: MigrationEntry[]}}
+ * @param {Set<string>} [ambiguousPrefixes] 모호 prefix 집합(테스트 주입용 — 기본은 모듈 상수)
+ * @returns {{period: string|null, entries: MigrationEntry[], crossCheckFailures: number, unmappedAmbiguous: string[]}}
  */
-export function aggregateKosisRows(rows) {
-  if (!Array.isArray(rows) || rows.length === 0) return { period: null, entries: [] };
+export function aggregateKosisRows(rows, ambiguousPrefixes = AMBIGUOUS_PREFIXES) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { period: null, entries: [], crossCheckFailures: 0, unmappedAmbiguous: [] };
+  }
   const typedRows = /** @type {KosisRow[]} */ (rows);
 
   // 최신 PRD_DE 찾기
@@ -229,9 +284,40 @@ export function aggregateKosisRows(rows) {
     log(PHASE, `죽은 계열 prefix 제외(총전입=0 ∧ 총전출=0): ${[...deadPrefixes].sort().join(", ")}`);
   }
 
-  /** @type {MigrationEntry[]} */
-  const entries = [];
-  /** 모호 prefix("12") 에서 온 시군구 합계 — region 별 */
+  /**
+   * ⑵ `region|gu` 당 한 entry 만 남긴다 (세션548 D2b — 방어층).
+   *
+   * 순차 UPDATE 라 같은 키가 두 번 나오면 **뒤에 온 행이 DB 값을 정한다** = 행 순서가 값을
+   * 정하는 것. ①의 죽은 계열 판정이 뚫려도 여기서 막는다.
+   *
+   * 승자는 순서가 아니라 **값의 성질**로 정한다 — 이 중복이 생기는 유일한 경로가 "죽은 계열이
+   * 0 을 흘렸다" 이므로 **0 이 아닌 값이 0 을 이긴다**(rank 2 vs 0). 둘 다 0 이 아니면 모호
+   * prefix(새 코드) 쪽을 택한다(rank 2 vs 1) — 개편 뒤에는 새 계열이 진실이다.
+   * @type {Map<string, {entry: MigrationEntry, rank: number, code: string}>}
+   */
+  const byKey = new Map();
+  /** @type {string[]} */
+  const dupWarnings = [];
+  /**
+   * @param {MigrationEntry} entry
+   * @param {number} rank 클수록 우선
+   * @param {string} code 출처 C1(로그용)
+   */
+  const addEntry = (entry, rank, code) => {
+    const key = `${entry.region}|${entry.gu ?? ""}`;
+    const prev = byKey.get(key);
+    if (!prev) { byKey.set(key, { entry, rank, code }); return; }
+    // 값까지 같으면 시끄럽게 굴 일이 아니다 — 조용히 하나만 남긴다.
+    if (prev.entry.net_migration === entry.net_migration) return;
+    const winner = rank > prev.rank ? { entry, rank, code } : prev;
+    const loser = rank > prev.rank ? prev : { entry, rank, code };
+    byKey.set(key, winner);
+    dupWarnings.push(
+      `${key}: C1=${winner.code} ${winner.entry.net_migration} 채택 / C1=${loser.code} ${loser.entry.net_migration} 폐기`,
+    );
+  };
+
+  /** 모호 prefix("12") 에서 온 시군구 합계 — `prefix|region` 별 (세션548 D4) */
   /** @type {Map<string, number>} */
   const ambiguousGuSum = new Map();
   /** 모호 prefix 시도 2자리 행의 순이동(교차검증용) */
@@ -240,6 +326,9 @@ export function aggregateKosisRows(rows) {
   /** 살아 있는 시도 entry 를 가진 region */
   /** @type {Set<string>} */
   const liveSidoRegions = new Set();
+  /** 모호 prefix 5자리인데 mapC1 이 못 가른 코드 (세션548 D3) */
+  /** @type {string[]} */
+  const unmappedAmbiguous = [];
 
   for (const r of periodRows) {
     const code = String(r.C1 ?? "");
@@ -254,44 +343,74 @@ export function aggregateKosisRows(rows) {
     if (Number.isNaN(netMigration)) continue;
 
     // ③ 모호 prefix 의 2자리 시도행 — mapC1 은 못 가르므로(정상) 교차검증 값으로만 쥔다.
-    if (code.length === 2 && AMBIGUOUS_PREFIXES.has(code)) {
+    if (code.length === 2 && ambiguousPrefixes.has(code)) {
       ambiguousSidoTotal.set(code, netMigration);
       continue;
     }
 
     const mapped = mapC1(r.C1, r.C1_NM);
-    if (!mapped) continue;
-
-    if (!mapped.gu) liveSidoRegions.add(mapped.region);
-    else if (AMBIGUOUS_PREFIXES.has(prefix)) {
-      ambiguousGuSum.set(mapped.region, (ambiguousGuSum.get(mapped.region) ?? 0) + netMigration);
+    if (!mapped) {
+      // 모호 prefix 의 5자리를 못 가르면 그 값이 시군구 합에서 통째로 빠져 ⑤ 교차검증이 깨진다.
+      // 조용히 넘기면 "왜 어긋났는지" 가 로그에 안 남는다 — 코드를 적어 둔다.
+      if (code.length === 5 && ambiguousPrefixes.has(prefix)) unmappedAmbiguous.push(code);
+      continue;
     }
 
-    entries.push({
-      region: mapped.region,
-      gu: mapped.gu,
-      net_migration: netMigration,
-    });
+    if (!mapped.gu) liveSidoRegions.add(mapped.region);
+    else if (ambiguousPrefixes.has(prefix)) {
+      const sumKey = `${prefix}|${mapped.region}`;
+      ambiguousGuSum.set(sumKey, (ambiguousGuSum.get(sumKey) ?? 0) + netMigration);
+    }
+
+    addEntry(
+      { region: mapped.region, gu: mapped.gu, net_migration: netMigration },
+      netMigration === 0 ? 0 : ambiguousPrefixes.has(prefix) ? 2 : 1,
+      code,
+    );
   }
 
   // ④ 시도 파생값 — 모호 prefix 라 2자리로는 못 갈랐지만 시군구는 갈랐다.
   //    구역 내부 이동은 상쇄되므로 시군구 합 = 그 지역의 진짜 순이동이다.
+  let crossCheckFailures = 0;
   for (const [prefix, sidoTotal] of ambiguousSidoTotal) {
-    const derived = [...ambiguousGuSum.entries()].filter(([region]) => !liveSidoRegions.has(region));
+    // 이 prefix 에서 온 합계만 본다 — 다른 모호 prefix 의 합을 빌려 쓰면 안 된다(D4).
+    const derived = [...ambiguousGuSum.entries()]
+      .filter(([key]) => key.startsWith(`${prefix}|`))
+      .map(([key, v]) => /** @type {[string, number]} */ ([key.slice(prefix.length + 1), v]))
+      .filter(([region]) => !liveSidoRegions.has(region));
     if (derived.length === 0) continue;
     const sum = derived.reduce((acc, [, v]) => acc + v, 0);
     // ⑤ fail-close — 합이 시도 통합값과 어긋나면 **적재하지 않는다**(시군구는 그대로 간다).
+    //    ⚠️ 생략만 하고 끝내면 run 은 그대로 success 라 아무도 못 본다 — failed 로 센다(D3).
     if (sum !== sidoTotal) {
-      logError(PHASE, `시도 파생값 교차검증 실패 prefix=${prefix}: 시군구 합 ${sum} ≠ 시도 통합값 ${sidoTotal} — 시도 entry 생략`);
+      crossCheckFailures++;
+      const unmapped = unmappedAmbiguous.filter((c) => c.startsWith(prefix));
+      logError(
+        PHASE,
+        `시도 파생값 교차검증 실패 prefix=${prefix}: 시군구 합 ${sum} ≠ 시도 통합값 ${sidoTotal} — 시도 entry 생략` +
+          ` (매핑 실패 5자리 ${unmapped.length}건${unmapped.length ? `: ${unmapped.join(", ")}` : ""})`,
+      );
       continue;
     }
     for (const [region, v] of derived) {
-      entries.push({ region, gu: null, net_migration: v });
+      addEntry({ region, gu: null, net_migration: v }, 2, `${prefix}(파생)`);
       log(PHASE, `시도 파생값: ${region} = ${v} (시군구 합, prefix=${prefix})`);
     }
   }
 
-  return { period: latestPrd, entries };
+  for (const w of dupWarnings) {
+    logError(PHASE, `중복 키 — 행 순서가 값을 정하지 않게 결정적으로 골랐다 ${w}`);
+  }
+  if (unmappedAmbiguous.length > 0) {
+    logError(PHASE, `모호 prefix 5자리 매핑 실패 ${unmappedAmbiguous.length}건: ${unmappedAmbiguous.join(", ")}`);
+  }
+
+  return {
+    period: latestPrd,
+    entries: [...byKey.values()].map((v) => v.entry),
+    crossCheckFailures,
+    unmappedAmbiguous,
+  };
 }
 
 // ── KOSIS 호출 ──────────────────────────────────────────────
@@ -375,10 +494,14 @@ async function runCollect(dryRun) {
   const apiCalls = 1;
   log(PHASE, `KOSIS 응답: ${rows.length}건`);
 
-  const { period, entries } = aggregateKosisRows(rows);
+  const { period, entries, crossCheckFailures, unmappedAmbiguous } = aggregateKosisRows(rows);
+  // 파싱 단계의 조용한 사고를 run 에 싣는다 (세션548 D3).
+  // 교차검증 실패는 "시도 entry 를 생략했다" 는 뜻이고, 생략하면 그 지역 순이동이 **옛 값 그대로**
+  // 남는다(stale). failed 로 세지 않으면 collector_runs 가 깨끗한 success 라 아무도 못 본다.
+  const parseFailures = crossCheckFailures + unmappedAmbiguous.length;
   if (!period || entries.length === 0) {
     log(PHASE, "유효 데이터 없음 — 종료");
-    return { apiCalls, failed: 0, updated: 0 };
+    return { apiCalls, failed: parseFailures, updated: 0 };
   }
   log(PHASE, `기준월: ${period}, 유효 entry: ${entries.length}건`);
 
@@ -403,7 +526,7 @@ async function runCollect(dryRun) {
     for (const r of [...guRows].sort((a, b) => a.net_migration - b.net_migration).slice(0, 10)) {
       console.log(`  ${r.region} ${r.gu}: ${r.net_migration.toLocaleString()}명`);
     }
-    return { apiCalls, failed: 0, updated: 0 };
+    return { apiCalls, failed: parseFailures, updated: 0 };
   }
 
   // Supabase UPDATE
@@ -411,7 +534,7 @@ async function runCollect(dryRun) {
   // regions 는 region+gu 당 여러 recorded_at 스냅샷이 동일 최신값으로 동기화되는 구조로 운영.
   // "최신 1건만" 의도의 `.order().limit(1)` 은 미작동이므로 제거(세션103 collector-contract 지적).
   const sb = getSupabase();
-  let updated = 0, failed = 0;
+  let updated = 0, updateFailed = 0, failed = parseFailures;
 
   for (const e of entries) {
     const query = sb
@@ -425,13 +548,15 @@ async function runCollect(dryRun) {
     const { error } = await query;
     if (error) {
       logError(PHASE, `${e.region} ${e.gu ?? ""}: ${error.message}`);
+      updateFailed++;
       failed++;
     } else {
       updated++;
     }
   }
 
-  log(PHASE, `regions.net_migration UPDATE: ${updated}건 성공 / ${failed}건 실패`);
+  log(PHASE, `regions.net_migration UPDATE: ${updated}건 성공 / ${updateFailed}건 실패` +
+    (parseFailures > 0 ? ` (+ 파싱 단계 실패 ${parseFailures}건: 교차검증 ${crossCheckFailures} · 매핑실패 ${unmappedAmbiguous.length})` : ""));
 
   return { apiCalls, failed, updated };
 }
