@@ -56,6 +56,7 @@
 | 9 | `apartments.bjd_code` (**저장 데이터**) | 앞 5자리 재매핑. 코드표만 고치면 이미 저장된 값은 안 따라온다 |
 | 10 | `regions.childcare` arcode | `childcare-detail.mjs` 가 `GU_LAWD_MAP` 역참조로 만든다 → **2번만 고치면 따라온다**(실측: `stcode` 가 옛 접두여도 새 arcode 와 함께 정상 응답) |
 | 11 | **주소 첫 토큰을 직접 자르는 자체 파서 전부** — `collect-applyhome-detail.mjs addrToRegion`, `naver-presale.mjs parsePresaleAddress`, `collect-applyhome-seed.mjs`/`collect-data.mjs parseAddress`, `reverse-geocode.mjs normalizeRegion`, `population*.mjs resolveRegion` | 세션545 1라운드가 **`REGION_MAP` 소비처 grep 으로만** 전수했다가 `addrToRegion`(`head.startsWith("전남")` → 광주 5구까지 전남)을 놓쳤다 — 독립 리뷰어가 잡음. 전수는 `split(/\s+/)[0]`·`startsWith(`·`includes(` 로 **첫 토큰을 다루는 함수**를 찾아야 한다 |
+| 12 | **`regions` 의 신설 시군구 행 — 구 단위 지표** (세션548) | `apartments.gu` 를 새 구로 옮기는 순간 VIEW `rg` 조인(`region AND gu`)이 **새 구 행**을 본다. 그 행은 population 이 막 만든 빈 행이라 KOSIS·MOLIT 계열 지표(출산율·의사·병상·공시가격)가 없고, **원천이 옛 구 이름만 주는 동안은 자동으로도 안 채워진다**(UPDATE-only 수집기는 매칭이 안 되면 skip). 인천 80단지가 4칸을 통째로 잃었다(정적 JSON 재생성 전에 발견해 노출 0). 저장 데이터를 옮긴 **직후** `apartments_flat` 에서 새 구 vs 대조 구의 지표별 채움 수를 맞대고, 비면 모구의 비율·지수형 값만 승계한다(합계형 금지) |
 
 ⚠️ 9번(저장 데이터)이 가장 잊기 쉽다. 코드표는 "앞으로 부를 때" 쓰이고, 저장된 `bjd_code` 는
 "이미 박힌 조회 키"라 서로 다른 축이다. 도구 = `scripts/remap-jeonnam-gwangju-codes.mjs`(dry-run 기본).

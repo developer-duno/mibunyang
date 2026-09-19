@@ -648,7 +648,25 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   클라이언트 재현(--limit 회차 분산 의미 유지). 라이브 5종(apartments·regions·transport·infra·applyhome_unit_supply) 커서=count=무키 —
   **지금은 새는 게 재현되지 않았다**(세션514 유실은 79만행 trades + 동시쓰기 조건). 근거는 "보장이 없다"쪽.
 
-<!-- 세션548 (2026-09-19) 추가 -->
+<!-- 세션548 (2026-09-19~20) 추가 -->
+- 🟠 **인천 신설 4구(제물포·영종·서해·검단)의 구 단위 지표 4종은 "모구 승계값"이다 — 원천이 새 구 이름을 줄 때까지 임시** (세션548 맹점 검사관 발견 → 오케스트레이터 직독 확인·조치).
+  경위: `remap-incheon-2026.mjs --apply` 가 `apartments.gu` 만 옮겼고 `regions` 의 새 4구 행(2026-07-01, population.mjs 가 생성)에는
+  `fertility_rate`·`doctors_per_1k`·`hospital_beds_per_1k`·`housing_price` 가 없었다. VIEW `rg` 조인이 `region AND gu` 라 **80단지(VIEW 기준)가 4칸을 통째로 잃었다**(0/80, 대조 연수구 48/48).
+  점수 영향은 0(표시 전용 — `src/scoring/` 참조 0건). 정적 JSON 재생성 **전에** 조치해 손님 노출 0.
+  조치(09-20 00:20): 새 구의 07-01 행에 **옮기기 전 소속 구의 최신 non-null 값**을 복사 — 검단·서해 ← 서구, 영종 ← 중구, 제물포 ← 동구(제물포 단지 5곳이 전부 옛 동구 출신).
+  비율·지수형 4종만(합계형 컬럼은 쪼갠 구에 주면 틀리므로 제외). 도구·전후값 = `~/.claude/projects/f--mibunyang/artifacts/s548-incheon-newgu-inherit-*`.
+  **남은 일**: ① KOSIS(`collect-fertility-rate`·`collect-medical-access`, UPDATE-only)·`collect-housing-price` 원천은 **아직 옛 구 이름만 준다**(fertility dry-run: 264 시군구 매칭 중 새 4구 0)
+  → 원천이 새 이름을 주기 시작하면 수집기가 참값으로 덮는다. 분기마다 그 dry-run 에서 새 4구 매칭 수를 확인. ② 그때까지 옛 중구/동구/서구 `regions` 행은 계속 갱신되므로 **승계값을 주기적으로 다시 복사**해야 낡지 않는다(위 도구는 값이 이미 있으면 건드리지 않는다 — 재복사 시 `c[col] != null` 조건을 풀 것).
+
+- 🟠 **monitor 가 "개편으로 새로 생긴 시군구" 의 지표 공백을 구조적으로 못 본다** (세션548 맹점 검사관, 실측).
+  `REGION_KEY_COLUMNS`(monitor-collectors.mjs:94-105)는 **전국 채움 비율**로만 본다 — 새 4구 4행 공백은 0.19%p 라 어떤 임계에도 안 걸린다.
+  세션545(전남광주)·548(인천) 두 번 다 사람이 우연히 발견했다. 후보 = "신설 시군구" 명단을 두고 **그 행만 따로** NULL 검사 + `apartments.gu` 에 있는데 `regions` 에 지표 행이 없는 (region, gu) 쌍 경보.
+
+- 🟡 **`migration.mjs` 가 모든 recorded_at 행에 같은 net_migration 을 쓴다 — 시계열이 평평하다** (세션548 맹점 검사관 실측: 광주 10개 행 전부 −546).
+  지금은 무해(VIEW 는 컬럼별 최신 non-null 1개만 노출)하지만 **추세 차트를 넣는 순간 거짓 이력**이 된다. 그 전에 기준월 행만 쓰도록 전환.
+
+- 🟡 **`trades` 에 옛 인천 gu 행 22건 잔존**(서구 19·중구 3, 비쌍둥이 — 해제 거래 추정). `RETIRED_GU` 라 어떤 gu 필터에도 안 잡히는 고아. 전체의 0.11% 라 실질 무해 — 좌표/단지명으로 새 gu 재판정하거나 "의도적 잔존" 으로 확정.
+
 - 🟡 **`remap-incheon-2026.mjs --trades-cleanup --apply` 가 성공하고도 exit 1 로 끝난다** (세션548 실측).
   삭제 대상은 쌍둥이(`twinIds`)뿐이라 비쌍둥이는 설계상 남는데, 마무리 `verifyResiduals` 가 **창 안 옛 gu 잔여 0** 을 기대한다.
   09-19 실행 = 13,736행 삭제 · 잔여 22행(전부 비쌍둥이, 해제 거래 추정) → "재조회 결과가 기대와 다릅니다" 오경보. DB 직독으로 의도대로임을 확인.

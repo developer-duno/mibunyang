@@ -1,11 +1,11 @@
-# 로컬 Claude 자원 (2026-04-14 리뉴얼)
+# 로컬 Claude 자원 (2026-04-14 리뉴얼 · 2026-09-20 세션 548 정정)
 
-## SESSION_LOG.md vs memory 역할 분리
+## 세션 기록은 어디에 있나 (세션 548 정정 — 옛 "SESSION_LOG 에 append" 서술 폐기)
 
-- **`.claude/SESSION_LOG.md`** (커밋 추적): 과거 지향·불변. 날짜/커밋 SHA/결정 근거. 세션 종료 시 1회 append.
-- **`~/.claude/projects/f--mibunyang/memory/`** (gitignored): 현재 지향·휘발. 진행 중 가설·다음 단계·TODO.
-- **중복 금지**: 확정 사실은 SESSION_LOG로 이관 후 memory에서 삭제. 같은 사실 두 곳 작성 금지.
-- CLAUDE.md "현재 진행 상황"은 한 줄 요약만 — 상세는 SESSION_LOG.
+- **`~/.claude/projects/f--mibunyang/memory/`** (git 미추적): **세션 296+ 의 진실의 원천.** `MEMORY.md` 인덱스(한 줄 = 한 항목) + `session_*.md` 상세 + `archive-*.md` 완결 묶음.
+- **`.claude/SESSION_LOG.md`**: 세션 418 에 **스텁화** — 신규 누적을 하지 않는다. 세션 1~354 는 `SESSION_LOG_ARCHIVE_2026H1.md`(grep 전용, 682KB).
+- **`.claude/BACKLOG.md`** (커밋 추적): 미해결 과제와 해소 기록. 176KB 라 통째로 읽지 말고 `grep -n '세션NNN'`.
+- **팀이 공유해야 하는 원칙·사고 패턴**은 `.claude/rules/<카테고리>/*.md` (커밋 추적). 개인 작업 일지는 메모리 쪽.
 
 ## 프로젝트 전용 커맨드 (`.claude/commands/`)
 
@@ -22,6 +22,10 @@
 - `scoring-validator` — 가중치/클램핑/null 검증
 - `null-safety-checker` — optional chaining·기본값·숫자 포맷 가드
 - `collector-contract` — 수집기 배치/upsert/병렬/쿼터/에러 계약
+- `code-reviewer` — withHandler·비로그인 블라인드·memo comparator·표현계층·sanitize null 함정 (커밋/PR 직전)
+- `migration-safety` — 공용 테이블 ALTER 영향·RLS·security_invoker·롤백 SQL·Dashboard 수동 적용
+- `security-reviewer` — XSS·env 노출·인젝션·withHandler 누락·JWT/admin 토큰·CORS
+- ⚠️ 목록은 늘어난다 — 단정 전 `git ls-files .claude/agents` (세션 548: 3개로 적혀 있었으나 실제 6개)
 
 ## settings.json hooks (비차단 경고)
 
