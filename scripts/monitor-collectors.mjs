@@ -8,10 +8,12 @@
  *   ③ 미발화      — 마지막 run 이 35일+ 전 (월간 cron 1주기 초과)
  *   ④ NULL 급증   — regions 핵심 컬럼 + apartments 19 카테고리 NULL 비율 점검
  *   ⑤ 외부 API 장기 중단 — 최근 3회 success+ok=0 누적 + stale_days 초과 (silent fail)
+ *   ⑥ VIEW 회귀   — regions 원본은 채워졌는데 apartments_flat VIEW 노출 컬럼만 NULL
+ *   ⑦ 시군구 짝 불일치 — apartments.gu 가 regions 시군구 행과 안 이어져 rg 조인 컬럼이 빈칸
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
- *   --mode=daily  cron — 전체 스윕 (①②③④⑤)
+ *   --mode=daily  cron — 전체 스윕 (①②③④⑤⑥⑦)
  *
  * 필요 환경변수:
  *   TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID — 알림 채널 (없으면 점검만, 전송 스킵)
@@ -19,7 +21,7 @@
  *   GITHUB_REPOSITORY                     — "owner/repo" (Actions 기본 제공)
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
-import { loadEnv, getSupabase } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, selectAll } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssue, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
@@ -865,6 +867,127 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
   return issues;
 }
 
+/**
+ * ⑦ VIEW 의 시군구 조인(`rg`)으로 노출되는 컬럼 목록.
+ *
+ * `apartments_flat` 은 `LEFT JOIN latest_regions_gu rg ON rg.region = a.region AND rg.gu = a.gu`
+ * 로 시군구 지표를 붙인다. 이 짝이 안 맞으면 **아래 컬럼이 통째로 빈칸**이 된다.
+ *
+ * ⚠️ VIEW 에 `rg.` 로 노출되는 컬럼을 추가하면 **여기에도 1줄 추가**할 것.
+ *    빠뜨리면 그 컬럼만 비어도 ⑦-B(빈 껍데기)가 "전부 비었다" 로 안 보고 조용히 넘어간다.
+ *    확인 방법: 최신 `supabase/migrations/*view*.sql` 에서 `rg.` 로 시작하는 SELECT 항목 grep.
+ */
+export const GU_JOIN_COLUMNS = [
+  "fertility_rate",
+  "doctors_per_1k",
+  "hospital_beds_per_1k",
+  "housing_price",
+];
+
+/** ⑦ 경보 본문에 펼칠 최대 (region,gu) 쌍 수 — 나머지는 "외 N쌍" 으로 접는다. */
+const ORPHAN_GU_LINE_LIMIT = 8;
+
+/**
+ * ⑦ `apartments.gu` ↔ `regions` 시군구 행의 짝 불일치 탐지 (세션549).
+ *
+ * 왜 ④(NULL 급증)로는 못 보나: ④ 는 **전국 채움 비율**만 본다. 개편으로 새 구가 4개 생겨
+ * 그 행만 비면 0.19%p 라 어떤 임계에도 안 걸린다. 그런데 화면에서는 그 구의 단지들이
+ * GU_JOIN_COLUMNS 4칸을 **통째로** 잃는다. 세션545(전남광주)·548(인천)·549(일반구 표기)
+ * 세 번 다 사람이 우연히 발견했다 — 구조적으로 보이지 않는 자리라서다.
+ *
+ * 두 가지 이상:
+ *   A "짝 없음"   — 단지는 있는데 그 (region,gu) 의 `regions` 행이 **아예 없다**.
+ *                   표기 불일치(`권선구` vs `수원시 권선구`)·개편 직후 미생성이 원인.
+ *   B "빈 껍데기" — 행은 있는데 **모든 recorded_at 행에서 GU_JOIN_COLUMNS 가 전부 NULL**.
+ *                   개편으로 막 생긴 행이 원천 미갱신으로 비어 있는 상태.
+ *
+ * ⚠️ B 는 **전부 비었을 때만** 울린다. 일부만 빈 것은 정상이다 — 라이브 실측(2026-09-20):
+ *    `housing_price` 는 공동주택 없는 시 단위 8쌍(`충남|천안시` 등)에서, `hospital_beds_per_1k`
+ *    는 `강원|고성군` 에서 정상적으로 비어 있다. 이걸 울리면 매일 나가는 소음이 되고,
+ *    소음이 되는 경보는 곧 무시당한다(이 파일의 ④ housing_price 제외 사유와 같은 결).
+ *
+ * 텔레그램 도배를 막으려고 **종류당 1건**으로 모은다(쌍마다 1건이면 34건이 한 번에 나간다).
+ *
+ * @param {Array<{ region?: string|null, gu?: string|null, count?: number|null }>} aptPairs
+ *   apartments 를 region+gu 로 묶은 것 (gu 가 빈 행은 호출부에서 이미 빠져 있어도 무방 — 여기서도 거른다).
+ * @param {Array<Record<string, any>>} regionRows
+ *   regions 전체 행 (recorded_at 구분 없이). gu 가 있는 행만 의미가 있다.
+ * @param {{ columns?: string[] }} [opts] columns 미지정 시 GU_JOIN_COLUMNS.
+ * @returns {Issue[]}
+ */
+export function checkOrphanGuPairs(aptPairs, regionRows, opts = {}) {
+  const columns = opts.columns ?? GU_JOIN_COLUMNS;
+
+  /** (region,gu) → 그 짝의 regions 행들이 하나라도 채운 적 있는 컬럼이 있나 */
+  /** @type {Map<string, boolean>} */
+  const regionHasAnyValue = new Map();
+  for (const row of regionRows) {
+    const region = row?.region;
+    const gu = row?.gu;
+    if (!region || !gu) continue;
+    const key = `${region}|${gu}`;
+    const anyFilled = columns.some((c) => row[c] != null);
+    // 한 쌍의 여러 recorded_at 행 중 **하나라도** 값이 있으면 껍데기가 아니다
+    // (VIEW latest_regions_gu 가 컬럼별 최신 non-null 을 고르므로 옛 행의 값도 화면에 나온다).
+    regionHasAnyValue.set(key, (regionHasAnyValue.get(key) ?? false) || anyFilled);
+  }
+
+  /** @type {Array<{ key: string, count: number }>} */
+  const missing = [];
+  /** @type {Array<{ key: string, count: number }>} */
+  const hollow = [];
+  for (const p of aptPairs) {
+    if (!p?.region || !p?.gu) continue; // 표기 불일치 탐지가 목적이라 trim·정규화는 하지 않는다
+    const key = `${p.region}|${p.gu}`;
+    const count = Number(p.count ?? 0);
+    if (!regionHasAnyValue.has(key)) missing.push({ key, count });
+    else if (regionHasAnyValue.get(key) === false) hollow.push({ key, count });
+  }
+
+  /** @type {Issue[]} */
+  const issues = [];
+  /**
+   * 쌍 목록 하나를 이슈 1건으로 접는다.
+   * @param {Array<{ key: string, count: number }>} pairs
+   * @param {"짝 없음" | "빈 껍데기"} kindLabel
+   * @param {string} why
+   */
+  const fold = (pairs, kindLabel, why) => {
+    if (pairs.length === 0) return;
+    const sorted = [...pairs].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+    const apts = sorted.reduce((n, p) => n + p.count, 0);
+    /** @type {string[]} */
+    const lines = [why];
+    for (const p of sorted.slice(0, ORPHAN_GU_LINE_LIMIT)) lines.push(`  · ${p.key} ${p.count}곳`);
+    const rest = sorted.length - ORPHAN_GU_LINE_LIMIT;
+    if (rest > 0) lines.push(`  · 외 ${rest}쌍`);
+    lines.push("[조치 1] `normalizeGu` 표기 확인 — apartments.gu 가 regions.gu 와 같은 표기인가");
+    lines.push("[조치 2] `.claude/rules/collectors/admin-district-code-reform.md` §2-12 (신설 시군구 지표 승계)");
+    issues.push({
+      kind: "nulls",
+      // dedupKey 는 `kind|collector|at` 이다. collector 에 **쌍 목록 지문**을 넣어 두면, 이 검사가
+      // dedup 을 타는 경로(run 모드)로 옮겨져도 두 번째 다른 사고가 첫 경보에 먹혀 침묵하지 않는다.
+      // ⚠️ 지금은 ⑦ 이 daily 스윕 전용이고 daily 는 dedup 을 안 탄다(main 의 `mode === "run"` 분기) —
+      //    즉 **남아 있는 짝은 매일 다시 알린다**. 알려진 쓰레기 표기는 예외 목록이 아니라 데이터를 고쳐서 없앤다.
+      collector: `시군구 지표 ${kindLabel} (${sorted.map((p) => p.key).join(",")})`,
+      detail: `${kindLabel} ${sorted.length}쌍 · 단지 ${apts}곳 — apartments.gu 가 regions 시군구 지표와 못 이어져 ${columns.length}칸이 빈칸`,
+      lines,
+    });
+  };
+
+  fold(
+    missing,
+    "짝 없음",
+    `apartments.gu 에 있는데 regions 에 그 시군구 행이 **아예 없습니다** — 화면에서 ${columns.join("·")} 가 빈칸이 됩니다.`,
+  );
+  fold(
+    hollow,
+    "빈 껍데기",
+    `regions 행은 있는데 ${columns.join("·")} 가 **모든 recorded_at 행에서 전부 NULL** 입니다.`,
+  );
+  return issues;
+}
+
 // ── I/O 래퍼 (실제 API·DB 호출) ─────────────────────────────
 
 /**
@@ -1038,6 +1161,46 @@ async function fetchRegionColumnStats() {
     stats.push({ column, total, filled: filled ?? 0, nullSurge });
   }
   return stats;
+}
+
+/**
+ * ⑦ (region,gu) 짝 점검 입력 — apartments 를 region+gu 로 묶은 목록 + regions 시군구 행.
+ *
+ * ⚠️ 두 조회 다 **고유키 커서**(`selectAll(fn, sb, "id")`)로 훑는다. 정렬 없는 OFFSET 페이징은
+ *    1,000행 넘는 표에서 **에러 없이** 행이 샌다 — 여기서 행이 새면 있는 짝이 "짝 없음" 으로
+ *    잘못 잡혀 거짓 경보가 된다(`.claude/rules/collectors/unordered-pagination-loses-rows.md`).
+ *    apartments 는 2천 행대, regions 는 1천 행대라 둘 다 실제로 페이징이 돈다.
+ *
+ * @param {any} [sbArg] 테스트 주입용. 생략하면 getSupabase().
+ * @returns {Promise<{ aptPairs: Array<{ region: string, gu: string, count: number }>, regionRows: Array<Record<string, any>> }>}
+ */
+export async function fetchGuPairStats(sbArg) {
+  const sb = sbArg ?? getSupabase();
+  const apts = await selectAll(
+    (s) => s.from("apartments").select("id, region, gu"),
+    sb,
+    "id",
+  );
+  // ⚠️ select 는 **배열 join** 으로 조립한다 — 템플릿 리터럴(`` `id, ... ${...}` ``)로 쓰면
+  //    정적 가드가 커서 키를 못 읽어 "select 에 id 가 안 보인다" 로 위반 처리한다
+  //    (보간 때문에 경계를 못 믿어 건너뛰는 설계 — `_selectall-keycol-coverage.test.mjs` 픽스처 (14)).
+  const regionRows = await selectAll(
+    (s) => s.from("regions").select(["id", "region", "gu", ...GU_JOIN_COLUMNS].join(", ")),
+    sb,
+    "id",
+  );
+  /** @type {Map<string, { region: string, gu: string, count: number }>} */
+  const byPair = new Map();
+  for (const a of apts) {
+    const region = a?.region;
+    const gu = a?.gu;
+    if (!region || !gu) continue; // gu 없는 단지(세종 등)는 VIEW 가 rg 조인을 안 쓴다
+    const key = `${region}|${gu}`;
+    const cur = byPair.get(key);
+    if (cur) cur.count++;
+    else byPair.set(key, { region, gu, count: 1 });
+  }
+  return { aptPairs: [...byPair.values()], regionRows };
 }
 
 /**
@@ -1359,7 +1522,7 @@ async function main() {
     const { latest, prevOk } = await fetchLatestCollectorRuns();
     issues = issues.concat(checkEmptyRuns(latest, prevOk, { maxAgeHours: 36 }));
   } else {
-    // daily 스윕 — 전체 점검 (①②③④⑤⑥)
+    // daily 스윕 — 전체 점검 (①②③④⑤⑥⑦)
     // ⚠️ ①③ 은 GitHub Actions REST(actions/runs·workflows)에 의존한다. 로컬 PC 처럼
     //    GITHUB_REPOSITORY/GITHUB_TOKEN 이 없으면 fetchRecentRuns 가 [] 를 반환해
     //    "모든 워크플로가 한 번도 안 돔" 으로 오판 → 미발화 알림이 전부 오탐 발송된다
@@ -1383,7 +1546,7 @@ async function main() {
       console.log(
         "[monitor] GITHUB_REPOSITORY/GITHUB_TOKEN 없음 — ①실패·③미발화 점검 skip " +
           "(로컬 실행: GitHub run 이력을 못 읽어 미발화 오탐이 나므로 건너뜀). " +
-          "②0건·④NULL·⑤외부API·⑥VIEW 점검은 collector_runs/DB 기반이라 계속 진행.",
+          "②0건·④NULL·⑤외부API·⑥VIEW·⑦시군구짝 점검은 collector_runs/DB 기반이라 계속 진행.",
       );
     }
 
@@ -1414,6 +1577,17 @@ async function main() {
 
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
     issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
+
+    // ⑦ 시군구 짝 불일치 — apartments.gu 가 regions 시군구 행과 안 이어져 rg 조인 4칸이 빈칸 (세션549).
+    //    조회 실패가 ①~⑥ 을 통째로 죽이면 안 되므로 fail-open (fetchAhCompetitionCounts 와 같은 결).
+    try {
+      const { aptPairs, regionRows } = await fetchGuPairStats();
+      const orphanIssues = checkOrphanGuPairs(aptPairs, regionRows);
+      console.log(`[monitor] ⑦ 시군구 짝 점검: 단지 짝 ${aptPairs.length}개 · regions 행 ${regionRows.length}개 → 이상 ${orphanIssues.length}건`);
+      issues = issues.concat(orphanIssues);
+    } catch (err) {
+      console.log(`[monitor] ⑦ 시군구 짝 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     // ★ 매일 아침 현황 브리핑 (세션 478) — 이상 유무 무관 daily 마다 1통. L1138 early-return 앞에서
     //   별도 발송해야 이상 0건 아침에도 나간다. CI 에서만 발송(로컬은 콘솔).

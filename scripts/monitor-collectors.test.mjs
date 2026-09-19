@@ -22,6 +22,7 @@ const {
   fetchAhCompetitionCounts, AH_ID_PREFIX,
   QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
+  checkOrphanGuPairs, GU_JOIN_COLUMNS,
   dedupKey, filterUnsent, hasGithubApiAuth,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
@@ -1380,6 +1381,179 @@ describe("checkViewRegionStale — ⑥ VIEW 회귀 (regions 원본 채움 but VI
       [{ column: "x", total: 100, filled: 21 }],
       targets,
     )).toHaveLength(1);
+  });
+});
+
+describe("checkOrphanGuPairs — ⑦ 시군구 짝 불일치 (세션549)", () => {
+  // ⚠️ 기대값은 전부 **리터럴**이다 — 검사 대상 상수(GU_JOIN_COLUMNS)에서 파생하면
+  //    상수를 바꾸는 순간 단언도 같이 밀려 항등식이 된다(guards-must-be-mutation-tested §파생 가드).
+  const COLS = ["fertility_rate", "doctors_per_1k", "hospital_beds_per_1k", "housing_price"];
+
+  /**
+   * regions 행 하나 — 지정한 컬럼만 값을 채운다.
+   * @param {string} region @param {string} gu @param {Record<string, number|null>} [vals]
+   */
+  const rrow = (region, gu, vals = {}) => ({
+    region, gu,
+    fertility_rate: null, doctors_per_1k: null, hospital_beds_per_1k: null, housing_price: null,
+    ...vals,
+  });
+
+  it("정상 — 모든 짝이 값 있는 regions 행을 가지면 이상 0건", () => {
+    const issues = checkOrphanGuPairs(
+      [{ region: "경기", gu: "수원시 권선구", count: 14 }, { region: "인천", gu: "제물포구", count: 30 }],
+      [rrow("경기", "수원시 권선구", { fertility_rate: 0.7 }), rrow("인천", "제물포구", { housing_price: 3.1 })],
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("A 짝 없음 — regions 에 그 (region,gu) 행이 아예 없으면 발화 (세션549 일반구 표기 사고)", () => {
+    // 실사고: apartments.gu 가 "권선구" 인데 regions 는 "수원시 권선구" 로만 있었다.
+    const issues = checkOrphanGuPairs(
+      [{ region: "경기", gu: "권선구", count: 14 }],
+      [rrow("경기", "수원시 권선구", { fertility_rate: 0.7 })],
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("nulls");
+    expect(issues[0].detail).toMatch(/짝 없음 1쌍/);
+    expect(issues[0].detail).toMatch(/단지 14곳/);
+    expect(issues[0].lines?.join("\n")).toMatch(/경기\|권선구 14곳/);
+  });
+
+  it("B 빈 껍데기 — 행은 있는데 4컬럼이 전부 NULL 이면 발화 (세션548 인천 신설 4구)", () => {
+    const issues = checkOrphanGuPairs(
+      [{ region: "인천", gu: "제물포구", count: 30 }],
+      [rrow("인천", "제물포구")],
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toMatch(/빈 껍데기 1쌍/);
+    expect(issues[0].detail).toMatch(/단지 30곳/);
+  });
+
+  it("B 는 모든 recorded_at 행이 비었을 때만 — 옛 행에 값이 있으면 발화 안 함", () => {
+    // VIEW latest_regions_gu 는 컬럼별 최신 non-null 을 고르므로 옛 행 값도 화면에 나온다.
+    // 새 행이 비었다고 울리면 매달 population 이 새 행을 만들 때마다 거짓 경보가 된다.
+    const issues = checkOrphanGuPairs(
+      [{ region: "경기", gu: "화성시", count: 12 }],
+      [
+        rrow("경기", "화성시", { fertility_rate: 0.8 }), // 옛 행 — 값 있음
+        rrow("경기", "화성시"),                          // 새 행 — 전부 NULL
+      ],
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("부분 비움은 발화 안 함 — housing_price 만 NULL (충남|천안시 식, 정상)", () => {
+    // 라이브 실측(2026-09-20): 공동주택 없는 시 단위 8쌍에서 housing_price 만 정상적으로 빈다.
+    const issues = checkOrphanGuPairs(
+      [{ region: "충남", gu: "천안시", count: 9 }],
+      [rrow("충남", "천안시", { fertility_rate: 0.9, doctors_per_1k: 2.1, hospital_beds_per_1k: 8.4 })],
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("부분 비움은 발화 안 함 — hospital_beds_per_1k 만 NULL (강원|고성군 식, 정상)", () => {
+    const issues = checkOrphanGuPairs(
+      [{ region: "강원", gu: "고성군", count: 2 }],
+      [rrow("강원", "고성군", { fertility_rate: 1.1, doctors_per_1k: 1.2, housing_price: 1.5 })],
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("집계 — 종류당 이슈 1건 · 단지수 내림차순 상위 8쌍 + \"외 N쌍\" (텔레그램 도배 차단)", () => {
+    // 10쌍(짝 없음) + 2쌍(빈 껍데기) = 이슈는 2건이어야 한다 (쌍마다 1건이면 12건이 한 번에 나간다).
+    const aptPairs = [];
+    for (let i = 1; i <= 10; i++) aptPairs.push({ region: "경기", gu: `구${i}`, count: i });
+    aptPairs.push({ region: "인천", gu: "제물포구", count: 30 }, { region: "인천", gu: "영종구", count: 20 });
+    const issues = checkOrphanGuPairs(aptPairs, [rrow("인천", "제물포구"), rrow("인천", "영종구")]);
+
+    expect(issues).toHaveLength(2);
+    const [a, b] = issues;
+    // A: 10쌍 · 단지 1+2+…+10 = 55곳
+    expect(a.detail).toMatch(/짝 없음 10쌍/);
+    expect(a.detail).toMatch(/단지 55곳/);
+    const aLines = a.lines ?? [];
+    // 첫 줄은 설명, 그 다음이 쌍 목록 8줄 + "외 2쌍"
+    expect(aLines.filter((l) => l.startsWith("  · ")).length).toBe(9);
+    expect(aLines[1]).toBe("  · 경기|구10 10곳"); // 내림차순 1위
+    expect(aLines[8]).toBe("  · 경기|구3 3곳");   // 8위
+    expect(aLines[9]).toBe("  · 외 2쌍");
+    // B: 2쌍 · 50곳
+    expect(b.detail).toMatch(/빈 껍데기 2쌍/);
+    expect(b.detail).toMatch(/단지 50곳/);
+    expect((b.lines ?? []).filter((l) => l.startsWith("  · "))).toEqual([
+      "  · 인천|제물포구 30곳",
+      "  · 인천|영종구 20곳",
+    ]);
+  });
+
+  it("8쌍 이하면 \"외 N쌍\" 줄이 없다 (경계)", () => {
+    const aptPairs = [];
+    for (let i = 1; i <= 8; i++) aptPairs.push({ region: "경기", gu: `구${i}`, count: i });
+    const lines = checkOrphanGuPairs(aptPairs, [])[0].lines ?? [];
+    expect(lines.filter((l) => l.startsWith("  · ")).length).toBe(8);
+    expect(lines.join("\n")).not.toMatch(/외 \d+쌍/);
+  });
+
+  it("gu·region 이 비면 무시 — 세종처럼 gu 없는 단지는 rg 조인을 안 쓴다", () => {
+    expect(checkOrphanGuPairs(
+      [
+        { region: "세종", gu: null, count: 40 },
+        { region: "세종", gu: "", count: 3 },
+        { region: null, gu: "권선구", count: 5 },
+        { region: "경기", count: 7 },
+      ],
+      [],
+    )).toHaveLength(0);
+  });
+
+  it("dedup 키가 쌍 집합마다 다르다 — 두 번째 다른 사고가 첫 경보에 먹히지 않는다", () => {
+    // dedupKey = `kind|collector|at`. collector 에 쌍 지문이 없으면 첫 경보 뒤 영구 침묵한다.
+    const one = checkOrphanGuPairs([{ region: "경기", gu: "권선구", count: 14 }], [])[0];
+    const two = checkOrphanGuPairs([{ region: "인천", gu: "제물포구", count: 30 }], [])[0];
+    const both = checkOrphanGuPairs(
+      [{ region: "경기", gu: "권선구", count: 14 }, { region: "인천", gu: "제물포구", count: 30 }],
+      [],
+    )[0];
+    expect(dedupKey(one)).not.toBe(dedupKey(two));
+    expect(dedupKey(one)).not.toBe(dedupKey(both));
+    expect(dedupKey(two)).not.toBe(dedupKey(both));
+    // 같은 집합이면 같은 키 (하루 두 번 돌아도 1회만 알림)
+    expect(dedupKey(checkOrphanGuPairs([{ region: "경기", gu: "권선구", count: 14 }], [])[0])).toBe(dedupKey(one));
+  });
+
+  it("A 와 B 는 서로 다른 dedup 키 — 한쪽 경보가 다른 쪽을 가리지 않는다", () => {
+    const issues = checkOrphanGuPairs(
+      [{ region: "경기", gu: "권선구", count: 14 }, { region: "인천", gu: "제물포구", count: 30 }],
+      [rrow("인천", "제물포구")],
+    );
+    expect(issues).toHaveLength(2);
+    expect(dedupKey(issues[0])).not.toBe(dedupKey(issues[1]));
+  });
+
+  it("GU_JOIN_COLUMNS = VIEW 의 rg 조인 4컬럼 (리터럴 박제 — 늘리면 여기도 고친다)", () => {
+    expect(GU_JOIN_COLUMNS).toEqual(COLS);
+  });
+
+  it("columns 를 넓히면 그만큼 더 요구한다 — opts.columns 경로", () => {
+    // 4컬럼 기준으로는 정상인 행이, 5번째 컬럼을 요구하면 여전히 정상(하나라도 차 있으면 OK).
+    expect(checkOrphanGuPairs(
+      [{ region: "경기", gu: "화성시", count: 3 }],
+      [{ region: "경기", gu: "화성시", fertility_rate: 0.8 }],
+      { columns: ["fertility_rate", "새컬럼"] },
+    )).toHaveLength(0);
+    // fertility_rate 를 빼고 새컬럼만 요구하면 껍데기로 잡힌다
+    expect(checkOrphanGuPairs(
+      [{ region: "경기", gu: "화성시", count: 3 }],
+      [{ region: "경기", gu: "화성시", fertility_rate: 0.8 }],
+      { columns: ["새컬럼"] },
+    )).toHaveLength(1);
+  });
+
+  it("count 가 없거나 0 이어도 쌍은 잡는다 (단지수만 0곳으로 표기)", () => {
+    const issues = checkOrphanGuPairs([{ region: "경기", gu: "권선구" }], []);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toMatch(/단지 0곳/);
   });
 });
 

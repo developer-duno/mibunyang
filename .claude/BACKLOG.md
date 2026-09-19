@@ -648,6 +648,20 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   클라이언트 재현(--limit 회차 분산 의미 유지). 라이브 5종(apartments·regions·transport·infra·applyhome_unit_supply) 커서=count=무키 —
   **지금은 새는 게 재현되지 않았다**(세션514 유실은 79만행 trades + 동시쓰기 조건). 근거는 "보장이 없다"쪽.
 
+<!-- 세션549 (2026-09-20) 추가 -->
+- ✅ **해소 (세션549 · 데이터 반영)** — `apartments.gu` 가 시 이름 빠진 맨표기("권선구"·"서북구")로 저장돼 있던 **180곳**(naver_presale 176 · molit 4, 34쌍).
+  `naver-presale.mjs parsePresaleAddress` 가 주소에서 첫 '구' 토큰만 집고, 세션546 의 `normalizeGu` 배선은 **신규 행에만** 걸려 옛 행이 남았다(09-11 이후 생성분 0 = 배선은 정상).
+  피해(정적 JSON 1,895 기준 159곳): 구 단위 지표 4종 **0/159**(대조 1,703/1,895) · `recentTrades6m` **67/159**(대조 94%, 점수 입력). 6개월 잠복 — monitor ⑦ 사전 실측 탐침이 발견.
+  조치: dry-run 계획 그대로 반영(전제 180/180 · 되읽기 180/180 · 주소에 그 시 이름이 없는 오접합 의심 0) → `trade-stats` 전체 재계산(3,052/3,052) → VIEW 174/174 가 5필드 전부 채움.
+  되돌리기 자료 = `~/.claude/projects/f--mibunyang/artifacts/s549-gu-normalize-{plan,applied}.json`. 재발 감시 = monitor ⑦(아래).
+- ✅ **해소 (세션549 · 사장님 재결정)** — 첨단3지구 A8(`ah-2026910190`). 세션546 결정은 "좌표 비우기"였으나 전제("화면에 미수집으로 정직 표시")가 검증 불가였다(lat null 단지 0곳 · purge 규칙 §3 은 빈칸이 "지하철 없음·병원 0개"로 그려진다고 적음).
+  실측: A7·A8 공유 좌표는 카카오상 **A7 자기 핀(0m)**, A8 자기 핀(`…A8BL아파트 (2028년10월예정)` · 장성군 진원면 학림리 641-16)은 **852m** 밖이고 청약홈 공급주소와 면 단위 일치.
+  조치: lat/lng → A8 핀 · gu `첨단3지구`→`장성군` · `--refit-fields` 로 dong `진원면` · bjd `1284031027` · lot 641-16. 파생표는 purge 창(03:20~05:00)에서 정리 → 05:30 증분이 새 좌표로 재수집.
+- 🟡 **세종 35단지(VIEW)는 구 단위 지표 4종이 구조적으로 빈칸** (세션549 실측 — 위 180곳 정정 뒤 "4지표 전부 빈 단지"는 세종 35곳뿐).
+  `apartments.gu` = null(41/42곳) ↔ `regions` 키 = `세종|세종시`. VIEW 조인 `rg.gu = a.gu` 는 null 과 못 맞춘다. monitor ⑦ 도 gu 없는 단지는 건너뛰므로 못 본다.
+  처방 후보 = VIEW `latest_regions_gu` 조인에 세종 예외(`COALESCE(a.gu, CASE WHEN a.region='세종' THEN '세종시' END)`) — 마이그(Dashboard 수동 적용)라 별도 세션.
+  `apartments.gu` 를 "세종시"로 채우는 안은 기각 후보: `getLawdCd`·`matchesRegion`·지역 필터가 "세종은 gu 없음"을 전제로 한다. 남은 쓰레기값 1곳 = `ah-2022910239`(gu="행정중심복합도시" → null 이 맞다).
+
 <!-- 세션548 (2026-09-19~20) 추가 -->
 - 🟠 **인천 신설 4구(제물포·영종·서해·검단)의 구 단위 지표 4종은 "모구 승계값"이다 — 원천이 새 구 이름을 줄 때까지 임시** (세션548 맹점 검사관 발견 → 오케스트레이터 직독 확인·조치).
   경위: `remap-incheon-2026.mjs --apply` 가 `apartments.gu` 만 옮겼고 `regions` 의 새 4구 행(2026-07-01, population.mjs 가 생성)에는
@@ -658,9 +672,14 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   **남은 일**: ① KOSIS(`collect-fertility-rate`·`collect-medical-access`, UPDATE-only)·`collect-housing-price` 원천은 **아직 옛 구 이름만 준다**(fertility dry-run: 264 시군구 매칭 중 새 4구 0)
   → 원천이 새 이름을 주기 시작하면 수집기가 참값으로 덮는다. 분기마다 그 dry-run 에서 새 4구 매칭 수를 확인. ② 그때까지 옛 중구/동구/서구 `regions` 행은 계속 갱신되므로 **승계값을 주기적으로 다시 복사**해야 낡지 않는다(위 도구는 값이 이미 있으면 건드리지 않는다 — 재복사 시 `c[col] != null` 조건을 풀 것).
 
-- 🟠 **monitor 가 "개편으로 새로 생긴 시군구" 의 지표 공백을 구조적으로 못 본다** (세션548 맹점 검사관, 실측).
-  `REGION_KEY_COLUMNS`(monitor-collectors.mjs:94-105)는 **전국 채움 비율**로만 본다 — 새 4구 4행 공백은 0.19%p 라 어떤 임계에도 안 걸린다.
-  세션545(전남광주)·548(인천) 두 번 다 사람이 우연히 발견했다. 후보 = "신설 시군구" 명단을 두고 **그 행만 따로** NULL 검사 + `apartments.gu` 에 있는데 `regions` 에 지표 행이 없는 (region, gu) 쌍 경보.
+- ✅ **해소 (세션549 · monitor ⑦ 시군구 짝 불일치)** — `apartments.gu` 가 `regions` 시군구 행과 못 이어져
+  VIEW `rg` 조인 4컬럼(`fertility_rate`·`doctors_per_1k`·`hospital_beds_per_1k`·`housing_price`)이 통째로 빈칸이 되는 것을 경보한다.
+  두 종류: A "짝 없음"(`regions` 행 자체가 없음) · B "빈 껍데기"(행은 있는데 4컬럼이 **모든 recorded_at 행에서** 전부 NULL).
+  부분 비움은 정상이라 안 울린다(`충남|천안시` 등 `housing_price` 8쌍 · `강원|고성군` `hospital_beds_per_1k` — 울리면 매일 소음).
+  텔레그램 도배를 막으려 **종류당 1건**으로 접고(상위 8쌍 + "외 N쌍"), dedup 키에 쌍 지문을 넣어 두 번째 다른 사고가 안 묻히게 했다.
+  라이브 실측(2026-09-20): 짝 203개 · regions 2,249행 → **A 1쌍(`세종|행정중심복합도시` 1곳) · B 0쌍**
+  (브리핑이 예상한 `전남|첨단3지구` 는 그 사이 `apartments` 에서 사라져 0건 — 실측으로 확인).
+  가드 = `monitor-collectors.test.mjs` ⑦ 블록 14건, 뮤테이션 4종 전부 red(전부NULL→일부NULL 5건 · A분기 제거 6건 · dedup키 고정 1건 · `"id"` 커서 제거 1건).
 
 - 🟡 **`migration.mjs` 가 모든 recorded_at 행에 같은 net_migration 을 쓴다 — 시계열이 평평하다** (세션548 맹점 검사관 실측: 광주 10개 행 전부 −546).
   지금은 무해(VIEW 는 컬럼별 최신 non-null 1개만 노출)하지만 **추세 차트를 넣는 순간 거짓 이력**이 된다. 그 전에 기준월 행만 쓰도록 전환.
