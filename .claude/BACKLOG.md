@@ -648,14 +648,28 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   클라이언트 재현(--limit 회차 분산 의미 유지). 라이브 5종(apartments·regions·transport·infra·applyhome_unit_supply) 커서=count=무키 —
   **지금은 새는 게 재현되지 않았다**(세션514 유실은 79만행 trades + 동시쓰기 조건). 근거는 "보장이 없다"쪽.
 
+<!-- 세션548 (2026-09-19) 추가 -->
+- 🟡 **`remap-incheon-2026.mjs --trades-cleanup --apply` 가 성공하고도 exit 1 로 끝난다** (세션548 실측).
+  삭제 대상은 쌍둥이(`twinIds`)뿐이라 비쌍둥이는 설계상 남는데, 마무리 `verifyResiduals` 가 **창 안 옛 gu 잔여 0** 을 기대한다.
+  09-19 실행 = 13,736행 삭제 · 잔여 22행(전부 비쌍둥이, 해제 거래 추정) → "재조회 결과가 기대와 다릅니다" 오경보. DB 직독으로 의도대로임을 확인.
+  일회성 도구라 급하지 않다 — 다음 개편에서 이 도구를 답습할 때 기대 잔여를 `oldRows − twins` 로 고칠 것.
+
+- 🟡 **`sync-naver` 가 `articles heating 조회 실패: canceling statement due to statement timeout` 을 내고도 success 로 기록된다** (세션548, 09-17 파이프라인 로그).
+  [[unordered-pagination-loses-rows]] §"스캔 맹점 2" 가 "대상 행 0 이라 잠복" 이라 적어 둔 그 생 쿼리가 실제로 발화했다. fail-open 이라 `collector_runs` 에는 안 보인다.
+  처방 후보 = heating 집계도 `fetchAllPages`(키셋 커서) 경유 + 폴백 시 skip 카운트로 드러내기.
+
+- 🟡 **첨단3지구 A8(`ah-2026910190`) 좌표 비우기 미실행** (세션546 사장님 결정, 세션548 재확인 = 화면 노출 중).
+  A7 좌표 복사분이라 비우는 게 맞지만, 화면에 나가는 단지라 파생표 정리는 **purge 창(KST 03:20~05:00 + 그날 배포 스냅샷 확인)** 에서만([[purge-to-recollect-timing]]).
+
+- 🟢 **KOSIS 순이동에서 29/46 계열이 되살아나 새·옛 계열이 동시에 살아 있게 되면 어느 쪽이 맞는지 코드가 판정하지 않는다** (세션548 PR #499 잔여 우려).
+  파생 시도 entry 는 `liveSidoRegions` 로 자동 억제돼 중복 UPDATE 는 없다. 그 시점에 raw 재실측(접두별 전입·전출·순이동 합) 후 결정.
+
 <!-- 세션546 (2026-09-11) 추가 -->
-- 🔴 **전남·광주 `regions.net_migration` 이 07-01 행에서 통째로 비었다 — 미래가치 점수 직결** (세션546 적대검증 → 오케스트레이터 재현 2026-09-11).
-  실측: 07-01 행 기준 전남 23행·광주 6행 **전부 null**(0 이 아니라 null). 대조군 서울 26/26·경기 32/52 는 값 있음.
-  적대검증 지적(반박 실패, medium): `migration.mjs` 가 KOSIS 신·구 코드 중복 행을 dedup 없이 순서대로 UPDATE 해 나중 행이 앞 값을 덮는다.
-  검증관 실측 = `fetchKosis()` 912행 중 순이동 304행, C1 접두 분포 `{"12":28,"29":6,"4x":…}` → **KOSIS 가 신·구 라벨을 동시에 준다**.
-  자리 = `scripts/collectors/migration.mjs` C1_TO_REGION 복원 L68-83 · `mapC1` L117-151 · UPDATE 루프 L268-291.
-  영향 = `scoreFuture.ts` 가 `netMigration > 0` 이면 +10점 → 전남·광주 106단지가 그 보정을 못 받는다([[regions-multicollector-recorded-at-lag]] 와 같은 결).
-  처방 후보: 같은 (region, gu) 키에 신·구 두 행이 오면 **신 코드 우선 + null 은 기존 값 보존**(덮지 않음). 다음 발화 = kosis-local-runner day 7.
+- ✅ **해소 (세션548 · PR #499 머지 + `migration.mjs` 실실행·DB 검증)** — 전남·광주 `net_migration` 문제. 세션546 진단("07-01 행이 null · 신·구 중복 행 덮어쓰기")은 **절반만 맞았다**.
+  raw 실측(202607): 접두 **12** = 시도 −444 + 27 시군구 전부 비0(합 −444), 접두 **29·46 은 전입 0·전출 0·순이동 0 인 죽은 계열**. 수집기가 "12" 시도행은 (못 가른다며) 버리고
+  29/46 의 **0 을 광주·전남 시도값으로 저장**해 시도행이 전 recorded_at 에서 0 이었고, 화면 76단지가 `netMigration: 0` 이었다. 07-01 시군구 null 은 별개 — 그 행이 09-10 에 생겼고 migration 은 09-06 이 마지막이었다.
+  처방 = 전입 0 ∧ 전출 0 계열 폐기(`detectDeadPrefixes`, 이름 하드코딩 없음) + 광주·전남 시도값 = 소속 시군구 합 + 합 ≠ "12" 시도값이면 fail-close.
+  결과 = 광주 **−546** · 전남 **+102**(전 recorded_at), 07-01 시군구 전남 22/22·광주 5/5 채움, 나머지 15 시도는 수정 전과 동일.
 
 - 🟡 **`collect-unsold-kosis.mjs:188-192` 가 `regions` 를 필터·정렬·페이징 없이 select** (세션546 적대검증, 반박 실패 low).
   2,249행 표라 PostgREST 기본 1,000행 컷에 걸린다([[unordered-pagination-loses-rows]] §"스캔 맹점 2" 의 생 쿼리 사례). `selectAll(..., sb, "id")` 로 전환.
@@ -671,6 +685,9 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
   09-10 회차 = 1/6 네이버 2시간 + 3/6 분양 1시간54분 → `ExecutionTimeLimit=PT4H` 도달로 4/6·5/6·6/6 미실행(스케줄러 결과 267014).
   `naver-presale.mjs` 런타임이 3주 연속 신기록(6,868.9초, 직전 최댓값 5,385.7 대비 +27.5%). 세 단계는 다른 경로가 매일 메우므로 데이터 구멍은 없다.
   처방 = 상한 6시간(사장님 실행 대기) 또는 3/6 에 `--max-minutes` 도입.
+  → **세션548(09-19): `ExecutionTimeLimit` PT4H → PT6H 적용**(사장님 실행, `schtasks /XML` 로 확인). 그 전까지 09-10·14·17 세 회차가 잘렸다
+  (09-17 = 1/6 2시간 + 2/6 45분 → 3/6 presale 21% 에서 12:00 강제종료). **09-21(월) 08:00 회차가 6/6 까지 완주하는지 확인 후 이 항목을 닫는다.**
+  6시간으로도 모자라면 `--max-minutes` 가 다음 수단.
 
 - 🟢 **`collect-maintenance`·`molit-building-info`·`molit-units` 3종이 광주·전남에서 같은 목록을 두 번 조회** (세션546 적대검증 low, 반박됨=의도된 동작).
   `SIDO_CODE` 가 둘 다 "12" 라 region 별 그룹이 같은 1,758건을 각각 부른다. 결함은 아니나 쿼터 낭비 — 캐시 1줄로 절반.
