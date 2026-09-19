@@ -7,23 +7,7 @@
 DB 쓰기 루프가 돌던 중이면 **일부만 반영되고 끝난다** — 그런데 로그도 `collector_runs` 행도
 안 남아서, 겉보기에는 "정상 종료"다.
 
-## 사고 박제 (세션511, 2026-08-13)
-
-`industry-match.mjs` 에 "매칭 안 된 단지의 옛 값을 지운다" 로직을 넣고 실행했다:
-
-```bash
-node scripts/collectors/industry-match.mjs 2>&1 | grep -v "..." | tail -4
-```
-
-- 로그 마지막 줄: `[result] 산업단지 매칭: 1909/2696건 · 옛 값 정리 55건`
-- **그 뒤 `[supabase] N/1964건 업데이트` 로그가 없다**
-- `collector_runs` 최신 행이 **이전 실행 것**(ok=1909) — 이번 실행 기록이 아예 없다
-- 백그라운드 래퍼는 **`exit 0`(완료)** 로 보고했다
-
-DB 를 세어 보니 정리 대상 55곳 중 **23곳만** 반영돼 있었다. 파이프 없이 다시 돌리니
-1,941건을 완주했다(`· 옛 값 정리 32건` — 남은 32곳).
-
-**데이터 개수를 세지 않았으면 영영 못 봤다.** 로그도 종료코드도 정상이라고 말했다.
+> 사건·이력 (세션511 — `industry-match.mjs` 를 `| tail -4` 로 돌려 SIGPIPE 로 중단, exit 0·정상 로그였지만 DB 는 55곳 중 23곳만 반영됨) → [rules-history/collectors/pipe-kills-collector.md](../../rules-history/collectors/pipe-kills-collector.md)
 
 ## 규칙
 
@@ -81,10 +65,4 @@ console.log('전체', rows.length, '| 기대 형식 아님', bad.length);
   종료코드를 잘못 읽는 게 아니라 **작업 자체가 중단된다.**
 - [[tool-output-illusion-guard]] — 도구가 주는 신호를 1차 진실로 믿지 말 것. 같은 결.
 
-## 차단 검증
-
-| 사고 시나리오 | 본 룰 적용 시 |
-|---|---|
-| 수집기를 `\| tail` 로 돌려 일부만 반영 | §1 파일 리다이렉트 → 완주 |
-| exit 0 을 보고 "완료" 판정 | §2 `collector_runs` 행·요약 로그·DB 개수로 판정 |
-| 로그가 정상이라 넘어감 | §3 전후 개수 비교에서 불일치 발견 |
+> 차단 검증 이력 → [rules-history/collectors/pipe-kills-collector.md](../../rules-history/collectors/pipe-kills-collector.md)

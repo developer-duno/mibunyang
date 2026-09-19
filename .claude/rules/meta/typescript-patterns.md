@@ -17,15 +17,7 @@
 3. 시뮬레이션 ([§11]) → 적용 후 재측정 (1차 정정 후 새 errors 가능)
 4. EXIT=0 도달 후 commit
 
-## 박제 누적 사고 (자가 학습)
-
-| 사고 | 세션 | 정착 |
-|---|---|---|
-| `.find(...)!.score` 환각 (TS8013) | 218 (M7-B2) | [§6] |
-| calc-layout highFloor null narrow 신규 발생 | 201 | [§11] |
-| Supabase GenericStringError 직접 cast 거부 | 198 | [§3] |
-| D 패턴 unknown 인덱싱 → string-only 함수 호출 | 192 (M5a-extra) | [§9] |
-| spread conditional TS2339 | 201 | [§7] |
+> 사건·이력 (박제 누적 사고 표 — §6·§11·§3·§9·§7 각 정착 경위) → [rules-history/meta/typescript-patterns.md](../../rules-history/meta/typescript-patterns.md)
 
 ---
 
@@ -287,7 +279,7 @@ if (isCLI) {
 
 **Why**: non-null assertion `!` 은 .ts 문법. JSDoc 모드는 JSDoc cast + 옵셔널 체인만 허용.
 
-**사건**: 세션 218 M7-B2 — plan §B2 답습 박제값에 `.find(...)!.score` 환각. 64건 일괄 substitution 후 64 errors → 즉시 환각 발견 + 옵셔널 체인 정정. **plan 박제 패턴도 환각 가능 → 작업 중 1 substitution 직후 1 측정 의무**.
+> 사건·이력 (세션218 M7-B2 — plan 박제값의 `.find(...)!.score` 환각을 64건 일괄 치환했더니 64 errors 발생, 즉시 정정. plan 박제 패턴도 환각 가능하다는 교훈) → [rules-history/meta/typescript-patterns.md](../../rules-history/meta/typescript-patterns.md)
 
 ---
 
@@ -367,7 +359,7 @@ function toApartmentRow(a) {
 
 **장기 해소**: 정확한 typedef (ApartmentRowRaw / PriceRowRaw) 박제 시 cast 불필요.
 
-**사고**: 세션 192 (M5a-extra) — D 패턴 27 errors fix 후 잔여 1 errors. L119 parenthesized cast 1건 추가로 해소. M5d collectors 35+ 변환 시 5~15 잔여 errors 가능 → 호출처 grep 으로 일괄 캐스팅.
+> 사건·이력 (세션192 M5a-extra — D 패턴 27 errors fix 후 잔여 1 errors, L119 parenthesized cast 로 해소. M5d collectors 35+ 변환 시 5~15 잔여 errors 가능성) → [rules-history/meta/typescript-patterns.md](../../rules-history/meta/typescript-patterns.md)
 
 ---
 
@@ -432,11 +424,7 @@ cp /tmp/_x.bak <file>
 git diff --stat <files>  # 변동 0 필수
 ```
 
-### Why
-
-calc-layout (세션 201) 사고: 사전 측정 9 errors 확인 후 모든 정정 적용했더니 **신규 errors 2건 발생** (TS18047 highFloor possibly null L59/L60). JSDoc 의 `highFloor: number | null` 명시가 본체 strict 추론으로 narrow 실패. 본체 가드 강화 (`highFloor != null && highFloor > 0`) 로 해결.
-
-reverse-geocode plan v1부터 §"시뮬레이션 의무" 명시 → Agent A 가 plan 검증에서 시뮬 1회 → 1차 정정만으로 12→0 정확 예측. 본 작업도 시뮬 결과 그대로 0 errors 달성.
+> 사건·이력 (calc-layout 세션201 — 사전 측정 9 errors 확인 후 모든 정정 적용했더니 신규 errors 2건 발생(highFloor possibly null). 본체 가드 강화로 해결. reverse-geocode plan v1 부터는 시뮬 1회로 12→0 정확 예측) → [rules-history/meta/typescript-patterns.md](../../rules-history/meta/typescript-patterns.md)
 
 ### 새 errors 발견 시
 
@@ -461,19 +449,7 @@ plan 본문에 *"1차 정정 후 N errors 잔여 → 2차 정정 patch"* 명시.
 
 ## §13. 입력 자산 (글로벌 메모 인덱스)
 
-다음 글로벌 메모가 본 문서의 원천. 본문은 점에 박힌 사례, 본 문서는 정착된 패턴 카탈로그:
-
-| 메모 | 역할 |
-|---|---|
-| `~/.claude/projects/f--mibunyang/memory/feedback_session218_new_patterns.md` | M7-B2 신규 6 패턴 ([§2.1][§2.2][§3.5][§3.6][§3.7][§4.3 변형]) |
-| `feedback_session204_new_patterns.md` | M5d-3c-9 신규 5 패턴 ([§2.4][§3.1][§3.4][§4.1][§4.3]) |
-| `feedback_session201_new_pattern.md` | spread conditional ([§7]) |
-| `feedback_session198_new_patterns.md` | Group D 4 패턴 ([§3.3][§4.2][§5.1][§5.2 v2]) |
-| `feedback_ts8013_non_null_assertion.md` | non-null assertion 환각 ([§6]) |
-| `feedback_simulation_mandate.md` | 시뮬레이션 의무 ([§11]) |
-| `feedback_d_pattern_record_unknown_limit.md` | D 패턴 한계 ([§9]) |
-
-→ 글로벌 메모는 보존 (사고 박제 + 인용 출처). 본 문서는 미래 .ts/// @ts-check 작업의 검색 가능 카탈로그.
+> 사건·이력 (§13 전체 — 글로벌 메모 인덱스 표) → [rules-history/meta/typescript-patterns.md](../../rules-history/meta/typescript-patterns.md)
 
 ## §14. 신규 패턴 추가 시
 
@@ -507,7 +483,9 @@ plan 본문에 *"1차 정정 후 N errors 잔여 → 2차 정정 patch"* 명시.
 npx tsc --noEmit -p tsconfig.scripts.json --listFiles 2>&1 | grep -E "probes/|_tmp_|collect-data" && echo "FAIL 제외 누락" || echo "OK 제외 정상"
 ```
 
-**장점**: glob 전환 = 미래 신규 collector 자동 포함 → "@ts-check 박았는데 include 미등재로 검사 안 받는 거짓 안전" 사각지대 영구 해소. 세션 350 = 거짓 안전 53파일 211에러 발견 (75개 열거 방식의 누적 사각지대).
+**장점**: glob 전환 = 미래 신규 collector 자동 포함 → "@ts-check 박았는데 include 미등재로 검사 안 받는 거짓 안전" 사각지대 영구 해소.
+
+> 사건·이력 (세션350 — 거짓 안전 53파일 211에러 발견, 75개 열거 방식의 누적 사각지대) → [rules-history/meta/typescript-patterns.md](../../rules-history/meta/typescript-patterns.md)
 
 ### 외부 라이브러리 TS7016 (타입 없는 모듈) — 본채는 @types 설치
 
@@ -527,4 +505,4 @@ npx tsc --noEmit -p tsconfig.scripts.json --listFiles 2>&1 | grep -E "probes/|_t
 npx tsc --noEmit -p tsconfig.scripts.json 2>&1 | grep -c "<file>"
 ```
 
-> **사건**: 세션 350 — naver-presale.test.mjs factory cast 후 LSP 가 L435/452/460 등 TS2739/TS18047 계속 보고. tsc -p tsconfig.scripts.json 실측 = 0. LSP 추측 폐기 후 tsc 만 기준으로 진행.
+> 사건·이력 (세션350 — naver-presale.test.mjs factory cast 후 LSP 가 TS2739/TS18047 계속 보고했지만 tsc 실측은 0. LSP 추측 폐기 후 tsc 만 기준으로 진행) → [rules-history/meta/typescript-patterns.md](../../rules-history/meta/typescript-patterns.md)
