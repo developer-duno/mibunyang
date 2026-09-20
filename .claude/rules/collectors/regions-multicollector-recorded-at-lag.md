@@ -39,7 +39,12 @@ for (const reg of regions) {
 `collect-migration.yml` cron `0 22 15 * *` → `0 22 6 * *` (population 5일 다음날). 공백 ~10일→~1일 축소.
 B안이 근본 해소라 A안은 보조 안전망. KOSIS_MIGRATION_KEY = MOLIT_KEY 와 별 키라 6일 쿼터 충돌 0.
 세션 289: `collect-migration.yml` 삭제 (kosis.kr 해외 IP 차단 → 로컬 러너 이전) — migration 은
-`kosis-local-runner.mjs` day 7 (05:30 KST) 디스패치로 population (KST 6일 05:00 발화) 다음날 유지, 선후행 보존.
+`kosis-local-runner.mjs` day 7 (05:30 KST) 디스패치로 population 다음날 유지, 선후행 보존.
+세션 550: `collect-population.yml` 도 삭제 (행안부 MOIS 해외 IP 복불복 차단 → 로컬 러너 이전).
+population·population-sex-age 는 이제 **로컬 러너 day 5 (05:30 KST)** 다 — 옛 GH cron 은 KST 6일
+05:00 이었지만, **행 생성자가 후행보다 앞서야 한다는 이 룰 자체를 근거로 하루 앞당겼다**
+(5일 population → 6일 market-stats → 7일 migration → 8일 crime-safety). 대상 월은 실행일의
+일(day)을 안 보므로(`population.mjs:589` `new Date(연, 월-2, 1)`) 당겨도 수집 대상은 그대로다.
 
 ### 3. 회귀가드 monitor (적용 완료)
 `monitor-collectors.mjs` ⑥ `checkViewRegionStale()` + `VIEW_REGION_STALE_TARGETS`: "regions 원본 ≥20% 채움인데

@@ -51,10 +51,12 @@ describe("collectorsDueOn — 일자 디스패치", () => {
   });
 
   it("due 없는 날짜는 빈 배열", () => {
-    // ⚠️ 세션525 정정: 옛 표본이던 3일은 이제 응급의료가 차지했다(GH cron UTC 2일 = KST 3일).
-    // 5일은 어느 `day` 항목도 없고, 2026-07-05 는 일요일이라 `dow` 항목(화요일 air-quality)에도
+    // ⚠️ 세션550 정정: 옛 표본이던 5일은 이제 인구 2종이 차지했다(행 생성자라 KST 6일 → 5일).
+    // 그 전 세션525 정정은 3일(응급의료)에서 5일로 옮긴 것이었다 — 빈 날 표본은 이 표가
+    // 채워질수록 계속 밀린다.
+    // 4일은 어느 `day` 항목도 없고, 2026-07-04 는 토요일이라 `dow` 항목(화요일 air-quality)에도
     // 안 걸린다 — 빈 날 표본은 **두 축을 모두** 피해야 한다.
-    expect(collectorsDueOn(at(2026, 7, 5))).toEqual([]);
+    expect(collectorsDueOn(at(2026, 7, 4))).toEqual([]);
   });
 
   it("분기 수집기(sale-price)는 1·4·7·10월 17일에만 due 다", () => {
@@ -71,7 +73,7 @@ describe("collectorsDueOn — 일자 디스패치", () => {
     ]);
   });
 
-  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종 + data.go.kr 3종 + CSV 1종 + 택지정보 1종을 전부 커버한다", () => {
+  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종 + data.go.kr 3종 + 행안부 인구 2종 + CSV 1종 + 택지정보 1종을 전부 커버한다", () => {
     const scripts = [...new Set(DAY_TABLE.map((e) => e.script))].sort();
     expect(scripts).toEqual(
       [
@@ -105,6 +107,10 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         // 세션 525: apis.data.go.kr/B552657(국립중앙의료원 응급의료기관)도 해외 IP 차단.
         // GH yml 을 삭제했으므로 여기 없으면 아예 안 돈다.
         "collect-emergency.mjs",
+        // 세션 550: 행안부(MOIS) 주민등록 인구 API 도 해외 IP 복불복 차단 → collect-population.yml
+        // 삭제. 한 yml 이 두 수집기를 순서대로 돌렸으므로 **둘 다** 여기 있어야 한다.
+        "population.mjs",
+        "population-sex-age.mjs",
         // 세션 521: 외부 API 를 안 쓰는 유일한 등재분(로컬 CSV 파싱). 옛 판단은 "CSV 가 연 1회
         // 갱신이라 자동화 대상이 없다" 였으나, 채우는 대상인 regions 에는 매월 새 행이 생긴다.
         "collect-crime-safety.mjs",
@@ -305,6 +311,92 @@ describe("응급의료 이전 (세션 525)", () => {
     // 주석으로 남긴 사유 줄(`# ... "Emergency ..."`)은 목록 항목이 아니므로 `- "..."` 형태만 본다.
     expect(yml, "workflow_run 목록에 이름이 남아 매일 거짓 경보가 난다").not.toMatch(
       /^\s*-\s*"Emergency Medical Facilities Collection"\s*$/m,
+    );
+  });
+});
+
+describe("행안부 인구 2종 이전 (세션 550)", () => {
+  const POP = "population.mjs";
+  const SEX_AGE = "population-sex-age.mjs";
+
+  // ⚠️ 이 건은 다른 이전과 **의도적으로 다르다**. 옛 cron `0 20 5 * *`(UTC 5일 20:00)은
+  // KST 로 **6일** 05:00 인데, 6일이 아니라 **5일**에 둔다.
+  // 사유 = population 이 `regions` 의 **행 생성자**(매월 새 recorded_at 행 INSERT)라
+  // 후행 채움자보다 먼저 돌아야 하기 때문이다([[regions-multicollector-recorded-at-lag]]).
+  // 대상 월은 `new Date(now.getFullYear(), now.getMonth() - 2, 1)` 로 정해져 **일(day)을
+  // 아예 안 보므로**(population.mjs:589 / population-sex-age.mjs:238) 5일과 6일은 같은 달이다.
+  it("인구 2종은 매월 5일에, yml 이 돌리던 순서(인구 → 성별·연령) 그대로 due 다", () => {
+    expect(collectorsDueOn(at(2026, 9, 5))).toEqual([POP, SEX_AGE]);
+    // 옛 cron 의 KST 날짜였던 6일에는 없다 — 있으면 하루 늦어 행 생성자가 후행보다 뒤로 간다.
+    expect(collectorsDueOn(at(2026, 9, 6))).not.toContain(POP);
+    expect(collectorsDueOn(at(2026, 9, 6))).not.toContain(SEX_AGE);
+  });
+
+  // 선후행은 이 저장소가 세션391 에 실제로 겪은 사고다(netMigration 17 시도 NULL, 808단지 -10점).
+  // ⚠️ 경계를 **표에서 읽어 비교하면** 표가 통째로 밀려도 통과한다([[guards-must-be-mutation-tested]]
+  //    §"표에서 읽는 가드"). 그래서 일자를 리터럴로 못 박는다.
+  it("행 생성자(5) < market-stats(6) < migration(7) < crime-safety(8) — 일자를 리터럴로 못 박는다", () => {
+    const dayOf = (/** @type {string} */ s) => DAY_TABLE.filter((e) => e.script === s).map((e) => e.day);
+    expect(dayOf(POP)).toEqual([5]);
+    expect(dayOf(SEX_AGE)).toEqual([5]);
+    expect(dayOf("collect-market-stats.mjs")).toEqual([6]);
+    expect(dayOf("migration.mjs")).toEqual([7]);
+    expect(dayOf("collect-crime-safety.mjs")).toEqual([8]);
+  });
+
+  it("6일은 market-stats → molit-units → trades 순서 그대로다 (인구가 끼어들지 않았다)", () => {
+    expect(collectorsDueOn(at(2026, 9, 6))).toEqual([
+      "collect-market-stats.mjs",
+      "molit-units.mjs",
+      "collect-trades.mjs",
+    ]);
+  });
+
+  it("매핑표에 각각 매월 5일 1회로만 있다 (중복 등재는 가드를 무력화한다 — 세션519 실증)", () => {
+    for (const s of [POP, SEX_AGE]) {
+      const rows = DAY_TABLE.filter((e) => e.script === s);
+      expect(rows.map((e) => e.day), `${s} 는 매월 5일 1회여야 한다`).toEqual([5]);
+      expect(rows[0]?.args, "옛 GH yml 은 dry_run 입력 외 고정 인자를 넘기지 않았다").toBeUndefined();
+    }
+  });
+
+  it("--list 는 '매월 5일' 로 표기한다", () => {
+    for (const s of [POP, SEX_AGE]) {
+      const e = DAY_TABLE.find((x) => x.script === s);
+      expect(e, `${s} 항목이 매핑표에 없음`).toBeTruthy();
+      expect(describeEntry(/** @type {(typeof DAY_TABLE)[number]} */ (e))).toBe(`매월 5일: ${s}`);
+    }
+  });
+
+  // 로컬 러너로 옮긴 수집기는 GH run 이 없어 monitor ①③ 대상에서 빠진다 →
+  // collector_runs 신선도(⑤)가 유일한 "안 돌면 알림" 이다. 등재를 잊으면 조용히 죽는다.
+  // ⚠️ 라벨은 파일명이 아니라 recordCollectorRun 첫 인자다(세션 439 드리프트 사고 답습).
+  it("monitor ⑤ EXTERNAL_API_COLLECTORS 에 `population`·`population-sex-age` 둘 다 등재돼 있다", () => {
+    const src = readFileSync(path.join(process.cwd(), "scripts", "monitor-collectors.mjs"), "utf8");
+    // 문자열 포함 검사 — 정규식은 백슬래시가 한 겹 벗겨져 `\s` 가 `s` 로 죽는 사고가 났다(세션519).
+    expect(src, "population 이 EXTERNAL_API_COLLECTORS 에 없음").toContain('collector: "population"');
+    expect(src, "population-sex-age 가 EXTERNAL_API_COLLECTORS 에 없음").toContain(
+      'collector: "population-sex-age"',
+    );
+  });
+
+  it("GH 워크플로가 삭제돼 있다 (이중 실행 방지)", () => {
+    const p = path.join(process.cwd(), ".github", "workflows", "collect-population.yml");
+    expect(existsSync(p), "collect-population.yml 이 아직 있다 — 로컬 러너와 이중 실행된다").toBe(
+      false,
+    );
+  });
+
+  // 워크플로를 지웠는데 monitor.yml 의 workflow_run 목록에 이름이 남으면 ③ 이 매일
+  // "실행 기록이 한 번도 없음" 거짓 경보를 낸다(세션519 가 Housing Permits 에서 실제로 겪음).
+  it("monitor-collectors.yml workflow_run 목록에서도 이름이 빠져 있다", () => {
+    const yml = readFileSync(
+      path.join(process.cwd(), ".github", "workflows", "monitor-collectors.yml"),
+      "utf8",
+    );
+    // 주석으로 남긴 사유 줄(`# ... "Population ..."`)은 목록 항목이 아니므로 `- "..."` 형태만 본다.
+    expect(yml, "workflow_run 목록에 이름이 남아 매일 거짓 경보가 난다").not.toMatch(
+      /^\s*-\s*"Population Data Collection"\s*$/m,
     );
   });
 });
