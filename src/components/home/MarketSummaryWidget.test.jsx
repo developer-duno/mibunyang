@@ -45,9 +45,7 @@ describe("buildBudgetBuckets — 가격대별 단지 수 (중위값을 내지 �
     expect(buckets.find((b) => b.label === "10억 이상")?.count).toBe(1);
   });
   it("구간 합계 = 가격 있는 단지 수 (겹치거나 새지 않는다)", () => {
-    const scored = [20000, 30000, 49999, 50000, 69999, 70000, 99999, 100000, 250000].map((p, i) =>
-      mk(String(i), p, 5)
-    );
+    const scored = [20000, 30000, 49999, 50000, 69999, 70000, 99999, 100000, 250000].map((p, i) => mk(String(i), p, 5));
     const buckets = buildBudgetBuckets(scored);
     expect(buckets.reduce((s, b) => s + b.count, 0)).toBe(scored.length);
   });
@@ -138,10 +136,7 @@ describe("buildRegionBars — 지역별 미분양률 (PR-5)", () => {
     expect(gg?.sampleN).toBe(20); // 경계값 20 은 충분한 표본
   });
   it("sampleN 은 '값이 있는 단지 수' — count 와 다르다", () => {
-    const scored = [
-      mk("1", 30000, 10, { region: "서울" }),
-      mk("2", 30000, null, { region: "서울" }),
-    ];
+    const scored = [mk("1", 30000, 10, { region: "서울" }), mk("2", 30000, null, { region: "서울" })];
     const seoul = buildRegionBars(scored)[0];
     expect(seoul.count).toBe(2);
     expect(seoul.sampleN).toBe(1);
