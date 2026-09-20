@@ -245,6 +245,24 @@ describe("ChoroplethSigunguOverlay", () => {
     expect(p2.some((p) => p._opts.fillOpacity === 0.55)).toBe(true); // 3곳 → 진하게
   });
 
+  it("표본 부족 칸은 hover 해도 충분한 칸보다 흐리다 (여유 0.05 — 두 모드 중 가장 빠듯)", async () => {
+    const { eventListeners } = setupKakao();
+    const one = /** @type {any} */ ([{ apt: { region: "경남", gu: "창원시" }, res: { total: 70 } }]);
+    render(
+      <ChoroplethSigunguOverlay mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={one} onGuClick={vi.fn()} />
+    );
+    await flushPromises();
+    // ⚠️ 첫 mouseover 를 그냥 집으면 강남구(데이터 없음, 0.2+0.25=0.45)가 잡힌다.
+    //    표본 부족(0.25)인 창원 칸을 base 로 골라야 이 테스트가 겨누는 자리를 잰다.
+    const overs = eventListeners.filter((l) => l.type === "mouseover");
+    const thinOver = overs.find((l) => l.target._opts.fillOpacity === 0.25);
+    expect(thinOver).toBeDefined(); // 표본 부족 칸이 실제로 그려졌는가
+    thinOver.handler();
+    // 0.25 + 0.25 = 0.5 — 표본 충분한 칸이 가만히 있을 때(0.55)보다 여전히 흐려야 한다.
+    // 이 역전이 일어나면 "흐리게 칠했는데 마우스 올리면 더 진해 보이는" 모순이 생긴다.
+    expect(thinOver.target.setOptions).toHaveBeenCalledWith({ fillOpacity: 0.5 });
+  });
+
   it("폴리곤 click → onGuClick(byGu key) + setBounds", async () => {
     const { eventListeners, mapInstance } = setupKakao();
     const onGuClick = vi.fn();

@@ -76,6 +76,8 @@ export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop
             width: boxSize,
             height: boxSize,
             background: gr(75).c,
+            // 0.35 = 시도(0.3)·시군구(0.25) 중간값. 두 모드가 값이 달라 하나를 고를 수 없고,
+            // 이 칸은 색 대조표가 아니라 "이 정도로 연하면 표본 부족"이라는 뜻만 전한다.
             opacity: 0.35,
             borderRadius: 2,
             display: "inline-block",

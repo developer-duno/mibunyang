@@ -353,6 +353,15 @@ export const KakaoMapView = memo(function KakaoMapView({
   }, [ready, filtered, mode, mapInstance, deferredRegion, deferredGu]);
 
   // 색칠 모드 폴리곤 클릭 → 점 보기 자동 복귀 (마커는 useEffect 가 재생성하므로 clear 불필요)
+  //
+  // ⚠️ 호출부는 지역 이름을 넘긴다(ChoroplethView 는 dbName, 시군구 오버레이는 "region|gu").
+  // 여기서는 **일부러 안 받는다** — 화면 이동은 폴리곤 쪽에서 setBounds 로 이미 끝내고,
+  // 이 함수는 모드만 바꾸기 때문이다. 이름이 넘어오니 쓰이겠거니 오해하지 말 것.
+  //
+  // 다만 그래서 "이 칸은 단지가 적어 평균을 믿기 어렵다"는 표본 가드(MIN_MAP_SAMPLE)의
+  // 신호가 점 보기로 넘어오면서 사라진다. 지도 한 장에서만 정직한 셈이다.
+  // 도착 화면이 그 평균을 다시 보여주지는 않아 거짓은 아니지만, 경고는 잃는다.
+  // → 표본 부족 지역을 눌렀을 때 안내를 이어 주는 것은 후속 과제(BACKLOG).
   const handleSidoClick = useCallback(() => {
     setMode("point");
   }, []);

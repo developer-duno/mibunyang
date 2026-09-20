@@ -26,8 +26,11 @@ type ChoroplethSigunguOverlayProps = {
  * - public/geo/sigungu.geojson 1회 fetch (이 컴포넌트 마운트 = 줌 ≥9 시점)
  * - byGu[`${region}|${gu}`].avg → gr().c 색 매핑, 데이터 없으면 회색 0.2
  * - 일반시 12개(고양·부천·성남·수원·안산·안양·용인·전주·창원·천안·청주·포항) 구 합산
- * - 시도보다 옅게 (시도 0.65/0.25 → 시군구 0.55/0.2) 가독성
- * - hover 0.55→0.8, click → setBounds + onGuClick(byGuKey) → 점 보기 복귀
+ * - 시도보다 옅게 (가독성). 진하기 3단계 — 표본 충분 0.55 / 표본 부족 0.25 / 데이터 없음 0.2
+ *   (시도는 같은 순서로 0.65 / 0.3 / 0.25. 표본 문턱 = useRegionAverages 의 MIN_MAP_SAMPLE)
+ * - hover = min(기본 + 0.25, 0.8) — 기본값에 비례해 올린다. 고정값이면 흐린 칸이
+ *   마우스만 올려도 진해져 표본 가드가 무력해진다(표본 충분 0.55→0.8 / 부족 0.25→0.5)
+ * - click → setBounds + onGuClick(byGuKey) → 점 보기 복귀
  */
 export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
   mapInstance,

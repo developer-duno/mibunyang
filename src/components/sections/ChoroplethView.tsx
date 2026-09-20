@@ -23,8 +23,12 @@ const ChoroplethSigunguOverlay = lazyNamed(() => import("./ChoroplethSigunguOver
  *
  * - public/geo/sido.geojson 1회 fetch
  * - byRegion[dbName].avg → gr().c 색 매핑, 데이터 없으면 회색
+ * - 진하기 3단계 — 표본 충분 0.65 / 표본 부족 0.3 / 데이터 없음 0.25(회색).
+ *   표본 부족도 **점수 색은 그대로** 두고 진하기만 낮춘다(회색은 "못 쟀다"는 별개 뜻).
+ *   문턱 = useRegionAverages 의 MIN_MAP_SAMPLE, 범례가 그 뜻을 손님에게 말해 준다.
  * - 폴리곤 클릭: 그 시도 영역으로 setBounds + onSidoClick(dbName)
- * - hover: fillOpacity 0.65 → 0.85
+ * - hover = min(기본 + 0.2, 0.85) — 기본값에 비례(충분 0.65→0.85 / 부족 0.3→0.5).
+ *   고정값이면 흐린 칸이 마우스만 올려도 진해져 표본 가드가 무력해진다.
  */
 export const ChoroplethView = memo(function ChoroplethView({
   mapInstance,
