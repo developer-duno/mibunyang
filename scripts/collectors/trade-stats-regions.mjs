@@ -23,6 +23,7 @@ import {
   log,
   logError,
   recordCollectorRun,
+  selectAll,
   setupGracefulShutdown,
 } from "./_shared.mjs";
 import { statsKey, median, monthsAgo } from "./trade-stats.mjs";
@@ -145,17 +146,25 @@ async function main() {
   log(PHASE, `시군구별 jeonse_rate 산출: ${rateMap.size}건 (표본 게이트 jeonse≥${SAMPLE_GATE} + sale≥${SAMPLE_GATE})`);
 
   // regions 전수 조회 → 시군구별 최신 recorded_at row 1건 추리기
-  /** @type {any} */
-  const regionsRes = await sb
-    .from("regions")
-    .select("id, region, gu, recorded_at")
-    .order("recorded_at", { ascending: false });
-  if (regionsRes.error) {
-    logError(PHASE, `regions 조회 실패: ${regionsRes.error.message}`);
+  //
+  // ⚠️ 세션550: 여기는 페이징이 없어 **1,000행만** 받고 있었다(PostgREST 기본 상한).
+  //    `regions` 는 2,249행이라 그 컷 밖의 시군구 키 35개가 통째로 안 보였다
+  //    (실측 2026-09-20: 보이는 키 272 / 전량 307). 에러도 경고도 없이 "매칭 대상이 그만큼"으로
+  //    보일 뿐이라 조용하다 — 세션549 가 `collect-unsold-kosis`·`collect-crime-safety` 에서
+  //    고친 것과 **같은 결함의 세 번째 자리**다([[unordered-pagination-loses-rows]]).
+  //    `selectAll(..., "id")` = 고유키 커서. 정렬은 커서가 `id` 로 하므로 여기서 안 건다 —
+  //    최신 행 판정은 아래 `pickLatestPerKey` 가 `recorded_at` 비교로 직접 한다(정렬 불필요).
+  /** @type {Array<{ id: number; region: string; gu: string | null; recorded_at: string }>} */
+  let regions;
+  try {
+    regions = /** @type {any} */ (
+      await selectAll((s) => s.from("regions").select("id, region, gu, recorded_at"), sb, "id")
+    );
+  } catch (err) {
+    logError(PHASE, `regions 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
     await recordCollectorRun(PHASE, { ok: 0, fail: 1 });
     process.exit(1);
   }
-  const regions = /** @type {Array<{ id: number; region: string; gu: string | null; recorded_at: string }>} */ (regionsRes.data ?? []);
   const latestMap = pickLatestPerKey(regions);
   log(PHASE, `regions 시군구 키 ${latestMap.size}건 (전체 row ${regions.length})`);
 
