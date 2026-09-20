@@ -70,6 +70,37 @@ export const KakaoMapView = memo(function KakaoMapView({
   const markerSigRef = useRef<{ cl: unknown; sig: string }>({ cl: null, sig: "" });
   const chunkJobRef = useRef(0);
 
+  // MarkerImage 캐시 — 점↔색칠을 오갈 때 느려지던 원인(사장님 보고, 세션553).
+  //
+  // 색칠로 나갈 때 서명을 비우므로(clearMarkersAndSelection) 점으로 돌아오면 마커를
+  // **전부 새로 만든다**. 그런데 마커 그림은 (점수, 가격라벨) 두 값만으로 정해지고,
+  // 실측(2026-09-21 라이브 1,691곳, live 프로필)에서 **서로 다른 그림은 1,168종** —
+  // 나머지 **30.9%** 는 이미 만든 것과 똑같은 그림을 SVG 문자열 조립 +
+  // encodeURIComponent + MarkerImage 생성까지 되풀이한 것이다.
+  //
+  // ⚠️ 이 30.9% 는 **곁가지**다. 아래 "② 분할 추가" 주석이 지목하는
+  // `clusterer.addMarkers`(1,581개 = 957~1,216ms 실측)가 여전히 더 큰 몫이고,
+  // 이 캐시는 그 앞단의 생성 비용만 줄인다. "마커 쪽은 이미 다 잡았다"고 읽지 말 것.
+  // (세션553 초안은 190종·88.8% 라 적었는데, 그건 **가격 라벨만** 센 값이었다 —
+  //  키가 두 값인데 하나만 세어 효과를 3배 부풀린 것. 할루시네이션 감사가 잡았다.)
+  //
+  // 같은 키면 MarkerImage 객체를 그대로 돌려준다 — 여러 마커가 한 객체를 공유한다.
+  // ⚠️ 카카오가 MarkerImage 를 불변으로 보장한다는 **공식 문서는 확인하지 못했다**(문서가
+  // 동적 렌더링이라 못 읽음). 근거는 둘: ① 이 레포 전체에 MarkerImage 객체에 setter 를
+  // 부르는 코드가 0건(강조는 새 객체를 만들어 setImage 로 갈아끼우고, 복원은 보관해 둔
+  // `__normalImage` 를 되돌린다 — 객체를 변형하지 않는다) ② 같은 SDK 안에서 한 객체를
+  // 되쓰는 선례가 이미 있다. 마커 그림이 서로 섞이는 증상이 보이면 여기를 먼저 의심할 것.
+  //
+  // 캐시 상한 없음 — "한 프로필 안에서 1,168종" 이지 전체 상한이 아니다.
+  // 프로필(실거주·투자·신혼·교육·은퇴)을 바꾸면 모든 단지의 점수가 바뀌어 키가 새로
+  // 생기고 옛 키는 Map 에 남는다. 실측 누적(2026-09-21 라이브, 다섯 프로필 전부):
+  //   live 1,168 · invest 1,164 · newlywed 1,197 · edu 1,271 · retire 1,079 → **누적 3,033**
+  // MarkerImage 하나가 data-URI 문자열 + 크기 객체라 대략 1.5KB → **약 4.4MB**.
+  // 지도 컴포넌트 수명과 함께 통째로 사라지므로 누수는 아니다. 프로필 전환을 감지해
+  // 비우려면 이 컴포넌트가 안 받는 prop 이 필요해 이득 대비 비용이 커서 그대로 두되,
+  // 4MB 가 부담이 되면 그때 prop 을 받아 비운다(세션553 적대검증 지적으로 실측·정정).
+  const markerImgCacheRef = useRef<Map<string, unknown>>(new Map());
+
   // compact 는 마운트 시 고정 — init effect(deps []) 안에서 읽으므로 ref 캡처.
   // deps 에 compact 를 넣으면 cleanup 이 JS ref 만 해제(지도 destroy API 없음)하고
   // 같은 div 에 두 번째 지도가 중첩 생성되는 함정 (plan 함정 박제).
@@ -275,11 +306,19 @@ export const KakaoMapView = memo(function KakaoMapView({
       const { apt, res } = item;
       if (!apt.lat || !apt.lng) continue;
       const pos = new kakao.LatLng(apt.lat, apt.lng);
-      const grade = gr(res.total);
-      const { w, h, svg } = buildMarkerSvg(res.total, grade.c, shortPrice(apt.price));
-      const normalImage = new kakao.MarkerImage(`data:image/svg+xml,${encodeURIComponent(svg)}`, new kakao.Size(w, h), {
-        offset: new kakao.Point(w / 2, h),
-      });
+      const priceLabel = shortPrice(apt.price);
+      // 그림을 정하는 값은 이 둘뿐 — 같은 키면 이미 만든 MarkerImage 를 그대로 쓴다.
+      // (res.total 은 engine.ts·useDataPipeline 이 Math.round 로 0~100 정수를 보장한다)
+      const imgKey = `${res.total}|${priceLabel}`;
+      let normalImage = markerImgCacheRef.current.get(imgKey) as any;
+      if (!normalImage) {
+        const grade = gr(res.total);
+        const { w, h, svg } = buildMarkerSvg(res.total, grade.c, priceLabel);
+        normalImage = new kakao.MarkerImage(`data:image/svg+xml,${encodeURIComponent(svg)}`, new kakao.Size(w, h), {
+          offset: new kakao.Point(w / 2, h),
+        });
+        markerImgCacheRef.current.set(imgKey, normalImage);
+      }
       const marker = new kakao.Marker({ position: pos, title: apt.name, image: normalImage });
       // 강조 복원용 — 일반 이미지를 마커 객체에 보관(강조 해제 시 setImage 로 되돌림)
       (marker as any).__normalImage = normalImage;
@@ -353,6 +392,15 @@ export const KakaoMapView = memo(function KakaoMapView({
   }, [ready, filtered, mode, mapInstance, deferredRegion, deferredGu]);
 
   // 색칠 모드 폴리곤 클릭 → 점 보기 자동 복귀 (마커는 useEffect 가 재생성하므로 clear 불필요)
+  //
+  // ⚠️ 호출부는 지역 이름을 넘긴다(ChoroplethView 는 dbName, 시군구 오버레이는 "region|gu").
+  // 여기서는 **일부러 안 받는다** — 화면 이동은 폴리곤 쪽에서 setBounds 로 이미 끝내고,
+  // 이 함수는 모드만 바꾸기 때문이다. 이름이 넘어오니 쓰이겠거니 오해하지 말 것.
+  //
+  // 다만 그래서 "이 칸은 단지가 적어 평균을 믿기 어렵다"는 표본 가드(MIN_MAP_SAMPLE)의
+  // 신호가 점 보기로 넘어오면서 사라진다. 지도 한 장에서만 정직한 셈이다.
+  // 도착 화면이 그 평균을 다시 보여주지는 않아 거짓은 아니지만, 경고는 잃는다.
+  // → 표본 부족 지역을 눌렀을 때 안내를 이어 주는 것은 후속 과제(BACKLOG).
   const handleSidoClick = useCallback(() => {
     setMode("point");
   }, []);

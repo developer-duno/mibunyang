@@ -1,7 +1,8 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, cleanup } from "@testing-library/react";
-import { ChoroplethSigunguOverlay } from "./ChoroplethSigunguOverlay";
+import { ChoroplethSigunguOverlay, __resetSigunguGeoCacheForTest } from "./ChoroplethSigunguOverlay";
+import { C } from "@/theme";
 
 // 미니멀 시군구 GeoJSON 7건: 강남구 / 창원 5구 / 잘못된 prefix 1
 const FAKE_GEOJSON = {
@@ -166,6 +167,7 @@ async function flushPromises() {
 
 describe("ChoroplethSigunguOverlay", () => {
   beforeEach(() => {
+    __resetSigunguGeoCacheForTest(); // 모듈 캐시 격리(ChoroplethView.test 와 같은 이유)
     globalThis.fetch = /** @type {any} */ (
       vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }))
     );
@@ -214,6 +216,70 @@ describe("ChoroplethSigunguOverlay", () => {
     clickListeners.slice(1, 6).forEach((l) => l.handler());
     expect(onGuClick).toHaveBeenCalledTimes(5);
     onGuClick.mock.calls.forEach((args) => expect(args[0]).toBe("경남|창원시"));
+  });
+
+  it("표본 부족(1곳) → 점선 테두리 / 충분(3곳) → 실선 (표본 가드)", async () => {
+    // 시군구 193칸 중 47칸이 단지 3곳 미만이라 이 구분이 대부분의 칸에 걸린다.
+    // ⚠️ 채움 진하기는 두 경우가 **같다** — 불확실성은 테두리로만 말한다(세션553 적대검증:
+    //    흐리게 칠하면 시군구에서 표본 부족(밝기 0.826~0.880)과 데이터 없음(0.889)이 겹친다).
+    const one = /** @type {any} */ ([{ apt: { region: "경남", gu: "창원시" }, res: { total: 70 } }]);
+    const { polygons } = setupKakao();
+    render(
+      <ChoroplethSigunguOverlay mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={one} onGuClick={vi.fn()} />
+    );
+    await flushPromises();
+    const dashed = polygons.filter((p) => p._opts.strokeStyle === "dashed");
+    expect(dashed.length).toBeGreaterThan(0); // 창원 = 1곳뿐 → 점선
+    dashed.forEach((p) => {
+      expect(p._opts.fillOpacity).toBe(0.55); // 채움은 안 깎는다
+      expect(p._opts.strokeColor).toBe(C.muted);
+    });
+
+    cleanup();
+    const three = /** @type {any} */ (
+      Array.from({ length: 3 }, () => ({ apt: { region: "경남", gu: "창원시" }, res: { total: 70 } }))
+    );
+    const { polygons: p2 } = setupKakao();
+    render(
+      <ChoroplethSigunguOverlay
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={three}
+        onGuClick={vi.fn()}
+      />
+    );
+    await flushPromises();
+    // 3곳이면 창원 칸은 점선이 아니다 (데이터 없는 강남 칸은 애초에 점선 대상이 아니다)
+    const stillDashed = p2.filter((p) => p._opts.strokeStyle === "dashed");
+    expect(stillDashed).toHaveLength(0);
+  });
+
+  it("데이터 없는 칸은 점선이 아니다 (표본 부족과 구분)", async () => {
+    const { polygons } = setupKakao();
+    render(
+      <ChoroplethSigunguOverlay mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onGuClick={vi.fn()} />
+    );
+    await flushPromises();
+    // 전부 데이터 없음 → 회색 채움이되 점선은 아니다 ("안 쟀다" 와 "적게 쟀다" 는 다른 뜻)
+    polygons.forEach((p) => {
+      expect(p._opts.strokeStyle).toBeUndefined();
+      expect(p._opts.fillOpacity).toBe(0.2);
+    });
+  });
+
+  it("표본 부족 칸을 hover 해도 점선은 그대로다 (가드가 안 지워진다)", async () => {
+    const { eventListeners, polygons } = setupKakao();
+    const one = /** @type {any} */ ([{ apt: { region: "경남", gu: "창원시" }, res: { total: 70 } }]);
+    render(
+      <ChoroplethSigunguOverlay mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={one} onGuClick={vi.fn()} />
+    );
+    await flushPromises();
+    const dashedIdx = polygons.findIndex((p) => p._opts.strokeStyle === "dashed");
+    expect(dashedIdx).toBeGreaterThanOrEqual(0);
+    const over = eventListeners.filter((l) => l.type === "mouseover")[dashedIdx];
+    over.handler();
+    expect(over.target.setOptions).toHaveBeenCalledWith({ fillOpacity: 0.8 });
+    expect(polygons[dashedIdx]._opts.strokeStyle).toBe("dashed");
   });
 
   it("폴리곤 click → onGuClick(byGu key) + setBounds", async () => {

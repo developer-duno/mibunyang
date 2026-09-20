@@ -1,7 +1,8 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, cleanup } from "@testing-library/react";
-import { ChoroplethView } from "./ChoroplethView";
+import { ChoroplethView, __resetSidoGeoCacheForTest } from "./ChoroplethView";
+import { C } from "@/theme";
 
 // 미니멀 시도 GeoJSON 3개 (서울/부산/세종) — 매핑 미존재 1개 (테스트섬) 포함
 const FAKE_GEOJSON = {
@@ -107,6 +108,9 @@ async function flushPromises() {
 
 describe("ChoroplethView", () => {
   beforeEach(() => {
+    // 모듈 캐시는 테스트끼리 공유된다 — 비우지 않으면 앞 테스트가 채운 값 때문에
+    // "fetch 실패 → 에러 표시" 가 통과해 버려 가드가 껍데기가 된다.
+    __resetSidoGeoCacheForTest();
     globalThis.fetch = /** @type {any} */ (
       vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }))
     );
@@ -122,7 +126,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={mapInstance}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+          ])
+        }
         onSidoClick={vi.fn()}
       />
     );
@@ -146,7 +156,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={{ setBounds: vi.fn() }}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 90 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 90 } },
+            { apt: { region: "서울" }, res: { total: 90 } },
+            { apt: { region: "서울" }, res: { total: 90 } },
+          ])
+        }
         onSidoClick={vi.fn()}
       />
     );
@@ -156,6 +172,69 @@ describe("ChoroplethView", () => {
     expect(polygons[1]._opts.fillOpacity).toBe(0.25);
   });
 
+  it("표본 부족(1곳) → 점선 테두리, 채움 진하기는 그대로 (표본 가드)", async () => {
+    const { polygons } = setupKakao();
+    // 단지 1곳 = MIN_MAP_SAMPLE(3) 미만 → "단지 1곳 점수 = 그 도 전체" 를 그대로 칠하지 않는다.
+    // ⚠️ 불확실성은 테두리로만 말한다 — 진하기를 깎으면 좋은 점수인데 표본이 적은 칸이
+    //    나쁜 점수인데 표본이 많은 칸보다 흐려져 "여기는 나쁘다" 로 읽힌다(세션553 적대검증).
+    render(
+      <ChoroplethView
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 90 } }])}
+        onSidoClick={vi.fn()}
+      />
+    );
+    await flushPromises();
+    // 채움은 표본이 충분할 때와 **같다** (진하기 채널은 점수 전용)
+    expect(polygons[0]._opts.fillOpacity).toBe(0.65);
+    expect(polygons[0]._opts.fillColor).not.toBe(C.muted);
+    // 대신 테두리가 점선 + 굵고 회색
+    expect(polygons[0]._opts.strokeStyle).toBe("dashed");
+    expect(polygons[0]._opts.strokeColor).toBe(C.muted);
+    expect(polygons[0]._opts.strokeWeight).toBeGreaterThan(1.5);
+  });
+
+  it("표본 충분하면 점선이 아니다 (실선 흰 테두리 그대로)", async () => {
+    const { polygons } = setupKakao();
+    render(
+      <ChoroplethView
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 90 } },
+            { apt: { region: "서울" }, res: { total: 90 } },
+            { apt: { region: "서울" }, res: { total: 90 } },
+          ])
+        }
+        onSidoClick={vi.fn()}
+      />
+    );
+    await flushPromises();
+    expect(polygons[0]._opts.strokeStyle).toBeUndefined();
+    expect(polygons[0]._opts.strokeColor).toBe(C.white);
+    expect(polygons[0]._opts.fillOpacity).toBe(0.65);
+  });
+
+  it("표본 부족 칸을 hover 해도 점선 테두리는 그대로다 (가드가 안 지워진다)", async () => {
+    const { eventListeners, polygons } = setupKakao();
+    render(
+      <ChoroplethView
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 90 } }])}
+        onSidoClick={vi.fn()}
+      />
+    );
+    await flushPromises();
+    const over = eventListeners.find((l) => l.type === "mouseover");
+    over.handler();
+    // hover 는 채움 진하기만 건드린다 — 테두리(가드 신호)는 손대지 않는다
+    expect(over.target.setOptions).toHaveBeenCalledWith({ fillOpacity: 0.85 });
+    expect(polygons[0]._opts.strokeStyle).toBe("dashed");
+  });
+
   it("폴리곤 click → onSidoClick + setBounds 호출", async () => {
     const { eventListeners, mapInstance } = setupKakao();
     const onSidoClick = vi.fn();
@@ -163,7 +242,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={mapInstance}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+          ])
+        }
         onSidoClick={onSidoClick}
       />
     );
@@ -181,7 +266,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={{ setBounds: vi.fn() }}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+          ])
+        }
         onSidoClick={vi.fn()}
       />
     );
@@ -197,7 +288,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={{ setBounds: vi.fn() }}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+          ])
+        }
         onSidoClick={vi.fn()}
       />
     );

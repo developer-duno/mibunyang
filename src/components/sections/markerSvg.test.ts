@@ -78,3 +78,39 @@ describe("offset 정합 (h == 핀 끝점, MarkerImage offset.y)", () => {
     expect(m.svg).toContain(`${m.w / 2},${m.h}`);
   });
 });
+
+// KakaoMapView 의 MarkerImage 캐시는 "그림을 정하는 값이 (점수, 가격라벨) 둘뿐" 이라는
+// 전제 위에 서 있다. 이 전제가 깨지면(예: 지역·면적 등이 그림에 끼어들면) 서로 다른 단지가
+// 같은 그림을 공유해 **엉뚱한 마커**가 된다. 그래서 전제 자체를 여기서 못 박는다.
+describe("마커 그림의 결정 인자 (KakaoMapView MarkerImage 캐시의 전제)", () => {
+  it("같은 (점수, 가격라벨) 이면 SVG 가 완전히 같다 — 캐시 재사용이 안전한 근거", () => {
+    const a = buildMarkerSvg(72, "#16A34A", "5.2억");
+    const b = buildMarkerSvg(72, "#16A34A", "5.2억");
+    expect(b.svg).toBe(a.svg);
+    expect(b.w).toBe(a.w);
+    expect(b.h).toBe(a.h);
+  });
+
+  it("점수가 다르면 SVG 가 다르다 — 캐시 키에 점수가 반드시 들어가야 하는 근거", () => {
+    // ① 같은 등급 안에서 점수만 1 차이 (색은 같고 글자만 다르다)
+    const a = buildMarkerSvg(72, "#16A34A", "5.2억");
+    const b = buildMarkerSvg(73, "#16A34A", "5.2억");
+    expect(b.svg).not.toBe(a.svg);
+    // ② 등급이 갈리는 경우 (색까지 다르다) — 호출부가 gr(total).c 로 색을 함께 바꾼다
+    const c = buildMarkerSvg(72, "#16A34A", "5.2억");
+    const d = buildMarkerSvg(55, "#EA580C", "5.2억");
+    expect(d.svg).not.toBe(c.svg);
+  });
+
+  it("가격라벨이 다르면 SVG 가 다르다 — 캐시 키에 가격이 반드시 들어가야 하는 근거", () => {
+    const a = buildMarkerSvg(72, "#16A34A", "5.2억");
+    const b = buildMarkerSvg(72, "#16A34A", "7.9억");
+    expect(b.svg).not.toBe(a.svg);
+  });
+
+  it("선택 강조본은 일반본과 다르다 — 강조는 캐시를 쓰지 않는다(공유 객체 오염 방지)", () => {
+    const normal = buildMarkerSvg(72, "#16A34A", "5.2억", false);
+    const sel = buildMarkerSvg(72, "#16A34A", "5.2억", true);
+    expect(sel.svg).not.toBe(normal.svg);
+  });
+});
