@@ -6,14 +6,21 @@ import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
 
 // Supabase 연결 방지 — importOriginal 없이 필요한 것만 re-export
-vi.mock("./_shared.mjs", () => ({
-  loadEnv: vi.fn(),
-  getSupabase: vi.fn(),
-  log: vi.fn(),
-  logError: vi.fn(),
-  sleep: vi.fn(),
-  createReporter: vi.fn(() => ({ success: vi.fn(), fail: vi.fn(), skip: vi.fn(), summary: vi.fn() })),
-}));
+//
+// ⚠️ `viewJoinGu` 는 **진짜 구현을 그대로 쓴다**(vi.fn() 스텁이 아니다). 이 파일의 시군구 merge
+//    테스트가 검증하려는 것이 바로 그 매핑이라, 스텁으로 덮으면 가드가 껍데기가 된다(세션550).
+vi.mock("./_shared.mjs", async (importOriginal) => {
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
+  return {
+    loadEnv: vi.fn(),
+    getSupabase: vi.fn(),
+    log: vi.fn(),
+    logError: vi.fn(),
+    sleep: vi.fn(),
+    createReporter: vi.fn(() => ({ success: vi.fn(), fail: vi.fn(), skip: vi.fn(), summary: vi.fn() })),
+    viewJoinGu: orig.viewJoinGu,
+  };
+});
 
 const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView, pickLatestNonNullByRegion, pickLatestNonNullByRegionGu, filterToViewRows } = await import("./data-audit.mjs");
 
@@ -276,6 +283,59 @@ describe("fetchAllFromView regions merge", () => {
     const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
     expect(rows[0].priceIndex).toBe(232);
   });
+
+  // ── 세종 시군구 조인 (세션550) ────────────────────────────────
+  //
+  // VIEW 가 `rg.gu = CASE WHEN a.region = '세종' THEN '세종시' ELSE a.gu END` 로 바뀌었다.
+  // 이 감사가 옛 `${region}|${gu}` 로 남으면 세종 35곳의 housingPrice 를 **덜 세어**
+  // 멀쩡한 데이터를 빈칸으로 보고한다(그 거짓 0% 를 monitor ⑥ 이 회귀로 읽는 사고 경로).
+  //
+  // ⚠️ 순수함수(pickLatestNonNullByRegionGu)가 아니라 **진짜 merge 경로**로 잰다 —
+  //    조회 키를 만드는 자리는 fetchAllFromView 안이고, 거기가 되돌아가도 순수함수는 초록이다.
+  const SEJONG_REGIONS = [
+    { region: "세종", gu: "세종시", recorded_at: "2026-06-01", housing_price: 366 },
+    { region: "경기", gu: "수원시 장안구", recorded_at: "2026-06-01", housing_price: 512 },
+  ];
+
+  it("세종 단지는 gu 가 null 이어도 '세종|세종시' 값을 받는다", async () => {
+    const sb = makeMockSb({
+      apartments: [{ id: "ah-se", region: "세종", gu: null }],
+      ...EMPTY_RELATED,
+      regions: SEJONG_REGIONS,
+    });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows[0].housingPrice).toBe(366);
+  });
+
+  it("세종 단지의 gu 가 쓰레기 표기여도 '세종시' 로 조인된다", async () => {
+    const sb = makeMockSb({
+      apartments: [{ id: "ah-se2", region: "세종", gu: "6-3생활권" }],
+      ...EMPTY_RELATED,
+      regions: SEJONG_REGIONS,
+    });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows[0].housingPrice).toBe(366);
+  });
+
+  it("세종이 아닌 gu 없는 단지는 여전히 null (VIEW 도 조인 안 함)", async () => {
+    const sb = makeMockSb({
+      apartments: [{ id: "ah-gg", region: "경기", gu: null }],
+      ...EMPTY_RELATED,
+      regions: SEJONG_REGIONS,
+    });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows[0].housingPrice).toBe(null);
+  });
+
+  it("세종이 아닌 단지는 자기 gu 값 그대로 조인된다 (비세종 무변경)", async () => {
+    const sb = makeMockSb({
+      apartments: [{ id: "ah-gg2", region: "경기", gu: "수원시 장안구" }],
+      ...EMPTY_RELATED,
+      regions: SEJONG_REGIONS,
+    });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows[0].housingPrice).toBe(512);
+  });
 });
 
 // ── VIEW latest_regions 재현 (세션 504) ──────────────────────────
@@ -377,6 +437,12 @@ describe("data-audit — regions 합치기가 새 방식으로 배선돼 있다"
 
   it("regions 조회에 housing_price 컬럼이 들어 있다 (안 뽑으면 위 배선이 헛돈다)", () => {
     expect(src).toMatch(/fetchAllFromTable\(sb, "regions", "[^"]*,housing_price"/);
+  });
+
+  // 세션550 — 조회 키가 옛 `${apt.region}|${apt.gu}` 로 되돌아가면 세종 35곳이 다시 빈칸이 된다.
+  it("시군구 조회 키를 viewJoinGu 로 만든다 (VIEW CASE 식의 거울)", () => {
+    expect(src).toMatch(/const rg = regionGuLookup\.get\(\s*`\$\{apt\.region\}\|\$\{viewJoinGu\(apt\.region, [^`]*apt\.gu\)*\)\}`/);
+    expect(src).not.toMatch(/regionGuLookup\.get\(`\$\{apt\.region\}\|\$\{apt\.gu\}`\)/);
   });
 
   it("옛 '최신 행 하나' 방식이 남아 있지 않다", () => {

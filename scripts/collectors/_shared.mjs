@@ -535,6 +535,28 @@ export function guParentCity(region, gu) {
   const hit = guAliasIndex().get(`${region}|${gu}`);
   return hit ? hit.parentCity : null;
 }
+
+/**
+ * `apartments_flat` 의 시군구 조인(`latest_regions_gu rg`)이 쓰는 gu 값 — **SQL CASE 의 거울**.
+ *
+ * 정본 = `supabase/migrations/20260920000000_view_sejong_gu_join.sql` 의
+ *   `rg.gu = CASE WHEN a.region = '세종' THEN '세종시' ELSE a.gu END`
+ * **둘은 한 쌍이다 — 한쪽을 바꾸면 반드시 다른 쪽도 같이 바꾼다**(가드: `_view-gu-join.test.mjs`).
+ *
+ * 세종은 구·군이 없는 단일 시라 `apartments.gu` 가 NULL(라이브 실측 42곳 전부)인데
+ * `regions` 의 시군구 행 키는 `세종|세종시` 다. 그래서 세종만 gu 값과 무관하게 '세종시' 로 맞춘다
+ * (주간 seed 가 '6-3생활권' 같은 값을 넣어도 빈칸이 안 되게). 다른 지역은 `a.gu` 그대로 —
+ * gu 가 없으면 null 을 돌려주고, 호출부는 예전처럼 그 단지를 조인하지 않는다.
+ *
+ * @param {string | null | undefined} region
+ * @param {string | null | undefined} gu
+ * @returns {string | null} 조인에 쓸 gu. null 이면 그 단지는 시군구 지표와 안 이어진다.
+ */
+export function viewJoinGu(region, gu) {
+  if (region === "세종") return "세종시";
+  return gu ?? null;
+}
+
 /**
  * @param {string} region
  * @param {string | null | undefined} gu

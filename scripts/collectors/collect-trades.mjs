@@ -178,13 +178,16 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
         const floor = parseInt(getTag(item, "floor") || "0") || null;
         const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
         const dong = getTag(item, "umdNm") || null;
-        const key = `${rg.region}|${rg.gu}|${month}|${area}|${price}|${floor}|${type}`;
+        // 세션550: 키도 **저장될 값**(tradeRowGu)으로 만든다 — 저장값과 다른 키로 접으면
+        // 회차 안 중복 제거와 DB 고유 인덱스가 서로 다른 것을 같다고 보게 된다.
+        const rowGu = tradeRowGu(rg.region, rg.gu);
+        const key = `${rg.region}|${rowGu}|${month}|${area}|${price}|${floor}|${type}`;
         if (seen.has(key)) continue;
         seen.add(key);
 
         /** @type {TradeRow} */
         const base = {
-          region: rg.region, gu: rg.gu, dong, deal_month: month,
+          region: rg.region, gu: rowGu, dong, deal_month: month,
           area: Math.round(area * 100) / 100, price, floor, build_year: buildYear,
         };
         rows.push(config.buildRow(item, base, regionFallback));
@@ -198,6 +201,35 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
     await sleep(200);
   }
   return { rows, apiCalls, apiFails, fallbackUsed };
+}
+
+/**
+ * 저장할 `trades.gu` 값 — 세종만 `"세종시"` 로 채운다 (세션550).
+ *
+ * ## 왜 (NULL 은 고유 인덱스에서 절대 충돌하지 않는다)
+ *
+ * `idx_trades_unique(region, gu, deal_month, area, price, floor, trade_type)` 는 upsert 의
+ * `ON CONFLICT` 키인데, Postgres 는 **NULL 을 서로 다른 값으로 본다**. 세종은 구·군이 없어
+ * `regionGuPairs` 가 `{region:"세종", gu:null}` 하나를 만들고 그 null 이 그대로 저장되므로,
+ * **충돌이 한 번도 안 나 회차마다 같은 거래가 새 행으로 또 들어갔다**.
+ * 2026-09-20 실측: `gu IS NULL` 행 68,352 = 실제 거래 11,812건(202603 은 10벌, 202608 은 1벌).
+ * 손님 화면의 "세종 6개월 거래 10,916건"(참값 2,124)이 이 때문에 부풀었다.
+ *
+ * `"세종시"` 인 이유 = `GU_LAWD_MAP["세종"]["세종시"]`(36110) · `regions` 키 `세종|세종시` 와 같은 표기다.
+ * ⚠️ `세종|세종시` 는 설계상 `apartments` 에 짝이 없다(세종 단지의 `apartments.gu` 는 null) —
+ *    고아 버킷(`apartments.gu` ↔ `regions`) 점검은 이 쌍을 결함으로 세면 안 된다.
+ *
+ * 수집 대상 목록(`regionGuPairs`)·`--only=세종:` 필터·`getLawdCd` 의미는 그대로 둔다 —
+ * 바뀌는 것은 **저장되는 행의 값뿐**이다.
+ *
+ * @param {string} region
+ * @param {string | null | undefined} gu
+ * @returns {string | null}
+ */
+export function tradeRowGu(region, gu) {
+  if (gu) return gu;
+  if (region === "세종") return "세종시";
+  return null;
 }
 
 /**

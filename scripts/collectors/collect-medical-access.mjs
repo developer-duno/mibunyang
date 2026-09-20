@@ -49,17 +49,33 @@ const TABLES = [
 
 /**
  * KOSIS 통계표 행 → "region::gu" 키별 천명당 지표값 (최신 연도).
- * - C1 길이 2 (전국/시도 집계행) → aggSkipped 증가, 버림
+ * - C1 길이 2 (전국/시도 집계행) → aggSkipped 증가, 버림. **단 세종(29)은 예외** — 아래 참조
  * - C1 길이 5 (시군구) → KOSIS_SIDO[C1.slice(0,2)] + C1_NM 으로 매칭
  * - ITM_ID 가 T10 아니면 skip (T001 분자 / T002 분모 제외)
+ *
+ * ⚠️ 세종 예외 (세션550) — 라이브 실측(2026-09-20, DT_1YL20981·DT_1YL20971 둘 다):
+ *   세종은 **길이 2 시도 행(`C1="29" C1_NM="세종특별자치시"`)으로만** 나오고 길이 5 `29xxx` 행이
+ *   아예 없다(대조군 제주는 `39`+`39010`+`39020` 셋 다 있다). 세종은 구·군이 없는 단일 시라
+ *   그 시도 행이 **곧 시군구 단위 값**이다 — 집계행으로 버리면 `regions` 의 `세종|세종시` 가
+ *   영영 비고, VIEW 세종 35곳의 doctorsPer1k·hospitalBedsPer1k 가 구조적으로 NULL 로 남는다.
+ *   다른 시도의 길이 2 행은 **진짜 집계행**이므로 예전처럼 버린다(서울 집계값을 담으면
+ *   그게 서울 25개 구 키 중 하나로 새어 들어간다).
+ *
+ * ⚠️ 길이 5 우선 (세션550): 훗날 KOSIS 가 `29xxx` 를 주기 시작하면 그쪽이 이긴다. 시도 행 값은
+ *   **폴백**으로 따로 모아 두고, 같은 키에 길이 5 행이 하나라도 있으면 폴백을 버린다 —
+ *   입력 순서와 무관하다(행 순서에 기대면 KOSIS 응답 정렬이 바뀌는 날 조용히 뒤집힌다).
  * @param {KosisRow[]} rows
  * @returns {ParseResult}
  */
 export function parseKosisRows(rows) {
-  /** @type {Record<string, number>} */
+  /** @type {Record<string, number>} 길이 5 시군구 행에서 온 값 (언제나 우선) */
   const matched = {};
   /** @type {Record<string, string>} */
   const latestYear = {};
+  /** @type {Record<string, number>} 세종 시도 행 폴백 — 길이 5 행이 없을 때만 쓴다 */
+  const fallback = {};
+  /** @type {Record<string, string>} */
+  const fallbackYear = {};
   /** @type {Set<string>} */
   const unmatchedSet = new Set();
   let aggSkipped = 0;
@@ -69,11 +85,14 @@ export function parseKosisRows(rows) {
     if (row.ITM_ID && row.ITM_ID !== "T10") continue;
 
     const code = String(row.C1 ?? "");
-    if (code.length === 2) {
+    const region = /** @type {Record<string, string>} */ (KOSIS_SIDO)[code.slice(0, 2)];
+    // 세종만 시도 행이 곧 시군구 값이다. 나머지 길이 2 는 전부 집계행 — 예전처럼 버린다.
+    const isSejongSido = code.length === 2 && region === "세종";
+    if (code.length === 2 && !isSejongSido) {
       aggSkipped++;
       continue;
     }
-    if (code.length !== 5) continue;
+    if (!isSejongSido && code.length !== 5) continue;
 
     const year = String(row.PRD_DE ?? "");
     if (!/^\d{4}$/.test(year)) continue;
@@ -81,9 +100,19 @@ export function parseKosisRows(rows) {
     const value = parseFloat(row.DT);
     if (!isFinite(value) || value <= 0) continue;
 
-    const region = /** @type {Record<string, string>} */ (KOSIS_SIDO)[code.slice(0, 2)];
     if (!region) {
       if (row.C1_NM) unmatchedSet.add(row.C1_NM);
+      continue;
+    }
+
+    if (isSejongSido) {
+      // C1_NM 은 "세종특별자치시" 라 normalizeGu 를 태워도 regions 쪽 키(`세종::세종시`)와 안 맞는다.
+      // regions 행은 region="세종", gu="세종시" 이고 normalizeGu("세종","세종시") = "세종시" (실측).
+      const key = "세종::세종시";
+      if (!fallbackYear[key] || year > fallbackYear[key]) {
+        fallbackYear[key] = year;
+        fallback[key] = value;
+      }
       continue;
     }
 
@@ -93,6 +122,11 @@ export function parseKosisRows(rows) {
       latestYear[key] = year;
       matched[key] = value;
     }
+  }
+
+  // 길이 5 행이 하나라도 있는 키는 그 값이 이긴다 — 입력 순서 무관.
+  for (const [key, value] of Object.entries(fallback)) {
+    if (!(key in matched)) matched[key] = value;
   }
 
   return { matched, unmatched: [...unmatchedSet], aggSkipped };

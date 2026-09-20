@@ -12,7 +12,7 @@
  * 필요 환경변수:
  *   SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, viewJoinGu } from "./_shared.mjs";
 
 /**
  * @typedef {{ collector: string, fields: string[] }} AuditFieldEntry
@@ -641,12 +641,20 @@ export async function fetchAllFromView(sb, regionFilter) {
 
   // merge regions (시군구) — VIEW latest_regions_gu 재현 (세션 505).
   // 공시가격은 시도 행에 없고 시군구 행에만 있어서 위 시도 merge 로는 절대 안 붙는다.
+  //
+  // ⚠️ 조인 키는 `viewJoinGu` 하나로만 만든다(세션550) — VIEW 의
+  //    `rg.gu = CASE WHEN a.region = '세종' THEN '세종시' ELSE a.gu END` 의 거울.
+  //    세종 단지는 apartments.gu 가 NULL 인데 regions 키는 '세종시' 라, 예전 `${apt.region}|${apt.gu}`
+  //    는 세종 35곳을 영영 못 붙여 이 감사가 housingPrice 채움을 35 적게 셌다.
   const REGION_GU_MERGE_COLS = /** @type {const} */ ([
     ["housing_price", "housingPrice"],
   ]);
   const regionGuLookup = pickLatestNonNullByRegionGu(regions, REGION_GU_MERGE_COLS.map(([snake]) => snake));
   for (const apt of apts) {
-    const rg = regionGuLookup.get(`${apt.region}|${apt.gu}`);
+    // FlatRow 의 gu 는 unknown(인덱스 시그니처) — [[typescript-patterns]] §9 의 parenthesized cast.
+    const rg = regionGuLookup.get(
+      `${apt.region}|${viewJoinGu(apt.region, /** @type {string | null | undefined} */ (apt.gu))}`,
+    );
     for (const [snake, camel] of REGION_GU_MERGE_COLS) {
       apt[camel] = rg?.[snake] ?? null;
     }

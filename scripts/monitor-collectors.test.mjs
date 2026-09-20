@@ -22,7 +22,7 @@ const {
   fetchAhCompetitionCounts, AH_ID_PREFIX,
   QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
-  checkOrphanGuPairs, GU_JOIN_COLUMNS,
+  checkOrphanGuPairs, GU_JOIN_COLUMNS, fetchGuPairStats,
   dedupKey, filterUnsent, hasGithubApiAuth,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
@@ -1559,6 +1559,103 @@ describe("checkOrphanGuPairs — ⑦ 시군구 짝 불일치 (세션549)", () =>
     const issues = checkOrphanGuPairs([{ region: "경기", gu: "권선구" }], []);
     expect(issues).toHaveLength(1);
     expect(issues[0].detail).toMatch(/단지 0곳/);
+  });
+});
+
+// ── ⑦ 세종 짝 검사 (세션550) ──────────────────────────────────────
+//
+// VIEW 가 `rg.gu = CASE WHEN a.region = '세종' THEN '세종시' ELSE a.gu END` 로 바뀌면서
+// 세종 단지(apartments.gu = NULL)도 `세종|세종시` 로 조인된다. ⑦ 이 옛 `if (!region || !gu) continue`
+// 로 남으면 그 짝을 **한 번도 검사하지 않는다** — 세종 35곳이 4칸을 잃어도 조용하다.
+//
+// ⚠️ 쌍을 만드는 자리는 `fetchGuPairStats` 안이라, 판정 함수만 테스트하면 되돌아가도 초록이다.
+//    그래서 진짜 조회 경로(selectAll 체인)를 스텁으로 태워 잰다.
+describe("fetchGuPairStats — ⑦ 가 세종 짝을 만든다 (세션550)", () => {
+  /**
+   * selectAll 커서 모드 체인 재현: from(t).select(cols).order().limit().gt?() → { data, error }.
+   * 한 페이지(1,000행 미만)면 루프가 한 번에 끝난다.
+   * @param {Record<string, Record<string, unknown>[]>} tableRows
+   */
+  const makeSb = (tableRows) => ({
+    from(/** @type {string} */ table) {
+      const rows = tableRows[table] ?? [];
+      /** @type {any} */
+      const q = {
+        select: () => q,
+        order: () => q,
+        limit: () => q,
+        gt: () => ({ ...q, then: undefined }),
+        then: (/** @type {any} */ res, /** @type {any} */ rej) =>
+          Promise.resolve({ data: rows, error: null }).then(res, rej),
+      };
+      return q;
+    },
+  });
+
+  const SEJONG_REGION_ROW = {
+    id: 1, region: "세종", gu: "세종시",
+    fertility_rate: 1.061, doctors_per_1k: null, hospital_beds_per_1k: null, housing_price: 366,
+  };
+
+  it("세종 단지(gu null)가 '세종|세종시' 쌍으로 집계된다", async () => {
+    const { aptPairs } = await fetchGuPairStats(makeSb({
+      apartments: [{ id: "ah-1", region: "세종", gu: null }, { id: "ah-2", region: "세종", gu: null }],
+      regions: [SEJONG_REGION_ROW],
+    }));
+    const sejong = aptPairs.find((p) => p.region === "세종");
+    expect(sejong).toEqual({ region: "세종", gu: "세종시", count: 2 });
+  });
+
+  it("세종의 쓰레기 gu 표기도 '세종시' 한 쌍으로 모인다", async () => {
+    const { aptPairs } = await fetchGuPairStats(makeSb({
+      apartments: [
+        { id: "ah-1", region: "세종", gu: null },
+        { id: "ah-2", region: "세종", gu: "6-3생활권" },
+      ],
+      regions: [SEJONG_REGION_ROW],
+    }));
+    expect(aptPairs).toHaveLength(1);
+    expect(aptPairs[0]).toEqual({ region: "세종", gu: "세종시", count: 2 });
+  });
+
+  it("세종이 아닌 gu 없는 단지는 여전히 빠진다 (VIEW 도 조인 안 함)", async () => {
+    const { aptPairs } = await fetchGuPairStats(makeSb({
+      apartments: [{ id: "ah-1", region: "경기", gu: null }, { id: "ah-2", region: "경기", gu: "화성시" }],
+      regions: [],
+    }));
+    expect(aptPairs).toEqual([{ region: "경기", gu: "화성시", count: 1 }]);
+  });
+
+  it("A 짝 없음 — regions 에 '세종|세종시' 행이 없으면 발화", async () => {
+    const { aptPairs, regionRows } = await fetchGuPairStats(makeSb({
+      apartments: [{ id: "ah-1", region: "세종", gu: null }],
+      regions: [],
+    }));
+    const issues = checkOrphanGuPairs(aptPairs, regionRows);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toMatch(/짝 없음 1쌍/);
+    expect(issues[0].lines?.join("\n")).toMatch(/세종\|세종시 1곳/);
+  });
+
+  it("B 빈 껍데기 — 행은 있는데 4컬럼이 전부 NULL 이면 발화", async () => {
+    const { aptPairs, regionRows } = await fetchGuPairStats(makeSb({
+      apartments: [{ id: "ah-1", region: "세종", gu: null }],
+      regions: [{
+        id: 1, region: "세종", gu: "세종시",
+        fertility_rate: null, doctors_per_1k: null, hospital_beds_per_1k: null, housing_price: null,
+      }],
+    }));
+    const issues = checkOrphanGuPairs(aptPairs, regionRows);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toMatch(/빈 껍데기 1쌍/);
+  });
+
+  it("정상 — 값이 있는 '세종|세종시' 행이 있으면 이상 0건 (라이브 실측 모양)", async () => {
+    const { aptPairs, regionRows } = await fetchGuPairStats(makeSb({
+      apartments: [{ id: "ah-1", region: "세종", gu: null }],
+      regions: [SEJONG_REGION_ROW],
+    }));
+    expect(checkOrphanGuPairs(aptPairs, regionRows)).toHaveLength(0);
   });
 });
 
