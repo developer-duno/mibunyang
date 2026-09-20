@@ -44,8 +44,24 @@ export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[]
   const bMax = bMaxRaw != null && Number.isFinite(bMaxRaw) ? bMaxRaw : null;
   const effectiveMin = bMin != null && bMax != null && bMin > bMax ? bMax : bMin;
   const effectiveMax = bMin != null && bMax != null && bMin > bMax ? bMin : bMax;
-  if (effectiveMin != null) out = out.filter((x) => (x.apt.price ?? 0) >= effectiveMin * MANWON_PER_EUK);
-  if (effectiveMax != null) out = out.filter((x) => (x.apt.price ?? 0) <= effectiveMax * MANWON_PER_EUK);
+  // ⚠️ 가격 미상은 예산 필터에서 **제외**한다. 옛 코드 `price ?? 0` 은 가격이 없는 단지를
+  // 0원으로 쳐서 상한 필터(`<= max`)를 전부 통과시켰다 — "3억 이하"를 고른 손님에게 가격을
+  // 모르는 단지 66곳이 섞여 들어갔다(세션552 실측: 위젯 184곳 → 목록 219곳).
+  // 안 잰 값을 0으로 두는 것은 이 저장소가 반복해 겪은 함정이다(Number(null) === 0).
+  if (effectiveMin != null) {
+    const min = effectiveMin * MANWON_PER_EUK;
+    out = out.filter((x) => {
+      const v = x.apt.price;
+      return typeof v === "number" && Number.isFinite(v) && v > 0 && v >= min;
+    });
+  }
+  if (effectiveMax != null) {
+    const max = effectiveMax * MANWON_PER_EUK;
+    out = out.filter((x) => {
+      const v = x.apt.price;
+      return typeof v === "number" && Number.isFinite(v) && v > 0 && v <= max;
+    });
+  }
 
   // 면적·세대수
   if (f.areaMin) out = out.filter((x) => (x.apt.area ?? 0) >= Number(f.areaMin));

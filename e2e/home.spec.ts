@@ -14,7 +14,7 @@ test.describe("통합 홈 위젯판 (M1)", () => {
     // 홈 탭 자체는 그대로 있으므로, 홈 위젯을 검증하려면 홈 버튼을 눌러 들어간다.
     await homeBtn.click();
 
-    await expect(page.getByText("📊 시장 요약")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("📊 시장 현황판")).toBeVisible({ timeout: 10000 });
     await expect(page.getByText("로그인하면 지도가 열려요")).toBeVisible();
 
     await page.getByRole("button", { name: "로그인하고 지도 열기" }).click();
@@ -22,7 +22,7 @@ test.describe("통합 홈 위젯판 (M1)", () => {
     await page.getByRole("button", { name: "나중에 하기" }).click();
 
     await page.getByRole("button", { name: /전체 목록/ }).click();
-    await expect(page.getByText("📊 시장 요약")).not.toBeVisible();
+    await expect(page.getByText("📊 시장 현황판")).not.toBeVisible();
   });
 
   // M2: 로그인 시 지도 위젯 = MapView 미니지도 임베드 (spec "expert e2e" 대체 — admin 로그인 경유).

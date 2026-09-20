@@ -483,7 +483,7 @@ describe("App 통합 테스트", () => {
         expect(screen.getAllByRole("button", { name: /지역/ }).length).toBeGreaterThan(0);
       });
       // 홈 위젯은 안 보인다.
-      expect(screen.queryByText("📊 시장 요약")).toBeNull();
+      expect(screen.queryByText("📊 시장 현황판")).toBeNull();
     });
 
     it("홈 탭 버튼은 그대로 남아 있다 (착륙 지점만 바뀐 것이지 홈을 없앤 게 아니다)", async () => {
@@ -501,7 +501,7 @@ describe("App 통합 테스트", () => {
       render(<App />);
       await gotoHomeTab();
       await waitFor(() => {
-        expect(screen.getByText("📊 시장 요약")).toBeInTheDocument();
+        expect(screen.getByText("📊 시장 현황판")).toBeInTheDocument();
       });
       expect(screen.getByText("로그인하면 지도가 열려요")).toBeInTheDocument();
     });
