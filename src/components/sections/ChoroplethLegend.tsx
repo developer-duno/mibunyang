@@ -44,17 +44,32 @@ export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop
         zIndex: 10,
       }}
     >
-      {TIERS.map((t) => {
-        const g = gr(t.score);
-        return (
-          <div key={t.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span
-              style={{ width: boxSize, height: boxSize, background: g.c, borderRadius: 2, display: "inline-block" }}
-            />
-            <span>{t.label}</span>
-          </div>
-        );
-      })}
+      {/*
+        점수 6단계를 2열 3행으로 접는다. 세로 1열이면 표본 안내 줄까지 7줄이 되어
+        범례가 지도 바닥(bottom:12) 기준으로 길어지고, 지도 높이가
+        calc(100dvh - N) 이라 **화면 밖으로 잘린다**(세션553 실측: 마지막 줄이
+        y=1621 에서 잘림). 2열로 접으면 3행 + 안내 1줄 = 4줄이라 원래(6줄)보다 짧다.
+      */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 10, rowGap: gap }}>
+        {TIERS.map((t) => {
+          const g = gr(t.score);
+          return (
+            <div key={t.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span
+                style={{
+                  width: boxSize,
+                  height: boxSize,
+                  background: g.c,
+                  borderRadius: 2,
+                  display: "inline-block",
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ whiteSpace: "nowrap" }}>{t.label}</span>
+            </div>
+          );
+        })}
+      </div>
       {/*
         표본 가드 안내 — 색이 흐린 칸이 "점수가 낮다"로 읽히면 안 된다.
         흐린 이유는 점수가 아니라 표본 부족이므로 범례가 그 뜻을 말해 준다.

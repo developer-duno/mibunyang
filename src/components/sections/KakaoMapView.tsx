@@ -70,6 +70,22 @@ export const KakaoMapView = memo(function KakaoMapView({
   const markerSigRef = useRef<{ cl: unknown; sig: string }>({ cl: null, sig: "" });
   const chunkJobRef = useRef(0);
 
+  // MarkerImage 캐시 — 점↔색칠을 오갈 때 느려지던 원인(사장님 보고, 세션553).
+  //
+  // 색칠로 나갈 때 서명을 비우므로(clearMarkersAndSelection) 점으로 돌아오면 마커를
+  // **전부 새로 만든다**. 그런데 마커 그림은 (점수, 가격라벨) 두 값만으로 정해지고,
+  // 실측(2026-09-21 라이브 1,691곳)에서 **서로 다른 그림은 190종뿐**이었다 — 나머지
+  // 88.8% 는 이미 만든 것과 똑같은 그림을 SVG 문자열 조립 + encodeURIComponent +
+  // MarkerImage 생성까지 되풀이한 것이다.
+  //
+  // 같은 키면 MarkerImage 객체를 그대로 돌려준다. 카카오 MarkerImage 는 불변(크기·offset·
+  // src 가 생성 시 고정)이라 여러 마커가 공유해도 안전하다 — 이미 선택 강조 경로에서
+  // `__normalImage` 로 한 객체를 재사용하고 있다.
+  //
+  // 캐시 상한 없음: 키가 (정수 점수 0~100) × (가격 라벨) 조합이라 데이터 규모와 무관하게
+  // 수백 종에서 멈춘다. 지도 컴포넌트 수명과 함께 사라지므로 누수도 없다.
+  const markerImgCacheRef = useRef<Map<string, unknown>>(new Map());
+
   // compact 는 마운트 시 고정 — init effect(deps []) 안에서 읽으므로 ref 캡처.
   // deps 에 compact 를 넣으면 cleanup 이 JS ref 만 해제(지도 destroy API 없음)하고
   // 같은 div 에 두 번째 지도가 중첩 생성되는 함정 (plan 함정 박제).
@@ -275,11 +291,19 @@ export const KakaoMapView = memo(function KakaoMapView({
       const { apt, res } = item;
       if (!apt.lat || !apt.lng) continue;
       const pos = new kakao.LatLng(apt.lat, apt.lng);
-      const grade = gr(res.total);
-      const { w, h, svg } = buildMarkerSvg(res.total, grade.c, shortPrice(apt.price));
-      const normalImage = new kakao.MarkerImage(`data:image/svg+xml,${encodeURIComponent(svg)}`, new kakao.Size(w, h), {
-        offset: new kakao.Point(w / 2, h),
-      });
+      const priceLabel = shortPrice(apt.price);
+      // 그림을 정하는 값은 이 둘뿐 — 같은 키면 이미 만든 MarkerImage 를 그대로 쓴다.
+      // (res.total 은 소수가 올 수 있어 buildMarkerSvg 가 쓰는 값 그대로를 키에 넣는다)
+      const imgKey = `${res.total}|${priceLabel}`;
+      let normalImage = markerImgCacheRef.current.get(imgKey) as any;
+      if (!normalImage) {
+        const grade = gr(res.total);
+        const { w, h, svg } = buildMarkerSvg(res.total, grade.c, priceLabel);
+        normalImage = new kakao.MarkerImage(`data:image/svg+xml,${encodeURIComponent(svg)}`, new kakao.Size(w, h), {
+          offset: new kakao.Point(w / 2, h),
+        });
+        markerImgCacheRef.current.set(imgKey, normalImage);
+      }
       const marker = new kakao.Marker({ position: pos, title: apt.name, image: normalImage });
       // 강조 복원용 — 일반 이미지를 마커 객체에 보관(강조 해제 시 setImage 로 되돌림)
       (marker as any).__normalImage = normalImage;

@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, cleanup } from "@testing-library/react";
-import { ChoroplethView } from "./ChoroplethView";
+import { ChoroplethView, __resetSidoGeoCacheForTest } from "./ChoroplethView";
 import { C } from "@/theme";
 
 // 미니멀 시도 GeoJSON 3개 (서울/부산/세종) — 매핑 미존재 1개 (테스트섬) 포함
@@ -108,6 +108,9 @@ async function flushPromises() {
 
 describe("ChoroplethView", () => {
   beforeEach(() => {
+    // 모듈 캐시는 테스트끼리 공유된다 — 비우지 않으면 앞 테스트가 채운 값 때문에
+    // "fetch 실패 → 에러 표시" 가 통과해 버려 가드가 껍데기가 된다.
+    __resetSidoGeoCacheForTest();
     globalThis.fetch = /** @type {any} */ (
       vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }))
     );
@@ -202,6 +205,22 @@ describe("ChoroplethView", () => {
     overListener.handler();
     // 0.3 + 0.2 = 0.5 — 표본 충분한 칸의 기본값(0.65)보다도 흐리다
     expect(overListener.target.setOptions).toHaveBeenCalledWith({ fillOpacity: 0.5 });
+  });
+
+  it("두 번째 마운트는 GeoJSON 을 다시 받지 않는다 (모듈 캐시 — 점↔색칠 토글 성능)", async () => {
+    // 이 컴포넌트는 색칠 모드일 때만 렌더되므로 점 보기로 돌아가면 언마운트된다.
+    // 캐시가 없으면 색칠을 누를 때마다 143KB 를 다시 받아 다시 파싱한다(사장님 보고).
+    setupKakao();
+    render(<ChoroplethView mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
+    await flushPromises();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    cleanup(); // = 점 보기로 전환(언마운트)
+    setupKakao();
+    render(<ChoroplethView mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
+    await flushPromises();
+    // 재요청 0 — 캐시를 지우면 2가 되어 red
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("폴리곤 click → onSidoClick + setBounds 호출", async () => {

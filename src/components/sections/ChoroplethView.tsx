@@ -12,6 +12,23 @@ import type { ChoroplethViewProps } from "@/types/components/ChoroplethView.type
 const ChoroplethSigunguOverlay = lazyNamed(() => import("./ChoroplethSigunguOverlay"), "ChoroplethSigunguOverlay");
 
 /**
+ * 시도 GeoJSON 파싱 결과 — 모듈 수준 캐시(컴포넌트 언마운트와 무관하게 살아남는다).
+ * 이 컴포넌트는 색칠 모드에서만 렌더되므로 점↔색칠을 오갈 때마다 마운트/언마운트가
+ * 반복되는데, 그때마다 143KB 를 다시 받아 파싱하던 것을 없앤다(세션553).
+ */
+let sidoGeoCache: any = null;
+
+/**
+ * 캐시 비우기 — **테스트 격리 전용**이다.
+ * 모듈 캐시는 파일 하나를 모든 테스트가 공유하므로, 비우지 않으면 앞 테스트가 채운 값 때문에
+ * "fetch 실패 → 에러 표시" 같은 테스트가 통과해 버린다(가드가 껍데기가 된다). 운영 코드는
+ * 이 함수를 부르지 않는다 — 행정구역 경계는 세션 중에 바뀌지 않기 때문이다.
+ */
+export function __resetSidoGeoCacheForTest(): void {
+  sidoGeoCache = null;
+}
+
+/**
  * ChoroplethView — 색칠 지도(시도 17개 폴리곤)
  *
  * Props:
@@ -66,13 +83,24 @@ export const ChoroplethView = memo(function ChoroplethView({
     };
   }, [ready, mapInstance]);
 
-  // 1. GeoJSON 1회 fetch — retryKey 증가 시 재시도
+  // 1. GeoJSON fetch — retryKey 증가 시 재시도
+  //
+  // ⚠️ 이 컴포넌트는 `mode === "choropleth"` 일 때만 렌더되므로 점 보기로 돌아가면
+  // **통째로 언마운트**된다. 그래서 캐시가 없으면 색칠을 누를 때마다 143KB 를 다시 받아
+  // 다시 파싱한다(사장님 보고: "점↔색칠 번갈아 누르면 굉장히 느려진다", 세션553).
+  // 모듈 수준에 파싱 결과를 두면 두 번째부터는 네트워크·파싱이 모두 0 이다.
+  // 행정구역 경계는 세션 중에 바뀌지 않으므로 무효화가 필요 없고, 새로고침하면 사라진다.
   useEffect(() => {
+    if (sidoGeoCache) {
+      setGeoData(sidoGeoCache);
+      return;
+    }
     let cancelled = false;
     setError(null);
     fetch("/geo/sido.geojson")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => {
+        sidoGeoCache = d;
         if (!cancelled) setGeoData(d);
       })
       .catch((e) => {

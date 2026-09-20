@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, cleanup } from "@testing-library/react";
-import { ChoroplethSigunguOverlay } from "./ChoroplethSigunguOverlay";
+import { ChoroplethSigunguOverlay, __resetSigunguGeoCacheForTest } from "./ChoroplethSigunguOverlay";
 
 // 미니멀 시군구 GeoJSON 7건: 강남구 / 창원 5구 / 잘못된 prefix 1
 const FAKE_GEOJSON = {
@@ -166,6 +166,7 @@ async function flushPromises() {
 
 describe("ChoroplethSigunguOverlay", () => {
   beforeEach(() => {
+    __resetSigunguGeoCacheForTest(); // 모듈 캐시 격리(ChoroplethView.test 와 같은 이유)
     globalThis.fetch = /** @type {any} */ (
       vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(FAKE_GEOJSON) }))
     );

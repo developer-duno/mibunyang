@@ -32,6 +32,18 @@ type ChoroplethSigunguOverlayProps = {
  *   마우스만 올려도 진해져 표본 가드가 무력해진다(표본 충분 0.55→0.8 / 부족 0.25→0.5)
  * - click → setBounds + onGuClick(byGuKey) → 점 보기 복귀
  */
+/**
+ * 시군구 GeoJSON 파싱 결과 — 모듈 수준 캐시(언마운트와 무관하게 살아남는다).
+ * 351KB 라 시도(143KB)보다 파싱이 무겁고, 이 오버레이는 줌 임계를 오갈 때마다
+ * 마운트/언마운트되므로 캐시 효과가 가장 크다(세션553).
+ */
+let sigunguGeoCache: any = null;
+
+/** 캐시 비우기 — **테스트 격리 전용**(운영 코드는 부르지 않는다). ChoroplethView 쪽과 같은 이유. */
+export function __resetSigunguGeoCacheForTest(): void {
+  sigunguGeoCache = null;
+}
+
 export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
   mapInstance,
   ready,
@@ -43,12 +55,22 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
   const [error, setError] = useState<string | null>(null);
   const { byGu } = useRegionAverages(filtered);
 
-  // 1. sigungu.geojson 1회 fetch (브라우저 캐시로 2회째 0ms)
+  // 1. sigungu.geojson fetch — 모듈 캐시 우선
+  //
+  // 옛 주석은 "브라우저 캐시로 2회째 0ms" 라 했지만, 0ms 인 것은 **네트워크뿐**이고
+  // 351KB JSON 파싱은 마운트할 때마다 되풀이됐다. 이 오버레이는 줌 임계(level ≤ 8)를
+  // 오갈 때도 마운트/언마운트되므로 줌 한 번에 파싱이 다시 도는 셈이었다(세션553).
+  // 파싱 결과를 모듈에 두면 두 번째부터 네트워크·파싱이 모두 0 이다.
   useEffect(() => {
+    if (sigunguGeoCache) {
+      setGeoData(sigunguGeoCache);
+      return;
+    }
     let cancelled = false;
     fetch("/geo/sigungu.geojson")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => {
+        sigunguGeoCache = d;
         if (!cancelled) setGeoData(d);
       })
       .catch((e) => {
