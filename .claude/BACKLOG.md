@@ -13,28 +13,30 @@
 > 큰 순서는 세션510 사장님 결정 그대로: **① 수집기·데이터 → ② 점수 분별력 → ③ 화면 재설계**. ①② 가 상당히 정리돼 ③ 재개 여부가 결정 대기다.
 
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
-- **09-21 03:04 배포 전 아무 때나** — 첨단 A8(`ah-2026910190`) 의 `transport`·`schools`·`infra` kakao 9칸이 05:30 증분으로 다시 채워졌나(안 채워졌으면 "지하철 없음"이 구워진다 → 해당 수집기 단독 실행).
-  마무리 검사관 실측: 미수집 대상이 **A8 1건뿐**(3,052 중)이고 `transport-tago` 는 신규 우선·예산 180분이라 굶을 일은 없다 — 실패는 외부 API 장애 때뿐. (grep `첨단3지구 A8`)
+- **오늘(가능하면)** — 세종 VIEW SQL 적용(`supabase/migrations/20260920000000_view_sejong_gu_join.sql`, 사장님 Dashboard). ⚠️ **적용이 미뤄질수록 감사 수치가 거짓이 된다**: JS 거울(`data-audit`·monitor ⑦)은 이미 머지돼 세종을 '세종시'로 조인된 것처럼 세는데 VIEW 는 아직 옛 조인이라, `data-audit` 의 세종 `housingPrice` 채움이 화면보다 35건 많게 나온다(세션550 맹점 검사관 실측). 적용 전까지 그 수치를 기준선으로 쓰지 말 것. (grep `세종 35단지`)
 - **09-21(월) 05:30** — 로컬 러너 day 21 = `lhzone-status` 첫 자동 발화(`collector_runs` 최신이 08-21). 실행 뒤 status·ok_count 확인.
 - **09-21(월) 08:00 이후** — 네이버 로컬 파이프라인이 PT6H 상한으로 6/6 완주했나. 완주면 `4시간 상한` 항목 ✅, 아니면 `--max-minutes` 도입. (grep `4시간 상한`)
 - **09-22(화) 01:30 이후** — 인천 새 4구 `regions.jeonse_rate` 채움. 월 1회 = 새 4구 승계값 재점검. (grep `모구 승계값`)
-- **10-05 전** — 인구 수집을 로컬 러너로 이전(세션546 사장님 승인, 미착수). 근거 = `docs/superpowers/specs/2026-09-11-population-sido-aggregation-fix.md:170·175`
-  ("`collect-population.yml` GH cron 은 **행안부 차단이 복불복**이라 로컬[한국 IP]이 확실" → PR-F3). 범위 = `kosis-local-runner.mjs` DAY_TABLE day 5 · yml 삭제 · monitor/audit 등재 이관(cron 과 감시를 한 PR 에서 테스트로 묶기).
+- **10-06 저녁** — 로컬 러너 상태 파일 `.kosis-local-runner-state.json` 의 `lastProcessed` 가 `2026-10-06` 인가. ⚠️ `MAX_CATCHUP_PER_RUN = 1` 이라 **PC 가 2일 이상 꺼져 있으면 10-06(market-stats·molit-units·collect-trades)이 통째로 건너뛰어진다**(시뮬 실측: 10-04→10-07 이면 처리 목록이 10-05·10-07 로 10-06 이 빠진다). 모니터는 `stale_days 38` 이라 한 달 넘게 지나야 운다. (grep `MAX_CATCHUP`)
 - **10-07** — `migration.mjs` 첫 자연 실행(exit 0 · `중복 키 — 경남|창원시` ERROR 1줄은 정상). (grep `창원시`)
-- **10-15 전** — 건축HUB `useQty` 50배 단위 확인. (grep `useQty`)
+- **10-15** — 건축HUB 회차(`collect-building-hub`, 분기 1·4·7·10월). ✅ 세션550 실측으로 **막을 이유 없음** 확정: `useQty` 배율이 지역마다 제각각(순천 50배·서울 62배·부산 9배)이라 단위 변경이 아니라 집계 범위 변경이고, `elecUsageKwh` 는 화면 비노출(hidden)·점수 미사용이다. 노출·점수화하려면 그때 집계 범위부터 규명. (grep `useQty`)
 
 ### B. 데이터·수집기 (①) — 위에서부터
-1. 🔴 **`trades` 중복 청소 — 세종은 손님 화면 숫자가 부풀어 있다** (세션549 마무리 실측으로 🟠 → 🔴). `trade-stats.mjs statsKey` 는 세종을 gu 무관 **한 버킷**(`"세종:"`)으로 센다.
-   그런데 세종 거래가 두 표기로 저장돼 있다: 202603 이후 `gu=null` 22,894행 + `gu="행정중심복합도시"` 5,671행. **202608 은 791 / 791 = 쌍둥이**, 202603 의 null 은 **11,006행**(다른 달의 10배 — 이상치).
-   → 화면 "세종 6개월 **10,916건**"(`recentTrades6m`, 차순위 지역의 4.3배)은 중복이 합산된 값이다. 영향 = 세종 35단지(VIEW). 등급(활발)이 바뀌는지는 **미측정** — 청소 후 재계산으로 판정.
-   나머지 11개 일반구의 옛 맨표기 약 5만 행은 읽히지 않는 죽은 사본(정식 표기가 완전본 — 합치면 이중 계상). 순서 = ①상대 레포(`D:/naver-estate-web`)가 `trades.gu` 를 어떻게 읽는지 ②세종부터 dry-run(쌍둥이 판정 키 = gu 를 뺀 전 컬럼) ③승인 → 반영 → `trade-stats` 재실행. (grep `낡은 중복본`)
-   - 🟠 별개 결함: `경북|북구` 7,169행 중 **2,622행이 부산 북구 동**(화명 1,167 · 만덕 568 · 금곡 306 · 덕천 302 · 구포 279 — 검사관 2명 실측 일치). 옛 코드의 LAWD 폴백이 남긴 **지역 오라벨**. 202605 에서 멈춘 죽은 버킷이지만 시도 단위 집계에는 섞인다 → 일괄 삭제 말고 dong 으로 갈라 판정.
-2. 🟡 세종 35단지 구 단위 지표 구조적 빈칸 — VIEW 조인 예외(마이그·Dashboard 수동). monitor ⑦ 도 `gu=null` 은 건너뛰어(`monitor-collectors.mjs` `if (!p?.region || !p?.gu) continue`) 이 사각을 못 본다 → ⑦ 에 gu 없는 단지 집계 1줄 추가 검토.
-   세종은 시 전체가 한 단위라 거래량 문구의 "(시·군·구 단위 합계)" 가 어색하다 — 1번 청소 뒤 문구도 함께 점검. (grep `세종 35단지`)
+1. ✅ **`trades` 중복 청소 — 완료(세션550, 2026-09-20)**. 원인 = 유니크 색인 `idx_trades_unique` 의 충돌 키에 NULL(세종 `gu`)이 들어가 ON CONFLICT 가 한 번도 안 걸린 것
+   (Postgres 는 유니크 색인에서 NULL 을 서로 다르다고 본다) → 수집 회차마다 사본 1벌. **사장님 승인 후 반영**: 삭제 123,032행 · 세종 표기 변경 11,790행(`세종시`) · `trade-stats` 재계산.
+   결과 trades 1,052,512 → **929,480행**, 세종 35단지 거래량 10,916 → **2,124건**(등급 활발 → **보통**). 재발 방지 = `collect-trades.mjs tradeRowGu()`(#511).
+   도구 = `scripts/dedupe-trades-buckets.mjs`(dry-run → 계획 → `--apply-from --apply`). 반영 보고 = `artifacts/s550-trades-dedupe-plan.json.applied.json`.
+   - 잔여(설계상 남김, 중복이 아니라 유일본일 수 있음): 비쌍둥이 35행(소사 15·의창 10·경북 북구 4·대구 6) + 세종 1행. 성격 판단이 필요하면 그때 사람 몫.
+   - ✅ 부수 해소: `경북|북구` 속 부산 북구 거래 2,622행·`대구|대구`(실은 서울 동대문구) 4,016행은 정식 버킷에 쌍둥이가 있어 함께 삭제됨.
+2. 🟠 **세종 35단지 구 단위 지표 — 코드는 머지됨(#512), SQL 적용만 남음**(사장님 Dashboard 수동).
+   마이그 = `supabase/migrations/20260920000000_view_sejong_gu_join.sql`(+롤백 …0001). 조인이 `rg.gu = CASE WHEN a.region='세종' THEN '세종시' ELSE a.gu END` 로 바뀐다.
+   적용 전 기준값(2026-09-20 06:17 UTC 실측): `apartments_flat` 2,443행 · 비세종 fertilityRate 2,408 · 비세종 housingPrice 2,393 · 세종 35곳 둘 다 0.
+   적용 후 기대: 앞의 두 숫자 불변 + 세종 fertility=housing=total(35). 의사·병상은 `collect-medical-access` 다음 실행(러너 매월 14일) 뒤 채워진다(#512 가 KOSIS 2자리 세종 행을 수용하도록 고침).
+   monitor ⑦ 은 이제 `세종|세종시` 짝을 검사한다(라이브 0 issues 확인). (grep `세종 35단지`)
 3. 🟡 `sync-naver` heating 집계 statement timeout — 원인 미확정, 페이지별 소요시간 실측부터. (grep `heating 조회 실패`)
 4. 🟡 monitor 가 "지역×월 거래 0건" 을 못 본다 — 세션545 같은 사고가 또 조용히 지나간다. (grep `지역×월 거래 0건`)
 5. 🟡 `notification_logs` 표 운영 DB 미적용 — 첫 구독자 전에 Dashboard 로. (grep `notification_logs`)
-6. 🟢 묶음: 첨단 A8 비-kakao 파생값(grep `비-kakao`) · 통합 시도 표기 잠복 2곳(grep `남은 잠복 2곳`) · 순이동 시계열 평탄(grep `시계열이 평평`) · trades 옛 인천 gu 22행 고아 · `audit-fill-matrix.mjs:61` 안내 문구 ·
+6. 🟢 묶음: 첨단 A8 비-kakao 파생값(grep `비-kakao`) · 통합 시도 표기 잠복 2곳(grep `남은 잠복 2곳`) · 순이동 시계열 평탄(grep `시계열이 평평`) · trades 옛 인천 gu 22행 고아 · **trades 오라벨 잔재 10행**(`대구|대구` 6행은 전부 서울 휘경동 주공2 · `경북|북구` 4행은 포항 3 + 부산 만덕동 1 — 세션550 청소 후 남은 것으로 "비쌍둥이"가 아니라 짝을 못 찾은 오라벨. 이 레포는 `apartments (region,gu)` 로만 집계해 안 닿지만 자매 레포의 시도 단위 조회에는 섞인다. 삭제 후보) · `audit-fill-matrix.mjs:61` 안내 문구 ·
    자리표시 좌표 잔여(보류 32 · 진짜 자리표시 67 · 결정 기록 파일 `placeholder-coord-decisions.json` 미구현 — 없어서 정정 도구 dry-run 마다 같은 경보가 되풀이된다, 세션539~542 아카이브).
 
 ### C. 문서·개발환경
