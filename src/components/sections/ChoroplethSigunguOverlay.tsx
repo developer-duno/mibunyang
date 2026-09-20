@@ -96,20 +96,26 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
       const stat = byGu[key];
       const avg = stat?.avg;
       const hasData = Number.isFinite(avg);
-      // 표본이 적은 칸은 흐리게 — 시군구 193칸 중 47칸이 단지 3곳 미만이고,
-      // 예산 필터를 걸면 그 비율이 더 오른다(ChoroplethView 와 같은 잣대).
+      // 표본이 적은 칸 — 시군구 193칸 중 47칸이 단지 3곳 미만이고 예산 필터를 걸면 더 오른다.
+      // ⚠️ 불확실성은 **테두리 점선**으로 말한다(ChoroplethView 와 같은 잣대, 사장님 결정).
+      // 흐리게 칠하던 옛 방식은 적대검증 실측에서 두 가지로 무너졌다:
+      //   ① 뒤집힘 — 좋은데 표본 적은 칸이 나쁜데 표본 많은 칸보다 흐려 "나쁜 곳"으로 읽힘
+      //   ② 시군구에서는 표본 부족(밝기 0.826~0.880)과 데이터 없음 회색(0.889)이 거의 같아
+      //      둘을 눈으로 못 가름 — "색상이 달라 구분된다"던 옛 주석은 실측 없이 쓴 말이었다.
       const thin = hasData && !stat.enough;
       const color = hasData ? gr(avg).c : C.muted;
-      const baseOpacity = !hasData ? 0.2 : thin ? 0.25 : 0.55;
+      const baseOpacity = hasData ? 0.55 : 0.2;
       const paths = geoJsonFeatureToKakaoPaths(feature, kakao);
 
       for (const path of paths) {
         if (path.length === 0) continue;
         const polygon = new kakao.Polygon({
           path,
-          strokeWeight: 1,
-          strokeColor: C.white,
-          strokeOpacity: 0.85,
+          // 시군구는 칸이 작아 시도(3)보다 얇게 — 그래도 기본(1)의 2.5배라 눈에 띈다.
+          strokeWeight: thin ? 2.5 : 1,
+          strokeColor: thin ? C.muted : C.white,
+          strokeOpacity: thin ? 0.95 : 0.85,
+          ...(thin ? { strokeStyle: "dashed" } : {}),
           fillColor: color,
           fillOpacity: baseOpacity,
         });

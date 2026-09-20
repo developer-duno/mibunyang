@@ -25,7 +25,7 @@ export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop
   return (
     <div
       role="img"
-      aria-label={`지역 평균 점수 색 범례 — 연한 칸은 단지 ${MIN_MAP_SAMPLE}곳 미만이라 평균을 믿기 어려운 곳입니다`}
+      aria-label={`지역 평균 점수 색 범례 — 점선 테두리 칸은 단지 ${MIN_MAP_SAMPLE}곳 미만이라 평균을 믿기 어려운 곳입니다`}
       style={{
         position: "absolute",
         bottom: 12,
@@ -71,8 +71,8 @@ export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop
         })}
       </div>
       {/*
-        표본 가드 안내 — 색이 흐린 칸이 "점수가 낮다"로 읽히면 안 된다.
-        흐린 이유는 점수가 아니라 표본 부족이므로 범례가 그 뜻을 말해 준다.
+        표본 가드 안내 — 지도에서 **점선 테두리**가 무슨 뜻인지 말해 준다.
+        진하기는 점수 전용이라(세션553 적대검증) 견본도 점선 테두리로 보여야 한다.
         문턱 숫자는 useRegionAverages 의 상수에서 가져온다(손으로 적으면 갈린다).
       */}
       <div
@@ -90,15 +90,16 @@ export const ChoroplethLegend = memo(function ChoroplethLegend({ isPC, isDesktop
           style={{
             width: boxSize,
             height: boxSize,
+            // 채움은 점수 색 그대로(진하기를 안 깎는다) + 회색 점선 테두리 = 지도와 같은 신호.
             background: gr(75).c,
-            // 0.35 = 시도(0.3)·시군구(0.25) 중간값. 두 모드가 값이 달라 하나를 고를 수 없고,
-            // 이 칸은 색 대조표가 아니라 "이 정도로 연하면 표본 부족"이라는 뜻만 전한다.
-            opacity: 0.35,
+            border: `2px dashed ${C.muted}`,
+            boxSizing: "border-box" as const,
             borderRadius: 2,
             display: "inline-block",
+            flexShrink: 0,
           }}
         />
-        <span>연한 칸 = 단지 {MIN_MAP_SAMPLE}곳 미만</span>
+        <span style={{ whiteSpace: "nowrap" }}>점선 = 단지 {MIN_MAP_SAMPLE}곳 미만</span>
       </div>
     </div>
   );

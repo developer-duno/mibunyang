@@ -172,9 +172,11 @@ describe("ChoroplethView", () => {
     expect(polygons[1]._opts.fillOpacity).toBe(0.25);
   });
 
-  it("표본 부족(1곳) → 색은 그대로지만 흐리게 0.3 (표본 가드)", async () => {
+  it("표본 부족(1곳) → 점선 테두리, 채움 진하기는 그대로 (표본 가드)", async () => {
     const { polygons } = setupKakao();
-    // 단지 1곳 = MIN_MAP_SAMPLE(3) 미만 → "단지 1곳 점수 = 그 도 전체"를 진하게 칠하지 않는다
+    // 단지 1곳 = MIN_MAP_SAMPLE(3) 미만 → "단지 1곳 점수 = 그 도 전체" 를 그대로 칠하지 않는다.
+    // ⚠️ 불확실성은 테두리로만 말한다 — 진하기를 깎으면 좋은 점수인데 표본이 적은 칸이
+    //    나쁜 점수인데 표본이 많은 칸보다 흐려져 "여기는 나쁘다" 로 읽힌다(세션553 적대검증).
     render(
       <ChoroplethView
         mapInstance={{ setBounds: vi.fn() }}
@@ -184,14 +186,39 @@ describe("ChoroplethView", () => {
       />
     );
     await flushPromises();
-    // 데이터 없음(0.25)과도, 표본 충분(0.65)과도 구분되는 중간값
-    expect(polygons[0]._opts.fillOpacity).toBe(0.3);
-    // 색 자체는 점수 색을 유지한다 (회색으로 지우지 않는다)
+    // 채움은 표본이 충분할 때와 **같다** (진하기 채널은 점수 전용)
+    expect(polygons[0]._opts.fillOpacity).toBe(0.65);
     expect(polygons[0]._opts.fillColor).not.toBe(C.muted);
+    // 대신 테두리가 점선 + 굵고 회색
+    expect(polygons[0]._opts.strokeStyle).toBe("dashed");
+    expect(polygons[0]._opts.strokeColor).toBe(C.muted);
+    expect(polygons[0]._opts.strokeWeight).toBeGreaterThan(1.5);
   });
 
-  it("표본 부족 칸은 hover 해도 진해지지 않는다 (가드 우회 차단)", async () => {
-    const { eventListeners } = setupKakao();
+  it("표본 충분하면 점선이 아니다 (실선 흰 테두리 그대로)", async () => {
+    const { polygons } = setupKakao();
+    render(
+      <ChoroplethView
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 90 } },
+            { apt: { region: "서울" }, res: { total: 90 } },
+            { apt: { region: "서울" }, res: { total: 90 } },
+          ])
+        }
+        onSidoClick={vi.fn()}
+      />
+    );
+    await flushPromises();
+    expect(polygons[0]._opts.strokeStyle).toBeUndefined();
+    expect(polygons[0]._opts.strokeColor).toBe(C.white);
+    expect(polygons[0]._opts.fillOpacity).toBe(0.65);
+  });
+
+  it("표본 부족 칸을 hover 해도 점선 테두리는 그대로다 (가드가 안 지워진다)", async () => {
+    const { eventListeners, polygons } = setupKakao();
     render(
       <ChoroplethView
         mapInstance={{ setBounds: vi.fn() }}
@@ -201,26 +228,11 @@ describe("ChoroplethView", () => {
       />
     );
     await flushPromises();
-    const overListener = eventListeners.find((l) => l.type === "mouseover");
-    overListener.handler();
-    // 0.3 + 0.2 = 0.5 — 표본 충분한 칸의 기본값(0.65)보다도 흐리다
-    expect(overListener.target.setOptions).toHaveBeenCalledWith({ fillOpacity: 0.5 });
-  });
-
-  it("두 번째 마운트는 GeoJSON 을 다시 받지 않는다 (모듈 캐시 — 점↔색칠 토글 성능)", async () => {
-    // 이 컴포넌트는 색칠 모드일 때만 렌더되므로 점 보기로 돌아가면 언마운트된다.
-    // 캐시가 없으면 색칠을 누를 때마다 143KB 를 다시 받아 다시 파싱한다(사장님 보고).
-    setupKakao();
-    render(<ChoroplethView mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
-    await flushPromises();
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-
-    cleanup(); // = 점 보기로 전환(언마운트)
-    setupKakao();
-    render(<ChoroplethView mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={[]} onSidoClick={vi.fn()} />);
-    await flushPromises();
-    // 재요청 0 — 캐시를 지우면 2가 되어 red
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const over = eventListeners.find((l) => l.type === "mouseover");
+    over.handler();
+    // hover 는 채움 진하기만 건드린다 — 테두리(가드 신호)는 손대지 않는다
+    expect(over.target.setOptions).toHaveBeenCalledWith({ fillOpacity: 0.85 });
+    expect(polygons[0]._opts.strokeStyle).toBe("dashed");
   });
 
   it("폴리곤 click → onSidoClick + setBounds 호출", async () => {

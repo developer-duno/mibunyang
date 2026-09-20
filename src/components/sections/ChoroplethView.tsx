@@ -134,20 +134,31 @@ export const ChoroplethView = memo(function ChoroplethView({
       const stat = byRegion[dbName];
       const avg = stat?.avg;
       const hasData = Number.isFinite(avg);
-      // 표본이 적은 칸은 색을 그대로 두되 흐리게 칠한다 — "단지 1곳 점수 = 그 도 전체"라는
-      // 거짓을 막는다. 예산 필터를 걸면 시도조차 표본 1곳까지 떨어지는 것이 실측됐다.
+      // 표본이 적은 칸 = "단지 1곳 점수 = 그 도 전체" 라는 거짓을 막아야 하는 칸.
+      // 예산 필터를 걸면 시도조차 표본 1곳까지 떨어지는 것이 실측됐다.
+      //
+      // ⚠️ **불확실성은 진하기가 아니라 테두리로 말한다**(사장님 결정, 세션553).
+      // 처음엔 흐리게(0.3) 칠했는데 적대검증이 뒤집힘을 실측으로 잡았다 —
+      // 흰 배경 합성 밝기로 S(90+) 표본부족 0.812 vs D(<50) 표본충분 0.545, 즉
+      // **가장 좋은데 표본이 적은 칸이 가장 나쁜데 표본이 많은 칸보다 두 배 흐렸다**.
+      // 지도는 진한 덩어리가 먼저 눈에 들어오므로 "믿지 마라"가 "여기는 나쁘다"로 읽힌다.
+      // 진하기 채널에 이미 점수와 "데이터 없음"이 실려 있던 것이 근본 원인이라,
+      // 진하기는 점수 전용으로 되돌리고 비어 있던 테두리 채널에 불확실성을 싣는다.
       const thin = hasData && !stat.enough;
       const color = hasData ? gr(avg).c : C.muted;
-      const baseOpacity = !hasData ? 0.25 : thin ? 0.3 : 0.65;
+      const baseOpacity = hasData ? 0.65 : 0.25;
       const paths = geoJsonFeatureToKakaoPaths(feature, kakao);
 
       for (const path of paths) {
         if (path.length === 0) continue;
         const polygon = new kakao.Polygon({
           path,
-          strokeWeight: 1.5,
-          strokeColor: C.white,
-          strokeOpacity: 0.9,
+          // 표본 부족: 점선 + 굵고 진한 회색 테두리. 카카오 Polygon 이 공식 지원하는
+          // strokeStyle("dashed") 를 쓴다. 채움은 건드리지 않는다.
+          strokeWeight: thin ? 3 : 1.5,
+          strokeColor: thin ? C.muted : C.white,
+          strokeOpacity: thin ? 0.95 : 0.9,
+          ...(thin ? { strokeStyle: "dashed" } : {}),
           fillColor: color,
           fillOpacity: baseOpacity,
         });
@@ -158,7 +169,8 @@ export const ChoroplethView = memo(function ChoroplethView({
           (mapInstance as any).setBounds(bounds);
           if (onSidoClick) onSidoClick(dbName);
         });
-        // hover 도 baseOpacity 기준 — 고정값이면 흐린 칸이 hover 로 진해져 가드가 무력해진다.
+        // hover 는 baseOpacity 기준으로 올린다(데이터 없는 회색 칸이 과하게 진해지지 않게).
+        // 표본 가드가 테두리로 옮겨간 뒤로는 hover 가 가드를 지울 수 없다 — 테두리는 그대로다.
         const hoverOpacity = Math.min(baseOpacity + 0.2, 0.85);
         kakao.event.addListener(polygon, "mouseover", () => polygon.setOptions({ fillOpacity: hoverOpacity }));
         kakao.event.addListener(polygon, "mouseout", () => polygon.setOptions({ fillOpacity: baseOpacity }));

@@ -74,16 +74,31 @@ export const KakaoMapView = memo(function KakaoMapView({
   //
   // 색칠로 나갈 때 서명을 비우므로(clearMarkersAndSelection) 점으로 돌아오면 마커를
   // **전부 새로 만든다**. 그런데 마커 그림은 (점수, 가격라벨) 두 값만으로 정해지고,
-  // 실측(2026-09-21 라이브 1,691곳)에서 **서로 다른 그림은 190종뿐**이었다 — 나머지
-  // 88.8% 는 이미 만든 것과 똑같은 그림을 SVG 문자열 조립 + encodeURIComponent +
-  // MarkerImage 생성까지 되풀이한 것이다.
+  // 실측(2026-09-21 라이브 1,691곳, live 프로필)에서 **서로 다른 그림은 1,168종** —
+  // 나머지 **30.9%** 는 이미 만든 것과 똑같은 그림을 SVG 문자열 조립 +
+  // encodeURIComponent + MarkerImage 생성까지 되풀이한 것이다.
   //
-  // 같은 키면 MarkerImage 객체를 그대로 돌려준다. 카카오 MarkerImage 는 불변(크기·offset·
-  // src 가 생성 시 고정)이라 여러 마커가 공유해도 안전하다 — 이미 선택 강조 경로에서
-  // `__normalImage` 로 한 객체를 재사용하고 있다.
+  // ⚠️ 이 30.9% 는 **곁가지**다. 아래 "② 분할 추가" 주석이 지목하는
+  // `clusterer.addMarkers`(1,581개 = 957~1,216ms 실측)가 여전히 더 큰 몫이고,
+  // 이 캐시는 그 앞단의 생성 비용만 줄인다. "마커 쪽은 이미 다 잡았다"고 읽지 말 것.
+  // (세션553 초안은 190종·88.8% 라 적었는데, 그건 **가격 라벨만** 센 값이었다 —
+  //  키가 두 값인데 하나만 세어 효과를 3배 부풀린 것. 할루시네이션 감사가 잡았다.)
   //
-  // 캐시 상한 없음: 키가 (정수 점수 0~100) × (가격 라벨) 조합이라 데이터 규모와 무관하게
-  // 수백 종에서 멈춘다. 지도 컴포넌트 수명과 함께 사라지므로 누수도 없다.
+  // 같은 키면 MarkerImage 객체를 그대로 돌려준다 — 여러 마커가 한 객체를 공유한다.
+  // ⚠️ 카카오가 MarkerImage 를 불변으로 보장한다는 **공식 문서는 확인하지 못했다**(문서가
+  // 동적 렌더링이라 못 읽음). 근거는 둘: ① 이 레포 전체에 MarkerImage 객체에 setter 를
+  // 부르는 코드가 0건(강조는 새 객체를 만들어 setImage 로 갈아끼우고, 복원은 보관해 둔
+  // `__normalImage` 를 되돌린다 — 객체를 변형하지 않는다) ② 같은 SDK 안에서 한 객체를
+  // 되쓰는 선례가 이미 있다. 마커 그림이 서로 섞이는 증상이 보이면 여기를 먼저 의심할 것.
+  //
+  // 캐시 상한 없음 — "한 프로필 안에서 1,168종" 이지 전체 상한이 아니다.
+  // 프로필(실거주·투자·신혼·교육·은퇴)을 바꾸면 모든 단지의 점수가 바뀌어 키가 새로
+  // 생기고 옛 키는 Map 에 남는다. 실측 누적(2026-09-21 라이브, 다섯 프로필 전부):
+  //   live 1,168 · invest 1,164 · newlywed 1,197 · edu 1,271 · retire 1,079 → **누적 3,033**
+  // MarkerImage 하나가 data-URI 문자열 + 크기 객체라 대략 1.5KB → **약 4.4MB**.
+  // 지도 컴포넌트 수명과 함께 통째로 사라지므로 누수는 아니다. 프로필 전환을 감지해
+  // 비우려면 이 컴포넌트가 안 받는 prop 이 필요해 이득 대비 비용이 커서 그대로 두되,
+  // 4MB 가 부담이 되면 그때 prop 을 받아 비운다(세션553 적대검증 지적으로 실측·정정).
   const markerImgCacheRef = useRef<Map<string, unknown>>(new Map());
 
   // compact 는 마운트 시 고정 — init effect(deps []) 안에서 읽으므로 ref 캡처.
@@ -293,7 +308,7 @@ export const KakaoMapView = memo(function KakaoMapView({
       const pos = new kakao.LatLng(apt.lat, apt.lng);
       const priceLabel = shortPrice(apt.price);
       // 그림을 정하는 값은 이 둘뿐 — 같은 키면 이미 만든 MarkerImage 를 그대로 쓴다.
-      // (res.total 은 소수가 올 수 있어 buildMarkerSvg 가 쓰는 값 그대로를 키에 넣는다)
+      // (res.total 은 engine.ts·useDataPipeline 이 Math.round 로 0~100 정수를 보장한다)
       const imgKey = `${res.total}|${priceLabel}`;
       let normalImage = markerImgCacheRef.current.get(imgKey) as any;
       if (!normalImage) {
