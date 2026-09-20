@@ -35,6 +35,7 @@ dist/
 .claude/.edit-counter
 .claude/.build-dirty
 .claude/.ts-dirty
+.claude/.instructions-loaded.log
 .claude/worktrees/
 .claude/*.bak-*
 .claude-memory/
