@@ -1,3 +1,8 @@
+---
+paths:
+  - "scripts/collectors/**/*.mjs"
+---
+
 # graceful shutdown break 박힘 의무 (PR #28 답습 후 적용 패턴)
 
 > 사건·이력 (세션327 — PR #28 이 graceful shutdown 박아도 단위테스트 0건 + 46+ collector 중 완전적용 4건(9%)뿐이라 5/26 cancelled 3건이 전부 실전 동작 0. fix 로 SIGTERM mock 4건 + 3 collector break 박힘) → [rules-history/collectors/graceful-shutdown-coverage.md](../../rules-history/collectors/graceful-shutdown-coverage.md)

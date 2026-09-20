@@ -1,3 +1,13 @@
+---
+paths:
+  - "**/*.test.mjs"
+  - "**/*.test.js"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "scripts/audit-*.mjs"
+  - ".github/workflows/ci.yml"
+---
+
 # 안전장치는 "고장 내서" 검증한다 — 통과만 보면 껍데기가 남는다
 
 ## 한 줄

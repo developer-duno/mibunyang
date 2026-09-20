@@ -76,3 +76,30 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
 | `.github/workflows/` | 워크플로우 목록, GitHub Secrets, 스케줄 |
 | `supabase/` | 테이블(20+) + 2 VIEW + presale 19컬럼, RLS 정책 |
+
+## `.claude/rules/` — 상시 14개 + on-demand 8개 색인 (세션551)
+
+22개 중 8개에 `paths` 를 붙여 **그 파일을 읽을 때만** 로드되게 했다(상시 로드분 −70KB).
+⚠️ **파일을 안 읽고 `node -e` 로 DB 만 만지는 세션에서는 아래 8개가 안 불려온다** —
+해당하는 일을 한다면 그 규칙 파일을 직접 Read 할 것.
+
+| on-demand 규칙 | 언제 필요한가 | paths |
+|---|---|---|
+| `meta/typescript-patterns` | `// @ts-check` 활성화·JSDoc cast·tsc 에러 처방 | `scripts/**/*.mjs`, `**/*.test.*`, `tsconfig*` |
+| `meta/guards-must-be-mutation-tested` | 새 테스트·감사 스크립트·CI 스텝을 **만들기 전** | `**/*.test.*`, `scripts/audit-*.mjs`, `ci.yml` |
+| `meta/score-meaning-and-wording-are-a-pair` | 점수 축의 **의미**를 바꿀 때(문구표도 같이) | `src/scoring/**`, `src/constants/**`, `src/components/**` |
+| `meta/composition-root-not-bloat` | "파일이 N줄이라 쪼개자" 판단 전 | `src/App.tsx`, `src/hooks/**` |
+| `collectors/graceful-shutdown-coverage` | 수집기에 SIGTERM break 박을 때 | `scripts/collectors/**/*.mjs` |
+| `collectors/parsegu-normalization` | 행안부 시군구·SIDO 코드 다룰 때 | `population*.mjs`, `_shared.mjs`, `migration.mjs` |
+| `collectors/kosis-dimension-mismatch-guard` | KOSIS 통계표 차원 가정 전 raw sample | `*kosis*.mjs`, `medical-access`, `market-stats` |
+| `collectors/external-file-duplicate-rows` | 외부 파일의 중복 등재·상한(cap) 설계 | `transport-*.mjs`, `infra-*.mjs` |
+
+**상시 로드(paths 없음, 14개)** — 어기면 에러 없이 조용히 새거나, 파일을 안 읽는 작업에서도
+필요한 부류라 그대로 둔다: `tool-output-illusion-guard` · `probe-must-be-self-verified` ·
+`next-session-grep-mandate` · `unordered-pagination-loses-rows` · `pipe-kills-collector` ·
+`purge-to-recollect-timing` · `admin-district-code-reform` · `placeholder-coordinates-truth-sources` ·
+`collector-timeout-rootcause-analysis` · `regions-multicollector-recorded-at-lag` ·
+`workflows/*`(4개: secret-naming-audit · workflow-name-hallucination · timeout-rootcause-policy · external-api-outage-policy)
+
+> 되돌리기: 해당 파일 맨 앞 `---` `paths:` `---` 블록을 지우면 상시 로드로 복귀.
+

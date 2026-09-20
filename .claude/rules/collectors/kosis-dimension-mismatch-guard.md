@@ -1,3 +1,11 @@
+---
+paths:
+  - "scripts/collectors/*kosis*.mjs"
+  - "scripts/collectors/collect-medical-access.mjs"
+  - "scripts/collectors/collect-market-stats.mjs"
+  - "scripts/kosis-local-runner.mjs"
+---
+
 # KOSIS 통계표 차원 검증 — raw API sample 박제 의무
 
 > 사건·이력 (세션249 — NEXT_SESSION/BACKLOG 박제값을 그대로 답습할 뻔했으나 KOSIS API raw sample 58 rows 호출로 검증. C1_NM 이 3 group 분리 형태(시도별×부문별 교차 cell 부재)임을 확정) → [rules-history/collectors/kosis-dimension-mismatch-guard.md](../../rules-history/collectors/kosis-dimension-mismatch-guard.md)
