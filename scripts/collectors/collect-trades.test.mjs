@@ -20,7 +20,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl, parseOnlyFilter, fetchTradeRows } =
+const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl, parseOnlyFilter, fetchTradeRows, tradeRowGu } =
   await import("./collect-trades.mjs");
 
 describe("parseOnlyFilter (세션94 단계 C)", () => {
@@ -288,5 +288,73 @@ describe("fetchTradeRows — API 실패 집계 (세션 503)", () => {
       false
     );
     expect(r.apiFails).toBe(0);
+  });
+});
+
+// ── 세션550: 세종 행의 gu 가 null 이면 고유 인덱스가 영영 충돌하지 않는다 ──
+// Postgres 고유 인덱스는 NULL 을 서로 다른 값으로 보므로, gu=null 로 저장된 세종 거래는
+// upsert 의 ON CONFLICT 가 한 번도 안 걸려 **회차마다 같은 거래가 새 행으로** 들어갔다
+// (2026-09-20 실측 68,352행 = 실제 11,812건). 손님 화면 "세종 6개월 10,916건"이 그래서 부풀었다.
+describe("tradeRowGu — 세종 gu 채움 (세션550)", () => {
+  it("세종은 gu 가 없어도 '세종시' 로 저장한다", () => {
+    expect(tradeRowGu("세종", null)).toBe("세종시");
+    expect(tradeRowGu("세종", undefined)).toBe("세종시");
+    expect(tradeRowGu("세종", "")).toBe("세종시");
+  });
+
+  it("gu 가 있으면 그대로 쓴다 (세종 포함)", () => {
+    expect(tradeRowGu("서울", "강남구")).toBe("강남구");
+    expect(tradeRowGu("세종", "세종시")).toBe("세종시");
+  });
+
+  it("세종이 아닌 지역의 빈 gu 는 null 그대로 — 이 변경은 세종만 건드린다", () => {
+    expect(tradeRowGu("경기", null)).toBeNull();
+    expect(tradeRowGu("부산", undefined)).toBeNull();
+  });
+
+  it("GU_LAWD_MAP·regions 와 같은 표기라 LAWD_CD 조회가 그대로 된다", () => {
+    expect(getLawdCd("세종", tradeRowGu("세종", null))).toBe("36110");
+  });
+});
+
+// 헬퍼만 맞아도 **행 만드는 자리가 그 헬퍼를 안 쓰면** 소용이 없다 — 실제 수집 경로로 확인한다.
+describe("fetchTradeRows — 세종 행은 gu 가 절대 null 이 아니다 (세션550)", () => {
+  const sejongXml = `<response><body><items>
+    <item><aptNm>세종더숲</aptNm><excluUseAr>84.99</excluUseAr><dealAmount>50,000</dealAmount><floor>10</floor><buildYear>2020</buildYear><umdNm>아름동</umdNm></item>
+    <item><aptNm>세종파크</aptNm><excluUseAr>59.97</excluUseAr><dealAmount>40,000</dealAmount><floor>7</floor><buildYear>2018</buildYear><umdNm>종촌동</umdNm></item>
+  </items></body></response>`;
+
+  it("regionGuPairs 의 {세종, gu:null} 로 수집해도 저장 행의 gu 는 '세종시'", async () => {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => sejongXml });
+    const r = await fetchTradeRows("36110", ["202608"], "sale", { region: "세종", gu: null }, new Set(), false);
+    expect(r.rows).toHaveLength(2);
+    for (const row of r.rows) {
+      expect(row.gu).not.toBeNull();
+      expect(row.gu).toBe("세종시");
+    }
+  });
+
+  it("회차 안 중복 제거 키도 저장값 기준 — 같은 거래를 두 번 담지 않는다", async () => {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => sejongXml });
+    const seen = new Set();
+    const first = await fetchTradeRows("36110", ["202608"], "sale", { region: "세종", gu: null }, seen, false);
+    const second = await fetchTradeRows("36110", ["202608"], "sale", { region: "세종", gu: null }, seen, false);
+    expect(first.rows).toHaveLength(2);
+    expect(second.rows).toHaveLength(0);
+  });
+
+  it("upsert 충돌 키(region,gu,deal_month,area,price,floor,trade_type)에 null 이 없다", async () => {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => sejongXml });
+    const r = await fetchTradeRows("36110", ["202608"], "sale", { region: "세종", gu: null }, new Set(), false);
+    for (const row of r.rows) {
+      const conflictKey = [row.region, row.gu, row.deal_month, row.area, row.price, row.floor, row.trade_type];
+      expect(conflictKey.some((v) => v == null)).toBe(false);
+    }
+  });
+
+  it("세종이 아닌 지역은 옛 동작 그대로 (gu 가 그대로 실린다)", async () => {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => sejongXml });
+    const r = await fetchTradeRows("11110", ["202608"], "sale", { region: "서울", gu: "종로구" }, new Set(), false);
+    expect(r.rows.every((row) => row.gu === "종로구")).toBe(true);
   });
 });
