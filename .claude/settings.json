@@ -96,6 +96,16 @@
           }
         ]
       }
+    ],
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/log-instructions-loaded.sh"
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {
