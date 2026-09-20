@@ -21,7 +21,7 @@
  *   GITHUB_REPOSITORY                     — "owner/repo" (Actions 기본 제공)
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
-import { loadEnv, getSupabase, selectAll } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, selectAll, viewJoinGu } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssue, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
@@ -870,8 +870,10 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
 /**
  * ⑦ VIEW 의 시군구 조인(`rg`)으로 노출되는 컬럼 목록.
  *
- * `apartments_flat` 은 `LEFT JOIN latest_regions_gu rg ON rg.region = a.region AND rg.gu = a.gu`
- * 로 시군구 지표를 붙인다. 이 짝이 안 맞으면 **아래 컬럼이 통째로 빈칸**이 된다.
+ * `apartments_flat` 은 `LEFT JOIN latest_regions_gu rg ON rg.region = a.region
+ *  AND rg.gu = CASE WHEN a.region = '세종' THEN '세종시' ELSE a.gu END` 로 시군구 지표를 붙인다
+ * (세션550 — 세종은 `apartments.gu` 가 NULL 이라 '세종시' 로 맞춘다). 이 짝이 안 맞으면
+ * **아래 컬럼이 통째로 빈칸**이 된다. JS 쪽 거울은 `viewJoinGu` 하나뿐이다.
  *
  * ⚠️ VIEW 에 `rg.` 로 노출되는 컬럼을 추가하면 **여기에도 1줄 추가**할 것.
  *    빠뜨리면 그 컬럼만 비어도 ⑦-B(빈 껍데기)가 "전부 비었다" 로 안 보고 조용히 넘어간다.
@@ -1193,8 +1195,11 @@ export async function fetchGuPairStats(sbArg) {
   const byPair = new Map();
   for (const a of apts) {
     const region = a?.region;
-    const gu = a?.gu;
-    if (!region || !gu) continue; // gu 없는 단지(세종 등)는 VIEW 가 rg 조인을 안 쓴다
+    // ⚠️ VIEW 의 조인 키와 **같은 규칙**으로 만든다(세션550) — `viewJoinGu` 가 SQL CASE 의 거울.
+    //    세종은 apartments.gu 가 NULL 이어도 '세종시' 로 조인되므로 여기서도 그 짝을 검사해야 한다.
+    //    null(= 세종이 아닌데 gu 가 없는 단지)이면 VIEW 도 조인을 못 하므로 예전처럼 건너뛴다.
+    const gu = viewJoinGu(region, a?.gu);
+    if (!region || !gu) continue;
     const key = `${region}|${gu}`;
     const cur = byPair.get(key);
     if (cur) cur.count++;
