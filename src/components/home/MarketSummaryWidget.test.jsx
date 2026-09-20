@@ -7,7 +7,10 @@ import { MarketSummaryWidget, buildRegionBars, buildBudgetBuckets } from "./Mark
  * @param {string} id
  * @param {number | null} price 만원 단위
  * @param {number | null} unsoldRate
- * @param {{ region?: string | null }} [extra]
+ * @param {{ region?: string | null, unsold?: number | null }} [extra]
+ *
+ * ⚠️ `unsold` 기본값 10 — 목록이 `hideNoUnsold` 기본 켜짐이라 미분양 없는 단지는 화면에
+ * 안 뜨고, 위젯도 같은 모집단으로 센다(세션552). 미분양 없는 경우를 시험하려면 `unsold: 0`.
  */
 const mk = (id, price, unsoldRate, extra = {}) =>
   /** @type {any} */ ({
@@ -17,6 +20,7 @@ const mk = (id, price, unsoldRate, extra = {}) =>
       region: "region" in extra ? extra.region : "경기",
       price,
       unsoldRate,
+      unsold: "unsold" in extra ? extra.unsold : 10,
     },
     res: { total: 50, cats: {} },
   });
@@ -29,9 +33,17 @@ describe("buildBudgetBuckets — 가격대별 단지 수 (중위값을 내지 �
     expect(buckets.map((b) => b.maxEok)).toEqual([3, 5, 7, 10, null]);
     expect(buckets.map((b) => b.minEok)).toEqual([null, 3, 5, 7, 10]);
   });
-  it("경계값은 위 구간에 들어간다 (3억 = '3~5억')", () => {
+  it("⚠️ 경계값은 두 구간에 모두 셈 — 목록 필터(<=)와 같은 잣대라 일부러 그렇다", () => {
+    // 목록은 `bmax=3` 에도 `bmin=3` 에도 3억을 포함한다(폐구간). 위젯이 한쪽만 세면 그 칸을
+    // 눌렀을 때 목록 건수와 어긋난다 — 세션552 적대검증이 잡은 결함.
+    // 실측 해당 단지는 3억 4곳·5억 2곳·7억 1곳뿐이라 겹침의 폭은 작다.
     const buckets = buildBudgetBuckets([mk("1", 30000, 5)]);
-    expect(buckets.find((b) => b.label === "3억 미만")?.count).toBe(0);
+    expect(buckets.find((b) => b.label === "3억 미만")?.count).toBe(1);
+    expect(buckets.find((b) => b.label === "3~5억")?.count).toBe(1);
+  });
+  it("미분양 없는 단지는 안 센다 — 목록(hideNoUnsold 기본 켜짐)과 같은 모집단", () => {
+    // 되돌려서 unsold 조건을 빼면 이 기대값이 2가 되어 red.
+    const buckets = buildBudgetBuckets([mk("1", 40000, 5), mk("2", 40000, 5, { unsold: 0 })]);
     expect(buckets.find((b) => b.label === "3~5억")?.count).toBe(1);
   });
   it("가격 없는 단지는 어느 구간에도 안 들어간다 — '3억 미만'에 쓸어 담지 않는다", () => {
@@ -44,10 +56,12 @@ describe("buildBudgetBuckets — 가격대별 단지 수 (중위값을 내지 �
     expect(buckets.find((b) => b.label === "3억 미만")?.count).toBe(1);
     expect(buckets.find((b) => b.label === "10억 이상")?.count).toBe(1);
   });
-  it("구간 합계 = 가격 있는 단지 수 (겹치거나 새지 않는다)", () => {
-    const scored = [20000, 30000, 49999, 50000, 69999, 70000, 99999, 100000, 250000].map((p, i) => mk(String(i), p, 5));
+  it("경계에 안 걸리는 값은 정확히 한 구간에만 들어간다 (새지 않는다)", () => {
+    // 경계(3·5·7·10억)를 피한 값만 — 경계값이 두 구간에 셈은 위 테스트대로 의도다.
+    const scored = [20000, 40000, 60000, 80000, 250000].map((p, i) => mk(String(i), p, 5));
     const buckets = buildBudgetBuckets(scored);
     expect(buckets.reduce((s, b) => s + b.count, 0)).toBe(scored.length);
+    expect(buckets.map((b) => b.count)).toEqual([1, 1, 1, 1, 1]);
   });
 });
 

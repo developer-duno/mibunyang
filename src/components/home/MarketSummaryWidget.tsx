@@ -68,6 +68,19 @@ export type BudgetBucket = { label: string; count: number; minEok: number | null
 /**
  * 가격대별 단지 수. 가격 없는 단지는 어느 구간에도 넣지 않는다(억지로 채우지 않는다).
  * 새 수집 0: 이미 로드된 scored 를 클라이언트에서 집계한다(원장 Q5 "집계만").
+ *
+ * ⚠️ **여기서 센 수는 그 칸을 눌렀을 때 목록에 뜨는 수와 같아야 한다.** 세션552 적대검증이
+ * 다섯 칸 전부 어긋난 것을 실측으로 잡았다(3~5억 819 표시 → 729 노출, 3억미만 184 → 219로
+ * 되레 증가). 원인이 셋이었고 그 셋을 여기서 맞춘다:
+ *
+ *   ① **모집단** — 목록은 `hideNoUnsold` 기본 켜짐이라 `unsold > 0` 인 1,691곳만 보여준다.
+ *      위젯이 전체 1,895곳을 세면 손님이 본 수보다 적게 나온다 → 같은 조건으로 센다.
+ *   ② **경계** — 목록 필터는 `<= max`(폐구간)인데 위젯이 `< hi`(반개구간)였다. 정확히
+ *      3·5·7·10억인 단지(실측 4+2+1곳)가 어긋난다 → 목록과 같은 폐구간으로 맞춘다.
+ *      그래서 위 칸의 `min` 은 아래 칸의 `max` 와 겹치는데, 목록이 그렇게 동작하므로
+ *      **위젯이 목록을 따라간다**(겹치는 소수 단지는 두 칸에 모두 셈 — 목록도 그렇다).
+ *   ③ **가격 없음** — 목록 필터의 `price ?? 0` 이 가격 미상 66곳을 0원으로 쳐서 상한 필터를
+ *      통과시켰다. 그건 목록 쪽 결함이라 `filterEngine` 에서 함께 고쳤다(같은 PR).
  */
 export function buildBudgetBuckets(scored: ScoredApt[]): BudgetBucket[] {
   return BUDGET_BANDS.map((b) => {
@@ -77,7 +90,9 @@ export function buildBudgetBuckets(scored: ScoredApt[]): BudgetBucket[] {
       const p = s.apt.price;
       // 가격이 없거나 0 이하면 제외 — "3억 미만"에 쓸어 담지 않는다
       if (typeof p !== "number" || !Number.isFinite(p) || p <= 0) return false;
-      return p >= lo && p < hi;
+      // 목록의 기본값(hideNoUnsold)과 같은 모집단 — 미분양이 없는 단지는 목록에 안 뜬다
+      if (!(Number(s.apt.unsold ?? 0) > 0)) return false;
+      return p >= lo && p <= hi; // 폐구간 — filterEngine 과 같은 잣대
     }).length;
     return { label: b.label, count, minEok: b.minEok, maxEok: b.maxEok };
   });
