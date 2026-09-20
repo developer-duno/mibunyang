@@ -7,7 +7,7 @@ import { UpcomingWidget } from "./UpcomingWidget";
 import { TopPicksWidget } from "./TopPicksWidget";
 import { RecentlyViewedWidget } from "./RecentlyViewedWidget";
 import { MarketSummaryWidget } from "./MarketSummaryWidget";
-import type { ScoredApt, SortKey } from "@/types/hooks";
+import type { ScoredApt } from "@/types/hooks";
 import type { ProfileWeights } from "@/types/scoring";
 import type { UpcomingApiResponse } from "@/types/upcoming";
 
@@ -25,8 +25,10 @@ type HomePageProps = {
   dataLoading: boolean;
   dataFreshnessText: string | null;
   onNavClick: (_k: string) => void;
-  /** 시장 요약 칸 클릭 — 탭 이동 + (옵션) 정렬 적용. App 의 setSortKey + handleNavClick 배선 */
-  onMarketNav: (_target: string, _sort?: SortKey) => void;
+  /** 현황판 가격대 클릭 — 예산 필터(억 단위)를 걸고 목록으로. App 의 setBudget* + handleNavClick 배선 */
+  onBudgetNav: (_minEok: number | null, _maxEok: number | null) => void;
+  /** 현황판 지역 막대 클릭 — 지역 필터를 걸고 목록으로. App 의 handleRegionChange + handleNavClick 배선 */
+  onRegionNav: (_region: string) => void;
   onDetail: (_id: string) => void;
   onFav: (_id: string) => void;
   favoriteSet: Set<string>;
@@ -55,7 +57,8 @@ export const HomePage = memo(function HomePage({
   dataLoading,
   dataFreshnessText,
   onNavClick,
-  onMarketNav,
+  onBudgetNav,
+  onRegionNav,
   onDetail,
   onFav,
   favoriteSet,
@@ -85,13 +88,20 @@ export const HomePage = memo(function HomePage({
     },
     [onDetail]
   );
-  // 시장 요약 칸 클릭 — 어느 칸인지 계측 + 탭 이동(+정렬). expandWidget 명명 답습.
-  const handleMarketNav = useCallback(
-    (cell: string, nav: { target: string; sort?: SortKey }) => {
-      trackEvent("home_market_nav", { cell });
-      onMarketNav(nav.target, nav.sort);
+  // 현황판 클릭 — 어느 칸인지 계측 + 필터 적용 후 목록으로. expandWidget 명명 답습.
+  const handleBudgetNav = useCallback(
+    (label: string, nav: { minEok: number | null; maxEok: number | null }) => {
+      trackEvent("home_market_nav", { cell: label });
+      onBudgetNav(nav.minEok, nav.maxEok);
     },
-    [onMarketNav]
+    [onBudgetNav]
+  );
+  const handleRegionNav = useCallback(
+    (region: string) => {
+      trackEvent("home_market_nav", { cell: "region:" + region });
+      onRegionNav(region);
+    },
+    [onRegionNav]
   );
 
   if (dataLoading && scored.length === 0) {
@@ -127,7 +137,12 @@ export const HomePage = memo(function HomePage({
             onExpand={() => expandWidget("upcoming", "upcoming")}
           />
         )}
-        <MarketSummaryWidget scored={scored} dataFreshnessText={dataFreshnessText} onCellNav={handleMarketNav} />
+        <MarketSummaryWidget
+          scored={scored}
+          dataFreshnessText={dataFreshnessText}
+          onBudgetNav={handleBudgetNav}
+          onRegionNav={handleRegionNav}
+        />
         {hasRecent && (
           <div style={{ gridColumn: "1 / -1" }}>
             <RecentlyViewedWidget

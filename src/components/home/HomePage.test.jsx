@@ -20,7 +20,8 @@ const baseProps = () => ({
   dataLoading: false,
   dataFreshnessText: null,
   onNavClick: vi.fn(),
-  onMarketNav: vi.fn(),
+  onBudgetNav: vi.fn(),
+  onRegionNav: vi.fn(),
   onDetail: vi.fn(),
   onFav: vi.fn(),
   favoriteSet: new Set(),
@@ -56,13 +57,13 @@ describe("HomePage", () => {
   it("로딩 중(apartments 미도착): 전체 스켈레톤", () => {
     const { container } = render(<HomePage {...baseProps()} dataLoading={true} />);
     expect(container.querySelector('[aria-hidden="true"]')).toBeTruthy();
-    expect(screen.queryByText("📊 시장 요약")).toBeNull();
+    expect(screen.queryByText("📊 시장 현황판")).toBeNull();
   });
-  it("위젯 그리드: 지도·추천·시장요약 렌더 + auto-fit minmax (세션387 답습)", () => {
+  it("위젯 그리드: 지도·추천·시장현황판 렌더 + auto-fit minmax (세션387 답습)", () => {
     const { container } = render(<HomePage {...baseProps()} />);
     expect(screen.getByText("🗺 지도")).toBeInTheDocument();
     expect(screen.getByText("⭐ 추천 TOP 3")).toBeInTheDocument();
-    expect(screen.getByText("📊 시장 요약")).toBeInTheDocument();
+    expect(screen.getByText("📊 시장 현황판")).toBeInTheDocument();
     const grid = container.querySelector('[data-testid="home-grid"]');
     expect(grid && /** @type {HTMLElement} */ (grid).style.gridTemplateColumns).toContain("minmax");
   });
@@ -126,13 +127,13 @@ describe("HomePage analytics (M3)", () => {
     expect(onNavClick).toHaveBeenCalledWith("upcoming");
   });
 
-  it("시장요약 '미분양률 중위' 칸 클릭 → home_market_nav{미분양률 중위} + onMarketNav(list, unsoldRate)", () => {
-    const onMarketNav = vi.fn();
-    // scored=[] 로 추천 위젯의 AptCard 렌더 회피(시장요약 칸 nav 는 값과 무관하게 항상 button)
-    render(<HomePage {...baseProps()} onMarketNav={onMarketNav} />);
-    fireEvent.click(screen.getByRole("button", { name: /미분양률 중위/ }));
-    expect(trackEvent).toHaveBeenCalledWith("home_market_nav", { cell: "미분양률 중위" });
-    expect(onMarketNav).toHaveBeenCalledWith("list", "unsoldRate");
+  it("현황판 가격대 '3~5억' 클릭 → home_market_nav{3~5억} + onBudgetNav(3, 5)", () => {
+    const onBudgetNav = vi.fn();
+    // scored=[] 로 추천 위젯의 AptCard 렌더 회피(가격대 칸은 값과 무관하게 항상 button)
+    render(<HomePage {...baseProps()} onBudgetNav={onBudgetNav} />);
+    fireEvent.click(screen.getByRole("button", { name: /^3~5억/ }));
+    expect(trackEvent).toHaveBeenCalledWith("home_market_nav", { cell: "3~5억" });
+    expect(onBudgetNav).toHaveBeenCalledWith(3, 5);
   });
 
   it("home-grid 가 320px 안전 minmax(min(300px,100%),1fr) 적용", () => {

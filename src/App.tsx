@@ -572,9 +572,16 @@ export default function App() {
           dataLoading={dataLoading}
           dataFreshnessText={dataFreshnessText}
           onNavClick={handleNavClick}
-          onMarketNav={(target, sort) => {
-            if (sort) setSortKey(sort);
-            handleNavClick(target);
+          onBudgetNav={(minEok, maxEok) => {
+            // 현황판 가격대 → 예산 필터(억 단위, BudgetPanel 과 같은 단위)를 걸고 목록으로
+            handleBudgetMinChange(minEok == null ? "" : String(minEok));
+            handleBudgetMaxChange(maxEok == null ? "" : String(maxEok));
+            handleNavClick("list");
+          }}
+          onRegionNav={(region) => {
+            // 현황판 지역 막대 → 그 지역으로 필터(구는 handleRegionChange 가 초기화)
+            handleRegionChange(region);
+            handleNavClick("list");
           }}
           onDetail={detail.handleOpenDetail}
           onFav={toggleFavorite}
