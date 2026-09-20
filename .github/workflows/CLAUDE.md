@@ -51,7 +51,7 @@
 | `collect-applyhome-remndr.yml` | 청약홈 잔여세대 평형 + 취소후재공급 경쟁률 (월 13:30 KST, 세션 496 PR #330). **세션 548 문서 추가** (그동안 표에 없었다) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 
-### 매월 (9개) + 수동 전용 (4개)
+### 매월 (8개) + 수동 전용 (4개)
 
 > ⚠️ 세션519 실측 정정 — 이 헤더의 "13개"는 이번 편집 이전부터 이미 실제 행 수와 어긋나 있었다
 > (본 절 상단 disclaimer 가 경고하는 바로 그 drift). air-quality·housing-price 2행을 로컬
@@ -104,6 +104,20 @@
 > `monitor-collectors.yml` workflow_run 목록에서 "Emergency Medical Facilities Collection" 제거.
 > ⚠️ 등재 라벨은 파일명(`collect-emergency.mjs`)이 아니라 **`recordCollectorRun` 첫 인자**인
 > `PHASE = "emergency"` 다(세션 439 드리프트 사고 답습).
+>
+> **세션 550: `collect-population.yml` 도 같은 이유로 폐기 → 로컬 러너 매월 5일 2종.**
+> 행안부(MOIS) 주민등록 인구 API 가 GH 해외 러너 IP 를 복불복 차단한다 — 근거는 사장님이 세션546 에
+> 승인한 `docs/superpowers/specs/2026-09-11-population-sido-aggregation-fix.md` §4-4·§5 의 PR-F3.
+> 한 yml 이 `population.mjs` → `population-sex-age.mjs` 를 순서대로 돌렸으므로 **러너에도 2행**이고,
+> 감시(monitor ⑤)도 **2건**이다 — 하나만 챙기면 나머지가 조용히 죽는다.
+> ⚠️ **이 건만 UTC→KST 규칙을 일부러 어긴다**: 옛 cron `0 20 5 * *` 은 UTC 5일 20:00 = **KST 6일**
+> 05:00 인데, 러너에는 **5일**에 둔다. population 은 `regions` 의 **행 생성자**(매월 새 `recorded_at`
+> 행 INSERT)라 후행 채움자(market-stats 6일 → migration 7일 → crime-safety 8일)보다 먼저여야 하기
+> 때문이다([[regions-multicollector-recorded-at-lag]] — 세션391 에 netMigration 17 시도 NULL·808단지
+> −10점 사고). 하루 당겨도 **수집 대상 월은 안 바뀐다** — 대상은 `new Date(연, 월-2, 1)` 로 정해져
+> 일(day)을 아예 안 본다(`population.mjs:589` / `population-sex-age.mjs:238`).
+> 감시 = monitor ⑤ 에 `population`·`population-sex-age`(각 월간 38) **신규 등재** +
+> `monitor-collectors.yml` workflow_run 목록에서 "Population Data Collection" 제거.
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
@@ -117,7 +131,6 @@
 | `collect-industry.yml` | 7일 | 산업단지 매칭 (세션260: 1일→7일 분산) |
 | `collect-childcare.yml` | 1일 | Kakao 어린이집/유치원 (info step 은 세션 399 로컬 이전) |
 | `collect-police.yml` | 1일 | Kakao 경찰관서 밀도 |
-| `collect-population.yml` | 5일 | 행안부 인구 증감률 |
 | `collect-applyhome.yml` | 주간 (월 11:30 KST) | 청약홈 신규 ah-* seeding(세션 466, 좌표 정밀 중복 게이트) → 잔여세대 경쟁률 |
 | `collect-dart-builders.yml` | 분기별 | DART 시공사 재무 |
 

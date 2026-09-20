@@ -42,7 +42,11 @@ on:
       - "Nearby Childcare Collection"
       - "Noxious Facility Collection"
       - "Police Station Collection"
-      - "Population Data Collection"
+      # 세션550: "Population Data Collection" 제거 — 행안부(MOIS) 주민등록 인구 API 도 GH
+      #   해외 러너 IP 를 복불복 차단해(세션546 스펙 §4-4·§5 PR-F3) yml 삭제 + 로컬 러너
+      #   매월 5일 이전. 이름만 남기면 매일 "실행 기록이 한 번도 없음" 거짓 경보가 난다
+      #   (세션519 Housing Permits 실증). 감시는 EXTERNAL_API_COLLECTORS 의 `population`·
+      #   `population-sex-age`(collector_runs 신선도) 가 승계.
       - "School District Collection"
       - "Trade Stats Calculation"
       - "Trade Stats Regions Collection"

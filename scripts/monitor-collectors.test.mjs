@@ -1164,7 +1164,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 33 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 35 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525 + population·population-sex-age, 세션 550)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "air-quality",
@@ -1188,7 +1188,12 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       // GH run 이 없어 ①③ 대상 밖이므로 ⑤ 신선도가 유일한 "안 돌면 알림".
       "molit-building", "molit-units", "trades",
       // 세션 517: naver-devplan 을 로컬 러너 매월 20일로 크론 편입 → ⑤ 신선도 감시 등재.
-      "naver-collect", "naver-devplan", "naver-presale", "notify-subscribers", "schools", "transport-tago",
+      "naver-collect", "naver-devplan", "naver-presale", "notify-subscribers",
+      // 세션 550: 행안부(MOIS) 인구 API 도 해외 IP 차단 → collect-population.yml 삭제 +
+      // 로컬 러너 매월 5일(행 생성자라 후행보다 앞). 한 yml 이 두 수집기를 돌렸고 둘 다
+      // 자기 collector_runs 행을 남기므로 **둘 다** 등재한다 — 하나만 넣으면 나머지가 조용히 죽는다.
+      "population", "population-sex-age",
+      "schools", "transport-tago",
     ].sort());
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);
@@ -1688,4 +1693,41 @@ describe("크론(DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 동기화 — em
       "EXTERNAL_API_COLLECTORS 에서 emergency 가 빠졌다 — 안 돌아도 알림 0",
     ).toBe(true);
   });
+});
+
+describe("크론(DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 동기화 — population 2종 (세션 550)", () => {
+  // 세션 517·522·525 선례 답습. 한쪽만 되돌리면 red 여야 한다 —
+  // 크론만 지우면 "안 돌아도 아무도 모르는" 상태, 감시만 지우면 "돌다 멈춰도 조용한" 상태.
+  // ⚠️ 이 건은 **한 yml 이 두 수집기를 돌렸다**. 둘 다 자기 collector_runs 행을 남기므로
+  //    (population.mjs:731 / population-sex-age.mjs:311) 크론·감시 모두 2건이어야 한다.
+  //    하나만 챙기면 나머지가 조용히 죽는다.
+  const PAIRS = [
+    { script: "population.mjs", collector: "population" },
+    { script: "population-sex-age.mjs", collector: "population-sex-age" },
+  ];
+
+  for (const { script, collector } of PAIRS) {
+    it(`DAY_TABLE 매월 5일에 ${script} 가 있다 (옛 cron \`0 20 5 * *\` = KST 6일이지만 행 생성자라 하루 앞)`, () => {
+      const rows = DAY_TABLE.filter((e) => e.script === script);
+      expect(rows.map((e) => e.day), "매월 5일 1회여야 한다").toEqual([5]);
+      expect(rows[0]?.args, "옛 GH yml 은 dry_run 입력 외 고정 인자를 넘기지 않았다").toBeUndefined();
+    });
+
+    it(`${collector} 가 monitor ⑤ 에 월간(38) 신선도로 등재돼 있다`, () => {
+      const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === collector);
+      expect(entry, `${collector} 가 EXTERNAL_API_COLLECTORS 에 없다 — 크론만 있고 감시가 없다`).toBeTruthy();
+      expect(entry?.stale_days, "월간(매월 5일) = 31일 + 여유 1주").toBe(38);
+    });
+
+    it(`${collector} 는 크론과 감시가 한 쌍으로 존재한다 (한쪽만 되돌리면 red)`, () => {
+      expect(
+        DAY_TABLE.some((e) => e.script === script),
+        `DAY_TABLE 에서 ${script} 가 빠졌다 — GH yml 을 지웠으므로 아예 안 도는 상태로 회귀`,
+      ).toBe(true);
+      expect(
+        EXTERNAL_API_COLLECTORS.some((c) => c.collector === collector),
+        `EXTERNAL_API_COLLECTORS 에서 ${collector} 가 빠졌다 — 안 돌아도 알림 0`,
+      ).toBe(true);
+    });
+  }
 });

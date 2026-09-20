@@ -117,6 +117,7 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 |----|--------|--------|
 | 2 | housing-supply-ratio | - |
 | 3 | **collect-emergency** | 세션525 신규 — 옛 cron `0 16 2 * *`(UTC 2일)은 **KST 3일**. B552657(국립중앙의료원)도 해외 IP 차단 |
+| 5 | **population → population-sex-age** | 세션550 신규 — 옛 cron `0 20 5 * *`(UTC 5일)은 **KST 6일**이지만 **일부러 5일**. `regions` **행 생성자**라 후행(6·7·8일)보다 앞이어야 한다([[regions-multicollector-recorded-at-lag]]). 대상 월은 일(day)을 안 봐서 5일↔6일이 같은 달(`population.mjs:589`) |
 | 6 | market-stats → **molit-units** → **trades** | trades 가 가장 오래 걸려 마지막 |
 | 7 | migration | - |
 | 8 | **collect-crime-safety** | 세션521 신규 — 외부 API 0(로컬 CSV 파싱). 행 생성자(population 5일·market-stats 6일) **뒤**여야 새 `recorded_at` 행을 덮는다 |
@@ -361,7 +362,7 @@ PostgREST 에 **행마다 다른 값을 넣는 배치 UPDATE 문법이 없어** 
 | 일자 | 실행 주체 | 추정 호출 |
 |------|-----------|----------|
 | 매월 1일 | collect-unsold-kosis (로컬 러너) | ~1 |
-| 매월 5일 | population(GH), market-stats(로컬 러너 6일) | ~100 |
+| 매월 5일 | population + population-sex-age (로컬 러너, 세션550 이전), market-stats(로컬 러너 6일) | ~100 |
 | 매월 6일 | collect-trades (로컬 러너) | 1,500~3,500 (세션92: 지방 8개 region 확장 시 +500~1,500) |
 | 매월 6일 + 월/목 08:00 후 | molit-units (로컬 러너 + 네이버 파이프라인) | 50~300 (+post-naver-collect 시 추가) |
 | **매월 10일** | **building-info (로컬 러너)** | **~8,500** |

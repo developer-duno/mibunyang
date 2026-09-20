@@ -15,10 +15,15 @@
  * 서비스도 같은 차단이다 — GH 8/02·8/04 연속 failure 로그가 `fetch failed`(HTTP 코드 없음)인데
  * 로컬 한국 IP + 같은 키는 `resultCode=00 NORMAL SERVICE`. `collect-emergency.yml` 삭제 + 편입.
  *
+ * 배경 4 (세션550, 2026-09-20): 행안부(MOIS) 주민등록 인구 API 도 GH 해외 러너 IP 를 복불복
+ * 차단한다(세션546 `docs/superpowers/specs/2026-09-11-population-sido-aggregation-fix.md` §4-4·§5
+ * 의 PR-F3 — 사장님 승인). `collect-population.yml` 삭제 + population·population-sex-age 편입.
+ *
  * 실행 = 본 러너 + Windows 작업 스케줄러(매일 05:30 KST, 작업명 "MibunyangKosisLocal").
  *
  * 일자 매핑 = 기존 UTC cron 이 실제 발화하던 KST 날짜 보존 (UTC 20~22시 = KST 익일 새벽):
- *   2일 housing-supply / 3일 emergency / 6일 market-stats·molit-units·trades / 7일 migration / 9일 unsold /
+ *   2일 housing-supply / 3일 emergency / 5일 population·population-sex-age /
+ *   6일 market-stats·molit-units·trades / 7일 migration / 9일 unsold /
  *   10일 fertility·building-info(토요일이면 11일) / 11일 housing-permits /
  *   12일 regional-economy / 13일 avg-income / 14일 medical-access /
  *   15~19일 maintenance(--limit=600 배치) / 15일 building-hub(1·4·7·10월만) /
@@ -164,6 +169,21 @@ export const DAY_TABLE = [
   // ⚠️ **UTC→KST 재계산**: 옛 cron `0 16 2 * *` 은 UTC 2일 16:00 = **KST 3일** 01:00 이다.
   //    숫자를 그대로 베껴 2일에 두면 하루 당겨지고, 같은 날 housing-supply-ratio 와 겹친다.
   { day: 3, script: "collect-emergency.mjs" },
+  // 세션550(본 세션): 행안부(MOIS) 주민등록 인구 API 도 GH 해외 러너 IP 를 복불복 차단한다
+  // (세션546 스펙 `2026-09-11-population-sido-aggregation-fix.md` §4-4·§5 PR-F3, 사장님 승인).
+  // `collect-population.yml` 삭제 + 편입. 옛 GH yml 은 이 순서로 두 수집기를 돌렸고,
+  // dry_run 입력 외 고정 인자는 넘기지 않았다(`collect-population.yml:47-70`) — `args` 없음.
+  // ⚠️ **UTC→KST 재계산**: 옛 cron `0 20 5 * *` 은 UTC 5일 20:00 = **KST 6일** 05:00 이다.
+  //    그런데 여기서는 **일부러 하루 앞인 5일**에 둔다(다른 이전 건과 다른 점).
+  //    population 은 `regions` 의 **행 생성자**(매월 새 recorded_at 행을 INSERT)라
+  //    후행 채움자보다 먼저 돌아야 한다 — market-stats 6일 → migration 7일 →
+  //    crime-safety 8일([[regions-multicollector-recorded-at-lag]]). 6일에 두면 같은 날
+  //    market-stats 와 순서가 러너 표 순서에 의존하게 되고, 하루라도 밀리면 lag 사고가 난다.
+  //    대상 월은 실행일이 아니라 `new Date(now.getFullYear(), now.getMonth() - 2, 1)` 로
+  //    정해져(population.mjs:589 / population-sex-age.mjs:238) **일(day)을 아예 안 본다** —
+  //    그래서 5일과 6일은 같은 달을 고른다. 하루 당겨도 수집 대상이 바뀌지 않는다.
+  { day: 5, script: "population.mjs" },
+  { day: 5, script: "population-sex-age.mjs" },
   { day: 6, script: "collect-market-stats.mjs" },
   // 세션 515: MOLIT(1613000) 해외 IP 차단 → GH collect-molit-units.yml·collect-trades.yml 삭제.
   // trades 는 가장 오래 걸려(실측 74~120분) 같은 날 마지막에 둔다.

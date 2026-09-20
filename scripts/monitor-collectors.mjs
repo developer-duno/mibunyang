@@ -262,10 +262,11 @@ const KO_FIELD = {
 // 있음을 실측 확인(이 배열=EXTERNAL_API_COLLECTORS 는 로컬 러너 등 GH 워크플로
 // 자체가 없는 수집기 전용). 진짜 사각지대는 collect-crime-safety.mjs 단
 // 하나였다 — 아래 EXEMPT_FROM_STALE_CHECK 참조.
-// ⚠️ 위 7종 중 **air-quality·trades·emergency 는 그 뒤 GH 워크플로가 삭제**됐다(trades=세션 515,
-//   air-quality=세션 519, emergency=세션 525 — 전부 해외 IP 차단으로 로컬 러너 이전). 즉
-//   "워크플로가 있어 이 배열 대상이 아니다" 는 그 셋에 더는 성립하지 않고, 실제로 셋 다 아래에
-//   등재돼 있다. **워크플로를 지울 때 이 배열 등재를 함께 챙기지 않으면 그 수집기는 조용히 죽는다.**
+// ⚠️ 위 7종 중 **air-quality·trades·emergency·population 은 그 뒤 GH 워크플로가 삭제**됐다
+//   (trades=세션 515, air-quality=세션 519, emergency=세션 525, population(+population-sex-age)=
+//   세션 550 — 전부 해외 IP 차단으로 로컬 러너 이전). 즉 "워크플로가 있어 이 배열 대상이 아니다"
+//   는 그 넷에 더는 성립하지 않고, 실제로 넷 다 아래에 등재돼 있다.
+//   **워크플로를 지울 때 이 배열 등재를 함께 챙기지 않으면 그 수집기는 조용히 죽는다.**
 //
 // ⚠️ 세션521: 여기 있던 `crime-safety` 를 **뺐다**. 옛 사유는 "자동 실행 경로가 아예 없어
 // stale 판정이 항상 참 → 상시 오탐" 이었고 그때는 맞았다. 그런데 그 상태가 만든 결과가
@@ -311,6 +312,17 @@ export const EXTERNAL_API_COLLECTORS = [
   //    이 신선도가 유일한 "안 돌면 알림". 옛 cron `0 16 2 * *` 은 UTC 라 KST 로는 3일이었다.
   //    월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100 기준표).
   { collector: "emergency",       stale_days: 38, owner: "국립중앙의료원 응급의료기관 (로컬 매월 3일 + 1주 여유)" },
+  // ── 세션550: 행안부(MOIS) 주민등록 인구 API 도 GH 해외 러너 IP 를 복불복 차단한다
+  //    (세션546 스펙 `2026-09-11-population-sido-aggregation-fix.md` §4-4·§5 PR-F3).
+  //    `collect-population.yml` 삭제 + 로컬 러너 매월 5일 → GH run 이 없어 ①③ 대상 밖이므로
+  //    이 신선도가 유일한 "안 돌면 알림". 옛 cron `0 20 5 * *` 은 UTC 라 KST 로는 6일이었지만,
+  //    population 은 `regions` 행 생성자라 후행(market-stats 6일·migration 7일·crime-safety 8일)
+  //    보다 먼저여야 해서 **일부러 하루 앞인 5일**에 뒀다([[regions-multicollector-recorded-at-lag]]).
+  //    월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100 기준표).
+  //    ⚠️ 라벨은 파일명이 아니라 recordCollectorRun 첫 인자다 — population.mjs:731 = "population",
+  //    population-sex-age.mjs:311 = "population-sex-age". 두 수집기가 별 행을 남기므로 둘 다 등재.
+  { collector: "population",      stale_days: 38, owner: "행안부 주민등록 인구 (로컬 매월 5일 + 1주 여유)" },
+  { collector: "population-sex-age", stale_days: 38, owner: "행안부 성별·연령별 인구 (로컬 매월 5일 + 1주 여유)" },
   // ── 세션522: 택지정보시스템 지구단계정보(openapi.jigu.go.kr, 무인증) → dev_plans.progression_step.
   //    GH 워크플로가 없어(로컬 러너 매월 21일) ①③ 이 못 본다 — collector_runs 신선도가 유일한
   //    "안 돌면 알림". 월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100).
