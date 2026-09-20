@@ -71,8 +71,11 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
       const stat = byGu[key];
       const avg = stat?.avg;
       const hasData = Number.isFinite(avg);
+      // 표본이 적은 칸은 흐리게 — 시군구 193칸 중 47칸이 단지 3곳 미만이고,
+      // 예산 필터를 걸면 그 비율이 더 오른다(ChoroplethView 와 같은 잣대).
+      const thin = hasData && !stat.enough;
       const color = hasData ? gr(avg).c : C.muted;
-      const baseOpacity = hasData ? 0.55 : 0.2;
+      const baseOpacity = !hasData ? 0.2 : thin ? 0.25 : 0.55;
       const paths = geoJsonFeatureToKakaoPaths(feature, kakao);
 
       for (const path of paths) {
@@ -92,7 +95,10 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
           (mapInstance as any).setBounds(bounds);
           if (onGuClick) onGuClick(key);
         });
-        kakao.event.addListener(polygon, "mouseover", () => polygon.setOptions({ fillOpacity: 0.8 }));
+        // hover 도 baseOpacity 기준으로 올린다 — 고정값이면 흐린 칸이 마우스만 올려도
+        // 진해져서 표본 가드가 무력해진다.
+        const hoverOpacity = Math.min(baseOpacity + 0.25, 0.8);
+        kakao.event.addListener(polygon, "mouseover", () => polygon.setOptions({ fillOpacity: hoverOpacity }));
         kakao.event.addListener(polygon, "mouseout", () => polygon.setOptions({ fillOpacity: baseOpacity }));
         polygonsRef.current.push(polygon);
       }

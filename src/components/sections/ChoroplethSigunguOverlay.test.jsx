@@ -216,6 +216,35 @@ describe("ChoroplethSigunguOverlay", () => {
     onGuClick.mock.calls.forEach((args) => expect(args[0]).toBe("경남|창원시"));
   });
 
+  it("표본 부족(1곳) → 흐리게 0.25, 충분(3곳) → 진하게 0.55 (표본 가드)", async () => {
+    // 시군구 193칸 중 47칸이 단지 3곳 미만이라 이 구분이 실제로 대부분의 칸에 걸린다
+    const one = /** @type {any} */ ([{ apt: { region: "경남", gu: "창원시" }, res: { total: 70 } }]);
+    const { polygons } = setupKakao();
+    render(
+      <ChoroplethSigunguOverlay mapInstance={{ setBounds: vi.fn() }} ready={true} filtered={one} onGuClick={vi.fn()} />
+    );
+    await flushPromises();
+    const thin = polygons.filter((p) => p._opts.fillOpacity === 0.25);
+    expect(thin.length).toBeGreaterThan(0); // 창원 = 1곳뿐 → 흐림
+    expect(polygons.some((p) => p._opts.fillOpacity === 0.55)).toBe(false);
+
+    cleanup();
+    const three = /** @type {any} */ (
+      Array.from({ length: 3 }, () => ({ apt: { region: "경남", gu: "창원시" }, res: { total: 70 } }))
+    );
+    const { polygons: p2 } = setupKakao();
+    render(
+      <ChoroplethSigunguOverlay
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={three}
+        onGuClick={vi.fn()}
+      />
+    );
+    await flushPromises();
+    expect(p2.some((p) => p._opts.fillOpacity === 0.55)).toBe(true); // 3곳 → 진하게
+  });
+
   it("폴리곤 click → onGuClick(byGu key) + setBounds", async () => {
     const { eventListeners, mapInstance } = setupKakao();
     const onGuClick = vi.fn();

@@ -102,8 +102,11 @@ export const ChoroplethView = memo(function ChoroplethView({
       const stat = byRegion[dbName];
       const avg = stat?.avg;
       const hasData = Number.isFinite(avg);
+      // 표본이 적은 칸은 색을 그대로 두되 흐리게 칠한다 — "단지 1곳 점수 = 그 도 전체"라는
+      // 거짓을 막는다. 예산 필터를 걸면 시도조차 표본 1곳까지 떨어지는 것이 실측됐다.
+      const thin = hasData && !stat.enough;
       const color = hasData ? gr(avg).c : C.muted;
-      const baseOpacity = hasData ? 0.65 : 0.25;
+      const baseOpacity = !hasData ? 0.25 : thin ? 0.3 : 0.65;
       const paths = geoJsonFeatureToKakaoPaths(feature, kakao);
 
       for (const path of paths) {
@@ -123,7 +126,9 @@ export const ChoroplethView = memo(function ChoroplethView({
           (mapInstance as any).setBounds(bounds);
           if (onSidoClick) onSidoClick(dbName);
         });
-        kakao.event.addListener(polygon, "mouseover", () => polygon.setOptions({ fillOpacity: 0.85 }));
+        // hover 도 baseOpacity 기준 — 고정값이면 흐린 칸이 hover 로 진해져 가드가 무력해진다.
+        const hoverOpacity = Math.min(baseOpacity + 0.2, 0.85);
+        kakao.event.addListener(polygon, "mouseover", () => polygon.setOptions({ fillOpacity: hoverOpacity }));
         kakao.event.addListener(polygon, "mouseout", () => polygon.setOptions({ fillOpacity: baseOpacity }));
         polygonsRef.current.push(polygon);
       }

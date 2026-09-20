@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, cleanup } from "@testing-library/react";
 import { ChoroplethView } from "./ChoroplethView";
+import { C } from "@/theme";
 
 // 미니멀 시도 GeoJSON 3개 (서울/부산/세종) — 매핑 미존재 1개 (테스트섬) 포함
 const FAKE_GEOJSON = {
@@ -122,7 +123,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={mapInstance}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+          ])
+        }
         onSidoClick={vi.fn()}
       />
     );
@@ -146,7 +153,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={{ setBounds: vi.fn() }}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 90 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 90 } },
+            { apt: { region: "서울" }, res: { total: 90 } },
+            { apt: { region: "서울" }, res: { total: 90 } },
+          ])
+        }
         onSidoClick={vi.fn()}
       />
     );
@@ -156,6 +169,41 @@ describe("ChoroplethView", () => {
     expect(polygons[1]._opts.fillOpacity).toBe(0.25);
   });
 
+  it("표본 부족(1곳) → 색은 그대로지만 흐리게 0.3 (표본 가드)", async () => {
+    const { polygons } = setupKakao();
+    // 단지 1곳 = MIN_MAP_SAMPLE(3) 미만 → "단지 1곳 점수 = 그 도 전체"를 진하게 칠하지 않는다
+    render(
+      <ChoroplethView
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 90 } }])}
+        onSidoClick={vi.fn()}
+      />
+    );
+    await flushPromises();
+    // 데이터 없음(0.25)과도, 표본 충분(0.65)과도 구분되는 중간값
+    expect(polygons[0]._opts.fillOpacity).toBe(0.3);
+    // 색 자체는 점수 색을 유지한다 (회색으로 지우지 않는다)
+    expect(polygons[0]._opts.fillColor).not.toBe(C.muted);
+  });
+
+  it("표본 부족 칸은 hover 해도 진해지지 않는다 (가드 우회 차단)", async () => {
+    const { eventListeners } = setupKakao();
+    render(
+      <ChoroplethView
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 90 } }])}
+        onSidoClick={vi.fn()}
+      />
+    );
+    await flushPromises();
+    const overListener = eventListeners.find((l) => l.type === "mouseover");
+    overListener.handler();
+    // 0.3 + 0.2 = 0.5 — 표본 충분한 칸의 기본값(0.65)보다도 흐리다
+    expect(overListener.target.setOptions).toHaveBeenCalledWith({ fillOpacity: 0.5 });
+  });
+
   it("폴리곤 click → onSidoClick + setBounds 호출", async () => {
     const { eventListeners, mapInstance } = setupKakao();
     const onSidoClick = vi.fn();
@@ -163,7 +211,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={mapInstance}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+          ])
+        }
         onSidoClick={onSidoClick}
       />
     );
@@ -181,7 +235,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={{ setBounds: vi.fn() }}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+          ])
+        }
         onSidoClick={vi.fn()}
       />
     );
@@ -197,7 +257,13 @@ describe("ChoroplethView", () => {
       <ChoroplethView
         mapInstance={{ setBounds: vi.fn() }}
         ready={true}
-        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 80 } },
+          ])
+        }
         onSidoClick={vi.fn()}
       />
     );
