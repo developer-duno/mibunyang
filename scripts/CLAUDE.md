@@ -73,6 +73,24 @@ null)`) `scoreRisk` 가 `units≤1 || unsoldRate==null → UNSOLD_UNKNOWN_SCORE`
 - recordApiQuota: api_quota_log 기록
 - **today(): KST 고정 YYYY-MM-DD** (세션 419) — `Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul"})`. ⚠️ GitHub Actions=UTC 러너라 `new Date().toISOString().slice(0,10)` 직접 쓰면 KST 02:00~08:00 발화 시 recorded_at 하루 밀림. **시계열 recorded_at·collected_at 저장은 today() 의무**(직접 toISOString 금지). TZ env 안 씀(코드 고정이 본질 — TZ env는 cron 발화 안 바꿈+월경계 시프트 잠복위험). datetime(시각포함, presale_fetched_at 등)은 timestamptz 컬럼이라 toISOString 유지 OK
 
+### ⚠️ upsert 충돌 키에 NULL 이 들어가면 중복 방지가 통째로 꺼진다 (세션550)
+
+`upsertBatch(table, rows, "a,b,c")` 는 그 컬럼들의 **유니크 색인**에 기대어 "있으면 갱신, 없으면 삽입"을 한다.
+그런데 Postgres 는 유니크 색인에서 **NULL 을 서로 다른 값으로 본다**(공식 문서: "null values in a unique column
+are not considered equal"). 충돌 키 컬럼 중 하나라도 NULL 인 행은 **영원히 충돌하지 않아 회차마다 새 행으로 또 들어간다.**
+에러도 경고도 없고 `collector_runs` 는 success 다.
+
+- 실사고: `trades` 의 세종 행은 `gu = null` 로 저장됐다(세종은 구·군이 없다). 색인 `idx_trades_unique
+  (region, gu, deal_month, area, price, floor, trade_type)` 가 한 번도 안 걸려 **수집 8회차 동안 68,352행 = 실제 거래
+  11,812건**까지 불었고, 손님 화면의 "세종 6개월 거래 10,916건"(참값 2,124)이 5배로 부풀어 등급이 "활발"로 나갔다.
+- 처방: **충돌 키에 들어가는 컬럼은 저장 시점에 NULL 이 아니게 한다.** 세종 거래는 `tradeRowGu()` 가 `"세종시"` 로 채운다
+  (`collect-trades.mjs`). 읽는 쪽(`trade-stats*.mjs` 의 `statsKey`)은 세종을 gu 와 무관하게 한 버킷으로 접으므로 영향이 없다.
+- 새 수집기·새 유니크 색인을 만들 때 확인: `select count(*) from <표> where <충돌키 컬럼> is null` 이 0 인가.
+  0 이 아니면 그 행들은 중복 방지 밖에 있다. (DB 쪽 처방 = PG15+ `NULLS NOT DISTINCT` 색인 — 공용 표라 Dashboard 수동.)
+- 판별법: 같은 표를 **고유 거래 키로 묶어 벌수 분포**를 본다. 벌수가 "그 달을 덮은 수집 회차 수"와 같으면 이 결함이다.
+- 청소 도구 = `scripts/dedupe-trades-buckets.mjs`(기본 dry-run → 계획 파일 검토 → `--apply-from=<계획> --apply`, 쌍둥이만 삭제·fail-close 99%).
+  ⚠️ `trades` 의 `세종|세종시` 버킷은 `apartments` 에 짝이 없는 게 정상이다(세종 단지의 `apartments.gu` 는 null).
+
 ### Exit Code 정책
 
 - createReporter 사용: `rpt.summary().fail > 0` → exit(1)
