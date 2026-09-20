@@ -1,3 +1,9 @@
+---
+paths:
+  - "src/App.tsx"
+  - "src/hooks/**/*.ts"
+---
+
 # App.tsx 줄 수는 비대의 증거가 아니다 — 배선 루트 판별 의무
 
 > 사건·이력 (세션485 — AI 개발환경 감사가 "App.tsx 977줄"을 위험 병목 Top5 로 지목했으나 착수 직전 실측하니 JSX 523줄 중 44%가 prop 전달 줄이라 배선 루트였음. 같은 세션 E-1 은 응집 단위 추출조차 순증 +55줄이었음) → [rules-history/meta/composition-root-not-bloat.md](../../rules-history/meta/composition-root-not-bloat.md)

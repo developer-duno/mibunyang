@@ -1,3 +1,10 @@
+---
+paths:
+  - "scripts/collectors/population*.mjs"
+  - "scripts/collectors/_shared.mjs"
+  - "scripts/collectors/migration.mjs"
+---
+
 # parseGu 정규화 + SIDO_CODES 박제값 검증 — 행안부 data.go.kr API
 
 > 사건·이력 (세션285 — population.mjs 61일 누락 사고 통합 정정: parseGu 자치구 정보 손실 · SIDO_CODES 환각 3건(세종·강원·전북) · items.item 객체/배열 양형 처리. 세션286 에 자매 drift 동시 fix) → [rules-history/collectors/parsegu-normalization.md](../../rules-history/collectors/parsegu-normalization.md)

@@ -1,3 +1,9 @@
+---
+paths:
+  - "scripts/collectors/transport-*.mjs"
+  - "scripts/collectors/infra-*.mjs"
+---
+
 # 외부 파일 자료의 중복 등재 — 총량 대조 의무 + 상한은 dedup 뒤에
 
 ## 한 줄

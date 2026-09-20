@@ -1,3 +1,12 @@
+---
+paths:
+  - "scripts/**/*.mjs"
+  - "**/*.test.mjs"
+  - "**/*.test.js"
+  - "**/*.test.ts"
+  - "tsconfig*.json"
+---
+
 # TypeScript Patterns — JSDoc + // @ts-check 답습 자산
 
 > M5d~M7 (scripts/collectors + src/) typecheck 활성화 누적 16 섹션 (세션 350 §15 tsconfig glob 함정 + §16 LSP≠tsc 추가). 신규 .js/.mjs/.test.* 파일 // @ts-check 활성화 시 답습 의무.

@@ -1,3 +1,10 @@
+---
+paths:
+  - "src/scoring/**/*.ts"
+  - "src/constants/**/*.ts"
+  - "src/components/**/*.tsx"
+---
+
 # 점수 축의 **의미**를 바꾸면, 그 축을 사람 말로 옮기는 **문구표**도 같이 바꾼다
 
 ## 한 줄
