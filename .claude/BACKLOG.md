@@ -14,9 +14,11 @@
 
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
 - ~~**오늘** — 세종 VIEW SQL 적용~~ ✅ **완료(세션551, 2026-09-20 21:4x KST, 사장님 Dashboard)**. 회귀 0 확인(총 2,443행 · 비세종 fertilityRate 2,408 / housingPrice 2,393 / doctorsPer1k 2,408 / hospitalBedsPer1k 2,406 전부 불변) + 세종 35곳 fertility·housing 0→35. `data-audit` 세종 수치를 다시 기준선으로 써도 된다.
-- **09-21(월) 05:30** — 로컬 러너 day 21 = `lhzone-status` 첫 자동 발화(`collector_runs` 최신이 08-21). 실행 뒤 status·ok_count 확인.
-- **09-21(월) 08:00 이후** — 네이버 로컬 파이프라인이 PT6H 상한으로 6/6 완주했나. 완주면 `4시간 상한` 항목 ✅, 아니면 `--max-minutes` 도입. (grep `4시간 상한`)
+- ~~**09-21(월) 05:30** — `lhzone-status` 첫 자동 발화~~ ✅ **완료(세션555 실측)**: 2026-09-20T20:30Z(=09-21 05:30 KST) `success` · `ok=1144 fail=0` — 08-21 회차와 동일한 수치다.
+- ~~**09-21(월) 08:00 이후** — 네이버 파이프라인 완주 확인 / `--max-minutes` 도입~~ ✅ **해소(세션555 실측)**: `--max-minutes` 는 **이미 도입돼 있다**(`naver-collect.py:372` 기본 90, `run-naver-local.bat:37` 이 `--max-minutes=120` 으로 호출). 그래서 `naver-collect` 가 매 회차 정확히 120분에 `partial` 로 끊기는 것은 **고장이 아니라 설계**다 — bat 주석 그대로 *"1단계를 제한해 2~6단계가 항상 돌도록"*, 남은 단지는 다음 실행이 resume 한다(`naver-collect.py:496`). 최근 5회 전부 `partial`/120분/`fail=0`(ok 7,603~13,531, skip 409~469).
+  ⚠️ 다음 세션이 `partial` 을 사고로 오판하지 말 것. 진짜 이상 신호는 **`fail_count > 0`** 이거나 **`ok_count` 가 연속으로 급락**하는 경우다.
 - **09-22(화) 01:30 이후** — 인천 새 4구 `regions.jeonse_rate` 채움. 월 1회 = 새 4구 승계값 재점검. (grep `모구 승계값`)
+- ✅ **고아 워크트리 9개(693MB) 정리** — 세션555. `git worktree list` 는 1개인데 `.claude/worktrees/` 에 세션549~552 잔재 9개가 `.git` 없는 껍데기로 남아 있었다. 삭제 전 전수 대조로 **"고아에만 있는 src 파일 0개"**(5개 폴더 전부)·차이 방향이 전부 "main 이 더 최신"임을 확인. `.claude/` 693MB+ → **14MB**. ⚠️ 워크트리를 쓰면 **등록 해제만으로는 폴더가 안 지워진다** — 다음에도 `ls .claude/worktrees/` 와 `git worktree list` 개수를 대조할 것.
 - **10-06 저녁** — 로컬 러너 상태 파일 `.kosis-local-runner-state.json` 의 `lastProcessed` 가 `2026-10-06` 인가. ⚠️ `MAX_CATCHUP_PER_RUN = 1` 이라 **PC 가 2일 이상 꺼져 있으면 10-06(market-stats·molit-units·collect-trades)이 통째로 건너뛰어진다**(시뮬 실측: 10-04→10-07 이면 처리 목록이 10-05·10-07 로 10-06 이 빠진다). 모니터는 `stale_days 38` 이라 한 달 넘게 지나야 운다. (grep `MAX_CATCHUP`)
 - **10-07** — `migration.mjs` 첫 자연 실행(exit 0 · `중복 키 — 경남|창원시` ERROR 1줄은 정상). (grep `창원시`)
 - **10-15** — 건축HUB 회차(`collect-building-hub`, 분기 1·4·7·10월). ✅ 세션550 실측으로 **막을 이유 없음** 확정: `useQty` 배율이 지역마다 제각각(순천 50배·서울 62배·부산 9배)이라 단위 변경이 아니라 집계 범위 변경이고, `elecUsageKwh` 는 화면 비노출(hidden)·점수 미사용이다. 노출·점수화하려면 그때 집계 범위부터 규명. (grep `useQty`)
